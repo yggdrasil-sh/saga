@@ -29,7 +29,7 @@
   {% if flash %}<p class="adm-flash {{ flash[1] }}" role="status">{{ flash[0] }}</p>{% endif %}
   {% block content %}{% endblock %}
 </main>
-{% if me %}<footer class="adm-foot">Saga {{ version }} · <a href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Änderungen</a></footer>{% endif %}
+{% if me %}<footer class="adm-foot">Saga {{ version }}{% if "-testing" in version %} · 🧪 Testversion{% endif %} · <a href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Änderungen</a></footer>{% endif %}
 <script src="/static/admin.js?v={{ v }}"></script>
 </body>
 </html>

@@ -4,8 +4,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 **Major** (2.0.0) = Umbau, der Handarbeit beim Update braucht · **Minor** (1.1.0) = neue Funktionen ·
 **Patch** (1.0.1) = Fehlerbehebungen. Datenbank-Änderungen laufen beim Start automatisch, vorher legt Saga ein Backup an.
 
-> Neue Version veröffentlichen: `VERSION` erhöhen, hier den Abschnitt `[Unveröffentlicht]` in `[x.y.z] – Datum`
-> umbenennen und beides auf `main` pushen. Die GitHub Action legt Tag, Image und Release an.
+> **Entwicklung:** Neues landet zuerst auf dem Branch `testing` (Image `ghcr.io/yggdrasil-sh/saga:testing`, wird bei
+> jedem Push gebaut) und wird hier unter `[Unveröffentlicht]` notiert.
+> **Release:** `testing` nach `main` übernehmen, `VERSION` erhöhen, `[Unveröffentlicht]` in `[x.y.z] – Datum`
+> umbenennen und auf `main` pushen. Die GitHub Action legt Tag, Images und Release an.
 
 ## [Unveröffentlicht]
 

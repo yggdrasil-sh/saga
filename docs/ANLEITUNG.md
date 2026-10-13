@@ -379,6 +379,7 @@ Welche Version läuft, bestimmt `SAGA_VERSION` in der `.env`:
 | `1` (Standard) | immer die neueste 1.x – neue Funktionen und Fehlerbehebungen, nichts, was Handarbeit braucht |
 | `1.2` | nur Fehlerbehebungen von 1.2 |
 | `1.2.3` | genau diese Version |
+| `testing` | **Testversion:** das Neueste aus dem Branch `testing`, noch vor dem Release. Kann Fehler haben – nur zum Ausprobieren |
 
 **Aktualisieren:**
 
@@ -396,6 +397,12 @@ docker compose logs saga | grep saga:     # Backup und Datenbank-Migration im Lo
 docker compose exec saga python run.py backup
 docker compose exec saga ls -l /data/backups
 ```
+
+**Testversion:** Mit `SAGA_VERSION=testing` bekommst du neue Funktionen, sobald sie fertig sind – noch vor
+dem Release. Die Version heißt dann z. B. `1.0.0-testing.ab12cd3` (unten im Admin-Bereich mit 🧪). Zurück zur
+stabilen Version: `SAGA_VERSION=1`, `docker compose pull && docker compose up -d`. Hat die Testversion die
+Datenbank schon umgebaut, startet die stabile Version erst, wenn sie diesen Umbau ebenfalls enthält (spätestens
+mit dem nächsten Release) – oder du spielst das Backup von vor dem Wechsel zurück.
 
 Eine neue **Major-Version** (2.0.0) kann Handarbeit brauchen – sie steht dann im Changelog. Dafür
 `SAGA_VERSION=2` setzen.

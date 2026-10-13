@@ -61,7 +61,8 @@ docker compose pull && docker compose up -d
 ```
 
 **Update:** `git pull && docker compose pull && docker compose up -d` – vor Datenbank-Änderungen legt Saga
-automatisch ein Backup an. Was neu ist, steht im **[Changelog](CHANGELOG.md)**.
+automatisch ein Backup an. Was neu ist, steht im **[Changelog](CHANGELOG.md)**. Neugierig auf das Neueste?
+`SAGA_VERSION=testing` in der `.env` holt die Testversion aus dem Branch `testing`.
 
 - **Saga:** `http://<server>:8080` – für den Betrieb hinter einen Reverse Proxy mit HTTPS stellen
 - **Admin-Bereich:** `http://127.0.0.1:8081` auf dem Server (standardmäßig nur lokal erreichbar, z. B. per
