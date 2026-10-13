@@ -213,6 +213,34 @@
     sec.appendChild(el('p', 'hk-hint', 'Mac- und iPhone-App bleiben angemeldet, ohne ständig nach dem Login zu fragen. Gesperrte Konten verlieren den Zugang sofort; ' +
       'ein verlorenes Gerät hier abmelden.'));
     var devs = el('div', 'hk-tok-list'); sec.appendChild(devs);
+    // App per QR-Code anmelden: Code gilt 2 Minuten und einmal; die App uebernimmt daraus auch die Server-Adresse
+    var qrBar = el('div', 'hk-actions'), qrBtn = el('button', 'btn', '📷 App per QR-Code anmelden'); qrBtn.type = 'button';
+    qrBar.appendChild(qrBtn); sec.appendChild(qrBar);
+    var qrBox = el('div', 'hk-qr'); qrBox.hidden = true; sec.appendChild(qrBox);
+    var qrTimer = null;
+    function qrStop() { if (qrTimer) { clearInterval(qrTimer); qrTimer = null; } }
+    qrBtn.addEventListener('click', function () {
+      qrStop(); qrBtn.disabled = true;
+      api('POST', '/api/settings/pair').then(function (d) {
+        qrBox.textContent = ''; qrBox.hidden = false;
+        var img = el('img'); img.src = d.qr; img.alt = 'QR-Code zum Anmelden der App'; img.width = 220; img.height = 220;
+        var txt = el('div'), st = el('p', 'hk-status');
+        txt.appendChild(el('p', null, 'In der iPhone-/iPad-App auf „Mit QR-Code anmelden“ tippen und diesen Code scannen – oder mit der Kamera-App scannen.'));
+        txt.appendChild(el('p', 'hk-hint', 'Der Code gilt 2 Minuten und nur einmal. Zeig ihn niemandem – wer ihn scannt, ist als du angemeldet.'));
+        txt.appendChild(st); qrBox.appendChild(img); qrBox.appendChild(txt);
+        var end = Date.now() + d.expires_in * 1000;
+        qrTimer = setInterval(function () {
+          var left = Math.max(0, Math.round((end - Date.now()) / 1000));
+          api('GET', '/api/settings/pair/' + encodeURIComponent(d.id)).then(function (s) {
+            if (s.used_by) {
+              qrStop(); img.remove(); status(st, '✓ „' + s.used_by + '“ ist angemeldet.', 'ok'); loadDevs();
+            } else if (s.expired || !left) {
+              qrStop(); img.remove(); status(st, 'Abgelaufen – bei Bedarf einen neuen Code erzeugen.', 'err');
+            } else { status(st, 'Noch ' + left + ' s gültig …'); }
+          }).catch(function () {});
+        }, 2000);
+      }).catch(function (err) { HK.toast(err.message); }).then(function () { qrBtn.disabled = false; });
+    });
     function loadDevs() {
       api('GET', '/api/settings/devices').then(function (d) {
         devs.textContent = '';

@@ -717,6 +717,75 @@ async def app_device(request: Request):
     return JSONResponse(out)
 
 
+# --- Anmeldung einer App per QR-Code -------------------------------------------------------------------
+# Im Web (angemeldet) einen Kopplungs-Code erzeugen -> QR-Code mit <BASE_URL>/app/pair?c=<code>. Die App scannt ihn,
+# uebernimmt daraus auch die Server-Adresse und tauscht den Code gegen eine Geraete-Anmeldung. Einmalig, 2 Minuten.
+PAIR_TTL = 120
+
+
+@app.post("/api/settings/pair")
+def api_pair_new(request: Request):
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    import segno
+    code, pid, now = secrets.token_urlsafe(24), secrets.token_urlsafe(9), time.time()
+    with _db() as c, c:
+        c.execute("DELETE FROM pair_code WHERE expires < ?", (now - 3600,))
+        if c.execute("SELECT COUNT(*) FROM pair_code WHERE uid=? AND expires > ? AND used_at IS NULL", (uid, now)).fetchone()[0] >= 5:
+            return _bad("Zu viele offene QR-Codes – bitte kurz warten.", 429)
+        c.execute("INSERT INTO pair_code (hash, pid, uid, name, created, expires) VALUES (?,?,?,?,?,?)",
+                  (_tok_hash(code), pid, uid, request.session.get("name") or uid, now, now + PAIR_TTL))
+    link = f"{BASE_URL}/app/pair?c={code}"
+    return JSONResponse({"id": pid, "link": link, "expires_in": PAIR_TTL,
+                         "qr": segno.make(link, error="m").svg_data_uri(scale=6, border=2, dark="#000000", light="#ffffff")},
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/settings/pair/{pid}")
+def api_pair_status(pid: str, request: Request):
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    with _db() as c:
+        r = c.execute("SELECT used_by, expires FROM pair_code WHERE pid=? AND uid=?", (pid[:40], uid)).fetchone()
+    if not r:
+        return _bad("not found", 404)
+    return JSONResponse({"used_by": r[0], "expired": r[1] < time.time() and not r[0]}, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/app/pair", response_class=HTMLResponse)
+def app_pair_page(request: Request, c: str = ""):
+    """QR-Code mit der normalen Kamera gescannt: Seite mit "In der App oeffnen" (der Code wird hier nicht verbraucht)."""
+    ok = bool(re.fullmatch(r"[A-Za-z0-9_-]{20,64}", c))
+    q = urlencode({"u": BASE_URL, "c": c}) if ok else ""
+    return _auth_page(request, "pair.html", ok=ok, links=[("saga", f"saga://pair?{q}"), ("hlidskjalf", f"hlidskjalf://pair?{q}")])
+
+
+@app.post("/app/pair")
+async def app_pair(request: Request):
+    """Kopplungs-Code aus dem QR-Code -> Sitzung + Geraete-Anmeldung (wie /app/exchange)."""
+    b = await _body(request) or {}
+    code = str(b.get("code") or "")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{20,64}", code):
+        return _bad("ungueltige Anfrage")
+    dev = re.sub(r"\s+", " ", str(b.get("device") or "")).strip()[:60] or "App"
+    now = time.time()
+    with _db() as c, c:
+        n = c.execute("UPDATE pair_code SET used_by=?, used_at=? WHERE hash=? AND used_at IS NULL AND expires > ?",
+                      (dev, now, _tok_hash(code), now)).rowcount          # einmalig - auch bei gleichzeitigen Versuchen
+        r = c.execute("SELECT uid, name FROM pair_code WHERE hash=?", (_tok_hash(code),)).fetchone() if n else None
+    if not r:
+        return _bad("QR-Code ungueltig, schon benutzt oder abgelaufen – bitte im Web einen neuen erzeugen.", 401)
+    if user_info(r[0], fresh=True) is None:
+        return _bad("Kein Zugriff", 403)
+    _set_session(request, r[0], r[1])
+    out = {"ok": True, "name": r[1], "server": BASE_URL}
+    out.update(_mint_device(r[0], r[1], dict(b, device=dev)))
+    print(f"app-pair: {r[0]} -> {dev}", flush=True)
+    return JSONResponse(out)
+
+
 @app.post("/app/forget")
 async def app_forget(request: Request):
     """Abmelden in der App: diesen Geraete-Schluessel loeschen."""

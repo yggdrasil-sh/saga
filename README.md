@@ -41,7 +41,7 @@
 - **Konten:** lokale Benutzer, Registrierung an/aus, **LDAP/Active Directory** und **SSO/OIDC**
   (Keycloak, Authentik, Authelia, Zitadel, Entra ID …)
 - **Admin-Bereich auf eigenem Port** für Benutzer, Gruppen, Dienste und Anmeldung
-- **Apps** (iOS/iPadOS/macOS, Linux/GTK) über dieselbe Schnittstelle, mit dauerhafter Anmeldung
+- **Apps** (iOS/iPadOS/macOS, Linux/GTK) über dieselbe Schnittstelle, mit dauerhafter Anmeldung und Kopplung per QR-Code
 
 ## Schnellstart
 

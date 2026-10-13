@@ -1,0 +1,13 @@
+{% extends "_auth_base.html" %}
+{% block pagetitle %}App anmelden{% endblock %}
+{% block content %}
+{% if ok %}
+<h2 class="auth-h">App anmelden</h2>
+<p class="auth-note">Dieser QR-Code meldet eine {{ title }}-App an. Öffne ihn in der App – oder tippe hier, wenn die App auf diesem Gerät installiert ist:</p>
+<a class="btn btn-primary auth-btn" href="{{ links[0][1] }}">In der App öffnen</a>
+<a class="btn auth-btn" href="{{ links[1][1] }}">In der älteren App öffnen</a>
+<p class="auth-foot">Der Code gilt 2 Minuten und nur einmal.</p>
+{% else %}
+<p class="auth-err">Dieser Link ist unvollständig. Bitte im Browser unter Einstellungen → „Apps &amp; Geräte“ einen neuen QR-Code erzeugen.</p>
+{% endif %}
+{% endblock %}

@@ -287,6 +287,9 @@ CREATE TABLE IF NOT EXISTS file (
 CREATE INDEX IF NOT EXISTS file_uid ON file (uid);
 
 -- App-Anmeldung, Schluessel, Verbindungen ----------------------------------------------------
+CREATE TABLE IF NOT EXISTS pair_code (            -- Anmeldung einer App per QR-Code (einmalig, 2 Minuten)
+    hash TEXT PRIMARY KEY, pid TEXT NOT NULL UNIQUE, uid TEXT NOT NULL, name TEXT, created DOUBLE PRECISION NOT NULL,
+    expires DOUBLE PRECISION NOT NULL, used_by TEXT, used_at DOUBLE PRECISION);
 CREATE TABLE IF NOT EXISTS app_code (
     hash TEXT PRIMARY KEY, uid TEXT NOT NULL, name TEXT, challenge TEXT NOT NULL, expires DOUBLE PRECISION NOT NULL);
 CREATE TABLE IF NOT EXISTS device_login (

@@ -12,3 +12,4 @@ pillow>=10.4
 psycopg[binary]>=3.2
 psycopg-pool>=3.2
 cryptography>=42
+segno>=1.6
