@@ -29,7 +29,10 @@
     {{ field('Attribut Benutzername', 'attr_username', l.attr_username, max=60) }}
     {{ field('Attribut Name', 'attr_name', l.attr_name, max=60) }}
     {{ field('Attribut E-Mail', 'attr_mail', l.attr_mail, max=60) }}
+    {{ check('Anmeldung mit Verzeichnis-Passwort', 'password_login', l.password_login, 'auf der normalen Anmeldeseite – aus, wenn nur SSO genutzt wird') }}
     {{ check('Konten bei der ersten Anmeldung automatisch anlegen', 'auto_create', l.auto_create) }}
+    {{ check('Gruppen von SSO-Konten aus dem Verzeichnis lesen', 'sso_groups', l.sso_groups,
+             'z. B. Keycloak mit FreeIPA-Anbindung: Gruppen (s_*) kommen aus LDAP, gesperrte Konten verlieren sofort den Zugang') }}
     {{ field('Nur Mitglieder dieser Gruppe', 'allowed_group', l.allowed_group, max=100, hint='z. B. saga-users – leer = alle im Filter') }}
     {{ field('Admin-Gruppe', 'admin_group', l.admin_group, max=100, hint='Mitglieder werden Admins') }}
   </section>

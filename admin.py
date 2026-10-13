@@ -604,7 +604,7 @@ async def oidc_post(request: Request):
 # --- Einstellungen: LDAP / Active Directory -------------------------------------------------------------
 LDAP_TEXT = ("url", "bind_dn", "user_base", "user_filter", "attr_username", "attr_name", "attr_mail", "group_base",
              "group_filter", "group_name_attr", "allowed_group", "admin_group")
-LDAP_BOOL = ("enabled", "starttls", "verify_tls", "auto_create", "services_from_description")
+LDAP_BOOL = ("enabled", "starttls", "verify_tls", "auto_create", "services_from_description", "password_login", "sso_groups")
 
 
 @admin.get("/settings/ldap")

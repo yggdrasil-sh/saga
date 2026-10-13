@@ -18,4 +18,6 @@ done
 
 export CA_FILE="$BUNDLE" SSL_CERT_FILE="$BUNDLE"
 
+# Mit Argumenten (z. B. "docker compose run saga python /tools/...") diese ausfuehren - mit gleichem CA-Bundle
+[ "$#" -gt 0 ] && exec "$@"
 exec python /app/run.py

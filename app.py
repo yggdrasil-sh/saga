@@ -366,7 +366,7 @@ def _csrf_ok(request, form):
 def _auth_opts():
     st = auth.settings()
     o = st["oidc"]
-    return {"pw_login": bool(st.get("local_login", True) or st["ldap"].get("enabled")),
+    return {"pw_login": bool(st.get("local_login", True) or (st["ldap"].get("enabled") and st["ldap"].get("password_login", True))),
             "sso": bool(o.get("enabled") and o.get("issuer") and o.get("client_id")), "sso_label": o.get("label") or "Mit SSO anmelden",
             "registration": bool(st.get("registration")), "ldap": bool(st["ldap"].get("enabled"))}
 

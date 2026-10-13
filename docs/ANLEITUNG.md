@@ -241,7 +241,13 @@ Mit **Verbindung testen** prüft Saga das Discovery-Dokument des Anbieters. Dana
 speichern – auf der Anmeldeseite erscheint der SSO-Knopf. Sind lokale Konten abgeschaltet und kein LDAP aktiv,
 geht die Anmeldeseite direkt zum Anbieter.
 
-Gruppen wie `s_nextcloud` aus dem SSO-Anbieter geben Dienste genauso frei wie lokale Gruppen. **Nur Mitglieder
+Gruppen wie `s_nextcloud` aus dem SSO-Anbieter geben Dienste genauso frei wie lokale Gruppen.
+
+**SSO-Anbieter mit Verzeichnis dahinter** (z. B. Keycloak mit FreeIPA- oder AD-Anbindung): Statt einen
+Gruppen-Claim einzurichten, kann Saga die Gruppen direkt aus dem Verzeichnis lesen. Dazu unter **LDAP / AD**
+das Verzeichnis eintragen und **„Gruppen von SSO-Konten aus dem Verzeichnis lesen“** einschalten. Soll die
+Anmeldeseite nur SSO anbieten, „Anmeldung mit Verzeichnis-Passwort“ ausschalten. Gesperrte Konten im Verzeichnis
+verlieren dann auch in Saga sofort den Zugang (bei FreeIPA über die Vorlage). **Nur Mitglieder
 dieser Gruppe** und **Admin-Gruppe** funktionieren wie bei LDAP.
 
 > **Sicherheit:** Eine SSO- oder LDAP-Anmeldung übernimmt nie ein bestehendes Konto anderer Herkunft mit

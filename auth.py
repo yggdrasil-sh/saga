@@ -45,11 +45,13 @@ DEFAULTS = {
              "bind_dn": "", "bind_password": "", "user_base": "", "user_filter": "(&(objectClass=person)(uid={username}))",
              "attr_username": "uid", "attr_name": "cn", "attr_mail": "mail",
              "group_mode": "memberof", "group_base": "", "group_filter": "(member={dn})", "group_name_attr": "cn",
-             "auto_create": True, "allowed_group": "", "admin_group": "", "services_from_description": False},
+             "auto_create": True, "allowed_group": "", "admin_group": "", "services_from_description": False,
+             "password_login": True,          # Anmeldung mit Verzeichnis-Passwort auf der Anmeldeseite
+             "sso_groups": False},            # Gruppen von SSO-Konten aus dem Verzeichnis lesen (z. B. Keycloak mit FreeIPA)
 }
 SECRET_FIELDS = {("oidc", "client_secret"), ("ldap", "bind_password")}
 LDAP_PRESETS = {
-    "freeipa": {"user_filter": "(&(objectClass=person)(uid={username}))", "attr_username": "uid", "attr_name": "cn",
+    "freeipa": {"user_filter": "(&(objectClass=person)(uid={username})(!(nsAccountLock=TRUE)))", "attr_username": "uid", "attr_name": "cn",
                 "attr_mail": "mail", "group_mode": "memberof", "group_filter": "(member={dn})", "group_name_attr": "cn"},
     "ad": {"user_filter": "(&(objectClass=user)(objectCategory=person)(sAMAccountName={username}))", "attr_username": "sAMAccountName",
            "attr_name": "displayName", "attr_mail": "mail", "group_mode": "ad_nested", "group_filter": "(member={dn})",
@@ -287,7 +289,8 @@ def user_info(uid, fresh=False):
     if not u or u["disabled"]:
         _ui_cache.pop(uid, None)
         return None
-    if fresh and u["source"] == "ldap" and settings()["ldap"]["enabled"]:
+    lc = settings()["ldap"]
+    if fresh and lc["enabled"] and (u["source"] == "ldap" or (u["source"] == "oidc" and lc.get("sso_groups"))):
         try:
             ok = ldap_refresh(u)
         except Exception as ex:  # noqa: BLE001 - LDAP gerade weg: bisherigen Stand behalten
@@ -340,7 +343,7 @@ def authenticate(username, password, ip, allow_local=True):
             return user, None
         note_fail(u, ip)
         return None, bad
-    if st["ldap"]["enabled"] and (user is None or user["source"] == "ldap"):
+    if st["ldap"]["enabled"] and st["ldap"].get("password_login", True) and (user is None or user["source"] == "ldap"):
         try:
             res, err = ldap_login(u, password)
         except Exception as ex:  # noqa: BLE001
@@ -472,6 +475,14 @@ def ldap_refresh(user):
     return True
 
 
+def ldap_user_groups(username):
+    """Gruppen eines Benutzers aus dem Verzeichnis (fuer SSO-Konten) - None, wenn nicht gefunden/gesperrt."""
+    cfg = settings()["ldap"]
+    with _service_conn(cfg) as c:
+        e = _ldap_find(c, cfg, username)
+        return None if e is None else _ldap_groups(c, cfg, e, username)
+
+
 def ldap_exists(username):
     """Gibt es den Namen im Verzeichnis? (Registrierung: lokale Konten duerfen LDAP-Benutzern den Namen nicht wegnehmen)"""
     cfg = settings()["ldap"]
@@ -593,6 +604,17 @@ def oidc_user(claims):
         username = username.split("@", 1)[0] if not USERNAME_RE.fullmatch(username.lower()) else username
     raw = _claim(claims, cfg["groups_claim"]) if cfg.get("groups_claim") else []
     groups = [str(g).strip("/").split("/")[-1] for g in (raw if isinstance(raw, list) else [raw] if raw else [])]
+    lc = settings()["ldap"]
+    if lc.get("enabled") and lc.get("sso_groups") and norm_username(username):
+        try:
+            lg = ldap_user_groups(norm_username(username))
+        except Exception as ex:  # noqa: BLE001 - Verzeichnis gerade weg: bisherige Gruppen behalten
+            print(f"sso-ldap-gruppen {username}: {type(ex).__name__}: {ex}", flush=True)
+            u = get_user(norm_username(username))
+            lg = groups_of(u["id"])[1] if u else set()
+        if lg is None:
+            return None, "Dein Konto wurde im Verzeichnis nicht gefunden oder ist gesperrt."
+        groups = list(set(groups) | set(lg))
     return _ext_user(username, "oidc", str(claims.get("sub") or ""), str(_claim(claims, cfg["name_claim"]) or ""),
                      str(_claim(claims, cfg["email_claim"]) or ""), groups, cfg)
 

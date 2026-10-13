@@ -13,15 +13,15 @@ LPW = "Ldap-Passwort-789"
 def seed():
     c = Connection(Server("ldap://ldap.test", connect_timeout=5), f"cn=admin,{BASE_DN}", os.environ["HK_LDAP_ADMIN_PW"], auto_bind=True)
     for dn in [f"cn={g},ou=groups,{BASE_DN}" for g in ("s_st-wiki", "st-admins", "st-hk-users")] + \
-              [f"uid={u},ou=people,{BASE_DN}" for u in ("st-ldap", "st-ldap2", "st-clash", "st-outsider")] + \
+              [f"uid={u},ou=people,{BASE_DN}" for u in ("st-ldap", "st-ldap2", "st-clash", "st-outsider", "st-ssoldap")] + \
               [f"ou=groups,{BASE_DN}", f"ou=people,{BASE_DN}"]:
         c.delete(dn)
     c.add(f"ou=people,{BASE_DN}", "organizationalUnit"); c.add(f"ou=groups,{BASE_DN}", "organizationalUnit")
-    for u, name in (("st-ldap", "Ldap Lotte"), ("st-ldap2", "Ldap Zwei"), ("st-clash", "Clash"), ("st-outsider", "Draussen")):
+    for u, name in (("st-ldap", "Ldap Lotte"), ("st-ldap2", "Ldap Zwei"), ("st-clash", "Clash"), ("st-outsider", "Draussen"), ("st-ssoldap", "Sso Ldap")):
         assert c.add(f"uid={u},ou=people,{BASE_DN}", "inetOrgPerson",
                      {"cn": name, "sn": name.split()[-1], "mail": f"{u}@example.org", "userPassword": LPW}), c.result
     user = lambda u: f"uid={u},ou=people,{BASE_DN}"  # noqa: E731
-    for g, members in (("s_st-wiki", ["st-ldap"]), ("st-admins", ["st-ldap", "st-clash"]), ("st-hk-users", ["st-ldap", "st-ldap2", "st-clash"])):
+    for g, members in (("s_st-wiki", ["st-ldap", "st-ssoldap"]), ("st-admins", ["st-ldap", "st-clash"]), ("st-hk-users", ["st-ldap", "st-ldap2", "st-clash"])):
         assert c.add(f"cn={g},ou=groups,{BASE_DN}", "groupOfNames", {"member": [user(m) for m in members]}), c.result
     return c
 
@@ -59,7 +59,7 @@ def main():
             "bind_dn": f"cn=admin,{BASE_DN}", "bind_password": os.environ["HK_LDAP_ADMIN_PW"], "user_base": f"ou=people,{BASE_DN}",
             "user_filter": "(&(objectClass=inetOrgPerson)(uid={username}))", "attr_username": "uid", "attr_name": "cn",
             "attr_mail": "mail", "group_mode": "search", "group_base": f"ou=groups,{BASE_DN}", "group_filter": "(member={dn})",
-            "group_name_attr": "cn", "auto_create": "1", "admin_group": "st-admins"}
+            "group_name_attr": "cn", "auto_create": "1", "admin_group": "st-admins", "password_login": "1"}
     adm.post("/settings/ldap", dict(ldap, action="test", test_user="st-ldap"))
     html = adm.req("GET", "/settings/ldap")[2]
     ok("LDAP-Test: Verbindung (StartTLS) + Benutzer + Gruppen", "✓ Verbindung" in html and "s_st-wiki" in html and "st-admins" in html)
@@ -128,7 +128,24 @@ def main():
     a2, s3, loc3 = sso_login("sso-sub-1", {"preferred_username": "st-sso", "groups": ["s_st-wiki", "st-hk-users"]}, start=a)
     s4, loc4, _ = a.req("GET", loc3) if s3 == 303 else (0, "", "")
     ok(f"App-Anmeldung ueber SSO bis saga://auth ({loc}, {loc3}, {loc4[:24]})", loc4.startswith("saga://auth?code="))
+    # Gruppen von SSO-Konten aus LDAP (Keycloak mit FreeIPA-Anbindung), LDAP-Passwort-Anmeldung aus
+    adm.post("/settings/oidc", dict(oidc, action="save", client_secret="", allowed_group=""))
+    adm.post("/settings/ldap", dict(ldap, action="save", bind_password="", password_login="", sso_groups="1"))
+    adm.post("/settings", {"title": "Saga", "group_prefix": "s_", "default_groups": "", "allowed_hosts": ""})
+    ok("Nur SSO: ohne Passwort-Login leitet die Anmeldeseite direkt zum Anbieter",
+       main_client().req("GET", "/login")[0] == 303 and login("st-ldap", LPW)[1] != 303)
+    _, s, loc = sso_login("sso-ldap-1", {"preferred_username": "st-ssoldap", "groups": []})
+    i = auth.user_info("st-ssoldap", fresh=True) if auth.get_user("st-ssoldap") else None
+    ok(f"SSO-Konto bekommt Gruppen aus LDAP ({s}, {sorted(i['groups']) if i else '-'})", s == 303 and i and "s_st-wiki" in i["groups"])
+    _, s, html = sso_login("sso-ldap-2", {"preferred_username": "st-nirgends", "groups": ["s_st-wiki"]})
+    ok("SSO-Konto, das es im Verzeichnis nicht gibt -> abgewiesen", s == 403 and auth.get_user("st-nirgends") is None)
+    lc.modify(f"cn=s_st-wiki,ou=groups,{BASE_DN}", {"member": [(MODIFY_DELETE, [f"uid=st-ssoldap,ou=people,{BASE_DN}"])]})
+    auth._settings_cache["v"] = None
+    i = auth.user_info("st-ssoldap", fresh=True)
+    ok("Erneuerung liest LDAP-Gruppen neu (Gruppe entzogen)", i and "s_st-wiki" not in i["groups"])
+    adm.post("/settings/ldap", dict(ldap, action="save", bind_password="", enabled=""))
     adm.post("/settings/oidc", dict(oidc, action="save", client_secret="", enabled=""))
+    adm.post("/settings", {"title": "Saga", "local_login": "1", "group_prefix": "s_", "default_groups": "", "allowed_hosts": ""})
     ok("SSO aus -> kein Knopf", "/login/sso" not in main_client().req("GET", "/login")[2])
 
 
