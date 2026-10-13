@@ -11,6 +11,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Betrieb
+- Testversion: Branch `testing` baut bei jedem Push das Image `ghcr.io/yggdrasil-sh/saga:testing` (`SAGA_VERSION=testing`)
+
 ## [1.0.0] – 2026-10-13
 
 Erste Version mit Versionsnummer.
