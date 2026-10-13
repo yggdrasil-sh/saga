@@ -28,6 +28,7 @@ RUN pip install -r requirements.txt \
  && chown 10001:10001 /data
 
 COPY VERSION app.py admin.py auth.py db.py hkcal.py run.py version.py ./
+COPY saga ./saga
 COPY templates ./templates
 COPY static ./static
 COPY docker/entrypoint.sh /entrypoint.sh

@@ -3,7 +3,7 @@
 Sicherheit: Der Server ruft Adressen ab, die ein Benutzer eingegeben hat. Damit darueber keine internen
 Dienste erreichbar sind (SSRF), wird JEDE Adresse geprueft - die eingegebene, jede Umleitung und jeder
 Verweis (href) aus Server-Antworten: nur https (Tests: optional http) und nur Hosts, die HOST_OK erlaubt
-(Standard: oeffentliche Adressen; interne nur mit Freigabe im Admin-Bereich - setzt app.py).
+(Standard: oeffentliche Adressen; interne nur mit Freigabe im Admin-Bereich - setzt saga/calendars.py).
 Dazu Zeit- und Groessenlimits. Geschrieben wird nur mit ETag (If-Match / If-None-Match).
 """
 import os
@@ -16,7 +16,7 @@ from urllib.parse import urljoin, urlsplit
 import httpx
 
 _ENV_HOSTS = {h.strip().lower() for h in os.environ.get("CALDAV_ALLOWED_HOSTS", "").split(",") if h.strip()}
-HOST_OK = lambda host, hostport: host in _ENV_HOSTS or hostport in _ENV_HOSTS      # noqa: E731 - app.py setzt die echte Pruefung
+HOST_OK = lambda host, hostport: host in _ENV_HOSTS or hostport in _ENV_HOSTS      # noqa: E731 - saga/calendars.py setzt die echte Pruefung
 SCHEMES = {"https", "http"} if os.environ.get("CALDAV_ALLOW_HTTP") == "1" else {"https"}   # http nur fuer Tests
 TIMEOUT, MAX_BYTES, MAX_REDIRECTS = 12.0, 5 * 1024 * 1024, 3
 NS = {"d": "DAV:", "c": "urn:ietf:params:xml:ns:caldav", "a": "http://apple.com/ns/ical/", "cs": "http://calendarserver.org/ns/"}
