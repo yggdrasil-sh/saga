@@ -61,13 +61,20 @@ h2{font-size:clamp(28px,4vw,40px);margin:0 0 10px;letter-spacing:-.01em}
 .gallery figure{margin:0}
 .gallery .shot{margin:0}
 .gallery figcaption{color:var(--muted);font-size:14.5px;margin-top:10px;text-align:center}
+.phones{display:grid;grid-template-columns:repeat(4,1fr);gap:22px;align-items:start;margin-top:36px}
+.phones figure{margin:0}
+.phones img{display:block;width:100%;height:auto;border-radius:26px;border:1px solid var(--border);box-shadow:var(--shadow);background:var(--card)}
+.phones figcaption,.tablet figcaption{color:var(--muted);font-size:14.5px;margin-top:10px;text-align:center}
+.tablet{margin:36px auto 0;max-width:900px}
+.tablet img{display:block;width:100%;height:auto;border-radius:22px;border:1px solid var(--border);box-shadow:var(--shadow)}
+.dl{margin-top:28px;display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
 pre{background:#0b1017;color:#e6ebf2;border:1px solid var(--border);border-radius:14px;padding:22px;overflow:auto;font:14.5px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace}
 pre .c{color:#7f8b9c}
 .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-top:28px}
 .steps .card b{color:var(--accent)}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;background:var(--bg2);padding:1px 6px;border-radius:6px;border:1px solid var(--border)}
 footer{padding:40px 0 60px;color:var(--muted);font-size:14px;text-align:center}
-@media (max-width:860px){.split,.split.rev{grid-template-columns:1fr}.split.rev .txt{order:0}nav a.l.hide{display:none}}
+@media (max-width:860px){.phones{grid-template-columns:repeat(2,1fr)}.split,.split.rev{grid-template-columns:1fr}.split.rev .txt{order:0}nav a.l.hide{display:none}}
 </style>
 </head>
 <body>
@@ -77,6 +84,7 @@ footer{padding:40px 0 60px;color:var(--muted);font-size:14px;text-align:center}
     <span class="sp"></span>
     <a class="l hide" href="#funktionen">Funktionen</a>
     <a class="l hide" href="#screenshots">Screenshots</a>
+    <a class="l hide" href="#apps">Apps</a>
     <a class="l" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md">Anleitung</a>
     <a class="l" href="https://github.com/yggdrasil-sh/saga">GitHub</a>
   </nav>
@@ -176,7 +184,25 @@ footer{padding:40px 0 60px;color:var(--muted);font-size:14px;text-align:center}
   </div>
 </section>
 
-<section id="schnellstart">
+<section id="apps">
+  <div class="wrap">
+    <h2>Apps für unterwegs und den Schreibtisch</h2>
+    <p class="sub">Native Apps für iPhone, iPad, Mac, Linux (GNOME) und Android – keine eingebettete Webseite.
+      Seiten, Datenbanken, Aufgaben und Termine werden direkt in der App angezeigt und bearbeitet.
+      Anmelden geht mit der Serveradresse oder bequem per QR-Code aus „Apps &amp; Geräte“.</p>
+    <div class="phones">
+      <figure><img src="screenshots/app-ios-start.png" alt="iPhone: Startseite mit Aufgaben und zuletzt geöffneten Seiten" loading="lazy" width="660" height="1434"><figcaption>iPhone: Start</figcaption></figure>
+      <figure><img src="screenshots/app-ios-dunkel-board.png" alt="iPhone: Datenbank als Board im dunklen Design" loading="lazy" width="660" height="1434"><figcaption>iPhone: Board, dunkel</figcaption></figure>
+      <figure><img src="screenshots/app-android-heute.png" alt="Android: Heute mit Terminen und Aufgaben" loading="lazy" width="660" height="1467"><figcaption>Android: Heute</figcaption></figure>
+      <figure><img src="screenshots/app-android-dienste.png" alt="Android: Dienste nach Gruppen" loading="lazy" width="660" height="1467"><figcaption>Android: Dienste</figcaption></figure>
+    </div>
+    <figure class="tablet"><img src="screenshots/app-ipad-projekte.png" alt="iPad: Seitenleiste und Datenbank als Board" loading="lazy" width="1600" height="1200"><figcaption>iPad: Seitenleiste und Board</figcaption></figure>
+    <p class="dl"><a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/releases/latest">⬇️ Downloads: macOS · Linux (RPM, Flatpak) · Android</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga-apps">📱 App-Quellcode &amp; Anleitung</a></p>
+  </div>
+</section>
+
+<section id="schnellstart" class="alt">
   <div class="wrap">
     <h2>In 5 Minuten starten</h2>
     <p class="sub">Du brauchst nur einen Server mit Docker.</p>
