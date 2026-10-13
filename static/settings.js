@@ -202,16 +202,8 @@
   function tokenSection(body) {
     var sec = el('section', 'hk-set'); body.appendChild(sec);
     sec.appendChild(el('h3', null, '📱 Apps & Geräte'));
-    sec.appendChild(el('p', 'hk-hint', 'Schlüssel für die Saga-Apps (Teilen-Erweiterung und Widget). Ein Schlüssel darf nur ' +
-      'Links/Notizen/Aufgaben ablegen und „Heute“ lesen – nicht deine Notizen. Pro Gerät einen eigenen anlegen; verlorenes Gerät → Schlüssel widerrufen.'));
-    var list = el('div', 'hk-tok-list'); sec.appendChild(list);
-    var bar = el('div', 'hk-actions'), nm = el('input', 'hk-in'); nm.type = 'text'; nm.maxLength = 60; nm.placeholder = 'Name, z. B. „Mein iPhone“';
-    var add = el('button', 'btn', '+ Schlüssel erzeugen'); add.type = 'button'; bar.appendChild(nm); bar.appendChild(add); sec.appendChild(bar);
-    var out = el('div'); sec.appendChild(out);
-    // angemeldete Apps (bleiben angemeldet, bis man sie hier abmeldet)
-    sec.appendChild(el('h4', null, 'Angemeldete Apps'));
-    sec.appendChild(el('p', 'hk-hint', 'Mac- und iPhone-App bleiben angemeldet, ohne ständig nach dem Login zu fragen. Gesperrte Konten verlieren den Zugang sofort; ' +
-      'ein verlorenes Gerät hier abmelden.'));
+    sec.appendChild(el('p', 'hk-hint', 'Angemeldete Apps bleiben angemeldet. Zu jeder App gehört ein kleiner Schlüssel für Widget, Teilen und Kurzbefehle ' +
+      '(darf nur ablegen und „Heute“ lesen). Verlorenes Gerät → abmelden, dann ist beides weg.'));
     var devs = el('div', 'hk-tok-list'); sec.appendChild(devs);
     // App per QR-Code anmelden: Code gilt 2 Minuten und einmal; die App uebernimmt daraus auch die Server-Adresse
     var qrBar = el('div', 'hk-actions'), qrBtn = el('button', 'btn', '📷 App per QR-Code anmelden'); qrBtn.type = 'button';
@@ -233,7 +225,7 @@
           var left = Math.max(0, Math.round((end - Date.now()) / 1000));
           api('GET', '/api/settings/pair/' + encodeURIComponent(d.id)).then(function (s) {
             if (s.used_by) {
-              qrStop(); img.remove(); status(st, '✓ „' + s.used_by + '“ ist angemeldet.', 'ok'); loadDevs();
+              qrStop(); img.remove(); status(st, '✓ „' + s.used_by + '“ ist angemeldet.', 'ok'); load();
             } else if (s.expired || !left) {
               qrStop(); img.remove(); status(st, 'Abgelaufen – bei Bedarf einen neuen Code erzeugen.', 'err');
             } else { status(st, 'Noch ' + left + ' s gültig …'); }
@@ -241,48 +233,52 @@
         }, 2000);
       }).catch(function (err) { HK.toast(err.message); }).then(function () { qrBtn.disabled = false; });
     });
-    function loadDevs() {
-      api('GET', '/api/settings/devices').then(function (d) {
-        devs.textContent = '';
-        if (!d.length) devs.appendChild(el('p', 'hk-hint', 'Keine App angemeldet.'));
-        d.forEach(function (k) {
+    // weitere Schluessel (von Hand, z. B. fuer Kurzbefehle/Skripte oder aeltere Apps) - eingeklappt
+    var more = el('details', 'hk-more'), sum = el('summary', null, 'Weitere Schlüssel'); more.appendChild(sum); sec.appendChild(more);
+    more.appendChild(el('p', 'hk-hint', 'Von Hand erzeugte Schlüssel, z. B. für Kurzbefehle oder Skripte. Sie gehören zu keinem angemeldeten Gerät.'));
+    var list = el('div', 'hk-tok-list'); more.appendChild(list);
+    var bar = el('div', 'hk-actions'), nm = el('input', 'hk-in'); nm.type = 'text'; nm.maxLength = 60; nm.placeholder = 'Name, z. B. „Kurzbefehle“';
+    var add = el('button', 'btn', '+ Schlüssel erzeugen'); add.type = 'button'; bar.appendChild(nm); bar.appendChild(add); more.appendChild(bar);
+    var out = el('div'); more.appendChild(out);
+    function when(t) { return fDate.format(new Date(t * 1000)); }
+    function load() {
+      api('GET', '/api/settings/apps').then(function (d) {
+        devs.textContent = ''; list.textContent = '';
+        if (!d.devices.length) devs.appendChild(el('p', 'hk-hint', 'Keine App angemeldet.'));
+        d.devices.forEach(function (k) {
           var row = el('div', 'hk-tok');
           row.appendChild(el('strong', null, k.name));
-          row.appendChild(el('span', 'hk-hint', 'angemeldet ' + fDate.format(new Date(k.created * 1000)) + (k.last_used ? ' · zuletzt aktiv ' + fDate.format(new Date(k.last_used * 1000)) : '')));
+          row.appendChild(el('span', 'hk-hint', 'angemeldet ' + when(k.created) + (k.last_used ? ' · zuletzt aktiv ' + when(k.last_used) : '') +
+            (k.key ? ' · mit Widget-Schlüssel' : '')));
           var rv = el('button', 'btn btn-danger', 'Abmelden'); rv.type = 'button';
           rv.addEventListener('click', function () {
-            if (!confirm('„' + k.name + '“ abmelden? Die App muss sich dann neu anmelden.')) return;
-            api('DELETE', '/api/settings/devices/' + k.id).then(loadDevs).catch(function (err) { HK.toast(err.message); });
+            if (!confirm('„' + k.name + '“ abmelden? Die App muss sich neu anmelden; Widget und Teilen auf diesem Gerät verlieren den Zugang.')) return;
+            api('DELETE', '/api/settings/devices/' + k.id).then(load).catch(function (err) { HK.toast(err.message); });
           });
           row.appendChild(rv); devs.appendChild(row);
         });
-      }).catch(function (err) { devs.textContent = 'Nicht geladen: ' + err.message; });
-    }
-    loadDevs();
-    function load() {
-      api('GET', '/api/settings/tokens').then(function (d) {
-        list.textContent = '';
-        if (!d.length) list.appendChild(el('p', 'hk-hint', 'Noch kein Schlüssel.'));
-        d.forEach(function (k) {
+        sum.textContent = 'Weitere Schlüssel' + (d.keys.length ? ' (' + d.keys.length + ')' : '');
+        if (!d.keys.length) list.appendChild(el('p', 'hk-hint', 'Keine.'));
+        d.keys.forEach(function (k) {
           var row = el('div', 'hk-tok');
           row.appendChild(el('strong', null, k.name));
           row.appendChild(el('code', null, k.prefix + '…'));
-          row.appendChild(el('span', 'hk-hint', 'erstellt ' + fDate.format(new Date(k.created * 1000)) + (k.last_used ? ' · zuletzt benutzt ' + fDate.format(new Date(k.last_used * 1000)) : ' · noch nie benutzt')));
+          row.appendChild(el('span', 'hk-hint', 'erstellt ' + when(k.created) + (k.last_used ? ' · zuletzt benutzt ' + when(k.last_used) : ' · noch nie benutzt')));
           var rv = el('button', 'btn btn-danger', 'Widerrufen'); rv.type = 'button';
           rv.addEventListener('click', function () {
-            if (!confirm('Schlüssel „' + k.name + '“ widerrufen? Die App auf diesem Gerät kann dann nichts mehr ablegen.')) return;
+            if (!confirm('Schlüssel „' + k.name + '“ widerrufen?')) return;
             api('DELETE', '/api/settings/tokens/' + k.id).then(load).catch(function (err) { HK.toast(err.message); });
           });
           row.appendChild(rv); list.appendChild(row);
         });
-      }).catch(function (err) { list.textContent = 'Nicht geladen: ' + err.message; });
+      }).catch(function (err) { devs.textContent = 'Nicht geladen: ' + err.message; });
     }
     add.addEventListener('click', function () {
       add.disabled = true;
       api('POST', '/api/settings/tokens', { name: nm.value.trim() }).then(function (d) {
         nm.value = ''; out.textContent = '';
         var box = el('div', 'hk-newtok');
-        box.appendChild(el('p', null, '🔑 Neuer Schlüssel für „' + d.name + '“ – nur jetzt sichtbar! In der iOS-App unter „Einstellungen“ einfügen:'));
+        box.appendChild(el('p', null, '🔑 Neuer Schlüssel für „' + d.name + '“ – nur jetzt sichtbar!'));
         var code = el('input', 'hk-in hk-tokval'); code.type = 'text'; code.readOnly = true; code.value = d.token; box.appendChild(code);
         var cp = el('button', 'btn', 'Kopieren'); cp.type = 'button'; box.appendChild(cp);
         cp.addEventListener('click', function () {

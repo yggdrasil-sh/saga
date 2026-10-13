@@ -657,23 +657,32 @@ def _mint_device(uid, uname, b):
     with _db() as c, c:
         _devlogin_db(c)
         old = [x[0] for x in c.execute("SELECT id FROM device_login WHERE uid=? ORDER BY COALESCE(last_used, created) DESC", (uid,)).fetchall()]
-        for x in old[DEVICE_LOGIN_MAX - 1:]:         # zu viele -> die am laengsten unbenutzten fallen weg
-            c.execute("DELETE FROM device_login WHERE id=?", (x,))
-        c.execute("INSERT INTO device_login (uid, uname, name, hash, prefix, created, last_used) VALUES (?,?,?,?,?,?,?)",
-                  (uid, uname, dev, _tok_hash(tok), tok[:10], time.time(), time.time()))
+        _drop_devices(c, uid, old[DEVICE_LOGIN_MAX - 1:])     # zu viele -> die am laengsten unbenutzten fallen weg
+        did = c.execute("INSERT INTO device_login (uid, uname, name, hash, prefix, created, last_used) VALUES (?,?,?,?,?,?,?)",
+                        (uid, uname, dev, _tok_hash(tok), tok[:10], time.time(), time.time())).lastrowid
         out["device_token"] = tok
         if b.get("app_key") is True:              # zugleich App-Schluessel fuer Widget/Teilen/Menueleiste (wenn noch Platz)
             _tok_db(c)
             if c.execute("SELECT COUNT(*) FROM app_token WHERE uid=?", (uid,)).fetchone()[0] < APP_TOKEN_MAX:
                 key = "hk_" + secrets.token_urlsafe(32)
-                c.execute("INSERT INTO app_token (uid, name, hash, prefix, created) VALUES (?,?,?,?,?)",
-                          (uid, f"{dev} (automatisch)", _tok_hash(key), key[:9], time.time()))
+                c.execute("INSERT INTO app_token (uid, name, hash, prefix, created, device_id) VALUES (?,?,?,?,?,?)",
+                          (uid, f"{dev} (automatisch)", _tok_hash(key), key[:9], time.time(), did))
                 out["app_key"] = key
     return out
 
 
 # --- Geraete-Anmeldung: Apps bleiben angemeldet (die Sitzung selbst gilt nur 8 Stunden) -----------------
 DEVICE_LOGIN_MAX = 20
+
+
+def _drop_devices(c, uid, ids):
+    """Geraete-Anmeldungen loeschen - samt dem App-Schluessel, der zu diesem Geraet gehoert (Widget/Teilen)."""
+    _tok_db(c)
+    n = 0
+    for x in ids:
+        c.execute("DELETE FROM app_token WHERE uid=? AND device_id=?", (uid, x))
+        n += c.execute("DELETE FROM device_login WHERE id=? AND uid=?", (x, uid)).rowcount
+    return n
 
 
 def _devlogin_db(c):
@@ -687,6 +696,7 @@ async def app_resume(request: Request):
     """Geraete-Schluessel -> neue Sitzung. Prueft jedes Mal frisch (bei LDAP im Verzeichnis): gesperrt/entfernt -> kein Zugriff (und Schluessel weg)."""
     b = await _body(request) or {}
     tok = str(b.get("device_token") or "")
+    key = str(b.get("app_key") or "")
     if not tok.startswith("hkd_") or len(tok) > 120:
         return _bad("ungueltige Anfrage", 401)
     with _db() as c, c:
@@ -696,10 +706,14 @@ async def app_resume(request: Request):
         return _bad("Geraet abgemeldet - bitte neu anmelden", 401)
     if user_info(r[1], fresh=True) is None:
         with _db() as c, c:
-            c.execute("DELETE FROM device_login WHERE id=?", (r[0],))
+            _drop_devices(c, r[1], [r[0]])
         return _bad("Kein Zugriff", 403)
     with _db() as c, c:
         c.execute("UPDATE device_login SET last_used=? WHERE id=?", (time.time(), r[0]))
+        if key.startswith("hk_") and len(key) <= 120:      # die App nennt ihren Widget-Schluessel -> dem Geraet zuordnen
+            _tok_db(c)
+            c.execute("UPDATE app_token SET device_id=? WHERE hash=? AND uid=? AND device_id IS NULL"
+                      " AND NOT EXISTS (SELECT 1 FROM app_token o WHERE o.device_id=?)", (r[0], _tok_hash(key), r[1], r[0]))
     _set_session(request, r[1], r[2] or r[1])
     return JSONResponse({"ok": True, "name": r[2] or r[1]})
 
@@ -794,7 +808,9 @@ async def app_forget(request: Request):
     if tok.startswith("hkd_") and len(tok) <= 120:
         with _db() as c, c:
             _devlogin_db(c)
-            c.execute("DELETE FROM device_login WHERE hash=?", (_tok_hash(tok),))
+            r = c.execute("SELECT id, uid FROM device_login WHERE hash=?", (_tok_hash(tok),)).fetchone()
+            if r:
+                _drop_devices(c, r[1], [r[0]])
     request.session.clear()
     return JSONResponse({"ok": True})
 
@@ -817,8 +833,27 @@ def api_dev_delete(did: int, request: Request):
         return _bad("unauthorized", 401)
     with _db() as c, c:
         _devlogin_db(c)
-        n = c.execute("DELETE FROM device_login WHERE id=? AND uid=?", (did, uid)).rowcount
+        n = _drop_devices(c, uid, [did])
     return JSONResponse({"ok": True}) if n else _bad("not found", 404)
+
+
+@app.get("/api/settings/apps")
+def api_apps(request: Request):
+    """Eine Liste: angemeldete Geraete (mit ihrem Widget-/Teilen-Schluessel) + von Hand erzeugte Schluessel."""
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    with _db() as c:
+        _devlogin_db(c)
+        _tok_db(c)
+        devs = c.execute("SELECT id, name, created, last_used FROM device_login WHERE uid=? ORDER BY COALESCE(last_used, created) DESC", (uid,)).fetchall()
+        toks = c.execute("SELECT id, name, prefix, created, last_used, device_id FROM app_token WHERE uid=? ORDER BY id", (uid,)).fetchall()
+    ids = {d[0] for d in devs}
+    keyof = {t[5]: {"id": t[0], "prefix": t[2], "created": t[3], "last_used": t[4]} for t in toks if t[5] in ids}
+    return JSONResponse({
+        "devices": [{"id": d[0], "name": d[1], "created": d[2], "last_used": d[3], "key": keyof.get(d[0])} for d in devs],
+        "keys": [{"id": t[0], "name": t[1], "prefix": t[2], "created": t[3], "last_used": t[4]} for t in toks if t[5] not in ids],
+    })
 
 
 @app.get("/notes", response_class=HTMLResponse)

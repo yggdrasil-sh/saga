@@ -1230,3 +1230,7 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 .hk-qr img{background:#fff;border-radius:8px;padding:4px;image-rendering:pixelated}
 .hk-qr>div{flex:1;min-width:14rem}
 .hk-qr p{margin:.2rem 0 .4rem}
+
+.hk-more{margin-top:1rem}
+.hk-more>summary{cursor:pointer;color:var(--muted);font-size:.9rem;padding:.3rem 0}
+.hk-more[open]>summary{margin-bottom:.3rem}

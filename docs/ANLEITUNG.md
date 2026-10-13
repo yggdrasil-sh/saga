@@ -303,7 +303,9 @@ Im Benutzermenü oben rechts unter **Einstellungen**:
   Am besten ein eigenes App-Passwort nur für Kalender anlegen.
 - **Immich:** Adresse und einen API-Schlüssel mit den Rechten `album.read`, `asset.read`, `asset.view`,
   `asset.download`, `user.read` eintragen. Dann gibt es Fotos als Bilder und Titelbilder.
-- **Apps & Geräte:** angemeldete Apps sehen und abmelden, Schlüssel für Teilen-Erweiterung und Widgets
+- **Apps & Geräte:** eine Liste aller angemeldeten Apps. Zu jeder gehört ein kleiner Schlüssel für Widget,
+  Teilen-Erweiterung und Kurzbefehle; **Abmelden** entfernt beides. Von Hand erzeugte Schlüssel (z. B. für
+  Skripte) stehen eingeklappt unter „Weitere Schlüssel“.
 - **App per QR-Code anmelden:** unter „Apps & Geräte“ erscheint ein QR-Code, der zwei Minuten gilt
   und nur einmal benutzt werden kann. Mit der Handy-Kamera scannen – die App übernimmt Serveradresse
   und Anmeldung, ganz ohne Passwort-Eingabe am Gerät. Der Link im QR-Code funktioniert auch als Kopplungslink

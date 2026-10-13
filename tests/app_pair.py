@@ -9,9 +9,11 @@ res = []
 def ok(n, c): res.append(bool(c)); print(("OK  " if c else "FAIL"), n)
 
 
-def req(m, p, cookie=None, body=None, api=False):
+def req(m, p, cookie=None, body=None, api=False, key=None):
     c = http.client.HTTPConnection(B.hostname, B.port, timeout=20)
     h = {"Host": HOST, "Content-Type": "application/json"}
+    if key:
+        h["Authorization"] = "Bearer " + key
     if cookie:
         h["Cookie"] = "saga=" + cookie
     if api:
@@ -45,6 +47,28 @@ try:
     ok("Geraete-Schluessel funktioniert", req("POST", "/app/resume", body={"device_token": d2["device_token"]})[0] == 200)
     ok("Code nur einmal", req("POST", "/app/pair", body={"code": code, "device": "Zweitgeraet"})[0] == 401)
     ok("Status: benutzt von Test-iPhone QR", req("GET", f"/api/settings/pair/{d['id']}", A, api=True)[1].get("used_by") == "Test-iPhone QR")
+    # Eine Liste: Geraet mit seinem Widget-Schluessel; von Hand erzeugte Schluessel extra
+    ap = req("GET", "/api/settings/apps", A, api=True)[1]
+    dv = next((x for x in ap["devices"] if x["name"] == "Test-iPhone QR"), None)
+    ok("Geraeteliste: Geraet mit Widget-Schluessel", dv and dv["key"] and dv["key"]["prefix"] == d2["app_key"][:9])
+    ok("Automatischer Schluessel steht nicht extra", not any(k["name"] == "Test-iPhone QR (automatisch)" for k in ap["keys"]))
+    ok("Widget-Schluessel funktioniert", req("GET", "/api/app/today", key=d2["app_key"])[0] == 200)
+    mk = req("POST", "/api/settings/tokens", A, body={"name": "Test-iPhone Hand"}, api=True)[1]
+    ap = req("GET", "/api/settings/apps", A, api=True)[1]
+    ok("Von Hand erzeugt -> unter 'Weitere Schluessel'", any(k["id"] == mk["id"] for k in ap["keys"]))
+    s, dd, _ = req("POST", "/api/settings/pair", A, api=True)
+    cc = urllib.parse.parse_qs(urllib.parse.urlparse(dd["link"]).query)["c"][0]
+    d5 = req("POST", "/app/pair", body={"code": cc, "device": "Test-iPhone Alt"})[1]
+    ok("App nennt beim Erneuern ihren Schluessel -> dem Geraet zugeordnet",
+       req("POST", "/app/resume", body={"device_token": d5["device_token"], "app_key": mk["token"]})[0] == 200
+       and next(x for x in req("GET", "/api/settings/apps", A, api=True)[1]["devices"] if x["name"] == "Test-iPhone Alt")["key"]["id"] == mk["id"])
+    req("POST", "/app/resume", body={"device_token": d5["device_token"], "app_key": d2["app_key"]})
+    ok("Fremder Schluessel wird nicht umgehaengt", next(x for x in req("GET", "/api/settings/apps", A, api=True)[1]["devices"]
+                                                      if x["name"] == "Test-iPhone QR")["key"]["prefix"] == d2["app_key"][:9])
+    ok("Geraet abmelden", req("DELETE", f"/api/settings/devices/{dv['id']}", A, api=True)[0] == 200)
+    ok("-> sein Widget-Schluessel ist mit weg", req("GET", "/api/app/today", key=d2["app_key"])[0] == 401)
+    req("POST", "/app/forget", body={"device_token": d5["device_token"]})
+    ok("Abmelden in der App nimmt den Schluessel mit", req("GET", "/api/app/today", key=mk["token"])[0] == 401)
     s, d3, _ = req("POST", "/api/settings/pair", A, api=True)
     c3 = urllib.parse.parse_qs(urllib.parse.urlparse(d3["link"]).query)["c"][0]
     cn = sqlite3.connect("x"); cn.execute("UPDATE pair_code SET expires=? WHERE pid=?", (time.time() - 1, d3["id"]))

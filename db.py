@@ -298,6 +298,12 @@ CREATE TABLE IF NOT EXISTS device_login (
 CREATE TABLE IF NOT EXISTS app_token (
     id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, name TEXT NOT NULL, hash TEXT NOT NULL UNIQUE,
     prefix TEXT NOT NULL, created DOUBLE PRECISION NOT NULL, last_used DOUBLE PRECISION);
+-- App-Schluessel gehoert zu einer Geraete-Anmeldung (Widget/Teilen dieses Geraets); NULL = von Hand erzeugt
+ALTER TABLE app_token ADD COLUMN IF NOT EXISTS device_id BIGINT;
+-- aeltere automatische Schluessel ("<Geraet> (automatisch)") ihrem Geraet zuordnen
+UPDATE app_token t SET device_id = (SELECT d.id FROM device_login d WHERE d.uid = t.uid AND d.name = left(t.name, length(t.name) - 14)
+                                    ORDER BY d.created DESC LIMIT 1)
+ WHERE t.device_id IS NULL AND t.name LIKE '% (automatisch)';
 CREATE TABLE IF NOT EXISTS user_kv (uid TEXT NOT NULL, k TEXT NOT NULL, v TEXT, PRIMARY KEY (uid, k));
 CREATE TABLE IF NOT EXISTS immich_key (
     uid TEXT PRIMARY KEY, secret TEXT NOT NULL, name TEXT, created DOUBLE PRECISION, base_url TEXT);
