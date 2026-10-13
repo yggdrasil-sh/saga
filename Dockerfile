@@ -1,6 +1,11 @@
 # Saga - Dashboard, Seiten, Aufgaben, Kalender, Lesezeichen (PostgreSQL)
 FROM python:3.13-slim
 
+LABEL org.opencontainers.image.title="Saga" \
+      org.opencontainers.image.description="Selbst gehostetes Dashboard mit Seiten, Datenbanken, Aufgaben, Kalender und Lesezeichen" \
+      org.opencontainers.image.source="https://github.com/yggdrasil-sh/saga" \
+      org.opencontainers.image.licenses="AGPL-3.0-only"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -11,13 +16,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# pg_dump/pg_restore fuer Backups (automatisch vor jedem Datenbank-Update, "python run.py backup")
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-client \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install -r requirements.txt \
  && useradd --system --uid 10001 --home-dir /app --shell /usr/sbin/nologin saga \
  && mkdir -p /data /certs \
  && chown 10001:10001 /data
 
-COPY app.py admin.py auth.py db.py hkcal.py run.py ./
+COPY VERSION app.py admin.py auth.py db.py hkcal.py run.py version.py ./
 COPY templates ./templates
 COPY static ./static
 COPY docker/entrypoint.sh /entrypoint.sh

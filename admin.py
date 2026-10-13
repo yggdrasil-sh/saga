@@ -13,6 +13,7 @@ import os
 import re
 import secrets
 import ssl
+import threading
 import time
 from urllib.parse import urlparse
 
@@ -27,6 +28,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import connect as _db
+from version import REPO, VERSION, newer
 
 E = os.environ
 ADMIN_URL = hk.ADMIN_URL
@@ -85,10 +87,39 @@ def _go(url):
     return RedirectResponse(url, status_code=303)
 
 
+# --- Version + Hinweis auf neue Versionen (GitHub-Releases, hoechstens alle 12 Stunden, im Hintergrund) ---
+_upd = {"at": 0.0, "latest": None, "url": "", "busy": False}
+
+
+def _update_info():
+    """-> {'version': '1.2.0', 'url': ...} wenn es eine neuere Version gibt, sonst None. Blockiert nie."""
+    if not auth.settings().get("update_check", True):
+        return None
+    if time.time() - _upd["at"] > 12 * 3600 and not _upd["busy"]:
+        _upd["busy"] = True
+
+        def fetch():
+            try:
+                r = httpx.get(f"https://api.github.com/repos/{REPO}/releases/latest", timeout=6,
+                              headers={"Accept": "application/vnd.github+json", "User-Agent": f"Saga/{VERSION}"})
+                if r.status_code == 200:
+                    j = r.json()
+                    _upd.update(latest=str(j.get("tag_name") or "").lstrip("vV") or None, url=str(j.get("html_url") or ""))
+            except Exception as ex:                       # offline / gesperrt: einfach keinen Hinweis zeigen
+                print("update-check:", type(ex).__name__, flush=True)
+            finally:
+                _upd.update(at=time.time(), busy=False)
+        threading.Thread(target=fetch, daemon=True).start()
+    if _upd["latest"] and newer(_upd["latest"], VERSION):
+        return {"version": _upd["latest"], "url": _upd["url"] or f"https://github.com/{REPO}/releases"}
+    return None
+
+
 def _page(request, name, me=None, status=200, **kw):
     flash = request.session.pop("flash", None)
     html = tmpl.get_template(name).render(title=hk.title(), v=hk.ASSET_V, csrf=_csrf(request), me=me, flash=flash,
-                                          base_url=hk.BASE_URL, path=request.url.path, **kw)
+                                          base_url=hk.BASE_URL, path=request.url.path, version=VERSION,
+                                          update=_update_info() if me else None, **kw)
     return HTMLResponse(html, status_code=status, headers=HEADERS)
 
 
@@ -511,7 +542,8 @@ async def settings_post(request: Request):
     for k, v in (("title", _s(f, "title", 60) or "Saga"), ("registration", _on(f, "registration")),
                  ("local_login", _on(f, "local_login")), ("group_prefix", prefix),
                  ("default_groups", _groups_list(_s(f, "default_groups", 1000))),
-                 ("allow_private_hosts", _on(f, "allow_private_hosts")), ("allowed_hosts", ", ".join(hosts))):
+                 ("allow_private_hosts", _on(f, "allow_private_hosts")), ("allowed_hosts", ", ".join(hosts)),
+                 ("update_check", _on(f, "update_check"))):
         auth.save_setting(k, v)
     hk.services_changed()
     print(f"admin: {me['username']} speichert Allgemein", flush=True)

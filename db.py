@@ -298,12 +298,6 @@ CREATE TABLE IF NOT EXISTS device_login (
 CREATE TABLE IF NOT EXISTS app_token (
     id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, name TEXT NOT NULL, hash TEXT NOT NULL UNIQUE,
     prefix TEXT NOT NULL, created DOUBLE PRECISION NOT NULL, last_used DOUBLE PRECISION);
--- App-Schluessel gehoert zu einer Geraete-Anmeldung (Widget/Teilen dieses Geraets); NULL = von Hand erzeugt
-ALTER TABLE app_token ADD COLUMN IF NOT EXISTS device_id BIGINT;
--- aeltere automatische Schluessel ("<Geraet> (automatisch)") ihrem Geraet zuordnen
-UPDATE app_token t SET device_id = (SELECT d.id FROM device_login d WHERE d.uid = t.uid AND d.name = left(t.name, length(t.name) - 14)
-                                    ORDER BY d.created DESC LIMIT 1)
- WHERE t.device_id IS NULL AND t.name LIKE '% (automatisch)';
 CREATE TABLE IF NOT EXISTS user_kv (uid TEXT NOT NULL, k TEXT NOT NULL, v TEXT, PRIMARY KEY (uid, k));
 CREATE TABLE IF NOT EXISTS immich_key (
     uid TEXT PRIMARY KEY, secret TEXT NOT NULL, name TEXT, created DOUBLE PRECISION, base_url TEXT);
@@ -311,15 +305,109 @@ CREATE TABLE IF NOT EXISTS cal_account (
     id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, label TEXT, base_url TEXT NOT NULL, username TEXT NOT NULL,
     secret TEXT NOT NULL, calendars TEXT NOT NULL DEFAULT '[]', created DOUBLE PRECISION, updated DOUBLE PRECISION);
 """
-SCHEMA_VERSION = 1
+# --- Schema-Versionen und Migrationen ----------------------------------------------------------------
+# SCHEMA oben ist Stand 1 (plus neue Tabellen mit CREATE TABLE IF NOT EXISTS). Alles, was bestehende
+# Tabellen oder Daten aendert, kommt als nummerierte Migration hierher - SCHEMA_VERSION mit erhoehen.
+# Jede Migration laeuft genau einmal, in einer Transaktion, vorher legt Saga ein Backup an.
+# Frische Installation: Stand 1 anlegen, dann alle Migrationen (ohne Backup - es gibt noch nichts).
+MIGRATIONS = {
+    # 1.0.0: App-Schluessel gehoert zu einer Geraete-Anmeldung (Widget/Teilen); aeltere automatische
+    # Schluessel ("<Geraet> (automatisch)") ihrem Geraet zuordnen
+    2: """
+ALTER TABLE app_token ADD COLUMN IF NOT EXISTS device_id BIGINT;
+UPDATE app_token t SET device_id = (SELECT d.id FROM device_login d WHERE d.uid = t.uid AND d.name = left(t.name, length(t.name) - 14)
+                                    ORDER BY d.created DESC LIMIT 1)
+ WHERE t.device_id IS NULL AND t.name LIKE '% (automatisch)';
+""",
+}
+SCHEMA_VERSION = max([1, *MIGRATIONS])
+BACKUP_DIR = os.path.join(os.environ.get("STATE_DIR", "/data"), "backups")
+BACKUP_KEEP = int(os.environ.get("BACKUP_KEEP", "10"))
+
+
+class SchemaTooNew(RuntimeError):
+    pass
+
+
+def schema_version(c=None):
+    """Stand der Datenbank (None = noch leer)"""
+    if c is None:
+        with psycopg.connect(DATABASE_URL) as c2:
+            return schema_version(c2)
+    if c.execute("SELECT to_regclass('public.schema_version')").fetchone()[0] is None:
+        return None
+    return c.execute("SELECT max(v) FROM schema_version").fetchone()[0]
+
+
+def _pg_env():
+    """Verbindungsdaten fuer pg_dump/pg_restore als Umgebung (Passwort nicht in der Prozessliste)."""
+    from psycopg.conninfo import conninfo_to_dict
+    d = conninfo_to_dict(DATABASE_URL)
+    env = dict(os.environ)
+    for k, e in (("host", "PGHOST"), ("port", "PGPORT"), ("user", "PGUSER"), ("password", "PGPASSWORD"), ("dbname", "PGDATABASE")):
+        if d.get(k):
+            env[e] = str(d[k])
+    return env
+
+
+def backup(label="manuell"):
+    """Datenbank-Backup (pg_dump, komprimiert) nach STATE_DIR/backups; die neuesten BACKUP_KEEP bleiben."""
+    import subprocess
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    label = re.sub(r"[^A-Za-z0-9._-]+", "-", label)[:40] or "backup"
+    path = os.path.join(BACKUP_DIR, f"saga-{time.strftime('%Y%m%d-%H%M%S')}-{label}.dump")
+    tmp = path + ".part"
+    try:
+        subprocess.run(["pg_dump", "--format=custom", "--no-owner", "--no-privileges", "--file", tmp],
+                       env=_pg_env(), check=True, timeout=1800, capture_output=True)
+    except FileNotFoundError:
+        raise RuntimeError("pg_dump fehlt - Backup nicht moeglich (im Saga-Image enthalten)")
+    except subprocess.CalledProcessError as e:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise RuntimeError("Backup fehlgeschlagen: " + (e.stderr or b"").decode("utf-8", "replace").strip()[:300])
+    os.replace(tmp, path)
+    old = sorted(f for f in os.listdir(BACKUP_DIR) if f.startswith("saga-") and f.endswith(".dump"))
+    for f in old[:-BACKUP_KEEP] if BACKUP_KEEP > 0 else []:
+        try:
+            os.remove(os.path.join(BACKUP_DIR, f))
+        except OSError:
+            pass
+    return path
+
+
+def restore(path):
+    """Backup zurueckspielen (Saga vorher stoppen!). Ersetzt alle Tabellen durch den Stand im Backup."""
+    import subprocess
+    if not os.path.isfile(path):
+        raise RuntimeError(f"Datei nicht gefunden: {path}")
+    r = subprocess.run(["pg_restore", "--clean", "--if-exists", "--no-owner", "--no-privileges", "--single-transaction",
+                        "--dbname", _pg_env()["PGDATABASE"], path], env=_pg_env(), capture_output=True, timeout=3600)
+    if r.returncode != 0:
+        raise RuntimeError("Zurueckspielen fehlgeschlagen: " + r.stderr.decode("utf-8", "replace").strip()[:500])
 
 
 def init_schema():
-    """Schema anlegen (idempotent). Mehrere Prozesse gleichzeitig: Advisory-Lock."""
+    """Schema anlegen bzw. auf den Stand dieser Version bringen. Mehrere Prozesse gleichzeitig: Advisory-Lock."""
     with psycopg.connect(DATABASE_URL, autocommit=False) as c:
         c.execute("SELECT pg_advisory_xact_lock(424242)")
+        cur = schema_version(c)
+        if cur is not None and cur > SCHEMA_VERSION:
+            raise SchemaTooNew(f"Die Datenbank hat Schema-Stand {cur}, diese Saga-Version kennt nur {SCHEMA_VERSION}. "
+                               "Bitte die neuere Saga-Version verwenden oder das Backup von vor dem Update zurueckspielen "
+                               "(siehe Anleitung, Abschnitt Aktualisieren).")
+        if cur is not None and cur < SCHEMA_VERSION and os.environ.get("SAGA_SKIP_BACKUP") != "1":
+            # VOR allen Aenderungen sichern (pg_dump nutzt eine eigene Verbindung; hier sind noch keine Sperren gesetzt)
+            p = backup(f"vor-schema-{SCHEMA_VERSION}")
+            print(f"saga: Backup vor dem Update: {p}", flush=True)
         c.execute(SCHEMA)
-        r = c.execute("SELECT max(v) FROM schema_version").fetchone()
-        if not r or r[0] is None:
-            c.execute("INSERT INTO schema_version (v) VALUES (%s)", (SCHEMA_VERSION,))
+        if cur is None:
+            c.execute("INSERT INTO schema_version (v) VALUES (1)")
+            cur = 1
+        for v in range(cur + 1, SCHEMA_VERSION + 1):
+            print(f"saga: Datenbank-Migration {v} ...", flush=True)
+            c.execute(MIGRATIONS[v])
+            c.execute("INSERT INTO schema_version (v) VALUES (%s)", (v,))
         c.commit()

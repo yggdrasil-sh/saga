@@ -1234,3 +1234,5 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 .hk-more{margin-top:1rem}
 .hk-more>summary{cursor:pointer;color:var(--muted);font-size:.9rem;padding:.3rem 0}
 .hk-more[open]>summary{margin-bottom:.3rem}
+.adm-foot{max-width:1100px;margin:1.5rem auto 2rem;padding:0 1rem;color:var(--muted);font-size:.8rem}
+.adm-foot a{color:inherit}

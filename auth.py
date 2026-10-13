@@ -37,6 +37,7 @@ DEFAULTS = {
     "default_groups": [],                  # neue Konten (Registrierung, Admin, Erst-Login) bekommen diese Gruppen
     "allow_private_hosts": False,          # Kalender/Immich auf internen Adressen erlauben (fuer alle)
     "allowed_hosts": "",                   # oder nur diese internen Hosts (Komma-getrennt)
+    "update_check": E.get("SAGA_UPDATE_CHECK", "1") not in ("0", "false", "no", "off"),   # im Admin-Bereich neue Versionen melden
     "oidc": {"enabled": False, "issuer": "", "client_id": "", "client_secret": "", "scopes": "openid profile email",
              "username_claim": "preferred_username", "name_claim": "name", "email_claim": "email",
              "groups_claim": "groups", "label": "Mit SSO anmelden", "auto_create": True,

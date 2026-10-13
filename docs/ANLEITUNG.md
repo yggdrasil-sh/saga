@@ -55,9 +55,12 @@ Optional: `ADMIN_USERNAME` und `ADMIN_PASSWORD` (mindestens 10 Zeichen) für das
 Starten:
 
 ```sh
-docker compose up -d --build
+docker compose pull        # fertiges Image von GitHub (ghcr.io/yggdrasil-sh/saga)
+docker compose up -d
 docker compose ps          # db und saga sollten "healthy" sein
 ```
+
+Lieber selbst bauen (z. B. mit eigenen Änderungen)? `docker compose up -d --build` baut das Image aus dem Quelltext.
 
 Saga ist jetzt unter `http://<server>:8080` erreichbar.
 
@@ -362,14 +365,57 @@ docker compose up -d
 
 (Der Volume-Name beginnt mit dem Ordnernamen des Projekts – `docker volume ls` zeigt ihn.)
 
-**Update:**
+### Updates
+
+Saga hat Versionsnummern nach [Semantic Versioning](https://semver.org/lang/de/): **1.2.3** = Major.Minor.Patch.
+Was sich geändert hat, steht im [Changelog](../CHANGELOG.md) und bei den
+[Releases](https://github.com/yggdrasil-sh/saga/releases). Die installierte Version siehst du unten im
+Admin-Bereich; dort erscheint auch ein Hinweis, wenn es eine neue gibt (abschaltbar unter Allgemein).
+
+Welche Version läuft, bestimmt `SAGA_VERSION` in der `.env`:
+
+| Wert | Bedeutung |
+|---|---|
+| `1` (Standard) | immer die neueste 1.x – neue Funktionen und Fehlerbehebungen, nichts, was Handarbeit braucht |
+| `1.2` | nur Fehlerbehebungen von 1.2 |
+| `1.2.3` | genau diese Version |
+
+**Aktualisieren:**
 
 ```sh
-git pull
-docker compose up -d --build
+git pull                                  # docker-compose.yml und Anleitung auf neuen Stand
+docker compose pull                       # neues Image
+docker compose up -d                      # neu starten
+docker compose logs saga | grep saga:     # Backup und Datenbank-Migration im Log
 ```
 
-Saga legt fehlende Tabellen beim Start selbst an. Vor jedem Update eine Sicherung machen (siehe oben).
+Ändert ein Update die Datenbank, legt Saga **vorher automatisch ein Backup** unter `/data/backups` an
+(im Volume `saga-data`, die letzten 10 bleiben, `BACKUP_KEEP` in der `.env`). Ein Backup von Hand:
+
+```sh
+docker compose exec saga python run.py backup
+docker compose exec saga ls -l /data/backups
+```
+
+Eine neue **Major-Version** (2.0.0) kann Handarbeit brauchen – sie steht dann im Changelog. Dafür
+`SAGA_VERSION=2` setzen.
+
+**Zurück zur vorigen Version:** Eine ältere Saga startet nicht auf einer Datenbank, die schon eine neuere
+Version umgebaut hat (sie meldet das im Log, statt Daten zu beschädigen). Dann das Backup von vor dem Update
+zurückspielen:
+
+```sh
+docker compose stop saga
+docker compose run --rm saga ls /data/backups                     # z. B. saga-20261013-183000-vor-schema-3.dump
+docker compose run --rm saga python run.py restore /data/backups/saga-20261013-183000-vor-schema-3.dump
+# SAGA_VERSION in der .env auf die alte Version setzen (z. B. 1.2.3), dann:
+docker compose pull && docker compose up -d
+```
+
+Alles, was nach dem Backup geändert wurde, ist dann weg – also nur kurz nach einem missglückten Update.
+
+**Apps:** Die Apps prüfen beim Start die Version des Servers. Ist eine App zu alt für den Server, zeigt sie
+„Bitte App aktualisieren“. In den Einstellungen der App stehen App- und Server-Version.
 
 ## 12. Fehlerbehebung
 
@@ -410,6 +456,9 @@ Interne Server müssen unter Admin → Allgemein freigegeben sein.
 | `TRUSTED_PROXIES` | `127.0.0.1` | IPs des Reverse Proxys (`*` = alle) |
 | `CANONICAL_REDIRECT` | `true` | Andere Hostnamen auf `BASE_URL` umleiten |
 | `SESSION_HOURS` | `12` | Gültigkeit einer Browser-Sitzung (Apps bleiben angemeldet) |
+| `SAGA_VERSION` | `1` | Welche Version `docker compose pull` holt: `1`, `1.2` oder `1.2.3` (Abschnitt 11) |
+| `BACKUP_KEEP` | `10` | So viele automatische/manuelle Backups bleiben in `/data/backups` |
+| `SAGA_UPDATE_CHECK` | `1` | `0` = nie bei GitHub nach neuen Versionen fragen (auch im Admin-Bereich abschaltbar) |
 | `ADMIN_SESSION_HOURS` | `4` | Gültigkeit einer Sitzung im Admin-Bereich |
 | `TIMEZONE` | `Europe/Berlin` | Zeitzone für Exporte |
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Größe je Datei / Speicher je Benutzer |

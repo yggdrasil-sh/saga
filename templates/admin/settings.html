@@ -23,6 +23,10 @@
     {{ check('Interne Adressen für alle erlauben', 'allow_private_hosts', st.allow_private_hosts, 'Nur bei vertrauenswürdigen Benutzern – sonst einzelne Hosts freigeben') }}
     {{ field('Freigegebene interne Hosts', 'allowed_hosts', st.allowed_hosts, max=2000, ph='immich.lan, nextcloud.lan:8443', hint='Komma-getrennt, optional mit :Port') }}
   </section>
+  <section class="adm-card">
+    <h3>Updates</h3>
+    {{ check('Auf neue Versionen hinweisen', 'update_check', st.update_check, 'Fragt höchstens zweimal am Tag bei GitHub nach der neuesten Version und zeigt hier im Admin-Bereich einen Hinweis. Dabei wird nur die neueste Versionsnummer abgerufen, sonst nichts übertragen.') }}
+  </section>
   <div class="adm-actions"><button class="btn btn-primary" type="submit">Speichern</button></div>
 </form>
 {% endblock %}

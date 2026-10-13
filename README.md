@@ -10,6 +10,11 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/yggdrasil-sh/saga/releases"><img src="https://img.shields.io/github/v/release/yggdrasil-sh/saga?label=Version" alt="Version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/Lizenz-AGPL--3.0-blue" alt="Lizenz AGPL-3.0"></a>
+</p>
+
+<p align="center">
   <a href="docs/ANLEITUNG.md">Anleitung</a> ·
   <a href="#schnellstart">Schnellstart</a> ·
   <a href="#funktionen">Funktionen</a> ·
@@ -52,8 +57,11 @@ git clone https://github.com/yggdrasil-sh/saga.git
 cd saga
 cp .env.example .env
 nano .env        # BASE_URL, SECRET_KEY, POSTGRES_PASSWORD eintragen (siehe Kommentare)
-docker compose up -d --build
+docker compose pull && docker compose up -d
 ```
+
+**Update:** `git pull && docker compose pull && docker compose up -d` – vor Datenbank-Änderungen legt Saga
+automatisch ein Backup an. Was neu ist, steht im **[Changelog](CHANGELOG.md)**.
 
 - **Saga:** `http://<server>:8080` – für den Betrieb hinter einen Reverse Proxy mit HTTPS stellen
 - **Admin-Bereich:** `http://127.0.0.1:8081` auf dem Server (standardmäßig nur lokal erreichbar, z. B. per

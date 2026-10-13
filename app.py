@@ -42,6 +42,7 @@ from starlette.concurrency import run_in_threadpool
 
 import auth
 import db
+from version import API_LEVEL, MIN_APP, VERSION
 import hkcal
 from db import connect as _db
 
@@ -321,6 +322,13 @@ def _set_session(request, uid, name, keep=None):
 @app.get("/healthz", response_class=PlainTextResponse)
 def healthz():
     return "ok"
+
+
+@app.get("/api/version")
+def api_version():
+    """Fuer Apps und Monitoring: Server-Version, Schnittstellen-Stand und die aelteste App-Version, die alles kann."""
+    return JSONResponse({"name": "Saga", "version": VERSION, "api": API_LEVEL, "min_app": MIN_APP, "schema": db.SCHEMA_VERSION},
+                        headers={"Cache-Control": "no-store"})
 
 
 @app.get("/manifest.webmanifest")

@@ -39,9 +39,38 @@ def reset_admin(name):
     print(f"(steht auch in {auth.PW_FILE}; nach dem Anmelden im Admin-Bereich ändern)")
 
 
+def do_backup():
+    """python run.py backup  - Datenbank-Backup nach /data/backups (laeuft auch neben dem Server)."""
+    import db
+    db.wait_ready(30)
+    print("Backup:", db.backup("manuell"))
+
+
+def do_restore(path):
+    """python run.py restore <datei>  - Backup zurueckspielen. Saga vorher stoppen:
+    docker compose stop saga && docker compose run --rm saga python run.py restore /data/backups/<datei>"""
+    import db
+    db.wait_ready(30)
+    db.restore(path)
+    print(f"Zurueckgespielt: {path} (Schema-Stand {db.schema_version()})")
+
+
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) > 1 and sys.argv[1] in ("admin-passwort", "reset-admin"):
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd in ("admin-passwort", "reset-admin"):
         reset_admin(sys.argv[2] if len(sys.argv) > 2 else os.environ.get("ADMIN_USERNAME") or "admin")
+    elif cmd == "backup":
+        do_backup()
+    elif cmd == "restore":
+        if len(sys.argv) < 3:
+            sys.exit("Aufruf: python run.py restore /data/backups/<datei>.dump")
+        do_restore(sys.argv[2])
+    elif cmd in ("version", "--version"):
+        from version import VERSION
+        import db
+        print(f"Saga {VERSION} (Datenbank-Schema {db.SCHEMA_VERSION})")
+    elif cmd:
+        sys.exit(f"Unbekannter Befehl: {cmd} (moeglich: admin-passwort, backup, restore, version)")
     else:
         asyncio.run(main())
