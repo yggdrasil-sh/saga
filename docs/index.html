@@ -184,15 +184,19 @@ footer{padding:40px 0 60px;color:var(--muted);font-size:14px;text-align:center}
 git clone https://github.com/yggdrasil-sh/saga.git &amp;&amp; cd saga
 cp .env.example .env
 <span class="c"># BASE_URL, SECRET_KEY und POSTGRES_PASSWORD in der .env setzen</span>
-docker compose up -d --build
+docker compose pull &amp;&amp; docker compose up -d
 <span class="c"># erstes Admin-Passwort anzeigen</span>
-docker compose logs saga | grep Admin-Konto</pre>
+docker compose logs saga | grep Admin-Konto
+
+<span class="c"># später aktualisieren (vorher legt Saga automatisch ein Backup an)</span>
+git pull &amp;&amp; docker compose pull &amp;&amp; docker compose up -d</pre>
     <div class="steps">
       <div class="card"><b>1 · Starten</b><p>Saga läuft auf Port 8080, der Admin-Bereich auf 8081 (nur lokal).</p></div>
       <div class="card"><b>2 · Einrichten</b><p>Im Admin-Bereich Benutzer und Dienste anlegen, optional LDAP oder SSO verbinden.</p></div>
       <div class="card"><b>3 · Loslegen</b><p>Mit HTTPS-Proxy davor freigeben – fertig ist dein eigenes Zuhause im Netz.</p></div>
     </div>
-    <p style="margin-top:28px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md">📖 Zur ausführlichen Anleitung</a></p>
+    <p style="margin-top:28px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md">📖 Zur ausführlichen Anleitung</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga/releases">🏷️ Versionen &amp; Änderungen</a></p>
   </div>
 </section>
 
