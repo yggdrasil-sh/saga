@@ -1,9 +1,12 @@
-# Release: Tag v1.2.3 pushen -> Docker-Image (amd64 + arm64) nach ghcr.io und GitHub-Release mit den
-# Notizen aus CHANGELOG.md. Die Datei VERSION muss zum Tag passen.
+# Release: VERSION auf main erhoehen (+ Abschnitt in CHANGELOG.md) -> Tag v<VERSION>, Docker-Image
+# (amd64 + arm64) nach ghcr.io und GitHub-Release mit den Notizen aus CHANGELOG.md.
+# Alternativ ein Tag v1.2.3 pushen (muss zu VERSION passen). Gibt es das Tag schon, passiert nichts.
 name: Release
 
 on:
   push:
+    branches: [main]
+    paths: [VERSION, .github/workflows/release.yml]
     tags: ["v*.*.*"]
 
 permissions:
@@ -19,34 +22,51 @@ jobs:
       - name: Version pruefen
         id: v
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          FILE="$(tr -d ' \n' < VERSION)"
-          if [ "$TAG" != "$FILE" ]; then echo "::error::Tag v$TAG passt nicht zu VERSION ($FILE)"; exit 1; fi
-          grep -q "^## \[$TAG\]" CHANGELOG.md || { echo "::error::CHANGELOG.md hat keinen Abschnitt [$TAG]"; exit 1; }
-          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+          V="$(tr -d ' \n' < VERSION)"
+          echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::VERSION ist kein SemVer: $V"; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            [ "${GITHUB_REF_NAME#v}" = "$V" ] || { echo "::error::Tag $GITHUB_REF_NAME passt nicht zu VERSION ($V)"; exit 1; }
+          elif git ls-remote --exit-code --tags origin "refs/tags/v$V" >/dev/null; then
+            echo "v$V ist schon veroeffentlicht - nichts zu tun"; echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          grep -q "^## \[$V\]" CHANGELOG.md || { echo "::error::CHANGELOG.md hat keinen Abschnitt [$V]"; exit 1; }
+          echo "version=$V" >> "$GITHUB_OUTPUT"
           # Release-Notizen: Abschnitt dieser Version aus dem Changelog
-          awk -v v="$TAG" '$0 ~ "^## \\[" v "\\]" {on=1; next} /^## \[/ && on {exit} on' CHANGELOG.md > notes.md
+          awk -v v="$V" '$0 ~ "^## \\[" v "\\]" {on=1; next} /^## \[/ && on {exit} on' CHANGELOG.md > notes.md
+
+      - name: Tag anlegen
+        if: steps.v.outputs.skip != '1' && github.ref_type == 'branch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ steps.v.outputs.version }}" -m "Saga ${{ steps.v.outputs.version }}"
+          git push origin "v${{ steps.v.outputs.version }}"
 
       - uses: docker/setup-qemu-action@v3
+        if: steps.v.outputs.skip != '1'
       - uses: docker/setup-buildx-action@v3
+        if: steps.v.outputs.skip != '1'
 
       - uses: docker/login-action@v3
+        if: steps.v.outputs.skip != '1'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: meta
+        if: steps.v.outputs.skip != '1'
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            type=semver,pattern={{version}},value=v${{ steps.v.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ steps.v.outputs.version }}
+            type=semver,pattern={{major}},value=v${{ steps.v.outputs.version }}
             type=raw,value=latest
 
       - uses: docker/build-push-action@v6
+        if: steps.v.outputs.skip != '1'
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -57,6 +77,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: GitHub-Release
+        if: steps.v.outputs.skip != '1'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" --title "Saga ${{ steps.v.outputs.version }}" --notes-file notes.md --verify-tag
+        run: gh release create "v${{ steps.v.outputs.version }}" --title "Saga ${{ steps.v.outputs.version }}" --notes-file notes.md --verify-tag
