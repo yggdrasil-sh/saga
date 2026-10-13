@@ -1,0 +1,5 @@
+# Nur fuer tools/screens-remote.sh: eigener, leerer Wegwerf-Stack ohne Ports nach aussen.
+services:
+  saga:
+    env_file: !override [.env.shots]
+    ports: !reset []

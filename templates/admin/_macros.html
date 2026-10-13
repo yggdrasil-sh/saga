@@ -1,0 +1,10 @@
+{% macro field(label, name, value='', type='text', hint='', ph='', req=false, max=200, auto='off', secret=false) -%}
+<label class="adm-field"><span>{{ label }}</span>
+  <input class="hk-in{% if secret %} adm-secret{% endif %}" type="{{ 'text' if secret else type }}" name="{{ name }}" value="{{ value if value is not none else '' }}" placeholder="{{ ph }}" maxlength="{{ max }}"
+         autocomplete="{{ 'off' if secret else auto }}"{% if secret %} spellcheck="false" autocapitalize="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other"{% endif %}{% if req %} required{% endif %}>
+  {% if hint %}<small>{{ hint }}</small>{% endif %}</label>
+{%- endmacro %}
+{% macro check(label, name, on, hint='') -%}
+<label class="adm-check"><input type="checkbox" name="{{ name }}" value="1"{% if on %} checked{% endif %}><span>{{ label }}{% if hint %}<small>{{ hint }}</small>{% endif %}</span></label>
+{%- endmacro %}
+{% macro csrf_field() %}<input type="hidden" name="csrf" value="{{ csrf }}">{% endmacro %}

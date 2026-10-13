@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check, csrf_field with context %}
+{% block pagetitle %}{{ u.username }}{% endblock %}
+{% block content %}
+<p><a href="/users">← Alle Benutzer</a></p>
+<h2>{{ u.username }}{% if u.is_admin %} <span class="adm-tag">Admin</span>{% endif %}{% if u.disabled %} <span class="adm-tag bad">gesperrt</span>{% endif %}</h2>
+<p class="hk-hint">{{ {'local': 'Lokales Konto', 'ldap': 'LDAP/AD-Konto', 'oidc': 'SSO-Konto'}.get(u.source, u.source) }}{% if u.ext_id %} · {{ u.ext_id }}{% endif %}
+  · angelegt {{ u.created|dt }} · letzte Anmeldung {{ u.last_login|dt }}{% if u.pw_changed %} · Passwort geändert {{ u.pw_changed|dt }}{% endif %}</p>
+
+<div class="adm-grid">
+<section class="adm-card">
+  <h3>Profil &amp; Rechte</h3>
+  <form method="post" class="adm-form">
+    {{ csrf_field() }}<input type="hidden" name="action" value="save">
+    {{ field('Anzeigename', 'name', u.display_name, max=120, hint=('wird bei der Anmeldung vom Anmeldedienst überschrieben' if u.source != 'local' else '')) }}
+    {{ field('E-Mail', 'email', u.email, type='email', max=200) }}
+    {{ check('Admin-Rechte', 'is_admin', u.is_admin, ('wird über die Admin-Gruppe des Anmeldedienstes gesetzt, falls dort eingetragen' if u.source != 'local' else '')) }}
+    {{ check('Konto sperren', 'disabled', u.disabled, 'Sperren beendet sofort alle Sitzungen und App-Anmeldungen') }}
+    <fieldset class="adm-groups"><legend>Lokale Gruppen</legend>
+      {% for g in allg %}<label class="adm-check-inline"><input type="checkbox" name="groups" value="{{ g }}"{% if g in loc %} checked{% endif %}> {{ g }}</label>{% endfor %}
+      <label class="adm-field"><span>Neue Gruppen</span><input class="hk-in" name="new_groups" maxlength="2000" placeholder="Komma-getrennt"></label>
+    </fieldset>
+    {% if ext %}<p class="hk-hint">Vom Anmeldedienst: {% for g in ext %}<span class="chip">{{ g }}</span> {% endfor %}</p>{% endif %}
+    <div class="adm-actions"><button class="btn btn-primary" type="submit">Speichern</button></div>
+  </form>
+</section>
+
+<section class="adm-card">
+  <h3>Sichtbare Dienste ({{ tiles|length }})</h3>
+  {% if tiles %}<ul class="adm-list">{% for s in tiles %}<li>{{ s.name }} <small>{{ s.host }}{% if s.everyone %} · für alle{% endif %}</small></li>{% endfor %}</ul>
+  {% else %}<p class="hk-hint">Keine – Zugang über Gruppen (Kennung + Kurzname) unter „Dienste“.</p>{% endif %}
+  <h3>Bereich des Benutzers</h3>
+  <dl>
+    <dt>Seiten</dt><dd>{{ usage.pages }}</dd><dt>Offene Aufgaben</dt><dd>{{ usage.tasks }}</dd>
+    <dt>Lesezeichen</dt><dd>{{ usage.bookmarks }}</dd><dt>Dateien</dt><dd>{{ usage.files_mb }} MB</dd>
+    <dt>Kalender</dt><dd>{{ usage.calendars }}</dd><dt>Immich</dt><dd>{{ 'verbunden' if usage.immich else '–' }}</dd>
+    <dt>Apps</dt><dd>{{ usage.devices }} angemeldet · {{ usage.tokens }} Schlüssel</dd>
+  </dl>
+  {% if devs %}<ul class="adm-list">{% for d in devs %}<li>{{ d[0] }} <small>seit {{ d[1]|dt }}, zuletzt {{ d[2]|dt }}</small></li>{% endfor %}</ul>{% endif %}
+  <p class="hk-hint">Inhalte (Seiten, Kalender, Fotos) sind privat und hier nicht einsehbar.</p>
+</section>
+
+{% if u.source == 'local' %}
+<section class="adm-card">
+  <h3>Passwort setzen</h3>
+  <form method="post" class="adm-form">
+    {{ csrf_field() }}<input type="hidden" name="action" value="password">
+    {{ field('Neues Passwort', 'password', type='password', req=true, max=200, auto='new-password', hint='mindestens 10 Zeichen – dem Benutzer sicher mitteilen') }}
+    {{ check('Auch App-Anmeldungen und App-Schlüssel widerrufen', 'revoke', false) }}
+    <div class="adm-actions"><button class="btn" type="submit">Passwort setzen</button></div>
+  </form>
+</section>
+{% endif %}
+
+<section class="adm-card">
+  <h3>Sitzungen</h3>
+  <form method="post" class="adm-form" data-confirm="{{ u.username }} überall abmelden (Browser und Apps)?">
+    {{ csrf_field() }}<input type="hidden" name="action" value="logout">
+    <p class="hk-hint">Beendet alle Browser-Sitzungen und widerruft App-Anmeldungen und App-Schlüssel – z. B. bei verlorenem Gerät.</p>
+    <div class="adm-actions"><button class="btn" type="submit">Überall abmelden</button></div>
+  </form>
+  {% if not is_self %}
+  <h3>Konto löschen</h3>
+  <form method="post" class="adm-form" data-confirm="Konto {{ u.username }} mit ALLEN Seiten, Aufgaben, Dateien und Verbindungen endgültig löschen?">
+    {{ csrf_field() }}<input type="hidden" name="action" value="delete">
+    <p class="hk-hint">Löscht das Konto und den gesamten Bereich (Seiten, Aufgaben, Dateien, Lesezeichen, Kalender-/Immich-Verbindungen) endgültig.
+      {% if u.source != 'local' %}Meldet sich die Person danach wieder über {{ 'LDAP' if u.source == 'ldap' else 'SSO' }} an, entsteht ein neues, leeres Konto – dauerhaft aussperren: sperren statt löschen.{% endif %}</p>
+    {{ field('Zur Bestätigung Benutzernamen eintippen', 'confirm', max=64) }}
+    <div class="adm-actions"><button class="btn btn-danger" type="submit">Endgültig löschen</button></div>
+  </form>
+  {% endif %}
+</section>
+</div>
+{% endblock %}

@@ -1,0 +1,14 @@
+@editorjs/editorjs@2.31.7 (Apache-2.0)
+@editorjs/header@2.8.9 (MIT)
+@editorjs/list@2.0.9 (MIT)
+@editorjs/quote@2.7.6 (MIT)
+@editorjs/code@2.9.4 (MIT)
+@editorjs/delimiter@1.4.2 (MIT)
+@editorjs/inline-code@1.5.2 (MIT)
+@editorjs/marker@1.4.0 (MIT)
+@editorjs/table@2.4.6 (MIT)
+@editorjs/image@2.10.3 (MIT)
+@editorjs/attaches@1.3.2 (MIT)
+editorjs-drag-drop@1.1.16 (MIT)
+
+image.umd.js: Hliðskjálf-Patch in fillImage(): decoding=async (kein lazy: Werkzeug blendet das Bild bis zum load-Ereignis aus), eigene Bilder (/files/<id>) als ?w=2000

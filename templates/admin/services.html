@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check, csrf_field with context %}
+{% block pagetitle %}Dienste{% endblock %}
+{% block content %}
+<h2>Dienste</h2>
+<p class="hk-hint">Dienste erscheinen als Kacheln auf dem Dashboard (und in den Apps). Wer einen Dienst sieht, entscheidet die
+  <b>Gruppen-Kennung</b>: Mitglieder der Gruppe <code>{{ prefix }}&lt;kurzname&gt;</code> bekommen ihn automatisch – egal ob die Gruppe
+  lokal ist oder aus LDAP/SSO kommt. Zusätzlich gehen weitere Gruppen oder „für alle“.</p>
+<table class="adm-table">
+  <tr><th></th><th>Dienst</th><th>Kategorie</th><th>Zugang</th><th>Status</th></tr>
+  {% for s in rows %}
+  <tr>
+    <td class="adm-ic">{% if s.icon %}<img src="/icon/{{ s.icon }}" alt="" width="28" height="28">{% endif %}</td>
+    <td><a href="/services/{{ s.id }}"><b>{{ s.name }}</b></a><br><small>{{ s.url }}</small></td>
+    <td>{{ s.category }}</td>
+    <td><code>{{ prefix }}{{ s.slug }}</code>{% if s.extra %}, {{ s.extra }}{% endif %}{% if s.everyone %} <span class="adm-tag">für alle</span>{% endif %}</td>
+    <td>{{ '✓ geprüft' if s.check_status else '–' }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="hk-hint">Noch keine Dienste.</td></tr>
+  {% endfor %}
+</table>
+
+<section class="adm-card">
+  <h3>Dienst anlegen</h3>
+  {% include "_service_form.html" %}
+</section>
+
+{% if ldap_on %}
+<section class="adm-card">
+  <h3>Aus LDAP-Gruppenbeschreibungen ({{ ldap|length }})</h3>
+  <p class="hk-hint">Gruppen mit der Kennung, deren Beschreibung „Text || Name|URL|icon|Kategorie“ enthält (FreeIPA-Stil). Nur lesbar – im Verzeichnis ändern.
+    Ein Dienst hier mit gleichem Kurznamen hat Vorrang.</p>
+  <table class="adm-table">
+    {% for s in ldap %}<tr><td><b>{{ s.name }}</b><br><small>{{ s.url }}</small></td><td>{{ s.category }}</td><td><code>{{ s.groups|join(', ') }}</code></td></tr>{% endfor %}
+  </table>
+</section>
+{% endif %}
+{% endblock %}

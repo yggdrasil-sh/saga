@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saga – selbst gehostetes Dashboard, Notizen und Aufgaben</title>
+<meta name="description" content="Saga ist dein selbst gehostetes Zuhause für Dienste, Seiten im Notion-Stil, Datenbanken, Aufgaben, Kalender und Lesezeichen – mehrbenutzerfähig, mit LDAP und SSO, per Docker Compose.">
+<meta property="og:title" content="Saga">
+<meta property="og:description" content="Selbst gehostetes Dashboard mit Notizen, Datenbanken, Aufgaben, Kalender und Lesezeichen.">
+<meta property="og:image" content="screenshots/dashboard.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#0f141c;--bg2:#141b26;--card:#18202c;--fg:#e6ebf2;--muted:#8b97a8;--accent:#c9a45c;--accent2:#e2c48a;--border:#263242;
+  --shadow:0 30px 80px rgba(0,0,0,.45)}
+@media (prefers-color-scheme: light){:root{--bg:#f6f3ec;--bg2:#efe9dd;--card:#fff;--fg:#1d2430;--muted:#5d6878;--accent:#9a7426;--accent2:#7c5c19;
+  --border:#ddd5c5;--shadow:0 30px 70px rgba(60,45,10,.18)}}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 "Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent)}
+.wrap{max-width:1140px;margin:0 auto;padding:0 24px}
+nav{display:flex;align-items:center;gap:14px;padding:22px 0}
+nav .brand{display:flex;align-items:center;gap:10px;font-weight:650;font-size:20px;color:var(--fg);text-decoration:none;letter-spacing:.02em}
+nav .brand img{width:34px;height:34px}
+nav .sp{flex:1}
+nav a.l{color:var(--muted);text-decoration:none;font-size:15px;padding:6px 10px;border-radius:8px}
+nav a.l:hover{color:var(--fg);background:var(--card)}
+.hero{text-align:center;padding:70px 0 40px;position:relative}
+.hero::before{content:"";position:absolute;inset:-120px 0 auto;height:520px;z-index:-1;
+  background:radial-gradient(600px 300px at 50% 30%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 70%)}
+.hero img.logo{width:104px;height:104px;filter:drop-shadow(0 12px 30px rgba(201,164,92,.25))}
+h1{font-size:clamp(40px,7vw,72px);line-height:1.05;margin:22px 0 14px;letter-spacing:-.02em}
+h1 span{background:linear-gradient(120deg,var(--accent2),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{font-size:clamp(18px,2.3vw,22px);color:var(--muted);max-width:760px;margin:0 auto 30px}
+.btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border-radius:12px;text-decoration:none;font-weight:600;font-size:16px;
+  border:1px solid var(--border);color:var(--fg);background:var(--card);transition:transform .15s,border-color .15s}
+.btn:hover{transform:translateY(-2px);border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#14100a}
+.shot{margin:56px auto 0;border-radius:16px;overflow:hidden;border:1px solid var(--border);box-shadow:var(--shadow);background:var(--card)}
+.shot img{display:block;width:100%;height:auto}
+.badges{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:26px;color:var(--muted);font-size:14px}
+.badges span{border:1px solid var(--border);border-radius:999px;padding:4px 12px;background:var(--bg2)}
+section{padding:80px 0}
+section.alt{background:var(--bg2);border-block:1px solid var(--border)}
+h2{font-size:clamp(28px,4vw,40px);margin:0 0 10px;letter-spacing:-.01em}
+.sub{color:var(--muted);margin:0 0 40px;max-width:700px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px}
+.card .ic{font-size:28px;line-height:1}
+.card h3{margin:12px 0 6px;font-size:19px}
+.card p{margin:0;color:var(--muted);font-size:15.5px}
+.split{display:grid;grid-template-columns:1fr 1.25fr;gap:48px;align-items:center}
+.split.rev{grid-template-columns:1.25fr 1fr}
+.split.rev .txt{order:2}
+.split .shot{margin:0}
+.split ul{padding-left:20px;color:var(--muted)}
+.split li{margin:6px 0}
+.split li b{color:var(--fg);font-weight:600}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:18px}
+.gallery figure{margin:0}
+.gallery .shot{margin:0}
+.gallery figcaption{color:var(--muted);font-size:14.5px;margin-top:10px;text-align:center}
+pre{background:#0b1017;color:#e6ebf2;border:1px solid var(--border);border-radius:14px;padding:22px;overflow:auto;font:14.5px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace}
+pre .c{color:#7f8b9c}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-top:28px}
+.steps .card b{color:var(--accent)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;background:var(--bg2);padding:1px 6px;border-radius:6px;border:1px solid var(--border)}
+footer{padding:40px 0 60px;color:var(--muted);font-size:14px;text-align:center}
+@media (max-width:860px){.split,.split.rev{grid-template-columns:1fr}.split.rev .txt{order:0}nav a.l.hide{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <a class="brand" href="#"><img src="icon.svg" alt="">Saga</a>
+    <span class="sp"></span>
+    <a class="l hide" href="#funktionen">Funktionen</a>
+    <a class="l hide" href="#screenshots">Screenshots</a>
+    <a class="l" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md">Anleitung</a>
+    <a class="l" href="https://github.com/yggdrasil-sh/saga">GitHub</a>
+  </nav>
+
+  <header class="hero">
+    <img class="logo" src="icon.svg" alt="Saga-Logo">
+    <h1>Dein Zuhause für<br><span>Dienste, Notizen &amp; Aufgaben</span></h1>
+    <p class="lead">Saga ist eine selbst gehostete Startseite und Wissenssammlung für Familien, Teams und Homelabs –
+      mit Seiten und Datenbanken im Notion-Stil, Kalender, Aufgaben und Lesezeichen. Jede Person hat ihren eigenen, privaten Bereich.</p>
+    <div class="btns">
+      <a class="btn primary" href="#schnellstart">🚀 In 5 Minuten starten</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md">📖 Anleitung</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga">★ Auf GitHub</a>
+    </div>
+    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>iOS · macOS · Linux</span></div>
+    <div class="shot"><img src="screenshots/dashboard.png" alt="Saga Dashboard" width="2880" height="1800"></div>
+  </header>
+</div>
+
+<section id="funktionen" class="alt">
+  <div class="wrap">
+    <h2>Alles an einem Ort</h2>
+    <p class="sub">Saga verbindet ein Dashboard für deine Dienste mit einem persönlichen Notizbuch – ohne Cloud, ohne Abo, auf deinem eigenen Server.</p>
+    <div class="grid">
+      <div class="card"><div class="ic">🧭</div><h3>Dashboard</h3><p>Kacheln für alle Dienste mit Status-Punkten, Favoriten, Suche und Tastenkürzeln – optional mit eigener Websuche über SearXNG.</p></div>
+      <div class="card"><div class="ic">🔑</div><h3>Zugang per Gruppe</h3><p>Wer in <code>s_nextcloud</code> ist, sieht Nextcloud. Funktioniert mit lokalen Gruppen, LDAP und SSO gleichermaßen.</p></div>
+      <div class="card"><div class="ic">📝</div><h3>Seiten im Notion-Stil</h3><p>Blöcke, Unterseiten, Checklisten, Tabellen, Code, Bilder, Spalten, Vorlagen, Versionen und Markdown-Export.</p></div>
+      <div class="card"><div class="ic">🗂️</div><h3>Datenbanken</h3><p>Tabelle, Board, Liste, Galerie und Kalender – mit Filtern, Relationen, Berechnungen und Summen.</p></div>
+      <div class="card"><div class="ic">📅</div><h3>Kalender &amp; Aufgaben</h3><p>CalDAV-Kalender (Nextcloud, mailcow, Radicale, iCloud) anzeigen und bearbeiten, Aufgaben mit Priorität und Wiederholung.</p></div>
+      <div class="card"><div class="ic">🔖</div><h3>Eigene Lesezeichen</h3><p>Jede Person legt ihre eigenen Kacheln an – privat, auch in den Apps sichtbar.</p></div>
+      <div class="card"><div class="ic">📷</div><h3>Immich</h3><p>Fotos aus der eigenen Immich-Bibliothek als Bilder und Titelbilder in Seiten verwenden.</p></div>
+      <div class="card"><div class="ic">👥</div><h3>Mehrbenutzerfähig</h3><p>Lokale Konten mit Registrierung, LDAP/Active Directory und Single Sign-On – Inhalte strikt getrennt.</p></div>
+      <div class="card"><div class="ic">🛡️</div><h3>Admin-Bereich</h3><p>Auf eigenem Port: Benutzer, Gruppen, Dienste, Registrierung, LDAP und SSO mit Verbindungstests.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap split">
+    <div class="txt">
+      <h2>Schreiben, planen, sammeln</h2>
+      <p class="sub">Ein Notizbuch, das mitwächst – von der Einkaufsliste bis zur Projektplanung.</p>
+      <ul>
+        <li><b>„/“-Menü</b> für neue Blöcke, Verweise auf Seiten und Termine</li>
+        <li><b>Seitenbaum</b> mit Unterseiten, Favoriten, Archiv und Papierkorb</li>
+        <li><b>Versionen</b> – frühere Stände ansehen und wiederherstellen</li>
+        <li><b>Export</b> als Markdown, auch mit allen Unterseiten</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="screenshots/seite.png" alt="Eine Seite in Saga" loading="lazy"></div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap split rev">
+    <div class="txt">
+      <h2>Datenbanken wie du sie brauchst</h2>
+      <p class="sub">Eigenschaften anlegen, Ansicht wählen, fertig.</p>
+      <ul>
+        <li><b>Ansichten:</b> Tabelle, Board, Liste, Galerie, Kalender</li>
+        <li><b>Eigenschaften:</b> Status, Auswahl, Datum, Zahl, Häkchen, Link, Relation, Berechnung</li>
+        <li><b>Filter, Sortierung und Summen</b> je Ansicht</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="screenshots/board.png" alt="Datenbank als Board" loading="lazy"></div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap split">
+    <div class="txt">
+      <h2>Für Admins gemacht</h2>
+      <p class="sub">Eigener Admin-Bereich auf separatem Port – standardmäßig nur lokal erreichbar.</p>
+      <ul>
+        <li><b>Benutzer</b> anlegen, sperren, überall abmelden, Passwort setzen</li>
+        <li><b>Dienste</b> mit Symbol, Kategorie und automatischer Zuweisung über die Gruppen-Kennung</li>
+        <li><b>LDAP/AD</b> mit Vorlagen für FreeIPA, Active Directory und OpenLDAP</li>
+        <li><b>SSO/OIDC</b> für Keycloak, Authentik, Authelia, Zitadel, Entra ID …</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="screenshots/admin-dienste.png" alt="Admin-Bereich: Dienste" loading="lazy"></div>
+  </div>
+</section>
+
+<section id="screenshots" class="alt">
+  <div class="wrap">
+    <h2>Screenshots</h2>
+    <p class="sub">Dunkles und helles Design folgen automatisch dem System.</p>
+    <div class="gallery">
+      <figure><div class="shot"><img src="screenshots/dashboard-hell.png" alt="" loading="lazy"></div><figcaption>Helles Design</figcaption></figure>
+      <figure><div class="shot"><img src="screenshots/datenbank.png" alt="" loading="lazy"></div><figcaption>Datenbank als Tabelle</figcaption></figure>
+      <figure><div class="shot"><img src="screenshots/einstellungen.png" alt="" loading="lazy"></div><figcaption>Eigene Einstellungen: Konto, Lesezeichen, Kalender</figcaption></figure>
+      <figure><div class="shot"><img src="screenshots/admin-sso.png" alt="" loading="lazy"></div><figcaption>Admin: SSO mit Verbindungstest</figcaption></figure>
+      <figure><div class="shot"><img src="screenshots/admin-ldap.png" alt="" loading="lazy"></div><figcaption>Admin: LDAP / Active Directory</figcaption></figure>
+      <figure><div class="shot"><img src="screenshots/login.png" alt="" loading="lazy"></div><figcaption>Anmeldung</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="schnellstart">
+  <div class="wrap">
+    <h2>In 5 Minuten starten</h2>
+    <p class="sub">Du brauchst nur einen Server mit Docker.</p>
+<pre><span class="c"># herunterladen</span>
+git clone https://github.com/yggdrasil-sh/saga.git &amp;&amp; cd saga
+cp .env.example .env
+<span class="c"># BASE_URL, SECRET_KEY und POSTGRES_PASSWORD in der .env setzen</span>
+docker compose up -d --build
+<span class="c"># erstes Admin-Passwort anzeigen</span>
+docker compose logs saga | grep Admin-Konto</pre>
+    <div class="steps">
+      <div class="card"><b>1 · Starten</b><p>Saga läuft auf Port 8080, der Admin-Bereich auf 8081 (nur lokal).</p></div>
+      <div class="card"><b>2 · Einrichten</b><p>Im Admin-Bereich Benutzer und Dienste anlegen, optional LDAP oder SSO verbinden.</p></div>
+      <div class="card"><b>3 · Loslegen</b><p>Mit HTTPS-Proxy davor freigeben – fertig ist dein eigenes Zuhause im Netz.</p></div>
+    </div>
+    <p style="margin-top:28px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md">📖 Zur ausführlichen Anleitung</a></p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">Saga · selbst gehostet, privat, quelloffen (AGPL-3.0) · <a href="https://github.com/yggdrasil-sh/saga">github.com/yggdrasil-sh/saga</a><br>
+  Dienst-Symbole von <a href="https://selfh.st/icons">selfh.st/icons</a></div>
+</footer>
+</body>
+</html>

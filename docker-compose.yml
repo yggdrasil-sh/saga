@@ -1,0 +1,78 @@
+# Saga
+# Start:  cp .env.example .env  &&  .env ausfuellen  &&  docker compose up -d --build
+#
+# Hauptseite: Port 8080 (HOST_PORT) - hinter einen Reverse Proxy mit HTTPS stellen.
+# Admin-Bereich: Port 8081 (ADMIN_PORT) - standardmaessig NUR auf 127.0.0.1 (ADMIN_BIND),
+#   z. B. per SSH-Tunnel oeffnen: ssh -L 8081:127.0.0.1:8081 server  ->  http://localhost:8081
+# Websuche (SearXNG) ist optional: COMPOSE_PROFILES=search in der .env.
+
+services:
+  db:
+    image: docker.io/library/postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-saga}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}
+      POSTGRES_DB: ${POSTGRES_DB:-saga}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # bewusst KEIN "ports:" - nur Saga spricht mit der Datenbank
+    security_opt:
+      - no-new-privileges:true
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  saga:
+    build: .
+    image: saga:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${HOST_BIND:-0.0.0.0}:${HOST_PORT:-8080}:8080"
+      - "${ADMIN_BIND:-127.0.0.1}:${ADMIN_HOST_PORT:-8081}:8081"
+    volumes:
+      - saga-data:/data      # Dateien/Bilder der Seiten, Symbol-Cache
+      - ./certs:/certs:ro          # optionale CA-Zertifikate (eigene LDAP-/SSO-/Kalender-Server)
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+  searxng:
+    image: docker.io/searxng/searxng:latest
+    profiles: ["search"]
+    restart: unless-stopped
+    environment:
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-}
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+volumes:
+  db-data:
+  saga-data:

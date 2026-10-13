@@ -1,0 +1,28 @@
+# SearXNG fuer Saga - nur intern erreichbar (kein Port nach aussen).
+# Saga fragt die JSON-API ab und zeigt die Ergebnisse nur eingeloggten Benutzern.
+# secret_key kommt aus der Umgebungsvariable SEARXNG_SECRET (siehe .env).
+use_default_settings: true
+
+general:
+  instance_name: "Saga Suche"
+  enable_metrics: false
+
+server:
+  limiter: false          # kein Bot-Schutz noetig: nicht oeffentlich, nur via Saga
+  public_instance: false
+  image_proxy: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "de-DE"
+  formats:
+    - html
+    - json                # wird von Saga benoetigt
+
+ui:
+  default_locale: "de"
+
+outgoing:
+  request_timeout: 3.0
+  max_request_timeout: 6.0

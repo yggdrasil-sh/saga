@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f141c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="{{ title }}">
+<title>{{ title }}</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg?v={{ v }}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ v }}">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+</head>
+<body data-v="{{ v }}">
+{% macro tile(s, cat) -%}
+<div class="tw{% if s.own %} own{% endif %}" data-g="{{ s.key }}" data-q="{{ (s.name ~ ' ' ~ s.host ~ ' ' ~ cat)|lower }}"{% if s.own %} data-bm="{{ s.id }}"{% endif %}>
+  <a class="tile" href="{{ s.url }}" target="_blank" rel="noopener">
+    <span class="ic{% if s.icon %} has-img{% endif %}">{% if s.icon %}<img src="/api/services/icon/{{ s.icon }}" alt="" loading="lazy" data-l="{{ s.name[:1]|upper }}">{% else %}{{ s.name[:1]|upper }}{% endif %}</span>
+    <span class="txt"><span class="nm">{{ s.name }}</span><span class="host">{{ s.host }}</span></span>
+    {% if s.check %}<span class="dot unknown" title="Status wird geprüft"></span>{% endif %}
+    <span class="num"></span>
+  </a>
+  <button class="star{% if cat == 'Favoriten' %} on{% endif %}" data-g="{{ s.key }}" type="button"
+          title="{% if cat == 'Favoriten' %}Aus Favoriten entfernen{% else %}Zu Favoriten{% endif %}"
+          aria-label="Favorit umschalten">★</button>
+  {% if s.own %}<button class="bm-edit" type="button" data-bm="{{ s.id }}" title="Lesezeichen bearbeiten" aria-label="Lesezeichen bearbeiten">✎</button>{% endif %}
+</div>
+{%- endmacro %}
+<header>
+  <h1>{{ title }}</h1>
+  <span class="greet">Willkommen, {{ name }}</span>
+  <span class="spacer"></span>
+  <div class="clock" aria-live="off"><span id="clk-time">--:--</span><span id="clk-date"></span></div>
+  <input type="search" id="q" placeholder="{% if search_enabled %}Dienste oder Web durchsuchen…{% else %}Suchen…{% endif %}  ( / )"
+         aria-label="Suchen" data-web="{{ '1' if search_enabled else '' }}" autocomplete="off">
+  <a class="btn btn-notes" href="/notes" target="hk-notes" title="Notizen in eigenem Tab öffnen ( n )">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
+    Notizen
+  </a>
+  <button type="button" class="btn hk-user" id="hk-user" data-name="{{ name }}" data-admin="{{ acct.admin_url }}" aria-haspopup="menu" title="Benutzermenü">👤 {{ name }} ▾</button>
+</header>
+<main>
+  <details class="acct">
+    <summary>
+      <span class="who">{{ uid }}{% if acct.mail %} · {{ acct.mail }}{% endif %}</span>
+      <span class="pw">{{ acct.source }}</span>
+    </summary>
+    <div class="acct-body">
+      <dl>
+        <dt>Konto</dt><dd>{{ acct.source }}</dd>
+        {% if acct.pw_changed %}<dt>Passwort geändert</dt><dd>{{ acct.pw_changed }}</dd>{% endif %}
+        {% if acct.last_login %}<dt>Letzte Anmeldung</dt><dd>{{ acct.last_login }}</dd>{% endif %}
+        <dt>Gruppen</dt><dd class="chips">{% for g in acct.groups %}<span class="chip">{{ g }}</span>{% else %}–{% endfor %}</dd>
+      </dl>
+      <div class="links">
+        <button class="btn" type="button" data-settings="account">Konto &amp; Passwort</button>
+        <button class="btn" type="button" data-settings="bookmarks">Lesezeichen verwalten</button>
+        {% if acct.admin_url %}<a class="btn" href="{{ acct.admin_url }}" target="_blank" rel="noopener">Admin-Bereich</a>{% endif %}
+      </div>
+    </div>
+  </details>
+
+  <details class="nt" id="nt">
+    <summary>
+      <span class="nt-title">Aufgaben</span>
+      <span class="nt-badge" id="nt-badge" hidden></span>
+    </summary>
+    <div class="nt-body">
+      <div class="nt-pane" id="pane-tasks">
+        <form class="task-add" id="task-add" autocomplete="off">
+          <span class="task-add-plus" aria-hidden="true">+</span>
+          <input type="text" id="task-text" maxlength="500" placeholder="Aufgabe hinzufügen und Enter drücken" aria-label="Neue Aufgabe">
+          <span class="mark prio-mark" id="task-prio-chip" hidden><span id="task-prio-label"></span><button type="button" id="task-prio-clear" aria-label="Priorität zurücksetzen">×</button></span>
+          <span class="mark" id="task-rep-chip" hidden><span id="task-rep-label"></span><button type="button" id="task-rep-clear" aria-label="Wiederholung entfernen">×</button></span>
+          <span class="mark" id="task-due-chip" hidden><span id="task-due-label"></span><button type="button" id="task-due-clear" aria-label="Datum entfernen">×</button></span>
+          <button type="button" class="icon-btn" id="task-prio-btn" title="Priorität (hoch / niedrig)" aria-label="Priorität wählen">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>
+          </button>
+          <button type="button" class="icon-btn" id="task-rep-btn" title="Wiederholen …" aria-label="Wiederholung wählen" aria-haspopup="menu">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/></svg>
+          </button>
+          <button type="button" class="icon-btn" id="task-due-btn" title="Fällig am …" aria-label="Fälligkeitsdatum wählen">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+          </button>
+          <input type="date" id="task-due" class="sr-date" tabindex="-1" aria-hidden="true">
+        </form>
+        <ul class="task-list" id="task-list"></ul>
+        <p class="nt-empty" id="task-empty" hidden>Keine offenen Aufgaben.</p>
+        <div class="task-foot">
+          <button type="button" class="linkbtn" id="task-toggle-done" hidden></button>
+          <button type="button" class="linkbtn" id="task-clear" hidden>Erledigte löschen</button>
+        </div>
+        <ul class="task-list done" id="task-done" hidden></ul>
+      </div>
+
+    </div>
+  </details>
+
+  {% if search_enabled %}
+  <button id="web-go" class="web-go" type="button" hidden>
+    <span class="web-go-ic">⌕</span><span>Im Web suchen: „<b id="web-go-q"></b>“</span>
+    <span class="web-go-k"><kbd>Shift</kbd>+<kbd>Enter</kbd></span>
+  </button>
+  <section id="web" class="web" hidden aria-live="polite">
+    <div class="web-head">
+      <h2>Websuche</h2>
+      <button class="btn small" id="web-close" type="button">Schließen <kbd>Esc</kbd></button>
+    </div>
+    <div id="web-meta" class="web-meta"></div>
+    <ol id="web-list" class="web-list"></ol>
+    <button id="web-more" class="btn" type="button" hidden>Weitere Ergebnisse</button>
+  </section>
+  {% endif %}
+
+  {% if favorites %}
+  <section class="cat fav">
+    <h2>Favoriten</h2>
+    <div class="grid">{% for s in favorites %}{{ tile(s, 'Favoriten') }}{% endfor %}</div>
+  </section>
+  {% endif %}
+  {% for cat, items in categories.items() %}
+  <section class="cat">
+    <h2>{{ cat }}</h2>
+    <div class="grid">{% for s in items %}{{ tile(s, cat) }}{% endfor %}</div>
+  </section>
+  {% endfor %}
+  {% if not favorites and not categories %}
+  <p class="empty">Für dich sind noch keine Dienste freigeschaltet – lege dir eigene Lesezeichen an.</p>
+  {% endif %}
+  <div class="bm-add-row"><button class="btn" type="button" id="bm-add">+ Lesezeichen</button></div>
+  <p class="hint"><kbd>/</kbd> suchen · <kbd>1</kbd>–<kbd>9</kbd> öffnen · <kbd>Enter</kbd> erster Treffer{% if search_enabled %} (sonst Websuche) · <kbd>Shift</kbd>+<kbd>Enter</kbd> Websuche{% endif %} · <kbd>t</kbd> neue Aufgabe · <kbd>n</kbd> Notizen · <kbd>★</kbd> Favorit</p>
+</main>
+
+<aside class="rail" id="rail" aria-label="Offene Aufgaben">
+  <section class="rail-cal" id="rail-cal" hidden aria-label="Termine heute und morgen">
+    <div class="rail-head">
+      <span class="rail-title">Termine</span>
+      <span class="rail-count" id="rail-cal-count"></span>
+      <button type="button" class="icon-btn" id="rail-cal-add" title="Neuer Termin" aria-label="Neuer Termin">+</button>
+    </div>
+    <div id="rail-cal-list"></div>
+  </section>
+  <div class="rail-head">
+    <span class="rail-title">Offene Aufgaben</span>
+    <span class="rail-count" id="rail-count"></span>
+    <button type="button" class="icon-btn" id="rail-hide" title="Leiste einklappen" aria-label="Aufgabenleiste einklappen">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 6l6 6-6 6M5 6l6 6-6 6"/></svg>
+    </button>
+  </div>
+  <form class="rail-add" id="rail-add" autocomplete="off">
+    <span class="task-add-plus" aria-hidden="true">+</span>
+    <input type="text" id="rail-text" maxlength="500" placeholder="Schnell hinzufügen …" aria-label="Aufgabe schnell hinzufügen">
+  </form>
+  <ul class="rail-list" id="rail-list"></ul>
+  <p class="rail-empty" id="rail-empty" hidden>Alles erledigt.</p>
+</aside>
+<button type="button" class="rail-tab" id="rail-show" hidden title="Aufgabenleiste einblenden" aria-label="Aufgabenleiste einblenden">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 6l-6 6 6 6M19 6l-6 6 6 6"/></svg>
+  <span id="rail-tab-count"></span>
+</button>
+<input type="date" id="row-due" class="sr-date fixed" tabindex="-1" aria-hidden="true">
+
+<script src="/static/common.js?v={{ v }}"></script>
+<script src="/static/calendar.js?v={{ v }}"></script>
+<script src="/static/app.js?v={{ v }}"></script>
+<script src="/static/settings.js?v={{ v }}"></script>
+<script src="/static/notes.js?v={{ v }}"></script>
+</body>
+</html>

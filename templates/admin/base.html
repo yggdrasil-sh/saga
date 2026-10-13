@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{% block pagetitle %}Admin{% endblock %} – {{ title }}</title>
+<link rel="icon" href="/static/icon.svg?v={{ v }}" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+</head>
+<body class="adm">
+{% if me %}
+<header class="adm-head">
+  <h1>🛡 {{ title }} · Admin</h1>
+  <nav class="adm-nav">
+    {% for href, label in [('/', 'Übersicht'), ('/users', 'Benutzer'), ('/groups', 'Gruppen'), ('/services', 'Dienste'), ('/settings', 'Allgemein'), ('/settings/oidc', 'SSO / OIDC'), ('/settings/ldap', 'LDAP / AD')] %}
+    <a href="{{ href }}"{% if path == href or (href not in ('/', '/settings') and path.startswith(href + '/')) %} class="on"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+  <span class="spacer"></span>
+  <a class="btn" href="{{ base_url }}" target="_blank" rel="noopener">Zum Dashboard ↗</a>
+  <span class="greet">{{ me.username }}</span>
+  <a class="btn" href="/logout">Abmelden</a>
+</header>
+{% endif %}
+<main class="adm-main">
+  {% if flash %}<p class="adm-flash {{ flash[1] }}" role="status">{{ flash[0] }}</p>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+<script src="/static/admin.js?v={{ v }}"></script>
+</body>
+</html>

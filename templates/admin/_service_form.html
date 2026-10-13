@@ -1,0 +1,15 @@
+{% from "_macros.html" import field, check, csrf_field with context %}
+<form method="post" action="/services" class="adm-form">
+  {{ csrf_field() }}<input type="hidden" name="action" value="save"><input type="hidden" name="id" value="{{ s.id if s else '' }}">
+  {{ field('Name', 'name', s.name if s else '', req=true, max=80, ph='Nextcloud') }}
+  {{ field('Adresse', 'url', s.url if s else '', type='url', req=true, max=500, ph='https://cloud.example.org') }}
+  {{ field('Kurzname', 'slug', s.slug if s else '', req=true, max=41, ph='nextcloud',
+           hint='a–z, 0–9, _ - · Zugangsgruppe = ' ~ prefix ~ '<kurzname> (wird automatisch angelegt)') }}
+  {{ field('Symbol', 'icon', s.icon if s else '', max=64, ph='nextcloud', hint='Name von selfh.st/icons – leer = Anfangsbuchstabe') }}
+  {{ field('Kategorie', 'category', s.category if s else 'Dienste', max=40) }}
+  {{ field('Weitere Gruppen', 'extra', s.extra if s else '', max=2000, hint='Komma-getrennt, z. B. admins, familie') }}
+  {{ field('Reihenfolge', 'sort', s.sort if s else 0, type='number', max=6, hint='kleinere Zahl = weiter vorn in der Kategorie') }}
+  {{ check('Für alle angemeldeten Benutzer', 'everyone', s.everyone if s else false) }}
+  {{ check('Erreichbarkeit prüfen (Status-Punkt)', 'check_status', s.check_status if s else true, 'der Server ruft die Adresse jede Minute ab') }}
+  <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ 'Speichern' if s else 'Anlegen' }}</button></div>
+</form>

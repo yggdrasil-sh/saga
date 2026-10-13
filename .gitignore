@@ -1,0 +1,8 @@
+.env
+certs/*.crt
+certs/*.pem
+__pycache__/
+*.pyc
+.DS_Store
+ios/dist/
+.env.shots

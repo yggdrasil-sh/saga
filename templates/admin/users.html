@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check, csrf_field with context %}
+{% block pagetitle %}Benutzer{% endblock %}
+{% block content %}
+<div class="adm-row">
+  <h2>Benutzer</h2>
+  <form method="get" action="/users" class="adm-search"><input class="hk-in" type="search" name="q" value="{{ q }}" placeholder="Suchen …"></form>
+</div>
+<table class="adm-table">
+  <tr><th>Benutzer</th><th>Name / E-Mail</th><th>Konto</th><th>Gruppen</th><th>Letzte Anmeldung</th></tr>
+  {% for r in rows %}
+  <tr class="{% if r[6] %}off{% endif %}">
+    <td><a href="/users/{{ r[0] }}">{{ r[1] }}</a>{% if r[5] %} <span class="adm-tag">Admin</span>{% endif %}{% if r[6] %} <span class="adm-tag bad">gesperrt</span>{% endif %}</td>
+    <td>{{ r[2] }}{% if r[3] %}<br><small>{{ r[3] }}</small>{% endif %}</td>
+    <td>{{ {'local': 'lokal', 'ldap': 'LDAP', 'oidc': 'SSO'}.get(r[4], r[4]) }}</td>
+    <td class="chips">{% for g in gm.get(r[0], [])|sort %}<span class="chip">{{ g }}</span>{% endfor %}</td>
+    <td>{{ r[7]|dt }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="hk-hint">Keine Treffer.</td></tr>
+  {% endfor %}
+</table>
+<p class="hk-hint">⇣ = vom Anmeldedienst (LDAP/SSO) übernommene Gruppe, wird bei jeder Anmeldung aktualisiert.</p>
+
+<section class="adm-card">
+  <h3>Benutzer anlegen</h3>
+  <form method="post" action="/users/new" class="adm-form">
+    {{ csrf_field() }}
+    {{ field('Benutzername', 'username', req=true, max=64, hint='a–z, 0–9, . _ - @ – wird klein geschrieben, später nicht änderbar') }}
+    {{ field('Anzeigename', 'name', max=120) }}
+    {{ field('E-Mail', 'email', type='email', max=200) }}
+    <label class="adm-field"><span>Kontoart</span>
+      <select class="hk-in" name="source">
+        <option value="local">Lokal (Passwort hier)</option>
+        <option value="ldap">LDAP/AD – vorab anlegen, Anmeldung mit Verzeichnis-Passwort</option>
+        <option value="oidc">SSO – vorab anlegen, Anmeldung über den Anmeldedienst</option>
+      </select>
+      <small>Vorab angelegte LDAP/SSO-Konten werden bei der ersten Anmeldung verknüpft (wichtig, wenn „automatisch anlegen“ aus ist).</small></label>
+    {{ field('Passwort', 'password', type='password', max=200, auto='new-password', hint='nur lokale Konten, mindestens 10 Zeichen') }}
+    <label class="adm-field"><span>Gruppen</span>
+      <input class="hk-in" name="groups" list="allg" maxlength="2000" placeholder="z. B. s_nextcloud, familie">
+      <small>Komma-getrennt; neue Gruppen werden angelegt. Standardgruppen aus „Allgemein“ kommen automatisch dazu.</small></label>
+    <datalist id="allg">{% for g in allg %}<option value="{{ g }}">{% endfor %}</datalist>
+    {{ check('Admin-Rechte', 'is_admin', false, 'Zugang zu diesem Admin-Bereich') }}
+    <div class="adm-actions"><button class="btn btn-primary" type="submit">Anlegen</button></div>
+  </form>
+</section>
+{% endblock %}

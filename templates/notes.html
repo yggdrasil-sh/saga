@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f141c">
+<title>Notizen · {{ title }}</title>
+<link rel="icon" href="/static/icon.svg?v={{ v }}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ v }}">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+</head>
+<body class="notes-page{% if embed %} embed{% endif %}" data-v="{{ v }}">
+<header class="np-head">
+  <button type="button" class="icon-btn np-side-btn" id="pg-side-btn" title="Seitenleiste ausblenden (Strg+\)" aria-label="Seitenleiste ein- oder ausblenden" aria-pressed="true">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+  </button>
+  <a class="np-brand" href="/" title="Zum Dashboard">{{ title }}</a>
+  <span class="np-sep">/</span>
+  <span class="np-name">Notizen</span>
+  <span class="spacer"></span>
+  <button type="button" class="btn hk-user" id="hk-user" data-name="{{ name }}" data-admin="{{ admin_url }}" aria-haspopup="menu" title="Benutzermenü">👤 {{ name }} ▾</button>
+  <a class="btn" href="/" title="Zum Dashboard">Dashboard</a>
+</header>
+<main class="np-main">
+  <div class="pages" id="pages">
+    <nav class="pages-side" aria-label="Seiten">
+      <input type="search" class="pg-search" id="pg-search" placeholder="Seiten durchsuchen" aria-label="Seiten durchsuchen" autocomplete="off">
+      <div class="pg-tagbar" id="pg-tagbar" aria-label="Nach Tag filtern"></div>
+      <div class="pg-favs" id="pg-favs" hidden>
+        <div class="pg-section">Favoriten</div>
+        <ul class="pg-fav-list" id="pg-fav-list"></ul>
+        <div class="pg-section">Alle Seiten</div>
+      </div>
+      <ul class="pg-tree" id="pg-tree" role="tree"></ul>
+      <ul class="pg-results" id="pg-results" hidden></ul>
+      <button type="button" class="note-new" id="pg-new">+ Neue Seite</button>
+      <div class="pg-side-foot">
+        <button type="button" class="pg-foot-btn" id="pg-qs-btn" title="Schnellsuche">⌕ Schnellsuche <kbd id="pg-qs-kbd">Strg K</kbd></button>
+        <button type="button" class="pg-foot-btn" id="pg-archive-btn">📦 Archiv</button>
+        <button type="button" class="pg-foot-btn" id="pg-trash-btn">🗑 Papierkorb</button>
+      </div>
+    </nav>
+    <article class="page" id="page" hidden>
+      <div class="page-bar">
+        <nav class="crumbs" id="pg-crumbs" aria-label="Pfad"></nav>
+        <span class="note-state" id="pg-state"></span>
+        <button type="button" class="icon-btn" id="pg-full" title="Vollbild" aria-label="Vollbild" aria-pressed="false">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="pg-more" title="Seite …" aria-label="Seitenoptionen" aria-haspopup="menu">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+        </button>
+      </div>
+      <div class="page-cover" id="pg-cover" hidden>
+        <img id="pg-cover-img" alt="" draggable="false">
+        <div class="cover-btns">
+          <button type="button" id="pg-cover-change">Titelbild ändern</button>
+          <button type="button" id="pg-cover-move">Verschieben</button>
+          <button type="button" id="pg-cover-del">Entfernen</button>
+        </div>
+      </div>
+      <div class="page-head">
+        <div class="page-headbtns">
+          <button type="button" class="page-icon empty" id="pg-icon" title="Icon wählen" aria-label="Icon wählen"></button>
+          <button type="button" class="page-addcover" id="pg-addcover">🖼 Titelbild</button>
+        </div>
+        <input type="text" class="page-title" id="pg-title" maxlength="200" placeholder="Unbenannt" aria-label="Seitentitel">
+        <div class="page-tags" id="pg-tags" aria-label="Tags"></div>
+        <datalist id="pg-tag-list"></datalist>
+      </div>
+      <div class="props" id="pg-props" hidden></div>
+      <div class="db" id="pg-db" hidden></div>
+      <div class="page-body" id="pg-editor"></div>
+      <section class="backlinks" id="pg-backlinks" hidden>
+        <h3>Verlinkt von</h3>
+        <ul class="bl-list" id="pg-backlinks-list"></ul>
+      </section>
+    </article>
+    <section class="trash" id="pg-trash" hidden>
+      <div class="trash-head">
+        <h2 class="trash-title">🗑 Papierkorb</h2>
+        <button type="button" class="linkbtn danger" id="pg-trash-empty">Papierkorb leeren</button>
+      </div>
+      <p class="trash-hint">Gelöschte Seiten bleiben 30 Tage hier und lassen sich mit allen Unterseiten wiederherstellen.</p>
+      <ul class="trash-list" id="pg-trash-list"></ul>
+    </section>
+    <div class="pages-empty" id="pg-empty">
+      <p>Noch keine Seiten. Seiten können Überschriften, Listen, Checklisten, Zitate und Code enthalten – und beliebig viele Unterseiten.</p>
+      <button type="button" class="btn" id="pg-empty-new">Erste Seite anlegen</button>
+    </div>
+  </div>
+</main>
+<div class="peek" id="pg-peek" hidden>
+  <div class="peek-panel" role="dialog" aria-label="Eintrag">
+    <div class="peek-bar">
+      <button type="button" class="icon-btn" id="peek-close" title="Schließen (Esc)" aria-label="Schließen">»</button>
+      <button type="button" class="icon-btn" id="peek-prev" title="Vorheriger Eintrag" aria-label="Vorheriger Eintrag">↑</button>
+      <button type="button" class="icon-btn" id="peek-next" title="Nächster Eintrag" aria-label="Nächster Eintrag">↓</button>
+      <span class="peek-crumb" id="peek-crumb"></span>
+      <span class="note-state" id="peek-state"></span>
+      <button type="button" class="icon-btn" id="peek-mode" title="Mittig anzeigen" aria-label="Darstellung wechseln">▣</button>
+      <button type="button" class="icon-btn" id="peek-full" title="Als ganze Seite öffnen" aria-label="Als ganze Seite öffnen">⤢</button>
+    </div>
+    <iframe class="peek-frame" id="peek-frame" title="Eintrag"></iframe>
+  </div>
+</div>
+<input type="file" id="pg-file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+<div class="modal" id="pg-modal" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="pg-modal-title">
+    <div class="modal-head"><h3 id="pg-modal-title"></h3><button type="button" class="icon-btn" id="pg-modal-close" aria-label="Schließen">×</button></div>
+    <div class="modal-body" id="pg-modal-body"></div>
+  </div>
+</div>
+<div class="qs" id="pg-qs" hidden>
+  <div class="qs-box" role="dialog" aria-modal="true" aria-label="Schnellsuche">
+    <input type="text" id="pg-qs-q" placeholder="Seite suchen … (Enter öffnet, Esc schließt)" autocomplete="off" aria-label="Seite suchen">
+    <div class="qs-list" id="pg-qs-list" role="listbox"></div>
+  </div>
+</div>
+<div class="picker" id="pg-picker" role="dialog" aria-label="Verweis einfügen" hidden>
+  <input type="text" id="pg-picker-q" placeholder="Seite oder Dienst suchen …" aria-label="Verweis suchen" autocomplete="off">
+  <div class="picker-list" id="pg-picker-list" role="listbox"></div>
+</div>
+<script src="/static/common.js?v={{ v }}"></script>
+<script src="/static/calendar.js?v={{ v }}"></script>
+<script src="/static/immich.js?v={{ v }}"></script>
+<script src="/static/code.js?v={{ v }}"></script>
+<script src="/static/pages.js?v={{ v }}"></script>
+<script src="/static/keys.js?v={{ v }}"></script>
+<script src="/static/settings.js?v={{ v }}"></script>
+</body>
+</html>

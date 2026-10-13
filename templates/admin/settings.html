@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check, csrf_field with context %}
+{% block pagetitle %}Allgemein{% endblock %}
+{% block content %}
+<h2>Allgemein</h2>
+<form method="post" class="adm-form">
+  {{ csrf_field() }}
+  <section class="adm-card">
+    <h3>Anmeldung &amp; Konten</h3>
+    {{ field('Titel', 'title', st.title, max=60, hint='Name oben im Dashboard und auf der Anmeldeseite') }}
+    {{ check('Registrierung erlauben', 'registration', st.registration, 'Jeder, der die Seite erreicht, kann sich ein lokales Konto anlegen') }}
+    {{ check('Anmeldung mit lokalen Konten', 'local_login', st.local_login, 'Aus = nur LDAP/SSO auf der Anmeldeseite (Admins kommen hier immer mit lokalem Konto herein)') }}
+    {{ field('Standardgruppen', 'default_groups', st.default_groups|join(', '), max=1000, hint='Bekommt jedes neue Konto (Registrierung, Admin, erste LDAP/SSO-Anmeldung) – z. B. ' ~ (st.group_prefix or 's_') ~ 'wiki') }}
+  </section>
+  <section class="adm-card">
+    <h3>Dienste</h3>
+    {{ field('Gruppen-Kennung', 'group_prefix', st.group_prefix, max=20, hint='Gruppe <Kennung><Kurzname> gibt den Dienst frei. Standard s_ (wie s_nextcloud). Leer = Gruppe heißt wie der Kurzname.') }}
+  </section>
+  <section class="adm-card">
+    <h3>Verbindungen der Benutzer (Kalender, Immich)</h3>
+    <p class="hk-hint">Jeder Benutzer verbindet seine eigenen Kalender (CalDAV) und sein Immich. Öffentliche Server (https) gehen immer.
+      Interne Adressen (192.168.x, 10.x, localhost …) schützen das Heimnetz vor Missbrauch und sind nur mit Freigabe erreichbar.</p>
+    {{ check('Interne Adressen für alle erlauben', 'allow_private_hosts', st.allow_private_hosts, 'Nur bei vertrauenswürdigen Benutzern – sonst einzelne Hosts freigeben') }}
+    {{ field('Freigegebene interne Hosts', 'allowed_hosts', st.allowed_hosts, max=2000, ph='immich.lan, nextcloud.lan:8443', hint='Komma-getrennt, optional mit :Port') }}
+  </section>
+  <div class="adm-actions"><button class="btn btn-primary" type="submit">Speichern</button></div>
+</form>
+{% endblock %}

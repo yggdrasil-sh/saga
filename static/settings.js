@@ -1,0 +1,390 @@
+/* Benutzermenue (Name oben rechts) + Einstellungen: Konto, Lesezeichen, externe Kalender (CalDAV), Immich, Apps.
+   Das App-Passwort geht nur beim Testen/Speichern an den Server und wird dort verschluesselt abgelegt. */
+(function () {
+  'use strict';
+  var el = HK.el, api = HK.api;
+  var btn = document.getElementById('hk-user');
+  if (!btn) return;
+  // In der Saga-App (iOS/macOS): Nachrichten an die App (die App nimmt sie nur von diesem Server an)
+  var inApp = /(Saga|Hlidskjalf)App\//.test(navigator.userAgent) && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.hk;
+  function toApp(msg) { if (inApp) window.webkit.messageHandlers.hk.postMessage(msg); }
+  btn.addEventListener('click', function () {
+    HK.openMenu(btn, function (m) {
+      m.appendChild(HK.menuLabel(btn.dataset.name || ''));
+      m.appendChild(HK.menuItem('Einstellungen', openSettings, { icon: '⚙' }));
+      m.appendChild(HK.menuItem('Konto & Passwort', function () { openSettings('account'); }, { icon: '👤' }));
+      if (btn.dataset.admin) m.appendChild(HK.menuItem('Admin-Bereich', function () { window.open(btn.dataset.admin, '_blank', 'noopener'); }, { icon: '🛡' }));
+      if (inApp) m.appendChild(HK.menuItem('App-Einstellungen', function () { toApp({ action: 'settings' }); }, { icon: '📱' }));
+      m.appendChild(el('div', 'menu-sep'));
+      m.appendChild(HK.menuItem('Abmelden', function () { location.href = '/logout'; }, { icon: '↪' }));
+    });
+  });
+
+  var dlg = null;
+  function closeSettings() { if (dlg) { dlg.remove(); dlg = null; document.removeEventListener('keydown', onKey); btn.focus(); } }
+  function onKey(e) { if (e.key === 'Escape' && !HK.menuOpen()) { e.preventDefault(); closeSettings(); } }
+  function openSettings(focus) {
+    closeSettings();
+    dlg = el('div', 'hk-modal'); dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); dlg.setAttribute('aria-label', 'Einstellungen');
+    var card = el('div', 'hk-dialog'), head = el('div', 'hk-dlg-head');
+    head.appendChild(el('h2', null, 'Einstellungen'));
+    var x = el('button', 'icon-btn', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Schließen'); x.addEventListener('click', closeSettings);
+    head.appendChild(x); card.appendChild(head);
+    var body = el('div', 'hk-dlg-body'); card.appendChild(body); dlg.appendChild(card);
+    dlg.addEventListener('mousedown', function (e) { if (e.target === dlg) closeSettings(); });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(dlg);
+    accountSection(body);
+    bookmarkSection(body);
+    calendarSection(body);
+    immichSection(body);
+    tokenSection(body);
+    var target = typeof focus === 'string' && body.querySelector('.hk-set-' + focus);
+    if (target) target.scrollIntoView();
+  }
+
+  // --- Abschnitt "Immich" (eigener API-Schluessel; der Schluessel verlaesst den Server nie wieder) ------------------
+  function immichSection(body) {
+    var sec = el('section', 'hk-set hk-set-immich'); body.appendChild(sec);
+    sec.appendChild(el('h3', null, '📷 Immich'));
+    var box = el('div'); sec.appendChild(box);
+    function load() {
+      api('GET', '/api/settings/immich').then(function (s) {
+        box.textContent = '';
+        if (s.connected) {
+          box.appendChild(el('p', null, '✅ Verbunden' + (s.name ? ' als ' + s.name : '') + (s.url ? ' (' + s.url.replace(/^https?:\/\//, '') + ')' : '') +
+            ' – Bilder aus Immich gibt es beim Titelbild, beim Icon und im „/“-Menü („Bild aus Immich“).'));
+          var off = el('button', 'btn', 'Trennen'); off.type = 'button';
+          off.addEventListener('click', function () { api('DELETE', '/api/settings/immich').then(load); });
+          box.appendChild(off); return;
+        }
+        box.appendChild(el('p', 'hk-hint', 'Adresse deines Immich (z. B. https://immich.example.de). In Immich unter Kontoeinstellungen → API-Schlüssel ' +
+          'einen neuen Schlüssel anlegen mit den Rechten album.read, asset.read, asset.view, asset.download und user.read, und hier einfügen. ' +
+          'Saga sieht dann nur deine eigenen Fotos.'));
+        var url = el('input'); url.type = 'url'; url.placeholder = 'https://immich.example.de'; url.value = s.suggest || '';
+        box.appendChild(field('Immich-Adresse', url));
+        var inp = el('input'); inp.type = 'password'; inp.autocomplete = 'off'; inp.placeholder = 'API-Schlüssel';
+        box.appendChild(field('API-Schlüssel', inp));
+        var go = el('button', 'btn primary', 'Verbinden'); go.type = 'button'; box.appendChild(go);
+        var msg = el('p', 'hk-hint'); box.appendChild(msg);
+        go.addEventListener('click', function () {
+          msg.textContent = 'Prüfe …'; go.disabled = true;
+          api('POST', '/api/settings/immich', { url: url.value.trim(), apikey: inp.value.trim() }).then(function () { inp.value = ''; load(); })
+            .catch(function (e) { msg.textContent = e.message; go.disabled = false; });
+        });
+      }).catch(function (e) { box.textContent = 'Nicht geladen: ' + e.message; });
+    }
+    load();
+  }
+
+  // --- Abschnitt "Kalender" ----------------------------------------------------------
+  function calendarSection(body) {
+    var sec = el('section', 'hk-set hk-set-calendar'); body.appendChild(sec);
+    sec.appendChild(el('h3', null, '📅 Kalender'));
+    sec.appendChild(el('p', 'hk-hint', 'Externe Kalender (CalDAV) wie Nextcloud, mailcow, Radicale oder iCloud verbinden. Saga zeigt deren Termine an ' +
+      'und kann Termine anlegen und ändern. Tipp: Ein eigenes App-Passwort nur für Kalender/DAV anlegen.'));
+    var list = el('div', 'hk-cal-list'); sec.appendChild(list);
+    var addBtn = el('button', 'btn', '+ Kalender verbinden'); addBtn.type = 'button'; sec.appendChild(addBtn);
+    var form = el('div', 'hk-cal-form'); form.hidden = true; sec.appendChild(form);
+    var allowed = { hosts: [], private: false };
+    function load() {
+      api('GET', '/api/settings/calendars').then(function (d) {
+        allowed = { hosts: d.allowed || [], private: !!d.private }; list.textContent = '';
+        if (!d.accounts.length) list.appendChild(el('p', 'hk-hint', 'Noch kein Kalender verbunden.'));
+        d.accounts.forEach(function (a) { list.appendChild(accountCard(a, load)); });
+      }).catch(function (err) { list.textContent = 'Nicht geladen: ' + err.message; });
+    }
+    addBtn.addEventListener('click', function () { form.hidden = false; addBtn.hidden = true; newForm(form, allowed, function () { form.hidden = true; addBtn.hidden = false; load(); }); });
+    load();
+  }
+
+  function field(label, input) { var l = el('label', 'hk-field'); l.appendChild(el('span', null, label)); l.appendChild(input); return l; }
+  function input(type, value, ph) { var i = el('input', 'hk-in'); i.type = type; i.value = value || ''; if (ph) i.placeholder = ph; return i; }
+  function status(box, txt, cls) { box.textContent = txt; box.className = 'hk-status' + (cls ? ' ' + cls : ''); }
+
+  // Kalenderliste mit "anzeigen" + Farbe + Name
+  function calPicker(cals) {
+    var wrap = el('div', 'hk-cals');
+    cals.forEach(function (c) {
+      var row = el('div', 'hk-cal-row'), cb = el('input'); cb.type = 'checkbox'; cb.checked = c.show !== false; cb.setAttribute('aria-label', c.name + ' anzeigen');
+      var col = el('input'); col.type = 'color'; col.value = /^#[0-9a-f]{6}$/i.test(c.color || '') ? c.color : '#4184e4'; col.setAttribute('aria-label', 'Farbe für ' + c.name);
+      var nm = input('text', c.name); nm.maxLength = 80; nm.setAttribute('aria-label', 'Anzeigename');
+      row.appendChild(cb); row.appendChild(col); row.appendChild(nm);
+      if (c.writable === false) row.appendChild(el('span', 'hk-hint', 'nur lesen'));
+      row._get = function () { return { href: c.href, name: nm.value.trim(), color: col.value, show: cb.checked }; };
+      wrap.appendChild(row);
+    });
+    wrap.value = function () { return [].map.call(wrap.children, function (r) { return r._get(); }); };
+    return wrap;
+  }
+
+  var PRESETS = [['nextcloud', 'Nextcloud', 'https://HOST/remote.php/dav/'], ['mailcow', 'mailcow (SOGo)', 'https://HOST/SOGo/dav/'],
+    ['other', 'Andere CalDAV-Adresse', 'https://']];
+  function newForm(form, allowed, done) {
+    form.textContent = '';
+    var kind = el('select', 'hk-in'); PRESETS.forEach(function (p) { var o = el('option', null, p[1]); o.value = p[0]; kind.appendChild(o); });
+    var url = input('url', PRESETS[0][2]), user = input('text', '', 'Benutzername oder E-Mail'), pw = input('password', '', 'App-Passwort');
+    user.autocomplete = 'username'; pw.autocomplete = 'new-password';
+    kind.addEventListener('change', function () {
+      var p = PRESETS.find(function (x) { return x[0] === kind.value; });
+      url.value = p[2];
+    });
+    var label = input('text', '', 'optional, z. B. „Privat“'); label.maxLength = 60;
+    [field('Anbieter', kind), field('CalDAV-Adresse', url), field('Benutzer', user), field('App-Passwort', pw), field('Bezeichnung', label)].forEach(function (f) { form.appendChild(f); });
+    form.appendChild(el('p', 'hk-hint', 'Öffentliche Kalender-Server (https) gehen immer. Interne Server: ' +
+      (allowed.private ? 'erlaubt.' : (allowed.hosts.length ? 'nur ' + allowed.hosts.join(', ') : 'nur nach Freigabe im Admin-Bereich') + '.')));
+    var st = el('div', 'hk-status'), bar = el('div', 'hk-actions'), test = el('button', 'btn', 'Verbindung testen'), cancel = el('button', 'btn', 'Abbrechen');
+    test.type = cancel.type = 'button'; bar.appendChild(test); bar.appendChild(cancel); form.appendChild(bar); form.appendChild(st);
+    var picker = null, save = null;
+    cancel.addEventListener('click', function () { form.textContent = ''; done(); });
+    test.addEventListener('click', function () {
+      status(st, 'Verbinde …'); test.disabled = true;
+      api('POST', '/api/settings/calendars/test', { base_url: url.value.trim(), username: user.value.trim(), password: pw.value })
+        .then(function (d) {
+          status(st, '✓ Verbunden – ' + d.calendars.length + ' Kalender gefunden. Auswählen und speichern:', 'ok');
+          if (picker) picker.remove(); if (save) save.remove();
+          picker = calPicker(d.calendars); form.appendChild(picker);
+          save = el('button', 'btn btn-primary', 'Verbinden & speichern'); save.type = 'button'; form.appendChild(save);
+          save.addEventListener('click', function () {
+            save.disabled = true;
+            api('POST', '/api/settings/calendars', { base_url: url.value.trim(), username: user.value.trim(), password: pw.value, label: label.value.trim(), calendars: picker.value() })
+              .then(function () { pw.value = ''; HK.toast('Kalender verbunden'); form.textContent = ''; done(); })
+              .catch(function (err) { save.disabled = false; status(st, err.message, 'err'); });
+          });
+        })
+        .catch(function (err) { status(st, err.message, 'err'); })
+        .then(function () { test.disabled = false; });
+    });
+  }
+
+  function accountCard(a, reload) {
+    var card = el('div', 'hk-acc'), h = el('div', 'hk-acc-head');
+    h.appendChild(el('strong', null, a.label || a.username));
+    h.appendChild(el('span', 'hk-hint', a.username + ' · ' + a.base_url.replace(/^https?:\/\//, '').split('/')[0] + ' · Passwort gespeichert ✓'));
+    card.appendChild(h);
+    var picker = calPicker(a.calendars); card.appendChild(picker);
+    var st = el('div', 'hk-status'), bar = el('div', 'hk-actions');
+    var save = el('button', 'btn', 'Auswahl speichern'), more = el('button', 'btn', 'Neu einlesen'), pwb = el('button', 'btn', 'Passwort ändern'), del = el('button', 'btn btn-danger', 'Entfernen');
+    [save, more, pwb, del].forEach(function (b) { b.type = 'button'; bar.appendChild(b); });
+    card.appendChild(bar); card.appendChild(st);
+    save.addEventListener('click', function () {
+      status(st, 'Speichere …');
+      api('PATCH', '/api/settings/calendars/' + a.id, { calendars: picker.value() }).then(function () { status(st, '✓ Gespeichert', 'ok'); })
+        .catch(function (err) { status(st, err.message, 'err'); });
+    });
+    more.addEventListener('click', function () {          // neu angelegte Kalender des Kontos holen
+      status(st, 'Lese Kalender …');
+      api('POST', '/api/settings/calendars/test', { id: a.id }).then(function (d) {
+        var cur = picker.value(), by = {}; cur.forEach(function (c) { by[c.href] = c; });
+        var merged = d.calendars.map(function (c) { return by[c.href] ? Object.assign({}, c, by[c.href]) : Object.assign({}, c, { show: false }); });
+        var np = calPicker(merged); card.replaceChild(np, picker); picker = np;
+        status(st, d.calendars.length + ' Kalender – Auswahl speichern nicht vergessen.', 'ok');
+      }).catch(function (err) { status(st, err.message, 'err'); });
+    });
+    pwb.addEventListener('click', function () {
+      var pw = input('password', '', 'Neues App-Passwort'); pw.autocomplete = 'new-password';
+      var ok = el('button', 'btn', 'Prüfen & speichern'); ok.type = 'button';
+      var row = el('div', 'hk-actions'); row.appendChild(pw); row.appendChild(ok); card.insertBefore(row, st); pw.focus();
+      ok.addEventListener('click', function () {
+        status(st, 'Prüfe …');
+        api('PATCH', '/api/settings/calendars/' + a.id, { password: pw.value }).then(function () { pw.value = ''; row.remove(); status(st, '✓ Neues Passwort gespeichert', 'ok'); })
+          .catch(function (err) { status(st, err.message, 'err'); });
+      });
+    });
+    del.addEventListener('click', function () {
+      if (!confirm('Kalender-Zugang „' + (a.label || a.username) + '“ entfernen? (Die Termine im Kalender selbst bleiben erhalten.)')) return;
+      api('DELETE', '/api/settings/calendars/' + a.id).then(reload).catch(function (err) { status(st, err.message, 'err'); });
+    });
+    return card;
+  }
+  // --- Abschnitt "Apps & Geraete": Zugangsschluessel fuer die iOS-App (Teilen, Widget) ---------
+  var fDate = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  function tokenSection(body) {
+    var sec = el('section', 'hk-set'); body.appendChild(sec);
+    sec.appendChild(el('h3', null, '📱 Apps & Geräte'));
+    sec.appendChild(el('p', 'hk-hint', 'Schlüssel für die Saga-Apps (Teilen-Erweiterung und Widget). Ein Schlüssel darf nur ' +
+      'Links/Notizen/Aufgaben ablegen und „Heute“ lesen – nicht deine Notizen. Pro Gerät einen eigenen anlegen; verlorenes Gerät → Schlüssel widerrufen.'));
+    var list = el('div', 'hk-tok-list'); sec.appendChild(list);
+    var bar = el('div', 'hk-actions'), nm = el('input', 'hk-in'); nm.type = 'text'; nm.maxLength = 60; nm.placeholder = 'Name, z. B. „Mein iPhone“';
+    var add = el('button', 'btn', '+ Schlüssel erzeugen'); add.type = 'button'; bar.appendChild(nm); bar.appendChild(add); sec.appendChild(bar);
+    var out = el('div'); sec.appendChild(out);
+    // angemeldete Apps (bleiben angemeldet, bis man sie hier abmeldet)
+    sec.appendChild(el('h4', null, 'Angemeldete Apps'));
+    sec.appendChild(el('p', 'hk-hint', 'Mac- und iPhone-App bleiben angemeldet, ohne ständig nach dem Login zu fragen. Gesperrte Konten verlieren den Zugang sofort; ' +
+      'ein verlorenes Gerät hier abmelden.'));
+    var devs = el('div', 'hk-tok-list'); sec.appendChild(devs);
+    function loadDevs() {
+      api('GET', '/api/settings/devices').then(function (d) {
+        devs.textContent = '';
+        if (!d.length) devs.appendChild(el('p', 'hk-hint', 'Keine App angemeldet.'));
+        d.forEach(function (k) {
+          var row = el('div', 'hk-tok');
+          row.appendChild(el('strong', null, k.name));
+          row.appendChild(el('span', 'hk-hint', 'angemeldet ' + fDate.format(new Date(k.created * 1000)) + (k.last_used ? ' · zuletzt aktiv ' + fDate.format(new Date(k.last_used * 1000)) : '')));
+          var rv = el('button', 'btn btn-danger', 'Abmelden'); rv.type = 'button';
+          rv.addEventListener('click', function () {
+            if (!confirm('„' + k.name + '“ abmelden? Die App muss sich dann neu anmelden.')) return;
+            api('DELETE', '/api/settings/devices/' + k.id).then(loadDevs).catch(function (err) { HK.toast(err.message); });
+          });
+          row.appendChild(rv); devs.appendChild(row);
+        });
+      }).catch(function (err) { devs.textContent = 'Nicht geladen: ' + err.message; });
+    }
+    loadDevs();
+    function load() {
+      api('GET', '/api/settings/tokens').then(function (d) {
+        list.textContent = '';
+        if (!d.length) list.appendChild(el('p', 'hk-hint', 'Noch kein Schlüssel.'));
+        d.forEach(function (k) {
+          var row = el('div', 'hk-tok');
+          row.appendChild(el('strong', null, k.name));
+          row.appendChild(el('code', null, k.prefix + '…'));
+          row.appendChild(el('span', 'hk-hint', 'erstellt ' + fDate.format(new Date(k.created * 1000)) + (k.last_used ? ' · zuletzt benutzt ' + fDate.format(new Date(k.last_used * 1000)) : ' · noch nie benutzt')));
+          var rv = el('button', 'btn btn-danger', 'Widerrufen'); rv.type = 'button';
+          rv.addEventListener('click', function () {
+            if (!confirm('Schlüssel „' + k.name + '“ widerrufen? Die App auf diesem Gerät kann dann nichts mehr ablegen.')) return;
+            api('DELETE', '/api/settings/tokens/' + k.id).then(load).catch(function (err) { HK.toast(err.message); });
+          });
+          row.appendChild(rv); list.appendChild(row);
+        });
+      }).catch(function (err) { list.textContent = 'Nicht geladen: ' + err.message; });
+    }
+    add.addEventListener('click', function () {
+      add.disabled = true;
+      api('POST', '/api/settings/tokens', { name: nm.value.trim() }).then(function (d) {
+        nm.value = ''; out.textContent = '';
+        var box = el('div', 'hk-newtok');
+        box.appendChild(el('p', null, '🔑 Neuer Schlüssel für „' + d.name + '“ – nur jetzt sichtbar! In der iOS-App unter „Einstellungen“ einfügen:'));
+        var code = el('input', 'hk-in hk-tokval'); code.type = 'text'; code.readOnly = true; code.value = d.token; box.appendChild(code);
+        var cp = el('button', 'btn', 'Kopieren'); cp.type = 'button'; box.appendChild(cp);
+        cp.addEventListener('click', function () {
+          code.select();
+          (navigator.clipboard ? navigator.clipboard.writeText(d.token) : Promise.reject()).then(function () { HK.toast('Kopiert'); }, function () { document.execCommand('copy'); HK.toast('Kopiert'); });
+        });
+        if (inApp) {
+          var use = el('button', 'btn', 'In dieser App verwenden'); use.type = 'button';
+          use.addEventListener('click', function () { toApp({ action: 'token', token: d.token }); use.textContent = '✓ Übergeben'; use.disabled = true; });
+          box.appendChild(use);
+        }
+        out.appendChild(box); code.focus(); code.select(); load();
+      }).catch(function (err) { HK.toast(err.message); }).then(function () { add.disabled = false; });
+    });
+    load();
+  }
+
+  // --- Abschnitt "Konto": Name, E-Mail, Passwort (nur lokale Konten), Gruppen ------------------------------
+  function accountSection(body) {
+    var sec = el('section', 'hk-set hk-set-account'); body.appendChild(sec);
+    sec.appendChild(el('h3', null, '👤 Konto'));
+    var box = el('div'); sec.appendChild(box);
+    api('GET', '/api/account').then(function (a) {
+      box.appendChild(el('p', 'hk-hint', a.username + ' · ' + a.source_label + (a.groups.length ? ' · Gruppen: ' + a.groups.join(', ') : '')));
+      if (!a.can_edit) {
+        box.appendChild(el('p', 'hk-hint', 'Name, E-Mail und Passwort verwaltet dein Anmeldedienst.'));
+        return;
+      }
+      var nm = input('text', a.name === a.username ? '' : a.name, 'Anzeigename'); nm.maxLength = 120;
+      var em = input('email', a.email, 'name@example.org'); em.maxLength = 200;
+      box.appendChild(field('Anzeigename', nm)); box.appendChild(field('E-Mail', em));
+      var st = el('div', 'hk-status'), bar = el('div', 'hk-actions'), sv = el('button', 'btn', 'Speichern'); sv.type = 'button';
+      bar.appendChild(sv); box.appendChild(bar); box.appendChild(st);
+      sv.addEventListener('click', function () {
+        api('PATCH', '/api/account', { name: nm.value.trim(), email: em.value.trim() }).then(function (d) {
+          status(st, '✓ Gespeichert', 'ok'); btn.dataset.name = d.name; btn.textContent = '👤 ' + d.name + ' ▾';
+        }).catch(function (err) { status(st, err.message, 'err'); });
+      });
+      box.appendChild(el('h4', null, 'Passwort ändern'));
+      var o = input('password', '', 'Bisheriges Passwort'), n1 = input('password', '', 'mind. 10 Zeichen'), n2 = input('password', '', 'wiederholen');
+      o.autocomplete = 'current-password'; n1.autocomplete = n2.autocomplete = 'new-password';
+      box.appendChild(field('Bisheriges', o)); box.appendChild(field('Neues Passwort', n1)); box.appendChild(field('Wiederholen', n2));
+      var st2 = el('div', 'hk-status'), bar2 = el('div', 'hk-actions'), pwb = el('button', 'btn', 'Passwort ändern'); pwb.type = 'button';
+      bar2.appendChild(pwb); box.appendChild(bar2); box.appendChild(st2);
+      box.appendChild(el('p', 'hk-hint', 'Andere Browser-Sitzungen werden danach abgemeldet. Angemeldete Apps bleiben angemeldet (unten unter „Apps & Geräte“ abmelden).'));
+      pwb.addEventListener('click', function () {
+        if (n1.value !== n2.value) { status(st2, 'Die neuen Passwörter stimmen nicht überein.', 'err'); return; }
+        pwb.disabled = true;
+        api('POST', '/api/account/password', { old: o.value, new: n1.value }).then(function () {
+          o.value = n1.value = n2.value = ''; status(st2, '✓ Passwort geändert', 'ok');
+        }).catch(function (err) { status(st2, err.message, 'err'); }).then(function () { pwb.disabled = false; });
+      });
+    }).catch(function (err) { box.textContent = 'Nicht geladen: ' + err.message; });
+  }
+
+  // --- Abschnitt "Lesezeichen": eigene Kacheln auf dem Dashboard (auch in den Apps) -----------------------------
+  function bmIcon(b) {
+    var ic = el('span', 'ic' + (b.icon ? ' has-img' : ''));
+    if (b.icon) {
+      var img = el('img'); img.alt = ''; img.loading = 'lazy'; img.src = '/api/services/icon/' + encodeURIComponent(b.icon);
+      img.addEventListener('error', function () { ic.classList.remove('has-img'); ic.textContent = (b.name || '?').charAt(0).toUpperCase(); });
+      ic.appendChild(img);
+    } else ic.textContent = (b.name || '?').charAt(0).toUpperCase();
+    return ic;
+  }
+  function bookmarkSection(body) {
+    var sec = el('section', 'hk-set hk-set-bookmarks'); body.appendChild(sec);
+    sec.appendChild(el('h3', null, '🔖 Lesezeichen'));
+    sec.appendChild(el('p', 'hk-hint', 'Eigene Kacheln auf dem Dashboard – nur für dich sichtbar, auch in den Apps. Symbole: Name von selfh.st/icons (z. B. „jellyfin“).'));
+    var list = el('div'); sec.appendChild(list);
+    var add = el('button', 'btn', '+ Lesezeichen'); add.type = 'button'; sec.appendChild(add);
+    var formBox = el('div'); sec.appendChild(formBox);
+    function load() {
+      api('GET', '/api/bookmarks').then(function (d) {
+        list.textContent = '';
+        if (!d.length) list.appendChild(el('p', 'hk-hint', 'Noch keine Lesezeichen.'));
+        d.forEach(function (b) {
+          var row = el('div', 'hk-bm-row'), txt = el('div');
+          txt.appendChild(el('strong', null, b.name)); txt.appendChild(el('div', 'hk-hint', b.category + ' · ' + b.url));
+          var ed = el('button', 'btn', 'Bearbeiten'), del = el('button', 'btn btn-danger', 'Löschen'); ed.type = del.type = 'button';
+          ed.addEventListener('click', function () { bmForm(formBox, b, function () { load(); changed = true; }); });
+          del.addEventListener('click', function () {
+            if (!confirm('Lesezeichen „' + b.name + '“ löschen?')) return;
+            api('DELETE', '/api/bookmarks/' + b.id).then(function () { load(); changed = true; }).catch(function (err) { HK.toast(err.message); });
+          });
+          row.appendChild(bmIcon(b)); row.appendChild(txt); row.appendChild(ed); row.appendChild(del); list.appendChild(row);
+        });
+      }).catch(function (err) { list.textContent = 'Nicht geladen: ' + err.message; });
+    }
+    add.addEventListener('click', function () { bmForm(formBox, null, function () { load(); changed = true; }); });
+    load();
+  }
+  var changed = false;              // Lesezeichen geaendert -> Dashboard beim Schliessen neu laden
+  function bmForm(box, b, done) {
+    box.textContent = '';
+    var f = el('div', 'hk-cal-form');
+    var nm = input('text', b ? b.name : '', 'z. B. Router'), url = input('url', b ? b.url : '', 'https://…');
+    var ic = input('text', b ? b.icon : '', 'optional, z. B. openwrt'), cat = input('text', b ? b.category : 'Lesezeichen');
+    nm.maxLength = 80; url.maxLength = 500; ic.maxLength = 64; cat.maxLength = 40;
+    [field('Name', nm), field('Adresse', url), field('Symbol', ic), field('Kategorie', cat)].forEach(function (x) { f.appendChild(x); });
+    var bar = el('div', 'hk-actions'), sv = el('button', 'btn btn-primary', b ? 'Speichern' : 'Hinzufügen'), cc = el('button', 'btn', 'Abbrechen'), st = el('div', 'hk-status');
+    sv.type = cc.type = 'button'; bar.appendChild(sv); bar.appendChild(cc); f.appendChild(bar); f.appendChild(st);
+    box.appendChild(f);
+    // Abschnitte darueber laden nach -> erst danach zum Formular scrollen
+    setTimeout(function () { f.scrollIntoView({ block: 'center' }); (b ? nm : url).focus({ preventScroll: true }); }, 350);
+    cc.addEventListener('click', function () { box.textContent = ''; });
+    function save() {
+      var data = { name: nm.value.trim(), url: url.value.trim(), icon: ic.value.trim(), category: cat.value.trim() };
+      (b ? api('PATCH', '/api/bookmarks/' + b.id, data) : api('POST', '/api/bookmarks', data))
+        .then(function () { box.textContent = ''; HK.toast(b ? 'Lesezeichen gespeichert' : 'Lesezeichen hinzugefügt'); done(); })
+        .catch(function (err) { status(st, err.message, 'err'); });
+    }
+    sv.addEventListener('click', save);
+    f.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+  }
+  // Einzelnes Lesezeichen direkt vom Dashboard aus bearbeiten/anlegen (✎ an der Kachel, "+ Lesezeichen")
+  function editBookmark(id) {
+    openSettings('bookmarks');
+    var box = dlg && dlg.querySelector('.hk-set-bookmarks > div:last-child');
+    if (!box) return;
+    if (!id) { bmForm(box, null, function () { changed = true; closeSettings(); }); return; }
+    api('GET', '/api/bookmarks').then(function (d) {
+      var b = d.find(function (x) { return String(x.id) === String(id); });
+      if (b) bmForm(box, b, function () { changed = true; closeSettings(); });
+    });
+  }
+  var _close = closeSettings;
+  closeSettings = function () {
+    _close();
+    if (changed && document.getElementById('bm-add')) { changed = false; location.reload(); }
+  };
+  window.HKSettings = { open: openSettings, editBookmark: editBookmark };
+})();

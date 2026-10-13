@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block pagetitle %}Übersicht{% endblock %}
+{% block content %}
+<h2>Übersicht</h2>
+<div class="adm-stats">
+  <a href="/users"><b>{{ stats.active }}</b><span>aktive Benutzer{% if stats.users != stats.active %} ({{ stats.users }} gesamt){% endif %}</span></a>
+  <a href="/users"><b>{{ stats.admins }}</b><span>Admins</span></a>
+  <a href="/groups"><b>{{ stats.groups }}</b><span>Gruppen</span></a>
+  <a href="/services"><b>{{ stats.services }}</b><span>Dienste</span></a>
+  <div><b>{{ stats.bookmarks }}</b><span>Lesezeichen</span></div>
+  <div><b>{{ stats.pages }}</b><span>Seiten</span></div>
+</div>
+
+<section class="adm-card">
+  <h3>Anmeldung</h3>
+  <dl>
+    <dt>Lokale Konten</dt><dd>{{ 'erlaubt' if st.local_login else 'abgeschaltet (nur Admin-Bereich)' }}</dd>
+    <dt>Registrierung</dt><dd>{{ 'offen – jeder kann ein Konto anlegen' if st.registration else 'aus – Konten legt der Admin an' }}</dd>
+    <dt>SSO / OIDC</dt><dd>{% if st.oidc.enabled %}aktiv · {{ st.oidc.issuer }}{% else %}aus{% endif %}</dd>
+    <dt>LDAP / AD</dt><dd>{% if st.ldap.enabled %}aktiv · {{ st.ldap.url }}{% else %}aus{% endif %}</dd>
+    <dt>Gruppen-Kennung</dt><dd><code>{{ st.group_prefix or '(keine)' }}</code> + Kurzname des Dienstes</dd>
+    <dt>Adresse</dt><dd><code>{{ base_url }}</code></dd>
+  </dl>
+</section>
+
+<section class="adm-card">
+  <h3>Zuletzt angemeldet</h3>
+  {% if recent %}
+  <table class="adm-table">
+    <tr><th>Benutzer</th><th>Name</th><th>Konto</th><th>Zeit</th></tr>
+    {% for r in recent %}<tr><td>{{ r[0] }}</td><td>{{ r[1] }}</td><td>{{ r[2] }}</td><td>{{ r[3]|dt }}</td></tr>{% endfor %}
+  </table>
+  {% else %}<p class="hk-hint">Noch niemand angemeldet.</p>{% endif %}
+</section>
+{% endblock %}
