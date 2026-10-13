@@ -1,0 +1,133 @@
+<p align="center">
+  <img src="static/icon.svg" width="96" height="96" alt="Saga">
+</p>
+
+<h1 align="center">Saga</h1>
+
+<p align="center">
+  <b>Tu casa autoalojada para servicios, notas y tareas.</b><br>
+  Panel · Páginas y bases de datos al estilo Notion · Tareas · Calendario · Marcadores · Multiusuario
+</p>
+
+<p align="center">
+  <a href="README.md">English</a> · <a href="README.de.md">Deutsch</a> · <b>Español</b>
+</p>
+
+<p align="center">
+  <a href="https://github.com/yggdrasil-sh/saga/releases"><img src="https://img.shields.io/github/v/release/yggdrasil-sh/saga?label=versi%C3%B3n" alt="Versión"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licencia-AGPL--3.0-blue" alt="Licencia AGPL-3.0"></a>
+</p>
+
+<p align="center">
+  <a href="https://yggdrasil-sh.github.io/saga/es/">Sitio web</a> ·
+  <a href="docs/es/GUIA.md">Guía</a> ·
+  <a href="#inicio-rápido">Inicio rápido</a> ·
+  <a href="#funciones">Funciones</a> ·
+  <a href="#capturas">Capturas</a>
+</p>
+
+![Panel de Saga](docs/screenshots/dashboard.png)
+
+Saga es una página de inicio y una base de conocimiento autoalojada para familias, equipos y homelabs: un panel
+con todos tus servicios, páginas y bases de datos al estilo Notion, tareas, calendarios y marcadores. Cada
+persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio servidor.
+
+## Funciones
+
+- **Panel** con mosaicos para todos los servicios, puntos de estado, favoritos, búsqueda (opcionalmente búsqueda
+  web con SearXNG) y atajos de teclado
+- **Servicios por grupo:** quien está en el grupo `s_nextcloud` ve automáticamente el mosaico "Nextcloud", da
+  igual si el grupo es local o viene de LDAP/SSO
+- **Marcadores propios** para cada usuario, visibles solo para él
+- **Páginas al estilo Notion:** bloques, subpáginas, plantillas, versiones, papelera, exportación a Markdown
+- **Bases de datos** con vistas de tabla, tablero, lista, galería y calendario, filtros, relaciones y fórmulas
+- **Tareas** con fecha límite, prioridad y repetición
+- **Calendarios (CalDAV):** ver y editar Nextcloud, mailcow/SOGo, Radicale, iCloud…
+- **Immich:** usa tus propias fotos como imágenes y portadas
+- **Cada usuario gestiona su propio espacio:** calendarios, Immich, marcadores, claves de app; todo privado,
+  ni los administradores ven el contenido
+- **Cuentas:** usuarios locales, registro activable, **LDAP/Active Directory** y **SSO/OIDC**
+  (Keycloak, Authentik, Authelia, Zitadel, Entra ID…)
+- **Área de administración en un puerto propio** para usuarios, grupos, servicios e inicio de sesión
+- **Español, inglés y alemán:** cada usuario puede elegir su idioma en sus ajustes
+- **[Apps](https://github.com/yggdrasil-sh/saga-apps/blob/main/README.es.md)** (iOS/iPadOS/macOS, Linux/GTK, Android) con la misma
+  API, sesión permanente y vinculación con código QR
+
+## Inicio rápido
+
+Necesitas un servidor con Docker y Docker Compose.
+
+```sh
+git clone https://github.com/yggdrasil-sh/saga.git
+cd saga
+cp .env.example .env
+nano .env        # rellenar BASE_URL, SECRET_KEY, POSTGRES_PASSWORD (ver los comentarios)
+docker compose pull && docker compose up -d
+```
+
+**Actualizar:** `git pull && docker compose pull && docker compose up -d`. Antes de cualquier cambio en la base
+de datos, Saga crea automáticamente una copia de seguridad. Las novedades están en el
+**[registro de cambios](CHANGELOG.md)** (en alemán) y en las
+[versiones publicadas](https://github.com/yggdrasil-sh/saga/releases). ¿Quieres lo último?
+`SAGA_VERSION=testing` en el `.env` descarga la versión de pruebas de la rama `testing`.
+
+- **Saga:** `http://<servidor>:8080`; en producción, ponlo detrás de un proxy inverso con HTTPS
+- **Área de administración:** `http://127.0.0.1:8081` en el servidor (por defecto solo accesible en local,
+  p. ej. con un túnel SSH: `ssh -L 8081:127.0.0.1:8081 servidor`)
+- **Primera cuenta de administración:** `admin`, con la contraseña de `ADMIN_PASSWORD`; si no, aparece una
+  generada en `docker compose logs saga`. ¿La has olvidado? `docker compose exec saga python run.py admin-passwort`
+
+Todo lo demás (proxy inverso, usuarios, servicios, LDAP, SSO, calendarios, copias de seguridad,
+actualizaciones) está en la **[guía](docs/es/GUIA.md)**.
+
+## Capturas
+
+| | |
+|---|---|
+| ![Página](docs/screenshots/seite.png) | ![Base de datos como tablero](docs/screenshots/board.png) |
+| **Páginas** con bloques, listas de verificación, tablas | **Bases de datos** como tabla, tablero, calendario… |
+| ![Administración: servicios](docs/screenshots/admin-dienste.png) | ![Administración: SSO](docs/screenshots/admin-sso.png) |
+| **Administración:** servicios con acceso por grupos | **Administración:** SSO/OIDC con prueba de conexión |
+| ![Tema claro](docs/screenshots/dashboard-hell.png) | ![Ajustes](docs/screenshots/einstellungen.png) |
+| Tema claro (sigue al sistema) | Ajustes propios de cada usuario |
+
+## Arquitectura
+
+```
+Navegador / apps ──► Saga (Python, FastAPI)  :8080  panel, páginas, API
+                     Área de administración  :8081  inicio de sesión propio, solo admins
+                          │
+                          ├── PostgreSQL     cuentas, páginas, tareas, ajustes
+                          ├── /data          imágenes y archivos de las páginas
+                          └── opcional: LDAP/AD, proveedor OIDC, SearXNG, CalDAV, Immich
+```
+
+## Seguridad en resumen
+
+- Contraseñas con scrypt, bloqueo tras varios intentos fallidos, protección CSRF, Content Security Policy
+  estricta
+- Credenciales de calendarios, Immich, LDAP y SSO cifradas en la base de datos (clave: `SECRET_KEY`)
+- Datos de usuarios estrictamente separados, con pruebas automáticas (`tests/isolation.py`)
+- Direcciones internas (red local) para calendarios/Immich solo con permiso del administrador (protección SSRF)
+- Bloquear una cuenta cierra al instante todas sus sesiones e inicios de sesión de apps
+
+¿Has encontrado una vulnerabilidad? Por favor, no abras un issue público: infórmala a través de
+[Security Advisories](https://github.com/yggdrasil-sh/saga/security/advisories/new).
+
+## Desarrollo y pruebas
+
+Las pruebas se ejecutan contra un stack real con PostgreSQL, Radicale (CalDAV), un OpenLDAP de prueba y un
+proveedor OIDC de prueba:
+
+```sh
+SAGA_SSH=root@dockerhost tools/test-stack.sh
+```
+
+Capturas para esta página: `SAGA_SSH=… SAGA_SCRIPT=screens-remote.sh tools/test-stack.sh`.
+
+## Licencia
+
+[GNU AGPL-3.0](LICENSE): puedes usar, modificar y compartir Saga libremente; si ofreces una versión modificada
+como servicio a otras personas, también tienes que publicar su código fuente. Los componentes de Editor.js
+incluidos tienen sus propias licencias (`static/vendor/editorjs/licenses`). Iconos de servicios de
+[selfh.st/icons](https://selfh.st/icons).

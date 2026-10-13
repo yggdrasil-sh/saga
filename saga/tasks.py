@@ -6,7 +6,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import _api_guard, _bad, _body
+from saga.core import _api_guard, _bad, _body, t
 
 router = APIRouter()
 
@@ -123,18 +123,18 @@ async def api_task_add(request: Request):
         return _bad("bad request")
     text = str(b.get("text", "")).strip()[:TASK_MAX_LEN]
     if not text:
-        return _bad("leere Aufgabe")
+        return _bad(t("leere Aufgabe"))
     try:
         due = _due(b.get("due"))
         prio = _prio(b.get("prio", 2))
         rep = _repeat(b.get("repeat"))
     except (ValueError, TypeError):
-        return _bad("ungueltige Angabe (Datum, Prioritaet oder Wiederholung)")
+        return _bad(t("ungueltige Angabe (Datum, Prioritaet oder Wiederholung)"))
     if rep and not due:                      # Wiederholung braucht ein Datum: ab heute
         due = _client_today(b).isoformat()
     with _db() as c, c:
         if c.execute("SELECT COUNT(*) FROM task WHERE uid=?", (uid,)).fetchone()[0] >= TASK_MAX_COUNT:
-            return _bad(f"maximal {TASK_MAX_COUNT} Aufgaben", 409)
+            return _bad(t("maximal {n} Aufgaben", n=TASK_MAX_COUNT), 409)
         cur = c.execute("INSERT INTO task (uid, text, due, prio, repeat, rep_anchor, created) VALUES (?,?,?,?,?,?,?)",
                         (uid, text, due, prio, rep, due if rep else None, time.time()))
         return JSONResponse({"id": cur.lastrowid})
@@ -180,7 +180,7 @@ async def api_task_update(tid: int, request: Request):
             if "text" in b:
                 text = str(b["text"]).strip()[:TASK_MAX_LEN]
                 if not text:
-                    return _bad("leere Aufgabe")
+                    return _bad(t("leere Aufgabe"))
             if "due" in b:
                 due = _due(b["due"])
                 if rep:
@@ -195,7 +195,7 @@ async def api_task_update(tid: int, request: Request):
                     anchor = due if new_rep else None
                 rep = new_rep
         except (ValueError, TypeError):
-            return _bad("ungueltige Angabe (Datum, Prioritaet oder Wiederholung)")
+            return _bad(t("ungueltige Angabe (Datum, Prioritaet oder Wiederholung)"))
 
         # --- Abhaken / wieder oeffnen
         if "done" in b:

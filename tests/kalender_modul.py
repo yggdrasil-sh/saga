@@ -3,6 +3,8 @@ import os, sys, httpx
 from datetime import datetime, timedelta, timezone
 os.environ["CALDAV_ALLOWED_HOSTS"] = "127.0.0.1:5232"; os.environ["CALDAV_ALLOW_HTTP"] = "1"
 import hkcal
+from saga import i18n
+i18n.set_lang("de")                # Meldungen werden auf Deutsch geprueft (ohne Anfrage waere es Englisch)
 B, AUTH = "http://127.0.0.1:5232/", ("test", os.environ.get("HK_RAD_PW", "pw")); res = []
 def ok(n, c): res.append(bool(c)); print(("OK  " if c else "FAIL"), n)
 def raises(fn, text=""):

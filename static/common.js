@@ -1,7 +1,41 @@
 // Saga - gemeinsame Bausteine fuer Dashboard (notes.js) und Notizen-Seite (pages.js)
 // Stellt window.HK bereit. Inhalte werden ausschliesslich per textContent eingefuegt.
+
+// Mehrsprachigkeit: T(deutscherText, {platzhalter: wert}) - Woerterbuch aus /i18n/<lang>.js (window.SAGA_I18N,
+// nur abweichende Texte; fehlt ein Eintrag, bleibt der deutsche Schluessel). Sprache = <html lang>.
 (function () {
   'use strict';
+  var dict = window.SAGA_I18N || {}, lang = (document.documentElement.lang || 'de').toLowerCase();
+  window.T = function (key, params) {
+    var s = Object.prototype.hasOwnProperty.call(dict, key) ? dict[key] : key;
+    if (params) s = s.replace(/\{(\w+)\}/g, function (m, k) { return Object.prototype.hasOwnProperty.call(params, k) ? String(params[k]) : m; });
+    return s;
+  };
+  // Datums-/Zahlenformat: Browser-Region, wenn sie zur Sprache passt (en-GB, es-MX …), sonst Standard der Sprache
+  var prefs = navigator.languages || [navigator.language || ''];
+  window.SAGA_LANG = lang;
+  window.SAGA_LOCALE = prefs.filter(function (l) { return String(l).toLowerCase().split('-')[0] === lang; })[0] ||
+    ({ de: 'de-DE', en: 'en-US', es: 'es-ES' }[lang] || lang);
+})();
+
+(function () {
+  'use strict';
+  var LOC = window.SAGA_LOCALE;
+  // Wochentage kurz, Montag zuerst (Kalender-Raster)
+  function weekdaysShort() {
+    var f = new Intl.DateTimeFormat(LOC, { weekday: 'short' }), out = [];
+    for (var i = 0; i < 7; i++) out.push(f.format(new Date(2024, 0, 1 + i)).replace(/\.$/, ''));    // 1.1.2024 = Montag
+    return out;
+  }
+  // relative Angabe ("vor 5 Minuten", "in 2 days") - n Sekunden (negativ = Vergangenheit)
+  var rtf = window.Intl && Intl.RelativeTimeFormat ? new Intl.RelativeTimeFormat(LOC, { numeric: 'auto' }) : null;
+  function relTime(sec) {
+    var a = Math.abs(sec), u = 'second', v = sec;
+    if (a >= 86400 * 30) { u = 'month'; v = sec / (86400 * 30); } else if (a >= 86400 * 7) { u = 'week'; v = sec / (86400 * 7); }
+    else if (a >= 86400) { u = 'day'; v = sec / 86400; } else if (a >= 3600) { u = 'hour'; v = sec / 3600; } else if (a >= 60) { u = 'minute'; v = sec / 60; }
+    v = Math.round(v);
+    return rtf ? rtf.format(v, u) : String(v) + ' ' + u;
+  }
   var H = { 'X-Saga': '1' };
   function $(id) { return document.getElementById(id); }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -23,7 +57,7 @@
   // Einstellungen pro Browser (offen/zu, zuletzt geoeffnete Seite …)
   function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
 
-  var fUpd = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  var fUpd = new Intl.DateTimeFormat(LOC, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   function escapeHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
   // Kurze Rueckmeldung unten in der Mitte, optional mit Aktion (z.B. "Rueckgaengig")
@@ -139,7 +173,7 @@
     if (!(tg instanceof Element) || (!menuEl.contains(tg) && !subEl.contains(tg))) closeMenu();
   }, true);
 
-  window.HK = { $: $, el: el, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
+  window.HK = { $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
                 openMenu: openMenu, closeMenu: closeMenu, menuItem: menuItem, menuLabel: menuLabel,
                 menuOpen: function () { return !!menuOwner; }, closeSub: closeSub };
 })();

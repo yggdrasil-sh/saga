@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from db import connect as _db
 from fastapi import APIRouter
 from saga.calendars import _cal_collect
-from saga.core import APP_CAPTURE_MAX, APP_TOKEN_MAX, TZ, _api_guard, _bad, _body, _json_load, _tok_db, _tok_hash, user_info
+from saga.core import APP_CAPTURE_MAX, APP_TOKEN_MAX, TZ, _api_guard, _bad, _body, _json_load, _tok_db, _tok_hash, user_info, t
 from saga.databases import _first_image
 from saga.files import _thumb, _thumb_mime, _thumb_w
 from saga.notes import FILES_DIR, _FILE_URL, _clean_props
@@ -58,7 +58,7 @@ async def api_tok_add(request: Request):
     with _db() as c, c:
         _tok_db(c)
         if c.execute("SELECT COUNT(*) FROM app_token WHERE uid=?", (uid,)).fetchone()[0] >= APP_TOKEN_MAX:
-            return _bad(f"Höchstens {APP_TOKEN_MAX} Schlüssel")
+            return _bad(t("Höchstens {n} Schlüssel", n=APP_TOKEN_MAX))
         cur = c.execute("INSERT INTO app_token (uid, name, hash, prefix, created) VALUES (?,?,?,?,?)",
                         (uid, name, _tok_hash(tok), tok[:9], time.time()))
     return JSONResponse({"id": cur.lastrowid, "name": name, "token": tok, "prefix": tok[:9]})
@@ -99,9 +99,9 @@ async def api_app_capture(request: Request):
     text = str(b.get("text") or "").strip()[:APP_CAPTURE_MAX]
     url = str(b.get("url") or "").strip()[:2000]
     if url and not re.fullmatch(r"https?://[^\s<>\"]+", url):
-        return _bad("ungültiger Link")
+        return _bad(t("ungültiger Link"))
     if not (title or text or url):
-        return _bad("nichts zum Speichern")
+        return _bad(t("nichts zum Speichern"))
     if kind == "task":
         txt = (title or text.split("\n")[0] or url)[:TASK_MAX_LEN - (len(url) + 1 if url and url not in (title or text) else 0)]
         if url and url not in txt:
@@ -109,7 +109,7 @@ async def api_app_capture(request: Request):
         try:
             due = _due(b.get("due"))                  # Siri/Kurzbefehle: optional faellig am
         except (ValueError, TypeError):
-            return _bad("ungültiges Datum")
+            return _bad(t("ungültiges Datum"))
         with _db() as c, c:
             cur = c.execute("INSERT INTO task (uid, text, due, prio, repeat, rep_anchor, created) VALUES (?,?,?,?,?,?,?)",
                             (uid, txt[:TASK_MAX_LEN], due, 2, None, None, time.time()))
@@ -126,7 +126,7 @@ async def api_app_capture(request: Request):
         _tok_db(c)
         parent = _inbox(c, uid)
         nid = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, created, updated) VALUES (?,?,?,?,?,?,?,?,?)",
-                        (uid, title or (url or text)[:80] or "Geteilt", body, "blocks", "🔗" if url else "📝", parent, now, now, now)).lastrowid
+                        (uid, title or (url or text)[:80] or t("Geteilt"), body, "blocks", "🔗" if url else "📝", parent, now, now, now)).lastrowid
     return JSONResponse({"ok": True, "kind": "page", "id": nid, "url": f"/notes#{nid}"})
 
 
@@ -140,7 +140,7 @@ def api_app_today(request: Request):
     try:
         events, errors = _cal_collect(uid, today, today + timedelta(days=2))
     except Exception:
-        events, errors = [], [{"error": "Kalender nicht lesbar"}]
+        events, errors = [], [{"error": t("Kalender nicht lesbar")}]
     with _db() as c:
         rows = c.execute("SELECT id, text, due, prio FROM task WHERE uid=? AND done=0 "
                          "ORDER BY (due IS NULL), due, prio, created LIMIT 20", (uid,)).fetchall()
@@ -236,7 +236,7 @@ async def api_app_row_check(nid: int, request: Request):
             return _bad("not found", 404)
         schema = _json_load(ps[0], {"props": []})
         if not any(p.get("id") == pid and p.get("type") == "checkbox" for p in schema.get("props", [])):
-            return _bad("kein Häkchen-Feld")
+            return _bad(t("kein Häkchen-Feld"))
         merged = _clean_props(schema, {pid: bool(b.get("value"))}, _json_load(ps[1], {}))
         c.execute("UPDATE note SET props=?, updated=? WHERE id=? AND uid=?", (json.dumps(merged, ensure_ascii=False), time.time(), nid, uid))
     return JSONResponse({"ok": True})

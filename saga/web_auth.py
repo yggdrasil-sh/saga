@@ -9,8 +9,10 @@ from starlette.concurrency import run_in_threadpool
 import auth
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import ADMIN_URL, ASSET_V, BASE_URL, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, title, tmpl, user_info
-from saga.dashboard import SOURCE_LABELS
+from saga import i18n
+from saga.core import (ADMIN_URL, ASSET_V, BASE_URL, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, set_user_lang, t,
+                       title, tmpl, user_info, user_lang)
+from saga.dashboard import source_label
 
 router = APIRouter()
 
@@ -31,10 +33,10 @@ def _ip(request):
 
 
 def _csrf(request):
-    t = request.session.get("csrf")
-    if not t:
-        t = request.session["csrf"] = secrets.token_urlsafe(24)
-    return t
+    tok = request.session.get("csrf")
+    if not tok:
+        tok = request.session["csrf"] = secrets.token_urlsafe(24)
+    return tok
 
 
 def _csrf_ok(request, form):
@@ -45,8 +47,13 @@ def _auth_opts():
     st = auth.settings()
     o = st["oidc"]
     return {"pw_login": bool(st.get("local_login", True) or (st["ldap"].get("enabled") and st["ldap"].get("password_login", True))),
-            "sso": bool(o.get("enabled") and o.get("issuer") and o.get("client_id")), "sso_label": o.get("label") or "Mit SSO anmelden",
+            "sso": bool(o.get("enabled") and o.get("issuer") and o.get("client_id")), "sso_label": _sso_label(o.get("label")),
             "registration": bool(st.get("registration")), "ldap": bool(st["ldap"].get("enabled"))}
+
+
+def _sso_label(lbl):
+    """Eigener Text aus dem Admin-Bereich bleibt; der Standardtext wird uebersetzt."""
+    return t("Mit SSO anmelden") if not lbl or lbl == "Mit SSO anmelden" else lbl
 
 
 def _auth_page(request, name, status=200, **kw):
@@ -79,9 +86,9 @@ async def login_post(request: Request):
     form = await request.form()
     username = str(form.get("username") or "").strip()[:100]
     if not _csrf_ok(request, form):
-        return _auth_page(request, "login.html", 400, error="Die Seite war zu lange offen – bitte noch einmal anmelden.", username=username)
+        return _auth_page(request, "login.html", 400, error=t("Die Seite war zu lange offen – bitte noch einmal anmelden."), username=username)
     if not _auth_opts()["pw_login"]:
-        return _auth_page(request, "login.html", 403, error="Anmeldung mit Passwort ist abgeschaltet.")
+        return _auth_page(request, "login.html", 403, error=t("Anmeldung mit Passwort ist abgeschaltet."))
     allow_local = bool(auth.settings().get("local_login", True))
     user, err = await run_in_threadpool(auth.authenticate, username, str(form.get("password") or ""), _ip(request), allow_local)
     if not user:
@@ -99,7 +106,7 @@ async def login_sso(request: Request):
         return await cl.authorize_redirect(request, BASE_URL + "/auth/callback")
     except Exception as ex:  # noqa: BLE001 - Anbieter nicht erreichbar / falsch eingerichtet
         print(f"sso: {type(ex).__name__}: {ex}", flush=True)
-        return _auth_page(request, "login.html", 502, error="Der Anmeldedienst (SSO) ist gerade nicht erreichbar.")
+        return _auth_page(request, "login.html", 502, error=t("Der Anmeldedienst (SSO) ist gerade nicht erreichbar."))
 
 
 @router.get("/auth/callback")
@@ -111,7 +118,7 @@ async def callback(request: Request):
         token = await cl.authorize_access_token(request)
     except Exception as ex:  # noqa: BLE001 - state passt nicht, Code abgelaufen, Anbieter weg ...
         print(f"sso-callback: {type(ex).__name__}: {ex}", flush=True)
-        return _auth_page(request, "login.html", 400, error="SSO-Anmeldung fehlgeschlagen – bitte noch einmal versuchen.")
+        return _auth_page(request, "login.html", 400, error=t("SSO-Anmeldung fehlgeschlagen – bitte noch einmal versuchen."))
     claims = dict(token.get("userinfo") or {})
     gclaim = auth.settings()["oidc"].get("groups_claim")
     if gclaim and auth._claim(claims, gclaim) is None:          # Gruppen stehen bei manchen Anbietern nur im userinfo-Endpunkt
@@ -148,25 +155,25 @@ async def register_post(request: Request):
     def fail(msg, code=400):
         return _auth_page(request, "register.html", code, error=msg, f=f)
     if not _csrf_ok(request, form):
-        return fail("Die Seite war zu lange offen – bitte noch einmal versuchen.")
+        return fail(t("Die Seite war zu lange offen – bitte noch einmal versuchen."))
     pw, pw2 = str(form.get("password") or ""), str(form.get("password2") or "")
     if pw != pw2:
-        return fail("Die Passwörter stimmen nicht überein.")
+        return fail(t("Die Passwörter stimmen nicht überein."))
     if f["email"] and not EMAIL_RE.fullmatch(f["email"]):
-        return fail("Die E-Mail-Adresse sieht nicht richtig aus.")
+        return fail(t("Die E-Mail-Adresse sieht nicht richtig aus."))
     ip = _ip(request)
     with _db() as c:
         n = c.execute("SELECT COUNT(*) FROM login_fail WHERE key=? AND ts>?", ("reg:" + ip, time.time() - 3600)).fetchone()[0]
     if n >= REG_MAX_PER_IP:
-        return fail("Zu viele Registrierungen von dieser Adresse – bitte später erneut versuchen.", 429)
+        return fail(t("Zu viele Registrierungen von dieser Adresse – bitte später erneut versuchen."), 429)
     u = auth.norm_username(f["username"])
     if u and _auth_opts()["ldap"]:
         try:
             taken = await run_in_threadpool(auth.ldap_exists, u)
         except Exception:  # noqa: BLE001 - Verzeichnis weg: lieber nicht registrieren
-            return fail("Registrierung gerade nicht möglich (Verzeichnisdienst nicht erreichbar).", 503)
+            return fail(t("Registrierung gerade nicht möglich (Verzeichnisdienst nicht erreichbar)."), 503)
         if taken:
-            return fail("Diesen Benutzernamen gibt es schon.")
+            return fail(t("Diesen Benutzernamen gibt es schon."))
     user, err = await run_in_threadpool(auth.create_user, f["username"], pw, f["name"], f["email"])
     if err:
         return fail(err)
@@ -203,10 +210,11 @@ def api_account(request: Request):
         return _bad("unauthorized", 401)
     i = user_info(uid)
     return JSONResponse({"username": i["username"], "name": i["name"], "email": i["mail"], "source": i["source"],
-                         "source_label": SOURCE_LABELS.get(i["source"], i["source"]), "groups": sorted(i["groups"]),
+                         "source_label": source_label(i["source"]), "groups": sorted(i["groups"]),
                          "local_groups": sorted(i["local_groups"]), "is_admin": i["is_admin"],
                          "admin_url": ADMIN_URL if i["is_admin"] else "", "pw_changed": i["pw_changed"],
-                         "can_edit": i["source"] == "local"})
+                         "can_edit": i["source"] == "local", "lang": user_lang(uid), "lang_active": i18n.get_lang(),
+                         "langs": [{"code": "", "name": t("Automatisch")}] + [{"code": k, "name": v} for k, v in i18n.NAMES.items()]})
 
 
 @router.patch("/api/account")
@@ -216,11 +224,11 @@ async def api_account_update(request: Request):
         return _bad("unauthorized", 401)
     i = user_info(uid)
     if i["source"] != "local":
-        return _bad("Name und E-Mail kommen von deinem Anmeldedienst und werden dort geändert.", 403)
+        return _bad(t("Name und E-Mail kommen von deinem Anmeldedienst und werden dort geändert."), 403)
     b = await _body(request) or {}
     name, email = str(b.get("name") or "").strip()[:120], str(b.get("email") or "").strip()[:200]
     if email and not EMAIL_RE.fullmatch(email):
-        return _bad("Die E-Mail-Adresse sieht nicht richtig aus.")
+        return _bad(t("Die E-Mail-Adresse sieht nicht richtig aus."))
     with _db() as c, c:
         c.execute("UPDATE users SET display_name=?, email=? WHERE username=?", (name, email, uid))
     auth._ui_cache.pop(uid, None)
@@ -237,15 +245,28 @@ async def api_account_password(request: Request):
     old, new = str(b.get("old") or ""), str(b.get("new") or "")
     u = auth.get_user(uid)
     if u["source"] != "local":
-        return _bad("Dein Passwort verwaltet dein Anmeldedienst.", 403)
+        return _bad(t("Dein Passwort verwaltet dein Anmeldedienst."), 403)
     if auth.too_many(uid, _ip(request)):
-        return _bad("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen.", 429)
+        return _bad(t("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen."), 429)
     if not u["password_hash"] or not await run_in_threadpool(auth.verify_password, old, u["password_hash"]):
         auth.note_fail(uid, _ip(request))
-        return _bad("Das bisherige Passwort stimmt nicht.", 403)
+        return _bad(t("Das bisherige Passwort stimmt nicht."), 403)
     p = auth.password_problem(new)
     if p:
         return _bad(p)
     await run_in_threadpool(auth.set_password, uid, new)
     request.session["pwc"] = time.time()              # diese Sitzung bleibt, alle anderen Browser-Sitzungen enden
     return JSONResponse({"ok": True})
+
+
+@router.put("/api/account/lang")
+async def api_account_lang(request: Request):
+    """Sprache der Web-Oberflaeche: 'de' / 'en' / 'es' oder '' (automatisch: Server-Standard bzw. Browser)."""
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    b = await _body(request) or {}
+    lang = str(b.get("lang") or "")
+    if lang and not i18n.norm(lang):
+        return _bad(t("Unbekannte Sprache."))
+    return JSONResponse({"ok": True, "lang": set_user_lang(uid, lang)})

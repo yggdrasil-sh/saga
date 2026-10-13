@@ -1,35 +1,35 @@
 <!doctype html>
-<html lang="de">
+<html lang="{{ lang() }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>{% block pagetitle %}Admin{% endblock %} – {{ title }}</title>
+<title>{% block pagetitle %}{{ _('Admin') }}{% endblock %} – {{ title }}</title>
 <link rel="icon" href="/static/icon.svg?v={{ v }}" type="image/svg+xml">
 <link rel="stylesheet" href="/static/style.css?v={{ v }}">
 </head>
 <body class="adm">
 {% if me %}
 <header class="adm-head">
-  <h1>🛡 {{ title }} · Admin</h1>
+  <h1>🛡 {{ title }} · {{ _('Admin') }}</h1>
   <nav class="adm-nav">
-    {% for href, label in [('/', 'Übersicht'), ('/users', 'Benutzer'), ('/groups', 'Gruppen'), ('/services', 'Dienste'), ('/settings', 'Allgemein'), ('/settings/oidc', 'SSO / OIDC'), ('/settings/ldap', 'LDAP / AD')] %}
+    {% for href, label in [('/', _('Übersicht')), ('/users', _('Benutzer')), ('/groups', _('Gruppen')), ('/services', _('Dienste')), ('/settings', _('Allgemein')), ('/settings/oidc', 'SSO / OIDC'), ('/settings/ldap', 'LDAP / AD')] %}
     <a href="{{ href }}"{% if path == href or (href not in ('/', '/settings') and path.startswith(href + '/')) %} class="on"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>
   <span class="spacer"></span>
-  <a class="btn" href="{{ base_url }}" target="_blank" rel="noopener">Zum Dashboard ↗</a>
+  <a class="btn" href="{{ base_url }}" target="_blank" rel="noopener">{{ _("Zum Dashboard") }} ↗</a>
   <span class="greet">{{ me.username }}</span>
-  <a class="btn" href="/logout">Abmelden</a>
+  <a class="btn" href="/logout">{{ _("Abmelden") }}</a>
 </header>
 {% endif %}
 <main class="adm-main">
-  {% if update %}<p class="adm-flash" role="status">🎉 Saga {{ update.version }} ist erschienen (installiert: {{ version }}) –
-    <a href="{{ update.url }}" target="_blank" rel="noopener">Was ist neu?</a> · Aktualisieren: <code>docker compose pull &amp;&amp; docker compose up -d</code></p>{% endif %}
+  {% if update %}<p class="adm-flash" role="status">🎉 {{ _("Saga {new} ist erschienen (installiert: {cur})", new=update.version, cur=version) }} –
+    <a href="{{ update.url }}" target="_blank" rel="noopener">{{ _("Was ist neu?") }}</a> · {{ _("Aktualisieren:") }} <code>docker compose pull &amp;&amp; docker compose up -d</code></p>{% endif %}
   {% if flash %}<p class="adm-flash {{ flash[1] }}" role="status">{{ flash[0] }}</p>{% endif %}
   {% block content %}{% endblock %}
 </main>
-{% if me %}<footer class="adm-foot">Saga {{ version }}{% if "-testing" in version %} · 🧪 Testversion{% endif %} · <a href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Änderungen</a></footer>{% endif %}
+{% if me %}<footer class="adm-foot">Saga {{ version }}{% if "-testing" in version %} · 🧪 {{ _("Testversion") }}{% endif %} · <a href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md" target="_blank" rel="noopener">{{ _("Änderungen") }}</a></footer>{% endif %}
 <script src="/static/admin.js?v={{ v }}"></script>
 </body>
 </html>

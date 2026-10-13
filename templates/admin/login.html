@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 {% from "_macros.html" import field, check, csrf_field with context %}
-{% block pagetitle %}Anmelden{% endblock %}
+{% block pagetitle %}{{ _('Anmelden') }}{% endblock %}
 {% block content %}
 <div class="auth-wrap">
   <div class="auth-card">
-    <div class="auth-brand"><img src="/static/icon.svg?v={{ v }}" alt="" width="44" height="44"><h1>{{ title }} · Admin</h1></div>
+    <div class="auth-brand"><img src="/static/icon.svg?v={{ v }}" alt="" width="44" height="44"><h1>{{ title }} · {{ _('Admin') }}</h1></div>
     {% if error %}<p class="auth-err" role="alert">{{ error }}</p>{% endif %}
     <form method="post" action="/login" class="auth-form">
       {{ csrf_field() }}
-      <label class="hk-field"><span>Benutzername</span>
+      <label class="hk-field"><span>{{ _("Benutzername") }}</span>
         <input class="hk-in" name="username" value="{{ username or '' }}" autocomplete="username" autocapitalize="none" required autofocus maxlength="100"></label>
-      <label class="hk-field"><span>Passwort</span>
+      <label class="hk-field"><span>{{ _("Passwort") }}</span>
         <input class="hk-in" type="password" name="password" autocomplete="current-password" required maxlength="200"></label>
-      <button class="btn btn-primary auth-btn" type="submit">Anmelden</button>
+      <button class="btn btn-primary auth-btn" type="submit">{{ _("Anmelden") }}</button>
     </form>
-    <p class="auth-foot">Nur für Konten mit Admin-Rechten (lokal oder LDAP).</p>
+    <p class="auth-foot">{{ _("Nur für Konten mit Admin-Rechten (lokal oder LDAP).") }}</p>
   </div>
 </div>
 {% endblock %}

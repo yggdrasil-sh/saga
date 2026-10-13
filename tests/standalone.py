@@ -14,11 +14,13 @@ def ok(n, c): res.append(bool(c)); print(("OK  " if c else "FAIL"), n)
 
 class Client:
     def __init__(self, base, host=None):
-        self.base, self.host, self.ck = base, host, {}
+        self.base, self.host, self.ck, self.lang = base, host, {}, "de"     # Texte werden auf Deutsch geprueft
 
     def req(self, m, p, form=None, js=None, api=False):
         c = http.client.HTTPConnection(self.base.hostname, self.base.port, timeout=30)
         h = {"Host": self.host or self.base.netloc}
+        if self.lang:
+            h["Accept-Language"] = self.lang
         if self.ck:
             h["Cookie"] = "; ".join(f"{k}={v}" for k, v in self.ck.items())
         body = None

@@ -2,7 +2,7 @@
 // keine Fremdbibliothek, nur CSS-Klassen (die Seite erlaubt keine Inline-Styles).
 (function () {
   'use strict';
-  var LANGS = [['', 'Text'], ['bash', 'Bash / Shell'], ['yaml', 'YAML'], ['python', 'Python'], ['javascript', 'JavaScript'],
+  var LANGS = [['', T('Text')], ['bash', 'Bash / Shell'], ['yaml', 'YAML'], ['python', 'Python'], ['javascript', 'JavaScript'],
     ['typescript', 'TypeScript'], ['json', 'JSON'], ['haskell', 'Haskell'], ['sql', 'SQL'], ['dockerfile', 'Dockerfile'],
     ['ini', 'INI / TOML / conf'], ['nginx', 'Nginx'], ['xml', 'HTML / XML'], ['powershell', 'PowerShell'], ['go', 'Go'], ['rust', 'Rust'], ['css', 'CSS']];
   var ALIAS = { sh: 'bash', shell: 'bash', zsh: 'bash', 'plain text': '', plain: '', text: '', yml: 'yaml', py: 'python', js: 'javascript',
@@ -67,7 +67,7 @@
     var d = o.data || {};
     this.api = o.api; this.block = o.block; this.ro = !!o.readOnly; this.code = d.code || ''; this.lang = norm(d.language);
   }
-  HKCode.toolbox = { title: 'Code', icon: '<svg width="17" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg>' };
+  HKCode.toolbox = { title: T('Code'), icon: '<svg width="17" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg>' };
   HKCode.enableLineBreaks = true;
   HKCode.isReadOnlySupported = true;
   HKCode.conversionConfig = { export: 'code', import: 'code' };
@@ -75,19 +75,19 @@
   HKCode.sanitize = { code: true, language: false };
   HKCode.prototype.render = function () {
     var self = this, el = HK.el, w = el('div', 'hk-code'), head = el('div', 'hk-code-head');
-    var sel = el('select', 'hk-code-lang'); sel.setAttribute('aria-label', 'Sprache'); sel.disabled = this.ro;
+    var sel = el('select', 'hk-code-lang'); sel.setAttribute('aria-label', T('Programmiersprache')); sel.disabled = this.ro;
     LANGS.forEach(function (x) { var o = el('option', null, x[1]); o.value = x[0]; sel.appendChild(o); });
     sel.value = this.lang;
     sel.addEventListener('change', function () { self.lang = sel.value; self.paint(); self.changed(); });
-    var cp = el('button', 'hk-code-copy', 'Kopieren'); cp.type = 'button';
+    var cp = el('button', 'hk-code-copy', T('Kopieren')); cp.type = 'button';
     cp.addEventListener('click', function () {
-      if (navigator.clipboard) navigator.clipboard.writeText(self.ta.value).then(function () { HK.toast('Code kopiert'); });
+      if (navigator.clipboard) navigator.clipboard.writeText(self.ta.value).then(function () { HK.toast(T('Code kopiert')); });
     });
     head.appendChild(sel); head.appendChild(cp);
     var area = el('div', 'hk-code-area'), pre = el('pre', 'hk-code-pre');
     this.out = el('code'); pre.appendChild(this.out); pre.setAttribute('aria-hidden', 'true');
-    var ta = el('textarea', 'hk-code-ta'); ta.spellcheck = false; ta.value = this.code; ta.placeholder = 'Code'; ta.readOnly = this.ro;
-    ta.setAttribute('autocapitalize', 'off'); ta.setAttribute('autocomplete', 'off'); ta.setAttribute('aria-label', 'Code');
+    var ta = el('textarea', 'hk-code-ta'); ta.spellcheck = false; ta.value = this.code; ta.placeholder = T('Code'); ta.readOnly = this.ro;
+    ta.setAttribute('autocapitalize', 'off'); ta.setAttribute('autocomplete', 'off'); ta.setAttribute('aria-label', T('Code'));
     ta.addEventListener('input', function () { self.paint(); self.changed(); });
     ta.addEventListener('keydown', function (e) {
       if (e.key === 'Tab' && !e.metaKey && !e.ctrlKey) {               // Tab = 2 Leerzeichen (statt aus dem Block springen)

@@ -4,7 +4,6 @@ import json
 import os
 import ssl
 import time
-from datetime import datetime
 from urllib.parse import urlparse
 import httpx
 from fastapi import Request
@@ -12,7 +11,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 import auth
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import ADMIN_URL, ASSET_V, CACHE_TTL, CA_FILE, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user, title, tmpl, user_info
+from saga import i18n
+from saga.core import ADMIN_URL, ASSET_V, CACHE_TTL, CA_FILE, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user, t, title, tmpl, user_info
 
 router = APIRouter()
 
@@ -129,16 +129,17 @@ def toggle_fav(uid, grp):
 
 
 # --- Account ----------------------------------------------------------------
-SOURCE_LABELS = {"local": "Lokales Konto", "ldap": "Verzeichnis (LDAP/AD)", "oidc": "Single Sign-On (OIDC)"}
+def source_label(source):
+    return {"local": t("Lokales Konto"), "ldap": t("Verzeichnis (LDAP/AD)"), "oidc": t("Single Sign-On (OIDC)")}.get(source, source)
 
 
-def _fmt_day(t):
-    return datetime.fromtimestamp(t, TZ).strftime("%d.%m.%Y") if t else None
+def _fmt_day(ts):
+    return i18n.fmt_date(ts, TZ) if ts else None
 
 
 def account_ctx(info):
     return {
-        "mail": info["mail"], "source": SOURCE_LABELS.get(info["source"], info["source"]),
+        "mail": info["mail"], "source": source_label(info["source"]),
         "local": info["source"] == "local", "pw_changed": _fmt_day(info["pw_changed"]),
         "last_login": _fmt_day(info["last_login"]), "groups": sorted(info["groups"]),
         "admin_url": ADMIN_URL if info["is_admin"] else "",

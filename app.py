@@ -10,11 +10,12 @@ Jeder Benutzer verwaltet seinen Bereich selbst: Seiten, Aufgaben, Lesezeichen, K
 Immich, App-Schluessel. Daten: PostgreSQL (db.py), Dateien in STATE_DIR.
 """
 import asyncio
+import json
 import os
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 import auth
@@ -22,7 +23,8 @@ import db
 from version import API_LEVEL, MIN_APP, VERSION
 
 from saga import app_api, app_login, calendars, dashboard, databases, files, immich, links, page_tools, pages, tasks, web_auth
-from saga.core import BASE_URL, E, HERE, SECRET, SESSION_HOURS, title
+from saga import i18n
+from saga.core import BASE_URL, E, HERE, SECRET, SESSION_HOURS, LangMiddleware, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init
 
@@ -64,6 +66,7 @@ async def lifespan(_app):
 
 
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+app.add_middleware(LangMiddleware, session_key="uid")      # vor SessionMiddleware registriert = laeuft danach (kennt die Sitzung)
 app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET,
@@ -104,6 +107,16 @@ def api_version():
     """Fuer Apps und Monitoring: Server-Version, Schnittstellen-Stand und die aelteste App-Version, die alles kann."""
     return JSONResponse({"name": "Saga", "version": VERSION, "api": API_LEVEL, "min_app": MIN_APP, "schema": db.SCHEMA_VERSION},
                         headers={"Cache-Control": "no-store"})
+
+
+@app.get("/i18n/{lang}.js")
+def i18n_js(lang: str, v: str = ""):
+    """Woerterbuch fuer das Front-End (window.SAGA_I18N). Mit passendem ?v= unbegrenzt zwischenspeicherbar."""
+    if lang not in i18n.LANGS:
+        return PlainTextResponse("not found", status_code=404)
+    body = "window.SAGA_I18N=" + json.dumps(i18n.js_catalog(lang), ensure_ascii=False, separators=(",", ":")) + ";\n"
+    cache = "public, max-age=31536000, immutable" if v == i18n.VERSION else "no-cache"
+    return Response(body, media_type="text/javascript; charset=utf-8", headers={"Cache-Control": cache, "X-Content-Type-Options": "nosniff"})
 
 
 @app.get("/manifest.webmanifest")

@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% from "_macros.html" import field, check, csrf_field with context %}
-{% block pagetitle %}Gruppen{% endblock %}
+{% block pagetitle %}{{ _('Gruppen') }}{% endblock %}
 {% block content %}
-<h2>Gruppen</h2>
-<p class="hk-hint">Gruppen steuern, wer welchen Dienst sieht: Gruppe <code>{{ prefix }}&lt;kurzname&gt;</code> = Zugang zum Dienst mit diesem Kurznamen.
-  Mitglieder setzt du beim Benutzer. Gruppen aus LDAP/SSO zählen genauso – dort heißt die Gruppe einfach gleich.</p>
+<h2>{{ _("Gruppen") }}</h2>
+<p class="hk-hint">{{ _("Gruppen steuern, wer welchen Dienst sieht: Gruppe {group} = Zugang zum Dienst mit diesem Kurznamen.", group=prefix ~ _("<kurzname>")) }}
+  {{ _("Mitglieder setzt du beim Benutzer. Gruppen aus LDAP/SSO zählen genauso – dort heißt die Gruppe einfach gleich.") }}</p>
 <table class="adm-table">
-  <tr><th>Gruppe</th><th>Beschreibung</th><th>Mitglieder (lokal)</th><th>Gibt frei</th><th></th></tr>
+  <tr><th>{{ _("Gruppe") }}</th><th>{{ _("Beschreibung") }}</th><th>{{ _("Mitglieder (lokal)") }}</th><th>{{ _("Gibt frei") }}</th><th></th></tr>
   {% for r in rows %}
   <tr>
     <td><b>{{ r[1] }}</b></td>
@@ -14,28 +14,28 @@
         <input class="hk-in" name="description" value="{{ r[2] }}" maxlength="300"><button class="btn" type="submit">✓</button></form></td>
     <td class="chips">{% for m in members.get(r[0], []) %}<span class="chip">{{ m }}</span>{% else %}<small>–</small>{% endfor %}</td>
     <td>{{ used.get(r[1], [])|join(', ') or '–' }}</td>
-    <td><form method="post" data-confirm="Gruppe {{ r[1] }} löschen? Mitglieder verlieren die Freigaben dieser Gruppe.">{{ csrf_field() }}
-        <input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ r[0] }}"><button class="btn btn-danger" type="submit">Löschen</button></form></td>
+    <td><form method="post" data-confirm="{{ _("Gruppe {name} löschen? Mitglieder verlieren die Freigaben dieser Gruppe.", name=r[1]) }}">{{ csrf_field() }}
+        <input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ r[0] }}"><button class="btn btn-danger" type="submit">{{ _("Löschen") }}</button></form></td>
   </tr>
   {% else %}
-  <tr><td colspan="5" class="hk-hint">Noch keine Gruppen.</td></tr>
+  <tr><td colspan="5" class="hk-hint">{{ _("Noch keine Gruppen.") }}</td></tr>
   {% endfor %}
 </table>
 
 <section class="adm-card">
-  <h3>Gruppe anlegen</h3>
+  <h3>{{ _("Gruppe anlegen") }}</h3>
   <form method="post" class="adm-form">
     {{ csrf_field() }}<input type="hidden" name="action" value="new">
-    {{ field('Name', 'name', req=true, max=100, ph=prefix ~ 'nextcloud') }}
-    {{ field('Beschreibung', 'description', max=300) }}
-    <div class="adm-actions"><button class="btn btn-primary" type="submit">Anlegen</button></div>
+    {{ field(_('Name'), 'name', req=true, max=100, ph=prefix ~ 'nextcloud') }}
+    {{ field(_('Beschreibung'), 'description', max=300) }}
+    <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Anlegen") }}</button></div>
   </form>
 </section>
 
 {% if ext %}
 <section class="adm-card">
-  <h3>Gruppen vom Anmeldedienst (LDAP/SSO)</h3>
-  <p class="hk-hint">Bei der Anmeldung übernommen – zählen für die Dienst-Freigaben wie lokale Gruppen.</p>
+  <h3>{{ _("Gruppen vom Anmeldedienst (LDAP/SSO)") }}</h3>
+  <p class="hk-hint">{{ _("Bei der Anmeldung übernommen – zählen für die Dienst-Freigaben wie lokale Gruppen.") }}</p>
   <div class="chips">{% for g, n in ext %}<span class="chip">{{ g }} ({{ n }}){% if used.get(g) %} → {{ used[g]|join(', ') }}{% endif %}</span>{% endfor %}</div>
 </section>
 {% endif %}

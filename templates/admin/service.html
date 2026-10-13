@@ -2,15 +2,15 @@
 {% from "_macros.html" import field, check, csrf_field with context %}
 {% block pagetitle %}{{ s.name }}{% endblock %}
 {% block content %}
-<p><a href="/services">← Alle Dienste</a></p>
+<p><a href="/services">← {{ _("Alle Dienste") }}</a></p>
 <h2>{{ s.name }}</h2>
 <section class="adm-card">
   {% include "_service_form.html" %}
 </section>
 <section class="adm-card">
-  <form method="post" action="/services" data-confirm="Dienst {{ s.name }} löschen? (Die Zugangsgruppe bleibt bestehen.)">
+  <form method="post" action="/services" data-confirm="{{ _("Dienst {name} löschen? (Die Zugangsgruppe bleibt bestehen.)", name=s.name) }}">
     {{ csrf_field() }}<input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ s.id }}">
-    <button class="btn btn-danger" type="submit">Dienst löschen</button>
+    <button class="btn btn-danger" type="submit">{{ _("Dienst löschen") }}</button>
   </form>
 </section>
 {% endblock %}

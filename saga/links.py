@@ -7,7 +7,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import SEARCH_LANGUAGE, SEARCH_SAFESEARCH, SEARXNG_URL, _api_guard, _bad, _body
+from saga.core import SEARCH_LANGUAGE, SEARCH_SAFESEARCH, SEARXNG_URL, _api_guard, _bad, _body, t
 from saga.dashboard import BOOKMARK_MAX, bookmarks
 
 router = APIRouter()
@@ -33,11 +33,11 @@ def _bm_input(b, cur=None):
     except ValueError:
         host_ok = False
     if pu.scheme not in ("http", "https") or not host_ok or pu.username or pu.password:
-        return None, "Bitte eine Adresse mit http:// oder https:// angeben."
+        return None, t("Bitte eine Adresse mit http:// oder https:// angeben.")
     if not name:
         name = pu.netloc
     if icon and not _ICON_RE.fullmatch(icon):
-        return None, "Symbol: nur der Name aus selfh.st/icons (z. B. nextcloud)."
+        return None, t("Symbol: nur der Name aus selfh.st/icons (z. B. nextcloud).")
     return {"name": name, "url": url, "icon": icon, "category": cat}, None
 
 
@@ -59,7 +59,7 @@ async def api_bookmark_add(request: Request):
         return _bad(err)
     with _db() as c, c:
         if c.execute("SELECT COUNT(*) FROM bookmark WHERE uid=?", (uid,)).fetchone()[0] >= BOOKMARK_MAX:
-            return _bad(f"Höchstens {BOOKMARK_MAX} Lesezeichen.")
+            return _bad(t("Höchstens {n} Lesezeichen.", n=BOOKMARK_MAX))
         srt = (c.execute("SELECT MAX(sort) FROM bookmark WHERE uid=?", (uid,)).fetchone()[0] or 0) + 1
         bid = c.execute("INSERT INTO bookmark (uid, name, url, icon, category, sort, created) VALUES (?,?,?,?,?,?,?)",
                         (uid, v["name"], v["url"], v["icon"], v["category"], srt, time.time())).lastrowid
@@ -112,7 +112,7 @@ async def api_search(request: Request):
     if not uid:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     if not SEARXNG_URL:
-        return JSONResponse({"error": "Websuche ist nicht eingerichtet"}, status_code=404)
+        return JSONResponse({"error": t("Websuche ist nicht eingerichtet")}, status_code=404)
     try:
         body = await request.json()
         q = str(body.get("q", "")).strip()[:200]
@@ -120,10 +120,10 @@ async def api_search(request: Request):
     except Exception:
         return JSONResponse({"error": "bad request"}, status_code=400)
     if not q:
-        return JSONResponse({"error": "leere Suche"}, status_code=400)
+        return JSONResponse({"error": t("leere Suche")}, status_code=400)
     now = time.monotonic()
     if now - _last_search.get(uid, 0) < 0.7:
-        return JSONResponse({"error": "zu schnell"}, status_code=429)
+        return JSONResponse({"error": t("zu schnell")}, status_code=429)
     _last_search[uid] = now
     try:
         r = await _search_client.post(SEARXNG_URL + "/search", data={
@@ -133,7 +133,7 @@ async def api_search(request: Request):
         d = r.json()
     except Exception as ex:
         print(f"search: {type(ex).__name__}: {ex}", flush=True)
-        return JSONResponse({"error": "Suche gerade nicht erreichbar"}, status_code=502)
+        return JSONResponse({"error": t("Suche gerade nicht erreichbar")}, status_code=502)
 
     results = []
     for x in d.get("results") or []:
@@ -148,9 +148,9 @@ async def api_search(request: Request):
         })
     answers = []
     for a in d.get("answers") or []:
-        t = a if isinstance(a, str) else (a.get("answer") if isinstance(a, dict) else None)
-        if t:
-            answers.append(str(t)[:300])
+        ans = a if isinstance(a, str) else (a.get("answer") if isinstance(a, dict) else None)
+        if ans:
+            answers.append(str(ans)[:300])
     return JSONResponse({
         "query": q, "page": page, "results": results[:20],
         "answers": answers[:3],

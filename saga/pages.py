@@ -13,7 +13,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import E, STATE_DIR, _api_guard, _bad, _body, _json_load, _session_user
+from saga.core import E, STATE_DIR, _api_guard, _bad, _body, _json_load, _session_user, t
 from saga.dashboard import visible_tiles
 from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, NOTE_MAX_COUNT, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _snapshot, blocks_text
 
@@ -115,19 +115,23 @@ def _json_depth_ok(obj, limit=MAX_JSON_DEPTH):
     return True
 
 
+class TooLarge(ValueError):
+    """Seite zu gross -> HTTP 413."""
+
+
 def clean_blocks(raw):
     """JSON-String pruefen und bereinigen -> (json_string, plaintext). ValueError bei Unsinn."""
     if len(raw) > NOTE_BLOCKS_MAX:
-        raise ValueError("Seite zu gross")
+        raise TooLarge(t("Seite zu gross"))
     d = json.loads(raw)
     if not isinstance(d, dict) or not isinstance(d.get("blocks"), list):
-        raise ValueError("kein Block-Dokument")
+        raise ValueError(t("kein Block-Dokument"))
     if not _json_depth_ok(d):
-        raise ValueError("zu tief verschachtelt")
+        raise ValueError(t("zu tief verschachtelt"))
     blocks = []
     for b in d["blocks"]:
         if not isinstance(b, dict) or not isinstance(b.get("type"), str) or not isinstance(b.get("data"), dict):
-            raise ValueError("ungueltiger Block")
+            raise ValueError(t("ungueltiger Block"))
         blocks.append({k: (_sanitize_value(v) if k == "data" else v) for k, v in b.items() if k in ("id", "type", "data")})
     blocks = _flatten_nested_columns(blocks)
     doc = {"time": d.get("time"), "version": d.get("version"), "blocks": blocks}
@@ -165,18 +169,18 @@ def _tags(v):
     if v is None:
         return []
     if not isinstance(v, list):
-        raise ValueError("Tags muessen eine Liste sein")
+        raise ValueError(t("Tags muessen eine Liste sein"))
     out, seen = [], set()
     for x in v:
         s = re.sub(r"\s+", " ", str(x)).strip().lstrip("#")[:TAG_MAX_LEN]
         if not s:
             continue
         if not _TAG_RE.fullmatch(s):
-            raise ValueError("unerlaubte Zeichen im Tag")
+            raise ValueError(t("unerlaubte Zeichen im Tag"))
         if s.lower() not in seen:
             seen.add(s.lower()); out.append(s)
     if len(out) > TAG_MAX_COUNT:
-        raise ValueError(f"maximal {TAG_MAX_COUNT} Tags")
+        raise ValueError(t("maximal {n} Tags", n=TAG_MAX_COUNT))
     return out
 
 
@@ -192,7 +196,7 @@ def _icon(v, c=None, uid=None):
     s = str(v or "").strip()
     if s.startswith("/files/"):
         if c is None or not _own_image(c, uid, s):
-            raise ValueError("Icon-Bild muss ein eigenes hochgeladenes Bild sein")
+            raise ValueError(t("Icon-Bild muss ein eigenes hochgeladenes Bild sein"))
         return s
     s = s[:NOTE_ICON_MAX]
     if any(ch in s for ch in "<>&\"'"):
@@ -242,7 +246,7 @@ async def api_note_add(request: Request):
     now = time.time()
     with _db() as c, c:
         if c.execute("SELECT COUNT(*) FROM note WHERE uid=?", (owner,)).fetchone()[0] >= NOTE_MAX_COUNT:
-            return _bad(f"maximal {NOTE_MAX_COUNT} Seiten (inkl. Papierkorb)", 409)
+            return _bad(t("maximal {n} Seiten (inkl. Papierkorb)", n=NOTE_MAX_COUNT), 409)
         try:
             parent = _check_parent(c, owner, None, b.get("parent_id"))
             icon = _icon(b.get("icon"), c, owner)
@@ -250,7 +254,7 @@ async def api_note_add(request: Request):
         except LookupError:
             return _bad("not found", 404)
         except (ValueError, TypeError):
-            return _bad("ungueltige Angabe")
+            return _bad(t("ungueltige Angabe"))
         title = str(b.get("title", "")).strip()[:NOTE_TITLE_MAX]
         kind = "database" if b.get("kind") == "database" else "page"
         schema = json.dumps(_default_schema(), ensure_ascii=False) if kind == "database" else None
@@ -261,7 +265,7 @@ async def api_note_add(request: Request):
                 try:
                     props = json.dumps(_clean_props(_json_load(ps[0], {"props": []}), b["props"], check=_rel_check(c, owner)), ensure_ascii=False)
                 except (ValueError, TypeError) as ex:
-                    return _bad(str(ex) or "ungueltige Werte")
+                    return _bad(str(ex) or t("ungueltige Werte"))
         cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, created, updated) "
                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (owner, title, json.dumps({"blocks": []}), "blocks", icon, parent, now,
@@ -286,7 +290,7 @@ async def api_note_update(nid: int, request: Request):
         if not old:
             return _bad("not found", 404)
         if old[4] and b.get("locked") is not False and ("body" in b or "title" in b):     # gesperrt: Inhalt/Titel bleiben unveraendert
-            return JSONResponse({"error": "Seite ist gesperrt – erst entsperren"}, status_code=423)
+            return JSONResponse({"error": t("Seite ist gesperrt – erst entsperren")}, status_code=423)
         # Konflikterkennung: wer Titel/Inhalt speichert und die gekannte Revision mitschickt, ueberschreibt
         # keine zwischenzeitliche Aenderung (anderer Tab, Peek, spaeter: andere Person). Ohne 'rev' wie bisher.
         content = "body" in b or "title" in b
@@ -294,7 +298,7 @@ async def api_note_update(nid: int, request: Request):
             try:
                 want = int(b["rev"])
             except (TypeError, ValueError):
-                return _bad("ungueltige Revision")
+                return _bad(t("ungueltige Revision"))
             if want != old[3]:
                 return JSONResponse({"error": "conflict", "rev": old[3]}, status_code=409)
         try:
@@ -309,19 +313,19 @@ async def api_note_update(nid: int, request: Request):
             if "schema" in b:
                 me = c.execute("SELECT kind FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()
                 if me[0] != "database":
-                    raise ValueError("nur Datenbanken haben ein Schema")
+                    raise ValueError(t("nur Datenbanken haben ein Schema"))
                 new_schema = _clean_schema(b["schema"])
                 old_s = _json_load((c.execute("SELECT schema FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone() or [None])[0], {"props": []})
                 if old_s.get("locked") and new_schema.get("locked"):     # gesperrt: nur Entsperren ist erlaubt
                     strip = lambda s: json.dumps([s.get("props"), s.get("views"), s.get("title_name")], sort_keys=True)
                     if strip(new_schema) != strip(_clean_schema(old_s)):
-                        raise ValueError("Die Datenbank ist gesperrt – zum Ändern erst unter „Ansicht“ entsperren")
+                        raise ValueError(t("Die Datenbank ist gesperrt – zum Ändern erst unter „Ansicht“ entsperren"))
                 old_by = {p["id"]: p for p in old_s.get("props", [])}
                 old_rel = {k: p.get("target") for k, p in old_by.items() if p.get("type") == "relation"}
                 for rp in new_schema["props"]:          # Relation nur auf eigene, aktive Datenbanken
                     if rp["type"] == "relation" and old_rel.get(rp["id"]) != rp["target"] and not c.execute(
                             "SELECT 1 FROM note WHERE id=? AND uid=? AND kind='database' AND deleted_at IS NULL", (rp["target"], owner)).fetchone():
-                        raise ValueError("Ziel-Datenbank der Relation nicht gefunden")
+                        raise ValueError(t("Ziel-Datenbank der Relation nicht gefunden"))
                 # Zweiseitige Relationen: Kopplung (pair) stellt NUR der Server her - vom Browser nur uebernehmen, was schon so bestand
                 raw_by = {str(p.get("id")): p for p in b["schema"].get("props", []) if isinstance(p, dict)}
                 my_title = c.execute("SELECT title FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()[0]
@@ -364,7 +368,7 @@ async def api_note_update(nid: int, request: Request):
                 ps = c.execute("SELECT d.schema, n.props FROM note n JOIN note d ON d.id=n.parent_id AND d.uid=n.uid "
                                "WHERE n.id=? AND n.uid=? AND d.kind='database'", (nid, owner)).fetchone()
                 if not ps:
-                    raise ValueError("Seite ist keine Datenbank-Zeile")
+                    raise ValueError(t("Seite ist keine Datenbank-Zeile"))
                 merged = _clean_props(_json_load(ps[0], {"props": []}), b["props"], _json_load(ps[1], {}), check=_rel_check(c, owner))
                 _rel_sync(c, owner, _json_load(ps[0], {"props": []}), nid, _json_load(ps[1], {}), merged)
                 sets.append("props=?"); args.append(json.dumps(merged, ensure_ascii=False))
@@ -379,7 +383,7 @@ async def api_note_update(nid: int, request: Request):
                 elif _own_image(c, owner, cv):
                     sets.append("cover=?"); args.append(cv)
                 else:
-                    raise ValueError("Titelbild muss ein eigenes hochgeladenes Bild sein")
+                    raise ValueError(t("Titelbild muss ein eigenes hochgeladenes Bild sein"))
             if "cover_pos" in b:
                 sets.append("cover_pos=?"); args.append(max(0.0, min(100.0, float(b["cover_pos"]))))
             if "tags" in b:
@@ -392,23 +396,23 @@ async def api_note_update(nid: int, request: Request):
                 elif fmt == "text":
                     body = str(b["body"])
                     if len(body) > NOTE_BODY_MAX:
-                        return _bad(f"Notiz zu lang (max. {NOTE_BODY_MAX} Zeichen)", 413)
+                        return _bad(t("Notiz zu lang (max. {n} Zeichen)", n=NOTE_BODY_MAX), 413)
                 else:
-                    raise ValueError("unbekanntes Format")
+                    raise ValueError(t("unbekanntes Format"))
                 sets += ["body=?", "format=?"]; args += [body, fmt]
             if "parent_id" in b:
                 newpar = _check_parent(c, owner, nid, b["parent_id"])
                 if newpar is not None:          # wie beim Verschieben: keine normale Seite in eine Datenbank
                     cur_par = c.execute("SELECT parent_id FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()[0]
                     if c.execute("SELECT kind FROM note WHERE id=? AND uid=?", (newpar, owner)).fetchone()[0] == "database" and cur_par != newpar:
-                        raise ValueError("Seiten koennen nicht in eine Datenbank verschoben werden")
+                        raise ValueError(t("Seiten koennen nicht in eine Datenbank verschoben werden"))
                 sets.append("parent_id=?"); args.append(newpar)
         except LookupError:
             return _bad("not found", 404)
         except (ValueError, TypeError) as ex:
-            return _bad(str(ex) if str(ex) else "ungueltige Angabe", 413 if "gross" in str(ex) else 400)
+            return _bad(str(ex) if str(ex) else t("ungueltige Angabe"), 413 if isinstance(ex, TooLarge) else 400)
         if not sets:
-            return _bad("nichts zu aendern")
+            return _bad(t("nichts zu aendern"))
         now = time.time()
         if "body" in b:
             _snapshot(c, owner, nid, old, now)
@@ -430,7 +434,7 @@ async def api_note_move(nid: int, request: Request):
     try:
         index = max(0, int(b.get("index", 0)))
     except (TypeError, ValueError):
-        return _bad("ungueltige Position")
+        return _bad(t("ungueltige Position"))
     with _db() as c, c:
         me = c.execute("SELECT parent_id FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
         if not me:
@@ -440,11 +444,11 @@ async def api_note_move(nid: int, request: Request):
         except LookupError:
             return _bad("not found", 404)
         except (ValueError, TypeError) as ex:
-            return _bad(str(ex) or "ungueltige Angabe")
+            return _bad(str(ex) or t("ungueltige Angabe"))
         if parent is not None:
             pk = c.execute("SELECT kind FROM note WHERE id=? AND uid=?", (parent, owner)).fetchone()[0]
             if pk == "database" and me[0] != parent:
-                return _bad("Seiten koennen nicht in eine Datenbank verschoben werden")
+                return _bad(t("Seiten koennen nicht in eine Datenbank verschoben werden"))
         sib = [r[0] for r in c.execute(
             "SELECT id FROM note WHERE uid=? AND deleted_at IS NULL AND id<>? AND "
             + ("parent_id=?" if parent is not None else "parent_id IS NULL") + " ORDER BY sort NULLS FIRST, created",

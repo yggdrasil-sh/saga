@@ -11,7 +11,7 @@ import auth
 import hkcal
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import E, SECRET, TZ, _api_guard, _bad, _body, _json_load
+from saga.core import E, SECRET, TZ, _api_guard, _bad, _body, _json_load, t
 
 router = APIRouter()
 
@@ -99,7 +99,7 @@ def _cal_account(c, uid, aid):
     try:
         pw = _cal_fernet().decrypt(r[5].encode()).decode()
     except Exception:
-        raise hkcal.CalError("Gespeichertes App-Passwort nicht lesbar – bitte neu eingeben")
+        raise hkcal.CalError(t("Gespeichertes App-Passwort nicht lesbar – bitte neu eingeben"))
     return _cal_public(r), pw
 
 
@@ -140,7 +140,7 @@ async def api_cal_test(request: Request):
         except hkcal.CalError as ex:
             return _bad(str(ex))
     if not (base and user and pw):
-        return _bad("Adresse, Benutzer und App-Passwort angeben")
+        return _bad(t("Adresse, Benutzer und App-Passwort angeben"))
     try:
         cals = await run_in_threadpool(hkcal.discover, base, user, pw)
     except hkcal.CalError as ex:
@@ -156,7 +156,7 @@ async def api_cal_add(request: Request):
     b = await _body(request) or {}
     base, user, pw = _cal_input(b)
     if not (base and user and pw):
-        return _bad("Adresse, Benutzer und App-Passwort angeben")
+        return _bad(t("Adresse, Benutzer und App-Passwort angeben"))
     try:
         found = await run_in_threadpool(hkcal.discover, base, user, pw)      # prueft Zugang + liefert gueltige Kalender
     except hkcal.CalError as ex:
@@ -166,7 +166,7 @@ async def api_cal_add(request: Request):
     with _db() as c, c:
         _cal_db(c)
         if c.execute("SELECT COUNT(*) FROM cal_account WHERE uid=?", (uid,)).fetchone()[0] >= CAL_MAX_ACCOUNTS:
-            return _bad(f"Höchstens {CAL_MAX_ACCOUNTS} Kalender-Zugänge")
+            return _bad(t("Höchstens {n} Kalender-Zugänge", n=CAL_MAX_ACCOUNTS))
         cur = c.execute("INSERT INTO cal_account (uid, label, base_url, username, secret, calendars, created, updated) VALUES (?,?,?,?,?,?,?,?)",
                         (uid, str(b.get("label") or "").strip()[:60], base, user, _cal_fernet().encrypt(pw.encode()).decode(),
                          json.dumps(sel, ensure_ascii=False), now, now))
@@ -197,7 +197,7 @@ async def api_cal_update(aid: int, request: Request):
     base, user, pw = _cal_input(b)
     base, user, use_pw = base or acc["base_url"], user or acc["username"], pw or old_pw
     if not use_pw:
-        return _bad("Bitte das App-Passwort neu eingeben")
+        return _bad(t("Bitte das App-Passwort neu eingeben"))
     try:
         found = await run_in_threadpool(hkcal.discover, base, user, use_pw)
     except hkcal.CalError as ex:
@@ -237,7 +237,7 @@ def _cal_collect(uid, d0, d1, fresh=False):
             with _db() as c:
                 acc, pw = _cal_account(c, uid, aid)
         except (LookupError, hkcal.CalError) as ex:
-            errors.append({"account": aid, "error": str(ex) or "nicht lesbar"}); continue
+            errors.append({"account": aid, "error": str(ex) or t("nicht lesbar")}); continue
         for cal in acc["calendars"]:
             if cal.get("show"):
                 jobs.append((aid, acc, pw, cal))
@@ -298,9 +298,9 @@ def api_cal_events(request: Request, start: str = "", end: str = "", fresh: int 
     try:
         d0, d1 = date.fromisoformat(start), date.fromisoformat(end)
     except ValueError:
-        return _bad("start/end als JJJJ-MM-TT angeben")
+        return _bad(t("start/end als JJJJ-MM-TT angeben"))
     if not 0 < (d1 - d0).days <= CAL_MAX_DAYS:
-        return _bad(f"Zeitraum 1 bis {CAL_MAX_DAYS} Tage")
+        return _bad(t("Zeitraum 1 bis {n} Tage", n=CAL_MAX_DAYS))
     out, errors = _cal_collect(uid, d0, d1, fresh)
     return JSONResponse({"events": out, "errors": errors}, headers={"Cache-Control": "no-store"})
 
@@ -318,7 +318,7 @@ def _cal_target(uid, b):
     if not cal:
         raise LookupError
     if cal.get("writable") is False:
-        raise hkcal.CalError("Dieser Kalender ist nur lesbar")
+        raise hkcal.CalError(t("Dieser Kalender ist nur lesbar"))
     return acc, pw, cal
 
 
@@ -346,7 +346,7 @@ async def _cal_write(request, mode):
     except hkcal.CalError as ex:
         return _bad(str(ex))
     except (KeyError, TypeError, ValueError):
-        return _bad("ungueltige Angaben")
+        return _bad(t("ungueltige Angaben"))
     _cal_cache.clear()
     return JSONResponse({"ok": True, "href": href, "etag": etag})
 

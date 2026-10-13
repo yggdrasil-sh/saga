@@ -1,32 +1,37 @@
 {% extends "base.html" %}
 {% from "_macros.html" import field, check, csrf_field with context %}
-{% block pagetitle %}Allgemein{% endblock %}
+{% block pagetitle %}{{ _('Allgemein') }}{% endblock %}
 {% block content %}
-<h2>Allgemein</h2>
+<h2>{{ _("Allgemein") }}</h2>
 <form method="post" class="adm-form">
   {{ csrf_field() }}
   <section class="adm-card">
-    <h3>Anmeldung &amp; Konten</h3>
-    {{ field('Titel', 'title', st.title, max=60, hint='Name oben im Dashboard und auf der Anmeldeseite') }}
-    {{ check('Registrierung erlauben', 'registration', st.registration, 'Jeder, der die Seite erreicht, kann sich ein lokales Konto anlegen') }}
-    {{ check('Anmeldung mit lokalen Konten', 'local_login', st.local_login, 'Aus = nur LDAP/SSO auf der Anmeldeseite (Admins kommen hier immer mit lokalem Konto herein)') }}
-    {{ field('Standardgruppen', 'default_groups', st.default_groups|join(', '), max=1000, hint='Bekommt jedes neue Konto (Registrierung, Admin, erste LDAP/SSO-Anmeldung) – z. B. ' ~ (st.group_prefix or 's_') ~ 'wiki') }}
+    <h3>{{ _("Anmeldung & Konten") }}</h3>
+    {{ field(_('Titel'), 'title', st.title, max=60, hint=_('Name oben im Dashboard und auf der Anmeldeseite')) }}
+    {{ check(_('Registrierung erlauben'), 'registration', st.registration, _('Jeder, der die Seite erreicht, kann sich ein lokales Konto anlegen')) }}
+    {{ check(_('Anmeldung mit lokalen Konten'), 'local_login', st.local_login, _('Aus = nur LDAP/SSO auf der Anmeldeseite (Admins kommen hier immer mit lokalem Konto herein)')) }}
+    <label class="adm-field"><span>{{ _("Standardsprache") }}</span>
+      <select class="hk-in" name="default_lang">
+        <option value="">{{ _("Automatisch") }}</option>
+        {% for k, n in langs.items() %}<option value="{{ k }}"{% if k == st.default_lang %} selected{% endif %}>{{ n }}</option>{% endfor %}
+      </select>
+      <small>{{ _("Sprache der Anmeldeseite, des Admin-Bereichs und aller Konten ohne eigene Wahl. Automatisch = Browsersprache (Deutsch, Englisch, Spanisch, sonst Englisch).") }}</small></label>
+    {{ field(_('Standardgruppen'), 'default_groups', st.default_groups|join(', '), max=1000, hint=_('Bekommt jedes neue Konto (Registrierung, Admin, erste LDAP/SSO-Anmeldung) – z. B. {example}', example=(st.group_prefix or 's_') ~ 'wiki')) }}
   </section>
   <section class="adm-card">
-    <h3>Dienste</h3>
-    {{ field('Gruppen-Kennung', 'group_prefix', st.group_prefix, max=20, hint='Gruppe <Kennung><Kurzname> gibt den Dienst frei. Standard s_ (wie s_nextcloud). Leer = Gruppe heißt wie der Kurzname.') }}
+    <h3>{{ _("Dienste") }}</h3>
+    {{ field(_('Gruppen-Kennung'), 'group_prefix', st.group_prefix, max=20, hint=_('Gruppe <Kennung><Kurzname> gibt den Dienst frei. Standard s_ (wie s_nextcloud). Leer = Gruppe heißt wie der Kurzname.')) }}
   </section>
   <section class="adm-card">
-    <h3>Verbindungen der Benutzer (Kalender, Immich)</h3>
-    <p class="hk-hint">Jeder Benutzer verbindet seine eigenen Kalender (CalDAV) und sein Immich. Öffentliche Server (https) gehen immer.
-      Interne Adressen (192.168.x, 10.x, localhost …) schützen das Heimnetz vor Missbrauch und sind nur mit Freigabe erreichbar.</p>
-    {{ check('Interne Adressen für alle erlauben', 'allow_private_hosts', st.allow_private_hosts, 'Nur bei vertrauenswürdigen Benutzern – sonst einzelne Hosts freigeben') }}
-    {{ field('Freigegebene interne Hosts', 'allowed_hosts', st.allowed_hosts, max=2000, ph='immich.lan, nextcloud.lan:8443', hint='Komma-getrennt, optional mit :Port') }}
+    <h3>{{ _("Verbindungen der Benutzer (Kalender, Immich)") }}</h3>
+    <p class="hk-hint">{{ _("Jeder Benutzer verbindet seine eigenen Kalender (CalDAV) und sein Immich. Öffentliche Server (https) gehen immer. Interne Adressen (192.168.x, 10.x, localhost …) schützen das Heimnetz vor Missbrauch und sind nur mit Freigabe erreichbar.") }}</p>
+    {{ check(_('Interne Adressen für alle erlauben'), 'allow_private_hosts', st.allow_private_hosts, _('Nur bei vertrauenswürdigen Benutzern – sonst einzelne Hosts freigeben')) }}
+    {{ field(_('Freigegebene interne Hosts'), 'allowed_hosts', st.allowed_hosts, max=2000, ph='immich.lan, nextcloud.lan:8443', hint=_('Komma-getrennt, optional mit :Port')) }}
   </section>
   <section class="adm-card">
-    <h3>Updates</h3>
-    {{ check('Auf neue Versionen hinweisen', 'update_check', st.update_check, 'Fragt höchstens zweimal am Tag bei GitHub nach der neuesten Version und zeigt hier im Admin-Bereich einen Hinweis. Dabei wird nur die neueste Versionsnummer abgerufen, sonst nichts übertragen.') }}
+    <h3>{{ _("Updates") }}</h3>
+    {{ check(_('Auf neue Versionen hinweisen'), 'update_check', st.update_check, _('Fragt höchstens zweimal am Tag bei GitHub nach der neuesten Version und zeigt hier im Admin-Bereich einen Hinweis. Dabei wird nur die neueste Versionsnummer abgerufen, sonst nichts übertragen.')) }}
   </section>
-  <div class="adm-actions"><button class="btn btn-primary" type="submit">Speichern</button></div>
+  <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button></div>
 </form>
 {% endblock %}

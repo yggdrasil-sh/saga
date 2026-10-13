@@ -3,38 +3,35 @@
 {% block pagetitle %}SSO / OIDC{% endblock %}
 {% block content %}
 <h2>SSO / OpenID Connect</h2>
-<p class="hk-hint">Anmeldung über Keycloak, Authentik, Authelia, Zitadel, Entra ID, Google … Beim Anbieter einen
-  <b>vertraulichen Client</b> (Authorization Code + PKCE) anlegen mit der Weiterleitungs-Adresse
-  <code>{{ base_url }}/auth/callback</code> und der Abmelde-Weiterleitung <code>{{ base_url }}/login?bye=1</code>.</p>
+<p class="hk-hint">{{ _("Anmeldung über Keycloak, Authentik, Authelia, Zitadel, Entra ID, Google … Beim Anbieter einen vertraulichen Client (Authorization Code + PKCE) anlegen mit der Weiterleitungs-Adresse {cb} und der Abmelde-Weiterleitung {bye}.", cb=base_url ~ "/auth/callback", bye=base_url ~ "/login?bye=1") }}</p>
 {% if test %}<pre class="adm-test">{% for l in test %}{{ l }}
 {% endfor %}</pre>{% endif %}
 <form method="post" class="adm-form">
   {{ csrf_field() }}
   <section class="adm-card">
-    {{ check('SSO aktivieren', 'enabled', o.enabled) }}
-    {{ field('Issuer-Adresse', 'issuer', o.issuer, type='url', max=500, ph='https://sso.example.org/realms/home', hint='ohne /.well-known/openid-configuration') }}
-    {{ field('Client-ID', 'client_id', o.client_id, max=200) }}
-    {{ field('Client-Secret', 'client_secret', '', max=500, secret=true, hint=('gespeichert ✓ – leer lassen = behalten' if has_secret else 'noch keins gespeichert')) }}
-    {% if has_secret %}{{ check('Gespeichertes Secret entfernen', 'clear_secret', false) }}{% endif %}
-    {{ field('Scopes', 'scopes', o.scopes, max=300) }}
-    {{ field('Text auf dem Knopf', 'label', o.label, max=60) }}
+    {{ check(_('SSO aktivieren'), 'enabled', o.enabled) }}
+    {{ field(_('Issuer-Adresse'), 'issuer', o.issuer, type='url', max=500, ph='https://sso.example.org/realms/home', hint=_('ohne /.well-known/openid-configuration')) }}
+    {{ field(_('Client-ID'), 'client_id', o.client_id, max=200) }}
+    {{ field(_('Client-Secret'), 'client_secret', '', max=500, secret=true, hint=(_('gespeichert ✓ – leer lassen = behalten') if has_secret else _('noch keins gespeichert'))) }}
+    {% if has_secret %}{{ check(_('Gespeichertes Secret entfernen'), 'clear_secret', false) }}{% endif %}
+    {{ field(_('Scopes'), 'scopes', o.scopes, max=300) }}
+    {{ field(_('Text auf dem Knopf'), 'label', o.label, max=60) }}
   </section>
   <section class="adm-card">
-    <h3>Konten &amp; Gruppen</h3>
-    {{ field('Claim Benutzername', 'username_claim', o.username_claim, max=100, hint='meist preferred_username; „email“ nimmt den Teil vor dem @') }}
-    {{ field('Claim Name', 'name_claim', o.name_claim, max=100) }}
-    {{ field('Claim E-Mail', 'email_claim', o.email_claim, max=100) }}
-    {{ field('Claim Gruppen', 'groups_claim', o.groups_claim, max=100, hint='z. B. groups, oder verschachtelt realm_access.roles – Gruppen wie s_nextcloud geben Dienste frei') }}
-    {{ check('Konten bei der ersten Anmeldung automatisch anlegen', 'auto_create', o.auto_create) }}
-    {{ field('Nur Mitglieder dieser Gruppe', 'allowed_group', o.allowed_group, max=100, hint='leer = alle, die sich beim Anbieter anmelden können') }}
-    {{ field('Admin-Gruppe', 'admin_group', o.admin_group, max=100, hint='Mitglieder werden Admins (leer = Admin-Rechte nur hier vergeben)') }}
-    {{ check('TLS-Zertifikat prüfen', 'verify_tls', o.verify_tls, 'nur für Tests abschalten') }}
+    <h3>{{ _("Konten & Gruppen") }}</h3>
+    {{ field(_('Claim Benutzername'), 'username_claim', o.username_claim, max=100, hint=_('meist preferred_username; „email“ nimmt den Teil vor dem @')) }}
+    {{ field(_('Claim Name'), 'name_claim', o.name_claim, max=100) }}
+    {{ field(_('Claim E-Mail'), 'email_claim', o.email_claim, max=100) }}
+    {{ field(_('Claim Gruppen'), 'groups_claim', o.groups_claim, max=100, hint=_('z. B. groups, oder verschachtelt realm_access.roles – Gruppen wie s_nextcloud geben Dienste frei')) }}
+    {{ check(_('Konten bei der ersten Anmeldung automatisch anlegen'), 'auto_create', o.auto_create) }}
+    {{ field(_('Nur Mitglieder dieser Gruppe'), 'allowed_group', o.allowed_group, max=100, hint=_('leer = alle, die sich beim Anbieter anmelden können')) }}
+    {{ field(_('Admin-Gruppe'), 'admin_group', o.admin_group, max=100, hint=_('Mitglieder werden Admins (leer = Admin-Rechte nur hier vergeben)')) }}
+    {{ check(_('TLS-Zertifikat prüfen'), 'verify_tls', o.verify_tls, _('nur für Tests abschalten')) }}
   </section>
   <div class="adm-actions">
-    <button class="btn btn-primary" type="submit" name="action" value="save">Speichern</button>
-    <button class="btn" type="submit" name="action" value="test">Verbindung testen</button>
+    <button class="btn btn-primary" type="submit" name="action" value="save">{{ _("Speichern") }}</button>
+    <button class="btn" type="submit" name="action" value="test">{{ _("Verbindung testen") }}</button>
   </div>
 </form>
-<p class="hk-hint">Sicherheit: Ein SSO-Login übernimmt nie ein lokales oder LDAP-Konto mit gleichem Namen. Ist die Registrierung offen,
-  könnte jemand einen Namen vorab belegen – dann Registrierung aus lassen oder SSO-Konten vorab anlegen.</p>
+<p class="hk-hint">{{ _("Sicherheit: Ein SSO-Login übernimmt nie ein lokales oder LDAP-Konto mit gleichem Namen. Ist die Registrierung offen, könnte jemand einen Namen vorab belegen – dann Registrierung aus lassen oder SSO-Konten vorab anlegen.") }}</p>
 {% endblock %}

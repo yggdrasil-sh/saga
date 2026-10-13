@@ -11,12 +11,12 @@
   btn.addEventListener('click', function () {
     HK.openMenu(btn, function (m) {
       m.appendChild(HK.menuLabel(btn.dataset.name || ''));
-      m.appendChild(HK.menuItem('Einstellungen', openSettings, { icon: '⚙' }));
-      m.appendChild(HK.menuItem('Konto & Passwort', function () { openSettings('account'); }, { icon: '👤' }));
-      if (btn.dataset.admin) m.appendChild(HK.menuItem('Admin-Bereich', function () { window.open(btn.dataset.admin, '_blank', 'noopener'); }, { icon: '🛡' }));
-      if (inApp) m.appendChild(HK.menuItem('App-Einstellungen', function () { toApp({ action: 'settings' }); }, { icon: '📱' }));
+      m.appendChild(HK.menuItem(T('Einstellungen'), openSettings, { icon: '⚙' }));
+      m.appendChild(HK.menuItem(T('Konto & Passwort'), function () { openSettings('account'); }, { icon: '👤' }));
+      if (btn.dataset.admin) m.appendChild(HK.menuItem(T('Admin-Bereich'), function () { window.open(btn.dataset.admin, '_blank', 'noopener'); }, { icon: '🛡' }));
+      if (inApp) m.appendChild(HK.menuItem(T('App-Einstellungen'), function () { toApp({ action: 'settings' }); }, { icon: '📱' }));
       m.appendChild(el('div', 'menu-sep'));
-      m.appendChild(HK.menuItem('Abmelden', function () { location.href = '/logout'; }, { icon: '↪' }));
+      m.appendChild(HK.menuItem(T('Abmelden'), function () { location.href = '/logout'; }, { icon: '↪' }));
     });
   });
 
@@ -25,10 +25,10 @@
   function onKey(e) { if (e.key === 'Escape' && !HK.menuOpen()) { e.preventDefault(); closeSettings(); } }
   function openSettings(focus) {
     closeSettings();
-    dlg = el('div', 'hk-modal'); dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); dlg.setAttribute('aria-label', 'Einstellungen');
+    dlg = el('div', 'hk-modal'); dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); dlg.setAttribute('aria-label', T('Einstellungen'));
     var card = el('div', 'hk-dialog'), head = el('div', 'hk-dlg-head');
-    head.appendChild(el('h2', null, 'Einstellungen'));
-    var x = el('button', 'icon-btn', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Schließen'); x.addEventListener('click', closeSettings);
+    head.appendChild(el('h2', null, T('Einstellungen')));
+    var x = el('button', 'icon-btn', '✕'); x.type = 'button'; x.setAttribute('aria-label', T('Schließen')); x.addEventListener('click', closeSettings);
     head.appendChild(x); card.appendChild(head);
     var body = el('div', 'hk-dlg-body'); card.appendChild(body); dlg.appendChild(card);
     dlg.addEventListener('mousedown', function (e) { if (e.target === dlg) closeSettings(); });
@@ -52,27 +52,25 @@
       api('GET', '/api/settings/immich').then(function (s) {
         box.textContent = '';
         if (s.connected) {
-          box.appendChild(el('p', null, '✅ Verbunden' + (s.name ? ' als ' + s.name : '') + (s.url ? ' (' + s.url.replace(/^https?:\/\//, '') + ')' : '') +
-            ' – Bilder aus Immich gibt es beim Titelbild, beim Icon und im „/“-Menü („Bild aus Immich“).'));
-          var off = el('button', 'btn', 'Trennen'); off.type = 'button';
+          box.appendChild(el('p', null, (s.name ? T('✅ Verbunden als {name}', { name: s.name }) : T('✅ Verbunden')) + (s.url ? ' (' + s.url.replace(/^https?:\/\//, '') + ')' : '') +
+            ' – ' + T('Bilder aus Immich gibt es beim Titelbild, beim Icon und im „/“-Menü („Bild aus Immich“).')));
+          var off = el('button', 'btn', T('Trennen')); off.type = 'button';
           off.addEventListener('click', function () { api('DELETE', '/api/settings/immich').then(load); });
           box.appendChild(off); return;
         }
-        box.appendChild(el('p', 'hk-hint', 'Adresse deines Immich (z. B. https://immich.example.de). In Immich unter Kontoeinstellungen → API-Schlüssel ' +
-          'einen neuen Schlüssel anlegen mit den Rechten album.read, asset.read, asset.view, asset.download und user.read, und hier einfügen. ' +
-          'Saga sieht dann nur deine eigenen Fotos.'));
+        box.appendChild(el('p', 'hk-hint', T('Adresse deines Immich (z. B. https://immich.example.de). In Immich unter Kontoeinstellungen → API-Schlüssel einen neuen Schlüssel anlegen mit den Rechten album.read, asset.read, asset.view, asset.download und user.read, und hier einfügen. Saga sieht dann nur deine eigenen Fotos.')));
         var url = el('input'); url.type = 'url'; url.placeholder = 'https://immich.example.de'; url.value = s.suggest || '';
-        box.appendChild(field('Immich-Adresse', url));
-        var inp = el('input'); inp.type = 'password'; inp.autocomplete = 'off'; inp.placeholder = 'API-Schlüssel';
-        box.appendChild(field('API-Schlüssel', inp));
-        var go = el('button', 'btn primary', 'Verbinden'); go.type = 'button'; box.appendChild(go);
+        box.appendChild(field(T('Immich-Adresse'), url));
+        var inp = el('input'); inp.type = 'password'; inp.autocomplete = 'off'; inp.placeholder = T('API-Schlüssel');
+        box.appendChild(field(T('API-Schlüssel'), inp));
+        var go = el('button', 'btn primary', T('Verbinden')); go.type = 'button'; box.appendChild(go);
         var msg = el('p', 'hk-hint'); box.appendChild(msg);
         go.addEventListener('click', function () {
-          msg.textContent = 'Prüfe …'; go.disabled = true;
+          msg.textContent = T('Prüfe …'); go.disabled = true;
           api('POST', '/api/settings/immich', { url: url.value.trim(), apikey: inp.value.trim() }).then(function () { inp.value = ''; load(); })
             .catch(function (e) { msg.textContent = e.message; go.disabled = false; });
         });
-      }).catch(function (e) { box.textContent = 'Nicht geladen: ' + e.message; });
+      }).catch(function (e) { box.textContent = T('Nicht geladen: {err}', { err: e.message }); });
     }
     load();
   }
@@ -80,19 +78,18 @@
   // --- Abschnitt "Kalender" ----------------------------------------------------------
   function calendarSection(body) {
     var sec = el('section', 'hk-set hk-set-calendar'); body.appendChild(sec);
-    sec.appendChild(el('h3', null, '📅 Kalender'));
-    sec.appendChild(el('p', 'hk-hint', 'Externe Kalender (CalDAV) wie Nextcloud, mailcow, Radicale oder iCloud verbinden. Saga zeigt deren Termine an ' +
-      'und kann Termine anlegen und ändern. Tipp: Ein eigenes App-Passwort nur für Kalender/DAV anlegen.'));
+    sec.appendChild(el('h3', null, '📅 ' + T('Kalender')));
+    sec.appendChild(el('p', 'hk-hint', T('Externe Kalender (CalDAV) wie Nextcloud, mailcow, Radicale oder iCloud verbinden. Saga zeigt deren Termine an und kann Termine anlegen und ändern. Tipp: Ein eigenes App-Passwort nur für Kalender/DAV anlegen.')));
     var list = el('div', 'hk-cal-list'); sec.appendChild(list);
-    var addBtn = el('button', 'btn', '+ Kalender verbinden'); addBtn.type = 'button'; sec.appendChild(addBtn);
+    var addBtn = el('button', 'btn', T('+ Kalender verbinden')); addBtn.type = 'button'; sec.appendChild(addBtn);
     var form = el('div', 'hk-cal-form'); form.hidden = true; sec.appendChild(form);
     var allowed = { hosts: [], private: false };
     function load() {
       api('GET', '/api/settings/calendars').then(function (d) {
         allowed = { hosts: d.allowed || [], private: !!d.private }; list.textContent = '';
-        if (!d.accounts.length) list.appendChild(el('p', 'hk-hint', 'Noch kein Kalender verbunden.'));
+        if (!d.accounts.length) list.appendChild(el('p', 'hk-hint', T('Noch kein Kalender verbunden.')));
         d.accounts.forEach(function (a) { list.appendChild(accountCard(a, load)); });
-      }).catch(function (err) { list.textContent = 'Nicht geladen: ' + err.message; });
+      }).catch(function (err) { list.textContent = T('Nicht geladen: {err}', { err: err.message }); });
     }
     addBtn.addEventListener('click', function () { form.hidden = false; addBtn.hidden = true; newForm(form, allowed, function () { form.hidden = true; addBtn.hidden = false; load(); }); });
     load();
@@ -106,11 +103,11 @@
   function calPicker(cals) {
     var wrap = el('div', 'hk-cals');
     cals.forEach(function (c) {
-      var row = el('div', 'hk-cal-row'), cb = el('input'); cb.type = 'checkbox'; cb.checked = c.show !== false; cb.setAttribute('aria-label', c.name + ' anzeigen');
-      var col = el('input'); col.type = 'color'; col.value = /^#[0-9a-f]{6}$/i.test(c.color || '') ? c.color : '#4184e4'; col.setAttribute('aria-label', 'Farbe für ' + c.name);
-      var nm = input('text', c.name); nm.maxLength = 80; nm.setAttribute('aria-label', 'Anzeigename');
+      var row = el('div', 'hk-cal-row'), cb = el('input'); cb.type = 'checkbox'; cb.checked = c.show !== false; cb.setAttribute('aria-label', T('{name} anzeigen', { name: c.name }));
+      var col = el('input'); col.type = 'color'; col.value = /^#[0-9a-f]{6}$/i.test(c.color || '') ? c.color : '#4184e4'; col.setAttribute('aria-label', T('Farbe für {name}', { name: c.name }));
+      var nm = input('text', c.name); nm.maxLength = 80; nm.setAttribute('aria-label', T('Anzeigename'));
       row.appendChild(cb); row.appendChild(col); row.appendChild(nm);
-      if (c.writable === false) row.appendChild(el('span', 'hk-hint', 'nur lesen'));
+      if (c.writable === false) row.appendChild(el('span', 'hk-hint', T('nur lesen')));
       row._get = function () { return { href: c.href, name: nm.value.trim(), color: col.value, show: cb.checked }; };
       wrap.appendChild(row);
     });
@@ -119,36 +116,36 @@
   }
 
   var PRESETS = [['nextcloud', 'Nextcloud', 'https://HOST/remote.php/dav/'], ['mailcow', 'mailcow (SOGo)', 'https://HOST/SOGo/dav/'],
-    ['other', 'Andere CalDAV-Adresse', 'https://']];
+    ['other', T('Andere CalDAV-Adresse'), 'https://']];
   function newForm(form, allowed, done) {
     form.textContent = '';
     var kind = el('select', 'hk-in'); PRESETS.forEach(function (p) { var o = el('option', null, p[1]); o.value = p[0]; kind.appendChild(o); });
-    var url = input('url', PRESETS[0][2]), user = input('text', '', 'Benutzername oder E-Mail'), pw = input('password', '', 'App-Passwort');
+    var url = input('url', PRESETS[0][2]), user = input('text', '', T('Benutzername oder E-Mail')), pw = input('password', '', T('App-Passwort'));
     user.autocomplete = 'username'; pw.autocomplete = 'new-password';
     kind.addEventListener('change', function () {
       var p = PRESETS.find(function (x) { return x[0] === kind.value; });
       url.value = p[2];
     });
-    var label = input('text', '', 'optional, z. B. „Privat“'); label.maxLength = 60;
-    [field('Anbieter', kind), field('CalDAV-Adresse', url), field('Benutzer', user), field('App-Passwort', pw), field('Bezeichnung', label)].forEach(function (f) { form.appendChild(f); });
-    form.appendChild(el('p', 'hk-hint', 'Öffentliche Kalender-Server (https) gehen immer. Interne Server: ' +
-      (allowed.private ? 'erlaubt.' : (allowed.hosts.length ? 'nur ' + allowed.hosts.join(', ') : 'nur nach Freigabe im Admin-Bereich') + '.')));
-    var st = el('div', 'hk-status'), bar = el('div', 'hk-actions'), test = el('button', 'btn', 'Verbindung testen'), cancel = el('button', 'btn', 'Abbrechen');
+    var label = input('text', '', T('optional, z. B. „Privat“')); label.maxLength = 60;
+    [field(T('Anbieter'), kind), field(T('CalDAV-Adresse'), url), field(T('Benutzername'), user), field(T('App-Passwort'), pw), field(T('Bezeichnung'), label)].forEach(function (f) { form.appendChild(f); });
+    form.appendChild(el('p', 'hk-hint', T('Öffentliche Kalender-Server (https) gehen immer. Interne Server: {what}', {
+      what: allowed.private ? T('erlaubt.') : (allowed.hosts.length ? T('nur {hosts}', { hosts: allowed.hosts.join(', ') }) : T('nur nach Freigabe im Admin-Bereich')) + '.' })));
+    var st = el('div', 'hk-status'), bar = el('div', 'hk-actions'), test = el('button', 'btn', T('Verbindung testen')), cancel = el('button', 'btn', T('Abbrechen'));
     test.type = cancel.type = 'button'; bar.appendChild(test); bar.appendChild(cancel); form.appendChild(bar); form.appendChild(st);
     var picker = null, save = null;
     cancel.addEventListener('click', function () { form.textContent = ''; done(); });
     test.addEventListener('click', function () {
-      status(st, 'Verbinde …'); test.disabled = true;
+      status(st, T('Verbinde …')); test.disabled = true;
       api('POST', '/api/settings/calendars/test', { base_url: url.value.trim(), username: user.value.trim(), password: pw.value })
         .then(function (d) {
-          status(st, '✓ Verbunden – ' + d.calendars.length + ' Kalender gefunden. Auswählen und speichern:', 'ok');
+          status(st, T('✓ Verbunden – {n} Kalender gefunden. Auswählen und speichern:', { n: d.calendars.length }), 'ok');
           if (picker) picker.remove(); if (save) save.remove();
           picker = calPicker(d.calendars); form.appendChild(picker);
-          save = el('button', 'btn btn-primary', 'Verbinden & speichern'); save.type = 'button'; form.appendChild(save);
+          save = el('button', 'btn btn-primary', T('Verbinden & speichern')); save.type = 'button'; form.appendChild(save);
           save.addEventListener('click', function () {
             save.disabled = true;
             api('POST', '/api/settings/calendars', { base_url: url.value.trim(), username: user.value.trim(), password: pw.value, label: label.value.trim(), calendars: picker.value() })
-              .then(function () { pw.value = ''; HK.toast('Kalender verbunden'); form.textContent = ''; done(); })
+              .then(function () { pw.value = ''; HK.toast(T('Kalender verbunden')); form.textContent = ''; done(); })
               .catch(function (err) { save.disabled = false; status(st, err.message, 'err'); });
           });
         })
@@ -160,53 +157,52 @@
   function accountCard(a, reload) {
     var card = el('div', 'hk-acc'), h = el('div', 'hk-acc-head');
     h.appendChild(el('strong', null, a.label || a.username));
-    h.appendChild(el('span', 'hk-hint', a.username + ' · ' + a.base_url.replace(/^https?:\/\//, '').split('/')[0] + ' · Passwort gespeichert ✓'));
+    h.appendChild(el('span', 'hk-hint', a.username + ' · ' + a.base_url.replace(/^https?:\/\//, '').split('/')[0] + ' · ' + T('Passwort gespeichert ✓')));
     card.appendChild(h);
     var picker = calPicker(a.calendars); card.appendChild(picker);
     var st = el('div', 'hk-status'), bar = el('div', 'hk-actions');
-    var save = el('button', 'btn', 'Auswahl speichern'), more = el('button', 'btn', 'Neu einlesen'), pwb = el('button', 'btn', 'Passwort ändern'), del = el('button', 'btn btn-danger', 'Entfernen');
+    var save = el('button', 'btn', T('Auswahl speichern')), more = el('button', 'btn', T('Neu einlesen')), pwb = el('button', 'btn', T('Passwort ändern')), del = el('button', 'btn btn-danger', T('Entfernen'));
     [save, more, pwb, del].forEach(function (b) { b.type = 'button'; bar.appendChild(b); });
     card.appendChild(bar); card.appendChild(st);
     save.addEventListener('click', function () {
-      status(st, 'Speichere …');
-      api('PATCH', '/api/settings/calendars/' + a.id, { calendars: picker.value() }).then(function () { status(st, '✓ Gespeichert', 'ok'); })
+      status(st, T('Speichere …'));
+      api('PATCH', '/api/settings/calendars/' + a.id, { calendars: picker.value() }).then(function () { status(st, T('✓ Gespeichert'), 'ok'); })
         .catch(function (err) { status(st, err.message, 'err'); });
     });
     more.addEventListener('click', function () {          // neu angelegte Kalender des Kontos holen
-      status(st, 'Lese Kalender …');
+      status(st, T('Lese Kalender …'));
       api('POST', '/api/settings/calendars/test', { id: a.id }).then(function (d) {
         var cur = picker.value(), by = {}; cur.forEach(function (c) { by[c.href] = c; });
         var merged = d.calendars.map(function (c) { return by[c.href] ? Object.assign({}, c, by[c.href]) : Object.assign({}, c, { show: false }); });
         var np = calPicker(merged); card.replaceChild(np, picker); picker = np;
-        status(st, d.calendars.length + ' Kalender – Auswahl speichern nicht vergessen.', 'ok');
+        status(st, T('{n} Kalender – Auswahl speichern nicht vergessen.', { n: d.calendars.length }), 'ok');
       }).catch(function (err) { status(st, err.message, 'err'); });
     });
     pwb.addEventListener('click', function () {
-      var pw = input('password', '', 'Neues App-Passwort'); pw.autocomplete = 'new-password';
-      var ok = el('button', 'btn', 'Prüfen & speichern'); ok.type = 'button';
+      var pw = input('password', '', T('Neues App-Passwort')); pw.autocomplete = 'new-password';
+      var ok = el('button', 'btn', T('Prüfen & speichern')); ok.type = 'button';
       var row = el('div', 'hk-actions'); row.appendChild(pw); row.appendChild(ok); card.insertBefore(row, st); pw.focus();
       ok.addEventListener('click', function () {
-        status(st, 'Prüfe …');
-        api('PATCH', '/api/settings/calendars/' + a.id, { password: pw.value }).then(function () { pw.value = ''; row.remove(); status(st, '✓ Neues Passwort gespeichert', 'ok'); })
+        status(st, T('Prüfe …'));
+        api('PATCH', '/api/settings/calendars/' + a.id, { password: pw.value }).then(function () { pw.value = ''; row.remove(); status(st, T('✓ Neues Passwort gespeichert'), 'ok'); })
           .catch(function (err) { status(st, err.message, 'err'); });
       });
     });
     del.addEventListener('click', function () {
-      if (!confirm('Kalender-Zugang „' + (a.label || a.username) + '“ entfernen? (Die Termine im Kalender selbst bleiben erhalten.)')) return;
+      if (!confirm(T('Kalender-Zugang „{name}“ entfernen? (Die Termine im Kalender selbst bleiben erhalten.)', { name: a.label || a.username }))) return;
       api('DELETE', '/api/settings/calendars/' + a.id).then(reload).catch(function (err) { status(st, err.message, 'err'); });
     });
     return card;
   }
   // --- Abschnitt "Apps & Geraete": Zugangsschluessel fuer die iOS-App (Teilen, Widget) ---------
-  var fDate = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  var fDate = new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric' });
   function tokenSection(body) {
     var sec = el('section', 'hk-set'); body.appendChild(sec);
-    sec.appendChild(el('h3', null, '📱 Apps & Geräte'));
-    sec.appendChild(el('p', 'hk-hint', 'Angemeldete Apps bleiben angemeldet. Zu jeder App gehört ein kleiner Schlüssel für Widget, Teilen und Kurzbefehle ' +
-      '(darf nur ablegen und „Heute“ lesen). Verlorenes Gerät → abmelden, dann ist beides weg.'));
+    sec.appendChild(el('h3', null, '📱 ' + T('Apps & Geräte')));
+    sec.appendChild(el('p', 'hk-hint', T('Angemeldete Apps bleiben angemeldet. Zu jeder App gehört ein kleiner Schlüssel für Widget, Teilen und Kurzbefehle (darf nur ablegen und „Heute“ lesen). Verlorenes Gerät → abmelden, dann ist beides weg.')));
     var devs = el('div', 'hk-tok-list'); sec.appendChild(devs);
     // App per QR-Code anmelden: Code gilt 2 Minuten und einmal; die App uebernimmt daraus auch die Server-Adresse
-    var qrBar = el('div', 'hk-actions'), qrBtn = el('button', 'btn', '📷 App per QR-Code anmelden'); qrBtn.type = 'button';
+    var qrBar = el('div', 'hk-actions'), qrBtn = el('button', 'btn', T('📷 App per QR-Code anmelden')); qrBtn.type = 'button';
     qrBar.appendChild(qrBtn); sec.appendChild(qrBar);
     var qrBox = el('div', 'hk-qr'); qrBox.hidden = true; sec.appendChild(qrBox);
     var qrTimer = null;
@@ -215,79 +211,79 @@
       qrStop(); qrBtn.disabled = true;
       api('POST', '/api/settings/pair').then(function (d) {
         qrBox.textContent = ''; qrBox.hidden = false;
-        var img = el('img'); img.src = d.qr; img.alt = 'QR-Code zum Anmelden der App'; img.width = 220; img.height = 220;
+        var img = el('img'); img.src = d.qr; img.alt = T('QR-Code zum Anmelden der App'); img.width = 220; img.height = 220;
         var txt = el('div'), st = el('p', 'hk-status');
-        txt.appendChild(el('p', null, 'In der iPhone-/iPad-App auf „Mit QR-Code anmelden“ tippen und diesen Code scannen – oder mit der Kamera-App scannen.'));
-        txt.appendChild(el('p', 'hk-hint', 'Der Code gilt 2 Minuten und nur einmal. Zeig ihn niemandem – wer ihn scannt, ist als du angemeldet.'));
+        txt.appendChild(el('p', null, T('In der iPhone-/iPad-App auf „Mit QR-Code anmelden“ tippen und diesen Code scannen – oder mit der Kamera-App scannen.')));
+        txt.appendChild(el('p', 'hk-hint', T('Der Code gilt 2 Minuten und nur einmal. Zeig ihn niemandem – wer ihn scannt, ist als du angemeldet.')));
         txt.appendChild(st); qrBox.appendChild(img); qrBox.appendChild(txt);
         var end = Date.now() + d.expires_in * 1000;
         qrTimer = setInterval(function () {
           var left = Math.max(0, Math.round((end - Date.now()) / 1000));
           api('GET', '/api/settings/pair/' + encodeURIComponent(d.id)).then(function (s) {
             if (s.used_by) {
-              qrStop(); img.remove(); status(st, '✓ „' + s.used_by + '“ ist angemeldet.', 'ok'); load();
+              qrStop(); img.remove(); status(st, T('✓ „{name}“ ist angemeldet.', { name: s.used_by }), 'ok'); load();
             } else if (s.expired || !left) {
-              qrStop(); img.remove(); status(st, 'Abgelaufen – bei Bedarf einen neuen Code erzeugen.', 'err');
-            } else { status(st, 'Noch ' + left + ' s gültig …'); }
+              qrStop(); img.remove(); status(st, T('Abgelaufen – bei Bedarf einen neuen Code erzeugen.'), 'err');
+            } else { status(st, T('Noch {n} s gültig …', { n: left })); }
           }).catch(function () {});
         }, 2000);
       }).catch(function (err) { HK.toast(err.message); }).then(function () { qrBtn.disabled = false; });
     });
     // weitere Schluessel (von Hand, z. B. fuer Kurzbefehle/Skripte oder aeltere Apps) - eingeklappt
-    var more = el('details', 'hk-more'), sum = el('summary', null, 'Weitere Schlüssel'); more.appendChild(sum); sec.appendChild(more);
-    more.appendChild(el('p', 'hk-hint', 'Von Hand erzeugte Schlüssel, z. B. für Kurzbefehle oder Skripte. Sie gehören zu keinem angemeldeten Gerät.'));
+    var more = el('details', 'hk-more'), sum = el('summary', null, T('Weitere Schlüssel')); more.appendChild(sum); sec.appendChild(more);
+    more.appendChild(el('p', 'hk-hint', T('Von Hand erzeugte Schlüssel, z. B. für Kurzbefehle oder Skripte. Sie gehören zu keinem angemeldeten Gerät.')));
     var list = el('div', 'hk-tok-list'); more.appendChild(list);
-    var bar = el('div', 'hk-actions'), nm = el('input', 'hk-in'); nm.type = 'text'; nm.maxLength = 60; nm.placeholder = 'Name, z. B. „Kurzbefehle“';
-    var add = el('button', 'btn', '+ Schlüssel erzeugen'); add.type = 'button'; bar.appendChild(nm); bar.appendChild(add); more.appendChild(bar);
+    var bar = el('div', 'hk-actions'), nm = el('input', 'hk-in'); nm.type = 'text'; nm.maxLength = 60; nm.placeholder = T('Name, z. B. „Kurzbefehle“');
+    var add = el('button', 'btn', T('+ Schlüssel erzeugen')); add.type = 'button'; bar.appendChild(nm); bar.appendChild(add); more.appendChild(bar);
     var out = el('div'); more.appendChild(out);
     function when(t) { return fDate.format(new Date(t * 1000)); }
     function load() {
       api('GET', '/api/settings/apps').then(function (d) {
         devs.textContent = ''; list.textContent = '';
-        if (!d.devices.length) devs.appendChild(el('p', 'hk-hint', 'Keine App angemeldet.'));
+        if (!d.devices.length) devs.appendChild(el('p', 'hk-hint', T('Keine App angemeldet.')));
         d.devices.forEach(function (k) {
           var row = el('div', 'hk-tok');
           row.appendChild(el('strong', null, k.name));
-          row.appendChild(el('span', 'hk-hint', 'angemeldet ' + when(k.created) + (k.last_used ? ' · zuletzt aktiv ' + when(k.last_used) : '') +
-            (k.key ? ' · mit Widget-Schlüssel' : '')));
-          var rv = el('button', 'btn btn-danger', 'Abmelden'); rv.type = 'button';
+          row.appendChild(el('span', 'hk-hint', T('angemeldet {date}', { date: when(k.created) }) + (k.last_used ? ' · ' + T('zuletzt aktiv {date}', { date: when(k.last_used) }) : '') +
+            (k.key ? ' · ' + T('mit Widget-Schlüssel') : '')));
+          var rv = el('button', 'btn btn-danger', T('Abmelden')); rv.type = 'button';
           rv.addEventListener('click', function () {
-            if (!confirm('„' + k.name + '“ abmelden? Die App muss sich neu anmelden; Widget und Teilen auf diesem Gerät verlieren den Zugang.')) return;
+            if (!confirm(T('„{name}“ abmelden? Die App muss sich neu anmelden; Widget und Teilen auf diesem Gerät verlieren den Zugang.', { name: k.name }))) return;
             api('DELETE', '/api/settings/devices/' + k.id).then(load).catch(function (err) { HK.toast(err.message); });
           });
           row.appendChild(rv); devs.appendChild(row);
         });
-        sum.textContent = 'Weitere Schlüssel' + (d.keys.length ? ' (' + d.keys.length + ')' : '');
-        if (!d.keys.length) list.appendChild(el('p', 'hk-hint', 'Keine.'));
+        sum.textContent = T('Weitere Schlüssel') + (d.keys.length ? ' (' + d.keys.length + ')' : '');
+        if (!d.keys.length) list.appendChild(el('p', 'hk-hint', T('Keine.')));
         d.keys.forEach(function (k) {
           var row = el('div', 'hk-tok');
           row.appendChild(el('strong', null, k.name));
           row.appendChild(el('code', null, k.prefix + '…'));
-          row.appendChild(el('span', 'hk-hint', 'erstellt ' + when(k.created) + (k.last_used ? ' · zuletzt benutzt ' + when(k.last_used) : ' · noch nie benutzt')));
-          var rv = el('button', 'btn btn-danger', 'Widerrufen'); rv.type = 'button';
+          row.appendChild(el('span', 'hk-hint', T('erstellt {date}', { date: when(k.created) }) + ' · ' + (k.last_used ? T('zuletzt benutzt {date}', { date: when(k.last_used) }) : T('noch nie benutzt'))));
+          var rv = el('button', 'btn btn-danger', T('Widerrufen')); rv.type = 'button';
           rv.addEventListener('click', function () {
-            if (!confirm('Schlüssel „' + k.name + '“ widerrufen?')) return;
+            if (!confirm(T('Schlüssel „{name}“ widerrufen?', { name: k.name }))) return;
             api('DELETE', '/api/settings/tokens/' + k.id).then(load).catch(function (err) { HK.toast(err.message); });
           });
           row.appendChild(rv); list.appendChild(row);
         });
-      }).catch(function (err) { devs.textContent = 'Nicht geladen: ' + err.message; });
+      }).catch(function (err) { devs.textContent = T('Nicht geladen: {err}', { err: err.message }); });
     }
     add.addEventListener('click', function () {
       add.disabled = true;
       api('POST', '/api/settings/tokens', { name: nm.value.trim() }).then(function (d) {
         nm.value = ''; out.textContent = '';
         var box = el('div', 'hk-newtok');
-        box.appendChild(el('p', null, '🔑 Neuer Schlüssel für „' + d.name + '“ – nur jetzt sichtbar!'));
+        box.appendChild(el('p', null, '🔑 ' + T('Neuer Schlüssel für „{name}“ – nur jetzt sichtbar!', { name: d.name })));
         var code = el('input', 'hk-in hk-tokval'); code.type = 'text'; code.readOnly = true; code.value = d.token; box.appendChild(code);
-        var cp = el('button', 'btn', 'Kopieren'); cp.type = 'button'; box.appendChild(cp);
+        var cp = el('button', 'btn', T('Kopieren')); cp.type = 'button'; box.appendChild(cp);
         cp.addEventListener('click', function () {
           code.select();
-          (navigator.clipboard ? navigator.clipboard.writeText(d.token) : Promise.reject()).then(function () { HK.toast('Kopiert'); }, function () { document.execCommand('copy'); HK.toast('Kopiert'); });
+          (navigator.clipboard ? navigator.clipboard.writeText(d.token) : Promise.reject()).then(function () { HK.toast(T('Kopiert')); }, function () { document.execCommand('copy'); HK.toast(T('Kopiert')); });
         });
         if (inApp) {
-          var use = el('button', 'btn', 'In dieser App verwenden'); use.type = 'button';
-          use.addEventListener('click', function () { toApp({ action: 'token', token: d.token }); use.textContent = '✓ Übergeben'; use.disabled = true; });
+          var use = el('button', 'btn', T('In dieser App verwenden')); use.type = 'button';
+          use.addEventListener('click', function () { toApp({ action: 'token', token: d.token }); use.textContent = T('✓ Übergeben'); use.disabled = true; });
           box.appendChild(use);
         }
         out.appendChild(box); code.focus(); code.select(); load();
@@ -296,42 +292,57 @@
     load();
   }
 
+  // Sprache der Web-Oberflaeche (Konto-Einstellung; "Automatisch" = Standard des Servers bzw. Browsersprache)
+  function langField(box, a) {
+    var sel = el('select', 'hk-in');
+    (a.langs || []).forEach(function (l) { var o = el('option', null, l.name); o.value = l.code; sel.appendChild(o); });
+    sel.value = a.lang || '';
+    var st = el('div', 'hk-status');
+    sel.addEventListener('change', function () {
+      sel.disabled = true;
+      api('PUT', '/api/account/lang', { lang: sel.value }).then(function () { location.reload(); })
+        .catch(function (err) { sel.disabled = false; status(st, err.message, 'err'); });
+    });
+    box.appendChild(field(T('Sprache'), sel)); box.appendChild(st);
+  }
+
   // --- Abschnitt "Konto": Name, E-Mail, Passwort (nur lokale Konten), Gruppen ------------------------------
   function accountSection(body) {
     var sec = el('section', 'hk-set hk-set-account'); body.appendChild(sec);
-    sec.appendChild(el('h3', null, '👤 Konto'));
+    sec.appendChild(el('h3', null, '👤 ' + T('Konto')));
     var box = el('div'); sec.appendChild(box);
     api('GET', '/api/account').then(function (a) {
-      box.appendChild(el('p', 'hk-hint', a.username + ' · ' + a.source_label + (a.groups.length ? ' · Gruppen: ' + a.groups.join(', ') : '')));
+      box.appendChild(el('p', 'hk-hint', a.username + ' · ' + a.source_label + (a.groups.length ? ' · ' + T('Gruppen: {list}', { list: a.groups.join(', ') }) : '')));
+      langField(box, a);
       if (!a.can_edit) {
-        box.appendChild(el('p', 'hk-hint', 'Name, E-Mail und Passwort verwaltet dein Anmeldedienst.'));
+        box.appendChild(el('p', 'hk-hint', T('Name, E-Mail und Passwort verwaltet dein Anmeldedienst.')));
         return;
       }
-      var nm = input('text', a.name === a.username ? '' : a.name, 'Anzeigename'); nm.maxLength = 120;
+      var nm = input('text', a.name === a.username ? '' : a.name, T('Anzeigename')); nm.maxLength = 120;
       var em = input('email', a.email, 'name@example.org'); em.maxLength = 200;
-      box.appendChild(field('Anzeigename', nm)); box.appendChild(field('E-Mail', em));
-      var st = el('div', 'hk-status'), bar = el('div', 'hk-actions'), sv = el('button', 'btn', 'Speichern'); sv.type = 'button';
+      box.appendChild(field(T('Anzeigename'), nm)); box.appendChild(field(T('E-Mail'), em));
+      var st = el('div', 'hk-status'), bar = el('div', 'hk-actions'), sv = el('button', 'btn', T('Speichern')); sv.type = 'button';
       bar.appendChild(sv); box.appendChild(bar); box.appendChild(st);
       sv.addEventListener('click', function () {
         api('PATCH', '/api/account', { name: nm.value.trim(), email: em.value.trim() }).then(function (d) {
-          status(st, '✓ Gespeichert', 'ok'); btn.dataset.name = d.name; btn.textContent = '👤 ' + d.name + ' ▾';
+          status(st, T('✓ Gespeichert'), 'ok'); btn.dataset.name = d.name; btn.textContent = '👤 ' + d.name + ' ▾';
         }).catch(function (err) { status(st, err.message, 'err'); });
       });
-      box.appendChild(el('h4', null, 'Passwort ändern'));
-      var o = input('password', '', 'Bisheriges Passwort'), n1 = input('password', '', 'mind. 10 Zeichen'), n2 = input('password', '', 'wiederholen');
+      box.appendChild(el('h4', null, T('Passwort ändern')));
+      var o = input('password', '', T('Bisheriges Passwort')), n1 = input('password', '', T('mind. 10 Zeichen')), n2 = input('password', '', T('wiederholen'));
       o.autocomplete = 'current-password'; n1.autocomplete = n2.autocomplete = 'new-password';
-      box.appendChild(field('Bisheriges', o)); box.appendChild(field('Neues Passwort', n1)); box.appendChild(field('Wiederholen', n2));
-      var st2 = el('div', 'hk-status'), bar2 = el('div', 'hk-actions'), pwb = el('button', 'btn', 'Passwort ändern'); pwb.type = 'button';
+      box.appendChild(field(T('Bisheriges'), o)); box.appendChild(field(T('Neues Passwort'), n1)); box.appendChild(field(T('Wiederholen'), n2));
+      var st2 = el('div', 'hk-status'), bar2 = el('div', 'hk-actions'), pwb = el('button', 'btn', T('Passwort ändern')); pwb.type = 'button';
       bar2.appendChild(pwb); box.appendChild(bar2); box.appendChild(st2);
-      box.appendChild(el('p', 'hk-hint', 'Andere Browser-Sitzungen werden danach abgemeldet. Angemeldete Apps bleiben angemeldet (unten unter „Apps & Geräte“ abmelden).'));
+      box.appendChild(el('p', 'hk-hint', T('Andere Browser-Sitzungen werden danach abgemeldet. Angemeldete Apps bleiben angemeldet (unten unter „Apps & Geräte“ abmelden).')));
       pwb.addEventListener('click', function () {
-        if (n1.value !== n2.value) { status(st2, 'Die neuen Passwörter stimmen nicht überein.', 'err'); return; }
+        if (n1.value !== n2.value) { status(st2, T('Die neuen Passwörter stimmen nicht überein.'), 'err'); return; }
         pwb.disabled = true;
         api('POST', '/api/account/password', { old: o.value, new: n1.value }).then(function () {
-          o.value = n1.value = n2.value = ''; status(st2, '✓ Passwort geändert', 'ok');
+          o.value = n1.value = n2.value = ''; status(st2, T('✓ Passwort geändert'), 'ok');
         }).catch(function (err) { status(st2, err.message, 'err'); }).then(function () { pwb.disabled = false; });
       });
-    }).catch(function (err) { box.textContent = 'Nicht geladen: ' + err.message; });
+    }).catch(function (err) { box.textContent = T('Nicht geladen: {err}', { err: err.message }); });
   }
 
   // --- Abschnitt "Lesezeichen": eigene Kacheln auf dem Dashboard (auch in den Apps) -----------------------------
@@ -346,27 +357,27 @@
   }
   function bookmarkSection(body) {
     var sec = el('section', 'hk-set hk-set-bookmarks'); body.appendChild(sec);
-    sec.appendChild(el('h3', null, '🔖 Lesezeichen'));
-    sec.appendChild(el('p', 'hk-hint', 'Eigene Kacheln auf dem Dashboard – nur für dich sichtbar, auch in den Apps. Symbole: Name von selfh.st/icons (z. B. „jellyfin“).'));
+    sec.appendChild(el('h3', null, '🔖 ' + T('Lesezeichen')));
+    sec.appendChild(el('p', 'hk-hint', T('Eigene Kacheln auf dem Dashboard – nur für dich sichtbar, auch in den Apps. Symbole: Name von selfh.st/icons (z. B. „jellyfin“).')));
     var list = el('div'); sec.appendChild(list);
-    var add = el('button', 'btn', '+ Lesezeichen'); add.type = 'button'; sec.appendChild(add);
+    var add = el('button', 'btn', T('+ Lesezeichen')); add.type = 'button'; sec.appendChild(add);
     var formBox = el('div'); sec.appendChild(formBox);
     function load() {
       api('GET', '/api/bookmarks').then(function (d) {
         list.textContent = '';
-        if (!d.length) list.appendChild(el('p', 'hk-hint', 'Noch keine Lesezeichen.'));
+        if (!d.length) list.appendChild(el('p', 'hk-hint', T('Noch keine Lesezeichen.')));
         d.forEach(function (b) {
           var row = el('div', 'hk-bm-row'), txt = el('div');
           txt.appendChild(el('strong', null, b.name)); txt.appendChild(el('div', 'hk-hint', b.category + ' · ' + b.url));
-          var ed = el('button', 'btn', 'Bearbeiten'), del = el('button', 'btn btn-danger', 'Löschen'); ed.type = del.type = 'button';
+          var ed = el('button', 'btn', T('Bearbeiten')), del = el('button', 'btn btn-danger', T('Löschen')); ed.type = del.type = 'button';
           ed.addEventListener('click', function () { bmForm(formBox, b, function () { load(); changed = true; }); });
           del.addEventListener('click', function () {
-            if (!confirm('Lesezeichen „' + b.name + '“ löschen?')) return;
+            if (!confirm(T('Lesezeichen „{name}“ löschen?', { name: b.name }))) return;
             api('DELETE', '/api/bookmarks/' + b.id).then(function () { load(); changed = true; }).catch(function (err) { HK.toast(err.message); });
           });
           row.appendChild(bmIcon(b)); row.appendChild(txt); row.appendChild(ed); row.appendChild(del); list.appendChild(row);
         });
-      }).catch(function (err) { list.textContent = 'Nicht geladen: ' + err.message; });
+      }).catch(function (err) { list.textContent = T('Nicht geladen: {err}', { err: err.message }); });
     }
     add.addEventListener('click', function () { bmForm(formBox, null, function () { load(); changed = true; }); });
     load();
@@ -375,11 +386,11 @@
   function bmForm(box, b, done) {
     box.textContent = '';
     var f = el('div', 'hk-cal-form');
-    var nm = input('text', b ? b.name : '', 'z. B. Router'), url = input('url', b ? b.url : '', 'https://…');
-    var ic = input('text', b ? b.icon : '', 'optional, z. B. openwrt'), cat = input('text', b ? b.category : 'Lesezeichen');
+    var nm = input('text', b ? b.name : '', T('z. B. Router')), url = input('url', b ? b.url : '', 'https://…');
+    var ic = input('text', b ? b.icon : '', T('optional, z. B. openwrt')), cat = input('text', b ? b.category : T('Lesezeichen'));
     nm.maxLength = 80; url.maxLength = 500; ic.maxLength = 64; cat.maxLength = 40;
-    [field('Name', nm), field('Adresse', url), field('Symbol', ic), field('Kategorie', cat)].forEach(function (x) { f.appendChild(x); });
-    var bar = el('div', 'hk-actions'), sv = el('button', 'btn btn-primary', b ? 'Speichern' : 'Hinzufügen'), cc = el('button', 'btn', 'Abbrechen'), st = el('div', 'hk-status');
+    [field(T('Name'), nm), field(T('Adresse'), url), field(T('Symbol'), ic), field(T('Kategorie'), cat)].forEach(function (x) { f.appendChild(x); });
+    var bar = el('div', 'hk-actions'), sv = el('button', 'btn btn-primary', b ? T('Speichern') : T('Hinzufügen')), cc = el('button', 'btn', T('Abbrechen')), st = el('div', 'hk-status');
     sv.type = cc.type = 'button'; bar.appendChild(sv); bar.appendChild(cc); f.appendChild(bar); f.appendChild(st);
     box.appendChild(f);
     // Abschnitte darueber laden nach -> erst danach zum Formular scrollen
@@ -388,7 +399,7 @@
     function save() {
       var data = { name: nm.value.trim(), url: url.value.trim(), icon: ic.value.trim(), category: cat.value.trim() };
       (b ? api('PATCH', '/api/bookmarks/' + b.id, data) : api('POST', '/api/bookmarks', data))
-        .then(function () { box.textContent = ''; HK.toast(b ? 'Lesezeichen gespeichert' : 'Lesezeichen hinzugefügt'); done(); })
+        .then(function () { box.textContent = ''; HK.toast(b ? T('Lesezeichen gespeichert') : T('Lesezeichen hinzugefügt')); done(); })
         .catch(function (err) { status(st, err.message, 'err'); });
     }
     sv.addEventListener('click', save);

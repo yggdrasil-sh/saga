@@ -14,6 +14,7 @@ from datetime import date, datetime, time as dtime, timedelta, timezone
 from urllib.parse import urljoin, urlsplit
 
 import httpx
+from saga.i18n import t
 
 _ENV_HOSTS = {h.strip().lower() for h in os.environ.get("CALDAV_ALLOWED_HOSTS", "").split(",") if h.strip()}
 HOST_OK = lambda host, hostport: host in _ENV_HOSTS or hostport in _ENV_HOSTS      # noqa: E731 - saga/calendars.py setzt die echte Pruefung
@@ -42,11 +43,11 @@ def check_url(url):
     host = (p.hostname or "").lower()
     hostport = host + (f":{p.port}" if p.port else "")
     if p.scheme not in SCHEMES:
-        raise CalError("Nur https-Adressen sind erlaubt")
+        raise CalError(t("Nur https-Adressen sind erlaubt"))
     if p.username or p.password:
-        raise CalError("Zugangsdaten gehören nicht in die Adresse")
+        raise CalError(t("Zugangsdaten gehören nicht in die Adresse"))
     if not host or not HOST_OK(host, hostport):
-        raise CalError(f"Server „{host}“ ist nicht erreichbar oder nicht freigegeben (interne Server gibt der Admin frei)")
+        raise CalError(t("Server „{host}“ ist nicht erreichbar oder nicht freigegeben (interne Server gibt der Admin frei)", host=host))
     return url
 
 
@@ -64,35 +65,35 @@ def _req(method, url, auth, body=None, headers=None):
                     for chunk in r.iter_bytes():
                         data += chunk
                         if len(data) > MAX_BYTES:
-                            raise CalError("Antwort des Kalender-Servers zu groß")
+                            raise CalError(t("Antwort des Kalender-Servers zu groß"))
                     status, loc, rh = r.status_code, r.headers.get("location"), dict(r.headers)
         except (httpx.RemoteProtocolError, httpx.ReadError, httpx.WriteError, httpx.ConnectError) as ex:
             # Gegenseite hat die offene Verbindung geschlossen -> einmal mit frischer Verbindung wiederholen
             _local.client = None
             if getattr(_local, "retried", False):
                 _local.retried = False
-                raise CalError(f"Kalender-Server nicht erreichbar ({type(ex).__name__})")
+                raise CalError(t("Kalender-Server nicht erreichbar ({why})", why=type(ex).__name__))
             _local.retried = True
             continue
         except httpx.HTTPError as ex:
-            raise CalError(f"Kalender-Server nicht erreichbar ({type(ex).__name__})")
+            raise CalError(t("Kalender-Server nicht erreichbar ({why})", why=type(ex).__name__))
         _local.retried = False
         if status in (301, 302, 303, 307, 308) and loc:
             url = urljoin(url, loc)
             continue
         if status == 401:
-            raise CalError("Anmeldung abgelehnt – Benutzer oder App-Passwort falsch")
+            raise CalError(t("Anmeldung abgelehnt – Benutzer oder App-Passwort falsch"))
         if status == 403:
-            raise CalError("Keine Berechtigung (App-Passwort mit Kalender-/DAV-Recht?)")
+            raise CalError(t("Keine Berechtigung (App-Passwort mit Kalender-/DAV-Recht?)"))
         return status, data, rh, url
-    raise CalError("Zu viele Umleitungen")
+    raise CalError(t("Zu viele Umleitungen"))
 
 
 def _xml(data):
     try:
         return ET.fromstring(data)
     except ET.ParseError:
-        raise CalError("Unerwartete Antwort des Kalender-Servers")
+        raise CalError(t("Unerwartete Antwort des Kalender-Servers"))
 
 
 def _propfind(url, auth, props, depth="0"):
@@ -100,7 +101,7 @@ def _propfind(url, auth, props, depth="0"):
             'xmlns:a="http://apple.com/ns/ical/" xmlns:cs="http://calendarserver.org/ns/"><d:prop>' + props + '</d:prop></d:propfind>')
     status, data, _, final = _req("PROPFIND", url, auth, body.encode(), {"Depth": depth, "Content-Type": "application/xml; charset=utf-8"})
     if status not in (200, 207):
-        raise CalError(f"Kalender-Server antwortet mit {status}")
+        raise CalError(t("Kalender-Server antwortet mit {status}", status=status))
     return _xml(data), final
 
 
@@ -139,7 +140,7 @@ def discover(base_url, user, password):
         cals.append({"href": href, "name": name[:80], "color": color if color.startswith("#") else "",
                      "writable": not privs or any(p in ("write", "write-content", "all") for p in privs)})
     if not cals:
-        raise CalError("Keine Kalender gefunden")
+        raise CalError(t("Keine Kalender gefunden"))
     return cals
 
 
@@ -165,7 +166,7 @@ def events(cal_url, user, password, start, end, tz=timezone.utc):
             f'<c:time-range start="{fmt(start)}" end="{fmt(end)}"/></c:comp-filter></c:comp-filter></c:filter></c:calendar-query>')
     status, data, _, final = _req("REPORT", cal_url, (user, password), body.encode(), {"Depth": "1", "Content-Type": "application/xml; charset=utf-8"})
     if status not in (200, 207):
-        raise CalError(f"Termine nicht lesbar ({status})")
+        raise CalError(t("Termine nicht lesbar ({status})", status=status))
     out = []
     for resp in _xml(data).findall("d:response", NS):
         raw = resp.findtext(".//c:calendar-data", default="", namespaces=NS)
@@ -205,16 +206,16 @@ def _load_single(href, auth, etag):
     """Vorhandenen Termin laden; Serien (RRULE/RDATE/Ausnahmen) werden NICHT angefasst."""
     status, data, rh, _ = _req("GET", href, auth)
     if status == 404:
-        raise CalError("Termin gibt es nicht mehr – bitte neu laden")
+        raise CalError(t("Termin gibt es nicht mehr – bitte neu laden"))
     if status != 200:
-        raise CalError(f"Termin nicht lesbar ({status})")
+        raise CalError(t("Termin nicht lesbar ({status})", status=status))
     cur = (rh.get("etag") or "").strip()
     if etag and cur and cur != etag:
-        raise CalError("Der Termin wurde inzwischen woanders geändert – bitte neu laden")
+        raise CalError(t("Der Termin wurde inzwischen woanders geändert – bitte neu laden"))
     cal = _ical().Calendar.from_ical(data)
     evs = list(cal.walk("VEVENT"))
     if len(evs) != 1 or any(evs[0].get(k) for k in ("RRULE", "RDATE", "RECURRENCE-ID")):
-        raise CalError("Serientermine bitte direkt im Kalender (mailcow/Nextcloud) bearbeiten")
+        raise CalError(t("Serientermine bitte direkt im Kalender (mailcow/Nextcloud) bearbeiten"))
     return cal, evs[0], cur or etag
 
 
@@ -225,7 +226,7 @@ def _set_fields(v, ev):
         if k in v:
             del v[k]
     v.add("dtstamp", datetime.now(timezone.utc))
-    v.add("summary", (ev.get("summary") or "Termin")[:300])
+    v.add("summary", (ev.get("summary") or t("Termin"))[:300])
     if ev.get("location"):
         v.add("location", str(ev["location"])[:300])
     if ev.get("description"):
@@ -237,9 +238,9 @@ def _set_fields(v, ev):
         try:
             s = datetime.fromisoformat(str(ev["start"])); e = datetime.fromisoformat(str(ev.get("end") or ev["start"]))
         except ValueError:
-            raise CalError("Ungültige Zeitangabe")
+            raise CalError(t("Ungültige Zeitangabe"))
         if not s.tzinfo or not e.tzinfo:
-            raise CalError("Zeitangabe ohne Zeitzone")
+            raise CalError(t("Zeitangabe ohne Zeitzone"))
         v.add("dtstart", s); v.add("dtend", e if e > s else s + timedelta(hours=1))
     return ical
 
@@ -250,7 +251,7 @@ def save_event(cal_url, user, password, ev, href=None, etag=None):
     if href:
         check_url(href)
         if not href.startswith(check_url(cal_url)):
-            raise CalError("Termin gehört nicht zu diesem Kalender")
+            raise CalError(t("Termin gehört nicht zu diesem Kalender"))
         cal, v, cur = _load_single(href, auth, etag)       # vorhandenen Termin aendern statt neu bauen
         _set_fields(v, ev)
         body, headers = cal.to_ical(), ({"If-Match": cur} if cur else {})
@@ -260,20 +261,20 @@ def save_event(cal_url, user, password, ev, href=None, etag=None):
     headers["Content-Type"] = "text/calendar; charset=utf-8"
     status, _, rh, _ = _req("PUT", href, auth, body, headers)
     if status == 412:
-        raise CalError("Der Termin wurde inzwischen woanders geändert – bitte neu laden")
+        raise CalError(t("Der Termin wurde inzwischen woanders geändert – bitte neu laden"))
     if status not in (200, 201, 204):
-        raise CalError(f"Termin nicht gespeichert ({status})")
+        raise CalError(t("Termin nicht gespeichert ({status})", status=status))
     return href, rh.get("etag", "")
 
 
 def delete_event(cal_url, user, password, href, etag=None):
     check_url(href)
     if not href.startswith(check_url(cal_url)):
-        raise CalError("Termin gehört nicht zu diesem Kalender")
+        raise CalError(t("Termin gehört nicht zu diesem Kalender"))
     _, _, cur = _load_single(href, (user, password), etag)    # Serien nicht loeschen, ETag pruefen
     etag = cur or etag
     status, _, _, _ = _req("DELETE", href, (user, password), None, {"If-Match": etag} if etag else {})
     if status == 412:
-        raise CalError("Der Termin wurde inzwischen woanders geändert – bitte neu laden")
+        raise CalError(t("Der Termin wurde inzwischen woanders geändert – bitte neu laden"))
     if status not in (200, 204, 404):
-        raise CalError(f"Termin nicht gelöscht ({status})")
+        raise CalError(t("Termin nicht gelöscht ({status})", status=status))

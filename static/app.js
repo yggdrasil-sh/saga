@@ -14,8 +14,8 @@
   }
 
   // --- Uhr & Datum (Zeitzone des Browsers) ---------------------------------
-  var fT = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' });
-  var fD = new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  var fT = new Intl.DateTimeFormat(window.SAGA_LOCALE, { hour: '2-digit', minute: '2-digit' });
+  var fD = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   function tick() {
     var d = new Date();
     $('clk-time').textContent = fT.format(d);
@@ -52,12 +52,12 @@
     (d.answers || []).forEach(function (a) { m.appendChild(el('div', 'web-answer', a)); });
     var tips = (d.corrections || []).concat(d.suggestions || []);
     if (tips.length) {
-      var row = el('div', 'web-tips'); row.appendChild(el('span', 'web-tips-l', 'Meintest du:'));
+      var row = el('div', 'web-tips'); row.appendChild(el('span', 'web-tips-l', T('Meintest du:')));
       tips.forEach(function (t) { row.appendChild(chip(t, function () { q.value = t; webSearch(t, 1); })); });
       m.appendChild(row);
     }
     if (d.unresponsive && d.unresponsive.length)
-      m.appendChild(el('div', 'web-warn', 'Nicht geantwortet: ' + d.unresponsive.join(', ')));
+      m.appendChild(el('div', 'web-warn', T('Nicht geantwortet: {list}', { list: d.unresponsive.join(', ') })));
   }
   function renderResults(list) {
     var ol = $('web-list');
@@ -75,7 +75,7 @@
     text = (text || '').trim(); if (!text) return;
     web.busy = true; web.q = text; web.page = page;
     var sec = $('web'); sec.hidden = false; webGoUpdate('');
-    if (page === 1) { $('web-list').textContent = ''; $('web-meta').textContent = ''; $('web-meta').appendChild(el('div', 'web-load', 'Suche läuft …')); }
+    if (page === 1) { $('web-list').textContent = ''; $('web-meta').textContent = ''; $('web-meta').appendChild(el('div', 'web-load', T('Suche läuft …'))); }
     $('web-more').hidden = true;
     fetch('/api/search', { method: 'POST', credentials: 'same-origin',
       headers: Object.assign({ 'Content-Type': 'application/json' }, H),
@@ -83,14 +83,14 @@
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (x) {
         if (page === 1) $('web-meta').textContent = '';
-        if (!x.ok) { $('web-meta').appendChild(el('div', 'web-warn', x.d.error || 'Fehler bei der Suche')); return; }
+        if (!x.ok) { $('web-meta').appendChild(el('div', 'web-warn', x.d.error || T('Fehler bei der Suche'))); return; }
         if (page === 1) renderMeta(x.d);
         renderResults(x.d.results || []);
-        if (page === 1 && !(x.d.results || []).length) $('web-meta').appendChild(el('div', 'web-warn', 'Keine Ergebnisse.'));
+        if (page === 1 && !(x.d.results || []).length) $('web-meta').appendChild(el('div', 'web-warn', T('Keine Ergebnisse.')));
         $('web-more').hidden = !(x.d.results || []).length || page >= 10;
         if (page === 1) sec.scrollIntoView({ block: 'start', behavior: 'smooth' });
       })
-      .catch(function () { $('web-meta').textContent = ''; $('web-meta').appendChild(el('div', 'web-warn', 'Suche nicht erreichbar.')); })
+      .catch(function () { $('web-meta').textContent = ''; $('web-meta').appendChild(el('div', 'web-warn', T('Suche nicht erreichbar.'))); })
       .then(function () { web.busy = false; });
   }
   if (WEB) {
@@ -158,7 +158,7 @@
   });
 
   // --- Status-Punkte --------------------------------------------------------
-  var LABEL = { up: 'online', warn: 'langsam', down: 'nicht erreichbar' };
+  var LABEL = { up: T('online'), warn: T('langsam'), down: T('nicht erreichbar') };
   function status() {
     fetch('/api/status', { credentials: 'same-origin', headers: H })
       .then(function (r) { return r.ok ? r.json() : null; })
@@ -168,7 +168,7 @@
           var s = d[w.dataset.g], dot = w.querySelector('.dot');
           if (!dot) return;                       // eigene Lesezeichen: keine Statuspruefung
           dot.className = 'dot ' + (s ? s.state : 'unknown');
-          dot.title = s ? LABEL[s.state] + (s.ms != null ? ' · ' + s.ms + ' ms' : '') + (s.code ? ' · HTTP ' + s.code : '') : 'Status wird geprüft';
+          dot.title = s ? LABEL[s.state] + (s.ms != null ? ' · ' + s.ms + ' ms' : '') + (s.code ? ' · HTTP ' + s.code : '') : T('Status wird geprüft');
         });
       }).catch(function () {});
   }

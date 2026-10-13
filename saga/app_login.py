@@ -9,7 +9,7 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import APP_TOKEN_MAX, BASE_URL, _api_guard, _bad, _body, _session_user, _set_session, _tok_db, _tok_hash, user_info
+from saga.core import APP_TOKEN_MAX, BASE_URL, _api_guard, _bad, _body, _session_user, _set_session, _tok_db, _tok_hash, user_info, t
 from saga.web_auth import _auth_page
 
 router = APIRouter()
@@ -35,7 +35,7 @@ def _appcode_db(c):
 @router.get("/app/login")
 def app_login(request: Request, challenge: str = "", scheme: str = "hlidskjalf"):
     if not _CHALLENGE_RE.fullmatch(challenge) or scheme not in APP_SCHEMES:
-        return PlainTextResponse("ungueltige Anfrage", status_code=400)
+        return PlainTextResponse(t("ungueltige Anfrage"), status_code=400)
     resp = RedirectResponse("/app/handoff" if _session_user(request) else "/login?next=/app/handoff", status_code=303)
     # eigenes Cookie: die Anmeldung (callback) leert die Sitzung, dieses bleibt erhalten
     resp.set_cookie("hk_app_ch", challenge, max_age=600, httponly=True, secure=BASE_URL.startswith("https"), samesite="lax", path="/app")
@@ -50,7 +50,7 @@ def app_handoff(request: Request):
     if not uid:
         return RedirectResponse("/login?next=/app/handoff", status_code=303)
     if not _CHALLENGE_RE.fullmatch(ch):
-        return PlainTextResponse("Anmeldung bitte in der App neu starten.", status_code=400)
+        return PlainTextResponse(t("Anmeldung bitte in der App neu starten."), status_code=400)
     code = secrets.token_urlsafe(32)
     with _db() as c, c:
         _appcode_db(c)
@@ -70,19 +70,19 @@ async def app_exchange(request: Request):
     b = await _body(request) or {}
     code, verifier = str(b.get("code") or ""), str(b.get("verifier") or "")
     if not (20 <= len(code) <= 100 and 43 <= len(verifier) <= 128):
-        return _bad("ungueltige Anfrage")
+        return _bad(t("ungueltige Anfrage"))
     with _db() as c, c:
         _appcode_db(c)
         h = hashlib.sha256(code.encode()).hexdigest()
         r = c.execute("SELECT uid, name, challenge, expires FROM app_code WHERE hash=?", (h,)).fetchone()
         c.execute("DELETE FROM app_code WHERE hash=?", (h,))            # einmalig - auch bei Fehlversuch verbraucht
     if not r or r[3] < time.time():
-        return _bad("Code ungueltig oder abgelaufen", 401)
+        return _bad(t("Code ungueltig oder abgelaufen"), 401)
     calc = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
     if not secrets.compare_digest(calc, r[2]):
-        return _bad("Code ungueltig oder abgelaufen", 401)
+        return _bad(t("Code ungueltig oder abgelaufen"), 401)
     if user_info(r[0], fresh=True) is None:
-        return _bad("Kein Zugriff", 403)
+        return _bad(t("Kein Zugriff"), 403)
     _set_session(request, r[0], r[1])
     out = {"ok": True, "name": r[1]}
     out.update(_mint_device(r[0], r[1], b))
@@ -140,16 +140,16 @@ async def app_resume(request: Request):
     tok = str(b.get("device_token") or "")
     key = str(b.get("app_key") or "")
     if not tok.startswith("hkd_") or len(tok) > 120:
-        return _bad("ungueltige Anfrage", 401)
+        return _bad(t("ungueltige Anfrage"), 401)
     with _db() as c, c:
         _devlogin_db(c)
         r = c.execute("SELECT id, uid, uname FROM device_login WHERE hash=?", (_tok_hash(tok),)).fetchone()
     if not r:
-        return _bad("Geraet abgemeldet - bitte neu anmelden", 401)
+        return _bad(t("Geraet abgemeldet - bitte neu anmelden"), 401)
     if user_info(r[1], fresh=True) is None:
         with _db() as c, c:
             _drop_devices(c, r[1], [r[0]])
-        return _bad("Kein Zugriff", 403)
+        return _bad(t("Kein Zugriff"), 403)
     with _db() as c, c:
         c.execute("UPDATE device_login SET last_used=? WHERE id=?", (time.time(), r[0]))
         if key.startswith("hk_") and len(key) <= 120:      # die App nennt ihren Widget-Schluessel -> dem Geraet zuordnen
@@ -165,11 +165,11 @@ async def app_device(request: Request):
     """Schon angemeldete App (gueltige Sitzung, aber noch kein Geraete-Schluessel) -> Schluessel ohne neue Anmeldung."""
     uid = _api_guard(request)
     if not uid:
-        return _bad("Bitte anmelden", 401)
+        return _bad(t("Bitte anmelden"), 401)
     b = await _body(request) or {}
     out = _mint_device(uid, request.session.get("name") or uid, b)
     if not out:
-        return _bad("Geraetename fehlt")
+        return _bad(t("Geraetename fehlt"))
     return JSONResponse(out)
 
 
@@ -189,7 +189,7 @@ def api_pair_new(request: Request):
     with _db() as c, c:
         c.execute("DELETE FROM pair_code WHERE expires < ?", (now - 3600,))
         if c.execute("SELECT COUNT(*) FROM pair_code WHERE uid=? AND expires > ? AND used_at IS NULL", (uid, now)).fetchone()[0] >= 5:
-            return _bad("Zu viele offene QR-Codes – bitte kurz warten.", 429)
+            return _bad(t("Zu viele offene QR-Codes – bitte kurz warten."), 429)
         c.execute("INSERT INTO pair_code (hash, pid, uid, name, created, expires) VALUES (?,?,?,?,?,?)",
                   (_tok_hash(code), pid, uid, request.session.get("name") or uid, now, now + PAIR_TTL))
     link = f"{BASE_URL}/app/pair?c={code}"
@@ -224,7 +224,7 @@ async def app_pair(request: Request):
     b = await _body(request) or {}
     code = str(b.get("code") or "")
     if not re.fullmatch(r"[A-Za-z0-9_-]{20,64}", code):
-        return _bad("ungueltige Anfrage")
+        return _bad(t("ungueltige Anfrage"))
     dev = re.sub(r"\s+", " ", str(b.get("device") or "")).strip()[:60] or "App"
     now = time.time()
     with _db() as c, c:
@@ -232,9 +232,9 @@ async def app_pair(request: Request):
                       (dev, now, _tok_hash(code), now)).rowcount          # einmalig - auch bei gleichzeitigen Versuchen
         r = c.execute("SELECT uid, name FROM pair_code WHERE hash=?", (_tok_hash(code),)).fetchone() if n else None
     if not r:
-        return _bad("QR-Code ungueltig, schon benutzt oder abgelaufen – bitte im Web einen neuen erzeugen.", 401)
+        return _bad(t("QR-Code ungueltig, schon benutzt oder abgelaufen – bitte im Web einen neuen erzeugen."), 401)
     if user_info(r[0], fresh=True) is None:
-        return _bad("Kein Zugriff", 403)
+        return _bad(t("Kein Zugriff"), 403)
     _set_session(request, r[0], r[1])
     out = {"ok": True, "name": r[1], "server": BASE_URL}
     out.update(_mint_device(r[0], r[1], dict(b, device=dev)))

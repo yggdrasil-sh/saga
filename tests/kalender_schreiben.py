@@ -5,7 +5,7 @@ B = os.environ.get("HK_TEST_BASE", "http://127.0.0.1:8099"); DB = os.environ.get
 S = TimestampSigner(os.environ["SESSION_SECRET"]); ck = lambda u: S.sign(base64.b64encode(json.dumps({"uid": u}).encode())).decode()
 A, X = ck("hk-test-a"), ck("hk-test-b"); RAD, PW = "http://127.0.0.1:5232/", "geheim-app-pw-123"; AUTH = ("test", PW)
 def call(m, p, c, b=None):
-    h = {"Host": urllib.parse.urlparse(os.environ["BASE_URL"]).netloc, "Cookie": "saga=" + c, "X-Saga": "1", "Content-Type": "application/json"}
+    h = {"Host": urllib.parse.urlparse(os.environ["BASE_URL"]).netloc, "Cookie": "saga=" + c, "X-Saga": "1", "Content-Type": "application/json", "Accept-Language": "de"}   # Meldungen werden auf Deutsch geprueft
     try:
         with urllib.request.urlopen(urllib.request.Request(B + p, data=json.dumps(b).encode() if b is not None else None, method=m, headers=h), timeout=30) as r: return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:

@@ -5,7 +5,7 @@
 #      + Radicale (CalDAV-Testserver), dann alle Tests (alte Tests ueber tests/pgshim auf Postgres)
 set -e
 cd "$(dirname "$0")/.."
-TESTS="isolation funktion kalender_modul kalender_api kalender_schreiben app_token app_login spalten vorlagen immich widgets inline archiv bilder dienste standalone sso_ldap app_pair versionen"
+TESTS="isolation funktion kalender_modul kalender_api kalender_schreiben app_token app_login spalten vorlagen immich widgets inline archiv bilder dienste standalone sso_ldap app_pair versionen sprachen"
 rnd() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 if [ ! -f .env ] || grep -q '^SECRET_KEY=$' .env; then
   IP=$(hostname -I | awk '{print $1}')

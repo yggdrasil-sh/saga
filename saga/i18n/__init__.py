@@ -1,0 +1,140 @@
+"""Mehrsprachigkeit: Kataloge (de/en/es als JSON neben dieser Datei), Sprachwahl und t().
+
+- Schluessel = der deutsche Text (de.json enthaelt sie unveraendert), Platzhalter {name}.
+- Python: t("Gespeichert.") bzw. t("Höchstens {n} Schlüssel", n=10) - die Sprache kommt aus der
+  laufenden Anfrage (ContextVar, von der Middleware gesetzt). Ohne Anfrage: Englisch.
+- Jinja: _("Anmelden") und lang()/locale() als Globale (install()).
+- JavaScript: T('Speichern') aus static/common.js; das Woerterbuch liefert /i18n/<lang>.js -
+  nur die Schluessel, die in static/*.js als T('...') vorkommen.
+Sprachwahl (resolve): Konto-Einstellung > Standardsprache des Servers (Admin) > Accept-Language > Englisch.
+"""
+import contextvars
+import glob
+import hashlib
+import json
+import os
+import re
+from datetime import datetime
+
+LANGS = ("de", "en", "es")
+DEFAULT = "en"
+NAMES = {"de": "Deutsch", "en": "English", "es": "Español"}
+LOCALES = {"de": "de-DE", "en": "en-US", "es": "es-ES"}
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_STATIC = os.path.join(os.path.dirname(os.path.dirname(_HERE)), "static")
+_PH = re.compile(r"\{(\w+)\}")
+# T('...') / T("...") in den Skripten; nur Literale (keine zusammengesetzten Schluessel)
+JS_CALL = re.compile(r"""\bT\(\s*(?:'((?:\\.|[^'\\])*)'|"((?:\\.|[^"\\])*)")""")
+
+
+def _unescape(s):
+    return re.sub(r"\\(.)", lambda m: {"n": "\n", "t": "\t"}.get(m.group(1), m.group(1)), s)
+
+
+def _load():
+    cat, h = {}, hashlib.sha256()
+    for lang in LANGS:
+        with open(os.path.join(_HERE, lang + ".json"), "rb") as f:
+            raw = f.read()
+        h.update(raw)
+        cat[lang] = json.loads(raw.decode("utf-8"))
+    return cat, h.hexdigest()[:10]
+
+
+def js_keys(root=_STATIC):
+    """Alle Schluessel, die das Front-End per T('...') benutzt."""
+    keys = set()
+    for p in sorted(glob.glob(os.path.join(root, "*.js"))):
+        with open(p, encoding="utf-8") as f:
+            for m in JS_CALL.finditer(f.read()):
+                keys.add(_unescape(m.group(1) if m.group(1) is not None else m.group(2)))
+    return keys
+
+
+CATALOG, VERSION = _load()
+_JS_KEYS = js_keys()
+_cur = contextvars.ContextVar("saga_lang", default=DEFAULT)
+
+
+def norm(v):
+    """'de-AT' / 'DE' -> 'de'; Unbekanntes/leer -> '' (= automatisch)."""
+    v = str(v or "").strip().lower().replace("_", "-").split("-")[0]
+    return v if v in LANGS else ""
+
+
+def from_header(header):
+    """Accept-Language -> beste unterstuetzte Sprache oder ''."""
+    best = []
+    for i, part in enumerate(str(header or "").split(",")[:20]):
+        bits = part.strip().split(";")
+        q = 1.0
+        for b in bits[1:]:
+            b = b.strip()
+            if b.startswith("q="):
+                try:
+                    q = float(b[2:])
+                except ValueError:
+                    q = 0.0
+        lang = norm(bits[0])
+        if lang and q > 0:
+            best.append((-q, i, lang))
+    return min(best)[2] if best else ""
+
+
+def resolve(user="", server="", header=""):
+    """Konto > Standardsprache des Servers > Browser (Accept-Language) > Englisch."""
+    return norm(user) or norm(server) or from_header(header) or DEFAULT
+
+
+def set_lang(lang):
+    return _cur.set(norm(lang) or DEFAULT)
+
+
+def get_lang():
+    return _cur.get()
+
+
+def locale():
+    return LOCALES[_cur.get()]
+
+
+def fill(s, params):
+    if not params:
+        return s
+    return _PH.sub(lambda m: str(params[m.group(1)]) if m.group(1) in params else m.group(0), s)
+
+
+def t(key, **params):
+    """Uebersetzung in der Sprache der laufenden Anfrage (fehlt sie: der deutsche Schluessel)."""
+    return fill(CATALOG[_cur.get()].get(key) or key, params)
+
+
+def t_lang(lang, key, **params):
+    return fill(CATALOG[norm(lang) or DEFAULT].get(key) or key, params)
+
+
+def js_catalog(lang):
+    """Woerterbuch fuer das Front-End: nur Schluessel aus static/*.js (und nur, wo der Text abweicht)."""
+    cat = CATALOG[norm(lang) or DEFAULT]
+    return {k: cat[k] for k in sorted(_JS_KEYS) if k in cat and cat[k] != k}
+
+
+_MON_EN = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def fmt_date(ts, tz=None, with_time=False):
+    """Zeitstempel -> Datum (optional mit Uhrzeit) im ueblichen Format der Sprache; leer -> '–'."""
+    if not ts:
+        return "–"
+    d = datetime.fromtimestamp(ts, tz)
+    lang = _cur.get()
+    if lang == "en":
+        s = f"{_MON_EN[d.month - 1]} {d.day}, {d.year}"
+    else:
+        s = d.strftime("%d.%m.%Y" if lang == "de" else "%d/%m/%Y")
+    return s + d.strftime(" %H:%M") if with_time else s
+
+
+def install(env):
+    """Jinja-Umgebung: _(), t(), lang(), locale() als Globale."""
+    env.globals.update(_=t, t=t, lang=get_lang, locale=locale, LANG_NAMES=NAMES, i18n_v=VERSION)

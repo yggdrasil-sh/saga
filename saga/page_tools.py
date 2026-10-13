@@ -12,7 +12,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, Response
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load
+from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, t
 from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _snapshot, blocks_text
 
 router = APIRouter()
@@ -161,22 +161,22 @@ def blocks_to_md(blocks, link=lambda h: h):
             items(it.get("items"), style, depth + 1)
 
     for b in blocks:
-        t, d = b.get("type"), b.get("data") or {}
-        if t == "header":
+        typ, d = b.get("type"), b.get("data") or {}
+        if typ == "header":
             out += ["#" * min(max(int(d.get("level", 2)), 1), 6) + " " + _md_inline(d.get("text", ""), link), ""]
-        elif t == "list":
+        elif typ == "list":
             items(d.get("items"), d.get("style", "unordered"), 0); out.append("")
-        elif t == "quote":
+        elif typ == "quote":
             out += ["> " + l for l in _md_inline(d.get("text", ""), link).split("\n")]
             if d.get("caption"):
                 out.append("> — " + _md_inline(d["caption"], link))
             out.append("")
-        elif t == "code":
+        elif typ == "code":
             lang = re.sub(r"[^a-z0-9+-]", "", str(d.get("language") or "").lower())[:20]
             out += ["```" + lang, d.get("code", ""), "```", ""]
-        elif t == "delimiter":
+        elif typ == "delimiter":
             out += ["---", ""]
-        elif t == "table":
+        elif typ == "table":
             rows = d.get("content") or []
             if rows:
                 cells = [[_md_inline(str(x), link).replace("|", "\\|").replace("\n", " ") for x in r] for r in rows]
@@ -184,21 +184,21 @@ def blocks_to_md(blocks, link=lambda h: h):
                 cells = [r + [""] * (w - len(r)) for r in cells]
                 head, body = (cells[0], cells[1:]) if d.get("withHeadings") else ([""] * w, cells)
                 out += ["| " + " | ".join(head) + " |", "|" + "---|" * w] + ["| " + " | ".join(r) + " |" for r in body] + [""]
-        elif t == "image":
+        elif typ == "image":
             out += [f"![{_md_inline(d.get('caption', ''), link)}]({link((d.get('file') or {}).get('url', ''))})", ""]
-        elif t == "attaches":
+        elif typ == "attaches":
             f = d.get("file") or {}
-            out += [f"[📎 {d.get('title') or f.get('name') or 'Datei'}]({link(f.get('url', ''))})", ""]
-        elif t == "columns":
+            out += [f"[📎 {d.get('title') or f.get('name') or t('Datei')}]({link(f.get('url', ''))})", ""]
+        elif typ == "columns":
             for col in d.get("cols") if isinstance(d.get("cols"), list) else []:
                 sub = blocks_to_md(col.get("blocks") or [], link).strip() if isinstance(col, dict) else ""
                 if sub:
                     out += [sub, ""]
-        elif t == "toggle":
+        elif typ == "toggle":
             inner = (blocks_to_md(d["blocks"], link).strip() if isinstance(d.get("blocks"), list)
                      else _md_inline(d.get("text", ""), link))
             out += [f"<details><summary>{_md_inline(d.get('title', ''), link)}</summary>", "", inner, "", "</details>", ""]
-        elif t == "callout":
+        elif typ == "callout":
             out += ["> " + (d.get("emoji") or "💡") + " " + _md_inline(d.get("text", ""), link).replace("\n", "\n> "), ""]
         else:
             txt = _md_inline(d.get("text", ""), link) if "text" in d else blocks_text([b])
@@ -208,7 +208,7 @@ def blocks_to_md(blocks, link=lambda h: h):
 
 
 def _safe_name(s):
-    s = re.sub(r"[^\w äöüÄÖÜß.\-]+", "_", s or "Unbenannt").strip(" ._") or "Unbenannt"
+    s = re.sub(r"[^\w äöüÄÖÜß.\-]+", "_", s or t("Unbenannt")).strip(" ._") or t("Unbenannt")
     return s[:80]
 
 
@@ -236,7 +236,7 @@ def api_note_export(nid: int, request: Request, sub: int = 0):
         if p["type"] in AUTO_TYPES:
             return datetime.fromtimestamp(v, TZ).strftime("%d.%m.%Y %H:%M")
         if p["type"] == "relation":
-            return ", ".join((rows[x][1] or "Unbenannt") for x in v if x in rows)
+            return ", ".join((rows[x][1] or t("Unbenannt")) for x in v if x in rows)
         if p["type"] in ("number", "calc"):
             v = round(v, 2) if isinstance(v, float) else v
             return f"{v} %" if p.get("fmt") == "percent" else f"{v} €" if p.get("fmt") == "euro" else str(v)
@@ -248,16 +248,16 @@ def api_note_export(nid: int, request: Request, sub: int = 0):
         return str(v)
 
     def md_of(r, link):
-        head = f"# {(r[2] + ' ') if r[2] and not r[2].startswith('/files/') else ''}{r[1] or 'Unbenannt'}\n\n"
+        head = f"# {(r[2] + ' ') if r[2] and not r[2].startswith('/files/') else ''}{r[1] or t('Unbenannt')}\n\n"
         par = rows.get(r[3])
         if r[6] == "database":           # Datenbank -> Markdown-Tabelle aller Zeilen
             props = _json_load(r[7], {"props": []}).get("props", [])
             cells = lambda s: str(s).replace("|", "\\|").replace("\n", " ")
-            tname = _json_load(r[7], {}).get("title_name") or "Name"
+            tname = _json_load(r[7], {}).get("title_name") or t("Name")
             lines = [f"| {cells(tname)} | " + " | ".join(cells(p["name"]) for p in props) + " |", "|---|" + "---|" * len(props)]
             for x in sorted((x for x in rows.values() if x[3] == r[0]), key=lambda x: x[1] or ""):
                 pv = _json_load(x[8], {})
-                lines.append(f"| [{cells(x[1] or 'Unbenannt')}]({link('/notes#' + str(x[0]))}) | "
+                lines.append(f"| [{cells(x[1] or t('Unbenannt'))}]({link('/notes#' + str(x[0]))}) | "
                              + " | ".join(cells(fmt_val(p, val_of(p, x, pv))) for p in props) + " |")
             return head + "\n".join(lines) + "\n"
         if par and par[6] == "database":  # Zeile -> Eigenschaften als Liste unter dem Titel

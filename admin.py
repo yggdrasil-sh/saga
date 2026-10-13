@@ -28,6 +28,9 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import connect as _db
+from saga import i18n
+from saga.core import LangMiddleware
+from saga.i18n import t
 from version import REPO, VERSION, newer
 
 E = os.environ
@@ -38,11 +41,13 @@ HOST_RE = re.compile(r"[a-z0-9.-]{1,253}(:[0-9]{1,5})?")
 PREFIX_RE = re.compile(r"[a-z0-9_.-]{0,20}")
 
 admin = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+admin.add_middleware(LangMiddleware, session_key="aid")      # vor SessionMiddleware = laeuft danach (kennt die Sitzung)
 admin.add_middleware(SessionMiddleware, secret_key=hashlib.sha256(("hk-admin|" + hk.SECRET).encode()).hexdigest(),
                      session_cookie="hk_admin", https_only=ADMIN_URL.startswith("https://"), same_site="strict",
                      max_age=int(E.get("ADMIN_SESSION_HOURS", "4")) * 3600)
 admin.mount("/static", StaticFiles(directory=os.path.join(hk.HERE, "static")), name="static")
 tmpl = Environment(loader=FileSystemLoader(os.path.join(hk.HERE, "templates", "admin")), autoescape=select_autoescape(["html"]))
+i18n.install(tmpl)
 HEADERS = {
     "Cache-Control": "no-store",
     "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
@@ -140,8 +145,8 @@ def _groups_list(text):
     return out
 
 
-def _fmt(t):
-    return time.strftime("%d.%m.%Y %H:%M", time.localtime(t)) if t else "–"
+def _fmt(ts):
+    return i18n.fmt_date(ts, with_time=True)
 
 
 tmpl.filters["dt"] = _fmt
@@ -174,11 +179,11 @@ def login(request: Request):
 async def login_post(request: Request):
     f = await _form(request)
     if f is None:
-        return _page(request, "login.html", status=400, error="Die Seite war zu lange offen – bitte noch einmal.")
+        return _page(request, "login.html", status=400, error=t("Die Seite war zu lange offen – bitte noch einmal."))
     username = _s(f, "username", 100)
     user, err = await run_in_threadpool(auth.authenticate, username, str(f.get("password") or ""), hk._ip(request), True)
     if user and not user["is_admin"]:
-        user, err = None, "Dieses Konto hat keine Admin-Rechte."
+        user, err = None, t("Dieses Konto hat keine Admin-Rechte.")
     if not user:
         return _page(request, "login.html", status=401, error=err, username=username)
     info = auth.user_info(user["username"], fresh=True) or {}
@@ -242,7 +247,7 @@ async def user_new(request: Request):
     source = f.get("source") if f.get("source") in ("local", "ldap", "oidc") else "local"
     pw = str(f.get("password") or "")
     if source == "local" and not pw:
-        _flash(request, "Lokale Konten brauchen ein Passwort.", "err")
+        _flash(request, t("Lokale Konten brauchen ein Passwort."), "err")
         return _go("/users")
     user, err = await run_in_threadpool(auth.create_user, _s(f, "username", 64), pw if source == "local" else None,
                                         _s(f, "name", 120), _s(f, "email", 200), source, _on(f, "is_admin"),
@@ -251,7 +256,7 @@ async def user_new(request: Request):
         _flash(request, err, "err")
         return _go("/users")
     print(f"admin: {me['username']} legt Konto {user['username']} an ({source})", flush=True)
-    _flash(request, f"Konto „{user['username']}“ angelegt.")
+    _flash(request, t("Konto „{name}“ angelegt.", name=user["username"]))
     return _go(f"/users/{user['id']}")
 
 
@@ -291,15 +296,15 @@ async def user_post(uid_: int, request: Request):
     if act == "save":
         is_admin, disabled = _on(f, "is_admin"), _on(f, "disabled")
         if self_ and (not is_admin or disabled):
-            _flash(request, "Das eigene Konto kann man sich nicht selbst sperren oder die Admin-Rechte nehmen.", "err")
+            _flash(request, t("Das eigene Konto kann man sich nicht selbst sperren oder die Admin-Rechte nehmen."), "err")
             return _go(back)
         with _db() as c:
             if (u["is_admin"] and not u["disabled"]) and (not is_admin or disabled) and _admin_count(c, u["id"]) == 0:
-                _flash(request, "Das ist der letzte aktive Admin – zuerst einen anderen Admin anlegen.", "err")
+                _flash(request, t("Das ist der letzte aktive Admin – zuerst einen anderen Admin anlegen."), "err")
                 return _go(back)
         email = _s(f, "email", 200)
         if email and not hk.EMAIL_RE.fullmatch(email):
-            _flash(request, "Die E-Mail-Adresse sieht nicht richtig aus.", "err")
+            _flash(request, t("Die E-Mail-Adresse sieht nicht richtig aus."), "err")
             return _go(back)
         with _db() as c, c:
             c.execute("UPDATE users SET display_name=?, email=?, is_admin=?, disabled=? WHERE id=?",
@@ -308,10 +313,10 @@ async def user_post(uid_: int, request: Request):
         if disabled and not u["disabled"]:
             hk.revoke_user_logins(u["username"])
         print(f"{who} gespeichert (admin={is_admin}, gesperrt={disabled})", flush=True)
-        _flash(request, "Gespeichert." + (" Konto gesperrt – Sitzungen und App-Anmeldungen sind beendet." if disabled and not u["disabled"] else ""))
+        _flash(request, t("Gespeichert.") + (" " + t("Konto gesperrt – Sitzungen und App-Anmeldungen sind beendet.") if disabled and not u["disabled"] else ""))
     elif act == "password":
         if u["source"] != "local":
-            _flash(request, "Externe Konten haben hier kein Passwort.", "err")
+            _flash(request, t("Externe Konten haben hier kein Passwort."), "err")
             return _go(back)
         pw = str(f.get("password") or "")
         p = auth.password_problem(pw)
@@ -324,7 +329,7 @@ async def user_post(uid_: int, request: Request):
         if self_:
             request.session["ep"] = time.time()
         print(f"{who} Passwort gesetzt", flush=True)
-        _flash(request, "Neues Passwort gesetzt – bestehende Browser-Sitzungen sind beendet.")
+        _flash(request, t("Neues Passwort gesetzt – bestehende Browser-Sitzungen sind beendet."))
     elif act == "logout":
         with _db() as c, c:
             c.execute("UPDATE users SET logout_at=? WHERE id=?", (time.time(), u["id"]))
@@ -333,24 +338,24 @@ async def user_post(uid_: int, request: Request):
         print(f"{who} ueberall abgemeldet", flush=True)
         if self_:
             return _go("/login")
-        _flash(request, f"Überall abgemeldet ({n} App-Anmeldungen/Schlüssel widerrufen).")
+        _flash(request, t("Überall abgemeldet ({n} App-Anmeldungen/Schlüssel widerrufen).", n=n))
     elif act == "delete":
         if self_:
-            _flash(request, "Das eigene Konto kann man nicht löschen.", "err")
+            _flash(request, t("Das eigene Konto kann man nicht löschen."), "err")
             return _go(back)
         if _s(f, "confirm", 64).lower() != u["username"]:
-            _flash(request, "Zum Löschen den Benutzernamen eintippen.", "err")
+            _flash(request, t("Zum Löschen den Benutzernamen eintippen."), "err")
             return _go(back)
         with _db() as c:
             if u["is_admin"] and not u["disabled"] and _admin_count(c, u["id"]) == 0:
-                _flash(request, "Das ist der letzte aktive Admin.", "err")
+                _flash(request, t("Das ist der letzte aktive Admin."), "err")
                 return _go(back)
         counts = await run_in_threadpool(hk.delete_user_data, u["username"])
         with _db() as c, c:
             c.execute("DELETE FROM users WHERE id=?", (u["id"],))
         auth._ui_cache.pop(u["username"], None)
         print(f"{who} GELOESCHT ({counts})", flush=True)
-        _flash(request, f"Konto „{u['username']}“ und alle Daten gelöscht ({counts.get('note', 0)} Seiten, {counts.get('file', 0)} Dateien).")
+        _flash(request, t("Konto „{name}“ und alle Daten gelöscht ({pages} Seiten, {files} Dateien).", name=u["username"], pages=counts.get("note", 0), files=counts.get("file", 0)))
         return _go("/users")
     return _go(back)
 
@@ -388,14 +393,14 @@ async def groups_post(request: Request):
     if act == "new":
         name = auth.norm_group(_s(f, "name", 100))
         if not name:
-            _flash(request, "Ungültiger Gruppenname (a–z, 0–9, Leerzeichen . _ -).", "err")
+            _flash(request, t("Ungültiger Gruppenname (a–z, 0–9, Leerzeichen . _ -)."), "err")
             return _go("/groups")
         with _db() as c, c:
             if c.execute("SELECT 1 FROM groups WHERE name=?", (name,)).fetchone():
-                _flash(request, "Die Gruppe gibt es schon.", "err")
+                _flash(request, t("Die Gruppe gibt es schon."), "err")
                 return _go("/groups")
             auth.ensure_group(c, name, _s(f, "description", 300))
-        _flash(request, f"Gruppe „{name}“ angelegt.")
+        _flash(request, t("Gruppe „{name}“ angelegt.", name=name))
     elif act in ("save", "delete"):
         try:
             gid = int(f.get("id") or 0)
@@ -407,7 +412,7 @@ async def groups_post(request: Request):
             else:
                 c.execute("DELETE FROM groups WHERE id=?", (gid,))
         auth._ui_cache.clear()
-        _flash(request, "Gespeichert." if act == "save" else "Gruppe gelöscht.")
+        _flash(request, t("Gespeichert.") if act == "save" else t("Gruppe gelöscht."))
     return _go("/groups")
 
 
@@ -452,13 +457,13 @@ def service_edit(sid: int, request: Request):
 def _svc_input(f):
     slug = _s(f, "slug", 41).lower()
     if not SLUG_RE.fullmatch(slug):
-        return None, "Kurzname (slug): a–z, 0–9, _ und -, z. B. nextcloud."
+        return None, t("Kurzname (slug): a–z, 0–9, _ und -, z. B. nextcloud.")
     url = _s(f, "url", 500)
     if urlparse(url).scheme not in ("http", "https") or not urlparse(url).netloc:
-        return None, "Adresse mit http:// oder https:// angeben."
+        return None, t("Adresse mit http:// oder https:// angeben.")
     icon = _s(f, "icon", 64).lower()
     if icon and not ICON_RE.fullmatch(icon):
-        return None, "Symbol: Name aus selfh.st/icons, z. B. nextcloud."
+        return None, t("Symbol: Name aus selfh.st/icons, z. B. nextcloud.")
     try:
         sort = int(f.get("sort") or 0)
     except ValueError:
@@ -484,7 +489,7 @@ async def services_post(request: Request):
         with _db() as c, c:
             c.execute("DELETE FROM service WHERE id=?", (sid,))
         hk.services_changed()
-        _flash(request, "Dienst gelöscht.")
+        _flash(request, t("Dienst gelöscht."))
         return _go("/services")
     v, err = _svc_input(f)
     if err:
@@ -494,7 +499,7 @@ async def services_post(request: Request):
     with _db() as c, c:
         other = c.execute("SELECT id FROM service WHERE slug=?", (v["slug"],)).fetchone()
         if other and other[0] != sid:
-            _flash(request, f"Den Kurznamen „{v['slug']}“ hat schon ein anderer Dienst.", "err")
+            _flash(request, t("Den Kurznamen „{slug}“ hat schon ein anderer Dienst.", slug=v["slug"]), "err")
             return _go(back)
         if sid:
             c.execute("UPDATE service SET slug=?, name=?, url=?, icon=?, category=?, extra_groups=?, everyone=?, check_status=?, sort=? "
@@ -504,11 +509,11 @@ async def services_post(request: Request):
             sid = c.execute("INSERT INTO service (slug, name, url, icon, category, extra_groups, everyone, check_status, sort, created) "
                             "VALUES (?,?,?,?,?,?,?,?,?,?)", (v["slug"], v["name"], v["url"], v["icon"], v["category"], v["extra_groups"],
                                                             v["everyone"], v["check_status"], v["sort"], time.time())).lastrowid
-        auth.ensure_group(c, prefix + v["slug"], f"Zugang zu {v['name']}")      # Zugangsgruppe gleich anlegen
+        auth.ensure_group(c, prefix + v["slug"], t("Zugang zu {name}", name=v["name"]))      # Zugangsgruppe gleich anlegen
     hk.services_changed()
     print(f"admin: {me['username']} speichert Dienst {v['slug']}", flush=True)
-    _flash(request, f"Dienst „{v['name']}“ gespeichert – Zugang über die Gruppe „{prefix}{v['slug']}“"
-                    + (" (und für alle angemeldeten Benutzer)." if v["everyone"] else "."))
+    _flash(request, (t("Dienst „{name}“ gespeichert – Zugang über die Gruppe „{group}“ und für alle angemeldeten Benutzer.", name=v["name"], group=prefix + v["slug"])
+                     if v["everyone"] else t("Dienst „{name}“ gespeichert – Zugang über die Gruppe „{group}“.", name=v["name"], group=prefix + v["slug"])))
     return _go("/services")
 
 
@@ -518,7 +523,7 @@ def settings_page(request: Request):
     me = _me(request)
     if not me:
         return _go("/login")
-    return _page(request, "settings.html", me, st=auth.settings(fresh=True))
+    return _page(request, "settings.html", me, st=auth.settings(fresh=True), langs=i18n.NAMES)
 
 
 @admin.post("/settings")
@@ -531,24 +536,24 @@ async def settings_post(request: Request):
         return _go("/settings")
     prefix = _s(f, "group_prefix", 20).lower()
     if not PREFIX_RE.fullmatch(prefix):
-        _flash(request, "Gruppen-Kennung: nur a–z, 0–9, _ . - (höchstens 20 Zeichen).", "err")
+        _flash(request, t("Gruppen-Kennung: nur a–z, 0–9, _ . - (höchstens 20 Zeichen)."), "err")
         return _go("/settings")
     hosts = [h for h in re.split(r"[,\s]+", _s(f, "allowed_hosts", 2000).lower()) if h]
     bad = [h for h in hosts if not HOST_RE.fullmatch(h)]
     if bad:
-        _flash(request, "Ungültige Hosts: " + ", ".join(bad[:5]), "err")
+        _flash(request, t("Ungültige Hosts: {list}", list=", ".join(bad[:5])), "err")
         return _go("/settings")
     old_prefix = auth.settings().get("group_prefix")
     for k, v in (("title", _s(f, "title", 60) or "Saga"), ("registration", _on(f, "registration")),
                  ("local_login", _on(f, "local_login")), ("group_prefix", prefix),
                  ("default_groups", _groups_list(_s(f, "default_groups", 1000))),
                  ("allow_private_hosts", _on(f, "allow_private_hosts")), ("allowed_hosts", ", ".join(hosts)),
-                 ("update_check", _on(f, "update_check"))):
+                 ("update_check", _on(f, "update_check")), ("default_lang", i18n.norm(f.get("default_lang")))):
         auth.save_setting(k, v)
     hk.services_changed()
     print(f"admin: {me['username']} speichert Allgemein", flush=True)
-    _flash(request, "Gespeichert." + (" Hinweis: Mit der neuen Gruppen-Kennung gelten neue Zugangsgruppen – Favoriten der Dienste "
-                                      "müssen neu gesetzt werden." if old_prefix != prefix else ""))
+    _flash(request, t("Gespeichert.") + (" " + t("Hinweis: Mit der neuen Gruppen-Kennung gelten neue Zugangsgruppen – Favoriten der Dienste müssen neu gesetzt werden.")
+                                         if old_prefix != prefix else ""))
     return _go("/settings")
 
 
@@ -582,26 +587,26 @@ def _oidc_from(f):
 
 async def _oidc_test(v, cur):
     if not v["issuer"].startswith(("https://", "http://")):
-        return ["✗ Aussteller-Adresse (Issuer) fehlt oder ist ungültig."]
+        return [t("✗ Aussteller-Adresse (Issuer) fehlt oder ist ungültig.")]
     verify = (ssl.create_default_context(cafile=hk.CA_FILE) if os.path.isfile(hk.CA_FILE) else True) if v["verify_tls"] else False
     out = []
     try:
         async with httpx.AsyncClient(timeout=8, verify=verify, follow_redirects=True) as cl:
             r = await cl.get(v["issuer"] + "/.well-known/openid-configuration")
         if r.status_code != 200:
-            return [f"✗ Discovery: HTTP {r.status_code} von {v['issuer']}/.well-known/openid-configuration"]
+            return [t("✗ Discovery: HTTP {code} von {url}", code=r.status_code, url=v["issuer"] + "/.well-known/openid-configuration")]
         d = r.json()
     except Exception as ex:  # noqa: BLE001
-        return [f"✗ Nicht erreichbar: {type(ex).__name__}: {ex}"]
-    out.append("✓ Discovery-Dokument gelesen")
-    out.append(("✓" if d.get("issuer", "").rstrip("/") == v["issuer"] else "✗") + f" Issuer im Dokument: {d.get('issuer')}")
+        return [t("✗ Nicht erreichbar: {why}", why=f"{type(ex).__name__}: {ex}")]
+    out.append(t("✓ Discovery-Dokument gelesen"))
+    out.append(("✓" if d.get("issuer", "").rstrip("/") == v["issuer"] else "✗") + " " + t("Issuer im Dokument: {issuer}", issuer=d.get("issuer")))
     for k in ("authorization_endpoint", "token_endpoint", "userinfo_endpoint", "end_session_endpoint"):
-        out.append(("✓ " if d.get(k) else "– ") + f"{k}: {d.get(k) or 'nicht angegeben'}")
+        out.append(("✓ " if d.get(k) else "– ") + f"{k}: {d.get(k) or t('nicht angegeben')}")
     if "S256" not in (d.get("code_challenge_methods_supported") or ["S256"]):
-        out.append("✗ Anbieter unterstützt kein PKCE S256")
-    out.append(f"Weiterleitungs-Adresse (beim Anbieter eintragen): {hk.BASE_URL}/auth/callback")
+        out.append(t("✗ Anbieter unterstützt kein PKCE S256"))
+    out.append(t("Weiterleitungs-Adresse (beim Anbieter eintragen): {url}", url=hk.BASE_URL + "/auth/callback"))
     if not (v["client_secret"] or cur.get("client_secret")):
-        out.append("Hinweis: kein Client-Secret – nur für öffentliche Clients (PKCE) geeignet.")
+        out.append(t("Hinweis: kein Client-Secret – nur für öffentliche Clients (PKCE) geeignet."))
     return out
 
 
@@ -618,7 +623,7 @@ async def oidc_post(request: Request):
         request.session["oidc_test"] = await _oidc_test(v, cur)
         return _go("/settings/oidc")
     if v["enabled"] and (not v["issuer"] or not v["client_id"]):
-        _flash(request, "Zum Einschalten Issuer und Client-ID angeben.", "err")
+        _flash(request, t("Zum Einschalten Issuer und Client-ID angeben."), "err")
         return _go("/settings/oidc")
     clear = v.pop("_clear", False)
     auth.save_setting("oidc", v)
@@ -629,7 +634,7 @@ async def oidc_post(request: Request):
             c.execute("UPDATE setting SET v=? WHERE k='oidc'", (json.dumps(st, ensure_ascii=False),))
         auth._settings_cache["v"] = None
     print(f"admin: {me['username']} speichert OIDC (aktiv={v['enabled']})", flush=True)
-    _flash(request, "SSO-Einstellungen gespeichert.")
+    _flash(request, t("SSO-Einstellungen gespeichert."))
     return _go("/settings/oidc")
 
 
@@ -670,7 +675,7 @@ async def ldap_post(request: Request):
     if act == "preset":
         v.update(auth.LDAP_PRESETS[v["preset"]])
         auth.save_setting("ldap", v)
-        _flash(request, f"Vorlage „{v['preset']}“ übernommen – Adresse, Dienstkonto und Suchbasis prüfen.")
+        _flash(request, t("Vorlage „{name}“ übernommen – Adresse, Dienstkonto und Suchbasis prüfen.", name=v["preset"]))
         return _go("/settings/ldap")
     if act == "test":
         cfg = dict(v)
@@ -685,16 +690,16 @@ async def ldap_post(request: Request):
         request.session["ldap_test_user"] = user
         return _go("/settings/ldap")
     if v["enabled"] and (not v["url"].lower().startswith(("ldap://", "ldaps://")) or not v["user_base"]):
-        _flash(request, "Zum Einschalten Server-Adresse (ldap:// oder ldaps://) und Benutzer-Suchbasis angeben.", "err")
+        _flash(request, t("Zum Einschalten Server-Adresse (ldap:// oder ldaps://) und Benutzer-Suchbasis angeben."), "err")
         return _go("/settings/ldap")
     if "{username}" not in v["user_filter"]:
-        _flash(request, "Der Benutzerfilter muss {username} enthalten.", "err")
+        _flash(request, t("Der Benutzerfilter muss {username} enthalten."), "err")
         return _go("/settings/ldap")
     if v["url"].lower().startswith("ldap://") and not v["starttls"]:
-        _flash(request, "Achtung: ldap:// ohne StartTLS überträgt Passwörter unverschlüsselt.", "err")
+        _flash(request, t("Achtung: ldap:// ohne StartTLS überträgt Passwörter unverschlüsselt."), "err")
     auth.save_setting("ldap", v)
     hk.services_changed()
     print(f"admin: {me['username']} speichert LDAP (aktiv={v['enabled']})", flush=True)
     if not request.session.get("flash"):
-        _flash(request, "LDAP-Einstellungen gespeichert.")
+        _flash(request, t("LDAP-Einstellungen gespeichert."))
     return _go("/settings/ldap")

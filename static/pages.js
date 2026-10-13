@@ -7,30 +7,30 @@
 
   var I18N = { messages: {
     ui: {
-      blockTunes: { toggler: { 'Click to tune': 'Optionen', 'or drag to move': 'oder ziehen zum Verschieben' } },
-      inlineToolbar: { converter: { 'Convert to': 'Umwandeln in' } },
-      toolbar: { toolbox: { Add: 'Block hinzufügen' } },
-      popover: { Filter: 'Filtern …', 'Nothing found': 'Nichts gefunden', 'Convert to': 'Umwandeln in' }
+      blockTunes: { toggler: { 'Click to tune': T('Optionen'), 'or drag to move': T('oder ziehen zum Verschieben') } },
+      inlineToolbar: { converter: { 'Convert to': T('Umwandeln in') } },
+      toolbar: { toolbox: { Add: T('Block hinzufügen') } },
+      popover: { Filter: T('Filtern …'), 'Nothing found': T('Nichts gefunden'), 'Convert to': T('Umwandeln in') }
     },
-    toolNames: { Text: 'Text', Heading: 'Überschrift', 'Unordered List': 'Aufzählung', 'Ordered List': 'Nummerierte Liste',
-      Checklist: 'Checkliste', Quote: 'Zitat', Code: 'Code', Delimiter: 'Trennlinie', Bold: 'Fett', Italic: 'Kursiv',
-      Link: 'Link', Marker: 'Markieren', InlineCode: 'Code', 'Inline Code': 'Code',
-      Table: 'Tabelle', Image: 'Bild', Attachment: 'Datei', Attaches: 'Datei' },
+    toolNames: { Text: T('Text'), Heading: T('Überschrift'), 'Unordered List': T('Aufzählung'), 'Ordered List': T('Nummerierte Liste'),
+      Checklist: T('Checkliste'), Quote: T('Zitat'), Code: T('Code'), Delimiter: T('Trennlinie'), Bold: T('Fett'), Italic: T('Kursiv'),
+      Link: T('Link'), Marker: T('Markieren'), InlineCode: T('Code'), 'Inline Code': T('Code'),
+      Table: T('Tabelle'), Image: T('Bild'), Attachment: T('Datei'), Attaches: T('Datei') },
     tools: {
-      link: { 'Add a link': 'Link einfügen' },
-      header: { 'Heading 1': 'Überschrift 1', 'Heading 2': 'Überschrift 2', 'Heading 3': 'Überschrift 3', 'Heading 4': 'Überschrift 4' },
-      list: { Unordered: 'Aufzählung', Ordered: 'Nummeriert', Checklist: 'Checkliste', 'Start with': 'Beginnt mit', 'Counter type': 'Zählweise' },
-      quote: { 'Align Left': 'Linksbündig', 'Align Center': 'Zentriert' },
-      table: { 'With headings': 'Mit Kopfzeile', 'Without headings': 'Ohne Kopfzeile', 'Add column to left': 'Spalte links einfügen',
-        'Add column to right': 'Spalte rechts einfügen', 'Delete column': 'Spalte löschen', 'Add row above': 'Zeile oberhalb einfügen',
-        'Add row below': 'Zeile unterhalb einfügen', 'Delete row': 'Zeile löschen' },
-      image: { Caption: 'Bildunterschrift', 'Select an Image': 'Bild auswählen', 'With border': 'Mit Rahmen',
-        'Stretch image': 'Volle Breite', 'With background': 'Mit Hintergrund' },
-      attaches: { 'Select file to upload': 'Datei auswählen', 'File title': 'Titel' }
+      link: { 'Add a link': T('Link einfügen') },
+      header: { 'Heading 1': T('Überschrift 1'), 'Heading 2': T('Überschrift 2'), 'Heading 3': T('Überschrift 3'), 'Heading 4': T('Überschrift 4') },
+      list: { Unordered: T('Aufzählung'), Ordered: T('Nummeriert'), Checklist: T('Checkliste'), 'Start with': T('Beginnt mit'), 'Counter type': T('Zählweise') },
+      quote: { 'Align Left': T('Linksbündig'), 'Align Center': T('Zentriert') },
+      table: { 'With headings': T('Mit Kopfzeile'), 'Without headings': T('Ohne Kopfzeile'), 'Add column to left': T('Spalte links einfügen'),
+        'Add column to right': T('Spalte rechts einfügen'), 'Delete column': T('Spalte löschen'), 'Add row above': T('Zeile oberhalb einfügen'),
+        'Add row below': T('Zeile unterhalb einfügen'), 'Delete row': T('Zeile löschen') },
+      image: { Caption: T('Bildunterschrift'), 'Select an Image': T('Bild auswählen'), 'With border': T('Mit Rahmen'),
+        'Stretch image': T('Volle Breite'), 'With background': T('Mit Hintergrund') },
+      attaches: { 'Select file to upload': T('Datei auswählen'), 'File title': T('Titel') }
     },
     blockTunes: {
-      delete: { Delete: 'Löschen', 'Click to delete': 'Zum Löschen erneut klicken' },
-      moveUp: { 'Move up': 'Nach oben' }, moveDown: { 'Move down': 'Nach unten' }
+      delete: { Delete: T('Löschen'), 'Click to delete': T('Zum Löschen erneut klicken') },
+      moveUp: { 'Move up': T('Nach oben') }, moveDown: { 'Move down': T('Nach unten') }
     }
   } };
 
@@ -42,7 +42,7 @@
   function loadScript(src) {
     return new Promise(function (ok, fail) {
       var s = document.createElement('script'); s.src = src; s.onload = ok;
-      s.onerror = function () { fail(new Error('Laden fehlgeschlagen: ' + src)); };
+      s.onerror = function () { fail(new Error(T('Laden fehlgeschlagen: {src}', { src: src }))); };
       document.body.appendChild(s);
     });
   }
@@ -105,7 +105,8 @@
   function children(pid) { return S.pages.filter(function (p) { return (p.parent_id || null) === pid || (pid === null && p.parent_id && !byId(p.parent_id)); }); }
   function ancestors(id) { var out = [], p = byId(id), guard = 0; while (p && p.parent_id && guard++ < 50) { p = byId(p.parent_id); if (p) out.unshift(p); } return out; }
   function descendants(id) { var out = [], st = [id]; while (st.length) { var x = st.pop(); S.pages.forEach(function (p) { if (p.parent_id === x) { out.push(p.id); st.push(p.id); } }); } return out; }
-  function label(p) { return p && p.title ? p.title : 'Unbenannt'; }
+  function label(p) { return p && p.title ? p.title : T('Unbenannt'); }
+  function nSub(n) { return n === 1 ? T('1 Unterseite') : T('{n} Unterseiten', { n: n }); }
 
   function state(t, cls) { var s = $('pg-state'); s.textContent = t; s.className = 'note-state ' + (cls || ''); }
 
@@ -121,15 +122,15 @@
         var tw = el('button', 'pg-twisty' + (kids.length ? '' : ' leaf'), kids.length ? '▸' : '');
         tw.type = 'button'; tw.tabIndex = kids.length ? 0 : -1;
         if (S.open[p.id]) tw.classList.add('open');
-        tw.setAttribute('aria-label', S.open[p.id] ? 'Zuklappen' : 'Aufklappen');
+        tw.setAttribute('aria-label', S.open[p.id] ? T('Zuklappen') : T('Aufklappen'));
         tw.addEventListener('click', function (e) { e.stopPropagation(); S.open[p.id] = !S.open[p.id]; saveOpen(); renderTree(); });
         var go = el('button', 'pg-go'); go.type = 'button';
         go.appendChild(icoNode(p.icon, '📄', 'pg-ic'));
         go.appendChild(el('span', 'pg-name', label(p)));
-        if (p.template) go.appendChild(el('span', 'pg-badge', 'Vorlage'));
+        if (p.template) go.appendChild(el('span', 'pg-badge', T('Vorlage')));
         go.addEventListener('click', function () { openPage(p.id); });
-        var plus = el('button', 'pg-add', '+'); plus.type = 'button'; plus.title = 'Unterseite hinzufügen';
-        plus.setAttribute('aria-label', 'Unterseite zu ' + label(p) + ' hinzufügen');
+        var plus = el('button', 'pg-add', '+'); plus.type = 'button'; plus.title = T('Unterseite hinzufügen');
+        plus.setAttribute('aria-label', T('Unterseite zu {name} hinzufügen', { name: label(p) }));
         plus.addEventListener('click', function (e) { e.stopPropagation(); newPageMenu(plus, p.id); });
         row.appendChild(tw); row.appendChild(go); row.appendChild(plus); li.appendChild(row);
         treeDnd(row, p);
@@ -170,13 +171,13 @@
     return loadVendor().then(function () {
       S.editor = new window.EditorJS({
         holder: 'pg-editor', data: data, minHeight: 80, autofocus: false,
-        placeholder: "Schreib los – '/' für Blöcke und Verweise, Rechtsklick für Verweise im Text",
+        placeholder: T("Schreib los – '/' für Blöcke und Verweise, Rechtsklick für Verweise im Text"),
         inlineToolbar: ['bold', 'italic', 'link', 'marker', 'inlineCode', 'hkdate'],
         tools: S.tools = {
-          header: { class: window.Header, inlineToolbar: true, config: { levels: [1, 2, 3, 4], defaultLevel: 2, placeholder: 'Überschrift' } },
+          header: { class: window.Header, inlineToolbar: true, config: { levels: [1, 2, 3, 4], defaultLevel: 2, placeholder: T('Überschrift') } },
           list: { class: window.EditorjsList, inlineToolbar: true, config: { defaultStyle: 'unordered' } },
-          quote: { class: window.Quote, inlineToolbar: true, config: { quotePlaceholder: 'Zitat', captionPlaceholder: 'Quelle' } },
-          code: { class: window.HKCode || window.CodeTool, config: { placeholder: 'Code' } },   // static/code.js: Sprache + Farben
+          quote: { class: window.Quote, inlineToolbar: true, config: { quotePlaceholder: T('Zitat'), captionPlaceholder: T('Quelle') } },
+          code: { class: window.HKCode || window.CodeTool, config: { placeholder: T('Code') } },   // static/code.js: Sprache + Farben
           delimiter: window.Delimiter,
           inlineCode: { class: window.InlineCode },
           marker: { class: window.Marker },
@@ -194,10 +195,10 @@
           hkdate: { class: DateInline },
           image: { class: window.ImageTool, config: {
             endpoints: { byFile: '/api/files' }, field: 'image', additionalRequestHeaders: { 'X-Saga': '1' },
-            types: 'image/png,image/jpeg,image/gif,image/webp', captionPlaceholder: 'Bildunterschrift', buttonContent: 'Bild auswählen …' } },
+            types: 'image/png,image/jpeg,image/gif,image/webp', captionPlaceholder: T('Bildunterschrift'), buttonContent: T('Bild auswählen …') } },
           attaches: { class: window.AttachesTool, config: {
             endpoint: '/api/files', field: 'file', additionalRequestHeaders: { 'X-Saga': '1' },
-            buttonText: 'Datei auswählen …', errorMessage: 'Hochladen fehlgeschlagen' } }
+            buttonText: T('Datei auswählen …'), errorMessage: T('Hochladen fehlgeschlagen') } }
         },
         i18n: I18N,
         onChange: function () { if (!S.loading) { S.dirtyBody = true; schedule(); } }
@@ -212,7 +213,7 @@
 
   function schedule() {
     if (S.cur && S.cur.locked) { S.dirtyBody = S.dirtyTitle = false; return; }        // gesperrt: nichts speichern
-    state('Ungespeichert …'); clearTimeout(S.timer); S.timer = setTimeout(save, 900);
+    state(T('Ungespeichert …')); clearTimeout(S.timer); S.timer = setTimeout(save, 900);
   }
 
   // Speichern nacheinander (Warteschlange): ein zweites Speichern waehrend das erste noch laeuft, wuerde sonst
@@ -228,7 +229,7 @@
     if (S.dirtyTitle) { body.title = $('pg-title').value; S.dirtyTitle = false; }
     var getBody = S.dirtyBody && S.editor ? S.editor.save() : Promise.resolve(null);
     S.dirtyBody = false;
-    state('Speichert …');
+    state(T('Speichert …'));
     return getBody.then(function (out) {
       if (out) { body.body = JSON.stringify(out); body.format = 'blocks'; }
       if (!Object.keys(body).length) return;
@@ -237,13 +238,13 @@
       return api('PATCH', '/api/notes/' + id, body).then(function (d) {
         if (S.cur && S.cur.id === id && d.rev != null) S.cur.rev = d.rev;
         var p = byId(id); if (p) { p.updated = d.updated; if ('title' in body) p.title = body.title.trim(); }
-        if (!S.dirtyBody && !S.dirtyTitle) state('Gespeichert ✓ ' + HK.fUpd.format(new Date(d.updated * 1000)), 'ok');
+        if (!S.dirtyBody && !S.dirtyTitle) state(T('Gespeichert ✓ {time}', { time: HK.fUpd.format(new Date(d.updated * 1000)) }), 'ok');
         if ('title' in body) { if (S.cur && S.cur.id === id) S.cur.title = body.title.trim(); renderTree(); renderCrumbs(); setLocation(); }
       });
     }).catch(function (err) {
       S.dirtyBody = S.dirtyBody || !!body.body; S.dirtyTitle = S.dirtyTitle || 'title' in body;
-      if (err.message === 'conflict') { S.conflict = true; showConflict(); state('Nicht gespeichert – Seite wurde zwischenzeitlich geändert', 'err'); return; }
-      state('Nicht gespeichert: ' + err.message, 'err');
+      if (err.message === 'conflict') { S.conflict = true; showConflict(); state(T('Nicht gespeichert – Seite wurde zwischenzeitlich geändert'), 'err'); return; }
+      state(T('Nicht gespeichert: {err}', { err: err.message }), 'err');
     });
   }
   // Konflikt: jemand (anderer Tab, Peek, spaeter andere Person) hat Titel/Inhalt inzwischen geaendert
@@ -251,13 +252,13 @@
     var bar = $('pg-conflict');
     if (!bar) { bar = el('div', 'pg-conflict'); bar.id = 'pg-conflict'; bar.setAttribute('role', 'alert'); $('page').insertBefore(bar, $('page').firstChild); }
     bar.textContent = '';
-    bar.appendChild(el('span', 'pgc-t', '⚠ Diese Seite wurde inzwischen an anderer Stelle geändert. Deine letzten Änderungen sind noch nicht gespeichert.'));
-    var load = el('button', 'btn', 'Neue Version laden'); load.type = 'button';
+    bar.appendChild(el('span', 'pgc-t', T('⚠ Diese Seite wurde inzwischen an anderer Stelle geändert. Deine letzten Änderungen sind noch nicht gespeichert.')));
+    var load = el('button', 'btn', T('Neue Version laden')); load.type = 'button';
     load.addEventListener('click', function () {
-      if (!confirm('Deine ungespeicherten Änderungen verwerfen und die neue Version laden?')) return;
+      if (!confirm(T('Deine ungespeicherten Änderungen verwerfen und die neue Version laden?'))) return;
       clearConflict(); S.dirtyBody = S.dirtyTitle = false; openPage(S.cur.id);
     });
-    var keep = el('button', 'btn', 'Meine Version behalten'); keep.type = 'button';
+    var keep = el('button', 'btn', T('Meine Version behalten')); keep.type = 'button';
     keep.addEventListener('click', function () { clearConflict(); S.force = true; S.dirtyBody = true; S.dirtyTitle = true; save(); });
     bar.appendChild(load); bar.appendChild(keep);
   }
@@ -265,8 +266,8 @@
 
   // Browser-Tab-Titel und Direktlink (/notes#<id>) aktuell halten
   function setLocation() {
-    if (!S.cur) { document.title = 'Notizen · Saga'; return; }
-    document.title = (ti(S.cur.icon) ? ti(S.cur.icon) + ' ' : '') + label(S.cur) + ' · Notizen';
+    if (!S.cur) { document.title = T('Notizen') + ' · Saga'; return; }
+    document.title = (ti(S.cur.icon) ? ti(S.cur.icon) + ' ' : '') + label(S.cur) + ' · ' + T('Notizen');
     if (parseInt(location.hash.slice(1), 10) === S.cur.id) return;                 // auch "#12:block" = diese Seite
     if (!EMBED && /^#\d/.test(location.hash)) history.pushState(null, '', '#' + S.cur.id);   // Zurueck/Vor wie im Browser
     else history.replaceState(null, '', '#' + S.cur.id);
@@ -285,18 +286,18 @@
       if (!EMBED) HK.store('hk-pg-last', String(id));
       setLocation();
       renderTree(); renderCrumbs();
-      state(n.updated ? 'Gespeichert ✓ ' + HK.fUpd.format(new Date(n.updated * 1000)) : '', 'ok');
+      state(n.updated ? T('Gespeichert ✓ {time}', { time: HK.fUpd.format(new Date(n.updated * 1000)) }) : '', 'ok');
       applyKind();      // Ansicht (Datenbank / Zeile / Seite) sofort umschalten, nicht erst nach dem Rendern
       return ensureEditor(data);
     }).then(function () { S.loading = false; })
-      .catch(function (err) { S.loading = false; HK.toast('Seite konnte nicht geöffnet werden: ' + err.message); });
+      .catch(function (err) { S.loading = false; HK.toast(T('Seite konnte nicht geöffnet werden: {err}', { err: err.message })); });
   }
 
   function newPage(parentId) {
     return save().then(function () { return api('POST', '/api/notes', { parent_id: parentId || null }); })
       .then(function (d) { if (parentId) { S.open[parentId] = true; saveOpen(); } return loadList().then(function () { return openPage(d.id); }); })
       .then(function () { $('pg-title').focus(); })
-      .catch(function (err) { HK.toast('Seite nicht angelegt: ' + err.message); });
+      .catch(function (err) { HK.toast(T('Seite nicht angelegt: {err}', { err: err.message })); });
   }
 
   // Nur speichern, wenn sich der Inhalt wirklich geaendert hat (Editor.js meldet beim Laden teils "Aenderungen")
@@ -304,7 +305,7 @@
   save = function () {
     if (S.dirtyBody && S.editor && !S.dirtyTitle) {
       return S.editor.save().then(function (o) {
-        if (JSON.stringify(o.blocks) === S.lastBlocks) { S.dirtyBody = false; clearTimeout(S.timer); state('Gespeichert ✓', 'ok'); return; }
+        if (JSON.stringify(o.blocks) === S.lastBlocks) { S.dirtyBody = false; clearTimeout(S.timer); state(T('Gespeichert ✓'), 'ok'); return; }
         S.lastBlocks = JSON.stringify(o.blocks);
         return _origSave();
       });
@@ -314,7 +315,7 @@
   };
   var _origOpen = openPage;
   openPage = function (id) {
-    if (S.conflict && S.cur && S.cur.id !== id && !confirm('Auf dieser Seite gibt es einen Speicher-Konflikt. Seite trotzdem wechseln? Deine ungespeicherten Änderungen gehen verloren.')) return Promise.resolve();
+    if (S.conflict && S.cur && S.cur.id !== id && !confirm(T('Auf dieser Seite gibt es einen Speicher-Konflikt. Seite trotzdem wechseln? Deine ungespeicherten Änderungen gehen verloren.'))) return Promise.resolve();
     clearConflict();
     $('pg-trash').hidden = true;
     if (PK.id) closePeek();
@@ -338,20 +339,20 @@
   $('pg-icon').addEventListener('click', function () {
     var btn = this;
     HK.openMenu(btn, function (m) {
-      m.appendChild(HK.menuLabel('Icon'));
+      m.appendChild(HK.menuLabel(T('Icon')));
       var g = el('div', 'emoji-grid');
       EMOJI.forEach(function (e) {
-        var b = el('button', 'emoji', e); b.type = 'button'; b.setAttribute('aria-label', 'Icon ' + e);
+        var b = el('button', 'emoji', e); b.type = 'button'; b.setAttribute('aria-label', T('Icon {e}', { e: e }));
         b.addEventListener('click', function () { HK.closeMenu(); setIcon(e); });
         g.appendChild(b);
       });
       m.appendChild(g);
-      m.appendChild(HK.menuItem('🖼 Eigenes Bild hochladen …', function () { pickImage('icon'); }));
-      if (HK.immichPick) m.appendChild(HK.menuItem('📷 Aus Immich …', function () {
+      m.appendChild(HK.menuItem(T('🖼 Eigenes Bild hochladen …'), function () { pickImage('icon'); }));
+      if (HK.immichPick) m.appendChild(HK.menuItem(T('📷 Aus Immich …'), function () {
         var id = S.cur.id;
-        HK.immichPick(function (url) { api('PATCH', '/api/notes/' + id, { icon: url }).then(function () { setIconLocal(id, url); HK.toast('Icon gespeichert'); }); });
+        HK.immichPick(function (url) { api('PATCH', '/api/notes/' + id, { icon: url }).then(function () { setIconLocal(id, url); HK.toast(T('Icon gespeichert')); }); });
       }));
-      if (S.cur && S.cur.icon) m.appendChild(HK.menuItem('Icon entfernen', function () { setIcon(''); }));
+      if (S.cur && S.cur.icon) m.appendChild(HK.menuItem(T('Icon entfernen'), function () { setIcon(''); }));
     });
   });
   function setIcon(e) {
@@ -360,57 +361,57 @@
       S.cur.icon = e; var p = byId(S.cur.id); if (p) p.icon = e;
       showIcon(e);
       renderTree(); renderCrumbs(); setLocation();
-    }).catch(function (err) { HK.toast('Icon nicht gespeichert: ' + err.message); });
+    }).catch(function (err) { HK.toast(T('Icon nicht gespeichert: {err}', { err: err.message })); });
   }
 
   function movePage(parentId) {
     save().then(function () { return api('PATCH', '/api/notes/' + S.cur.id, { parent_id: parentId }); })
       .then(function () { if (parentId) { S.open[parentId] = true; saveOpen(); } return loadList(); })
-      .then(function () { HK.toast('Verschoben.'); })
-      .catch(function (err) { HK.toast('Nicht verschoben: ' + err.message); });
+      .then(function () { HK.toast(T('Verschoben.')); })
+      .catch(function (err) { HK.toast(T('Nicht verschoben: {err}', { err: err.message })); });
   }
   $('pg-more').addEventListener('click', function () {
     var btn = this; if (!S.cur) return;
     HK.openMenu(btn, function (m) {
       var c = S.cur, n = descendants(c.id).length;
-      m.appendChild(HK.menuItem(c.pinned ? 'Von Favoriten lösen' : 'Zu Favoriten', function () { setPinned(!c.pinned); }, { icon: c.pinned ? '☆' : '★' }));
-      m.appendChild(HK.menuItem('Volle Breite', function () { setWide(!c.wide); }, { icon: '↔', on: !!c.wide }));
-      m.appendChild(HK.menuItem(c.locked ? 'Seite entsperren' : 'Seite sperren', function () { setLocked(!c.locked); }, { icon: '🔒', on: !!c.locked }));
+      m.appendChild(HK.menuItem(c.pinned ? T('Von Favoriten lösen') : T('Zu Favoriten'), function () { setPinned(!c.pinned); }, { icon: c.pinned ? '☆' : '★' }));
+      m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { icon: '↔', on: !!c.wide }));
+      m.appendChild(HK.menuItem(c.locked ? T('Seite entsperren') : T('Seite sperren'), function () { setLocked(!c.locked); }, { icon: '🔒', on: !!c.locked }));
       m.appendChild(el('div', 'menu-sep'));
-      m.appendChild(HK.menuItem('Duplizieren', duplicatePage, { icon: '⧉' }));
-      m.appendChild(HK.menuItem('Unterseite hinzufügen', function () { newPage(c.id); }, { icon: '＋' }));
-      m.appendChild(HK.menuItem('Verschieben nach', null, { icon: '↪', subSearch: 'Seite suchen …', sub: function (sm) {
+      m.appendChild(HK.menuItem(T('Duplizieren'), duplicatePage, { icon: '⧉' }));
+      m.appendChild(HK.menuItem(T('Unterseite hinzufügen'), function () { newPage(c.id); }, { icon: '＋' }));
+      m.appendChild(HK.menuItem(T('Verschieben nach'), null, { icon: '↪', subSearch: T('Seite suchen …'), sub: function (sm) {
         var blocked = descendants(c.id).concat([c.id]);
-        if (c.parent_id) sm.appendChild(HK.menuItem('Oberste Ebene', function () { movePageTo(c.id, null, children(null).length); }, { icon: '⌂' }));
+        if (c.parent_id) sm.appendChild(HK.menuItem(T('Oberste Ebene'), function () { movePageTo(c.id, null, children(null).length); }, { icon: '⌂' }));
         S.pages.filter(function (p) { return blocked.indexOf(p.id) < 0 && p.id !== c.parent_id && p.kind !== 'database'; }).forEach(function (p) {
           sm.appendChild(HK.menuItem(label(p), function () { movePageTo(c.id, p.id, children(p.id).length); },
             { icon: ti(p.icon) || '📄', hint: ancestors(p.id).map(label).join(' / ') }));
         });
       } }));
-      m.appendChild(HK.menuItem(c.template ? 'Keine Vorlage mehr' : 'Als Vorlage markieren', function () { setTemplate(!c.template); }, { icon: '📐', on: !!c.template }));
+      m.appendChild(HK.menuItem(c.template ? T('Keine Vorlage mehr') : T('Als Vorlage markieren'), function () { setTemplate(!c.template); }, { icon: '📐', on: !!c.template }));
       m.appendChild(el('div', 'menu-sep'));
-      m.appendChild(HK.menuItem('Versionsverlauf', openVersions, { icon: '🕘' }));
-      m.appendChild(HK.menuItem('Exportieren', null, { icon: '⬇', sub: function (sm) {
-        sm.appendChild(HK.menuItem('Als Markdown (.md)', function () { exportPage(false); }, { icon: '📄' }));
-        if (n) sm.appendChild(HK.menuItem('Mit Unterseiten (.zip)', function () { exportPage(true); }, { icon: '🗜', hint: n + ' Unterseite' + (n > 1 ? 'n' : '') }));
+      m.appendChild(HK.menuItem(T('Versionsverlauf'), openVersions, { icon: '🕘' }));
+      m.appendChild(HK.menuItem(T('Exportieren'), null, { icon: '⬇', sub: function (sm) {
+        sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { icon: '📄' }));
+        if (n) sm.appendChild(HK.menuItem(T('Mit Unterseiten (.zip)'), function () { exportPage(true); }, { icon: '🗜', hint: nSub(n) }));
       } }));
       m.appendChild(el('div', 'menu-sep'));
-      m.appendChild(HK.menuItem(c.archived ? 'Aus dem Archiv holen' : 'Archivieren', function () { setArchived(c.id, !c.archived); },
-        { icon: '📦', hint: !c.archived && n ? '+ ' + n + ' Unterseite' + (n > 1 ? 'n' : '') : '' }));
-      m.appendChild(HK.menuItem('In den Papierkorb', function () {
+      m.appendChild(HK.menuItem(c.archived ? T('Aus dem Archiv holen') : T('Archivieren'), function () { setArchived(c.id, !c.archived); },
+        { icon: '📦', hint: !c.archived && n ? '+ ' + nSub(n) : '' }));
+      m.appendChild(HK.menuItem(T('In den Papierkorb'), function () {
         var id = S.cur.id, name = label(S.cur), parent = S.cur.parent_id;
         save().then(function () { return api('DELETE', '/api/notes/' + id); }).then(function () {
           if (EMBED) {                     // im Peek: nicht zur uebergeordneten Seite springen - Peek schliessen (macht das Hauptfenster)
             S.cur = null; window.parent.postMessage({ hk: 'peek-deleted', id: id, name: name }, location.origin); return;
           }
           S.cur = null; $('page').hidden = true; setLocation(); history.replaceState(null, '', location.pathname);
-          HK.toast('„' + name + '“ in den Papierkorb verschoben', 'Rückgängig', function () {
+          HK.toast(T('„{name}“ in den Papierkorb verschoben', { name: name }), T('Rückgängig'), function () {
             api('POST', '/api/trash/' + id + '/restore').then(loadList).then(function () { return openPage(id); })
-              .catch(function (err) { HK.toast('Nicht wiederhergestellt: ' + err.message); });
+              .catch(function (err) { HK.toast(T('Nicht wiederhergestellt: {err}', { err: err.message })); });
           });
           return loadList().then(function () { if (parent && byId(parent)) return openPage(parent); renderTree(); });
-        }).catch(function (err) { HK.toast('Nicht gelöscht: ' + err.message); });
-      }, { icon: '🗑', danger: true, hint: n ? '+ ' + n + ' Unterseite' + (n > 1 ? 'n' : '') : '' }));
+        }).catch(function (err) { HK.toast(T('Nicht gelöscht: {err}', { err: err.message })); });
+      }, { icon: '🗑', danger: true, hint: n ? '+ ' + nSub(n) : '' }));
     });
   });
 
@@ -418,7 +419,7 @@
     $('pages').classList.toggle('pg-full', on);
     document.body.classList.toggle('pg-full-open', on);
     $('pg-full').setAttribute('aria-pressed', on ? 'true' : 'false');
-    $('pg-full').title = on ? 'Vollbild beenden (Esc)' : 'Vollbild';
+    $('pg-full').title = on ? T('Vollbild beenden (Esc)') : T('Vollbild');
   }
   $('pg-full').addEventListener('click', function () { setFull(!$('pages').classList.contains('pg-full')); });
   document.addEventListener('keydown', function (e) {
@@ -434,7 +435,7 @@
     qT = setTimeout(function () {
       api('POST', '/api/notes/search', { q: q }).then(function (hits) {
         var ul = $('pg-results'); ul.textContent = ''; ul.hidden = false; $('pg-tree').hidden = true;
-        if (!hits.length) { ul.appendChild(el('li', 'pg-noresult', 'Nichts gefunden.')); return; }
+        if (!hits.length) { ul.appendChild(el('li', 'pg-noresult', T('Nichts gefunden.'))); return; }
         hits.forEach(function (h) {
           var b = el('button', 'pg-hit'); b.type = 'button';
           b.appendChild(el('span', 'pg-hit-t', (ti(h.icon) || '📄') + ' ' + label(h)));
@@ -457,7 +458,7 @@
   function allTags() {
     var m = {};
     S.pages.forEach(function (p) { (p.tags || []).forEach(function (t) { var k = t.toLowerCase(); (m[k] = m[k] || { name: t, n: 0 }).n++; }); });
-    return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.n - a.n || a.name.localeCompare(b.name, 'de'); });
+    return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.n - a.n || a.name.localeCompare(b.name, HK.locale); });
   }
   function renderTagBar() {
     var bar = $('pg-tagbar'); bar.textContent = '';
@@ -492,14 +493,14 @@
     if (!S.cur) return;
     (S.cur.tags || []).forEach(function (t) {
       var c = el('span', 'tag', '#' + t);
-      var x = el('button', null, '×'); x.type = 'button'; x.setAttribute('aria-label', 'Tag ' + t + ' entfernen');
+      var x = el('button', null, '×'); x.type = 'button'; x.setAttribute('aria-label', T('Tag {tag} entfernen', { tag: t }));
       x.addEventListener('click', function () { setTags(S.cur.tags.filter(function (y) { return y !== t; })); });
       c.appendChild(x); box.appendChild(c);
     });
-    var add = el('button', 'tag-add', '+ Tag'); add.type = 'button';
+    var add = el('button', 'tag-add', T('+ Tag')); add.type = 'button';
     add.addEventListener('click', function () {
-      var inp = el('input', 'tag-input'); inp.type = 'text'; inp.maxLength = 30; inp.placeholder = 'Tag …';
-      inp.setAttribute('list', 'pg-tag-list'); inp.setAttribute('aria-label', 'Neuer Tag');
+      var inp = el('input', 'tag-input'); inp.type = 'text'; inp.maxLength = 30; inp.placeholder = T('Tag …');
+      inp.setAttribute('list', 'pg-tag-list'); inp.setAttribute('aria-label', T('Neuer Tag'));
       add.replaceWith(inp); inp.focus();
       var done = false;
       function finish(ok) {
@@ -524,7 +525,7 @@
       if (S.cur && S.cur.id === id) S.cur.tags = n.tags;
       var p = byId(id); if (p) p.tags = n.tags;
       renderTags(); renderTagBar(); renderFiltered();
-    }).catch(function (err) { HK.toast('Tags nicht gespeichert: ' + err.message); renderTags(); });
+    }).catch(function (err) { HK.toast(T('Tags nicht gespeichert: {err}', { err: err.message })); renderTags(); });
   }
 
   // --- Verweise auf Seiten und Dienste ---------------------------------------
@@ -541,10 +542,10 @@
         var p = byId(+m[1]);
         a.classList.add('note-link');
         a.classList.toggle('broken', !p);
-        a.title = p ? 'Zur Seite ' + label(p) : 'Seite nicht gefunden';
+        a.title = p ? T('Zur Seite {name}', { name: label(p) }) : T('Seite nicht gefunden');
         if (p) a.textContent = (ti(p.icon) ? ti(p.icon) + ' ' : '') + label(p);
       } else if (serviceFor(a.getAttribute('href'))) {
-        a.classList.add('svc-link'); a.title = 'Dienst öffnen';
+        a.classList.add('svc-link'); a.title = T('Dienst öffnen');
       }
     });
   }
@@ -557,7 +558,7 @@
     var href = a.getAttribute('href'), m = href.match(NOTE_HREF), mod = e.ctrlKey || e.metaKey;
     if (m) {
       e.preventDefault();
-      if (!byId(+m[1])) { HK.toast('Diese Seite gibt es nicht mehr.'); return; }
+      if (!byId(+m[1])) { HK.toast(T('Diese Seite gibt es nicht mehr.')); return; }
       if (mod) window.open('/notes#' + m[1], '_blank', 'noopener'); else location.hash = '#' + m[1];
     } else if (a.classList.contains('svc-link') || mod) {
       e.preventDefault(); window.open(href, '_blank', 'noopener');
@@ -570,7 +571,7 @@
   // a) "/"-Menue -> "Verweis": Editor.js-Blockwerkzeug, das sich sofort in einen Absatz
   //    verwandelt und dort die Auswahl oeffnet (der Verweis landet im Absatz, nicht als eigener Block)
   function RefTool() {}
-  RefTool.toolbox = { title: 'Verweis',
+  RefTool.toolbox = { title: T('Verweis'),
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>' };
   RefTool.prototype.render = function () {
     var d = el('div', 'ce-paragraph cdx-block');
@@ -611,11 +612,11 @@
     pick.range = r;
     ctxAnchor.style.left = e.clientX + 'px'; ctxAnchor.style.top = e.clientY + 'px';
     HK.openMenu(ctxAnchor, function (m) {
-      m.appendChild(HK.menuItem(r.collapsed ? 'Verweis einfügen …' : 'Markierung durch Verweis ersetzen …', function () {
+      m.appendChild(HK.menuItem(r.collapsed ? T('Verweis einfügen …') : T('Markierung durch Verweis ersetzen …'), function () {
         openPicker({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY });
       }));
       m.appendChild(el('div', 'menu-sep'));
-      m.appendChild(el('div', 'menu-hint', 'Browser-Menü: Shift + Rechtsklick'));
+      m.appendChild(el('div', 'menu-hint', T('Browser-Menü: Shift + Rechtsklick')));
     });
   });
 
@@ -648,21 +649,21 @@
       b.addEventListener('mousedown', function (e) { e.preventDefault(); });   // Fokus nicht verlieren
       b.addEventListener('click', fn); pick.items.push({ b: b, fn: fn }); list.appendChild(b);
     }
-    if (pages.length) list.appendChild(el('div', 'menu-label', 'Seiten'));
+    if (pages.length) list.appendChild(el('div', 'menu-label', T('Seiten')));
     pages.forEach(function (p) { item((ti(p.icon) || '📄') + ' ' + label(p), '', function () { insertLink('/notes#' + p.id, (ti(p.icon) ? ti(p.icon) + ' ' : '') + label(p), 'note-link'); }); });
-    if (svcs.length) list.appendChild(el('div', 'menu-label', 'Dienste'));
+    if (svcs.length) list.appendChild(el('div', 'menu-label', T('Dienste')));
     svcs.forEach(function (s) { item(s.name, s.host, function () { insertLink(s.url, s.name, 'svc-link'); }); });
     if (q) {
-      list.appendChild(el('div', 'menu-label', 'Neu'));
-      item('+ Neue Seite „' + $('pg-picker-q').value.trim() + '“', '', function () {
+      list.appendChild(el('div', 'menu-label', T('Neu')));
+      item(T('+ Neue Seite „{name}“', { name: $('pg-picker-q').value.trim() }), '', function () {
         var title = $('pg-picker-q').value.trim();
         api('POST', '/api/notes', { title: title, parent_id: S.cur ? S.cur.id : null }).then(function (d) {
           if (S.cur) { S.open[S.cur.id] = true; saveOpen(); }
           return loadList().then(function () { insertLink('/notes#' + d.id, '📄 ' + title, 'note-link'); });
-        }).catch(function (err) { HK.toast('Seite nicht angelegt: ' + err.message); });
+        }).catch(function (err) { HK.toast(T('Seite nicht angelegt: {err}', { err: err.message })); });
       });
     }
-    if (!pick.items.length) list.appendChild(el('div', 'pg-noresult', 'Nichts gefunden.'));
+    if (!pick.items.length) list.appendChild(el('div', 'pg-noresult', T('Nichts gefunden.')));
     highlight();
   }
   function highlight() { pick.items.forEach(function (it, i) { it.b.classList.toggle('on', i === pick.idx); if (i === pick.idx) it.b.scrollIntoView({ block: 'nearest' }); }); }
@@ -720,8 +721,8 @@
     var id = S.cur.id;
     api('PATCH', '/api/notes/' + id, { pinned: on }).then(function () {
       S.cur.pinned = on; var p = byId(id); if (p) p.pinned = on; renderTree();
-      HK.toast(on ? 'Zu Favoriten hinzugefügt' : 'Von Favoriten gelöst');
-    }).catch(function (err) { HK.toast('Nicht gespeichert: ' + err.message); });
+      HK.toast(on ? T('Zu Favoriten hinzugefügt') : T('Von Favoriten gelöst'));
+    }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
   }
 
   // --- Dialog (Versionsverlauf) -----------------------------------------------
@@ -733,31 +734,31 @@
   $('pg-modal-close').addEventListener('click', closeModal);
   $('pg-modal').addEventListener('mousedown', function (e) { if (e.target === this) closeModal(); });
 
-  var fVer = new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  var fVer = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   function openVersions() {
     var id = S.cur.id;
     save().then(function () { return api('GET', '/api/notes/' + id + '/versions'); }).then(function (list) {
-      openModal('Versionsverlauf', function (body) {
-        if (!list.length) { body.appendChild(el('p', 'nt-empty', 'Noch keine früheren Versionen. Beim Bearbeiten wird höchstens alle 10 Minuten ein Stand gesichert (bis zu 50 pro Seite).')); return; }
+      openModal(T('Versionsverlauf'), function (body) {
+        if (!list.length) { body.appendChild(el('p', 'nt-empty', T('Noch keine früheren Versionen. Beim Bearbeiten wird höchstens alle 10 Minuten ein Stand gesichert (bis zu 50 pro Seite).'))); return; }
         var wrap = el('div', 'ver'), ul = el('ul', 'ver-list'), prev = el('div', 'ver-prev');
-        prev.appendChild(el('p', 'nt-empty', 'Version auswählen, um sie anzusehen.'));
+        prev.appendChild(el('p', 'nt-empty', T('Version auswählen, um sie anzusehen.')));
         list.forEach(function (v) {
           var b = el('button', 'ver-item'); b.type = 'button';
           b.appendChild(el('span', 'ver-date', fVer.format(new Date(v.created * 1000))));
-          b.appendChild(el('span', 'ver-title', v.title || 'Unbenannt'));
+          b.appendChild(el('span', 'ver-title', v.title || T('Unbenannt')));
           b.addEventListener('click', function () {
             [].forEach.call(ul.querySelectorAll('.ver-item'), function (x) { x.classList.toggle('on', x === b); });
             api('GET', '/api/notes/' + id + '/versions/' + v.id).then(function (d) {
               prev.textContent = '';
-              prev.appendChild(el('div', 'ver-prev-title', d.title || 'Unbenannt'));
-              prev.appendChild(el('div', 'ver-prev-text', d.text || '(leer)'));
-              var r = el('button', 'btn', 'Diese Version wiederherstellen'); r.type = 'button';
+              prev.appendChild(el('div', 'ver-prev-title', d.title || T('Unbenannt')));
+              prev.appendChild(el('div', 'ver-prev-text', d.text || T('(leer)')));
+              var r = el('button', 'btn', T('Diese Version wiederherstellen')); r.type = 'button';
               r.addEventListener('click', function () {
                 api('POST', '/api/notes/' + id + '/versions/' + v.id + '/restore').then(function () {
                   closeModal(); clearTimeout(S.timer); S.dirtyBody = S.dirtyTitle = false;
                   return loadList().then(function () { return openPage(id); });
-                }).then(function () { HK.toast('Version wiederhergestellt – der bisherige Stand ist als Version gesichert.'); })
-                  .catch(function (err) { HK.toast('Nicht wiederhergestellt: ' + err.message); });
+                }).then(function () { HK.toast(T('Version wiederhergestellt – der bisherige Stand ist als Version gesichert.')); })
+                  .catch(function (err) { HK.toast(T('Nicht wiederhergestellt: {err}', { err: err.message })); });
               });
               prev.appendChild(r);
             });
@@ -766,7 +767,7 @@
         });
         wrap.appendChild(ul); wrap.appendChild(prev); body.appendChild(wrap);
       });
-    }).catch(function (err) { HK.toast('Versionen nicht geladen: ' + err.message); });
+    }).catch(function (err) { HK.toast(T('Versionen nicht geladen: {err}', { err: err.message })); });
   }
 
   // --- Export (Download ueber fetch, weil die API einen eigenen Header verlangt) ---
@@ -782,16 +783,16 @@
         var u = URL.createObjectURL(b), a = el('a'); a.href = u; a.download = name;
         document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 2000);
       });
-    }).catch(function (err) { HK.toast('Export fehlgeschlagen: ' + err.message); });
+    }).catch(function (err) { HK.toast(T('Export fehlgeschlagen: {err}', { err: err.message })); });
   }
 
   // --- Papierkorb -------------------------------------------------------------
-  var fDay = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  var fDate = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  var fDay = new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  var fDate = new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric' });
   function showTrash() {
     save().then(function () {
       S.cur = null; $('page').hidden = true; $('pg-empty').hidden = true; $('pg-trash').hidden = false;
-      history.replaceState(null, '', location.pathname); document.title = 'Papierkorb · Notizen';
+      history.replaceState(null, '', location.pathname); document.title = T('Papierkorb') + ' · ' + T('Notizen');
       renderTree(); return loadTrash();
     });
   }
@@ -799,23 +800,24 @@
     return api('GET', '/api/trash').then(function (list) {
       var ul = $('pg-trash-list'); ul.textContent = '';
       $('pg-trash-empty').hidden = !list.length;
-      if (!list.length) { ul.appendChild(el('li', 'nt-empty', 'Der Papierkorb ist leer.')); return; }
+      if (!list.length) { ul.appendChild(el('li', 'nt-empty', T('Der Papierkorb ist leer.'))); return; }
       list.forEach(function (p) {
         var li = el('li', 'trash-item'), info = el('div', 'trash-info');
         info.appendChild(el('span', 'trash-name', (ti(p.icon) || '📄') + ' ' + label(p)));
-        info.appendChild(el('span', 'trash-meta', 'gelöscht ' + fDay.format(new Date(p.deleted_at * 1000)) +
-          (p.subpages ? ' · mit ' + p.subpages + ' Unterseite' + (p.subpages > 1 ? 'n' : '') : '') +
-          ' · endgültig weg am ' + fDate.format(new Date(p.purge_at * 1000))));
-        var rb = el('button', 'btn', 'Wiederherstellen'); rb.type = 'button';
+        info.appendChild(el('span', 'trash-meta', T('gelöscht {date}', { date: fDay.format(new Date(p.deleted_at * 1000)) }) +
+          (p.subpages ? ' · ' + T('mit {sub}', { sub: nSub(p.subpages) }) : '') +
+          ' · ' + T('endgültig weg am {date}', { date: fDate.format(new Date(p.purge_at * 1000)) })));
+        var rb = el('button', 'btn', T('Wiederherstellen')); rb.type = 'button';
         rb.addEventListener('click', function () {
           api('POST', '/api/trash/' + p.id + '/restore').then(function () { return Promise.all([loadList(), loadTrash()]); })
-            .then(function () { HK.toast('„' + label(p) + '“ wiederhergestellt', 'Öffnen', function () { openPage(p.id); }); })
-            .catch(function (err) { HK.toast('Nicht wiederhergestellt: ' + err.message); });
+            .then(function () { HK.toast(T('„{name}“ wiederhergestellt', { name: label(p) }), T('Öffnen'), function () { openPage(p.id); }); })
+            .catch(function (err) { HK.toast(T('Nicht wiederhergestellt: {err}', { err: err.message })); });
         });
-        var db = el('button', 'linkbtn danger', 'Endgültig löschen'); db.type = 'button';
+        var db = el('button', 'linkbtn danger', T('Endgültig löschen')); db.type = 'button';
         db.addEventListener('click', function () {
-          if (!confirm('„' + label(p) + '“' + (p.subpages ? ' und ' + p.subpages + ' Unterseite(n)' : '') + ' endgültig löschen? Das lässt sich nicht rückgängig machen.')) return;
-          api('DELETE', '/api/trash/' + p.id).then(loadTrash).catch(function (err) { HK.toast('Nicht gelöscht: ' + err.message); });
+          if (!confirm(p.subpages ? T('„{name}“ und {sub} endgültig löschen? Das lässt sich nicht rückgängig machen.', { name: label(p), sub: nSub(p.subpages) })
+                               : T('„{name}“ endgültig löschen? Das lässt sich nicht rückgängig machen.', { name: label(p) }))) return;
+          api('DELETE', '/api/trash/' + p.id).then(loadTrash).catch(function (err) { HK.toast(T('Nicht gelöscht: {err}', { err: err.message })); });
         });
         li.appendChild(info); li.appendChild(rb); li.appendChild(db); ul.appendChild(li);
       });
@@ -823,14 +825,14 @@
   }
   $('pg-trash-btn').addEventListener('click', showTrash);
   $('pg-trash-empty').addEventListener('click', function () {
-    if (!confirm('Papierkorb endgültig leeren? Das lässt sich nicht rückgängig machen.')) return;
-    api('POST', '/api/trash/empty').then(loadTrash).catch(function (err) { HK.toast('Nicht geleert: ' + err.message); });
+    if (!confirm(T('Papierkorb endgültig leeren? Das lässt sich nicht rückgängig machen.'))) return;
+    api('POST', '/api/trash/empty').then(loadTrash).catch(function (err) { HK.toast(T('Nicht geleert: {err}', { err: err.message })); });
   });
 
   // --- Schnellsuche (Strg/Cmd+K) ----------------------------------------------
   var qs = { items: [], idx: 0 };
   var isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-  $('pg-qs-kbd').textContent = isMac ? '⌘K' : 'Strg K';
+  $('pg-qs-kbd').textContent = isMac ? '⌘K' : T('Strg') + ' K';
   function openQS() { $('pg-qs').hidden = false; $('pg-qs-q').value = ''; renderQS(); $('pg-qs-q').focus(); }
   function closeQS() { $('pg-qs').hidden = true; }
   function renderQS() {
@@ -841,7 +843,7 @@
     var hits = cmdOnly ? [] : q ? S.pages.filter(function (p) { return (label(p) + ' ' + (p.tags || []).join(' ')).toLowerCase().indexOf(q) >= 0; })
                                      .sort(function (a, b) { return (rec.indexOf(b) >= 0) - (rec.indexOf(a) >= 0) || b.updated - a.updated; })
                  : rec.concat(S.pages.filter(function (p) { return rec.indexOf(p) < 0; }).sort(function (a, b) { return b.updated - a.updated; }));
-    if (!q && !cmdOnly) list.appendChild(el('div', 'menu-label', rec.length ? 'Zuletzt geöffnet' : 'Zuletzt bearbeitet'));
+    if (!q && !cmdOnly) list.appendChild(el('div', 'menu-label', rec.length ? T('Zuletzt geöffnet') : T('Zuletzt bearbeitet')));
     function item(text, sub, fn) {
       var b = el('button', 'picker-item'); b.type = 'button'; b.setAttribute('role', 'option');
       b.appendChild(el('span', 'picker-t', text)); if (sub) b.appendChild(el('span', 'picker-sub', sub));
@@ -854,13 +856,13 @@
     });
     var acts = actions().filter(function (a) { return !q || (a.t + ' ' + (a.kw || '')).toLowerCase().indexOf(q) >= 0; });
     if (acts.length && (q || cmdOnly)) {
-      list.appendChild(el('div', 'menu-label', 'Befehle'));
+      list.appendChild(el('div', 'menu-label', T('Befehle')));
       acts.slice(0, cmdOnly ? 30 : 6).forEach(function (a) { item(a.ic + ' ' + a.t, a.kbd || '', a.fn); });
-    } else if (!q) list.appendChild(el('div', 'pg-qs-hint', 'Tipp: „>“ zeigt alle Befehle'));
-    if (q && !cmdOnly) item('+ Neue Seite „' + $('pg-qs-q').value.trim() + '“', '', function () {
+    } else if (!q) list.appendChild(el('div', 'pg-qs-hint', T('Tipp: „>“ zeigt alle Befehle')));
+    if (q && !cmdOnly) item(T('+ Neue Seite „{name}“', { name: $('pg-qs-q').value.trim() }), '', function () {
       api('POST', '/api/notes', { title: $('pg-qs-q').value.trim() }).then(function (d) { return loadList().then(function () { return openPage(d.id); }); });
     });
-    if (!qs.items.length) list.appendChild(el('div', 'pg-noresult', 'Nichts gefunden.'));
+    if (!qs.items.length) list.appendChild(el('div', 'pg-noresult', T('Nichts gefunden.')));
     qs.items.forEach(function (it, i) { it.b.classList.toggle('on', i === 0); });
   }
   function qsHighlight() { qs.items.forEach(function (it, i) { it.b.classList.toggle('on', i === qs.idx); if (i === qs.idx) it.b.scrollIntoView({ block: 'nearest' }); }); }
@@ -888,15 +890,15 @@
   // Meldet Editor.js ausserdem <time datetime> an - sonst wuerden @-Daten beim Speichern entfernt.
   function DateInline(o) { this.api = o.api; }
   DateInline.isInline = true;
-  DateInline.title = 'Datum';
+  DateInline.title = T('Datum');
   DateInline.sanitize = { time: { datetime: true, class: true } };
   DateInline.prototype.render = function () {
-    var b = el('button', 'ce-inline-tool hk-date-tool', '📅'); b.type = 'button'; b.title = 'Als Datum (z. B. „morgen“, „Freitag“, „12.10.“)'; return b;
+    var b = el('button', 'ce-inline-tool hk-date-tool', '📅'); b.type = 'button'; b.title = T('Als Datum (z. B. „morgen“, „Freitag“, „12.10.“)'); return b;
   };
   DateInline.prototype.surround = function (range) {
     if (!range || !window.HKKeys) return;
     var d = HKKeys.parseDate(range.toString());
-    if (!d) { HK.toast('Kein Datum erkannt – z. B. „morgen“, „Freitag“, „12.10.“, „in 3 Tagen“'); return; }
+    if (!d) { HK.toast(T('Kein Datum erkannt – z. B. „morgen“, „Freitag“, „12.10.“, „in 3 Tagen“')); return; }
     var chip = HKKeys.dateChip(d, false);
     range.deleteContents(); range.insertNode(chip);
     var s = window.getSelection(), r = document.createRange(); r.setStartAfter(chip); r.collapse(true); s.removeAllRanges(); s.addRange(r);
@@ -916,14 +918,14 @@
     this.blocks = Array.isArray(d.blocks) ? d.blocks : (d.text ? [{ type: 'paragraph', data: { text: d.text } }] : []);
     this.ed = null;
   }
-  ToggleTool.toolbox = { title: 'Ausklappbar',
+  ToggleTool.toolbox = { title: T('Ausklappbar'),
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>' };
   // Bewusst KEINE sanitize-Regel: Editor.js bereinigt sonst alle nicht genannten Felder mit leerer Regel und
   // entfernt die Formatierung im gesamten verschachtelten Inhalt. Den Titel bereinigt der Server (Positivliste).
   ToggleTool.prototype.render = function () {
     var self = this, w = el('div', 'tgl' + (this.open ? ' open' : '')), head = el('div', 'tgl-head');
-    var btn = el('button', 'tgl-btn', '▸'); btn.type = 'button'; btn.contentEditable = 'false'; btn.setAttribute('aria-label', 'Auf- oder zuklappen');
-    this.t = editable('tgl-title', this.title, 'Ausklappbare Überschrift');
+    var btn = el('button', 'tgl-btn', '▸'); btn.type = 'button'; btn.contentEditable = 'false'; btn.setAttribute('aria-label', T('Auf- oder zuklappen'));
+    this.t = editable('tgl-title', this.title, T('Ausklappbare Überschrift'));
     this.b = el('div', 'tgl-body'); isolate(this.b);
     btn.addEventListener('click', function () { w.classList.toggle('open'); self.ensure(); if (!S.loading) { S.dirtyBody = true; schedule(); } });
     this.t.addEventListener('keydown', function (e) {   // Enter im Titel -> aufklappen und in den Inhalt springen
@@ -935,7 +937,7 @@
     this.w = w; if (this.open) this.ensure();          // zugeklappt: Editor erst beim ersten Aufklappen (spart Ladezeit)
     return w;
   };
-  ToggleTool.prototype.ensure = function () { if (!this.ed) this.ed = nestedEditor(this.b, this.blocks, "Inhalt – '/' für Blöcke"); return this.ed; };
+  ToggleTool.prototype.ensure = function () { if (!this.ed) this.ed = nestedEditor(this.b, this.blocks, T("Inhalt – '/' für Blöcke")); return this.ed; };
   ToggleTool.prototype.save = function () {
     var self = this, res = { title: this.t.innerHTML, open: this.w.classList.contains('open') };
     if (!this.ed) { res.blocks = this.blocks; return res; }
@@ -944,21 +946,21 @@
 
   var CALLOUT_EMOJI = ['💡', '⚠️', '✅', '❗', 'ℹ️', '🔥', '📌'];
   function CalloutTool(o) { this.data = o.data || {}; }
-  CalloutTool.toolbox = { title: 'Hinweis',
+  CalloutTool.toolbox = { title: T('Hinweis'),
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M8 10h8M8 14h5"/></svg>' };
   CalloutTool.sanitize = { text: INLINE_SAN };
   CalloutTool.prototype.render = function () {
     var w = el('div', 'callout'), self = this;
     this.emoji = this.data.emoji || '💡';
     var e = el('button', 'callout-emoji', this.emoji); e.type = 'button'; e.contentEditable = 'false';
-    e.title = 'Symbol wechseln'; e.setAttribute('aria-label', 'Symbol wechseln');
+    e.title = T('Symbol wechseln'); e.setAttribute('aria-label', T('Symbol wechseln'));
     e.addEventListener('click', function () {
       self.emoji = CALLOUT_EMOJI[(CALLOUT_EMOJI.indexOf(self.emoji) + 1) % CALLOUT_EMOJI.length];
       e.textContent = self.emoji; w.dataset.kind = String(CALLOUT_EMOJI.indexOf(self.emoji));
       if (S.editor) { S.dirtyBody = true; schedule(); }
     });
     w.dataset.kind = String(Math.max(0, CALLOUT_EMOJI.indexOf(this.emoji)));
-    this.t = editable('callout-text', this.data.text, 'Hinweis …');
+    this.t = editable('callout-text', this.data.text, T('Hinweis …'));
     w.appendChild(e); w.appendChild(this.t); return w;
   };
   CalloutTool.prototype.save = function () { return { emoji: this.emoji, text: this.t.innerHTML }; };
@@ -967,73 +969,73 @@
   function H2(t) { return { type: 'header', data: { text: t, level: 2 } }; }
   function UL(items, style) { return { type: 'list', data: { style: style || 'unordered', meta: {}, items: items.map(function (x) { return { content: x, meta: style === 'checklist' ? { checked: false } : {}, items: [] }; }) } }; }
   function P(t) { return { type: 'paragraph', data: { text: t || '' } }; }
-  var today = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  var today = new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric' });
   var BUILTIN = [
-    { name: 'Meeting', icon: '🗓️', title: function () { return 'Meeting ' + today.format(new Date()); }, blocks: [
-      H2('Teilnehmer'), UL(['']), H2('Agenda'), UL([''], 'ordered'), H2('Notizen'), P(''), H2('Aufgaben'), UL([''], 'checklist')] },
-    { name: 'Störung', icon: '🚨', title: function () { return 'Störung ' + today.format(new Date()); }, blocks: [
-      { type: 'callout', data: { emoji: '⚠️', text: '<b>Status:</b> offen · <b>Priorität:</b> ' } },
-      H2('Symptome'), P(''), H2('Betroffene Systeme'), UL(['']), H2('Zeitlinie'), UL(['']),
-      H2('Ursache'), P(''), H2('Lösung'), P(''), H2('Nacharbeiten'), UL([''], 'checklist')] },
-    { name: 'Kundenbesuch', icon: '🤝', title: function () { return 'Kundenbesuch ' + today.format(new Date()); }, blocks: [
-      H2('Kunde'), { type: 'table', data: { withHeadings: false, content: [['Firma', ''], ['Ansprechpartner', ''], ['Telefon', ''], ['Adresse', '']] } },
-      H2('Anlass'), P(''), H2('Ergebnisse'), UL(['']), H2('Nächste Schritte'), UL([''], 'checklist')] }
+    { name: T('Meeting'), icon: '🗓️', title: function () { return T('Meeting') + ' ' + today.format(new Date()); }, blocks: [
+      H2(T('Teilnehmer')), UL(['']), H2(T('Agenda')), UL([''], 'ordered'), H2(T('Notizen')), P(''), H2(T('Aufgaben')), UL([''], 'checklist')] },
+    { name: T('Störung'), icon: '🚨', title: function () { return T('Störung') + ' ' + today.format(new Date()); }, blocks: [
+      { type: 'callout', data: { emoji: '⚠️', text: '<b>' + T('Status:') + '</b> ' + T('offen') + ' · <b>' + T('Priorität:') + '</b> ' } },
+      H2(T('Symptome')), P(''), H2(T('Betroffene Systeme')), UL(['']), H2(T('Zeitlinie')), UL(['']),
+      H2(T('Ursache')), P(''), H2(T('Lösung')), P(''), H2(T('Nacharbeiten')), UL([''], 'checklist')] },
+    { name: T('Kundenbesuch'), icon: '🤝', title: function () { return T('Kundenbesuch') + ' ' + today.format(new Date()); }, blocks: [
+      H2(T('Kunde')), { type: 'table', data: { withHeadings: false, content: [[T('Firma'), ''], [T('Ansprechpartner'), ''], [T('Telefon'), ''], [T('Adresse'), '']] } },
+      H2(T('Anlass')), P(''), H2(T('Ergebnisse')), UL(['']), H2(T('Nächste Schritte')), UL([''], 'checklist')] }
   ];
   function fromBuiltin(t, parentId) {
     return save().then(function () { return api('POST', '/api/notes', { title: t.title(), icon: t.icon, parent_id: parentId || null }); })
       .then(function (d) {
         return api('PATCH', '/api/notes/' + d.id, { body: JSON.stringify({ blocks: t.blocks }), format: 'blocks' })
           .then(function () { if (parentId) { S.open[parentId] = true; saveOpen(); } return loadList(); }).then(function () { return openPage(d.id); });
-      }).catch(function (err) { HK.toast('Seite nicht angelegt: ' + err.message); });
+      }).catch(function (err) { HK.toast(T('Seite nicht angelegt: {err}', { err: err.message })); });
   }
   function fromTemplate(p, parentId) {
     return save().then(function () { return api('POST', '/api/notes/' + p.id + '/duplicate', { parent_id: parentId || null }); })
       .then(function (d) { if (parentId) { S.open[parentId] = true; saveOpen(); } return loadList().then(function () { return openPage(d.id); }); })
       .then(function () { $('pg-title').focus(); $('pg-title').select(); })
-      .catch(function (err) { HK.toast('Seite nicht angelegt: ' + err.message); });
+      .catch(function (err) { HK.toast(T('Seite nicht angelegt: {err}', { err: err.message })); });
   }
   function newPageMenu(anchor, parentId) {
     HK.openMenu(anchor, function (m) {
-      m.appendChild(HK.menuItem('Leere Seite', function () { newPage(parentId); }, { icon: '📄' }));
-      m.appendChild(HK.menuItem('Datenbank', function () { newDatabase(parentId); }, { icon: '🗃️', hint: 'Tabelle, Board …' }));
-      m.appendChild(HK.menuLabel('Vorlagen'));
+      m.appendChild(HK.menuItem(T('Leere Seite'), function () { newPage(parentId); }, { icon: '📄' }));
+      m.appendChild(HK.menuItem(T('Datenbank'), function () { newDatabase(parentId); }, { icon: '🗃️', hint: T('Tabelle, Board …') }));
+      m.appendChild(HK.menuLabel(T('Vorlagen')));
       BUILTIN.forEach(function (t) { m.appendChild(HK.menuItem(t.name, function () { fromBuiltin(t, parentId); }, { icon: t.icon })); });
       S.pages.filter(function (p) { return p.template; }).forEach(function (p) {
-        m.appendChild(HK.menuItem(label(p), function () { fromTemplate(p, parentId); }, { icon: ti(p.icon) || '📄', hint: 'eigene' }));
+        m.appendChild(HK.menuItem(label(p), function () { fromTemplate(p, parentId); }, { icon: ti(p.icon) || '📄', hint: T('eigene') }));
       });
-      m.appendChild(el('div', 'menu-hint', 'Eigene Vorlage: Seite öffnen → ⋯ → „Als Vorlage markieren“'));
+      m.appendChild(el('div', 'menu-hint', T('Eigene Vorlage: Seite öffnen → ⋯ → „Als Vorlage markieren“')));
     });
   }
   function setTemplate(on) {
     var id = S.cur.id;
     api('PATCH', '/api/notes/' + id, { template: on }).then(function () {
       S.cur.template = on; var p = byId(id); if (p) p.template = on; renderTree();
-      HK.toast(on ? 'Als Vorlage markiert – erscheint unter „+ Neue Seite“' : 'Keine Vorlage mehr');
-    }).catch(function (err) { HK.toast('Nicht gespeichert: ' + err.message); });
+      HK.toast(on ? T('Als Vorlage markiert – erscheint unter „+ Neue Seite“') : T('Keine Vorlage mehr'));
+    }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
   }
 
 
   // --- Datenbanken: Tabellenansicht (Notion-Stil) ----------------------------------
-  var TYPES = { text: ['Text', '≡'], number: ['Zahl', '#'], select: ['Auswahl', '◉'], multi_select: ['Mehrfachauswahl', '☰'],
-                date: ['Datum', '▦'], checkbox: ['Häkchen', '☑'], url: ['URL', '🔗'] };
+  var TYPES = { text: [T('Text'), '≡'], number: [T('Zahl'), '#'], select: [T('Auswahl'), '◉'], multi_select: [T('Mehrfachauswahl'), '☰'],
+                date: [T('Datum'), '▦'], checkbox: [T('Häkchen'), '☑'], url: [T('URL'), '🔗'] };
   var COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
   function rid() { return Math.random().toString(36).slice(2, 10); }
   function optChip(o) { var s = el('span', 'opt opt-' + (o ? o.color : 'gray'), o ? o.name : ''); return s; }
-  var fDate2 = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  var fDate2 = new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric' });
   // --- Datenbanken: Ansichten, Filter, Board ---------------------------------------
   var OPS = {
-    text: [['contains', 'enthält'], ['not_contains', 'enthält nicht'], ['is_empty', 'ist leer'], ['not_empty', 'ist nicht leer']],
-    number: [['eq', '='], ['gt', '>'], ['lt', '<'], ['is_empty', 'ist leer'], ['not_empty', 'ist nicht leer']],
-    select: [['is', 'ist'], ['is_not', 'ist nicht'], ['is_empty', 'ist leer'], ['not_empty', 'ist nicht leer']],
-    multi_select: [['contains', 'enthält'], ['not_contains', 'enthält nicht'], ['is_empty', 'ist leer'], ['not_empty', 'ist nicht leer']],
-    date: [['eq', 'am'], ['before', 'vor'], ['after', 'nach'], ['today', 'ist heute'], ['this_week', 'ist diese Woche'], ['this_month', 'ist diesen Monat'], ['is_empty', 'ist leer'], ['not_empty', 'ist nicht leer']],
-    checkbox: [['checked', 'angehakt'], ['unchecked', 'nicht angehakt']]
+    text: [['contains', T('enthält')], ['not_contains', T('enthält nicht')], ['is_empty', T('ist leer')], ['not_empty', T('ist nicht leer')]],
+    number: [['eq', '='], ['gt', '>'], ['lt', '<'], ['is_empty', T('ist leer')], ['not_empty', T('ist nicht leer')]],
+    select: [['is', T('ist')], ['is_not', T('ist nicht')], ['is_empty', T('ist leer')], ['not_empty', T('ist nicht leer')]],
+    multi_select: [['contains', T('enthält')], ['not_contains', T('enthält nicht')], ['is_empty', T('ist leer')], ['not_empty', T('ist nicht leer')]],
+    date: [['eq', T('am')], ['before', T('vor')], ['after', T('nach')], ['today', T('ist heute')], ['this_week', T('ist diese Woche')], ['this_month', T('ist diesen Monat')], ['is_empty', T('ist leer')], ['not_empty', T('ist nicht leer')]],
+    checkbox: [['checked', T('angehakt')], ['unchecked', T('nicht angehakt')]]
   };
   OPS.url = OPS.text;
   OPS.calc = OPS.number;
-  TYPES.calc = ['Berechnet', '∑'];
-  OPS.relation = [['contains', 'enthält'], ['not_contains', 'enthält nicht'], ['is_empty', 'ist leer'], ['not_empty', 'ist nicht leer']];
-  TYPES.relation = ['Relation', '↗'];
+  TYPES.calc = [T('Berechnet'), '∑'];
+  OPS.relation = [['contains', T('enthält')], ['not_contains', T('enthält nicht')], ['is_empty', T('ist leer')], ['not_empty', T('ist nicht leer')]];
+  TYPES.relation = [T('Relation'), '↗'];
   function relRows(target) { return S.pages.filter(function (p) { return p.parent_id === target; }); }
   function relChips(ids, clickable) {           // verknuepfte Eintraege als Marken; Klick oeffnet den Eintrag
     var s = el('span', 'rel-chips');
@@ -1056,15 +1058,15 @@
     var s = String(iso || ''), x = new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
     return !isNaN(x) && x >= a && x < b;
   }
-  var TITLE_PROP = { id: 'title', name: 'Name', type: 'text' };
+  var TITLE_PROP = { id: 'title', name: T('Name'), type: 'text' };
   var VIEW_ICON = { table: '▦', board: '▤', list: '☰', gallery: '▣', calendar: '🗓' };
   // Automatische Eigenschaften (nur lesbar) und Zahlen-Darstellung
-  TYPES.created = ['Erstellt am', '⏱']; TYPES.edited = ['Zuletzt bearbeitet', '✎'];
+  TYPES.created = [T('Erstellt am'), '⏱']; TYPES.edited = [T('Zuletzt bearbeitet'), '✎'];
   var AUTO = { created: 'created', edited: 'updated' };
-  OPS.created = OPS.edited = [['after', 'nach'], ['before', 'vor'], ['eq', 'am'], ['today', 'ist heute'], ['this_week', 'ist diese Woche'], ['this_month', 'ist diesen Monat']];
+  OPS.created = OPS.edited = [['after', T('nach')], ['before', T('vor')], ['eq', T('am')], ['today', T('ist heute')], ['this_week', T('ist diese Woche')], ['this_month', T('ist diesen Monat')]];
   function propValue(p, r) { return p.type === 'calc' ? calcValue2(p, r) : AUTO[p.type] ? r[AUTO[p.type]] : (r.props || {})[p.id]; }
   function numLike(p) { return !!p && (p.type === 'number' || p.type === 'calc'); }
-  var CALC_P = [['div', 'A ÷ B', '÷'], ['pct', 'A in % von B', '%'], ['mul', 'A × B', '×'], ['add', 'A + B', '+'], ['sub', 'A − B', '−']];
+  var CALC_P = [['div', 'A ÷ B', '÷'], ['pct', T('A in % von B'), '%'], ['mul', 'A × B', '×'], ['add', 'A + B', '+'], ['sub', 'A − B', '−']];
   // "Berechnet": aus zwei Zahlen-Spalten der Zeile, immer frisch (wird nie gespeichert)
   function calcValue2(p, r) {
     var pv = r.props || {}, num = function (k) { var v = pv[k]; return v == null || v === '' || isNaN(Number(v)) ? null : Number(v); };
@@ -1075,11 +1077,11 @@
     else v = op === 'mul' ? a * b : op === 'add' ? a + b : a - b;
     return Math.round(v * 10000) / 10000;
   }
-  var fStamp = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  var fStamp = new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   function stampText(ts) { return ts ? fStamp.format(new Date(ts * 1000)) : ''; }
   function isoDay(ts) { var d = new Date(ts * 1000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
-  var fNum = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }), fEur = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-  var fInt = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 });
+  var fNum = new Intl.NumberFormat(window.SAGA_LOCALE, { maximumFractionDigits: 2 }), fEur = new Intl.NumberFormat(window.SAGA_LOCALE, { style: 'currency', currency: 'EUR' });
+  var fInt = new Intl.NumberFormat(window.SAGA_LOCALE, { maximumFractionDigits: 0 });
   // Fortschritt (Ring/Balken): ganze Prozent wie Notion
   function numText(p, v) { return p.fmt === 'percent' ? ((p.show === 'ring' || p.show === 'bar') ? fInt : fNum).format(v) + ' %' : p.fmt === 'euro' ? fEur.format(v) : fNum.format(v); }
   function ring(pct) {
@@ -1135,8 +1137,8 @@
       var cur = OPTS.getView && OPTS.getView(), base = DB.schema.views.find(function (v) { return v.id === cur; }) || DB.schema.views[0];
       return [JSON.parse(JSON.stringify(base))];
     }
-    function lockedHint() { HK.toast('🔒 Die Datenbank ist gesperrt – unter „⚙ Ansicht“ entsperren.'); }
-    function setLocked(on) { DB.schema.locked = on || undefined; if (!on) delete DB.schema.locked; saveSchema().then(renderDb); HK.toast(on ? '🔒 Datenbank gesperrt' : '🔓 Datenbank entsperrt'); }
+    function lockedHint() { HK.toast(T('🔒 Die Datenbank ist gesperrt – unter „⚙ Ansicht“ entsperren.')); }
+    function setLocked(on) { DB.schema.locked = on || undefined; if (!on) delete DB.schema.locked; saveSchema().then(renderDb); HK.toast(on ? T('🔒 Datenbank gesperrt') : T('🔓 Datenbank entsperrt')); }
     function rowColor(r) {                         // bedingte Farbe: erste passende Regel der Ansicht
       var cr = curView().colors || [];
       for (var i = 0; i < cr.length; i++) { try { if (matchFilter(r, cr[i])) return cr[i].color; } catch (e) { /* unvollstaendige Regel */ } }
@@ -1151,13 +1153,13 @@
       var snap = JSON.stringify(DB.schema);
       if (snap === DB.snap) return Promise.resolve();                            // Datenbank selbst unveraendert
       return api('PATCH', '/api/notes/' + DB.id, { schema: DB.schema }).then(function (d) { DB.snap = snap; return d; })
-        .catch(function (err) { HK.toast('Spalte nicht gespeichert: ' + err.message); throw err; });
+        .catch(function (err) { HK.toast(T('Spalte nicht gespeichert: {err}', { err: err.message })); throw err; });
     }
     function setProp(row, pid, value) {
       var patch = {}; patch[pid] = value;
       return api('PATCH', '/api/notes/' + row.id, { props: patch }).then(function () {
         if (value === null || value === '' || value === false || (Array.isArray(value) && !value.length)) delete row.props[pid]; else row.props[pid] = value;
-      }).catch(function (err) { HK.toast('Nicht gespeichert: ' + err.message); });
+      }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
     }
 
     // Auswahl-Menue fuer select / multi_select, inkl. neue Option anlegen
@@ -1165,7 +1167,7 @@
     function relMenu(anchor, prop, row, onDone) {
       HK.openMenu(anchor, function (m) {
         var cur = (row.props[prop.id] || []).slice(), target = byId(prop.target);
-        var inp = el('input', 'menu-input'); inp.type = 'text'; inp.maxLength = 200; inp.placeholder = 'Eintrag in „' + label(target || {}) + '“ suchen …';
+        var inp = el('input', 'menu-input'); inp.type = 'text'; inp.maxLength = 200; inp.placeholder = T('Eintrag in „{db}“ suchen …', { db: label(target || {}) });
         m.appendChild(inp);
         var list = el('div', 'menu-opts'); m.appendChild(list);
         function toggle(id) {
@@ -1181,15 +1183,15 @@
             b.addEventListener('click', function () { toggle(p.id); }); list.appendChild(b);
           });
           if (q) {
-            var nb = el('button', 'menu-item'); nb.type = 'button'; nb.appendChild(el('span', 'mi-t', '+ Neu in „' + label(target || {}) + '“: ' + inp.value.trim()));
+            var nb = el('button', 'menu-item'); nb.type = 'button'; nb.appendChild(el('span', 'mi-t', T('+ Neu in „{db}“: {name}', { db: label(target || {}), name: inp.value.trim() })));
             nb.addEventListener('click', function () {
               api('POST', '/api/notes', { parent_id: prop.target, title: inp.value.trim() })
                 .then(function (d) { return loadList().then(function () { cur.push(d.id); HK.closeMenu(); return setProp(row, prop.id, cur); }); })
-                .then(onDone).catch(function (err) { HK.toast('Nicht angelegt: ' + err.message); });
+                .then(onDone).catch(function (err) { HK.toast(T('Nicht angelegt: {err}', { err: err.message })); });
             });
             list.appendChild(nb);
           }
-          if (!list.childNodes.length) list.appendChild(el('div', 'menu-hint', target ? 'Noch keine Einträge – Namen eintippen.' : 'Ziel-Datenbank fehlt.'));
+          if (!list.childNodes.length) list.appendChild(el('div', 'menu-hint', target ? T('Noch keine Einträge – Namen eintippen.') : T('Ziel-Datenbank fehlt.')));
         }
         inp.addEventListener('input', draw);
         inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); var f = list.querySelector('.menu-item'); if (f) f.click(); } });
@@ -1199,7 +1201,7 @@
     function optionMenu(anchor, prop, row, onDone) {
       HK.openMenu(anchor, function (m) {
         var multi = prop.type === 'multi_select', cur = row.props[prop.id];
-        var inp = el('input', 'menu-input'); inp.type = 'text'; inp.maxLength = 40; inp.placeholder = 'Option suchen oder anlegen …';
+        var inp = el('input', 'menu-input'); inp.type = 'text'; inp.maxLength = 40; inp.placeholder = T('Option suchen oder anlegen …');
         m.appendChild(inp);
         var list = el('div', 'menu-opts'); m.appendChild(list);
         function choose(o) {
@@ -1217,10 +1219,10 @@
             b.addEventListener('click', function () { choose(o); }); list.appendChild(b);
           });
           if (q && !(prop.options || []).some(function (o) { return o.name.toLowerCase() === q; })) {
-            var nb = el('button', 'menu-item'); nb.type = 'button'; nb.appendChild(document.createTextNode('+ Anlegen: '));
+            var nb = el('button', 'menu-item'); nb.type = 'button'; nb.appendChild(document.createTextNode(T('+ Anlegen:') + ' '));
             nb.appendChild(optChip({ name: inp.value.trim(), color: COLORS[(prop.options || []).length % COLORS.length] }));
             if (!locked()) { nb.addEventListener('click', create); list.appendChild(nb); }
-          } else if (!any) list.appendChild(el('div', 'menu-hint', 'Noch keine Optionen – Namen eintippen.'));
+          } else if (!any) list.appendChild(el('div', 'menu-hint', T('Noch keine Optionen – Namen eintippen.')));
         }
         function create() {
           if (locked()) { lockedHint(); return; }
@@ -1240,7 +1242,7 @@
     function valueEditor(prop, row, onDone) {
       var v = propValue(prop, row), t = prop.type, wrap = el('div', 'val val-' + t);
       if (AUTO[t]) { wrap.appendChild(el('span', 'val-auto', stampText(v))); return wrap; }      // automatisch, nur lesbar
-      if (t === 'calc') { wrap.appendChild(v == null ? el('span', 'val-empty', '–') : numNode(prop, v)); wrap.title = 'Berechnet – Einstellung im Spaltenkopf'; return wrap; }
+      if (t === 'calc') { wrap.appendChild(v == null ? el('span', 'val-empty', '–') : numNode(prop, v)); wrap.title = T('Berechnet – Einstellung im Spaltenkopf'); return wrap; }
       if (t === 'checkbox') {
         var cb = el('input'); cb.type = 'checkbox'; cb.checked = !!v; cb.setAttribute('aria-label', prop.name);
         cb.addEventListener('change', function () { setProp(row, prop.id, cb.checked).then(onDone); });
@@ -1248,7 +1250,7 @@
       }
       if (t === 'relation') {
         var rb = el('button', 'val-btn'); rb.type = 'button'; rb.setAttribute('aria-label', prop.name);
-        if ((v || []).some(function (id) { return byId(id); })) rb.appendChild(relChips(v, false)); else rb.appendChild(el('span', 'val-empty', 'Leer'));
+        if ((v || []).some(function (id) { return byId(id); })) rb.appendChild(relChips(v, false)); else rb.appendChild(el('span', 'val-empty', T('Leer')));
         rb.addEventListener('click', function () { relMenu(rb, prop, row, onDone); });
         wrap.appendChild(rb); return wrap;
       }
@@ -1256,12 +1258,12 @@
         var b = el('button', 'val-btn'); b.type = 'button'; b.setAttribute('aria-label', prop.name);
         var ids = t === 'select' ? (v ? [v] : []) : (v || []);
         ids.forEach(function (id) { var o = (prop.options || []).find(function (x) { return x.id === id; }); if (o) b.appendChild(optChip(o)); });
-        if (!ids.length) b.appendChild(el('span', 'val-empty', 'Leer'));
+        if (!ids.length) b.appendChild(el('span', 'val-empty', T('Leer')));
         b.addEventListener('click', function () { optionMenu(b, prop, row, onDone); });
         wrap.appendChild(b); return wrap;
       }
       if (t === 'number' && v != null && (prop.fmt || prop.show)) {        // formatierte Anzeige, Klick = bearbeiten
-        var nb = el('button', 'val-btn val-numbtn'); nb.type = 'button'; nb.setAttribute('aria-label', prop.name + ' bearbeiten');
+        var nb = el('button', 'val-btn val-numbtn'); nb.type = 'button'; nb.setAttribute('aria-label', T('{name} bearbeiten', { name: prop.name }));
         nb.appendChild(numNode(prop, v));
         nb.addEventListener('click', function () { wrap.textContent = ''; buildInput(); var i = wrap.querySelector('input'); if (i) { i.focus(); i.select(); } });
         wrap.appendChild(nb); return wrap;
@@ -1284,7 +1286,7 @@
       inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } if (e.key === 'Escape') { inp.value = start; inp.blur(); } });
       wrap.appendChild(inp);
       if (t === 'url' && v) {
-        var a = el('a', 'val-link', '↗'); a.href = v; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.title = 'Öffnen';
+        var a = el('a', 'val-link', '↗'); a.href = v; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.title = T('Öffnen');
         wrap.appendChild(a);
       }
       }
@@ -1333,8 +1335,8 @@
 
     function headMenu(th, prop) {
       HK.openMenu(th, function (m) {
-        if (locked()) { m.appendChild(HK.menuLabel('🔒 Datenbank gesperrt')); m.appendChild(el('div', 'menu-hint', 'Spalten und Ansichten sind geschützt – entsperren unter „⚙ Ansicht“.')); return; }
-        var name = el('input', 'menu-input'); name.type = 'text'; name.maxLength = 60; name.setAttribute('aria-label', 'Spaltenname');
+        if (locked()) { m.appendChild(HK.menuLabel(T('🔒 Datenbank gesperrt'))); m.appendChild(el('div', 'menu-hint', T('Spalten und Ansichten sind geschützt – entsperren unter „⚙ Ansicht“.'))); return; }
+        var name = el('input', 'menu-input'); name.type = 'text'; name.maxLength = 60; name.setAttribute('aria-label', T('Spaltenname'));
         name.value = prop ? prop.name : titleName();
         liveText(name, function (val) {
           val = val.trim(); if (!val) return;
@@ -1343,59 +1345,59 @@
         }, function () { HK.closeMenu(); });
         m.appendChild(name);
         var pid = prop ? prop.id : 'title';
-        m.appendChild(HK.menuItem('Aufsteigend sortieren', function () { setSort(pid, 'asc'); }, { icon: '↑' }));
-        m.appendChild(HK.menuItem('Absteigend sortieren', function () { setSort(pid, 'desc'); }, { icon: '↓' }));
-        if ((curView().sorts || []).length) m.appendChild(HK.menuItem('Sortierung aufheben', function () { setSort(null); }, { icon: '✕' }));
+        m.appendChild(HK.menuItem(T('Aufsteigend sortieren'), function () { setSort(pid, 'asc'); }, { icon: '↑' }));
+        m.appendChild(HK.menuItem(T('Absteigend sortieren'), function () { setSort(pid, 'desc'); }, { icon: '↓' }));
+        if ((curView().sorts || []).length) m.appendChild(HK.menuItem(T('Sortierung aufheben'), function () { setSort(null); }, { icon: '✕' }));
         if (!prop) return;
         m.appendChild(el('div', 'menu-sep'));
         if (prop.type === 'calc') {                // Rechnung einstellen: A, B, Rechenart
           var nums = DB.schema.props.filter(function (x) { return x.type === 'number'; });
-          if (!nums.length) m.appendChild(el('div', 'menu-hint', 'Lege erst zwei Zahlen-Spalten an (z. B. „Seiten“ und „Gelesen“).'));
+          if (!nums.length) m.appendChild(el('div', 'menu-hint', T('Lege erst zwei Zahlen-Spalten an (z. B. „Seiten“ und „Gelesen“).')));
           var cop = CALC_P.find(function (x) { return x[0] === (prop.op || 'div'); }) || CALC_P[0];
-          m.appendChild(HK.menuItem('Rechnung', null, { icon: '∑', hint: cop[1], sub: function (sm) {
+          m.appendChild(HK.menuItem(T('Rechnung'), null, { icon: '∑', hint: cop[1], sub: function (sm) {
             CALC_P.forEach(function (x) { sm.appendChild(HK.menuItem(x[1], function () { prop.op = x[0]; if (x[0] === 'pct' && !prop.fmt) prop.fmt = 'percent'; saveSchema().then(renderDb); }, { icon: x[2], on: x === cop })); });
           } }));
           ['a', 'b'].forEach(function (k) {
             var cur = nums.find(function (x) { return x.id === prop[k]; });
-            m.appendChild(HK.menuItem('Zahl ' + k.toUpperCase(), null, { icon: k.toUpperCase(), hint: cur ? cur.name : 'wählen', sub: function (sm) {
+            m.appendChild(HK.menuItem(T('Zahl {k}', { k: k.toUpperCase() }), null, { icon: k.toUpperCase(), hint: cur ? cur.name : T('wählen'), sub: function (sm) {
               nums.forEach(function (x) { sm.appendChild(HK.menuItem(x.name, function () { prop[k] = x.id; saveSchema().then(renderDb); }, { icon: '#', on: x === cur })); });
             } }));
           });
         }
         if (numLike(prop)) {
-          var FMT = [['', 'Zahl', '#'], ['percent', 'Prozent', '%'], ['euro', 'Euro', '€']], SHOW = [['', 'Nur Zahl', '#'], ['bar', 'Balken (0–100)', '▬'], ['ring', 'Ring (0–100)', '◔']];
+          var FMT = [['', T('Zahl'), '#'], ['percent', T('Prozent'), '%'], ['euro', T('Euro'), '€']], SHOW = [['', T('Nur Zahl'), '#'], ['bar', T('Balken (0–100)'), '▬'], ['ring', T('Ring (0–100)'), '◔']];
           var cf = FMT.find(function (f) { return f[0] === (prop.fmt || ''); }), cs = SHOW.find(function (f) { return f[0] === (prop.show || ''); });
-          m.appendChild(HK.menuItem('Zahlenformat', null, { icon: '%', hint: cf[1], sub: function (sm) {
+          m.appendChild(HK.menuItem(T('Zahlenformat'), null, { icon: '%', hint: cf[1], sub: function (sm) {
             FMT.forEach(function (f) { sm.appendChild(HK.menuItem(f[1], function () { if (f[0]) prop.fmt = f[0]; else delete prop.fmt; saveSchema().then(renderDb); }, { icon: f[2], on: f === cf })); });
           } }));
-          m.appendChild(HK.menuItem('Anzeigen als', null, { icon: '◔', hint: cs[1], sub: function (sm) {
+          m.appendChild(HK.menuItem(T('Anzeigen als'), null, { icon: '◔', hint: cs[1], sub: function (sm) {
             SHOW.forEach(function (f) { sm.appendChild(HK.menuItem(f[1], function () { if (f[0]) prop.show = f[0]; else delete prop.show; saveSchema().then(renderDb); }, { icon: f[2], on: f === cs })); });
           } }));
         }
         if (prop.type === 'relation') {
           var tgt = byId(prop.target);
-          m.appendChild(HK.menuItem('Zweiseitig', function () {
-            if (prop.target === DB.id) { HK.toast('Verknüpfungen innerhalb derselben Datenbank sind nur einseitig möglich.'); return; }
-            if (prop.pair && !confirm('Zweiseitig ausschalten? Die Gegenspalte in „' + label(tgt || {}) + '“ wird samt ihren Einträgen entfernt.')) return;
+          m.appendChild(HK.menuItem(T('Zweiseitig'), function () {
+            if (prop.target === DB.id) { HK.toast(T('Verknüpfungen innerhalb derselben Datenbank sind nur einseitig möglich.')); return; }
+            if (prop.pair && !confirm(T('Zweiseitig ausschalten? Die Gegenspalte in „{db}“ wird samt ihren Einträgen entfernt.', { db: label(tgt || {}) }))) return;
             prop.two_way = !prop.pair;
             saveSchema().then(loadDb).then(function () { refreshDbViews(prop.target); });
-          }, { icon: '⇄', on: !!prop.pair, hint: prop.pair ? 'auch in ' + label(tgt || {}) : '' }));
-          m.appendChild(HK.menuItem('Verknüpft mit', null, { icon: '↗', hint: label(byId(prop.target) || {}), subSearch: 'Datenbank suchen …', sub: function (sm) {
+          }, { icon: '⇄', on: !!prop.pair, hint: prop.pair ? T('auch in {db}', { db: label(tgt || {}) }) : '' }));
+          m.appendChild(HK.menuItem(T('Verknüpft mit'), null, { icon: '↗', hint: label(byId(prop.target) || {}), subSearch: T('Datenbank suchen …'), sub: function (sm) {
             S.pages.filter(function (d) { return d.kind === 'database'; }).forEach(function (d) {
               sm.appendChild(HK.menuItem(label(d), function () {
                 if (d.id === prop.target) return;
-                if (!confirm('Relation auf „' + label(d) + '“ umstellen? Bisherige Verknüpfungen dieser Spalte werden entfernt.')) return;
+                if (!confirm(T('Relation auf „{db}“ umstellen? Bisherige Verknüpfungen dieser Spalte werden entfernt.', { db: label(d) }))) return;
                 prop.target = d.id; prop.two_way = d.id !== DB.id; DB.rows.forEach(function (r) { delete r.props[prop.id]; });
                 saveSchema().then(function () { return Promise.all(DB.rows.map(function (r) { return api('PATCH', '/api/notes/' + r.id, { props: (function () { var x = {}; x[prop.id] = null; return x; })() }).catch(function () {}); })); }).then(loadDb);
               }, { icon: ti(d.icon) || '🗃️', on: d.id === prop.target }));
             });
           } }));
         }
-        m.appendChild(HK.menuItem('Typ', null, { icon: TYPES[prop.type][1], hint: TYPES[prop.type][0], sub: function (sm) {
+        m.appendChild(HK.menuItem(T('Typ'), null, { icon: TYPES[prop.type][1], hint: TYPES[prop.type][0], sub: function (sm) {
           Object.keys(TYPES).forEach(function (t) {
             sm.appendChild(HK.menuItem(TYPES[t][0], function () {
               if (t === prop.type) return;
-              if (!confirm('Typ von „' + prop.name + '“ zu ' + TYPES[t][0] + ' ändern? Werte, die nicht passen, werden entfernt.')) return;
+              if (!confirm(T('Typ von „{name}“ zu {type} ändern? Werte, die nicht passen, werden entfernt.', { name: prop.name, type: TYPES[t][0] }))) return;
               prop.type = t; if ((t === 'select' || t === 'multi_select') && !prop.options) prop.options = [];
               if (t === 'relation' && !prop.target) prop.target = (S.pages.find(function (d) { return d.kind === 'database' && d.id !== DB.id; }) || { id: DB.id }).id;
               saveSchema().then(loadDb);
@@ -1403,8 +1405,8 @@
           });
         } }));
         m.appendChild(el('div', 'menu-sep'));
-        m.appendChild(HK.menuItem('Spalte löschen', function () {
-          if (!confirm('Spalte „' + prop.name + '“ samt allen Werten löschen?')) return;
+        m.appendChild(HK.menuItem(T('Spalte löschen'), function () {
+          if (!confirm(T('Spalte „{name}“ samt allen Werten löschen?', { name: prop.name }))) return;
           DB.schema.props = DB.schema.props.filter(function (p) { return p.id !== prop.id; });
           saveSchema().then(loadDb);
         }, { icon: '🗑', danger: true }));
@@ -1412,16 +1414,16 @@
     }
     function addColumn(btn) {
       HK.openMenu(btn, function (m) {
-        m.appendChild(HK.menuLabel('Neue Spalte'));
+        m.appendChild(HK.menuLabel(T('Neue Spalte')));
         Object.keys(TYPES).forEach(function (t) {
           if (t === 'relation') {
-            m.appendChild(HK.menuItem('Relation', null, { icon: '↗', subSearch: 'Datenbank suchen …', sub: function (sm) {
-              sm.appendChild(HK.menuLabel('Verknüpfen mit …'));
+            m.appendChild(HK.menuItem(T('Relation'), null, { icon: '↗', subSearch: T('Datenbank suchen …'), sub: function (sm) {
+              sm.appendChild(HK.menuLabel(T('Verknüpfen mit …')));
               S.pages.filter(function (d) { return d.kind === 'database'; }).forEach(function (d) {
                 sm.appendChild(HK.menuItem(label(d), function () {
                   DB.schema.props.push({ id: rid(), name: label(d), type: 'relation', target: d.id, two_way: d.id !== DB.id });
                   saveSchema().then(loadDb).then(function () { refreshDbViews(d.id); });
-                }, { icon: ti(d.icon) || '🗃️', hint: d.id === DB.id ? 'diese (einseitig)' : 'zweiseitig' }));
+                }, { icon: ti(d.icon) || '🗃️', hint: d.id === DB.id ? T('diese (einseitig)') : T('zweiseitig') }));
               });
             } }));
             return;
@@ -1430,7 +1432,7 @@
             var p = { id: rid(), name: TYPES[t][0], type: t }; if (t === 'select' || t === 'multi_select') p.options = [];
             if (t === 'calc') {                      // Vorgabe wie Lesefortschritt: erste Zahl in % der zweiten, als Ring
               var ns = DB.schema.props.filter(function (x) { return x.type === 'number'; });
-              p.name = 'Fortschritt'; p.op = 'pct'; p.fmt = 'percent'; p.show = 'ring';
+              p.name = T('Fortschritt'); p.op = 'pct'; p.fmt = 'percent'; p.show = 'ring';
               if (ns[0]) p.a = ns[0].id; if (ns[1]) p.b = ns[1].id;
             }
             DB.schema.props.push(p); saveSchema().then(renderDb);
@@ -1450,13 +1452,13 @@
             .then(function () { if ((curView().open || 'side') === 'page') $('pg-title').focus(); });   // im Peek setzt die Seite selbst den Cursor
         }
         return loadList();
-      }).catch(function (err) { HK.toast('Zeile nicht angelegt: ' + err.message); });
+      }).catch(function (err) { HK.toast(T('Zeile nicht angelegt: {err}', { err: err.message })); });
     }
 
     function newFromTemplate(tid) {
       return api('POST', '/api/notes/' + tid + '/duplicate', { parent_id: DB.id }).then(function (d) {
         return loadDb().then(function () { return loadList(); }).then(function () { return openRowUI(d.id); });   // Kopie ist keine Vorlage mehr
-      }).catch(function (err) { HK.toast('Eintrag nicht angelegt: ' + err.message); });
+      }).catch(function (err) { HK.toast(T('Eintrag nicht angelegt: {err}', { err: err.message })); });
     }
 
     // Namen in Tabellen: Textfeld waechst mit dem Umbruch (wo der Browser field-sizing kann, macht er es selbst)
@@ -1512,7 +1514,7 @@
       // Spaltenbreite ziehen (Rand rechts im Kopf), pro Ansicht gespeichert
       function resizer(th, key) {
         if (viewsLocked()) return;
-        var h = el('span', 'db-rs'); h.title = 'Breite ziehen'; h.setAttribute('aria-hidden', 'true');
+        var h = el('span', 'db-rs'); h.title = T('Breite ziehen'); h.setAttribute('aria-hidden', 'true');
         h.addEventListener('click', function (e) { e.stopPropagation(); });
         h.addEventListener('pointerdown', function (e) {
           // Bewegung am ganzen Dokument verfolgen (kein setPointerCapture - das kann werfen und die Handler verhindern)
@@ -1539,28 +1541,28 @@
         th.addEventListener('keydown', function (e) { if (e.key === 'Enter') headMenu(th, p); });
         hr.appendChild(th);
       });
-      var add = el('th', 'db-th db-th-add'); var ab = el('button', 'db-add-col', '+'); ab.type = 'button'; ab.title = 'Spalte hinzufügen';
-      ab.setAttribute('aria-label', 'Spalte hinzufügen'); ab.addEventListener('click', function () { addColumn(ab); }); if (!locked()) add.appendChild(ab); hr.appendChild(add);
+      var add = el('th', 'db-th db-th-add'); var ab = el('button', 'db-add-col', '+'); ab.type = 'button'; ab.title = T('Spalte hinzufügen');
+      ab.setAttribute('aria-label', T('Spalte hinzufügen')); ab.addEventListener('click', function () { addColumn(ab); }); if (!locked()) add.appendChild(ab); hr.appendChild(add);
       thead.appendChild(hr); tb.appendChild(thead);
       var body = el('tbody');
       eachGrouped(sortedRows(), function (o, n, g) {
         var gr = el('tr', 'db-grow'), gd = el('td'); gd.colSpan = vis.length + 2;
-        gd.appendChild(o ? optChip(o) : el('span', 'board-none', 'Ohne ' + g.name)); gd.appendChild(el('span', 'board-n', String(n)));
+        gd.appendChild(o ? optChip(o) : el('span', 'board-none', T('Ohne {name}', { name: g.name }))); gd.appendChild(el('span', 'board-n', String(n)));
         gr.appendChild(gd); body.appendChild(gr);
       }, function (r) {
         var tr = tint(el('tr', 'db-row'), r); tr.dataset.id = r.id;
-        var td = el('td', 'db-cell db-title'), ti = el('textarea', 'db-title-in'); ti.rows = 1; ti.maxLength = 200; ti.value = r.title; ti.placeholder = 'Unbenannt';   // Textfeld: lange Namen brechen um
-        ti.setAttribute('aria-label', 'Name');
+        var td = el('td', 'db-cell db-title'), ti = el('textarea', 'db-title-in'); ti.rows = 1; ti.maxLength = 200; ti.value = r.title; ti.placeholder = T('Unbenannt');   // Textfeld: lange Namen brechen um
+        ti.setAttribute('aria-label', T('Name'));
         var start = r.title;
         function commitTitle() {
           if (ti.value === start) return; start = ti.value;
           api('PATCH', '/api/notes/' + r.id, { title: ti.value }).then(function () { r.title = ti.value.trim(); var p = byId(r.id); if (p) p.title = r.title; })
-            .catch(function (err) { HK.toast('Nicht gespeichert: ' + err.message); });
+            .catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
         }
         ti.addEventListener('blur', commitTitle);
         ti.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); ti.blur(); } });
         ti.addEventListener('input', function () { if (/\n/.test(ti.value)) ti.value = ti.value.replace(/\s*\n\s*/g, ' '); growTitle(ti); });
-        var ob = el('button', 'db-open', 'Öffnen'); ob.type = 'button'; ob.title = 'Als Seite öffnen';
+        var ob = el('button', 'db-open', T('Öffnen')); ob.type = 'button'; ob.title = T('Als Seite öffnen');
         ob.addEventListener('click', function () { openRowUI(r.id); });
         var tw = el('div', 'db-title-wrap');
         if (r.icon) tw.appendChild(icoNode(r.icon, '', 'db-row-icon'));
@@ -1577,14 +1579,14 @@
       });
       tb.appendChild(body);
       var tf = el('tfoot'), fr = el('tr'), fd = el('td'); fd.colSpan = vis.length + 2;
-      var nr = el('button', 'db-new-row', '+ Neu'); nr.type = 'button'; nr.addEventListener('click', newRow);
+      var nr = el('button', 'db-new-row', T('+ Neu')); nr.type = 'button'; nr.addEventListener('click', newRow);
       fd.appendChild(nr); fr.appendChild(fd); tf.appendChild(fr); tf.appendChild(calcRow(vis, tv)); tb.appendChild(tf);
       scroll.appendChild(tb); box.appendChild(scroll); scrollHints(scroll);
     }
     // --- Fusszeile: Berechnung je Spalte (Anzahl, Summe, Durchschnitt, % angehakt ...) - pro Ansicht gespeichert
-    var CALC_NAMES = { count: 'Anzahl', filled: 'Ausgefüllt', empty: 'Leer', pct_filled: '% ausgefüllt', unique: 'Verschiedene',
-      sum: 'Summe', avg: 'Durchschnitt', median: 'Median', min: 'Min', max: 'Max', range: 'Spanne',
-      checked: 'Angehakt', unchecked: 'Nicht angehakt', pct_checked: '% angehakt', earliest: 'Frühestes', latest: 'Spätestes' };
+    var CALC_NAMES = { count: T('Anzahl'), filled: T('Ausgefüllt'), empty: T('Leer'), pct_filled: T('% ausgefüllt'), unique: T('Verschiedene'),
+      sum: T('Summe'), avg: T('Durchschnitt'), median: T('Median'), min: T('Min'), max: T('Max'), range: T('Spanne'),
+      checked: T('Angehakt'), unchecked: T('Nicht angehakt'), pct_checked: T('% angehakt'), earliest: T('Frühestes'), latest: T('Spätestes') };
     function calcOps(p) {
       var t = p ? (p.type === 'calc' ? 'number' : p.type) : 'text';
       if (t === 'checkbox') return ['count', 'checked', 'unchecked', 'pct_checked'];
@@ -1593,7 +1595,7 @@
       if (t === 'date' || AUTO[t]) o = o.concat(['earliest', 'latest']);
       return o;
     }
-    var fCalcDay = new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'short', year: 'numeric' });
+    var fCalcDay = new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: 'numeric', month: 'short', year: 'numeric' });
     function calcValue(op, p, rows) {
       var vals = rows.map(function (r) { var v = p ? propValue(p, r) : r.title; if (p && AUTO[p.type] && v) v = isoDay(v); return v; });
       function isEmpty(v) { return v == null || v === '' || v === false || (Array.isArray(v) && !v.length); }
@@ -1630,12 +1632,12 @@
         var key = p ? p.id : 'title', op = calcs[key], td = el('td', 'db-calc');
         var b = el('button', 'db-calc-b' + (op ? ' on' : '')); b.type = 'button';
         if (op) { b.appendChild(el('span', 'db-calc-n', CALC_NAMES[op])); b.appendChild(el('span', 'db-calc-v', calcValue(op, p, rows))); }
-        else b.textContent = 'Berechnen ▾';
+        else b.textContent = T('Berechnen ▾');
         b.addEventListener('click', function () {
           if (viewsLocked()) { lockedHint(); return; }
           HK.openMenu(b, function (m) {
             function set(o) { var c = Object.assign({}, tv.calcs || {}); if (o) c[key] = o; else delete c[key]; if (Object.keys(c).length) tv.calcs = c; else delete tv.calcs; saveSchemaSoon(); renderDb(); }
-            m.appendChild(HK.menuItem('Keine', function () { set(null); }, { on: !op }));
+            m.appendChild(HK.menuItem(T('Keine'), function () { set(null); }, { on: !op }));
             calcOps(p).forEach(function (o) { m.appendChild(HK.menuItem(CALC_NAMES[o], function () { set(o); }, { on: op === o, hint: calcValue(o, p, rows) })); });
           });
         });
@@ -1654,16 +1656,16 @@
           if (!had && OPTS.saveViews) OPTS.saveViews(DB.localViews);   // einmalig im Block ablegen -> ab jetzt unabhaengig
         }
         renderDb();
-      }).catch(function (err) { HK.toast('Datenbank nicht geladen: ' + err.message); });
+      }).catch(function (err) { HK.toast(T('Datenbank nicht geladen: {err}', { err: err.message })); });
     }
 
     // Eigenschaften-Bereich oben auf einer Zeilen-Seite
-    function titleName() { return DB.schema.title_name || 'Name'; }
+    function titleName() { return DB.schema.title_name || T('Name'); }
     function fprop(pid) { return pid === 'title' ? { id: 'title', name: titleName(), type: 'text' } : propById(pid); }
 
     function ensureViews() {
       if (!DB.schema.views || !DB.schema.views.length) {
-        var v = { id: 'tabelle', name: 'Tabelle', type: 'table' };
+        var v = { id: 'tabelle', name: T('Tabelle'), type: 'table' };
         try { var old = JSON.parse(HK.store('hk-db-sort-' + DB.id) || 'null'); if (old) v.sort = old; } catch (e) { /* alte Sortierung egal */ }
         DB.schema.views = [v];
       }
@@ -1691,30 +1693,30 @@
         function draw() {
           box.textContent = '';
           if (viewsLocked()) {
-            box.appendChild(el('div', 'menu-hint vs-locked', '🔒 Diese Datenbank ist gesperrt: Spalten, Ansichten, Filter und Sortierung sind geschützt. Einträge kannst du weiter bearbeiten.'));
-            var ul = el('button', 'menu-item', '🔓 Entsperren'); ul.type = 'button';
+            box.appendChild(el('div', 'menu-hint vs-locked', T('🔒 Diese Datenbank ist gesperrt: Spalten, Ansichten, Filter und Sortierung sind geschützt. Einträge kannst du weiter bearbeiten.')));
+            var ul = el('button', 'menu-item', T('🔓 Entsperren')); ul.type = 'button';
             ul.addEventListener('click', function () { HK.closeMenu(); setLocked(false); }); box.appendChild(ul);
             return;
           }
           var name = el('input', 'flt-val'); name.type = 'text'; name.maxLength = 40; name.value = v.name;
           liveText(name, function (val) { if (val.trim()) { v.name = val.trim(); saveSchemaSoon(); renderDb(); } });
-          row('Name', name);
-          row('Layout', sel([['table', '▦ Tabelle'], ['board', '▤ Board'], ['list', '☰ Liste'], ['gallery', '▣ Galerie'], ['calendar', '🗓 Kalender']], v.type, function (x) { v.type = x; commit(); }));
+          row(T('Name'), name);
+          row(T('Layout'), sel([['table', '▦ ' + T('Tabelle')], ['board', '▤ ' + T('Board')], ['list', '☰ ' + T('Liste')], ['gallery', '▣ ' + T('Galerie')], ['calendar', '🗓 ' + T('Kalender')]], v.type, function (x) { v.type = x; commit(); }));
           var sels = DB.schema.props.filter(function (p) { return p.type === 'select'; }).map(function (p) { return [p.id, p.name]; });
-          if (v.type === 'board') row('Spalten nach', sel(sels.length ? sels : [['', '– keine Auswahl-Eigenschaft –']], v.group_by, function (x) { if (x) v.group_by = x; commit(); }));
-          if (v.type === 'table' || v.type === 'list') row('Gruppieren', sel([['', 'nicht gruppieren']].concat(sels), v.group, function (x) { if (x) v.group = x; else delete v.group; commit(); }));
-          row('Öffnen als', sel([['side', '◨ Seitenansicht rechts'], ['left', '◧ Seitenansicht links'], ['center', '▣ Mittig'], ['page', '▭ Ganze Seite']], v.open || 'side',
+          if (v.type === 'board') row(T('Spalten nach'), sel(sels.length ? sels : [['', T('– keine Auswahl-Eigenschaft –')]], v.group_by, function (x) { if (x) v.group_by = x; commit(); }));
+          if (v.type === 'table' || v.type === 'list') row(T('Gruppieren'), sel([['', T('nicht gruppieren')]].concat(sels), v.group, function (x) { if (x) v.group = x; else delete v.group; commit(); }));
+          row(T('Öffnen als'), sel([['side', '◨ ' + T('Seitenansicht rechts')], ['left', '◧ ' + T('Seitenansicht links')], ['center', '▣ ' + T('Mittig')], ['page', '▭ ' + T('Ganze Seite')]], v.open || 'side',
             function (x) { if (x === 'side') delete v.open; else v.open = x; commit(); }));
           if (v.type === 'calendar') {
             var dps = DB.schema.props.filter(function (p) { return p.type === 'date' || AUTO[p.type]; }).map(function (p) { return [p.id, p.name]; });
-            row('Datum aus', sel(dps.length ? dps : [['', '– keine Datumsspalte –']], v.date_by, function (x) { if (x) v.date_by = x; commit(); }));
+            row(T('Datum aus'), sel(dps.length ? dps : [['', T('– keine Datumsspalte –')]], v.date_by, function (x) { if (x) v.date_by = x; commit(); }));
           }
-          if (v.type === 'gallery') row('Kartengröße', sel([['s', 'Klein'], ['', 'Mittel'], ['l', 'Groß']], v.card || '', function (x) { if (x) v.card = x; else delete v.card; commit(); }));
-          sec('Eigenschaften (anzeigen · Reihenfolge dieser Ansicht)');
+          if (v.type === 'gallery') row(T('Kartengröße'), sel([['s', T('Klein')], ['', T('Mittel')], ['l', T('Groß')]], v.card || '', function (x) { if (x) v.card = x; else delete v.card; commit(); }));
+          sec(T('Eigenschaften (anzeigen · Reihenfolge dieser Ansicht)'));
           var op = orderedProps(v);
           op.forEach(function (p, i) {
             var l = el('div', 'vs-prop'), cb = el('input'); cb.type = 'checkbox'; cb.checked = (v.hidden || []).indexOf(p.id) < 0;
-            cb.setAttribute('aria-label', p.name + ' anzeigen');
+            cb.setAttribute('aria-label', T('{name} anzeigen', { name: p.name }));
             cb.addEventListener('change', function () {
               var h = (v.hidden || []).filter(function (x) { return x !== p.id; }); if (!cb.checked) h.push(p.id);
               if (h.length) v.hidden = h; else delete v.hidden; commit();
@@ -1722,7 +1724,7 @@
             l.appendChild(cb); l.appendChild(el('span', 'vs-pname', TYPES[p.type][1] + ' ' + p.name));
             [['↑', -1], ['↓', 1]].forEach(function (d) {
               var b = el('button', 'vs-mv', d[0]); b.type = 'button'; b.disabled = i + d[1] < 0 || i + d[1] >= op.length;
-              b.setAttribute('aria-label', p.name + (d[1] < 0 ? ' nach oben' : ' nach unten'));
+              b.setAttribute('aria-label', d[1] < 0 ? T('{name} nach oben', { name: p.name }) : T('{name} nach unten', { name: p.name }));
               b.addEventListener('click', function () {   // nur diese Ansicht
                 var a = op.map(function (x) { return x.id; }), j = i + d[1], x = a[i]; a[i] = a[j]; a[j] = x; v.order = a; commit();
               });
@@ -1730,23 +1732,23 @@
             });
             box.appendChild(l);
           });
-          sec('Sortierung (bis zu 3 Stufen)');
+          sec(T('Sortierung (bis zu 3 Stufen)'));
           var ss = v.sorts || [];
           ss.forEach(function (s, i) {
             var l = el('div', 'vs-sort');
             l.appendChild(sel(propOpts(true), s.pid, function (x) { s.pid = x; commit(); }));
-            l.appendChild(sel([['asc', 'aufsteigend'], ['desc', 'absteigend']], s.dir, function (x) { s.dir = x; commit(); }));
-            var x = el('button', 'flt-x', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Sortierstufe entfernen');
+            l.appendChild(sel([['asc', T('aufsteigend')], ['desc', T('absteigend')]], s.dir, function (x) { s.dir = x; commit(); }));
+            var x = el('button', 'flt-x', '×'); x.type = 'button'; x.setAttribute('aria-label', T('Sortierstufe entfernen'));
             x.addEventListener('click', function () { ss.splice(i, 1); if (ss.length) v.sorts = ss; else delete v.sorts; commit(); });
             l.appendChild(x); box.appendChild(l);
           });
           if (ss.length < 3) {
-            var add = sel([['', '+ Sortierung hinzufügen …']].concat(propOpts(true)), '', function (x) { if (x) { v.sorts = ss.concat([{ pid: x, dir: 'asc' }]); commit(); } });
+            var add = sel([['', T('+ Sortierung hinzufügen …')]].concat(propOpts(true)), '', function (x) { if (x) { v.sorts = ss.concat([{ pid: x, dir: 'asc' }]); commit(); } });
             add.classList.add('flt-add'); box.appendChild(add);
           }
-          sec('Bedingte Farbe (erste passende Regel)');
-          var COL = [['red', '🟥 Rot'], ['orange', '🟧 Orange'], ['yellow', '🟨 Gelb'], ['green', '🟩 Grün'], ['blue', '🟦 Blau'],
-                     ['purple', '🟪 Lila'], ['pink', '🩷 Rosa'], ['brown', '🟫 Braun'], ['gray', '⬜ Grau']];
+          sec(T('Bedingte Farbe (erste passende Regel)'));
+          var COL = [['red', '🟥 ' + T('Rot')], ['orange', '🟧 ' + T('Orange')], ['yellow', '🟨 ' + T('Gelb')], ['green', '🟩 ' + T('Grün')], ['blue', '🟦 ' + T('Blau')],
+                     ['purple', '🟪 ' + T('Lila')], ['pink', '🩷 ' + T('Rosa')], ['brown', '🟫 ' + T('Braun')], ['gray', '⬜ ' + T('Grau')]];
           var cr = v.colors || [];
           cr.forEach(function (f, i) {
             var pp = fprop(f.pid) || fprop('title'), ops = OPS[pp.type] || OPS.text, l = el('div', 'vs-rule');
@@ -1755,39 +1757,39 @@
             if (!NOVALUE[f.op]) {
               if (pp.type === 'select' || pp.type === 'multi_select' || pp.type === 'relation') {
                 var src = pp.type === 'relation' ? relRows(pp.target).map(function (x) { return [String(x.id), label(x)]; }) : (pp.options || []).map(function (o) { return [o.id, o.name]; });
-                l.appendChild(sel([['', '– wählen –']].concat(src), f.value, function (x) { f.value = x; commit(); }));
+                l.appendChild(sel([['', T('– wählen –')]].concat(src), f.value, function (x) { f.value = x; commit(); }));
               } else {
                 var vi = el('input', 'flt-val'); vi.type = (pp.type === 'date' || AUTO[pp.type]) ? 'date' : numLike(pp) ? 'number' : 'text';
-                vi.value = f.value || ''; vi.setAttribute('aria-label', 'Wert');
+                vi.value = f.value || ''; vi.setAttribute('aria-label', T('Wert'));
                 liveText(vi, function (x) { f.value = x; saveSchemaSoon(); renderDb(); }); l.appendChild(vi);
               }
             }
             l.appendChild(sel(COL, f.color, function (x) { f.color = x; commit(); }));
-            var x = el('button', 'flt-x', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Regel entfernen');
+            var x = el('button', 'flt-x', '×'); x.type = 'button'; x.setAttribute('aria-label', T('Regel entfernen'));
             x.addEventListener('click', function () { cr.splice(i, 1); if (cr.length) v.colors = cr; else delete v.colors; commit(); });
             l.appendChild(x); box.appendChild(l);
           });
           if (cr.length < 10) {
-            var ar = el('button', 'menu-item', '+ Farbregel hinzufügen'); ar.type = 'button';
+            var ar = el('button', 'menu-item', T('+ Farbregel hinzufügen')); ar.type = 'button';
             ar.addEventListener('click', function () { v.colors = cr.concat([{ pid: 'title', op: OPS.text[0][0], value: '', color: 'red' }]); commit(); });
             box.appendChild(ar);
           }
-          sec('Weiteres');
+          sec(T('Weiteres'));
           var nf = (v.filters || []).length;
-          var fb = el('button', 'menu-item', 'Filter bearbeiten …' + (nf ? ' (' + nf + ')' : '')); fb.type = 'button';
-          fb.addEventListener('click', function () { HK.closeMenu(); var c = [].find.call(BOX.querySelectorAll('.db-chip'), function (b) { return /Filter/.test(b.textContent); }); setTimeout(function () { filterMenu(c || anchor); }, 0); });
+          var fb = el('button', 'menu-item', T('Filter bearbeiten …') + (nf ? ' (' + nf + ')' : '')); fb.type = 'button';
+          fb.addEventListener('click', function () { HK.closeMenu(); var c = BOX.querySelector('.db-filter'); setTimeout(function () { filterMenu(c || anchor); }, 0); });
           box.appendChild(fb);
-          var cl = el('button', 'menu-item', '🔗 Link zur Datenbank kopieren'); cl.type = 'button';
+          var cl = el('button', 'menu-item', T('🔗 Link zur Datenbank kopieren')); cl.type = 'button';
           cl.addEventListener('click', function () {
             var u = location.origin + '/notes#' + DB.id; HK.closeMenu();
-            (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject(new Error('x'))).then(function () { HK.toast('Link kopiert'); }, function () { HK.toast(u); });
+            (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject(new Error('x'))).then(function () { HK.toast(T('Link kopiert')); }, function () { HK.toast(u); });
           });
           box.appendChild(cl);
-          var lb = el('button', 'menu-item', locked() ? '🔓 Datenbank entsperren' : '🔒 Datenbank sperren'); lb.type = 'button';
+          var lb = el('button', 'menu-item', locked() ? T('🔓 Datenbank entsperren') : T('🔒 Datenbank sperren')); lb.type = 'button';
           lb.addEventListener('click', function () { HK.closeMenu(); setLocked(!locked()); }); box.appendChild(lb);
-          if (DB.localViews) box.appendChild(el('div', 'menu-hint', 'Diese Ansichten gehören nur zu diesem Block – die Datenbank selbst hat eigene.'));
+          if (DB.localViews) box.appendChild(el('div', 'menu-hint', T('Diese Ansichten gehören nur zu diesem Block – die Datenbank selbst hat eigene.')));
           if (OPTS.embedded) {
-            var src = el('button', 'menu-item', '↗ Quelle öffnen: ' + label(byId(DB.id) || {})); src.type = 'button';
+            var src = el('button', 'menu-item', T('↗ Quelle öffnen: {name}', { name: label(byId(DB.id) || {}) })); src.type = 'button';
             src.addEventListener('click', function () { HK.closeMenu(); openPage(DB.id); }); box.appendChild(src);
           }
         }
@@ -1843,11 +1845,11 @@
         var box = el('div', 'flt-box'); m.appendChild(box);      // eigener Container: das Menue-Element ist geteilt
         function commit() { saveSchemaSoon(); renderDb(); draw(); }
         function draw() {
-          box.textContent = ''; box.appendChild(HK.menuLabel('Filter (alle müssen zutreffen)'));
+          box.textContent = ''; box.appendChild(HK.menuLabel(T('Filter (alle müssen zutreffen)')));
           (v.filters || []).forEach(function (f, i) {
             var p = fprop(f.pid); if (!p) return;
             var line = el('div', 'flt'); line.appendChild(el('span', 'flt-name', p.name));
-            var op = el('select', 'flt-op'); op.setAttribute('aria-label', 'Bedingung');
+            var op = el('select', 'flt-op'); op.setAttribute('aria-label', T('Bedingung'));
             (OPS[p.type] || OPS.text).forEach(function (o) { var opt = el('option', null, o[1]); opt.value = o[0]; op.appendChild(opt); });
             op.value = f.op; op.addEventListener('change', function () { f.op = op.value; commit(); });
             line.appendChild(op);
@@ -1855,24 +1857,24 @@
             if (!NOVALUE[f.op]) {
               var val;
               if (p.type === 'select' || p.type === 'multi_select' || p.type === 'relation') {
-                val = el('select', 'flt-val'); var e0 = el('option', null, '– wählen –'); e0.value = ''; val.appendChild(e0);
+                val = el('select', 'flt-val'); var e0 = el('option', null, T('– wählen –')); e0.value = ''; val.appendChild(e0);
                 (p.type === 'relation' ? relRows(p.target).map(function (x) { return { id: x.id, name: label(x) }; }) : (p.options || []))
                   .forEach(function (o) { var opt = el('option', null, o.name); opt.value = o.id; val.appendChild(opt); });
               } else {
                 val = el('input', 'flt-val'); val.type = (p.type === 'date' || AUTO[p.type]) ? 'date' : numLike(p) ? 'number' : 'text';
                 if (numLike(p)) val.step = 'any';
               }
-              val.value = f.value || ''; val.setAttribute('aria-label', 'Wert');
+              val.value = f.value || ''; val.setAttribute('aria-label', T('Wert'));
               if (val.tagName === 'SELECT') val.addEventListener('change', function () { f.value = val.value; commit(); });
               else liveText(val, function (x) { f.value = x; saveSchemaSoon(); renderDb(); });
               line.appendChild(val);
             }
-            var x = el('button', 'flt-x', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Filter entfernen');
+            var x = el('button', 'flt-x', '×'); x.type = 'button'; x.setAttribute('aria-label', T('Filter entfernen'));
             x.addEventListener('click', function () { v.filters.splice(i, 1); if (!v.filters.length) delete v.filters; commit(); });
             line.appendChild(x); box.appendChild(line);
           });
-          var add = el('select', 'flt-add'); add.setAttribute('aria-label', 'Filter hinzufügen');
-          var a0 = el('option', null, '+ Filter hinzufügen …'); a0.value = ''; add.appendChild(a0);
+          var add = el('select', 'flt-add'); add.setAttribute('aria-label', T('Filter hinzufügen'));
+          var a0 = el('option', null, T('+ Filter hinzufügen …')); a0.value = ''; add.appendChild(a0);
           [fprop('title')].concat(DB.schema.props).forEach(function (p) { var o = el('option', null, p.name); o.value = p.id; add.appendChild(o); });
           add.addEventListener('change', function () {
             var p = fprop(add.value); if (!p) return;
@@ -1886,23 +1888,23 @@
 
     function viewMenu(anchor, v) {
       HK.openMenu(anchor, function (m) {
-        var name = el('input', 'menu-input'); name.type = 'text'; name.maxLength = 40; name.value = v.name; name.setAttribute('aria-label', 'Name der Ansicht');
+        var name = el('input', 'menu-input'); name.type = 'text'; name.maxLength = 40; name.value = v.name; name.setAttribute('aria-label', T('Name der Ansicht'));
         liveText(name, function (val) { if (val.trim()) { v.name = val.trim(); saveSchemaSoon(); renderDb(); } }, function () { HK.closeMenu(); });
         m.appendChild(name);
-        m.appendChild(HK.menuLabel('Darstellung'));
-        m.appendChild(HK.menuItem('Tabelle', function () { v.type = 'table'; saveSchema().then(renderDb); }, { icon: '▦', on: v.type === 'table' }));
-        m.appendChild(HK.menuItem('Board', function () { v.type = 'board'; saveSchema().then(renderDb); }, { icon: '▤', on: v.type === 'board' }));
-        m.appendChild(HK.menuItem('Liste', function () { v.type = 'list'; saveSchema().then(renderDb); }, { icon: '☰', on: v.type === 'list' }));
-        m.appendChild(HK.menuItem('Galerie', function () { v.type = 'gallery'; saveSchema().then(renderDb); }, { icon: '▣', on: v.type === 'gallery' }));
-        m.appendChild(HK.menuItem('Kalender', function () { v.type = 'calendar'; saveSchema().then(renderDb); }, { icon: '🗓', on: v.type === 'calendar' }));
+        m.appendChild(HK.menuLabel(T('Darstellung')));
+        m.appendChild(HK.menuItem(T('Tabelle'), function () { v.type = 'table'; saveSchema().then(renderDb); }, { icon: '▦', on: v.type === 'table' }));
+        m.appendChild(HK.menuItem(T('Board'), function () { v.type = 'board'; saveSchema().then(renderDb); }, { icon: '▤', on: v.type === 'board' }));
+        m.appendChild(HK.menuItem(T('Liste'), function () { v.type = 'list'; saveSchema().then(renderDb); }, { icon: '☰', on: v.type === 'list' }));
+        m.appendChild(HK.menuItem(T('Galerie'), function () { v.type = 'gallery'; saveSchema().then(renderDb); }, { icon: '▣', on: v.type === 'gallery' }));
+        m.appendChild(HK.menuItem(T('Kalender'), function () { v.type = 'calendar'; saveSchema().then(renderDb); }, { icon: '🗓', on: v.type === 'calendar' }));
         var sels = DB.schema.props.filter(function (p) { return p.type === 'select'; });
         if (v.type === 'board' && sels.length) {
-          m.appendChild(HK.menuLabel('Gruppieren nach'));
+          m.appendChild(HK.menuLabel(T('Gruppieren nach')));
           sels.forEach(function (p) { m.appendChild(HK.menuItem(p.name, function () { v.group_by = p.id; saveSchema().then(renderDb); }, { on: v.group_by === p.id })); });
         }
         if (views().length > 1) {
           m.appendChild(el('div', 'menu-sep'));
-          m.appendChild(HK.menuItem('Ansicht löschen', function () {
+          m.appendChild(HK.menuItem(T('Ansicht löschen'), function () {
             var nv = views().filter(function (x) { return x !== v; }); if (DB.localViews) DB.localViews = nv; else DB.schema.views = nv; saveSchema().then(renderDb);
           }, { icon: '🗑', danger: true }));
         }
@@ -1910,8 +1912,8 @@
     }
     function addView(anchor) {
       HK.openMenu(anchor, function (m) {
-        m.appendChild(HK.menuLabel('Neue Ansicht'));
-        [['table', '▦ Tabelle', 'Tabelle'], ['board', '▤ Board', 'Board'], ['list', '☰ Liste', 'Liste'], ['gallery', '▣ Galerie', 'Galerie'], ['calendar', '🗓 Kalender', 'Kalender']].forEach(function (t) {
+        m.appendChild(HK.menuLabel(T('Neue Ansicht')));
+        [['table', '▦', T('Tabelle')], ['board', '▤', T('Board')], ['list', '☰', T('Liste')], ['gallery', '▣', T('Galerie')], ['calendar', '🗓', T('Kalender')]].forEach(function (t) {
           m.appendChild(HK.menuItem(t[2], function () {
             var v = { id: rid(), name: t[2], type: t[0] };
             var s = DB.schema.props.find(function (p) { return p.type === 'select'; }); if (t[0] === 'board' && s) v.group_by = s.id;
@@ -1926,56 +1928,56 @@
       var bar = el('div', 'db-bar'), tabs = el('div', 'db-tabs'), cur = curView();
       views().forEach(function (v) {
         var b = el('button', 'db-tab' + (v === cur ? ' on' : ''), (VIEW_ICON[v.type] || '▦') + ' ' + v.name); b.type = 'button';
-        b.title = v === cur ? 'Ansicht bearbeiten' : 'Ansicht wechseln';
+        b.title = v === cur ? T('Ansicht bearbeiten') : T('Ansicht wechseln');
         b.addEventListener('click', function () { if (v === cur) { if (viewsLocked()) lockedHint(); else viewMenu(b, v); } else { setViewId(v.id); renderDb(); } });
         tabs.appendChild(b);
       });
-      var pl = el('button', 'db-tab db-tab-add', '+'); pl.type = 'button'; pl.title = 'Ansicht hinzufügen'; pl.setAttribute('aria-label', 'Ansicht hinzufügen');
+      var pl = el('button', 'db-tab db-tab-add', '+'); pl.type = 'button'; pl.title = T('Ansicht hinzufügen'); pl.setAttribute('aria-label', T('Ansicht hinzufügen'));
       pl.addEventListener('click', function () { addView(pl); }); if (!viewsLocked()) tabs.appendChild(pl);
       bar.appendChild(tabs);
       var shown = filterRows(DB.rows).length;
-      bar.appendChild(el('span', 'db-count', shown + (shown !== DB.rows.length ? ' von ' + DB.rows.length : '') + (DB.rows.length === 1 ? ' Eintrag' : ' Einträge')));
+      bar.appendChild(el('span', 'db-count', shown !== DB.rows.length ? T('{n} von {total} Einträgen', { n: shown, total: DB.rows.length }) : DB.rows.length === 1 ? T('1 Eintrag') : T('{n} Einträge', { n: shown })));
       var nf = (cur.filters || []).length;
-      var fb = el('button', 'db-chip' + (nf ? ' on' : ''), nf ? 'Filter · ' + nf : 'Filter'); fb.type = 'button';
+      var fb = el('button', 'db-chip db-filter' + (nf ? ' on' : ''), nf ? T('Filter') + ' · ' + nf : T('Filter')); fb.type = 'button';
       fb.addEventListener('click', function () { if (viewsLocked()) lockedHint(); else filterMenu(fb); }); bar.appendChild(fb);
       var ss = cur.sorts || [];
       if (ss.length) {
         var sp = fprop(ss[0].pid);
-        var sb = el('button', 'db-chip on', 'Sortiert: ' + (sp ? sp.name : '?') + (ss[0].dir === 'desc' ? ' ↓' : ' ↑') + (ss.length > 1 ? ' +' + (ss.length - 1) : '') + '  ×'); sb.type = 'button';
-        sb.title = 'Sortierung aufheben'; sb.addEventListener('click', function () { if (viewsLocked()) lockedHint(); else setSort(null); }); bar.appendChild(sb);
+        var sb = el('button', 'db-chip on', T('Sortiert:') + ' ' + (sp ? sp.name : '?') + (ss[0].dir === 'desc' ? ' ↓' : ' ↑') + (ss.length > 1 ? ' +' + (ss.length - 1) : '') + '  ×'); sb.type = 'button';
+        sb.title = T('Sortierung aufheben'); sb.addEventListener('click', function () { if (viewsLocked()) lockedHint(); else setSort(null); }); bar.appendChild(sb);
       }
-      var q = el('input', 'db-search'); q.type = 'search'; q.placeholder = '🔍 Suchen'; q.value = DB.q || ''; q.setAttribute('aria-label', 'In der Datenbank suchen');
+      var q = el('input', 'db-search'); q.type = 'search'; q.placeholder = T('🔍 Suchen'); q.value = DB.q || ''; q.setAttribute('aria-label', T('In der Datenbank suchen'));
       q.addEventListener('input', function () {
         DB.q = q.value; clearTimeout(searchT);
         searchT = setTimeout(function () { renderDb(); var n = BOX.querySelector('.db-search'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 200);
       });
       bar.appendChild(q);
       if (locked()) {
-        var lk = el('button', 'db-chip db-lock', '🔒 Gesperrt'); lk.type = 'button'; lk.title = 'Gesperrt – klicken zum Entsperren';
+        var lk = el('button', 'db-chip db-lock', T('🔒 Gesperrt')); lk.type = 'button'; lk.title = T('Gesperrt – klicken zum Entsperren');
         lk.addEventListener('click', function () { setLocked(false); }); bar.appendChild(lk);
       }
-      var gb = el('button', 'db-chip db-gear', '⚙ Ansicht'); gb.type = 'button'; gb.title = 'Ansicht-Einstellungen';
+      var gb = el('button', 'db-chip db-gear', T('⚙ Ansicht')); gb.type = 'button'; gb.title = T('Ansicht-Einstellungen');
       gb.addEventListener('click', function () { viewSettings(gb); }); bar.appendChild(gb);
-      var nb = el('button', 'btn db-new-top', '+ Neu'); nb.type = 'button'; bar.appendChild(nb);
+      var nb = el('button', 'btn db-new-top', T('+ Neu')); nb.type = 'button'; bar.appendChild(nb);
       nb.addEventListener('click', function () {
         if (!(DB.templates || []).length) return newRow();
         HK.openMenu(nb, function (m) {                // Notion: "Neu ▾" mit den Vorlagen dieser Datenbank
-          m.appendChild(HK.menuItem('Leerer Eintrag', function () { newRow(); }, { icon: '📄' }));
-          m.appendChild(HK.menuLabel('Vorlagen'));
+          m.appendChild(HK.menuItem(T('Leerer Eintrag'), function () { newRow(); }, { icon: '📄' }));
+          m.appendChild(HK.menuLabel(T('Vorlagen')));
           DB.templates.forEach(function (t) {
-            m.appendChild(HK.menuItem(t.title || 'Vorlage', function () { newFromTemplate(t.id); }, { icon: ti(t.icon) || '📐' }));
+            m.appendChild(HK.menuItem(t.title || T('Vorlage'), function () { newFromTemplate(t.id); }, { icon: ti(t.icon) || '📐' }));
           });
-          m.appendChild(el('div', 'menu-hint', 'Vorlage bearbeiten: im Seitenbaum unter der Datenbank öffnen'));
+          m.appendChild(el('div', 'menu-hint', T('Vorlage bearbeiten: im Seitenbaum unter der Datenbank öffnen')));
         });
       });
-      if ((DB.templates || []).length) nb.textContent = '+ Neu ▾';
+      if ((DB.templates || []).length) nb.textContent = T('+ Neu') + ' ▾';
       return bar;
     }
 
     var dragId = null;
     function boardCard(r, g) {
       var c = tint(el('div', 'board-card'), r); c.draggable = true; c.tabIndex = 0; c.setAttribute('role', 'button');
-      c.appendChild(el('div', 'board-title', (ti(r.icon) ? ti(r.icon) + ' ' : '') + (r.title || 'Unbenannt')));
+      c.appendChild(el('div', 'board-title', (ti(r.icon) ? ti(r.icon) + ' ' : '') + (r.title || T('Unbenannt'))));
       visibleProps().forEach(function (p) {
         if (p.id === g.id) return;
         var v = r.props[p.id]; if (v == null || v === '' || v === false || (Array.isArray(v) && !v.length)) return;
@@ -2002,10 +2004,10 @@
         if (g) { v.group_by = g.id; saveSchemaSoon(); }
       }
       if (!g) {
-        wrap.appendChild(el('p', 'nt-empty', 'Für ein Board braucht die Datenbank eine Auswahl-Eigenschaft (z. B. Status).'));
-        var mk = el('button', 'btn', 'Status-Spalte anlegen'); mk.type = 'button';
+        wrap.appendChild(el('p', 'nt-empty', T('Für ein Board braucht die Datenbank eine Auswahl-Eigenschaft (z. B. Status).')));
+        var mk = el('button', 'btn', T('Status-Spalte anlegen')); mk.type = 'button';
         mk.addEventListener('click', function () {
-          var p = { id: rid(), name: 'Status', type: 'select', options: [{ id: rid(), name: 'Offen', color: 'gray' }, { id: rid(), name: 'In Arbeit', color: 'blue' }, { id: rid(), name: 'Erledigt', color: 'green' }] };
+          var p = { id: rid(), name: T('Status'), type: 'select', options: [{ id: rid(), name: T('Offen'), color: 'gray' }, { id: rid(), name: T('In Arbeit'), color: 'blue' }, { id: rid(), name: T('Erledigt'), color: 'green' }] };
           DB.schema.props.push(p); v.group_by = p.id; saveSchema().then(renderDb);
         });
         wrap.appendChild(mk); return wrap;
@@ -2017,10 +2019,10 @@
       if (!cols[0].rows.length) cols.shift();           // "Ohne Status" nur, wenn es solche Zeilen gibt
       cols.forEach(function (col) {
         var c = el('div', 'board-col'), h = el('div', 'board-head');
-        h.appendChild(col.o ? optChip(col.o) : el('span', 'board-none', 'Ohne ' + g.name)); h.appendChild(el('span', 'board-n', String(col.rows.length)));
+        h.appendChild(col.o ? optChip(col.o) : el('span', 'board-none', T('Ohne {name}', { name: g.name }))); h.appendChild(el('span', 'board-n', String(col.rows.length)));
         c.appendChild(h);
         var list = el('div', 'board-cards'); col.rows.forEach(function (r) { list.appendChild(boardCard(r, g)); }); c.appendChild(list);
-        var add = el('button', 'board-add', '+ Neu'); add.type = 'button';
+        var add = el('button', 'board-add', T('+ Neu')); add.type = 'button';
         add.addEventListener('click', function () { var pr = {}; if (col.o) pr[g.id] = col.o.id; newRow(pr); });
         c.appendChild(add);
         c.addEventListener('dragover', function (e) { if (dragId) { e.preventDefault(); c.classList.add('over'); } });
@@ -2067,18 +2069,18 @@
     function renderList() {
       var wrap = el('div', 'dbl');
       eachGrouped(sortedRows(), function (o, n, g) {
-        var h = el('div', 'dbl-group'); h.appendChild(o ? optChip(o) : el('span', 'board-none', 'Ohne ' + g.name)); h.appendChild(el('span', 'board-n', String(n)));
+        var h = el('div', 'dbl-group'); h.appendChild(o ? optChip(o) : el('span', 'board-none', T('Ohne {name}', { name: g.name }))); h.appendChild(el('span', 'board-n', String(n)));
         wrap.appendChild(h);
       }, function (r) {
         var line = tint(el('div', 'dbl-row'), r); line.tabIndex = 0; line.setAttribute('role', 'button');
-        var left = el('div', 'dbl-left'); left.appendChild(icoNode(r.icon, '📄', 'dbl-ic')); left.appendChild(el('span', 'dbl-title', r.title || 'Unbenannt'));
+        var left = el('div', 'dbl-left'); left.appendChild(icoNode(r.icon, '📄', 'dbl-ic')); left.appendChild(el('span', 'dbl-title', r.title || T('Unbenannt')));
         var right = el('div', 'dbl-props');
         visibleProps().forEach(function (p) { var n = valueDisplay(p, r); if (n) right.appendChild(n); });
         line.appendChild(left); line.appendChild(right);
         line.addEventListener('click', openRow(r)); line.addEventListener('keydown', function (e) { if (e.key === 'Enter') openRowUI(r.id); });
         wrap.appendChild(line);
       });
-      var nb = el('button', 'db-new-row', '+ Neu'); nb.type = 'button'; nb.addEventListener('click', function () { newRow(); }); wrap.appendChild(nb);
+      var nb = el('button', 'db-new-row', T('+ Neu')); nb.type = 'button'; nb.addEventListener('click', function () { newRow(); }); wrap.appendChild(nb);
       return wrap;
     }
     function renderGallery() {
@@ -2091,18 +2093,18 @@
         c.appendChild(pv);
         var body = el('div', 'dbg-body'), tl = el('div', 'dbg-title');
         if (r.icon) tl.appendChild(icoNode(r.icon, '', 'dbg-tic'));
-        tl.appendChild(document.createTextNode(r.title || 'Unbenannt')); body.appendChild(tl);
+        tl.appendChild(document.createTextNode(r.title || T('Unbenannt'))); body.appendChild(tl);
         visibleProps().forEach(function (p) { var n = valueDisplay(p, r); if (n) body.appendChild(n); });
         c.appendChild(body);
         c.addEventListener('click', openRow(r)); c.addEventListener('keydown', function (e) { if (e.key === 'Enter') openRowUI(r.id); });
         g.appendChild(c);
       });
-      var nb = el('button', 'dbg-new', '+ Neu'); nb.type = 'button'; nb.addEventListener('click', function () { newRow(); }); g.appendChild(nb);
+      var nb = el('button', 'dbg-new', T('+ Neu')); nb.type = 'button'; nb.addEventListener('click', function () { newRow(); }); g.appendChild(nb);
       return g;
     }
     // Kopf einer eingebetteten Datenbank: Titel fuehrt zur vollen Datenbank-Seite
     // Kalender: Monatsraster, Eintraege am Tag ihres Datums, Ziehen aendert das Datum
-    var fMonth = new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' }), calDrag = null;
+    var fMonth = new Intl.DateTimeFormat(window.SAGA_LOCALE, { month: 'long', year: 'numeric' }), calDrag = null;
     function ymd(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }   // lokal, nicht UTC
     function renderCalendar() {
       var v = curView(), wrap = el('div', 'cal'), dp = propById(v.date_by);
@@ -2111,29 +2113,29 @@
         if (dp) { v.date_by = dp.id; saveSchemaSoon(); }
       }
       if (!dp) {
-        wrap.appendChild(el('p', 'nt-empty', 'Für einen Kalender braucht die Datenbank eine Datumsspalte.'));
-        var mk = el('button', 'btn', 'Datumsspalte anlegen'); mk.type = 'button';
-        mk.addEventListener('click', function () { var p = { id: rid(), name: 'Datum', type: 'date' }; DB.schema.props.push(p); v.date_by = p.id; saveSchema().then(renderDb); });
+        wrap.appendChild(el('p', 'nt-empty', T('Für einen Kalender braucht die Datenbank eine Datumsspalte.')));
+        var mk = el('button', 'btn', T('Datumsspalte anlegen')); mk.type = 'button';
+        mk.addEventListener('click', function () { var p = { id: rid(), name: T('Datum'), type: 'date' }; DB.schema.props.push(p); v.date_by = p.id; saveSchema().then(renderDb); });
         wrap.appendChild(mk); return wrap;
       }
       var editable = dp.type === 'date', now = new Date(), today = ymd(now);
       if (!DB.calMonth) DB.calMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       var m0 = DB.calMonth;
       var head = el('div', 'cal-head');
-      [['‹', -1, 'Voriger Monat'], ['›', 1, 'Nächster Monat']].forEach(function (x, i) {
+      [['‹', -1, T('Voriger Monat')], ['›', 1, T('Nächster Monat')]].forEach(function (x, i) {
         var b = el('button', 'icon-btn cal-nav', x[0]); b.type = 'button'; b.setAttribute('aria-label', x[2]);
         b.addEventListener('click', function () { DB.calMonth = new Date(m0.getFullYear(), m0.getMonth() + x[1], 1); renderDb(); });
         if (i === 0) head.appendChild(b); else { head.appendChild(el('span', 'cal-title', fMonth.format(m0))); head.appendChild(b); }
       });
-      var tb = el('button', 'db-chip', 'Heute'); tb.type = 'button';
+      var tb = el('button', 'db-chip', T('Heute')); tb.type = 'button';
       tb.addEventListener('click', function () { DB.calMonth = new Date(now.getFullYear(), now.getMonth(), 1); renderDb(); }); head.appendChild(tb);
       if (window.HKCal) {                          // externe Termine (mailcow/Nextcloud) einblenden - pro Ansicht
-        var xb = el('button', 'db-chip' + (v.ext ? ' on' : ''), '📅 Termine'); xb.type = 'button';
-        xb.title = v.ext ? 'Externe Termine ausblenden' : 'Termine aus verbundenen Kalendern einblenden';
+        var xb = el('button', 'db-chip' + (v.ext ? ' on' : ''), '📅 ' + T('Termine')); xb.type = 'button';
+        xb.title = v.ext ? T('Externe Termine ausblenden') : T('Termine aus verbundenen Kalendern einblenden');
         xb.addEventListener('click', function () { if (viewsLocked()) { lockedHint(); return; } if (v.ext) delete v.ext; else v.ext = true; saveSchema().then(renderDb); });
         head.appendChild(xb);
       }
-      head.appendChild(el('span', 'cal-src', 'nach „' + dp.name + '“'));
+      head.appendChild(el('span', 'cal-src', T('nach „{name}“', { name: dp.name })));
       wrap.appendChild(head);
       var byDay = {}, noDate = 0;
       sortedRows().forEach(function (r) {
@@ -2142,7 +2144,7 @@
         (byDay[d] = byDay[d] || []).push(r);
       });
       var grid = el('div', 'cal-grid'), calCells = {};
-      ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].forEach(function (w) { grid.appendChild(el('div', 'cal-wd', w)); });
+      window.HK.weekdaysShort().forEach(function (w) { grid.appendChild(el('div', 'cal-wd', w)); });
       var start = new Date(m0.getFullYear(), m0.getMonth(), 1 - ((m0.getDay() + 6) % 7));
       var weeks = Math.ceil((((m0.getDay() + 6) % 7) + new Date(m0.getFullYear(), m0.getMonth() + 1, 0).getDate()) / 7);
       for (var i = 0; i < weeks * 7; i++) {
@@ -2151,16 +2153,16 @@
           calCells[ds] = cell;
           var top = el('div', 'cal-top'); top.appendChild(el('span', 'cal-num', String(day.getDate())));
           if (editable) {
-            var add = el('button', 'cal-add', '+'); add.type = 'button'; add.title = 'Eintrag am ' + day.toLocaleDateString('de-DE');
+            var add = el('button', 'cal-add', '+'); add.type = 'button'; add.title = T('Eintrag am {date}', { date: day.toLocaleDateString(window.SAGA_LOCALE) });
             add.setAttribute('aria-label', add.title);
             add.addEventListener('click', function () { var pr = {}; pr[dp.id] = ds; newRow(pr); });
             top.appendChild(add);
           }
           cell.appendChild(top);
           (byDay[ds] || []).forEach(function (r) {
-            var b = tint(el('button', 'cal-item'), r); b.type = 'button'; b.title = r.title || 'Unbenannt';
+            var b = tint(el('button', 'cal-item'), r); b.type = 'button'; b.title = r.title || T('Unbenannt');
             if (r.icon) b.appendChild(icoNode(r.icon, '', 'cal-ic'));
-            b.appendChild(el('span', 'cal-it', r.title || 'Unbenannt'));
+            b.appendChild(el('span', 'cal-it', r.title || T('Unbenannt')));
             b.addEventListener('click', function () { openRowUI(r.id); });
             if (editable) {
               b.draggable = true;
@@ -2188,15 +2190,15 @@
           Object.keys(map).forEach(function (k) {
             if (calCells[k]) map[k].forEach(function (e) { calCells[k].appendChild(HKCal.chip(e, function (ev) { HKCal.eventDialog(ev, {}, renderDb); })); });
           });
-        }).catch(function (err) { HK.toast('Termine nicht geladen: ' + err.message); });
+        }).catch(function (err) { HK.toast(T('Termine nicht geladen: {err}', { err: err.message })); });
       }
-      if (noDate) wrap.appendChild(el('div', 'cal-nodate', noDate + (noDate === 1 ? ' Eintrag' : ' Einträge') + ' ohne „' + dp.name + '“ (in Tabelle/Liste sichtbar)'));
+      if (noDate) wrap.appendChild(el('div', 'cal-nodate', (noDate === 1 ? T('1 Eintrag') : T('{n} Einträge', { n: noDate })) + ' ' + T('ohne „{name}“ (in Tabelle/Liste sichtbar)', { name: dp.name })));
       return wrap;
     }
 
     function embedHead() {
       var meta = byId(DB.id) || {}, h = el('div', 'embed-head');
-      var b = el('button', 'embed-title'); b.type = 'button'; b.title = 'Als ganze Seite öffnen';
+      var b = el('button', 'embed-title'); b.type = 'button'; b.title = T('Als ganze Seite öffnen');
       b.appendChild(icoNode(meta.icon, '🗃️', 'embed-ic')); b.appendChild(document.createTextNode(' ' + label(meta)));
       b.addEventListener('click', function () { openPage(DB.id); });
       h.appendChild(b); return h;
@@ -2242,10 +2244,10 @@
     }
   }
   function newDatabase(parentId) {
-    return save().then(function () { return api('POST', '/api/notes', { kind: 'database', title: 'Neue Datenbank', icon: '🗃️', parent_id: parentId || null }); })
+    return save().then(function () { return api('POST', '/api/notes', { kind: 'database', title: T('Neue Datenbank'), icon: '🗃️', parent_id: parentId || null }); })
       .then(function (d) { if (parentId) { S.open[parentId] = true; saveOpen(); } return loadList().then(function () { return openPage(d.id); }); })
       .then(function () { $('pg-title').focus(); $('pg-title').select(); })
-      .catch(function (err) { HK.toast('Datenbank nicht angelegt: ' + err.message); });
+      .catch(function (err) { HK.toast(T('Datenbank nicht angelegt: {err}', { err: err.message })); });
   }
 
 
@@ -2273,13 +2275,13 @@
   $('pg-file').addEventListener('change', function () {
     var f = this.files && this.files[0], purpose = filePurpose; if (!f || !S.cur) return;
     var id = S.cur.id;
-    HK.toast('Lade Bild hoch …');
+    HK.toast(T('Lade Bild hoch …'));
     uploadImage(f).then(function (url) {
       if (purpose === 'icon') return api('PATCH', '/api/notes/' + id, { icon: url }).then(function () { setIconLocal(id, url); });
       return api('PATCH', '/api/notes/' + id, { cover: url, cover_pos: 50 }).then(function () {
         if (S.cur && S.cur.id === id) { S.cur.cover = url; S.cur.cover_pos = 50; showCover(); }
       });
-    }).then(function () { HK.toast('Bild gespeichert'); }).catch(function (err) { HK.toast('Bild nicht gespeichert: ' + err.message); });
+    }).then(function () { HK.toast(T('Bild gespeichert')); }).catch(function (err) { HK.toast(T('Bild nicht gespeichert: {err}', { err: err.message })); });
   });
   function setIconLocal(id, icon) {
     if (S.cur && S.cur.id === id) { S.cur.icon = icon; showIcon(icon); }
@@ -2290,20 +2292,20 @@
     var c = $('pg-cover'), has = !!(S.cur && S.cur.cover);
     c.hidden = !has; $('pg-addcover').hidden = has;
     if (has) { $('pg-cover-img').src = thumb(S.cur.cover, 2000); $('pg-cover-img').style.objectPosition = 'center ' + (S.cur.cover_pos == null ? 50 : S.cur.cover_pos) + '%'; }
-    c.classList.remove('moving'); $('pg-cover-move').textContent = 'Verschieben';
+    c.classList.remove('moving'); $('pg-cover-move').textContent = T('Verschieben');
   }
   // Titelbild: hochladen oder aus Immich
   function coverMenu(btn) {
     if (!HK.immichPick) return pickImage('cover');
     HK.openMenu(btn, function (m) {
-      m.appendChild(HK.menuItem('🖼 Bild hochladen …', function () { pickImage('cover'); }));
-      m.appendChild(HK.menuItem('📷 Aus Immich …', function () {
+      m.appendChild(HK.menuItem(T('🖼 Bild hochladen …'), function () { pickImage('cover'); }));
+      m.appendChild(HK.menuItem(T('📷 Aus Immich …'), function () {
         var id = S.cur.id;
         HK.immichPick(function (url) {
           api('PATCH', '/api/notes/' + id, { cover: url, cover_pos: 50 }).then(function () {
             if (S.cur && S.cur.id === id) { S.cur.cover = url; S.cur.cover_pos = 50; showCover(); }
-            HK.toast('Titelbild gespeichert');
-          }).catch(function (err) { HK.toast('Nicht gespeichert: ' + err.message); });
+            HK.toast(T('Titelbild gespeichert'));
+          }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
         });
       }));
     });
@@ -2313,17 +2315,17 @@
   $('pg-cover-del').addEventListener('click', function () {
     var id = S.cur.id;
     api('PATCH', '/api/notes/' + id, { cover: null }).then(function () { if (S.cur && S.cur.id === id) { S.cur.cover = ''; showCover(); } })
-      .catch(function (err) { HK.toast('Nicht entfernt: ' + err.message); });
+      .catch(function (err) { HK.toast(T('Nicht entfernt: {err}', { err: err.message })); });
   });
   // Verschieben: Bild senkrecht ziehen (wie "Reposition" in Notion), "Fertig" speichert
   var mv = null;
   $('pg-cover-move').addEventListener('click', function () {
     var c = $('pg-cover');
     if (c.classList.contains('moving')) {
-      c.classList.remove('moving'); this.textContent = 'Verschieben';
+      c.classList.remove('moving'); this.textContent = T('Verschieben');
       var id = S.cur.id, pos = S.cur.cover_pos;
-      api('PATCH', '/api/notes/' + id, { cover_pos: pos }).catch(function (err) { HK.toast('Position nicht gespeichert: ' + err.message); });
-    } else { c.classList.add('moving'); this.textContent = 'Fertig'; }
+      api('PATCH', '/api/notes/' + id, { cover_pos: pos }).catch(function (err) { HK.toast(T('Position nicht gespeichert: {err}', { err: err.message })); });
+    } else { c.classList.add('moving'); this.textContent = T('Fertig'); }
   });
   $('pg-cover-img').addEventListener('pointerdown', function (e) {
     if (!$('pg-cover').classList.contains('moving')) return;
@@ -2340,15 +2342,15 @@
 
   // --- Schaltflaechen-Leiste (Notion "Buttons") -----------------------------------
   function decode(s) { var d = document.createElement('textarea'); d.innerHTML = s || ''; return d.value; }   // Server-Bereinigung macht & zu &amp;
-  var BTN_ACTIONS = { db: 'Neuer Eintrag in Datenbank', task: 'Neue Aufgabe', page: 'Seite öffnen' };
+  var BTN_ACTIONS = { db: T('Neuer Eintrag in Datenbank'), task: T('Neue Aufgabe'), page: T('Seite öffnen') };
   function ButtonsTool(o) {
     var d = o.data || {};
     this.buttons = (d.buttons || []).map(function (b) {
       return { label: decode(b.label), icon: decode(b.icon), action: b.action || '', target: b.target || null, tpl: b.tpl || null, title: decode(b.title), open: b.open || '' };
     });
-    if (!this.buttons.length) this.buttons = [{ label: 'Neu', icon: '➕', action: '', target: null, tpl: null, title: '' }];
+    if (!this.buttons.length) this.buttons = [{ label: T('Neu'), icon: '➕', action: '', target: null, tpl: null, title: '' }];
   }
-  ButtonsTool.toolbox = { title: 'Schaltflächen',
+  ButtonsTool.toolbox = { title: T('Schaltflächen'),
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="8" height="10" rx="2"/><rect x="13" y="7" width="8" height="10" rx="2"/></svg>' };
   ButtonsTool.prototype.render = function () { this.w = el('div', 'btnrow'); this.draw(); return this.w; };
   ButtonsTool.prototype.changed = function () { this.draw(); if (!S.loading) { S.dirtyBody = true; schedule(); } };
@@ -2358,14 +2360,14 @@
       var g = el('div', 'nbtn-wrap');
       var btn = el('button', 'nbtn'); btn.type = 'button';
       if (b.icon) btn.appendChild(el('span', 'nbtn-ic', b.icon));
-      btn.appendChild(el('span', null, b.label || 'Schaltfläche'));
+      btn.appendChild(el('span', null, b.label || T('Schaltfläche')));
       btn.addEventListener('click', function () { runButton(b, function () { btnConfig(btn, self, i); }); });
-      var cfg = el('button', 'nbtn-cfg', '⚙'); cfg.type = 'button'; cfg.title = 'Schaltfläche einrichten'; cfg.setAttribute('aria-label', 'Schaltfläche einrichten');
+      var cfg = el('button', 'nbtn-cfg', '⚙'); cfg.type = 'button'; cfg.title = T('Schaltfläche einrichten'); cfg.setAttribute('aria-label', T('Schaltfläche einrichten'));
       cfg.addEventListener('click', function () { btnConfig(cfg, self, i); });
       g.appendChild(btn); g.appendChild(cfg); w.appendChild(g);
     });
-    var add = el('button', 'nbtn-add', '+'); add.type = 'button'; add.title = 'Schaltfläche hinzufügen'; add.setAttribute('aria-label', 'Schaltfläche hinzufügen');
-    add.addEventListener('click', function () { self.buttons.push({ label: 'Neu', icon: '➕', action: '', target: null, tpl: null, title: '' }); self.changed(); });
+    var add = el('button', 'nbtn-add', '+'); add.type = 'button'; add.title = T('Schaltfläche hinzufügen'); add.setAttribute('aria-label', T('Schaltfläche hinzufügen'));
+    add.addEventListener('click', function () { self.buttons.push({ label: T('Neu'), icon: '➕', action: '', target: null, tpl: null, title: '' }); self.changed(); });
     w.appendChild(add);
   };
   ButtonsTool.prototype.save = function () { return { buttons: this.buttons }; };
@@ -2381,34 +2383,34 @@
       }
       function draw() {
         box.textContent = '';
-        var lab = field('Beschriftung', inp(b.label, 'z. B. Neue Notiz', 40));
+        var lab = field(T('Beschriftung'), inp(b.label, T('z. B. Neue Notiz'), 40));
         liveText(lab, function (x) { b.label = x.trim(); tool.changed(); });
-        var ic = field('Symbol', inp(b.icon, 'Emoji', 8));
+        var ic = field(T('Symbol'), inp(b.icon, T('Emoji'), 8));
         liveText(ic, function (x) { b.icon = x.trim(); tool.changed(); });
-        var act = field('Aktion', sel([['', '– wählen –']].concat(Object.keys(BTN_ACTIONS).map(function (k) { return [k, BTN_ACTIONS[k]]; })), b.action));
+        var act = field(T('Aktion'), sel([['', T('– wählen –')]].concat(Object.keys(BTN_ACTIONS).map(function (k) { return [k, BTN_ACTIONS[k]]; })), b.action));
         act.addEventListener('change', function () { b.action = act.value; b.target = null; b.tpl = null; tool.changed(); draw(); });
         if (b.action === 'db') {
           var dbs = S.pages.filter(function (p) { return p.kind === 'database'; });
-          var t = field('Datenbank', sel([['', dbs.length ? '– wählen –' : 'keine Datenbank vorhanden']].concat(dbs.map(function (p) { return [String(p.id), (ti(p.icon) || '🗃️') + ' ' + label(p)]; })), b.target));
+          var t = field(T('Datenbank'), sel([['', dbs.length ? T('– wählen –') : T('keine Datenbank vorhanden')]].concat(dbs.map(function (p) { return [String(p.id), (ti(p.icon) || '🗃️') + ' ' + label(p)]; })), b.target));
           t.addEventListener('change', function () { b.target = +t.value || null; tool.changed(); });
           var tpls = S.pages.filter(function (p) { return p.template; });
-          var tp = field('Vorlage', sel([['', 'keine (leere Seite)']].concat(tpls.map(function (p) { return [String(p.id), (ti(p.icon) || '📄') + ' ' + label(p)]; })), b.tpl));
+          var tp = field(T('Vorlage'), sel([['', T('keine (leere Seite)')]].concat(tpls.map(function (p) { return [String(p.id), (ti(p.icon) || '📄') + ' ' + label(p)]; })), b.tpl));
           tp.addEventListener('change', function () { b.tpl = +tp.value || null; tool.changed(); });
-          var op = field('Öffnen als', sel([['', 'Ganze Seite'], ['side', 'Seitenansicht rechts'], ['left', 'Seitenansicht links'], ['center', 'Mittig']], b.open || ''));
+          var op = field(T('Öffnen als'), sel([['', T('Ganze Seite')], ['side', T('Seitenansicht rechts')], ['left', T('Seitenansicht links')], ['center', T('Mittig')]], b.open || ''));
           op.addEventListener('change', function () { b.open = op.value; tool.changed(); });
-          var tt = field('Titel', inp(b.title, 'z. B. Tagebuch {datum}', 80));
+          var tt = field(T('Titel'), inp(b.title, T('z. B. Tagebuch {datum}'), 80));
           liveText(tt, function (x) { b.title = x.trim(); tool.changed(); });
-          box.appendChild(el('div', 'menu-hint', '{datum} wird beim Klick durch das heutige Datum ersetzt.'));
+          box.appendChild(el('div', 'menu-hint', T('{datum} wird beim Klick durch das heutige Datum ersetzt.')));
         } else if (b.action === 'page') {
-          var pg = field('Seite', sel([['', '– wählen –']].concat(S.pages.map(function (p) { return [String(p.id), (ti(p.icon) || '📄') + ' ' + label(p)]; })), b.target));
+          var pg = field(T('Seite'), sel([['', T('– wählen –')]].concat(S.pages.map(function (p) { return [String(p.id), (ti(p.icon) || '📄') + ' ' + label(p)]; })), b.target));
           pg.addEventListener('change', function () { b.target = +pg.value || null; tool.changed(); });
-          var op2 = field('Öffnen als', sel([['', 'Ganze Seite'], ['side', 'Seitenansicht rechts'], ['left', 'Seitenansicht links'], ['center', 'Mittig']], b.open || ''));
+          var op2 = field(T('Öffnen als'), sel([['', T('Ganze Seite')], ['side', T('Seitenansicht rechts')], ['left', T('Seitenansicht links')], ['center', T('Mittig')]], b.open || ''));
           op2.addEventListener('change', function () { b.open = op2.value; tool.changed(); });
         } else if (b.action === 'task') {
-          box.appendChild(el('div', 'menu-hint', 'Legt eine Saga-Aufgabe an (erscheint im Dashboard und in der Aufgabenleiste).'));
+          box.appendChild(el('div', 'menu-hint', T('Legt eine Saga-Aufgabe an (erscheint im Dashboard und in der Aufgabenleiste).')));
         }
-        var del = el('button', 'menu-item danger', 'Schaltfläche entfernen'); del.type = 'button';
-        del.addEventListener('click', function () { HK.closeMenu(); tool.buttons.splice(i, 1); if (!tool.buttons.length) tool.buttons.push({ label: 'Neu', icon: '➕', action: '' }); tool.changed(); });
+        var del = el('button', 'menu-item danger', T('Schaltfläche entfernen')); del.type = 'button';
+        del.addEventListener('click', function () { HK.closeMenu(); tool.buttons.splice(i, 1); if (!tool.buttons.length) tool.buttons.push({ label: T('Neu'), icon: '➕', action: '' }); tool.changed(); });
         box.appendChild(del);
       }
       draw(); m.appendChild(box);
@@ -2417,7 +2419,7 @@
 
   function runButton(b, configure) {
     if (b.action === 'db' && b.target) {
-      var title = (b.title || '').replace(/\{datum\}/g, today.format(new Date()));
+      var title = (b.title || '').replace(/\{(datum|date|fecha)\}/g, today.format(new Date()));
       var req = b.tpl ? api('POST', '/api/notes/' + b.tpl + '/duplicate', title ? { parent_id: b.target, title: title } : { parent_id: b.target })
                       : api('POST', '/api/notes', { parent_id: b.target, title: title });
       return save().then(function () { return req; }).then(function (d) {
@@ -2426,21 +2428,21 @@
           return openPage(d.id).then(function () { if (!title) $('pg-title').focus(); });
         });
       })
-        .catch(function (err) { HK.toast('Eintrag nicht angelegt: ' + err.message); });
+        .catch(function (err) { HK.toast(T('Eintrag nicht angelegt: {err}', { err: err.message })); });
     }
     if (b.action === 'page' && b.target) {
-      if (!byId(b.target)) { HK.toast('Die Zielseite gibt es nicht mehr.'); return; }
+      if (!byId(b.target)) { HK.toast(T('Die Zielseite gibt es nicht mehr.')); return; }
       if (b.open) return openPeek(b.target, { mode: b.open, dbId: (byId(b.target) || {}).parent_id, ids: [b.target], refresh: function () {} });
       return openPage(b.target);
     }
     if (b.action === 'task') {
-      openModal('Neue Aufgabe', function (body) {
-        var f = el('div', 'task-quick'), inp = el('input', 'flt-val'); inp.type = 'text'; inp.maxLength = 300; inp.placeholder = 'Was ist zu tun?';
-        var ok = el('button', 'btn', 'Anlegen'); ok.type = 'button';
+      openModal(T('Neue Aufgabe'), function (body) {
+        var f = el('div', 'task-quick'), inp = el('input', 'flt-val'); inp.type = 'text'; inp.maxLength = 300; inp.placeholder = T('Was ist zu tun?');
+        var ok = el('button', 'btn', T('Anlegen')); ok.type = 'button';
         function go() {
           var text = inp.value.trim(); if (!text) return;
-          api('POST', '/api/tasks', { text: text }).then(function () { closeModal(); HK.toast('Aufgabe angelegt ✓'); })
-            .catch(function (err) { HK.toast('Aufgabe nicht angelegt: ' + err.message); });
+          api('POST', '/api/tasks', { text: text }).then(function () { closeModal(); HK.toast(T('Aufgabe angelegt ✓')); })
+            .catch(function (err) { HK.toast(T('Aufgabe nicht angelegt: {err}', { err: err.message })); });
         }
         ok.addEventListener('click', go); inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
         f.appendChild(inp); f.appendChild(ok); body.appendChild(f); setTimeout(function () { inp.focus(); }, 0);
@@ -2459,7 +2461,7 @@
       .forEach(function (ev) { w.addEventListener(ev, function (e) { e.stopPropagation(); }); });
   }
   function DatabaseTool(o) { var d = o.data || {}; this.data = { db: d.db || null, view: d.view || null, views: Array.isArray(d.views) ? d.views : null }; }
-  DatabaseTool.toolbox = { title: 'Datenbank',
+  DatabaseTool.toolbox = { title: T('Datenbank'),
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>' };
   DatabaseTool.prototype.render = function () { this.w = el('div', 'embed-db'); isolate(this.w); this.draw(); return this.w; };
   DatabaseTool.prototype.mark = function () { if (!S.loading) { S.dirtyBody = true; schedule(); } };
@@ -2468,17 +2470,17 @@
     var meta = this.data.db && byId(this.data.db);
     if (!meta || meta.kind !== 'database') {
       var pick = el('div', 'embed-pick');
-      pick.appendChild(el('span', 'embed-pick-t', this.data.db ? 'Die eingebettete Datenbank gibt es nicht mehr.' : '🗃️ Datenbank einbetten:'));
+      pick.appendChild(el('span', 'embed-pick-t', this.data.db ? T('Die eingebettete Datenbank gibt es nicht mehr.') : T('🗃️ Datenbank einbetten:')));
       var dbs = S.pages.filter(function (p) { return p.kind === 'database'; });
-      var sel = el('select', 'flt-val'); sel.setAttribute('aria-label', 'Datenbank wählen');
-      var o0 = el('option', null, dbs.length ? '– bestehende wählen –' : 'noch keine Datenbank'); o0.value = ''; sel.appendChild(o0);
+      var sel = el('select', 'flt-val'); sel.setAttribute('aria-label', T('Datenbank wählen'));
+      var o0 = el('option', null, dbs.length ? T('– bestehende wählen –') : T('noch keine Datenbank')); o0.value = ''; sel.appendChild(o0);
       dbs.forEach(function (p) { var o = el('option', null, (ti(p.icon) || '🗃️') + ' ' + label(p)); o.value = p.id; sel.appendChild(o); });
       sel.addEventListener('change', function () { if (!sel.value) return; self.data.db = +sel.value; self.data.view = null; self.mark(); self.draw(); });
-      var nb = el('button', 'btn', '+ Neue Datenbank hier'); nb.type = 'button';
+      var nb = el('button', 'btn', T('+ Neue Datenbank hier')); nb.type = 'button';
       nb.addEventListener('click', function () {
-        api('POST', '/api/notes', { kind: 'database', title: 'Neue Datenbank', icon: '🗃️', parent_id: S.cur ? S.cur.id : null })
+        api('POST', '/api/notes', { kind: 'database', title: T('Neue Datenbank'), icon: '🗃️', parent_id: S.cur ? S.cur.id : null })
           .then(function (d) { return loadList().then(function () { self.data.db = d.id; self.mark(); self.draw(); }); })
-          .catch(function (err) { HK.toast('Datenbank nicht angelegt: ' + err.message); });
+          .catch(function (err) { HK.toast(T('Datenbank nicht angelegt: {err}', { err: err.message })); });
       });
       pick.appendChild(sel); pick.appendChild(nb); w.appendChild(pick); return;
     }
@@ -2497,13 +2499,13 @@
     var d = (o && o.data) || {};
     this.block = o && o.block; this.view = d.view === 'list' ? 'list' : 'month'; this.days = Math.max(1, Math.min(62, +d.days || 14));
   }
-  CalendarTool.toolbox = { title: 'Kalender',
+  CalendarTool.toolbox = { title: T('Kalender'),
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>' };
   CalendarTool.prototype.render = function () { this.w = el('div', 'embed-cal'); isolate(this.w); this.draw(); return this.w; };
   CalendarTool.prototype.draw = function () {
     var self = this, w = this.w; w.textContent = '';
     var sw = el('div', 'cal-mode');                                   // Umschalter beim Ueberfahren (wie bei Spalten)
-    [['month', '▦ Monat'], ['list', '☰ Liste']].forEach(function (m) {
+    [['month', '▦ ' + T('Monat')], ['list', '☰ ' + T('Liste')]].forEach(function (m) {
       var b = el('button', 'cal-mode-b' + (self.view === m[0] ? ' on' : ''), m[1]); b.type = 'button';
       b.addEventListener('click', function () {
         if (self.view === m[0]) return; self.view = m[0]; self.draw();
@@ -2513,16 +2515,16 @@
     });
     w.appendChild(sw);
     var box = el('div'); w.appendChild(box);
-    if (!window.HKCal) { box.textContent = 'Kalender nicht verfügbar'; return; }
+    if (!window.HKCal) { box.textContent = T('Kalender nicht verfügbar'); return; }
     if (this.view === 'list') HKCal.agenda(box, { days: this.days }); else HKCal.month(box);
   };
   CalendarTool.prototype.save = function () { return { view: this.view, days: this.days }; };
 
   // "/Bild aus Immich": oeffnet die Auswahl und ersetzt sich durch einen normalen Bild-Block (Abbruch -> Block weg)
   function ImmichTool(o) { this.api = o.api; }
-  ImmichTool.toolbox = { title: 'Bild aus Immich', icon: '<svg width="17" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3.2"/><path d="M8 5l1.5-2h5L16 5"/></svg>' };
+  ImmichTool.toolbox = { title: T('Bild aus Immich'), icon: '<svg width="17" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3.2"/><path d="M8 5l1.5-2h5L16 5"/></svg>' };
   ImmichTool.prototype.render = function () {
-    var self = this; this.w = el('div', 'imm-placeholder', '📷 Bild aus Immich wählen …');
+    var self = this; this.w = el('div', 'imm-placeholder', '📷 ' + T('Bild aus Immich wählen …'));
     this.w.addEventListener('click', function () { self.open(); });
     setTimeout(function () { self.open(); }, 0);
     return this.w;
@@ -2552,7 +2554,7 @@
     var d = o.data || {}; this.api = o.api; this.block = o.block; this.ro = !!o.readOnly; this.title = decodeAmp(d.title);
     this.url = /^https?:\/\/\S+$/i.test(decodeAmp(d.url)) ? decodeAmp(d.url) : '';      // nur http(s) - nie javascript: o. ae.
   }
-  EmbedTool.toolbox = { title: 'Einbetten (YouTube, Link)', icon: '<svg width="17" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3z"/></svg>' };
+  EmbedTool.toolbox = { title: T('Einbetten (YouTube, Link)'), icon: '<svg width="17" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3z"/></svg>' };
   EmbedTool.isReadOnlySupported = true;
   EmbedTool.pasteConfig = { patterns: { url: /^https?:\/\/[^\s]+$/i } };
   EmbedTool.prototype.render = function () { this.w = el('div', 'hk-embed'); this.draw(); return this.w; };
@@ -2561,10 +2563,10 @@
     var self = this, w = this.w; w.textContent = '';
     if (!this.url) {
       if (this.ro) return;
-      var inp = el('input', 'hk-in hk-embed-in'); inp.type = 'url'; inp.placeholder = 'Link einfügen – YouTube, Webseite, GoodNotes … (Enter)';
+      var inp = el('input', 'hk-in hk-embed-in'); inp.type = 'url'; inp.placeholder = T('Link einfügen – YouTube, Webseite, GoodNotes … (Enter)');
       inp.addEventListener('keydown', function (e) {
         if (e.key !== 'Enter') return; e.preventDefault(); e.stopPropagation();
-        var v = inp.value.trim(); if (!/^https?:\/\/\S+$/i.test(v)) { HK.toast('Bitte einen Link mit http:// oder https://'); return; }
+        var v = inp.value.trim(); if (!/^https?:\/\/\S+$/i.test(v)) { HK.toast(T('Bitte einen Link mit http:// oder https://')); return; }
         self.url = v; self.draw(); self.changed();
       });
       w.appendChild(inp); setTimeout(function () { inp.focus(); }, 0); return;
@@ -2572,7 +2574,7 @@
     var id = ytId(this.url);
     if (id) {
       var box = el('div', 'hk-embed-yt'), f = el('iframe');
-      f.src = 'https://www.youtube-nocookie.com/embed/' + id; f.title = 'YouTube-Video'; f.loading = 'lazy';
+      f.src = 'https://www.youtube-nocookie.com/embed/' + id; f.title = T('YouTube-Video'); f.loading = 'lazy';
       f.setAttribute('allow', 'accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen');
       f.setAttribute('allowfullscreen', ''); f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
       box.appendChild(f); w.appendChild(box);
@@ -2588,11 +2590,11 @@
     if (!this.ro) {
       var bar = el('div', 'hk-embed-bar');
       if (!id) {
-        var tb = el('button', 'linkbtn', 'Titel'); tb.type = 'button';
-        tb.addEventListener('click', function () { var t = prompt('Titel der Karte', self.title || ''); if (t === null) return; self.title = t.trim().slice(0, 200); self.draw(); self.changed(); });
+        var tb = el('button', 'linkbtn', T('Titel')); tb.type = 'button';
+        tb.addEventListener('click', function () { var t = prompt(T('Titel der Karte'), self.title || ''); if (t === null) return; self.title = t.trim().slice(0, 200); self.draw(); self.changed(); });
         bar.appendChild(tb);
       }
-      var cb = el('button', 'linkbtn', 'Link ändern'); cb.type = 'button';
+      var cb = el('button', 'linkbtn', T('Link ändern')); cb.type = 'button';
       cb.addEventListener('click', function () { self.url = ''; self.title = ''; self.draw(); self.changed(); });
       bar.appendChild(cb); w.appendChild(bar);
     }
@@ -2601,9 +2603,9 @@
   EmbedTool.prototype.save = function () { var d = { url: this.url }; if (this.title) d.title = this.title; if (ytId(this.url)) d.kind = 'youtube'; return d; };
   EmbedTool.prototype.validate = function (d) { return /^https?:\/\//i.test(d.url || ''); };
 
-  var fTaskDue = new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
+  var fTaskDue = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'short', day: 'numeric', month: 'short' });
   function TasksTool() {}
-  TasksTool.toolbox = { title: 'Aufgaben',
+  TasksTool.toolbox = { title: T('Aufgaben'),
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l2 2 4-4M4 14l2 2 4-4M13 7h7M13 15h7"/></svg>' };
   TasksTool.prototype.render = function () { this.w = el('div', 'embed-tasks'); isolate(this.w); this.draw(); return this.w; };
   TasksTool.prototype.draw = function () {
@@ -2611,34 +2613,34 @@
     api('GET', '/api/tasks').then(function (d) {
       w.textContent = '';
       var open = d.open || [];
-      var h = el('div', 'embed-head'); h.appendChild(el('span', 'embed-title-s', '✓ Aufgaben')); h.appendChild(el('span', 'db-count', open.length + ' offen'));
+      var h = el('div', 'embed-head'); h.appendChild(el('span', 'embed-title-s', '✓ ' + T('Aufgaben'))); h.appendChild(el('span', 'db-count', T('{n} offen', { n: open.length })));
       w.appendChild(h);
       var ul = el('div', 'etk-list');
       open.forEach(function (t) {
         var row = el('div', 'etk-row p' + (t.prio || 2));
-        var ck = el('button', 'etk-check'); ck.type = 'button'; ck.setAttribute('aria-label', 'Erledigt: ' + t.text);
+        var ck = el('button', 'etk-check'); ck.type = 'button'; ck.setAttribute('aria-label', T('Erledigt: {text}', { text: t.text }));
         ck.addEventListener('click', function () {
           row.classList.add('done');
           api('PATCH', '/api/tasks/' + t.id, { done: true }).then(function (r) {
-            if (r && r.next_due) HK.toast('Erledigt. Nächstes Mal: ' + fTaskDue.format(new Date(r.next_due + 'T00:00:00')));
+            if (r && r.next_due) HK.toast(T('Erledigt. Nächstes Mal: {date}', { date: fTaskDue.format(new Date(r.next_due + 'T00:00:00')) }));
             self.draw();
-          }).catch(function (err) { row.classList.remove('done'); HK.toast('Nicht gespeichert: ' + err.message); });
+          }).catch(function (err) { row.classList.remove('done'); HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
         });
         row.appendChild(ck); row.appendChild(el('span', 'etk-text', t.text));
         if (t.repeat) row.appendChild(el('span', 'etk-meta', '↻'));
         if (t.due) row.appendChild(el('span', 'etk-meta' + (t.due < new Date().toISOString().slice(0, 10) ? ' overdue' : ''), fTaskDue.format(new Date(t.due + 'T00:00:00'))));
         ul.appendChild(row);
       });
-      if (!open.length) ul.appendChild(el('div', 'nt-empty', 'Alles erledigt 🎉'));
+      if (!open.length) ul.appendChild(el('div', 'nt-empty', T('Alles erledigt 🎉')));
       w.appendChild(ul);
-      var add = el('input', 'etk-add'); add.type = 'text'; add.maxLength = 300; add.placeholder = '+ Neue Aufgabe (Enter)'; add.setAttribute('aria-label', 'Neue Aufgabe');
+      var add = el('input', 'etk-add'); add.type = 'text'; add.maxLength = 300; add.placeholder = T('+ Neue Aufgabe (Enter)'); add.setAttribute('aria-label', T('Neue Aufgabe'));
       add.addEventListener('keydown', function (e) {
         if (e.key !== 'Enter' || !add.value.trim()) return;
         var text = add.value.trim(); add.value = '';
-        api('POST', '/api/tasks', { text: text }).then(function () { self.draw(); }).catch(function (err) { HK.toast('Aufgabe nicht angelegt: ' + err.message); });
+        api('POST', '/api/tasks', { text: text }).then(function () { self.draw(); }).catch(function (err) { HK.toast(T('Aufgabe nicht angelegt: {err}', { err: err.message })); });
       });
       w.appendChild(add);
-    }).catch(function (err) { w.textContent = 'Aufgaben nicht geladen: ' + err.message; });
+    }).catch(function (err) { w.textContent = T('Aufgaben nicht geladen: {err}', { err: err.message }); });
   };
   TasksTool.prototype.save = function () { return {}; };
 
@@ -2647,7 +2649,7 @@
   function setSide(show) {
     document.body.classList.toggle('side-hidden', !show);
     var b = $('pg-side-btn'); b.setAttribute('aria-pressed', show ? 'true' : 'false');
-    b.title = (show ? 'Seitenleiste ausblenden' : 'Seitenleiste einblenden') + (isMacKey ? ' (⌘\\)' : ' (Strg+\\)');
+    b.title = (show ? T('Seitenleiste ausblenden') : T('Seitenleiste einblenden')) + (isMacKey ? ' (⌘\\)' : ' (' + T('Strg') + '+\\)');
     HK.store('hk-pg-side', show ? '1' : '0');
   }
   if (document.body.classList.contains('notes-page') && !document.body.classList.contains('embed')) {
@@ -2661,7 +2663,7 @@
     var id = S.cur.id;
     api('PATCH', '/api/notes/' + id, { wide: on }).then(function () {
       if (S.cur && S.cur.id === id) { S.cur.wide = on; $('page').classList.toggle('wide', on); }
-    }).catch(function (err) { HK.toast('Nicht gespeichert: ' + err.message); });
+    }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
   }
 
   // --- Spalten: jede Spalte ist ein eigener Editor (Editor-in-Editor) ----------------
@@ -2684,7 +2686,7 @@
     this.editors = [];
     this.api = o.api;
   }
-  ColumnsTool.toolbox = { title: 'Spalten',
+  ColumnsTool.toolbox = { title: T('Spalten'),
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>' };
   ColumnsTool.prototype.render = function () {
     var self = this, w = el('div', 'cols'); this.w = w; COLS.set(w, this);
@@ -2697,10 +2699,10 @@
   // Sichtbare Leiste "Spalten: 2 3 4" oben rechts (das Block-Menue zeigt beim Ueberfahren die INNEREN Bloecke)
   ColumnsTool.prototype.ctl = function () {
     var self = this, bar = el('div', 'cols-ctl'); bar.contentEditable = 'false';
-    bar.appendChild(el('span', 'cols-ctl-t', 'Spalten'));
+    bar.appendChild(el('span', 'cols-ctl-t', T('Spalten')));
     [2, 3, 4].forEach(function (n) {
       var b = el('button', 'cols-ctl-b' + (self.editors.length === n ? ' on' : ''), String(n)); b.type = 'button';
-      b.setAttribute('aria-label', n + ' Spalten'); b.setAttribute('aria-pressed', self.editors.length === n ? 'true' : 'false');
+      b.setAttribute('aria-label', T('{n} Spalten', { n: n })); b.setAttribute('aria-pressed', self.editors.length === n ? 'true' : 'false');
       b.addEventListener('click', function () { self.setCount(n); });
       bar.appendChild(b);
     });
@@ -2721,14 +2723,14 @@
     var next = i >= 0 ? this.api.blocks.getBlockByIndex(i + 1) : null; if (!next) return;
     box.appendChild(el('span', 'cols-ctl-sep', '|'));
     if (next.name === 'columns') {
-      var m = el('button', 'cols-ctl-b wide', '⤓ Zusammenführen'); m.type = 'button';
-      m.title = 'Spalten darunter mit diesen zusammenführen (Spalte 1 + 1, 2 + 2 …)';
+      var m = el('button', 'cols-ctl-b wide', '⤓ ' + T('Zusammenführen')); m.type = 'button';
+      m.title = T('Spalten darunter mit diesen zusammenführen (Spalte 1 + 1, 2 + 2 …)');
       m.addEventListener('click', function () { self.mergeBelow(i, next); });
       box.appendChild(m);
     } else {
-      box.appendChild(el('span', 'cols-ctl-t', '↑ Block darunter →'));
+      box.appendChild(el('span', 'cols-ctl-t', T('↑ Block darunter →')));
       this.editors.forEach(function (_, ci) {
-        var b = el('button', 'cols-ctl-b', String(ci + 1)); b.type = 'button'; b.title = 'Block unter den Spalten ans Ende von Spalte ' + (ci + 1);
+        var b = el('button', 'cols-ctl-b', String(ci + 1)); b.type = 'button'; b.title = T('Block unter den Spalten ans Ende von Spalte {n}', { n: ci + 1 });
         b.addEventListener('click', function () { self.takeBelow(i, next, ci); });
         box.appendChild(b);
       });
@@ -2743,10 +2745,10 @@
   };
   // Eine Spalte: eigener Editor + "+ Block" darunter (in GENAU dieser Spalte weiterschreiben, wie Notion)
   ColumnsTool.prototype.column = function (c, i) {
-    var col = el('div', 'col'), h = el('div', 'col-ed'), add = el('button', 'col-add', '+ Block');
-    add.type = 'button'; add.title = 'Neuer Block am Ende dieser Spalte';
+    var col = el('div', 'col'), h = el('div', 'col-ed'), add = el('button', 'col-add', T('+ Block'));
+    add.type = 'button'; add.title = T('Neuer Block am Ende dieser Spalte');
     col.appendChild(h); col.appendChild(add); this.w.appendChild(col);
-    var ed = nestedEditor(h, c.blocks, i ? 'Spalte …' : "Spalte – '/' für Blöcke");
+    var ed = nestedEditor(h, c.blocks, i ? T('Spalte …') : T("Spalte – '/' für Blöcke"));
     add.addEventListener('click', function () {
       ed.isReady.then(function () {
         var n = ed.blocks.getBlocksCount(), last = n ? ed.blocks.getBlockByIndex(n - 1) : null;
@@ -2765,7 +2767,7 @@
       for (var k = 0; k < n; k++) cols.push({ blocks: ((a[k] || {}).blocks || []).concat((b[k] || {}).blocks || []) });
       self.api.blocks.delete(i + 1);
       self.rebuild(cols);
-      HK.toast('Spalten zusammengeführt');
+      HK.toast(T('Spalten zusammengeführt'));
     });
   };
   ColumnsTool.prototype.takeBelow = function (i, next, ci) {
@@ -2814,7 +2816,7 @@
   function movePageTo(id, parentId, index) {
     return api('POST', '/api/notes/' + id + '/move', { parent_id: parentId, index: index })
       .then(function () { if (parentId) { S.open[parentId] = true; saveOpen(); } return loadList(); })
-      .catch(function (err) { HK.toast('Nicht verschoben: ' + err.message); });
+      .catch(function (err) { HK.toast(T('Nicht verschoben: {err}', { err: err.message })); });
   }
   function treeDnd(row, p) {
     row.draggable = true;
@@ -2850,14 +2852,14 @@
   // --- Seite duplizieren (Kopie direkt unter dem Original) -----------------------------
   function duplicatePage() {
     var src = S.cur, parentId = src.parent_id && byId(src.parent_id) ? src.parent_id : null;
-    save().then(function () { return api('POST', '/api/notes/' + src.id + '/duplicate', { parent_id: parentId, title: label(src) + ' (Kopie)' }); })
+    save().then(function () { return api('POST', '/api/notes/' + src.id + '/duplicate', { parent_id: parentId, title: T('{name} (Kopie)', { name: label(src) }) }); })
       .then(function (d) {
         var sib = children(parentId).map(function (x) { return x.id; });
         return api('POST', '/api/notes/' + d.id + '/move', { parent_id: parentId, index: sib.indexOf(src.id) + 1 })
           .then(function () { return loadList(); }).then(function () { return openPage(d.id); });
       })
-      .then(function () { HK.toast(src.kind === 'database' ? 'Datenbank dupliziert (Spalten und Ansichten, ohne Einträge)' : 'Seite dupliziert'); })
-      .catch(function (err) { HK.toast('Nicht dupliziert: ' + err.message); });
+      .then(function () { HK.toast(src.kind === 'database' ? T('Datenbank dupliziert (Spalten und Ansichten, ohne Einträge)') : T('Seite dupliziert')); })
+      .catch(function (err) { HK.toast(T('Nicht dupliziert: {err}', { err: err.message })); });
   }
 
   // --- Peek: die ECHTE Seite als eingebetteter Rahmen (/notes?embed=1#id) - zeigt alles, was eine Seite kann
@@ -2867,7 +2869,7 @@
     var c = PK.ctx.mode === 'center';
     if (!c) PK.sideMode = PK.ctx.mode;             // merken, ob rechts oder links (fuer das Umschalten)
     $('pg-peek').classList.toggle('center', c); $('pg-peek').classList.toggle('left', PK.ctx.mode === 'left');
-    $('peek-mode').textContent = c ? '◨' : '▣'; $('peek-mode').title = c ? 'Als Seitenansicht (rechts) anzeigen' : 'Mittig anzeigen';
+    $('peek-mode').textContent = c ? '◨' : '▣'; $('peek-mode').title = c ? T('Als Seitenansicht (rechts) anzeigen') : T('Mittig anzeigen');
   }
   function openPeek(id, ctx) {
     PK.id = id; PK.ctx = ctx || PK.ctx;
@@ -2884,7 +2886,7 @@
     var ctx = PK.ctx, f = $('peek-frame'), flush = Promise.resolve();
     try { var w = f.contentWindow; if (w && w.HKPages && w.HKPages.flush) flush = w.HKPages.flush(); } catch (x) { /* Rahmen noch nicht geladen */ }
     return flush.then(function () {}, function (e) {            // Konflikt im Rahmen: offen lassen, damit nichts verloren geht
-      if (e && e.message === 'conflict') { HK.toast('Speicher-Konflikt im Eintrag – bitte erst dort klären.'); throw e; }
+      if (e && e.message === 'conflict') { HK.toast(T('Speicher-Konflikt im Eintrag – bitte erst dort klären.')); throw e; }
     }).then(function () {      // ausstehendes Speichern im Rahmen abwarten
       PK.id = null; $('pg-peek').hidden = true;
       if (ctx && ctx.refresh) ctx.refresh();
@@ -2923,9 +2925,9 @@
       PK.id = null; $('pg-peek').hidden = true;
       if (ctx && ctx.refresh) ctx.refresh();
       loadList();
-      HK.toast('„' + (e.data.name || 'Eintrag') + '“ in den Papierkorb verschoben', 'Rückgängig', function () {
+      HK.toast(T('„{name}“ in den Papierkorb verschoben', { name: e.data.name || T('Eintrag') }), T('Rückgängig'), function () {
         api('POST', '/api/trash/' + id + '/restore').then(loadList).then(function () { if (ctx && ctx.refresh) ctx.refresh(); })
-          .catch(function (err) { HK.toast('Nicht wiederhergestellt: ' + err.message); });
+          .catch(function (err) { HK.toast(T('Nicht wiederhergestellt: {err}', { err: err.message })); });
       });
     }
   });
@@ -2947,8 +2949,8 @@
     var bar = $('pg-archived'); if (bar) bar.remove();
     if (!S.cur || !S.cur.archived) return;
     bar = el('div', 'pg-archived'); bar.id = 'pg-archived'; bar.setAttribute('role', 'status');
-    bar.appendChild(el('span', null, '📦 Diese Seite ist archiviert – sie fehlt im Seitenbaum und in der Suche.'));
-    var b = el('button', 'btn', 'Zurückholen'); b.type = 'button'; b.addEventListener('click', function () { setArchived(S.cur.id, false); });
+    bar.appendChild(el('span', null, T('📦 Diese Seite ist archiviert – sie fehlt im Seitenbaum und in der Suche.')));
+    var b = el('button', 'btn', T('Zurückholen')); b.type = 'button'; b.addEventListener('click', function () { setArchived(S.cur.id, false); });
     bar.appendChild(b); $('page').insertBefore(bar, $('page').firstChild);
   }
   function setArchived(id, on) {
@@ -2956,10 +2958,10 @@
       if (S.cur && S.cur.id === id) S.cur.archived = on;
       return loadList().then(function () {
         archiveBar();
-        HK.toast(on ? '„' + label(anyById(id)) + '“ archiviert' : '„' + label(anyById(id)) + '“ ist wieder da', on ? 'Rückgängig' : null,
+        HK.toast(on ? T('„{name}“ archiviert', { name: label(anyById(id)) }) : T('„{name}“ ist wieder da', { name: label(anyById(id)) }), on ? T('Rückgängig') : null,
                  on ? function () { setArchived(id, false); } : null);
       });
-    }).catch(function (err) { HK.toast('Nicht geändert: ' + err.message); });
+    }).catch(function (err) { HK.toast(T('Nicht geändert: {err}', { err: err.message })); });
   }
   // --- Seite sperren: Schutz vor versehentlichem Bearbeiten (Datenbanken/Aufgaben/Kalender darin bleiben bedienbar)
   function setLocked(on) {
@@ -2967,8 +2969,8 @@
     (on ? save() : Promise.resolve()).then(function () { return api('PATCH', '/api/notes/' + id, { locked: on }); }).then(function () {
       if (S.cur && S.cur.id === id) { S.cur.locked = on; applyLock(); }
       var p = byId(id); if (p) p.locked = on;
-      HK.toast(on ? '🔒 Seite gesperrt' : '🔓 Seite entsperrt');
-    }).catch(function (err) { HK.toast('Nicht geändert: ' + err.message); });
+      HK.toast(on ? T('🔒 Seite gesperrt') : T('🔓 Seite entsperrt'));
+    }).catch(function (err) { HK.toast(T('Nicht geändert: {err}', { err: err.message })); });
   }
   function applyLock() {
     var on = !!(S.cur && S.cur.locked);
@@ -2980,7 +2982,7 @@
       b.addEventListener('click', function () { setLocked(false); });
       $('pg-state').parentNode.insertBefore(b, $('pg-state'));
     }
-    b.hidden = !on; b.textContent = '🔒 Gesperrt'; b.title = 'Seite ist gesperrt – klicken zum Entsperren';
+    b.hidden = !on; b.textContent = T('🔒 Gesperrt'); b.title = T('Seite ist gesperrt – klicken zum Entsperren');
   }
   var LOCK_OK = '.embed-db, .embed-cal, .embed-tasks, .btnrow';      // bleibt auf gesperrten Seiten bedienbar
   function lockBlocked(e) {
@@ -2990,7 +2992,7 @@
     return true;
   }
   var lockHintT = 0;
-  function lockHint() { var n = Date.now(); if (n - lockHintT > 2500) { lockHintT = n; HK.toast('🔒 Seite ist gesperrt – oben auf „Gesperrt“ klicken zum Bearbeiten'); } }
+  function lockHint() { var n = Date.now(); if (n - lockHintT > 2500) { lockHintT = n; HK.toast(T('🔒 Seite ist gesperrt – oben auf „Gesperrt“ klicken zum Bearbeiten')); } }
   document.addEventListener('keydown', function (e) {
     if (!lockBlocked(e)) return;
     var nav = /^(Arrow|Page|Home|End|Escape|Shift|Control|Alt|Meta|Tab$)/.test(e.key) || ((e.metaKey || e.ctrlKey) && /^[acfkpl\[\]]$/i.test(e.key));
@@ -3006,14 +3008,14 @@
 
   function showArchive() {
     var arch = (S.all || []).filter(function (p) { return p.archived && !(p.parent_id && (anyById(p.parent_id) || {}).archived); });
-    openModal('📦 Archiv', function (body) {
-      if (!arch.length) { body.appendChild(el('p', 'trash-hint', 'Nichts archiviert. Archivieren geht im Seitenmenü „⋯“ – die Seite verschwindet dann aus Baum und Suche, bleibt aber erhalten.')); return; }
-      body.appendChild(el('p', 'trash-hint', 'Archivierte Seiten fehlen im Seitenbaum und in der Suche. Links darauf funktionieren weiter.'));
+    openModal('📦 ' + T('Archiv'), function (body) {
+      if (!arch.length) { body.appendChild(el('p', 'trash-hint', T('Nichts archiviert. Archivieren geht im Seitenmenü „⋯“ – die Seite verschwindet dann aus Baum und Suche, bleibt aber erhalten.'))); return; }
+      body.appendChild(el('p', 'trash-hint', T('Archivierte Seiten fehlen im Seitenbaum und in der Suche. Links darauf funktionieren weiter.')));
       var ul = el('ul', 'trash-list');
       arch.forEach(function (p) {
         var li = el('li'), o = el('button', 'linkbtn', (ti(p.icon) || '📄') + ' ' + label(p)); o.type = 'button';
         o.addEventListener('click', function () { closeModal(); openPage(p.id); });
-        var rb = el('button', 'linkbtn', 'Zurückholen'); rb.type = 'button';
+        var rb = el('button', 'linkbtn', T('Zurückholen')); rb.type = 'button';
         rb.addEventListener('click', function () { closeModal(); setArchived(p.id, false); });
         li.appendChild(o); li.appendChild(rb); ul.appendChild(li);
       });
@@ -3032,9 +3034,9 @@
   function copyLink(block) {
     if (!S.cur) return;
     var u = pageLink(S.cur.id, block);
-    var done = function () { HK.toast(block ? 'Link zum Block kopiert' : 'Link zur Seite kopiert'); };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(u).then(done, function () { prompt('Link kopieren:', u); });
-    else prompt('Link kopieren:', u);
+    var done = function () { HK.toast(block ? T('Link zum Block kopiert') : T('Link zur Seite kopiert')); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(u).then(done, function () { prompt(T('Link kopieren:'), u); });
+    else prompt(T('Link kopieren:'), u);
   }
   function showBlock(bid) {
     var b = null;
@@ -3049,31 +3051,31 @@
   function actions() {
     var c = S.cur, a = [];
     function add(t, ic, fn, o) { o = o || {}; a.push({ t: t, ic: ic, fn: fn, kw: o.kw, kbd: o.kbd }); }
-    var mk = isMac ? '⌘' : 'Strg+';
-    add('Neue Seite', '＋', function () { newPage(null); }, { kw: 'new page anlegen erstellen' });
+    var mk = isMac ? '⌘' : T('Strg') + '+';
+    add(T('Neue Seite'), '＋', function () { newPage(null); }, { kw: 'new page anlegen erstellen' });
     if (c) {
-      add('Neue Unterseite', '＋', function () { newPage(c.id); }, { kw: 'subpage unterseite anlegen' });
-      add('Link zur Seite kopieren', '🔗', function () { copyLink(); }, { kw: 'url teilen copy link', kbd: mk + 'L' });
-      add(c.pinned ? 'Von Favoriten lösen' : 'Zu Favoriten', '★', function () { setPinned(!c.pinned); }, { kw: 'favorit stern pin' });
-      add('Volle Breite ' + (c.wide ? 'aus' : 'ein'), '↔', function () { setWide(!c.wide); }, { kw: 'breite wide layout' });
-      add('Vollbild', '⤢', function () { setFull(!$('pages').classList.contains('pg-full')); }, { kw: 'fullscreen fokus' });
-      add('Seite duplizieren', '⧉', duplicatePage, { kw: 'kopie duplicate' });
-      add('Versionsverlauf', '🕘', openVersions, { kw: 'history versionen' });
-      add('Als Markdown exportieren', '⬇', function () { exportPage(false); }, { kw: 'export md download' });
-      if (c.parent_id) add('Übergeordnete Seite', '↑', goParent, { kw: 'eltern parent hoch', kbd: mk + '⇧U' });
-      if (window.HKKeys) add('Inhaltsverzeichnis ein/aus', '☰', HKKeys.toggleToc, { kw: 'toc gliederung ueberschriften' });
+      add(T('Neue Unterseite'), '＋', function () { newPage(c.id); }, { kw: 'subpage unterseite anlegen' });
+      add(T('Link zur Seite kopieren'), '🔗', function () { copyLink(); }, { kw: 'url teilen copy link', kbd: mk + 'L' });
+      add(c.pinned ? T('Von Favoriten lösen') : T('Zu Favoriten'), '★', function () { setPinned(!c.pinned); }, { kw: 'favorit stern pin' });
+      add(c.wide ? T('Volle Breite aus') : T('Volle Breite ein'), '↔', function () { setWide(!c.wide); }, { kw: 'breite wide layout' });
+      add(T('Vollbild'), '⤢', function () { setFull(!$('pages').classList.contains('pg-full')); }, { kw: 'fullscreen fokus' });
+      add(T('Seite duplizieren'), '⧉', duplicatePage, { kw: 'kopie duplicate' });
+      add(T('Versionsverlauf'), '🕘', openVersions, { kw: 'history versionen' });
+      add(T('Als Markdown exportieren'), '⬇', function () { exportPage(false); }, { kw: 'export md download' });
+      if (c.parent_id) add(T('Übergeordnete Seite'), '↑', goParent, { kw: 'eltern parent hoch', kbd: mk + '⇧U' });
+      if (window.HKKeys) add(T('Inhaltsverzeichnis ein/aus'), '☰', HKKeys.toggleToc, { kw: 'toc gliederung ueberschriften' });
     }
     if (!EMBED) {
-      add('Zurück', '←', function () { history.back(); }, { kw: 'back', kbd: mk + '[' });
-      add('Vor', '→', function () { history.forward(); }, { kw: 'forward', kbd: mk + ']' });
-      add('Seitenleiste ein/aus', '◧', function () { setSide(document.body.classList.contains('side-hidden')); }, { kw: 'sidebar', kbd: mk + '\\' });
+      add(T('Zurück'), '←', function () { history.back(); }, { kw: 'back', kbd: mk + '[' });
+      add(T('Vor'), '→', function () { history.forward(); }, { kw: 'forward', kbd: mk + ']' });
+      add(T('Seitenleiste ein/aus'), '◧', function () { setSide(document.body.classList.contains('side-hidden')); }, { kw: 'sidebar', kbd: mk + '\\' });
     }
-    if (c) add(c.locked ? 'Seite entsperren' : 'Seite sperren', '🔒', function () { setLocked(!c.locked); }, { kw: 'lock sperren schuetzen' });
-    if (c) add(c.archived ? 'Aus dem Archiv holen' : 'Seite archivieren', '📦', function () { setArchived(c.id, !c.archived); }, { kw: 'archiv archive' });
-    add('Archiv anzeigen', '📦', showArchive, { kw: 'archiv archive' });
-    add('Papierkorb', '🗑', showTrash, { kw: 'trash geloescht' });
-    if (window.HKSettings) add('Einstellungen', '⚙', function () { HKSettings.open(); }, { kw: 'settings kalender immich schluessel' });
-    add('Übersicht (Startseite)', '⌂', function () { location.href = '/'; }, { kw: 'home dashboard start' });
+    if (c) add(c.locked ? T('Seite entsperren') : T('Seite sperren'), '🔒', function () { setLocked(!c.locked); }, { kw: 'lock sperren schuetzen' });
+    if (c) add(c.archived ? T('Aus dem Archiv holen') : T('Seite archivieren'), '📦', function () { setArchived(c.id, !c.archived); }, { kw: 'archiv archive' });
+    add(T('Archiv anzeigen'), '📦', showArchive, { kw: 'archiv archive' });
+    add(T('Papierkorb'), '🗑', showTrash, { kw: 'trash geloescht' });
+    if (window.HKSettings) add(T('Einstellungen'), '⚙', function () { HKSettings.open(); }, { kw: 'settings kalender immich schluessel' });
+    add(T('Übersicht (Startseite)'), '⌂', function () { location.href = '/'; }, { kw: 'home dashboard start' });
     return a;
   }
 

@@ -20,6 +20,7 @@ import time
 from urllib.parse import urlparse
 
 from db import connect as _db
+from saga.i18n import t
 
 E = os.environ
 CACHE_TTL = int(E.get("CACHE_TTL", "60"))
@@ -37,6 +38,7 @@ DEFAULTS = {
     "default_groups": [],                  # neue Konten (Registrierung, Admin, Erst-Login) bekommen diese Gruppen
     "allow_private_hosts": False,          # Kalender/Immich auf internen Adressen erlauben (fuer alle)
     "allowed_hosts": "",                   # oder nur diese internen Hosts (Komma-getrennt)
+    "default_lang": "",                    # Standardsprache (de/en/es), leer = Browsersprache
     "update_check": E.get("SAGA_UPDATE_CHECK", "1") not in ("0", "false", "no", "off"),   # im Admin-Bereich neue Versionen melden
     "oidc": {"enabled": False, "issuer": "", "client_id": "", "client_secret": "", "scopes": "openid profile email",
              "username_claim": "preferred_username", "name_claim": "name", "email_claim": "email",
@@ -139,9 +141,9 @@ def verify_password(pw, stored):
 
 def password_problem(pw):
     if len(pw or "") < 10:
-        return "Das Passwort muss mindestens 10 Zeichen lang sein."
+        return t("Das Passwort muss mindestens 10 Zeichen lang sein.")
     if len(pw) > 200:
-        return "Das Passwort ist zu lang."
+        return t("Das Passwort ist zu lang.")
     return None
 
 
@@ -224,13 +226,13 @@ def create_user(username, password=None, display_name="", email="", source="loca
     """-> (user, fehler)"""
     u = norm_username(username)
     if not u:
-        return None, "Ungültiger Benutzername (a–z, 0–9, . _ - @; höchstens 64 Zeichen)."
+        return None, t("Ungültiger Benutzername (a–z, 0–9, . _ - @; höchstens 64 Zeichen).")
     if source == "local" and password is not None:
         p = password_problem(password)
         if p:
             return None, p
     if get_user(u):
-        return None, "Diesen Benutzernamen gibt es schon."
+        return None, t("Diesen Benutzernamen gibt es schon.")
     with _db() as c, c:
         uid = c.execute("INSERT INTO users (username, display_name, email, password_hash, source, ext_id, is_admin, created, pw_changed) "
                         "VALUES (?,?,?,?,?,?,?,?,?)",
@@ -321,12 +323,12 @@ def touch_login(username):
 def authenticate(username, password, ip, allow_local=True):
     """-> (user, fehlertext). Fehlertexte verraten nicht, ob es den Benutzer gibt.
     allow_local=False: lokale Konten werden abgewiesen (Einstellung "Anmeldung mit lokalem Konto" aus)."""
-    bad = "Benutzername oder Passwort falsch."
+    bad = t("Benutzername oder Passwort falsch.")
     u = norm_username(username)
     if not u or not password or len(password) > 200:
         return None, bad
     if too_many(u, ip):
-        return None, "Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen."
+        return None, t("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen.")
     st = settings()
     user = get_user(u)
     if user and user["disabled"]:
@@ -349,7 +351,7 @@ def authenticate(username, password, ip, allow_local=True):
             res, err = ldap_login(u, password)
         except Exception as ex:  # noqa: BLE001
             print(f"ldap-login {u}: {type(ex).__name__}: {ex}", flush=True)
-            return None, "Verzeichnisdienst (LDAP) gerade nicht erreichbar."
+            return None, t("Verzeichnisdienst (LDAP) gerade nicht erreichbar.")
         if res:
             clear_fails(u)
             touch_login(res["username"])
@@ -382,7 +384,7 @@ def _ldap_bind(cfg, dn, pw):
 def _service_conn(cfg):
     c = _ldap_bind(cfg, cfg["bind_dn"] or None, cfg["bind_password"] or None)
     if not c.bound:
-        raise RuntimeError("Dienstkonto-Anmeldung am LDAP fehlgeschlagen: " + str(c.result.get("description")))
+        raise RuntimeError(t("Dienstkonto-Anmeldung am LDAP fehlgeschlagen: {why}", why=c.result.get("description")))
     return c
 
 
@@ -495,16 +497,16 @@ def ldap_test(cfg, username=""):
     """Admin-Test: Verbindung + Dienstkonto, optional einen Benutzer suchen (ohne Passwort)."""
     out = []
     with _service_conn(cfg) as c:
-        out.append("✓ Verbindung und Dienstkonto-Anmeldung erfolgreich")
+        out.append(t("✓ Verbindung und Dienstkonto-Anmeldung erfolgreich"))
         if username:
             e = _ldap_find(c, cfg, username.lower())
             if e is None:
-                out.append(f"✗ Benutzer „{username}“ nicht gefunden (Filter: {cfg['user_filter']})")
+                out.append(t("✗ Benutzer „{username}“ nicht gefunden (Filter: {flt})", username=username, flt=cfg['user_filter']))
             else:
                 gs = sorted(_ldap_groups(c, cfg, e, username.lower()))
-                out.append(f"✓ Benutzer gefunden: {e.entry_dn}")
-                out.append(f"  Name: {_attr(e, cfg['attr_name']) or '–'} · E-Mail: {_attr(e, cfg['attr_mail']) or '–'}")
-                out.append(f"  Gruppen ({len(gs)}): " + (", ".join(gs[:40]) or "–"))
+                out.append(t("✓ Benutzer gefunden: {dn}", dn=e.entry_dn))
+                out.append("  " + t("Name: {name} · E-Mail: {mail}", name=_attr(e, cfg['attr_name']) or '–', mail=_attr(e, cfg['attr_mail']) or '–'))
+                out.append("  " + t("Gruppen ({n}):", n=len(gs)) + " " + (", ".join(gs[:40]) or "–"))
     return out
 
 
@@ -542,18 +544,18 @@ def _ext_user(username, source, ext_id, name, mail, groups, cfg):
     """Konto fuer einen erfolgreichen externen Login holen/anlegen -> (user, fehler)"""
     username = norm_username(username)
     if not username:
-        return None, "Der Benutzername vom Anmeldedienst ist hier nicht zulässig."
+        return None, t("Der Benutzername vom Anmeldedienst ist hier nicht zulässig.")
     groups = {g.lower() for g in groups if g}
     if cfg.get("allowed_group") and cfg["allowed_group"].lower() not in groups:
-        return None, "Kein Zugang – dein Konto ist nicht für Saga freigeschaltet."
+        return None, t("Kein Zugang – dein Konto ist nicht für Saga freigeschaltet.")
     user = get_user(username)
     if user and user["source"] != source:
-        return None, "Dieser Benutzername ist bereits als anderes Konto vergeben – bitte an den Admin wenden."
+        return None, t("Dieser Benutzername ist bereits als anderes Konto vergeben – bitte an den Admin wenden.")
     if user and user["disabled"]:
-        return None, "Dein Konto ist gesperrt."
+        return None, t("Dein Konto ist gesperrt.")
     if not user:
         if not cfg.get("auto_create", True):
-            return None, "Für dich gibt es hier noch kein Konto – bitte an den Admin wenden."
+            return None, t("Für dich gibt es hier noch kein Konto – bitte an den Admin wenden.")
         user, err = create_user(username, None, name, mail, source=source, ext_id=ext_id)
         if err:
             return None, err
@@ -614,7 +616,7 @@ def oidc_user(claims):
             u = get_user(norm_username(username))
             lg = groups_of(u["id"])[1] if u else set()
         if lg is None:
-            return None, "Dein Konto wurde im Verzeichnis nicht gefunden oder ist gesperrt."
+            return None, t("Dein Konto wurde im Verzeichnis nicht gefunden oder ist gesperrt.")
         groups = list(set(groups) | set(lg))
     return _ext_user(username, "oidc", str(claims.get("sub") or ""), str(_claim(claims, cfg["name_claim"]) or ""),
                      str(_claim(claims, cfg["email_claim"]) or ""), groups, cfg)

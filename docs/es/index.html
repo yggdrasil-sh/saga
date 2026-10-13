@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saga – panel, notas y tareas autoalojados</title>
+<meta name="description" content="Saga es tu casa autoalojada para servicios, páginas al estilo Notion, bases de datos, tareas, calendarios y marcadores: multiusuario, con LDAP y SSO, con Docker Compose.">
+<link rel="canonical" href="https://yggdrasil-sh.github.io/saga/es/">
+<link rel="alternate" hreflang="de" href="https://yggdrasil-sh.github.io/saga/">
+<link rel="alternate" hreflang="en" href="https://yggdrasil-sh.github.io/saga/en/">
+<link rel="alternate" hreflang="es" href="https://yggdrasil-sh.github.io/saga/es/">
+<link rel="alternate" hreflang="x-default" href="https://yggdrasil-sh.github.io/saga/en/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Saga">
+<meta property="og:title" content="Saga – tu casa autoalojada para servicios, notas y tareas">
+<meta property="og:description" content="Un panel autoalojado con notas, bases de datos, tareas, calendarios y marcadores.">
+<meta property="og:url" content="https://yggdrasil-sh.github.io/saga/es/">
+<meta property="og:image" content="https://yggdrasil-sh.github.io/saga/screenshots/dashboard.png">
+<meta property="og:locale" content="es_ES">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:locale:alternate" content="de_DE">
+<link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <a class="brand" href="#"><img src="../icon.svg" alt="">Saga</a>
+    <span class="sp"></span>
+    <a class="l hide" href="#funciones">Funciones</a>
+    <a class="l hide" href="#capturas">Capturas</a>
+    <a class="l hide" href="#apps">Apps</a>
+    <a class="l" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/es/GUIA.md">Guía</a>
+    <a class="l gh" href="https://github.com/yggdrasil-sh/saga">GitHub</a>
+    <span class="lang" aria-label="Idioma"><a href="../" lang="de" hreflang="de" data-l="de">DE</a><a href="../en/" lang="en" hreflang="en" data-l="en">EN</a><a href="./" lang="es" hreflang="es" data-l="es" aria-current="page">ES</a></span>
+  </nav>
+
+  <header class="hero">
+    <img class="logo" src="../icon.svg" alt="Logo de Saga">
+    <h1>Tu casa para<br><span>servicios, notas y tareas</span></h1>
+    <p class="lead">Saga es una página de inicio y una base de conocimiento autoalojada para familias, equipos y homelabs,
+      con páginas y bases de datos al estilo Notion, calendarios, tareas y marcadores. Cada persona tiene su propio espacio privado.</p>
+    <div class="btns">
+      <a class="btn primary" href="#inicio-rapido">🚀 Listo en 5 minutos</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/es/GUIA.md">📖 Guía</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga">★ En GitHub</a>
+    </div>
+    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>iOS · macOS · Linux · Android</span><span>Español · English · Deutsch</span></div>
+    <div class="shot"><img src="../screenshots/dashboard.png" alt="Panel de Saga" width="2880" height="1800"></div>
+  </header>
+</div>
+
+<section id="funciones" class="alt">
+  <div class="wrap">
+    <h2>Todo en un solo lugar</h2>
+    <p class="sub">Saga une un panel para tus servicios con un cuaderno personal, sin nube ni suscripciones, en tu propio servidor.</p>
+    <div class="grid">
+      <div class="card"><div class="ic">🧭</div><h3>Panel</h3><p>Mosaicos para todos tus servicios con puntos de estado, favoritos, búsqueda y atajos de teclado, y búsqueda web propia opcional con SearXNG.</p></div>
+      <div class="card"><div class="ic">🔑</div><h3>Acceso por grupo</h3><p>Quien está en <code>s_nextcloud</code> ve Nextcloud. Funciona igual con grupos locales, LDAP y SSO.</p></div>
+      <div class="card"><div class="ic">📝</div><h3>Páginas al estilo Notion</h3><p>Bloques, subpáginas, listas de verificación, tablas, código, imágenes, columnas, plantillas, versiones y exportación a Markdown.</p></div>
+      <div class="card"><div class="ic">🗂️</div><h3>Bases de datos</h3><p>Vistas de tabla, tablero, lista, galería y calendario, con filtros, relaciones, fórmulas y totales.</p></div>
+      <div class="card"><div class="ic">📅</div><h3>Calendarios y tareas</h3><p>Ver y editar calendarios CalDAV (Nextcloud, mailcow, Radicale, iCloud); tareas con prioridad y repetición.</p></div>
+      <div class="card"><div class="ic">🔖</div><h3>Marcadores propios</h3><p>Cada persona crea sus propios mosaicos: privados y también visibles en las apps.</p></div>
+      <div class="card"><div class="ic">📷</div><h3>Immich</h3><p>Usa fotos de tu propia biblioteca de Immich como imágenes y portadas en tus páginas.</p></div>
+      <div class="card"><div class="ic">👥</div><h3>Multiusuario</h3><p>Cuentas locales con registro, LDAP/Active Directory e inicio de sesión único, con el contenido estrictamente separado.</p></div>
+      <div class="card"><div class="ic">🛡️</div><h3>Área de administración</h3><p>En su propio puerto: usuarios, grupos, servicios, registro, LDAP y SSO con pruebas de conexión.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap split">
+    <div class="txt">
+      <h2>Escribir, planificar, reunir</h2>
+      <p class="sub">Un cuaderno que crece contigo: de la lista de la compra a la planificación de proyectos.</p>
+      <ul>
+        <li><b>Menú «/»</b> para bloques nuevos, enlaces a páginas y eventos</li>
+        <li><b>Árbol de páginas</b> con subpáginas, favoritos, archivo y papelera</li>
+        <li><b>Versiones</b>: ver y restaurar estados anteriores</li>
+        <li><b>Exportación</b> a Markdown, también con todas las subpáginas</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="../screenshots/seite.png" alt="Una página en Saga" loading="lazy"></div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap split rev">
+    <div class="txt">
+      <h2>Bases de datos a tu medida</h2>
+      <p class="sub">Crea propiedades, elige una vista y listo.</p>
+      <ul>
+        <li><b>Vistas:</b> tabla, tablero, lista, galería, calendario</li>
+        <li><b>Propiedades:</b> estado, selección, fecha, número, casilla, enlace, relación, fórmula</li>
+        <li><b>Filtros, orden y totales</b> en cada vista</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="../screenshots/board.png" alt="Base de datos como tablero" loading="lazy"></div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap split">
+    <div class="txt">
+      <h2>Pensado para administradores</h2>
+      <p class="sub">Un área de administración propia en un puerto aparte, por defecto solo accesible en local.</p>
+      <ul>
+        <li><b>Usuarios:</b> crear, bloquear, cerrar sesión en todas partes, poner contraseña</li>
+        <li><b>Servicios</b> con icono, categoría y asignación automática por el prefijo de grupo</li>
+        <li><b>LDAP/AD</b> con plantillas para FreeIPA, Active Directory y OpenLDAP</li>
+        <li><b>SSO/OIDC</b> para Keycloak, Authentik, Authelia, Zitadel, Entra ID…</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="../screenshots/admin-dienste.png" alt="Área de administración: servicios" loading="lazy"></div>
+  </div>
+</section>
+
+<section id="capturas" class="alt">
+  <div class="wrap">
+    <h2>Capturas</h2>
+    <p class="sub">Los temas oscuro y claro siguen automáticamente al sistema.</p>
+    <div class="gallery">
+      <figure><div class="shot"><img src="../screenshots/dashboard-hell.png" alt="" loading="lazy"></div><figcaption>Tema claro</figcaption></figure>
+      <figure><div class="shot"><img src="../screenshots/datenbank.png" alt="" loading="lazy"></div><figcaption>Base de datos como tabla</figcaption></figure>
+      <figure><div class="shot"><img src="../screenshots/einstellungen.png" alt="" loading="lazy"></div><figcaption>Ajustes propios: cuenta, marcadores, calendarios</figcaption></figure>
+      <figure><div class="shot"><img src="../screenshots/admin-sso.png" alt="" loading="lazy"></div><figcaption>Administración: SSO con prueba de conexión</figcaption></figure>
+      <figure><div class="shot"><img src="../screenshots/admin-ldap.png" alt="" loading="lazy"></div><figcaption>Administración: LDAP / Active Directory</figcaption></figure>
+      <figure><div class="shot"><img src="../screenshots/login.png" alt="" loading="lazy"></div><figcaption>Inicio de sesión</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="apps">
+  <div class="wrap">
+    <h2>Apps para el bolsillo y el escritorio</h2>
+    <p class="sub">Apps nativas para iPhone, iPad, Mac, Linux (GNOME) y Android, no una web incrustada.
+      Páginas, bases de datos, tareas y eventos se muestran y editan directamente en la app.
+      Inicia sesión con la dirección del servidor o, más cómodo, con el código QR de «Apps y dispositivos».</p>
+    <div class="phones">
+      <figure><img src="../screenshots/app-ios-start.png" alt="iPhone: inicio con tareas y páginas recientes" loading="lazy" width="660" height="1434"><figcaption>iPhone: Inicio</figcaption></figure>
+      <figure><img src="../screenshots/app-ios-dunkel-board.png" alt="iPhone: base de datos como tablero en tema oscuro" loading="lazy" width="660" height="1434"><figcaption>iPhone: tablero, oscuro</figcaption></figure>
+      <figure><img src="../screenshots/app-android-heute.png" alt="Android: hoy con eventos y tareas" loading="lazy" width="660" height="1467"><figcaption>Android: Hoy</figcaption></figure>
+      <figure><img src="../screenshots/app-android-dienste.png" alt="Android: servicios por grupos" loading="lazy" width="660" height="1467"><figcaption>Android: Servicios</figcaption></figure>
+    </div>
+    <figure class="tablet"><img src="../screenshots/app-ipad-projekte.png" alt="iPad: barra lateral y base de datos como tablero" loading="lazy" width="1600" height="1200"><figcaption>iPad: barra lateral y tablero</figcaption></figure>
+    <p class="dl"><a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/releases/latest">⬇️ Descargas: macOS · Linux (RPM, Flatpak) · Android</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/blob/main/README.es.md">📱 Código de las apps e instrucciones</a></p>
+  </div>
+</section>
+
+<section id="inicio-rapido" class="alt">
+  <div class="wrap">
+    <h2>Listo en 5 minutos</h2>
+    <p class="sub">Solo necesitas un servidor con Docker.</p>
+<pre><span class="c"># descargar</span>
+git clone https://github.com/yggdrasil-sh/saga.git &amp;&amp; cd saga
+cp .env.example .env
+<span class="c"># rellenar BASE_URL, SECRET_KEY y POSTGRES_PASSWORD en el .env</span>
+docker compose pull &amp;&amp; docker compose up -d
+<span class="c"># ver la primera contraseña de administración</span>
+docker compose logs saga | grep Admin-Konto
+
+<span class="c"># actualizar más adelante (antes, Saga crea una copia de seguridad automáticamente)</span>
+git pull &amp;&amp; docker compose pull &amp;&amp; docker compose up -d</pre>
+    <div class="steps">
+      <div class="card"><b>1 · Arrancar</b><p>Saga funciona en el puerto 8080 y el área de administración en el 8081 (solo local).</p></div>
+      <div class="card"><b>2 · Configurar</b><p>Crea usuarios y servicios en el área de administración y, si quieres, conecta LDAP o SSO.</p></div>
+      <div class="card"><b>3 · Empezar</b><p>Ponle delante un proxy HTTPS y tu propia casa en la red estará lista.</p></div>
+    </div>
+    <p style="margin-top:28px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/es/GUIA.md">📖 Ir a la guía completa</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga/releases">🏷️ Versiones y cambios</a></p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">Saga · autoalojado, privado, de código abierto (AGPL-3.0) · <a href="https://github.com/yggdrasil-sh/saga">github.com/yggdrasil-sh/saga</a><br>
+  Iconos de servicios de <a href="https://selfh.st/icons">selfh.st/icons</a></div>
+</footer>
+<script>document.querySelectorAll(".lang a").forEach(function(a){a.addEventListener("click",function(){try{localStorage.setItem("saga-lang",a.dataset.l)}catch(e){}})})</script>
+</body>
+</html>

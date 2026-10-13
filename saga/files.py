@@ -9,7 +9,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import _api_guard, _bad, _session_user
+from saga.core import _api_guard, _bad, _session_user, t
 from saga.notes import FILES_DIR, FILE_MAX, FILE_QUOTA, _disposition
 
 router = APIRouter()
@@ -65,24 +65,24 @@ async def api_file_upload(request: Request):
     if not uid:
         return _bad("unauthorized", 401)
     if int(request.headers.get("content-length") or 0) > FILE_MAX + 64 * 1024:
-        return JSONResponse({"success": 0, "error": f"Datei zu gross (max. {FILE_MAX // 1048576} MB)"}, status_code=413)
+        return JSONResponse({"success": 0, "error": t("Datei zu gross (max. {n} MB)", n=FILE_MAX // 1048576)}, status_code=413)
     form = await request.form()
     up = form.get("image") or form.get("file")
     if up is None or not hasattr(up, "read"):
-        return JSONResponse({"success": 0, "error": "keine Datei"}, status_code=400)
+        return JSONResponse({"success": 0, "error": t("keine Datei")}, status_code=400)
     data = await up.read(FILE_MAX + 1)
     if len(data) > FILE_MAX:
-        return JSONResponse({"success": 0, "error": f"Datei zu gross (max. {FILE_MAX // 1048576} MB)"}, status_code=413)
+        return JSONResponse({"success": 0, "error": t("Datei zu gross (max. {n} MB)", n=FILE_MAX // 1048576)}, status_code=413)
     if not data:
-        return JSONResponse({"success": 0, "error": "leere Datei"}, status_code=400)
+        return JSONResponse({"success": 0, "error": t("leere Datei")}, status_code=400)
     name = re.sub(r"[\x00-\x1f/\\\\]", "_", os.path.basename(up.filename or "datei"))[:120] or "datei"
     img = _sniff_image(data[:16])
     if "image" in form and not img:
-        return JSONResponse({"success": 0, "error": "kein unterstütztes Bild (PNG, JPEG, GIF, WebP)"}, status_code=415)
+        return JSONResponse({"success": 0, "error": t("kein unterstütztes Bild (PNG, JPEG, GIF, WebP)")}, status_code=415)
     with _db() as c, c:
         used = c.execute("SELECT COALESCE(SUM(size),0) FROM file WHERE uid=?", (uid,)).fetchone()[0]
         if used + len(data) > FILE_QUOTA:
-            return JSONResponse({"success": 0, "error": f"Speicherplatz voll (max. {FILE_QUOTA // 1048576} MB)"}, status_code=507)
+            return JSONResponse({"success": 0, "error": t("Speicherplatz voll (max. {n} MB)", n=FILE_QUOTA // 1048576)}, status_code=507)
         fid = os.urandom(12).hex()
         with open(os.path.join(FILES_DIR, fid), "wb") as f:
             f.write(data)

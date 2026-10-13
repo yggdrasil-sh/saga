@@ -7,10 +7,10 @@
 
   // Datum: lokales "heute" als YYYY-MM-DD, Anzeige "Fr., 9. Okt."
   function todayIso() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
-  var fDue = new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
+  var fDue = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'short', day: 'numeric', month: 'short' });
   function dueLabel(iso) {
     var t = todayIso();
-    if (iso === t) return { text: 'heute', cls: 'today' };
+    if (iso === t) return { text: T('heute'), cls: 'today' };
     var p = iso.split('-'), d = new Date(+p[0], +p[1] - 1, +p[2]);
     return { text: fDue.format(d), cls: iso < t ? 'overdue' : '' };
   }
@@ -24,26 +24,26 @@
   if (store('hk-nt-open') === '1') panel.open = true;
 
   // --- Aufgaben --------------------------------------------------------------
-  var PRIO = { 1: 'Hoch', 2: 'Normal', 3: 'Niedrig' };
-  var REP = { daily: 'täglich', weekdays: 'werktags', weekly: 'wöchentlich', monthly: 'monatlich', yearly: 'jährlich' };
+  var PRIO = { 1: T('Hoch'), 2: T('Normal'), 3: T('Niedrig') };
+  var REP = { daily: T('täglich'), weekdays: T('werktags'), weekly: T('wöchentlich'), monthly: T('monatlich'), yearly: T('jährlich') };
   var REP_ORDER = ['daily', 'weekdays', 'weekly', 'monthly', 'yearly'];
 
   function repeatMenu(current, pick) {
     return function (m) {
-      m.appendChild(menuLabel('Wiederholen'));
+      m.appendChild(menuLabel(T('Wiederholen')));
       REP_ORDER.forEach(function (k) { m.appendChild(menuItem(REP[k], function () { pick(k); }, { on: current === k })); });
-      if (current) m.appendChild(menuItem('Nicht wiederholen', function () { pick(null); }));
+      if (current) m.appendChild(menuItem(T('Nicht wiederholen'), function () { pick(null); }));
     };
   }
 
   function patchTask(id, body) {
     body.today = todayIso();
-    return api('PATCH', '/api/tasks/' + id, body).catch(function (err) { toast('Nicht gespeichert: ' + err.message); });
+    return api('PATCH', '/api/tasks/' + id, body).catch(function (err) { toast(T('Nicht gespeichert: {err}', { err: err.message })); });
   }
 
   function complete(task) {
     patchTask(task.id, { done: !task.done }).then(function (d) {
-      if (d && d.next_due) toast('Erledigt. Nächstes Mal: ' + dueLabel(d.next_due).text);
+      if (d && d.next_due) toast(T('Erledigt. Nächstes Mal: {date}', { date: dueLabel(d.next_due).text }));
       return loadTasks();
     });
   }
@@ -80,7 +80,7 @@
 
   function rowMenu(task, btn) {
     openMenu(btn, function (m) {
-      m.appendChild(menuLabel('Priorität'));
+      m.appendChild(menuLabel(T('Priorität')));
       var seg = el('div', 'menu-seg');
       [1, 2, 3].forEach(function (p) {
         var b = el('button', 'menu-seg-btn p' + p + (task.prio === p ? ' on' : ''), PRIO[p]); b.type = 'button';
@@ -89,11 +89,11 @@
       });
       m.appendChild(seg);
       repeatMenu(task.repeat, function (k) { patchTask(task.id, { repeat: k }).then(loadTasks); })(m);
-      m.appendChild(menuLabel('Fällig'));
-      m.appendChild(menuItem(task.due ? 'Datum ändern …' : 'Datum wählen …', function () { pickDate(task, btn); }));
-      if (task.due && !task.repeat) m.appendChild(menuItem('Datum entfernen', function () { patchTask(task.id, { due: null }).then(loadTasks); }));
+      m.appendChild(menuLabel(T('Fällig')));
+      m.appendChild(menuItem(task.due ? T('Datum ändern …') : T('Datum wählen …'), function () { pickDate(task, btn); }));
+      if (task.due && !task.repeat) m.appendChild(menuItem(T('Datum entfernen'), function () { patchTask(task.id, { due: null }).then(loadTasks); }));
       m.appendChild(el('div', 'menu-sep'));
-      m.appendChild(menuItem('Aufgabe löschen', function () { api('DELETE', '/api/tasks/' + task.id).then(loadTasks, loadTasks); }, { danger: true }));
+      m.appendChild(menuItem(T('Aufgabe löschen'), function () { api('DELETE', '/api/tasks/' + task.id).then(loadTasks, loadTasks); }, { danger: true }));
     });
   }
 
@@ -101,7 +101,7 @@
   function taskItem(task, compact) {
     var li = el('li', (compact ? 'rail-item' : 'task') + ' p' + (task.prio || 2) + (task.done ? ' is-done' : ''));
     var cb = el('button', 'task-check'); cb.type = 'button';
-    cb.setAttribute('aria-label', (task.done ? 'Wieder öffnen: ' : 'Erledigt: ') + task.text + (task.prio === 1 ? ' (Priorität hoch)' : ''));
+    cb.setAttribute('aria-label', (task.done ? T('Wieder öffnen: {text}', { text: task.text }) : T('Erledigt: {text}', { text: task.text })) + (task.prio === 1 ? ' ' + T('(Priorität hoch)') : ''));
     cb.textContent = task.done ? '✓' : '';
     cb.addEventListener('click', function () { cb.disabled = true; complete(task); });
     li.appendChild(cb);
@@ -121,16 +121,16 @@
     }
 
     var span = el('span', 'task-text', task.text);
-    if (!task.done) { span.title = 'Klicken zum Bearbeiten'; span.addEventListener('click', function () { editText(task, span); }); }
+    if (!task.done) { span.title = T('Klicken zum Bearbeiten'); span.addEventListener('click', function () { editText(task, span); }); }
     li.appendChild(span);
     var info = el('span', 'task-info');
     if (task.repeat) info.appendChild(el('span', 'rep', '↻ ' + REP[task.repeat]));
     if (d) info.appendChild(el('span', 'task-due' + (!task.done && d.cls ? ' ' + d.cls : ''), d.text));
     li.appendChild(info);
     var more = el('button', 'task-more', '⋯'); more.type = 'button';
-    more.setAttribute('aria-label', 'Optionen für ' + task.text); more.setAttribute('aria-haspopup', 'menu');
+    more.setAttribute('aria-label', T('Optionen für {text}', { text: task.text })); more.setAttribute('aria-haspopup', 'menu');
     if (task.done) {
-      more.textContent = '×'; more.setAttribute('aria-label', 'Löschen: ' + task.text);
+      more.textContent = '×'; more.setAttribute('aria-label', T('Löschen: {text}', { text: task.text }));
       more.addEventListener('click', function () { api('DELETE', '/api/tasks/' + task.id).then(loadTasks, loadTasks); });
     } else {
       more.addEventListener('click', function () { rowMenu(task, more); });
@@ -143,7 +143,7 @@
     var b = $('nt-badge'), n = state.tasks.open.length, t = todayIso();
     var over = state.tasks.open.filter(function (x) { return x.due && x.due < t; }).length;
     b.hidden = !n;
-    b.textContent = over ? (n + ' offen · ' + over + ' überfällig') : (n + ' offen');
+    b.textContent = over ? T('{n} offen · {over} überfällig', { n: n, over: over }) : T('{n} offen', { n: n });
     b.classList.toggle('alert', over > 0);
     $('rail-count').textContent = n ? String(n) : '';
     $('rail-tab-count').textContent = n ? String(n) : '';
@@ -156,7 +156,7 @@
     $('task-empty').hidden = state.tasks.open.length > 0;
     var dn = state.tasks.done.length, tog = $('task-toggle-done');
     tog.hidden = !dn; $('task-clear').hidden = !dn || !state.showDone;
-    tog.textContent = state.showDone ? 'Erledigte ausblenden' : ('Erledigte anzeigen (' + dn + ')');
+    tog.textContent = state.showDone ? T('Erledigte ausblenden') : T('Erledigte anzeigen ({n})', { n: dn });
     var dl = $('task-done'); dl.textContent = ''; dl.hidden = !state.showDone || !dn;
     if (state.showDone) state.tasks.done.forEach(function (t) { dl.appendChild(taskItem(t, false)); });
     var rl = $('rail-list'); rl.textContent = '';
@@ -214,7 +214,7 @@
     if (!v) return;
     addTask(v, { due: $('task-due').value || null, prio: add.prio, repeat: add.repeat })
       .then(function () { txt.value = ''; resetAdd(); txt.focus(); return loadTasks(); })
-      .catch(function (err) { toast('Aufgabe nicht gespeichert: ' + err.message); });
+      .catch(function (err) { toast(T('Aufgabe nicht gespeichert: {err}', { err: err.message })); });
   });
   // Formular mit mehreren Feldern und ohne Submit-Button sendet bei Enter laut HTML-Standard
   // NICHT von selbst ab -> Enter explizit behandeln.
@@ -229,7 +229,7 @@
     var inp = $('rail-text'), v = inp.value.trim();
     if (!v) return;
     addTask(v).then(function () { inp.value = ''; return loadTasks(); })
-      .catch(function (err) { toast('Aufgabe nicht gespeichert: ' + err.message); });
+      .catch(function (err) { toast(T('Aufgabe nicht gespeichert: {err}', { err: err.message })); });
   });
   function setRail(on) {
     document.body.classList.toggle('rail-on', on);
@@ -242,7 +242,7 @@
 
   $('task-toggle-done').addEventListener('click', function () { state.showDone = !state.showDone; renderTasks(); });
   $('task-clear').addEventListener('click', function () {
-    if (!confirm('Alle erledigten Aufgaben endgültig löschen?')) return;
+    if (!confirm(T('Alle erledigten Aufgaben endgültig löschen?'))) return;
     api('POST', '/api/tasks/clear-done').then(function () { state.showDone = false; return loadTasks(); });
   });
 

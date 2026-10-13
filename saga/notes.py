@@ -9,7 +9,7 @@ from datetime import date
 from html import unescape as html_unescape
 from urllib.parse import quote, urlparse
 from db import connect as _db
-from saga.core import E, STATE_DIR, _json_load
+from saga.core import E, STATE_DIR, _json_load, t
 
 
 NOTE_TITLE_MAX, NOTE_BODY_MAX = 200, 20000
@@ -22,7 +22,7 @@ MAX_NEST, MAX_JSON_DEPTH = 8, 48
 def _iter_blocks(blocks, depth=0):
     """Alle Bloecke inkl. verschachtelter (Spalten, Toggles) - fuer Pruefungen, Export, Vorschau."""
     if depth > MAX_NEST:
-        raise ValueError("zu tief verschachtelt")
+        raise ValueError(t("zu tief verschachtelt"))
     for b in blocks if isinstance(blocks, list) else []:
         if not isinstance(b, dict):
             continue
@@ -93,7 +93,7 @@ def _check_parent(c, uid, nid, parent):
             "WITH RECURSIVE t(id) AS (SELECT CAST(? AS BIGINT) UNION SELECT n.id FROM note n JOIN t ON n.parent_id=t.id WHERE n.uid=?) SELECT id FROM t",
             (nid, uid))}
         if parent in sub:
-            raise ValueError("Seite kann nicht unter sich selbst oder eine eigene Unterseite verschoben werden")
+            raise ValueError(t("Seite kann nicht unter sich selbst oder eine eigene Unterseite verschoben werden"))
     return parent
 
 
@@ -157,13 +157,13 @@ def _check_file_refs(uid, blocks):
             url = ((b.get("data") or {}).get("file") or {}).get("url", "")
             m = _FILE_URL.fullmatch(str(url))
             if not m:
-                raise ValueError("Bild/Datei muss aus Saga hochgeladen sein")
+                raise ValueError(t("Bild/Datei muss aus Saga hochgeladen sein"))
             ids.add(m.group(1))
     if ids:
         with _db() as c:
             own = {r[0] for r in c.execute(f"SELECT id FROM file WHERE uid=? AND id IN ({','.join('?' * len(ids))})", (uid, *ids))}
         if ids - own:
-            raise ValueError("unbekannte Datei")
+            raise ValueError(t("unbekannte Datei"))
 
 
 # --- Datenbanken (Notion-Stil) ------------------------------------------------------
@@ -203,12 +203,12 @@ _PID = re.compile(r"[a-z0-9_]{1,24}")
 
 def _default_schema():
     return {"props": [
-        {"id": "status", "name": "Status", "type": "select", "options": [
-            {"id": "todo", "name": "Offen", "color": "gray"}, {"id": "doing", "name": "In Arbeit", "color": "blue"},
-            {"id": "done", "name": "Erledigt", "color": "green"}]},
-        {"id": "datum", "name": "Datum", "type": "date"}],
-        "views": [{"id": "tabelle", "name": "Tabelle", "type": "table"},
-                  {"id": "board", "name": "Board", "type": "board", "group_by": "status"}]}
+        {"id": "status", "name": t("Status"), "type": "select", "options": [
+            {"id": "todo", "name": t("Offen"), "color": "gray"}, {"id": "doing", "name": t("In Arbeit"), "color": "blue"},
+            {"id": "done", "name": t("Erledigt"), "color": "green"}]},
+        {"id": "datum", "name": t("Datum"), "type": "date"}],
+        "views": [{"id": "tabelle", "name": t("Tabelle"), "type": "table"},
+                  {"id": "board", "name": t("Board"), "type": "board", "group_by": "status"}]}
 
 
 VIEW_TYPES = {"table", "board", "list", "gallery", "calendar"}
@@ -228,9 +228,9 @@ def _clean_views(raw, props):
             continue
         vid = str(v.get("id", ""))
         if not _PID.fullmatch(vid) or vid in seen:
-            raise ValueError("ungueltige Ansicht")
+            raise ValueError(t("ungueltige Ansicht"))
         seen.add(vid)
-        view = {"id": vid, "name": str(v.get("name", "")).strip()[:40] or "Ansicht",
+        view = {"id": vid, "name": str(v.get("name", "")).strip()[:40] or t("Ansicht"),
                 "type": v.get("type") if v.get("type") in VIEW_TYPES else "table"}
         g = v.get("group_by")
         if g in pids and pids[g]["type"] == "select":
@@ -284,34 +284,34 @@ def _clean_views(raw, props):
             if cc:
                 view["calcs"] = cc
         out.append(view)
-    return out or [{"id": "tabelle", "name": "Tabelle", "type": "table"}]
+    return out or [{"id": "tabelle", "name": t("Tabelle"), "type": "table"}]
 
 
 def _clean_schema(raw):
     """Schema pruefen: max. 30 Eigenschaften, eindeutige IDs, bekannte Typen, Optionen fuer Auswahlen."""
     if not isinstance(raw, dict) or not isinstance(raw.get("props"), list):
-        raise ValueError("ungueltiges Schema")
+        raise ValueError(t("ungueltiges Schema"))
     out, seen = [], set()
     for p in raw["props"][:30]:
         pid, typ = str(p.get("id", "")), str(p.get("type", ""))
         if not _PID.fullmatch(pid) or pid in seen or typ not in PROP_TYPES:
-            raise ValueError("ungueltige Eigenschaft")
+            raise ValueError(t("ungueltige Eigenschaft"))
         seen.add(pid)
-        prop = {"id": pid, "name": str(p.get("name", "")).strip()[:60] or "Eigenschaft", "type": typ}
+        prop = {"id": pid, "name": str(p.get("name", "")).strip()[:60] or t("Eigenschaft"), "type": typ}
         if typ in ("select", "multi_select"):
             opts, oseen = [], set()
             for o in (p.get("options") or [])[:50]:
                 oid = str(o.get("id", ""))
                 if not _PID.fullmatch(oid) or oid in oseen:
-                    raise ValueError("ungueltige Option")
+                    raise ValueError(t("ungueltige Option"))
                 oseen.add(oid)
                 col = o.get("color") if o.get("color") in OPT_COLORS else "gray"
-                opts.append({"id": oid, "name": str(o.get("name", "")).strip()[:40] or "Option", "color": col})
+                opts.append({"id": oid, "name": str(o.get("name", "")).strip()[:40] or t("Option"), "color": col})
             prop["options"] = opts
         if typ == "relation":                       # Ziel-Datenbank (Besitz prueft der Aufrufer)
             tg = p.get("target")
             if not (isinstance(tg, int) or (isinstance(tg, str) and tg.isdigit())):
-                raise ValueError("Relation braucht eine Ziel-Datenbank")
+                raise ValueError(t("Relation braucht eine Ziel-Datenbank"))
             prop["target"] = int(tg)
             if isinstance(p.get("pair"), str) and _PID.fullmatch(p["pair"]):
                 prop["pair"] = p["pair"]                # Gegenspalte (zweiseitig) - stellt nur der Server her
@@ -385,26 +385,26 @@ def _rel_sync(c, uid, schema, row_id, old_props, new_props):
         if p.get("type") != "relation" or not p.get("pair"):
             continue
         old, new = set(old_props.get(p["id"]) or []), set(new_props.get(p["id"]) or [])
-        for t in new - old:
-            _rel_mirror_set(c, uid, p["target"], t, p["pair"], row_id, True)
-        for t in old - new:
-            _rel_mirror_set(c, uid, p["target"], t, p["pair"], row_id, False)
+        for tid in new - old:
+            _rel_mirror_set(c, uid, p["target"], tid, p["pair"], row_id, True)
+        for tid in old - new:
+            _rel_mirror_set(c, uid, p["target"], tid, p["pair"], row_id, False)
 
 
 def _rel_link(c, uid, nid, title, rp):
     """Gegenspalte in der Ziel-Datenbank anlegen und bestehende Verknuepfungen nachtragen; liefert deren ID."""
     ts = _db_schema(c, uid, rp["target"])
     if ts is None:
-        raise ValueError("Ziel-Datenbank der Relation nicht gefunden")
+        raise ValueError(t("Ziel-Datenbank der Relation nicht gefunden"))
     if len(ts.get("props", [])) >= 30:
-        raise ValueError("Die Ziel-Datenbank hat schon 30 Eigenschaften")
+        raise ValueError(t("Die Ziel-Datenbank hat schon 30 Eigenschaften"))
     used = {p["id"] for p in ts["props"]}
     mid = next(x for x in ("r" + secrets.token_hex(4) for _ in range(50)) if x not in used)
-    ts["props"].append({"id": mid, "name": (title or "Verknüpft")[:60], "type": "relation", "target": nid, "pair": rp["id"]})
+    ts["props"].append({"id": mid, "name": (title or t("Verknüpft"))[:60], "type": "relation", "target": nid, "pair": rp["id"]})
     c.execute("UPDATE note SET schema=? WHERE id=? AND uid=?", (json.dumps(ts, ensure_ascii=False), rp["target"], uid))
     for row_id, pr in c.execute("SELECT id, props FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL", (uid, nid)).fetchall():
-        for t in _json_load(pr, {}).get(rp["id"]) or []:
-            _rel_mirror_set(c, uid, rp["target"], t, mid, row_id, True)
+        for tid in _json_load(pr, {}).get(rp["id"]) or []:
+            _rel_mirror_set(c, uid, rp["target"], tid, mid, row_id, True)
     return mid
 
 
@@ -431,48 +431,48 @@ def _rel_unlink(c, uid, nid, target, mpid, delete):
 def _clean_props(schema, raw, base=None, check=None):
     """Zeilenwerte gegen das Schema pruefen; unbekannte Eigenschaften werden verworfen."""
     if not isinstance(raw, dict):
-        raise ValueError("ungueltige Werte")
+        raise ValueError(t("ungueltige Werte"))
     out = dict(base or {})
     by_id = {p["id"]: p for p in schema.get("props", [])}
     for pid, v in raw.items():
         p = by_id.get(pid)
         if not p:
             continue
-        t = p["type"]
-        if t in AUTO_TYPES or t == "calc":   # automatisch/berechnet - nie gespeichert, nicht faelschbar
+        typ = p["type"]
+        if typ in AUTO_TYPES or typ == "calc":   # automatisch/berechnet - nie gespeichert, nicht faelschbar
             out.pop(pid, None)
             continue
         if v in (None, "", []):
             out.pop(pid, None)
             continue
-        if t == "text":
+        if typ == "text":
             v = str(v)[:2000]
-        elif t == "number":
+        elif typ == "number":
             v = float(v)
             if v != v or abs(v) > 1e15:
-                raise ValueError("ungueltige Zahl")
+                raise ValueError(t("ungueltige Zahl"))
             v = int(v) if v == int(v) else v
-        elif t == "select":
+        elif typ == "select":
             if v not in {o["id"] for o in p.get("options", [])}:
-                raise ValueError("unbekannte Option")
-        elif t == "multi_select":
+                raise ValueError(t("unbekannte Option"))
+        elif typ == "multi_select":
             ok_ids = {o["id"] for o in p.get("options", [])}
             if not isinstance(v, list) or any(x not in ok_ids for x in v):
-                raise ValueError("unbekannte Option")
+                raise ValueError(t("unbekannte Option"))
             v = list(dict.fromkeys(v))[:20]
-        elif t == "date":
+        elif typ == "date":
             v = date.fromisoformat(str(v)).isoformat()
-        elif t == "checkbox":
+        elif typ == "checkbox":
             v = bool(v)
             if not v:
                 out.pop(pid, None)
                 continue
-        elif t == "relation":
+        elif typ == "relation":
             if not isinstance(v, list):
-                raise ValueError("Relation muss eine Liste sein")
+                raise ValueError(t("Relation muss eine Liste sein"))
             ids = list(dict.fromkeys(int(x) for x in v if not isinstance(x, bool)))[:50]
             if any(not 0 < x < 2 ** 63 for x in ids):   # passt nicht in SQLite -> sonst OverflowError (500)
-                raise ValueError("ungueltige Eintrags-ID")
+                raise ValueError(t("ungueltige Eintrags-ID"))
             if check is not None:                   # fremde/erfundene IDs still verwerfen
                 ok = check(p.get("target"), ids)
                 ids = [x for x in ids if x in ok]
@@ -480,9 +480,9 @@ def _clean_props(schema, raw, base=None, check=None):
                 out.pop(pid, None)
                 continue
             v = ids
-        elif t == "url":
+        elif typ == "url":
             v = str(v).strip()[:500]
             if urlparse(v).scheme not in ("http", "https", "mailto"):
-                raise ValueError("URL muss mit http(s):// oder mailto: beginnen")
+                raise ValueError(t("URL muss mit http(s):// oder mailto: beginnen"))
         out[pid] = v
     return out

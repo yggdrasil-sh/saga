@@ -23,14 +23,14 @@
 
   function pick(onPick, onCancel) {
     var dlg = el('div', 'hk-modal imm-modal'), card = el('div', 'hk-dialog imm-card'), head = el('div', 'hk-dlg-head');
-    dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); dlg.setAttribute('aria-label', 'Bild aus Immich');
+    dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); dlg.setAttribute('aria-label', T('Bild aus Immich'));
     head.appendChild(el('h2', null, '📷 Immich'));
-    var x = el('button', 'icon-btn', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Schließen'); head.appendChild(x);
-    var bar = el('div', 'imm-bar'), tRecent = el('button', 'imm-tab on', 'Zuletzt'), tAlbums = el('button', 'imm-tab', 'Alben');
+    var x = el('button', 'icon-btn', '✕'); x.type = 'button'; x.setAttribute('aria-label', T('Schließen')); head.appendChild(x);
+    var bar = el('div', 'imm-bar'), tRecent = el('button', 'imm-tab on', T('Zuletzt')), tAlbums = el('button', 'imm-tab', T('Alben'));
     tRecent.type = tAlbums.type = 'button';
-    var q = el('input', 'imm-q'); q.type = 'search'; q.placeholder = 'Suchen … (z. B. „Strand“, „Katze“)';
+    var q = el('input', 'imm-q'); q.type = 'search'; q.placeholder = T('Suchen … (z. B. „Strand“, „Katze“)');
     bar.appendChild(tRecent); bar.appendChild(tAlbums); bar.appendChild(q);
-    var crumb = el('div', 'imm-crumb'), grid = el('div', 'imm-grid'), more = el('button', 'btn imm-more', 'Mehr laden'), info = el('p', 'hk-hint imm-info');
+    var crumb = el('div', 'imm-crumb'), grid = el('div', 'imm-grid'), more = el('button', 'btn imm-more', T('Mehr laden')), info = el('p', 'hk-hint imm-info');
     more.type = 'button'; more.hidden = true;
     card.appendChild(head); card.appendChild(bar); card.appendChild(crumb); card.appendChild(info); card.appendChild(grid); card.appendChild(more);
     dlg.appendChild(card); document.body.appendChild(dlg);
@@ -47,16 +47,16 @@
 
     function tab(t) { tRecent.classList.toggle('on', t === 'recent'); tAlbums.classList.toggle('on', t === 'albums'); }
     function choose(it, tile) {
-      if (state.busy) return; state.busy = true; tile.classList.add('busy'); info.textContent = 'Übernehme „' + (it.name || 'Foto') + '“ …';
+      if (state.busy) return; state.busy = true; tile.classList.add('busy'); info.textContent = T('Übernehme „{name}“ …', { name: it.name || T('Foto') });
       api('POST', '/api/immich/import', { id: it.id }).then(function (r) { picked = true; close(); onPick(r.url, r.name); })
-        .catch(function (e) { state.busy = false; tile.classList.remove('busy'); info.textContent = 'Nicht übernommen: ' + e.message; });
+        .catch(function (e) { state.busy = false; tile.classList.remove('busy'); info.textContent = T('Nicht übernommen: {err}', { err: e.message }); });
     }
     function loadAssets(reset) {
       if (reset) { state.page = 1; grid.textContent = ''; }
-      more.hidden = true; info.textContent = state.page === 1 ? 'Lade …' : '';
+      more.hidden = true; info.textContent = state.page === 1 ? T('Lade …') : '';
       var b = { page: state.page }; if (state.album) b.album = state.album; if (state.q) b.q = state.q;
       api('POST', '/api/immich/assets', b).then(function (d) {
-        info.textContent = d.items.length || state.page > 1 ? '' : 'Keine Fotos gefunden.';
+        info.textContent = d.items.length || state.page > 1 ? '' : T('Keine Fotos gefunden.');
         d.items.forEach(function (it, k) {
           var tile = el('button', 'imm-tile'); tile.type = 'button'; tile.title = it.name || '';
           var img = el('img'); img.alt = it.name || ''; tile.appendChild(img);
@@ -70,17 +70,17 @@
     }
     function showRecent() { tab('recent'); state.album = null; state.q = ''; q.value = ''; crumb.textContent = ''; grid.className = 'imm-grid'; loadAssets(true); }
     function showAlbums() {
-      tab('albums'); state.album = null; state.q = ''; crumb.textContent = ''; grid.textContent = ''; grid.className = 'imm-grid albums'; more.hidden = true; info.textContent = 'Lade …';
+      tab('albums'); state.album = null; state.q = ''; crumb.textContent = ''; grid.textContent = ''; grid.className = 'imm-grid albums'; more.hidden = true; info.textContent = T('Lade …');
       api('GET', '/api/immich/albums').then(function (d) {
-        info.textContent = d.albums.length ? '' : 'Keine Alben.';
+        info.textContent = d.albums.length ? '' : T('Keine Alben.');
         d.albums.forEach(function (a) {
           var tile = el('button', 'imm-tile imm-album'); tile.type = 'button';
           var img = el('img'); img.alt = ''; tile.appendChild(img);
-          var cap = el('span', 'imm-cap'); cap.appendChild(el('b', null, a.name)); cap.appendChild(el('small', null, a.count + ' Fotos')); tile.appendChild(cap);
+          var cap = el('span', 'imm-cap'); cap.appendChild(el('b', null, a.name)); cap.appendChild(el('small', null, T('{n} Fotos', { n: a.count }))); tile.appendChild(cap);
           if (a.thumb) thumb(img, a.thumb);
           tile.addEventListener('click', function () {
             state.album = a.id; state.albumName = a.name; grid.className = 'imm-grid';
-            crumb.textContent = ''; var back = el('button', 'linkish', '← Alben'); back.type = 'button'; back.addEventListener('click', showAlbums);
+            crumb.textContent = ''; var back = el('button', 'linkish', T('← Alben')); back.type = 'button'; back.addEventListener('click', showAlbums);
             crumb.appendChild(back); crumb.appendChild(document.createTextNode('  ' + a.name)); loadAssets(true);
           });
           grid.appendChild(tile);
@@ -93,14 +93,14 @@
       if (e.key !== 'Enter') return; e.preventDefault();
       state.q = q.value.trim(); grid.className = 'imm-grid';
       if (!state.q) return showRecent();
-      tab(''); crumb.textContent = 'Suche: „' + state.q + '“' + (state.album ? ' in ' + state.albumName : ''); loadAssets(true);
+      tab(''); crumb.textContent = state.album ? T('Suche: „{q}“ in {album}', { q: state.q, album: state.albumName }) : T('Suche: „{q}“', { q: state.q }); loadAssets(true);
     });
     more.addEventListener('click', function () { loadAssets(false); });
 
     api('GET', '/api/settings/immich').then(function (s) {
       if (!s.connected) {
-        bar.hidden = true; info.textContent = 'Noch nicht mit Immich verbunden. ';
-        var go = el('button', 'btn', 'Einstellungen öffnen'); go.type = 'button';
+        bar.hidden = true; info.textContent = T('Noch nicht mit Immich verbunden.') + ' ';
+        var go = el('button', 'btn', T('Einstellungen öffnen')); go.type = 'button';
         go.addEventListener('click', function () { close(); if (window.HKSettings) window.HKSettings.open('immich'); });
         info.appendChild(go); return;
       }

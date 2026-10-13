@@ -1,5 +1,7 @@
 # Saga – Anleitung
 
+[English](en/GUIDE.md) · **Deutsch** · [Español](es/GUIA.md)
+
 Diese Anleitung führt von der Installation bis zum Alltag: erst für die Person, die Saga betreibt (Admin),
 dann für alle, die Saga benutzen.
 
@@ -144,6 +146,7 @@ Unter **Allgemein** stellst du ein:
 | Standardgruppen | Bekommt jedes neue Konto (z. B. `s_wiki` für einen Dienst, den alle sehen sollen) |
 | Gruppen-Kennung | Vorsilbe der Zugangsgruppen für Dienste, Standard `s_` (siehe Abschnitt 6) |
 | Interne Adressen | Ob Benutzer Kalender/Immich im Heimnetz verbinden dürfen (siehe Abschnitt 9) |
+| Standardsprache | Sprache für Anmeldeseite, Admin-Bereich und alle Konten mit „Automatisch“; Vorgabe: Automatisch (Browser) |
 
 ![Admin: Allgemein](screenshots/admin-allgemein.png)
 
@@ -319,6 +322,19 @@ Im Benutzermenü oben rechts unter **Einstellungen**:
 davor, über Saga abgefragt zu werden.
 
 ![Einstellungen](screenshots/einstellungen.png)
+
+### Sprache
+
+Saga spricht Deutsch, Englisch und Spanisch. Welche Sprache du siehst, entscheidet sich in dieser Reihenfolge:
+
+1. deine eigene Wahl unter **Einstellungen** → **Konto** → **Sprache** – gilt sofort und in jedem Browser,
+   weil sie in deinem Konto gespeichert wird,
+2. die **Standardsprache**, die der Admin unter Allgemein festlegt,
+3. die Sprache deines Browsers,
+4. sonst Englisch (auch bei allen anderen Browsersprachen).
+
+„Automatisch“ heißt jeweils: Die nächste Stufe entscheidet. Datum und Zahlen richten sich nach der gewählten
+Sprache. Die Apps folgen der Sprache des Geräts.
 
 ### Auf dem Handy
 

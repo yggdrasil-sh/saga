@@ -3,59 +3,58 @@
 {% block pagetitle %}LDAP / AD{% endblock %}
 {% block content %}
 <h2>LDAP / Active Directory</h2>
-<p class="hk-hint">Anmeldung mit dem Verzeichnis-Passwort auf der normalen Anmeldeseite. Gruppen des Benutzers werden bei jeder Anmeldung
-  (und bei App-Erneuerung) gelesen – Gruppen wie <code>s_nextcloud</code> geben Dienste frei.</p>
+<p class="hk-hint">{{ _("Anmeldung mit dem Verzeichnis-Passwort auf der normalen Anmeldeseite. Gruppen des Benutzers werden bei jeder Anmeldung (und bei App-Erneuerung) gelesen – Gruppen wie s_nextcloud geben Dienste frei.") }}</p>
 {% if test %}<pre class="adm-test">{% for l in test %}{{ l }}
 {% endfor %}</pre>{% endif %}
 <form method="post" class="adm-form">
   {{ csrf_field() }}
   <section class="adm-card">
     <div class="adm-row">
-      <label class="adm-field"><span>Vorlage</span>
+      <label class="adm-field"><span>{{ _("Vorlage") }}</span>
         <select class="hk-in" name="preset">{% for p in presets %}<option value="{{ p }}"{% if p == l.preset %} selected{% endif %}>{{ {'freeipa': 'FreeIPA / 389 DS', 'ad': 'Active Directory', 'openldap': 'OpenLDAP'}.get(p, p) }}</option>{% endfor %}</select></label>
-      <button class="btn" type="submit" name="action" value="preset" data-confirm="Filter und Attribute der Vorlage übernehmen (und speichern)?">Vorlage übernehmen</button>
+      <button class="btn" type="submit" name="action" value="preset" data-confirm="{{ _("Filter und Attribute der Vorlage übernehmen (und speichern)?") }}">{{ _("Vorlage übernehmen") }}</button>
     </div>
-    {{ check('LDAP aktivieren', 'enabled', l.enabled) }}
-    {{ field('Server', 'url', l.url, max=300, ph='ldaps://ipa.example.org oder ldap://dc1.example.org') }}
-    {{ check('StartTLS (bei ldap://)', 'starttls', l.starttls, 'ohne StartTLS gehen Passwörter unverschlüsselt über das Netz') }}
-    {{ check('TLS-Zertifikat prüfen', 'verify_tls', l.verify_tls, 'eigene CA: als CA_FILE in den Container geben') }}
-    {{ field('Dienstkonto (Bind-DN)', 'bind_dn', l.bind_dn, max=500, ph='uid=svc-saga,cn=sysaccounts,cn=etc,dc=example,dc=org') }}
-    {{ field('Passwort Dienstkonto', 'bind_password', '', max=500, secret=true, hint=('gespeichert ✓ – leer lassen = behalten' if has_secret else 'noch keins gespeichert')) }}
+    {{ check(_('LDAP aktivieren'), 'enabled', l.enabled) }}
+    {{ field(_('Server'), 'url', l.url, max=300, ph=_('ldaps://ipa.example.org oder ldap://dc1.example.org')) }}
+    {{ check(_('StartTLS (bei ldap://)'), 'starttls', l.starttls, _('ohne StartTLS gehen Passwörter unverschlüsselt über das Netz')) }}
+    {{ check(_('TLS-Zertifikat prüfen'), 'verify_tls', l.verify_tls, _('eigene CA: als CA_FILE in den Container geben')) }}
+    {{ field(_('Dienstkonto (Bind-DN)'), 'bind_dn', l.bind_dn, max=500, ph='uid=svc-saga,cn=sysaccounts,cn=etc,dc=example,dc=org') }}
+    {{ field(_('Passwort Dienstkonto'), 'bind_password', '', max=500, secret=true, hint=(_('gespeichert ✓ – leer lassen = behalten') if has_secret else _('noch keins gespeichert'))) }}
   </section>
   <section class="adm-card">
-    <h3>Benutzer</h3>
-    {{ field('Suchbasis Benutzer', 'user_base', l.user_base, max=500, ph='cn=users,cn=accounts,dc=example,dc=org') }}
-    {{ field('Benutzerfilter', 'user_filter', l.user_filter, max=500, hint='{username} wird ersetzt') }}
-    {{ field('Attribut Benutzername', 'attr_username', l.attr_username, max=60) }}
-    {{ field('Attribut Name', 'attr_name', l.attr_name, max=60) }}
-    {{ field('Attribut E-Mail', 'attr_mail', l.attr_mail, max=60) }}
-    {{ check('Anmeldung mit Verzeichnis-Passwort', 'password_login', l.password_login, 'auf der normalen Anmeldeseite – aus, wenn nur SSO genutzt wird') }}
-    {{ check('Konten bei der ersten Anmeldung automatisch anlegen', 'auto_create', l.auto_create) }}
-    {{ check('Gruppen von SSO-Konten aus dem Verzeichnis lesen', 'sso_groups', l.sso_groups,
-             'z. B. Keycloak mit FreeIPA-Anbindung: Gruppen (s_*) kommen aus LDAP, gesperrte Konten verlieren sofort den Zugang') }}
-    {{ field('Nur Mitglieder dieser Gruppe', 'allowed_group', l.allowed_group, max=100, hint='z. B. saga-users – leer = alle im Filter') }}
-    {{ field('Admin-Gruppe', 'admin_group', l.admin_group, max=100, hint='Mitglieder werden Admins') }}
+    <h3>{{ _("Benutzer") }}</h3>
+    {{ field(_('Suchbasis Benutzer'), 'user_base', l.user_base, max=500, ph='cn=users,cn=accounts,dc=example,dc=org') }}
+    {{ field(_('Benutzerfilter'), 'user_filter', l.user_filter, max=500, hint=_('{username} wird ersetzt')) }}
+    {{ field(_('Attribut Benutzername'), 'attr_username', l.attr_username, max=60) }}
+    {{ field(_('Attribut Name'), 'attr_name', l.attr_name, max=60) }}
+    {{ field(_('Attribut E-Mail'), 'attr_mail', l.attr_mail, max=60) }}
+    {{ check(_('Anmeldung mit Verzeichnis-Passwort'), 'password_login', l.password_login, _('auf der normalen Anmeldeseite – aus, wenn nur SSO genutzt wird')) }}
+    {{ check(_('Konten bei der ersten Anmeldung automatisch anlegen'), 'auto_create', l.auto_create) }}
+    {{ check(_('Gruppen von SSO-Konten aus dem Verzeichnis lesen'), 'sso_groups', l.sso_groups,
+             _('z. B. Keycloak mit FreeIPA-Anbindung: Gruppen (s_*) kommen aus LDAP, gesperrte Konten verlieren sofort den Zugang')) }}
+    {{ field(_('Nur Mitglieder dieser Gruppe'), 'allowed_group', l.allowed_group, max=100, hint=_('z. B. saga-users – leer = alle im Filter')) }}
+    {{ field(_('Admin-Gruppe'), 'admin_group', l.admin_group, max=100, hint=_('Mitglieder werden Admins')) }}
   </section>
   <section class="adm-card">
-    <h3>Gruppen</h3>
-    <label class="adm-field"><span>Gruppen ermitteln</span>
+    <h3>{{ _("Gruppen") }}</h3>
+    <label class="adm-field"><span>{{ _("Gruppen ermitteln") }}</span>
       <select class="hk-in" name="group_mode">
-        {% for k, t in [('memberof', 'memberOf am Benutzer (FreeIPA, AD direkt)'), ('ad_nested', 'Active Directory inkl. verschachtelter Gruppen'), ('search', 'Gruppen durchsuchen (OpenLDAP, member/memberUid)')] %}
+        {% for k, t in [('memberof', _('memberOf am Benutzer (FreeIPA, AD direkt)')), ('ad_nested', _('Active Directory inkl. verschachtelter Gruppen')), ('search', _('Gruppen durchsuchen (OpenLDAP, member/memberUid)'))] %}
         <option value="{{ k }}"{% if k == l.group_mode %} selected{% endif %}>{{ t }}</option>{% endfor %}
       </select></label>
-    {{ field('Suchbasis Gruppen', 'group_base', l.group_base, max=500, ph='cn=groups,cn=accounts,dc=example,dc=org', hint='leer = Suchbasis Benutzer') }}
-    {{ field('Gruppenfilter', 'group_filter', l.group_filter, max=500, hint='nur „durchsuchen“: {dn} und {username} werden ersetzt') }}
-    {{ field('Attribut Gruppenname', 'group_name_attr', l.group_name_attr, max=60) }}
-    {{ check('Dienste aus Gruppenbeschreibungen übernehmen (FreeIPA-Stil)', 'services_from_description', l.services_from_description,
-             'Gruppen mit Kennung und Beschreibung „Text || Name|URL|icon|Kategorie“ werden zu Diensten') }}
+    {{ field(_('Suchbasis Gruppen'), 'group_base', l.group_base, max=500, ph='cn=groups,cn=accounts,dc=example,dc=org', hint=_('leer = Suchbasis Benutzer')) }}
+    {{ field(_('Gruppenfilter'), 'group_filter', l.group_filter, max=500, hint=_('nur „durchsuchen“: {dn} und {username} werden ersetzt')) }}
+    {{ field(_('Attribut Gruppenname'), 'group_name_attr', l.group_name_attr, max=60) }}
+    {{ check(_('Dienste aus Gruppenbeschreibungen übernehmen (FreeIPA-Stil)'), 'services_from_description', l.services_from_description,
+             _('Gruppen mit Kennung und Beschreibung „Text || Name|URL|icon|Kategorie“ werden zu Diensten')) }}
   </section>
   <section class="adm-card">
-    <h3>Testen</h3>
-    {{ field('Benutzer suchen (optional)', 'test_user', test_user, max=64, hint='prüft Verbindung + Dienstkonto, zeigt DN und Gruppen – ohne Passwort, ohne zu speichern') }}
+    <h3>{{ _("Testen") }}</h3>
+    {{ field(_('Benutzer suchen (optional)'), 'test_user', test_user, max=64, hint=_('prüft Verbindung + Dienstkonto, zeigt DN und Gruppen – ohne Passwort, ohne zu speichern')) }}
   </section>
   <div class="adm-actions">
-    <button class="btn btn-primary" type="submit" name="action" value="save">Speichern</button>
-    <button class="btn" type="submit" name="action" value="test">Verbindung testen</button>
+    <button class="btn btn-primary" type="submit" name="action" value="save">{{ _("Speichern") }}</button>
+    <button class="btn" type="submit" name="action" value="test">{{ _("Verbindung testen") }}</button>
   </div>
 </form>
 {% endblock %}

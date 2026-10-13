@@ -1,22 +1,22 @@
 {% extends "_auth_base.html" %}
-{% block pagetitle %}Registrieren{% endblock %}
+{% block pagetitle %}{{ _("Registrieren") }}{% endblock %}
 {% block content %}
-<h2 class="auth-h">Konto anlegen</h2>
+<h2 class="auth-h">{{ _("Konto anlegen") }}</h2>
 {% if error %}<p class="auth-err" role="alert">{{ error }}</p>{% endif %}
 <form method="post" action="/register" class="auth-form" autocomplete="on">
   <input type="hidden" name="csrf" value="{{ csrf }}">
-  <label class="hk-field"><span>Benutzername</span>
+  <label class="hk-field"><span>{{ _("Benutzername") }}</span>
     <input class="hk-in" name="username" value="{{ f.username or '' }}" autocomplete="username" autocapitalize="none" spellcheck="false"
            required maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._@\-]{0,63}" title="a–z, 0–9, . _ - @" autofocus></label>
-  <label class="hk-field"><span>Anzeigename</span>
+  <label class="hk-field"><span>{{ _("Anzeigename") }}</span>
     <input class="hk-in" name="name" value="{{ f.name or '' }}" autocomplete="name" maxlength="120"></label>
-  <label class="hk-field"><span>E-Mail (optional)</span>
+  <label class="hk-field"><span>{{ _("E-Mail (optional)") }}</span>
     <input class="hk-in" type="email" name="email" value="{{ f.email or '' }}" autocomplete="email" maxlength="200"></label>
-  <label class="hk-field"><span>Passwort (mind. 10 Zeichen)</span>
+  <label class="hk-field"><span>{{ _("Passwort (mind. 10 Zeichen)") }}</span>
     <input class="hk-in" type="password" name="password" autocomplete="new-password" required minlength="10" maxlength="200"></label>
-  <label class="hk-field"><span>Passwort wiederholen</span>
+  <label class="hk-field"><span>{{ _("Passwort wiederholen") }}</span>
     <input class="hk-in" type="password" name="password2" autocomplete="new-password" required minlength="10" maxlength="200"></label>
-  <button class="btn btn-primary auth-btn" type="submit">Registrieren</button>
+  <button class="btn btn-primary auth-btn" type="submit">{{ _("Registrieren") }}</button>
 </form>
-<p class="auth-foot">Schon ein Konto? <a href="/login">Anmelden</a></p>
+<p class="auth-foot">{{ _("Schon ein Konto?") }} <a href="/login">{{ _("Anmelden") }}</a></p>
 {% endblock %}

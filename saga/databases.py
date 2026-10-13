@@ -5,7 +5,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import _api_guard, _bad, _body, _json_load
+from saga.core import _api_guard, _bad, _body, _json_load, t
 from saga.notes import NOTE_MAX_COUNT, NOTE_TITLE_MAX, _FILE_URL, _check_parent, _iter_blocks
 
 router = APIRouter()
@@ -60,7 +60,7 @@ async def api_note_duplicate(nid: int, request: Request):
         if not r:
             return _bad("not found", 404)
         if c.execute("SELECT COUNT(*) FROM note WHERE uid=?", (owner,)).fetchone()[0] >= NOTE_MAX_COUNT:
-            return _bad(f"maximal {NOTE_MAX_COUNT} Seiten (inkl. Papierkorb)", 409)
+            return _bad(t("maximal {n} Seiten (inkl. Papierkorb)", n=NOTE_MAX_COUNT), 409)
         try:
             parent = _check_parent(c, owner, None, b.get("parent_id"))
         except LookupError:

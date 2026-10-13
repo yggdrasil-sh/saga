@@ -4,7 +4,7 @@
   'use strict';
   if (!window.HKPages || !HKPages.k || !document.body.classList.contains('notes-page')) return;
   var K = HKPages.k, $ = HK.$, el = HK.el;
-  var isMac = K.isMac, MK = isMac ? '⌘' : 'Strg+', ALT = isMac ? '⌥' : 'Alt+';
+  var isMac = K.isMac, MK = isMac ? '⌘' : T('Strg') + '+', ALT = isMac ? '⌥' : 'Alt+';
   function mod(e) { return isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey; }
   function inEditor() { var a = document.activeElement; return !!(a && $('pg-editor').contains(a) && (a.isContentEditable || a.closest('[contenteditable="true"]'))); }
   function typing() { var a = document.activeElement; return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable); }
@@ -24,11 +24,11 @@
 
   // --- Block umwandeln -------------------------------------------------------------------
   var TYPES = [   // [Bezeichnung, Schluessel, Symbol, Suchwoerter, Ziffer fuer Cmd+Alt+Ziffer]
-    ['Text', 'p', '¶', 'text absatz paragraph', 0], ['Überschrift 1', 'h1', 'H1', 'heading titel', 1],
-    ['Überschrift 2', 'h2', 'H2', 'heading', 2], ['Überschrift 3', 'h3', 'H3', 'heading', 3], ['Überschrift 4', 'h4', 'H4', 'heading', null],
-    ['Checkliste', 'checklist', '☑', 'todo aufgabe haken', 4], ['Aufzählung', 'unordered', '•', 'liste bullet punkte', 5],
-    ['Nummerierte Liste', 'ordered', '1.', 'nummer liste', 6], ['Toggle', 'toggle', '▸', 'ausklappen aufklappen', 7],
-    ['Code', 'code', '</>', 'code quelltext', 8], ['Zitat', 'quote', '❝', 'zitat quote', null], ['Hinweis (Callout)', 'callout', '💡', 'callout hinweis box', null]
+    [T('Text'), 'p', '¶', 'text absatz paragraph', 0], [T('Überschrift 1'), 'h1', 'H1', 'heading titel', 1],
+    [T('Überschrift 2'), 'h2', 'H2', 'heading', 2], [T('Überschrift 3'), 'h3', 'H3', 'heading', 3], [T('Überschrift 4'), 'h4', 'H4', 'heading', null],
+    [T('Checkliste'), 'checklist', '☑', 'todo aufgabe haken', 4], [T('Aufzählung'), 'unordered', '•', 'liste bullet punkte', 5],
+    [T('Nummerierte Liste'), 'ordered', '1.', 'nummer liste', 6], [T('Toggle'), 'toggle', '▸', 'ausklappen aufklappen', 7],
+    [T('Code'), 'code', '</>', 'code quelltext', 8], [T('Zitat'), 'quote', '❝', 'zitat quote', null], [T('Hinweis (Callout)'), 'callout', '💡', 'callout hinweis box', null]
   ];
   var CONVERTIBLE = { paragraph: 1, header: 1, list: 1, quote: 1, code: 1, toggle: 1, callout: 1 };
   var COPYABLE = { paragraph: 1, header: 1, list: 1, quote: 1, code: 1, toggle: 1, callout: 1, delimiter: 1, table: 1, image: 1 };
@@ -58,16 +58,16 @@
     return null;
   }
   function convert(c, key) {
-    if (!CONVERTIBLE[c.b.name]) { HK.toast('Dieser Block lässt sich nicht umwandeln'); return; }
+    if (!CONVERTIBLE[c.b.name]) { HK.toast(T('Dieser Block lässt sich nicht umwandeln')); return; }
     c.b.save().then(function (s) {
-      if (s.tool === 'toggle' && s.data.blocks && s.data.blocks.length) { HK.toast('Der Toggle hat Inhalt – erst ausräumen, dann umwandeln'); return; }
+      if (s.tool === 'toggle' && s.data.blocks && s.data.blocks.length) { HK.toast(T('Der Toggle hat Inhalt – erst ausräumen, dann umwandeln')); return; }
       var r = build(key, textOf(s.tool, s.data)); if (!r) return;
       c.ed.blocks.insert(r[0], r[1], undefined, c.i, true, true);
       try { c.ed.caret.setToBlock(c.i, 'end'); } catch (e) { /* Block ohne Textfeld */ }
     });
   }
   function duplicate(c) {
-    if (!COPYABLE[c.b.name]) { HK.toast('Diesen Block bitte über das Block-Menü kopieren'); return; }
+    if (!COPYABLE[c.b.name]) { HK.toast(T('Diesen Block bitte über das Block-Menü kopieren')); return; }
     c.b.save().then(function (s) {
       c.ed.blocks.insert(s.tool, s.data, undefined, c.i + 1, true);
       try { c.ed.caret.setToBlock(c.i + 1, 'end'); } catch (e) { /* ohne Textfeld */ }
@@ -79,25 +79,25 @@
     try { c.ed.caret.setToBlock(to, 'end'); } catch (e) { /* ohne Textfeld */ }
   }
   function blockLink(c) {
-    if (c.ed !== K.editor()) { HK.toast('Link zu Blöcken in Toggles/Spalten: bitte den äußeren Block verlinken'); }
+    if (c.ed !== K.editor()) { HK.toast(T('Link zu Blöcken in Toggles/Spalten: bitte den äußeren Block verlinken')); }
     K.copyLink(c.b.id);
   }
 
   // Cmd+/ : alle Aktionen fuer den aktuellen Block, mit Suche
   function actionMenu(c) {
     HK.openMenu(c.b.holder, function (m) {
-      m.appendChild(HK.menuLabel('Umwandeln in'));
+      m.appendChild(HK.menuLabel(T('Umwandeln in')));
       TYPES.forEach(function (t) {
         m.appendChild(HK.menuItem(t[0], function () { convert(c, t[1]); }, { icon: t[2], hint: t[4] != null ? MK + ALT + t[4] : '' }));
       });
       m.appendChild(el('div', 'menu-sep'));
-      m.appendChild(HK.menuItem('Duplizieren', function () { duplicate(c); }, { icon: '⧉', hint: MK + 'D' }));
-      m.appendChild(HK.menuItem('Nach oben', function () { move(c, -1); }, { icon: '↑', hint: MK + '⇧↑' }));
-      m.appendChild(HK.menuItem('Nach unten', function () { move(c, 1); }, { icon: '↓', hint: MK + '⇧↓' }));
-      m.appendChild(HK.menuItem('Link zum Block kopieren', function () { blockLink(c); }, { icon: '🔗' }));
+      m.appendChild(HK.menuItem(T('Duplizieren'), function () { duplicate(c); }, { icon: '⧉', hint: MK + 'D' }));
+      m.appendChild(HK.menuItem(T('Nach oben'), function () { move(c, -1); }, { icon: '↑', hint: MK + '⇧↑' }));
+      m.appendChild(HK.menuItem(T('Nach unten'), function () { move(c, 1); }, { icon: '↓', hint: MK + '⇧↓' }));
+      m.appendChild(HK.menuItem(T('Link zum Block kopieren'), function () { blockLink(c); }, { icon: '🔗' }));
       m.appendChild(el('div', 'menu-sep'));
-      m.appendChild(HK.menuItem('Löschen', function () { c.ed.blocks.delete(c.i); }, { icon: '🗑', danger: true }));
-    }, { search: 'Aktion suchen …' });
+      m.appendChild(HK.menuItem(T('Löschen'), function () { c.ed.blocks.delete(c.i); }, { icon: '🗑', danger: true }));
+    }, { search: T('Aktion suchen …') });
   }
 
   // --- Tastenkuerzel ---------------------------------------------------------------------
@@ -131,7 +131,7 @@
   // --- Zurueck / Vor als Knoepfe vor dem Pfad ------------------------------------------------
   if (!K.embed && $('pg-crumbs')) {
     var nav = el('span', 'pg-nav');
-    [['‹', 'Zurück (' + MK + '[)', function () { history.back(); }], ['›', 'Vor (' + MK + '])', function () { history.forward(); }]].forEach(function (x) {
+    [['‹', T('Zurück') + ' (' + MK + '[)', function () { history.back(); }], ['›', T('Vor') + ' (' + MK + '])', function () { history.forward(); }]].forEach(function (x) {
       var b = el('button', 'icon-btn pg-nav-b', x[0]); b.type = 'button'; b.title = x[1]; b.setAttribute('aria-label', x[1]); b.addEventListener('click', x[2]); nav.appendChild(b);
     });
     $('pg-crumbs').parentNode.insertBefore(nav, $('pg-crumbs'));
@@ -141,7 +141,7 @@
   var toc = null, tocOn = HK.store('hk-toc') !== '0', tocT = null;
   function drawToc() {
     if (K.embed) return;
-    if (!toc) { toc = el('nav', 'hk-toc'); toc.setAttribute('aria-label', 'Inhaltsverzeichnis'); document.body.appendChild(toc); }
+    if (!toc) { toc = el('nav', 'hk-toc'); toc.setAttribute('aria-label', T('Inhaltsverzeichnis')); document.body.appendChild(toc); }
     var hs = [].slice.call(document.querySelectorAll('#pg-editor .ce-header')).filter(function (h) { return h.textContent.trim(); });
     toc.textContent = '';
     toc.hidden = !tocOn || hs.length < 3 || $('page').hidden;
@@ -237,8 +237,14 @@
   // --- @-Datum, @-Erinnerung, @-Seite -----------------------------------------------------
   var WD = ['sonntag', 'montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag'];
   var WDE = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  var WDS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
   var MON = ['januar', 'februar', 'maerz', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'dezember'];
-  function norm(s) { return String(s || '').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/\s+/g, ' ').trim(); }
+  var MONE = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  var MONS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  function norm(s) {
+    return String(s || '').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+      .replace(/[áà]/g, 'a').replace(/[éè]/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u').replace(/ñ/g, 'n').replace(/\s+/g, ' ').trim();
+  }
   function iso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function today0() { var n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); }
   function plus(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
@@ -253,30 +259,30 @@
     }
     var t0 = today0(), d = null;
     if (!q) d = t0;
-    else if (q === 'heute' || q === 'today') d = t0;
-    else if (q === 'morgen' || q === 'tomorrow') d = plus(t0, 1);
-    else if (q === 'uebermorgen') d = plus(t0, 2);
-    else if (q === 'gestern' || q === 'yesterday') d = plus(t0, -1);
-    else if ((m = q.match(/^in (\d{1,3}) (tag|tage|tagen|woche|wochen|monat|monate|monaten|day|days|week|weeks)$/))) {
-      var n = +m[1]; d = /^w/.test(m[2]) ? plus(t0, 7 * n) : /^mo/.test(m[2]) ? new Date(t0.getFullYear(), t0.getMonth() + n, t0.getDate()) : plus(t0, n);
-    } else if (q === 'naechste woche' || q === 'next week') d = plus(t0, 7);
-    else if ((m = q.match(/^(?:(naechsten?|kommenden?|next)\s+)?([a-z]+)$/))) {
-      var wi = WD.indexOf(m[2]); if (wi < 0) wi = WDE.indexOf(m[2]);
+    else if (q === 'heute' || q === 'today' || q === 'hoy') d = t0;
+    else if (q === 'morgen' || q === 'tomorrow' || q === 'manana') d = plus(t0, 1);
+    else if (q === 'uebermorgen' || q === 'pasado manana') d = plus(t0, 2);
+    else if (q === 'gestern' || q === 'yesterday' || q === 'ayer') d = plus(t0, -1);
+    else if ((m = q.match(/^(?:in|en) (\d{1,3}) (tag|tage|tagen|woche|wochen|monat|monate|monaten|day|days|week|weeks|month|months|dia|dias|semana|semanas|mes|meses)$/))) {
+      var n = +m[1]; d = /^(w|se)/.test(m[2]) ? plus(t0, 7 * n) : /^(mo|me)/.test(m[2]) ? new Date(t0.getFullYear(), t0.getMonth() + n, t0.getDate()) : plus(t0, n);
+    } else if (q === 'naechste woche' || q === 'next week' || q === 'proxima semana' || q === 'la proxima semana') d = plus(t0, 7);
+    else if ((m = q.match(/^(?:(naechsten?|kommenden?|next|proximo|el proximo|el)\s+)?([a-z]+)$/))) {
+      var wi = WD.indexOf(m[2]); if (wi < 0) wi = WDE.indexOf(m[2]); if (wi < 0) wi = WDS.indexOf(m[2]);
       if (wi < 0) return null;
       var diff = (wi - t0.getDay() + 7) % 7; if (diff === 0) diff = 7; d = plus(t0, diff);
     } else if ((m = q.match(/^(\d{4})-(\d{2})-(\d{2})$/))) d = new Date(+m[1], +m[2] - 1, +m[3]);
     else if ((m = q.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})?$/))) {
       var y = m[3] ? (+m[3] < 100 ? 2000 + +m[3] : +m[3]) : t0.getFullYear(); d = new Date(y, +m[2] - 1, +m[1]);
       if (d.getMonth() !== +m[2] - 1) return null;
-    } else if ((m = q.match(/^(\d{1,2})\.? ([a-z]+)\.?(?: (\d{4}))?$/))) {
-      var mi = -1; MON.forEach(function (x, i) { if (mi < 0 && m[2].length >= 3 && x.indexOf(m[2]) === 0) mi = i; });
+    } else if ((m = q.match(/^(\d{1,2})\.? (?:de )?([a-z]+)\.?(?: (?:de )?(\d{4}))?$/))) {
+      var mi = -1; [MON, MONE, MONS].forEach(function (L) { L.forEach(function (x, i) { if (mi < 0 && m[2].length >= 3 && x.indexOf(m[2]) === 0) mi = i; }); });
       if (mi < 0) return null;
       d = new Date(m[3] ? +m[3] : t0.getFullYear(), mi, +m[1]); if (d.getMonth() !== mi) return null;
     } else return null;
     return { date: iso(d), time: time };
   }
-  var fDay = new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
-  var fDayY = new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  var fDay = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'short', day: 'numeric', month: 'short' });
+  var fDayY = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
   // Im Chip immer das feste Datum (der Text wird gespeichert - "Morgen" waere uebermorgen falsch)
   function dateText(d) {
     var p = d.date.split('-'), dt = new Date(+p[0], +p[1] - 1, +p[2]);
@@ -284,7 +290,7 @@
   }
   function relText(d) {          // nur fuer die Auswahlliste
     var p = d.date.split('-'), diff = Math.round((new Date(+p[0], +p[1] - 1, +p[2]) - today0()) / 864e5);
-    var r = diff === 0 ? 'Heute' : diff === 1 ? 'Morgen' : diff === 2 ? 'Übermorgen' : diff === -1 ? 'Gestern' : '';
+    var r = diff === 0 ? T('Heute') : diff === 1 ? T('Morgen') : diff === 2 ? T('Übermorgen') : diff === -1 ? T('Gestern') : '';
     return (r ? r + ' · ' : '') + dateText(d);
   }
   function dateChip(d, remind) {
@@ -327,10 +333,10 @@
     }
     if (it.remind) {
       var cur = K.cur(), txt = blockText(node).replace(/@\S*$/, '').trim();
-      var text = (txt || (cur && cur.title) || 'Erinnerung'); if (txt && cur && cur.title) text += ' (' + cur.title + ')';
+      var text = (txt || (cur && cur.title) || T('Erinnerung')); if (txt && cur && cur.title) text += ' (' + cur.title + ')';
       HK.api('POST', '/api/tasks', { text: text.slice(0, 300), due: it.d.date }).then(function () {
-        HK.toast('Erinnerung als Aufgabe für ' + dateText(it.d) + ' angelegt');
-      }).catch(function (err) { HK.toast('Aufgabe nicht angelegt: ' + err.message); });
+        HK.toast(T('Erinnerung als Aufgabe für {date} angelegt', { date: dateText(it.d) }));
+      }).catch(function (err) { HK.toast(T('Aufgabe nicht angelegt: {err}', { err: err.message })); });
     }
     insertNode(dateChip(it.d, !!it.remind), range);
   }
@@ -346,7 +352,11 @@
       at.box.appendChild(b);
     });
   }
-  var DATE_WORDS = ['heute', 'morgen', 'uebermorgen', 'montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag', 'sonntag', 'naechste woche'];
+  var DATE_WORDS = {
+    de: ['heute', 'morgen', 'uebermorgen', 'montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag', 'sonntag', 'naechste woche'],
+    en: ['today', 'tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'next week'],
+    es: ['hoy', 'manana', 'pasado manana', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo', 'proxima semana']
+  }[HK.lang] || [];
   function atOptions(q) {
     var out = [], seen = {}, nq = norm(q);
     var cands = [];
@@ -355,14 +365,14 @@
     if (!nq) cands = cands.slice(0, 2);
     cands.forEach(function (d) {
       var k = d.date + (d.time || ''); if (seen[k]) return; seen[k] = 1;
-      out.push({ group: 'Datum', ic: '📅', t: relText(d), d: d });
+      out.push({ group: T('Datum'), ic: '📅', t: relText(d), d: d });
     });
     var dates = out.slice(0, 3); out = dates.slice();
-    if (dates.length) out.push({ group: 'Erinnerung (legt Aufgabe an)', ic: '⏰', t: relText(dates[0].d), d: dates[0].d, remind: true });
+    if (dates.length) out.push({ group: T('Erinnerung (legt Aufgabe an)'), ic: '⏰', t: relText(dates[0].d), d: dates[0].d, remind: true });
     var pages = K.pages(), hits;
     if (!nq) hits = K.recents().map(function (id) { return pages.find(function (p) { return p.id === id; }); }).filter(Boolean).slice(0, 4);
     else hits = pages.filter(function (p) { return norm(K.label(p)).indexOf(nq) >= 0; }).slice(0, 5);
-    hits.forEach(function (p) { if (!K.cur() || p.id !== K.cur().id) out.push({ group: 'Seite verlinken', ic: K.ti(p.icon) || '📄', t: K.label(p), sub: K.ancestors(p.id).map(K.label).join(' / '), page: p }); });
+    hits.forEach(function (p) { if (!K.cur() || p.id !== K.cur().id) out.push({ group: T('Seite verlinken'), ic: K.ti(p.icon) || '📄', t: K.label(p), sub: K.ancestors(p.id).map(K.label).join(' / '), page: p }); });
     return out;
   }
   $('pg-editor').addEventListener('input', function () {
@@ -407,12 +417,12 @@
         tEl.parentElement.dispatchEvent(new Event('input', { bubbles: true }));
       }
       inp.addEventListener('change', apply); tm.addEventListener('change', apply);
-      m.appendChild(HK.menuItem('Datum entfernen', function () { var p = tEl.parentElement; tEl.remove(); p.dispatchEvent(new Event('input', { bubbles: true })); }, { icon: '✕', danger: true }));
+      m.appendChild(HK.menuItem(T('Datum entfernen'), function () { var p = tEl.parentElement; tEl.remove(); p.dispatchEvent(new Event('input', { bubbles: true })); }, { icon: '✕', danger: true }));
     });
   });
 
   window.HKKeys = {
-    toggleToc: function () { tocOn = !tocOn; HK.store('hk-toc', tocOn ? '1' : '0'); drawToc(); HK.toast('Inhaltsverzeichnis ' + (tocOn ? 'an' : 'aus')); },
+    toggleToc: function () { tocOn = !tocOn; HK.store('hk-toc', tocOn ? '1' : '0'); drawToc(); HK.toast(tocOn ? T('Inhaltsverzeichnis an') : T('Inhaltsverzeichnis aus')); },
     convert: function (key) { var c = current(); if (c) convert(c, key); }, actionMenu: function () { var c = current(); if (c) actionMenu(c); },
     emojiCount: EMO.length, parseDate: parseDate, dateChip: dateChip, dateText: dateText
   };
