@@ -3,8 +3,12 @@
 #   1. PNG-Symbole aus static/icon.svg erzeugen
 #   2. Eigenen, leeren Wegwerf-Stack (Projekt saga-shots, ohne Ports) mit Demo-Daten starten
 #   3. Screenshots nach docs/screenshots/, Wegwerf-Stack samt Daten wieder entfernen
+# Mit SAGA_DEMO_PORT=<port> (oder: SAGA_SCRIPT=screens-remote.sh tools/test-stack.sh <port>) bleibt der Demo-Stack stattdessen laufen und ist auf diesem Port erreichbar
+# (z. B. fuer App-Screenshots); Zugang demo / Passwort in /root/saga-demo.env (0600). Wieder entfernen:
+#   docker compose -p saga-shots down -v
 set -e
 cd "$(dirname "$0")/.."
+SAGA_DEMO_PORT=${SAGA_DEMO_PORT:-$1}      # auch als Argument (tools/test-stack.sh reicht $1 durch)
 PWIMG=mcr.microsoft.com/playwright/python:v1.48.0-noble
 PWRUN="pip install -q --break-system-packages playwright==1.48.0 >/dev/null 2>&1 || pip install -q playwright==1.48.0 >/dev/null 2>&1"
 docker run --rm -v "$PWD:/repo" "$PWIMG" sh -c "$PWRUN; python /repo/tools/render-icons.py"
@@ -20,6 +24,10 @@ ADMIN_USERNAME=demo-admin
 ADMIN_PASSWORD=
 EOF
 DC="docker compose -p saga-shots --env-file .env.shots -f docker-compose.yml -f tools/compose.shots.yml"
+if [ -n "$SAGA_DEMO_PORT" ]; then
+  printf 'services:\n  saga:\n    ports: ["%s:8080"]\n' "$SAGA_DEMO_PORT" > .compose.demo.yml
+  DC="$DC -f .compose.demo.yml"
+fi
 $DC down -v >/dev/null 2>&1 || true
 $DC up -d --build 2>&1 | tail -2
 C=$($DC ps -q saga)
@@ -64,7 +72,12 @@ docker restart "$C" >/dev/null; sleep 8       # Zwischenspeicher der laufenden I
 rm -rf docs/screenshots && mkdir -p docs/screenshots && chmod 777 docs/screenshots
 docker run --rm --network "$NET" -v "$PWD/docs/screenshots:/out" -v "$PWD/tools/screens.py:/screens.py:ro" \
   -e BASE=http://saga:8080 -e ADMIN=http://saga:8081 -e SHOT_PW="$SHOT_PW" "$PWIMG" sh -c "$PWRUN; python /screens.py" 2>&1 | tail -25
-$DC down -v >/dev/null 2>&1
-rm -f .env.shots
+if [ -n "$SAGA_DEMO_PORT" ]; then
+  ( umask 077; printf 'DEMO_USER=demo\nDEMO_PW=%s\nDEMO_PORT=%s\n' "$SHOT_PW" "$SAGA_DEMO_PORT" > /root/saga-demo.env )
+  echo "Demo-Stack laeuft auf Port $SAGA_DEMO_PORT (Zugang in /root/saga-demo.env)"
+else
+  $DC down -v >/dev/null 2>&1
+  rm -f .env.shots
+fi
 ls docs/screenshots
 tar czf /tmp/saga-assets.tgz static/icon-192.png static/icon-512.png static/apple-touch-icon.png docs/screenshots
