@@ -1,0 +1,319 @@
+"""Papierkorb, Versionsverlauf und Markdown-Export."""
+import io
+import json
+import os
+import re
+import time
+import zipfile
+from datetime import datetime
+from html import unescape as html_unescape
+from urllib.parse import quote
+from fastapi import Request
+from fastapi.responses import JSONResponse, Response
+from db import connect as _db
+from fastapi import APIRouter
+from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load
+from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _snapshot, blocks_text
+
+router = APIRouter()
+
+
+def _trash_batch(c, uid, nid):
+    """Seite im Papierkorb + alle mit ihr zusammen geloeschten Unterseiten (gleicher Zeitstempel)."""
+    r = c.execute("SELECT deleted_at FROM note WHERE id=? AND uid=? AND deleted_at IS NOT NULL", (nid, uid)).fetchone()
+    if not r:
+        return None, []
+    ids = [x[0] for x in c.execute(
+        "WITH RECURSIVE t(id) AS (SELECT CAST(? AS BIGINT) UNION SELECT n.id FROM note n JOIN t ON n.parent_id=t.id "
+        "WHERE n.uid=? AND n.deleted_at=?) SELECT id FROM t", (nid, uid, r[0]))]
+    return r[0], ids
+
+
+@router.get("/api/trash")
+def api_trash(request: Request):
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    with _db() as c, c:
+        _purge_old(c, uid)
+        rows = c.execute(f"SELECT {NOTE_META_COLS}, deleted_at FROM note n WHERE uid=? AND deleted_at IS NOT NULL "
+                         "AND NOT EXISTS (SELECT 1 FROM note p WHERE p.id=n.parent_id AND p.uid=n.uid AND p.deleted_at=n.deleted_at) "
+                         "ORDER BY deleted_at DESC", (uid,)).fetchall()
+        out = []
+        for r in rows:
+            d = _note_meta(r)
+            _, ids = _trash_batch(c, uid, r[0])
+            d.update(deleted_at=r[9], subpages=len(ids) - 1, purge_at=r[9] + TRASH_DAYS * 86400)
+            out.append(d)
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/api/trash/{nid}/restore")
+def api_trash_restore(nid: int, request: Request):
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    with _db() as c, c:
+        _, ids = _trash_batch(c, uid, nid)
+        if not ids:
+            return _bad("not found", 404)
+        c.executemany("UPDATE note SET deleted_at=NULL WHERE id=? AND uid=?", [(i, uid) for i in ids])
+        # Elternseite weg oder selbst im Papierkorb -> auf oberste Ebene
+        par = c.execute("SELECT parent_id FROM note WHERE id=? AND uid=?", (nid, uid)).fetchone()[0]
+        if par and not c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (par, uid)).fetchone():
+            c.execute("UPDATE note SET parent_id=NULL WHERE id=? AND uid=?", (nid, uid))
+    return JSONResponse({"restored": len(ids)})
+
+
+@router.delete("/api/trash/{nid}")
+def api_trash_purge(nid: int, request: Request):
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    with _db() as c, c:
+        _, ids = _trash_batch(c, uid, nid)
+        if not ids:
+            return _bad("not found", 404)
+        _purge_ids(c, uid, ids)
+    return JSONResponse({"purged": len(ids)})
+
+
+@router.post("/api/trash/empty")
+def api_trash_empty(request: Request):
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    with _db() as c, c:
+        ids = [r[0] for r in c.execute("SELECT id FROM note WHERE uid=? AND deleted_at IS NOT NULL", (uid,))]
+        _purge_ids(c, uid, ids)
+    return JSONResponse({"purged": len(ids)})
+
+
+@router.get("/api/notes/{nid}/versions")
+def api_versions(nid: int, request: Request):
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
+    with _db() as c:
+        if not c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone():
+            return _bad("not found", 404)
+        rows = c.execute("SELECT id, title, created, length(body) FROM note_version WHERE uid=? AND note_id=? "
+                         "ORDER BY created DESC", (owner, nid)).fetchall()
+    return JSONResponse([{"id": r[0], "title": r[1] or "", "created": r[2], "size": r[3] or 0} for r in rows],
+                        headers={"Cache-Control": "no-store"})
+
+
+@router.get("/api/notes/{nid}/versions/{vid}")
+def api_version_get(nid: int, vid: int, request: Request):
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
+    with _db() as c:
+        r = c.execute("SELECT v.title, v.body, v.format, v.created FROM note_version v JOIN note n ON n.id=v.note_id AND n.uid=v.uid "
+                      "WHERE v.id=? AND v.note_id=? AND v.uid=? AND n.deleted_at IS NULL", (vid, nid, owner)).fetchone()
+    if not r:
+        return _bad("not found", 404)
+    return JSONResponse({"title": r[0] or "", "created": r[3], "text": _note_text(r[2], r[1])[:5000]},
+                        headers={"Cache-Control": "no-store"})
+
+
+@router.post("/api/notes/{nid}/versions/{vid}/restore")
+def api_version_restore(nid: int, vid: int, request: Request):
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
+    with _db() as c, c:
+        cur = c.execute("SELECT title, body, format FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
+        v = c.execute("SELECT title, body, format FROM note_version WHERE id=? AND note_id=? AND uid=?", (vid, nid, owner)).fetchone()
+        if not cur or not v:
+            return _bad("not found", 404)
+        now = time.time()
+        _snapshot(c, owner, nid, cur, now, force=True)       # aktueller Stand bleibt als Version erhalten
+        c.execute("UPDATE note SET title=?, body=?, format=?, updated=?, rev=rev+1 WHERE id=? AND uid=?", (v[0], v[1], v[2], now, nid, owner))
+    return JSONResponse({"ok": True, "updated": now})
+
+
+# --- Markdown-Export -------------------------------------------------------------
+def _md_inline(s, link):
+    s = re.sub(r"<br\s*/?>", "  \n", s or "")
+    s = re.sub(r"</?(b|strong)>", "**", s)
+    s = re.sub(r"</?(i|em)>", "*", s)
+    s = re.sub(r"</?s>", "~~", s)
+    s = re.sub(r'<code[^>]*>(.*?)</code>', r"`\1`", s, flags=re.S)
+    s = re.sub(r'<a href="([^"]*)"[^>]*>(.*?)</a>', lambda m: f"[{m.group(2)}]({link(html_unescape(m.group(1)))})", s, flags=re.S)
+    s = re.sub(r"<[^>]+>", "", s)
+    return html_unescape(s)
+
+
+def blocks_to_md(blocks, link=lambda h: h):
+    out = []
+
+    def items(lst, style, depth):
+        for i, it in enumerate(lst or [], 1):
+            if isinstance(it, str):
+                it = {"content": it, "items": []}
+            pre = "  " * depth + ("- [x] " if style == "checklist" and (it.get("meta") or {}).get("checked") else
+                                  "- [ ] " if style == "checklist" else f"{i}. " if style == "ordered" else "- ")
+            out.append(pre + _md_inline(it.get("content", ""), link))
+            items(it.get("items"), style, depth + 1)
+
+    for b in blocks:
+        t, d = b.get("type"), b.get("data") or {}
+        if t == "header":
+            out += ["#" * min(max(int(d.get("level", 2)), 1), 6) + " " + _md_inline(d.get("text", ""), link), ""]
+        elif t == "list":
+            items(d.get("items"), d.get("style", "unordered"), 0); out.append("")
+        elif t == "quote":
+            out += ["> " + l for l in _md_inline(d.get("text", ""), link).split("\n")]
+            if d.get("caption"):
+                out.append("> — " + _md_inline(d["caption"], link))
+            out.append("")
+        elif t == "code":
+            lang = re.sub(r"[^a-z0-9+-]", "", str(d.get("language") or "").lower())[:20]
+            out += ["```" + lang, d.get("code", ""), "```", ""]
+        elif t == "delimiter":
+            out += ["---", ""]
+        elif t == "table":
+            rows = d.get("content") or []
+            if rows:
+                cells = [[_md_inline(str(x), link).replace("|", "\\|").replace("\n", " ") for x in r] for r in rows]
+                w = max(len(r) for r in cells)
+                cells = [r + [""] * (w - len(r)) for r in cells]
+                head, body = (cells[0], cells[1:]) if d.get("withHeadings") else ([""] * w, cells)
+                out += ["| " + " | ".join(head) + " |", "|" + "---|" * w] + ["| " + " | ".join(r) + " |" for r in body] + [""]
+        elif t == "image":
+            out += [f"![{_md_inline(d.get('caption', ''), link)}]({link((d.get('file') or {}).get('url', ''))})", ""]
+        elif t == "attaches":
+            f = d.get("file") or {}
+            out += [f"[📎 {d.get('title') or f.get('name') or 'Datei'}]({link(f.get('url', ''))})", ""]
+        elif t == "columns":
+            for col in d.get("cols") if isinstance(d.get("cols"), list) else []:
+                sub = blocks_to_md(col.get("blocks") or [], link).strip() if isinstance(col, dict) else ""
+                if sub:
+                    out += [sub, ""]
+        elif t == "toggle":
+            inner = (blocks_to_md(d["blocks"], link).strip() if isinstance(d.get("blocks"), list)
+                     else _md_inline(d.get("text", ""), link))
+            out += [f"<details><summary>{_md_inline(d.get('title', ''), link)}</summary>", "", inner, "", "</details>", ""]
+        elif t == "callout":
+            out += ["> " + (d.get("emoji") or "💡") + " " + _md_inline(d.get("text", ""), link).replace("\n", "\n> "), ""]
+        else:
+            txt = _md_inline(d.get("text", ""), link) if "text" in d else blocks_text([b])
+            if txt.strip():
+                out += [txt, ""]
+    return "\n".join(out).strip() + "\n"
+
+
+def _safe_name(s):
+    s = re.sub(r"[^\w äöüÄÖÜß.\-]+", "_", s or "Unbenannt").strip(" ._") or "Unbenannt"
+    return s[:80]
+
+
+@router.get("/api/notes/{nid}/export")
+def api_note_export(nid: int, request: Request, sub: int = 0):
+    """Seite als Markdown (.md) oder mit allen Unterseiten als ZIP (Ordnerstruktur)."""
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
+    with _db() as c:
+        rows = {r[0]: r for r in c.execute("SELECT id, title, icon, parent_id, body, format, kind, schema, props, created, updated FROM note "
+                                           "WHERE uid=? AND deleted_at IS NULL", (owner,))}
+    if nid not in rows:
+        return _bad("not found", 404)
+
+    def val_of(p, row, pv):
+        if p["type"] == "calc":
+            return _calc_value(p, pv)
+        return {"created": row[9], "edited": row[10]}.get(p["type"], pv.get(p["id"]))
+
+    def fmt_val(p, v):
+        if v is None:
+            return ""
+        if p["type"] in AUTO_TYPES:
+            return datetime.fromtimestamp(v, TZ).strftime("%d.%m.%Y %H:%M")
+        if p["type"] == "relation":
+            return ", ".join((rows[x][1] or "Unbenannt") for x in v if x in rows)
+        if p["type"] in ("number", "calc"):
+            v = round(v, 2) if isinstance(v, float) else v
+            return f"{v} %" if p.get("fmt") == "percent" else f"{v} €" if p.get("fmt") == "euro" else str(v)
+        if p["type"] in ("select", "multi_select"):
+            names = {o["id"]: o["name"] for o in p.get("options", [])}
+            return ", ".join(names.get(x, "") for x in (v if isinstance(v, list) else [v]))
+        if p["type"] == "checkbox":
+            return "✓" if v else ""
+        return str(v)
+
+    def md_of(r, link):
+        head = f"# {(r[2] + ' ') if r[2] and not r[2].startswith('/files/') else ''}{r[1] or 'Unbenannt'}\n\n"
+        par = rows.get(r[3])
+        if r[6] == "database":           # Datenbank -> Markdown-Tabelle aller Zeilen
+            props = _json_load(r[7], {"props": []}).get("props", [])
+            cells = lambda s: str(s).replace("|", "\\|").replace("\n", " ")
+            tname = _json_load(r[7], {}).get("title_name") or "Name"
+            lines = [f"| {cells(tname)} | " + " | ".join(cells(p["name"]) for p in props) + " |", "|---|" + "---|" * len(props)]
+            for x in sorted((x for x in rows.values() if x[3] == r[0]), key=lambda x: x[1] or ""):
+                pv = _json_load(x[8], {})
+                lines.append(f"| [{cells(x[1] or 'Unbenannt')}]({link('/notes#' + str(x[0]))}) | "
+                             + " | ".join(cells(fmt_val(p, val_of(p, x, pv))) for p in props) + " |")
+            return head + "\n".join(lines) + "\n"
+        if par and par[6] == "database":  # Zeile -> Eigenschaften als Liste unter dem Titel
+            pv = _json_load(r[8], {})
+            lst = [f"- **{p['name']}:** {fmt_val(p, val_of(p, r, pv))}"
+                   for p in _json_load(par[7], {"props": []}).get("props", []) if val_of(p, r, pv) not in (None, "", [])]
+            if lst:
+                head += "\n".join(lst) + "\n\n"
+        if r[5] == "blocks":
+            try:
+                return head + blocks_to_md(json.loads(r[4]).get("blocks", []), link)
+            except ValueError:
+                return head
+        return head + (r[4] or "") + "\n"
+
+    ext_link = lambda h: (BASE_URL + h) if h.startswith(("/notes#", "/files/")) else h
+    if not sub:
+        r = rows[nid]
+        return Response(md_of(r, ext_link).encode(), media_type="text/markdown; charset=utf-8",
+                        headers={"Content-Disposition": _disposition(_safe_name(r[1]) + ".md")})
+    # ZIP: Seite + Unterseiten, Verweise innerhalb des Exports als relative Links
+    paths, used = {}, set()
+
+    def place(i, folder):
+        name, k = _safe_name(rows[i][1]), 1
+        while f"{folder}{name}.md".lower() in used:
+            k += 1; name = f"{_safe_name(rows[i][1])} ({k})"
+        used.add(f"{folder}{name}.md".lower()); paths[i] = f"{folder}{name}.md"
+        for ch in sorted((x for x in rows.values() if x[3] == i), key=lambda x: x[1] or ""):
+            place(ch[0], f"{folder}{name}/")
+    place(nid, "")
+    # Bilder/Dateien der exportierten Seiten mit einpacken (Ordner _dateien)
+    fids = set()
+    for i in paths:
+        fids |= set(_FILE_URL.findall(rows[i][4] or ""))
+    fpaths = {}
+    if fids:
+        with _db() as c:
+            for fid, name in c.execute(f"SELECT id, name FROM file WHERE uid=? AND id IN ({','.join('?' * len(fids))})", (owner, *fids)):
+                fpaths[fid] = f"_dateien/{fid[:8]}_{_safe_name(name)}"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for i, path in paths.items():
+            def rel(h, here=path):
+                m = re.fullmatch(r"/notes#(\d+)", h)
+                if m and int(m.group(1)) in paths:
+                    return quote(os.path.relpath(paths[int(m.group(1))], os.path.dirname(here) or "."))
+                m = _FILE_URL.fullmatch(h)
+                if m and m.group(1) in fpaths:
+                    return quote(os.path.relpath(fpaths[m.group(1)], os.path.dirname(here) or "."))
+                return ext_link(h)
+            z.writestr(path, md_of(rows[i], rel))
+        for fid, fp in fpaths.items():
+            try:
+                z.write(os.path.join(FILES_DIR, fid), fp)
+            except FileNotFoundError:
+                pass
+    return Response(buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": _disposition(_safe_name(rows[nid][1]) + ".zip")})
