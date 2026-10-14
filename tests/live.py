@@ -232,6 +232,8 @@ def main():
     s, _ = req("PUT", f"/api/notes/{pg}/shares", A, {"type": "user", "target": "lv-b", "role": "comment"})
     ok(f"A teilt mit B ({s})", s == 200)
     ok("B: shared.changed live", sb.wait("shared.changed", since=mb) is not None)
+    boot_, n_ = sb.find("shared.changed", since=mb)[2].split("-", 1)
+    b_before = f"{boot_}-{int(n_) - 1}"               # Last-Event-ID von B kurz vor der Freigabe (Nachholen nach Entzug, unten)
     n = sb.wait("notification", lambda d: d.get("item", {}).get("kind") == "share.added", since=mb)
     it = (n or {}).get("item") or {}
     ok(f"B: notification share.added live (Titel, Rolle, wer) ({it.get('title')}, {it.get('role')}, {(it.get('actor') or {}).get('name')})",
@@ -382,6 +384,25 @@ def main():
     raw = json.dumps(lst, ensure_ascii=False)
     ok("... und nirgends steht der Titel oder Kommentartext", "Live Projekt" not in raw and "Antwort eins" not in raw and "Antwort zwei" not in raw
        and "🛰" not in raw)
+    sr = Stream(Bk, last=b_before)                   # Nachholen ab VOR der Freigabe - jetzt ohne Zugriff
+    sr.wait("hello")
+    sr.wait("shared.changed", timeout=3)             # seitenunabhaengige Ereignisse kommen weiter
+    time.sleep(0.8)
+    raw = json.dumps([e[:2] for e in sr.ev], ensure_ascii=False)
+    page_ev = [e[0] for e in sr.ev if (e[0] in ("comments.changed", "presence") and e[1].get("note_id") == pg)
+               or (e[0] == "note.changed" and e[1].get("id") == pg and not e[1].get("gone"))
+               or (e[0] == "notification" and (e[1].get("item") or {}).get("access"))]
+    ok(f"Nach Entzug: Last-Event-ID holt nichts zur Seite nach (Rechte beim Nachholen) ({page_ev})",
+       sr.find("shared.changed") is not None and sr.find("reset") is None and page_ev == []
+       and "Live Projekt" not in raw and "Antwort eins" not in raw and "Antwort zwei" not in raw and "Bitte pruefen" not in raw)
+    sr.close()
+
+    # --- Fremde Seite (Cross-Site/Nachbar-Subdomain): EventSource mit Cookie abgewiesen ------------------------------
+    ok("SSE: Sec-Fetch-Site cross-site -> 403", Stream(A, hdr={"Sec-Fetch-Site": "cross-site"}).status == 403)
+    ok("SSE: Sec-Fetch-Site same-site -> 403", Stream(A, hdr={"Sec-Fetch-Site": "same-site"}).status == 403)
+    so = Stream(A, hdr={"Sec-Fetch-Site": "same-origin"})
+    ok("SSE: Sec-Fetch-Site same-origin -> 200", so.status == 200 and so.wait("hello") is not None)
+    so.close()
 
     # --- Verbindungsgrenze ------------------------------------------------------------------------------------------
     more = [Stream(Ck) for _ in range(5)]

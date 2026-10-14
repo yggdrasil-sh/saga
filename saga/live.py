@@ -49,10 +49,10 @@ QUEUE = 256                                                   # Ereignisse je Ve
 BOOT = secrets.token_hex(4)
 HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Content-Type-Options": "nosniff"}
 
-_S = {"loop": None, "q": None, "tasks": [], "seq": 0}
+_S = {"loop": None, "q": None, "tasks": [], "seq": 0, "floor": 0}   # floor: aeltere Nummern nie nachholen (_lost geleert)
 _clients = {}            # uid -> [_Client]                  (nur in der Event-Schleife veraendert)
 _left = {}               # uid -> Zeitpunkt, an dem die letzte Verbindung endete
-_buf = {}                # uid -> deque[(seq, zeit, nachricht)]
+_buf = {}                # uid -> deque[(seq, zeit, nachricht, seite|None)]
 _lost = {}               # uid -> hoechste Nummer, die fuer dieses Konto NICHT mehr nachgeholt werden kann
 _presence = {}           # note_id -> {uid: [zeit, bearbeitet]}
 _pres_hits = {}          # uid -> letzte Anwesenheitsmeldung (Bremse)
@@ -127,6 +127,18 @@ def _audience():
     return set(_clients) | {u for u, ts in _left.items() if now - ts < LINGER}
 
 
+def _note_of(typ, data):
+    """Seite, an die ein Ereignis gebunden ist - beim Nachholen (Last-Event-ID) wird der Zugriff darauf erneut geprueft.
+    None: nicht seitengebunden (shared.changed, gelesen) oder ohne Inhalt (geloescht/"gone")."""
+    if typ == "note.changed":
+        return None if data.get("gone") else data.get("id")
+    if typ in ("comments.changed", "presence"):
+        return data.get("note_id")
+    if typ == "notification":
+        return ((data.get("item") or {}).get("note") or {}).get("id")
+    return None
+
+
 def _deliver(uid, typ, data):
     _S["seq"] += 1
     seq = _S["seq"]
@@ -134,7 +146,7 @@ def _deliver(uid, typ, data):
     buf = _buf.get(uid)
     if buf is None:
         buf = _buf[uid] = deque()
-    buf.append((seq, time.time(), msg))
+    buf.append((seq, time.time(), msg, _note_of(typ, data)))
     while len(buf) > REPLAY_MAX:
         _lost[uid] = max(_lost.get(uid, 0), buf.popleft()[0])
     for cl in list(_clients.get(uid, ())):
@@ -261,7 +273,8 @@ async def _housekeeping():
                     _buf.pop(uid, None)
                     _lost[uid] = _S["seq"]
             if len(_lost) > 20000:
-                _lost.clear()                                  # Folge: Wiederaufnahme -> "reset" (sicher)
+                _lost.clear()                                  # Folge: Wiederaufnahme aelterer Nummern -> "reset" (sicher)
+                _S["floor"] = _S["seq"]
             for uid, ts in list(_pres_hits.items()):
                 if now - ts > 60:
                     _pres_hits.pop(uid, None)
@@ -291,15 +304,22 @@ def _unregister(cl):
 
 
 def _replay(uid, last):
-    """Last-Event-ID '<boot>-<n>' -> (nachrichten, ok). ok=False: nicht vollstaendig nachholbar -> 'reset'."""
+    """Last-Event-ID '<boot>-<n>' -> ([(seite|None, nachricht)], ok). ok=False: nicht vollstaendig nachholbar -> 'reset'."""
     try:
         boot, n = str(last).strip().split("-", 1)
         n = int(n)
     except ValueError:
         return [], False
-    if boot != BOOT or n > _S["seq"] or n < _lost.get(uid, 0):
+    if boot != BOOT or n > _S["seq"] or n < max(_lost.get(uid, 0), _S["floor"]):
         return [], False
-    return [m for s, _, m in _buf.get(uid, ()) if s > n], True
+    return [(nid, m) for s, _, m, nid in _buf.get(uid, ()) if s > n], True
+
+
+def _allowed(uid, nids):
+    """Im Thread: welche dieser Seiten darf uid JETZT sehen? (Nachholen nach Entzug: nichts mehr zu dieser Seite)"""
+    with _db() as c:
+        acc = Access(c, uid)
+        return {n for n in nids if acc.role(n)}
 
 
 def _who(request):
@@ -336,20 +356,32 @@ async def api_events(request: Request):
     if count() >= MAX_TOTAL:
         return JSONResponse({"error": "too many connections"}, status_code=503, headers={"Retry-After": "60"})
     uid, kind, check = who
+    # EventSource kann keinen X-Saga-Kopf setzen: Anfragen anderer Seiten (auch Nachbar-Subdomains, SameSite=Lax schickt
+    # dort das Cookie mit) abweisen - sie koennten sonst die eigenen Verbindungen ueber die Grenze hinausdraengen
+    if kind == "web" and request.headers.get("sec-fetch-site") in ("cross-site", "same-site"):
+        return _bad("forbidden", 403)
     last = request.headers.get("last-event-id") or request.query_params.get("last") or ""
-    cl = _register(uid, kind)
 
     async def gen():
+        # erst hier anmelden: startet der Generator nie (Client sofort weg), bliebe sonst ein Eintrag ohne finally liegen.
+        # Anmelden und Nachhol-Stand ohne await dazwischen: nichts doppelt, nichts verloren
+        cl = _register(uid, kind)
+        msgs, ok = _replay(uid, last) if last else ([], True)
         try:
             # retry: Wartezeit vor dem Neuaufbau; Fuellzeile: manche Proxys geben erst ab ein paar KB weiter
             yield "retry: 5000\n:" + " " * 2048 + "\n\n"
             yield _fmt("hello", {"boot": BOOT, "ping": PING, "presence_ttl": PRESENCE_TTL})
-            if last:
-                msgs, ok = _replay(uid, last)
-                if not ok:
-                    yield _fmt("reset", {})
-                for m in msgs:
-                    yield m
+            nids = {n for n, _ in msgs if n}
+            if nids:                                              # Rechte beim Nachholen JETZT pruefen (Entzug seitdem)
+                try:
+                    allowed = await asyncio.to_thread(_allowed, uid, nids)
+                    msgs = [(n, m) for n, m in msgs if not n or n in allowed]
+                except Exception:  # noqa: BLE001 - Datenbank gerade weg: nichts nachholen, Client gleicht ab
+                    msgs, ok = [], False
+            if not ok:
+                yield _fmt("reset", {})
+            for _, m in msgs:
+                yield m
             checked = born = time.monotonic()
             while True:
                 if time.monotonic() - born > MAX_AGE:             # Sitzung beim Neuaufbau frisch pruefen (Cookie-Ablauf)
