@@ -145,7 +145,8 @@ def vapid(_again=True):
             if not _again:
                 raise RuntimeError("VAPID-Schluessel nicht lesbar")
             print("push: VAPID-Schluessel nicht lesbar (SECRET_KEY geaendert?) - neuer Schluessel", flush=True)
-            with _db() as c, c:
+            with _db() as c, c:                 # alten Schluessel aufheben (SECRET_KEY zurueck -> von Hand wiederherstellbar)
+                c.execute("INSERT OR REPLACE INTO setting (k, v) VALUES ('push_vapid_old', ?)", (r[0],))
                 c.execute("DELETE FROM setting WHERE k='push_vapid'")
         else:
             _vapid.update(key=key, pub=d.get("pub"))
@@ -490,6 +491,8 @@ def send(sub, msg):
     except Blocked:
         return "fail", "Ziel nicht freigegeben"
     except (httpx.HTTPError, OSError) as ex:
+        if isinstance(ex.__cause__, Blocked):                         # httpx verpackt httpcore-Fehler (wie saga.immich)
+            return "fail", "Ziel nicht freigegeben"
         return "retry", type(ex).__name__
     except ValueError as ex:                                          # Schluessel des Abos kaputt
         return "gone", str(ex)[:80]

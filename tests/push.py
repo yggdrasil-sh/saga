@@ -311,6 +311,27 @@ def run(A, Bk, vpub):
     ok(f"ungueltige Anmeldungen abgewiesen (Schluessel, Schema, http, intern, Zugangsdaten, Art, ntfy, APNs) {codes}",
        codes == [c for _, c in bad])
     ok("nichts davon gespeichert", len(sub_rows("ps-a")) == 1)
+    # Pruefung (unabhaengig): weitere interne Schreibweisen (IPv6, IPv4-in-IPv6, Dezimal, localhost, 0.0.0.0, Link-local)
+    sneaky = ["https://[::1]/x", "https://[::ffff:127.0.0.1]/x", "https://2130706433/x", "https://localhost/x",
+              "https://0.0.0.0/x", "https://169.254.169.254/latest", "https://[fe80::1]/x", "https://127.0.0.2/x"]
+    codes = [req("POST", "/api/push/subscriptions", A, {"type": "webpush", "endpoint": u, "keys": ua.keys()})[0] for u in sneaky]
+    codes += [req("POST", "/api/push/subscriptions", A, {"type": "ntfy", "url": "https://[::1]/topic"})[0],
+              req("POST", "/api/push/subscriptions", A, {"type": "unifiedpush", "endpoint": "https://192.168.1.1/up"})[0]]
+    ok(f"interne Ziele in anderen Schreibweisen abgewiesen {codes}", codes == [400] * len(codes) and len(sub_rows("ps-a")) == 1)
+    with connect() as c, c:                     # Freigabe nachtraeglich entzogen: Zustellung -> harter Fehler, keine Wiederholung
+        bid = c.execute("INSERT INTO push_sub (uid, kind, endpoint, name, created) VALUES ('ps-a', 'ntfy', ?, 'blk', ?)",
+                        (f"{FAKE}/blocked-topic", time.time())).lastrowid
+    hosts_now = auth.settings(fresh=True)["allowed_hosts"]
+    auth.save_setting("allowed_hosts", ", ".join(h for h in re.split(r"[,\s]+", hosts_now) if h and h != f"127.0.0.1:{FP}"))
+    auth.settings(fresh=True)
+    try:
+        r_blk = push.test_send("ps-a", bid)
+    finally:
+        auth.save_setting("allowed_hosts", hosts_now)
+        auth.settings(fresh=True)
+        with connect() as c, c:
+            c.execute("DELETE FROM push_sub WHERE id=?", (bid,))
+    ok(f"Ziel nicht (mehr) freigegeben -> 'fail' statt endloser Wiederholung ({r_blk})", r_blk == ("fail", "Ziel nicht freigegeben"))
 
     # --- Zustellung: Teilen -------------------------------------------------------------------------------
     pg = req("POST", "/api/notes", Bk, {"title": "Streng geheimer Titel", "icon": "🔐"})[1]["id"]
@@ -610,6 +631,24 @@ def run(A, Bk, vpub):
            not any(x in txt for x in ("hat deine Seite kommentiert", "Neue Nachricht von", "tk_geheim", "ps-topic-a", "/wp/a1", "GEHEIM")))
     with connect() as c, c:
         c.execute("DELETE FROM push_queue WHERE uid LIKE 'ps-%'")
+
+    # --- VAPID-Schluessel nicht lesbar (z. B. SECRET_KEY falsch): alter Eintrag wird aufgehoben, nicht vernichtet ------
+    with connect() as c:
+        orig = c.execute("SELECT v FROM setting WHERE k='push_vapid'").fetchone()[0]
+    broken = json.dumps({"pub": "x", "priv": "enc:kaputt", "created": 1})
+    try:
+        with connect() as c, c:
+            c.execute("UPDATE setting SET v=? WHERE k='push_vapid'", (broken,))
+        push._vapid.clear()
+        _k, newpub = push.vapid()
+        with connect() as c:
+            kept = c.execute("SELECT v FROM setting WHERE k='push_vapid_old'").fetchone()
+        ok("VAPID nicht lesbar -> neuer Schluessel, alter Eintrag als push_vapid_old aufgehoben", newpub and newpub != "x" and kept and kept[0] == broken)
+    finally:
+        with connect() as c, c:
+            c.execute("INSERT OR REPLACE INTO setting (k, v) VALUES ('push_vapid', ?)", (orig,))
+            c.execute("DELETE FROM setting WHERE k='push_vapid_old'")
+        push._vapid.clear()
 
 
 if __name__ == "__main__":
