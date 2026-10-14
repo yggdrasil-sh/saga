@@ -4,7 +4,8 @@
 {% block content %}
 <h2>{{ _("Gruppen") }}</h2>
 <p class="hk-hint">{{ _("Gruppen steuern, wer welchen Dienst sieht: Gruppe {group} = Zugang zum Dienst mit diesem Kurznamen.", group=prefix ~ _("<kurzname>")) }}
-  {{ _("Mitglieder setzt du beim Benutzer. Gruppen aus LDAP/SSO zählen genauso – dort heißt die Gruppe einfach gleich.") }}</p>
+  {{ _("Mitglieder setzt du beim Benutzer. Gruppen aus LDAP/SSO zählen genauso – dort heißt die Gruppe einfach gleich.") }}
+  {{ _("Gruppen dienen auch zum Teilen: Wer in einer Gruppe ist, kann Seiten mit allen Mitgliedern teilen.") }}</p>
 <table class="adm-table">
   <tr><th>{{ _("Gruppe") }}</th><th>{{ _("Beschreibung") }}</th><th>{{ _("Mitglieder (lokal)") }}</th><th>{{ _("Gibt frei") }}</th><th></th></tr>
   {% for r in rows %}

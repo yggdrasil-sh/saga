@@ -40,6 +40,12 @@
     <p class="hk-hint"><a href="/published">{{ _("Alle öffentlichen Seiten") }} →</a></p>
   </section>
   <section class="adm-card">
+    <h3>{{ _("Teilen") }}</h3>
+    {{ check(_('Teilen erlauben'), 'share_enabled', st.share_enabled, _('Benutzer dürfen eigene Seiten und Datenbanken mit anderen Konten und Gruppen teilen (Lesen, Kommentieren, Bearbeiten). Aus = alle Freigaben wirken sofort nicht mehr; sie bleiben gespeichert und gelten beim Einschalten wieder.')) }}
+    {{ check(_('Nur innerhalb gemeinsamer Gruppen'), 'share_group_scope', st.share_group_scope, _('Personensuche und Teilen nur mit Konten, die mit einem eine Gruppe gemeinsam haben (lokal oder aus LDAP/SSO). An Gruppen kann man ohnehin nur teilen, wenn man selbst darin ist. Wirkt auf neue Freigaben.')) }}
+    <p class="hk-hint adm-share-off">{{ _("Erst „Teilen erlauben“ einschalten, dann lässt sich das einstellen.") }}</p>
+  </section>
+  <section class="adm-card">
     <h3>{{ _("Updates") }}</h3>
     {{ check(_('Auf neue Versionen hinweisen'), 'update_check', st.update_check, _('Fragt höchstens zweimal am Tag bei GitHub nach der neuesten Version und zeigt hier im Admin-Bereich einen Hinweis. Dabei wird nur die neueste Versionsnummer abgerufen, sonst nichts übertragen.')) }}
   </section>

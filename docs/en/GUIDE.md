@@ -409,6 +409,72 @@ blog.example.org {
 }
 ```
 
+### Sharing and comments
+
+Pages and databases can be shared with **other accounts** and **groups** on the same Saga instance. Use the
+**“Share”** button at the top right of your own page (or the page menu **⋯** → “Share …”): search for a person or a
+group (from 3 characters; you see display name and username, never a list of all accounts), pick a role and click
+the match. The dialog only offers groups you belong to – local groups as well as groups from LDAP or SSO. In the list
+below you change the role or remove access (with a confirmation; access ends immediately). With an empty search field
+your groups appear as chips (“Your groups:”), and a line under the field explains what the chosen role may do. The
+list shows each person’s actual role: if someone has more rights through a group, it says so (“Can comment (via team:
+Can edit)”), and the confirmation when removing names the access that remains. Shares from parent pages appear in a
+separate, read-only section with a way to the parent page. At the bottom you can copy the page link – it opens the
+page for everyone who has access.
+
+| Role | may |
+|---|---|
+| **View** | read the page, subpages and database entries, export, read comments |
+| **Comment** | additionally comment, reply and resolve threads |
+| **Edit** | additionally change title, content, icon, cover, tags and properties, create subpages and entries, upload images |
+
+- **Subpages are included:** a share also applies to all subpages and to the entries of databases below. The highest
+  role counts (person or group, this page or a page above it). Archived pages, pages in the trash and templates are
+  only visible to the owner.
+- **Only the owner may:** delete, archive, move, lock, mark as template, publish, view and restore versions, manage
+  sharing. Whatever others create or upload belongs to the page owner; versions are kept with the owner. So people
+  with “Edit” use the **owner’s storage** – their images and files count towards it.
+- **Sharing and publishing:** if a page is public with “Also publish subpages” and is also shared with “Edit”,
+  subpages and images those people create become public immediately – the publish dialog points this out.
+- **Shared with me:** in the sidebar, the section “👥 Shared with me” lists the pages others have shared with you
+  (with the owner’s name). Your own shared pages show 👥 in the page tree. New comments by others show as a small
+  dot on the page in the tree, as a number on “Shared with me” and as “💬 n” on the “Pages” button on the home page.
+  If sharing is turned off in the admin area, a notice says so.
+- **Who changed what:** below the title you see “Last changed by Name · 5 min ago” (if it wasn’t you) and, for pages
+  someone else created, “Created by Name”. The version history names the author of every saved version.
+- **Other people’s pages** show “Shared by Name · You can view/comment/edit” above the title. With “Can view” or “Can comment” the editor is
+  read-only; databases show “View only” (sorting and filtering work but are not saved). Task, calendar and Immich
+  blocks only show “Only visible to the owner” – never the owner’s data or yours. Links to pages that are not shared
+  with you appear as “Page without access”.
+- **Editing at the same time:** if two people save almost simultaneously, the familiar conflict notice appears – with
+  a name: “Bert just changed this page”. **“Load new version”** loads Bert’s version and shows your unsaved text for
+  copying. **“Keep my version”** asks first; Bert’s version then stays in the owner’s version history – nothing is lost
+  without a trace.
+- **Access ends while you type:** if the owner removes your access (or lowers it to “Can view”, or the admin turns
+  sharing off), a dialog shows your latest text for copying. Old links to pages you can’t access show “No access to
+  this page”.
+
+**Comments** are attached to a block and stay unobtrusive: the margin only shows a small number (💬 2), and only
+while there are open threads. Comment via the block menu (**⋮⋮** left of the block → “Comment”, or Ctrl/⌘ + / →
+“Comment”); hovering over a block also shows a small 💬+ button (on touch devices with read-only pages: tap the block first). The thread opens in a sidebar on the
+right (on phones from the bottom). There you reply, edit or delete your own comments (the page owner may delete any)
+and close a thread with **“✓ Resolve”** – it collapses and disappears; the **“Show resolved”** switch brings it back,
+“Reopen” makes it active again. “💬 3” in the page header opens all threads of the page; a small dot marks unread
+ones. Editing and deleting a comment are in its ⋯ menu; the owner also finds all threads in the page menu **⋯** →
+“Comments” (with the number of resolved ones). Comments are plain text (at most 2000 characters, line breaks allowed; links are detected), at most 30
+comments per minute. You can comment on your own, unshared pages too – as a note to yourself. If a block is deleted,
+its thread stays in the list as “Block removed”. If you delete the first comment of a thread that others have
+replied to, the replies remain and your comment shows as “Comment deleted”; the page owner can delete the whole
+thread (after confirming).
+
+**For the admin** (admin area → General → “Share”): **Allow sharing** (on by default; off = all shares stop working
+immediately but stay saved) and **Only within shared groups** (off by default; people search and sharing only with
+accounts that have a group in common with you; it only affects new shares – existing ones remain if you turn it on
+later). Saga takes over groups from LDAP or SSO at sign-in: if a membership changes there, shares with groups reflect
+it from the account’s next sign-in. The user detail page only shows the number of shares, never content.
+When an account is deleted, its shares and the shares given to it disappear; its comments on other people’s pages
+remain as “Deleted account”. When a group is deleted, shares with it end.
+
 ### Account, calendars, Immich, apps
 
 In the user menu at the top right under **Settings** (one tab each):

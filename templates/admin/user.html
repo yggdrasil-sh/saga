@@ -35,6 +35,7 @@
     <dt>{{ _("Lesezeichen") }}</dt><dd>{{ usage.bookmarks }}</dd><dt>{{ _("Dateien") }}</dt><dd>{{ usage.files_mb }} MB</dd>
     <dt>{{ _("Kalender") }}</dt><dd>{{ usage.calendars }}</dd><dt>Immich</dt><dd>{{ _('verbunden') if usage.immich else '–' }}</dd>
     <dt>{{ _("Apps") }}</dt><dd>{{ _("{n} angemeldet", n=usage.devices) }} · {{ _("{n} Schlüssel", n=usage.tokens) }}</dd>
+    <dt>{{ _("Freigaben") }}</dt><dd>{{ _("{n} erteilt", n=usage.shares) }} · {{ _("{n} erhalten", n=usage.shared_with) }}</dd>
   </dl>
   {% if devs %}<ul class="adm-list">{% for d in devs %}<li>{{ d[0] }} <small>{{ _("seit {since}, zuletzt {last}", since=ts(d[1]), last=ts(d[2]))|safe }}</small></li>{% endfor %}</ul>{% endif %}
   <p class="hk-hint">{{ _("Inhalte (Seiten, Kalender, Fotos) sind privat und hier nicht einsehbar.") }}</p>

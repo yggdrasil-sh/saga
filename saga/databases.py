@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from db import connect as _db
 from fastapi import APIRouter
 from saga.core import _api_guard, _bad, _body, _json_load, t
+from saga.sharing import access
 from saga.notes import NOTE_MAX_COUNT, NOTE_TITLE_MAX, _FILE_URL, _check_parent, _iter_blocks
 
 router = APIRouter()
@@ -51,10 +52,13 @@ async def api_note_duplicate(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
+    owner = uid                              # Duplizieren: v1 nur der Eigentuemer (Vorlagen sieht ohnehin nur er)
     b = await _body(request) or {}
     now = time.time()
     with _db() as c, c:
+        _, _, err = access(c, uid, nid, "owner")
+        if err is not None:
+            return err
         r = c.execute("SELECT title, icon, tags, body, format, kind, schema, props, cover, cover_pos, wide, parent_id "
                       "FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
         if not r:

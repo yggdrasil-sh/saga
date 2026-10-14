@@ -1,6 +1,7 @@
 """Mehrsprachigkeit: Kataloge (de/en/es als JSON neben dieser Datei), Sprachwahl und t().
 
-- Schluessel = der deutsche Text (de.json enthaelt sie unveraendert), Platzhalter {name}.
+- Schluessel = der deutsche Text (de.json enthaelt sie unveraendert), Platzhalter {name}. Gleicher deutscher Text mit
+  anderer Bedeutung: Kontext hinter '##' im Schluessel ('Lesen##Rolle') - angezeigt wird nur der Teil davor.
 - Python: t("Gespeichert.") bzw. t("Höchstens {n} Schlüssel", n=10) - die Sprache kommt aus der
   laufenden Anfrage (ContextVar, von der Middleware gesetzt). Ohne Anfrage: Englisch.
 - Jinja: _("Anmelden") und lang()/locale() als Globale (install()).
@@ -104,13 +105,20 @@ def fill(s, params):
     return _PH.sub(lambda m: str(params[m.group(1)]) if m.group(1) in params else m.group(0), s)
 
 
+def _ctx(s, key):
+    """Kontext ('Lesen##Rolle') nur am Schluessel abschneiden (deutsch bzw. fehlende Uebersetzung) - wie T() im Browser;
+    eine Uebersetzung, die selbst '##' enthaelt, bleibt unveraendert."""
+    i = s.find("##") if s == key else -1
+    return s[:i] if i > 0 else s
+
+
 def t(key, **params):
     """Uebersetzung in der Sprache der laufenden Anfrage (fehlt sie: der deutsche Schluessel)."""
-    return fill(CATALOG[_cur.get()].get(key) or key, params)
+    return fill(_ctx(CATALOG[_cur.get()].get(key) or key, key), params)
 
 
 def t_lang(lang, key, **params):
-    return fill(CATALOG[norm(lang) or DEFAULT].get(key) or key, params)
+    return fill(_ctx(CATALOG[norm(lang) or DEFAULT].get(key) or key, key), params)
 
 
 def js_catalog(lang):

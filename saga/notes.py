@@ -110,10 +110,32 @@ VERSION_EVERY, VERSION_MAX = 600, 50     # hoechstens alle 10 Minuten eine Siche
 
 
 def _purge_ids(c, uid, ids):
-    """Endgueltig loeschen - samt Versionen und Veroeffentlichung (im Papierkorb bleibt sie gespeichert, liefert aber 404)."""
+    """Endgueltig loeschen - samt Versionen, Veroeffentlichung, Freigaben und Kommentaren (im Papierkorb bleiben sie
+    gespeichert, wirken aber nicht: Seiten im Papierkorb sind fuer niemanden ausser dem Eigentuemer erreichbar)."""
     c.executemany("DELETE FROM note_version WHERE uid=? AND note_id=?", [(uid, i) for i in ids])
     c.executemany("DELETE FROM note_publish WHERE uid=? AND note_id=?", [(uid, i) for i in ids])
+    c.executemany("DELETE FROM note_share WHERE owner_uid=? AND note_id=?", [(uid, i) for i in ids])
+    c.executemany("DELETE FROM note_comment_seen WHERE thread_id IN (SELECT id FROM note_comment WHERE owner_uid=? AND note_id=?)",
+                  [(uid, i) for i in ids])
+    c.executemany("DELETE FROM note_comment WHERE owner_uid=? AND note_id=?", [(uid, i) for i in ids])
     c.executemany("DELETE FROM note WHERE uid=? AND id=?", [(uid, i) for i in ids])
+
+
+def note_chain(c, uid, nid):
+    """Ids von nid aufwaerts bis zur obersten Seite des Kontos uid - endet VOR der ersten geloeschten/archivierten Seite
+    oder Vorlage. nid selbst geloescht/archiviert/Vorlage/fremd -> []. (Veroeffentlichen und Teilen: was vererbt wird.)"""
+    rows = c.execute(
+        "WITH RECURSIVE t(id, parent_id, bad, depth) AS ("
+        " SELECT id, parent_id, (deleted_at IS NOT NULL OR archived IS NOT NULL OR is_template<>0), 0 FROM note WHERE id=? AND uid=?"
+        " UNION ALL SELECT n.id, n.parent_id, (n.deleted_at IS NOT NULL OR n.archived IS NOT NULL OR n.is_template<>0), t.depth + 1"
+        " FROM note n JOIN t ON n.id=t.parent_id WHERE n.uid=? AND t.depth < 64)"
+        " SELECT id, bad FROM t ORDER BY depth", (nid, uid, uid)).fetchall()
+    out = []
+    for i, bad in rows:
+        if bad:
+            break
+        out.append(i)
+    return out
 
 
 def _purge_old(c, uid):
@@ -124,16 +146,29 @@ def _purge_old(c, uid):
 
 
 # --- Versionsverlauf -------------------------------------------------------------
-def _snapshot(c, uid, nid, old, now, force=False):
-    """Alten Stand (title, body, format) sichern - hoechstens alle VERSION_EVERY Sekunden."""
+FORCED_EVERY = 60          # erzwungene Sicherungen durch Nicht-Eigentuemer: hoechstens eine je Seite und Person je 60 s
+VERSION_KEEP_OWN = 10      # beim Kuerzen nie loeschen: die neuesten 10 Fassungen des Eigentuemers (bzw. ohne Autor = alt)
+
+
+def _snapshot(c, uid, nid, old, now, force=False, author=None, by=None):
+    """Alten Stand (title, body, format) sichern - hoechstens alle VERSION_EVERY Sekunden. author: wer diesen Stand
+    geschrieben hat (note.updated_by; None = unbekannt bzw. der Eigentuemer). by: wer gerade speichert.
+    Erzwingt ein Nicht-Eigentuemer die Sicherung (Konflikt, leeren/kuerzen, Speichern ohne rev), gilt eine Drossel: eine
+    je Seite und Person je FORCED_EVERY - ausser der bisherige Stand stammt von jemand anderem (dann immer). So kann
+    niemand mit "Bearbeiten" den Verlauf des Eigentuemers mit eigenen Sicherungen ueberschwemmen."""
     last = c.execute("SELECT MAX(created) FROM note_version WHERE uid=? AND note_id=?", (uid, nid)).fetchone()[0]
+    if force and by and by != uid and author == by:
+        if c.execute("SELECT 1 FROM note_version WHERE uid=? AND note_id=? AND author=? AND created>? LIMIT 1",
+                     (uid, nid, by, now - FORCED_EVERY)).fetchone():
+            force = False
     if not force and last and now - last < VERSION_EVERY:
         return
-    c.execute("INSERT INTO note_version (note_id, uid, title, body, format, created) VALUES (?,?,?,?,?,?)",
-              (nid, uid, old[0], old[1], old[2], now))
+    c.execute("INSERT INTO note_version (note_id, uid, title, body, format, created, author) VALUES (?,?,?,?,?,?,?)",
+              (nid, uid, old[0], old[1], old[2], now, author))
     c.execute("DELETE FROM note_version WHERE uid=? AND note_id=? AND id NOT IN "
-              "(SELECT id FROM note_version WHERE uid=? AND note_id=? ORDER BY created DESC LIMIT ?)",
-              (uid, nid, uid, nid, VERSION_MAX))
+              "(SELECT id FROM note_version WHERE uid=? AND note_id=? ORDER BY created DESC LIMIT ?) AND id NOT IN "
+              "(SELECT id FROM note_version WHERE uid=? AND note_id=? AND (author IS NULL OR author=?) ORDER BY created DESC LIMIT ?)",
+              (uid, nid, uid, nid, VERSION_MAX, uid, nid, uid, VERSION_KEEP_OWN))
 
 
 def _disposition(name):
@@ -388,16 +423,20 @@ def _rel_mirror_set(c, uid, target_db, row_id, pid, other_id, add):
     c.execute("UPDATE note SET props=? WHERE id=? AND uid=?", (json.dumps(props, ensure_ascii=False), row_id, uid))
 
 
-def _rel_sync(c, uid, schema, row_id, old_props, new_props):
-    """Zweiseitige Relationen: hinzugefuegte/entfernte Verknuepfungen auf der Gegenseite nachziehen."""
+def _rel_sync(c, uid, schema, row_id, old_props, new_props, may=None):
+    """Zweiseitige Relationen: hinzugefuegte/entfernte Verknuepfungen auf der Gegenseite nachziehen.
+    may(zeile) -> bool: nur diese Zielzeilen anfassen (Teilen: Bearbeiter nur in Zeilen, die er selbst bearbeiten darf -
+    in anderen bleibt die Gegenseite, wie sie ist)."""
     for p in schema.get("props", []):
         if p.get("type") != "relation" or not p.get("pair"):
             continue
         old, new = set(old_props.get(p["id"]) or []), set(new_props.get(p["id"]) or [])
         for tid in new - old:
-            _rel_mirror_set(c, uid, p["target"], tid, p["pair"], row_id, True)
+            if may is None or may(tid):
+                _rel_mirror_set(c, uid, p["target"], tid, p["pair"], row_id, True)
         for tid in old - new:
-            _rel_mirror_set(c, uid, p["target"], tid, p["pair"], row_id, False)
+            if may is None or may(tid):
+                _rel_mirror_set(c, uid, p["target"], tid, p["pair"], row_id, False)
 
 
 def _rel_link(c, uid, nid, title, rp):

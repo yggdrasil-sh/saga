@@ -48,7 +48,8 @@
     function tab(t) { tRecent.classList.toggle('on', t === 'recent'); tAlbums.classList.toggle('on', t === 'albums'); }
     function choose(it, tile) {
       if (state.busy) return; state.busy = true; tile.classList.add('busy'); info.textContent = T('Übernehme „{name}“ …', { name: it.name || T('Foto') });
-      api('POST', '/api/immich/import', { id: it.id }).then(function (r) { picked = true; close(); onPick(r.url, r.name); })
+      // fremde Seite (HK.fileNote): die Datei gehoert dem Eigentuemer der Seite
+      api('POST', '/api/immich/import', HK.fileNote ? { id: it.id, note: HK.fileNote } : { id: it.id }).then(function (r) { picked = true; close(); onPick(r.url, r.name); })
         .catch(function (e) { state.busy = false; tile.classList.remove('busy'); info.textContent = T('Nicht übernommen: {err}', { err: e.message }); });
     }
     function loadAssets(reset) {

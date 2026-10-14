@@ -12,7 +12,7 @@ from db import connect as _db
 from fastapi import APIRouter
 from saga.calendars import _admin_hosts, _cal_fernet
 from saga.core import E, _api_guard, _bad, _body, t
-from saga.files import _sniff_image
+from saga.files import _sniff_image, upload_owner
 from saga.netguard import Blocked, guarded_client
 from saga.notes import FILES_DIR, FILE_MAX, FILE_QUOTA
 
@@ -277,6 +277,9 @@ async def api_immich_import(request: Request):
     aid = str(b.get("id") or "")
     if not _IMMICH_ID.match(aid):
         return _bad(t("ungueltig"))
+    owner, oerr = upload_owner(uid, b.get("note"))          # fuer eine fremde Seite (Rolle 'edit'): Datei gehoert deren Eigentuemer
+    if oerr is not None:
+        return oerr
     st, _, info = await asyncio.to_thread(_immich, key, "GET", f"/assets/{aid}")
     if st != 200:
         return _bad(t("Foto nicht gefunden"), 404)
@@ -296,12 +299,12 @@ async def api_immich_import(request: Request):
     if img != "image/gif" and name.endswith(".jpg") and img == "image/webp":
         name = name[:-4] + ".webp"
     with _db() as c, c:
-        used = c.execute("SELECT COALESCE(SUM(size),0) FROM file WHERE uid=?", (uid,)).fetchone()[0]
+        used = c.execute("SELECT COALESCE(SUM(size),0) FROM file WHERE uid=?", (owner,)).fetchone()[0]
         if used + len(data) > FILE_QUOTA:
             return _bad(t("Speicherplatz voll (max. {n} MB)", n=FILE_QUOTA // 1048576), 507)
         fid = os.urandom(12).hex()
         with open(os.path.join(FILES_DIR, fid), "wb") as f:
             f.write(data)
         c.execute("INSERT INTO file (id, uid, name, mime, size, is_image, created) VALUES (?,?,?,?,?,?,?)",
-                  (fid, uid, name, img, len(data), 1, time.time()))
+                  (fid, owner, name, img, len(data), 1, time.time()))
     return JSONResponse({"url": f"/files/{fid}", "name": name, "size": len(data), "mime": img})

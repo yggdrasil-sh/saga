@@ -39,6 +39,8 @@
 - **Datenbanken** mit Tabelle, Board, Liste, Galerie und Kalender, Filtern, Relationen und Berechnungen
 - **Seiten veröffentlichen:** eine Seite (auf Wunsch mit Unterseiten) unter `/@name/seite` teilen – ohne Konto
   lesbar, ohne JavaScript, optional als Startseite für Besucher
+- **Teilen und Kommentieren:** Seiten und Datenbanken mit Personen oder Gruppen (lokal, LDAP, SSO) teilen – Rollen
+  Lesen, Kommentieren, Bearbeiten, Unterseiten erben die Freigabe; dezente Kommentare am Block mit „Erledigt“
 - **Aufgaben** mit Fälligkeit, Priorität und Wiederholung
 - **Kalender (CalDAV):** Nextcloud, mailcow/SOGo, Radicale, iCloud … anzeigen und bearbeiten
 - **Immich:** eigene Fotos als Bilder und Titelbilder einbinden

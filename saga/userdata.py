@@ -4,6 +4,7 @@ from db import connect as _db
 from saga.calendars import _cal_cache_drop
 from saga.files import _drop_thumbs
 from saga.notes import FILES_DIR
+from saga.sharing import delete_account, share_counts
 
 
 # --- Konto loeschen (Admin-Bereich): ALLE Daten des Benutzers entfernen -------------------------------
@@ -17,7 +18,9 @@ def delete_user_data(uid):
     with _db() as c, c:
         fids = [r[0] for r in c.execute("SELECT id FROM file WHERE uid=?", (uid,)).fetchall()]
         c.execute("DELETE FROM file WHERE uid=?", (uid,))
+        shares = delete_account(c, uid)          # Freigaben (eigene + an das Konto), Kommentare anonymisieren/loeschen
         counts = {t: c.execute(f"DELETE FROM {t} WHERE uid=?", (uid,)).rowcount for t in USER_TABLES}
+        counts["note_share"] = shares
     for fid in fids:
         try:
             os.remove(os.path.join(FILES_DIR, fid))
@@ -40,7 +43,8 @@ def user_usage(uid):
                 "devices": q("SELECT COUNT(*) FROM device_login WHERE uid=?"),
                 "tokens": q("SELECT COUNT(*) FROM app_token WHERE uid=?"),
                 "calendars": q("SELECT COUNT(*) FROM cal_account WHERE uid=?"),
-                "immich": q("SELECT COUNT(*) FROM immich_key WHERE uid=?")}
+                "immich": q("SELECT COUNT(*) FROM immich_key WHERE uid=?"),
+                "shares": share_counts(c, uid)[0], "shared_with": share_counts(c, uid)[1]}
 
 
 def revoke_user_logins(uid, keep_device=None):

@@ -23,7 +23,7 @@ import auth
 import db
 from version import API_LEVEL, MIN_APP, VERSION
 
-from saga import app_api, app_login, calendars, dashboard, databases, files, immich, links, page_tools, pages, publish, tasks, web_auth
+from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
 from saga import i18n
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, LangMiddleware, title
 from saga.dashboard import _status_loop
@@ -161,3 +161,5 @@ app.include_router(immich.router)
 app.include_router(calendars.router)
 app.include_router(app_api.router)
 app.include_router(publish.router)          # /@name/... (oeffentlich) und /api/notes/{nid}/publish, /api/account/public-name
+app.include_router(sharing.router)          # Teilen: /api/shared, /api/notes/{nid}/shares, /api/share/targets
+app.include_router(comments.router)         # Kommentare: /api/notes/{nid}/comments, /api/comments/{cid}...

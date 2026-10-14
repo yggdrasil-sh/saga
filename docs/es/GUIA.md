@@ -420,6 +420,79 @@ blog.example.org {
 }
 ```
 
+### Compartir y comentar
+
+Las páginas y bases de datos se pueden compartir con **otras cuentas** y **grupos** de la misma instancia de Saga.
+Usa el botón **«Compartir»** arriba a la derecha de tu propia página (o el menú de la página **⋯** → «Compartir …»):
+busca una persona o un grupo (a partir de 3 caracteres; verás el nombre visible y el nombre de usuario, nunca una
+lista de todas las cuentas), elige un rol y pulsa el resultado. El diálogo solo ofrece grupos a los que perteneces,
+tanto locales como de LDAP o SSO; con el campo de búsqueda vacío aparecen como chips («Tus grupos:»), y una línea bajo
+el campo explica qué puede hacer el rol elegido. En la lista de abajo cambias el rol o quitas el acceso (con
+confirmación; el acceso termina al instante). La lista muestra el rol real: si alguien tiene más permisos a través de
+un grupo, se indica («Puede comentar (a través de team: Puede editar)»), y la confirmación al quitarlo nombra el acceso
+que se mantiene. Los usos compartidos de páginas superiores aparecen en una sección propia, de solo lectura, con
+enlace a la página superior. Abajo puedes copiar el enlace de la página: la abre para todas las personas con acceso.
+
+| Rol | puede |
+|---|---|
+| **Ver** | leer la página, las subpáginas y las entradas de bases de datos, exportar, leer comentarios |
+| **Comentar** | además comentar, responder y resolver conversaciones |
+| **Editar** | además cambiar título, contenido, icono, portada, etiquetas y propiedades, crear subpáginas y entradas, subir imágenes |
+
+- **Las subpáginas se incluyen:** un uso compartido vale también para todas las subpáginas y para las entradas de las
+  bases de datos que hay debajo. Cuenta el rol más alto (persona o grupo, esta página o una superior). Las páginas
+  archivadas, las de la papelera y las plantillas solo las ve el propietario.
+- **Solo el propietario puede:** eliminar, archivar, mover, bloquear, marcar como plantilla, publicar, ver y restaurar
+  versiones y gestionar el acceso. Lo que otros crean o suben pertenece al propietario de la página; las versiones se
+  guardan con él. Así, las personas con «Editar» usan el **espacio del propietario**: sus imágenes y archivos cuentan
+  en él.
+- **Compartir y publicar:** si una página es pública con «Publicar también las subpáginas» y además está compartida
+  con «Editar», las subpáginas e imágenes que creen esas personas se publican de inmediato; el diálogo de publicación
+  lo indica.
+- **Compartido conmigo:** en la barra lateral, la sección «👥 Compartido conmigo» muestra las páginas que otros han
+  compartido contigo (con el nombre del propietario). Tus propias páginas compartidas llevan 👥 en el árbol. Los
+  comentarios nuevos de otras personas se ven como un punto en la página del árbol, como número en «Compartido
+  conmigo» y como «💬 n» en el botón «Páginas» de la página de inicio. Si compartir está desactivado en la
+  administración, aparece un aviso.
+- **Quién cambió qué:** bajo el título ves «Último cambio de Nombre · hace 5 min» (si no fuiste tú) y, en las páginas
+  que creó otra persona, «Creada por Nombre». El historial de versiones indica el autor de cada versión guardada.
+- **Las páginas de otros** muestran «Compartido por Nombre · Rol» encima del título. Con «Ver» o «Comentar» el editor
+  es de solo lectura; las bases de datos muestran «Solo lectura» (ordenar y filtrar funciona, pero no se guarda). Los
+  bloques de tareas, calendario e Immich solo muestran «Solo visible para el propietario», nunca los datos del
+  propietario ni los tuyos. Los enlaces a páginas que no se han compartido contigo aparecen como «Página sin acceso».
+- **Editar a la vez:** si dos personas guardan casi al mismo tiempo, aparece el aviso de conflicto de siempre, con
+  nombre: «Bert acaba de cambiar esta página». **«Cargar la nueva versión»** carga la versión de Bert y muestra tu
+  texto sin guardar para copiarlo. **«Conservar mi versión»** pregunta antes; la versión de Bert queda entonces en el
+  historial de versiones del propietario: nada se pierde sin dejar rastro.
+- **El acceso termina mientras escribes:** si el propietario quita tu acceso (o lo baja a «Puede ver», o la
+  administración desactiva compartir), un diálogo muestra tu último texto para copiarlo. Los enlaces antiguos a
+  páginas sin acceso muestran «Sin acceso a esta página».
+
+**Los comentarios** van unidos a un bloque y son discretos: en el margen solo aparece un número pequeño (💬 2), y
+solo mientras haya conversaciones abiertas. Se comenta desde el menú del bloque (**⋮⋮** a la izquierda del bloque →
+«Comentar», o Ctrl/⌘ + / → «Comentar»); al pasar sobre un bloque aparece además un pequeño botón 💬+ (en pantallas táctiles con páginas de solo lectura, tras tocar el bloque). La
+conversación se abre en una barra lateral a la derecha (en el móvil, desde abajo). Allí respondes, editas o eliminas
+tus comentarios (el propietario de la página puede eliminar todos) y cierras una conversación con **«✓ Resuelto»**:
+se contrae y desaparece; el interruptor **«Mostrar resueltos»** la recupera y «Reabrir» la vuelve a activar. «💬 3» en
+la cabecera de la página abre todas las conversaciones; un punto pequeño marca lo no leído. Editar y eliminar un
+comentario están en su menú ⋯; el propietario encuentra también todas las conversaciones en el menú de la página **⋯**
+→ «Comentarios» (con el número de resueltas). Los comentarios son texto
+plano (como máximo 2000 caracteres, se permiten saltos de línea; los enlaces se reconocen), como máximo 30 comentarios
+por minuto. También puedes comentar en tus páginas no compartidas, como nota para ti. Si se elimina un bloque, su
+conversación queda en la lista como «Bloque eliminado». Si eliminas el primer comentario de una conversación en la
+que otros han respondido, las respuestas se mantienen y tu comentario aparece como «Comentario eliminado»; el
+propietario de la página puede eliminar toda la conversación (tras confirmarlo).
+
+**Para el administrador** (área de administración → General → «Compartir»): **Permitir compartir** (activado por
+defecto; desactivado = todos los usos compartidos dejan de funcionar al instante, pero se conservan) y **Solo dentro
+de grupos en común** (desactivado por defecto; búsqueda de personas y compartir solo con cuentas que tienen un grupo
+en común contigo; solo afecta a los nuevos usos compartidos: los existentes se mantienen si lo activas más tarde).
+Saga toma los grupos de LDAP o SSO al iniciar sesión: si allí cambia la pertenencia, los usos compartidos con grupos
+lo reflejan a partir del siguiente inicio de sesión de la cuenta. El detalle del usuario solo muestra el número de
+usos compartidos, nunca contenidos. Al eliminar
+una cuenta desaparecen sus usos compartidos y los que se le dieron; sus comentarios en páginas de otros quedan como
+«Cuenta eliminada». Al eliminar un grupo terminan los usos compartidos con él.
+
 ### Cuenta, calendarios, Immich, apps
 
 En el menú de usuario, arriba a la derecha, en **Ajustes** (una pestaña para cada cosa):

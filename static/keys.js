@@ -95,6 +95,7 @@
       m.appendChild(HK.menuItem(T('Nach oben'), function () { move(c, -1); }, { icon: '↑', hint: MK + '⇧↑' }));
       m.appendChild(HK.menuItem(T('Nach unten'), function () { move(c, 1); }, { icon: '↓', hint: MK + '⇧↓' }));
       m.appendChild(HK.menuItem(T('Link zum Block kopieren'), function () { blockLink(c); }, { icon: '🔗' }));
+      if (window.HKComments) m.appendChild(HK.menuItem(T('Kommentieren'), function () { HKComments.openBlock(c.b.id); }, { icon: '💬' }));
       m.appendChild(el('div', 'menu-sep'));
       m.appendChild(HK.menuItem(T('Löschen'), function () { c.ed.blocks.delete(c.i); }, { icon: '🗑', danger: true }));
     }, { search: T('Aktion suchen …') });

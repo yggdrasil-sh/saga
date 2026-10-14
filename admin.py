@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import connect as _db
-from saga import i18n, publish
+from saga import i18n, publish, sharing
 from saga.core import TZ, BodyLimit, LangMiddleware
 from saga.i18n import t
 from version import REPO, VERSION, newer
@@ -429,7 +429,10 @@ async def groups_post(request: Request):
             if act == "save":
                 c.execute("UPDATE groups SET description=? WHERE id=?", (_s(f, "description", 300), gid))
             else:
+                g = c.execute("SELECT name FROM groups WHERE id=?", (gid,)).fetchone()
                 c.execute("DELETE FROM groups WHERE id=?", (gid,))
+                if g:
+                    sharing.drop_group(c, g[0])        # Freigaben an diese Gruppe enden mit ihr
         auth._ui_cache.clear()
         _flash(request, t("Gespeichert.") if act == "save" else t("Gruppe gelöscht."))
     return _go("/groups")
@@ -568,6 +571,7 @@ async def settings_post(request: Request):
         home = 0                                          # nur veroeffentlichte, erreichbare Seiten
     for k, v in (("title", _s(f, "title", 60) or "Saga"), ("registration", _on(f, "registration")),
                  ("publish_enabled", _on(f, "publish_enabled")), ("public_home", home),
+                 ("share_enabled", _on(f, "share_enabled")), ("share_group_scope", _on(f, "share_group_scope")),
                  ("local_login", _on(f, "local_login")), ("group_prefix", prefix),
                  ("default_groups", _groups_list(_s(f, "default_groups", 1000))),
                  ("allow_private_hosts", _on(f, "allow_private_hosts")), ("allowed_hosts", ", ".join(hosts)),

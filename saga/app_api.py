@@ -15,6 +15,7 @@ from saga.databases import _first_image
 from saga.files import _thumb, _thumb_mime, _thumb_w
 from saga.notes import FILES_DIR, _FILE_URL, _clean_props
 from saga.pages import clean_blocks
+from saga.sharing import Access, access
 from saga.tasks import TASK_MAX_LEN, _client_today, _due, _task_done
 
 router = APIRouter()
@@ -244,16 +245,25 @@ async def api_app_row_check(nid: int, request: Request):
 
 @router.get("/api/notes/{nid}/rows")
 def api_db_rows(nid: int, request: Request):
-    """Zeilen einer Datenbank (aktive Unterseiten) mit ihren Werten."""
+    """Zeilen einer Datenbank (aktive Unterseiten) mit ihren Werten - ab Rolle 'view'; Antwort mit 'role'."""
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    d = _db_rows(uid, nid)      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
+    with _db() as c:
+        acc = Access(c, uid)
+        owner, role, err = access(c, uid, nid, "view", acc)
+        if err is not None:
+            return err
+        vis = None if role == "owner" else acc.tree(owner)      # fremd: ohne archivierte Zeilen und ohne Vorlagen
+    d = _db_rows(owner, nid, vis)
+    if d:
+        d["role"] = role
     return JSONResponse(d, headers={"Cache-Control": "no-store"}) if d else _bad("not found", 404)
 
 
-def _db_rows(owner, nid):
-    """Schema + aktive Zeilen einer Datenbank (None, wenn nicht vorhanden / nicht meine)."""
+def _db_rows(owner, nid, visible=None):
+    """Schema + aktive Zeilen einer Datenbank (None, wenn nicht vorhanden / nicht von owner).
+    visible: Menge sichtbarer Seiten fuer Nicht-Eigentuemer (sharing.Access.tree) - dann ohne Vorlagen."""
     with _db() as c:
         db = c.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database' AND deleted_at IS NULL", (nid, owner)).fetchone()
         if not db:
@@ -262,6 +272,8 @@ def _db_rows(owner, nid):
                          "AND deleted_at IS NULL AND is_template=0 ORDER BY sort NULLS FIRST, created", (owner, nid)).fetchall()
         tpls = c.execute("SELECT id, title, icon FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND is_template=1 "
                          "ORDER BY sort NULLS FIRST, created", (owner, nid)).fetchall()      # Vorlagen der Datenbank: keine Zeilen (wie Notion)
+    if visible is not None:
+        rows, tpls = [r for r in rows if r[0] in visible], []
     return {"schema": _json_load(db[0], {"props": []}), "templates": [{"id": t[0], "title": t[1] or "", "icon": t[2] or ""} for t in tpls],
             "rows": [{"id": r[0], "title": r[1] or "", "icon": r[2] or "", "props": _json_load(r[3], {}),
                       "updated": r[4], "created": r[5], "preview": r[6] or _first_image(r[7], r[8])} for r in rows]}

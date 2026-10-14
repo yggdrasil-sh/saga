@@ -17,6 +17,8 @@ from starlette.concurrency import run_in_threadpool
 from saga.core import BASE_URL, E, STATE_DIR, account_lang, _api_guard, _bad, _body, _json_load, _session_user, t
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
+from saga.comments import counts as comment_counts
+from saga.sharing import RANK, Access, access, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
 from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, NOTE_MAX_COUNT, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _snapshot, blocks_text
 
 router = APIRouter()
@@ -48,6 +50,8 @@ class _Sanitizer(HTMLParser):
         a = dict(attrs)
         keep = ""
         if tag == "a":
+            if "a" in self.stack:              # keine Verweise in Verweisen (wie der Browser): aeusseren erst schliessen -
+                self.handle_endtag("a")        # sonst verdeckte sharing.mask_links den Text des inneren Verweises nicht
             href = (a.get("href") or "").strip()
             if _NOTE_HREF.fullmatch(href):          # interner Seitenverweis, exakt /notes#<zahl>
                 keep = f' href="{href}"'
@@ -121,9 +125,9 @@ class TooLarge(ValueError):
     """Seite zu gross -> HTTP 413."""
 
 
-def clean_blocks(raw):
+def clean_blocks(raw, limit=NOTE_BLOCKS_MAX):
     """JSON-String pruefen und bereinigen -> (json_string, plaintext). ValueError bei Unsinn."""
-    if len(raw) > NOTE_BLOCKS_MAX:
+    if len(raw) > limit:
         raise TooLarge(t("Seite zu gross"))
     d = json.loads(raw)
     if not isinstance(d, dict) or not isinstance(d.get("blocks"), list):
@@ -206,6 +210,24 @@ def _icon(v, c=None, uid=None):
     return s
 
 
+def _may_edit(acc, role):
+    """Fuer _rel_sync: der Eigentuemer darf alle Zielzeilen nachziehen, andere nur die, die sie bearbeiten duerfen."""
+    if role == "owner":
+        return None
+    return lambda rid: RANK.get(acc.role(rid), 0) >= RANK["edit"]
+
+
+def _rel_check_for(c, owner, acc, role, old_props=None):
+    """Relationen: nur Eintraege, die es in der Ziel-Datenbank des Eigentuemers gibt - fuer Nicht-Eigentuemer zusaetzlich
+    nur solche, die sie selbst sehen duerfen (keine IDs aus nicht geteilten Datenbanken). Schon verknuepfte Eintraege
+    bleiben erhalten, auch wenn die bearbeitende Person sie nicht sieht."""
+    base = _rel_check(c, owner)
+    if role == "owner":
+        return base
+    keep = {x for v in (old_props or {}).values() if isinstance(v, list) for x in v if isinstance(x, int)}
+    return lambda target, ids: {i for i in base(target, ids) if i in keep or acc.role(i)}
+
+
 @router.get("/api/notes")
 def api_notes(request: Request):
     """Seitenbaum (ohne Inhalte)."""
@@ -216,23 +238,39 @@ def api_notes(request: Request):
         _purge_old(c, uid)
         rows = c.execute(f"SELECT {NOTE_META_COLS}, archived, locked FROM note WHERE uid=? AND deleted_at IS NULL ORDER BY sort NULLS FIRST, created",
                          (uid,)).fetchall()
-    return JSONResponse([dict(_note_meta(r), archived=bool(r[9]), locked=bool(r[10])) for r in rows], headers={"Cache-Control": "no-store"})
+        sh = shared_ids(c, uid)                    # Symbol im Baum: Seite ist (selbst) freigegeben
+        un = unread_notes(c, uid, [uid])           # Punkt im Baum: neue Kommentare von anderen
+    return JSONResponse([dict(_note_meta(r), archived=bool(r[9]), locked=bool(r[10]), shared=r[0] in sh, unread=r[0] in un) for r in rows],
+                        headers={"Cache-Control": "no-store"})
 
 
 @router.get("/api/notes/{nid}")
 def api_note_get(nid: int, request: Request):
+    """Seite lesen (ab Rolle 'view'). Fuer alle: role, owner{name, username, me}, shared, Kommentar-Zaehler."""
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
     with _db() as c:
-        r = c.execute(f"SELECT {NOTE_META_COLS}, body, format, schema, props, cover, cover_pos, created, wide, rev, archived, locked FROM note WHERE id=? AND uid=? AND deleted_at IS NULL",
-                      (nid, owner)).fetchone()
-        pub = r and c.execute("SELECT p.slug, n.name FROM note_publish p LEFT JOIN public_name n ON n.uid=p.uid "
-                              "WHERE p.note_id=? AND p.uid=? AND p.active=1", (nid, owner)).fetchone()
-        via = r and published_via(c, owner, nid)      # ueber eine Elternseite mit "Unterseiten mit veroeffentlichen"
-    if not r:
-        return _bad("not found", 404)
+        acc = Access(c, uid)
+        owner, role, err = access(c, uid, nid, "view", acc)
+        if err is not None:
+            return err
+        r = c.execute(f"SELECT {NOTE_META_COLS}, body, format, schema, props, cover, cover_pos, created, wide, rev, archived, locked, updated_by, created_by "
+                      "FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
+        if not r:
+            return _bad("not found", 404)
+        mine = role == "owner"
+        pub = mine and c.execute("SELECT p.slug, n.name FROM note_publish p LEFT JOIN public_name n ON n.uid=p.uid "
+                                 "WHERE p.note_id=? AND p.uid=? AND p.active=1", (nid, owner)).fetchone()
+        via = mine and published_via(c, owner, nid)      # ueber eine Elternseite mit "Unterseiten mit veroeffentlichen"
+        shared = bool(c.execute("SELECT 1 FROM note_share WHERE note_id=? LIMIT 1", (nid,)).fetchone()) if mine else True
+        per, n_open, n_unread = comment_counts(c, uid, nid)
+        n_res = c.execute("SELECT COUNT(*) FROM note_comment WHERE note_id=? AND thread_id IS NULL AND resolved_at IS NOT NULL",
+                          (nid,)).fetchone()[0]
+        nm = names(c, [owner, r[20], r[21]])
+        if not mine:                               # Verweise auf Seiten ohne Zugriff: Titel nie ausliefern
+            body = mask_links(r[9], r[10], viewer(acc))
+            parent_hidden = r[3] is not None and not acc.role(r[3])
     d = _note_meta(r)
     d["published"] = bool(pub)                     # Seitenkopf: Hinweis "Oeffentlich" (Einzelheiten: /api/notes/{nid}/publish)
     d["public_url"] = f"{BASE_URL}/@{pub[1]}/{pub[0]}" if pub and pub[1] else None
@@ -241,6 +279,15 @@ def api_note_get(nid: int, request: Request):
              cover_pos=50.0 if r[14] is None else r[14], created=r[15], wide=bool(r[16]), rev=r[17], archived=bool(r[18]), locked=bool(r[19]))
     if d["kind"] == "database":
         d["schema"] = _json_load(r[11], {"props": []})
+    # Teilen (1.3) - nur Erweiterungen, bestehende Felder bleiben wie sie sind
+    d.update(role=role, owner=person(c, owner, uid, nm), shared=shared, comment_counts=per, comments_open=n_open,
+             comments_unread=n_unread, comments_resolved=n_res, updated_by=person(c, r[20], uid, nm) if r[20] else None,
+             created_by=person(c, r[21], uid, nm) if r[21] and r[21] != owner else None)      # angelegt von jemand anderem
+    if not mine:
+        d["pinned"] = False                        # Favoriten sind die des Eigentuemers
+        d["body"] = body
+        if parent_hidden:
+            d["parent_id"] = None                  # Elternseite nicht freigegeben: nicht einmal ihre ID
     return JSONResponse(d, headers={"Cache-Control": "no-store"})
 
 
@@ -249,10 +296,20 @@ async def api_note_add(request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
+    owner, role = uid, "owner"
     b = await _body(request) or {}
     now = time.time()
     with _db() as c, c:
+        acc = Access(c, uid)
+        if b.get("parent_id") is not None:
+            # Unterseite: braucht 'edit' auf der Elternseite und gehoert deren Eigentuemer (zaehlt bei ihm)
+            try:
+                pid = int(b["parent_id"])
+            except (TypeError, ValueError, OverflowError):
+                return _bad(t("ungueltige Angabe"))
+            owner, role, err = access(c, uid, pid, "edit", acc)
+            if err is not None:
+                return err
         if c.execute("SELECT COUNT(*) FROM note WHERE uid=?", (owner,)).fetchone()[0] >= NOTE_MAX_COUNT:
             return _bad(t("maximal {n} Seiten (inkl. Papierkorb)", n=NOTE_MAX_COUNT), 409)
         try:
@@ -271,15 +328,16 @@ async def api_note_add(request: Request):
             ps = c.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database'", (parent, owner)).fetchone()
             if ps:
                 try:
-                    props = json.dumps(_clean_props(_json_load(ps[0], {"props": []}), b["props"], check=_rel_check(c, owner)), ensure_ascii=False)
+                    props = json.dumps(_clean_props(_json_load(ps[0], {"props": []}), b["props"], check=_rel_check_for(c, owner, acc, role)),
+                                       ensure_ascii=False)
                 except (ValueError, TypeError) as ex:
                     return _bad(str(ex) or t("ungueltige Werte"))
-        cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, created, updated) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, created, updated, updated_by, created_by) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (owner, title, json.dumps({"blocks": []}), "blocks", icon, parent, now,
-                         json.dumps(tags, ensure_ascii=False), kind, schema, props, now, now))
+                         json.dumps(tags, ensure_ascii=False), kind, schema, props, now, now, uid, uid))
         if props and ps:                                   # zweiseitige Relationen: Gegenseite nachziehen
-            _rel_sync(c, owner, _json_load(ps[0], {"props": []}), cur.lastrowid, {}, json.loads(props))
+            _rel_sync(c, owner, _json_load(ps[0], {"props": []}), cur.lastrowid, {}, json.loads(props), _may_edit(acc, role))
         return JSONResponse({"id": cur.lastrowid, "updated": now})
 
 
@@ -319,17 +377,33 @@ async def api_note_update(nid: int, request: Request):
         return r.resp
 
 
+OWNER_FIELDS = ("pinned", "template", "locked", "parent_id")      # Favorit, Vorlage, Sperre, Verschieben: nur der Eigentuemer
+
+
+def _conflict(c, uid, nid, rev):
+    """409 mit Revision und - wenn es jemand anderes war - wer zuletzt geaendert hat ("X hat diese Seite gerade geaendert")."""
+    r = c.execute("SELECT updated_by FROM note WHERE id=?", (nid,)).fetchone()
+    by = r[0] if r and r[0] and r[0] != uid else None
+    return JSONResponse({"error": "conflict", "rev": rev, "by": names(c, [by]).get(by) if by else None}, status_code=409)
+
+
 def _note_update(uid, nid, b):
-    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
     sets, args = [], []
     with _db() as c, c:
-        old = c.execute("SELECT title, body, format, rev, locked FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
+        acc = Access(c, uid)
+        owner, role, err = access(c, uid, nid, "edit", acc)
+        if err is not None:
+            return err
+        if role != "owner" and any(k in b for k in OWNER_FIELDS):
+            return _bad(t("Das darf nur der Eigentümer der Seite."), 403)
+        old = c.execute("SELECT title, body, format, rev, locked, updated_by FROM note WHERE id=? AND uid=? AND deleted_at IS NULL",
+                        (nid, owner)).fetchone()
         if not old:
             return _bad("not found", 404)
         if old[4] and b.get("locked") is not False and ("body" in b or "title" in b):     # gesperrt: Inhalt/Titel bleiben unveraendert
             return JSONResponse({"error": t("Seite ist gesperrt – erst entsperren")}, status_code=423)
         # Konflikterkennung: wer Titel/Inhalt speichert und die gekannte Revision mitschickt, ueberschreibt
-        # keine zwischenzeitliche Aenderung (anderer Tab, Peek, spaeter: andere Person). Ohne 'rev' wie bisher.
+        # keine zwischenzeitliche Aenderung (anderer Tab, Peek, andere Person). Ohne 'rev' wie bisher.
         content = "body" in b or "title" in b
         check_rev = content and b.get("rev") is not None
         if check_rev:
@@ -338,7 +412,12 @@ def _note_update(uid, nid, b):
             except (TypeError, ValueError, OverflowError):
                 return _bad(t("ungueltige Revision"))
             if want != old[3]:
-                return JSONResponse({"error": "conflict", "rev": old[3]}, status_code=409)
+                return _conflict(c, uid, nid, old[3])
+        # "Meine Version behalten" (overwrite, ohne rev): trotzdem nur gegen die eben gelesene und als Version gesicherte
+        # Fassung schreiben - eine Aenderung, die genau dazwischen eintrifft, wuerde sonst ungesichert ueberschrieben
+        # Speichern ohne rev (aeltere Apps, Zeilen umbenennen) ueber den Stand einer anderen Person: vorher sichern
+        foreign = content and not check_rev and bool(old[5]) and old[5] != uid
+        atomic = check_rev or (content and bool(b.get("overwrite"))) or foreign
         shrink = False
         try:
             if "pinned" in b:
@@ -355,16 +434,25 @@ def _note_update(uid, nid, b):
                     raise ValueError(t("nur Datenbanken haben ein Schema"))
                 new_schema = _clean_schema(b["schema"])
                 old_s = _json_load((c.execute("SELECT schema FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone() or [None])[0], {"props": []})
+                if role != "owner" and bool(old_s.get("locked")) != bool(new_schema.get("locked")):
+                    raise _Reply(_bad(t("Das darf nur der Eigentümer der Seite."), 403))     # Sperre der Datenbank: wie die Seiten-Sperre
                 if old_s.get("locked") and new_schema.get("locked"):     # gesperrt: nur Entsperren ist erlaubt
                     strip = lambda s: json.dumps([s.get("props"), s.get("views"), s.get("title_name")], sort_keys=True)
                     if strip(new_schema) != strip(_clean_schema(old_s)):
                         raise ValueError(t("Die Datenbank ist gesperrt – zum Ändern erst unter „Ansicht“ entsperren"))
                 old_by = {p["id"]: p for p in old_s.get("props", [])}
                 old_rel = {k: p.get("target") for k, p in old_by.items() if p.get("type") == "relation"}
+
+                def rel_ok(target):
+                    """Relation anlegen/koppeln/entkoppeln schreibt in die Ziel-Datenbank: Nicht-Eigentuemer brauchen dort 'edit'."""
+                    if role != "owner" and RANK.get(acc.role(target), 0) < RANK["edit"]:
+                        raise _Reply(_bad(t("Diese Relation kann nur der Eigentümer ändern."), 403))
                 for rp in new_schema["props"]:          # Relation nur auf eigene, aktive Datenbanken
-                    if rp["type"] == "relation" and old_rel.get(rp["id"]) != rp["target"] and not c.execute(
-                            "SELECT 1 FROM note WHERE id=? AND uid=? AND kind='database' AND deleted_at IS NULL", (rp["target"], owner)).fetchone():
-                        raise ValueError(t("Ziel-Datenbank der Relation nicht gefunden"))
+                    if rp["type"] == "relation" and old_rel.get(rp["id"]) != rp["target"]:
+                        rel_ok(rp["target"])
+                        if not c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND kind='database' AND deleted_at IS NULL",
+                                         (rp["target"], owner)).fetchone():
+                            raise ValueError(t("Ziel-Datenbank der Relation nicht gefunden"))
                 # Zweiseitige Relationen: Kopplung (pair) stellt NUR der Server her - vom Browser nur uebernehmen, was schon so bestand
                 raw_by = {str(p.get("id")): p for p in b["schema"].get("props", []) if isinstance(p, dict)}
                 my_title = c.execute("SELECT title FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()[0]
@@ -377,15 +465,19 @@ def _note_update(uid, nid, b):
                     else:
                         rp.pop("pair", None)
                     if prev.get("pair") and prev.get("target") != rp["target"]:      # Ziel gewechselt: alte Gegenspalte entfernen
+                        rel_ok(prev["target"])
                         _rel_unlink(c, owner, nid, prev["target"], prev["pair"], True)
                     want = raw_by.get(rp["id"], {}).get("two_way")
                     if want is True and not rp.get("pair") and rp["target"] != nid:
+                        rel_ok(rp["target"])
                         rp["pair"] = _rel_link(c, owner, nid, my_title, rp)
                     elif want is False and rp.get("pair"):
+                        rel_ok(rp["target"])
                         _rel_unlink(c, owner, nid, rp["target"], rp.pop("pair"), True)
                 new_ids = {p["id"] for p in new_schema["props"]}
                 for k, prev in old_by.items():                                    # Spalte geloescht: Gegenseite bleibt, nur entkoppelt
                     if k not in new_ids and prev.get("type") == "relation" and prev.get("pair"):
+                        rel_ok(prev["target"])
                         _rel_unlink(c, owner, nid, prev["target"], prev["pair"], False)
                 sets.append("schema=?"); args.append(json.dumps(new_schema, ensure_ascii=False))
                 # Werte, die nach Typ-/Optionsaenderung nicht mehr passen, aus allen Zeilen entfernen
@@ -408,8 +500,8 @@ def _note_update(uid, nid, b):
                                "WHERE n.id=? AND n.uid=? AND d.kind='database'", (nid, owner)).fetchone()
                 if not ps:
                     raise ValueError(t("Seite ist keine Datenbank-Zeile"))
-                merged = _clean_props(_json_load(ps[0], {"props": []}), b["props"], _json_load(ps[1], {}), check=_rel_check(c, owner))
-                _rel_sync(c, owner, _json_load(ps[0], {"props": []}), nid, _json_load(ps[1], {}), merged)
+                merged = _clean_props(_json_load(ps[0], {"props": []}), b["props"], _json_load(ps[1], {}), check=_rel_check_for(c, owner, acc, role, _json_load(ps[1], {})))
+                _rel_sync(c, owner, _json_load(ps[0], {"props": []}), nid, _json_load(ps[1], {}), merged, _may_edit(acc, role))
                 sets.append("props=?"); args.append(json.dumps(merged, ensure_ascii=False))
             if "title" in b:
                 sets.append("title=?"); args.append(str(b["title"]).strip()[:NOTE_TITLE_MAX])
@@ -430,7 +522,16 @@ def _note_update(uid, nid, b):
             if "body" in b:
                 fmt = b.get("format", "blocks")
                 if fmt == "blocks":
-                    body, _ = clean_blocks(str(b["body"]))
+                    raw = str(b["body"])
+                    if role != "owner":
+                        # verdeckte Verweistexte (Seiten ohne Zugriff) wieder einsetzen; die Laenge zaehlt erst danach
+                        # (der Platzhalter kann laenger sein als der Titel - Spielraum je Verweis)
+                        body, _ = clean_blocks(raw, NOTE_BLOCKS_MAX + 64 * raw.count("/notes#"))
+                        body = restore_links(old[1] if old[2] == "blocks" else "", body, viewer(acc), title_of(c, owner))
+                        if len(body) > NOTE_BLOCKS_MAX:
+                            raise TooLarge(t("Seite zu gross"))
+                    else:
+                        body, _ = clean_blocks(raw)
                     _check_file_refs(owner, json.loads(body)["blocks"])
                 elif fmt == "text":
                     body = str(b["body"])
@@ -454,16 +555,20 @@ def _note_update(uid, nid, b):
         if not sets:
             raise _Reply(_bad(t("nichts zu aendern")))
         now = time.time()
-        if "body" in b:
-            _snapshot(c, owner, nid, old, now, force=shrink)     # leer/viel kleiner: alten Stand immer sichern
+        if "body" in b or (content and (b.get("overwrite") or foreign)):
+            # leer/viel kleiner: alten Stand immer sichern. "Meine Version behalten" nach einem Konflikt (overwrite) oder
+            # Speichern ohne rev ueber fremden Stand: die ueberschriebene Fassung bleibt als Version erhalten - mit Autor
+            # (erzwungene Sicherungen von Nicht-Eigentuemern gedrosselt, s. _snapshot)
+            _snapshot(c, owner, nid, old, now, force=shrink or bool(b.get("overwrite")) or foreign, author=old[5], by=uid)
         if content:
             sets.append("rev=rev+1")
+            sets.append("updated_by=?"); args.append(uid)            # fuer den Konflikt-Hinweis bei anderen
         # Atomar: mit Revision nur schreiben, wenn sie seit dem Lesen niemand erhoeht hat (sonst 409, alles zurueck)
-        n = c.execute(f"UPDATE note SET {', '.join(sets)}, updated=? WHERE id=? AND uid=?" + (" AND rev=?" if check_rev else ""),
-                      (*args, now, nid, owner, *((old[3],) if check_rev else ()))).rowcount
-        if check_rev and n == 0:
+        n = c.execute(f"UPDATE note SET {', '.join(sets)}, updated=? WHERE id=? AND uid=?" + (" AND rev=?" if atomic else ""),
+                      (*args, now, nid, owner, *((old[3],) if atomic else ()))).rowcount
+        if atomic and n == 0:
             cur = c.execute("SELECT rev FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()
-            raise _Reply(JSONResponse({"error": "conflict", "rev": cur[0] if cur else None}, status_code=409))
+            raise _Reply(_conflict(c, uid, nid, cur[0] if cur else None))
     return JSONResponse({"ok": True, "updated": now, "rev": old[3] + (1 if content else 0)})
 
 
@@ -474,13 +579,16 @@ async def api_note_move(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
+    owner = uid                              # Verschieben: v1 nur der Eigentuemer
     b = await _body(request) or {}
     try:
         index = max(0, int(b.get("index", 0)))
     except (TypeError, ValueError):
         return _bad(t("ungueltige Position"))
     with _db() as c, c:
+        _, _, err = access(c, uid, nid, "owner")
+        if err is not None:
+            return err
         me = c.execute("SELECT parent_id FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
         if not me:
             return _bad("not found", 404)
@@ -511,10 +619,13 @@ async def api_note_archive(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid
+    owner = uid                              # Archivieren: nur der Eigentuemer
     b = await _body(request) or {}
     on = bool(b.get("archived", True))
     with _db() as c, c:
+        _, _, err = access(c, uid, nid, "owner")
+        if err is not None:
+            return err
         me = c.execute("SELECT archived, parent_id FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
         if not me:
             return _bad("not found", 404)
@@ -544,8 +655,11 @@ def api_note_delete(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
+    owner = uid                              # Loeschen: nur der Eigentuemer
     with _db() as c, c:
+        _, _, err = access(c, uid, nid, "owner")
+        if err is not None:
+            return err
         ids = [r[0] for r in c.execute(
             "WITH RECURSIVE t(id) AS (SELECT id FROM note WHERE id=? AND uid=? AND deleted_at IS NULL "
             "UNION SELECT n.id FROM note n JOIN t ON n.parent_id=t.id WHERE n.uid=? AND n.deleted_at IS NULL) SELECT id FROM t",
@@ -573,36 +687,67 @@ async def api_note_search(request: Request):
     return JSONResponse(hits, headers={"Cache-Control": "no-store"})
 
 
+def _search_hit(r, q, tag):
+    """r = (NOTE_META_COLS..., body, format) -> Treffer oder None"""
+    d = _note_meta(r)
+    tags_l = [x.lower() for x in d["tags"]]
+    if tag and tag not in tags_l:
+        return None
+    if q:
+        text = _note_text(r[10], r[9])
+        i = text.lower().find(q)
+        if not (q in (r[1] or "").lower() or i >= 0 or any(q in x for x in tags_l)):
+            return None
+        if i >= 0:
+            s = max(0, i - 40)
+            d["snippet"] = ("…" if s else "") + text[s:i + len(q) + 60] + ("…" if i + len(q) + 60 < len(text) else "")
+    return d
+
+
 def _note_search(uid, q, tag):
+    """Eigene Seiten, danach fuer mich freigegebene (Mengen-Abfrage je Eigentuemer, mit role/owner) - hoechstens 50."""
     hits = []
     with _db() as c:
         for r in c.execute(f"SELECT {NOTE_META_COLS}, body, format FROM note WHERE uid=? AND deleted_at IS NULL AND archived IS NULL ORDER BY updated DESC", (uid,)):
-            d = _note_meta(r)
-            tags_l = [x.lower() for x in d["tags"]]
-            if tag and tag not in tags_l:
-                continue
-            if q:
-                text = _note_text(r[10], r[9])
-                i = text.lower().find(q)
-                if not (q in (r[1] or "").lower() or i >= 0 or any(q in x for x in tags_l)):
-                    continue
-                if i >= 0:
-                    s = max(0, i - 40)
-                    d["snippet"] = ("…" if s else "") + text[s:i + len(q) + 60] + ("…" if i + len(q) + 60 < len(text) else "")
-            hits.append(d)
-            if len(hits) >= 50:
-                break
+            d = _search_hit(r, q, tag)
+            if d:
+                hits.append(d)
+                if len(hits) >= 50:
+                    return hits
+        acc = Access(c, uid)
+        vis = viewer(acc)
+        owners = acc.owners()
+        nm = names(c, owners)
+        for o in owners:
+            roles = acc.tree(o)
+            ids = list(roles)
+            for k in range(0, len(ids), 500):
+                part = ids[k:k + 500]
+                for r in c.execute(f"SELECT {NOTE_META_COLS}, body, format FROM note WHERE uid=? AND deleted_at IS NULL AND id IN "
+                                   f"({','.join('?' * len(part))}) ORDER BY updated DESC", (o, *part)):
+                    r = tuple(r[:9]) + (mask_links(r[9], r[10], vis), r[10])      # Suche nur im sichtbaren Text
+                    d = _search_hit(r, q, tag)
+                    if d:
+                        d.update(role=roles[r[0]], pinned=False, owner={"name": nm.get(o) or o, "username": o, "me": False})
+                        if d["parent_id"] not in roles:
+                            d["parent_id"] = None
+                        hits.append(d)
+                        if len(hits) >= 50:
+                            return hits
     return hits
 
 
 @router.get("/api/notes/{nid}/backlinks")
 def api_note_backlinks(nid: int, request: Request):
-    """Eigene Seiten, die auf diese Seite verweisen (Rueckverweise)."""
+    """Seiten des Eigentuemers, die auf diese Seite verweisen (Rueckverweise) - fuer andere nur die, die sie sehen duerfen."""
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
     with _db() as c:
+        acc = Access(c, uid)
+        owner, role, err = access(c, uid, nid, "view", acc)
+        if err is not None:
+            return err
         if not c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone():
             return _bad("not found", 404)
         # Im gespeicherten JSON steht der Link als href=\"/notes#<id>\" - der Backslash vor dem
@@ -610,7 +755,15 @@ def api_note_backlinks(nid: int, request: Request):
         rows = c.execute(f"SELECT {NOTE_META_COLS} FROM note WHERE uid=? AND id<>? AND format='blocks' AND deleted_at IS NULL "
                          "AND instr(body, ?) > 0 ORDER BY updated DESC",
                          (owner, nid, f'/notes#{nid}\\"')).fetchall()
-    return JSONResponse([_note_meta(r) for r in rows], headers={"Cache-Control": "no-store"})
+        if role != "owner":
+            vis = acc.tree(owner)
+            rows = [r for r in rows if r[0] in vis]
+    out = [_note_meta(r) for r in rows]
+    if role != "owner":
+        for d in out:
+            if d["parent_id"] not in vis:
+                d["parent_id"] = None
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/api/services")

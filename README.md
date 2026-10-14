@@ -43,6 +43,8 @@ private space – no cloud, no subscription, on your own server.
 - **Databases** with table, board, list, gallery and calendar views, filters, relations and formulas
 - **Publish pages:** share a page (optionally with subpages) at `/@name/page` – readable without an account, no
   JavaScript, optional public home page for visitors
+- **Sharing and comments:** share pages and databases with people or groups (local, LDAP, SSO) – roles View,
+  Comment, Edit, subpages inherit the share; unobtrusive comments on blocks with “Resolved”
 - **Tasks** with due dates, priorities and recurrence
 - **Calendars (CalDAV):** view and edit Nextcloud, mailcow/SOGo, Radicale, iCloud …
 - **Immich:** use your own photos as images and cover images

@@ -13,6 +13,7 @@ from db import connect as _db
 from fastapi import APIRouter
 from saga import i18n
 from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, t
+from saga.sharing import Access, access, mask_links, names, person, viewer
 from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _snapshot, blocks_text
 
 router = APIRouter()
@@ -94,13 +95,19 @@ def api_versions(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
+    owner = uid                              # Versionen: nur der Eigentuemer (sie bleiben bei ihm)
     with _db() as c:
+        _, _, err = access(c, uid, nid, "owner")
+        if err is not None:
+            return err
         if not c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone():
             return _bad("not found", 404)
-        rows = c.execute("SELECT id, title, created, length(body) FROM note_version WHERE uid=? AND note_id=? "
+        rows = c.execute("SELECT id, title, created, length(body), author FROM note_version WHERE uid=? AND note_id=? "
                          "ORDER BY created DESC", (owner, nid)).fetchall()
-    return JSONResponse([{"id": r[0], "title": r[1] or "", "created": r[2], "size": r[3] or 0} for r in rows],
+        nm = names(c, [r[4] for r in rows])
+    # author: wer diese Fassung geschrieben hat (None = du selbst bzw. unbekannt)
+    return JSONResponse([{"id": r[0], "title": r[1] or "", "created": r[2], "size": r[3] or 0,
+                          "author": person(c, r[4], uid, nm) if r[4] and r[4] != owner else None} for r in rows],
                         headers={"Cache-Control": "no-store"})
 
 
@@ -109,8 +116,11 @@ def api_version_get(nid: int, vid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
+    owner = uid                              # Versionen: nur der Eigentuemer
     with _db() as c:
+        _, _, err = access(c, uid, nid, "owner")
+        if err is not None:
+            return err
         r = c.execute("SELECT v.title, v.body, v.format, v.created FROM note_version v JOIN note n ON n.id=v.note_id AND n.uid=v.uid "
                       "WHERE v.id=? AND v.note_id=? AND v.uid=? AND n.deleted_at IS NULL", (vid, nid, owner)).fetchone()
     if not r:
@@ -124,15 +134,19 @@ def api_version_restore(nid: int, vid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
+    owner = uid                              # Version wiederherstellen: nur der Eigentuemer
     with _db() as c, c:
-        cur = c.execute("SELECT title, body, format FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
+        _, _, err = access(c, uid, nid, "owner")
+        if err is not None:
+            return err
+        cur = c.execute("SELECT title, body, format, updated_by FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
         v = c.execute("SELECT title, body, format FROM note_version WHERE id=? AND note_id=? AND uid=?", (vid, nid, owner)).fetchone()
         if not cur or not v:
             return _bad("not found", 404)
         now = time.time()
-        _snapshot(c, owner, nid, cur, now, force=True)       # aktueller Stand bleibt als Version erhalten
-        c.execute("UPDATE note SET title=?, body=?, format=?, updated=?, rev=rev+1 WHERE id=? AND uid=?", (v[0], v[1], v[2], now, nid, owner))
+        _snapshot(c, owner, nid, cur, now, force=True, author=cur[3])       # aktueller Stand bleibt als Version erhalten
+        c.execute("UPDATE note SET title=?, body=?, format=?, updated=?, rev=rev+1, updated_by=? WHERE id=? AND uid=?",
+                  (v[0], v[1], v[2], now, uid, nid, owner))
     return JSONResponse({"ok": True, "updated": now})
 
 
@@ -218,20 +232,28 @@ def api_note_export(nid: int, request: Request, sub: int = 0):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
     with _db() as c:                     # erst ohne Inhalte (Baum, Titel, Eigenschaften); Inhalte nur fuer exportierte Seiten
+        acc = Access(c, uid)
+        owner, role, err = access(c, uid, nid, "view", acc)      # Lesen reicht; fremde Seiten: nur was ich sehen darf
+        if err is not None:
+            return err
         rows = {r[0]: list(r) for r in c.execute("SELECT id, title, icon, parent_id, NULL, format, kind, schema, props, created, updated FROM note "
                                                  "WHERE uid=? AND deleted_at IS NULL", (owner,))}
+        if role != "owner":
+            vis = acc.tree(owner)
+            rows = {k: v for k, v in rows.items() if k in vis}
     if nid not in rows:
         return _bad("not found", 404)
 
     def load_bodies(ids):
         ids = list(ids)
         with _db() as c:
+            vis = viewer(Access(c, uid)) if role != "owner" else None
             for k in range(0, len(ids), 500):
                 part = ids[k:k + 500]
                 for i, body in c.execute(f"SELECT id, body FROM note WHERE uid=? AND id IN ({','.join('?' * len(part))})", (owner, *part)):
-                    rows[i][4] = body
+                    # fremd: Verweise auf Seiten ohne Zugriff ohne ihren Titel
+                    rows[i][4] = mask_links(body, rows[i][5], vis) if vis else body
 
     def val_of(p, row, pv):
         if p["type"] == "calc":

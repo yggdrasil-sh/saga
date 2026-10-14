@@ -12,6 +12,7 @@ from db import connect as _db
 from fastapi import APIRouter
 from saga.core import STATE_DIR, _api_guard, _bad, _session_user, t
 from saga.notes import FILES_DIR, FILE_MAX, FILE_QUOTA, _disposition
+from saga.sharing import Access, access
 
 router = APIRouter()
 
@@ -89,12 +90,50 @@ def files_gc(min_age=86400):
     return removed
 
 
+def upload_owner(uid, note):
+    """Wem gehoert eine neue Datei? Ohne Seite: mir. Mit Seite: deren Eigentuemer, wenn ich sie bearbeiten darf.
+    -> (eigentuemer, fehlerantwort)"""
+    if note in (None, ""):
+        return uid, None
+    try:
+        nid = int(note)
+    except (TypeError, ValueError):
+        return None, JSONResponse({"success": 0, "error": t("ungueltige Angabe")}, status_code=400)
+    with _db() as c:
+        owner, _, err = access(c, uid, nid, "edit")
+    if err is not None:
+        return None, JSONResponse({"success": 0, "error": "not found" if err.status_code == 404 else t("Dafür fehlt dir die Berechtigung.")},
+                                  status_code=err.status_code)
+    return owner, None
+
+
+def _file_visible(c, uid, owner, fid):
+    """Datei eines anderen Kontos: sichtbar, wenn eine Seite des Besitzers sie benutzt (Inhalt, Symbol, Titelbild)
+    und ich diese Seite sehen darf (Freigabe). Erst die sichtbaren Seiten (eine Abfrage ohne Inhalte), dann nur in DIESEN
+    nach der Datei suchen - nicht alle Inhalte des Besitzers je Bild durchsuchen (und kein LIMIT, das Treffer abschneidet)."""
+    vis = list(Access(c, uid).tree(owner))
+    if not vis:
+        return False
+    ref = f"/files/{fid}"
+    for k in range(0, len(vis), 500):
+        part = vis[k:k + 500]
+        if c.execute(f"SELECT 1 FROM note WHERE uid=? AND deleted_at IS NULL AND id IN ({','.join('?' * len(part))}) "
+                     "AND (instr(body, ?) > 0 OR icon=? OR cover=?) LIMIT 1", (owner, *part, ref, ref, ref)).fetchone():
+            return True
+    return False
+
+
 @router.post("/api/files")
 async def api_file_upload(request: Request):
-    """Upload aus den Editor.js-Werkzeugen (Formularfeld 'image' oder 'file')."""
+    """Upload aus den Editor.js-Werkzeugen (Formularfeld 'image' oder 'file').
+    Fuer eine fremde Seite (Kopfzeile X-Saga-Note oder ?note=<id>, Rolle 'edit'): die Datei gehoert dem Eigentuemer
+    der Seite und zaehlt bei ihm - nur so darf sie in seiner Seite stehen."""
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
+    owner, err = upload_owner(uid, request.headers.get("x-saga-note") or request.query_params.get("note"))
+    if err is not None:
+        return err
     if int(request.headers.get("content-length") or 0) > FILE_MAX + 64 * 1024:
         return JSONResponse({"success": 0, "error": t("Datei zu gross (max. {n} MB)", n=FILE_MAX // 1048576)}, status_code=413)
     form = await request.form()
@@ -111,14 +150,14 @@ async def api_file_upload(request: Request):
     if "image" in form and not img:
         return JSONResponse({"success": 0, "error": t("kein unterstütztes Bild (PNG, JPEG, GIF, WebP)")}, status_code=415)
     with _db() as c, c:
-        used = c.execute("SELECT COALESCE(SUM(size),0) FROM file WHERE uid=?", (uid,)).fetchone()[0]
+        used = c.execute("SELECT COALESCE(SUM(size),0) FROM file WHERE uid=?", (owner,)).fetchone()[0]
         if used + len(data) > FILE_QUOTA:
             return JSONResponse({"success": 0, "error": t("Speicherplatz voll (max. {n} MB)", n=FILE_QUOTA // 1048576)}, status_code=507)
         fid = os.urandom(12).hex()
         with open(os.path.join(FILES_DIR, fid), "wb") as f:
             f.write(data)
         c.execute("INSERT INTO file (id, uid, name, mime, size, is_image, created) VALUES (?,?,?,?,?,?,?)",
-                  (fid, uid, name, img or "application/octet-stream", len(data), 1 if img else 0, time.time()))
+                  (fid, owner, name, img or "application/octet-stream", len(data), 1 if img else 0, time.time()))
     ext = name.rsplit(".", 1)[-1].lower()[:10] if "." in name else ""
     return JSONResponse({"success": 1, "file": {"url": f"/files/{fid}", "name": name, "size": len(data),
                                                "extension": ext, "title": name}})
@@ -237,15 +276,21 @@ def _image_response(fid, path, mime, request):
 
 @router.get("/files/{fid}")
 def file_get(fid: str, request: Request):
-    """Nur fuer den Besitzer (Session-Cookie). Bilder inline (auf Wunsch verkleinert), alles andere nur als Download."""
+    """Fuer den Besitzer (Session-Cookie) - und fuer Konten, die eine Seite des Besitzers sehen duerfen, in der die Datei
+    steht (Teilen). Bilder inline (auf Wunsch verkleinert), alles andere nur als Download."""
     uid = _session_user(request)
     if not uid or not re.fullmatch(r"[0-9a-f]{24}", fid):
         return PlainTextResponse("not found", status_code=404)
     with _db() as c:
-        r = c.execute("SELECT name, mime, is_image FROM file WHERE id=? AND uid=?", (fid, uid)).fetchone()
+        r = c.execute("SELECT name, mime, is_image, uid FROM file WHERE id=?", (fid,)).fetchone()
+        foreign = bool(r) and r[3] != uid
+        if foreign and not _file_visible(c, uid, r[3], fid):
+            r = None
     path = os.path.join(FILES_DIR, fid)
     if not r or not os.path.isfile(path):
         return PlainTextResponse("not found", status_code=404)
-    if r[2]:
-        return _image_response(fid, path, r[1], request)
-    return FileResponse(path, media_type="application/octet-stream", headers=dict(_FILE_H, **{"Content-Disposition": _disposition(r[0])}))
+    resp = _image_response(fid, path, r[1], request) if r[2] else \
+        FileResponse(path, media_type="application/octet-stream", headers=dict(_FILE_H, **{"Content-Disposition": _disposition(r[0])}))
+    if foreign:                                # Freigabe kann enden: nicht ein Jahr lang im Browser behalten
+        resp.headers["Cache-Control"] = "private, max-age=300"
+    return resp

@@ -43,6 +43,8 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
 - **Bases de datos** con vistas de tabla, tablero, lista, galería y calendario, filtros, relaciones y fórmulas
 - **Publicar páginas:** comparte una página (si quieres, con subpáginas) en `/@nombre/pagina`, legible sin cuenta,
   sin JavaScript y, opcionalmente, como página de inicio para visitantes
+- **Compartir y comentar:** comparte páginas y bases de datos con personas o grupos (locales, LDAP, SSO): roles Ver,
+  Comentar, Editar, las subpáginas heredan el acceso; comentarios discretos en los bloques con «Resuelto»
 - **Tareas** con fecha límite, prioridad y repetición
 - **Calendarios (CalDAV):** ver y editar Nextcloud, mailcow/SOGo, Radicale, iCloud…
 - **Immich:** usa tus propias fotos como imágenes y portadas

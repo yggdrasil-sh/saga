@@ -237,11 +237,30 @@
   }, true);
 
   // --- Zustand ---------------------------------------------------------------
-  var S = { pages: [], cur: null, editor: null, loading: false, dirtyBody: false, dirtyTitle: false, timer: null,
+  var S = { pages: [], shared: [], cur: null, editor: null, loading: false, dirtyBody: false, dirtyTitle: false, timer: null,
             open: {}, onCount: function () {} };
   try { S.open = JSON.parse(HK.store('hk-pg-open') || '{}') || {}; } catch (e) { S.open = {}; }
   function saveOpen() { HK.store('hk-pg-open', JSON.stringify(S.open)); }
-  function byId(id) { return S.pages.find(function (p) { return p.id === id; }) || null; }
+  // Eigene Seiten (S.pages) und fuer mich freigegebene fremde Seiten (S.shared, /api/shared)
+  function byId(id) { return S.pages.find(function (p) { return p.id === id; }) || S.shared.find(function (p) { return p.id === id; }) || null; }
+  function allPages() { return S.pages.concat(S.shared); }
+  // Rolle auf der offenen Seite: owner > edit > comment > view (fehlt das Feld: aeltere Antwort = eigene Seite)
+  function role() { return S.cur ? (S.cur.role || 'owner') : null; }
+  function isOwner() { return role() === 'owner'; }
+  function foreign() { return !!S.cur && !isOwner(); }
+  function canEdit() { var r = role(); return r === 'owner' || r === 'edit'; }
+  function roRole() { return !!S.cur && !canEdit(); }                    // Lesen/Kommentieren: Editor schreibgeschuetzt
+  function readOnly() { return !!S.cur && (!!S.cur.locked || roRole()); }
+  // Rollen-Etiketten (eigene Schluessel mit ##Rolle: im Englischen "Can edit" statt der Aktion "Edit")
+  var ROLE_NAME = { owner: T('Eigentümer'), edit: T('Bearbeiten##Rolle'), comment: T('Kommentieren##Rolle'), view: T('Lesen##Rolle') };
+  var ROLE_YOU = { edit: T('Du kannst bearbeiten'), comment: T('Du kannst lesen und kommentieren'), view: T('Du kannst lesen') };
+  var ROLE_HELP = { view: T('Lesen: Seite, Unterseiten und Einträge ansehen und exportieren.'),
+                    comment: T('Kommentieren: lesen und Kommentare schreiben.'),
+                    edit: T('Bearbeiten: Inhalte ändern und Unterseiten anlegen. Löschen, Verschieben und Teilen bleibt bei dir.') };
+  var RANK = { view: 1, comment: 2, edit: 3, owner: 4 };
+  // Uploads in fremde Seiten: Datei gehoert dem Eigentuemer (Server prueft 'edit') - Editor.js liest die Kopfzeilen beim Hochladen
+  var UPH = { 'X-Saga': '1' };
+  function uploadNote() { if (foreign()) UPH['X-Saga-Note'] = String(S.cur.id); else delete UPH['X-Saga-Note']; HK.fileNote = foreign() ? S.cur.id : null; }
   function children(pid) { return S.pages.filter(function (p) { return (p.parent_id || null) === pid || (pid === null && p.parent_id && !byId(p.parent_id)); }); }
   function ancestors(id) { var out = [], p = byId(id), guard = 0; while (p && p.parent_id && guard++ < 50) { p = byId(p.parent_id); if (p) out.unshift(p); } return out; }
   function descendants(id) { var out = [], st = [id]; while (st.length) { var x = st.pop(); S.pages.forEach(function (p) { if (p.parent_id === x) { out.push(p.id); st.push(p.id); } }); } return out; }
@@ -253,34 +272,64 @@
   // --- Seitenbaum -----------------------------------------------------------
   function renderTree() {
     var ul = $('pg-tree'); ul.textContent = ''; treeRootDnd(ul);
-    (function add(list, pid, depth) {
-      children(pid).forEach(function (p) {
-        // Datenbank-Zeilen erscheinen nicht einzeln im Baum (wie in Notion)
-        var kids = p.kind === 'database' ? [] : children(p.id), li = el('li', 'pg-node'); li.setAttribute('role', 'treeitem');
-        var row = el('div', 'pg-row' + (S.cur && S.cur.id === p.id ? ' on' : ''));
-        row.style.paddingLeft = (0.35 + depth * 1.05) + 'rem';
-        var tw = el('button', 'pg-twisty' + (kids.length ? '' : ' leaf'), kids.length ? '▸' : '');
-        tw.type = 'button'; tw.tabIndex = kids.length ? 0 : -1;
-        if (S.open[p.id]) tw.classList.add('open');
-        tw.setAttribute('aria-label', S.open[p.id] ? T('Zuklappen') : T('Aufklappen'));
-        tw.addEventListener('click', function (e) { e.stopPropagation(); S.open[p.id] = !S.open[p.id]; saveOpen(); renderTree(); });
-        var go = el('button', 'pg-go'); go.type = 'button';
-        go.appendChild(icoNode(p.icon, '📄', 'pg-ic'));
-        go.appendChild(el('span', 'pg-name', label(p)));
-        if (p.template) go.appendChild(el('span', 'pg-badge', T('Vorlage')));
-        go.addEventListener('click', function () { openPage(p.id); });
-        var plus = el('button', 'pg-add', '+'); plus.type = 'button'; plus.title = T('Unterseite hinzufügen');
-        plus.setAttribute('aria-label', T('Unterseite zu {name} hinzufügen', { name: label(p) }));
-        plus.addEventListener('click', function (e) { e.stopPropagation(); newPageMenu(plus, p.id); });
-        row.appendChild(tw); row.appendChild(go); row.appendChild(plus); li.appendChild(row);
-        treeDnd(row, p);
-        if (kids.length && S.open[p.id]) { var sub = el('ul', 'pg-sub'); sub.setAttribute('role', 'group'); add(sub, p.id, depth + 1); li.appendChild(sub); }
-        list.appendChild(li);
-      });
-    })(ul, null, 0);
-    $('pg-empty').hidden = S.pages.length > 0 || !!S.cur;
+    treeNodes(ul, children(null), 0, children, true);
+    renderShared();
+    $('pg-empty').hidden = S.pages.length > 0 || S.shared.length > 0 || !!S.cur || !!($('pg-noaccess') && !$('pg-noaccess').hidden);
     S.onCount(S.pages.length);
     renderFavs();
+  }
+  // Ein Zweig des Baums - eigene Seiten (mit Ziehen) und "Mit mir geteilt" (ohne Ziehen, "+" nur mit 'Bearbeiten')
+  function treeNodes(list, items, depth, kidsOf, own) {
+    items.forEach(function (p) {
+      // Datenbank-Zeilen erscheinen nicht einzeln im Baum (wie in Notion)
+      var kids = p.kind === 'database' ? [] : kidsOf(p.id), li = el('li', 'pg-node'); li.setAttribute('role', 'treeitem');
+      var row = el('div', 'pg-row' + (S.cur && S.cur.id === p.id ? ' on' : ''));
+      row.style.paddingLeft = (0.35 + depth * 1.05) + 'rem';
+      var tw = el('button', 'pg-twisty' + (kids.length ? '' : ' leaf'), kids.length ? '▸' : '');
+      tw.type = 'button'; tw.tabIndex = kids.length ? 0 : -1;
+      if (S.open[p.id]) tw.classList.add('open');
+      tw.setAttribute('aria-label', S.open[p.id] ? T('Zuklappen') : T('Aufklappen'));
+      tw.addEventListener('click', function (e) { e.stopPropagation(); S.open[p.id] = !S.open[p.id]; saveOpen(); renderTree(); });
+      var go = el('button', 'pg-go'); go.type = 'button';
+      go.appendChild(icoNode(p.icon, '📄', 'pg-ic'));
+      go.appendChild(el('span', 'pg-name', label(p)));
+      if (p.template) go.appendChild(el('span', 'pg-badge', T('Vorlage')));
+      if (p.unread) { var ud = el('span', 'pg-unread'); ud.title = T('Neue Kommentare'); ud.setAttribute('aria-label', ud.title); go.appendChild(ud); }
+      if (own && p.shared) {
+        var si = el('span', 'pg-shared-ic', '👥'); si.title = T('Geteilt'); si.setAttribute('aria-label', si.title); go.appendChild(si);
+      }
+      if (!own && p.root && p.owner) go.title = T('Geteilt von {name} · {role}', { name: p.owner.name, role: ROLE_YOU[p.role] || '' });
+      go.addEventListener('click', function () { openPage(p.id); });
+      row.appendChild(tw); row.appendChild(go);
+      if (own || p.role === 'edit') {
+        var plus = el('button', 'pg-add', '+'); plus.type = 'button'; plus.title = T('Unterseite hinzufügen');
+        plus.setAttribute('aria-label', T('Unterseite zu {name} hinzufügen', { name: label(p) }));
+        plus.addEventListener('click', function (e) { e.stopPropagation(); if (own) newPageMenu(plus, p.id); else newPage(p.id); });
+        row.appendChild(plus);
+      }
+      li.appendChild(row);
+      if (own) treeDnd(row, p);
+      if (kids.length && S.open[p.id]) { var sub = el('ul', 'pg-sub'); sub.setAttribute('role', 'group'); treeNodes(sub, kids, depth + 1, kidsOf, own); li.appendChild(sub); }
+      list.appendChild(li);
+    });
+  }
+  function sharedKids(pid) { return S.shared.filter(function (p) { return p.parent_id === pid && !p.root; }); }
+  // "Mit mir geteilt": oberste geteilte Seiten (mit Eigentuemer im Tooltip und klein darunter), aufklappbar
+  function renderShared() {
+    var box = $('pg-shared-box'), ul = $('pg-shared-tree'); if (!box || !ul) return;
+    var roots = S.shared.filter(function (p) { return p.root; });
+    box.hidden = !roots.length && !S.shareOff; ul.textContent = '';
+    var n = S.shared.filter(function (p) { return p.unread; }).length, cnt = $('pg-shared-n');
+    if (cnt) {                                             // Zahl am Bereich: Seiten mit neuen Kommentaren
+      cnt.hidden = !n; cnt.textContent = n ? String(n) : '';
+      cnt.title = n === 1 ? T('1 Seite mit neuen Kommentaren') : T('{n} Seiten mit neuen Kommentaren', { n: n });
+    }
+    var off = $('pg-shared-off'); if (off) off.hidden = !S.shareOff;
+    treeNodes(ul, roots, 0, sharedKids, false);
+    [].forEach.call(ul.children, function (li, i) {        // Eigentuemer klein unter der obersten Seite
+      var p = roots[i], go = li.querySelector('.pg-go');
+      if (p && p.owner && go) { var o = el('span', 'pg-owner', p.owner.name); go.querySelector('.pg-name').appendChild(o); }
+    });
   }
 
   function renderCrumbs() {
@@ -295,8 +344,15 @@
   }
 
   function loadList() {
-    return api('GET', '/api/notes').then(function (list) {
+    var sh = api('GET', '/api/shared').catch(function () { return []; });      // Mit mir geteilt (aeltere Server: leer)
+    return Promise.all([api('GET', '/api/notes'), sh]).then(function (r) {
+      var list = r[0];
       S.all = list; S.pages = list.filter(function (p) { return !p.archived; });       // Archiv: nicht im Baum/Suche/Palette
+      S.shared = Array.isArray(r[1]) ? r[1] : [];
+      if (!S.shared.length) {                     // nichts geteilt - oder Teilen abgeschaltet? Dann ein Hinweis statt still nichts
+        api('GET', '/api/share/info').then(function (d) { var off = !d.enabled && d.received > 0; if (off !== !!S.shareOff) { S.shareOff = off; renderShared(); } })
+          .catch(function () {});
+      } else S.shareOff = false;
       renderTree(); renderCrumbs(); renderTagBar(); renderFiltered(); return list; });
   }
 
@@ -328,18 +384,20 @@
           tasks: { class: TasksTool },
           calendar: { class: CalendarTool },
           image: { class: window.ImageTool, config: {
-            endpoints: { byFile: '/api/files' }, field: 'image', additionalRequestHeaders: { 'X-Saga': '1' },
+            endpoints: { byFile: '/api/files' }, field: 'image', additionalRequestHeaders: UPH,
             types: 'image/png,image/jpeg,image/gif,image/webp', captionPlaceholder: T('Bildunterschrift'), buttonContent: T('Bild auswählen …') } },
           attaches: { class: window.AttachesTool, config: {
-            endpoint: '/api/files', field: 'file', additionalRequestHeaders: { 'X-Saga': '1' },
+            endpoint: '/api/files', field: 'file', additionalRequestHeaders: UPH,
             buttonText: T('Datei auswählen …'), errorMessage: T('Hochladen fehlgeschlagen') } },
           immich: { class: ImmichTool },
           embed: { class: EmbedTool },
           table: { class: window.Table, inlineToolbar: true, config: { rows: 2, cols: 3, withHeadings: true } },
           toggle: { class: ToggleTool, inlineToolbar: true },
           callout: { class: CalloutTool, inlineToolbar: true },
-          hkdate: { class: DateInline }
+          hkdate: { class: DateInline },
+          hkcomment: { class: CommentTune }
         },
+        tunes: ['hkcomment'],                  // Block-Menue: "Kommentieren"
         i18n: I18N,
         onChange: edChanged
       });
@@ -381,7 +439,8 @@
     S.dirtyBody = true; schedule();
   }, true);
   function schedule() {
-    if (S.cur && S.cur.locked) { S.dirtyBody = S.dirtyTitle = false; return; }        // gesperrt: nichts speichern
+    if (S.lost) return;                                                               // Zugriff verloren: Dialog zeigt den Text
+    if (readOnly()) { S.dirtyBody = S.dirtyTitle = false; return; }                    // gesperrt / nur Lesen: nichts speichern
     state(T('Ungespeichert …')); clearTimeout(S.timer); S.timer = setTimeout(save, 900);
   }
 
@@ -392,7 +451,7 @@
     return S.saveChain;
   }
   function saveNow() {
-    if (!S.cur || S.conflict || (!S.dirtyBody && !S.dirtyTitle)) return Promise.resolve();
+    if (!S.cur || S.conflict || S.lost || (!S.dirtyBody && !S.dirtyTitle)) return Promise.resolve();
     clearTimeout(S.timer);
     var id = S.cur.id, body = {};
     if (S.dirtyTitle) { body.title = $('pg-title').value; S.dirtyTitle = false; }
@@ -404,32 +463,103 @@
       if (!Object.keys(body).length) return;
       if (S.cur && S.cur.id === id && !S.force && S.cur.rev != null) body.rev = S.cur.rev;   // Konflikterkennung
       S.force = false;
+      if (S.overwrite) { body.overwrite = true; S.overwrite = false; }       // "Meine Version behalten": andere Fassung als Version sichern
       return api('PATCH', '/api/notes/' + id, body).then(function (d) {
         if (S.cur && S.cur.id === id && d.rev != null) S.cur.rev = d.rev;
+        if (S.cur && S.cur.id === id && S.cur.updated_by && !S.cur.updated_by.me) { S.cur.updated_by = { me: true }; applyMeta(); }
         var p = byId(id); if (p) { p.updated = d.updated; if ('title' in body) p.title = body.title.trim(); }
         if (!S.dirtyBody && !S.dirtyTitle) state(T('Gespeichert ✓ {time}', { time: HK.fUpd.format(new Date(d.updated * 1000)) }), 'ok');
         if ('title' in body) { if (S.cur && S.cur.id === id) S.cur.title = body.title.trim(); renderTree(); renderCrumbs(); setLocation(); }
       });
     }).catch(function (err) {
       S.dirtyBody = S.dirtyBody || !!body.body; S.dirtyTitle = S.dirtyTitle || 'title' in body;
-      if (err.message === 'conflict') { S.conflict = true; showConflict(); state(T('Nicht gespeichert – Seite wurde zwischenzeitlich geändert'), 'err'); return; }
+      if (err.message === 'conflict') { S.conflict = true; showConflict(err.data && err.data.by); state(T('Nicht gespeichert – Seite wurde zwischenzeitlich geändert'), 'err'); return; }
+      // Freigabe entzogen, Teilen abgeschaltet (404) oder Rolle auf Lesen gefallen (403): verstaendlich melden, Text retten
+      if ((err.status === 404 || err.status === 403) && S.cur && S.cur.id === id && foreign()) { lostAccess(err.status); return; }
       state(T('Nicht gespeichert: {err}', { err: err.message }), 'err');
     });
   }
   // Konflikt: jemand (anderer Tab, Peek, spaeter andere Person) hat Titel/Inhalt inzwischen geaendert
-  function showConflict() {
+  function showConflict(by) {
     var bar = $('pg-conflict');
     if (!bar) { bar = el('div', 'pg-conflict'); bar.id = 'pg-conflict'; bar.setAttribute('role', 'alert'); $('page').insertBefore(bar, $('page').firstChild); }
     bar.textContent = '';
-    bar.appendChild(el('span', 'pgc-t', T('⚠ Diese Seite wurde inzwischen an anderer Stelle geändert. Deine letzten Änderungen sind noch nicht gespeichert.')));
-    var load = el('button', 'btn', T('Neue Version laden')); load.type = 'button';
+    bar.appendChild(el('span', 'pgc-t', by ? T('⚠ {name} hat diese Seite gerade geändert. Deine letzten Änderungen sind noch nicht gespeichert.', { name: by })
+                                           : T('⚠ Diese Seite wurde inzwischen an anderer Stelle geändert. Deine letzten Änderungen sind noch nicht gespeichert.')));
+    // Hauptknopf: neue Version laden - der eigene, nicht gespeicherte Text bleibt danach zum Kopieren sichtbar
+    var load = el('button', 'btn btn-primary', T('Neue Version laden')); load.type = 'button';
     load.addEventListener('click', function () {
-      if (!confirm(T('Deine ungespeicherten Änderungen verwerfen und die neue Version laden?'))) return;
-      clearConflict(); S.dirtyBody = S.dirtyTitle = false; openPage(S.cur.id);
+      var draft = draftText(), id = S.cur.id;
+      clearConflict(); S.dirtyBody = S.dirtyTitle = false;
+      openPage(id).then(function () {
+        if (draft) showDraft(T('Dein Entwurf'), T('Die neue Version ist geladen. Dein nicht gespeicherter Text steht unten – kopiere, was du behalten willst.'), draft);
+      });
     });
+    // Ueberschreiben nur mit Rueckfrage; die andere Fassung sichert der Server als Version (mit Autor)
     var keep = el('button', 'btn', T('Meine Version behalten')); keep.type = 'button';
-    keep.addEventListener('click', function () { clearConflict(); S.force = true; S.dirtyBody = true; S.dirtyTitle = true; save(); });
+    keep.addEventListener('click', function () {
+      HK.ask({ title: by ? T('Änderungen von {name} überschreiben?', { name: by }) : T('Andere Änderungen überschreiben?'),
+               text: by ? T('Die Fassung von {name} bleibt in den Versionen erhalten.', { name: by }) : T('Die andere Fassung bleibt in den Versionen erhalten.'),
+               ok: T('Überschreiben'), danger: true }).then(function (yes) {
+        if (!yes) return;
+        clearConflict(); S.force = true; S.overwrite = true; S.dirtyBody = true; S.dirtyTitle = true; save();
+      });
+    });
     bar.appendChild(load); bar.appendChild(keep);
+  }
+  // Eigener Text der offenen Seite als Klartext (Titel + Bloecke, so wie sie gerade im Editor stehen)
+  function draftText() {
+    var red = $('pg-editor').querySelector('.codex-editor__redactor'), out = [];
+    if (red) [].forEach.call(red.children, function (b) {
+      var c = b.querySelector('.ce-block__content'); var t = c ? (c.innerText || '').trim() : '';
+      if (t) out.push(t);
+    });
+    var title = $('pg-title').value.trim();
+    return ((title ? title + '\n\n' : '') + out.join('\n\n')).trim();
+  }
+  // Text zum Kopieren zeigen (Entwurf nach Konflikt, Zugriff verloren)
+  function showDraft(title, text, draft, onClose) {
+    openModal(title, function (body) {
+      var box = el('div', 'pub-dlg draft-dlg'); body.appendChild(box);
+      box.appendChild(el('p', null, text));
+      var ta = el('textarea', 'hk-in draft-ta'); ta.readOnly = true; ta.value = draft; ta.rows = 10; ta.setAttribute('aria-label', T('Dein Text'));
+      box.appendChild(ta);
+      var bar = el('div', 'hk-actions');
+      bar.appendChild(pubBtn(T('Kopieren'), function () {
+        ta.select();
+        (navigator.clipboard ? navigator.clipboard.writeText(draft) : Promise.reject(new Error('x')))
+          .then(function () { HK.toast(T('Text kopiert')); }, function () { try { document.execCommand('copy'); HK.toast(T('Text kopiert')); } catch (e) { /* markiert */ } });
+      }, 'btn-primary'));
+      bar.appendChild(pubBtn(T('Schließen'), closeModal));
+      box.appendChild(bar);
+    }, true);
+    S.modalClose = onClose || null;
+  }
+  function lostAccess(status) {
+    if (S.lost) return;
+    var id = S.cur.id, draft = draftText();
+    S.lost = true; clearTimeout(S.timer); S.dirtyBody = S.dirtyTitle = false;
+    state(T('Nicht gespeichert'), 'err');
+    showDraft(status === 403 ? T('Nur noch lesen') : T('Kein Zugriff mehr'),
+      status === 403 ? T('Du darfst diese Seite nicht mehr bearbeiten. Dein letzter Text ist unten – kopiere ihn, wenn du ihn behalten willst.')
+                     : T('Du hast keinen Zugriff mehr auf diese Seite. Dein letzter Text ist unten – kopiere ihn, wenn du ihn behalten willst.'),
+      draft, function () {
+        S.lost = false;
+        loadList().then(function () { return openPage(id); });          // 403: jetzt schreibgeschuetzt; 404: "Kein Zugriff"
+      });
+  }
+  // Seite nicht (mehr) erreichbar: eigener Hinweis statt "Noch keine Seiten"
+  function noAccess() {
+    S.cur = null; $('page').hidden = true;
+    var box = $('pg-noaccess');
+    if (!box) {
+      box = el('div', 'pages-empty pg-noaccess'); box.id = 'pg-noaccess'; box.setAttribute('role', 'status');
+      box.appendChild(el('p', 'pg-na-t', '🔒 ' + T('Kein Zugriff auf diese Seite')));
+      box.appendChild(el('p', 'hk-hint', T('Die Seite gibt es nicht (mehr), oder sie ist nicht (mehr) mit dir geteilt.')));
+      $('pg-empty').parentNode.insertBefore(box, $('pg-empty'));
+    }
+    box.hidden = false; $('pg-empty').hidden = true; document.title = T('Kein Zugriff') + ' · Saga';
+    renderTree();
   }
   function clearConflict() { S.conflict = false; var b = $('pg-conflict'); if (b) b.remove(); }
 
@@ -445,7 +575,9 @@
   function openPage(id) {
     drawer(false);                                  // Handy: Seitenleiste (Schublade) schliessen, Inhalt zeigen
     return save().then(function () { return api('GET', '/api/notes/' + id); }).then(function (n) {
-      S.cur = n; S.loading = true;
+      S.cur = n; S.loading = true; uploadNote();
+      var na = $('pg-noaccess'); if (na) na.hidden = true;
+      document.dispatchEvent(new CustomEvent('hk-page-open', { detail: { id: n.id } }));
       $('page').hidden = false; $('pg-empty').hidden = true;
       $('pg-title').value = n.title || '';
       showIcon(n.icon); showCover(); $('page').classList.toggle('wide', !!n.wide);
@@ -456,11 +588,16 @@
       if (!EMBED) HK.store('hk-pg-last', String(id));
       setLocation();
       renderTree(); renderCrumbs();
-      state(n.updated ? T('Gespeichert ✓ {time}', { time: HK.fUpd.format(new Date(n.updated * 1000)) }) : '', 'ok');
+      // nur Lesen/Kommentieren: kein "Gespeichert" (man speichert ja nichts) - die Kopfzeile nennt die Rolle
+      state(n.updated && (!n.role || n.role === 'owner' || n.role === 'edit') ? T('Gespeichert ✓ {time}', { time: HK.fUpd.format(new Date(n.updated * 1000)) }) : '', 'ok');
       applyKind();      // Ansicht (Datenbank / Zeile / Seite) sofort umschalten, nicht erst nach dem Rendern
       return ensureEditor(data);
     }).then(function () { S.loading = false; })
-      .catch(function (err) { S.loading = false; HK.toast(T('Seite konnte nicht geöffnet werden: {err}', { err: err.message })); });
+      .catch(function (err) {
+        S.loading = false;
+        if (err.status === 404 || err.status === 403) { noAccess(); return; }
+        HK.toast(T('Seite konnte nicht geöffnet werden: {err}', { err: err.message }));
+      });
   }
 
   function newPage(parentId) {
@@ -494,7 +631,7 @@
     $('pg-trash').hidden = true;
     if (PK.id) closePeek();
     return _origOpen(id).then(function () {
-      if (S.cur) { S.loading = true; decorateLinks(); S.loading = false; renderTags(); loadBacklinks(S.cur.id); rememberRecent(S.cur.id); archiveBar(); applyLock(); applyPublic(); }
+      if (S.cur) { S.loading = true; decorateLinks(); S.loading = false; renderTags(); loadBacklinks(S.cur.id); rememberRecent(S.cur.id); archiveBar(); applyLock(); applyPublic(); applyShare(); applyMeta(); }
       var bm = location.hash.match(/^#(\d+):(.+)$/); if (bm && S.cur && +bm[1] === S.cur.id) setTimeout(function () { showBlock(decodeURIComponent(bm[2])); }, 150);
       if (EMBED && S.cur && !S.cur.title) $('pg-title').focus();      // neue Karte im Peek: gleich den Namen tippen
       if (!S.editor) return;
@@ -507,6 +644,7 @@
         .then(function (base) {
           if (!S.cur || S.cur.id !== cur) return;               // inzwischen andere Seite
           S.lastBlocks = base; S.baseId = cur;                  // null (Fehler): kein Vergleich, jede Meldung speichert
+          document.dispatchEvent(new CustomEvent('hk-page-ready', { detail: { id: cur } }));      // Kommentare: Zahlen an die Bloecke
           // schon waehrend des Ladens getippt: steckt im Vergleichsstand, ist aber nicht gespeichert -> jetzt speichern
           if (S.typed) { S.typed = false; S.lastBlocks = null; S.dirtyBody = true; schedule(); }
         });
@@ -523,7 +661,7 @@
   var EMOJI = ['📄', '📝', '📌', '📚', '💡', '✅', '🗂️', '📅', '🧭', '🛠️', '🖥️', '🌐', '🔐', '🔑', '🧪', '🐛',
                '🚀', '⚙️', '📦', '🗄️', '☁️', '🧾', '💶', '📊', '🎯', '⭐', '❤️', '🏠', '👪', '✈️', '🎮', '🍳'];
   $('pg-icon').addEventListener('click', function () {
-    var btn = this;
+    var btn = this; if (readOnly()) return;
     HK.openMenu(btn, function (m) {
       m.appendChild(HK.menuLabel(T('Icon')));
       var g = el('div', 'emoji-grid');
@@ -534,7 +672,7 @@
       });
       m.appendChild(g);
       m.appendChild(HK.menuItem(T('🖼 Eigenes Bild hochladen …'), function () { pickImage('icon'); }));
-      if (HK.immichPick) m.appendChild(HK.menuItem(T('📷 Aus Immich …'), function () {
+      if (HK.immichPick && !foreign()) m.appendChild(HK.menuItem(T('📷 Aus Immich …'), function () {
         var id = S.cur.id;
         HK.immichPick(function (url) { api('PATCH', '/api/notes/' + id, { icon: url }).then(function () { setIconLocal(id, url); HK.toast(T('Icon gespeichert')); }); });
       }));
@@ -560,6 +698,7 @@
     var btn = this; if (!S.cur) return;
     HK.openMenu(btn, function (m) {
       var c = S.cur, n = descendants(c.id).length;
+      if (foreign()) { foreignMenu(m, c); return; }        // fremde Seite: nur, was die Rolle erlaubt
       m.appendChild(HK.menuItem(c.pinned ? T('Von Favoriten lösen') : T('Zu Favoriten'), function () { setPinned(!c.pinned); }, { icon: c.pinned ? '☆' : '★' }));
       m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { icon: '↔', on: !!c.wide }));
       m.appendChild(HK.menuItem(c.locked ? T('Seite entsperren') : T('Seite sperren'), function () { setLocked(!c.locked); }, { icon: '🔒', on: !!c.locked }));
@@ -577,6 +716,9 @@
       m.appendChild(HK.menuItem(c.template ? T('Keine Vorlage mehr') : T('Als Vorlage markieren'), function () { setTemplate(!c.template); }, { icon: '📐', on: !!c.template }));
       m.appendChild(el('div', 'menu-sep'));
       m.appendChild(HK.menuItem(T('Versionsverlauf'), openVersions, { icon: '🕘' }));
+      m.appendChild(HK.menuItem(T('Teilen …'), openShare, { icon: '👥', on: !!c.shared }));
+      m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
+        { icon: '💬', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
       m.appendChild(HK.menuItem(T('Veröffentlichen …'), openPublish, { icon: '🌐', on: !!c.published }));
       m.appendChild(HK.menuItem(T('Exportieren'), null, { icon: '⬇', sub: function (sm) {
         sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { icon: '📄' }));
@@ -602,6 +744,24 @@
     });
   });
 
+  // Seitenmenue auf einer fremden Seite: Breite/Unterseite nur mit 'Bearbeiten'; Link, Kommentare und Export fuer alle
+  function foreignMenu(m, c) {
+    m.appendChild(HK.menuLabel(T('Geteilt von {name} · {role}', { name: (c.owner || {}).name || '', role: ROLE_YOU[role()] || '' })));
+    if (canEdit()) {
+      m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { icon: '↔', on: !!c.wide }));
+      m.appendChild(HK.menuItem(T('Unterseite hinzufügen'), function () { newPage(c.id); }, { icon: '＋' }));
+    }
+    m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
+      { icon: '💬', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
+    m.appendChild(HK.menuItem(T('Link zur Seite kopieren'), function () { copyLink(); }, { icon: '🔗' }));
+    var n = descendants(c.id).length || S.shared.filter(function (p) { return p.parent_id === c.id; }).length;
+    m.appendChild(HK.menuItem(T('Exportieren'), null, { icon: '⬇', sub: function (sm) {
+      sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { icon: '📄' }));
+      if (n) sm.appendChild(HK.menuItem(T('Mit Unterseiten (.zip)'), function () { exportPage(true); }, { icon: '🗜' }));
+    } }));
+    m.appendChild(el('div', 'menu-hint', T('Verschieben, Löschen, Versionen und Freigaben verwaltet der Eigentümer.')));
+  }
+
   function setFull(on) {
     $('pages').classList.toggle('pg-full', on);
     document.body.classList.toggle('pg-full-open', on);
@@ -626,6 +786,7 @@
         hits.forEach(function (h) {
           var b = el('button', 'pg-hit'); b.type = 'button';
           b.appendChild(el('span', 'pg-hit-t', (ti(h.icon) || '📄') + ' ' + label(h)));
+          if (h.owner && !h.owner.me) b.appendChild(el('span', 'pg-hit-o', T('Geteilt von {name}', { name: h.owner.name })));
           if (h.snippet) b.appendChild(el('span', 'pg-hit-s', h.snippet));
           b.addEventListener('click', function () { $('pg-search').value = ''; ul.hidden = true; $('pg-tree').hidden = false; openPage(h.id); });
           var li = el('li'); li.appendChild(b); ul.appendChild(li);
@@ -680,10 +841,14 @@
     if (!S.cur) return;
     (S.cur.tags || []).forEach(function (t) {
       var c = el('span', 'tag', '#' + t);
-      var x = el('button', null, '×'); x.type = 'button'; x.setAttribute('aria-label', T('Tag {tag} entfernen', { tag: t }));
-      x.addEventListener('click', function () { setTags(S.cur.tags.filter(function (y) { return y !== t; })); });
-      c.appendChild(x); box.appendChild(c);
+      if (!roRole()) {
+        var x = el('button', null, '×'); x.type = 'button'; x.setAttribute('aria-label', T('Tag {tag} entfernen', { tag: t }));
+        x.addEventListener('click', function () { setTags(S.cur.tags.filter(function (y) { return y !== t; })); });
+        c.appendChild(x);
+      }
+      box.appendChild(c);
     });
+    if (roRole()) return;
     var add = el('button', 'tag-add', T('+ Tag')); add.type = 'button';
     add.addEventListener('click', function () {
       var inp = el('input', 'tag-input'); inp.type = 'text'; inp.maxLength = 30; inp.placeholder = T('Tag …');
@@ -726,10 +891,12 @@
     [].forEach.call((root || $('pg-editor')).querySelectorAll('a[href]'), function (a) {
       var m = (a.getAttribute('href') || '').match(NOTE_HREF);
       if (m) {
-        var p = byId(+m[1]);
+        var p = byId(+m[1]), na = !p && foreign();          // fremde Seite: Ziel nicht freigegeben -> Titel nicht zeigen
         a.classList.add('note-link');
-        a.classList.toggle('broken', !p);
-        a.title = p ? T('Zur Seite {name}', { name: label(p) }) : T('Seite nicht gefunden');
+        a.classList.toggle('broken', !p && !na);
+        a.classList.toggle('noaccess', na);
+        if (na) { a.dataset.na = T('Seite ohne Zugriff'); a.setAttribute('aria-label', a.dataset.na); } else { delete a.dataset.na; a.removeAttribute('aria-label'); }
+        a.title = p ? T('Zur Seite {name}', { name: label(p) }) : na ? T('Seite ohne Zugriff') : T('Seite nicht gefunden');
         if (p) a.textContent = (ti(p.icon) ? ti(p.icon) + ' ' : '') + label(p);
       } else if (serviceFor(a.getAttribute('href'))) {
         a.classList.add('svc-link'); a.title = T('Dienst öffnen');
@@ -745,7 +912,7 @@
     var href = a.getAttribute('href'), m = href.match(NOTE_HREF), mod = e.ctrlKey || e.metaKey;
     if (m) {
       e.preventDefault();
-      if (!byId(+m[1])) { HK.toast(T('Diese Seite gibt es nicht mehr.')); return; }
+      if (!byId(+m[1])) { HK.toast(foreign() ? T('Seite ohne Zugriff') : T('Diese Seite gibt es nicht mehr.')); return; }
       if (mod) window.open('/notes#' + m[1], '_blank', 'noopener'); else location.hash = '#' + m[1];
     } else if (a.classList.contains('svc-link') || mod) {
       e.preventDefault(); window.open(href, '_blank', 'noopener');
@@ -828,7 +995,7 @@
   function renderPicker() {
     var q = $('pg-picker-q').value.trim().toLowerCase(), list = $('pg-picker-list');
     list.textContent = ''; pick.items = []; pick.idx = 0;
-    var pages = S.pages.filter(function (p) { return (!S.cur || p.id !== S.cur.id) && (!q || label(p).toLowerCase().indexOf(q) >= 0); }).slice(0, 8);
+    var pages = allPages().filter(function (p) { return (!S.cur || p.id !== S.cur.id) && (!q || label(p).toLowerCase().indexOf(q) >= 0); }).slice(0, 8);
     var svcs = S.services.filter(function (s) { return !q || (s.name + ' ' + s.host).toLowerCase().indexOf(q) >= 0; }).slice(0, 8);
     function item(text, sub, fn) {
       var b = el('button', 'picker-item'); b.type = 'button'; b.setAttribute('role', 'option');
@@ -916,9 +1083,10 @@
   function openModal(title, build, small) {
     $('pg-modal').firstElementChild.classList.toggle('hk-dialog-s', !!small);
     $('pg-modal-title').textContent = title; var body = $('pg-modal-body'); body.textContent = '';
+    S.modalClose = null;
     build(body); $('pg-modal').hidden = false; $('pg-modal-close').focus();
   }
-  function closeModal() { $('pg-modal').hidden = true; }
+  function closeModal() { $('pg-modal').hidden = true; var f = S.modalClose; S.modalClose = null; if (f) f(); }
   $('pg-modal-close').addEventListener('click', closeModal);
   $('pg-modal').addEventListener('mousedown', function (e) { if (e.target === this) closeModal(); });
 
@@ -934,6 +1102,7 @@
           var b = el('button', 'ver-item'); b.type = 'button';
           b.appendChild(el('span', 'ver-date', fVer.format(new Date(v.created * 1000))));
           b.appendChild(el('span', 'ver-title', v.title || T('Unbenannt')));
+          if (v.author) b.appendChild(el('span', 'ver-by', T('von {name}', { name: v.author.name })));
           b.addEventListener('click', function () {
             [].forEach.call(ul.querySelectorAll('.ver-item'), function (x) { x.classList.toggle('on', x === b); });
             api('GET', '/api/notes/' + id + '/versions/' + v.id).then(function (d) {
@@ -1028,9 +1197,9 @@
     list.textContent = ''; qs.items = []; qs.idx = 0;
     var cmdOnly = q.charAt(0) === '>'; if (cmdOnly) q = q.slice(1).trim();
     var rec = recents().map(byId).filter(Boolean);
-    var hits = cmdOnly ? [] : q ? S.pages.filter(function (p) { return (label(p) + ' ' + (p.tags || []).join(' ')).toLowerCase().indexOf(q) >= 0; })
+    var hits = cmdOnly ? [] : q ? allPages().filter(function (p) { return (label(p) + ' ' + (p.tags || []).join(' ')).toLowerCase().indexOf(q) >= 0; })
                                      .sort(function (a, b) { return (rec.indexOf(b) >= 0) - (rec.indexOf(a) >= 0) || b.updated - a.updated; })
-                 : rec.concat(S.pages.filter(function (p) { return rec.indexOf(p) < 0; }).sort(function (a, b) { return b.updated - a.updated; }));
+                 : rec.concat(allPages().filter(function (p) { return rec.indexOf(p) < 0; }).sort(function (a, b) { return b.updated - a.updated; }));
     if (!q && !cmdOnly) list.appendChild(el('div', 'menu-label', rec.length ? T('Zuletzt geöffnet') : T('Zuletzt bearbeitet')));
     function item(text, sub, fn) {
       var b = el('button', 'picker-item'); b.type = 'button'; b.setAttribute('role', 'option');
@@ -1039,7 +1208,7 @@
       qs.items.push({ b: b, fn: fn }); list.appendChild(b);
     }
     hits.slice(0, q ? 8 : 10).forEach(function (p) {
-      var path = ancestors(p.id).map(label).join(' / ');
+      var path = (p.owner ? '👥 ' + p.owner.name + (ancestors(p.id).length ? ' · ' : '') : '') + ancestors(p.id).map(label).join(' / ');
       item((ti(p.icon) || '📄') + ' ' + label(p), path, function () { openPage(p.id); });
     });
     var acts = actions().filter(function (a) { return !q || (a.t + ' ' + (a.kw || '')).toLowerCase().indexOf(q) >= 0; });
@@ -1102,6 +1271,15 @@
 
   // --- Inline-Werkzeug "Datum": markierten Text ("morgen", "Freitag", "12.10.") zum Datums-Chip machen.
   // Meldet Editor.js ausserdem <time datetime> an - sonst wuerden @-Daten beim Speichern entfernt.
+  // Block-Menue (⋮⋮) -> "Kommentieren": Unterhaltung zu diesem Block in der Seitenleiste (static/comments.js)
+  function CommentTune(o) { this.block = o.block; }
+  CommentTune.isTune = true;
+  CommentTune.prototype.render = function () {
+    var self = this;
+    return { icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>',
+             title: T('Kommentieren'), closeOnActivate: true,
+             onActivate: function () { if (window.HKComments && self.block) HKComments.openBlock(self.block.id); } };
+  };
   function DateInline(o) { this.api = o.api; }
   DateInline.isInline = true;
   DateInline.title = T('Datum');
@@ -1250,7 +1428,7 @@
   TYPES.calc = [T('Berechnet'), '∑'];
   OPS.relation = [['contains', T('enthält')], ['not_contains', T('enthält nicht')], ['is_empty', T('ist leer')], ['not_empty', T('ist nicht leer')]];
   TYPES.relation = [T('Relation'), '↗'];
-  function relRows(target) { return S.pages.filter(function (p) { return p.parent_id === target; }); }
+  function relRows(target) { return allPages().filter(function (p) { return p.parent_id === target; }); }
   function relChips(ids, clickable) {           // verknuepfte Eintraege als Marken; Klick oeffnet den Eintrag
     var s = el('span', 'rel-chips');
     (ids || []).forEach(function (id) {
@@ -1329,8 +1507,11 @@
   // --- Datenbank-Ansicht als Baustein: jede Instanz hat ihren EIGENEN Zustand (Seite, eingebettet, Zeilen-Eigenschaften)
   function makeDbView(BOX, OPTS) {
     OPTS = OPTS || {};
-    var DB = { id: null, schema: { props: [] }, rows: [] };
+    var DB = { id: null, schema: { props: [] }, rows: [], role: 'owner' };
     function locked() { return !!DB.schema.locked; }
+    // Freigabe nur Lesen/Kommentieren: Werte nur anzeigen, keine neuen Eintraege/Spalten; Ansichten (Sortierung, Filter)
+    // lassen sich ausprobieren, werden aber nicht gespeichert
+    function ro() { return DB.role === 'view' || DB.role === 'comment' || (!OPTS.embedded && !BOX && roRole()); }
     // Eingebettete Datenbank (wie Notions "Linked View"): EIGENE Ansichten im Block, Spalten bleiben gemeinsam
     function views() { return DB.localViews || DB.schema.views; }
     function viewsLocked() { return locked() && !DB.localViews; }   // Sperre schuetzt Datenbank-Ansichten, nicht die eines Blocks
@@ -1363,6 +1544,7 @@
     function propById(pid) { return DB.schema.props.find(function (p) { return p.id === pid; }); }
 
     function saveSchema() {
+      if (ro()) return Promise.resolve();                                        // nur Lesen: nichts speichern
       if (DB.localViews && OPTS.saveViews) OPTS.saveViews(DB.localViews);        // Block-Ansichten -> Seiteninhalt
       var snap = JSON.stringify(DB.schema);
       if (snap === DB.snap) return Promise.resolve();                            // Datenbank selbst unveraendert
@@ -1370,6 +1552,7 @@
         .catch(function (err) { HK.toast(T('Spalte nicht gespeichert: {err}', { err: err.message })); throw err; });
     }
     function setProp(row, pid, value) {
+      if (ro()) return Promise.resolve();
       var patch = {}; patch[pid] = value;
       return api('PATCH', '/api/notes/' + row.id, { props: patch }).then(function () {
         if (value === null || value === '' || value === false || (Array.isArray(value) && !value.length)) delete row.props[pid]; else row.props[pid] = value;
@@ -1455,6 +1638,7 @@
     // Editor-Element fuer einen Wert (Tabellenzelle und Eigenschaften-Bereich einer Zeile)
     function valueEditor(prop, row, onDone) {
       var v = propValue(prop, row), t = prop.type, wrap = el('div', 'val val-' + t);
+      if (ro()) { var dv = valueDisplay(prop, row); wrap.classList.add('val-ro'); wrap.appendChild(dv || el('span', 'val-empty', '–')); return wrap; }
       if (AUTO[t]) { wrap.appendChild(el('span', 'val-auto', stampText(v))); return wrap; }      // automatisch, nur lesbar
       if (t === 'calc') { wrap.appendChild(v == null ? el('span', 'val-empty', '–') : numNode(prop, v)); wrap.title = T('Berechnet – Einstellung im Spaltenkopf'); return wrap; }
       if (t === 'checkbox') {
@@ -1549,6 +1733,14 @@
 
     function headMenu(th, prop) {
       HK.openMenu(th, function (m) {
+        if (ro()) {                                   // nur Lesen: sortieren geht (wird nicht gespeichert)
+          m.appendChild(HK.menuLabel(prop ? prop.name : titleName()));
+          var rp = prop ? prop.id : 'title';
+          m.appendChild(HK.menuItem(T('Aufsteigend sortieren'), function () { setSort(rp, 'asc'); }, { icon: '↑' }));
+          m.appendChild(HK.menuItem(T('Absteigend sortieren'), function () { setSort(rp, 'desc'); }, { icon: '↓' }));
+          m.appendChild(el('div', 'menu-hint', T('Nur lesen – Änderungen an der Ansicht werden nicht gespeichert.')));
+          return;
+        }
         if (locked()) { m.appendChild(HK.menuLabel(T('🔒 Datenbank gesperrt'))); m.appendChild(el('div', 'menu-hint', T('Spalten und Ansichten sind geschützt – entsperren unter „⚙ Ansicht“.'))); return; }
         var name = el('input', 'menu-input'); name.type = 'text'; name.maxLength = 60; name.setAttribute('aria-label', T('Spaltenname'));
         name.value = prop ? prop.name : titleName();
@@ -1659,6 +1851,7 @@
     // und landet danach im neuen Namen (sonst ging es verloren bzw. haengte sich an die alte Zeile).
     var typeAhead = null;
     function newRow(props) {
+      if (ro()) return Promise.resolve();
       if (props instanceof Event) props = null;
       return api('POST', '/api/notes', { parent_id: DB.id, title: '', props: props || undefined }).then(function (d) {
         DB.rows.push({ id: d.id, title: '', icon: '', props: props || {}, updated: d.updated, created: d.updated });
@@ -1699,7 +1892,7 @@
     }
 
     function renderDb() {
-      var box = BOX; box.textContent = '';
+      var box = BOX; box.textContent = ''; box.classList.toggle('db-ro', ro());
       if (OPTS.embedded) box.appendChild(embedHead());
       box.appendChild(viewBar());
       var vt = curView().type;
@@ -1764,7 +1957,7 @@
         hr.appendChild(th);
       });
       var add = el('th', 'db-th db-th-add'); var ab = el('button', 'db-add-col', '+'); ab.type = 'button'; ab.title = T('Spalte hinzufügen');
-      ab.setAttribute('aria-label', T('Spalte hinzufügen')); ab.addEventListener('click', function () { addColumn(ab); }); if (!locked()) add.appendChild(ab); hr.appendChild(add);
+      ab.setAttribute('aria-label', T('Spalte hinzufügen')); ab.addEventListener('click', function () { addColumn(ab); }); if (!locked() && !ro()) add.appendChild(ab); hr.appendChild(add);
       thead.appendChild(hr); tb.appendChild(thead);
       var body = el('tbody');
       eachGrouped(sortedRows(), function (o, n, g) {
@@ -1774,10 +1967,11 @@
       }, function (r) {
         var tr = tint(el('tr', 'db-row'), r); tr.dataset.id = r.id;
         var td = el('td', 'db-cell db-title'), ti = el('textarea', 'db-title-in'); ti.rows = 1; ti.maxLength = 200; ti.value = r.title; ti.placeholder = T('Unbenannt');   // Textfeld: lange Namen brechen um
+        ti.readOnly = ro();
         ti.setAttribute('aria-label', T('Name'));
         var start = r.title;
         function commitTitle() {
-          if (ti.value === start) return; start = ti.value;
+          if (ti.value === start || ro()) return; start = ti.value;
           // sofort lokal uebernehmen: ein gleich folgendes renderDb (naechste Zeile per Enter) zeigt sonst den alten Namen
           var prev = r.title; r.title = ti.value.trim(); var p = byId(r.id); if (p) p.title = r.title;
           api('PATCH', '/api/notes/' + r.id, { title: ti.value })
@@ -1820,7 +2014,7 @@
       });
       tb.appendChild(body);
       var tf = el('tfoot'), fr = el('tr'), fd = el('td'); fd.colSpan = vis.length + 2;
-      var nr = el('button', 'db-new-row', T('+ Neu')); nr.type = 'button'; nr.addEventListener('click', newRow);
+      var nr = el('button', 'db-new-row', T('+ Neu')); nr.type = 'button'; nr.addEventListener('click', newRow); nr.hidden = ro();
       fd.appendChild(nr); fr.appendChild(fd); tf.appendChild(fr); tf.appendChild(calcRow(vis, tv)); tb.appendChild(tf);
       scroll.appendChild(tb); box.appendChild(scroll); scrollHints(scroll);
     }
@@ -1892,6 +2086,7 @@
     function loadDb() {
       return api('GET', '/api/notes/' + DB.id + '/rows').then(function (d) {
         DB.schema = d.schema; DB.rows = d.rows; DB.templates = d.templates || []; ensureViews(); DB.snap = JSON.stringify(DB.schema);
+        DB.role = d.role || 'owner';
         if (OPTS.getViews) {
           var had = (OPTS.getViews() || []).length; DB.localViews = initLocalViews();
           if (!had && OPTS.saveViews) OPTS.saveViews(DB.localViews);   // einmalig im Block ablegen -> ab jetzt unabhaengig
@@ -2027,7 +2222,8 @@
           });
           box.appendChild(cl);
           var lb = el('button', 'menu-item', locked() ? T('🔓 Datenbank entsperren') : T('🔒 Datenbank sperren')); lb.type = 'button';
-          lb.addEventListener('click', function () { HK.closeMenu(); setLocked(!locked()); }); box.appendChild(lb);
+          lb.addEventListener('click', function () { HK.closeMenu(); setLocked(!locked()); });
+          if (DB.role === 'owner') box.appendChild(lb);                    // Sperre: nur der Eigentuemer (wie bei Seiten)
           if (DB.localViews) box.appendChild(el('div', 'menu-hint', T('Diese Ansichten gehören nur zu diesem Block – die Datenbank selbst hat eigene.')));
           if (OPTS.embedded) {
             var src = el('button', 'menu-item', T('↗ Quelle öffnen: {name}', { name: label(byId(DB.id) || {}) })); src.type = 'button';
@@ -2195,11 +2391,13 @@
       bar.appendChild(q);
       if (locked()) {
         var lk = el('button', 'db-chip db-lock', T('🔒 Gesperrt')); lk.type = 'button'; lk.title = T('Gesperrt – klicken zum Entsperren');
-        lk.addEventListener('click', function () { setLocked(false); }); bar.appendChild(lk);
+        if (DB.role === 'owner') lk.addEventListener('click', function () { setLocked(false); }); else lk.title = T('Der Eigentümer hat die Datenbank gesperrt');
+        bar.appendChild(lk);
       }
+      if (ro()) { var rc = el('span', 'db-chip db-ro-chip', T('👁 Nur lesen')); bar.appendChild(rc); }
       var gb = el('button', 'db-chip db-gear', T('⚙ Ansicht')); gb.type = 'button'; gb.title = T('Ansicht-Einstellungen');
       gb.addEventListener('click', function () { viewSettings(gb); }); bar.appendChild(gb);
-      var nb = el('button', 'btn db-new-top', T('+ Neu')); nb.type = 'button'; bar.appendChild(nb);
+      var nb = el('button', 'btn db-new-top', T('+ Neu')); nb.type = 'button'; if (!ro()) bar.appendChild(nb);
       nb.addEventListener('click', function () {
         if (!(DB.templates || []).length) return newRow();
         HK.openMenu(nb, function (m) {                // Notion: "Neu ▾" mit den Vorlagen dieser Datenbank
@@ -2508,7 +2706,7 @@
   }
   function uploadImage(file) {
     var fd = new FormData(); fd.append('image', file);
-    return fetch('/api/files', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1' }, body: fd })
+    return fetch('/api/files', { method: 'POST', credentials: 'same-origin', headers: Object.assign({}, UPH), body: fd })
       .then(function (r) { return r.json().then(function (d) { if (!r.ok || !d.success) throw new Error(d.error || ('HTTP ' + r.status)); return d.file.url; }); });
   }
   var filePurpose = null;
@@ -2537,7 +2735,7 @@
   }
   // Titelbild: hochladen oder aus Immich
   function coverMenu(btn) {
-    if (!HK.immichPick) return pickImage('cover');
+    if (!HK.immichPick || foreign()) return pickImage('cover');          // Immich ist das eigene Konto - nicht in fremden Seiten
     HK.openMenu(btn, function (m) {
       m.appendChild(HK.menuItem(T('🖼 Bild hochladen …'), function () { pickImage('cover'); }));
       m.appendChild(HK.menuItem(T('📷 Aus Immich …'), function () {
@@ -2709,10 +2907,15 @@
   DatabaseTool.prototype.draw = function () {
     var self = this, w = this.w; w.textContent = '';
     var meta = this.data.db && byId(this.data.db);
+    if ((!meta || meta.kind !== 'database') && foreign() && (this.data.db || !canEdit())) {
+      w.appendChild(el('div', 'embed-pick owner-only', '🗃️ ' + (this.data.db ? T('Seite ohne Zugriff') : T('Keine Datenbank gewählt'))));
+      return;
+    }
     if (!meta || meta.kind !== 'database') {
       var pick = el('div', 'embed-pick');
       pick.appendChild(el('span', 'embed-pick-t', this.data.db ? T('Die eingebettete Datenbank gibt es nicht mehr.') : T('🗃️ Datenbank einbetten:')));
-      var dbs = S.pages.filter(function (p) { return p.kind === 'database'; });
+      var own = foreign() && S.cur.owner ? S.cur.owner.username : null;      // fremde Seite: nur geteilte Datenbanken desselben Eigentuemers
+      var dbs = (own ? S.shared.filter(function (p) { return p.owner && p.owner.username === own; }) : S.pages).filter(function (p) { return p.kind === 'database'; });
       var sel = el('select', 'flt-val'); sel.setAttribute('aria-label', T('Datenbank wählen'));
       var o0 = el('option', null, dbs.length ? T('– bestehende wählen –') : T('noch keine Datenbank')); o0.value = ''; sel.appendChild(o0);
       dbs.forEach(function (p) { var o = el('option', null, (ti(p.icon) || '🗃️') + ' ' + label(p)); o.value = p.id; sel.appendChild(o); });
@@ -2743,8 +2946,14 @@
   CalendarTool.toolbox = { title: T('Kalender'),
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>' };
   CalendarTool.prototype.render = function () { this.w = el('div', 'embed-cal'); isolate(this.w); this.draw(); return this.w; };
+  // Aufgaben, Kalender, Immich gehoeren dem Konto, das die Seite anschaut - auf fremden Seiten nie zeigen (weder meine noch die des Eigentuemers)
+  function ownerOnly(w, what) {
+    w.textContent = ''; w.classList.add('owner-only');
+    w.appendChild(el('span', 'owner-only-t', what + ' · ' + T('Nur für den Eigentümer sichtbar')));
+  }
   CalendarTool.prototype.draw = function () {
     var self = this, w = this.w; w.textContent = '';
+    if (foreign()) { ownerOnly(w, '🗓 ' + T('Kalender')); return; }
     var sw = el('div', 'cal-mode');                                   // Umschalter beim Ueberfahren (wie bei Spalten)
     [['month', '▦ ' + T('Monat')], ['list', '☰ ' + T('Liste')]].forEach(function (m) {
       var b = el('button', 'cal-mode-b' + (self.view === m[0] ? ' on' : ''), m[1]); b.type = 'button';
@@ -2765,6 +2974,7 @@
   function ImmichTool(o) { this.api = o.api; }
   ImmichTool.toolbox = { title: T('Bild aus Immich'), icon: '<svg width="17" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3.2"/><path d="M8 5l1.5-2h5L16 5"/></svg>' };
   ImmichTool.prototype.render = function () {
+    if (foreign()) { this.w = el('div', 'imm-placeholder'); ownerOnly(this.w, '📷 Immich'); return this.w; }
     var self = this; this.w = el('div', 'imm-placeholder', '📷 ' + T('Bild aus Immich wählen …'));
     this.w.addEventListener('click', function () { self.open(); });
     setTimeout(function () { self.open(); }, 0);
@@ -2851,6 +3061,7 @@
   TasksTool.prototype.render = function () { this.w = el('div', 'embed-tasks'); isolate(this.w); this.draw(); return this.w; };
   TasksTool.prototype.draw = function () {
     var self = this, w = this.w;
+    if (foreign()) { ownerOnly(w, '✓ ' + T('Aufgaben')); return; }
     api('GET', '/api/tasks').then(function (d) {
       w.textContent = '';
       var open = d.open || [];
@@ -2944,7 +3155,7 @@
   function nestedTools() { var t = {}; Object.keys(S.tools || {}).forEach(function (k) { if (k !== 'columns') t[k] = S.tools[k]; }); return t; }
   function nestedEditor(holder, blocks, placeholder) {
     var ed = new window.EditorJS({
-      holder: holder, data: { blocks: blocks || [] }, tools: nestedTools(), i18n: I18N, minHeight: 24, placeholder: placeholder,
+      holder: holder, data: { blocks: blocks || [] }, tools: nestedTools(), tunes: ['hkcomment'], i18n: I18N, minHeight: 24, placeholder: placeholder,
       inlineToolbar: ['bold', 'italic', 'link', 'marker', 'inlineCode', 'hkdate'],
       onChange: edChanged
     });
@@ -3218,7 +3429,7 @@
   }
 
   // --- Archiv: Seiten (mit Unterseiten) aus Baum und Suche nehmen, ohne sie zu loeschen -----------
-  function anyById(id) { return (S.all || S.pages).find(function (p) { return p.id === id; }) || null; }
+  function anyById(id) { return (S.all || S.pages).find(function (p) { return p.id === id; }) || S.shared.find(function (p) { return p.id === id; }) || null; }
   function archiveBar() {
     var bar = $('pg-archived'); if (bar) bar.remove();
     if (!S.cur || !S.cur.archived) return;
@@ -3366,7 +3577,11 @@
     var ch = pubCheck(T('Unterseiten mit veröffentlichen'), st.children, T('Unterseiten (und Einträge von Datenbanken) dieser Seite sind dann ebenfalls öffentlich.'));
     var ix = pubCheck(T('Suchmaschinen erlauben'), st.indexable, T('Sonst bitten wir Suchmaschinen, die Seite nicht aufzunehmen.'));
     var pr = pubCheck(T('Als Profilseite (/@name)'), st.profile, T('Erscheint unter deiner Profiladresse – höchstens eine Seite.'));
-    [ch, ix, pr].forEach(function (x) { opts.appendChild(x); }); box.appendChild(opts);
+    // Geteilt mit "Bearbeiten": neue Unterseiten/Bilder dieser Personen sind sofort oeffentlich
+    var chw = el('p', 'pub-note pub-warn pub-edit-warn', T('Auch Unterseiten und Bilder, die Personen mit ‚Bearbeiten‘ anlegen, werden sofort öffentlich.'));
+    function drawChw() { chw.hidden = !(st.shared_edit && ch.cb.checked); }
+    ch.cb.addEventListener('change', drawChw); drawChw();
+    [ch, chw, ix, pr].forEach(function (x) { opts.appendChild(x); }); box.appendChild(opts);
     var msg = el('div', 'hk-status'); msg.setAttribute('role', 'status'); box.appendChild(msg);
     box.appendChild(el('p', 'hk-hint', T('Öffentlicher Name: @{name} – ändern unter Einstellungen → Konto.', { name: st.name })));
     // 5 Beenden
@@ -3387,7 +3602,7 @@
       lbar.appendChild(pubBtn(T('Link kopieren'), function () { pubCopy(st.url); }, 'pub-copy'));
       var op = el('a', 'btn', T('Öffnen')); op.href = st.url; op.target = '_blank'; op.rel = 'noopener'; lbar.appendChild(op);
       if (pubCanShare()) {
-        lbar.appendChild(pubBtn(T('Teilen'), function () {
+        lbar.appendChild(pubBtn(T('Link senden …'), function () {
           navigator.share({ url: st.url, title: (S.cur && S.cur.id === id && S.cur.title) || '' }).catch(function () { /* abgebrochen */ });
         }));
       }
@@ -3425,7 +3640,7 @@
       // Ueber die Elternseite: Adresse und Optionen erst, wenn "Zusaetzlich ..." an ist
       card.hidden = adr.hidden = opts.hidden = viaOnly;
       oh.hidden = pub; opts.classList.toggle('is-pending', !pub);
-      drawCard();
+      drawCard(); drawChw();
       var changed = pub && newSlug() !== st.slug;
       sbtn.hidden = !changed;
       setSlugErr.hint(changed ? T('Wird erst mit „Adresse ändern“ übernommen.') : '');
@@ -3482,27 +3697,243 @@
     draw();
   }
 
+  // Gesperrt (Eigentuemer) oder nur Lesen/Kommentieren (Freigabe): derselbe Schutz - der Editor bleibt lesbar, Eingaben gehen nicht
   function applyLock() {
-    var on = !!(S.cur && S.cur.locked);
-    document.body.classList.toggle('pg-locked', on);
-    $('pg-title').readOnly = on;
+    var on = !!(S.cur && S.cur.locked), ro = readOnly();
+    document.body.classList.toggle('pg-locked', ro);
+    document.body.classList.toggle('pg-ro', roRole());
+    $('pg-title').readOnly = ro;
     var b = $('pg-lock');
     if (!b) {
       b = el('button', 'pg-lock-b'); b.id = 'pg-lock'; b.type = 'button';
-      b.addEventListener('click', function () { setLocked(false); });
+      b.addEventListener('click', function () { if (isOwner()) setLocked(false); else lockHint(); });
       $('pg-state').parentNode.insertBefore(b, $('pg-state'));
     }
-    b.hidden = !on; b.textContent = T('🔒 Gesperrt'); b.title = T('Seite ist gesperrt – klicken zum Entsperren');
+    b.hidden = !on || roRole(); b.textContent = T('🔒 Gesperrt');
+    b.title = isOwner() ? T('Seite ist gesperrt – klicken zum Entsperren') : T('Der Eigentümer hat die Seite gesperrt');
   }
   var LOCK_OK = '.embed-db, .embed-cal, .embed-tasks, .btnrow';      // bleibt auf gesperrten Seiten bedienbar
   function lockBlocked(e) {
-    if (!S.cur || !S.cur.locked) return false;
+    if (!readOnly()) return false;
     var tg = e.target; if (!tg || !tg.closest) return false;
-    if (!$('pg-editor').contains(tg) || tg.closest(LOCK_OK)) return false;
+    if (!$('pg-editor').contains(tg) || tg.closest(roRole() ? '.embed-db' : LOCK_OK)) return false;   // nur Lesen: auch Schaltflaechen nicht
     return true;
   }
   var lockHintT = 0;
-  function lockHint() { var n = Date.now(); if (n - lockHintT > 2500) { lockHintT = n; HK.toast(T('🔒 Seite ist gesperrt – oben auf „Gesperrt“ klicken zum Bearbeiten')); } }
+  function lockHint() {
+    var n = Date.now(); if (n - lockHintT <= 2500) return; lockHintT = n;
+    if (roRole()) HK.toast(role() === 'comment' ? T('💬 Du kannst diese Seite lesen und kommentieren, aber nicht bearbeiten.') : T('👁 Du kannst diese Seite nur lesen.'));
+    else if (!isOwner()) HK.toast(T('🔒 Der Eigentümer hat diese Seite gesperrt.'));
+    else HK.toast(T('🔒 Seite ist gesperrt – oben auf „Gesperrt“ klicken zum Bearbeiten'));
+  }
+
+  // --- Teilen (1.3): Kopfzeile fuer fremde Seiten, Knopf "Teilen" (nur Eigentuemer), Dialog -------------------------
+  function applyShare() {
+    var c = S.cur, bar = $('pg-sharedby');
+    $('pg-share').hidden = !c || !isOwner() || EMBED;
+    $('pg-share').classList.toggle('on', !!(c && c.shared));
+    $('pg-share').title = c && c.shared ? T('Geteilt – Freigaben verwalten') : T('Mit Personen oder Gruppen teilen');
+    if (bar) bar.remove();
+    if (!c || !foreign()) return;
+    bar = el('div', 'pg-sharedby'); bar.id = 'pg-sharedby'; bar.setAttribute('role', 'note');
+    bar.appendChild(el('span', 'pg-sb-ic', '👥'));
+    bar.appendChild(HK.fmtNodes(T('Geteilt von {name}'), { name: el('b', null, (c.owner || {}).name || '') }));
+    bar.appendChild(el('span', 'pg-sb-sep', '·'));
+    bar.appendChild(el('span', 'pg-sb-role pg-sb-' + role(), ROLE_YOU[role()] || ''));
+    var head = $('page').querySelector('.page-head'); head.parentNode.insertBefore(bar, head);
+  }
+  // Wer hat angelegt / zuletzt geaendert (nur, wenn es nicht man selbst war)
+  function applyMeta() {
+    var c = S.cur, m = $('pg-meta'); if (m) m.remove();
+    if (!c) return;
+    var parts = [];
+    if (c.created_by && !c.created_by.me) parts.push(T('Angelegt von {name}', { name: c.created_by.name }));
+    if (c.updated_by && !c.updated_by.me && c.updated_by.name && c.updated)
+      parts.push(T('Zuletzt geändert von {name} · {when}', { name: c.updated_by.name, when: HK.relTime(c.updated - Date.now() / 1000) }));
+    if (!parts.length) return;
+    m = el('div', 'pg-meta', parts.join(' · ')); m.id = 'pg-meta';
+    if (c.updated) m.title = fVer.format(new Date(c.updated * 1000));
+    $('page').querySelector('.page-head').appendChild(m);
+  }
+  $('pg-share').addEventListener('click', function () { openShare(); });
+  function openShare() {
+    if (!S.cur || !isOwner()) return;
+    var id = S.cur.id;
+    api('GET', '/api/notes/' + id + '/shares').then(function (st) {
+      openModal(T('Teilen'), function (body) { shareMain(body, id, st); }, true);
+    }).catch(function (err) { HK.toast(T('Nicht geladen: {err}', { err: err.message })); });
+  }
+  function roleSelect(cur, label_) {
+    var s = el('select', 'hk-in sh-role'); s.setAttribute('aria-label', label_);
+    ['view', 'comment', 'edit'].forEach(function (r) { var o = el('option', null, ROLE_NAME[r]); o.value = r; s.appendChild(o); });
+    s.value = cur || 'view'; return s;
+  }
+  function viaLabel(v) { return v.type === 'group' ? v.name : T('„{title}“', { title: v.title || T('Unbenannt') }); }
+  function shareMain(body, id, st) {
+    body.textContent = '';
+    var box = el('div', 'pub-dlg sh-dlg'); body.appendChild(box);
+    if (!st.enabled) box.appendChild(el('p', 'pub-warn', T('Der Admin hat das Teilen auf diesem Server abgeschaltet – Freigaben wirken zurzeit nicht.')));
+    if (!st.shareable) box.appendChild(el('p', 'pub-warn', T('Archivierte Seiten und Vorlagen lassen sich nicht teilen.')));
+    // Suchen + Rolle + Treffer
+    var row = el('div', 'sh-add'), inp = el('input', 'hk-in sh-q'); inp.type = 'search'; inp.maxLength = 60; inp.autocomplete = 'off';
+    inp.placeholder = T('Person oder Gruppe suchen'); inp.setAttribute('aria-label', T('Person oder Gruppe suchen'));
+    inp.setAttribute('role', 'combobox'); inp.setAttribute('aria-expanded', 'false'); inp.setAttribute('aria-controls', 'sh-hits');
+    var rsel = roleSelect('view', T('Rolle für neue Freigabe'));
+    var wrap = el('div', 'sh-addwrap');                     // Treffer als Liste UEBER dem Dialog (kein Verschieben beim Klicken)
+    row.appendChild(inp); row.appendChild(rsel); wrap.appendChild(row); box.appendChild(wrap);
+    var fm = el('p', 'hk-fieldmsg'); box.appendChild(fm);
+    var setErr = HK.fieldMsg(inp, fm, st.scope ? T('Nur Personen aus deinen Gruppen. Mindestens 3 Zeichen.') : T('Mindestens 3 Zeichen.'));
+    var help = el('p', 'sh-help'); box.appendChild(help);                 // was die gewaehlte Rolle darf
+    var chips = el('div', 'sh-chips'); box.appendChild(chips);             // leeres Suchfeld: eigene Gruppen als Chips
+    var hits = el('div', 'sh-hits'); hits.id = 'sh-hits'; hits.setAttribute('role', 'listbox'); hits.hidden = true; wrap.appendChild(hits);
+    // Liste der Freigaben
+    var lh = el('div', 'pub-opts-h', T('Zugriff')); box.appendChild(lh);
+    box.appendChild(el('p', 'sh-note', T('Unterseiten und Einträge kommen mit.')));
+    var list = el('ul', 'sh-list'); box.appendChild(list);
+    var inh = el('div', 'sh-inh'); box.appendChild(inh);
+    var msg = el('div', 'hk-status'); msg.setAttribute('role', 'status'); box.appendChild(msg);
+    // Link zur Seite (oeffnet sie fuer alle mit Zugriff)
+    var link = location.origin + '/notes#' + id, lc = el('div', 'pub-link sh-link');
+    lc.appendChild(HK.urlNode(link, 'span', 'pub-link-a'));
+    var lb = el('div', 'hk-actions'); lb.appendChild(pubBtn(T('Link kopieren'), function () { pubCopy(link); })); lc.appendChild(lb);
+    box.appendChild(lc); box.appendChild(el('p', 'hk-hint sh-link-h', T('Der Link öffnet die Seite für alle, die Zugriff haben.')));
+    var url = '/api/notes/' + id + '/shares', tmr = null, seq = 0, last = null;
+    function hideHits() { hits.hidden = true; inp.setAttribute('aria-expanded', 'false'); }
+    // Trefferliste schliessen, sobald Fokus oder Klick woanders hin geht (auch Titel/Rand des Dialogs)
+    $('pg-modal').addEventListener('mousedown', function (e) { if (!row.contains(e.target) && !hits.contains(e.target)) hideHits(); });
+    box.addEventListener('focusout', function () { setTimeout(function () { var a = document.activeElement; if (a !== inp && !hits.contains(a)) hideHits(); }, 0); });
+    function drawHelp() { help.textContent = ROLE_HELP[rsel.value] || ''; }
+    rsel.addEventListener('change', function () { drawHelp(); if (last && !hits.hidden) hitList(last); drawChips(); });
+    function sync(ns) {
+      st = ns; var has = !!(ns.shares || []).length;
+      if (S.cur && S.cur.id === id) { S.cur.shared = has; applyShare(); }
+      var p = S.pages.find(function (x) { return x.id === id; }); if (p) { p.shared = has; renderTree(); }
+      draw(); drawChips();
+    }
+    function put(type, target, r, done, li) {
+      return api('PUT', url, { type: type, target: target, role: r }).then(function (ns) { sync(ns); pubStatus(msg, done || T('✓ Gespeichert'), 'ok'); })
+        .catch(function (err) { pubStatus(msg, ''); if (li) itemErr(li, err.message); else setErr(err.message); });
+    }
+    function itemErr(li, text) {                     // Fehler direkt am Eintrag (nicht unten in der Statuszeile)
+      var e = li.querySelector('.sh-err'); if (!e) { e = el('small', 'sh-err'); e.setAttribute('role', 'alert'); li.appendChild(e); }
+      e.textContent = text;
+    }
+    function avatar(type, name) { var a = el('span', 'sh-av', type === 'group' ? '👥' : (name || '?').charAt(0).toUpperCase()); a.setAttribute('aria-hidden', 'true'); return a; }
+    function who(x) {
+      var li = el('li', 'sh-item'); li.appendChild(avatar(x.type, x.name));
+      var tx = el('span', 'sh-who'); tx.appendChild(el('span', 'sh-name', x.name || x.target));
+      var sub = x.type !== 'group' ? x.target : x.members == null ? T('Gruppe')
+        : x.members === 1 ? T('Gruppe · 1 Person') : T('Gruppe · {n} Personen', { n: x.members });
+      tx.appendChild(el('small', 'sh-sub', sub)); li.appendChild(tx);
+      return li;
+    }
+    function draw() {
+      list.textContent = '';
+      var on = (S.cur && S.cur.id === id && S.cur.owner) ? S.cur.owner.name : '';
+      var me = el('li', 'sh-item sh-owner'); me.appendChild(avatar('user', on || T('Du')));
+      var mt = el('span', 'sh-who'); mt.appendChild(el('span', 'sh-name', on ? T('{name} (du)', { name: on }) : T('Du')));
+      mt.appendChild(el('small', 'sh-sub', T('Eigentümer'))); me.appendChild(mt);
+      list.appendChild(me);
+      (st.shares || []).forEach(function (x) {
+        var li = who(x), sel = roleSelect(x.role, T('Rolle von {name}', { name: x.name }));
+        var top = (x.via || [])[0];
+        if (x.type === 'user' && top && RANK[top.role] > RANK[x.role]) {     // ueber eine Gruppe/Seite darueber mehr Rechte
+          var v = el('small', 'sh-via', T('(über {via}: {role})', { via: viaLabel(top), role: ROLE_NAME[top.role] }));
+          li.querySelector('.sh-who').appendChild(v);
+        }
+        sel.addEventListener('change', function () { put(x.type, x.target, sel.value, T('✓ Rolle geändert'), li); });
+        var rm = el('button', 'icon-btn sh-rm', '×'); rm.type = 'button'; rm.title = T('Freigabe entfernen'); rm.setAttribute('aria-label', T('Freigabe für {name} entfernen', { name: x.name }));
+        rm.addEventListener('click', function () {
+          var text = top ? T('{name} behält über {via} die Rolle {role}.', { name: x.name, via: viaLabel(top), role: ROLE_NAME[top.role] })
+            : x.type === 'group' ? T('Die Gruppe {name} verliert sofort den Zugriff auf diese Seite und ihre Unterseiten.', { name: x.name })
+            : T('{name} verliert sofort den Zugriff auf diese Seite und ihre Unterseiten.', { name: x.name });
+          HK.ask({ title: T('Freigabe entfernen?'), text: text, ok: T('Entfernen'), danger: true }).then(function (yes) {
+            if (!yes) return;
+            api('DELETE', url + '?type=' + encodeURIComponent(x.type) + '&target=' + encodeURIComponent(x.target))
+              .then(function (ns) { sync(ns); pubStatus(msg, T('✓ Freigabe entfernt'), 'ok'); })
+              .catch(function (err) { itemErr(li, err.message); });
+          });
+        });
+        li.appendChild(sel); li.appendChild(rm); list.appendChild(li);
+      });
+      if (!(st.shares || []).length) list.appendChild(el('li', 'sh-empty', T('Noch mit niemandem geteilt. Suche oben nach einer Person oder Gruppe.')));
+      inh.textContent = '';
+      if ((st.inherited || []).length) {
+        inh.appendChild(el('div', 'pub-opts-h', T('Über übergeordnete Seiten')));
+        inh.appendChild(el('p', 'sh-note', T('Diese Freigaben gelten auch hier. Ändern kannst du sie auf der übergeordneten Seite.')));
+        var ul = el('ul', 'sh-list');
+        st.inherited.forEach(function (x) {
+          var li = who(x); li.classList.add('sh-inherited');
+          li.appendChild(el('span', 'sh-role-l', ROLE_NAME[x.role] || ''));
+          var from = el('button', 'linkbtn sh-from', T('über „{title}“', { title: x.title })); from.type = 'button';
+          from.title = T('Zur übergeordneten Seite');
+          from.addEventListener('click', function () { closeModal(); openPage(x.note_id).then(openShare); });
+          li.appendChild(from); ul.appendChild(li);
+        });
+        inh.appendChild(ul);
+      }
+    }
+    function taken() { var o = {}; (st.shares || []).forEach(function (x) { o[x.type + ':' + x.target] = x.role; }); return o; }
+    function drawChips() {
+      chips.textContent = '';
+      var gs = st.groups || [];
+      chips.hidden = !gs.length || !!inp.value.trim() || inp.disabled;
+      if (chips.hidden) return;
+      chips.appendChild(el('span', 'sh-chips-l', T('Deine Gruppen:')));
+      var tk = taken();
+      gs.forEach(function (g) {
+        var b = el('button', 'sh-chip' + (tk['group:' + g] ? ' on' : ''), '👥 ' + g); b.type = 'button';
+        b.title = tk['group:' + g] ? T('hat Zugriff: {role}', { role: ROLE_NAME[tk['group:' + g]] }) : T('als {role} hinzufügen', { role: ROLE_NAME[rsel.value] });
+        b.addEventListener('click', function () { put('group', g, rsel.value, T('✓ Geteilt mit {name} ({role})', { name: g, role: ROLE_NAME[rsel.value] })); });
+        chips.appendChild(b);
+      });
+    }
+    function hitList(d) {
+      last = d; hits.textContent = ''; var any = false, tk = taken();
+      function add(type, target, name, sub) {
+        any = true;
+        var b = el('button', 'sh-hit'); b.type = 'button'; b.setAttribute('role', 'option');
+        b.appendChild(avatar(type, name));
+        var tx = el('span', 'sh-who'); tx.appendChild(el('span', 'sh-name', name)); tx.appendChild(el('small', 'sh-sub', sub)); b.appendChild(tx);
+        b.appendChild(el('span', 'sh-has', tk[type + ':' + target] ? T('hat Zugriff') : T('als {role} hinzufügen', { role: ROLE_NAME[rsel.value] })));
+        b.addEventListener('click', function () {
+          inp.value = ''; hideHits(); drawChips();
+          put(type, target, rsel.value, T('✓ Geteilt mit {name} ({role})', { name: name, role: ROLE_NAME[rsel.value] })); inp.focus();
+        });
+        hits.appendChild(b);
+      }
+      (d.users || []).forEach(function (u) { add('user', u.username, u.name, u.username); });
+      (d.groups || []).forEach(function (g) { add('group', g.name, g.name, T('Gruppe')); });
+      hits.hidden = !any; inp.setAttribute('aria-expanded', any ? 'true' : 'false');
+      if (!any && inp.value.trim().length >= 3) setErr(T('Niemand gefunden.'));
+    }
+    function search() {
+      var q = inp.value.trim(); setErr(''); pubStatus(msg, ''); clearTimeout(tmr); drawChips();
+      if (q.length < 3) { hideHits(); return; }
+      var my = ++seq;
+      tmr = setTimeout(function () {
+        api('GET', '/api/share/targets?q=' + encodeURIComponent(q)).then(function (d) { if (my === seq && inp.value.trim().length >= 3) hitList(d); })
+          .catch(function (err) { setErr(err.message); });
+      }, 200);
+    }
+    inp.addEventListener('input', search);
+    inp.addEventListener('keydown', function (e) {
+      var items = [].slice.call(hits.querySelectorAll('.sh-hit'));
+      if (e.key === 'Escape' && !hits.hidden) { e.preventDefault(); e.stopPropagation(); hideHits(); return; }   // Esc: erst die Liste
+      if (e.key === 'ArrowDown' && items.length) { e.preventDefault(); items[0].focus(); }
+      if (e.key === 'Enter' && items.length) { e.preventDefault(); items[0].click(); }
+    });
+    hits.addEventListener('keydown', function (e) {
+      var items = [].slice.call(hits.querySelectorAll('.sh-hit')), i = items.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); (items[i + 1] || items[i]).focus(); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); if (i <= 0) inp.focus(); else items[i - 1].focus(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); hideHits(); inp.focus(); }
+    });
+    inp.disabled = rsel.disabled = !st.enabled || !st.shareable;
+    drawHelp(); draw(); drawChips();
+    setTimeout(function () { if (!inp.disabled) inp.focus(); }, 0);
+    inp.addEventListener('click', function () { if (hits.hidden && last && inp.value.trim().length >= 3) hitList(last); });
+  }
   document.addEventListener('keydown', function (e) {
     if (!lockBlocked(e)) return;
     var nav = /^(Arrow|Page|Home|End|Escape|Shift|Control|Alt|Meta|Tab$)/.test(e.key) || ((e.metaKey || e.ctrlKey) && /^[acfkpl\[\]]$/i.test(e.key));
@@ -3563,14 +3994,17 @@
     function add(t, ic, fn, o) { o = o || {}; a.push({ t: t, ic: ic, fn: fn, kw: o.kw, kbd: o.kbd }); }
     var mk = isMac ? '⌘' : T('Strg') + '+';
     add(T('Neue Seite'), '＋', function () { newPage(null); }, { kw: 'new page anlegen erstellen' });
+    var own = isOwner(), ed = canEdit();
     if (c) {
-      add(T('Neue Unterseite'), '＋', function () { newPage(c.id); }, { kw: 'subpage unterseite anlegen' });
+      if (ed) add(T('Neue Unterseite'), '＋', function () { newPage(c.id); }, { kw: 'subpage unterseite anlegen' });
       add(T('Link zur Seite kopieren'), '🔗', function () { copyLink(); }, { kw: 'url teilen copy link', kbd: mk + 'L' });
-      add(c.pinned ? T('Von Favoriten lösen') : T('Zu Favoriten'), '★', function () { setPinned(!c.pinned); }, { kw: 'favorit stern pin' });
-      add(c.wide ? T('Volle Breite aus') : T('Volle Breite ein'), '↔', function () { setWide(!c.wide); }, { kw: 'breite wide layout' });
+      if (own) add(T('Teilen …'), '👥', openShare, { kw: 'share teilen freigeben personen gruppen' });
+      add(T('Kommentare'), '💬', function () { if (window.HKComments) HKComments.openAll(); }, { kw: 'comments kommentar unterhaltung' });
+      if (own) add(c.pinned ? T('Von Favoriten lösen') : T('Zu Favoriten'), '★', function () { setPinned(!c.pinned); }, { kw: 'favorit stern pin' });
+      if (ed) add(c.wide ? T('Volle Breite aus') : T('Volle Breite ein'), '↔', function () { setWide(!c.wide); }, { kw: 'breite wide layout' });
       add(T('Vollbild'), '⤢', function () { setFull(!$('pages').classList.contains('pg-full')); }, { kw: 'fullscreen fokus' });
-      add(T('Seite duplizieren'), '⧉', duplicatePage, { kw: 'kopie duplicate' });
-      add(T('Versionsverlauf'), '🕘', openVersions, { kw: 'history versionen' });
+      if (own) add(T('Seite duplizieren'), '⧉', duplicatePage, { kw: 'kopie duplicate' });
+      if (own) add(T('Versionsverlauf'), '🕘', openVersions, { kw: 'history versionen' });
       add(T('Als Markdown exportieren'), '⬇', function () { exportPage(false); }, { kw: 'export md download' });
       if (c.parent_id) add(T('Übergeordnete Seite'), '↑', goParent, { kw: 'eltern parent hoch', kbd: mk + '⇧U' });
       if (window.HKKeys) add(T('Inhaltsverzeichnis ein/aus'), '☰', HKKeys.toggleToc, { kw: 'toc gliederung ueberschriften' });
@@ -3580,8 +4014,8 @@
       add(T('Vor'), '→', function () { history.forward(); }, { kw: 'forward', kbd: mk + ']' });
       add(T('Seitenleiste ein/aus'), '◧', function () { setSide(document.body.classList.contains('side-hidden')); }, { kw: 'sidebar', kbd: mk + '\\' });
     }
-    if (c) add(c.locked ? T('Seite entsperren') : T('Seite sperren'), '🔒', function () { setLocked(!c.locked); }, { kw: 'lock sperren schuetzen' });
-    if (c) add(c.archived ? T('Aus dem Archiv holen') : T('Seite archivieren'), '📦', function () { setArchived(c.id, !c.archived); }, { kw: 'archiv archive' });
+    if (c && own) add(c.locked ? T('Seite entsperren') : T('Seite sperren'), '🔒', function () { setLocked(!c.locked); }, { kw: 'lock sperren schuetzen' });
+    if (c && own) add(c.archived ? T('Aus dem Archiv holen') : T('Seite archivieren'), '📦', function () { setArchived(c.id, !c.archived); }, { kw: 'archiv archive' });
     add(T('Archiv anzeigen'), '📦', showArchive, { kw: 'archiv archive' });
     add(T('Papierkorb'), '🗑', showTrash, { kw: 'trash geloescht' });
     if (window.HKSettings) add(T('Einstellungen'), '⚙', function () { HKSettings.open(); }, { kw: 'settings kalender immich schluessel' });
@@ -3604,6 +4038,7 @@
       var svc = api('GET', '/api/services').then(function (s) { S.services = s; }).catch(function () {});
       return Promise.all([loadList(), svc]).then(function () {
         var fromHash = parseInt(location.hash.slice(1), 10), last = +HK.store('hk-pg-last');
+        if (fromHash && !anyById(fromHash)) return openPage(fromHash);       // alte/fremde Adresse: Server fragen ("Kein Zugriff")
         var start = anyById(fromHash) || byId(last) || children(null)[0];
         if (start) return openPage(start.id);
         setLocation();
@@ -3616,7 +4051,7 @@
     if (id && S.cur && S.cur.id === id && bm) { showBlock(decodeURIComponent(bm[1])); return; }
     if (!id || (S.cur && S.cur.id === id)) return;
     // Unbekannte ID (z.B. gerade per Schaltflaeche angelegt): erst Seitenliste neu laden, dann oeffnen
-    (anyById(id) ? Promise.resolve() : loadList()).then(function () { if (anyById(id)) openPage(id); });
+    (anyById(id) ? Promise.resolve() : loadList()).then(function () { openPage(id); });
   });
   // Eigene Notizen-Seite (/notes): selbst starten
   if (document.body.classList.contains('notes-page')) window.HKPages.init();

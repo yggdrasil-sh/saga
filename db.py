@@ -31,9 +31,10 @@ _pool_lock = threading.Lock()
 
 # Tabellen mit Ganzzahl-Schluessel "id" -> INSERT liefert die neue id (cur.lastrowid)
 ID_TABLES = {"task", "note", "note_version", "device_login", "cal_account", "app_token", "users", "groups",
-             "service", "bookmark"}
+             "service", "bookmark", "note_share", "note_comment"}
 # INSERT OR REPLACE: Konfliktspalten je Tabelle
-UPSERT_KEYS = {"immich_key": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",)}
+UPSERT_KEYS = {"immich_key": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",),
+               "note_share": ("note_id", "target_type", "target"), "note_comment_seen": ("uid", "thread_id")}
 
 
 def pool():
@@ -317,6 +318,30 @@ CREATE TABLE IF NOT EXISTS note_publish (
     active INTEGER NOT NULL DEFAULT 1,            -- 0 = beendet/zurueckgezogen: Einstellungen und Adresse bleiben reserviert
     withdrawn_at DOUBLE PRECISION, withdrawn_by TEXT,   -- wann/von wem beendet ('user' oder 'admin')
     UNIQUE (uid, slug));
+
+-- Teilen und Kommentare (1.3): Freigaben einer Seite an Konten/Gruppen (gelten fuer alle Unterseiten), Kommentare an Bloecken
+CREATE TABLE IF NOT EXISTS note_share (
+    id BIGSERIAL PRIMARY KEY, note_id BIGINT NOT NULL, owner_uid TEXT NOT NULL,
+    target_type TEXT NOT NULL,                    -- 'user' (Benutzername) | 'group' (Gruppenname, lokal oder LDAP/OIDC)
+    target TEXT NOT NULL, role TEXT NOT NULL,     -- 'view' | 'comment' | 'edit'
+    created DOUBLE PRECISION, created_by TEXT,
+    UNIQUE (note_id, target_type, target));
+CREATE INDEX IF NOT EXISTS note_share_target ON note_share (target_type, target);
+CREATE INDEX IF NOT EXISTS note_share_owner ON note_share (owner_uid);
+CREATE TABLE IF NOT EXISTS note_comment (
+    id BIGSERIAL PRIMARY KEY, note_id BIGINT NOT NULL, owner_uid TEXT NOT NULL,   -- owner_uid = Eigentuemer der Seite
+    block_id TEXT NOT NULL DEFAULT '',            -- '' = Kommentar zur ganzen Seite
+    thread_id BIGINT,                             -- NULL = Anfang einer Unterhaltung, sonst deren id
+    uid TEXT,                                     -- Verfasser (NULL = Konto geloescht)
+    body TEXT NOT NULL,                           -- Klartext, hoechstens 2000 Zeichen
+    created DOUBLE PRECISION NOT NULL, edited DOUBLE PRECISION,
+    resolved_at DOUBLE PRECISION, resolved_by TEXT);
+CREATE INDEX IF NOT EXISTS note_comment_note ON note_comment (note_id, thread_id);
+CREATE INDEX IF NOT EXISTS note_comment_uid ON note_comment (uid, created);
+CREATE INDEX IF NOT EXISTS note_comment_owner ON note_comment (owner_uid, note_id);
+CREATE INDEX IF NOT EXISTS note_comment_thread ON note_comment (thread_id);   -- Antworten je Unterhaltung (Ungelesen-Abfrage)
+CREATE TABLE IF NOT EXISTS note_comment_seen (
+    uid TEXT NOT NULL, thread_id BIGINT NOT NULL, seen_at DOUBLE PRECISION NOT NULL, PRIMARY KEY (uid, thread_id));
 """
 # --- Schema-Versionen und Migrationen ----------------------------------------------------------------
 # SCHEMA oben ist Stand 1 (plus neue Tabellen mit CREATE TABLE IF NOT EXISTS). Alles, was bestehende
@@ -337,6 +362,15 @@ UPDATE app_token t SET device_id = (SELECT d.id FROM device_login d WHERE d.uid 
 ALTER TABLE note_publish ADD COLUMN IF NOT EXISTS active INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE note_publish ADD COLUMN IF NOT EXISTS withdrawn_at DOUBLE PRECISION;
 ALTER TABLE note_publish ADD COLUMN IF NOT EXISTS withdrawn_by TEXT;
+""",
+    # 1.3.0: Teilen - wer eine Seite zuletzt geaendert hat (Hinweis beim Speicher-Konflikt "X hat diese Seite gerade geaendert")
+    4: """
+ALTER TABLE note ADD COLUMN IF NOT EXISTS updated_by TEXT;
+""",
+    # 1.3.0: Teilen - wer eine Seite angelegt hat ("Angelegt von"), wer eine gesicherte Fassung geschrieben hat (Versionen)
+    5: """
+ALTER TABLE note ADD COLUMN IF NOT EXISTS created_by TEXT;
+ALTER TABLE note_version ADD COLUMN IF NOT EXISTS author TEXT;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

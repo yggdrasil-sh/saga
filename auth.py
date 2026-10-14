@@ -42,6 +42,8 @@ DEFAULTS = {
     "default_lang": "",                    # Standardsprache (de/en/es), leer = Browsersprache
     "publish_enabled": True,               # Benutzer duerfen eigene Seiten veroeffentlichen (/@name/<slug>)
     "public_home": 0,                      # veroeffentlichte Seite (note_id) als Startseite "/" fuer Besucher, 0 = keine
+    "share_enabled": True,                 # Seiten mit anderen Konten und Gruppen teilen (1.3)
+    "share_group_scope": False,            # nur mit Konten teilen, mit denen man eine Gruppe gemeinsam hat
     "update_check": E.get("SAGA_UPDATE_CHECK", "1") not in ("0", "false", "no", "off"),   # im Admin-Bereich neue Versionen melden
     "oidc": {"enabled": False, "issuer": "", "client_id": "", "client_secret": "", "scopes": "openid profile email",
              "username_claim": "preferred_username", "name_claim": "name", "email_claim": "email",

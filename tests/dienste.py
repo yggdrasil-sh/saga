@@ -20,5 +20,27 @@ st2, _, d2 = raw("/api/services/icon/nextcloud")
 ok("Zweiter Abruf aus dem Zwischenspeicher (gleiche Bytes)", st2 == 200 and d2 == d)
 ok("Ohne Sitzung -> 404", raw("/api/services/icon/nextcloud", {"Host": HOST})[0] == 404)
 ok("Unsinniger Name -> 404", raw("/api/services/icon/..%2Fetc")[0] == 404 and raw("/api/services/icon/Nextcloud!")[0] == 404)
-ok("Unbekanntes Symbol -> 404", raw("/api/services/icon/gibt-es-nicht-hk-test")[0] == 404)
+def cdn_down():
+    """Ist das Symbol-CDN gerade nicht erreichbar (Zeitueberschreitung, Netzfehler, 5xx)? Gleicher Abruf wie der Server."""
+    cdn = (os.environ.get("ICON_CDN", "https://cdn.jsdelivr.net/gh/selfhst/icons")).rstrip("/")
+    if not cdn:
+        return False
+    try:
+        with urllib.request.urlopen(cdn + "/png/gibt-es-nicht-hk-test.png", timeout=10) as r:
+            return r.status >= 500
+    except urllib.error.HTTPError as e:
+        return e.code >= 500
+    except Exception:
+        return True
+# Unbekanntes Symbol: 404 (und einen Tag gemerkt). 502 heisst "CDN kurz weg" - nur dann gilt der Fall als uebersprungen,
+# wenn das CDN nachweislich nicht erreichbar ist; antwortet es wieder, muss ein zweiter Versuch 404 liefern.
+s = raw("/api/services/icon/gibt-es-nicht-hk-test")[0]
+if s in (502, 504):
+    if cdn_down():
+        print(f"SKIP Unbekanntes Symbol: Server {s}, Symbol-CDN nicht erreichbar - uebersprungen")
+    else:
+        s = raw("/api/services/icon/gibt-es-nicht-hk-test")[0]
+        ok(f"Unbekanntes Symbol -> 404 (zweiter Versuch nach {s})", s == 404)
+else:
+    ok(f"Unbekanntes Symbol -> 404 ({s})", s == 404)
 print(f"\nDIENSTE {sum(res)}/{len(res)}", "- ALLES GRUEN" if all(res) else "- FEHLER"); sys.exit(0 if all(res) else 1)

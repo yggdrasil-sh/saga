@@ -8,6 +8,7 @@
   var dict = window.SAGA_I18N || {}, lang = (document.documentElement.lang || 'de').toLowerCase();
   window.T = function (key, params) {
     var s = Object.prototype.hasOwnProperty.call(dict, key) ? dict[key] : key;
+    if (s === key && key.indexOf('##') > 0) s = key.slice(0, key.indexOf('##'));     // 'Lesen##Rolle': Kontext nur im Schluessel
     if (params) s = s.replace(/\{(\w+)\}/g, function (m, k) { return Object.prototype.hasOwnProperty.call(params, k) ? String(params[k]) : m; });
     return s;
   };
@@ -48,7 +49,7 @@
                         body: body !== undefined ? JSON.stringify(body) : undefined })
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (d) {
-          if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+          if (!r.ok) { var e = new Error(d.error || ('HTTP ' + r.status)); e.status = r.status; e.data = d; throw e; }   // Konflikt: e.data.by
           return d;
         });
       });

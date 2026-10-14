@@ -34,7 +34,8 @@ from saga import i18n
 from saga.core import (ASSET_V, BASE_URL, E, PUBLIC_HOSTS, TZ, _api_guard, _bad, _body, _json_load, seen_lang, server_lang, t, title,
                        tmpl, user_lang)
 from saga.files import _thumb, _thumb_mime, _thumb_w
-from saga.notes import FILES_DIR, MAX_NEST, _FILE_URL, _calc_value, _clean_views, _iter_blocks
+from saga.notes import FILES_DIR, MAX_NEST, _FILE_URL, _calc_value, _clean_views, _iter_blocks, note_chain
+from saga.sharing import access, edit_shared
 
 router = APIRouter()
 
@@ -284,19 +285,8 @@ def _owner_by_name(c, name):
 
 def _chain(c, uid, nid):
     """Ids von nid aufwaerts bis zur obersten Seite - endet VOR der ersten geloeschten/archivierten Seite oder Vorlage.
-    nid selbst geloescht/archiviert/Vorlage/fremd -> []."""
-    rows = c.execute(
-        "WITH RECURSIVE t(id, parent_id, bad, depth) AS ("
-        " SELECT id, parent_id, (deleted_at IS NOT NULL OR archived IS NOT NULL OR is_template<>0), 0 FROM note WHERE id=? AND uid=?"
-        " UNION ALL SELECT n.id, n.parent_id, (n.deleted_at IS NOT NULL OR n.archived IS NOT NULL OR n.is_template<>0), t.depth + 1"
-        " FROM note n JOIN t ON n.id=t.parent_id WHERE n.uid=? AND t.depth < 64)"
-        " SELECT id, bad FROM t ORDER BY depth", (nid, uid, uid)).fetchall()
-    out = []
-    for i, bad in rows:
-        if bad:
-            break
-        out.append(i)
-    return out
+    nid selbst geloescht/archiviert/Vorlage/fremd -> []. (Gemeinsam mit dem Teilen: notes.note_chain)"""
+    return note_chain(c, uid, nid)
 
 
 class Ctx:
@@ -1131,7 +1121,7 @@ def state(c, uid, nid, note_title=""):
     active = bool(r and r[7])
     out = {"enabled": enabled(), "name": name, "published": active, "home": False, "url": None,
            "profile_url": BASE_URL + f"/@{name}" if name else None, "published_via": published_via(c, uid, nid),
-           "withdrawn_at": None, "withdrawn_by": None}
+           "withdrawn_at": None, "withdrawn_by": None, "shared_edit": edit_shared(c, uid, nid)}
     if r:
         p = _pub_dict(r)
         out.update({k: p[k] for k in ("slug", "children", "indexable", "profile", "created", "updated")})
@@ -1154,6 +1144,12 @@ def _own_note(c, uid, nid):
     return c.execute("SELECT title FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, uid)).fetchone()
 
 
+def _not_mine(c, uid, nid):
+    """Veroeffentlichen darf nur der Eigentuemer: geteilte Seite -> 403, sonst 404 (Existenz bleibt verborgen)."""
+    _, _, err = access(c, uid, nid, "owner")
+    return err if err is not None else _bad("not found", 404)
+
+
 @router.get("/api/notes/{nid}/publish")
 def api_publish_get(nid: int, request: Request):
     uid = _api_guard(request)
@@ -1162,7 +1158,7 @@ def api_publish_get(nid: int, request: Request):
     with _db() as c:
         r = _own_note(c, uid, nid)
         if not r:
-            return _bad("not found", 404)
+            return _not_mine(c, uid, nid)
         return JSONResponse(state(c, uid, nid, r[0]), headers={"Cache-Control": "no-store"})
 
 
@@ -1187,7 +1183,7 @@ def _publish_put(uid, nid, b):
     with _db() as c:
         r = _own_note(c, uid, nid)
         if not r:
-            return _bad("not found", 404)
+            return _not_mine(c, uid, nid)
         if c.execute("SELECT is_template FROM note WHERE id=? AND uid=?", (nid, uid)).fetchone()[0]:
             return _bad(t("Vorlagen können nicht veröffentlicht werden."))
         has_name = bool(get_name(c, uid))
@@ -1260,8 +1256,8 @@ def api_publish_delete(nid: int, request: Request):
         return _bad("unauthorized", 401)
     with _db() as c:
         r = _own_note(c, uid, nid)
-    if not r:
-        return _bad("not found", 404)
+        if not r:
+            return _not_mine(c, uid, nid)
     n = unpublish(nid, uid, "user")
     with _db() as c:
         return JSONResponse(dict(state(c, uid, nid, r[0]), ok=True, removed=bool(n)), headers={"Cache-Control": "no-store"})

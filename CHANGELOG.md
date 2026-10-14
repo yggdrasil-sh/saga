@@ -11,6 +11,71 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu
+- **Teilen mit Personen und Gruppen:** Knopf „Teilen“ im Seitenkopf (nur Eigentümer) bzw. Seitenmenü → „Teilen …“.
+  Personensuche ab 3 Zeichen (Anzeigename + Benutzername, nie eine Liste aller Konten), Gruppen nur, in denen man
+  selbst ist (lokal, LDAP, SSO), Rollen **Lesen**, **Kommentieren**, **Bearbeiten**; Rolle ändern und Freigabe
+  entfernen (mit Rückfrage) in der Liste, geerbte Freigaben werden genannt. Eine Freigabe gilt für alle Unterseiten
+  und Datenbank-Einträge darunter (höchste Rolle in der Kette; archivierte Seiten, Papierkorb und Vorlagen sieht nur
+  der Eigentümer). Entzug, Gruppenwechsel und Abschalten wirken mit der nächsten Anfrage.
+  - Seitenleiste: Bereich **„👥 Mit mir geteilt“** (oberste geteilte Seiten mit Eigentümer, aufklappbar, auf dem Handy
+    in der Schublade); 👥 an eigenen geteilten Seiten; Suche, Schnellsuche und Verweise kennen geteilte Seiten
+  - Fremde Seiten: Kopfzeile „Geteilt von Name · Rolle“; mit Lesen/Kommentieren ist der Editor schreibgeschützt
+    (wie „Gesperrt“), Datenbanken zeigen „Nur lesen“. Aufgaben-, Kalender- und Immich-Blöcke zeigen Nicht-Eigentümern
+    nur „Nur für den Eigentümer sichtbar“; Verweise auf nicht geteilte Seiten erscheinen als „Seite ohne Zugriff“
+  - Bearbeiten: Inhalt, Titel, Symbol, Titelbild, Tags, Eigenschaften und Ansichten ändern, Unterseiten/Einträge
+    anlegen, Bilder hochladen – alles gehört dem Eigentümer (zählt bei ihm), Versionen entstehen bei ihm. Löschen,
+    Archivieren, Verschieben, Sperren, Vorlage, Veröffentlichen, Versionen und Freigaben bleiben beim Eigentümer
+  - Gleichzeitiges Bearbeiten: der Konflikt-Hinweis nennt, wer die Seite gerade geändert hat
+- **Kommentare** (dezent): am Block nur eine kleine Zahl, solange es offene Unterhaltungen gibt; „Kommentieren“ im
+  Block-Menü (⋮⋮ und Strg/⌘ + /), bei Nur-Kommentieren ein kleiner Knopf am Block. Unterhaltung in einer Seitenleiste
+  rechts (Handy: Bottom-Sheet): antworten, eigene bearbeiten/löschen (Eigentümer darf alle löschen), „✓ Erledigt“
+  (zugeklappt, ausgeblendet; Schalter „Erledigte zeigen“), „💬 n“ im Seitenkopf, ungelesen = kleiner Punkt, gelöschter
+  Block bleibt als „Block entfernt“. Klartext bis 2000 Zeichen, Links werden erkannt, höchstens 30 Kommentare je
+  Minute; auch auf eigenen, nicht geteilten Seiten. Erster Kommentar mit fremden Antworten: die Antworten bleiben,
+  er erscheint als „Kommentar gelöscht“; der Eigentümer kann die ganze Unterhaltung löschen (`DELETE …?all=1`)
+- **Admin → Allgemein → Teilen:** „Teilen erlauben“ (Standard an) und „Nur innerhalb gemeinsamer Gruppen“ (Standard
+  aus, wirkt nur auf neue Freigaben); Benutzer-Detail zeigt die Anzahl der Freigaben (erteilt/erhalten). Gruppen aus
+  LDAP/SSO gelten ab der nächsten Anmeldung. Konto löschen entfernt Freigaben (eigene
+  und an das Konto) und anonymisiert Kommentare („Gelöschtes Konto“); eine gelöschte Gruppe beendet ihre Freigaben
+- Schnittstelle für die Apps (nur Erweiterungen, bestehende Antworten bleiben gleich): `GET /api/shared`,
+  `GET`/`PUT`/`DELETE /api/notes/{id}/shares`, `GET /api/share/targets?q=`, `GET`/`POST /api/notes/{id}/comments`,
+  `PATCH`/`DELETE /api/comments/{id}`, `POST /api/comments/{id}/resolve`, `POST /api/comments/{id}/seen`;
+  `GET /api/notes/{id}` liefert zusätzlich `role`, `owner`, `shared`, `comment_counts`, `comments_open`,
+  `comments_unread`, `updated_by` (für Nicht-Eigentümer: Titel nicht geteilter Seiten in Verweisen als „Seite ohne
+  Zugriff“, `parent_id` null bei unsichtbarer Elternseite; beim Speichern stellt der Server die Verweistexte wieder
+  her); Kommentare zusätzlich `deleted`; `GET /api/notes/{id}/publish` zusätzlich `shared_edit` (Hinweis im Dialog,
+  wenn mit „Bearbeiten“ geteilt); `GET /api/notes` zusätzlich `shared`; `GET /api/notes/{id}/rows` zusätzlich `role`;
+  409 beim Speichern zusätzlich `by`. Uploads in fremde Seiten mit Kopfzeile `X-Saga-Note: <id>` (bzw. `note` beim
+  Immich-Import). `MIN_APP` bleibt 1.0.0
+
+- **Teilen, Nachbesserungen:** Konflikt ohne Datenverlust („Meine Version behalten“ mit Rückfrage; die überschriebene
+  Fassung bleibt als Version mit Autor erhalten, `overwrite` beim Speichern; „Neue Version laden“ zeigt den eigenen
+  Text zum Kopieren); Zugriff endet beim Schreiben → Dialog mit dem letzten Text statt „not found“; alte Links:
+  „Kein Zugriff auf diese Seite“; Hinweis für Empfänger, wenn Teilen abgeschaltet ist (`GET /api/share/info`).
+  Teilen-Dialog: tatsächliche Rolle über Gruppen/Elternseiten (`effective`, `via`), Mitgliederzahl bei Gruppen,
+  Erklärzeile zur Rolle, „Deine Gruppen“ als Chips, Link-Karte, geerbte Freigaben als eigener Bereich. Neue Kommentare
+  außerhalb der Seite: Punkt im Seitenbaum (`unread` in `GET /api/notes` und `/api/shared`), Zahl an „Mit mir
+  geteilt“, „💬 n“ am Knopf „Seiten“ der Startseite. „Zuletzt geändert von“ / „Angelegt von“ (`created_by`),
+  Versionsverlauf mit Autor. Kommentare ruhiger (⋯-Menü je Kommentar, 💬+ für alle, die kommentieren dürfen,
+  „Kommentare“ im Seitenmenü der Eigentümerin, leere Zustände mit nächstem Schritt, Handy: Block bleibt über dem
+  Bottom-Sheet sichtbar, Trefferflächen ≥ 44 px). Einzahl/Mehrzahl, englische Rollen „Can view/comment/edit“ und
+  Aktion „Resolve“ (Kontext `##` in i18n-Schlüsseln)
+- Datenbank-Migration 5: `note.created_by`, `note_version.author`
+
+### Geändert
+- Zentrale Zugriffsprüfung (`saga/sharing.py`, `note_access`) für alle Seiten-, Datenbank-, Datei-, Such- und
+  Export-Endpunkte; ohne Rolle antworten sie wie bisher mit 404, mit zu kleiner Rolle mit 403. Titel nicht geteilter
+  Seiten erreichen Nicht-Eigentümer weder über Inhalt, Suche, Export noch Rückverweise; Zwei-Wege-Relationen ändern
+  die Gegenspalte nur in Einträgen, die die bearbeitende Person selbst bearbeiten darf. Speichern durch Bearbeiter:
+  Längenprüfung erst nach dem Wiedereinsetzen der Verweistexte; ein kopierter Platzhalter bekommt beim Eigentümer den
+  aktuellen Titel (nur Seiten desselben Eigentümers). Speichern ohne `rev` über den Stand einer anderen Person sichert
+  diesen vorher als Version. Erzwungene Sicherungen von Bearbeitern sind gedrosselt (eine je Seite und Person je 60 s,
+  außer der bisherige Stand stammt von jemand anderem); beim Kürzen auf 50 Versionen bleiben die neuesten 10 Fassungen
+  des Eigentümers immer erhalten
+- Datenbank-Migration 4: `note.updated_by` (wer zuletzt geändert hat); neue Tabellen `note_share`, `note_comment`,
+  `note_comment_seen`
+
 ## [1.2.0] – 2026-10-14
 
 ### Neu

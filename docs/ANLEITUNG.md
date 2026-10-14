@@ -414,6 +414,78 @@ blog.example.org {
 }
 ```
 
+### Teilen und Kommentieren
+
+Seiten und Datenbanken lassen sich mit **anderen Konten** und **Gruppen** derselben Saga-Instanz teilen. Knopf
+**„Teilen“** oben rechts über der eigenen Seite (oder Seitenmenü **⋯** → „Teilen …“): Person oder Gruppe suchen
+(ab 3 Zeichen; angezeigt werden Anzeigename und Benutzername, nie eine Liste aller Konten), Rolle wählen und den
+Treffer anklicken. Gruppen bietet der Dialog nur an, wenn du selbst darin bist – lokale Gruppen ebenso wie Gruppen aus
+LDAP oder SSO; bei leerem Suchfeld stehen sie als Chips „Deine Gruppen:“ bereit. Unter dem Feld steht, was die
+gewählte Rolle darf. In der Liste darunter änderst du die Rolle oder entfernst eine Freigabe (mit Rückfrage; der
+Zugriff endet sofort). Die Liste zeigt die tatsächliche Rolle: Hat jemand über eine Gruppe mehr Rechte, steht das
+dabei („Kommentieren (über team: Bearbeiten)“), und die Rückfrage beim Entfernen nennt den verbleibenden Zugriff.
+Freigaben von übergeordneten Seiten stehen in einem eigenen Bereich (nur lesend, mit Weg zur Elternseite). Unten im
+Dialog kopierst du den Link zur Seite – er öffnet sie für alle, die Zugriff haben.
+
+| Rolle | darf |
+|---|---|
+| **Lesen** | Seite, Unterseiten und Datenbank-Einträge lesen, exportieren, Kommentare lesen |
+| **Kommentieren** | zusätzlich kommentieren, antworten, Unterhaltungen erledigen |
+| **Bearbeiten** | zusätzlich Titel, Inhalt, Symbol, Titelbild, Tags und Eigenschaften ändern, Unterseiten und Einträge anlegen, Bilder hochladen |
+
+- **Unterseiten kommen mit:** Eine Freigabe gilt auch für alle Unterseiten und die Einträge von Datenbanken darunter.
+  Es zählt die höchste Rolle (Person oder Gruppe, diese Seite oder eine Seite darüber). Archivierte Seiten, Seiten im
+  Papierkorb und Vorlagen sieht nur der Eigentümer.
+- **Was nur der Eigentümer darf:** löschen, archivieren, verschieben, sperren, als Vorlage markieren, veröffentlichen,
+  Versionen ansehen und wiederherstellen, Freigaben verwalten. Was andere anlegen oder hochladen, gehört dem
+  Eigentümer der Seite; Versionen entstehen bei ihm. Personen mit „Bearbeiten“ verbrauchen also **Speicherplatz des
+  Eigentümers** – ihre Bilder und Dateien zählen bei ihm.
+- **Teilen und Veröffentlichen:** Ist eine Seite mit „Unterseiten mit veröffentlichen“ öffentlich und zugleich mit
+  „Bearbeiten“ geteilt, werden Unterseiten und Bilder, die diese Personen anlegen, sofort öffentlich – der
+  Veröffentlichen-Dialog weist darauf hin.
+- **Mit mir geteilt:** In der Seitenleiste listet der Bereich „👥 Mit mir geteilt“ die Seiten, die andere mit dir
+  geteilt haben (mit Namen der Eigentümerin oder des Eigentümers). Eigene geteilte Seiten tragen 👥 im Seitenbaum.
+  Neue Kommentare anderer zeigt ein kleiner Punkt an der Seite im Seitenbaum, die Zahl am Bereich „Mit mir geteilt“
+  und „💬 n“ am Knopf „Seiten“ auf der Startseite. Ist Teilen im Admin-Bereich abgeschaltet, steht dort ein Hinweis.
+- **Wer was geändert hat:** Unter dem Titel steht „Zuletzt geändert von Name · vor 5 Min.“ (wenn es nicht du warst)
+  und bei Seiten, die eine andere Person angelegt hat, „Angelegt von Name“. Der Versionsverlauf nennt bei jeder
+  gesicherten Fassung, von wem sie stammt.
+- **Fremde Seiten** zeigen über dem Titel „Geteilt von Name · Du kannst lesen/kommentieren/bearbeiten“. Mit „Lesen“ oder „Kommentieren“ ist der Editor
+  schreibgeschützt; Datenbanken zeigen „Nur lesen“ (Sortieren und Filtern geht, wird aber nicht gespeichert).
+  Aufgaben-, Kalender- und Immich-Blöcke zeigen nur „Nur für den Eigentümer sichtbar“ – nie die Daten des Eigentümers
+  oder deine eigenen. Verweise auf Seiten, die nicht mit dir geteilt sind, erscheinen als „Seite ohne Zugriff“.
+- **Gleichzeitig bearbeiten:** Speichern zwei Personen fast gleichzeitig, erscheint der bekannte Konflikt-Hinweis –
+  mit Namen: „Bert hat diese Seite gerade geändert“. **„Neue Version laden“** lädt Berts Fassung und zeigt deinen
+  nicht gespeicherten Text zum Kopieren. **„Meine Version behalten“** fragt erst nach; Berts Fassung bleibt dann im
+  Versionsverlauf des Eigentümers erhalten – es geht nichts spurlos verloren.
+- **Zugriff endet, während du schreibst:** Entzieht der Eigentümer die Freigabe (oder fällt sie auf „Lesen“, oder
+  der Admin schaltet Teilen ab), erscheint ein Dialog mit deinem letzten Text zum Kopieren. Alte Links auf Seiten
+  ohne Zugriff zeigen „Kein Zugriff auf diese Seite“.
+
+**Kommentare** hängen an einem Block und bleiben dezent: Am Rand steht nur eine kleine Zahl (💬 2), und zwar nur,
+solange es offene Unterhaltungen gibt. Kommentieren geht über das Block-Menü (**⋮⋮** links neben dem Block →
+„Kommentieren“, oder Strg/⌘ + / → „Kommentieren“); beim Überfahren eines Blocks erscheint außerdem ein kleiner Knopf 💬+ (auf Touch-Geräten bei schreibgeschützten Seiten nach dem Antippen).
+Die Unterhaltung öffnet sich in einer Seitenleiste rechts (auf dem Handy von unten). Dort antwortest du, bearbeitest
+oder löschst eigene Kommentare (der Eigentümer der Seite darf alle löschen) und schließt eine Unterhaltung mit
+**„✓ Erledigt“** ab – sie klappt zu und verschwindet; der Schalter **„Erledigte zeigen“** holt sie zurück, „Wieder
+öffnen“ macht sie wieder aktiv. „💬 3“ im Seitenkopf öffnet alle Unterhaltungen der Seite; ein kleiner Punkt zeigt
+Ungelesenes. Bearbeiten und Löschen eines Kommentars stehen in seinem ⋯-Menü; der Eigentümer findet alle
+Unterhaltungen auch im Seitenmenü **⋯** → „Kommentare“ (mit Anzahl der erledigten). Kommentare sind Klartext (höchstens 2000 Zeichen, Zeilenumbrüche erlaubt; Links werden erkannt), höchstens
+30 Kommentare pro Minute. Auch auf eigenen, nicht geteilten Seiten kannst du kommentieren – als Notiz an dich selbst.
+Wird ein Block gelöscht, bleibt seine Unterhaltung als „Block entfernt“ in der Liste. Löschst du den ersten Kommentar
+einer Unterhaltung, auf den andere geantwortet haben, bleiben die Antworten stehen und dein Kommentar erscheint als
+„Kommentar gelöscht“; der Eigentümer der Seite kann die ganze Unterhaltung löschen (mit Rückfrage).
+
+**Für den Admin** (Admin-Bereich → Allgemein → „Teilen“): **Teilen erlauben** (Standard an; aus = alle Freigaben
+wirken sofort nicht mehr, bleiben aber gespeichert) und **Nur innerhalb gemeinsamer Gruppen** (Standard aus;
+Personensuche und Teilen nur mit Konten, die mit einem eine Gruppe gemeinsam haben; wirkt nur auf neue Freigaben –
+bestehende bleiben, wenn du es später einschaltest). Gruppen aus LDAP oder SSO übernimmt Saga bei der Anmeldung:
+Ändert sich die Mitgliedschaft dort, gilt das für Freigaben an Gruppen erst ab der nächsten Anmeldung des Kontos.
+Das Benutzer-Detail zeigt nur
+die Anzahl der Freigaben, keine Inhalte. Wird ein Konto gelöscht, verschwinden seine Freigaben und die an das Konto;
+seine Kommentare auf fremden Seiten bleiben als „Gelöschtes Konto“ stehen. Wird eine Gruppe gelöscht, enden die
+Freigaben an sie.
+
 ### Konto, Kalender, Immich, Apps
 
 Im Benutzermenü oben rechts unter **Einstellungen** (je ein Reiter):

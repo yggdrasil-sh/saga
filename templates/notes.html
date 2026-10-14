@@ -35,6 +35,11 @@
       <ul class="pg-tree" id="pg-tree" role="tree"></ul>
       <ul class="pg-results" id="pg-results" hidden></ul>
       <button type="button" class="note-new" id="pg-new">+ {{ _("Neue Seite") }}</button>
+      <div class="pg-shared-box" id="pg-shared-box" hidden>
+        <div class="pg-section">👥 {{ _("Mit mir geteilt") }} <span class="pg-sec-n" id="pg-shared-n" hidden></span></div>
+        <p class="pg-shared-off" id="pg-shared-off" hidden>{{ _("Teilen ist auf diesem Server zurzeit abgeschaltet – mit dir geteilte Seiten sind nicht erreichbar.") }}</p>
+        <ul class="pg-tree pg-shared-tree" id="pg-shared-tree" role="tree" aria-label="{{ _("Mit mir geteilt") }}"></ul>
+      </div>
       <div class="pg-side-foot">
         <button type="button" class="pg-foot-btn" id="pg-qs-btn" title="{{ _("Schnellsuche") }}">⌕ {{ _("Schnellsuche") }} <kbd id="pg-qs-kbd">{{ _("Strg") }} K</kbd></button>
         <button type="button" class="pg-foot-btn" id="pg-archive-btn">📦 {{ _("Archiv") }}</button>
@@ -45,6 +50,8 @@
       <div class="page-bar">
         <nav class="crumbs" id="pg-crumbs" aria-label="{{ _("Pfad") }}"></nav>
         <span class="note-state" id="pg-state"></span>
+        <button type="button" class="pg-head-b pg-cm-b" id="pg-cm-btn" hidden></button>
+        <button type="button" class="pg-head-b pg-share-b" id="pg-share" hidden>{{ _("Teilen") }}</button>
         <button type="button" class="icon-btn" id="pg-full" title="{{ _("Vollbild") }}" aria-label="{{ _("Vollbild") }}" aria-pressed="false">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
         </button>
@@ -128,6 +135,7 @@
 <script src="/static/immich.js?v={{ v }}"></script>
 <script src="/static/code.js?v={{ v }}"></script>
 <script src="/static/pages.js?v={{ v }}"></script>
+<script src="/static/comments.js?v={{ v }}"></script>
 <script src="/static/keys.js?v={{ v }}"></script>
 <script src="/static/settings.js?v={{ v }}"></script>
 </body>
