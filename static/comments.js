@@ -187,7 +187,7 @@
     if (onCancel) { var cb = el('button', 'btn cm-cancel', T('Abbrechen')); cb.type = 'button'; cb.addEventListener('click', onCancel); bar.appendChild(cb); }
     bar.appendChild(ok);
     w.appendChild(ta); w.appendChild(bar); upd();
-    w.focusLater = function () { setTimeout(function () { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 0); };
+    w.focusLater = function () { if (C.quiet) return; setTimeout(function () { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 0); };
     return w;
   }
   function comment(t, cm, first, dot) {
@@ -391,10 +391,15 @@
   function liveRefresh() {
     return reload().then(function () {
       if (!C.open) return;
+      // angefangene Antwort/Bearbeitung in der Liste: nicht neu zeichnen (die Unterhaltung koennte inzwischen erledigt,
+      // ausgeblendet oder geloescht sein - der Text waere weg). Zahlen hat reload() schon aktualisiert; das naechste
+      // Zeichnen (Senden/Abbrechen) zeigt den neuen Stand.
+      if ([].some.call(list.querySelectorAll('textarea'), function (ta) { return ta.value.trim(); })) return;
       var keep = [].map.call(panel.querySelectorAll('textarea'), function (ta) {
         return { v: ta.value, a: ta.selectionStart, b: ta.selectionEnd, f: document.activeElement === ta };
       }), top = list.scrollTop;
-      render();
+      C.quiet = true;                                  // kein focusLater: Fokus bleibt, wo getippt wird (Seite, andere Leiste)
+      try { render(); } finally { C.quiet = false; }
       var now = [].slice.call(panel.querySelectorAll('textarea'));
       var pairs = now.length === keep.length ? now.map(function (ta, i) { return [ta, keep[i]]; })
         : (now.length && keep.length ? [[now[now.length - 1], keep[keep.length - 1]]] : []);
