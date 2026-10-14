@@ -12,6 +12,8 @@
   var MAX = 2000;
 
   function cur() { return K.cur(); }
+  // Rolle entzogen/gesenkt (403/404): Seite gleich im neuen Zustand zeigen (Etikett, nur Lesen bzw. "Kein Zugriff")
+  function lost(err) { if (err && (err.status === 403 || err.status === 404) && K.recheck) K.recheck(); }
   function role() { var c = cur(); return c ? (c.role || 'owner') : null; }
   function can() { return RANK[role()] >= RANK.comment; }
   function ro() { return RANK[role()] < RANK.edit; }
@@ -265,7 +267,7 @@
       if (C.replyTo === t.id) {
         var ed = editor('', T('Antworten'), T('Antworten'), function (v) {
           return api('POST', '/api/notes/' + cur().id + '/comments', { thread_id: t.id, body: v }).then(function () { C.replyTo = null; return reload(); }).then(render)
-            .catch(function (err) { HK.toast(T('Nicht gesendet: {err}', { err: err.message })); throw err; });
+            .catch(function (err) { HK.toast(T('Nicht gesendet: {err}', { err: err.message })); lost(err); throw err; });
         }, function () { C.replyTo = null; render(); });
         w.appendChild(ed); ed.focusLater();
       } else {
@@ -285,7 +287,7 @@
             });
           }
           delete C.expanded[t.id]; return reload();
-        }).then(render).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
+        }).then(render).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); lost(err); });
       });
       bar.appendChild(done);
       w.appendChild(bar);
@@ -317,7 +319,7 @@
       var bid = C.block || '';
       var ed = editor('', C.block ? T('Kommentar zu diesem Block') : T('Kommentar zur ganzen Seite'), T('Kommentieren'), function (v) {
         return api('POST', '/api/notes/' + c.id + '/comments', { block_id: bid, body: v }).then(reload).then(render)
-          .catch(function (err) { HK.toast(T('Nicht gesendet: {err}', { err: err.message })); throw err; });
+          .catch(function (err) { HK.toast(T('Nicht gesendet: {err}', { err: err.message })); lost(err); throw err; });
       });
       foot.appendChild(ed);
       if (C.block && !shown.length) ed.focusLater();
@@ -375,12 +377,12 @@
   }
 
   document.addEventListener('hk-page-open', function (e) {
-    var id = e.detail && e.detail.id;
-    if (id !== C.id) { C.id = id; C.threads = []; C.nres = 0; C.loaded = false; C.expanded = {}; if (C.open) hide(); }
+    var id = e.detail && e.detail.id, same = id === C.id;
+    if (!same) { C.id = id; C.threads = []; C.nres = 0; C.loaded = false; C.expanded = {}; if (C.open) hide(); }
     if (addBtn.parentNode) addBtn.remove();
     headBtn();
-    var c = cur();
-    if (c && (c.comments_open || 0) > 0) reload(); else placeBubbles();
+    var c = cur(), redraw = C.open && same;            // dieselbe Seite neu geoeffnet (z. B. Rolle geaendert): Leiste neu zeichnen
+    if (c && (c.comments_open || 0) > 0) reload().then(function () { if (redraw) render(); }); else { placeBubbles(); if (redraw) render(); }
   });
   document.addEventListener('hk-page-ready', function () { placeBubbles(); });
 

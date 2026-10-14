@@ -941,8 +941,18 @@ tr.rc > td:first-child{box-shadow:inset 3px 0 0 var(--rc)}
 .pg-conflict{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin:0 auto 1rem;max-width:760px;padding:.7rem .9rem;border-radius:8px;
   border:1px solid var(--warn);background:var(--warnbg);color:var(--fg);font-size:.88rem}
 .draft-dlg{gap:.6rem}
-.draft-ta{width:100%;min-height:9rem;resize:vertical;font:inherit;font-size:.86rem;line-height:1.45;white-space:pre-wrap}
-.pg-noaccess .pg-na-t{font-size:1.05rem;font-weight:600;color:var(--fg)}
+.draft-ta{width:100%;min-height:3.4rem;max-height:40vh;resize:vertical;overflow:auto;font:inherit;font-size:.86rem;line-height:1.45;white-space:pre-wrap}
+.draft-t{margin:0;line-height:1.5}
+.draft-dlg .hk-actions{justify-content:flex-end}
+#pg-modal.no-x #pg-modal-close{display:none}
+/* "Kein Zugriff auf diese Seite": eine Spalte, mittig wie die leeren Zustaende der Apps */
+.pg-noaccess{display:flex;flex-direction:column;align-items:center;text-align:center;gap:.35rem;margin:12vh auto 0;max-width:30rem;padding:1.5rem 1rem}
+.pg-noaccess p{margin:0;max-width:40ch}
+.pg-na-ic{font-size:1.8rem;line-height:1;margin-bottom:.3rem}
+.pg-noaccess .pg-na-t{font-size:1.1rem;font-weight:600;color:var(--fg)}
+.pg-na-x{font-size:.88rem;line-height:1.5;color:var(--muted)}
+.pg-na-acts{display:flex;flex-wrap:wrap;justify-content:center;gap:.5rem;margin-top:.8rem}
+.pg-na-acts [hidden]{display:none}
 .pg-noaccess[hidden]{display:none}
 .pgc-t{flex:1;min-width:14rem}
 
@@ -1448,7 +1458,7 @@ box-shadow:0 20px 60px rgba(0,0,0,.45);padding:1.1rem 1.2rem 1rem}
 /* --- Teilen (1.3): Seitenleiste "Mit mir geteilt", Kopfzeile fremder Seiten, Dialog ------------------------------- */
 .pg-shared-box{display:flex;flex-direction:column;gap:.15rem;margin-top:.2rem}
 .pg-results:not([hidden])~.pg-shared-box{display:none}
-.pg-shared-ic{flex:none;font-size:.72rem;opacity:.7;margin-left:auto;padding-left:.2rem}
+.pg-shared-ic{flex:none;display:inline-flex;font-size:.8rem;color:var(--muted);margin-left:auto;padding-left:.2rem}
 .pg-shared-tree .pg-name{display:flex;flex-direction:column;min-width:0}
 .pg-owner{display:block;font-size:.72rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;font-weight:400}
 .pg-hit-o{font-size:.74rem;color:var(--muted)}
@@ -1458,17 +1468,21 @@ box-shadow:0 20px 60px rgba(0,0,0,.45);padding:1.1rem 1.2rem 1rem}
 .pg-head-b:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .pg-head-b[hidden]{display:none}
 .pg-share-b.on{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--border))}
-.pg-share-b.on::before{content:"👥";font-size:.78rem}
+.pg-share-b.on::before{content:"";width:.9rem;height:.9rem;background:currentColor;-webkit-mask:var(--ic-grp) center/contain no-repeat;mask:var(--ic-grp) center/contain no-repeat}
 .pg-cm-b{position:relative}
 .pg-cm-b .cm-b-ic{font-size:.8rem}
 .pg-cm-b .cm-dot{position:absolute;top:-.12rem;right:-.12rem}
-.pg-sharedby{max-width:720px;margin:-.8rem auto .9rem;display:flex;flex-wrap:wrap;align-items:center;gap:.35rem;font-size:.84rem;color:var(--muted)}
+/* Etikett fremder Seiten UNTER dem Titel, darunter "Zuletzt geaendert von ..." - beide gleich: Sekundaertext, gut lesbar */
+.pg-sharedby{display:flex;flex-wrap:wrap;align-items:center;gap:.1rem .35rem;margin:-.45rem 0 .9rem;font-size:.86rem;line-height:1.45;color:var(--muted)}
+.pg-sharedby:has(+ .pg-meta){margin-bottom:.1rem}
 .pg-sharedby b{color:var(--fg);font-weight:600}
-.pg-sb-sep{opacity:.5}
-.pg-sb-role{background:var(--card-h);border:0;border-radius:4px;padding:.08rem .45rem;font-size:.78rem;color:var(--fg);cursor:default}
+.pg-sb-ic{font-size:.95rem}
+.pg-sb-sep{opacity:.6}
+.pg-sb-role{border:0;padding:0;color:var(--muted);cursor:default}
 .page-body a.note-link.noaccess{color:transparent;font-size:0;border:0;background:none;text-decoration:none;cursor:help}
 .page-body a.note-link.noaccess::after{content:"🔒 " attr(data-na);color:var(--muted);font-size:.9rem;text-decoration:none}
-.pg-meta{font-size:.78rem;color:var(--muted);margin-top:.15rem}
+.pg-meta{font-size:.86rem;line-height:1.45;color:var(--muted);margin:-.45rem 0 .9rem}
+.pg-sharedby+.pg-meta{margin-top:0}
 .ver-by{font-size:.74rem;color:var(--muted)}
 .pg-unread{flex:none;width:.42rem;height:.42rem;border-radius:50%;background:var(--accent);margin-left:auto}
 .pg-unread+.pg-shared-ic{margin-left:.3rem}
@@ -1485,11 +1499,13 @@ box-shadow:0 20px 60px rgba(0,0,0,.45);padding:1.1rem 1.2rem 1rem}
 .sh-chips[hidden]{display:none}
 .sh-chips-l{font-size:.78rem;color:var(--muted)}
 .sh-chip{appearance:none;border:1px solid var(--border);background:var(--card);color:var(--fg);border-radius:999px;font:inherit;font-size:.78rem;
-  padding:.2rem .6rem;cursor:pointer}
+  padding:.2rem .6rem;cursor:pointer;display:inline-flex;align-items:center;gap:.3rem}
 .sh-chip:hover{background:var(--card-h)}
-.sh-chip.on{border-color:color-mix(in srgb,var(--accent) 50%,var(--border));color:var(--accent)}
+.sh-chip .ic-grp{color:var(--muted)}
+.sh-chip.on{border-color:color-mix(in srgb,var(--accent) 50%,var(--border));color:var(--fg)}
+.sh-chip-ok{color:var(--accent);font-weight:700}
 .sh-note{margin:-.35rem 0 .1rem;font-size:.78rem;color:var(--muted)}
-.sh-via{color:var(--accent);font-size:.74rem}
+.sh-via{display:block;color:var(--muted);font-size:.76rem;font-style:normal;white-space:normal}
 .sh-err{flex-basis:100%;margin-left:2.5rem;color:var(--down);font-size:.76rem}
 .sh-role-l{flex:none;font-size:.78rem;background:var(--card-h);border-radius:4px;padding:.08rem .45rem}
 .sh-link{margin-top:.3rem}
@@ -1515,6 +1531,7 @@ box-shadow:0 20px 60px rgba(0,0,0,.45);padding:1.1rem 1.2rem 1rem}
 .sh-item{display:flex;align-items:center;gap:.6rem;padding:.35rem .2rem;font-size:.9rem;border-radius:6px}
 .sh-item .sh-role{max-width:9.5rem}
 .sh-owner .sh-av{background:var(--card-h);color:var(--accent)}
+.sh-av-g{font-size:1rem;color:var(--muted)}
 .sh-rm{flex:none;font-size:1.1rem;line-height:1;padding:.3rem .45rem}
 .sh-rm:hover{color:var(--down);background:var(--card-h)}
 .sh-empty{color:var(--muted);font-size:.86rem;padding:.2rem .2rem .4rem}
@@ -1637,3 +1654,18 @@ box-shadow:0 20px 60px rgba(0,0,0,.45);padding:1.1rem 1.2rem 1rem}
 .adm-card:has(input[name=share_enabled]:not(:checked)) .adm-share-off{display:block}
 /* Nur Lesen/Kommentieren: kein "Schreib los ..."-Platzhalter im leeren Editor */
 body.pg-ro .page-body [data-placeholder]::before,body.pg-ro .page-body [data-placeholder-active]::before{content:none!important;display:none!important}
+/* Einfarbiges Gruppen-/Personen-Symbol (statt Emoji): Maske in der Textfarbe */
+:root{--ic-grp:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='9' cy='7' r='4'/%3E%3Cpath d='M22 21v-2a4 4 0 0 0-3-3.87'/%3E%3Cpath d='M16 3.13a4 4 0 0 1 0 7.75'/%3E%3C/svg%3E")}
+.ic-grp{display:inline-block;flex:none;width:1em;height:1em;vertical-align:-.14em;background:currentColor;
+  -webkit-mask:var(--ic-grp) center/contain no-repeat;mask:var(--ic-grp) center/contain no-repeat}
+.pg-section .ic-grp{margin-right:.2rem}
+.picker-sub .ic-grp,.picker-t .ic-grp{color:var(--muted)}
+/* Seitenleiste: leere Liste mit Text statt leerer Ueberschrift; "Zu Mit mir geteilt" hebt den Bereich kurz hervor */
+.pg-tree-empty{list-style:none;padding:.3rem .55rem;font-size:.84rem;color:var(--muted)}
+.pg-shared-box.hk-flash{animation:hkflash 1.6s ease-out;border-radius:8px}
+/* Nur Lesen/Kommentieren: Kontrollkaestchen sichtbar gesperrt (Textfarbe mit ~45 % Deckkraft, auch dunkel gut erkennbar) */
+body.pg-ro .page-body .cdx-list{--color-border:color-mix(in srgb,var(--fg) 45%,transparent);--color-bg-checked:color-mix(in srgb,var(--fg) 45%,transparent);
+  --color-bg-checked-hover:color-mix(in srgb,var(--fg) 45%,transparent);--color-tick:var(--bg)}
+body.pg-ro .page-body .cdx-list__checkbox,body.pg-ro .page-body .cdx-list__checkbox-check{cursor:not-allowed}
+/* Gesperrte Seite: in Datenbank-Bloecken kein "Neu", keine Ansichts-Einstellungen, keine neue Ansicht */
+body.pg-lock-on #pg-editor .embed-db :is(.db-new-top,.db-tab-add,.db-gear,.db-new-row,.board-add,.dbg-new,.cal-add){display:none!important}

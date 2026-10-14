@@ -436,13 +436,14 @@ page for everyone who has access.
   with “Edit” use the **owner’s storage** – their images and files count towards it.
 - **Sharing and publishing:** if a page is public with “Also publish subpages” and is also shared with “Edit”,
   subpages and images those people create become public immediately – the publish dialog points this out.
-- **Shared with me:** in the sidebar, the section “👥 Shared with me” lists the pages others have shared with you
-  (with the owner’s name). Your own shared pages show 👥 in the page tree. New comments by others show as a small
+- **Shared with me:** in the sidebar, the section “Shared with me” lists the pages others have shared with you
+  (with the owner’s name). Your own shared pages show a people icon in the page tree. New comments by others show as a small
   dot on the page in the tree, as a number on “Shared with me” and as “💬 n” on the “Pages” button on the home page.
   If sharing is turned off in the admin area, a notice says so.
 - **Who changed what:** below the title you see “Last changed by Name · 5 min ago” (if it wasn’t you) and, for pages
   someone else created, “Created by Name”. The version history names the author of every saved version.
-- **Other people’s pages** show “Shared by Name · You can view/comment/edit” above the title. With “Can view” or “Can comment” the editor is
+- **Other people’s pages** show “Shared by Name · You can view/comment/edit” below the title (and below that, who
+  changed it last). If the owner changes your role, the page shows it the next time it saves or when you return to the tab. With “Can view” or “Can comment” the editor is
   read-only; databases show “View only” (sorting and filtering work but are not saved). Task, calendar and Immich
   blocks only show “Only visible to the owner” – never the owner’s data or yours. Links to pages that are not shared
   with you appear as “Page without access”.
@@ -452,7 +453,7 @@ page for everyone who has access.
   without a trace.
 - **Access ends while you type:** if the owner removes your access (or lowers it to “Can view”, or the admin turns
   sharing off), a dialog shows your latest text for copying. Old links to pages you can’t access show “No access to
-  this page”.
+  this page” with “Try again” and “Go to “Shared with me””.
 
 **Comments** are attached to a block and stay unobtrusive: the margin only shows a small number (💬 2), and only
 while there are open threads. Comment via the block menu (**⋮⋮** left of the block → “Comment”, or Ctrl/⌘ + / →

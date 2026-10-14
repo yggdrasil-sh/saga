@@ -65,6 +65,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   „Kommentare“ im Seitenmenü der Eigentümerin, leere Zustände mit nächstem Schritt, Handy: Block bleibt über dem
   Bottom-Sheet sichtbar, Trefferflächen ≥ 44 px). Einzahl/Mehrzahl, englische Rollen „Can view/comment/edit“ und
   Aktion „Resolve“ (Kontext `##` in i18n-Schlüsseln)
+- **Teilen, Design-Runde (Web):** Etikett „Geteilt von … · Du kannst …“ unter dem Titel, darunter „Zuletzt geändert
+  von …“ in gleicher Größe; Rollenwechsel oder Entzug zeigt die Seite sofort im neuen Zustand (beim Speichern, beim
+  Kommentieren und bei der Rückkehr in den Tab), ohne Konflikt-Banner daneben; Kopier-Dialoge einheitlich (Textfeld
+  nur so hoch wie nötig, „Kopieren“ + „Schließen“, kein zweites ×); „Kein Zugriff auf diese Seite“ mittig mit
+  „Erneut versuchen“ und „Zu „Mit mir geteilt““; „Mindestens 3 Zeichen.“ nur bei 1–2 Zeichen; „(über Gruppe: Rolle)“
+  in Sekundärfarbe; Gruppen-Symbol einfarbig statt 👥; Gruppen-Chip mit Zugriff trägt ✓; leere Seitenliste „Noch
+  keine Seiten“; Kontrollkästchen bei Lesen/Kommentieren sichtbar gesperrt; gesperrte Seite: in Datenbank-Blöcken
+  kein „Neu“, keine Ansichts-Einstellungen und kein „+“ für Ansichten. Spanisch: Rollen „Ver / Comentar / Editar“,
+  Etikett „Puedes comentar“
 - Datenbank-Migration 5: `note.created_by`, `note_version.author`
 
 ### Geändert

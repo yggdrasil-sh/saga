@@ -258,6 +258,8 @@
                     comment: T('Kommentieren: lesen und Kommentare schreiben.'),
                     edit: T('Bearbeiten: Inhalte ändern und Unterseiten anlegen. Löschen, Verschieben und Teilen bleibt bei dir.') };
   var RANK = { view: 1, comment: 2, edit: 3, owner: 4 };
+  // Gruppen-/Personen-Symbol einfarbig (CSS-Maske in Textfarbe) statt des farbigen Emojis
+  function grpIc(cls) { var s = el('span', 'ic-grp' + (cls ? ' ' + cls : '')); s.setAttribute('aria-hidden', 'true'); return s; }
   // Uploads in fremde Seiten: Datei gehoert dem Eigentuemer (Server prueft 'edit') - Editor.js liest die Kopfzeilen beim Hochladen
   var UPH = { 'X-Saga': '1' };
   function uploadNote() { if (foreign()) UPH['X-Saga-Note'] = String(S.cur.id); else delete UPH['X-Saga-Note']; HK.fileNote = foreign() ? S.cur.id : null; }
@@ -273,6 +275,9 @@
   function renderTree() {
     var ul = $('pg-tree'); ul.textContent = ''; treeRootDnd(ul);
     treeNodes(ul, children(null), 0, children, true);
+    if (!S.pages.length) {                                 // statt leerer Liste
+      var nl = el('li', 'pg-tree-empty', T('Noch keine Seiten')); nl.setAttribute('role', 'treeitem'); nl.setAttribute('aria-disabled', 'true'); ul.appendChild(nl);
+    }
     renderShared();
     $('pg-empty').hidden = S.pages.length > 0 || S.shared.length > 0 || !!S.cur || !!($('pg-noaccess') && !$('pg-noaccess').hidden);
     S.onCount(S.pages.length);
@@ -296,7 +301,7 @@
       if (p.template) go.appendChild(el('span', 'pg-badge', T('Vorlage')));
       if (p.unread) { var ud = el('span', 'pg-unread'); ud.title = T('Neue Kommentare'); ud.setAttribute('aria-label', ud.title); go.appendChild(ud); }
       if (own && p.shared) {
-        var si = el('span', 'pg-shared-ic', '👥'); si.title = T('Geteilt'); si.setAttribute('aria-label', si.title); go.appendChild(si);
+        var si = el('span', 'pg-shared-ic'); si.appendChild(grpIc()); si.title = T('Geteilt'); si.setAttribute('role', 'img'); si.setAttribute('aria-label', si.title); go.appendChild(si);
       }
       if (!own && p.root && p.owner) go.title = T('Geteilt von {name} · {role}', { name: p.owner.name, role: ROLE_YOU[p.role] || '' });
       go.addEventListener('click', function () { openPage(p.id); });
@@ -517,47 +522,95 @@
     var title = $('pg-title').value.trim();
     return ((title ? title + '\n\n' : '') + out.join('\n\n')).trim();
   }
-  // Text zum Kopieren zeigen (Entwurf nach Konflikt, Zugriff verloren)
+  // Text zum Kopieren zeigen (Entwurf nach Konflikt, Zugriff verloren) - einheitlich: Titel, kurzer Text, Textfeld (nur so
+  // hoch wie noetig, hoechstens ~40 % der Hoehe), Hauptknopf "Kopieren", zweiter Knopf "Schliessen" (kein zweites x oben)
   function showDraft(title, text, draft, onClose) {
+    var cp = null;
     openModal(title, function (body) {
       var box = el('div', 'pub-dlg draft-dlg'); body.appendChild(box);
-      box.appendChild(el('p', null, text));
-      var ta = el('textarea', 'hk-in draft-ta'); ta.readOnly = true; ta.value = draft; ta.rows = 10; ta.setAttribute('aria-label', T('Dein Text'));
+      box.appendChild(el('p', 'draft-t', text));
+      var ta = el('textarea', 'hk-in draft-ta'); ta.readOnly = true; ta.value = draft; ta.rows = 2; ta.setAttribute('aria-label', T('Dein Text'));
       box.appendChild(ta);
       var bar = el('div', 'hk-actions');
-      bar.appendChild(pubBtn(T('Kopieren'), function () {
+      bar.appendChild(pubBtn(T('Schließen'), closeModal));
+      cp = pubBtn(T('Kopieren'), function () {
         ta.select();
         (navigator.clipboard ? navigator.clipboard.writeText(draft) : Promise.reject(new Error('x')))
           .then(function () { HK.toast(T('Text kopiert')); }, function () { try { document.execCommand('copy'); HK.toast(T('Text kopiert')); } catch (e) { /* markiert */ } });
-      }, 'btn-primary'));
-      bar.appendChild(pubBtn(T('Schließen'), closeModal));
+      }, 'btn-primary');
+      bar.appendChild(cp);
       box.appendChild(bar);
+      requestAnimationFrame(function () { ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 2) + 'px'; });
     }, true);
+    $('pg-modal').classList.add('no-x');
+    if (cp) cp.focus();
     S.modalClose = onClose || null;
   }
   function lostAccess(status) {
     if (S.lost) return;
     var id = S.cur.id, draft = draftText();
     S.lost = true; clearTimeout(S.timer); S.dirtyBody = S.dirtyTitle = false;
+    clearConflict();                                   // kein Konflikt-Banner mehr neben "Nur noch lesen" / "Kein Zugriff"
     state(T('Nicht gespeichert'), 'err');
     showDraft(status === 403 ? T('Nur noch lesen') : T('Kein Zugriff mehr'),
       status === 403 ? T('Du darfst diese Seite nicht mehr bearbeiten. Dein letzter Text ist unten – kopiere ihn, wenn du ihn behalten willst.')
                      : T('Du hast keinen Zugriff mehr auf diese Seite. Dein letzter Text ist unten – kopiere ihn, wenn du ihn behalten willst.'),
-      draft, function () {
-        S.lost = false;
-        loadList().then(function () { return openPage(id); });          // 403: jetzt schreibgeschuetzt; 404: "Kein Zugriff"
-      });
+      draft, function () { S.lost = false; });
+    // Neuen Zustand sofort zeigen (hinter dem Dialog): 403 -> schreibgeschuetzt mit neuem Etikett, 404 -> "Kein Zugriff"
+    loadList().then(function () { return openPage(id); });
   }
-  // Seite nicht (mehr) erreichbar: eigener Hinweis statt "Noch keine Seiten"
-  function noAccess() {
+  // Rolle/Zugriff einer fremden Seite still neu pruefen (Rueckkehr in den Tab, Fehler beim Kommentieren): geaenderte Rolle
+  // oder Sperre -> Seite neu oeffnen (Etikett, Schreibschutz), kein Zugriff mehr -> eigene Ansicht
+  var recheckT = 0;
+  function recheck(force) {
+    var c = S.cur, now = Date.now();
+    if (!c || !foreign() || S.lost || S.conflict || S.loading || S.dirtyBody || S.dirtyTitle || !$('pg-modal').hidden) return Promise.resolve();
+    if (!force && now - recheckT < 5000) return Promise.resolve();
+    recheckT = now;
+    var id = c.id;
+    return api('GET', '/api/notes/' + id).then(function (n) {
+      if (!S.cur || S.cur.id !== id) return;
+      if ((n.role || 'owner') !== role() || !!n.locked !== !!S.cur.locked) return loadList().then(function () { return openPage(id); });
+    }).catch(function (err) {
+      if ((err.status === 404 || err.status === 403) && S.cur && S.cur.id === id) return loadList().then(function () { noAccess(id); });
+    });
+  }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) recheck(); });
+  window.addEventListener('focus', function () { recheck(); });
+  // "Zu Mit mir geteilt": Bereich in der Seitenleiste zeigen (Handy: Schublade) und den ersten Eintrag fokussieren
+  function goShared() {
+    var box = $('pg-shared-box'), ul = $('pg-shared-tree'); if (!box || !ul) return;
+    box.hidden = false;
+    if (!ul.querySelector('.pg-go') && !ul.querySelector('.pg-tree-empty')) {
+      var e = el('li', 'pg-tree-empty', T('Zurzeit ist nichts mit dir geteilt.')); e.setAttribute('role', 'treeitem'); e.setAttribute('aria-disabled', 'true'); ul.appendChild(e);
+    }
+    drawer(true);
+    var f = ul.querySelector('.pg-go');
+    box.scrollIntoView({ block: 'nearest' });
+    box.classList.remove('hk-flash'); void box.offsetWidth; box.classList.add('hk-flash');
+    setTimeout(function () { box.classList.remove('hk-flash'); }, 1600);
+    if (f) f.focus();
+  }
+  // Seite nicht (mehr) erreichbar: eigener Hinweis statt "Noch keine Seiten" - ohne Titel/Symbol der Seite, mit
+  // "Erneut versuchen" und "Zu Mit mir geteilt"
+  function noAccess(id) {
     S.cur = null; $('page').hidden = true;
     var box = $('pg-noaccess');
     if (!box) {
       box = el('div', 'pages-empty pg-noaccess'); box.id = 'pg-noaccess'; box.setAttribute('role', 'status');
-      box.appendChild(el('p', 'pg-na-t', '🔒 ' + T('Kein Zugriff auf diese Seite')));
-      box.appendChild(el('p', 'hk-hint', T('Die Seite gibt es nicht (mehr), oder sie ist nicht (mehr) mit dir geteilt.')));
+      var ic = el('div', 'pg-na-ic', '🔒'); ic.setAttribute('aria-hidden', 'true'); box.appendChild(ic);
+      box.appendChild(el('p', 'pg-na-t', T('Kein Zugriff auf diese Seite')));
+      box.appendChild(el('p', 'pg-na-x', T('Die Seite gibt es nicht (mehr), oder sie ist nicht (mehr) mit dir geteilt.')));
+      var acts = el('div', 'pg-na-acts');
+      var rt = el('button', 'btn btn-primary pg-na-retry', T('Erneut versuchen')); rt.type = 'button';
+      rt.addEventListener('click', function () { var t = +box.dataset.id; if (t) loadList().then(function () { return openPage(t); }); });
+      var gs = el('button', 'btn pg-na-shared', T('Zu „Mit mir geteilt“')); gs.type = 'button';
+      gs.addEventListener('click', goShared);
+      acts.appendChild(rt); acts.appendChild(gs); box.appendChild(acts);
       $('pg-empty').parentNode.insertBefore(box, $('pg-empty'));
     }
+    box.dataset.id = id ? String(id) : '';
+    box.querySelector('.pg-na-retry').hidden = !id;
     box.hidden = false; $('pg-empty').hidden = true; document.title = T('Kein Zugriff') + ' · Saga';
     renderTree();
   }
@@ -595,7 +648,7 @@
     }).then(function () { S.loading = false; })
       .catch(function (err) {
         S.loading = false;
-        if (err.status === 404 || err.status === 403) { noAccess(); return; }
+        if (err.status === 404 || err.status === 403) { noAccess(id); return; }
         HK.toast(T('Seite konnte nicht geöffnet werden: {err}', { err: err.message }));
       });
   }
@@ -716,7 +769,9 @@
       m.appendChild(HK.menuItem(c.template ? T('Keine Vorlage mehr') : T('Als Vorlage markieren'), function () { setTemplate(!c.template); }, { icon: '📐', on: !!c.template }));
       m.appendChild(el('div', 'menu-sep'));
       m.appendChild(HK.menuItem(T('Versionsverlauf'), openVersions, { icon: '🕘' }));
-      m.appendChild(HK.menuItem(T('Teilen …'), openShare, { icon: '👥', on: !!c.shared }));
+      var shi = HK.menuItem(T('Teilen …'), openShare, { icon: ' ', on: !!c.shared }), shc = shi.querySelector('.mi-ic');
+      if (shc) { shc.textContent = ''; shc.appendChild(grpIc()); }                    // einfarbiges Gruppen-Symbol
+      m.appendChild(shi);
       m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
         { icon: '💬', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
       m.appendChild(HK.menuItem(T('Veröffentlichen …'), openPublish, { icon: '🌐', on: !!c.published }));
@@ -1082,6 +1137,7 @@
   // --- Dialog (Versionsverlauf) -----------------------------------------------
   function openModal(title, build, small) {
     $('pg-modal').firstElementChild.classList.toggle('hk-dialog-s', !!small);
+    $('pg-modal').classList.remove('no-x');
     $('pg-modal-title').textContent = title; var body = $('pg-modal-body'); body.textContent = '';
     S.modalClose = null;
     build(body); $('pg-modal').hidden = false; $('pg-modal-close').focus();
@@ -1206,16 +1262,21 @@
       b.appendChild(el('span', 'picker-t', text)); if (sub) b.appendChild(el('span', 'picker-sub', sub));
       b.addEventListener('click', function () { closeQS(); fn(); });
       qs.items.push({ b: b, fn: fn }); list.appendChild(b);
+      return b;
     }
     hits.slice(0, q ? 8 : 10).forEach(function (p) {
-      var path = (p.owner ? '👥 ' + p.owner.name + (ancestors(p.id).length ? ' · ' : '') : '') + ancestors(p.id).map(label).join(' / ');
-      item((ti(p.icon) || '📄') + ' ' + label(p), path, function () { openPage(p.id); });
+      var path = (p.owner ? p.owner.name + (ancestors(p.id).length ? ' · ' : '') : '') + ancestors(p.id).map(label).join(' / ');
+      var b = item((ti(p.icon) || '📄') + ' ' + label(p), path, function () { openPage(p.id); }), ps = b.querySelector('.picker-sub');
+      if (p.owner && ps) { ps.insertBefore(document.createTextNode(' '), ps.firstChild); ps.insertBefore(grpIc(), ps.firstChild); }
     });
     var acts = actions().filter(function (a) { return !q || (a.t + ' ' + (a.kw || '')).toLowerCase().indexOf(q) >= 0; });
     var cmdAt = qs.items.length, cmdLabel = null;
     if (acts.length && (q || cmdOnly)) {
       list.appendChild(cmdLabel = el('div', 'menu-label', T('Befehle')));
-      acts.slice(0, cmdOnly ? 30 : 6).forEach(function (a) { item(a.ic + ' ' + a.t, a.kbd || '', a.fn); });
+      acts.slice(0, cmdOnly ? 30 : 6).forEach(function (a) {
+        if (a.ic !== 'grp') { item(a.ic + ' ' + a.t, a.kbd || '', a.fn); return; }
+        var t = item(' ' + a.t, a.kbd || '', a.fn).querySelector('.picker-t'); t.insertBefore(grpIc(), t.firstChild);   // einfarbiges Symbol
+      });
     } else if (!q) list.appendChild(el('div', 'pg-qs-hint', T('Tipp: „>“ zeigt alle Befehle')));
     if (q && !cmdOnly) item(T('+ Neue Seite „{name}“', { name: $('pg-qs-q').value.trim() }), '', function () {
       api('POST', '/api/notes', { title: $('pg-qs-q').value.trim() }).then(function (d) { return loadList().then(function () { return openPage(d.id); }); });
@@ -3702,6 +3763,7 @@
     var on = !!(S.cur && S.cur.locked), ro = readOnly();
     document.body.classList.toggle('pg-locked', ro);
     document.body.classList.toggle('pg-ro', roRole());
+    document.body.classList.toggle('pg-lock-on', on);        // gesperrt: in Datenbank-Bloecken kein "Neu", keine Ansichts-Einstellungen
     $('pg-title').readOnly = ro;
     var b = $('pg-lock');
     if (!b) {
@@ -3735,14 +3797,16 @@
     $('pg-share').title = c && c.shared ? T('Geteilt – Freigaben verwalten') : T('Mit Personen oder Gruppen teilen');
     if (bar) bar.remove();
     if (!c || !foreign()) return;
+    // Etikett UNTER dem Titel (darunter "Zuletzt geaendert von ..."), Sekundaertext wie die Zeile darunter
     bar = el('div', 'pg-sharedby'); bar.id = 'pg-sharedby'; bar.setAttribute('role', 'note');
-    bar.appendChild(el('span', 'pg-sb-ic', '👥'));
+    bar.appendChild(grpIc('pg-sb-ic'));
     bar.appendChild(HK.fmtNodes(T('Geteilt von {name}'), { name: el('b', null, (c.owner || {}).name || '') }));
     bar.appendChild(el('span', 'pg-sb-sep', '·'));
     bar.appendChild(el('span', 'pg-sb-role pg-sb-' + role(), ROLE_YOU[role()] || ''));
-    var head = $('page').querySelector('.page-head'); head.parentNode.insertBefore(bar, head);
+    $('pg-title').after(bar);
+    var m = $('pg-meta'); if (m) bar.after(m);
   }
-  // Wer hat angelegt / zuletzt geaendert (nur, wenn es nicht man selbst war)
+  // Wer hat angelegt / zuletzt geaendert (nur, wenn es nicht man selbst war) - direkt unter Titel bzw. Etikett
   function applyMeta() {
     var c = S.cur, m = $('pg-meta'); if (m) m.remove();
     if (!c) return;
@@ -3753,7 +3817,7 @@
     if (!parts.length) return;
     m = el('div', 'pg-meta', parts.join(' · ')); m.id = 'pg-meta';
     if (c.updated) m.title = fVer.format(new Date(c.updated * 1000));
-    $('page').querySelector('.page-head').appendChild(m);
+    ($('pg-sharedby') || $('pg-title')).after(m);
   }
   $('pg-share').addEventListener('click', function () { openShare(); });
   function openShare() {
@@ -3782,7 +3846,10 @@
     var wrap = el('div', 'sh-addwrap');                     // Treffer als Liste UEBER dem Dialog (kein Verschieben beim Klicken)
     row.appendChild(inp); row.appendChild(rsel); wrap.appendChild(row); box.appendChild(wrap);
     var fm = el('p', 'hk-fieldmsg'); box.appendChild(fm);
-    var setErr = HK.fieldMsg(inp, fm, st.scope ? T('Nur Personen aus deinen Gruppen. Mindestens 3 Zeichen.') : T('Mindestens 3 Zeichen.'));
+    // "Mindestens 3 Zeichen." nur bei 1-2 Zeichen (direkt am Feld); sonst hoechstens der Hinweis auf die Gruppen
+    var scopeHint = st.scope ? T('Nur Personen aus deinen Gruppen.') : '';
+    var setErr = HK.fieldMsg(inp, fm, scopeHint);
+    function lenHint(q) { setErr.hint(q.length && q.length < 3 ? (st.scope ? T('Nur Personen aus deinen Gruppen. Mindestens 3 Zeichen.') : T('Mindestens 3 Zeichen.')) : scopeHint); }
     var help = el('p', 'sh-help'); box.appendChild(help);                 // was die gewaehlte Rolle darf
     var chips = el('div', 'sh-chips'); box.appendChild(chips);             // leeres Suchfeld: eigene Gruppen als Chips
     var hits = el('div', 'sh-hits'); hits.id = 'sh-hits'; hits.setAttribute('role', 'listbox'); hits.hidden = true; wrap.appendChild(hits);
@@ -3818,7 +3885,11 @@
       var e = li.querySelector('.sh-err'); if (!e) { e = el('small', 'sh-err'); e.setAttribute('role', 'alert'); li.appendChild(e); }
       e.textContent = text;
     }
-    function avatar(type, name) { var a = el('span', 'sh-av', type === 'group' ? '👥' : (name || '?').charAt(0).toUpperCase()); a.setAttribute('aria-hidden', 'true'); return a; }
+    function avatar(type, name) {
+      var a = el('span', 'sh-av' + (type === 'group' ? ' sh-av-g' : ''), type === 'group' ? '' : (name || '?').charAt(0).toUpperCase());
+      if (type === 'group') a.appendChild(grpIc());
+      a.setAttribute('aria-hidden', 'true'); return a;
+    }
     function who(x) {
       var li = el('li', 'sh-item'); li.appendChild(avatar(x.type, x.name));
       var tx = el('span', 'sh-who'); tx.appendChild(el('span', 'sh-name', x.name || x.target));
@@ -3882,7 +3953,10 @@
       chips.appendChild(el('span', 'sh-chips-l', T('Deine Gruppen:')));
       var tk = taken();
       gs.forEach(function (g) {
-        var b = el('button', 'sh-chip' + (tk['group:' + g] ? ' on' : ''), '👥 ' + g); b.type = 'button';
+        // hat schon Zugriff: Haken im Chip (nicht nur Farbe); sonst einfarbiges Gruppen-Symbol
+        var b = el('button', 'sh-chip' + (tk['group:' + g] ? ' on' : '')); b.type = 'button';
+        if (tk['group:' + g]) b.appendChild(el('span', 'sh-chip-ok', '✓')); else b.appendChild(grpIc());
+        b.appendChild(el('span', null, g));
         b.title = tk['group:' + g] ? T('hat Zugriff: {role}', { role: ROLE_NAME[tk['group:' + g]] }) : T('als {role} hinzufügen', { role: ROLE_NAME[rsel.value] });
         b.addEventListener('click', function () { put('group', g, rsel.value, T('✓ Geteilt mit {name} ({role})', { name: g, role: ROLE_NAME[rsel.value] })); });
         chips.appendChild(b);
@@ -3908,7 +3982,7 @@
       if (!any && inp.value.trim().length >= 3) setErr(T('Niemand gefunden.'));
     }
     function search() {
-      var q = inp.value.trim(); setErr(''); pubStatus(msg, ''); clearTimeout(tmr); drawChips();
+      var q = inp.value.trim(); setErr(''); lenHint(q); pubStatus(msg, ''); clearTimeout(tmr); drawChips();
       if (q.length < 3) { hideHits(); return; }
       var my = ++seq;
       tmr = setTimeout(function () {
@@ -3998,7 +4072,7 @@
     if (c) {
       if (ed) add(T('Neue Unterseite'), '＋', function () { newPage(c.id); }, { kw: 'subpage unterseite anlegen' });
       add(T('Link zur Seite kopieren'), '🔗', function () { copyLink(); }, { kw: 'url teilen copy link', kbd: mk + 'L' });
-      if (own) add(T('Teilen …'), '👥', openShare, { kw: 'share teilen freigeben personen gruppen' });
+      if (own) add(T('Teilen …'), 'grp', openShare, { kw: 'share teilen freigeben personen gruppen' });
       add(T('Kommentare'), '💬', function () { if (window.HKComments) HKComments.openAll(); }, { kw: 'comments kommentar unterhaltung' });
       if (own) add(c.pinned ? T('Von Favoriten lösen') : T('Zu Favoriten'), '★', function () { setPinned(!c.pinned); }, { kw: 'favorit stern pin' });
       if (ed) add(c.wide ? T('Volle Breite aus') : T('Volle Breite ein'), '↔', function () { setWide(!c.wide); }, { kw: 'breite wide layout' });
@@ -4030,7 +4104,8 @@
          eds: function () { return (S.eds || []).filter(function (x) { return x.holder.isConnected; }); },
          open: function (id) { return openPage(id); }, byId: byId, goParent: goParent, copyLink: copyLink, showBlock: showBlock,
          embed: EMBED, isMac: isMac, openQS: function () { openQS(); }, pages: function () { return S.pages; }, label: label, ti: ti,
-         recents: recents, decorate: function () { decorateLinks(); }, ancestors: ancestors },
+         recents: recents, decorate: function () { decorateLinks(); }, ancestors: ancestors,
+         recheck: function () { return recheck(true); } },        // static/comments.js: Rolle/Zugriff nach 403/404 neu pruefen
     editor: function () { return S.editor; },   // fuer Tests/Diagnose
     flush: function () { return S.conflict ? Promise.reject(new Error('conflict')) : save(); },   // Peek: vor dem Schliessen speichern
     init: function (onCount) {

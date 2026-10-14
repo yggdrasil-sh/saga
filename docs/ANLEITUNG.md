@@ -443,14 +443,16 @@ Dialog kopierst du den Link zur Seite – er öffnet sie für alle, die Zugriff 
 - **Teilen und Veröffentlichen:** Ist eine Seite mit „Unterseiten mit veröffentlichen“ öffentlich und zugleich mit
   „Bearbeiten“ geteilt, werden Unterseiten und Bilder, die diese Personen anlegen, sofort öffentlich – der
   Veröffentlichen-Dialog weist darauf hin.
-- **Mit mir geteilt:** In der Seitenleiste listet der Bereich „👥 Mit mir geteilt“ die Seiten, die andere mit dir
-  geteilt haben (mit Namen der Eigentümerin oder des Eigentümers). Eigene geteilte Seiten tragen 👥 im Seitenbaum.
+- **Mit mir geteilt:** In der Seitenleiste listet der Bereich „Mit mir geteilt“ die Seiten, die andere mit dir
+  geteilt haben (mit Namen der Eigentümerin oder des Eigentümers). Eigene geteilte Seiten tragen ein Personen-Symbol im Seitenbaum.
   Neue Kommentare anderer zeigt ein kleiner Punkt an der Seite im Seitenbaum, die Zahl am Bereich „Mit mir geteilt“
   und „💬 n“ am Knopf „Seiten“ auf der Startseite. Ist Teilen im Admin-Bereich abgeschaltet, steht dort ein Hinweis.
 - **Wer was geändert hat:** Unter dem Titel steht „Zuletzt geändert von Name · vor 5 Min.“ (wenn es nicht du warst)
   und bei Seiten, die eine andere Person angelegt hat, „Angelegt von Name“. Der Versionsverlauf nennt bei jeder
   gesicherten Fassung, von wem sie stammt.
-- **Fremde Seiten** zeigen über dem Titel „Geteilt von Name · Du kannst lesen/kommentieren/bearbeiten“. Mit „Lesen“ oder „Kommentieren“ ist der Editor
+- **Fremde Seiten** zeigen unter dem Titel „Geteilt von Name · Du kannst lesen/kommentieren/bearbeiten“ (darunter, wer
+  zuletzt geändert hat). Ändert der Eigentümer deine Rolle, zeigt die Seite das beim nächsten Speichern oder wenn du
+  zum Tab zurückkehrst. Mit „Lesen“ oder „Kommentieren“ ist der Editor
   schreibgeschützt; Datenbanken zeigen „Nur lesen“ (Sortieren und Filtern geht, wird aber nicht gespeichert).
   Aufgaben-, Kalender- und Immich-Blöcke zeigen nur „Nur für den Eigentümer sichtbar“ – nie die Daten des Eigentümers
   oder deine eigenen. Verweise auf Seiten, die nicht mit dir geteilt sind, erscheinen als „Seite ohne Zugriff“.
@@ -460,7 +462,7 @@ Dialog kopierst du den Link zur Seite – er öffnet sie für alle, die Zugriff 
   Versionsverlauf des Eigentümers erhalten – es geht nichts spurlos verloren.
 - **Zugriff endet, während du schreibst:** Entzieht der Eigentümer die Freigabe (oder fällt sie auf „Lesen“, oder
   der Admin schaltet Teilen ab), erscheint ein Dialog mit deinem letzten Text zum Kopieren. Alte Links auf Seiten
-  ohne Zugriff zeigen „Kein Zugriff auf diese Seite“.
+  ohne Zugriff zeigen „Kein Zugriff auf diese Seite“ mit „Erneut versuchen“ und „Zu „Mit mir geteilt““.
 
 **Kommentare** hängen an einem Block und bleiben dezent: Am Rand steht nur eine kleine Zahl (💬 2), und zwar nur,
 solange es offene Unterhaltungen gibt. Kommentieren geht über das Block-Menü (**⋮⋮** links neben dem Block →

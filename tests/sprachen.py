@@ -47,6 +47,13 @@ def catalog_tests():
         ok("t() mit Platzhalter (es)", i18n.t("Höchstens {n} Lesezeichen.", n=5) == "Máximo 5 marcadores.")
     finally:
         i18n._cur.reset(tok)
+    # Glossar Teilen/Kommentare (Spanisch, alle Plattformen): Rollenauswahl, Etiketten, Aktion/Zustand "Erledigt"
+    es = i18n.CATALOG["es"]
+    want = {"Lesen##Rolle": "Ver", "Kommentieren##Rolle": "Comentar", "Bearbeiten##Rolle": "Editar",
+            "Du kannst lesen": "Puedes ver", "Du kannst lesen und kommentieren": "Puedes comentar", "Du kannst bearbeiten": "Puedes editar",
+            "✓ Erledigt##Aktion": "✓ Resolver", "✓ Erledigt": "✓ Resuelto"}
+    bad = {k: es.get(k) for k, v in want.items() if es.get(k) != v}
+    ok(f"Spanisch Teilen/Kommentare wie im Glossar ({len(want)} Begriffe)", not bad or print("      ", bad))
 
 
 def main():
