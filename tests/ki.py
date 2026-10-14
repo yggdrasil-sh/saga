@@ -258,6 +258,8 @@ def run():
     p4 = page(Bk, "Notizen von Bert", "Zitronenfalter sind gelb.")
     p5 = page(A, "Altes Zitronenfalter Archivgeheimnis", "Zitronenfalter 999 im Archiv.")
     p6 = page(A, "Zitronenfalter Papierkorbgeheimnis", "Zitronenfalter 888 im Papierkorb.")
+    p7 = page(A, "Zitronenfalter Vorlagegeheimnis", "Zitronenfalter 777 in der Vorlage.")
+    req("PATCH", f"/api/notes/{p7}", A, {"template": True})
     req("POST", f"/api/notes/{p5}/archive", A, {"archived": True})
     req("DELETE", f"/api/notes/{p6}", A)
     s, _ = req("PUT", f"/api/notes/{p3}/shares", A, {"type": "user", "target": "ki-b", "role": "view"})
@@ -286,6 +288,7 @@ def run():
     user = last()[1]
     ok(f"A: eigene Seiten im Kontext, ohne Archiv/Papierkorb/Fremdes ({ids})", ids == sorted([p1, p3]) and "4711" in user and "Quokka" in user
        and "999" not in user and "888" not in user and "gelb" not in user)
+    ok("A: eigene Vorlage nicht im Kontext", "777" not in user and "Vorlagegeheimnis" not in user)
     s, ev, _ = ask(Ck, "Was weiss ich ueber Zitronenfalter?")
     user = last()[1]
     ok(f"C (nichts geteilt): keine Quellen, nichts Fremdes ({(get(ev, 'sources') or {}).get('sources')})",
@@ -411,8 +414,13 @@ def run():
        "nicht erlaubt" in ((get(ev, "error") or {}).get("error") or "") and fake("GET", "/_count")["n"] == 0)
     chk = sai.ip_checker({"url": "http://ollama.lan:11434", "pinned": ["192.168.1.5"]})
     ok("SSRF: nur der Admin-Host, interne IPs nur festgehaltene", chk("192.168.1.5", "ollama.lan", 11434) and not chk("192.168.1.6", "ollama.lan", 11434)
-       and chk("8.8.8.8", "ollama.lan", 11434) and not chk("192.168.1.5", "andere.lan", 11434) and not chk("127.0.0.1", "ollama.lan", 11434)
+       and not chk("192.168.1.5", "andere.lan", 11434) and not chk("127.0.0.1", "ollama.lan", 11434)
        and not chk("8.8.8.8", "evil.example", 443))
+    chk_s = sai.ip_checker({"url": "https://api.example.org/v1", "pinned": ["192.168.1.5"]})
+    ok("SSRF: http-Adresse nur zu festgehaltenen internen IPs (DNS auf oeffentliche IP -> kein Klartext-Schluessel ins Netz); "
+       "https auch oeffentlich", not chk("8.8.8.8", "ollama.lan", 11434) and not chk("::ffff:8.8.8.8", "ollama.lan", 11434)
+       and chk_s("8.8.8.8", "api.example.org", 443) and chk_s("192.168.1.5", "api.example.org", 443)
+       and not chk_s("10.0.0.1", "api.example.org", 443) and not chk_s("::ffff:10.0.0.1", "api.example.org", 443))
     cl = netguard.guarded_client(sai.ip_checker({"url": FAKE, "pinned": []}), timeout=5)
     try:
         cl.get(FAKE + "/_count"); blocked = False

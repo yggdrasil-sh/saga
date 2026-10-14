@@ -135,12 +135,15 @@ def _ipn(ip):
 
 def ip_checker(c):
     """ip_ok(ip, host, port) fuer netguard: nur der Host der Admin-Adresse; interne IPs nur, wenn festgehalten."""
-    host = (urlparse(c.get("url") or "").hostname or "").lower()
+    pu = urlparse(c.get("url") or "")
+    host, plain = (pu.hostname or "").lower(), pu.scheme == "http"
     pinned = {_ipn(x) for x in c.get("pinned") or []}
 
     def ok(ip, h, _port):
         if not host or str(h or "").lower().strip("[]") != host.strip("[]"):
             return False
+        if plain:                                          # http nur intern (wie beim Speichern): nur festgehaltene IPs,
+            return _ipn(ip) in pinned and not is_public(ip)    # sonst ginge der API-Schluessel unverschluesselt ins Internet
         return is_public(ip) or _ipn(ip) in pinned
     return ok
 
@@ -306,7 +309,7 @@ def visible_docs(c, uid):
     """Alle Seiten, die uid sehen darf: [(id, titel, format, body, eigentuemer-name|None)] - fremde Inhalte maskiert."""
     out = []
     for r in c.execute("SELECT id, title, format, body FROM note WHERE uid=? AND deleted_at IS NULL AND archived IS NULL "
-                       "ORDER BY updated DESC LIMIT ?", (uid, SCAN_MAX)):
+                       "AND is_template=0 ORDER BY updated DESC LIMIT ?", (uid, SCAN_MAX)):
         out.append((r[0], r[1], r[2], r[3], None))
     acc = Access(c, uid)
     vis = viewer(acc)
