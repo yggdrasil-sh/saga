@@ -127,8 +127,8 @@ def main():
     s2, loc2, _ = a.req("GET", loc)
     a2, s3, loc3 = sso_login("sso-sub-1", {"preferred_username": "st-sso", "groups": ["s_st-wiki", "st-hk-users"]}, start=a)
     s4, loc4, h4 = a.req("GET", loc3) if s3 == 303 else (0, "", "")
-    ok(f"SSO-App-Anmeldung: frisch ueber SSO angemeldet -> ohne Rueckfrage bis saga://auth ({loc}, {loc3}, {loc4[:24]})",
-       s4 == 303 and loc4.startswith("saga://auth?code="))
+    ok(f"SSO-App-Anmeldung: frisch ueber SSO angemeldet -> ohne Rueckfrage, Sprung-Seite nach saga://auth ({loc}, {loc3})",
+       s4 == 200 and "url=saga://auth?code=" in (h4 or ""))
     s5, _, _ = a.req("GET", "/app/login?scheme=saga&challenge=" + "B" * 43)
     s5, loc5, h5 = a.req("GET", "/app/handoff")
     m5 = re.search(r'/app/handoff\?go=[A-Za-z0-9_-]+', h5 or "")

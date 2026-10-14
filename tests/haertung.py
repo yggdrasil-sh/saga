@@ -3,6 +3,7 @@ Sicherheitsnetz fuer Versionen, CalDAV-Passwort bei geaenderter Adresse, Pinning
 Passwortwechsel meldet Apps ab, OIDC-sub, getrennte Fehlversuch-Zaehler; QA-Nachbesserung (SSO-Verknuepfung loesen,
 App-Anmeldung ohne Rueckfrage nach frischer Anmeldung, Abbrechen zurueck in die App, Zwischendateien). Wegwerf-Konten hd-*, raeumt auf.
 Umgebung wie die anderen Tests (HK_TEST_BASE, HK_TEST_ADMIN, BASE_URL, SESSION_SECRET, Postgres ueber db.py)."""
+import re
 import base64, http.client, json, os, select, socket, sys, threading, time, urllib.parse
 import httpx
 from itsdangerous import TimestampSigner
@@ -138,9 +139,11 @@ def qa_nachbesserung():
     ok(f"Ohne Sitzung: /app/login -> Anmeldung ({loc}), Ablauf-Beginn gemerkt", s == 303 and loc.startswith("/login") and "hk_app_t" in w.ck)
     s, loc, _ = w.post("/login", {"username": "hd-user", "password": PW}, src="/login?next=/app/handoff")
     ok(f"Anmelden im Formular -> {loc}", s == 303 and loc == "/app/handoff")
-    s, loc, _ = w.req("GET", "/app/handoff")
-    ok(f"Frisch angemeldet -> ohne Rueckfrage zurueck in die App ({loc[:22]}…)", s == 303 and loc.startswith("saga://auth?code="))
-    code = loc.split("code=", 1)[1] if "code=" in loc else ""
+    s, loc, html = w.req("GET", "/app/handoff")
+    m = re.search(r'content="0;url=(saga://auth\?code=[A-Za-z0-9_-]+)"', html or "")
+    ok(f"Frisch angemeldet -> ohne Rueckfrage, Seite mit Sprung in die App (CSP form-action: keine Weiterleitung)",
+       s == 200 and not loc and m and 'href="' + m.group(1) + '"' in html)
+    code = m.group(1).split("code=", 1)[1] if m else ""
     s, d = req("POST", "/app/exchange", None, {"code": code, "verifier": v})
     ok("Code einloesbar", s == 200)
     v, ch = chal()
@@ -160,8 +163,8 @@ def qa_nachbesserung():
             cks["hk_app_t"] = str(t0)
         s, loc, _, body = raw("GET", "/app/handoff", cks)
         ok(f"{name} -> Rueckfrage", s == 200 and not loc and "/app/handoff?go=" in body)
-    s, loc, _, _ = raw("GET", "/app/handoff", dict(base, hk_app_t=str(now - 5), saga=ck("hd-user", login_at=now - 3)))
-    ok("Frische Anmeldung (Sitzungs-Cookie) -> direkt", s == 303 and loc.startswith("saga://auth?code="))
+    s, loc, _, body = raw("GET", "/app/handoff", dict(base, hk_app_t=str(now - 5), saga=ck("hd-user", login_at=now - 3)))
+    ok("Frische Anmeldung (Sitzungs-Cookie) -> direkt (Sprung-Seite)", s == 200 and "url=saga://auth?code=" in body)
     with connect() as c, c:
         c.execute("DELETE FROM app_code WHERE uid='hd-user'")
 

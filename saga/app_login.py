@@ -94,6 +94,32 @@ def _app_back(request, query):
     return resp
 
 
+# Direkt nach einer frischen Anmeldung kommt man ueber eine Weiterleitungskette von einem Formular (POST /login).
+# Endet diese Kette auf saga://, blockiert die CSP form-action 'self' die Navigation (die App bekaeme nie den Code).
+# Deshalb hier eine kleine Seite, die die Kette beendet und dann per Meta-Refresh (plus Knopf) in die App springt.
+_BACK_TPL = """{% extends "_auth_base.html" %}
+{% block pagetitle %}{{ head }}{% endblock %}
+{% block content %}
+<meta http-equiv="refresh" content="0;url={{ url }}">
+<h2 class="auth-h">{{ head }}</h2>
+<p class="auth-note">{{ note }}</p>
+<a class="btn btn-primary auth-btn" href="{{ url }}">{{ button }}</a>
+{% endblock %}"""
+
+
+def _app_back_page(request, query):
+    """Wie _app_back, aber als Seite statt Weiterleitung (beendet eine Formular-Weiterleitungskette)"""
+    scheme = request.cookies.get("hk_app_sc", "hlidskjalf")
+    url = (scheme if scheme in APP_SCHEMES else "hlidskjalf") + "://auth?" + query
+    html = tmpl.from_string(_BACK_TPL).render(
+        title=title(), v=ASSET_V, url=url, head=t("Zurück zur App"),
+        note=t("Du bist angemeldet. Die App öffnet sich gleich – sonst tippe auf den Knopf."), button=t("App öffnen"))
+    resp = HTMLResponse(html, headers=SEC_HEADERS)
+    for k in ("hk_app_ch", "hk_app_sc", "hk_app_t"):
+        resp.delete_cookie(k, path="/app")
+    return resp
+
+
 def _handoff_confirm(request, uid):
     go = request.session["handoff"] = secrets.token_urlsafe(18)
     html = tmpl.from_string(_HANDOFF_TPL).render(
@@ -127,7 +153,8 @@ def app_handoff(request: Request, go: str = "", cancel: str = ""):
         c.execute("DELETE FROM app_code WHERE expires < ?", (time.time(),))
         c.execute("INSERT INTO app_code (hash, uid, name, challenge, expires) VALUES (?,?,?,?,?)",
                   (hashlib.sha256(code.encode()).hexdigest(), uid, request.session.get("name") or uid, ch, time.time() + APP_CODE_TTL))
-    return _app_back(request, "code=" + code)
+    # frisch angemeldet: kam ueber eine Formular-Weiterleitungskette -> Seite statt Weiterleitung (CSP form-action)
+    return _app_back_page(request, "code=" + code) if fresh else _app_back(request, "code=" + code)
 
 
 @router.post("/app/exchange")

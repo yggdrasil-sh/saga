@@ -62,6 +62,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Kopplungs-Code (`/app/pair?c=…`) erscheint nicht mehr im Zugriffs-Log
 
 ### Behoben
+- App-Anmeldung: Wer sich im Browser erst frisch anmelden musste, blieb danach hängen (der Browser blockierte den
+  Sprung zurück in die App). Jetzt erscheint kurz „Zurück zur App“, die App öffnet sich automatisch oder per Knopf.
 - Dienst-Symbole im WebP-Format vom CDN wurden nicht umgewandelt (fehlender Import)
 - Speichern einer Seite: Fehlerantworten (z. B. ungültiges Symbol nach einer Schema-Änderung) speichern nichts mehr halb;
   die Revisionsprüfung ist atomar (gleichzeitige Speicherungen mit derselben Revision -> 409)
