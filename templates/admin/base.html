@@ -15,14 +15,14 @@
 <header class="adm-head">
   <h1>🛡 {{ title }} · {{ _('Admin') }}</h1>
   <nav class="adm-nav">
-    {% for href, label in [('/', _('Übersicht')), ('/users', _('Benutzer')), ('/groups', _('Gruppen')), ('/services', _('Dienste')), ('/settings', _('Allgemein')), ('/settings/oidc', 'SSO / OIDC'), ('/settings/ldap', 'LDAP / AD')] %}
+    {% for href, label in [('/', _('Übersicht')), ('/users', _('Benutzer')), ('/groups', _('Gruppen')), ('/services', _('Dienste')), ('/published', _('Veröffentlicht')), ('/settings', _('Allgemein')), ('/settings/oidc', 'SSO / OIDC'), ('/settings/ldap', 'LDAP / AD')] %}
     <a href="{{ href }}"{% if path == href or (href not in ('/', '/settings') and path.startswith(href + '/')) %} class="on"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>
   <span class="spacer"></span>
   <a class="btn adm-dash" href="{{ base_url }}" target="_blank" rel="noopener">{{ _("Zum Dashboard") }} ↗</a>
   <span class="greet">{{ me.username }}</span>
-  <a class="btn adm-out" href="/logout">{{ _("Abmelden") }}</a>
+  <a class="btn adm-out" href="/logout" title="{{ me.username }}">{{ _("Abmelden") }}</a>
 </header>
 {% endif %}
 <main class="adm-main">

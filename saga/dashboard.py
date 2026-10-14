@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 import auth
 from db import connect as _db
 from fastapi import APIRouter
-from saga import i18n
+from saga import i18n, publish
 from saga.core import (ADMIN_URL, ASSET_V, CACHE_TTL, CA_FILE, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user,
                        remember_ui_lang, std_name, t, title, tmpl, user_info)
 
@@ -166,11 +166,12 @@ def notes_page(request: Request):
     return HTMLResponse(html, headers=headers)
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)    # HEAD: Startseite fuer Besucher (Vorschauen, Monitoring)
 def index(request: Request):
     uid = _session_user(request)
     if not uid:
-        return RedirectResponse("/login", status_code=303)
+        # Besucher ohne Anmeldung: vom Admin gewaehlte oeffentliche Startseite (sonst wie bisher zur Anmeldung)
+        return publish.home_response(request) or RedirectResponse("/login", status_code=303)
     info = user_info(uid)
     remember_ui_lang(uid, request)
     mine = visible_tiles(uid, info)

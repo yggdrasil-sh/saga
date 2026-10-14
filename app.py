@@ -23,9 +23,9 @@ import auth
 import db
 from version import API_LEVEL, MIN_APP, VERSION
 
-from saga import app_api, app_login, calendars, dashboard, databases, files, immich, links, page_tools, pages, tasks, web_auth
+from saga import app_api, app_login, calendars, dashboard, databases, files, immich, links, page_tools, pages, publish, tasks, web_auth
 from saga import i18n
-from saga.core import BASE_URL, E, HERE, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, LangMiddleware, title
+from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, LangMiddleware, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
 from saga.notes import FILE_MAX
@@ -84,6 +84,12 @@ app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="
 # Verhindert Login-Fehler (mismatching_state), weil Cookies an genau einen Host gebunden sind.
 CANONICAL = E.get("CANONICAL_REDIRECT", "true").lower() in ("1", "true", "yes", "on")
 _BASE_HOST = urlparse(BASE_URL).netloc.lower()
+# Eigene Domains nur fuer oeffentliche Seiten (z. B. blog.example.org -> Startseite fuer Besucher und /@name/...):
+# dort werden "/", "/@..." und /static/ ausgeliefert, alles andere (Anmeldung, API) geht weiter auf BASE_URL.
+
+
+def _public_path(path):
+    return path == "/" or path.startswith("/@") or path.startswith("/static/")
 
 
 @app.middleware("http")
@@ -93,7 +99,7 @@ async def canonical_host(request: Request, call_next):
         # Unkritisch: der Header entscheidet nur OB umgeleitet wird - das Ziel ist immer die feste BASE_URL.
         fwd = (request.headers.get("x-forwarded-host") or "").split(",")[0].strip().lower()
         host = fwd or (request.headers.get("host") or "").lower()
-        if host and host != _BASE_HOST:
+        if host and host != _BASE_HOST and not (host in PUBLIC_HOSTS and _public_path(request.url.path)):
             q = ("?" + request.url.query) if request.url.query else ""
             return RedirectResponse(BASE_URL + request.url.path + q, status_code=308)
     return await call_next(request)
@@ -154,3 +160,4 @@ app.include_router(databases.router)
 app.include_router(immich.router)
 app.include_router(calendars.router)
 app.include_router(app_api.router)
+app.include_router(publish.router)          # /@name/... (oeffentlich) und /api/notes/{nid}/publish, /api/account/public-name

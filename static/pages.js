@@ -5,6 +5,25 @@
   'use strict';
   var HK = window.HK, $ = HK.$, el = HK.el, api = HK.api;
 
+  // Editor.js markiert beim Link-Einfuegen die Auswahl mit execCommand('backColor') -> <span style="..."> -> CSP-Fehler
+  // "Refused to apply inline style". Ersatz ohne Inline-Style: CSS Custom Highlight API (::highlight(hk-sel), style.css).
+  (function () {
+    var orig = document.execCommand;
+    if (!orig || document.execCommand.hkPatched) return;
+    document.execCommand = function (cmd, ui, val) {
+      if (String(cmd).toLowerCase() !== 'backcolor') return orig.apply(document, arguments);
+      try {
+        if (window.CSS && CSS.highlights && window.Highlight) {
+          var sel = window.getSelection();
+          if (val && val !== 'transparent' && sel && sel.rangeCount) CSS.highlights.set('hk-sel', new window.Highlight(sel.getRangeAt(0).cloneRange()));
+          else CSS.highlights.delete('hk-sel');
+        }
+      } catch (e) { /* nur Optik */ }
+      return true;
+    };
+    document.execCommand.hkPatched = true;
+  })();
+
   var I18N = { messages: {
     ui: {
       blockTunes: { toggler: { 'Click to tune': T('Optionen'), 'or drag to move': T('oder ziehen zum Verschieben') } },
@@ -308,21 +327,21 @@
           database: { class: DatabaseTool },
           tasks: { class: TasksTool },
           calendar: { class: CalendarTool },
-          immich: { class: ImmichTool },
-          embed: { class: EmbedTool },
-          table: { class: window.Table, inlineToolbar: true, config: { rows: 2, cols: 3, withHeadings: true } },
-          toggle: { class: ToggleTool, inlineToolbar: true },
-          callout: { class: CalloutTool, inlineToolbar: true },
-          hkdate: { class: DateInline },
           image: { class: window.ImageTool, config: {
             endpoints: { byFile: '/api/files' }, field: 'image', additionalRequestHeaders: { 'X-Saga': '1' },
             types: 'image/png,image/jpeg,image/gif,image/webp', captionPlaceholder: T('Bildunterschrift'), buttonContent: T('Bild auswählen …') } },
           attaches: { class: window.AttachesTool, config: {
             endpoint: '/api/files', field: 'file', additionalRequestHeaders: { 'X-Saga': '1' },
-            buttonText: T('Datei auswählen …'), errorMessage: T('Hochladen fehlgeschlagen') } }
+            buttonText: T('Datei auswählen …'), errorMessage: T('Hochladen fehlgeschlagen') } },
+          immich: { class: ImmichTool },
+          embed: { class: EmbedTool },
+          table: { class: window.Table, inlineToolbar: true, config: { rows: 2, cols: 3, withHeadings: true } },
+          toggle: { class: ToggleTool, inlineToolbar: true },
+          callout: { class: CalloutTool, inlineToolbar: true },
+          hkdate: { class: DateInline }
         },
         i18n: I18N,
-        onChange: function () { if (!S.loading) { S.dirtyBody = true; schedule(); } }
+        onChange: edChanged
       });
       $('pg-editor').addEventListener('input', function () { if (!S.loading) tryShortcut(S.editor); });
       return S.editor.isReady.then(function () {
@@ -332,6 +351,35 @@
     });
   }
 
+  // Editor meldet eine Aenderung. Editor.js meldet auch Aenderungen, die keine sind (Verweise werden beim Oeffnen
+  // beschriftet, eingebettete Datenbanken/Kalender laden nach, verschachtelte Editoren werden fertig ...). Deshalb:
+  // die ERSTE Meldung nach einem gespeicherten Stand wird mit dem gespeicherten Inhalt (S.lastBlocks) verglichen -
+  // nur bei echtem Unterschied "Ungespeichert" + Speichern. Weitere Meldungen (schon ungespeichert) ohne Vergleich.
+  function edChanged() {
+    if (S.loading) return;
+    if (S.dirtyBody || !S.editor || !S.cur) { S.dirtyBody = true; schedule(); return; }
+    var id = S.cur.id;
+    if (S.baseId !== id) return;                     // Seite laedt noch - Vergleichsstand kommt gleich (openPage)
+    if (S.checking) { S.recheck = true; return; }
+    S.checking = true;
+    S.editor.save().then(function (o) {
+      S.checking = false;
+      // inzwischen andere Seite geoeffnet: nichts markieren (openPage hat die alte Seite schon gespeichert, s. dort)
+      if (!S.cur || S.cur.id !== id || S.baseId !== id) { S.recheck = false; return; }
+      if (!o || !o.blocks || JSON.stringify(o.blocks) !== S.lastBlocks) { S.recheck = false; S.dirtyBody = true; schedule(); }
+      else if (S.recheck) { S.recheck = false; edChanged(); }
+    }, function () { S.checking = false; S.dirtyBody = true; schedule(); });
+  }
+  // Echte Eingabe (Tippen, Einfuegen, Ziehen) im Editor, auch in Spalten/Ausklappbar (isolate() stoppt das Ereignis
+  // dort - daher Capture am document). Editor.js meldet Aenderungen erst ~400 ms spaeter (gebuendelt); eine Eingabe
+  // ist aber sicher eine: sofort "ungespeichert", damit ein schneller Seitenwechsel sie mitspeichert. Waehrend die
+  // Seite noch laedt (kein Vergleichsstand): merken - der Vergleichsstand enthaelt die Eingabe dann ja schon.
+  document.addEventListener('input', function (e) {
+    var box = $('pg-editor'), tg = e.target;
+    if (!box || !tg || !tg.isContentEditable || !box.contains(tg) || !S.cur) return;
+    if (S.loading || S.baseId !== S.cur.id) { S.typed = true; return; }
+    S.dirtyBody = true; schedule();
+  }, true);
   function schedule() {
     if (S.cur && S.cur.locked) { S.dirtyBody = S.dirtyTitle = false; return; }        // gesperrt: nichts speichern
     state(T('Ungespeichert …')); clearTimeout(S.timer); S.timer = setTimeout(save, 900);
@@ -439,13 +487,29 @@
   openPage = function (id) {
     if (S.conflict && S.cur && S.cur.id !== id && !confirm(T('Auf dieser Seite gibt es einen Speicher-Konflikt. Seite trotzdem wechseln? Deine ungespeicherten Änderungen gehen verloren.'))) return Promise.resolve();
     clearConflict();
+    // Vergleich der alten Seite laeuft noch (Aenderung gemeldet, aber noch nicht markiert): sicherheitshalber markieren -
+    // save() in _origOpen vergleicht ohnehin mit dem gespeicherten Stand und speichert nur bei echtem Unterschied
+    if (S.checking && S.cur && S.baseId === S.cur.id) S.dirtyBody = true;
+    S.baseId = null; S.typed = false;
     $('pg-trash').hidden = true;
     if (PK.id) closePeek();
     return _origOpen(id).then(function () {
-      if (S.cur) { S.loading = true; decorateLinks(); S.loading = false; renderTags(); loadBacklinks(S.cur.id); rememberRecent(S.cur.id); archiveBar(); applyLock(); }
+      if (S.cur) { S.loading = true; decorateLinks(); S.loading = false; renderTags(); loadBacklinks(S.cur.id); rememberRecent(S.cur.id); archiveBar(); applyLock(); applyPublic(); }
       var bm = location.hash.match(/^#(\d+):(.+)$/); if (bm && S.cur && +bm[1] === S.cur.id) setTimeout(function () { showBlock(decodeURIComponent(bm[2])); }, 150);
       if (EMBED && S.cur && !S.cur.title) $('pg-title').focus();      // neue Karte im Peek: gleich den Namen tippen
-      if (S.editor) return S.editor.save().then(function (o) { S.lastBlocks = JSON.stringify(o.blocks); });
+      if (!S.editor) return;
+      // Vergleichsstand erst, wenn auch die verschachtelten Editoren (Spalten, Ausklappbar) fertig und beschriftet sind
+      var cur = S.cur && S.cur.id;
+      return Promise.all((S.eds || []).filter(function (x) { return x.holder.isConnected; }).map(function (x) { return x.ed.isReady; }))
+        .then(function () { return new Promise(function (r) { setTimeout(r, 30); }); })
+        .then(function () { return S.editor.save(); })
+        .then(function (o) { return o && o.blocks ? JSON.stringify(o.blocks) : null; }, function () { return null; })
+        .then(function (base) {
+          if (!S.cur || S.cur.id !== cur) return;               // inzwischen andere Seite
+          S.lastBlocks = base; S.baseId = cur;                  // null (Fehler): kein Vergleich, jede Meldung speichert
+          // schon waehrend des Ladens getippt: steckt im Vergleichsstand, ist aber nicht gespeichert -> jetzt speichern
+          if (S.typed) { S.typed = false; S.lastBlocks = null; S.dirtyBody = true; schedule(); }
+        });
     });
   };
 
@@ -513,6 +577,7 @@
       m.appendChild(HK.menuItem(c.template ? T('Keine Vorlage mehr') : T('Als Vorlage markieren'), function () { setTemplate(!c.template); }, { icon: '📐', on: !!c.template }));
       m.appendChild(el('div', 'menu-sep'));
       m.appendChild(HK.menuItem(T('Versionsverlauf'), openVersions, { icon: '🕘' }));
+      m.appendChild(HK.menuItem(T('Veröffentlichen …'), openPublish, { icon: '🌐', on: !!c.published }));
       m.appendChild(HK.menuItem(T('Exportieren'), null, { icon: '⬇', sub: function (sm) {
         sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { icon: '📄' }));
         if (n) sm.appendChild(HK.menuItem(T('Mit Unterseiten (.zip)'), function () { exportPage(true); }, { icon: '🗜', hint: nSub(n) }));
@@ -848,7 +913,8 @@
   }
 
   // --- Dialog (Versionsverlauf) -----------------------------------------------
-  function openModal(title, build) {
+  function openModal(title, build, small) {
+    $('pg-modal').firstElementChild.classList.toggle('hk-dialog-s', !!small);
     $('pg-modal-title').textContent = title; var body = $('pg-modal-body'); body.textContent = '';
     build(body); $('pg-modal').hidden = false; $('pg-modal-close').focus();
   }
@@ -2880,7 +2946,7 @@
     var ed = new window.EditorJS({
       holder: holder, data: { blocks: blocks || [] }, tools: nestedTools(), i18n: I18N, minHeight: 24, placeholder: placeholder,
       inlineToolbar: ['bold', 'italic', 'link', 'marker', 'inlineCode', 'hkdate'],
-      onChange: function () { if (!S.loading) { S.dirtyBody = true; schedule(); } }
+      onChange: edChanged
     });
     holder.addEventListener('input', function () { if (!S.loading) tryShortcut(ed); });   // Markdown-Kuerzel im eigenen Editor
     S.eds = (S.eds || []).filter(function (x) { return x.holder.isConnected; }); S.eds.push({ ed: ed, holder: holder });   // fuer Tastenkuerzel
@@ -3180,6 +3246,186 @@
       HK.toast(on ? T('🔒 Seite gesperrt') : T('🔓 Seite entsperrt'));
     }).catch(function (err) { HK.toast(T('Nicht geändert: {err}', { err: err.message })); });
   }
+  // --- Veroeffentlichen: Dialog aus dem Seitenmenue, Hinweis "Oeffentlich" im Seitenkopf ------------------------
+  // Erst der oeffentliche Name (einmal je Konto, vorgeschlagen und geprueft), dann die Einstellungen der Seite.
+  function applyPublic() {
+    var c = S.cur, on = !!(c && c.published), via = c && !on ? c.published_via : null;
+    var b = $('pg-public'), go = $('pg-public-go');
+    if (!b) {
+      b = el('button', 'pg-lock-b pg-pub-b'); b.id = 'pg-public'; b.type = 'button';
+      b.addEventListener('click', openPublish);
+      go = el('a', 'pg-lock-b pg-pub-b pg-pub-go', '↗'); go.id = 'pg-public-go'; go.target = '_blank'; go.rel = 'noopener';
+      go.title = T('Öffentliche Seite öffnen'); go.setAttribute('aria-label', T('Öffentliche Seite öffnen'));
+      $('pg-state').parentNode.insertBefore(b, $('pg-state'));
+      $('pg-state').parentNode.insertBefore(go, $('pg-state'));
+    }
+    var t = via ? String(via.title || '') : '';
+    if (t.length > 28) t = t.slice(0, 27) + '…';
+    b.hidden = go.hidden = !(on || via);
+    b.textContent = via ? T('🌐 Öffentlich (über „{title}“)', { title: t }) : T('🌐 Öffentlich');
+    b.title = via ? T('Öffentlich als Unterseite von „{title}“ – klicken für Einzelheiten', { title: via.title }) : T('Diese Seite ist öffentlich – klicken für Einstellungen');
+    var href = on ? c.public_url : via ? via.url : '';
+    if (href) go.href = href; else go.removeAttribute('href');
+    go.hidden = go.hidden || !href;
+  }
+  function pubStatus(box, txt, cls) { box.textContent = txt; box.className = 'hk-status' + (cls ? ' ' + cls : ''); }
+  function pubField(label, node) { var l = el('label', 'hk-field'); l.appendChild(el('span', null, label)); l.appendChild(node); return l; }
+  function pubCheck(label, on, hint) {
+    var l = el('label', 'pub-opt'), cb = el('input'); cb.type = 'checkbox'; cb.checked = !!on;
+    var tx = el('span'); tx.appendChild(el('span', 'pub-opt-t', label)); if (hint) l.hint = tx.appendChild(el('small', 'hk-hint', hint));
+    l.appendChild(cb); l.appendChild(tx); l.cb = cb; return l;
+  }
+  function pubCopy(u) {
+    (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject(new Error('x')))
+      .then(function () { HK.toast(T('Link kopiert')); }, function () { HK.toast(u); });
+  }
+  function openPublish() {
+    if (!S.cur) return;
+    var id = S.cur.id;
+    api('GET', '/api/notes/' + id + '/publish').then(function (st) {
+      openModal(T('Veröffentlichen'), function (body) { (st.name ? pubMain : pubName)(body, id, st); }, true);
+    }).catch(function (err) { HK.toast(T('Nicht geladen: {err}', { err: err.message })); });
+  }
+  function pubName(body, id, st) {
+    body.textContent = '';
+    var box = el('div', 'pub-dlg'); body.appendChild(box);
+    box.appendChild(el('p', null, T('Wähle zuerst deinen öffentlichen Namen. Er steht in jeder Adresse deiner öffentlichen Seiten und ist für alle sichtbar.')));
+    var inp = el('input', 'hk-in'); inp.type = 'text'; inp.maxLength = 32; inp.value = st.suggested_name || '';
+    inp.autocomplete = 'off'; inp.spellcheck = false; inp.setAttribute('autocapitalize', 'off');
+    box.appendChild(pubField(T('Öffentlicher Name'), inp));
+    var prev = el('div', 'pub-url'), msg = el('div', 'hk-status');
+    box.appendChild(prev); box.appendChild(msg);
+    box.appendChild(el('p', 'hk-hint', T('Nicht dein Anmeldename: wähle etwas, das alle sehen dürfen. 2–32 Zeichen, a–z, 0–9, - und _.')));
+    var bar = el('div', 'hk-actions'), go = el('button', 'btn btn-primary', T('Weiter')); go.type = 'button'; bar.appendChild(go); box.appendChild(bar);
+    var tmr = null;
+    function check() {
+      var v = inp.value.trim().toLowerCase(); prev.textContent = location.origin + '/@' + (v || '…');
+      clearTimeout(tmr); go.disabled = true; pubStatus(msg, '');
+      if (!v) return;
+      tmr = setTimeout(function () {
+        api('PUT', '/api/account/public-name', { name: v, check: true }).then(function (r) {
+          if (inp.value.trim().toLowerCase() !== v) return;
+          pubStatus(msg, r.ok ? T('✓ Frei') : r.error, r.ok ? 'ok' : 'err'); go.disabled = !r.ok;
+        }).catch(function (err) { pubStatus(msg, err.message, 'err'); });
+      }, 250);
+    }
+    inp.addEventListener('input', check);
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !go.disabled) { e.preventDefault(); go.click(); } });
+    go.addEventListener('click', function () {
+      go.disabled = true;
+      api('PUT', '/api/account/public-name', { name: inp.value.trim().toLowerCase() }).then(function () {
+        return api('GET', '/api/notes/' + id + '/publish');
+      }).then(function (ns) { pubMain(body, id, ns); })
+        .catch(function (err) { pubStatus(msg, err.message, 'err'); go.disabled = false; });
+    });
+    check(); setTimeout(function () { inp.focus(); inp.select(); }, 0);
+  }
+  function pubMain(body, id, st) {
+    body.textContent = '';
+    var box = el('div', 'pub-dlg'); body.appendChild(box);
+    var url = '/api/notes/' + id + '/publish';
+    if (!st.enabled) box.appendChild(el('p', 'pub-warn', T('Der Admin hat das Veröffentlichen auf diesem Server abgeschaltet – öffentliche Adressen liefern zurzeit „Nicht gefunden“.')));
+    // Oeffentlich ueber eine Elternseite ("Unterseiten mit veroeffentlichen"): erklaeren und dorthin verweisen
+    var via = el('div', 'pub-via'); box.appendChild(via);
+    var gone = el('p', 'pub-note'); box.appendChild(gone);
+    var on = pubCheck(T('Öffentlich'), st.published, T('Jeder mit dem Link kann diese Seite ohne Anmeldung lesen.'));
+    on.classList.add('pub-main-sw'); box.appendChild(on);
+    var slug = el('input', 'hk-in'); slug.type = 'text'; slug.maxLength = 60; slug.value = st.slug || '';
+    slug.autocomplete = 'off'; slug.spellcheck = false; slug.setAttribute('autocapitalize', 'off');
+    var sbtn = el('button', 'btn', T('Adresse ändern')); sbtn.type = 'button';
+    var srow = el('div', 'pub-slug'); srow.appendChild(slug); srow.appendChild(sbtn);
+    box.appendChild(pubField(T('Adresse'), srow));
+    var pre = el('div', 'pub-url'); box.appendChild(pre);
+    var ch = pubCheck(T('Unterseiten mit veröffentlichen'), st.children, T('Unterseiten (und Einträge von Datenbanken) dieser Seite sind dann ebenfalls öffentlich.'));
+    var ix = pubCheck(T('Suchmaschinen erlauben'), st.indexable, T('Sonst bitten wir Suchmaschinen, die Seite nicht aufzunehmen.'));
+    var pr = pubCheck(T('Als Profilseite (/@name)'), st.profile, T('Erscheint unter deiner Profil-Adresse – höchstens eine Seite.'));
+    [ch, ix, pr].forEach(function (x) { box.appendChild(x); });
+    var linkBox = el('div', 'pub-link'), a = el('a', 'pub-link-a'); a.target = '_blank'; a.rel = 'noopener';
+    var cp = el('button', 'btn', T('Link kopieren')); cp.type = 'button';
+    var op = el('a', 'btn', T('Öffnen')); op.target = '_blank'; op.rel = 'noopener';
+    var lbar = el('div', 'hk-actions'); lbar.appendChild(cp); lbar.appendChild(op);
+    linkBox.appendChild(a); linkBox.appendChild(lbar); box.appendChild(linkBox);
+    var msg = el('div', 'hk-status'); box.appendChild(msg);
+    box.appendChild(el('p', 'hk-hint', T('Öffentlicher Name: @{name} – ändern unter Einstellungen → Konto.', { name: st.name })));
+    var end = el('button', 'btn btn-danger', T('Veröffentlichung beenden')); end.type = 'button';
+    var ebar = el('div', 'hk-actions'); ebar.appendChild(end); box.appendChild(ebar);
+    function newSlug() { return slug.value.trim().toLowerCase(); }
+    function draw() {
+      var v = st.published_via;
+      on.cb.checked = !!st.published; on.cb.disabled = !st.enabled && !st.published;
+      // Nach dem Beenden bleiben die Einstellungen gemerkt und bedienbar (gelten beim naechsten Veroeffentlichen)
+      [ch, ix, pr].forEach(function (x) { x.classList.remove('pub-dim'); x.cb.disabled = false; });
+      via.textContent = ''; via.hidden = !v || !!st.published;
+      if (v && !st.published) {
+        via.appendChild(el('p', null, T('Diese Seite ist bereits öffentlich: „{title}“ ist mit Unterseiten veröffentlicht.', { title: v.title })));
+        var va = el('a', 'pub-link-a', v.url); va.href = v.url; va.target = '_blank'; va.rel = 'noopener'; via.appendChild(va);
+        var vb = el('div', 'hk-actions'), vc = el('button', 'btn', T('Link kopieren')), vp = el('button', 'btn', T('„{title}“ öffnen', { title: v.title }));
+        vc.type = vp.type = 'button'; vb.appendChild(vc); vb.appendChild(vp); via.appendChild(vb);
+        vc.addEventListener('click', function () { pubCopy(v.url); });
+        vp.addEventListener('click', function () { closeModal(); openPage(v.note_id); });
+        via.appendChild(el('p', 'hk-hint', T('Privat wird sie erst, wenn dort „Unterseiten mit veröffentlichen“ aus ist oder die Seite verschoben wird.')));
+      }
+      on.querySelector('.pub-opt-t').textContent = v && !st.published ? T('Zusätzlich unter eigener Adresse veröffentlichen') : T('Öffentlich');
+      gone.hidden = st.published || !st.withdrawn_at;
+      if (!gone.hidden) {
+        var when = fVer.format(new Date(st.withdrawn_at * 1000));
+        gone.textContent = st.withdrawn_by === 'admin'
+          ? T('Vom Admin zurückgezogen am {when}. Adresse und Einstellungen sind gemerkt – du kannst die Seite wieder veröffentlichen.', { when: when })
+          : T('Veröffentlichung beendet am {when}. Adresse und Einstellungen sind gemerkt und gelten beim erneuten Veröffentlichen wieder.', { when: when });
+        gone.className = 'pub-note' + (st.withdrawn_by === 'admin' ? ' pub-warn' : '');
+      }
+      // Adresse: genau EINE Anzeige - veroeffentlicht im Link-Kasten, sonst als Vorschau; Aenderung nur ueber den Knopf
+      var changed = st.published && newSlug() !== st.slug;
+      sbtn.hidden = !st.published; sbtn.disabled = !changed;
+      pre.hidden = !!st.published && !changed;
+      pre.textContent = changed ? T('Wird erst mit „Adresse ändern“ übernommen.')
+        : location.origin + '/@' + st.name + '/' + (newSlug() || '…');
+      pre.className = changed ? 'hk-hint' : 'pub-url';
+      linkBox.hidden = !st.published; ebar.hidden = !st.published;
+      if (st.url) { a.href = st.url; a.textContent = st.url; op.href = st.url; }
+      var po = st.profile_other;
+      pr.hint.textContent = po ? T('Ersetzt die bisherige Profilseite „{title}“.', { title: po.title })
+        : T('Erscheint unter deiner Profil-Adresse – höchstens eine Seite.');
+      if (st.home && !msg.textContent) pubStatus(msg, T('Diese Seite ist die Startseite für Besucher.'));
+    }
+    function sync(ns) {
+      st = ns;
+      if (S.cur && S.cur.id === id) { S.cur.published = !!ns.published; S.cur.public_url = ns.url; S.cur.published_via = ns.published_via; applyPublic(); }
+    }
+    function put(data, done) {
+      if (!st.enabled) { pubStatus(msg, T('Veröffentlichen ist auf diesem Server abgeschaltet.'), 'err'); draw(); return; }
+      api('PUT', url, data).then(function (ns) {
+        sync(ns);
+        pubStatus(msg, ns.replaced_profile ? T('✓ Gespeichert – ersetzt die bisherige Profilseite „{title}“.', { title: ns.replaced_profile.title })
+          : (done || T('✓ Gespeichert')), 'ok');
+        draw();
+      }).catch(function (err) { pubStatus(msg, err.message, 'err'); draw(); });
+    }
+    function stop() {
+      if (!confirm(T('Veröffentlichung beenden? Der Link funktioniert danach nicht mehr.'))) { draw(); return; }
+      api('DELETE', url).then(function (ns) {
+        sync(ns); pubStatus(msg, T('Veröffentlichung beendet.'), 'ok'); draw();
+      }).catch(function (err) { pubStatus(msg, err.message, 'err'); draw(); });
+    }
+    function changeSlug() {
+      var v = newSlug(); if (!st.published || v === st.slug) return;
+      if (!confirm(T('Adresse ändern? Der bisherige Link {url} funktioniert danach nicht mehr.', { url: st.url }))) return;
+      put({ slug: v }, T('✓ Neue Adresse gespeichert'));
+    }
+    on.cb.addEventListener('change', function () {
+      if (on.cb.checked) put({ slug: newSlug(), children: ch.cb.checked, indexable: ix.cb.checked, profile: pr.cb.checked }); else stop();
+    });
+    [['children', ch], ['indexable', ix], ['profile', pr]].forEach(function (x) {
+      x[1].cb.addEventListener('change', function () { if (st.published) { var d = {}; d[x[0]] = x[1].cb.checked; put(d); } });
+    });
+    slug.addEventListener('input', function () { pubStatus(msg, ''); draw(); });
+    slug.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); changeSlug(); } });
+    sbtn.addEventListener('click', changeSlug);
+    end.addEventListener('click', stop);
+    cp.addEventListener('click', function () { pubCopy(st.url); });
+    draw();
+  }
+
   function applyLock() {
     var on = !!(S.cur && S.cur.locked);
     document.body.classList.toggle('pg-locked', on);

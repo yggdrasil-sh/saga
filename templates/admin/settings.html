@@ -29,6 +29,17 @@
     {{ field(_('Freigegebene interne Hosts'), 'allowed_hosts', st.allowed_hosts, max=2000, ph='immich.lan, nextcloud.lan:8443', hint=_('Komma-getrennt, optional mit :Port')) }}
   </section>
   <section class="adm-card">
+    <h3>{{ _("Veröffentlichen") }}</h3>
+    {{ check(_('Veröffentlichen erlauben'), 'publish_enabled', st.publish_enabled, _('Benutzer dürfen eigene Seiten öffentlich machen (ohne Anmeldung lesbar unter /@name/…). Aus = alle öffentlichen Adressen liefern sofort „Nicht gefunden“; die Einstellungen der Seiten bleiben gespeichert.')) }}
+    <label class="adm-field"><span>{{ _("Startseite für Besucher") }}</span>
+      <select class="hk-in" name="public_home">
+        <option value="0">{{ _("keine (zur Anmeldung)") }}</option>
+        {% for p in published if p.live %}<option value="{{ p.note_id }}"{% if p.note_id == st.public_home %} selected{% endif %}>@{{ p.name }} – {{ p.title }}</option>{% endfor %}
+      </select>
+      <small>{{ _("Wer ohne Anmeldung {url} aufruft, sieht diese veröffentlichte Seite (oben rechts „Anmelden“). Angemeldete sehen weiter ihr Dashboard.", url=base_url ~ '/') }}</small></label>
+    <p class="hk-hint"><a href="/published">{{ _("Alle öffentlichen Seiten") }} →</a></p>
+  </section>
+  <section class="adm-card">
     <h3>{{ _("Updates") }}</h3>
     {{ check(_('Auf neue Versionen hinweisen'), 'update_check', st.update_check, _('Fragt höchstens zweimal am Tag bei GitHub nach der neuesten Version und zeigt hier im Admin-Bereich einen Hinweis. Dabei wird nur die neueste Versionsnummer abgerufen, sonst nichts übertragen.')) }}
   </section>

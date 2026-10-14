@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import connect as _db
-from saga import i18n
+from saga import i18n, publish
 from saga.core import TZ, BodyLimit, LangMiddleware
 from saga.i18n import t
 from version import REPO, VERSION, newer
@@ -542,7 +542,7 @@ def settings_page(request: Request):
     me = _me(request)
     if not me:
         return _go("/login")
-    return _page(request, "settings.html", me, st=auth.settings(fresh=True), langs=i18n.NAMES)
+    return _page(request, "settings.html", me, st=auth.settings(fresh=True), langs=i18n.NAMES, published=publish.all_published())
 
 
 @admin.post("/settings")
@@ -563,7 +563,11 @@ async def settings_post(request: Request):
         _flash(request, t("Ungültige Hosts: {list}", list=", ".join(bad[:5])), "err")
         return _go("/settings")
     old_prefix = auth.settings().get("group_prefix")
+    home = int(f.get("public_home") or 0) if str(f.get("public_home") or "0").isdigit() else 0
+    if home and not any(p["note_id"] == home and p["live"] for p in publish.all_published()):
+        home = 0                                          # nur veroeffentlichte, erreichbare Seiten
     for k, v in (("title", _s(f, "title", 60) or "Saga"), ("registration", _on(f, "registration")),
+                 ("publish_enabled", _on(f, "publish_enabled")), ("public_home", home),
                  ("local_login", _on(f, "local_login")), ("group_prefix", prefix),
                  ("default_groups", _groups_list(_s(f, "default_groups", 1000))),
                  ("allow_private_hosts", _on(f, "allow_private_hosts")), ("allowed_hosts", ", ".join(hosts)),
@@ -574,6 +578,33 @@ async def settings_post(request: Request):
     _flash(request, t("Gespeichert.") + (" " + t("Hinweis: Mit der neuen Gruppen-Kennung gelten neue Zugangsgruppen – Favoriten der Dienste müssen neu gesetzt werden.")
                                          if old_prefix != prefix else ""))
     return _go("/settings")
+
+
+# --- Oeffentliche Seiten (Veroeffentlichen) -----------------------------------------------------------------
+@admin.get("/published")
+def published_page(request: Request):
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    st = auth.settings(fresh=True)
+    return _page(request, "published.html", me, rows=publish.all_published(), enabled=bool(st.get("publish_enabled", True)),
+                 home=publish.public_home())
+
+
+@admin.post("/published")
+async def published_post(request: Request):
+    """Zurueckziehen: die Veroeffentlichung entfernen (die Seite selbst bleibt unveraendert beim Benutzer)."""
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    f = await _form(request)
+    if f is None or f.get("action") != "withdraw" or not str(f.get("id") or "").isdigit():
+        return _go("/published")
+    nid = int(f.get("id"))
+    if publish.unpublish(nid, by="admin"):
+        print(f"admin: {me['username']} zieht Veroeffentlichung {nid} zurueck", flush=True)
+        _flash(request, t("Veröffentlichung zurückgezogen."))
+    return _go("/published")
 
 
 # --- Einstellungen: SSO / OIDC -------------------------------------------------------------------------

@@ -332,13 +332,79 @@ moves to the next row; in the last row it creates the next entry right away.
 
 ![Database as a board](../screenshots/board.png)
 
+### Publishing pages
+
+Any page can be made **public** – readable without signing in, shown in a clean layout, light or dark depending on
+the device and easy to read on a phone. In the page menu (**⋯** at the right above the page, next to “Saved”)
+choose **“Publish …”** and tick **“Public”** in the dialog – from then on the page is reachable at its address.
+Changes to the options apply immediately; only a new address is applied explicitly with “Change address”.
+
+- **Public name:** The first time, you choose a public name (suggested from your display name, 2–32 characters
+  `a–z 0–9 - _`). It appears in every address and is visible to everyone – it is **never** your username. Change it
+  in Settings → Account in its own “Public name” block (with its own “Save name” button; Saga checks while you type
+  whether the name is valid and available); old links stop working afterwards. Names such as `admin`, `api` or `login`
+  are reserved.
+- **Address:** `https://saga.example.org/@name/page-address`. The page address is suggested from the title and can
+  be changed with **“Change address”** (2–60 characters) – after a confirmation, because the current link stops
+  working. Saga redirects uppercase letters or a trailing “/” to the correct address.
+- **Also publish subpages:** All subpages (and database entries) below this page become readable too, at
+  `/@name/page-address/<number>`. Without this switch they stay private. Such subpages show “🌐 Public (via “parent
+  page”)” in the page header; their dialog explains this and links to the parent page.
+- **Allow search engines:** Off by default – the page then asks search engines not to index it.
+- **As profile page:** This page appears at `/@name` (one per account at most). Without a profile page, `/@name`
+  shows a plain list of your public pages. If another page already is your profile page, the dialog names it – the
+  new one replaces it.
+- **Copy link / Open** and **Stop publishing**. Published pages show “🌐 Public” in the page header – a click opens
+  the dialog, the “↗” next to it opens the public page.
+- **Stopping remembers everything:** address and settings are kept (the address stays reserved for this page). If
+  you publish the page again, it uses the same address as before.
+
+**What becomes public – and what doesn't:** title, icon, cover and content (text, headings, lists, checklists,
+quotes, code, images, tables, columns, callouts, toggles). Databases appear as a simple table (title and the visible
+properties of the view). Embeds become links. **Not** published: task, calendar and Immich blocks, buttons and file
+attachments. Links to other pages only stay links if the target is public as well – otherwise just the text remains.
+Saga only serves images that are used in exactly this page.
+
+**Trash and archive:** Archived pages and pages in the trash are not reachable (“Not found”). The publication is
+kept, though: if you restore the page, it is public again at the same address. It only disappears when the page is
+deleted permanently (or the account is deleted).
+
+**For the admin** (admin area → General → “Publish”):
+
+- **Allow publishing** (on by default). Off = all public addresses return “Not found” immediately; the page settings
+  are kept.
+- **Home page for visitors:** an already published page that visitors without an account see at `/` (with
+  “Sign in” at the top right). Signed-in users still see their dashboard.
+- **Published** (own tab): all public pages with account, name and date – **Withdraw** ends a publication
+  immediately (after a confirmation). The user sees “Withdrawn by the admin on …” in the dialog; address and settings
+  are kept.
+
+Every error case – unknown name, private page, publishing turned off – returns the same neutral “Not found” page.
+Public pages work without JavaScript and without cookies; each IP address may make 120 requests per minute
+(`PUBLIC_RATE`). If Saga runs behind a reverse proxy, add it to `TRUSTED_PROXIES` (section 3) – otherwise all
+visitors share a single limit.
+
+**Custom domain:** To show the public pages on e.g. `blog.example.org`, point the domain's DNS to your server,
+forward it to Saga in the reverse proxy (as in section 3) and add it to `.env`: `PUBLIC_HOSTS=blog.example.org`
+(then run `docker compose up -d`). `BASE_URL` stays your main address. On the custom domain Saga only serves the
+home page for visitors (`/`, choose one in the admin area), the `/@…` addresses and the files they need – sign-in
+and everything else redirects to `BASE_URL`. When opened via that domain, the pages also name it as their main
+address (`canonical`). Example for Caddy:
+
+```
+blog.example.org {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
 ### Account, calendars, Immich, apps
 
 In the user menu at the top right under **Settings** (one tab each):
 
 - **Account:** change your name, email and password (for LDAP/SSO accounts, at your provider). Changing your
   password signs out your other browser sessions **and all signed-in apps** – except this session and the app
-  you're using right now. The apps then sign in once more.
+  you're using right now. The apps then sign in once more. This is also where you change your **public name**
+  (see “Publishing pages”).
 - **Calendars:** connect CalDAV accounts (Nextcloud: `https://cloud.example.org/remote.php/dav/`).
   Ideally create a separate app password just for calendars.
 - **Immich:** enter the address and an API key with the permissions `album.read`, `asset.read`, `asset.view`,
@@ -540,6 +606,8 @@ session and the app where you changed the password stay signed in.
 | `ADMIN_BIND` / `ADMIN_HOST_PORT` | `127.0.0.1` / `8081` | Where the admin area listens |
 | `TRUSTED_PROXIES` | `127.0.0.1` | IPs of the reverse proxy (`*` = all) |
 | `CANONICAL_REDIRECT` | `true` | Redirect other host names to `BASE_URL` |
+| `PUBLIC_HOSTS` | – | Custom domains for public pages only (comma-separated, section 9 “Publishing pages”) |
+| `PUBLIC_RATE` | `120` | Requests to public pages per IP address and minute (images: five times as many) |
 | `SESSION_HOURS` | `12` | Lifetime of a browser session (apps stay signed in) |
 | `SAGA_VERSION` | `1` | Which version `docker compose pull` fetches: `1`, `1.2` or `1.2.3` (section 11) |
 | `BACKUP_KEEP` | `10` | How many automatic/manual backups are kept in `/data/backups` |

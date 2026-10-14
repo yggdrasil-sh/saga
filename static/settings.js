@@ -349,6 +349,48 @@
     box.appendChild(field(T('Sprache'), sel)); box.appendChild(st);
   }
 
+  // Oeffentlicher Name (Veroeffentlichen): eigener Block unten im Konto mit eigenem Knopf - steht in jeder oeffentlichen
+  // Adresse /@name/..., nie der Anmeldename. Pruefung (gueltig + frei) schon beim Tippen, Rueckfrage nur beim Aendern.
+  function publicNameField(box) {
+    var wrap = el('div', 'hk-pubname'); box.appendChild(wrap);
+    wrap.appendChild(el('h4', null, T('Öffentlicher Name')));
+    api('GET', '/api/account/public-name').then(function (p) {
+      var inp = input('text', p.name || '', p.suggested || ''); inp.maxLength = 32; inp.spellcheck = false; inp.setAttribute('autocapitalize', 'off');
+      inp.setAttribute('aria-label', T('Öffentlicher Name'));
+      wrap.appendChild(field(T('Name'), inp));
+      var hint = el('p', 'hk-hint'); wrap.appendChild(hint);
+      function showHint() {
+        hint.textContent = p.name
+          ? T('Steht in den Adressen deiner öffentlichen Seiten ({url}). Beim Ändern funktionieren alte Links nicht mehr.', { url: p.url })
+          : T('Steht in den Adressen deiner öffentlichen Seiten (…/@name/…) und ist für alle sichtbar – nicht dein Anmeldename. Wird beim ersten Veröffentlichen festgelegt.');
+      }
+      showHint();
+      var st = el('div', 'hk-status'), bar = el('div', 'hk-actions'), sv = el('button', 'btn', T('Namen speichern')); sv.type = 'button';
+      sv.disabled = true; bar.appendChild(sv); wrap.appendChild(bar); wrap.appendChild(st);
+      var tmr = null;
+      function check() {
+        var v = inp.value.trim().toLowerCase();
+        clearTimeout(tmr); sv.disabled = true; status(st, '');           // alte Meldung verschwindet beim Weitertippen
+        if (!v || v === p.name) return;
+        tmr = setTimeout(function () {
+          api('PUT', '/api/account/public-name', { name: v, check: true }).then(function (r) {
+            if (inp.value.trim().toLowerCase() !== v) return;
+            status(st, r.ok ? T('✓ Frei') : r.error, r.ok ? 'ok' : 'err'); sv.disabled = !r.ok;
+          }).catch(function (err) { status(st, err.message, 'err'); });
+        }, 250);
+      }
+      inp.addEventListener('input', check);
+      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !sv.disabled) { e.preventDefault(); sv.click(); } });
+      sv.addEventListener('click', function () {
+        var v = inp.value.trim().toLowerCase();
+        if (p.name && v !== p.name && p.published && !confirm(T('Öffentlichen Namen ändern? Alte Links auf deine öffentlichen Seiten funktionieren danach nicht mehr.'))) return;
+        sv.disabled = true;
+        api('PUT', '/api/account/public-name', { name: v }).then(function (d) { p.name = d.name; p.url = d.url; inp.value = d.name; showHint(); status(st, T('✓ Gespeichert'), 'ok'); })
+          .catch(function (err) { status(st, err.message, 'err'); sv.disabled = false; });
+      });
+    }).catch(function () { wrap.remove(); });
+  }
+
   // --- Abschnitt "Konto": Name, E-Mail, Passwort (nur lokale Konten), Gruppen ------------------------------
   function accountSection(body) {
     var sec = el('section', 'hk-set hk-set-account'); body.appendChild(sec);
@@ -359,6 +401,7 @@
       langField(box, a);
       if (!a.can_edit) {
         box.appendChild(el('p', 'hk-hint', T('Name, E-Mail und Passwort verwaltet dein Anmeldedienst.')));
+        publicNameField(box);
         return;
       }
       var nm = input('text', a.name === a.username ? '' : a.name, T('Anzeigename')); nm.maxLength = 120;
@@ -380,6 +423,7 @@
       var st2 = el('div', 'hk-status'), bar2 = el('div', 'hk-actions'), pwb = el('button', 'btn', T('Passwort ändern')); pwb.type = 'button';
       bar2.appendChild(pwb); box.appendChild(bar2); box.appendChild(st2);
       box.appendChild(el('p', 'hk-hint', T('Andere Browser-Sitzungen und angemeldete Apps werden danach abgemeldet – außer dieser Sitzung und der App, in der du gerade bist.')));
+      publicNameField(box);
       pwb.addEventListener('click', function () {
         if (n1.value !== n2.value) { status(st2, T('Die neuen Passwörter stimmen nicht überein.'), 'err'); return; }
         pwb.disabled = true;

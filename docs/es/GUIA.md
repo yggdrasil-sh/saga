@@ -339,13 +339,82 @@ y las muestran como tabla, tablero, lista, galería o calendario, con filtros, o
 
 ![Base de datos como tablero](../screenshots/board.png)
 
+### Publicar páginas
+
+Cualquier página puede hacerse **pública**: se lee sin iniciar sesión, con un diseño sencillo, claro u oscuro según
+el dispositivo y cómoda de leer en el móvil. En el menú de la página (**⋯** a la derecha, encima de la página, junto
+a «Guardado») elige **«Publicar …»** y marca **«Pública»** en el diálogo: desde ese momento la página está disponible
+en su dirección. Los cambios en las opciones se aplican al instante; solo una dirección nueva se aplica expresamente con «Cambiar
+dirección».
+
+- **Nombre público:** La primera vez eliges un nombre público (sugerido a partir de tu nombre visible, 2–32
+  caracteres `a–z 0–9 - _`). Aparece en todas las direcciones y es visible para todos; **nunca** es tu nombre de
+  usuario. Se cambia en Ajustes → Cuenta, en su propio bloque «Nombre público» (con su propio botón «Guardar nombre»; Saga
+  comprueba mientras escribes si el nombre es válido y está libre); después, los enlaces antiguos dejan de funcionar.
+  Nombres como `admin`, `api` o `login` están reservados.
+- **Dirección:** `https://saga.example.org/@nombre/direccion-de-la-pagina`. La dirección se sugiere a partir del
+  título y se puede cambiar con **«Cambiar dirección»** (2–60 caracteres), tras confirmar, porque el enlace actual
+  deja de funcionar. Saga redirige las mayúsculas o una «/» final a la dirección correcta.
+- **Publicar también las subpáginas:** Todas las subpáginas (y las entradas de bases de datos) bajo esta página
+  también serán legibles, en `/@nombre/direccion-de-la-pagina/<número>`. Sin esta opción siguen siendo privadas. Esas subpáginas muestran
+  «🌐 Pública (a través de «página superior»)» en la cabecera; su diálogo lo explica y lleva a la página superior.
+- **Permitir buscadores:** Desactivado por defecto: la página pide entonces a los buscadores que no la indexen.
+- **Como página de perfil:** Esta página aparece en `/@nombre` (como máximo una por cuenta). Sin página de perfil,
+  `/@nombre` muestra una lista sencilla de tus páginas públicas. Si otra página ya es tu página de perfil, el
+  diálogo la nombra: la nueva la sustituye.
+- **Copiar enlace / Abrir** y **Dejar de publicar**. Las páginas publicadas muestran «🌐 Pública» en la cabecera;
+  un clic abre el diálogo y «↗», a su lado, la página pública.
+- **Al dejar de publicar se guarda todo:** la dirección y los ajustes se conservan (la dirección queda reservada para
+  esta página). Si vuelves a publicarla, usa la misma dirección que antes.
+
+**Qué se publica y qué no:** título, icono, portada y contenido (texto, encabezados, listas, listas de comprobación,
+citas, código, imágenes, tablas, columnas, avisos, desplegables). Las bases de datos aparecen como una tabla sencilla
+(título y propiedades visibles de la vista). Las inserciones se convierten en enlaces. **No** se publican los bloques
+de tareas, calendario e Immich, los botones ni los archivos adjuntos. Los enlaces a otras páginas solo siguen siendo
+enlaces si la página de destino también es pública; si no, queda solo el texto. Saga solo entrega imágenes que se
+usan exactamente en esta página.
+
+**Papelera y archivo:** Las páginas archivadas o en la papelera no son accesibles («No encontrado»). La publicación
+se conserva: si recuperas la página, vuelve a ser pública en la misma dirección. Solo desaparece al eliminar la
+página definitivamente (o al eliminar la cuenta).
+
+**Para el administrador** (área de administración → General → «Publicar»):
+
+- **Permitir publicar** (activado por defecto). Desactivado = todas las direcciones públicas devuelven «No
+  encontrado» al instante; los ajustes de las páginas se conservan.
+- **Página de inicio para visitantes:** una página ya publicada que ven en `/` los visitantes sin cuenta (arriba a
+  la derecha, «Iniciar sesión»). Los usuarios con sesión iniciada siguen viendo su panel.
+- **Publicadas** (pestaña propia): todas las páginas públicas con cuenta, nombre y fecha; **Retirar** termina una
+  publicación al instante (tras confirmar). La persona ve en el diálogo «Retirada por el administrador el …»; la
+  dirección y los ajustes se conservan.
+
+Cualquier error (nombre desconocido, página privada, publicación desactivada) devuelve la misma página neutral
+«No encontrado». Las páginas públicas funcionan sin JavaScript y sin cookies; cada dirección IP puede hacer 120
+solicitudes por minuto (`PUBLIC_RATE`). Si Saga funciona detrás de un proxy inverso, añádelo a `TRUSTED_PROXIES`
+(sección 3); de lo contrario, todos los visitantes comparten un único límite.
+
+**Dominio propio:** Para mostrar las páginas públicas en, por ejemplo, `blog.example.org`, haz que el DNS del dominio
+apunte a tu servidor, redirígelo a Saga en el proxy inverso (como en la sección 3) y añádelo al `.env`:
+`PUBLIC_HOSTS=blog.example.org` (después, `docker compose up -d`). `BASE_URL` sigue siendo tu dirección principal.
+En el dominio propio Saga solo entrega la página de inicio para visitantes (`/`; elige una en el área de
+administración), las direcciones `/@…` y los archivos necesarios; el inicio de sesión y todo lo demás redirige a
+`BASE_URL`. Abiertas a través de ese dominio, las páginas lo indican también como dirección principal (`canonical`).
+Ejemplo para Caddy:
+
+```
+blog.example.org {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
 ### Cuenta, calendarios, Immich, apps
 
 En el menú de usuario, arriba a la derecha, en **Ajustes** (una pestaña para cada cosa):
 
 - **Cuenta:** cambiar nombre, correo y contraseña (en cuentas LDAP/SSO, en el proveedor). Al cambiar la
   contraseña se cierra la sesión en los demás navegadores **y en todas las apps**, salvo en esta sesión y en la
-  app que estás usando ahora. Las apps tendrán que iniciar sesión una vez más.
+  app que estás usando ahora. Las apps tendrán que iniciar sesión una vez más. Aquí también se cambia el
+  **nombre público** (ver «Publicar páginas»).
 - **Calendarios:** conectar cuentas CalDAV (Nextcloud: `https://cloud.example.org/remote.php/dav/`).
   Lo mejor es crear una contraseña de aplicación solo para calendarios.
 - **Immich:** introduce la dirección y una clave de API con los permisos `album.read`, `asset.read`,
@@ -552,6 +621,8 @@ perdió un dispositivo). Solo siguen con la sesión iniciada la sesión y la app
 | `ADMIN_BIND` / `ADMIN_HOST_PORT` | `127.0.0.1` / `8081` | Dónde escucha el área de administración |
 | `TRUSTED_PROXIES` | `127.0.0.1` | IP del proxy inverso (`*` = todas) |
 | `CANONICAL_REDIRECT` | `true` | Redirigir otros nombres de host a `BASE_URL` |
+| `PUBLIC_HOSTS` | – | Dominios propios solo para páginas públicas (separados por comas, sección 9 «Publicar páginas») |
+| `PUBLIC_RATE` | `120` | Solicitudes a páginas públicas por dirección IP y minuto (imágenes: cinco veces más) |
 | `SESSION_HOURS` | `12` | Duración de una sesión del navegador (las apps siguen con la sesión iniciada) |
 | `SAGA_VERSION` | `1` | Qué versión descarga `docker compose pull`: `1`, `1.2` o `1.2.3` (sección 11) |
 | `BACKUP_KEEP` | `10` | Cuántas copias automáticas/manuales se conservan en `/data/backups` |

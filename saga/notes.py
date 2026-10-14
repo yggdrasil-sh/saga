@@ -110,7 +110,9 @@ VERSION_EVERY, VERSION_MAX = 600, 50     # hoechstens alle 10 Minuten eine Siche
 
 
 def _purge_ids(c, uid, ids):
+    """Endgueltig loeschen - samt Versionen und Veroeffentlichung (im Papierkorb bleibt sie gespeichert, liefert aber 404)."""
     c.executemany("DELETE FROM note_version WHERE uid=? AND note_id=?", [(uid, i) for i in ids])
+    c.executemany("DELETE FROM note_publish WHERE uid=? AND note_id=?", [(uid, i) for i in ids])
     c.executemany("DELETE FROM note WHERE uid=? AND id=?", [(uid, i) for i in ids])
 
 

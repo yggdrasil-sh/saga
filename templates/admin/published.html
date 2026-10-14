@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import ts, csrf_field with context %}
+{% block pagetitle %}{{ _('Öffentliche Seiten') }}{% endblock %}
+{% block content %}
+<h2>{{ _("Öffentliche Seiten") }}</h2>
+<p class="hk-hint">{{ _("Seiten, die Benutzer veröffentlicht haben – ohne Anmeldung lesbar. „Zurückziehen“ beendet die Veröffentlichung sofort; die Seite selbst bleibt beim Benutzer unverändert.") }}
+  {% if not enabled %}<b>{{ _("Veröffentlichen ist abgeschaltet (Allgemein) – alle Adressen liefern zurzeit „Nicht gefunden“.") }}</b>{% endif %}</p>
+<table class="adm-table">
+  <tr><th>{{ _("Konto") }}</th><th>{{ _("Öffentlicher Name") }}</th><th>{{ _("Titel") }}</th><th>{{ _("Seit") }}</th><th></th></tr>
+  {% for r in rows %}
+  <tr>
+    <td><b>{{ r.uid }}</b></td>
+    <td data-l="{{ _('Öffentlicher Name') }}">{{ ('@' ~ r.name) if r.name else '–' }}</td>
+    <td data-l="{{ _('Titel') }}">{% if r.live and enabled %}<a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}
+      {% if not r.live %}<small class="hk-hint">({{ _("nicht erreichbar: Papierkorb oder Archiv") }})</small>{% endif %}
+      {% if r.children %}<small class="hk-hint">· {{ _("mit Unterseiten") }}</small>{% endif %}
+      {% if r.profile %}<small class="hk-hint">· {{ _("Profilseite") }}</small>{% endif %}
+      {% if r.note_id == home %}<small class="hk-hint">· {{ _("Startseite für Besucher") }}</small>{% endif %}</td>
+    <td data-l="{{ _('Seit') }}">{{ ts(r.created) }}</td>
+    <td><form method="post" data-confirm="{{ _('Veröffentlichung von „{title}“ zurückziehen? Die Adresse liefert danach „Nicht gefunden“.', title=r.title) }}">{{ csrf_field() }}
+        <input type="hidden" name="action" value="withdraw"><input type="hidden" name="id" value="{{ r.note_id }}">
+        <button class="btn btn-danger" type="submit">{{ _("Zurückziehen") }}</button></form></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="hk-hint">{{ _("Noch keine veröffentlichten Seiten.") }}</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

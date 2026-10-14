@@ -335,13 +335,82 @@ springt `Enter` im Namen in die nächste Zeile; in der letzten legt es gleich de
 
 ![Datenbank als Board](screenshots/board.png)
 
+### Seiten veröffentlichen
+
+Jede Seite lässt sich **öffentlich** machen – lesbar ohne Anmeldung, schlicht dargestellt, hell oder dunkel nach
+Gerät und gut lesbar auf dem Handy. Im Seitenmenü (**⋯** rechts über der Seite, neben „Gespeichert“)
+**„Veröffentlichen …“** wählen und im Dialog den Haken bei **„Öffentlich“** setzen – ab dann ist die Seite unter
+ihrer Adresse erreichbar. Änderungen an den Optionen gelten sofort; nur eine neue Adresse übernimmst du ausdrücklich
+mit „Adresse ändern“.
+
+- **Öffentlicher Name:** Beim ersten Mal wählst du einen öffentlichen Namen (vorgeschlagen aus deinem
+  Anzeigenamen, 2–32 Zeichen `a–z 0–9 - _`). Er steht in jeder Adresse und ist für alle sichtbar – er ist **nie**
+  dein Anmeldename. Ändern unter Einstellungen → Konto im eigenen Block „Öffentlicher Name“ (mit eigenem Knopf
+  „Namen speichern“; Saga prüft schon beim Tippen, ob der Name gültig und frei ist); alte Links funktionieren danach
+  nicht mehr. Namen wie `admin`, `api` oder `login` sind gesperrt.
+- **Adresse:** `https://saga.example.org/@name/seiten-adresse`. Die Seiten-Adresse wird aus dem Titel
+  vorgeschlagen und lässt sich mit **„Adresse ändern“** ändern (2–60 Zeichen) – nach einer Rückfrage, denn der
+  bisherige Link funktioniert danach nicht mehr. Großbuchstaben oder ein „/“ am Ende leitet Saga auf die richtige
+  Schreibweise um.
+- **Unterseiten mit veröffentlichen:** Dann sind auch alle Unterseiten (und Einträge von Datenbanken) unter dieser
+  Seite lesbar, unter `/@name/seiten-adresse/<nummer>`. Ohne diesen Schalter bleiben sie privat. Solche Unterseiten
+  zeigen im Seitenkopf „🌐 Öffentlich (über „Elternseite“)“; ihr Dialog erklärt das und führt zur Elternseite.
+- **Suchmaschinen erlauben:** Standard ist aus – die Seite bittet Suchmaschinen dann, sie nicht aufzunehmen.
+- **Als Profilseite:** Diese Seite erscheint unter `/@name` (höchstens eine je Konto). Ohne Profilseite zeigt
+  `/@name` eine schlichte Liste deiner öffentlichen Seiten. Ist schon eine andere Seite Profilseite, nennt der Dialog
+  sie – die neue ersetzt sie.
+- **Link kopieren / Öffnen** und **Veröffentlichung beenden**. Veröffentlichte Seiten tragen im Seitenkopf den
+  Hinweis „🌐 Öffentlich“ – ein Klick öffnet den Dialog, „↗“ daneben die öffentliche Seite.
+- **Beenden merkt sich alles:** Adresse und Einstellungen bleiben gespeichert (die Adresse bleibt für diese Seite
+  reserviert). Veröffentlichst du die Seite wieder, gilt dieselbe Adresse wie vorher.
+
+**Was öffentlich wird – und was nicht:** Titel, Symbol, Titelbild und Inhalt (Text, Überschriften, Listen,
+Checklisten, Zitate, Code, Bilder, Tabellen, Spalten, Hinweise, Ausklappbares). Datenbanken erscheinen als einfache
+Tabelle (Titel und sichtbare Eigenschaften der Ansicht). Einbettungen werden zu Links. **Nicht** öffentlich werden
+Aufgaben-, Kalender- und Immich-Blöcke, Schaltflächen und Dateianhänge. Verweise auf andere Seiten werden nur dann
+zu Links, wenn das Ziel ebenfalls öffentlich ist – sonst bleibt nur der Text. Bilder liefert Saga nur aus, wenn sie
+in genau dieser Seite stehen.
+
+**Papierkorb und Archiv:** Archivierte Seiten und Seiten im Papierkorb sind nicht erreichbar („Nicht gefunden“).
+Die Veröffentlichung bleibt aber gespeichert: Holst du die Seite zurück, ist sie wieder unter derselben Adresse
+öffentlich. Erst beim endgültigen Löschen (und beim Löschen des Kontos) verschwindet sie.
+
+**Für den Admin** (Admin-Bereich → Allgemein → „Veröffentlichen“):
+
+- **Veröffentlichen erlauben** (Standard an). Aus = alle öffentlichen Adressen liefern sofort „Nicht gefunden“;
+  die Einstellungen der Seiten bleiben erhalten.
+- **Startseite für Besucher:** eine schon veröffentlichte Seite, die Besucher ohne Anmeldung unter `/` sehen
+  (oben rechts „Anmelden“). Angemeldete sehen weiter ihr Dashboard.
+- **Veröffentlicht** (eigener Reiter): alle öffentlichen Seiten mit Konto, Name und Datum – **Zurückziehen** beendet
+  eine Veröffentlichung sofort (mit Rückfrage). Die Person sieht im Dialog „Vom Admin zurückgezogen am …“; Adresse und
+  Einstellungen bleiben gemerkt.
+
+Jeder Fehlerfall – unbekannter Name, private Seite, abgeschaltet – liefert dieselbe neutrale Seite „Nicht gefunden“.
+Öffentliche Seiten kommen ohne JavaScript und ohne Cookies aus; je IP-Adresse gilt eine Grenze von 120 Aufrufen pro
+Minute (`PUBLIC_RATE`). Läuft Saga hinter einem Reverse Proxy, muss dieser in `TRUSTED_PROXIES` stehen
+(Abschnitt 3) – sonst teilen sich alle Besucher eine gemeinsame Grenze.
+
+**Eigene Domain:** Soll z. B. `blog.example.org` die öffentlichen Seiten zeigen, lass die Domain per DNS auf deinen
+Server zeigen, leite sie im Reverse Proxy auf Saga weiter (wie in Abschnitt 3) und trage sie in der `.env` ein:
+`PUBLIC_HOSTS=blog.example.org` (danach `docker compose up -d`). `BASE_URL` bleibt die Hauptadresse. Unter der
+eigenen Domain liefert Saga nur die Startseite für Besucher (`/`, dafür im Admin-Bereich eine wählen), die Adressen
+`/@…` und die nötigen Dateien aus – Anmeldung und alles andere leitet weiter auf `BASE_URL`. Aufgerufen über diese
+Domain, nennen die Seiten sie auch als Hauptadresse (`canonical`). Beispiel für Caddy:
+
+```
+blog.example.org {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
 ### Konto, Kalender, Immich, Apps
 
 Im Benutzermenü oben rechts unter **Einstellungen** (je ein Reiter):
 
 - **Konto:** Name, E-Mail, Passwort ändern (bei LDAP/SSO-Konten beim Anbieter). Nach einem Passwortwechsel
   werden andere Browser-Sitzungen **und alle angemeldeten Apps** abgemeldet – außer dieser Sitzung und der App,
-  in der du gerade bist. Die Apps melden sich dann einmal neu an.
+  in der du gerade bist. Die Apps melden sich dann einmal neu an. Hier lässt sich auch der **öffentliche Name**
+  ändern (siehe „Seiten veröffentlichen“).
 - **Kalender:** CalDAV-Konten verbinden (Nextcloud: `https://cloud.example.org/remote.php/dav/`).
   Am besten ein eigenes App-Passwort nur für Kalender anlegen.
 - **Immich:** Adresse und einen API-Schlüssel mit den Rechten `album.read`, `asset.read`, `asset.view`,
@@ -543,6 +612,8 @@ ging). Nur die Sitzung und die App, in der du das Passwort geändert hast, bleib
 | `ADMIN_BIND` / `ADMIN_HOST_PORT` | `127.0.0.1` / `8081` | Wo der Admin-Bereich lauscht |
 | `TRUSTED_PROXIES` | `127.0.0.1` | IPs des Reverse Proxys (`*` = alle) |
 | `CANONICAL_REDIRECT` | `true` | Andere Hostnamen auf `BASE_URL` umleiten |
+| `PUBLIC_HOSTS` | – | Eigene Domains nur für öffentliche Seiten (Komma-getrennt, Abschnitt 9 „Seiten veröffentlichen“) |
+| `PUBLIC_RATE` | `120` | Aufrufe öffentlicher Seiten je IP-Adresse und Minute (Bilder: das Fünffache) |
 | `SESSION_HOURS` | `12` | Gültigkeit einer Browser-Sitzung (Apps bleiben angemeldet) |
 | `SAGA_VERSION` | `1` | Welche Version `docker compose pull` holt: `1`, `1.2` oder `1.2.3` (Abschnitt 11) |
 | `BACKUP_KEEP` | `10` | So viele automatische/manuelle Backups bleiben in `/data/backups` |

@@ -41,6 +41,8 @@ private space – no cloud, no subscription, on your own server.
 - **Personal bookmarks** for every user, visible only to them
 - **Notion-style pages:** blocks, subpages, templates, versions, trash, Markdown export
 - **Databases** with table, board, list, gallery and calendar views, filters, relations and formulas
+- **Publish pages:** share a page (optionally with subpages) at `/@name/page` – readable without an account, no
+  JavaScript, optional public home page for visitors
 - **Tasks** with due dates, priorities and recurrence
 - **Calendars (CalDAV):** view and edit Nextcloud, mailcow/SOGo, Radicale, iCloud …
 - **Immich:** use your own photos as images and cover images

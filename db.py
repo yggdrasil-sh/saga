@@ -304,6 +304,19 @@ CREATE TABLE IF NOT EXISTS immich_key (
 CREATE TABLE IF NOT EXISTS cal_account (
     id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, label TEXT, base_url TEXT NOT NULL, username TEXT NOT NULL,
     secret TEXT NOT NULL, calendars TEXT NOT NULL DEFAULT '[]', created DOUBLE PRECISION, updated DOUBLE PRECISION);
+
+-- Veroeffentlichen (1.2): oeffentlicher Name je Konto (nie der Anmeldename) und veroeffentlichte Seiten -----------
+CREATE TABLE IF NOT EXISTS public_name (
+    uid TEXT PRIMARY KEY, name TEXT UNIQUE NOT NULL, created DOUBLE PRECISION);
+CREATE TABLE IF NOT EXISTS note_publish (
+    note_id BIGINT PRIMARY KEY, uid TEXT NOT NULL, slug TEXT NOT NULL,
+    children INTEGER NOT NULL DEFAULT 0,          -- Unterseiten mit veroeffentlichen
+    indexable INTEGER NOT NULL DEFAULT 0,         -- Suchmaschinen erlauben (sonst noindex)
+    profile INTEGER NOT NULL DEFAULT 0,           -- Profilseite unter /@name (hoechstens eine je Konto)
+    created DOUBLE PRECISION, updated DOUBLE PRECISION,
+    active INTEGER NOT NULL DEFAULT 1,            -- 0 = beendet/zurueckgezogen: Einstellungen und Adresse bleiben reserviert
+    withdrawn_at DOUBLE PRECISION, withdrawn_by TEXT,   -- wann/von wem beendet ('user' oder 'admin')
+    UNIQUE (uid, slug));
 """
 # --- Schema-Versionen und Migrationen ----------------------------------------------------------------
 # SCHEMA oben ist Stand 1 (plus neue Tabellen mit CREATE TABLE IF NOT EXISTS). Alles, was bestehende
@@ -318,6 +331,12 @@ ALTER TABLE app_token ADD COLUMN IF NOT EXISTS device_id BIGINT;
 UPDATE app_token t SET device_id = (SELECT d.id FROM device_login d WHERE d.uid = t.uid AND d.name = left(t.name, length(t.name) - 14)
                                     ORDER BY d.created DESC LIMIT 1)
  WHERE t.device_id IS NULL AND t.name LIKE '% (automatisch)';
+""",
+    # 1.2.0: Veroeffentlichen - Beenden/Zurueckziehen behaelt Adresse und Einstellungen (wieder veroeffentlichen = wie vorher)
+    3: """
+ALTER TABLE note_publish ADD COLUMN IF NOT EXISTS active INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE note_publish ADD COLUMN IF NOT EXISTS withdrawn_at DOUBLE PRECISION;
+ALTER TABLE note_publish ADD COLUMN IF NOT EXISTS withdrawn_by TEXT;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

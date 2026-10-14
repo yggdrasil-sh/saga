@@ -14,8 +14,9 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
-from saga.core import E, STATE_DIR, account_lang, _api_guard, _bad, _body, _json_load, _session_user, t
+from saga.core import BASE_URL, E, STATE_DIR, account_lang, _api_guard, _bad, _body, _json_load, _session_user, t
 from saga.dashboard import visible_tiles
+from saga.publish import published_via
 from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, NOTE_MAX_COUNT, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _snapshot, blocks_text
 
 router = APIRouter()
@@ -227,9 +228,15 @@ def api_note_get(nid: int, request: Request):
     with _db() as c:
         r = c.execute(f"SELECT {NOTE_META_COLS}, body, format, schema, props, cover, cover_pos, created, wide, rev, archived, locked FROM note WHERE id=? AND uid=? AND deleted_at IS NULL",
                       (nid, owner)).fetchone()
+        pub = r and c.execute("SELECT p.slug, n.name FROM note_publish p LEFT JOIN public_name n ON n.uid=p.uid "
+                              "WHERE p.note_id=? AND p.uid=? AND p.active=1", (nid, owner)).fetchone()
+        via = r and published_via(c, owner, nid)      # ueber eine Elternseite mit "Unterseiten mit veroeffentlichen"
     if not r:
         return _bad("not found", 404)
     d = _note_meta(r)
+    d["published"] = bool(pub)                     # Seitenkopf: Hinweis "Oeffentlich" (Einzelheiten: /api/notes/{nid}/publish)
+    d["public_url"] = f"{BASE_URL}/@{pub[1]}/{pub[0]}" if pub and pub[1] else None
+    d["published_via"] = via or None
     d.update(body=r[9], format=r[10] or "text", props=_json_load(r[12], {}), cover=r[13] or "",
              cover_pos=50.0 if r[14] is None else r[14], created=r[15], wide=bool(r[16]), rev=r[17], archived=bool(r[18]), locked=bool(r[19]))
     if d["kind"] == "database":

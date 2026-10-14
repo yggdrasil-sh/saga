@@ -1,0 +1,81 @@
+<!doctype html>
+{#- Oeffentliche Seite (saga/publish.py): ohne JavaScript, eigenes CSS (static/public.css), Inhalte vorab bereinigt.
+    mode: page | list (/@name ohne Profilseite) | nf (neutrale 404) | busy (Rate-Limit) -#}
+<html lang="{{ lang() }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="{{ 'index, follow' if indexable else 'noindex, nofollow' }}">
+<meta name="referrer" content="no-referrer">
+{%- if mode == "page" %}
+<title>{{ page.title }} · {{ site }}</title>
+<meta property="og:title" content="{{ page.title }}">
+<meta property="og:type" content="article">
+{%- if indexable %}
+<link rel="canonical" href="{{ canonical }}">
+{%- endif %}
+{%- elif mode == "list" %}
+<title>@{{ owner }} · {{ site }}</title>
+{%- elif mode == "busy" %}
+<title>{{ _("Zu viele Anfragen") }}</title>
+{%- else %}
+<title>{{ _("Nicht gefunden") }}</title>
+{%- endif %}
+<link rel="icon" href="/static/icon.svg?v={{ v }}" type="image/svg+xml">
+<link rel="stylesheet" href="/static/public.css?v={{ v }}">
+</head>
+<body class="pub{% if mode == 'page' and page.wide %} pub-wide{% endif %}">
+{%- if mode == "page" %}
+{%- if home or page.crumbs %}
+<header class="pub-bar">
+  <nav class="pub-crumbs" aria-label="{{ _('Pfad') }}">
+    {%- for c in page.crumbs %}<a href="{{ c.url }}">{{ c.title }}</a><span class="pub-sep" aria-hidden="true">›</span>{% endfor %}
+    {%- if page.crumbs %}<span class="pub-here">{{ page.title }}</span>{% endif %}
+  </nav>
+  {%- if home %}<a class="pub-login" href="{{ login_url }}">{{ _("Anmelden") }}</a>{% endif %}
+</header>
+{%- endif %}
+<main class="pub-main">
+  <article class="pub-page">
+    {%- if page.cover %}
+    <div class="pub-cover"><img class="{{ page.cover_cls }}" src="{{ page.cover }}" alt=""></div>
+    {%- endif %}
+    <header class="pub-head{% if page.cover %} has-cover{% endif %}">
+      {{ page.icon|safe }}
+      <h1>{{ page.title }}</h1>
+    </header>
+    {%- if page.props %}
+    <dl class="pub-props">
+      {%- for k, val in page.props %}<div><dt>{{ k }}</dt><dd>{{ val|safe }}</dd></div>{% endfor %}
+    </dl>
+    {%- endif %}
+    <div class="pub-content">
+{{ page.content|safe }}
+    </div>
+    {%- if page.subpages %}
+    <section class="pub-subpages" aria-label="{{ _('Unterseiten') }}">
+      <h2>{{ _("Unterseiten") }}</h2>
+      <ul>{% for s in page.subpages %}<li><a href="{{ s.url }}">{{ s.icon|safe }}<span>{{ s.title }}</span></a></li>{% endfor %}</ul>
+    </section>
+    {%- endif %}
+  </article>
+</main>
+{%- elif mode == "list" %}
+<main class="pub-main">
+  <article class="pub-page">
+    <header class="pub-head"><h1>@{{ owner }}</h1></header>
+    <section class="pub-subpages pub-list" aria-label="{{ _('Öffentliche Seiten') }}">
+      <ul>{% for s in items %}<li><a href="{{ s.url }}">{{ s.icon|safe }}<span>{{ s.title }}</span></a></li>{% endfor %}</ul>
+    </section>
+  </article>
+</main>
+{%- else %}
+<main class="pub-main pub-nf">
+  <h1>{{ _("Zu viele Anfragen") if mode == "busy" else _("Nicht gefunden") }}</h1>
+  <p>{{ _("Bitte gleich noch einmal versuchen.") if mode == "busy" else _("Diese Seite gibt es nicht oder sie ist nicht öffentlich.") }}</p>
+</main>
+{%- endif %}
+<footer class="pub-foot"><a href="{{ project_url }}" rel="noopener">{{ _("Erstellt mit Saga") }}</a></footer>
+</body>
+</html>

@@ -26,6 +26,9 @@ if _missing:
     raise SystemExit("Saga: fehlende/ungesetzte Konfiguration: " + ", ".join(_missing))
 BASE_URL = E["BASE_URL"].rstrip("/")
 ADMIN_URL = (E.get("ADMIN_URL") or "").rstrip("/")       # Link "Admin-Bereich" im Benutzermenue (nur fuer Admins)
+# Eigene Domains nur fuer oeffentliche Seiten (Veroeffentlichen): dort gibt es "/", /@... und /static/ (app.py),
+# canonical der oeffentlichen Seiten zeigt dann auf diese Domain (publish.py)
+PUBLIC_HOSTS = frozenset(h.strip().lower() for h in E.get("PUBLIC_HOSTS", "").split(",") if h.strip())
 CACHE_TTL = int(E.get("CACHE_TTL", "60"))
 STATE_DIR = E.get("STATE_DIR", "/var/lib/saga")
 STATUS_INTERVAL = int(E.get("STATUS_INTERVAL", "60"))

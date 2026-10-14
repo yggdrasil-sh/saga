@@ -37,6 +37,8 @@
 - **Eigene Lesezeichen** für jeden Benutzer, nur für ihn sichtbar
 - **Seiten im Notion-Stil:** Blöcke, Unterseiten, Vorlagen, Versionen, Papierkorb, Export als Markdown
 - **Datenbanken** mit Tabelle, Board, Liste, Galerie und Kalender, Filtern, Relationen und Berechnungen
+- **Seiten veröffentlichen:** eine Seite (auf Wunsch mit Unterseiten) unter `/@name/seite` teilen – ohne Konto
+  lesbar, ohne JavaScript, optional als Startseite für Besucher
 - **Aufgaben** mit Fälligkeit, Priorität und Wiederholung
 - **Kalender (CalDAV):** Nextcloud, mailcow/SOGo, Radicale, iCloud … anzeigen und bearbeiten
 - **Immich:** eigene Fotos als Bilder und Titelbilder einbinden
