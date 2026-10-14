@@ -1,0 +1,98 @@
+/* Live-Kanal (1.4): Glocke, Benachrichtigungen (Popover / Handy: Bottom-Sheet), Anwesenheit im Seitenkopf,
+   Hinweis "X hat diese Seite geaendert", Einstellungen. Farben nur ueber die Variablen aus style.css (hell + dunkel). */
+
+/* Glocke im Kopf (Dashboard + Seiten) */
+.hk-bell{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:.3rem;padding:.4rem .55rem;line-height:1}
+.hk-bell-ic{width:17px;height:17px;flex:none}
+.hk-bell.has-unread{color:var(--fg)}
+.hk-bell-n{position:absolute;top:-.35rem;right:-.4rem;min-width:1.15rem;height:1.15rem;padding:0 .3rem;border-radius:999px;
+  background:var(--accent);color:var(--bg);font-size:.68rem;font-weight:700;line-height:1.15rem;text-align:center;
+  box-shadow:0 0 0 2px var(--bg)}
+.hk-bell.ring .hk-bell-ic{animation:lv-ring .9s ease-in-out}
+@keyframes lv-ring{0%,100%{transform:rotate(0)}15%{transform:rotate(14deg)}30%{transform:rotate(-12deg)}45%{transform:rotate(9deg)}
+  60%{transform:rotate(-6deg)}75%{transform:rotate(3deg)}}
+@media (prefers-reduced-motion:reduce){.hk-bell.ring .hk-bell-ic{animation:none}}
+
+/* Liste: Popover unter der Glocke */
+.lv-panel{position:fixed;z-index:70;width:min(390px,calc(100vw - 16px));max-height:min(560px,calc(100vh - 90px));display:flex;flex-direction:column;
+  background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.35);overflow:hidden}
+.lv-panel[hidden]{display:none}
+.lv-scrim{position:fixed;inset:0;z-index:69;background:rgba(0,0,0,.4)}
+.lv-scrim[hidden]{display:none}
+.lv-head{display:flex;align-items:center;gap:.5rem;padding:.7rem .6rem .65rem 1rem;border-bottom:1px solid var(--border)}
+.lv-grip{display:none}
+.lv-title-h{flex:1;margin:0;font-size:1rem;font-weight:600;letter-spacing:0;text-transform:none;color:var(--fg)}
+.lv-allread{font-size:.8rem;padding:.2rem .3rem}
+.lv-allread:disabled{opacity:.45;cursor:default;text-decoration:none}
+.lv-gear{padding:.3rem}
+.lv-gear-ic{width:16px;height:16px;display:block}
+.lv-close{display:none;font-size:1.3rem;line-height:1;padding:.2rem .45rem}
+.lv-state{margin:0;padding:1.4rem 1.2rem;color:var(--muted);font-size:.88rem;display:flex;flex-direction:column;gap:.35rem;text-align:center}
+.lv-state b{color:var(--fg);font-weight:600}
+.lv-list{list-style:none;margin:0;padding:.3rem;overflow:auto;flex:1}
+.lv-li+.lv-li{border-top:1px solid color-mix(in srgb,var(--border) 60%,transparent)}
+.lv-item{display:flex;align-items:flex-start;gap:.65rem;width:100%;padding:.6rem .6rem;border:0;border-radius:8px;background:none;color:var(--fg);
+  font:inherit;text-align:left;cursor:pointer}
+.lv-item:hover{background:var(--card-h)}
+.lv-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.lv-item.unread{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.lv-item.unread:hover{background:color-mix(in srgb,var(--accent) 12%,var(--card))}
+.lv-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:.15rem}
+.lv-text{font-size:.86rem;line-height:1.35}
+.lv-text b{font-weight:600}
+.lv-page{font-size:.82rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lv-page.gone{font-style:italic}
+.lv-ex{font-size:.8rem;color:var(--muted);line-height:1.4;border-left:2px solid var(--border);padding-left:.45rem;margin:.1rem 0;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.lv-time{font-size:.74rem;color:var(--muted)}
+.lv-dot{flex:none;width:.5rem;height:.5rem;margin-top:.45rem;border-radius:50%;background:var(--accent)}
+.lv-foot{padding:.5rem .8rem .7rem;border-top:1px solid var(--border);display:flex;justify-content:center}
+.lv-foot[hidden]{display:none}
+.lv-more{font-size:.82rem}
+
+/* Kreis mit Anfangsbuchstaben (Benachrichtigung, Anwesenheit) - Farbe je Person, Text weiss (Kontrast >= 4.5:1) */
+.lv-av{--lv-h:210;flex:none;display:inline-flex;align-items:center;justify-content:center;width:1.9rem;height:1.9rem;border-radius:50%;
+  background:hsl(var(--lv-h) 42% 36%);color:#fff;font-size:.8rem;font-weight:600;line-height:1;user-select:none}
+.lv-av-sys{background:var(--card-h);color:var(--fg);font-size:.95rem}
+.lv-av-gone{background:var(--unk)}
+
+/* Anwesenheit im Seitenkopf: kleine, ueberlappende Kreise + kurzer Text (breite Bildschirme) */
+.lv-pres{display:inline-flex;align-items:center;gap:0;margin-left:auto;margin-right:.3rem;min-width:0}
+.page-bar .lv-pres+.pg-cm-b,.page-bar .lv-pres+.pg-share-b{margin-left:0}
+.lv-pres .lv-av{width:1.55rem;height:1.55rem;font-size:.7rem;box-shadow:0 0 0 2px var(--bg);cursor:default}
+.lv-pres .lv-av+.lv-av{margin-left:-.35rem}
+.lv-pres .lv-av.editing{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
+.lv-pres .lv-av.editing+.lv-av{margin-left:-.1rem}
+.lv-av-more{background:var(--card-h);color:var(--fg)}
+.lv-pres-t{margin-left:.5rem;font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:16rem}
+@media (max-width:1180px){.lv-pres-t{display:none}}              /* wenig Platz: nur die Kreise (Name im Tooltip) */
+body.cm-open .lv-pres-t{display:none}
+
+/* Hinweis "X hat diese Seite geaendert" (Optik wie der Speicher-Konflikt, aber ruhiger) */
+.pg-remote{border-color:color-mix(in srgb,var(--accent) 55%,var(--border));background:color-mix(in srgb,var(--accent) 9%,var(--card))}
+.pg-remote .pgc-t{flex:1;min-width:12rem}
+.pg-remote-x{font-size:1.2rem;line-height:1;padding:.15rem .4rem}
+
+/* Einstellungen -> Konto -> Benachrichtigungen */
+.hk-notify-set{margin:1rem 0 .4rem;scroll-margin-top:4.5rem}      /* Zahnrad in der Liste springt hierher: nicht unter die Reiter */
+.lv-set-list{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.lv-set-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.6rem .8rem;cursor:pointer;font-size:.88rem}
+.lv-set-row+.lv-set-row{border-top:1px solid var(--border)}
+.lv-set-row:hover{background:var(--card-h)}
+.lv-set-t{flex:1;min-width:0}
+
+/* Handy: Bottom-Sheet, Anwesenheit nur als Kreise */
+@media (max-width:760px){
+  .lv-panel{left:0;right:0;bottom:0;top:auto;width:auto;max-height:82vh;min-height:42vh;border-radius:16px 16px 0 0;border-left:0;border-right:0;border-bottom:0;
+    box-shadow:0 -14px 40px rgba(0,0,0,.35);padding-bottom:env(safe-area-inset-bottom)}
+  .lv-head{position:relative;padding-top:1.05rem}
+  .lv-grip{display:block;position:absolute;top:.4rem;left:50%;width:2.4rem;height:.26rem;margin-left:-1.2rem;border-radius:999px;background:var(--border)}
+  .lv-close{display:inline-flex}
+  .lv-item{padding:.7rem .55rem}
+  .lv-pres-t{display:none}
+  .hk-bell{padding:.4rem .5rem}
+}
+@media (pointer:coarse){
+  .lv-allread,.lv-gear,.lv-close,.pg-remote-x{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center}
+  .lv-set-row{min-height:48px}
+}

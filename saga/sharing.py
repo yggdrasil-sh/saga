@@ -17,7 +17,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 import auth
 from db import connect as _db
-from saga import i18n
+from saga import bus, i18n
 from saga.core import _api_guard, _bad, _body, t
 from saga.notes import NOTE_META_COLS, _note_meta, note_chain
 
@@ -536,7 +536,7 @@ async def api_shares_put(nid: int, request: Request):
             tg = auth.norm_group(tg) or ""
             if tg not in mine:
                 return _bad(t("Teilen geht nur mit Gruppen, in denen du selbst bist."))
-        exists = c.execute("SELECT 1 FROM note_share WHERE note_id=? AND target_type=? AND target=?", (nid, typ, tg)).fetchone()
+        exists = c.execute("SELECT role FROM note_share WHERE note_id=? AND target_type=? AND target=?", (nid, typ, tg)).fetchone()
         if not exists and c.execute("SELECT COUNT(*) FROM note_share WHERE note_id=?", (nid,)).fetchone()[0] >= SHARE_MAX:
             return _bad(t("Höchstens {n} Freigaben je Seite.", n=SHARE_MAX), 409)
         if exists:
@@ -544,6 +544,9 @@ async def api_shares_put(nid: int, request: Request):
         else:
             c.execute("INSERT INTO note_share (note_id, owner_uid, target_type, target, role, created, created_by) VALUES (?,?,?,?,?,?,?)",
                       (nid, uid, typ, tg, role, time.time(), uid))
+        # Benachrichtigung (saga.notify) + "Mit mir geteilt" live neu laden (saga.live) - nach dem Commit zugestellt
+        bus.fire("share.set", c, owner=uid, note_id=nid, target_type=typ, target=tg, role=role,
+                 old_role=exists[0] if exists else None, actor=uid)
         return JSONResponse(_state(c, uid, nid), headers={"Cache-Control": "no-store"})
 
 
@@ -564,6 +567,8 @@ async def api_shares_delete(nid: int, request: Request):
         if not typ or not tg:
             return _bad(t("ungueltige Angabe"))
         n = c.execute("DELETE FROM note_share WHERE note_id=? AND owner_uid=? AND target_type=? AND target=?", (nid, uid, typ, tg)).rowcount
+        if n:
+            bus.fire("share.removed", c, owner=uid, note_id=nid, target_type=typ, target=tg)
         return JSONResponse(dict(_state(c, uid, nid), removed=bool(n)), headers={"Cache-Control": "no-store"})
 
 

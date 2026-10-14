@@ -121,6 +121,38 @@ server {
 }
 ```
 
+**Live channel (notifications, presence, live updates):** Saga sends updates over a connection that stays open
+(server-sent events, `GET /api/events`) – on the same port as everything else, with no WebSocket and no extra port. The
+proxy must not buffer this response and must not close the connection after a short time. Saga helps on its own: it
+sends `X-Accel-Buffering: no` and `Cache-Control: no-cache`, plus a heartbeat line every 25 seconds so idle timeouts
+don't kick in.
+
+- **Caddy:** nothing to do – `reverse_proxy` passes `text/event-stream` through immediately.
+- **nginx:** already works with the configuration above (tested: no buffering, the connection stays open beyond the
+  default `proxy_read_timeout` of 60 s). Recommended – and required if another buffering proxy sits in front – is a
+  separate block inside `server { … }`:
+
+```nginx
+    location /api/events {                 # live channel: no buffering, keep open
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1h;
+    }
+```
+
+- **Traefik:** works without any settings. Don't put a `buffering` middleware on the router and don't set idle
+  timeouts below 30 seconds.
+- **NetBird reverse proxy and others:** tested are Caddy 2, nginx 1.27 and Traefik 3.1. To check your proxy: sign in
+  with two accounts in two browsers and share a page from one with the other – the bell in the other browser must show
+  a 1 right away. In the developer tools (network), `/api/events` then stays open as “eventsource”. If a proxy buffers
+  or drops the connection, Saga switches to polling every 60 seconds on its own: everything still arrives, just later.
+
 **Request size:** Saga itself rejects requests that are too large with 413 – in general above 2 MB
 (`REQUEST_MAX_MB`), file uploads above `ATTACH_MAX_MB` (plus a little form overhead), the admin area above 1 MB.
 A limit in the reverse proxy (as above, slightly above `ATTACH_MAX_MB`) is still recommended: huge requests then
@@ -476,6 +508,27 @@ it from the account’s next sign-in. The user detail page only shows the number
 When an account is deleted, its shares and the shares given to it disappear; its comments on other people’s pages
 remain as “Deleted account”. When a group is deleted, shares with it end.
 
+### Notifications and live updates
+
+Saga keeps the dashboard and open pages up to date – without reloading.
+
+- **Bell** at the top right (dashboard and pages): the number shows unread notifications; a click opens the list (from
+  the bottom on phones). You get a notification when someone shares a page with you or changes your role, when someone
+  comments on your page, when someone replies in a thread you're part of, and when an admin withdraws one of your
+  published pages – never for your own actions. Several comments in the same thread within 10 minutes are combined
+  (“3 new replies in a thread”). A click opens the page (for comments, the thread right away) and marks the entry as
+  read; **“Mark all as read”** marks everything. Title and comment excerpt are only shown while you have access – after
+  access is removed, the entry says “No access anymore”. Notifications are kept for 90 days.
+- **Settings → Account → Notifications:** turn each kind on or off.
+- **Who's here:** if others have the page open, their initials appear in the page header (“Bert is also here”); a ring
+  means “Bert is editing”.
+- **The page changes while you have it open:** without unsaved changes, Saga quietly loads the new version (scroll
+  position and cursor stay where they were, as far as possible). If you're typing yourself, you see “Anna changed this
+  page” with **Reload** instead; if you save anyway, the familiar conflict notice takes over.
+- Comments, the unread dots, “Shared with me” and “💬 n” on the “Pages” button update instantly as well.
+- Without a live connection (proxy buffers, more than 5 open tabs of the same account) Saga checks every 60 seconds.
+  For the reverse proxy, see section 3; the admin area shows the number of active live connections under General.
+
 ### Account, calendars, Immich, apps
 
 In the user menu at the top right under **Settings** (one tab each):
@@ -671,6 +724,11 @@ message comes from the reverse proxy, raise the limit there (section 3).
 Intended: a new password signs out all other browser sessions and apps (e.g. in case a device was lost). Only the
 session and the app where you changed the password stay signed in.
 
+**The bell only updates after a minute, open pages don't update right away.**
+Then the live channel isn't getting through and Saga falls back to polling every 60 seconds. Usually the reverse proxy
+buffers the response of `/api/events` or closes it after a short time – settings in section 3. More than five open tabs
+with the same account also switch the oldest ones to polling.
+
 ## 13. All .env settings
 
 | Variable | Default | Meaning |
@@ -701,6 +759,9 @@ session and the app where you changed the password stay signed in.
 | `ICON_CDN` | selfh.st via jsDelivr | Source of service icons; empty = none |
 | `STATUS_INTERVAL` | `60` | Seconds between status checks |
 | `CACHE_TTL` | `60` | Seconds that account and service data is cached |
+| `LIVE_PING` | `25` | Seconds until the heartbeat line in the live channel (keeps proxies open) |
+| `LIVE_MAX_PER_USER` / `LIVE_MAX_TOTAL` | `5` / `2000` | Live connections per account (the oldest is closed) / in total |
+| `LIVE_MAX_AGE` | `3600` | After this many seconds the browser reopens the live connection (the session is checked again) |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Web search (section 10) |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Language and filter of the web search |
 | `LOG_LEVEL` | `info` | Log verbosity |

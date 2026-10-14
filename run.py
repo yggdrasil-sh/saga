@@ -22,9 +22,10 @@ class _HideSecrets(logging.Filter):
 
 
 def _config(app, host, port, lifespan):
+    # timeout_graceful_shutdown: offene Live-Verbindungen (SSE) halten das Beenden sonst beliebig lange auf
     return uvicorn.Config(app, host=host, port=port, proxy_headers=True, lifespan=lifespan,
                           forwarded_allow_ips=os.environ.get("TRUSTED_PROXIES", "127.0.0.1"),
-                          server_header=False, log_level=os.environ.get("LOG_LEVEL", "info"))
+                          server_header=False, log_level=os.environ.get("LOG_LEVEL", "info"), timeout_graceful_shutdown=5)
 
 
 async def main():
@@ -37,10 +38,19 @@ async def main():
                                               int(os.environ.get("ADMIN_PORT", "8081")), "off")))
     logging.getLogger("uvicorn.access").addFilter(_HideSecrets())   # nach uvicorn.Config (richtet das Logging ein)
     tasks = [asyncio.create_task(s.serve()) for s in servers]
+
+    async def _end_live():
+        """Beim Beenden zuerst die Live-Verbindungen schliessen ("bye") - uvicorn wartet sonst auf sie."""
+        from saga import live
+        while not any(s.should_exit for s in servers):
+            await asyncio.sleep(0.5)
+        live.stop()
+    watcher = asyncio.create_task(_end_live())
     await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
     for s in servers:              # Signal kommt nur bei einem Server an -> beide beenden
         s.should_exit = True
     await asyncio.gather(*tasks, return_exceptions=True)
+    watcher.cancel()
 
 
 def reset_admin(name):

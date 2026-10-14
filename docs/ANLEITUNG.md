@@ -121,6 +121,39 @@ server {
 }
 ```
 
+**Live-Kanal (Benachrichtigungen, Anwesenheit, Live-Aktualisierung):** Saga schickt Neuigkeiten über eine offen
+bleibende Verbindung (Server-Sent Events, `GET /api/events`) – über denselben Port wie alles andere, ohne WebSocket und
+ohne zusätzlichen Port. Der Proxy darf diese Antwort nicht puffern und die Verbindung nicht nach kurzer Zeit schließen.
+Saga hilft dabei selbst: Es sendet `X-Accel-Buffering: no` und `Cache-Control: no-cache` und alle 25 Sekunden eine
+Heartbeat-Zeile, damit Leerlauf-Timeouts nicht greifen.
+
+- **Caddy:** nichts zu tun – `reverse_proxy` gibt `text/event-stream` sofort weiter.
+- **nginx:** funktioniert schon mit der Konfiguration oben (geprüft: kein Puffern, Verbindung bleibt auch über das
+  Standard-`proxy_read_timeout` von 60 s hinaus offen). Empfohlen – und nötig, wenn davor noch ein puffernder Proxy
+  sitzt – ist ein eigener Block im `server { … }`:
+
+```nginx
+    location /api/events {                 # Live-Kanal: nicht puffern, lange offen lassen
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1h;
+    }
+```
+
+- **Traefik:** funktioniert ohne Einstellungen. Keine `buffering`-Middleware auf den Router legen und keine
+  Leerlauf-Timeouts unter 30 Sekunden setzen.
+- **NetBird-Reverse-Proxy und andere:** geprüft sind Caddy 2, nginx 1.27 und Traefik 3.1. So prüfst du deinen Proxy:
+  Zwei Konten in zwei Browsern anmelden, im einen eine Seite mit dem anderen teilen – die Glocke im anderen Browser muss
+  sofort eine 1 zeigen. In den Entwicklerwerkzeugen (Netzwerk) steht `/api/events` dann als „eventsource“ dauerhaft offen.
+  Puffert ein Proxy oder bricht er die Verbindung ab, schaltet Saga von selbst auf Abfrage alle 60 Sekunden um: Alles
+  kommt an, nur später.
+
 **Größe von Anfragen:** Saga lehnt zu große Anfragen selbst mit 413 ab – allgemein ab 2 MB (`REQUEST_MAX_MB`),
 Datei-Uploads ab `ATTACH_MAX_MB` (+ etwas Formular-Rahmen), im Admin-Bereich ab 1 MB. Eine Grenze im Reverse
 Proxy (wie oben, etwas über `ATTACH_MAX_MB`) ist trotzdem empfehlenswert: Dann kommen riesige Anfragen gar nicht
@@ -488,6 +521,29 @@ die Anzahl der Freigaben, keine Inhalte. Wird ein Konto gelöscht, verschwinden 
 seine Kommentare auf fremden Seiten bleiben als „Gelöschtes Konto“ stehen. Wird eine Gruppe gelöscht, enden die
 Freigaben an sie.
 
+### Benachrichtigungen und Live-Aktualisierung
+
+Saga hält das Dashboard und offene Seiten auf dem neuesten Stand – ohne Neuladen.
+
+- **Glocke** oben rechts (Dashboard und Seiten): Die Zahl nennt ungelesene Benachrichtigungen, ein Klick öffnet die
+  Liste (auf dem Handy von unten). Eine Benachrichtigung bekommst du, wenn jemand eine Seite mit dir teilt oder deine
+  Rolle ändert, wenn jemand deine Seite kommentiert, wenn jemand in einer Unterhaltung antwortet, an der du beteiligt
+  bist, und wenn ein Admin eine Veröffentlichung von dir zurückzieht – nie für deine eigenen Aktionen. Mehrere
+  Kommentare derselben Unterhaltung innerhalb von 10 Minuten fasst Saga zusammen („3 neue Antworten in einer
+  Unterhaltung“). Ein Klick öffnet die Seite (bei Kommentaren gleich die Unterhaltung) und markiert den Eintrag als
+  gelesen; **„Alle gelesen“** markiert alles. Titel und Kommentar-Auszug stehen nur da, solange du Zugriff hast – nach
+  einem Entzug zeigt der Eintrag „Kein Zugriff mehr“. Benachrichtigungen bleiben 90 Tage gespeichert.
+- **Einstellungen → Konto → Benachrichtigungen:** jede Art einzeln an- oder abschalten.
+- **Wer gerade hier ist:** Haben andere die Seite offen, stehen ihre Anfangsbuchstaben im Seitenkopf („Bert ist auch
+  hier“); ein Ring bedeutet „Bert bearbeitet gerade“.
+- **Die Seite ändert sich, während du sie offen hast:** Ohne ungespeicherte Änderungen lädt Saga die neue Fassung still
+  nach (Scroll-Position und Schreibmarke bleiben, so gut es geht). Schreibst du gerade selbst, erscheint stattdessen
+  „Anna hat diese Seite geändert“ mit **Neu laden**; speicherst du trotzdem, greift der bekannte Konflikt-Hinweis.
+- Kommentare, die Punkte für Ungelesenes, „Mit mir geteilt“ und „💬 n“ am Knopf „Seiten“ aktualisieren sich ebenfalls
+  sofort.
+- Ohne Live-Verbindung (Proxy puffert, mehr als 5 offene Tabs desselben Kontos) fragt Saga alle 60 Sekunden nach.
+  Für den Reverse Proxy siehe Abschnitt 3; der Admin-Bereich zeigt unter Allgemein die Zahl aktiver Live-Verbindungen.
+
 ### Konto, Kalender, Immich, Apps
 
 Im Benutzermenü oben rechts unter **Einstellungen** (je ein Reiter):
@@ -683,6 +739,11 @@ Kommt die Meldung vom Reverse Proxy, dort die Grenze anheben (Abschnitt 3).
 Gewollt: Ein neues Passwort meldet alle anderen Browser-Sitzungen und Apps ab (z. B. falls ein Gerät verloren
 ging). Nur die Sitzung und die App, in der du das Passwort geändert hast, bleiben angemeldet.
 
+**Die Glocke zählt erst nach einer Minute, offene Seiten aktualisieren sich nicht sofort.**
+Dann kommt der Live-Kanal nicht durch und Saga fragt ersatzweise alle 60 Sekunden ab. Meist puffert der Reverse Proxy
+die Antwort von `/api/events` oder schließt sie nach kurzer Zeit – Einstellungen in Abschnitt 3. Auch mehr als fünf
+offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
+
 ## 13. Alle Einstellungen der .env
 
 | Variable | Standard | Bedeutung |
@@ -713,6 +774,9 @@ ging). Nur die Sitzung und die App, in der du das Passwort geändert hast, bleib
 | `ICON_CDN` | selfh.st über jsDelivr | Quelle der Dienst-Symbole; leer = keine |
 | `STATUS_INTERVAL` | `60` | Sekunden zwischen Status-Prüfungen |
 | `CACHE_TTL` | `60` | Sekunden, die Konto- und Dienstdaten zwischengespeichert werden |
+| `LIVE_PING` | `25` | Sekunden bis zur Heartbeat-Zeile im Live-Kanal (hält Proxys offen) |
+| `LIVE_MAX_PER_USER` / `LIVE_MAX_TOTAL` | `5` / `2000` | Live-Verbindungen je Konto (die älteste wird geschlossen) / insgesamt |
+| `LIVE_MAX_AGE` | `3600` | Nach so vielen Sekunden baut der Browser die Live-Verbindung neu auf (Sitzung wird dabei frisch geprüft) |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Websuche (Abschnitt 10) |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Sprache und Filter der Websuche |
 | `LOG_LEVEL` | `info` | Ausführlichkeit des Logs |

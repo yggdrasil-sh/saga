@@ -46,6 +46,10 @@
     <p class="hk-hint adm-share-off">{{ _("Erst „Teilen erlauben“ einschalten, dann lässt sich das einstellen.") }}</p>
   </section>
   <section class="adm-card">
+    <h3>{{ _("Live-Kanal") }}</h3>
+    <p class="hk-hint">{{ _("Aktive Live-Verbindungen: {n}", n=live_n) }}<br>{{ _("Offene Browser-Tabs und Apps, die Benachrichtigungen und Änderungen sofort bekommen (über den normalen Web-Port, siehe Anleitung „Reverse Proxy“).") }}</p>
+  </section>
+  <section class="adm-card">
     <h3>{{ _("Updates") }}</h3>
     {{ check(_('Auf neue Versionen hinweisen'), 'update_check', st.update_check, _('Fragt höchstens zweimal am Tag bei GitHub nach der neuesten Version und zeigt hier im Admin-Bereich einen Hinweis. Dabei wird nur die neueste Versionsnummer abgerufen, sonst nichts übertragen.')) }}
   </section>

@@ -75,8 +75,34 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   kein „Neu“, keine Ansichts-Einstellungen und kein „+“ für Ansichten. Spanisch: Rollen „Ver / Comentar / Editar“,
   Etikett „Puedes comentar“
 - Datenbank-Migration 5: `note.created_by`, `note_version.author`
+- **Live-Kanal und Benachrichtigungen (1.4):** Glocke im Kopf von Dashboard und Seiten mit Zahl ungelesener
+  Benachrichtigungen, Liste als Popover (Handy: Bottom-Sheet), „Alle gelesen“, Klick öffnet Seite bzw. Unterhaltung.
+  Benachrichtigt wird, wenn jemand eine Seite mit dir teilt oder deine Rolle ändert, deine Seite kommentiert, in einer
+  Unterhaltung antwortet, an der du beteiligt bist, oder ein Admin eine Veröffentlichung zurückzieht – nie für eigene
+  Aktionen; mehrere Kommentare derselben Unterhaltung innerhalb von 10 Minuten werden gebündelt. Titel, Namen und
+  Kommentar-Auszug (höchstens 120 Zeichen) nur mit Zugriff, danach „Kein Zugriff mehr“; 90 Tage aufbewahrt; je Art
+  abschaltbar unter Einstellungen → Konto → „Benachrichtigungen“
+  - Live-Aktualisierung ohne Neuladen: Kommentare und Zahlen am Block, ungelesen-Punkte, „Mit mir geteilt“, „💬 n“ am
+    Knopf „Seiten“. Ändert jemand anderes die offene Seite: ohne ungespeicherte Änderungen still neu laden
+    (Scroll-Position und Schreibmarke bleiben), sonst Hinweis „Name hat diese Seite geändert“ mit „Neu laden“
+  - Anwesenheit im Seitenkopf: „Name ist auch hier“ / „Name bearbeitet gerade“ (Anfangsbuchstaben, läuft nach ~45 s ab)
+  - Server-Sent Events über den normalen Web-Port (kein zusätzlicher Port, kein WebSocket): `GET /api/events`
+    (Sitzung oder Geräte-Schlüssel `Authorization: Bearer hkd_…`, Last-Event-ID, Heartbeat alle 25 s,
+    `X-Accel-Buffering: no`, höchstens 5 Verbindungen je Konto); bricht der Kanal ab, fragt die Seite alle 60 s ab.
+    Ereignisse nur an Berechtigte, Rechte beim Versand geprüft. Anleitung (de/en/es): Caddy, nginx, Traefik –
+    geprüft mit Caddy 2, nginx 1.27 (Standard und empfohlener Block) und Traefik 3.1
+  - Schnittstelle für die Apps: `GET /api/events`, `POST /api/presence`, `GET /api/notifications`
+    (`?unread=1`, `?before=`, `?limit=`), `POST /api/notifications/read`, `GET`/`PUT /api/notifications/settings`;
+    Benachrichtigungen enthalten `text` in der Konto-Sprache. `MIN_APP` bleibt 1.0.0
+  - Admin → Allgemein: Anzahl aktiver Live-Verbindungen. Konto löschen entfernt Benachrichtigungen und beendet
+    Live-Verbindungen sofort; als Auslöser wird das Konto anonymisiert
+  - Neue Tabelle `notification` (keine Migration nötig)
 
 ### Geändert
+- Beenden des Servers: offene Live-Verbindungen werden zuerst geschlossen; uvicorn wartet höchstens 5 s
+  (`timeout_graceful_shutdown`)
+- `tools/test-stack.sh`: `SAGA_PORT` für einen zweiten Test-Stack auf demselben Host (eigener Port, Admin nur lokal,
+  eigenes Image-Tag und eigene Test-Container)
 - Zentrale Zugriffsprüfung (`saga/sharing.py`, `note_access`) für alle Seiten-, Datenbank-, Datei-, Such- und
   Export-Endpunkte; ohne Rolle antworten sie wie bisher mit 404, mit zu kleiner Rolle mit 403. Titel nicht geteilter
   Seiten erreichen Nicht-Eigentümer weder über Inhalt, Suche, Export noch Rückverweise; Zwei-Wege-Relationen ändern

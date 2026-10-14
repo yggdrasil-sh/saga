@@ -14,6 +14,7 @@ import time
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from db import connect as _db
+from saga import bus
 from saga.core import _api_guard, _bad, _body, t
 from saga.notes import _iter_blocks
 from saga.sharing import RANK, Access, access, names, person
@@ -151,6 +152,8 @@ async def api_comment_add(nid: int, request: Request):
         cid = c.execute("INSERT INTO note_comment (note_id, owner_uid, block_id, thread_id, uid, body, created) VALUES (?,?,?,?,?,?,?)",
                         (nid, owner, block, thread, uid, body, now)).lastrowid
         _seen(c, uid, thread or cid, now)
+        # Benachrichtigungen an Beteiligte/Eigentuemer (saga.notify), Zahlen live an alle mit Zugriff (saga.live)
+        bus.fire("comment.added", c, note_id=nid, owner=owner, comment_id=cid, thread_id=thread or cid, block_id=block, author=uid)
         nm = names(c, [uid])
         return JSONResponse({"comment": _cdict((cid, thread, block, uid, body, now, None), uid, nm), "thread_id": thread or cid})
 
@@ -189,6 +192,7 @@ async def api_comment_edit(cid: int, request: Request):
             return _bad(t("Höchstens {n} Zeichen.", n=COMMENT_MAX))
         now = time.time()
         c.execute("UPDATE note_comment SET body=?, edited=? WHERE id=?", (body, now, cid))
+        bus.fire("comments.changed", c, note_id=r[1])
         row = c.execute(f"SELECT {C_COLS} FROM note_comment WHERE id=?", (cid,)).fetchone()
         return JSONResponse({"ok": True, "comment": _cdict(row, uid, names(c, [uid]))})
 
@@ -225,6 +229,7 @@ def api_comment_delete(cid: int, request: Request, all: int = 0):
                     c.execute("SELECT 1 FROM note_comment WHERE id=? AND body=''", (r[2],)).fetchone():
                 n += c.execute("DELETE FROM note_comment WHERE id=?", (r[2],)).rowcount
                 c.execute("DELETE FROM note_comment_seen WHERE thread_id=?", (r[2],))
+        bus.fire("comments.changed", c, note_id=r[1])
     return JSONResponse({"ok": True, "deleted": n, "soft": soft})
 
 
@@ -245,6 +250,7 @@ async def api_comment_resolve(cid: int, request: Request):
         root = r[2] or r[0]
         now = time.time() if on else None
         c.execute("UPDATE note_comment SET resolved_at=?, resolved_by=? WHERE id=?", (now, uid if on else None, root))
+        bus.fire("comments.changed", c, note_id=r[1])
     return JSONResponse({"ok": True, "thread_id": root, "resolved_at": now})
 
 
@@ -259,4 +265,5 @@ def api_comment_seen(cid: int, request: Request):
         if err is not None:
             return err
         _seen(c, uid, r[2] or r[0])
+        bus.fire("comment.seen", c, uid=uid, note_id=r[1])          # ungelesen-Punkte in anderen Tabs
     return JSONResponse({"ok": True})

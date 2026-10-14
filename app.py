@@ -13,6 +13,7 @@ import asyncio
 import json
 import os
 import re
+import time
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 from fastapi import FastAPI, Request
@@ -24,7 +25,7 @@ import db
 from version import API_LEVEL, MIN_APP, VERSION
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
-from saga import i18n
+from saga import i18n, live, notify
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, LangMiddleware, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
@@ -51,9 +52,19 @@ async def lifespan(_app):
     await asyncio.to_thread(auth.bootstrap_admin)
     files_init()
     task = asyncio.create_task(_status_loop())
+    live.start()                                             # Live-Kanal (/api/events) und Anwesenheit
 
     async def _gc_loop():
+        purged = 0.0
         while True:
+            try:
+                if time.time() - purged >= 86400:             # Benachrichtigungen aelter als 90 Tage: beim Start und taeglich
+                    purged = time.time()
+                    n = await asyncio.to_thread(notify.purge)
+                    if n:
+                        print(f"notify: {n} alte Benachrichtigung(en) entfernt", flush=True)
+            except Exception as ex:
+                print(f"notify-purge: {type(ex).__name__}: {ex}", flush=True)
             await asyncio.sleep(3600)
             try:
                 n = await asyncio.to_thread(files_gc)
@@ -64,6 +75,7 @@ async def lifespan(_app):
                 print(f"files-gc: {type(ex).__name__}: {ex}", flush=True)
     gc_task = asyncio.create_task(_gc_loop())
     yield
+    live.stop()
     task.cancel()
     gc_task.cancel()
 
@@ -163,3 +175,5 @@ app.include_router(app_api.router)
 app.include_router(publish.router)          # /@name/... (oeffentlich) und /api/notes/{nid}/publish, /api/account/public-name
 app.include_router(sharing.router)          # Teilen: /api/shared, /api/notes/{nid}/shares, /api/share/targets
 app.include_router(comments.router)         # Kommentare: /api/notes/{nid}/comments, /api/comments/{cid}...
+app.include_router(notify.router)           # Benachrichtigungen: /api/notifications, .../read, .../settings
+app.include_router(live.router)             # Live-Kanal: /api/events (SSE), /api/presence

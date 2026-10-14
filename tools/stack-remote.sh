@@ -5,15 +5,27 @@
 #      + Radicale (CalDAV-Testserver), dann alle Tests (alte Tests ueber tests/pgshim auf Postgres)
 set -e
 cd "$(dirname "$0")/.."
-TESTS="isolation funktion kalender_modul kalender_api kalender_schreiben app_token app_login spalten vorlagen immich widgets inline archiv bilder dienste standalone sso_ldap app_pair versionen sprachen haertung veroeffentlichen teilen"
+TESTS="isolation funktion kalender_modul kalender_api kalender_schreiben app_token app_login spalten vorlagen immich widgets inline archiv bilder dienste standalone sso_ldap app_pair versionen sprachen haertung veroeffentlichen teilen live"
 rnd() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+# Zweiter Stack auf demselben Host (z. B. SAGA_DIR=/root/saga-live SAGA_PORT=18086): eigener Port (Admin = Port+1, nur
+# 127.0.0.1), eigenes Image-Tag und eigene Namen der Test-Container - der Compose-Projektname kommt vom Verzeichnis.
+P=$(basename "$PWD")
+TN=hk-test${SAGA_PORT:+-$P}
 if [ ! -f .env ] || grep -q '^SECRET_KEY=$' .env; then
   IP=$(hostname -I | awk '{print $1}')
-  sed -e "s|^BASE_URL=.*|BASE_URL=http://$IP:8080|" -e "s|^ADMIN_URL=.*|ADMIN_URL=http://$IP:8081|" \
-      -e "s|^SECRET_KEY=.*|SECRET_KEY=$(rnd 32)|" -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(rnd 24)|" \
-      -e "s|^ADMIN_BIND=.*|ADMIN_BIND=0.0.0.0|" -e "s|^CANONICAL_REDIRECT=.*|CANONICAL_REDIRECT=false|" .env.example > .env
+  if [ -n "$SAGA_PORT" ]; then
+    sed -e "s|^BASE_URL=.*|BASE_URL=http://$IP:$SAGA_PORT|" -e "s|^ADMIN_URL=.*|ADMIN_URL=http://127.0.0.1:$((SAGA_PORT + 1))|" \
+        -e "s|^HOST_PORT=.*|HOST_PORT=$SAGA_PORT|" -e "s|^ADMIN_HOST_PORT=.*|ADMIN_HOST_PORT=$((SAGA_PORT + 1))|" \
+        -e "s|^ADMIN_BIND=.*|ADMIN_BIND=127.0.0.1|" -e "s|^SAGA_VERSION=.*|SAGA_VERSION=test-$P|" \
+        -e "s|^SECRET_KEY=.*|SECRET_KEY=$(rnd 32)|" -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(rnd 24)|" \
+        -e "s|^CANONICAL_REDIRECT=.*|CANONICAL_REDIRECT=false|" .env.example > .env
+  else
+    sed -e "s|^BASE_URL=.*|BASE_URL=http://$IP:8080|" -e "s|^ADMIN_URL=.*|ADMIN_URL=http://$IP:8081|" \
+        -e "s|^SECRET_KEY=.*|SECRET_KEY=$(rnd 32)|" -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(rnd 24)|" \
+        -e "s|^ADMIN_BIND=.*|ADMIN_BIND=0.0.0.0|" -e "s|^CANONICAL_REDIRECT=.*|CANONICAL_REDIRECT=false|" .env.example > .env
+  fi
   chmod 600 .env
-  echo ".env erzeugt (BASE_URL=http://$IP:8080)"
+  echo ".env erzeugt ($(grep '^BASE_URL=' .env))"
 fi
 docker compose up -d --build --remove-orphans 2>&1 | tail -3
 C=$(docker compose ps -q saga)
@@ -30,11 +42,11 @@ X() { docker exec "$C" sh -c "$1" </dev/null; }
 # Nur Testkonten mit Wegwerf-Passwoertern; die Container laufen nur fuer die Tests.
 NET=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$C")
 LDAP_PW=$(rnd 12)
-docker rm -f hk-test-ldap hk-test-oidc >/dev/null 2>&1 || true
-docker run -d --name hk-test-ldap --network "$NET" --network-alias ldap.test --ulimit nofile=1024:1024 \
+docker rm -f $TN-ldap $TN-oidc >/dev/null 2>&1 || true
+docker run -d --name $TN-ldap --network "$NET" --network-alias ldap.test --ulimit nofile=1024:1024 \
   -e LDAP_ORGANISATION=Test -e LDAP_DOMAIN=example.org -e LDAP_ADMIN_PASSWORD="$LDAP_PW" -e LDAP_TLS_VERIFY_CLIENT=never \
   docker.io/osixia/openldap:1.5.0 >/dev/null
-docker run -d --name hk-test-oidc --network "$NET" --network-alias mockoidc -e 'JSON_CONFIG={"interactiveLogin":true}' \
+docker run -d --name $TN-oidc --network "$NET" --network-alias mockoidc -e 'JSON_CONFIG={"interactiveLogin":true}' \
   ghcr.io/navikt/mock-oauth2-server:2.1.10 >/dev/null
 sleep 8
 X "rm -rf /tmp/hkapp /tmp/hkstage /tmp/kal && mkdir -p /tmp/hkapp /tmp/hkstage /tmp/kal/py"
@@ -68,4 +80,4 @@ from db import connect
 with connect() as c, c:
     c.execute(\"DELETE FROM users WHERE username IN (%s, %s)\" % (repr(\"hk-test-a\"), repr(\"hk-test-b\")))
 "'
-docker rm -f hk-test-ldap hk-test-oidc >/dev/null 2>&1 || true
+docker rm -f $TN-ldap $TN-oidc >/dev/null 2>&1 || true

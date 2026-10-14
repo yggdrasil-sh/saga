@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import connect as _db
-from saga import i18n, publish, sharing
+from saga import i18n, live, publish, sharing
 from saga.core import TZ, BodyLimit, LangMiddleware
 from saga.i18n import t
 from version import REPO, VERSION, newer
@@ -545,7 +545,8 @@ def settings_page(request: Request):
     me = _me(request)
     if not me:
         return _go("/login")
-    return _page(request, "settings.html", me, st=auth.settings(fresh=True), langs=i18n.NAMES, published=publish.all_published())
+    return _page(request, "settings.html", me, st=auth.settings(fresh=True), langs=i18n.NAMES, published=publish.all_published(),
+                 live_n=live.count())
 
 
 @admin.post("/settings")

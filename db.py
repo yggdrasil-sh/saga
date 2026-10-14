@@ -31,7 +31,7 @@ _pool_lock = threading.Lock()
 
 # Tabellen mit Ganzzahl-Schluessel "id" -> INSERT liefert die neue id (cur.lastrowid)
 ID_TABLES = {"task", "note", "note_version", "device_login", "cal_account", "app_token", "users", "groups",
-             "service", "bookmark", "note_share", "note_comment"}
+             "service", "bookmark", "note_share", "note_comment", "notification"}
 # INSERT OR REPLACE: Konfliktspalten je Tabelle
 UPSERT_KEYS = {"immich_key": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",),
                "note_share": ("note_id", "target_type", "target"), "note_comment_seen": ("uid", "thread_id")}
@@ -145,6 +145,12 @@ class Conn:
 
     def __init__(self, pg):
         self.pg = pg
+        self._after = []
+
+    def after_commit(self, fn):
+        """fn() nach dem naechsten erfolgreichen Commit aufrufen (Live-Ereignisse: erst senden, wenn die Aenderung
+        wirklich gespeichert ist). Bei Rollback verworfen."""
+        self._after.append(fn)
 
     def execute(self, sql, args=()):
         q, skip, returning = translate(sql)
@@ -171,8 +177,15 @@ class Conn:
 
     def commit(self):
         self.pg.commit()
+        fns, self._after = self._after, []
+        for fn in fns:
+            try:
+                fn()
+            except Exception as ex:  # noqa: BLE001 - Nachlauf (z. B. Live-Ereignis) darf den Commit nicht nachtraeglich scheitern lassen
+                print(f"db: after_commit: {type(ex).__name__}: {ex}", flush=True)
 
     def rollback(self):
+        self._after = []
         self.pg.rollback()
 
     def __enter__(self):
@@ -180,9 +193,9 @@ class Conn:
 
     def __exit__(self, et, ev, tb):
         if et is None:
-            self.pg.commit()
+            self.commit()
         else:
-            self.pg.rollback()
+            self.rollback()
         return False
 
 
@@ -342,6 +355,19 @@ CREATE INDEX IF NOT EXISTS note_comment_owner ON note_comment (owner_uid, note_i
 CREATE INDEX IF NOT EXISTS note_comment_thread ON note_comment (thread_id);   -- Antworten je Unterhaltung (Ungelesen-Abfrage)
 CREATE TABLE IF NOT EXISTS note_comment_seen (
     uid TEXT NOT NULL, thread_id BIGINT NOT NULL, seen_at DOUBLE PRECISION NOT NULL, PRIMARY KEY (uid, thread_id));
+
+-- Benachrichtigungen (1.4): je Empfaenger (uid); Titel/Namen/Auszuege werden erst beim Lesen und nur mit Zugriff
+-- ermittelt (nichts davon steht hier). 90 Tage aufbewahrt (saga.notify.purge).
+CREATE TABLE IF NOT EXISTS notification (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL,
+    kind TEXT NOT NULL,                           -- share.added | share.role | comment.new | comment.reply | comment.mention | publish.withdrawn
+    actor_uid TEXT,                               -- wer es ausgeloest hat (NULL = Konto geloescht / Admin)
+    note_id BIGINT, comment_id BIGINT,            -- betroffene Seite, (neuester) Kommentar
+    data TEXT NOT NULL DEFAULT '{}',              -- JSON: Rolle, Unterhaltung, Anzahl gebuendelter Kommentare ...
+    created DOUBLE PRECISION NOT NULL, read_at DOUBLE PRECISION);
+CREATE INDEX IF NOT EXISTS notification_uid ON notification (uid, id DESC);
+CREATE INDEX IF NOT EXISTS notification_unread ON notification (uid) WHERE read_at IS NULL;
+CREATE INDEX IF NOT EXISTS notification_created ON notification (created);
 """
 # --- Schema-Versionen und Migrationen ----------------------------------------------------------------
 # SCHEMA oben ist Stand 1 (plus neue Tabellen mit CREATE TABLE IF NOT EXISTS). Alles, was bestehende

@@ -386,5 +386,26 @@
   });
   document.addEventListener('hk-page-ready', function () { placeBubbles(); });
 
-  window.HKComments = { openBlock: openBlock, openAll: openAll, refresh: function () { return reload(); } };
+  // Live (1.4, static/live.js): Kommentare anderer - Zahlen sofort; die offene Leiste wird neu gezeichnet, ohne dass
+  // angefangene Eingaben (neuer Kommentar, Antwort, Bearbeiten) oder die Scroll-Position verloren gehen
+  function liveRefresh() {
+    return reload().then(function () {
+      if (!C.open) return;
+      var keep = [].map.call(panel.querySelectorAll('textarea'), function (ta) {
+        return { v: ta.value, a: ta.selectionStart, b: ta.selectionEnd, f: document.activeElement === ta };
+      }), top = list.scrollTop;
+      render();
+      var now = [].slice.call(panel.querySelectorAll('textarea'));
+      var pairs = now.length === keep.length ? now.map(function (ta, i) { return [ta, keep[i]]; })
+        : (now.length && keep.length ? [[now[now.length - 1], keep[keep.length - 1]]] : []);
+      pairs.forEach(function (p) {
+        if (!p[1].v) return;
+        p[0].value = p[1].v; p[0].dispatchEvent(new Event('input', { bubbles: true }));
+        if (p[1].f) { p[0].focus(); try { p[0].setSelectionRange(p[1].a, p[1].b); } catch (e) { /* egal */ } }
+      });
+      list.scrollTop = top;
+    });
+  }
+
+  window.HKComments = { openBlock: openBlock, openAll: openAll, refresh: function () { return reload(); }, live: liveRefresh };
 })();
