@@ -473,7 +473,7 @@ body.notes-page #pg-full{display:none}
 .trash-meta{font-size:.78rem;color:var(--muted)}
 
 /* Dialog */
-.modal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.45);display:grid;place-items:center;padding:1rem}
+.modal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.45);display:grid;grid-template-columns:minmax(0,1fr);place-items:center;padding:1rem}
 .modal-box{width:min(880px,100%);max-height:min(640px,90vh);display:flex;flex-direction:column;background:var(--card);
   border:1px solid var(--border);border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,.45)}
 .modal-head{display:flex;align-items:center;justify-content:space-between;padding:.8rem 1rem;border-bottom:1px solid var(--border)}
@@ -1358,30 +1358,76 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 .ce-popover-item.pg-slash-hidden{display:none!important}
 
 /* Veroeffentlichen: Dialog (Seitenmenue) und Hinweis im Seitenkopf */
-.pub-dlg{display:flex;flex-direction:column;gap:.55rem}
+.pub-dlg{display:flex;flex-direction:column;gap:.6rem}
 .pub-dlg>p{margin:0}
-.pub-opt{display:flex;gap:.6rem;align-items:flex-start;cursor:pointer;font-size:.9rem}
-.pub-opt input{accent-color:var(--accent);width:1.05rem;height:1.05rem;margin:.15rem 0 0;flex:none}
-.pub-opt>span{display:flex;flex-direction:column}
+/* Schalter statt Haekchen (role=switch): Text links, Schalter rechts; Fokus deutlich sichtbar */
+.pub-opt{display:flex;gap:.8rem;align-items:flex-start;justify-content:space-between;cursor:pointer;font-size:.9rem}
+.pub-opt-tx{display:flex;flex-direction:column;min-width:0}
 .pub-opt .hk-hint{margin:.1rem 0 0}
-.pub-main-sw{padding:.6rem .7rem;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
+.hk-switch{-webkit-appearance:none;appearance:none;flex:none;position:relative;width:2.3rem;height:1.3rem;margin:.05rem 0 0;border-radius:999px;
+background:color-mix(in srgb,var(--muted) 45%,var(--bg));border:1px solid var(--field);cursor:pointer;transition:background .15s}
+.hk-switch::after{content:"";position:absolute;top:50%;left:.12rem;width:.95rem;height:.95rem;border-radius:50%;background:#fff;
+box-shadow:0 1px 2px rgba(0,0,0,.35);transform:translateY(-50%);transition:left .15s}
+.hk-switch:checked{background:var(--accent);border-color:var(--accent)}
+.hk-switch:checked::after{left:calc(100% - 1.07rem)}
+.hk-switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hk-switch:disabled{opacity:.45;cursor:not-allowed}
+@media (prefers-reduced-motion:reduce){.hk-switch,.hk-switch::after{transition:none}}
+.pub-main-sw{padding:.65rem .75rem;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
 .pub-main-sw .pub-opt-t{font-weight:600}
-.pub-dim{opacity:.6}
-.pub-url{font:.8rem/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted);overflow-wrap:anywhere}
-.pub-link{display:flex;flex-direction:column;gap:.35rem;padding:.6rem .7rem;border:1px dashed var(--border);border-radius:8px}
-.pub-link-a{overflow-wrap:anywhere;color:var(--accent);font-size:.88rem}
+/* Optionen: solange privat mit Ueberschrift "Gilt, sobald die Seite oeffentlich ist" */
+.pub-opts{display:flex;flex-direction:column;gap:.6rem;margin-top:.2rem}
+.pub-opts-h{font-size:.78rem;font-weight:600;color:var(--muted);letter-spacing:.02em}
+/* Adressen brechen nur nach "/" um (hk-url aus common.js) */
+.hk-url-seg{display:inline-block;max-width:100%;overflow-wrap:anywhere;text-decoration:inherit}
+.pub-url{font:.8rem/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted)}
+/* Link-Karte: durchgehende, leicht getoente Flaeche; solange privat gedaempft und ohne Link */
+.pub-link{display:flex;flex-direction:column;gap:.45rem;padding:.7rem .8rem;border-radius:8px;background:color-mix(in srgb,var(--accent) 10%,var(--bg))}
+.pub-link.is-future{background:color-mix(in srgb,var(--muted) 9%,var(--bg))}
+.pub-link .hk-actions{margin-top:0}
+.pub-link-a{color:var(--accent);font-size:.9rem;line-height:1.4}
+.pub-link-future{color:var(--muted);cursor:default}
+.pub-prof{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .5rem;padding-top:.45rem;border-top:1px solid color-mix(in srgb,var(--accent) 22%,transparent);font-size:.86rem}
+.pub-prof-l{color:var(--muted)}
+.pub-prof .pub-link-a{font-size:.86rem;flex:1;min-width:0}
 .pub-warn{background:var(--warnbg);border:1px solid var(--warn);border-radius:8px;padding:.5rem .7rem;font-size:.86rem}
 .pg-pub-b{color:var(--accent)}
-.pub-link .btn,.pub-via .btn,.pub-slug .btn{font:inherit;font-size:.86rem;line-height:1.3;cursor:pointer}
+.pub-link .btn,.pub-via .btn,.pub-slug .btn,.pub-prof .btn{font:inherit;font-size:.86rem;line-height:1.3;cursor:pointer}
+.pub-prof .btn{padding:.25rem .6rem}
 /* Unterseite oeffentlich ueber die Elternseite, beendete Veroeffentlichung, Adresse mit eigenem Knopf */
 .pub-via{display:flex;flex-direction:column;gap:.35rem;padding:.6rem .7rem;border:1px solid var(--accent);border-radius:8px;
 background:color-mix(in srgb,var(--accent) 8%,var(--bg));font-size:.88rem}
 .pub-via p{margin:0}
 .pub-note{margin:0;font-size:.86rem;color:var(--muted)}
 .pub-note.pub-warn{color:var(--fg)}
+.pub-fcol{display:flex;flex-direction:column;gap:.25rem;min-width:0}
+.hk-field:has(>.pub-fcol){align-items:start}                       /* Beschriftung auf Hoehe des Feldes, nicht der Meldungen */
+.hk-field:has(>.pub-fcol)>span{padding-top:.42rem}
+@media (max-width:560px){.hk-field:has(>.pub-fcol)>span{padding-top:0}}
 .pub-slug{display:flex;gap:.4rem;min-width:0}
 .pub-slug .hk-in{flex:1;min-width:0}
+.pub-namerow{display:flex;flex-wrap:wrap;align-items:baseline;gap:.2rem .7rem}
+.pub-newurl{margin:0;font-size:.82rem;color:var(--fg)}
+.pub-newurl .hk-url{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.78rem}
+.pub-end{margin-top:.2rem}
+/* Fehler direkt am Feld (common.js fieldMsg): Feld rot, Text darunter */
+.hk-fieldmsg{margin:0;font-size:.82rem;line-height:1.4;color:var(--muted)}
+.hk-fieldmsg.err{color:var(--down)}
+.hk-in.is-err,.hk-in.is-err:focus{border-color:var(--down);box-shadow:0 0 0 1px var(--down)}
+/* Rueckfrage (common.js ask): ueber allen Dialogen */
+.hk-ask{position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.5);display:grid;place-items:center;padding:1rem}
+.hk-ask-box{width:min(420px,100%);background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:12px;
+box-shadow:0 20px 60px rgba(0,0,0,.45);padding:1.1rem 1.2rem 1rem}
+.hk-ask-t{margin:0 0 .45rem;font-size:1.05rem;font-weight:600;line-height:1.3;color:var(--fg);text-transform:none;letter-spacing:0}
+.hk-ask-d{margin:0 0 1.1rem;font-size:.9rem;line-height:1.45;color:var(--muted)}
+.hk-ask-d .hk-url{color:var(--fg)}
+.hk-ask-bar{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.5rem}
+.hk-ask-bar .btn{font:inherit;font-size:.9rem;cursor:pointer}
+.btn-destr{background:var(--down);border-color:var(--down);color:var(--bg);font-weight:600;cursor:pointer}
+.btn-destr:hover{color:var(--bg);border-color:var(--down);filter:brightness(1.08)}
+.btn:focus-visible,.btn-destr:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .pg-pub-go{text-decoration:none;padding:.15rem .45rem}
+@media (max-width:560px){.pg-pub-b .pg-pub-l{display:none}.pg-pub-b{margin-right:.15rem}}   /* Handy: nur "🌐", Kopfzeile bleibt in der Breite */
 /* Einstellungen -> Konto: oeffentlicher Name als eigener, abgesetzter Block */
 .hk-pubname{margin-top:1.2rem;padding-top:.2rem;border-top:1px solid var(--border)}
 /* Deaktivierte Knoepfe sehen deaktiviert aus (z. B. "Weiter" bei ungueltigem Namen) */

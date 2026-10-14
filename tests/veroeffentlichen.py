@@ -214,6 +214,17 @@ def main():
     ok("Erstellt mit Saga", "Erstellt mit Saga" in html and "yggdrasil-sh.github.io/saga" in html)
     s, _, html_en = req("GET", P, lang="en")
     ok("Sprache des Besuchers (en)", s == 200 and "Made with Saga" in html_en and 'lang="en"' in html_en)
+    # Design-Runde (13/14/22): Inhalt in der Kontosprache, Bedienung in der Sprache des Besuchers; Absenderzeile; Leiste
+    ok("Absenderzeile unter dem Titel: @name · aktualisiert <Datum>", '<p class="pub-by" lang="de"><a href="/@pv-anne">@pv-anne</a> · aktualisiert <time datetime="'
+       in html and '<p class="pub-by" lang="en"><a href="/@pv-anne">@pv-anne</a> · updated <time datetime="' in html_en)
+    ok("Bedienleiste: links @name (Link zum Profil), ohne 'Anmelden' ausserhalb der Startseite",
+       '<a class="pub-brand" href="/@pv-anne">@pv-anne</a>' in html and "pub-login" not in html)
+    ok("Häkchen wirken nicht bedienbar (disabled + aria-disabled)", 'type="checkbox" disabled checked aria-disabled="true"' in html)
+    s, _, d = req("PUT", "/api/account/lang", A, {"lang": "es"})
+    s2, _, html_lang = req("GET", P, lang="en")
+    ok(f"Inhalt in der Kontosprache (es), Bedienung beim Besucher (en) ({s})", s == 200 and '<html lang="en">' in html_lang
+       and '<article class="pub-page" lang="es">' in html_lang and "Made with Saga" in html_lang and " · updated " in html_lang)
+    req("PUT", "/api/account/lang", A, {"lang": ""})
     s, h, _ = req("GET", P, A)
     ok(f"Angemeldet (Set-Cookie moeglich): nur private Zwischenspeicherung ({h.get('cache-control')})",
        s == 200 and "private" in h.get("cache-control", "") and "public" not in h.get("cache-control", ""))
@@ -258,6 +269,9 @@ def main():
     ok("Unsinn mit Grossbuchstaben bleibt neutrale 404", req("GET", "/@%C3%84PFEL/x")[2] == nf1 and req("GET", "/@A/x")[0] == 404)
     ok("404: noindex, no-store, CSP", "noindex" in h1.get("x-robots-tag", "") and h1.get("cache-control") == "no-store"
        and "script-src 'none'" in h1.get("content-security-policy", ""))
+    login = os.environ["BASE_URL"].rstrip("/") + "/login"
+    ok("404 mit nächstem Schritt: ohne Startseite -> 'Anmelden'", f'<a class="pub-next" href="{login}">Anmelden</a>' in nf1
+       and "Zur Startseite" not in nf1)
 
     # --- Unterseiten -----------------------------------------------------------------------------------------------
     ok("Unterseite ohne children -> 404", req("GET", f"{P}/{child}")[0] == 404)
@@ -427,6 +441,10 @@ def main():
     s, h, html = req("GET", "/")
     ok(f"Startseite fuer Besucher -> {s}", s == 200 and "<h1>Mein Garten</h1>" in html and "Anmelden" in html and "/login" in html
        and "no-cache" in h.get("cache-control", "") and "script-src 'none'" in h.get("content-security-policy", ""))
+    ok("Startseite: links der Name der Instanz, 'Anmelden' als Textlink", '<a class="pub-brand" href="/">' in html and 'class="pub-login"' in html)
+    s, _, nf = req("GET", "/@pv-niemand/x")
+    ok("404 mit nächstem Schritt: mit Startseite -> 'Zur Startseite'", s == 404 and '<a class="pub-next" href="/">Zur Startseite</a>' in nf
+       and req("GET", "/@pv-niemand/x", lang="es")[2].find(">Ir a la página de inicio</a>") > 0)
     s, h, data = req("HEAD", "/")
     ok(f"HEAD / fuer Besucher -> {s}", s == 200 and not data and "no-cache" in h.get("cache-control", ""))
     s, h, html = req("GET", "/", A)

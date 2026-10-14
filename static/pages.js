@@ -3262,23 +3262,39 @@
     var t = via ? String(via.title || '') : '';
     if (t.length > 28) t = t.slice(0, 27) + '…';
     b.hidden = go.hidden = !(on || via);
-    b.textContent = via ? T('🌐 Öffentlich (über „{title}“)', { title: t }) : T('🌐 Öffentlich');
+    // Symbol + Text getrennt: auf schmalen Bildschirmen bleibt nur "🌐" (sonst schiebt der Hinweis die Kopfzeile
+    // ueber den Rand); der volle Text steht dann in aria-label/title
+    var full = via ? T('🌐 Öffentlich (über „{title}“)', { title: t }) : T('🌐 Öffentlich'), mm = /^(\S+)\s+([\s\S]+)$/.exec(full);
+    b.textContent = '';
+    if (mm) { b.appendChild(el('span', 'pg-pub-ic', mm[1])); b.appendChild(el('span', 'pg-pub-l', ' ' + mm[2])); b.setAttribute('aria-label', mm[2]); }
+    else { b.textContent = full; b.removeAttribute('aria-label'); }
     b.title = via ? T('Öffentlich als Unterseite von „{title}“ – klicken für Einzelheiten', { title: via.title }) : T('Diese Seite ist öffentlich – klicken für Einstellungen');
     var href = on ? c.public_url : via ? via.url : '';
     if (href) go.href = href; else go.removeAttribute('href');
     go.hidden = go.hidden || !href;
   }
   function pubStatus(box, txt, cls) { box.textContent = txt; box.className = 'hk-status' + (cls ? ' ' + cls : ''); }
-  function pubField(label, node) { var l = el('label', 'hk-field'); l.appendChild(el('span', null, label)); l.appendChild(node); return l; }
+  // Feld mit Beschriftung; extra = Knoten unter dem Feld (Fehler/Hinweis direkt am Feld, nicht in einer Statuszeile)
+  function pubField(label, node, extra) {
+    var l = el('label', 'hk-field'), col = el('div', 'pub-fcol');
+    l.appendChild(el('span', null, label)); col.appendChild(node);
+    (extra || []).forEach(function (x) { col.appendChild(x); });
+    l.appendChild(col); return l;
+  }
+  // Schalter statt Haekchen: Text links, Schalter rechts (role=switch)
   function pubCheck(label, on, hint) {
-    var l = el('label', 'pub-opt'), cb = el('input'); cb.type = 'checkbox'; cb.checked = !!on;
-    var tx = el('span'); tx.appendChild(el('span', 'pub-opt-t', label)); if (hint) l.hint = tx.appendChild(el('small', 'hk-hint', hint));
-    l.appendChild(cb); l.appendChild(tx); l.cb = cb; return l;
+    var l = el('label', 'pub-opt'), cb = el('input', 'hk-switch'); cb.type = 'checkbox'; cb.checked = !!on; cb.setAttribute('role', 'switch');
+    var tx = el('span', 'pub-opt-tx'); tx.appendChild(el('span', 'pub-opt-t', label)); if (hint) l.hint = tx.appendChild(el('small', 'hk-hint', hint));
+    l.appendChild(tx); l.appendChild(cb); l.cb = cb; return l;
   }
   function pubCopy(u) {
     (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject(new Error('x')))
       .then(function () { HK.toast(T('Link kopiert')); }, function () { HK.toast(u); });
   }
+  // Teilen nur dort, wo es ueblich ist (Handy/Tablet mit Teilen-Menue des Systems)
+  function pubCanShare() { return !!navigator.share && !!window.matchMedia && matchMedia('(pointer: coarse)').matches; }
+  function pubBtn(label, fn, cls) { var b = el('button', 'btn' + (cls ? ' ' + cls : ''), label); b.type = 'button'; b.addEventListener('click', fn); return b; }
+  function pubLink(u, cls) { var a = HK.urlNode(u, 'a', cls || 'pub-link-a'); a.href = u; a.target = '_blank'; a.rel = 'noopener'; return a; }
   function openPublish() {
     if (!S.cur) return;
     var id = S.cur.id;
@@ -3286,27 +3302,30 @@
       openModal(T('Veröffentlichen'), function (body) { (st.name ? pubMain : pubName)(body, id, st); }, true);
     }).catch(function (err) { HK.toast(T('Nicht geladen: {err}', { err: err.message })); });
   }
+  // Schritt 1 (einmal je Konto): oeffentlicher Name. Ein Fehler ersetzt den Hilfetext unter dem Feld.
   function pubName(body, id, st) {
     body.textContent = '';
     var box = el('div', 'pub-dlg'); body.appendChild(box);
     box.appendChild(el('p', null, T('Wähle zuerst deinen öffentlichen Namen. Er steht in jeder Adresse deiner öffentlichen Seiten und ist für alle sichtbar.')));
     var inp = el('input', 'hk-in'); inp.type = 'text'; inp.maxLength = 32; inp.value = st.suggested_name || '';
     inp.autocomplete = 'off'; inp.spellcheck = false; inp.setAttribute('autocapitalize', 'off');
-    box.appendChild(pubField(T('Öffentlicher Name'), inp));
-    var prev = el('div', 'pub-url'), msg = el('div', 'hk-status');
-    box.appendChild(prev); box.appendChild(msg);
-    box.appendChild(el('p', 'hk-hint', T('Nicht dein Anmeldename: wähle etwas, das alle sehen dürfen. 2–32 Zeichen, a–z, 0–9, - und _.')));
+    var row = el('div', 'pub-namerow'), prev = el('span', 'pub-url'), msg = el('span', 'hk-status'), fm = el('p', 'hk-fieldmsg');
+    row.appendChild(prev); row.appendChild(msg);
+    box.appendChild(pubField(T('Öffentlicher Name'), inp, [row, fm]));
+    var setErr = HK.fieldMsg(inp, fm, T('Nicht dein Anmeldename: wähle etwas, das alle sehen dürfen. 2–32 Zeichen, a–z, 0–9, - und _.'));
     var bar = el('div', 'hk-actions'), go = el('button', 'btn btn-primary', T('Weiter')); go.type = 'button'; bar.appendChild(go); box.appendChild(bar);
-    var tmr = null;
+    var tmr = null, base = location.origin + '/@';
     function check() {
-      var v = inp.value.trim().toLowerCase(); prev.textContent = location.origin + '/@' + (v || '…');
-      clearTimeout(tmr); go.disabled = true; pubStatus(msg, '');
+      var v = inp.value.trim().toLowerCase();
+      prev.textContent = ''; prev.appendChild(HK.urlNode(base + (v || '…')));
+      clearTimeout(tmr); go.disabled = true; pubStatus(msg, ''); setErr('');
       if (!v) return;
       tmr = setTimeout(function () {
         api('PUT', '/api/account/public-name', { name: v, check: true }).then(function (r) {
           if (inp.value.trim().toLowerCase() !== v) return;
-          pubStatus(msg, r.ok ? T('✓ Frei') : r.error, r.ok ? 'ok' : 'err'); go.disabled = !r.ok;
-        }).catch(function (err) { pubStatus(msg, err.message, 'err'); });
+          if (r.ok) pubStatus(msg, T('✓ Frei'), 'ok'); else setErr(r.error);
+          go.disabled = !r.ok;
+        }).catch(function (err) { setErr(err.message); });
       }, 250);
     }
     inp.addEventListener('input', check);
@@ -3316,10 +3335,11 @@
       api('PUT', '/api/account/public-name', { name: inp.value.trim().toLowerCase() }).then(function () {
         return api('GET', '/api/notes/' + id + '/publish');
       }).then(function (ns) { pubMain(body, id, ns); })
-        .catch(function (err) { pubStatus(msg, err.message, 'err'); go.disabled = false; });
+        .catch(function (err) { pubStatus(msg, ''); setErr(err.message); go.disabled = false; });
     });
     check(); setTimeout(function () { inp.focus(); inp.select(); }, 0);
   }
+  // Schritt 2: 1 Schalter -> 2 Link-Karte -> 3 Adresse -> 4 Optionen -> 5 "Veroeffentlichung beenden"
   function pubMain(body, id, st) {
     body.textContent = '';
     var box = el('div', 'pub-dlg'); body.appendChild(box);
@@ -3328,45 +3348,73 @@
     // Oeffentlich ueber eine Elternseite ("Unterseiten mit veroeffentlichen"): erklaeren und dorthin verweisen
     var via = el('div', 'pub-via'); box.appendChild(via);
     var gone = el('p', 'pub-note'); box.appendChild(gone);
+    // 1 Schalter
     var on = pubCheck(T('Öffentlich'), st.published, T('Jeder mit dem Link kann diese Seite ohne Anmeldung lesen.'));
     on.classList.add('pub-main-sw'); box.appendChild(on);
+    // 2 Link-Karte (solange privat: kuenftige Adresse, gedaempft und ohne Link)
+    var card = el('div', 'pub-link'); box.appendChild(card);
+    // 3 Adresse: Aenderung nur ueber den Knopf, der erst erscheint, wenn die Eingabe abweicht
     var slug = el('input', 'hk-in'); slug.type = 'text'; slug.maxLength = 60; slug.value = st.slug || '';
     slug.autocomplete = 'off'; slug.spellcheck = false; slug.setAttribute('autocapitalize', 'off');
-    var sbtn = el('button', 'btn', T('Adresse ändern')); sbtn.type = 'button';
+    var sbtn = el('button', 'btn btn-primary', T('Adresse ändern')); sbtn.type = 'button';
     var srow = el('div', 'pub-slug'); srow.appendChild(slug); srow.appendChild(sbtn);
-    box.appendChild(pubField(T('Adresse'), srow));
-    var pre = el('div', 'pub-url'); box.appendChild(pre);
+    var sfm = el('p', 'hk-fieldmsg');
+    var adr = pubField(T('Adresse'), srow, [sfm]); box.appendChild(adr);
+    var setSlugErr = HK.fieldMsg(slug, sfm, '');
+    // 4 Optionen (solange privat mit Ueberschrift: gelten erst beim Veroeffentlichen)
+    var opts = el('div', 'pub-opts'), oh = el('div', 'pub-opts-h', T('Gilt, sobald die Seite öffentlich ist')); opts.appendChild(oh);
     var ch = pubCheck(T('Unterseiten mit veröffentlichen'), st.children, T('Unterseiten (und Einträge von Datenbanken) dieser Seite sind dann ebenfalls öffentlich.'));
     var ix = pubCheck(T('Suchmaschinen erlauben'), st.indexable, T('Sonst bitten wir Suchmaschinen, die Seite nicht aufzunehmen.'));
-    var pr = pubCheck(T('Als Profilseite (/@name)'), st.profile, T('Erscheint unter deiner Profil-Adresse – höchstens eine Seite.'));
-    [ch, ix, pr].forEach(function (x) { box.appendChild(x); });
-    var linkBox = el('div', 'pub-link'), a = el('a', 'pub-link-a'); a.target = '_blank'; a.rel = 'noopener';
-    var cp = el('button', 'btn', T('Link kopieren')); cp.type = 'button';
-    var op = el('a', 'btn', T('Öffnen')); op.target = '_blank'; op.rel = 'noopener';
-    var lbar = el('div', 'hk-actions'); lbar.appendChild(cp); lbar.appendChild(op);
-    linkBox.appendChild(a); linkBox.appendChild(lbar); box.appendChild(linkBox);
-    var msg = el('div', 'hk-status'); box.appendChild(msg);
+    var pr = pubCheck(T('Als Profilseite (/@name)'), st.profile, T('Erscheint unter deiner Profiladresse – höchstens eine Seite.'));
+    [ch, ix, pr].forEach(function (x) { opts.appendChild(x); }); box.appendChild(opts);
+    var msg = el('div', 'hk-status'); msg.setAttribute('role', 'status'); box.appendChild(msg);
     box.appendChild(el('p', 'hk-hint', T('Öffentlicher Name: @{name} – ändern unter Einstellungen → Konto.', { name: st.name })));
+    // 5 Beenden
     var end = el('button', 'btn btn-danger', T('Veröffentlichung beenden')); end.type = 'button';
-    var ebar = el('div', 'hk-actions'); ebar.appendChild(end); box.appendChild(ebar);
+    var ebar = el('div', 'hk-actions pub-end'); ebar.appendChild(end); box.appendChild(ebar);
     function newSlug() { return slug.value.trim().toLowerCase(); }
+    function drawCard() {
+      card.textContent = '';
+      var pub = !!st.published;
+      card.classList.toggle('is-future', !pub);
+      if (!pub) {
+        var fu = HK.urlNode((st.profile_url || location.origin + '/@' + st.name) + '/' + (newSlug() || '…'), 'span', 'pub-link-a pub-link-future');
+        fu.setAttribute('aria-disabled', 'true'); card.appendChild(fu);
+        return;
+      }
+      card.appendChild(pubLink(st.url));
+      var lbar = el('div', 'hk-actions');
+      lbar.appendChild(pubBtn(T('Link kopieren'), function () { pubCopy(st.url); }, 'pub-copy'));
+      var op = el('a', 'btn', T('Öffnen')); op.href = st.url; op.target = '_blank'; op.rel = 'noopener'; lbar.appendChild(op);
+      if (pubCanShare()) {
+        lbar.appendChild(pubBtn(T('Teilen'), function () {
+          navigator.share({ url: st.url, title: (S.cur && S.cur.id === id && S.cur.title) || '' }).catch(function () { /* abgebrochen */ });
+        }));
+      }
+      card.appendChild(lbar);
+      if (st.profile && st.profile_url) {                    // Profilseite: zweite Zeile mit der Profiladresse
+        var prow = el('div', 'pub-prof');
+        prow.appendChild(el('span', 'pub-prof-l', T('Profiladresse') + ':'));
+        prow.appendChild(pubLink(st.profile_url));
+        prow.appendChild(pubBtn(T('Kopieren'), function () { pubCopy(st.profile_url); }, 'pub-copy-prof'));
+        card.appendChild(prow);
+      }
+    }
     function draw() {
-      var v = st.published_via;
-      on.cb.checked = !!st.published; on.cb.disabled = !st.enabled && !st.published;
-      // Nach dem Beenden bleiben die Einstellungen gemerkt und bedienbar (gelten beim naechsten Veroeffentlichen)
-      [ch, ix, pr].forEach(function (x) { x.classList.remove('pub-dim'); x.cb.disabled = false; });
-      via.textContent = ''; via.hidden = !v || !!st.published;
-      if (v && !st.published) {
+      var v = st.published_via, pub = !!st.published, viaOnly = !!v && !pub;
+      on.cb.checked = pub; on.cb.disabled = !st.enabled && !pub;
+      via.textContent = ''; via.hidden = !viaOnly;
+      if (viaOnly) {
         via.appendChild(el('p', null, T('Diese Seite ist bereits öffentlich: „{title}“ ist mit Unterseiten veröffentlicht.', { title: v.title })));
-        var va = el('a', 'pub-link-a', v.url); va.href = v.url; va.target = '_blank'; va.rel = 'noopener'; via.appendChild(va);
-        var vb = el('div', 'hk-actions'), vc = el('button', 'btn', T('Link kopieren')), vp = el('button', 'btn', T('„{title}“ öffnen', { title: v.title }));
-        vc.type = vp.type = 'button'; vb.appendChild(vc); vb.appendChild(vp); via.appendChild(vb);
-        vc.addEventListener('click', function () { pubCopy(v.url); });
-        vp.addEventListener('click', function () { closeModal(); openPage(v.note_id); });
+        via.appendChild(pubLink(v.url));
+        var vb = el('div', 'hk-actions');
+        vb.appendChild(pubBtn(T('Link kopieren'), function () { pubCopy(v.url); }));
+        vb.appendChild(pubBtn(T('„{title}“ öffnen', { title: v.title }), function () { closeModal(); openPage(v.note_id); }));
+        via.appendChild(vb);
         via.appendChild(el('p', 'hk-hint', T('Privat wird sie erst, wenn dort „Unterseiten mit veröffentlichen“ aus ist oder die Seite verschoben wird.')));
       }
-      on.querySelector('.pub-opt-t').textContent = v && !st.published ? T('Zusätzlich unter eigener Adresse veröffentlichen') : T('Öffentlich');
-      gone.hidden = st.published || !st.withdrawn_at;
+      on.querySelector('.pub-opt-t').textContent = viaOnly ? T('Zusätzlich unter eigener Adresse veröffentlichen') : T('Öffentlich');
+      gone.hidden = pub || !st.withdrawn_at;
       if (!gone.hidden) {
         var when = fVer.format(new Date(st.withdrawn_at * 1000));
         gone.textContent = st.withdrawn_by === 'admin'
@@ -3374,18 +3422,17 @@
           : T('Veröffentlichung beendet am {when}. Adresse und Einstellungen sind gemerkt und gelten beim erneuten Veröffentlichen wieder.', { when: when });
         gone.className = 'pub-note' + (st.withdrawn_by === 'admin' ? ' pub-warn' : '');
       }
-      // Adresse: genau EINE Anzeige - veroeffentlicht im Link-Kasten, sonst als Vorschau; Aenderung nur ueber den Knopf
-      var changed = st.published && newSlug() !== st.slug;
-      sbtn.hidden = !st.published; sbtn.disabled = !changed;
-      pre.hidden = !!st.published && !changed;
-      pre.textContent = changed ? T('Wird erst mit „Adresse ändern“ übernommen.')
-        : location.origin + '/@' + st.name + '/' + (newSlug() || '…');
-      pre.className = changed ? 'hk-hint' : 'pub-url';
-      linkBox.hidden = !st.published; ebar.hidden = !st.published;
-      if (st.url) { a.href = st.url; a.textContent = st.url; op.href = st.url; }
+      // Ueber die Elternseite: Adresse und Optionen erst, wenn "Zusaetzlich ..." an ist
+      card.hidden = adr.hidden = opts.hidden = viaOnly;
+      oh.hidden = pub; opts.classList.toggle('is-pending', !pub);
+      drawCard();
+      var changed = pub && newSlug() !== st.slug;
+      sbtn.hidden = !changed;
+      setSlugErr.hint(changed ? T('Wird erst mit „Adresse ändern“ übernommen.') : '');
+      ebar.hidden = !pub;
       var po = st.profile_other;
       pr.hint.textContent = po ? T('Ersetzt die bisherige Profilseite „{title}“.', { title: po.title })
-        : T('Erscheint unter deiner Profil-Adresse – höchstens eine Seite.');
+        : T('Erscheint unter deiner Profiladresse – höchstens eine Seite.');
       if (st.home && !msg.textContent) pubStatus(msg, T('Diese Seite ist die Startseite für Besucher.'));
     }
     function sync(ns) {
@@ -3395,22 +3442,32 @@
     function put(data, done) {
       if (!st.enabled) { pubStatus(msg, T('Veröffentlichen ist auf diesem Server abgeschaltet.'), 'err'); draw(); return; }
       api('PUT', url, data).then(function (ns) {
-        sync(ns);
+        sync(ns); setSlugErr('');
+        if (data.slug !== undefined && ns.slug) slug.value = ns.slug;
         pubStatus(msg, ns.replaced_profile ? T('✓ Gespeichert – ersetzt die bisherige Profilseite „{title}“.', { title: ns.replaced_profile.title })
           : (done || T('✓ Gespeichert')), 'ok');
         draw();
-      }).catch(function (err) { pubStatus(msg, err.message, 'err'); draw(); });
+      }).catch(function (err) {
+        // Fehler zur Adresse direkt am Feld, alles andere in der Statuszeile
+        if (data.slug !== undefined && (!st.published || data.slug !== st.slug)) { pubStatus(msg, ''); setSlugErr(err.message); slug.focus(); }
+        else pubStatus(msg, err.message, 'err');
+        draw();
+      });
     }
     function stop() {
-      if (!confirm(T('Veröffentlichung beenden? Der Link funktioniert danach nicht mehr.'))) { draw(); return; }
-      api('DELETE', url).then(function (ns) {
-        sync(ns); pubStatus(msg, T('Veröffentlichung beendet.'), 'ok'); draw();
-      }).catch(function (err) { pubStatus(msg, err.message, 'err'); draw(); });
+      HK.ask({ title: T('Veröffentlichung beenden?'), text: T('Der Link funktioniert danach nicht mehr.'), ok: T('Beenden'), danger: true }).then(function (yes) {
+        if (!yes) { draw(); return; }
+        api('DELETE', url).then(function (ns) {
+          sync(ns); pubStatus(msg, ''); draw();          // Zustand steht genau einmal da: "Veroeffentlichung beendet am ..."
+        }).catch(function (err) { pubStatus(msg, err.message, 'err'); draw(); });
+      });
     }
     function changeSlug() {
       var v = newSlug(); if (!st.published || v === st.slug) return;
-      if (!confirm(T('Adresse ändern? Der bisherige Link {url} funktioniert danach nicht mehr.', { url: st.url }))) return;
-      put({ slug: v }, T('✓ Neue Adresse gespeichert'));
+      HK.ask({ title: T('Adresse ändern?'), ok: T('Adresse ändern'),
+               text: HK.fmtNodes(T('Der bisherige Link {url} funktioniert danach nicht mehr.'), { url: HK.urlNode(st.url) }) }).then(function (yes) {
+        if (yes) put({ slug: v }, T('✓ Neue Adresse gespeichert')); else slug.focus();
+      });
     }
     on.cb.addEventListener('change', function () {
       if (on.cb.checked) put({ slug: newSlug(), children: ch.cb.checked, indexable: ix.cb.checked, profile: pr.cb.checked }); else stop();
@@ -3418,11 +3475,10 @@
     [['children', ch], ['indexable', ix], ['profile', pr]].forEach(function (x) {
       x[1].cb.addEventListener('change', function () { if (st.published) { var d = {}; d[x[0]] = x[1].cb.checked; put(d); } });
     });
-    slug.addEventListener('input', function () { pubStatus(msg, ''); draw(); });
+    slug.addEventListener('input', function () { pubStatus(msg, ''); setSlugErr(''); draw(); });
     slug.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); changeSlug(); } });
     sbtn.addEventListener('click', changeSlug);
     end.addEventListener('click', stop);
-    cp.addEventListener('click', function () { pubCopy(st.url); });
     draw();
   }
 

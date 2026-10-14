@@ -198,7 +198,87 @@
     return reveal;
   }
 
+  // Adresse zur Anzeige: Umbruch nur nach "/" (je Abschnitt ein Stueck, dazwischen <wbr> = U+200B nur in der
+  // Darstellung - beim Kopieren bleibt die Adresse unveraendert). Zu lange Abschnitte duerfen notfalls umbrechen.
+  function urlNode(url, tag, cls) {
+    var s = String(url || ''), o = /^[a-z][a-z0-9+.-]*:\/\/[^\/]*\/?/i.exec(s), head = o ? o[0] : '';   // "https://host/" bleibt ganz
+    var n = el(tag || 'span', cls), parts = (head ? [head] : []).concat(s.slice(head.length).replace(/\//g, '/\n').split('\n'))
+      .filter(function (p) { return p; });
+    n.classList.add('hk-url');
+    parts.forEach(function (p, i) { n.appendChild(el('span', 'hk-url-seg', p)); if (i < parts.length - 1) n.appendChild(document.createElement('wbr')); });
+    return n;
+  }
+  // Uebersetzten Text mit Platzhaltern als Knoten: fmtNodes(T('Neue Adresse: {url} (bisher {old})'), {url: node|text, ...})
+  function fmtNodes(s, params) {
+    var f = document.createDocumentFragment(), re = /\{(\w+)\}/g, last = 0, m;
+    while ((m = re.exec(s))) {
+      if (m.index > last) f.appendChild(document.createTextNode(s.slice(last, m.index)));
+      var v = Object.prototype.hasOwnProperty.call(params, m[1]) ? params[m[1]] : m[0];
+      f.appendChild(v instanceof Node ? v : document.createTextNode(String(v)));
+      last = re.lastIndex;
+    }
+    if (last < s.length) f.appendChild(document.createTextNode(s.slice(last)));
+    return f;
+  }
+
+  // Fehler direkt am Feld: Feld markiert (aria-invalid), Text darunter. Ohne Fehler steht dort der Hilfetext (oder
+  // nichts). -> set(fehler); set.hint(text) tauscht den Hilfetext.
+  var fmSeq = 0;
+  function fieldMsg(inp, box, hint) {
+    box.id = box.id || 'hk-fm-' + (++fmSeq);
+    inp.setAttribute('aria-describedby', box.id);
+    var cur = '';
+    function draw() {
+      inp.classList.toggle('is-err', !!cur);
+      if (cur) inp.setAttribute('aria-invalid', 'true'); else inp.removeAttribute('aria-invalid');
+      box.textContent = cur || hint || ''; box.className = 'hk-fieldmsg' + (cur ? ' err' : ''); box.hidden = !cur && !hint;
+    }
+    function set(err) { cur = err || ''; draw(); }
+    set.hint = function (h) { hint = h || ''; draw(); };
+    draw();
+    return set;
+  }
+
+  // Einheitliche Rueckfrage statt confirm(): Titel, Text, [Abbrechen] [Bestaetigen]. -> Promise<true|false>.
+  // opts: {title, text (Text oder Knoten), ok, cancel, danger}. Esc/Klick daneben = Abbrechen; Fokus bleibt im Dialog,
+  // bei destruktiven Aktionen startet er auf "Abbrechen". Liegt ueber allen anderen Dialogen.
+  var askOpen = null;
+  function ask(opts) {
+    if (askOpen) askOpen(false);
+    return new Promise(function (resolve) {
+      var prev = document.activeElement;
+      var ov = el('div', 'hk-ask'), box = el('div', 'hk-ask-box');
+      var uid = 'hk-ask-' + Date.now();
+      box.setAttribute('role', 'alertdialog'); box.setAttribute('aria-modal', 'true');
+      box.setAttribute('aria-labelledby', uid + '-t'); box.setAttribute('aria-describedby', uid + '-d');
+      var h = el('h2', 'hk-ask-t', opts.title); h.id = uid + '-t';
+      var p = el('p', 'hk-ask-d'); p.id = uid + '-d';
+      if (opts.text instanceof Node) p.appendChild(opts.text); else p.textContent = opts.text || '';
+      var bar = el('div', 'hk-ask-bar');
+      var no = el('button', 'btn', opts.cancel || window.T('Abbrechen')); no.type = 'button';
+      var yes = el('button', 'btn ' + (opts.danger ? 'btn-destr' : 'btn-primary'), opts.ok); yes.type = 'button';
+      bar.appendChild(no); bar.appendChild(yes);
+      box.appendChild(h); box.appendChild(p); box.appendChild(bar); ov.appendChild(box);
+      function done(v) {
+        if (askOpen !== done) return;
+        askOpen = null; window.removeEventListener('keydown', key, true); ov.remove();
+        if (prev && prev.focus && document.contains(prev)) { try { prev.focus(); } catch (e) { /* egal */ } }
+        resolve(v);
+      }
+      function key(e) {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); done(false); }
+        else if (e.key === 'Tab') { e.preventDefault(); (document.activeElement === no ? yes : no).focus(); }
+      }
+      no.addEventListener('click', function () { done(false); });
+      yes.addEventListener('click', function () { done(true); });
+      ov.addEventListener('mousedown', function (e) { if (e.target === ov) done(false); });
+      window.addEventListener('keydown', key, true);
+      askOpen = done; document.body.appendChild(ov);
+      (opts.danger ? no : yes).focus();
+    });
+  }
+
   window.HK = { scrollFade: scrollFade, $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
                 openMenu: openMenu, closeMenu: closeMenu, menuItem: menuItem, menuLabel: menuLabel,
-                menuOpen: function () { return !!menuOwner; }, closeSub: closeSub };
+                menuOpen: function () { return !!menuOwner; }, closeSub: closeSub, ask: ask, urlNode: urlNode, fmtNodes: fmtNodes, fieldMsg: fieldMsg };
 })();

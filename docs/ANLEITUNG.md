@@ -339,18 +339,22 @@ springt `Enter` im Namen in die nächste Zeile; in der letzten legt es gleich de
 
 Jede Seite lässt sich **öffentlich** machen – lesbar ohne Anmeldung, schlicht dargestellt, hell oder dunkel nach
 Gerät und gut lesbar auf dem Handy. Im Seitenmenü (**⋯** rechts über der Seite, neben „Gespeichert“)
-**„Veröffentlichen …“** wählen und im Dialog den Haken bei **„Öffentlich“** setzen – ab dann ist die Seite unter
-ihrer Adresse erreichbar. Änderungen an den Optionen gelten sofort; nur eine neue Adresse übernimmst du ausdrücklich
-mit „Adresse ändern“.
+**„Veröffentlichen …“** wählen und im Dialog den Schalter **„Öffentlich“** einschalten – ab dann ist die Seite unter
+ihrer Adresse erreichbar. Der Dialog zeigt von oben nach unten: Schalter, Link (mit Kopieren und Öffnen, auf dem Handy
+auch Teilen), Adresse, Optionen und „Veröffentlichung beenden“. Solange die Seite privat ist, steht dort die künftige
+Adresse blass und noch ohne Link, und die Optionen stehen unter „Gilt, sobald die Seite öffentlich ist“. Bei einer
+öffentlichen Seite gelten Änderungen an den Optionen sofort; nur eine neue Adresse übernimmst du ausdrücklich mit
+„Adresse ändern“. Fehler (z. B. eine schon benutzte Adresse) stehen direkt unter dem Feld.
 
 - **Öffentlicher Name:** Beim ersten Mal wählst du einen öffentlichen Namen (vorgeschlagen aus deinem
   Anzeigenamen, 2–32 Zeichen `a–z 0–9 - _`). Er steht in jeder Adresse und ist für alle sichtbar – er ist **nie**
   dein Anmeldename. Ändern unter Einstellungen → Konto im eigenen Block „Öffentlicher Name“ (mit eigenem Knopf
-  „Namen speichern“; Saga prüft schon beim Tippen, ob der Name gültig und frei ist); alte Links funktionieren danach
-  nicht mehr. Namen wie `admin`, `api` oder `login` sind gesperrt.
+  „Namen speichern“; Saga prüft schon beim Tippen, ob der Name gültig und frei ist, und zeigt „Neue Adresse: …
+  (bisher …)“); alte Links funktionieren danach nicht mehr. Namen wie `admin`, `api` oder `login` sind gesperrt.
 - **Adresse:** `https://saga.example.org/@name/seiten-adresse`. Die Seiten-Adresse wird aus dem Titel
-  vorgeschlagen und lässt sich mit **„Adresse ändern“** ändern (2–60 Zeichen) – nach einer Rückfrage, denn der
-  bisherige Link funktioniert danach nicht mehr. Großbuchstaben oder ein „/“ am Ende leitet Saga auf die richtige
+  vorgeschlagen und lässt sich ändern (2–60 Zeichen): Sobald die Eingabe von der gespeicherten Adresse abweicht,
+  erscheint der Knopf **„Adresse ändern“** – nach einer Rückfrage, denn der bisherige Link funktioniert danach nicht
+  mehr. Großbuchstaben oder ein „/“ am Ende leitet Saga auf die richtige
   Schreibweise um.
 - **Unterseiten mit veröffentlichen:** Dann sind auch alle Unterseiten (und Einträge von Datenbanken) unter dieser
   Seite lesbar, unter `/@name/seiten-adresse/<nummer>`. Ohne diesen Schalter bleiben sie privat. Solche Unterseiten
@@ -358,8 +362,9 @@ mit „Adresse ändern“.
 - **Suchmaschinen erlauben:** Standard ist aus – die Seite bittet Suchmaschinen dann, sie nicht aufzunehmen.
 - **Als Profilseite:** Diese Seite erscheint unter `/@name` (höchstens eine je Konto). Ohne Profilseite zeigt
   `/@name` eine schlichte Liste deiner öffentlichen Seiten. Ist schon eine andere Seite Profilseite, nennt der Dialog
-  sie – die neue ersetzt sie.
-- **Link kopieren / Öffnen** und **Veröffentlichung beenden**. Veröffentlichte Seiten tragen im Seitenkopf den
+  sie – die neue ersetzt sie. Ist die Seite Profilseite, zeigt der Dialog unter dem Link auch die **Profiladresse**
+  `…/@name` zum Kopieren.
+- **Link kopieren / Öffnen** (auf dem Handy auch **Teilen**) und **Veröffentlichung beenden** (mit Rückfrage). Veröffentlichte Seiten tragen im Seitenkopf den
   Hinweis „🌐 Öffentlich“ – ein Klick öffnet den Dialog, „↗“ daneben die öffentliche Seite.
 - **Beenden merkt sich alles:** Adresse und Einstellungen bleiben gespeichert (die Adresse bleibt für diese Seite
   reserviert). Veröffentlichst du die Seite wieder, gilt dieselbe Adresse wie vorher.
@@ -370,6 +375,12 @@ Tabelle (Titel und sichtbare Eigenschaften der Ansicht). Einbettungen werden zu 
 Aufgaben-, Kalender- und Immich-Blöcke, Schaltflächen und Dateianhänge. Verweise auf andere Seiten werden nur dann
 zu Links, wenn das Ziel ebenfalls öffentlich ist – sonst bleibt nur der Text. Bilder liefert Saga nur aus, wenn sie
 in genau dieser Seite stehen.
+
+**So sehen Besucher die Seite:** Unter dem Titel steht „@name · aktualisiert 14.10.2026“, oben links dein `@name` (auf
+der Startseite für Besucher der Name der Instanz). Leiste, Datum und Meldungen erscheinen in der Sprache des
+Besuchers; der Inhalt ist mit der Sprache deines Kontos gekennzeichnet (wichtig für Vorlesen und Silbentrennung).
+Text steht in angenehmer Lesebreite, Bilder und Tabellen dürfen breiter sein. Eine Adresse, die es nicht gibt, bietet
+als nächsten Schritt „Zur Startseite“ (wenn der Admin eine gewählt hat) oder „Anmelden“.
 
 **Papierkorb und Archiv:** Archivierte Seiten und Seiten im Papierkorb sind nicht erreichbar („Nicht gefunden“).
 Die Veröffentlichung bleibt aber gespeichert: Holst du die Seite zurück, ist sie wieder unter derselben Adresse

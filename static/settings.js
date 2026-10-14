@@ -350,43 +350,61 @@
   }
 
   // Oeffentlicher Name (Veroeffentlichen): eigener Block unten im Konto mit eigenem Knopf - steht in jeder oeffentlichen
-  // Adresse /@name/..., nie der Anmeldename. Pruefung (gueltig + frei) schon beim Tippen, Rueckfrage nur beim Aendern.
+  // Adresse /@name/..., nie der Anmeldename. Pruefung (gueltig + frei) schon beim Tippen, Ergebnis direkt unter dem Feld,
+  // dazu live "Neue Adresse: ... (bisher ...)"; Rueckfrage nur beim Aendern eines Namens mit oeffentlichen Seiten.
   function publicNameField(box) {
     var wrap = el('div', 'hk-pubname'); box.appendChild(wrap);
     wrap.appendChild(el('h4', null, T('Öffentlicher Name')));
     api('GET', '/api/account/public-name').then(function (p) {
       var inp = input('text', p.name || '', p.suggested || ''); inp.maxLength = 32; inp.spellcheck = false; inp.setAttribute('autocapitalize', 'off');
       inp.setAttribute('aria-label', T('Öffentlicher Name'));
-      wrap.appendChild(field(T('Name'), inp));
+      var col = el('div', 'pub-fcol'), fm = el('p', 'hk-fieldmsg'), st = el('div', 'hk-status'), live = el('p', 'pub-newurl');
+      st.setAttribute('role', 'status');
+      col.appendChild(inp); col.appendChild(fm); col.appendChild(st); col.appendChild(live);
+      wrap.appendChild(field(T('Name'), col));
+      var setErr = HK.fieldMsg(inp, fm, '');
       var hint = el('p', 'hk-hint'); wrap.appendChild(hint);
+      function urlFor(n) { return (p.url ? p.url.replace(/\/@[^\/]*$/, '') : location.origin) + '/@' + n; }
       function showHint() {
-        hint.textContent = p.name
-          ? T('Steht in den Adressen deiner öffentlichen Seiten ({url}). Beim Ändern funktionieren alte Links nicht mehr.', { url: p.url })
-          : T('Steht in den Adressen deiner öffentlichen Seiten (…/@name/…) und ist für alle sichtbar – nicht dein Anmeldename. Wird beim ersten Veröffentlichen festgelegt.');
+        hint.textContent = '';
+        if (p.name) hint.appendChild(HK.fmtNodes(T('Steht in den Adressen deiner öffentlichen Seiten ({url}). Beim Ändern funktionieren alte Links nicht mehr.'), { url: HK.urlNode(p.url) }));
+        else hint.textContent = T('Steht in den Adressen deiner öffentlichen Seiten (…/@name/…) und ist für alle sichtbar – nicht dein Anmeldename. Wird beim ersten Veröffentlichen festgelegt.');
       }
-      showHint();
-      var st = el('div', 'hk-status'), bar = el('div', 'hk-actions'), sv = el('button', 'btn', T('Namen speichern')); sv.type = 'button';
-      sv.disabled = true; bar.appendChild(sv); wrap.appendChild(bar); wrap.appendChild(st);
+      function showLive(v) {
+        live.textContent = ''; live.hidden = !(v && p.name && v !== p.name);
+        if (!live.hidden) live.appendChild(HK.fmtNodes(T('Neue Adresse: {url} (bisher {old})'), { url: HK.urlNode(urlFor(v)), old: HK.urlNode(p.url) }));
+      }
+      showHint(); showLive('');
+      var bar = el('div', 'hk-actions'), sv = el('button', 'btn', T('Namen speichern')); sv.type = 'button';
+      sv.disabled = true; bar.appendChild(sv); wrap.appendChild(bar);
       var tmr = null;
       function check() {
         var v = inp.value.trim().toLowerCase();
-        clearTimeout(tmr); sv.disabled = true; status(st, '');           // alte Meldung verschwindet beim Weitertippen
+        clearTimeout(tmr); sv.disabled = true; status(st, ''); setErr('');      // alte Meldung verschwindet beim Weitertippen
+        showLive(v);
         if (!v || v === p.name) return;
         tmr = setTimeout(function () {
           api('PUT', '/api/account/public-name', { name: v, check: true }).then(function (r) {
             if (inp.value.trim().toLowerCase() !== v) return;
-            status(st, r.ok ? T('✓ Frei') : r.error, r.ok ? 'ok' : 'err'); sv.disabled = !r.ok;
-          }).catch(function (err) { status(st, err.message, 'err'); });
+            if (r.ok) status(st, T('✓ Frei'), 'ok'); else setErr(r.error);
+            sv.disabled = !r.ok;
+          }).catch(function (err) { setErr(err.message); });
         }, 250);
       }
       inp.addEventListener('input', check);
       inp.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !sv.disabled) { e.preventDefault(); sv.click(); } });
+      function save(v) {
+        sv.disabled = true;
+        api('PUT', '/api/account/public-name', { name: v }).then(function (d) {
+          p.name = d.name; p.url = d.url; inp.value = d.name; showHint(); showLive(''); status(st, T('✓ Gespeichert'), 'ok');
+        }).catch(function (err) { status(st, ''); setErr(err.message); sv.disabled = false; });
+      }
       sv.addEventListener('click', function () {
         var v = inp.value.trim().toLowerCase();
-        if (p.name && v !== p.name && p.published && !confirm(T('Öffentlichen Namen ändern? Alte Links auf deine öffentlichen Seiten funktionieren danach nicht mehr.'))) return;
-        sv.disabled = true;
-        api('PUT', '/api/account/public-name', { name: v }).then(function (d) { p.name = d.name; p.url = d.url; inp.value = d.name; showHint(); status(st, T('✓ Gespeichert'), 'ok'); })
-          .catch(function (err) { status(st, err.message, 'err'); sv.disabled = false; });
+        if (!(p.name && v !== p.name && p.published)) { save(v); return; }
+        HK.ask({ title: T('Öffentlichen Namen ändern?'), ok: T('Ändern'),
+                 text: T('Links auf deine veröffentlichten Seiten ändern sich. Alte Links funktionieren nicht mehr.') })
+          .then(function (yes) { if (yes) save(v); else inp.focus(); });
       });
     }).catch(function () { wrap.remove(); });
   }

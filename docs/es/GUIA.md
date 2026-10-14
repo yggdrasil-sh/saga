@@ -343,26 +343,32 @@ y las muestran como tabla, tablero, lista, galería o calendario, con filtros, o
 
 Cualquier página puede hacerse **pública**: se lee sin iniciar sesión, con un diseño sencillo, claro u oscuro según
 el dispositivo y cómoda de leer en el móvil. En el menú de la página (**⋯** a la derecha, encima de la página, junto
-a «Guardado») elige **«Publicar …»** y marca **«Pública»** en el diálogo: desde ese momento la página está disponible
-en su dirección. Los cambios en las opciones se aplican al instante; solo una dirección nueva se aplica expresamente con «Cambiar
-dirección».
+a «Guardado») elige **«Publicar …»** y activa el interruptor **«Pública»** en el diálogo: desde ese momento la página
+está disponible en su dirección. De arriba abajo, el diálogo muestra: el interruptor, el enlace (con Copiar y Abrir;
+en el móvil también Compartir), la dirección, las opciones y «Dejar de publicar». Mientras la página es privada, la
+dirección futura aparece atenuada y todavía sin enlace, y las opciones están agrupadas bajo «Se aplica cuando la
+página sea pública». En una página pública, los cambios en las opciones se aplican al instante; solo una dirección
+nueva se aplica expresamente con «Cambiar dirección». Los errores (p. ej., una dirección ya usada) aparecen justo
+debajo del campo.
 
 - **Nombre público:** La primera vez eliges un nombre público (sugerido a partir de tu nombre visible, 2–32
   caracteres `a–z 0–9 - _`). Aparece en todas las direcciones y es visible para todos; **nunca** es tu nombre de
   usuario. Se cambia en Ajustes → Cuenta, en su propio bloque «Nombre público» (con su propio botón «Guardar nombre»; Saga
-  comprueba mientras escribes si el nombre es válido y está libre); después, los enlaces antiguos dejan de funcionar.
+  comprueba mientras escribes si el nombre es válido y está libre, y muestra «Nueva dirección: … (antes …)»);
+  después, los enlaces antiguos dejan de funcionar.
   Nombres como `admin`, `api` o `login` están reservados.
 - **Dirección:** `https://saga.example.org/@nombre/direccion-de-la-pagina`. La dirección se sugiere a partir del
-  título y se puede cambiar con **«Cambiar dirección»** (2–60 caracteres), tras confirmar, porque el enlace actual
-  deja de funcionar. Saga redirige las mayúsculas o una «/» final a la dirección correcta.
+  título y se puede cambiar (2–60 caracteres): en cuanto lo que escribes difiere de la dirección guardada, aparece
+  el botón **«Cambiar dirección»**; tras confirmar, porque el enlace actual deja de funcionar. Saga redirige las mayúsculas o una «/» final a la dirección correcta.
 - **Publicar también las subpáginas:** Todas las subpáginas (y las entradas de bases de datos) bajo esta página
   también serán legibles, en `/@nombre/direccion-de-la-pagina/<número>`. Sin esta opción siguen siendo privadas. Esas subpáginas muestran
   «🌐 Pública (a través de «página superior»)» en la cabecera; su diálogo lo explica y lleva a la página superior.
 - **Permitir buscadores:** Desactivado por defecto: la página pide entonces a los buscadores que no la indexen.
 - **Como página de perfil:** Esta página aparece en `/@nombre` (como máximo una por cuenta). Sin página de perfil,
   `/@nombre` muestra una lista sencilla de tus páginas públicas. Si otra página ya es tu página de perfil, el
-  diálogo la nombra: la nueva la sustituye.
-- **Copiar enlace / Abrir** y **Dejar de publicar**. Las páginas publicadas muestran «🌐 Pública» en la cabecera;
+  diálogo la nombra: la nueva la sustituye. Si la página es tu página de perfil, el diálogo muestra además, debajo
+  del enlace, la **dirección del perfil** `…/@nombre` para copiarla.
+- **Copiar enlace / Abrir** (en el móvil también **Compartir**) y **Dejar de publicar** (con confirmación). Las páginas publicadas muestran «🌐 Pública» en la cabecera;
   un clic abre el diálogo y «↗», a su lado, la página pública.
 - **Al dejar de publicar se guarda todo:** la dirección y los ajustes se conservan (la dirección queda reservada para
   esta página). Si vuelves a publicarla, usa la misma dirección que antes.
@@ -373,6 +379,13 @@ citas, código, imágenes, tablas, columnas, avisos, desplegables). Las bases de
 de tareas, calendario e Immich, los botones ni los archivos adjuntos. Los enlaces a otras páginas solo siguen siendo
 enlaces si la página de destino también es pública; si no, queda solo el texto. Saga solo entrega imágenes que se
 usan exactamente en esta página.
+
+**Cómo ven la página los visitantes:** Debajo del título aparece «@nombre · actualizado el 14/10/2026», y arriba a la
+izquierda tu `@nombre` (en la página de inicio para visitantes, el nombre de la instancia). La barra, la fecha y los
+mensajes aparecen en el idioma del visitante; el contenido se marca con el idioma de tu cuenta (importante para
+lectores de pantalla y la división de palabras). El texto tiene un ancho de lectura cómodo; las imágenes y tablas
+pueden ser más anchas. Una dirección que no existe ofrece un siguiente paso: «Ir a la página de inicio» (si el admin
+eligió una) o «Iniciar sesión».
 
 **Papelera y archivo:** Las páginas archivadas o en la papelera no son accesibles («No encontrado»). La publicación
 se conserva: si recuperas la página, vuelve a ser pública en la misma dirección. Solo desaparece al eliminar la

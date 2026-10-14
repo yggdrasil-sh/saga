@@ -20,7 +20,7 @@ import re
 import threading
 import time
 import unicodedata
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from html import escape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
@@ -31,7 +31,8 @@ import psycopg
 import auth
 from db import connect as _db
 from saga import i18n
-from saga.core import ASSET_V, BASE_URL, E, PUBLIC_HOSTS, TZ, _api_guard, _bad, _body, _json_load, t, title, tmpl
+from saga.core import (ASSET_V, BASE_URL, E, PUBLIC_HOSTS, TZ, _api_guard, _bad, _body, _json_load, seen_lang, server_lang, t, title,
+                       tmpl, user_lang)
 from saga.files import _thumb, _thumb_mime, _thumb_w
 from saga.notes import FILES_DIR, MAX_NEST, _FILE_URL, _calc_value, _clean_views, _iter_blocks
 
@@ -375,6 +376,23 @@ def _day(iso):
     return d.strftime("%d.%m.%Y" if lang == "de" else "%d/%m/%Y")
 
 
+_DIM = {}                       # Bild-ID -> (Breite, Hoehe) oder None; nur der Dateikopf wird gelesen
+
+
+def _img_size(fid):
+    """Pixelmasse eines eigenen Bildes (fuer srcset/width/height), zwischengespeichert. Nicht lesbar -> None."""
+    if fid not in _DIM:
+        if len(_DIM) > 5000:
+            _DIM.clear()
+        try:
+            from PIL import Image
+            with Image.open(os.path.join(FILES_DIR, fid)) as im:          # liest nur den Kopf, dekodiert nichts
+                _DIM[fid] = (int(im.size[0]), int(im.size[1]))
+        except Exception:  # noqa: BLE001 - kein Rasterbild, zu gross, kaputt: dann ohne Masse
+            _DIM[fid] = None
+    return _DIM[fid]
+
+
 def _blocks(ctx, blocks, depth=0):
     if depth > MAX_NEST or not isinstance(blocks, list):
         return ""
@@ -402,7 +420,8 @@ def _items(ctx, items, style, depth):
         sub = _items(ctx, it.get("items"), style, depth + 1)
         if style == "checklist":
             on = bool((it.get("meta") or {}).get("checked")) if isinstance(it.get("meta"), dict) else False
-            box = f'<input type="checkbox" disabled{" checked" if on else ""} aria-label="{escape(t("Erledigt") if on else t("Offen"))}">'
+            box = (f'<input type="checkbox" disabled{" checked" if on else ""} aria-disabled="true" '
+                   f'aria-label="{escape(t("Erledigt") if on else t("Offen"))}">')
             out.append(("<li class=\"done\">" if on else "<li>") + f"{box}<span>{txt}</span>{sub}</li>")
         else:
             out.append(f"<li>{txt}{sub}</li>")
@@ -455,8 +474,18 @@ def _block(ctx, typ, d, depth):
         cap = inline(d.get("caption", ""), ctx.url_for)
         cls = " ".join(c for c, k in (("border", "withBorder"), ("bg", "withBackground"), ("wide", "stretched")) if d.get(k))
         base = f"{ctx.base}/f/{fid}"
-        return (f'<figure class="pub-img {cls}"><img src="{base}?w=1280" srcset="{base}?w=640 640w, {base}?w=1280 1280w, '
-                f'{base}?w=2000 2000w" sizes="(max-width: 760px) 100vw, 760px" alt="{escape(_plain(d.get("caption", "")))}" '
+        # srcset mit den WIRKLICHEN Breiten (kleinere Bilder liefert ?w= unveraendert) und width/height: sonst rechnet
+        # der Browser ein 900 px breites Bild mit "1280w" kleiner, als es ist (bzw. vergroessert kleine Bilder)
+        dim = _img_size(fid)
+        srcset, seen = [], set()
+        for cw in (640, 1280, 2000):
+            dw = min(cw, dim[0]) if dim else cw
+            if dw not in seen:
+                seen.add(dw)
+                srcset.append(f"{base}?w={cw} {dw}w")
+        wh = f' width="{dim[0]}" height="{dim[1]}"' if dim else ""
+        return (f'<figure class="pub-img {cls}"><img src="{base}?w=1280" srcset="{", ".join(srcset)}" '
+                f'sizes="(max-width: 1032px) 100vw, 992px"{wh} alt="{escape(_plain(d.get("caption", "")))}" '
                 f'loading="lazy">' + (f"<figcaption>{cap}</figcaption>" if cap.strip() else "") + "</figure>")
     if typ == "table":
         rows = [r for r in (d.get("content") or []) if isinstance(r, list)][:500]
@@ -730,6 +759,11 @@ def _icon_html(ctx, icon, cls, default=""):
 def render_page(ctx, row):
     """-> Werte fuer die Vorlage. ctx.base = Adresse dieser (Unter-)Seite (Bilder liegen darunter)."""
     v = {"title": row["title"] or t("Unbenannt"), "wide": bool(row["wide"]), "props": [], "subpages": [], "crumbs": []}
+    # Absenderzeile "@name · aktualisiert 14.10.2026" (Datum in der Sprache des Besuchers)
+    upd = row["updated"] or row["created"]
+    when = escape(i18n.fmt_date(upd, TZ)) if upd else ""
+    iso = datetime.fromtimestamp(upd, TZ).date().isoformat() if upd else ""
+    v["updated_html"] = escape(t("aktualisiert {date}")).replace("{date}", f'<time datetime="{iso}">{when}</time>') if upd else ""
     v["icon"] = _icon_html(ctx, row["icon"], "pub-icon")
     v["cover"] = ""
     if row["cover"]:
@@ -821,8 +855,21 @@ def _common():
     return {"v": ASSET_V, "site": title(), "project_url": PROJECT_URL.get(lang, PROJECT_URL["en"])}
 
 
+def content_lang(uid):
+    """Sprache des Inhalts (lang am Artikel): Kontosprache des Besitzers, sonst Standard des Servers, sonst die zuletzt
+    gesehene Sprache seiner Weboberflaeche; unbekannt -> '' (dann gilt die Sprache des Besuchers)."""
+    try:
+        return user_lang(uid) or server_lang() or seen_lang(uid) or ""
+    except Exception:  # noqa: BLE001 - Datenbank gerade weg: ohne eigene Angabe
+        return ""
+
+
 def not_found():
-    html = tmpl.get_template("public.html").render(mode="nf", indexable=False, **_common())
+    """Neutrale 404 (fuer jeden Grund gleich) mit naechstem Schritt: zur Startseite fuer Besucher, falls gesetzt,
+    sonst zur Anmeldung."""
+    home = bool(enabled() and public_home())
+    html = tmpl.get_template("public.html").render(mode="nf", indexable=False, next_home=home,
+                                                   next_url="/" if home else BASE_URL + "/login", **_common())
     return HTMLResponse(html, status_code=404, headers=_headers(False, "no-store"))
 
 
@@ -868,7 +915,8 @@ def _page_response(request, ctx, row, home=False):
     idx = ctx.pub["indexable"]
     canon = _canon_base(request) + (ctx.base if not home else "/")
     html = tmpl.get_template("public.html").render(mode="page", page=v, indexable=idx, home=home, canonical=canon,
-                                                   login_url=BASE_URL + "/login", owner=ctx.name, **_common())
+                                                   login_url=BASE_URL + "/login", owner=ctx.name,
+                                                   content_lang=content_lang(ctx.uid), **_common())
     if home:                                     # "/" ist fuer Angemeldete das Dashboard: nie aus einem Zwischenspeicher
         h = _headers(idx, _cache(request, "no-cache"))
         h["Vary"] = "Accept-Language, Cookie"

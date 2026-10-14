@@ -336,25 +336,31 @@ moves to the next row; in the last row it creates the next entry right away.
 
 Any page can be made **public** – readable without signing in, shown in a clean layout, light or dark depending on
 the device and easy to read on a phone. In the page menu (**⋯** at the right above the page, next to “Saved”)
-choose **“Publish …”** and tick **“Public”** in the dialog – from then on the page is reachable at its address.
-Changes to the options apply immediately; only a new address is applied explicitly with “Change address”.
+choose **“Publish …”** and turn on the **“Public”** switch in the dialog – from then on the page is reachable at its
+address. From top to bottom the dialog shows: the switch, the link (with Copy and Open, on phones also Share), the
+address, the options and “Stop publishing”. While the page is private, the future address is shown dimmed and not yet
+as a link, and the options are grouped under “Applies once the page is public”. For a public page, changes to the
+options apply immediately; only a new address is applied explicitly with “Change address”. Errors (e.g. an address
+that is already in use) appear right below the field.
 
 - **Public name:** The first time, you choose a public name (suggested from your display name, 2–32 characters
   `a–z 0–9 - _`). It appears in every address and is visible to everyone – it is **never** your username. Change it
   in Settings → Account in its own “Public name” block (with its own “Save name” button; Saga checks while you type
-  whether the name is valid and available); old links stop working afterwards. Names such as `admin`, `api` or `login`
+  whether the name is valid and available, and shows “New address: … (was …)”); old links stop working
+  afterwards. Names such as `admin`, `api` or `login`
   are reserved.
 - **Address:** `https://saga.example.org/@name/page-address`. The page address is suggested from the title and can
-  be changed with **“Change address”** (2–60 characters) – after a confirmation, because the current link stops
-  working. Saga redirects uppercase letters or a trailing “/” to the correct address.
+  be changed (2–60 characters): as soon as what you type differs from the saved address, the **“Change address”**
+  button appears – after a confirmation, because the current link stops working. Saga redirects uppercase letters or a trailing “/” to the correct address.
 - **Also publish subpages:** All subpages (and database entries) below this page become readable too, at
   `/@name/page-address/<number>`. Without this switch they stay private. Such subpages show “🌐 Public (via “parent
   page”)” in the page header; their dialog explains this and links to the parent page.
 - **Allow search engines:** Off by default – the page then asks search engines not to index it.
 - **As profile page:** This page appears at `/@name` (one per account at most). Without a profile page, `/@name`
   shows a plain list of your public pages. If another page already is your profile page, the dialog names it – the
-  new one replaces it.
-- **Copy link / Open** and **Stop publishing**. Published pages show “🌐 Public” in the page header – a click opens
+  new one replaces it. If the page is your profile page, the dialog also shows the **profile address** `…/@name`
+  below the link, ready to copy.
+- **Copy link / Open** (on phones also **Share**) and **Stop publishing** (with a confirmation). Published pages show “🌐 Public” in the page header – a click opens
   the dialog, the “↗” next to it opens the public page.
 - **Stopping remembers everything:** address and settings are kept (the address stays reserved for this page). If
   you publish the page again, it uses the same address as before.
@@ -364,6 +370,12 @@ quotes, code, images, tables, columns, callouts, toggles). Databases appear as a
 properties of the view). Embeds become links. **Not** published: task, calendar and Immich blocks, buttons and file
 attachments. Links to other pages only stay links if the target is public as well – otherwise just the text remains.
 Saga only serves images that are used in exactly this page.
+
+**How visitors see the page:** Below the title it says “@name · updated Oct 14, 2026”, with your `@name` at the top left
+(on the home page for visitors: the name of the instance). The bar, the date and messages appear in the visitor's
+language; the content is marked with your account's language (important for screen readers and hyphenation). Text
+is set at a comfortable reading width, images and tables may be wider. An address that doesn't exist offers a next
+step: “Go to the home page” (if the admin picked one) or “Sign in”.
 
 **Trash and archive:** Archived pages and pages in the trash are not reachable (“Not found”). The publication is
 kept, though: if you restore the page, it is public again at the same address. It only disappears when the page is

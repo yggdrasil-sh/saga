@@ -1,6 +1,7 @@
 <!doctype html>
 {#- Oeffentliche Seite (saga/publish.py): ohne JavaScript, eigenes CSS (static/public.css), Inhalte vorab bereinigt.
-    mode: page | list (/@name ohne Profilseite) | nf (neutrale 404) | busy (Rate-Limit) -#}
+    mode: page | list (/@name ohne Profilseite) | nf (neutrale 404) | busy (Rate-Limit)
+    Sprache: <html lang> und Bedienung = Besucher; Inhalt (article, Pfad) = Kontosprache des Besitzers (content_lang) -#}
 <html lang="{{ lang() }}">
 <head>
 <meta charset="utf-8">
@@ -27,23 +28,25 @@
 </head>
 <body class="pub{% if mode == 'page' and page.wide %} pub-wide{% endif %}">
 {%- if mode == "page" %}
-{%- if home or page.crumbs %}
 <header class="pub-bar">
-  <nav class="pub-crumbs" aria-label="{{ _('Pfad') }}">
+  {%- if home %}<a class="pub-brand" href="/">{{ site }}</a>{% else %}<a class="pub-brand" href="/@{{ owner }}">@{{ owner }}</a>{% endif %}
+  {%- if page.crumbs %}
+  <nav class="pub-crumbs" aria-label="{{ _('Pfad') }}"{% if content_lang %} lang="{{ content_lang }}"{% endif %}>
     {%- for c in page.crumbs %}<a href="{{ c.url }}">{{ c.title }}</a><span class="pub-sep" aria-hidden="true">›</span>{% endfor %}
-    {%- if page.crumbs %}<span class="pub-here">{{ page.title }}</span>{% endif %}
+    <span class="pub-here">{{ page.title }}</span>
   </nav>
+  {%- endif %}
   {%- if home %}<a class="pub-login" href="{{ login_url }}">{{ _("Anmelden") }}</a>{% endif %}
 </header>
-{%- endif %}
 <main class="pub-main">
-  <article class="pub-page">
+  <article class="pub-page"{% if content_lang %} lang="{{ content_lang }}"{% endif %}>
     {%- if page.cover %}
     <div class="pub-cover"><img class="{{ page.cover_cls }}" src="{{ page.cover }}" alt=""></div>
     {%- endif %}
     <header class="pub-head{% if page.cover %} has-cover{% endif %}">
       {{ page.icon|safe }}
       <h1>{{ page.title }}</h1>
+      <p class="pub-by" lang="{{ lang() }}"><a href="/@{{ owner }}">@{{ owner }}</a> · {{ page.updated_html|safe }}</p>
     </header>
     {%- if page.props %}
     <dl class="pub-props">
@@ -54,8 +57,8 @@
 {{ page.content|safe }}
     </div>
     {%- if page.subpages %}
-    <section class="pub-subpages" aria-label="{{ _('Unterseiten') }}">
-      <h2>{{ _("Unterseiten") }}</h2>
+    <section class="pub-subpages" aria-labelledby="pub-sub-h">
+      <h2 id="pub-sub-h" lang="{{ lang() }}">{{ _("Unterseiten") }}</h2>
       <ul>{% for s in page.subpages %}<li><a href="{{ s.url }}">{{ s.icon|safe }}<span>{{ s.title }}</span></a></li>{% endfor %}</ul>
     </section>
     {%- endif %}
@@ -74,6 +77,9 @@
 <main class="pub-main pub-nf">
   <h1>{{ _("Zu viele Anfragen") if mode == "busy" else _("Nicht gefunden") }}</h1>
   <p>{{ _("Bitte gleich noch einmal versuchen.") if mode == "busy" else _("Diese Seite gibt es nicht oder sie ist nicht öffentlich.") }}</p>
+  {%- if mode == "nf" and next_url %}
+  <p class="pub-next-wrap"><a class="pub-next" href="{{ next_url }}">{{ _("Zur Startseite") if next_home else _("Anmelden") }}</a></p>
+  {%- endif %}
 </main>
 {%- endif %}
 <footer class="pub-foot"><a href="{{ project_url }}" rel="noopener">{{ _("Erstellt mit Saga") }}</a></footer>
