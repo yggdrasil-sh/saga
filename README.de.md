@@ -41,6 +41,9 @@
   lesbar, ohne JavaScript, optional als Startseite für Besucher
 - **Teilen und Kommentieren:** Seiten und Datenbanken mit Personen oder Gruppen (lokal, LDAP, SSO) teilen – Rollen
   Lesen, Kommentieren, Bearbeiten, Unterseiten erben die Freigabe; dezente Kommentare am Block mit „Erledigt“
+- **Chats mit Ende-zu-Ende-Verschlüsselung:** Direkt-, Gruppen- und Seiten-Chats mit Anhängen, Antworten und
+  @-Seitenverweisen; der Server (und der Admin) sieht nur verschlüsselte Daten – libsodium, Wiederherstellungsschlüssel,
+  Sicherheitsnummern, mehrere Geräte
 - **Aufgaben** mit Fälligkeit, Priorität und Wiederholung
 - **Kalender (CalDAV):** Nextcloud, mailcow/SOGo, Radicale, iCloud … anzeigen und bearbeiten
 - **Immich:** eigene Fotos als Bilder und Titelbilder einbinden
