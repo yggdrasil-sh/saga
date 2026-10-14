@@ -44,6 +44,8 @@
 - **Chats mit Ende-zu-Ende-Verschlüsselung:** Direkt-, Gruppen- und Seiten-Chats mit Anhängen, Antworten und
   @-Seitenverweisen; der Server (und der Admin) sieht nur verschlüsselte Daten – libsodium, Wiederherstellungsschlüssel,
   Sicherheitsnummern, mehrere Geräte
+- **Benachrichtigungen und Mitteilungen:** Glocke mit Live-Aktualisierung; auf Wunsch aufs Handy/Desktop per Web Push
+  (Ende-zu-Ende verschlüsselt, auch iPhone als Home-Bildschirm-App), ntfy/UnifiedPush oder Apple Push – ohne Inhalte
 - **Aufgaben** mit Fälligkeit, Priorität und Wiederholung
 - **Kalender (CalDAV):** Nextcloud, mailcow/SOGo, Radicale, iCloud … anzeigen und bearbeiten
 - **Immich:** eigene Fotos als Bilder und Titelbilder einbinden

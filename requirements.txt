@@ -13,3 +13,4 @@ psycopg[binary]>=3.2
 psycopg-pool>=3.2
 cryptography>=42
 segno>=1.6
+h2==4.2.0                 # HTTP/2 fuer Apple Push (APNs), ueber httpx

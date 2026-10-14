@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check, csrf_field with context %}
+{% block pagetitle %}{{ _('Mitteilungen') }}{% endblock %}
+{% block content %}
+<h2>{{ _("Mitteilungen aufs Handy/Desktop") }}</h2>
+<p class="hk-hint">{{ _("Saga schickt Mitteilungen nur ausgehend – kein zusätzlicher Port, kein eingehender Dienst. Jede Person schaltet sie selbst ein (Einstellungen → Mitteilungen) und wählt, worüber sie benachrichtigt werden will. Inhalte von Seiten, Kommentaren und Chats werden nie mitgeschickt.") }}</p>
+<p class="hk-hint">{{ _("Angemeldete Geräte: {n} · offene Zustellungen: {q}", n=stats.subs, q=stats.queue) }}{% if stats.by %} ({% for k, v in stats.by %}{{ k }}: {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}</p>
+<form method="post" class="adm-form" enctype="multipart/form-data">
+  {{ csrf_field() }}
+  <section class="adm-card">
+    <h3>{{ _("Wege") }}</h3>
+    {{ check(_('Mitteilungen erlauben'), 'enabled', p.enabled, _('Aus = keine Mitteilungen aufs Handy/Desktop (die Glocke in Saga bleibt)')) }}
+    {{ check(_('Web Push (Browser, auch iPhone/iPad als Home-Bildschirm-App)'), 'webpush', p.webpush, _('Ende-zu-Ende verschlüsselt über den Push-Dienst des Browsers (Google, Mozilla, Apple, Microsoft). Braucht https.')) }}
+    {{ check(_('ntfy (eigene Topic-Adresse)'), 'ntfy', p.ntfy, _('Die Person trägt ihre ntfy-Topic-Adresse ein. Der ntfy-Server sieht den Text – deshalb nie mit Namen.')) }}
+    {{ check(_('UnifiedPush (Android- und Linux-App)'), 'unifiedpush', p.unifiedpush, _('Die App meldet die Adresse ihres Verteilers (z. B. ntfy) selbst an.')) }}
+    <p class="hk-hint">{{ _("Interne ntfy-Server (z. B. im Heimnetz) brauchen eine Freigabe unter Allgemein → Freigegebene interne Hosts.") }}</p>
+    <p class="hk-hint">{{ _("Öffentlicher VAPID-Schlüssel (Web Push):") }} <code class="adm-key">{{ vapid or "–" }}</code></p>
+  </section>
+  <section class="adm-card">
+    <h3>{{ _("Apple Push (iOS-/macOS-App)") }}</h3>
+    <p class="hk-hint">{{ _("Für Mitteilungen an die Saga-App auf iPhone, iPad und Mac braucht Saga einen APNs-Schlüssel aus dem Apple-Developer-Konto (Certificates, Identifiers & Profiles → Keys → „Apple Push Notifications service (APNs)“). Apple zeigt die .p8-Datei nur einmal zum Herunterladen. Ohne Schlüssel bleibt diese Funktion aus; Web Push funktioniert trotzdem.") }}</p>
+    <p class="hk-hint">{{ _("Status:") }} {% if apns_ready %}✓ {{ _("eingerichtet") }}{% elif a.enabled %}✗ {{ _("unvollständig") }}{% else %}{{ _("aus") }}{% endif %}</p>
+    {{ check(_('APNs verwenden'), 'apns_enabled', a.enabled) }}
+    {{ field(_('Team-ID'), 'team_id', a.team_id, max=20, ph='ABCDE12345') }}
+    {{ field(_('Key-ID'), 'key_id', a.key_id, max=20, ph='XYZ987WVUT') }}
+    {{ field(_('Bundle-ID der App'), 'bundle_id', a.bundle_id, max=200, ph='org.example.saga') }}
+    <label class="adm-field"><span>{{ _("Schlüssel (.p8)") }}</span>
+      <input class="hk-in" type="file" name="p8" accept=".p8,application/x-pem-file,text/plain">
+      <small>{{ _("gespeichert ✓ (verschlüsselt) – leer lassen = behalten") if has_p8 else _("noch keiner gespeichert") }}</small></label>
+    {% if has_p8 %}{{ check(_('Gespeicherten Schlüssel entfernen'), 'clear_p8', false) }}{% endif %}
+  </section>
+  <div class="adm-actions">
+    <button class="btn btn-primary" type="submit" name="action" value="save">{{ _("Speichern") }}</button>
+  </div>
+</form>
+{% endblock %}

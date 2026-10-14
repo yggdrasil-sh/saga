@@ -33,7 +33,7 @@
     dlg.addEventListener('mousedown', function (e) { if (e.target === dlg) closeSettings(); });
     document.addEventListener('keydown', onKey);
     document.body.appendChild(dlg);
-    // Reiter statt eines langen Dialogs: Konto · Lesezeichen · Kalender · Immich · Apps & Geraete
+    // Reiter statt eines langen Dialogs: Konto · Mitteilungen · Lesezeichen · Kalender · Immich · Apps & Geraete
     var tabs = el('div', 'hk-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', T('Einstellungen'));
     body.appendChild(tabs); body.classList.add('tabbed');
     accountSection(body);
@@ -41,7 +41,9 @@
     calendarSection(body);
     immichSection(body);
     tokenSection(body);
-    var TABS = [['account', T('Konto')], ['bookmarks', T('Lesezeichen')], ['calendar', T('Kalender')], ['immich', 'Immich'], ['apps', T('Apps & Geräte')]];
+    if (window.HKPush) HKPush.section(body);                 // Mitteilungen aufs Handy/Desktop (static/push.js)
+    var TABS = [['account', T('Konto')], ['push', T('Mitteilungen')], ['bookmarks', T('Lesezeichen')], ['calendar', T('Kalender')], ['immich', 'Immich'], ['apps', T('Apps & Geräte')]];
+    if (!window.HKPush) TABS.splice(1, 1);
     var btns = TABS.map(function (t, i) {
       var b = el('button', 'hk-tab', t[1]); b.type = 'button'; b.id = 'hk-tab-' + t[0];
       b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', 'hk-pane-' + t[0]);

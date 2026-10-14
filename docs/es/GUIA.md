@@ -599,6 +599,38 @@ clientes propios: `tests/chat_vectors.json` (comprobar con `python3 tools/chat_v
 `node tools/chat_vectors.mjs`). En el navegador, las claves privadas están en IndexedDB; en una ventana privada los chats
 no funcionan.
 
+### Notificaciones push al móvil y al ordenador
+
+La campana lo muestra todo mientras Saga está abierta. Para cuando no estás, Saga envía **notificaciones push**,
+incluso con Saga cerrado. Actívalas en **Ajustes → Notificaciones push**:
+
+- **Este navegador:** «Activar en este navegador» y permitir la pregunta del navegador (Chrome, Edge, Firefox,
+  Safari). En **iPhone y iPad** solo funciona si Saga está en la pantalla de inicio (Compartir → «Añadir a pantalla de
+  inicio»): ábrela desde allí y actívala. Requiere `https`. Al cerrar sesión en este navegador termina la suscripción;
+  «cerrar sesión en todas partes» y un cambio de contraseña terminan todas las suscripciones de navegador.
+- **ntfy:** en la app [ntfy](https://ntfy.sh) (Android, iPhone, Linux), suscríbete a un tema con un nombre difícil de
+  adivinar e introduce su dirección en «Añadir ntfy» (p. ej. `https://ntfy.sh/mi-tema-secreto`, con token de acceso en
+  temas protegidos). Los servidores ntfy propios en la red doméstica los permite el administrador en General.
+- **Apps:** las apps de Android y Linux se registran mediante UnifiedPush; la app de iOS/macOS, mediante Apple Push
+  (APNs, lo configura el administrador). Aparecen en la lista de dispositivos.
+- **Dispositivos:** todos los navegadores, temas de ntfy y apps con «Probar» y «Eliminar»; «Último error» ayuda si no
+  llega nada.
+- **¿Sobre qué?** Activa o desactiva por separado compartir, comentarios, chat y publicación. Con **Mostrar nombres**
+  desactivado → solo «Comentario nuevo en tu página» en lugar de «Jonas ha comentado tu página». **Horas de silencio**
+  (p. ej. 22:00–07:00, en tu zona horaria): sin notificaciones push en ese tiempo; la campana lo sigue mostrando todo.
+
+Privacidad: las notificaciones push solo contienen una frase corta y el enlace, nunca títulos de páginas, comentarios
+ni contenido de chats. Las notificaciones del navegador están cifradas de extremo a extremo (Web Push, RFC 8291): el
+servicio push del navegador (Google, Mozilla, Apple, Microsoft) solo ve datos cifrados. Por **ntfy** (y UnifiedPush
+sin cifrado) **nunca se envían nombres**, porque el servidor ntfy puede leer el texto. Antes de entregar, Saga
+comprueba que todavía puedes ver la página. Saga solo se conecta **hacia fuera**: sin puerto adicional.
+
+**Administración → Notificaciones push:** desactivar canales por separado (Web Push, ntfy, UnifiedPush) y configurar
+Apple Push: en la cuenta de Apple Developer, en *Certificates, Identifiers & Profiles → Keys*, crea una clave con
+«Apple Push Notifications service (APNs)», sube el archivo `.p8` (solo se ofrece una vez) e indica Team ID, Key ID y
+el bundle ID de la app. La clave se guarda cifrada. Sin clave, Apple Push queda desactivado. Saga crea por sí misma
+la clave de Web Push (VAPID) cuando la necesita por primera vez; depende de `SECRET_KEY`.
+
 ### Cuenta, calendarios, Immich, apps
 
 En el menú de usuario, arriba a la derecha, en **Ajustes** (una pestaña para cada cosa):

@@ -47,6 +47,8 @@ private space – no cloud, no subscription, on your own server.
   Comment, Edit, subpages inherit the share; unobtrusive comments on blocks with “Resolved”
 - **End-to-end encrypted chats:** direct, group and page chats with attachments, replies and @ page links; the
   server (and the admin) only sees encrypted data – libsodium, recovery key, safety numbers, multiple devices
+- **Notifications and push:** bell with live updates; optionally to phone/desktop via Web Push (end-to-end encrypted,
+  also iPhone as a home screen app), ntfy/UnifiedPush or Apple Push – without content
 - **Tasks** with due dates, priorities and recurrence
 - **Calendars (CalDAV):** view and edit Nextcloud, mailcow/SOGo, Radicale, iCloud …
 - **Immich:** use your own photos as images and cover images

@@ -48,6 +48,8 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
 - **Chats cifrados de extremo a extremo:** chats directos, de grupo y de página con adjuntos, respuestas y enlaces @ a
   páginas; el servidor (y el administrador) solo ve datos cifrados: libsodium, clave de recuperación, números de
   seguridad, varios dispositivos
+- **Notificaciones y push:** campana con actualización en directo; si quieres, al móvil/escritorio por Web Push (cifrado
+  de extremo a extremo, también iPhone como app en la pantalla de inicio), ntfy/UnifiedPush o Apple Push, sin contenido
 - **Tareas** con fecha límite, prioridad y repetición
 - **Calendarios (CalDAV):** ver y editar Nextcloud, mailcow/SOGo, Radicale, iCloud…
 - **Immich:** usa tus propias fotos como imágenes y portadas

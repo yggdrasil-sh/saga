@@ -31,7 +31,8 @@ _pool_lock = threading.Lock()
 
 # Tabellen mit Ganzzahl-Schluessel "id" -> INSERT liefert die neue id (cur.lastrowid)
 ID_TABLES = {"task", "note", "note_version", "device_login", "cal_account", "app_token", "users", "groups",
-             "service", "bookmark", "note_share", "note_comment", "notification", "chat"}
+             "service", "bookmark", "note_share", "note_comment", "notification", "chat",
+             "push_sub", "push_queue"}
 # INSERT OR REPLACE: Konfliktspalten je Tabelle
 UPSERT_KEYS = {"immich_key": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",),
                "note_share": ("note_id", "target_type", "target"), "note_comment_seen": ("uid", "thread_id"),
@@ -424,6 +425,28 @@ CREATE TABLE IF NOT EXISTS chat_link (
     enc_pub TEXT NOT NULL, sign_pub TEXT NOT NULL, created DOUBLE PRECISION NOT NULL, expires DOUBLE PRECISION NOT NULL,
     sealed TEXT, approved DOUBLE PRECISION);
 CREATE INDEX IF NOT EXISTS chat_link_uid ON chat_link (uid);
+
+-- Mitteilungen aufs Handy/Desktop (1.7): Abos je Geraet/Browser und Warteschlange (saga.push). Gespeichert werden nur
+-- Kennungen; Text entsteht erst beim Zustellen (ohne Seitentitel/Inhalte). Auftraege hoechstens 24 h.
+CREATE TABLE IF NOT EXISTS push_sub (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL,
+    kind TEXT NOT NULL,                           -- webpush | ntfy | unifiedpush | apns
+    endpoint TEXT NOT NULL UNIQUE,                -- Push-Adresse bzw. ntfy-Topic-URL; APNs: 'apns:<production|sandbox>:<token>'
+    p256dh TEXT, auth TEXT,                       -- Schluessel des Empfaengers (Web Push, UnifiedPush mit Verschluesselung)
+    secret TEXT,                                  -- ntfy-Zugangstoken (verschluesselt)
+    name TEXT NOT NULL DEFAULT '',
+    device_id BIGINT,                             -- Geraete-Anmeldung der App (Abo endet mit ihr)
+    created DOUBLE PRECISION NOT NULL, last_ok DOUBLE PRECISION, last_err TEXT, fails INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS push_sub_uid ON push_sub (uid);
+CREATE TABLE IF NOT EXISTS push_queue (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, sub_id BIGINT NOT NULL,
+    kind TEXT NOT NULL,                           -- Art wie notification.kind, dazu chat.message
+    ref BIGINT,                                   -- notification.id
+    actor TEXT, data TEXT NOT NULL DEFAULT '{}',  -- nur Kennungen (Chat)
+    created DOUBLE PRECISION NOT NULL, next_at DOUBLE PRECISION NOT NULL, tries INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS push_queue_due ON push_queue (next_at);
+CREATE INDEX IF NOT EXISTS push_queue_uid ON push_queue (uid);
+CREATE INDEX IF NOT EXISTS push_queue_sub ON push_queue (sub_id);
 """
 # --- Schema-Versionen und Migrationen ----------------------------------------------------------------
 # SCHEMA oben ist Stand 1 (plus neue Tabellen mit CREATE TABLE IF NOT EXISTS). Alles, was bestehende

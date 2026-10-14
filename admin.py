@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import connect as _db
-from saga import i18n, live, publish, sharing
+from saga import i18n, live, publish, push, sharing
 from saga.core import TZ, BodyLimit, LangMiddleware
 from saga.i18n import t
 from version import REPO, VERSION, newer
@@ -619,6 +619,69 @@ async def published_post(request: Request):
         print(f"admin: {me['username']} zieht Veroeffentlichung {nid} zurueck", flush=True)
         _flash(request, t("Veröffentlichung zurückgezogen."))
     return _go("/published")
+
+
+# --- Mitteilungen aufs Handy/Desktop (Web Push, ntfy/UnifiedPush, APNs) ------------------------------------
+def _push_stats():
+    with _db() as c:
+        by = c.execute("SELECT kind, COUNT(*) FROM push_sub GROUP BY kind ORDER BY kind").fetchall()
+        q = c.execute("SELECT COUNT(*) FROM push_queue").fetchone()[0]
+    return {"subs": sum(r[1] for r in by), "queue": q, "by": [(r[0], r[1]) for r in by]}
+
+
+@admin.get("/settings/push")
+def push_page(request: Request):
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    st = auth.settings(fresh=True)
+    try:
+        vapid = push.vapid()[1]
+    except Exception as ex:  # noqa: BLE001
+        print(f"admin: VAPID: {type(ex).__name__}", flush=True)
+        vapid = ""
+    a = dict(st.get("apns") or {})
+    return _page(request, "push.html", me, p=st.get("push") or {}, a=a, has_p8=bool(a.get("p8")), apns_ready=push.apns_cfg()["ready"],
+                 vapid=vapid, stats=_push_stats())
+
+
+@admin.post("/settings/push")
+async def push_post(request: Request):
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    f = await _form(request)
+    if f is None:
+        return _go("/settings/push")
+    auth.save_setting("push", {k: _on(f, k) for k in ("enabled", "webpush", "ntfy", "unifiedpush")})
+    cur = auth.settings(fresh=True).get("apns") or {}
+    a = {"enabled": _on(f, "apns_enabled"), "team_id": _s(f, "team_id", 20).upper(), "key_id": _s(f, "key_id", 20).upper(),
+         "bundle_id": _s(f, "bundle_id", 200), "p8": "", "url": cur.get("url", "")}
+    for k, rx in (("team_id", r"[A-Z0-9]{10}"), ("key_id", r"[A-Z0-9]{10}"), ("bundle_id", r"[A-Za-z0-9.-]{3,200}")):
+        if a[k] and not re.fullmatch(rx, a[k]):
+            _flash(request, t("APNs: {field} ungültig.", field={"team_id": "Team-ID", "key_id": "Key-ID", "bundle_id": "Bundle-ID"}[k]), "err")
+            return _go("/settings/push")
+    up = f.get("p8")
+    if up is not None and hasattr(up, "read"):
+        raw = (await up.read(16384)).decode("utf-8", "replace").strip()
+        if raw:
+            if not push.apns_key_ok(raw):
+                _flash(request, t("APNs: Die Datei ist kein gültiger .p8-Schlüssel (privater EC-Schlüssel P-256)."), "err")
+                return _go("/settings/push")
+            a["p8"] = raw
+    if a["enabled"] and not (a["team_id"] and a["key_id"] and a["bundle_id"] and (a["p8"] or cur.get("p8"))):
+        _flash(request, t("Für APNs Team-ID, Key-ID, Bundle-ID und Schlüssel angeben."), "err")
+        return _go("/settings/push")
+    auth.save_setting("apns", a)                 # leerer Schluessel = bisherigen behalten (verschluesselt gespeichert)
+    if _on(f, "clear_p8"):
+        with _db() as c, c:
+            st = json.loads(c.execute("SELECT v FROM setting WHERE k='apns'").fetchone()[0])
+            st["p8"], st["enabled"] = "", False
+            c.execute("UPDATE setting SET v=? WHERE k='apns'", (json.dumps(st, ensure_ascii=False),))
+        auth._settings_cache["v"] = None
+    print(f"admin: {me['username']} speichert Mitteilungen (APNs aktiv={a['enabled']})", flush=True)
+    _flash(request, t("Gespeichert."))
+    return _go("/settings/push")
 
 
 # --- Einstellungen: SSO / OIDC -------------------------------------------------------------------------

@@ -96,3 +96,17 @@ body.cm-open .lv-pres-t{display:none}
   .lv-allread,.lv-gear,.lv-close,.pg-remote-x{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center}
   .lv-set-row{min-height:48px}
 }
+
+/* Einstellungen -> Mitteilungen (static/push.js) */
+.ps-card{margin:0 0 1.1rem}
+.ps-card>h4:first-child{margin-top:.6rem}
+.ps-dev .hk-hint{display:flex;flex-direction:column;gap:.1rem}
+.ps-dev-name{color:var(--text);font-weight:600;display:flex;flex-wrap:wrap;align-items:center;gap:.4rem}
+.ps-dev-sub{font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}
+.ps-dev-sub.err{color:var(--down)}
+.ps-tag{font-size:.7rem;font-weight:500;padding:.05rem .45rem;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
+.ps-gap{margin-top:.6rem}
+.ps-quiet{align-items:center;margin-top:.5rem}
+.ps-quiet .hk-in{width:auto;min-width:7rem}
+@media (max-width:560px){.ps-dev .hk-hint{flex-basis:100%}}
+@media (pointer:coarse){.ps-dev .btn{min-height:44px}}
