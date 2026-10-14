@@ -97,6 +97,9 @@ Saga itself only speaks HTTP. In production, put a reverse proxy with HTTPS in f
 
 ```
 saga.example.org {
+    request_body {
+        max_size 12MB                      # largest request: file upload (ATTACH_MAX_MB + 2)
+    }
     reverse_proxy 127.0.0.1:8080
 }
 ```
@@ -108,7 +111,7 @@ server {
     listen 443 ssl http2;
     server_name saga.example.org;
     # ssl_certificate ... / ssl_certificate_key ...
-    client_max_body_size 20m;              # images/files in pages
+    client_max_body_size 12m;              # largest request: file upload (ATTACH_MAX_MB + 2)
     location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
@@ -117,6 +120,11 @@ server {
     }
 }
 ```
+
+**Request size:** Saga itself rejects requests that are too large with 413 – in general above 2 MB
+(`REQUEST_MAX_MB`), file uploads above `ATTACH_MAX_MB` (plus a little form overhead), the admin area above 1 MB.
+A limit in the reverse proxy (as above, slightly above `ATTACH_MAX_MB`) is still recommended: huge requests then
+never reach Saga. If you raise `ATTACH_MAX_MB`, raise the proxy limit too.
 
 ## 4. The admin area
 
@@ -259,6 +267,12 @@ well (with FreeIPA via the template). **Members of this group** and **admin grou
 > same name. If registration is open, someone could claim a name in advance – with SSO, keep registration off
 > or create the accounts in advance.
 
+**Fixed SSO identifier:** On the first SSO sign-in, Saga remembers the provider's identifier (`sub`). If someone
+later signs in with the same username but a different identifier, they are rejected ("linked to a different SSO
+identity"). **Switched providers** (all identifiers are new)? In the admin area, open Users → the account →
+**"Remove SSO link"** – the next SSO sign-in with this username links the account again, all data is kept. Only
+do this if you're sure the same person has this username at the provider.
+
 ![Admin: SSO](../screenshots/admin-sso.png)
 
 ## 9. Using Saga
@@ -266,7 +280,8 @@ well (with FreeIPA via the template). **Members of this group** and **admin grou
 ### Dashboard
 
 Tiles for your services and bookmarks, sorted by category. **★** makes a tile a favorite. On the right you see
-your open tasks and today's and tomorrow's events.
+your open tasks and today's and tomorrow's events. Search finds services, bookmarks and – below them – your
+**pages** too (title and content).
 
 | Key | Action |
 |---|---|
@@ -274,7 +289,7 @@ your open tasks and today's and tomorrow's events.
 | `1`–`9` | Open tile |
 | `Enter` | First result (otherwise web search) |
 | `t` | New task |
-| `n` | Notes |
+| `n` | Pages |
 
 ![Dashboard](../screenshots/dashboard.png)
 
@@ -288,9 +303,10 @@ letter is shown. Edit via **✎** on the tile.
 
 ### Pages and databases
 
-Your page tree lives under **Notes**. Type `/` for new blocks: headings, lists, checklists, tables, code,
-images, files, columns, links to other pages, events and more. Pages have versions, a trash (30 days) and can
-be exported as Markdown.
+Your page tree lives under **Pages**. Type `/` for new blocks: headings, lists, checklists, tables, code,
+images, files, columns, links to other pages, events and more. Keep typing to filter the menu; `Enter` picks the
+first match. `Ctrl`+`K` (Mac: `⌘`+`K`) searches titles and content. Pages have versions, a trash (30 days) and
+can be exported as Markdown.
 
 ![Page](../screenshots/seite.png)
 
@@ -301,9 +317,11 @@ as a table, board, list, gallery or calendar – with filters, sorting and total
 
 ### Account, calendars, Immich, apps
 
-In the user menu at the top right under **Settings**:
+In the user menu at the top right under **Settings** (one tab each):
 
-- **Account:** change your name, email and password (for LDAP/SSO accounts, at your provider)
+- **Account:** change your name, email and password (for LDAP/SSO accounts, at your provider). Changing your
+  password signs out your other browser sessions **and all signed-in apps** – except this session and the app
+  you're using right now. The apps then sign in once more.
 - **Calendars:** connect CalDAV accounts (Nextcloud: `https://cloud.example.org/remote.php/dav/`).
   Ideally create a separate app password just for calendars.
 - **Immich:** enter the address and an API key with the permissions `album.read`, `asset.read`, `asset.view`,
@@ -313,11 +331,17 @@ In the user menu at the top right under **Settings**:
   collapsed, under "More keys".
 - **Sign in with QR code:** "Apps & devices" shows a QR code that is valid for two minutes and can be used only
   once. Scan it with your phone's camera – the app takes over the server address and sign-in, without typing a
-  password on the device. The link in the QR code also works as a pairing link in desktop apps.
+  password on the device. For the Mac and Linux apps there is **"Copy link"** below it: paste the pairing link
+  into the app when signing in.
+- **Signing in to an app via the browser:** The app opens Saga's sign-in page. If you're already signed in
+  there, Saga asks first ("Sign in app") – only confirm if you just started the sign-in in the app yourself. If
+  you sign in right then in that window (password or SSO), there is no extra question. **Cancel** takes you back
+  to the app.
 
 Public calendar and Immich servers (https) always work. **Servers on your home network** (e.g.
 `192.168.1.20` or `nextcloud.lan`) must first be allowed by the admin under General – this keeps the internal
-network from being queried through Saga.
+network from being queried through Saga. Saga connects directly to the checked address; an outgoing proxy
+(`HTTPS_PROXY`/`HTTP_PROXY`) is **not** used for calendars and Immich.
 
 ![Settings](../screenshots/einstellungen.png)
 
@@ -337,7 +361,9 @@ your device's language.
 ### On your phone
 
 Saga adapts to small screens and can be added to your home screen like an app ("Add to Home Screen" in the
-browser menu).
+browser menu). On pages, the content is right at the top; the page tree opens as a drawer from the button at the
+top left. `/` opens the block menu as a sheet from the bottom – tap an entry, or keep typing (filters) and press
+`Enter`. Tab bars (settings, admin area) can be swiped sideways.
 
 <img src="../screenshots/handy.png" width="320" alt="Saga on a phone">
 
@@ -408,9 +434,15 @@ If an update changes the database, Saga **automatically creates a backup first**
 (in the `saga-data` volume; the last 10 are kept, see `BACKUP_KEEP` in `.env`). To create a backup by hand:
 
 ```sh
-docker compose exec saga python run.py backup
+docker compose exec saga python run.py backup              # database only
+docker compose exec saga python run.py backup --dateien    # plus the pages' images/files as tar.gz
 docker compose exec saga ls -l /data/backups
 ```
+
+The pages' images and files (`/data/files`) are **not** part of the database backup. `--dateien` (or `--files`)
+also creates `saga-dateien-<time>.tar.gz` (without thumbnails, they are recreated); restore it with
+`docker compose exec saga tar -xzf /data/backups/<file> -C /data`. If you back up the `saga-data` volume anyway
+(see above), you don't need the switch.
 
 **Testing version:** With `SAGA_VERSION=testing` you get new features as soon as they are ready – before the
 release. The version is then called something like `1.0.0-testing.ab12cd3` (shown with 🧪 at the bottom of the
@@ -460,7 +492,22 @@ Check the redirect URI at your provider (`BASE_URL/auth/callback`) and verify th
 "Test connection". Details are in `docker compose logs saga`.
 
 **Calendar: server not reachable or not allowed.**
-Internal servers must be allowed under Admin → General.
+Internal servers must be allowed under Admin → General. Calendars and Immich don't go through
+`HTTPS_PROXY`/`HTTP_PROXY` (so the check can't be bypassed via the proxy) – Saga needs a direct connection to
+these servers.
+
+**"Too many sign-ins right now – please try again in a moment."**
+Saga checks at most `KDF_PARALLEL` passwords at the same time (default 4, about 32 MB of memory each) and waits at
+most 2 seconds for a free slot. If this happens in everyday use (many users, powerful server), raise
+`KDF_PARALLEL` in `.env`.
+
+**Uploading or saving fails with "too large" (413).**
+Files: `ATTACH_MAX_MB` (default 10). Everything else, e.g. very long pages: `REQUEST_MAX_MB` (default 2). If the
+message comes from the reverse proxy, raise the limit there (section 3).
+
+**After changing my password I have to sign in to the apps again.**
+Intended: a new password signs out all other browser sessions and apps (e.g. in case a device was lost). Only the
+session and the app where you changed the password stay signed in.
 
 ## 13. All .env settings
 
@@ -483,6 +530,8 @@ Internal servers must be allowed under Admin → General.
 | `ADMIN_SESSION_HOURS` | `4` | Lifetime of a session in the admin area |
 | `TIMEZONE` | `Europe/Berlin` | Time zone for exports |
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Size per file / storage per user |
+| `REQUEST_MAX_MB` | `2` | Largest request apart from file uploads (e.g. very long pages); larger ones get 413 |
+| `KDF_PARALLEL` | `4` | Password checks at the same time (about 32 MB of memory each); others wait up to 2 s |
 | `NOTE_MAX_COUNT` | `5000` | Pages per user |
 | `IMMICH_URL` | – | Suggestion in the Immich dialog (allowed automatically) |
 | `ICON_CDN` | selfh.st via jsDelivr | Source of service icons; empty = none |

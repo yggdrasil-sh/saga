@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0f141c">
+<meta name="theme-color" content="#0f141c" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f1ec" media="(prefers-color-scheme: light)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="{{ title }}">
@@ -35,32 +36,13 @@
   <div class="clock" aria-live="off"><span id="clk-time">--:--</span><span id="clk-date"></span></div>
   <input type="search" id="q" placeholder="{% if search_enabled %}{{ _("Dienste oder Web durchsuchen…") }}{% else %}{{ _("Suchen…") }}{% endif %}  ( / )"
          aria-label="{{ _("Suchen") }}" data-web="{{ '1' if search_enabled else '' }}" autocomplete="off">
-  <a class="btn btn-notes" href="/notes" target="hk-notes" title="{{ _("Notizen in eigenem Tab öffnen") }} ( n )">
+  <a class="btn btn-notes" href="/notes" target="hk-notes" title="{{ _("Seiten in eigenem Tab öffnen") }} ( n )">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
-    {{ _("Notizen") }}
+    <span class="btn-t">{{ _("Seiten") }}</span>
   </a>
-  <button type="button" class="btn hk-user" id="hk-user" data-name="{{ name }}" data-admin="{{ acct.admin_url }}" aria-haspopup="menu" title="{{ _("Benutzermenü") }}">👤 {{ name }} ▾</button>
+  <button type="button" class="btn hk-user" id="hk-user" data-name="{{ name }}" data-admin="{{ acct.admin_url }}" aria-haspopup="menu" title="{{ _("Benutzermenü") }}" aria-label="{{ _("Benutzermenü") }}: {{ name }}">👤 <span class="hk-user-n">{{ name }}</span> ▾</button>
 </header>
 <main>
-  <details class="acct">
-    <summary>
-      <span class="who">{{ uid }}{% if acct.mail %} · {{ acct.mail }}{% endif %}</span>
-      <span class="pw">{{ acct.source }}</span>
-    </summary>
-    <div class="acct-body">
-      <dl>
-        <dt>{{ _("Konto") }}</dt><dd>{{ acct.source }}</dd>
-        {% if acct.pw_changed %}<dt>{{ _("Passwort geändert") }}</dt><dd>{{ acct.pw_changed }}</dd>{% endif %}
-        {% if acct.last_login %}<dt>{{ _("Letzte Anmeldung") }}</dt><dd>{{ acct.last_login }}</dd>{% endif %}
-        <dt>{{ _("Gruppen") }}</dt><dd class="chips">{% for g in acct.groups %}<span class="chip">{{ g }}</span>{% else %}–{% endfor %}</dd>
-      </dl>
-      <div class="links">
-        <button class="btn" type="button" data-settings="account">{{ _("Konto & Passwort") }}</button>
-        <button class="btn" type="button" data-settings="bookmarks">{{ _("Lesezeichen verwalten") }}</button>
-        {% if acct.admin_url %}<a class="btn" href="{{ acct.admin_url }}" target="_blank" rel="noopener">{{ _("Admin-Bereich") }}</a>{% endif %}
-      </div>
-    </div>
-  </details>
 
   <details class="nt" id="nt">
     <summary>
@@ -71,7 +53,7 @@
       <div class="nt-pane" id="pane-tasks">
         <form class="task-add" id="task-add" autocomplete="off">
           <span class="task-add-plus" aria-hidden="true">+</span>
-          <input type="text" id="task-text" maxlength="500" placeholder="{{ _("Aufgabe hinzufügen und Enter drücken") }}" aria-label="{{ _("Neue Aufgabe") }}">
+          <input type="text" id="task-text" maxlength="500" placeholder="{{ _("Neue Aufgabe") }} …" aria-label="{{ _("Neue Aufgabe") }}">
           <span class="mark prio-mark" id="task-prio-chip" hidden><span id="task-prio-label"></span><button type="button" id="task-prio-clear" aria-label="{{ _("Priorität zurücksetzen") }}">×</button></span>
           <span class="mark" id="task-rep-chip" hidden><span id="task-rep-label"></span><button type="button" id="task-rep-clear" aria-label="{{ _("Wiederholung entfernen") }}">×</button></span>
           <span class="mark" id="task-due-chip" hidden><span id="task-due-label"></span><button type="button" id="task-due-clear" aria-label="{{ _("Datum entfernen") }}">×</button></span>
@@ -114,6 +96,7 @@
   </section>
   {% endif %}
 
+  <div class="cats">
   {% if favorites %}
   <section class="cat fav">
     <h2>{{ _("Favoriten") }}</h2>
@@ -126,11 +109,36 @@
     <div class="grid">{% for s in items %}{{ tile(s, cat) }}{% endfor %}</div>
   </section>
   {% endfor %}
+  </div>
+  <section class="q-pages" id="q-pages" hidden aria-live="polite">
+    <h2>{{ _("Seiten") }}</h2>
+    <div class="grid" id="q-pages-list"></div>
+  </section>
   {% if not favorites and not categories %}
   <p class="empty">{{ _("Für dich sind noch keine Dienste freigeschaltet – lege dir eigene Lesezeichen an.") }}</p>
   {% endif %}
   <div class="bm-add-row"><button class="btn" type="button" id="bm-add">+ {{ _("Lesezeichen") }}</button></div>
-  <p class="hint"><kbd>/</kbd> {{ _("suchen") }} · <kbd>1</kbd>–<kbd>9</kbd> {{ _("öffnen") }} · <kbd>Enter</kbd> {{ _("erster Treffer") }}{% if search_enabled %} {{ _("(sonst Websuche)") }} · <kbd>Shift</kbd>+<kbd>Enter</kbd> {{ _("Websuche") }}{% endif %} · <kbd>t</kbd> {{ _("neue Aufgabe") }} · <kbd>n</kbd> {{ _("Notizen") }} · <kbd>★</kbd> {{ _("Favorit") }}</p>
+  <details class="acct acct-foot">
+    <summary>
+      <span class="who">{{ uid }}{% if acct.mail %} · {{ acct.mail }}{% endif %}</span>
+      <span class="pw">{{ acct.source }}</span>
+    </summary>
+    <div class="acct-body">
+      <dl>
+        <dt>{{ _("Konto") }}</dt><dd>{{ acct.source }}</dd>
+        {% if acct.pw_changed %}<dt>{{ _("Passwort geändert") }}</dt><dd>{{ acct.pw_changed }}</dd>{% endif %}
+        {% if acct.last_login %}<dt>{{ _("Letzte Anmeldung") }}</dt><dd>{{ acct.last_login }}</dd>{% endif %}
+        <dt>{{ _("Gruppen") }}</dt><dd class="chips">{% for g in acct.groups %}<span class="chip">{{ g }}</span>{% else %}–{% endfor %}</dd>
+      </dl>
+      <div class="links">
+        <button class="btn" type="button" data-settings="account">{{ _("Konto & Passwort") }}</button>
+        <button class="btn" type="button" data-settings="bookmarks">{{ _("Lesezeichen verwalten") }}</button>
+        {% if acct.admin_url %}<a class="btn" href="{{ acct.admin_url }}" target="_blank" rel="noopener">{{ _("Admin-Bereich") }}</a>{% endif %}
+      </div>
+    </div>
+  </details>
+
+  <p class="hint"><kbd>/</kbd> {{ _("suchen") }} · <kbd>1</kbd>–<kbd>9</kbd> {{ _("öffnen") }} · <kbd>Enter</kbd> {{ _("erster Treffer") }}{% if search_enabled %} {{ _("(sonst Websuche)") }} · <kbd>Shift</kbd>+<kbd>Enter</kbd> {{ _("Websuche") }}{% endif %} · <kbd>t</kbd> {{ _("neue Aufgabe") }} · <kbd>n</kbd> {{ _("Seiten") }} · <kbd>★</kbd> {{ _("Favorit") }}</p>
 </main>
 
 <aside class="rail" id="rail" aria-label="{{ _("Offene Aufgaben") }}">

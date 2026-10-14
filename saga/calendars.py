@@ -1,4 +1,5 @@
 """Externe Kalender (CalDAV: mailcow/SOGo, Nextcloud, Radicale ...) je Benutzer."""
+import contextvars
 import hashlib
 import json
 import re
@@ -56,7 +57,29 @@ def _cal_host_ok(host, hostport):
     return bool(infos)
 
 
+def _cal_host_free(host, hostport):
+    """Ohne DNS: interne Adressen fuer diesen Host erlaubt (Admin-Freigabe)? - Pruefung beim Verbinden in hkcal."""
+    allowed = _admin_hosts()
+    return bool(auth.settings().get("allow_private_hosts")) or host in allowed or hostport in allowed
+
+
 hkcal.HOST_OK = _cal_host_ok
+hkcal.HOST_FREE = _cal_host_free
+
+CAL_CACHE_MAX = 400        # Eintraege (je Benutzer/Kalender/Zeitraum) - sonst waechst der Speicher mit jedem neuen Zeitraum
+
+
+def _cal_cache_put(key, evs):
+    if len(_cal_cache) >= CAL_CACHE_MAX:                 # aelteste Eintraege (nach Abrufzeit) entfernen
+        for k, _ in sorted(list(_cal_cache.items()), key=lambda kv: kv[1][0])[:CAL_CACHE_MAX // 4]:
+            _cal_cache.pop(k, None)
+    _cal_cache[key] = (time.time(), evs)
+
+
+def _cal_cache_drop(uid):
+    """Alle zwischengespeicherten Termine eines Benutzers entfernen (Schluessel sind Tupel mit uid vorne)."""
+    for k in [k for k in list(_cal_cache) if k and k[0] == uid]:
+        _cal_cache.pop(k, None)
 
 
 def _cal_fernet():
@@ -114,6 +137,13 @@ def api_cal_list(request: Request):
     return JSONResponse({"accounts": [_cal_public(r) for r in rows], "allowed": sorted(_admin_hosts()), "private": bool(auth.settings().get("allow_private_hosts"))})
 
 
+def _cal_moved(acc, base, user):
+    """Andere Adresse oder anderer Benutzer als gespeichert? Dann darf das gespeicherte Passwort NICHT mitgehen
+    (sonst liesse es sich mit einer fremden Sitzung an einen eigenen Server schicken und dort mitlesen)."""
+    norm = lambda u: (u or "").strip().rstrip("/").lower()      # noqa: E731
+    return bool((base and norm(base) != norm(acc["base_url"])) or (user and user.strip() != (acc["username"] or "").strip()))
+
+
 def _cal_input(b):
     base = str(b.get("base_url") or "").strip()[:500]
     user = str(b.get("username") or "").strip()[:200]
@@ -134,8 +164,10 @@ async def api_cal_test(request: Request):
             with _db() as c:
                 _cal_db(c)
                 acc, pw = _cal_account(c, uid, int(b["id"]))
+            if _cal_moved(acc, base, user):
+                return _bad(t("Adresse oder Benutzer geändert – bitte das App-Passwort neu eingeben"))
             base, user = base or acc["base_url"], user or acc["username"]
-        except (LookupError, ValueError, TypeError):
+        except (LookupError, ValueError, TypeError, OverflowError):
             return _bad("not found", 404)
         except hkcal.CalError as ex:
             return _bad(str(ex))
@@ -195,6 +227,8 @@ async def api_cal_update(aid: int, request: Request):
         if not acc:
             return _bad("not found", 404)
     base, user, pw = _cal_input(b)
+    if not pw and _cal_moved(acc, base, user):
+        return _bad(t("Adresse oder Benutzer geändert – bitte das App-Passwort neu eingeben"))
     base, user, use_pw = base or acc["base_url"], user or acc["username"], pw or old_pw
     if not use_pw:
         return _bad(t("Bitte das App-Passwort neu eingeben"))
@@ -245,7 +279,7 @@ def _cal_collect(uid, d0, d1, fresh=False):
     def load(job, key):
         aid, acc, pw, cal = job
         evs = hkcal.events(cal["href"], acc["username"], pw, t0, t1, TZ)
-        _cal_cache[key] = (time.time(), evs)
+        _cal_cache_put(key, evs)
         return evs
 
     def refresh_later(job, key):                         # im Hintergrund nachladen (Fehler still - alter Stand bleibt)
@@ -279,8 +313,9 @@ def _cal_collect(uid, d0, d1, fresh=False):
                 return job, hit[1], None
             return job, None, str(ex)
 
+    ctx = contextvars.copy_context()                     # Sprache der Anfrage auch in den Abruf-Threads (Fehlermeldungen)
     if True:
-        for (aid, acc, pw, cal), evs, err in _cal_pool.map(fetch, jobs):
+        for (aid, acc, pw, cal), evs, err in _cal_pool.map(lambda j: ctx.copy().run(fetch, j), jobs):
             if err:
                 errors.append({"account": aid, "calendar": cal["name"], "error": err}); continue
             for e in evs:

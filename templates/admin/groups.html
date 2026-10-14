@@ -12,8 +12,8 @@
     <td><b>{{ r[1] }}</b></td>
     <td><form method="post" class="adm-inline">{{ csrf_field() }}<input type="hidden" name="action" value="save"><input type="hidden" name="id" value="{{ r[0] }}">
         <input class="hk-in" name="description" value="{{ r[2] }}" maxlength="300"><button class="btn" type="submit">✓</button></form></td>
-    <td class="chips">{% for m in members.get(r[0], []) %}<span class="chip">{{ m }}</span>{% else %}<small>–</small>{% endfor %}</td>
-    <td>{{ used.get(r[1], [])|join(', ') or '–' }}</td>
+    <td class="chips" data-l="{{ _("Mitglieder (lokal)") }}">{% for m in members.get(r[0], []) %}<span class="chip">{{ m }}</span>{% else %}<small>–</small>{% endfor %}</td>
+    <td data-l="{{ _("Gibt frei") }}">{{ used.get(r[1], [])|join(', ') or '–' }}</td>
     <td><form method="post" data-confirm="{{ _("Gruppe {name} löschen? Mitglieder verlieren die Freigaben dieser Gruppe.", name=r[1]) }}">{{ csrf_field() }}
         <input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ r[0] }}"><button class="btn btn-danger" type="submit">{{ _("Löschen") }}</button></form></td>
   </tr>

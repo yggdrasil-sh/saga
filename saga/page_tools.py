@@ -1,17 +1,17 @@
 """Papierkorb, Versionsverlauf und Markdown-Export."""
-import io
 import json
 import os
 import re
+import tempfile
 import time
 import zipfile
-from datetime import datetime
 from html import unescape as html_unescape
 from urllib.parse import quote
 from fastapi import Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from db import connect as _db
 from fastapi import APIRouter
+from saga import i18n
 from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, t
 from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _snapshot, blocks_text
 
@@ -219,11 +219,19 @@ def api_note_export(nid: int, request: Request, sub: int = 0):
     if not uid:
         return _bad("unauthorized", 401)
     owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
-    with _db() as c:
-        rows = {r[0]: r for r in c.execute("SELECT id, title, icon, parent_id, body, format, kind, schema, props, created, updated FROM note "
-                                           "WHERE uid=? AND deleted_at IS NULL", (owner,))}
+    with _db() as c:                     # erst ohne Inhalte (Baum, Titel, Eigenschaften); Inhalte nur fuer exportierte Seiten
+        rows = {r[0]: list(r) for r in c.execute("SELECT id, title, icon, parent_id, NULL, format, kind, schema, props, created, updated FROM note "
+                                                 "WHERE uid=? AND deleted_at IS NULL", (owner,))}
     if nid not in rows:
         return _bad("not found", 404)
+
+    def load_bodies(ids):
+        ids = list(ids)
+        with _db() as c:
+            for k in range(0, len(ids), 500):
+                part = ids[k:k + 500]
+                for i, body in c.execute(f"SELECT id, body FROM note WHERE uid=? AND id IN ({','.join('?' * len(part))})", (owner, *part)):
+                    rows[i][4] = body
 
     def val_of(p, row, pv):
         if p["type"] == "calc":
@@ -234,7 +242,7 @@ def api_note_export(nid: int, request: Request, sub: int = 0):
         if v is None:
             return ""
         if p["type"] in AUTO_TYPES:
-            return datetime.fromtimestamp(v, TZ).strftime("%d.%m.%Y %H:%M")
+            return i18n.fmt_date(v, TZ, with_time=True)          # Datumsformat der Sprache
         if p["type"] == "relation":
             return ", ".join((rows[x][1] or t("Unbenannt")) for x in v if x in rows)
         if p["type"] in ("number", "calc"):
@@ -275,6 +283,7 @@ def api_note_export(nid: int, request: Request, sub: int = 0):
 
     ext_link = lambda h: (BASE_URL + h) if h.startswith(("/notes#", "/files/")) else h
     if not sub:
+        load_bodies([nid])
         r = rows[nid]
         return Response(md_of(r, ext_link).encode(), media_type="text/markdown; charset=utf-8",
                         headers={"Content-Disposition": _disposition(_safe_name(r[1]) + ".md")})
@@ -289,6 +298,7 @@ def api_note_export(nid: int, request: Request, sub: int = 0):
         for ch in sorted((x for x in rows.values() if x[3] == i), key=lambda x: x[1] or ""):
             place(ch[0], f"{folder}{name}/")
     place(nid, "")
+    load_bodies(paths)
     # Bilder/Dateien der exportierten Seiten mit einpacken (Ordner _dateien)
     fids = set()
     for i in paths:
@@ -298,8 +308,34 @@ def api_note_export(nid: int, request: Request, sub: int = 0):
         with _db() as c:
             for fid, name in c.execute(f"SELECT id, name FROM file WHERE uid=? AND id IN ({','.join('?' * len(fids))})", (owner, *fids)):
                 fpaths[fid] = f"_dateien/{fid[:8]}_{_safe_name(name)}"
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+    # ZIP in eine Temp-Datei (Daten-Volume, siehe files_init) statt in den Speicher - mit Dateien bis zur Quote gross
+    tmp = tempfile.NamedTemporaryFile(prefix="export-", suffix=".zip", delete=False)
+    try:
+        _write_zip(tmp, paths, fpaths, rows, md_of, ext_link)
+    except BaseException:
+        tmp.close(); os.remove(tmp.name)
+        raise
+    tmp.close()
+    return _TempFileResponse(tmp.name, media_type="application/zip",
+                             headers={"Content-Disposition": _disposition(_safe_name(rows[nid][1]) + ".zip"), "Cache-Control": "no-store"})
+
+
+class _TempFileResponse(FileResponse):
+    """FileResponse, die ihre (temporaere) Datei immer loescht - auch wenn der Client den Download abbricht
+    (dann laeuft ein BackgroundTask nicht)."""
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            try:
+                os.remove(self.path)
+            except OSError:
+                pass
+
+
+def _write_zip(fh, paths, fpaths, rows, md_of, ext_link):
+    with zipfile.ZipFile(fh, "w", zipfile.ZIP_DEFLATED) as z:
         for i, path in paths.items():
             def rel(h, here=path):
                 m = re.fullmatch(r"/notes#(\d+)", h)
@@ -315,5 +351,3 @@ def api_note_export(nid: int, request: Request, sub: int = 0):
                 z.write(os.path.join(FILES_DIR, fid), fp)
             except FileNotFoundError:
                 pass
-    return Response(buf.getvalue(), media_type="application/zip",
-                    headers={"Content-Disposition": _disposition(_safe_name(rows[nid][1]) + ".zip")})

@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
+<meta name="theme-color" content="#0f141c" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f1ec" media="(prefers-color-scheme: light)">
 <title>{% block pagetitle %}{{ _('Admin') }}{% endblock %} – {{ title }}</title>
 <link rel="icon" href="/static/icon.svg?v={{ v }}" type="image/svg+xml">
 <link rel="stylesheet" href="/static/style.css?v={{ v }}">
@@ -18,9 +20,9 @@
     {% endfor %}
   </nav>
   <span class="spacer"></span>
-  <a class="btn" href="{{ base_url }}" target="_blank" rel="noopener">{{ _("Zum Dashboard") }} ↗</a>
+  <a class="btn adm-dash" href="{{ base_url }}" target="_blank" rel="noopener">{{ _("Zum Dashboard") }} ↗</a>
   <span class="greet">{{ me.username }}</span>
-  <a class="btn" href="/logout">{{ _("Abmelden") }}</a>
+  <a class="btn adm-out" href="/logout">{{ _("Abmelden") }}</a>
 </header>
 {% endif %}
 <main class="adm-main">

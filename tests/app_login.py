@@ -18,18 +18,39 @@ res = []
 def ok(n, cond): res.append(bool(cond)); print(("OK  " if cond else "FAIL"), n)
 ver = lambda: secrets.token_urlsafe(48)
 chal = lambda v: base64.urlsafe_b64encode(hashlib.sha256(v.encode()).digest()).decode().rstrip("=")
+import re
+def handoff(cookies):
+    """Bestaetigungsseite holen, dann den Link "Anmelden" (mit der neuen Sitzung) aufrufen."""
+    s, h, sc, raw = req("GET", "/app/handoff", cookies)
+    m = re.search(r'/app/handoff\?go=([A-Za-z0-9_-]+)', raw.decode("utf-8", "replace"))
+    if s != 200 or not m:
+        return s, h, sc, raw
+    sess = next((x.split(";")[0].split("=", 1)[1] for x in sc if x.startswith("saga=")), cookies.get("saga"))
+    return req("GET", "/app/handoff?go=" + m.group(1), dict(cookies, saga=sess))
 def flow(v, user=REAL):
     s, h, sc, _ = req("GET", "/app/login?scheme=saga&challenge=" + chal(v), {"saga": ck(user)})
     chc = next((x.split(";")[0].split("=", 1)[1] for x in sc if x.startswith("hk_app_ch=")), "")
     scc = next((x.split(";")[0].split("=", 1)[1] for x in sc if x.startswith("hk_app_sc=")), "")
-    s2, h2, _, _ = req("GET", "/app/handoff", {"saga": ck(user), "hk_app_ch": chc, "hk_app_sc": scc})
+    s2, h2, _, _ = handoff({"saga": ck(user), "hk_app_ch": chc, "hk_app_sc": scc})
     loc = h2.get("location", "")
     return s, h.get("location"), s2, loc, (loc.split("code=", 1)[1] if "code=" in loc else "")
 ok("Ungueltiger Pruefwert -> 400", req("GET", "/app/login?challenge=kurz")[0] == 400)
 ok("Unbekanntes Rueckkehr-Schema -> 400", req("GET", "/app/login?scheme=javascript&challenge=" + chal(ver()))[0] == 400)
 _s, _h, _sc, _ = req("GET", "/app/login?challenge=" + chal(ver()), {"saga": ck(REAL)})
 _ch = next((x.split(";")[0].split("=", 1)[1] for x in _sc if x.startswith("hk_app_ch=")), "")
-ok("Aeltere Apps ohne Schema -> hlidskjalf://", req("GET", "/app/handoff", {"saga": ck(REAL), "hk_app_ch": _ch})[1].get("location", "").startswith("hlidskjalf://auth?code="))
+ok("Aeltere Apps ohne Schema -> hlidskjalf://", handoff({"saga": ck(REAL), "hk_app_ch": _ch})[1].get("location", "").startswith("hlidskjalf://auth?code="))
+# Rueckfrage vor der Uebergabe (N2): ohne Klick auf "Anmelden" kein Code
+s, h, sc, raw = req("GET", "/app/handoff", {"saga": ck(REAL), "hk_app_ch": _ch})
+ok("Handoff zeigt erst eine Rueckfrage (200, kein Code)", s == 200 and "location" not in {k.lower() for k in h} and b"/app/handoff?go=" in raw)
+s, h, _, raw = req("GET", "/app/handoff?go=" + "x" * 24, {"saga": ck(REAL), "hk_app_ch": _ch})
+ok("Falscher Bestaetigungs-Wert -> wieder Rueckfrage, kein Code", s == 200 and "auth?code=" not in h.get("location", ""))
+# Login-CSRF (M1): Anmelde-Endpunkte der Apps nur mit Content-Type application/json
+for p, bd in (("/app/pair", {"code": "x" * 32}), ("/app/exchange", {"code": "x" * 32, "verifier": "y" * 43}),
+              ("/app/resume", {"device_token": "hkd_x"}), ("/app/forget", {"device_token": "hkd_x"})):
+    s, _, sc, _ = req("POST", p, body=bd, hdr={"Content-Type": "text/plain"})
+    ok(f"{p} mit text/plain (fremdes Formular) -> 415, keine Sitzung", s == 415 and not any(x.startswith("saga=") for x in sc))
+ok("application/json; charset=utf-8 (Android) wird angenommen", req("POST", "/app/exchange", body={"code": "x" * 32, "verifier": "y" * 43},
+                                                                  hdr={"Content-Type": "application/json; charset=utf-8"})[0] == 401)
 ok("Aeltere Apps: Kopfzeile X-Hlidskjalf gilt weiter", req("GET", "/api/notes", {"saga": ck(REAL)}, hdr={"X-Hlidskjalf": "1"})[0] == 200)
 s, loc, s2, loc2, code = flow(v := ver())
 ok(f"/app/login -> {loc}", s == 303 and loc == "/app/handoff")

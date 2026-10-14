@@ -12,6 +12,7 @@ Immich, App-Schluessel. Daten: PostgreSQL (db.py), Dateien in STATE_DIR.
 import asyncio
 import json
 import os
+import re
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 from fastapi import FastAPI, Request
@@ -24,9 +25,10 @@ from version import API_LEVEL, MIN_APP, VERSION
 
 from saga import app_api, app_login, calendars, dashboard, databases, files, immich, links, page_tools, pages, tasks, web_auth
 from saga import i18n
-from saga.core import BASE_URL, E, HERE, SECRET, SESSION_HOURS, LangMiddleware, title
+from saga.core import BASE_URL, E, HERE, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, LangMiddleware, title
 from saga.dashboard import _status_loop
-from saga.files import files_gc, files_init
+from saga.files import files_gc, files_init, tmp_cleanup
+from saga.notes import FILE_MAX
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -35,8 +37,8 @@ from saga.core import ADMIN_URL, ASSET_V, CA_FILE  # noqa: F401
 from saga.dashboard import all_services, services_changed, visible_services  # noqa: F401
 from saga.pages import svc_icon_path  # noqa: F401
 from saga.userdata import delete_user_data, revoke_user_logins, user_usage  # noqa: F401
-from saga.web_auth import EMAIL_RE, _ip  # noqa: F401
-__all__ = ["app", "files_gc", "ADMIN_URL", "ASSET_V", "BASE_URL", "CA_FILE", "EMAIL_RE", "HERE", "SECRET", "_cal_fernet", "_ip",
+from saga.web_auth import EMAIL_RE, PROXY_WARN, _ip  # noqa: F401
+__all__ = ["app", "files_gc", "ADMIN_URL", "ASSET_V", "BASE_URL", "CA_FILE", "EMAIL_RE", "HERE", "PROXY_WARN", "SECRET", "_cal_fernet", "_ip",
            "all_services", "delete_user_data", "revoke_user_logins", "services_changed", "svc_icon_path", "title", "user_usage",
            "visible_services"]
 
@@ -57,6 +59,7 @@ async def lifespan(_app):
                 n = await asyncio.to_thread(files_gc)
                 if n:
                     print(f"files-gc: {n} verwaiste Datei(en) entfernt", flush=True)
+                await asyncio.to_thread(tmp_cleanup)          # liegengebliebene Zwischendateien (> 1 h)
             except Exception as ex:
                 print(f"files-gc: {type(ex).__name__}: {ex}", flush=True)
     gc_task = asyncio.create_task(_gc_loop())
@@ -94,6 +97,12 @@ async def canonical_host(request: Request, call_next):
             q = ("?" + request.url.query) if request.url.query else ""
             return RedirectResponse(BASE_URL + request.url.path + q, status_code=308)
     return await call_next(request)
+
+
+# Groesse von Anfragen begrenzen - als letzte registriert = laeuft zuerst (vor Sitzung, Umleitung, Endpunkten).
+# Uploads: ATTACH_MAX_MB + Formular-Rahmen (etwas mehr als die Pruefung in files.py, die mit Text antwortet).
+app.add_middleware(BodyLimit, default=REQUEST_MAX,
+                   rules=[("POST", re.compile(r"/api/files"), max(REQUEST_MAX, FILE_MAX + 256 * 1024))])
 
 
 # --- Routes -----------------------------------------------------------------

@@ -80,8 +80,8 @@ def cleanup():
         c.execute("DELETE FROM users WHERE username LIKE 'st-%'")
         c.execute("DELETE FROM service WHERE slug LIKE 'st-%'")
         c.execute("DELETE FROM groups WHERE name LIKE 's\\_st-%' OR name LIKE 'st-%'")
-        c.execute("DELETE FROM login_fail WHERE key LIKE 'u:st-%'")
-        c.execute("DELETE FROM login_fail WHERE key LIKE 'reg:%' OR key LIKE 'ip:%'")
+        c.execute("DELETE FROM login_fail WHERE key LIKE 'u:st-%' OR key LIKE 'ui:st-%'")
+        c.execute("DELETE FROM login_fail WHERE key LIKE 'reg:%' OR key LIKE 'ip:%' OR key LIKE 'adm:%'")
     return names
 
 

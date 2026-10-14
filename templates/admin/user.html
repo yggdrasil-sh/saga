@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% from "_macros.html" import field, check, csrf_field with context %}
+{% from "_macros.html" import field, check, csrf_field, ts with context %}
 {% block pagetitle %}{{ u.username }}{% endblock %}
 {% block content %}
 <p><a href="/users">← {{ _("Alle Benutzer") }}</a></p>
 <h2>{{ u.username }}{% if u.is_admin %} <span class="adm-tag">{{ _("Admin") }}</span>{% endif %}{% if u.disabled %} <span class="adm-tag bad">{{ _("gesperrt") }}</span>{% endif %}</h2>
 <p class="hk-hint">{{ {'local': _('Lokales Konto'), 'ldap': _('LDAP/AD-Konto'), 'oidc': _('SSO-Konto')}.get(u.source, u.source) }}{% if u.ext_id %} · {{ u.ext_id }}{% endif %}
-  · {{ _("angelegt {date}", date=u.created|dt) }} · {{ _("letzte Anmeldung {date}", date=u.last_login|dt) }}{% if u.pw_changed %} · {{ _("Passwort geändert {date}", date=u.pw_changed|dt) }}{% endif %}</p>
+  · {{ _("angelegt {date}", date=ts(u.created))|safe }} · {{ _("letzte Anmeldung {date}", date=ts(u.last_login))|safe }}{% if u.pw_changed %} · {{ _("Passwort geändert {date}", date=ts(u.pw_changed))|safe }}{% endif %}</p>
 
 <div class="adm-grid">
 <section class="adm-card">
@@ -36,7 +36,7 @@
     <dt>{{ _("Kalender") }}</dt><dd>{{ usage.calendars }}</dd><dt>Immich</dt><dd>{{ _('verbunden') if usage.immich else '–' }}</dd>
     <dt>{{ _("Apps") }}</dt><dd>{{ _("{n} angemeldet", n=usage.devices) }} · {{ _("{n} Schlüssel", n=usage.tokens) }}</dd>
   </dl>
-  {% if devs %}<ul class="adm-list">{% for d in devs %}<li>{{ d[0] }} <small>{{ _("seit {since}, zuletzt {last}", since=d[1]|dt, last=d[2]|dt) }}</small></li>{% endfor %}</ul>{% endif %}
+  {% if devs %}<ul class="adm-list">{% for d in devs %}<li>{{ d[0] }} <small>{{ _("seit {since}, zuletzt {last}", since=ts(d[1]), last=ts(d[2]))|safe }}</small></li>{% endfor %}</ul>{% endif %}
   <p class="hk-hint">{{ _("Inhalte (Seiten, Kalender, Fotos) sind privat und hier nicht einsehbar.") }}</p>
 </section>
 
@@ -48,6 +48,17 @@
     {{ field(_('Neues Passwort'), 'password', type='password', req=true, max=200, auto='new-password', hint=_('mindestens 10 Zeichen – dem Benutzer sicher mitteilen')) }}
     {{ check(_('Auch App-Anmeldungen und App-Schlüssel widerrufen'), 'revoke', false) }}
     <div class="adm-actions"><button class="btn" type="submit">{{ _("Passwort setzen") }}</button></div>
+  </form>
+</section>
+{% endif %}
+
+{% if u.source == 'oidc' and u.ext_id %}
+<section class="adm-card">
+  <h3>{{ _("SSO-Verknüpfung") }}</h3>
+  <form method="post" class="adm-form" data-confirm="{{ _("SSO-Verknüpfung von {name} lösen? Die nächste SSO-Anmeldung mit diesem Benutzernamen übernimmt das Konto mit allen Daten.", name=u.username) }}">
+    {{ csrf_field() }}<input type="hidden" name="action" value="unlink">
+    <p class="hk-hint">{{ _("Das Konto ist mit einer festen SSO-Kennung verknüpft. Nach einem Wechsel des Anbieters (neue Kennungen) kommt die Person sonst nicht mehr herein. Nur lösen, wenn sicher ist, dass beim Anbieter dieselbe Person diesen Benutzernamen hat.") }}</p>
+    <div class="adm-actions"><button class="btn" type="submit">{{ _("SSO-Verknüpfung lösen") }}</button></div>
   </form>
 </section>
 {% endif %}

@@ -201,14 +201,21 @@ OPT_COLORS = {"gray", "brown", "orange", "yellow", "green", "blue", "purple", "p
 _PID = re.compile(r"[a-z0-9_]{1,24}")
 
 
-def _default_schema():
-    return {"props": [
-        {"id": "status", "name": t("Status"), "type": "select", "options": [
-            {"id": "todo", "name": t("Offen"), "color": "gray"}, {"id": "doing", "name": t("In Arbeit"), "color": "blue"},
-            {"id": "done", "name": t("Erledigt"), "color": "green"}]},
-        {"id": "datum", "name": t("Datum"), "type": "date"}],
-        "views": [{"id": "tabelle", "name": t("Tabelle"), "type": "table"},
-                  {"id": "board", "name": t("Board"), "type": "board", "group_by": "status"}]}
+def _default_schema(lang=None):
+    """Neue Datenbank. lang: Sprache der gespeicherten Namen (Konto-Sprache, siehe core.account_lang)."""
+    from saga.i18n import set_lang, _cur
+    tok = set_lang(lang) if lang else None
+    try:
+        return {"props": [
+            {"id": "status", "name": t("Status"), "type": "select", "options": [
+                {"id": "todo", "name": t("Offen"), "color": "gray"}, {"id": "doing", "name": t("In Arbeit"), "color": "blue"},
+                {"id": "done", "name": t("Erledigt"), "color": "green"}]},
+            {"id": "datum", "name": t("Datum"), "type": "date"}],
+            "views": [{"id": "tabelle", "name": t("Tabelle"), "type": "table"},
+                      {"id": "board", "name": t("Board"), "type": "board", "group_by": "status"}]}
+    finally:
+        if tok is not None:
+            _cur.reset(tok)
 
 
 VIEW_TYPES = {"table", "board", "list", "gallery", "calendar"}

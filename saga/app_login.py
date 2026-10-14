@@ -9,7 +9,8 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import APP_TOKEN_MAX, BASE_URL, _api_guard, _bad, _body, _session_user, _set_session, _tok_db, _tok_hash, user_info, t
+from saga.core import (APP_TOKEN_MAX, ASSET_V, BASE_URL, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, _tok_db,
+                       _tok_hash, t, title, tmpl, user_info)
 from saga.web_auth import _auth_page
 
 router = APIRouter()
@@ -27,6 +28,13 @@ _CHALLENGE_RE = re.compile(r"[A-Za-z0-9_-]{43}")
 APP_SCHEMES = {"saga", "hlidskjalf"}
 
 
+def _json_only(request):
+    """Anmelde-Endpunkte der Apps nur mit Content-Type: application/json. Ein fremdes Web-Formular (text/plain,
+    urlencoded) kann diesen Typ nicht ohne CORS-Preflight senden -> kein Login-/Logout-CSRF. Alle Apps senden JSON."""
+    ct = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    return None if ct == "application/json" else _bad(t("ungueltige Anfrage"), 415)
+
+
 def _appcode_db(c):
     c.execute("""CREATE TABLE IF NOT EXISTS app_code (
         hash TEXT PRIMARY KEY, uid TEXT NOT NULL, name TEXT, challenge TEXT NOT NULL, expires REAL NOT NULL)""")
@@ -36,37 +44,97 @@ def _appcode_db(c):
 def app_login(request: Request, challenge: str = "", scheme: str = "hlidskjalf"):
     if not _CHALLENGE_RE.fullmatch(challenge) or scheme not in APP_SCHEMES:
         return PlainTextResponse(t("ungueltige Anfrage"), status_code=400)
-    resp = RedirectResponse("/app/handoff" if _session_user(request) else "/login?next=/app/handoff", status_code=303)
+    logged_in = bool(_session_user(request))
+    resp = RedirectResponse("/app/handoff" if logged_in else "/login?next=/app/handoff", status_code=303)
     # eigenes Cookie: die Anmeldung (callback) leert die Sitzung, dieses bleibt erhalten
-    resp.set_cookie("hk_app_ch", challenge, max_age=600, httponly=True, secure=BASE_URL.startswith("https"), samesite="lax", path="/app")
-    resp.set_cookie("hk_app_sc", scheme, max_age=600, httponly=True, secure=BASE_URL.startswith("https"), samesite="lax", path="/app")
+    sec = BASE_URL.startswith("https")
+    resp.set_cookie("hk_app_ch", challenge, max_age=600, httponly=True, secure=sec, samesite="lax", path="/app")
+    resp.set_cookie("hk_app_sc", scheme, max_age=600, httponly=True, secure=sec, samesite="lax", path="/app")
+    if logged_in:
+        resp.delete_cookie("hk_app_t", path="/app")
+    else:
+        # Beginn dieses Ablaufs ohne Sitzung: meldet man sich danach frisch an, entfaellt die Rueckfrage
+        resp.set_cookie("hk_app_t", str(int(time.time())), max_age=600, httponly=True, secure=sec, samesite="lax", path="/app")
     return resp
 
 
+# Rueckfrage vor der Uebergabe an die App: sonst koennte eine fremde Seite /app/login mit IHRER Challenge oeffnen
+# und der angemeldete Browser gaebe den Code ungefragt an irgendeine App mit demselben URL-Schema weiter.
+# Bewusst ein Link (GET) statt Formular: die CSP form-action 'self' wuerde die Weiterleitung auf saga:// blockieren.
+# (Steht hier statt in templates/, solange es nur diese kleine Seite ist.)
+_HANDOFF_TPL = """{% extends "_auth_base.html" %}
+{% block pagetitle %}{{ head }}{% endblock %}
+{% block content %}
+<h2 class="auth-h">{{ head }}</h2>
+<p class="auth-note">{{ note }}</p>
+<a class="btn btn-primary auth-btn" href="/app/handoff?go={{ go }}">{{ button }}</a>
+<a class="btn auth-btn" href="/app/handoff?cancel=1">{{ cancel }}</a>
+<p class="auth-foot">{{ foot }}</p>
+{% endblock %}"""
+
+# Ohne Rueckfrage nur direkt nach einer frischen Anmeldung (Formular/SSO) IN diesem Ablauf: /app/login lief ohne
+# Sitzung (Cookie hk_app_t), danach hat man sich gerade selbst angemeldet (login_at in der Sitzung, hoechstens 2 Min. alt)
+HANDOFF_FRESH = 120
+
+
+def _fresh_login(request):
+    try:
+        t0, at = int(request.cookies.get("hk_app_t") or 0), int(request.session.get("login_at") or 0)
+    except (TypeError, ValueError):
+        return False
+    return bool(t0 and at) and t0 <= at <= time.time() + 5 and time.time() - at <= HANDOFF_FRESH
+
+
+def _app_back(request, query):
+    """Zurueck in die App (Schema aus dem Ablauf) und Ablauf-Cookies loeschen"""
+    scheme = request.cookies.get("hk_app_sc", "hlidskjalf")
+    resp = RedirectResponse((scheme if scheme in APP_SCHEMES else "hlidskjalf") + "://auth?" + query, status_code=303)
+    for k in ("hk_app_ch", "hk_app_sc", "hk_app_t"):
+        resp.delete_cookie(k, path="/app")
+    return resp
+
+
+def _handoff_confirm(request, uid):
+    go = request.session["handoff"] = secrets.token_urlsafe(18)
+    html = tmpl.from_string(_HANDOFF_TPL).render(
+        title=title(), v=ASSET_V, go=go, head=t("App anmelden"),
+        note=t("Eine App möchte sich mit deinem Konto „{name}“ anmelden.", name=request.session.get("name") or uid),
+        button=t("Anmelden"), cancel=t("Abbrechen"),
+        foot=t("Nur bestätigen, wenn du die Anmeldung gerade selbst in der App gestartet hast."))
+    return HTMLResponse(html, headers=SEC_HEADERS)
+
+
 @router.get("/app/handoff")
-def app_handoff(request: Request):
+def app_handoff(request: Request, go: str = "", cancel: str = ""):
     uid = _session_user(request)
     ch = request.cookies.get("hk_app_ch", "")
+    if cancel:
+        # Abbrechen: zurueck in die App (die App sieht error=cancelled statt code) - ohne laufenden Ablauf aufs Dashboard
+        request.session.pop("handoff", None)
+        return _app_back(request, "error=cancelled") if _CHALLENGE_RE.fullmatch(ch) else RedirectResponse("/", status_code=303)
     if not uid:
         return RedirectResponse("/login?next=/app/handoff", status_code=303)
     if not _CHALLENGE_RE.fullmatch(ch):
         return PlainTextResponse(t("Anmeldung bitte in der App neu starten."), status_code=400)
+    want = request.session.pop("handoff", None)
+    fresh = _fresh_login(request)
+    request.session.pop("login_at", None)          # gilt nur fuer genau eine Uebergabe
+    if not fresh and (not want or not re.fullmatch(r"[A-Za-z0-9_-]{20,40}", go) or not secrets.compare_digest(go, want)):
+        return _handoff_confirm(request, uid)
     code = secrets.token_urlsafe(32)
     with _db() as c, c:
         _appcode_db(c)
         c.execute("DELETE FROM app_code WHERE expires < ?", (time.time(),))
         c.execute("INSERT INTO app_code (hash, uid, name, challenge, expires) VALUES (?,?,?,?,?)",
                   (hashlib.sha256(code.encode()).hexdigest(), uid, request.session.get("name") or uid, ch, time.time() + APP_CODE_TTL))
-    scheme = request.cookies.get("hk_app_sc", "hlidskjalf")
-    resp = RedirectResponse((scheme if scheme in APP_SCHEMES else "hlidskjalf") + "://auth?code=" + code, status_code=303)
-    resp.delete_cookie("hk_app_ch", path="/app")
-    resp.delete_cookie("hk_app_sc", path="/app")
-    return resp
+    return _app_back(request, "code=" + code)
 
 
 @router.post("/app/exchange")
 async def app_exchange(request: Request):
     """Einmal-Code + Geheimnis (PKCE) -> Sitzung fuer die App."""
+    if (bad := _json_only(request)) is not None:
+        return bad
     b = await _body(request) or {}
     code, verifier = str(b.get("code") or ""), str(b.get("verifier") or "")
     if not (20 <= len(code) <= 100 and 43 <= len(verifier) <= 128):
@@ -86,6 +154,8 @@ async def app_exchange(request: Request):
     _set_session(request, r[0], r[1])
     out = {"ok": True, "name": r[1]}
     out.update(_mint_device(r[0], r[1], b))
+    if out.get("_did"):
+        request.session["did"] = out.pop("_did")      # Geraet dieser Sitzung (Passwortwechsel meldet es nicht ab)
     return JSONResponse(out)
 
 
@@ -103,6 +173,7 @@ def _mint_device(uid, uname, b):
         did = c.execute("INSERT INTO device_login (uid, uname, name, hash, prefix, created, last_used) VALUES (?,?,?,?,?,?,?)",
                         (uid, uname, dev, _tok_hash(tok), tok[:10], time.time(), time.time())).lastrowid
         out["device_token"] = tok
+        out["_did"] = did
         if b.get("app_key") is True:              # zugleich App-Schluessel fuer Widget/Teilen/Menueleiste (wenn noch Platz)
             _tok_db(c)
             if c.execute("SELECT COUNT(*) FROM app_token WHERE uid=?", (uid,)).fetchone()[0] < APP_TOKEN_MAX:
@@ -136,6 +207,8 @@ def _devlogin_db(c):
 @router.post("/app/resume")
 async def app_resume(request: Request):
     """Geraete-Schluessel -> neue Sitzung. Prueft jedes Mal frisch (bei LDAP im Verzeichnis): gesperrt/entfernt -> kein Zugriff (und Schluessel weg)."""
+    if (bad := _json_only(request)) is not None:
+        return bad
     b = await _body(request) or {}
     tok = str(b.get("device_token") or "")
     key = str(b.get("app_key") or "")
@@ -156,7 +229,7 @@ async def app_resume(request: Request):
             _tok_db(c)
             c.execute("UPDATE app_token SET device_id=? WHERE hash=? AND uid=? AND device_id IS NULL"
                       " AND NOT EXISTS (SELECT 1 FROM app_token o WHERE o.device_id=?)", (r[0], _tok_hash(key), r[1], r[0]))
-    _set_session(request, r[1], r[2] or r[1])
+    _set_session(request, r[1], r[2] or r[1], {"did": r[0]})
     return JSONResponse({"ok": True, "name": r[2] or r[1]})
 
 
@@ -170,6 +243,7 @@ async def app_device(request: Request):
     out = _mint_device(uid, request.session.get("name") or uid, b)
     if not out:
         return _bad(t("Geraetename fehlt"))
+    request.session["did"] = out.pop("_did")
     return JSONResponse(out)
 
 
@@ -221,6 +295,8 @@ def app_pair_page(request: Request, c: str = ""):
 @router.post("/app/pair")
 async def app_pair(request: Request):
     """Kopplungs-Code aus dem QR-Code -> Sitzung + Geraete-Anmeldung (wie /app/exchange)."""
+    if (bad := _json_only(request)) is not None:
+        return bad
     b = await _body(request) or {}
     code = str(b.get("code") or "")
     if not re.fullmatch(r"[A-Za-z0-9_-]{20,64}", code):
@@ -238,6 +314,8 @@ async def app_pair(request: Request):
     _set_session(request, r[0], r[1])
     out = {"ok": True, "name": r[1], "server": BASE_URL}
     out.update(_mint_device(r[0], r[1], dict(b, device=dev)))
+    if out.get("_did"):
+        request.session["did"] = out.pop("_did")
     print(f"app-pair: {r[0]} -> {dev}", flush=True)
     return JSONResponse(out)
 
@@ -245,6 +323,8 @@ async def app_pair(request: Request):
 @router.post("/app/forget")
 async def app_forget(request: Request):
     """Abmelden in der App: diesen Geraete-Schluessel loeschen."""
+    if (bad := _json_only(request)) is not None:
+        return bad
     b = await _body(request) or {}
     tok = str(b.get("device_token") or "")
     if tok.startswith("hkd_") and len(tok) <= 120:

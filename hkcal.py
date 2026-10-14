@@ -14,10 +14,13 @@ from datetime import date, datetime, time as dtime, timedelta, timezone
 from urllib.parse import urljoin, urlsplit
 
 import httpx
+from saga import netguard
 from saga.i18n import t
 
 _ENV_HOSTS = {h.strip().lower() for h in os.environ.get("CALDAV_ALLOWED_HOSTS", "").split(",") if h.strip()}
 HOST_OK = lambda host, hostport: host in _ENV_HOSTS or hostport in _ENV_HOSTS      # noqa: E731 - saga/calendars.py setzt die echte Pruefung
+# Vom Admin freigegeben (interne Adressen erlaubt)? Ohne DNS - fuer die Pruefung beim Verbinden (saga/calendars.py setzt sie)
+HOST_FREE = lambda host, hostport: host in _ENV_HOSTS or hostport in _ENV_HOSTS     # noqa: E731
 SCHEMES = {"https", "http"} if os.environ.get("CALDAV_ALLOW_HTTP") == "1" else {"https"}   # http nur fuer Tests
 TIMEOUT, MAX_BYTES, MAX_REDIRECTS = 12.0, 5 * 1024 * 1024, 3
 NS = {"d": "DAV:", "c": "urn:ietf:params:xml:ns:caldav", "a": "http://apple.com/ns/ical/", "cs": "http://calendarserver.org/ns/"}
@@ -26,11 +29,18 @@ NS = {"d": "DAV:", "c": "urn:ietf:params:xml:ns:caldav", "a": "http://apple.com/
 _local = threading.local()
 
 
+def _ip_ok(ip, host, port):
+    """Beim Verbinden: oeffentliche IP oder vom Admin freigegebener Host (gegen DNS-Rebinding nach check_url)."""
+    host = (host or "").lower()
+    return netguard.is_public(ip) or HOST_FREE(host, f"{host}:{port}") or HOST_FREE(host, host)
+
+
 def _client():
-    """Eine Verbindung je Thread wiederverwenden (Keep-Alive): spart den TLS-Aufbau bei jeder Anfrage."""
+    """Eine Verbindung je Thread wiederverwenden (Keep-Alive): spart den TLS-Aufbau bei jeder Anfrage.
+    Verbunden wird nur mit der beim Aufbau gepruefften IP (saga/netguard.py)."""
     c = getattr(_local, "client", None)
     if c is None:
-        c = _local.client = httpx.Client(timeout=TIMEOUT, follow_redirects=False)
+        c = _local.client = netguard.guarded_client(_ip_ok, timeout=TIMEOUT, follow_redirects=False)
     return c
 
 

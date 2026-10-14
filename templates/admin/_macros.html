@@ -7,4 +7,7 @@
 {% macro check(label, name, on, hint='') -%}
 <label class="adm-check"><input type="checkbox" name="{{ name }}" value="1"{% if on %} checked{% endif %}><span>{{ label }}{% if hint %}<small>{{ hint }}</small>{% endif %}</span></label>
 {%- endmacro %}
+{# Zeitpunkt: der Server formatiert in seiner Zeitzone (im Container meist UTC); static/admin.js rechnet im Browser
+   in die Zeitzone des Betrachters um und haengt deren Kurzname an (z. B. MESZ) #}
+{% macro ts(v) -%}{% if v %}<time class="adm-ts" data-ts="{{ v }}">{{ v|dt }}</time>{% else %}{{ v|dt }}{% endif %}{%- endmacro %}
 {% macro csrf_field() %}<input type="hidden" name="csrf" value="{{ csrf }}">{% endmacro %}

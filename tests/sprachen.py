@@ -22,7 +22,7 @@ def cleanup():
         for t in ("task", "note", "note_version", "bookmark", "fav", "device_login", "app_token", "user_kv", "immich_key", "cal_account", "file"):
             c.execute(f"DELETE FROM {t} WHERE uid LIKE 'sp-%'")
         c.execute("DELETE FROM users WHERE username LIKE 'sp-%'")
-        c.execute("DELETE FROM login_fail WHERE key LIKE 'u:sp-%'")
+        c.execute("DELETE FROM login_fail WHERE key LIKE 'u:sp-%' OR key LIKE 'ui:sp-%'")
 
 
 def catalog_tests():

@@ -12,7 +12,7 @@ import auth
 from db import connect as _db
 from fastapi import APIRouter
 from saga import i18n
-from saga.core import ADMIN_URL, ASSET_V, CACHE_TTL, CA_FILE, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user, t, title, tmpl, user_info
+from saga.core import ADMIN_URL, ASSET_V, CACHE_TTL, CA_FILE, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user, std_name, t, title, tmpl, user_info
 
 router = APIRouter()
 
@@ -68,15 +68,16 @@ def bookmarks(uid):
     with _db() as c:
         rows = c.execute("SELECT id, name, url, icon, category FROM bookmark WHERE uid=? ORDER BY sort, id", (uid,)).fetchall()
     return [{"key": f"bm{r[0]}", "id": r[0], "name": r[1], "url": r[2], "host": urlparse(r[2]).netloc, "icon": r[3] or "",
-             "category": r[4] or "Lesezeichen", "own": True, "check": False} for r in rows]
+             "category": std_name(r[4] or "Lesezeichen"), "own": True, "check": False} for r in rows]
 
 
 def visible_tiles(uid, info=None):
-    """Dienste + eigene Lesezeichen (Schluessel -> Kachel)."""
+    """Dienste + eigene Lesezeichen (Schluessel -> Kachel). Standard-Kategorien in der Sprache der Anfrage
+    (Kopien - all_services() ist fuer alle Sprachen gemeinsam zwischengespeichert)."""
     info = info or user_info(uid)
     if info is None:
         return {}
-    out = dict(visible_services(info))
+    out = {k: dict(s, category=std_name(s.get("category") or "Dienste")) for k, s in visible_services(info).items()}
     for b in bookmarks(uid):
         out[b["key"]] = b
     return out

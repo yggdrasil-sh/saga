@@ -11,8 +11,7 @@
   btn.addEventListener('click', function () {
     HK.openMenu(btn, function (m) {
       m.appendChild(HK.menuLabel(btn.dataset.name || ''));
-      m.appendChild(HK.menuItem(T('Einstellungen'), openSettings, { icon: '⚙' }));
-      m.appendChild(HK.menuItem(T('Konto & Passwort'), function () { openSettings('account'); }, { icon: '👤' }));
+      m.appendChild(HK.menuItem(T('Einstellungen'), function () { openSettings(); }, { icon: '⚙' }));
       if (btn.dataset.admin) m.appendChild(HK.menuItem(T('Admin-Bereich'), function () { window.open(btn.dataset.admin, '_blank', 'noopener'); }, { icon: '🛡' }));
       if (inApp) m.appendChild(HK.menuItem(T('App-Einstellungen'), function () { toApp({ action: 'settings' }); }, { icon: '📱' }));
       m.appendChild(el('div', 'menu-sep'));
@@ -26,7 +25,7 @@
   function openSettings(focus) {
     closeSettings();
     dlg = el('div', 'hk-modal'); dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); dlg.setAttribute('aria-label', T('Einstellungen'));
-    var card = el('div', 'hk-dialog'), head = el('div', 'hk-dlg-head');
+    var card = el('div', 'hk-dialog hk-dialog-set'), head = el('div', 'hk-dlg-head');
     head.appendChild(el('h2', null, T('Einstellungen')));
     var x = el('button', 'icon-btn', '✕'); x.type = 'button'; x.setAttribute('aria-label', T('Schließen')); x.addEventListener('click', closeSettings);
     head.appendChild(x); card.appendChild(head);
@@ -34,19 +33,47 @@
     dlg.addEventListener('mousedown', function (e) { if (e.target === dlg) closeSettings(); });
     document.addEventListener('keydown', onKey);
     document.body.appendChild(dlg);
+    // Reiter statt eines langen Dialogs: Konto · Lesezeichen · Kalender · Immich · Apps & Geraete
+    var tabs = el('div', 'hk-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', T('Einstellungen'));
+    body.appendChild(tabs); body.classList.add('tabbed');
     accountSection(body);
     bookmarkSection(body);
     calendarSection(body);
     immichSection(body);
     tokenSection(body);
-    var target = typeof focus === 'string' && body.querySelector('.hk-set-' + focus);
-    if (target) target.scrollIntoView();
+    var TABS = [['account', T('Konto')], ['bookmarks', T('Lesezeichen')], ['calendar', T('Kalender')], ['immich', 'Immich'], ['apps', T('Apps & Geräte')]];
+    var btns = TABS.map(function (t, i) {
+      var b = el('button', 'hk-tab', t[1]); b.type = 'button'; b.id = 'hk-tab-' + t[0];
+      b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', 'hk-pane-' + t[0]);
+      var pane = body.querySelector('.hk-set-' + t[0]);
+      if (pane) { pane.id = 'hk-pane-' + t[0]; pane.setAttribute('role', 'tabpanel'); pane.setAttribute('aria-labelledby', b.id); }
+      b.addEventListener('click', function () { show(t[0]); });
+      b.addEventListener('keydown', function (e) {          // Pfeiltasten wechseln den Reiter (WAI-ARIA Tabs)
+        var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0; if (!d) return;
+        e.preventDefault(); var n = TABS[(i + d + TABS.length) % TABS.length][0]; show(n); $tab(n).focus();
+      });
+      tabs.appendChild(b); return b;
+    });
+    function $tab(k) { return btns[TABS.findIndex(function (t) { return t[0] === k; })]; }
+    function show(k) {
+      TABS.forEach(function (t, i) {
+        var on = t[0] === k, pane = body.querySelector('.hk-set-' + t[0]);
+        btns[i].setAttribute('aria-selected', on ? 'true' : 'false'); btns[i].tabIndex = on ? 0 : -1;
+        if (pane) pane.hidden = !on;
+      });
+      body.scrollTop = 0;
+      reveal($tab(k));
+    }
+    // Handy: Leiste scrollt waagrecht - Verlauf am Rand, aktiver Reiter immer ganz sichtbar
+    var reveal = HK.scrollFade(tabs);
+    var start = typeof focus === 'string' && $tab(focus) ? focus : 'account';
+    show(start);
   }
 
   // --- Abschnitt "Immich" (eigener API-Schluessel; der Schluessel verlaesst den Server nie wieder) ------------------
   function immichSection(body) {
     var sec = el('section', 'hk-set hk-set-immich'); body.appendChild(sec);
-    sec.appendChild(el('h3', null, '📷 Immich'));
+    sec.appendChild(el('h3', null, 'Immich'));
     var box = el('div'); sec.appendChild(box);
     function load() {
       api('GET', '/api/settings/immich').then(function (s) {
@@ -59,11 +86,12 @@
           box.appendChild(off); return;
         }
         box.appendChild(el('p', 'hk-hint', T('Adresse deines Immich (z. B. https://immich.example.de). In Immich unter Kontoeinstellungen → API-Schlüssel einen neuen Schlüssel anlegen mit den Rechten album.read, asset.read, asset.view, asset.download und user.read, und hier einfügen. Saga sieht dann nur deine eigenen Fotos.')));
-        var url = el('input'); url.type = 'url'; url.placeholder = 'https://immich.example.de'; url.value = s.suggest || '';
+        var url = el('input', 'hk-in'); url.type = 'url'; url.placeholder = 'https://immich.example.org'; url.value = s.suggest || '';
         box.appendChild(field(T('Immich-Adresse'), url));
-        var inp = el('input'); inp.type = 'password'; inp.autocomplete = 'off'; inp.placeholder = T('API-Schlüssel');
+        var inp = el('input', 'hk-in'); inp.type = 'password'; inp.autocomplete = 'off'; inp.placeholder = T('API-Schlüssel');
         box.appendChild(field(T('API-Schlüssel'), inp));
-        var go = el('button', 'btn primary', T('Verbinden')); go.type = 'button'; box.appendChild(go);
+        var go = el('button', 'btn btn-primary', T('Verbinden')); go.type = 'button';
+        var goBar = el('div', 'hk-actions'); goBar.appendChild(go); box.appendChild(goBar);
         var msg = el('p', 'hk-hint'); box.appendChild(msg);
         go.addEventListener('click', function () {
           msg.textContent = T('Prüfe …'); go.disabled = true;
@@ -78,7 +106,7 @@
   // --- Abschnitt "Kalender" ----------------------------------------------------------
   function calendarSection(body) {
     var sec = el('section', 'hk-set hk-set-calendar'); body.appendChild(sec);
-    sec.appendChild(el('h3', null, '📅 ' + T('Kalender')));
+    sec.appendChild(el('h3', null, T('Kalender')));
     sec.appendChild(el('p', 'hk-hint', T('Externe Kalender (CalDAV) wie Nextcloud, mailcow, Radicale oder iCloud verbinden. Saga zeigt deren Termine an und kann Termine anlegen und ändern. Tipp: Ein eigenes App-Passwort nur für Kalender/DAV anlegen.')));
     var list = el('div', 'hk-cal-list'); sec.appendChild(list);
     var addBtn = el('button', 'btn', T('+ Kalender verbinden')); addBtn.type = 'button'; sec.appendChild(addBtn);
@@ -197,8 +225,8 @@
   // --- Abschnitt "Apps & Geraete": Zugangsschluessel fuer die iOS-App (Teilen, Widget) ---------
   var fDate = new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric' });
   function tokenSection(body) {
-    var sec = el('section', 'hk-set'); body.appendChild(sec);
-    sec.appendChild(el('h3', null, '📱 ' + T('Apps & Geräte')));
+    var sec = el('section', 'hk-set hk-set-apps'); body.appendChild(sec);
+    sec.appendChild(el('h3', null, T('Apps & Geräte')));
     sec.appendChild(el('p', 'hk-hint', T('Angemeldete Apps bleiben angemeldet. Zu jeder App gehört ein kleiner Schlüssel für Widget, Teilen und Kurzbefehle (darf nur ablegen und „Heute“ lesen). Verlorenes Gerät → abmelden, dann ist beides weg.')));
     var devs = el('div', 'hk-tok-list'); sec.appendChild(devs);
     // App per QR-Code anmelden: Code gilt 2 Minuten und einmal; die App uebernimmt daraus auch die Server-Adresse
@@ -213,7 +241,22 @@
         qrBox.textContent = ''; qrBox.hidden = false;
         var img = el('img'); img.src = d.qr; img.alt = T('QR-Code zum Anmelden der App'); img.width = 220; img.height = 220;
         var txt = el('div'), st = el('p', 'hk-status');
-        txt.appendChild(el('p', null, T('In der iPhone-/iPad-App auf „Mit QR-Code anmelden“ tippen und diesen Code scannen – oder mit der Kamera-App scannen.')));
+        txt.appendChild(el('p', null, T('In der App (iPhone, iPad, Android) auf „Mit QR-Code anmelden“ tippen und diesen Code scannen – oder mit der Kamera-App scannen.')));
+        // Kopplungslink fuer Desktop-Apps (Mac, Linux): gleicher Code, gleiche Regeln (2 Minuten, einmal)
+        var lnk = null;
+        if (d.link) {
+          lnk = el('div', 'hk-qr-link');
+          lnk.appendChild(el('p', 'hk-hint', T('Mac- oder Linux-App: Link kopieren und in der App bei der Anmeldung als Kopplungslink einfügen.')));
+          var row = el('div', 'hk-actions'), li = el('input', 'hk-in hk-tokval'); li.type = 'text'; li.readOnly = true; li.value = d.link;
+          li.setAttribute('aria-label', T('Kopplungslink'));
+          var cp = el('button', 'btn', T('Link kopieren')); cp.type = 'button';
+          cp.addEventListener('click', function () {
+            li.select();
+            (navigator.clipboard ? navigator.clipboard.writeText(d.link) : Promise.reject()).then(function () { HK.toast(T('Kopiert')); },
+              function () { try { document.execCommand('copy'); HK.toast(T('Kopiert')); } catch (e) { /* markiert - selbst kopieren */ } });
+          });
+          row.appendChild(li); row.appendChild(cp); lnk.appendChild(row); txt.appendChild(lnk);
+        }
         txt.appendChild(el('p', 'hk-hint', T('Der Code gilt 2 Minuten und nur einmal. Zeig ihn niemandem – wer ihn scannt, ist als du angemeldet.')));
         txt.appendChild(st); qrBox.appendChild(img); qrBox.appendChild(txt);
         var end = Date.now() + d.expires_in * 1000;
@@ -221,9 +264,9 @@
           var left = Math.max(0, Math.round((end - Date.now()) / 1000));
           api('GET', '/api/settings/pair/' + encodeURIComponent(d.id)).then(function (s) {
             if (s.used_by) {
-              qrStop(); img.remove(); status(st, T('✓ „{name}“ ist angemeldet.', { name: s.used_by }), 'ok'); load();
+              qrStop(); img.remove(); if (lnk) lnk.remove(); status(st, T('✓ „{name}“ ist angemeldet.', { name: s.used_by }), 'ok'); load();
             } else if (s.expired || !left) {
-              qrStop(); img.remove(); status(st, T('Abgelaufen – bei Bedarf einen neuen Code erzeugen.'), 'err');
+              qrStop(); img.remove(); if (lnk) lnk.remove(); status(st, T('Abgelaufen – bei Bedarf einen neuen Code erzeugen.'), 'err');
             } else { status(st, T('Noch {n} s gültig …', { n: left })); }
           }).catch(function () {});
         }, 2000);
@@ -309,7 +352,7 @@
   // --- Abschnitt "Konto": Name, E-Mail, Passwort (nur lokale Konten), Gruppen ------------------------------
   function accountSection(body) {
     var sec = el('section', 'hk-set hk-set-account'); body.appendChild(sec);
-    sec.appendChild(el('h3', null, '👤 ' + T('Konto')));
+    sec.appendChild(el('h3', null, T('Konto')));
     var box = el('div'); sec.appendChild(box);
     api('GET', '/api/account').then(function (a) {
       box.appendChild(el('p', 'hk-hint', a.username + ' · ' + a.source_label + (a.groups.length ? ' · ' + T('Gruppen: {list}', { list: a.groups.join(', ') }) : '')));
@@ -321,11 +364,13 @@
       var nm = input('text', a.name === a.username ? '' : a.name, T('Anzeigename')); nm.maxLength = 120;
       var em = input('email', a.email, 'name@example.org'); em.maxLength = 200;
       box.appendChild(field(T('Anzeigename'), nm)); box.appendChild(field(T('E-Mail'), em));
-      var st = el('div', 'hk-status'), bar = el('div', 'hk-actions'), sv = el('button', 'btn', T('Speichern')); sv.type = 'button';
+      var st = el('div', 'hk-status'), bar = el('div', 'hk-actions'), sv = el('button', 'btn btn-primary', T('Speichern')); sv.type = 'button';
       bar.appendChild(sv); box.appendChild(bar); box.appendChild(st);
       sv.addEventListener('click', function () {
         api('PATCH', '/api/account', { name: nm.value.trim(), email: em.value.trim() }).then(function (d) {
-          status(st, T('✓ Gespeichert'), 'ok'); btn.dataset.name = d.name; btn.textContent = '👤 ' + d.name + ' ▾';
+          status(st, T('✓ Gespeichert'), 'ok'); btn.dataset.name = d.name;
+          var nmEl = btn.querySelector('.hk-user-n'); if (nmEl) nmEl.textContent = d.name; else btn.textContent = '👤 ' + d.name + ' ▾';
+          btn.setAttribute('aria-label', T('Benutzermenü') + ': ' + d.name);
         }).catch(function (err) { status(st, err.message, 'err'); });
       });
       box.appendChild(el('h4', null, T('Passwort ändern')));
@@ -334,7 +379,7 @@
       box.appendChild(field(T('Bisheriges'), o)); box.appendChild(field(T('Neues Passwort'), n1)); box.appendChild(field(T('Wiederholen'), n2));
       var st2 = el('div', 'hk-status'), bar2 = el('div', 'hk-actions'), pwb = el('button', 'btn', T('Passwort ändern')); pwb.type = 'button';
       bar2.appendChild(pwb); box.appendChild(bar2); box.appendChild(st2);
-      box.appendChild(el('p', 'hk-hint', T('Andere Browser-Sitzungen werden danach abgemeldet. Angemeldete Apps bleiben angemeldet (unten unter „Apps & Geräte“ abmelden).')));
+      box.appendChild(el('p', 'hk-hint', T('Andere Browser-Sitzungen und angemeldete Apps werden danach abgemeldet – außer dieser Sitzung und der App, in der du gerade bist.')));
       pwb.addEventListener('click', function () {
         if (n1.value !== n2.value) { status(st2, T('Die neuen Passwörter stimmen nicht überein.'), 'err'); return; }
         pwb.disabled = true;
@@ -357,7 +402,7 @@
   }
   function bookmarkSection(body) {
     var sec = el('section', 'hk-set hk-set-bookmarks'); body.appendChild(sec);
-    sec.appendChild(el('h3', null, '🔖 ' + T('Lesezeichen')));
+    sec.appendChild(el('h3', null, T('Lesezeichen')));
     sec.appendChild(el('p', 'hk-hint', T('Eigene Kacheln auf dem Dashboard – nur für dich sichtbar, auch in den Apps. Symbole: Name von selfh.st/icons (z. B. „jellyfin“).')));
     var list = el('div'); sec.appendChild(list);
     var add = el('button', 'btn', T('+ Lesezeichen')); add.type = 'button'; sec.appendChild(add);

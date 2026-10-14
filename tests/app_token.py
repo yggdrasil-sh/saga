@@ -1,6 +1,8 @@
 """App-Zugangsschluessel + /api/app/* (Probe-Instanz)."""
 import json, os, base64, sqlite3, sys, urllib.request, urllib.parse
 from itsdangerous import TimestampSigner
+from saga import i18n
+INBOX = {i18n.t_lang(l, "Eingang") for l in i18n.LANGS}      # Name in der Konto- bzw. Server-Sprache
 B = os.environ.get("HK_TEST_BASE", "http://127.0.0.1:8080"); DB = os.environ.get("HK_TEST_DB", "/data/saga.db")
 S = TimestampSigner(os.environ["SESSION_SECRET"]); ck = lambda u: S.sign(base64.b64encode(json.dumps({"uid": u}).encode())).decode()
 A, X = ck("hk-test-a"), ck("hk-test-b"); HOST = urllib.parse.urlparse(os.environ["BASE_URL"]).netloc
@@ -23,7 +25,7 @@ try:
     c, d, _ = call("POST", "/api/app/capture", bearer=T, b={"kind": "page", "title": "Artikel", "url": "https://example.org/a?b=1&c=2", "text": "Zitat <script>alert(1)</script>\n\nZweiter Absatz"})
     ok("Teilen als Seite", c == 200 and d.get("kind") == "page")
     pg = call("GET", f"/api/notes/{d['id']}", A)[1]; inbox = call("GET", f"/api/notes/{pg['parent_id']}", A)[1]
-    ok(f"Liegt im Eingang ({inbox.get('icon')} {inbox.get('title')})", inbox.get("title") == "Eingang" and inbox.get("icon") == "📥")
+    ok(f"Liegt im Eingang ({inbox.get('icon')} {inbox.get('title')})", inbox.get("title") in INBOX and inbox.get("icon") == "📥")
     ok("Eingeschleuster Code unschaedlich, Link erhalten", "<script>" not in pg["body"] and "&lt;script&gt;" in pg["body"] and 'href=\\"https://example.org/a?b=1&amp;c=2\\"' in pg["body"])
     ok("javascript:-Link abgelehnt", call("POST", "/api/app/capture", bearer=T, b={"url": "javascript:alert(1)"})[0] == 400)
     c, d, _ = call("POST", "/api/app/capture", bearer=T, b={"kind": "task", "title": "Rückruf Müller", "url": "https://example.org/x"})
@@ -37,7 +39,7 @@ try:
     ok("Falscher Schluessel -> 401", call("GET", "/api/app/today", bearer="hk_" + "x" * 43)[0] == 401)
     call("DELETE", f"/api/notes/{inbox['id']}", A)
     c, d, _ = call("POST", "/api/app/capture", bearer=T, b={"title": "Nach Loeschen"}); np = call("GET", f"/api/notes/{d['id']}", A)[1]
-    ok("Eingang geloescht -> neu angelegt", np["parent_id"] != inbox["id"] and call("GET", f"/api/notes/{np['parent_id']}", A)[1]["title"] == "Eingang")
+    ok("Eingang geloescht -> neu angelegt", np["parent_id"] != inbox["id"] and call("GET", f"/api/notes/{np['parent_id']}", A)[1]["title"] in INBOX)
     tid = call("GET", "/api/settings/tokens", A)[1][0]["id"]
     ok("Anderer Benutzer kann Schluessel nicht widerrufen", call("DELETE", f"/api/settings/tokens/{tid}", X)[0] == 404)
     ok("Widerrufen", call("DELETE", f"/api/settings/tokens/{tid}", A)[0] == 200 and call("GET", "/api/app/today", bearer=T)[0] == 401)

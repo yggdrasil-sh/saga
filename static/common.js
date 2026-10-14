@@ -173,7 +173,32 @@
     if (!(tg instanceof Element) || (!menuEl.contains(tg) && !subEl.contains(tg))) closeMenu();
   }, true);
 
-  window.HK = { $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
+  // Waagrecht scrollende Leisten (Reiter auf dem Handy): Verlauf am Rand, solange dort noch etwas steht,
+  // und den aktiven Eintrag sichtbar machen. Rueckgabe: Funktion zum Nachziehen (z. B. nach Reiterwechsel).
+  function scrollFade(bar, active) {
+    if (!bar) return function () {};
+    function upd() {
+      var max = bar.scrollWidth - bar.clientWidth;
+      bar.classList.toggle('fade-l', bar.scrollLeft > 2);
+      bar.classList.toggle('fade-r', max > 2 && bar.scrollLeft < max - 2);
+    }
+    function reveal(a) {
+      a = a || (active && bar.querySelector(active));
+      if (a && bar.scrollWidth > bar.clientWidth) {
+        var l = a.getBoundingClientRect().left - bar.getBoundingClientRect().left + bar.scrollLeft, r = l + a.offsetWidth;
+        if (l < bar.scrollLeft + 24) bar.scrollLeft = Math.max(0, l - 24);
+        else if (r > bar.scrollLeft + bar.clientWidth - 24) bar.scrollLeft = r - bar.clientWidth + 24;
+      }
+      upd();
+    }
+    bar.addEventListener('scroll', upd, { passive: true });
+    if (window.ResizeObserver) new ResizeObserver(function () { upd(); }).observe(bar);     // faellt mit der Leiste weg
+    else window.addEventListener('resize', upd);
+    reveal();
+    return reveal;
+  }
+
+  window.HK = { scrollFade: scrollFade, $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
                 openMenu: openMenu, closeMenu: closeMenu, menuItem: menuItem, menuLabel: menuLabel,
                 menuOpen: function () { return !!menuOwner; }, closeSub: closeSub };
 })();

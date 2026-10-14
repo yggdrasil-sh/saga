@@ -13,7 +13,8 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import E, STATE_DIR, _api_guard, _bad, _body, _json_load, _session_user, t
+from starlette.concurrency import run_in_threadpool
+from saga.core import E, STATE_DIR, account_lang, _api_guard, _bad, _body, _json_load, _session_user, t
 from saga.dashboard import visible_tiles
 from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, NOTE_MAX_COUNT, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _snapshot, blocks_text
 
@@ -257,7 +258,7 @@ async def api_note_add(request: Request):
             return _bad(t("ungueltige Angabe"))
         title = str(b.get("title", "")).strip()[:NOTE_TITLE_MAX]
         kind = "database" if b.get("kind") == "database" else "page"
-        schema = json.dumps(_default_schema(), ensure_ascii=False) if kind == "database" else None
+        schema = json.dumps(_default_schema(account_lang(owner)), ensure_ascii=False) if kind == "database" else None
         props = None
         if parent and b.get("props"):
             ps = c.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database'", (parent, owner)).fetchone()
@@ -275,15 +276,44 @@ async def api_note_add(request: Request):
         return JSONResponse({"id": cur.lastrowid, "updated": now})
 
 
+class _Reply(Exception):
+    """Fehlerantwort mitten in einer Transaktion: als Ausnahme geworfen, damit 'with c:' zurueckrollt
+    (ein 'return' wuerde die bis dahin gemachten Aenderungen committen - Teil-Commit trotz 4xx)."""
+
+    def __init__(self, resp):
+        super().__init__()
+        self.resp = resp
+
+
+SHRINK_MIN, SHRINK_RATIO = 400, 0.5     # Sicherheitsnetz: Version erzwingen, wenn eine Seite (> 400 Zeichen) leer/viel kleiner wird
+
+
+def _shrinks(old_body, body, fmt):
+    if len(old_body or "") <= SHRINK_MIN:
+        return False
+    if fmt == "blocks":
+        empty = not _json_load(body, {}).get("blocks")
+    else:
+        empty = not body.strip()
+    return empty or len(body) < len(old_body) * SHRINK_RATIO
+
+
 @router.patch("/api/notes/{nid}")
 async def api_note_update(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
     b = await _body(request)
     if b is None:
         return _bad("bad request")
+    try:                                     # Datenbank-Arbeit und Bereinigung im Threadpool (Event-Loop bleibt frei)
+        return await run_in_threadpool(_note_update, uid, nid, b)
+    except _Reply as r:
+        return r.resp
+
+
+def _note_update(uid, nid, b):
+    owner = uid      # Schritt A: Eigentuemer = ich. Schritt B: zentrale Zugriffspruefung (Freigaben)
     sets, args = [], []
     with _db() as c, c:
         old = c.execute("SELECT title, body, format, rev, locked FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
@@ -294,13 +324,15 @@ async def api_note_update(nid: int, request: Request):
         # Konflikterkennung: wer Titel/Inhalt speichert und die gekannte Revision mitschickt, ueberschreibt
         # keine zwischenzeitliche Aenderung (anderer Tab, Peek, spaeter: andere Person). Ohne 'rev' wie bisher.
         content = "body" in b or "title" in b
-        if content and b.get("rev") is not None:
+        check_rev = content and b.get("rev") is not None
+        if check_rev:
             try:
                 want = int(b["rev"])
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 return _bad(t("ungueltige Revision"))
             if want != old[3]:
                 return JSONResponse({"error": "conflict", "rev": old[3]}, status_code=409)
+        shrink = False
         try:
             if "pinned" in b:
                 sets.append("pinned=?"); args.append(1 if b["pinned"] else 0)
@@ -396,10 +428,11 @@ async def api_note_update(nid: int, request: Request):
                 elif fmt == "text":
                     body = str(b["body"])
                     if len(body) > NOTE_BODY_MAX:
-                        return _bad(t("Notiz zu lang (max. {n} Zeichen)", n=NOTE_BODY_MAX), 413)
+                        raise _Reply(_bad(t("Notiz zu lang (max. {n} Zeichen)", n=NOTE_BODY_MAX), 413))
                 else:
                     raise ValueError(t("unbekanntes Format"))
                 sets += ["body=?", "format=?"]; args += [body, fmt]
+                shrink = _shrinks(old[1], body, fmt)
             if "parent_id" in b:
                 newpar = _check_parent(c, owner, nid, b["parent_id"])
                 if newpar is not None:          # wie beim Verschieben: keine normale Seite in eine Datenbank
@@ -408,17 +441,22 @@ async def api_note_update(nid: int, request: Request):
                         raise ValueError(t("Seiten koennen nicht in eine Datenbank verschoben werden"))
                 sets.append("parent_id=?"); args.append(newpar)
         except LookupError:
-            return _bad("not found", 404)
-        except (ValueError, TypeError) as ex:
-            return _bad(str(ex) if str(ex) else t("ungueltige Angabe"), 413 if isinstance(ex, TooLarge) else 400)
+            raise _Reply(_bad("not found", 404))
+        except (ValueError, TypeError, OverflowError, AttributeError) as ex:
+            raise _Reply(_bad(str(ex) if str(ex) else t("ungueltige Angabe"), 413 if isinstance(ex, TooLarge) else 400))
         if not sets:
-            return _bad(t("nichts zu aendern"))
+            raise _Reply(_bad(t("nichts zu aendern")))
         now = time.time()
         if "body" in b:
-            _snapshot(c, owner, nid, old, now)
+            _snapshot(c, owner, nid, old, now, force=shrink)     # leer/viel kleiner: alten Stand immer sichern
         if content:
             sets.append("rev=rev+1")
-        c.execute(f"UPDATE note SET {', '.join(sets)}, updated=? WHERE id=? AND uid=?", (*args, now, nid, owner))
+        # Atomar: mit Revision nur schreiben, wenn sie seit dem Lesen niemand erhoeht hat (sonst 409, alles zurueck)
+        n = c.execute(f"UPDATE note SET {', '.join(sets)}, updated=? WHERE id=? AND uid=?" + (" AND rev=?" if check_rev else ""),
+                      (*args, now, nid, owner, *((old[3],) if check_rev else ()))).rowcount
+        if check_rev and n == 0:
+            cur = c.execute("SELECT rev FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()
+            raise _Reply(JSONResponse({"error": "conflict", "rev": cur[0] if cur else None}, status_code=409))
     return JSONResponse({"ok": True, "updated": now, "rev": old[3] + (1 if content else 0)})
 
 
@@ -524,6 +562,11 @@ async def api_note_search(request: Request):
     tag = str(b.get("tag", "")).strip().lower()[:TAG_MAX_LEN]
     if not q and not tag:
         return JSONResponse([])
+    hits = await run_in_threadpool(_note_search, uid, q, tag)      # laedt und parst alle Seiten: nicht im Event-Loop
+    return JSONResponse(hits, headers={"Cache-Control": "no-store"})
+
+
+def _note_search(uid, q, tag):
     hits = []
     with _db() as c:
         for r in c.execute(f"SELECT {NOTE_META_COLS}, body, format FROM note WHERE uid=? AND deleted_at IS NULL AND archived IS NULL ORDER BY updated DESC", (uid,)):
@@ -542,7 +585,7 @@ async def api_note_search(request: Request):
             hits.append(d)
             if len(hits) >= 50:
                 break
-    return JSONResponse(hits, headers={"Cache-Control": "no-store"})
+    return hits
 
 
 @router.get("/api/notes/{nid}/backlinks")

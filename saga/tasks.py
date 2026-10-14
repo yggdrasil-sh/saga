@@ -1,12 +1,12 @@
 """Aufgaben."""
 import time
 from calendar import monthrange
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import _api_guard, _bad, _body, t
+from saga.core import TZ, _api_guard, _bad, _body, t
 
 router = APIRouter()
 
@@ -43,15 +43,20 @@ def _repeat(v):
     return v
 
 
+def _today():
+    """Heute in der eingestellten Zeitzone (TIMEZONE) - nicht in der des Containers (meist UTC)."""
+    return datetime.now(TZ).date()
+
+
 def _client_today(b):
     """'Heute' aus Sicht des Browsers (Zeitzone des Benutzers), sonst Server-Datum."""
     try:
         t = date.fromisoformat(str(b.get("today")))
-        if abs((t - date.today()).days) <= 1:   # Plausibilitaet: max. 1 Tag Zeitzonen-Versatz
+        if abs((t - _today()).days) <= 1:   # Plausibilitaet: max. 1 Tag Zeitzonen-Versatz
             return t
     except (ValueError, TypeError):
         pass
-    return date.today()
+    return _today()
 
 
 def next_due(due_iso, repeat, anchor_iso, today):

@@ -102,6 +102,7 @@
     var li = el('li', (compact ? 'rail-item' : 'task') + ' p' + (task.prio || 2) + (task.done ? ' is-done' : ''));
     var cb = el('button', 'task-check'); cb.type = 'button';
     cb.setAttribute('aria-label', (task.done ? T('Wieder öffnen: {text}', { text: task.text }) : T('Erledigt: {text}', { text: task.text })) + (task.prio === 1 ? ' ' + T('(Priorität hoch)') : ''));
+    if (task.prio === 1 || task.prio === 3) cb.title = T('Priorität:') + ' ' + (task.prio === 1 ? T('Hoch') : T('Niedrig'));   // roter/gestrichelter Kreis erklaert
     cb.textContent = task.done ? '✓' : '';
     cb.addEventListener('click', function () { cb.disabled = true; complete(task); });
     li.appendChild(cb);

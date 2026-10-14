@@ -96,6 +96,92 @@
     }
   }
 
+  // --- Block-Menue ("/") ---------------------------------------------------------
+  // Editor.js uebernimmt im gefilterten Menue mit Enter nur einen per Pfeiltaste markierten Eintrag; getippt + Enter
+  // blieb wirkungslos und weiterer Text landete im Filter. Ohne Markierung -> erster sichtbarer Treffer.
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || e.isComposing || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+    var t = e.target;
+    if (!t || !t.classList || !t.classList.contains('cdx-search-field__input')) return;
+    var pop = t.closest('.ce-popover');
+    if (!pop || !pop.classList.contains('ce-popover--opened') || pop.querySelector('.ce-popover-item--focused')) return;
+    var first = [].filter.call(pop.querySelectorAll('.ce-popover-item'), function (x) {
+      return !x.classList.contains('ce-popover-item--hidden') && !x.classList.contains('ce-popover-item--disabled') && x.getClientRects().length;
+    })[0];
+    if (!first) return;
+    e.preventDefault(); e.stopPropagation();
+    first.click();
+  }, true);
+  // Handy-Tastaturen melden beim Tastendruck oft key "Unidentified" -> Editor.js erkennt "/" nicht.
+  // Ersatz: "/" allein in einem leeren Absatz (input-Ereignis) oeffnet das Block-Menue dieses Editors.
+  document.addEventListener('input', function (e) {
+    if (e.data !== '/' || !S.editor || document.querySelector('.ce-popover--opened')) return;
+    var t = e.target, p = t && t.closest ? t.closest('.ce-paragraph') : null;
+    if (!p || !$('pg-editor').contains(p) || p.textContent.replace(/\u00a0/g, ' ').trim() !== '/') return;
+    var best = null;
+    (S.eds || []).forEach(function (x) { if (x.ed && x.holder.isConnected && x.holder.contains(p) && (!best || best.holder.contains(x.holder))) best = x; });
+    var ed = best ? best.ed : S.editor;
+    slashReset(); slashP = p;
+    setTimeout(function () { try { ed.toolbar.toggleToolbox(true); } catch (err) { /* Editor noch nicht bereit */ } }, 0);
+  }, true);
+  // Handy (Editor.js unter 650 px): das Block-Menue ist ein Bottom-Sheet OHNE Suchfeld, Getipptes landet im Absatz.
+  // Ersatz: solange das Menue offen ist und der Absatz mit "/" beginnt, filtert der Text dahinter die Eintraege;
+  // Enter waehlt den ersten Treffer. Vor der Auswahl wird "/…" geleert, damit der Block ersetzt statt ergaenzt wird.
+  var slashP = null;
+  function mobilePop() {
+    var pop = document.querySelector('.ce-popover--opened');
+    if (!pop || pop.querySelector('.cdx-search-field') || !pop.querySelector('.ce-popover__overlay:not(.ce-popover__overlay--hidden)')) return null;
+    return pop;
+  }
+  function slashText(p) { return p && p.isConnected ? p.textContent.replace(/\u00a0/g, ' ') : ''; }
+  function slashReset() {
+    [].forEach.call(document.querySelectorAll('.pg-slash-hidden'), function (x) { x.classList.remove('pg-slash-hidden'); });
+    slashP = null;
+  }
+  function slashItems(pop) {
+    return [].filter.call(pop.querySelectorAll('.ce-popover-item'), function (x) {
+      return !x.classList.contains('pg-slash-hidden') && !x.classList.contains('ce-popover-item--hidden') && !x.classList.contains('ce-popover-item--disabled');
+    });
+  }
+  function slashPick(pop) {
+    var first = slashItems(pop)[0];
+    if (!first) return false;
+    if (slashText(slashP).charAt(0) === '/') slashP.innerHTML = '';
+    slashReset(); first.click();
+    return true;
+  }
+  document.addEventListener('input', function (e) {
+    var pop = mobilePop(), t = e.target, p = t && t.closest ? t.closest('.ce-paragraph') : null;
+    if (!pop || !p) return;
+    var txt = slashText(p);
+    if (txt.charAt(0) !== '/') return;
+    slashP = p;
+    var q = txt.slice(1).trim().toLowerCase();
+    [].forEach.call(pop.querySelectorAll('.ce-popover-item'), function (x) {
+      var ti = x.querySelector('.ce-popover-item__title');
+      x.classList.toggle('pg-slash-hidden', !!q && !(ti && ti.textContent.toLowerCase().indexOf(q) >= 0));
+    });
+  }, true);
+  function slashEnter(e) {
+    var pop = mobilePop();
+    if (!pop || !slashP || slashText(slashP).charAt(0) !== '/' || !slashP.contains(e.target)) return;
+    if (slashPick(pop)) { e.preventDefault(); e.stopPropagation(); }
+  }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.isComposing && !e.shiftKey) slashEnter(e); }, true);
+  document.addEventListener('beforeinput', function (e) { if (e.inputType === 'insertParagraph' || e.inputType === 'insertLineBreak') slashEnter(e); }, true);
+  // Auswahl per Antippen: "/…" vorher leeren; Menue ueber "+" oder Overlay geschlossen -> Filter zuruecksetzen
+  document.addEventListener('pointerdown', function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var item = t.closest('.ce-popover-item'), pop = mobilePop();
+    if (item && pop && pop.contains(item) && slashP && slashText(slashP).charAt(0) === '/' && slashText(slashP).length > 1) slashP.innerHTML = '';
+    else if (t.closest('.ce-toolbar__plus') || t.closest('.ce-popover__overlay')) slashReset();
+  }, true);
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (t && t.closest && t.closest('.ce-popover-item') && document.querySelector('.pg-slash-hidden')) setTimeout(slashReset, 0);
+  }, true);
+
   // --- Zustand ---------------------------------------------------------------
   var S = { pages: [], cur: null, editor: null, loading: false, dirtyBody: false, dirtyTitle: false, timer: null,
             open: {}, onCount: function () {} };
@@ -266,14 +352,15 @@
 
   // Browser-Tab-Titel und Direktlink (/notes#<id>) aktuell halten
   function setLocation() {
-    if (!S.cur) { document.title = T('Notizen') + ' · Saga'; return; }
-    document.title = (ti(S.cur.icon) ? ti(S.cur.icon) + ' ' : '') + label(S.cur) + ' · ' + T('Notizen');
+    if (!S.cur) { document.title = T('Seiten') + ' · Saga'; return; }
+    document.title = (ti(S.cur.icon) ? ti(S.cur.icon) + ' ' : '') + label(S.cur) + ' · ' + T('Seiten');
     if (parseInt(location.hash.slice(1), 10) === S.cur.id) return;                 // auch "#12:block" = diese Seite
     if (!EMBED && /^#\d/.test(location.hash)) history.pushState(null, '', '#' + S.cur.id);   // Zurueck/Vor wie im Browser
     else history.replaceState(null, '', '#' + S.cur.id);
   }
 
   function openPage(id) {
+    drawer(false);                                  // Handy: Seitenleiste (Schublade) schliessen, Inhalt zeigen
     return save().then(function () { return api('GET', '/api/notes/' + id); }).then(function (n) {
       S.cur = n; S.loading = true;
       $('page').hidden = false; $('pg-empty').hidden = true;
@@ -792,7 +879,7 @@
   function showTrash() {
     save().then(function () {
       S.cur = null; $('page').hidden = true; $('pg-empty').hidden = true; $('pg-trash').hidden = false;
-      history.replaceState(null, '', location.pathname); document.title = T('Papierkorb') + ' · ' + T('Notizen');
+      history.replaceState(null, '', location.pathname); document.title = T('Papierkorb') + ' · ' + T('Seiten');
       renderTree(); return loadTrash();
     });
   }
@@ -855,8 +942,9 @@
       item((ti(p.icon) || '📄') + ' ' + label(p), path, function () { openPage(p.id); });
     });
     var acts = actions().filter(function (a) { return !q || (a.t + ' ' + (a.kw || '')).toLowerCase().indexOf(q) >= 0; });
+    var cmdAt = qs.items.length, cmdLabel = null;
     if (acts.length && (q || cmdOnly)) {
-      list.appendChild(el('div', 'menu-label', T('Befehle')));
+      list.appendChild(cmdLabel = el('div', 'menu-label', T('Befehle')));
       acts.slice(0, cmdOnly ? 30 : 6).forEach(function (a) { item(a.ic + ' ' + a.t, a.kbd || '', a.fn); });
     } else if (!q) list.appendChild(el('div', 'pg-qs-hint', T('Tipp: „>“ zeigt alle Befehle')));
     if (q && !cmdOnly) item(T('+ Neue Seite „{name}“', { name: $('pg-qs-q').value.trim() }), '', function () {
@@ -864,6 +952,31 @@
     });
     if (!qs.items.length) list.appendChild(el('div', 'pg-noresult', T('Nichts gefunden.')));
     qs.items.forEach(function (it, i) { it.b.classList.toggle('on', i === 0); });
+    // Volltext (wie "Seiten durchsuchen"): Treffer im Inhalt nachladen, vor den Befehlen einfuegen
+    var token = qs.token = (qs.token || 0) + 1; clearTimeout(qs.timer);
+    if (!q || cmdOnly || q.length < 2) return;
+    qs.timer = setTimeout(function () {
+      api('POST', '/api/notes/search', { q: q }).then(function (res) {
+        if (token !== qs.token || $('pg-qs').hidden) return;
+        var seen = {}; hits.forEach(function (p) { seen[p.id] = 1; });
+        var extra = (res || []).filter(function (h) { return !seen[h.id] && byId(h.id); }).slice(0, 6);
+        if (!extra.length) return;
+        var at = cmdLabel ? cmdAt : qs.items.length - 1, before = cmdLabel || (qs.items[at] ? qs.items[at].b : null);
+        list.insertBefore(el('div', 'menu-label', T('Im Inhalt gefunden')), before);
+        var add = extra.map(function (h) {
+          var b = el('button', 'picker-item qs-hit'); b.type = 'button'; b.setAttribute('role', 'option');
+          b.appendChild(el('span', 'picker-t', (ti(h.icon) || '📄') + ' ' + label(h)));
+          if (h.snippet) b.appendChild(el('span', 'pg-hit-s', h.snippet));
+          var fn = function () { openPage(h.id); };
+          b.addEventListener('click', function () { closeQS(); fn(); });
+          list.insertBefore(b, before); return { b: b, fn: fn };
+        });
+        // Ohne Titel-Treffer stand die Auswahl auf "+ Neue Seite" -> jetzt den ersten Inhalts-Treffer waehlen
+        var curItem = qs.items[qs.idx], wasNew = !hits.length && qs.idx === qs.items.length - 1;
+        Array.prototype.splice.apply(qs.items, [at, 0].concat(add));
+        qs.idx = wasNew ? at : Math.max(0, qs.items.indexOf(curItem)); qsHighlight();
+      }).catch(function () {});
+    }, 200);
   }
   function qsHighlight() { qs.items.forEach(function (it, i) { it.b.classList.toggle('on', i === qs.idx); if (i === qs.idx) it.b.scrollIntoView({ block: 'nearest' }); }); }
   $('pg-qs-q').addEventListener('input', renderQS);
@@ -1059,7 +1172,7 @@
     return !isNaN(x) && x >= a && x < b;
   }
   var TITLE_PROP = { id: 'title', name: T('Name'), type: 'text' };
-  var VIEW_ICON = { table: '▦', board: '▤', list: '☰', gallery: '▣', calendar: '🗓' };
+  var VIEW_ICON = { table: '▦', board: '▥', list: '☰', gallery: '▣', calendar: '🗓' };
   // Automatische Eigenschaften (nur lesbar) und Zahlen-Darstellung
   TYPES.created = [T('Erstellt am'), '⏱']; TYPES.edited = [T('Zuletzt bearbeitet'), '✎'];
   var AUTO = { created: 'created', edited: 'updated' };
@@ -1701,7 +1814,7 @@
           var name = el('input', 'flt-val'); name.type = 'text'; name.maxLength = 40; name.value = v.name;
           liveText(name, function (val) { if (val.trim()) { v.name = val.trim(); saveSchemaSoon(); renderDb(); } });
           row(T('Name'), name);
-          row(T('Layout'), sel([['table', '▦ ' + T('Tabelle')], ['board', '▤ ' + T('Board')], ['list', '☰ ' + T('Liste')], ['gallery', '▣ ' + T('Galerie')], ['calendar', '🗓 ' + T('Kalender')]], v.type, function (x) { v.type = x; commit(); }));
+          row(T('Layout'), sel([['table', '▦ ' + T('Tabelle')], ['board', '▥ ' + T('Board')], ['list', '☰ ' + T('Liste')], ['gallery', '▣ ' + T('Galerie')], ['calendar', '🗓 ' + T('Kalender')]], v.type, function (x) { v.type = x; commit(); }));
           var sels = DB.schema.props.filter(function (p) { return p.type === 'select'; }).map(function (p) { return [p.id, p.name]; });
           if (v.type === 'board') row(T('Spalten nach'), sel(sels.length ? sels : [['', T('– keine Auswahl-Eigenschaft –')]], v.group_by, function (x) { if (x) v.group_by = x; commit(); }));
           if (v.type === 'table' || v.type === 'list') row(T('Gruppieren'), sel([['', T('nicht gruppieren')]].concat(sels), v.group, function (x) { if (x) v.group = x; else delete v.group; commit(); }));
@@ -1893,7 +2006,7 @@
         m.appendChild(name);
         m.appendChild(HK.menuLabel(T('Darstellung')));
         m.appendChild(HK.menuItem(T('Tabelle'), function () { v.type = 'table'; saveSchema().then(renderDb); }, { icon: '▦', on: v.type === 'table' }));
-        m.appendChild(HK.menuItem(T('Board'), function () { v.type = 'board'; saveSchema().then(renderDb); }, { icon: '▤', on: v.type === 'board' }));
+        m.appendChild(HK.menuItem(T('Board'), function () { v.type = 'board'; saveSchema().then(renderDb); }, { icon: '▥', on: v.type === 'board' }));
         m.appendChild(HK.menuItem(T('Liste'), function () { v.type = 'list'; saveSchema().then(renderDb); }, { icon: '☰', on: v.type === 'list' }));
         m.appendChild(HK.menuItem(T('Galerie'), function () { v.type = 'gallery'; saveSchema().then(renderDb); }, { icon: '▣', on: v.type === 'gallery' }));
         m.appendChild(HK.menuItem(T('Kalender'), function () { v.type = 'calendar'; saveSchema().then(renderDb); }, { icon: '🗓', on: v.type === 'calendar' }));
@@ -1913,13 +2026,13 @@
     function addView(anchor) {
       HK.openMenu(anchor, function (m) {
         m.appendChild(HK.menuLabel(T('Neue Ansicht')));
-        [['table', '▦', T('Tabelle')], ['board', '▤', T('Board')], ['list', '☰', T('Liste')], ['gallery', '▣', T('Galerie')], ['calendar', '🗓', T('Kalender')]].forEach(function (t) {
+        [['table', '▦', T('Tabelle')], ['board', '▥', T('Board')], ['list', '☰', T('Liste')], ['gallery', '▣', T('Galerie')], ['calendar', '🗓', T('Kalender')]].forEach(function (t) {
           m.appendChild(HK.menuItem(t[2], function () {
             var v = { id: rid(), name: t[2], type: t[0] };
             var s = DB.schema.props.find(function (p) { return p.type === 'select'; }); if (t[0] === 'board' && s) v.group_by = s.id;
           var dd = DB.schema.props.find(function (p) { return p.type === 'date'; }); if (t[0] === 'calendar' && dd) v.date_by = dd.id;
             views().push(v); setViewId(v.id); saveSchema().then(renderDb);
-          }, { icon: t[1].charAt(0) }));
+          }, { icon: t[1] }));      // ganzes Zeichen (charAt(0) halbierte das Emoji 🗓)
         });
       });
     }
@@ -2652,12 +2765,41 @@
     b.title = (show ? T('Seitenleiste ausblenden') : T('Seitenleiste einblenden')) + (isMacKey ? ' (⌘\\)' : ' (' + T('Strg') + '+\\)');
     HK.store('hk-pg-side', show ? '1' : '0');
   }
+  // Schmale Fenster (Handy): Seitenleiste als Schublade von links ueber dem Inhalt; der Inhalt steht sofort oben.
+  // Die Einstellung "ausgeblendet" (breite Fenster) bleibt davon unberuehrt.
+  var narrow = window.matchMedia('(max-width: 760px)'), scrim = null;
+  function drawerMode() { return !!narrow && narrow.matches && document.body.classList.contains('notes-page') && !document.body.classList.contains('embed'); }
+  function drawer(open) {
+    if (!drawerMode() && open) return;
+    document.body.classList.toggle('side-open', !!open);
+    if (!scrim) {
+      scrim = el('div', 'pg-scrim'); scrim.hidden = true; document.body.appendChild(scrim);
+      scrim.addEventListener('click', function () { drawer(false); });
+    }
+    scrim.hidden = !open;
+    var b = $('pg-side-btn');
+    if (b && drawerMode()) { b.setAttribute('aria-expanded', open ? 'true' : 'false'); b.title = open ? T('Seitenleiste schließen') : T('Seiten anzeigen'); }
+    // Suchfeld nur mit Maus/Tastatur fokussieren - auf Touch-Geraeten sprang sonst bei jedem Oeffnen die Tastatur auf
+    if (open && finePointer.matches) { var f = $('pg-search'); if (f) setTimeout(function () { f.focus({ preventScroll: true }); }, 60); }
+  }
+  var finePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
+  narrow.addEventListener('change', function () { drawer(false); });
   if (document.body.classList.contains('notes-page') && !document.body.classList.contains('embed')) {
     setSide(HK.store('hk-pg-side') !== '0');
-    $('pg-side-btn').addEventListener('click', function () { setSide(document.body.classList.contains('side-hidden')); });
-    document.addEventListener('keydown', function (e) {
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === '\\' || e.code === 'Backslash')) { e.preventDefault(); setSide(document.body.classList.contains('side-hidden')); }
+    if (drawerMode()) drawer(false);
+    $('pg-side-btn').addEventListener('click', function () {
+      if (drawerMode()) drawer(!document.body.classList.contains('side-open'));
+      else setSide(document.body.classList.contains('side-hidden'));
     });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && document.body.classList.contains('side-open')) { drawer(false); $('pg-side-btn').focus(); return; }
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === '\\' || e.code === 'Backslash')) {
+        e.preventDefault();
+        if (drawerMode()) drawer(!document.body.classList.contains('side-open')); else setSide(document.body.classList.contains('side-hidden'));
+      }
+    });
+    // Papierkorb/Archiv aus der Schublade: danach Inhalt zeigen
+    ['pg-trash-btn', 'pg-archive-btn', 'pg-qs-btn'].forEach(function (id) { var x = $(id); if (x) x.addEventListener('click', function () { drawer(false); }); });
   }
   function setWide(on) {
     var id = S.cur.id;

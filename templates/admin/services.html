@@ -10,9 +10,9 @@
   <tr>
     <td class="adm-ic">{% if s.icon %}<img src="/icon/{{ s.icon }}" alt="" width="28" height="28">{% endif %}</td>
     <td><a href="/services/{{ s.id }}"><b>{{ s.name }}</b></a><br><small>{{ s.url }}</small></td>
-    <td>{{ s.category }}</td>
-    <td><code>{{ prefix }}{{ s.slug }}</code>{% if s.extra %}, {{ s.extra }}{% endif %}{% if s.everyone %} <span class="adm-tag">{{ _("für alle") }}</span>{% endif %}</td>
-    <td>{{ _('✓ geprüft') if s.check_status else '–' }}</td>
+    <td data-l="{{ _("Kategorie") }}">{{ s.category }}</td>
+    <td data-l="{{ _("Zugang") }}"><code>{{ prefix }}{{ s.slug }}</code>{% if s.extra %}, {{ s.extra }}{% endif %}{% if s.everyone %} <span class="adm-tag">{{ _("für alle") }}</span>{% endif %}</td>
+    <td data-l="{{ _("Status") }}">{{ _('✓ geprüft') if s.check_status else '–' }}</td>
   </tr>
   {% else %}
   <tr><td colspan="5" class="hk-hint">{{ _("Noch keine Dienste.") }}</td></tr>

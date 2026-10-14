@@ -3,13 +3,14 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import _api_guard, _bad, _session_user, t
+from saga.core import STATE_DIR, _api_guard, _bad, _session_user, t
 from saga.notes import FILES_DIR, FILE_MAX, FILE_QUOTA, _disposition
 
 router = APIRouter()
@@ -28,13 +29,43 @@ def _sniff_image(head):
     return None
 
 
+UPLOAD_TMP = os.path.join(STATE_DIR, "tmp")
+
+
 def files_init():
     os.makedirs(FILES_DIR, mode=0o700, exist_ok=True)
+    # Zwischendateien (Formular-Uploads ueber 1 MB, ZIP-Export) auf das Daten-Volume statt nach /tmp:
+    # /tmp ist im Container ein tmpfs und belegt damit Arbeitsspeicher.
+    try:
+        os.makedirs(UPLOAD_TMP, mode=0o700, exist_ok=True)
+        tmp_cleanup()                                    # Reste nach einem Absturz/abgebrochenem Download
+        tempfile.tempdir = UPLOAD_TMP
+    except OSError as ex:
+        print(f"saga: {UPLOAD_TMP} nicht nutzbar ({ex}) - Zwischendateien bleiben in {tempfile.gettempdir()}", flush=True)
     with _db() as c, c:
         c.execute("""CREATE TABLE IF NOT EXISTS file (
             id TEXT PRIMARY KEY, uid TEXT NOT NULL, name TEXT NOT NULL, mime TEXT NOT NULL,
             size INTEGER NOT NULL, is_image INTEGER NOT NULL, created REAL NOT NULL)""")
         c.execute("CREATE INDEX IF NOT EXISTS file_uid ON file (uid)")
+
+
+def tmp_cleanup(max_age=3600):
+    """Zwischendateien in UPLOAD_TMP loeschen, die aelter als max_age Sekunden sind (beim Start und stuendlich)
+    -> Anzahl. Laufende Uploads/Exporte sind juenger; abgebrochene ZIP-Downloads raeumt die Antwort selbst auf."""
+    n = 0
+    try:
+        names = os.listdir(UPLOAD_TMP)
+    except OSError:
+        return 0
+    for f in names:
+        p = os.path.join(UPLOAD_TMP, f)
+        try:
+            if os.path.isfile(p) and os.path.getmtime(p) < time.time() - max_age:
+                os.remove(p)
+                n += 1
+        except OSError:
+            pass
+    return n
 
 
 def files_gc(min_age=86400):

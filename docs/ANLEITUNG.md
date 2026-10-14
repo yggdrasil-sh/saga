@@ -97,6 +97,9 @@ Saga selbst spricht nur HTTP. Für den Betrieb gehört ein Reverse Proxy mit HTT
 
 ```
 saga.example.org {
+    request_body {
+        max_size 12MB                      # größte Anfrage: Datei-Upload (ATTACH_MAX_MB + 2)
+    }
     reverse_proxy 127.0.0.1:8080
 }
 ```
@@ -108,7 +111,7 @@ server {
     listen 443 ssl http2;
     server_name saga.example.org;
     # ssl_certificate ... / ssl_certificate_key ...
-    client_max_body_size 20m;              # Bilder/Dateien in Seiten
+    client_max_body_size 12m;              # größte Anfrage: Datei-Upload (ATTACH_MAX_MB + 2)
     location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
@@ -117,6 +120,11 @@ server {
     }
 }
 ```
+
+**Größe von Anfragen:** Saga lehnt zu große Anfragen selbst mit 413 ab – allgemein ab 2 MB (`REQUEST_MAX_MB`),
+Datei-Uploads ab `ATTACH_MAX_MB` (+ etwas Formular-Rahmen), im Admin-Bereich ab 1 MB. Eine Grenze im Reverse
+Proxy (wie oben, etwas über `ATTACH_MAX_MB`) ist trotzdem empfehlenswert: Dann kommen riesige Anfragen gar nicht
+erst bis zu Saga. Erhöhst du `ATTACH_MAX_MB`, die Grenze im Proxy mit anheben.
 
 ## 4. Der Admin-Bereich
 
@@ -260,6 +268,12 @@ dieser Gruppe** und **Admin-Gruppe** funktionieren wie bei LDAP.
 > gleichem Namen. Ist die Registrierung offen, könnte jemand einen Namen vorab belegen – bei SSO dann die
 > Registrierung aus lassen oder die Konten vorab anlegen.
 
+**Feste SSO-Kennung:** Bei der ersten SSO-Anmeldung merkt sich Saga die Kennung des Anbieters (`sub`). Meldet sich
+später jemand mit demselben Benutzernamen, aber einer anderen Kennung an, wird er abgewiesen („mit einer anderen
+SSO-Identität verknüpft“). **Anbieter gewechselt** (alle Kennungen neu)? Dann im Admin-Bereich unter Benutzer →
+Konto → **„SSO-Verknüpfung lösen“** – die nächste SSO-Anmeldung mit diesem Benutzernamen verknüpft das Konto neu,
+alle Daten bleiben. Nur lösen, wenn beim Anbieter sicher dieselbe Person diesen Namen hat.
+
 ![Admin: SSO](screenshots/admin-sso.png)
 
 ## 9. Saga benutzen
@@ -267,7 +281,8 @@ dieser Gruppe** und **Admin-Gruppe** funktionieren wie bei LDAP.
 ### Dashboard
 
 Kacheln für deine Dienste und Lesezeichen, nach Kategorien sortiert. **★** macht eine Kachel zum Favoriten.
-Rechts stehen deine offenen Aufgaben und die Termine von heute und morgen.
+Rechts stehen deine offenen Aufgaben und die Termine von heute und morgen. Die Suche findet Dienste, Lesezeichen
+und – darunter – auch deine **Seiten** (Titel und Inhalt).
 
 | Taste | Wirkung |
 |---|---|
@@ -275,7 +290,7 @@ Rechts stehen deine offenen Aufgaben und die Termine von heute und morgen.
 | `1`–`9` | Kachel öffnen |
 | `Enter` | erster Treffer (sonst Websuche) |
 | `t` | neue Aufgabe |
-| `n` | Notizen |
+| `n` | Seiten |
 
 ![Dashboard](screenshots/dashboard.png)
 
@@ -289,8 +304,9 @@ Anfangsbuchstabe. Bearbeiten über **✎** an der Kachel.
 
 ### Seiten und Datenbanken
 
-Unter **Notizen** liegt dein Seitenbaum. Tippe `/` für neue Blöcke: Überschriften, Listen, Checklisten,
-Tabellen, Code, Bilder, Dateien, Spalten, Verweise auf andere Seiten, Termine und mehr.
+Unter **Seiten** liegt dein Seitenbaum. Tippe `/` für neue Blöcke: Überschriften, Listen, Checklisten,
+Tabellen, Code, Bilder, Dateien, Spalten, Verweise auf andere Seiten, Termine und mehr. Weitertippen filtert
+das Menü, `Enter` übernimmt den ersten Treffer. `Strg`+`K` (Mac: `⌘`+`K`) sucht in Titeln und Inhalten.
 Seiten haben Versionen, einen Papierkorb (30 Tage) und lassen sich als Markdown exportieren.
 
 ![Seite](screenshots/seite.png)
@@ -302,9 +318,11 @@ zeigen sie als Tabelle, Board, Liste, Galerie oder Kalender – mit Filtern, Sor
 
 ### Konto, Kalender, Immich, Apps
 
-Im Benutzermenü oben rechts unter **Einstellungen**:
+Im Benutzermenü oben rechts unter **Einstellungen** (je ein Reiter):
 
-- **Konto:** Name, E-Mail, Passwort ändern (bei LDAP/SSO-Konten beim Anbieter)
+- **Konto:** Name, E-Mail, Passwort ändern (bei LDAP/SSO-Konten beim Anbieter). Nach einem Passwortwechsel
+  werden andere Browser-Sitzungen **und alle angemeldeten Apps** abgemeldet – außer dieser Sitzung und der App,
+  in der du gerade bist. Die Apps melden sich dann einmal neu an.
 - **Kalender:** CalDAV-Konten verbinden (Nextcloud: `https://cloud.example.org/remote.php/dav/`).
   Am besten ein eigenes App-Passwort nur für Kalender anlegen.
 - **Immich:** Adresse und einen API-Schlüssel mit den Rechten `album.read`, `asset.read`, `asset.view`,
@@ -314,12 +332,17 @@ Im Benutzermenü oben rechts unter **Einstellungen**:
   Skripte) stehen eingeklappt unter „Weitere Schlüssel“.
 - **App per QR-Code anmelden:** unter „Apps & Geräte“ erscheint ein QR-Code, der zwei Minuten gilt
   und nur einmal benutzt werden kann. Mit der Handy-Kamera scannen – die App übernimmt Serveradresse
-  und Anmeldung, ganz ohne Passwort-Eingabe am Gerät. Der Link im QR-Code funktioniert auch als Kopplungslink
-  in Desktop-Apps.
+  und Anmeldung, ganz ohne Passwort-Eingabe am Gerät. Für die Mac- und Linux-App gibt es darunter
+  **„Link kopieren“**: den Kopplungslink in der App bei der Anmeldung einfügen.
+- **Anmeldung in der App über den Browser:** Die App öffnet die Anmeldeseite von Saga. Bist du dort schon
+  angemeldet, fragt Saga nach („App anmelden?“) – nur bestätigen, wenn du die Anmeldung gerade selbst in der
+  App gestartet hast. Meldest du dich in diesem Fenster gerade erst an (Passwort oder SSO), entfällt die
+  Rückfrage. **Abbrechen** führt zurück in die App.
 
 Öffentliche Kalender- und Immich-Server (https) gehen immer. **Server im Heimnetz** (z. B.
 `192.168.1.20` oder `nextcloud.lan`) muss der Admin unter Allgemein freigeben – das schützt das interne Netz
-davor, über Saga abgefragt zu werden.
+davor, über Saga abgefragt zu werden. Saga verbindet sich dabei direkt mit der geprüften Adresse; ein
+Ausgangs-Proxy (`HTTPS_PROXY`/`HTTP_PROXY`) wird für Kalender und Immich **nicht** benutzt.
 
 ![Einstellungen](screenshots/einstellungen.png)
 
@@ -339,7 +362,9 @@ Sprache. Die Apps folgen der Sprache des Geräts.
 ### Auf dem Handy
 
 Saga passt sich kleinen Bildschirmen an und lässt sich als App zum Home-Bildschirm hinzufügen
-(„Zum Home-Bildschirm“ im Browser-Menü).
+(„Zum Home-Bildschirm“ im Browser-Menü). Bei den Seiten steht der Inhalt sofort oben; der Seitenbaum öffnet sich
+als Schublade über den Knopf oben links. Das Block-Menü öffnet sich mit `/` als Leiste von unten – antippen oder
+weitertippen (filtert) und `Enter`. Reiterleisten (Einstellungen, Admin-Bereich) lassen sich seitlich wischen.
 
 <img src="screenshots/handy.png" width="320" alt="Saga auf dem Handy">
 
@@ -410,9 +435,15 @@ docker compose logs saga | grep saga:     # Backup und Datenbank-Migration im Lo
 (im Volume `saga-data`, die letzten 10 bleiben, `BACKUP_KEEP` in der `.env`). Ein Backup von Hand:
 
 ```sh
-docker compose exec saga python run.py backup
+docker compose exec saga python run.py backup              # nur die Datenbank
+docker compose exec saga python run.py backup --dateien    # dazu Bilder/Dateien der Seiten als tar.gz
 docker compose exec saga ls -l /data/backups
 ```
+
+Die Bilder und Dateien der Seiten (`/data/files`) stecken **nicht** im Datenbank-Backup. `--dateien` legt
+zusätzlich `saga-dateien-<zeit>.tar.gz` an (ohne Vorschaubilder, die entstehen neu); zurückholen mit
+`docker compose exec saga tar -xzf /data/backups/<datei> -C /data`. Wer das Volume `saga-data` ohnehin
+sichert (siehe oben), braucht den Schalter nicht.
 
 **Testversion:** Mit `SAGA_VERSION=testing` bekommst du neue Funktionen, sobald sie fertig sind – noch vor
 dem Release. Die Version heißt dann z. B. `1.0.0-testing.ab12cd3` (unten im Admin-Bereich mit 🧪). Zurück zur
@@ -462,7 +493,22 @@ Redirect-URI beim Anbieter prüfen (`BASE_URL/auth/callback`) und mit „Verbind
 Discovery-Dokument kontrollieren. Details stehen in `docker compose logs saga`.
 
 **Kalender: „Server ist nicht erreichbar oder nicht freigegeben“.**
-Interne Server müssen unter Admin → Allgemein freigegeben sein.
+Interne Server müssen unter Admin → Allgemein freigegeben sein. Kalender und Immich gehen nicht über
+`HTTPS_PROXY`/`HTTP_PROXY` (Schutz davor, dass die Prüfung über den Proxy umgangen wird) – Saga braucht eine
+direkte Verbindung zu diesen Servern.
+
+**„Gerade sehr viele Anmeldungen – bitte gleich noch einmal versuchen.“**
+Saga prüft höchstens `KDF_PARALLEL` Passwörter gleichzeitig (Standard 4, je Prüfung ca. 32 MB Speicher) und
+wartet höchstens 2 Sekunden auf einen freien Platz. Kommt das im Alltag vor (viele Benutzer, kräftiger Server),
+`KDF_PARALLEL` in der `.env` erhöhen.
+
+**Hochladen oder Speichern scheitert mit „zu groß“ (413).**
+Dateien: `ATTACH_MAX_MB` (Standard 10). Alles andere, z. B. sehr lange Seiten: `REQUEST_MAX_MB` (Standard 2).
+Kommt die Meldung vom Reverse Proxy, dort die Grenze anheben (Abschnitt 3).
+
+**Nach dem Passwortwechsel muss ich mich in den Apps neu anmelden.**
+Gewollt: Ein neues Passwort meldet alle anderen Browser-Sitzungen und Apps ab (z. B. falls ein Gerät verloren
+ging). Nur die Sitzung und die App, in der du das Passwort geändert hast, bleiben angemeldet.
 
 ## 13. Alle Einstellungen der .env
 
@@ -485,6 +531,8 @@ Interne Server müssen unter Admin → Allgemein freigegeben sein.
 | `ADMIN_SESSION_HOURS` | `4` | Gültigkeit einer Sitzung im Admin-Bereich |
 | `TIMEZONE` | `Europe/Berlin` | Zeitzone für Exporte |
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Größe je Datei / Speicher je Benutzer |
+| `REQUEST_MAX_MB` | `2` | Größte Anfrage außer Datei-Uploads (z. B. sehr lange Seiten); größere bekommen 413 |
+| `KDF_PARALLEL` | `4` | So viele Passwortprüfungen gleichzeitig (je ca. 32 MB Speicher); weitere warten bis 2 s |
 | `NOTE_MAX_COUNT` | `5000` | Seiten je Benutzer |
 | `IMMICH_URL` | – | Vorschlag im Immich-Dialog (wird automatisch freigegeben) |
 | `ICON_CDN` | selfh.st über jsDelivr | Quelle der Dienst-Symbole; leer = keine |

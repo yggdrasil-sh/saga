@@ -1,14 +1,15 @@
 {% extends "base.html" %}
+{% from "_macros.html" import ts with context %}
 {% block pagetitle %}{{ _('Übersicht') }}{% endblock %}
 {% block content %}
 <h2>{{ _("Übersicht") }}</h2>
 <div class="adm-stats">
-  <a href="/users"><b>{{ stats.active }}</b><span>{{ _("aktive Benutzer") }}{% if stats.users != stats.active %} ({{ _("{n} gesamt", n=stats.users) }}){% endif %}</span></a>
-  <a href="/users"><b>{{ stats.admins }}</b><span>{{ _("Admins") }}</span></a>
-  <a href="/groups"><b>{{ stats.groups }}</b><span>{{ _("Gruppen") }}</span></a>
-  <a href="/services"><b>{{ stats.services }}</b><span>{{ _("Dienste") }}</span></a>
+  <a href="/users"><b>{{ stats.active }}</b><span>{{ _("aktiver Benutzer") if stats.active == 1 else _("aktive Benutzer") }}{% if stats.users != stats.active %} ({{ _("{n} gesamt", n=stats.users) }}){% endif %}</span></a>
+  <a href="/users"><b>{{ stats.admins }}</b><span>{{ _("Admin") if stats.admins == 1 else _("Admins") }}</span></a>
+  <a href="/groups"><b>{{ stats.groups }}</b><span>{{ _("Gruppe") if stats.groups == 1 else _("Gruppen") }}</span></a>
+  <a href="/services"><b>{{ stats.services }}</b><span>{{ _("Dienst") if stats.services == 1 else _("Dienste") }}</span></a>
   <div><b>{{ stats.bookmarks }}</b><span>{{ _("Lesezeichen") }}</span></div>
-  <div><b>{{ stats.pages }}</b><span>{{ _("Seiten") }}</span></div>
+  <div><b>{{ stats.pages }}</b><span>{{ _("Seite") if stats.pages == 1 else _("Seiten") }}</span></div>
 </div>
 
 <section class="adm-card">
@@ -28,8 +29,8 @@
   <h3>{{ _("Zuletzt angemeldet") }}</h3>
   {% if recent %}
   <table class="adm-table">
-    <tr><th>{{ _("Benutzer") }}</th><th>{{ _("Name") }}</th><th>{{ _("Konto") }}</th><th>{{ _("Zeit") }}</th></tr>
-    {% for r in recent %}<tr><td>{{ r[0] }}</td><td>{{ r[1] }}</td><td>{{ r[2] }}</td><td>{{ r[3]|dt }}</td></tr>{% endfor %}
+    <tr><th>{{ _("Benutzername") }}</th><th>{{ _("Name") }}</th><th>{{ _("Konto") }}</th><th>{{ _("Zeit") }}</th></tr>
+    {% for r in recent %}<tr><td><b>{{ r[0] }}</b></td><td>{{ r[1] }}</td><td data-l="{{ _("Konto") }}">{{ {'local': _('lokal'), 'ldap': 'LDAP', 'oidc': 'SSO'}.get(r[2], r[2]) }}</td><td data-l="{{ _("Zeit") }}">{{ ts(r[3]) }}</td></tr>{% endfor %}
   </table>
   {% else %}<p class="hk-hint">{{ _("Noch niemand angemeldet.") }}</p>{% endif %}
 </section>

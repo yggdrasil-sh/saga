@@ -1,7 +1,7 @@
 """Ende-zu-Ende: LDAP (OpenLDAP-Testserver ldap.test) und SSO/OIDC (Testanbieter mockoidc), eingerichtet
 ueber den Admin-Bereich wie im echten Betrieb. Wegwerf-Konten st-*, raeumt auf.
 Umgebung wie standalone.py, dazu HK_LDAP_ADMIN_PW (Admin-Passwort des Test-LDAP)."""
-import json, os, sys, urllib.parse
+import json, os, re, sys, urllib.parse
 from ldap3 import Connection, Server, MODIFY_DELETE, MODIFY_ADD
 import auth
 from standalone import AD, PW, Client, cleanup, cn_has, login, main_client, ok, res, restore_settings, snapshot_settings
@@ -126,8 +126,17 @@ def main():
     s, loc, _ = a.req("GET", "/app/login?scheme=saga&challenge=" + "A" * 43)
     s2, loc2, _ = a.req("GET", loc)
     a2, s3, loc3 = sso_login("sso-sub-1", {"preferred_username": "st-sso", "groups": ["s_st-wiki", "st-hk-users"]}, start=a)
-    s4, loc4, _ = a.req("GET", loc3) if s3 == 303 else (0, "", "")
-    ok(f"App-Anmeldung ueber SSO bis saga://auth ({loc}, {loc3}, {loc4[:24]})", loc4.startswith("saga://auth?code="))
+    s4, loc4, h4 = a.req("GET", loc3) if s3 == 303 else (0, "", "")
+    ok(f"SSO-App-Anmeldung: frisch ueber SSO angemeldet -> ohne Rueckfrage bis saga://auth ({loc}, {loc3}, {loc4[:24]})",
+       s4 == 303 and loc4.startswith("saga://auth?code="))
+    s5, _, _ = a.req("GET", "/app/login?scheme=saga&challenge=" + "B" * 43)
+    s5, loc5, h5 = a.req("GET", "/app/handoff")
+    m5 = re.search(r'/app/handoff\?go=[A-Za-z0-9_-]+', h5 or "")
+    ok("Zweite App-Anmeldung mit bestehender SSO-Sitzung: erst Rueckfrage", s5 == 200 and m5)
+    s5, loc5, _ = a.req("GET", m5.group(0)) if m5 else (0, "", "")
+    ok(f"... dann Code ({loc5[:24]})", loc5.startswith("saga://auth?code="))
+    _, s, _ = sso_login("sso-sub-fremd", {"preferred_username": "st-sso", "groups": ["s_st-wiki", "st-hk-users"]})
+    ok(f"SSO: gleicher Benutzername, andere Kennung (sub) -> abgewiesen ({s})", s == 403)
     # Gruppen von SSO-Konten aus LDAP (Keycloak mit FreeIPA-Anbindung), LDAP-Passwort-Anmeldung aus
     adm.post("/settings/oidc", dict(oidc, action="save", client_secret="", allowed_group=""))
     adm.post("/settings/ldap", dict(ldap, action="save", bind_password="", password_login="", sso_groups="1"))

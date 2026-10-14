@@ -98,6 +98,9 @@ Saga solo habla HTTP. En producción debe ir detrás de un proxy inverso con HTT
 
 ```
 saga.example.org {
+    request_body {
+        max_size 12MB                      # petición más grande: subida de archivo (ATTACH_MAX_MB + 2)
+    }
     reverse_proxy 127.0.0.1:8080
 }
 ```
@@ -109,7 +112,7 @@ server {
     listen 443 ssl http2;
     server_name saga.example.org;
     # ssl_certificate ... / ssl_certificate_key ...
-    client_max_body_size 20m;              # imágenes/archivos en páginas
+    client_max_body_size 12m;              # petición más grande: subida de archivo (ATTACH_MAX_MB + 2)
     location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
@@ -118,6 +121,12 @@ server {
     }
 }
 ```
+
+**Tamaño de las peticiones:** Saga rechaza por sí mismo las peticiones demasiado grandes con 413: en general por
+encima de 2 MB (`REQUEST_MAX_MB`), las subidas de archivos por encima de `ATTACH_MAX_MB` (más un pequeño margen del
+formulario) y el área de administración por encima de 1 MB. Aun así, conviene poner un límite en el proxy inverso
+(como arriba, algo por encima de `ATTACH_MAX_MB`): así las peticiones enormes ni siquiera llegan a Saga. Si subes
+`ATTACH_MAX_MB`, sube también el límite del proxy.
 
 ## 4. El área de administración
 
@@ -261,6 +270,13 @@ plantilla). **Miembros de este grupo** y **grupo de administración** funcionan 
 > mismo nombre. Si el registro está abierto, alguien podría ocupar un nombre de antemano: con SSO, deja el
 > registro desactivado o crea las cuentas por adelantado.
 
+**Identificador SSO fijo:** en el primer inicio de sesión SSO, Saga guarda el identificador del proveedor
+(`sub`). Si más tarde alguien inicia sesión con el mismo nombre de usuario pero otro identificador, se rechaza
+("vinculada a otra identidad SSO"). **¿Has cambiado de proveedor** (todos los identificadores son nuevos)? En el
+área de administración, abre Usuarios → la cuenta → **"Eliminar vínculo SSO"**: el próximo inicio de sesión SSO
+con ese nombre de usuario vuelve a vincular la cuenta y se conservan todos los datos. Hazlo solo si estás seguro
+de que en el proveedor es la misma persona quien tiene ese nombre.
+
 ![Administración: SSO](../screenshots/admin-sso.png)
 
 ## 9. Usar Saga
@@ -268,7 +284,8 @@ plantilla). **Miembros de este grupo** y **grupo de administración** funcionan 
 ### Panel
 
 Mosaicos para tus servicios y marcadores, ordenados por categorías. **★** marca un mosaico como favorito.
-A la derecha están tus tareas pendientes y los eventos de hoy y mañana.
+A la derecha están tus tareas pendientes y los eventos de hoy y mañana. La búsqueda encuentra servicios,
+marcadores y, debajo, también tus **páginas** (título y contenido).
 
 | Tecla | Acción |
 |---|---|
@@ -276,7 +293,7 @@ A la derecha están tus tareas pendientes y los eventos de hoy y mañana.
 | `1`–`9` | Abrir mosaico |
 | `Enter` | Primer resultado (si no, búsqueda web) |
 | `t` | Nueva tarea |
-| `n` | Notas |
+| `n` | Páginas |
 
 ![Panel](../screenshots/dashboard.png)
 
@@ -290,9 +307,10 @@ Se editan con **✎** en el mosaico.
 
 ### Páginas y bases de datos
 
-En **Notas** está tu árbol de páginas. Escribe `/` para añadir bloques: títulos, listas, listas de
-verificación, tablas, código, imágenes, archivos, columnas, enlaces a otras páginas, eventos y más.
-Las páginas tienen versiones y papelera (30 días) y se pueden exportar como Markdown.
+En **Páginas** está tu árbol de páginas. Escribe `/` para añadir bloques: títulos, listas, listas de
+verificación, tablas, código, imágenes, archivos, columnas, enlaces a otras páginas, eventos y más. Si sigues
+escribiendo, el menú se filtra; `Enter` elige el primer resultado. `Ctrl`+`K` (Mac: `⌘`+`K`) busca en títulos y
+contenido. Las páginas tienen versiones y papelera (30 días) y se pueden exportar como Markdown.
 
 ![Página](../screenshots/seite.png)
 
@@ -303,9 +321,11 @@ y las muestran como tabla, tablero, lista, galería o calendario, con filtros, o
 
 ### Cuenta, calendarios, Immich, apps
 
-En el menú de usuario, arriba a la derecha, en **Ajustes**:
+En el menú de usuario, arriba a la derecha, en **Ajustes** (una pestaña para cada cosa):
 
-- **Cuenta:** cambiar nombre, correo y contraseña (en cuentas LDAP/SSO, en el proveedor)
+- **Cuenta:** cambiar nombre, correo y contraseña (en cuentas LDAP/SSO, en el proveedor). Al cambiar la
+  contraseña se cierra la sesión en los demás navegadores **y en todas las apps**, salvo en esta sesión y en la
+  app que estás usando ahora. Las apps tendrán que iniciar sesión una vez más.
 - **Calendarios:** conectar cuentas CalDAV (Nextcloud: `https://cloud.example.org/remote.php/dav/`).
   Lo mejor es crear una contraseña de aplicación solo para calendarios.
 - **Immich:** introduce la dirección y una clave de API con los permisos `album.read`, `asset.read`,
@@ -315,12 +335,17 @@ En el menú de usuario, arriba a la derecha, en **Ajustes**:
   mano (p. ej. para scripts) aparecen plegadas en "Más claves".
 - **Iniciar sesión con código QR:** en "Apps y dispositivos" aparece un código QR válido durante dos minutos y
   de un solo uso. Escanéalo con la cámara del móvil: la app toma la dirección del servidor y el inicio de
-  sesión, sin escribir ninguna contraseña en el dispositivo. El enlace del código QR también sirve como enlace
-  de vinculación en las apps de escritorio.
+  sesión, sin escribir ninguna contraseña en el dispositivo. Para las apps de Mac y Linux hay debajo un botón
+  **"Copiar enlace"**: pega el enlace de vinculación en la app al iniciar sesión.
+- **Iniciar sesión en una app a través del navegador:** la app abre la página de inicio de sesión de Saga. Si
+  ya tienes la sesión iniciada allí, Saga pregunta antes ("Iniciar sesión en la app"): confírmalo solo si acabas
+  de iniciar tú mismo el inicio de sesión en la app. Si inicias sesión en ese momento en esa ventana (contraseña
+  o SSO), no hay pregunta adicional. **Cancelar** te devuelve a la app.
 
 Los servidores públicos de calendario e Immich (https) funcionan siempre. Los **servidores de la red local**
 (p. ej. `192.168.1.20` o `nextcloud.lan`) tiene que permitirlos antes el administrador en General: así la red
-interna no puede consultarse a través de Saga.
+interna no puede consultarse a través de Saga. Saga se conecta directamente a la dirección comprobada; para
+calendarios e Immich **no** se usa un proxy de salida (`HTTPS_PROXY`/`HTTP_PROXY`).
 
 ![Ajustes](../screenshots/einstellungen.png)
 
@@ -340,7 +365,10 @@ apps siguen el idioma del dispositivo.
 ### En el móvil
 
 Saga se adapta a pantallas pequeñas y se puede añadir a la pantalla de inicio como una app ("Añadir a pantalla
-de inicio" en el menú del navegador).
+de inicio" en el menú del navegador). En las páginas, el contenido aparece arriba del todo; el árbol de páginas
+se abre como un cajón con el botón de arriba a la izquierda. `/` abre el menú de bloques como una hoja desde
+abajo: toca una entrada, o sigue escribiendo (filtra) y pulsa `Enter`. Las barras de pestañas (ajustes, área de
+administración) se pueden deslizar de lado.
 
 <img src="../screenshots/handy.png" width="320" alt="Saga en el móvil">
 
@@ -413,9 +441,15 @@ Si una actualización cambia la base de datos, Saga **crea antes una copia de se
 Una copia a mano:
 
 ```sh
-docker compose exec saga python run.py backup
+docker compose exec saga python run.py backup              # solo la base de datos
+docker compose exec saga python run.py backup --dateien    # además, imágenes/archivos de las páginas como tar.gz
 docker compose exec saga ls -l /data/backups
 ```
+
+Las imágenes y archivos de las páginas (`/data/files`) **no** están en la copia de la base de datos. `--dateien`
+(o `--files`) crea además `saga-dateien-<fecha>.tar.gz` (sin miniaturas, se vuelven a generar); se restaura con
+`docker compose exec saga tar -xzf /data/backups/<archivo> -C /data`. Si ya haces copia del volumen `saga-data`
+(ver arriba), no necesitas la opción.
 
 **Versión de pruebas:** con `SAGA_VERSION=testing` recibes las funciones nuevas en cuanto están listas, antes
 de publicarse. La versión se llama entonces, por ejemplo, `1.0.0-testing.ab12cd3` (abajo en el área de
@@ -467,7 +501,22 @@ Revisa la URI de redirección en el proveedor (`BASE_URL/auth/callback`) y compr
 descubrimiento con "Probar conexión". Los detalles están en `docker compose logs saga`.
 
 **Calendario: el servidor no es accesible o no está permitido.**
-Los servidores internos deben estar permitidos en Administración → General.
+Los servidores internos deben estar permitidos en Administración → General. Los calendarios e Immich no pasan por
+`HTTPS_PROXY`/`HTTP_PROXY` (para que la comprobación no se pueda saltar a través del proxy): Saga necesita una
+conexión directa con esos servidores.
+
+**"Hay demasiados inicios de sesión ahora mismo. Inténtalo de nuevo en un momento."**
+Saga comprueba como mucho `KDF_PARALLEL` contraseñas a la vez (por defecto 4, unos 32 MB de memoria cada una) y
+espera como mucho 2 segundos a que quede un hueco libre. Si pasa a menudo (muchos usuarios, servidor potente),
+sube `KDF_PARALLEL` en el `.env`.
+
+**Subir o guardar falla con "demasiado grande" (413).**
+Archivos: `ATTACH_MAX_MB` (por defecto 10). Todo lo demás, p. ej. páginas muy largas: `REQUEST_MAX_MB` (por
+defecto 2). Si el mensaje viene del proxy inverso, sube allí el límite (sección 3).
+
+**Después de cambiar la contraseña tengo que volver a iniciar sesión en las apps.**
+Es lo previsto: una contraseña nueva cierra la sesión en todos los demás navegadores y apps (p. ej. por si se
+perdió un dispositivo). Solo siguen con la sesión iniciada la sesión y la app en las que cambiaste la contraseña.
 
 ## 13. Todos los ajustes del .env
 
@@ -490,6 +539,8 @@ Los servidores internos deben estar permitidos en Administración → General.
 | `ADMIN_SESSION_HOURS` | `4` | Duración de una sesión en el área de administración |
 | `TIMEZONE` | `Europe/Berlin` | Zona horaria para exportaciones |
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Tamaño por archivo / espacio por usuario |
+| `REQUEST_MAX_MB` | `2` | Petición más grande salvo subidas de archivos (p. ej. páginas muy largas); las mayores reciben 413 |
+| `KDF_PARALLEL` | `4` | Comprobaciones de contraseña a la vez (unos 32 MB de memoria cada una); las demás esperan hasta 2 s |
 | `NOTE_MAX_COUNT` | `5000` | Páginas por usuario |
 | `IMMICH_URL` | – | Sugerencia en el diálogo de Immich (se permite automáticamente) |
 | `ICON_CDN` | selfh.st vía jsDelivr | Origen de los iconos de servicios; vacío = ninguno |

@@ -16,6 +16,7 @@ import os
 import re
 import secrets
 import ssl
+import threading
 import time
 from urllib.parse import urlparse
 
@@ -121,19 +122,38 @@ def save_setting(k, v):
 
 
 # --- Passwoerter -----------------------------------------------------------------------------
+# scrypt braucht ca. 32 MiB je Aufruf. Ohne Begrenzung koennten viele gleichzeitige Anmeldeversuche (ohne Konto)
+# den Speicher fuellen -> hoechstens KDF_PARALLEL Berechnungen gleichzeitig, weitere warten kurz bzw. bekommen "Busy".
+_KDF_SLOTS = threading.BoundedSemaphore(max(1, int(E.get("KDF_PARALLEL", "4"))))
+KDF_WAIT = 2.0                        # Sekunden auf einen freien Platz warten, dann Busy (kurz: Threadpool nicht blockieren)
+
+
+class Busy(RuntimeError):
+    """Gerade zu viele Passwort-Pruefungen gleichzeitig - spaeter erneut versuchen (kein Fehlversuch)."""
+
+
+def _scrypt(pw, salt, n, r, p, dklen, wait=None):
+    if not _KDF_SLOTS.acquire(timeout=KDF_WAIT if wait is None else wait):
+        raise Busy()
+    try:
+        return hashlib.scrypt(pw.encode(), salt=salt, n=n, r=r, p=p, maxmem=64 * 1024 * 1024, dklen=dklen)
+    finally:
+        _KDF_SLOTS.release()
+
+
 def hash_password(pw):
     salt = secrets.token_bytes(16)
-    h = hashlib.scrypt(pw.encode(), salt=salt, n=2 ** 15, r=8, p=1, maxmem=64 * 1024 * 1024, dklen=32)
+    h = _scrypt(pw, salt, 2 ** 15, 8, 1, 32, wait=60)
     return "scrypt$32768$8$1$" + base64.b64encode(salt).decode() + "$" + base64.b64encode(h).decode()
 
 
 def verify_password(pw, stored):
+    """True/False; Busy, wenn gerade zu viele Pruefungen laufen."""
     try:
         alg, n, r, p, salt, h = (stored or "").split("$")
-        if alg != "scrypt":
+        if alg != "scrypt" or int(n) > 2 ** 17 or int(r) > 16 or int(p) > 4:
             return False
-        calc = hashlib.scrypt(pw.encode(), salt=base64.b64decode(salt), n=int(n), r=int(r), p=int(p),
-                              maxmem=64 * 1024 * 1024, dklen=len(base64.b64decode(h)))
+        calc = _scrypt(pw, base64.b64decode(salt), int(n), int(r), int(p), len(base64.b64decode(h)))
         return hmac.compare_digest(calc, base64.b64decode(h))
     except (ValueError, TypeError):
         return False
@@ -159,27 +179,37 @@ def _burn(pw):
 
 
 # --- Sperre bei Fehlversuchen -------------------------------------------------------------------
-FAIL_WINDOW, FAIL_MAX_USER, FAIL_MAX_IP = 900, 8, 30
+# Zaehler (15 Minuten): Benutzer+Adresse (8), Benutzer insgesamt (40, gegen verteiltes Raten), Adresse (30).
+# So kann ein Fremder ein Konto nicht mit 8 Fehlversuchen fuer alle sperren. area="admin": eigene Zaehler fuer
+# den Admin-Port - Fehlversuche auf der oeffentlichen Seite sperren den Admin-Bereich nicht.
+FAIL_WINDOW, FAIL_MAX_USER_IP, FAIL_MAX_USER, FAIL_MAX_IP = 900, 8, 40, 30
 
 
-def too_many(username, ip):
+def _fail_keys(username, ip, area=""):
+    p = "adm:" if area == "admin" else ""
+    return p + "ui:" + username + "|" + ip, p + "u:" + username, p + "ip:" + ip
+
+
+def too_many(username, ip, area=""):
     t = time.time() - FAIL_WINDOW
+    kui, ku, ki = _fail_keys(username, ip, area)
     with _db() as c, c:
         c.execute("DELETE FROM login_fail WHERE ts < ?", (t - 3600,))
-        nu = c.execute("SELECT COUNT(*) FROM login_fail WHERE key=? AND ts>?", ("u:" + username, t)).fetchone()[0]
-        ni = c.execute("SELECT COUNT(*) FROM login_fail WHERE key=? AND ts>?", ("ip:" + ip, t)).fetchone()[0]
-    return nu >= FAIL_MAX_USER or ni >= FAIL_MAX_IP
+        n = [c.execute("SELECT COUNT(*) FROM login_fail WHERE key=? AND ts>?", (k, t)).fetchone()[0] for k in (kui, ku, ki)]
+    return n[0] >= FAIL_MAX_USER_IP or n[1] >= FAIL_MAX_USER or n[2] >= FAIL_MAX_IP
 
 
-def note_fail(username, ip):
+def note_fail(username, ip, area=""):
     with _db() as c, c:
-        c.execute("INSERT INTO login_fail (key, ts) VALUES (?,?)", ("u:" + username, time.time()))
-        c.execute("INSERT INTO login_fail (key, ts) VALUES (?,?)", ("ip:" + ip, time.time()))
+        for k in _fail_keys(username, ip, area):
+            c.execute("INSERT INTO login_fail (key, ts) VALUES (?,?)", (k, time.time()))
 
 
-def clear_fails(username):
+def clear_fails(username, area=None):
+    """Nach erfolgreicher Anmeldung (bzw. Notfall-Reset, area=None: alle Bereiche) die Benutzer-Zaehler leeren."""
     with _db() as c, c:
-        c.execute("DELETE FROM login_fail WHERE key=?", ("u:" + username,))
+        for p in (("", "adm:") if area is None else ("adm:" if area == "admin" else "",)):
+            c.execute("DELETE FROM login_fail WHERE key=? OR instr(key, ?) = 1", (p + "u:" + username, p + "ui:" + username + "|"))
 
 
 # --- Benutzer und Gruppen --------------------------------------------------------------------------
@@ -320,46 +350,56 @@ def touch_login(username):
 
 
 # --- Anmeldung mit Passwort (lokal, sonst LDAP) ------------------------------------------------------
-def authenticate(username, password, ip, allow_local=True):
+def authenticate(username, password, ip, allow_local=True, area=""):
     """-> (user, fehlertext). Fehlertexte verraten nicht, ob es den Benutzer gibt.
-    allow_local=False: lokale Konten werden abgewiesen (Einstellung "Anmeldung mit lokalem Konto" aus)."""
+    allow_local=False: lokale Konten werden abgewiesen (Einstellung "Anmeldung mit lokalem Konto" aus).
+    area="admin": Fehlversuche getrennt von der Hauptseite zaehlen."""
+    try:
+        return _authenticate(username, password, ip, allow_local, area)
+    except Busy:
+        return None, t("Gerade sehr viele Anmeldungen – bitte gleich noch einmal versuchen.")
+
+
+def _authenticate(username, password, ip, allow_local, area):
     bad = t("Benutzername oder Passwort falsch.")
     u = norm_username(username)
     if not u or not password or len(password) > 200:
         return None, bad
-    if too_many(u, ip):
+    if too_many(u, ip, area):
         return None, t("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen.")
     st = settings()
     user = get_user(u)
     if user and user["disabled"]:
         _burn(password)
-        note_fail(u, ip)
+        note_fail(u, ip, area)
         return None, bad
     if user and user["source"] == "local":
         if not allow_local:
             _burn(password)
-            note_fail(u, ip)
+            note_fail(u, ip, area)
             return None, bad
         if user["password_hash"] and verify_password(password, user["password_hash"]):
-            clear_fails(u)
+            clear_fails(u, area)
             touch_login(u)
             return user, None
-        note_fail(u, ip)
+        note_fail(u, ip, area)
         return None, bad
     if st["ldap"]["enabled"] and st["ldap"].get("password_login", True) and (user is None or user["source"] == "ldap"):
         try:
             res, err = ldap_login(u, password)
+        except Busy:
+            raise
         except Exception as ex:  # noqa: BLE001
             print(f"ldap-login {u}: {type(ex).__name__}: {ex}", flush=True)
             return None, t("Verzeichnisdienst (LDAP) gerade nicht erreichbar.")
         if res:
-            clear_fails(u)
+            clear_fails(u, area)
             touch_login(res["username"])
             return res, None
-        note_fail(u, ip)
+        note_fail(u, ip, area)
         return None, err or bad
     _burn(password)
-    note_fail(u, ip)
+    note_fail(u, ip, area)
     return None, bad
 
 
@@ -553,6 +593,11 @@ def _ext_user(username, source, ext_id, name, mail, groups, cfg):
         return None, t("Dieser Benutzername ist bereits als anderes Konto vergeben – bitte an den Admin wenden.")
     if user and user["disabled"]:
         return None, t("Dein Konto ist gesperrt.")
+    if user and source == "oidc" and user["ext_id"] and ext_id and user["ext_id"] != ext_id:
+        # Konto ist schon mit einer anderen SSO-Identitaet (sub) verknuepft: gleicher Name, aber eine andere Person
+        # (z. B. Name/E-Mail beim Anbieter selbst geaendert) -> nicht uebernehmen
+        print(f"sso: {username}: andere Kennung (sub) als bei der ersten Anmeldung - abgewiesen", flush=True)
+        return None, t("Dieses Konto ist mit einer anderen SSO-Identität verknüpft – bitte an den Admin wenden.")
     if not user:
         if not cfg.get("auto_create", True):
             return None, t("Für dich gibt es hier noch kein Konto – bitte an den Admin wenden.")
@@ -603,6 +648,11 @@ def _claim(d, path):
 def oidc_user(claims):
     cfg = settings()["oidc"]
     username = str(_claim(claims, cfg["username_claim"]) or "").strip()
+    if not str(claims.get("sub") or "").strip():
+        return None, t("SSO-Anmeldung fehlgeschlagen – bitte noch einmal versuchen.")
+    if "email" in (cfg["username_claim"] or "").lower() and str(claims.get("email_verified", "")).lower() in ("false", "0"):
+        # Benutzername kommt aus der E-Mail: nur bestaetigte Adressen (sonst koennte sich jemand eine fremde Adresse eintragen)
+        return None, t("Deine E-Mail-Adresse ist beim Anmeldedienst nicht bestätigt.")
     if cfg["username_claim"] == "email" and "@" in username:
         username = username.split("@", 1)[0] if not USERNAME_RE.fullmatch(username.lower()) else username
     raw = _claim(claims, cfg["groups_claim"]) if cfg.get("groups_claim") else []

@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from db import connect as _db
 from fastapi import APIRouter
 from saga.calendars import _cal_collect
-from saga.core import APP_CAPTURE_MAX, APP_TOKEN_MAX, TZ, _api_guard, _bad, _body, _json_load, _tok_db, _tok_hash, user_info, t
+from saga.core import APP_CAPTURE_MAX, APP_TOKEN_MAX, TZ, _api_guard, _bad, _body, _json_load, _tok_db, _tok_hash, t, t_account, user_info
 from saga.databases import _first_image
 from saga.files import _thumb, _thumb_mime, _thumb_w
 from saga.notes import FILES_DIR, _FILE_URL, _clean_props
@@ -82,7 +82,7 @@ def _inbox(c, uid):
         return int(r[0])
     now = time.time()
     nid = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, created, updated) VALUES (?,?,?,?,?,?,?,?,?)",
-                    (uid, "Eingang", json.dumps({"blocks": []}), "blocks", "📥", None, now, now, now)).lastrowid
+                    (uid, t_account(uid, "Eingang"), json.dumps({"blocks": []}), "blocks", "📥", None, now, now, now)).lastrowid
     c.execute("INSERT OR REPLACE INTO user_kv (uid, k, v) VALUES (?, 'inbox', ?)", (uid, str(nid)))
     return nid
 

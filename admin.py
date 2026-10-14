@@ -15,6 +15,7 @@ import secrets
 import ssl
 import threading
 import time
+from datetime import datetime
 from urllib.parse import urlparse
 
 import httpx
@@ -29,7 +30,7 @@ import app as hk
 import auth
 from db import connect as _db
 from saga import i18n
-from saga.core import LangMiddleware
+from saga.core import TZ, BodyLimit, LangMiddleware
 from saga.i18n import t
 from version import REPO, VERSION, newer
 
@@ -45,6 +46,7 @@ admin.add_middleware(LangMiddleware, session_key="aid")      # vor SessionMiddle
 admin.add_middleware(SessionMiddleware, secret_key=hashlib.sha256(("hk-admin|" + hk.SECRET).encode()).hexdigest(),
                      session_cookie="hk_admin", https_only=ADMIN_URL.startswith("https://"), same_site="strict",
                      max_age=int(E.get("ADMIN_SESSION_HOURS", "4")) * 3600)
+admin.add_middleware(BodyLimit, default=1024 * 1024)       # nur Formulare: 1 MB reicht; zuletzt registriert = laeuft zuerst
 admin.mount("/static", StaticFiles(directory=os.path.join(hk.HERE, "static")), name="static")
 tmpl = Environment(loader=FileSystemLoader(os.path.join(hk.HERE, "templates", "admin")), autoescape=select_autoescape(["html"]))
 i18n.install(tmpl)
@@ -122,6 +124,9 @@ def _update_info():
 
 def _page(request, name, me=None, status=200, **kw):
     flash = request.session.pop("flash", None)
+    if me and not flash and time.time() - hk.PROXY_WARN["at"] < 86400:
+        flash = [t("Hinweis: Anfragen kommen über einen Reverse Proxy ({ip}), der nicht in TRUSTED_PROXIES steht. Dann teilen sich alle Besucher eine Adresse (Sperre nach Fehlversuchen gilt für alle). Bitte TRUSTED_PROXIES auf diese Adresse setzen.",
+                   ip=hk.PROXY_WARN["ip"]), "err"]
     html = tmpl.get_template(name).render(title=hk.title(), v=hk.ASSET_V, csrf=_csrf(request), me=me, flash=flash,
                                           base_url=hk.BASE_URL, path=request.url.path, version=VERSION,
                                           update=_update_info() if me else None, **kw)
@@ -146,7 +151,10 @@ def _groups_list(text):
 
 
 def _fmt(ts):
-    return i18n.fmt_date(ts, with_time=True)
+    """Zeit in der eingestellten Zeitzone (TIMEZONE, nicht die des Containers) - mit Kuerzel, z. B. 'CEST'."""
+    if not ts:
+        return i18n.fmt_date(ts)
+    return i18n.fmt_date(ts, TZ, with_time=True) + " " + datetime.fromtimestamp(ts, TZ).strftime("%Z")
 
 
 tmpl.filters["dt"] = _fmt
@@ -181,7 +189,7 @@ async def login_post(request: Request):
     if f is None:
         return _page(request, "login.html", status=400, error=t("Die Seite war zu lange offen – bitte noch einmal."))
     username = _s(f, "username", 100)
-    user, err = await run_in_threadpool(auth.authenticate, username, str(f.get("password") or ""), hk._ip(request), True)
+    user, err = await run_in_threadpool(auth.authenticate, username, str(f.get("password") or ""), hk._ip(request), True, "admin")
     if user and not user["is_admin"]:
         user, err = None, t("Dieses Konto hat keine Admin-Rechte.")
     if not user:
@@ -339,6 +347,17 @@ async def user_post(uid_: int, request: Request):
         if self_:
             return _go("/login")
         _flash(request, t("Überall abgemeldet ({n} App-Anmeldungen/Schlüssel widerrufen).", n=n))
+    elif act == "unlink":
+        # SSO-Verknuepfung loesen (z. B. nach Wechsel des Anbieters, neue sub-Werte): die naechste Anmeldung
+        # ueber SSO mit diesem Benutzernamen verknuepft das Konto neu - Daten bleiben erhalten
+        if u["source"] != "oidc" or not u["ext_id"]:
+            _flash(request, t("Dieses Konto ist mit keiner SSO-Identität verknüpft."), "err")
+            return _go(back)
+        with _db() as c, c:
+            c.execute("UPDATE users SET ext_id=NULL WHERE id=?", (u["id"],))
+        auth._ui_cache.pop(u["username"], None)
+        print(f"{who} SSO-Verknuepfung geloest", flush=True)
+        _flash(request, t("SSO-Verknüpfung gelöst – die nächste SSO-Anmeldung mit diesem Benutzernamen verknüpft das Konto neu."))
     elif act == "delete":
         if self_:
             _flash(request, t("Das eigene Konto kann man nicht löschen."), "err")

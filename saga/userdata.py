@@ -1,7 +1,7 @@
 """Daten eines Kontos zaehlen und loeschen (Admin-Bereich)."""
 import os
 from db import connect as _db
-from saga.calendars import _cal_cache
+from saga.calendars import _cal_cache_drop
 from saga.files import _drop_thumbs
 from saga.notes import FILES_DIR
 
@@ -10,7 +10,7 @@ from saga.notes import FILES_DIR
 # Wichtig: uid = Benutzername. Blieben Daten liegen, bekaeme ein spaeter neu angelegtes Konto mit
 # gleichem Namen fremde Seiten, Kalender-Zugaenge usw.
 USER_TABLES = ("task", "note", "note_version", "bookmark", "fav", "device_login", "app_token", "user_kv",
-               "immich_key", "cal_account", "app_code")
+               "immich_key", "cal_account", "app_code", "pair_code")
 
 
 def delete_user_data(uid):
@@ -24,7 +24,7 @@ def delete_user_data(uid):
         except OSError:
             pass
         _drop_thumbs(fid)
-    _cal_cache.pop(uid, None)
+    _cal_cache_drop(uid)
     counts["file"] = len(fids)
     return counts
 
@@ -43,9 +43,14 @@ def user_usage(uid):
                 "immich": q("SELECT COUNT(*) FROM immich_key WHERE uid=?")}
 
 
-def revoke_user_logins(uid):
-    """Alle App-Anmeldungen und App-Schluessel widerrufen (Browser-Sitzungen enden ueber pw_changed)."""
+def revoke_user_logins(uid, keep_device=None):
+    """Alle App-Anmeldungen und App-Schluessel widerrufen (Browser-Sitzungen enden ueber pw_changed).
+    keep_device: diese Geraete-Anmeldung samt ihrem Widget-/Teilen-Schluessel behalten (eigene Passwortaenderung in der App)."""
     with _db() as c, c:
-        a = c.execute("DELETE FROM device_login WHERE uid=?", (uid,)).rowcount
-        b = c.execute("DELETE FROM app_token WHERE uid=?", (uid,)).rowcount
+        if keep_device:
+            a = c.execute("DELETE FROM device_login WHERE uid=? AND id<>?", (uid, keep_device)).rowcount
+            b = c.execute("DELETE FROM app_token WHERE uid=? AND (device_id IS NULL OR device_id<>?)", (uid, keep_device)).rowcount
+        else:
+            a = c.execute("DELETE FROM device_login WHERE uid=?", (uid,)).rowcount
+            b = c.execute("DELETE FROM app_token WHERE uid=?", (uid,)).rowcount
     return a + b

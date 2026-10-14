@@ -7,7 +7,13 @@
   function $(id) { return document.getElementById(id); }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function wraps() { return [].slice.call(document.querySelectorAll('.tw')).filter(function (w) { return !w.hidden && !w.closest('section').hidden; }); }
-  function open(w) { if (w) window.open(w.querySelector('a.tile').href, '_blank', 'noopener'); }
+  function open(w) {
+    if (!w) return;
+    var a = w.querySelector('a.tile');
+    if (a.target === 'hk-notes') window.open(a.href, 'hk-notes'); else window.open(a.href, '_blank', 'noopener');
+  }
+  // Touch-Geraete: Tastenkuerzel-Hinweis "( / )" im Suchfeld weglassen
+  if (window.matchMedia && matchMedia('(hover: none)').matches) q.placeholder = q.placeholder.replace(/\s*\(\s*\/\s*\)\s*$/, '');
   function renumber() {
     document.querySelectorAll('.num').forEach(function (n) { n.textContent = ''; });
     wraps().slice(0, 9).forEach(function (w, i) { w.querySelector('.num').textContent = i + 1; });
@@ -99,6 +105,36 @@
     $('web-close').addEventListener('click', function () { webHide(); q.focus(); });
   }
 
+  // --- Seiten-Suche (Volltext wie in der Seitenleiste; Treffer nach den Kacheln) ------------------
+  var pq = { t: null, n: 0 };
+  function pageHits(v) {
+    var sec = $('q-pages'), box = $('q-pages-list'), n = ++pq.n;
+    clearTimeout(pq.t);
+    if (!sec) return;
+    if (v.length < 2) { sec.hidden = true; box.textContent = ''; renumber(); return; }
+    pq.t = setTimeout(function () {
+      fetch('/api/notes/search', { method: 'POST', credentials: 'same-origin',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, H), body: JSON.stringify({ q: v }) })
+        .then(function (r) { return r.ok ? r.json() : []; })
+        .then(function (hits) {
+          if (n !== pq.n) return;                       // inzwischen weitergetippt
+          box.textContent = '';
+          (hits || []).slice(0, 8).forEach(function (h) {
+            var w = el('div', 'tw tw-page'), a = el('a', 'tile');
+            a.href = '/notes#' + h.id; a.target = 'hk-notes';
+            var icon = typeof h.icon === 'string' && h.icon && h.icon.indexOf('/') < 0 && h.icon.length <= 8 ? h.icon : '📄';
+            a.appendChild(el('span', 'ic ic-emoji', icon));
+            var tx = el('span', 'txt'); tx.appendChild(el('span', 'nm', h.title || T('Unbenannt')));
+            if (h.snippet) tx.appendChild(el('span', 'host', h.snippet));
+            a.appendChild(tx); a.appendChild(el('span', 'num'));
+            w.appendChild(a); box.appendChild(w);
+          });
+          sec.hidden = !box.children.length;
+          renumber();
+        }).catch(function () {});
+    }, 220);
+  }
+
   // --- Kachel-Suche ---------------------------------------------------------
   q.addEventListener('input', function () {
     var v = q.value.trim().toLowerCase();
@@ -109,6 +145,7 @@
     });
     webGoUpdate(q.value.trim());
     renumber();
+    pageHits(q.value.trim());
   });
   q.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') {

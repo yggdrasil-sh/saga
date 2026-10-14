@@ -13,6 +13,7 @@ from fastapi import APIRouter
 from saga.calendars import _admin_hosts, _cal_fernet
 from saga.core import E, _api_guard, _bad, _body, t
 from saga.files import _sniff_image
+from saga.netguard import Blocked, guarded_client
 from saga.notes import FILES_DIR, FILE_MAX, FILE_QUOTA
 
 router = APIRouter()
@@ -106,9 +107,12 @@ def _immich(conn, method, path, body=None, params=None, max_bytes=2 * 1024 * 102
         return 403, "", b""
     cl = getattr(_immich_local, "client", None)
     if cl is None:
-        cl = _immich_local.client = httpx.Client(timeout=15, follow_redirects=False)
+        # 2) BEIM Verbinden: einmal aufloesen, pruefen und genau mit dieser IP verbinden (saga/netguard.py) -
+        #    so kann der Name zwischen Pruefung und Verbindung nicht auf ein internes Ziel umgestellt werden
+        cl = _immich_local.client = guarded_client(
+            lambda ip, host, port: _immich_ip_ok(ip, f"{host}:{port}") or _immich_ip_ok(ip, host), timeout=15, follow_redirects=False)
     try:
-        # 2) NACH dem Verbinden: IP der tatsaechlichen Verbindung (gegen Umstellen des Namens dazwischen)
+        # 3) NACH dem Verbinden: IP der tatsaechlichen Verbindung noch einmal pruefen (doppelt haelt besser)
         with cl.stream(method, base + "/api" + path, params=params, json=body,
                        headers={"x-api-key": key, "Accept": "application/json, image/*"}) as r:
             ns = r.extensions.get("network_stream")                 # IP der tatsaechlichen Verbindung pruefen
@@ -124,9 +128,17 @@ def _immich(conn, method, path, body=None, params=None, max_bytes=2 * 1024 * 102
                 if len(buf) > max_bytes:
                     return 413, "", b""
             return r.status_code, r.headers.get("content-type", ""), bytes(buf)
-    except httpx.HTTPError:
+    except httpx.HTTPError as ex:
         _immich_local.client = None
-        return 502, "", b""
+        return (403 if isinstance(ex.__cause__, Blocked) else 502), "", b""
+
+
+def _json_or(data, default):
+    """Antwort von Immich als JSON - kaputte Antworten fuehren zu einer Fehlermeldung statt zu einem 500er."""
+    try:
+        return json.loads(data)
+    except (ValueError, UnicodeDecodeError):
+        return default
 
 
 def _immich_guard(request):
@@ -199,10 +211,11 @@ def api_immich_albums(request: Request):
     if err:
         return err
     st, _, data = _immich(key, "GET", "/albums")
-    if st != 200:
+    albums = _json_or(data, [])
+    if st != 200 or not isinstance(albums, list):
         return _bad(t("Immich: Alben nicht lesbar"), 502)
     out = [{"id": a.get("id"), "name": str(a.get("albumName") or "")[:200], "count": a.get("assetCount") or 0,
-            "thumb": a.get("albumThumbnailAssetId")} for a in json.loads(data) if isinstance(a, dict)]
+            "thumb": a.get("albumThumbnailAssetId")} for a in albums if isinstance(a, dict)]
     out.sort(key=lambda a: a["name"].lower())
     return JSONResponse({"albums": out})
 
@@ -214,7 +227,10 @@ async def api_immich_assets(request: Request):
     if err:
         return err
     b = await _body(request) or {}
-    page = max(1, min(500, int(b.get("page") or 1)))
+    try:
+        page = max(1, min(500, int(b.get("page") or 1)))
+    except (TypeError, ValueError, OverflowError):
+        return _bad(t("ungueltige Angabe"))
     q = str(b.get("q") or "").strip()[:200]
     album = str(b.get("album") or "")
     body = {"page": page, "size": 60, "type": "IMAGE"}
@@ -228,9 +244,10 @@ async def api_immich_assets(request: Request):
     else:
         body["order"] = "desc"
         st, _, data = await asyncio.to_thread(_immich, key, "POST", "/search/metadata", body, None, 8 * 1024 * 1024)
-    if st != 200:
+    res = _json_or(data, {})
+    if st != 200 or not isinstance(res, dict) or not isinstance(res.get("assets") or {}, dict):
         return _bad(t("Immich: Suche fehlgeschlagen"), 502)
-    a = (json.loads(data).get("assets") or {})
+    a = res.get("assets") or {}
     items = [{"id": x.get("id"), "name": str(x.get("originalFileName") or "")[:200], "mime": x.get("originalMimeType"),
               "date": x.get("fileCreatedAt")} for x in a.get("items") or [] if isinstance(x, dict) and _IMMICH_ID.match(str(x.get("id") or ""))]
     return JSONResponse({"items": items, "next": page + 1 if a.get("nextPage") else None})

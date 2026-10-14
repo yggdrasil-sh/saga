@@ -3,27 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0f141c">
-<title>{{ _("Notizen") }} · {{ title }}</title>
+<meta name="theme-color" content="#0f141c" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f1ec" media="(prefers-color-scheme: light)">
+<title>{{ _("Seiten") }} · {{ title }}</title>
 <link rel="icon" href="/static/icon.svg?v={{ v }}" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ v }}">
 <link rel="stylesheet" href="/static/style.css?v={{ v }}">
 </head>
 <body class="notes-page{% if embed %} embed{% endif %}" data-v="{{ v }}">
 <header class="np-head">
-  <button type="button" class="icon-btn np-side-btn" id="pg-side-btn" title="{{ _("Seitenleiste ausblenden") }} ({{ _("Strg") }}+\)" aria-label="{{ _("Seitenleiste ein- oder ausblenden") }}" aria-pressed="true">
+  <button type="button" class="icon-btn np-side-btn" id="pg-side-btn" title="{{ _("Seitenleiste ausblenden") }} ({{ _("Strg") }}+\)" aria-label="{{ _("Seitenleiste ein- oder ausblenden") }}" aria-pressed="true" aria-controls="pg-side">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
   </button>
   <a class="np-brand" href="/" title="{{ _("Zum Dashboard") }}">{{ title }}</a>
   <span class="np-sep">/</span>
-  <span class="np-name">{{ _("Notizen") }}</span>
+  <span class="np-name">{{ _("Seiten") }}</span>
   <span class="spacer"></span>
-  <button type="button" class="btn hk-user" id="hk-user" data-name="{{ name }}" data-admin="{{ admin_url }}" aria-haspopup="menu" title="{{ _("Benutzermenü") }}">👤 {{ name }} ▾</button>
-  <a class="btn" href="/" title="{{ _("Zum Dashboard") }}">{{ _("Dashboard") }}</a>
+  <button type="button" class="btn hk-user" id="hk-user" data-name="{{ name }}" data-admin="{{ admin_url }}" aria-haspopup="menu" title="{{ _("Benutzermenü") }}" aria-label="{{ _("Benutzermenü") }}: {{ name }}">👤 <span class="hk-user-n">{{ name }}</span> ▾</button>
+  <a class="btn np-dash" href="/" title="{{ _("Zum Dashboard") }}" aria-label="{{ _("Dashboard") }}"><span class="np-dash-ic" aria-hidden="true">⌂</span><span class="np-dash-t">{{ _("Dashboard") }}</span></a>
 </header>
 <main class="np-main">
   <div class="pages" id="pages">
-    <nav class="pages-side" aria-label="{{ _("Seiten") }}">
+    <nav class="pages-side" id="pg-side" aria-label="{{ _("Seiten") }}">
       <input type="search" class="pg-search" id="pg-search" placeholder="{{ _("Seiten durchsuchen") }}" aria-label="{{ _("Seiten durchsuchen") }}" autocomplete="off">
       <div class="pg-tagbar" id="pg-tagbar" aria-label="{{ _("Nach Tag filtern") }}"></div>
       <div class="pg-favs" id="pg-favs" hidden>

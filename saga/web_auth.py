@@ -28,8 +28,34 @@ def _next(v):
     return v if v in NEXT_ALLOWED else "/"
 
 
+PROXY_WARN = {"at": 0.0, "ip": ""}      # zuletzt erkannter, nicht vertrauter Reverse Proxy (Hinweis im Admin-Bereich)
+
+
 def _ip(request):
-    return (request.client.host if request.client else "") or "?"
+    ip = (request.client.host if request.client else "") or "?"
+    if request.headers.get("x-forwarded-for"):
+        _check_proxy(ip, request.headers["x-forwarded-for"])
+    return ip
+
+
+def _check_proxy(ip, xff):
+    """X-Forwarded-For von einer privaten Adresse, die nicht in TRUSTED_PROXIES steht: dann sehen alle Besucher
+    wie dieser Proxy aus - Fehlversuch-Sperre und Registrierungsgrenze gelten fuer alle zusammen. Melden (Log,
+    hoechstens stuendlich, und im Admin-Bereich), damit der Admin TRUSTED_PROXIES richtig setzt."""
+    import ipaddress
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return
+    first = xff.split(",")[0].strip()
+    if not (a.is_private and not a.is_loopback) or not first or first == ip:
+        return
+    now = time.time()
+    if now - PROXY_WARN["at"] > 3600:
+        print(f"saga: WARNUNG - Anfragen kommen ueber den Proxy {ip} (X-Forwarded-For), der nicht in TRUSTED_PROXIES steht. "
+              "Alle Besucher teilen sich dann eine Adresse (Fehlversuch-Sperre!). TRUSTED_PROXIES auf die Proxy-Adresse setzen.",
+              flush=True)
+    PROXY_WARN.update(at=now, ip=ip)
 
 
 def _csrf(request):
@@ -64,8 +90,10 @@ def _auth_page(request, name, status=200, **kw):
 def _start_session(request, user, id_token=None):
     nxt = _next(request.session.get("next", "/"))
     auth._ui_cache.pop(user["username"], None)
-    _set_session(request, user["username"], user["display_name"] or user["username"],
-                 {"id_token": id_token} if id_token and len(id_token) < 2500 else None)
+    keep = {"login_at": int(time.time())}            # frische Anmeldung (Formular/SSO): /app/handoff ohne Rueckfrage
+    if id_token and len(id_token) < 2500:
+        keep["id_token"] = id_token
+    _set_session(request, user["username"], user["display_name"] or user["username"], keep)
     return RedirectResponse(nxt, status_code=303)
 
 
@@ -174,7 +202,10 @@ async def register_post(request: Request):
             return fail(t("Registrierung gerade nicht möglich (Verzeichnisdienst nicht erreichbar)."), 503)
         if taken:
             return fail(t("Diesen Benutzernamen gibt es schon."))
-    user, err = await run_in_threadpool(auth.create_user, f["username"], pw, f["name"], f["email"])
+    try:
+        user, err = await run_in_threadpool(auth.create_user, f["username"], pw, f["name"], f["email"])
+    except auth.Busy:
+        return fail(t("Gerade sehr viele Anmeldungen – bitte gleich noch einmal versuchen."), 503)
     if err:
         return fail(err)
     with _db() as c, c:
@@ -248,15 +279,29 @@ async def api_account_password(request: Request):
         return _bad(t("Dein Passwort verwaltet dein Anmeldedienst."), 403)
     if auth.too_many(uid, _ip(request)):
         return _bad(t("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen."), 429)
-    if not u["password_hash"] or not await run_in_threadpool(auth.verify_password, old, u["password_hash"]):
+    try:
+        ok = bool(u["password_hash"]) and await run_in_threadpool(auth.verify_password, old, u["password_hash"])
+    except auth.Busy:
+        return _bad(t("Gerade sehr viele Anmeldungen – bitte gleich noch einmal versuchen."), 503)
+    if not ok:
         auth.note_fail(uid, _ip(request))
         return _bad(t("Das bisherige Passwort stimmt nicht."), 403)
     p = auth.password_problem(new)
     if p:
         return _bad(p)
-    await run_in_threadpool(auth.set_password, uid, new)
+    try:
+        await run_in_threadpool(auth.set_password, uid, new)
+    except auth.Busy:
+        return _bad(t("Gerade sehr viele Anmeldungen – bitte gleich noch einmal versuchen."), 503)
     request.session["pwc"] = time.time()              # diese Sitzung bleibt, alle anderen Browser-Sitzungen enden
-    return JSONResponse({"ok": True})
+    # Standard: auch alle Apps/Geraete und App-Schluessel abmelden (wer sein Passwort wegen eines Verdachts aendert,
+    # soll niemanden mit einem alten Geraete-Schluessel drin lassen). Ausnahme: das Geraet dieser Sitzung (Aenderung
+    # in der App). Mit "logout_devices": false bleiben Apps angemeldet.
+    n = 0
+    if b.get("logout_devices", True) is not False:
+        from saga.userdata import revoke_user_logins
+        n = await run_in_threadpool(revoke_user_logins, uid, request.session.get("did"))
+    return JSONResponse({"ok": True, "devices_revoked": n})
 
 
 @router.put("/api/account/lang")

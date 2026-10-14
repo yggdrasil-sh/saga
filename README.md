@@ -68,9 +68,11 @@ docker compose pull && docker compose up -d
 **Update:** `git pull && docker compose pull && docker compose up -d` – Saga automatically creates a backup
 before any database change. What's new is listed in the **[changelog](CHANGELOG.md)** (in German) and in the
 [releases](https://github.com/yggdrasil-sh/saga/releases). Curious about the latest? `SAGA_VERSION=testing` in
-`.env` pulls the testing version from the `testing` branch.
+`.env` pulls the testing version from the `testing` branch. Images and files of pages are not part of the
+database backup: back up the `saga-data` volume, or run `docker compose exec saga python run.py backup --dateien`.
 
-- **Saga:** `http://<server>:8080` – put it behind a reverse proxy with HTTPS for production use
+- **Saga:** `http://<server>:8080` – put it behind a reverse proxy with HTTPS for production use (with a request
+  body limit of about 12 MB, see the guide)
 - **Admin area:** `http://127.0.0.1:8081` on the server (only reachable locally by default, e.g. via an SSH
   tunnel: `ssh -L 8081:127.0.0.1:8081 server`)
 - **First admin account:** `admin` – password from `ADMIN_PASSWORD`, otherwise a generated one is printed in

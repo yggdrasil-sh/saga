@@ -69,9 +69,12 @@ docker compose pull && docker compose up -d
 de datos, Saga crea automáticamente una copia de seguridad. Las novedades están en el
 **[registro de cambios](CHANGELOG.md)** (en alemán) y en las
 [versiones publicadas](https://github.com/yggdrasil-sh/saga/releases). ¿Quieres lo último?
-`SAGA_VERSION=testing` en el `.env` descarga la versión de pruebas de la rama `testing`.
+`SAGA_VERSION=testing` en el `.env` descarga la versión de pruebas de la rama `testing`. Las imágenes y archivos
+de las páginas no están en la copia de la base de datos: haz copia del volumen `saga-data` o ejecuta
+`docker compose exec saga python run.py backup --dateien`.
 
-- **Saga:** `http://<servidor>:8080`; en producción, ponlo detrás de un proxy inverso con HTTPS
+- **Saga:** `http://<servidor>:8080`; en producción, ponlo detrás de un proxy inverso con HTTPS (con un límite
+  de unos 12 MB por petición, ver la guía)
 - **Área de administración:** `http://127.0.0.1:8081` en el servidor (por defecto solo accesible en local,
   p. ej. con un túnel SSH: `ssh -L 8081:127.0.0.1:8081 servidor`)
 - **Primera cuenta de administración:** `admin`, con la contraseña de `ADMIN_PASSWORD`; si no, aparece una
