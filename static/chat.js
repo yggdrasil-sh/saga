@@ -351,7 +351,7 @@
     try {
       var b = decrypt(c.id, c.title_msg, c.title_msg.device ? { [c.title_msg.sender_device]: c.title_msg.device } : {},
                       c.title_msg.ident_pub ? { [c.title_msg.sender.username]: c.title_msg.ident_pub } : {});
-      if (b && b.body && b.body.type === 'title') c._title = String(b.body.title || '').slice(0, 100);
+      if (b && b.verified && b.body && b.body.type === 'title') c._title = String(b.body.title || '').slice(0, 100);
     } catch (e) { /* Name bleibt die Mitgliederliste */ }
   }
   function kindIc(c) { return c.kind === 'group' ? '#' : c.kind === 'page' ? '📄' : c.kind === 'free' ? '👥' : ''; }
@@ -780,8 +780,24 @@
         out.push({ id: d.id, pk: ub(d.enc_pub, 32) });
       });
     });
-    S.rc = { cid: cid, list: out, missing: missing };
+    S.rc = { cid: cid, list: out, missing: missing, raw: list };
     return S.rc;
+  }
+  // TOFU wirksam machen: Hat sich der Identitaetsschluessel eines Empfaengers gegenueber dem gemerkten Wert geaendert
+  // (und ist die Warnung noch nicht mit "Verstanden"/"Als ueberprueft markieren" bestaetigt), wird NICHT gesendet -
+  // sonst ginge die erste Nachricht nach einem vom Server untergeschobenen Schluessel schon an den Angreifer.
+  function trustCheck(list) {
+    return Promise.all((list || []).filter(function (p) { return p.ready && p.username !== ME; }).map(function (p) {
+      var pr = trust[p.username] ? Promise.resolve(trust[p.username])
+        : (trustP[p.username] || (trustP[p.username] = kvGet(trustKey(p.username)).catch(function () { return null; })));
+      return pr.then(function (t) { return t && (t.changed || t.ident !== p.ident_pub) ? p : null; });
+    })).then(function (bad) {
+      bad = bad.filter(Boolean);
+      if (!bad.length) return;
+      bad.forEach(function (p) { noteIdent(p.username, p.ident_pub); });
+      setTimeout(drawWarn, 50);
+      throw new Error(T('Die Sicherheitsnummer von {name} hat sich geändert – erst prüfen oder „Verstanden“ wählen.', { name: bad.map(function (p) { return p.name; }).join(', ') }));
+    });
   }
   function sendBody(cid, body, kind, reply) {
     function attempt(rc, again) {
@@ -789,11 +805,14 @@
       m.kind = kind || 'msg';
       if (body.files) m.files = body.files.map(function (f) { return f.id; });
       return api('POST', '/api/chats/' + cid + '/messages', m).then(function (r) { return { m: m, r: r }; }, function (e) {
-        if (e.status === 409 && e.data && e.data.recipients && !again) return attempt(useRecipients(cid, e.data.recipients), true);
+        if (e.status === 409 && e.data && e.data.recipients && !again) {
+          var rc2 = useRecipients(cid, e.data.recipients);
+          return trustCheck(rc2.raw).then(function () { return attempt(rc2, true); });
+        }
         throw e;
       });
     }
-    return recipients(cid).then(function (rc) { return attempt(rc, false); });
+    return recipients(cid).then(function (rc) { return trustCheck(rc.raw).then(function () { return attempt(rc, false); }); });
   }
   function uploadFiles(cid) {
     return Promise.all(S.files.map(function (f) {

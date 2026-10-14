@@ -555,8 +555,8 @@ speichert nur verschlüsselte Daten. Auch der Admin kann keine Inhalte lesen.
   Passwort-Manager („Kopieren“, „Als Datei speichern“) und bestätige die letzten vier Zeichen. Ohne ihn und ohne ein
   anderes eingerichtetes Gerät sind deine Nachrichten verloren – auch der Admin kann sie nicht wiederherstellen.
 - **Neues Gerät oder neuer Browser:** entweder **„Mit anderem Gerät bestätigen“** – auf einem Gerät, auf dem die Chats
-  schon laufen, erscheint die Anfrage mit einem sechsstelligen Code; stimmt er mit dem Code auf dem neuen Gerät überein,
-  bestätigen – oder den **Wiederherstellungsschlüssel eingeben**. Danach liest das neue Gerät auch den bisherigen Verlauf.
+  schon laufen, erscheint die Anfrage mit einem 20-stelligen Code (vier Fünfergruppen); stimmt er vollständig mit dem Code auf dem neuen Gerät
+  überein, bestätigen – oder den **Wiederherstellungsschlüssel eingeben**. Danach liest das neue Gerät auch den bisherigen Verlauf.
   Wer beides nicht mehr hat, kann **neu beginnen** (neue Schlüssel; alte Nachrichten sind dann nicht mehr lesbar).
 - **Unterhaltungen:** **„+ Neu“** → Person suchen (ab 3 Zeichen) für einen **Direkt-Chat**, eine eigene Gruppe für einen
   **Gruppen-Chat** (Mitglieder folgen der Gruppe, auch aus LDAP/SSO) oder „Gruppe mit mehreren Personen“ für eine

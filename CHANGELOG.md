@@ -24,7 +24,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   lokale Suche, Sicherheitsnummer (60 Ziffern, Warnung bei Wechsel), Live über den vorhandenen Kanal (ohne Inhalt),
   Benachrichtigung „Neue Nachricht von Name“ (gebündelt, ohne Inhalt, abschaltbar)
   - Einrichtung mit **Wiederherstellungsschlüssel** (32 Zeichen Base32), neues Gerät per **Bestätigung auf einem
-    vorhandenen Gerät (6-stelliger Code)** oder Wiederherstellungsschlüssel, „Neu beginnen“; „Chats & Geräte“:
+    vorhandenen Gerät (20-stelliger Code)** oder Wiederherstellungsschlüssel, „Neu beginnen“; „Chats & Geräte“:
     Geräteliste, entfernen (wirkt sofort, live), neuer Wiederherstellungsschlüssel
   - Krypto-Format v1 nur mit libsodium-Primitiven (Ed25519, X25519/`crypto_box_seal`, XChaCha20-Poly1305,
     Argon2id, BLAKE2b); Browser: libsodium.js 0.8.4 (Sumo, ISC) unter `static/vendor/libsodium` (`tools/vendor-libsodium.sh`),

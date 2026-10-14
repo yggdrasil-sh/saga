@@ -101,7 +101,7 @@ a.ct-chip:hover{color:var(--fg);border-color:var(--accent)}
   border:1px dashed var(--accent);border-radius:10px;padding:.8rem;margin:.6rem 0;word-spacing:.3em;user-select:all;overflow-wrap:anywhere}
 .ct-rk-last{width:7rem;font:600 1.1rem ui-monospace,Menlo,monospace;text-transform:uppercase;letter-spacing:.15em;text-align:center}
 .ct-rk-in{width:100%;font:1rem ui-monospace,Menlo,monospace;text-transform:uppercase}
-.ct-code{font:700 2rem/1.2 ui-monospace,Menlo,monospace;letter-spacing:.12em;text-align:center;color:var(--accent);margin:.8rem 0}
+.ct-code{font:700 1.6rem/1.35 ui-monospace,Menlo,monospace;letter-spacing:.1em;word-spacing:.3em;text-align:center;color:var(--accent);margin:.8rem 0}
 .ct-choice{display:flex;flex-direction:column;align-items:flex-start;gap:.2rem;margin:.6rem 0}
 .ct-choice .hk-hint{margin:0 0 .7rem}
 .ct-reset{margin-top:.6rem}

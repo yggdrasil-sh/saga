@@ -203,8 +203,8 @@ def decrypt_file(chat_id, blob, key):
 
 def link_code(uid, did, enc_pk, sign_pk):
     h = gh(lp(V + "link", uid, did, enc_pk, sign_pk))
-    s = "%06d" % (int.from_bytes(h[:4], "big") % 1000000)
-    return s[:3] + " " + s[3:]
+    # 20 Ziffern: ein kurzer Code liesse sich vom Server mit eigenen Schluesseln nachbauen (grinding)
+    return " ".join("%05d" % (int.from_bytes(h[i * 5:i * 5 + 5], "big") % 100000) for i in range(4))
 
 
 def safety_number(uid_a, ident_a, uid_b, ident_b):

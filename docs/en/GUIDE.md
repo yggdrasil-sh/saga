@@ -540,7 +540,7 @@ only stores encrypted data. The admin can't read any content either.
   confirm the last four characters. Without it and without another set-up device your messages are lost – the admin
   can't restore them either.
 - **New device or browser:** either **“Confirm with another device”** – on a device where chats already work, the request
-  appears with a six-digit code; confirm it if it matches the code on the new device – or **enter the recovery key**.
+  appears with a 20-digit code (four groups of five); confirm it only if it fully matches the code on the new device – or **enter the recovery key**.
   Afterwards the new device can also read the previous history. If you have neither, you can **start over** (new keys;
   old messages can no longer be read).
 - **Conversations:** **“+ New”** → search a person (3+ characters) for a **direct chat**, one of your groups for a

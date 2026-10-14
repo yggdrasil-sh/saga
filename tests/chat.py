@@ -316,6 +316,8 @@ def run():
     ok("Geraet eines anderen Kontos -> 403", s == 403)
     s, _, _ = A.send(cid, "x", ts=int(time.time() * 1000) - 3600 * 1000)
     ok("Zeitstempel 1 h daneben -> 400", s == 400)
+    s, _, _ = A.send(cid, "x", ts=10 ** 30)
+    ok(f"Riesiger Zeitstempel -> 400 statt Serverfehler ({s})", s == 400)
     s, _, _ = A.send(cid, "x", extra={"id": sent["id"]})
     ok("Gleiche Nachrichten-id -> 400 (Signatur passt nicht) bzw. 409", s in (400, 409))
     s, _, _ = A.send(cid, "y" * 70000)
@@ -377,6 +379,8 @@ def run():
     pend = req("GET", "/api/chat/link", A.k)[1]["links"]
     code_old = C.link_code("ch-a", pend[0]["device_id"], C.unb64(pend[0]["enc_pub"]), C.unb64(pend[0]["sign_pub"]))
     ok(f"Kurzcode auf beiden Geraeten gleich ({code_old})", code_old == C.link_code("ch-a", nd["id"], nd["enc_pk"], nd["sign_pk"]))
+    ok("... 20 Ziffern (gegen Nachbauen durch den Server)", len(code_old.replace(" ", "")) == 20 and code_old.replace(" ", "").isdigit())
+    ok("... anderer Schluessel -> anderer Code", code_old != C.link_code("ch-a", nd["id"], C.device()["enc_pk"], nd["sign_pk"]))
     ok("B sieht A's Kopplung nicht", req("GET", f"/api/chat/link/{lk['id']}", B.k)[1]["state"] == "gone" and req("GET", "/api/chat/link", B.k)[1]["links"] == [])
     ok("Bestaetigung mit falscher Signatur -> 400", req("POST", f"/api/chat/link/{lk['id']}", A.k, {"sig": C.b64(b"\1" * 64), "sealed": C.b64(b"x" * 100)})[0] == 400)
     ok("Neues Geraet wartet (pending)", req("GET", f"/api/chat/link/{lk['id']}", A.k)[1]["state"] == "pending")

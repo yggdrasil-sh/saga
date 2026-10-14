@@ -391,6 +391,7 @@
  "Die Seite war zu lange offen – bitte noch einmal anmelden.": "The page was open too long – please sign in again.",
  "Die Seite war zu lange offen – bitte noch einmal versuchen.": "The page was open too long – please try again.",
  "Die Seite war zu lange offen – bitte noch einmal.": "The page was open too long – please try again.",
+ "Die Sicherheitsnummer von {name} hat sich geändert – erst prüfen oder „Verstanden“ wählen.": "{name}'s safety number has changed – check it first or choose “Got it”.",
  "Die Sicherheitsnummer von {name} hat sich geändert – z. B. nach „Neu beginnen“ oder bei einem neuen Konto. Prüfe sie, bevor du Vertrauliches schreibst.": "{name}'s safety number has changed – e.g. after “Start over” or with a new account. Check it before you write anything confidential.",
  "Die Uhrzeit dieses Geräts weicht zu stark ab.": "This device's clock is too far off.",
  "Die Verschlüsselungs-Bibliothek konnte nicht geladen werden.": "The encryption library couldn't be loaded.",

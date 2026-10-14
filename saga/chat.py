@@ -462,7 +462,8 @@ def api_device_delete(did: str, request: Request):
 
 # --- Neues Geraet mit vorhandenem Geraet koppeln -----------------------------------------------------------------
 # 1. neues Geraet: POST /api/chat/link {device_id, name, enc_pub, sign_pub} -> {id}; zeigt den Kurzcode
-#    (generichash32(LP("saga-chat/v1/link", uid, device_id, enc_pk, sign_pk)), erste 4 Bytes BE mod 10^6)
+#    (generichash32(LP("saga-chat/v1/link", uid, device_id, enc_pk, sign_pk)), 4 Bloecke a 5 Bytes BE mod 10^5 = 20 Ziffern -
+#    lang genug, dass der Server keine eigenen Schluessel mit gleichem Code erzeugen kann)
 # 2. vorhandenes Geraet: GET /api/chat/link (offene Anfragen), zeigt denselben Code; nach Bestaetigung
 #    POST /api/chat/link/{id} {sig (Geraete-Zertifikat), sealed = crypto_box_seal(buendel_klartext, enc_pk des neuen Geraets)}
 # 3. neues Geraet: GET /api/chat/link/{id} -> {state: approved, sealed} (einmalig), oeffnet das Buendel.
@@ -1075,7 +1076,9 @@ async def api_send(cid: int, request: Request):
     keys, files = b.get("keys"), b.get("files") or []
     try:
         ts = int(b.get("ts"))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        ts = 0
+    if not 0 < ts < 2 ** 53:              # sonst OverflowError bei ts / 1000 (500) bzw. BIGINT-Ueberlauf
         ts = 0
     now = time.time()
     if not _HEX32.fullmatch(mid) or kind not in ("msg", "title") or not isinstance(keys, dict) or not isinstance(files, list):

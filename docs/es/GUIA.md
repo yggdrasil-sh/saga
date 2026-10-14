@@ -562,7 +562,7 @@ servidor solo guarda datos cifrados. Tampoco el administrador puede leer el cont
   archivo») y confirma los últimos cuatro caracteres. Sin ella y sin otro dispositivo configurado tus mensajes se
   pierden: tampoco el administrador puede recuperarlos.
 - **Dispositivo o navegador nuevo:** o bien **«Confirmar con otro dispositivo»** – en un dispositivo donde los chats ya
-  funcionan aparece la solicitud con un código de seis cifras; confírmala si coincide con el código del dispositivo
+  funcionan aparece la solicitud con un código de 20 cifras (cuatro grupos de cinco); confírmala solo si coincide por completo con el código del dispositivo
   nuevo – o **introducir la clave de recuperación**. Después, el dispositivo nuevo también lee el historial. Si no tienes
   ninguna de las dos, puedes **empezar de nuevo** (claves nuevas; los mensajes anteriores ya no se podrán leer).
 - **Conversaciones:** **«+ Nuevo»** → busca una persona (mín. 3 caracteres) para un **chat directo**, uno de tus grupos

@@ -141,11 +141,17 @@
   }
 
   // --- Geraete-Kopplung, Sicherheitsnummer --------------------------------------------------------------------
+  // 20 Ziffern (~66 Bit): Der Server sieht die oeffentlichen Schluessel des neuen Geraets und koennte bei einem kurzen
+  // Code (6 Ziffern) in Sekundenbruchteilen eigene Schluessel mit gleichem Code erzeugen ("grinding") und sich das
+  // Buendel versiegeln lassen. 4 Bloecke a 5 Bytes -> BE-Zahl mod 100000.
   function linkCode(uid, device_id, enc_pk, sign_pk) {
-    var h = S.crypto_generichash(32, lp(V + 'link', uid, device_id, enc_pk, sign_pk));
-    var n = ((h[0] << 24) >>> 0) + (h[1] << 16) + (h[2] << 8) + h[3];
-    var s = String(n % 1000000); while (s.length < 6) s = '0' + s;
-    return s.slice(0, 3) + ' ' + s.slice(3);
+    var h = S.crypto_generichash(32, lp(V + 'link', uid, device_id, enc_pk, sign_pk)), out = [];
+    for (var i = 0; i < 4; i++) {
+      var v = 0; for (var j = 0; j < 5; j++) v = v * 256 + h[i * 5 + j];
+      var s = String(v % 100000); while (s.length < 5) s = '0' + s;
+      out.push(s);
+    }
+    return out.join(' ');
   }
   function cmpBytes(a, b) {
     for (var i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i] - b[i];
