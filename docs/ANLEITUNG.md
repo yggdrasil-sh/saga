@@ -521,6 +521,48 @@ die Anzahl der Freigaben, keine Inhalte. Wird ein Konto gelöscht, verschwinden 
 seine Kommentare auf fremden Seiten bleiben als „Gelöschtes Konto“ stehen. Wird eine Gruppe gelöscht, enden die
 Freigaben an sie.
 
+### Mit anderen Saga-Instanzen teilen (Föderation)
+
+Mehrere Saga-Server (z. B. deiner und der eines Vereins) lassen sich verbinden. Danach teilt man eine Seite auch mit
+**name@server** – mit einer Person dort (über ihren öffentlichen Namen, Abschnitt „Seiten veröffentlichen“) oder mit
+einer Gruppe dort (**gruppe@server**). Die Inhalte bleiben immer auf dem Server des Eigentümers: Die andere Person
+liest, kommentiert und bearbeitet über ihren eigenen Saga-Server, der im Hintergrund beim Eigentümer-Server nachfragt.
+Welche Rolle sie hat, entscheidet immer der Eigentümer-Server – Entzug wirkt sofort. Alles läuft über den normalen
+HTTPS-Port, es gibt keinen zusätzlichen Dienst.
+
+**Verbinden (Admins beider Server):**
+1. Admin-Bereich → **Föderation** → „Föderation einschalten“ (Standard: aus). Dort stehen eure Adresse und euer
+   **Fingerprint** (der öffentliche Schlüssel dieses Servers in Kurzform).
+2. Server A: **„Einladungscode erzeugen“** – Adresse und Code an den Admin von Server B geben (der Code gilt 24 Stunden
+   und nur einmal).
+3. Server B: unter „Mit einer Instanz verbinden“ Adresse und Code eintragen → Saga zeigt den Fingerprint von A. Stimmt
+   er mit dem überein, den A genannt hat (am besten auf einem zweiten Weg vergleichen), → „Fingerprint stimmt –
+   verbinden“.
+4. Server A: Die Anfrage steht unter „Verbundene Instanzen“ mit dem Fingerprint von B → **Bestätigen**. Ab jetzt sind
+   beide verbunden. War B gerade nicht erreichbar, dort „Status prüfen“.
+
+**Trennen** (jede Seite, jederzeit) wirkt sofort: alle Freigaben an Personen und Gruppen des anderen Servers enden,
+Seiten von dort verschwinden. Das **Prüfprotokoll** zeigt Verbindungen, Freigaben über Servergrenzen und abgewiesene
+Anfragen – nie Inhalte. Interne Adressen (192.168.x, 10.x …) erreicht Saga nur, wenn sie unter Allgemein →
+„Freigegebene interne Hosts“ stehen; andere Server verbinden sich nur über https.
+
+**Teilen:** Im Teilen-Dialog `name@server` (oder `@name@server`) eingeben – Saga fragt den verbundenen Server, ob es die
+Person bzw. Gruppe gibt, und zeigt sie mit Herkunft an („Bert (bert@verein.example)“). Dafür brauchst du einen
+öffentlichen Namen (Einstellungen → Konto). Personen anderer Server erscheinen in „Mit mir geteilt“, in Kommentaren und
+Benachrichtigungen immer mit `@server`, damit niemand mit einem gleichnamigen Konto hier verwechselt wird. Ist „Teilen
+nur innerhalb gemeinsamer Gruppen“ an, geht Teilen mit anderen Servern nicht.
+
+**Geteilt bekommen:** Seiten anderer Server stehen in **„Mit mir geteilt“** (mit `name@server`), öffnen sich im
+normalen Editor und lassen sich je nach Rolle lesen, kommentieren und bearbeiten (Titel und Inhalt; bei
+gleichzeitigem Bearbeiten greift der bekannte Konflikt-Hinweis). Bilder kommen über den eigenen Server. Du brauchst
+dafür einen öffentlichen Namen. Benachrichtigungen („hat eine Seite mit dir geteilt“, „hat geantwortet“) kommen auch
+über Servergrenzen – ohne Kommentartext.
+
+**Noch nicht über Servergrenzen** (diese Runde): Datenbanken anderer Server öffnen (es erscheint ein Hinweis), Bilder
+in fremde Seiten hochladen, Unterseiten anlegen, Versionen, Export, „Wer gerade hier ist“ und Live-Aktualisierung,
+Chat. Wer seinen öffentlichen Namen ändert oder sein Konto löscht, verliert Freigaben anderer Server (sie werden dort
+entfernt); der alte Name wird für andere Konten gesperrt.
+
 ### Benachrichtigungen und Live-Aktualisierung
 
 Saga hält das Dashboard und offene Seiten auf dem neuesten Stand – ohne Neuladen.
@@ -777,6 +819,8 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `LIVE_PING` | `25` | Sekunden bis zur Heartbeat-Zeile im Live-Kanal (hält Proxys offen) |
 | `LIVE_MAX_PER_USER` / `LIVE_MAX_TOTAL` | `5` / `2000` | Live-Verbindungen je Konto (die älteste wird geschlossen) / insgesamt |
 | `LIVE_MAX_AGE` | `3600` | Nach so vielen Sekunden baut der Browser die Live-Verbindung neu auf (Sitzung wird dabei frisch geprüft) |
+| `FED_ALLOW_HTTP` | – | `1` = Föderation auch über http (nur für Tests; sonst nur https) |
+| `FED_RATE` / `FED_TIMEOUT` | `600` / `10` | Anfragen je Minute und verbundener Instanz / Sekunden bis zur Zeitüberschreitung |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Websuche (Abschnitt 10) |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Sprache und Filter der Websuche |
 | `LOG_LEVEL` | `info` | Ausführlichkeit des Logs |

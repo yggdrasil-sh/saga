@@ -508,6 +508,45 @@ it from the account’s next sign-in. The user detail page only shows the number
 When an account is deleted, its shares and the shares given to it disappear; its comments on other people’s pages
 remain as “Deleted account”. When a group is deleted, shares with it end.
 
+### Sharing with other Saga instances (federation)
+
+Several Saga servers (e.g. yours and a club's) can be connected. After that, a page can also be shared with
+**name@server** – a person there (via their public name, see “Publishing pages”) or a group there
+(**group@server**). Content always stays on the owner's server: the other person reads, comments and edits through
+their own Saga server, which asks the owner's server in the background. The owner's server always decides the role –
+revoking access takes effect immediately. Everything uses the normal HTTPS port; there is no extra service.
+
+**Connecting (admins of both servers):**
+1. Admin area → **Federation** → “Turn on federation” (default: off). It shows your address and your **fingerprint**
+   (a short form of this server's public key).
+2. Server A: **“Create invite code”** – give the address and code to the admin of server B (the code is valid for 24
+   hours and can be used once).
+3. Server B: enter the address and code under “Connect to an instance” → Saga shows A's fingerprint. If it matches the
+   one A gave you (ideally compare it through a second channel) → “Fingerprint matches – connect”.
+4. Server A: the request appears under “Connected instances” with B's fingerprint → **Confirm**. Both are now
+   connected. If B couldn't be reached at that moment, use “Check status” there.
+
+**Disconnecting** (either side, any time) takes effect immediately: all shares with people and groups of the other
+server end, and pages from there disappear. The **audit log** shows connections, shares across servers and rejected
+requests – never content. Saga only reaches internal addresses (192.168.x, 10.x …) if they are listed under General →
+“Allowed internal hosts”; other servers only connect over https.
+
+**Sharing:** in the share dialog, enter `name@server` (or `@name@server`) – Saga asks the connected server whether the
+person or group exists and shows them with their origin (“Bert (bert@club.example)”). You need a public name for this
+(Settings → Account). People from other servers always appear with `@server` in “Shared with me”, comments and
+notifications, so nobody is mistaken for an account here with the same name. If “Only within shared groups” is on,
+sharing with other servers isn't possible.
+
+**Receiving shares:** pages from other servers are listed under **“Shared with me”** (with `name@server`), open in the
+normal editor and can be read, commented on and edited depending on the role (title and content; editing at the same
+time triggers the usual conflict notice). Images come through your own server. You need a public name for this.
+Notifications (“shared a page with you”, “replied”) also work across servers – without the comment text.
+
+**Not yet across servers** (this round): opening databases from other servers (a notice is shown), uploading images
+into other servers' pages, creating subpages, versions, export, “who's here” and live updates, chat. Anyone who
+changes their public name or deletes their account loses shares from other servers (they are removed there); the old
+name is blocked for other accounts.
+
 ### Notifications and live updates
 
 Saga keeps the dashboard and open pages up to date – without reloading.
@@ -762,6 +801,8 @@ with the same account also switch the oldest ones to polling.
 | `LIVE_PING` | `25` | Seconds until the heartbeat line in the live channel (keeps proxies open) |
 | `LIVE_MAX_PER_USER` / `LIVE_MAX_TOTAL` | `5` / `2000` | Live connections per account (the oldest is closed) / in total |
 | `LIVE_MAX_AGE` | `3600` | After this many seconds the browser reopens the live connection (the session is checked again) |
+| `FED_ALLOW_HTTP` | – | `1` = allow federation over http (tests only; otherwise https only) |
+| `FED_RATE` / `FED_TIMEOUT` | `600` / `10` | Requests per minute and connected instance / seconds until timeout |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Web search (section 10) |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Language and filter of the web search |
 | `LOG_LEVEL` | `info` | Log verbosity |

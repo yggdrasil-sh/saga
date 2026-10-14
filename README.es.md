@@ -45,6 +45,8 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
   sin JavaScript y, opcionalmente, como página de inicio para visitantes
 - **Compartir y comentar:** comparte páginas y bases de datos con personas o grupos (locales, LDAP, SSO): roles Ver,
   Comentar, Editar, las subpáginas heredan el acceso; comentarios discretos en los bloques con «Resuelto»
+- **Federación:** conecta servidores Saga y comparte páginas con nombre@servidor: el contenido se queda con el
+  propietario y cada solicitud entre servidores va firmada (Ed25519, HTTP Message Signatures)
 - **Tareas** con fecha límite, prioridad y repetición
 - **Calendarios (CalDAV):** ver y editar Nextcloud, mailcow/SOGo, Radicale, iCloud…
 - **Immich:** usa tus propias fotos como imágenes y portadas

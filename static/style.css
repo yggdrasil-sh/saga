@@ -1683,3 +1683,6 @@ body.pg-lock-on #pg-editor .embed-db :is(.db-new-top,.db-tab-add,.db-gear,.db-ne
 .fed-acts form{margin:0}
 .fed-log td{vertical-align:top}
 .sh-av-r{box-shadow:0 0 0 2px var(--card),0 0 0 3px var(--accent)}
+/* Seite einer anderen Saga-Instanz: Symbol, Titelbild und Tags bleiben beim Eigentuemer */
+.pg-remote .cover-btns,.pg-remote #pg-addcover,.pg-remote #pg-tags .tag-add{display:none!important}
+.pg-remote #pg-icon,.pg-remote #pg-tags{pointer-events:none}

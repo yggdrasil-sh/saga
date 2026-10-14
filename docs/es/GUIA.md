@@ -527,6 +527,48 @@ usos compartidos, nunca contenidos. Al eliminar
 una cuenta desaparecen sus usos compartidos y los que se le dieron; sus comentarios en páginas de otros quedan como
 «Cuenta eliminada». Al eliminar un grupo terminan los usos compartidos con él.
 
+### Compartir con otras instancias de Saga (federación)
+
+Se pueden conectar varios servidores Saga (por ejemplo, el tuyo y el de una asociación). Después, una página también
+se puede compartir con **nombre@servidor**: una persona de allí (con su nombre público, ver «Publicar páginas») o un
+grupo de allí (**grupo@servidor**). El contenido siempre se queda en el servidor del propietario: la otra persona lee,
+comenta y edita a través de su propio servidor Saga, que consulta al servidor del propietario en segundo plano. El rol
+lo decide siempre el servidor del propietario; retirar el acceso surte efecto al instante. Todo pasa por el puerto
+HTTPS normal; no hay ningún servicio adicional.
+
+**Conectar (administradores de ambos servidores):**
+1. Área de administración → **Federación** → «Activar la federación» (por defecto: desactivada). Ahí aparecen tu
+   dirección y tu **huella** (forma corta de la clave pública de este servidor).
+2. Servidor A: **«Crear código de invitación»**: da la dirección y el código al administrador del servidor B (el código
+   vale 24 horas y una sola vez).
+3. Servidor B: en «Conectar con una instancia», escribe la dirección y el código → Saga muestra la huella de A. Si
+   coincide con la que te dio A (mejor compararla por una segunda vía) → «La huella coincide: conectar».
+4. Servidor A: la solicitud aparece en «Instancias conectadas» con la huella de B → **Confirmar**. Ya están
+   conectados. Si B no estaba disponible en ese momento, usa allí «Comprobar estado».
+
+**Desconectar** (cualquiera de las dos partes, en cualquier momento) surte efecto al instante: terminan todos los usos
+compartidos con personas y grupos del otro servidor y desaparecen las páginas de allí. El **registro de auditoría**
+muestra conexiones, usos compartidos entre servidores y solicitudes rechazadas, nunca contenido. Saga solo accede a
+direcciones internas (192.168.x, 10.x …) si figuran en General → «Hosts internos permitidos»; los otros servidores
+solo se conectan por https.
+
+**Compartir:** en el diálogo de compartir, escribe `nombre@servidor` (o `@nombre@servidor`): Saga pregunta al servidor
+conectado si existe la persona o el grupo y lo muestra con su origen («Bert (bert@asociacion.example)»). Para ello
+necesitas un nombre público (Ajustes → Cuenta). Las personas de otros servidores aparecen siempre con `@servidor` en
+«Compartido conmigo», en los comentarios y en las notificaciones, para que nadie se confunda con una cuenta de aquí del
+mismo nombre. Si está activado «Solo dentro de grupos en común», no se puede compartir con otros servidores.
+
+**Recibir:** las páginas de otros servidores aparecen en **«Compartido conmigo»** (con `nombre@servidor`), se abren en
+el editor normal y, según el rol, se pueden leer, comentar y editar (título y contenido; si se edita a la vez aparece
+el aviso de conflicto de siempre). Las imágenes llegan a través de tu propio servidor. Para ello necesitas un nombre
+público. Las notificaciones («ha compartido una página contigo», «ha respondido») también funcionan entre servidores,
+sin el texto del comentario.
+
+**Todavía no entre servidores** (en esta versión): abrir bases de datos de otros servidores (aparece un aviso), subir
+imágenes a páginas de otros servidores, crear subpáginas, versiones, exportar, «quién está aquí» y actualización en
+directo, chat. Quien cambia su nombre público o elimina su cuenta pierde los usos compartidos de otros servidores (se
+eliminan allí); el nombre antiguo queda bloqueado para otras cuentas.
+
 ### Notificaciones y actualización en directo
 
 Saga mantiene al día el panel y las páginas abiertas, sin recargar.
@@ -789,6 +831,8 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `LIVE_PING` | `25` | Segundos hasta la línea de latido del canal en directo (mantiene abiertos los proxies) |
 | `LIVE_MAX_PER_USER` / `LIVE_MAX_TOTAL` | `5` / `2000` | Conexiones en directo por cuenta (se cierra la más antigua) / en total |
 | `LIVE_MAX_AGE` | `3600` | Tras estos segundos el navegador vuelve a abrir la conexión en directo (se comprueba de nuevo la sesión) |
+| `FED_ALLOW_HTTP` | – | `1` = federación también por http (solo para pruebas; si no, solo https) |
+| `FED_RATE` / `FED_TIMEOUT` | `600` / `10` | Solicitudes por minuto e instancia conectada / segundos hasta el tiempo de espera |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Búsqueda web (sección 10) |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Idioma y filtro de la búsqueda web |
 | `LOG_LEVEL` | `info` | Nivel de detalle del log |

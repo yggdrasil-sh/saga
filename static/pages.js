@@ -358,7 +358,7 @@
     fed.then(function (items) {
       if (items === null || my !== S.fedSeq) return;
       S.fedShared = items; S.shared = S.shared.filter(function (p) { return !remoteId(p.id); }).concat(items);
-      renderShared(); renderCrumbs();
+      renderTree(); renderCrumbs();                     // renderTree: auch der Leer-Hinweis rechts
     });
     return Promise.all([api('GET', '/api/notes'), sh]).then(function (r) {
       var list = r[0];
@@ -729,7 +729,7 @@
   var EMOJI = ['📄', '📝', '📌', '📚', '💡', '✅', '🗂️', '📅', '🧭', '🛠️', '🖥️', '🌐', '🔐', '🔑', '🧪', '🐛',
                '🚀', '⚙️', '📦', '🗄️', '☁️', '🧾', '💶', '📊', '🎯', '⭐', '❤️', '🏠', '👪', '✈️', '🎮', '🍳'];
   $('pg-icon').addEventListener('click', function () {
-    var btn = this; if (readOnly()) return;
+    var btn = this; if (readOnly() || (S.cur && remoteId(S.cur.id))) return;
     HK.openMenu(btn, function (m) {
       m.appendChild(HK.menuLabel(T('Icon')));
       var g = el('div', 'emoji-grid');
@@ -3781,6 +3781,8 @@
     document.body.classList.toggle('pg-locked', ro);
     document.body.classList.toggle('pg-ro', roRole());
     document.body.classList.toggle('pg-lock-on', on);        // gesperrt: in Datenbank-Bloecken kein "Neu", keine Ansichts-Einstellungen
+    // Seite einer anderen Saga-Instanz: nur Titel und Inhalt aenderbar (kein Symbol, Titelbild, keine Tags)
+    document.body.classList.toggle('pg-remote', !!S.cur && remoteId(S.cur.id));
     $('pg-title').readOnly = ro;
     var b = $('pg-lock');
     if (!b) {
@@ -3912,8 +3914,8 @@
     function who(x) {
       var li = el('li', 'sh-item'); li.appendChild(avatar(x.type, x.name));
       var tx = el('span', 'sh-who'); tx.appendChild(el('span', 'sh-name', x.name || x.target));
-      var sub = x.type === 'remote' ? T('Andere Saga-Instanz · {addr}', { addr: x.target.replace(/^@/, '') })
-        : x.type === 'remote_group' ? T('Gruppe auf {addr}', { addr: x.target })
+      var sub = x.type === 'remote' ? T('Andere Saga-Instanz')               // Name enthaelt schon name@server
+        : x.type === 'remote_group' ? T('Gruppe auf einer anderen Saga-Instanz')
         : x.type !== 'group' ? x.target : x.members == null ? T('Gruppe')
         : x.members === 1 ? T('Gruppe · 1 Person') : T('Gruppe · {n} Personen', { n: x.members });
       tx.appendChild(el('small', 'sh-sub', sub)); li.appendChild(tx);
@@ -4000,7 +4002,7 @@
       (d.users || []).forEach(function (u) { add('user', u.username, u.name, u.username); });
       (d.groups || []).forEach(function (g) { add('group', g.name, g.name, T('Gruppe')); });
       (d.remote || []).forEach(function (h) {             // andere Saga-Instanz (genaue Adresse name@server)
-        add(h.type, h.target, h.name, h.type === 'remote' ? T('Andere Saga-Instanz · {addr}', { addr: h.target.replace(/^@/, '') }) : T('Gruppe auf {addr}', { addr: h.target }));
+        add(h.type, h.target, h.name, h.type === 'remote' ? T('Andere Saga-Instanz') : T('Gruppe auf einer anderen Saga-Instanz'));
       });
       hits.hidden = !any; inp.setAttribute('aria-expanded', any ? 'true' : 'false');
       if (!any && inp.value.trim().length >= 3) setErr(T('Niemand gefunden.'));
