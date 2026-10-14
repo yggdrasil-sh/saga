@@ -6,8 +6,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 > **Entwicklung:** Neues landet zuerst auf dem Branch `testing` (Image `ghcr.io/yggdrasil-sh/saga:testing`, wird bei
 > jedem Push gebaut) und wird hier unter `[Unveröffentlicht]` notiert.
-> **Release:** `testing` nach `main` übernehmen, `VERSION` erhöhen, `[Unveröffentlicht]` in `[x.y.z] – Datum`
-> umbenennen und auf `main` pushen. Die GitHub Action legt Tag, Images und Release an.
+> **Version auf `testing`:** Direkt nach einem Release steht in `VERSION` auf `testing` schon die nächste geplante Version
+> (z. B. `1.3.0`). Die Testversion heißt dann `1.3.0-testing.<commit>` – man sieht sofort, welche Version gerade entsteht.
+> Ein Release entsteht dadurch noch nicht.
+> **Release:** auf `testing` `[Unveröffentlicht]` in `[x.y.z] – Datum` umbenennen (passend zu `VERSION`), dann `testing`
+> nach `main` übernehmen und pushen. Die GitHub Action legt Tag, Images und Release an. Danach auf `testing` `VERSION`
+> auf die nächste geplante Version setzen.
 
 ## [Unveröffentlicht]
 
