@@ -50,6 +50,8 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
   seguridad, varios dispositivos
 - **Notificaciones y push:** campana con actualización en directo; si quieres, al móvil/escritorio por Web Push (cifrado
   de extremo a extremo, también iPhone como app en la pantalla de inicio), ntfy/UnifiedPush o Apple Push, sin contenido
+- **Asistente de IA (opcional):** pregunta a tus páginas, resume, sugiere tareas, mejora o traduce texto, con el modelo
+  que elijas (p. ej. Ollama en tu propia red). Solo contenido que puedes ver, fuentes enlazadas, solo sugerencias, desactivado por defecto
 - **Tareas** con fecha límite, prioridad y repetición
 - **Calendarios (CalDAV):** ver y editar Nextcloud, mailcow/SOGo, Radicale, iCloud…
 - **Immich:** usa tus propias fotos como imágenes y portadas

@@ -60,8 +60,13 @@ DEFAULTS = {
              "auto_create": True, "allowed_group": "", "admin_group": "", "services_from_description": False,
              "password_login": True,          # Anmeldung mit Verzeichnis-Passwort auf der Anmeldeseite
              "sso_groups": False},            # Gruppen von SSO-Konten aus dem Verzeichnis lesen (z. B. Keycloak mit FreeIPA)
+    # KI-Assistent (1.6, saga/ai.py): aus, bis der Admin einen Endpunkt eintraegt. pinned = beim Speichern aufgeloeste IPs
+    # (interne Adressen nur diese), groups leer = alle, quota = Anfragen je Person und Tag (0 = unbegrenzt),
+    # context = Zeichen Seiteninhalt je Anfrage, history = Personen duerfen einen Verlauf einschalten
+    "ai": {"enabled": False, "provider": "openai", "url": "", "model": "", "api_key": "", "groups": [], "timeout": 60,
+           "quota": 50, "context": 8000, "history": True, "pinned": []},
 }
-SECRET_FIELDS = {("oidc", "client_secret"), ("ldap", "bind_password"), ("apns", "p8")}
+SECRET_FIELDS = {("oidc", "client_secret"), ("ldap", "bind_password"), ("apns", "p8"), ("ai", "api_key")}
 LDAP_PRESETS = {
     "freeipa": {"user_filter": "(&(objectClass=person)(uid={username})(!(nsAccountLock=TRUE)))", "attr_username": "uid", "attr_name": "cn",
                 "attr_mail": "mail", "group_mode": "memberof", "group_filter": "(member={dn})", "group_name_attr": "cn"},

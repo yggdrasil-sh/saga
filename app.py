@@ -25,7 +25,7 @@ import db
 from version import API_LEVEL, MIN_APP, VERSION
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
-from saga import chat, i18n, live, notify, push
+from saga import ai, chat, i18n, live, notify, push
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, LangMiddleware, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
@@ -188,3 +188,4 @@ app.include_router(notify.router)           # Benachrichtigungen: /api/notificat
 app.include_router(live.router)             # Live-Kanal: /api/events (SSE), /api/presence
 app.include_router(chat.router)             # Chat (E2E): /chats, /api/chat/..., /api/chats/...
 app.include_router(push.router)             # Mitteilungen: /api/push..., /sw.js
+app.include_router(ai.router)               # KI-Assistent: /api/ai/status, /api/ai/ask, /api/ai/page/{nid}, /api/ai/history

@@ -49,6 +49,8 @@ private space – no cloud, no subscription, on your own server.
   server (and the admin) only sees encrypted data – libsodium, recovery key, safety numbers, multiple devices
 - **Notifications and push:** bell with live updates; optionally to phone/desktop via Web Push (end-to-end encrypted,
   also iPhone as a home screen app), ntfy/UnifiedPush or Apple Push – without content
+- **AI assistant (optional):** ask your pages, summarize, suggest tasks, improve or translate text – with a model
+  you choose (e.g. Ollama on your own network). Only content you may see, sources linked, suggestions only, off by default
 - **Tasks** with due dates, priorities and recurrence
 - **Calendars (CalDAV):** view and edit Nextcloud, mailcow/SOGo, Radicale, iCloud …
 - **Immich:** use your own photos as images and cover images

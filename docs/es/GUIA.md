@@ -631,6 +631,49 @@ Apple Push: en la cuenta de Apple Developer, en *Certificates, Identifiers & Pro
 el bundle ID de la app. La clave se guarda cifrada. Sin clave, Apple Push queda desactivado. Saga crea por sí misma
 la clave de Web Push (VAPID) cuando la necesita por primera vez; depende de `SECRET_KEY`.
 
+### Asistente de IA (opcional)
+
+Si el asistente está activado, la vista de páginas muestra arriba **✦ Asistente**. Funciona con un modelo de lenguaje que
+configura el administrador (p. ej. Ollama en tu propia red). **Todo lo que le das al asistente – tu pregunta y los
+fragmentos de páginas correspondientes – se envía a ese endpoint**; su dirección aparece abajo en el panel lateral.
+
+- **Pregunta a tus páginas:** Saga busca en las páginas que *tú* puedes ver (las tuyas y las compartidas contigo; no la
+  papelera ni el archivo), envía los fragmentos más adecuados y muestra la respuesta mientras se escribe. Los números
+  **[1]**, **[2]** llevan a las páginas de origen; debajo aparecen todas las fuentes. Los enlaces a páginas que no puedes
+  ver solo se envían como «Página sin acceso». El asistente solo incluye **tareas** y **calendario** si activas los
+  interruptores bajo el campo de entrada. Nunca lee chats.
+- **Esta página** (también en el menú de página «…» → Asistente de IA): **Resumir**, **Sugerir tareas** (marca las que
+  quieras → «Añadir a tareas» o «Insertar como lista de comprobación»), **Mejorar el texto seleccionado** y
+  **Traducir a …** para los bloques que hayas seleccionado. El resultado es siempre solo una **sugerencia**:
+  «Reemplazar» (tras confirmar), «Insertar debajo» o «Copiar»; el asistente no puede cambiar nada por sí mismo.
+  Reemplazar e insertar solo aparecen si puedes editar la página; las versiones anteriores están en el historial de
+  versiones.
+- **Historial:** desactivado por defecto. En «Historial» puedes activarlo y eliminar entradas sueltas o todo; al
+  desactivarlo se borra el historial guardado. Las fuentes a las que ya no tienes acceso no muestran título.
+- El administrador puede limitar las solicitudes por día («Quedan 12 de 50 solicitudes hoy»). Solo se ejecuta una
+  solicitud por persona a la vez; **Detener** cancela una respuesta.
+
+**Para administradores:** área de administración → **Asistente de IA**. Predeterminado: desactivado.
+
+| Campo | Significado |
+|---|---|
+| Proveedor | *Compatible con OpenAI* (`/v1/chat/completions` – OpenAI, Ollama, LM Studio, vLLM …) u *Ollama* (API propia `/api/chat`) |
+| Dirección | p. ej. `http://ollama.lan:11434/v1` (compatible con OpenAI) o `http://ollama.lan:11434` (Ollama). `http` solo para direcciones internas |
+| Modelo | p. ej. `llama3.1:8b`; «Probar conexión» lista los modelos ofrecidos y pide una respuesta corta |
+| Clave API | opcional, se guarda cifrada (como LDAP/OIDC); vacío = conservar |
+| Solo para estos grupos | vacío = todas las cuentas; si no, solo los miembros (grupos locales, LDAP o SSO) |
+| Tiempo límite, solicitudes por persona y día, contenido de páginas por solicitud | límites (0 solicitudes = ilimitado) |
+| Permitir historial | las personas pueden activar su historial |
+
+Saga solo abre conexiones **salientes** a exactamente esta dirección; no hay ningún puerto adicional. Se permiten
+direcciones internas (Ollama en la LAN), pero solo con las direcciones IP resueltas al guardar («Direcciones fijadas»);
+si la dirección cambia en el DNS, vuelve a guardar. Saga no sigue redirecciones. `AI_MAX_PARALLEL` limita las solicitudes
+simultáneas en total (por defecto 4). Las preguntas, el contenido y las respuestas nunca acaban en el registro.
+
+Para protegerse de instrucciones inyectadas («Ignora todas las reglas …» dentro de una página), Saga marca el contenido
+de las páginas como datos para el modelo y no da al asistente ningún permiso de escritura. Aun así, un modelo de lenguaje
+puede equivocarse o dejarse influir por el contenido: revisa las respuestas, sobre todo en páginas compartidas.
+
 ### Cuenta, calendarios, Immich, apps
 
 En el menú de usuario, arriba a la derecha, en **Ajustes** (una pestaña para cada cosa):

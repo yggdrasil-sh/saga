@@ -606,6 +606,48 @@ Notifications service (APNs)”, upload the `.p8` file (offered only once) and e
 bundle ID. The key is stored encrypted. Without a key, Apple Push stays off. Saga creates the Web Push key (VAPID)
 itself when first needed; it depends on `SECRET_KEY`.
 
+### AI assistant (optional)
+
+When the assistant is turned on, the pages view shows **✦ Assistant** at the top. It works with a language model the
+admin sets up (e.g. Ollama on your own network). **Everything you give the assistant – your question and the matching
+excerpts from pages – is sent to this endpoint**; its address is shown at the bottom of the side panel.
+
+- **Ask your pages:** Saga searches the pages *you* are allowed to see (your own and those shared with you; not trash or
+  archive), sends the best-matching excerpts along and shows the answer as it is written. The numbers **[1]**, **[2]**
+  lead to the source pages; all sources are listed below. Links to pages you can't see are only sent as “Page without
+  access”. The assistant only includes **tasks** and **calendar** when you turn on the switches below the input field.
+  It never reads chats.
+- **This page** (also in the page menu “…” → AI assistant): **Summarize**, **Suggest tasks** (tick the ones you want →
+  “Add to tasks” or “Insert as checklist”), **Improve selected text** and **Translate to …** for the blocks you have
+  selected. The result is always just a **suggestion**: “Replace” (after confirming), “Insert below” or “Copy” – the
+  assistant itself can't change anything. Replace and insert are only offered if you may edit the page; earlier
+  versions are in the version history.
+- **History:** off by default. Under “History” you can turn it on and delete single entries or everything; turning it
+  off deletes the saved history. Sources you no longer have access to don't show a title.
+- The admin can limit the number of requests per day (“12 of 50 requests left today”). Only one request per person runs
+  at a time; **Stop** cancels an answer.
+
+**For admins:** admin area → **AI assistant**. Default: off.
+
+| Field | Meaning |
+|---|---|
+| Provider | *OpenAI-compatible* (`/v1/chat/completions` – OpenAI, Ollama, LM Studio, vLLM …) or *Ollama* (native API `/api/chat`) |
+| Address | e.g. `http://ollama.lan:11434/v1` (OpenAI-compatible) or `http://ollama.lan:11434` (Ollama). `http` only for internal addresses |
+| Model | e.g. `llama3.1:8b` – “Test connection” lists the models offered and fetches a short answer |
+| API key | optional, stored encrypted (like LDAP/OIDC); leave empty = keep |
+| Only for these groups | empty = all accounts, otherwise only members (local, LDAP or SSO groups) |
+| Time limit, requests per person and day, page content per request | limits (0 requests = unlimited) |
+| Allow history | people may turn on their history |
+
+Saga only makes **outgoing** connections to exactly this address – no extra port. Internal addresses (LAN Ollama) are
+allowed, but only with the IP addresses resolved when saving (“Pinned addresses”); if the address changes in DNS, save
+once more. Saga doesn't follow redirects. `AI_MAX_PARALLEL` limits concurrent requests overall (default 4). Questions,
+content and answers never end up in the log.
+
+To protect against injected instructions (“Ignore all rules …” inside a page), Saga marks page content as data for the
+model and gives the assistant no write access at all. A language model can still be wrong or be influenced by page
+content – so check answers, especially for shared pages.
+
 ### Account, calendars, Immich, apps
 
 In the user menu at the top right under **Settings** (one tab each):

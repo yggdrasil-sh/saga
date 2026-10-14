@@ -13,7 +13,7 @@ from saga.sharing import delete_account, share_counts
 # gleichem Namen fremde Seiten, Kalender-Zugaenge usw.
 USER_TABLES = ("task", "note", "note_version", "bookmark", "fav", "device_login", "app_token", "user_kv",
                "immich_key", "cal_account", "app_code", "pair_code", "note_publish", "public_name", "notification",
-               "chat_identity", "chat_device", "chat_link", "push_sub", "push_queue")
+               "chat_identity", "chat_device", "chat_link", "push_sub", "push_queue", "ai_history", "ai_usage")
 
 
 def delete_user_data(uid):

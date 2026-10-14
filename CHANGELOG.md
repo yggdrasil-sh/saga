@@ -40,6 +40,25 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
     `MIN_APP` bleibt 1.0.0 (nichts Bestehendes geändert)
   - Neue Tabellen `chat_identity`, `chat_device`, `chat`, `chat_member`, `chat_msg`, `chat_msg_key`, `chat_file`,
     `chat_link` (keine Migration nötig); Anhänge unter `STATE_DIR/chat`, `CHAT_QUOTA_MB` (Standard 1024)
+- **KI-Assistent (optional, Admin → „KI-Assistent“, Standard aus):** Saga fragt ein Sprachmodell, das der Admin
+  einträgt – OpenAI-kompatibel (`/v1/chat/completions`, auch Ollama `/v1`, LM Studio, vLLM) oder Ollama nativ
+  (`/api/chat`); Adresse, Modell, API-Schlüssel (verschlüsselt), erlaubte Gruppen, Zeitlimit, Anfragen je Person und
+  Tag, Seiteninhalt je Anfrage, Verlauf erlauben; „Verbindung testen“ listet die Modelle und holt eine kurze Antwort.
+  Nur ausgehende Verbindungen zu genau dieser Adresse, kein zusätzlicher Port; interne Adressen nur mit den beim
+  Speichern festgehaltenen IPs (SSRF-Schutz beim Verbindungsaufbau), keine Weiterleitungen.
+  - **✦ Assistent** auf der Seiten-Ansicht (Seitenleiste rechts, Handy: Bottom-Sheet) und im Seitenmenü:
+    **Frag deine Seiten** – Volltextsuche nur über Seiten, die die Person sehen darf (eigene und geteilte, ohne
+    Papierkorb/Archiv; Verweise ohne Zugriff maskiert), beste Abschnitte als Kontext, Antwort gestreamt (SSE) mit
+    Quellen [n] als Links; Aufgaben und Kalender nur per Schalter, Chats nie. **Diese Seite** – Zusammenfassen,
+    Aufgaben vorschlagen (übernehmen in Aufgaben oder als Checkliste), markierten Text verbessern/übersetzen.
+    Ergebnisse sind immer Vorschläge (Ersetzen mit Rückfrage, Darunter einfügen, Kopieren) – der Assistent hat keine
+    Schreibrechte
+  - Seiteninhalte gehen als gekennzeichnete Daten an das Modell (Schutz vor untergeschobenen Anweisungen); Hinweis
+    „Inhalte … gehen an {host}“ bei jeder Nutzung; keine Fragen/Inhalte in Logs
+  - Verlauf je Person (Standard aus; ausschalten = löschen; einzeln löschbar); eine Anfrage je Person gleichzeitig,
+    insgesamt `AI_MAX_PARALLEL` (Standard 4); Kontolöschung entfernt Verlauf und Zähler
+  - API für die Apps: `GET /api/ai/status`, `POST /api/ai/ask`, `POST /api/ai/page/{id}`, `GET/DELETE /api/ai/history`,
+    `PUT /api/ai/settings` (neue Tabellen `ai_usage`, `ai_history`, keine Migration)
 - **Teilen mit Personen und Gruppen:** Knopf „Teilen“ im Seitenkopf (nur Eigentümer) bzw. Seitenmenü → „Teilen …“.
   Personensuche ab 3 Zeichen (Anzeigename + Benutzername, nie eine Liste aller Konten), Gruppen nur, in denen man
   selbst ist (lokal, LDAP, SSO), Rollen **Lesen**, **Kommentieren**, **Bearbeiten**; Rolle ändern und Freigabe

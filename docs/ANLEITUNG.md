@@ -623,6 +623,48 @@ Notifications service (APNs)“ anlegen, die `.p8`-Datei (gibt es nur einmal) ho
 Bundle-ID der App eintragen. Der Schlüssel wird verschlüsselt gespeichert. Ohne Schlüssel bleibt Apple Push aus.
 Den Schlüssel für Web Push (VAPID) erzeugt Saga beim ersten Bedarf selbst; er hängt am `SECRET_KEY`.
 
+### KI-Assistent (optional)
+
+Ist der Assistent eingeschaltet, steht auf der Seiten-Ansicht oben **✦ Assistent**. Er arbeitet mit einem Sprachmodell,
+das der Admin einträgt (z. B. Ollama im eigenen Netz). **Alles, was du dem Assistenten gibst – deine Frage und die dazu
+passenden Ausschnitte aus Seiten –, geht an diesen Endpunkt**; die Adresse steht unten in der Seitenleiste.
+
+- **Frag deine Seiten:** Saga sucht in den Seiten, die *du* sehen darfst (eigene und mit dir geteilte; Papierkorb und
+  Archiv nicht), schickt die passendsten Abschnitte mit und zeigt die Antwort Wort für Wort. Die Zahlen **[1]**, **[2]**
+  führen zu den Quellseiten; darunter stehen alle Quellen. Verweise auf Seiten, die du nicht sehen darfst, gehen nur
+  als „Seite ohne Zugriff“ mit. **Aufgaben** und **Kalender** nimmt der Assistent nur dazu, wenn du die Schalter unter
+  dem Eingabefeld einschaltest. Chats liest er nie.
+- **Diese Seite** (auch im Seitenmenü „…“ → KI-Assistent): **Zusammenfassen**, **Aufgaben vorschlagen** (Auswahl
+  ankreuzen → „In Aufgaben übernehmen“ oder „Als Checkliste einfügen“), **Markierten Text verbessern** und
+  **Übersetzen nach …** für die Blöcke, die du gerade markiert hast. Das Ergebnis ist immer nur ein **Vorschlag**:
+  „Ersetzen“ (mit Rückfrage), „Darunter einfügen“ oder „Kopieren“ – der Assistent selbst kann nichts ändern.
+  Ersetzen und Einfügen gibt es nur, wenn du die Seite bearbeiten darfst; frühere Fassungen stehen im Versionsverlauf.
+- **Verlauf:** standardmäßig aus. Unter „Verlauf“ kannst du ihn einschalten, einzelne Einträge oder alles löschen;
+  Ausschalten löscht den gespeicherten Verlauf. Quellen, auf die du keinen Zugriff mehr hast, zeigen keinen Titel mehr.
+- Der Admin kann die Zahl der Anfragen je Tag begrenzen („Heute noch 12 von 50 Anfragen“). Es läuft immer nur eine
+  Anfrage je Person; **Stopp** bricht eine Antwort ab.
+
+**Für Admins:** Admin-Bereich → **KI-Assistent**. Standard: aus.
+
+| Feld | Bedeutung |
+|---|---|
+| Anbieter | *OpenAI-kompatibel* (`/v1/chat/completions` – OpenAI, Ollama, LM Studio, vLLM …) oder *Ollama* (eigene Schnittstelle `/api/chat`) |
+| Adresse | z. B. `http://ollama.lan:11434/v1` (OpenAI-kompatibel) bzw. `http://ollama.lan:11434` (Ollama). `http` nur für interne Adressen |
+| Modell | z. B. `llama3.1:8b` – „Verbindung testen“ listet die angebotenen Modelle und holt eine kurze Antwort |
+| API-Schlüssel | optional, verschlüsselt gespeichert (wie LDAP/OIDC); leer lassen = behalten |
+| Nur für diese Gruppen | leer = alle Konten, sonst nur Mitglieder (lokale, LDAP- oder SSO-Gruppen) |
+| Zeitlimit, Anfragen je Person und Tag, Seiteninhalt je Anfrage | Grenzen (0 Anfragen = unbegrenzt) |
+| Verlauf erlauben | Personen dürfen ihren Verlauf einschalten |
+
+Saga baut nur **ausgehende** Verbindungen zu genau dieser Adresse auf – kein zusätzlicher Port. Interne Adressen (LAN-Ollama)
+sind erlaubt, aber nur mit den IP-Adressen, die beim Speichern aufgelöst wurden („Festgehaltene Adressen“); ändert sich
+die Adresse im DNS, einmal neu speichern. Weiterleitungen folgt Saga nicht. Gleichzeitige Anfragen insgesamt begrenzt
+`AI_MAX_PARALLEL` (Standard 4). Fragen, Inhalte und Antworten landen nie im Log.
+
+Zum Schutz vor untergeschobenen Anweisungen („Ignoriere alle Regeln …“ in einer Seite) kennzeichnet Saga Seiteninhalte
+für das Modell als Daten und gibt dem Assistenten keinerlei Schreibrechte. Ein Sprachmodell kann sich trotzdem irren
+oder sich von Seiteninhalten beeinflussen lassen – Antworten deshalb prüfen, besonders bei geteilten Seiten.
+
 ### Konto, Kalender, Immich, Apps
 
 Im Benutzermenü oben rechts unter **Einstellungen** (je ein Reiter):
