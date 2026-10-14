@@ -600,6 +600,7 @@ speichert nur verschlüsselte Daten. Auch der Admin kann keine Inhalte lesen.
   schon laufen, erscheint die Anfrage mit einem 20-stelligen Code (vier Fünfergruppen); stimmt er vollständig mit dem Code auf dem neuen Gerät
   überein, bestätigen – oder den **Wiederherstellungsschlüssel eingeben**. Danach liest das neue Gerät auch den bisherigen Verlauf.
   Wer beides nicht mehr hat, kann **neu beginnen** (neue Schlüssel; alte Nachrichten sind dann nicht mehr lesbar).
+  Dafür fragt Saga nach deinem Passwort; bei SSO-Konten meldest du dich kurz neu an (danach 5 Minuten Zeit).
 - **Unterhaltungen:** **„+ Neu“** → Person suchen (ab 3 Zeichen) für einen **Direkt-Chat**, eine eigene Gruppe für einen
   **Gruppen-Chat** (Mitglieder folgen der Gruppe, auch aus LDAP/SSO) oder „Gruppe mit mehreren Personen“ für eine
   **freie Gruppe** (der Ersteller lädt ein und entfernt; der Name ist verschlüsselt). Auf geteilten Seiten öffnet

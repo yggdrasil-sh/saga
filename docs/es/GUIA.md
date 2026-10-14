@@ -607,6 +607,7 @@ servidor solo guarda datos cifrados. Tampoco el administrador puede leer el cont
   funcionan aparece la solicitud con un código de 20 cifras (cuatro grupos de cinco); confírmala solo si coincide por completo con el código del dispositivo
   nuevo – o **introducir la clave de recuperación**. Después, el dispositivo nuevo también lee el historial. Si no tienes
   ninguna de las dos, puedes **empezar de nuevo** (claves nuevas; los mensajes anteriores ya no se podrán leer).
+  Antes, Saga te pide la contraseña; con cuentas SSO vuelves a iniciar sesión (después tienes 5 minutos).
 - **Conversaciones:** **«+ Nuevo»** → busca una persona (mín. 3 caracteres) para un **chat directo**, uno de tus grupos
   para un **chat de grupo** (los miembros siguen al grupo, también desde LDAP/SSO) o «grupo con varias personas» para un
   **grupo libre** (quien lo crea invita y elimina; el nombre va cifrado). En páginas compartidas, **«💬 Chat»** en la

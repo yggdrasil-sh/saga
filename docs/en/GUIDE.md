@@ -581,7 +581,8 @@ only stores encrypted data. The admin can't read any content either.
 - **New device or browser:** either **“Confirm with another device”** – on a device where chats already work, the request
   appears with a 20-digit code (four groups of five); confirm it only if it fully matches the code on the new device – or **enter the recovery key**.
   Afterwards the new device can also read the previous history. If you have neither, you can **start over** (new keys;
-  old messages can no longer be read).
+  old messages can no longer be read). Saga asks for your password first; SSO accounts sign in again briefly
+  (then you have 5 minutes).
 - **Conversations:** **“+ New”** → search a person (3+ characters) for a **direct chat**, one of your groups for a
   **group chat** (members follow the group, also from LDAP/SSO) or “group with several people” for a **custom group**
   (the creator invites and removes; the name is encrypted). On shared pages **“💬 Chat”** in the page header opens the

@@ -15,68 +15,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
-### Neu
-- **Chats mit Ende-zu-Ende-Verschlüsselung (1.5):** neue Seite `/chats` (Knopf „Chats“ mit Ungelesen-Zahl im Kopf von
-  Dashboard und Seiten, „💬 Chat“ im Kopf geteilter Seiten). **Direkt-Chats**, **Gruppen-Chats** für Saga-Gruppen
-  (Mitglieder folgen der Gruppe, lokal/LDAP/SSO), **freie Gruppen** mit Einladung (Name verschlüsselt) und
-  **Seiten-Chats** (alle mit Zugriff laut Freigaben). Antworten, für alle löschen, Bilder/Dateien (clientseitig
-  verschlüsselt), @-Seitenverweise (Titel nur mit eigenem Zugriff), „tippt …“, Stummschalten, Aufbewahrungsfrist je Chat,
-  lokale Suche, Sicherheitsnummer (60 Ziffern, Warnung bei Wechsel), Live über den vorhandenen Kanal (ohne Inhalt),
-  Benachrichtigung „Neue Nachricht von Name“ (gebündelt, ohne Inhalt, abschaltbar)
-  - Einrichtung mit **Wiederherstellungsschlüssel** (32 Zeichen Base32), neues Gerät per **Bestätigung auf einem
-    vorhandenen Gerät (20-stelliger Code)** oder Wiederherstellungsschlüssel, „Neu beginnen“; „Chats & Geräte“:
-    Geräteliste, entfernen (wirkt sofort, live), neuer Wiederherstellungsschlüssel
-  - Krypto-Format v1 nur mit libsodium-Primitiven (Ed25519, X25519/`crypto_box_seal`, XChaCha20-Poly1305,
-    Argon2id, BLAKE2b); Browser: libsodium.js 0.8.4 (Sumo, ISC) unter `static/vendor/libsodium` (`tools/vendor-libsodium.sh`),
-    nur `/chats` erlaubt zusätzlich `'wasm-unsafe-eval'` in der CSP. Der Server prüft Geräte-Zertifikate und
-    Nachrichten-Signaturen mit dem vorhandenen `cryptography` (keine neue Server-Abhängigkeit) und verlangt, dass jede
-    Nachricht genau für alle aktuellen Mitglieder-Geräte + Backup-Schlüssel versiegelt ist
-  - Testvektoren `tests/chat_vectors.json` (PyNaCl ↔ libsodium.js: `tools/chat_vectors.py`, `tools/chat_vectors.mjs`),
-    Referenz in Python `tests/chatlib.py`; neue Testreihe `tests/chat` (PyNaCl 1.6.2 nur für Tests)
-  - Admin → Allgemein: „Chats erlauben“, „Nachrichten höchstens aufbewahren (Tage)“; Benutzer-Detail nur Anzahlen.
-    Kontolöschung entfernt Schlüssel, Geräte, Mitgliedschaften, gesendete Nachrichten, Anhänge und Direkt-Chats
-  - Schnittstelle für die Apps: `/api/chat/…` und `/api/chats/…` (siehe Anleitung, Abschnitt Chats); Live-Ereignisse
-    `chat.message`, `chat.deleted`, `chat.read`, `chat.typing`, `chat.changed`, `chat.link`, `chat.device`.
-    `MIN_APP` bleibt 1.0.0 (nichts Bestehendes geändert)
-  - Neue Tabellen `chat_identity`, `chat_device`, `chat`, `chat_member`, `chat_msg`, `chat_msg_key`, `chat_file`,
-    `chat_link` (keine Migration nötig); Anhänge unter `STATE_DIR/chat`, `CHAT_QUOTA_MB` (Standard 1024)
-- **KI-Assistent (optional, Admin → „KI-Assistent“, Standard aus):** Saga fragt ein Sprachmodell, das der Admin
-  einträgt – OpenAI-kompatibel (`/v1/chat/completions`, auch Ollama `/v1`, LM Studio, vLLM) oder Ollama nativ
-  (`/api/chat`); Adresse, Modell, API-Schlüssel (verschlüsselt), erlaubte Gruppen, Zeitlimit, Anfragen je Person und
-  Tag, Seiteninhalt je Anfrage, Verlauf erlauben; „Verbindung testen“ listet die Modelle und holt eine kurze Antwort.
-  Nur ausgehende Verbindungen zu genau dieser Adresse, kein zusätzlicher Port; interne Adressen nur mit den beim
-  Speichern festgehaltenen IPs (SSRF-Schutz beim Verbindungsaufbau), keine Weiterleitungen.
-  - **✦ Assistent** auf der Seiten-Ansicht (Seitenleiste rechts, Handy: Bottom-Sheet) und im Seitenmenü:
-    **Frag deine Seiten** – Volltextsuche nur über Seiten, die die Person sehen darf (eigene und geteilte, ohne
-    Papierkorb/Archiv; Verweise ohne Zugriff maskiert), beste Abschnitte als Kontext, Antwort gestreamt (SSE) mit
-    Quellen [n] als Links; Aufgaben und Kalender nur per Schalter, Chats nie. **Diese Seite** – Zusammenfassen,
-    Aufgaben vorschlagen (übernehmen in Aufgaben oder als Checkliste), markierten Text verbessern/übersetzen.
-    Ergebnisse sind immer Vorschläge (Ersetzen mit Rückfrage, Darunter einfügen, Kopieren) – der Assistent hat keine
-    Schreibrechte
-  - Seiteninhalte gehen als gekennzeichnete Daten an das Modell (Schutz vor untergeschobenen Anweisungen); Hinweis
-    „Inhalte … gehen an {host}“ bei jeder Nutzung; keine Fragen/Inhalte in Logs
-  - Verlauf je Person (Standard aus; ausschalten = löschen; einzeln löschbar); eine Anfrage je Person gleichzeitig,
-    insgesamt `AI_MAX_PARALLEL` (Standard 4); Kontolöschung entfernt Verlauf und Zähler
-  - API für die Apps: `GET /api/ai/status`, `POST /api/ai/ask`, `POST /api/ai/page/{id}`, `GET/DELETE /api/ai/history`,
-    `PUT /api/ai/settings` (neue Tabellen `ai_usage`, `ai_history`, keine Migration)
-- **Föderation – mit anderen Saga-Servern teilen (Saga 2.0):** Admin-Bereich → **Föderation**: einschalten (Standard
-  aus), Einladungscode erzeugen, Server mit Adresse + Code verbinden, beide Admins bestätigen mit **Fingerprint**;
-  Liste mit Status, Trennen (sofort), Prüfprotokoll (ohne Inhalte).
-  - Teilen an `name@server` (öffentlicher Name) und `gruppe@server`; Personensuche fragt den verbundenen Server
-    (signiert), Personen anderer Server immer mit Herkunft („Bert (bert@server)“).
-  - **Daten bleiben beim Eigentümer:** Seiten anderer Server stehen in „Mit mir geteilt“, öffnen sich im normalen Editor;
-    Lesen, Bearbeiten (Titel/Inhalt, Konflikt 409) und Kommentieren laufen über den eigenen Server (Proxy), die Rolle
-    prüft der Eigentümer-Server, Gruppen bestätigt der Heimatserver signiert. Bilder über den Proxy, Anmeldenamen
-    verlassen den Server nie (nur öffentliche Namen).
-  - Benachrichtigungen über Servergrenzen (Teilen, Rolle, Kommentar, Antwort) als signierte Ereignisse mit
-    Ausgangskorb und Wiederholung.
-  - Sicherheit: Instanz-Schlüssel Ed25519 (verschlüsselt gespeichert), **HTTP Message Signatures (RFC 9421)** für
-    Anfragen UND Antworten, Content-Digest (RFC 9530), Uhrzeit ±5 min, Nonce gegen Wiederholung, Grenzen je Instanz,
-    ausgehend nur über den SSRF-Schutz (netguard, nur https). Neue Endpunkte `/.well-known/saga`,
-    `/.well-known/webfinger` (nur signiert), `/fed/v1/…`, `/api/fed/shared`, `/api/fed/files/…`.
-  - Neue Tabellen `fed_*` (keine Änderung bestehender Tabellen); öffentliche Namen, die schon föderiert waren, werden
-    nach Namenswechsel/Kontolöschung für andere Konten gesperrt.
-  - Noch nicht über Servergrenzen: Datenbanken, Hochladen, Unterseiten, Versionen, Export, Live/Anwesenheit, Chat.
+### Teilen und Kommentare (1.3)
 - **Teilen mit Personen und Gruppen:** Knopf „Teilen“ im Seitenkopf (nur Eigentümer) bzw. Seitenmenü → „Teilen …“.
   Personensuche ab 3 Zeichen (Anzeigename + Benutzername, nie eine Liste aller Konten), Gruppen nur, in denen man
   selbst ist (lokal, LDAP, SSO), Rollen **Lesen**, **Kommentieren**, **Bearbeiten**; Rolle ändern und Freigabe
@@ -113,7 +52,6 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   wenn mit „Bearbeiten“ geteilt); `GET /api/notes` zusätzlich `shared`; `GET /api/notes/{id}/rows` zusätzlich `role`;
   409 beim Speichern zusätzlich `by`. Uploads in fremde Seiten mit Kopfzeile `X-Saga-Note: <id>` (bzw. `note` beim
   Immich-Import). `MIN_APP` bleibt 1.0.0
-
 - **Teilen, Nachbesserungen:** Konflikt ohne Datenverlust („Meine Version behalten“ mit Rückfrage; die überschriebene
   Fassung bleibt als Version mit Autor erhalten, `overwrite` beim Speichern; „Neue Version laden“ zeigt den eigenen
   Text zum Kopieren); Zugriff endet beim Schreiben → Dialog mit dem letzten Text statt „not found“; alte Links:
@@ -136,6 +74,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   kein „Neu“, keine Ansichts-Einstellungen und kein „+“ für Ansichten. Spanisch: Rollen „Ver / Comentar / Editar“,
   Etikett „Puedes comentar“
 - Datenbank-Migration 5: `note.created_by`, `note_version.author`
+
+### Live-Kanal und Benachrichtigungen (1.4)
 - **Live-Kanal und Benachrichtigungen (1.4):** Glocke im Kopf von Dashboard und Seiten mit Zahl ungelesener
   Benachrichtigungen, Liste als Popover (Handy: Bottom-Sheet), „Alle gelesen“, Klick öffnet Seite bzw. Unterhaltung.
   Benachrichtigt wird, wenn jemand eine Seite mit dir teilt oder deine Rolle ändert, deine Seite kommentiert, in einer
@@ -158,6 +98,35 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   - Admin → Allgemein: Anzahl aktiver Live-Verbindungen. Konto löschen entfernt Benachrichtigungen und beendet
     Live-Verbindungen sofort; als Auslöser wird das Konto anonymisiert
   - Neue Tabelle `notification` (keine Migration nötig)
+
+### Chat mit Ende-zu-Ende-Verschlüsselung (1.5)
+- **Chats mit Ende-zu-Ende-Verschlüsselung (1.5):** neue Seite `/chats` (Knopf „Chats“ mit Ungelesen-Zahl im Kopf von
+  Dashboard und Seiten, „💬 Chat“ im Kopf geteilter Seiten). **Direkt-Chats**, **Gruppen-Chats** für Saga-Gruppen
+  (Mitglieder folgen der Gruppe, lokal/LDAP/SSO), **freie Gruppen** mit Einladung (Name verschlüsselt) und
+  **Seiten-Chats** (alle mit Zugriff laut Freigaben). Antworten, für alle löschen, Bilder/Dateien (clientseitig
+  verschlüsselt), @-Seitenverweise (Titel nur mit eigenem Zugriff), „tippt …“, Stummschalten, Aufbewahrungsfrist je Chat,
+  lokale Suche, Sicherheitsnummer (60 Ziffern, Warnung bei Wechsel), Live über den vorhandenen Kanal (ohne Inhalt),
+  Benachrichtigung „Neue Nachricht von Name“ (gebündelt, ohne Inhalt, abschaltbar) und als Mitteilung aufs
+  Handy/Desktop (siehe Mitteilungen)
+  - Einrichtung mit **Wiederherstellungsschlüssel** (32 Zeichen Base32), neues Gerät per **Bestätigung auf einem
+    vorhandenen Gerät (20-stelliger Code)** oder Wiederherstellungsschlüssel, „Neu beginnen“; „Chats & Geräte“:
+    Geräteliste, entfernen (wirkt sofort, live), neuer Wiederherstellungsschlüssel
+  - Krypto-Format v1 nur mit libsodium-Primitiven (Ed25519, X25519/`crypto_box_seal`, XChaCha20-Poly1305,
+    Argon2id, BLAKE2b); Browser: libsodium.js 0.8.4 (Sumo, ISC) unter `static/vendor/libsodium` (`tools/vendor-libsodium.sh`),
+    nur `/chats` erlaubt zusätzlich `'wasm-unsafe-eval'` in der CSP. Der Server prüft Geräte-Zertifikate und
+    Nachrichten-Signaturen mit dem vorhandenen `cryptography` (keine neue Server-Abhängigkeit) und verlangt, dass jede
+    Nachricht genau für alle aktuellen Mitglieder-Geräte + Backup-Schlüssel versiegelt ist
+  - Testvektoren `tests/chat_vectors.json` (PyNaCl ↔ libsodium.js: `tools/chat_vectors.py`, `tools/chat_vectors.mjs`),
+    Referenz in Python `tests/chatlib.py`; neue Testreihe `tests/chat` (PyNaCl 1.6.2 nur für Tests)
+  - Admin → Allgemein: „Chats erlauben“, „Nachrichten höchstens aufbewahren (Tage)“; Benutzer-Detail nur Anzahlen.
+    Kontolöschung entfernt Schlüssel, Geräte, Mitgliedschaften, gesendete Nachrichten, Anhänge und Direkt-Chats
+  - Schnittstelle für die Apps: `/api/chat/…` und `/api/chats/…` (siehe Anleitung, Abschnitt Chats); Live-Ereignisse
+    `chat.message`, `chat.deleted`, `chat.read`, `chat.typing`, `chat.changed`, `chat.link`, `chat.device`.
+    `MIN_APP` bleibt 1.0.0 (nichts Bestehendes geändert)
+  - Neue Tabellen `chat_identity`, `chat_device`, `chat`, `chat_member`, `chat_msg`, `chat_msg_key`, `chat_file`,
+    `chat_link` (keine Migration nötig); Anhänge unter `STATE_DIR/chat`, `CHAT_QUOTA_MB` (Standard 1024)
+
+### Mitteilungen aufs Handy/Desktop (1.7)
 - **Mitteilungen aufs Handy/Desktop (1.7):** Einstellungen → „Mitteilungen“ (eigener Reiter). Nur ausgehend vom
   Server, kein zusätzlicher Port. Inhalt minimal (Satz wie in der Glocke + Link, nie Seitentitel, Kommentare oder
   Chat-Inhalte), Zugriff wird beim Zustellen erneut geprüft
@@ -182,6 +151,62 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
     `MIN_APP` bleibt 1.0.0
   - Für den Chat: `bus.fire("push.send", c, uid=…, kind="chat.message", actor=…, data={"chat": id})` – ohne Inhalt
   - Neue Tabellen `push_sub`, `push_queue` (keine Migration nötig); Kontolöschung entfernt Abos und Aufträge
+
+### KI-Assistent (1.6)
+- **KI-Assistent (optional, Admin → „KI-Assistent“, Standard aus):** Saga fragt ein Sprachmodell, das der Admin
+  einträgt – OpenAI-kompatibel (`/v1/chat/completions`, auch Ollama `/v1`, LM Studio, vLLM) oder Ollama nativ
+  (`/api/chat`); Adresse, Modell, API-Schlüssel (verschlüsselt), erlaubte Gruppen, Zeitlimit, Anfragen je Person und
+  Tag, Seiteninhalt je Anfrage, Verlauf erlauben; „Verbindung testen“ listet die Modelle und holt eine kurze Antwort.
+  Nur ausgehende Verbindungen zu genau dieser Adresse, kein zusätzlicher Port; interne Adressen nur mit den beim
+  Speichern festgehaltenen IPs (SSRF-Schutz beim Verbindungsaufbau), keine Weiterleitungen.
+  - **✦ Assistent** auf der Seiten-Ansicht (Seitenleiste rechts, Handy: Bottom-Sheet) und im Seitenmenü:
+    **Frag deine Seiten** – Volltextsuche nur über Seiten, die die Person sehen darf (eigene und geteilte, ohne
+    Papierkorb/Archiv; Verweise ohne Zugriff maskiert), beste Abschnitte als Kontext, Antwort gestreamt (SSE) mit
+    Quellen [n] als Links; Aufgaben und Kalender nur per Schalter, Chats nie. **Diese Seite** – Zusammenfassen,
+    Aufgaben vorschlagen (übernehmen in Aufgaben oder als Checkliste), markierten Text verbessern/übersetzen.
+    Ergebnisse sind immer Vorschläge (Ersetzen mit Rückfrage, Darunter einfügen, Kopieren) – der Assistent hat keine
+    Schreibrechte
+  - Seiteninhalte gehen als gekennzeichnete Daten an das Modell (Schutz vor untergeschobenen Anweisungen); Hinweis
+    „Inhalte … gehen an {host}“ bei jeder Nutzung; keine Fragen/Inhalte in Logs
+  - Verlauf je Person (Standard aus; ausschalten = löschen; einzeln löschbar); eine Anfrage je Person gleichzeitig,
+    insgesamt `AI_MAX_PARALLEL` (Standard 4); Kontolöschung entfernt Verlauf und Zähler
+  - API für die Apps: `GET /api/ai/status`, `POST /api/ai/ask`, `POST /api/ai/page/{id}`, `GET/DELETE /api/ai/history`,
+    `PUT /api/ai/settings` (neue Tabellen `ai_usage`, `ai_history`, keine Migration)
+
+### Föderation (2.0)
+- **Föderation – mit anderen Saga-Servern teilen (Saga 2.0):** Admin-Bereich → **Föderation**: einschalten (Standard
+  aus), Einladungscode erzeugen, Server mit Adresse + Code verbinden, beide Admins bestätigen mit **Fingerprint**;
+  Liste mit Status, Trennen (sofort), Prüfprotokoll (ohne Inhalte).
+  - Teilen an `name@server` (öffentlicher Name) und `gruppe@server`; Personensuche fragt den verbundenen Server
+    (signiert), Personen anderer Server immer mit Herkunft („Bert (bert@server)“).
+  - **Daten bleiben beim Eigentümer:** Seiten anderer Server stehen in „Mit mir geteilt“, öffnen sich im normalen Editor;
+    Lesen, Bearbeiten (Titel/Inhalt, Konflikt 409) und Kommentieren laufen über den eigenen Server (Proxy), die Rolle
+    prüft der Eigentümer-Server, Gruppen bestätigt der Heimatserver signiert. Bilder über den Proxy, Anmeldenamen
+    verlassen den Server nie (nur öffentliche Namen).
+  - Benachrichtigungen über Servergrenzen (Teilen, Rolle, Kommentar, Antwort) als signierte Ereignisse mit
+    Ausgangskorb und Wiederholung.
+  - Sicherheit: Instanz-Schlüssel Ed25519 (verschlüsselt gespeichert), **HTTP Message Signatures (RFC 9421)** für
+    Anfragen UND Antworten, Content-Digest (RFC 9530), Uhrzeit ±5 min, Nonce gegen Wiederholung, Grenzen je Instanz,
+    ausgehend nur über den SSRF-Schutz (netguard, nur https). Neue Endpunkte `/.well-known/saga`,
+    `/.well-known/webfinger` (nur signiert), `/fed/v1/…`, `/api/fed/shared`, `/api/fed/files/…`.
+  - Neue Tabellen `fed_*` (keine Änderung bestehender Tabellen); öffentliche Namen, die schon föderiert waren, werden
+    nach Namenswechsel/Kontolöschung für andere Konten gesperrt.
+  - Noch nicht über Servergrenzen: Datenbanken, Hochladen, Unterseiten, Versionen, Export, Live/Anwesenheit, Chat,
+    KI-Assistent (liest Seiten anderer Server nicht).
+
+### Zusammenspiel der neuen Funktionen
+- **Chat → Mitteilungen:** neue Chat-Nachrichten gehen über `push.send` (nur Chat-Kennung, nie Inhalt) aufs
+  Handy/Desktop; stummgeschaltete Chats nie, beim Zustellen werden Mitgliedschaft und Stummschalten erneut geprüft;
+  je Chat wartet höchstens eine Mitteilung. Die Glocken-Benachrichtigung `chat.message` löst keine zweite Mitteilung aus
+- **Chats „Neu beginnen“** verlangt das Passwort oder eine frische Anmeldung (höchstens 5 Minuten; SSO-Konten:
+  „Neu anmelden“ über `/login/sso?reauth=1`, `prompt=login`). Für die Apps: `PUT /api/chat/identity` mit `reset=true`
+  nimmt zusätzlich `password`, sonst 403 mit `reauth` (`password` | `login`); `POST /api/chat/reauth` {password};
+  `GET /api/chat/me` meldet `reauth`
+- **Mitteilungen:** die Adresse eines ntfy-Topics oder UnifiedPush-Abos, das schon zu einem anderen Konto gehört,
+  wird nicht übernommen (409); Web Push und APNs wechseln wie bisher zum anmeldenden Konto
+- **Chat:** Nachrichten mit ungültiger Signatur erscheinen ausgegraut mit „Echtheit nicht bestätigt“
+- **Föderation:** Personen anderer Server werden nie Mitglied eines Seiten-Chats, auf Seiten anderer Server gibt es
+  keinen Chat-Knopf und keine KI-Seitenhilfen
 
 ### Geändert
 - Beenden des Servers: offene Live-Verbindungen werden zuerst geschlossen; uvicorn wartet höchstens 5 s
