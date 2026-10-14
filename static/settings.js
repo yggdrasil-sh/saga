@@ -417,6 +417,7 @@
     api('GET', '/api/account').then(function (a) {
       box.appendChild(el('p', 'hk-hint', a.username + ' · ' + a.source_label + (a.groups.length ? ' · ' + T('Gruppen: {list}', { list: a.groups.join(', ') }) : '')));
       langField(box, a);
+      if (window.HKLive) HKLive.settingsSection(box);          // Benachrichtigungen je Art (static/live.js)
       if (!a.can_edit) {
         box.appendChild(el('p', 'hk-hint', T('Name, E-Mail und Passwort verwaltet dein Anmeldedienst.')));
         publicNameField(box);

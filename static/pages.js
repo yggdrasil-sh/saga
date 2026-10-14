@@ -464,8 +464,12 @@
       if (S.cur && S.cur.id === id && !S.force && S.cur.rev != null) body.rev = S.cur.rev;   // Konflikterkennung
       S.force = false;
       if (S.overwrite) { body.overwrite = true; S.overwrite = false; }       // "Meine Version behalten": andere Fassung als Version sichern
-      return api('PATCH', '/api/notes/' + id, body).then(function (d) {
+      S.inflight = (S.inflight || 0) + 1;                                    // Live: waehrenddessen nicht still neu laden
+      var done = function () { S.inflight = Math.max(0, (S.inflight || 1) - 1); };
+      var req = api('PATCH', '/api/notes/' + id, body); req.then(done, done);
+      return req.then(function (d) {
         if (S.cur && S.cur.id === id && d.rev != null) S.cur.rev = d.rev;
+        if (S.cur && S.cur.id === id && d.updated) S.cur.updated = d.updated;
         if (S.cur && S.cur.id === id && S.cur.updated_by && !S.cur.updated_by.me) { S.cur.updated_by = { me: true }; applyMeta(); }
         var p = byId(id); if (p) { p.updated = d.updated; if ('title' in body) p.title = body.title.trim(); }
         if (!S.dirtyBody && !S.dirtyTitle) state(T('Gespeichert ✓ {time}', { time: HK.fUpd.format(new Date(d.updated * 1000)) }), 'ok');
@@ -481,6 +485,7 @@
   }
   // Konflikt: jemand (anderer Tab, Peek, spaeter andere Person) hat Titel/Inhalt inzwischen geaendert
   function showConflict(by) {
+    clearRemote();                                   // Live-Hinweis "X hat diese Seite geaendert" geht im Konflikt auf
     var bar = $('pg-conflict');
     if (!bar) { bar = el('div', 'pg-conflict'); bar.id = 'pg-conflict'; bar.setAttribute('role', 'alert'); $('page').insertBefore(bar, $('page').firstChild); }
     bar.textContent = '';
@@ -4023,6 +4028,65 @@
     return a;
   }
 
+  // --- Live (1.4): jemand anderes hat die offene Seite geaendert (static/live.js meldet es) ------------------
+  // Ohne ungespeicherte Aenderungen: still neu laden (Scroll-Position und Schreibmarke so gut es geht behalten).
+  // Sonst (oder waehrend einer Eingabe ausserhalb des Editors, Peek, offener Schublade): Hinweis mit "Neu laden".
+  // Der vorhandene Konfliktweg (409 beim Speichern) bleibt die Absicherung.
+  function busy() { return !!(S.dirtyBody || S.dirtyTitle || S.conflict || S.lost || S.checking || S.loading || S.inflight); }
+  function remoteChange(ev) {
+    if (!S.cur || !ev || ev.id !== S.cur.id || EMBED) return;
+    if (ev.gone) { if (busy() && foreign()) lostAccess(404); else if (!busy()) openPage(ev.id); return; }
+    var newer = ev.rev != null && S.cur.rev != null ? ev.rev > S.cur.rev : false;
+    if (!newer && !(ev.updated && S.cur.updated && ev.updated > S.cur.updated + 0.001)) return;
+    if (S.conflict) return;                                         // Konflikt-Hinweis steht schon
+    var a = document.activeElement, inEditor = a && $('pg-editor').contains(a) && a.isContentEditable;
+    var typingElsewhere = a && $('page').contains(a) && !inEditor && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+    if (busy() || typingElsewhere || PK.id || document.body.classList.contains('side-open') || !$('pg-modal').hidden) { remoteHint(ev.by); return; }
+    silentReload(ev.by);
+  }
+  function remoteHint(by) {
+    var bar = $('pg-remote');
+    if (!bar) { bar = el('div', 'pg-conflict pg-remote'); bar.id = 'pg-remote'; bar.setAttribute('role', 'status'); $('page').insertBefore(bar, $('page').firstChild); }
+    bar.textContent = '';
+    bar.appendChild(el('span', 'pgc-t', by && by.name ? T('{name} hat diese Seite geändert', { name: by.name }) : T('Diese Seite wurde an anderer Stelle geändert')));
+    var go = el('button', 'btn btn-primary', T('Neu laden')); go.type = 'button';
+    go.addEventListener('click', function () {
+      var id = S.cur && S.cur.id, draft = (S.dirtyBody || S.dirtyTitle) ? draftText() : '';
+      clearRemote(); if (!id) return;
+      clearTimeout(S.timer); S.dirtyBody = S.dirtyTitle = false; clearConflict();
+      openPage(id).then(function () {
+        if (draft) showDraft(T('Dein Entwurf'), T('Die neue Version ist geladen. Dein nicht gespeicherter Text steht unten – kopiere, was du behalten willst.'), draft);
+      });
+    });
+    var x = el('button', 'icon-btn pg-remote-x', '×'); x.type = 'button'; x.setAttribute('aria-label', T('Hinweis schließen'));
+    x.addEventListener('click', clearRemote);
+    bar.appendChild(go); bar.appendChild(x);
+  }
+  function clearRemote() { var b = $('pg-remote'); if (b) b.remove(); }
+  document.addEventListener('hk-page-open', clearRemote);
+  // Position der Schreibmarke: Index des obersten Blocks + Zeichen-Abstand im bearbeitbaren Teil
+  function caretPos() {
+    var sel = window.getSelection(), box = $('pg-editor');
+    if (!sel || !sel.rangeCount || !box) return null;
+    var r = sel.getRangeAt(0), node = r.startContainer, elx = node.nodeType === 1 ? node : node.parentElement;
+    if (!elx || !box.contains(elx)) return null;
+    var red = box.querySelector('.codex-editor__redactor'), blk = elx.closest('.ce-block');
+    while (blk && blk.parentElement !== red) blk = blk.parentElement ? blk.parentElement.closest('.ce-block') : null;
+    var ed = elx.closest('[contenteditable="true"]');
+    if (!blk || !ed || !blk.contains(ed)) return null;
+    var pre = document.createRange(); pre.selectNodeContents(ed); pre.setEnd(r.startContainer, r.startOffset);
+    return { idx: [].indexOf.call(red.children, blk), off: pre.toString().length };
+  }
+  function silentReload(by) {
+    var sc = document.scrollingElement || document.documentElement, y = sc.scrollTop, pos = caretPos(), id = S.cur.id;
+    return openPage(id).then(function () {
+      if (!S.cur || S.cur.id !== id) return;
+      sc.scrollTop = y;
+      if (pos && S.editor) { try { S.editor.caret.setToBlock(pos.idx, 'default', pos.off); sc.scrollTop = y; } catch (e) { /* Block gibt es nicht mehr */ } }
+      if (by && by.name) state(T('Aktualisiert – geändert von {name}', { name: by.name }), 'ok');
+    });
+  }
+
   // --- Start ----------------------------------------------------------------
   window.HKPages = {
     // Bausteine fuer static/keys.js (Tastenkuerzel, Block-Aktionen, Inhaltsverzeichnis)
@@ -4030,7 +4094,10 @@
          eds: function () { return (S.eds || []).filter(function (x) { return x.holder.isConnected; }); },
          open: function (id) { return openPage(id); }, byId: byId, goParent: goParent, copyLink: copyLink, showBlock: showBlock,
          embed: EMBED, isMac: isMac, openQS: function () { openQS(); }, pages: function () { return S.pages; }, label: label, ti: ti,
-         recents: recents, decorate: function () { decorateLinks(); }, ancestors: ancestors },
+         recents: recents, decorate: function () { decorateLinks(); }, ancestors: ancestors,
+         // Live-Kanal (static/live.js): Seitenliste neu laden, fremde Aenderung der offenen Seite, ungelesen-Punkt im Baum
+         reloadList: function () { return loadList(); }, remote: remoteChange, busy: busy, foreign: function () { return foreign(); },
+         setUnread: function (id, on) { var p = byId(id); if (p && !!p.unread !== !!on) { p.unread = !!on; renderTree(); } } },
     editor: function () { return S.editor; },   // fuer Tests/Diagnose
     flush: function () { return S.conflict ? Promise.reject(new Error('conflict')) : save(); },   // Peek: vor dem Schliessen speichern
     init: function (onCount) {

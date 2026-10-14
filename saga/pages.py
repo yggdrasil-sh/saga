@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
+from saga import bus
 from saga.core import BASE_URL, E, STATE_DIR, account_lang, _api_guard, _bad, _body, _json_load, _session_user, t
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
@@ -569,6 +570,8 @@ def _note_update(uid, nid, b):
         if atomic and n == 0:
             cur = c.execute("SELECT rev FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()
             raise _Reply(_conflict(c, uid, nid, cur[0] if cur else None))
+        # Live-Kanal (1.4): wer die Seite gerade offen hat, laedt still neu bzw. bekommt einen Hinweis (nach dem Commit)
+        bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=uid, updated=now)
     return JSONResponse({"ok": True, "updated": now, "rev": old[3] + (1 if content else 0)})
 
 
@@ -638,6 +641,7 @@ async def api_note_archive(nid: int, request: Request):
                 return JSONResponse({"ok": True, "archived": 0})
             now = time.time()
             n = sum(c.execute("UPDATE note SET archived=? WHERE id=? AND uid=? AND archived IS NULL", (now, i, owner)).rowcount for i in ids)
+            bus.fire("note.saved", c, note_id=nid, owner=owner, by=uid, updated=now, gone=True)
             return JSONResponse({"ok": True, "archived": n})
         if me[0] is None:
             return JSONResponse({"ok": True, "restored": 0})
@@ -668,6 +672,7 @@ def api_note_delete(nid: int, request: Request):
             return _bad("not found", 404)
         now = time.time()
         c.executemany("UPDATE note SET deleted_at=? WHERE id=? AND uid=?", [(now, i, owner) for i in ids])
+        bus.fire("note.saved", c, note_id=nid, owner=owner, by=uid, updated=now, gone=True)
     return JSONResponse({"deleted": len(ids), "trash": True})
 
 

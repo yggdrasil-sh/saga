@@ -30,7 +30,7 @@ from starlette.concurrency import run_in_threadpool
 import psycopg
 import auth
 from db import connect as _db
-from saga import i18n
+from saga import bus, i18n
 from saga.core import (ASSET_V, BASE_URL, E, PUBLIC_HOSTS, TZ, _api_guard, _bad, _body, _json_load, seen_lang, server_lang, t, title,
                        tmpl, user_lang)
 from saga.files import _thumb, _thumb_mime, _thumb_w
@@ -1244,6 +1244,10 @@ def unpublish(note_id, uid=None, by="user"):
         n = c.execute("UPDATE note_publish SET active=0, withdrawn_at=?, withdrawn_by=? WHERE active=1 AND note_id=?"
                       + (" AND uid=?" if uid else ""),
                       (time.time(), by, note_id, uid) if uid else (time.time(), by, note_id)).rowcount
+        if n and by == "admin":                  # Benachrichtigung an den Eigentuemer (saga.notify)
+            owner = c.execute("SELECT uid FROM note_publish WHERE note_id=?", (note_id,)).fetchone()
+            if owner:
+                bus.fire("publish.withdrawn", c, note_id=note_id, owner=owner[0])
     if n and public_home() == note_id:
         auth.save_setting("public_home", 0)
     return n

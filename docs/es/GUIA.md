@@ -122,6 +122,39 @@ server {
 }
 ```
 
+**Canal en directo (notificaciones, presencia, actualización en directo):** Saga envía las novedades por una
+conexión que permanece abierta (server-sent events, `GET /api/events`), por el mismo puerto que todo lo demás, sin
+WebSocket y sin puerto adicional. El proxy no debe almacenar en búfer esta respuesta ni cerrar la conexión al poco
+tiempo. Saga ayuda por sí mismo: envía `X-Accel-Buffering: no` y `Cache-Control: no-cache`, y cada 25 segundos una
+línea de latido para que no salten los tiempos de inactividad.
+
+- **Caddy:** no hay que hacer nada: `reverse_proxy` pasa `text/event-stream` al instante.
+- **nginx:** ya funciona con la configuración de arriba (comprobado: sin búfer, la conexión sigue abierta más allá del
+  `proxy_read_timeout` predeterminado de 60 s). Se recomienda, y es necesario si delante hay otro proxy con búfer, un
+  bloque propio dentro de `server { … }`:
+
+```nginx
+    location /api/events {                 # canal en directo: sin búfer, mantener abierto
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1h;
+    }
+```
+
+- **Traefik:** funciona sin ajustes. No pongas un middleware `buffering` en el router ni tiempos de inactividad por
+  debajo de 30 segundos.
+- **Proxy inverso de NetBird y otros:** están comprobados Caddy 2, nginx 1.27 y Traefik 3.1. Para comprobar tu proxy:
+  inicia sesión con dos cuentas en dos navegadores y comparte una página de una con la otra; la campana del otro
+  navegador debe mostrar un 1 al instante. En las herramientas de desarrollo (red), `/api/events` queda abierto como
+  «eventsource». Si un proxy usa búfer o corta la conexión, Saga pasa por sí mismo a consultar cada 60 segundos: todo
+  llega, solo que más tarde.
+
 **Tamaño de las peticiones:** Saga rechaza por sí mismo las peticiones demasiado grandes con 413: en general por
 encima de 2 MB (`REQUEST_MAX_MB`), las subidas de archivos por encima de `ATTACH_MAX_MB` (más un pequeño margen del
 formulario) y el área de administración por encima de 1 MB. Aun así, conviene poner un límite en el proxy inverso
@@ -493,6 +526,30 @@ usos compartidos, nunca contenidos. Al eliminar
 una cuenta desaparecen sus usos compartidos y los que se le dieron; sus comentarios en páginas de otros quedan como
 «Cuenta eliminada». Al eliminar un grupo terminan los usos compartidos con él.
 
+### Notificaciones y actualización en directo
+
+Saga mantiene al día el panel y las páginas abiertas, sin recargar.
+
+- **Campana** arriba a la derecha (panel y páginas): el número indica las notificaciones sin leer; un clic abre la
+  lista (en el móvil, desde abajo). Recibes una notificación cuando alguien comparte una página contigo o cambia tu rol,
+  cuando alguien comenta tu página, cuando alguien responde en una conversación en la que participas y cuando un
+  administrador retira una de tus páginas publicadas; nunca por tus propias acciones. Varios comentarios de la misma
+  conversación en 10 minutos se agrupan («3 respuestas nuevas en una conversación»). Un clic abre la página (en los
+  comentarios, directamente la conversación) y marca la entrada como leída; **«Marcar todo como leído»** lo marca todo.
+  El título y el extracto del comentario solo aparecen mientras tengas acceso; después, la entrada muestra «Ya no tienes acceso».
+  Las notificaciones se guardan 90 días.
+- **Ajustes → Cuenta → Notificaciones:** activa o desactiva cada tipo.
+- **Quién está aquí:** si otras personas tienen la página abierta, sus iniciales aparecen en la cabecera («Bert también
+  está aquí»); un anillo significa «Bert está editando».
+- **La página cambia mientras la tienes abierta:** sin cambios sin guardar, Saga carga la versión nueva en silencio
+  (la posición de desplazamiento y el cursor se mantienen en lo posible). Si estás escribiendo, aparece «Anna ha
+  cambiado esta página» con **Recargar**; si guardas de todos modos, actúa el aviso de conflicto de siempre.
+- Los comentarios, los puntos de no leído, «Compartido conmigo» y «💬 n» en el botón «Páginas» también se actualizan al
+  instante.
+- Sin conexión en directo (el proxy usa búfer, más de 5 pestañas abiertas de la misma cuenta) Saga consulta cada 60
+  segundos. Para el proxy inverso, consulta la sección 3; el área de administración muestra en General el número de
+  conexiones en directo activas.
+
 ### Cuenta, calendarios, Immich, apps
 
 En el menú de usuario, arriba a la derecha, en **Ajustes** (una pestaña para cada cosa):
@@ -693,6 +750,11 @@ defecto 2). Si el mensaje viene del proxy inverso, sube allí el límite (secci�
 Es lo previsto: una contraseña nueva cierra la sesión en todos los demás navegadores y apps (p. ej. por si se
 perdió un dispositivo). Solo siguen con la sesión iniciada la sesión y la app en las que cambiaste la contraseña.
 
+**La campana solo se actualiza al cabo de un minuto y las páginas abiertas no se actualizan al instante.**
+Entonces el canal en directo no llega y Saga consulta cada 60 segundos. Lo habitual es que el proxy inverso use búfer
+con la respuesta de `/api/events` o la cierre al poco tiempo; los ajustes están en la sección 3. Más de cinco pestañas
+abiertas con la misma cuenta también pasan las más antiguas a consulta periódica.
+
 ## 13. Todos los ajustes del .env
 
 | Variable | Por defecto | Significado |
@@ -723,6 +785,9 @@ perdió un dispositivo). Solo siguen con la sesión iniciada la sesión y la app
 | `ICON_CDN` | selfh.st vía jsDelivr | Origen de los iconos de servicios; vacío = ninguno |
 | `STATUS_INTERVAL` | `60` | Segundos entre comprobaciones de estado |
 | `CACHE_TTL` | `60` | Segundos que se guardan en caché los datos de cuentas y servicios |
+| `LIVE_PING` | `25` | Segundos hasta la línea de latido del canal en directo (mantiene abiertos los proxies) |
+| `LIVE_MAX_PER_USER` / `LIVE_MAX_TOTAL` | `5` / `2000` | Conexiones en directo por cuenta (se cierra la más antigua) / en total |
+| `LIVE_MAX_AGE` | `3600` | Tras estos segundos el navegador vuelve a abrir la conexión en directo (se comprueba de nuevo la sesión) |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Búsqueda web (sección 10) |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Idioma y filtro de la búsqueda web |
 | `LOG_LEVEL` | `info` | Nivel de detalle del log |
