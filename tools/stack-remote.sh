@@ -5,7 +5,7 @@
 #      + Radicale (CalDAV-Testserver), dann alle Tests (alte Tests ueber tests/pgshim auf Postgres)
 set -e
 cd "$(dirname "$0")/.."
-TESTS="isolation funktion kalender_modul kalender_api kalender_schreiben app_token app_login spalten vorlagen immich widgets inline archiv bilder dienste standalone sso_ldap app_pair versionen sprachen haertung veroeffentlichen teilen live"
+TESTS="isolation funktion kalender_modul kalender_api kalender_schreiben app_token app_login spalten vorlagen immich widgets inline archiv bilder dienste standalone sso_ldap app_pair versionen sprachen haertung veroeffentlichen teilen live chat"
 rnd() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 # Zweiter Stack auf demselben Host (z. B. SAGA_DIR=/root/saga-live SAGA_PORT=18086): eigener Port (Admin = Port+1, nur
 # 127.0.0.1), eigenes Image-Tag und eigene Namen der Test-Container - der Compose-Projektname kommt vom Verzeichnis.
@@ -55,6 +55,8 @@ X 'pip install -q --target /tmp/kal/py radicale >/dev/null 2>&1; echo test:gehei
    cd /tmp/kal && PYTHONPATH=/tmp/kal/py nohup python -m radicale --server-hosts 127.0.0.1:5232 --storage-filesystem-folder /tmp/kal/col \
      --auth-type htpasswd --auth-htpasswd-filename /tmp/kal/users --auth-htpasswd-encryption plain > /tmp/kal/rad.log 2>&1 &
    echo $! > /tmp/kal/pid'
+# PyNaCl (libsodium) fuer die Chat-Tests: native Bibliothek - /tmp ist noexec, deshalb auf das Daten-Volume (danach weg)
+X 'pip install -q --target /data/.saga-test-py pynacl==1.6.2 >/dev/null 2>&1 || true'
 X 'cd /tmp/hkapp && python - <<PY
 import auth, db
 db.wait_ready(); db.init_schema()
@@ -66,11 +68,11 @@ PY'
 X 'cd /tmp/hkapp && STATE_DIR=/tmp/hkstage CALDAV_ALLOW_HTTP=1 IMMICH_URL=http://127.0.0.1:18283 PORT=8099 ADMIN_PORT=8098 HOST=127.0.0.1 ADMIN_HOST=127.0.0.1 \
    nohup python run.py > /tmp/hkstage/server.log 2>&1 & echo $! > /tmp/hkstage/pid; sleep 6'
 X "cd /tmp/hkapp/tests && export SESSION_SECRET=\$SECRET_KEY HK_RAD_PW=geheim-app-pw-123 STATE_DIR=/tmp/hkstage CALDAV_ALLOW_HTTP=1 \
-     PYTHONPATH=/tmp/hkapp/tests/pgshim:/tmp/hkapp:/tmp/kal/py HK_TEST_BASE=http://127.0.0.1:8099 HK_TEST_ADMIN=http://127.0.0.1:8098 \
+     PYTHONPATH=/tmp/hkapp/tests/pgshim:/tmp/hkapp:/tmp/kal/py:/data/.saga-test-py HK_TEST_BASE=http://127.0.0.1:8099 HK_TEST_ADMIN=http://127.0.0.1:8098 \
      HK_TEST_DB=/tmp/hkstage/test.db IMMICH_URL=http://127.0.0.1:18283 HK_LDAP_ADMIN_PW=$LDAP_PW
    for t in $TESTS; do rm -rf /tmp/kal/col/collection-root/test; python -W ignore \$t.py > /tmp/hkstage/t-\$t.log 2>&1; tail -1 /tmp/hkstage/t-\$t.log; grep -E '^FAIL|Traceback|Error' /tmp/hkstage/t-\$t.log | head -8; done
    echo Serverfehler: \$(grep -c Traceback /tmp/hkstage/server.log); grep -B2 -E '^[A-Za-z.]+(Error|Exception):' /tmp/hkstage/server.log | head -30"
-X 'kill $(cat /tmp/hkstage/pid) $(cat /tmp/kal/pid) 2>/dev/null; true'
+X 'kill $(cat /tmp/hkstage/pid) $(cat /tmp/kal/pid) 2>/dev/null; rm -rf /data/.saga-test-py; true'
 X 'cd /tmp/hkapp && python -c "
 import auth, app
 auth.save_setting(\"allowed_hosts\", open(\"/tmp/hkstage/prev_hosts\").read())

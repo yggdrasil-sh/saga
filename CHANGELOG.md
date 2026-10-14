@@ -16,6 +16,30 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu
+- **Chats mit Ende-zu-Ende-Verschlüsselung (1.5):** neue Seite `/chats` (Knopf „Chats“ mit Ungelesen-Zahl im Kopf von
+  Dashboard und Seiten, „💬 Chat“ im Kopf geteilter Seiten). **Direkt-Chats**, **Gruppen-Chats** für Saga-Gruppen
+  (Mitglieder folgen der Gruppe, lokal/LDAP/SSO), **freie Gruppen** mit Einladung (Name verschlüsselt) und
+  **Seiten-Chats** (alle mit Zugriff laut Freigaben). Antworten, für alle löschen, Bilder/Dateien (clientseitig
+  verschlüsselt), @-Seitenverweise (Titel nur mit eigenem Zugriff), „tippt …“, Stummschalten, Aufbewahrungsfrist je Chat,
+  lokale Suche, Sicherheitsnummer (60 Ziffern, Warnung bei Wechsel), Live über den vorhandenen Kanal (ohne Inhalt),
+  Benachrichtigung „Neue Nachricht von Name“ (gebündelt, ohne Inhalt, abschaltbar)
+  - Einrichtung mit **Wiederherstellungsschlüssel** (32 Zeichen Base32), neues Gerät per **Bestätigung auf einem
+    vorhandenen Gerät (20-stelliger Code)** oder Wiederherstellungsschlüssel, „Neu beginnen“; „Chats & Geräte“:
+    Geräteliste, entfernen (wirkt sofort, live), neuer Wiederherstellungsschlüssel
+  - Krypto-Format v1 nur mit libsodium-Primitiven (Ed25519, X25519/`crypto_box_seal`, XChaCha20-Poly1305,
+    Argon2id, BLAKE2b); Browser: libsodium.js 0.8.4 (Sumo, ISC) unter `static/vendor/libsodium` (`tools/vendor-libsodium.sh`),
+    nur `/chats` erlaubt zusätzlich `'wasm-unsafe-eval'` in der CSP. Der Server prüft Geräte-Zertifikate und
+    Nachrichten-Signaturen mit dem vorhandenen `cryptography` (keine neue Server-Abhängigkeit) und verlangt, dass jede
+    Nachricht genau für alle aktuellen Mitglieder-Geräte + Backup-Schlüssel versiegelt ist
+  - Testvektoren `tests/chat_vectors.json` (PyNaCl ↔ libsodium.js: `tools/chat_vectors.py`, `tools/chat_vectors.mjs`),
+    Referenz in Python `tests/chatlib.py`; neue Testreihe `tests/chat` (PyNaCl 1.6.2 nur für Tests)
+  - Admin → Allgemein: „Chats erlauben“, „Nachrichten höchstens aufbewahren (Tage)“; Benutzer-Detail nur Anzahlen.
+    Kontolöschung entfernt Schlüssel, Geräte, Mitgliedschaften, gesendete Nachrichten, Anhänge und Direkt-Chats
+  - Schnittstelle für die Apps: `/api/chat/…` und `/api/chats/…` (siehe Anleitung, Abschnitt Chats); Live-Ereignisse
+    `chat.message`, `chat.deleted`, `chat.read`, `chat.typing`, `chat.changed`, `chat.link`, `chat.device`.
+    `MIN_APP` bleibt 1.0.0 (nichts Bestehendes geändert)
+  - Neue Tabellen `chat_identity`, `chat_device`, `chat`, `chat_member`, `chat_msg`, `chat_msg_key`, `chat_file`,
+    `chat_link` (keine Migration nötig); Anhänge unter `STATE_DIR/chat`, `CHAT_QUOTA_MB` (Standard 1024)
 - **Teilen mit Personen und Gruppen:** Knopf „Teilen“ im Seitenkopf (nur Eigentümer) bzw. Seitenmenü → „Teilen …“.
   Personensuche ab 3 Zeichen (Anzeigename + Benutzername, nie eine Liste aller Konten), Gruppen nur, in denen man
   selbst ist (lokal, LDAP, SSO), Rollen **Lesen**, **Kommentieren**, **Bearbeiten**; Rolle ändern und Freigabe

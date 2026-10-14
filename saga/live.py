@@ -19,6 +19,9 @@ Ereignisse (event: ..., data: JSON) - die Rechte werden beim VERSAND geprueft (s
   presence         {note_id, users:[{username, name, editing}]}
   reset            {}                                  Wiederaufnahme nicht moeglich (Neustart/zu alt): alles neu laden
   bye              {reason: limit|auth|account|shutdown}   Server beendet die Verbindung
+  chat.message     {chat_id, seq, id, sender}          Chat (1.5), an die Mitglieder - nie Inhalt
+  chat.deleted     {chat_id, id, seq} · chat.read {chat_id, seq} (eigene Tabs) · chat.typing {chat_id, user}
+  chat.changed     {chat_id} (Mitglieder/Name/Frist) · chat.link {id, approved?, gone?} · chat.device {id, revoked}
 Jedes Ereignis ausser hello/reset/bye hat eine id (<boot>-<nummer>); mit Last-Event-ID holt ein neuer Aufbau verpasste
 Ereignisse der letzten 10 Minuten nach. Heartbeat: Kommentarzeile alle ~25 s (haelt Proxys offen).
 Hoechstens 5 Verbindungen je Konto - die aelteste wird mit "bye" (limit) geschlossen."""
@@ -191,6 +194,10 @@ def _resolve(kind, p, aud, pres):
                 it = notify.item(c, uid, p["id"])
                 if it:
                     out.append((uid, "notification", {"item": it, "unread": notify.count_unread(c, uid), "replaces": p.get("replaces")}))
+        elif kind == "direct":                               # Chat (1.5): Empfaenger stehen fest (Mitglieder), nur Kennungen
+            for u in p.get("uids") or ():
+                if u in aud:
+                    out.append((u, p["typ"], p["data"]))
         elif kind == "notification.read":
             if p["uid"] in aud:
                 out.append((p["uid"], "notification", {"unread": p["unread"], "read": p["ids"]}))

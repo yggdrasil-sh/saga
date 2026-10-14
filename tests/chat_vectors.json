@@ -1,0 +1,91 @@
+{
+ "format": "saga-chat/v1",
+ "note": "Erzeugt mit tools/chat_vectors.py (PyNaCl 1.6.2). B64 = Standard-Base64 mit Padding; *_hex = Hex. Alle Felder siehe docs.",
+ "lp": {
+  "fields": [
+   "a",
+   "bc",
+   "",
+   "ä"
+  ],
+  "hex": "00000001610000000262630000000000000002c3a4"
+ },
+ "base32": {
+  "bytes_hex": "5b42d7a0cb4aff3d0dd7ab93104f9079e997ffe4",
+  "text": "LNBNPIGLJL7T2DOXVOJRAT4QPHUZP77E"
+ },
+ "identity": {
+  "uid": "anna",
+  "ident_seed_hex": "8069896ef5032a2a940ba437a834f1f40799cf768c5780bcc2685f4fe11c0cb2",
+  "ident_pk": "E8P96QHU+hGiTBKL/t6OhR1xuzQ7FH6LC4yLQIuN/qE=",
+  "ident_sk": "gGmJbvUDKiqUC6Q3qDTx9AeZz3aMV4C8wmhfT+EcDLITw/3pAdT6EaJMEov+3o6FHXG7NDsUfosLjItAi43+oQ==",
+  "backup_seed_hex": "eec0435ce0d4049b4f3640655887d23ba99ad42477dc461ea1daef8dfb441130",
+  "backup_pk": "zBFyBTtcMGDTY2M8dxAjK+5cEWMApiEHYhRsc56Bqi4=",
+  "backup_sk": "upFIxTVHmFYYnwi820e+oP+nIjJUxw9lDlQqQiOggyo=",
+  "backup_msg_hex": "00000013736167612d636861742f76312f6261636b757000000004616e6e6100000020cc1172053b5c3060d363633c7710232bee5c116300a6210762146c739e81aa2e",
+  "backup_sig": "di32qLk81o3VEa2O5vfWD3gFaKXLbrAVKYwewb3hvuFEUtzXWHTDMBQZMUYC/TiJ0iA6sbC8PEcbilsG62YpDA=="
+ },
+ "device": {
+  "id": "0123456789abcdef0123456789abcdef",
+  "enc_seed_hex": "6270c1639b6f5ae87e958a96362ff29bf243ec42ab7cc14f59e2829fe4f54539",
+  "enc_pk": "JAAkjSowdtozP6UmM6Bko/xhteXIp+1MEimo9FjCzwE=",
+  "enc_sk": "Q61nd4HGU9NGMZr4ori1owtx9CIRhnFtPLDhwXT4z8c=",
+  "sign_seed_hex": "c3839303d2c9fc9a3c4ed00f9e0730e4964058f862298861d25297401a4884e6",
+  "sign_pk": "629Im2QbE+WfzvuAuB5JdgfS+DbZIxmhdCu+gmlrK1w=",
+  "sign_sk": "w4OTA9LJ/Jo8TtAPngcw5JZAWPhiKYhh0lKXQBpIhObrb0ibZBsT5Z/O+4C4Hkl2B9L4NtkjGaF0K76CaWsrXA==",
+  "msg_hex": "00000013736167612d636861742f76312f64657669636500000004616e6e61000000203031323334353637383961626364656630313233343536373839616263646566000000202400248d2a3076da333fa52633a064a3fc61b5e5c8a7ed4c1229a8f458c2cf0100000020eb6f489b641b13e59fcefb80b81e497607d2f836d92319a1742bbe82696b2b5c",
+  "sig": "mcdQ66Yd9J8qg/dtT48//mnDEj5rjMSqR4uV6ai5KDfJVtPCLSsxVTzap/d1AsSI2cSo7YBx9/3kJMM2P89LCw=="
+ },
+ "recovery": {
+  "key": "LNBN-PIGL-JL7T-2DOX-VOJR-AT4Q-PHUZ-P77E",
+  "normalized": "LNBNPIGLJL7T2DOXVOJRAT4QPHUZP77E",
+  "input_variant": "lnbn pigl jl7t 2dox vojr at4q phuz p77e",
+  "salt": "wbhf1FUKvrNxnYOLXRXXuA==",
+  "ops": 2,
+  "mem": 67108864,
+  "kdf_hex": "921036912f931b6fe19cb687cf9eb230e4bebe3fff130f137c5188dbc912dfbc",
+  "nonce": "uo9nCegVk1Sl6An0aOWXx5GxO0JSOhX5",
+  "ad_hex": "00000013736167612d636861742f76312f62756e646c6500000004616e6e61",
+  "plain": "{\"v\":1,\"ident_sk\":\"gGmJbvUDKiqUC6Q3qDTx9AeZz3aMV4C8wmhfT+EcDLITw/3pAdT6EaJMEov+3o6FHXG7NDsUfosLjItAi43+oQ==\",\"backup_sk\":\"upFIxTVHmFYYnwi820e+oP+nIjJUxw9lDlQqQiOggyo=\"}",
+  "bundle": "{\"v\":1,\"kdf\":\"argon2id13\",\"ops\":2,\"mem\":67108864,\"salt\":\"wbhf1FUKvrNxnYOLXRXXuA==\",\"nonce\":\"uo9nCegVk1Sl6An0aOWXx5GxO0JSOhX5\",\"ct\":\"mZ3AdRiHWuc/pg9B9rOKazUacbOy/TUpi0ZRlFMMd23P28PJ4IeFJLB/jSsc6EurZxalV3cnV0ClC7j5bwDSQ2E4EVbwlWIYsGe8DhjDrYg616A8vW46REnmbPTFQbWAlDujDkeWG1NsDLJXiqy7+A2FgtW7/i4LEhJ/LDlK1dPVeyg0ADm2pKefx5db7+Y0UH+TGhbpHf5rywZBT12XIZOWahUkael9PWG2y5sNNuIHgqHN7pd49Q==\"}"
+ },
+ "message": {
+  "chat_id": "7",
+  "id": "fedcba9876543210fedcba9876543210",
+  "sender": "anna",
+  "device": "0123456789abcdef0123456789abcdef",
+  "ts": 1760000000123,
+  "reply_to": "00112233445566778899aabbccddeeff",
+  "body_json": "{\"v\":1,\"type\":\"text\",\"text\":\"Hallo Bert – grüß dich! 👋 [[note:42]]\",\"notes\":[42]}",
+  "key": "eUzlejgBnWx+28yyf39/16bCGFIAwOocHTQEFRwYjSI=",
+  "nonce": "gMN5pC9AmeQeyiqazHIBrGqEvixgedr7",
+  "ad_hex": "00000010736167612d636861742f76312f6d7367000000013700000020666564636261393837363534333231306665646362613938373635343332313000000004616e6e610000002030313233343536373839616263646566303132333435363738396162636465660000000d31373630303030303030313233000000203030313132323333343435353636373738383939616162626363646465656666",
+  "body_ct": "gMN5pC9AmeQeyiqazHIBrGqEvixgedr7k5c+flRgj6pjM/xXcZ/UwOPwZYLqu08ubN+2EmuWTNEwoxcoy2DXat2Spt4MyelAReM3XR0iAjNso3IM1ROQiXrhtuAscbw1ex7LevZna31mu1czpKNw9IfkfgaUR2YLO/snr3Lr6z4=",
+  "sig_msg_hex": "00000010736167612d636861742f76312f736967000000013700000020666564636261393837363534333231306665646362613938373635343332313000000004616e6e610000002030313233343536373839616263646566303132333435363738396162636465660000000d313736303030303030303132330000002030303131323233333434353536363737383839396161626263636464656566660000002011761f85181bf72b7631864a910d440e6c0aa3472b2e237829516bd6180155cb",
+  "sig": "LNk9BmAtLm9BIOTdN0AvxygAybfWcaO0YiE77FscTTnfJ9bNiAg26LxU9H3cxF+jNE6ECJ+YvrKbPVrCaAHZAg==",
+  "sealed_device": "MeHrqy8Ct1arquY8U8lv2ndgVzdOpgL8ASyNMYC7KlIy6iptzNV8TQAJ0IeKnFAhclEnoB51QFzOFgSa0kVCRExXI3RwDzRfdmli1tBpqAo=",
+  "sealed_backup": "oD/hMjv+Jn1RRHe4WKkVEc2ZUZ/3K98HBVr2w2zPmEzCRz0MdUArOgOQ+HDk0Iju8Yd6XTl4L9xekbjUpJcVYDHzbRhievLMeglToS0HVh8="
+ },
+ "file": {
+  "chat_id": "7",
+  "plain_b64": "QW5oYW5nLUluaGFsdCDDpMO2w7wK",
+  "key": "6PE//cG5Y/06u6H8K6wMZqGR78zpMd2MiGxIVBuyPEw=",
+  "nonce": "WOx7E1H8E821VPa0i1VoJg0/y5oDkatc",
+  "blob": "WOx7E1H8E821VPa0i1VoJg0/y5oDkatcUPhEtHWYj1CI7JWPiAVXcTHUandKwkVZ343mXbyH8YUUQyjTBA=="
+ },
+ "link": {
+  "uid": "anna",
+  "device_id": "0123456789abcdef0123456789abcdef",
+  "enc_pk": "JAAkjSowdtozP6UmM6Bko/xhteXIp+1MEimo9FjCzwE=",
+  "sign_pk": "629Im2QbE+WfzvuAuB5JdgfS+DbZIxmhdCu+gmlrK1w=",
+  "code": "78118 40911 55938 07354",
+  "sealed_bundle": "6x1GF5mhMjufGPQpX6cJq3RkpHpyjlhRzDtGy2a5ZSmd2iiHIPnObcu7DPrVrm7P6MSWzdyAFfDqt5lqIhmQQVHXZDNXayhrWFOcBsZN0RsYrHFHqfJVrVSOOFZrdddg4awCBxBy46qoPZMYCYdyKgy3Yg54tocWTAcckK0SCfxF1JA7gDfcX7mLs4YEp/4zEjsj5XsaE/+MDpitkVy/8Adf2g/asNXGP4nKr3jm2FkU6Wu9hLNJp7qTM7tuNdXE7gxzv5V/esBqWEob/dy2G/CwpB75y2q2"
+ },
+ "safety": {
+  "uid_a": "anna",
+  "ident_a": "E8P96QHU+hGiTBKL/t6OhR1xuzQ7FH6LC4yLQIuN/qE=",
+  "uid_b": "bert",
+  "ident_b": "A3kaq+fiB6AnmPPNML8c/QU/u4PhCuXNjnawOakXVAo=",
+  "number": "03672 14150 98611 54486 57516 88114 68710 78412 97318 13879 97709 10663"
+ }
+}

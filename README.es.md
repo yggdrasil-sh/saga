@@ -45,6 +45,9 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
   sin JavaScript y, opcionalmente, como página de inicio para visitantes
 - **Compartir y comentar:** comparte páginas y bases de datos con personas o grupos (locales, LDAP, SSO): roles Ver,
   Comentar, Editar, las subpáginas heredan el acceso; comentarios discretos en los bloques con «Resuelto»
+- **Chats cifrados de extremo a extremo:** chats directos, de grupo y de página con adjuntos, respuestas y enlaces @ a
+  páginas; el servidor (y el administrador) solo ve datos cifrados: libsodium, clave de recuperación, números de
+  seguridad, varios dispositivos
 - **Tareas** con fecha límite, prioridad y repetición
 - **Calendarios (CalDAV):** ver y editar Nextcloud, mailcow/SOGo, Radicale, iCloud…
 - **Immich:** usa tus propias fotos como imágenes y portadas

@@ -1,7 +1,7 @@
 """Daten eines Kontos zaehlen und loeschen (Admin-Bereich)."""
 import os
 from db import connect as _db
-from saga import bus, notify
+from saga import bus, chat, notify
 from saga.calendars import _cal_cache_drop
 from saga.files import _drop_thumbs
 from saga.notes import FILES_DIR
@@ -12,7 +12,8 @@ from saga.sharing import delete_account, share_counts
 # Wichtig: uid = Benutzername. Blieben Daten liegen, bekaeme ein spaeter neu angelegtes Konto mit
 # gleichem Namen fremde Seiten, Kalender-Zugaenge usw.
 USER_TABLES = ("task", "note", "note_version", "bookmark", "fav", "device_login", "app_token", "user_kv",
-               "immich_key", "cal_account", "app_code", "pair_code", "note_publish", "public_name", "notification")
+               "immich_key", "cal_account", "app_code", "pair_code", "note_publish", "public_name", "notification",
+               "chat_identity", "chat_device", "chat_link")
 
 
 def delete_user_data(uid):
@@ -21,9 +22,11 @@ def delete_user_data(uid):
         c.execute("DELETE FROM file WHERE uid=?", (uid,))
         shares = delete_account(c, uid)          # Freigaben (eigene + an das Konto), Kommentare anonymisieren/loeschen
         notes_n = notify.delete_account(c, uid)  # Benachrichtigungen: eigene weg, als Ausloeser anonymisiert
+        chat_n = chat.delete_account(c, uid)     # Chat: Schluessel, Geraete, Mitgliedschaften, gesendete Nachrichten, Anhaenge
         counts = {t: c.execute(f"DELETE FROM {t} WHERE uid=?", (uid,)).rowcount for t in USER_TABLES}
         counts["note_share"] = shares
         counts["notification"] += notes_n
+        counts["chat_msg"] = chat_n
         bus.emit_after(c, "account.deleted", {"uid": uid})     # Live-Verbindungen und Anwesenheit des Kontos beenden
     for fid in fids:
         try:
@@ -48,7 +51,7 @@ def user_usage(uid):
                 "tokens": q("SELECT COUNT(*) FROM app_token WHERE uid=?"),
                 "calendars": q("SELECT COUNT(*) FROM cal_account WHERE uid=?"),
                 "immich": q("SELECT COUNT(*) FROM immich_key WHERE uid=?"),
-                "shares": share_counts(c, uid)[0], "shared_with": share_counts(c, uid)[1]}
+                "shares": share_counts(c, uid)[0], "shared_with": share_counts(c, uid)[1], **chat.counts(c, uid)}
 
 
 def revoke_user_logins(uid, keep_device=None):

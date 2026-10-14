@@ -544,6 +544,53 @@ Saga hält das Dashboard und offene Seiten auf dem neuesten Stand – ohne Neula
 - Ohne Live-Verbindung (Proxy puffert, mehr als 5 offene Tabs desselben Kontos) fragt Saga alle 60 Sekunden nach.
   Für den Reverse Proxy siehe Abschnitt 3; der Admin-Bereich zeigt unter Allgemein die Zahl aktiver Live-Verbindungen.
 
+### Chats (Ende-zu-Ende-verschlüsselt)
+
+Knopf **„Chats“** im Kopf von Dashboard und Seiten (mit Zahl ungelesener Nachrichten) öffnet die Chats in einem eigenen
+Tab. Alle Nachrichten, Anhänge und die Namen freier Gruppen werden **auf deinen Geräten** verschlüsselt – der Server
+speichert nur verschlüsselte Daten. Auch der Admin kann keine Inhalte lesen.
+
+- **Einrichten (einmal je Konto):** Beim ersten Öffnen erzeugt Saga deine Schlüssel und zeigt einen
+  **Wiederherstellungsschlüssel** (32 Zeichen, z. B. `ABCD-EFGH-…`). Schreibe ihn ab oder speichere ihn im
+  Passwort-Manager („Kopieren“, „Als Datei speichern“) und bestätige die letzten vier Zeichen. Ohne ihn und ohne ein
+  anderes eingerichtetes Gerät sind deine Nachrichten verloren – auch der Admin kann sie nicht wiederherstellen.
+- **Neues Gerät oder neuer Browser:** entweder **„Mit anderem Gerät bestätigen“** – auf einem Gerät, auf dem die Chats
+  schon laufen, erscheint die Anfrage mit einem 20-stelligen Code (vier Fünfergruppen); stimmt er vollständig mit dem Code auf dem neuen Gerät
+  überein, bestätigen – oder den **Wiederherstellungsschlüssel eingeben**. Danach liest das neue Gerät auch den bisherigen Verlauf.
+  Wer beides nicht mehr hat, kann **neu beginnen** (neue Schlüssel; alte Nachrichten sind dann nicht mehr lesbar).
+- **Unterhaltungen:** **„+ Neu“** → Person suchen (ab 3 Zeichen) für einen **Direkt-Chat**, eine eigene Gruppe für einen
+  **Gruppen-Chat** (Mitglieder folgen der Gruppe, auch aus LDAP/SSO) oder „Gruppe mit mehreren Personen“ für eine
+  **freie Gruppe** (der Ersteller lädt ein und entfernt; der Name ist verschlüsselt). Auf geteilten Seiten öffnet
+  **„💬 Chat“** im Seitenkopf den **Seiten-Chat** mit allen, die die Seite sehen dürfen – ändern sich die Freigaben,
+  ändern sich die Mitglieder. Wer neu dazukommt, sieht nur Nachrichten ab dem Beitritt; wer geht, bekommt nichts Neues.
+- **Schreiben:** Enter sendet, Umschalt+Enter macht eine neue Zeile. 📎 hängt Bilder oder Dateien an (verschlüsselt,
+  höchstens so groß wie Datei-Anhänge sonst); **@** verlinkt eine Seite – andere sehen den Titel nur, wenn sie die Seite
+  selbst sehen dürfen. Über „⋯“ an einer Nachricht: **Antworten**, Text kopieren, eigene Nachricht **für alle löschen**.
+  „tippt …“ und neue Nachrichten erscheinen sofort (Live-Kanal).
+- **Chat-Menü (⋯ oben):** **Sicherheitsnummer** (60 Ziffern, auf beiden Seiten gleich – persönlich oder per Anruf
+  vergleichen und „Als überprüft markieren“; ändert sie sich, warnt der Chat), Mitglieder, **Stummschalten**
+  (keine Benachrichtigung, zählt nicht als ungelesen), **Nachrichten automatisch löschen nach** 1 Stunde … 1 Jahr
+  (gilt für neue Nachrichten), freie Gruppe umbenennen oder verlassen. Die Lupe sucht in den geladenen Nachrichten – nur auf
+  diesem Gerät.
+- **⚙ Chats & Geräte:** Liste der Geräte mit Zugriff, Geräte entfernen (bekommen sofort nichts mehr), neuen
+  Wiederherstellungsschlüssel erzeugen (der alte gilt dann nicht mehr).
+- Benachrichtigung „Neue Nachricht von Name“ – ohne Inhalt; abschaltbar unter Einstellungen → Konto → Benachrichtigungen.
+
+**Admin:** Allgemein → „Chats“: **Chats erlauben** (Standard an) und **Nachrichten höchstens aufbewahren (Tage)** – ältere
+Nachrichten und Anhänge löscht der Server stündlich, auch wenn ein Chat eine längere Frist hat. Beim Benutzer stehen nur
+Anzahlen (Chats, Geräte). Konto löschen entfernt Schlüssel, Geräte, Mitgliedschaften, gesendete Nachrichten und Anhänge;
+Direkt-Chats mit dem Konto verschwinden ganz. Grenzen: 64 KB je Nachricht, 60 Nachrichten je Minute, 10 Geräte je Konto,
+50 Mitglieder je Chat, `CHAT_QUOTA_MB` (Standard 1024) für Anhänge je Konto. Kein zusätzlicher Port.
+
+**Technik (Format v1):** nur libsodium (Browser: libsodium.js, mitgeliefert unter `static/vendor/libsodium`). Je Konto
+ein Identitätsschlüssel (Ed25519) und ein Backup-Schlüssel (X25519), je Gerät X25519 + Ed25519, vom Identitätsschlüssel
+signiert. Jede Nachricht: zufälliger Schlüssel, XChaCha20-Poly1305 (`crypto_aead_xchacha20poly1305_ietf`), der Schlüssel
+mit `crypto_box_seal` für jedes Gerät und den Backup-Schlüssel jedes Mitglieds versiegelt, vom Gerät signiert
+(`crypto_sign_detached`). Das Schlüssel-Bündel auf dem Server ist mit einem per `crypto_pwhash` (Argon2id) aus dem
+Wiederherstellungsschlüssel abgeleiteten Schlüssel verschlüsselt. Genaues Format: Kopf von `saga/chat.py`; Testvektoren
+für eigene Clients: `tests/chat_vectors.json` (prüfen mit `python3 tools/chat_vectors.py check` bzw.
+`node tools/chat_vectors.mjs`). Die privaten Schlüssel liegen im Browser in IndexedDB; im privaten Fenster gehen Chats nicht.
+
 ### Konto, Kalender, Immich, Apps
 
 Im Benutzermenü oben rechts unter **Einstellungen** (je ein Reiter):
@@ -767,6 +814,7 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `ADMIN_SESSION_HOURS` | `4` | Gültigkeit einer Sitzung im Admin-Bereich |
 | `TIMEZONE` | `Europe/Berlin` | Zeitzone für Exporte |
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Größe je Datei / Speicher je Benutzer |
+| `CHAT_QUOTA_MB` | `1024` | Speicher für Chat-Anhänge je Benutzer (verschlüsselt, unter `STATE_DIR/chat`) |
 | `REQUEST_MAX_MB` | `2` | Größte Anfrage außer Datei-Uploads (z. B. sehr lange Seiten); größere bekommen 413 |
 | `KDF_PARALLEL` | `4` | So viele Passwortprüfungen gleichzeitig (je ca. 32 MB Speicher); weitere warten bis 2 s |
 | `NOTE_MAX_COUNT` | `5000` | Seiten je Benutzer |

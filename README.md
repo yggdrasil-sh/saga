@@ -45,6 +45,8 @@ private space – no cloud, no subscription, on your own server.
   JavaScript, optional public home page for visitors
 - **Sharing and comments:** share pages and databases with people or groups (local, LDAP, SSO) – roles View,
   Comment, Edit, subpages inherit the share; unobtrusive comments on blocks with “Resolved”
+- **End-to-end encrypted chats:** direct, group and page chats with attachments, replies and @ page links; the
+  server (and the admin) only sees encrypted data – libsodium, recovery key, safety numbers, multiple devices
 - **Tasks** with due dates, priorities and recurrence
 - **Calendars (CalDAV):** view and edit Nextcloud, mailcow/SOGo, Radicale, iCloud …
 - **Immich:** use your own photos as images and cover images

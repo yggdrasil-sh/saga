@@ -46,6 +46,13 @@
     <p class="hk-hint adm-share-off">{{ _("Erst „Teilen erlauben“ einschalten, dann lässt sich das einstellen.") }}</p>
   </section>
   <section class="adm-card">
+    <h3>{{ _("Chats") }}</h3>
+    {{ check(_('Chats erlauben'), 'chat_enabled', st.chat_enabled, _('Direkt-, Gruppen- und Seiten-Chats mit Ende-zu-Ende-Verschlüsselung. Der Server speichert nur verschlüsselte Nachrichten – auch Admins können die Inhalte nicht lesen. Aus = Chats sind nicht erreichbar; die Daten bleiben gespeichert.')) }}
+    <label class="adm-field"><span>{{ _("Nachrichten höchstens aufbewahren (Tage)") }}</span>
+      <input class="hk-in" type="number" name="chat_retention_max_days" min="0" max="3650" value="{{ st.chat_retention_max_days or 0 }}">
+      <small>{{ _("0 = unbegrenzt. Ältere Nachrichten und ihre Anhänge löscht der Server automatisch (stündlich), auch wenn ein Chat eine längere Frist hat.") }}</small></label>
+  </section>
+  <section class="adm-card">
     <h3>{{ _("Live-Kanal") }}</h3>
     <p class="hk-hint">{{ _("Aktive Live-Verbindungen: {n}", n=live_n) }}<br>{{ _("Offene Browser-Tabs und Apps, die Benachrichtigungen und Änderungen sofort bekommen (über den normalen Web-Port, siehe Anleitung „Reverse Proxy“).") }}</p>
   </section>

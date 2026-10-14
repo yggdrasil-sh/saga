@@ -551,6 +551,54 @@ Saga mantiene al día el panel y las páginas abiertas, sin recargar.
   segundos. Para el proxy inverso, consulta la sección 3; el área de administración muestra en General el número de
   conexiones en directo activas.
 
+### Chats (cifrado de extremo a extremo)
+
+El botón **«Chats»** en la cabecera del panel y de las páginas (con el número de mensajes sin leer) abre los chats en una
+pestaña propia. Todos los mensajes, adjuntos y los nombres de los grupos libres se cifran **en tus dispositivos**: el
+servidor solo guarda datos cifrados. Tampoco el administrador puede leer el contenido.
+
+- **Configurar (una vez por cuenta):** la primera vez, Saga crea tus claves y muestra una **clave de recuperación**
+  (32 caracteres, p. ej. `ABCD-EFGH-…`). Anótala o guárdala en un gestor de contraseñas («Copiar», «Guardar como
+  archivo») y confirma los últimos cuatro caracteres. Sin ella y sin otro dispositivo configurado tus mensajes se
+  pierden: tampoco el administrador puede recuperarlos.
+- **Dispositivo o navegador nuevo:** o bien **«Confirmar con otro dispositivo»** – en un dispositivo donde los chats ya
+  funcionan aparece la solicitud con un código de 20 cifras (cuatro grupos de cinco); confírmala solo si coincide por completo con el código del dispositivo
+  nuevo – o **introducir la clave de recuperación**. Después, el dispositivo nuevo también lee el historial. Si no tienes
+  ninguna de las dos, puedes **empezar de nuevo** (claves nuevas; los mensajes anteriores ya no se podrán leer).
+- **Conversaciones:** **«+ Nuevo»** → busca una persona (mín. 3 caracteres) para un **chat directo**, uno de tus grupos
+  para un **chat de grupo** (los miembros siguen al grupo, también desde LDAP/SSO) o «grupo con varias personas» para un
+  **grupo libre** (quien lo crea invita y elimina; el nombre va cifrado). En páginas compartidas, **«💬 Chat»** en la
+  cabecera abre el **chat de la página** con todos los que pueden verla: si cambian los permisos, cambian los miembros.
+  Quien se une solo ve los mensajes desde su incorporación; quien sale no recibe nada nuevo.
+- **Escribir:** Intro envía, Mayús+Intro añade una línea. 📎 adjunta imágenes o archivos (cifrados, hasta el tamaño
+  habitual de los adjuntos); **@** enlaza una página: los demás solo ven el título si pueden ver la página. Con «⋯» en un
+  mensaje: **responder**, copiar texto, **eliminar para todos** (tus mensajes). «está escribiendo…» y los mensajes nuevos
+  aparecen al instante (canal en directo).
+- **Menú del chat (⋯ arriba):** **número de seguridad** (60 cifras, igual en ambos lados: compáralo en persona o por
+  teléfono y «Marcar como verificado»; si cambia, el chat avisa), miembros, **silenciar** (sin notificación, no cuenta
+  como no leído), **eliminar mensajes automáticamente tras** 1 hora … 1 año (para mensajes nuevos), cambiar el nombre de
+  un grupo libre o salir de él. La lupa busca en los mensajes cargados, solo en este dispositivo.
+- **⚙ Chats y dispositivos:** dispositivos con acceso, quitar dispositivos (dejan de recibir al instante), crear una
+  nueva clave de recuperación (la anterior deja de funcionar).
+- Notificación «Nuevo mensaje de Nombre», sin contenido; se puede desactivar en Ajustes → Cuenta → Notificaciones.
+
+**Administración:** General → «Chats»: **Permitir chats** (activado por defecto) y **Conservar mensajes como máximo
+(días)**: el servidor elimina cada hora los mensajes y adjuntos más antiguos, aunque un chat tenga un plazo mayor. En el
+usuario solo aparecen recuentos (chats, dispositivos). Eliminar una cuenta borra claves, dispositivos, pertenencias,
+mensajes enviados y adjuntos; los chats directos con esa cuenta desaparecen por completo. Límites: 64 KB por mensaje,
+60 mensajes por minuto, 10 dispositivos por cuenta, 50 miembros por chat, `CHAT_QUOTA_MB` (1024 por defecto) para
+adjuntos por cuenta. Sin puerto adicional.
+
+**Técnica (formato v1):** solo libsodium (navegador: libsodium.js, incluido en `static/vendor/libsodium`). Por cuenta una
+clave de identidad (Ed25519) y una clave de copia de seguridad (X25519); por dispositivo X25519 + Ed25519, firmadas por
+la clave de identidad. Cada mensaje: clave aleatoria, XChaCha20-Poly1305 (`crypto_aead_xchacha20poly1305_ietf`), la clave
+sellada con `crypto_box_seal` para cada dispositivo y la clave de copia de seguridad de cada miembro, firmado por el
+dispositivo (`crypto_sign_detached`). El paquete de claves del servidor está cifrado con una clave derivada de la clave de
+recuperación mediante `crypto_pwhash` (Argon2id). Formato exacto: cabecera de `saga/chat.py`; vectores de prueba para
+clientes propios: `tests/chat_vectors.json` (comprobar con `python3 tools/chat_vectors.py check` o
+`node tools/chat_vectors.mjs`). En el navegador, las claves privadas están en IndexedDB; en una ventana privada los chats
+no funcionan.
+
 ### Cuenta, calendarios, Immich, apps
 
 En el menú de usuario, arriba a la derecha, en **Ajustes** (una pestaña para cada cosa):
@@ -779,6 +827,7 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `ADMIN_SESSION_HOURS` | `4` | Duración de una sesión en el área de administración |
 | `TIMEZONE` | `Europe/Berlin` | Zona horaria para exportaciones |
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Tamaño por archivo / espacio por usuario |
+| `CHAT_QUOTA_MB` | `1024` | Espacio para adjuntos de chat por usuario (cifrados, en `STATE_DIR/chat`) |
 | `REQUEST_MAX_MB` | `2` | Petición más grande salvo subidas de archivos (p. ej. páginas muy largas); las mayores reciben 413 |
 | `KDF_PARALLEL` | `4` | Comprobaciones de contraseña a la vez (unos 32 MB de memoria cada una); las demás esperan hasta 2 s |
 | `NOTE_MAX_COUNT` | `5000` | Páginas por usuario |

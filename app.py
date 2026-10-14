@@ -25,7 +25,7 @@ import db
 from version import API_LEVEL, MIN_APP, VERSION
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
-from saga import i18n, live, notify
+from saga import chat, i18n, live, notify
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, LangMiddleware, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
@@ -65,6 +65,12 @@ async def lifespan(_app):
                         print(f"notify: {n} alte Benachrichtigung(en) entfernt", flush=True)
             except Exception as ex:
                 print(f"notify-purge: {type(ex).__name__}: {ex}", flush=True)
+            try:
+                n = await asyncio.to_thread(chat.purge)        # abgelaufene Chat-Nachrichten, Anhaenge ohne Nachricht: stuendlich
+                if n:
+                    print(f"chat: {n} abgelaufene Nachricht(en) entfernt", flush=True)
+            except Exception as ex:
+                print(f"chat-purge: {type(ex).__name__}: {ex}", flush=True)
             await asyncio.sleep(3600)
             try:
                 n = await asyncio.to_thread(files_gc)
@@ -120,7 +126,8 @@ async def canonical_host(request: Request, call_next):
 # Groesse von Anfragen begrenzen - als letzte registriert = laeuft zuerst (vor Sitzung, Umleitung, Endpunkten).
 # Uploads: ATTACH_MAX_MB + Formular-Rahmen (etwas mehr als die Pruefung in files.py, die mit Text antwortet).
 app.add_middleware(BodyLimit, default=REQUEST_MAX,
-                   rules=[("POST", re.compile(r"/api/files"), max(REQUEST_MAX, FILE_MAX + 256 * 1024))])
+                   rules=[("POST", re.compile(r"/api/files"), max(REQUEST_MAX, FILE_MAX + 256 * 1024)),
+                          ("POST", re.compile(r"/api/chats/[0-9]+/files"), max(REQUEST_MAX, FILE_MAX + 1024))])
 
 
 # --- Routes -----------------------------------------------------------------
@@ -177,3 +184,4 @@ app.include_router(sharing.router)          # Teilen: /api/shared, /api/notes/{n
 app.include_router(comments.router)         # Kommentare: /api/notes/{nid}/comments, /api/comments/{cid}...
 app.include_router(notify.router)           # Benachrichtigungen: /api/notifications, .../read, .../settings
 app.include_router(live.router)             # Live-Kanal: /api/events (SSE), /api/presence
+app.include_router(chat.router)             # Chat (E2E): /chats, /api/chat/..., /api/chats/...

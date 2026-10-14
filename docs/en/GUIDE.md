@@ -529,6 +529,52 @@ Saga keeps the dashboard and open pages up to date – without reloading.
 - Without a live connection (proxy buffers, more than 5 open tabs of the same account) Saga checks every 60 seconds.
   For the reverse proxy, see section 3; the admin area shows the number of active live connections under General.
 
+### Chats (end-to-end encrypted)
+
+The **“Chats”** button in the header of the dashboard and pages (with the number of unread messages) opens chats in a
+separate tab. All messages, attachments and the names of custom groups are encrypted **on your devices** – the server
+only stores encrypted data. The admin can't read any content either.
+
+- **Setup (once per account):** the first time you open chats, Saga creates your keys and shows a **recovery key**
+  (32 characters, e.g. `ABCD-EFGH-…`). Write it down or keep it in a password manager (“Copy”, “Save as file”) and
+  confirm the last four characters. Without it and without another set-up device your messages are lost – the admin
+  can't restore them either.
+- **New device or browser:** either **“Confirm with another device”** – on a device where chats already work, the request
+  appears with a 20-digit code (four groups of five); confirm it only if it fully matches the code on the new device – or **enter the recovery key**.
+  Afterwards the new device can also read the previous history. If you have neither, you can **start over** (new keys;
+  old messages can no longer be read).
+- **Conversations:** **“+ New”** → search a person (3+ characters) for a **direct chat**, one of your groups for a
+  **group chat** (members follow the group, also from LDAP/SSO) or “group with several people” for a **custom group**
+  (the creator invites and removes; the name is encrypted). On shared pages **“💬 Chat”** in the page header opens the
+  **page chat** with everyone who can see the page – when the shares change, the members change. New members only see
+  messages from when they joined; people who leave get nothing new.
+- **Writing:** Enter sends, Shift+Enter starts a new line. 📎 attaches images or files (encrypted, up to the usual
+  attachment size); **@** links a page – others only see its title if they can see the page themselves. Via “⋯” on a
+  message: **reply**, copy text, **delete for everyone** (your own messages). “is typing …” and new messages appear right
+  away (live channel).
+- **Chat menu (⋯ at the top):** **safety number** (60 digits, identical on both sides – compare in person or by phone
+  and “Mark as verified”; if it changes, the chat warns you), members, **mute** (no notification, not counted as
+  unread), **delete messages automatically after** 1 hour … 1 year (applies to new messages), rename or leave a custom
+  group. The magnifier searches loaded messages – on this device only.
+- **⚙ Chats & devices:** devices with access, remove devices (they get nothing more, immediately), create a new
+  recovery key (the old one stops working).
+- Notification “New message from Name” – without content; can be turned off under Settings → Account → Notifications.
+
+**Admin:** General → “Chats”: **Allow chats** (on by default) and **Keep messages at most (days)** – the server deletes
+older messages and attachments hourly, even if a chat has a longer period. The user page only shows counts (chats,
+devices). Deleting an account removes keys, devices, memberships, sent messages and attachments; direct chats with the
+account disappear entirely. Limits: 64 KB per message, 60 messages per minute, 10 devices per account, 50 members per
+chat, `CHAT_QUOTA_MB` (default 1024) for attachments per account. No extra port.
+
+**Technical (format v1):** libsodium only (browser: libsodium.js, bundled in `static/vendor/libsodium`). Per account an
+identity key (Ed25519) and a backup key (X25519); per device X25519 + Ed25519, signed by the identity key. Each message:
+random key, XChaCha20-Poly1305 (`crypto_aead_xchacha20poly1305_ietf`), the key sealed with `crypto_box_seal` for every
+device and the backup key of every member, signed by the device (`crypto_sign_detached`). The key bundle on the server is
+encrypted with a key derived from the recovery key via `crypto_pwhash` (Argon2id). Exact format: header of
+`saga/chat.py`; test vectors for your own clients: `tests/chat_vectors.json` (check with
+`python3 tools/chat_vectors.py check` or `node tools/chat_vectors.mjs`). In the browser the private keys live in
+IndexedDB; chats don't work in a private window.
+
 ### Account, calendars, Immich, apps
 
 In the user menu at the top right under **Settings** (one tab each):
@@ -752,6 +798,7 @@ with the same account also switch the oldest ones to polling.
 | `ADMIN_SESSION_HOURS` | `4` | Lifetime of a session in the admin area |
 | `TIMEZONE` | `Europe/Berlin` | Time zone for exports |
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Size per file / storage per user |
+| `CHAT_QUOTA_MB` | `1024` | Storage for chat attachments per user (encrypted, under `STATE_DIR/chat`) |
 | `REQUEST_MAX_MB` | `2` | Largest request apart from file uploads (e.g. very long pages); larger ones get 413 |
 | `KDF_PARALLEL` | `4` | Password checks at the same time (about 32 MB of memory each); others wait up to 2 s |
 | `NOTE_MAX_COUNT` | `5000` | Pages per user |
