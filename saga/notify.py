@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 from db import connect as _db
 from saga import bus
 from saga.core import _api_guard, _bad, _body, _json_load, t
-from saga.sharing import Access, names
+from saga.sharing import Access, is_remote, names
 from saga.sharing import unread_count as pages_unread
 
 router = APIRouter()
@@ -32,6 +32,9 @@ EXCERPT = 120
 PAGE_MAX = 100
 GROUP_MAX = 1000                    # Freigabe an eine Gruppe: hoechstens so viele Mitglieder benachrichtigen
 RENDER = {}                         # Art -> fn(c, uid, eintrag, daten): Titel/Link fuer Arten ohne Seite (saga.chat meldet sich an)
+# Von saga.federation gesetzt: fed_render(c, uid, fed) -> (zugriff, {id, title, icon}, url) fuer Benachrichtigungen zu Seiten
+# anderer Instanzen (data.fed = {peer, note, title, comment, thread, block}); ohne Foederation: kein Zugriff
+FED_RENDER = None
 ROLE_KEYS = {"view": "Lesen##Rolle", "comment": "Kommentieren##Rolle", "edit": "Bearbeiten##Rolle"}
 
 
@@ -50,7 +53,12 @@ def create(c, uid, kind, actor=None, note_id=None, comment_id=None, data=None, b
     """Benachrichtigung fuer uid anlegen (in der Transaktion von c) -> id oder None (an sich selbst / abgeschaltet).
     bundle: Kennung der Unterhaltung - eine ungelesene Benachrichtigung derselben Art und Unterhaltung aus den letzten
     10 Minuten wird fortgeschrieben (n+1, neuester Kommentar, Schreibende) statt eine neue anzulegen."""
-    if not uid or (actor and uid == actor) or not wants(c, uid, kind):
+    if not uid or (actor and uid == actor):
+        return None
+    if is_remote(uid):            # Person einer anderen Instanz: dort benachrichtigen (saga.federation, signiertes Ereignis)
+        bus.fire("fed.notify", c, uid=uid, kind=kind, actor=actor, note_id=note_id, comment_id=comment_id, data=data or {})
+        return None
+    if not wants(c, uid, kind):
         return None
     now = time.time()
     data = dict(data or {})
@@ -86,7 +94,7 @@ def group_members(c, name, limit=GROUP_MAX):
 
 def _on_share(c, owner, note_id, target_type, target, role, old_role=None, actor=None, **_):
     """Freigabe angelegt (old_role None) oder Rolle geaendert."""
-    if old_role == role:
+    if old_role == role or target_type not in ("user", "group"):     # andere Instanzen: saga.federation
         return
     kind = "share.role" if old_role else "share.added"
     who = [target] if target_type == "user" else group_members(c, target)
@@ -187,6 +195,9 @@ def _render(c, uid, rows, acc=None):
         rid, kind, actor, nid, cid, _, created, read_at = r
         n = notes.get(nid)
         access = bool(n and n[2] is None and acc.role(nid))
+        fed = d.get("fed") if isinstance(d.get("fed"), dict) else None
+        if fed:                               # Seite einer anderen Instanz (Titel kam mit dem signierten Ereignis)
+            access, fnote, furl = FED_RENDER(c, uid, fed) if FED_RENDER else (False, None, None)
         a_name = who.get(actor) if actor else None
         item = {"id": rid, "kind": kind, "created": created, "read": read_at is not None,
                 "actor": {"name": a_name, "username": actor} if a_name else None,
@@ -195,7 +206,14 @@ def _render(c, uid, rows, acc=None):
             item["role"] = d.get("role")
         if len(d.get("actors", [])) > 1:
             item["actors"] = [who[a] for a in d["actors"] if a in who]
-        if access:
+        if fed:
+            if access:
+                item["note"], item["url"] = fnote, furl
+                if fed.get("comment"):
+                    item.update(comment_id=fed.get("comment"), thread_id=fed.get("thread") or fed.get("comment"), block_id=fed.get("block") or "")
+            item["remote"] = True
+            n = (fnote["title"], "", None) if access else None
+        elif access:
             item["note"] = {"id": nid, "title": n[0] or "", "icon": n[1] or ""}
             item["url"] = f"/notes#{nid}"
             cm = cms.get(cid)

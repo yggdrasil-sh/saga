@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check, ts, csrf_field with context %}
+{% block pagetitle %}{{ _('Föderation') }}{% endblock %}
+{% block content %}
+<h2>{{ _("Föderation") }}</h2>
+<p class="hk-hint">{{ _("Andere Saga-Instanzen verbinden: Personen können dann Seiten mit name@server teilen. Die Inhalte bleiben immer auf dem Server des Eigentümers; gelesen, bearbeitet und kommentiert wird über den eigenen Server. Jede Anfrage zwischen den Servern ist signiert.") }}</p>
+
+<section class="adm-card">
+  <h3>{{ _("Diese Instanz") }}</h3>
+  <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="enable">
+    {{ check(_('Föderation einschalten'), 'on', fed.enabled, _('Aus = keine Verbindungen von und zu anderen Instanzen; Freigaben dorthin wirken sofort nicht mehr (sie bleiben gespeichert).')) }}
+    <button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button>
+  </form>
+  {% if fed.enabled %}
+  <dl class="fed-me">
+    <dt>{{ _("Adresse") }}</dt><dd><code>{{ fed.base_url }}</code></dd>
+    <dt>{{ _("Fingerprint") }}</dt><dd><code class="fed-fp">{{ fed.fingerprint or '–' }}</code></dd>
+  </dl>
+  <p class="hk-hint">{{ _("Den Fingerprint vergleicht der Admin der anderen Instanz beim Verbinden – am besten auf einem zweiten Weg (Telefon, Chat).") }}</p>
+  {% endif %}
+  {% if fed.key_error %}<p class="adm-flash err">{{ fed.key_error }}</p>{% endif %}
+  {% if not fed.https %}<p class="adm-flash err">{{ _("BASE_URL ist kein https – andere Instanzen verbinden sich nur über https.") }}</p>{% endif %}
+</section>
+
+{% if fed.enabled %}
+<section class="adm-card">
+  <h3>{{ _("Einladen") }}</h3>
+  <p class="hk-hint">{{ _("Erzeuge einen Code und gib ihn zusammen mit deiner Adresse an den Admin der anderen Instanz. Der Code gilt 24 Stunden und nur einmal.") }}</p>
+  {% if code %}
+  <div class="fed-code" role="status">
+    <p><b>{{ _("Neuer Einladungscode (wird nur jetzt angezeigt):") }}</b></p>
+    <p>{{ _("Adresse") }}: <code>{{ fed.base_url }}</code><br>{{ _("Code") }}: <code class="fed-fp">{{ code }}</code></p>
+  </div>
+  {% endif %}
+  <form method="post">{{ csrf_field() }}<input type="hidden" name="action" value="invite">
+    <button class="btn btn-primary" type="submit">{{ _("Einladungscode erzeugen") }}</button></form>
+  {% if fed.invites %}
+  <table class="adm-table">
+    <tr><th>{{ _("Erzeugt") }}</th><th>{{ _("Gültig bis") }}</th><th></th></tr>
+    {% for i in fed.invites %}
+    <tr><td>{{ ts(i.created) }}</td><td data-l="{{ _('Gültig bis') }}">{{ ts(i.expires) }}</td>
+      <td><form method="post">{{ csrf_field() }}<input type="hidden" name="action" value="drop_invite"><input type="hidden" name="id" value="{{ i.id }}">
+        <button class="btn" type="submit">{{ _("Zurückziehen") }}</button></form></td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</section>
+
+<section class="adm-card">
+  <h3>{{ _("Mit einer Instanz verbinden") }}</h3>
+  {% if preview %}
+  <p>{{ _("Gefunden:") }} <b>{{ preview.name or preview.host }}</b> (<code>{{ preview.base_url }}</code>, Saga {{ preview.version }})</p>
+  <p>{{ _("Fingerprint") }}: <code class="fed-fp">{{ preview.fingerprint }}</code></p>
+  <p class="hk-hint">{{ _("Stimmt dieser Fingerprint mit dem überein, den dir der Admin der anderen Instanz genannt hat? Nur dann verbinden.") }}</p>
+  <form method="post" class="fed-acts">{{ csrf_field() }}<input type="hidden" name="action" value="connect">
+    <input type="hidden" name="url" value="{{ preview.base_url }}"><input type="hidden" name="code" value="{{ form_code }}">
+    <input type="hidden" name="fingerprint" value="{{ preview.fingerprint }}">
+    <button class="btn btn-primary" type="submit">{{ _("Fingerprint stimmt – verbinden") }}</button>
+    <a class="btn" href="/federation">{{ _("Abbrechen") }}</a>
+  </form>
+  {% else %}
+  <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="preview">
+    {{ field(_('Adresse der anderen Instanz'), 'url', '', ph='https://saga.example.org', req=true, max=300) }}
+    {{ field(_('Einladungscode'), 'code', '', req=true, max=100, secret=true) }}
+    <button class="btn btn-primary" type="submit">{{ _("Weiter: Fingerprint prüfen") }}</button>
+  </form>
+  {% endif %}
+</section>
+
+<section class="adm-card">
+  <h3>{{ _("Verbundene Instanzen") }}</h3>
+  <table class="adm-table">
+    <tr><th>{{ _("Instanz") }}</th><th>{{ _("Status") }}</th><th>{{ _("Fingerprint") }}</th><th>{{ _("Zuletzt erreicht") }}</th><th>{{ _("Freigaben") }}</th><th></th></tr>
+    {% for p in fed.peers %}
+    <tr>
+      <td><b>{{ p.name or p.host }}</b><br><small><code>{{ p.base_url }}</code></small></td>
+      <td data-l="{{ _('Status') }}">
+        {% if p.status == 'active' %}<span class="fed-st ok">{{ _("Verbunden") }}</span>
+        {% elif p.status == 'pending_in' %}<span class="fed-st wait">{{ _("Wartet auf deine Bestätigung") }}</span>
+        {% elif p.status == 'pending_out' %}<span class="fed-st wait">{{ _("Wartet auf die Gegenseite") }}</span>
+        {% else %}<span class="fed-st off">{{ _("Getrennt") }}</span>{% endif %}
+        {% if p.last_error %}<br><small class="hk-hint">{{ p.last_error }}</small>{% endif %}
+      </td>
+      <td data-l="{{ _('Fingerprint') }}"><code class="fed-fp">{{ p.fingerprint }}</code></td>
+      <td data-l="{{ _('Zuletzt erreicht') }}">{{ ts(p.last_seen) if p.last_seen else '–' }}</td>
+      <td data-l="{{ _('Freigaben') }}">{{ _("{a} dorthin · {b} von dort", a=p.shares, b=p.inbound) }}{% if p.queued %}<br><small class="hk-hint">{{ _("{n} Ereignisse warten", n=p.queued) }}</small>{% endif %}</td>
+      <td class="fed-acts">
+        {% if p.status == 'pending_in' %}
+        <form method="post">{{ csrf_field() }}<input type="hidden" name="action" value="confirm"><input type="hidden" name="id" value="{{ p.id }}">
+          <button class="btn btn-primary" type="submit">{{ _("Bestätigen") }}</button></form>
+        <form method="post">{{ csrf_field() }}<input type="hidden" name="action" value="reject"><input type="hidden" name="id" value="{{ p.id }}">
+          <button class="btn" type="submit">{{ _("Ablehnen") }}</button></form>
+        {% endif %}
+        {% if p.status in ('pending_out', 'active') %}
+        <form method="post">{{ csrf_field() }}<input type="hidden" name="action" value="refresh"><input type="hidden" name="id" value="{{ p.id }}">
+          <button class="btn" type="submit">{{ _("Status prüfen") }}</button></form>
+        {% endif %}
+        {% if p.status in ('pending_out', 'active') %}
+        <form method="post" data-confirm="{{ _('Verbindung zu {host} trennen? Alle Freigaben an Personen und Gruppen dort enden sofort; Seiten von dort sind hier nicht mehr zu sehen.', host=p.host) }}">{{ csrf_field() }}
+          <input type="hidden" name="action" value="disconnect"><input type="hidden" name="id" value="{{ p.id }}">
+          <button class="btn btn-danger" type="submit">{{ _("Trennen") }}</button></form>
+        {% endif %}
+        {% if p.status == 'disconnected' %}
+        <form method="post">{{ csrf_field() }}<input type="hidden" name="action" value="remove"><input type="hidden" name="id" value="{{ p.id }}">
+          <button class="btn" type="submit">{{ _("Entfernen") }}</button></form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="hk-hint">{{ _("Noch keine Instanzen verbunden.") }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
+
+<section class="adm-card">
+  <h3>{{ _("Prüfprotokoll") }}</h3>
+  <p class="hk-hint">{{ _("Verbindungen, Freigaben über Instanzgrenzen und abgewiesene Anfragen – ohne Inhalte.") }}</p>
+  <table class="adm-table fed-log">
+    <tr><th>{{ _("Zeit") }}</th><th>{{ _("Instanz") }}</th><th>{{ _("Ereignis") }}</th><th>{{ _("Einzelheiten") }}</th></tr>
+    {% for l in fed.log %}
+    <tr><td>{{ ts(l.ts) }}</td><td data-l="{{ _('Instanz') }}">{{ l.host or '–' }}</td><td data-l="{{ _('Ereignis') }}">{{ events.get(l.event, l.event) }}</td>
+      <td data-l="{{ _('Einzelheiten') }}"><small>{{ l.detail }}</small></td></tr>
+    {% else %}
+    <tr><td colspan="4" class="hk-hint">{{ _("Noch keine Einträge.") }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

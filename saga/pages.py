@@ -251,6 +251,11 @@ def api_note_get(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
+    return note_get(uid, nid)
+
+
+def note_get(uid, nid):
+    """Fuer die Weboberflaeche und die Foederation (uid = fremde Person '@name@host')."""
     with _db() as c:
         acc = Access(c, uid)
         owner, role, err = access(c, uid, nid, "view", acc)

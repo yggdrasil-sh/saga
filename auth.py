@@ -43,6 +43,7 @@ DEFAULTS = {
     "publish_enabled": True,               # Benutzer duerfen eigene Seiten veroeffentlichen (/@name/<slug>)
     "public_home": 0,                      # veroeffentlichte Seite (note_id) als Startseite "/" fuer Besucher, 0 = keine
     "share_enabled": True,                 # Seiten mit anderen Konten und Gruppen teilen (1.3)
+    "fed_enabled": False,                  # Foederation: mit verbundenen Saga-Instanzen teilen (2.0, saga/federation.py)
     "share_group_scope": False,            # nur mit Konten teilen, mit denen man eine Gruppe gemeinsam hat
     "chat_enabled": True,                  # Chats mit Ende-zu-Ende-Verschluesselung (1.5)
     "chat_retention_max_days": 0,          # Chat-Nachrichten spaetestens nach so vielen Tagen loeschen (0 = unbegrenzt)

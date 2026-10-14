@@ -48,6 +48,8 @@
   (Ende-zu-Ende verschlüsselt, auch iPhone als Home-Bildschirm-App), ntfy/UnifiedPush oder Apple Push – ohne Inhalte
 - **KI-Assistent (optional):** Fragen an die eigenen Seiten, Zusammenfassen, Aufgaben vorschlagen, Text verbessern oder
   übersetzen – mit einem Modell nach Wahl (z. B. Ollama im eigenen Netz). Nur sichtbare Inhalte, Quellen verlinkt, nur Vorschläge, standardmäßig aus
+- **Föderation:** Saga-Server verbinden und Seiten mit name@server teilen – Inhalte bleiben beim Eigentümer, jede
+  Anfrage zwischen den Servern ist signiert (Ed25519, HTTP Message Signatures)
 - **Aufgaben** mit Fälligkeit, Priorität und Wiederholung
 - **Kalender (CalDAV):** Nextcloud, mailcow/SOGo, Radicale, iCloud … anzeigen und bearbeiten
 - **Immich:** eigene Fotos als Bilder und Titelbilder einbinden

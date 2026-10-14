@@ -51,6 +51,8 @@ private space – no cloud, no subscription, on your own server.
   also iPhone as a home screen app), ntfy/UnifiedPush or Apple Push – without content
 - **AI assistant (optional):** ask your pages, summarize, suggest tasks, improve or translate text – with a model
   you choose (e.g. Ollama on your own network). Only content you may see, sources linked, suggestions only, off by default
+- **Federation:** connect Saga servers and share pages with name@server – content stays with the owner, every
+  request between servers is signed (Ed25519, HTTP Message Signatures)
 - **Tasks** with due dates, priorities and recurrence
 - **Calendars (CalDAV):** view and edit Nextcloud, mailcow/SOGo, Radicale, iCloud …
 - **Immich:** use your own photos as images and cover images

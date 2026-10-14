@@ -52,6 +52,8 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
   de extremo a extremo, también iPhone como app en la pantalla de inicio), ntfy/UnifiedPush o Apple Push, sin contenido
 - **Asistente de IA (opcional):** pregunta a tus páginas, resume, sugiere tareas, mejora o traduce texto, con el modelo
   que elijas (p. ej. Ollama en tu propia red). Solo contenido que puedes ver, fuentes enlazadas, solo sugerencias, desactivado por defecto
+- **Federación:** conecta servidores Saga y comparte páginas con nombre@servidor: el contenido se queda con el
+  propietario y cada solicitud entre servidores va firmada (Ed25519, HTTP Message Signatures)
 - **Tareas** con fecha límite, prioridad y repetición
 - **Calendarios (CalDAV):** ver y editar Nextcloud, mailcow/SOGo, Radicale, iCloud…
 - **Immich:** usa tus propias fotos como imágenes y portadas

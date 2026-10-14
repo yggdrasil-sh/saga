@@ -59,6 +59,24 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
     insgesamt `AI_MAX_PARALLEL` (Standard 4); Kontolöschung entfernt Verlauf und Zähler
   - API für die Apps: `GET /api/ai/status`, `POST /api/ai/ask`, `POST /api/ai/page/{id}`, `GET/DELETE /api/ai/history`,
     `PUT /api/ai/settings` (neue Tabellen `ai_usage`, `ai_history`, keine Migration)
+- **Föderation – mit anderen Saga-Servern teilen (Saga 2.0):** Admin-Bereich → **Föderation**: einschalten (Standard
+  aus), Einladungscode erzeugen, Server mit Adresse + Code verbinden, beide Admins bestätigen mit **Fingerprint**;
+  Liste mit Status, Trennen (sofort), Prüfprotokoll (ohne Inhalte).
+  - Teilen an `name@server` (öffentlicher Name) und `gruppe@server`; Personensuche fragt den verbundenen Server
+    (signiert), Personen anderer Server immer mit Herkunft („Bert (bert@server)“).
+  - **Daten bleiben beim Eigentümer:** Seiten anderer Server stehen in „Mit mir geteilt“, öffnen sich im normalen Editor;
+    Lesen, Bearbeiten (Titel/Inhalt, Konflikt 409) und Kommentieren laufen über den eigenen Server (Proxy), die Rolle
+    prüft der Eigentümer-Server, Gruppen bestätigt der Heimatserver signiert. Bilder über den Proxy, Anmeldenamen
+    verlassen den Server nie (nur öffentliche Namen).
+  - Benachrichtigungen über Servergrenzen (Teilen, Rolle, Kommentar, Antwort) als signierte Ereignisse mit
+    Ausgangskorb und Wiederholung.
+  - Sicherheit: Instanz-Schlüssel Ed25519 (verschlüsselt gespeichert), **HTTP Message Signatures (RFC 9421)** für
+    Anfragen UND Antworten, Content-Digest (RFC 9530), Uhrzeit ±5 min, Nonce gegen Wiederholung, Grenzen je Instanz,
+    ausgehend nur über den SSRF-Schutz (netguard, nur https). Neue Endpunkte `/.well-known/saga`,
+    `/.well-known/webfinger` (nur signiert), `/fed/v1/…`, `/api/fed/shared`, `/api/fed/files/…`.
+  - Neue Tabellen `fed_*` (keine Änderung bestehender Tabellen); öffentliche Namen, die schon föderiert waren, werden
+    nach Namenswechsel/Kontolöschung für andere Konten gesperrt.
+  - Noch nicht über Servergrenzen: Datenbanken, Hochladen, Unterseiten, Versionen, Export, Live/Anwesenheit, Chat.
 - **Teilen mit Personen und Gruppen:** Knopf „Teilen“ im Seitenkopf (nur Eigentümer) bzw. Seitenmenü → „Teilen …“.
   Personensuche ab 3 Zeichen (Anzeigename + Benutzername, nie eine Liste aller Konten), Gruppen nur, in denen man
   selbst ist (lokal, LDAP, SSO), Rollen **Lesen**, **Kommentieren**, **Bearbeiten**; Rolle ändern und Freigabe

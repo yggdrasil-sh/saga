@@ -25,7 +25,7 @@ import db
 from version import API_LEVEL, MIN_APP, VERSION
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
-from saga import ai, chat, i18n, live, notify, push
+from saga import ai, chat, federation, i18n, live, notify, push
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, LangMiddleware, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
@@ -54,6 +54,7 @@ async def lifespan(_app):
     task = asyncio.create_task(_status_loop())
     live.start()                                             # Live-Kanal (/api/events) und Anwesenheit
     push.start()                                             # Mitteilungen aufs Handy/Desktop (Warteschlange)
+    federation.start()                                       # Foederation: Ausgangskorb (Ereignisse an andere Instanzen)
 
     async def _gc_loop():
         purged = 0.0
@@ -84,6 +85,7 @@ async def lifespan(_app):
     yield
     push.stop()
     live.stop()
+    federation.stop()
     task.cancel()
     gc_task.cancel()
 
@@ -174,6 +176,9 @@ app.include_router(app_login.router)
 app.include_router(dashboard.router)
 app.include_router(links.router)
 app.include_router(tasks.router)
+# Foederation zuerst: faengt nur NEGATIVE Seiten-/Kommentar-IDs (Seiten anderer Instanzen, Konverter "fedid") ab, dazu
+# /.well-known/saga, /fed/v1/... und /api/fed/... - alle positiven IDs laufen unveraendert zu pages/comments
+app.include_router(federation.router)
 app.include_router(pages.router)
 app.include_router(page_tools.router)
 app.include_router(files.router)

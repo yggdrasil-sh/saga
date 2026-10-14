@@ -32,11 +32,13 @@ _pool_lock = threading.Lock()
 # Tabellen mit Ganzzahl-Schluessel "id" -> INSERT liefert die neue id (cur.lastrowid)
 ID_TABLES = {"task", "note", "note_version", "device_login", "cal_account", "app_token", "users", "groups",
              "service", "bookmark", "note_share", "note_comment", "notification", "chat",
-             "push_sub", "push_queue", "ai_history"}
+             "push_sub", "push_queue", "ai_history", "fed_invite", "fed_log", "fed_outbox"}
 # INSERT OR REPLACE: Konfliktspalten je Tabelle
 UPSERT_KEYS = {"immich_key": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",),
                "note_share": ("note_id", "target_type", "target"), "note_comment_seen": ("uid", "thread_id"),
-               "chat_msg_key": ("msg_seq", "recipient")}
+               "chat_msg_key": ("msg_seq", "recipient"),
+               "fed_person": ("principal",), "fed_inbound": ("peer_id", "note_id", "target_type", "target"),
+               "fed_name_retired": ("name",)}
 
 
 def pool():
@@ -456,6 +458,40 @@ CREATE TABLE IF NOT EXISTS ai_history (
     id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, created DOUBLE PRECISION NOT NULL, kind TEXT NOT NULL,
     question TEXT NOT NULL, answer TEXT NOT NULL, sources TEXT NOT NULL DEFAULT '{}');
 CREATE INDEX IF NOT EXISTS ai_history_uid ON ai_history (uid, id DESC);
+
+-- Foederation (2.0, saga/federation.py): Saga-Instanzen teilen Seiten untereinander. Inhalte bleiben beim Eigentuemer;
+-- hier stehen nur Schluessel, Gegenstellen, Protokoll und kleine Verweise (welche Instanz hat etwas mit wem geteilt).
+CREATE TABLE IF NOT EXISTS fed_self (                 -- eigener Instanz-Schluessel (Ed25519), privat verschluesselt
+    id INTEGER PRIMARY KEY, public_key TEXT NOT NULL, private_key TEXT NOT NULL, created DOUBLE PRECISION NOT NULL);
+CREATE TABLE IF NOT EXISTS fed_peer (
+    id INTEGER PRIMARY KEY,                           -- 1..1023 (steckt in den negativen IDs fremder Seiten)
+    host TEXT NOT NULL UNIQUE, base_url TEXT NOT NULL, name TEXT NOT NULL DEFAULT '',
+    public_key TEXT NOT NULL, fingerprint TEXT NOT NULL,
+    status TEXT NOT NULL,                             -- pending_in (wartet auf uns) | pending_out (wartet auf die Gegenseite) | active | disconnected
+    created DOUBLE PRECISION NOT NULL, confirmed_at DOUBLE PRECISION, last_seen DOUBLE PRECISION, last_error TEXT);
+CREATE TABLE IF NOT EXISTS fed_invite (
+    id BIGSERIAL PRIMARY KEY, code_hash TEXT NOT NULL UNIQUE, created DOUBLE PRECISION NOT NULL, expires DOUBLE PRECISION NOT NULL,
+    created_by TEXT, used_at DOUBLE PRECISION, peer_id INTEGER);
+CREATE TABLE IF NOT EXISTS fed_nonce (                -- Replay-Schutz: gesehene Nonces (10 Minuten)
+    peer TEXT NOT NULL, nonce TEXT NOT NULL, created DOUBLE PRECISION NOT NULL, PRIMARY KEY (peer, nonce));
+CREATE INDEX IF NOT EXISTS fed_nonce_created ON fed_nonce (created);
+CREATE TABLE IF NOT EXISTS fed_log (                  -- Pruefprotokoll (nur Kennungen, keine Inhalte)
+    id BIGSERIAL PRIMARY KEY, peer_id INTEGER, host TEXT, ts DOUBLE PRECISION NOT NULL, event TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS fed_log_ts ON fed_log (ts);
+CREATE TABLE IF NOT EXISTS fed_person (               -- Anzeigename fremder Personen ('@name@host'), fuer Kommentare/Freigaben
+    principal TEXT PRIMARY KEY, peer_id INTEGER NOT NULL, display TEXT NOT NULL DEFAULT '', updated DOUBLE PRECISION NOT NULL);
+CREATE TABLE IF NOT EXISTS fed_inbound (              -- Heimatserver: welche fremde Instanz hat welche Seite mit wem geteilt
+    peer_id INTEGER NOT NULL, note_id BIGINT NOT NULL, owner TEXT NOT NULL,      -- owner: '@name@host' des Eigentuemers
+    target_type TEXT NOT NULL, target TEXT NOT NULL,  -- 'user' (lokaler Benutzername) | 'group' (lokale Gruppe)
+    role TEXT NOT NULL, created DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (peer_id, note_id, target_type, target));
+CREATE INDEX IF NOT EXISTS fed_inbound_target ON fed_inbound (target_type, target);
+CREATE TABLE IF NOT EXISTS fed_outbox (               -- Ereignisse an andere Instanzen (Wiederholung bei Ausfall)
+    id BIGSERIAL PRIMARY KEY, peer_id INTEGER NOT NULL, payload TEXT NOT NULL, created DOUBLE PRECISION NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0, next_try DOUBLE PRECISION NOT NULL, locked_until DOUBLE PRECISION NOT NULL DEFAULT 0,
+    last_error TEXT);
+CREATE TABLE IF NOT EXISTS fed_name_retired (         -- oeffentliche Namen, die schon foederiert waren: nie an ein anderes Konto
+    name TEXT PRIMARY KEY, uid TEXT, retired DOUBLE PRECISION NOT NULL);
 """
 # --- Schema-Versionen und Migrationen ----------------------------------------------------------------
 # SCHEMA oben ist Stand 1 (plus neue Tabellen mit CREATE TABLE IF NOT EXISTS). Alles, was bestehende
