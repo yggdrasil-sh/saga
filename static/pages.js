@@ -3798,6 +3798,7 @@
   function applyShare() {
     var c = S.cur, bar = $('pg-sharedby');
     $('pg-share').hidden = !c || !isOwner() || EMBED;
+    if ($('pg-chat')) $('pg-chat').hidden = !c || EMBED || !(c.shared || foreign());     // Seiten-Chat (1.5): nur auf geteilten Seiten
     $('pg-share').classList.toggle('on', !!(c && c.shared));
     $('pg-share').title = c && c.shared ? T('Geteilt – Freigaben verwalten') : T('Mit Personen oder Gruppen teilen');
     if (bar) bar.remove();
@@ -3825,6 +3826,10 @@
     ($('pg-sharedby') || $('pg-title')).after(m);
   }
   $('pg-share').addEventListener('click', function () { openShare(); });
+  if ($('pg-chat')) $('pg-chat').addEventListener('click', function () {
+    if (!S.cur) return;
+    var w = window.open('/chats#p' + S.cur.id, 'hk-chats'); if (w) w.focus();
+  });
   function openShare() {
     if (!S.cur || !isOwner()) return;
     var id = S.cur.id;

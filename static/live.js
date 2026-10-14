@@ -18,7 +18,8 @@
     'share.role': T('Meine Rolle auf einer geteilten Seite ändert sich'),
     'comment.new': T('Neue Kommentare auf meinen Seiten'),
     'comment.reply': T('Antworten in Unterhaltungen, an denen ich beteiligt bin'),
-    'publish.withdrawn': T('Ein Admin zieht eine Veröffentlichung von mir zurück')
+    'publish.withdrawn': T('Ein Admin zieht eine Veröffentlichung von mir zurück'),
+    'chat.message': T('Neue Chat-Nachrichten (ohne Inhalt; stummgeschaltete Chats nie)')
   };
   var narrow = window.matchMedia('(max-width: 760px)');
   var NS = 'http://www.w3.org/2000/svg';
@@ -85,6 +86,7 @@
     else if (it.kind === 'comment.reply') s = n > 1 ? T('{n} neue Antworten in einer Unterhaltung') : T('{name} hat in einer Unterhaltung geantwortet');
     else if (it.kind === 'comment.mention') s = T('{name} hat dich erwähnt');
     else if (it.kind === 'publish.withdrawn') s = T('Ein Admin hat deine Veröffentlichung zurückgezogen');
+    else if (it.kind === 'chat.message') s = n > 1 ? T('{n} neue Nachrichten') : T('Neue Nachricht von {name}');
     else return document.createTextNode(it.text || it.kind);
     return HK.fmtNodes(s, { name: name, role: ROLE[it.role] || '', n: n });
   }
@@ -96,7 +98,8 @@
     var body = el('span', 'lv-body');
     var tx = el('span', 'lv-text'); tx.appendChild(sentence(it)); body.appendChild(tx);
     var ic = it.note && it.note.icon && it.note.icon.charAt(0) !== '/' ? it.note.icon : '📄';
-    body.appendChild(el('span', 'lv-page' + (it.access ? '' : ' gone'), it.access ? ic + ' ' + (it.note.title || T('Unbenannt')) : '🔒 ' + T('Kein Zugriff mehr')));
+    if (it.chat) body.appendChild(el('span', 'lv-page' + (it.access ? '' : ' gone'), it.access ? '💬 ' + (it.title || T('Chat')) : '🔒 ' + T('Kein Zugriff mehr')));
+    else body.appendChild(el('span', 'lv-page' + (it.access ? '' : ' gone'), it.access ? ic + ' ' + (it.note.title || T('Unbenannt')) : '🔒 ' + T('Kein Zugriff mehr')));
     if (it.excerpt) body.appendChild(el('span', 'lv-ex', it.excerpt));
     var tm = el('span', 'lv-time', HK.relTime(it.created - Date.now() / 1000)); tm.title = fFull.format(new Date(it.created * 1000));
     body.appendChild(tm);
@@ -199,6 +202,10 @@
   function activate(it) {
     if (!it.read) markRead([it.id]);
     closePanel(false);
+    if (it.kind === 'chat.message' && it.access && it.url) {           // Chat (1.5): im Chat-Tab oeffnen
+      if (location.pathname === '/chats') { location.hash = it.url.split('#')[1] || ''; return; }
+      var cw = window.open(it.url, 'hk-chats'); if (cw) cw.focus(); return;
+    }
     if (!it.access || !it.note) { HK.toast(T('Kein Zugriff mehr')); return; }
     var k = K();
     if (!k) { var w = window.open(it.url || '/notes#' + it.note.id, 'hk-notes'); if (w) w.focus(); return; }
@@ -250,6 +257,10 @@
     on(es, 'comments.changed', onComments);
     on(es, 'shared.changed', onShared);
     on(es, 'presence', function (d) { if (d.note_id === P.id) drawPresence(d.users || []); });
+    // Chat (1.5): an die Chat-Seite weiterreichen (Ereignis 'hk-live'), Zahl am Knopf "Chats" aktualisieren
+    ['chat.message', 'chat.deleted', 'chat.read', 'chat.typing', 'chat.changed', 'chat.link', 'chat.device'].forEach(function (n) {
+      on(es, n, function (d) { chatEvent(n, d); });
+    });
     on(es, 'bye', function (d) {
       es.close(); if (L.es === es) L.es = null;
       if (d.reason === 'account') { L.stopped = true; stopPoll(); return; }
@@ -282,14 +293,34 @@
   function pollOnce() {
     if (document.hidden) return;
     L.polls++;
+    chatsBadgeSoon();
     count().then(function (grew) {
       if (grew && N.open) load();
       var k = K();
       if (k && (grew || L.polls % 3 === 0)) { k.reloadList(); if (window.HKComments && k.cur()) HKComments.live(); }
     }).catch(function (err) { if (err.status === 401) { L.stopped = true; stopPoll(); } });
   }
+  function chatEvent(n, d) {
+    document.dispatchEvent(new CustomEvent('hk-live', { detail: { type: n, data: d } }));
+    if (n === 'chat.message' || n === 'chat.read' || n === 'chat.deleted' || n === 'chat.changed') chatsBadgeSoon();
+  }
+  var cbT = null;
+  function chatsBadgeSoon() {
+    var a = document.getElementById('hk-chats'); if (!a) return;
+    clearTimeout(cbT);
+    cbT = setTimeout(function () {
+      api('GET', '/api/chats/unread').then(function (d) {
+        var b = a.querySelector('.btn-badge');
+        if (!d.unread) { if (b) b.remove(); return; }
+        if (!b) { b = el('span', 'btn-badge'); a.appendChild(b); }
+        b.textContent = String(d.unread); b.title = T('{n} ungelesene Nachrichten', { n: d.unread });
+      }).catch(function () {});
+    }, 800);
+  }
   // Nach Unterbrechung/Neustart des Servers: alles abgleichen
   function resync() {
+    document.dispatchEvent(new CustomEvent('hk-live', { detail: { type: 'resync', data: {} } }));
+    chatsBadgeSoon();
     count().then(function () { if (N.open) load(); }).catch(function () {});
     var k = K();
     if (k) { k.reloadList(); if (window.HKComments && k.cur()) HKComments.live(); ping(); }

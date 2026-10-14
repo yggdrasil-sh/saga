@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 import auth
 from db import connect as _db
 from fastapi import APIRouter
-from saga import i18n, publish
+from saga import chat, i18n, publish
 from saga.sharing import unread_count
 from saga.core import (ADMIN_URL, ASSET_V, CACHE_TTL, CA_FILE, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user,
                        remember_ui_lang, std_name, t, title, tmpl, user_info)
@@ -159,7 +159,10 @@ def notes_page(request: Request):
     # und nur von Saga selbst (frame-ancestors 'self'); alles andere bleibt 'none'.
     embed = request.query_params.get("embed") == "1"
     remember_ui_lang(uid, request)        # Standardnamen auch bei API-Anfragen ohne Browser-Sprache in dieser Sprache
+    with _db() as c:
+        n_chat = chat.unread_total(c, uid)
     html = tmpl.get_template("notes.html").render(title=title(), name=request.session.get("name", uid), v=ASSET_V, embed=embed,
+                                                  chat_enabled=chat.enabled(), chat_unread=n_chat,
                                                   admin_url=ADMIN_URL if user_info(uid)["is_admin"] else "")
     headers = dict(SEC_HEADERS)
     if embed:
@@ -183,8 +186,9 @@ def index(request: Request):
             cats.setdefault(s["category"], []).append(s)
     with _db() as c:
         n_cm = unread_count(c, uid)                  # "Neue Kommentare (n)" am Knopf "Seiten"
+        n_chat = chat.unread_total(c, uid)           # Knopf "Chats": ungelesene Nachrichten
     html = tmpl.get_template("index.html").render(
-        new_comments=n_cm,
+        new_comments=n_cm, chat_enabled=chat.enabled(), chat_unread=n_chat,
         title=title(), name=request.session.get("name", uid), uid=uid,
         favorites=[mine[k] for k in fav_keys], categories=cats, acct=account_ctx(info),
         search_enabled=bool(SEARXNG_URL), v=ASSET_V,

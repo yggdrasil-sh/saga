@@ -573,6 +573,7 @@ async def settings_post(request: Request):
     for k, v in (("title", _s(f, "title", 60) or "Saga"), ("registration", _on(f, "registration")),
                  ("publish_enabled", _on(f, "publish_enabled")), ("public_home", home),
                  ("share_enabled", _on(f, "share_enabled")), ("share_group_scope", _on(f, "share_group_scope")),
+                 ("chat_enabled", _on(f, "chat_enabled")), ("chat_retention_max_days", _days(f.get("chat_retention_max_days"))),
                  ("local_login", _on(f, "local_login")), ("group_prefix", prefix),
                  ("default_groups", _groups_list(_s(f, "default_groups", 1000))),
                  ("allow_private_hosts", _on(f, "allow_private_hosts")), ("allowed_hosts", ", ".join(hosts)),
@@ -583,6 +584,14 @@ async def settings_post(request: Request):
     _flash(request, t("Gespeichert.") + (" " + t("Hinweis: Mit der neuen Gruppen-Kennung gelten neue Zugangsgruppen – Favoriten der Dienste müssen neu gesetzt werden.")
                                          if old_prefix != prefix else ""))
     return _go("/settings")
+
+
+def _days(v):
+    """Chat: Aufbewahrungs-Hoechstwert in Tagen (0 = unbegrenzt, hoechstens 10 Jahre)."""
+    try:
+        return max(0, min(3650, int(str(v or "0").strip() or 0)))
+    except ValueError:
+        return 0
 
 
 # --- Oeffentliche Seiten (Veroeffentlichen) -----------------------------------------------------------------

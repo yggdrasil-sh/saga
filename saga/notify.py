@@ -23,13 +23,14 @@ from saga.sharing import unread_count as pages_unread
 
 router = APIRouter()
 
-KINDS = ("share.added", "share.role", "comment.new", "comment.reply", "publish.withdrawn")    # abschaltbar, in dieser Reihenfolge
+KINDS = ("share.added", "share.role", "comment.new", "comment.reply", "publish.withdrawn", "chat.message")    # abschaltbar, in dieser Reihenfolge
 FUTURE = ("comment.mention",)
 RETENTION_DAYS = 90
 BUNDLE_SEC = 600                    # Kommentare derselben Unterhaltung innerhalb 10 Minuten -> eine Benachrichtigung
 EXCERPT = 120
 PAGE_MAX = 100
 GROUP_MAX = 1000                    # Freigabe an eine Gruppe: hoechstens so viele Mitglieder benachrichtigen
+RENDER = {}                         # Art -> fn(c, uid, eintrag, daten): Titel/Link fuer Arten ohne Seite (saga.chat meldet sich an)
 ROLE_KEYS = {"view": "Lesen##Rolle", "comment": "Kommentieren##Rolle", "edit": "Bearbeiten##Rolle"}
 
 
@@ -56,7 +57,9 @@ def create(c, uid, kind, actor=None, note_id=None, comment_id=None, data=None, b
     if bundle is not None:
         data.update(thread=bundle, n=1, actors=[actor] if actor else [])
         for rid, raw in c.execute("SELECT id, data FROM notification WHERE uid=? AND kind=? AND note_id=? AND read_at IS NULL AND created>? "
-                                  "ORDER BY id DESC LIMIT 20", (uid, kind, note_id, now - BUNDLE_SEC)).fetchall():
+                                  "ORDER BY id DESC LIMIT 20", (uid, kind, note_id, now - BUNDLE_SEC)).fetchall() if note_id is not None else \
+                c.execute("SELECT id, data FROM notification WHERE uid=? AND kind=? AND note_id IS NULL AND read_at IS NULL AND created>? "
+                          "ORDER BY id DESC LIMIT 20", (uid, kind, now - BUNDLE_SEC)).fetchall():
             d = _json_load(raw, {})
             if d.get("thread") == bundle:
                 # fortschreiben: alte Zeile weg, neue oben (Reihenfolge = id, Blaettern mit ?before=<id> bleibt stabil)
@@ -157,6 +160,8 @@ def _text(kind, actor, n, role, access):
         return t("{name} hat dich erwähnt", name=who)
     if kind == "publish.withdrawn":
         return t("Ein Admin hat deine Veröffentlichung zurückgezogen")
+    if kind == "chat.message":
+        return t("{n} neue Nachrichten", n=n) if n > 1 else t("Neue Nachricht von {name}", name=who)
     return kind
 
 
@@ -201,6 +206,8 @@ def _render(c, uid, rows, acc=None):
                     item["url"] = f"/notes#{nid}:{cm[2]}"
         item["text"] = _text(kind, a_name, item["count"], d.get("role"), access)
         item["title"] = (n[0] or t("Unbenannt")) if access else t("Kein Zugriff mehr")
+        if kind in RENDER:
+            RENDER[kind](c, uid, item, d)
         out.append(item)
     return out
 

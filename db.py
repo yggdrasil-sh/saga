@@ -31,10 +31,11 @@ _pool_lock = threading.Lock()
 
 # Tabellen mit Ganzzahl-Schluessel "id" -> INSERT liefert die neue id (cur.lastrowid)
 ID_TABLES = {"task", "note", "note_version", "device_login", "cal_account", "app_token", "users", "groups",
-             "service", "bookmark", "note_share", "note_comment", "notification"}
+             "service", "bookmark", "note_share", "note_comment", "notification", "chat"}
 # INSERT OR REPLACE: Konfliktspalten je Tabelle
 UPSERT_KEYS = {"immich_key": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",),
-               "note_share": ("note_id", "target_type", "target"), "note_comment_seen": ("uid", "thread_id")}
+               "note_share": ("note_id", "target_type", "target"), "note_comment_seen": ("uid", "thread_id"),
+               "chat_msg_key": ("msg_seq", "recipient")}
 
 
 def pool():
@@ -368,6 +369,61 @@ CREATE TABLE IF NOT EXISTS notification (
 CREATE INDEX IF NOT EXISTS notification_uid ON notification (uid, id DESC);
 CREATE INDEX IF NOT EXISTS notification_unread ON notification (uid) WHERE read_at IS NULL;
 CREATE INDEX IF NOT EXISTS notification_created ON notification (created);
+
+-- Chat mit Ende-zu-Ende-Verschluesselung (1.5): der Server speichert nur oeffentliche Schluessel, das mit dem
+-- Wiederherstellungsschluessel verschluesselte Schluessel-Buendel, Ciphertexte und versiegelte Inhaltsschluessel
+-- (Format siehe saga/chat.py). Kein Klartext, keine privaten Schluessel.
+CREATE TABLE IF NOT EXISTS chat_identity (
+    uid TEXT PRIMARY KEY, ident_pub TEXT NOT NULL, backup_pub TEXT NOT NULL, backup_sig TEXT NOT NULL,
+    bundle TEXT NOT NULL,                         -- JSON {v, kdf, ops, mem, salt, nonce, ct} (verschluesselt)
+    created DOUBLE PRECISION NOT NULL, updated DOUBLE PRECISION NOT NULL);
+CREATE TABLE IF NOT EXISTS chat_device (
+    id TEXT PRIMARY KEY, uid TEXT NOT NULL, name TEXT NOT NULL DEFAULT '',
+    enc_pub TEXT NOT NULL, sign_pub TEXT NOT NULL, sig TEXT NOT NULL,   -- sig = Zertifikat (vom Identitaetsschluessel signiert)
+    created DOUBLE PRECISION NOT NULL, last_seen DOUBLE PRECISION, revoked_at DOUBLE PRECISION);
+CREATE INDEX IF NOT EXISTS chat_device_uid ON chat_device (uid);
+CREATE TABLE IF NOT EXISTS chat (
+    id BIGSERIAL PRIMARY KEY,
+    kind TEXT NOT NULL,                           -- dm | group (Saga-Gruppe) | free (freie Gruppe) | page (Seite)
+    dm_key TEXT UNIQUE,                           -- dm: "a|b" (sortiert)
+    group_name TEXT, note_id BIGINT,
+    created_by TEXT, created DOUBLE PRECISION NOT NULL,
+    retention_s BIGINT NOT NULL DEFAULT 0,        -- 0 = unbegrenzt (Admin-Hoechstwert gilt zusaetzlich)
+    title_seq BIGINT,                             -- free: Nachricht (kind 'title') mit dem verschluesselten Namen
+    last_seq BIGINT NOT NULL DEFAULT 0, last_at DOUBLE PRECISION);
+CREATE UNIQUE INDEX IF NOT EXISTS chat_group_u ON chat (group_name) WHERE kind = 'group';
+CREATE UNIQUE INDEX IF NOT EXISTS chat_page_u ON chat (note_id) WHERE kind = 'page';
+CREATE TABLE IF NOT EXISTS chat_member (
+    chat_id BIGINT NOT NULL REFERENCES chat(id) ON DELETE CASCADE, uid TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member',          -- admin (freie Gruppe: Ersteller) | member
+    joined DOUBLE PRECISION NOT NULL, left_at DOUBLE PRECISION,
+    muted INTEGER NOT NULL DEFAULT 0, last_read BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (chat_id, uid));
+CREATE INDEX IF NOT EXISTS chat_member_uid ON chat_member (uid);
+CREATE TABLE IF NOT EXISTS chat_msg (
+    seq BIGSERIAL PRIMARY KEY, id TEXT NOT NULL UNIQUE,
+    chat_id BIGINT NOT NULL REFERENCES chat(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL DEFAULT 'msg',             -- msg | title
+    sender_uid TEXT, sender_device TEXT NOT NULL, ts BIGINT NOT NULL,
+    created DOUBLE PRECISION NOT NULL, expires_at DOUBLE PRECISION,
+    body_ct TEXT NOT NULL, sig TEXT NOT NULL, reply_to TEXT, size INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS chat_msg_chat ON chat_msg (chat_id, seq);
+CREATE INDEX IF NOT EXISTS chat_msg_sender ON chat_msg (sender_uid, created);
+CREATE INDEX IF NOT EXISTS chat_msg_expires ON chat_msg (expires_at) WHERE expires_at IS NOT NULL;
+CREATE TABLE IF NOT EXISTS chat_msg_key (
+    msg_seq BIGINT NOT NULL REFERENCES chat_msg(seq) ON DELETE CASCADE,
+    recipient TEXT NOT NULL,                      -- Geraete-id oder 'backup:' + uid
+    sealed TEXT NOT NULL, PRIMARY KEY (msg_seq, recipient));
+CREATE INDEX IF NOT EXISTS chat_msg_key_rcpt ON chat_msg_key (recipient);
+CREATE TABLE IF NOT EXISTS chat_file (
+    id TEXT PRIMARY KEY, chat_id BIGINT NOT NULL, uid TEXT NOT NULL, size BIGINT NOT NULL,
+    created DOUBLE PRECISION NOT NULL, msg_seq BIGINT);
+CREATE INDEX IF NOT EXISTS chat_file_msg ON chat_file (msg_seq);
+CREATE TABLE IF NOT EXISTS chat_link (
+    id TEXT PRIMARY KEY, uid TEXT NOT NULL, device_id TEXT NOT NULL, name TEXT NOT NULL DEFAULT '',
+    enc_pub TEXT NOT NULL, sign_pub TEXT NOT NULL, created DOUBLE PRECISION NOT NULL, expires DOUBLE PRECISION NOT NULL,
+    sealed TEXT, approved DOUBLE PRECISION);
+CREATE INDEX IF NOT EXISTS chat_link_uid ON chat_link (uid);
 """
 # --- Schema-Versionen und Migrationen ----------------------------------------------------------------
 # SCHEMA oben ist Stand 1 (plus neue Tabellen mit CREATE TABLE IF NOT EXISTS). Alles, was bestehende

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="{{ lang() }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f141c" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f1ec" media="(prefers-color-scheme: light)">
+<title>{{ _("Chats") }} · {{ title }}</title>
+<link rel="icon" href="/static/icon.svg?v={{ v }}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ v }}">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+<link rel="stylesheet" href="/static/live.css?v={{ v }}">
+<link rel="stylesheet" href="/static/chat.css?v={{ v }}">
+</head>
+<body class="chats-page" data-v="{{ v }}" data-uid="{{ uid }}" data-name="{{ name }}" data-enabled="{{ '1' if enabled else '' }}">
+<header class="np-head">
+  <a class="np-brand" href="/" title="{{ _("Zum Dashboard") }}">{{ title }}</a>
+  <span class="np-sep">/</span>
+  <span class="np-name">{{ _("Chats") }}</span>
+  <span class="ct-e2e" title="{{ _("Nachrichten und Anhänge werden auf deinen Geräten verschlüsselt. Der Server – auch der Admin – kann sie nicht lesen.") }}">🔒 {{ _("Ende-zu-Ende-verschlüsselt") }}</span>
+  <span class="spacer"></span>
+  <a class="btn np-pages" href="/notes" target="hk-notes">{{ _("Seiten") }}</a>
+  <button type="button" class="btn hk-user" id="hk-user" data-name="{{ name }}" data-admin="{{ admin_url }}" aria-haspopup="menu" title="{{ _("Benutzermenü") }}" aria-label="{{ _("Benutzermenü") }}: {{ name }}">👤 <span class="hk-user-n">{{ name }}</span> ▾</button>
+  <a class="btn np-dash" href="/" title="{{ _("Zum Dashboard") }}" aria-label="{{ _("Dashboard") }}"><span class="np-dash-ic" aria-hidden="true">⌂</span><span class="np-dash-t">{{ _("Dashboard") }}</span></a>
+</header>
+<main class="ct-main">
+  {% if not enabled %}
+  <p class="ct-off" role="status">{{ _("Chats sind auf diesem Server abgeschaltet.") }}</p>
+  {% else %}
+  <div class="ct" id="ct">
+    <aside class="ct-side" id="ct-side" aria-label="{{ _("Unterhaltungen") }}">
+      <div class="ct-side-top">
+        <input type="search" class="ct-filter" id="ct-filter" placeholder="{{ _("Chats durchsuchen") }}" aria-label="{{ _("Chats durchsuchen") }}" autocomplete="off">
+        <button type="button" class="btn btn-primary ct-new" id="ct-new" title="{{ _("Neue Unterhaltung") }}">+ {{ _("Neu") }}</button>
+      </div>
+      <ul class="ct-list" id="ct-list" aria-label="{{ _("Unterhaltungen") }}"></ul>
+      <p class="ct-empty" id="ct-list-empty" hidden>{{ _("Noch keine Unterhaltungen. Beginne eine mit „+ Neu“ – oder öffne auf einer geteilten Seite „Chat“.") }}</p>
+      <div class="ct-side-foot">
+        <button type="button" class="pg-foot-btn" id="ct-settings">⚙ {{ _("Chats & Geräte") }}</button>
+      </div>
+    </aside>
+    <section class="ct-conv" id="ct-conv" aria-live="off">
+      <div class="ct-none" id="ct-none">
+        <p class="ct-none-ic" aria-hidden="true">🔒</p>
+        <p>{{ _("Wähle links eine Unterhaltung.") }}</p>
+        <p class="hk-hint">{{ _("Nachrichten werden auf deinen Geräten verschlüsselt. Der Server speichert nur verschlüsselte Daten.") }}</p>
+      </div>
+      <div class="ct-chat" id="ct-chat" hidden>
+        <div class="ct-head">
+          <button type="button" class="icon-btn ct-back" id="ct-back" aria-label="{{ _("Zurück zur Liste") }}">‹</button>
+          <div class="ct-head-t">
+            <h2 class="ct-title" id="ct-title"></h2>
+            <div class="ct-sub" id="ct-sub"></div>
+          </div>
+          <button type="button" class="icon-btn" id="ct-search-btn" title="{{ _("In diesem Chat suchen") }}" aria-label="{{ _("In diesem Chat suchen") }}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+          </button>
+          <button type="button" class="icon-btn" id="ct-more" title="{{ _("Chat …") }}" aria-label="{{ _("Chat-Optionen") }}" aria-haspopup="menu">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+          </button>
+        </div>
+        <div class="ct-searchbar" id="ct-searchbar" hidden>
+          <input type="search" class="hk-in" id="ct-search" placeholder="{{ _("Suchen (nur auf diesem Gerät, in geladenen Nachrichten)") }}" aria-label="{{ _("Nachrichten durchsuchen") }}" autocomplete="off">
+          <span class="ct-search-n" id="ct-search-n" role="status"></span>
+        </div>
+        <div class="ct-warn" id="ct-warn" hidden role="alert"></div>
+        <div class="ct-msgs" id="ct-msgs" role="log" aria-label="{{ _("Nachrichten") }}"></div>
+        <div class="ct-typing" id="ct-typing" aria-live="polite"></div>
+        <div class="ct-reply" id="ct-reply" hidden></div>
+        <div class="ct-files" id="ct-files" hidden></div>
+        <form class="ct-compose" id="ct-compose" autocomplete="off">
+          <button type="button" class="icon-btn ct-attach" id="ct-attach" title="{{ _("Bild oder Datei anhängen") }}" aria-label="{{ _("Bild oder Datei anhängen") }}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5l-8.5 8.5a5 5 0 0 1-7-7L14 4.5a3.5 3.5 0 0 1 5 5L10.5 18a2 2 0 0 1-3-3L15 7.5"/></svg>
+          </button>
+          <textarea class="ct-input" id="ct-input" rows="1" placeholder="{{ _("Nachricht … (@ verlinkt eine Seite)") }}" aria-label="{{ _("Nachricht") }}"></textarea>
+          <button type="submit" class="btn btn-primary ct-send" id="ct-send">{{ _("Senden") }}</button>
+          <input type="file" id="ct-file" multiple hidden>
+        </form>
+        <div class="picker ct-picker" id="ct-picker" role="listbox" hidden></div>
+      </div>
+    </section>
+  </div>
+  {% endif %}
+</main>
+<script src="/i18n/{{ lang() }}.js?v={{ i18n_v }}"></script>
+<script src="/static/common.js?v={{ v }}"></script>
+<script src="/static/settings.js?v={{ v }}"></script>
+<script src="/static/live.js?v={{ v }}"></script>
+{% if enabled %}
+<script src="/static/vendor/libsodium/libsodium-sumo.js?v={{ v }}"></script>
+<script src="/static/vendor/libsodium/libsodium-wrappers.js?v={{ v }}"></script>
+<script src="/static/chat-crypto.js?v={{ v }}"></script>
+<script src="/static/chat.js?v={{ v }}"></script>
+{% endif %}
+</body>
+</html>
