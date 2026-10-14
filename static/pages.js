@@ -3814,7 +3814,7 @@
   function applyShare() {
     var c = S.cur, bar = $('pg-sharedby');
     $('pg-share').hidden = !c || !isOwner() || EMBED;
-    if ($('pg-chat')) $('pg-chat').hidden = !c || EMBED || !(c.shared || foreign());     // Seiten-Chat (1.5): nur auf geteilten Seiten
+    if ($('pg-chat')) $('pg-chat').hidden = !c || EMBED || !(c.shared || foreign()) || remoteId(c.id);     // Seiten-Chat (1.5): nur auf geteilten Seiten dieser Instanz
     $('pg-share').classList.toggle('on', !!(c && c.shared));
     $('pg-share').title = c && c.shared ? T('Geteilt – Freigaben verwalten') : T('Mit Personen oder Gruppen teilen');
     if (bar) bar.remove();

@@ -675,7 +675,8 @@ passenden Ausschnitte aus Seiten –, geht an diesen Endpunkt**; die Adresse ste
   Archiv nicht), schickt die passendsten Abschnitte mit und zeigt die Antwort Wort für Wort. Die Zahlen **[1]**, **[2]**
   führen zu den Quellseiten; darunter stehen alle Quellen. Verweise auf Seiten, die du nicht sehen darfst, gehen nur
   als „Seite ohne Zugriff“ mit. **Aufgaben** und **Kalender** nimmt der Assistent nur dazu, wenn du die Schalter unter
-  dem Eingabefeld einschaltest. Chats liest er nie.
+  dem Eingabefeld einschaltest. Chats (Ende-zu-Ende-verschlüsselt) liest er nie,
+  ebenso keine Seiten anderer Saga-Instanzen (Föderation).
 - **Diese Seite** (auch im Seitenmenü „…“ → KI-Assistent): **Zusammenfassen**, **Aufgaben vorschlagen** (Auswahl
   ankreuzen → „In Aufgaben übernehmen“ oder „Als Checkliste einfügen“), **Markierten Text verbessern** und
   **Übersetzen nach …** für die Blöcke, die du gerade markiert hast. Das Ergebnis ist immer nur ein **Vorschlag**:

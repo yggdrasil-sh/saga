@@ -130,8 +130,12 @@ async def login_sso(request: Request):
     if cl is None:
         return RedirectResponse("/login", status_code=303)
     request.session.setdefault("next", "/")
+    kw = {}
+    if request.query_params.get("reauth"):            # erneute Anmeldung (z. B. Chats neu beginnen): Anbieter soll neu fragen
+        request.session["next"] = _next(request.query_params.get("next", "/"))
+        kw["prompt"] = "login"
     try:
-        return await cl.authorize_redirect(request, BASE_URL + "/auth/callback")
+        return await cl.authorize_redirect(request, BASE_URL + "/auth/callback", **kw)
     except Exception as ex:  # noqa: BLE001 - Anbieter nicht erreichbar / falsch eingerichtet
         print(f"sso: {type(ex).__name__}: {ex}", flush=True)
         return _auth_page(request, "login.html", 502, error=t("Der Anmeldedienst (SSO) ist gerade nicht erreichbar."))

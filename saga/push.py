@@ -367,6 +367,9 @@ def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None):
         return 0
     now = time.time()
     d = json.dumps({k: v for k, v in (data or {}).items() if k in ("chat",)})        # nur Kennungen, nie Inhalte
+    if kind == "chat.message" and c.execute("SELECT 1 FROM push_queue WHERE uid=? AND kind=? AND data=? AND tries=0 LIMIT 1",
+                                            (uid, kind, d)).fetchone():
+        return 0                          # fuer diesen Chat wartet schon eine Mitteilung (wie das Buendeln der Glocke)
     for sid in subs:
         c.execute("INSERT INTO push_queue (uid, sub_id, kind, ref, actor, data, created, next_at) VALUES (?,?,?,?,?,?,?,?)",
                   (uid, sid, kind, ref, actor, d, now, now))
@@ -375,6 +378,8 @@ def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None):
 
 
 def _on_notification(c, uid, id, kind, actor=None, replaces=None, **_):      # noqa: A002 - Name aus saga.notify
+    if kind == "chat.message":
+        return                            # der Chat meldet selbst ueber "push.send" (mit Chat-Kennung, Stummschalten beachtet)
     enqueue(c, uid, kind, actor=actor, ref=id, replaces=replaces)
 
 
@@ -420,6 +425,9 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
             body, url, tag = t("Testmitteilung – Mitteilungen kommen an."), "/", "test"
         elif kind == "chat.message":
             chat = re.sub(r"[^A-Za-z0-9_.-]", "", str((data or {}).get("chat") or ""))[:64]
+            if chat.isdigit() and not c.execute("SELECT 1 FROM chat_member WHERE chat_id=? AND uid=? AND left_at IS NULL AND muted=0",
+                                                (int(chat), uid)).fetchone():
+                return None               # inzwischen nicht mehr Mitglied oder stummgeschaltet
             nm = notify.names(c, [actor]).get(actor) if actor and names else None
             body = t("Neue Nachricht von {name}", name=nm) if nm else t("Neue Nachricht")
             url, tag = ("/chats#" + chat) if chat else "/chats", "chat-" + chat
@@ -787,7 +795,8 @@ def _parse_sub(b, srv):
 @router.post("/api/push/subscriptions")
 async def api_push_subscribe(request: Request):
     """Geraet/Browser anmelden (oder erneuern - gleiche Adresse = gleiches Abo; gehoerte es einem anderen Konto, wechselt
-    es zu diesem). webpush: {type, endpoint, keys: {p256dh, auth}, name}; ntfy: {type, url, token?, name};
+    es zu diesem - nur bei webpush/apns: die Adresse erzeugt dort der Browser bzw. Apple fuer GENAU dieses Geraet. ntfy-Topics
+    und UnifiedPush-Adressen kann man abschreiben; die eines anderen Kontos -> 409). webpush: {type, endpoint, keys: {p256dh, auth}, name}; ntfy: {type, url, token?, name};
     unifiedpush: {type, endpoint, keys?, name}; apns: {type, token, env: production|sandbox, name}."""
     from starlette.concurrency import run_in_threadpool
     uid, did = _who(request)
@@ -811,6 +820,8 @@ async def api_push_subscribe(request: Request):
     now = time.time()
     with _db() as c, c:
         old = c.execute("SELECT id, uid FROM push_sub WHERE endpoint=?", (f["endpoint"],)).fetchone()
+        if old and old[1] != uid and f["kind"] not in ("webpush", "apns"):
+            return _bad(t("Diese Adresse ist schon bei einem anderen Konto angemeldet."), 409)
         if old and old[1] != uid:
             c.execute("DELETE FROM push_queue WHERE sub_id=?", (old[0],))
             c.execute("DELETE FROM push_sub WHERE id=?", (old[0],))

@@ -683,7 +683,8 @@ fragmentos de páginas correspondientes – se envía a ese endpoint**; su direc
   papelera ni el archivo), envía los fragmentos más adecuados y muestra la respuesta mientras se escribe. Los números
   **[1]**, **[2]** llevan a las páginas de origen; debajo aparecen todas las fuentes. Los enlaces a páginas que no puedes
   ver solo se envían como «Página sin acceso». El asistente solo incluye **tareas** y **calendario** si activas los
-  interruptores bajo el campo de entrada. Nunca lee chats.
+  interruptores bajo el campo de entrada. Nunca lee chats (cifrados de extremo a extremo) ni
+  páginas de otras instancias de Saga (federación).
 - **Esta página** (también en el menú de página «…» → Asistente de IA): **Resumir**, **Sugerir tareas** (marca las que
   quieras → «Añadir a tareas» o «Insertar como lista de comprobación»), **Mejorar el texto seleccionado** y
   **Traducir a …** para los bloques que hayas seleccionado. El resultado es siempre solo una **sugerencia**:

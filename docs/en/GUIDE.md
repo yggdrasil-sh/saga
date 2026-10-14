@@ -655,7 +655,8 @@ excerpts from pages – is sent to this endpoint**; its address is shown at the 
   archive), sends the best-matching excerpts along and shows the answer as it is written. The numbers **[1]**, **[2]**
   lead to the source pages; all sources are listed below. Links to pages you can't see are only sent as “Page without
   access”. The assistant only includes **tasks** and **calendar** when you turn on the switches below the input field.
-  It never reads chats.
+  It never reads chats (end-to-end encrypted) or pages
+  from other Saga instances (federation).
 - **This page** (also in the page menu “…” → AI assistant): **Summarize**, **Suggest tasks** (tick the ones you want →
   “Add to tasks” or “Insert as checklist”), **Improve selected text** and **Translate to …** for the blocks you have
   selected. The result is always just a **suggestion**: “Replace” (after confirming), “Insert below” or “Copy” – the

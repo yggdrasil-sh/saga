@@ -40,7 +40,7 @@ from saga import bus, notify
 from saga.core import (ADMIN_URL, ASSET_V, E, SEC_HEADERS, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
                        tmpl, user_info)
 from saga.notes import FILE_MAX, note_chain
-from saga.sharing import Access, enabled as share_enabled, group_scope, groups_of, names
+from saga.sharing import REMOTE_TYPES, Access, enabled as share_enabled, group_scope, groups_of, names
 
 router = APIRouter()
 
@@ -58,6 +58,7 @@ SKEW = 600                             # erlaubte Abweichung der Client-Zeit (ts
 RETENTIONS = (0, 3600, 86400, 7 * 86400, 30 * 86400, 90 * 86400, 365 * 86400)
 SEAL_LEN = 32 + 48                     # crypto_box_seal(32-Byte-Schluessel)
 _HEX32 = re.compile(r"[0-9a-f]{32}")
+REAUTH_SEC = 300                       # "Neu beginnen": Passwort oder Anmeldung hoechstens 5 Minuten alt
 _FID = re.compile(r"[A-Za-z0-9_-]{22,40}")
 _hits = {}                             # (art, uid) -> [zeiten] fuer Tipp-/Upload-/Such-Bremsen
 
@@ -246,6 +247,8 @@ def page_members(c, nid):
     cand = set()
     for typ, tg in c.execute(f"SELECT target_type, target FROM note_share WHERE owner_uid=? AND note_id IN ({','.join('?' * len(chain))})",
                              (owner, *chain)).fetchall():
+        if typ in REMOTE_TYPES:            # Personen anderer Saga-Instanzen: Chats (und ihre Schluessel) bleiben auf dieser Instanz
+            continue
         if typ == "user":
             cand.add(tg)
         else:
@@ -326,6 +329,44 @@ def may_contact(c, uid, other):
     return not group_scope() or bool(groups_of(c, uid) & groups_of(c, other))
 
 
+# --- Erneute Anmeldung fuer "Neu beginnen" ---------------------------------------------------------------------
+# Neu beginnen wirft alle Geraete hinaus und ersetzt die Schluessel - wer nur eine (gestohlene) Sitzung hat, soll das
+# nicht koennen. Verlangt: Passwort (Feld password, lokal/LDAP) ODER eine Anmeldung bzw. Passwort-Bestaetigung dieser
+# Sitzung, die hoechstens REAUTH_SEC alt ist (SSO-Konten ohne Passwort: frische Anmeldung ueber /login/sso?reauth=1).
+def _reauth_need(request, uid):
+    """-> None (frisch genug) | 'password' (Passwort eingeben) | 'login' (neu anmelden, z. B. SSO)."""
+    now = time.time()
+    if request.session.get("uid") == uid and not request.headers.get("authorization", "").startswith("Bearer "):
+        fresh = max(int(request.session.get("login_at") or 0), int(request.session.get("chat_reauth_at") or 0))
+        if 0 <= now - fresh <= REAUTH_SEC:
+            return None
+    u = auth.get_user(uid)
+    return "password" if u and (u["password_hash"] or u["source"] == "ldap") else "login"
+
+
+def _check_password(request, uid, pw):
+    if not isinstance(pw, str) or not pw or len(pw) > 200:
+        return False
+    ip = (request.client.host if request.client else "") or "?"
+    user, _err = auth.authenticate(uid, pw, ip, True, area="chat")
+    return bool(user and user["username"] == uid)
+
+
+@router.post("/api/chat/reauth")
+async def api_reauth(request: Request):
+    """{password} -> diese Sitzung gilt REAUTH_SEC lang als frisch angemeldet (fuer "Neu beginnen")."""
+    from starlette.concurrency import run_in_threadpool
+    uid, err = _me(request)
+    if err:
+        return err
+    b = await _body(request)
+    if not await run_in_threadpool(_check_password, request, uid, (b or {}).get("password")):
+        print(f"chat: {uid} Passwort-Bestaetigung abgewiesen", flush=True)
+        return _bad(t("Passwort falsch."), 403)
+    request.session["chat_reauth_at"] = int(time.time())
+    return _no_store({"ok": True, "valid": REAUTH_SEC})
+
+
 # --- Identitaet und Geraete -------------------------------------------------------------------------------------
 @router.get("/api/chat/me")
 def api_me(request: Request, device: str = ""):
@@ -343,7 +384,7 @@ def api_me(request: Request, device: str = ""):
         "devices": [{"id": d["id"], "name": d["name"], "created": d["created"], "last_seen": d["last_seen"],
                      "revoked": bool(d["revoked_at"]), "current": d["id"] == device, "enc_pub": d["enc_pub"],
                      "sign_pub": d["sign_pub"], "sig": d["sig"]} for d in devs],
-        "links": n_link,
+        "links": n_link, "reauth": _reauth_need(request, uid),
         "limits": {"msg_max": MSG_MAX, "file_max": FILE_MAX, "members_max": MEMBERS_MAX, "devices_max": DEVICES_MAX,
                    "files_per_msg": FILES_PER_MSG, "retention_max": retention_max(), "retentions": list(RETENTIONS)}})
 
@@ -365,13 +406,24 @@ def _add_device(c, uid, ident_pub, d):
 async def api_identity(request: Request):
     """Einrichtung: {ident_pub, backup_pub, backup_sig, bundle, device:{id, name, enc_pub, sign_pub, sig}}.
     Gibt es schon eine Identitaet: 409 - ausser reset=true ("neu beginnen": alte Geraete abgemeldet, alte Nachrichten fuer
-    dieses Konto unlesbar, Gespraechspartner sehen eine geaenderte Sicherheitsnummer)."""
+    dieses Konto unlesbar, Gespraechspartner sehen eine geaenderte Sicherheitsnummer). Neu beginnen verlangt eine frische
+    Anmeldung (siehe _reauth_need) oder das Passwort im Feld password - sonst 403 {error, reauth: password|login}."""
+    from starlette.concurrency import run_in_threadpool
     uid, err = _me(request)
     if err:
         return err
     b = await _body(request)
     if b is None:
         return _bad(t("ungueltige Anfrage"))
+    with _db() as c:
+        had = _identity(c, uid) is not None
+    if had and b.get("reset") is True:
+        need = _reauth_need(request, uid)
+        if need and not (need == "password" and await run_in_threadpool(_check_password, request, uid, b.get("password"))):
+            print(f"chat: {uid} Neu beginnen ohne frische Anmeldung abgewiesen", flush=True)
+            msg = t("Zum Neubeginnen bitte dein Passwort eingeben.") if need == "password" else \
+                t("Zum Neubeginnen bitte neu anmelden – danach hast du 5 Minuten Zeit.")
+            return JSONResponse({"error": msg, "reauth": need}, status_code=403, headers={"Cache-Control": "no-store"})
     ident_pub, backup_pub, backup_sig = b.get("ident_pub"), b.get("backup_pub"), b.get("backup_sig")
     bundle = _valid_bundle(b.get("bundle"))
     dev = _device_in(b.get("device"))
@@ -1141,6 +1193,8 @@ async def api_send(cid: int, request: Request):
             for u in mem:
                 if u != uid and u not in muted:
                     notify.create(c, u, "chat.message", uid, data={"chat": ch["id"]}, bundle=ch["id"])
+                    # Handy/Desktop (saga.push): nur die Chat-Kennung, nie Inhalt; stummgeschaltete Chats nie
+                    bus.fire("push.send", c, uid=u, kind="chat.message", actor=uid, data={"chat": ch["id"]})
             _direct(c, mem, "chat.message", {"chat_id": ch["id"], "seq": seq, "id": mid, "sender": uid})
         print(f"chat: Nachricht in Chat {ch['id']} ({len(body_ct)} Zeichen Ciphertext, {len(keys)} Empfaenger)", flush=True)
     return _no_store({"ok": True, "seq": seq, "created": now, "expires_at": now + eff if eff else None})

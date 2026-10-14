@@ -119,7 +119,32 @@
     box.appendChild(el('p', null, T('Dafür bekommst du gleich einen Wiederherstellungsschlüssel. Damit holst du deine Chats auf ein neues Gerät, wenn kein anderes mehr da ist. Ohne ihn sind deine Nachrichten verloren – auch der Admin kann sie nicht wiederherstellen.')));
     if (reset) box.appendChild(el('p', 'ct-danger', T('Achtung: Neu beginnen erzeugt neue Schlüssel. Bisherige Nachrichten sind dann für dich nicht mehr lesbar, deine Gesprächspartner sehen eine geänderte Sicherheitsnummer.')));
     var bar = el('div', 'hk-actions'); box.appendChild(bar);
-    bar.appendChild(btn(T('Schlüssel erzeugen'), 'btn-primary ct-setup-go', function () { setupKey(!!reset); }));
+    if (!reset) { bar.appendChild(btn(T('Schlüssel erzeugen'), 'btn-primary ct-setup-go', function () { setupKey(false); })); return; }
+    // Neu beginnen: nur mit Passwort bzw. frischer Anmeldung (Schutz bei fremder Sitzung)
+    var go = btn(T('Schlüssel erzeugen'), 'btn-primary ct-setup-go'); go.disabled = true; bar.appendChild(go);
+    var st = status(box);
+    api('GET', '/api/chat/me').then(function (me) {
+      if (!me.reauth) { go.disabled = false; go.addEventListener('click', function () { setupKey(true); }); return; }
+      if (me.reauth === 'login') {
+        box.insertBefore(el('p', 'ct-reauth', T('Zur Sicherheit bitte zuerst neu anmelden. Danach hast du 5 Minuten Zeit, um neu zu beginnen.')), bar);
+        go.remove();
+        bar.appendChild(btn(T('Neu anmelden'), 'btn-primary ct-reauth-login', function () { location.href = '/login/sso?reauth=1&next=' + encodeURIComponent('/chats'); }));
+        return;
+      }
+      var lab = el('label', 'ct-reauth', T('Zur Sicherheit: dein Passwort'));
+      var pw = el('input', 'hk-in ct-reauth-pw'); pw.type = 'password'; pw.autocomplete = 'current-password'; pw.maxLength = 200;
+      lab.appendChild(pw); box.insertBefore(lab, bar);
+      go.disabled = false;
+      function check() {
+        if (!pw.value) { pw.focus(); return; }
+        busy(go, true, T('Wird geprüft …')); st.className = 'hk-status'; st.textContent = '';
+        api('POST', '/api/chat/reauth', { password: pw.value }).then(function () { pw.value = ''; setupKey(true); })
+          .catch(function (e) { st.className = 'hk-status err'; st.textContent = e.message; busy(go, false, T('Schlüssel erzeugen')); pw.select(); });
+      }
+      go.addEventListener('click', check);
+      pw.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); check(); } });
+      pw.focus();
+    }).catch(function (e) { st.className = 'hk-status err'; st.textContent = e.message; });
   }
   function setupKey(reset) {
     var id = X.newIdentity(), d = X.newDevice(), rk = X.recoveryKey();
@@ -658,6 +683,12 @@
       if (!mine && c.kind !== 'dm' && lastWho !== (m.sender || {}).username) box.appendChild(el('div', 'ct-who', m.sender ? m.sender.name : T('Gelöschtes Konto')));
       lastWho = (m.sender || {}).username;
       var b = el('div', 'ct-bubble');
+      if (!m.verified && !m.error) {                      // Signatur/Geraete-Schluessel passen nicht: deutlich kennzeichnen
+        row.classList.add('ct-unverified');
+        var uv = el('div', 'ct-unv', '⚠ ' + T('Echtheit nicht bestätigt'));
+        uv.title = T('Absender nicht bestätigt: Signatur oder Geräte-Schlüssel passen nicht (z. B. nach „Neu beginnen“).');
+        uv.setAttribute('role', 'note'); b.appendChild(uv);
+      }
       if (m.reply_to) {
         var o = S.byId[m.reply_to], qd = el('button', 'ct-quote'); qd.type = 'button';
         qd.appendChild(el('b', null, o && o.sender ? o.sender.name : '…')); qd.appendChild(el('span', null, preview(o)));
@@ -671,7 +702,6 @@
       }
       var meta = el('div', 'ct-meta');
       if (m.expires_at) meta.appendChild(el('span', 'ct-exp', '⏱'));
-      if (!m.verified && !m.error) { var w = el('span', 'ct-unv', '⚠'); w.title = T('Absender nicht bestätigt: Signatur oder Geräte-Schlüssel passen nicht (z. B. nach „Neu beginnen“).'); meta.appendChild(w); }
       var tm = el('time', null, fTime.format(d)); tm.dateTime = d.toISOString(); tm.title = fDay.format(d) + ' ' + fTime.format(d); meta.appendChild(tm);
       b.appendChild(meta);
       row.appendChild(b);

@@ -110,8 +110,10 @@
     [tAsk, tPage].forEach(function (b) {
       var on = b.dataset.k === A.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false');
     });
-    tPage.disabled = !cur();
-    if (!cur() && A.tab === 'page') A.tab = 'ask';
+    var pg = cur(), remote = !!pg && typeof pg.id === 'number' && pg.id < 0;   // Seite einer anderen Saga-Instanz: Inhalt liegt dort
+    tPage.disabled = !pg || remote;
+    tPage.title = remote ? T('Seiten anderer Saga-Instanzen bearbeitet der Assistent nicht.') : '';
+    if ((!pg || remote) && A.tab === 'page') A.tab = 'ask';
     body.textContent = '';
     if (A.tab === 'ask') renderAsk(); else renderPage();
     renderFoot();

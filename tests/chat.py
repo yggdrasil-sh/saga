@@ -32,8 +32,8 @@ def ok(n, c):
     res.append(bool(c)); print(("OK  " if c else "FAIL"), n, flush=True)
 
 
-def ck(u):
-    return S.sign(base64.b64encode(json.dumps({"uid": u, "name": u, "pwc": time.time() + 5}).encode())).decode()
+def ck(u, **extra):
+    return S.sign(base64.b64encode(json.dumps(dict({"uid": u, "name": u, "pwc": time.time() + 5}, **extra)).encode())).decode()
 
 
 def req(m, p, cookie=None, body=None, hdr=None, raw=None):
@@ -521,12 +521,31 @@ def run():
     # --- Neu beginnen (neue Identitaet) -------------------------------------------------------------------------------
     old_ident = B.ident["ident_pk"]
     B2 = Person("ch-b", setup=False)
-    s, _ = req("PUT", "/api/chat/identity", B2.k, dict(C.setup_body("ch-b", B2.ident, B2.dev, **KDF), reset=True))
+    rb = dict(C.setup_body("ch-b", B2.ident, B2.dev, **KDF), reset=True)
+    s0, d0 = req("PUT", "/api/chat/identity", B2.k, rb)
+    s1, _ = req("PUT", "/api/chat/identity", B2.k, dict(rb, password="falsch-123"))
+    ok(f"Neu beginnen nur mit Sitzung -> 403 (Passwort verlangt), falsches Passwort -> 403 ({s0}, {d0.get('reauth')}, {s1})",
+       s0 == 403 and d0.get("reauth") == "password" and s1 == 403
+       and C.unb64(req("GET", "/api/chat/keys?users=ch-b", A.k)[1]["users"]["ch-b"]["ident_pub"]) == old_ident)
+    ok("... /api/chat/me meldet reauth=password; /api/chat/reauth: falsch 403, richtig 200",
+       req("GET", "/api/chat/me", B2.k)[1].get("reauth") == "password" and req("POST", "/api/chat/reauth", B2.k, {"password": "nein"})[0] == 403
+       and req("POST", "/api/chat/reauth", B2.k, {"password": PW})[0] == 200)
+    s, _ = req("PUT", "/api/chat/identity", B2.k, dict(rb, password=PW))
     k = req("GET", "/api/chat/keys?users=ch-b", A.k)[1]["users"]["ch-b"]
     ok("B beginnt neu: neuer Identitaetsschluessel, alte Geraete entfernt", s == 200 and C.unb64(k["ident_pub"]) != old_ident
        and [d["id"] for d in k["devices"] if not d["revoked"]] == [B2.dev["id"]])
     ok("... Sicherheitsnummer A<->B aendert sich", C.safety_number("ch-a", A.ident["ident_pk"], "ch-b", old_ident)
        != C.safety_number("ch-a", A.ident["ident_pk"], "ch-b", C.unb64(k["ident_pub"])))
+    # SSO-Konto (kein Passwort): nur frische Anmeldung (login_at in der Sitzung, hoechstens 5 Minuten alt)
+    auth.create_user("ch-sso", None, "Sso Chat", source="oidc")
+    So = Person("ch-sso")
+    So2 = Person("ch-sso", setup=False)
+    rs = dict(C.setup_body("ch-sso", So2.ident, So2.dev, **KDF), reset=True)
+    s1, d1 = req("PUT", "/api/chat/identity", So.k, dict(rs, password="irgendwas"))
+    s2, _ = req("PUT", "/api/chat/identity", ck("ch-sso", login_at=int(time.time()) - 600), rs)
+    s3, _ = req("PUT", "/api/chat/identity", ck("ch-sso", login_at=int(time.time())), rs)
+    ok(f"SSO-Konto: Neu beginnen ohne frische Anmeldung 403 (reauth=login), Anmeldung 10 Min. alt 403, frisch 200 ({s1}, {d1.get('reauth')}, {s2}, {s3})",
+       s1 == 403 and d1.get("reauth") == "login" and s2 == 403 and s3 == 200)
     ok("Schluessel fremder Konten ohne Kontakt (C: nur ueber Chats) erreichbar, unbekannte fehlen",
        set(req("GET", "/api/chat/keys?users=ch-a,ch-zz", Cc.k)[1]["users"]) == {"ch-a"})
 

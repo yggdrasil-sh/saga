@@ -468,6 +468,14 @@ def run(A, Bk, vpub):
     s, d = req("POST", "/api/push/subscriptions", Bk, {"type": "webpush", "endpoint": f"{FAKE}/wp/shared", "keys": uo.keys()})
     ok(f"gleiche Browser-Adresse von B angemeldet -> gehoert jetzt B, bei A weg ({s})",
        s == 201 and d["id"] != oid and oid not in [r[0] for r in sub_rows("ps-a")])
+    # ntfy/UnifiedPush: die Adresse kann man abschreiben -> nie von einem anderen Konto uebernehmen (Haertung v2)
+    s, d = req("POST", "/api/push/subscriptions", Bk, {"type": "ntfy", "url": f"{FAKE}/ps-topic-a"})
+    ok(f"ntfy-Topic eines anderen Kontos -> 409, bleibt bei A ({s})", s == 409 and nid in [r[0] for r in sub_rows("ps-a")])
+    s0, d0 = req("POST", "/api/push/subscriptions", A, {"type": "unifiedpush", "endpoint": f"{FAKE}/up/a-web"})
+    s, d = req("POST", "/api/push/subscriptions", Bk, {"type": "unifiedpush", "endpoint": f"{FAKE}/up/a-web"})
+    ok(f"UnifiedPush-Adresse eines anderen Kontos -> 409, bleibt bei A ({s0}, {s})",
+       s0 == 201 and s == 409 and d0["id"] in [r[0] for r in sub_rows("ps-a")])
+    req("DELETE", f"/api/push/subscriptions/{d0['id']}", A)
     with connect() as c, c:
         for i in range(push.SUB_MAX - len(sub_rows("ps-b"))):
             c.execute("INSERT INTO push_sub (uid, kind, endpoint, name, created) VALUES ('ps-b', 'ntfy', ?, 'x', ?)", (f"{FAKE}/fill{i}", time.time()))

@@ -65,7 +65,9 @@ a.ct-chip:hover{color:var(--fg);border-color:var(--accent)}
 .ct-note.na{color:var(--muted);border-bottom-style:dotted}
 .ct-err{color:var(--muted);font-style:italic}
 .ct-meta{display:flex;justify-content:flex-end;gap:.35rem;font-size:.68rem;color:var(--muted);margin-top:.15rem}
-.ct-unv{color:var(--warn);cursor:help}
+.ct-unv{color:var(--warn);font-size:.78rem;font-weight:600;margin-bottom:.2rem;cursor:help}
+.ct-msg.ct-unverified .ct-bubble{border:1px dashed var(--warn);background:var(--card)}
+.ct-msg.ct-unverified .ct-text,.ct-msg.ct-unverified .ct-file,.ct-msg.ct-unverified .ct-quote{opacity:.5;filter:grayscale(1)}
 .ct-act{opacity:0;font-size:1rem;padding:.15rem .35rem}
 .ct-msg:hover .ct-act,.ct-act:focus-visible,.ct-act[aria-expanded=true]{opacity:1}
 @media (hover:none){.ct-act{opacity:.6}}
@@ -102,6 +104,8 @@ a.ct-chip:hover{color:var(--fg);border-color:var(--accent)}
 .ct-rk-last{width:7rem;font:600 1.1rem ui-monospace,Menlo,monospace;text-transform:uppercase;letter-spacing:.15em;text-align:center}
 .ct-rk-in{width:100%;font:1rem ui-monospace,Menlo,monospace;text-transform:uppercase}
 .ct-code{font:700 1.6rem/1.35 ui-monospace,Menlo,monospace;letter-spacing:.1em;word-spacing:.3em;text-align:center;color:var(--accent);margin:.8rem 0}
+.ct-reauth{display:flex;flex-direction:column;gap:.3rem;margin:.6rem 0;font-weight:600}
+.ct-reauth .hk-in{max-width:20rem}
 .ct-choice{display:flex;flex-direction:column;align-items:flex-start;gap:.2rem;margin:.6rem 0}
 .ct-choice .hk-hint{margin:0 0 .7rem}
 .ct-reset{margin-top:.6rem}
