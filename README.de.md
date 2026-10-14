@@ -41,6 +41,8 @@
   lesbar, ohne JavaScript, optional als Startseite für Besucher
 - **Teilen und Kommentieren:** Seiten und Datenbanken mit Personen oder Gruppen (lokal, LDAP, SSO) teilen – Rollen
   Lesen, Kommentieren, Bearbeiten, Unterseiten erben die Freigabe; dezente Kommentare am Block mit „Erledigt“
+- **Benachrichtigungen und Mitteilungen:** Glocke mit Live-Aktualisierung; auf Wunsch aufs Handy/Desktop per Web Push
+  (Ende-zu-Ende verschlüsselt, auch iPhone als Home-Bildschirm-App), ntfy/UnifiedPush oder Apple Push – ohne Inhalte
 - **Aufgaben** mit Fälligkeit, Priorität und Wiederholung
 - **Kalender (CalDAV):** Nextcloud, mailcow/SOGo, Radicale, iCloud … anzeigen und bearbeiten
 - **Immich:** eigene Fotos als Bilder und Titelbilder einbinden

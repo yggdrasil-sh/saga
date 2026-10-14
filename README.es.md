@@ -45,6 +45,8 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
   sin JavaScript y, opcionalmente, como página de inicio para visitantes
 - **Compartir y comentar:** comparte páginas y bases de datos con personas o grupos (locales, LDAP, SSO): roles Ver,
   Comentar, Editar, las subpáginas heredan el acceso; comentarios discretos en los bloques con «Resuelto»
+- **Notificaciones y push:** campana con actualización en directo; si quieres, al móvil/escritorio por Web Push (cifrado
+  de extremo a extremo, también iPhone como app en la pantalla de inicio), ntfy/UnifiedPush o Apple Push, sin contenido
 - **Tareas** con fecha límite, prioridad y repetición
 - **Calendarios (CalDAV):** ver y editar Nextcloud, mailcow/SOGo, Radicale, iCloud…
 - **Immich:** usa tus propias fotos como imágenes y portadas

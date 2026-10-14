@@ -97,6 +97,30 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   - Admin → Allgemein: Anzahl aktiver Live-Verbindungen. Konto löschen entfernt Benachrichtigungen und beendet
     Live-Verbindungen sofort; als Auslöser wird das Konto anonymisiert
   - Neue Tabelle `notification` (keine Migration nötig)
+- **Mitteilungen aufs Handy/Desktop (1.7):** Einstellungen → „Mitteilungen“ (eigener Reiter). Nur ausgehend vom
+  Server, kein zusätzlicher Port. Inhalt minimal (Satz wie in der Glocke + Link, nie Seitentitel, Kommentare oder
+  Chat-Inhalte), Zugriff wird beim Zustellen erneut geprüft
+  - **Web Push** (Chrome, Edge, Firefox, Safari, iPhone/iPad als Home-Bildschirm-App): Service Worker `/sw.js`
+    (Geltungsbereich `/`, nur push/notificationclick, kein fetch-Handler; CSP `worker-src 'self'`), Verschlüsselung
+    RFC 8291 (aes128gcm) und VAPID RFC 8292 mit `cryptography` (keine neue Abhängigkeit); VAPID-Schlüssel wird beim
+    ersten Bedarf erzeugt und verschlüsselt gespeichert; Abmelden im Browser, „überall abmelden“ und Passwortwechsel
+    beenden Browser-Abos
+  - **ntfy** (eigene Topic-Adresse, optional Zugangstoken – verschlüsselt gespeichert) und **UnifiedPush** (Apps,
+    optional verschlüsselt wie Web Push): ntfy und unverschlüsseltes UnifiedPush bekommen nie Namen. SSRF-Schutz über
+    `saga/netguard.py` (interne Ziele und http nur mit Admin-Freigabe)
+  - **APNs** vorbereitet: Admin → „Mitteilungen“ (Team-ID, Key-ID, Bundle-ID, `.p8` verschlüsselt), Token-Anmeldung
+    ES256, HTTP/2 (`h2==4.2.0`, neue Abhängigkeit); ohne Schlüssel ausgegraut
+  - Je Person: Bereiche (Teilen, Kommentare, Chat, Veröffentlichung), „Namen zeigen“, Ruhezeiten (Zeitzone des
+    Browsers), Geräteliste mit „Test“ und „Entfernen“
+  - Zustellung asynchron: Warteschlange `push_queue` (Hintergrund-Thread, mehrere Prozesse über `SKIP LOCKED`),
+    Wiederholungen (30 s … 1 h), 404/410 → Abo entfernt, 5 harte Fehler in Folge → Abo entfernt, Aufträge höchstens
+    24 h; Grenzen: 20 Geräte je Konto, 30 Mitteilungen je Minute, 15 Anmeldungen je Minute, Test alle 5 s
+  - Schnittstelle für die Apps (Sitzung oder Geräte-Schlüssel `hkd_`): `GET /api/push`, `PUT /api/push/settings`,
+    `POST /api/push/subscriptions` (webpush/ntfy/unifiedpush/apns), `DELETE /api/push/subscriptions/{id}`,
+    `POST /api/push/subscriptions/{id}/test`, `POST /api/push/unsubscribe`; App-Abos enden mit der Geräte-Anmeldung.
+    `MIN_APP` bleibt 1.0.0
+  - Für den Chat: `bus.fire("push.send", c, uid=…, kind="chat.message", actor=…, data={"chat": id})` – ohne Inhalt
+  - Neue Tabellen `push_sub`, `push_queue` (keine Migration nötig); Kontolöschung entfernt Abos und Aufträge
 
 ### Geändert
 - Beenden des Servers: offene Live-Verbindungen werden zuerst geschlossen; uvicorn wartet höchstens 5 s

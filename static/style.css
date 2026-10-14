@@ -1669,3 +1669,4 @@ body.pg-ro .page-body .cdx-list{--color-border:color-mix(in srgb,var(--fg) 45%,t
 body.pg-ro .page-body .cdx-list__checkbox,body.pg-ro .page-body .cdx-list__checkbox-check{cursor:not-allowed}
 /* Gesperrte Seite: in Datenbank-Bloecken kein "Neu", keine Ansichts-Einstellungen, keine neue Ansicht */
 body.pg-lock-on #pg-editor .embed-db :is(.db-new-top,.db-tab-add,.db-gear,.db-new-row,.board-add,.dbg-new,.cal-add){display:none!important}
+.adm-key{overflow-wrap:anywhere;font-size:.78rem}

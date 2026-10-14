@@ -529,6 +529,37 @@ Saga keeps the dashboard and open pages up to date – without reloading.
 - Without a live connection (proxy buffers, more than 5 open tabs of the same account) Saga checks every 60 seconds.
   For the reverse proxy, see section 3; the admin area shows the number of active live connections under General.
 
+### Push notifications to phone and computer
+
+The bell shows everything while Saga is open. For when you're away, Saga sends **push notifications** – even when
+Saga is closed. Turn them on under **Settings → Push notifications**:
+
+- **This browser:** “Turn on in this browser” and allow the browser's prompt (Chrome, Edge, Firefox, Safari). On
+  **iPhone and iPad** this only works once Saga is on the home screen (Share → “Add to Home Screen”) – open it from
+  there and turn it on. Requires `https`. Signing out in this browser ends the subscription; “sign out everywhere”
+  and a password change end all browser subscriptions.
+- **ntfy:** In the [ntfy](https://ntfy.sh) app (Android, iPhone, Linux), subscribe to a topic with a hard-to-guess
+  name and enter its address under “Add ntfy” (e.g. `https://ntfy.sh/my-secret-topic`, with an access token for
+  protected topics). The admin allows your own ntfy servers on the home network under General.
+- **Apps:** the Android and Linux apps register via UnifiedPush, the iOS/macOS app via Apple Push (APNs, set up by the
+  admin). They appear in the device list.
+- **Devices:** all browsers, ntfy topics and apps with “Test” and “Remove”; “Last error” helps when nothing arrives.
+- **About what?** Turn sharing, comments, chat and publishing on or off individually. **Show names** off → only
+  “New comment on your page” instead of “Jonas commented on your page”. **Quiet hours** (e.g. 22:00–07:00, in your
+  time zone): no push notifications during that time; the bell still has everything.
+
+Privacy: push notifications contain only a short sentence and the link – never page titles, comments or chat
+content. Browser notifications are end-to-end encrypted (Web Push, RFC 8291): the browser's push service (Google,
+Mozilla, Apple, Microsoft) only sees encrypted data. **ntfy** (and UnifiedPush without encryption) **never gets
+names**, because the ntfy server can read the text. Before delivering, Saga checks that you can still see the page.
+Saga only connects **outbound** – no extra port.
+
+**Admin → Push notifications:** turn channels off individually (Web Push, ntfy, UnifiedPush) and set up Apple Push:
+in the Apple Developer account under *Certificates, Identifiers & Profiles → Keys*, create a key with “Apple Push
+Notifications service (APNs)”, upload the `.p8` file (offered only once) and enter Team ID, Key ID and the app's
+bundle ID. The key is stored encrypted. Without a key, Apple Push stays off. Saga creates the Web Push key (VAPID)
+itself when first needed; it depends on `SECRET_KEY`.
+
 ### Account, calendars, Immich, apps
 
 In the user menu at the top right under **Settings** (one tab each):

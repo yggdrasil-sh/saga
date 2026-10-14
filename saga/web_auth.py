@@ -218,6 +218,11 @@ async def register_post(request: Request):
 @router.get("/logout")
 async def logout(request: Request):
     id_token = request.session.get("id_token")
+    psub, puid = request.session.get("push_sub"), request.session.get("uid")
+    if psub and puid:                     # Mitteilungen an diesen Browser enden mit dem Abmelden (saga.push)
+        with _db() as c, c:
+            c.execute("DELETE FROM push_queue WHERE sub_id=?", (psub,))
+            c.execute("DELETE FROM push_sub WHERE id=? AND uid=? AND kind='webpush'", (psub, puid))
     request.session.clear()
     if id_token:
         cl = await run_in_threadpool(auth.oidc_client)

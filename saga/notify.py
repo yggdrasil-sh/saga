@@ -9,7 +9,8 @@
 - Nie an sich selbst; je Art abschaltbar (user_kv 'notify_off'); mehrere Kommentare derselben Unterhaltung innerhalb von
   10 Minuten werden zu EINER (ungelesenen) Benachrichtigung gebuendelt (Zaehler n, zuletzt Schreibende vorn).
 - Ausgeloest ueber saga.bus (sharing/comments/publish melden, hier wird angelegt - in derselben Transaktion);
-  live zugestellt ueber den Live-Kanal (saga.live, Ereignis "notification") erst nach dem Commit.
+  live zugestellt ueber den Live-Kanal (saga.live, Ereignis "notification") erst nach dem Commit; aufs Handy/Desktop
+  ueber saga.push (bus "notification.created", 1.7).
 - Aufbewahrung 90 Tage (purge() beim Start und taeglich), Kontoloeschung: delete_account()."""
 import json
 import time
@@ -68,6 +69,7 @@ def create(c, uid, kind, actor=None, note_id=None, comment_id=None, data=None, b
     nid = c.execute("INSERT INTO notification (uid, kind, actor_uid, note_id, comment_id, data, created) VALUES (?,?,?,?,?,?,?)",
                     (uid, kind, actor, note_id, comment_id, json.dumps(data), now)).lastrowid
     bus.emit_after(c, "notification", {"uid": uid, "id": nid, "replaces": old})
+    bus.fire("notification.created", c, uid=uid, id=nid, kind=kind, actor=actor, replaces=old)    # saga.push (Handy/Desktop)
     return nid
 
 

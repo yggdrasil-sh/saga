@@ -44,6 +44,8 @@ DEFAULTS = {
     "public_home": 0,                      # veroeffentlichte Seite (note_id) als Startseite "/" fuer Besucher, 0 = keine
     "share_enabled": True,                 # Seiten mit anderen Konten und Gruppen teilen (1.3)
     "share_group_scope": False,            # nur mit Konten teilen, mit denen man eine Gruppe gemeinsam hat
+    "push": {"enabled": True, "webpush": True, "ntfy": True, "unifiedpush": True},   # Mitteilungen aufs Handy/Desktop (1.7)
+    "apns": {"enabled": False, "team_id": "", "key_id": "", "bundle_id": "", "p8": "", "url": ""},  # iOS/macOS-App (url: nur Tests)
     "update_check": E.get("SAGA_UPDATE_CHECK", "1") not in ("0", "false", "no", "off"),   # im Admin-Bereich neue Versionen melden
     "oidc": {"enabled": False, "issuer": "", "client_id": "", "client_secret": "", "scopes": "openid profile email",
              "username_claim": "preferred_username", "name_claim": "name", "email_claim": "email",
@@ -57,7 +59,7 @@ DEFAULTS = {
              "password_login": True,          # Anmeldung mit Verzeichnis-Passwort auf der Anmeldeseite
              "sso_groups": False},            # Gruppen von SSO-Konten aus dem Verzeichnis lesen (z. B. Keycloak mit FreeIPA)
 }
-SECRET_FIELDS = {("oidc", "client_secret"), ("ldap", "bind_password")}
+SECRET_FIELDS = {("oidc", "client_secret"), ("ldap", "bind_password"), ("apns", "p8")}
 LDAP_PRESETS = {
     "freeipa": {"user_filter": "(&(objectClass=person)(uid={username})(!(nsAccountLock=TRUE)))", "attr_username": "uid", "attr_name": "cn",
                 "attr_mail": "mail", "group_mode": "memberof", "group_filter": "(member={dn})", "group_name_attr": "cn"},

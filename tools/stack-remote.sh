@@ -5,7 +5,7 @@
 #      + Radicale (CalDAV-Testserver), dann alle Tests (alte Tests ueber tests/pgshim auf Postgres)
 set -e
 cd "$(dirname "$0")/.."
-TESTS="isolation funktion kalender_modul kalender_api kalender_schreiben app_token app_login spalten vorlagen immich widgets inline archiv bilder dienste standalone sso_ldap app_pair versionen sprachen haertung veroeffentlichen teilen live"
+TESTS="isolation funktion kalender_modul kalender_api kalender_schreiben app_token app_login spalten vorlagen immich widgets inline archiv bilder dienste standalone sso_ldap app_pair versionen sprachen haertung veroeffentlichen teilen live push"
 rnd() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 # Zweiter Stack auf demselben Host (z. B. SAGA_DIR=/root/saga-live SAGA_PORT=18086): eigener Port (Admin = Port+1, nur
 # 127.0.0.1), eigenes Image-Tag und eigene Namen der Test-Container - der Compose-Projektname kommt vom Verzeichnis.

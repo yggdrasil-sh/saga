@@ -544,6 +544,38 @@ Saga hält das Dashboard und offene Seiten auf dem neuesten Stand – ohne Neula
 - Ohne Live-Verbindung (Proxy puffert, mehr als 5 offene Tabs desselben Kontos) fragt Saga alle 60 Sekunden nach.
   Für den Reverse Proxy siehe Abschnitt 3; der Admin-Bereich zeigt unter Allgemein die Zahl aktiver Live-Verbindungen.
 
+### Mitteilungen aufs Handy und den Computer
+
+Die Glocke zeigt alles, solange Saga offen ist. Für unterwegs schickt Saga **Mitteilungen** – auch wenn Saga
+geschlossen ist. Einschalten unter **Einstellungen → Mitteilungen**:
+
+- **Dieser Browser:** „In diesem Browser einschalten“ und die Nachfrage des Browsers erlauben (Chrome, Edge, Firefox,
+  Safari). Auf **iPhone und iPad** geht das nur, wenn Saga als App auf dem Home-Bildschirm liegt (Teilen → „Zum
+  Home-Bildschirm“) – dann dort öffnen und einschalten. Braucht `https`. Beim Abmelden in diesem Browser endet das
+  Abo; „überall abmelden“ und ein Passwortwechsel beenden alle Browser-Abos.
+- **ntfy:** In der App [ntfy](https://ntfy.sh) (Android, iPhone, Linux) ein Topic mit schwer zu erratendem Namen
+  abonnieren und unter „ntfy hinzufügen“ dessen Adresse eintragen (z. B. `https://ntfy.sh/mein-geheimes-topic`, bei
+  geschützten Topics mit Zugangstoken). Eigene ntfy-Server im Heimnetz gibt der Admin unter Allgemein frei.
+- **Apps:** Die Android- und Linux-App melden sich über UnifiedPush an, die iOS-/macOS-App über Apple Push (APNs,
+  richtet der Admin ein). Sie erscheinen in der Geräteliste.
+- **Geräte:** Liste aller Browser, ntfy-Topics und Apps mit „Test“ und „Entfernen“; „Letzter Fehler“ hilft bei der
+  Suche, wenn nichts ankommt.
+- **Worüber?** Teilen, Kommentare, Chat und Veröffentlichung einzeln an- oder abschalten. **Namen zeigen** aus →
+  nur „Neuer Kommentar auf deiner Seite“ statt „Jonas hat deine Seite kommentiert“. **Ruhezeiten** (z. B. 22:00–07:00,
+  in deiner Zeitzone): in dieser Zeit keine Mitteilungen, die Glocke hat trotzdem alles.
+
+Datenschutz: Mitteilungen enthalten nur einen kurzen Satz und den Link – nie Seitentitel, Kommentare oder
+Chat-Inhalte. Browser-Mitteilungen sind Ende-zu-Ende verschlüsselt (Web Push, RFC 8291): Der Push-Dienst des
+Browsers (Google, Mozilla, Apple, Microsoft) sieht nur verschlüsselte Daten. Über **ntfy** (und UnifiedPush ohne
+Verschlüsselung) gehen **nie Namen**, weil der ntfy-Server den Text lesen kann. Vor dem Zustellen prüft Saga, ob du
+die Seite noch sehen darfst. Saga verbindet sich nur **ausgehend** – kein zusätzlicher Port.
+
+**Admin → Mitteilungen:** Wege einzeln abschalten (Web Push, ntfy, UnifiedPush) und Apple Push einrichten: im
+Apple-Developer-Konto unter *Certificates, Identifiers & Profiles → Keys* einen Schlüssel mit „Apple Push
+Notifications service (APNs)“ anlegen, die `.p8`-Datei (gibt es nur einmal) hochladen und Team-ID, Key-ID und die
+Bundle-ID der App eintragen. Der Schlüssel wird verschlüsselt gespeichert. Ohne Schlüssel bleibt Apple Push aus.
+Den Schlüssel für Web Push (VAPID) erzeugt Saga beim ersten Bedarf selbst; er hängt am `SECRET_KEY`.
+
 ### Konto, Kalender, Immich, Apps
 
 Im Benutzermenü oben rechts unter **Einstellungen** (je ein Reiter):

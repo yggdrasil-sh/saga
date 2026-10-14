@@ -1,7 +1,7 @@
 """Daten eines Kontos zaehlen und loeschen (Admin-Bereich)."""
 import os
 from db import connect as _db
-from saga import bus, notify
+from saga import bus, notify, push
 from saga.calendars import _cal_cache_drop
 from saga.files import _drop_thumbs
 from saga.notes import FILES_DIR
@@ -12,7 +12,8 @@ from saga.sharing import delete_account, share_counts
 # Wichtig: uid = Benutzername. Blieben Daten liegen, bekaeme ein spaeter neu angelegtes Konto mit
 # gleichem Namen fremde Seiten, Kalender-Zugaenge usw.
 USER_TABLES = ("task", "note", "note_version", "bookmark", "fav", "device_login", "app_token", "user_kv",
-               "immich_key", "cal_account", "app_code", "pair_code", "note_publish", "public_name", "notification")
+               "immich_key", "cal_account", "app_code", "pair_code", "note_publish", "public_name", "notification",
+               "push_sub", "push_queue")
 
 
 def delete_user_data(uid):
@@ -21,9 +22,12 @@ def delete_user_data(uid):
         c.execute("DELETE FROM file WHERE uid=?", (uid,))
         shares = delete_account(c, uid)          # Freigaben (eigene + an das Konto), Kommentare anonymisieren/loeschen
         notes_n = notify.delete_account(c, uid)  # Benachrichtigungen: eigene weg, als Ausloeser anonymisiert
+        pushed = push.delete_account(c, uid)     # Mitteilungs-Abos und -Auftraege weg, als Absender anonymisiert
         counts = {t: c.execute(f"DELETE FROM {t} WHERE uid=?", (uid,)).rowcount for t in USER_TABLES}
         counts["note_share"] = shares
         counts["notification"] += notes_n
+        for k, v in pushed.items():
+            counts[k] += v
         bus.emit_after(c, "account.deleted", {"uid": uid})     # Live-Verbindungen und Anwesenheit des Kontos beenden
     for fid in fids:
         try:
