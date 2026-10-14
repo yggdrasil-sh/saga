@@ -114,7 +114,7 @@ def read_actor(value):
         raise SigError("actor encoding")
     try:
         d = json.loads(unb64u(v))
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, RecursionError):
         raise SigError("actor json")
     if not isinstance(d, dict):
         raise SigError("actor json")

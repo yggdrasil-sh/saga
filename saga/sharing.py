@@ -424,6 +424,9 @@ def drop_group(c, name):
     """Gruppe im Admin-Bereich geloescht: Freigaben an sie entfernen (ausser es gibt sie weiter aus LDAP/OIDC)."""
     if c.execute("SELECT 1 FROM user_ext_group WHERE name=? LIMIT 1", (name,)).fetchone():
         return 0
+    # Foederation: was andere Instanzen mit der Gruppe geteilt haben, endet hier ebenso - sonst bestaetigte dieser Server
+    # die Mitgliedschaft einer spaeter gleichnamig neu angelegten Gruppe (andere Personen) weiter signiert
+    c.execute("DELETE FROM fed_inbound WHERE target_type='group' AND target=?", (name,))
     return c.execute("DELETE FROM note_share WHERE target_type='group' AND target=?", (name,)).rowcount
 
 

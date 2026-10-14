@@ -495,7 +495,62 @@ def part2(privb, kid):
     ok("B: andere Felder als Titel/Inhalt -> 403", s == 403)
     ok("A-Proxy laesst nur Titel/Inhalt durch (direkt signiert: pinned -> 400)",
        signed("a", privb, kid, "PATCH", f"/fed/v1/notes/{Pid}", body=b'{"pinned": true}', actor={"name": "bert", "display": "Bert", "groups": []})[0] == 400)
+    evil_instance(privb, kid, pa)
     return pa, Pid, S, X, rP
+
+
+def evil_instance(privb, kid, pa):
+    """Boesartige verbundene Instanz (B mit eigenem Schluessel): Inhalt, Ereignisse, Anzeigenamen, Verschachtelung."""
+    HA = I["a"]["host"]
+    fid = "a" * 24
+    evil = {"id": 77, "title": "Böse", "icon": "/logout", "cover": "/logout", "format": "blocks", "role": "owner",
+            "owner": {"name": "X", "username": f"@x@{HA}", "me": False},
+            "body": json.dumps({"blocks": [P('<img src=x onerror=alert(1)><a href="javascript:alert(1)">j</a> <b>fett</b>', "e1"),
+                                           {"id": "e2", "type": "image", "data": {"file": {"url": "/logout"}}},
+                                           {"id": "e3", "type": "image", "data": {"file": {"url": f"/files/{fid}"}}}]})}
+    d = py("b", f"""
+from saga import federation
+from db import connect
+with connect() as c:
+    p = federation.peer_by(c, "id", {pa})
+    d = federation._note_in(c, p, json.loads({json.dumps(evil)!r}), "fb-bert")
+    d["_emoji"] = federation._safe_pic("📄", True)
+print(json.dumps(d))""")
+    body = d.get("body", "")
+    ok("Heimatserver bereinigt fremden Inhalt (kein onerror, kein javascript:, <b> bleibt)",
+       "onerror" not in body and "javascript:" not in body and "<img" not in body and "<b>fett</b>" in body)
+    ok("Heimatserver: Bild-Bloecke nur mit Dateien der Seite (über den Proxy), /logout faellt weg",
+       "/logout" not in body and f"/api/fed/files/{ref(pa, 77)}/{fid}" in body)
+    ok("Heimatserver: Symbol/Titelbild nur Emoji oder Bild der Seite, Rolle nie owner",
+       d.get("icon") == "" and d.get("cover") == "" and d.get("_emoji") == "📄" and d.get("role") == "view")
+
+    def ev(*evs):
+        return signed("a", privb, kid, "POST", "/fed/v1/events", body=json.dumps({"events": list(evs)}).encode())[0]
+    share = {"type": "share.added", "to": {"type": "user", "name": "anna"}, "owner": {"name": "bert", "display": "Bert"},
+             "note": {"id": 4242, "title": "Flut"}, "role": "view"}
+    ok("Ereignis share.added doppelt (eine Anfrage + Wiederholung) -> 200", ev(share, share) == 200 and ev(share) == 200)
+    n = [x for x in notes_of("a", "fa-anna") if x["kind"] == "share.added"]
+    ok(f"A: unveraenderte Freigabe benachrichtigt nur einmal ({len(n)})", len(n) == 1)
+    cm = {"type": "comment.new", "to": {"type": "user", "name": "anna"}, "note": {"id": 4242, "title": "Flut"},
+          "comment": {"id": 1, "thread": 1, "block": ""}}
+    ev(dict(cm, actor={"handle": "carol@dritte.example", "display": "Carol Echt"}))
+    ev(dict(cm, actor={"handle": "carol@dritte.example", "display": "Admin"}))
+    r = sql("a", "SELECT display FROM fed_person WHERE principal='@carol@dritte.example'")
+    ok(f"B kann Personen dritter Instanzen nicht umbenennen ({r})", r == [["Carol Echt"]])
+    deep = b'{"events":' + b"[" * 50000 + b"]" * 50000 + b"}"
+    s = signed("a", privb, kid, "POST", "/fed/v1/events", body=deep)[0]
+    ok(f"tief verschachtelter Koerper -> 400, kein Serverfehler ({s})", s == 400)
+    n = py("b", f"""
+from saga import sharing
+from db import connect
+with connect() as c, c:
+    c.execute("INSERT INTO groups (name, description, created) VALUES ('fbweg', '', 0)")
+    c.execute("INSERT INTO fed_inbound (peer_id, note_id, owner, target_type, target, role, created) VALUES (?,?,?,?,?,?,?)",
+              ({pa}, 99, '@anna@{HA}', 'group', 'fbweg', 'view', 0))
+    sharing.drop_group(c, 'fbweg')
+    n = c.execute("SELECT COUNT(*) FROM fed_inbound WHERE target='fbweg'").fetchone()[0]
+print(json.dumps(n))""")
+    ok("B: Gruppe geloescht -> Eingangs-Verweise der Gruppe weg (keine Bestaetigung fuer spaetere gleichnamige Gruppe)", n == 0)
 
 
 def part3(privb, kid, pa, Pid, S, X, rP):
@@ -532,6 +587,8 @@ def part3(privb, kid, pa, Pid, S, X, rP):
     ok("A: Freigabe an den alten Namen endet (person.gone)", wait(lambda: not sql("a", "SELECT 1 FROM note_share WHERE target=%r" % f"@eve@{HB}")))
     r = py("b", "from saga import publish\nprint(json.dumps(publish.set_name('fb-dora', 'eve')))")
     ok("B: alter Name ist fuer andere Konten gesperrt", r[0] is None)
+    s, d = api("b", "fb-dora", "PUT", "/api/account/public-name", {"name": "eve", "check": True})
+    ok("B: Pruefung „frei?“ meldet den gesperrten Namen als vergeben", s == 200 and d.get("available") is False)
     r = py("b", "from saga import publish\nprint(json.dumps(publish.set_name('fb-eve', 'eve')))")
     ok("B: die eigene Person darf zurueck auf den alten Namen", r[0] == "eve")
     py("b", "from saga.userdata import delete_user_data\ndelete_user_data('fb-cleo')\nprint(json.dumps(True))")

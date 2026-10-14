@@ -1305,7 +1305,7 @@ async def api_public_name_put(request: Request):
         p = name_problem(name)
         if not p:
             with _db() as c:
-                if c.execute("SELECT 1 FROM public_name WHERE name=? AND uid<>?", (name, uid)).fetchone():
+                if c.execute("SELECT 1 FROM public_name WHERE name=? AND uid<>?", (name, uid)).fetchone() or _retired(c, name, uid):
                     p = t("Dieser Name ist schon vergeben.")
         return JSONResponse({"ok": not p, "available": not p, "name": name, **({"error": p} if p else {})},
                             headers={"Cache-Control": "no-store"})

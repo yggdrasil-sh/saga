@@ -35,7 +35,7 @@ from db import connect as _db
 from saga import bus, comments, fedsig, i18n, netguard, notify, pages, sharing
 from saga.core import BASE_URL, E, SECRET, _api_guard, _bad, _body, _session_user, t, title
 from saga.files import _thumb, _thumb_mime, _thumb_w
-from saga.notes import FILE_MAX, FILES_DIR, _disposition
+from saga.notes import FILE_MAX, FILES_DIR, _disposition, _iter_blocks
 from saga.publish import NAME_RE, get_name
 from saga.sharing import ROLES, is_remote, remote_label
 from version import VERSION
@@ -267,6 +267,9 @@ def _client(timeout=TIMEOUT):
 
 def _send(method, url, headers, body, limit, timeout=TIMEOUT):
     """-> (status, kopfzeilen (klein), bytes). Bricht bei mehr als limit Bytes ab. FedError bei Netzfehlern."""
+    # Zeitlimit von httpx gilt je Lesevorgang - eine Gegenseite, die Byte fuer Byte traeufelt, haette sonst unbegrenzt
+    # einen Arbeits-Thread. Daher zusaetzlich eine Gesamtfrist (Dateien bekommen mehr Zeit).
+    deadline = time.monotonic() + (timeout * 3 if limit <= RESP_MAX else max(60.0, timeout * 6))
     try:
         with _client(timeout) as cl:
             with cl.stream(method, url, headers=headers, content=body) as r:
@@ -275,6 +278,8 @@ def _send(method, url, headers, body, limit, timeout=TIMEOUT):
                     buf += chunk
                     if len(buf) > limit:
                         raise FedError("Antwort zu gross")
+                    if time.monotonic() > deadline:
+                        raise FedError("Zeitueberschreitung")
                 return r.status_code, {k.lower(): v for k, v in r.headers.items()}, bytes(buf)
     except httpx.TimeoutException:
         raise FedError("Zeitueberschreitung")
@@ -321,7 +326,9 @@ def call_json(peer, method, path, query="", body=None, actor=None, timeout=TIMEO
     status, _, data = call(peer, method, path, query, body, actor, timeout=timeout)
     try:
         d = json.loads(data) if data else {}
-    except ValueError:
+    except (ValueError, RecursionError):
+        raise FedError("ungueltige Antwort", status)
+    if not pages._json_depth_ok(d, 32):             # Antworten sind flach; tief Verschachteltes nur von boesartiger Gegenseite
         raise FedError("ungueltige Antwort", status)
     return status, d
 
@@ -404,7 +411,7 @@ def _verify_sync(method, path, query, headers, body, statuses, connect_key=None,
     if body:
         try:
             inp.data = json.loads(body)
-        except ValueError:
+        except (ValueError, RecursionError):
             return None, _unauth("bad json", 400)
     return inp, None
 
@@ -663,7 +670,10 @@ def _actor_of(c, peer, a):
     if host == SELF_HOST:
         return _local_user_by_name(c, name)[0]
     p = f"@{name}@{host}"
-    _person_upsert(c, p, peer["id"], a.get("display") or name)
+    # Anzeigename: nur die eigene Instanz der Person darf ihn aendern - eine andere verbundene Instanz kann ihn hoechstens
+    # erstmals setzen (sonst koennte sie Personen dritter Instanzen hier umbenennen)
+    if host == peer["host"] or not c.execute("SELECT 1 FROM fed_person WHERE principal=?", (p,)).fetchone():
+        _person_upsert(c, p, peer["id"], a.get("display") or name)
     return p
 
 
@@ -716,6 +726,10 @@ def _ev(c, peer, ev):
             return "ignored"
         op = f"@{oname}@{peer['host']}"
         _person_upsert(c, op, peer["id"], owner.get("display") or oname)
+        old = c.execute("SELECT role, owner FROM fed_inbound WHERE peer_id=? AND note_id=? AND target_type=? AND target=?",
+                        (peer["id"], rid, tt, target)).fetchone()
+        if old and old[0] == role and old[1] == op:
+            return "ok"                      # nichts geaendert: keine neue Benachrichtigung (Wiederholung/Flut)
         c.execute("INSERT OR REPLACE INTO fed_inbound (peer_id, note_id, owner, target_type, target, role, created) VALUES (?,?,?,?,?,?,?)",
                   (peer["id"], rid, op, tt, target, role, time.time()))
         who = [target] if tt == "user" else notify.group_members(c, target)
@@ -1201,6 +1215,41 @@ def _rw_out(s, pid):
     return _LINKS_OUT.sub(ln, _FILES_OUT.sub(f, s))
 
 
+_PIC = re.compile(r"/files/[0-9a-f]{24}")
+
+
+def _safe_pic(v, icon):
+    """Symbol/Titelbild einer fremden Seite: nur ein Bild dieser Seite (/files/<id>, wird zum Proxy) oder - beim Symbol -
+    ein kurzes Emoji wie bei eigenen Seiten. Alles andere (fremde oder hiesige Adressen wie /logout) faellt weg."""
+    s = v.strip() if isinstance(v, str) else ""
+    if _PIC.fullmatch(s):
+        return s
+    if icon and len(s) <= 8 and not any(ch in s for ch in "<>&\"'/\\:") and not re.search(r"[\x00-\x1f\x7f]", s):
+        return s
+    return ""
+
+
+def _clean_remote_body(s, fmt):
+    """Inhalt einer fremden Seite: dieselbe Bereinigung wie beim Speichern eigener Seiten (Positivliste fuer Inline-HTML),
+    Bild-/Datei-Bloecke nur mit Dateien dieser Seite (/files/<id>) - eine boesartige Instanz kann so weder HTML noch
+    Adressen dieses Servers (GET auf /logout o. ae.) in die Oberflaeche bringen."""
+    if not isinstance(s, str):
+        return ""
+    if fmt != "blocks":
+        return s
+    try:
+        body, _ = pages.clean_blocks(s, max(len(s), 1))
+        doc = json.loads(body)
+        for b in _iter_blocks(doc["blocks"]):
+            if b.get("type") in ("image", "attaches"):
+                f = b["data"].get("file") if isinstance(b.get("data"), dict) else None
+                if not isinstance(f, dict) or not _PIC.fullmatch(str(f.get("url") or "")):
+                    b["data"] = dict(b.get("data") or {}, file={"url": ""})
+    except (ValueError, TypeError, KeyError, RecursionError):
+        return json.dumps({"blocks": []})
+    return json.dumps(doc, ensure_ascii=False)
+
+
 def _note_in(c, peer, d, uid):
     pid = peer["id"]
     rid = d.get("id")
@@ -1210,10 +1259,12 @@ def _note_in(c, peer, d, uid):
     d = _in_persons(c, d, peer, uid)
     d["id"] = pr
     d["parent_id"] = ref(pid, d["parent_id"]) if _ok_rid(d.get("parent_id")) else None
-    d["body"] = _rw_in(d.get("body"), pid, pr)
-    for k in ("icon", "cover"):
-        if isinstance(d.get(k), str) and d[k].startswith("/files/"):
-            d[k] = _rw_in(d[k], pid, pr)
+    d["title"] = _clean_text(d.get("title"), 500)
+    d["format"] = "blocks" if d.get("format") == "blocks" else "text"
+    # Inhalt der anderen Instanz wie eigenen behandeln: erst bereinigen (IDs noch in deren Form), dann umschreiben
+    d["body"] = _rw_in(_clean_remote_body(d.get("body"), d["format"]), pid, pr)
+    d["icon"] = _rw_in(_safe_pic(d.get("icon"), True), pid, pr)
+    d["cover"] = _rw_in(_safe_pic(d.get("cover"), False), pid, pr)
     if d.get("role") not in ROLES:
         d["role"] = "view"
     d.update(pinned=False, published=False, public_url=None, published_via=None, shared=True, locked=bool(d.get("locked")),
@@ -1486,8 +1537,8 @@ def home_shared(request: Request):
                     d = _in_persons(c, d, p, uid)
                     d["id"] = ref(p["id"], d["id"])
                     d["parent_id"] = ref(p["id"], d["parent_id"]) if _ok_rid(d.get("parent_id")) and not d.get("root") else None
-                    if isinstance(d.get("icon"), str) and d["icon"].startswith("/files/"):
-                        d["icon"] = _rw_in(d["icon"], p["id"], d["id"])
+                    d["icon"] = _rw_in(_safe_pic(d.get("icon"), True), p["id"], d["id"])
+                    d["title"] = _clean_text(d.get("title"), 500)
                     if d.get("role") not in ROLES:
                         d["role"] = "view"
                     d.update(shared=True, pinned=False, remote={"peer": p["id"], "host": p["host"], "name": p["name"]})
