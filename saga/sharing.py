@@ -8,13 +8,19 @@ Rollen: owner (Eigentuemer) > edit (Bearbeiten) > comment (Kommentieren) > view 
   Gruppenwechsel und Entzug wirken mit der naechsten Anfrage.
 - Endpunkte antworten ohne Rolle mit 404 (die Seite "gibt es nicht"), mit zu kleiner Rolle mit 403.
 - Fuer Listen (Seitenleiste "Mit mir geteilt", Suche, Export) gibt es Access.tree(): eine Abfrage je Eigentuemer statt
-  einer Kette je Seite."""
+  einer Kette je Seite.
+- Foederation (2.0): Personen fremder Instanzen sind "Prinzipale" '@name@host' (oeffentlicher Name + Host). Sie koennen
+  nie ein lokaler Benutzername sein (die beginnen mit a-z/0-9). Freigaben an sie: target_type 'remote' ('@name@host')
+  bzw. 'remote_group' ('gruppe@host'). Ihre Gruppen bestaetigt der Heimatserver signiert pro Anfrage (REMOTE_GROUPS,
+  gesetzt nur von saga.federation nach geprueften Signaturen)."""
+import contextvars
 import json
 import re
 import time
 from html import escape as _esc
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 import auth
 from db import connect as _db
 from saga import bus, i18n
@@ -27,10 +33,33 @@ ROLES = ("view", "comment", "edit")
 RANK = {None: 0, "view": 1, "comment": 2, "edit": 3, "owner": 4}
 SHARE_MAX = 200                                  # Freigaben je Seite
 TARGETS_MAX = 10                                 # Treffer der Personensuche
+REMOTE_TYPES = ("remote", "remote_group")
+# {prinzipal: {"gruppe@host", ...}} - die vom Heimatserver signiert bestaetigten Gruppen der anfragenden fremden Person
+REMOTE_GROUPS = contextvars.ContextVar("saga_remote_groups", default=None)
+# Von saga.federation gesetzt: remote_target(uid, typ, ziel) -> (normalisiertes ziel, fehlertext, status) - prueft
+# Verbindung und Person/Gruppe bei der fremden Instanz (Netzwerk, ausserhalb jeder Transaktion aufrufen)
+REMOTE_TARGET = None
+REMOTE_SEARCH = None          # remote_search(uid, q) -> [{type, target, name, host}] (Personensuche, genaue Adresse name@host)
+
+
+def is_remote(uid):
+    """Fremde Person ('@name@host')? Lokale Benutzernamen beginnen nie mit '@'."""
+    return isinstance(uid, str) and uid.startswith("@")
+
+
+def remote_label(principal, display=None):
+    """'@bert@b.example' + 'Bert' -> 'Bert (bert@b.example)' - fremde Namen immer mit Herkunft (keine Verwechslung)."""
+    h = principal[1:]
+    d = re.sub(r"[\x00-\x1f\x7f]", "", str(display or "")).strip()
+    return f"{d} ({h})" if d else h
 
 
 def enabled():
     return bool(auth.settings().get("share_enabled", True))
+
+
+def fed_enabled():
+    return bool(auth.settings().get("fed_enabled", False))
 
 
 def group_scope():
@@ -42,7 +71,10 @@ def _best(a, b):
 
 
 def groups_of(c, uid):
-    """Gruppen eines Kontos (lokal + LDAP/OIDC), frisch aus der Datenbank."""
+    """Gruppen eines Kontos (lokal + LDAP/OIDC), frisch aus der Datenbank. Fremde Person: nur die in DIESER Anfrage
+    signiert bestaetigten Gruppen ('gruppe@host')."""
+    if is_remote(uid):
+        return set((REMOTE_GROUPS.get() or {}).get(uid, ()))
     return {r[0] for r in c.execute(
         "SELECT g.name FROM user_group ug JOIN groups g ON g.id=ug.group_id JOIN users u ON u.id=ug.user_id WHERE u.username=? "
         "UNION SELECT e.name FROM user_ext_group e JOIN users u ON u.id=e.user_id WHERE u.username=?", (uid, uid))}
@@ -53,15 +85,27 @@ def names(c, uids):
     uids = [u for u in set(uids) if u]
     if not uids:
         return {}
-    return {r[0]: (r[1] or r[0]) for r in c.execute(
-        f"SELECT username, display_name FROM users WHERE username IN ({','.join('?' * len(uids))})", tuple(uids))}
+    loc = [u for u in uids if not is_remote(u)]
+    rem = [u for u in uids if is_remote(u)]
+    out = {}
+    if loc:
+        out = {r[0]: (r[1] or r[0]) for r in c.execute(
+            f"SELECT username, display_name FROM users WHERE username IN ({','.join('?' * len(loc))})", tuple(loc))}
+    if rem:          # fremde Personen: Anzeigename aus dem Zwischenspeicher, immer mit Herkunft
+        disp = {r[0]: r[1] for r in c.execute(f"SELECT principal, display FROM fed_person WHERE principal IN ({','.join('?' * len(rem))})",
+                                              tuple(rem))}
+        out.update({u: remote_label(u, disp.get(u)) for u in rem})
+    return out
 
 
 def person(c, uid, me, cache=None):
-    """{name, username, me} fuer Eigentuemer/Verfasser; uid None/geloescht -> 'Geloeschtes Konto'."""
+    """{name, username, me} fuer Eigentuemer/Verfasser; uid None/geloescht -> 'Geloeschtes Konto'.
+    Fremde Person: zusaetzlich remote=true, username = '@name@host'."""
     nm = (cache if cache is not None else names(c, [uid])).get(uid) if uid else None
     if not nm:
         return {"name": t("Gelöschtes Konto"), "username": None, "me": False}
+    if is_remote(uid):
+        return {"name": nm, "username": uid, "me": uid == me, "remote": True}
     return {"name": nm, "username": uid, "me": uid == me}
 
 
@@ -75,8 +119,8 @@ class Access:
         self._owner, self._role, self._shares, self._tree = {}, {}, {}, {}
 
     def on(self):
-        if self._on is None:
-            self._on = enabled()
+        if self._on is None:          # fremde Personen zusaetzlich nur bei eingeschalteter Foederation
+            self._on = enabled() and (not is_remote(self.uid) or fed_enabled())
         return self._on
 
     def groups(self):
@@ -93,7 +137,8 @@ class Access:
 
     def _principals(self):
         g = sorted(self.groups())
-        sql = "((target_type='user' AND target=?)" + (f" OR (target_type='group' AND target IN ({','.join('?' * len(g))}))" if g else "") + ")"
+        tu, tg = ("remote", "remote_group") if is_remote(self.uid) else ("user", "group")
+        sql = f"((target_type='{tu}' AND target=?)" + (f" OR (target_type='{tg}' AND target IN ({','.join('?' * len(g))}))" if g else "") + ")"
         return sql, (self.uid, *g)
 
     def shares_from(self, owner):
@@ -395,6 +440,11 @@ def api_shared(request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
+    return JSONResponse(shared_list(uid), headers={"Cache-Control": "no-store"})
+
+
+def shared_list(uid):
+    """Fuer die Weboberflaeche und die Foederation (uid = fremde Person '@name@host')."""
     with _db() as c:
         vis = visible_pages(c, uid)
         nm = names(c, {o for o, _, _, _ in vis})
@@ -407,7 +457,7 @@ def api_shared(request: Request):
         if root:
             d["parent_id"] = None                     # oberste geteilte Seite: Eltern sind fuer mich nicht sichtbar
         out.append(d)
-    return JSONResponse(out, headers={"Cache-Control": "no-store"})
+    return out
 
 
 @router.get("/api/share/info")
@@ -435,14 +485,16 @@ def _state(c, uid, nid):
                         f"WHERE s.owner_uid=? AND s.note_id IN ({','.join('?' * len(up))})", (uid, *up)).fetchall()
         order = {x: i for i, x in enumerate(up)}
         inh.sort(key=lambda r: order.get(r[0], 99))
-    nm = names(c, [r[1] for r in rows if r[0] == "user"] + [r[3] for r in inh if r[2] == "user"])
-    who = lambda typ, tg: nm.get(tg, tg) if typ == "user" else tg
+    nm = names(c, [r[1] for r in rows if r[0] in ("user", "remote")] + [r[3] for r in inh if r[2] in ("user", "remote")])
+    who = lambda typ, tg: nm.get(tg, tg) if typ in ("user", "remote") else tg
     titles = {r[0]: r[1] or t("Unbenannt") for r in inh}
 
     def via(user):
         """Weitere Wege, auf denen user diese Seite sieht: Gruppen-Freigaben hier oder darueber, eigene Freigaben darueber."""
         gs, out = None, []
         for typ, tg, role, src in [(r[0], r[1], r[2], nid) for r in rows] + [(r[2], r[3], r[4], r[0]) for r in inh]:
+            if typ in REMOTE_TYPES:
+                continue
             if typ == "user" and (tg != user or src == nid):
                 continue
             if typ == "group":
@@ -464,10 +516,13 @@ def _state(c, uid, nid):
         if r[0] == "user":       # tatsaechliche Rolle: hoechste aus direkter Freigabe, Gruppen und Seiten darueber
             v = via(r[1])
             d.update(via=v, effective=_best(r[2], v[0]["role"] if v else None))
-        else:
+        elif r[0] == "group":
             d.update(members=members(r[1]), effective=r[2])
+        else:                    # andere Instanz: Rolle wie eingetragen (Gruppen dort kennt nur die andere Instanz)
+            d.update(effective=r[2], remote=True)
         shares.append(d)
     return {"enabled": enabled(), "scope": group_scope(), "max": SHARE_MAX, "shareable": bool(chain),
+            "federation": fed_enabled() and REMOTE_TARGET is not None and not group_scope(),
             "shares": shares,
             "inherited": [{"note_id": r[0], "title": r[1] or t("Unbenannt"), "type": r[2], "target": r[3], "name": who(r[2], r[3]), "role": r[4]}
                           for r in inh],
@@ -497,8 +552,8 @@ def api_shares_get(nid: int, request: Request):
 
 
 def _target(b):
-    typ = b.get("type") if b.get("type") in ("user", "group") else None
-    tg = str(b.get("target") or "").strip().lower()[:100]
+    typ = b.get("type") if b.get("type") in ("user", "group", *REMOTE_TYPES) else None
+    tg = str(b.get("target") or "").strip().lower()[:300]
     return typ, tg
 
 
@@ -513,6 +568,22 @@ async def api_shares_put(nid: int, request: Request):
         return _bad(t("ungueltige Anfrage"))
     typ, tg = _target(b)
     role = b.get("role")
+    if typ in REMOTE_TYPES:
+        # andere Instanz: erst Eigentum pruefen, dann Verbindung und Person/Gruppe dort nachfragen (Netzwerk -
+        # ausserhalb der Transaktion), danach wie gewohnt speichern
+        with _db() as c:
+            err = _own(c, uid, nid)
+        if err is not None:
+            return err
+        if not enabled():
+            return _bad(t("Teilen ist auf diesem Server abgeschaltet."), 403)
+        if role not in ROLES or not tg:
+            return _bad(t("ungueltige Angabe"))
+        if REMOTE_TARGET is None or not fed_enabled() or group_scope():
+            return _bad(t("Teilen mit anderen Saga-Instanzen ist auf diesem Server nicht eingeschaltet."), 403)
+        tg, msg, code = await run_in_threadpool(REMOTE_TARGET, uid, typ, tg, nid)
+        if msg:
+            return _bad(msg, code)
     with _db() as c, c:
         err = _own(c, uid, nid)
         if err is not None:
@@ -524,7 +595,9 @@ async def api_shares_put(nid: int, request: Request):
         if not note_chain(c, uid, nid):
             return _bad(t("Archivierte Seiten und Vorlagen lassen sich nicht teilen."))
         mine = groups_of(c, uid)
-        if typ == "user":
+        if typ in REMOTE_TYPES:
+            pass                                    # oben geprueft (Verbindung aktiv, Person/Gruppe dort vorhanden)
+        elif typ == "user":
             u = c.execute("SELECT disabled FROM users WHERE username=?", (tg,)).fetchone()
             if tg == uid:
                 return _bad(t("Mit dir selbst musst du nicht teilen."))
@@ -616,4 +689,8 @@ def api_share_targets(request: Request, q: str = ""):
                              (*args, q, pat + "%", TARGETS_MAX)).fetchall()
     users = [{"username": r[0], "name": r[1] or r[0]} for r in rows]
     groups = [{"name": g} for g in mine if q in g][:TARGETS_MAX]
-    return JSONResponse({"users": users, "groups": groups}, headers={"Cache-Control": "no-store"})
+    out = {"users": users, "groups": groups}
+    # name@host einer verbundenen Instanz: dort nachfragen (signiert) - nur genaue Adressen, keine Suche ueber Instanzen
+    if REMOTE_SEARCH is not None and "@" in q.lstrip("@") and fed_enabled() and not group_scope():
+        out["remote"] = REMOTE_SEARCH(uid, q)
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})

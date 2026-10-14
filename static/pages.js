@@ -246,6 +246,8 @@
   function allPages() { return S.pages.concat(S.shared); }
   // Rolle auf der offenen Seite: owner > edit > comment > view (fehlt das Feld: aeltere Antwort = eigene Seite)
   function role() { return S.cur ? (S.cur.role || 'owner') : null; }
+  // Seite einer anderen Saga-Instanz (Foederation): negative ID, Inhalt kommt ueber den eigenen Server
+  function remoteId(id) { return typeof id === 'number' && id < 0; }
   function isOwner() { return role() === 'owner'; }
   function foreign() { return !!S.cur && !isOwner(); }
   function canEdit() { var r = role(); return r === 'owner' || r === 'edit'; }
@@ -306,7 +308,7 @@
       if (!own && p.root && p.owner) go.title = T('Geteilt von {name} · {role}', { name: p.owner.name, role: ROLE_YOU[p.role] || '' });
       go.addEventListener('click', function () { openPage(p.id); });
       row.appendChild(tw); row.appendChild(go);
-      if (own || p.role === 'edit') {
+      if (own || (p.role === 'edit' && !remoteId(p.id))) {      // fremde Instanz: keine neuen Unterseiten
         var plus = el('button', 'pg-add', '+'); plus.type = 'button'; plus.title = T('Unterseite hinzufügen');
         plus.setAttribute('aria-label', T('Unterseite zu {name} hinzufügen', { name: label(p) }));
         plus.addEventListener('click', function (e) { e.stopPropagation(); if (own) newPageMenu(plus, p.id); else newPage(p.id); });
@@ -350,10 +352,18 @@
 
   function loadList() {
     var sh = api('GET', '/api/shared').catch(function () { return []; });      // Mit mir geteilt (aeltere Server: leer)
+    // andere Saga-Instanzen (Foederation): eigene Anfrage, wartet nicht auf langsame Instanzen - kommt nach
+    var my = S.fedSeq = (S.fedSeq || 0) + 1;
+    var fed = api('GET', '/api/fed/shared').then(function (d) { return d && Array.isArray(d.items) ? d.items : []; }).catch(function () { return null; });
+    fed.then(function (items) {
+      if (items === null || my !== S.fedSeq) return;
+      S.fedShared = items; S.shared = S.shared.filter(function (p) { return !remoteId(p.id); }).concat(items);
+      renderShared(); renderCrumbs();
+    });
     return Promise.all([api('GET', '/api/notes'), sh]).then(function (r) {
       var list = r[0];
       S.all = list; S.pages = list.filter(function (p) { return !p.archived; });       // Archiv: nicht im Baum/Suche/Palette
-      S.shared = Array.isArray(r[1]) ? r[1] : [];
+      S.shared = (Array.isArray(r[1]) ? r[1] : []).concat(S.fedShared || []);
       if (!S.shared.length) {                     // nichts geteilt - oder Teilen abgeschaltet? Dann ein Hinweis statt still nichts
         api('GET', '/api/share/info').then(function (d) { var off = !d.enabled && d.received > 0; if (off !== !!S.shareOff) { S.shareOff = off; renderShared(); } })
           .catch(function () {});
@@ -626,7 +636,7 @@
     if (!S.cur) { document.title = T('Seiten') + ' · Saga'; return; }
     document.title = (ti(S.cur.icon) ? ti(S.cur.icon) + ' ' : '') + label(S.cur) + ' · ' + T('Seiten');
     if (parseInt(location.hash.slice(1), 10) === S.cur.id) return;                 // auch "#12:block" = diese Seite
-    if (!EMBED && /^#\d/.test(location.hash)) history.pushState(null, '', '#' + S.cur.id);   // Zurueck/Vor wie im Browser
+    if (!EMBED && /^#-?\d/.test(location.hash)) history.pushState(null, '', '#' + S.cur.id);   // Zurueck/Vor wie im Browser
     else history.replaceState(null, '', '#' + S.cur.id);
   }
 
@@ -690,7 +700,7 @@
     if (PK.id) closePeek();
     return _origOpen(id).then(function () {
       if (S.cur) { S.loading = true; decorateLinks(); S.loading = false; renderTags(); loadBacklinks(S.cur.id); rememberRecent(S.cur.id); archiveBar(); applyLock(); applyPublic(); applyShare(); applyMeta(); }
-      var bm = location.hash.match(/^#(\d+):(.+)$/); if (bm && S.cur && +bm[1] === S.cur.id) setTimeout(function () { showBlock(decodeURIComponent(bm[2])); }, 150);
+      var bm = location.hash.match(/^#(-?\d+):(.+)$/); if (bm && S.cur && +bm[1] === S.cur.id) setTimeout(function () { showBlock(decodeURIComponent(bm[2])); }, 150);
       if (EMBED && S.cur && !S.cur.title) $('pg-title').focus();      // neue Karte im Peek: gleich den Namen tippen
       if (!S.editor) return;
       // Vergleichsstand erst, wenn auch die verschachtelten Editoren (Spalten, Ausklappbar) fertig und beschriftet sind
@@ -807,7 +817,8 @@
   // Seitenmenue auf einer fremden Seite: Breite/Unterseite nur mit 'Bearbeiten'; Link, Kommentare und Export fuer alle
   function foreignMenu(m, c) {
     m.appendChild(HK.menuLabel(T('Geteilt von {name} · {role}', { name: (c.owner || {}).name || '', role: ROLE_YOU[role()] || '' })));
-    if (canEdit()) {
+    var rem = remoteId(c.id);                         // andere Saga-Instanz: kein Layout, keine Unterseiten, kein Export
+    if (canEdit() && !rem) {
       m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { icon: '↔', on: !!c.wide }));
       m.appendChild(HK.menuItem(T('Unterseite hinzufügen'), function () { newPage(c.id); }, { icon: '＋' }));
     }
@@ -815,11 +826,12 @@
       { icon: '💬', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
     m.appendChild(HK.menuItem(T('Link zur Seite kopieren'), function () { copyLink(); }, { icon: '🔗' }));
     var n = descendants(c.id).length || S.shared.filter(function (p) { return p.parent_id === c.id; }).length;
-    m.appendChild(HK.menuItem(T('Exportieren'), null, { icon: '⬇', sub: function (sm) {
+    if (!rem) m.appendChild(HK.menuItem(T('Exportieren'), null, { icon: '⬇', sub: function (sm) {
       sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { icon: '📄' }));
       if (n) sm.appendChild(HK.menuItem(T('Mit Unterseiten (.zip)'), function () { exportPage(true); }, { icon: '🗜' }));
     } }));
-    m.appendChild(el('div', 'menu-hint', T('Verschieben, Löschen, Versionen und Freigaben verwaltet der Eigentümer.')));
+    m.appendChild(el('div', 'menu-hint', rem ? T('Diese Seite liegt auf {host}. Hier kannst du sie lesen, kommentieren und – mit Bearbeiten – Titel und Inhalt ändern.', { host: (c.remote || {}).host || '' })
+                                             : T('Verschieben, Löschen, Versionen und Freigaben verwaltet der Eigentümer.')));
   }
 
   function setFull(on) {
@@ -942,7 +954,7 @@
 
   // --- Verweise auf Seiten und Dienste ---------------------------------------
   S.services = [];
-  var NOTE_HREF = /^\/notes#([1-9][0-9]{0,8})$/;
+  var NOTE_HREF = /^\/notes#(-?[1-9][0-9]{0,17})$/;          // negativ: Seite einer anderen Saga-Instanz
   function normUrl(u) { return String(u || '').replace(/\/+$/, ''); }
   function serviceFor(href) { var n = normUrl(href); return S.services.find(function (s) { return normUrl(s.url) === n; }) || null; }
 
@@ -2757,9 +2769,9 @@
 
 
   // --- Bild-Icons und Titelbilder ------------------------------------------------
-  function isImg(icon) { return typeof icon === 'string' && icon.indexOf('/files/') === 0; }
+  function isImg(icon) { return typeof icon === 'string' && (icon.indexOf('/files/') === 0 || icon.indexOf('/api/fed/files/') === 0); }
   // eigene Bilder verkleinert laden (Server erzeugt WebP-Vorschau einmal und merkt sie sich)
-  function thumb(u, w) { return typeof u === 'string' && /^\/files\/[0-9a-f]{24}$/.test(u) ? u + '?w=' + w : u; }
+  function thumb(u, w) { return typeof u === 'string' && /^(\/files|\/api\/fed\/files\/-[0-9]+)\/[0-9a-f]{24}$/.test(u) ? u + '?w=' + w : u; }
   function ti(icon) { return isImg(icon) ? '' : (icon || ''); }          // Icon fuer reine Textstellen
   function icoNode(icon, fallback, cls) {                                 // Icon als Element (Emoji oder Bild)
     if (isImg(icon)) { var i = el('img', (cls || '') + ' ic-img'); i.decoding = 'async'; i.src = thumb(icon, 160); i.alt = ''; return i; }
@@ -3852,7 +3864,7 @@
     row.appendChild(inp); row.appendChild(rsel); wrap.appendChild(row); box.appendChild(wrap);
     var fm = el('p', 'hk-fieldmsg'); box.appendChild(fm);
     // "Mindestens 3 Zeichen." nur bei 1-2 Zeichen (direkt am Feld); sonst hoechstens der Hinweis auf die Gruppen
-    var scopeHint = st.scope ? T('Nur Personen aus deinen Gruppen.') : '';
+    var scopeHint = st.scope ? T('Nur Personen aus deinen Gruppen.') : st.federation ? T('Andere Saga-Instanzen: name@server eingeben.') : '';
     var setErr = HK.fieldMsg(inp, fm, scopeHint);
     function lenHint(q) { setErr.hint(q.length && q.length < 3 ? (st.scope ? T('Nur Personen aus deinen Gruppen. Mindestens 3 Zeichen.') : T('Mindestens 3 Zeichen.')) : scopeHint); }
     var help = el('p', 'sh-help'); box.appendChild(help);                 // was die gewaehlte Rolle darf
@@ -3890,15 +3902,19 @@
       var e = li.querySelector('.sh-err'); if (!e) { e = el('small', 'sh-err'); e.setAttribute('role', 'alert'); li.appendChild(e); }
       e.textContent = text;
     }
+    function isGrp(type) { return type === 'group' || type === 'remote_group'; }
     function avatar(type, name) {
-      var a = el('span', 'sh-av' + (type === 'group' ? ' sh-av-g' : ''), type === 'group' ? '' : (name || '?').charAt(0).toUpperCase());
-      if (type === 'group') a.appendChild(grpIc());
+      var a = el('span', 'sh-av' + (isGrp(type) ? ' sh-av-g' : '') + (type === 'remote' || type === 'remote_group' ? ' sh-av-r' : ''),
+                 isGrp(type) ? '' : (name || '?').charAt(0).toUpperCase());
+      if (isGrp(type)) a.appendChild(grpIc());
       a.setAttribute('aria-hidden', 'true'); return a;
     }
     function who(x) {
       var li = el('li', 'sh-item'); li.appendChild(avatar(x.type, x.name));
       var tx = el('span', 'sh-who'); tx.appendChild(el('span', 'sh-name', x.name || x.target));
-      var sub = x.type !== 'group' ? x.target : x.members == null ? T('Gruppe')
+      var sub = x.type === 'remote' ? T('Andere Saga-Instanz · {addr}', { addr: x.target.replace(/^@/, '') })
+        : x.type === 'remote_group' ? T('Gruppe auf {addr}', { addr: x.target })
+        : x.type !== 'group' ? x.target : x.members == null ? T('Gruppe')
         : x.members === 1 ? T('Gruppe · 1 Person') : T('Gruppe · {n} Personen', { n: x.members });
       tx.appendChild(el('small', 'sh-sub', sub)); li.appendChild(tx);
       return li;
@@ -3921,7 +3937,7 @@
         var rm = el('button', 'icon-btn sh-rm', '×'); rm.type = 'button'; rm.title = T('Freigabe entfernen'); rm.setAttribute('aria-label', T('Freigabe für {name} entfernen', { name: x.name }));
         rm.addEventListener('click', function () {
           var text = top ? T('{name} behält über {via} die Rolle {role}.', { name: x.name, via: viaLabel(top), role: ROLE_NAME[top.role] })
-            : x.type === 'group' ? T('Die Gruppe {name} verliert sofort den Zugriff auf diese Seite und ihre Unterseiten.', { name: x.name })
+            : isGrp(x.type) ? T('Die Gruppe {name} verliert sofort den Zugriff auf diese Seite und ihre Unterseiten.', { name: x.name })
             : T('{name} verliert sofort den Zugriff auf diese Seite und ihre Unterseiten.', { name: x.name });
           HK.ask({ title: T('Freigabe entfernen?'), text: text, ok: T('Entfernen'), danger: true }).then(function (yes) {
             if (!yes) return;
@@ -3983,6 +3999,9 @@
       }
       (d.users || []).forEach(function (u) { add('user', u.username, u.name, u.username); });
       (d.groups || []).forEach(function (g) { add('group', g.name, g.name, T('Gruppe')); });
+      (d.remote || []).forEach(function (h) {             // andere Saga-Instanz (genaue Adresse name@server)
+        add(h.type, h.target, h.name, h.type === 'remote' ? T('Andere Saga-Instanz · {addr}', { addr: h.target.replace(/^@/, '') }) : T('Gruppe auf {addr}', { addr: h.target }));
+      });
       hits.hidden = !any; inp.setAttribute('aria-expanded', any ? 'true' : 'false');
       if (!any && inp.value.trim().length >= 3) setErr(T('Niemand gefunden.'));
     }
@@ -4075,16 +4094,17 @@
     add(T('Neue Seite'), '＋', function () { newPage(null); }, { kw: 'new page anlegen erstellen' });
     var own = isOwner(), ed = canEdit();
     if (c) {
-      if (ed) add(T('Neue Unterseite'), '＋', function () { newPage(c.id); }, { kw: 'subpage unterseite anlegen' });
+      var rem = remoteId(c.id);                                    // andere Saga-Instanz: nur Lesen/Bearbeiten/Kommentieren
+      if (ed && !rem) add(T('Neue Unterseite'), '＋', function () { newPage(c.id); }, { kw: 'subpage unterseite anlegen' });
       add(T('Link zur Seite kopieren'), '🔗', function () { copyLink(); }, { kw: 'url teilen copy link', kbd: mk + 'L' });
       if (own) add(T('Teilen …'), 'grp', openShare, { kw: 'share teilen freigeben personen gruppen' });
       add(T('Kommentare'), '💬', function () { if (window.HKComments) HKComments.openAll(); }, { kw: 'comments kommentar unterhaltung' });
       if (own) add(c.pinned ? T('Von Favoriten lösen') : T('Zu Favoriten'), '★', function () { setPinned(!c.pinned); }, { kw: 'favorit stern pin' });
-      if (ed) add(c.wide ? T('Volle Breite aus') : T('Volle Breite ein'), '↔', function () { setWide(!c.wide); }, { kw: 'breite wide layout' });
+      if (ed && !rem) add(c.wide ? T('Volle Breite aus') : T('Volle Breite ein'), '↔', function () { setWide(!c.wide); }, { kw: 'breite wide layout' });
       add(T('Vollbild'), '⤢', function () { setFull(!$('pages').classList.contains('pg-full')); }, { kw: 'fullscreen fokus' });
       if (own) add(T('Seite duplizieren'), '⧉', duplicatePage, { kw: 'kopie duplicate' });
       if (own) add(T('Versionsverlauf'), '🕘', openVersions, { kw: 'history versionen' });
-      add(T('Als Markdown exportieren'), '⬇', function () { exportPage(false); }, { kw: 'export md download' });
+      if (!rem) add(T('Als Markdown exportieren'), '⬇', function () { exportPage(false); }, { kw: 'export md download' });
       if (c.parent_id) add(T('Übergeordnete Seite'), '↑', goParent, { kw: 'eltern parent hoch', kbd: mk + '⇧U' });
       if (window.HKKeys) add(T('Inhaltsverzeichnis ein/aus'), '☰', HKKeys.toggleToc, { kw: 'toc gliederung ueberschriften' });
     }
@@ -4189,7 +4209,7 @@
   };
 
   window.addEventListener('hashchange', function () {
-    var id = parseInt(location.hash.slice(1), 10), bm = location.hash.match(/^#\d+:(.+)$/);
+    var id = parseInt(location.hash.slice(1), 10), bm = location.hash.match(/^#-?\d+:(.+)$/);
     if (id && S.cur && S.cur.id === id && bm) { showBlock(decodeURIComponent(bm[1])); return; }
     if (!id || (S.cur && S.cur.id === id)) return;
     // Unbekannte ID (z.B. gerade per Schaltflaeche angelegt): erst Seitenliste neu laden, dann oeffnen

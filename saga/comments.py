@@ -74,6 +74,11 @@ def api_comments(nid: int, request: Request, resolved: int = 0):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
+    return comments_list(uid, nid, resolved)
+
+
+def comments_list(uid, nid, resolved=0):
+    """Fuer die Weboberflaeche und die Foederation (uid = fremde Person '@name@host')."""
     with _db() as c:
         _, role, err = access(c, uid, nid, "view")
         if err is not None:
@@ -117,6 +122,10 @@ async def api_comment_add(nid: int, request: Request):
     b = await _body(request)
     if b is None:
         return _bad(t("ungueltige Anfrage"))
+    return comment_add(uid, nid, b)
+
+
+def comment_add(uid, nid, b):
     body = _clean(b.get("body"))
     now = time.time()
     with _db() as c, c:
@@ -176,7 +185,10 @@ async def api_comment_edit(cid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    b = await _body(request) or {}
+    return comment_edit(uid, cid, await _body(request) or {})
+
+
+def comment_edit(uid, cid, b):
     body = _clean(b.get("body"))
     with _db() as c, c:
         r, role, err = _load(c, uid, cid)
@@ -205,6 +217,10 @@ def api_comment_delete(cid: int, request: Request, all: int = 0):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
+    return comment_delete(uid, cid, all)
+
+
+def comment_delete(uid, cid, all=0):
     with _db() as c, c:
         r, role, err = _load(c, uid, cid)
         if err is not None:
@@ -239,7 +255,10 @@ async def api_comment_resolve(cid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    b = await _body(request) or {}
+    return comment_resolve(uid, cid, await _body(request) or {})
+
+
+def comment_resolve(uid, cid, b):
     on = b.get("resolved", True) is not False
     with _db() as c, c:
         r, role, err = _load(c, uid, cid)
@@ -260,6 +279,10 @@ def api_comment_seen(cid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
+    return comment_seen(uid, cid)
+
+
+def comment_seen(uid, cid):
     with _db() as c, c:
         r, _, err = _load(c, uid, cid)
         if err is not None:

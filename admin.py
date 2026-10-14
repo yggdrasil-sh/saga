@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import connect as _db
-from saga import i18n, live, publish, sharing
+from saga import federation, i18n, live, publish, sharing
 from saga.core import TZ, BodyLimit, LangMiddleware
 from saga.i18n import t
 from version import REPO, VERSION, newer
@@ -610,6 +610,87 @@ async def published_post(request: Request):
         print(f"admin: {me['username']} zieht Veroeffentlichung {nid} zurueck", flush=True)
         _flash(request, t("Veröffentlichung zurückgezogen."))
     return _go("/published")
+
+
+# --- Foederation: andere Saga-Instanzen verbinden -----------------------------------------------------------
+def _fed_events():
+    """Ereignisse im Pruefprotokoll -> Text (in der Sprache der Anfrage)."""
+    return {"invite.created": t("Einladung erzeugt"),
+            "connect.request": t("Verbindungsanfrage erhalten"),
+            "connect.sent": t("Verbindungsanfrage gesendet"),
+            "connect.bad_code": t("Anfrage mit ungültigem Code"),
+            "peer.confirmed": t("Bestätigt"),
+            "peer.confirmed_remote": t("Von der Gegenseite bestätigt"),
+            "peer.disconnected": t("Getrennt"),
+            "peer.disconnected_remote": t("Von der Gegenseite getrennt"),
+            "peer.removed": t("Entfernt"),
+            "sig.rejected": t("Signatur abgewiesen"),
+            "sig.replay": t("Wiederholte Anfrage abgewiesen"),
+            "share.set": t("Freigabe"),
+            "share.removed": t("Freigabe entfernt"),
+            "person.gone": t("Person entfernt"),
+            "event.dropped": t("Ereignis verworfen")}
+
+
+def _fed_page(request, me, **kw):
+    st = federation.admin_state()
+    return _page(request, "federation.html", me, fed=st, events=_fed_events(),
+                 code=request.session.pop("fed_code", None), **kw)
+
+
+@admin.get("/federation")
+def federation_page(request: Request):
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    return _fed_page(request, me)
+
+
+@admin.post("/federation")
+async def federation_post(request: Request):
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    f = await _form(request)
+    if f is None:
+        return _go("/federation")
+    act, who = f.get("action"), me["username"]
+    pid = int(f.get("id")) if str(f.get("id") or "").isdigit() else 0
+    try:
+        if act == "enable":
+            await run_in_threadpool(federation.set_enabled, _on(f, "on"))
+            print(f"admin: {who} schaltet Foederation {'ein' if _on(f, 'on') else 'aus'}", flush=True)
+            _flash(request, t("Gespeichert."))
+        elif not federation.enabled():
+            _flash(request, t("Die Föderation ist ausgeschaltet."), "err")
+        elif act == "invite":
+            request.session["fed_code"] = await run_in_threadpool(federation.make_invite, who)
+        elif act == "drop_invite":
+            await run_in_threadpool(federation.drop_invite, pid)
+        elif act == "preview":
+            info = await run_in_threadpool(federation.preview, _s(f, "url", 300))
+            return _fed_page(request, me, preview=info, form_code=_s(f, "code", 100))
+        elif act == "connect":
+            await run_in_threadpool(federation.connect, _s(f, "url", 300), _s(f, "code", 100), _s(f, "fingerprint", 100))
+            print(f"admin: {who} sendet Verbindungsanfrage an {_s(f, 'url', 300)}", flush=True)
+            _flash(request, t("Anfrage gesendet. Sobald der Admin der anderen Instanz bestätigt, ist die Verbindung aktiv."))
+        elif act == "confirm":
+            ok, err = await run_in_threadpool(federation.confirm, pid, who)
+            if ok:
+                _flash(request, t("Verbindung bestätigt.") + (" " + t("Die andere Instanz war nicht erreichbar ({err}) – dort „Status prüfen“.", err=err) if err else ""),
+                       "ok" if not err else "err")
+        elif act == "refresh":
+            st = await run_in_threadpool(federation.refresh, pid)
+            _flash(request, t("Status der Gegenseite: {st}", st=st or "–"))
+        elif act in ("disconnect", "reject"):
+            if await run_in_threadpool(federation.disconnect, pid, who):
+                print(f"admin: {who} trennt Foederation {pid}", flush=True)
+                _flash(request, t("Verbindung getrennt."))
+        elif act == "remove":
+            await run_in_threadpool(federation.remove, pid)
+    except federation.FedError as ex:
+        _flash(request, t("Fehler: {err}", err=str(ex)), "err")
+    return _go("/federation")
 
 
 # --- Einstellungen: SSO / OIDC -------------------------------------------------------------------------

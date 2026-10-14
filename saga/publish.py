@@ -15,6 +15,7 @@ Grundsaetze:
  - Geloeschte Seite: die Veroeffentlichung bleibt gespeichert, liefert aber 404; nach dem Wiederherstellen ist sie
    wieder da. Beim endgueltigen Loeschen (notes._purge_ids) und beim Loeschen des Kontos verschwindet sie.
 """
+import importlib
 import os
 import re
 import threading
@@ -122,7 +123,13 @@ def suggest_name(c, uid):
     if len(base) < 2 or base == uid or base in RESERVED or not NAME_RE.fullmatch(base):
         base = "autor" if i18n.get_lang() == "de" else "autora" if i18n.get_lang() == "es" else "author"
     return _unique(c, base, NAME_MAX, lambda x: x in RESERVED or bool(
-        c.execute("SELECT 1 FROM public_name WHERE name=? AND uid<>?", (x, uid)).fetchone()))
+        c.execute("SELECT 1 FROM public_name WHERE name=? AND uid<>?", (x, uid)).fetchone()) or _retired(c, x, uid))
+
+
+def _retired(c, name, uid):
+    """Name war schon ueber Instanzgrenzen bekannt (Foederation) und gehoerte einem anderen Konto: nie neu vergeben -
+    sonst bekaeme das neue Konto die Freigaben anderer Instanzen an den alten Namen."""
+    return bool(c.execute("SELECT 1 FROM fed_name_retired WHERE name=? AND (uid IS NULL OR uid<>?)", (name, uid)).fetchone())
 
 
 def set_name(uid, name):
@@ -132,10 +139,14 @@ def set_name(uid, name):
     if p:
         return None, p
     with _db() as c, c:
-        if c.execute("SELECT 1 FROM public_name WHERE name=? AND uid<>?", (name, uid)).fetchone():
+        if c.execute("SELECT 1 FROM public_name WHERE name=? AND uid<>?", (name, uid)).fetchone() or _retired(c, name, uid):
             return None, t("Dieser Name ist schon vergeben.")
-        if c.execute("SELECT 1 FROM public_name WHERE uid=?", (uid,)).fetchone():
+        old = get_name(c, uid)
+        if old is not None:
             c.execute("UPDATE public_name SET name=? WHERE uid=?", (name, uid))
+            if old != name:          # Foederation: Freigaben anderer Instanzen an den alten Namen enden (saga.federation)
+                importlib.import_module("saga.federation")      # Zuhoerer sicher angemeldet (auch ausserhalb der App, z. B. Werkzeuge)
+                bus.fire("public_name.released", c, uid=uid, pub=old, deleted=False)
         else:
             c.execute("INSERT INTO public_name (uid, name, created) VALUES (?,?,?)", (uid, name, time.time()))
     return name, None

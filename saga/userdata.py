@@ -1,4 +1,5 @@
 """Daten eines Kontos zaehlen und loeschen (Admin-Bereich)."""
+import importlib
 import os
 from db import connect as _db
 from saga import bus, notify
@@ -18,6 +19,10 @@ USER_TABLES = ("task", "note", "note_version", "bookmark", "fav", "device_login"
 def delete_user_data(uid):
     with _db() as c, c:
         fids = [r[0] for r in c.execute("SELECT id FROM file WHERE uid=?", (uid,)).fetchall()]
+        pub = c.execute("SELECT name FROM public_name WHERE uid=?", (uid,)).fetchone()
+        # Foederation (saga.federation): andere Instanzen erfahren es, Freigaben dorthin/von dort enden, Name gesperrt
+        importlib.import_module("saga.federation")          # Zuhoerer sicher angemeldet (auch ausserhalb der App)
+        bus.fire("public_name.released", c, uid=uid, pub=pub[0] if pub else None, deleted=True)
         c.execute("DELETE FROM file WHERE uid=?", (uid,))
         shares = delete_account(c, uid)          # Freigaben (eigene + an das Konto), Kommentare anonymisieren/loeschen
         notes_n = notify.delete_account(c, uid)  # Benachrichtigungen: eigene weg, als Ausloeser anonymisiert
