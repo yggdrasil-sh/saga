@@ -25,7 +25,7 @@ import db
 from version import API_LEVEL, MIN_APP, VERSION
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
-from saga import i18n, live, notify
+from saga import ai, i18n, live, notify
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, LangMiddleware, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
@@ -177,3 +177,4 @@ app.include_router(sharing.router)          # Teilen: /api/shared, /api/notes/{n
 app.include_router(comments.router)         # Kommentare: /api/notes/{nid}/comments, /api/comments/{cid}...
 app.include_router(notify.router)           # Benachrichtigungen: /api/notifications, .../read, .../settings
 app.include_router(live.router)             # Live-Kanal: /api/events (SSE), /api/presence
+app.include_router(ai.router)               # KI-Assistent: /api/ai/status, /api/ai/ask, /api/ai/page/{nid}, /api/ai/history

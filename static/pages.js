@@ -779,6 +779,7 @@
       m.appendChild(shi);
       m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
         { icon: '💬', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
+      if (window.HKAI) HKAI.menu(m);                                 // static/ai.js (nur, wenn der Assistent an ist)
       m.appendChild(HK.menuItem(T('Veröffentlichen …'), openPublish, { icon: '🌐', on: !!c.published }));
       m.appendChild(HK.menuItem(T('Exportieren'), null, { icon: '⬇', sub: function (sm) {
         sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { icon: '📄' }));
@@ -814,6 +815,7 @@
     m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
       { icon: '💬', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
     m.appendChild(HK.menuItem(T('Link zur Seite kopieren'), function () { copyLink(); }, { icon: '🔗' }));
+    if (window.HKAI) HKAI.menu(m);
     var n = descendants(c.id).length || S.shared.filter(function (p) { return p.parent_id === c.id; }).length;
     m.appendChild(HK.menuItem(T('Exportieren'), null, { icon: '⬇', sub: function (sm) {
       sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { icon: '📄' }));

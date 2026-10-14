@@ -31,7 +31,7 @@ _pool_lock = threading.Lock()
 
 # Tabellen mit Ganzzahl-Schluessel "id" -> INSERT liefert die neue id (cur.lastrowid)
 ID_TABLES = {"task", "note", "note_version", "device_login", "cal_account", "app_token", "users", "groups",
-             "service", "bookmark", "note_share", "note_comment", "notification"}
+             "service", "bookmark", "note_share", "note_comment", "notification", "ai_history"}
 # INSERT OR REPLACE: Konfliktspalten je Tabelle
 UPSERT_KEYS = {"immich_key": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",),
                "note_share": ("note_id", "target_type", "target"), "note_comment_seen": ("uid", "thread_id")}
@@ -368,6 +368,15 @@ CREATE TABLE IF NOT EXISTS notification (
 CREATE INDEX IF NOT EXISTS notification_uid ON notification (uid, id DESC);
 CREATE INDEX IF NOT EXISTS notification_unread ON notification (uid) WHERE read_at IS NULL;
 CREATE INDEX IF NOT EXISTS notification_created ON notification (created);
+
+-- KI-Assistent (1.6): Anfragen je Person und Tag (Kontingent) und der optionale Verlauf (nur wenn die Person ihn einschaltet;
+-- sources = JSON {ids: [Seiten], opts}, Titel werden beim Lesen mit der aktuellen Berechtigung ermittelt)
+CREATE TABLE IF NOT EXISTS ai_usage (
+    uid TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (uid, day));
+CREATE TABLE IF NOT EXISTS ai_history (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, created DOUBLE PRECISION NOT NULL, kind TEXT NOT NULL,
+    question TEXT NOT NULL, answer TEXT NOT NULL, sources TEXT NOT NULL DEFAULT '{}');
+CREATE INDEX IF NOT EXISTS ai_history_uid ON ai_history (uid, id DESC);
 """
 # --- Schema-Versionen und Migrationen ----------------------------------------------------------------
 # SCHEMA oben ist Stand 1 (plus neue Tabellen mit CREATE TABLE IF NOT EXISTS). Alles, was bestehende

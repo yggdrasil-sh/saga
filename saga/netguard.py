@@ -56,9 +56,10 @@ class GuardBackend(httpcore.SyncBackend):
         raise last
 
 
-def guarded_client(ip_ok, **kw):
-    """httpx.Client, dessen Verbindungen ueber GuardBackend laufen."""
-    tr = httpx.HTTPTransport()
+def guarded_client(ip_ok, transport_kw=None, **kw):
+    """httpx.Client, dessen Verbindungen ueber GuardBackend laufen. transport_kw: z. B. {"verify": ssl-kontext}
+    (httpx beachtet verify am Client nicht, wenn ein eigener Transport gesetzt ist)."""
+    tr = httpx.HTTPTransport(**(transport_kw or {}))
     pool = getattr(tr, "_pool", None)
     if pool is None or not hasattr(pool, "_network_backend"):          # httpcore-Interna geaendert: lieber gar nicht verbinden
         raise RuntimeError("netguard: httpcore ohne _network_backend - SSRF-Schutz nicht moeglich")

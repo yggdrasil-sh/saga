@@ -41,6 +41,8 @@
   lesbar, ohne JavaScript, optional als Startseite für Besucher
 - **Teilen und Kommentieren:** Seiten und Datenbanken mit Personen oder Gruppen (lokal, LDAP, SSO) teilen – Rollen
   Lesen, Kommentieren, Bearbeiten, Unterseiten erben die Freigabe; dezente Kommentare am Block mit „Erledigt“
+- **KI-Assistent (optional):** Fragen an die eigenen Seiten, Zusammenfassen, Aufgaben vorschlagen, Text verbessern oder
+  übersetzen – mit einem Modell nach Wahl (z. B. Ollama im eigenen Netz). Nur sichtbare Inhalte, Quellen verlinkt, nur Vorschläge, standardmäßig aus
 - **Aufgaben** mit Fälligkeit, Priorität und Wiederholung
 - **Kalender (CalDAV):** Nextcloud, mailcow/SOGo, Radicale, iCloud … anzeigen und bearbeiten
 - **Immich:** eigene Fotos als Bilder und Titelbilder einbinden

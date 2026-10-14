@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import connect as _db
-from saga import i18n, live, publish, sharing
+from saga import ai, i18n, live, publish, sharing
 from saga.core import TZ, BodyLimit, LangMiddleware
 from saga.i18n import t
 from version import REPO, VERSION, newer
@@ -758,3 +758,82 @@ async def ldap_post(request: Request):
     if not request.session.get("flash"):
         _flash(request, t("LDAP-Einstellungen gespeichert."))
     return _go("/settings/ldap")
+
+
+# --- Einstellungen: KI-Assistent (1.6, saga/ai.py) --------------------------------------------------------
+@admin.get("/settings/ai")
+def ai_page(request: Request):
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    a = auth.settings(fresh=True)["ai"]
+    n, people = ai.usage_today()
+    return _page(request, "ai.html", me, a=a, has_key=bool(a.get("api_key")), groups_text=", ".join(a.get("groups") or []),
+                 test=request.session.pop("ai_test", None), used=n, people=people, parallel=ai.PARALLEL)
+
+
+def _ai_from(f, cur):
+    """Formular -> (werte, fehler). Leerer Schluessel = bisherigen behalten (auth.save_setting)."""
+    prov = f.get("provider") if f.get("provider") in ai.PROVIDERS else "openai"
+    url, err = ai.norm_url(_s(f, "url", 300), prov) if _s(f, "url", 300) else ("", None)
+
+    def num(k, lo, hi, dflt):
+        try:
+            return max(lo, min(hi, int(str(f.get(k) or dflt).strip())))
+        except ValueError:
+            return dflt
+    v = {"enabled": _on(f, "enabled"), "provider": prov, "url": url or "", "model": _s(f, "model", 200),
+         "api_key": str(f.get("api_key") or "").strip()[:500], "groups": _groups_list(_s(f, "groups", 1000)),
+         "timeout": num("timeout", 5, 600, 60), "quota": num("quota", 0, 100000, 50), "context": num("context", 1000, 50000, 8000),
+         "history": _on(f, "history"), "pinned": list(cur.get("pinned") or [])}
+    return v, err
+
+
+@admin.post("/settings/ai")
+async def ai_post(request: Request):
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    f = await _form(request)
+    if f is None:
+        return _go("/settings/ai")
+    cur = auth.settings(fresh=True)["ai"]
+    v, err = _ai_from(f, cur)
+    if err:
+        _flash(request, err, "err")
+        return _go("/settings/ai")
+    if f.get("action") == "test":
+        cfg = dict(v, api_key=v["api_key"] or cur.get("api_key", ""))
+        if not cfg["url"] or not cfg["model"]:
+            request.session["ai_test"] = [t("✗ Adresse und Modell angeben.")]
+        else:
+            try:
+                request.session["ai_test"] = await run_in_threadpool(ai.test_connection, cfg)
+            except Exception as ex:  # noqa: BLE001
+                request.session["ai_test"] = [f"✗ {type(ex).__name__}"]
+        return _go("/settings/ai")
+    if v["enabled"] and (not v["url"] or not v["model"]):
+        _flash(request, t("Zum Einschalten Adresse und Modell angeben."), "err")
+        return _go("/settings/ai")
+    if v["url"]:
+        # DNS festhalten: interne Adressen sind nur mit genau diesen IPs erlaubt (gegen spaetere Umleitung per DNS)
+        ips, err = await run_in_threadpool(ai.resolve, v["url"])
+        if err:
+            _flash(request, err, "err")
+            return _go("/settings/ai")
+        v["pinned"] = ips
+    else:
+        v["pinned"] = []
+    clear = _on(f, "clear_key")
+    if clear:
+        v["api_key"] = ""
+    auth.save_setting("ai", v)
+    if clear:
+        with _db() as c, c:
+            st = json.loads(c.execute("SELECT v FROM setting WHERE k='ai'").fetchone()[0])
+            st["api_key"] = ""
+            c.execute("UPDATE setting SET v=? WHERE k='ai'", (json.dumps(st, ensure_ascii=False),))
+        auth._settings_cache["v"] = None
+    print(f"admin: {me['username']} speichert KI-Assistent (aktiv={v['enabled']})", flush=True)
+    _flash(request, t("Einstellungen für den KI-Assistenten gespeichert."))
+    return _go("/settings/ai")
