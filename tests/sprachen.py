@@ -1,7 +1,7 @@
 """Mehrsprachigkeit: Sprachwahl (Konto > Server-Standard > Accept-Language > Englisch), vollstaendige Kataloge
 (gleiche Schluessel und Platzhalter in de/en/es), Seiten und Admin-Bereich rendern in allen drei Sprachen.
 Wegwerf-Konten sp-*, raeumt auf. Umgebung wie tests/standalone.py."""
-import importlib.util, os, re, sys, time
+import importlib.util, json, os, re, sys, time
 import auth
 from db import connect
 from saga import i18n
@@ -97,6 +97,27 @@ def main():
     ok("Ungueltige Sprache -> 400", u.api("PUT", "/api/account/lang", {"lang": "fr"})[0] == 400)
     u.api("PUT", "/api/account/lang", {"lang": ""})
     ok("Automatisch -> wieder Browser (es)", html_lang(u.req("GET", "/")[2]) == "es")
+
+    # --- Standardnamen bei Anfragen ohne Browser-Sprache (API, Apps): Sprache, die die Oberflaeche zuletzt zeigte --
+    def view_name(lang_page):
+        u.lang = lang_page
+        u.req("GET", "/notes")                         # Oberflaeche in dieser Sprache gesehen
+        u.lang = ""
+        s, d = u.api("POST", "/api/notes", {"title": "DB ohne Sprache", "kind": "database"})
+        with connect() as c:
+            row = c.execute("SELECT schema FROM note WHERE id=? AND uid='sp-user'", (d.get("id") if isinstance(d, dict) else 0,)).fetchone()
+        return json.loads(row[0])["views"][0]["name"] if s == 200 and row else f"- ({s})"
+    for lang_page in ("de", "es"):
+        got = view_name(lang_page)
+        ok(f"Neue DB per API ohne Accept-Language, Oberflaeche {lang_page} -> Ansicht {got!r}", got == i18n.t_lang(lang_page, "Tabelle"))
+    with connect() as c:
+        n = c.execute("SELECT COUNT(*) FROM user_kv WHERE uid='sp-user' AND k='lang_seen'").fetchone()[0]
+    ok("Gesehene Sprache nur einmal gespeichert", n == 1)
+    u.api("PUT", "/api/account/lang", {"lang": "en"})
+    got = view_name("de")
+    ok(f"Konto-Sprache (en) schlaegt gesehene Sprache (de) -> {got!r}", got == "Table")
+    u.api("PUT", "/api/account/lang", {"lang": ""})
+    u.lang = "es"
 
     # --- Standardsprache des Servers (Admin -> Allgemein) -------------------------------------------
     auth.save_setting("default_lang", "es")

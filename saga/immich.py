@@ -51,7 +51,7 @@ def _immich_norm(url):
     except ValueError:
         return None, t("Adresse ungueltig")
     if pu.scheme not in ("http", "https") or not pu.hostname or pu.username or pu.password or pu.query or pu.fragment:
-        return None, t("Adresse ungueltig (z. B. https://immich.example.de)")
+        return None, t("Adresse ungueltig (z. B. https://immich.example.org)")
     freigegeben = pu.netloc.lower() in _immich_allowed_hosts()
     if pu.scheme == "http" and not freigegeben:
         return None, t("Nur https-Adressen erlaubt (http nur fuer vom Admin freigegebene interne Server)")

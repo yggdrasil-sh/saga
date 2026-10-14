@@ -41,9 +41,14 @@
     return api('PATCH', '/api/tasks/' + id, body).catch(function (err) { toast(T('Nicht gespeichert: {err}', { err: err.message })); });
   }
 
+  // Abhaken mit "Rueckgaengig" (8 s, wie in den Apps); der Server nimmt dabei auch die naechste Wiederholung zurueck
   function complete(task) {
-    patchTask(task.id, { done: !task.done }).then(function (d) {
-      if (d && d.next_due) toast(T('Erledigt. Nächstes Mal: {date}', { date: dueLabel(d.next_due).text }));
+    var closing = !task.done;
+    patchTask(task.id, { done: closing }).then(function (d) {
+      if (closing && d) {
+        var msg = d.next_due ? T('Erledigt. Nächstes Mal: {date}', { date: dueLabel(d.next_due).text }) : T('Aufgabe erledigt');
+        toast(msg, T('Rückgängig'), function () { patchTask(task.id, { done: false }).then(loadTasks); }, 8000);
+      }
       return loadTasks();
     });
   }
@@ -237,7 +242,12 @@
     $('rail-show').hidden = on;
     store('hk-rail', on ? '1' : '0');
   }
-  $('rail-hide').addEventListener('click', function () { setRail(false); });
+  // Breiter Bildschirm: Aufgaben stehen nur einmal da - entweder in der Leiste oder (Leiste eingeklappt) im Hauptbereich
+  // mit allen Funktionen (Prioritaet, Datum, Erledigte). Einklappen bzw. "Alle Aufgaben" klappt den Kasten dort auf.
+  function railVisible() { return getComputedStyle($('rail')).display !== 'none'; }
+  function toMain() { setRail(false); panel.open = true; }
+  $('rail-hide').addEventListener('click', toMain);
+  $('rail-all').addEventListener('click', function () { toMain(); $('task-text').focus(); });
   $('rail-show').addEventListener('click', function () { setRail(true); });
   setRail(store('hk-rail') !== '0');
 
@@ -254,6 +264,7 @@
     if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
     e.preventDefault();
     if (e.key === 'n') { window.open('/notes', 'hk-notes'); return; }   // immer derselbe Notizen-Tab
+    if (railVisible()) { $('rail-text').focus(); return; }
     panel.open = true; $('task-text').focus();
   });
 

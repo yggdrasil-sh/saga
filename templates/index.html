@@ -114,6 +114,7 @@
     <h2>{{ _("Seiten") }}</h2>
     <div class="grid" id="q-pages-list"></div>
   </section>
+  <p class="empty q-none" id="q-none" hidden aria-live="polite">{{ _("Keine Treffer.") }}</p>
   {% if not favorites and not categories %}
   <p class="empty">{{ _("Für dich sind noch keine Dienste freigeschaltet – lege dir eigene Lesezeichen an.") }}</p>
   {% endif %}
@@ -163,6 +164,7 @@
   </form>
   <ul class="rail-list" id="rail-list"></ul>
   <p class="rail-empty" id="rail-empty" hidden>{{ _("Alles erledigt.") }}</p>
+  <button type="button" class="linkbtn rail-all" id="rail-all">{{ _("Alle Aufgaben …") }}</button>
 </aside>
 <button type="button" class="rail-tab" id="rail-show" hidden title="{{ _("Aufgabenleiste einblenden") }}" aria-label="{{ _("Aufgabenleiste einblenden") }}">
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 6l-6 6 6 6M19 6l-6 6 6 6"/></svg>

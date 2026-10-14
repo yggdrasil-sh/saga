@@ -300,22 +300,42 @@ marcadores y, debajo, también tus **páginas** (título y contenido).
 ### Marcadores
 
 **+ Marcador** abajo en el panel, o en el menú de usuario, en Ajustes. Tus marcadores solo los ves tú, también
-en las apps. Icono: un nombre de [selfh.st/icons](https://selfh.st/icons); si no, aparece la inicial.
-Se editan con **✎** en el mosaico.
+en las apps; el administrador solo ve cuántos hay. Basta con la dirección: sin nombre, el mosaico se llama como
+el host (p. ej. `wiki.example.org`). Icono: un nombre de [selfh.st/icons](https://selfh.st/icons); si no,
+aparece la inicial. Se editan con **✎** en el mosaico.
 
 ![Marcadores](../screenshots/lesezeichen.png)
+
+### Tareas
+
+- **Crear:** escribe en **Añadir rápido …** en la barra de la derecha y pulsa `Enter` (la tecla `t` salta allí).
+  Si la barra está contraída (**»**) o la ventana es estrecha, las tareas aparecen en el recuadro **Tareas** del
+  área principal, nunca en los dos sitios a la vez. Ahí puedes fijar al crearlas la **prioridad**, la
+  **repetición** (diariamente, días laborables…) y la **fecha de vencimiento** (iconos en el campo de entrada).
+  **Todas las tareas …**, abajo en la barra, abre ese recuadro.
+- **Fecha:** con el icono de calendario al crearla o más tarde con **⋯** en la tarea → **Elegir fecha …**. Las
+  que vencen hoy muestran «hoy»; las atrasadas aparecen en rojo.
+- **Completar:** haz clic en el círculo delante de la tarea. Abajo aparece **«Tarea completada · Deshacer»**;
+  durante unos 8 segundos **Deshacer** la recupera. En las tareas repetidas se muestra la próxima fecha, y Deshacer
+  también quita la siguiente tarea ya creada.
+- **Completadas:** **Mostrar completadas** debajo de la lista. Un clic en la marca vuelve a abrir una tarea,
+  **×** la elimina.
+
+Las mismas tareas están en las apps y, como bloque `/Tareas`, también en las páginas.
 
 ### Páginas y bases de datos
 
 En **Páginas** está tu árbol de páginas. Escribe `/` para añadir bloques: títulos, listas, listas de
 verificación, tablas, código, imágenes, archivos, columnas, enlaces a otras páginas, eventos y más. Si sigues
-escribiendo, el menú se filtra; `Enter` elige el primer resultado. `Ctrl`+`K` (Mac: `⌘`+`K`) busca en títulos y
-contenido. Las páginas tienen versiones y papelera (30 días) y se pueden exportar como Markdown.
+escribiendo, el menú se filtra; `Enter` elige el primer resultado y `Esc` lo cierra y quita la «/». `Ctrl`+`K`
+(Mac: `⌘`+`K`) busca en títulos y contenido. Las páginas tienen versiones y papelera (30 días) y se pueden
+exportar como Markdown.
 
 ![Página](../screenshots/seite.png)
 
 Las **bases de datos** reúnen entradas con propiedades (estado, fecha, número, selección, relación, fórmula…)
-y las muestran como tabla, tablero, lista, galería o calendario, con filtros, orden y totales.
+y las muestran como tabla, tablero, lista, galería o calendario, con filtros, orden y totales. En una tabla,
+`Enter` en el nombre pasa a la fila siguiente; en la última crea directamente la próxima entrada.
 
 ![Base de datos como tablero](../screenshots/board.png)
 

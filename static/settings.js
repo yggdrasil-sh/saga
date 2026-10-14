@@ -85,7 +85,7 @@
           off.addEventListener('click', function () { api('DELETE', '/api/settings/immich').then(load); });
           box.appendChild(off); return;
         }
-        box.appendChild(el('p', 'hk-hint', T('Adresse deines Immich (z. B. https://immich.example.de). In Immich unter Kontoeinstellungen → API-Schlüssel einen neuen Schlüssel anlegen mit den Rechten album.read, asset.read, asset.view, asset.download und user.read, und hier einfügen. Saga sieht dann nur deine eigenen Fotos.')));
+        box.appendChild(el('p', 'hk-hint', T('Adresse deines Immich (z. B. https://immich.example.org). In Immich unter Kontoeinstellungen → API-Schlüssel einen neuen Schlüssel anlegen mit den Rechten album.read, asset.read, asset.view, asset.download und user.read, und hier einfügen. Saga sieht dann nur deine eigenen Fotos.')));
         var url = el('input', 'hk-in'); url.type = 'url'; url.placeholder = 'https://immich.example.org'; url.value = s.suggest || '';
         box.appendChild(field(T('Immich-Adresse'), url));
         var inp = el('input', 'hk-in'); inp.type = 'password'; inp.autocomplete = 'off'; inp.placeholder = T('API-Schlüssel');
@@ -434,12 +434,21 @@
     var nm = input('text', b ? b.name : '', T('z. B. Router')), url = input('url', b ? b.url : '', 'https://…');
     var ic = input('text', b ? b.icon : '', T('optional, z. B. openwrt')), cat = input('text', b ? b.category : T('Lesezeichen'));
     nm.maxLength = 80; url.maxLength = 500; ic.maxLength = 64; cat.maxLength = 40;
-    [field(T('Name'), nm), field(T('Adresse'), url), field(T('Symbol'), ic), field(T('Kategorie'), cat)].forEach(function (x) { f.appendChild(x); });
+    // Adresse zuerst (Pflichtfeld, Cursor steht dort): ohne Namen nimmt der Server den Rechnernamen der Adresse -
+    // den zeigt das Namensfeld schon beim Tippen als Vorschlag.
+    [field(T('Adresse'), url), field(T('Name'), nm), field(T('Symbol'), ic), field(T('Kategorie'), cat)].forEach(function (x) { f.appendChild(x); });
+    var nmHint = nm.placeholder;
+    url.addEventListener('input', function () {
+      var v = url.value.trim(), h = '';
+      try { if (v) h = new URL(/:\/\//.test(v) ? v : 'https://' + v).host; } catch (e) { h = ''; }
+      nm.placeholder = h || nmHint;
+    });
+    if (b) url.dispatchEvent(new Event('input'));
     var bar = el('div', 'hk-actions'), sv = el('button', 'btn btn-primary', b ? T('Speichern') : T('Hinzufügen')), cc = el('button', 'btn', T('Abbrechen')), st = el('div', 'hk-status');
     sv.type = cc.type = 'button'; bar.appendChild(sv); bar.appendChild(cc); f.appendChild(bar); f.appendChild(st);
     box.appendChild(f);
     // Abschnitte darueber laden nach -> erst danach zum Formular scrollen
-    setTimeout(function () { f.scrollIntoView({ block: 'center' }); (b ? nm : url).focus({ preventScroll: true }); }, 350);
+    setTimeout(function () { f.scrollIntoView({ block: 'center' }); (b ? nm : url).focus({ preventScroll: true }); }, 350);   // neu: erstes Feld (Adresse), bearbeiten: Name
     cc.addEventListener('click', function () { box.textContent = ''; });
     function save() {
       var data = { name: nm.value.trim(), url: url.value.trim(), icon: ic.value.trim(), category: cat.value.trim() };

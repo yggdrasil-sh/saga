@@ -106,12 +106,18 @@
   }
 
   // --- Seiten-Suche (Volltext wie in der Seitenleiste; Treffer nach den Kacheln) ------------------
-  var pq = { t: null, n: 0 };
+  var pq = { t: null, n: 0, busy: false };
+  // "Keine Treffer.": nur wenn gesucht wird, keine Kachel passt und die Seiten-Suche fertig ist und nichts fand
+  function noneUpdate() {
+    var none = $('q-none'); if (!none) return;
+    none.hidden = !q.value.trim() || pq.busy || wraps().length > 0;
+  }
   function pageHits(v) {
     var sec = $('q-pages'), box = $('q-pages-list'), n = ++pq.n;
     clearTimeout(pq.t);
     if (!sec) return;
-    if (v.length < 2) { sec.hidden = true; box.textContent = ''; renumber(); return; }
+    pq.busy = v.length >= 2;
+    if (v.length < 2) { sec.hidden = true; box.textContent = ''; renumber(); noneUpdate(); return; }
     pq.t = setTimeout(function () {
       fetch('/api/notes/search', { method: 'POST', credentials: 'same-origin',
         headers: Object.assign({ 'Content-Type': 'application/json' }, H), body: JSON.stringify({ q: v }) })
@@ -131,7 +137,7 @@
           });
           sec.hidden = !box.children.length;
           renumber();
-        }).catch(function () {});
+        }).catch(function () {}).then(function () { if (n === pq.n) { pq.busy = false; noneUpdate(); } });
     }, 220);
   }
 
@@ -146,6 +152,7 @@
     webGoUpdate(q.value.trim());
     renumber();
     pageHits(q.value.trim());
+    if (wraps().length) noneUpdate();                 // sonst entscheidet die Seiten-Suche (kein Flackern beim Tippen)
   });
   q.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') {

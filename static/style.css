@@ -71,6 +71,7 @@ dd{margin:0}
 .links{display:flex;gap:.6rem;flex-wrap:wrap}
 
 .empty{color:var(--muted);text-align:center;margin-top:4rem}
+.empty.q-none{margin:1.5rem 0}
 .hint{color:var(--muted);font-size:.8rem;text-align:center;margin-top:2.5rem}
 kbd{border:1px solid var(--border);border-radius:4px;padding:0 .3rem;font:inherit;font-size:.75rem}
 @media (max-width:600px){header{padding:1rem}main{padding:1rem}input[type=search]{min-width:0;flex:1}.hint{display:none}}
@@ -340,6 +341,7 @@ body.pg-full-open{overflow:hidden}
 @media (min-width:1280px){
   body.rail-on{padding-right:var(--rail-w)}
   body.rail-on .rail{display:flex}
+  body.rail-on #nt{display:none}               /* Aufgaben nur einmal: Leiste sichtbar -> kein Aufgaben-Kasten im Hauptbereich */
   .rail-tab{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:20;display:flex;flex-direction:column;
     align-items:center;gap:.35rem;appearance:none;background:var(--card);border:1px solid var(--border);border-right:0;
     border-radius:10px 0 0 10px;color:var(--muted);font:inherit;font-size:.8rem;padding:.7rem .45rem;cursor:pointer}
@@ -363,6 +365,7 @@ body.pg-full-open{overflow:hidden}
 .rail-meta .task-due{padding:0 .45rem}
 .rail-meta .task-due:not(.today):not(.overdue){padding:0}
 .rail-empty{color:var(--muted);font-size:.9rem}
+.rail-all{align-self:flex-start;margin-top:.5rem;font-size:.85rem}
 
 /* Notizen-Knopf im Dashboard-Kopf */
 .btn-notes{display:inline-flex;align-items:center;gap:.4rem}

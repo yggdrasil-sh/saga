@@ -296,23 +296,42 @@ und – darunter – auch deine **Seiten** (Titel und Inhalt).
 
 ### Lesezeichen
 
-**+ Lesezeichen** unten auf dem Dashboard oder im Benutzermenü unter Einstellungen. Lesezeichen sieht nur du –
-auch in den Apps. Symbol: Name von [selfh.st/icons](https://selfh.st/icons), sonst erscheint der
-Anfangsbuchstabe. Bearbeiten über **✎** an der Kachel.
+**+ Lesezeichen** unten auf dem Dashboard oder im Benutzermenü unter Einstellungen. Deine Lesezeichen siehst
+nur du – auch in den Apps; der Admin sieht nur ihre Anzahl. Es reicht die Adresse, ohne Namen heißt die Kachel
+wie der Rechner (z. B. `wiki.example.org`). Symbol: Name von [selfh.st/icons](https://selfh.st/icons), sonst
+erscheint der Anfangsbuchstabe. Bearbeiten über **✎** an der Kachel.
 
 ![Lesezeichen](screenshots/lesezeichen.png)
+
+### Aufgaben
+
+- **Anlegen:** rechts in der Leiste **Schnell hinzufügen …** und `Enter` (Taste `t` springt dorthin). Ist die
+  Leiste eingeklappt (**»**) oder das Fenster schmal, stehen die Aufgaben im Kasten **Aufgaben** im Hauptbereich –
+  nie beides zugleich. Dort gibt es beim Anlegen gleich **Priorität**, **Wiederholung** (täglich, werktags …) und
+  **Fälligkeitsdatum** (Symbole im Eingabefeld). **Alle Aufgaben …** unten in der Leiste öffnet diesen Kasten.
+- **Datum:** beim Anlegen über das Kalender-Symbol oder später über **⋯** an der Aufgabe → **Datum wählen …**.
+  Fällige Aufgaben zeigen „heute“, überfällige sind rot.
+- **Abhaken:** auf den Kreis vor der Aufgabe klicken. Unten erscheint **„Aufgabe erledigt · Rückgängig“**; etwa
+  8 Sekunden lang holt **Rückgängig** sie zurück. Bei wiederkehrenden Aufgaben steht dort das nächste Datum, und
+  Rückgängig nimmt auch die schon angelegte nächste Aufgabe zurück.
+- **Erledigte:** **Erledigte anzeigen** unter der Liste. Ein Klick auf den Haken öffnet eine Aufgabe wieder,
+  **×** löscht sie.
+
+Dieselben Aufgaben gibt es in den Apps und – als Block `/Aufgaben` – auch in Seiten.
 
 ### Seiten und Datenbanken
 
 Unter **Seiten** liegt dein Seitenbaum. Tippe `/` für neue Blöcke: Überschriften, Listen, Checklisten,
 Tabellen, Code, Bilder, Dateien, Spalten, Verweise auf andere Seiten, Termine und mehr. Weitertippen filtert
-das Menü, `Enter` übernimmt den ersten Treffer. `Strg`+`K` (Mac: `⌘`+`K`) sucht in Titeln und Inhalten.
-Seiten haben Versionen, einen Papierkorb (30 Tage) und lassen sich als Markdown exportieren.
+das Menü, `Enter` übernimmt den ersten Treffer, `Esc` schließt es und nimmt das „/“ wieder weg.
+`Strg`+`K` (Mac: `⌘`+`K`) sucht in Titeln und Inhalten. Seiten haben Versionen, einen Papierkorb (30 Tage) und
+lassen sich als Markdown exportieren.
 
 ![Seite](screenshots/seite.png)
 
 **Datenbanken** sammeln Einträge mit Eigenschaften (Status, Datum, Zahl, Auswahl, Relation, Berechnung …) und
-zeigen sie als Tabelle, Board, Liste, Galerie oder Kalender – mit Filtern, Sortierung und Summen.
+zeigen sie als Tabelle, Board, Liste, Galerie oder Kalender – mit Filtern, Sortierung und Summen. In der Tabelle
+springt `Enter` im Namen in die nächste Zeile; in der letzten legt es gleich den nächsten Eintrag an.
 
 ![Datenbank als Board](screenshots/board.png)
 

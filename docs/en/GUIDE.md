@@ -296,22 +296,39 @@ your open tasks and today's and tomorrow's events. Search finds services, bookma
 ### Bookmarks
 
 **+ Bookmark** at the bottom of the dashboard, or in the user menu under Settings. Only you can see your
-bookmarks – in the apps too. Icon: a name from [selfh.st/icons](https://selfh.st/icons), otherwise the first
-letter is shown. Edit via **✎** on the tile.
+bookmarks – in the apps too; the admin only sees how many there are. The address is enough: without a name, the
+tile is named after the host (e.g. `wiki.example.org`). Icon: a name from [selfh.st/icons](https://selfh.st/icons),
+otherwise the first letter is shown. Edit via **✎** on the tile.
 
 ![Bookmarks](../screenshots/lesezeichen.png)
+
+### Tasks
+
+- **Add:** type into **Quick add …** in the sidebar on the right and press `Enter` (the `t` key jumps there). If
+  the sidebar is collapsed (**»**) or the window is narrow, your tasks are shown in the **Tasks** box in the main
+  area instead – never both at once. There you can set **priority**, **repeat** (daily, weekdays …) and a **due
+  date** right away (icons in the input field). **All tasks …** at the bottom of the sidebar opens this box.
+- **Date:** via the calendar icon when adding, or later via **⋯** on the task → **Choose date …**. Tasks due
+  today show “today”, overdue ones are red.
+- **Complete:** click the circle in front of the task. **“Task completed · Undo”** appears at the bottom; for
+  about 8 seconds **Undo** brings it back. For repeating tasks it shows the next date, and Undo also removes the
+  next task that was already created.
+- **Completed:** **Show completed** below the list. Clicking the check mark reopens a task, **×** deletes it.
+
+The same tasks are available in the apps and – as the `/Tasks` block – in pages.
 
 ### Pages and databases
 
 Your page tree lives under **Pages**. Type `/` for new blocks: headings, lists, checklists, tables, code,
 images, files, columns, links to other pages, events and more. Keep typing to filter the menu; `Enter` picks the
-first match. `Ctrl`+`K` (Mac: `⌘`+`K`) searches titles and content. Pages have versions, a trash (30 days) and
-can be exported as Markdown.
+first match, `Esc` closes it and removes the “/” again. `Ctrl`+`K` (Mac: `⌘`+`K`) searches titles and content.
+Pages have versions, a trash (30 days) and can be exported as Markdown.
 
 ![Page](../screenshots/seite.png)
 
 **Databases** collect entries with properties (status, date, number, select, relation, formula …) and show them
-as a table, board, list, gallery or calendar – with filters, sorting and totals.
+as a table, board, list, gallery or calendar – with filters, sorting and totals. In a table, `Enter` in the name
+moves to the next row; in the last row it creates the next entry right away.
 
 ![Database as a board](../screenshots/board.png)
 

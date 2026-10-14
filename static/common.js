@@ -60,18 +60,18 @@
   var fUpd = new Intl.DateTimeFormat(LOC, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   function escapeHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-  // Kurze Rueckmeldung unten in der Mitte, optional mit Aktion (z.B. "Rueckgaengig")
+  // Kurze Rueckmeldung unten in der Mitte, optional mit Aktion (z.B. "Rueckgaengig"); ms: Anzeigedauer (sonst 3,5 bzw. 7 s)
   var toastEl = el('div', 'toast'); toastEl.setAttribute('role', 'status'); toastEl.hidden = true;
   document.body.appendChild(toastEl);
   var toastT = null;
-  function toast(msg, actionLabel, onAction) {
+  function toast(msg, actionLabel, onAction, ms) {
     toastEl.textContent = msg; toastEl.hidden = false;
     if (actionLabel) {
       var b = el('button', 'toast-action', actionLabel); b.type = 'button';
       b.addEventListener('click', function () { toastEl.hidden = true; onAction(); });
       toastEl.appendChild(b);
     }
-    clearTimeout(toastT); toastT = setTimeout(function () { toastEl.hidden = true; }, actionLabel ? 7000 : 3500);
+    clearTimeout(toastT); toastT = setTimeout(function () { toastEl.hidden = true; }, ms || (actionLabel ? 7000 : 3500));
   }
 
   // Popup-Menues im Notion-Stil: Symbol + Text + Zusatzinfo, seitliche Untermenues, optionales Suchfeld,

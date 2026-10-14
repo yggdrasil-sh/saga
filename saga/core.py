@@ -120,10 +120,48 @@ def _std_keys():          # nie aufgerufen - nur damit tools/i18n.py die Schlues
     return t("Dienste"), t("Lesezeichen"), t("Eingang")      # "Eingang": app_api._inbox ueber t_account
 
 
-def account_lang(uid):
-    """Sprache fuer gespeicherte Standardnamen: Konto-Sprache > Server-Standard > Sprache der Anfrage."""
+_seen_cache = {}      # uid -> (zeit, zuletzt gemerkte Sprache der Weboberflaeche)
+
+
+def seen_lang(uid):
+    """Sprache, in der die Weboberflaeche dieses Kontos zuletzt angezeigt wurde (nur bei Konto-Sprache 'automatisch'
+    gemerkt, siehe remember_ui_lang); '' = unbekannt. 60 s zwischengespeichert."""
+    hit = _seen_cache.get(uid)
+    if hit and time.time() - hit[0] < 60:
+        return hit[1]
+    from db import connect
+    with connect() as c:
+        r = c.execute("SELECT v FROM user_kv WHERE uid=? AND k='lang_seen'", (uid,)).fetchone()
+    v = i18n.norm(r[0]) if r else ""
+    if len(_seen_cache) > 2000:
+        _seen_cache.clear()
+    _seen_cache[uid] = (time.time(), v)
+    return v
+
+
+def remember_ui_lang(uid, request):
+    """Dashboard/Seiten aufgerufen: Bei Konto-Sprache 'automatisch' und ohne Server-Standard die Browser-Sprache
+    merken. Damit bekommen Standardnamen auch bei Anfragen OHNE Browser-Sprache (API, Apps, Teilen-Ziel) die
+    Sprache, die die Person in Saga sieht - statt Englisch. Schreibt nur bei einer Aenderung."""
     try:
-        return user_lang(uid) or server_lang() or i18n.get_lang()
+        if user_lang(uid) or server_lang():
+            return
+        lang = i18n.from_header(request.headers.get("accept-language", ""))
+        if not lang or seen_lang(uid) == lang:
+            return
+        from db import connect
+        with connect() as c, c:
+            c.execute("INSERT OR REPLACE INTO user_kv (uid, k, v) VALUES (?, 'lang_seen', ?)", (uid, lang))
+        _seen_cache[uid] = (time.time(), lang)
+    except Exception:  # noqa: BLE001 - nur ein Komfort, die Seite soll deswegen nie scheitern
+        pass
+
+
+def account_lang(uid):
+    """Sprache fuer gespeicherte Standardnamen: Konto-Sprache > Server-Standard > zuletzt gesehene Sprache der
+    Weboberflaeche (Konto 'automatisch') > Sprache der Anfrage."""
+    try:
+        return user_lang(uid) or server_lang() or seen_lang(uid) or i18n.get_lang()
     except Exception:  # noqa: BLE001 - Datenbank gerade weg
         return i18n.get_lang()
 

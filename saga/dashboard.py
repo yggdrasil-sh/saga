@@ -12,7 +12,8 @@ import auth
 from db import connect as _db
 from fastapi import APIRouter
 from saga import i18n
-from saga.core import ADMIN_URL, ASSET_V, CACHE_TTL, CA_FILE, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user, std_name, t, title, tmpl, user_info
+from saga.core import (ADMIN_URL, ASSET_V, CACHE_TTL, CA_FILE, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user,
+                       remember_ui_lang, std_name, t, title, tmpl, user_info)
 
 router = APIRouter()
 
@@ -156,6 +157,7 @@ def notes_page(request: Request):
     # ?embed=1: schlanke Ansicht fuer das Peek-Fenster - NUR diese Variante darf eingebettet werden,
     # und nur von Saga selbst (frame-ancestors 'self'); alles andere bleibt 'none'.
     embed = request.query_params.get("embed") == "1"
+    remember_ui_lang(uid, request)        # Standardnamen auch bei API-Anfragen ohne Browser-Sprache in dieser Sprache
     html = tmpl.get_template("notes.html").render(title=title(), name=request.session.get("name", uid), v=ASSET_V, embed=embed,
                                                   admin_url=ADMIN_URL if user_info(uid)["is_admin"] else "")
     headers = dict(SEC_HEADERS)
@@ -170,6 +172,7 @@ def index(request: Request):
     if not uid:
         return RedirectResponse("/login", status_code=303)
     info = user_info(uid)
+    remember_ui_lang(uid, request)
     mine = visible_tiles(uid, info)
     fav_keys = [k for k in favs(uid) if k in mine]
     cats = {}

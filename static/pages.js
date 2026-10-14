@@ -12,7 +12,8 @@
       toolbar: { toolbox: { Add: T('Block hinzufügen') } },
       popover: { Filter: T('Filtern …'), 'Nothing found': T('Nichts gefunden'), 'Convert to': T('Umwandeln in') }
     },
-    toolNames: { Text: T('Text'), Heading: T('Überschrift'), 'Unordered List': T('Aufzählung'), 'Ordered List': T('Nummerierte Liste'),
+    // Block-Menue filtert nur nach dem Namen -> "Aufzählungsliste" (wie Notion), damit "Liste" auch die Aufzaehlung findet
+    toolNames: { Text: T('Text'), Heading: T('Überschrift'), 'Unordered List': T('Aufzählungsliste'), 'Ordered List': T('Nummerierte Liste'),
       Checklist: T('Checkliste'), Quote: T('Zitat'), Code: T('Code'), Delimiter: T('Trennlinie'), Bold: T('Fett'), Italic: T('Kursiv'),
       Link: T('Link'), Marker: T('Markieren'), InlineCode: T('Code'), 'Inline Code': T('Code'),
       Table: T('Tabelle'), Image: T('Bild'), Attachment: T('Datei'), Attaches: T('Datei') },
@@ -121,7 +122,7 @@
     var best = null;
     (S.eds || []).forEach(function (x) { if (x.ed && x.holder.isConnected && x.holder.contains(p) && (!best || best.holder.contains(x.holder))) best = x; });
     var ed = best ? best.ed : S.editor;
-    slashReset(); slashP = p;
+    slashReset(); slashP = p; slashSrc = p;      // Absatz war vor dem "/" leer -> darf beim Abbrechen geleert werden
     setTimeout(function () { try { ed.toolbar.toggleToolbox(true); } catch (err) { /* Editor noch nicht bereit */ } }, 0);
   }, true);
   // Handy (Editor.js unter 650 px): das Block-Menue ist ein Bottom-Sheet OHNE Suchfeld, Getipptes landet im Absatz.
@@ -175,11 +176,45 @@
     if (!t || !t.closest) return;
     var item = t.closest('.ce-popover-item'), pop = mobilePop();
     if (item && pop && pop.contains(item) && slashP && slashText(slashP).charAt(0) === '/' && slashText(slashP).length > 1) slashP.innerHTML = '';
+    else if (t.closest('.ce-popover__overlay') && slashPopOpen()) slashUndo();      // Menue ohne Auswahl zu: "/…" weg
     else if (t.closest('.ce-toolbar__plus') || t.closest('.ce-popover__overlay')) slashReset();
   }, true);
   document.addEventListener('click', function (e) {
     var t = e.target;
     if (t && t.closest && t.closest('.ce-popover-item') && document.querySelector('.pg-slash-hidden')) setTimeout(slashReset, 0);
+  }, true);
+  // Menue ohne Auswahl geschlossen (Escape, auf dem Handy Tipp neben das Menue): "/" und den getippten Filter wieder
+  // entfernen, sonst bleibt "/…" als Text stehen. Editor.js oeffnet das Menue per "/" nur in einem leeren Absatz -
+  // dessen Inhalt war also nur "/…".
+  var slashSrc = null;
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+    var t = e.target, p = t && t.closest ? t.closest('.ce-paragraph') : null;
+    if (t && t.closest && t.closest('.ce-popover')) return;        // "/" im Suchfeld des Menues: Herkunft behalten
+    slashSrc = p && $('pg-editor').contains(p) && !slashText(p).trim() ? p : null;
+    if (slashSrc) setTimeout(function () { if (!slashPopOpen()) slashSrc = null; }, 150);   // Menue ging nicht auf -> normaler Text
+  }, true);
+  function slashUndo() {
+    // Nur den Absatz leeren, in dem das Menue per "/" in einem LEEREN Absatz aufging (slashSrc). slashP allein reicht
+    // nicht: der Handy-Filter setzt es fuer jeden Absatz, der mit "/" beginnt (z. B. "/usr/bin …") -> echter Text.
+    var p = slashSrc, txt = slashText(p);
+    // Handy: Filter steht im Absatz ("/…"); Desktop: Filter im Suchfeld des Menues, im Absatz nur "/"
+    var mine = p && p === slashP ? txt.charAt(0) === '/' : txt.trim() === '/';
+    slashReset(); slashSrc = null;
+    if (!p || !p.isConnected || !mine) return;
+    p.innerHTML = '';
+    setTimeout(function () {                    // nach dem Schliessen: Cursor zurueck in den (jetzt leeren) Absatz
+      if (!p.isConnected) return;
+      p.focus();
+      try { var r = document.createRange(); r.setStart(p, 0); r.collapse(true); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); } catch (err) { /* egal */ }
+    }, 0);
+  }
+  function slashPopOpen() {
+    var pop = document.querySelector('.ce-popover--opened');
+    return pop && !pop.closest('.ce-settings') && !pop.closest('.ce-inline-toolbar') ? pop : null;
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && slashPopOpen() && (slashP || slashSrc)) slashUndo();
   }, true);
 
   // --- Zustand ---------------------------------------------------------------
@@ -1554,18 +1589,26 @@
       });
     }
 
+    // Enter im Namen der letzten Zeile legt die naechste an. Was bis dahin weitergetippt wird, sammelt typeAhead
+    // und landet danach im neuen Namen (sonst ging es verloren bzw. haengte sich an die alte Zeile).
+    var typeAhead = null;
     function newRow(props) {
       if (props instanceof Event) props = null;
       return api('POST', '/api/notes', { parent_id: DB.id, title: '', props: props || undefined }).then(function (d) {
         DB.rows.push({ id: d.id, title: '', icon: '', props: props || {}, updated: d.updated, created: d.updated });
         renderDb();
-        var inp = BOX.querySelector('tr[data-id="' + d.id + '"] .db-title-in'); if (inp) inp.focus();
+        var inp = BOX.querySelector('tr[data-id="' + d.id + '"] .db-title-in');
+        if (inp) {
+          inp.focus();
+          if (typeAhead) { inp.value = typeAhead; inp.setSelectionRange(inp.value.length, inp.value.length); growTitle(inp); }
+        }
+        typeAhead = null;   // erst nach renderDb (die alte Zeile sammelt bis dahin)
         if (curView().type === 'board') {     // Board: neue Karte direkt als Seite oeffnen, Cursor im Titel
           return loadList().then(function () { return openRowUI(d.id); })
             .then(function () { if ((curView().open || 'side') === 'page') $('pg-title').focus(); });   // im Peek setzt die Seite selbst den Cursor
         }
         return loadList();
-      }).catch(function (err) { HK.toast(T('Zeile nicht angelegt: {err}', { err: err.message })); });
+      }).catch(function (err) { typeAhead = null; HK.toast(T('Zeile nicht angelegt: {err}', { err: err.message })); });
     }
 
     function newFromTemplate(tid) {
@@ -1669,11 +1712,30 @@
         var start = r.title;
         function commitTitle() {
           if (ti.value === start) return; start = ti.value;
-          api('PATCH', '/api/notes/' + r.id, { title: ti.value }).then(function () { r.title = ti.value.trim(); var p = byId(r.id); if (p) p.title = r.title; })
-            .catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
+          // sofort lokal uebernehmen: ein gleich folgendes renderDb (naechste Zeile per Enter) zeigt sonst den alten Namen
+          var prev = r.title; r.title = ti.value.trim(); var p = byId(r.id); if (p) p.title = r.title;
+          api('PATCH', '/api/notes/' + r.id, { title: ti.value })
+            .catch(function (err) { r.title = prev; if (p) p.title = prev; HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
         }
         ti.addEventListener('blur', commitTitle);
-        ti.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); ti.blur(); } });
+        // Enter: speichern und weiter in die naechste Zeile; in der letzten Zeile (mit Namen) eine neue anlegen.
+        // Der Fokus bleibt immer in einem Namensfeld - frueher landete er auf <body> und Weitergetipptes ging verloren.
+        ti.addEventListener('keydown', function (e) {
+          if (e.key !== 'Enter' || e.isComposing) return;
+          e.preventDefault();
+          if (typeAhead !== null) return;                       // naechste Zeile entsteht gerade
+          commitTitle();
+          var rows = [].slice.call(body.querySelectorAll('tr.db-row')), nx = rows[rows.indexOf(tr) + 1];
+          var ni = nx && nx.querySelector('.db-title-in');
+          if (ni) { ni.focus(); ni.setSelectionRange(ni.value.length, ni.value.length); return; }
+          if (!ti.value.trim()) return;                          // leere letzte Zeile: einfach stehen bleiben
+          typeAhead = ''; newRow();
+        });
+        ti.addEventListener('beforeinput', function (e) {      // waehrend die neue Zeile entsteht: Getipptes sammeln
+          if (typeAhead === null) return;
+          e.preventDefault();
+          if (e.data && /^insert/.test(e.inputType) && e.inputType !== 'insertLineBreak' && e.inputType !== 'insertParagraph') typeAhead += e.data;
+        });
         ti.addEventListener('input', function () { if (/\n/.test(ti.value)) ti.value = ti.value.replace(/\s*\n\s*/g, ' '); growTitle(ti); });
         var ob = el('button', 'db-open', T('Öffnen')); ob.type = 'button'; ob.title = T('Als Seite öffnen');
         ob.addEventListener('click', function () { openRowUI(r.id); });
@@ -2735,7 +2797,11 @@
         ck.addEventListener('click', function () {
           row.classList.add('done');
           api('PATCH', '/api/tasks/' + t.id, { done: true }).then(function (r) {
-            if (r && r.next_due) HK.toast(T('Erledigt. Nächstes Mal: {date}', { date: fTaskDue.format(new Date(r.next_due + 'T00:00:00')) }));
+            var msg = r && r.next_due ? T('Erledigt. Nächstes Mal: {date}', { date: fTaskDue.format(new Date(r.next_due + 'T00:00:00')) }) : T('Aufgabe erledigt');
+            HK.toast(msg, T('Rückgängig'), function () {      // wie Dashboard und Apps: 8 s zum Zuruecknehmen
+              api('PATCH', '/api/tasks/' + t.id, { done: false }).then(function () { self.draw(); })
+                .catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
+            }, 8000);
             self.draw();
           }).catch(function (err) { row.classList.remove('done'); HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
         });
