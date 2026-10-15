@@ -236,6 +236,32 @@
     if (e.key === 'Escape' && slashPopOpen() && (slashP || slashSrc)) slashUndo();
   }, true);
 
+  // Enter, das Editor.js NICHT selbst behandelt hat (kein aktueller Block nach dem Umwandeln per "/" oder Kuerzel, Menue-
+  // Zustand haengt, Handy-Tastatur mit keyCode 229): der Browser fuegte ein <div> IN die Ueberschrift/den Absatz ein, der
+  // Sanitizer verwirft es beim Speichern -> Zeilen kleben zusammen ("KuchenMehl"). Editor.js verhindert bei eigenem Enter
+  // schon das keydown, dann kommt kein beforeinput - hier also nur der Fall ohne Behandlung: Block an der Schreibmarke
+  // teilen, Rest als neuen Absatz darunter (wie Editor.js selbst). BUG-011
+  document.addEventListener('beforeinput', function (e) {
+    if (e.defaultPrevented || e.inputType !== 'insertParagraph' || e.isComposing) return;
+    var t = e.target, node = t && t.closest ? t.closest('.ce-paragraph, .ce-header') : null, box = $('pg-editor');
+    var blk = node && node.parentNode && node.parentNode.classList.contains('ce-block__content') ? node.closest('.ce-block') : null;
+    if (!blk || !box || !box.contains(node) || !node.isContentEditable) return;
+    var sel = window.getSelection(), r = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+    if (!r || !node.contains(r.startContainer) || !node.contains(r.endContainer)) return;
+    var best = null;
+    (S.eds || []).forEach(function (x) { if (x.ed && x.holder.isConnected && x.holder.contains(blk) && (!best || best.holder.contains(x.holder))) best = x; });
+    var ed = best ? best.ed : S.editor, idx = [].filter.call(blk.parentNode.children, function (x) { return x.classList.contains('ce-block'); }).indexOf(blk);
+    if (!ed || idx < 0) return;
+    e.preventDefault();
+    r.deleteContents();
+    var tail = document.createRange(); tail.setStart(r.endContainer, r.endOffset); tail.setEnd(node, node.childNodes.length);
+    var tmp = document.createElement('div'); tmp.appendChild(tail.extractContents());
+    var rest = tmp.textContent.trim() ? tmp.innerHTML : '';          // trim() kennt auch das geschuetzte Leerzeichen
+    try { ed.toolbar.close(); } catch (err) { /* Komfort */ }
+    ed.blocks.insert('paragraph', { text: rest }, undefined, idx + 1, true);
+    ed.caret.setToBlock(idx + 1, 'start');
+  });
+
   // --- Zustand ---------------------------------------------------------------
   var S = { pages: [], shared: [], cur: null, editor: null, loading: false, dirtyBody: false, dirtyTitle: false, timer: null,
             open: {}, onCount: function () {} };
