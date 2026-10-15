@@ -899,6 +899,16 @@
   $('pg-empty-new').addEventListener('click', function () { newPageMenu(this, null); });
   window.addEventListener('pagehide', function () { save(); });
   document.addEventListener('visibilitychange', function () { if (document.hidden) save(); });
+  // Neu laden / andere Adresse kurz nach dem Tippen (BUG-012): schon bei beforeunload speichern - HK.api schickt es dann mit
+  // keepalive, die Anfrage ueberlebt das Entladen. Laeuft gerade noch ein Speichern (die naechste Anfrage muss darauf warten)
+  // oder ist der Inhalt zu gross fuer keepalive, fragt der Browser vor dem Verlassen nach.
+  window.addEventListener('beforeunload', function (e) {
+    if (!S.cur || S.conflict || S.lost || readOnly() || (!S.dirtyBody && !S.dirtyTitle)) return;
+    var busy = (S.inflight || 0) > 0;
+    save();
+    var big = $('pg-editor').textContent.length > 40000;
+    if (busy || big) { e.preventDefault(); e.returnValue = ''; }
+  });
 
 
   // --- Tags -----------------------------------------------------------------
