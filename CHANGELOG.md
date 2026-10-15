@@ -225,6 +225,32 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Datenbank-Migration 4: `note.updated_by` (wer zuletzt geändert hat); neue Tabellen `note_share`, `note_comment`,
   `note_comment_seen`
 
+### Behoben (Bughunt 2.0, Server)
+- Datenbanken: Wer mit einem veralteten Schema speichert, löscht keine Spalten/Optionen mehr, die inzwischen jemand
+  anderes angelegt hat (samt Werten). Der Server führt dazu `srev` im Schema (Clients schicken es mit dem Schema
+  zurück, `PATCH` liefert die neue `srev`); ältere Clients ohne `srev` können eigene Spalten weiter löschen (BUG-001)
+- Gerät unter „Apps & Geräte“ abmelden beendet dessen Sitzung (und Live-Verbindung) sofort (BUG-002)
+- Eingaben zentral bereinigt: NUL-Zeichen und halbe Emoji (einzelne UTF-16-Surrogate) führen nicht mehr zu HTTP 500,
+  NaN/Infinity werden abgewiesen – auch in Daten verbundener Instanzen (BUG-007, BUG-008)
+- Fehler eines internen Ereignis-Zuhörers rollen nur dessen Teil zurück; eine abgebrochene Transaktion meldet einen
+  Fehler statt still nichts zu speichern (BUG-009)
+- Live: Änderungen erreichen auch die anderen Geräte/Sitzungen desselben Kontos; Papierkorb/Archiv melden jede
+  Unterseite, Wiederherstellen, Verschieben und Version zurückholen werden gemeldet; Verteiler prüft nur noch
+  mögliche Empfänger, Warteschlange begrenzt (BUG-032, BUG-033, BUG-043)
+- Föderation: Felder der Gegenstelle werden typgerecht übernommen, Benachrichtigungen im Namen lokaler Konten ohne
+  Freigabe abgewiesen, 401/Weiterleitungen der Gegenstelle als „nicht erreichbar“ statt mit Fremdtext, entzogene Seiten
+  in der Glocke ohne Titel, Zustellung gleich nach Wiederkehr der Gegenstelle (BUG-034–037, BUG-089)
+- Titel und Namen ohne Steuer-, Richtungs- (Bidi) und unsichtbare Zeichen (BUG-038)
+- Block-Text: „<“ mit Buchstaben (z. B. `a<b`, `<name@example.org>`) bleibt Text statt den Rest abzuschneiden (BUG-039)
+- KI: Seiten nur mit Titel werden gefunden (BUG-040)
+- Push-Einstellungen: Listen/Objekte statt Text → 400 statt 500, eigene Meldung für Zeitzone (BUG-041)
+- Konto löschen (Admin): erst sperren, dann Daten und Konto in einer Transaktion (BUG-042)
+- Geräteliste: `current` (dieses Gerät) und `prefix`; gleich benannte Geräte bekommen „(2)“ usw. (BUG-046)
+- Typprüfung: `null`/Liste/Wahrheitswert als Titel/Text/KI-Frage/Anwesenheit (BUG-083); keine rohen Python-Meldungen
+  in Antworten (BUG-084); deutsche Meldungen mit Umlauten (BUG-085)
+- Seiten-Chat: Tipp-/Lösch-Ereignisse nicht mehr an gerade Entzogene (BUG-088); interne Verweise bis 18 Stellen
+  (BUG-090); Backup-Dateiname in `TIMEZONE`, „Neu beginnen“ mit falschem Passwort meldet „Passwort falsch.“ (BUG-091)
+
 ## [1.2.0] – 2026-10-14
 
 ### Neu
