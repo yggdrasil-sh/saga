@@ -381,7 +381,7 @@ async def _cal_write(request, mode):
     except hkcal.CalError as ex:
         return _bad(str(ex))
     except (KeyError, TypeError, ValueError):
-        return _bad(t("ungueltige Angaben"))
+        return _bad(t("ungültige Angaben"))
     _cal_cache.clear()
     return JSONResponse({"ok": True, "href": href, "etag": etag})
 

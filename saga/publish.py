@@ -1093,7 +1093,7 @@ def home_response(request):
 # =====================================================================================================
 def _json_only(request):
     ct = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
-    return None if ct == "application/json" else _bad(t("ungueltige Anfrage"), 415)
+    return None if ct == "application/json" else _bad(t("ungültige Anfrage"), 415)
 
 
 def _flag(v):
@@ -1184,7 +1184,7 @@ async def api_publish_put(nid: int, request: Request):
         return bad
     b = await _body(request)
     if b is None:
-        return _bad(t("ungueltige Anfrage"))
+        return _bad(t("ungültige Anfrage"))
     return await run_in_threadpool(_publish_put, uid, nid, b)
 
 

@@ -49,12 +49,12 @@ def _immich_norm(url):
     try:
         pu = urlparse(u)
     except ValueError:
-        return None, t("Adresse ungueltig")
+        return None, t("Adresse ungültig")
     if pu.scheme not in ("http", "https") or not pu.hostname or pu.username or pu.password or pu.query or pu.fragment:
-        return None, t("Adresse ungueltig (z. B. https://immich.example.org)")
+        return None, t("Adresse ungültig (z. B. https://immich.example.org)")
     freigegeben = pu.netloc.lower() in _immich_allowed_hosts()
     if pu.scheme == "http" and not freigegeben:
-        return None, t("Nur https-Adressen erlaubt (http nur fuer vom Admin freigegebene interne Server)")
+        return None, t("Nur https-Adressen erlaubt (http nur für vom Admin freigegebene interne Server)")
     return f"{pu.scheme}://{pu.netloc}{pu.path}", None
 
 
@@ -174,7 +174,7 @@ async def api_immich_connect(request: Request):
         return _bad(err)
     key = str(b.get("apikey") or "").strip()
     if not key or len(key) > 200 or not re.fullmatch(r"[A-Za-z0-9_\-]+", key):
-        return _bad(t("API-Schluessel fehlt oder ist ungueltig"))
+        return _bad(t("API-Schlüssel fehlt oder ist ungültig"))
     st, _, data = await asyncio.to_thread(_immich, (base, key), "GET", "/users/me")
     if st == 403 and not data:
         return _bad(t("Diese Adresse zeigt auf einen internen Server, der nicht freigegeben ist"), 400)
@@ -230,13 +230,13 @@ async def api_immich_assets(request: Request):
     try:
         page = max(1, min(500, int(b.get("page") or 1)))
     except (TypeError, ValueError, OverflowError):
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     q = str(b.get("q") or "").strip()[:200]
     album = str(b.get("album") or "")
     body = {"page": page, "size": 60, "type": "IMAGE"}
     if album:
         if not _IMMICH_ID.match(album):
-            return _bad(t("ungueltiges Album"))
+            return _bad(t("ungültiges Album"))
         body["albumIds"] = [album]
     if q:
         body["query"] = q
@@ -259,11 +259,11 @@ def api_immich_thumb(aid: str, request: Request):
     if err:
         return err
     if not _IMMICH_ID.match(aid):
-        return _bad(t("ungueltig"))
+        return _bad(t("ungültig"))
     st, ct, data = _immich(key, "GET", f"/assets/{aid}/thumbnail", params={"size": "thumbnail"})
     img = _sniff_image(data[:16]) if st == 200 else None
     if not img:
-        return _bad(t("Vorschau nicht verfuegbar"), 404)
+        return _bad(t("Vorschau nicht verfügbar"), 404)
     return Response(content=data, media_type=img, headers={"Cache-Control": "private, max-age=86400"})
 
 
@@ -276,7 +276,7 @@ async def api_immich_import(request: Request):
     b = await _body(request) or {}
     aid = str(b.get("id") or "")
     if not _IMMICH_ID.match(aid):
-        return _bad(t("ungueltig"))
+        return _bad(t("ungültig"))
     owner, oerr = upload_owner(uid, b.get("note"))          # fuer eine fremde Seite (Rolle 'edit'): Datei gehoert deren Eigentuemer
     if oerr is not None:
         return oerr
@@ -292,10 +292,10 @@ async def api_immich_import(request: Request):
         st, _, data = await asyncio.to_thread(_immich, key, "GET", f"/assets/{aid}/thumbnail", None, {"size": "preview"}, FILE_MAX)
         name = name.rsplit(".", 1)[0] + ".jpg"
     if st == 413:
-        return _bad(t("Bild zu gross (max. {n} MB)", n=FILE_MAX // 1048576), 413)
+        return _bad(t("Bild zu groß (max. {n} MB)", n=FILE_MAX // 1048576), 413)
     img = _sniff_image(data[:16]) if st == 200 else None
     if not img:
-        return _bad(t("kein unterstuetztes Bild (PNG, JPEG, GIF, WebP)"), 415)
+        return _bad(t("kein unterstütztes Bild (PNG, JPEG, GIF, WebP)"), 415)
     if img != "image/gif" and name.endswith(".jpg") and img == "image/webp":
         name = name[:-4] + ".webp"
     with _db() as c, c:

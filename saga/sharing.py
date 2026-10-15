@@ -568,7 +568,7 @@ async def api_shares_put(nid: int, request: Request):
         return _bad("unauthorized", 401)
     b = await _body(request)
     if b is None:
-        return _bad(t("ungueltige Anfrage"))
+        return _bad(t("ungültige Anfrage"))
     typ, tg = _target(b)
     role = b.get("role")
     if typ in REMOTE_TYPES:
@@ -581,7 +581,7 @@ async def api_shares_put(nid: int, request: Request):
         if not enabled():
             return _bad(t("Teilen ist auf diesem Server abgeschaltet."), 403)
         if role not in ROLES or not tg:
-            return _bad(t("ungueltige Angabe"))
+            return _bad(t("ungültige Angabe"))
         if REMOTE_TARGET is None or not fed_enabled() or group_scope():
             return _bad(t("Teilen mit anderen Saga-Instanzen ist auf diesem Server nicht eingeschaltet."), 403)
         tg, msg, code = await run_in_threadpool(REMOTE_TARGET, uid, typ, tg, nid)
@@ -594,7 +594,7 @@ async def api_shares_put(nid: int, request: Request):
         if not enabled():
             return _bad(t("Teilen ist auf diesem Server abgeschaltet."), 403)
         if not typ or not tg or role not in ROLES:
-            return _bad(t("ungueltige Angabe"))
+            return _bad(t("ungültige Angabe"))
         if not note_chain(c, uid, nid):
             return _bad(t("Archivierte Seiten und Vorlagen lassen sich nicht teilen."))
         mine = groups_of(c, uid)
@@ -641,7 +641,7 @@ async def api_shares_delete(nid: int, request: Request):
         if err is not None:
             return err
         if not typ or not tg:
-            return _bad(t("ungueltige Angabe"))
+            return _bad(t("ungültige Angabe"))
         n = c.execute("DELETE FROM note_share WHERE note_id=? AND owner_uid=? AND target_type=? AND target=?", (nid, uid, typ, tg)).rowcount
         if n:
             bus.fire("share.removed", c, owner=uid, note_id=nid, target_type=typ, target=tg)

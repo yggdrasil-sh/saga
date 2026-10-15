@@ -273,7 +273,7 @@ async def api_notifications_read(request: Request):
         return _bad("unauthorized", 401)
     b = await _body(request)
     if b is None:
-        return _bad(t("ungueltige Anfrage"))
+        return _bad(t("ungültige Anfrage"))
     now = time.time()
     with _db() as c, c:
         if b.get("all") is True:
@@ -282,11 +282,11 @@ async def api_notifications_read(request: Request):
         else:
             ids = b.get("ids")
             if not isinstance(ids, list) or len(ids) > 500:
-                return _bad(t("ungueltige Angabe"))
+                return _bad(t("ungültige Angabe"))
             try:
                 ids = sorted({int(x) for x in ids if 0 < int(x) < 2 ** 63})
             except (TypeError, ValueError):
-                return _bad(t("ungueltige Angabe"))
+                return _bad(t("ungültige Angabe"))
             if ids:
                 c.execute(f"UPDATE notification SET read_at=? WHERE uid=? AND read_at IS NULL AND id IN ({','.join('?' * len(ids))})",
                           (now, uid, *ids))
@@ -317,10 +317,10 @@ async def api_notify_settings_put(request: Request):
         return _bad("unauthorized", 401)
     b = await _body(request)
     if b is None:
-        return _bad(t("ungueltige Anfrage"))
+        return _bad(t("ungültige Anfrage"))
     b = b.get("settings") if isinstance(b.get("settings"), dict) else b
     if not b or any(k not in KINDS or not isinstance(v, bool) for k, v in b.items()):
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     with _db() as c, c:
         off = _off(c, uid)
         for k, v in b.items():

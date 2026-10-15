@@ -121,7 +121,7 @@ async def api_comment_add(nid: int, request: Request):
         return _bad("unauthorized", 401)
     b = await _body(request)
     if b is None:
-        return _bad(t("ungueltige Anfrage"))
+        return _bad(t("ungültige Anfrage"))
     return comment_add(uid, nid, b)
 
 
@@ -145,7 +145,7 @@ def comment_add(uid, nid, b):
             try:
                 tid = int(b["thread_id"])
             except (TypeError, ValueError, OverflowError):
-                return _bad(t("ungueltige Angabe"))
+                return _bad(t("ungültige Angabe"))
             r = c.execute("SELECT note_id, thread_id, block_id FROM note_comment WHERE id=?", (tid,)).fetchone() if 0 < tid < 2 ** 63 else None
             if not r or r[0] != nid:
                 return _bad("not found", 404)
@@ -156,7 +156,7 @@ def comment_add(uid, nid, b):
         else:
             block = str(b.get("block_id") or "")
             if not _BID.fullmatch(block):
-                return _bad(t("ungueltiger Block"))
+                return _bad(t("ungültiger Block"))
         owner = c.execute("SELECT uid FROM note WHERE id=?", (nid,)).fetchone()[0]
         cid = c.execute("INSERT INTO note_comment (note_id, owner_uid, block_id, thread_id, uid, body, created) VALUES (?,?,?,?,?,?,?)",
                         (nid, owner, block, thread, uid, body, now)).lastrowid

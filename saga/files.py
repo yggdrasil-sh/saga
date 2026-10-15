@@ -98,7 +98,7 @@ def upload_owner(uid, note):
     try:
         nid = int(note)
     except (TypeError, ValueError):
-        return None, JSONResponse({"success": 0, "error": t("ungueltige Angabe")}, status_code=400)
+        return None, JSONResponse({"success": 0, "error": t("ungültige Angabe")}, status_code=400)
     with _db() as c:
         owner, _, err = access(c, uid, nid, "edit")
     if err is not None:
@@ -135,14 +135,14 @@ async def api_file_upload(request: Request):
     if err is not None:
         return err
     if int(request.headers.get("content-length") or 0) > FILE_MAX + 64 * 1024:
-        return JSONResponse({"success": 0, "error": t("Datei zu gross (max. {n} MB)", n=FILE_MAX // 1048576)}, status_code=413)
+        return JSONResponse({"success": 0, "error": t("Datei zu groß (max. {n} MB)", n=FILE_MAX // 1048576)}, status_code=413)
     form = await request.form()
     up = form.get("image") or form.get("file")
     if up is None or not hasattr(up, "read"):
         return JSONResponse({"success": 0, "error": t("keine Datei")}, status_code=400)
     data = await up.read(FILE_MAX + 1)
     if len(data) > FILE_MAX:
-        return JSONResponse({"success": 0, "error": t("Datei zu gross (max. {n} MB)", n=FILE_MAX // 1048576)}, status_code=413)
+        return JSONResponse({"success": 0, "error": t("Datei zu groß (max. {n} MB)", n=FILE_MAX // 1048576)}, status_code=413)
     if not data:
         return JSONResponse({"success": 0, "error": t("leere Datei")}, status_code=400)
     name = re.sub(r"[\x00-\x1f/\\\\]", "_", os.path.basename(up.filename or "datei"))[:120] or "datei"
