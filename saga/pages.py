@@ -11,16 +11,16 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
-from db import connect as _db
+from db import clean_line, connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
 from saga import bus
-from saga.core import BASE_URL, E, STATE_DIR, account_lang, _api_guard, _bad, _body, _json_load, _session_user, t
+from saga.core import BASE_URL, E, STATE_DIR, account_lang, _api_guard, _bad, _body, _json_load, _session_user, origin_of, t, user_error
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
 from saga.comments import counts as comment_counts
 from saga.sharing import RANK, Access, access, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
-from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, NOTE_MAX_COUNT, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, _schema_srev, _schema_stamp, _snapshot, blocks_text
+from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, NOTE_MAX_COUNT, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text
 
 router = APIRouter()
 
@@ -35,7 +35,15 @@ _ALLOWED_CLASSES = {"mark": {"cdx-marker"}, "code": {"inline-code"}, "time": {"h
 _TIME_ATTR = re.compile(r"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?")      # @-Datum im Text: <time datetime="2026-10-10">
 
 
-_NOTE_HREF = re.compile(r"/notes#[1-9][0-9]{0,8}")
+_NOTE_HREF = re.compile(r"/notes#[1-9][0-9]{0,17}")      # wie sharing._NOTE_LINK / publish._NOTE_HREF (BUG-090)
+# Echte HTML-Elemente ausserhalb der Positivliste werden entfernt; alles andere in spitzen Klammern ist Klartext
+_HTML_TAGS = set("html head body title meta link script style noscript template iframe frame frameset object embed applet param "
+                 "img picture source video audio track canvas svg math map area form input button select option optgroup "
+                 "textarea label fieldset legend output datalist div span p h1 h2 h3 h4 h5 h6 ul ol li dl dt dd table thead "
+                 "tbody tfoot tr td th caption col colgroup blockquote pre q cite abbr address article aside footer header "
+                 "main nav section figure figcaption details summary dialog menu hr sub sup small big tt kbd samp var del "
+                 "ins font center marquee blink base basefont bdi bdo data dfn rp rt ruby wbr xmp plaintext listing image "
+                 "slot portal search hgroup acronym strike nobr noembed noframes".split())
 
 
 class _Sanitizer(HTMLParser):
@@ -47,6 +55,8 @@ class _Sanitizer(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         if tag not in _ALLOWED_TAGS:
+            if tag not in _HTML_TAGS:           # "<bob@x.de>", "<3 Herz>": Klartext, kein HTML -> als Text behalten (BUG-039)
+                self.out.append(html_escape(self.get_starttag_text() or "", quote=False))
             return
         a = dict(attrs)
         keep = ""
@@ -94,6 +104,9 @@ class _Sanitizer(HTMLParser):
 def sanitize_inline(s):
     p = _Sanitizer()
     p.feed(s)
+    if p.rawdata.startswith("<") and ">" not in p.rawdata:     # "a<b c Ende": unvollstaendiger Tag am Ende ist Text (BUG-039)
+        p.handle_data(p.rawdata)
+        p.rawdata = ""
     p.close()
     return p.result()
 
@@ -129,7 +142,7 @@ class TooLarge(ValueError):
 def clean_blocks(raw, limit=NOTE_BLOCKS_MAX):
     """JSON-String pruefen und bereinigen -> (json_string, plaintext). ValueError bei Unsinn."""
     if len(raw) > limit:
-        raise TooLarge(t("Seite zu gross"))
+        raise TooLarge(t("Seite zu groß"))
     d = json.loads(raw)
     if not isinstance(d, dict) or not isinstance(d.get("blocks"), list):
         raise ValueError(t("kein Block-Dokument"))
@@ -138,7 +151,7 @@ def clean_blocks(raw, limit=NOTE_BLOCKS_MAX):
     blocks = []
     for b in d["blocks"]:
         if not isinstance(b, dict) or not isinstance(b.get("type"), str) or not isinstance(b.get("data"), dict):
-            raise ValueError(t("ungueltiger Block"))
+            raise ValueError(t("ungültiger Block"))
         blocks.append({k: (_sanitize_value(v) if k == "data" else v) for k, v in b.items() if k in ("id", "type", "data")})
     blocks = _flatten_nested_columns(blocks)
     doc = {"time": d.get("time"), "version": d.get("version"), "blocks": blocks}
@@ -176,7 +189,7 @@ def _tags(v):
     if v is None:
         return []
     if not isinstance(v, list):
-        raise ValueError(t("Tags muessen eine Liste sein"))
+        raise ValueError(t("Tags müssen eine Liste sein"))
     out, seen = [], set()
     for x in v:
         s = re.sub(r"\s+", " ", str(x)).strip().lstrip("#")[:TAG_MAX_LEN]
@@ -312,7 +325,7 @@ async def api_note_add(request: Request):
             try:
                 pid = int(b["parent_id"])
             except (TypeError, ValueError, OverflowError):
-                return _bad(t("ungueltige Angabe"))
+                return _bad(t("ungültige Angabe"))
             owner, role, err = access(c, uid, pid, "edit", acc)
             if err is not None:
                 return err
@@ -322,11 +335,11 @@ async def api_note_add(request: Request):
             parent = _check_parent(c, owner, None, b.get("parent_id"))
             icon = _icon(b.get("icon"), c, owner)
             tags = _tags(b.get("tags"))
+            title = _title_in(b.get("title"))
         except LookupError:
             return _bad("not found", 404)
         except (ValueError, TypeError):
-            return _bad(t("ungueltige Angabe"))
-        title = str(b.get("title", "")).strip()[:NOTE_TITLE_MAX]
+            return _bad(t("ungültige Angabe"))
         kind = "database" if b.get("kind") == "database" else "page"
         schema = json.dumps(_default_schema(account_lang(owner)), ensure_ascii=False) if kind == "database" else None
         props = None
@@ -337,7 +350,7 @@ async def api_note_add(request: Request):
                     props = json.dumps(_clean_props(_json_load(ps[0], {"props": []}), b["props"], check=_rel_check_for(c, owner, acc, role)),
                                        ensure_ascii=False)
                 except (ValueError, TypeError) as ex:
-                    return _bad(str(ex) or t("ungueltige Werte"))
+                    return _bad(user_error(ex, t("ungültige Werte")))
         cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, created, updated, updated_by, created_by) "
                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (owner, title, json.dumps({"blocks": []}), "blocks", icon, parent, now,
@@ -345,6 +358,16 @@ async def api_note_add(request: Request):
         if props and ps:                                   # zweiseitige Relationen: Gegenseite nachziehen
             _rel_sync(c, owner, _json_load(ps[0], {"props": []}), cur.lastrowid, {}, json.loads(props), _may_edit(acc, role))
         return JSONResponse({"id": cur.lastrowid, "updated": now})
+
+
+def _title_in(v):
+    """Seitentitel aus einer Anfrage: null -> leer, Liste/Objekt/Wahrheitswert -> Fehler statt "None"/"['x']" (BUG-083);
+    Steuer-, Bidi- und unsichtbare Zeichen raus (BUG-038)."""
+    if v is None:
+        return ""
+    if isinstance(v, bool) or not isinstance(v, (str, int, float)):
+        raise ValueError(t("ungültige Angabe"))
+    return clean_line(v).strip()[:NOTE_TITLE_MAX]
 
 
 class _Reply(Exception):
@@ -377,8 +400,9 @@ async def api_note_update(nid: int, request: Request):
     b = await _body(request)
     if b is None:
         return _bad("bad request")
+    origin = origin_of(request)
     try:                                     # Datenbank-Arbeit und Bereinigung im Threadpool (Event-Loop bleibt frei)
-        return await run_in_threadpool(_note_update, uid, nid, b)
+        return await run_in_threadpool(_note_update, uid, nid, b, origin)
     except _Reply as r:
         return r.resp
 
@@ -393,7 +417,7 @@ def _conflict(c, uid, nid, rev):
     return JSONResponse({"error": "conflict", "rev": rev, "by": names(c, [by]).get(by) if by else None}, status_code=409)
 
 
-def _note_update(uid, nid, b):
+def _note_update(uid, nid, b, origin=None):
     sets, args = [], []
     with _db() as c, c:
         acc = Access(c, uid)
@@ -416,7 +440,7 @@ def _note_update(uid, nid, b):
             try:
                 want = int(b["rev"])
             except (TypeError, ValueError, OverflowError):
-                return _bad(t("ungueltige Revision"))
+                return _bad(t("ungültige Revision"))
             if want != old[3]:
                 return _conflict(c, uid, nid, old[3])
         # "Meine Version behalten" (overwrite, ohne rev): trotzdem nur gegen die eben gelesene und als Version gesicherte
@@ -515,7 +539,7 @@ def _note_update(uid, nid, b):
                 _rel_sync(c, owner, _json_load(ps[0], {"props": []}), nid, _json_load(ps[1], {}), merged, _may_edit(acc, role))
                 sets.append("props=?"); args.append(json.dumps(merged, ensure_ascii=False))
             if "title" in b:
-                sets.append("title=?"); args.append(str(b["title"]).strip()[:NOTE_TITLE_MAX])
+                sets.append("title=?"); args.append(_title_in(b["title"]))
             if "icon" in b:
                 sets.append("icon=?"); args.append(_icon(b["icon"], c, owner))
             if "cover" in b:
@@ -540,7 +564,7 @@ def _note_update(uid, nid, b):
                         body, _ = clean_blocks(raw, NOTE_BLOCKS_MAX + 64 * raw.count("/notes#"))
                         body = restore_links(old[1] if old[2] == "blocks" else "", body, viewer(acc), title_of(c, owner))
                         if len(body) > NOTE_BLOCKS_MAX:
-                            raise TooLarge(t("Seite zu gross"))
+                            raise TooLarge(t("Seite zu groß"))
                     else:
                         body, _ = clean_blocks(raw)
                     _check_file_refs(owner, json.loads(body)["blocks"])
@@ -557,14 +581,14 @@ def _note_update(uid, nid, b):
                 if newpar is not None:          # wie beim Verschieben: keine normale Seite in eine Datenbank
                     cur_par = c.execute("SELECT parent_id FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()[0]
                     if c.execute("SELECT kind FROM note WHERE id=? AND uid=?", (newpar, owner)).fetchone()[0] == "database" and cur_par != newpar:
-                        raise ValueError(t("Seiten koennen nicht in eine Datenbank verschoben werden"))
+                        raise ValueError(t("Seiten können nicht in eine Datenbank verschoben werden"))
                 sets.append("parent_id=?"); args.append(newpar)
         except LookupError:
             raise _Reply(_bad("not found", 404))
         except (ValueError, TypeError, OverflowError, AttributeError) as ex:
-            raise _Reply(_bad(str(ex) if str(ex) else t("ungueltige Angabe"), 413 if isinstance(ex, TooLarge) else 400))
+            raise _Reply(_bad(user_error(ex, t("ungültige Angabe")), 413 if isinstance(ex, TooLarge) else 400))
         if not sets:
-            raise _Reply(_bad(t("nichts zu aendern")))
+            raise _Reply(_bad(t("nichts zu ändern")))
         now = time.time()
         if "body" in b or (content and (b.get("overwrite") or foreign)):
             # leer/viel kleiner: alten Stand immer sichern. "Meine Version behalten" nach einem Konflikt (overwrite) oder
@@ -581,7 +605,7 @@ def _note_update(uid, nid, b):
             cur = c.execute("SELECT rev FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()
             raise _Reply(_conflict(c, uid, nid, cur[0] if cur else None))
         # Live-Kanal (1.4): wer die Seite gerade offen hat, laedt still neu bzw. bekommt einen Hinweis (nach dem Commit)
-        bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=uid, updated=now)
+        bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=uid, updated=now, origin=origin)
     out = {"ok": True, "updated": now, "rev": old[3] + (1 if content else 0)}
     if srev is not None:
         out["srev"] = srev                   # neuer Schema-Stand (Client kann ihn fuer die naechste Aenderung uebernehmen)
@@ -600,7 +624,7 @@ async def api_note_move(nid: int, request: Request):
     try:
         index = max(0, int(b.get("index", 0)))
     except (TypeError, ValueError):
-        return _bad(t("ungueltige Position"))
+        return _bad(t("ungültige Position"))
     with _db() as c, c:
         _, _, err = access(c, uid, nid, "owner")
         if err is not None:
@@ -613,11 +637,11 @@ async def api_note_move(nid: int, request: Request):
         except LookupError:
             return _bad("not found", 404)
         except (ValueError, TypeError) as ex:
-            return _bad(str(ex) or t("ungueltige Angabe"))
+            return _bad(user_error(ex, t("ungültige Angabe")))
         if parent is not None:
             pk = c.execute("SELECT kind FROM note WHERE id=? AND uid=?", (parent, owner)).fetchone()[0]
             if pk == "database" and me[0] != parent:
-                return _bad(t("Seiten koennen nicht in eine Datenbank verschoben werden"))
+                return _bad(t("Seiten können nicht in eine Datenbank verschoben werden"))
         sib = [r[0] for r in c.execute(
             "SELECT id FROM note WHERE uid=? AND deleted_at IS NULL AND id<>? AND "
             + ("parent_id=?" if parent is not None else "parent_id IS NULL") + " ORDER BY sort NULLS FIRST, created",
@@ -625,6 +649,8 @@ async def api_note_move(nid: int, request: Request):
         sib.insert(min(index, len(sib)), nid)
         c.execute("UPDATE note SET parent_id=? WHERE id=? AND uid=?", (parent, nid, owner))
         c.executemany("UPDATE note SET sort=? WHERE id=? AND uid=?", [(i + 1, x, owner) for i, x in enumerate(sib)])
+        if me[0] != parent:                  # andere Elternseite: geerbte Freigaben aendern sich (BUG-033)
+            announce_tree(c, owner, nid, [nid], uid, time.time(), False, origin=origin_of(request))
     return JSONResponse({"ok": True, "parent_id": parent, "index": sib.index(nid)})
 
 
@@ -654,7 +680,7 @@ async def api_note_archive(nid: int, request: Request):
                 return JSONResponse({"ok": True, "archived": 0})
             now = time.time()
             n = sum(c.execute("UPDATE note SET archived=? WHERE id=? AND uid=? AND archived IS NULL", (now, i, owner)).rowcount for i in ids)
-            bus.fire("note.saved", c, note_id=nid, owner=owner, by=uid, updated=now, gone=True)
+            announce_tree(c, owner, nid, ids, uid, now, True, origin=origin_of(request))
             return JSONResponse({"ok": True, "archived": n})
         if me[0] is None:
             return JSONResponse({"ok": True, "restored": 0})
@@ -663,6 +689,7 @@ async def api_note_archive(nid: int, request: Request):
             par = c.execute("SELECT archived, kind FROM note WHERE id=? AND uid=?", (me[1], owner)).fetchone()
             if par and par[0] is not None and par[1] != "database":
                 c.execute("UPDATE note SET parent_id=NULL WHERE id=? AND uid=?", (nid, owner))
+        announce_tree(c, owner, nid, ids, uid, time.time(), False, origin=origin_of(request))
         return JSONResponse({"ok": True, "restored": n})
 
 
@@ -685,7 +712,7 @@ def api_note_delete(nid: int, request: Request):
             return _bad("not found", 404)
         now = time.time()
         c.executemany("UPDATE note SET deleted_at=? WHERE id=? AND uid=?", [(now, i, owner) for i in ids])
-        bus.fire("note.saved", c, note_id=nid, owner=owner, by=uid, updated=now, gone=True)
+        announce_tree(c, owner, nid, ids, uid, now, True, origin=origin_of(request))
     return JSONResponse({"deleted": len(ids), "trash": True})
 
 

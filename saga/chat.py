@@ -310,6 +310,12 @@ def _chat_for(c, uid, cid, do_sync=True):
     return ch, m, mem, None
 
 
+def _fresh(c, ch, mem):
+    """Empfaenger ohne volle Angleichung: bei Seiten-/Gruppen-Chats nur, wer JETZT noch dazugehoert."""
+    want = entitled(c, ch)
+    return mem if want is None else [u for u in mem if u in want]
+
+
 def _direct(c, uids, typ, data):
     """Live-Ereignis (ohne Inhalt) an diese Konten - nach dem Commit (saga.live, Ereignis-Art 'direct')."""
     uids = sorted({u for u in uids if u})
@@ -414,21 +420,21 @@ async def api_identity(request: Request):
         return err
     b = await _body(request)
     if b is None:
-        return _bad(t("ungueltige Anfrage"))
+        return _bad(t("ungültige Anfrage"))
     with _db() as c:
         had = _identity(c, uid) is not None
     if had and b.get("reset") is True:
         need = _reauth_need(request, uid)
         if need and not (need == "password" and await run_in_threadpool(_check_password, request, uid, b.get("password"))):
             print(f"chat: {uid} Neu beginnen ohne frische Anmeldung abgewiesen", flush=True)
-            msg = t("Zum Neubeginnen bitte dein Passwort eingeben.") if need == "password" else \
+            msg = (t("Passwort falsch.") if b.get("password") else t("Zum Neubeginnen bitte dein Passwort eingeben.")) if need == "password" else \
                 t("Zum Neubeginnen bitte neu anmelden – danach hast du 5 Minuten Zeit.")
             return JSONResponse({"error": msg, "reauth": need}, status_code=403, headers={"Cache-Control": "no-store"})
     ident_pub, backup_pub, backup_sig = b.get("ident_pub"), b.get("backup_pub"), b.get("backup_sig")
     bundle = _valid_bundle(b.get("bundle"))
     dev = _device_in(b.get("device"))
     if b64d(ident_pub, 32) is None or b64d(backup_pub, 32) is None or not bundle or not dev:
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     if not verify(ident_pub, backup_sig, lp("saga-chat/v1/backup", uid, b64d(backup_pub, 32))):
         return _bad(t("Ungültige Signatur des Backup-Schlüssels."))
     now = time.time()
@@ -467,7 +473,7 @@ async def api_bundle(request: Request):
     b = await _body(request)
     bundle = _valid_bundle((b or {}).get("bundle"))
     if not bundle:
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     with _db() as c, c:
         ident = _identity(c, uid)
         if not ident:
@@ -486,7 +492,7 @@ async def api_device_add(request: Request):
         return err
     d = _device_in(await _body(request))
     if not d:
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     with _db() as c, c:
         ident = _identity(c, uid)
         if not ident:
@@ -533,7 +539,7 @@ async def api_link_new(request: Request):
         return err
     d = _device_in(await _body(request))
     if not d:
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     now = time.time()
     with _db() as c, c:
         if not _identity(c, uid):
@@ -588,7 +594,7 @@ async def api_link_approve(lid: str, request: Request):
     b = await _body(request) or {}
     sealed = b.get("sealed")
     if b64d(sealed, maxlen=2048) is None:
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     with _db() as c, c:
         r = c.execute(f"SELECT {L_COLS} FROM chat_link WHERE id=? AND uid=? AND approved IS NULL AND expires>?", (lid, uid, time.time())).fetchone()
         ident = _identity(c, uid)
@@ -692,7 +698,7 @@ def api_notes(request: Request, ids: str = ""):
     try:
         want = sorted({int(x) for x in ids.split(",") if x.strip()})[:100]
     except ValueError:
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     want = [i for i in want if 0 < i < 2 ** 63]
     with _db() as c:
         return _no_store({"notes": {str(k): v for k, v in _note_info(c, uid, want).items()}})
@@ -869,7 +875,7 @@ async def api_chat_new(request: Request):
         return err
     b = await _body(request)
     if b is None:
-        return _bad(t("ungueltige Anfrage"))
+        return _bad(t("ungültige Anfrage"))
     kind, now = b.get("kind"), time.time()
     with _db() as c, c:
         if c.execute("SELECT COUNT(*) FROM chat WHERE created_by=? AND created>?", (uid, now - 3600)).fetchone()[0] >= 60:
@@ -914,13 +920,13 @@ async def api_chat_new(request: Request):
         elif kind == "free":
             want = b.get("members")
             if not isinstance(want, list) or len(want) > MEMBERS_MAX:
-                return _bad(t("ungueltige Angabe"))
+                return _bad(t("ungültige Angabe"))
             want = sorted({str(x).strip().lower()[:100] for x in want} - {uid})
             if len(want) + 1 > MEMBERS_MAX:
                 return _bad(t("Höchstens {n} Mitglieder je Chat.", n=MEMBERS_MAX), 409)
             bad = [u for u in want if not may_contact(c, uid, u)]
             if bad or not want:
-                return _bad(t("Mit diesem Konto ist kein Chat möglich.") if bad else t("ungueltige Angabe"), 400)
+                return _bad(t("Mit diesem Konto ist kein Chat möglich.") if bad else t("ungültige Angabe"), 400)
             cid = c.execute("INSERT INTO chat (kind, created_by, created) VALUES ('free',?,?)", (uid, now)).lastrowid
             c.execute("INSERT INTO chat_member (chat_id, uid, role, joined) VALUES (?,?,'admin',?)", (cid, uid, now))
             for u in want:
@@ -928,7 +934,7 @@ async def api_chat_new(request: Request):
             ch = _load(c, cid)
             _changed(c, cid)
         else:
-            return _bad(t("ungueltige Angabe"))
+            return _bad(t("ungültige Angabe"))
         mem = sync(c, ch)
         m = _member(c, ch["id"], uid)
         if not m:
@@ -956,7 +962,7 @@ async def api_chat_patch(cid: int, request: Request):
         return err
     b = await _body(request)
     if b is None:
-        return _bad(t("ungueltige Anfrage"))
+        return _bad(t("ungültige Anfrage"))
     with _db() as c, c:
         ch, m, mem, err = _chat_for(c, uid, cid)
         if err:
@@ -967,7 +973,7 @@ async def api_chat_patch(cid: int, request: Request):
         if "retention_s" in b:
             v = b["retention_s"]
             if not isinstance(v, int) or isinstance(v, bool) or v not in RETENTIONS:
-                return _bad(t("ungueltige Angabe"))
+                return _bad(t("ungültige Angabe"))
             mx = retention_max()
             if mx and (v == 0 or v > mx):
                 return _bad(t("Höchstens {n} Tage (Vorgabe des Servers).", n=mx // 86400))
@@ -1121,7 +1127,7 @@ async def api_send(cid: int, request: Request):
         return err
     b = await _body(request)
     if b is None:
-        return _bad(t("ungueltige Anfrage"))
+        return _bad(t("ungültige Anfrage"))
     mid, dev, body_ct, sig = str(b.get("id") or ""), str(b.get("sender_device") or ""), b.get("body_ct"), b.get("sig")
     kind = b.get("kind") or "msg"
     reply_to = b.get("reply_to") or None
@@ -1134,17 +1140,17 @@ async def api_send(cid: int, request: Request):
         ts = 0
     now = time.time()
     if not _HEX32.fullmatch(mid) or kind not in ("msg", "title") or not isinstance(keys, dict) or not isinstance(files, list):
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     if not isinstance(body_ct, str) or len(body_ct) > MSG_MAX:
         return _bad(t("Nachricht zu groß."), 413)
     if b64d(body_ct) is None or len(b64d(body_ct)) < 24 + 16 or b64d(sig, 64) is None:
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     if abs(ts / 1000 - now) > SKEW:
         return _bad(t("Die Uhrzeit dieses Geräts weicht zu stark ab."), 400)
     if reply_to is not None and not (isinstance(reply_to, str) and _HEX32.fullmatch(reply_to)):
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     if len(files) > FILES_PER_MSG or any(not isinstance(f, str) or not _FID.fullmatch(f) for f in files):
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     with _db() as c, c:
         ch, m, mem, err = _chat_for(c, uid, cid)
         if err:
@@ -1152,7 +1158,7 @@ async def api_send(cid: int, request: Request):
         if len(mem) > MEMBERS_MAX:
             return _bad(t("Höchstens {n} Mitglieder je Chat.", n=MEMBERS_MAX), 409)
         if kind == "title" and ch["kind"] != "free":
-            return _bad(t("ungueltige Angabe"))
+            return _bad(t("ungültige Angabe"))
         d = c.execute("SELECT sign_pub FROM chat_device WHERE id=? AND uid=? AND revoked_at IS NULL", (dev, uid)).fetchone()
         if not d:
             return _bad(t("Dieses Gerät ist für Chats nicht (mehr) angemeldet."), 403)
@@ -1163,7 +1169,7 @@ async def api_send(cid: int, request: Request):
         if c.execute("SELECT 1 FROM chat_msg WHERE id=?", (mid,)).fetchone():
             return _bad(t("Diese Nachricht gibt es schon."), 409)
         if reply_to and not c.execute("SELECT 1 FROM chat_msg WHERE id=? AND chat_id=?", (reply_to, ch["id"])).fetchone():
-            return _bad(t("ungueltige Angabe"))
+            return _bad(t("ungültige Angabe"))
         rc, want = recipients(c, mem)
         if set(keys) != want or any(b64d(v, SEAL_LEN) is None for v in keys.values()):
             return _no_store({"error": t("Die Mitglieder oder ihre Geräte haben sich geändert – bitte erneut senden."), "recipients": rc}, 409)
@@ -1210,6 +1216,7 @@ def api_msg_delete(cid: int, mid: str, request: Request):
         ch, m, mem, err = _chat_for(c, uid, cid, do_sync=False)
         if err:
             return err
+        mem = _fresh(c, ch, mem)                 # Seiten-/Gruppen-Chat: gerade Entzogene bekommen nichts mehr (BUG-088)
         r = c.execute("SELECT seq, sender_uid FROM chat_msg WHERE id=? AND chat_id=? AND kind='msg'", (mid, ch["id"])).fetchone()
         if not r:
             return _bad("not found", 404)
@@ -1233,7 +1240,7 @@ async def api_read(cid: int, request: Request):
     try:
         seq = int(b.get("seq") or 0)
     except (TypeError, ValueError):
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     with _db() as c, c:
         ch, m, mem, err = _chat_for(c, uid, cid, do_sync=False)
         if err:
@@ -1262,6 +1269,9 @@ def api_typing(cid: int, request: Request):
         ch, m, mem, err = _chat_for(c, uid, cid, do_sync=False)
         if err:
             return err
+        mem = _fresh(c, ch, mem)                 # Seiten-/Gruppen-Chat: gerade Entzogene bekommen nichts mehr (BUG-088)
+        if uid not in mem:
+            return _bad("not found", 404)
         nm = names(c, [uid])
         _direct(c, [u for u in mem if u != uid], "chat.typing", {"chat_id": ch["id"], "user": {"username": uid, "name": nm.get(uid, uid)}})
     return _no_store({"ok": True})
@@ -1275,14 +1285,14 @@ async def api_file_up(cid: int, request: Request):
     if err:
         return err
     if int(request.headers.get("content-length") or 0) > FILE_MAX + 64:
-        return _bad(t("Datei zu gross (max. {n} MB)", n=FILE_MAX // 1048576), 413)
+        return _bad(t("Datei zu groß (max. {n} MB)", n=FILE_MAX // 1048576), 413)
     if not _rate("file", uid, FILE_RATE):
         return _bad(t("zu schnell"), 429)
     data = await request.body()
     if len(data) > FILE_MAX + 64:
-        return _bad(t("Datei zu gross (max. {n} MB)", n=FILE_MAX // 1048576), 413)
+        return _bad(t("Datei zu groß (max. {n} MB)", n=FILE_MAX // 1048576), 413)
     if len(data) < 24 + 16:
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     with _db() as c, c:
         ch, m, mem, err = _chat_for(c, uid, cid, do_sync=False)
         if err:

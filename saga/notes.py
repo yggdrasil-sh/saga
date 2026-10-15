@@ -140,6 +140,22 @@ def note_chain(c, uid, nid):
     return out
 
 
+def announce_tree(c, owner, root, ids, by, now, gone, rev=None, origin=None):
+    """Live-Kanal (BUG-033): jede Seite eines Teilbaums melden (geloescht/archiviert: "weg"; wiederhergestellt,
+    verschoben, Version zurueck: geaendert) und "Mit mir geteilt" bei allen neu laden lassen, mit denen der Teilbaum (oder eine Seite darueber) geteilt ist."""
+    from saga import bus
+    for i in ids:
+        bus.fire("note.saved", c, note_id=i, owner=owner, by=by, updated=now, gone=gone, rev=rev if i == root else None, origin=origin)
+    chain = set(ids) | set(note_chain(c, owner, root))
+    if not chain:
+        return
+    marks = ",".join("?" * len(chain))
+    for tt, tg in c.execute(f"SELECT DISTINCT target_type, target FROM note_share WHERE owner_uid=? AND note_id IN ({marks})",
+                            (owner, *chain)).fetchall():
+        if tt in ("user", "group"):
+            bus.emit_after(c, "shared.changed", {"owner": owner, "note_id": root, "target_type": tt, "target": tg})
+
+
 def _purge_old(c, uid):
     old = [r[0] for r in c.execute("SELECT id FROM note WHERE uid=? AND deleted_at IS NOT NULL AND deleted_at < ?",
                                    (uid, time.time() - TRASH_DAYS * 86400))]
@@ -274,7 +290,7 @@ def _clean_views(raw, props):
             continue
         vid = str(v.get("id", ""))
         if not _PID.fullmatch(vid) or vid in seen:
-            raise ValueError(t("ungueltige Ansicht"))
+            raise ValueError(t("ungültige Ansicht"))
         seen.add(vid)
         view = {"id": vid, "name": str(v.get("name", "")).strip()[:40] or t("Ansicht"),
                 "type": v.get("type") if v.get("type") in VIEW_TYPES else "table"}
@@ -336,12 +352,12 @@ def _clean_views(raw, props):
 def _clean_schema(raw):
     """Schema pruefen: max. 30 Eigenschaften, eindeutige IDs, bekannte Typen, Optionen fuer Auswahlen."""
     if not isinstance(raw, dict) or not isinstance(raw.get("props"), list):
-        raise ValueError(t("ungueltiges Schema"))
+        raise ValueError(t("ungültiges Schema"))
     out, seen = [], set()
     for p in raw["props"][:30]:
         pid, typ = str(p.get("id", "")), str(p.get("type", ""))
         if not _PID.fullmatch(pid) or pid in seen or typ not in PROP_TYPES:
-            raise ValueError(t("ungueltige Eigenschaft"))
+            raise ValueError(t("ungültige Eigenschaft"))
         seen.add(pid)
         prop = {"id": pid, "name": str(p.get("name", "")).strip()[:60] or t("Eigenschaft"), "type": typ}
         if typ in ("select", "multi_select"):
@@ -349,7 +365,7 @@ def _clean_schema(raw):
             for o in (p.get("options") or [])[:50]:
                 oid = str(o.get("id", ""))
                 if not _PID.fullmatch(oid) or oid in oseen:
-                    raise ValueError(t("ungueltige Option"))
+                    raise ValueError(t("ungültige Option"))
                 oseen.add(oid)
                 col = o.get("color") if o.get("color") in OPT_COLORS else "gray"
                 opts.append({"id": oid, "name": str(o.get("name", "")).strip()[:40] or t("Option"), "color": col})
@@ -555,7 +571,7 @@ def _rel_unlink(c, uid, nid, target, mpid, delete):
 def _clean_props(schema, raw, base=None, check=None):
     """Zeilenwerte gegen das Schema pruefen; unbekannte Eigenschaften werden verworfen."""
     if not isinstance(raw, dict):
-        raise ValueError(t("ungueltige Werte"))
+        raise ValueError(t("ungültige Werte"))
     out = dict(base or {})
     by_id = {p["id"]: p for p in schema.get("props", [])}
     for pid, v in raw.items():
@@ -574,7 +590,7 @@ def _clean_props(schema, raw, base=None, check=None):
         elif typ == "number":
             v = float(v)
             if v != v or abs(v) > 1e15:
-                raise ValueError(t("ungueltige Zahl"))
+                raise ValueError(t("ungültige Zahl"))
             v = int(v) if v == int(v) else v
         elif typ == "select":
             if v not in {o["id"] for o in p.get("options", [])}:
@@ -596,7 +612,7 @@ def _clean_props(schema, raw, base=None, check=None):
                 raise ValueError(t("Relation muss eine Liste sein"))
             ids = list(dict.fromkeys(int(x) for x in v if not isinstance(x, bool)))[:50]
             if any(not 0 < x < 2 ** 63 for x in ids):   # passt nicht in SQLite -> sonst OverflowError (500)
-                raise ValueError(t("ungueltige Eintrags-ID"))
+                raise ValueError(t("ungültige Eintrags-ID"))
             if check is not None:                   # fremde/erfundene IDs still verwerfen
                 ok = check(p.get("target"), ids)
                 ids = [x for x in ids if x in ok]

@@ -12,9 +12,9 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from db import connect as _db
 from fastapi import APIRouter
 from saga import i18n
-from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, t
+from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, origin_of, t
 from saga.sharing import Access, access, mask_links, names, person, viewer
-from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _snapshot, blocks_text
+from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _snapshot, announce_tree, blocks_text
 
 router = APIRouter()
 
@@ -63,6 +63,7 @@ def api_trash_restore(nid: int, request: Request):
         par = c.execute("SELECT parent_id FROM note WHERE id=? AND uid=?", (nid, uid)).fetchone()[0]
         if par and not c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (par, uid)).fetchone():
             c.execute("UPDATE note SET parent_id=NULL WHERE id=? AND uid=?", (nid, uid))
+        announce_tree(c, uid, nid, ids, uid, time.time(), False, origin=origin_of(request))       # Live: zurueck (BUG-033)
     return JSONResponse({"restored": len(ids)})
 
 
@@ -147,6 +148,8 @@ def api_version_restore(nid: int, vid: int, request: Request):
         _snapshot(c, owner, nid, cur, now, force=True, author=cur[3])       # aktueller Stand bleibt als Version erhalten
         c.execute("UPDATE note SET title=?, body=?, format=?, updated=?, rev=rev+1, updated_by=? WHERE id=? AND uid=?",
                   (v[0], v[1], v[2], now, uid, nid, owner))
+        rev = c.execute("SELECT rev FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()[0]
+        announce_tree(c, owner, nid, [nid], uid, now, False, rev, origin=origin_of(request))       # Live: Version zurueck (BUG-033)
     return JSONResponse({"ok": True, "updated": now})
 
 
