@@ -516,6 +516,17 @@
       if (t.changed) drawWarn();
     });
   }
+  // Beim Oeffnen eines Chats die aktuellen Identitaetsschluessel der anderen holen und mit dem gemerkten Stand vergleichen:
+  // "Sicherheitsnummer geaendert" erscheint sofort, nicht erst nach einer neuen Nachricht oder dem Oeffnen der
+  // Sicherheitsnummer (BUG-016). Nur Konten mit eingerichteten Chats liefern einen Schluessel.
+  function checkIdents(c) {
+    var users = c.members.filter(function (m) { return !m.me; }).map(function (m) { return m.username; }).slice(0, 60);
+    if (!users.length) return;
+    api('GET', '/api/chat/keys?users=' + users.map(q).join(',')).then(function (r) {
+      if (!S.cur || S.cur.id !== c.id) return;
+      Object.keys(r.users || {}).forEach(function (u) { var k = r.users[u]; if (k && k.ident_pub && users.indexOf(u) >= 0) noteIdent(u, k.ident_pub); });
+    }).catch(function () { /* Pruefung beim Senden greift trotzdem */ });
+  }
   function drawWarn() {
     var w = $('ct-warn'), c = S.cur; if (!c) { w.hidden = true; return; }
     var bad = c.members.filter(function (m) { return trust[m.username] && trust[m.username].changed; });
@@ -567,6 +578,7 @@
       $('ct-none').hidden = true; $('ct-chat').hidden = false; root.classList.add('ct-open');
       drawHead(); drawList(); drawWarn();
       c.members.forEach(function (m) { if (!m.me && !trust[m.username]) trustP[m.username] = kvGet(trustKey(m.username)).then(function (t) { if (t) trust[m.username] = t; drawWarn(); return t; }).catch(function () { return null; }); });
+      checkIdents(c);
       return loadMsgs(false);
     }).catch(function (e) {
       if (e.status === 404) { HK.toast(T('Diesen Chat gibt es nicht (mehr) oder du gehörst nicht mehr dazu.')); closeChat(); loadList(); }
