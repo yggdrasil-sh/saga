@@ -99,13 +99,37 @@
       S.me = me;
       if (!me.identity) { if (K) return forget().then(setupIntro); return setupIntro(); }
       var mine = K && (me.devices || []).filter(function (d) { return d.id === K.device.id && !d.revoked; })[0];
-      if (!K || !mine || !eqB(K.ident_pk, ub(me.identity.ident_pub, 32))) return forget().then(newDevice);
+      if (K && !eqB(K.ident_pk, ub(me.identity.ident_pub, 32))) return forget().then(function () { signedOut(true); });
+      if (K && !mine) return forget().then(function () { signedOut(false); });
+      if (!K) return newDevice();
       ready();
     }).catch(function (e) {
       if (e && e.message === 'idb') fatal(T('Dieser Browser erlaubt keinen lokalen Speicher (IndexedDB) – im privaten Fenster gehen Chats nicht.'));
       else fatal(T('Chats nicht geladen: {err}', { err: e.message }));
     });
   }
+  // Dieses Geraet wurde anderswo abgemeldet ("Neu beginnen" auf einem anderen Geraet bzw. Geraet entfernt): erklaeren,
+  // statt still leer zu bleiben oder erst beim Senden zu scheitern (BUG-057); danach wie ein neues Geraet verbinden.
+  function signedOut(reset) {
+    var box = overlay(reset ? T('Chats wurden neu begonnen') : T('Dieses Gerät wurde abgemeldet'), { close: false });
+    box.appendChild(el('p', null, reset
+      ? T('Auf einem anderen Gerät wurden deine Chats mit neuen Schlüsseln neu begonnen. Dieses Gerät ist dadurch abgemeldet, bisherige Nachrichten sind hier nicht mehr lesbar.')
+      : T('Dieses Gerät wurde aus deinen Chat-Geräten entfernt.')));
+    box.appendChild(el('p', null, T('Verbinde es neu – mit einem anderen Gerät oder mit deinem Wiederherstellungsschlüssel.')));
+    var bar = el('div', 'hk-actions'); box.appendChild(bar);
+    bar.appendChild(btn(T('Weiter'), 'btn-primary ct-signedout-go', newDevice));
+  }
+  // Laufender Tab: beim Zurueckkehren und vor dem Senden pruefen, ob dieses Geraet noch gilt -> true/false
+  function checkDevice() {
+    if (!K || !S.ready) return Promise.resolve(true);
+    return api('GET', '/api/chat/me?device=' + q(K.device.id)).then(function (me) {
+      var mine = (me.devices || []).filter(function (d) { return d.id === K.device.id && !d.revoked; })[0];
+      var reset = !!me.identity && !eqB(K.ident_pk, ub(me.identity.ident_pub, 32));
+      if (me.identity && mine && !reset) return true;
+      return forget().then(function () { closeChat(); if (me.identity) signedOut(reset); else start(); return false; });
+    }).catch(function () { return true; });                  // Netzfehler: nicht abmelden
+  }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) checkDevice(); });
   function fatal(msg) {
     root.textContent = ''; var p = el('p', 'ct-off', msg); p.setAttribute('role', 'alert'); root.appendChild(p);
   }
@@ -857,7 +881,10 @@
         throw e;
       });
     }
-    return recipients(cid).then(function (rc) { return trustCheck(rc.raw).then(function () { return attempt(rc, false); }); });
+    return recipients(cid).then(function (rc) { return trustCheck(rc.raw).then(function () { return attempt(rc, false); }); })
+      .catch(function (e) {                                  // Senden scheitert, weil dieses Geraet nicht mehr gilt? Erklaeren.
+        return checkDevice().then(function (okDev) { if (!okDev) { e = new Error(T('Dieses Gerät ist für Chats abgemeldet.')); } throw e; });
+      });
   }
   function uploadFiles(cid) {
     return Promise.all(S.files.map(function (f) {
