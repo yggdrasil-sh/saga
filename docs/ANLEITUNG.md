@@ -811,9 +811,10 @@ Welche Version läuft, bestimmt `SAGA_VERSION` in der `.env`:
 
 | Wert | Bedeutung |
 |---|---|
-| `1` (Standard) | immer die neueste 1.x – neue Funktionen und Fehlerbehebungen, nichts, was Handarbeit braucht |
-| `1.2` | nur Fehlerbehebungen von 1.2 |
-| `1.2.3` | genau diese Version |
+| `2` (Standard) | immer die neueste 2.x – neue Funktionen und Fehlerbehebungen, nichts, was Handarbeit braucht |
+| `2.0` | nur Fehlerbehebungen von 2.0 |
+| `2.0.0` | genau diese Version |
+| `1` | bleibt bei der neuesten 1.x (1.2) – ältere Installationen haben diesen Wert noch in der `.env` |
 | `testing` | **Testversion:** das Neueste aus dem Branch `testing`, noch vor dem Release. Kann Fehler haben – nur zum Ausprobieren |
 
 **Aktualisieren:**
@@ -840,13 +841,18 @@ zusätzlich `saga-dateien-<zeit>.tar.gz` an (ohne Vorschaubilder, die entstehen 
 sichert (siehe oben), braucht den Schalter nicht.
 
 **Testversion:** Mit `SAGA_VERSION=testing` bekommst du neue Funktionen, sobald sie fertig sind – noch vor
-dem Release. Die Version heißt dann z. B. `1.0.0-testing.ab12cd3` (unten im Admin-Bereich mit 🧪). Zurück zur
-stabilen Version: `SAGA_VERSION=1`, `docker compose pull && docker compose up -d`. Hat die Testversion die
+dem Release. Die Version heißt dann z. B. `2.1.0-testing.ab12cd3` (unten im Admin-Bereich mit 🧪). Zurück zur
+stabilen Version: `SAGA_VERSION=2`, `docker compose pull && docker compose up -d`. Hat die Testversion die
 Datenbank schon umgebaut, startet die stabile Version erst, wenn sie diesen Umbau ebenfalls enthält (spätestens
 mit dem nächsten Release) – oder du spielst das Backup von vor dem Wechsel zurück.
 
-Eine neue **Major-Version** (2.0.0) kann Handarbeit brauchen – sie steht dann im Changelog. Dafür
-`SAGA_VERSION=2` setzen.
+Eine neue **Major-Version** kann Handarbeit brauchen – sie steht dann im Changelog und kommt nur, wenn du
+`SAGA_VERSION` auf die neue Hauptversion setzt.
+
+**Von 1.x auf 2.0:** Wer noch `SAGA_VERSION=1` in der `.env` hat, bleibt auf 1.2. Für Saga 2.0 `SAGA_VERSION=2`
+setzen und wie oben aktualisieren – die Datenbank wird automatisch umgebaut (vorher Backup). Danach im
+Admin-Bereich nach Wunsch KI-Assistent, Föderation und Apple-Mitteilungen (APNs) einrichten (sie sind aus) und den
+Reverse Proxy für den Live-Kanal prüfen (Abschnitt 3). Alles Weitere steht im [Changelog](../CHANGELOG.md).
 
 **Zurück zur vorigen Version:** Eine ältere Saga startet nicht auf einer Datenbank, die schon eine neuere
 Version umgebaut hat (sie meldet das im Log, statt Daten zu beschädigen). Dann das Backup von vor dem Update
@@ -926,7 +932,7 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `PUBLIC_HOSTS` | – | Eigene Domains nur für öffentliche Seiten (Komma-getrennt, Abschnitt 9 „Seiten veröffentlichen“) |
 | `PUBLIC_RATE` | `120` | Aufrufe öffentlicher Seiten je IP-Adresse und Minute (Bilder: das Fünffache) |
 | `SESSION_HOURS` | `12` | Gültigkeit einer Browser-Sitzung (Apps bleiben angemeldet) |
-| `SAGA_VERSION` | `1` | Welche Version `docker compose pull` holt: `1`, `1.2` oder `1.2.3` (Abschnitt 11) |
+| `SAGA_VERSION` | `2` | Welche Version `docker compose pull` holt: `2`, `2.0`, `2.0.0` oder `testing` (Abschnitt 11) |
 | `BACKUP_KEEP` | `10` | So viele automatische/manuelle Backups bleiben in `/data/backups` |
 | `SAGA_UPDATE_CHECK` | `1` | `0` = nie bei GitHub nach neuen Versionen fragen (auch im Admin-Bereich abschaltbar) |
 | `ADMIN_SESSION_HOURS` | `4` | Gültigkeit einer Sitzung im Admin-Bereich |

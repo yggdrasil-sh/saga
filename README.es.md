@@ -32,6 +32,10 @@ Saga es una página de inicio y una base de conocimiento autoalojada para famili
 con todos tus servicios, páginas y bases de datos al estilo Notion, tareas, calendarios y marcadores. Cada
 persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio servidor.
 
+> **Novedades de Saga 2.0:** compartir y comentar, actualización en vivo con notificaciones, chats con cifrado de
+> extremo a extremo, notificaciones en el móvil, un asistente de IA opcional y federación con otros servidores
+> Saga. Todos los detalles en el [registro de cambios](CHANGELOG.md) (en alemán).
+
 ## Funciones
 
 - **Panel** con mosaicos para todos los servicios, puntos de estado, favoritos, búsqueda (opcionalmente búsqueda
@@ -79,7 +83,7 @@ docker compose pull && docker compose up -d
 ```
 
 **Actualizar:** `git pull && docker compose pull && docker compose up -d`. Antes de cualquier cambio en la base
-de datos, Saga crea automáticamente una copia de seguridad. Las novedades están en el
+de datos, Saga crea automáticamente una copia de seguridad. De 1.x a 2.0: antes pon `SAGA_VERSION=2` en el `.env`. Las novedades están en el
 **[registro de cambios](CHANGELOG.md)** (en alemán) y en las
 [versiones publicadas](https://github.com/yggdrasil-sh/saga/releases). ¿Quieres lo último?
 `SAGA_VERSION=testing` en el `.env` descarga la versión de pruebas de la rama `testing`. Las imágenes y archivos

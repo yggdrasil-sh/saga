@@ -28,6 +28,10 @@
 
 ![Saga Dashboard](docs/screenshots/dashboard.png)
 
+> **Neu in Saga 2.0:** Teilen und Kommentare, Live-Aktualisierung mit Benachrichtigungen, Chats mit
+> Ende-zu-Ende-Verschlüsselung, Mitteilungen aufs Handy, ein optionaler KI-Assistent und Föderation mit anderen
+> Saga-Servern. Alles Weitere im [Changelog](CHANGELOG.md).
+
 ## Funktionen
 
 - **Dashboard** mit Kacheln für alle Dienste, Status-Punkten, Favoriten, Suche (optional Websuche über SearXNG)
@@ -75,7 +79,7 @@ docker compose pull && docker compose up -d
 ```
 
 **Update:** `git pull && docker compose pull && docker compose up -d` – vor Datenbank-Änderungen legt Saga
-automatisch ein Backup an. Was neu ist, steht im **[Changelog](CHANGELOG.md)**. Neugierig auf das Neueste?
+automatisch ein Backup an. Von 1.x auf 2.0: vorher `SAGA_VERSION=2` in der `.env` setzen. Was neu ist, steht im **[Changelog](CHANGELOG.md)**. Neugierig auf das Neueste?
 `SAGA_VERSION=testing` in der `.env` holt die Testversion aus dem Branch `testing`. Bilder und Dateien der Seiten
 stecken nicht im Datenbank-Backup: das Volume `saga-data` sichern oder
 `docker compose exec saga python run.py backup --dateien`.

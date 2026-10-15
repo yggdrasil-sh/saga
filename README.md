@@ -32,6 +32,10 @@ Saga is a self-hosted start page and personal knowledge base for families, teams
 all your services, Notion-style pages and databases, tasks, calendars and bookmarks. Everyone gets their own
 private space – no cloud, no subscription, on your own server.
 
+> **New in Saga 2.0:** sharing and comments, live updates with notifications, end-to-end encrypted chats,
+> push notifications to your phone, an optional AI assistant and federation with other Saga servers. Details in
+> the [changelog](CHANGELOG.md) (in German).
+
 ## Features
 
 - **Dashboard** with tiles for all your services, status dots, favorites, search (optionally web search via
@@ -78,7 +82,7 @@ docker compose pull && docker compose up -d
 ```
 
 **Update:** `git pull && docker compose pull && docker compose up -d` – Saga automatically creates a backup
-before any database change. What's new is listed in the **[changelog](CHANGELOG.md)** (in German) and in the
+before any database change. From 1.x to 2.0: set `SAGA_VERSION=2` in `.env` first. What's new is listed in the **[changelog](CHANGELOG.md)** (in German) and in the
 [releases](https://github.com/yggdrasil-sh/saga/releases). Curious about the latest? `SAGA_VERSION=testing` in
 `.env` pulls the testing version from the `testing` branch. Images and files of pages are not part of the
 database backup: back up the `saga-data` volume, or run `docker compose exec saga python run.py backup --dateien`.

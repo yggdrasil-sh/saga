@@ -31,9 +31,9 @@ services:
         max-file: "3"
 
   saga:
-    # Fertiges Image von GitHub. SAGA_VERSION in .env: "1" = immer die neueste 1.x (empfohlen),
-    # "1.2.0" = genau diese Version. Selbst bauen: docker compose build (nutzt den Quelltext hier).
-    image: ghcr.io/yggdrasil-sh/saga:${SAGA_VERSION:-1}
+    # Fertiges Image von GitHub. SAGA_VERSION in .env: "2" = immer die neueste 2.x (empfohlen),
+    # "2.0.0" = genau diese Version. Selbst bauen: docker compose build (nutzt den Quelltext hier).
+    image: ghcr.io/yggdrasil-sh/saga:${SAGA_VERSION:-2}
     build: .
     restart: unless-stopped
     env_file: .env

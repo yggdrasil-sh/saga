@@ -27,6 +27,7 @@
   <nav>
     <a class="brand" href="#"><img src="../icon.svg" alt="">Saga</a>
     <span class="sp"></span>
+    <a class="l hide" href="#new">New in 2.0</a>
     <a class="l hide" href="#features">Features</a>
     <a class="l hide" href="#screenshots">Screenshots</a>
     <a class="l hide" href="#apps">Apps</a>
@@ -49,6 +50,22 @@
     <div class="shot"><img src="../screenshots/dashboard.png" alt="Saga dashboard" width="2880" height="1800"></div>
   </header>
 </div>
+
+<section id="new">
+  <div class="wrap">
+    <h2>New in Saga 2.0</h2>
+    <p class="sub">Your personal notebook becomes a shared place – everything optional, everything on your own server.</p>
+    <div class="grid">
+      <div class="card"><div class="ic">💬</div><h3>Sharing &amp; comments</h3><p>Share pages and databases with people or groups – view, comment or edit, with subtle comments on blocks.</p></div>
+      <div class="card"><div class="ic">🔔</div><h3>Live &amp; notifications</h3><p>Pages update by themselves, you see who else is there, and the bell collects everything that concerns you.</p></div>
+      <div class="card"><div class="ic">🔐</div><h3>Encrypted chats</h3><p>Direct, group and page chats with end-to-end encryption (libsodium) – the server only sees encrypted data.</p></div>
+      <div class="card"><div class="ic">📲</div><h3>Push to your phone</h3><p>Via Web Push, ntfy, UnifiedPush or Apple Push – never with content, with quiet hours.</p></div>
+      <div class="card"><div class="ic">✦</div><h3>AI assistant (optional)</h3><p>Ask your pages or summarize a page – with a model of your choice, e.g. Ollama on your own network. Off by default.</p></div>
+      <div class="card"><div class="ic">🌐</div><h3>Federation</h3><p>Connect Saga servers and share pages with name@server – data stays with the owner, every request is signed.</p></div>
+    </div>
+    <p style="margin-top:24px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 All changes and update notes</a></p>
+  </div>
+</section>
 
 <section id="features" class="alt">
   <div class="wrap">
@@ -140,7 +157,8 @@
     <h2>Apps for your pocket and your desk</h2>
     <p class="sub">Native apps for iPhone, iPad, Mac, Linux (GNOME) and Android – not a wrapped website.
       Pages, databases, tasks and events are shown and edited right in the app.
-      Sign in with your server address, or simply scan the QR code from "Apps &amp; devices".</p>
+      Sign in with your server address, or simply scan the QR code from "Apps &amp; devices".
+      With Saga 2.0 also chats, notifications, push, the AI assistant and federation.</p>
     <div class="phones">
       <figure><img src="../screenshots/app-ios-start.png" alt="iPhone: home with tasks and recent pages" loading="lazy" width="660" height="1434"><figcaption>iPhone: Home</figcaption></figure>
       <figure><img src="../screenshots/app-ios-dunkel-board.png" alt="iPhone: database as a board in dark mode" loading="lazy" width="660" height="1434"><figcaption>iPhone: board, dark</figcaption></figure>

@@ -791,9 +791,10 @@ the admin area; a notice also appears there when a new version is available (can
 
 | Value | Meaning |
 |---|---|
-| `1` (default) | always the latest 1.x – new features and fixes, nothing that needs manual work |
-| `1.2` | only bug fixes for 1.2 |
-| `1.2.3` | exactly this version |
+| `2` (default) | always the latest 2.x – new features and fixes, nothing that needs manual work |
+| `2.0` | only bug fixes for 2.0 |
+| `2.0.0` | exactly this version |
+| `1` | stays on the latest 1.x (1.2) – older installations still have this value in `.env` |
 | `testing` | **Testing version:** the latest from the `testing` branch, before the release. May contain bugs – only for trying things out |
 
 **Updating:**
@@ -820,13 +821,18 @@ also creates `saga-dateien-<time>.tar.gz` (without thumbnails, they are recreate
 (see above), you don't need the switch.
 
 **Testing version:** With `SAGA_VERSION=testing` you get new features as soon as they are ready – before the
-release. The version is then called something like `1.0.0-testing.ab12cd3` (shown with 🧪 at the bottom of the
-admin area). Back to the stable version: `SAGA_VERSION=1`, then `docker compose pull && docker compose up -d`.
+release. The version is then called something like `2.1.0-testing.ab12cd3` (shown with 🧪 at the bottom of the
+admin area). Back to the stable version: `SAGA_VERSION=2`, then `docker compose pull && docker compose up -d`.
 If the testing version has already changed the database, the stable version only starts once it contains that
 change too (with the next release at the latest) – or you restore the backup from before the switch.
 
-A new **major version** (2.0.0) may need manual work – the changelog will say so. To get it, set
-`SAGA_VERSION=2`.
+A new **major version** may need manual work – the changelog will say so, and you only get it once you set
+`SAGA_VERSION` to the new major version.
+
+**From 1.x to 2.0:** If your `.env` still says `SAGA_VERSION=1`, you stay on 1.2. For Saga 2.0 set
+`SAGA_VERSION=2` and update as above – the database is migrated automatically (with a backup first). Then, if you
+want them, set up the AI assistant, federation and Apple notifications (APNs) in the admin area (they are off) and
+check your reverse proxy for the live channel (section 3). Everything else is in the [changelog](../../CHANGELOG.md).
 
 **Going back to the previous version:** An older Saga will not start on a database that a newer version has
 already changed (it reports this in the log instead of damaging data). In that case, restore the backup from
@@ -906,7 +912,7 @@ with the same account also switch the oldest ones to polling.
 | `PUBLIC_HOSTS` | – | Custom domains for public pages only (comma-separated, section 9 “Publishing pages”) |
 | `PUBLIC_RATE` | `120` | Requests to public pages per IP address and minute (images: five times as many) |
 | `SESSION_HOURS` | `12` | Lifetime of a browser session (apps stay signed in) |
-| `SAGA_VERSION` | `1` | Which version `docker compose pull` fetches: `1`, `1.2` or `1.2.3` (section 11) |
+| `SAGA_VERSION` | `2` | Which version `docker compose pull` fetches: `2`, `2.0`, `2.0.0` or `testing` (section 11) |
 | `BACKUP_KEEP` | `10` | How many automatic/manual backups are kept in `/data/backups` |
 | `SAGA_UPDATE_CHECK` | `1` | `0` = never ask GitHub for new versions (can also be turned off in the admin area) |
 | `ADMIN_SESSION_HOURS` | `4` | Lifetime of a session in the admin area |
