@@ -2539,7 +2539,7 @@
         tabs.appendChild(b);
       });
       var pl = el('button', 'db-tab db-tab-add', '+'); pl.type = 'button'; pl.title = T('Ansicht hinzufügen'); pl.setAttribute('aria-label', T('Ansicht hinzufügen'));
-      pl.addEventListener('click', function () { addView(pl); }); if (!viewsLocked()) tabs.appendChild(pl);
+      pl.addEventListener('click', function () { addView(pl); }); if (!viewsLocked() && !ro()) tabs.appendChild(pl);   // Lesen/Kommentieren: wuerde nicht gespeichert (BUG-093)
       bar.appendChild(tabs);
       var shown = filterRows(DB.rows).length;
       bar.appendChild(el('span', 'db-count', shown !== DB.rows.length ? T('{n} von {total} Einträgen', { n: shown, total: DB.rows.length }) : DB.rows.length === 1 ? T('1 Eintrag') : T('{n} Einträge', { n: shown })));
@@ -2872,6 +2872,7 @@
     var b = $('pg-icon'); b.textContent = '';
     if (isImg(icon)) b.appendChild(icoNode(icon, '', 'page-icon-img')); else b.textContent = icon || '';
     b.classList.toggle('empty', !icon);
+    b.hidden = !icon && (readOnly() || (!!S.cur && remoteId(S.cur.id)));   // "+ Icon" nur, wenn man es setzen darf (BUG-093)
   }
   function uploadImage(file) {
     var fd = new FormData(); fd.append('image', file);
