@@ -845,9 +845,9 @@
       m.appendChild(HK.menuItem(T('Unterseite hinzufügen'), function () { newPage(c.id); }, { icon: '＋' }));
       m.appendChild(HK.menuItem(T('Verschieben nach'), null, { icon: '↪', subSearch: T('Seite suchen …'), sub: function (sm) {
         var blocked = descendants(c.id).concat([c.id]);
-        if (c.parent_id) sm.appendChild(HK.menuItem(T('Oberste Ebene'), function () { movePageTo(c.id, null, children(null).length); }, { icon: '⌂' }));
+        if (c.parent_id) sm.appendChild(HK.menuItem(T('Oberste Ebene'), function () { moveFromMenu(c.id, null); }, { icon: '⌂' }));
         S.pages.filter(function (p) { return blocked.indexOf(p.id) < 0 && p.id !== c.parent_id && p.kind !== 'database'; }).forEach(function (p) {
-          sm.appendChild(HK.menuItem(label(p), function () { movePageTo(c.id, p.id, children(p.id).length); },
+          sm.appendChild(HK.menuItem(label(p), function () { moveFromMenu(c.id, p.id); },
             { icon: ti(p.icon) || '📄', hint: ancestors(p.id).map(label).join(' / ') }));
         });
       } }));
@@ -3468,6 +3468,19 @@
     return y < 0.28 ? 'before' : y > 0.72 ? 'after' : 'inside';
   }
   function clearDrop() { [].forEach.call(document.querySelectorAll('.drop-before, .drop-after, .drop-inside, .drop-root'), function (x) { x.classList.remove('drop-before', 'drop-after', 'drop-inside', 'drop-root'); }); }
+  // "Verschieben nach" im Seitenmenue: Baum und Pfad sofort umstellen (der Server antwortet erst nach ~1 s), danach
+  // Rueckmeldung mit dem Ziel (BUG-096)
+  function moveFromMenu(id, parentId) {
+    var p = byId(id), idx = children(parentId).length, prev = p ? p.parent_id : null;
+    if (S.cur && S.cur.id === id) S.cur.parent_id = parentId;
+    if (p) { p.parent_id = parentId; if (parentId) { S.open[parentId] = true; saveOpen(); } renderTree(); renderCrumbs(); }
+    return api('POST', '/api/notes/' + id + '/move', { parent_id: parentId, index: idx })
+      .then(function () {
+        HK.toast(parentId ? T('Verschoben nach „{name}“', { name: label(byId(parentId) || {}) }) : T('Auf die oberste Ebene verschoben'));
+        return loadList();
+      })
+      .catch(function (err) { if (p) { p.parent_id = prev; renderTree(); renderCrumbs(); } HK.toast(T('Nicht verschoben: {err}', { err: err.message })); });
+  }
   function movePageTo(id, parentId, index) {
     return api('POST', '/api/notes/' + id + '/move', { parent_id: parentId, index: index })
       .then(function () { if (parentId) { S.open[parentId] = true; saveOpen(); } return loadList(); })
