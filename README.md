@@ -64,6 +64,8 @@ private space – no cloud, no subscription, on your own server.
   see the content
 - **Accounts:** local users, registration on/off, **LDAP/Active Directory** and **SSO/OIDC**
   (Keycloak, Authentik, Authelia, Zitadel, Entra ID …)
+- **Passkeys and two-factor sign-in:** passkeys (also without a password), authenticator app (TOTP) and
+  recovery codes; admins can require 2FA for admins or everyone
 - **Admin area on a separate port** for users, groups, services and sign-in
 - **English, German and Spanish:** every user can choose their language in their settings
 - **[Apps](https://github.com/yggdrasil-sh/saga-apps)** (iOS/iPadOS/macOS, Linux/GTK, Android) using the same

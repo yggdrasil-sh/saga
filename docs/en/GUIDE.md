@@ -81,6 +81,9 @@ docker compose exec saga python run.py admin-passwort          # account "admin"
 docker compose exec saga python run.py admin-passwort anna     # another account
 ```
 
+If the account has a second factor (passkey, authenticator app), this emergency command removes it as well –
+afterwards you sign in with the new password only and set up the second factor again.
+
 ![Sign-in page](../screenshots/login.png)
 
 ## 3. HTTPS with a reverse proxy
@@ -199,6 +202,12 @@ Under **Users** you create accounts, set passwords, and assign groups and admin 
   off, create them here in advance with the account type LDAP or SSO.
 - **Lock** immediately ends all sessions, app sign-ins and app keys of the account.
 - **Sign out everywhere** helps when a device has been lost.
+- **Reset 2FA** (card "Second factor"): removes an account's passkeys, authenticator app and recovery codes – only
+  if the person has lost everything and you are sure it is them. Who reset it and when is shown in the log and on
+  the user page.
+- **Require 2FA** (General → "Second factor"): nobody (default), admins only, or all local and LDAP accounts.
+  Anyone affected without a second factor is taken to the setup after signing in – nobody is locked out, and
+  signed-in apps stay signed in. Details in section 9 "Passkeys and two-factor sign-in".
 - **Delete** removes the account **including all its data** (pages, tasks, files, bookmarks, connections).
   Better to lock external accounts: otherwise a new, empty account would be created on the next sign-in.
 
@@ -720,6 +729,51 @@ network from being queried through Saga. Saga connects directly to the checked a
 
 ![Settings](../screenshots/einstellungen.png)
 
+### Passkeys and two-factor sign-in
+
+Under **Settings → Account → Sign-in & security** you protect a local or LDAP account beyond its password (SSO
+accounts do this at their sign-in service, see below):
+
+- **Passkeys:** your browser or phone creates a key that lives in the device's password manager (iCloud Keychain,
+  Google Password Manager, 1Password, Bitwarden …) or on a security key (YubiKey). With it you sign in **without
+  any password** – "Sign in with a passkey" on the sign-in page, or straight from the suggestions under the user
+  name – and confirm with fingerprint, face or device PIN. When you sign in with your password, the passkey acts
+  as the second factor. You can add several passkeys (e.g. phone and laptop); each has a name, "created" and
+  "last used".
+- **Authenticator app** (TOTP: Aegis, 2FAS, Google/Microsoft Authenticator …): scan the QR code or type in the
+  key, then enter a code. Saga asks for the 6-digit code after the password; every code works only once.
+- **Recovery codes:** with your first factor you get 10 one-time codes – print them or keep them in your password
+  manager; Saga shows them only once. They get you in when your phone or passkey is missing. "Generate new codes"
+  invalidates the old ones.
+
+**Signing in:** correct password → Saga asks for the second factor (passkey, code or recovery code). This step is
+valid for 5 minutes and only in this browser; after 5 wrong codes there is a 15-minute pause. There is deliberately
+no "trust this browser" option.
+
+**Confirm before changes:** adding/removing passkeys, changing the authenticator app or generating new codes is
+possible within 5 minutes of signing in – otherwise Saga first asks for your password, a code or a passkey. The
+same applies to "Start chats over": a passkey or code now works instead of the password.
+
+**Apps:** the apps sign in through Saga's sign-in page in the system browser window – the second step appears
+there as well, and passkeys work in it on iPhone, iPad, Mac and Android. Apps that are already signed in stay
+signed in, even when you turn on 2FA or the admin requires it. Pairing via QR code needs no second step (it starts
+from a session that is already signed in).
+
+**Requirement for passkeys:** `BASE_URL` with a host name and `https://` (e.g. `https://saga.example.org`; only
+`http://localhost` works without https). If Saga is opened via an address other than `BASE_URL`, Saga explains
+that instead of failing silently. Passkeys belong to the domain: if `BASE_URL` later moves to another domain,
+existing passkeys stop working (signing in with password + code/recovery code still works). To make passkeys valid
+for several subdomains, set `PASSKEY_RP_ID` to the common domain. In the **admin area** passkeys only work if
+`ADMIN_URL` is on the same domain – otherwise use a code or recovery code there.
+
+**SSO (OIDC):** Saga does not offer its own 2FA to SSO accounts – the sign-in service (e.g. Keycloak) asks for the
+second factor. With the admin switch "Require a second factor for SSO", Saga only accepts SSO sign-ins if the
+provider reports one (`amr` with `mfa`, `otp`, `hwk` …) or one of the configured `acr` values (which Saga also
+requests from the provider).
+
+**Lost your phone?** Sign in with a recovery code and set up the factor again. Without codes, the admin resets
+the second factor (section 5).
+
 ### Language
 
 Saga speaks English, German and Spanish. The language you see is decided in this order:
@@ -861,6 +915,11 @@ sets cookies over HTTPS.
 After 8 wrong passwords per account (30 per address) within 15 minutes, Saga makes you wait. Behind a reverse
 proxy, set `TRUSTED_PROXIES` – otherwise all visitors share the proxy's address.
 
+**Passkey: "The browser reports the address …, but Saga is set up for …".**
+Saga was opened via an address other than `BASE_URL` (e.g. an IP address or an old name). Passkeys are bound to
+the address – open Saga via `BASE_URL` or correct `BASE_URL`. "Passkeys need an address with a host name":
+`BASE_URL` contains an IP address or no `https://`.
+
 **Service icons are missing.**
 Saga downloads them once from `cdn.jsdelivr.net` (selfh.st) and stores them. Without internet access, the first
 letter is shown. With `ICON_CDN=` (empty), Saga fetches nothing from the internet at all.
@@ -912,6 +971,7 @@ with the same account also switch the oldest ones to polling.
 | `PUBLIC_HOSTS` | – | Custom domains for public pages only (comma-separated, section 9 “Publishing pages”) |
 | `PUBLIC_RATE` | `120` | Requests to public pages per IP address and minute (images: five times as many) |
 | `SESSION_HOURS` | `12` | Lifetime of a browser session (apps stay signed in) |
+| `PASSKEY_RP_ID` | host name from `BASE_URL` | Domain of the passkeys; only set it if they should be valid for a parent domain (e.g. `example.org`) |
 | `SAGA_VERSION` | `2` | Which version `docker compose pull` fetches: `2`, `2.0`, `2.0.0` or `testing` (section 11) |
 | `BACKUP_KEEP` | `10` | How many automatic/manual backups are kept in `/data/backups` |
 | `SAGA_UPDATE_CHECK` | `1` | `0` = never ask GitHub for new versions (can also be turned off in the admin area) |

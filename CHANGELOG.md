@@ -16,6 +16,29 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu
+- **Passkeys und Zwei-Faktor-Anmeldung** (lokale und LDAP-Konten, Einstellungen → Konto → „Anmeldung &
+  Sicherheit“): **Passkeys** (WebAuthn/FIDO2, geprüft mit py_webauthn) für die Anmeldung **ohne Passwort**
+  („Mit Passkey anmelden“, Autofill beim Benutzernamen) und als zweiter Faktor nach dem Passwort; mehrere je Konto
+  mit Name, „angelegt“, „zuletzt benutzt“. **Authenticator-App** (TOTP, 6 Ziffern/30 s, ±1 Schritt, jeder Code nur
+  einmal; QR-Code als SVG im Server erzeugt, Geheimnis verschlüsselt gespeichert). **10 Wiederherstellungscodes**
+  (nur als Hash gespeichert, neu erzeugbar). Nach dem Passwort ein kurzlebiger Zwischenschritt (5 Minuten, an das
+  Sitzungs-Cookie gebunden, 5 Fehlversuche je 15 Minuten); erst danach gibt es eine Sitzung. Änderungen an den
+  Faktoren nur mit frischer Anmeldung bzw. Bestätigung (Passwort, Code oder Passkey).
+  RP-ID/Origin aus `BASE_URL` (optional `PASSKEY_RP_ID`); passt die Adresse nicht (IP-Adresse, kein https, anderer
+  Rechnername), erklärt Saga das statt still zu scheitern.
+- **Admin:** „2FA verlangen für niemanden / Admins / alle“ – Betroffene ohne zweiten Faktor werden nach der
+  Anmeldung zur Einrichtung geführt (`/security`), nicht ausgesperrt. „2FA zurücksetzen“ je Konto (Protokoll im Log
+  und auf der Benutzerseite). Der Admin-Bereich verlangt bei Konten mit 2FA ebenfalls den zweiten Faktor (Passkey,
+  wenn `ADMIN_URL` unter derselben Domain läuft, sonst Code). Optional „Bei SSO einen zweiten Faktor verlangen“
+  (prüft `amr`/`acr` des Anbieters, fragt erlaubte `acr`-Werte an). `run.py admin-passwort` entfernt im Notfall
+  auch den zweiten Faktor.
+- **Apps:** Die Anmeldung über die Anmeldeseite (`/app/login` → `/app/handoff`) zeigt den zweiten Schritt; bestehende
+  Geräte-Anmeldungen und Sitzungen bleiben beim Update und beim Einschalten der Richtlinie gültig. Chat „Neu
+  beginnen“: `/api/chat/reauth` nimmt neben `password` auch `code` (Authenticator-App) und `passkey`
+  (Optionen über `POST /api/chat/reauth/options`); `/api/chat/me` meldet `reauth_methods`. Neue Endpunkte:
+  `/login/2fa`, `/login/passkey[/options]`, `/api/account/security[/options|/confirm]`, `/api/account/passkeys`,
+  `/api/account/totp[/setup|/confirm]`, `/api/account/recovery`. Neue Tabellen (`mfa_*`) entstehen beim Start
+  automatisch. Neue Abhängigkeit: `webauthn==3.0.1`.
 - **Immich im Chat (Web):** Beim Anhängen gibt es „Aus Immich …“ (nur wenn Immich eingerichtet ist) mit derselben
   Auswahl wie auf Seiten. Das Bild wird über den Immich-Durchgriff des Servers geholt (große Vorschau, GIFs im Original;
   nichts wird dabei gespeichert) und dann wie jeder Anhang Ende-zu-Ende verschlüsselt hochgeladen. API:

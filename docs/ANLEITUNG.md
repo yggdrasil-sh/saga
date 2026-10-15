@@ -81,6 +81,9 @@ docker compose exec saga python run.py admin-passwort          # Konto "admin"
 docker compose exec saga python run.py admin-passwort anna     # anderes Konto
 ```
 
+Hat das Konto einen zweiten Faktor (Passkey, Authenticator-App), entfernt dieser Notfall-Befehl ihn ebenfalls –
+danach meldet man sich nur mit dem neuen Passwort an und richtet den zweiten Faktor neu ein.
+
 ![Anmeldeseite](screenshots/login.png)
 
 ## 3. HTTPS mit Reverse Proxy
@@ -200,6 +203,13 @@ Unter **Benutzer** legst du Konten an, setzt Passwörter, vergibst Gruppen und A
   anlegen“ aus, legst du sie hier vorab mit der Kontoart LDAP bzw. SSO an.
 - **Sperren** beendet sofort alle Sitzungen, App-Anmeldungen und App-Schlüssel des Kontos.
 - **Überall abmelden** hilft bei einem verlorenen Gerät.
+- **2FA zurücksetzen** (Karte „Zweiter Faktor“): entfernt Passkeys, Authenticator-App und Wiederherstellungscodes
+  eines Kontos – nur, wenn die Person alles verloren hat und du sicher bist, dass sie es ist. Wer wann
+  zurückgesetzt hat, steht im Log und auf der Benutzerseite.
+- **2FA verlangen** (Allgemein → „Zweiter Faktor“): niemanden (Standard), nur Admins oder alle lokalen und
+  LDAP-Konten. Wer betroffen ist und noch keinen zweiten Faktor hat, wird nach der Anmeldung zur Einrichtung
+  geführt – ausgesperrt wird niemand, angemeldete Apps bleiben angemeldet. Details in Abschnitt 9
+  „Passkeys und Zwei-Faktor-Anmeldung“.
 - **Löschen** entfernt das Konto **mit allen Daten** (Seiten, Aufgaben, Dateien, Lesezeichen, Verbindungen).
   Externe Konten lieber sperren: Bei der nächsten Anmeldung würde sonst ein neues, leeres Konto entstehen.
 
@@ -740,6 +750,53 @@ Ausgangs-Proxy (`HTTPS_PROXY`/`HTTP_PROXY`) wird für Kalender und Immich **nich
 
 ![Einstellungen](screenshots/einstellungen.png)
 
+### Passkeys und Zwei-Faktor-Anmeldung
+
+Unter **Einstellungen → Konto → Anmeldung & Sicherheit** schützt du ein lokales oder LDAP-Konto zusätzlich zum
+Passwort (SSO-Konten machen das beim Anmeldedienst, siehe unten):
+
+- **Passkeys:** Der Browser bzw. das Handy legt einen Schlüssel an, der im Passwort-Manager des Geräts liegt
+  (iCloud-Schlüsselbund, Google Passwortmanager, 1Password, Bitwarden …) oder auf einem Sicherheitsschlüssel
+  (YubiKey). Damit meldest du dich **ganz ohne Passwort** an – auf der Anmeldeseite „Mit Passkey anmelden“ oder
+  direkt aus der Vorschlagsliste beim Benutzernamen – und Fingerabdruck, Gesicht oder Geräte-PIN bestätigen.
+  Meldest du dich mit Passwort an, dient der Passkey als zweiter Faktor. Mehrere Passkeys je Konto sind möglich
+  (z. B. Handy und Laptop); jeder hat einen Namen, „angelegt“ und „zuletzt benutzt“.
+- **Authenticator-App** (TOTP: Aegis, 2FAS, Google/Microsoft Authenticator …): QR-Code scannen oder den
+  Schlüssel abtippen, dann einen Code eingeben. Saga fragt den 6-stelligen Code nach dem Passwort ab; jeder Code
+  gilt nur einmal.
+- **Wiederherstellungscodes:** Mit dem ersten Faktor bekommst du 10 Einmal-Codes – ausdrucken oder im
+  Passwort-Manager speichern, Saga zeigt sie nur einmal. Damit kommst du hinein, wenn Handy oder Passkey fehlen.
+  „Neue Codes erzeugen“ macht die alten ungültig.
+
+**Anmeldung:** Passwort richtig → Saga fragt nach dem zweiten Faktor (Passkey, Code oder Wiederherstellungscode).
+Dieser Zwischenschritt gilt 5 Minuten und nur in diesem Browser; nach 5 falschen Codes ist für 15 Minuten Pause.
+Einen „Diesem Browser vertrauen“-Haken gibt es bewusst nicht.
+
+**Bestätigen vor Änderungen:** Passkeys hinzufügen/löschen, die Authenticator-App ändern oder neue Codes erzeugen
+geht nur innerhalb von 5 Minuten nach der Anmeldung – sonst fragt Saga vorher nach Passwort, Code oder Passkey.
+Dasselbe gilt für „Chats neu beginnen“: dort reichen jetzt auch Passkey oder Code statt des Passworts.
+
+**Apps:** Die Anmeldung in den Apps läuft über die Anmeldeseite von Saga im System-Browserfenster – dort erscheint
+der zweite Schritt genauso, Passkeys funktionieren darin auf iPhone, iPad, Mac und Android. Bereits angemeldete
+Apps bleiben angemeldet, auch wenn du 2FA einschaltest oder der Admin sie verlangt. Die QR-Code-Kopplung braucht
+keinen zweiten Schritt (sie startet in einer schon angemeldeten Sitzung).
+
+**Voraussetzung für Passkeys:** `BASE_URL` mit Rechnernamen und `https://` (z. B. `https://saga.example.org`;
+nur `http://localhost` geht ohne https). Ruft man Saga über eine andere Adresse auf als `BASE_URL`, erklärt Saga
+das, statt still zu scheitern. Passkeys gehören zur Domain: Wird `BASE_URL` später auf eine andere Domain
+umgestellt, funktionieren bestehende Passkeys nicht mehr (Anmeldung mit Passwort + Code/Wiederherstellungscode
+geht weiter). Soll ein Passkey für mehrere Subdomains gelten, `PASSKEY_RP_ID` auf die gemeinsame Domain setzen.
+Im **Admin-Bereich** gehen Passkeys nur, wenn `ADMIN_URL` unter derselben Domain läuft – sonst dort Code oder
+Wiederherstellungscode verwenden.
+
+**SSO (OIDC):** Saga bietet SSO-Konten keine eigene 2FA an – der Anmeldedienst (z. B. Keycloak) fragt den
+zweiten Faktor ab. Mit dem Admin-Schalter „Bei SSO einen zweiten Faktor verlangen“ lässt Saga SSO-Anmeldungen
+nur zu, wenn der Anbieter einen meldet (`amr` mit `mfa`, `otp`, `hwk` …) oder einen der eingetragenen `acr`-Werte
+(die Saga beim Anbieter auch anfragt).
+
+**Handy verloren:** mit einem Wiederherstellungscode anmelden und den Faktor neu einrichten. Ohne Codes setzt der
+Admin den zweiten Faktor zurück (Abschnitt 5).
+
 ### Sprache
 
 Saga spricht Deutsch, Englisch und Spanisch. Welche Sprache du siehst, entscheidet sich in dieser Reihenfolge:
@@ -881,6 +938,11 @@ Cookies nur über HTTPS.
 Nach 8 falschen Passwörtern pro Konto (30 pro Adresse) in 15 Minuten wartet Saga. Hinter einem Reverse Proxy
 `TRUSTED_PROXIES` setzen, sonst teilen sich alle Besucher die Adresse des Proxys.
 
+**Passkey: „Der Browser meldet die Adresse …, Saga ist aber für … eingerichtet“.**
+Saga wurde über eine andere Adresse aufgerufen als `BASE_URL` (z. B. per IP-Adresse oder altem Namen). Passkeys
+sind an die Adresse gebunden – Saga über `BASE_URL` öffnen oder `BASE_URL` korrigieren. „Passkeys brauchen eine
+Adresse mit Rechnernamen“: `BASE_URL` enthält eine IP-Adresse oder kein `https://`.
+
 **Dienst-Symbole fehlen.**
 Saga lädt sie einmal von `cdn.jsdelivr.net` (selfh.st) und speichert sie. Ohne Internet erscheint der
 Anfangsbuchstabe. Mit `ICON_CDN=` (leer) holt Saga gar nichts aus dem Internet.
@@ -932,6 +994,7 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `PUBLIC_HOSTS` | – | Eigene Domains nur für öffentliche Seiten (Komma-getrennt, Abschnitt 9 „Seiten veröffentlichen“) |
 | `PUBLIC_RATE` | `120` | Aufrufe öffentlicher Seiten je IP-Adresse und Minute (Bilder: das Fünffache) |
 | `SESSION_HOURS` | `12` | Gültigkeit einer Browser-Sitzung (Apps bleiben angemeldet) |
+| `PASSKEY_RP_ID` | Rechnername aus `BASE_URL` | Domain der Passkeys; nur setzen, wenn sie für eine übergeordnete Domain gelten sollen (z. B. `example.org`) |
 | `SAGA_VERSION` | `2` | Welche Version `docker compose pull` holt: `2`, `2.0`, `2.0.0` oder `testing` (Abschnitt 11) |
 | `BACKUP_KEEP` | `10` | So viele automatische/manuelle Backups bleiben in `/data/backups` |
 | `SAGA_UPDATE_CHECK` | `1` | `0` = nie bei GitHub nach neuen Versionen fragen (auch im Admin-Bereich abschaltbar) |

@@ -65,6 +65,8 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
   ni los administradores ven el contenido
 - **Cuentas:** usuarios locales, registro activable, **LDAP/Active Directory** y **SSO/OIDC**
   (Keycloak, Authentik, Authelia, Zitadel, Entra ID…)
+- **Llaves de acceso e inicio de sesión en dos pasos:** llaves de acceso (también sin contraseña), app de
+  autenticación (TOTP) y códigos de recuperación; el administrador puede exigir 2FA a administradores o a todos
 - **Área de administración en un puerto propio** para usuarios, grupos, servicios e inicio de sesión
 - **Español, inglés y alemán:** cada usuario puede elegir su idioma en sus ajustes
 - **[Apps](https://github.com/yggdrasil-sh/saga-apps/blob/main/README.es.md)** (iOS/iPadOS/macOS, Linux/GTK, Android) con la misma

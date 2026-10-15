@@ -82,6 +82,9 @@ docker compose exec saga python run.py admin-passwort          # cuenta "admin"
 docker compose exec saga python run.py admin-passwort ana      # otra cuenta
 ```
 
+Si la cuenta tiene un segundo factor (llave de acceso, app de autenticación), este comando de emergencia también
+lo elimina: después se inicia sesión solo con la contraseña nueva y se vuelve a configurar el segundo factor.
+
 ![Página de inicio de sesión](../screenshots/login.png)
 
 ## 3. HTTPS con proxy inverso
@@ -203,6 +206,13 @@ En **Usuarios** creas cuentas, pones contraseñas y asignas grupos y permisos de
 - **Bloquear** cierra al instante todas las sesiones, los inicios de sesión de apps y las claves de app de la
   cuenta.
 - **Cerrar sesión en todas partes** ayuda si se ha perdido un dispositivo.
+- **Restablecer 2FA** (tarjeta «Segundo factor»): elimina las llaves de acceso, la app de autenticación y los
+  códigos de recuperación de una cuenta; solo si la persona lo ha perdido todo y estás seguro de que es ella.
+  Quién lo restableció y cuándo aparece en el log y en la página del usuario.
+- **Exigir 2FA** (General → «Segundo factor»): a nadie (predeterminado), solo a administradores o a todas las
+  cuentas locales y LDAP. Quien esté afectado y aún no tenga segundo factor irá a la configuración tras iniciar
+  sesión: nadie queda bloqueado y las apps conectadas siguen conectadas. Detalles en la sección 9 «Llaves de
+  acceso e inicio de sesión en dos pasos».
 - **Eliminar** borra la cuenta **con todos sus datos** (páginas, tareas, archivos, marcadores, conexiones).
   Mejor bloquear las cuentas externas: si no, en el siguiente inicio de sesión se crearía una cuenta nueva y vacía.
 
@@ -749,6 +759,54 @@ calendarios e Immich **no** se usa un proxy de salida (`HTTPS_PROXY`/`HTTP_PROXY
 
 ![Ajustes](../screenshots/einstellungen.png)
 
+### Llaves de acceso e inicio de sesión en dos pasos
+
+En **Ajustes → Cuenta → Inicio de sesión y seguridad** proteges una cuenta local o LDAP además de con la contraseña
+(las cuentas SSO lo hacen en su servicio de inicio de sesión, ver abajo):
+
+- **Llaves de acceso (passkeys):** el navegador o el móvil crea una clave que se guarda en el gestor de
+  contraseñas del dispositivo (Llavero de iCloud, Gestor de contraseñas de Google, 1Password, Bitwarden …) o en una
+  llave de seguridad (YubiKey). Con ella inicias sesión **sin contraseña**: «Iniciar sesión con llave de acceso» en
+  la página de inicio de sesión o directamente desde las sugerencias del nombre de usuario, y confirmas con huella,
+  cara o PIN del dispositivo. Si inicias sesión con contraseña, la llave de acceso sirve de segundo factor. Puedes
+  añadir varias (p. ej. móvil y portátil); cada una tiene nombre, «creada» y «último uso».
+- **App de autenticación** (TOTP: Aegis, 2FAS, Google/Microsoft Authenticator …): escanea el código QR o escribe
+  la clave y luego introduce un código. Saga pide el código de 6 cifras tras la contraseña; cada código sirve una
+  sola vez.
+- **Códigos de recuperación:** con el primer factor recibes 10 códigos de un solo uso; imprímelos o guárdalos en
+  el gestor de contraseñas, Saga solo los muestra una vez. Te permiten entrar si te faltan el móvil o la llave de
+  acceso. «Generar códigos nuevos» invalida los anteriores.
+
+**Inicio de sesión:** contraseña correcta → Saga pide el segundo factor (llave de acceso, código o código de
+recuperación). Este paso vale 5 minutos y solo en este navegador; tras 5 códigos erróneos hay una pausa de 15
+minutos. A propósito no existe la opción «confiar en este navegador».
+
+**Confirmar antes de cambios:** añadir o eliminar llaves de acceso, cambiar la app de autenticación o generar
+códigos nuevos es posible durante 5 minutos tras iniciar sesión; si no, Saga pide antes la contraseña, un código o
+una llave de acceso. Lo mismo vale para «Empezar de nuevo» en los chats: ahora también sirven una llave de acceso
+o un código en lugar de la contraseña.
+
+**Apps:** las apps inician sesión a través de la página de inicio de sesión de Saga en la ventana del navegador
+del sistema; allí aparece también el segundo paso, y las llaves de acceso funcionan en iPhone, iPad, Mac y Android.
+Las apps ya conectadas siguen conectadas aunque actives el 2FA o el administrador lo exija. El emparejamiento por
+código QR no necesita segundo paso (parte de una sesión ya iniciada).
+
+**Requisito para las llaves de acceso:** `BASE_URL` con nombre de host y `https://` (p. ej.
+`https://saga.example.org`; solo `http://localhost` funciona sin https). Si Saga se abre con otra dirección que
+`BASE_URL`, Saga lo explica en lugar de fallar en silencio. Las llaves de acceso pertenecen al dominio: si
+`BASE_URL` pasa más tarde a otro dominio, las existentes dejan de funcionar (iniciar sesión con contraseña +
+código/código de recuperación sigue funcionando). Para que valgan en varios subdominios, pon `PASSKEY_RP_ID` en el
+dominio común. En el **área de administración** solo funcionan si `ADMIN_URL` está en el mismo dominio; si no, usa
+allí un código o un código de recuperación.
+
+**SSO (OIDC):** Saga no ofrece su propio 2FA a las cuentas SSO: el servicio de inicio de sesión (p. ej. Keycloak)
+pide el segundo factor. Con el interruptor de administración «Exigir un segundo factor con SSO», Saga solo acepta
+inicios de sesión SSO si el proveedor indica uno (`amr` con `mfa`, `otp`, `hwk` …) o uno de los valores `acr`
+configurados (que Saga también solicita al proveedor).
+
+**¿Perdiste el móvil?** Inicia sesión con un código de recuperación y vuelve a configurar el factor. Sin códigos,
+el administrador restablece el segundo factor (sección 5).
+
 ### Idioma
 
 Saga habla español, inglés y alemán. El idioma que ves se decide en este orden:
@@ -896,6 +954,11 @@ Saga solo envía cookies por HTTPS.
 Tras 8 contraseñas incorrectas por cuenta (30 por dirección) en 15 minutos, Saga te hace esperar. Detrás de un
 proxy inverso, configura `TRUSTED_PROXIES`; si no, todos los visitantes comparten la dirección del proxy.
 
+**Llave de acceso: «El navegador indica la dirección …, pero Saga está configurado para …».**
+Saga se abrió con otra dirección que `BASE_URL` (p. ej. una IP o un nombre antiguo). Las llaves de acceso están
+ligadas a la dirección: abre Saga a través de `BASE_URL` o corrige `BASE_URL`. «Las llaves de acceso necesitan una
+dirección con nombre de host»: `BASE_URL` contiene una IP o no empieza por `https://`.
+
 **Faltan los iconos de los servicios.**
 Saga los descarga una vez de `cdn.jsdelivr.net` (selfh.st) y los guarda. Sin internet aparece la inicial. Con
 `ICON_CDN=` (vacío), Saga no descarga nada de internet.
@@ -947,6 +1010,7 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `PUBLIC_HOSTS` | – | Dominios propios solo para páginas públicas (separados por comas, sección 9 «Publicar páginas») |
 | `PUBLIC_RATE` | `120` | Solicitudes a páginas públicas por dirección IP y minuto (imágenes: cinco veces más) |
 | `SESSION_HOURS` | `12` | Duración de una sesión del navegador (las apps siguen con la sesión iniciada) |
+| `PASSKEY_RP_ID` | nombre de host de `BASE_URL` | Dominio de las llaves de acceso; solo si deben valer para un dominio superior (p. ej. `example.org`) |
 | `SAGA_VERSION` | `2` | Qué versión descarga `docker compose pull`: `2`, `2.0`, `2.0.0` o `testing` (sección 11) |
 | `BACKUP_KEEP` | `10` | Cuántas copias automáticas/manuales se conservan en `/data/backups` |
 | `SAGA_UPDATE_CHECK` | `1` | `0` = no preguntar nunca a GitHub por versiones nuevas (también desactivable en el área de administración) |
