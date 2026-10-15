@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 import auth
 from db import connect as _db
 from fastapi import APIRouter
-from saga import chat, i18n, publish
+from saga import chat, i18n, mfa, publish
 from saga.sharing import unread_count
 from saga.core import (ADMIN_URL, ASSET_V, CACHE_TTL, CA_FILE, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user,
                        remember_ui_lang, std_name, t, title, tmpl, user_info)
@@ -155,6 +155,8 @@ def notes_page(request: Request):
     uid = _session_user(request)
     if not uid:
         return RedirectResponse("/login?next=/notes", status_code=303)
+    if (go := mfa.setup_redirect(request, uid)) is not None:     # Richtlinie: erst den zweiten Faktor einrichten
+        return go
     # ?embed=1: schlanke Ansicht fuer das Peek-Fenster - NUR diese Variante darf eingebettet werden,
     # und nur von Saga selbst (frame-ancestors 'self'); alles andere bleibt 'none'.
     embed = request.query_params.get("embed") == "1"
@@ -176,6 +178,8 @@ def index(request: Request):
     if not uid:
         # Besucher ohne Anmeldung: vom Admin gewaehlte oeffentliche Startseite (sonst wie bisher zur Anmeldung)
         return publish.home_response(request) or RedirectResponse("/login", status_code=303)
+    if (go := mfa.setup_redirect(request, uid)) is not None:
+        return go
     info = user_info(uid)
     remember_ui_lang(uid, request)
     mine = visible_tiles(uid, info)

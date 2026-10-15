@@ -266,9 +266,65 @@ async function chatImmich(browser) {
   await chatDevicesGone(p); await p.context().close();
 }
 
+// 2.1 Passkeys im echten Browser: virtueller Authenticator (CDP WebAuthn.addVirtualAuthenticator) - anlegen auf
+// /security (Wiederherstellungscodes), Anmeldung ohne Passwort, Passwort + Passkey als zweiter Faktor, wieder loeschen.
+// Eigenes Wegwerf-Konto SAGA_PK_USER/SAGA_PK_PASS (bekommt kurz einen Passkey). Passkeys brauchen einen sicheren
+// Kontext: SAGA_BASE mit https:// oder http://localhost (und BASE_URL des Stacks genau so) - sonst uebersprungen.
+async function passkeys(browser) {
+  const E = process.env, U = E.SAGA_PK_USER, PW = E.SAGA_PK_PASS;
+  const secure = /^https:\/\//.test(BASE) || /^http:\/\/localhost(:\d+)?$/.test(BASE.replace(/\/$/, ''));
+  if (!U || !PW || !secure) { console.log('--   Passkeys: SAGA_PK_USER/SAGA_PK_PASS fehlen oder SAGA_BASE nicht https/localhost - uebersprungen'); return; }
+  const ctx = await browser.newContext({ viewport: { width: 1200, height: 860 }, locale: 'de-DE' });
+  const p = await ctx.newPage();
+  const cdp = await ctx.newCDPSession(p);
+  await cdp.send('WebAuthn.enable');
+  await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true,
+    hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
+  async function pwLogin() {
+    await p.goto(BASE + '/login');
+    await p.fill('input[name=username]', U); await p.fill('input[name=password]', PW);
+    await Promise.all([p.waitForNavigation().catch(() => {}), p.press('input[name=password]', 'Enter')]);
+  }
+  const acct = () => p.evaluate(() => fetch('/api/account/security', { headers: { 'X-Saga': '1' } }).then(r => r.ok ? r.json() : null));
+  await pwLogin();
+  ok('2.1 Passkey: Konto ohne 2FA -> Dashboard', !/\/login/.test(p.url()), p.url());
+  await p.goto(BASE + '/security'); await p.waitForSelector('#hk-security .mfa-block');
+  await p.fill('#hk-security input[aria-label="Name des Passkeys"]', 'Browser-Test');
+  await p.click('#hk-security .mfa-block button:has-text("Passkey hinzufügen")');
+  await p.waitForSelector('.mfa-codes li', { timeout: 15000 }).catch(() => {});
+  ok('2.1 Passkey: angelegt, 10 Wiederherstellungscodes angezeigt', (await p.$$('.mfa-codes li')).length === 10,
+    await p.textContent('#hk-security').catch(() => ''));
+  await p.click('.mfa-codes-box button:has-text("Ich habe sie gespeichert")');
+  ok('2.1 Passkey: in der Liste mit Namen', /Browser-Test/.test(await p.textContent('#hk-security')));
+  await p.goto(BASE + '/logout'); await p.goto(BASE + '/login');
+  // Autofill (conditional mediation): der virtuelle Authenticator bestaetigt sofort -> Anmeldung ohne Klick.
+  // Sonst (Browser ohne Autofill) ueber den Knopf "Mit Passkey anmelden".
+  const auto = await p.waitForURL(u => !/\/login/.test(String(u)), { timeout: 6000 }).then(() => true, () => false);
+  if (!auto) await Promise.all([p.waitForURL(u => !/\/login/.test(String(u)), { timeout: 15000 }).catch(() => {}), p.click('#pk-go')]);
+  ok('2.1 Passkey: Anmeldung ohne Passwort (' + (auto ? 'Autofill' : 'Knopf') + ')', !/\/login/.test(p.url()) && !!(await acct()), p.url());
+  // Ab hier ohne Autofill (wie ein Browser ohne conditional mediation): Knopf-Weg und Passwort-Anmeldung pruefen
+  await p.addInitScript(() => { if (window.PublicKeyCredential) PublicKeyCredential.isConditionalMediationAvailable = () => Promise.resolve(false); });
+  await p.goto(BASE + '/logout'); await p.goto(BASE + '/login');
+  await p.waitForSelector('#pk-box:not([hidden])');
+  await Promise.all([p.waitForURL(u => !/\/login/.test(String(u)), { timeout: 15000 }).catch(() => {}), p.click('#pk-go')]);
+  ok('2.1 Passkey: Knopf "Mit Passkey anmelden"', !/\/login/.test(p.url()) && !!(await acct()), p.url());
+  await p.goto(BASE + '/logout');
+  await pwLogin();
+  ok('2.1 Passkey: Passwort -> Zwischenschritt', /\/login\/2fa/.test(p.url()), p.url());
+  await Promise.all([p.waitForURL(u => !/\/login/.test(String(u)), { timeout: 15000 }).catch(() => {}), p.click('#pk-go')]);
+  ok('2.1 Passkey: als zweiter Faktor bestaetigt -> angemeldet', !/\/login/.test(p.url()) && !!(await acct()), p.url());
+  await p.goto(BASE + '/security'); await p.waitForSelector('#hk-security .hk-tok');
+  await p.click('#hk-security .hk-tok button:has-text("Löschen")');
+  await p.click('.hk-ask .btn-destr'); await p.waitForTimeout(1200);
+  const s = await acct();
+  ok('2.1 Passkey: geloescht -> 2FA wieder aus', s && !s.enabled && !s.passkeys.length, s);
+  await ctx.close();
+}
+
 (async () => {
   const browser = await chromium.launch({ channel: process.env.PW_CHANNEL || 'chrome', headless: true });
   try {
+    if (process.env.SAGA_ONLY === 'passkeys') { await passkeys(browser); throw null; }     // nur die Passkey-Pruefungen
     const p = await session(browser);
     await enterFallback(p);
     await reloadKeeps(p);
@@ -282,7 +338,8 @@ async function chatImmich(browser) {
     await p.context().close();
     await chatImmich(browser);
     await narrow(browser);
-  } catch (e) { console.error(e); res.push(false); }
+    await passkeys(browser);
+  } catch (e) { if (e !== null) { console.error(e); res.push(false); } }
   await browser.close();
   console.log(`${res.filter(Boolean).length}/${res.length} ok`);
   process.exit(res.every(Boolean) ? 0 : 1);

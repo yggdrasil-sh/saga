@@ -1,0 +1,12 @@
+{# Knopf "Mit Passkey anmelden/bestaetigen" (static/passkey.js). pk_mode: login (ohne Passwort) | 2fa (nach dem Passwort) #}
+<div id="pk-box" class="pk-box" data-mode="{{ pk_mode or 'login' }}" data-origin="{{ opts.origin }}" data-base="{{ pk_base or '' }}" hidden
+     data-t-origin="{{ _('Diese Seite wurde über {here} geöffnet, Saga ist aber für {base} eingerichtet (BASE_URL). Passkeys gehen nur über {base}.') }}"
+     data-t-fail="{{ _('Der Passkey wurde nicht verwendet (abgebrochen oder auf diesem Gerät nicht vorhanden).') }}"
+     data-t-nosupport="{{ _('Dieser Browser kann keine Passkeys verwenden.') }}"
+     data-t-busy="{{ _('Warte auf den Passkey …') }}">
+  {% if pk_mode == '2fa' %}<button class="btn btn-primary auth-btn pk-btn" type="button" id="pk-go">🔑 {{ _("Mit Passkey bestätigen") }}</button>
+  {% else %}<button class="btn auth-btn pk-btn" type="button" id="pk-go">🔑 {{ _("Mit Passkey anmelden") }}</button>{% endif %}
+  <p class="pk-status" role="status" hidden></p>
+  <p class="auth-err pk-err" role="alert" hidden></p>
+</div>
+<script src="/static/passkey.js?v={{ v }}"></script>

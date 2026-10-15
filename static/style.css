@@ -1203,6 +1203,31 @@ time.hk-date::before{content:"@";opacity:.55}
 .auth-note{background:var(--card-h);border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem;font-size:.9rem;margin:0 0 .9rem}
 .auth-foot{color:var(--muted);font-size:.88rem;text-align:center;margin:1.1rem 0 .2rem}
 .auth-foot a{color:var(--accent)}
+/* Zweiter Faktor (2.1): Passkey-Knopf auf der Anmeldeseite, Zwischenschritt, Einstellungen "Anmeldung & Sicherheit" */
+.pk-box{margin-top:.5rem}
+.pk-box .auth-err{margin:.6rem 0 0}
+.pk-status{color:var(--muted);font-size:.88rem;margin:.5rem 0 0;text-align:center}
+.mfa-code{font-variant-numeric:tabular-nums;letter-spacing:.08em}
+.sec-wrap{width:min(640px,100%)}
+.sec-wrap .mfa h5{font-size:.95rem}
+.sec-wrap .mfa{border-top:0;margin-top:0;padding-top:0}
+.mfa-block .hk-actions .hk-in{flex:1 1 14rem;min-width:0}
+.auth-btn.disabled{opacity:.55;cursor:not-allowed}
+.mfa{margin-top:1.4rem;border-top:1px solid var(--border);padding-top:.4rem}
+.mfa h5{margin:1.1rem 0 .3rem;font-size:.9rem}
+.mfa-block{margin-top:.4rem}
+.mfa-state{border:1px solid var(--border);border-radius:8px;padding:.5rem .7rem;margin:.6rem 0;font-size:.9rem}
+.mfa-state.on{border-color:var(--ok);color:var(--ok)}
+.mfa-state.warn{background:var(--warnbg);border-color:var(--warn)}
+.mfa-confirm,.mfa-codes-box{border:1px solid var(--accent);border-radius:9px;padding:.7rem .8rem;margin:.7rem 0}
+.mfa-confirm p,.mfa-codes-box p{margin:0 0 .5rem;font-size:.9rem}
+.mfa-codes-box h5{margin:0 0 .4rem}
+.mfa-codes{display:grid;grid-template-columns:repeat(auto-fill,minmax(11.5rem,1fr));gap:.3rem .9rem;margin:.4rem 0 .6rem;padding-left:1.6rem;
+  font:600 .95rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.mfa-key{display:inline-block;font:600 .9rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;word-break:break-all;
+  background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.2rem .45rem;user-select:all}
+.mfa-link{font-size:.85rem;color:var(--accent)}
+@media (max-width:520px){.mfa-qr img{width:170px;height:170px}.mfa-codes{grid-template-columns:1fr}}
 
 /* Eigene Lesezeichen */
 .tw.own a.tile{border-style:dashed}

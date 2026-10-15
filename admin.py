@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from starlette.concurrency import run_in_threadpool
@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import clean_line, connect as _db
-from saga import ai, federation, i18n, live, publish, push, sharing
+from saga import ai, federation, i18n, live, mfa, publish, push, sharing
 from saga.core import TZ, BodyLimit, LangMiddleware
 from saga.i18n import t
 from version import REPO, VERSION, newer
@@ -194,11 +194,101 @@ async def login_post(request: Request):
         user, err = None, t("Dieses Konto hat keine Admin-Rechte.")
     if not user:
         return _page(request, "login.html", status=401, error=err, username=username)
+    if mfa.supported(user) and mfa.has_mfa(user["username"]):
+        # zweiter Faktor wie auf der Hauptseite: Zwischenschritt (5 Minuten, an dieses Admin-Sitzungs-Cookie gebunden)
+        request.session.clear()
+        request.session.update(amfa_u=user["username"], amfa_at=int(time.time()))
+        return _go("/login/2fa")
+    return _admin_session(request, user)
+
+
+def _admin_session(request, user):
     info = auth.user_info(user["username"], fresh=True) or {}
     request.session.clear()
     request.session.update(aid=user["username"], ep=info.get("epoch") or 0)
     print(f"admin: Anmeldung {user['username']} von {hk._ip(request)}", flush=True)
     return _go("/")
+
+
+# Passkeys im Admin-Bereich: nur, wenn er unter der Domain von BASE_URL laeuft (RP-ID) - sonst Code/Wiederherstellungscode
+def _admin_passkey_problem():
+    o = mfa.admin_origin()
+    return mfa.rp_problem(o) if o else t("ADMIN_URL ist nicht gesetzt.")
+
+
+def _admin_mfa_page(request, uid, status=200, error=None):
+    f = mfa.factors(uid)
+    prob = _admin_passkey_problem() if f["passkeys"] else None
+    return _page(request, "login2fa.html", status=status, error=error, passkey=bool(f["passkeys"]) and not prob, passkey_problem=prob,
+                 totp=f["totp"], recovery=f["recovery"], origin=mfa.admin_origin())
+
+
+@admin.get("/login/2fa")
+def login_2fa(request: Request):
+    uid = mfa.pending(request, "amfa")
+    if not uid:
+        return _go("/login")
+    return _admin_mfa_page(request, uid)
+
+
+@admin.post("/login/2fa")
+async def login_2fa_post(request: Request):
+    f = await _form(request)
+    uid = mfa.pending(request, "amfa")
+    if not uid:
+        return _page(request, "login.html", status=400, error=t("Die Anmeldung hat zu lange gedauert – bitte noch einmal."))
+    if f is None:
+        return _admin_mfa_page(request, uid, 400, t("Die Seite war zu lange offen – bitte noch einmal."))
+    ip = hk._ip(request)
+    if auth.too_many(uid, ip, "admin-mfa"):
+        request.session.clear()
+        return _page(request, "login.html", status=429, error=t("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen."))
+    kind = await run_in_threadpool(mfa.check_code, uid, _s(f, "code", 60))
+    user = auth.get_user(uid)
+    if not kind or not user or not user["is_admin"]:
+        auth.note_fail(uid, ip, "admin-mfa")
+        return _admin_mfa_page(request, uid, 401, t("Der Code stimmt nicht."))
+    auth.clear_fails(uid, "admin-mfa")
+    return _admin_session(request, user)
+
+
+@admin.post("/login/passkey/options")
+async def login_passkey_options(request: Request):
+    uid = mfa.pending(request, "amfa")
+    if request.headers.get("x-saga") != "1" or not uid:
+        return JSONResponse({"error": t("Die Anmeldung hat zu lange gedauert – bitte noch einmal.")}, status_code=401)
+    prob = _admin_passkey_problem()
+    if prob:
+        return JSONResponse({"error": prob}, status_code=409)
+    try:
+        opts = await run_in_threadpool(mfa.auth_options, request, uid, "admin")
+    except mfa.MfaError as ex:
+        return JSONResponse({"error": str(ex)}, status_code=409)
+    return JSONResponse({"options": opts, "origin": mfa.admin_origin()}, headers={"Cache-Control": "no-store"})
+
+
+@admin.post("/login/passkey")
+async def login_passkey(request: Request):
+    uid = mfa.pending(request, "amfa")
+    if request.headers.get("x-saga") != "1" or not uid:
+        return JSONResponse({"error": t("Die Anmeldung hat zu lange gedauert – bitte noch einmal.")}, status_code=401)
+    ip = hk._ip(request)
+    if auth.too_many(uid, ip, "admin-mfa"):
+        request.session.clear()
+        return JSONResponse({"error": t("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen.")}, status_code=429)
+    try:
+        b = json.loads(await request.body() or b"{}")
+        await run_in_threadpool(mfa.auth_verify, request, b.get("credential") if isinstance(b, dict) else None, uid, "admin",
+                                "wa", mfa.admin_origin())
+    except (ValueError, mfa.MfaError) as ex:
+        auth.note_fail(uid, ip, "admin-mfa")
+        return JSONResponse({"error": str(ex) if isinstance(ex, mfa.MfaError) else t("ungültige Anfrage")}, status_code=401)
+    user = auth.get_user(uid)
+    if not user or not user["is_admin"]:
+        return JSONResponse({"error": t("Dieses Konto hat keine Admin-Rechte.")}, status_code=403)
+    auth.clear_fails(uid, "admin-mfa")
+    _admin_session(request, user)
+    return JSONResponse({"ok": True, "next": "/"}, headers={"Cache-Control": "no-store"})
 
 
 @admin.get("/logout")
@@ -284,9 +374,16 @@ def user_edit(uid_: int, request: Request):
     with _db() as c:
         allg = [r[0] for r in c.execute("SELECT name FROM groups ORDER BY name").fetchall()]
         devs = c.execute("SELECT name, created, last_used FROM device_login WHERE uid=? ORDER BY id", (u["username"],)).fetchall()
+        r = c.execute("SELECT v FROM user_kv WHERE uid=? AND k='mfa_reset'", (u["username"],)).fetchone()
+    try:
+        last_reset = json.loads(r[0]) if r else None
+    except ValueError:
+        last_reset = None
     tiles = hk.visible_services({"groups": loc | ext})
+    mf = dict(mfa.factors(u["username"]), supported=mfa.supported(u), required=mfa.required(dict(u, is_admin=bool(u["is_admin"]))),
+              last_reset=last_reset)
     return _page(request, "user.html", me, u=u, loc=sorted(loc), ext=sorted(ext), allg=allg, usage=hk.user_usage(u["username"]),
-                 devs=devs, tiles=sorted(tiles.values(), key=lambda s: s["name"].lower()), is_self=u["username"] == me["username"])
+                 devs=devs, tiles=sorted(tiles.values(), key=lambda s: s["name"].lower()), is_self=u["username"] == me["username"], mf=mf)
 
 
 @admin.post("/users/{uid_}")
@@ -347,6 +444,12 @@ async def user_post(uid_: int, request: Request):
         if self_:
             return _go("/login")
         _flash(request, t("Überall abgemeldet ({n} App-Anmeldungen/Schlüssel widerrufen).", n=n))
+    elif act == "mfa_reset":
+        # Person hat Passkey/Handy und Wiederherstellungscodes verloren: alle Faktoren entfernen (Protokoll: Log + Konto)
+        n = await run_in_threadpool(auth.clear_mfa, u["username"], me["username"])
+        auth.clear_fails(u["username"])
+        print(f"{who} zweiter Faktor zurueckgesetzt ({n} Faktoren entfernt)", flush=True)
+        _flash(request, t("Zweiter Faktor zurückgesetzt ({n} entfernt). Die Person meldet sich jetzt nur mit dem Passwort an und kann neu einrichten.", n=n))
     elif act == "unlink":
         # SSO-Verknuepfung loesen (z. B. nach Wechsel des Anbieters, neue sub-Werte): die naechste Anmeldung
         # ueber SSO mit diesem Benutzernamen verknuepft das Konto neu - Daten bleiben erhalten
@@ -582,8 +685,11 @@ async def settings_post(request: Request):
                  ("allow_private_hosts", _on(f, "allow_private_hosts")), ("allowed_hosts", ", ".join(hosts)),
                  ("update_check", _on(f, "update_check")), ("default_lang", i18n.norm(f.get("default_lang")))):
         auth.save_setting(k, v)
+    req = f.get("mfa_require") if f.get("mfa_require") in ("none", "admins", "all") else "none"
+    acr = ", ".join(a for a in (x.strip() for x in _s(f, "mfa_oidc_acr", 300).split(",")) if re.fullmatch(r"[\w.:/#-]{1,100}", a))
+    auth.save_setting("mfa", {"require": req, "oidc_mfa": _on(f, "mfa_oidc"), "oidc_acr": acr})
     hk.services_changed()
-    print(f"admin: {me['username']} speichert Allgemein", flush=True)
+    print(f"admin: {me['username']} speichert Allgemein (2FA verlangt: {req})", flush=True)
     _flash(request, t("Gespeichert.") + (" " + t("Hinweis: Mit der neuen Gruppen-Kennung gelten neue Zugangsgruppen – Favoriten der Dienste müssen neu gesetzt werden.")
                                          if old_prefix != prefix else ""))
     return _go("/settings")

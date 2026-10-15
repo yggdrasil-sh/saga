@@ -155,14 +155,29 @@
         bar.appendChild(btn(T('Neu anmelden'), 'btn-primary ct-reauth-login', function () { location.href = '/login/sso?reauth=1&next=' + encodeURIComponent('/chats'); }));
         return;
       }
-      var lab = el('label', 'ct-reauth', T('Zur Sicherheit: dein Passwort'));
+      // Bestaetigen mit Passwort, Code der Authenticator-App (6 Ziffern) oder Passkey (2.1)
+      var m = me.reauth_methods || ['password'], PK = window.SagaPasskey;
+      var lab = el('label', 'ct-reauth', m.indexOf('totp') >= 0 ? T('Zur Sicherheit: dein Passwort oder ein Code aus der Authenticator-App') : T('Zur Sicherheit: dein Passwort'));
       var pw = el('input', 'hk-in ct-reauth-pw'); pw.type = 'password'; pw.autocomplete = 'current-password'; pw.maxLength = 200;
       lab.appendChild(pw); box.insertBefore(lab, bar);
       go.disabled = false;
+      if (m.indexOf('passkey') >= 0 && PK && PK.supported()) {
+        bar.appendChild(btn('🔑 ' + T('Mit Passkey bestätigen'), 'ct-reauth-pk', function () {
+          st.className = 'hk-status'; st.textContent = T('Warte auf den Passkey …');
+          api('POST', '/api/chat/reauth/options').then(function (d) {
+            var prob = PK.originProblem(d.origin, T('Diese Seite wurde über {here} geöffnet, Saga ist aber für {base} eingerichtet (BASE_URL). Passkeys gehen nur über {base}.'));
+            if (prob) throw new Error(prob);
+            return PK.get(d.options);
+          }).then(function (cred) { return api('POST', '/api/chat/reauth', { passkey: cred }); })
+            .then(function () { pw.value = ''; setupKey(true); })
+            .catch(function (e) { st.className = 'hk-status err'; st.textContent = PK.cancelled(e) ? T('Abgebrochen.') : e.message; });
+        }));
+      }
       function check() {
         if (!pw.value) { pw.focus(); return; }
         busy(go, true, T('Wird geprüft …')); st.className = 'hk-status'; st.textContent = '';
-        api('POST', '/api/chat/reauth', { password: pw.value }).then(function () { pw.value = ''; setupKey(true); })
+        var v = pw.value.trim();
+        api('POST', '/api/chat/reauth', m.indexOf('totp') >= 0 && /^\d{6}$/.test(v) ? { code: v } : { password: pw.value }).then(function () { pw.value = ''; setupKey(true); })
           .catch(function (e) { st.className = 'hk-status err'; st.textContent = e.message; busy(go, false, T('Schlüssel erzeugen')); pw.select(); });
       }
       go.addEventListener('click', check);

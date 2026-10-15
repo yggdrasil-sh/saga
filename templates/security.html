@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="{{ lang() }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f141c" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f1ec" media="(prefers-color-scheme: light)">
+<meta name="robots" content="noindex">
+<title>{{ _("Anmeldung & Sicherheit") }} · {{ title }}</title>
+<link rel="icon" href="/static/icon.svg?v={{ v }}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ v }}">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+</head>
+<body class="auth-page" data-v="{{ v }}">
+<main class="auth-wrap sec-wrap">
+  <div class="auth-card" id="security-page" data-need="{{ '1' if need else '' }}">
+    <div class="auth-brand"><img src="/static/icon.svg?v={{ v }}" alt="" width="44" height="44"><h1>{{ title }}</h1></div>
+    <h2 class="auth-h">{{ _("Anmeldung & Sicherheit") }}</h2>
+    {% if need %}<p class="auth-note">{{ _("Hallo {name}! Dein Admin verlangt für dein Konto einen zweiten Faktor. Richte jetzt einen Passkey oder eine Authenticator-App ein – das dauert eine Minute.", name=name) }}</p>{% endif %}
+    <div id="security-host"></div>
+    <a class="btn btn-primary auth-btn" id="sec-next" href="{{ nxt }}">{{ _("Weiter") }}</a>
+    <p class="auth-foot"><a href="/logout">{{ _("Abmelden") }}</a></p>
+  </div>
+</main>
+<script src="/i18n/{{ lang() }}.js?v={{ i18n_v }}"></script>
+<script src="/static/common.js?v={{ v }}"></script>
+<script src="/static/passkey.js?v={{ v }}"></script>
+<script src="/static/security.js?v={{ v }}"></script>
+</body>
+</html>

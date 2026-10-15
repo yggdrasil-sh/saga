@@ -543,6 +543,27 @@ CREATE TABLE IF NOT EXISTS fed_outbox (               -- Ereignisse an andere In
     last_error TEXT);
 CREATE TABLE IF NOT EXISTS fed_name_retired (         -- oeffentliche Namen, die schon foederiert waren: nie an ein anderes Konto
     name TEXT PRIMARY KEY, uid TEXT, retired DOUBLE PRECISION NOT NULL);
+
+-- Zweiter Faktor (2.1, saga/mfa.py): Passkeys (WebAuthn), Authenticator-App (TOTP), Wiederherstellungscodes.
+-- Nur oeffentliche Schluessel, das TOTP-Geheimnis verschluesselt (wie Geheimnisse der Einstellungen), Codes nur als Hash.
+CREATE TABLE IF NOT EXISTS mfa_passkey (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL,
+    cred_id TEXT NOT NULL UNIQUE,                     -- Kennung des Passkeys (base64url)
+    public_key TEXT NOT NULL,                         -- COSE-Schluessel (base64url)
+    sign_count BIGINT NOT NULL DEFAULT 0, user_handle TEXT NOT NULL, transports TEXT NOT NULL DEFAULT '[]',
+    name TEXT NOT NULL DEFAULT '', aaguid TEXT, backed_up INTEGER NOT NULL DEFAULT 0,
+    created DOUBLE PRECISION NOT NULL, last_used DOUBLE PRECISION);
+CREATE INDEX IF NOT EXISTS mfa_passkey_uid ON mfa_passkey (uid);
+CREATE TABLE IF NOT EXISTS mfa_totp (
+    uid TEXT PRIMARY KEY, secret TEXT NOT NULL,       -- verschluesselt (auth._enc)
+    confirmed DOUBLE PRECISION,                       -- NULL = Einrichtung noch nicht mit einem Code bestaetigt
+    last_step BIGINT NOT NULL DEFAULT 0,              -- zuletzt angenommener Zeitschritt (derselbe Code gilt nur einmal)
+    created DOUBLE PRECISION NOT NULL);
+CREATE TABLE IF NOT EXISTS mfa_recovery (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, hash TEXT NOT NULL, created DOUBLE PRECISION NOT NULL, used_at DOUBLE PRECISION);
+CREATE INDEX IF NOT EXISTS mfa_recovery_uid ON mfa_recovery (uid);
+CREATE TABLE IF NOT EXISTS mfa_challenge (            -- WebAuthn-Challenges: einmalig, 5 Minuten, an die Sitzung gebunden
+    id TEXT PRIMARY KEY, uid TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL, challenge TEXT NOT NULL, expires DOUBLE PRECISION NOT NULL);
 """
 # --- Schema-Versionen und Migrationen ----------------------------------------------------------------
 # SCHEMA oben ist Stand 1 (plus neue Tabellen mit CREATE TABLE IF NOT EXISTS). Alles, was bestehende

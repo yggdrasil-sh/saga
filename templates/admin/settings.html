@@ -18,6 +18,18 @@
       <small>{{ _("Sprache der Anmeldeseite, des Admin-Bereichs und aller Konten ohne eigene Wahl. Automatisch = Browsersprache (Deutsch, Englisch, Spanisch, sonst Englisch).") }}</small></label>
     {{ field(_('Standardgruppen'), 'default_groups', st.default_groups|join(', '), max=1000, hint=_('Bekommt jedes neue Konto (Registrierung, Admin, erste LDAP/SSO-Anmeldung) – z. B. {example}', example=(st.group_prefix or 's_') ~ 'wiki')) }}
   </section>
+  <section class="adm-card" id="mfa">
+    <h3>{{ _("Zweiter Faktor (2FA, Passkeys)") }}</h3>
+    <p class="hk-hint">{{ _("Lokale und LDAP-Konten können zusätzlich zum Passwort einen Passkey oder eine Authenticator-App einrichten (Einstellungen → Konto). Mit Passkey geht die Anmeldung auch ganz ohne Passwort.") }}</p>
+    <label class="adm-field"><span>{{ _("2FA verlangen für") }}</span>
+      <select class="hk-in" name="mfa_require">
+        {% for k, n in (('none', _('niemanden (freiwillig)')), ('admins', _('Admins')), ('all', _('alle lokalen und LDAP-Konten'))) %}
+        <option value="{{ k }}"{% if k == (st.mfa.require or 'none') %} selected{% endif %}>{{ n }}</option>{% endfor %}
+      </select>
+      <small>{{ _("Wer betroffen ist und noch keinen zweiten Faktor hat, wird nach der Anmeldung zur Einrichtung geführt – niemand wird ausgesperrt. Angemeldete Apps bleiben angemeldet.") }}</small></label>
+    {{ check(_('Bei SSO einen zweiten Faktor verlangen'), 'mfa_oidc', st.mfa.oidc_mfa, _('SSO-Konten machen 2FA beim Anmeldedienst. Ein: Saga lässt SSO-Anmeldungen nur zu, wenn der Anbieter einen zweiten Faktor meldet (amr enthält z. B. mfa, otp oder hwk) – oder einen der acr-Werte unten.')) }}
+    {{ field(_('Erlaubte acr-Werte (optional)'), 'mfa_oidc_acr', st.mfa.oidc_acr, max=300, ph='gold, urn:example:mfa', hint=_('Komma-getrennt. Werden beim Anbieter auch angefragt (acr_values), z. B. bei Keycloak die Stufe mit zweitem Faktor.')) }}
+  </section>
   <section class="adm-card">
     <h3>{{ _("Dienste") }}</h3>
     {{ field(_('Gruppen-Kennung'), 'group_prefix', st.group_prefix, max=20, hint=_('Gruppe <Kennung><Kurzname> gibt den Dienst frei. Standard s_ (wie s_nextcloud). Leer = Gruppe heißt wie der Kurzname.')) }}

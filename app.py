@@ -25,7 +25,7 @@ import db
 from version import API_LEVEL, MIN_APP, VERSION
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
-from saga import ai, chat, federation, i18n, live, notify, push
+from saga import ai, chat, federation, i18n, live, mfa, notify, push
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, LangMiddleware, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
@@ -172,6 +172,7 @@ def manifest():
 
 # --- Bereiche (Reihenfolge wie bisher: zuerst registrierte Pfade gewinnen) ---
 app.include_router(web_auth.router)
+app.include_router(mfa.router)              # Zweiter Faktor: /security, /api/account/security|passkeys|totp|recovery
 app.include_router(app_login.router)
 app.include_router(dashboard.router)
 app.include_router(links.router)

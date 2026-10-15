@@ -426,6 +426,7 @@
       if (window.HKLive) HKLive.settingsSection(box);          // Benachrichtigungen je Art (static/live.js)
       if (!a.can_edit) {
         box.appendChild(el('p', 'hk-hint', T('Name, E-Mail und Passwort verwaltet dein Anmeldedienst.')));
+        if (window.HKSecurity) HKSecurity.section(box);          // Passkeys/2FA (LDAP-Konten; bei SSO nur ein Hinweis)
         publicNameField(box);
         return;
       }
@@ -448,6 +449,7 @@
       var st2 = el('div', 'hk-status'), bar2 = el('div', 'hk-actions'), pwb = el('button', 'btn', T('Passwort ändern')); pwb.type = 'button';
       bar2.appendChild(pwb); box.appendChild(bar2); box.appendChild(st2);
       box.appendChild(el('p', 'hk-hint', T('Andere Browser-Sitzungen und angemeldete Apps werden danach abgemeldet – außer dieser Sitzung und der App, in der du gerade bist.')));
+      if (window.HKSecurity) HKSecurity.section(box);          // Anmeldung & Sicherheit: Passkeys, Authenticator-App (static/security.js)
       publicNameField(box);
       pwb.addEventListener('click', function () {
         if (n1.value !== n2.value) { status(st2, T('Die neuen Passwörter stimmen nicht überein.'), 'err'); return; }

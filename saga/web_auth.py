@@ -9,7 +9,7 @@ from starlette.concurrency import run_in_threadpool
 import auth
 from db import clean_line, connect as _db
 from fastapi import APIRouter
-from saga import i18n
+from saga import i18n, mfa
 from saga.core import (ADMIN_URL, ASSET_V, BASE_URL, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, set_user_lang, t,
                        title, tmpl, user_info, user_lang)
 from saga.dashboard import source_label
@@ -20,7 +20,7 @@ router = APIRouter()
 # --- Anmeldung, Registrierung, Abmeldung -------------------------------------------------------------
 # Erlaubte Ruecksprungziele nach dem Login - feste Positivliste statt beliebiger Pfade
 # (verhindert Open-Redirect ueber praeparierte Login-Links)
-NEXT_ALLOWED = {"/", "/notes", "/app/handoff"}
+NEXT_ALLOWED = {"/", "/notes", "/app/handoff", "/security"}
 EMAIL_RE = re.compile(r"[^@\s]{1,100}@[^@\s]{1,150}\.[^@\s]{2,40}")
 
 
@@ -74,7 +74,8 @@ def _auth_opts():
     o = st["oidc"]
     return {"pw_login": bool(st.get("local_login", True) or (st["ldap"].get("enabled") and st["ldap"].get("password_login", True))),
             "sso": bool(o.get("enabled") and o.get("issuer") and o.get("client_id")), "sso_label": _sso_label(o.get("label")),
-            "registration": bool(st.get("registration")), "ldap": bool(st["ldap"].get("enabled"))}
+            "registration": bool(st.get("registration")), "ldap": bool(st["ldap"].get("enabled")),
+            "passkey": not mfa.rp_problem(), "origin": mfa.ORIGIN}
 
 
 def _sso_label(lbl):
@@ -93,8 +94,24 @@ def _start_session(request, user, id_token=None):
     keep = {"login_at": int(time.time())}            # frische Anmeldung (Formular/SSO): /app/handoff ohne Rueckfrage
     if id_token and len(id_token) < 2500:
         keep["id_token"] = id_token
+    info = user_info(user["username"])
+    if info and mfa.required(info) and not mfa.has_mfa(user["username"]):
+        # Richtlinie verlangt einen zweiten Faktor, das Konto hat keinen: angemeldet (nicht ausgesperrt), aber zuerst
+        # zur Einrichtung; danach weiter zum eigentlichen Ziel
+        keep.update(mfa_setup=1, mfa_next=nxt)
+        nxt = "/security"
     _set_session(request, user["username"], user["display_name"] or user["username"], keep)
     return RedirectResponse(nxt, status_code=303)
+
+
+def _password_ok(request, user):
+    """Passwort stimmt: mit zweitem Faktor erst der Zwischenschritt (kurzlebig, an dieses Sitzungs-Cookie gebunden)."""
+    if not (mfa.supported(user) and mfa.has_mfa(user["username"])):
+        return _start_session(request, user)
+    nxt = _next(request.session.get("next", "/"))
+    request.session.clear()
+    request.session.update(mfa_u=user["username"], mfa_at=int(time.time()), next=nxt)
+    return RedirectResponse("/login/2fa", status_code=303)
 
 
 @router.get("/login")
@@ -121,7 +138,110 @@ async def login_post(request: Request):
     user, err = await run_in_threadpool(auth.authenticate, username, str(form.get("password") or ""), _ip(request), allow_local)
     if not user:
         return _auth_page(request, "login.html", 401, error=err, username=username)
-    return _start_session(request, user)
+    return _password_ok(request, user)
+
+
+# --- Zweiter Faktor nach dem Passwort, Passkey-Anmeldung ohne Passwort (saga.mfa) ------------------------------
+def _mfa_page(request, uid, status=200, error=None):
+    f = mfa.factors(uid)
+    prob = mfa.rp_problem() if f["passkeys"] else None
+    return _auth_page(request, "login2fa.html", status, error=error, passkey=bool(f["passkeys"]) and not prob, passkey_problem=prob,
+                      totp=f["totp"], recovery=f["recovery"], origin=mfa.ORIGIN)
+
+
+@router.get("/login/2fa")
+def login_2fa(request: Request):
+    uid = mfa.pending(request)
+    if not uid:
+        return RedirectResponse("/login", status_code=303)
+    return _mfa_page(request, uid)
+
+
+@router.post("/login/2fa")
+async def login_2fa_post(request: Request):
+    form = await request.form()
+    uid = mfa.pending(request)
+    if not uid:
+        return _auth_page(request, "login.html", 400, error=t("Die Anmeldung hat zu lange gedauert – bitte noch einmal."))
+    if not _csrf_ok(request, form):
+        return _mfa_page(request, uid, 400, t("Die Seite war zu lange offen – bitte noch einmal versuchen."))
+    ip = _ip(request)
+    if auth.too_many(uid, ip, "mfa"):
+        request.session.clear()
+        return _auth_page(request, "login.html", 429, error=t("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen."))
+    kind = await run_in_threadpool(mfa.check_code, uid, str(form.get("code") or "")[:60])
+    if not kind:
+        auth.note_fail(uid, ip, "mfa")
+        return _mfa_page(request, uid, 401, t("Der Code stimmt nicht."))
+    auth.clear_fails(uid, "mfa")
+    return _start_session(request, auth.get_user(uid))
+
+
+def _xhr_ok(request):
+    """Passkey-Endpunkte der Anmeldeseite: nur mit Kopfzeile X-Saga (fremde Seiten koennen sie nicht ohne Preflight setzen)."""
+    return request.headers.get("x-saga") == "1"
+
+
+@router.post("/login/passkey/options")
+async def login_passkey_options(request: Request):
+    """{mode: 'login' (ohne Passwort) | '2fa' (nach dem Passwort)} -> Optionen fuer navigator.credentials.get"""
+    if not _xhr_ok(request):
+        return _bad(t("ungültige Anfrage"), 400)
+    b = await _body(request) or {}
+    p = mfa.rp_problem()
+    if p:
+        return _bad(p, 409)
+    if b.get("mode") == "2fa":
+        uid = mfa.pending(request)
+        if not uid:
+            return _bad(t("Die Anmeldung hat zu lange gedauert – bitte noch einmal."), 401)
+        kind = "2fa"
+    else:
+        if not _auth_opts()["pw_login"]:
+            return _bad(t("Anmeldung mit Passwort ist abgeschaltet."), 403)
+        uid, kind = None, "login"
+    try:
+        opts = await run_in_threadpool(mfa.auth_options, request, uid, kind)
+    except mfa.MfaError as ex:
+        return _bad(str(ex), 409)
+    return JSONResponse({"options": opts, "origin": mfa.ORIGIN}, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/login/passkey")
+async def login_passkey(request: Request):
+    """Passkey-Antwort -> Sitzung. Im Zwischenschritt als zweiter Faktor, sonst Anmeldung ohne Passwort."""
+    if not _xhr_ok(request):
+        return _bad(t("ungültige Anfrage"), 400)
+    b = await _body(request) or {}
+    ip = _ip(request)
+    uid = mfa.pending(request)
+    if uid:
+        if auth.too_many(uid, ip, "mfa"):
+            request.session.clear()
+            return _bad(t("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen."), 429)
+        try:
+            await run_in_threadpool(mfa.auth_verify, request, b.get("credential"), uid, "2fa")
+        except mfa.MfaError as ex:
+            auth.note_fail(uid, ip, "mfa")
+            return JSONResponse({"error": str(ex), "unknown": ex.unknown}, status_code=401)
+        auth.clear_fails(uid, "mfa")
+        user = auth.get_user(uid)
+    else:
+        if mfa.ip_blocked(ip):
+            return _bad(t("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen."), 429)
+        try:
+            uid = await run_in_threadpool(mfa.auth_verify, request, b.get("credential"), None, "login")
+        except mfa.MfaError as ex:
+            mfa.note_ip_fail(ip)
+            return JSONResponse({"error": str(ex), "unknown": ex.unknown}, status_code=401)
+        user = auth.get_user(uid)
+        if not mfa.passkey_login_allowed(user) or await run_in_threadpool(user_info, uid, True) is None:
+            mfa.note_ip_fail(ip)
+            return _bad(t("Kein Zugang mit diesem Konto."), 403)
+        auth.touch_login(uid)
+        print(f"login: {uid} mit Passkey (ohne Passwort)", flush=True)
+    resp = _start_session(request, user)
+    return JSONResponse({"ok": True, "next": resp.headers.get("location") or "/"}, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/login/sso")
@@ -134,6 +254,9 @@ async def login_sso(request: Request):
     if request.query_params.get("reauth"):            # erneute Anmeldung (z. B. Chats neu beginnen): Anbieter soll neu fragen
         request.session["next"] = _next(request.query_params.get("next", "/"))
         kw["prompt"] = "login"
+    pol = mfa.policy()
+    if pol.get("oidc_mfa") and mfa.oidc_acr_values(pol):
+        kw["acr_values"] = mfa.oidc_acr_values(pol)      # Anbieter um eine Anmeldung mit diesem Niveau bitten
     try:
         return await cl.authorize_redirect(request, BASE_URL + "/auth/callback", **kw)
     except Exception as ex:  # noqa: BLE001 - Anbieter nicht erreichbar / falsch eingerichtet
@@ -160,6 +283,10 @@ async def callback(request: Request):
             claims.update(extra)
         except Exception:  # noqa: BLE001
             pass
+    pol = mfa.policy()
+    if pol.get("oidc_mfa") and not mfa.oidc_mfa_ok(claims, pol):
+        print(f"sso: Anmeldung ohne zweiten Faktor abgewiesen (amr={claims.get('amr')!r}, acr={claims.get('acr')!r})", flush=True)
+        return _auth_page(request, "login.html", 403, error=t("Für Saga ist eine Anmeldung mit zweitem Faktor nötig. Dein Anmeldedienst hat keinen bestätigt – bitte dort einen zweiten Faktor einrichten oder an den Admin wenden."))
     user, err = await run_in_threadpool(auth.oidc_user, claims)
     if not user:
         return _auth_page(request, "login.html", 403, error=err)

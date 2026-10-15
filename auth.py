@@ -66,6 +66,10 @@ DEFAULTS = {
     # context = Zeichen Seiteninhalt je Anfrage, history = Personen duerfen einen Verlauf einschalten
     "ai": {"enabled": False, "provider": "openai", "url": "", "model": "", "api_key": "", "groups": [], "timeout": 60,
            "quota": 50, "context": 8000, "history": True, "pinned": []},
+    # Zweiter Faktor (2.1, saga/mfa.py): require = none | admins | all (wer verlangt wird und keinen hat, wird nach der
+    # Anmeldung zur Einrichtung gefuehrt); oidc_mfa = SSO-Anmeldung nur mit Mehr-Faktor beim Anbieter (amr/acr),
+    # oidc_acr = zusaetzlich akzeptierte acr-Werte (Komma-getrennt, werden auch als acr_values angefragt)
+    "mfa": {"require": "none", "oidc_mfa": False, "oidc_acr": ""},
 }
 SECRET_FIELDS = {("oidc", "client_secret"), ("ldap", "bind_password"), ("apns", "p8"), ("ai", "api_key")}
 LDAP_PRESETS = {
@@ -197,20 +201,25 @@ def _burn(pw):
 # So kann ein Fremder ein Konto nicht mit 8 Fehlversuchen fuer alle sperren. area="admin": eigene Zaehler fuer
 # den Admin-Port - Fehlversuche auf der oeffentlichen Seite sperren den Admin-Bereich nicht.
 FAIL_WINDOW, FAIL_MAX_USER_IP, FAIL_MAX_USER, FAIL_MAX_IP = 900, 8, 40, 30
+# Eigene Zaehler je Bereich: Admin-Port, zweiter Faktor (Hauptseite / Admin-Port). Beim zweiten Faktor ist das Passwort
+# schon richtig - dort strengere Grenzen (6-stellige Codes: wenige Versuche je Viertelstunde).
+AREA_PREFIX = {"admin": "adm:", "mfa": "mfa:", "admin-mfa": "amfa:"}
+AREA_LIMITS = {"mfa": (5, 10, 30), "admin-mfa": (5, 10, 30)}
 
 
 def _fail_keys(username, ip, area=""):
-    p = "adm:" if area == "admin" else ""
+    p = AREA_PREFIX.get(area, "")
     return p + "ui:" + username + "|" + ip, p + "u:" + username, p + "ip:" + ip
 
 
 def too_many(username, ip, area=""):
     t = time.time() - FAIL_WINDOW
     kui, ku, ki = _fail_keys(username, ip, area)
+    lui, lu, li = AREA_LIMITS.get(area, (FAIL_MAX_USER_IP, FAIL_MAX_USER, FAIL_MAX_IP))
     with _db() as c, c:
         c.execute("DELETE FROM login_fail WHERE ts < ?", (t - 3600,))
         n = [c.execute("SELECT COUNT(*) FROM login_fail WHERE key=? AND ts>?", (k, t)).fetchone()[0] for k in (kui, ku, ki)]
-    return n[0] >= FAIL_MAX_USER_IP or n[1] >= FAIL_MAX_USER or n[2] >= FAIL_MAX_IP
+    return n[0] >= lui or n[1] >= lu or n[2] >= li
 
 
 def note_fail(username, ip, area=""):
@@ -222,7 +231,7 @@ def note_fail(username, ip, area=""):
 def clear_fails(username, area=None):
     """Nach erfolgreicher Anmeldung (bzw. Notfall-Reset, area=None: alle Bereiche) die Benutzer-Zaehler leeren."""
     with _db() as c, c:
-        for p in (("", "adm:") if area is None else ("adm:" if area == "admin" else "",)):
+        for p in (("", *AREA_PREFIX.values()) if area is None else (AREA_PREFIX.get(area, ""),)):
             c.execute("DELETE FROM login_fail WHERE key=? OR instr(key, ?) = 1", (p + "u:" + username, p + "ui:" + username + "|"))
 
 
@@ -751,5 +760,26 @@ def reset_admin(username="admin"):
             c.execute("UPDATE users SET is_admin=1, disabled=0 WHERE id=?", (u["id"],))
         set_password(name, pw)
     clear_fails(name)
+    if clear_mfa(name):                       # Notfall: auch der zweite Faktor koennte verloren sein
+        print(f"saga: zweiter Faktor von „{name}“ zurückgesetzt (Notfall-Reset)", flush=True)
     _pw_file(name, pw)
     return name, pw
+
+
+# --- Zweiter Faktor (Daten; die Logik steht in saga/mfa.py) -----------------------------------------
+MFA_TABLES = ("mfa_passkey", "mfa_totp", "mfa_recovery", "mfa_challenge")
+
+
+def clear_mfa(username, by=None):
+    """Alle Faktoren eines Kontos entfernen (Admin-Zuruecksetzen, Notfall-Reset). -> Anzahl entfernter Faktoren.
+    by: wer zurueckgesetzt hat (Protokoll im Konto, user_kv 'mfa_reset')."""
+    with _db() as c, c:
+        n = c.execute("DELETE FROM mfa_passkey WHERE uid=?", (username,)).rowcount
+        n += c.execute("DELETE FROM mfa_totp WHERE uid=? AND confirmed IS NOT NULL", (username,)).rowcount
+        for tb in MFA_TABLES[1:]:
+            c.execute(f"DELETE FROM {tb} WHERE uid=?", (username,))
+        if n:
+            c.execute("INSERT OR REPLACE INTO user_kv (uid, k, v) VALUES (?, 'mfa_reset', ?)",
+                      (username, json.dumps({"by": by or "cli", "at": time.time(), "n": n})))
+    _ui_cache.pop(username, None)
+    return n

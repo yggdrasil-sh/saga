@@ -6,11 +6,12 @@
 <form method="post" action="/login" class="auth-form" autocomplete="on">
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <label class="hk-field"><span>{{ _("Benutzername") }}</span>
-    <input class="hk-in" name="username" value="{{ username or '' }}" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus maxlength="100"></label>
+    <input class="hk-in" name="username" value="{{ username or '' }}" autocomplete="username{% if opts.passkey %} webauthn{% endif %}" autocapitalize="none" spellcheck="false" required autofocus maxlength="100"></label>
   <label class="hk-field"><span>{{ _("Passwort") }}</span>
     <input class="hk-in" type="password" name="password" autocomplete="current-password" required maxlength="200"></label>
   <button class="btn btn-primary auth-btn" type="submit">{{ _("Anmelden") }}</button>
 </form>
+{% if opts.passkey %}{% include "_passkey_box.html" %}{% endif %}
 {% endif %}
 {% if opts.sso %}
 {% if opts.pw_login %}<div class="auth-or"><span>{{ _("oder") }}</span></div>{% endif %}

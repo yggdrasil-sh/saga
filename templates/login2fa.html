@@ -1,0 +1,25 @@
+{% extends "_auth_base.html" %}
+{% block pagetitle %}{{ _("Bestätigen") }}{% endblock %}
+{% block content %}
+<h2 class="auth-h">{{ _("Anmeldung bestätigen") }}</h2>
+{% if error %}<p class="auth-err" role="alert">{{ error }}</p>{% endif %}
+<p class="auth-note">{{ _("Dein Konto ist zusätzlich geschützt. Bitte bestätige, dass du es bist.") }}</p>
+{% if passkey %}{% set pk_mode = '2fa' %}{% include "_passkey_box.html" %}{% endif %}
+{% if passkey_problem %}<p class="auth-err">{{ passkey_problem }}</p>{% endif %}
+{% if passkey and (totp or recovery) %}<div class="auth-or"><span>{{ _("oder") }}</span></div>{% endif %}
+<form method="post" action="/login/2fa" class="auth-form" autocomplete="off">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {% if totp %}
+  <label class="hk-field"><span>{{ _("Code aus der Authenticator-App") }}</span>
+    <input class="hk-in mfa-code" name="code" autocomplete="one-time-code" maxlength="40" required{% if not passkey %} autofocus{% endif %}
+           placeholder="123456"></label>
+  <small class="hk-hint">{{ _("Kein Zugriff auf die App? Gib stattdessen einen Wiederherstellungscode ein.") }}</small>
+  {% else %}
+  <label class="hk-field"><span>{{ _("Wiederherstellungscode") }}</span>
+    <input class="hk-in mfa-code" name="code" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="40" required placeholder="xxxx-xxxx-xxxx-xxxx"></label>
+  <small class="hk-hint">{{ _("Nur, wenn der Passkey nicht verfügbar ist. Jeder Code gilt einmal.") }}</small>
+  {% endif %}
+  <button class="btn {% if not passkey %}btn-primary {% endif %}auth-btn" type="submit">{{ _("Bestätigen") }}</button>
+</form>
+<p class="auth-foot"><a href="/logout">{{ _("Abbrechen") }}</a></p>
+{% endblock %}

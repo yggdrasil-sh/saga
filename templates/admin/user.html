@@ -54,6 +54,24 @@
 </section>
 {% endif %}
 
+{% if mf.supported %}
+<section class="adm-card" id="mfa">
+  <h3>{{ _("Zweiter Faktor") }}</h3>
+  {% if mf.passkeys or mf.totp %}
+  <p>{{ _("Eingerichtet:") }} {% if mf.passkeys %}<span class="chip">{{ _("{n} Passkeys", n=mf.passkeys) }}</span> {% endif %}{% if mf.totp %}<span class="chip">{{ _("Authenticator-App") }}</span> {% endif %}
+    <span class="chip">{{ _("{n} Wiederherstellungscodes übrig", n=mf.recovery) }}</span></p>
+  <form method="post" class="adm-form" data-confirm="{{ _("Zweiten Faktor von {name} zurücksetzen? Alle Passkeys, die Authenticator-App und die Wiederherstellungscodes werden entfernt.", name=u.username) }}">
+    {{ csrf_field() }}<input type="hidden" name="action" value="mfa_reset">
+    <p class="hk-hint">{{ _("Nur, wenn die Person Passkey bzw. Handy und ihre Wiederherstellungscodes verloren hat – und du sicher bist, dass sie es ist. Danach meldet sie sich nur mit dem Passwort an.") }}{% if mf.required %} {{ _("Die Richtlinie verlangt 2FA: Nach der nächsten Anmeldung wird sie zur Einrichtung geführt.") }}{% endif %}</p>
+    <div class="adm-actions"><button class="btn" type="submit">{{ _("2FA zurücksetzen") }}</button></div>
+  </form>
+  {% else %}
+  <p class="hk-hint">{{ _("Kein zweiter Faktor eingerichtet.") }}{% if mf.required %} {{ _("Die Richtlinie verlangt 2FA: Nach der nächsten Anmeldung wird die Person zur Einrichtung geführt.") }}{% endif %}</p>
+  {% endif %}
+  {% if mf.last_reset %}<p class="hk-hint">{{ _("Zuletzt zurückgesetzt {date} von {by}", date=ts(mf.last_reset.at), by=mf.last_reset.by)|safe }}</p>{% endif %}
+</section>
+{% endif %}
+
 {% if u.source == 'oidc' and u.ext_id %}
 <section class="adm-card">
   <h3>{{ _("SSO-Verknüpfung") }}</h3>

@@ -36,7 +36,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 import auth
 from db import connect as _db
-from saga import bus, notify
+from saga import bus, mfa, notify
 from saga.core import (ADMIN_URL, ASSET_V, E, SEC_HEADERS, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
                        tmpl, user_info)
 from saga.notes import FILE_MAX, note_chain
@@ -343,32 +343,47 @@ def _reauth_need(request, uid):
     """-> None (frisch genug) | 'password' (Passwort eingeben) | 'login' (neu anmelden, z. B. SSO)."""
     now = time.time()
     if request.session.get("uid") == uid and not request.headers.get("authorization", "").startswith("Bearer "):
-        fresh = max(int(request.session.get("login_at") or 0), int(request.session.get("chat_reauth_at") or 0))
+        fresh = max(int(request.session.get("login_at") or 0), int(request.session.get("chat_reauth_at") or 0),
+                    int(request.session.get("sec_at") or 0))
         if 0 <= now - fresh <= REAUTH_SEC:
             return None
-    u = auth.get_user(uid)
-    return "password" if u and (u["password_hash"] or u["source"] == "ldap") else "login"
+    m = mfa.methods(uid)
+    return "password" if m else "login"
 
 
-def _check_password(request, uid, pw):
-    if not isinstance(pw, str) or not pw or len(pw) > 200:
-        return False
-    ip = (request.client.host if request.client else "") or "?"
-    user, _err = auth.authenticate(uid, pw, ip, True, area="chat")
-    return bool(user and user["username"] == uid)
+def _check_reauth(request, uid, b):
+    """Passwort (password), Code der Authenticator-App (code) oder Passkey (passkey: Antwort auf /api/chat/reauth/options)
+    -> Fehlertext oder None. Mit Passkey/Code klappt es auch ohne Passwort (2.1)."""
+    b = b or {}
+    if not any(b.get(k) for k in ("password", "code", "passkey")):
+        return t("Zum Neubeginnen bitte dein Passwort eingeben.")
+    return mfa.confirm(request, uid, b, area="chat", kind="chat", key="wa_chat")
+
+
+@router.post("/api/chat/reauth/options")
+def api_reauth_options(request: Request):
+    """Passkey-Optionen fuer die Bestaetigung vor "Neu beginnen" (navigator.credentials.get)."""
+    uid, err = _me(request)
+    if err:
+        return err
+    try:
+        return _no_store({"options": mfa.auth_options(request, uid, kind="chat", key="wa_chat"), "origin": mfa.ORIGIN})
+    except mfa.MfaError as ex:
+        return _bad(str(ex), 409)
 
 
 @router.post("/api/chat/reauth")
 async def api_reauth(request: Request):
-    """{password} -> diese Sitzung gilt REAUTH_SEC lang als frisch angemeldet (fuer "Neu beginnen")."""
+    """{password} | {code} | {passkey} -> diese Sitzung gilt REAUTH_SEC lang als frisch angemeldet (fuer "Neu beginnen")."""
     from starlette.concurrency import run_in_threadpool
     uid, err = _me(request)
     if err:
         return err
     b = await _body(request)
-    if not await run_in_threadpool(_check_password, request, uid, (b or {}).get("password")):
-        print(f"chat: {uid} Passwort-Bestaetigung abgewiesen", flush=True)
-        return _bad(t("Passwort falsch."), 403)
+    msg = await run_in_threadpool(_check_reauth, request, uid, b)
+    if msg:
+        print(f"chat: {uid} Bestaetigung abgewiesen", flush=True)
+        return _bad(msg, 403)
     request.session["chat_reauth_at"] = int(time.time())
     return _no_store({"ok": True, "valid": REAUTH_SEC})
 
@@ -390,7 +405,7 @@ def api_me(request: Request, device: str = ""):
         "devices": [{"id": d["id"], "name": d["name"], "created": d["created"], "last_seen": d["last_seen"],
                      "revoked": bool(d["revoked_at"]), "current": d["id"] == device, "enc_pub": d["enc_pub"],
                      "sign_pub": d["sign_pub"], "sig": d["sig"]} for d in devs],
-        "links": n_link, "reauth": _reauth_need(request, uid),
+        "links": n_link, "reauth": _reauth_need(request, uid), "reauth_methods": mfa.methods(uid),
         "limits": {"msg_max": MSG_MAX, "file_max": FILE_MAX, "members_max": MEMBERS_MAX, "devices_max": DEVICES_MAX,
                    "files_per_msg": FILES_PER_MSG, "retention_max": retention_max(), "retentions": list(RETENTIONS)}})
 
@@ -425,11 +440,12 @@ async def api_identity(request: Request):
         had = _identity(c, uid) is not None
     if had and b.get("reset") is True:
         need = _reauth_need(request, uid)
-        if need and not (need == "password" and await run_in_threadpool(_check_password, request, uid, b.get("password"))):
+        bad = (await run_in_threadpool(_check_reauth, request, uid, b) if need == "password" else
+               t("Zum Neubeginnen bitte neu anmelden – danach hast du 5 Minuten Zeit.")) if need else None
+        if bad:
             print(f"chat: {uid} Neu beginnen ohne frische Anmeldung abgewiesen", flush=True)
-            msg = (t("Passwort falsch.") if b.get("password") else t("Zum Neubeginnen bitte dein Passwort eingeben.")) if need == "password" else \
-                t("Zum Neubeginnen bitte neu anmelden – danach hast du 5 Minuten Zeit.")
-            return JSONResponse({"error": msg, "reauth": need}, status_code=403, headers={"Cache-Control": "no-store"})
+            return JSONResponse({"error": bad, "reauth": need, "reauth_methods": mfa.methods(uid)}, status_code=403,
+                                headers={"Cache-Control": "no-store"})
     ident_pub, backup_pub, backup_sig = b.get("ident_pub"), b.get("backup_pub"), b.get("backup_sig")
     bundle = _valid_bundle(b.get("bundle"))
     dev = _device_in(b.get("device"))
@@ -1431,6 +1447,8 @@ def chats_page(request: Request):
     uid = _session_user(request)
     if not uid:
         return RedirectResponse("/login?next=/chats", status_code=303)
+    if (go := mfa.setup_redirect(request, uid)) is not None:
+        return go
     remember_ui_lang(uid, request)
     info = user_info(uid)
     html = tmpl.get_template("chats.html").render(title=title(), name=request.session.get("name", uid), v=ASSET_V, uid=uid,
