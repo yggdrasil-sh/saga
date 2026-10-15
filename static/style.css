@@ -1296,6 +1296,15 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
   header input[type=search]{order:10;flex:1 1 100%;min-width:0;padding:.6rem .8rem}
   .hk-user .hk-user-n{display:none}
 }
+/* Dashboard-Kopfzeile: lange Namen kuerzen statt das Benutzermenue allein in eine zweite Zeile zu schieben (BUG-053).
+   Der Gruss nimmt den freien Platz (Basis 0) und wird mit "…" gekuerzt; der Name im Benutzerknopf ebenso. */
+.dash-head .greet{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dash-head .greet+.spacer{display:none}
+.dash-head input[type=search]{flex:0 1 12rem;min-width:9rem}
+@media (max-width:1400px){.dash-head #clk-date{display:none}}
+.hk-user .hk-user-n{display:inline-block;max-width:9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+@media (max-width:600px){.dash-head input[type=search]{flex:1 1 100%;min-width:0}.hk-user .hk-user-n{display:none}}
+@media (max-width:440px){.dash-head .btn-notes .btn-t{display:none}}
 /* Tastenkuerzel-Hinweise nur, wo es eine Tastatur gibt */
 @media (hover:none){.num,.pg-foot-btn kbd,.web-go-k{display:none}}
 

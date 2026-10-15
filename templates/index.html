@@ -30,7 +30,7 @@
   {% if s.own %}<button class="bm-edit" type="button" data-bm="{{ s.id }}" title="{{ _("Lesezeichen bearbeiten") }}" aria-label="{{ _("Lesezeichen bearbeiten") }}">✎</button>{% endif %}
 </div>
 {%- endmacro %}
-<header>
+<header class="dash-head">
   <h1>{{ title }}</h1>
   <span class="greet">{{ _("Willkommen, {name}", name=name) }}</span>
   <span class="spacer"></span>
