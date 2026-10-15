@@ -7,7 +7,7 @@ import time
 from urllib.parse import urlencode
 from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
-from db import connect as _db
+from db import clean_line, connect as _db
 from fastapi import APIRouter
 from saga.core import (APP_TOKEN_MAX, ASSET_V, BASE_URL, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, _tok_db,
                        _tok_hash, forget_device, t, title, tmpl, user_info)
@@ -32,7 +32,7 @@ def _json_only(request):
     """Anmelde-Endpunkte der Apps nur mit Content-Type: application/json. Ein fremdes Web-Formular (text/plain,
     urlencoded) kann diesen Typ nicht ohne CORS-Preflight senden -> kein Login-/Logout-CSRF. Alle Apps senden JSON."""
     ct = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
-    return None if ct == "application/json" else _bad(t("ungueltige Anfrage"), 415)
+    return None if ct == "application/json" else _bad(t("ungültige Anfrage"), 415)
 
 
 def _appcode_db(c):
@@ -43,7 +43,7 @@ def _appcode_db(c):
 @router.get("/app/login")
 def app_login(request: Request, challenge: str = "", scheme: str = "hlidskjalf"):
     if not _CHALLENGE_RE.fullmatch(challenge) or scheme not in APP_SCHEMES:
-        return PlainTextResponse(t("ungueltige Anfrage"), status_code=400)
+        return PlainTextResponse(t("ungültige Anfrage"), status_code=400)
     logged_in = bool(_session_user(request))
     resp = RedirectResponse("/app/handoff" if logged_in else "/login?next=/app/handoff", status_code=303)
     # eigenes Cookie: die Anmeldung (callback) leert die Sitzung, dieses bleibt erhalten
@@ -165,17 +165,17 @@ async def app_exchange(request: Request):
     b = await _body(request) or {}
     code, verifier = str(b.get("code") or ""), str(b.get("verifier") or "")
     if not (20 <= len(code) <= 100 and 43 <= len(verifier) <= 128):
-        return _bad(t("ungueltige Anfrage"))
+        return _bad(t("ungültige Anfrage"))
     with _db() as c, c:
         _appcode_db(c)
         h = hashlib.sha256(code.encode()).hexdigest()
         r = c.execute("SELECT uid, name, challenge, expires FROM app_code WHERE hash=?", (h,)).fetchone()
         c.execute("DELETE FROM app_code WHERE hash=?", (h,))            # einmalig - auch bei Fehlversuch verbraucht
     if not r or r[3] < time.time():
-        return _bad(t("Code ungueltig oder abgelaufen"), 401)
+        return _bad(t("Code ungültig oder abgelaufen"), 401)
     calc = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
     if not secrets.compare_digest(calc, r[2]):
-        return _bad(t("Code ungueltig oder abgelaufen"), 401)
+        return _bad(t("Code ungültig oder abgelaufen"), 401)
     if user_info(r[0], fresh=True) is None:
         return _bad(t("Kein Zugriff"), 403)
     _set_session(request, r[0], r[1])
@@ -189,7 +189,7 @@ async def app_exchange(request: Request):
 def _mint_device(uid, uname, b):
     """Geraete-Anmeldung anlegen (Sitzung spaeter ohne Anmeldefenster erneuern), optional zugleich App-Schluessel."""
     out = {}
-    dev = re.sub(r"\s+", " ", str(b.get("device") or "")).strip()[:60]
+    dev = re.sub(r"\s+", " ", clean_line(b.get("device") if isinstance(b.get("device"), str) else "")).strip()[:60]
     if not dev:
         return out
     tok = "hkd_" + secrets.token_urlsafe(32)
@@ -197,6 +197,11 @@ def _mint_device(uid, uname, b):
         _devlogin_db(c)
         old = [x[0] for x in c.execute("SELECT id FROM device_login WHERE uid=? ORDER BY COALESCE(last_used, created) DESC", (uid,)).fetchall()]
         _drop_devices(c, uid, old[DEVICE_LOGIN_MAX - 1:])     # zu viele -> die am laengsten unbenutzten fallen weg
+        taken = {x[0] for x in c.execute("SELECT name FROM device_login WHERE uid=?", (uid,)).fetchall()}
+        base_name, n = dev, 2
+        while dev in taken and n < 100:           # gleich benannte Geraete unterscheidbar machen (BUG-046)
+            dev = f"{base_name[:54]} ({n})"
+            n += 1
         did = c.execute("INSERT INTO device_login (uid, uname, name, hash, prefix, created, last_used) VALUES (?,?,?,?,?,?,?)",
                         (uid, uname, dev, _tok_hash(tok), tok[:10], time.time(), time.time())).lastrowid
         out["device_token"] = tok
@@ -241,7 +246,7 @@ async def app_resume(request: Request):
     tok = str(b.get("device_token") or "")
     key = str(b.get("app_key") or "")
     if not tok.startswith("hkd_") or len(tok) > 120:
-        return _bad(t("ungueltige Anfrage"), 401)
+        return _bad(t("ungültige Anfrage"), 401)
     with _db() as c, c:
         _devlogin_db(c)
         r = c.execute("SELECT id, uid, uname FROM device_login WHERE hash=?", (_tok_hash(tok),)).fetchone()
@@ -328,15 +333,15 @@ async def app_pair(request: Request):
     b = await _body(request) or {}
     code = str(b.get("code") or "")
     if not re.fullmatch(r"[A-Za-z0-9_-]{20,64}", code):
-        return _bad(t("ungueltige Anfrage"))
-    dev = re.sub(r"\s+", " ", str(b.get("device") or "")).strip()[:60] or "App"
+        return _bad(t("ungültige Anfrage"))
+    dev = re.sub(r"\s+", " ", clean_line(b.get("device") if isinstance(b.get("device"), str) else "")).strip()[:60] or "App"
     now = time.time()
     with _db() as c, c:
         n = c.execute("UPDATE pair_code SET used_by=?, used_at=? WHERE hash=? AND used_at IS NULL AND expires > ?",
                       (dev, now, _tok_hash(code), now)).rowcount          # einmalig - auch bei gleichzeitigen Versuchen
         r = c.execute("SELECT uid, name FROM pair_code WHERE hash=?", (_tok_hash(code),)).fetchone() if n else None
     if not r:
-        return _bad(t("QR-Code ungueltig, schon benutzt oder abgelaufen – bitte im Web einen neuen erzeugen."), 401)
+        return _bad(t("QR-Code ungültig, schon benutzt oder abgelaufen – bitte im Web einen neuen erzeugen."), 401)
     if user_info(r[0], fresh=True) is None:
         return _bad(t("Kein Zugriff"), 403)
     _set_session(request, r[0], r[1])
@@ -373,7 +378,8 @@ def api_dev_list(request: Request):
     with _db() as c, c:
         _devlogin_db(c)
         rows = c.execute("SELECT id, name, prefix, created, last_used FROM device_login WHERE uid=? ORDER BY id", (uid,)).fetchall()
-    return JSONResponse([{"id": r[0], "name": r[1], "prefix": r[2], "created": r[3], "last_used": r[4]} for r in rows])
+    me = request.session.get("did")
+    return JSONResponse([{"id": r[0], "name": r[1], "prefix": r[2], "created": r[3], "last_used": r[4], "current": r[0] == me} for r in rows])
 
 
 @router.delete("/api/settings/devices/{did}")
@@ -396,11 +402,14 @@ def api_apps(request: Request):
     with _db() as c:
         _devlogin_db(c)
         _tok_db(c)
-        devs = c.execute("SELECT id, name, created, last_used FROM device_login WHERE uid=? ORDER BY COALESCE(last_used, created) DESC", (uid,)).fetchall()
+        devs = c.execute("SELECT id, name, created, last_used, prefix FROM device_login WHERE uid=? ORDER BY COALESCE(last_used, created) DESC", (uid,)).fetchall()
         toks = c.execute("SELECT id, name, prefix, created, last_used, device_id FROM app_token WHERE uid=? ORDER BY id", (uid,)).fetchall()
     ids = {d[0] for d in devs}
     keyof = {t[5]: {"id": t[0], "prefix": t[2], "created": t[3], "last_used": t[4]} for t in toks if t[5] in ids}
+    me = request.session.get("did")
+    # current: das Geraet dieser Sitzung; prefix: Anfang des Geraete-Schluessels - unterscheidet gleich benannte Geraete (BUG-046)
     return JSONResponse({
-        "devices": [{"id": d[0], "name": d[1], "created": d[2], "last_used": d[3], "key": keyof.get(d[0])} for d in devs],
+        "devices": [{"id": d[0], "name": d[1], "created": d[2], "last_used": d[3], "key": keyof.get(d[0]), "current": d[0] == me,
+                     "prefix": d[4]} for d in devs],
         "keys": [{"id": t[0], "name": t[1], "prefix": t[2], "created": t[3], "last_used": t[4]} for t in toks if t[5] not in ids],
     })
