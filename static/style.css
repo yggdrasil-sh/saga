@@ -939,7 +939,9 @@ tr.rc > td:first-child{box-shadow:inset 3px 0 0 var(--rc)}
 
 /* Speicher-Konflikt */
 .pg-conflict{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin:0 auto 1rem;max-width:760px;padding:.7rem .9rem;border-radius:8px;
-  border:1px solid var(--warn);background:var(--warnbg);color:var(--fg);font-size:.88rem}
+  border:1px solid var(--warn);background:var(--warnbg);color:var(--fg);font-size:.88rem;
+  position:sticky;top:4.6rem;z-index:9;box-shadow:0 6px 18px rgba(0,0,0,.18)}      /* unter der festen Kopfleiste sichtbar bleiben (BUG-014) */
+body.embed .pg-conflict,.pages.pg-full .pg-conflict{top:.5rem}
 .draft-dlg{gap:.6rem}
 .draft-ta{width:100%;min-height:3.4rem;max-height:40vh;resize:vertical;overflow:auto;font:inherit;font-size:.86rem;line-height:1.45;white-space:pre-wrap}
 .draft-t{margin:0;line-height:1.5}
