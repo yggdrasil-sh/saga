@@ -18,7 +18,8 @@ USER_TABLES = ("task", "note", "note_version", "bookmark", "fav", "device_login"
                "chat_identity", "chat_device", "chat_link", "push_sub", "push_queue", "ai_history", "ai_usage")
 
 
-def delete_user_data(uid):
+def delete_user_data(uid, drop_user=False):
+    """drop_user=True: das Konto selbst in DERSELBEN Transaktion loeschen (Admin: Konto loeschen, BUG-042)."""
     with _db() as c, c:
         fids = [r[0] for r in c.execute("SELECT id FROM file WHERE uid=?", (uid,)).fetchall()]
         pub = c.execute("SELECT name FROM public_name WHERE uid=?", (uid,)).fetchone()
@@ -37,6 +38,8 @@ def delete_user_data(uid):
         for k, v in pushed.items():
             counts[k] += v
         bus.emit_after(c, "account.deleted", {"uid": uid})     # Live-Verbindungen und Anwesenheit des Kontos beenden
+        if drop_user:
+            c.execute("DELETE FROM users WHERE username=?", (uid,))
     for fid in fids:
         try:
             os.remove(os.path.join(FILES_DIR, fid))

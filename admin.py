@@ -28,7 +28,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 import app as hk
 import auth
-from db import connect as _db
+from db import clean_line, connect as _db
 from saga import ai, federation, i18n, live, publish, push, sharing
 from saga.core import TZ, BodyLimit, LangMiddleware
 from saga.i18n import t
@@ -316,7 +316,7 @@ async def user_post(uid_: int, request: Request):
             return _go(back)
         with _db() as c, c:
             c.execute("UPDATE users SET display_name=?, email=?, is_admin=?, disabled=? WHERE id=?",
-                      (_s(f, "name", 120), email, 1 if is_admin else 0, 1 if disabled else 0, u["id"]))
+                      (clean_line(_s(f, "name", 120)).strip(), email, 1 if is_admin else 0, 1 if disabled else 0, u["id"]))
         auth.set_user_groups(u["id"], list(f.getlist("groups")) + _groups_list(_s(f, "new_groups", 2000)))
         if disabled and not u["disabled"]:
             hk.revoke_user_logins(u["username"])
@@ -369,9 +369,12 @@ async def user_post(uid_: int, request: Request):
             if u["is_admin"] and not u["disabled"] and _admin_count(c, u["id"]) == 0:
                 _flash(request, t("Das ist der letzte aktive Admin."), "err")
                 return _go(back)
-        counts = await run_in_threadpool(hk.delete_user_data, u["username"])
+        # Erst sperren (wirkt sofort: keine neuen Daten mehr), dann Daten und Konto in EINER Transaktion loeschen (BUG-042) -
+        # scheitert das, bleibt ein gesperrtes Konto mit seinen Daten statt eines Kontos ohne Daten
         with _db() as c, c:
-            c.execute("DELETE FROM users WHERE id=?", (u["id"],))
+            c.execute("UPDATE users SET disabled=1 WHERE id=?", (u["id"],))
+        auth._ui_cache.pop(u["username"], None)
+        counts = await run_in_threadpool(hk.delete_user_data, u["username"], True)
         auth._ui_cache.pop(u["username"], None)
         print(f"{who} GELOESCHT ({counts})", flush=True)
         _flash(request, t("Konto „{name}“ und alle Daten gelöscht ({pages} Seiten, {files} Dateien).", name=u["username"], pages=counts.get("note", 0), files=counts.get("file", 0)))
