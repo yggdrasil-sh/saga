@@ -20,7 +20,7 @@ from saga.dashboard import visible_tiles
 from saga.publish import published_via
 from saga.comments import counts as comment_counts
 from saga.sharing import RANK, Access, access, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
-from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, NOTE_MAX_COUNT, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _snapshot, blocks_text
+from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, NOTE_MAX_COUNT, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, _schema_srev, _schema_stamp, _snapshot, blocks_text
 
 router = APIRouter()
 
@@ -424,7 +424,7 @@ def _note_update(uid, nid, b):
         # Speichern ohne rev (aeltere Apps, Zeilen umbenennen) ueber den Stand einer anderen Person: vorher sichern
         foreign = content and not check_rev and bool(old[5]) and old[5] != uid
         atomic = check_rev or (content and bool(b.get("overwrite"))) or foreign
-        shrink = False
+        shrink, srev = False, None
         try:
             if "pinned" in b:
                 sets.append("pinned=?"); args.append(1 if b["pinned"] else 0)
@@ -440,6 +440,8 @@ def _note_update(uid, nid, b):
                     raise ValueError(t("nur Datenbanken haben ein Schema"))
                 new_schema = _clean_schema(b["schema"])
                 old_s = _json_load((c.execute("SELECT schema FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone() or [None])[0], {"props": []})
+                # BUG-001: Spalten/Optionen, die der Client (Stand srev) nicht kennen konnte, nicht loeschen
+                _schema_merge(old_s, new_schema, _schema_srev(b["schema"]), uid)
                 if role != "owner" and bool(old_s.get("locked")) != bool(new_schema.get("locked")):
                     raise _Reply(_bad(t("Das darf nur der Eigentümer der Seite."), 403))     # Sperre der Datenbank: wie die Seiten-Sperre
                 if old_s.get("locked") and new_schema.get("locked"):     # gesperrt: nur Entsperren ist erlaubt
@@ -476,7 +478,7 @@ def _note_update(uid, nid, b):
                     want = raw_by.get(rp["id"], {}).get("two_way")
                     if want is True and not rp.get("pair") and rp["target"] != nid:
                         rel_ok(rp["target"])
-                        rp["pair"] = _rel_link(c, owner, nid, my_title, rp)
+                        rp["pair"] = _rel_link(c, owner, nid, my_title, rp, actor=uid)
                     elif want is False and rp.get("pair"):
                         rel_ok(rp["target"])
                         _rel_unlink(c, owner, nid, rp["target"], rp.pop("pair"), True)
@@ -485,6 +487,9 @@ def _note_update(uid, nid, b):
                     if k not in new_ids and prev.get("type") == "relation" and prev.get("pair"):
                         rel_ok(prev["target"])
                         _rel_unlink(c, owner, nid, prev["target"], prev["pair"], False)
+                # Gegenspalten (_rel_link/_rel_unlink) koennen dieses Schema nicht veraendert haben (nur Ziel-Datenbanken)
+                _schema_stamp(old_s, new_schema, uid)
+                srev = new_schema["srev"]
                 sets.append("schema=?"); args.append(json.dumps(new_schema, ensure_ascii=False))
                 # Werte, die nach Typ-/Optionsaenderung nicht mehr passen, aus allen Zeilen entfernen
                 # (Mehrfachauswahl: nur geloeschte Optionen herausfiltern, nicht die ganze Liste verwerfen)
@@ -577,7 +582,10 @@ def _note_update(uid, nid, b):
             raise _Reply(_conflict(c, uid, nid, cur[0] if cur else None))
         # Live-Kanal (1.4): wer die Seite gerade offen hat, laedt still neu bzw. bekommt einen Hinweis (nach dem Commit)
         bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=uid, updated=now)
-    return JSONResponse({"ok": True, "updated": now, "rev": old[3] + (1 if content else 0)})
+    out = {"ok": True, "updated": now, "rev": old[3] + (1 if content else 0)}
+    if srev is not None:
+        out["srev"] = srev                   # neuer Schema-Stand (Client kann ihn fuer die naechste Aenderung uebernehmen)
+    return JSONResponse(out)
 
 
 @router.post("/api/notes/{nid}/move")

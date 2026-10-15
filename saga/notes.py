@@ -1,5 +1,7 @@
 """Grundlagen der Seiten, gemeinsam genutzt von Seiten, Datenbanken, Dateien und Export:
 Bloecke, Eigenschaften, Relationen, Versionen, Papierkorb-Fristen, Datei-Pfade."""
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -9,7 +11,7 @@ from datetime import date
 from html import unescape as html_unescape
 from urllib.parse import quote, urlparse
 from db import connect as _db
-from saga.core import E, STATE_DIR, _json_load, t
+from saga.core import E, SECRET, STATE_DIR, _json_load, t
 
 
 NOTE_TITLE_MAX, NOTE_BODY_MAX = 200, 20000
@@ -387,6 +389,77 @@ def _clean_schema(raw):
     return res
 
 
+# Schema-Revision (BUG-001): Clients schicken immer das ganze Schema. Wer einen alten Stand hat, wuerde Spalten/Optionen,
+# die inzwischen jemand anderes angelegt hat, samt Werten aller Zeilen loeschen. Darum fuehrt der Server "srev" (wird
+# vom Client mit dem Schema zurueckgeschickt) und merkt sich je Spalte/Option, ab welcher srev und von wem sie stammt.
+SCHEMA_SINCE_KEEP = 500          # so viele Schema-Aenderungen lang bleibt die Herkunft einer Spalte/Option gemerkt
+
+
+def _actor_tag(uid):
+    """Kurzes, nicht umkehrbares Kennzeichen des Kontos (kein Anmeldename im Schema)."""
+    return hmac.new(SECRET.encode(), str(uid).encode(), hashlib.sha256).hexdigest()[:12]
+
+
+def _schema_keys(s):
+    keys = set()
+    for p in s.get("props", []):
+        keys.add(p["id"])
+        for o in p.get("options") or []:
+            keys.add(p["id"] + "/" + o["id"])
+    return keys
+
+
+def _schema_srev(s):
+    v = s.get("srev") if isinstance(s, dict) else None
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
+
+
+def _schema_merge(old, new, known, uid):
+    """Spalten/Optionen, die im neuen Schema fehlen, aber erst nach dem Stand des Clients (known) von jemand
+    anderem angelegt wurden, gelten nicht als geloescht - sie bleiben samt Werten erhalten."""
+    since = old.get("_since") if isinstance(old.get("_since"), dict) else {}
+    me = _actor_tag(uid)
+
+    def unknown(key):
+        v = since.get(key)
+        return isinstance(v, list) and len(v) == 2 and isinstance(v[0], int) and v[0] > known and v[1] != me
+    old_props = [p for p in old.get("props", []) if isinstance(p, dict) and p.get("id")]
+    by_id = {p["id"]: p for p in new["props"]}
+    for p in new["props"]:
+        op = next((x for x in old_props if x["id"] == p["id"]), None)
+        if op and "options" in p and isinstance(op.get("options"), list):
+            have = {o["id"] for o in p["options"]}
+            for o in op["options"]:
+                if isinstance(o, dict) and o.get("id") not in have and unknown(p["id"] + "/" + str(o.get("id"))) and len(p["options"]) < 50:
+                    p["options"].append(o)
+    for i, op in enumerate(old_props):
+        if op["id"] not in by_id and unknown(op["id"]) and len(new["props"]) < 30:
+            new["props"].insert(min(i, len(new["props"])), op)
+            by_id[op["id"]] = op
+    return new
+
+
+def _schema_stamp(old, new, uid):
+    """srev hochzaehlen und Herkunft neuer Spalten/Optionen vermerken (new wird veraendert und zurueckgegeben)."""
+    n = _schema_srev(old) + 1
+    since = old.get("_since") if isinstance(old.get("_since"), dict) else {}
+    old_keys = _schema_keys({"props": [p for p in old.get("props", []) if isinstance(p, dict) and p.get("id")]})
+    me, out = _actor_tag(uid), {}
+    for k in _schema_keys(new):
+        v = since.get(k)
+        if isinstance(v, list) and len(v) == 2 and isinstance(v[0], int):
+            if v[0] > n - SCHEMA_SINCE_KEEP:
+                out[k] = v
+        elif k not in old_keys:
+            out[k] = [n, me]
+    new["srev"] = n
+    if out:
+        new["_since"] = out
+    else:
+        new.pop("_since", None)
+    return new
+
+
 def _rel_check(c, uid):
     """Pruefer fuer Relationen: nur eigene, aktive Eintraege, die wirklich in der Ziel-Datenbank liegen."""
     def check(target, ids):
@@ -439,7 +512,7 @@ def _rel_sync(c, uid, schema, row_id, old_props, new_props, may=None):
                 _rel_mirror_set(c, uid, p["target"], tid, p["pair"], row_id, False)
 
 
-def _rel_link(c, uid, nid, title, rp):
+def _rel_link(c, uid, nid, title, rp, actor=None):
     """Gegenspalte in der Ziel-Datenbank anlegen und bestehende Verknuepfungen nachtragen; liefert deren ID."""
     ts = _db_schema(c, uid, rp["target"])
     if ts is None:
@@ -448,7 +521,9 @@ def _rel_link(c, uid, nid, title, rp):
         raise ValueError(t("Die Ziel-Datenbank hat schon 30 Eigenschaften"))
     used = {p["id"] for p in ts["props"]}
     mid = next(x for x in ("r" + secrets.token_hex(4) for _ in range(50)) if x not in used)
+    old = json.loads(json.dumps(ts))
     ts["props"].append({"id": mid, "name": (title or t("Verknüpft"))[:60], "type": "relation", "target": nid, "pair": rp["id"]})
+    _schema_stamp(old, ts, uid if actor is None else actor)
     c.execute("UPDATE note SET schema=? WHERE id=? AND uid=?", (json.dumps(ts, ensure_ascii=False), rp["target"], uid))
     for row_id, pr in c.execute("SELECT id, props FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL", (uid, nid)).fetchall():
         for tid in _json_load(pr, {}).get(rp["id"]) or []:
@@ -473,7 +548,8 @@ def _rel_unlink(c, uid, nid, target, mpid, delete):
                 c.execute("UPDATE note SET props=? WHERE id=? AND uid=?", (json.dumps(d, ensure_ascii=False), row_id, uid))
     else:
         mp.pop("pair", None)
-    c.execute("UPDATE note SET schema=? WHERE id=? AND uid=?", (json.dumps(_clean_schema(ts), ensure_ascii=False), target, uid))
+    c.execute("UPDATE note SET schema=? WHERE id=? AND uid=?",
+              (json.dumps(_schema_stamp(ts, _clean_schema(ts), uid), ensure_ascii=False), target, uid))
 
 
 def _clean_props(schema, raw, base=None, check=None):
