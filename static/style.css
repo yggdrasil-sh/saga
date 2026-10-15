@@ -291,6 +291,10 @@ body.pg-full-open{overflow:hidden}
   .pg-tree,.pg-results{max-height:28vh}
   .page-title{font-size:1.6rem}
   .pages.pg-full{padding:1rem;grid-template-columns:1fr}
+  /* Seitenkopf auf Handy/Tablet: Knoepfe brechen um statt ueber den Rand zu laufen (BUG-015) */
+  .page-bar{flex-wrap:wrap;row-gap:.4rem}
+  .page-bar .crumbs{flex:1 1 8rem}
+  .page-bar .note-state{min-width:0;overflow:hidden;text-overflow:ellipsis}
 }
 @media (max-width:700px){
   .task{grid-template-columns:18px minmax(0,1fr) 1.7rem}
@@ -357,9 +361,12 @@ body.pg-full-open{overflow:hidden}
 #rail-text{flex:1;min-width:0;background:transparent;border:0;outline:none;color:var(--fg);font:inherit;font-size:.9rem;padding:.5rem 0}
 #rail-text::placeholder{color:var(--muted)}
 .rail-list{list-style:none;margin:0 -.4rem;padding:0;overflow-y:auto;flex:1}
-.rail-item{display:grid;grid-template-columns:18px minmax(0,1fr);column-gap:.7rem;align-items:start;padding:.55rem .4rem;border-radius:8px}
+.rail-item{display:grid;grid-template-columns:18px minmax(0,1fr) auto;column-gap:.7rem;align-items:start;padding:.55rem .4rem;border-radius:8px}
 .rail-item:hover{background:var(--card-h)}
-.rail-main{display:flex;flex-direction:column;gap:.2rem;min-width:0}
+.rail-main{display:flex;flex-direction:column;gap:.2rem;min-width:0;cursor:pointer}
+.rail-more{opacity:0;padding:0 .2rem}
+.rail-item:hover .rail-more,.rail-more:focus-visible,.rail-more[aria-expanded="true"]{opacity:1}
+@media (hover:none){.rail-more{opacity:.7}}
 .rail-text{font-size:.9rem;line-height:1.4;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .rail-meta{display:flex;align-items:center;gap:.35rem}
 .rail-meta .task-due{padding:0 .45rem}
@@ -385,6 +392,7 @@ body.notes-page .pages-side{position:sticky;top:4.8rem;max-height:calc(100vh - 6
 body.notes-page .pg-tree,body.notes-page .pg-results{max-height:none;overflow:auto;flex:0 1 auto}
 body.notes-page .page-head,body.notes-page .page-body{max-width:760px}
 body.notes-page .page-title{font-size:2.35rem}
+@media (max-width:760px){body.notes-page .page-title{font-size:1.6rem}}   /* Handy: langer Titel passt eher (BUG-015) */
 body.notes-page #pg-full{display:none}
 @media (max-width:760px){
   .np-head{padding:.75rem 1rem}
@@ -609,6 +617,7 @@ body.notes-page #pg-full{display:none}
 .menu-input{display:block;width:calc(100% - .8rem);margin:.3rem .4rem .35rem;background:var(--bg);border:1px solid var(--field);border-radius:6px;
   color:var(--fg);font:inherit;font-size:.85rem;padding:.35rem .5rem;outline:none}
 .menu-input:focus{border-color:var(--accent)}
+.menu:has(>.menu-input){min-width:250px}                 /* Platzhalter "Option suchen oder anlegen …" ganz lesbar (BUG-099) */
 .menu-opts{max-height:260px;overflow:auto}
 .opt-item{display:flex;align-items:center;justify-content:space-between;gap:.6rem}
 .opt-check{color:var(--accent)}
@@ -912,7 +921,8 @@ body.embed .np-main{padding:1rem 1.4rem 3rem}
 .cal-it{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .cal-ic.ic-img{width:1em;height:1em}
 .cal-nodate{color:var(--muted);font-size:.8rem;padding:.6rem .2rem}
-@media (max-width:760px){.cal-day{min-height:64px}.cal-it{display:none}.cal-item::before{content:"•"}}
+/* schmal: Titel klein und gekuerzt statt nur "•" (BUG-015) */
+@media (max-width:760px){.cal-day{min-height:64px;padding:.25rem .2rem}.cal-item{font-size:.66rem;padding:.08rem .2rem;gap:.15rem}.cal-ic{display:none}}
 
 /* Relation: verknuepfte Eintraege als Marken */
 .rel-chips{display:inline-flex;flex-wrap:wrap;gap:.25rem;align-items:center;min-width:0}
@@ -939,7 +949,9 @@ tr.rc > td:first-child{box-shadow:inset 3px 0 0 var(--rc)}
 
 /* Speicher-Konflikt */
 .pg-conflict{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin:0 auto 1rem;max-width:760px;padding:.7rem .9rem;border-radius:8px;
-  border:1px solid var(--warn);background:var(--warnbg);color:var(--fg);font-size:.88rem}
+  border:1px solid var(--warn);background:var(--warnbg);color:var(--fg);font-size:.88rem;
+  position:sticky;top:4.6rem;z-index:9;box-shadow:0 6px 18px rgba(0,0,0,.18)}      /* unter der festen Kopfleiste sichtbar bleiben (BUG-014) */
+body.embed .pg-conflict,.pages.pg-full .pg-conflict{top:.5rem}
 .draft-dlg{gap:.6rem}
 .draft-ta{width:100%;min-height:3.4rem;max-height:40vh;resize:vertical;overflow:auto;font:inherit;font-size:.86rem;line-height:1.45;white-space:pre-wrap}
 .draft-t{margin:0;line-height:1.5}
@@ -1288,6 +1300,15 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
   header input[type=search]{order:10;flex:1 1 100%;min-width:0;padding:.6rem .8rem}
   .hk-user .hk-user-n{display:none}
 }
+/* Dashboard-Kopfzeile: lange Namen kuerzen statt das Benutzermenue allein in eine zweite Zeile zu schieben (BUG-053).
+   Der Gruss nimmt den freien Platz (Basis 0) und wird mit "…" gekuerzt; der Name im Benutzerknopf ebenso. */
+.dash-head .greet{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dash-head .greet+.spacer{display:none}
+.dash-head input[type=search]{flex:0 1 12rem;min-width:9rem}
+@media (max-width:1400px){.dash-head #clk-date{display:none}}
+.hk-user .hk-user-n{display:inline-block;max-width:9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+@media (max-width:600px){.dash-head input[type=search]{flex:1 1 100%;min-width:0}.hk-user .hk-user-n{display:none}}
+@media (max-width:440px){.dash-head .btn-notes .btn-t{display:none}}
 /* Tastenkuerzel-Hinweise nur, wo es eine Tastatur gibt */
 @media (hover:none){.num,.pg-foot-btn kbd,.web-go-k{display:none}}
 

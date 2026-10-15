@@ -31,10 +31,13 @@
   // relative Angabe ("vor 5 Minuten", "in 2 days") - n Sekunden (negativ = Vergangenheit)
   var rtf = window.Intl && Intl.RelativeTimeFormat ? new Intl.RelativeTimeFormat(LOC, { numeric: 'auto' }) : null;
   function relTime(sec) {
-    var a = Math.abs(sec), u = 'second', v = sec;
-    if (a >= 86400 * 30) { u = 'month'; v = sec / (86400 * 30); } else if (a >= 86400 * 7) { u = 'week'; v = sec / (86400 * 7); }
-    else if (a >= 86400) { u = 'day'; v = sec / 86400; } else if (a >= 3600) { u = 'hour'; v = sec / 3600; } else if (a >= 60) { u = 'minute'; v = sec / 60; }
-    v = Math.round(v);
+    // erst auf die Einheit runden, dann pruefen, ob die naechste passt: 59,6 s = "vor 1 Minute", nicht "vor 60 Sekunden" (BUG-099)
+    var U = [['second', 1, 60], ['minute', 60, 60], ['hour', 3600, 24], ['day', 86400, 7], ['week', 86400 * 7, 30 / 7], ['month', 86400 * 30, Infinity]];
+    var u = 'second', v = Math.round(sec);
+    for (var i = 0; i < U.length; i++) {
+      u = U[i][0]; v = Math.round(sec / U[i][1]);
+      if (U[i][0] === 'week' ? Math.abs(sec) < 86400 * 30 : Math.abs(v) < U[i][2]) break;
+    }
     return rtf ? rtf.format(v, u) : String(v) + ' ' + u;
   }
   var H = { 'X-Saga': '1' };
@@ -42,17 +45,61 @@
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 
   // API: Session-Cookie + eigener Header (erzwingt CORS-Preflight -> keine Cross-Site-Requests)
+  // Beim Verlassen/Neuladen der Seite (leaving) mit keepalive: so ueberlebt das letzte Speichern das Entladen (BUG-012).
+  // keepalive erlaubt hoechstens 64 KB je Anfrage - groessere Inhalte gehen normal (dann warnt beforeunload, s. pages.js).
+  var leaving = false, leaveT = null;
   function api(method, url, body) {
-    var h = Object.assign({}, H);
+    var h = Object.assign({}, H), data = body !== undefined ? JSON.stringify(body) : undefined;
     if (body !== undefined) h['Content-Type'] = 'application/json';
-    return fetch(url, { method: method, credentials: 'same-origin', headers: h,
-                        body: body !== undefined ? JSON.stringify(body) : undefined })
+    return fetch(url, { method: method, credentials: 'same-origin', headers: h, body: data,
+                        keepalive: leaving && method !== 'GET' && (!data || data.length < 60000) })
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (d) {
           if (!r.ok) { var e = new Error(d.error || ('HTTP ' + r.status)); e.status = r.status; e.data = d; throw e; }   // Konflikt: e.data.by
           return d;
         });
       });
+  }
+
+  // Seite wird verlassen (beforeunload/pagehide): offenes Eingabefeld einer Datenbank-Zelle abschliessen (sein blur
+  // speichert), danach laufen Speicher-Anfragen kurz mit keepalive. Wird das Verlassen abgebrochen, endet der Modus wieder.
+  function leave() {
+    leaving = true; clearTimeout(leaveT); leaveT = setTimeout(function () { leaving = false; }, 3000);
+    var a = document.activeElement;
+    if (a && a.matches && a.matches('.val-in, .db-title-in')) a.blur();
+  }
+  window.addEventListener('beforeunload', leave, true);
+  window.addEventListener('pagehide', leave, true);
+
+  // Zahl aus einer Eingabe in der Sprache der Oberflaeche lesen: de/es "1.200,5", en "1,200.5" (BUG-013). Ein einzelnes
+  // Trennzeichen gilt als Tausenderpunkt nur bei 3er-Gruppen ("1.200" de = 1200), sonst als Komma ("1.5" = 1,5).
+  // Ergebnis: Zahl oder NaN.
+  var DEC = (function () {
+    try { var p = new Intl.NumberFormat(LOC).formatToParts(1.5).filter(function (x) { return x.type === 'decimal'; })[0]; return p ? p.value : '.'; }
+    catch (e) { return '.'; }
+  })();
+  function parseNum(s) {
+    s = String(s == null ? '' : s).replace(/[\s'’]/g, '').replace(/^−/, '-');
+    if (!s) return NaN;
+    if (/^[+-]?\d+$/.test(s)) return Number(s);
+    var hasDot = s.indexOf('.') >= 0, hasComma = s.indexOf(',') >= 0;
+    if (hasDot && hasComma) {                                  // beide: das hintere ist das Dezimalzeichen
+      var d = s.lastIndexOf('.') > s.lastIndexOf(',') ? '.' : ',', g = d === '.' ? ',' : '.';
+      var re = new RegExp('^[+-]?\\d{1,3}(\\' + g + '\\d{3})+\\' + d + '\\d*$');
+      return re.test(s) ? Number(s.split(g).join('').replace(d, '.')) : NaN;
+    }
+    if (!hasDot && !hasComma) return /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(s) ? Number(s) : NaN;
+    var c = hasDot ? '.' : ',', n = s.split(c).length - 1;
+    var grouped = new RegExp('^[+-]?\\d{1,3}(\\' + c + '\\d{3})+$').test(s);
+    if (grouped && (c !== DEC || n > 1)) return Number(s.split(c).join(''));        // Tausender-Trennung
+    if (n === 1 && /^[+-]?(\d+[.,]\d*|[.,]\d+)$/.test(s)) return Number(s.replace(c, '.'));     // Dezimalzeichen
+    return NaN;
+  }
+  // Zahl zum Bearbeiten in der Sprache der Oberflaeche (ohne Tausendertrennung): de 1234,5 / en 1234.5
+  function editNum(v) {
+    if (v == null || v === '' || isNaN(Number(v))) return v == null ? '' : String(v);
+    var s = String(Number(v));
+    return /e/i.test(s) ? s : s.replace('.', DEC);
   }
 
   // Einstellungen pro Browser (offen/zu, zuletzt geoeffnete Seite …)
@@ -279,7 +326,7 @@
     });
   }
 
-  window.HK = { scrollFade: scrollFade, $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
+  window.HK = { parseNum: parseNum, editNum: editNum, scrollFade: scrollFade, $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
                 openMenu: openMenu, closeMenu: closeMenu, menuItem: menuItem, menuLabel: menuLabel,
                 menuOpen: function () { return !!menuOwner; }, closeSub: closeSub, ask: ask, urlNode: urlNode, fmtNodes: fmtNodes, fieldMsg: fieldMsg };
 })();

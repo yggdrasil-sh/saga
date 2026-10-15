@@ -99,13 +99,37 @@
       S.me = me;
       if (!me.identity) { if (K) return forget().then(setupIntro); return setupIntro(); }
       var mine = K && (me.devices || []).filter(function (d) { return d.id === K.device.id && !d.revoked; })[0];
-      if (!K || !mine || !eqB(K.ident_pk, ub(me.identity.ident_pub, 32))) return forget().then(newDevice);
+      if (K && !eqB(K.ident_pk, ub(me.identity.ident_pub, 32))) return forget().then(function () { signedOut(true); });
+      if (K && !mine) return forget().then(function () { signedOut(false); });
+      if (!K) return newDevice();
       ready();
     }).catch(function (e) {
       if (e && e.message === 'idb') fatal(T('Dieser Browser erlaubt keinen lokalen Speicher (IndexedDB) – im privaten Fenster gehen Chats nicht.'));
       else fatal(T('Chats nicht geladen: {err}', { err: e.message }));
     });
   }
+  // Dieses Geraet wurde anderswo abgemeldet ("Neu beginnen" auf einem anderen Geraet bzw. Geraet entfernt): erklaeren,
+  // statt still leer zu bleiben oder erst beim Senden zu scheitern (BUG-057); danach wie ein neues Geraet verbinden.
+  function signedOut(reset) {
+    var box = overlay(reset ? T('Chats wurden neu begonnen') : T('Dieses Gerät wurde abgemeldet'), { close: false });
+    box.appendChild(el('p', null, reset
+      ? T('Auf einem anderen Gerät wurden deine Chats mit neuen Schlüsseln neu begonnen. Dieses Gerät ist dadurch abgemeldet, bisherige Nachrichten sind hier nicht mehr lesbar.')
+      : T('Dieses Gerät wurde aus deinen Chat-Geräten entfernt.')));
+    box.appendChild(el('p', null, T('Verbinde es neu – mit einem anderen Gerät oder mit deinem Wiederherstellungsschlüssel.')));
+    var bar = el('div', 'hk-actions'); box.appendChild(bar);
+    bar.appendChild(btn(T('Weiter'), 'btn-primary ct-signedout-go', newDevice));
+  }
+  // Laufender Tab: beim Zurueckkehren und vor dem Senden pruefen, ob dieses Geraet noch gilt -> true/false
+  function checkDevice() {
+    if (!K || !S.ready) return Promise.resolve(true);
+    return api('GET', '/api/chat/me?device=' + q(K.device.id)).then(function (me) {
+      var mine = (me.devices || []).filter(function (d) { return d.id === K.device.id && !d.revoked; })[0];
+      var reset = !!me.identity && !eqB(K.ident_pk, ub(me.identity.ident_pub, 32));
+      if (me.identity && mine && !reset) return true;
+      return forget().then(function () { closeChat(); if (me.identity) signedOut(reset); else start(); return false; });
+    }).catch(function () { return true; });                  // Netzfehler: nicht abmelden
+  }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) checkDevice(); });
   function fatal(msg) {
     root.textContent = ''; var p = el('p', 'ct-off', msg); p.setAttribute('role', 'alert'); root.appendChild(p);
   }
@@ -516,6 +540,17 @@
       if (t.changed) drawWarn();
     });
   }
+  // Beim Oeffnen eines Chats die aktuellen Identitaetsschluessel der anderen holen und mit dem gemerkten Stand vergleichen:
+  // "Sicherheitsnummer geaendert" erscheint sofort, nicht erst nach einer neuen Nachricht oder dem Oeffnen der
+  // Sicherheitsnummer (BUG-016). Nur Konten mit eingerichteten Chats liefern einen Schluessel.
+  function checkIdents(c) {
+    var users = c.members.filter(function (m) { return !m.me; }).map(function (m) { return m.username; }).slice(0, 60);
+    if (!users.length) return;
+    api('GET', '/api/chat/keys?users=' + users.map(q).join(',')).then(function (r) {
+      if (!S.cur || S.cur.id !== c.id) return;
+      Object.keys(r.users || {}).forEach(function (u) { var k = r.users[u]; if (k && k.ident_pub && users.indexOf(u) >= 0) noteIdent(u, k.ident_pub); });
+    }).catch(function () { /* Pruefung beim Senden greift trotzdem */ });
+  }
   function drawWarn() {
     var w = $('ct-warn'), c = S.cur; if (!c) { w.hidden = true; return; }
     var bad = c.members.filter(function (m) { return trust[m.username] && trust[m.username].changed; });
@@ -553,7 +588,7 @@
 
   // --- Unterhaltung -----------------------------------------------------------------------------------------------
   function closeChat() {
-    S.cur = null; S.msgs = []; S.byId = {}; S.rc = null; S.reply = null; S.files = [];
+    S.cur = null; S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = [];
     $('ct-chat').hidden = true; $('ct-none').hidden = false; root.classList.remove('ct-open');
     drawList();
   }
@@ -562,11 +597,12 @@
     var same = S.cur && S.cur.id === cid;
     return api('GET', '/api/chats/' + cid + '?device=' + q(dev())).then(function (r) {
       var c = r.chat; freeTitle(c);
-      if (!same) { S.msgs = []; S.byId = {}; S.rc = null; S.reply = null; S.files = []; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; }
+      if (!same) { S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; }
       S.cur = c;
       $('ct-none').hidden = true; $('ct-chat').hidden = false; root.classList.add('ct-open');
       drawHead(); drawList(); drawWarn();
       c.members.forEach(function (m) { if (!m.me && !trust[m.username]) trustP[m.username] = kvGet(trustKey(m.username)).then(function (t) { if (t) trust[m.username] = t; drawWarn(); return t; }).catch(function () { return null; }); });
+      checkIdents(c);
       return loadMsgs(false);
     }).catch(function (e) {
       if (e.status === 404) { HK.toast(T('Diesen Chat gibt es nicht (mehr) oder du gehörst nicht mehr dazu.')); closeChat(); loadList(); }
@@ -605,17 +641,19 @@
         S.byId[m.id] = m; return m;
       });
       if (older) { S.msgs = add.concat(S.msgs); S.more = r.more; }
-      else { S.msgs = S.msgs.concat(add); if (!last) S.more = r.more; }
+      else { S.msgs = S.msgs.concat(add); if (!last) S.more = r.more; if (!last || !r.more) S.seenSeq = Math.max(S.seenSeq || 0, r.last_seq || 0); }
       drawMsgs(older ? 'keep' : 'bottom');
       resolveNotes();
       markRead();
       if (!older && r.more && last) return loadMsgs(false);
     }).catch(function (e) { S.loading = false; HK.toast(T('Nachrichten nicht geladen: {err}', { err: e.message })); });
   }
+  // Gelesen bis zur neuesten geladenen Nachricht - oder bis zum Stand der Unterhaltung beim Laden (S.seenSeq): auch
+  // Nachrichten, die dieses Geraet nie lesen kann (vor der Einrichtung geschickt), zaehlen sonst ewig als ungelesen (BUG-050)
   function markRead() {
-    var c = S.cur; if (!c || document.hidden || !S.msgs.length) return;
-    var seq = S.msgs[S.msgs.length - 1].seq;
-    if (seq <= (c.last_read || 0)) return;
+    var c = S.cur; if (!c || document.hidden) return;
+    var seq = Math.max(S.msgs.length ? S.msgs[S.msgs.length - 1].seq : 0, S.seenSeq || 0);
+    if (!seq || seq <= (c.last_read || 0)) return;
     c.last_read = seq;
     api('POST', '/api/chats/' + c.id + '/read', { seq: seq }).then(function () {
       var x = S.chats.filter(function (y) { return y.id === c.id; })[0]; if (x) { x.unread = 0; x.last_read = seq; drawList(); }
@@ -673,6 +711,7 @@
     } else {
       box.appendChild(el('p', 'ct-start', '🔒 ' + T('Nachrichten in diesem Chat sind Ende-zu-Ende-verschlüsselt.') +
         (c.kind !== 'dm' ? ' ' + T('Wer neu dazukommt, sieht nur Nachrichten ab dem Beitritt.') : '')));
+      if (!S.msgs.length && S.seenSeq > 0) box.appendChild(el('p', 'ct-start', T('Frühere Nachrichten sind auf diesem Gerät nicht lesbar – z. B. vor seiner Einrichtung geschickt oder abgelaufen.')));
     }
     var lastDay = '', lastWho = null;
     S.msgs.forEach(function (m) {
@@ -787,6 +826,7 @@
       if (S.files.length < 10) S.files.push(f);
     });
     this.value = ''; drawFiles();
+    $('ct-input').focus();                                 // Enter sendet dann, statt die Dateiauswahl erneut zu oeffnen (BUG-099)
   });
 
   // --- Senden ---------------------------------------------------------------------------------------------------
@@ -842,7 +882,10 @@
         throw e;
       });
     }
-    return recipients(cid).then(function (rc) { return trustCheck(rc.raw).then(function () { return attempt(rc, false); }); });
+    return recipients(cid).then(function (rc) { return trustCheck(rc.raw).then(function () { return attempt(rc, false); }); })
+      .catch(function (e) {                                  // Senden scheitert, weil dieses Geraet nicht mehr gilt? Erklaeren.
+        return checkDevice().then(function (okDev) { if (!okDev) { e = new Error(T('Dieses Gerät ist für Chats abgemeldet.')); } throw e; });
+      });
   }
   function uploadFiles(cid) {
     return Promise.all(S.files.map(function (f) {

@@ -236,6 +236,32 @@
     if (e.key === 'Escape' && slashPopOpen() && (slashP || slashSrc)) slashUndo();
   }, true);
 
+  // Enter, das Editor.js NICHT selbst behandelt hat (kein aktueller Block nach dem Umwandeln per "/" oder Kuerzel, Menue-
+  // Zustand haengt, Handy-Tastatur mit keyCode 229): der Browser fuegte ein <div> IN die Ueberschrift/den Absatz ein, der
+  // Sanitizer verwirft es beim Speichern -> Zeilen kleben zusammen ("KuchenMehl"). Editor.js verhindert bei eigenem Enter
+  // schon das keydown, dann kommt kein beforeinput - hier also nur der Fall ohne Behandlung: Block an der Schreibmarke
+  // teilen, Rest als neuen Absatz darunter (wie Editor.js selbst). BUG-011
+  document.addEventListener('beforeinput', function (e) {
+    if (e.defaultPrevented || e.inputType !== 'insertParagraph' || e.isComposing) return;
+    var t = e.target, node = t && t.closest ? t.closest('.ce-paragraph, .ce-header') : null, box = $('pg-editor');
+    var blk = node && node.parentNode && node.parentNode.classList.contains('ce-block__content') ? node.closest('.ce-block') : null;
+    if (!blk || !box || !box.contains(node) || !node.isContentEditable) return;
+    var sel = window.getSelection(), r = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+    if (!r || !node.contains(r.startContainer) || !node.contains(r.endContainer)) return;
+    var best = null;
+    (S.eds || []).forEach(function (x) { if (x.ed && x.holder.isConnected && x.holder.contains(blk) && (!best || best.holder.contains(x.holder))) best = x; });
+    var ed = best ? best.ed : S.editor, idx = [].filter.call(blk.parentNode.children, function (x) { return x.classList.contains('ce-block'); }).indexOf(blk);
+    if (!ed || idx < 0) return;
+    e.preventDefault();
+    r.deleteContents();
+    var tail = document.createRange(); tail.setStart(r.endContainer, r.endOffset); tail.setEnd(node, node.childNodes.length);
+    var tmp = document.createElement('div'); tmp.appendChild(tail.extractContents());
+    var rest = tmp.textContent.trim() ? tmp.innerHTML : '';          // trim() kennt auch das geschuetzte Leerzeichen
+    try { ed.toolbar.close(); } catch (err) { /* Komfort */ }
+    ed.blocks.insert('paragraph', { text: rest }, undefined, idx + 1, true);
+    ed.caret.setToBlock(idx + 1, 'start');
+  });
+
   // --- Zustand ---------------------------------------------------------------
   var S = { pages: [], shared: [], cur: null, editor: null, loading: false, dirtyBody: false, dirtyTitle: false, timer: null,
             open: {}, onCount: function () {} };
@@ -282,8 +308,25 @@
     }
     renderShared();
     $('pg-empty').hidden = S.pages.length > 0 || S.shared.length > 0 || !!S.cur || !!($('pg-noaccess') && !$('pg-noaccess').hidden);
+    pickHintSoon();
     S.onCount(S.pages.length);
     renderFavs();
+  }
+  // Seiten vorhanden (eigene oder geteilte), aber keine offen - z. B. nur geteilte Seiten sind eingetroffen oder die offene
+  // Seite liegt jetzt im Papierkorb: Hinweis statt leerer Flaeche (BUG-095). Kurz verzoegert, sonst blitzt er beim Oeffnen auf.
+  var pickT = null;
+  function pickHintSoon() { clearTimeout(pickT); pickT = setTimeout(pickHint, 400); }
+  function pickHint() {
+    var h = $('pg-pick');
+    if (!h) {
+      h = el('div', 'pages-empty pg-pick'); h.id = 'pg-pick'; h.setAttribute('role', 'status');
+      h.appendChild(el('p', null, T('Wähle links eine Seite – oder lege eine neue an.')));
+      var b = el('button', 'btn', T('+ Neue Seite')); b.type = 'button';
+      b.addEventListener('click', function () { newPageMenu(b, null); }); h.appendChild(b);
+      $('pg-empty').parentNode.insertBefore(h, $('pg-empty'));
+    }
+    var busy = function (id) { var x = $(id); return !!x && !x.hidden; };
+    h.hidden = !!S.cur || !(S.pages.length || S.shared.length) || busy('page') || busy('pg-empty') || busy('pg-noaccess') || busy('pg-trash') || EMBED;
   }
   // Ein Zweig des Baums - eigene Seiten (mit Ziehen) und "Mit mir geteilt" (ohne Ziehen, "+" nur mit 'Bearbeiten')
   function treeNodes(list, items, depth, kidsOf, own) {
@@ -621,13 +664,37 @@
       rt.addEventListener('click', function () { var t = +box.dataset.id; if (t) loadList().then(function () { return openPage(t); }); });
       var gs = el('button', 'btn pg-na-shared', T('Zu „Mit mir geteilt“')); gs.type = 'button';
       gs.addEventListener('click', goShared);
-      acts.appendChild(rt); acts.appendChild(gs); box.appendChild(acts);
+      // eigene Seite im Papierkorb (direkt oder mit der Elternseite): dorthin bzw. gleich wiederherstellen (BUG-056)
+      var rs = el('button', 'btn btn-primary pg-na-restore', T('Wiederherstellen')); rs.type = 'button'; rs.hidden = true;
+      rs.addEventListener('click', function () {
+        var t = +box.dataset.id;
+        api('POST', '/api/trash/' + t + '/restore').then(loadList).then(function () { box.hidden = true; return openPage(t); })
+          .catch(function (err) { HK.toast(T('Nicht wiederhergestellt: {err}', { err: err.message })); });
+      });
+      var tb = el('button', 'btn pg-na-trash', T('Papierkorb öffnen')); tb.type = 'button'; tb.hidden = true;
+      tb.addEventListener('click', function () { box.hidden = true; showTrash(); });
+      acts.appendChild(rs); acts.appendChild(rt); acts.appendChild(tb); acts.appendChild(gs); box.appendChild(acts);
       $('pg-empty').parentNode.insertBefore(box, $('pg-empty'));
     }
     box.dataset.id = id ? String(id) : '';
     box.querySelector('.pg-na-retry').hidden = !id;
+    box.querySelector('.pg-na-t').textContent = T('Kein Zugriff auf diese Seite');
+    box.querySelector('.pg-na-x').textContent = T('Die Seite gibt es nicht (mehr), oder sie ist nicht (mehr) mit dir geteilt.');
+    box.querySelector('.pg-na-restore').hidden = true; box.querySelector('.pg-na-trash').hidden = true;
     box.hidden = false; $('pg-empty').hidden = true; document.title = T('Kein Zugriff') + ' · Saga';
     renderTree();
+    if (id && !remoteId(id) && !EMBED) api('GET', '/api/trash').then(function (list) {
+      if (box.dataset.id !== String(id) || box.hidden || !list.length) return;
+      var hit = list.filter(function (p) { return p.id === id; })[0];
+      box.querySelector('.pg-na-trash').hidden = false;
+      if (hit) {
+        box.querySelector('.pg-na-t').textContent = T('„{name}“ liegt im Papierkorb', { name: label(hit) });
+        box.querySelector('.pg-na-x').textContent = T('Du kannst die Seite wiederherstellen.');
+        box.querySelector('.pg-na-restore').hidden = false; box.querySelector('.pg-na-retry').hidden = true;
+      } else {
+        box.querySelector('.pg-na-x').textContent = T('Die Seite gibt es nicht (mehr), sie liegt mit einer übergeordneten Seite im Papierkorb, oder sie ist nicht (mehr) mit dir geteilt.');
+      }
+    }).catch(function () { /* nur Zusatzhinweis */ });
   }
   function clearConflict() { S.conflict = false; var b = $('pg-conflict'); if (b) b.remove(); }
 
@@ -668,11 +735,31 @@
       });
   }
 
+  // Tasten, die zwischen "Leere Seite" und dem Fokus im Titel getippt werden (Server-Antwort + Editor brauchen bis
+  // ~1,5 s), sammeln statt verlieren - danach in den Titel (BUG-047). Liefert eine Stopp-Funktion -> gesammelter Text.
+  function titleBuffer() {
+    var buf = '';
+    function kd(e) {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+      var a = document.activeElement;
+      if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+      if (e.key.length === 1) { buf += e.key; e.preventDefault(); }
+      else if (e.key === 'Backspace' && buf) { buf = buf.slice(0, -1); e.preventDefault(); }
+    }
+    document.addEventListener('keydown', kd, true);
+    return function () { document.removeEventListener('keydown', kd, true); return buf; };
+  }
+  function focusTitle(extra) {
+    var t = $('pg-title'); t.focus();
+    if (extra && !readOnly()) { t.value += extra; S.dirtyTitle = true; schedule(); }
+    try { t.setSelectionRange(t.value.length, t.value.length); } catch (e) { /* egal */ }
+  }
   function newPage(parentId) {
+    var stop = titleBuffer();
     return save().then(function () { return api('POST', '/api/notes', { parent_id: parentId || null }); })
       .then(function (d) { if (parentId) { S.open[parentId] = true; saveOpen(); } return loadList().then(function () { return openPage(d.id); }); })
-      .then(function () { $('pg-title').focus(); })
-      .catch(function (err) { HK.toast(T('Seite nicht angelegt: {err}', { err: err.message })); });
+      .then(function () { focusTitle(stop()); })
+      .catch(function (err) { stop(); HK.toast(T('Seite nicht angelegt: {err}', { err: err.message })); });
   }
 
   // Nur speichern, wenn sich der Inhalt wirklich geaendert hat (Editor.js meldet beim Laden teils "Aenderungen")
@@ -775,9 +862,9 @@
       m.appendChild(HK.menuItem(T('Unterseite hinzufügen'), function () { newPage(c.id); }, { icon: '＋' }));
       m.appendChild(HK.menuItem(T('Verschieben nach'), null, { icon: '↪', subSearch: T('Seite suchen …'), sub: function (sm) {
         var blocked = descendants(c.id).concat([c.id]);
-        if (c.parent_id) sm.appendChild(HK.menuItem(T('Oberste Ebene'), function () { movePageTo(c.id, null, children(null).length); }, { icon: '⌂' }));
+        if (c.parent_id) sm.appendChild(HK.menuItem(T('Oberste Ebene'), function () { moveFromMenu(c.id, null); }, { icon: '⌂' }));
         S.pages.filter(function (p) { return blocked.indexOf(p.id) < 0 && p.id !== c.parent_id && p.kind !== 'database'; }).forEach(function (p) {
-          sm.appendChild(HK.menuItem(label(p), function () { movePageTo(c.id, p.id, children(p.id).length); },
+          sm.appendChild(HK.menuItem(label(p), function () { moveFromMenu(c.id, p.id); },
             { icon: ti(p.icon) || '📄', hint: ancestors(p.id).map(label).join(' / ') }));
         });
       } }));
@@ -826,7 +913,7 @@
     m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
       { icon: '💬', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
     m.appendChild(HK.menuItem(T('Link zur Seite kopieren'), function () { copyLink(); }, { icon: '🔗' }));
-    if (window.HKAI) HKAI.menu(m);
+    if (window.HKAI && !rem) HKAI.menu(m);            // KI nur fuer Seiten dieses Servers (andere Instanz: 404, BUG-052)
     var n = descendants(c.id).length || S.shared.filter(function (p) { return p.parent_id === c.id; }).length;
     if (!rem) m.appendChild(HK.menuItem(T('Exportieren'), null, { icon: '⬇', sub: function (sm) {
       sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { icon: '📄' }));
@@ -873,6 +960,16 @@
   $('pg-empty-new').addEventListener('click', function () { newPageMenu(this, null); });
   window.addEventListener('pagehide', function () { save(); });
   document.addEventListener('visibilitychange', function () { if (document.hidden) save(); });
+  // Neu laden / andere Adresse kurz nach dem Tippen (BUG-012): schon bei beforeunload speichern - HK.api schickt es dann mit
+  // keepalive, die Anfrage ueberlebt das Entladen. Laeuft gerade noch ein Speichern (die naechste Anfrage muss darauf warten)
+  // oder ist der Inhalt zu gross fuer keepalive, fragt der Browser vor dem Verlassen nach.
+  window.addEventListener('beforeunload', function (e) {
+    if (!S.cur || S.conflict || S.lost || readOnly() || (!S.dirtyBody && !S.dirtyTitle)) return;
+    var busy = (S.inflight || 0) > 0;
+    save();
+    var big = $('pg-editor').textContent.length > 40000;
+    if (busy || big) { e.preventDefault(); e.returnValue = ''; }
+  });
 
 
   // --- Tags -----------------------------------------------------------------
@@ -1121,6 +1218,7 @@
   // --- Rueckverweise ----------------------------------------------------------
   function loadBacklinks(id) {
     var sec = $('pg-backlinks'), ul = $('pg-backlinks-list');
+    if (remoteId(id)) { sec.hidden = true; ul.textContent = ''; return; }   // andere Instanz: keine Rueckverweise (BUG-097)
     api('GET', '/api/notes/' + id + '/backlinks').then(function (list) {
       if (!S.cur || S.cur.id !== id) return;
       ul.textContent = ''; sec.hidden = !list.length;
@@ -1538,6 +1636,8 @@
   OPS.created = OPS.edited = [['after', T('nach')], ['before', T('vor')], ['eq', T('am')], ['today', T('ist heute')], ['this_week', T('ist diese Woche')], ['this_month', T('ist diesen Monat')]];
   function propValue(p, r) { return p.type === 'calc' ? calcValue2(p, r) : AUTO[p.type] ? r[AUTO[p.type]] : (r.props || {})[p.id]; }
   function numLike(p) { return !!p && (p.type === 'number' || p.type === 'calc'); }
+  // Filterwert einer Zahlenspalte: Eingabe in der Sprache der Oberflaeche, gespeichert als "1200.5" (BUG-013)
+  function numStore(x) { var n = HK.parseNum(x); return String(x).trim() === '' || isNaN(n) ? String(x).trim() : String(n); }
   var CALC_P = [['div', 'A ÷ B', '÷'], ['pct', T('A in % von B'), '%'], ['mul', 'A × B', '×'], ['add', 'A + B', '+'], ['sub', 'A − B', '−']];
   // "Berechnet": aus zwei Zahlen-Spalten der Zeile, immer frisch (wird nie gespeichert)
   function calcValue2(p, r) {
@@ -1749,16 +1849,21 @@
       buildInput(); return wrap;
       function buildInput() {
       var inp = el('input', 'val-in'); inp.setAttribute('aria-label', prop.name);
-      inp.type = t === 'number' ? 'number' : t === 'date' ? 'date' : t === 'url' ? 'url' : 'text';
-      if (t === 'number') inp.step = 'any';
-      inp.value = v == null ? '' : String(v); inp.placeholder = t === 'url' ? 'https://…' : '';
+      // Zahl als Text in der Sprache der Oberflaeche ("1.200,5" de): type=number las "1.200" als 1,2 (BUG-013)
+      inp.type = t === 'date' ? 'date' : t === 'url' ? 'url' : 'text';
+      if (t === 'number') inp.inputMode = 'decimal';
+      inp.value = v == null ? '' : t === 'number' ? HK.editNum(v) : String(v); inp.placeholder = t === 'url' ? 'https://…' : '';
       function markEmpty() { inp.classList.toggle('is-empty', !inp.value); }
       markEmpty(); inp.addEventListener('input', markEmpty);
       var start = inp.value;
       function commit() {
         if (inp.value === start) { if (t === 'number' && start !== '' && (prop.fmt || prop.show)) onDone(); return; }   // zurueck zur Anzeige
-        var nv = inp.value.trim(); start = inp.value;
-        setProp(row, prop.id, nv === '' ? null : (t === 'number' ? Number(nv) : nv)).then(onDone);
+        var nv = inp.value.trim(), num = t === 'number' && nv !== '' ? HK.parseNum(nv) : null;
+        if (t === 'number' && nv !== '' && isNaN(num)) {                     // keine Zahl: Hinweis, alten Wert zeigen
+          HK.toast(T('„{v}“ ist keine Zahl', { v: nv })); inp.value = start; markEmpty(); return;
+        }
+        start = inp.value;
+        setProp(row, prop.id, nv === '' ? null : (t === 'number' ? num : nv)).then(onDone);
       }
       inp.addEventListener('change', commit); inp.addEventListener('blur', commit);
       inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } if (e.key === 'Escape') { inp.value = start; inp.blur(); } });
@@ -2275,9 +2380,10 @@
                 var src = pp.type === 'relation' ? relRows(pp.target).map(function (x) { return [String(x.id), label(x)]; }) : (pp.options || []).map(function (o) { return [o.id, o.name]; });
                 l.appendChild(sel([['', T('– wählen –')]].concat(src), f.value, function (x) { f.value = x; commit(); }));
               } else {
-                var vi = el('input', 'flt-val'); vi.type = (pp.type === 'date' || AUTO[pp.type]) ? 'date' : numLike(pp) ? 'number' : 'text';
-                vi.value = f.value || ''; vi.setAttribute('aria-label', T('Wert'));
-                liveText(vi, function (x) { f.value = x; saveSchemaSoon(); renderDb(); }); l.appendChild(vi);
+                var vi = el('input', 'flt-val'); vi.type = (pp.type === 'date' || AUTO[pp.type]) ? 'date' : 'text';
+                if (numLike(pp)) vi.inputMode = 'decimal';
+                vi.value = numLike(pp) ? HK.editNum(f.value) : f.value || ''; vi.setAttribute('aria-label', T('Wert'));
+                liveText(vi, function (x) { f.value = numLike(pp) ? numStore(x) : x; saveSchemaSoon(); renderDb(); }); l.appendChild(vi);
               }
             }
             l.appendChild(sel(COL, f.color, function (x) { f.color = x; commit(); }));
@@ -2378,12 +2484,12 @@
                 (p.type === 'relation' ? relRows(p.target).map(function (x) { return { id: x.id, name: label(x) }; }) : (p.options || []))
                   .forEach(function (o) { var opt = el('option', null, o.name); opt.value = o.id; val.appendChild(opt); });
               } else {
-                val = el('input', 'flt-val'); val.type = (p.type === 'date' || AUTO[p.type]) ? 'date' : numLike(p) ? 'number' : 'text';
-                if (numLike(p)) val.step = 'any';
+                val = el('input', 'flt-val'); val.type = (p.type === 'date' || AUTO[p.type]) ? 'date' : 'text';
+                if (numLike(p)) val.inputMode = 'decimal';
               }
-              val.value = f.value || ''; val.setAttribute('aria-label', T('Wert'));
+              val.value = val.tagName !== 'SELECT' && numLike(p) ? HK.editNum(f.value) : f.value || ''; val.setAttribute('aria-label', T('Wert'));
               if (val.tagName === 'SELECT') val.addEventListener('change', function () { f.value = val.value; commit(); });
-              else liveText(val, function (x) { f.value = x; saveSchemaSoon(); renderDb(); });
+              else liveText(val, function (x) { f.value = numLike(p) ? numStore(x) : x; saveSchemaSoon(); renderDb(); });
               line.appendChild(val);
             }
             var x = el('button', 'flt-x', '×'); x.type = 'button'; x.setAttribute('aria-label', T('Filter entfernen'));
@@ -2450,7 +2556,7 @@
         tabs.appendChild(b);
       });
       var pl = el('button', 'db-tab db-tab-add', '+'); pl.type = 'button'; pl.title = T('Ansicht hinzufügen'); pl.setAttribute('aria-label', T('Ansicht hinzufügen'));
-      pl.addEventListener('click', function () { addView(pl); }); if (!viewsLocked()) tabs.appendChild(pl);
+      pl.addEventListener('click', function () { addView(pl); }); if (!viewsLocked() && !ro()) tabs.appendChild(pl);   // Lesen/Kommentieren: wuerde nicht gespeichert (BUG-093)
       bar.appendChild(tabs);
       var shown = filterRows(DB.rows).length;
       bar.appendChild(el('span', 'db-count', shown !== DB.rows.length ? T('{n} von {total} Einträgen', { n: shown, total: DB.rows.length }) : DB.rows.length === 1 ? T('1 Eintrag') : T('{n} Einträge', { n: shown })));
@@ -2783,6 +2889,7 @@
     var b = $('pg-icon'); b.textContent = '';
     if (isImg(icon)) b.appendChild(icoNode(icon, '', 'page-icon-img')); else b.textContent = icon || '';
     b.classList.toggle('empty', !icon);
+    b.hidden = !icon && (readOnly() || (!!S.cur && remoteId(S.cur.id)));   // "+ Icon" nur, wenn man es setzen darf (BUG-093)
   }
   function uploadImage(file) {
     var fd = new FormData(); fd.append('image', file);
@@ -3378,6 +3485,19 @@
     return y < 0.28 ? 'before' : y > 0.72 ? 'after' : 'inside';
   }
   function clearDrop() { [].forEach.call(document.querySelectorAll('.drop-before, .drop-after, .drop-inside, .drop-root'), function (x) { x.classList.remove('drop-before', 'drop-after', 'drop-inside', 'drop-root'); }); }
+  // "Verschieben nach" im Seitenmenue: Baum und Pfad sofort umstellen (der Server antwortet erst nach ~1 s), danach
+  // Rueckmeldung mit dem Ziel (BUG-096)
+  function moveFromMenu(id, parentId) {
+    var p = byId(id), idx = children(parentId).length, prev = p ? p.parent_id : null;
+    if (S.cur && S.cur.id === id) S.cur.parent_id = parentId;
+    if (p) { p.parent_id = parentId; if (parentId) { S.open[parentId] = true; saveOpen(); } renderTree(); renderCrumbs(); }
+    return api('POST', '/api/notes/' + id + '/move', { parent_id: parentId, index: idx })
+      .then(function () {
+        HK.toast(parentId ? T('Verschoben nach „{name}“', { name: label(byId(parentId) || {}) }) : T('Auf die oberste Ebene verschoben'));
+        return loadList();
+      })
+      .catch(function (err) { if (p) { p.parent_id = prev; renderTree(); renderCrumbs(); } HK.toast(T('Nicht verschoben: {err}', { err: err.message })); });
+  }
   function movePageTo(id, parentId, index) {
     return api('POST', '/api/notes/' + id + '/move', { parent_id: parentId, index: index })
       .then(function () { if (parentId) { S.open[parentId] = true; saveOpen(); } return loadList(); })

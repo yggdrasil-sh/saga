@@ -30,7 +30,7 @@
   {% if s.own %}<button class="bm-edit" type="button" data-bm="{{ s.id }}" title="{{ _("Lesezeichen bearbeiten") }}" aria-label="{{ _("Lesezeichen bearbeiten") }}">✎</button>{% endif %}
 </div>
 {%- endmacro %}
-<header>
+<header class="dash-head">
   <h1>{{ title }}</h1>
   <span class="greet">{{ _("Willkommen, {name}", name=name) }}</span>
   <span class="spacer"></span>
@@ -125,7 +125,7 @@
   {% if not favorites and not categories %}
   <p class="empty">{{ _("Für dich sind noch keine Dienste freigeschaltet – lege dir eigene Lesezeichen an.") }}</p>
   {% endif %}
-  <div class="bm-add-row"><button class="btn" type="button" id="bm-add">+ {{ _("Lesezeichen") }}</button></div>
+  <div class="bm-add-row"><button class="btn" type="button" id="bm-add">{{ _("+ Lesezeichen") }}</button></div>
   <details class="acct acct-foot">
     <summary>
       <span class="who">{{ uid }}{% if acct.mail %} · {{ acct.mail }}{% endif %}</span>

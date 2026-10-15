@@ -351,6 +351,7 @@
 
   function runPage(action, idsOpt) {
     var c = cur(); if (!c || A.run) return;
+    if (c.id < 0) { resBox.textContent = ''; resBox.appendChild(errNode(T('Der Assistent arbeitet nur mit Seiten dieses Servers.'))); return; }   // BUG-052
     var ids = idsOpt || (A.sel && A.sel.page === c.id ? A.sel.ids : []);
     if ((action === 'improve' || action === 'translate') && !ids.length) { selInfo(); return; }
     resBox.textContent = '';
