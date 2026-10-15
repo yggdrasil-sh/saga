@@ -537,6 +537,33 @@ print(json.dumps(d))""")
     ev(dict(cm, actor={"handle": "carol@dritte.example", "display": "Admin"}))
     r = sql("a", "SELECT display FROM fed_person WHERE principal='@carol@dritte.example'")
     ok(f"B kann Personen dritter Instanzen nicht umbenennen ({r})", r == [["Carol Echt"]])
+    s = ev(dict(cm, note={"id": 4243, "title": "Halb \ud83d"}))
+    ok(f"BUG-008: Ereignis mit halbem Emoji im Titel -> {s}", s == 200)
+    d = py("b", f"""
+from saga import federation
+from db import connect
+bad = {{"id": 78, "title": "X\\u202eY", "tags": {{"a": 1}}, "kind": ["database"], "updated": "gestern", "owner": "boese", "format": "blocks", "body": ""}}
+with connect() as c:
+    p = federation.peer_by(c, "id", {pa})
+    d = federation._note_in(c, p, bad, "fb-bert")
+    e = federation._pass_err(p, 401, {{"error": "Bitte hier neu anmelden: http://boese.example"}})
+print(json.dumps({{"tags": d["tags"], "kind": d["kind"], "updated": d["updated"], "owner": d["owner"], "title": d["title"],
+                  "err": [e.status_code, json.loads(e.body)]}}))""")
+    ok(f"BUG-034/038: Felder der Gegenstelle typgerecht, Titel ohne Bidi ({d})",
+       d["tags"] == [] and d["kind"] == "page" and d["updated"] == 0 and d["owner"] is None and d["title"] == "XY")
+    ok(f"BUG-036: 401 der Gegenstelle -> 502 ohne Fremdtext ({d['err']})", d["err"][0] == 502 and "boese" not in json.dumps(d["err"]))
+    pb = sql("a", "SELECT id FROM fed_peer")[0][0]
+    r = py("a", f"""
+import auth
+from saga import federation, publish
+from db import connect
+auth.get_user('fa-zoe') or auth.create_user('fa-zoe', None, 'Zoe')
+publish.set_name('fa-zoe', 'zoe')
+with connect() as c, c:
+    p = federation.peer_by(c, "id", {pb})
+    r = [federation._actor_of(c, p, {{"handle": "zoe@{HA}"}}), federation._actor_of(c, p, {{"handle": "anna@{HA}"}})]
+print(json.dumps(r))""")
+    ok(f"BUG-035: Gegenstelle kann nicht im Namen lokaler Konten ohne Freigabe auftreten ({r})", r[0] is None and r[1] == "fa-anna")
     deep = b'{"events":' + b"[" * 50000 + b"]" * 50000 + b"}"
     s = signed("a", privb, kid, "POST", "/fed/v1/events", body=deep)[0]
     ok(f"tief verschachtelter Koerper -> 400, kein Serverfehler ({s})", s == 400)

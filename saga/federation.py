@@ -31,9 +31,9 @@ from starlette.concurrency import run_in_threadpool
 from starlette.convertors import Convertor, register_url_convertor
 
 import auth
-from db import connect as _db
+from db import clean_line, connect as _db
 from saga import bus, comments, fedsig, i18n, netguard, notify, pages, sharing
-from saga.core import BASE_URL, E, SECRET, _api_guard, _bad, _body, _session_user, t, title
+from saga.core import BASE_URL, E, SECRET, _api_guard, _bad, _body, _session_user, parse_json, t, title
 from saga.files import _thumb, _thumb_mime, _thumb_w
 from saga.notes import FILE_MAX, FILES_DIR, _disposition, _iter_blocks
 from saga.publish import NAME_RE, get_name
@@ -110,7 +110,10 @@ def _ok_rid(v):
 
 
 def _clean_text(s, n):
-    return re.sub(r"[\x00-\x1f\x7f]", "", str(s or "")).strip()[:n]
+    """Text der Gegenstelle: nur Zeichenketten/Zahlen, ohne Steuer-, Bidi- und unsichtbare Zeichen (BUG-038)."""
+    if isinstance(s, bool) or not isinstance(s, (str, int, float)):
+        return ""
+    return clean_line(s).strip()[:n]
 
 
 _log_seen = {}
@@ -295,7 +298,7 @@ def fetch_info(base):
     if status != 200:
         raise FedError(f"keine Saga-Instanz mit Foederation (HTTP {status})", status)
     try:
-        d = json.loads(data)
+        d = parse_json(data)
         pub = fedsig.load_public(d["key"]["public"])
     except (ValueError, KeyError, TypeError, fedsig.SigError):
         raise FedError("ungueltige Angaben der Instanz")
@@ -325,7 +328,7 @@ def call(peer, method, path, query="", body=None, actor=None, limit=RESP_MAX, ti
 def call_json(peer, method, path, query="", body=None, actor=None, timeout=TIMEOUT):
     status, _, data = call(peer, method, path, query, body, actor, timeout=timeout)
     try:
-        d = json.loads(data) if data else {}
+        d = parse_json(data) if data else {}         # Surrogate/NUL der Gegenseite bereinigt (BUG-008)
     except (ValueError, RecursionError):
         raise FedError("ungueltige Antwort", status)
     if not pages._json_depth_ok(d, 32):             # Antworten sind flach; tief Verschachteltes nur von boesartiger Gegenseite
@@ -339,6 +342,9 @@ def _touch(c, peer, err=None):
         c.execute("UPDATE fed_peer SET last_error=? WHERE id=?", (str(err)[:300], peer["id"]))
     elif not peer.get("last_seen") or now - peer["last_seen"] > 60 or peer.get("last_error"):
         c.execute("UPDATE fed_peer SET last_seen=?, last_error=NULL WHERE id=?", (now, peer["id"]))
+        if peer.get("last_error"):           # wieder erreichbar: Wartendes gleich zustellen statt beim naechsten Termin (BUG-089)
+            if c.execute("UPDATE fed_outbox SET next_try=0 WHERE peer_id=? AND next_try>?", (peer["id"], now)).rowcount:
+                c.after_commit(_wake.set)
 
 
 # =====================================================================================================
@@ -410,7 +416,7 @@ def _verify_sync(method, path, query, headers, body, statuses, connect_key=None,
             _touch(c, peer)
     if body:
         try:
-            inp.data = json.loads(body)
+            inp.data = parse_json(body)              # Surrogate/NUL der Gegenseite bereinigt (BUG-008)
         except (ValueError, RecursionError):
             return None, _unauth("bad json", 400)
     return inp, None
@@ -550,7 +556,7 @@ async def fed_connect(request: Request):
         return _unauth("too many requests", 429)
     body = await request.body()
     try:
-        d = json.loads(body)
+        d = parse_json(body)
         base = norm_base(d.get("base_url"))
         key = fedsig.load_public(d.get("key"))
         code = str(d.get("code") or "")
@@ -668,7 +674,15 @@ def _actor_of(c, peer, a):
     if not name:
         return None
     if host == SELF_HOST:
-        return _local_user_by_name(c, name)[0]
+        # Eigene Person (hat ueber diese Instanz kommentiert): nur, wenn von dort ueberhaupt etwas mit ihr geteilt ist -
+        # sonst koennte die Gegenstelle Benachrichtigungen im Namen beliebiger lokaler Konten erzeugen (BUG-035)
+        lu = _local_user_by_name(c, name)[0]
+        if not lu:
+            return None
+        gs = sorted(sharing.groups_of(c, lu))
+        sql = "SELECT 1 FROM fed_inbound WHERE peer_id=? AND ((target_type='user' AND target=?)" + \
+              (f" OR (target_type='group' AND target IN ({','.join('?' * len(gs))}))" if gs else "") + ") LIMIT 1"
+        return lu if c.execute(sql, (peer["id"], lu, *gs)).fetchone() else None
     p = f"@{name}@{host}"
     # Anzeigename: nur die eigene Instanz der Person darf ihn aendern - eine andere verbundene Instanz kann ihn hoechstens
     # erstmals setzen (sonst koennte sie Personen dritter Instanzen hier umbenennen)
@@ -810,7 +824,7 @@ async def fed_note_patch(nid: int, request: Request):
         return _signed(inp, 400, {"error": "bad request"})
     b = {k: v for k, v in b.items() if k in EDIT_KEYS}           # ueber Instanzen: nur Titel und Inhalt
     if not b:
-        return _signed(inp, 400, {"error": t("nichts zu aendern")})
+        return _signed(inp, 400, {"error": t("nichts zu ändern")})
     return _relay(inp, await run_in_threadpool(_as, inp, pages._note_update, nid, b))
 
 
@@ -1250,13 +1264,44 @@ def _clean_remote_body(s, fmt):
     return json.dumps(doc, ensure_ascii=False)
 
 
+def _num(v, default=0):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) < 1e15 else default
+
+
+def _typed(d):
+    """Felder der Gegenstelle auf die Typen bringen, die Web und Apps erwarten (BUG-034) - kaputte Werte fallen weg."""
+    tags = d.get("tags")
+    d["tags"] = [_clean_text(x, 40) for x in tags[:50] if isinstance(x, str) and _clean_text(x, 40)] if isinstance(tags, list) else []
+    d["kind"] = "database" if d.get("kind") == "database" else "page"
+    d["icon"] = d.get("icon") if isinstance(d.get("icon"), str) else ""
+    for k in ("updated", "created"):
+        if k in d:
+            d[k] = _num(d.get(k))
+    for k in ("template", "root", "unread", "wide", "archived"):
+        if k in d:
+            d[k] = d.get(k) is True
+    if "rev" in d:
+        d["rev"] = d["rev"] if _ok_rid(d.get("rev")) or d.get("rev") == 0 else 0
+    if "cover_pos" in d:
+        d["cover_pos"] = max(0.0, min(100.0, float(_num(d.get("cover_pos"), 50.0))))
+    if "props" in d and not isinstance(d.get("props"), dict):
+        d["props"] = {}
+    for k in ("owner", "updated_by", "created_by"):
+        if k in d and not isinstance(d.get(k), dict):
+            d[k] = None
+    return d
+
+
+SHARED_KEYS = ("id", "title", "icon", "parent_id", "updated", "tags", "pinned", "template", "kind", "role", "root", "shared", "owner", "unread")
+
+
 def _note_in(c, peer, d, uid):
     pid = peer["id"]
     rid = d.get("id")
     if not _ok_rid(rid):
         raise _Fail(_unavailable())
     pr = ref(pid, rid)
-    d = _in_persons(c, d, peer, uid)
+    d = _typed(_in_persons(c, d, peer, uid))
     d["id"] = pr
     d["parent_id"] = ref(pid, d["parent_id"]) if _ok_rid(d.get("parent_id")) else None
     d["title"] = _clean_text(d.get("title"), 500)
@@ -1311,6 +1356,10 @@ def _json(status, d):
 
 def _pass_err(peer, status, d):
     """Fehler der anderen Instanz durchreichen (Text kommt in deren Sprache - besser als nichts)."""
+    if status in (401, 407) or not 400 <= status < 500:
+        # 401/407 hiesse fuer die Apps "neu anmelden" (Sitzung HIER ist aber gueltig), Weiterleitungen/5xx sind keine
+        # verwertbare Antwort - nie Fremdtext durchreichen (BUG-036)
+        return _unavailable()
     out = {"error": _clean_text((d or {}).get("error"), 300) or f"HTTP {status}"} if isinstance(d, dict) else {"error": f"HTTP {status}"}
     for k in ("rev", "by"):
         if isinstance(d, dict) and k in d:
@@ -1356,7 +1405,7 @@ def _w_comment_add(uid, nid, b):
         try:
             tp, trid = unref(int(b["thread_id"]))
         except (TypeError, ValueError, OverflowError):
-            return _bad(t("ungueltige Angabe"))
+            return _bad(t("ungültige Angabe"))
         if tp != pid or int(b["thread_id"]) >= 0:
             return _bad("not found", 404)
         out["thread_id"] = trid
@@ -1419,7 +1468,7 @@ async def home_comment_add(nid: int, request: Request):
         return err
     b = await _body(request)
     if b is None:
-        return _bad(t("ungueltige Anfrage"))
+        return _bad(t("ungültige Anfrage"))
     return await run_in_threadpool(_run, _w_comment_add, uid, nid, b)
 
 
@@ -1534,7 +1583,7 @@ def home_shared(request: Request):
                 for d in lst[:2000]:
                     if not isinstance(d, dict) or not _ok_rid(d.get("id")):
                         continue
-                    d = _in_persons(c, d, p, uid)
+                    d = _typed(_in_persons(c, {k: d[k] for k in SHARED_KEYS if k in d}, p, uid))   # nur bekannte Felder (BUG-034)
                     d["id"] = ref(p["id"], d["id"])
                     d["parent_id"] = ref(p["id"], d["parent_id"]) if _ok_rid(d.get("parent_id")) and not d.get("root") else None
                     d["icon"] = _rw_in(_safe_pic(d.get("icon"), True), p["id"], d["id"])
@@ -1642,8 +1691,11 @@ def fed_render(c, uid, fed):
         return False, None, None
     gs = sorted(sharing.groups_of(c, uid))
     sql = "SELECT 1 FROM fed_inbound WHERE peer_id=? AND ((target_type='user' AND target=?)" + \
-          (f" OR (target_type='group' AND target IN ({','.join('?' * len(gs))}))" if gs else "") + ") LIMIT 1"
-    if not c.execute(sql, (pid, uid, *gs)).fetchone():
+          (f" OR (target_type='group' AND target IN ({','.join('?' * len(gs))}))" if gs else "") + ")"
+    # Freigabe-Benachrichtigung: genau diese Seite muss noch geteilt sein (BUG-037). Kommentare koennen auch an
+    # Unterseiten haengen (deren IDs kennen wir nicht) - dort reicht irgendeine Freigabe dieser Instanz.
+    exact = c.execute(sql + " AND note_id=? LIMIT 1", (pid, uid, *gs, rid)).fetchone()
+    if not exact and (not fed.get("comment") or not c.execute(sql + " LIMIT 1", (pid, uid, *gs)).fetchone()):
         return False, None, None
     r = ref(pid, rid)
     block = fed.get("block") if isinstance(fed.get("block"), str) and re.fullmatch(r"[A-Za-z0-9_-]{1,40}", fed.get("block")) else ""
