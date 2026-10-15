@@ -647,13 +647,37 @@
       rt.addEventListener('click', function () { var t = +box.dataset.id; if (t) loadList().then(function () { return openPage(t); }); });
       var gs = el('button', 'btn pg-na-shared', T('Zu „Mit mir geteilt“')); gs.type = 'button';
       gs.addEventListener('click', goShared);
-      acts.appendChild(rt); acts.appendChild(gs); box.appendChild(acts);
+      // eigene Seite im Papierkorb (direkt oder mit der Elternseite): dorthin bzw. gleich wiederherstellen (BUG-056)
+      var rs = el('button', 'btn btn-primary pg-na-restore', T('Wiederherstellen')); rs.type = 'button'; rs.hidden = true;
+      rs.addEventListener('click', function () {
+        var t = +box.dataset.id;
+        api('POST', '/api/trash/' + t + '/restore').then(loadList).then(function () { box.hidden = true; return openPage(t); })
+          .catch(function (err) { HK.toast(T('Nicht wiederhergestellt: {err}', { err: err.message })); });
+      });
+      var tb = el('button', 'btn pg-na-trash', T('Papierkorb öffnen')); tb.type = 'button'; tb.hidden = true;
+      tb.addEventListener('click', function () { box.hidden = true; showTrash(); });
+      acts.appendChild(rs); acts.appendChild(rt); acts.appendChild(tb); acts.appendChild(gs); box.appendChild(acts);
       $('pg-empty').parentNode.insertBefore(box, $('pg-empty'));
     }
     box.dataset.id = id ? String(id) : '';
     box.querySelector('.pg-na-retry').hidden = !id;
+    box.querySelector('.pg-na-t').textContent = T('Kein Zugriff auf diese Seite');
+    box.querySelector('.pg-na-x').textContent = T('Die Seite gibt es nicht (mehr), oder sie ist nicht (mehr) mit dir geteilt.');
+    box.querySelector('.pg-na-restore').hidden = true; box.querySelector('.pg-na-trash').hidden = true;
     box.hidden = false; $('pg-empty').hidden = true; document.title = T('Kein Zugriff') + ' · Saga';
     renderTree();
+    if (id && !remoteId(id) && !EMBED) api('GET', '/api/trash').then(function (list) {
+      if (box.dataset.id !== String(id) || box.hidden || !list.length) return;
+      var hit = list.filter(function (p) { return p.id === id; })[0];
+      box.querySelector('.pg-na-trash').hidden = false;
+      if (hit) {
+        box.querySelector('.pg-na-t').textContent = T('„{name}“ liegt im Papierkorb', { name: label(hit) });
+        box.querySelector('.pg-na-x').textContent = T('Du kannst die Seite wiederherstellen.');
+        box.querySelector('.pg-na-restore').hidden = false; box.querySelector('.pg-na-retry').hidden = true;
+      } else {
+        box.querySelector('.pg-na-x').textContent = T('Die Seite gibt es nicht (mehr), sie liegt mit einer übergeordneten Seite im Papierkorb, oder sie ist nicht (mehr) mit dir geteilt.');
+      }
+    }).catch(function () { /* nur Zusatzhinweis */ });
   }
   function clearConflict() { S.conflict = false; var b = $('pg-conflict'); if (b) b.remove(); }
 
