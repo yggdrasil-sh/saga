@@ -273,6 +273,8 @@
   // Rolle auf der offenen Seite: owner > edit > comment > view (fehlt das Feld: aeltere Antwort = eigene Seite)
   function role() { return S.cur ? (S.cur.role || 'owner') : null; }
   // Seite einer anderen Saga-Instanz (Foederation): negative ID, Inhalt kommt ueber den eigenen Server
+  // Schlagworte defensiv: Daten anderer Instanzen koennen kaputt sein (BUG-034)
+  function tagsOf(p) { return p && Array.isArray(p.tags) ? p.tags.filter(function (t) { return typeof t === 'string'; }) : []; }
   function remoteId(id) { return typeof id === 'number' && id < 0; }
   function isOwner() { return role() === 'owner'; }
   function foreign() { return !!S.cur && !isOwner(); }
@@ -976,7 +978,7 @@
   S.tagFilter = null;
   function allTags() {
     var m = {};
-    S.pages.forEach(function (p) { (p.tags || []).forEach(function (t) { var k = t.toLowerCase(); (m[k] = m[k] || { name: t, n: 0 }).n++; }); });
+    S.pages.forEach(function (p) { tagsOf(p).forEach(function (t) { var k = t.toLowerCase(); (m[k] = m[k] || { name: t, n: 0 }).n++; }); });
     return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.n - a.n || a.name.localeCompare(b.name, HK.locale); });
   }
   function renderTagBar() {
@@ -998,7 +1000,7 @@
     var ul = $('pg-results');
     if (!S.tagFilter) { ul.hidden = true; $('pg-tree').hidden = false; return; }
     var f = S.tagFilter.toLowerCase();
-    var hits = S.pages.filter(function (p) { return (p.tags || []).some(function (t) { return t.toLowerCase() === f; }); });
+    var hits = S.pages.filter(function (p) { return tagsOf(p).some(function (t) { return t.toLowerCase() === f; }); });
     ul.textContent = ''; ul.hidden = false; $('pg-tree').hidden = true;
     hits.forEach(function (h) {
       var b = el('button', 'pg-hit'); b.type = 'button';
@@ -1010,11 +1012,11 @@
   function renderTags() {
     var box = $('pg-tags'); box.textContent = '';
     if (!S.cur) return;
-    (S.cur.tags || []).forEach(function (t) {
+    tagsOf(S.cur).forEach(function (t) {
       var c = el('span', 'tag', '#' + t);
       if (!roRole()) {
         var x = el('button', null, '×'); x.type = 'button'; x.setAttribute('aria-label', T('Tag {tag} entfernen', { tag: t }));
-        x.addEventListener('click', function () { setTags(S.cur.tags.filter(function (y) { return y !== t; })); });
+        x.addEventListener('click', function () { setTags(tagsOf(S.cur).filter(function (y) { return y !== t; })); });
         c.appendChild(x);
       }
       box.appendChild(c);
@@ -1029,7 +1031,7 @@
       function finish(ok) {
         if (done) return; done = true;
         var v = inp.value.trim().replace(/^#/, '');
-        if (ok && v) setTags((S.cur.tags || []).concat([v])); else renderTags();
+        if (ok && v) setTags(tagsOf(S.cur).concat([v])); else renderTags();
       }
       inp.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') { e.preventDefault(); finish(true); }
@@ -1276,6 +1278,7 @@
           b.appendChild(el('span', 'ver-date', fVer.format(new Date(v.created * 1000))));
           b.appendChild(el('span', 'ver-title', v.title || T('Unbenannt')));
           if (v.author) b.appendChild(el('span', 'ver-by', T('von {name}', { name: v.author.name })));
+          else if (v.by === 'me') b.appendChild(el('span', 'ver-by', T('von dir')));     // "unknown": aeltere Fassung ohne Autor (BUG-092)
           b.addEventListener('click', function () {
             [].forEach.call(ul.querySelectorAll('.ver-item'), function (x) { x.classList.toggle('on', x === b); });
             api('GET', '/api/notes/' + id + '/versions/' + v.id).then(function (d) {
@@ -1370,7 +1373,7 @@
     list.textContent = ''; qs.items = []; qs.idx = 0;
     var cmdOnly = q.charAt(0) === '>'; if (cmdOnly) q = q.slice(1).trim();
     var rec = recents().map(byId).filter(Boolean);
-    var hits = cmdOnly ? [] : q ? allPages().filter(function (p) { return (label(p) + ' ' + (p.tags || []).join(' ')).toLowerCase().indexOf(q) >= 0; })
+    var hits = cmdOnly ? [] : q ? allPages().filter(function (p) { return (label(p) + ' ' + tagsOf(p).join(' ')).toLowerCase().indexOf(q) >= 0; })
                                      .sort(function (a, b) { return (rec.indexOf(b) >= 0) - (rec.indexOf(a) >= 0) || b.updated - a.updated; })
                  : rec.concat(allPages().filter(function (p) { return rec.indexOf(p) < 0; }).sort(function (a, b) { return b.updated - a.updated; }));
     if (!q && !cmdOnly) list.appendChild(el('div', 'menu-label', rec.length ? T('Zuletzt geöffnet') : T('Zuletzt bearbeitet')));
@@ -1728,7 +1731,11 @@
       if (DB.localViews && OPTS.saveViews) OPTS.saveViews(DB.localViews);        // Block-Ansichten -> Seiteninhalt
       var snap = JSON.stringify(DB.schema);
       if (snap === DB.snap) return Promise.resolve();                            // Datenbank selbst unveraendert
-      return api('PATCH', '/api/notes/' + DB.id, { schema: DB.schema }).then(function (d) { DB.snap = snap; return d; })
+      // srev: Stand des Schemas - der Server loescht so keine Spalten, die inzwischen jemand anderes angelegt hat (BUG-001)
+      return api('PATCH', '/api/notes/' + DB.id, { schema: DB.schema }).then(function (d) {
+        if (d && d.srev != null) { DB.schema.srev = d.srev; snap = JSON.stringify(DB.schema); }
+        DB.snap = snap; return d;
+      })
         .catch(function (err) { HK.toast(T('Spalte nicht gespeichert: {err}', { err: err.message })); throw err; });
     }
     function setProp(row, pid, value) {
@@ -2838,6 +2845,24 @@
     LIVE_DBS = LIVE_DBS.filter(function (v) { return v.DB && v.render && document.body.contains(v.boxEl || document.body); });
     LIVE_DBS.forEach(function (v) { if (v.DB.id === dbId) v.reload(); });
   }
+  // Live (BUG-049, BUG-001): Zeile oder Schema der Datenbank anderswo geaendert -> Ansichten neu laden. Wird gerade
+  // eine Zelle bearbeitet, erst danach (die eigene Eingabe geht nicht verloren)
+  var dbLiveT = {};
+  function dbLiveReload(dbId) {
+    clearTimeout(dbLiveT[dbId]);
+    dbLiveT[dbId] = setTimeout(function () {
+      var a = document.activeElement;
+      var editing = a && a !== document.body && LIVE_DBS.some(function (v) {
+        return v.DB.id === dbId && v.boxEl && v.boxEl.contains(a) && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable);
+      });
+      if (editing || document.querySelector('.menu:not([hidden])')) { dbLiveReload(dbId); return; }
+      refreshDbViews(dbId);
+    }, 400);
+  }
+  document.addEventListener('hk-note-changed', function (e) {
+    var d = e.detail || {};
+    if (d.id && !d.gone && LIVE_DBS.some(function (v) { return v.DB.id === d.id; })) dbLiveReload(d.id);
+  });
 
   function renderProps(parent) {
     var box = $('pg-props'); box.textContent = ''; box.hidden = false;
@@ -4258,6 +4283,7 @@
   function busy() { return !!(S.dirtyBody || S.dirtyTitle || S.conflict || S.lost || S.checking || S.loading || S.inflight); }
   function remoteChange(ev) {
     if (!S.cur || !ev || ev.id !== S.cur.id || EMBED) return;
+    if (!ev.gone && S.cur.kind === 'database') return;            // Datenbank: die Ansicht laedt selbst neu (hk-note-changed)
     if (ev.gone) { if (busy() && foreign()) lostAccess(404); else if (!busy()) openPage(ev.id); return; }
     var newer = ev.rev != null && S.cur.rev != null ? ev.rev > S.cur.rev : false;
     if (!newer && !(ev.updated && S.cur.updated && ev.updated > S.cur.updated + 0.001)) return;

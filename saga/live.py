@@ -243,8 +243,10 @@ def _resolve(kind, p, aud, pres):
                 if p.get("gone"):              # geloescht/archiviert: Zugriff hat jetzt niemand mehr - nur "weg", ohne Namen
                     out.append((u, "note.changed", {"id": nid, "rev": None, "updated": p.get("updated"), "gone": True, "by": None}, skip))
                 elif Access(c, u).role(nid):
-                    out.append((u, "note.changed", {"id": nid, "rev": p.get("rev"), "updated": p.get("updated"), "gone": False,
-                                                    "by": _person(nm, by) if by else None}, skip))
+                    d = {"id": nid, "rev": p.get("rev"), "updated": p.get("updated"), "gone": False, "by": _person(nm, by) if by else None}
+                    if p.get("row"):                 # Zeile der Datenbank geaendert (BUG-049); ID nur, wenn u sie sehen darf
+                        d["row"] = p["row"] if Access(c, u).role(p["row"]) else True
+                    out.append((u, "note.changed", d, skip))
         elif kind == "comments.changed":
             nid = p["note_id"]
             if not c.execute("SELECT 1 FROM note WHERE id=? AND deleted_at IS NULL", (nid,)).fetchone():
@@ -549,8 +551,8 @@ def _seen(c, uid, note_id, **_):
     bus.emit_after(c, "comments.changed", {"note_id": note_id, "only": uid})
 
 
-def _saved(c, note_id, rev=None, by=None, updated=None, gone=False, origin=None, **_):
-    bus.emit_after(c, "note.changed", {"id": note_id, "rev": rev, "by": by, "updated": updated, "gone": gone, "origin": origin})
+def _saved(c, note_id, rev=None, by=None, updated=None, gone=False, origin=None, row=None, **_):
+    bus.emit_after(c, "note.changed", {"id": note_id, "rev": rev, "by": by, "updated": updated, "gone": gone, "origin": origin, "row": row})
 
 
 bus.on("share.set", _share)

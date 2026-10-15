@@ -106,9 +106,10 @@ def api_versions(nid: int, request: Request):
         rows = c.execute("SELECT id, title, created, length(body), author FROM note_version WHERE uid=? AND note_id=? "
                          "ORDER BY created DESC", (owner, nid)).fetchall()
         nm = names(c, [r[4] for r in rows])
-    # author: wer diese Fassung geschrieben hat (None = du selbst bzw. unbekannt)
+    # author: wer diese Fassung geschrieben hat (None = du selbst bzw. unbekannt); by: "me" | "other" | "unknown" (BUG-092)
     return JSONResponse([{"id": r[0], "title": r[1] or "", "created": r[2], "size": r[3] or 0,
-                          "author": person(c, r[4], uid, nm) if r[4] and r[4] != owner else None} for r in rows],
+                          "author": person(c, r[4], uid, nm) if r[4] and r[4] != owner else None,
+                          "by": "me" if r[4] == owner else "other" if r[4] else "unknown"} for r in rows],
                         headers={"Cache-Control": "no-store"})
 
 
@@ -126,7 +127,7 @@ def api_version_get(nid: int, vid: int, request: Request):
                       "WHERE v.id=? AND v.note_id=? AND v.uid=? AND n.deleted_at IS NULL", (vid, nid, owner)).fetchone()
     if not r:
         return _bad("not found", 404)
-    return JSONResponse({"title": r[0] or "", "created": r[3], "text": _note_text(r[2], r[1])[:5000]},
+    return JSONResponse({"title": r[0] or "", "created": r[3], "text": _note_text(r[2], r[1], True)[:5000]},
                         headers={"Cache-Control": "no-store"})
 
 

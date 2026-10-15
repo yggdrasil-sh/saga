@@ -42,8 +42,10 @@ def _strip_tags(s):
     return html_unescape(re.sub(r"<[^>]*>", " ", s))
 
 
-def blocks_text(blocks):
-    """Klartext aus Bloecken (fuer Suche und Vorschau)."""
+def blocks_text(blocks, lines=False):
+    """Klartext aus Bloecken (fuer Suche und Vorschau). lines=True: ein Block je Zeile (Vorschau, BUG-092)."""
+    if lines:
+        return "\n".join(t for t in (blocks_text([b]) for b in blocks if isinstance(b, dict)) if t)
     parts = []
 
     def walk(v, key=None):
@@ -66,10 +68,10 @@ def blocks_text(blocks):
     return re.sub(r"\s+", " ", " ".join(parts)).strip()
 
 
-def _note_text(fmt, body):
+def _note_text(fmt, body, lines=False):
     if fmt == "blocks":
         try:
-            return blocks_text(json.loads(body).get("blocks", []))
+            return blocks_text(json.loads(body).get("blocks", []), lines)
         except (ValueError, AttributeError):
             return ""
     return body or ""
@@ -140,12 +142,23 @@ def note_chain(c, uid, nid):
     return out
 
 
+def announce_row(c, owner, row_id, by, now, origin=None):
+    """Zeile einer Datenbank geaendert/angelegt/geloescht: auch wer die Datenbank offen hat, bekommt note.changed
+    (mit row = Zeile; rev None, die Datenbank selbst ist unveraendert) - die Tabelle laedt dann neu (BUG-049)."""
+    from saga import bus
+    r = c.execute("SELECT d.id FROM note n JOIN note d ON d.id=n.parent_id AND d.uid=n.uid WHERE n.id=? AND n.uid=? "
+                  "AND d.kind='database'", (row_id, owner)).fetchone()
+    if r:
+        bus.fire("note.saved", c, note_id=r[0], owner=owner, by=by, updated=now, origin=origin, row=row_id)
+
+
 def announce_tree(c, owner, root, ids, by, now, gone, rev=None, origin=None):
     """Live-Kanal (BUG-033): jede Seite eines Teilbaums melden (geloescht/archiviert: "weg"; wiederhergestellt,
     verschoben, Version zurueck: geaendert) und "Mit mir geteilt" bei allen neu laden lassen, mit denen der Teilbaum (oder eine Seite darueber) geteilt ist."""
     from saga import bus
     for i in ids:
         bus.fire("note.saved", c, note_id=i, owner=owner, by=by, updated=now, gone=gone, rev=rev if i == root else None, origin=origin)
+    announce_row(c, owner, root, by, now, origin)
     chain = set(ids) | set(note_chain(c, owner, root))
     if not chain:
         return

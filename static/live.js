@@ -253,7 +253,10 @@
     });
     on(es, 'reset', resync);
     on(es, 'notification', onNotification);
-    on(es, 'note.changed', function (d) { var k = K(); if (k) k.remote(d); });
+    on(es, 'note.changed', function (d) {
+      var k = K(); if (k) k.remote(d);
+      try { document.dispatchEvent(new CustomEvent('hk-note-changed', { detail: d })); } catch (e) { /* alter Browser */ }
+    });
     on(es, 'comments.changed', onComments);
     on(es, 'shared.changed', onShared);
     on(es, 'presence', function (d) { if (d.note_id === P.id) drawPresence(d.users || []); });

@@ -20,7 +20,7 @@ from saga.dashboard import visible_tiles
 from saga.publish import published_via
 from saga.comments import counts as comment_counts
 from saga.sharing import RANK, Access, access, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
-from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, NOTE_MAX_COUNT, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text
+from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, NOTE_MAX_COUNT, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text
 
 router = APIRouter()
 
@@ -357,6 +357,8 @@ async def api_note_add(request: Request):
                          json.dumps(tags, ensure_ascii=False), kind, schema, props, now, now, uid, uid))
         if props and ps:                                   # zweiseitige Relationen: Gegenseite nachziehen
             _rel_sync(c, owner, _json_load(ps[0], {"props": []}), cur.lastrowid, {}, json.loads(props), _may_edit(acc, role))
+        if parent:
+            announce_row(c, owner, cur.lastrowid, uid, now, origin_of(request))      # neue Zeile (BUG-049)
         return JSONResponse({"id": cur.lastrowid, "updated": now})
 
 
@@ -606,6 +608,8 @@ def _note_update(uid, nid, b, origin=None):
             raise _Reply(_conflict(c, uid, nid, cur[0] if cur else None))
         # Live-Kanal (1.4): wer die Seite gerade offen hat, laedt still neu bzw. bekommt einen Hinweis (nach dem Commit)
         bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=uid, updated=now, origin=origin)
+        if "props" in b or "title" in b or "icon" in b:
+            announce_row(c, owner, nid, uid, now, origin)     # Datenbank-Zeile: auch an Betrachter der Tabelle (BUG-049)
     out = {"ok": True, "updated": now, "rev": old[3] + (1 if content else 0)}
     if srev is not None:
         out["srev"] = srev                   # neuer Schema-Stand (Client kann ihn fuer die naechste Aenderung uebernehmen)
