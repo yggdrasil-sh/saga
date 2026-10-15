@@ -308,8 +308,25 @@
     }
     renderShared();
     $('pg-empty').hidden = S.pages.length > 0 || S.shared.length > 0 || !!S.cur || !!($('pg-noaccess') && !$('pg-noaccess').hidden);
+    pickHintSoon();
     S.onCount(S.pages.length);
     renderFavs();
+  }
+  // Seiten vorhanden (eigene oder geteilte), aber keine offen - z. B. nur geteilte Seiten sind eingetroffen oder die offene
+  // Seite liegt jetzt im Papierkorb: Hinweis statt leerer Flaeche (BUG-095). Kurz verzoegert, sonst blitzt er beim Oeffnen auf.
+  var pickT = null;
+  function pickHintSoon() { clearTimeout(pickT); pickT = setTimeout(pickHint, 400); }
+  function pickHint() {
+    var h = $('pg-pick');
+    if (!h) {
+      h = el('div', 'pages-empty pg-pick'); h.id = 'pg-pick'; h.setAttribute('role', 'status');
+      h.appendChild(el('p', null, T('Wähle links eine Seite – oder lege eine neue an.')));
+      var b = el('button', 'btn', T('+ Neue Seite')); b.type = 'button';
+      b.addEventListener('click', function () { newPageMenu(b, null); }); h.appendChild(b);
+      $('pg-empty').parentNode.insertBefore(h, $('pg-empty'));
+    }
+    var busy = function (id) { var x = $(id); return !!x && !x.hidden; };
+    h.hidden = !!S.cur || !(S.pages.length || S.shared.length) || busy('page') || busy('pg-empty') || busy('pg-noaccess') || busy('pg-trash') || EMBED;
   }
   // Ein Zweig des Baums - eigene Seiten (mit Ziehen) und "Mit mir geteilt" (ohne Ziehen, "+" nur mit 'Bearbeiten')
   function treeNodes(list, items, depth, kidsOf, own) {
