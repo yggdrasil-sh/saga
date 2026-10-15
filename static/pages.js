@@ -694,11 +694,31 @@
       });
   }
 
+  // Tasten, die zwischen "Leere Seite" und dem Fokus im Titel getippt werden (Server-Antwort + Editor brauchen bis
+  // ~1,5 s), sammeln statt verlieren - danach in den Titel (BUG-047). Liefert eine Stopp-Funktion -> gesammelter Text.
+  function titleBuffer() {
+    var buf = '';
+    function kd(e) {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+      var a = document.activeElement;
+      if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+      if (e.key.length === 1) { buf += e.key; e.preventDefault(); }
+      else if (e.key === 'Backspace' && buf) { buf = buf.slice(0, -1); e.preventDefault(); }
+    }
+    document.addEventListener('keydown', kd, true);
+    return function () { document.removeEventListener('keydown', kd, true); return buf; };
+  }
+  function focusTitle(extra) {
+    var t = $('pg-title'); t.focus();
+    if (extra && !readOnly()) { t.value += extra; S.dirtyTitle = true; schedule(); }
+    try { t.setSelectionRange(t.value.length, t.value.length); } catch (e) { /* egal */ }
+  }
   function newPage(parentId) {
+    var stop = titleBuffer();
     return save().then(function () { return api('POST', '/api/notes', { parent_id: parentId || null }); })
       .then(function (d) { if (parentId) { S.open[parentId] = true; saveOpen(); } return loadList().then(function () { return openPage(d.id); }); })
-      .then(function () { $('pg-title').focus(); })
-      .catch(function (err) { HK.toast(T('Seite nicht angelegt: {err}', { err: err.message })); });
+      .then(function () { focusTitle(stop()); })
+      .catch(function (err) { stop(); HK.toast(T('Seite nicht angelegt: {err}', { err: err.message })); });
   }
 
   // Nur speichern, wenn sich der Inhalt wirklich geaendert hat (Editor.js meldet beim Laden teils "Aenderungen")
