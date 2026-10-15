@@ -289,12 +289,16 @@
         d.devices.forEach(function (k) {
           var row = el('div', 'hk-tok');
           row.appendChild(el('strong', null, k.name));
+          if (k.current) row.appendChild(el('span', 'hk-tok-me', T('Dieses Gerät')));            // BUG-046
+          if (k.prefix) row.appendChild(el('code', null, k.prefix + '…'));                          // unterscheidet gleich benannte
           row.appendChild(el('span', 'hk-hint', T('angemeldet {date}', { date: when(k.created) }) + (k.last_used ? ' · ' + T('zuletzt aktiv {date}', { date: when(k.last_used) }) : '') +
             (k.key ? ' · ' + T('mit Widget-Schlüssel') : '')));
           var rv = el('button', 'btn btn-danger', T('Abmelden')); rv.type = 'button';
           rv.addEventListener('click', function () {
-            if (!confirm(T('„{name}“ abmelden? Die App muss sich neu anmelden; Widget und Teilen auf diesem Gerät verlieren den Zugang.', { name: k.name }))) return;
-            api('DELETE', '/api/settings/devices/' + k.id).then(load).catch(function (err) { HK.toast(err.message); });
+            if (!confirm(k.current ? T('Das ist dieses Gerät. „{name}“ abmelden? Du wirst hier sofort abgemeldet und musst dich neu anmelden.', { name: k.name })
+                                   : T('„{name}“ abmelden? Die App muss sich neu anmelden; Widget und Teilen auf diesem Gerät verlieren den Zugang.', { name: k.name }))) return;
+            api('DELETE', '/api/settings/devices/' + k.id).then(function () { if (k.current) location.reload(); else load(); })
+              .catch(function (err) { HK.toast(err.message); });
           });
           row.appendChild(rv); devs.appendChild(row);
         });

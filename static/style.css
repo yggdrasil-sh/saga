@@ -1023,6 +1023,7 @@ body.embed .pg-conflict,.pages.pg-full .pg-conflict{top:.5rem}
 .hk-tok{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px solid color-mix(in srgb,var(--border) 60%,transparent)}
 .hk-tok .hk-hint{margin:0;flex:1;min-width:12rem}
 .hk-tok code{font-size:.8rem;color:var(--muted)}
+.hk-tok-me{font-size:.75rem;padding:1px 8px;border-radius:999px;background:var(--bg);color:var(--accent);border:1px solid var(--border)}
 .hk-newtok{border:1px solid var(--accent);border-radius:9px;padding:.7rem;margin-top:.6rem;display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
 .hk-newtok p{margin:0;width:100%;font-size:.88rem}
 .hk-tokval{flex:1;min-width:16rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem}
