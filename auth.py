@@ -20,7 +20,7 @@ import threading
 import time
 from urllib.parse import urlparse
 
-from db import connect as _db
+from db import clean_line, connect as _db
 from saga.i18n import t
 
 E = os.environ
@@ -280,7 +280,7 @@ def create_user(username, password=None, display_name="", email="", source="loca
     with _db() as c, c:
         uid = c.execute("INSERT INTO users (username, display_name, email, password_hash, source, ext_id, is_admin, created, pw_changed) "
                         "VALUES (?,?,?,?,?,?,?,?,?)",
-                        (u, (display_name or "").strip()[:120], (email or "").strip()[:200],
+                        (u, clean_line(display_name or "").strip()[:120], (email or "").strip()[:200],
                          hash_password(password) if password else None, source, ext_id, 1 if is_admin else 0,
                          time.time(), time.time() if password else None)).lastrowid
         for g in list(groups or []) + list(settings().get("default_groups") or []):
@@ -620,7 +620,7 @@ def _ext_user(username, source, ext_id, name, mail, groups, cfg):
             return None, err
     with _db() as c, c:
         c.execute("UPDATE users SET display_name=?, email=?, ext_id=? WHERE id=?",
-                  ((name or user["display_name"] or "")[:120], (mail or user["email"] or "")[:200], ext_id, user["id"]))
+                  (clean_line(name or user["display_name"] or "").strip()[:120], (mail or user["email"] or "")[:200], ext_id, user["id"]))
         if cfg.get("admin_group"):
             c.execute("UPDATE users SET is_admin=? WHERE id=?", (1 if cfg["admin_group"].lower() in groups else 0, user["id"]))
     set_ext_groups(user["id"], groups)

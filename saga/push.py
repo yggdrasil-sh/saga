@@ -275,11 +275,11 @@ def check_url(url):
         pu = urlparse(u)
         port = pu.port
     except ValueError:
-        return None, t("Adresse ungueltig")
+        return None, t("Adresse ungültig")
     if pu.scheme not in ("https", "http") or not pu.hostname or pu.username or pu.password or pu.fragment:
-        return None, t("Adresse ungueltig")
+        return None, t("Adresse ungültig")
     if pu.scheme == "http" and not _host_free(pu.hostname.lower(), port):
-        return None, t("Nur https-Adressen erlaubt (http nur fuer vom Admin freigegebene interne Server)")
+        return None, t("Nur https-Adressen erlaubt (http nur für vom Admin freigegebene interne Server)")
     return u, None
 
 
@@ -707,23 +707,27 @@ async def api_push_settings(request: Request):
         return _bad("unauthorized", 401)
     b = await _body(request)
     if not b or any(k not in ("cats", "names", "quiet") for k in b):
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     with _db() as c, c:
         p = prefs(c, uid)
         cats = b.get("cats", {})
         if not isinstance(cats, dict) or any(k not in CATS or not isinstance(v, bool) for k, v in cats.items()):
-            return _bad(t("ungueltige Angabe"))
+            return _bad(t("ungültige Angabe"))
         p["cats"].update(cats)
         if "names" in b:
             if not isinstance(b["names"], bool):
-                return _bad(t("ungueltige Angabe"))
+                return _bad(t("ungültige Angabe"))
             p["names"] = b["names"]
         q = b.get("quiet", {})
         if not isinstance(q, dict) or any(k not in ("on", "from", "to", "tz") for k in q):
-            return _bad(t("ungueltige Angabe"))
-        if ("on" in q and not isinstance(q["on"], bool)) or any(k in q and not TIME_RE.fullmatch(str(q[k])) for k in ("from", "to")) \
-                or ("tz" in q and q["tz"] not in ("", None) and q["tz"] not in _zones()):
+            return _bad(t("ungültige Angabe"))
+        # je Fehler die passende Meldung; Listen/Objekte statt Text -> 400 statt TypeError (BUG-041)
+        if "on" in q and not isinstance(q["on"], bool):
+            return _bad(t("ungültige Angabe"))
+        if any(k in q and not (isinstance(q[k], str) and TIME_RE.fullmatch(q[k])) for k in ("from", "to")):
             return _bad(t("Ruhezeiten: Uhrzeit als HH:MM angeben"))
+        if "tz" in q and q["tz"] not in ("", None) and (not isinstance(q["tz"], str) or q["tz"] not in _zones()):
+            return _bad(t("Ruhezeiten: unbekannte Zeitzone"))
         p["quiet"].update({k: (v or "") if k == "tz" else v for k, v in q.items()})
         c.execute("INSERT OR REPLACE INTO user_kv (uid, k, v) VALUES (?, 'push', ?)", (uid, json.dumps(p)))
         return JSONResponse(_state(c, uid))
@@ -759,8 +763,8 @@ def _keys_ok(p256dh, auth_s):
 def _parse_sub(b, srv):
     """Anfrage -> (felder, None) oder (None, (fehler, code))."""
     kind = b.get("type")
-    if kind not in TYPES:
-        return None, (t("ungueltige Angabe"), 400)
+    if not isinstance(kind, str) or kind not in TYPES:
+        return None, (t("ungültige Angabe"), 400)
     if kind != "apns" and not srv[kind]:
         return None, (t("Diese Art von Mitteilungen ist auf diesem Server abgeschaltet."), 403)
     f = {"kind": kind, "name": _clean_name(b.get("name")), "p256dh": None, "auth": None, "secret": None}
@@ -768,8 +772,8 @@ def _parse_sub(b, srv):
     p256dh, auth_s = keys.get("p256dh") or b.get("p256dh"), keys.get("auth") or b.get("auth")
     if kind == "apns":
         tok, env = str(b.get("token") or "").strip(), b.get("env") or "production"
-        if not APNS_RE.fullmatch(tok) or env not in APNS_HOSTS:
-            return None, (t("ungueltige Angabe"), 400)
+        if not APNS_RE.fullmatch(tok) or not isinstance(env, str) or env not in APNS_HOSTS:
+            return None, (t("ungültige Angabe"), 400)
         f["endpoint"] = f"apns:{env}:{tok.lower()}"
         return f, None
     url, err = check_url(b.get("endpoint") or b.get("url"))
@@ -783,12 +787,12 @@ def _parse_sub(b, srv):
             return None, (t("ntfy: vollständige Topic-Adresse angeben, z. B. https://ntfy.sh/mein-geheimes-topic"), 400)
         tok = str(b.get("token") or "").strip()
         if tok and not re.fullmatch(r"[A-Za-z0-9_.-]{1,200}", tok):
-            return None, (t("ungueltige Angabe"), 400)
+            return None, (t("ungültige Angabe"), 400)
         f["secret"] = auth._enc(tok) if tok else None
         return f, None
     if kind == "webpush" or p256dh or auth_s:
         if not _keys_ok(p256dh, auth_s):
-            return None, (t("ungueltige Angabe"), 400)
+            return None, (t("ungültige Angabe"), 400)
         f["p256dh"], f["auth"] = str(p256dh).strip(), str(auth_s).strip()
     return f, None
 
@@ -805,7 +809,7 @@ async def api_push_subscribe(request: Request):
         return _bad("unauthorized", 401)
     b = await _body(request)
     if b is None:
-        return _bad(t("ungueltige Anfrage"))
+        return _bad(t("ungültige Anfrage"))
     srv = server()
     if not srv["enabled"]:
         return _bad(t("Mitteilungen sind auf diesem Server abgeschaltet."), 403)

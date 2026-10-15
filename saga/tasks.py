@@ -4,7 +4,7 @@ from calendar import monthrange
 from datetime import date, datetime, timedelta
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from db import connect as _db
+from db import clean_line, connect as _db
 from fastapi import APIRouter
 from saga.core import TZ, _api_guard, _bad, _body, t
 
@@ -26,6 +26,13 @@ def _due(v):
     if v in (None, ""):
         return None
     return date.fromisoformat(str(v)).isoformat()
+
+
+def _text_in(v):
+    """Aufgabentext: null -> leer, Liste/Objekt/Wahrheitswert -> leer statt "None"/"['x']" (BUG-083), einzeilig (BUG-038)."""
+    if isinstance(v, bool) or not isinstance(v, (str, int, float)):
+        return ""
+    return clean_line(v).strip()[:TASK_MAX_LEN]
 
 
 def _prio(v):
@@ -126,7 +133,7 @@ async def api_task_add(request: Request):
     b = await _body(request)
     if b is None:
         return _bad("bad request")
-    text = str(b.get("text", "")).strip()[:TASK_MAX_LEN]
+    text = _text_in(b.get("text"))
     if not text:
         return _bad(t("leere Aufgabe"))
     try:
@@ -134,7 +141,7 @@ async def api_task_add(request: Request):
         prio = _prio(b.get("prio", 2))
         rep = _repeat(b.get("repeat"))
     except (ValueError, TypeError):
-        return _bad(t("ungueltige Angabe (Datum, Prioritaet oder Wiederholung)"))
+        return _bad(t("ungültige Angabe (Datum, Priorität oder Wiederholung)"))
     if rep and not due:                      # Wiederholung braucht ein Datum: ab heute
         due = _client_today(b).isoformat()
     with _db() as c, c:
@@ -183,7 +190,7 @@ async def api_task_update(tid: int, request: Request):
         # --- Felder aendern
         try:
             if "text" in b:
-                text = str(b["text"]).strip()[:TASK_MAX_LEN]
+                text = _text_in(b["text"])
                 if not text:
                     return _bad(t("leere Aufgabe"))
             if "due" in b:
@@ -200,7 +207,7 @@ async def api_task_update(tid: int, request: Request):
                     anchor = due if new_rep else None
                 rep = new_rep
         except (ValueError, TypeError):
-            return _bad(t("ungueltige Angabe (Datum, Prioritaet oder Wiederholung)"))
+            return _bad(t("ungültige Angabe (Datum, Priorität oder Wiederholung)"))
 
         # --- Abhaken / wieder oeffnen
         if "done" in b:

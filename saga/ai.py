@@ -98,9 +98,9 @@ def norm_url(url, provider):
         pu = urlparse(u)
         pu.port                                            # wirft bei ungueltigem Port
     except ValueError:
-        return None, t("Adresse ungueltig")
+        return None, t("Adresse ungültig")
     if pu.scheme not in ("http", "https") or not pu.hostname or pu.username or pu.password or pu.query or pu.fragment:
-        return None, t("Adresse ungueltig (z. B. https://api.example.org/v1 oder http://ollama.lan:11434/v1)")
+        return None, t("Adresse ungültig (z. B. https://api.example.org/v1 oder http://ollama.lan:11434/v1)")
     return u.rstrip("/"), None
 
 
@@ -334,11 +334,14 @@ def gather(uid, q, budget):
         docs = visible_docs(c, uid)
     cand = []
     for nid, title, fmt, body, owner in docs:
+        n = 0
         for i, ch in enumerate(chunks(fmt, body)):
+            n += 1
             sc = _score(ch, title, ts)
             if sc:
                 cand.append((sc, -i, nid, title, owner, ch))
-        if not body and title and _score("", title, ts):
+        # Seite ohne Text (auch neue Seiten mit {"blocks": []}): nur der Titel zaehlt (BUG-040)
+        if not n and title and _score("", title, ts):
             cand.append((_score("", title, ts), 0, nid, title, owner, ""))
     cand.sort(key=lambda x: (x[0], x[1]), reverse=True)
     per, picked, used = {}, [], 0
@@ -754,7 +757,8 @@ async def api_ai_ask(request: Request):
     if not uid:
         return _bad("unauthorized", 401)
     b = await _body(request) or {}
-    q = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", str(b.get("q") or "")).strip()
+    q = b.get("q") if isinstance(b.get("q"), str) else ""         # Liste/Objekt: keine Frage (BUG-083)
+    q = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", q).strip()
     if not q:
         return _bad(t("Bitte eine Frage eingeben."))
     if len(q) > Q_MAX:
@@ -809,7 +813,7 @@ async def api_ai_page(nid: int, request: Request):
     b = await _body(request) or {}
     action = b.get("action")
     if action not in ACTIONS:
-        return _bad(t("ungueltige Angabe"))
+        return _bad(t("ungültige Angabe"))
     target = str(b.get("target") or "")
     if action == "translate" and target not in TARGETS:
         return _bad(t("Unbekannte Zielsprache."))

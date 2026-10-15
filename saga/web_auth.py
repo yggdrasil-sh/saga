@@ -7,7 +7,7 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlette.concurrency import run_in_threadpool
 import auth
-from db import connect as _db
+from db import clean_line, connect as _db
 from fastapi import APIRouter
 from saga import i18n
 from saga.core import (ADMIN_URL, ASSET_V, BASE_URL, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, set_user_lang, t,
@@ -266,7 +266,7 @@ async def api_account_update(request: Request):
     if i["source"] != "local":
         return _bad(t("Name und E-Mail kommen von deinem Anmeldedienst und werden dort geändert."), 403)
     b = await _body(request) or {}
-    name, email = str(b.get("name") or "").strip()[:120], str(b.get("email") or "").strip()[:200]
+    name, email = clean_line(b.get("name") if isinstance(b.get("name"), str) else "").strip()[:120], str(b.get("email") or "").strip()[:200]
     if email and not EMAIL_RE.fullmatch(email):
         return _bad(t("Die E-Mail-Adresse sieht nicht richtig aus."))
     with _db() as c, c:
