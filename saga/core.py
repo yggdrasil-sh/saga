@@ -3,12 +3,14 @@ import asyncio
 import hashlib
 import json
 import os
+import secrets
 import time
 from datetime import timezone
 from zoneinfo import ZoneInfo
 from fastapi.responses import JSONResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 import auth
+from db import clean_str
 from saga import i18n
 
 t = i18n.t                     # fuer die Bereiche: from saga.core import t
@@ -355,6 +357,17 @@ def device_alive(uid, did):
     return alive
 
 
+def origin_of(request):
+    """Herkunft einer Anfrage: Geraet (App-Sitzung) bzw. Browser-Sitzung. Live-Kanal: eigene Aenderungen gehen an die
+    anderen Geraete/Sitzungen desselben Kontos, nur nicht an die ausloesende zurueck (BUG-032)."""
+    did = request.session.get("did")
+    if did is not None:
+        return f"d{did}"
+    o = request.session.get("lo")             # bei der Anmeldung vergeben (_set_session)
+    # aeltere Sitzungen ohne Kennung: alle zusammen wie bisher (eigene Aenderungen gehen an keine von ihnen zurueck)
+    return o if isinstance(o, str) else "s:" + str(request.session.get("uid"))
+
+
 def forget_device(uid, did=None):
     """Zwischenspeicher fuer abgemeldete Geraete leeren (did=None: alle Geraete des Kontos)."""
     for k in [k for k in _dev_seen if k[0] == uid and (did is None or k[1] == str(did))]:
@@ -371,15 +384,43 @@ def _api_guard(request):
 def _set_session(request, uid, name, keep=None):
     info = user_info(uid) or {}
     request.session.clear()
-    request.session.update(uid=uid, name=name or uid, pwc=info.get("epoch") or 0, **(keep or {}))
+    request.session.update(uid=uid, name=name or uid, pwc=info.get("epoch") or 0, lo=secrets.token_hex(6), **(keep or {}))
+
+
+def _no_const(name):
+    raise ValueError(f"JSON: {name} nicht erlaubt")
+
+
+def clean_json(v, depth=0):
+    """Eingaben zentral bereinigen (BUG-007): NUL weg, einzelne Surrogate -> U+FFFD (auch in Schluesseln)."""
+    if isinstance(v, str):
+        return clean_str(v)
+    if depth > 64:
+        raise ValueError("JSON zu tief verschachtelt")
+    if isinstance(v, list):
+        return [clean_json(x, depth + 1) for x in v]
+    if isinstance(v, dict):
+        return {clean_str(k): clean_json(x, depth + 1) for k, x in v.items()}
+    return v
+
+
+def parse_json(raw):
+    """JSON wie json.loads, aber ohne NaN/Infinity (-> ValueError) und mit bereinigten Texten."""
+    return clean_json(json.loads(raw, parse_constant=_no_const))
 
 
 async def _body(request):
     try:
-        b = await request.json()
+        b = parse_json(await request.body())
         return b if isinstance(b, dict) else None
     except Exception:
         return None
+
+
+def user_error(ex, fallback):
+    """Meldung einer Ausnahme fuer die Antwort: eigene (uebersetzte) Texte ja, rohe Python-Meldungen nein (BUG-084)."""
+    msg = str(ex)
+    return msg if msg and i18n.is_message(msg) else fallback
 
 
 def _bad(msg, code=400):

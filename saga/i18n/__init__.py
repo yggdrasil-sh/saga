@@ -117,6 +117,25 @@ def t(key, **params):
     return fill(_ctx(CATALOG[_cur.get()].get(key) or key, key), params)
 
 
+_MSG = {}
+
+
+def is_message(s):
+    """Ist s ein Text aus dem Katalog (eigene Meldung, ggf. mit eingesetzten Platzhaltern) - und keine rohe
+    Python-Fehlermeldung wie "invalid literal for int()"? (BUG-084)"""
+    if not _MSG:
+        plain, rx = set(), []
+        for cat in CATALOG.values():
+            for k, v in cat.items():
+                for x in {_ctx(k, k), _ctx(v, k)}:
+                    if _PH.search(x):
+                        rx.append(re.compile(".+?".join(re.escape(part) for part in _PH.split(x)[::2]) + r"\Z", re.S))
+                    else:
+                        plain.add(x)
+        _MSG.update(plain=plain, rx=rx)
+    return s in _MSG["plain"] or any(r.match(s) for r in _MSG["rx"])
+
+
 def t_lang(lang, key, **params):
     return fill(_ctx(CATALOG[norm(lang) or DEFAULT].get(key) or key, key), params)
 

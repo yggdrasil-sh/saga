@@ -115,7 +115,29 @@ def _fix_row(r):
     return tuple(_fix(v) for v in r) if any(isinstance(v, Decimal) for v in r) else r
 
 
+_BAD_CHARS = re.compile("[\x00\ud800-\udfff]")
+
+
+def clean_str(s):
+    """NUL entfernen, einzelne UTF-16-Surrogate (kaputte Emoji) durch U+FFFD ersetzen - Postgres/UTF-8 nehmen beides nicht."""
+    return _BAD_CHARS.sub(lambda m: "" if m.group() == "\x00" else "\ufffd", s) if _BAD_CHARS.search(s) else s
+
+
+# Einzeilige Anzeige-Texte (Titel, Namen): Steuerzeichen, Richtungs-Overrides/-Isolates (Spoofing wie "txt.exe" rueckwaerts)
+# und unsichtbare Zeichen entfernen (BUG-038). ZWJ/ZWNJ (Emoji-Folgen, Persisch) und LRM/RLM bleiben.
+_LINE_BAD = re.compile("[\x00-\x1f\x7f-\x9f\u200b\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\ud800-\udfff]")
+
+
+def clean_line(s):
+    s = str(s)
+    if not _LINE_BAD.search(s):
+        return s
+    return _LINE_BAD.sub(lambda m: " " if m.group() in "\t\n\r\x0b\x0c\x85" else "\ufffd" if "\ud800" <= m.group() <= "\udfff" else "", s)
+
+
 def _arg(a):
+    if isinstance(a, str):
+        return clean_str(a)                  # letzte Sicherung (BUG-007/008): sonst DataError/UnicodeEncodeError -> 500
     return int(a) if isinstance(a, bool) else a
 
 
@@ -179,7 +201,25 @@ class Conn:
         cur.executemany(q, [tuple(_arg(a) for a in args) for args in seq])
         return Cursor(cur)
 
+    @contextmanager
+    def savepoint(self):
+        """Teil einer Transaktion, der scheitern darf: bei Fehler nur bis hierher zurueck (die Transaktion bleibt nutzbar)."""
+        cur = self.pg.cursor()
+        cur.execute("SAVEPOINT saga_sp")
+        try:
+            yield self
+        except BaseException:
+            cur.execute("ROLLBACK TO SAVEPOINT saga_sp")
+            cur.execute("RELEASE SAVEPOINT saga_sp")
+            raise
+        cur.execute("RELEASE SAVEPOINT saga_sp")
+
     def commit(self):
+        if self.pg.info.transaction_status == psycopg.pq.TransactionStatus.INERROR:
+            # Ein Fehler wurde abgefangen, die Transaktion ist aber kaputt: Postgres wuerde beim COMMIT still zurueckrollen
+            # - dann darf der Aufrufer nicht "ok" melden (BUG-009)
+            self.rollback()
+            raise RuntimeError("Transaktion abgebrochen (vorheriger Datenbankfehler) - nichts gespeichert")
         self.pg.commit()
         fns, self._after = self._after, []
         for fn in fns:
@@ -201,6 +241,17 @@ class Conn:
         else:
             self.rollback()
         return False
+
+
+def _local_stamp():
+    """Zeitstempel fuer Dateinamen in der Zeitzone des Servers (TIMEZONE, wie im Admin-Bereich) statt UTC (BUG-091)."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    try:
+        tz = ZoneInfo(os.environ.get("TIMEZONE", "Europe/Berlin"))
+    except Exception:  # noqa: BLE001 - unbekannte Zone: wie bisher
+        return time.strftime("%Y%m%d-%H%M%S")
+    return datetime.now(tz).strftime("%Y%m%d-%H%M%S")
 
 
 @contextmanager
@@ -558,7 +609,7 @@ def backup(label="manuell"):
     import subprocess
     os.makedirs(BACKUP_DIR, exist_ok=True)
     label = re.sub(r"[^A-Za-z0-9._-]+", "-", label)[:40] or "backup"
-    path = os.path.join(BACKUP_DIR, f"saga-{time.strftime('%Y%m%d-%H%M%S')}-{label}.dump")
+    path = os.path.join(BACKUP_DIR, f"saga-{_local_stamp()}-{label}.dump")
     tmp = path + ".part"
     try:
         subprocess.run(["pg_dump", "--format=custom", "--no-owner", "--no-privileges", "--file", tmp],

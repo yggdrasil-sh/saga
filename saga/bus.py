@@ -29,9 +29,14 @@ def on(name, fn):
 
 def fire(name, c, **data):
     """Synchron alle Zuhoerer aufrufen (in der Transaktion von c). Fehler werden protokolliert, nicht weitergereicht."""
+    sp = getattr(c, "savepoint", None)
     for fn in list(_hooks.get(name, ())):
         try:
-            fn(c, **data)
+            if sp is None:
+                fn(c, **data)
+            else:
+                with sp():                   # Fehler eines Zuhoerers: nur dessen Teil zurueck, die Aktion bleibt (BUG-009)
+                    fn(c, **data)
         except Exception as ex:  # noqa: BLE001 - eine Benachrichtigung darf Speichern/Teilen nie verhindern
             print(f"bus: {name} -> {getattr(fn, '__module__', '?')}.{getattr(fn, '__name__', '?')}: {type(ex).__name__}: {ex}", flush=True)
             traceback.print_exc()
