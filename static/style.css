@@ -361,9 +361,12 @@ body.pg-full-open{overflow:hidden}
 #rail-text{flex:1;min-width:0;background:transparent;border:0;outline:none;color:var(--fg);font:inherit;font-size:.9rem;padding:.5rem 0}
 #rail-text::placeholder{color:var(--muted)}
 .rail-list{list-style:none;margin:0 -.4rem;padding:0;overflow-y:auto;flex:1}
-.rail-item{display:grid;grid-template-columns:18px minmax(0,1fr);column-gap:.7rem;align-items:start;padding:.55rem .4rem;border-radius:8px}
+.rail-item{display:grid;grid-template-columns:18px minmax(0,1fr) auto;column-gap:.7rem;align-items:start;padding:.55rem .4rem;border-radius:8px}
 .rail-item:hover{background:var(--card-h)}
-.rail-main{display:flex;flex-direction:column;gap:.2rem;min-width:0}
+.rail-main{display:flex;flex-direction:column;gap:.2rem;min-width:0;cursor:pointer}
+.rail-more{opacity:0;padding:0 .2rem}
+.rail-item:hover .rail-more,.rail-more:focus-visible,.rail-more[aria-expanded="true"]{opacity:1}
+@media (hover:none){.rail-more{opacity:.7}}
 .rail-text{font-size:.9rem;line-height:1.4;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .rail-meta{display:flex;align-items:center;gap:.35rem}
 .rail-meta .task-due{padding:0 .45rem}
