@@ -245,7 +245,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - KI: Seiten nur mit Titel werden gefunden (BUG-040)
 - Push-Einstellungen: Listen/Objekte statt Text → 400 statt 500, eigene Meldung für Zeitzone (BUG-041)
 - Konto löschen (Admin): erst sperren, dann Daten und Konto in einer Transaktion (BUG-042)
-- Geräteliste: `current` (dieses Gerät) und `prefix`; gleich benannte Geräte bekommen „(2)“ usw. (BUG-046)
+- Geräteliste: `current` (dieses Gerät) und `prefix`; gleich benannte Geräte bekommen „(2)“ usw.; Web markiert
+  „Dieses Gerät“ und fragt beim Abmelden des eigenen Geräts eigens nach (BUG-046)
+- Datenbanken live: Zeilen ändern/anlegen/löschen meldet `note.changed` (mit `row`) auch an alle, die die Datenbank
+  offen haben; die Web-Ansicht lädt Zeilen und Schema neu (nicht während einer Eingabe) und übernimmt `srev` nach dem
+  Speichern des Schemas (BUG-049, BUG-001)
+- Versionsverlauf: `by` = `me`/`other`/`unknown` („von dir“), Vorschau mit einem Absatz je Zeile (BUG-092);
+  Schlagworte im Web defensiv gelesen (BUG-034)
 - Typprüfung: `null`/Liste/Wahrheitswert als Titel/Text/KI-Frage/Anwesenheit (BUG-083); keine rohen Python-Meldungen
   in Antworten (BUG-084); deutsche Meldungen mit Umlauten (BUG-085)
 - Seiten-Chat: Tipp-/Lösch-Ereignisse nicht mehr an gerade Entzogene (BUG-088); interne Verweise bis 18 Stellen

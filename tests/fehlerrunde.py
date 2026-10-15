@@ -322,6 +322,32 @@ def t_bug046(A, Bk):
     ok("BUG-046: aus dem Browser kein Geraet als aktuell markiert", not any(x["current"] for x in req("GET", "/api/settings/apps", A)[1]["devices"]))
 
 
+def t_bug049_092(A, Bk):
+    A1, A2 = ck("fr-a", lo="fr-db-1"), ck("fr-a", lo="fr-db-2")
+    db = req("POST", "/api/notes", A1, {"title": "FR Live-DB", "kind": "database"})[1]["id"]
+    row = req("POST", "/api/notes", A1, {"title": "Zeile", "parent_id": db})[1]["id"]
+    s2 = Stream(A2)
+    s2.wait("hello")
+    req("POST", "/api/presence", A2, {"note_id": db})
+    m = len(s2.ev)
+    req("PATCH", f"/api/notes/{row}", A1, {"title": "Zeile neu"})
+    e = s2.wait("note.changed", lambda x: x["id"] == db, since=m)
+    ok(f"BUG-049: Zeile geaendert -> note.changed an Betrachter der Datenbank ({e})", e is not None and e.get("row") == row)
+    m = len(s2.ev)
+    req("POST", "/api/notes", A1, {"title": "Zeile 2", "parent_id": db})
+    ok("BUG-049: neue Zeile -> note.changed an Betrachter der Datenbank", s2.wait("note.changed", lambda x: x["id"] == db, since=m) is not None)
+    s2.close()
+    pg = req("POST", "/api/notes", A, {"title": "FR Versionen"})[1]["id"]
+    body = json.dumps({"blocks": [{"id": "v1", "type": "paragraph", "data": {"text": "Absatz eins"}},
+                                  {"id": "v2", "type": "paragraph", "data": {"text": "Absatz zwei " + "x" * 500}}]})
+    req("PATCH", f"/api/notes/{pg}", A, {"body": body, "format": "blocks"})
+    req("PATCH", f"/api/notes/{pg}", A, {"body": json.dumps({"blocks": []}), "format": "blocks"})     # stark gekuerzt -> Version
+    vs = req("GET", f"/api/notes/{pg}/versions", A)[1]
+    ok(f"BUG-092: eigene Fassung als 'me' gekennzeichnet ({[v.get('by') for v in vs]})", vs and vs[0].get("by") == "me")
+    txt = req("GET", f"/api/notes/{pg}/versions/{vs[0]['id']}", A)[1].get("text", "") if vs else ""
+    ok(f"BUG-092: Vorschau trennt Absaetze ({txt[:30]!r})", txt.startswith("Absatz eins\nAbsatz zwei"))
+
+
 # --- weitere Tests oberhalb einfuegen ----------------------------------------------------------------------
 
 

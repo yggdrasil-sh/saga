@@ -129,6 +129,24 @@ async function trashLink(p) {
   ok('BUG-056 Wiederherstellen oeffnet die Seite', (await p.inputValue('#pg-title')) === 'Papierkorb-Eltern');
 }
 
+// BUG-049/BUG-001: Datenbank in einer zweiten Sitzung offen - Zeile und neue Spalte aus der ersten kommen live an
+async function dbLive(browser, p) {
+  const D = (await p.api('POST', '/api/notes', { kind: 'database', title: 'Live-DB' })).id;
+  const R = (await p.api('POST', '/api/notes', { parent_id: D, title: 'Alt' })).id;
+  const q = await session(browser);
+  await q.open(D); await q.waitForTimeout(1500);
+  await p.api('PATCH', '/api/notes/' + R, { title: 'Neu von nebenan' });
+  await q.waitForTimeout(3500);
+  const names = await q.evaluate(() => [...document.querySelectorAll('.db-row .db-title-in')].map(x => x.value || x.textContent));
+  ok('BUG-049 Zeile aus anderer Sitzung erscheint live', names.some(x => /Neu von nebenan/.test(x)), names);
+  const s = (await p.api('GET', '/api/notes/' + D)).schema;
+  s.props.push({ id: 'plive', name: 'Spalte live', type: 'text' });
+  await p.api('PATCH', '/api/notes/' + D, { schema: s });
+  await q.waitForTimeout(3500);
+  ok('BUG-049 neue Spalte aus anderer Sitzung erscheint live', /Spalte live/.test(await q.evaluate(() => document.getElementById('pg-db').textContent)));
+  await q.context().close();
+}
+
 (async () => {
   const browser = await chromium.launch({ channel: process.env.PW_CHANNEL || 'chrome', headless: true });
   try {
@@ -139,6 +157,7 @@ async function trashLink(p) {
     await conflictVisible(p);
     await typeAheadTitle(p);
     await trashLink(p);
+    await dbLive(browser, p);
     await p.context().close();
     await narrow(browser);
   } catch (e) { console.error(e); res.push(false); }
