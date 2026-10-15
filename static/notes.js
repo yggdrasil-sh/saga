@@ -123,6 +123,12 @@
         main.appendChild(m);
       }
       li.appendChild(main);
+      // wie im Aufgaben-Kasten: "⋯" fuer Datum, Prioritaet, Wiederholung, Loeschen; Klick auf den Text oeffnet dasselbe (BUG-094)
+      var rm = el('button', 'task-more rail-more', '⋯'); rm.type = 'button';
+      rm.setAttribute('aria-label', T('Optionen für {text}', { text: task.text })); rm.setAttribute('aria-haspopup', 'menu');
+      rm.addEventListener('click', function () { rowMenu(task, rm); });
+      main.addEventListener('click', function () { rowMenu(task, rm); });
+      li.appendChild(rm);
       return li;
     }
 
