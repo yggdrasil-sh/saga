@@ -63,15 +63,37 @@ location.replace("en/")}catch(e){}})();
   <div class="wrap">
     <h2>Neu in Saga 2.0</h2>
     <p class="sub">Aus dem persönlichen Notizbuch wird ein gemeinsamer Ort – alles optional, alles auf deinem Server.</p>
-    <div class="grid">
-      <div class="card"><div class="ic">💬</div><h3>Teilen &amp; Kommentare</h3><p>Seiten und Datenbanken mit Personen oder Gruppen teilen – Lesen, Kommentieren oder Bearbeiten, Kommentare dezent am Block.</p></div>
-      <div class="card"><div class="ic">🔔</div><h3>Live &amp; Benachrichtigungen</h3><p>Seiten aktualisieren sich von selbst, du siehst, wer gerade da ist, und die Glocke sammelt alles, was dich betrifft.</p></div>
-      <div class="card"><div class="ic">🔐</div><h3>Verschlüsselte Chats</h3><p>Direkt-, Gruppen- und Seiten-Chats mit Ende-zu-Ende-Verschlüsselung (libsodium) – der Server sieht nur verschlüsselte Daten.</p></div>
-      <div class="card"><div class="ic">📲</div><h3>Mitteilungen aufs Handy</h3><p>Per Web Push, ntfy, UnifiedPush oder Apple Push – immer ohne Inhalte, mit Ruhezeiten.</p></div>
-      <div class="card"><div class="ic">✦</div><h3>KI-Assistent (optional)</h3><p>Frag deine Seiten oder lass eine Seite zusammenfassen – mit einem Modell deiner Wahl, z. B. Ollama im eigenen Netz. Standardmäßig aus.</p></div>
-      <div class="card"><div class="ic">🌐</div><h3>Föderation</h3><p>Saga-Server verbinden und Seiten an name@server teilen – die Daten bleiben beim Eigentümer, jede Anfrage ist signiert.</p></div>
+    <div class="feat">
+      <figure class="fc"><a href="screenshots/v2-kommentare.png"><img src="screenshots/v2-kommentare.png" alt="Seite mit geöffneter Kommentarleiste: drei Unterhaltungen an einzelnen Absätzen, eine mit Antwort" loading="lazy" width="2880" height="1800" style="--fx:100%;--fy:0%;--z:1.28"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">💬</span>Teilen &amp; Kommentare</h3><p>Seiten und Datenbanken mit Personen, Gruppen oder name@server teilen – Lesen, Kommentieren oder Bearbeiten. Kommentare hängen dezent am Block, mit Antworten und „Erledigt“.</p></figcaption></figure>
+      <figure class="fc"><a href="screenshots/v2-live.png"><img src="screenshots/v2-live.png" alt="Geteilte Seite: oben die Avatare von Kim und Robin mit dem Hinweis „2 Personen sind auch hier“, an der Glocke fünf ungelesene Meldungen" loading="lazy" width="2880" height="1800" style="--fx:80%;--fy:0%;--z:1.5"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔔</span>Live &amp; Benachrichtigungen</h3><p>Seiten aktualisieren sich von selbst, oben siehst du, wer gerade mitliest oder bearbeitet. Die Glocke sammelt Kommentare, Freigaben und Chat-Nachrichten.</p></figcaption></figure>
+      <figure class="fc"><a href="screenshots/v2-chat.png"><img src="screenshots/v2-chat.png" alt="Chats: links Direkt-, Seiten- und Gruppen-Chat, rechts eine Unterhaltung mit Kim, oben das Zeichen „Ende-zu-Ende-verschlüsselt“" loading="lazy" width="2880" height="1800" style="--fx:0%;--fy:0%;--z:1"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔐</span>Ende-zu-Ende-verschlüsselte Chats</h3><p>Direkt-, Gruppen- und Seiten-Chats, verschlüsselt auf deinen Geräten (libsodium) – der Server speichert nur Chiffretext. Neue Geräte koppelst du per Code, die Sicherheitsnummer zeigt, dass niemand dazwischen sitzt.</p></figcaption></figure>
+      <figure class="fc"><a href="screenshots/v2-mitteilungen.png"><img src="screenshots/v2-mitteilungen.png" alt="Einstellungen, Reiter Mitteilungen im hellen Design: dieser Browser, zwei Geräte (ntfy und UnifiedPush) und Schalter für Teilen, Kommentare und Chats" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:30%;--z:1.45"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📲</span>Mitteilungen aufs Handy</h3><p>Web Push im Browser, ntfy, UnifiedPush oder Apple Push. Du wählst, worüber du benachrichtigt wirst, und stellst Ruhezeiten ein – Inhalte werden nie mitgeschickt.</p></figcaption></figure>
+      <figure class="fc"><a href="screenshots/v2-ki.png"><img src="screenshots/v2-ki.png" alt="KI-Assistent neben einer Seite: Antwort auf eine Frage zum Urlaub mit Verweisen [1] und [2] und den Quellen „Urlaub Gardasee 2026“ und „Fahrräder &amp; Ausrüstung“" loading="lazy" width="2880" height="1800" style="--fx:100%;--fy:0%;--z:1.28"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">✦</span>KI-Assistent (optional)</h3><p>„Frag deine Seiten“ antwortet mit Quellenangaben aus deinen Seiten, „Diese Seite“ fasst zusammen, schlägt Aufgaben vor, verbessert oder übersetzt. Mit einem Modell deiner Wahl, z. B. Ollama im eigenen Netz – standardmäßig aus.</p></figcaption></figure>
+      <figure class="fc"><a href="screenshots/v2-foederation.png"><img src="screenshots/v2-foederation.png" alt="Seite „Hüttenwochenende Allgäu“, geteilt von jo@saga-b.example, unter „Mit mir geteilt“ in der Seitenleiste – mit dem Hinweis „Du kannst bearbeiten“" loading="lazy" width="2880" height="1800" style="--fx:0%;--fy:0%;--z:1.3"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🌐</span>Föderation</h3><p>Saga-Server verbinden und Seiten an name@server teilen. Die Seite bleibt beim Eigentümer – du liest, kommentierst und bearbeitest sie in deinem eigenen Saga, jede Anfrage zwischen den Servern ist signiert.</p></figcaption></figure>
     </div>
-    <p style="margin-top:24px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 Alle Änderungen und Hinweise zum Update</a></p>
+    <h3 class="more-h">Genauer hingeschaut</h3>
+    <p class="more-sub">Sicherheitsnummer, Geräte koppeln, Seiten-Hilfen der KI und Teilen über Server-Grenzen.</p>
+    <div class="gallery two">
+      <figure><div class="shot"><a href="screenshots/v2-chat-sicherheit.png"><img src="screenshots/v2-chat-sicherheit.png" alt="Dialog „Sicherheitsnummer mit Kim Beispiel“ mit zwölf Zahlenblöcken und der Schaltfläche „Als überprüft markieren“" loading="lazy" width="2880" height="1800"></a></div><figcaption>Sicherheitsnummer mit Kim vergleichen</figcaption></figure>
+      <figure><div class="shot"><a href="screenshots/v2-chat-kopplung.png"><img src="screenshots/v2-chat-kopplung.png" alt="Dialog „Neues Gerät bestätigen“ mit einem vierteiligen Zahlencode und „Code stimmt – bestätigen“" loading="lazy" width="2880" height="1800"></a></div><figcaption>Neues Gerät per Code bestätigen</figcaption></figure>
+      <figure><div class="shot"><a href="screenshots/v2-ki-seite.png"><img src="screenshots/v2-ki-seite.png" alt="Reiter „Diese Seite“ des KI-Assistenten im hellen Design mit einer Zusammenfassung der Urlaubsseite" loading="lazy" width="2880" height="1800"></a></div><figcaption>KI: „Diese Seite“ zusammenfassen, helles Design</figcaption></figure>
+      <figure><div class="shot"><a href="screenshots/v2-teilen.png"><img src="screenshots/v2-teilen.png" alt="Teilen-Dialog: Kim darf bearbeiten, die Gruppe familie und Jo Muster (jo@saga-b.example) dürfen kommentieren" loading="lazy" width="2880" height="1800"></a></div><figcaption>Teilen mit Person, Gruppe und name@server</figcaption></figure>
+    </div>
+    <h3 class="more-h">Auch auf dem Handy</h3>
+    <p class="more-sub">Im Browser und in den Apps – links die Weboberfläche, rechts die iPhone-App.</p>
+    <div class="phones v2">
+      <figure><img src="screenshots/v2-handy-chat.png" alt="Handy-Browser: verschlüsselte Unterhaltung mit Kim" loading="lazy" width="1170" height="2532"><figcaption>Chat auf dem Handy</figcaption></figure>
+      <figure><img src="screenshots/v2-handy-glocke.png" alt="Handy-Browser: Glocke mit Kommentaren und einer Freigabe von jo@saga-b.example" loading="lazy" width="1170" height="2532"><figcaption>Benachrichtigungen</figcaption></figure>
+      <figure><img src="screenshots/app-ios-foederation.png" alt="iPhone-App: Seite „Reiseplanung Sommer“, geteilt von anna@saga.example" loading="lazy" width="660" height="1435"><figcaption>iPhone: Seite von einer anderen Instanz</figcaption></figure>
+      <figure><img src="screenshots/app-ios-ki.png" alt="iPhone-App: KI-Assistent, Reiter „Diese Seite“ mit drei vorgeschlagenen Aufgaben" loading="lazy" width="660" height="1435"><figcaption>iPhone: KI schlägt Aufgaben vor</figcaption></figure>
+    </div>
+    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 Alle Änderungen und Hinweise zum Update</a></p>
   </div>
 </section>
 

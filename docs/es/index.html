@@ -55,15 +55,37 @@
   <div class="wrap">
     <h2>Novedades de Saga 2.0</h2>
     <p class="sub">Tu cuaderno personal se convierte en un lugar compartido: todo opcional, todo en tu propio servidor.</p>
-    <div class="grid">
-      <div class="card"><div class="ic">💬</div><h3>Compartir y comentar</h3><p>Comparte páginas y bases de datos con personas o grupos – ver, comentar o editar, con comentarios discretos en los bloques.</p></div>
-      <div class="card"><div class="ic">🔔</div><h3>En vivo y notificaciones</h3><p>Las páginas se actualizan solas, ves quién más está ahí y la campana reúne todo lo que te afecta.</p></div>
-      <div class="card"><div class="ic">🔐</div><h3>Chats cifrados</h3><p>Chats directos, de grupo y de página con cifrado de extremo a extremo (libsodium): el servidor solo ve datos cifrados.</p></div>
-      <div class="card"><div class="ic">📲</div><h3>Avisos en el móvil</h3><p>Por Web Push, ntfy, UnifiedPush o Apple Push – nunca con contenido, con horas de silencio.</p></div>
-      <div class="card"><div class="ic">✦</div><h3>Asistente de IA (opcional)</h3><p>Pregunta a tus páginas o resume una página – con el modelo que elijas, p. ej. Ollama en tu propia red. Desactivado por defecto.</p></div>
-      <div class="card"><div class="ic">🌐</div><h3>Federación</h3><p>Conecta servidores Saga y comparte páginas con nombre@servidor: los datos se quedan con su propietario y cada petición va firmada.</p></div>
+    <div class="feat">
+      <figure class="fc"><a href="../screenshots/v2-kommentare.png"><img src="../screenshots/v2-kommentare.png" alt="Página con la barra de comentarios abierta: tres conversaciones en párrafos concretos, una con respuesta" loading="lazy" width="2880" height="1800" style="--fx:100%;--fy:0%;--z:1.28"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">💬</span>Compartir y comentar</h3><p>Comparte páginas y bases de datos con personas, grupos o nombre@servidor – ver, comentar o editar. Los comentarios quedan discretos junto al bloque, con respuestas y «Resuelto».</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-live.png"><img src="../screenshots/v2-live.png" alt="Página compartida: arriba los avatares de Kim y Robin con el aviso de que hay otras dos personas, cinco avisos sin leer en la campana" loading="lazy" width="2880" height="1800" style="--fx:80%;--fy:0%;--z:1.5"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔔</span>En vivo y notificaciones</h3><p>Las páginas se actualizan solas y arriba ves quién más está leyendo o editando. La campana reúne comentarios, páginas compartidas y mensajes de chat.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-chat.png"><img src="../screenshots/v2-chat.png" alt="Chats: a la izquierda chat directo, de página y de grupo; a la derecha una conversación con Kim y arriba la marca «cifrado de extremo a extremo»" loading="lazy" width="2880" height="1800" style="--fx:0%;--fy:0%;--z:1"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔐</span>Chats cifrados de extremo a extremo</h3><p>Chats directos, de grupo y de página, cifrados en tus dispositivos (libsodium): el servidor solo guarda texto cifrado. Vincula dispositivos nuevos con un código; el número de seguridad muestra que nadie se interpone.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-mitteilungen.png"><img src="../screenshots/v2-mitteilungen.png" alt="Ajustes, pestaña de avisos en el tema claro: este navegador, dos dispositivos (ntfy y UnifiedPush) e interruptores para compartir, comentarios y chats" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:30%;--z:1.45"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📲</span>Avisos en el móvil</h3><p>Web Push en el navegador, ntfy, UnifiedPush o Apple Push. Eliges sobre qué quieres recibir avisos y configuras horas de silencio; el contenido nunca se envía.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-ki.png"><img src="../screenshots/v2-ki.png" alt="Asistente de IA junto a una página: respuesta a una pregunta sobre las vacaciones con referencias [1] y [2] y las fuentes «Urlaub Gardasee 2026» y «Fahrräder &amp; Ausrüstung»" loading="lazy" width="2880" height="1800" style="--fx:100%;--fy:0%;--z:1.28"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">✦</span>Asistente de IA (opcional)</h3><p>«Pregunta a tus páginas» responde con fuentes de tus páginas; «Esta página» resume, propone tareas, mejora o traduce. Con el modelo que elijas, p. ej. Ollama en tu propia red – desactivado por defecto.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-foederation.png"><img src="../screenshots/v2-foederation.png" alt="Página «Hüttenwochenende Allgäu», compartida por jo@saga-b.example, en «Compartido conmigo» de la barra lateral, con el aviso de que puedes editar" loading="lazy" width="2880" height="1800" style="--fx:0%;--fy:0%;--z:1.3"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🌐</span>Federación</h3><p>Conecta servidores Saga y comparte páginas con nombre@servidor. La página se queda con su propietario: la lees, comentas y editas en tu propio Saga, y cada petición entre servidores va firmada.</p></figcaption></figure>
     </div>
-    <p style="margin-top:24px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 Todos los cambios y notas de actualización</a></p>
+    <h3 class="more-h">Más de cerca</h3>
+    <p class="more-sub">Número de seguridad, vincular dispositivos, las ayudas de la IA para páginas y compartir entre servidores.</p>
+    <div class="gallery two">
+      <figure><div class="shot"><a href="../screenshots/v2-chat-sicherheit.png"><img src="../screenshots/v2-chat-sicherheit.png" alt="Diálogo del número de seguridad con Kim Beispiel: doce bloques de cifras y el botón para marcarlo como verificado" loading="lazy" width="2880" height="1800"></a></div><figcaption>Comparar el número de seguridad con Kim</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v2-chat-kopplung.png"><img src="../screenshots/v2-chat-kopplung.png" alt="Diálogo para confirmar un dispositivo nuevo con un código de cuatro partes y el botón de confirmar" loading="lazy" width="2880" height="1800"></a></div><figcaption>Confirmar un dispositivo nuevo con un código</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v2-ki-seite.png"><img src="../screenshots/v2-ki-seite.png" alt="Pestaña «Esta página» del asistente de IA en el tema claro con un resumen de la página de vacaciones" loading="lazy" width="2880" height="1800"></a></div><figcaption>IA: resumir «Esta página», tema claro</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v2-teilen.png"><img src="../screenshots/v2-teilen.png" alt="Diálogo de compartir: Kim puede editar; el grupo familie y Jo Muster (jo@saga-b.example) pueden comentar" loading="lazy" width="2880" height="1800"></a></div><figcaption>Compartir con una persona, un grupo y nombre@servidor</figcaption></figure>
+    </div>
+    <h3 class="more-h">También en el móvil</h3>
+    <p class="more-sub">En el navegador y en las apps: a la izquierda la interfaz web, a la derecha la app de iPhone.</p>
+    <div class="phones v2">
+      <figure><img src="../screenshots/v2-handy-chat.png" alt="Navegador del móvil: conversación cifrada con Kim" loading="lazy" width="1170" height="2532"><figcaption>Chat en el móvil</figcaption></figure>
+      <figure><img src="../screenshots/v2-handy-glocke.png" alt="Navegador del móvil: campana con comentarios y una página compartida por jo@saga-b.example" loading="lazy" width="1170" height="2532"><figcaption>Notificaciones</figcaption></figure>
+      <figure><img src="../screenshots/app-ios-foederation.png" alt="App de iPhone: página «Reiseplanung Sommer» compartida por anna@saga.example" loading="lazy" width="660" height="1435"><figcaption>iPhone: página de otra instancia</figcaption></figure>
+      <figure><img src="../screenshots/app-ios-ki.png" alt="App de iPhone: asistente de IA, pestaña «Esta página» con tres tareas propuestas" loading="lazy" width="660" height="1435"><figcaption>iPhone: la IA propone tareas</figcaption></figure>
+    </div>
+    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 Todos los cambios y notas de actualización</a></p>
   </div>
 </section>
 

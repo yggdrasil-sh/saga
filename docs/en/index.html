@@ -55,15 +55,37 @@
   <div class="wrap">
     <h2>New in Saga 2.0</h2>
     <p class="sub">Your personal notebook becomes a shared place – everything optional, everything on your own server.</p>
-    <div class="grid">
-      <div class="card"><div class="ic">💬</div><h3>Sharing &amp; comments</h3><p>Share pages and databases with people or groups – view, comment or edit, with subtle comments on blocks.</p></div>
-      <div class="card"><div class="ic">🔔</div><h3>Live &amp; notifications</h3><p>Pages update by themselves, you see who else is there, and the bell collects everything that concerns you.</p></div>
-      <div class="card"><div class="ic">🔐</div><h3>Encrypted chats</h3><p>Direct, group and page chats with end-to-end encryption (libsodium) – the server only sees encrypted data.</p></div>
-      <div class="card"><div class="ic">📲</div><h3>Push to your phone</h3><p>Via Web Push, ntfy, UnifiedPush or Apple Push – never with content, with quiet hours.</p></div>
-      <div class="card"><div class="ic">✦</div><h3>AI assistant (optional)</h3><p>Ask your pages or summarize a page – with a model of your choice, e.g. Ollama on your own network. Off by default.</p></div>
-      <div class="card"><div class="ic">🌐</div><h3>Federation</h3><p>Connect Saga servers and share pages with name@server – data stays with the owner, every request is signed.</p></div>
+    <div class="feat">
+      <figure class="fc"><a href="../screenshots/v2-kommentare.png"><img src="../screenshots/v2-kommentare.png" alt="Page with the comments sidebar open: three threads on individual paragraphs, one with a reply" loading="lazy" width="2880" height="1800" style="--fx:100%;--fy:0%;--z:1.28"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">💬</span>Sharing &amp; comments</h3><p>Share pages and databases with people, groups or name@server – view, comment or edit. Comments sit quietly next to the block, with replies and “Resolve”.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-live.png"><img src="../screenshots/v2-live.png" alt="Shared page: avatars of Kim and Robin at the top with a note that two other people are here, five unread notifications on the bell" loading="lazy" width="2880" height="1800" style="--fx:80%;--fy:0%;--z:1.5"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔔</span>Live &amp; notifications</h3><p>Pages update by themselves, and you see at the top who else is reading or editing. The bell collects comments, shares and chat messages.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-chat.png"><img src="../screenshots/v2-chat.png" alt="Chats: direct, page and group chat on the left, a conversation with Kim on the right, the “end-to-end encrypted” badge at the top" loading="lazy" width="2880" height="1800" style="--fx:0%;--fy:0%;--z:1"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔐</span>End-to-end encrypted chats</h3><p>Direct, group and page chats, encrypted on your devices (libsodium) – the server only stores ciphertext. Pair new devices with a code; the safety number shows nobody is in between.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-mitteilungen.png"><img src="../screenshots/v2-mitteilungen.png" alt="Settings, Notifications tab in the light theme: this browser, two devices (ntfy and UnifiedPush) and switches for sharing, comments and chats" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:30%;--z:1.45"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📲</span>Push to your phone</h3><p>Web Push in the browser, ntfy, UnifiedPush or Apple Push. Choose what you want to be notified about and set quiet hours – content is never sent along.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-ki.png"><img src="../screenshots/v2-ki.png" alt="AI assistant next to a page: answer to a question about the holiday with references [1] and [2] and the sources “Urlaub Gardasee 2026” and “Fahrräder &amp; Ausrüstung”" loading="lazy" width="2880" height="1800" style="--fx:100%;--fy:0%;--z:1.28"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">✦</span>AI assistant (optional)</h3><p>“Ask your pages” answers with sources from your pages, “This page” summarizes, suggests tasks, improves or translates. With a model of your choice, e.g. Ollama on your own network – off by default.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-foederation.png"><img src="../screenshots/v2-foederation.png" alt="Page “Hüttenwochenende Allgäu”, shared by jo@saga-b.example, under “Shared with me” in the sidebar – with the note that you can edit" loading="lazy" width="2880" height="1800" style="--fx:0%;--fy:0%;--z:1.3"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🌐</span>Federation</h3><p>Connect Saga servers and share pages with name@server. The page stays with its owner – you read, comment and edit it in your own Saga, and every request between the servers is signed.</p></figcaption></figure>
     </div>
-    <p style="margin-top:24px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 All changes and update notes</a></p>
+    <h3 class="more-h">A closer look</h3>
+    <p class="more-sub">Safety number, pairing devices, the AI page tools and sharing across servers.</p>
+    <div class="gallery two">
+      <figure><div class="shot"><a href="../screenshots/v2-chat-sicherheit.png"><img src="../screenshots/v2-chat-sicherheit.png" alt="Dialog “Safety number with Kim Beispiel” with twelve blocks of digits and the button to mark it as verified" loading="lazy" width="2880" height="1800"></a></div><figcaption>Compare the safety number with Kim</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v2-chat-kopplung.png"><img src="../screenshots/v2-chat-kopplung.png" alt="Dialog to confirm a new device with a four-part code and the confirm button" loading="lazy" width="2880" height="1800"></a></div><figcaption>Confirm a new device with a code</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v2-ki-seite.png"><img src="../screenshots/v2-ki-seite.png" alt="The AI assistant’s “This page” tab in the light theme with a summary of the holiday page" loading="lazy" width="2880" height="1800"></a></div><figcaption>AI: summarize “This page”, light theme</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v2-teilen.png"><img src="../screenshots/v2-teilen.png" alt="Share dialog: Kim can edit, the group familie and Jo Muster (jo@saga-b.example) can comment" loading="lazy" width="2880" height="1800"></a></div><figcaption>Share with a person, a group and name@server</figcaption></figure>
+    </div>
+    <h3 class="more-h">On your phone too</h3>
+    <p class="more-sub">In the browser and in the apps – web interface on the left, iPhone app on the right.</p>
+    <div class="phones v2">
+      <figure><img src="../screenshots/v2-handy-chat.png" alt="Phone browser: encrypted conversation with Kim" loading="lazy" width="1170" height="2532"><figcaption>Chat on the phone</figcaption></figure>
+      <figure><img src="../screenshots/v2-handy-glocke.png" alt="Phone browser: bell with comments and a share from jo@saga-b.example" loading="lazy" width="1170" height="2532"><figcaption>Notifications</figcaption></figure>
+      <figure><img src="../screenshots/app-ios-foederation.png" alt="iPhone app: page “Reiseplanung Sommer” shared by anna@saga.example" loading="lazy" width="660" height="1435"><figcaption>iPhone: page from another instance</figcaption></figure>
+      <figure><img src="../screenshots/app-ios-ki.png" alt="iPhone app: AI assistant, “This page” tab with three suggested tasks" loading="lazy" width="660" height="1435"><figcaption>iPhone: AI suggests tasks</figcaption></figure>
+    </div>
+    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 All changes and update notes</a></p>
   </div>
 </section>
 
