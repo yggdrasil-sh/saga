@@ -2363,9 +2363,10 @@
                 var src = pp.type === 'relation' ? relRows(pp.target).map(function (x) { return [String(x.id), label(x)]; }) : (pp.options || []).map(function (o) { return [o.id, o.name]; });
                 l.appendChild(sel([['', T('– wählen –')]].concat(src), f.value, function (x) { f.value = x; commit(); }));
               } else {
-                var vi = el('input', 'flt-val'); vi.type = (pp.type === 'date' || AUTO[pp.type]) ? 'date' : numLike(pp) ? 'number' : 'text';
-                vi.value = f.value || ''; vi.setAttribute('aria-label', T('Wert'));
-                liveText(vi, function (x) { f.value = x; saveSchemaSoon(); renderDb(); }); l.appendChild(vi);
+                var vi = el('input', 'flt-val'); vi.type = (pp.type === 'date' || AUTO[pp.type]) ? 'date' : 'text';
+                if (numLike(pp)) vi.inputMode = 'decimal';
+                vi.value = numLike(pp) ? HK.editNum(f.value) : f.value || ''; vi.setAttribute('aria-label', T('Wert'));
+                liveText(vi, function (x) { f.value = numLike(pp) ? numStore(x) : x; saveSchemaSoon(); renderDb(); }); l.appendChild(vi);
               }
             }
             l.appendChild(sel(COL, f.color, function (x) { f.color = x; commit(); }));
@@ -2466,12 +2467,12 @@
                 (p.type === 'relation' ? relRows(p.target).map(function (x) { return { id: x.id, name: label(x) }; }) : (p.options || []))
                   .forEach(function (o) { var opt = el('option', null, o.name); opt.value = o.id; val.appendChild(opt); });
               } else {
-                val = el('input', 'flt-val'); val.type = (p.type === 'date' || AUTO[p.type]) ? 'date' : numLike(p) ? 'number' : 'text';
-                if (numLike(p)) val.step = 'any';
+                val = el('input', 'flt-val'); val.type = (p.type === 'date' || AUTO[p.type]) ? 'date' : 'text';
+                if (numLike(p)) val.inputMode = 'decimal';
               }
-              val.value = f.value || ''; val.setAttribute('aria-label', T('Wert'));
+              val.value = val.tagName !== 'SELECT' && numLike(p) ? HK.editNum(f.value) : f.value || ''; val.setAttribute('aria-label', T('Wert'));
               if (val.tagName === 'SELECT') val.addEventListener('change', function () { f.value = val.value; commit(); });
-              else liveText(val, function (x) { f.value = x; saveSchemaSoon(); renderDb(); });
+              else liveText(val, function (x) { f.value = numLike(p) ? numStore(x) : x; saveSchemaSoon(); renderDb(); });
               line.appendChild(val);
             }
             var x = el('button', 'flt-x', '×'); x.type = 'button'; x.setAttribute('aria-label', T('Filter entfernen'));
