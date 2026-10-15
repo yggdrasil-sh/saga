@@ -402,6 +402,7 @@
  "Der Admin hat das Teilen auf diesem Server abgeschaltet – Freigaben wirken zurzeit nicht.": "The admin has turned off sharing on this server – shares currently have no effect.",
  "Der Admin hat das Veröffentlichen auf diesem Server abgeschaltet – öffentliche Adressen liefern zurzeit „Nicht gefunden“.": "The admin has turned off publishing on this server – public addresses currently return “Not found”.",
  "Der Anmeldedienst (SSO) ist gerade nicht erreichbar.": "The sign-in service (SSO) is currently unreachable.",
+ "Der Assistent arbeitet nur mit Seiten dieses Servers.": "The assistant only works with pages on this server.",
  "Der Assistent ist gerade ausgelastet – bitte gleich noch einmal.": "The assistant is busy right now – please try again in a moment.",
  "Der Assistent ist gerade nicht erreichbar.": "The assistant isn't reachable right now.",
  "Der Benutzerfilter muss {username} enthalten.": "The user filter must contain {username}.",

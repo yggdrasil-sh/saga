@@ -896,7 +896,7 @@
     m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
       { icon: '💬', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
     m.appendChild(HK.menuItem(T('Link zur Seite kopieren'), function () { copyLink(); }, { icon: '🔗' }));
-    if (window.HKAI) HKAI.menu(m);
+    if (window.HKAI && !rem) HKAI.menu(m);            // KI nur fuer Seiten dieses Servers (andere Instanz: 404, BUG-052)
     var n = descendants(c.id).length || S.shared.filter(function (p) { return p.parent_id === c.id; }).length;
     if (!rem) m.appendChild(HK.menuItem(T('Exportieren'), null, { icon: '⬇', sub: function (sm) {
       sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { icon: '📄' }));
@@ -1201,6 +1201,7 @@
   // --- Rueckverweise ----------------------------------------------------------
   function loadBacklinks(id) {
     var sec = $('pg-backlinks'), ul = $('pg-backlinks-list');
+    if (remoteId(id)) { sec.hidden = true; ul.textContent = ''; return; }   // andere Instanz: keine Rueckverweise (BUG-097)
     api('GET', '/api/notes/' + id + '/backlinks').then(function (list) {
       if (!S.cur || S.cur.id !== id) return;
       ul.textContent = ''; sec.hidden = !list.length;

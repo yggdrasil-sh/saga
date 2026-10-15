@@ -402,6 +402,7 @@
  "Der Admin hat das Teilen auf diesem Server abgeschaltet – Freigaben wirken zurzeit nicht.": "El administrador desactivó compartir en este servidor: los usos compartidos no tienen efecto por ahora.",
  "Der Admin hat das Veröffentlichen auf diesem Server abgeschaltet – öffentliche Adressen liefern zurzeit „Nicht gefunden“.": "El administrador ha desactivado la publicación en este servidor: las direcciones públicas devuelven ahora «No encontrado».",
  "Der Anmeldedienst (SSO) ist gerade nicht erreichbar.": "El servicio de inicio de sesión (SSO) no está disponible en este momento.",
+ "Der Assistent arbeitet nur mit Seiten dieses Servers.": "El asistente solo funciona con páginas de este servidor.",
  "Der Assistent ist gerade ausgelastet – bitte gleich noch einmal.": "El asistente está ocupado: vuelve a intentarlo en un momento.",
  "Der Assistent ist gerade nicht erreichbar.": "El asistente no está disponible en este momento.",
  "Der Benutzerfilter muss {username} enthalten.": "El filtro de usuario debe contener {username}.",

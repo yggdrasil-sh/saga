@@ -402,6 +402,7 @@
  "Der Admin hat das Teilen auf diesem Server abgeschaltet – Freigaben wirken zurzeit nicht.": "Der Admin hat das Teilen auf diesem Server abgeschaltet – Freigaben wirken zurzeit nicht.",
  "Der Admin hat das Veröffentlichen auf diesem Server abgeschaltet – öffentliche Adressen liefern zurzeit „Nicht gefunden“.": "Der Admin hat das Veröffentlichen auf diesem Server abgeschaltet – öffentliche Adressen liefern zurzeit „Nicht gefunden“.",
  "Der Anmeldedienst (SSO) ist gerade nicht erreichbar.": "Der Anmeldedienst (SSO) ist gerade nicht erreichbar.",
+ "Der Assistent arbeitet nur mit Seiten dieses Servers.": "Der Assistent arbeitet nur mit Seiten dieses Servers.",
  "Der Assistent ist gerade ausgelastet – bitte gleich noch einmal.": "Der Assistent ist gerade ausgelastet – bitte gleich noch einmal.",
  "Der Assistent ist gerade nicht erreichbar.": "Der Assistent ist gerade nicht erreichbar.",
  "Der Benutzerfilter muss {username} enthalten.": "Der Benutzerfilter muss {username} enthalten.",
