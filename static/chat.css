@@ -12,6 +12,7 @@ body.chats-page{height:100vh;height:100dvh;display:flex;flex-direction:column;ov
 .ct-filter{flex:1;min-width:0!important}
 .ct-new{white-space:nowrap}
 .ct-list{list-style:none;margin:0;padding:0 .4rem;overflow:auto;flex:1}
+.ct-list:empty{display:none}                         /* Leerzustand "Noch keine Unterhaltungen" oben statt unten (BUG-099) */
 .ct-item-b{display:flex;align-items:center;gap:.7rem;width:100%;padding:.6rem .55rem;border:0;background:none;color:inherit;font:inherit;text-align:left;
   border-radius:9px;cursor:pointer}
 .ct-item-b:hover{background:var(--card-h)}

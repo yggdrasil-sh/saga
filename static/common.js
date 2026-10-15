@@ -31,10 +31,13 @@
   // relative Angabe ("vor 5 Minuten", "in 2 days") - n Sekunden (negativ = Vergangenheit)
   var rtf = window.Intl && Intl.RelativeTimeFormat ? new Intl.RelativeTimeFormat(LOC, { numeric: 'auto' }) : null;
   function relTime(sec) {
-    var a = Math.abs(sec), u = 'second', v = sec;
-    if (a >= 86400 * 30) { u = 'month'; v = sec / (86400 * 30); } else if (a >= 86400 * 7) { u = 'week'; v = sec / (86400 * 7); }
-    else if (a >= 86400) { u = 'day'; v = sec / 86400; } else if (a >= 3600) { u = 'hour'; v = sec / 3600; } else if (a >= 60) { u = 'minute'; v = sec / 60; }
-    v = Math.round(v);
+    // erst auf die Einheit runden, dann pruefen, ob die naechste passt: 59,6 s = "vor 1 Minute", nicht "vor 60 Sekunden" (BUG-099)
+    var U = [['second', 1, 60], ['minute', 60, 60], ['hour', 3600, 24], ['day', 86400, 7], ['week', 86400 * 7, 30 / 7], ['month', 86400 * 30, Infinity]];
+    var u = 'second', v = Math.round(sec);
+    for (var i = 0; i < U.length; i++) {
+      u = U[i][0]; v = Math.round(sec / U[i][1]);
+      if (U[i][0] === 'week' ? Math.abs(sec) < 86400 * 30 : Math.abs(v) < U[i][2]) break;
+    }
     return rtf ? rtf.format(v, u) : String(v) + ' ' + u;
   }
   var H = { 'X-Saga': '1' };

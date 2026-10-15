@@ -125,7 +125,7 @@
   {% if not favorites and not categories %}
   <p class="empty">{{ _("Für dich sind noch keine Dienste freigeschaltet – lege dir eigene Lesezeichen an.") }}</p>
   {% endif %}
-  <div class="bm-add-row"><button class="btn" type="button" id="bm-add">+ {{ _("Lesezeichen") }}</button></div>
+  <div class="bm-add-row"><button class="btn" type="button" id="bm-add">{{ _("+ Lesezeichen") }}</button></div>
   <details class="acct acct-foot">
     <summary>
       <span class="who">{{ uid }}{% if acct.mail %} · {{ acct.mail }}{% endif %}</span>

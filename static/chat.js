@@ -826,6 +826,7 @@
       if (S.files.length < 10) S.files.push(f);
     });
     this.value = ''; drawFiles();
+    $('ct-input').focus();                                 // Enter sendet dann, statt die Dateiauswahl erneut zu oeffnen (BUG-099)
   });
 
   // --- Senden ---------------------------------------------------------------------------------------------------
