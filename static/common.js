@@ -48,11 +48,13 @@
   // Beim Verlassen/Neuladen der Seite (leaving) mit keepalive: so ueberlebt das letzte Speichern das Entladen (BUG-012).
   // keepalive erlaubt hoechstens 64 KB je Anfrage - groessere Inhalte gehen normal (dann warnt beforeunload, s. pages.js).
   var leaving = false, leaveT = null;
+  // Grenze gilt in Bytes: Umlaute/Emoji/CJK sind in UTF-8 2-4 Bytes - sonst lehnt fetch die keepalive-Anfrage ab
+  function utf8Len(s) { return s.length < 15000 ? s.length * 3 : (window.TextEncoder ? new TextEncoder().encode(s).length : s.length * 3); }
   function api(method, url, body) {
     var h = Object.assign({}, H), data = body !== undefined ? JSON.stringify(body) : undefined;
     if (body !== undefined) h['Content-Type'] = 'application/json';
     return fetch(url, { method: method, credentials: 'same-origin', headers: h, body: data,
-                        keepalive: leaving && method !== 'GET' && (!data || data.length < 60000) })
+                        keepalive: leaving && method !== 'GET' && (!data || utf8Len(data) < 60000) })
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (d) {
           if (!r.ok) { var e = new Error(d.error || ('HTTP ' + r.status)); e.status = r.status; e.data = d; throw e; }   // Konflikt: e.data.by

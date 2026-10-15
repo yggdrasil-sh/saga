@@ -969,7 +969,7 @@
     if (!S.cur || S.conflict || S.lost || readOnly() || (!S.dirtyBody && !S.dirtyTitle)) return;
     var busy = (S.inflight || 0) > 0;
     save();
-    var big = $('pg-editor').textContent.length > 40000;
+    var txt = $('pg-editor').textContent, big = (window.TextEncoder ? new TextEncoder().encode(txt).length : txt.length * 3) > 40000;   // Bytes (CJK/Emoji)
     if (busy || big) { e.preventDefault(); e.returnValue = ''; }
   });
 
