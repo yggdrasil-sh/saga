@@ -323,7 +323,42 @@ def _session_user(request):
     if info is None or info["epoch"] > float(request.session.get("pwc") or 0):
         request.session.clear()
         return None
+    did = request.session.get("did")
+    if did is not None and not device_alive(uid, did):      # Geraet abgemeldet: dessen Sitzung endet sofort (BUG-002)
+        request.session.clear()
+        return None
     return uid
+
+
+DEVICE_CHECK_TTL = 5.0
+_dev_seen = {}                   # (uid, did) -> Zeitpunkt der letzten erfolgreichen Pruefung
+
+
+def device_alive(uid, did):
+    """Gibt es die Geraete-Anmeldung dieser Sitzung noch? Kurz zwischengespeichert; forget_device() beim Abmelden."""
+    key = (uid, str(did))
+    now = time.time()
+    if now - _dev_seen.get(key, 0) < DEVICE_CHECK_TTL:
+        return True
+    try:
+        from db import connect
+        with connect() as c:
+            alive = c.execute("SELECT 1 FROM device_login WHERE id=? AND uid=?", (int(did), uid)).fetchone() is not None
+    except (TypeError, ValueError, OverflowError):
+        alive = False
+    if alive:
+        if len(_dev_seen) > 5000:
+            _dev_seen.clear()
+        _dev_seen[key] = now
+    else:
+        _dev_seen.pop(key, None)
+    return alive
+
+
+def forget_device(uid, did=None):
+    """Zwischenspeicher fuer abgemeldete Geraete leeren (did=None: alle Geraete des Kontos)."""
+    for k in [k for k in _dev_seen if k[0] == uid and (did is None or k[1] == str(did))]:
+        _dev_seen.pop(k, None)
 
 
 def _api_guard(request):

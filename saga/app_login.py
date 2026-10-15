@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from db import connect as _db
 from fastapi import APIRouter
 from saga.core import (APP_TOKEN_MAX, ASSET_V, BASE_URL, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, _tok_db,
-                       _tok_hash, t, title, tmpl, user_info)
+                       _tok_hash, forget_device, t, title, tmpl, user_info)
 from saga.web_auth import _auth_page
 
 router = APIRouter()
@@ -222,6 +222,7 @@ def _drop_devices(c, uid, ids):
     for x in ids:
         c.execute("DELETE FROM app_token WHERE uid=? AND device_id=?", (uid, x))
         n += c.execute("DELETE FROM device_login WHERE id=? AND uid=?", (x, uid)).rowcount
+        forget_device(uid, x)                     # dessen Sitzung endet sofort (BUG-002)
     return n
 
 

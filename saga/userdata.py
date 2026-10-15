@@ -4,6 +4,7 @@ import os
 from db import connect as _db
 from saga import bus, chat, notify, push
 from saga.calendars import _cal_cache_drop
+from saga.core import forget_device
 from saga.files import _drop_thumbs
 from saga.notes import FILES_DIR
 from saga.sharing import delete_account, share_counts
@@ -72,4 +73,5 @@ def revoke_user_logins(uid, keep_device=None):
         else:
             a = c.execute("DELETE FROM device_login WHERE uid=?", (uid,)).rowcount
             b = c.execute("DELETE FROM app_token WHERE uid=?", (uid,)).rowcount
+    forget_device(uid)                   # Sitzungen der abgemeldeten Geraete enden sofort (BUG-002)
     return a + b
