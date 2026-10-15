@@ -430,7 +430,8 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
                 return None               # inzwischen nicht mehr Mitglied oder stummgeschaltet
             nm = notify.names(c, [actor]).get(actor) if actor and names else None
             body = t("Neue Nachricht von {name}", name=nm) if nm else t("Neue Nachricht")
-            url, tag = ("/chats#" + chat) if chat else "/chats", "chat-" + chat
+            ref = ("c" + chat) if chat.isdigit() else chat          # wie die Glocke: /chats#c<id>
+            url, tag = ("/chats#" + ref) if chat else "/chats", "chat-" + chat
         else:
             it = notify.item(c, uid, ref) if ref else None
             if not it or (kind != "publish.withdrawn" and not it["access"]):

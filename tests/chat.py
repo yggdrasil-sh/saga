@@ -343,11 +343,31 @@ def run():
     s, d = req("POST", f"/api/chats/{cid}/read", B.k, {"seq": 10 ** 12})
     ok(f"B gelesen -> 0 ungelesen, Benachrichtigung gelesen ({d})", s == 200 and d["unread"] == 0 and req("GET", "/api/notifications", B.k)[1]["unread"] == 0)
     ok("... chat.read an eigene Tabs", sb.wait("chat.read", lambda x: x["chat_id"] == cid, since=mrk) is not None)
+    # Mitteilungen aufs Handy (saga.push): B hat ein Abo (Ziel nicht erreichbar - es zaehlt nur, dass etwas ausgeloest wird)
+    with connect() as c, c:
+        psid = c.execute("INSERT INTO push_sub (uid, kind, endpoint, name, created) VALUES ('ch-b', 'ntfy', 'https://push.invalid/ch-b', 'x', ?)",
+                         (time.time(),)).lastrowid
+
+    def push_state():
+        with connect() as c:
+            q = [r[0] for r in c.execute("SELECT data FROM push_queue WHERE uid='ch-b' AND kind='chat.message'")]
+            sub = c.execute("SELECT last_err, fails FROM push_sub WHERE id=?", (psid,)).fetchone()
+        return q, sub
     req("PATCH", f"/api/chats/{cid}", B.k, {"muted": True})
     A.send(cid, "stumm?")
+    time.sleep(1.5)
+    q0, sub0 = push_state()
     ok("Stumm: keine Benachrichtigung, zaehlt nicht als ungelesen", req("GET", "/api/notifications", B.k)[1]["unread"] == 0
        and req("GET", "/api/chats/unread", B.k)[1]["unread"] == 0)
+    ok(f"Stumm: auch keine Mitteilung aufs Handy ({q0}, {sub0})", not q0 and sub0 == (None, 0))
     req("PATCH", f"/api/chats/{cid}", B.k, {"muted": False})
+    A.send(cid, SECRET_TEXT + " (Push)")
+    time.sleep(1.5)
+    q1, sub1 = push_state()
+    ok(f"Nicht stumm: Mitteilung ausgeloest - nur die Chat-Kennung, kein Inhalt ({q1}, {sub1})",
+       (q1 or sub1 is None or sub1[0]) and all(json.loads(d) == {"chat": cid} for d in q1) and "Treffpunkt" not in json.dumps(q1))
+    with connect() as c, c:
+        c.execute("DELETE FROM push_queue WHERE uid='ch-b'"); c.execute("DELETE FROM push_sub WHERE id=?", (psid,))
     mrk = sb.mark()
     req("POST", f"/api/chats/{cid}/typing", A.k)
     ty = sb.wait("chat.typing", lambda x: x["chat_id"] == cid, since=mrk)
