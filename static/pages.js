@@ -1574,6 +1574,8 @@
   OPS.created = OPS.edited = [['after', T('nach')], ['before', T('vor')], ['eq', T('am')], ['today', T('ist heute')], ['this_week', T('ist diese Woche')], ['this_month', T('ist diesen Monat')]];
   function propValue(p, r) { return p.type === 'calc' ? calcValue2(p, r) : AUTO[p.type] ? r[AUTO[p.type]] : (r.props || {})[p.id]; }
   function numLike(p) { return !!p && (p.type === 'number' || p.type === 'calc'); }
+  // Filterwert einer Zahlenspalte: Eingabe in der Sprache der Oberflaeche, gespeichert als "1200.5" (BUG-013)
+  function numStore(x) { var n = HK.parseNum(x); return String(x).trim() === '' || isNaN(n) ? String(x).trim() : String(n); }
   var CALC_P = [['div', 'A ÷ B', '÷'], ['pct', T('A in % von B'), '%'], ['mul', 'A × B', '×'], ['add', 'A + B', '+'], ['sub', 'A − B', '−']];
   // "Berechnet": aus zwei Zahlen-Spalten der Zeile, immer frisch (wird nie gespeichert)
   function calcValue2(p, r) {
@@ -1785,16 +1787,21 @@
       buildInput(); return wrap;
       function buildInput() {
       var inp = el('input', 'val-in'); inp.setAttribute('aria-label', prop.name);
-      inp.type = t === 'number' ? 'number' : t === 'date' ? 'date' : t === 'url' ? 'url' : 'text';
-      if (t === 'number') inp.step = 'any';
-      inp.value = v == null ? '' : String(v); inp.placeholder = t === 'url' ? 'https://…' : '';
+      // Zahl als Text in der Sprache der Oberflaeche ("1.200,5" de): type=number las "1.200" als 1,2 (BUG-013)
+      inp.type = t === 'date' ? 'date' : t === 'url' ? 'url' : 'text';
+      if (t === 'number') inp.inputMode = 'decimal';
+      inp.value = v == null ? '' : t === 'number' ? HK.editNum(v) : String(v); inp.placeholder = t === 'url' ? 'https://…' : '';
       function markEmpty() { inp.classList.toggle('is-empty', !inp.value); }
       markEmpty(); inp.addEventListener('input', markEmpty);
       var start = inp.value;
       function commit() {
         if (inp.value === start) { if (t === 'number' && start !== '' && (prop.fmt || prop.show)) onDone(); return; }   // zurueck zur Anzeige
-        var nv = inp.value.trim(); start = inp.value;
-        setProp(row, prop.id, nv === '' ? null : (t === 'number' ? Number(nv) : nv)).then(onDone);
+        var nv = inp.value.trim(), num = t === 'number' && nv !== '' ? HK.parseNum(nv) : null;
+        if (t === 'number' && nv !== '' && isNaN(num)) {                     // keine Zahl: Hinweis, alten Wert zeigen
+          HK.toast(T('„{v}“ ist keine Zahl', { v: nv })); inp.value = start; markEmpty(); return;
+        }
+        start = inp.value;
+        setProp(row, prop.id, nv === '' ? null : (t === 'number' ? num : nv)).then(onDone);
       }
       inp.addEventListener('change', commit); inp.addEventListener('blur', commit);
       inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } if (e.key === 'Escape') { inp.value = start; inp.blur(); } });
