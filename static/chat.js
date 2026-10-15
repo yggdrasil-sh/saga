@@ -564,7 +564,7 @@
 
   // --- Unterhaltung -----------------------------------------------------------------------------------------------
   function closeChat() {
-    S.cur = null; S.msgs = []; S.byId = {}; S.rc = null; S.reply = null; S.files = [];
+    S.cur = null; S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = [];
     $('ct-chat').hidden = true; $('ct-none').hidden = false; root.classList.remove('ct-open');
     drawList();
   }
@@ -573,7 +573,7 @@
     var same = S.cur && S.cur.id === cid;
     return api('GET', '/api/chats/' + cid + '?device=' + q(dev())).then(function (r) {
       var c = r.chat; freeTitle(c);
-      if (!same) { S.msgs = []; S.byId = {}; S.rc = null; S.reply = null; S.files = []; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; }
+      if (!same) { S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; }
       S.cur = c;
       $('ct-none').hidden = true; $('ct-chat').hidden = false; root.classList.add('ct-open');
       drawHead(); drawList(); drawWarn();
@@ -617,17 +617,19 @@
         S.byId[m.id] = m; return m;
       });
       if (older) { S.msgs = add.concat(S.msgs); S.more = r.more; }
-      else { S.msgs = S.msgs.concat(add); if (!last) S.more = r.more; }
+      else { S.msgs = S.msgs.concat(add); if (!last) S.more = r.more; if (!last || !r.more) S.seenSeq = Math.max(S.seenSeq || 0, r.last_seq || 0); }
       drawMsgs(older ? 'keep' : 'bottom');
       resolveNotes();
       markRead();
       if (!older && r.more && last) return loadMsgs(false);
     }).catch(function (e) { S.loading = false; HK.toast(T('Nachrichten nicht geladen: {err}', { err: e.message })); });
   }
+  // Gelesen bis zur neuesten geladenen Nachricht - oder bis zum Stand der Unterhaltung beim Laden (S.seenSeq): auch
+  // Nachrichten, die dieses Geraet nie lesen kann (vor der Einrichtung geschickt), zaehlen sonst ewig als ungelesen (BUG-050)
   function markRead() {
-    var c = S.cur; if (!c || document.hidden || !S.msgs.length) return;
-    var seq = S.msgs[S.msgs.length - 1].seq;
-    if (seq <= (c.last_read || 0)) return;
+    var c = S.cur; if (!c || document.hidden) return;
+    var seq = Math.max(S.msgs.length ? S.msgs[S.msgs.length - 1].seq : 0, S.seenSeq || 0);
+    if (!seq || seq <= (c.last_read || 0)) return;
     c.last_read = seq;
     api('POST', '/api/chats/' + c.id + '/read', { seq: seq }).then(function () {
       var x = S.chats.filter(function (y) { return y.id === c.id; })[0]; if (x) { x.unread = 0; x.last_read = seq; drawList(); }
@@ -685,6 +687,7 @@
     } else {
       box.appendChild(el('p', 'ct-start', '🔒 ' + T('Nachrichten in diesem Chat sind Ende-zu-Ende-verschlüsselt.') +
         (c.kind !== 'dm' ? ' ' + T('Wer neu dazukommt, sieht nur Nachrichten ab dem Beitritt.') : '')));
+      if (!S.msgs.length && S.seenSeq > 0) box.appendChild(el('p', 'ct-start', T('Frühere Nachrichten sind auf diesem Gerät nicht lesbar – z. B. vor seiner Einrichtung geschickt oder abgelaufen.')));
     }
     var lastDay = '', lastWho = null;
     S.msgs.forEach(function (m) {
