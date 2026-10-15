@@ -291,6 +291,10 @@ body.pg-full-open{overflow:hidden}
   .pg-tree,.pg-results{max-height:28vh}
   .page-title{font-size:1.6rem}
   .pages.pg-full{padding:1rem;grid-template-columns:1fr}
+  /* Seitenkopf auf Handy/Tablet: Knoepfe brechen um statt ueber den Rand zu laufen (BUG-015) */
+  .page-bar{flex-wrap:wrap;row-gap:.4rem}
+  .page-bar .crumbs{flex:1 1 8rem}
+  .page-bar .note-state{min-width:0;overflow:hidden;text-overflow:ellipsis}
 }
 @media (max-width:700px){
   .task{grid-template-columns:18px minmax(0,1fr) 1.7rem}
@@ -385,6 +389,7 @@ body.notes-page .pages-side{position:sticky;top:4.8rem;max-height:calc(100vh - 6
 body.notes-page .pg-tree,body.notes-page .pg-results{max-height:none;overflow:auto;flex:0 1 auto}
 body.notes-page .page-head,body.notes-page .page-body{max-width:760px}
 body.notes-page .page-title{font-size:2.35rem}
+@media (max-width:760px){body.notes-page .page-title{font-size:1.6rem}}   /* Handy: langer Titel passt eher (BUG-015) */
 body.notes-page #pg-full{display:none}
 @media (max-width:760px){
   .np-head{padding:.75rem 1rem}
@@ -912,7 +917,8 @@ body.embed .np-main{padding:1rem 1.4rem 3rem}
 .cal-it{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .cal-ic.ic-img{width:1em;height:1em}
 .cal-nodate{color:var(--muted);font-size:.8rem;padding:.6rem .2rem}
-@media (max-width:760px){.cal-day{min-height:64px}.cal-it{display:none}.cal-item::before{content:"•"}}
+/* schmal: Titel klein und gekuerzt statt nur "•" (BUG-015) */
+@media (max-width:760px){.cal-day{min-height:64px;padding:.25rem .2rem}.cal-item{font-size:.66rem;padding:.08rem .2rem;gap:.15rem}.cal-ic{display:none}}
 
 /* Relation: verknuepfte Eintraege als Marken */
 .rel-chips{display:inline-flex;flex-wrap:wrap;gap:.25rem;align-items:center;min-width:0}
