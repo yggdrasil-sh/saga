@@ -13,6 +13,23 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 > nach `main` übernehmen und pushen. Die GitHub Action legt Tag, Images und Release an. Danach auf `testing` `VERSION`
 > auf die nächste geplante Version setzen.
 
+## [Unveröffentlicht]
+
+### Neu
+- **Immich im Chat (Web):** Beim Anhängen gibt es „Aus Immich …“ (nur wenn Immich eingerichtet ist) mit derselben
+  Auswahl wie auf Seiten. Das Bild wird über den Immich-Durchgriff des Servers geholt (große Vorschau, GIFs im Original;
+  nichts wird dabei gespeichert) und dann wie jeder Anhang Ende-zu-Ende verschlüsselt hochgeladen. API:
+  `GET /api/immich/thumb/{id}?size=preview|original`.
+
+### Behoben
+- **Menüs im Peek-Fenster:** „Verschieben nach“ (und andere Untermenüs) lief links aus dem Peek heraus und lag unter
+  dem offenen ⋯-Menü. Menüs und Auswahllisten bleiben jetzt im sichtbaren Bereich; ist neben dem Menü kein Platz,
+  ersetzt das Untermenü das ⋯-Menü (mit „‹ zurück“).
+- **Veröffentlichte Seiten:** oben steht nicht mehr „@name“ – der Name steht nur noch unter dem Titel; Unterseiten
+  zeigen oben nur den Pfad zurück.
+- **Chat auf dem Handy:** Der Platzhalter im Eingabefeld ist kurz und wird nicht mehr abgeschnitten.
+- **Kommentar-Auszug** bei Tabellen und Checklisten: Zellen und Punkte getrennt, ohne Text der Werkzeugleiste.
+
 ## [2.0.0] – 2026-10-15
 
 Saga 2.0 macht aus dem persönlichen Notizbuch einen gemeinsamen Ort: Seiten teilen und kommentieren, live sehen,

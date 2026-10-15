@@ -69,6 +69,17 @@ try:
     st, r, _ = call("POST", "/api/immich/assets", {"album": A1}); ok("Album-Filter", st == 200 and [x["id"] for x in r["items"]] == [X1])
     st, r, _ = call("POST", "/api/immich/assets", {"q": "Tanz"}); ok("Suche nach Bildinhalt", st == 200 and r["items"][0]["id"] == X2)
     st, r, ct = call("GET", f"/api/immich/thumb/{X1}", raw=True); ok(f"Vorschau ({ct})", st == 200 and ct == "image/jpeg")
+    # 2.1 Immich im Chat: grosse Vorschau / Original nur durchgereicht (Client verschluesselt danach selbst)
+    nf0 = sqlite3.connect(DB).execute("SELECT COUNT(*) FROM file WHERE uid='hk-test-a'").fetchone()[0]
+    st, r, ct = call("GET", f"/api/immich/thumb/{X1}?size=preview", raw=True)
+    ok(f"Grosse Vorschau fuer den Chat ({st}, {ct})", st == 200 and ct == "image/jpeg" and r == JPEG
+       and SEEN[-1][1] == f"/api/assets/{X1}/thumbnail" and SEEN[-1][2].get("size") == ["preview"])
+    st, r, ct = call("GET", f"/api/immich/thumb/{X2}?size=original", raw=True)
+    ok(f"Original (GIF) fuer den Chat ({st}, {ct})", st == 200 and ct == "image/gif" and r == GIF and SEEN[-1][1] == f"/api/assets/{X2}/original")
+    nf = sqlite3.connect(DB).execute("SELECT COUNT(*) FROM file WHERE uid='hk-test-a'").fetchone()[0]
+    ok(f"Durchreichen legt keine Datei auf dem Server an ({nf0} -> {nf})", nf == nf0)
+    st, _, _ = call("GET", f"/api/immich/thumb/{X1}?size=fullsize", raw=True); ok(f"Unbekannte Groesse abgelehnt ({st})", st == 400)
+    st, _, _ = call("GET", f"/api/immich/thumb/{X1}?size=preview", uid="hk-test-b", raw=True); ok(f"Ohne eigene Immich-Verbindung -> 409 ({st})", st == 409)
     st, r, _ = call("POST", "/api/immich/import", {"id": X1}); ok(f"Foto uebernommen als Vorschau-JPEG ({r.get('name')}, {r.get('mime')})", st == 200 and r["url"].startswith("/files/") and r["mime"] == "image/jpeg" and r["name"] == "IMG_0001.jpg")
     st, f, ct = call("GET", r["url"], raw=True); ok(f"Datei abrufbar ({ct})", st == 200 and f[:3] == b"\xff\xd8\xff")
     st, r, _ = call("POST", "/api/immich/import", {"id": X2}); ok(f"GIF im Original uebernommen ({r.get('mime')})", st == 200 and r["mime"] == "image/gif")

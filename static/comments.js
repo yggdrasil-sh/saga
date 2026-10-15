@@ -162,10 +162,23 @@
   }
   var fFull = new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   function when(ts) { var s = el('time', 'cm-time', HK.relTime(ts - Date.now() / 1000)); s.dateTime = new Date(ts * 1000).toISOString(); s.title = fFull.format(new Date(ts * 1000)); return s; }
+  // Text eines Blocks fuer den Auszug: ohne Bedienelemente (Tabellen-Werkzeugleiste, Menues, Knoepfe) und mit
+  // Trennern zwischen Zellen/Listenpunkten - textContent allein klebt „Punkt 1Punkt 2“ zusammen.
+  var UI_SEL = 'button,svg,select,[class*="toolbox"],[class*="popover"],[class*="toolbar"],[aria-hidden="true"]';
+  var PART_SEL = '[contenteditable="true"],.tc-cell,li,td,th';
+  function blockText(c) {
+    var n = c.cloneNode(true), parts = [];
+    Array.prototype.forEach.call(n.querySelectorAll(UI_SEL), function (x) { x.remove(); });
+    Array.prototype.forEach.call(n.querySelectorAll(PART_SEL), function (x) {
+      if (x.querySelector(PART_SEL)) return;                       // nur innerste Textteile
+      var t = (x.textContent || '').replace(/\s+/g, ' ').trim(); if (t) parts.push(t);
+    });
+    return parts.length ? parts.join(' · ') : (n.textContent || '').replace(/\s+/g, ' ').trim();
+  }
   function snippet(bid) {
     if (!bid) return T('Ganze Seite');
     var b = blockEl(bid); if (!b) return null;
-    var c = b.querySelector('.ce-block__content') || b, s = (c.textContent || '').replace(/\s+/g, ' ').trim();
+    var c = b.querySelector('.ce-block__content') || b, s = blockText(c);
     if (!s) s = b.querySelector('img') ? T('Bild') : T('Block');
     return s.length > 70 ? s.slice(0, 69) + '…' : s;
   }

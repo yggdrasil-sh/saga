@@ -14,13 +14,14 @@ a{color:var(--accent);text-underline-offset:.18em}
 a:hover{text-decoration-thickness:2px}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-/* Bedienleiste (Sprache des Besuchers): links Name der Instanz bzw. @name, ggf. Pfad, rechts ruhig "Anmelden" */
+/* Bedienleiste (Sprache des Besuchers): Startseite: links Name der Instanz, rechts ruhig "Anmelden";
+   Unterseiten: nur der Pfad zurueck. Der oeffentliche Name (@name) steht nur unter dem Titel. */
 .pub-bar{display:flex;align-items:baseline;gap:.4rem 1rem;max-width:calc(var(--measure) + 2.5rem);width:100%;margin:0 auto;
 padding:.9rem 1.25rem;font-size:.92rem}
 .pub-brand{flex:none;font-weight:600;color:var(--fg);text-decoration:none;max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pub-brand:hover{text-decoration:underline}
 .pub-crumbs{flex:1;min-width:0;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pub-crumbs::before{content:"/";margin-right:.6rem;color:var(--border)}
+.pub-brand+.pub-crumbs::before{content:"/";margin-right:.6rem;color:var(--border)}
 .pub-crumbs a{color:var(--muted);text-decoration:none}
 .pub-crumbs a:hover{color:var(--fg);text-decoration:underline}
 .pub-sep{margin:0 .4rem}

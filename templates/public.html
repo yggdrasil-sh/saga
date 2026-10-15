@@ -28,8 +28,11 @@
 </head>
 <body class="pub{% if mode == 'page' and page.wide %} pub-wide{% endif %}">
 {%- if mode == "page" %}
+{#- Kopfzeile nur fuer die Startseite der Instanz (Name + Anmelden) und fuer Unterseiten (Pfad zurueck);
+    der oeffentliche Name steht nicht oben, sondern nur in der Zeile unter dem Titel (verlinkt auf /@name) #}
+{%- if home or page.crumbs %}
 <header class="pub-bar">
-  {%- if home %}<a class="pub-brand" href="/">{{ site }}</a>{% else %}<a class="pub-brand" href="/@{{ owner }}">@{{ owner }}</a>{% endif %}
+  {%- if home %}<a class="pub-brand" href="/">{{ site }}</a>{% endif %}
   {%- if page.crumbs %}
   <nav class="pub-crumbs" aria-label="{{ _('Pfad') }}"{% if content_lang %} lang="{{ content_lang }}"{% endif %}>
     {%- for c in page.crumbs %}<a href="{{ c.url }}">{{ c.title }}</a><span class="pub-sep" aria-hidden="true">›</span>{% endfor %}
@@ -38,6 +41,7 @@
   {%- endif %}
   {%- if home %}<a class="pub-login" href="{{ login_url }}">{{ _("Anmelden") }}</a>{% endif %}
 </header>
+{%- endif %}
 <main class="pub-main">
   <article class="pub-page"{% if content_lang %} lang="{{ content_lang }}"{% endif %}>
     {%- if page.cover %}

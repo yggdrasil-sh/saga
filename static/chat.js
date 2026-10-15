@@ -818,7 +818,59 @@
       x.addEventListener('click', function () { S.files.splice(i, 1); drawFiles(); }); c.appendChild(x); box.appendChild(c);
     });
   }
-  $('ct-attach').addEventListener('click', function () { $('ct-file').click(); });
+  // „Aus Immich“: nur wenn Immich fuer diese Person eingerichtet ist (wie beim Bild-Einfuegen auf Seiten). Das Bild
+  // kommt ueber den Immich-Proxy des Servers (nur durchgereicht, nicht gespeichert) und wird dann wie jeder andere
+  // Anhang auf diesem Geraet verschluesselt hochgeladen.
+  var immichOn = null;
+  function immichCheck() {
+    if (!HK.immichPick) return Promise.resolve(false);
+    if (immichOn !== null) return Promise.resolve(immichOn);
+    return api('GET', '/api/settings/immich').then(function (s) { immichOn = !!s.connected; return immichOn; }, function () { return false; });
+  }
+  function immichBlob(it, max) {
+    function get(sz) {
+      return fetch('/api/immich/thumb/' + encodeURIComponent(it.id) + '?size=' + sz, { credentials: 'same-origin', headers: { 'X-Saga': '1' }, cache: 'no-store' })
+        .then(function (r) { if (!r.ok) { var e = new Error(r.status === 413 ? T('Bild zu groß') : 'HTTP ' + r.status); e.status = r.status; throw e; } return r.blob(); });
+    }
+    // GIFs im Original (Animation), sonst die groesste Vorschau (JPEG/WebP; HEIC-Originale koennen Browser nicht anzeigen)
+    var p = it.mime === 'image/gif' ? get('original').catch(function () { return get('preview'); }) : get('preview');
+    return p.then(function (b) { return b.size > max && b.type !== 'image/gif' ? shrink(b, max) : b; })
+      .then(function (b) {
+        if (b.size > max) throw new Error(T('„{name}“ ist zu groß (höchstens {n} MB).', { name: it.name || T('Foto'), n: Math.round(max / 1048576) }));
+        var base = String(it.name || 'immich').replace(/\.[^.]+$/, '').slice(0, 120) || 'immich';
+        var ext = { 'image/gif': '.gif', 'image/png': '.png', 'image/webp': '.webp' }[b.type] || '.jpg';
+        return new File([b], base + ext, { type: b.type || 'image/jpeg' });
+      });
+  }
+  function shrink(b, max) {                       // zu grosses Bild auf diesem Geraet verkleinern (JPEG)
+    return createImageBitmap(b).then(function (bm) {
+      var f = Math.min(1, Math.sqrt(max / b.size) * 0.9), cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(bm.width * f)); cv.height = Math.max(1, Math.round(bm.height * f));
+      cv.getContext('2d').drawImage(bm, 0, 0, cv.width, cv.height);
+      return new Promise(function (res) { cv.toBlob(function (o) { res(o || b); }, 'image/jpeg', 0.85); });
+    });
+  }
+  function immichAttach() {
+    var max = (S.me && S.me.limits && S.me.limits.file_max) || 10485760;
+    HK.immichPick(function () {}, null, { select: function (it) {
+      if (S.files.length >= 10) throw new Error(T('Höchstens 10 Anhänge je Nachricht.'));
+      return immichBlob(it, max).then(function (f) { S.files.push(f); drawFiles(); $('ct-input').focus(); });
+    } });
+  }
+  // Platzhalter: auf schmalen Bildschirmen kurz (der lange Hinweis brach um und wurde abgeschnitten)
+  (function () {
+    var inp = $('ct-input'), long = inp.placeholder, mq = window.matchMedia ? window.matchMedia('(max-width: 760px)') : null;
+    function ph() { inp.placeholder = mq && mq.matches ? T('Nachricht …') : long; }
+    ph(); if (mq) { if (mq.addEventListener) mq.addEventListener('change', ph); else if (mq.addListener) mq.addListener(ph); }
+  })();
+  immichCheck();                                          // vorab: die Dateiauswahl muss direkt im Klick geoeffnet werden
+  $('ct-attach').addEventListener('click', function () {
+    if (!immichOn) return $('ct-file').click();
+    HK.openMenu(this, function (menu) {
+      menu.appendChild(HK.menuItem(T('Bild oder Datei …'), function () { HK.closeMenu(); $('ct-file').click(); }, { icon: '📎' }));
+      menu.appendChild(HK.menuItem(T('Aus Immich …'), function () { HK.closeMenu(); immichAttach(); }, { icon: '📷' }));
+    });
+  });
   $('ct-file').addEventListener('change', function () {
     var max = (S.me && S.me.limits && S.me.limits.file_max) || 10485760;
     Array.prototype.forEach.call(this.files, function (f) {

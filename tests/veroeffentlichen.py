@@ -217,8 +217,10 @@ def main():
     # Design-Runde (13/14/22): Inhalt in der Kontosprache, Bedienung in der Sprache des Besuchers; Absenderzeile; Leiste
     ok("Absenderzeile unter dem Titel: @name · aktualisiert <Datum>", '<p class="pub-by" lang="de"><a href="/@pv-anne">@pv-anne</a> · aktualisiert <time datetime="'
        in html and '<p class="pub-by" lang="en"><a href="/@pv-anne">@pv-anne</a> · updated <time datetime="' in html_en)
-    ok("Bedienleiste: links @name (Link zum Profil), ohne 'Anmelden' ausserhalb der Startseite",
-       '<a class="pub-brand" href="/@pv-anne">@pv-anne</a>' in html and "pub-login" not in html)
+    # Runde 2.1: kein @name mehr als Kopfzeile oben (nur noch unter dem Titel); oberste Seite ganz ohne Leiste
+    ok("Keine Kopfzeile mit @name (oberste Seite ohne Leiste), ohne 'Anmelden' ausserhalb der Startseite",
+       'class="pub-brand"' not in html and 'class="pub-bar"' not in html and "pub-login" not in html
+       and html.count('href="/@pv-anne"') == 1)
     ok("Häkchen wirken nicht bedienbar (disabled + aria-disabled)", 'type="checkbox" disabled checked aria-disabled="true"' in html)
     s, _, d = req("PUT", "/api/account/lang", A, {"lang": "es"})
     s2, _, html_lang = req("GET", P, lang="en")
@@ -289,7 +291,8 @@ def main():
         ok("published_via auch im Zustand der Veroeffentlichung", v2 == v)
     ok("Private Seite: kein published_via", req("GET", f"/api/notes/{priv}/publish", A)[2].get("published_via") is None)
     s, _, html = req("GET", f"{P}/{child}")
-    ok(f"Unterseite mit children -> {s}, Pfad zurueck", s == 200 and "<h1>Beete</h1>" in html and f'href="{P}"' in html)
+    ok(f"Unterseite mit children -> {s}, Pfad zurueck", s == 200 and "<h1>Beete</h1>" in html and f'href="{P}"' in html
+       and 'class="pub-crumbs"' in html and 'class="pub-brand"' not in html)
     s, _, html = req("GET", f"{P}/{grand}")
     ok(f"Enkel -> {s}", s == 200 and "Tomatenwissen" in html and f"{P}/{grand}/f/{fid2}" in html)
     ok("Bild der Unterseite nur unter ihrer Adresse", req("GET", f"{P}/{grand}/f/{fid2}")[0] == 200 and req("GET", f"{P}/f/{fid2}")[0] == 404

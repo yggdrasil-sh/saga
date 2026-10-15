@@ -254,17 +254,29 @@ async def api_immich_assets(request: Request):
 
 
 @router.get("/api/immich/thumb/{aid}")
-def api_immich_thumb(aid: str, request: Request):
+def api_immich_thumb(aid: str, request: Request, size: str = "thumbnail"):
+    """Bild nur durchreichen (nichts wird gespeichert). size: thumbnail (Raster), preview (gross, z. B. fuer
+    Chat-Anhaenge, die der Client danach Ende-zu-Ende verschluesselt) oder original (max. FILE_MAX)."""
     uid, key, err = _immich_guard(request)
     if err:
         return err
-    if not _IMMICH_ID.match(aid):
+    if not _IMMICH_ID.match(aid) or size not in ("thumbnail", "preview", "original"):
         return _bad(t("ungültig"))
-    st, ct, data = _immich(key, "GET", f"/assets/{aid}/thumbnail", params={"size": "thumbnail"})
-    img = _sniff_image(data[:16]) if st == 200 else None
+    if size == "original":
+        st, ct, data = _immich(key, "GET", f"/assets/{aid}/original", None, None, FILE_MAX)
+        if st == 413:
+            return _bad(t("Bild zu groß (max. {n} MB)", n=FILE_MAX // 1048576), 413)
+        img = _sniff_image(data[:16]) if st == 200 else None
+        if st == 200 and not img:
+            return _bad(t("kein unterstütztes Bild (PNG, JPEG, GIF, WebP)"), 415)
+    else:
+        st, ct, data = _immich(key, "GET", f"/assets/{aid}/thumbnail", params={"size": size},
+                               max_bytes=FILE_MAX if size == "preview" else 2 * 1024 * 1024)
+        img = _sniff_image(data[:16]) if st == 200 else None
     if not img:
         return _bad(t("Vorschau nicht verfügbar"), 404)
-    return Response(content=data, media_type=img, headers={"Cache-Control": "private, max-age=86400"})
+    return Response(content=data, media_type=img, headers={
+        "Cache-Control": "private, max-age=86400" if size == "thumbnail" else "private, no-store"})
 
 
 @router.post("/api/immich/import")

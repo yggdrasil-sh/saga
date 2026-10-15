@@ -130,18 +130,22 @@
   var subEl = el('div', 'menu menu-sub'); subEl.setAttribute('role', 'menu'); subEl.hidden = true;
   document.body.appendChild(menuEl); document.body.appendChild(subEl);
   var menuOwner = null, subOwner = null;
-  function closeSub() { subEl.hidden = true; subEl.textContent = ''; if (subOwner) { subOwner.classList.remove('sub-open'); subOwner.setAttribute('aria-expanded', 'false'); } subOwner = null; }
+  function closeSub() { subEl.hidden = true; subEl.textContent = ''; menuEl.classList.remove('menu-covered'); if (subOwner) { subOwner.classList.remove('sub-open'); subOwner.setAttribute('aria-expanded', 'false'); } subOwner = null; }
   function closeMenu() { closeSub(); menuEl.hidden = true; menuEl.textContent = ''; if (menuOwner) menuOwner.setAttribute('aria-expanded', 'false'); menuOwner = null; }
   function place(m, r, side) {
     var mw = m.offsetWidth, mh = m.offsetHeight, W = window.innerWidth, H = window.innerHeight, left, top;
     if (side) {                                  // Untermenue: rechts neben dem Eintrag, sonst links
-      left = r.right + 4 + mw <= W - 8 ? r.right + 4 : r.left - mw - 4;
+      if (r.right + 4 + mw <= W - 8) left = r.right + 4;
+      else if (r.left - mw - 4 >= 8) left = r.left - mw - 4;
+      else return false;                         // passt nirgends daneben (schmales Fenster, Peek-Rahmen) -> openSub
       top = Math.min(r.top - 6, H - mh - 8);
     } else {                                     // Hauptmenue: unter dem Knopf, sonst darueber
       left = r.left < W / 2 ? r.left : r.right - mw;
       top = r.bottom + 6 + mh > H ? r.top - mh - 6 : r.bottom + 6;
     }
-    m.style.left = Math.min(Math.max(8, left), W - mw - 8) + 'px'; m.style.top = Math.max(8, top) + 'px';
+    // linker/oberer Rand hat Vorrang: lieber rechts/unten scrollen als links abgeschnitten (max-width/-height im CSS)
+    m.style.left = Math.max(8, Math.min(left, W - mw - 8)) + 'px'; m.style.top = Math.max(8, Math.min(top, H - mh - 8)) + 'px';
+    return true;
   }
   function addSearch(m, placeholder) {
     var s = el('input', 'menu-search'); s.type = 'text'; s.placeholder = placeholder; s.setAttribute('aria-label', placeholder);
@@ -168,7 +172,18 @@
     closeSub(); build(subEl);
     if (opts && opts.search) addSearch(subEl, opts.search);
     subEl.hidden = false; subOwner = item; item.classList.add('sub-open'); item.setAttribute('aria-expanded', 'true');
-    place(subEl, item.getBoundingClientRect(), true);
+    if (place(subEl, item.getBoundingClientRect(), true)) return;
+    if (opts && opts.hover) { closeSub(); return; }             // nur beim Ueberfahren: Menue nicht ungefragt austauschen
+    // Kein Platz neben dem Menue: Untermenue tritt an die Stelle des Hauptmenues (das wird ausgeblendet, statt
+    // darueber offen zu liegen); oben "‹ <Eintrag>" fuehrt zurueck (wie Esc / Pfeil links).
+    var back = el('button', 'menu-back'); back.type = 'button';
+    back.appendChild(el('span', 'mi-ic', '‹')); back.appendChild(el('span', 'mi-t', (item.querySelector('.mi-t') || item).textContent));
+    back.addEventListener('click', function () { var so = subOwner; closeSub(); if (so) so.focus(); });
+    subEl.insertBefore(back, subEl.firstChild);
+    var mr = menuEl.getBoundingClientRect();
+    menuEl.classList.add('menu-covered');
+    place(subEl, { left: mr.left, right: mr.right, top: mr.top - 6, bottom: mr.top - 6 }, false);
+    subEl.style.top = Math.max(8, Math.min(mr.top, window.innerHeight - subEl.offsetHeight - 8)) + 'px';
   }
   // menuItem(text, aktion, {icon, hint, on, danger, sub: function(menu){...}, subSearch: 'Platzhalter'})
   function menuItem(label, onClick, opts) {
@@ -181,7 +196,7 @@
     if (opts.sub) {
       b.appendChild(el('span', 'mi-arrow', '›')); b.setAttribute('aria-haspopup', 'menu'); b.setAttribute('aria-expanded', 'false');
       var openIt = function () { openSub(b, opts.sub, { search: opts.subSearch }); };
-      b.addEventListener('mouseenter', openIt);
+      b.addEventListener('mouseenter', function () { openSub(b, opts.sub, { search: opts.subSearch, hover: true }); });
       b.addEventListener('click', function () { openIt(); var f = subEl.querySelector('input.menu-search, .menu-item'); if (f) f.focus(); });
     } else {
       b.addEventListener('mouseenter', function () { if (menuEl.contains(b)) closeSub(); });   // anderes Hauptmenue-Element -> Untermenue zu

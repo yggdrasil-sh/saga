@@ -2,6 +2,8 @@
 // sondern von einem Rechner mit Playwright gegen einen laufenden Test-Stack:
 //   SAGA_BASE=http://host:8175 SAGA_USER=konto SAGA_PASS=... [PLAYWRIGHT=/pfad/zu/node_modules/playwright-core] node tests/browser_web.js
 // Das Konto braucht nichts Besonderes (legt eigene Seiten/Datenbanken an). Ausgabe wie die Python-Tests: OK/FAIL je Pruefung.
+// Optional SAGA_USER2/SAGA_PASS2 + SAGA_USER3/SAGA_PASS3 (zwei Konten nur fuer Chats) fuer den Chat-Test "Aus Immich"
+// (Immich wird im Browser nachgestellt; der Wiederherstellungsschluessel wird im Temp-Verzeichnis gemerkt).
 'use strict';
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
 const BASE = process.env.SAGA_BASE, USER = process.env.SAGA_USER, PASS = process.env.SAGA_PASS;
@@ -14,8 +16,8 @@ async function session(browser, opts = {}) {
     isMobile: !!opts.mobile, hasTouch: !!opts.mobile });
   const p = await ctx.newPage();
   await p.goto(BASE + '/login');
-  await p.fill('input[name=username], input#username, input[type=text]', USER);
-  await p.fill('input[type=password]', PASS);
+  await p.fill('input[name=username], input#username, input[type=text]', opts.user || USER);
+  await p.fill('input[type=password]', opts.pass || PASS);
   await Promise.all([p.waitForLoadState('networkidle').catch(() => {}), p.press('input[type=password]', 'Enter')]);
   await p.waitForTimeout(1000);
   p.api = (m, u, b) => p.evaluate(async ([m, u, b]) => {
@@ -147,6 +149,123 @@ async function dbLive(browser, p) {
   await q.context().close();
 }
 
+// 2.1: "Verschieben nach" (Untermenue mit langen Pfaden) aus dem Peek-Rahmen: nie links abgeschnitten; ist neben
+// dem Seitenmenue kein Platz, tritt es an dessen Stelle (Seitenmenue ausgeblendet, "‹ Verschieben nach" zurueck).
+async function peekMove(browser, p) {
+  const a = (await p.api('POST', '/api/notes', { title: 'Notion-Import Peek' })).id;
+  const b = (await p.api('POST', '/api/notes', { title: 'Projekte und Kundenarchiv 2019 bis 2024', parent_id: a })).id;
+  for (let i = 1; i <= 6; i++) await p.api('POST', '/api/notes', { title: 'Sehr lange Unterseite mit Namen Nummer ' + i, parent_id: b });
+  const D = (await p.api('POST', '/api/notes', { kind: 'database', title: 'Peek-DB' })).id;
+  await p.api('POST', '/api/notes', { parent_id: D, title: 'Entry' });
+  for (const [w, narrow] of [[1366, false], [480, true]]) {
+    const q = await session(browser, { viewport: { width: w, height: 820 } });
+    await q.goto(BASE + '/notes#' + D); await q.waitForSelector('.db-row'); await q.waitForTimeout(800);
+    await q.evaluate(() => document.querySelector('.db-row .db-open').click());
+    let f = null;
+    for (let i = 0; i < 40 && !f; i++) {
+      await q.waitForTimeout(250);
+      const c = q.frames().find(x => x.url().includes('embed=1'));
+      if (c && await c.evaluate(() => !!(window.HKPages && document.querySelector('#pg-more') && document.querySelector('#pg-title'))).catch(() => false)) f = c;
+    }
+    await q.waitForTimeout(600);
+    await f.click('#pg-more'); await q.waitForTimeout(200);
+    await f.evaluate(() => [...document.querySelectorAll('.menu-item')].find(x => /Verschieben nach/.test(x.textContent)).click());
+    await q.waitForTimeout(300);
+    const r = await f.evaluate(() => {
+      const m = document.querySelector('.menu:not(.menu-sub)'), s = document.querySelector('.menu-sub'), a = m.getBoundingClientRect(), b = s.getBoundingClientRect();
+      return { W: innerWidth, sl: b.left, sr: b.right, covered: getComputedStyle(m).visibility === 'hidden', back: !!s.querySelector('.menu-back'),
+        apart: a.right - 2 <= b.left || b.right - 2 <= a.left };
+    });
+    ok(`2.1 Peek ${w}px: "Verschieben nach" ganz im Rahmen`, r.sl >= 0 && r.sr <= r.W, r);
+    ok(`2.1 Peek ${w}px: Seitenmenue ${narrow ? 'ausgeblendet, Zurueck-Eintrag' : 'daneben, nicht darunter'}`, narrow ? r.covered && r.back : !r.covered && r.apart, r);
+    if (narrow) {
+      await f.click('.menu-back'); await q.waitForTimeout(200);
+      ok('2.1 Peek: Zurueck zeigt wieder das Seitenmenue', await f.evaluate(() => document.querySelector('.menu-sub').hidden
+        && getComputedStyle(document.querySelector('.menu:not(.menu-sub)')).visibility === 'visible'));
+    }
+    await q.context().close();
+  }
+}
+
+// 2.1: Kommentar-Auszug bei Tabelle/Checkliste: Zellen/Punkte getrennt, keine Werkzeugleisten-Texte
+async function commentSnippet(p) {
+  const id = (await p.api('POST', '/api/notes', { title: 'Auszug-Test' })).id;
+  const blocks = [{ id: 'tb1', type: 'table', data: { withHeadings: true, content: [['Name', 'Menge'], ['Milch', '2']] } },
+    { id: 'cl1', type: 'list', data: { style: 'checklist', meta: {}, items: [{ content: 'Milch', meta: { checked: true }, items: [] }, { content: 'Brot', meta: { checked: false }, items: [] }] } }];
+  await p.api('PATCH', '/api/notes/' + id, { body: JSON.stringify({ time: Date.now(), blocks, version: '2.31.0' }) });
+  for (const b of ['tb1', 'cl1']) await p.api('POST', `/api/notes/${id}/comments`, { block_id: b, body: 'Kommentar zu ' + b });
+  await p.open(id);
+  await p.evaluate(() => HKComments.openAll()); await p.waitForTimeout(800);
+  const s = await p.evaluate(() => [...document.querySelectorAll('.cm-where-t')].map(x => x.textContent));
+  ok('2.1 Kommentar-Auszug Tabelle: Zellen getrennt, ohne Werkzeugleiste', s.some(x => x === 'Name · Menge · Milch · 2'), s);
+  ok('2.1 Kommentar-Auszug Checkliste: Punkte getrennt', s.some(x => x === 'Milch · Brot'), s);
+}
+
+// 2.1: Chat-Platzhalter auf dem Handy kurz; "Aus Immich" im Chat (Immich-Antworten nachgestellt, Upload verschluesselt)
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+// Chat-Schluessel im (frischen) Browser: beim ersten Mal einrichten und den Wiederherstellungsschluessel in einer
+// Datei im Temp-Verzeichnis merken, bei spaeteren Laeufen damit entsperren; am Ende werden die Test-Geraete entfernt.
+const RKF = u => require('path').join(require('os').tmpdir(), 'saga-browser-rk-' + BASE.replace(/\W+/g, '_') + '-' + u + '.txt');
+async function chatKeys(q, user) {
+  const fs = require('fs');
+  await q.goto(BASE + '/chats'); await q.waitForTimeout(2500);
+  if (await q.$('.ct-setup-go')) {
+    await q.click('.ct-setup-go'); await q.waitForSelector('#ct-rk');
+    const rk = (await q.textContent('#ct-rk')).trim(); fs.writeFileSync(RKF(user), rk, { mode: 0o600 });
+    await q.click('.hk-actions .btn-primary'); await q.fill('.ct-rk-last', rk.slice(-4));
+    await q.click('.ct-setup-done'); await q.waitForSelector('.ct-setup-done', { state: 'detached', timeout: 60000 });
+  } else if (await q.$('.ct-rk-go') && fs.existsSync(RKF(user))) {
+    await q.click('.ct-rk-go'); await q.fill('.ct-rk-in', fs.readFileSync(RKF(user), 'utf8').trim());
+    await q.click('.ct-rk-ok'); await q.waitForSelector('.ct-rk-ok', { state: 'detached', timeout: 60000 });
+  }
+  await q.waitForTimeout(800);
+}
+async function chatDevicesGone(q) {
+  const me = await q.api('GET', '/api/chat/me');
+  for (const d of (me.devices || []).filter(d => !d.revoked)) await q.api('DELETE', '/api/chat/devices/' + d.id);
+}
+async function chatImmich(browser) {
+  const m = await session(browser, { viewport: { width: 390, height: 800 }, mobile: true });
+  await m.goto(BASE + '/chats'); await m.waitForTimeout(1500);
+  ok('2.1 Chat-Platzhalter auf dem Handy kurz', await m.evaluate(() => { const i = document.getElementById('ct-input'); return !i || i.placeholder === 'Nachricht …'; }));
+  await m.context().close();
+  const E = process.env;
+  if (!E.SAGA_USER2 || !E.SAGA_USER3) { console.log('--   Chat mit Immich: SAGA_USER2/3 (+ _PASS) fehlen - uebersprungen'); return; }
+  const two = await session(browser, { user: E.SAGA_USER3, pass: E.SAGA_PASS3 }); await chatKeys(two, E.SAGA_USER3);
+  await chatDevicesGone(two); await two.context().close();     // Empfaenger braucht nur seine Schluessel (Backup-Schluessel)
+  const p = await session(browser, { user: E.SAGA_USER2, pass: E.SAGA_PASS2 });
+  const ID = '5e1f0000-0000-4000-8000-000000000001';
+  await p.route('**/api/settings/immich', r => r.fulfill({ json: { available: true, connected: true, name: 'Test', url: 'https://immich.example' } }));
+  await p.route('**/api/immich/assets', r => r.fulfill({ json: { items: [{ id: ID, name: 'Strand.HEIC', mime: 'image/heic' }], next: null } }));
+  const asked = [];
+  await p.route('**/api/immich/thumb/**', r => { asked.push(r.request().url()); return r.fulfill({ body: PNG, contentType: 'image/png' }); });
+  const up = [];
+  p.on('request', r => { if (r.method() === 'POST' && /\/api\/chat/.test(r.url()) && /file/.test(r.url())) up.push(r.postDataBuffer()); });
+  await chatKeys(p, E.SAGA_USER2);
+  if (await p.$('.ct-ov')) { ok('2.1 Chat: Schluessel des Testkontos verfuegbar', false, 'Wiederherstellungsschluessel fehlt (' + RKF(E.SAGA_USER2) + ')'); await p.context().close(); return; }
+  await p.click('#ct-new'); await p.fill('.ct-people-q', E.SAGA_USER3); await p.waitForSelector('.ct-person');
+  await p.click('.ct-person'); await p.waitForSelector('#ct-chat:not([hidden])');
+  await p.waitForTimeout(800);
+  await p.click('#ct-attach'); await p.waitForTimeout(200);
+  const items = await p.evaluate(() => [...document.querySelectorAll('.menu .menu-item')].map(x => x.textContent));
+  ok('2.1 Chat: Anhaengen bietet "Aus Immich"', items.some(x => /Aus Immich/.test(x)) && items.some(x => /Bild oder Datei/.test(x)), items);
+  await p.evaluate(() => [...document.querySelectorAll('.menu .menu-item')].find(x => /Aus Immich/.test(x.textContent)).click());
+  await p.waitForSelector('.imm-tile'); await p.click('.imm-tile');
+  await p.waitForSelector('#ct-files .ct-chip'); await p.waitForTimeout(300);
+  ok('2.1 Chat: Immich-Bild als grosse Vorschau geholt (HEIC -> preview)', asked.some(u => u.includes(ID) && u.includes('size=preview')), asked);
+  ok('2.1 Chat: Anhang-Chip "Strand.png"', /Strand\.png/.test(await p.textContent('#ct-files')));
+  const n0 = await p.evaluate(() => document.querySelectorAll('.ct-img img').length);
+  await p.fill('#ct-input', 'Foto aus Immich');
+  await Promise.all([p.waitForResponse(r => /\/api\/chats\/\d+\/messages$/.test(r.url()) && r.request().method() === 'POST', { timeout: 30000 }).catch(() => {}),
+    p.click('#ct-send')]);
+  const shown = () => p.evaluate(n => { const a = document.querySelectorAll('.ct-img img'); return a.length > n && a[a.length - 1].naturalWidth > 0; }, n0);
+  for (let i = 0; i < 60 && !await shown(); i++) await p.waitForTimeout(250);
+  ok('2.1 Chat: Bild gesendet und wieder entschluesselt angezeigt', await shown(),
+    await p.evaluate(() => ({ msgs: document.getElementById('ct-msgs').innerHTML.slice(-600), toast: (document.querySelector('.toast') || {}).textContent })));
+  ok('2.1 Chat: Upload ist verschluesselt (keine PNG-Bytes)', up.length > 0 && up.every(b => b && b.indexOf(PNG.slice(0, 8)) < 0 && b.indexOf(PNG.slice(16, 40)) < 0), up.length);
+  await chatDevicesGone(p); await p.context().close();
+}
+
 (async () => {
   const browser = await chromium.launch({ channel: process.env.PW_CHANNEL || 'chrome', headless: true });
   try {
@@ -158,7 +277,10 @@ async function dbLive(browser, p) {
     await typeAheadTitle(p);
     await trashLink(p);
     await dbLive(browser, p);
+    await peekMove(browser, p);
+    await commentSnippet(p);
     await p.context().close();
+    await chatImmich(browser);
     await narrow(browser);
   } catch (e) { console.error(e); res.push(false); }
   await browser.close();

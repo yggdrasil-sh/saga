@@ -21,7 +21,8 @@
   }, { rootMargin: '300px' }) : null;
   function lazy(img, id) { img.dataset.id = id; if (io) io.observe(img); else thumb(img, id); }
 
-  function pick(onPick, onCancel) {
+  function pick(onPick, onCancel, opts) {
+    opts = opts || {};
     var dlg = el('div', 'hk-modal imm-modal'), card = el('div', 'hk-dialog imm-card'), head = el('div', 'hk-dlg-head');
     dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); dlg.setAttribute('aria-label', T('Bild aus Immich'));
     head.appendChild(el('h2', null, '📷 Immich'));
@@ -48,8 +49,11 @@
     function tab(t) { tRecent.classList.toggle('on', t === 'recent'); tAlbums.classList.toggle('on', t === 'albums'); }
     function choose(it, tile) {
       if (state.busy) return; state.busy = true; tile.classList.add('busy'); info.textContent = T('Übernehme „{name}“ …', { name: it.name || T('Foto') });
-      // fremde Seite (HK.fileNote): die Datei gehoert dem Eigentuemer der Seite
-      api('POST', '/api/immich/import', HK.fileNote ? { id: it.id, note: HK.fileNote } : { id: it.id }).then(function (r) { picked = true; close(); onPick(r.url, r.name); })
+      // opts.select: Aufrufer holt das Bild selbst (Chat: nur durchgereicht, danach Ende-zu-Ende verschluesselt) -
+      // sonst: fremde Seite (HK.fileNote): die Datei gehoert dem Eigentuemer der Seite
+      var p = opts.select ? new Promise(function (res) { res(opts.select(it)); }).then(function () { picked = true; close(); })
+        : api('POST', '/api/immich/import', HK.fileNote ? { id: it.id, note: HK.fileNote } : { id: it.id }).then(function (r) { picked = true; close(); onPick(r.url, r.name); });
+      p
         .catch(function (e) { state.busy = false; tile.classList.remove('busy'); info.textContent = T('Nicht übernommen: {err}', { err: e.message }); });
     }
     function loadAssets(reset) {
@@ -103,6 +107,7 @@
         bar.hidden = true; info.textContent = T('Noch nicht mit Immich verbunden.') + ' ';
         var go = el('button', 'btn', T('Einstellungen öffnen')); go.type = 'button';
         go.addEventListener('click', function () { close(); if (window.HKSettings) window.HKSettings.open('immich'); });
+        if (!window.HKSettings) go.hidden = true;
         info.appendChild(go); return;
       }
       showRecent(); setTimeout(function () { q.focus(); }, 50);
