@@ -31,7 +31,7 @@ from starlette.concurrency import run_in_threadpool
 import psycopg
 import auth
 from db import connect as _db
-from saga import bus, i18n
+from saga import avatars, bus, i18n
 from saga.core import (ASSET_V, BASE_URL, E, PUBLIC_HOSTS, TZ, _api_guard, _bad, _body, _json_load, seen_lang, server_lang, t, title,
                        tmpl, user_lang)
 from saga.files import _thumb, _thumb_mime, _thumb_w
@@ -916,7 +916,7 @@ def _page_response(request, ctx, row, home=False):
     idx = ctx.pub["indexable"]
     canon = _canon_base(request) + (ctx.base if not home else "/")
     html = tmpl.get_template("public.html").render(mode="page", page=v, indexable=idx, home=home, canonical=canon,
-                                                   login_url=BASE_URL + "/login", owner=ctx.name,
+                                                   login_url=BASE_URL + "/login", owner=ctx.name, owner_avatar=avatars.public_url(ctx.c, ctx.uid),
                                                    content_lang=content_lang(ctx.uid), **_common())
     if home:                                     # "/" ist fuer Angemeldete das Dashboard: nie aus einem Zwischenspeicher
         h = _headers(idx, _cache(request, "no-cache"))
@@ -1003,7 +1003,8 @@ def public_profile(name: str, request: Request):
                 items.append({"url": ctx.base, "title": row["title"] or t("Unbenannt"), "icon": _icon_html(ctx, row["icon"], "pub-sub-ic", "📄")})
         if not items:
             return not_found()
-        html = tmpl.get_template("public.html").render(mode="list", items=items, owner=name, indexable=False, **_common())
+        html = tmpl.get_template("public.html").render(mode="list", items=items, owner=name, owner_avatar=avatars.public_url(c, uid),
+                                                       indexable=False, **_common())
         return HTMLResponse(html, headers=_headers(False, _cache(request, "public, max-age=60")))
 
 

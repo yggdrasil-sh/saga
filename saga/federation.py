@@ -32,7 +32,7 @@ from starlette.convertors import Convertor, register_url_convertor
 
 import auth
 from db import clean_line, connect as _db
-from saga import bus, comments, fedsig, i18n, netguard, notify, pages, sharing
+from saga import avatars, bus, comments, fedsig, i18n, netguard, notify, pages, sharing
 from saga.core import BASE_URL, E, SECRET, _api_guard, _bad, _body, _session_user, parse_json, t, title
 from saga.files import _thumb, _thumb_mime, _thumb_w
 from saga.notes import FILE_MAX, FILES_DIR, _disposition, _iter_blocks
@@ -244,6 +244,7 @@ def cleanup_peer(c, p):
     c.execute("DELETE FROM fed_inbound WHERE peer_id=?", (p["id"],))
     c.execute("DELETE FROM note_comment_seen WHERE uid LIKE '@%' AND right(uid, ?)=?", (len(tail), tail))
     c.execute("DELETE FROM fed_outbox WHERE peer_id=?", (p["id"],))
+    avatars.forget_remote(c, host=p["host"])
     return len(rows)
 
 
@@ -455,6 +456,14 @@ def _as(inp, fn, *args):
         sharing.REMOTE_GROUPS.reset(tok)
 
 
+PERSON_KEYS = frozenset(("name", "username", "me", "remote", "avatar", "handle"))
+
+
+def _is_person(obj):
+    """Personen-Objekt (sharing.person & Co.): name, username, me - dazu hoechstens remote/avatar/handle."""
+    return {"name", "username", "me"} <= set(obj) and set(obj) <= PERSON_KEYS
+
+
 def _ext_persons(c, obj, cache=None):
     """Antwort an eine andere Instanz: Personen nur mit oeffentlichem Namen ('@name@host') - nie der Anmeldename.
     Fremde Personen behalten ihre Adresse, der Name kommt ohne Herkunfts-Zusatz (setzt der Empfaenger)."""
@@ -463,7 +472,7 @@ def _ext_persons(c, obj, cache=None):
         return [_ext_persons(c, x, cache) for x in obj]
     if not isinstance(obj, dict):
         return obj
-    if {"name", "username", "me"} <= set(obj) and len(obj) <= 4:
+    if _is_person(obj):                      # Profilbild-Adressen gelten nur hier - die andere Instanz setzt eigene
         u = obj.get("username")
         if not u:
             return {"name": obj.get("name"), "username": None, "me": False}
@@ -711,6 +720,7 @@ def _ev(c, peer, ev):
         c.execute("UPDATE note_version SET author=NULL WHERE author=?", (p,))
         c.execute("UPDATE notification SET actor_uid=NULL WHERE actor_uid=?", (p,))
         c.execute("DELETE FROM fed_person WHERE principal=?", (p,))
+        avatars.forget_remote(c, principal=p)
         if ev.get("deleted"):
             c.execute("DELETE FROM fed_inbound WHERE peer_id=? AND owner=?", (peer["id"], p))
         log(c, "person.gone", peer, f"{name} shares={n}")
@@ -917,6 +927,50 @@ async def fed_file(fid: str, request: Request, note: int = 0):
     data, mime, name, img = r
     return _signed(inp, 200, data, mime if img else "application/octet-stream",
                    {"Content-Disposition": "inline" if img else _disposition(name)})
+
+
+# Profilbilder (2.1): eine verbundene Instanz holt das Bild einer Person (oeffentlicher Name) - signiert, neu kodiert (WebP,
+# 256 px). Die andere Instanz kodiert es noch einmal neu und speichert es einen Tag zwischen (saga.avatars).
+AVATAR_MAX = 512 * 1024
+
+
+def _avatar_for(name):
+    if not isinstance(name, str) or not NAME_RE.fullmatch(name):
+        return None
+    with _db() as c:
+        uid, _ = _local_user_by_name(c, name)
+    return avatars.local_image(uid, 256, "webp") if uid else None
+
+
+@router.get("/fed/v1/avatar/{name}")
+async def fed_avatar(name: str, request: Request):
+    inp, err = await _verify(request)
+    if err is not None:
+        return err
+    got = await run_in_threadpool(_avatar_for, name)
+    if not got:
+        return _signed(inp, 404, b"not found", "text/plain")
+    return _signed(inp, 200, got[1], got[0])
+
+
+def fetch_avatar(principal):
+    """Fuer saga.avatars: Bild einer fremden Person bei ihrer Instanz holen -> bytes | None (kein Bild). FedError = spaeter."""
+    n, host = _handle(principal)
+    if not n:
+        return None
+    with _db() as c:
+        p = peer_by(c, "host", host)
+    if not enabled() or not p or p["status"] != "active":
+        return None
+    status, rh, data = call(p, "GET", "/fed/v1/avatar/" + quote(n, safe=""), limit=AVATAR_MAX, timeout=6)
+    if status == 404:
+        return None
+    if status != 200:
+        raise FedError(f"HTTP {status}", status)
+    return data
+
+
+avatars.REMOTE_FETCH = fetch_avatar
 
 
 # =====================================================================================================
@@ -1178,10 +1232,18 @@ def _in_person(c, p, peer, uid, cache):
                 cache[u] = _local_user_by_name(c, n)
             lu, disp = cache[u]
             if lu:
-                return {"name": disp, "username": lu, "me": lu == uid}
-        return {"name": remote_label(f"@{n}@{host}", name), "username": f"@{n}@{host}", "me": bool(p.get("me")), "remote": True,
-                "handle": f"{n}@{host}"}
-    return {"name": f"{name} ({peer['host']})" if name else peer["host"], "username": None, "me": False, "remote": True}
+                return {"name": disp, "username": lu, "me": lu == uid, "avatar": _avatar_cached(c, lu, cache)}
+        pr = f"@{n}@{host}"
+        return {"name": remote_label(pr, name), "username": pr, "me": bool(p.get("me")), "remote": True,
+                "handle": f"{n}@{host}", "avatar": _avatar_cached(c, pr, cache)}
+    return {"name": f"{name} ({peer['host']})" if name else peer["host"], "username": None, "me": False, "remote": True, "avatar": None}
+
+
+def _avatar_cached(c, who, cache):
+    k = ("avatar", who)
+    if k not in cache:
+        cache[k] = avatars.url_of(c, who)
+    return cache[k]
 
 
 def _in_persons(c, obj, peer, uid, cache=None):
@@ -1190,7 +1252,7 @@ def _in_persons(c, obj, peer, uid, cache=None):
         return [_in_persons(c, x, peer, uid, cache) for x in obj]
     if not isinstance(obj, dict):
         return obj
-    if {"name", "username", "me"} <= set(obj) and len(obj) <= 4:
+    if _is_person(obj):
         return _in_person(c, obj, peer, uid, cache)
     return {k: _in_persons(c, v, peer, uid, cache) for k, v in obj.items()}
 

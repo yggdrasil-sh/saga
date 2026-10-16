@@ -55,7 +55,8 @@ a.ct-chip:hover{color:var(--fg);border-color:var(--accent)}
 .ct-day{align-self:center;font-size:.72rem;color:var(--muted);margin:.8rem 0 .3rem;text-transform:uppercase;letter-spacing:.05em}
 .ct-msg{display:flex;align-items:flex-end;gap:.15rem;max-width:min(78%,640px);align-self:flex-start;position:relative;margin-top:.15rem}
 .ct-msg.mine{align-self:flex-end;flex-direction:row-reverse}
-.ct-who{align-self:flex-start;font-size:.75rem;color:var(--accent);margin:.6rem 0 0 .5rem;font-weight:600}
+.ct-who{align-self:flex-start;font-size:.75rem;color:var(--accent);margin:.6rem 0 0 .5rem;font-weight:600;display:flex;align-items:center;gap:.35rem}
+.ct-av.ct-av-s{width:20px;height:20px;font-size:.6rem}
 .ct-bubble{min-width:0;background:var(--card);border:1px solid var(--border);border-radius:14px 14px 14px 4px;padding:.45rem .7rem .3rem;min-width:4.5rem;max-width:100%;overflow-wrap:anywhere}
 .ct-msg.mine .ct-bubble{background:color-mix(in srgb,var(--accent) 16%,var(--card));border-color:color-mix(in srgb,var(--accent) 35%,var(--border));border-radius:14px 14px 4px 14px}
 .ct-msg.flash .ct-bubble{outline:2px solid var(--accent)}
@@ -143,3 +144,4 @@ a.ct-chip:hover{color:var(--fg);border-color:var(--accent)}
   .ct-compose{padding-left:.5rem;padding-right:.5rem}
   .ct-safety{grid-template-columns:repeat(3,auto);font-size:1rem}
 }
+.ct-av.ct-av-h{width:32px;height:32px;font-size:.85rem}

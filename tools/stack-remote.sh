@@ -5,7 +5,7 @@
 #      + Radicale (CalDAV-Testserver), dann alle Tests (alte Tests ueber tests/pgshim auf Postgres)
 set -e
 cd "$(dirname "$0")/.."
-TESTS="isolation funktion kalender_modul kalender_api kalender_schreiben app_token app_login spalten vorlagen immich widgets inline archiv bilder dienste standalone sso_ldap app_pair versionen sprachen haertung veroeffentlichen teilen live chat push ki foederation fehlerrunde zweifaktor"
+TESTS=${SAGA_TESTS:-"isolation funktion kalender_modul kalender_api kalender_schreiben app_token app_login spalten vorlagen immich widgets inline archiv bilder dienste standalone sso_ldap app_pair versionen sprachen haertung veroeffentlichen teilen live chat push ki foederation fehlerrunde zweifaktor avatare"}   # SAGA_TESTS="chat avatare": nur diese Reihen
 rnd() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 # Zweiter Stack auf demselben Host (z. B. SAGA_DIR=/root/saga-live SAGA_PORT=18086): eigener Port (Admin = Port+1, nur
 # 127.0.0.1), eigenes Image-Tag und eigene Namen der Test-Container - der Compose-Projektname kommt vom Verzeichnis.
@@ -63,9 +63,9 @@ db.wait_ready(); db.init_schema()
 for u in ("hk-test-a", "hk-test-b"):
     auth.get_user(u) or auth.create_user(u, None, u)
 open("/tmp/hkstage/prev_hosts", "w").write(auth.settings(fresh=True)["allowed_hosts"])
-auth.save_setting("allowed_hosts", "127.0.0.1:5232, 127.0.0.1:18283")
+auth.save_setting("allowed_hosts", "127.0.0.1:5232, 127.0.0.1:18283, 127.0.0.1:18284")
 PY'
-X 'cd /tmp/hkapp && STATE_DIR=/tmp/hkstage CALDAV_ALLOW_HTTP=1 IMMICH_URL=http://127.0.0.1:18283 PORT=8099 ADMIN_PORT=8098 HOST=127.0.0.1 ADMIN_HOST=127.0.0.1 \
+X 'cd /tmp/hkapp && STATE_DIR=/tmp/hkstage CALDAV_ALLOW_HTTP=1 IMMICH_URL=http://127.0.0.1:18283 GRAVATAR_URL=http://127.0.0.1:18284/avatar/ PORT=8099 ADMIN_PORT=8098 HOST=127.0.0.1 ADMIN_HOST=127.0.0.1 \
    nohup python run.py > /tmp/hkstage/server.log 2>&1 & echo $! > /tmp/hkstage/pid; sleep 6'
 X "cd /tmp/hkapp/tests && export SESSION_SECRET=\$SECRET_KEY HK_RAD_PW=geheim-app-pw-123 STATE_DIR=/tmp/hkstage CALDAV_ALLOW_HTTP=1 \
      PYTHONPATH=/tmp/hkapp/tests/pgshim:/tmp/hkapp:/tmp/kal/py:/data/.saga-test-py HK_TEST_BASE=http://127.0.0.1:8099 HK_TEST_ADMIN=http://127.0.0.1:8098 \

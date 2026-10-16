@@ -415,6 +415,130 @@
     }).catch(function () { wrap.remove(); });
   }
 
+  // --- Profilbild (saga/avatars.py): im Benutzer-Knopf oben und unter Einstellungen -> Konto ------------------------
+  function hueOf(s) { var h = 0; s = String(s || ''); for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
+  function headAvatar(url) {
+    var av = btn.querySelector('.hk-user-av');
+    if (!av) {                                            // "👤 Name ▾": das Symbol wird zum Platz fuer das Profilbild
+      var first = btn.firstChild;
+      av = el('span', 'hk-user-av', '👤'); av.setAttribute('aria-hidden', 'true');
+      if (first && first.nodeType === 3 && first.nodeValue.indexOf('👤') >= 0) first.nodeValue = first.nodeValue.replace('👤', '');
+      btn.insertBefore(av, btn.firstChild);
+    }
+    var old = av.querySelector('.hk-av-img'); if (old) old.remove();
+    av.classList.remove('hk-av-on');
+    HK.avatarImg(av, url, 24);
+  }
+  if (btn.dataset.avatar) headAvatar(btn.dataset.avatar);
+
+  // Zuschneiden im Browser: quadratischer Ausschnitt (verschieben + zoomen), heraus kommt ein 512er-PNG. Der Server
+  // kodiert es noch einmal neu (Groessen, ohne Metadaten).
+  function cropDialog(file) {
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        // HEIC (iPhone) zeigen nur manche Browser an: dann ungeschnitten hochladen, der Server schneidet mittig zu
+        if (/^image\/hei[cf]$/i.test(file.type) || /\.hei[cf]$/i.test(file.name || '')) { resolve(file); return; }
+        HK.toast(T('Das Bild ließ sich nicht lesen.')); resolve(null);
+      };
+      img.onload = function () {
+        var ov = el('div', 'hk-modal'); ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-label', T('Profilbild zuschneiden'));
+        var card = el('div', 'hk-dialog'), head = el('div', 'hk-dlg-head'); head.appendChild(el('h2', null, T('Profilbild zuschneiden')));
+        var bd = el('div', 'hk-dlg-body hk-crop'), stage = el('div', 'hk-crop-stage'), cv = el('canvas'), ring = el('div', 'hk-crop-ring');
+        cv.width = cv.height = 560; stage.appendChild(cv); stage.appendChild(ring);
+        var zoom = el('input'); zoom.type = 'range'; zoom.min = '1'; zoom.max = '4'; zoom.step = '0.01'; zoom.value = '1'; zoom.setAttribute('aria-label', T('Zoom'));
+        bd.appendChild(stage); bd.appendChild(zoom); bd.appendChild(el('p', 'hk-hint', T('Ziehen zum Verschieben, Regler zum Vergrößern.')));
+        var bar = el('div', 'hk-actions'), ok = el('button', 'btn btn-primary', T('Übernehmen')), no = el('button', 'btn', T('Abbrechen'));
+        ok.type = no.type = 'button'; bar.appendChild(no); bar.appendChild(ok); bd.appendChild(bar);
+        card.appendChild(head); card.appendChild(bd); ov.appendChild(card); document.body.appendChild(ov);
+        var W = img.naturalWidth, H = img.naturalHeight, base = Math.min(W, H), z = 1, cx = W / 2, cy = H / 2;
+        function clamp() { var half = base / z / 2; cx = Math.min(Math.max(cx, half), W - half); cy = Math.min(Math.max(cy, half), H - half); }
+        function draw(target, n) {
+          var g = target.getContext('2d'), side = base / z; clamp();
+          g.clearRect(0, 0, n, n); g.imageSmoothingQuality = 'high';
+          g.drawImage(img, cx - side / 2, cy - side / 2, side, side, 0, 0, n, n);
+        }
+        draw(cv, 560);
+        zoom.addEventListener('input', function () { z = parseFloat(zoom.value) || 1; draw(cv, 560); });
+        var drag = null;
+        stage.addEventListener('pointerdown', function (e) { drag = { x: e.clientX, y: e.clientY, cx: cx, cy: cy }; stage.setPointerCapture(e.pointerId); });
+        stage.addEventListener('pointermove', function (e) {
+          if (!drag) return;
+          var k = (base / z) / stage.clientWidth;          // Bildpunkte je Bildschirmpunkt
+          cx = drag.cx - (e.clientX - drag.x) * k; cy = drag.cy - (e.clientY - drag.y) * k; draw(cv, 560);
+        });
+        stage.addEventListener('pointerup', function () { drag = null; });
+        stage.addEventListener('wheel', function (e) { e.preventDefault(); zoom.value = String(Math.min(4, Math.max(1, z * (e.deltaY < 0 ? 1.1 : 0.9)))); zoom.dispatchEvent(new Event('input')); }, { passive: false });
+        function done(v) { ov.remove(); URL.revokeObjectURL(url); document.removeEventListener('keydown', key, true); resolve(v); }
+        function key(e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(null); } }
+        document.addEventListener('keydown', key, true);
+        no.addEventListener('click', function () { done(null); });
+        ok.addEventListener('click', function () {
+          var out = document.createElement('canvas'); out.width = out.height = 512; draw(out, 512);
+          out.toBlob(function (b) { done(b); }, 'image/png');
+        });
+        ok.focus();
+      };
+      img.src = url;
+    });
+  }
+
+  function avatarField(box, a) {
+    var wrap = el('div', 'hk-avsec'); box.appendChild(wrap);
+    wrap.appendChild(el('h4', null, T('Profilbild')));
+    var row = el('div', 'hk-avset'), side = el('div', 'hk-avset-side');
+    var pic = el('span', 'hk-avset-pic', String(a.name || a.username || '?').trim().charAt(0).toUpperCase());
+    pic.setAttribute('aria-hidden', 'true'); pic.style.setProperty('--cm-h', String(hueOf(a.username)));
+    row.appendChild(pic); row.appendChild(side); wrap.appendChild(row);
+    var info = el('p', 'hk-hint'), btns = el('div', 'hk-avset-btns'), st = el('div', 'hk-status'); st.setAttribute('role', 'status');
+    var up = el('button', 'btn', T('Bild hochladen …')), rm = el('button', 'btn', T('Eigenes Bild entfernen'));
+    up.type = rm.type = 'button';
+    var file = el('input'); file.type = 'file'; file.accept = 'image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif,.heic,.heif'; file.hidden = true;
+    btns.appendChild(up); btns.appendChild(rm); side.appendChild(info); side.appendChild(btns); side.appendChild(file); side.appendChild(st);
+    function sw(label, on) {
+      var l = el('label', 'hk-avset-row'), i = el('input', 'hk-switch'); i.type = 'checkbox'; i.setAttribute('role', 'switch'); i.checked = !!on;
+      l.appendChild(el('span', null, label)); l.appendChild(i); wrap.appendChild(l); return i;
+    }
+    var gsw = sw(T('Gravatar verwenden, wenn ich kein eigenes Bild habe'), true), psw = sw(T('Auch auf meinen veröffentlichten Seiten zeigen'), false);
+    wrap.appendChild(el('p', 'hk-hint', T('Gravatar-Bilder holt der Server ab und speichert sie zwischen – dein Browser und die Apps fragen nie direkt bei Gravatar.')));
+    var SRC = { upload: T('Eigenes Bild'), sso: T('Bild vom Anmeldedienst'), gravatar: 'Gravatar' };
+    function draw(s) {
+      var old = pic.querySelector('.hk-av-img'); if (old) old.remove(); pic.classList.remove('hk-av-on');
+      HK.avatarImg(pic, s.url, 72);
+      headAvatar(s.url);
+      info.textContent = s.source ? T('Angezeigt wird: {src}', { src: SRC[s.source] || s.source }) : T('Kein Bild – es werden deine Initialen angezeigt.');
+      rm.hidden = !s.upload;
+      gsw.checked = s.gravatar; gsw.disabled = !s.gravatar_enabled;
+      gsw.parentNode.hidden = !s.gravatar_enabled;
+      psw.checked = s.public;
+      up.title = T('PNG, JPEG, GIF, WebP oder HEIC, höchstens {n} MB', { n: s.max_mb });
+    }
+    function fail(err) { status(st, err.message || String(err), 'err'); }
+    api('GET', '/api/account/avatar').then(draw).catch(function () { wrap.remove(); });
+    up.addEventListener('click', function () { file.value = ''; file.click(); });
+    file.addEventListener('change', function () {
+      var f = file.files && file.files[0]; if (!f) return;
+      cropDialog(f).then(function (blob) {
+        if (!blob) return;
+        status(st, T('Wird hochgeladen …'));
+        return fetch('/api/account/avatar', { method: 'PUT', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': /^image\//.test(blob.type) ? blob.type : 'image/heic' }, body: blob })
+          .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }); })
+          .then(function (d) { draw(d); status(st, T('✓ Gespeichert'), 'ok'); });
+      }).catch(fail);
+    });
+    rm.addEventListener('click', function () {
+      api('DELETE', '/api/account/avatar').then(function (d) { draw(d); status(st, T('✓ Entfernt'), 'ok'); }).catch(fail);
+    });
+    [[gsw, 'gravatar'], [psw, 'public']].forEach(function (p) {
+      p[0].addEventListener('change', function () {
+        var b = {}; b[p[1]] = p[0].checked; p[0].disabled = true;
+        api('PATCH', '/api/account/avatar', b).then(function (d) { draw(d); status(st, T('✓ Gespeichert'), 'ok'); })
+          .catch(function (err) { p[0].checked = !p[0].checked; fail(err); }).then(function () { p[0].disabled = false; });
+      });
+    });
+  }
+
   // --- Abschnitt "Konto": Name, E-Mail, Passwort (nur lokale Konten), Gruppen ------------------------------
   function accountSection(body) {
     var sec = el('section', 'hk-set hk-set-account'); body.appendChild(sec);
@@ -422,6 +546,7 @@
     var box = el('div'); sec.appendChild(box);
     api('GET', '/api/account').then(function (a) {
       box.appendChild(el('p', 'hk-hint', a.username + ' · ' + a.source_label + (a.groups.length ? ' · ' + T('Gruppen: {list}', { list: a.groups.join(', ') }) : '')));
+      avatarField(box, a);
       langField(box, a);
       if (window.HKLive) HKLive.settingsSection(box);          // Benachrichtigungen je Art (static/live.js)
       if (!a.can_edit) {

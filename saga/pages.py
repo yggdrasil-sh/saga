@@ -777,7 +777,8 @@ def _note_search(uid, q, tag):
                     r = tuple(r[:9]) + (mask_links(r[9], r[10], vis), r[10])      # Suche nur im sichtbaren Text
                     d = _search_hit(r, q, tag)
                     if d:
-                        d.update(role=roles[r[0]], pinned=False, owner={"name": nm.get(o) or o, "username": o, "me": False})
+                        d.update(role=roles[r[0]], pinned=False, owner={"name": nm.get(o) or o, "username": o, "me": False,
+                                                                             "avatar": nm.avatar(o)})
                         if d["parent_id"] not in roles:
                             d["parent_id"] = None
                         hits.append(d)

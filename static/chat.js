@@ -55,10 +55,10 @@
   function q(s) { return encodeURIComponent(s); }
   function dev() { return K ? K.device.id : ''; }
   function hue(s) { var h = 0; s = String(s || ''); for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
-  function avatar(text, key, cls) {
+  function avatar(text, key, cls, url) {
     var a = el('span', 'ct-av' + (cls ? ' ' + cls : ''), text);
     a.style.setProperty('--ct-h', String(hue(key))); a.setAttribute('aria-hidden', 'true');
-    return a;
+    return HK.avatarImg(a, url, 36);                  // Profilbild ueber den Initialen (falls vorhanden)
   }
 
   // --- Overlay fuer Einrichtung / neues Geraet / Dialoge --------------------------------------------------------
@@ -439,7 +439,8 @@
       var li = el('li', 'ct-item' + (S.cur && S.cur.id === c.id ? ' on' : '') + (c.unread ? ' unread' : ''));
       var b = el('button', 'ct-item-b'); b.type = 'button'; b.dataset.id = c.id;
       var nm = chatName(c);
-      b.appendChild(avatar(kindIc(c) || (nm.charAt(0) || '?').toUpperCase(), c.kind === 'dm' ? (c.peer || {}).username : 'c' + c.id, c.kind !== 'dm' ? 'ct-av-k' : ''));
+      b.appendChild(avatar(kindIc(c) || (nm.charAt(0) || '?').toUpperCase(), c.kind === 'dm' ? (c.peer || {}).username : 'c' + c.id, c.kind !== 'dm' ? 'ct-av-k' : '',
+                           c.kind === 'dm' ? (c.peer || {}).avatar : null));
       var t = el('span', 'ct-item-t');
       t.appendChild(el('span', 'ct-item-n', nm));
       t.appendChild(el('span', 'ct-item-s', (c.kind === 'dm' ? T('Direkt') : c.kind === 'group' ? T('Gruppe') : c.kind === 'page' ? T('Seite') : T('Gruppe')) +
@@ -501,7 +502,7 @@
           res.textContent = '';
           r.users.forEach(function (u) {
             var li = el('li'), b = el('button', 'ct-person'); b.type = 'button';
-            b.appendChild(avatar((u.name || '?').charAt(0).toUpperCase(), u.username));
+            b.appendChild(avatar((u.name || '?').charAt(0).toUpperCase(), u.username, '', u.avatar));
             var t = el('span', 'ct-item-t'); t.appendChild(el('span', 'ct-item-n', u.name)); t.appendChild(el('span', 'ct-item-s', u.username + (u.ready ? '' : ' · ' + T('hat Chats noch nicht eingerichtet'))));
             b.appendChild(t);
             b.addEventListener('click', function () {
@@ -629,6 +630,12 @@
     $('ct-title').textContent = (kindIc(c) ? kindIc(c) + ' ' : '') + chatName(c);
     var sub = $('ct-sub'); sub.textContent = '';
     var others = c.members.filter(function (m) { return !m.me; });
+    var hav = $('ct-head-av'); if (hav) hav.remove();
+    if (c.kind === 'dm') {                                // Direkt-Chat: Profilbild des Gegenuebers im Kopf
+      var pp = others[0] || c.peer || {}, ht = document.querySelector('#ct-chat .ct-head-t');
+      hav = avatar((chatName(c) || '?').charAt(0).toUpperCase(), pp.username, 'ct-av-h', pp.avatar || (c.peer || {}).avatar);
+      hav.id = 'ct-head-av'; if (ht) ht.parentNode.insertBefore(hav, ht);
+    }
     if (c.kind === 'dm') {
       var p = others[0] || c.peer || {}, t = trust[p.username];
       sub.appendChild(document.createTextNode(p.username || ''));
@@ -734,7 +741,11 @@
       if (day !== lastDay) { box.appendChild(el('div', 'ct-day', day)); lastDay = day; lastWho = null; }
       var mine = m.sender && m.sender.username === ME;
       var row = el('div', 'ct-msg' + (mine ? ' mine' : '')); row.dataset.id = m.id;
-      if (!mine && c.kind !== 'dm' && lastWho !== (m.sender || {}).username) box.appendChild(el('div', 'ct-who', m.sender ? m.sender.name : T('Gelöschtes Konto')));
+      if (!mine && c.kind !== 'dm' && lastWho !== (m.sender || {}).username) {   // Absender in Gruppen: kleines Profilbild + Name
+        var who = el('div', 'ct-who'), sn = m.sender ? m.sender.name : T('Gelöschtes Konto');
+        who.appendChild(avatar((sn || '?').charAt(0).toUpperCase(), (m.sender || {}).username || '', 'ct-av-s', m.sender && m.sender.avatar));
+        who.appendChild(el('span', null, sn)); box.appendChild(who);
+      }
       lastWho = (m.sender || {}).username;
       var b = el('div', 'ct-bubble');
       if (!m.verified && !m.error) {                      // Signatur/Geraete-Schluessel passen nicht: deutlich kennzeichnen
@@ -1101,7 +1112,7 @@
     if (c.kind === 'page') box.appendChild(el('p', 'hk-hint', T('Alle, die die Seite sehen dürfen – ändert sich mit den Freigaben.')));
     var ul = el('ul', 'ct-devs'); box.appendChild(ul);
     c.members.forEach(function (m) {
-      var li = el('li', 'ct-dev'); li.appendChild(avatar((m.name || '?').charAt(0).toUpperCase(), m.username));
+      var li = el('li', 'ct-dev'); li.appendChild(avatar((m.name || '?').charAt(0).toUpperCase(), m.username, '', m.avatar));
       var t = el('div', 'ct-dev-t'); t.appendChild(el('b', null, m.me ? m.name + ' (' + T('du') + ')' : m.name)); t.appendChild(el('span', 'hk-hint', m.username)); li.appendChild(t);
       if (!m.me) li.appendChild(btn(T('Sicherheitsnummer'), 'small', function () { safety(m); }));
       if (c.kind === 'free' && c.role === 'admin' && !m.me) li.appendChild(btn(T('Entfernen'), 'btn-danger small', function () {

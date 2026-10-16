@@ -70,6 +70,9 @@ DEFAULTS = {
     # Anmeldung zur Einrichtung gefuehrt); oidc_mfa = SSO-Anmeldung nur mit Mehr-Faktor beim Anbieter (amr/acr),
     # oidc_acr = zusaetzlich akzeptierte acr-Werte (Komma-getrennt, werden auch als acr_values angefragt)
     "mfa": {"require": "none", "oidc_mfa": False, "oidc_acr": ""},
+    # Profilbilder (2.1, saga/avatars.py): Gravatar (vom Server abgeholt und zwischengespeichert, je Person abschaltbar),
+    # Bild aus dem Anmeldedienst (OIDC-Claim "picture", LDAP jpegPhoto/thumbnailPhoto)
+    "avatar": {"gravatar": True, "oidc_picture": False, "ldap_photo": False},
 }
 SECRET_FIELDS = {("oidc", "client_secret"), ("ldap", "bind_password"), ("apns", "p8"), ("ai", "api_key")}
 LDAP_PRESETS = {
@@ -473,10 +476,44 @@ def _cn_of(dn):
     return first.split("=", 1)[1] if "=" in first else first
 
 
+PHOTO_ATTRS = ("thumbnailPhoto", "jpegPhoto")         # Active Directory bzw. inetOrgPerson (FreeIPA, OpenLDAP)
+PHOTO_MAX = 2 * 1024 * 1024
+photo_hook = None      # saga.avatars: (benutzername, 'oidc' | 'ldap', adresse bzw. bilddaten) - Profilbild vom Anmeldedienst
+
+
+def _photo(username, kind, value):
+    if photo_hook is None:
+        return
+    try:
+        photo_hook(username, kind, value)
+    except Exception as ex:  # noqa: BLE001 - ein Profilbild darf die Anmeldung nie verhindern
+        print(f"avatar ({kind}) {username}: {type(ex).__name__}: {ex}", flush=True)
+
+
+def _ldap_photo_on():
+    return bool((settings().get("avatar") or {}).get("ldap_photo"))
+
+
+def _ldap_photo(entry):
+    """Profilbild aus dem Verzeichnis (erstes vorhandene Attribut) -> bytes oder None."""
+    for a in PHOTO_ATTRS:
+        try:
+            v = entry[a].value
+        except (KeyError, IndexError, Exception):  # noqa: BLE001
+            continue
+        if isinstance(v, list):
+            v = v[0] if v else None
+        if isinstance(v, (bytes, bytearray)) and 0 < len(v) <= PHOTO_MAX:
+            return bytes(v)
+    return None
+
+
 def _ldap_find(c, cfg, username):
     from ldap3 import SUBTREE
     flt = cfg["user_filter"].replace("{username}", _esc(username))
     attrs = [a for a in {cfg["attr_username"], cfg["attr_name"], cfg["attr_mail"], "memberOf"} if a]
+    if _ldap_photo_on():
+        attrs += list(PHOTO_ATTRS)
     c.search(cfg["user_base"], flt, SUBTREE, attributes=attrs, size_limit=2)
     ents = [e for e in c.entries]
     return ents[0] if len(ents) == 1 else None
@@ -516,12 +553,16 @@ def ldap_login(username, password):
         groups = _ldap_groups(c, cfg, e, username)
         dn = e.entry_dn
         name, mail = _attr(e, cfg["attr_name"]), _attr(e, cfg["attr_mail"])
+        photo = _ldap_photo(e) if _ldap_photo_on() else None
     uc = _ldap_bind(cfg, dn, password)
     ok = uc.bound
     uc.unbind()
     if not ok:
         return None, None
-    return _ext_user(username, "ldap", dn, name, mail, groups, cfg)
+    user, err = _ext_user(username, "ldap", dn, name, mail, groups, cfg)
+    if user and _ldap_photo_on():
+        _photo(user["username"], "ldap", photo)
+    return user, err
 
 
 def ldap_refresh(user):
@@ -532,9 +573,12 @@ def ldap_refresh(user):
         if e is None:
             return False
         groups = _ldap_groups(c, cfg, e, user["username"])
+        photo = _ldap_photo(e) if _ldap_photo_on() else None
     if cfg.get("allowed_group") and cfg["allowed_group"].lower() not in groups:
         return False
     set_ext_groups(user["id"], groups)
+    if user["source"] == "ldap" and _ldap_photo_on():
+        _photo(user["username"], "ldap", photo)          # Bild im Verzeichnis geaendert: bei der naechsten Erneuerung uebernommen
     if cfg.get("admin_group"):
         with _db() as c2, c2:
             c2.execute("UPDATE users SET is_admin=? WHERE id=?", (1 if cfg["admin_group"].lower() in groups else 0, user["id"]))
@@ -691,8 +735,11 @@ def oidc_user(claims):
         if lg is None:
             return None, t("Dein Konto wurde im Verzeichnis nicht gefunden oder ist gesperrt.")
         groups = list(set(groups) | set(lg))
-    return _ext_user(username, "oidc", str(claims.get("sub") or ""), str(_claim(claims, cfg["name_claim"]) or ""),
-                     str(_claim(claims, cfg["email_claim"]) or ""), groups, cfg)
+    user, err = _ext_user(username, "oidc", str(claims.get("sub") or ""), str(_claim(claims, cfg["name_claim"]) or ""),
+                          str(_claim(claims, cfg["email_claim"]) or ""), groups, cfg)
+    if user and (settings().get("avatar") or {}).get("oidc_picture"):
+        _photo(user["username"], "oidc", claims.get("picture"))   # nur die Adresse merken - abgeholt wird beim ersten Abruf
+    return user, err
 
 
 # --- Erst-Admin ----------------------------------------------------------------------------------

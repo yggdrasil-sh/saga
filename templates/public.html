@@ -50,7 +50,7 @@
     <header class="pub-head{% if page.cover %} has-cover{% endif %}">
       {{ page.icon|safe }}
       <h1>{{ page.title }}</h1>
-      <p class="pub-by" lang="{{ lang() }}"><a href="/@{{ owner }}">@{{ owner }}</a> · {{ page.updated_html|safe }}</p>
+      <p class="pub-by" lang="{{ lang() }}">{% if owner_avatar %}<img class="pub-av" src="{{ owner_avatar }}&amp;s=64" alt="" width="24" height="24">{% endif %}<a href="/@{{ owner }}">@{{ owner }}</a> · {{ page.updated_html|safe }}</p>
     </header>
     {%- if page.props %}
     <dl class="pub-props">
@@ -71,7 +71,7 @@
 {%- elif mode == "list" %}
 <main class="pub-main">
   <article class="pub-page">
-    <header class="pub-head"><h1>@{{ owner }}</h1></header>
+    <header class="pub-head">{% if owner_avatar %}<img class="pub-av pub-av-l" src="{{ owner_avatar }}&amp;s=128" alt="" width="64" height="64">{% endif %}<h1>@{{ owner }}</h1></header>
     <section class="pub-subpages pub-list" aria-label="{{ _('Öffentliche Seiten') }}">
       <ul>{% for s in items %}<li><a href="{{ s.url }}">{{ s.icon|safe }}<span>{{ s.title }}</span></a></li>{% endfor %}</ul>
     </section>

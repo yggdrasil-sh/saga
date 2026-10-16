@@ -564,6 +564,24 @@ CREATE TABLE IF NOT EXISTS mfa_recovery (
 CREATE INDEX IF NOT EXISTS mfa_recovery_uid ON mfa_recovery (uid);
 CREATE TABLE IF NOT EXISTS mfa_challenge (            -- WebAuthn-Challenges: einmalig, 5 Minuten, an die Sitzung gebunden
     id TEXT PRIMARY KEY, uid TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL, challenge TEXT NOT NULL, expires DOUBLE PRECISION NOT NULL);
+
+-- Profilbilder (2.1, saga/avatars.py): Zustand je Person (lokales Konto oder fremde Person '@name@host') und die neu kodierten
+-- Bilder (eigenes, zwischengespeichertes Gravatar-/SSO-/Foederations-Bild; je 64/128/256 px als WebP und PNG/JPEG)
+CREATE TABLE IF NOT EXISTS avatar (
+    uid TEXT PRIMARY KEY,
+    ver BIGINT NOT NULL DEFAULT 0,                    -- zaehlt bei jeder Aenderung hoch (?v= in der Adresse)
+    upload INTEGER NOT NULL DEFAULT 0,                -- eigenes Bild vorhanden
+    gravatar INTEGER NOT NULL DEFAULT 1,              -- Person: Gravatar verwenden (der Admin-Schalter gilt zusaetzlich)
+    public INTEGER NOT NULL DEFAULT 0,                -- auch ohne Anmeldung (veroeffentlichte Seiten)
+    g_hash TEXT, g_checked DOUBLE PRECISION, g_found INTEGER NOT NULL DEFAULT 0,      -- Gravatar (bzw. fremde Instanz) zuletzt gefragt
+    sso_kind TEXT, sso_ref TEXT,                      -- 'oidc' + Adresse aus "picture" | 'ldap' + SHA-256 der Bilddaten
+    sso_checked DOUBLE PRECISION, sso_found INTEGER NOT NULL DEFAULT 0,
+    updated DOUBLE PRECISION NOT NULL);
+CREATE TABLE IF NOT EXISTS avatar_img (
+    uid TEXT NOT NULL, src TEXT NOT NULL,             -- upload | sso | gravatar | fed
+    size INTEGER NOT NULL, fmt TEXT NOT NULL,         -- 64/128/256, 'webp' | 'std' (PNG mit Transparenz, sonst JPEG)
+    mime TEXT NOT NULL, data BYTEA NOT NULL, etag TEXT NOT NULL,
+    PRIMARY KEY (uid, src, size, fmt));
 """
 # --- Schema-Versionen und Migrationen ----------------------------------------------------------------
 # SCHEMA oben ist Stand 1 (plus neue Tabellen mit CREATE TABLE IF NOT EXISTS). Alles, was bestehende

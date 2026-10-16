@@ -1741,3 +1741,29 @@ body.pg-lock-on #pg-editor .embed-db :is(.db-new-top,.db-tab-add,.db-gear,.db-ne
 /* Seite einer anderen Saga-Instanz: Symbol, Titelbild und Tags bleiben beim Eigentuemer */
 .pg-remote .cover-btns,.pg-remote #pg-addcover,.pg-remote #pg-tags .tag-add{display:none!important}
 .pg-remote #pg-icon,.pg-remote #pg-tags{pointer-events:none}
+
+/* Profilbilder (saga/avatars.py): Bild liegt ueber den Initialen, erst nach dem Laden sichtbar (common.js avatarImg) */
+.hk-av-box{position:relative;overflow:hidden}
+.hk-av-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit;opacity:0;transition:opacity .15s;pointer-events:none}
+.hk-av-on .hk-av-img{opacity:1}
+.hk-av-on{color:transparent!important}
+.hk-user-av{display:inline-grid;place-items:center;width:1.5rem;height:1.5rem;border-radius:50%;vertical-align:middle;margin:-.2rem .1rem -.2rem 0;font-size:.95rem;line-height:1}
+.hk-user-av.hk-av-on{background:var(--card-h)}
+.cm-av{flex:none;display:inline-grid;place-items:center;width:1.35rem;height:1.35rem;border-radius:50%;font-size:.7rem;font-weight:700;color:#fff;
+  background:hsl(var(--cm-h,210) 45% 45%);margin-right:.1rem}
+.ver-av{display:inline-grid;place-items:center;width:1.05rem;height:1.05rem;border-radius:50%;font-size:.6rem;font-weight:700;color:#fff;
+  background:hsl(var(--cm-h,210) 45% 45%);vertical-align:-3px;margin-right:.25rem}
+.hk-avset{display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin:.2rem 0 .6rem}
+.hk-avset-pic{width:72px;height:72px;border-radius:50%;display:grid;place-items:center;font-size:1.6rem;font-weight:700;color:#fff;flex:none;
+  background:hsl(var(--cm-h,210) 45% 45%)}
+.hk-avset-side{display:flex;flex-direction:column;gap:.45rem;min-width:0;flex:1}
+.hk-avset-btns{display:flex;gap:.5rem;flex-wrap:wrap}
+.hk-crop{display:flex;flex-direction:column;align-items:center;gap:.7rem}
+.hk-crop-stage{position:relative;width:min(280px,72vw);height:min(280px,72vw);overflow:hidden;border-radius:12px;background:#000;touch-action:none;cursor:grab}
+.hk-crop-stage canvas{display:block;width:100%;height:100%}
+.hk-crop-ring{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 999px rgba(0,0,0,.45);pointer-events:none;outline:2px solid rgba(255,255,255,.8);outline-offset:-2px}
+.hk-crop input[type=range]{width:min(280px,72vw)}
+.cm-c-h .cm-av{align-self:center}
+.cm-av.cm-av-gone{background:var(--unk,#888)}
+.hk-avset-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.45rem 0;cursor:pointer;font-size:.88rem}
+.hk-avset-row[hidden]{display:none}

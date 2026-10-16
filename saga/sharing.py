@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 import auth
 from db import connect as _db
-from saga import bus, i18n
+from saga import avatars, bus, i18n
 from saga.core import _api_guard, _bad, _body, t
 from saga.notes import NOTE_META_COLS, _note_meta, note_chain
 
@@ -80,33 +80,45 @@ def groups_of(c, uid):
         "UNION SELECT e.name FROM user_ext_group e JOIN users u ON u.id=e.user_id WHERE u.username=?", (uid, uid))}
 
 
+class Names(dict):
+    """Ergebnis von names(): Benutzername -> Anzeigename; .av: Benutzername -> Profilbild-Adresse (saga.avatars)."""
+    av = None
+
+    def avatar(self, uid):
+        return (self.av or {}).get(uid)
+
+
 def names(c, uids):
-    """Benutzername -> Anzeigename (sonst Benutzername). Unbekannte/geloeschte fehlen."""
+    """Benutzername -> Anzeigename (sonst Benutzername). Unbekannte/geloeschte fehlen. Profilbilder gleich mit (.av)."""
     uids = [u for u in set(uids) if u]
+    out = Names()
+    out.av = {}
     if not uids:
-        return {}
+        return out
     loc = [u for u in uids if not is_remote(u)]
     rem = [u for u in uids if is_remote(u)]
-    out = {}
     if loc:
-        out = {r[0]: (r[1] or r[0]) for r in c.execute(
-            f"SELECT username, display_name FROM users WHERE username IN ({','.join('?' * len(loc))})", tuple(loc))}
+        out.update({r[0]: (r[1] or r[0]) for r in c.execute(
+            f"SELECT username, display_name FROM users WHERE username IN ({','.join('?' * len(loc))})", tuple(loc))})
     if rem:          # fremde Personen: Anzeigename aus dem Zwischenspeicher, immer mit Herkunft
         disp = {r[0]: r[1] for r in c.execute(f"SELECT principal, display FROM fed_person WHERE principal IN ({','.join('?' * len(rem))})",
                                               tuple(rem))}
         out.update({u: remote_label(u, disp.get(u)) for u in rem})
+    out.av = avatars.urls(c, list(out))
     return out
 
 
 def person(c, uid, me, cache=None):
-    """{name, username, me} fuer Eigentuemer/Verfasser; uid None/geloescht -> 'Geloeschtes Konto'.
-    Fremde Person: zusaetzlich remote=true, username = '@name@host'."""
-    nm = (cache if cache is not None else names(c, [uid])).get(uid) if uid else None
+    """{name, username, me, avatar} fuer Eigentuemer/Verfasser; uid None/geloescht -> 'Geloeschtes Konto'.
+    Fremde Person: zusaetzlich remote=true, username = '@name@host'. avatar: Adresse des Profilbilds oder None (Initialen)."""
+    cache = cache if cache is not None else names(c, [uid]) if uid else {}
+    nm = cache.get(uid) if uid else None
     if not nm:
-        return {"name": t("Gelöschtes Konto"), "username": None, "me": False}
+        return {"name": t("Gelöschtes Konto"), "username": None, "me": False, "avatar": None}
+    av = cache.avatar(uid) if isinstance(cache, Names) else (avatars.url_of(c, uid) if c is not None else None)
     if is_remote(uid):
-        return {"name": nm, "username": uid, "me": uid == me, "remote": True}
-    return {"name": nm, "username": uid, "me": uid == me}
+        return {"name": nm, "username": uid, "me": uid == me, "remote": True, "avatar": av}
+    return {"name": nm, "username": uid, "me": uid == me, "avatar": av}
 
 
 class Access:
@@ -455,7 +467,8 @@ def shared_list(uid):
     out = []
     for o, role, row, root in vis:
         d = _note_meta(row)
-        d.update(role=role, root=root, shared=True, pinned=False, owner={"name": nm.get(o) or o, "username": o, "me": False},
+        d.update(role=role, root=root, shared=True, pinned=False, owner={"name": nm.get(o) or o, "username": o, "me": False,
+                                                                  "avatar": nm.avatar(o)},
                  unread=row[0] in un)
         if root:
             d["parent_id"] = None                     # oberste geteilte Seite: Eltern sind fuer mich nicht sichtbar
@@ -516,6 +529,8 @@ def _state(c, uid, nid):
     shares = []
     for r in rows:
         d = {"type": r[0], "target": r[1], "name": who(r[0], r[1]), "role": r[2], "created": r[3]}
+        if r[0] in ("user", "remote"):
+            d["avatar"] = nm.avatar(r[1])
         if r[0] == "user":       # tatsaechliche Rolle: hoechste aus direkter Freigabe, Gruppen und Seiten darueber
             v = via(r[1])
             d.update(via=v, effective=_best(r[2], v[0]["role"] if v else None))
@@ -690,7 +705,8 @@ def api_share_targets(request: Request, q: str = ""):
         if sql:
             rows = c.execute(sql + " ORDER BY (u.username=?) DESC, (u.username LIKE ?) DESC, u.username LIMIT ?",
                              (*args, q, pat + "%", TARGETS_MAX)).fetchall()
-    users = [{"username": r[0], "name": r[1] or r[0]} for r in rows]
+        av = avatars.urls(c, [r[0] for r in rows]) if rows else {}
+    users = [{"username": r[0], "name": r[1] or r[0], "avatar": av.get(r[0])} for r in rows]
     groups = [{"name": g} for g in mine if q in g][:TARGETS_MAX]
     out = {"users": users, "groups": groups}
     # name@host einer verbundenen Instanz: dort nachfragen (signiert) - nur genaue Adressen, keine Suche ueber Instanzen

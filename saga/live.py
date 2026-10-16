@@ -33,7 +33,7 @@ from collections import deque
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from db import connect as _db
-from saga import bus, i18n, notify
+from saga import avatars, bus, i18n, notify
 from saga.comments import counts as comment_counts
 from saga.core import E, _api_guard, _bad, _body, _session_user, _tok_hash, account_lang, device_alive, origin_of, user_info
 from saga.notes import note_chain
@@ -195,7 +195,7 @@ async def _dispatch():
 
 
 def _person(nm, u):
-    return {"name": nm.get(u) or u, "username": u}
+    return {"name": nm.get(u) or u, "username": u, "avatar": nm.avatar(u) if hasattr(nm, "avatar") else None}
 
 
 def _page_audience(c, nid, aud):
@@ -525,7 +525,8 @@ async def api_presence(request: Request):
         _put(q, ("presence", {"note_id": nid}))
     state, users = out
     if not any(u["username"] == uid for u in users):
-        users.append({"username": uid, "name": request.session.get("name") or uid, "editing": editing})
+        users.append({"username": uid, "name": request.session.get("name") or uid, "editing": editing,
+                      "avatar": await asyncio.to_thread(avatars.my_url, uid)})
     for u in users:
         u["me"] = u["username"] == uid
         if u["me"]:

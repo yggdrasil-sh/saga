@@ -36,7 +36,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 import auth
 from db import connect as _db
-from saga import bus, mfa, notify
+from saga import avatars, bus, mfa, notify
 from saga.core import (ADMIN_URL, ASSET_V, E, SEC_HEADERS, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
                        tmpl, user_info)
 from saga.notes import FILE_MAX, note_chain
@@ -691,7 +691,8 @@ def api_people(request: Request, q: str = ""):
                 sql = None
         if sql:
             rows = c.execute(sql + " ORDER BY (u.username=?) DESC, u.username LIMIT 10", (*args, q)).fetchall()
-    return _no_store({"users": [{"username": r[0], "name": r[1] or r[0], "ready": bool(r[2])} for r in rows],
+        av = avatars.urls(c, [r[0] for r in rows]) if rows else {}
+    return _no_store({"users": [{"username": r[0], "name": r[1] or r[0], "ready": bool(r[2]), "avatar": av.get(r[0])} for r in rows],
                       "groups": [{"name": g} for g in mine if q in g][:10]})
 
 
@@ -766,7 +767,8 @@ def _msgs(c, uid, cid, device, where="", args=(), limit=PAGE, desc=True):
 
 def _msg_dict(r, nm):
     key, via = (r[11], "device") if r[11] else (r[12], "backup")
-    return {"seq": r[0], "id": r[1], "kind": r[2], "sender": {"username": r[3], "name": nm.get(r[3]) or t("Gelöschtes Konto")} if r[3] else None,
+    return {"seq": r[0], "id": r[1], "kind": r[2], "sender": {"username": r[3], "name": nm.get(r[3]) or t("Gelöschtes Konto"),
+                                                         "avatar": nm.avatar(r[3]) if hasattr(nm, "avatar") else None} if r[3] else None,
             "sender_device": r[4], "ts": r[5], "created": r[6], "expires_at": r[7], "body_ct": r[8], "sig": r[9],
             "reply_to": r[10], "key": key, "key_for": via}
 
@@ -811,10 +813,10 @@ def _chat_dict(c, uid, ch, mem, m, device, full=False):
     d = {"id": ch["id"], "kind": ch["kind"], "name": _name(c, uid, ch, mem, nm), "group": ch["group_name"], "note_id": ch["note_id"],
          "created": ch["created"], "last_at": ch["last_at"] or ch["created"], "last_seq": ch["last_seq"], "retention_s": ch["retention_s"],
          "muted": bool(m["muted"]), "role": m["role"], "last_read": m["last_read"], "unread": _unread(c, uid, ch["id"], m["last_read"]),
-         "members": [{"username": u, "name": nm.get(u, u), "me": u == uid} for u in mem], "member_count": len(mem)}
+         "members": [{"username": u, "name": nm.get(u, u), "me": u == uid, "avatar": nm.avatar(u)} for u in mem], "member_count": len(mem)}
     if ch["kind"] == "dm":
         a, _, b = ch["dm_key"].partition("|")
-        d["peer"] = {"username": b if a == uid else a, "name": d["name"]}
+        d["peer"] = {"username": b if a == uid else a, "name": d["name"], "avatar": nm.avatar(b if a == uid else a)}
     if ch["kind"] == "free" and ch["title_seq"]:
         rows = _msgs(c, uid, ch["id"], device, "AND m.seq=?", (ch["title_seq"],), 1)
         if rows:
@@ -1081,7 +1083,7 @@ def recipients(c, mem):
     out, want = [], set()
     for u in mem:
         k = keys.get(u)
-        e = {"username": u, "name": nm.get(u, u), "ready": bool(k)}
+        e = {"username": u, "name": nm.get(u, u), "ready": bool(k), "avatar": nm.avatar(u)}
         if k:
             devs = [d for d in k["devices"] if not d["revoked"]]
             e.update(ident_pub=k["ident_pub"], backup_pub=k["backup_pub"], backup_sig=k["backup_sig"],
@@ -1452,7 +1454,8 @@ def chats_page(request: Request):
     remember_ui_lang(uid, request)
     info = user_info(uid)
     html = tmpl.get_template("chats.html").render(title=title(), name=request.session.get("name", uid), v=ASSET_V, uid=uid,
-                                                  enabled=enabled(), admin_url=ADMIN_URL if info and info["is_admin"] else "")
+                                                  enabled=enabled(), admin_url=ADMIN_URL if info and info["is_admin"] else "",
+                                                  me_avatar=avatars.my_url(uid))
     headers = dict(SEC_HEADERS)
     headers["Content-Security-Policy"] = headers["Content-Security-Policy"].replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'")
     return HTMLResponse(html, headers=headers)

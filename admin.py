@@ -688,6 +688,8 @@ async def settings_post(request: Request):
     req = f.get("mfa_require") if f.get("mfa_require") in ("none", "admins", "all") else "none"
     acr = ", ".join(a for a in (x.strip() for x in _s(f, "mfa_oidc_acr", 300).split(",")) if re.fullmatch(r"[\w.:/#-]{1,100}", a))
     auth.save_setting("mfa", {"require": req, "oidc_mfa": _on(f, "mfa_oidc"), "oidc_acr": acr})
+    auth.save_setting("avatar", {"gravatar": _on(f, "avatar_gravatar"), "oidc_picture": _on(f, "avatar_oidc"),
+                                 "ldap_photo": _on(f, "avatar_ldap")})
     hk.services_changed()
     print(f"admin: {me['username']} speichert Allgemein (2FA verlangt: {req})", flush=True)
     _flash(request, t("Gespeichert.") + (" " + t("Hinweis: Mit der neuen Gruppen-Kennung gelten neue Zugangsgruppen – Favoriten der Dienste müssen neu gesetzt werden.")

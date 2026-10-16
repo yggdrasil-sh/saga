@@ -9,7 +9,7 @@ from starlette.concurrency import run_in_threadpool
 import auth
 from db import clean_line, connect as _db
 from fastapi import APIRouter
-from saga import i18n, mfa
+from saga import avatars, i18n, mfa
 from saga.core import (ADMIN_URL, ASSET_V, BASE_URL, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, set_user_lang, t,
                        title, tmpl, user_info, user_lang)
 from saga.dashboard import source_label
@@ -381,6 +381,7 @@ def api_account(request: Request):
                          "local_groups": sorted(i["local_groups"]), "is_admin": i["is_admin"],
                          "admin_url": ADMIN_URL if i["is_admin"] else "", "pw_changed": i["pw_changed"],
                          "can_edit": i["source"] == "local", "lang": user_lang(uid), "lang_active": i18n.get_lang(),
+                         "avatar": avatars.my_url(uid),
                          "langs": [{"code": "", "name": t("Automatisch")}] + [{"code": k, "name": v} for k, v in i18n.NAMES.items()]})
 
 

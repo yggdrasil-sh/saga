@@ -26,7 +26,7 @@
     <span class="btn-t">{{ _("Chats") }}</span>
     {% if chat_unread %}<span class="btn-badge" title="{{ _("{n} ungelesene Nachrichten", n=chat_unread) }}">{{ chat_unread }}</span>{% endif %}
   </a>{% endif %}
-  <button type="button" class="btn hk-user" id="hk-user" data-name="{{ name }}" data-admin="{{ admin_url }}" aria-haspopup="menu" title="{{ _("Benutzermenü") }}" aria-label="{{ _("Benutzermenü") }}: {{ name }}">👤 <span class="hk-user-n">{{ name }}</span> ▾</button>
+  <button type="button" class="btn hk-user" id="hk-user" data-name="{{ name }}" data-avatar="{{ me_avatar or '' }}" data-admin="{{ admin_url }}" aria-haspopup="menu" title="{{ _("Benutzermenü") }}" aria-label="{{ _("Benutzermenü") }}: {{ name }}">👤 <span class="hk-user-n">{{ name }}</span> ▾</button>
   <a class="btn np-dash" href="/" title="{{ _("Zum Dashboard") }}" aria-label="{{ _("Dashboard") }}"><span class="np-dash-ic" aria-hidden="true">⌂</span><span class="np-dash-t">{{ _("Dashboard") }}</span></a>
 </header>
 <main class="np-main">

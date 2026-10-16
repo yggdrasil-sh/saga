@@ -12,6 +12,7 @@
   var MAX = 2000;
 
   function cur() { return K.cur(); }
+  function hueOf(s) { var h = 0; s = String(s || ''); for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   // Rolle entzogen/gesenkt (403/404): Seite gleich im neuen Zustand zeigen (Etikett, nur Lesen bzw. "Kein Zugriff")
   function lost(err) { if (err && (err.status === 403 || err.status === 404) && K.recheck) K.recheck(); }
   function role() { var c = cur(); return c ? (c.role || 'owner') : null; }
@@ -205,6 +206,10 @@
   }
   function comment(t, cm, first, dot) {
     var c = el('div', 'cm-c'), h = el('div', 'cm-c-h');
+    var av = el('span', 'cm-av', String(cm.author.name || '?').trim().charAt(0).toUpperCase() || '?');   // Profilbild bzw. Initialen
+    av.setAttribute('aria-hidden', 'true'); av.style.setProperty('--cm-h', String(hueOf(cm.author.username || cm.author.name)));
+    if (!cm.author.username) av.classList.add('cm-av-gone');
+    h.appendChild(HK.avatarImg(av, cm.author.avatar, 22));
     h.appendChild(el('b', 'cm-author', cm.author.me ? T('Du') : cm.author.name));
     if (dot) { var d = el('span', 'cm-dot'); d.title = T('Neu'); h.appendChild(d); }     // ungelesen: Punkt neben dem Autor
     h.appendChild(when(cm.created));

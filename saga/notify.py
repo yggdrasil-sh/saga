@@ -200,7 +200,7 @@ def _render(c, uid, rows, acc=None):
             access, fnote, furl = FED_RENDER(c, uid, fed) if FED_RENDER else (False, None, None)
         a_name = who.get(actor) if actor else None
         item = {"id": rid, "kind": kind, "created": created, "read": read_at is not None,
-                "actor": {"name": a_name, "username": actor} if a_name else None,
+                "actor": {"name": a_name, "username": actor, "avatar": who.avatar(actor)} if a_name else None,
                 "count": int(d.get("n") or 1), "access": access, "note": None, "url": None}
         if kind.startswith("share."):
             item["role"] = d.get("role")

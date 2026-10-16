@@ -343,7 +343,21 @@
     });
   }
 
-  window.HK = { parseNum: parseNum, editNum: editNum, scrollFade: scrollFade, $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
+  // Profilbild (saga/avatars.py) ueber die Initialen legen: box = vorhandenes Initialen-Element, url = person.avatar (oder
+  // leer = Initialen bleiben). Das Bild erscheint erst nach dem Laden; 404/Fehler = Initialen bleiben. px = Anzeigegroesse.
+  function avatarImg(box, url, px) {
+    if (!box || !url || typeof url !== 'string' || url.indexOf('/api/avatar/') !== 0) return box;
+    var img = document.createElement('img'); img.className = 'hk-av-img'; img.alt = ''; img.decoding = 'async';
+    img.setAttribute('aria-hidden', 'true'); img.draggable = false;
+    box.classList.add('hk-av-box');
+    img.addEventListener('load', function () { box.classList.add('hk-av-on'); });
+    img.addEventListener('error', function () { img.remove(); box.classList.remove('hk-av-on'); });
+    img.src = url + (url.indexOf('?') < 0 ? '?' : '&') + 's=' + Math.min(256, Math.round((px || 32) * Math.min(2, window.devicePixelRatio || 1)));
+    box.appendChild(img);
+    return box;
+  }
+
+  window.HK = { avatarImg: avatarImg, parseNum: parseNum, editNum: editNum, scrollFade: scrollFade, $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
                 openMenu: openMenu, closeMenu: closeMenu, menuItem: menuItem, menuLabel: menuLabel,
                 menuOpen: function () { return !!menuOwner; }, closeSub: closeSub, ask: ask, urlNode: urlNode, fmtNodes: fmtNodes, fieldMsg: fieldMsg };
 })();

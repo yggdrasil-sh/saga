@@ -9,6 +9,7 @@ python-multipart>=0.0.9
 icalendar>=6.0
 recurring-ical-events>=3.3
 pillow>=10.4
+pillow-heif>=0.18       # HEIC/HEIF-Profilbilder (iPhone), saga/avatars.py
 psycopg[binary]>=3.2
 psycopg-pool>=3.2
 cryptography>=42

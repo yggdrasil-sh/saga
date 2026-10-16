@@ -58,6 +58,13 @@
     <p class="hk-hint adm-share-off">{{ _("Erst „Teilen erlauben“ einschalten, dann lässt sich das einstellen.") }}</p>
   </section>
   <section class="adm-card">
+    <h3>{{ _("Profilbilder") }}</h3>
+    <p class="hk-hint">{{ _("Jede Person kann ein eigenes Bild hochladen (Einstellungen → Konto). Ohne Bild zeigt Saga die farbigen Initialen.") }}</p>
+    {{ check(_('Gravatar verwenden'), 'avatar_gravatar', st.avatar.gravatar, _('Für Konten mit E-Mail-Adresse ohne eigenes Bild. Der Server holt das Bild bei Gravatar ab und speichert es einen Tag – Browser und Apps fragen nie direkt bei Gravatar. Gravatar erfährt dabei nur den Hash der E-Mail-Adresse, nicht wer sich das Bild ansieht. Jede Person kann es für sich abschalten.')) }}
+    {{ check(_('Bild aus dem SSO übernehmen (OIDC „picture“)'), 'avatar_oidc', st.avatar.oidc_picture, _('Bei der Anmeldung über SSO merkt sich Saga die Bildadresse des Anmeldedienstes; der Server holt das Bild ab (interne Adressen nur mit Freigabe unter „Freigegebene interne Hosts“).')) }}
+    {{ check(_('Bild aus LDAP übernehmen (jpegPhoto / thumbnailPhoto)'), 'avatar_ldap', st.avatar.ldap_photo, _('Bei der Anmeldung mit LDAP-Konten und beim Erneuern der Gruppen.')) }}
+  </section>
+  <section class="adm-card">
     <h3>{{ _("Chats") }}</h3>
     {{ check(_('Chats erlauben'), 'chat_enabled', st.chat_enabled, _('Direkt-, Gruppen- und Seiten-Chats mit Ende-zu-Ende-Verschlüsselung. Der Server speichert nur verschlüsselte Nachrichten – auch Admins können die Inhalte nicht lesen. Aus = Chats sind nicht erreichbar; die Daten bleiben gespeichert.')) }}
     <label class="adm-field"><span>{{ _("Nachrichten höchstens aufbewahren (Tage)") }}</span>

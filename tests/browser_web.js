@@ -321,10 +321,58 @@ async function passkeys(browser) {
   await ctx.close();
 }
 
+// 2.1 Profilbilder: Einstellungen -> Konto -> Profilbild hochladen (mit Zuschneiden), danach Bild statt Initialen in der
+// Kopfzeile, im Teilen-Dialog und bei Kommentaren; kein Abruf bei fremden Servern (Gravatar laeuft nur ueber Saga).
+async function avatars(browser) {
+  const p = await session(browser), host = new URL(BASE).host, foreign = [];
+  p.on('request', r => { const u = new URL(r.url()); if (!['data:', 'blob:'].includes(u.protocol) && u.host !== host) foreign.push(r.url()); });
+  const loaded = sel => p.evaluate(s => [...document.querySelectorAll(s)].filter(x => x.classList.contains('hk-av-on')
+    && x.querySelector('img.hk-av-img') && x.querySelector('img.hk-av-img').naturalWidth > 0).length, sel);
+  const before = await p.api('GET', '/api/account/avatar');
+  const file = require('path').join(require('os').tmpdir(), 'saga-browser-avatar.png');
+  const b64 = await p.evaluate(() => {
+    const c = document.createElement('canvas'); c.width = 900; c.height = 600; const g = c.getContext('2d');
+    g.fillStyle = '#2a7'; g.fillRect(0, 0, 900, 600); g.fillStyle = '#fff'; g.beginPath(); g.arc(450, 260, 120, 0, 7); g.fill();
+    return c.toDataURL('image/png').split(',')[1];
+  });
+  require('fs').writeFileSync(file, Buffer.from(b64, 'base64'));
+  await p.goto(BASE + '/'); await p.waitForTimeout(800);
+  await p.click('#hk-user'); await p.click('.menu-item:has-text("Einstellungen")');
+  await p.waitForSelector('.hk-avsec'); await p.waitForTimeout(600);
+  await p.setInputFiles('.hk-avsec input[type=file]', file);
+  await p.waitForSelector('.hk-crop-stage');
+  ok('2.1 Profilbild: Zuschneide-Dialog (quadratisch)', await p.evaluate(() => { const r = document.querySelector('.hk-crop-stage').getBoundingClientRect(); return Math.abs(r.width - r.height) < 2; }));
+  await p.locator('.hk-crop input[type=range]').fill('1.5');
+  await p.click('.hk-crop .btn-primary');
+  await p.waitForFunction(() => /Gespeichert/.test((document.querySelector('.hk-avsec .hk-status') || {}).textContent || ''), null, { timeout: 15000 }).catch(() => {});
+  await p.waitForTimeout(1000);
+  const st = await p.api('GET', '/api/account/avatar');
+  ok('2.1 Profilbild: hochgeladen (Quelle: eigenes Bild)', st.source === 'upload' && /^\/api\/avatar\//.test(st.url || ''), st);
+  ok('2.1 Profilbild: Vorschau und Kopfzeile zeigen das Bild', await loaded('.hk-avset-pic') === 1 && await loaded('#hk-user .hk-user-av') === 1);
+  await p.keyboard.press('Escape');
+  const nid = (await p.api('POST', '/api/notes', { title: 'Profilbild-Test' })).id;
+  await p.api('POST', '/api/notes/' + nid + '/comments', { body: 'Kommentar mit Bild', block_id: '' });
+  await p.open(nid);
+  await p.click('#pg-cm-btn').catch(() => {}); await p.waitForTimeout(1200);
+  ok('2.1 Profilbild: bei Kommentaren', await loaded('.cm-c .cm-av') >= 1);
+  await p.keyboard.press('Escape');
+  await p.goto(BASE + '/'); await p.waitForTimeout(800);
+  await p.click('#hk-user'); await p.click('.menu-item:has-text("Einstellungen")');
+  await p.waitForSelector('.hk-avsec'); await p.waitForTimeout(600);
+  await p.click('.hk-avsec button:has-text("Eigenes Bild entfernen")');
+  await p.waitForTimeout(1200);
+  const after = await p.api('GET', '/api/account/avatar');
+  ok('2.1 Profilbild: entfernt -> wieder wie vorher', !after.upload && after.source === before.source, after);
+  ok('2.1 Profilbild: keine Anfragen an fremde Server', foreign.length === 0, foreign.slice(0, 3));
+  await p.api('DELETE', '/api/notes/' + nid);
+  await p.context().close();
+}
+
 (async () => {
   const browser = await chromium.launch({ channel: process.env.PW_CHANNEL || 'chrome', headless: true });
   try {
     if (process.env.SAGA_ONLY === 'passkeys') { await passkeys(browser); throw null; }     // nur die Passkey-Pruefungen
+    if (process.env.SAGA_ONLY === 'avatars') { await avatars(browser); throw null; }       // nur die Profilbild-Pruefungen
     const p = await session(browser);
     await enterFallback(p);
     await reloadKeeps(p);
@@ -339,6 +387,7 @@ async function passkeys(browser) {
     await chatImmich(browser);
     await narrow(browser);
     await passkeys(browser);
+    await avatars(browser);
   } catch (e) { if (e !== null) { console.error(e); res.push(false); } }
   await browser.close();
   console.log(`${res.filter(Boolean).length}/${res.length} ok`);

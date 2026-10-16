@@ -20,7 +20,7 @@
   <span class="ct-e2e" title="{{ _("Nachrichten und Anhänge werden auf deinen Geräten verschlüsselt. Der Server – auch der Admin – kann sie nicht lesen.") }}">🔒 {{ _("Ende-zu-Ende-verschlüsselt") }}</span>
   <span class="spacer"></span>
   <a class="btn np-pages" href="/notes" target="hk-notes">{{ _("Seiten") }}</a>
-  <button type="button" class="btn hk-user" id="hk-user" data-name="{{ name }}" data-admin="{{ admin_url }}" aria-haspopup="menu" title="{{ _("Benutzermenü") }}" aria-label="{{ _("Benutzermenü") }}: {{ name }}">👤 <span class="hk-user-n">{{ name }}</span> ▾</button>
+  <button type="button" class="btn hk-user" id="hk-user" data-name="{{ name }}" data-avatar="{{ me_avatar or '' }}" data-admin="{{ admin_url }}" aria-haspopup="menu" title="{{ _("Benutzermenü") }}" aria-label="{{ _("Benutzermenü") }}: {{ name }}">👤 <span class="hk-user-n">{{ name }}</span> ▾</button>
   <a class="btn np-dash" href="/" title="{{ _("Zum Dashboard") }}" aria-label="{{ _("Dashboard") }}"><span class="np-dash-ic" aria-hidden="true">⌂</span><span class="np-dash-t">{{ _("Dashboard") }}</span></a>
 </header>
 <main class="ct-main">

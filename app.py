@@ -25,7 +25,7 @@ import db
 from version import API_LEVEL, MIN_APP, VERSION
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
-from saga import ai, chat, federation, i18n, live, mfa, notify, push
+from saga import ai, avatars, chat, federation, i18n, live, mfa, notify, push
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, LangMiddleware, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
@@ -111,7 +111,8 @@ _BASE_HOST = urlparse(BASE_URL).netloc.lower()
 
 
 def _public_path(path):
-    return path == "/" or path.startswith("/@") or path.startswith("/static/")
+    # /api/avatar/: Profilbilder auf veroeffentlichten Seiten (nur, wenn die Person es erlaubt hat - prueft saga.avatars)
+    return path == "/" or path.startswith("/@") or path.startswith("/static/") or path.startswith("/api/avatar/")
 
 
 @app.middleware("http")
@@ -131,7 +132,8 @@ async def canonical_host(request: Request, call_next):
 # Uploads: ATTACH_MAX_MB + Formular-Rahmen (etwas mehr als die Pruefung in files.py, die mit Text antwortet).
 app.add_middleware(BodyLimit, default=REQUEST_MAX,
                    rules=[("POST", re.compile(r"/api/files"), max(REQUEST_MAX, FILE_MAX + 256 * 1024)),
-                          ("POST", re.compile(r"/api/chats/[0-9]+/files"), max(REQUEST_MAX, FILE_MAX + 1024))])
+                          ("POST", re.compile(r"/api/chats/[0-9]+/files"), max(REQUEST_MAX, FILE_MAX + 1024)),
+                          ("PUT", re.compile(r"/api/account/avatar"), max(REQUEST_MAX, avatars.UPLOAD_MAX + 64 * 1024))])
 
 
 # --- Routes -----------------------------------------------------------------
@@ -195,3 +197,4 @@ app.include_router(live.router)             # Live-Kanal: /api/events (SSE), /ap
 app.include_router(chat.router)             # Chat (E2E): /chats, /api/chat/..., /api/chats/...
 app.include_router(push.router)             # Mitteilungen: /api/push..., /sw.js
 app.include_router(ai.router)               # KI-Assistent: /api/ai/status, /api/ai/ask, /api/ai/page/{nid}, /api/ai/history
+app.include_router(avatars.router)          # Profilbilder: /api/avatar/{schluessel}, /api/account/avatar

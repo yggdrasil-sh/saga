@@ -32,10 +32,10 @@
   }
   // Farbe je Person (Anfangsbuchstabe auf farbigem Kreis) - gleiche Person, gleiche Farbe
   function hue(s) { var h = 0; s = String(s || ''); for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
-  function avatar(name, key, cls) {
+  function avatar(name, key, cls, url) {
     var a = el('span', 'lv-av' + (cls ? ' ' + cls : ''), String(name || '?').trim().charAt(0).toUpperCase() || '?');
     a.style.setProperty('--lv-h', String(hue(key || name))); a.setAttribute('aria-hidden', 'true');
-    return a;
+    return HK.avatarImg(a, url, 30);                  // Profilbild ueber den Initialen (falls vorhanden)
   }
 
   // =========================================================================================================
@@ -94,7 +94,7 @@
   function itemNode(it) {
     var li = el('li', 'lv-li'), b = el('button', 'lv-item' + (it.read ? '' : ' unread')); b.type = 'button';
     if (it.kind === 'publish.withdrawn') { var sh = el('span', 'lv-av lv-av-sys', '🛡'); sh.setAttribute('aria-hidden', 'true'); b.appendChild(sh); }
-    else b.appendChild(avatar(it.actor ? it.actor.name : '?', it.actor ? it.actor.username : '', it.actor ? '' : 'lv-av-gone'));
+    else b.appendChild(avatar(it.actor ? it.actor.name : '?', it.actor ? it.actor.username : '', it.actor ? '' : 'lv-av-gone', it.actor && it.actor.avatar));
     var body = el('span', 'lv-body');
     var tx = el('span', 'lv-text'); tx.appendChild(sentence(it)); body.appendChild(tx);
     var ic = it.note && it.note.icon && it.note.icon.charAt(0) !== '/' ? it.note.icon : '📄';
@@ -408,7 +408,7 @@
     box.textContent = '';
     box.setAttribute('aria-label', T('Gerade auf dieser Seite'));
     others.slice(0, 4).forEach(function (u) {
-      var a = avatar(u.name, u.username, u.editing ? 'editing' : '');
+      var a = avatar(u.name, u.username, u.editing ? 'editing' : '', u.avatar);
       a.removeAttribute('aria-hidden'); a.setAttribute('role', 'img');
       var t = u.editing ? T('{name} bearbeitet gerade', { name: u.name }) : T('{name} ist auch hier', { name: u.name });
       a.title = t; a.setAttribute('aria-label', t);

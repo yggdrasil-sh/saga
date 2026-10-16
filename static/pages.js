@@ -1277,7 +1277,11 @@
           var b = el('button', 'ver-item'); b.type = 'button';
           b.appendChild(el('span', 'ver-date', fVer.format(new Date(v.created * 1000))));
           b.appendChild(el('span', 'ver-title', v.title || T('Unbenannt')));
-          if (v.author) b.appendChild(el('span', 'ver-by', T('von {name}', { name: v.author.name })));
+          if (v.author) {
+            var vb = el('span', 'ver-by'), va = el('span', 'ver-av', (v.author.name || '?').charAt(0).toUpperCase());
+            va.setAttribute('aria-hidden', 'true'); vb.appendChild(HK.avatarImg(va, v.author.avatar, 17));
+            vb.appendChild(document.createTextNode(T('von {name}', { name: v.author.name }))); b.appendChild(vb);
+          }
           else if (v.by === 'me') b.appendChild(el('span', 'ver-by', T('von dir')));     // "unknown": aeltere Fassung ohne Autor (BUG-092)
           b.addEventListener('click', function () {
             [].forEach.call(ul.querySelectorAll('.ver-item'), function (x) { x.classList.toggle('on', x === b); });
@@ -4057,14 +4061,15 @@
       e.textContent = text;
     }
     function isGrp(type) { return type === 'group' || type === 'remote_group'; }
-    function avatar(type, name) {
+    function avatar(type, name, url) {
       var a = el('span', 'sh-av' + (isGrp(type) ? ' sh-av-g' : '') + (type === 'remote' || type === 'remote_group' ? ' sh-av-r' : ''),
                  isGrp(type) ? '' : (name || '?').charAt(0).toUpperCase());
       if (isGrp(type)) a.appendChild(grpIc());
-      a.setAttribute('aria-hidden', 'true'); return a;
+      a.setAttribute('aria-hidden', 'true');
+      return isGrp(type) ? a : HK.avatarImg(a, url, 30);      // Profilbild ueber den Initialen (falls vorhanden)
     }
     function who(x) {
-      var li = el('li', 'sh-item'); li.appendChild(avatar(x.type, x.name));
+      var li = el('li', 'sh-item'); li.appendChild(avatar(x.type, x.name, x.avatar));
       var tx = el('span', 'sh-who'); tx.appendChild(el('span', 'sh-name', x.name || x.target));
       var sub = x.type === 'remote' ? T('Andere Saga-Instanz')               // Name enthaelt schon name@server
         : x.type === 'remote_group' ? T('Gruppe auf einer anderen Saga-Instanz')
@@ -4076,7 +4081,7 @@
     function draw() {
       list.textContent = '';
       var on = (S.cur && S.cur.id === id && S.cur.owner) ? S.cur.owner.name : '';
-      var me = el('li', 'sh-item sh-owner'); me.appendChild(avatar('user', on || T('Du')));
+      var me = el('li', 'sh-item sh-owner'); me.appendChild(avatar('user', on || T('Du'), on ? S.cur.owner.avatar : null));
       var mt = el('span', 'sh-who'); mt.appendChild(el('span', 'sh-name', on ? T('{name} (du)', { name: on }) : T('Du')));
       mt.appendChild(el('small', 'sh-sub', T('Eigentümer'))); me.appendChild(mt);
       list.appendChild(me);
@@ -4139,10 +4144,10 @@
     }
     function hitList(d) {
       last = d; hits.textContent = ''; var any = false, tk = taken();
-      function add(type, target, name, sub) {
+      function add(type, target, name, sub, url) {
         any = true;
         var b = el('button', 'sh-hit'); b.type = 'button'; b.setAttribute('role', 'option');
-        b.appendChild(avatar(type, name));
+        b.appendChild(avatar(type, name, url));
         var tx = el('span', 'sh-who'); tx.appendChild(el('span', 'sh-name', name)); tx.appendChild(el('small', 'sh-sub', sub)); b.appendChild(tx);
         b.appendChild(el('span', 'sh-has', tk[type + ':' + target] ? T('hat Zugriff') : T('als {role} hinzufügen', { role: ROLE_NAME[rsel.value] })));
         b.addEventListener('click', function () {
@@ -4151,7 +4156,7 @@
         });
         hits.appendChild(b);
       }
-      (d.users || []).forEach(function (u) { add('user', u.username, u.name, u.username); });
+      (d.users || []).forEach(function (u) { add('user', u.username, u.name, u.username, u.avatar); });
       (d.groups || []).forEach(function (g) { add('group', g.name, g.name, T('Gruppe')); });
       (d.remote || []).forEach(function (h) {             // andere Saga-Instanz (genaue Adresse name@server)
         add(h.type, h.target, h.name, h.type === 'remote' ? T('Andere Saga-Instanz') : T('Gruppe auf einer anderen Saga-Instanz'));
