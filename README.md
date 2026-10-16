@@ -51,6 +51,8 @@ private space – no cloud, no subscription, on your own server.
   Comment, Edit, subpages inherit the share; unobtrusive comments on blocks with “Resolved”
 - **End-to-end encrypted chats:** direct, group and page chats with attachments, replies and @ page links; the
   server (and the admin) only sees encrypted data – libsodium, recovery key, safety numbers, multiple devices
+- **Audio and video calls:** from the direct chat, with screen sharing – WebRTC between the devices, end-to-end encrypted
+  and verified with the chat keys, no extra port (optional TURN over 443)
 - **Notifications and push:** bell with live updates; optionally to phone/desktop via Web Push (end-to-end encrypted,
   also iPhone as a home screen app), ntfy/UnifiedPush or Apple Push – without content
 - **AI assistant (optional):** ask your pages, summarize, suggest tasks, improve or translate text – with a model

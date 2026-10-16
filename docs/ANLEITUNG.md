@@ -644,6 +644,158 @@ Wiederherstellungsschlüssel abgeleiteten Schlüssel verschlüsselt. Genaues For
 für eigene Clients: `tests/chat_vectors.json` (prüfen mit `python3 tools/chat_vectors.py check` bzw.
 `node tools/chat_vectors.mjs`). Die privaten Schlüssel liegen im Browser in IndexedDB; im privaten Fenster gehen Chats nicht.
 
+### Anrufe (Audio, Video, Bildschirm)
+
+Im **Direkt-Chat** stehen oben zwei Knöpfe: **📞 Anrufen** und **🎥 Videoanruf**. Saga verbindet die beiden Geräte
+direkt (WebRTC) – die Medien laufen nicht über den Saga-Server und sind **Ende-zu-Ende verschlüsselt**. Kein
+zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-Kanal + normale Anfragen).
+
+- **Klingeln:** Beim Gegenüber erscheint auf **jeder Saga-Seite** (Dashboard, Seiten, Chats) „Name ruft an“ mit
+  Annehmen/Ablehnen (bei Videoanrufen auch „Nur mit Ton annehmen“), dazu ein Klingelton (🔔/🔕 schaltet ihn ab, die
+  Wahl gilt für diesen Browser) und eine **Mitteilung** aufs Handy/den Computer – „Anruf von Name“ bzw. ohne Namen,
+  wenn „Namen zeigen“ aus ist. Alle Geräte und Tabs der Person klingeln; nimmt man auf einem an, hören die anderen auf.
+  Annehmen auf dem Dashboard oder einer Seite öffnet den Anruf im Chat-Tab (dort liegen die Schlüssel des Browsers).
+- **Im Anruf:** großes Bild des Gegenübers, kleines eigenes Bild, **Stummschalten**, **Kamera an/aus** (auch in
+  einem Audioanruf nachträglich), **Bildschirm teilen** (am Computer), **Auflegen**, „▭“ verkleinert das Fenster in
+  eine Ecke (weiter im Chat schreiben). Oben stehen Dauer, Verbindungsqualität und der Weg: **direkt** oder **über
+  Relais (TURN)**, und „🔒 Ende-zu-Ende verschlüsselt“, sobald die Prüfung (unten) geklappt hat.
+- **Nicht angenommen:** Nach der Klingeldauer (Standard 45 s) gilt der Anruf als **verpasst**. Im Chat steht dann ein
+  Eintrag „Verpasster Anruf“ (mit „Zurückrufen“), dazu eine Benachrichtigung „Verpasster Anruf von Name“ (abschaltbar
+  unter Benachrichtigungen bzw. Mitteilungen → „Anrufe“). Auch beendete, abgelehnte und besetzte Anrufe stehen im Chat.
+- **Besetzt:** Wer gerade telefoniert, bekommt keinen zweiten Anruf – der Anrufende sieht „Besetzt“.
+- **Wer darf anrufen?** Nur die beiden Personen eines Direkt-Chats, beide mit eingerichteten Chats. Stummgeschaltete
+  Chats klingeln nicht aufs Handy. Gegen Klingel-Spam: höchstens 3 Anrufe je Minute an dieselbe Person.
+- **Kamera/Mikrofon:** Der Browser fragt beim ersten Anruf. Wurde es verweigert, erklärt Saga, wo man es wieder
+  erlaubt (Schloss-Symbol neben der Adresse). Anrufe brauchen `https`.
+
+**Erreichbarkeit:** Im selben Netz und zwischen üblichen Heimanschlüssen klappt die Direktverbindung fast immer – dafür
+fragen die Geräte einen **STUN-Server** nach ihrer öffentlichen Adresse (Standard: `stun:stun.nextcloud.com:443`).
+Hinter strengen Firmen-Firewalls, in manchen Mobilfunknetzen (CGNAT) oder wenn eine Seite nur Port 443 nach außen darf,
+braucht es einen **TURN-Server**, der die Medien weiterreicht (weiterhin verschlüsselt – der TURN-Server kann nicht
+mithören). Ohne ihn sehen die Personen „Direktverbindung nicht möglich … Der Admin kann einen TURN-Server eintragen.“
+
+**Admin → Allgemein → „Anrufe“:** **Anrufe erlauben** (Standard an; braucht Chats), **STUN-Server** (leer = keiner;
+Datenschutz: der STUN-Server sieht die IP-Adressen der Anrufenden – wer das nicht will, trägt einen eigenen ein, z. B.
+den eigenen coturn), **TURN-Server** mit **gemeinsamem Geheimnis** (empfohlen: Saga erzeugt je Anruf Zugangsdaten nach
+dem TURN-REST-Verfahren, gültig 12 Stunden; der TURN-Server sieht nur einen Hash statt des Kontonamens) oder **festem
+Benutzer/Passwort**, **Nur über TURN verbinden** (die Geräte sehen dann die IP-Adresse des Gegenübers nicht) und die
+**Klingeldauer** (15–120 s). Geheimnisse werden verschlüsselt gespeichert; „TURN-Zugangsdaten löschen“ entfernt sie.
+
+#### TURN über Port 443 (coturn hinter dem Reverse Proxy, per SNI)
+
+Saga öffnet keinen Port – und auch für TURN muss keiner dazukommen: Der Reverse Proxy schaut beim Verbindungsaufbau auf
+den Namen im TLS-Handshake (SNI) und reicht `turn.example.org` unverändert an coturn weiter, alles andere wie bisher an
+die Webserver. Man braucht nur einen zusätzlichen DNS-Namen (und ein Zertifikat dafür).
+
+1. **coturn** installieren (Paket `coturn` oder Container `coturn/coturn`) und `/etc/turnserver.conf`:
+
+```ini
+use-auth-secret
+static-auth-secret=HIER-EIN-LANGES-ZUFALLSGEHEIMNIS     # z. B. openssl rand -hex 32 – dasselbe im Saga-Admin eintragen
+realm=turn.example.org
+listening-ip=127.0.0.1                                   # nur der Proxy spricht mit coturn
+tls-listening-port=5349
+cert=/etc/coturn/fullchain.pem                          # Zertifikat fuer turn.example.org
+pkey=/etc/coturn/privkey.pem
+fingerprint
+no-cli
+no-multicast-peers
+# keine Weiterleitung ins eigene Netz (Schutz vor Missbrauch als Tunnel) ...
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+# ... ausser zu den eigenen Relais-Adressen (beide Seiten ueber TURN): IP dieses Servers
+allowed-peer-ip=192.0.2.10                               # Beispiel-IP - durch die eigene ersetzen
+relay-ip=192.0.2.10
+```
+
+2. **Reverse Proxy** auf Port 443 nach SNI aufteilen. Die bisherigen HTTPS-Server lauschen dann intern (hier 8443).
+
+nginx (Modul `stream`, `ssl_preread`):
+
+```nginx
+stream {
+    map $ssl_preread_server_name $backend {
+        turn.example.org  127.0.0.1:5349;     # coturn (macht TLS selbst)
+        default           127.0.0.1:8443;     # alle bisherigen https-Server: "listen 127.0.0.1:8443 ssl;"
+    }
+    server {
+        listen 443;
+        listen [::]:443;
+        ssl_preread on;
+        proxy_pass $backend;
+    }
+}
+```
+
+HAProxy:
+
+```
+frontend tls443
+    bind :443
+    mode tcp
+    tcp-request inspect-delay 5s
+    tcp-request content accept if { req.ssl_hello_type 1 }
+    use_backend coturn if { req.ssl_sni -i turn.example.org }
+    default_backend web
+backend coturn
+    mode tcp
+    server turn 127.0.0.1:5349
+backend web
+    mode tcp
+    server web 127.0.0.1:8443
+```
+
+Traefik (TCP-Router mit TLS-Durchreichung, Einstiegspunkt `websecure` = 443):
+
+```yaml
+tcp:
+  routers:
+    turn:
+      entryPoints: [websecure]
+      rule: "HostSNI(`turn.example.org`)"
+      service: coturn
+      tls:
+        passthrough: true
+  services:
+    coturn:
+      loadBalancer:
+        servers:
+          - address: "127.0.0.1:5349"
+```
+
+Caddy kann das nur mit dem Plugin `caddy-l4` (Matcher `tls sni turn.example.org` → `proxy 127.0.0.1:5349`).
+
+3. Im **Saga-Admin** eintragen: TURN-Server `turns:turn.example.org:443?transport=tcp`, Zugang „Gemeinsames
+   Geheimnis“ und dasselbe Geheimnis wie in coturn. Optional „Nur über TURN verbinden“.
+4. **Prüfen:** Anruf zwischen einem Gerät im WLAN und einem Handy im Mobilfunk – oben im Anruffenster steht dann „über
+   Relais (TURN)“. Ohne Anruf: `turnutils_uclient -t -S -p 443 -W <geheimnis> turn.example.org` (aus dem coturn-Paket).
+
+Hinweise: TURN über TLS/TCP auf 443 kommt durch nahezu jede Firewall, kostet aber etwas Latenz. Die Weiterleitung
+zwischen zwei Geräten läuft in coturn selbst (beide Seiten bekommen eine Relais-Adresse) – deshalb muss der
+Relais-Portbereich (`min-port`/`max-port`) nicht von außen erreichbar sein. Wer zusätzlich UDP 3478 öffnen kann, trägt
+`turn:turn.example.org:3478` als zweite Adresse ein (schneller, wenn UDP erlaubt ist).
+
+**Technik (Format `saga-call/v1`):** WebRTC mit DTLS-SRTP. Jede Signalisierungs-Nachricht (SDP-Angebot/-Antwort,
+ICE-Kandidaten, Zustand) signiert das sendende **Chat-Gerät** mit seinem Ed25519-Schlüssel – über
+`LP("saga-call/v1/signal", call_id, von_konto, von_gerät, an_konto, an_gerät, body)` – und versiegelt sie mit
+`crypto_box_seal` für das Zielgerät. Der Server sieht weder SDP noch IP-Adressen und kann keinen eigenen
+DTLS-Schlüssel unterschieben: Die SDP mit dem DTLS-Fingerabdruck ist signiert, das Gerätezertifikat hängt am
+Identitätsschlüssel (Sicherheitsnummer im Chat), und nach dem Verbindungsaufbau vergleicht der Browser den
+Fingerabdruck des Gegenübers noch einmal mit der signierten SDP. Passt etwas nicht, bricht der Anruf mit einer
+deutlichen Meldung ab. Endpunkte: `/api/calls/config`, `POST /api/calls`, `/api/calls/{id}` (`answer`, `decline`,
+`signal`, `end`, `alive`), `/api/calls/active`; Live-Ereignisse `call.ring`, `call.signal`, `call.state`. Testvektoren
+für eigene Clients: `tests/call_vectors.json` (`python3 tools/call_vectors.py check`, `node tools/call_vectors.mjs`).
+Im Chat stehen Anrufe als Eintrag mit Metadaten (Art, Ergebnis, Dauer – nur, was der Server ohnehin weiß); Apps
+bekommen sie mit `?calls=1`. Push: Art `call` mit hoher Priorität und kurzer Lebensdauer (ntfy Priorität 5), für die
+iOS-/macOS-App zusätzlich Apple-VoIP-Push (PushKit, Abo-Typ `apns-voip`, Topic `<Bundle-ID>.voip`). Das Zugriffs-Log
+enthält für `/api/calls…` keine IP-Adressen.
+
+**Später (Gruppenanrufe):** geplant als Mesh bis etwa 4 Personen im Gruppen-Chat (jede Person baut zu jeder anderen
+eine eigene, ebenso geprüfte Verbindung auf; Signalisierung wie oben je Paar). Darüber bräuchte es einen
+Weiterleitungs-Server (SFU) mit zusätzlicher Inhaltsverschlüsselung (Insertable Streams/SFrame) – das ist bewusst noch
+nicht Teil von Saga.
+
 ### Mitteilungen aufs Handy und den Computer
 
 Die Glocke zeigt alles, solange Saga offen ist. Für unterwegs schickt Saga **Mitteilungen** – auch wenn Saga
@@ -992,6 +1144,12 @@ direkte Verbindung zu diesen Servern.
 Saga prüft höchstens `KDF_PARALLEL` Passwörter gleichzeitig (Standard 4, je Prüfung ca. 32 MB Speicher) und
 wartet höchstens 2 Sekunden auf einen freien Platz. Kommt das im Alltag vor (viele Benutzer, kräftiger Server),
 `KDF_PARALLEL` in der `.env` erhöhen.
+
+**Anruf: „Direktverbindung nicht möglich“ oder es klingelt, verbindet aber nicht.**
+Eine Seite sitzt hinter einer strengen Firewall oder im Mobilfunk-CGNAT. Einen TURN-Server eintragen (Abschnitt
+„Anrufe“ → „TURN über Port 443“). Steht im Anruffenster „über Relais (TURN)“, klappt TURN. „Kamera/Mikrofon nicht
+erlaubt“: im Browser beim Schloss-Symbol neben der Adresse erlauben; Anrufe brauchen `https`. Klingelt es nicht auf
+anderen Seiten, prüfen, ob der Live-Kanal durch den Proxy kommt (Abschnitt 3).
 
 **Hochladen oder Speichern scheitert mit „zu groß“ (413).**
 Dateien: `ATTACH_MAX_MB` (Standard 10). Alles andere, z. B. sehr lange Seiten: `REQUEST_MAX_MB` (Standard 2).

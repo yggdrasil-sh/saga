@@ -48,6 +48,8 @@
 - **Chats mit Ende-zu-Ende-Verschlüsselung:** Direkt-, Gruppen- und Seiten-Chats mit Anhängen, Antworten und
   @-Seitenverweisen; der Server (und der Admin) sieht nur verschlüsselte Daten – libsodium, Wiederherstellungsschlüssel,
   Sicherheitsnummern, mehrere Geräte
+- **Audio- und Videoanrufe:** aus dem Direkt-Chat, mit Bildschirm teilen – WebRTC zwischen den Geräten,
+  Ende-zu-Ende verschlüsselt und mit den Chat-Schlüsseln geprüft, kein zusätzlicher Port (optional TURN über 443)
 - **Benachrichtigungen und Mitteilungen:** Glocke mit Live-Aktualisierung; auf Wunsch aufs Handy/Desktop per Web Push
   (Ende-zu-Ende verschlüsselt, auch iPhone als Home-Bildschirm-App), ntfy/UnifiedPush oder Apple Push – ohne Inhalte
 - **KI-Assistent (optional):** Fragen an die eigenen Seiten, Zusammenfassen, Aufgaben vorschlagen, Text verbessern oder

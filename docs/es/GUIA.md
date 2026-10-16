@@ -652,6 +652,162 @@ clientes propios: `tests/chat_vectors.json` (comprobar con `python3 tools/chat_v
 `node tools/chat_vectors.mjs`). En el navegador, las claves privadas están en IndexedDB; en una ventana privada los chats
 no funcionan.
 
+### Llamadas (audio, vídeo, pantalla)
+
+En un **chat directo** hay dos botones arriba: **📞 Llamar** y **🎥 Videollamada**. Saga conecta los dos dispositivos
+directamente (WebRTC): los medios no pasan por el servidor de Saga y están **cifrados de extremo a extremo**. Sin puerto
+adicional: Saga coordina la llamada por el puerto web normal (canal en vivo + peticiones normales).
+
+- **Tono de llamada:** la otra persona ve «Nombre está llamando» con Responder/Rechazar en **cualquier página de Saga**
+  (panel, páginas, chats) – en videollamadas también «Responder solo con audio» –, además de un tono (🔔/🔕 lo apaga en
+  este navegador) y una **notificación push** al móvil/ordenador («Llamada de Nombre», o sin nombre si «Mostrar
+  nombres» está desactivado). Suenan todos los dispositivos y pestañas de la persona; al responder en uno, los demás
+  dejan de sonar. Responder en el panel o en una página abre la llamada en la pestaña de chats (ahí están las claves
+  de este navegador).
+- **Durante la llamada:** imagen grande de la otra persona, imagen propia pequeña, **silenciar**, **cámara sí/no**
+  (también después en una llamada de audio), **compartir pantalla** (en el ordenador), **colgar**; «▭» reduce la
+  ventana a una esquina (para seguir escribiendo). Arriba: duración, calidad de la conexión y el camino – **directo** o
+  **por relé (TURN)** – y «🔒 Cifrado de extremo a extremo» en cuanto la comprobación (abajo) ha funcionado.
+- **Sin respuesta:** tras la duración del tono (por defecto 45 s) la llamada cuenta como **perdida**. En el chat
+  aparece «Llamada perdida» (con «Devolver llamada») y una notificación «Llamada perdida de Nombre» (desactivable en
+  notificaciones o push → «Llamadas»). Las llamadas finalizadas, rechazadas y ocupadas también aparecen en el chat.
+- **Ocupado:** quien ya está en una llamada no recibe una segunda; quien llama ve «Ocupado».
+- **¿Quién puede llamar?** Solo las dos personas de un chat directo, ambas con los chats configurados. Los chats
+  silenciados no hacen sonar el móvil. Contra el spam: como máximo 3 llamadas por minuto a la misma persona.
+- **Cámara/micrófono:** el navegador pregunta en la primera llamada. Si se denegó, Saga explica dónde volver a
+  permitirlo (icono de candado junto a la dirección). Las llamadas necesitan `https`.
+
+**Accesibilidad:** en la misma red y entre conexiones domésticas habituales, la conexión directa casi siempre funciona;
+para ello los dispositivos preguntan a un **servidor STUN** por su dirección pública (por defecto:
+`stun:stun.nextcloud.com:443`). Detrás de cortafuegos corporativos estrictos, en algunas redes móviles (CGNAT) o si un
+lado solo puede usar el puerto 443 hacia fuera, hace falta un **servidor TURN** que reenvíe los medios (siguen
+cifrados: el servidor TURN no puede escuchar). Sin él se ve «No es posible una conexión directa … El administrador
+puede configurar un servidor TURN».
+
+**Administración → General → «Llamadas»:** **Permitir llamadas** (activado por defecto; requiere los chats), **servidor
+STUN** (vacío = ninguno; privacidad: el servidor STUN ve las direcciones IP de quienes llaman; si no se quiere, usar uno
+propio, p. ej. el propio coturn), **servidor TURN** con **secreto compartido** (recomendado: Saga genera credenciales por
+llamada según el esquema TURN REST, válidas 12 horas; el servidor TURN solo ve un hash en lugar del nombre de la cuenta)
+o con **usuario/contraseña fijos**, **Conectar solo a través de TURN** (los dispositivos no ven la dirección IP de la
+otra persona) y la **duración del tono** (15–120 s). Los secretos se guardan cifrados; «Borrar credenciales TURN» los
+elimina.
+
+#### TURN por el puerto 443 (coturn detrás del proxy inverso, mediante SNI)
+
+Saga no abre ningún puerto, y TURN tampoco lo necesita: al iniciar la conexión, el proxy inverso mira el nombre en el
+saludo TLS (SNI) y pasa `turn.example.org` sin cambios a coturn; todo lo demás va como antes a los servidores web. Solo
+hace falta un nombre DNS más (y un certificado para él).
+
+1. Instalar **coturn** (paquete `coturn` o contenedor `coturn/coturn`) y `/etc/turnserver.conf`:
+
+```ini
+use-auth-secret
+static-auth-secret=A-LONG-RANDOM-SECRET                  # p. ej. openssl rand -hex 32 - el mismo en la administracion de Saga
+realm=turn.example.org
+listening-ip=127.0.0.1                                   # solo el proxy habla con coturn
+tls-listening-port=5349
+cert=/etc/coturn/fullchain.pem                          # certificado para turn.example.org
+pkey=/etc/coturn/privkey.pem
+fingerprint
+no-cli
+no-multicast-peers
+# sin reenvio hacia la red propia (evita el abuso como tunel) ...
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+# ... salvo a las propias direcciones de rele (ambos lados por TURN): IP de este servidor
+allowed-peer-ip=192.0.2.10                               # IP de ejemplo - sustituir por la propia
+relay-ip=192.0.2.10
+```
+
+2. Repartir el puerto 443 por SNI en el **proxy inverso**. Los servidores HTTPS existentes escuchan entonces
+   internamente (aquí 8443).
+
+nginx (módulo `stream`, `ssl_preread`):
+
+```nginx
+stream {
+    map $ssl_preread_server_name $backend {
+        turn.example.org  127.0.0.1:5349;     # coturn (hace TLS el mismo)
+        default           127.0.0.1:8443;     # todos los servidores https anteriores: "listen 127.0.0.1:8443 ssl;"
+    }
+    server {
+        listen 443;
+        listen [::]:443;
+        ssl_preread on;
+        proxy_pass $backend;
+    }
+}
+```
+
+HAProxy:
+
+```
+frontend tls443
+    bind :443
+    mode tcp
+    tcp-request inspect-delay 5s
+    tcp-request content accept if { req.ssl_hello_type 1 }
+    use_backend coturn if { req.ssl_sni -i turn.example.org }
+    default_backend web
+backend coturn
+    mode tcp
+    server turn 127.0.0.1:5349
+backend web
+    mode tcp
+    server web 127.0.0.1:8443
+```
+
+Traefik (router TCP con TLS passthrough, punto de entrada `websecure` = 443):
+
+```yaml
+tcp:
+  routers:
+    turn:
+      entryPoints: [websecure]
+      rule: "HostSNI(`turn.example.org`)"
+      service: coturn
+      tls:
+        passthrough: true
+  services:
+    coturn:
+      loadBalancer:
+        servers:
+          - address: "127.0.0.1:5349"
+```
+
+Caddy solo puede hacerlo con el plugin `caddy-l4` (matcher `tls sni turn.example.org` → `proxy 127.0.0.1:5349`).
+
+3. En la **administración de Saga**: servidor TURN `turns:turn.example.org:443?transport=tcp`, acceso «Secreto
+   compartido» y el mismo secreto que en coturn. Opcional: «Conectar solo a través de TURN».
+4. **Comprobar:** llamada entre un dispositivo en wifi y un móvil con datos; la ventana de llamada muestra «por relé
+   (TURN)». Sin llamada: `turnutils_uclient -t -S -p 443 -W <secreto> turn.example.org` (del paquete coturn).
+
+Notas: TURN sobre TLS/TCP en el 443 atraviesa casi cualquier cortafuegos, pero añade algo de latencia. El reenvío
+entre dos dispositivos ocurre dentro de coturn (ambos lados obtienen una dirección de relé), así que el rango de puertos
+de relé (`min-port`/`max-port`) no tiene que ser accesible desde fuera. Si además se puede abrir UDP 3478, añadir
+`turn:turn.example.org:3478` como segunda dirección (más rápido donde UDP está permitido).
+
+**Técnica (formato `saga-call/v1`):** WebRTC con DTLS-SRTP. Cada mensaje de señalización (oferta/respuesta SDP,
+candidatos ICE, estado) lo firma el **dispositivo de chat** emisor con su clave Ed25519 – sobre
+`LP("saga-call/v1/signal", call_id, de_cuenta, de_dispositivo, a_cuenta, a_dispositivo, body)` – y lo sella con
+`crypto_box_seal` para el dispositivo de destino. El servidor no ve ni el SDP ni las direcciones IP y no puede colar su
+propia clave DTLS: el SDP con la huella DTLS está firmado, el certificado del dispositivo depende de la clave de
+identidad (número de seguridad en el chat) y, tras conectar, el navegador compara otra vez la huella de la otra parte
+con el SDP firmado. Si algo no coincide, la llamada se cancela con un mensaje claro. Endpoints: `/api/calls/config`,
+`POST /api/calls`, `/api/calls/{id}` (`answer`, `decline`, `signal`, `end`, `alive`), `/api/calls/active`; eventos en
+vivo `call.ring`, `call.signal`, `call.state`. Vectores de prueba para clientes propios: `tests/call_vectors.json`
+(`python3 tools/call_vectors.py check`, `node tools/call_vectors.mjs`). Las llamadas aparecen en el chat como entrada con
+metadatos (tipo, resultado, duración: solo lo que el servidor ya sabe); las apps las reciben con `?calls=1`. Push: tipo
+`call` con prioridad alta y vida corta (ntfy prioridad 5); para la app de iOS/macOS además push VoIP de Apple (PushKit,
+tipo de suscripción `apns-voip`, topic `<bundle-id>.voip`). El registro de accesos no contiene direcciones IP para
+`/api/calls…`.
+
+**Más adelante (llamadas de grupo):** previstas como malla de hasta unas 4 personas en un chat de grupo (cada persona
+crea su propia conexión, igual de verificada, con cada una de las demás; señalización como arriba por pareja). Más allá
+haría falta un servidor de reenvío (SFU) con cifrado adicional del contenido (Insertable Streams/SFrame); a propósito,
+todavía no forma parte de Saga.
+
 ### Notificaciones push al móvil y al ordenador
 
 La campana lo muestra todo mientras Saga está abierta. Para cuando no estás, Saga envía **notificaciones push**,
@@ -1008,6 +1164,12 @@ conexión directa con esos servidores.
 Saga comprueba como mucho `KDF_PARALLEL` contraseñas a la vez (por defecto 4, unos 32 MB de memoria cada una) y
 espera como mucho 2 segundos a que quede un hueco libre. Si pasa a menudo (muchos usuarios, servidor potente),
 sube `KDF_PARALLEL` en el `.env`.
+
+**Llamada: «No es posible una conexión directa», o suena pero no conecta.**
+Un lado está detrás de un cortafuegos estricto o de CGNAT móvil. Configurar un servidor TURN (sección «Llamadas» →
+«TURN por el puerto 443»). Si la ventana de llamada muestra «por relé (TURN)», TURN funciona. «Cámara/micrófono no
+permitidos»: permitirlo en el navegador con el icono de candado junto a la dirección; las llamadas necesitan `https`.
+Si no suena en otras páginas, comprobar que el canal en vivo atraviesa el proxy (sección 3).
 
 **Subir o guardar falla con "demasiado grande" (413).**
 Archivos: `ATTACH_MAX_MB` (por defecto 10). Todo lo demás, p. ej. páginas muy largas: `REQUEST_MAX_MB` (por

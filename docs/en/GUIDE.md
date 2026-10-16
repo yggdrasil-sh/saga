@@ -624,6 +624,157 @@ encrypted with a key derived from the recovery key via `crypto_pwhash` (Argon2id
 `python3 tools/chat_vectors.py check` or `node tools/chat_vectors.mjs`). In the browser the private keys live in
 IndexedDB; chats don't work in a private window.
 
+### Calls (audio, video, screen)
+
+In a **direct chat** there are two buttons at the top: **📞 Call** and **🎥 Video call**. Saga connects the two devices
+directly (WebRTC) – media does not go through the Saga server and is **end-to-end encrypted**. No extra port: Saga sets
+up the call over the regular web port (live channel + normal requests).
+
+- **Ringing:** the other person sees "Name is calling" with Answer/Decline on **every Saga page** (dashboard, pages,
+  chats) – for video calls also "Answer with audio only" – plus a ringtone (🔔/🔕 turns it off for this browser) and a
+  **push notification** to phone/computer ("Call from Name", or without the name if "Show names" is off). All devices
+  and tabs of the person ring; answering on one stops the others. Answering on the dashboard or a page opens the call in
+  the chats tab (that's where this browser's keys are).
+- **During the call:** large picture of the other person, small own picture, **mute**, **camera on/off** (also later in
+  an audio call), **share screen** (on a computer), **hang up**; "▭" shrinks the window to a corner (keep chatting).
+  At the top: duration, connection quality and the path – **direct** or **via relay (TURN)** – and "🔒 End-to-end
+  encrypted" once the check (below) has passed.
+- **Not answered:** after the ring duration (default 45 s) the call counts as **missed**. The chat then shows "Missed
+  call" (with "Call back") and there is a notification "Missed call from Name" (can be turned off under notifications or
+  push → "Calls"). Ended, declined and busy calls also appear in the chat.
+- **Busy:** someone already on a call doesn't get a second one – the caller sees "Busy".
+- **Who may call?** Only the two people of a direct chat, both with chats set up. Muted chats don't ring the phone.
+  Against ring spam: at most 3 calls per minute to the same person.
+- **Camera/microphone:** the browser asks on the first call. If it was denied, Saga explains where to allow it again
+  (lock icon next to the address). Calls need `https`.
+
+**Reachability:** within the same network and between typical home connections, the direct connection almost always
+works – for that the devices ask a **STUN server** for their public address (default: `stun:stun.nextcloud.com:443`).
+Behind strict corporate firewalls, in some mobile networks (CGNAT) or when one side may only use port 443 outbound, you
+need a **TURN server** that relays the media (still encrypted – the TURN server cannot listen in). Without it people see
+"Direct connection not possible … The admin can configure a TURN server."
+
+**Admin → General → "Calls":** **Allow calls** (default on; requires chats), **STUN server** (empty = none; privacy: the
+STUN server sees the callers' IP addresses – if you don't want that, use your own, e.g. your coturn), **TURN server**
+with a **shared secret** (recommended: Saga creates per-call credentials following the TURN REST scheme, valid for 12
+hours; the TURN server only sees a hash instead of the account name) or a **fixed username/password**, **Connect via
+TURN only** (the devices then don't see each other's IP address) and the **ring duration** (15–120 s). Secrets are
+stored encrypted; "Delete TURN credentials" removes them.
+
+#### TURN over port 443 (coturn behind the reverse proxy, via SNI)
+
+Saga opens no port – and TURN doesn't need one either: when a connection starts, the reverse proxy looks at the name in
+the TLS handshake (SNI) and passes `turn.example.org` unchanged to coturn, everything else to the web servers as
+before. You only need one more DNS name (and a certificate for it).
+
+1. Install **coturn** (package `coturn` or container `coturn/coturn`) and `/etc/turnserver.conf`:
+
+```ini
+use-auth-secret
+static-auth-secret=A-LONG-RANDOM-SECRET                  # e.g. openssl rand -hex 32 - enter the same in the Saga admin
+realm=turn.example.org
+listening-ip=127.0.0.1                                   # only the proxy talks to coturn
+tls-listening-port=5349
+cert=/etc/coturn/fullchain.pem                          # certificate for turn.example.org
+pkey=/etc/coturn/privkey.pem
+fingerprint
+no-cli
+no-multicast-peers
+# no relaying into your own network (prevents abuse as a tunnel) ...
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+# ... except to your own relay addresses (both sides via TURN): this server's IP
+allowed-peer-ip=192.0.2.10                               # example IP - replace with your own
+relay-ip=192.0.2.10
+```
+
+2. Split port 443 by SNI in the **reverse proxy**. The existing HTTPS servers then listen internally (here 8443).
+
+nginx (module `stream`, `ssl_preread`):
+
+```nginx
+stream {
+    map $ssl_preread_server_name $backend {
+        turn.example.org  127.0.0.1:5349;     # coturn (does TLS itself)
+        default           127.0.0.1:8443;     # all previous https servers: "listen 127.0.0.1:8443 ssl;"
+    }
+    server {
+        listen 443;
+        listen [::]:443;
+        ssl_preread on;
+        proxy_pass $backend;
+    }
+}
+```
+
+HAProxy:
+
+```
+frontend tls443
+    bind :443
+    mode tcp
+    tcp-request inspect-delay 5s
+    tcp-request content accept if { req.ssl_hello_type 1 }
+    use_backend coturn if { req.ssl_sni -i turn.example.org }
+    default_backend web
+backend coturn
+    mode tcp
+    server turn 127.0.0.1:5349
+backend web
+    mode tcp
+    server web 127.0.0.1:8443
+```
+
+Traefik (TCP router with TLS passthrough, entry point `websecure` = 443):
+
+```yaml
+tcp:
+  routers:
+    turn:
+      entryPoints: [websecure]
+      rule: "HostSNI(`turn.example.org`)"
+      service: coturn
+      tls:
+        passthrough: true
+  services:
+    coturn:
+      loadBalancer:
+        servers:
+          - address: "127.0.0.1:5349"
+```
+
+Caddy can only do this with the `caddy-l4` plugin (matcher `tls sni turn.example.org` → `proxy 127.0.0.1:5349`).
+
+3. In the **Saga admin**: TURN server `turns:turn.example.org:443?transport=tcp`, access "Shared secret" and the same
+   secret as in coturn. Optionally "Connect via TURN only".
+4. **Check:** call between a device on Wi-Fi and a phone on mobile data – the call window then shows "via relay
+   (TURN)". Without a call: `turnutils_uclient -t -S -p 443 -W <secret> turn.example.org` (from the coturn package).
+
+Notes: TURN over TLS/TCP on 443 gets through almost any firewall but adds some latency. Relaying between two devices
+happens inside coturn (both sides get a relay address) – so the relay port range (`min-port`/`max-port`) does not have
+to be reachable from outside. If you can also open UDP 3478, add `turn:turn.example.org:3478` as a second address
+(faster where UDP is allowed).
+
+**Technical (format `saga-call/v1`):** WebRTC with DTLS-SRTP. Every signalling message (SDP offer/answer, ICE
+candidates, state) is signed by the sending **chat device** with its Ed25519 key – over
+`LP("saga-call/v1/signal", call_id, from_account, from_device, to_account, to_device, body)` – and sealed with
+`crypto_box_seal` for the target device. The server sees neither SDP nor IP addresses and cannot inject its own DTLS
+key: the SDP containing the DTLS fingerprint is signed, the device certificate is tied to the identity key (safety
+number in the chat), and after connecting the browser compares the peer's fingerprint once more with the signed SDP.
+If anything doesn't match, the call is aborted with a clear message. Endpoints: `/api/calls/config`, `POST /api/calls`,
+`/api/calls/{id}` (`answer`, `decline`, `signal`, `end`, `alive`), `/api/calls/active`; live events `call.ring`,
+`call.signal`, `call.state`. Test vectors for your own clients: `tests/call_vectors.json`
+(`python3 tools/call_vectors.py check`, `node tools/call_vectors.mjs`). Calls appear in the chat as an entry with
+metadata (kind, result, duration – only what the server knows anyway); apps get them with `?calls=1`. Push: kind
+`call` with high priority and short lifetime (ntfy priority 5), for the iOS/macOS app additionally Apple VoIP push
+(PushKit, subscription type `apns-voip`, topic `<bundle-id>.voip`). The access log contains no IP addresses for
+`/api/calls…`.
+
+**Later (group calls):** planned as a mesh of up to about 4 people in a group chat (each person builds its own,
+equally verified connection to every other; signalling as above per pair). Beyond that a forwarding server (SFU) with
+additional content encryption (Insertable Streams/SFrame) would be needed – deliberately not part of Saga yet.
+
 ### Push notifications to phone and computer
 
 The bell shows everything while Saga is open. For when you're away, Saga sends **push notifications** – even when
@@ -968,6 +1119,12 @@ these servers.
 Saga checks at most `KDF_PARALLEL` passwords at the same time (default 4, about 32 MB of memory each) and waits at
 most 2 seconds for a free slot. If this happens in everyday use (many users, powerful server), raise
 `KDF_PARALLEL` in `.env`.
+
+**Call: "Direct connection not possible", or it rings but never connects.**
+One side is behind a strict firewall or mobile CGNAT. Configure a TURN server (section "Calls" → "TURN over port 443").
+If the call window shows "via relay (TURN)", TURN works. "Camera/microphone not allowed": allow it in the browser via
+the lock icon next to the address; calls need `https`. If other pages don't ring, check that the live channel gets
+through the proxy (section 3).
 
 **Uploading or saving fails with "too large" (413).**
 Files: `ATTACH_MAX_MB` (default 10). Everything else, e.g. very long pages: `REQUEST_MAX_MB` (default 2). If the

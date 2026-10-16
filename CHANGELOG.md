@@ -51,6 +51,30 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `Accept: image/webp`, keine Aufzählung der Konten); auf veröffentlichten Seiten nur mit Erlaubnis der Person
   (Standard aus). Föderation: `GET /fed/v1/avatar/{name}` (signiert, höchstens 512 KB), beim Empfänger neu kodiert
   und einen Tag zwischengespeichert. Konto löschen entfernt Bild und Zwischenspeicher.
+- **Audio-/Video-Anrufe aus dem Direkt-Chat** (Web): 📞/🎥 im Kopf des Direkt-Chats; Audio, Video, Bildschirm teilen
+  (Computer), Stummschalten, Kamera an/aus, kleines Fenster. WebRTC direkt zwischen den Geräten (DTLS-SRTP) –
+  **ohne zusätzlichen Port**: Signalisierung über den Live-Kanal (SSE) und normale Anfragen. **Ende-zu-Ende geprüft:**
+  jede Signal-Nachricht (SDP, ICE) wird vom Chat-Gerät signiert (Ed25519) und für das Zielgerät versiegelt
+  (`crypto_box_seal`) – der Server sieht weder SDP noch IP-Adressen und kann keinen DTLS-Schlüssel unterschieben
+  (Fingerabdruck in der signierten SDP, nach dem Verbinden zusätzlich gegen `getStats` geprüft; sonst Abbruch mit
+  Meldung). Format `saga-call/v1`, Testvektoren `tests/call_vectors.json`. **Klingeln** auf jeder Saga-Seite (alle
+  Geräte/Tabs, Klingelton abschaltbar, Annehmen öffnet den Chat-Tab), Push-Art `call` mit hoher Priorität und
+  kurzer Lebensdauer (ohne Namen, wenn so eingestellt); Klingeldauer (Standard 45 s), danach **verpasster Anruf** als
+  Eintrag im Chat (Metadaten) + Benachrichtigung `call.missed`; besetzt, abgelehnt, abgebrochen, Verbindung verloren.
+  Verständliche Meldungen bei verweigerter Kamera/Mikrofon und wenn keine Direktverbindung zustande kommt. Nur die
+  beiden Personen eines Direkt-Chats; höchstens 3 Anrufe je Minute an dieselbe Person; im Zugriffs-Log keine
+  IP-Adressen für `/api/calls…`. Gruppenanrufe kommen später (Konzept in der Anleitung).
+- **Admin → Allgemein → „Anrufe“:** an/aus, STUN-Server (Standard `stun:stun.nextcloud.com:443`, mit
+  Datenschutz-Hinweis, leer = keiner), optional **TURN** mit gemeinsamem Geheimnis (zeitlich begrenzte Zugangsdaten
+  nach TURN-REST, coturn `use-auth-secret`) oder festem Zugang, „Nur über TURN verbinden“, Klingeldauer. Anleitung
+  „TURN über Port 443 per SNI im Reverse Proxy“ (nginx, HAProxy, Traefik) – Saga öffnet selbst keinen Port.
+- **Apps/API (Anrufe):** `/api/calls/config` (ICE-Server mit frischen TURN-Zugangsdaten), `POST /api/calls`,
+  `/api/calls/{id}` und `…/answer|decline|signal|end|alive`, `/api/calls/active`; Live-Ereignisse `call.ring`,
+  `call.signal`, `call.state`. Anruf-Einträge im Chat mit `GET /api/chats/{id}/messages?calls=1` (ohne den Parameter
+  wie bisher – ältere Apps sehen sie nicht). Push: Kategorie `call` (Arten `call`, `call.missed`); neuer Abo-Typ
+  **`apns-voip`** (PushKit-Token der iOS-/macOS-App: `apns-push-type: voip`, Topic `<Bundle-ID>.voip`, nur klingelnde
+  Anrufe – das normale APNs-Abo desselben Geräts klingelt dann nicht doppelt). Neue Tabellen `chat_call`,
+  `chat_call_signal` entstehen beim Start (keine Migration).
 - **API für die Apps:** Personen-Objekte (`owner`, `author`, `updated_by`, `created_by`, `actor`, `sender`, `peer`,
   `members`, Anwesenheit, Personensuche) haben das Feld `avatar` (Adresse oder `null` = Initialen);
   `/api/account` liefert `avatar`. Eigenes Bild: `GET|PUT|PATCH|DELETE /api/account/avatar` (PUT: multipart

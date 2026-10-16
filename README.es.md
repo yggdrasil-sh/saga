@@ -52,6 +52,8 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
 - **Chats cifrados de extremo a extremo:** chats directos, de grupo y de página con adjuntos, respuestas y enlaces @ a
   páginas; el servidor (y el administrador) solo ve datos cifrados: libsodium, clave de recuperación, números de
   seguridad, varios dispositivos
+- **Llamadas de audio y vídeo:** desde el chat directo, con pantalla compartida – WebRTC entre los dispositivos, cifradas
+  de extremo a extremo y verificadas con las claves del chat, sin puerto adicional (TURN opcional por el 443)
 - **Notificaciones y push:** campana con actualización en directo; si quieres, al móvil/escritorio por Web Push (cifrado
   de extremo a extremo, también iPhone como app en la pantalla de inicio), ntfy/UnifiedPush o Apple Push, sin contenido
 - **Asistente de IA (opcional):** pregunta a tus páginas, resume, sugiere tareas, mejora o traduce texto, con el modelo
