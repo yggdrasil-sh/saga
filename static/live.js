@@ -19,7 +19,8 @@
     'comment.new': T('Neue Kommentare auf meinen Seiten'),
     'comment.reply': T('Antworten in Unterhaltungen, an denen ich beteiligt bin'),
     'publish.withdrawn': T('Ein Admin zieht eine Veröffentlichung von mir zurück'),
-    'chat.message': T('Neue Chat-Nachrichten (ohne Inhalt; stummgeschaltete Chats nie)')
+    'chat.message': T('Neue Chat-Nachrichten (ohne Inhalt; stummgeschaltete Chats nie)'),
+    'call.missed': T('Verpasste Anrufe')
   };
   var narrow = window.matchMedia('(max-width: 760px)');
   var NS = 'http://www.w3.org/2000/svg';
@@ -87,6 +88,7 @@
     else if (it.kind === 'comment.mention') s = T('{name} hat dich erwähnt');
     else if (it.kind === 'publish.withdrawn') s = T('Ein Admin hat deine Veröffentlichung zurückgezogen');
     else if (it.kind === 'chat.message') s = n > 1 ? T('{n} neue Nachrichten') : T('Neue Nachricht von {name}');
+    else if (it.kind === 'call.missed') s = T('Verpasster Anruf von {name}');
     else return document.createTextNode(it.text || it.kind);
     return HK.fmtNodes(s, { name: name, role: ROLE[it.role] || '', n: n });
   }
@@ -202,7 +204,7 @@
   function activate(it) {
     if (!it.read) markRead([it.id]);
     closePanel(false);
-    if (it.kind === 'chat.message' && it.access && it.url) {           // Chat (1.5): im Chat-Tab oeffnen
+    if ((it.kind === 'chat.message' || it.kind === 'call.missed') && it.access && it.url) {           // Chat (1.5): im Chat-Tab oeffnen
       if (location.pathname === '/chats') { location.hash = it.url.split('#')[1] || ''; return; }
       var cw = window.open(it.url, 'hk-chats'); if (cw) cw.focus(); return;
     }
@@ -263,7 +265,9 @@
     on(es, 'shared.changed', onShared);
     on(es, 'presence', function (d) { if (d.note_id === P.id) drawPresence(d.users || []); });
     // Chat (1.5): an die Chat-Seite weiterreichen (Ereignis 'hk-live'), Zahl am Knopf "Chats" aktualisieren
-    ['chat.message', 'chat.deleted', 'chat.read', 'chat.typing', 'chat.changed', 'chat.link', 'chat.device'].forEach(function (n) {
+    // Anrufe (2.1, static/calls.js): call.ring / call.signal / call.state ebenso ueber 'hk-live'
+    ['chat.message', 'chat.deleted', 'chat.read', 'chat.typing', 'chat.changed', 'chat.link', 'chat.device', 'call.ring', 'call.signal',
+     'call.state'].forEach(function (n) {
       on(es, n, function (d) { chatEvent(n, d); });
     });
     on(es, 'bye', function (d) {

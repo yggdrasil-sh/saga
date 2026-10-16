@@ -24,6 +24,9 @@ self.addEventListener('push', function (e) {
     timestamp: d.ts ? d.ts * 1000 : Date.now(),
     data: { url: sameOrigin(d.url) }
   };
+  if (d.kind === 'call') {                            // Anruf (2.1): bleibt stehen, bis man reagiert; vibriert wie ein Anruf
+    opts.requireInteraction = true; opts.vibrate = [400, 200, 400, 200, 400];
+  }
   e.waitUntil(self.registration.showNotification(title, opts));
 });
 

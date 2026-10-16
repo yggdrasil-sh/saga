@@ -1,0 +1,94 @@
+/* Saga - Anrufe (2.1, static/calls.js): eingehender Anruf (auf jeder Seite), Anruffenster, Anruf-Eintraege im Chat.
+   Farben aus style.css (--bg, --card, --fg, --accent ...), hell/dunkel wie dort. Das Anruffenster ist bewusst dunkel. */
+:root{--cl-green:#2ea043;--cl-red:#da3633}
+
+/* Eingehender Anruf */
+.cl-ring{position:fixed;top:4.6rem;right:1rem;z-index:210;display:flex;align-items:center;gap:.8rem;max-width:min(460px,calc(100vw - 2rem));
+  background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:16px;padding:.8rem .9rem;
+  box-shadow:0 12px 40px rgba(0,0,0,.35);animation:cl-in .25s ease-out}
+@keyframes cl-in{from{transform:translateY(-12px);opacity:0}to{transform:none;opacity:1}}
+.cl-ring .cl-av{animation:cl-pulse 1.6s ease-in-out infinite}
+@keyframes cl-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--cl-green) 55%,transparent)}50%{box-shadow:0 0 0 10px transparent}}
+@media (prefers-reduced-motion: reduce){.cl-ring,.cl-ring .cl-av{animation:none}}
+.cl-ring-t{display:flex;flex-direction:column;min-width:0;flex:1}
+.cl-ring-t b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.02rem}
+.cl-ring-t span{color:var(--muted);font-size:.88rem}
+.cl-ring-b{display:flex;gap:.45rem;align-items:center;flex:none}
+.cl-av{width:56px;height:56px;flex:none;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:1.4rem;color:#fff;
+  background:color-mix(in srgb,var(--accent) 70%,#334)}
+.cl-av-big{width:96px;height:96px;font-size:2.4rem}
+
+/* Knoepfe */
+.cl-btn{appearance:none;border:1px solid var(--border);background:var(--card-h);color:var(--fg);font:inherit;cursor:pointer;
+  border-radius:999px;min-width:44px;height:44px;padding:0 .7rem;display:inline-grid;place-items:center;font-size:1.15rem;line-height:1}
+.cl-btn:hover{filter:brightness(1.12)}
+.cl-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cl-btn.cl-green{background:var(--cl-green);border-color:var(--cl-green);color:#fff}
+.cl-btn.cl-red{background:var(--cl-red);border-color:var(--cl-red);color:#fff}
+.cl-btn.cl-big{min-width:52px;height:52px;font-size:1.35rem}
+.cl-btn.cl-mini{min-width:36px;height:36px;font-size:.95rem;background:transparent}
+.cl-btn.cl-pill{font-size:.95rem;padding:0 1.2rem;background:#2a3444;border-color:#3a475b;color:#e6ebf2}
+
+/* Anruffenster (immer dunkel: Video wirkt so am besten) */
+.cl-win{position:fixed;inset:0;z-index:200;background:#0b0f15;color:#e6ebf2;display:grid;grid-template-rows:auto 1fr auto auto;
+  --muted:#93a0b2}
+.cl-win.small{inset:auto 1rem 1rem auto;width:min(360px,calc(100vw - 2rem));height:min(260px,50vh);border-radius:14px;overflow:hidden;
+  box-shadow:0 14px 44px rgba(0,0,0,.5);border:1px solid #263242}
+.cl-stage{grid-row:1/-1;grid-column:1;position:relative;overflow:hidden;display:grid;place-items:center}
+.cl-remote{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;display:none}
+.cl-win.has-video .cl-remote{display:block}
+.cl-win.has-video .cl-who{display:none}
+.cl-raudio{display:none}
+.cl-who{display:flex;flex-direction:column;align-items:center;gap:.8rem;padding:1rem;text-align:center}
+.cl-name{font-size:1.4rem;font-weight:600;overflow-wrap:anywhere}
+.cl-win.peer-muted .cl-name::after{content:" 🔇";font-size:1rem}
+.cl-local{position:absolute;right:1rem;bottom:6.2rem;width:min(28vw,220px);aspect-ratio:4/3;object-fit:cover;border-radius:10px;
+  background:#000;border:1px solid #3a475b;transform:scaleX(-1);z-index:2}
+.cl-win.screen .cl-local{transform:none;object-fit:contain}
+.cl-local[hidden]{display:none}
+.cl-top{grid-row:1;grid-column:1;z-index:3;display:flex;align-items:flex-start;gap:.5rem;padding:.8rem 1rem;
+  background:linear-gradient(#0b0f15cc,transparent)}
+.cl-info{display:flex;flex-wrap:wrap;gap:.35rem .8rem;align-items:center;font-size:.86rem;flex:1;min-width:0}
+.cl-info>span{white-space:nowrap}
+.cl-lock{color:#7ee2a8}
+.cl-path{color:var(--muted)}
+.cl-q::before{content:"";display:inline-block;width:.55rem;height:.55rem;border-radius:50%;margin-right:.3rem;background:currentColor}
+.cl-q-good{color:#56d364}.cl-q-mid{color:#e3b341}.cl-q-bad{color:#f85149}
+.cl-shrink{color:#e6ebf2}
+.cl-status{grid-row:3;grid-column:1;z-index:3;text-align:center;padding:.4rem 1rem;font-size:.95rem;color:#e6ebf2;
+  text-shadow:0 1px 3px #000}
+.cl-status.err{color:#ffb3ad;font-weight:600;max-width:46rem;justify-self:center}
+.cl-status[hidden]{display:none}
+.cl-ctl{grid-row:4;grid-column:1;z-index:3;display:flex;justify-content:center;gap:.9rem;padding:.8rem 1rem calc(1.1rem + env(safe-area-inset-bottom));
+  background:linear-gradient(transparent,#0b0f15dd)}
+.cl-round{width:56px;height:56px;min-width:56px;padding:0;font-size:1.35rem;background:#2a3444;border-color:#3a475b;color:#fff}
+.cl-btn svg{width:24px;height:24px;display:block}
+.cl-btn.cl-red svg{transform:rotate(135deg)}
+.cl-ring .cl-btn svg{width:22px;height:22px}
+.cl-win.small .cl-round svg{width:18px;height:18px}
+.cl-round.off{background:#e6ebf2;color:#1d2430;border-color:#e6ebf2}
+.cl-round.on{background:var(--accent);border-color:var(--accent);color:#111}
+.cl-win.small .cl-local{width:34%;bottom:4.4rem;right:.5rem}
+.cl-win.small .cl-ctl{gap:.5rem;padding:.4rem}
+.cl-win.small .cl-round{width:40px;height:40px;min-width:40px;font-size:1rem}
+.cl-win.small .cl-info>span:not(.cl-lock):not(:nth-child(2)){display:none}
+.cl-win.small .cl-av-big{width:56px;height:56px;font-size:1.4rem}
+.cl-win.small .cl-name{font-size:1rem}
+
+/* Handy */
+@media (max-width: 640px){
+  .cl-ring{left:.6rem;right:.6rem;top:auto;bottom:calc(.6rem + env(safe-area-inset-bottom));max-width:none;flex-wrap:wrap}
+  .cl-ring-b{width:100%;justify-content:flex-end}
+  .cl-local{width:32vw;bottom:6rem;right:.6rem}
+  .cl-ctl{gap:.6rem}
+  .cl-win.small{inset:auto .5rem .5rem auto;width:calc(100vw - 1rem)}
+}
+
+/* Chat: Anruf-Knoepfe im Kopf und Eintraege im Verlauf */
+.ct-call-b[hidden]{display:none}
+.ct-call{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:.45rem;margin:.6rem auto;padding:.3rem .8rem;
+  font-size:.88rem;color:var(--muted);background:var(--card);border:1px solid var(--border);border-radius:999px;width:max-content;max-width:100%}
+.ct-call.missed{color:var(--down);border-color:color-mix(in srgb,var(--down) 40%,var(--border))}
+.ct-call time{font-size:.8rem;opacity:.8}
+.ct-call-ic{font-size:.95rem}
+.ct-call .ct-call-back{margin-left:.2rem}

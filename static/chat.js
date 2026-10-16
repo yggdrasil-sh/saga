@@ -647,17 +647,22 @@
       var a = el('a', 'ct-chip ct-pagelink', T('Seite öffnen')); a.href = '/notes#' + c.note_id; a.target = 'hk-notes'; sub.appendChild(a);
     }
     document.title = chatName(c) + ' · ' + T('Chats');
+    if (window.HKCalls) window.HKCalls.head(c);           // Anruf-Knoepfe (static/calls.js) nur im Direkt-Chat
   }
   function loadMsgs(older) {
     var c = S.cur; if (!c || S.loading) return Promise.resolve();
     S.loading = true;
     var first = S.msgs.length ? S.msgs[0].seq : 0, last = S.msgs.length ? S.msgs[S.msgs.length - 1].seq : 0;
-    var url = '/api/chats/' + c.id + '/messages?device=' + q(dev()) + (older && first ? '&before=' + first : (!older && last ? '&after=' + last : ''));
+    var url = '/api/chats/' + c.id + '/messages?calls=1&device=' + q(dev()) + (older && first ? '&before=' + first : (!older && last ? '&after=' + last : ''));
     return api('GET', url).then(function (r) {
       S.loading = false;
       if (!S.cur || S.cur.id !== c.id) return;
       var add = r.messages.filter(function (m) { return !S.byId[m.id]; }).map(function (m) {
         var d;
+        if (m.kind === 'call') {                          // Anruf-Eintrag: Metadaten vom Server (nicht verschluesselt, nur wer/wann/wie lange)
+          try { m.call = JSON.parse(m.body_ct); } catch (e) { m.call = {}; }
+          m.body = null; m.verified = true; S.byId[m.id] = m; return m;
+        }
         try { d = decrypt(c.id, m, r.devices || {}, r.idents || {}); } catch (e) { d = { body: null, verified: false, error: true }; }
         m.body = d.body; m.verified = d.verified; m.error = !!d.error;
         S.byId[m.id] = m; return m;
@@ -716,8 +721,21 @@
       });
     }).catch(function () {});
   }
+  function callText(m) {
+    var k = m.call || {}, out = k.from === ME, v = k.media === 'video';
+    var what = v ? T('Videoanruf') : T('Anruf');
+    if (k.status === 'ended') {
+      var sec = Math.max(0, k.dur | 0), h = Math.floor(sec / 3600), mi = Math.floor(sec % 3600 / 60), p2 = function (x) { return (x < 10 ? '0' : '') + x; };
+      return what + ' · ' + (h ? h + ':' + p2(mi) : mi) + ':' + p2(sec % 60);
+    }
+    if (k.status === 'declined') return T('{what} abgelehnt', { what: what });
+    if (k.status === 'busy') return out ? T('Besetzt') : T('Verpasster Anruf (du hast telefoniert)');
+    if (k.status === 'failed') return T('{what} – keine Verbindung', { what: what });
+    return out ? T('{what} – nicht angenommen', { what: what }) : (v ? T('Verpasster Videoanruf') : T('Verpasster Anruf'));
+  }
   function preview(m) {
     if (!m) return T('Nachricht nicht mehr da');
+    if (m.kind === 'call') return '📞 ' + callText(m);
     if (m.error || !m.body) return T('Nicht entschlüsselbar');
     var t = String(m.body.text || '').replace(/\[\[note:\d+\]\]/g, '📄').replace(/\s+/g, ' ').trim();
     if (!t && (m.body.files || []).length) t = '📎 ' + m.body.files.map(function (f) { return f.n; }).join(', ');
@@ -740,6 +758,7 @@
       var d = new Date(m.created * 1000), day = fDay.format(d);
       if (day !== lastDay) { box.appendChild(el('div', 'ct-day', day)); lastDay = day; lastWho = null; }
       var mine = m.sender && m.sender.username === ME;
+      if (m.kind === 'call') { box.appendChild(callRow(m, d, mine)); lastWho = null; return; }
       var row = el('div', 'ct-msg' + (mine ? ' mine' : '')); row.dataset.id = m.id;
       if (!mine && c.kind !== 'dm' && lastWho !== (m.sender || {}).username) {   // Absender in Gruppen: kleines Profilbild + Name
         var who = el('div', 'ct-who'), sn = m.sender ? m.sender.name : T('Gelöschtes Konto');
@@ -778,6 +797,17 @@
     applySearch();
     if (scroll === 'keep') box.scrollTop = box.scrollHeight - prevH + prevTop;
     else if (scroll === 'bottom' || atBottom) box.scrollTop = box.scrollHeight;
+  }
+  // Anruf-Eintrag (2.1): mittig, mit Richtung, Ergebnis, Uhrzeit und "Zurueckrufen"
+  function callRow(m, d, mine) {
+    var k = m.call || {}, missed = !mine && (k.status === 'missed' || k.status === 'busy');
+    var row = el('div', 'ct-call' + (missed ? ' missed' : '')); row.dataset.id = m.id;
+    row.appendChild(el('span', 'ct-call-ic', (k.media === 'video' ? '🎥' : '📞') + (mine ? '↗' : '↙')));
+    row.appendChild(el('span', null, callText(m)));
+    var tm = el('time', null, fTime.format(d)); tm.dateTime = d.toISOString(); row.appendChild(tm);
+    if (missed && S.cur && S.cur.kind === 'dm' && window.HKCalls && !$('ct-call-a').hidden)
+      row.appendChild(btn(T('Zurückrufen'), 'small ct-call-back', function () { window.HKCalls.start(S.cur, k.media === 'video'); }));
+    return row;
   }
   function msgMenu(anchor, m) {
     HK.openMenu(anchor, function (menu) {
@@ -1173,6 +1203,22 @@
     if (!live) { loadList(); if (S.cur) loadMsgs(false); }
   }, 30000);
 
-  window.HKChat = { state: function () { return { ready: S.ready, device: dev(), cur: S.cur && S.cur.id, msgs: S.msgs.length }; } };
+  // Anrufe (static/calls.js): Schluessel dieses Geraets und gepruefte Geraete des Gegenuebers (TOFU wie beim Senden)
+  function callPeer(u, name) {
+    return api('GET', '/api/chat/keys?users=' + q(u)).then(function (r) {
+      var k = (r.users || {})[u];
+      if (!k) throw new Error(T('{name} hat Chats noch auf keinem Gerät eingerichtet – Anrufe gehen erst danach.', { name: name || u }));
+      return trustCheck([{ ready: true, username: u, name: name || u, ident_pub: k.ident_pub }]).then(function () {
+        var ip = ub(k.ident_pub, 32);
+        noteIdent(u, k.ident_pub);
+        return { username: u, ident_pub: k.ident_pub, devices: (k.devices || []).filter(function (d) { return !d.revoked && X.verifyDevice(u, ip, d); })
+          .map(function (d) { return { id: d.id, enc_pk: ub(d.enc_pub, 32), sign_pk: ub(d.sign_pub, 32) }; }) };
+      });
+    });
+  }
+  window.HKChat = { state: function () { return { ready: S.ready, device: dev(), cur: S.cur && S.cur.id, msgs: S.msgs.length }; },
+    callApi: { ready: function () { return !!(S.ready && K && X); }, me: function () { return ME; }, crypto: function () { return X; },
+               device: function () { return K.device; }, peerKeys: callPeer, cur: function () { return S.cur; },
+               refresh: function (cid) { if (S.cur && S.cur.id === cid) loadMsgs(false); } } };
   start();
 })();

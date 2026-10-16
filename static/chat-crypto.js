@@ -169,7 +169,35 @@
     return out.join(' ');
   }
 
+  // --- Anrufe, Format saga-call/v1 (saga/calls.py): Signalisierung signiert (Geraet) und fuer das Zielgeraet versiegelt ----
+  // sig = sign_detached(LP("saga-call/v1/signal", call_id, from_uid, from_device, to_uid, to_device, body), device_sign_sk)
+  // sealed = B64(crypto_box_seal(UTF8(JSON {"v":1,"body":body,"sig":B64(sig)}), ziel_enc_pk)); body = JSON-Text {"t": ...}
+  var VC = 'saga-call/v1/';
+  function signalMsg(call_id, from_uid, from_device, to_uid, to_device, body) {
+    return lp(VC + 'signal', call_id, from_uid, from_device, to_uid, to_device, body);
+  }
+  // o: {call_id, from_uid, from_device, sign_sk, to_uid, to_device, to_pk, body (Text)}
+  function signalSig(o) { return S.crypto_sign_detached(signalMsg(o.call_id, o.from_uid, o.from_device, o.to_uid, o.to_device, o.body), o.sign_sk); }
+  function signalInner(body, sig) { return JSON.stringify({ v: 1, body: body, sig: b64(sig) }); }
+  function sealSignal(o) { return b64(S.crypto_box_seal(enc.encode(signalInner(o.body, signalSig(o))), o.to_pk)); }
+  // -> {body, sig} (wirft bei kaputtem/fremdem Inhalt); pruefen danach mit verifySignal
+  function openSignal(sealed, pk, sk) {
+    var d = JSON.parse(dec.decode(S.crypto_box_seal_open(unb64(sealed), pk, sk)));
+    if (!d || d.v !== 1 || typeof d.body !== 'string') throw new Error('signal version');
+    return { body: d.body, sig: unb64(d.sig, 64) };
+  }
+  // o: {call_id, from_uid, from_device, to_uid, to_device, body}
+  function verifySignal(o, sig, sign_pk) { return verify(sig, signalMsg(o.call_id, o.from_uid, o.from_device, o.to_uid, o.to_device, o.body), sign_pk); }
+  // DTLS-Fingerabdruecke aus einer SDP: ["sha-256 AB:CD:..."] (Algorithmus klein, Hex gross, sortiert, ohne Doppelte)
+  function sdpFingerprints(sdp) {
+    var out = {}, re = /^a=fingerprint:(\S+) ([0-9A-Fa-f:]+)\s*$/gm, m;
+    while ((m = re.exec(String(sdp || '')))) out[m[1].toLowerCase() + ' ' + m[2].toUpperCase()] = 1;
+    return Object.keys(out).sort();
+  }
+
   return {
+    signalMsg: signalMsg, signalSig: signalSig, signalInner: signalInner, sealSignal: sealSignal, openSignal: openSignal,
+    verifySignal: verifySignal, sdpFingerprints: sdpFingerprints,
     VERSION: 1, OPS: OPS, MEM: MEM, b64: b64, unb64: unb64, lp: lp, hex: hex,
     newIdentity: newIdentity, newDevice: newDevice, backupSig: backupSig, deviceSig: deviceSig, deviceMsg: deviceMsg,
     verifyDevice: verifyDevice, verifyBackup: verifyBackup, verify: verify,
