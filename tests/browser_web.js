@@ -367,11 +367,44 @@ async function avatars(browser) {
   await p.context().close();
 }
 
+// 2.1 Anwesenheit mit Profilbild (static/live.js): wer spaeter kommt, erscheint beim anderen sofort (neu melden nach
+// Kanal-Aufbau); unveraenderte Meldungen zeichnen nicht neu (kein Flackern), Aenderungen (bearbeitet) schon.
+async function presence(browser) {
+  const E = process.env;
+  if (!E.SAGA_USER2 || !E.SAGA_USER3) { console.log('--   Anwesenheit: SAGA_USER2/3 (+ _PASS) fehlen - uebersprungen'); return; }
+  const a = await session(browser, { user: E.SAGA_USER2, pass: E.SAGA_PASS2 }), b = await session(browser, { user: E.SAGA_USER3, pass: E.SAGA_PASS3 });
+  const until = async (p, fn, ms) => { for (const t = Date.now(); Date.now() - t < ms; await p.waitForTimeout(150)) if (await p.evaluate(fn).catch(() => false)) return true; return false; };
+  const up = await a.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = c.height = 200; const g = c.getContext('2d'); g.fillStyle = '#c33'; g.fillRect(0, 0, 200, 200);
+    const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+    return (await fetch('/api/account/avatar', { method: 'PUT', headers: { 'X-Saga': '1', 'Content-Type': 'image/png' }, body: blob })).status;
+  });
+  const nid = (await a.api('POST', '/api/notes', { title: 'Anwesenheit-Test' })).id;
+  await a.api('PUT', '/api/notes/' + nid + '/shares', { type: 'user', target: E.SAGA_USER3, role: 'edit' });
+  await a.goto(BASE + '/notes#' + nid); await a.waitForSelector('#pg-editor');
+  await b.goto(BASE + '/notes#' + nid);
+  ok('2.1 Anwesenheit: Profilbild der anderen Person', up === 200 && await until(b, () => {
+    const x = document.querySelector('#pg-presence .lv-av.hk-av-on img.hk-av-img'); return !!x && x.naturalWidth > 0; }, 15000), up);
+  ok('2.1 Anwesenheit: spaeter Gekommene erscheint sofort (nicht erst nach 20 s)', await until(a, () => !!document.querySelector('#pg-presence .lv-av'), 8000));
+  await b.evaluate(() => {
+    window.__rm = 0; window.__img = document.querySelector('#pg-presence img.hk-av-img');
+    new MutationObserver(ms => ms.forEach(m => m.removedNodes.forEach(n => { if (n.nodeType === 1 && (n.matches('img') || n.querySelector('img'))) window.__rm++; })))
+      .observe(document.querySelector('#page .page-bar'), { childList: true, subtree: true });
+  });
+  await b.waitForTimeout(45000);                                           // zwei Meldungen (alle 20 s)
+  const fl = await b.evaluate(() => ({ rm: window.__rm, same: window.__img === document.querySelector('#pg-presence img.hk-av-img') }));
+  ok('2.1 Anwesenheit: unveraendert -> kein Neuzeichnen (kein Flackern)', fl.rm === 0 && fl.same, fl);
+  await a.click('#pg-editor .ce-paragraph').catch(() => {}); await a.keyboard.type('Hallo', { delay: 50 });
+  ok('2.1 Anwesenheit: Aenderung (bearbeitet) wird gezeichnet', await until(b, () => !!document.querySelector('#pg-presence .lv-av.editing'), 25000));
+  await a.api('DELETE', '/api/account/avatar'); await a.api('DELETE', '/api/notes/' + nid);
+  await a.context().close(); await b.context().close();
+}
+
 (async () => {
   const browser = await chromium.launch({ channel: process.env.PW_CHANNEL || 'chrome', headless: true });
   try {
     if (process.env.SAGA_ONLY === 'passkeys') { await passkeys(browser); throw null; }     // nur die Passkey-Pruefungen
-    if (process.env.SAGA_ONLY === 'avatars') { await avatars(browser); throw null; }       // nur die Profilbild-Pruefungen
+    if (process.env.SAGA_ONLY === 'avatars') { await avatars(browser); await presence(browser); throw null; }   // nur die Profilbild-Pruefungen
     const p = await session(browser);
     await enterFallback(p);
     await reloadKeeps(p);
@@ -387,6 +420,7 @@ async function avatars(browser) {
     await narrow(browser);
     await passkeys(browser);
     await avatars(browser);
+    await presence(browser);
   } catch (e) { if (e !== null) { console.error(e); res.push(false); } }
   await browser.close();
   console.log(`${res.filter(Boolean).length}/${res.length} ok`);
