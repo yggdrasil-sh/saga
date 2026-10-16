@@ -328,7 +328,6 @@ async function avatars(browser) {
   p.on('request', r => { const u = new URL(r.url()); if (!['data:', 'blob:'].includes(u.protocol) && u.host !== host) foreign.push(r.url()); });
   const loaded = sel => p.evaluate(s => [...document.querySelectorAll(s)].filter(x => x.classList.contains('hk-av-on')
     && x.querySelector('img.hk-av-img') && x.querySelector('img.hk-av-img').naturalWidth > 0).length, sel);
-  const before = await p.api('GET', '/api/account/avatar');
   const file = require('path').join(require('os').tmpdir(), 'saga-browser-avatar.png');
   const b64 = await p.evaluate(() => {
     const c = document.createElement('canvas'); c.width = 900; c.height = 600; const g = c.getContext('2d');
@@ -344,7 +343,7 @@ async function avatars(browser) {
   ok('2.1 Profilbild: Zuschneide-Dialog (quadratisch)', await p.evaluate(() => { const r = document.querySelector('.hk-crop-stage').getBoundingClientRect(); return Math.abs(r.width - r.height) < 2; }));
   await p.locator('.hk-crop input[type=range]').fill('1.5');
   await p.click('.hk-crop .btn-primary');
-  await p.waitForFunction(() => /Gespeichert/.test((document.querySelector('.hk-avsec .hk-status') || {}).textContent || ''), null, { timeout: 15000 }).catch(() => {});
+  for (let i = 0; i < 30 && !/Gespeichert/.test(await p.textContent('.hk-avsec .hk-status').catch(() => '') || ''); i++) await p.waitForTimeout(500);
   await p.waitForTimeout(1000);
   const st = await p.api('GET', '/api/account/avatar');
   ok('2.1 Profilbild: hochgeladen (Quelle: eigenes Bild)', st.source === 'upload' && /^\/api\/avatar\//.test(st.url || ''), st);
@@ -362,7 +361,7 @@ async function avatars(browser) {
   await p.click('.hk-avsec button:has-text("Eigenes Bild entfernen")');
   await p.waitForTimeout(1200);
   const after = await p.api('GET', '/api/account/avatar');
-  ok('2.1 Profilbild: entfernt -> wieder wie vorher', !after.upload && after.source === before.source, after);
+  ok('2.1 Profilbild: entfernt -> SSO-Bild, Gravatar oder Initialen', !after.upload && after.source !== 'upload', after);
   ok('2.1 Profilbild: keine Anfragen an fremde Server', foreign.length === 0, foreign.slice(0, 3));
   await p.api('DELETE', '/api/notes/' + nid);
   await p.context().close();

@@ -56,6 +56,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `/api/account` liefert `avatar`. Eigenes Bild: `GET|PUT|PATCH|DELETE /api/account/avatar` (PUT: multipart
   `image` oder Rohinhalt mit `Content-Type: image/*`; PATCH `{gravatar, public}`). Neue Tabellen `avatar`,
   `avatar_img` entstehen beim Start automatisch; `MIN_APP` bleibt. Neue Abhängigkeit: `pillow-heif` (HEIC).
+- **Anwesenheit:** Wer eine Seite öffnet, während der eigene Live-Kanal noch aufgebaut wird, erscheint jetzt sofort
+  (bisher erst beim nächsten Ping, bis 20 s); die Anzeige flackert nicht mehr bei jeder Meldung.
 - **Immich im Chat (Web):** Beim Anhängen gibt es „Aus Immich …“ (nur wenn Immich eingerichtet ist) mit derselben
   Auswahl wie auf Seiten. Das Bild wird über den Immich-Durchgriff des Servers geholt (große Vorschau, GIFs im Original;
   nichts wird dabei gespeichert) und dann wie jeder Anhang Ende-zu-Ende verschlüsselt hochgeladen. API:

@@ -250,6 +250,8 @@
       clearTimeout(helloT); L.hello = true; L.fails = 0; stopPoll();
       if (L.first) { L.first = false; L.down = false; count().catch(function () {}); }
       else if (L.down) { L.down = false; resync(); }
+      // Anwesenheit neu melden: wer kam, waehrend der Kanal noch aufgebaut wurde, erscheint sonst erst beim naechsten Ping
+      if (NOTES && P.id) ping();
     });
     on(es, 'reset', resync);
     on(es, 'notification', onNotification);
@@ -401,11 +403,14 @@
     var box = $('pg-presence');
     var others = users.filter(function (u) { return !u.me; });
     if (!others.length) { if (box) box.remove(); return; }
+    // unveraendert: nicht neu zeichnen (sonst flackern die Profilbilder bei jeder Meldung kurz zu Initialen)
+    var sig = JSON.stringify(others.map(function (u) { return [u.username, u.name, !!u.editing, u.avatar || '']; }));
+    if (box && box.dataset.sig === sig) return;
     if (!box) {
       box = el('div', 'lv-pres'); box.id = 'pg-presence'; box.setAttribute('role', 'group');
       var anchor = $('pg-cm-btn') || $('pg-share'); bar.insertBefore(box, anchor);
     }
-    box.textContent = '';
+    box.textContent = ''; box.dataset.sig = sig;
     box.setAttribute('aria-label', T('Gerade auf dieser Seite'));
     others.slice(0, 4).forEach(function (u) {
       var a = avatar(u.name, u.username, u.editing ? 'editing' : '', u.avatar);
