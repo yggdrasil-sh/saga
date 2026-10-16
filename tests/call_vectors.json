@@ -1,0 +1,41 @@
+{
+ "format": "saga-call/v1",
+ "note": "Erzeugt mit tools/call_vectors.py (PyNaCl 1.6.2). B64 = Standard-Base64 mit Padding. sig = Ed25519 ueber signal_msg; sealed = crypto_box_seal(inner, Ziel-enc_pk). Jede Umsetzung muss sealed oeffnen, inner/sig gleich erhalten und pruefen; forged = korrekt versiegelt, aber fuer ein anderes Zielgeraet signiert -> Pruefung muss scheitern.",
+ "caller": {
+  "uid": "anna",
+  "device": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+  "enc_seed_hex": "668f1c2e1f6b4741adeeb3574f6a3bb8679c181bb489d282b4e4ff21667a100f",
+  "sign_seed_hex": "8e9627e24dd2077300c2b8f9bbeaf8376c7ef79ed149fd3e0cb91156ae943a89",
+  "enc_pk": "wmFayhdFE0foWmpQJQtl4NbmmytfEzBXuXDTUKNdcV4=",
+  "sign_pk": "gue0FwroXwBSC54PlliQephCkw6/39QQb+sZaD4HDB0="
+ },
+ "callee": {
+  "uid": "bert",
+  "device": "b0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+  "enc_seed_hex": "8c23e33dcf2e4449696a3b952e9dbfef5b201a82e5aa64837c7b9bbb3be18993",
+  "sign_seed_hex": "3a5b2dfcf4e7638562f0b5e62f10a0993c7a1fe9769f00a143a974cdce6d2d96",
+  "enc_pk": "MPTUe+ELhvsHkYkN+WAykemSZCquo7iQhqa/cqL7bGI=",
+  "sign_pk": "1nhFA5TB/HGAlmenxSQ1uvAv32WnzOK5U9mV8ljsPuo="
+ },
+ "call_id": "c0ffee00c0ffee00c0ffee00c0ffee00",
+ "offer": {
+  "body": "{\"t\":\"offer\",\"sdp\":\"v=0\\r\\no=- 4611731400430051336 2 IN IP4 127.0.0.1\\r\\ns=-\\r\\nt=0 0\\r\\na=group:BUNDLE 0 1\\r\\na=fingerprint:sha-256 4A:AD:B9:B1:3F:82:18:3B:54:02:12:DF:3E:5D:49:6B:19:E5:7C:AB:3D:17:6E:B4:2A:7C:4F:0D:2E:F1:A8:B3\\r\\nm=audio 9 UDP/TLS/RTP/SAVPF 111\\r\\nc=IN IP4 0.0.0.0\\r\\na=setup:actpass\\r\\na=mid:0\\r\\na=sendrecv\\r\\na=rtpmap:111 opus/48000/2\\r\\nm=video 9 UDP/TLS/RTP/SAVPF 96\\r\\nc=IN IP4 0.0.0.0\\r\\na=setup:actpass\\r\\na=mid:1\\r\\na=sendrecv\\r\\na=rtpmap:96 VP8/90000\\r\\n\",\"media\":\"video\",\"fp\":[\"sha-256 4A:AD:B9:B1:3F:82:18:3B:54:02:12:DF:3E:5D:49:6B:19:E5:7C:AB:3D:17:6E:B4:2A:7C:4F:0D:2E:F1:A8:B3\"]}",
+  "fingerprints": [
+   "sha-256 4A:AD:B9:B1:3F:82:18:3B:54:02:12:DF:3E:5D:49:6B:19:E5:7C:AB:3D:17:6E:B4:2A:7C:4F:0D:2E:F1:A8:B3"
+  ],
+  "signal_msg_hex": "00000013736167612d63616c6c2f76312f7369676e616c00000020633066666565303063306666656530306330666665653030633066666565303000000004616e6e610000002061306131613261336134613561366137613861396161616261636164616561660000000462657274000000206230623162326233623462356236623762386239626162626263626462656266000002667b2274223a226f66666572222c22736470223a22763d305c725c6e6f3d2d2034363131373331343030343330303531333336203220494e20495034203132372e302e302e315c725c6e733d2d5c725c6e743d3020305c725c6e613d67726f75703a42554e444c45203020315c725c6e613d66696e6765727072696e743a7368612d3235362034413a41443a42393a42313a33463a38323a31383a33423a35343a30323a31323a44463a33453a35443a34393a36423a31393a45353a37433a41423a33443a31373a36453a42343a32413a37433a34463a30443a32453a46313a41383a42335c725c6e6d3d617564696f2039205544502f544c532f5254502f5341565046203131315c725c6e633d494e2049503420302e302e302e305c725c6e613d73657475703a616374706173735c725c6e613d6d69643a305c725c6e613d73656e64726563765c725c6e613d7274706d61703a313131206f7075732f34383030302f325c725c6e6d3d766964656f2039205544502f544c532f5254502f53415650462039365c725c6e633d494e2049503420302e302e302e305c725c6e613d73657475703a616374706173735c725c6e613d6d69643a315c725c6e613d73656e64726563765c725c6e613d7274706d61703a3936205650382f39303030305c725c6e222c226d65646961223a22766964656f222c226670223a5b227368612d3235362034413a41443a42393a42313a33463a38323a31383a33423a35343a30323a31323a44463a33453a35443a34393a36423a31393a45353a37433a41423a33443a31373a36453a42343a32413a37433a34463a30443a32453a46313a41383a4233225d7d",
+  "sig": "2i8/n3qbzvjw4t5tTmS60ah7L+rztmGhamU8C5dTuhIUlVLMfWw6Ww1Fzg8rbP4dWFlvQWFAcUmIkS4ju248DA==",
+  "inner": "{\"v\":1,\"body\":\"{\\\"t\\\":\\\"offer\\\",\\\"sdp\\\":\\\"v=0\\\\r\\\\no=- 4611731400430051336 2 IN IP4 127.0.0.1\\\\r\\\\ns=-\\\\r\\\\nt=0 0\\\\r\\\\na=group:BUNDLE 0 1\\\\r\\\\na=fingerprint:sha-256 4A:AD:B9:B1:3F:82:18:3B:54:02:12:DF:3E:5D:49:6B:19:E5:7C:AB:3D:17:6E:B4:2A:7C:4F:0D:2E:F1:A8:B3\\\\r\\\\nm=audio 9 UDP/TLS/RTP/SAVPF 111\\\\r\\\\nc=IN IP4 0.0.0.0\\\\r\\\\na=setup:actpass\\\\r\\\\na=mid:0\\\\r\\\\na=sendrecv\\\\r\\\\na=rtpmap:111 opus/48000/2\\\\r\\\\nm=video 9 UDP/TLS/RTP/SAVPF 96\\\\r\\\\nc=IN IP4 0.0.0.0\\\\r\\\\na=setup:actpass\\\\r\\\\na=mid:1\\\\r\\\\na=sendrecv\\\\r\\\\na=rtpmap:96 VP8/90000\\\\r\\\\n\\\",\\\"media\\\":\\\"video\\\",\\\"fp\\\":[\\\"sha-256 4A:AD:B9:B1:3F:82:18:3B:54:02:12:DF:3E:5D:49:6B:19:E5:7C:AB:3D:17:6E:B4:2A:7C:4F:0D:2E:F1:A8:B3\\\"]}\",\"sig\":\"2i8/n3qbzvjw4t5tTmS60ah7L+rztmGhamU8C5dTuhIUlVLMfWw6Ww1Fzg8rbP4dWFlvQWFAcUmIkS4ju248DA==\"}",
+  "sealed": "0+t+rFBJPSOd3JHBFZodx7lf9wi7FdM8ndo6KoSY/k4WVb+q1Oc7wexTYISktQT2D1d9YEI5rjjwr9be2K389bv713DAc0Y+iT0N47HTTqCPrUmuguRviKKfarQLL/5SbO8TlvxxFb+79dgc8Se8uzM1ieO/I1NQYc8a1pFPrv9vbXBK5/z/Q9B++TeW53ZS1t7oxpzIKlZ9yAbp4h5ml80FZ2ghRM4MIVK1ex9u7a/jzhb1kErn+oOaJDI4QEkB46M0sB357CiWRflSh1Ef30GYA4EyRfWJ/71+jSkWeIwXCyXy2RqMj5E16BbS5lyu6ZChxwrB/72zOSYfgYxKLfaKTyq5IsCuXTiJEvhdI187LP2fOxeDXE8r0k6Xdp2Jw1Wq6GBTx7Nahw/dTx/m96PrNp7+mLvOtyiZphvn+sl/Fn+0lzinF+an3IqtfzjchusA8I4WPjGSVlvwAjMUWysi9vyJpHJDm/q+mwHY+ir1Z/68MMmDDMMaeQb+mOGP399ZQA4Caaat22KeBGa/LAyDT6oyUhWrl+gKs6K2J+HU6GEVrybMHwZyR0eVoTqeBd5a7gmAFlAd+oSixV7zujeZBzdcOPNSuobTjfLg8qye6GiMax1JF/M7gQENHiQ8iR5EALkucZ9q1hEJgkakJ/kQK/KfocrxKImBXFsYRSVmOLI/yWU6tyMOkPn137ELu5sVqqTgzX3iohZpQ9ctyM8ub48oTZnqHkrn5MgSGvS0QMAV+fdHOgetAKzT4G3Oz/0dtJ77m3Xt4PaIM0RKwDKDjfX1GOMqRqe00wnUFQX7T6rk2jrLvqbsgCuXMvlHRprz4VElq1q2uCm4MiQU2Fvin10zf6WwriDgMOmbkEehZiEgu3dhxYREHaDqU93PH2Vurf4d9ZwZA6iyHzUNYd+Sfo/1DaKehdi5fbHc1DFQDn7bTs8ima+ybVwXreYlYO+BgiK/WmgkJI8m7ddeUZyOsbb1vTFHzguHcH6b0do0ojeUbSev/IeAbQ9tvhNLW0EklPCoWdLNl+n1h5oe9Ouozr1XwBj4r8Qsnd1kTmGDFVSJuANte58nUsolylWonqsYZN1EPGiDFokU"
+ },
+ "ice": {
+  "body": "{\"t\":\"ice\",\"c\":[{\"candidate\":\"candidate:1 1 udp 2122260223 e0a1b2c3-0000-4000-8000-000000000000.local 54321 typ host\",\"sdpMid\":\"0\",\"sdpMLineIndex\":0}]}",
+  "sig": "H5/guQufTF9xASGrt6OBljsH9od2T0+qo2ZHJOpOobLUHxfDgdMNwaX92llPJhSY/kLmrme4MwnqFu2H1SzUDg==",
+  "sealed": "866wxNJLjYt3gsO69zeLonMoT7/CAebpN6jFKbv3SQN86DvtF3GNFza9swXyec1zlQgmHDDoNj+U4tIL8vWpDk6Vrtl47rJAoQxhv3JdGx12sWzAIVu3GtPneWnoxEHDA0pWGnhdDcLadZrmfEgQVasCU05Vj2KQrPPHmWqlLwON/KJqbN2DPv5tJPTmHW+DyAREEPIN0brn9t2FY32kZoovfJgbyCQVptOLuuIVCTkJKAj6IUx+RJBRxr9i4TsHfUPqTnfOimF/ibNtKWYKfFcFE4dOPOTJQVBkmMSaGL1fwnakik/H+vWjV/Ztm6+O1Vp4w6yiGkCmcuyyRr1RKn62VVth8ZgrIm9gPusZqe1dGleANqICp6UyHSYpq275w32feUc7idv65tSL12xDB4URS0LlH7rqgRFvSmoTRBws4LTQKDRmqK0="
+ },
+ "forged": {
+  "body": "{\"t\":\"ice\",\"c\":[{\"candidate\":\"candidate:1 1 udp 2122260223 e0a1b2c3-0000-4000-8000-000000000000.local 54321 typ host\",\"sdpMid\":\"0\",\"sdpMLineIndex\":0}]}",
+  "to_device_signed": "ffffffffffffffffffffffffffffffff",
+  "sealed": "rl8xdeGsX4hCrdO8qCLDsgomjxt6YcXvMTWPRq1iJygjMwebSIK1ZxOCVE+Z0CdFGgRgrB/tMysGiPW46Gv11x2oQJOreEHDlLn7Y7xr4yj44oUP21X7vZhwEMbDzEJbZrxYSjyMppJBLKRpoNJCOFGxD6nak7YVq8Z+LYyYxDEPaveJqqxibF3xpRjEaIrSvyvLIgGK1/35ykuW6DX2ceMXjPWqIsIjUnYnowO1ZsijAau7gC5tn+lUHyBbxZICbZmae9KURCLbn6Kny3IQPDjIXDhUbVRyDZo2/cch0T5PNdGbacwPVpi3gZTQzVjJn+VwdPUfNW6O+3VNK/53qoULr5go5TseMxL5sg83qTM1b8/OJPV+CHI6DoJ8uhtBeOaktZ2nwJT9/8pr8NuhZUYEgr0s2ReZCM4yhGwVVTLoVFhKWesIZW0="
+ }
+}

@@ -213,3 +213,38 @@ def safety_number(uid_a, ident_a, uid_b, ident_b):
         a, b = b, a
     h = gh(lp(V + "safety", a[0], a[1], b[0], b[1]), 64)
     return " ".join("%05d" % (int.from_bytes(h[i * 5:i * 5 + 5], "big") % 100000) for i in range(12))
+
+
+# --- Anrufe (saga-call/v1, saga/calls.py) ------------------------------------------------------------------------
+VC = "saga-call/v1/"
+
+
+def signal_msg(call_id, from_uid, from_device, to_uid, to_device, body):
+    return lp(VC + "signal", call_id, from_uid, from_device, to_uid, to_device, body)
+
+
+def signal_inner(body, sig):
+    return json.dumps({"v": 1, "body": body, "sig": b64(sig)}, separators=(",", ":"))
+
+
+def seal_signal(call_id, from_uid, dev, to_uid, to_device, to_pk, body):
+    """Signal (JSON-Text body) signieren und fuer das Zielgeraet versiegeln -> B64."""
+    sig = sign(signal_msg(call_id, from_uid, dev["id"], to_uid, to_device, body), dev["sign_sk"])
+    return b64(nb.crypto_box_seal(signal_inner(body, sig).encode(), to_pk))
+
+
+def open_signal(sealed, pk, sk):
+    d = json.loads(nb.crypto_box_seal_open(unb64(sealed), pk, sk))
+    if d.get("v") != 1 or not isinstance(d.get("body"), str):
+        raise ValueError("signal version")
+    return d["body"], unb64(d["sig"], 64)
+
+
+def verify_signal(call_id, from_uid, from_device, to_uid, to_device, body, sig, sign_pk):
+    return verify(sig, signal_msg(call_id, from_uid, from_device, to_uid, to_device, body), sign_pk)
+
+
+def sdp_fingerprints(sdp):
+    import re
+    return sorted({m.group(1).lower() + " " + m.group(2).upper()
+                   for m in re.finditer(r"^a=fingerprint:(\S+) ([0-9A-Fa-f:]+)\s*$", str(sdp or ""), re.M)})
