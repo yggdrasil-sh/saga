@@ -261,7 +261,7 @@ def main():
                                 "turn_user": "", "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45})
     auth.save_setting("allowed_hosts", ", ".join(x for x in (prev.get("allowed_hosts"), f"127.0.0.1:{FP}") if x))
     for u, n in (("ca-a", "Anna Anruf"), ("ca-b", "Bert Anruf"), ("ca-c", "Cora Anruf"), ("ca-d", "Dora Anruf"), ("ca-e", "Emil Anruf"),
-                 ("ca-f", "Fritz Anruf")):
+                 ("ca-f", "Fritz Anruf"), ("ca-g", "Gabi Anruf")):
         auth.create_user(u, PW, n)
     auth.create_user("ca-adm", PW, "Admin Anruf", is_admin=True)
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", FP), Fake)
@@ -544,6 +544,24 @@ def run():
     with connect() as c:
         st = c.execute("SELECT state, reason FROM chat_call WHERE id=?", (c6,)).fetchone()
     ok(f"Ohne Lebenszeichen: Anruf endet ('lost') ({n}, {st})", st == ("ended", "lost") and call_rows(cb)[-1]["status"] == "ended")
+
+    # --- Geraet waehrend des Anrufs entfernt (Review) ----------------------------------------------------------------
+    G = Person("ca-g")
+    gb = dm(G, B)
+    c8, s, _ = call(G, B, gb)
+    s1, _ = req("POST", f"/api/calls/{c8}/answer", B.k, {"device": B2["id"], "signals": seal_for(B, B2, c8, G, [G.dev], ans)})
+    s2, _ = req("DELETE", f"/api/chat/devices/{B2['id']}", B.k)
+    s3, _ = req("POST", f"/api/calls/{c8}/signal", B.k, {"device": B2["id"], "signals": seal_for(B, B2, c8, G, [G.dev], ice_body())})
+    ok(f"Entferntes Geraet darf nicht weiter signalisieren ({s}, {s1}, {s2}, {s3})", s == 200 and s1 == 200 and s2 == 200 and s3 in (403, 409))
+    CL.tick()
+    with connect() as c:
+        st = c.execute("SELECT state, reason FROM chat_call WHERE id=?", (c8,)).fetchone()
+    ok(f"... und der Anruf endet ('gone') ({st})", st == ("ended", "gone"))
+    B.devs = [B.dev]
+    c9, s, _ = call(G, B, gb)
+    s4, _ = req("POST", f"/api/calls/{c9}/answer", B.k, {"device": B2["id"], "signals": seal_for(B, B2, c9, G, [G.dev], ans)})
+    ok(f"Entferntes Geraet kann nicht annehmen ({s}, {s4})", s == 200 and s4 == 403)
+    req("POST", f"/api/calls/{c9}/end", G.k, {})
 
     # --- Ratenbegrenzung --------------------------------------------------------------------------------------------
     codes = []

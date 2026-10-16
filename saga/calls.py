@@ -466,6 +466,8 @@ async def api_signal(cid: str, request: Request):
             if call["state"] != "active" or dev != call["callee_device"]:
                 return _bad(t("ungültige Angabe"), 403)
             allowed, to_uid = {call["caller_device"]}, call["caller"]
+        if not _my_device(c, uid, dev):                    # inzwischen abgemeldetes/gesperrtes Geraet
+            return _bad(t("Dieses Gerät ist für Chats nicht (mehr) angemeldet."), 403)
         sig = _sealed_map(b.get("signals"), allowed)
         if sig is None:
             return _bad(t("ungültige Angabe"))
@@ -505,6 +507,15 @@ def tick(now=None):
     n = 0
     rs = ring_s()
     with _db() as c, c:
+        # Geraet waehrend des Anrufs abgemeldet/gesperrt (Chat "Geraete"): Anruf sofort beenden - ein entferntes Geraet
+        # darf weder weiter signalisieren noch ein Gespraech offen halten (gilt fuer jeden Prozess, kein Live-Ereignis noetig:
+        # die Clients erfahren es spaetestens ueber /alive)
+        for call in [_row(r) for r in c.execute(
+                f"SELECT {C_COLS} FROM chat_call WHERE state<>'ended' AND EXISTS (SELECT 1 FROM chat_device d "
+                "WHERE d.id IN (chat_call.caller_device, chat_call.callee_device) AND d.revoked_at IS NOT NULL) FOR UPDATE SKIP LOCKED").fetchall()]:
+            call["_connected"] = call["state"] == "active"
+            n += bool(_finish(c, call, "gone", now))
+            _OWN.discard(call["id"])
         rows = [_row(r) for r in c.execute(
             f"SELECT {C_COLS} FROM chat_call WHERE (state='ringing' AND (created<? OR seen_a<?)) "
             "OR (state='active' AND (LEAST(seen_a, seen_b)<? OR answered<?)) FOR UPDATE SKIP LOCKED",
