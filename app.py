@@ -25,7 +25,7 @@ import db
 from version import API_LEVEL, MIN_APP, VERSION
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
-from saga import ai, avatars, chat, federation, i18n, live, mfa, notify, push
+from saga import ai, avatars, calls, chat, federation, i18n, live, mfa, notify, push
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, LangMiddleware, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
@@ -55,6 +55,7 @@ async def lifespan(_app):
     live.start()                                             # Live-Kanal (/api/events) und Anwesenheit
     push.start()                                             # Mitteilungen aufs Handy/Desktop (Warteschlange)
     federation.start()                                       # Foederation: Ausgangskorb (Ereignisse an andere Instanzen)
+    calls.start()                                            # Anrufe: Klingeldauer, verlorene Verbindungen (2.1)
 
     async def _gc_loop():
         purged = 0.0
@@ -83,6 +84,7 @@ async def lifespan(_app):
                 print(f"files-gc: {type(ex).__name__}: {ex}", flush=True)
     gc_task = asyncio.create_task(_gc_loop())
     yield
+    calls.stop()
     push.stop()
     live.stop()
     federation.stop()
@@ -198,3 +200,4 @@ app.include_router(chat.router)             # Chat (E2E): /chats, /api/chat/...,
 app.include_router(push.router)             # Mitteilungen: /api/push..., /sw.js
 app.include_router(ai.router)               # KI-Assistent: /api/ai/status, /api/ai/ask, /api/ai/page/{nid}, /api/ai/history
 app.include_router(avatars.router)          # Profilbilder: /api/avatar/{schluessel}, /api/account/avatar
+app.include_router(calls.router)            # Anrufe (WebRTC, Signalisierung ueber den Live-Kanal): /api/calls...

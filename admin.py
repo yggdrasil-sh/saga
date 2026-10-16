@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import clean_line, connect as _db
-from saga import ai, federation, i18n, live, mfa, publish, push, sharing
+from saga import ai, calls, federation, i18n, live, mfa, publish, push, sharing
 from saga.core import TZ, BodyLimit, LangMiddleware
 from saga.i18n import t
 from version import REPO, VERSION, newer
@@ -690,11 +690,43 @@ async def settings_post(request: Request):
     auth.save_setting("mfa", {"require": req, "oidc_mfa": _on(f, "mfa_oidc"), "oidc_acr": acr})
     auth.save_setting("avatar", {"gravatar": _on(f, "avatar_gravatar"), "oidc_picture": _on(f, "avatar_oidc"),
                                  "ldap_photo": _on(f, "avatar_ldap")})
+    err = _calls_save(f)
+    if err:
+        _flash(request, err, "err")
+        return _go("/settings")
     hk.services_changed()
     print(f"admin: {me['username']} speichert Allgemein (2FA verlangt: {req})", flush=True)
     _flash(request, t("Gespeichert.") + (" " + t("Hinweis: Mit der neuen Gruppen-Kennung gelten neue Zugangsgruppen – Favoriten der Dienste müssen neu gesetzt werden.")
                                          if old_prefix != prefix else ""))
     return _go("/settings")
+
+
+def _calls_save(f):
+    """Anrufe (2.1): STUN/TURN pruefen und speichern -> Fehlertext oder None. Leere Geheimnisse = bisherige behalten."""
+    stun, bad1 = calls.urls(_s(f, "calls_stun", 600), ("stun", "stuns"))
+    turn, bad2 = calls.urls(_s(f, "calls_turn_urls", 600), ("turn", "turns"))
+    if bad1 or bad2:
+        return t("Ungültige STUN/TURN-Adresse: {list} (Beispiel: stun:stun.example.org:3478, turns:turn.example.org:443?transport=tcp)",
+                 list=", ".join((bad1 + bad2)[:3]))
+    try:
+        ring = max(15, min(120, int(_s(f, "calls_ring_s", 4) or 45)))
+    except ValueError:
+        ring = 45
+    cur = auth.settings(fresh=True).get("calls") or {}
+    clear = _on(f, "calls_turn_clear")
+    v = {"enabled": _on(f, "calls_enabled"), "stun": " ".join(stun), "turn_urls": " ".join(turn),
+         "turn_mode": "static" if f.get("calls_turn_mode") == "static" else "rest", "turn_user": "" if clear else _s(f, "calls_turn_user", 200),
+         "turn_secret": _s(f, "calls_turn_secret", 300), "turn_password": _s(f, "calls_turn_password", 300),
+         "turn_ttl": cur.get("turn_ttl") or 43200, "relay_only": _on(f, "calls_relay_only"), "ring_s": ring}
+    auth.save_setting("calls", v)
+    if clear:                                              # leere Geheimnisse wuerden sonst die alten behalten
+        with _db() as c, c:
+            raw = c.execute("SELECT v FROM setting WHERE k='calls'").fetchone()
+            d = json.loads(raw[0]) if raw else {}
+            d.update(turn_secret="", turn_password="", turn_user="")
+            c.execute("UPDATE setting SET v=? WHERE k='calls'", (json.dumps(d),))
+        auth._settings_cache["v"] = None
+    return None
 
 
 def _days(v):

@@ -50,9 +50,10 @@ from saga.netguard import Blocked, guarded_client, is_public
 router = APIRouter()
 
 E = os.environ
-TYPES = ("webpush", "ntfy", "unifiedpush", "apns")
+TYPES = ("webpush", "ntfy", "unifiedpush", "apns", "apns-voip")
 CATS = {"share": ("share.added", "share.role"), "comment": ("comment.new", "comment.reply", "comment.mention"),
-        "chat": ("chat.message",), "publish": ("publish.withdrawn",)}
+        "chat": ("chat.message",), "publish": ("publish.withdrawn",), "call": ("call", "call.missed")}
+CALL_TTL = 60                        # klingelnder Anruf: Mitteilung nach einer Minute verwerfen (statt 4 h vorhalten)
 KIND_CAT = {k: cat for cat, ks in CATS.items() for k in ks}
 SUB_MAX = 20                         # Abos je Konto
 QUEUE_MAX = 300                      # offene Auftraege je Konto (darueber: keine neuen, die Glocke hat alles)
@@ -213,7 +214,8 @@ def server():
     p = auth.settings().get("push") or {}
     on = bool(p.get("enabled", True))
     return {"enabled": on, "webpush": on and bool(p.get("webpush", True)), "ntfy": on and bool(p.get("ntfy", True)),
-            "unifiedpush": on and bool(p.get("unifiedpush", True)), "apns": on and apns_cfg()["ready"]}
+            "unifiedpush": on and bool(p.get("unifiedpush", True)), "apns": on and apns_cfg()["ready"],
+            "apns-voip": on and apns_cfg()["ready"]}
 
 
 def prefs(c, uid):
@@ -338,6 +340,18 @@ def _subs(c, uid, epoch, srv):
     return [r[0] for r in c.execute("SELECT id, kind FROM push_sub WHERE uid=? ORDER BY id", (uid,)).fetchall() if srv.get(r[1])]
 
 
+def _route(c, sids, kind):
+    """VoIP-Abos (iOS/macOS-App, PushKit) bekommen NUR klingelnde Anrufe - Apple verlangt zu jeder VoIP-Mitteilung einen
+    Anruf in CallKit. Hat dasselbe Geraet ein VoIP-Abo, geht der Anruf nicht zusaetzlich ueber das normale APNs-Abo."""
+    if not sids:
+        return sids
+    rows = c.execute(f"SELECT id, kind, device_id FROM push_sub WHERE id IN ({','.join('?' * len(sids))})", tuple(sids)).fetchall()
+    if kind != "call":
+        return [r[0] for r in rows if r[1] != "apns-voip"]
+    voip_dev = {r[2] for r in rows if r[1] == "apns-voip" and r[2] is not None}
+    return [r[0] for r in rows if not (r[1] == "apns" and r[2] in voip_dev)]
+
+
 def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None):
     """Mitteilung fuer uid vormerken (eine Zeile je Abo) -> Anzahl. Nichts bei: an sich selbst, Bereich abgeschaltet,
     Ruhezeit, kein Abo, Grenze erreicht. replaces: gebuendelte Benachrichtigung ersetzt eine noch nicht zugestellte -
@@ -360,13 +374,13 @@ def enqueue(c, uid, kind, actor=None, ref=None, data=None, replaces=None):
     info = auth.user_info(uid)
     if info is None:
         return 0
-    subs = _subs(c, uid, info.get("epoch"), srv)
+    subs = _route(c, _subs(c, uid, info.get("epoch"), srv), kind)
     if not subs or c.execute("SELECT COUNT(*) FROM push_queue WHERE uid=?", (uid,)).fetchone()[0] >= QUEUE_MAX:
         return 0
     if not _rate_ok(_rate, uid, RATE_MIN):
         return 0
     now = time.time()
-    d = json.dumps({k: v for k, v in (data or {}).items() if k in ("chat",)})        # nur Kennungen, nie Inhalte
+    d = json.dumps({k: v for k, v in (data or {}).items() if k in ("chat", "call")})        # nur Kennungen, nie Inhalte
     if kind == "chat.message" and c.execute("SELECT 1 FROM push_queue WHERE uid=? AND kind=? AND data=? AND tries=0 LIMIT 1",
                                             (uid, kind, d)).fetchone():
         return 0                          # fuer diesen Chat wartet schon eine Mitteilung (wie das Buendeln der Glocke)
@@ -407,13 +421,15 @@ def _anon(kind):
         return t("Du wurdest erwähnt")
     if kind == "publish.withdrawn":
         return t("Ein Admin hat deine Veröffentlichung zurückgezogen")
+    if kind == "call.missed":
+        return t("Verpasster Anruf")
     return t("Neue Benachrichtigung")
 
 
 def with_names(p, sub_kind, has_keys):
     """Namen nur, wenn die Person es will UND der Weg Ende-zu-Ende verschluesselt ist (Web Push, UnifiedPush mit
     Schluesseln) bzw. Apple (APNs). ntfy und UnifiedPush ohne Schluessel: nie."""
-    return bool(p.get("names")) and (sub_kind in ("webpush", "apns") or (sub_kind == "unifiedpush" and has_keys))
+    return bool(p.get("names")) and (sub_kind in ("webpush", "apns", "apns-voip") or (sub_kind == "unifiedpush" and has_keys))
 
 
 def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", has_keys=True, created=None):
@@ -432,6 +448,19 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
             body = t("Neue Nachricht von {name}", name=nm) if nm else t("Neue Nachricht")
             ref = ("c" + chat) if chat.isdigit() else chat          # wie die Glocke: /chats#c<id>
             url, tag = ("/chats#" + ref) if chat else "/chats", "chat-" + chat
+        elif kind == "call":
+            # Klingelnder Anruf (saga.calls): nur solange er klingelt; Kennungen fuer die Apps (CallKit/ConnectionService)
+            cid = re.sub(r"[^0-9a-f]", "", str((data or {}).get("call") or ""))[:32]
+            r = c.execute("SELECT state, media, chat_id, created FROM chat_call WHERE id=? AND callee=?", (cid, uid)).fetchone()
+            if not r or r[0] != "ringing":
+                return None
+            nm = notify.names(c, [actor]).get(actor) if actor and names else None
+            video = r[1] == "video"
+            body = (t("Videoanruf von {name}", name=nm) if video else t("Anruf von {name}", name=nm)) if nm else \
+                (t("Eingehender Videoanruf") if video else t("Eingehender Anruf"))
+            return {"title": title(), "body": body, "url": f"/chats#call-{cid}", "tag": "call-" + cid, "kind": kind,
+                    "ts": int(created or time.time()), "call": cid, "chat": r[2], "media": r[1], "caller": nm,
+                    "ttl": max(5, int(r[3] + CALL_TTL - time.time()))}
         else:
             it = notify.item(c, uid, ref) if ref else None
             if not it or (kind != "publish.withdrawn" and not it["access"]):
@@ -471,29 +500,31 @@ def send(sub, msg):
     """Eine Mitteilung an EIN Abo -> (ergebnis, detail); ergebnis: ok | gone (Abo entfernen) | retry | fail."""
     import httpx
     sid, uid, kind, endpoint, p256dh, auth_s, secret = sub
-    if kind == "apns":
-        return _send_apns(endpoint, msg)
+    if kind in ("apns", "apns-voip"):
+        return _send_apns(endpoint, msg, voip=kind == "apns-voip")
     raw = json.dumps(msg, ensure_ascii=False, separators=(",", ":")).encode()
     if len(raw) > PAYLOAD_MAX:
         return "fail", "zu gross"
     try:
         if kind == "webpush" or (kind == "unifiedpush" and p256dh and auth_s):
-            h = {"TTL": str(TTL), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
-                 "Urgency": "high" if msg["kind"] == "chat.message" else "normal", "Authorization": vapid_header(endpoint)}
+            h = {"TTL": str(msg.get("ttl") or TTL), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
+                 "Urgency": "high" if msg["kind"] in ("chat.message", "call") else "normal", "Authorization": vapid_header(endpoint)}
             topic = re.sub(r"[^A-Za-z0-9_-]", "", msg.get("tag") or "")[:32]
             if topic:
                 h["Topic"] = topic                                   # neuere ersetzt eine noch nicht abgeholte gleiche
             r = _client().post(endpoint, content=encrypt(raw, p256dh, auth_s), headers=h)
         elif kind == "unifiedpush":
-            r = _client().post(endpoint, content=raw, headers={"Content-Type": "application/json", "TTL": str(TTL)})
+            r = _client().post(endpoint, content=raw, headers={"Content-Type": "application/json", "TTL": str(msg.get("ttl") or TTL)})
         elif kind == "ntfy":
             base, topic = _ntfy_split(endpoint)
             h = {"Content-Type": "application/json"}
             tok = auth._dec(secret) if secret else ""
             if tok:
                 h["Authorization"] = "Bearer " + tok
+            call = msg["kind"] == "call"                              # Anruf: hoechste Prioritaet (ntfy 5), kurze Lebensdauer
             r = _client().post(base + "/", headers=h, content=json.dumps(
-                {"topic": topic, "title": msg["title"], "message": msg["body"], "click": BASE_URL + msg["url"], "tags": ["bell"]},
+                {"topic": topic, "title": msg["title"], "message": msg["body"], "click": BASE_URL + msg["url"],
+                 "tags": ["telephone_receiver" if call else "bell"], "priority": 5 if call else 3},
                 ensure_ascii=False).encode())
         else:
             return "gone", "unbekannt"
@@ -508,19 +539,28 @@ def send(sub, msg):
     return _verdict(r.status_code)
 
 
-def _send_apns(endpoint, msg):
+def _send_apns(endpoint, msg, voip=False):
+    """APNs. voip: PushKit-Mitteilung (apns-push-type voip, Topic <bundle>.voip) fuer klingelnde Anrufe - die App meldet den
+    Anruf sofort an CallKit (Pflicht bei iOS) und holt Zustand/Angebot ueber /api/calls/<id>."""
     import httpx
     cfg = apns_cfg()
     if not cfg["ready"]:
         return "fail", "APNs nicht eingerichtet"
     _, env, tok = (endpoint.split(":", 2) + ["", ""])[:3]
     base = (cfg.get("url") or APNS_HOSTS.get(env) or APNS_HOSTS["production"]).rstrip("/")
-    body = {"aps": {"alert": {"title": msg["title"], "body": msg["body"]}, "sound": "default", "thread-id": msg["tag"]},
-            "url": msg["url"], "kind": msg["kind"]}
+    ids = {k: msg[k] for k in ("call", "chat", "media", "caller") if msg.get(k) is not None}
+    if voip:
+        body = dict({"aps": {}, "url": msg["url"], "kind": msg["kind"], "title": msg["title"], "body": msg["body"]}, **ids)
+    else:
+        body = dict({"aps": {"alert": {"title": msg["title"], "body": msg["body"]}, "sound": "default", "thread-id": msg["tag"]},
+                     "url": msg["url"], "kind": msg["kind"]}, **ids)
+        if msg["kind"] == "call":
+            body["aps"]["interruption-level"] = "time-sensitive"
+    ttl = int(msg.get("ttl") or TTL)
     for attempt in (0, 1):
         try:
-            h = {"authorization": "bearer " + _apns_token(cfg, renew=bool(attempt)), "apns-topic": cfg["bundle_id"],
-                 "apns-push-type": "alert", "apns-priority": "10", "apns-expiration": str(int(time.time()) + TTL),
+            h = {"authorization": "bearer " + _apns_token(cfg, renew=bool(attempt)), "apns-topic": cfg["bundle_id"] + (".voip" if voip else ""),
+                 "apns-push-type": "voip" if voip else "alert", "apns-priority": "10", "apns-expiration": str(int(time.time()) + ttl),
                  "apns-collapse-id": msg["tag"][:64]}
             r = _apns_client().post(f"{base}/3/device/{tok}", json=body, headers=h)
         except (httpx.HTTPError, OSError) as ex:
@@ -655,8 +695,8 @@ def _who(request):
 
 def _where(kind, endpoint):
     """Kurzer Hinweis fuer die Geraeteliste (Dienst, ohne geheime Teile der Adresse)."""
-    if kind == "apns":
-        return "Apple (" + (endpoint.split(":")[1] if endpoint.count(":") >= 2 else "") + ")"
+    if kind in ("apns", "apns-voip"):
+        return ("Apple VoIP (" if kind == "apns-voip" else "Apple (") + (endpoint.split(":")[1] if endpoint.count(":") >= 2 else "") + ")"
     host = (urlparse(endpoint).hostname or "").lower()
     for part, name in (("googleapis.com", "Google (Chrome/Android)"), ("mozilla", "Mozilla (Firefox)"),
                        ("push.apple.com", "Apple (Safari)"), ("notify.windows.com", "Microsoft (Edge)")):
@@ -671,7 +711,7 @@ def _devices(c, uid, did=None):
     return [{"id": r[0], "type": r[1], "name": r[3] or "", "where": _where(r[1], r[2]), "app": r[4] is not None,
              "this_device": bool(did and r[4] == did), "created": r[5], "last_ok": r[6],
              "last_error": (r[7] or "").split(" @")[0] or None, "fails": r[8],
-             "encrypted": r[1] in ("webpush", "apns") or (r[1] == "unifiedpush" and bool(r[9]))} for r in rows]
+             "encrypted": r[1] in ("webpush", "apns", "apns-voip") or (r[1] == "unifiedpush" and bool(r[9]))} for r in rows]
 
 
 def _state(c, uid, did=None):
@@ -765,16 +805,16 @@ def _parse_sub(b, srv):
     kind = b.get("type")
     if not isinstance(kind, str) or kind not in TYPES:
         return None, (t("ungültige Angabe"), 400)
-    if kind != "apns" and not srv[kind]:
+    if kind not in ("apns", "apns-voip") and not srv[kind]:
         return None, (t("Diese Art von Mitteilungen ist auf diesem Server abgeschaltet."), 403)
     f = {"kind": kind, "name": _clean_name(b.get("name")), "p256dh": None, "auth": None, "secret": None}
     keys = b.get("keys") if isinstance(b.get("keys"), dict) else {}
     p256dh, auth_s = keys.get("p256dh") or b.get("p256dh"), keys.get("auth") or b.get("auth")
-    if kind == "apns":
+    if kind in ("apns", "apns-voip"):                  # apns-voip: PushKit-Token der App (nur klingelnde Anrufe, 2.1)
         tok, env = str(b.get("token") or "").strip(), b.get("env") or "production"
         if not APNS_RE.fullmatch(tok) or not isinstance(env, str) or env not in APNS_HOSTS:
             return None, (t("ungültige Angabe"), 400)
-        f["endpoint"] = f"apns:{env}:{tok.lower()}"
+        f["endpoint"] = f"{kind}:{env}:{tok.lower()}"
         return f, None
     url, err = check_url(b.get("endpoint") or b.get("url"))
     if err:
@@ -816,7 +856,7 @@ async def api_push_subscribe(request: Request):
     f, err = _parse_sub(b, srv)
     if err:
         return _bad(*err)
-    if f["kind"] != "apns" and not await run_in_threadpool(_resolves_ok, f["endpoint"]):
+    if f["kind"] not in ("apns", "apns-voip") and not await run_in_threadpool(_resolves_ok, f["endpoint"]):
         return _bad(t("Ziel nicht erreichbar oder nicht freigegeben (interne Server gibt der Admin frei)."))
     if not _rate_ok(_reg, uid, REG_MIN):
         return _bad(t("Zu viele Versuche – bitte kurz warten."), 429)
@@ -825,7 +865,7 @@ async def api_push_subscribe(request: Request):
     now = time.time()
     with _db() as c, c:
         old = c.execute("SELECT id, uid FROM push_sub WHERE endpoint=?", (f["endpoint"],)).fetchone()
-        if old and old[1] != uid and f["kind"] not in ("webpush", "apns"):
+        if old and old[1] != uid and f["kind"] not in ("webpush", "apns", "apns-voip"):
             return _bad(t("Diese Adresse ist schon bei einem anderen Konto angemeldet."), 409)
         if old and old[1] != uid:
             c.execute("DELETE FROM push_queue WHERE sub_id=?", (old[0],))
@@ -882,8 +922,10 @@ def test_send(uid, sid):
         if not sub:
             return None
         msg = message(c, uid, "test", sub_kind=sub[2], has_keys=bool(sub[4]))
-    if sub[2] == "apns" and not server()["apns"]:
+    if sub[2] in ("apns", "apns-voip") and not server()["apns"]:
         return "fail", "APNs nicht eingerichtet"
+    if sub[2] == "apns-voip":                       # jede VoIP-Mitteilung muss in CallKit ein Anruf werden - Test per Anruf
+        return "fail", "VoIP: mit einem Testanruf pruefen"
     verdict, detail = send(sub, msg)
     with _db() as c, c:
         _record(c, sid, verdict, detail, time.time())

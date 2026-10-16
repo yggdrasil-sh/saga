@@ -10,14 +10,18 @@ import uvicorn
 
 
 class _HideSecrets(logging.Filter):
-    """Zugriffs-Log: Kopplungs-Code aus /app/pair?c=... und Bestaetigungs-Wert aus /app/handoff?go=... unkenntlich machen."""
+    """Zugriffs-Log: Kopplungs-Code aus /app/pair?c=... und Bestaetigungs-Wert aus /app/handoff?go=... unkenntlich machen.
+    Anrufe (/api/calls...): keine IP-Adresse im Log der Signalisierung (wer wann mit wem telefoniert, bleibt so unverknuepft)."""
     RX = re.compile(r"([?&](?:c|go)=)[^&\s]+")
 
     def filter(self, record):
-        if isinstance(record.args, tuple) and len(record.args) >= 3 and isinstance(record.args[2], str) and "/app/" in record.args[2]:
-            a = list(record.args)
-            a[2] = self.RX.sub(r"\1***", a[2])
-            record.args = tuple(a)
+        if isinstance(record.args, tuple) and len(record.args) >= 3 and isinstance(record.args[2], str):
+            if "/app/" in record.args[2]:
+                a = list(record.args)
+                a[2] = self.RX.sub(r"\1***", a[2])
+                record.args = tuple(a)
+            elif record.args[2].startswith("/api/calls"):
+                record.args = ("-",) + tuple(record.args[1:])
         return True
 
 

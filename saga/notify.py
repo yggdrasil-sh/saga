@@ -24,7 +24,7 @@ from saga.sharing import unread_count as pages_unread
 
 router = APIRouter()
 
-KINDS = ("share.added", "share.role", "comment.new", "comment.reply", "publish.withdrawn", "chat.message")    # abschaltbar, in dieser Reihenfolge
+KINDS = ("share.added", "share.role", "comment.new", "comment.reply", "publish.withdrawn", "chat.message", "call.missed")    # abschaltbar, in dieser Reihenfolge
 FUTURE = ("comment.mention",)
 RETENTION_DAYS = 90
 BUNDLE_SEC = 600                    # Kommentare derselben Unterhaltung innerhalb 10 Minuten -> eine Benachrichtigung
@@ -172,6 +172,8 @@ def _text(kind, actor, n, role, access):
         return t("Ein Admin hat deine Veröffentlichung zurückgezogen")
     if kind == "chat.message":
         return t("{n} neue Nachrichten", n=n) if n > 1 else t("Neue Nachricht von {name}", name=who)
+    if kind == "call.missed":
+        return t("Verpasster Anruf von {name}", name=who)
     return kind
 
 

@@ -71,6 +71,27 @@
       <input class="hk-in" type="number" name="chat_retention_max_days" min="0" max="3650" value="{{ st.chat_retention_max_days or 0 }}">
       <small>{{ _("0 = unbegrenzt. Ältere Nachrichten und ihre Anhänge löscht der Server automatisch (stündlich), auch wenn ein Chat eine längere Frist hat.") }}</small></label>
   </section>
+  <section class="adm-card" id="anrufe">
+    <h3>{{ _("Anrufe") }}</h3>
+    {{ check(_('Anrufe erlauben'), 'calls_enabled', st.calls.enabled, _('Audio- und Videoanrufe (auch Bildschirm teilen) aus dem Direkt-Chat. Die Medien laufen direkt zwischen den Geräten und sind Ende-zu-Ende verschlüsselt; Saga vermittelt nur über den normalen Web-Port. Braucht Chats.')) }}
+    {{ field(_('STUN-Server'), 'calls_stun', st.calls.stun, max=600, ph='stun:stun.example.org:3478', hint=_('Hilft Geräten hinter einem Router, ihre öffentliche Adresse zu finden (mehrere mit Leerzeichen trennen). Datenschutz: Der STUN-Server sieht die IP-Adresse der Anrufenden. Leer = nur Verbindungen im selben Netz bzw. über TURN.')) }}
+    {{ field(_('TURN-Server (Adressen)'), 'calls_turn_urls', st.calls.turn_urls, max=600, ph='turns:turn.example.org:443?transport=tcp', hint=_('Optional, für strenge Firmen- und Mobilfunknetze: eigener TURN-Server (z. B. coturn). Ohne neuen Port: per SNI im Reverse Proxy auf 443 – siehe Anleitung „Anrufe“.')) }}
+    <label class="adm-field"><span>{{ _("TURN-Zugang") }}</span>
+      <select class="hk-in" name="calls_turn_mode">
+        <option value="rest"{% if st.calls.turn_mode != 'static' %} selected{% endif %}>{{ _("Gemeinsames Geheimnis (zeitlich begrenzte Zugangsdaten, empfohlen)") }}</option>
+        <option value="static"{% if st.calls.turn_mode == 'static' %} selected{% endif %}>{{ _("Fester Benutzer und Passwort") }}</option>
+      </select>
+      <small>{{ _("Gemeinsames Geheimnis = coturn „use-auth-secret“ mit „static-auth-secret“: Saga erzeugt je Anruf Zugangsdaten, die nach 12 Stunden ablaufen.") }}</small></label>
+    {{ field(_('TURN-Geheimnis'), 'calls_turn_secret', '', max=300, secret=true, hint=(_('gespeichert ✓ – leer lassen = behalten') if st.calls.turn_secret else _('static-auth-secret aus der coturn-Konfiguration'))) }}
+    {{ field(_('TURN-Benutzer'), 'calls_turn_user', st.calls.turn_user, max=200) }}
+    {{ field(_('TURN-Passwort'), 'calls_turn_password', '', max=300, secret=true, hint=(_('gespeichert ✓ – leer lassen = behalten') if st.calls.turn_password else '')) }}
+    {{ check(_('TURN-Zugangsdaten löschen'), 'calls_turn_clear', false) }}
+    {{ check(_('Nur über TURN verbinden'), 'calls_relay_only', st.calls.relay_only, _('Die Geräte sehen dann die IP-Adresse des Gegenübers nicht – kostet etwas Latenz und Bandbreite am TURN-Server. Wirkt nur mit eingetragenem TURN-Server.')) }}
+    <label class="adm-field"><span>{{ _("Klingeldauer (Sekunden)") }}</span>
+      <input class="hk-in" type="number" name="calls_ring_s" min="15" max="120" value="{{ st.calls.ring_s or 45 }}">
+      <small>{{ _("Danach gilt der Anruf als verpasst (Eintrag im Chat und Benachrichtigung).") }}</small></label>
+    <p class="hk-hint">{{ _("Erreichbarkeit: Im selben Netz und hinter üblichen Heimroutern klappen Anrufe meist direkt (mit STUN). Hinter strengen Firewalls, in manchen Mobilfunknetzen oder Firmennetzen braucht es einen TURN-Server – sonst sehen die Personen „Direktverbindung nicht möglich“.") }}</p>
+  </section>
   <section class="adm-card">
     <h3>{{ _("Live-Kanal") }}</h3>
     <p class="hk-hint">{{ _("Aktive Live-Verbindungen: {n}", n=live_n) }}<br>{{ _("Offene Browser-Tabs und Apps, die Benachrichtigungen und Änderungen sofort bekommen (über den normalen Web-Port, siehe Anleitung „Reverse Proxy“).") }}</p>

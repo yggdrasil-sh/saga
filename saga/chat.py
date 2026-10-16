@@ -753,20 +753,21 @@ def _my_device(c, uid, device):
 
 
 def _msgs(c, uid, cid, device, where="", args=(), limit=PAGE, desc=True):
-    """Nachrichten mit dem fuer mich versiegelten Schluessel (Geraet, sonst Backup). Nur, was fuer mich verschluesselt ist."""
+    """Nachrichten mit dem fuer mich versiegelten Schluessel (Geraet, sonst Backup). Nur, was fuer mich verschluesselt ist -
+    dazu Anruf-Eintraege (kind='call', Metadaten ohne Schluessel; nur wenn where sie zulaesst)."""
     bk = "backup:" + uid
     dv = device or "-"
     rows = c.execute(
         f"SELECT {M_COLS}, (SELECT sealed FROM chat_msg_key k WHERE k.msg_seq=m.seq AND k.recipient=?), "
         "(SELECT sealed FROM chat_msg_key k WHERE k.msg_seq=m.seq AND k.recipient=?) FROM chat_msg m "
-        "WHERE m.chat_id=? AND (m.expires_at IS NULL OR m.expires_at>?) AND EXISTS (SELECT 1 FROM chat_msg_key k "
-        f"WHERE k.msg_seq=m.seq AND k.recipient IN (?,?)) {where} ORDER BY m.seq {'DESC' if desc else 'ASC'} LIMIT ?",
+        "WHERE m.chat_id=? AND (m.expires_at IS NULL OR m.expires_at>?) AND (m.kind='call' OR EXISTS (SELECT 1 FROM chat_msg_key k "
+        f"WHERE k.msg_seq=m.seq AND k.recipient IN (?,?))) {where} ORDER BY m.seq {'DESC' if desc else 'ASC'} LIMIT ?",
         (dv, bk, cid, time.time(), dv, bk, *args, limit)).fetchall()
     return rows
 
 
 def _msg_dict(r, nm):
-    key, via = (r[11], "device") if r[11] else (r[12], "backup")
+    key, via = (r[11], "device") if r[11] else (r[12], "backup") if r[12] else (None, None)
     return {"seq": r[0], "id": r[1], "kind": r[2], "sender": {"username": r[3], "name": nm.get(r[3]) or t("Gelöschtes Konto"),
                                                          "avatar": nm.avatar(r[3]) if hasattr(nm, "avatar") else None} if r[3] else None,
             "sender_device": r[4], "ts": r[5], "created": r[6], "expires_at": r[7], "body_ct": r[8], "sig": r[9],
@@ -1108,8 +1109,9 @@ def api_recipients(cid: int, request: Request):
 
 
 @router.get("/api/chats/{cid}/messages")
-def api_messages(cid: int, request: Request, device: str = "", before: int = 0, after: int = 0, limit: int = PAGE):
-    """Nachrichten (aelteste zuerst) mit dem fuer mich versiegelten Schluessel. ?before=<seq> aeltere, ?after=<seq> neuere."""
+def api_messages(cid: int, request: Request, device: str = "", before: int = 0, after: int = 0, limit: int = PAGE, calls: int = 0):
+    """Nachrichten (aelteste zuerst) mit dem fuer mich versiegelten Schluessel. ?before=<seq> aeltere, ?after=<seq> neuere.
+    ?calls=1: auch Anruf-Eintraege (kind='call', body_ct = JSON-Metadaten im Klartext, ohne Schluessel/Signatur; 2.1)."""
     uid, err = _me(request)
     if err:
         return err
@@ -1119,7 +1121,7 @@ def api_messages(cid: int, request: Request, device: str = "", before: int = 0, 
         if err:
             return err
         dev = _my_device(c, uid, device)
-        where, args, desc = "AND m.kind='msg'", (), True
+        where, args, desc = ("AND m.kind IN ('msg','call')" if calls else "AND m.kind='msg'"), (), True
         if after > 0:
             where, args, desc = where + " AND m.seq>?", (min(after, 2 ** 63 - 1),), False
         elif before > 0:
@@ -1412,6 +1414,7 @@ def delete_account(c, uid):
                 c.execute("UPDATE chat_member SET role='admin' WHERE chat_id=? AND uid=?", (cid, rest[0]))
             _changed(c, cid)
     c.execute("UPDATE chat SET created_by=NULL WHERE created_by=?", (uid,))
+    c.execute("DELETE FROM chat_call WHERE caller=? OR callee=?", (uid, uid))      # Anrufe (2.1)
     for tbl in ("chat_identity", "chat_device", "chat_link"):
         c.execute(f"DELETE FROM {tbl} WHERE uid=?", (uid,))
     _rm_blobs(c, fids)

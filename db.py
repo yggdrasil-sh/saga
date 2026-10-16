@@ -478,6 +478,21 @@ CREATE TABLE IF NOT EXISTS chat_link (
     enc_pub TEXT NOT NULL, sign_pub TEXT NOT NULL, created DOUBLE PRECISION NOT NULL, expires DOUBLE PRECISION NOT NULL,
     sealed TEXT, approved DOUBLE PRECISION);
 CREATE INDEX IF NOT EXISTS chat_link_uid ON chat_link (uid);
+-- Anrufe (2.1, saga/calls.py): nur Zustand und Signalisierung (versiegelt fuer das Zielgeraet, der Server liest nichts).
+-- Beendete Anrufe verschwinden nach kurzer Zeit; im Chat bleibt nur ein Eintrag chat_msg kind='call' (Metadaten).
+CREATE TABLE IF NOT EXISTS chat_call (
+    id TEXT PRIMARY KEY, chat_id BIGINT NOT NULL REFERENCES chat(id) ON DELETE CASCADE,
+    caller TEXT NOT NULL, callee TEXT NOT NULL, caller_device TEXT NOT NULL, callee_device TEXT,
+    media TEXT NOT NULL,                          -- audio | video
+    state TEXT NOT NULL,                          -- ringing | active | ended
+    reason TEXT, created DOUBLE PRECISION NOT NULL, answered DOUBLE PRECISION, ended DOUBLE PRECISION,
+    seen_a DOUBLE PRECISION, seen_b DOUBLE PRECISION, nsig INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS chat_call_caller ON chat_call (caller, state);
+CREATE INDEX IF NOT EXISTS chat_call_callee ON chat_call (callee, state);
+CREATE TABLE IF NOT EXISTS chat_call_signal (
+    seq BIGSERIAL PRIMARY KEY, call_id TEXT NOT NULL REFERENCES chat_call(id) ON DELETE CASCADE,
+    from_device TEXT NOT NULL, to_device TEXT NOT NULL, sealed TEXT NOT NULL, created DOUBLE PRECISION NOT NULL);
+CREATE INDEX IF NOT EXISTS chat_call_signal_to ON chat_call_signal (call_id, to_device, seq);
 
 -- Mitteilungen aufs Handy/Desktop (1.7): Abos je Geraet/Browser und Warteschlange (saga.push). Gespeichert werden nur
 -- Kennungen; Text entsteht erst beim Zustellen (ohne Seitentitel/Inhalte). Auftraege hoechstens 24 h.

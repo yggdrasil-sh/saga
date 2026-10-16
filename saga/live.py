@@ -22,6 +22,9 @@ Ereignisse (event: ..., data: JSON) - die Rechte werden beim VERSAND geprueft (s
   chat.message     {chat_id, seq, id, sender}          Chat (1.5), an die Mitglieder - nie Inhalt
   chat.deleted     {chat_id, id, seq} · chat.read {chat_id, seq} (eigene Tabs) · chat.typing {chat_id, user}
   chat.changed     {chat_id} (Mitglieder/Name/Frist) · chat.link {id, approved?, gone?} · chat.device {id, revoked}
+  call.ring        {call_id, chat_id, from, from_device, media, ring_s}   Anruf (2.1, saga.calls) - an das Gegenueber
+  call.signal      {call_id, seq, from_device, to_device, sealed}   versiegelt fuer das Zielgeraet (SDP/ICE, der Server liest nichts)
+  call.state       {call_id, chat_id, state: active|ended, device?, reason?, status?}   an beide
 Jedes Ereignis ausser hello/reset/bye hat eine id (<boot>-<nummer>); mit Last-Event-ID holt ein neuer Aufbau verpasste
 Ereignisse der letzten 10 Minuten nach. Heartbeat: Kommentarzeile alle ~25 s (haelt Proxys offen).
 Hoechstens 5 Verbindungen je Konto - die aelteste wird mit "bye" (limit) geschlossen."""
