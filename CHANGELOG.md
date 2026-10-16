@@ -39,6 +39,23 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `/login/2fa`, `/login/passkey[/options]`, `/api/account/security[/options|/confirm]`, `/api/account/passkeys`,
   `/api/account/totp[/setup|/confirm]`, `/api/account/recovery`. Neue Tabellen (`mfa_*`) entstehen beim Start
   automatisch. Neue Abhängigkeit: `webauthn==3.0.1`.
+- **Profilbilder, Gravatar als Standard:** statt der Initialen überall ein Bild – Kopfzeile, Kommentare,
+  Anwesenheit, Benachrichtigungen, Teilen-Dialog/Personensuche, Chat (Liste, Unterhaltung, Mitglieder),
+  Versionsverlauf, Föderation. **Eigenes Bild** unter Einstellungen → Konto (PNG, JPEG, GIF, WebP, HEIC; im Browser
+  quadratisch zuschneiden, bis `AVATAR_MAX_MB` = 5 MB); der Server kodiert jedes Bild in einem speicherbegrenzten Prozess neu (64/128/256 px,
+  WebP und PNG/JPEG, ohne EXIF/Metadaten). **Gravatar** (Admin-Schalter, Standard an; je Person abschaltbar; nur mit
+  E-Mail): der **Server** holt es (SHA-256, `d=404`) über den SSRF-Schutz und speichert es einen Tag, auch „kein
+  Bild“ – Browser und Apps fragen nie bei Gravatar. Optional (Admin) Bild aus **OIDC `picture`** (vom Server
+  abgeholt) bzw. **LDAP `jpegPhoto`/`thumbnailPhoto`**. Auslieferung `GET /api/avatar/{schlüssel}?s=64|128|256`
+  (nicht erratbarer HMAC-Schlüssel, nur angemeldet bzw. Geräte-Schlüssel, ETag/Cache-Control, WebP bei
+  `Accept: image/webp`, keine Aufzählung der Konten); auf veröffentlichten Seiten nur mit Erlaubnis der Person
+  (Standard aus). Föderation: `GET /fed/v1/avatar/{name}` (signiert, höchstens 512 KB), beim Empfänger neu kodiert
+  und einen Tag zwischengespeichert. Konto löschen entfernt Bild und Zwischenspeicher.
+- **API für die Apps:** Personen-Objekte (`owner`, `author`, `updated_by`, `created_by`, `actor`, `sender`, `peer`,
+  `members`, Anwesenheit, Personensuche) haben das Feld `avatar` (Adresse oder `null` = Initialen);
+  `/api/account` liefert `avatar`. Eigenes Bild: `GET|PUT|PATCH|DELETE /api/account/avatar` (PUT: multipart
+  `image` oder Rohinhalt mit `Content-Type: image/*`; PATCH `{gravatar, public}`). Neue Tabellen `avatar`,
+  `avatar_img` entstehen beim Start automatisch; `MIN_APP` bleibt. Neue Abhängigkeit: `pillow-heif` (HEIC).
 - **Immich im Chat (Web):** Beim Anhängen gibt es „Aus Immich …“ (nur wenn Immich eingerichtet ist) mit derselben
   Auswahl wie auf Seiten. Das Bild wird über den Immich-Durchgriff des Servers geholt (große Vorschau, GIFs im Original;
   nichts wird dabei gespeichert) und dann wie jeder Anhang Ende-zu-Ende verschlüsselt hochgeladen. API:

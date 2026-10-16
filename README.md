@@ -66,6 +66,8 @@ private space – no cloud, no subscription, on your own server.
   (Keycloak, Authentik, Authelia, Zitadel, Entra ID …)
 - **Passkeys and two-factor sign-in:** passkeys (also without a password), authenticator app (TOTP) and
   recovery codes; admins can require 2FA for admins or everyone
+- **Profile pictures:** upload your own (cropped, re-encoded without metadata) or use Gravatar – fetched and
+  cached by the server, browsers never contact Gravatar; optionally from SSO/LDAP
 - **Admin area on a separate port** for users, groups, services and sign-in
 - **English, German and Spanish:** every user can choose their language in their settings
 - **[Apps](https://github.com/yggdrasil-sh/saga-apps)** (iOS/iPadOS/macOS, Linux/GTK, Android) using the same

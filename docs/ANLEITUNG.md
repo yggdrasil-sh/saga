@@ -797,6 +797,35 @@ nur zu, wenn der Anbieter einen meldet (`amr` mit `mfa`, `otp`, `hwk` …) oder 
 **Handy verloren:** mit einem Wiederherstellungscode anmelden und den Faktor neu einrichten. Ohne Codes setzt der
 Admin den zweiten Faktor zurück (Abschnitt 5).
 
+### Profilbilder
+
+Statt der farbigen Initialen zeigt Saga ein **Profilbild** – in der Kopfzeile, bei Kommentaren, in der Anwesenheit
+auf einer Seite, in Benachrichtigungen, im Teilen-Dialog und in der Personensuche, im Chat (Liste, Unterhaltung,
+Mitglieder) und beim Versionsverlauf („von …“). Ohne Bild bleiben die Initialen.
+
+- **Eigenes Bild:** Einstellungen → Konto → Profilbild → „Bild hochladen …“. Im Browser wählst du einen
+  quadratischen Ausschnitt (verschieben, zoomen). Erlaubt sind PNG, JPEG, GIF, WebP und HEIC bis `AVATAR_MAX_MB`
+  (Standard 5 MB). Der Server kodiert jedes Bild neu (64/128/256 Pixel, WebP und PNG/JPEG) und entfernt dabei alle
+  Metadaten (EXIF mit Kamera, Ort, Datum). „Eigenes Bild entfernen“ löscht es wieder.
+- **Gravatar ist Standard:** Wer kein eigenes Bild hat, bekommt – wenn das Konto eine E-Mail-Adresse hat – sein
+  [Gravatar](https://gravatar.com). Datenschutz: **Nur der Server** fragt bei Gravatar (mit dem SHA-256-Hash der
+  E-Mail-Adresse) und speichert das Ergebnis einen Tag – auch „kein Bild“. Browser und Apps fragen nie selbst bei
+  Gravatar; Gravatar erfährt also nicht, wer sich ein Bild ansieht. Jede Person kann Gravatar für sich abschalten
+  („Gravatar verwenden, wenn ich kein eigenes Bild habe“), der Admin für alle (Allgemein → Profilbilder).
+- **Bild vom Anmeldedienst (optional, Admin):** „Bild aus dem SSO übernehmen“ nimmt die Adresse aus dem
+  OIDC-Claim `picture` (abgeholt vom Server, nicht vom Browser), „Bild aus LDAP übernehmen“ liest `jpegPhoto`
+  bzw. `thumbnailPhoto` bei der Anmeldung. Interne Adressen holt Saga nur, wenn sie unter „Freigegebene interne
+  Hosts“ stehen (Schutz vor SSRF); abgeholte Bilder sind auf 2 MB und wenige Sekunden begrenzt.
+- **Reihenfolge:** eigenes Bild → Bild vom Anmeldedienst → Gravatar → Initialen.
+- **Wer sieht das Bild?** Die Bildadressen enthalten einen nicht erratbaren Schlüssel (`/api/avatar/<schlüssel>`);
+  abrufen können sie nur angemeldete Personen (bzw. Apps). Konten lassen sich darüber nicht durchzählen. Auf
+  **veröffentlichten Seiten** erscheint dein Bild neben „@name“ nur, wenn du „Auch auf meinen veröffentlichten
+  Seiten zeigen“ einschaltest (Standard: aus).
+- **Föderation:** Personen anderer Saga-Instanzen zeigen ihr Bild ebenfalls. Dein Server holt es signiert bei
+  deren Instanz ab (höchstens 512 KB), kodiert es neu und speichert es einen Tag; beim Trennen der Verbindung
+  wird der Zwischenspeicher gelöscht.
+- **Konto löschen** entfernt Bild, Einstellungen und alle zwischengespeicherten Bilder dieses Kontos.
+
 ### Sprache
 
 Saga spricht Deutsch, Englisch und Spanisch. Welche Sprache du siehst, entscheidet sich in dieser Reihenfolge:
@@ -1001,6 +1030,7 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `ADMIN_SESSION_HOURS` | `4` | Gültigkeit einer Sitzung im Admin-Bereich |
 | `TIMEZONE` | `Europe/Berlin` | Zeitzone für Exporte |
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Größe je Datei / Speicher je Benutzer |
+| `AVATAR_MAX_MB` | `5` | Größte Datei beim Hochladen eines Profilbilds |
 | `CHAT_QUOTA_MB` | `1024` | Speicher für Chat-Anhänge je Benutzer (verschlüsselt, unter `STATE_DIR/chat`) |
 | `REQUEST_MAX_MB` | `2` | Größte Anfrage außer Datei-Uploads (z. B. sehr lange Seiten); größere bekommen 413 |
 | `KDF_PARALLEL` | `4` | So viele Passwortprüfungen gleichzeitig (je ca. 32 MB Speicher); weitere warten bis 2 s |

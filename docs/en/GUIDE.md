@@ -774,6 +774,34 @@ requests from the provider).
 **Lost your phone?** Sign in with a recovery code and set up the factor again. Without codes, the admin resets
 the second factor (section 5).
 
+### Profile pictures
+
+Instead of the colored initials, Saga shows a **profile picture** – in the header, on comments, in the presence
+indicator of a page, in notifications, in the share dialog and people search, in chats (list, conversation,
+members) and in the version history (“by …”). Without a picture, the initials stay.
+
+- **Your own picture:** Settings → Account → Profile picture → “Upload picture …”. In the browser you choose a
+  square crop (drag, zoom). PNG, JPEG, GIF, WebP and HEIC up to `AVATAR_MAX_MB` (default 5 MB) are allowed. The server
+  re-encodes every picture (64/128/256 pixels, WebP and PNG/JPEG) and removes all metadata (EXIF with camera,
+  location, date). “Remove my picture” deletes it again.
+- **Gravatar is the default:** without a picture of your own – and with an email address on the account – you get
+  your [Gravatar](https://gravatar.com). Privacy: **only the server** asks Gravatar (using the SHA-256 hash of the
+  email address) and keeps the result for a day – including “no picture”. Browsers and apps never contact Gravatar
+  themselves, so Gravatar does not learn who looks at a picture. Everyone can turn Gravatar off for themselves
+  (“Use Gravatar if I have no picture of my own”), the admin for everyone (General → Profile pictures).
+- **Picture from the identity provider (optional, admin):** “Use the picture from SSO” takes the address from the
+  OIDC claim `picture` (fetched by the server, not the browser); “Use the picture from LDAP” reads `jpegPhoto` or
+  `thumbnailPhoto` at sign-in. Saga only fetches internal addresses listed under “Allowed internal hosts”
+  (SSRF protection); fetched pictures are limited to 2 MB and a few seconds.
+- **Order:** own picture → picture from the identity provider → Gravatar → initials.
+- **Who can see the picture?** Picture addresses contain a key that cannot be guessed (`/api/avatar/<key>`); only
+  signed-in people (or apps) can load them, and accounts cannot be enumerated this way. On **published pages** your
+  picture appears next to “@name” only if you turn on “Also show on my published pages” (default: off).
+- **Federation:** people on other Saga instances show their picture too. Your server fetches it from their
+  instance with a signed request (at most 512 KB), re-encodes it and keeps it for a day; disconnecting the
+  instance deletes the cache.
+- **Deleting an account** removes its picture, settings and all cached pictures.
+
 ### Language
 
 Saga speaks English, German and Spanish. The language you see is decided in this order:
@@ -978,6 +1006,7 @@ with the same account also switch the oldest ones to polling.
 | `ADMIN_SESSION_HOURS` | `4` | Lifetime of a session in the admin area |
 | `TIMEZONE` | `Europe/Berlin` | Time zone for exports |
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Size per file / storage per user |
+| `AVATAR_MAX_MB` | `5` | Largest file when uploading a profile picture |
 | `CHAT_QUOTA_MB` | `1024` | Storage for chat attachments per user (encrypted, under `STATE_DIR/chat`) |
 | `REQUEST_MAX_MB` | `2` | Largest request apart from file uploads (e.g. very long pages); larger ones get 413 |
 | `KDF_PARALLEL` | `4` | Password checks at the same time (about 32 MB of memory each); others wait up to 2 s |

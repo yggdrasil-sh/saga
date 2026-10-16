@@ -63,6 +63,8 @@
   (Keycloak, Authentik, Authelia, Zitadel, Entra ID …)
 - **Passkeys und Zwei-Faktor-Anmeldung:** Passkeys (auch ganz ohne Passwort), Authenticator-App (TOTP) und
   Wiederherstellungscodes; der Admin kann 2FA für Admins oder alle verlangen
+- **Profilbilder:** eigenes Bild (zugeschnitten, ohne Metadaten neu kodiert) oder Gravatar – vom Server geholt
+  und zwischengespeichert, Browser fragen nie bei Gravatar; optional aus SSO/LDAP
 - **Admin-Bereich auf eigenem Port** für Benutzer, Gruppen, Dienste und Anmeldung
 - **Deutsch, Englisch und Spanisch:** jeder Benutzer kann seine Sprache in den Einstellungen wählen
 - **[Apps](https://github.com/yggdrasil-sh/saga-apps/blob/main/README.de.md)** (iOS/iPadOS/macOS, Linux/GTK, Android) über dieselbe

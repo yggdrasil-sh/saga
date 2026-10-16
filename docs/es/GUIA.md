@@ -807,6 +807,35 @@ configurados (que Saga también solicita al proveedor).
 **¿Perdiste el móvil?** Inicia sesión con un código de recuperación y vuelve a configurar el factor. Sin códigos,
 el administrador restablece el segundo factor (sección 5).
 
+### Fotos de perfil
+
+En lugar de las iniciales de color, Saga muestra una **foto de perfil**: en la cabecera, en los comentarios, en la
+presencia de una página, en las notificaciones, en el diálogo de compartir y la búsqueda de personas, en los chats
+(lista, conversación, miembros) y en el historial de versiones («de …»). Sin imagen se quedan las iniciales.
+
+- **Imagen propia:** Ajustes → Cuenta → Foto de perfil → «Subir imagen …». En el navegador eliges un recorte
+  cuadrado (mover, ampliar). Se permiten PNG, JPEG, GIF, WebP y HEIC hasta `AVATAR_MAX_MB` (por defecto 5 MB). El
+  servidor vuelve a codificar cada imagen (64/128/256 píxeles, WebP y PNG/JPEG) y elimina todos los metadatos
+  (EXIF con cámara, lugar, fecha). «Quitar mi imagen» la borra de nuevo.
+- **Gravatar por defecto:** sin imagen propia –y con una dirección de correo en la cuenta– se usa tu
+  [Gravatar](https://gravatar.com). Privacidad: **solo el servidor** consulta Gravatar (con el hash SHA-256 de la
+  dirección) y guarda el resultado un día, también «sin imagen». Los navegadores y las apps nunca consultan
+  Gravatar directamente, así que Gravatar no sabe quién mira una imagen. Cada persona puede desactivarlo para sí
+  («Usar Gravatar si no tengo imagen propia»), el admin para todos (General → Fotos de perfil).
+- **Imagen del proveedor de identidad (opcional, admin):** «Usar la imagen del SSO» toma la dirección del claim
+  OIDC `picture` (la obtiene el servidor, no el navegador); «Usar la imagen de LDAP» lee `jpegPhoto` o
+  `thumbnailPhoto` al iniciar sesión. Saga solo obtiene direcciones internas incluidas en «Hosts internos
+  permitidos» (protección contra SSRF); las imágenes obtenidas se limitan a 2 MB y pocos segundos.
+- **Orden:** imagen propia → imagen del proveedor de identidad → Gravatar → iniciales.
+- **¿Quién ve la imagen?** Las direcciones contienen una clave imposible de adivinar (`/api/avatar/<clave>`); solo
+  las personas (o apps) con sesión iniciada pueden cargarlas y no se pueden enumerar las cuentas. En las **páginas
+  publicadas** tu imagen aparece junto a «@nombre» solo si activas «Mostrar también en mis páginas publicadas»
+  (por defecto: desactivado).
+- **Federación:** las personas de otras instancias de Saga también muestran su imagen. Tu servidor la obtiene de
+  su instancia con una petición firmada (máximo 512 KB), la vuelve a codificar y la guarda un día; al desconectar
+  la instancia se borra la caché.
+- **Borrar una cuenta** elimina su imagen, sus ajustes y todas las imágenes guardadas.
+
 ### Idioma
 
 Saga habla español, inglés y alemán. El idioma que ves se decide en este orden:
@@ -1017,6 +1046,7 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `ADMIN_SESSION_HOURS` | `4` | Duración de una sesión en el área de administración |
 | `TIMEZONE` | `Europe/Berlin` | Zona horaria para exportaciones |
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Tamaño por archivo / espacio por usuario |
+| `AVATAR_MAX_MB` | `5` | Archivo más grande al subir una foto de perfil |
 | `CHAT_QUOTA_MB` | `1024` | Espacio para adjuntos de chat por usuario (cifrados, en `STATE_DIR/chat`) |
 | `REQUEST_MAX_MB` | `2` | Petición más grande salvo subidas de archivos (p. ej. páginas muy largas); las mayores reciben 413 |
 | `KDF_PARALLEL` | `4` | Comprobaciones de contraseña a la vez (unos 32 MB de memoria cada una); las demás esperan hasta 2 s |
