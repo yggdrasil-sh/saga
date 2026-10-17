@@ -68,6 +68,39 @@ def reset_admin(name):
     print(f"(steht auch in {auth.PW_FILE}; nach dem Anmelden im Admin-Bereich ändern)")
 
 
+def reset_mfa(name):
+    """python run.py 2fa-zuruecksetzen <benutzer>  - zweiten Faktor eines Kontos entfernen (Notfall; Passwort bleibt).
+    Verlangt die Richtlinie einen Faktor, fuehrt die naechste Anmeldung zur Einrichtung (auch im Admin-Bereich)."""
+    import auth
+    import db
+    db.wait_ready(30)
+    db.init_schema()
+    u = auth.get_user(auth.norm_username(name) or "")
+    if not u:
+        sys.exit(f"Kein Konto „{name}“")
+    n = auth.clear_mfa(u["username"], "cli")
+    auth.clear_fails(u["username"])
+    for area in ("mfa", "admin-mfa"):
+        auth.clear_fails(u["username"], area)
+    print(f"Zweiter Faktor von „{u['username']}“ zurückgesetzt ({n} Faktor(en) entfernt)." if n
+          else f"„{u['username']}“ hatte keinen zweiten Faktor.")
+
+
+def mfa_policy(value):
+    """python run.py 2fa-richtlinie [none|admins|all]  - Richtlinie "2FA verlangen" anzeigen bzw. setzen (Notfall)."""
+    import auth
+    import db
+    db.wait_ready(30)
+    db.init_schema()
+    cur = dict(auth.settings(fresh=True).get("mfa") or {})
+    if value:
+        if value not in ("none", "admins", "all"):
+            sys.exit("Aufruf: python run.py 2fa-richtlinie none|admins|all")
+        cur["require"] = value
+        auth.save_setting("mfa", cur)
+    print(f"2FA verlangen: {cur.get('require') or 'none'}" + (" (gespeichert, gilt im laufenden Saga nach spätestens 5 Sekunden)" if value else ""))
+
+
 def do_backup(with_files=False):
     """python run.py backup [--dateien]  - Datenbank-Backup nach /data/backups (laeuft auch neben dem Server).
     Die hochgeladenen Bilder/Dateien (/data/files) stecken NICHT im Datenbank-Backup - mit --dateien kommt ein
@@ -120,6 +153,12 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     if cmd in ("admin-passwort", "reset-admin"):
         reset_admin(sys.argv[2] if len(sys.argv) > 2 else os.environ.get("ADMIN_USERNAME") or "admin")
+    elif cmd in ("2fa-zuruecksetzen", "reset-2fa"):
+        if len(sys.argv) < 3:
+            sys.exit("Aufruf: python run.py 2fa-zuruecksetzen <benutzer>")
+        reset_mfa(sys.argv[2])
+    elif cmd in ("2fa-richtlinie", "2fa-policy"):
+        mfa_policy(sys.argv[2] if len(sys.argv) > 2 else "")
     elif cmd == "backup":
         do_backup(with_files=any(a in ("--dateien", "--files") for a in sys.argv[2:]))
     elif cmd == "restore":
@@ -131,6 +170,6 @@ if __name__ == "__main__":
         import db
         print(f"Saga {VERSION} (Datenbank-Schema {db.SCHEMA_VERSION})")
     elif cmd:
-        sys.exit(f"Unbekannter Befehl: {cmd} (moeglich: admin-passwort, backup, restore, version)")
+        sys.exit(f"Unbekannter Befehl: {cmd} (moeglich: admin-passwort, 2fa-zuruecksetzen, 2fa-richtlinie, backup, restore, version)")
     else:
         asyncio.run(main())

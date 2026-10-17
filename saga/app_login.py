@@ -11,9 +11,17 @@ from db import clean_line, connect as _db
 from fastapi import APIRouter
 from saga.core import (APP_TOKEN_MAX, ASSET_V, BASE_URL, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, _tok_db,
                        _tok_hash, forget_device, t, title, tmpl, user_info)
+from saga import mfa
 from saga.web_auth import _auth_page
 
 router = APIRouter()
+
+
+def _mfa_block():
+    """Neue App-Anmeldung (QR-Kopplung), solange die Richtlinie einen Faktor verlangt, den das Konto nicht hat.
+    Bestehende Geraete-Anmeldungen (/app/resume) und Sitzungen bleiben davon unberuehrt."""
+    return JSONResponse({"error": t("Dein Admin verlangt einen zweiten Faktor – bitte richte zuerst im Browser unter „Anmeldung & Sicherheit“ einen Passkey oder eine Authenticator-App ein."),
+                         "mfa_setup": True, "url": BASE_URL + "/security"}, status_code=403, headers={"Cache-Control": "no-store"})
 
 
 # =====================================================================================
@@ -146,6 +154,11 @@ def app_handoff(request: Request, go: str = "", cancel: str = ""):
         return RedirectResponse("/login?next=/app/handoff", status_code=303)
     if not _CHALLENGE_RE.fullmatch(ch):
         return PlainTextResponse(t("Anmeldung bitte in der App neu starten."), status_code=400)
+    if mfa.setup_needed(uid):
+        # Richtlinie verlangt einen zweiten Faktor, das Konto hat keinen: erst einrichten (die Sitzung bleibt),
+        # danach fuehrt "Weiter" auf /security hierher zurueck
+        request.session.update(mfa_setup=1, mfa_next="/app/handoff")
+        return RedirectResponse("/security", status_code=303)
     want = request.session.pop("handoff", None)
     fresh = _fresh_login(request)
     request.session.pop("login_at", None)          # gilt nur fuer genau eine Uebergabe
@@ -182,6 +195,8 @@ async def app_exchange(request: Request):
         return _bad(t("Code ungültig oder abgelaufen"), 401)
     if user_info(r[0], fresh=True) is None:
         return _bad(t("Kein Zugriff"), 403)
+    if mfa.setup_needed(r[0]):                    # Richtlinie dazwischen eingeschaltet (Code gilt 2 Minuten)
+        return _mfa_block()
     _set_session(request, r[0], r[1])
     out = {"ok": True, "name": r[1]}
     out.update(_mint_device(r[0], r[1], b))
@@ -295,6 +310,8 @@ def api_pair_new(request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
+    if mfa.setup_needed(uid):
+        return _mfa_block()
     import segno
     code, pid, now = secrets.token_urlsafe(24), secrets.token_urlsafe(9), time.time()
     with _db() as c, c:
@@ -348,6 +365,8 @@ async def app_pair(request: Request):
         return _bad(t("QR-Code ungültig, schon benutzt oder abgelaufen – bitte im Web einen neuen erzeugen."), 401)
     if user_info(r[0], fresh=True) is None:
         return _bad(t("Kein Zugriff"), 403)
+    if mfa.setup_needed(r[0]):                    # Code entstand vor dem Einschalten der Richtlinie
+        return _mfa_block()
     _set_session(request, r[0], r[1])
     out = {"ok": True, "name": r[1], "server": BASE_URL}
     out.update(_mint_device(r[0], r[1], dict(b, device=dev)))

@@ -15,6 +15,23 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Rückweg-Sperre und 2FA-Richtlinie überall (nach Bughunt 2)
+- **Datenbank-Migration 6** (Schema-Stand 5 → 6, vorher automatisch Backup `…-vor-schema-6.dump`): ändert nichts an
+  den Daten (die Tabellen für zweiten Faktor, Profilbilder und Anrufe legt Saga schon an), sorgt aber dafür, dass
+  **2.0.x und ältere Stände auf einer 2.1-Datenbank nicht mehr starten** („Die Datenbank hat Schema-Stand 6, diese
+  Saga-Version kennt nur 5“) – vorher lief 2.0.0 weiter und ließ Konten mit 2FA nur mit dem Passwort hinein.
+  Zurück zu 2.0 nur über das Backup (Anleitung, Abschnitt Aktualisieren).
+- **„2FA verlangen“ gilt auch im Admin-Bereich:** Ein Admin ohne Faktor wird nach dem Passwort zur Einrichtung einer
+  Authenticator-App geführt (QR-Code + Schlüssel, ohne JavaScript, 15 Minuten; Passkeys weiter auf der Hauptseite),
+  bekommt die Wiederherstellungscodes und ist danach angemeldet. Offene Admin-Sitzungen bleiben.
+- **Bei „alle“ brauchen neue App-Anmeldungen einen Faktor:** `/app/handoff` führt ohne Faktor zur Einrichtung (und
+  danach zurück zur App), `POST /api/settings/pair`, `POST /app/pair` und `POST /app/exchange` antworten dann mit
+  403 `{error, mfa_setup: true, url}`. Bestehende Geräte (`/app/resume`), Sitzungen und App-Schlüssel bleiben
+  gültig; SSO-Konten sind nicht betroffen. Standard bleibt „niemand“ – damit ändert sich nichts.
+- **Notfall per Kommandozeile:** `python run.py 2fa-zuruecksetzen <name>` (nur den Faktor entfernen, Passwort bleibt –
+  auch für LDAP-Konten) und `python run.py 2fa-richtlinie [none|admins|all]`; `admin-passwort` entfernt den Faktor
+  wie bisher mit.
+
 ### Fehlerrunde nach Bughunt 2 (Server + Web)
 - **Uploads ohne Content-Length** (chunked) über der Grenze bekommen wieder **413** statt 500 (Profilbild, Chat-Anhang).
 - **KI-Suche:** „Gartenschere“ findet die Seite „Garten“ (Zerlegung bevorzugt echte Wörter und den längeren Wortteil);

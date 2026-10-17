@@ -44,9 +44,10 @@ REC_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz"      # ohne 0/o, 1/l/i (abschre
 class MfaError(Exception):
     """Fehler mit uebersetzter Meldung fuer die Antwort. unknown=True: Passkey ist hier nicht (mehr) bekannt."""
 
-    def __init__(self, msg, unknown=False):
+    def __init__(self, msg, unknown=False, status=400):
         super().__init__(msg)
         self.unknown = unknown
+        self.status = status
 
 
 def b64e(b):
@@ -150,6 +151,12 @@ def required(info):
         return False
     r = policy().get("require")
     return r == "all" or (r == "admins" and bool(info.get("is_admin")))
+
+
+def setup_needed(uid):
+    """Verlangt die Richtlinie einen Faktor, den das Konto noch nicht hat? (neue App-Anmeldungen, Admin-Bereich)"""
+    info = user_info(uid)
+    return bool(info) and required(info) and not has_mfa(uid)
 
 
 def oidc_mfa_ok(claims, pol=None):
@@ -403,11 +410,11 @@ def auth_verify(request, cred, uid=None, kind="auth", key="wa", origin=ORIGIN):
 
 
 # --- Zwischenschritt nach dem Passwort -------------------------------------------------------------------
-def pending(request, prefix="mfa"):
+def pending(request, prefix="mfa", ttl=PENDING_TTL):
     """Benutzername im Zwischenschritt (Passwort richtig, zweiter Faktor fehlt) - None, wenn abgelaufen/ungueltig."""
     uid, at = request.session.get(prefix + "_u"), request.session.get(prefix + "_at")
     try:
-        if not uid or not (0 <= time.time() - float(at) <= PENDING_TTL):
+        if not uid or not (0 <= time.time() - float(at) <= ttl):
             return None
     except (TypeError, ValueError):
         return None
@@ -668,26 +675,56 @@ def api_passkey_delete(pid: int, request: Request):
     return _no_store(_state(request, uid))
 
 
+def totp_begin(uid, reuse=False):
+    """Authenticator-App einrichten: neues Geheimnis (noch nicht aktiv) -> QR-Code (SVG, im Server erzeugt) + Schluessel
+    zum Abtippen. reuse=True: ein schon begonnenes (unbestaetigtes) Geheimnis weiter anzeigen (Admin-Seite nach falschem
+    Code). Auch fuer den Admin-Bereich (Einrichtung ohne JavaScript)."""
+    import segno
+    with _db() as c:
+        if c.execute("SELECT 1 FROM mfa_totp WHERE uid=? AND confirmed IS NOT NULL", (uid,)).fetchone():
+            raise MfaError(t("Eine Authenticator-App ist schon eingerichtet – zum Wechseln zuerst entfernen."), status=409)
+        r = c.execute("SELECT secret FROM mfa_totp WHERE uid=? AND confirmed IS NULL", (uid,)).fetchone() if reuse else None
+    key = auth._dec(r[0]) if r else ""
+    if not key:
+        key = base64.b32encode(secrets.token_bytes(20)).decode()
+        with _db() as c, c:
+            c.execute("DELETE FROM mfa_totp WHERE uid=?", (uid,))
+            c.execute("INSERT INTO mfa_totp (uid, secret, confirmed, last_step, created) VALUES (?,?,NULL,0,?)", (uid, auth._enc(key), time.time()))
+    issuer = title()
+    uri = (f"otpauth://totp/{quote(issuer, safe='')}:{quote(uid, safe='')}?secret={key}&issuer={quote(issuer, safe='')}"
+           f"&algorithm=SHA1&digits={TOTP_DIGITS}&period={TOTP_STEP}")
+    qr = segno.make(uri, error="m").svg_data_uri(scale=5, border=2, dark="#000000", light="#ffffff")
+    return {"secret": " ".join(key[i:i + 4] for i in range(0, len(key), 4)), "uri": uri, "qr": qr,
+            "issuer": issuer, "account": uid, "digits": TOTP_DIGITS, "period": TOTP_STEP}
+
+
+def totp_finish(uid, code):
+    """Einrichtung mit einem Code bestaetigen -> Wiederherstellungscodes (beim ersten Faktor, sonst None).
+    MfaError: falscher Code (400) bzw. keine Einrichtung begonnen (409). Fehlversuche zaehlt der Aufrufer."""
+    with _db() as c:
+        r = c.execute("SELECT secret FROM mfa_totp WHERE uid=? AND confirmed IS NULL", (uid,)).fetchone()
+    if not r:
+        raise MfaError(t("Bitte die Einrichtung neu starten."), status=409)
+    st = totp_match(_totp_secret(r[0]), code)
+    if st is None:
+        raise MfaError(t("Der Code stimmt nicht. Stimmt die Uhrzeit auf dem Handy?"))
+    with _db() as c, c:
+        if not c.execute("UPDATE mfa_totp SET confirmed=?, last_step=? WHERE uid=? AND confirmed IS NULL", (time.time(), st, uid)).rowcount:
+            raise MfaError(t("Bitte die Einrichtung neu starten."), status=409)
+    print(f"mfa: {uid} Authenticator-App eingerichtet", flush=True)
+    return _first_factor(uid)
+
+
 @router.post("/api/account/totp/setup")
 def api_totp_setup(request: Request):
     """Neues Geheimnis (noch nicht aktiv) -> QR-Code (SVG, im Server erzeugt) + Schluessel zum Abtippen."""
     uid, info, err = _guard(request)
     if err:
         return err
-    import segno
-    with _db() as c:
-        if c.execute("SELECT 1 FROM mfa_totp WHERE uid=? AND confirmed IS NOT NULL", (uid,)).fetchone():
-            return _bad(t("Eine Authenticator-App ist schon eingerichtet – zum Wechseln zuerst entfernen."), 409)
-    key = base64.b32encode(secrets.token_bytes(20)).decode()
-    with _db() as c, c:
-        c.execute("DELETE FROM mfa_totp WHERE uid=?", (uid,))
-        c.execute("INSERT INTO mfa_totp (uid, secret, confirmed, last_step, created) VALUES (?,?,NULL,0,?)", (uid, auth._enc(key), time.time()))
-    issuer = title()
-    uri = (f"otpauth://totp/{quote(issuer, safe='')}:{quote(uid, safe='')}?secret={key}&issuer={quote(issuer, safe='')}"
-           f"&algorithm=SHA1&digits={TOTP_DIGITS}&period={TOTP_STEP}")
-    qr = segno.make(uri, error="m").svg_data_uri(scale=5, border=2, dark="#000000", light="#ffffff")
-    return _no_store({"secret": " ".join(key[i:i + 4] for i in range(0, len(key), 4)), "uri": uri, "qr": qr,
-                      "issuer": issuer, "account": uid, "digits": TOTP_DIGITS, "period": TOTP_STEP})
+    try:
+        return _no_store(totp_begin(uid))
+    except MfaError as ex:
+        return _bad(str(ex), ex.status)
 
 
 @router.post("/api/account/totp/confirm")
@@ -699,18 +736,13 @@ async def api_totp_confirm(request: Request):
     ip = ip_of(request)
     if auth.too_many(uid, ip, "mfa"):
         return _bad(t("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen."), 429)
-    with _db() as c:
-        r = c.execute("SELECT secret FROM mfa_totp WHERE uid=? AND confirmed IS NULL", (uid,)).fetchone()
-    if not r:
-        return _bad(t("Bitte die Einrichtung neu starten."), 409)
-    st = totp_match(_totp_secret(r[0]), b.get("code"))
-    if st is None:
-        auth.note_fail(uid, ip, "mfa")
-        return _bad(t("Der Code stimmt nicht. Stimmt die Uhrzeit auf dem Handy?"))
-    with _db() as c, c:
-        c.execute("UPDATE mfa_totp SET confirmed=?, last_step=? WHERE uid=? AND confirmed IS NULL", (time.time(), st, uid))
-    print(f"mfa: {uid} Authenticator-App eingerichtet", flush=True)
-    return _no_store({"ok": True, "recovery": _first_factor(uid)})
+    try:
+        rec = await run_in_threadpool(totp_finish, uid, b.get("code"))
+    except MfaError as ex:
+        if ex.status == 400:
+            auth.note_fail(uid, ip, "mfa")
+        return _bad(str(ex), ex.status)
+    return _no_store({"ok": True, "recovery": rec})
 
 
 @router.delete("/api/account/totp")

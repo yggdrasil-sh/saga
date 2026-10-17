@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field with context %}
+{% block pagetitle %}{{ _('Zweiten Faktor einrichten') }}{% endblock %}
+{% block content %}
+{# Richtlinie "2FA verlangen": Admin ohne Faktor richtet hier (ohne JavaScript) eine Authenticator-App ein. Passkeys gehen
+   am Admin-Port meist nicht (andere Adresse als BASE_URL) - dafuer der Hinweis auf die Hauptseite. #}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-brand"><img src="/static/icon.svg?v={{ v }}" alt="" width="44" height="44"><h1>{{ title }} · {{ _('Admin') }}</h1></div>
+    <h2 class="auth-h">{{ _("Zweiten Faktor einrichten") }}</h2>
+    {% if error %}<p class="auth-err" role="alert">{{ error }}</p>{% endif %}
+    <p class="auth-note" id="adm-mfa-need">{{ _("Für Admin-Konten ist ein zweiter Faktor vorgeschrieben. Richte jetzt eine Authenticator-App ein – danach geht es direkt in den Admin-Bereich.") }}</p>
+    <p class="hk-hint">{{ _("Apps wie Aegis, 2FAS, Google Authenticator oder Microsoft Authenticator zeigen alle 30 Sekunden einen neuen 6-stelligen Code. Saga fragt ihn nach dem Passwort ab.") }}</p>
+    <p>{{ _("1. QR-Code mit der Authenticator-App scannen.") }}</p>
+    <div class="hk-qr mfa-qr"><img src="{{ totp.qr }}" width="200" height="200" alt="{{ _('QR-Code für die Authenticator-App') }}"></div>
+    <p class="hk-hint">{{ _("Kein Scannen möglich? Diesen Schlüssel von Hand eingeben (zeitbasiert, 6 Ziffern, 30 Sekunden):") }}
+      <code class="mfa-key" id="adm-mfa-key">{{ totp.secret }}</code></p>
+    <form method="post" action="/login/2fa/setup" class="auth-form" autocomplete="off">
+      {{ csrf_field() }}
+      <label class="hk-field"><span>{{ _("2. Angezeigten Code eingeben") }}</span>
+        <input class="hk-in mfa-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" required autofocus placeholder="123456"></label>
+      <button class="btn btn-primary auth-btn" type="submit">{{ _("Einrichten") }}</button>
+    </form>
+    <p class="hk-hint">{{ _("Lieber einen Passkey? Den kannst du auf der Hauptseite unter „Anmeldung & Sicherheit“ anlegen und dich danach hier neu anmelden:") }}
+      <a href="{{ security_url }}" target="_blank" rel="noopener">{{ security_url }}</a></p>
+    <p class="auth-foot"><a href="/logout">{{ _("Abbrechen") }}</a></p>
+  </div>
+</div>
+{% endblock %}

@@ -82,7 +82,15 @@ docker compose exec saga python run.py admin-passwort anna     # another account
 ```
 
 If the account has a second factor (passkey, authenticator app), this emergency command removes it as well –
-afterwards you sign in with the new password only and set up the second factor again.
+afterwards you sign in with the new password only and set up the second factor again. If the "Require 2FA" policy
+applies, the next sign-in (in the admin area too) leads straight to the setup – you are not locked out. More
+emergency commands:
+
+```sh
+docker compose exec saga python run.py 2fa-zuruecksetzen anna   # remove only the second factor (password stays, LDAP too)
+docker compose exec saga python run.py 2fa-richtlinie           # show the "Require 2FA" policy
+docker compose exec saga python run.py 2fa-richtlinie none      # … turn it off (none | admins | all)
+```
 
 ![Sign-in page](../screenshots/login.png)
 
@@ -207,7 +215,10 @@ Under **Users** you create accounts, set passwords, and assign groups and admin 
   the user page.
 - **Require 2FA** (General → "Second factor"): nobody (default), admins only, or all local and LDAP accounts.
   Anyone affected without a second factor is taken to the setup after signing in – nobody is locked out, and
-  signed-in apps stay signed in. Details in section 9 "Passkeys and two-factor sign-in".
+  signed-in apps and sessions stay signed in. This also applies to the **admin area** itself: an admin without a
+  factor sets up an authenticator app after the password (QR code, then code) and is then signed in; admin sessions
+  that are already open stay. With "all", **new app sign-ins** (the app's sign-in window, QR pairing) need a factor
+  too. Details in section 9 "Passkeys and two-factor sign-in", emergency commands in section 2.
 - **Delete** removes the account **including all its data** (pages, tasks, files, bookmarks, connections).
   Better to lock external accounts: otherwise a new, empty account would be created on the next sign-in.
 
@@ -913,14 +924,18 @@ same applies to "Start chats over": a passkey or code now works instead of the p
 **Apps:** the apps sign in through Saga's sign-in page in the system browser window – the second step appears
 there as well, and passkeys work in it on iPhone, iPad, Mac and Android. Apps that are already signed in stay
 signed in, even when you turn on 2FA or the admin requires it. Pairing via QR code needs no second step (it starts
-from a session that is already signed in).
+from a session that is already signed in). If the admin requires 2FA for everyone and your account has no factor
+yet, a **new** app sign-in leads to the setup first ("Continue" then returns to the app); a pairing QR code is only
+available afterwards.
 
 **Requirement for passkeys:** `BASE_URL` with a host name and `https://` (e.g. `https://saga.example.org`; only
 `http://localhost` works without https). If Saga is opened via an address other than `BASE_URL`, Saga explains
 that instead of failing silently. Passkeys belong to the domain: if `BASE_URL` later moves to another domain,
 existing passkeys stop working (signing in with password + code/recovery code still works). To make passkeys valid
 for several subdomains, set `PASSKEY_RP_ID` to the common domain. In the **admin area** passkeys only work if
-`ADMIN_URL` is on the same domain – otherwise use a code or recovery code there.
+`ADMIN_URL` is on the same domain – otherwise use a code or recovery code there. That is why an admin without a
+factor sets up an authenticator app there when the policy requires one (passkeys on the main site under
+"Sign-in & security").
 
 **SSO (OIDC):** Saga does not offer its own 2FA to SSO accounts – the sign-in service (e.g. Keycloak) asks for the
 second factor. With the admin switch "Require a second factor for SSO", Saga only accepts SSO sign-ins if the
@@ -928,7 +943,8 @@ provider reports one (`amr` with `mfa`, `otp`, `hwk` …) or one of the configur
 requests from the provider).
 
 **Lost your phone?** Sign in with a recovery code and set up the factor again. Without codes, the admin resets
-the second factor (section 5).
+the second factor (section 5) – or, if the admin cannot get in either, on the server
+`docker compose exec saga python run.py 2fa-zuruecksetzen <name>` (section 2).
 
 ### Profile pictures
 
@@ -1073,8 +1089,10 @@ want them, set up the AI assistant, federation and Apple notifications (APNs) in
 check your reverse proxy for the live channel (section 3). Everything else is in the [changelog](../../CHANGELOG.md).
 
 **Going back to the previous version:** An older Saga will not start on a database that a newer version has
-already changed (it reports this in the log instead of damaging data). In that case, restore the backup from
-before the update:
+already changed (it reports this in the log instead of damaging data). This also applies to **2.1 → 2.0.x**: 2.1
+raises the schema version to 6 (backup `…-vor-schema-6.dump`), and 2.0.x then stops with "Die Datenbank hat
+Schema-Stand 6, diese Saga-Version kennt nur 5" – otherwise 2.0 would keep running and let accounts with a second
+factor in with just the password. In that case, restore the backup from before the update:
 
 ```sh
 docker compose stop saga

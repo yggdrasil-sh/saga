@@ -89,7 +89,7 @@ def settings_wait():
 def cleanup():
     with connect() as c, c:
         for t in ("device_login", "app_token", "user_kv", "app_code", "mfa_passkey", "mfa_totp", "mfa_recovery", "mfa_challenge",
-                  "chat_identity", "chat_device", "note", "notification"):
+                  "chat_identity", "chat_device", "note", "notification", "pair_code"):
             c.execute(f"DELETE FROM {t} WHERE uid LIKE 'zf-%'")
         c.execute("DELETE FROM users WHERE username LIKE 'zf-%'")
         c.execute("DELETE FROM login_fail WHERE key LIKE '%zf-%' OR key LIKE 'pk:ip:%' OR key LIKE 'mfa:ip:%' OR key LIKE 'amfa:ip:%'")
@@ -141,6 +141,8 @@ def main():
     auth.create_user("zf-user", PW, "Zweifaktor Test")
     auth.create_user("zf-adm", PW, "Zweifaktor Admin", is_admin=True)
     auth.create_user("zf-sso", None, "SSO Test", source="oidc")
+    auth.create_user("zf-adm2", PW, "Zweifaktor Admin 2", is_admin=True)
+    auth.create_user("zf-plain", PW, "Zweifaktor ohne Faktor")
     srv = start_server()
     try:
         flows()
@@ -423,6 +425,125 @@ def flows():
     s, d = so.api("GET", "/api/account/security")
     ok("SSO-Konto: nicht unterstuetzt (macht der Anbieter)", s == 200 and d["supported"] is False)
     ok("SSO-Konto: TOTP einrichten -> 403", so.api("POST", "/api/account/totp/setup")[0] == 403)
+    policy_everywhere()
+
+
+def admin_key(html):
+    m = re.search(r'id="adm-mfa-key">([A-Z2-7 ]+)<', html)
+    return base64.b32decode(m.group(1).replace(" ", "")) if m else b""
+
+
+def app_handoff_start(c):
+    """App-Anmeldung in einem Browser c starten -> Ziel nach /app/handoff (Location)."""
+    ver = secrets.token_urlsafe(48)
+    chal = base64.urlsafe_b64encode(hashlib.sha256(ver.encode()).digest()).decode().rstrip("=")
+    s, loc, _ = c.req("GET", f"/app/login?scheme=saga&challenge={chal}")
+    return c.req("GET", loc) if loc == "/app/handoff" else (s, loc, "")
+
+
+def policy_everywhere():
+    """Richtlinie gilt konsequent (Bughunt 2): Admin-Bereich (Einrichtung dort, nicht ausgesperrt), neue App-Anmeldungen
+    bei "alle"; bestehende Admin-Sitzungen, Geraete und Sitzungen bleiben. Standard "niemand" aendert nichts. Notfall per CLI."""
+    auth.save_setting("mfa", {"require": "none", "oidc_mfa": False, "oidc_acr": ""}); settings_wait()
+    # --- Standard (niemand): wie bisher -------------------------------------------------------------------------
+    a0 = Client(A2, f"localhost:{PA}")
+    s, loc, _ = a0.post("/login", {"username": "zf-adm2", "password": PW})
+    ok(f"Standard: Admin ohne Faktor -> direkt im Admin-Bereich ({loc})", s == 303 and loc == "/" and a0.req("GET", "/users")[0] == 200)
+    ok("Standard: Einrichtungsseite ohne Zwischenschritt -> Anmeldung", Client(A2, f"localhost:{PA}").req("GET", "/login/2fa/setup")[1] == "/login")
+    pl = client("zf-plain", login_at=int(time.time()))
+    ok("Standard: QR-Kopplung erzeugen geht ohne Faktor", pl.api("POST", "/api/settings/pair")[0] == 200)
+    s, loc, _ = app_handoff_start(client("zf-plain"))
+    ok(f"Standard: App-Uebergabe ohne Faktor (Rueckfrage, keine Einrichtung) ({s})", s == 200 and loc == "")
+    with connect() as c, c:                    # Kopplungs-Code von VOR dem Einschalten der Richtlinie
+        c.execute("INSERT INTO pair_code (hash, pid, uid, name, created, expires) VALUES (?,?,?,?,?,?)",
+                  (hashlib.sha256(b"zf-pair-vorher-0123456789abcdef").hexdigest(), "zfpid1", "zf-plain", "zf-plain", time.time(), time.time() + 120))
+
+    # --- "nur Admins" ---------------------------------------------------------------------------------------------
+    auth.save_setting("mfa", {"require": "admins", "oidc_mfa": False, "oidc_acr": ""}); settings_wait()
+    ok("Admins: bestehende Admin-Sitzung bleibt gueltig", a0.req("GET", "/users")[0] == 200)
+    ad = Client(A2, f"localhost:{PA}")
+    s, loc, _ = ad.post("/login", {"username": "zf-adm2", "password": PW})
+    ok(f"Admins: Admin ohne Faktor -> Einrichtung im Admin-Bereich ({loc})", s == 303 and loc == "/login/2fa/setup")
+    ok("... Zwischenschritt ist keine Admin-Sitzung", ad.req("GET", "/users")[1] == "/login" or ad.req("GET", "/")[1] == "/login")
+    s, loc, _ = ad.post("/login", {"username": "zf-adm2", "password": PW})
+    s, _, html = ad.req("GET", "/login/2fa/setup")
+    key = admin_key(html)
+    ok("... Seite: QR-Code (SVG) + Schluessel + Hinweis auf Passkeys der Hauptseite", s == 200 and "data:image/svg+xml" in html and len(key) == 20
+       and 'id="adm-mfa-need"' in html and f"localhost:{P}/security" in html)
+    s2, _, html2 = ad.req("GET", "/login/2fa/setup")
+    ok("... Neu laden behaelt das Geheimnis (gescannter Code bleibt gueltig)", admin_key(html2) == key)
+    st = step_now()
+    s, loc, html = ad.post("/login/2fa/setup", {"code": "000000" if totp(key, st) != "000000" else "111111"})
+    ok("... falscher Code -> 401, Seite mit Meldung, gleiches Geheimnis", s == 401 and "Der Code stimmt nicht" in html and admin_key(html) == key)
+    s, loc, html = ad.post("/login/2fa/setup", {"code": totp(key, st)})
+    codes = re.findall(r"<li>([a-z2-9]{4}(?:-[a-z2-9]{4}){3})</li>", html)
+    ok(f"... richtiger Code -> eingerichtet, 10 Wiederherstellungscodes, angemeldet ({len(codes)})", s == 200 and len(codes) == 10
+       and 'id="adm-mfa-codes"' in html and ad.req("GET", "/users")[0] == 200)
+    ok("... Faktor gilt auch auf der Hauptseite", client("zf-adm2", login_at=int(time.time())).api("GET", "/api/account/security")[1].get("totp") is True)
+    ad3 = Client(A2, f"localhost:{PA}")
+    s, loc, _ = ad3.post("/login", {"username": "zf-adm2", "password": PW})
+    ok(f"... naechste Admin-Anmeldung: normaler zweiter Schritt ({loc})", s == 303 and loc == "/login/2fa")
+    s, loc, _ = ad3.post("/login/2fa", {"code": next_code(key, {"last": st})[0]})
+    ok("... mit Code angemeldet", s == 303 and loc == "/" and ad3.req("GET", "/users")[0] == 200)
+    ok("Admins: QR-Kopplung fuer Nicht-Admin ohne Faktor geht weiter", pl.api("POST", "/api/settings/pair")[0] == 200)
+    # Zwischenschritt laeuft ab (15 Minuten)
+    old = Client(A2, f"localhost:{PA}")
+    old.ck["hk_admin"] = TimestampSigner(hashlib.sha256(("hk-admin|" + os.environ["SESSION_SECRET"]).encode()).hexdigest()).sign(
+        base64.b64encode(json.dumps({"amfs_u": "zf-adm2", "amfs_at": int(time.time()) - 1000}).encode())).decode()
+    ok("Admins: Einrichtungs-Schritt aelter als 15 Minuten -> Anmeldung", old.req("GET", "/login/2fa/setup")[1] == "/login")
+
+    # --- "alle": neue App-Anmeldungen verlangen den Faktor, bestehende bleiben ------------------------------------------
+    with connect() as c, c:
+        c.execute("INSERT INTO device_login (uid, uname, name, hash, prefix, created) VALUES ('zf-plain','zf-plain','alt',?, 'hkd_plain', ?)",
+                  (hashlib.sha256(b"hkd_zf-plain-geraet").hexdigest(), time.time()))
+    auth.save_setting("mfa", {"require": "all", "oidc_mfa": False, "oidc_acr": ""}); settings_wait()
+    ok("Alle: bestehende Sitzung ohne Faktor -> API geht weiter", pl.api("GET", "/api/notes")[0] == 200)
+    ok("Alle: gekoppeltes Geraet ohne Faktor bleibt (/app/resume)",
+       Client(S2, f"localhost:{P}").req("POST", "/app/resume", js={"device_token": "hkd_zf-plain-geraet"})[0] == 200)
+    s, d = pl.api("POST", "/api/settings/pair")
+    ok(f"Alle: QR-Kopplung erzeugen ohne Faktor -> 403 mit Hinweis ({str(d.get('error'))[:50]}…)", s == 403 and d.get("mfa_setup") is True
+       and "/security" in d.get("url", ""))
+    s, _, raw = Client(S2, f"localhost:{P}").req("POST", "/app/pair", js={"code": "zf-pair-vorher-0123456789abcdef", "device": "zf-Tablet"})
+    ok("Alle: alter Kopplungs-Code (vor der Richtlinie) -> 403, kein Geraet", s == 403 and "hkd_" not in raw)
+    hb = client("zf-plain")
+    s, loc, _ = app_handoff_start(hb)
+    ok(f"Alle: App-Anmeldung mit Browser-Sitzung ohne Faktor -> Einrichtung ({loc})", s == 303 and loc == "/security")
+    s, _, html = hb.req("GET", "/security")
+    ok("... Einrichtungsseite mit Weiter zur App-Uebergabe", s == 200 and 'data-need="1"' in html and "/app/handoff" in html)
+    hc = client()
+    s, loc, _ = app_handoff_start(hc)
+    s, loc, _ = hc.post("/login", {"username": "zf-plain", "password": PW}, src="/login?next=/app/handoff")
+    ok(f"Alle: frische App-Anmeldung ohne Faktor -> Einrichtung statt Code ({loc})", s == 303 and loc == "/security")
+    s, loc, html = hc.req("GET", "/app/handoff")
+    ok("... /app/handoff gibt ohne Faktor keinen Code heraus", s == 303 and loc == "/security" and "code=" not in html)
+    s, d = hc.api("POST", "/api/account/totp/setup")
+    psec = base64.b32decode(d["secret"].replace(" ", "")); pst = step_now()
+    ok("... Faktor einrichten", hc.api("POST", "/api/account/totp/confirm", {"code": totp(psec, pst)})[0] == 200)
+    s, loc, html = hc.req("GET", "/app/handoff")
+    ok(f"... danach Code fuer die App ({s})", s == 200 and re.search(r"saga://auth\?code=", html))
+    ok("... und QR-Kopplung erlaubt", hc.api("POST", "/api/settings/pair")[0] == 200)
+    sso = client("zf-sso", login_at=int(time.time()))
+    ok("Alle: SSO-Konto (Faktor beim Anbieter) -> Kopplung geht", sso.api("POST", "/api/settings/pair")[0] == 200)
+
+    # --- Notfall per Kommandozeile -------------------------------------------------------------------------------------
+    env = dict(os.environ); env.pop("PYTHONPATH", None); env["STATE_DIR"] = SD
+    r = subprocess.run([sys.executable, "run.py", "2fa-zuruecksetzen", "zf-adm2"], cwd=APP, env=env, capture_output=True, text=True, timeout=60)
+    ok(f"CLI 2fa-zuruecksetzen: Faktor weg ({r.stdout.strip()[:60]})", r.returncode == 0 and "zurückgesetzt" in r.stdout
+       and not client("zf-adm2", login_at=int(time.time())).api("GET", "/api/account/security")[1].get("enabled"))
+    with connect() as c:
+        kv = c.execute("SELECT v FROM user_kv WHERE uid='zf-adm2' AND k='mfa_reset'").fetchone()
+    ok("... Protokoll im Konto (cli)", kv and json.loads(kv[0])["by"] == "cli")
+    ae = Client(A2, f"localhost:{PA}")
+    s, loc, _ = ae.post("/login", {"username": "zf-adm2", "password": PW})
+    ok(f"... Admin-Anmeldung danach: Einrichtung statt Aussperren ({loc})", s == 303 and loc == "/login/2fa/setup")
+    r = subprocess.run([sys.executable, "run.py", "2fa-richtlinie", "none"], cwd=APP, env=env, capture_output=True, text=True, timeout=60)
+    ok(f"CLI 2fa-richtlinie none ({r.stdout.strip()[:40]})", r.returncode == 0 and auth.settings(fresh=True)["mfa"]["require"] == "none")
+    r = subprocess.run([sys.executable, "run.py", "2fa-richtlinie", "jeder"], cwd=APP, env=env, capture_output=True, text=True, timeout=60)
+    ok("CLI 2fa-richtlinie mit Unsinn -> Fehler, nichts geaendert", r.returncode != 0 and auth.settings(fresh=True)["mfa"]["require"] == "none")
+    settings_wait()
+    af = Client(A2, f"localhost:{PA}")
+    s, loc, _ = af.post("/login", {"username": "zf-adm2", "password": PW})
+    ok(f"... Richtlinie aus: Admin wieder direkt hinein ({loc})", s == 303 and loc == "/")
 
 
 if __name__ == "__main__":

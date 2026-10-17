@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block pagetitle %}{{ _('Wiederherstellungscodes') }}{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <h2 class="auth-h">{{ _("Authenticator-App eingerichtet") }}</h2>
+    {% if codes %}
+    <div class="mfa-codes-box" id="adm-mfa-codes">
+      <h5>{{ _("Deine Wiederherstellungscodes") }}</h5>
+      <p>{{ _("Damit kommst du in dein Konto, wenn Passkey oder Handy fehlen. Jeder Code gilt einmal. Speichere sie an einem sicheren Ort (z. B. im Passwort-Manager) – Saga zeigt sie nur jetzt.") }}</p>
+      <ol class="mfa-codes" aria-label="{{ _('Wiederherstellungscodes') }}">{% for c in codes %}<li>{{ c }}</li>{% endfor %}</ol>
+    </div>
+    {% endif %}
+    <p class="hk-hint">{{ _("Passkeys, weitere Faktoren und neue Codes verwaltest du auf der Hauptseite unter „Anmeldung & Sicherheit“:") }}
+      <a href="{{ security_url }}" target="_blank" rel="noopener">{{ security_url }}</a></p>
+    <a class="btn btn-primary auth-btn" href="/">{{ _("Ich habe sie gespeichert") if codes else _("Weiter") }}</a>
+  </div>
+</div>
+{% endblock %}

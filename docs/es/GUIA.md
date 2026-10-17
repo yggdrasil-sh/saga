@@ -83,7 +83,15 @@ docker compose exec saga python run.py admin-passwort ana      # otra cuenta
 ```
 
 Si la cuenta tiene un segundo factor (llave de acceso, app de autenticación), este comando de emergencia también
-lo elimina: después se inicia sesión solo con la contraseña nueva y se vuelve a configurar el segundo factor.
+lo elimina: después se inicia sesión solo con la contraseña nueva y se vuelve a configurar el segundo factor. Si la
+política «Exigir 2FA» lo pide, el siguiente inicio de sesión (también en el área de administración) lleva
+directamente a la configuración: nadie queda bloqueado. Más comandos de emergencia:
+
+```sh
+docker compose exec saga python run.py 2fa-zuruecksetzen ana    # quitar solo el segundo factor (la contraseña se queda, también LDAP)
+docker compose exec saga python run.py 2fa-richtlinie           # mostrar la política «Exigir 2FA»
+docker compose exec saga python run.py 2fa-richtlinie none      # … desactivarla (none | admins | all)
+```
 
 ![Página de inicio de sesión](../screenshots/login.png)
 
@@ -211,8 +219,12 @@ En **Usuarios** creas cuentas, pones contraseñas y asignas grupos y permisos de
   Quién lo restableció y cuándo aparece en el log y en la página del usuario.
 - **Exigir 2FA** (General → «Segundo factor»): a nadie (predeterminado), solo a administradores o a todas las
   cuentas locales y LDAP. Quien esté afectado y aún no tenga segundo factor irá a la configuración tras iniciar
-  sesión: nadie queda bloqueado y las apps conectadas siguen conectadas. Detalles en la sección 9 «Llaves de
-  acceso e inicio de sesión en dos pasos».
+  sesión: nadie queda bloqueado y las apps y sesiones conectadas siguen conectadas. Esto vale también para el
+  propio **área de administración**: un administrador sin factor configura una app de autenticación tras la
+  contraseña (código QR y luego código) y después entra; las sesiones de administración ya abiertas se mantienen.
+  Con «todas», los **nuevos inicios de sesión de apps** (ventana de inicio de sesión de la app, emparejamiento por
+  QR) también necesitan un factor. Detalles en la sección 9 «Llaves de acceso e inicio de sesión en dos pasos»;
+  comandos de emergencia en la sección 2.
 - **Eliminar** borra la cuenta **con todos sus datos** (páginas, tareas, archivos, marcadores, conexiones).
   Mejor bloquear las cuentas externas: si no, en el siguiente inicio de sesión se crearía una cuenta nueva y vacía.
 
@@ -950,7 +962,9 @@ o un código en lugar de la contraseña.
 **Apps:** las apps inician sesión a través de la página de inicio de sesión de Saga en la ventana del navegador
 del sistema; allí aparece también el segundo paso, y las llaves de acceso funcionan en iPhone, iPad, Mac y Android.
 Las apps ya conectadas siguen conectadas aunque actives el 2FA o el administrador lo exija. El emparejamiento por
-código QR no necesita segundo paso (parte de una sesión ya iniciada).
+código QR no necesita segundo paso (parte de una sesión ya iniciada). Si el administrador exige 2FA a todos y tu
+cuenta aún no tiene factor, un inicio de sesión **nuevo** de una app lleva primero a la configuración («Continuar»
+vuelve después a la app); el código QR para emparejar solo está disponible después.
 
 **Requisito para las llaves de acceso:** `BASE_URL` con nombre de host y `https://` (p. ej.
 `https://saga.example.org`; solo `http://localhost` funciona sin https). Si Saga se abre con otra dirección que
@@ -958,7 +972,9 @@ código QR no necesita segundo paso (parte de una sesión ya iniciada).
 `BASE_URL` pasa más tarde a otro dominio, las existentes dejan de funcionar (iniciar sesión con contraseña +
 código/código de recuperación sigue funcionando). Para que valgan en varios subdominios, pon `PASSKEY_RP_ID` en el
 dominio común. En el **área de administración** solo funcionan si `ADMIN_URL` está en el mismo dominio; si no, usa
-allí un código o un código de recuperación.
+allí un código o un código de recuperación. Por eso, cuando la política exige un factor, un administrador sin
+factor configura allí una app de autenticación (llaves de acceso en la página principal, en «Inicio de sesión y
+seguridad»).
 
 **SSO (OIDC):** Saga no ofrece su propio 2FA a las cuentas SSO: el servicio de inicio de sesión (p. ej. Keycloak)
 pide el segundo factor. Con el interruptor de administración «Exigir un segundo factor con SSO», Saga solo acepta
@@ -966,7 +982,8 @@ inicios de sesión SSO si el proveedor indica uno (`amr` con `mfa`, `otp`, `hwk`
 configurados (que Saga también solicita al proveedor).
 
 **¿Perdiste el móvil?** Inicia sesión con un código de recuperación y vuelve a configurar el factor. Sin códigos,
-el administrador restablece el segundo factor (sección 5).
+el administrador restablece el segundo factor (sección 5) o, si el propio administrador no puede entrar, en el
+servidor `docker compose exec saga python run.py 2fa-zuruecksetzen <nombre>` (sección 2).
 
 ### Fotos de perfil
 
@@ -1117,8 +1134,10 @@ notificaciones de Apple (APNs) (están desactivados) y revisa el proxy inverso p
 Todo lo demás está en el [registro de cambios](../../CHANGELOG.md).
 
 **Volver a la versión anterior:** una versión antigua de Saga no arranca sobre una base de datos que una versión
-más nueva ya ha modificado (lo indica en el log en lugar de dañar datos). En ese caso, restaura la copia de
-seguridad de antes de la actualización:
+más nueva ya ha modificado (lo indica en el log en lugar de dañar datos). Esto vale también para **2.1 → 2.0.x**:
+2.1 sube el esquema a la versión 6 (copia `…-vor-schema-6.dump`) y 2.0.x se detiene con «Die Datenbank hat
+Schema-Stand 6, diese Saga-Version kennt nur 5»; si no, 2.0 seguiría funcionando y dejaría entrar a cuentas con
+segundo factor solo con la contraseña. En ese caso, restaura la copia de seguridad de antes de la actualización:
 
 ```sh
 docker compose stop saga

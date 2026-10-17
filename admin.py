@@ -199,15 +199,86 @@ async def login_post(request: Request):
         request.session.clear()
         request.session.update(amfa_u=user["username"], amfa_at=int(time.time()))
         return _go("/login/2fa")
+    if mfa.required(dict(user, is_admin=bool(user["is_admin"]))):
+        # Richtlinie "2FA verlangen" (Admins/alle), das Konto hat noch keinen Faktor: nicht aussperren, sondern hier
+        # die Authenticator-App einrichten lassen (Passkeys gehen am Admin-Port oft nicht - andere Origin)
+        request.session.clear()
+        request.session.update(amfs_u=user["username"], amfs_at=int(time.time()))
+        return _go("/login/2fa/setup")
     return _admin_session(request, user)
 
 
-def _admin_session(request, user):
+def _admin_session(request, user, go=True):
     info = auth.user_info(user["username"], fresh=True) or {}
     request.session.clear()
     request.session.update(aid=user["username"], ep=info.get("epoch") or 0)
     print(f"admin: Anmeldung {user['username']} von {hk._ip(request)}", flush=True)
-    return _go("/")
+    return _go("/") if go else None
+
+
+# Einrichtung des zweiten Faktors im Admin-Bereich (Richtlinie verlangt ihn, das Konto hat keinen): Authenticator-App
+# ohne JavaScript (QR-Code + Schluessel, dann Code). Der Zwischenschritt gilt 15 Minuten und ist keine Admin-Sitzung.
+SETUP_TTL = 900
+
+
+def _admin_setup_page(request, uid, status=200, error=None):
+    try:
+        view = mfa.totp_begin(uid, reuse=True)
+    except mfa.MfaError:                              # inzwischen eingerichtet (z. B. auf der Hauptseite)
+        return None
+    return _page(request, "login2fa_setup.html", status=status, error=error, totp=view, security_url=hk.BASE_URL + "/security")
+
+
+def _setup_pending(request):
+    """Benutzername im Einrichtungs-Schritt - None, wenn abgelaufen oder das Konto kein Admin (mehr) ist."""
+    uid = mfa.pending(request, "amfs", ttl=SETUP_TTL)
+    u = auth.get_user(uid) if uid else None
+    return uid if u and u["is_admin"] else None
+
+
+def _setup_done_elsewhere(request, uid):
+    """Faktor gibt es schon (z. B. auf der Hauptseite eingerichtet): normaler Zwischenschritt mit Code/Passkey."""
+    request.session.clear()
+    request.session.update(amfa_u=uid, amfa_at=int(time.time()))
+    return _go("/login/2fa")
+
+
+@admin.get("/login/2fa/setup")
+def login_2fa_setup(request: Request):
+    uid = _setup_pending(request)
+    if not uid:
+        return _go("/login")
+    if mfa.has_mfa(uid):
+        return _setup_done_elsewhere(request, uid)
+    return _admin_setup_page(request, uid) or _setup_done_elsewhere(request, uid)
+
+
+@admin.post("/login/2fa/setup")
+async def login_2fa_setup_post(request: Request):
+    f = await _form(request)
+    uid = _setup_pending(request)
+    if not uid:
+        return _page(request, "login.html", status=400, error=t("Die Anmeldung hat zu lange gedauert – bitte noch einmal."))
+    if mfa.has_mfa(uid):
+        return _setup_done_elsewhere(request, uid)
+    if f is None:
+        return _admin_setup_page(request, uid, 400, t("Die Seite war zu lange offen – bitte noch einmal."))
+    ip = hk._ip(request)
+    if auth.too_many(uid, ip, "admin-mfa"):
+        request.session.clear()
+        return _page(request, "login.html", status=429, error=t("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen."))
+    try:
+        codes = await run_in_threadpool(mfa.totp_finish, uid, _s(f, "code", 20))
+    except mfa.MfaError as ex:
+        if ex.status == 400:
+            auth.note_fail(uid, ip, "admin-mfa")
+        return _admin_setup_page(request, uid, 401 if ex.status == 400 else 409, str(ex)) or _setup_done_elsewhere(request, uid)
+    auth.clear_fails(uid, "admin-mfa")
+    print(f"admin: {uid} hat im Admin-Bereich eine Authenticator-App eingerichtet (Richtlinie)", flush=True)
+    user = auth.get_user(uid)
+    _admin_session(request, user, go=False)
+    me = _me(request)
+    return _page(request, "login2fa_done.html", me, codes=codes or [], account=uid, security_url=hk.BASE_URL + "/security")
 
 
 # Passkeys im Admin-Bereich: nur, wenn er unter der Domain von BASE_URL laeuft (RP-ID) - sonst Code/Wiederherstellungscode

@@ -82,7 +82,15 @@ docker compose exec saga python run.py admin-passwort anna     # anderes Konto
 ```
 
 Hat das Konto einen zweiten Faktor (Passkey, Authenticator-App), entfernt dieser Notfall-Befehl ihn ebenfalls –
-danach meldet man sich nur mit dem neuen Passwort an und richtet den zweiten Faktor neu ein.
+danach meldet man sich nur mit dem neuen Passwort an und richtet den zweiten Faktor neu ein. Verlangt die
+Richtlinie „2FA verlangen“ einen Faktor, führt die nächste Anmeldung (auch im Admin-Bereich) direkt zur Einrichtung –
+ausgesperrt wird man nicht. Weitere Notfall-Befehle:
+
+```sh
+docker compose exec saga python run.py 2fa-zuruecksetzen anna   # nur den zweiten Faktor entfernen (Passwort bleibt, auch LDAP)
+docker compose exec saga python run.py 2fa-richtlinie           # Richtlinie „2FA verlangen“ anzeigen
+docker compose exec saga python run.py 2fa-richtlinie none      # … ausschalten (none | admins | all)
+```
 
 ![Anmeldeseite](screenshots/login.png)
 
@@ -208,8 +216,11 @@ Unter **Benutzer** legst du Konten an, setzt Passwörter, vergibst Gruppen und A
   zurückgesetzt hat, steht im Log und auf der Benutzerseite.
 - **2FA verlangen** (Allgemein → „Zweiter Faktor“): niemanden (Standard), nur Admins oder alle lokalen und
   LDAP-Konten. Wer betroffen ist und noch keinen zweiten Faktor hat, wird nach der Anmeldung zur Einrichtung
-  geführt – ausgesperrt wird niemand, angemeldete Apps bleiben angemeldet. Details in Abschnitt 9
-  „Passkeys und Zwei-Faktor-Anmeldung“.
+  geführt – ausgesperrt wird niemand, angemeldete Apps und Sitzungen bleiben angemeldet. Das gilt auch hier im
+  **Admin-Bereich**: Ein Admin ohne Faktor richtet nach dem Passwort eine Authenticator-App ein (QR-Code, dann Code)
+  und ist danach angemeldet; schon offene Admin-Sitzungen bleiben. Bei „alle“ brauchen auch **neue
+  App-Anmeldungen** (Anmeldefenster der App, QR-Kopplung) einen Faktor. Details in Abschnitt 9
+  „Passkeys und Zwei-Faktor-Anmeldung“, Notfall-Befehle in Abschnitt 2.
 - **Löschen** entfernt das Konto **mit allen Daten** (Seiten, Aufgaben, Dateien, Lesezeichen, Verbindungen).
   Externe Konten lieber sperren: Bei der nächsten Anmeldung würde sonst ein neues, leeres Konto entstehen.
 
@@ -937,7 +948,9 @@ Dasselbe gilt für „Chats neu beginnen“: dort reichen jetzt auch Passkey ode
 **Apps:** Die Anmeldung in den Apps läuft über die Anmeldeseite von Saga im System-Browserfenster – dort erscheint
 der zweite Schritt genauso, Passkeys funktionieren darin auf iPhone, iPad, Mac und Android. Bereits angemeldete
 Apps bleiben angemeldet, auch wenn du 2FA einschaltest oder der Admin sie verlangt. Die QR-Code-Kopplung braucht
-keinen zweiten Schritt (sie startet in einer schon angemeldeten Sitzung).
+keinen zweiten Schritt (sie startet in einer schon angemeldeten Sitzung). Verlangt der Admin 2FA für alle und dein
+Konto hat noch keinen Faktor, führt eine **neue** App-Anmeldung zuerst zur Einrichtung („Weiter“ geht danach zurück
+zur App); einen QR-Code zum Koppeln gibt es erst danach.
 
 **Voraussetzung für Passkeys:** `BASE_URL` mit Rechnernamen und `https://` (z. B. `https://saga.example.org`;
 nur `http://localhost` geht ohne https). Ruft man Saga über eine andere Adresse auf als `BASE_URL`, erklärt Saga
@@ -945,7 +958,8 @@ das, statt still zu scheitern. Passkeys gehören zur Domain: Wird `BASE_URL` sp�
 umgestellt, funktionieren bestehende Passkeys nicht mehr (Anmeldung mit Passwort + Code/Wiederherstellungscode
 geht weiter). Soll ein Passkey für mehrere Subdomains gelten, `PASSKEY_RP_ID` auf die gemeinsame Domain setzen.
 Im **Admin-Bereich** gehen Passkeys nur, wenn `ADMIN_URL` unter derselben Domain läuft – sonst dort Code oder
-Wiederherstellungscode verwenden.
+Wiederherstellungscode verwenden. Verlangt die Richtlinie einen Faktor, richtet ein Admin ohne Faktor dort deshalb
+eine Authenticator-App ein (Passkeys auf der Hauptseite unter „Anmeldung & Sicherheit“).
 
 **SSO (OIDC):** Saga bietet SSO-Konten keine eigene 2FA an – der Anmeldedienst (z. B. Keycloak) fragt den
 zweiten Faktor ab. Mit dem Admin-Schalter „Bei SSO einen zweiten Faktor verlangen“ lässt Saga SSO-Anmeldungen
@@ -953,7 +967,8 @@ nur zu, wenn der Anbieter einen meldet (`amr` mit `mfa`, `otp`, `hwk` …) oder 
 (die Saga beim Anbieter auch anfragt).
 
 **Handy verloren:** mit einem Wiederherstellungscode anmelden und den Faktor neu einrichten. Ohne Codes setzt der
-Admin den zweiten Faktor zurück (Abschnitt 5).
+Admin den zweiten Faktor zurück (Abschnitt 5) – oder, wenn der Admin selbst nicht mehr hineinkommt, auf dem Server
+`docker compose exec saga python run.py 2fa-zuruecksetzen <name>` (Abschnitt 2).
 
 ### Profilbilder
 
@@ -1099,8 +1114,10 @@ Admin-Bereich nach Wunsch KI-Assistent, Föderation und Apple-Mitteilungen (APNs
 Reverse Proxy für den Live-Kanal prüfen (Abschnitt 3). Alles Weitere steht im [Changelog](../CHANGELOG.md).
 
 **Zurück zur vorigen Version:** Eine ältere Saga startet nicht auf einer Datenbank, die schon eine neuere
-Version umgebaut hat (sie meldet das im Log, statt Daten zu beschädigen). Dann das Backup von vor dem Update
-zurückspielen:
+Version umgebaut hat (sie meldet das im Log, statt Daten zu beschädigen). Das gilt auch für **2.1 → 2.0.x**: 2.1
+hebt den Schema-Stand auf 6 (Backup `…-vor-schema-6.dump`), 2.0.x bricht dann mit „Die Datenbank hat Schema-Stand 6,
+diese Saga-Version kennt nur 5“ ab – sonst liefe 2.0 weiter und ließe Konten mit zweitem Faktor nur mit dem
+Passwort hinein. Dann das Backup von vor dem Update zurückspielen:
 
 ```sh
 docker compose stop saga
