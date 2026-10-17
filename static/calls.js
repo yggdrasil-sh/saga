@@ -230,9 +230,15 @@
       if (!c.outT) c.outT = setTimeout(function () { flushIce(c); }, 120);
     };
     pc.ontrack = function (e) {
-      if (c.remote.getTracks().indexOf(e.track) < 0) c.remote.addTrack(e.track);
-      e.track.onunmute = function () { drawMedia(c); };
-      e.track.onmute = function () { drawMedia(c); };
+      var t = e.track;
+      // ontrack kann mehrfach und in beliebiger Reihenfolge kommen (Ton nach Bild, neue Spur nach Neuverhandlung):
+      // beendete Spuren derselben Art raus, neue rein - die Wiedergabe-Elemente bekommen danach eigene Streams (bindRemote)
+      c.remote.getTracks().forEach(function (o) { if (o !== t && o.kind === t.kind && o.readyState === 'ended') c.remote.removeTrack(o); });
+      if (c.remote.getTracks().indexOf(t) < 0) c.remote.addTrack(t);
+      t.onunmute = function () { bindRemote(c); drawMedia(c); };
+      t.onmute = function () { drawMedia(c); };
+      t.onended = function () { bindRemote(c); drawMedia(c); };
+      bindRemote(c);
       drawMedia(c);
     };
     pc.onconnectionstatechange = function () { onConn(c); };
@@ -242,18 +248,23 @@
   function addLocal(c, pc, fromOffer) {
     var a = c.local.getAudioTracks()[0] || null, v = c.local.getVideoTracks()[0] || null;
     c.cam = v;
+    if (a) a.enabled = c.mic;                          // Mikrofon wirklich senden (Stumm-Zustand gilt von Anfang an)
     if (!fromOffer) {
       pc.addTransceiver(a || 'audio', { direction: 'sendrecv', streams: [c.local] });
       pc.addTransceiver(v || 'video', { direction: 'sendrecv', streams: [c.local] });    // immer: Kamera/Bildschirm spaeter ohne neues Angebot
       return;
     }
+    // Antwort: Spuren erst fertig einsetzen, dann createAnswer (nicht jeder Browser reiht replaceTrack in die
+    // Operationskette ein - sonst kann die Antwort ohne Ton-Spur entstehen)
+    var wait = [];
     pc.getTransceivers().forEach(function (tr) {
       var kind = tr.receiver && tr.receiver.track && tr.receiver.track.kind;
       tr.direction = 'sendrecv';
-      if (kind === 'audio' && a) tr.sender.replaceTrack(a);
-      if (kind === 'video') { if (v) tr.sender.replaceTrack(v); tr.sender.setStreams && tr.sender.setStreams(c.local); }
+      if (kind === 'audio' && a) wait.push(tr.sender.replaceTrack(a));
+      if (kind === 'video') { if (v) wait.push(tr.sender.replaceTrack(v)); tr.sender.setStreams && tr.sender.setStreams(c.local); }
       if (kind === 'audio' && tr.sender.setStreams) tr.sender.setStreams(c.local);
     });
+    return Promise.all(wait);
   }
   function videoSender(c) {
     var s = null; c.pc.getTransceivers().forEach(function (tr) { if (!s && tr.receiver.track && tr.receiver.track.kind === 'video') s = tr.sender; });
@@ -307,7 +318,7 @@
       return getMedia(video);
     }).then(function (s) {
       if (C !== c) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
-      c.local = s; c.media = s.getVideoTracks().length ? 'video' : 'audio'; drawMedia(c);
+      c.local = s; c.media = s.getVideoTracks().length ? 'video' : 'audio'; drawMedia(c); sinkPick(c);
       c.pc = makePC(c); addLocal(c, c.pc, false);
       return c.pc.createOffer().then(function (o) { return c.pc.setLocalDescription(o); }).then(function () { return dial(c, false); });
     }).catch(function (e) { if (C === c) fail(c, e.message); });
@@ -358,11 +369,12 @@
       return getMedia(video);
     }).then(function (s) {
       if (C !== c) { s.getTracks().forEach(function (t) { t.stop(); }); throw null; }
-      c.local = s; drawMedia(c);
+      c.local = s; drawMedia(c); sinkPick(c);
       c.pc = makePC(c);
       return c.pc.setRemoteDescription({ type: 'offer', sdp: offer.sdp });
     }).then(function () {
-      addLocal(c, c.pc, true);
+      return addLocal(c, c.pc, true);
+    }).then(function () {
       return c.pc.createAnswer();
     }).then(function (a) { return c.pc.setLocalDescription(a); }).then(function () {
       var sdp = c.pc.localDescription.sdp, body = JSON.stringify({ t: 'answer', sdp: sdp, fp: X().sdpFingerprints(sdp) });
@@ -419,17 +431,84 @@
   function quality(c) {
     if (!c.pc) return;
     c.pc.getStats().then(function (rep) {
-      var lost = 0, recv = 0, rtt = null, bytes = 0;
+      var lost = 0, recv = 0, rtt = null, bytes = 0, ai = null, ao = null;
       rep.forEach(function (s) {
         if (s.type === 'inbound-rtp') { lost += s.packetsLost || 0; recv += s.packetsReceived || 0; bytes += s.bytesReceived || 0; }
+        if (s.type === 'inbound-rtp' && (s.kind || s.mediaType) === 'audio') ai = s;
+        if (s.type === 'outbound-rtp' && (s.kind || s.mediaType) === 'audio') ao = s;
         if (s.type === 'candidate-pair' && (s.nominated || s.selected) && s.currentRoundTripTime != null) rtt = s.currentRoundTripTime;
       });
+      soundStats(c, ai, ao);
       var d = (c._q || { lost: 0, recv: 0 }), dl = lost - d.lost, dr = recv - d.recv;
       c._q = { lost: lost, recv: recv };
       var loss = dr + dl > 0 ? dl / (dr + dl) : 0;
       c.q = rtt == null && !dr ? '' : (loss > 0.08 || rtt > 0.6) ? 'bad' : (loss > 0.02 || rtt > 0.3) ? 'mid' : 'good';
       c.bytesIn = bytes;
       drawInfo(c);
+    }).catch(function () {});
+  }
+  // Ton-Diagnose aus getStats: kommen Audio-Pakete an, spielt das <audio>-Element sie ab, geht eigener Ton raus?
+  function soundStats(c, ai, ao) {
+    var pk = ai ? ai.packetsReceived || 0 : 0, prev = c._snd || { pk: 0, idle: 0 }, fresh = pk > prev.pk;
+    c._snd = { pk: pk, idle: fresh ? 0 : prev.idle + 1 };
+    var ra = c.ui && c.ui.ra;
+    c.audio = { packetsIn: pk, bytesIn: ai ? ai.bytesReceived || 0 : 0, samplesIn: ai ? ai.totalSamplesReceived || 0 : 0,
+                levelIn: ai && ai.audioLevel != null ? ai.audioLevel : null, bytesOut: ao ? ao.bytesSent || 0 : 0,
+                playing: !!(ra && ra.srcObject && !ra.paused) };
+    if (fresh && ra && ra.paused && !c.audioBlocked) { bindRemote(c); playAudio(c); }
+    c.snd = !c.connected ? '' : c.audioBlocked ? 'blocked' : fresh && c.audio.playing ? 'ok' : c._snd.idle >= 2 || (fresh && !ra) ? 'none' : c.snd || '';
+  }
+  // Wiedergabe: Ton ueber das eigene <audio> (nur Audiospuren), Bild stumm im <video> (nur Videospuren). Bei jeder
+  // Aenderung der Spuren ein frischer MediaStream - einem schon gesetzten Stream spaeter hinzugefuegte Spuren spielt
+  // Safari nicht zuverlaessig ab (Ton kommt oft nach dem Bild an).
+  function bindRemote(c) {
+    if (!c.ui) return;
+    var live = function (t) { return t.readyState === 'live'; };
+    [[c.ui.ra, c.remote.getAudioTracks().filter(live)], [c.ui.rv, c.remote.getVideoTracks().filter(live)]].forEach(function (x) {
+      var m = x[0], want = x[1], have = m.srcObject ? m.srcObject.getTracks() : [];
+      if (want.length === have.length && want.every(function (t) { return have.indexOf(t) >= 0; })) return;
+      m.srcObject = want.length ? new MediaStream(want) : null;
+    });
+    playAudio(c);
+  }
+  // play() kann an der Autoplay-Regel scheitern (Anruf im neu geoeffneten Tab, Safari ohne Bedienung): dann Knopf
+  // "Ton einschalten" - jede Bedienung im Fenster versucht es erneut
+  function playAudio(c) {
+    var ra = c.ui && c.ui.ra;
+    if (ra && !ra.paused && c.audioBlocked) { c.audioBlocked = false; c.snd = ''; drawInfo(c); }
+    if (!ra || !ra.srcObject || !ra.paused || c.done) return;
+    var p; try { p = ra.play(); } catch (e) { p = null; }
+    if (p && p.then) p.then(function () {
+      if (c.audioBlocked) { c.audioBlocked = false; c.snd = ''; drawInfo(c); }
+    }, function (e) {
+      if (e && e.name === 'NotAllowedError' && !c.done && ra.paused) { c.audioBlocked = true; c.snd = 'blocked'; drawInfo(c); }
+    });
+  }
+  // Im Klick "Anrufen"/"Annehmen" (Nutzer-Geste) das <audio> einmal starten - Safari (iOS/macOS) erlaubt das spaetere
+  // play() nach den asynchronen Schritten (Schluessel, getUserMedia, SDP) sonst nicht
+  function unlockAudio(c) {
+    var ra = c.ui && c.ui.ra; if (!ra) return;
+    try { var p = ra.play(); if (p && p.catch) p.catch(function () {}); } catch (e) { /* egal */ }
+  }
+  document.addEventListener('pointerdown', function () { if (C && C.audioBlocked) playAudio(C); }, true);
+  document.addEventListener('keydown', function () { if (C && C.audioBlocked) playAudio(C); }, true);
+  // Ausgabegeraet (nur wo der Browser es kann und es mehrere gibt): Auswahl merken
+  function sinkPick(c) {
+    var ra = c.ui && c.ui.ra;
+    if (!ra || typeof ra.setSinkId !== 'function' || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    navigator.mediaDevices.enumerateDevices().then(function (list) {
+      var outs = list.filter(function (d) { return d.kind === 'audiooutput' && d.deviceId && d.deviceId !== 'communications'; });
+      if (!c.ui || outs.length < 2 || c.ui.sink) return;
+      var want = ''; try { want = localStorage.getItem('saga-call-sink') || ''; } catch (e) { /* privat */ }
+      var sel = el('select', 'cl-sink'); sel.title = T('Tonausgabe'); sel.setAttribute('aria-label', T('Tonausgabe'));
+      outs.forEach(function (d, i) { var o = el('option', null, d.label || T('Ausgabe {n}', { n: i + 1 })); o.value = d.deviceId; sel.appendChild(o); });
+      sel.value = outs.some(function (d) { return d.deviceId === want; }) ? want : outs[0].deviceId;
+      var apply = function () {
+        ra.setSinkId(sel.value === 'default' ? '' : sel.value).catch(function (e) { HK.toast(T('Tonausgabe nicht umschaltbar: {err}', { err: e.message })); });
+      };
+      sel.addEventListener('change', function () { try { localStorage.setItem('saga-call-sink', sel.value); } catch (e) { /* privat */ } apply(); });
+      if (want && sel.value === want && want !== 'default') apply();
+      c.ui.sink = sel; c.ui.info.parentNode.insertBefore(sel, c.ui.info.nextSibling);
     }).catch(function () {});
   }
   function tick(c) {
@@ -533,16 +612,20 @@
     var stage = el('div', 'cl-stage');
     var rv = el('video', 'cl-remote'); rv.autoplay = true; rv.muted = true; rv.playsInline = true; rv.setAttribute('playsinline', '');   // Ton: <audio>
     var ra = el('audio', 'cl-raudio'); ra.autoplay = true;
+    ra.addEventListener('playing', function () { if (c.audioBlocked) { c.audioBlocked = false; c.snd = ''; drawInfo(c); } });
     var who = el('div', 'cl-who'), lv = el('video', 'cl-local'); lv.hidden = true; lv.autoplay = true; lv.muted = true; lv.playsInline = true; lv.setAttribute('playsinline', '');
     stage.appendChild(rv); stage.appendChild(ra); stage.appendChild(who); stage.appendChild(lv);
     var top = el('div', 'cl-top'), info = el('div', 'cl-info'), st = el('div', 'cl-status'); st.setAttribute('role', 'status');
     var mini = btn('▭', 'cl-mini cl-shrink', function () { w.classList.toggle('small'); }, T('Kleiner/größer'));
     top.appendChild(info); top.appendChild(mini);
     var ctl = el('div', 'cl-ctl');
-    w.appendChild(stage); w.appendChild(top); w.appendChild(st); w.appendChild(ctl);
+    var un = btn(T('Ton einschalten'), 'cl-pill cl-unmute', function () { playAudio(c); }, T('Der Browser hat den Ton blockiert – tippen, um ihn einzuschalten'));
+    un.hidden = true;
+    w.appendChild(stage); w.appendChild(top); w.appendChild(un); w.appendChild(st); w.appendChild(ctl);
     document.body.appendChild(w);
-    c.ui = { w: w, rv: rv, ra: ra, lv: lv, who: who, info: info, st: st, ctl: ctl };
-    rv.srcObject = c.remote; ra.srcObject = c.remote;
+    c.ui = { w: w, rv: rv, ra: ra, lv: lv, who: who, info: info, st: st, ctl: ctl, un: un };
+    unlockAudio(c);                                    // laeuft im Klick "Anrufen"/"Annehmen"
+    bindRemote(c);
     drawPeer(c); drawCtl(c); drawInfo(c);
   }
   function closeWin(c) { if (c.ui) { c.ui.w.remove(); c.ui = null; } }
@@ -563,7 +646,14 @@
       i.appendChild(el('span', null, dur((Date.now() - c.t0) / 1000)));
       if (c.path) i.appendChild(el('span', 'cl-path', c.path === 'relay' ? T('über Relais (TURN)') : T('direkt')));
       if (c.q) { var qq = el('span', 'cl-q cl-q-' + c.q, c.q === 'good' ? T('gute Verbindung') : c.q === 'mid' ? T('mittlere Verbindung') : T('schwache Verbindung')); i.appendChild(qq); }
+      if (c.snd === 'ok') i.appendChild(el('span', 'cl-snd', T('Ton: empfangen')));
+      else if (c.snd === 'none' || c.snd === 'blocked') {
+        var sn = el('span', 'cl-snd cl-snd-no', c.snd === 'blocked' ? T('Ton: blockiert') : T('Ton: kein Ton'));
+        sn.title = c.snd === 'blocked' ? T('Der Browser hat den Ton blockiert – tippen, um ihn einzuschalten') : T('Vom Gegenüber kommt kein Ton an.');
+        i.appendChild(sn);
+      }
     }
+    if (c.ui.un) c.ui.un.hidden = !c.audioBlocked;
   }
   function drawMedia(c) {
     if (!c.ui) return;
@@ -576,8 +666,8 @@
     else c.ui.lv.srcObject = null;
     c.ui.lv.hidden = !mine;
     c.ui.w.classList.toggle('screen', !!c.screen);
-    if (show) c.ui.rv.play && c.ui.rv.play().catch(function () {});
-    c.ui.ra.play && c.ui.ra.play().catch(function () {});
+    if (show && c.ui.rv.srcObject && c.ui.rv.paused) c.ui.rv.play().catch(function () {});
+    playAudio(c);
   }
   function drawCtl(c) {
     if (!c.ui || c.done) return;
@@ -677,6 +767,7 @@
 
   window.HKCalls = { head: head, start: start, state: function () {
     return C ? { id: C.id, role: C.role, connected: C.connected, verified: C.verified, path: C.path, bytesIn: C.bytesIn || 0,
-                 mic: C.mic, cam: !!C.cam, screen: !!C.screen, remote: C.remoteState } : null;
+                 mic: C.mic, cam: !!C.cam, screen: !!C.screen, remote: C.remoteState,
+                 audio: Object.assign({ state: C.snd || '', blocked: !!C.audioBlocked }, C.audio || {}) } : null;
   }, ringing: function () { return Object.keys(RINGS); } };
 })();

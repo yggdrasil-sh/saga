@@ -4,7 +4,8 @@
 //   [PLAYWRIGHT=/pfad/zu/node_modules/playwright-core] node tests/browser_calls.js
 // Die Konten brauchen nichts Besonderes; Chat-Schluessel werden eingerichtet (Wiederherstellungsschluessel im Temp-Verzeichnis).
 // Geprueft: Klingeln auf dem Dashboard, Annehmen oeffnet den Chat-Tab, Verbindung kommt zustande, Medien fliessen in beide
-// Richtungen (getStats bytesReceived > 0), DTLS-Fingerabdruck gegen die signierte SDP geprueft, direkter Weg, Stumm/Kamera
+// Richtungen (getStats bytesReceived > 0), Ton kommt an und das <audio> spielt (Video- und Audioanruf, ohne Autoplay-
+// Freibrief), DTLS-Fingerabdruck gegen die signierte SDP geprueft, direkter Weg, Stumm/Kamera
 // beim Gegenueber sichtbar, Auflegen, Eintrag im Chat, Ablehnen, Handy-Ansicht, verweigertes Mikrofon verstaendlich.
 'use strict';
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
@@ -47,13 +48,14 @@ async function chatKeys(q, user) {
   await q.waitForTimeout(800);
 }
 const st = p => p.evaluate(() => window.HKCalls && window.HKCalls.state());
+const audioOk = s => !!(s && s.audio && s.audio.packetsIn > 0 && s.audio.bytesOut > 0 && s.audio.playing && s.audio.state === 'ok');
 async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; let v; while (Date.now() < end) { v = await fn(); if (v) return v; await new Promise(r => setTimeout(r, step)); } return v; }
 
 (async () => {
   const origin = new URL(BASE).origin;
   const browser = await chromium.launch({ channel: E.PW_CHANNEL || 'chrome', headless: true,
     args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--unsafely-treat-insecure-origin-as-secure=' + origin,
-           '--auto-select-desktop-capture-source=Entire screen', '--autoplay-policy=no-user-gesture-required'] });
+           '--auto-select-desktop-capture-source=Entire screen', '--autoplay-policy=document-user-activation-required'] });
   const U1 = E.SAGA_USER, U2 = E.SAGA_USER2;
   try {
     const a = await session(browser, U1, E.SAGA_PASS), b = await session(browser, U2, E.SAGA_PASS2);
@@ -85,6 +87,8 @@ async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; 
     await a.waitForTimeout(4500);
     const sa = await st(a), sb = await st(bc);
     ok('Medien fliessen: bytesReceived > 0 auf beiden Seiten', sa && sb && sa.bytesIn > 0 && sb.bytesIn > 0, { a: sa && sa.bytesIn, b: sb && sb.bytesIn });
+    ok('Ton kommt an und wird abgespielt (Audio-Pakete + <audio> laeuft) auf beiden Seiten', audioOk(sa) && audioOk(sb), { a: sa && sa.audio, b: sb && sb.audio });
+    ok('Anruffenster: "Ton: empfangen"', /Ton: empfangen/.test(await a.textContent('.cl-info')) && /Ton: empfangen/.test(await bc.textContent('.cl-info')));
     ok('DTLS-Fingerabdruck gegen die signierte SDP geprueft (verified)', sa && sb && sa.verified && sb.verified);
     ok('Weg: direkt (ohne TURN)', sa && sa.path === 'direct', sa && sa.path);
     ok('Anruffenster zeigt "Ende-zu-Ende verschlüsselt" und "direkt"', /Ende-zu-Ende verschlüsselt/.test(await a.textContent('.cl-info')) && /direkt/.test(await a.textContent('.cl-info')));
@@ -137,7 +141,10 @@ async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; 
     await shot(bc, '09-klingeln-handy-hell');
     await bc.click('.cl-ring .cl-big');
     ok('Handy: Audioanruf verbunden', await until(async () => { const s = await st(bc); return s && s.connected; }));
-    await bc.waitForTimeout(2500);
+    await bc.waitForTimeout(4500);
+    // Audioanruf: das Video-Transceiver bleibt ohne Bild - der Ton darf davon nicht abhaengen (frueher: <audio> blieb stumm)
+    const xa = await st(a), xb = await st(bc);
+    ok('Audioanruf: Ton in beide Richtungen (Audio-Pakete + <audio> laeuft)', audioOk(xa) && audioOk(xb), { a: xa && xa.audio, b: xb && xb.audio });
     await shot(bc, '10-audioanruf-handy');
     await bc.click('.cl-ctl .cl-red');
     await bc.waitForTimeout(4200);
