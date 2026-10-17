@@ -43,6 +43,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `/v1` (`OLLAMA_CONTEXT_LENGTH`) und zum Zeitlimit.
 - Alle Erweiterungen der SSE-Antwort sind rückwärtskompatibel (Apps ignorieren unbekannte Ereignisse/Felder).
 
+### Sicherheit
+- **Einfügen von Blöcken (Web):** Blöcke aus der Zwischenablage im Saga-Format (`application/x-editor-js` bzw.
+  `data-saga-block`, z. B. kopierte Bilder) gingen ungeprüft an den Editor – mit präparierter Zwischenablage hätte
+  HTML/Skript im Editor landen können (gespeichert wurde es bereinigt). Jetzt: nur Block-Werkzeuge, die der
+  Ziel-Editor kennt (Spalten in Spalten/Ausklappbar werden aufgelöst), Inline-HTML nach derselben Positivliste wie
+  der Server, Adressen nur relativ/https/mailto – auch in verschachtelten Blöcken.
+
 ### Chat-Bilder schnell, Bilder kopieren (2.1-c, Server + Web)
 - **Chat-Bilder:** Beim Senden entsteht ein **Vorschaubild** (längste Seite 320 px, JPEG ~70, ohne Metadaten), das wie
   jeder Anhang mit eigenem Schlüssel verschlüsselt hochgeladen wird; der Eintrag in `files[]` bekommt `w`/`h` des

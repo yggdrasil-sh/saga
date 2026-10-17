@@ -551,6 +551,55 @@ async function imageClipboard(browser) {
   await p.context().close();
 }
 
+// Review v21: Bloecke aus der Zwischenablage (application/x-editor-js bzw. data-saga-block) gehen an ed.blocks.insert, das
+// nichts bereinigt -> vorher nur bekannte Werkzeuge des Ziel-Editors und Inline-HTML nach der Positivliste des Servers.
+async function pasteSanitize(browser) {
+  const p = await session(browser);
+  const s = await p.evaluate(async () => {
+    const H = { 'X-Saga': '1', 'Content-Type': 'application/json' };
+    const cv = document.createElement('canvas'); cv.width = 40; cv.height = 30; cv.getContext('2d').fillRect(0, 0, 40, 30);
+    const b = await new Promise(res => cv.toBlob(res, 'image/png'));
+    const fd = new FormData(); fd.append('image', b, 'x.png');
+    const up = await (await fetch('/api/files', { method: 'POST', headers: { 'X-Saga': '1' }, body: fd })).json();
+    const z = (await (await fetch('/api/notes', { method: 'POST', headers: H, body: JSON.stringify({ title: 'Einfuegen bereinigt' }) })).json()).id;
+    await fetch('/api/notes/' + z, { method: 'PATCH', headers: H, body: JSON.stringify({ body: JSON.stringify({ blocks: [{ type: 'paragraph', data: { text: 'Ziel' } }, { type: 'paragraph', data: { text: '' } }] }) }) });
+    return { z, url: up.file.url };
+  });
+  await p.open(s.z);
+  const unit = await p.evaluate(() => window.HKPages.k.cleanClip([
+    { tool: 'paragraph', data: { text: 'a<img src=x onerror="window.__xss=9">b <a href="javascript:alert(1)">j</a> <a href="https://example.org/">h</a>' } },
+    { tool: 'unbekannt', data: { text: 'x' } }, { tool: 'marker', data: {} },
+    { tool: 'embed', data: { url: 'javascript:alert(1)' } }]));
+  ok('Einfuegen: Bereinigung (unbekannte/Inline-Werkzeuge weg, onerror/javascript: weg, https-Verweis bleibt)',
+    unit.length === 2 && unit[0].data.text === 'ab j <a href="https://example.org/" target="_blank" rel="noopener noreferrer">h</a>'
+    && unit[1].tool === 'embed' && unit[1].data.url === '', unit);
+  await p.locator('#pg-editor .ce-paragraph').nth(1).click();
+  await p.evaluate(({ url }) => {
+    window.__xss = 0;
+    const blocks = [
+      { tool: 'image', data: { file: { url }, caption: 'Bild <img src=x onerror="window.__xss=1"><b>fett</b>', withBorder: false, withBackground: false, stretched: false } },
+      { tool: 'paragraph', data: { text: 'Text <a href="javascript:window.__xss=2">klick</a><script>window.__xss=3</script> <span onclick="x">s</span>' } },
+      { tool: 'gibtsnicht', data: { text: 'boese' } },
+      { tool: 'toggle', data: { title: 'T<img src=x onerror="window.__xss=4">', open: true, blocks: [
+        { type: 'paragraph', data: { text: 'innen <iframe src="about:blank"></iframe>ok' } },
+        { type: 'columns', data: { cols: [{ blocks: [{ type: 'paragraph', data: { text: 'aus <img src=x onerror="window.__xss=5">Spalte' } }] }] } }] } }];
+    const dt = new DataTransfer(); dt.setData('application/x-editor-js', JSON.stringify(blocks));
+    const t = document.querySelectorAll('#pg-editor .ce-paragraph')[1];
+    t.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  }, s);
+  await p.waitForTimeout(3000);
+  const dom = await p.evaluate(() => ({ xss: window.__xss, bad: document.querySelectorAll('#pg-editor [onerror], #pg-editor script, #pg-editor iframe, #pg-editor [onclick], #pg-editor a[href^="javascript"]').length }));
+  ok('Einfuegen: kein Skript laeuft, nichts Gefaehrliches im Editor (auch im Ausklappbaren)', dom.xss === 0 && dom.bad === 0, dom);
+  const bl = JSON.parse((await p.api('GET', '/api/notes/' + s.z)).body || '{}').blocks || [];
+  const tg = bl.find(b => b.type === 'toggle') || { data: {} };
+  ok('Einfuegen: bekannte Bloecke eingefuegt, unbekannte weg, Spalten im Ausklappbaren aufgeloest',
+    JSON.stringify(bl.map(b => b.type)) === JSON.stringify(['paragraph', 'image', 'paragraph', 'toggle'])
+    && bl[1].data.caption === 'Bild <b>fett</b>' && bl[2].data.text.indexOf('klick') >= 0
+    && JSON.stringify((tg.data.blocks || []).map(b => b.type + ':' + b.data.text)) === JSON.stringify(['paragraph:innen ok', 'paragraph:aus Spalte']), bl);
+  await p.api('DELETE', '/api/notes/' + s.z);
+  await p.context().close();
+}
+
 (async () => {
   const browser = await chromium.launch({ channel: process.env.PW_CHANNEL || 'chrome', headless: true });
   try {
@@ -558,6 +607,7 @@ async function imageClipboard(browser) {
     if (process.env.SAGA_ONLY === 'avatars') { await avatars(browser); await presence(browser); throw null; }   // nur die Profilbild-Pruefungen
     if (process.env.SAGA_ONLY === 'chatimg') { await chatThumbs(browser); throw null; }                         // nur Chat-Bilder
     if (process.env.SAGA_ONLY === 'imgclip') { await imageClipboard(browser); throw null; }                     // nur Bild kopieren/einfuegen
+    if (process.env.SAGA_ONLY === 'paste') { await pasteSanitize(browser); throw null; }                        // nur Einfuegen bereinigt
     const p = await session(browser);
     await enterFallback(p);
     await reloadKeeps(p);
@@ -572,6 +622,7 @@ async function imageClipboard(browser) {
     await chatImmich(browser);
     await chatThumbs(browser);
     await imageClipboard(browser);
+    await pasteSanitize(browser);
     await narrow(browser);
     await passkeys(browser);
     await avatars(browser);

@@ -1244,6 +1244,90 @@
     if (!Array.isArray(out) || !out.length || !out.every(function (b) { return b && typeof b.tool === 'string' && b.data && typeof b.data === 'object'; })) return null;
     return JSON.stringify(out).match(FILE_REF) ? out : null;          // ohne Dateiverweise: Editor.js wie gewohnt
   }
+  // Bloecke aus der Zwischenablage gehen an ed.blocks.insert, und das bereinigt NICHTS (anders als das Einfuegen durch
+  // Editor.js selbst). Deshalb vorher: nur Block-Werkzeuge, die der Ziel-Editor kennt (Spalten in Spalten/Ausklappbar
+  // werden aufgeloest wie beim Speichern), Inline-HTML nach derselben Positivliste wie der Server (saga/pages.py,
+  // _Sanitizer), Adressen nur relativ/http(s)/mailto, verschachtelte Bloecke (Ausklappbar, Spalten) ebenso.
+  var CLIP_INLINE_ONLY = { inlineCode: 1, marker: 1, hkdate: 1, hkcomment: 1 };
+  var CLIP_TAGS = { b: 1, strong: 1, i: 1, em: 1, u: 1, s: 1, mark: 1, code: 1, a: 1, br: 1, time: 1 };
+  var CLIP_CLASSES = { mark: ['cdx-marker'], code: ['inline-code'], time: ['hk-date', 'hk-remind'] };
+  var CLIP_DROP = /^(script|style|template|iframe|frame|frameset|object|embed|noscript|svg|math|textarea|select|button|form|title|head|link|meta)$/;
+  var CLIP_URL_KEYS = { url: 1, href: 1, link: 1, source: 1, embed: 1, src: 1 };
+  function clipEsc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function clipInline(s) {
+    if (s.indexOf('<') < 0 && s.indexOf('&') < 0) return s;
+    var doc = new DOMParser().parseFromString('<!doctype html><body>' + s, 'text/html'), out = [];   // inertes Dokument
+    (function walk(n, inA) {
+      [].forEach.call(n.childNodes, function (c) {
+        if (c.nodeType === 3) { out.push(clipEsc(c.nodeValue).replace(/&quot;/g, '"')); return; }
+        if (c.nodeType !== 1) return;
+        var tg = c.tagName.toLowerCase(), keep = '';
+        if (CLIP_DROP.test(tg)) return;
+        if (!CLIP_TAGS[tg] || (tg === 'a' && inA)) { walk(c, inA); return; }
+        if (tg === 'br') { out.push('<br>'); return; }
+        if (tg === 'a') {
+          var h = (c.getAttribute('href') || '').trim();
+          if (/^\/notes#[1-9][0-9]{0,17}$/.test(h)) keep = ' href="' + h + '"';
+          else if (/^(https?:|mailto:)/i.test(h)) keep = ' href="' + clipEsc(h) + '" target="_blank" rel="noopener noreferrer"';
+          else { walk(c, inA); return; }
+        }
+        if (tg === 'time') {
+          var dt = (c.getAttribute('datetime') || '').trim();
+          if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(dt)) { walk(c, inA); return; }
+          keep = ' datetime="' + dt + '"';
+        }
+        var cls = (c.getAttribute('class') || '').split(/\s+/).filter(function (x) { return (CLIP_CLASSES[tg] || []).indexOf(x) >= 0; });
+        if (cls.length) keep += ' class="' + cls.join(' ') + '"';
+        out.push('<' + tg + keep + '>'); walk(c, inA || tg === 'a'); out.push('</' + tg + '>');
+      });
+    })(doc.body, false);
+    return out.join('');
+  }
+  function clipVal(v, key, depth) {
+    if (depth > 40) return null;
+    if (typeof v === 'string') {
+      if (key === 'code') return v;                                      // Code-Bloecke sind Klartext (wie der Server)
+      if (CLIP_URL_KEYS[key]) { var u = v.trim(); return /^(\/(?!\/)|https?:\/\/|mailto:)/i.test(u) ? u : ''; }
+      return clipInline(v);
+    }
+    if (Array.isArray(v)) return v.slice(0, 2000).map(function (x) { return clipVal(x, key, depth + 1); });
+    if (v && typeof v === 'object') {
+      var o = {};
+      Object.keys(v).forEach(function (k) { if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') o[k] = clipVal(v[k], k, depth + 1); });
+      return o;
+    }
+    return (typeof v === 'number' && isFinite(v)) || typeof v === 'boolean' || v === null ? v : null;
+  }
+  function toolsOf(ed) {
+    if (ed === S.editor) return S.tools || {};
+    var x = (S.eds || []).filter(function (e) { return e.ed === ed; })[0];
+    return (x && x.tools) || nestedTools();
+  }
+  function cleanClip(list, tools, depth) {                // [{tool|type, data}] -> [{tool, data}] (nur Bekanntes, bereinigt)
+    depth = depth || 0;
+    var out = [];
+    if (!Array.isArray(list) || depth > 3) return out;
+    list.slice(0, 500).forEach(function (b) {
+      if (!b || typeof b !== 'object') return;
+      var name = typeof b.tool === 'string' ? b.tool : b.type, d = b.data;
+      if (typeof name !== 'string' || !d || typeof d !== 'object' || Array.isArray(d)) return;
+      if (CLIP_INLINE_ONLY[name] || (name !== 'paragraph' && !Object.prototype.hasOwnProperty.call(tools, name))) {   // Absatz: Editor.js-Standard
+        if (name === 'columns' && Array.isArray(d.cols)) {            // Spalten in Spalte/Ausklappbar: Inhalt aufloesen
+          d.cols.forEach(function (c) { out.push.apply(out, cleanClip(c && c.blocks, tools, depth + 1)); });
+        }
+        return;
+      }
+      var data = clipVal(d, null, 0), inner = nestedTools();
+      if (name === 'toggle') data.blocks = cleanClip(d.blocks, inner, depth + 1).map(function (x) { return { type: x.tool, data: x.data }; });
+      if (name === 'columns') {
+        data.cols = (Array.isArray(d.cols) ? d.cols : []).slice(0, 4).map(function (c) {
+          return { blocks: cleanClip(c && c.blocks, inner, depth + 1).map(function (x) { return { type: x.tool, data: x.data }; }) };
+        });
+      }
+      out.push({ tool: name, data: data });
+    });
+    return out;
+  }
   function fixRefs(blocks) {
     var s = JSON.stringify(blocks.map(function (b) { return { tool: b.tool, data: b.data }; })), refs = {};
     (s.match(FILE_REF) || []).forEach(function (r) { refs[r] = 1; });
@@ -1261,7 +1345,8 @@
     var ed = p ? p.ed : edOf(t), anchorId = p ? p.blk.dataset.id : null, cid = S.cur.id;
     fixRefs(blocks).then(function (bl) {
       if (!S.cur || S.cur.id !== cid) return;
-      var tools = ed === S.editor ? S.tools : null;
+      bl = cleanClip(bl, toolsOf(ed));
+      if (!bl.length) return;
       var i, replace = false;
       if (anchorId && ed.blocks.getBlockIndex) i = ed.blocks.getBlockIndex(anchorId) + 1;
       else {
@@ -1270,7 +1355,6 @@
         if (cur && cur.isEmpty && cur.name === 'paragraph') replace = true; else i = i < 0 ? ed.blocks.getBlocksCount() : i + 1;
       }
       bl.forEach(function (b, k) {
-        if (tools && !tools[b.tool]) return;
         ed.blocks.insert(b.tool, b.data, undefined, i + k, k === bl.length - 1, k === 0 && replace);
       });
       unpick(); S.dirtyBody = true; schedule();
@@ -3500,13 +3584,14 @@
   // --- Spalten: jede Spalte ist ein eigener Editor (Editor-in-Editor) ----------------
   function nestedTools() { var t = {}; Object.keys(S.tools || {}).forEach(function (k) { if (k !== 'columns') t[k] = S.tools[k]; }); return t; }
   function nestedEditor(holder, blocks, placeholder) {
+    var tools = nestedTools();
     var ed = new window.EditorJS({
-      holder: holder, data: { blocks: blocks || [] }, tools: nestedTools(), tunes: ['hkcomment'], i18n: I18N, minHeight: 24, placeholder: placeholder,
+      holder: holder, data: { blocks: blocks || [] }, tools: tools, tunes: ['hkcomment'], i18n: I18N, minHeight: 24, placeholder: placeholder,
       inlineToolbar: ['bold', 'italic', 'link', 'marker', 'inlineCode', 'hkdate'],
       onChange: edChanged
     });
     holder.addEventListener('input', function () { if (!S.loading) tryShortcut(ed); });   // Markdown-Kuerzel im eigenen Editor
-    S.eds = (S.eds || []).filter(function (x) { return x.holder.isConnected; }); S.eds.push({ ed: ed, holder: holder });   // fuer Tastenkuerzel
+    S.eds = (S.eds || []).filter(function (x) { return x.holder.isConnected; }); S.eds.push({ ed: ed, holder: holder, tools: tools });   // fuer Tastenkuerzel
     ed.isReady.then(function () { decorateLinks(); });                                       // Verweise als Marken
     return ed;
   }
@@ -4477,7 +4562,7 @@
     k: { cur: function () { return S.cur; }, editor: function () { return S.editor; },
          eds: function () { return (S.eds || []).filter(function (x) { return x.holder.isConnected; }); },
          open: function (id) { return openPage(id); }, byId: byId, goParent: goParent, copyLink: copyLink, showBlock: showBlock,
-         embed: EMBED, isMac: isMac, openQS: function () { openQS(); }, pages: function () { return S.pages; }, label: label, ti: ti,
+         embed: EMBED, isMac: isMac, cleanClip: function (list, nested) { return cleanClip(list, nested ? nestedTools() : (S.tools || {})); }, openQS: function () { openQS(); }, pages: function () { return S.pages; }, label: label, ti: ti,
          recents: recents, decorate: function () { decorateLinks(); }, ancestors: ancestors,
          recheck: function () { return recheck(true); },        // static/comments.js: Rolle/Zugriff nach 403/404 neu pruefen
          // Live-Kanal (static/live.js): Seitenliste neu laden, fremde Aenderung der offenen Seite, ungelesen-Punkt im Baum
