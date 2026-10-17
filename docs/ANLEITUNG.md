@@ -423,8 +423,8 @@ Aufgaben-, Kalender- und Immich-Blöcke, Schaltflächen und Dateianhänge. Verwe
 zu Links, wenn das Ziel ebenfalls öffentlich ist – sonst bleibt nur der Text. Bilder liefert Saga nur aus, wenn sie
 in genau dieser Seite stehen.
 
-**So sehen Besucher die Seite:** Unter dem Titel steht „@name · aktualisiert 14.10.2026“, oben links dein `@name` (auf
-der Startseite für Besucher der Name der Instanz). Leiste, Datum und Meldungen erscheinen in der Sprache des
+**So sehen Besucher die Seite:** Unter dem Titel steht „@name · aktualisiert 14.10.2026“ (verlinkt auf `/@name`). Eine
+Kopfzeile gibt es nur bei Unterseiten (Pfad zurück) und auf der Startseite für Besucher (Name der Instanz, „Anmelden“). Leiste, Datum und Meldungen erscheinen in der Sprache des
 Besuchers; der Inhalt ist mit der Sprache deines Kontos gekennzeichnet (wichtig für Vorlesen und Silbentrennung).
 Text steht in angenehmer Lesebreite, Bilder und Tabellen dürfen breiter sein. Eine Adresse, die es nicht gibt, bietet
 als nächsten Schritt „Zur Startseite“ (wenn der Admin eine gewählt hat) oder „Anmelden“.

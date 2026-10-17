@@ -415,8 +415,8 @@ properties of the view). Embeds become links. **Not** published: task, calendar 
 attachments. Links to other pages only stay links if the target is public as well – otherwise just the text remains.
 Saga only serves images that are used in exactly this page.
 
-**How visitors see the page:** Below the title it says “@name · updated Oct 14, 2026”, with your `@name` at the top left
-(on the home page for visitors: the name of the instance). The bar, the date and messages appear in the visitor's
+**How visitors see the page:** Below the title it says “@name · updated Oct 14, 2026” (linked to `/@name`). There is
+a top bar only on subpages (path back) and on the home page for visitors (name of the instance, “Sign in”). The bar, the date and messages appear in the visitor's
 language; the content is marked with your account's language (important for screen readers and hyphenation). Text
 is set at a comfortable reading width, images and tables may be wider. An address that doesn't exist offers a next
 step: “Go to the home page” (if the admin picked one) or “Sign in”.
