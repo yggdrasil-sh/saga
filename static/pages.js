@@ -739,8 +739,8 @@
 
   // Tasten, die zwischen "Leere Seite" und dem Fokus im Titel getippt werden (Server-Antwort + Editor brauchen bis
   // ~1,5 s), sammeln statt verlieren - danach in den Titel (BUG-047). Liefert eine Stopp-Funktion -> gesammelter Text.
-  function titleBuffer() {
-    var buf = '';
+  function titleBuffer(init) {
+    var buf = init || '';
     function kd(e) {
       if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
       var a = document.activeElement;
@@ -756,8 +756,8 @@
     if (extra && !readOnly()) { t.value += extra; S.dirtyTitle = true; schedule(); }
     try { t.setSelectionRange(t.value.length, t.value.length); } catch (e) { /* egal */ }
   }
-  function newPage(parentId) {
-    var stop = titleBuffer();
+  function newPage(parentId, typed) {
+    var stop = titleBuffer(typed);
     return save().then(function () { return api('POST', '/api/notes', { parent_id: parentId || null }); })
       .then(function (d) { if (parentId) { S.open[parentId] = true; saveOpen(); } return loadList().then(function () { return openPage(d.id); }); })
       .then(function () { focusTitle(stop()); })
@@ -1664,7 +1664,8 @@
       if (sel && !sel.isCollapsed && $('pg-editor').contains(sel.anchorNode)) return;
       e.preventDefault(); openQS();
     }
-    else if (e.key === 'Escape' && !$('pg-modal').hidden) closeModal();
+    // preventDefault: Esc schliesst NUR den Dialog - nicht danach auch noch den Peek, in dem er steckt (Bughunt 2)
+    else if (e.key === 'Escape' && !$('pg-modal').hidden) { e.preventDefault(); closeModal(); }
   });
 
 
@@ -1785,7 +1786,19 @@
       .then(function () { $('pg-title').focus(); $('pg-title').select(); })
       .catch(function (err) { HK.toast(T('Seite nicht angelegt: {err}', { err: err.message })); });
   }
+  // Menue "+ Neue Seite" offen und jemand tippt gleich los (wie ohne Vorlagen gewohnt): leere Seite mit diesem Titel
+  // statt verschluckter Buchstaben (Bughunt 2, Variante von BUG-047). Leertaste waehlt weiter den markierten Eintrag.
+  var NPM = null;
+  document.addEventListener('keydown', function (e) {
+    if (!NPM || e.ctrlKey || e.metaKey || e.altKey || e.isComposing || e.key.length !== 1 || e.key === ' ') return;
+    if (NPM.anchor.getAttribute('aria-expanded') !== 'true' || !document.querySelector('.menu:not([hidden])')) { NPM = null; return; }
+    var a = document.activeElement;
+    if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+    e.preventDefault(); e.stopPropagation();
+    var pid = NPM.parentId; NPM = null; HK.closeMenu(); newPage(pid, e.key);
+  }, true);
   function newPageMenu(anchor, parentId) {
+    NPM = { anchor: anchor, parentId: parentId };
     HK.openMenu(anchor, function (m) {
       m.appendChild(HK.menuItem(T('Leere Seite'), function () { newPage(parentId); }, { icon: '📄' }));
       m.appendChild(HK.menuItem(T('Datenbank'), function () { newDatabase(parentId); }, { icon: '🗃️', hint: T('Tabelle, Board …') }));
