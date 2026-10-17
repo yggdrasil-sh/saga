@@ -389,6 +389,8 @@ def props_text(schema, props, titles=None):
         if not isinstance(p, dict):
             continue
         typ, v = p.get("type"), props.get(p.get("id"))
+        if typ == "checkbox" and v is None:
+            v = False                                      # nicht angehakt wird nicht gespeichert - fuer die Suche aber "✗"
         if v in (None, "", []) or typ in ("created", "edited", "calc"):
             continue
         if typ in ("select", "multi_select"):
@@ -1323,12 +1325,21 @@ async def api_ai_page(nid: int, request: Request):
             owner, role, err = access(conn, uid, nid, "view", acc)
             if err is not None:
                 return None, err
-            r = conn.execute("SELECT title, body, format, kind, schema FROM note WHERE id=? AND uid=? AND deleted_at IS NULL",
-                             (nid, owner)).fetchone()
+            r = conn.execute("SELECT title, body, format, kind, schema, parent_id, props FROM note WHERE id=? AND uid=? "
+                             "AND deleted_at IS NULL", (nid, owner)).fetchone()
             if not r:
                 return None, _bad("not found", 404)
             body = r[1] if role == "owner" else mask_links(r[1], r[2], viewer(acc))
             rows = []
+            if r[5] and r[6]:                              # Datenbank-Zeile: ihre Eigenschaften gehoeren zum Inhalt
+                p = conn.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database' AND deleted_at IS NULL",
+                                 (r[5], owner)).fetchone()
+                try:
+                    pt = props_text(json.loads(p[0] or "{}"), json.loads(r[6])) if p else ""
+                except ValueError:
+                    pt = ""
+                if pt:
+                    rows = [pt]
             if r[3] == "database":                         # Datenbank: ihre Zeilen mit Eigenschaften gehoeren zum Inhalt
                 try:
                     schema = json.loads(r[4] or "{}")

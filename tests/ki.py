@@ -488,6 +488,13 @@ def run():
        row.get("id") in ids and f"{pst['name']}: {doing}" in user and f"{pdt['name']}: 2026-11-30" in user and "in: Projektliste Falter" in user)
     s, ev, _ = sse(f"/api/ai/page/{dbid}", A, {"action": "summarize"})
     ok(f"Zusammenfassen einer Datenbank: Zeilen mit Eigenschaften ({s})", s == 200 and f"Webseite Falterhaus ({pst['name']}: {doing}" in last()[1])
+    # Bughunt 2 (server, S4): nicht angehakte Checkbox wird nicht gespeichert - fuer den Assistenten trotzdem "✗"
+    req("PATCH", f"/api/notes/{dbid}", A, {"schema": dict(sch, props=sch["props"] + [{"id": "kix", "name": "Erledigt", "type": "checkbox"}])})
+    s, ev, _ = sse(f"/api/ai/page/{dbid}", A, {"action": "summarize"})
+    ok(f"Nicht angehakte Checkbox im Kontext als '✗' ({s})", s == 200 and "Erledigt: ✗" in last()[1])
+    # Bughunt 2 (web, S4): "Zusammenfassen" einer Datenbank-Zeile ohne Text -> ihre Eigenschaften statt "keinen Text"
+    s, ev, _ = sse(f"/api/ai/page/{row['id']}", A, {"action": "summarize"})
+    ok(f"Zusammenfassen einer Datenbank-Zeile nutzt ihre Eigenschaften ({s})", s == 200 and f"{pst['name']}: {doing}" in last()[1])
     zp = page(A, "Zahnarzt Dr. Falter", "Naechster Besuch am 14. November um 9 Uhr.")
     s, ev, _ = ask(A, "Wann ist mein Zahnarzttermin?")
     ok("Suche: zusammengesetztes Suchwort (Zahnarzttermin findet Zahnarzt)", zp in [x["id"] for x in (get(ev, "sources") or {}).get("sources") or []])
