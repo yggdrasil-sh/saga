@@ -1014,6 +1014,7 @@ body.embed .pg-conflict,.pages.pg-full .pg-conflict{top:.5rem}
 .hk-dialog-s{width:min(520px,100%)}
 .hk-ta{resize:vertical;min-height:4.5rem;font-family:inherit}
 .hk-field input[type=checkbox]{justify-self:start;accent-color:var(--accent);width:1.05rem;height:1.05rem}
+.hk-range{accent-color:var(--accent)}
 
 /* Dashboard: Termine heute/morgen */
 .rail-cal{margin-bottom:1rem;padding-bottom:.6rem;border-bottom:1px solid var(--border)}

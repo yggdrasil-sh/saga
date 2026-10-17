@@ -457,7 +457,7 @@
         var card = el('div', 'hk-dialog'), head = el('div', 'hk-dlg-head'); head.appendChild(el('h2', null, T('Profilbild zuschneiden')));
         var bd = el('div', 'hk-dlg-body hk-crop'), stage = el('div', 'hk-crop-stage'), cv = el('canvas'), ring = el('div', 'hk-crop-ring');
         cv.width = cv.height = 560; stage.appendChild(cv); stage.appendChild(ring);
-        var zoom = el('input'); zoom.type = 'range'; zoom.min = '1'; zoom.max = '4'; zoom.step = '0.01'; zoom.value = '1'; zoom.setAttribute('aria-label', T('Zoom'));
+        var zoom = el('input', 'hk-range'); zoom.type = 'range'; zoom.min = '1'; zoom.max = '4'; zoom.step = '0.01'; zoom.value = '1'; zoom.setAttribute('aria-label', T('Zoom'));
         bd.appendChild(stage); bd.appendChild(zoom); bd.appendChild(el('p', 'hk-hint', T('Ziehen zum Verschieben, Regler zum Vergrößern.')));
         var bar = el('div', 'hk-actions'), ok = el('button', 'btn btn-primary', T('Übernehmen')), no = el('button', 'btn', T('Abbrechen'));
         ok.type = no.type = 'button'; bar.appendChild(no); bar.appendChild(ok); bd.appendChild(bar);
@@ -529,6 +529,7 @@
     up.addEventListener('click', function () { file.value = ''; file.click(); });
     file.addEventListener('change', function () {
       var f = file.files && file.files[0]; if (!f) return;
+      status(st, '');                                  // altes "✓ Gespeichert" nicht neben einer neuen Fehlermeldung stehen lassen
       cropDialog(f).then(function (blob) {
         if (!blob) return;
         status(st, T('Wird hochgeladen …'));
