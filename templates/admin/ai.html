@@ -17,7 +17,9 @@
         <option value="ollama"{% if a.provider == 'ollama' %} selected{% endif %}>{{ _("Ollama (eigene Schnittstelle /api/chat)") }}</option>
       </select></label>
     {{ field(_('Adresse'), 'url', a.url, max=300, ph='http://ollama.lan:11434/v1', hint=_('OpenAI-kompatibel: bis /v1 · Ollama nativ: http://host:11434 · interne Adressen sind erlaubt (nur genau diese)')) }}
-    {{ field(_('Modell'), 'model', a.model, max=200, ph='llama3.1:8b') }}
+    {{ field(_('Modell'), 'model', a.model, max=200, ph='qwen2.5:7b-instruct', list=('ai-models' if models else ''), hint=(_('Vorschläge aus dem letzten Verbindungstest') if models else _('„Verbindung testen“ ruft die angebotenen Modelle ab.'))) }}
+    {% if models %}<datalist id="ai-models">{% for m in models %}<option value="{{ m }}">{% endfor %}</datalist>{% endif %}
+    <p class="hk-hint">{{ _("Ollama: Mit „Ollama (eigene Schnittstelle)“ setzt Saga das Kontextfenster passend zur Seitenmenge selbst und schaltet die Denkphase ab. Über /v1 geht das nicht – dann am Ollama-Server OLLAMA_CONTEXT_LENGTH auf mindestens 8192 setzen, sonst schneidet Ollama lange Anfragen still ab.") }}</p>
     {{ field(_('API-Schlüssel'), 'api_key', '', max=500, secret=true, hint=(_('gespeichert ✓ – leer lassen = behalten') if has_key else _('optional – Ollama braucht keinen'))) }}
     {% if has_key %}{{ check(_('Gespeicherten Schlüssel löschen'), 'clear_key', false) }}{% endif %}
     {% if a.pinned %}<p class="hk-hint">{{ _("Festgehaltene Adressen: {ips} – ändert sich die Adresse im DNS, hier einmal neu speichern.", ips=", ".join(a.pinned)) }}</p>{% endif %}
@@ -25,7 +27,7 @@
   <section class="adm-card">
     <h3>{{ _("Zugang und Grenzen") }}</h3>
     {{ field(_('Nur für diese Gruppen'), 'groups', groups_text, max=1000, hint=_('Komma-getrennt, z. B. saga-ki – leer = alle Konten')) }}
-    {{ field(_('Zeitlimit je Antwort (Sekunden)'), 'timeout', a.timeout, type='number', max=4) }}
+    {{ field(_('Zeitlimit bis zur Antwort (Sekunden)'), 'timeout', a.timeout, type='number', max=4, hint=_('So lange darf das Modell bis zum ersten Wort und zwischen zwei Stücken brauchen. Eine ganze Antwort darf das Fünffache dauern (mindestens 5 Minuten) – für langsame lokale Modelle.')) }}
     {{ field(_('Anfragen je Person und Tag'), 'quota', a.quota, type='number', max=6, hint=_('0 = unbegrenzt')) }}
     {{ field(_('Seiteninhalt je Anfrage (Zeichen)'), 'context', a.context, type='number', max=5, hint=_('mehr Kontext = bessere Antworten, aber langsamer (1000–50000)')) }}
     {{ check(_('Personen dürfen einen Verlauf einschalten'), 'history', a.history, _('Standard bei jeder Person: aus. Ausschalten löscht den eigenen Verlauf.')) }}

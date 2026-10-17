@@ -119,28 +119,55 @@
     renderFoot();
   }
 
-  // --- Antworttext mit Quellen [n] -> Links auf die Quellseiten ---------------------------------------------
-  function answerNode(text, sources, cls) {
-    var p = el('div', cls || 'ai-answer'), re = /\[(\d{1,2})\]/g, last = 0, m;
-    var byN = {}; (sources || []).forEach(function (s) { byN[s.n] = s; });
-    while ((m = re.exec(text))) {
-      if (m.index > last) p.appendChild(document.createTextNode(text.slice(last, m.index)));
-      var s = byN[+m[1]];
-      if (s && s.id) {
-        var a = el('a', 'ai-cite', m[0]); a.href = '/notes#' + s.id; a.title = s.title || '';
-        p.appendChild(a);
-      } else p.appendChild(document.createTextNode(m[0]));
+  // --- Antworttext -> DOM (nie innerHTML): Absaetze, Listen ('- ', '* ', '1. '), **fett**, `code`, Ueberschriften als
+  // fette Zeile, Quellen [n] / [1, 2] / [1][2] -> Links auf die Quellseiten (cited sammelt die zitierten Nummern) -------
+  function inline(p, s, byN, cited) {
+    var re = /(\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\[\d{1,2}(?:\s*[,;]\s*\d{1,2})*\])/g, last = 0, m;
+    while ((m = re.exec(s))) {
+      if (m.index > last) p.appendChild(document.createTextNode(s.slice(last, m.index)));
+      var x = m[0];
+      if (x.charAt(0) === '[') {
+        x.slice(1, -1).split(/\s*[,;]\s*/).forEach(function (n, k) {
+          var src = byN[+n];
+          if (k) p.appendChild(document.createTextNode(' '));
+          if (src && src.id) {
+            var a = el('a', 'ai-cite', '[' + n + ']'); a.href = '/notes#' + src.id; a.title = src.title || '';
+            p.appendChild(a); if (cited) cited[+n] = 1;
+          } else p.appendChild(document.createTextNode('[' + n + ']'));
+        });
+      } else if (x.charAt(0) === '`') p.appendChild(el('code', null, x.slice(1, -1)));
+      else p.appendChild(el('strong', null, x.slice(2, -2)));
       last = re.lastIndex;
     }
-    if (last < text.length) p.appendChild(document.createTextNode(text.slice(last)));
-    return p;
+    if (last < s.length) p.appendChild(document.createTextNode(s.slice(last)));
   }
-  function sourcesNode(sources) {
+  function answerNode(text, sources, cls, cited) {
+    var w = el('div', cls || 'ai-answer'), byN = {}, list = null;
+    (sources || []).forEach(function (s) { byN[s.n] = s; });
+    String(text || '').split('\n').forEach(function (ln) {
+      var m = /^\s*(?:[-*•]|(\d{1,2})[.)])\s+(.*)$/.exec(ln);
+      if (m) {
+        var tag = m[1] ? 'OL' : 'UL';
+        if (!list || list.tagName !== tag) { list = el(tag.toLowerCase(), 'ai-list'); w.appendChild(list); }
+        var li = el('li'); inline(li, m[2], byN, cited); list.appendChild(li);
+        return;
+      }
+      list = null;
+      if (!ln.trim()) return;
+      var h = /^\s*#{1,6}\s+(.*)$/.exec(ln);
+      var p = el('p', h ? 'ai-p ai-h' : 'ai-p'); inline(p, h ? h[1] : ln, byN, cited); w.appendChild(p);
+    });
+    return w;
+  }
+  function sourcesNode(sources, cited) {
     var w = el('div', 'ai-srcs');
     if (!sources || !sources.length) { w.appendChild(el('span', 'ai-srcs-none', T('Keine passenden Seiten gefunden.'))); return w; }
     w.appendChild(el('span', 'ai-srcs-l', T('Quellen:')));
+    var any = cited && Object.keys(cited).length;
+    sources = sources.slice().sort(function (a, b) { return any ? (cited[b.n] ? 1 : 0) - (cited[a.n] ? 1 : 0) || a.n - b.n : a.n - b.n; });
     sources.forEach(function (s) {
-      var a = el(s.id ? 'a' : 'span', 'ai-src'); if (s.id) a.href = '/notes#' + s.id;
+      var a = el(s.id ? 'a' : 'span', 'ai-src' + (any && !cited[s.n] ? ' ai-src-uncited' : '')); if (s.id) a.href = '/notes#' + s.id;
+      if (any && !cited[s.n]) a.title = T('durchsucht, aber nicht zitiert');
       a.appendChild(el('span', 'ai-src-n', String(s.n)));
       a.appendChild(el('span', 'ai-src-t', s.title || T('Unbenannt')));
       if (s.owner) a.appendChild(el('span', 'ai-src-o', s.owner));
@@ -201,25 +228,42 @@
     item.appendChild(qn); item.appendChild(ans); chatBox.appendChild(item);
     A.chat.push(item);
     askTa.value = ''; item.scrollIntoView({ block: 'end' });
-    var text = '', srcs = [], srcNode = null;
+    var text = '', srcs = [], srcNode = null, fin = false, pend = false, info = {};
     busy(true);
+    function paint() {                                   // hoechstens einmal je Bild neu zeichnen (lange Antworten, Handys)
+      pend = false; if (fin) return;
+      var n = answerNode(text, srcs); n.classList.add('ai-live'); item.replaceChild(n, ans); ans = n;
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
     A.run = stream('/api/ai/ask', { q: q, tasks: optTasks.input.checked, calendar: optCal.input.checked }, function (ev, d) {
-      if (ev === 'sources') { srcs = d.sources || []; }
-      else if (ev === 'delta') {
+      if (ev === 'sources') {
+        srcs = d.sources || [];
+        if (srcs.length) { srcNode = sourcesNode(srcs); item.appendChild(srcNode); }      // gleich zeigen, was durchsucht wird
+      } else if (ev === 'status') {
+        var ty = ans.querySelector('.ai-typing'); if (ty && d.thinking) ty.textContent = T('Das Modell denkt nach …');
+      } else if (ev === 'delta') {
         text += d.t || '';
-        var n = answerNode(text, srcs); n.classList.add('ai-live'); item.replaceChild(n, ans); ans = n;
-        chatBox.scrollTop = chatBox.scrollHeight;
+        if (!pend) { pend = true; (window.requestAnimationFrame || setTimeout)(paint); }
       } else if (ev === 'done') {
+        info = d || {};
         if (d.quota_left != null && A.st.quota) A.st.used = A.st.quota - d.quota_left;
       } else if (ev === 'error') {
+        if (d.quota_left != null && A.st.quota) A.st.used = A.st.quota - d.quota_left;
         item.appendChild(errNode(d.error || T('Fehler')));
       }
     });
     A.run.done.then(function () {
-      if (text) { var n = answerNode(text, srcs); item.replaceChild(n, ans); ans = n; }
+      fin = true;
+      var cited = {};
+      if (text) { var n = answerNode(text, srcs, null, cited); item.replaceChild(n, ans); ans = n; }
       else if (ans.parentNode) item.removeChild(ans);                 // nur Fehler: kein leerer Antwortkasten
-      srcNode = sourcesNode(srcs); item.appendChild(srcNode);
+      if (info.cut) item.insertBefore(el('p', 'ai-hint', T('Die Antwort wurde abgeschnitten (Längengrenze des Modells).')), ans.nextSibling);
+      var sn = info.no_match ? null : sourcesNode(srcs, cited);
+      if (srcNode && srcNode.parentNode) { if (sn) item.replaceChild(sn, srcNode); else item.removeChild(srcNode); }
+      else if (sn) item.appendChild(sn);
+      srcNode = sn;
     }).catch(function (err) {
+      fin = true;
       ans.classList.remove('ai-pending', 'ai-live');
       if (err && err.name === 'AbortError') { ans.appendChild(el('span', 'ai-stopped', ' ' + T('(abgebrochen)'))); return; }
       if (ans.querySelector('.ai-typing')) item.removeChild(ans);
@@ -361,16 +405,25 @@
     busy(true);
     var saved = canEdit() && window.HKPages && HKPages.flush ? HKPages.flush() : Promise.resolve();   // markierte Bloecke muessen gespeichert sein
     saved.catch(function () { /* Konflikt: der Server nimmt den gespeicherten Stand */ }).then(function () {
+      var rich = action === 'summarize' || action === 'tasks';           // Verbessern/Uebersetzen: Text genau so zeigen
       A.run = stream('/api/ai/page/' + pid, { action: action, blocks: ids, target: target.value }, function (ev, d) {
-        if (ev === 'delta') { text += d.t || ''; var n = el('div', 'ai-answer ai-live', text); resBox.replaceChild(n, out); out = n; }
-        else if (ev === 'done') { done = d; if (d.quota_left != null && A.st.quota) A.st.used = A.st.quota - d.quota_left; }
-        else if (ev === 'error') resBox.appendChild(errNode(d.error || T('Fehler')));
+        if (ev === 'delta') {
+          text += d.t || '';
+          var n = rich ? answerNode(text, []) : el('div', 'ai-answer', text); n.classList.add('ai-live'); resBox.replaceChild(n, out); out = n;
+        } else if (ev === 'status') {
+          var ty = out.querySelector('.ai-typing'); if (ty && d.thinking) ty.textContent = T('Das Modell denkt nach …');
+        } else if (ev === 'done') { done = d; if (d.quota_left != null && A.st.quota) A.st.used = A.st.quota - d.quota_left; }
+        else if (ev === 'error') {
+          if (d.quota_left != null && A.st.quota) A.st.used = A.st.quota - d.quota_left;
+          resBox.appendChild(errNode(d.error || T('Fehler')));
+        }
       });
       return A.run.done;
     }).then(function () {
       out.classList.remove('ai-live', 'ai-pending');
       if (!done || !cur() || cur().id !== pid) return;
-      if (done.truncated) resBox.insertBefore(el('p', 'ai-hint', T('Die Seite ist lang – nur der Anfang wurde verwendet.')), out);
+      if (done.truncated) resBox.insertBefore(el('p', 'ai-hint', T('Die Seite ist lang – verwendet wurden Anfang und Ende.')), out);
+      if (done.cut) resBox.insertBefore(el('p', 'ai-hint', T('Die Antwort wurde abgeschnitten (Längengrenze des Modells).')), out);
       if (action === 'tasks') taskSuggest(done.tasks || [], out);
       else if (action === 'improve' || action === 'translate') textSuggest(text, done, out);
       else resBox.appendChild(copyBar(text));

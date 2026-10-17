@@ -33,6 +33,13 @@
 .ai-q{margin:0;align-self:flex-end;max-width:88%;background:var(--card-h);border:1px solid var(--border);border-radius:12px 12px 4px 12px;
   padding:.45rem .7rem;font-size:.88rem;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
 .ai-answer{font-size:.9rem;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.ai-answer .ai-p{margin:0 0 .4rem}
+.ai-answer .ai-h{font-weight:600}
+.ai-answer .ai-list{margin:0 0 .4rem;padding-left:1.25rem}
+.ai-answer .ai-list li{margin:.1rem 0}
+.ai-answer code{font-size:.85em;padding:0 .2rem;border-radius:4px;background:var(--card-h)}
+.ai-answer > :last-child{margin-bottom:0}
+.ai-src.ai-src-uncited{opacity:.55}
 .ai-answer.ai-live::after{content:"▍";color:var(--accent);animation:ai-blink 1s steps(2) infinite}
 @keyframes ai-blink{50%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.ai-answer.ai-live::after{animation:none}}

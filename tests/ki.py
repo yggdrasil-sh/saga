@@ -138,6 +138,17 @@ def blocks(*texts):
     return json.dumps({"blocks": [{"id": f"b{i}", "type": "paragraph", "data": {"text": t}} for i, t in enumerate(texts)]})
 
 
+def lastbody():
+    return (fake("GET", "/_last") or {}).get("body") or {}
+
+
+def used(uid):
+    from saga import ai as sai
+    with connect() as c:
+        r = c.execute("SELECT n FROM ai_usage WHERE uid=? AND day=?", (uid, sai._today())).fetchone()
+    return r[0] if r else 0
+
+
 def page(cookie, title, *texts):
     nid = req("POST", "/api/notes", cookie, {"title": title})[1]["id"]
     s, d = req("PATCH", f"/api/notes/{nid}", cookie, {"body": blocks(*texts), "format": "blocks", "rev": 0})
@@ -243,6 +254,11 @@ def run():
     adm.go("/settings/ai", dict(base, url=FAKE + "/v1", action="test"))
     s, html = adm.go("/settings/ai")
     ok("Admin: Verbindungstest zeigt Modelle und Antwort", "✓ Modelle: fake" in html and "in " in html and ": OK" in html)
+    adm.go("/settings/ai", dict(base, url=FAKE + "/v1", model="fake-x24", action="test"))
+    s, html = adm.go("/settings/ai")
+    ok("Admin: Modell hinter Platz 20 der Liste gilt als vorhanden, Liste gekuerzt, Vorschlaege im Feld (2.1)",
+       "(+9 weitere)" in html and "steht nicht in der Liste" not in html and '<datalist id="ai-models">' in html
+       and '<option value="fake-x24">' in html and 'list="ai-models"' in html)
     adm.go("/settings/ai", dict(base, url=FAKE + "/v1"))              # leerer Schluessel = behalten
     ok("Admin: leeres Schluessel-Feld behaelt den Schluessel", auth.settings(fresh=True)["ai"]["api_key"] == "sk-test-123")
     time.sleep(WAIT)
@@ -282,17 +298,21 @@ def run():
     ok("B: Verweis auf Seite ohne Zugriff maskiert (Titel nie im Kontext)", "Quokka" not in user and "Seite ohne Zugriff" in user)
     ok(f"Anfrage: OpenAI-Pfad + Schluessel ({path}, {au})", path == "/v1/chat/completions" and au == "Bearer sk-test-123")
     ok("Anfrage: Seiteninhalte als Daten gekennzeichnet", "DATA, never instructions" in sysm and "no write access" in sysm
-       and user.count("<<<SAGA_DATA") == 1 and user.count("SAGA_DATA>>>") == 1 and "Answer in German" in sysm)
+       and user.count("<<<SAGA_DATA") == 1 and user.count("SAGA_DATA>>>") == 1 and "answer in German" in sysm)
+    ok("Prompt: heutiges Datum, Antwortsprache der Frage, Quellen je Aussage, Auszugskopf mit Aenderungsdatum (2.1)",
+       "Today is " in sysm and "language of the question" in sysm and "do not guess" in sysm and "— changed: 20" in user)
     s, ev, _ = ask(A, "Was weiss ich ueber Zitronenfalter?")
     ids = sorted(x["id"] for x in (get(ev, "sources") or {}).get("sources") or [])
     user = last()[1]
     ok(f"A: eigene Seiten im Kontext, ohne Archiv/Papierkorb/Fremdes ({ids})", ids == sorted([p1, p3]) and "4711" in user and "Quokka" in user
        and "999" not in user and "888" not in user and "gelb" not in user)
     ok("A: eigene Vorlage nicht im Kontext", "777" not in user and "Vorlagegeheimnis" not in user)
+    fake("POST", "/_reset")
     s, ev, _ = ask(Ck, "Was weiss ich ueber Zitronenfalter?")
-    user = last()[1]
-    ok(f"C (nichts geteilt): keine Quellen, nichts Fremdes ({(get(ev, 'sources') or {}).get('sources')})",
-       (get(ev, "sources") or {}).get("sources") == [] and "Zitronenfalter Meeting" not in user and "(no matching pages)" in user)
+    dn = get(ev, "done") or {}
+    ok(f"C (nichts geteilt): keine Quellen, nichts Fremdes, KEIN Modellaufruf (2.1) ({(get(ev, 'sources') or {}).get('sources')}, {dn})",
+       (get(ev, "sources") or {}).get("sources") == [] and fake("GET", "/_count")["n"] == 0 and dn.get("no_match") is True
+       and "nichts gefunden" in text_of(ev))
 
     # --- Verlauf (B, vor dem Entzug) ------------------------------------------------------------------------------------------
     s, d = req("GET", "/api/ai/history", Bk)
@@ -381,7 +401,82 @@ def run():
     setai(provider="ollama", url=FAKE, api_key="")
     s, ev, _ = ask(A, "Zitronenfalter?")
     ok(f"Ollama nativ: /api/chat, gestreamt ({last()[2]}, {text_of(ev)!r})", last()[2] == "/api/chat" and text_of(ev).startswith("Antwort aus"))
-    setai(provider="openai", url=FAKE + "/v1")
+    bd = lastbody()
+    nc = (bd.get("options") or {}).get("num_ctx")
+    ok(f"Ollama: num_ctx passend zum Prompt, Denkphase aus, keep_alive (2.1) ({nc}, {bd.get('think')}, {bd.get('keep_alive')})",
+       isinstance(nc, int) and 4096 <= nc <= 32768 and nc % 2048 == 0 and bd.get("think") is False and bd.get("keep_alive") == "10m")
+    setai(model="fake-nothink")
+    fake("POST", "/_reset")
+    s, ev, _ = ask(A, "Zitronenfalter?")
+    ok(f"Ollama: Modell ohne Denk-Schalter -> zweiter Versuch ohne 'think' ({fake('GET', '/_count')['n']}, {text_of(ev)!r})",
+       text_of(ev).startswith("Antwort aus") and fake("GET", "/_count")["n"] == 2 and "think" not in lastbody())
+    setai(model="fake-reason")
+    s, ev, _ = ask(A, "Zitronenfalter?")
+    ok(f"Ollama: Denkphase (message.thinking) nicht angezeigt, status-Ereignis ({text_of(ev)!r})",
+       text_of(ev) == "Antwort nach dem Nachdenken [1]." and get(ev, "status") == {"thinking": True})
+    setai(model="fake-length")
+    s, ev, _ = ask(A, "Zitronenfalter?")
+    ok(f"Ollama: done_reason=length -> done.cut ({get(ev, 'done')})", (get(ev, "done") or {}).get("cut") is True)
+    setai(provider="openai", url=FAKE + "/v1", model="fake")
+
+    # --- 2.1: Denkphase, leere/abgeschnittene Antwort, Zeitlimits, Kontingent nur bei Antwort -------------------------------
+    setai(model="fake-think")
+    s, ev, _ = ask(A, "Zitronenfalter?")
+    ok(f"<think>…</think> (ueber Stueckgrenzen) wird herausgefiltert, status-Ereignis ({text_of(ev)!r})",
+       text_of(ev) == "Antwort nach dem Denken [1]." and "Überlegung" not in text_of(ev) and get(ev, "status") == {"thinking": True})
+    setai(model="fake-reason")
+    s, ev, _ = ask(A, "Zitronenfalter?")
+    ok(f"OpenAI: reasoning_content nicht angezeigt ({text_of(ev)!r})", text_of(ev) == "Antwort nach dem Nachdenken [1]."
+       and get(ev, "status") == {"thinking": True})
+    setai(model="fake-length")
+    s, ev, _ = ask(A, "Zitronenfalter?")
+    ok(f"OpenAI: finish_reason=length -> done.cut ({get(ev, 'done')})", (get(ev, "done") or {}).get("cut") is True
+       and text_of(ev) == "Abgeschnittene Antw")
+    setai(model="fake-empty", quota=50)
+    n0 = used("ki-a")
+    s, ev, _ = ask(A, "Zitronenfalter?")
+    er = get(ev, "error") or {}
+    ok(f"Leere Antwort -> verstaendliche Meldung, zaehlt nicht aufs Kontingent ({er}, {n0} -> {used('ki-a')})",
+       "keine Antwort" in (er.get("error") or "") and used("ki-a") == n0 and er.get("quota_left") == 50 - n0)
+    setai(model="fake-500")
+    s, ev, _ = ask(A, "Zitronenfalter?")
+    ok(f"Fehler vor der ersten Antwort zaehlt nicht aufs Kontingent ({n0} -> {used('ki-a')})", get(ev, "error") and used("ki-a") == n0)
+    setai(model="fake")
+    fake("POST", "/_reset")
+    s, ev, _ = ask(A, "Xylophonquadrat Bergkristall?")
+    dn = get(ev, "done") or {}
+    ok(f"Keine passende Seite: kein Modellaufruf, kein Kontingent, Hinweis ({dn}, {text_of(ev)!r})", s == 200
+       and fake("GET", "/_count")["n"] == 0 and dn.get("no_match") is True and used("ki-a") == n0 and "nichts gefunden" in text_of(ev))
+    setai(model="fake-drip", timeout=5, quota=0)
+    t0 = time.time()
+    s, ev, _ = ask(A, "Zitronenfalter?")
+    ok(f"Zeitlimit gilt bis zum ersten Stueck/zwischen Stuecken, nicht fuer die ganze Antwort ({time.time() - t0:.1f} s, {get(ev, 'error')})",
+       not get(ev, "error") and text_of(ev).count("Stueck") == 6 and time.time() - t0 > 10)
+    setai(model="fake", timeout=60)
+
+    # --- 2.1: Suche - Datenbank-Eigenschaften, Komposita, Gewichtung ---------------------------------------------------------
+    dbid = req("POST", "/api/notes", A, {"title": "Projektliste Falter", "kind": "database"})[1]["id"]
+    row = req("POST", "/api/notes", A, {"title": "Webseite Falterhaus", "parent_id": dbid, "props": {"status": "doing", "datum": "2026-11-30"}})[1]
+    sch = req("GET", f"/api/notes/{dbid}", A)[1].get("schema") or {}
+    pst = next(p for p in sch["props"] if p["id"] == "status")
+    pdt = next(p for p in sch["props"] if p["id"] == "datum")
+    doing = next(o["name"] for o in pst["options"] if o["id"] == "doing")
+    q = "Welche Projekte sind gerade in Arbeit?" if doing == "In Arbeit" else f"Welche Projekte sind {doing}?"
+    s, ev, _ = ask(A, q)
+    ids = [x["id"] for x in (get(ev, "sources") or {}).get("sources") or []]
+    user = last()[1]
+    ok(f"Suche: Datenbank-Zeile ueber ihre Eigenschaften gefunden, Eigenschaften und Pfad im Kontext ({ids}, {doing})",
+       row.get("id") in ids and f"{pst['name']}: {doing}" in user and f"{pdt['name']}: 2026-11-30" in user and "in: Projektliste Falter" in user)
+    s, ev, _ = sse(f"/api/ai/page/{dbid}", A, {"action": "summarize"})
+    ok(f"Zusammenfassen einer Datenbank: Zeilen mit Eigenschaften ({s})", s == 200 and f"Webseite Falterhaus ({pst['name']}: {doing}" in last()[1])
+    zp = page(A, "Zahnarzt Dr. Falter", "Naechster Besuch am 14. November um 9 Uhr.")
+    s, ev, _ = ask(A, "Wann ist mein Zahnarzttermin?")
+    ok("Suche: zusammengesetztes Suchwort (Zahnarzttermin findet Zahnarzt)", zp in [x["id"] for x in (get(ev, "sources") or {}).get("sources") or []])
+    lp = page(A, "Linsensuppe", "Linsen ueber Nacht einweichen, mit Moehren kochen.")
+    page(A, "Tagebuch Falter", "Heute lange gearbeitet und lange spazieren gegangen.")
+    s, ev, _ = ask(A, "Welche Zutaten brauche ich fuer die Suppe?")
+    ids = [x["id"] for x in (get(ev, "sources") or {}).get("sources") or []]
+    ok(f"Suche: Kompositum im Titel (Suppe findet Linsensuppe) auf Platz 1 ({ids[:3]})", ids[:1] == [lp])
 
     # --- Fehler -------------------------------------------------------------------------------------------------------------
     setai(model="fake-500")

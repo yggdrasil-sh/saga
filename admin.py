@@ -1065,7 +1065,8 @@ def ai_page(request: Request):
     a = auth.settings(fresh=True)["ai"]
     n, people = ai.usage_today()
     return _page(request, "ai.html", me, a=a, has_key=bool(a.get("api_key")), groups_text=", ".join(a.get("groups") or []),
-                 test=request.session.pop("ai_test", None), used=n, people=people, parallel=ai.PARALLEL)
+                 test=request.session.pop("ai_test", None), used=n, people=people, parallel=ai.PARALLEL,
+                 models=ai.LAST_MODELS["list"][:300])
 
 
 def _ai_from(f, cur):

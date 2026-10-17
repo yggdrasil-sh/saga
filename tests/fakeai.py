@@ -8,6 +8,13 @@ Verhalten nach Modellname:
   fake-redirect  302 auf eine andere Adresse (Weiterleitungen sind verboten)
   fake-500       HTTP 500
   fake-auth      verlangt 'Authorization: Bearer sk-test-123' (sonst 401)
+  fake-think     Denkphase als <think>…</think> im Text, Marken ueber Stueckgrenzen verteilt (2.1)
+  fake-reason    Denkphase im eigenen Feld (OpenAI delta.reasoning_content, Ollama message.thinking), dann Antwort
+  fake-empty     keine Antwort (nur Ende)
+  fake-length    Antwort, dann finish_reason/done_reason "length"
+  fake-drip      6 Stuecke im Abstand von 2 s (insgesamt laenger als ein Zeitlimit von 5 s)
+  fake-nothink   Ollama: 400, wenn die Anfrage 'think' enthaelt (wie Modelle ohne Denk-Schalter)
+/v1/models liefert zusaetzlich 25 Fuell-Modelle fake-x00..fake-x24 (Liste > 20 im Admin-Test).
 Pruefhilfen: GET /_last (letzte Anfrage: Pfad, Authorization, JSON), GET /_count, POST /_reset.
 Aufruf: python fakeai.py <port>"""
 import json
@@ -73,7 +80,8 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/_count":
             return self._json(200, {"n": LOG["n"]})
         if self.path in ("/v1/models", "/models"):
-            return self._json(200, {"object": "list", "data": [{"id": m} for m in ("fake", "fake-demo", "fake-slow", "fake-auth")]})
+            names = ["fake", "fake-demo", "fake-slow", "fake-auth"] + [f"fake-x{i:02d}" for i in range(25)]
+            return self._json(200, {"object": "list", "data": [{"id": m} for m in names]})
         if self.path == "/api/tags":
             return self._json(200, {"models": [{"name": "fake"}, {"name": "fake-slow"}]})
         return self._json(404, {"error": "not found"})
@@ -103,6 +111,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(500, {"error": "kaputt"})
         if model == "fake-auth" and self.headers.get("Authorization") != "Bearer sk-test-123":
             return self._json(401, {"error": "unauthorized"})
+        if model == "fake-nothink" and "think" in body:
+            return self._json(400, {"error": '"fake-nothink" does not support thinking'})
         text = answer(body.get("messages") or [], model)
         ollama = self.path == "/api/chat"
         if self.path not in ("/v1/chat/completions", "/chat/completions", "/api/chat"):
@@ -116,21 +126,45 @@ class H(BaseHTTPRequestHandler):
             b = s.encode()
             self.wfile.write(f"{len(b):x}\r\n".encode() + b + b"\r\n")
             self.wfile.flush()
+        def piece(content="", thinking=""):
+            if ollama:
+                m = {"role": "assistant", "content": content}
+                if thinking:
+                    m["thinking"] = thinking
+                send(json.dumps({"model": model, "message": m, "done": False}) + "\n")
+            else:
+                dl = {"content": content} if content else {}
+                if thinking:
+                    dl["reasoning_content"] = thinking
+                send("data: " + json.dumps({"choices": [{"index": 0, "delta": dl, "finish_reason": None}]}) + "\n\n")
+        parts = pieces(text)
+        if model == "fake-think":
+            parts = ["<thi", "nk>geheime Über", "legung</thi", "nk>\n\nAntwort nach", " dem Denken [1]."]
+        elif model == "fake-empty":
+            parts = []
+        elif model == "fake-length":
+            parts = ["Abgeschnittene ", "Antw"]
+        elif model == "fake-drip":
+            parts = [f"Stueck {i}. " for i in range(6)]
         try:
             if model == "fake-slow":
                 time.sleep(8)
-            for i, p in enumerate(pieces(text)):
-                if ollama:
-                    send(json.dumps({"model": model, "message": {"role": "assistant", "content": p}, "done": False}) + "\n")
-                else:
-                    send("data: " + json.dumps({"choices": [{"index": 0, "delta": {"content": p}, "finish_reason": None}]}) + "\n\n")
+            if model == "fake-reason":
+                piece(thinking="Ich überlege geheim ")
+                piece(thinking="noch etwas.")
+                parts = ["Antwort nach dem ", "Nachdenken [1]."]
+            for i, p in enumerate(parts):
+                if model == "fake-drip":
+                    time.sleep(2)
+                piece(p)
                 if model == "fake-hang" and i == 0:
                     time.sleep(8)
                 time.sleep(0.02)
+            reason = "length" if model == "fake-length" else "stop"
             if ollama:
-                send(json.dumps({"model": model, "message": {"role": "assistant", "content": ""}, "done": True}) + "\n")
+                send(json.dumps({"model": model, "message": {"role": "assistant", "content": ""}, "done": True, "done_reason": reason}) + "\n")
             else:
-                send("data: " + json.dumps({"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}) + "\n\n")
+                send("data: " + json.dumps({"choices": [{"index": 0, "delta": {}, "finish_reason": reason}]}) + "\n\n")
                 send("data: [DONE]\n\n")
             self.wfile.write(b"0\r\n\r\n")
             self.wfile.flush()

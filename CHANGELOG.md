@@ -15,6 +15,34 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### KI-Assistent: bessere Treffer und robuster mit lokalen Modellen (2.1, Paket 1)
+- **„Frag deine Seiten“ findet mehr und das Richtige:** Wörter werden vereinheitlicht (Umlaute, Bindestriche),
+  auf einen Wortstamm gebracht (CISTEM, auch englische Endungen) und mit **BM25** gewichtet (seltene Wörter zählen
+  mehr, Füll- und Fragewörter gar nicht). **Zusammengesetzte Wörter**: „Zahnarzttermin“ findet „Zahnarzt … Termin“,
+  „Suppe“ findet „Linsensuppe“, „Reifen“ „Reifenwechsel“. **Datenbanken**: Eigenschaften von Zeilen (Status, Datum,
+  Auswahl, Relationen …) zählen als Inhalt – „Welche Projekte sind in Arbeit?“ geht jetzt, auch bei Notion-Importen;
+  eine Datenbank-Seite enthält ihre Zeilen (auch beim Zusammenfassen). Auszüge tragen Pfad, Änderungsdatum und Tags;
+  „gestern“, „diese/letzte Woche“, „neulich“ bevorzugen Seiten aus dem Zeitraum. Zerlegte Seiten bleiben im Speicher
+  (`AI_CACHE_DOCS`, Standard 5000). Messung mit 22 Testfragen (offline, ohne Modell): richtige Quelle 82 % → 95 %,
+  auf Platz 1 68 % → 91 %.
+- **Prompt:** heutiges Datum, Antwort in der Sprache der Frage, Quelle `[n]` nach jeder Aussage, bei Widersprüchen
+  beide nennen (neuere bevorzugen), kurz und ohne Tabellen.
+- **Lokale Modelle:** Ollama (eigene Schnittstelle) bekommt `num_ctx` passend zur Anfrage (vorher schnitt Ollama lange
+  Anfragen still vorne ab – samt Regeln), `think: false` (zweiter Versuch ohne, falls ein Modell das ablehnt) und
+  `keep_alive`. Denkphasen (`<think>…</think>`, `reasoning_content`, Ollama `thinking`) werden nie angezeigt; neues
+  SSE-Ereignis `status {thinking:true}` („Das Modell denkt nach …“). Leere Antwort → verständliche Meldung,
+  abgeschnittene Antwort → `done.cut`. **Zeitlimit** gilt jetzt bis zum ersten Stück und zwischen zwei Stücken; eine
+  ganze Antwort darf das Fünffache dauern (mindestens 5 Minuten).
+- **Kontingent fair:** Ohne passende Seite antwortet Saga selbst (kein Modellaufruf, `done.no_match`), und Anfragen,
+  die ohne ein einziges Stück Antwort scheitern, zählen nicht.
+- **Web:** Antworten mit Absätzen, Listen, **fett** und `code` (ohne HTML), Quellen auch als `[1, 2]`/`[1][2]`,
+  Quellen gleich zu Beginn, zitierte vorn, nur durchsuchte blasser; flüssigeres Streaming; „Zusammenfassen“ langer
+  Seiten nutzt Anfang und Ende.
+- **Admin:** Verbindungstest prüft das Modell gegen die *ganze* Liste (vorher falsches „steht nicht in der Liste“ ab
+  Platz 21), zeigt höchstens 20 Namen und bietet die Liste im Feld „Modell“ zur Auswahl an; Hinweise zu Ollama über
+  `/v1` (`OLLAMA_CONTEXT_LENGTH`) und zum Zeitlimit.
+- Alle Erweiterungen der SSE-Antwort sind rückwärtskompatibel (Apps ignorieren unbekannte Ereignisse/Felder).
+
 ### Chat-Bilder schnell, Bilder kopieren (2.1-c, Server + Web)
 - **Chat-Bilder:** Beim Senden entsteht ein **Vorschaubild** (längste Seite 320 px, JPEG ~70, ohne Metadaten), das wie
   jeder Anhang mit eigenem Schlüssel verschlüsselt hochgeladen wird; der Eintrag in `files[]` bekommt `w`/`h` des
