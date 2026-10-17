@@ -15,6 +15,30 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Fehlerrunde nach Bughunt 2 (Server + Web)
+- **Uploads ohne Content-Length** (chunked) über der Grenze bekommen wieder **413** statt 500 (Profilbild, Chat-Anhang).
+- **KI-Suche:** „Gartenschere“ findet die Seite „Garten“ (Zerlegung bevorzugt echte Wörter und den längeren Wortteil);
+  keine Fehltreffer mehr durch Zerlegung an Nicht-Wortgrenzen („Kartoffelsalat“ ≠ „Kartons“). Nicht angehakte
+  Checkboxen sieht der Assistent als „✗“; „Zusammenfassen“ einer Datenbank-Zeile nutzt ihre Eigenschaften.
+- **KI mit lokalen Modellen:** Denkphase ohne öffnendes `<think>` (nur `</think>`, z. B. DeepSeek-R1-Destillate) wird
+  verworfen – schon Gezeigtes nimmt das neue SSE-Ereignis `reset` zurück, danach erkennt Saga das Modell gleich; ein
+  wörtliches `<think>` mitten in der Antwort bleibt stehen.
+- **Profilbilder:** neues Live-Ereignis **`avatar.changed`** `{user, avatar}` an die Person und ihre Chat-Partner
+  (Apps: Bild ohne Neustart tauschen; additiv). Dasselbe Bild noch einmal hochladen ändert die Adresse nicht mehr;
+  schaltet der Admin die Bildquellen um, bekommen alle Adressen eine neue Version. Ältere Gegenstellen der Föderation
+  ohne Profilbilder gelten als „kein Bild“ (kein stündlicher neuer Versuch).
+- **Anrufe:** Rückruf, während der Anruf des Gegenübers noch klingelt → „… ruft dich gerade an“ (mit `incoming`);
+  verlorene Verbindung zählt bis zum letzten Lebenszeichen; Anruf-Mitteilung lebt so lange, wie es klingeln darf.
+  Web: Kamera-Knopf zeigt den echten Zustand, Stummschaltung des Gegenübers auch bei Video sichtbar, Anruffenster
+  passt aufs Handy (390 px), verkleinert nicht mehr über „Senden“, Hinweis bei offener Mikrofon-Freigabe (Safari),
+  nach dem Auflegen keine Laufzeit/kein Eigenbild mehr und der Chat des Anrufs ist offen.
+- **Chat:** Ersetzter Gruppenname nimmt seine Anhänge mit (zählten sonst weiter gegen das Kontingent).
+- **Seiten:** Esc in einem Dialog im Peek schließt nur den Dialog; bei offenem Menü „+ Neue Seite“ sofort getippter
+  Text wird Titel einer leeren Seite.
+- **2FA:** Rückfrage beim Löschen des letzten Faktors sagt, dass 2FA danach aus ist; Codes-Datei mit Konto und Datum.
+- Kleinigkeiten: Zoom-Regler beim Profilbild in Saga-Farbe, kein altes „✓ Gespeichert“ neben einer neuen Meldung;
+  Anleitung zu veröffentlichten Seiten (keine Kopfzeile mit @name mehr).
+
 ### KI-Assistent: bessere Treffer und robuster mit lokalen Modellen (2.1, Paket 1)
 - **„Frag deine Seiten“ findet mehr und das Richtige:** Wörter werden vereinheitlicht (Umlaute, Bindestriche),
   auf einen Wortstamm gebracht (CISTEM, auch englische Endungen) und mit **BM25** gewichtet (seltene Wörter zählen

@@ -5,7 +5,8 @@
 // Optional SAGA_USER2/SAGA_PASS2 + SAGA_USER3/SAGA_PASS3 (zwei Konten nur fuer Chats) fuer den Chat-Test "Aus Immich"
 // (Immich wird im Browser nachgestellt; der Wiederherstellungsschluessel wird im Temp-Verzeichnis gemerkt).
 'use strict';
-const { chromium } = require(process.env.PLAYWRIGHT || 'playwright-core');
+// PW_BROWSER=webkit: dieselben Pruefungen in WebKit (Safari); Chrome-eigene Teile (CDP-Passkeys, Zwischenablage) entfallen dort
+const PW = require(process.env.PLAYWRIGHT || 'playwright-core'), ENGINE = process.env.PW_BROWSER || 'chromium';
 const BASE = process.env.SAGA_BASE, USER = process.env.SAGA_USER, PASS = process.env.SAGA_PASS;
 if (!BASE || !USER || !PASS) { console.error('SAGA_BASE, SAGA_USER, SAGA_PASS setzen'); process.exit(2); }
 const res = [];
@@ -116,6 +117,43 @@ async function typeAheadTitle(p) {
   await p.keyboard.type('Rezepte', { delay: 70 }); await p.waitForTimeout(2500);
   const id = await p.evaluate(() => parseInt(location.hash.slice(1), 10));
   ok('BUG-047 Titel sofort nach "Leere Seite" vollstaendig', (await p.api('GET', '/api/notes/' + id)).title === 'Rezepte');
+}
+
+// Bughunt 2 (web, S3): Menue "+ Neue Seite" (mit Vorlagen) offen und sofort getippt -> leere Seite mit diesem Titel
+async function typeAheadMenu(p) {
+  await p.goto(BASE + '/notes'); await p.waitForSelector('#pg-new'); await p.waitForTimeout(800);
+  await p.click('#pg-new');
+  await p.keyboard.type('Bildquelle Web', { delay: 70 }); await p.waitForTimeout(3000);
+  const id = await p.evaluate(() => parseInt(location.hash.slice(1), 10));
+  const t = id ? (await p.api('GET', '/api/notes/' + id)).title : null;
+  ok('Bughunt 2: "+ Neue Seite" -> Menue offen, sofort getippter Titel vollstaendig', t === 'Bildquelle Web', t);
+}
+
+// Bughunt 2 (web, S3): Esc in einem Dialog im Peek schliesst nur den Dialog, nicht den Peek
+async function peekEscDialog(browser, p) {
+  const D = (await p.api('POST', '/api/notes', { kind: 'database', title: 'Esc-DB' })).id;
+  await p.api('POST', '/api/notes', { parent_id: D, title: 'Eintrag Esc' });
+  const q = await session(browser);
+  await q.goto(BASE + '/notes#' + D); await q.waitForSelector('.db-row'); await q.waitForTimeout(800);
+  await q.evaluate(() => document.querySelector('.db-row .db-open').click());
+  let f = null;
+  for (let i = 0; i < 40 && !f; i++) {
+    await q.waitForTimeout(250);
+    const c = q.frames().find(x => x.url().includes('embed=1'));
+    if (c && await c.evaluate(() => !!(window.HKPages && document.querySelector('#pg-more'))).catch(() => false)) f = c;
+  }
+  await q.waitForTimeout(600);
+  await f.click('#pg-more'); await q.waitForTimeout(200);
+  await f.evaluate(() => [...document.querySelectorAll('.menu-item')].find(x => /Teilen/.test(x.textContent)).click());
+  await f.waitForSelector('#pg-modal:not([hidden])', { timeout: 5000 }).catch(() => {});
+  const opened = await f.evaluate(() => !document.getElementById('pg-modal').hidden);
+  await q.keyboard.press('Escape'); await q.waitForTimeout(600);
+  const r = await q.evaluate(() => !document.getElementById('pg-peek').hidden);
+  const m = await f.evaluate(() => document.getElementById('pg-modal').hidden).catch(() => null);
+  ok('Bughunt 2: Esc im Teilen-Dialog im Peek schliesst nur den Dialog', opened && m === true && r, { opened, modalHidden: m, peekOpen: r });
+  await q.keyboard.press('Escape'); await q.waitForTimeout(600);
+  ok('... zweites Esc schliesst dann den Peek', await q.evaluate(() => document.getElementById('pg-peek').hidden));
+  await q.context().close();
 }
 
 // BUG-056: Link auf eigene Seite im Papierkorb -> Hinweis + Wiederherstellen (Unterseite: Hinweis auf den Papierkorb)
@@ -315,6 +353,8 @@ async function passkeys(browser) {
   ok('2.1 Passkey: als zweiter Faktor bestaetigt -> angemeldet', !/\/login/.test(p.url()) && !!(await acct()), p.url());
   await p.goto(BASE + '/security'); await p.waitForSelector('#hk-security .hk-tok');
   await p.click('#hk-security .hk-tok button:has-text("Löschen")');
+  await p.waitForSelector('.hk-ask', { timeout: 5000 }).catch(() => {});
+  ok('Bughunt 2: letzter Passkey -> Rueckfrage nennt "letzter zweiter Faktor"', /letzter zweiter Faktor/.test(await p.textContent('.hk-ask').catch(() => '')));
   await p.click('.hk-ask .btn-destr'); await p.waitForTimeout(1200);
   const s = await acct();
   ok('2.1 Passkey: geloescht -> 2FA wieder aus', s && !s.enabled && !s.passkeys.length, s);
@@ -601,7 +641,9 @@ async function pasteSanitize(browser) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ channel: process.env.PW_CHANNEL || 'chrome', headless: true });
+  const browser = ENGINE === 'chromium' ? await PW.chromium.launch({ channel: process.env.PW_CHANNEL || 'chrome', headless: true })
+    : await PW[ENGINE].launch({ headless: true });
+  console.log('Browser: ' + ENGINE);
   try {
     if (process.env.SAGA_ONLY === 'passkeys') { await passkeys(browser); throw null; }     // nur die Passkey-Pruefungen
     if (process.env.SAGA_ONLY === 'avatars') { await avatars(browser); await presence(browser); throw null; }   // nur die Profilbild-Pruefungen
@@ -614,17 +656,19 @@ async function pasteSanitize(browser) {
     await numbers(p, 'de');
     await conflictVisible(p);
     await typeAheadTitle(p);
+    await typeAheadMenu(p);
     await trashLink(p);
     await dbLive(browser, p);
     await peekMove(browser, p);
+    await peekEscDialog(browser, p);
     await commentSnippet(p);
     await p.context().close();
     await chatImmich(browser);
     await chatThumbs(browser);
-    await imageClipboard(browser);
+    if (ENGINE === 'chromium') await imageClipboard(browser);      // Zwischenablage-Rechte nur in Chrome setzbar
     await pasteSanitize(browser);
     await narrow(browser);
-    await passkeys(browser);
+    if (ENGINE === 'chromium') await passkeys(browser);            // virtueller Authenticator ueber CDP
     await avatars(browser);
     await presence(browser);
   } catch (e) { if (e !== null) { console.error(e); res.push(false); } }

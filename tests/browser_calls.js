@@ -94,11 +94,21 @@ async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; 
     ok('Anruffenster zeigt "Ende-zu-Ende verschlüsselt" und "direkt"', /Ende-zu-Ende verschlüsselt/.test(await a.textContent('.cl-info')) && /direkt/.test(await a.textContent('.cl-info')));
     const vid = await bc.evaluate(() => { const v = document.querySelector('.cl-remote'); return v && v.videoWidth; });
     ok('Video des Gegenuebers sichtbar (videoWidth > 0)', vid > 0, vid);
+    // Bughunt 2 (web, S3): Kamera-Knopf zeigt den echten Zustand (Kamera laeuft -> "Kamera aus", nicht durchgestrichen)
+    const camBtn = p => p.evaluate(() => { const b = document.querySelectorAll('.cl-ctl .cl-round')[1]; return b && { label: b.getAttribute('aria-label'), off: b.classList.contains('off') }; });
+    const cbA = await camBtn(a), cbB = await camBtn(bc);
+    ok('Kamera-Knopf bei laufender Kamera: "Kamera aus", nicht als aus markiert (beide Seiten)',
+      cbA && cbB && cbA.label === 'Kamera aus' && !cbA.off && cbB.label === 'Kamera aus' && !cbB.off, { cbA, cbB });
     await shot(a, '03-videoanruf-anrufer');
     await shot(bc, '04-videoanruf-angerufener');
     // Stumm, Kamera aus -> beim Gegenueber sichtbar
     await a.click('.cl-ctl .cl-round >> nth=0');
     ok('Stumm: beim Gegenueber angekommen (signiertes Zustands-Signal)', await until(async () => { const s = await st(bc); return s && s.remote.mic === false; }, 6000));
+    // Bughunt 2 (web, S3): bei laufendem Video ist der Name (mit 🔇) ausgeblendet - Hinweis steht in der Kopfzeile
+    ok('Stumm bei laufendem Video sichtbar ("… ist stummgeschaltet" statt "Ton: empfangen")',
+      await until(() => bc.evaluate(() => document.querySelector('.cl-win').classList.contains('has-video')
+        && /stummgeschaltet/.test(document.querySelector('.cl-info').textContent) && !/Ton: empfangen/.test(document.querySelector('.cl-info').textContent)), 6000),
+      await bc.textContent('.cl-info').catch(() => ''));
     await a.click('.cl-ctl .cl-round >> nth=1');
     ok('Kamera aus: Gegenueber zeigt wieder das Profilbild', await until(() => bc.evaluate(() => !document.querySelector('.cl-win').classList.contains('has-video')), 6000));
     await shot(bc, '05-gegenueber-stumm-kamera-aus');
@@ -115,9 +125,23 @@ async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; 
         await a.click('.cl-ctl .cl-round >> nth=2');
       } else console.log('--   Bildschirm teilen: im headless Chrome nicht verfuegbar - uebersprungen');
     }
+    // Bughunt 2 (web, S3): verkleinert liegt das Fenster nicht ueber "Senden"
+    await a.click('.cl-shrink'); await a.waitForTimeout(300);
+    const sendFree = await a.evaluate(() => {
+      const b = document.getElementById('ct-send').getBoundingClientRect(), x = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      return !!(x && x.closest('#ct-send'));
+    });
+    ok('Verkleinertes Anruffenster verdeckt "Senden" nicht', sendFree);
+    await shot(a, '06b-verkleinert');
+    await a.click('.cl-shrink');
     // Auflegen
     await a.click('.cl-ctl .cl-red');
     ok('Auflegen: Gegenueber sieht das Ende', await until(() => bc.evaluate(() => !window.HKCalls.state()), 8000));
+    // Bughunt 2 (web, S4): nach "Anruf beendet" keine Laufzeit/Verbindungsangaben und kein Eigenbild mehr
+    ok('Nach dem Auflegen: Kopfzeile leer, Eigenbild weg', await a.evaluate(() => {
+      const w = document.querySelector('.cl-win'); if (!w) return true;
+      return !document.querySelector('.cl-info').textContent && document.querySelector('.cl-local').hidden && !w.classList.contains('has-video');
+    }));
     await a.waitForTimeout(4000);
     await a.waitForSelector('.ct-call', { timeout: 8000 }).catch(() => {});
     const entry = await a.$$eval('.ct-call', l => l.map(x => x.textContent));
@@ -141,6 +165,19 @@ async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; 
     await shot(bc, '09-klingeln-handy-hell');
     await bc.click('.cl-ring .cl-big');
     ok('Handy: Audioanruf verbunden', await until(async () => { const s = await st(bc); return s && s.connected; }));
+    // Bughunt 2 (web, S3): Anruffenster passt auf 390 px - "Verkleinern" erreichbar, nichts ragt hinaus
+    const fit = await bc.evaluate(() => {
+      const w = document.querySelector('.cl-win'), sh = document.querySelector('.cl-shrink').getBoundingClientRect();
+      const out = [].slice.call(w.querySelectorAll('.cl-top *, .cl-ctl *')).filter(e => e.getBoundingClientRect().right > innerWidth + 1).length;
+      return { sw: w.scrollWidth, iw: innerWidth, shrink: sh.right, out: out };
+    });
+    ok('Handy 390 px: Anruffenster nicht breiter als der Bildschirm, "Verkleinern" sichtbar', fit.sw <= fit.iw && fit.shrink <= fit.iw && !fit.out, fit);
+    await bc.click('.cl-shrink'); await bc.waitForTimeout(300);
+    const mini = await bc.evaluate(() => { const r = document.querySelector('.cl-win').getBoundingClientRect(), c = document.getElementById('ct-compose');
+      return { bottom: r.bottom, right: r.right, compose: c && c.offsetParent ? c.getBoundingClientRect().top : 9999, iw: innerWidth }; });
+    ok('Handy: verkleinert oben, nicht ueber dem Eingabefeld', mini.bottom <= mini.compose && mini.right <= mini.iw, mini);
+    await shot(bc, '09b-handy-verkleinert');
+    await bc.click('.cl-shrink');
     await bc.waitForTimeout(4500);
     // Audioanruf: das Video-Transceiver bleibt ohne Bild - der Ton darf davon nicht abhaengen (frueher: <audio> blieb stumm)
     const xa = await st(a), xb = await st(bc);
@@ -150,6 +187,19 @@ async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; 
     await bc.waitForTimeout(4200);
     await bc.click('.ct-item-b').catch(() => {}); await bc.waitForTimeout(1500);
     await shot(bc, '11-chat-handy-hell');
+
+    // --- 3b. Annehmen, waehrend die Freigabe-Abfrage offen bleibt (Safari, Bughunt 2 S3) - B haengt in getUserMedia -------
+    await bc.addInitScript(() => { navigator.mediaDevices.getUserMedia = () => new Promise(() => {}); });
+    await bc.reload(); await bc.waitForTimeout(2500);
+    await bc.click('.ct-item-b').catch(() => {}); await bc.waitForTimeout(800);
+    await a.click('#ct-call-a');
+    await bc.waitForSelector('.cl-ring', { timeout: 15000 }).catch(() => {});
+    await bc.click('.cl-ring .cl-big').catch(() => {});
+    const hint = await until(() => bc.evaluate(() => { const s = document.querySelector('.cl-status'); return s && /erlauben/.test(s.textContent) && s.textContent; }), 8000);
+    ok('Freigabe-Abfrage offen: Hinweis "… im Browser erlauben" statt nur "Verbinde …"', hint, hint);
+    await shot(bc, '11b-freigabe-offen');
+    await a.click('.cl-ctl .cl-red').catch(() => {});
+    await bc.waitForTimeout(1500);
 
     // --- 4. Mikrofon verweigert: verstaendliche Meldung ----------------------------------------------------------------
     await a.addInitScript(() => { navigator.mediaDevices.getUserMedia = () => Promise.reject(Object.assign(new Error('denied'), { name: 'NotAllowedError' })); });
