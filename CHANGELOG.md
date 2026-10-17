@@ -15,186 +15,89 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
-### Rückweg-Sperre und 2FA-Richtlinie überall (nach Bughunt 2)
-- **Datenbank-Migration 6** (Schema-Stand 5 → 6, vorher automatisch Backup `…-vor-schema-6.dump`): ändert nichts an
-  den Daten (die Tabellen für zweiten Faktor, Profilbilder und Anrufe legt Saga schon an), sorgt aber dafür, dass
-  **2.0.x und ältere Stände auf einer 2.1-Datenbank nicht mehr starten** („Die Datenbank hat Schema-Stand 6, diese
-  Saga-Version kennt nur 5“) – vorher lief 2.0.0 weiter und ließ Konten mit 2FA nur mit dem Passwort hinein.
-  Zurück zu 2.0 nur über das Backup (Anleitung, Abschnitt Aktualisieren).
-- **„2FA verlangen“ gilt auch im Admin-Bereich:** Ein Admin ohne Faktor wird nach dem Passwort zur Einrichtung einer
-  Authenticator-App geführt (QR-Code + Schlüssel, ohne JavaScript, 15 Minuten; Passkeys weiter auf der Hauptseite),
-  bekommt die Wiederherstellungscodes und ist danach angemeldet. Offene Admin-Sitzungen bleiben.
-- **Bei „alle“ brauchen neue App-Anmeldungen einen Faktor:** `/app/handoff` führt ohne Faktor zur Einrichtung (und
-  danach zurück zur App), `POST /api/settings/pair`, `POST /app/pair` und `POST /app/exchange` antworten dann mit
-  403 `{error, mfa_setup: true, url}`. Bestehende Geräte (`/app/resume`), Sitzungen und App-Schlüssel bleiben
-  gültig; SSO-Konten sind nicht betroffen. Standard bleibt „niemand“ – damit ändert sich nichts.
-- **Notfall per Kommandozeile:** `python run.py 2fa-zuruecksetzen <name>` (nur den Faktor entfernen, Passwort bleibt –
-  auch für LDAP-Konten) und `python run.py 2fa-richtlinie [none|admins|all]`; `admin-passwort` entfernt den Faktor
-  wie bisher mit.
+## [2.1.0] – 2026-10-17
 
-### Fehlerrunde nach Bughunt 2 (Server + Web)
-- **Uploads ohne Content-Length** (chunked) über der Grenze bekommen wieder **413** statt 500 (Profilbild, Chat-Anhang).
-- **KI-Suche:** „Gartenschere“ findet die Seite „Garten“ (Zerlegung bevorzugt echte Wörter und den längeren Wortteil);
-  keine Fehltreffer mehr durch Zerlegung an Nicht-Wortgrenzen („Kartoffelsalat“ ≠ „Kartons“). Nicht angehakte
-  Checkboxen sieht der Assistent als „✗“; „Zusammenfassen“ einer Datenbank-Zeile nutzt ihre Eigenschaften.
-- **KI mit lokalen Modellen:** Denkphase ohne öffnendes `<think>` (nur `</think>`, z. B. DeepSeek-R1-Destillate) wird
-  verworfen – schon Gezeigtes nimmt das neue SSE-Ereignis `reset` zurück, danach erkennt Saga das Modell gleich; ein
-  wörtliches `<think>` mitten in der Antwort bleibt stehen.
-- **Profilbilder:** neues Live-Ereignis **`avatar.changed`** `{user, avatar}` an die Person und ihre Chat-Partner
-  (Apps: Bild ohne Neustart tauschen; additiv). Dasselbe Bild noch einmal hochladen ändert die Adresse nicht mehr;
-  schaltet der Admin die Bildquellen um, bekommen alle Adressen eine neue Version. Ältere Gegenstellen der Föderation
-  ohne Profilbilder gelten als „kein Bild“ (kein stündlicher neuer Versuch).
-- **Anrufe:** Rückruf, während der Anruf des Gegenübers noch klingelt → „… ruft dich gerade an“ (mit `incoming`);
-  verlorene Verbindung zählt bis zum letzten Lebenszeichen; Anruf-Mitteilung lebt so lange, wie es klingeln darf.
-  Web: Kamera-Knopf zeigt den echten Zustand, Stummschaltung des Gegenübers auch bei Video sichtbar, Anruffenster
-  passt aufs Handy (390 px), verkleinert nicht mehr über „Senden“, Hinweis bei offener Mikrofon-Freigabe (Safari),
-  nach dem Auflegen keine Laufzeit/kein Eigenbild mehr und der Chat des Anrufs ist offen.
-- **Chat:** Ersetzter Gruppenname nimmt seine Anhänge mit (zählten sonst weiter gegen das Kontingent).
-- **Seiten:** Esc in einem Dialog im Peek schließt nur den Dialog; bei offenem Menü „+ Neue Seite“ sofort getippter
-  Text wird Titel einer leeren Seite.
-- **2FA:** Rückfrage beim Löschen des letzten Faktors sagt, dass 2FA danach aus ist; Codes-Datei mit Konto und Datum.
-- **Apps, Konto wechseln:** `/security?user=<Anmeldename>` weist darauf hin, wenn im Browser ein anderes Konto
-  angemeldet ist („Abmelden und als … anmelden“); `/app/login?…&prompt=login` zeigt trotz Browser-Sitzung die
-  Anmeldemaske; `/logout?next=/security` führt danach direkt zur Anmeldung mit diesem Ziel.
-- Kleinigkeiten: Zoom-Regler beim Profilbild in Saga-Farbe, kein altes „✓ Gespeichert“ neben einer neuen Meldung;
-  Anleitung zu veröffentlichten Seiten (keine Kopfzeile mit @name mehr).
-
-### KI-Assistent: bessere Treffer und robuster mit lokalen Modellen (2.1, Paket 1)
-- **„Frag deine Seiten“ findet mehr und das Richtige:** Wörter werden vereinheitlicht (Umlaute, Bindestriche),
-  auf einen Wortstamm gebracht (CISTEM, auch englische Endungen) und mit **BM25** gewichtet (seltene Wörter zählen
-  mehr, Füll- und Fragewörter gar nicht). **Zusammengesetzte Wörter**: „Zahnarzttermin“ findet „Zahnarzt … Termin“,
-  „Suppe“ findet „Linsensuppe“, „Reifen“ „Reifenwechsel“. **Datenbanken**: Eigenschaften von Zeilen (Status, Datum,
-  Auswahl, Relationen …) zählen als Inhalt – „Welche Projekte sind in Arbeit?“ geht jetzt, auch bei Notion-Importen;
-  eine Datenbank-Seite enthält ihre Zeilen (auch beim Zusammenfassen). Auszüge tragen Pfad, Änderungsdatum und Tags;
-  „gestern“, „diese/letzte Woche“, „neulich“ bevorzugen Seiten aus dem Zeitraum. Zerlegte Seiten bleiben im Speicher
-  (`AI_CACHE_DOCS`, Standard 5000). Messung mit 22 Testfragen (offline, ohne Modell): richtige Quelle 82 % → 95 %,
-  auf Platz 1 68 % → 91 %.
-- **Prompt:** heutiges Datum, Antwort in der Sprache der Frage, Quelle `[n]` nach jeder Aussage, bei Widersprüchen
-  beide nennen (neuere bevorzugen), kurz und ohne Tabellen.
-- **Lokale Modelle:** Ollama (eigene Schnittstelle) bekommt `num_ctx` passend zur Anfrage (vorher schnitt Ollama lange
-  Anfragen still vorne ab – samt Regeln), `think: false` (zweiter Versuch ohne, falls ein Modell das ablehnt) und
-  `keep_alive`. Denkphasen (`<think>…</think>`, `reasoning_content`, Ollama `thinking`) werden nie angezeigt; neues
-  SSE-Ereignis `status {thinking:true}` („Das Modell denkt nach …“). Leere Antwort → verständliche Meldung,
-  abgeschnittene Antwort → `done.cut`. **Zeitlimit** gilt jetzt bis zum ersten Stück und zwischen zwei Stücken; eine
-  ganze Antwort darf das Fünffache dauern (mindestens 5 Minuten).
-- **Kontingent fair:** Ohne passende Seite antwortet Saga selbst (kein Modellaufruf, `done.no_match`), und Anfragen,
-  die ohne ein einziges Stück Antwort scheitern, zählen nicht.
-- **Web:** Antworten mit Absätzen, Listen, **fett** und `code` (ohne HTML), Quellen auch als `[1, 2]`/`[1][2]`,
-  Quellen gleich zu Beginn, zitierte vorn, nur durchsuchte blasser; flüssigeres Streaming; „Zusammenfassen“ langer
-  Seiten nutzt Anfang und Ende.
-- **Admin:** Verbindungstest prüft das Modell gegen die *ganze* Liste (vorher falsches „steht nicht in der Liste“ ab
-  Platz 21), zeigt höchstens 20 Namen und bietet die Liste im Feld „Modell“ zur Auswahl an; Hinweise zu Ollama über
-  `/v1` (`OLLAMA_CONTEXT_LENGTH`) und zum Zeitlimit.
-- Alle Erweiterungen der SSE-Antwort sind rückwärtskompatibel (Apps ignorieren unbekannte Ereignisse/Felder).
-
-### Sicherheit
-- **Einfügen von Blöcken (Web):** Blöcke aus der Zwischenablage im Saga-Format (`application/x-editor-js` bzw.
-  `data-saga-block`, z. B. kopierte Bilder) gingen ungeprüft an den Editor – mit präparierter Zwischenablage hätte
-  HTML/Skript im Editor landen können (gespeichert wurde es bereinigt). Jetzt: nur Block-Werkzeuge, die der
-  Ziel-Editor kennt (Spalten in Spalten/Ausklappbar werden aufgelöst), Inline-HTML nach derselben Positivliste wie
-  der Server, Adressen nur relativ/https/mailto – auch in verschachtelten Blöcken.
-
-### Chat-Bilder schnell, Bilder kopieren (2.1-c, Server + Web)
-- **Chat-Bilder:** Beim Senden entsteht ein **Vorschaubild** (längste Seite 320 px, JPEG ~70, ohne Metadaten), das wie
-  jeder Anhang mit eigenem Schlüssel verschlüsselt hochgeladen wird; der Eintrag in `files[]` bekommt `w`/`h` des
-  Originals und `th:{id,k,m,w,h,s}` (Testvektor `tests/chat_vectors.json` → `image`). Der Verlauf zeigt nur noch
-  Vorschaubilder in einem Platzhalter der richtigen Größe (nichts springt), lädt nur sichtbare Bilder (höchstens 4
-  gleichzeitig, Abbruch beim Wegscrollen) und entschlüsselt im Hintergrund (Web Worker). Das Original lädt erst beim
-  Antippen (Großansicht mit „Speichern“). Alte Nachrichten ohne Vorschaubild: der Browser erzeugt selbst eines und
-  merkt es sich verschlüsselt. Zwischenspeicher: Vorschaubilder im Speicher, Ciphertext in IndexedDB (200 MB, älteste
-  zuerst raus), geleert bei „Abmelden“, „Neu beginnen“ und entferntem Gerät. Vorher hielt der Verlauf jedes Original
-  entschlüsselt im Speicher.
-- **Server:** Chat-Anhänge einer Nachricht kommen mit `Cache-Control: private, max-age=…, immutable` (höchstens bis
-  zum Ablauf der Nachricht); bis zu 20 Datei-Kennungen je Nachricht (Original + Vorschaubild, `limits.file_ids_per_msg`),
-  60 Uploads je Minute. Vorschaubilder hängen an der Nachricht – „für alle löschen“, Aufbewahrungsfrist und Aufräumen
-  entfernen sie mit. Abmelden schickt `Clear-Site-Data: "cache"`.
-- **Bilder in Seiten kopieren/ausschneiden:** Ein Klick aufs Bild markiert den Bildblock, `Strg`/`⌘`+`C` bzw. `+X`
-  legt ihn in die Zwischenablage (als Block mit Bildunterschrift, als HTML und – wo der Browser es erlaubt – als PNG für
-  andere Programme), `Strg`/`⌘`+`V` fügt ihn in derselben oder einer anderen Seite ein, auch in einem anderen Tab.
-  Vorher ließ sich ein einzelnes Bild gar nicht markieren, `Strg`+`C` kopierte nichts. Neu `POST /api/files/copy`:
-  gleiche Datei im selben Konto, auf Seiten anderer Konten eine eigene Kopie für deren Eigentümer (sonst sähen
-  Mitleser das Bild nicht und das Aufräumen hätte es entfernt); gilt auch für per `⌘A` kopierte Blöcke.
+Saga 2.1 macht die Anmeldung sicherer und den Chat persönlicher: Passkeys und Zwei-Faktor-Anmeldung, Profilbilder,
+Audio- und Videoanrufe im Direkt-Chat, Bilder aus Immich im Chat und ein deutlich treffsicherer KI-Assistent.
+Die Schnittstelle wurde nur erweitert – Apps 2.0 und älter laufen weiter (`MIN_APP` bleibt). Die passenden Apps sind
+die [Saga-Apps 2.1](https://github.com/yggdrasil-sh/saga-apps/releases).
 
 ### Neu
-- **Passkeys und Zwei-Faktor-Anmeldung** (lokale und LDAP-Konten, Einstellungen → Konto → „Anmeldung &
-  Sicherheit“): **Passkeys** (WebAuthn/FIDO2, geprüft mit py_webauthn) für die Anmeldung **ohne Passwort**
-  („Mit Passkey anmelden“, Autofill beim Benutzernamen) und als zweiter Faktor nach dem Passwort; mehrere je Konto
-  mit Name, „angelegt“, „zuletzt benutzt“. **Authenticator-App** (TOTP, 6 Ziffern/30 s, ±1 Schritt, jeder Code nur
-  einmal; QR-Code als SVG im Server erzeugt, Geheimnis verschlüsselt gespeichert). **10 Wiederherstellungscodes**
-  (nur als Hash gespeichert, neu erzeugbar). Nach dem Passwort ein kurzlebiger Zwischenschritt (5 Minuten, an das
-  Sitzungs-Cookie gebunden, 5 Fehlversuche je 15 Minuten); erst danach gibt es eine Sitzung. Änderungen an den
-  Faktoren nur mit frischer Anmeldung bzw. Bestätigung (Passwort, Code oder Passkey).
-  RP-ID/Origin aus `BASE_URL` (optional `PASSKEY_RP_ID`); passt die Adresse nicht (IP-Adresse, kein https, anderer
-  Rechnername), erklärt Saga das statt still zu scheitern.
-- **Admin:** „2FA verlangen für niemanden / Admins / alle“ – Betroffene ohne zweiten Faktor werden nach der
-  Anmeldung zur Einrichtung geführt (`/security`), nicht ausgesperrt. „2FA zurücksetzen“ je Konto (Protokoll im Log
-  und auf der Benutzerseite). Der Admin-Bereich verlangt bei Konten mit 2FA ebenfalls den zweiten Faktor (Passkey,
-  wenn `ADMIN_URL` unter derselben Domain läuft, sonst Code). Optional „Bei SSO einen zweiten Faktor verlangen“
-  (prüft `amr`/`acr` des Anbieters, fragt erlaubte `acr`-Werte an). `run.py admin-passwort` entfernt im Notfall
-  auch den zweiten Faktor.
-- **Apps:** Die Anmeldung über die Anmeldeseite (`/app/login` → `/app/handoff`) zeigt den zweiten Schritt; bestehende
-  Geräte-Anmeldungen und Sitzungen bleiben beim Update und beim Einschalten der Richtlinie gültig. Chat „Neu
-  beginnen“: `/api/chat/reauth` nimmt neben `password` auch `code` (Authenticator-App) und `passkey`
-  (Optionen über `POST /api/chat/reauth/options`); `/api/chat/me` meldet `reauth_methods`. Neue Endpunkte:
-  `/login/2fa`, `/login/passkey[/options]`, `/api/account/security[/options|/confirm]`, `/api/account/passkeys`,
-  `/api/account/totp[/setup|/confirm]`, `/api/account/recovery`. Neue Tabellen (`mfa_*`) entstehen beim Start
-  automatisch. Neue Abhängigkeit: `webauthn==3.0.1`.
-- **Profilbilder, Gravatar als Standard:** statt der Initialen überall ein Bild – Kopfzeile, Kommentare,
-  Anwesenheit, Benachrichtigungen, Teilen-Dialog/Personensuche, Chat (Liste, Unterhaltung, Mitglieder),
-  Versionsverlauf, Föderation. **Eigenes Bild** unter Einstellungen → Konto (PNG, JPEG, GIF, WebP, HEIC; im Browser
-  quadratisch zuschneiden, bis `AVATAR_MAX_MB` = 5 MB); der Server kodiert jedes Bild in einem speicherbegrenzten Prozess neu (64/128/256 px,
-  WebP und PNG/JPEG, ohne EXIF/Metadaten). **Gravatar** (Admin-Schalter, Standard an; je Person abschaltbar; nur mit
-  E-Mail): der **Server** holt es (SHA-256, `d=404`) über den SSRF-Schutz und speichert es einen Tag, auch „kein
-  Bild“ – Browser und Apps fragen nie bei Gravatar. Optional (Admin) Bild aus **OIDC `picture`** (vom Server
-  abgeholt) bzw. **LDAP `jpegPhoto`/`thumbnailPhoto`**. Auslieferung `GET /api/avatar/{schlüssel}?s=64|128|256`
-  (nicht erratbarer HMAC-Schlüssel, nur angemeldet bzw. Geräte-Schlüssel, ETag/Cache-Control, WebP bei
-  `Accept: image/webp`, keine Aufzählung der Konten); auf veröffentlichten Seiten nur mit Erlaubnis der Person
-  (Standard aus). Föderation: `GET /fed/v1/avatar/{name}` (signiert, höchstens 512 KB), beim Empfänger neu kodiert
-  und einen Tag zwischengespeichert. Konto löschen entfernt Bild und Zwischenspeicher.
-- **Audio-/Video-Anrufe aus dem Direkt-Chat** (Web): 📞/🎥 im Kopf des Direkt-Chats; Audio, Video, Bildschirm teilen
-  (Computer), Stummschalten, Kamera an/aus, kleines Fenster. WebRTC direkt zwischen den Geräten (DTLS-SRTP) –
-  **ohne zusätzlichen Port**: Signalisierung über den Live-Kanal (SSE) und normale Anfragen. **Ende-zu-Ende geprüft:**
-  jede Signal-Nachricht (SDP, ICE) wird vom Chat-Gerät signiert (Ed25519) und für das Zielgerät versiegelt
-  (`crypto_box_seal`) – der Server sieht weder SDP noch IP-Adressen und kann keinen DTLS-Schlüssel unterschieben
-  (Fingerabdruck in der signierten SDP, nach dem Verbinden zusätzlich gegen `getStats` geprüft; sonst Abbruch mit
-  Meldung). Format `saga-call/v1`, Testvektoren `tests/call_vectors.json`. **Klingeln** auf jeder Saga-Seite (alle
-  Geräte/Tabs, Klingelton abschaltbar, Annehmen öffnet den Chat-Tab), Push-Art `call` mit hoher Priorität und
-  kurzer Lebensdauer (ohne Namen, wenn so eingestellt); Klingeldauer (Standard 45 s), danach **verpasster Anruf** als
-  Eintrag im Chat (Metadaten) + Benachrichtigung `call.missed`; besetzt, abgelehnt, abgebrochen, Verbindung verloren.
-  Verständliche Meldungen bei verweigerter Kamera/Mikrofon und wenn keine Direktverbindung zustande kommt. Nur die
-  beiden Personen eines Direkt-Chats; höchstens 3 Anrufe je Minute an dieselbe Person; im Zugriffs-Log keine
-  IP-Adressen für `/api/calls…`. Gruppenanrufe kommen später (Konzept in der Anleitung).
-- **Admin → Allgemein → „Anrufe“:** an/aus, STUN-Server (Standard `stun:stun.nextcloud.com:443`, mit
-  Datenschutz-Hinweis, leer = keiner), optional **TURN** mit gemeinsamem Geheimnis (zeitlich begrenzte Zugangsdaten
-  nach TURN-REST, coturn `use-auth-secret`) oder festem Zugang, „Nur über TURN verbinden“, Klingeldauer. Anleitung
-  „TURN über Port 443 per SNI im Reverse Proxy“ (nginx, HAProxy, Traefik) – Saga öffnet selbst keinen Port.
-- **Apps/API (Anrufe):** `/api/calls/config` (ICE-Server mit frischen TURN-Zugangsdaten), `POST /api/calls`,
-  `/api/calls/{id}` und `…/answer|decline|signal|end|alive`, `/api/calls/active`; Live-Ereignisse `call.ring`,
-  `call.signal`, `call.state`. Anruf-Einträge im Chat mit `GET /api/chats/{id}/messages?calls=1` (ohne den Parameter
-  wie bisher – ältere Apps sehen sie nicht). Push: Kategorie `call` (Arten `call`, `call.missed`); neuer Abo-Typ
-  **`apns-voip`** (PushKit-Token der iOS-/macOS-App: `apns-push-type: voip`, Topic `<Bundle-ID>.voip`, nur klingelnde
-  Anrufe – das normale APNs-Abo desselben Geräts klingelt dann nicht doppelt). Neue Tabellen `chat_call`,
-  `chat_call_signal` entstehen beim Start (keine Migration).
-- **API für die Apps:** Personen-Objekte (`owner`, `author`, `updated_by`, `created_by`, `actor`, `sender`, `peer`,
-  `members`, Anwesenheit, Personensuche) haben das Feld `avatar` (Adresse oder `null` = Initialen);
-  `/api/account` liefert `avatar`. Eigenes Bild: `GET|PUT|PATCH|DELETE /api/account/avatar` (PUT: multipart
-  `image` oder Rohinhalt mit `Content-Type: image/*`; PATCH `{gravatar, public}`). Neue Tabellen `avatar`,
-  `avatar_img` entstehen beim Start automatisch; `MIN_APP` bleibt. Neue Abhängigkeit: `pillow-heif` (HEIC).
-- **Anwesenheit:** Wer eine Seite öffnet, während der eigene Live-Kanal noch aufgebaut wird, erscheint jetzt sofort
-  (bisher erst beim nächsten Ping, bis 20 s); die Anzeige flackert nicht mehr bei jeder Meldung.
-- **Immich im Chat (Web):** Beim Anhängen gibt es „Aus Immich …“ (nur wenn Immich eingerichtet ist) mit derselben
-  Auswahl wie auf Seiten. Das Bild wird über den Immich-Durchgriff des Servers geholt (große Vorschau, GIFs im Original;
-  nichts wird dabei gespeichert) und dann wie jeder Anhang Ende-zu-Ende verschlüsselt hochgeladen. API:
-  `GET /api/immich/thumb/{id}?size=preview|original`.
+- **Passkeys und Zwei-Faktor-Anmeldung** (Einstellungen → Konto → „Anmeldung & Sicherheit“, lokale und LDAP-Konten):
+  Anmeldung **ohne Passwort** per Passkey (WebAuthn/FIDO2, Autofill beim Benutzernamen) oder Passkey als zweiter
+  Faktor; **Authenticator-App** (TOTP); **10 Wiederherstellungscodes**. Nach dem Passwort ein kurzer Zwischenschritt
+  (5 Minuten, 5 Fehlversuche je 15 Minuten), erst dann gibt es eine Sitzung. Änderungen an den Faktoren nur mit
+  frischer Bestätigung. Der Admin-Bereich verlangt bei Konten mit 2FA ebenfalls den zweiten Faktor; optional auch bei
+  SSO (`amr`/`acr` des Anbieters). Die Apps zeigen den zweiten Schritt in ihrer Anmeldeseite.
+- **2FA-Richtlinie** (Admin → Allgemein): „2FA verlangen für niemanden / Admins / alle“ (Standard: niemanden).
+  Betroffene ohne Faktor werden zur Einrichtung geführt, nicht ausgesperrt – auch im Admin-Bereich und bei neuen
+  App-Anmeldungen; bestehende Geräte und Sitzungen bleiben gültig. „2FA zurücksetzen“ je Konto.
+- **Profilbilder** überall statt Initialen (Kopfzeile, Kommentare, Anwesenheit, Benachrichtigungen, Teilen, Chat,
+  Versionsverlauf, Föderation): eigenes Bild (PNG, JPEG, GIF, WebP, HEIC; im Browser zuschneiden, bis 5 MB, der Server
+  kodiert neu und entfernt Metadaten), **Gravatar** (vom Server abgeholt, Browser und Apps fragen nie bei Gravatar),
+  optional Bild aus OIDC (`picture`) oder LDAP (`jpegPhoto`/`thumbnailPhoto`). Bilder nur für angemeldete Personen;
+  auf veröffentlichten Seiten nur mit Erlaubnis der Person.
+- **Audio- und Videoanrufe im Direkt-Chat** (Web): 📞/🎥 im Chat-Kopf; Stummschalten, Kamera an/aus, Bildschirm teilen,
+  Ton-Anzeige, kleines Fenster. WebRTC direkt zwischen den Geräten, **ohne zusätzlichen Port** (Signalisierung über
+  den Live-Kanal). **Ende-zu-Ende geprüft:** jede Signal-Nachricht ist signiert und für das Zielgerät verschlüsselt,
+  der Server sieht weder Verbindungsdaten noch IP-Adressen. Klingeln auf allen Geräten und Tabs, Push mit hoher
+  Priorität, verpasste Anrufe im Chat. Admin → Allgemein → „Anrufe“: an/aus, STUN, optional TURN, Klingeldauer.
+- **Immich im Chat** (Web): „Aus Immich …“ beim Anhängen, mit derselben Auswahl wie auf Seiten; das Bild wird wie jeder
+  Anhang Ende-zu-Ende verschlüsselt.
+- **Schnelle Chat-Bilder:** Beim Senden entsteht ein verschlüsseltes Vorschaubild. Der Verlauf lädt nur sichtbare
+  Vorschaubilder in einen Platzhalter der richtigen Größe (nichts springt), das Original erst beim Antippen.
+  Ältere Nachrichten bekommen ihr Vorschaubild im Browser.
+- **Bilder in Seiten kopieren, ausschneiden und einfügen:** Bild anklicken, `Strg`/`⌘`+`C`/`X`/`V` – in derselben
+  Seite, einer anderen oder einem anderen Tab (für andere Programme auch als PNG). Auf Seiten anderer Konten entsteht
+  eine eigene Kopie.
+- **KI-Assistent findet mehr und das Richtige:** Wortstämme, Gewichtung seltener Wörter (BM25), zusammengesetzte
+  Wörter („Zahnarzttermin“ findet „Zahnarzt … Termin“), Eigenschaften von Datenbank-Zeilen („Welche Projekte sind in
+  Arbeit?“), Zeitangaben wie „letzte Woche“. In 22 Testfragen: richtige Quelle 82 % → 95 %. Antworten mit Absätzen,
+  Listen und Quellen; ohne passende Seite antwortet Saga selbst, ohne das Kontingent zu belasten.
+- **Lokale Modelle robuster:** Ollama bekommt einen passenden Kontext (`num_ctx`), Denkphasen (`<think>` usw.) werden
+  nie angezeigt („Das Modell denkt nach …“), das Zeitlimit gilt zwischen zwei Stücken statt für die ganze Antwort.
+- **API für die Apps:** Feld `avatar` an allen Personen, `/api/account/avatar`, Live-Ereignis `avatar.changed`;
+  Anrufe unter `/api/calls…` mit Live-Ereignissen `call.*` und Push-Abo `apns-voip`; Anmeldung mit zweitem Faktor
+  über `/app/login`; „Neu beginnen“ im Chat auch mit Code oder Passkey. Alles additiv.
+- **Notfall per Kommandozeile:** `docker compose exec saga python run.py 2fa-zuruecksetzen <name>` (nur den Faktor
+  entfernen, Passwort bleibt) und `… run.py 2fa-richtlinie none|admins|all`; `admin-passwort` entfernt den zweiten
+  Faktor wie bisher mit.
+
+### Geändert
+- Anwesenheit erscheint sofort beim Öffnen einer Seite (vorher bis zu 20 s) und flackert nicht mehr.
+- Chat-Anhänge werden im Browser zwischengespeichert (verschlüsselt, höchstens 200 MB, geleert beim Abmelden).
+  Bis zu 20 Dateien je Nachricht, 60 Uploads je Minute.
+- Admin → KI: Verbindungstest prüft das Modell gegen die ganze Liste und bietet sie zur Auswahl an.
+- Neue Abhängigkeiten: `webauthn`, `pillow-heif`.
 
 ### Behoben
-- **Menüs im Peek-Fenster:** „Verschieben nach“ (und andere Untermenüs) lief links aus dem Peek heraus und lag unter
-  dem offenen ⋯-Menü. Menüs und Auswahllisten bleiben jetzt im sichtbaren Bereich; ist neben dem Menü kein Platz,
-  ersetzt das Untermenü das ⋯-Menü (mit „‹ zurück“).
-- **Veröffentlichte Seiten:** oben steht nicht mehr „@name“ – der Name steht nur noch unter dem Titel; Unterseiten
-  zeigen oben nur den Pfad zurück.
-- **Chat auf dem Handy:** Der Platzhalter im Eingabefeld ist kurz und wird nicht mehr abgeschnitten.
-- **Kommentar-Auszug** bei Tabellen und Checklisten: Zellen und Punkte getrennt, ohne Text der Werkzeugleiste.
+- **Sicherheit:** Eingefügte Blöcke aus der Zwischenablage werden im Browser geprüft (vorher hätte eine präparierte
+  Zwischenablage HTML in den Editor bringen können; gespeichert wurde es schon bereinigt).
+- **Fehlerrunden aus zwei Bughunts:** Uploads ohne Längenangabe über der Grenze → 413 statt 500; Rückruf während es
+  noch klingelt; Anruffenster auf dem Handy; ersetzter Gruppenname nimmt seine Anhänge mit; Esc im Peek schließt nur
+  den Dialog; Untermenüs bleiben im Peek sichtbar; veröffentlichte Seiten ohne „@name“ oben; Chat-Platzhalter auf dem
+  Handy; Kommentar-Auszug bei Tabellen und Checklisten; Konto wechseln in den Apps; KI-Fehltreffer durch falsche
+  Wortzerlegung.
+
+### Hinweise zum Update
+- **Update:** Mit `SAGA_VERSION=2` in der `.env` reicht `docker compose pull && docker compose up -d`.
+- **Kein Rückweg auf 2.0.x:** Saga 2.1 hebt die Datenbank auf Schema-Stand 6 und legt vorher automatisch ein Backup an
+  (`…-vor-schema-6.dump`). Ältere Versionen starten auf dieser Datenbank nicht mehr; zurück zu 2.0 nur über das Backup
+  (Anleitung, Abschnitt 11 „Updates“).
+- **Gravatar ist standardmäßig an:** Für Personen mit E-Mail-Adresse fragt der Server bei Gravatar nach einem Bild
+  (gehashte E-Mail-Adresse, nicht der Browser). Abschaltbar für alle (Admin → Allgemein → Profilbilder) oder je Person
+  (Einstellungen → Konto).
+- **Anrufe** nutzen standardmäßig den STUN-Server `stun:stun.nextcloud.com:443` (Datenschutzhinweis im Admin, leer =
+  keiner). **TURN** ist optional; ohne TURN klappen Anrufe nicht in allen Netzen. Anleitung für TURN über Port 443
+  per Reverse Proxy (nginx, HAProxy, Traefik).
+- **Passkeys** brauchen in `BASE_URL` einen Hostnamen mit https (oder `localhost`), keine IP-Adresse.
+- **2FA-Richtlinie** steht auf „niemanden“ – es ändert sich nichts, bis der Admin sie einschaltet. Bei Problemen:
+  `docker compose exec saga python run.py 2fa-zuruecksetzen <name>` bzw. `… run.py 2fa-richtlinie none`.
+
+### Bekannte Grenzen
+- Anrufe nur zu zweit im Direkt-Chat, noch keine Gruppenanrufe.
+- Ohne TURN-Server kommen Anrufe nicht in allen Netzen zustande (z. B. hinter strengen Firmen- oder Mobilfunk-NATs).
+- Passkeys funktionieren nur unter einem Hostnamen (nicht unter einer IP-Adresse in `BASE_URL`).
 
 ## [2.0.0] – 2026-10-15
 

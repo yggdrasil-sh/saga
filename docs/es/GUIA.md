@@ -1088,8 +1088,8 @@ Qué versión se ejecuta lo decide `SAGA_VERSION` en el `.env`:
 | Valor | Significado |
 |---|---|
 | `2` (por defecto) | siempre la 2.x más reciente: funciones nuevas y correcciones, nada que requiera trabajo manual |
-| `2.0` | solo correcciones de la 2.0 |
-| `2.0.0` | exactamente esta versión |
+| `2.1` | solo correcciones de la 2.1 |
+| `2.1.0` | exactamente esta versión |
 | `1` | se queda en la 1.x más reciente (1.2); las instalaciones antiguas aún tienen este valor en el `.env` |
 | `testing` | **Versión de pruebas:** lo último de la rama `testing`, antes de publicarse. Puede tener errores; solo para probar |
 
@@ -1118,7 +1118,7 @@ Las imágenes y archivos de las páginas (`/data/files`) **no** están en la cop
 (ver arriba), no necesitas la opción.
 
 **Versión de pruebas:** con `SAGA_VERSION=testing` recibes las funciones nuevas en cuanto están listas, antes
-de publicarse. La versión se llama entonces, por ejemplo, `2.1.0-testing.ab12cd3` (abajo en el área de
+de publicarse. La versión se llama entonces, por ejemplo, `2.2.0-testing.ab12cd3` (abajo en el área de
 administración, con 🧪). Para volver a la versión estable: `SAGA_VERSION=2` y después
 `docker compose pull && docker compose up -d`. Si la versión de pruebas ya ha modificado la base de datos, la
 versión estable solo arrancará cuando incluya también ese cambio (como muy tarde con la siguiente versión), o
@@ -1132,6 +1132,12 @@ pones `SAGA_VERSION` en la nueva versión mayor.
 Después, si los quieres, configura en el área de administración el asistente de IA, la federación y las
 notificaciones de Apple (APNs) (están desactivados) y revisa el proxy inverso para el canal en vivo (sección 3).
 Todo lo demás está en el [registro de cambios](../../CHANGELOG.md).
+
+**De 2.0 a 2.1:** con `SAGA_VERSION=2`, la 2.1 llega con la actualización normal. La base de datos pasa al
+esquema 6 (antes copia de seguridad; después no se puede volver a 2.0.x salvo con esa copia). Nuevo y activo desde
+el principio: fotos de perfil con **Gravatar** (se desactiva en General → Fotos de perfil) y **llamadas** con el
+servidor STUN `stun:stun.nextcloud.com:443` (General → Llamadas; TURN opcional, ver «Llamadas»). Las passkeys
+necesitan un nombre de host en `BASE_URL`, no una dirección IP; la política de 2FA está en «nadie».
 
 **Volver a la versión anterior:** una versión antigua de Saga no arranca sobre una base de datos que una versión
 más nueva ya ha modificado (lo indica en el log en lugar de dañar datos). Esto vale también para **2.1 → 2.0.x**:
@@ -1226,7 +1232,7 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `PUBLIC_RATE` | `120` | Solicitudes a páginas públicas por dirección IP y minuto (imágenes: cinco veces más) |
 | `SESSION_HOURS` | `12` | Duración de una sesión del navegador (las apps siguen con la sesión iniciada) |
 | `PASSKEY_RP_ID` | nombre de host de `BASE_URL` | Dominio de las llaves de acceso; solo si deben valer para un dominio superior (p. ej. `example.org`) |
-| `SAGA_VERSION` | `2` | Qué versión descarga `docker compose pull`: `2`, `2.0`, `2.0.0` o `testing` (sección 11) |
+| `SAGA_VERSION` | `2` | Qué versión descarga `docker compose pull`: `2`, `2.1`, `2.1.0` o `testing` (sección 11) |
 | `BACKUP_KEEP` | `10` | Cuántas copias automáticas/manuales se conservan en `/data/backups` |
 | `SAGA_UPDATE_CHECK` | `1` | `0` = no preguntar nunca a GitHub por versiones nuevas (también desactivable en el área de administración) |
 | `ADMIN_SESSION_HOURS` | `4` | Duración de una sesión en el área de administración |

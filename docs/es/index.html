@@ -27,7 +27,7 @@
   <nav>
     <a class="brand" href="#"><img src="../icon.svg" alt="">Saga</a>
     <span class="sp"></span>
-    <a class="l hide" href="#novedades">Novedades 2.0</a>
+    <a class="l hide" href="#novedades">Novedades 2.1</a>
     <a class="l hide" href="#funciones">Funciones</a>
     <a class="l hide" href="#capturas">Capturas</a>
     <a class="l hide" href="#apps">Apps</a>
@@ -52,6 +52,44 @@
 </div>
 
 <section id="novedades">
+  <div class="wrap">
+    <h2>Novedades de Saga 2.1</h2>
+    <p class="sub">Inicio de sesión más seguro, caras en lugar de iniciales y hablar entre vosotros – cifrado de extremo a extremo, sin puerto adicional.</p>
+    <div class="feat">
+      <figure class="fc"><a href="../screenshots/v21-sicherheit.png"><img src="../screenshots/v21-sicherheit.png" alt="Página «Inicio de sesión y seguridad»: una passkey «MacBook», app de autenticación configurada, quedan 10 de 10 códigos de recuperación" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:20%;--z:1.55"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔑</span>Passkeys y dos factores</h3><p>Inicia sesión sin contraseña con una passkey (huella, cara, PIN del dispositivo) o úsala como segundo paso tras la contraseña; también con una app de autenticación. Códigos de recuperación para emergencias; el administrador puede exigir 2FA a los administradores o a todos.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-anruf.png"><img src="../screenshots/v21-anruf.png" alt="Llamada de audio en curso con Kim: arriba «cifrado de extremo a extremo», duración, «directa», «buena conexión» y «audio recibido», en el centro la foto de perfil de Kim" loading="lazy" width="2880" height="1800" style="--fx:15%;--fy:0%;--z:1.3"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📞</span>Llamadas de audio y vídeo</h3><p>Llama desde el chat directo, con vídeo y pantalla compartida. La conexión va directamente entre los dispositivos y cada mensaje de señalización se verifica con las claves del chat. Saga no necesita ningún puerto adicional; TURN es opcional.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-profilbilder.png"><img src="../screenshots/v21-profilbilder.png" alt="Página «Urlaub Gardasee 2026» con la barra de comentarios: comentarios de Kim y Robin con fotos de perfil, arriba las fotos de quienes están leyendo" loading="lazy" width="2880" height="1800" style="--fx:100%;--fy:0%;--z:1.3"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🦊</span>Fotos de perfil</h3><p>Caras en lugar de iniciales: en comentarios, chats, presencia y la campana. Sube y recorta tu propia foto, usa Gravatar o la foto de SSO/LDAP. Saga lo descarga todo por sí misma; el navegador nunca contacta con Gravatar.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-chat-bilder.png"><img src="../screenshots/v21-chat-bilder.png" alt="Chat directo con Kim: dos fotos de vacaciones como miniaturas, una respuesta y la entrada «Llamada · 0:07»" loading="lazy" width="2880" height="1800" style="--fx:0%;--fy:0%;--z:1"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🖼️</span>Imágenes de chat rápidas</h3><p>Al enviar se crea una miniatura cifrada. El historial solo carga lo visible y nada salta al desplazarse; el original llega al tocarlo. Incluso los chats grandes con muchas fotos van fluidos.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-immich.png"><img src="../screenshots/v21-immich.png" alt="Selector «Desde Immich» sobre el chat con varias fotos para elegir" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:40%;--z:1.15"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📷</span>Immich en el chat</h3><p>Trae fotos directamente de tu biblioteca de Immich, con el mismo selector que en las páginas. La imagen se cifra de extremo a extremo como cualquier adjunto.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-login-passkey.png"><img src="../screenshots/v21-login-passkey.png" alt="Página de inicio de sesión en el tema claro con «Iniciar sesión» e «Iniciar sesión con passkey»" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:30%;--z:1.9"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">✨</span>Entrar con un toque</h3><p>«Iniciar sesión con passkey»: el navegador ya te la sugiere en el campo del usuario. Las passkeys están ligadas a tu Saga y no se pueden robar con phishing.</p></figcaption></figure>
+    </div>
+    <h3 class="more-h">Más de cerca</h3>
+    <p class="more-sub">Además: el asistente de IA encuentra mucho más (raíces de palabras, palabras compuestas, propiedades de bases de datos) y funciona mejor con modelos locales, y las imágenes se pueden copiar y pegar entre páginas.</p>
+    <div class="gallery two">
+      <figure><div class="shot"><a href="../screenshots/v21-login-2fa.png"><img src="../screenshots/v21-login-2fa.png" alt="Segundo paso tras la contraseña: «Confirmar con passkey» o un código de la app de autenticación" loading="lazy" width="2880" height="1800"></a></div><figcaption>Segundo paso: passkey o código</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-profilbild-zuschneiden.png"><img src="../screenshots/v21-profilbild-zuschneiden.png" alt="Diálogo «Recortar foto de perfil» con marco redondo y control de zoom" loading="lazy" width="2880" height="1800"></a></div><figcaption>Recortar la foto de perfil</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-admin-2fa.png"><img src="../screenshots/v21-admin-2fa.png" alt="Área de administración, General: «Exigir 2FA a» nadie, administradores o todos" loading="lazy" width="2880" height="1800"></a></div><figcaption>Admin: política de 2FA</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-admin-anrufe.png"><img src="../screenshots/v21-admin-anrufe.png" alt="Área de administración, General: llamadas con servidor STUN, servidor TURN opcional y duración del tono" loading="lazy" width="2880" height="1800"></a></div><figcaption>Admin: llamadas, STUN y TURN</figcaption></figure>
+    </div>
+    <h3 class="more-h">También en el móvil</h3>
+    <p class="more-sub">Recibir llamadas, hablar, ver fotos e iniciar sesión con passkey, en el navegador del móvil.</p>
+    <div class="phones v2">
+      <figure><img src="../screenshots/v21-handy-klingeln.png" alt="Navegador del móvil: llama Alex Beispiel, con rechazar y aceptar" loading="lazy" width="1170" height="2532"><figcaption>Llamada entrante</figcaption></figure>
+      <figure><img src="../screenshots/v21-handy-anruf.png" alt="Navegador del móvil: llamada en curso con Alex, cifrada de extremo a extremo" loading="lazy" width="1170" height="2532"><figcaption>En llamada</figcaption></figure>
+      <figure><img src="../screenshots/v21-handy-chat-bilder.png" alt="Navegador del móvil: chat con Alex y dos fotos de vacaciones" loading="lazy" width="1170" height="2532"><figcaption>Chat con miniaturas</figcaption></figure>
+      <figure><img src="../screenshots/v21-handy-login.png" alt="Navegador del móvil: página de inicio de sesión en el tema oscuro con «Iniciar sesión con passkey»" loading="lazy" width="1170" height="2532"><figcaption>Entrar con passkey</figcaption></figure>
+    </div>
+    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 Todos los cambios y notas de actualización</a></p>
+  </div>
+</section>
+
+<section id="novedades-2-0" class="alt">
   <div class="wrap">
     <h2>Novedades de Saga 2.0</h2>
     <p class="sub">Tu cuaderno personal se convierte en un lugar compartido: todo opcional, todo en tu propio servidor.</p>
@@ -85,11 +123,10 @@
       <figure><img src="../screenshots/app-ios-foederation.png" alt="App de iPhone: página «Reiseplanung Sommer» compartida por anna@saga.example" loading="lazy" width="660" height="1435"><figcaption>iPhone: página de otra instancia</figcaption></figure>
       <figure><img src="../screenshots/app-ios-ki.png" alt="App de iPhone: asistente de IA, pestaña «Esta página» con tres tareas propuestas" loading="lazy" width="660" height="1435"><figcaption>iPhone: la IA propone tareas</figcaption></figure>
     </div>
-    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 Todos los cambios y notas de actualización</a></p>
   </div>
 </section>
 
-<section id="funciones" class="alt">
+<section id="funciones">
   <div class="wrap">
     <h2>Todo en un solo lugar</h2>
     <p class="sub">Saga une un panel para tus servicios con un cuaderno personal, sin nube ni suscripciones, en tu propio servidor.</p>
@@ -112,7 +149,7 @@
   </div>
 </section>
 
-<section>
+<section class="alt">
   <div class="wrap split">
     <div class="txt">
       <h2>Escribir, planificar, reunir</h2>
@@ -128,7 +165,7 @@
   </div>
 </section>
 
-<section class="alt">
+<section>
   <div class="wrap split rev">
     <div class="txt">
       <h2>Bases de datos a tu medida</h2>
@@ -143,7 +180,7 @@
   </div>
 </section>
 
-<section>
+<section class="alt">
   <div class="wrap split">
     <div class="txt">
       <h2>Pensado para administradores</h2>
@@ -159,7 +196,7 @@
   </div>
 </section>
 
-<section id="capturas" class="alt">
+<section id="capturas">
   <div class="wrap">
     <h2>Capturas</h2>
     <p class="sub">Los temas oscuro y claro siguen automáticamente al sistema.</p>
@@ -174,13 +211,13 @@
   </div>
 </section>
 
-<section id="apps">
+<section id="apps" class="alt">
   <div class="wrap">
     <h2>Apps para el bolsillo y el escritorio</h2>
     <p class="sub">Apps nativas para iPhone, iPad, Mac, Linux (GNOME) y Android, no una web incrustada.
       Páginas, bases de datos, tareas y eventos se muestran y editan directamente en la app.
       Inicia sesión con la dirección del servidor o, más cómodo, con el código QR de «Apps y dispositivos».
-      Con Saga 2.0 también chats, notificaciones, avisos push, asistente de IA y federación.</p>
+      Con Saga 2.1 también llamadas y fotos de perfil, además de chats, notificaciones, avisos push, asistente de IA y federación.</p>
     <div class="phones">
       <figure><img src="../screenshots/app-ios-start.png" alt="iPhone: inicio con tareas y páginas recientes" loading="lazy" width="660" height="1434"><figcaption>iPhone: Inicio</figcaption></figure>
       <figure><img src="../screenshots/app-ios-dunkel-board.png" alt="iPhone: base de datos como tablero en tema oscuro" loading="lazy" width="660" height="1434"><figcaption>iPhone: tablero, oscuro</figcaption></figure>
@@ -193,7 +230,7 @@
   </div>
 </section>
 
-<section id="inicio-rapido" class="alt">
+<section id="inicio-rapido">
   <div class="wrap">
     <h2>Listo en 5 minutos</h2>
     <p class="sub">Solo necesitas un servidor con Docker.</p>

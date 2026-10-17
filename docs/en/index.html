@@ -27,7 +27,7 @@
   <nav>
     <a class="brand" href="#"><img src="../icon.svg" alt="">Saga</a>
     <span class="sp"></span>
-    <a class="l hide" href="#new">New in 2.0</a>
+    <a class="l hide" href="#new">New in 2.1</a>
     <a class="l hide" href="#features">Features</a>
     <a class="l hide" href="#screenshots">Screenshots</a>
     <a class="l hide" href="#apps">Apps</a>
@@ -52,6 +52,44 @@
 </div>
 
 <section id="new">
+  <div class="wrap">
+    <h2>New in Saga 2.1</h2>
+    <p class="sub">Safer sign-in, faces instead of initials and talking to each other – end-to-end encrypted, no extra port.</p>
+    <div class="feat">
+      <figure class="fc"><a href="../screenshots/v21-sicherheit.png"><img src="../screenshots/v21-sicherheit.png" alt="“Sign-in &amp; security” page: a passkey called “MacBook”, authenticator app set up, 10 of 10 recovery codes left" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:20%;--z:1.55"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔑</span>Passkeys &amp; two-factor</h3><p>Sign in without a password using a passkey (fingerprint, face, device PIN), or use it as a second step after your password – or an authenticator app. Recovery codes for emergencies; the admin can require 2FA for admins or everyone.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-anruf.png"><img src="../screenshots/v21-anruf.png" alt="Ongoing audio call with Kim: “end-to-end encrypted”, duration, “direct”, “good connection” and “audio received” at the top, Kim’s profile picture in the middle" loading="lazy" width="2880" height="1800" style="--fx:15%;--fy:0%;--z:1.3"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📞</span>Audio and video calls</h3><p>Call from a direct chat – with video and screen sharing. Media flows directly between the devices, every signalling message is verified with the chat keys. Saga needs no extra port; TURN is optional.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-profilbilder.png"><img src="../screenshots/v21-profilbilder.png" alt="Page “Urlaub Gardasee 2026” with the comments sidebar: comments by Kim and Robin with profile pictures, the pictures of people currently reading at the top" loading="lazy" width="2880" height="1800" style="--fx:100%;--fy:0%;--z:1.3"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🦊</span>Profile pictures</h3><p>Faces instead of initials – in comments, chats, presence and the bell. Upload and crop your own picture, use Gravatar or the picture from SSO/LDAP. Saga fetches everything itself; the browser never contacts Gravatar.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-chat-bilder.png"><img src="../screenshots/v21-chat-bilder.png" alt="Direct chat with Kim: two holiday photos as previews, a reply and the entry “Call · 0:07”" loading="lazy" width="2880" height="1800" style="--fx:0%;--fy:0%;--z:1"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🖼️</span>Fast chat images</h3><p>Sending an image creates an encrypted preview. The history only loads what is visible and nothing jumps while scrolling – the original loads when you tap it. Even big chats full of photos stay smooth.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-immich.png"><img src="../screenshots/v21-immich.png" alt="“From Immich” picker above the chat with several photos to choose from" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:40%;--z:1.15"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📷</span>Immich in chats</h3><p>Pick photos straight from your own Immich library – with the same picker as on pages. The image is end-to-end encrypted like any attachment.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-login-passkey.png"><img src="../screenshots/v21-login-passkey.png" alt="Sign-in page in the light theme with “Sign in” and “Sign in with passkey”" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:30%;--z:1.9"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">✨</span>Sign in with one tap</h3><p>“Sign in with passkey” – the browser even suggests your passkey in the user name field. Passkeys are bound to your Saga and can’t be phished.</p></figcaption></figure>
+    </div>
+    <h3 class="more-h">A closer look</h3>
+    <p class="more-sub">Also: the AI assistant finds a lot more (word stems, compound words, database properties) and copes better with local models, and images can be copied and pasted between pages.</p>
+    <div class="gallery two">
+      <figure><div class="shot"><a href="../screenshots/v21-login-2fa.png"><img src="../screenshots/v21-login-2fa.png" alt="Second step after the password: “Confirm with passkey” or a code from the authenticator app" loading="lazy" width="2880" height="1800"></a></div><figcaption>Second step: passkey or code</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-profilbild-zuschneiden.png"><img src="../screenshots/v21-profilbild-zuschneiden.png" alt="“Crop profile picture” dialog with a round frame and zoom slider" loading="lazy" width="2880" height="1800"></a></div><figcaption>Cropping a profile picture</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-admin-2fa.png"><img src="../screenshots/v21-admin-2fa.png" alt="Admin area, General: “Require 2FA for” nobody, admins or everyone" loading="lazy" width="2880" height="1800"></a></div><figcaption>Admin: 2FA policy</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-admin-anrufe.png"><img src="../screenshots/v21-admin-anrufe.png" alt="Admin area, General: calls with STUN server, optional TURN server and ring time" loading="lazy" width="2880" height="1800"></a></div><figcaption>Admin: calls, STUN and TURN</figcaption></figure>
+    </div>
+    <h3 class="more-h">On your phone too</h3>
+    <p class="more-sub">Ringing, talking, looking at photos and signing in with a passkey – in the phone’s browser.</p>
+    <div class="phones v2">
+      <figure><img src="../screenshots/v21-handy-klingeln.png" alt="Phone browser: Alex Beispiel is calling, with decline and accept" loading="lazy" width="1170" height="2532"><figcaption>Incoming call</figcaption></figure>
+      <figure><img src="../screenshots/v21-handy-anruf.png" alt="Phone browser: ongoing call with Alex, end-to-end encrypted" loading="lazy" width="1170" height="2532"><figcaption>In a call</figcaption></figure>
+      <figure><img src="../screenshots/v21-handy-chat-bilder.png" alt="Phone browser: chat with Alex and two holiday photos" loading="lazy" width="1170" height="2532"><figcaption>Chat with previews</figcaption></figure>
+      <figure><img src="../screenshots/v21-handy-login.png" alt="Phone browser: sign-in page in the dark theme with “Sign in with passkey”" loading="lazy" width="1170" height="2532"><figcaption>Passkey sign-in</figcaption></figure>
+    </div>
+    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 All changes and update notes</a></p>
+  </div>
+</section>
+
+<section id="new-2-0" class="alt">
   <div class="wrap">
     <h2>New in Saga 2.0</h2>
     <p class="sub">Your personal notebook becomes a shared place – everything optional, everything on your own server.</p>
@@ -85,11 +123,10 @@
       <figure><img src="../screenshots/app-ios-foederation.png" alt="iPhone app: page “Reiseplanung Sommer” shared by anna@saga.example" loading="lazy" width="660" height="1435"><figcaption>iPhone: page from another instance</figcaption></figure>
       <figure><img src="../screenshots/app-ios-ki.png" alt="iPhone app: AI assistant, “This page” tab with three suggested tasks" loading="lazy" width="660" height="1435"><figcaption>iPhone: AI suggests tasks</figcaption></figure>
     </div>
-    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 All changes and update notes</a></p>
   </div>
 </section>
 
-<section id="features" class="alt">
+<section id="features">
   <div class="wrap">
     <h2>Everything in one place</h2>
     <p class="sub">Saga combines a dashboard for your services with a personal notebook – no cloud, no subscription, on your own server.</p>
@@ -112,7 +149,7 @@
   </div>
 </section>
 
-<section>
+<section class="alt">
   <div class="wrap split">
     <div class="txt">
       <h2>Write, plan, collect</h2>
@@ -128,7 +165,7 @@
   </div>
 </section>
 
-<section class="alt">
+<section>
   <div class="wrap split rev">
     <div class="txt">
       <h2>Databases that fit your needs</h2>
@@ -143,7 +180,7 @@
   </div>
 </section>
 
-<section>
+<section class="alt">
   <div class="wrap split">
     <div class="txt">
       <h2>Built for admins</h2>
@@ -159,7 +196,7 @@
   </div>
 </section>
 
-<section id="screenshots" class="alt">
+<section id="screenshots">
   <div class="wrap">
     <h2>Screenshots</h2>
     <p class="sub">Dark and light themes follow your system automatically.</p>
@@ -174,13 +211,13 @@
   </div>
 </section>
 
-<section id="apps">
+<section id="apps" class="alt">
   <div class="wrap">
     <h2>Apps for your pocket and your desk</h2>
     <p class="sub">Native apps for iPhone, iPad, Mac, Linux (GNOME) and Android – not a wrapped website.
       Pages, databases, tasks and events are shown and edited right in the app.
       Sign in with your server address, or simply scan the QR code from "Apps &amp; devices".
-      With Saga 2.0 also chats, notifications, push, the AI assistant and federation.</p>
+      With Saga 2.1 also calls and profile pictures, plus chats, notifications, push, the AI assistant and federation.</p>
     <div class="phones">
       <figure><img src="../screenshots/app-ios-start.png" alt="iPhone: home with tasks and recent pages" loading="lazy" width="660" height="1434"><figcaption>iPhone: Home</figcaption></figure>
       <figure><img src="../screenshots/app-ios-dunkel-board.png" alt="iPhone: database as a board in dark mode" loading="lazy" width="660" height="1434"><figcaption>iPhone: board, dark</figcaption></figure>
@@ -193,7 +230,7 @@
   </div>
 </section>
 
-<section id="quick-start" class="alt">
+<section id="quick-start">
   <div class="wrap">
     <h2>Up and running in 5 minutes</h2>
     <p class="sub">All you need is a server with Docker.</p>

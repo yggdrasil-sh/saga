@@ -1071,8 +1071,8 @@ Welche Version läuft, bestimmt `SAGA_VERSION` in der `.env`:
 | Wert | Bedeutung |
 |---|---|
 | `2` (Standard) | immer die neueste 2.x – neue Funktionen und Fehlerbehebungen, nichts, was Handarbeit braucht |
-| `2.0` | nur Fehlerbehebungen von 2.0 |
-| `2.0.0` | genau diese Version |
+| `2.1` | nur Fehlerbehebungen von 2.1 |
+| `2.1.0` | genau diese Version |
 | `1` | bleibt bei der neuesten 1.x (1.2) – ältere Installationen haben diesen Wert noch in der `.env` |
 | `testing` | **Testversion:** das Neueste aus dem Branch `testing`, noch vor dem Release. Kann Fehler haben – nur zum Ausprobieren |
 
@@ -1100,7 +1100,7 @@ zusätzlich `saga-dateien-<zeit>.tar.gz` an (ohne Vorschaubilder, die entstehen 
 sichert (siehe oben), braucht den Schalter nicht.
 
 **Testversion:** Mit `SAGA_VERSION=testing` bekommst du neue Funktionen, sobald sie fertig sind – noch vor
-dem Release. Die Version heißt dann z. B. `2.1.0-testing.ab12cd3` (unten im Admin-Bereich mit 🧪). Zurück zur
+dem Release. Die Version heißt dann z. B. `2.2.0-testing.ab12cd3` (unten im Admin-Bereich mit 🧪). Zurück zur
 stabilen Version: `SAGA_VERSION=2`, `docker compose pull && docker compose up -d`. Hat die Testversion die
 Datenbank schon umgebaut, startet die stabile Version erst, wenn sie diesen Umbau ebenfalls enthält (spätestens
 mit dem nächsten Release) – oder du spielst das Backup von vor dem Wechsel zurück.
@@ -1112,6 +1112,12 @@ Eine neue **Major-Version** kann Handarbeit brauchen – sie steht dann im Chang
 setzen und wie oben aktualisieren – die Datenbank wird automatisch umgebaut (vorher Backup). Danach im
 Admin-Bereich nach Wunsch KI-Assistent, Föderation und Apple-Mitteilungen (APNs) einrichten (sie sind aus) und den
 Reverse Proxy für den Live-Kanal prüfen (Abschnitt 3). Alles Weitere steht im [Changelog](../CHANGELOG.md).
+
+**Von 2.0 auf 2.1:** Mit `SAGA_VERSION=2` kommt 2.1 beim normalen Update. Die Datenbank geht auf Schema-Stand 6
+(vorher Backup, danach kein Rückweg auf 2.0.x außer über dieses Backup). Neu und gleich aktiv: Profilbilder mit
+**Gravatar** (abschaltbar unter Allgemein → Profilbilder) und **Anrufe** mit dem STUN-Server
+`stun:stun.nextcloud.com:443` (Allgemein → Anrufe; TURN optional, Abschnitt „Anrufe“). Passkeys brauchen in
+`BASE_URL` einen Hostnamen, keine IP-Adresse; die 2FA-Richtlinie steht auf „niemanden“.
 
 **Zurück zur vorigen Version:** Eine ältere Saga startet nicht auf einer Datenbank, die schon eine neuere
 Version umgebaut hat (sie meldet das im Log, statt Daten zu beschädigen). Das gilt auch für **2.1 → 2.0.x**: 2.1
@@ -1205,7 +1211,7 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `PUBLIC_RATE` | `120` | Aufrufe öffentlicher Seiten je IP-Adresse und Minute (Bilder: das Fünffache) |
 | `SESSION_HOURS` | `12` | Gültigkeit einer Browser-Sitzung (Apps bleiben angemeldet) |
 | `PASSKEY_RP_ID` | Rechnername aus `BASE_URL` | Domain der Passkeys; nur setzen, wenn sie für eine übergeordnete Domain gelten sollen (z. B. `example.org`) |
-| `SAGA_VERSION` | `2` | Welche Version `docker compose pull` holt: `2`, `2.0`, `2.0.0` oder `testing` (Abschnitt 11) |
+| `SAGA_VERSION` | `2` | Welche Version `docker compose pull` holt: `2`, `2.1`, `2.1.0` oder `testing` (Abschnitt 11) |
 | `BACKUP_KEEP` | `10` | So viele automatische/manuelle Backups bleiben in `/data/backups` |
 | `SAGA_UPDATE_CHECK` | `1` | `0` = nie bei GitHub nach neuen Versionen fragen (auch im Admin-Bereich abschaltbar) |
 | `ADMIN_SESSION_HOURS` | `4` | Gültigkeit einer Sitzung im Admin-Bereich |
