@@ -395,11 +395,19 @@ async function avatars(browser) {
   await p.click('#pg-cm-btn').catch(() => {}); await p.waitForTimeout(1200);
   ok('2.1 Profilbild: bei Kommentaren', await loaded('.cm-c .cm-av') >= 1);
   await p.keyboard.press('Escape');
+  // Bughunt 2: zweiter Tab derselben Person - Bild wird live (avatar.changed) ausgetauscht, ohne neu zu laden
+  const q = await session(browser); await q.goto(BASE + '/'); await q.waitForTimeout(2500);
+  const qsrc = () => q.evaluate(() => { const i = document.querySelector('#hk-user .hk-user-av img.hk-av-img'); return i ? i.getAttribute('src') : null; });
+  const before = await qsrc();
   await p.goto(BASE + '/'); await p.waitForTimeout(800);
   await p.click('#hk-user'); await p.click('.menu-item:has-text("Einstellungen")');
   await p.waitForSelector('.hk-avsec'); await p.waitForTimeout(600);
   await p.click('.hk-avsec button:has-text("Eigenes Bild entfernen")');
   await p.waitForTimeout(1200);
+  let swapped = false;
+  for (let i = 0; i < 20 && !swapped; i++) { swapped = !!before && (await qsrc()) !== before; if (!swapped) await q.waitForTimeout(250); }
+  ok('Bughunt 2: anderer Tab tauscht das Profilbild live aus (avatar.changed)', swapped, { before, after: await qsrc() });
+  await q.context().close();
   const after = await p.api('GET', '/api/account/avatar');
   ok('2.1 Profilbild: entfernt -> SSO-Bild, Gravatar oder Initialen', !after.upload && after.source !== 'upload', after);
   ok('2.1 Profilbild: keine Anfragen an fremde Server', foreign.length === 0, foreign.slice(0, 3));

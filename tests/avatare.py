@@ -461,7 +461,8 @@ def main():
     s, st3 = upload("av-anna", png(180, 180, (200, 40, 40, 255)), "image/png")
     ed, ea = sd.wait("avatar.changed"), sa.wait("avatar.changed")
     ok(f"Neues Bild: avatar.changed live an Chat-Partnerin und eigene Tabs mit neuer Adresse ({ed}, {ea})",
-       ed and ea and ed.get("user") == "av-anna" and ed.get("avatar") == st3.get("url") != st.get("url") and ea.get("avatar") == st3.get("url"))
+       ed and ea and ed.get("user") == "av-anna" and ed.get("avatar") == st3.get("url") != st.get("url") and ea.get("avatar") == st3.get("url")
+       and ed.get("path") == (st3.get("url") or "").split("?")[0])
     m = len(sd.ev)
     upload("av-anna", png(180, 180, (200, 40, 40, 255)), "image/png")
     time.sleep(1.2)

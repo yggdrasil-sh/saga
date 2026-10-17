@@ -270,6 +270,7 @@
      'call.state', 'avatar.changed'].forEach(function (n) {
       on(es, n, function (d) { chatEvent(n, d); });
     });
+    on(es, 'avatar.changed', swapAvatar);
     on(es, 'bye', function (d) {
       es.close(); if (L.es === es) L.es = null;
       if (d.reason === 'account') { L.stopped = true; stopPoll(); return; }
@@ -308,6 +309,18 @@
       var k = K();
       if (k && (grew || L.polls % 3 === 0)) { k.reloadList(); if (window.HKComments && k.cur()) HKComments.live(); }
     }).catch(function (err) { if (err.status === 401) { L.stopped = true; stopPoll(); } });
+  }
+  // Neues/entferntes Profilbild einer Person (2.1, Bughunt 2): alle ihre Bilder auf der Seite austauschen - die Adresse
+  // ohne Version (path) ist je Person fest, die Groesse (s=) bleibt
+  function swapAvatar(d) {
+    if (!d || !d.path) return;
+    [].forEach.call(document.querySelectorAll('img.hk-av-img'), function (img) {
+      var src = img.getAttribute('src') || '', i = src.indexOf('?');
+      if ((i < 0 ? src : src.slice(0, i)) !== d.path) return;
+      var box = img.parentNode, s = /[?&]s=(\d+)/.exec(src);
+      if (!d.avatar) { img.remove(); if (box) box.classList.remove('hk-av-on'); return; }
+      img.src = d.avatar + (d.avatar.indexOf('?') < 0 ? '?' : '&') + 's=' + (s ? s[1] : 64);
+    });
   }
   function chatEvent(n, d) {
     document.dispatchEvent(new CustomEvent('hk-live', { detail: { type: n, data: d } }));

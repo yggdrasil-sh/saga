@@ -138,7 +138,7 @@ def _ensure(c, uid):
 
 
 def announce(c, uid):
-    """Live-Ereignis avatar.changed {user, avatar} nach dem Commit: an die Person selbst (andere Tabs/Geraete) und alle,
+    """Live-Ereignis avatar.changed {user, avatar, path} nach dem Commit: an die Person selbst (andere Tabs/Geraete) und alle,
     mit denen sie einen Chat teilt - deren Clients tauschen das Bild aus, ohne Listen neu laden zu muessen.
     Nur lokale Konten; avatar = neue Adresse (anderes v) oder null (Initialen)."""
     if not uid or uid.startswith("@"):
@@ -146,7 +146,10 @@ def announce(c, uid):
     uids = {uid} | {r[0] for r in c.execute(
         "SELECT DISTINCT m2.uid FROM chat_member m1 JOIN chat_member m2 ON m2.chat_id=m1.chat_id "
         "WHERE m1.uid=? AND m1.left_at IS NULL AND m2.left_at IS NULL LIMIT 5000", (uid,))}
-    bus.emit_after(c, "direct", {"uids": sorted(uids), "typ": "avatar.changed", "data": {"user": uid, "avatar": url_of(c, uid)}})
+    r = c.execute("SELECT id FROM users WHERE username=?", (uid,)).fetchone()
+    # path: Adresse ohne Version - bleibt je Person gleich, damit Clients auch bei avatar=null ihre Bilder finden
+    data = {"user": uid, "avatar": url_of(c, uid), "path": "/api/avatar/" + key_local(r[0], uid) if r else None}
+    bus.emit_after(c, "direct", {"uids": sorted(uids), "typ": "avatar.changed", "data": data})
 
 
 def _fresh(ts, now):
