@@ -53,10 +53,11 @@ def declared(path, n, base=B):
     return c.getresponse().status
 
 
-def chunked(path, total, ctype="application/x-www-form-urlencoded"):
+def chunked(path, total, ctype="application/x-www-form-urlencoded", method="POST", cookie=None):
     """Ohne Content-Length (chunked) viel schicken; nach jedem Stueck nachsehen, ob schon eine Antwort da ist."""
     s = socket.create_connection((B.hostname, B.port), timeout=15)
-    s.sendall((f"POST {path} HTTP/1.1\r\nHost: {HOST}\r\nContent-Type: {ctype}\r\nTransfer-Encoding: chunked\r\n\r\n").encode())
+    extra = f"Cookie: saga={cookie}\r\nX-Saga: 1\r\n" if cookie else ""
+    s.sendall((f"{method} {path} HTTP/1.1\r\nHost: {HOST}\r\nContent-Type: {ctype}\r\n{extra}Transfer-Encoding: chunked\r\n\r\n").encode())
     piece, sent, data = b"a" * 65536, 0, b""
     try:
         while sent < total:
@@ -222,6 +223,11 @@ def main():
     st, sent = chunked("/app/pair", 8 * 1024 * 1024, "application/json")
     ok(f"chunked an /app/pair -> 413 nach {sent // 1024} KB", st == 413 and sent <= 3 * 1024 * 1024)
     ok("Admin-Port: Content-Length 2 MB -> 413", declared("/login", 2 * 1024 * 1024, AD) == 413)
+    # Bughunt 2 (server, S3): Endpunkte, die request.body() selbst lesen, bekamen BodyTooLarge als ExceptionGroup -> 500
+    st, sent = chunked("/api/account/avatar", 12 * 1024 * 1024, "image/png", "PUT", A)
+    ok(f"chunked Profilbild ueber der Grenze -> 413 statt 500 ({st}, {sent // 1024} KB)", st == 413)
+    st, sent = chunked("/api/account/avatar", 12 * 1024 * 1024, "multipart/form-data; boundary=x", "PUT", A)
+    ok(f"chunked Profilbild (multipart) ueber der Grenze -> 413 ({st})", st == 413)
     ok("Server laeuft weiter", req("GET", "/healthz")[0] == 200)
     s, d = req("POST", "/api/notes", A, {"title": "Gross, aber erlaubt", "kind": "page"})
     nid = d.get("id") if isinstance(d, dict) else None

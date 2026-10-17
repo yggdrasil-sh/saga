@@ -299,10 +299,22 @@ class BodyLimit:
 
         try:
             await self.app(scope, rcv, snd)
-        except BodyTooLarge:
+        except Exception as e:
+            # BaseHTTPMiddleware (z. B. canonical_host) reicht Fehler aus dem Endpunkt als ExceptionGroup weiter
+            if not _too_large(e):
+                raise
             if not st["started"]:
                 st["started"] = st["replaced"] = True
                 await _send_413(send)
+
+
+def _too_large(e):
+    """True, wenn e ein BodyTooLarge ist oder eine (verschachtelte) ExceptionGroup nur aus solchen."""
+    if isinstance(e, BodyTooLarge):
+        return True
+    if isinstance(e, BaseExceptionGroup):
+        return all(_too_large(x) for x in e.exceptions)
+    return False
 
 
 SEC_HEADERS = {
