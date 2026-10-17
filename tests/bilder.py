@@ -45,6 +45,26 @@ try:
     # fremde Person: auch die Vorschau ist gesperrt
     st, h, d = raw(u + "?w=320", dict(H, Cookie="saga=" + ck("hk-test-b")))
     ok(f"Andere Person: kein Zugriff auf die Vorschau ({st})", st == 404)
+    # Kopieren/Einfuegen von Bildbloecken (2.1): /api/files/copy - gleiche Referenz im eigenen Konto, sonst Kopie fuer den
+    # Eigentuemer der Zielseite; Quelle sehen + Ziel bearbeiten noetig
+    def js(m, p, body=None, who="hk-test-a"):
+        h = dict(H, Cookie="saga=" + ck(who), **{"Content-Type": "application/json"})
+        rq = urllib.request.Request(B + p, data=json.dumps(body).encode() if body is not None else None, method=m, headers=h)
+        try:
+            with urllib.request.urlopen(rq, timeout=20) as r: return r.status, json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e: return e.code, json.loads(e.read() or b"{}")
+    st, d = js("POST", "/api/files/copy", {"url": u})
+    ok(f"Einfuegen in eigene Seite: gleiche Referenz ({st})", st == 200 and d.get("url") == u and d.get("copied") is False)
+    st, nb = js("POST", "/api/notes", {"title": "Fremde Seite"}, who="hk-test-b")
+    st, d = js("POST", "/api/files/copy", {"url": u, "note": nb["id"]})
+    ok(f"Fremde Seite ohne Bearbeiten-Recht -> abgelehnt ({st})", st in (403, 404))
+    js("PUT", f"/api/notes/{nb['id']}/shares", {"type": "user", "target": "hk-test-a", "role": "edit"}, who="hk-test-b")
+    st, d = js("POST", "/api/files/copy", {"url": u, "note": nb["id"]})
+    ok(f"Fremde Seite mit Bearbeiten-Recht: eigene Kopie fuer deren Eigentuemer ({st})", st == 200 and d.get("copied") is True and d.get("url") != u)
+    st2, h2, d2 = raw(d.get("url", "/x"), dict(H, Cookie="saga=" + ck("hk-test-b")))
+    ok("Eigentuemer der Zielseite sieht die Kopie (gleicher Inhalt)", st2 == 200 and d2 == png)
+    ok("Datei, die ich nicht sehen darf -> 404", js("POST", "/api/files/copy", {"url": u}, who="hk-test-b")[0] == 404)
+    ok("Unsinnige Angabe -> 400", js("POST", "/api/files/copy", {"url": "/files/../etc"})[0] == 400)
     # Aufraeumen entfernt Vorschauen mit
     sys.path.insert(0, "/tmp/hkapp"); os.environ.setdefault("STATE_DIR", os.path.dirname(DB))
     td = os.path.join(os.path.dirname(DB), "files", "thumbs")
@@ -54,8 +74,10 @@ try:
     A.files_gc(min_age=60)
     ok("Datei-Aufraeumen entfernt auch die Vorschauen", not any(f.startswith(fid) for f in os.listdir(td)))
 finally:
-    cn = sqlite3.connect(DB); cn.execute("DELETE FROM note WHERE uid='hk-test-a'")
-    try: cn.execute("DELETE FROM file WHERE uid='hk-test-a'")
+    cn = sqlite3.connect(DB); cn.execute("DELETE FROM note WHERE uid IN ('hk-test-a', 'hk-test-b')")
+    try: cn.execute("DELETE FROM note_share WHERE owner_uid='hk-test-b'")
+    except sqlite3.OperationalError: pass
+    try: cn.execute("DELETE FROM file WHERE uid IN ('hk-test-a', 'hk-test-b')")
     except sqlite3.OperationalError: pass
     cn.commit()
 print(f"\nBILDER {sum(res)}/{len(res)}", "- ALLES GRUEN" if res and all(res) else "- FEHLER"); sys.exit(0 if res and all(res) else 1)

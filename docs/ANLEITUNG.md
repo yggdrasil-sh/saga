@@ -369,6 +369,10 @@ Tabellen, Code, Bilder, Dateien, Spalten, Verweise auf andere Seiten, Termine un
 das Menü, `Enter` übernimmt den ersten Treffer, `Esc` schließt es und nimmt das „/“ wieder weg.
 `Strg`+`K` (Mac: `⌘`+`K`) sucht in Titeln und Inhalten. Seiten haben Versionen, einen Papierkorb (30 Tage) und
 lassen sich als Markdown exportieren.
+**Bilder kopieren:** Ein Klick aufs Bild markiert es; `Strg`+`C`/`X` (Mac: `⌘`) kopiert bzw. schneidet es aus, `Strg`+`V`
+fügt es in dieser oder einer anderen Seite (auch in einem anderen Tab) wieder ein – mit Bildunterschrift. Auf einer Seite
+eines anderen Kontos bekommt dessen Eigentümer eine eigene Kopie der Datei. Andere Programme bekommen das Bild als PNG,
+wo der Browser das erlaubt.
 
 ![Seite](screenshots/seite.png)
 
@@ -618,7 +622,9 @@ speichert nur verschlüsselte Daten. Auch der Admin kann keine Inhalte lesen.
   ändern sich die Mitglieder. Wer neu dazukommt, sieht nur Nachrichten ab dem Beitritt; wer geht, bekommt nichts Neues.
 - **Schreiben:** Enter sendet, Umschalt+Enter macht eine neue Zeile. 📎 hängt Bilder oder Dateien an (verschlüsselt,
   höchstens so groß wie Datei-Anhänge sonst); **@** verlinkt eine Seite – andere sehen den Titel nur, wenn sie die Seite
-  selbst sehen dürfen. Über „⋯“ an einer Nachricht: **Antworten**, Text kopieren, eigene Nachricht **für alle löschen**.
+  selbst sehen dürfen. Bilder erscheinen im Verlauf als kleines Vorschaubild (beim Senden erzeugt, ebenfalls verschlüsselt);
+  das Original lädt erst beim Antippen. Geladene Bilder hält der Browser verschlüsselt vor (bis 200 MB, beim Abmelden
+  geleert). Über „⋯“ an einer Nachricht: **Antworten**, Text kopieren, eigene Nachricht **für alle löschen**.
   „tippt …“ und neue Nachrichten erscheinen sofort (Live-Kanal).
 - **Chat-Menü (⋯ oben):** **Sicherheitsnummer** (60 Ziffern, auf beiden Seiten gleich – persönlich oder per Anruf
   vergleichen und „Als überprüft markieren“; ändert sie sich, warnt der Chat), Mitglieder, **Stummschalten**

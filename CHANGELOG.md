@@ -15,6 +15,27 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Chat-Bilder schnell, Bilder kopieren (2.1-c, Server + Web)
+- **Chat-Bilder:** Beim Senden entsteht ein **Vorschaubild** (längste Seite 320 px, JPEG ~70, ohne Metadaten), das wie
+  jeder Anhang mit eigenem Schlüssel verschlüsselt hochgeladen wird; der Eintrag in `files[]` bekommt `w`/`h` des
+  Originals und `th:{id,k,m,w,h,s}` (Testvektor `tests/chat_vectors.json` → `image`). Der Verlauf zeigt nur noch
+  Vorschaubilder in einem Platzhalter der richtigen Größe (nichts springt), lädt nur sichtbare Bilder (höchstens 4
+  gleichzeitig, Abbruch beim Wegscrollen) und entschlüsselt im Hintergrund (Web Worker). Das Original lädt erst beim
+  Antippen (Großansicht mit „Speichern“). Alte Nachrichten ohne Vorschaubild: der Browser erzeugt selbst eines und
+  merkt es sich verschlüsselt. Zwischenspeicher: Vorschaubilder im Speicher, Ciphertext in IndexedDB (200 MB, älteste
+  zuerst raus), geleert bei „Abmelden“, „Neu beginnen“ und entferntem Gerät. Vorher hielt der Verlauf jedes Original
+  entschlüsselt im Speicher.
+- **Server:** Chat-Anhänge einer Nachricht kommen mit `Cache-Control: private, max-age=…, immutable` (höchstens bis
+  zum Ablauf der Nachricht); bis zu 20 Datei-Kennungen je Nachricht (Original + Vorschaubild, `limits.file_ids_per_msg`),
+  60 Uploads je Minute. Vorschaubilder hängen an der Nachricht – „für alle löschen“, Aufbewahrungsfrist und Aufräumen
+  entfernen sie mit. Abmelden schickt `Clear-Site-Data: "cache"`.
+- **Bilder in Seiten kopieren/ausschneiden:** Ein Klick aufs Bild markiert den Bildblock, `Strg`/`⌘`+`C` bzw. `+X`
+  legt ihn in die Zwischenablage (als Block mit Bildunterschrift, als HTML und – wo der Browser es erlaubt – als PNG für
+  andere Programme), `Strg`/`⌘`+`V` fügt ihn in derselben oder einer anderen Seite ein, auch in einem anderen Tab.
+  Vorher ließ sich ein einzelnes Bild gar nicht markieren, `Strg`+`C` kopierte nichts. Neu `POST /api/files/copy`:
+  gleiche Datei im selben Konto, auf Seiten anderer Konten eine eigene Kopie für deren Eigentümer (sonst sähen
+  Mitleser das Bild nicht und das Aufräumen hätte es entfernt); gilt auch für per `⌘A` kopierte Blöcke.
+
 ### Neu
 - **Passkeys und Zwei-Faktor-Anmeldung** (lokale und LDAP-Konten, Einstellungen → Konto → „Anmeldung &
   Sicherheit“): **Passkeys** (WebAuthn/FIDO2, geprüft mit py_webauthn) für die Anmeldung **ohne Passwort**

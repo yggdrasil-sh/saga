@@ -529,6 +529,8 @@ body.notes-page #pg-full{display:none}
 .page-body .image-tool--withBackground .image-tool__image{background:var(--card-h)}
 .page-body .image-tool--withBorder .image-tool__image{border:1px solid var(--border)}
 .page-body .image-tool__caption{color:var(--muted);font-size:.85rem;text-align:center;border:0;box-shadow:none}
+.page-body .image-tool__image{cursor:pointer}
+.page-body .pg-picked .image-tool__image{outline:2px solid var(--accent);outline-offset:3px}
 .page-body .cdx-attaches{--color-line:var(--border);--color-bg:var(--card-h);--color-bg-secondary:var(--card);
   --color-bg-secondary--hover:var(--card-h);--color-text-secondary:var(--muted)}
 .page-body .cdx-attaches--with-file{background:var(--card-h);border:1px solid var(--border);border-radius:8px}

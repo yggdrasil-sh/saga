@@ -364,6 +364,9 @@ Your page tree lives under **Pages**. Type `/` for new blocks: headings, lists, 
 images, files, columns, links to other pages, events and more. Keep typing to filter the menu; `Enter` picks the
 first match, `Esc` closes it and removes the “/” again. `Ctrl`+`K` (Mac: `⌘`+`K`) searches titles and content.
 Pages have versions, a trash (30 days) and can be exported as Markdown.
+**Copying images:** a click on an image selects it; `Ctrl`+`C`/`X` (Mac: `⌘`) copies or cuts it, `Ctrl`+`V` pastes it
+into this or another page (also in another tab) – caption included. On a page of another account, its owner gets their
+own copy of the file. Other apps receive the image as PNG where the browser allows it.
 
 ![Page](../screenshots/seite.png)
 
@@ -598,7 +601,9 @@ only stores encrypted data. The admin can't read any content either.
   **page chat** with everyone who can see the page – when the shares change, the members change. New members only see
   messages from when they joined; people who leave get nothing new.
 - **Writing:** Enter sends, Shift+Enter starts a new line. 📎 attaches images or files (encrypted, up to the usual
-  attachment size); **@** links a page – others only see its title if they can see the page themselves. Via “⋯” on a
+  attachment size); **@** links a page – others only see its title if they can see the page themselves. Images show up in the history as a small
+  preview (created when sending, encrypted as well); the original only loads when you tap it. Loaded images are kept
+  encrypted in the browser (up to 200 MB, cleared when you sign out). Via “⋯” on a
   message: **reply**, copy text, **delete for everyone** (your own messages). “is typing …” and new messages appear right
   away (live channel).
 - **Chat menu (⋯ at the top):** **safety number** (60 digits, identical on both sides – compare in person or by phone

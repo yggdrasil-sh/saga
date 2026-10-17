@@ -1147,6 +1147,136 @@
     });
   });
 
+  // --- Bilder kopieren / ausschneiden / einfuegen (2.1) ----------------------------------------------------------
+  // Editor.js kennt keine Auswahl EINES Bildblocks: Klick aufs Bild markierte nichts, Strg/⌘+C kopierte leer (nur
+  // ⌘A ⌘A bzw. Ziehen ueber mehrere Bloecke ging). Jetzt: Klick aufs Bild markiert den Block; Strg/⌘+C bzw. +X legt
+  // ihn in die Zwischenablage - als Editor.js-Block (Bildunterschrift/Optionen bleiben), als HTML (<img> mit dem Block
+  // in data-saga-block) und, wo der Browser es erlaubt (Async Clipboard), zusaetzlich als image/png fuer andere
+  // Programme. Einfuegen in Saga (gleiche/andere Seite, anderer Tab): Dateiverweise /files/<id> laufen ueber
+  // /api/files/copy - gleiche Referenz, wenn die Zielseite demselben Konto gehoert, sonst eine Kopie fuer den
+  // Eigentuemer der Zielseite (Rechte: Quelle sehen, Ziel bearbeiten). Gilt auch fuer per ⌘A kopierte Bloecke.
+  var picked = null;                                     // {blk: .ce-block, ed, data}
+  var FILE_REF = /\/files\/[0-9a-f]{24}/g;
+  function edOf(node) {
+    var best = null;
+    (S.eds || []).forEach(function (x) { if (x.ed && x.holder.isConnected && x.holder.contains(node) && (!best || best.holder.contains(x.holder))) best = x; });
+    return best ? best.ed : S.editor;
+  }
+  function unpick() { if (picked && picked.blk) picked.blk.classList.remove('pg-picked'); picked = null; }
+  function imgData(blk) {                                // Fallback aus dem DOM, falls block.save() noch laeuft
+    var im = blk.querySelector('.image-tool__image-picture'), cap = blk.querySelector('.image-tool__caption'), tool = blk.querySelector('.image-tool');
+    var u = im ? String(im.getAttribute('src') || '') : '';
+    try { var x = new URL(u, location.href); if (x.origin === location.origin) u = x.pathname; } catch (e) { /* lassen */ }
+    var has = function (c) { return !!(tool && tool.classList.contains('image-tool--' + c)); };
+    return { file: { url: u }, caption: cap ? cap.innerHTML : '', withBorder: has('withBorder'), withBackground: has('withBackground'), stretched: has('stretched') };
+  }
+  document.addEventListener('mousedown', function (e) {
+    var t = e.target, box = $('pg-editor');
+    var im = t && t.closest && t.closest('.image-tool__image');
+    if (!im || !box || !box.contains(im)) { if (picked && !(t && t.closest && t.closest('.menu, .ce-popover'))) unpick(); return; }
+    var blk = im.closest('.ce-block'), ed = edOf(blk);
+    if (!blk || !ed) return;
+    unpick();
+    picked = { blk: blk, ed: ed, data: null };
+    blk.classList.add('pg-picked');
+    var b = blk.dataset.id && ed.blocks.getById ? ed.blocks.getById(blk.dataset.id) : null;
+    var me = picked;
+    if (b && b.save) b.save().then(function (s) { if (picked === me && s && s.data) me.data = s.data; }).catch(function () {});
+  }, true);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && picked) unpick(); });
+  function pickedBlock() { return picked && picked.blk.isConnected ? picked : (unpick(), null); }
+  function clipHtml(data) {
+    var u = data.file && data.file.url ? data.file.url : '', abs = /^\//.test(u) ? location.origin + u : u;
+    var cap = el('div'); cap.innerHTML = data.caption || '';
+    var img = el('img'); img.src = abs; img.alt = cap.textContent.trim();
+    img.setAttribute('data-saga-block', JSON.stringify([{ tool: 'image', data: data }]));
+    return { html: img.outerHTML, text: abs };
+  }
+  function pngOf(url) {                                    // fuer andere Programme: Chrome/Safari nehmen nur image/png
+    return fetch(url + (/^\/files\//.test(url) ? '?w=2000' : ''), { credentials: 'same-origin' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
+      .then(function (b) {
+        if (b.type === 'image/png') return b;
+        return createImageBitmap(b).then(function (bm) {
+          var cv = document.createElement('canvas'); cv.width = bm.width; cv.height = bm.height; cv.getContext('2d').drawImage(bm, 0, 0);
+          return new Promise(function (res, rej) { cv.toBlob(function (o) { if (o) res(o); else rej(new Error('png')); }, 'image/png'); });
+        });
+      });
+  }
+  function onClip(e) {
+    var p = pickedBlock(); if (!p) return;
+    var a = document.activeElement;
+    if (a && a !== document.body && (a.isContentEditable || /^(INPUT|TEXTAREA)$/.test(a.tagName)) && !p.blk.contains(a)) return;   // Text woanders markiert
+    var data = p.data || imgData(p.blk);
+    if (!data.file || !data.file.url) return;
+    var c = clipHtml(data), dt = e.clipboardData;
+    e.preventDefault(); e.stopImmediatePropagation();
+    dt.setData('text/plain', c.text); dt.setData('text/html', c.html);
+    dt.setData('application/x-editor-js', JSON.stringify([{ tool: 'image', data: data }]));
+    // Zusaetzlich als Bild fuer andere Programme (ersetzt den Inhalt oben; HTML mit data-saga-block bleibt dabei)
+    if (navigator.clipboard && navigator.clipboard.write && window.ClipboardItem) {
+      try {
+        var item = new ClipboardItem({ 'image/png': pngOf(data.file.url), 'text/html': new Blob([c.html], { type: 'text/html' }),
+                                       'text/plain': new Blob([c.text], { type: 'text/plain' }) });
+        navigator.clipboard.write([item]).catch(function () { /* nicht erlaubt: Text/HTML/Block von oben bleiben */ });
+      } catch (err) { /* aeltere Browser */ }
+    }
+    if (e.type === 'cut' && !readOnly()) {
+      var i = p.ed.blocks.getBlockIndex ? p.ed.blocks.getBlockIndex(p.blk.dataset.id) : -1;
+      unpick();
+      if (i >= 0) { p.ed.blocks.delete(i); S.dirtyBody = true; schedule(); }
+    }
+    HK.toast(e.type === 'cut' ? T('Bild ausgeschnitten') : T('Bild kopiert'));
+  }
+  document.addEventListener('copy', onClip, true);
+  document.addEventListener('cut', onClip, true);
+  // Einfuegen: Bloecke mit Dateiverweisen selbst einfuegen (Verweise ueber den Server pruefen/kopieren), Rest wie bisher
+  function clipBlocks(dt) {
+    var x = dt.getData('application/x-editor-js'), out = null;
+    if (x) { try { out = JSON.parse(x); } catch (e) { out = null; } }
+    if (!out) {
+      var h = dt.getData('text/html');
+      if (h && h.indexOf('data-saga-block') >= 0) {
+        var n = new DOMParser().parseFromString(h, 'text/html').querySelector('[data-saga-block]');
+        try { out = n ? JSON.parse(n.getAttribute('data-saga-block')) : null; } catch (e) { out = null; }
+      }
+    }
+    if (!Array.isArray(out) || !out.length || !out.every(function (b) { return b && typeof b.tool === 'string' && b.data && typeof b.data === 'object'; })) return null;
+    return JSON.stringify(out).match(FILE_REF) ? out : null;          // ohne Dateiverweise: Editor.js wie gewohnt
+  }
+  function fixRefs(blocks) {
+    var s = JSON.stringify(blocks.map(function (b) { return { tool: b.tool, data: b.data }; })), refs = {};
+    (s.match(FILE_REF) || []).forEach(function (r) { refs[r] = 1; });
+    return Promise.all(Object.keys(refs).map(function (r) {
+      return api('POST', '/api/files/copy', { url: r, note: S.cur ? S.cur.id : null }).then(function (d) { refs[r] = d.url; });
+    })).then(function () { return JSON.parse(s.replace(FILE_REF, function (r) { return refs[r]; })); });
+  }
+  document.addEventListener('paste', function (e) {
+    var box = $('pg-editor'), t = e.target, p = pickedBlock();
+    var inEd = box && t && t.nodeType === 1 && box.contains(t);
+    if ((!inEd && !p) || !S.cur || readOnly() || !e.clipboardData) return;
+    var blocks = clipBlocks(e.clipboardData);
+    if (!blocks) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    var ed = p ? p.ed : edOf(t), anchorId = p ? p.blk.dataset.id : null, cid = S.cur.id;
+    fixRefs(blocks).then(function (bl) {
+      if (!S.cur || S.cur.id !== cid) return;
+      var tools = ed === S.editor ? S.tools : null;
+      var i, replace = false;
+      if (anchorId && ed.blocks.getBlockIndex) i = ed.blocks.getBlockIndex(anchorId) + 1;
+      else {
+        i = ed.blocks.getCurrentBlockIndex();
+        var cur = i >= 0 ? ed.blocks.getBlockByIndex(i) : null;
+        if (cur && cur.isEmpty && cur.name === 'paragraph') replace = true; else i = i < 0 ? ed.blocks.getBlocksCount() : i + 1;
+      }
+      bl.forEach(function (b, k) {
+        if (tools && !tools[b.tool]) return;
+        ed.blocks.insert(b.tool, b.data, undefined, i + k, k === bl.length - 1, k === 0 && replace);
+      });
+      unpick(); S.dirtyBody = true; schedule();
+    }).catch(function (err) { HK.toast(T('Einfügen fehlgeschlagen: {err}', { err: err.message })); });
+  }, true);
+
   function openPicker(rect) {
     var pk = $('pg-picker'); pk.hidden = false;
     $('pg-picker-q').value = ''; renderPicker();

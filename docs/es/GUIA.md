@@ -373,6 +373,9 @@ verificación, tablas, código, imágenes, archivos, columnas, enlaces a otras p
 escribiendo, el menú se filtra; `Enter` elige el primer resultado y `Esc` lo cierra y quita la «/». `Ctrl`+`K`
 (Mac: `⌘`+`K`) busca en títulos y contenido. Las páginas tienen versiones y papelera (30 días) y se pueden
 exportar como Markdown.
+**Copiar imágenes:** un clic en una imagen la selecciona; `Ctrl`+`C`/`X` (Mac: `⌘`) la copia o la corta y `Ctrl`+`V` la
+pega en esta u otra página (también en otra pestaña), con su pie de foto. En una página de otra cuenta, su propietario
+recibe su propia copia del archivo. Otras aplicaciones reciben la imagen como PNG cuando el navegador lo permite.
 
 ![Página](../screenshots/seite.png)
 
@@ -624,7 +627,9 @@ servidor solo guarda datos cifrados. Tampoco el administrador puede leer el cont
   cabecera abre el **chat de la página** con todos los que pueden verla: si cambian los permisos, cambian los miembros.
   Quien se une solo ve los mensajes desde su incorporación; quien sale no recibe nada nuevo.
 - **Escribir:** Intro envía, Mayús+Intro añade una línea. 📎 adjunta imágenes o archivos (cifrados, hasta el tamaño
-  habitual de los adjuntos); **@** enlaza una página: los demás solo ven el título si pueden ver la página. Con «⋯» en un
+  habitual de los adjuntos); **@** enlaza una página: los demás solo ven el título si pueden ver la página. Las imágenes aparecen en el
+  historial como una vista previa pequeña (creada al enviar, también cifrada); el original solo se carga al tocarla. El
+  navegador guarda las imágenes cargadas cifradas (hasta 200 MB; se borran al cerrar sesión). Con «⋯» en un
   mensaje: **responder**, copiar texto, **eliminar para todos** (tus mensajes). «está escribiendo…» y los mensajes nuevos
   aparecen al instante (canal en directo).
 - **Menú del chat (⋯ arriba):** **número de seguridad** (60 cifras, igual en ambos lados: compáralo en persona o por

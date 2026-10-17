@@ -400,11 +400,147 @@ async function presence(browser) {
   await a.context().close(); await b.context().close();
 }
 
+// 2.1 Chat-Bilder schnell: Vorschaubild (th) beim Senden, im Verlauf nur das Vorschaubild (Platzhalter in Endgroesse),
+// Original erst beim Oeffnen; alte Nachrichten ohne th -> eigenes Vorschaubild im Cache; Cache ueberlebt Neuladen und
+// wird beim Abmelden geleert. Konten SAGA_USER2 (sendet) und SAGA_USER3 (empfaengt).
+async function chatThumbs(browser) {
+  const E = process.env;
+  if (!E.SAGA_USER2 || !E.SAGA_USER3) { console.log('--   Chat-Bilder: SAGA_USER2/3 (+ _PASS) fehlen - uebersprungen'); return; }
+  const file = require('path').join(require('os').tmpdir(), 'saga-browser-chatbild.png');
+  const a = await session(browser, { user: E.SAGA_USER2, pass: E.SAGA_PASS2 });
+  require('fs').writeFileSync(file, Buffer.from(await a.evaluate(() => {
+    const c = document.createElement('canvas'); c.width = 1600; c.height = 1200; const g = c.getContext('2d');
+    for (let i = 0; i < 40; i++) { g.fillStyle = 'hsl(' + i * 9 + ',70%,50%)'; g.fillRect(i * 40, 0, 40, 1200); }
+    return c.toDataURL('image/png').split(',')[1];
+  }), 'base64'));
+  await chatKeys(a, E.SAGA_USER2);
+  const b = await session(browser, { user: E.SAGA_USER3, pass: E.SAGA_PASS3 }); await chatKeys(b, E.SAGA_USER3);
+  if (await a.$('.ct-ov') || await b.$('.ct-ov')) { ok('2.1 Chat-Bilder: Schluessel der Testkonten verfuegbar', false); return; }
+  const ups = [];
+  a.on('response', r => { if (r.request().method() === 'POST' && /\/api\/chats\/\d+\/files$/.test(r.url())) r.json().then(d => ups.push(d.size), () => ups.push(-1)); });
+  await a.click('#ct-new'); await a.fill('.ct-people-q', E.SAGA_USER3); await a.waitForSelector('.ct-person');
+  await a.click('.ct-person'); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(800);
+  const send = async text => {
+    await a.setInputFiles('#ct-file', file); await a.fill('#ct-input', text);
+    await Promise.all([a.waitForResponse(r => /\/api\/chats\/\d+\/messages$/.test(r.url()) && r.request().method() === 'POST', { timeout: 30000 }).catch(() => {}),
+      a.click('#ct-send')]);
+    await a.waitForTimeout(1500);
+  };
+  await send('Bild mit Vorschau');
+  ok('2.1 Chat-Bilder: Original + Vorschaubild hochgeladen (2 Blobs, Vorschau klein)', ups.length === 2 && Math.min(...ups) * 3 < Math.max(...ups), ups);
+  // "alte" Nachricht ohne th nachstellen: Vorschaubild-Erzeugung beim Sender schlaegt fehl
+  await a.evaluate(() => { window.createImageBitmap = () => Promise.reject(new Error('aus')); });
+  await a.route('**/static/chat-worker.js*', r => r.fulfill({ status: 404, body: '' }));
+  await a.reload(); await a.waitForTimeout(2500);
+  await a.evaluate(() => { window.createImageBitmap = () => Promise.reject(new Error('aus')); });
+  await a.click('.ct-item-b'); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(800);
+  ups.length = 0; await send('Bild ohne Vorschau');
+  ok('2.1 Chat-Bilder: ohne Vorschaubild gesendet (alte Clients) – 1 Blob', ups.length === 1, ups);
+  // Empfaenger: nur Vorschaubilder laden, Platzhalter vorab in Endgroesse
+  const got = [];
+  b.on('request', r => { if (/\/api\/chat\/files\//.test(r.url())) got.push(r.url()); });
+  await b.goto(BASE + '/chats'); await b.waitForTimeout(2000);
+  await b.click('.ct-item-b'); await b.waitForSelector('#ct-chat:not([hidden])');
+  const box0 = await b.evaluate(() => [...document.querySelectorAll('.ct-img')].map(f => ({ w: f.style.width, ar: f.style.aspectRatio })));
+  ok('2.1 Chat-Bilder: Platzhalter mit Breite/Seitenverhaeltnis vor dem Laden', box0.length === 2 && box0[0].w === '280px' && /280 \/ 210/.test(box0[0].ar), box0);
+  const loadedAll = () => b.evaluate(() => [...document.querySelectorAll('.ct-img img')].filter(i => i.naturalWidth > 0).map(i => i.naturalWidth));
+  for (let i = 0; i < 60 && (await loadedAll()).length < 2; i++) await b.waitForTimeout(250);
+  const nw = await loadedAll();
+  ok('2.1 Chat-Bilder: Verlauf zeigt Vorschaubilder (≤ 320 px), auch fuer die Nachricht ohne th', nw.length === 2 && nw.every(w => w <= 320), nw);
+  ok('2.1 Chat-Bilder: Neue Nachricht – nur das Vorschaubild geladen (2 Abrufe: th + Original der alten)', got.length === 2, got.length);
+  got.length = 0;
+  await b.locator('.ct-img').first().click(); await b.waitForSelector('.ct-view img');
+  for (let i = 0; i < 40 && !(await b.evaluate(() => { const i = document.querySelector('.ct-view img'); return i && i.naturalWidth === 1600; })); i++) await b.waitForTimeout(250);
+  ok('2.1 Chat-Bilder: Antippen oeffnet das Original (1600 px)', await b.evaluate(() => document.querySelector('.ct-view img').naturalWidth === 1600) && got.length === 1, got.length);
+  await b.keyboard.press('Escape');
+  got.length = 0;
+  await b.reload(); await b.waitForTimeout(2000); await b.click('.ct-item-b'); await b.waitForSelector('#ct-chat:not([hidden])');
+  for (let i = 0; i < 40 && (await loadedAll()).length < 2; i++) await b.waitForTimeout(250);
+  ok('2.1 Chat-Bilder: nach Neuladen aus dem Cache (IndexedDB, nur Ciphertext) – kein Abruf', (await loadedAll()).length === 2 && got.length === 0, got);
+  const stored = await b.evaluate(() => new Promise(res => {
+    const r = indexedDB.open('saga-chat-blobs-' + document.body.dataset.uid);
+    r.onsuccess = () => { const q = r.result.transaction('data').objectStore('data').getAllKeys(); q.onsuccess = () => { r.result.close(); res(q.result); }; };
+    r.onerror = () => res(null);
+  }));
+  ok('2.1 Chat-Bilder: Cache enthaelt th-Blob und eigenes Vorschaubild (lt:) der alten Nachricht', Array.isArray(stored) && stored.some(k => /^lt:/.test(k)) && stored.length >= 2, stored);
+  await b.click('#hk-user'); await b.click('.menu-item:has-text("Abmelden")'); await b.waitForURL(/\/login/);
+  const left = await b.evaluate(() => indexedDB.databases ? indexedDB.databases().then(l => l.map(d => d.name)) : []);
+  ok('2.1 Chat-Bilder: Abmelden leert den Bild-Cache', !left.some(n => /^saga-chat-blobs-/.test(n)), left);
+  await chatDevicesGone(a); await a.context().close(); await b.context().close();
+}
+
+// 2.1 Bildbloecke kopieren/ausschneiden/einfuegen (Strg/⌘+C/X/V): Klick markiert das Bild, Zwischenablage mit image/png
+// + HTML (data-saga-block) + Editor.js-Block; Einfuegen in anderer Seite/anderem Tab mit gleicher Datei, auf einer
+// fremden Seite (SAGA_USER2 gibt Bearbeiten frei) als Kopie fuer deren Eigentuemer.
+async function imageClipboard(browser) {
+  const E = process.env, mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+  const p = await session(browser);
+  await p.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE });
+  const s = await p.evaluate(async () => {
+    const H = { 'X-Saga': '1', 'Content-Type': 'application/json' };
+    const cv = document.createElement('canvas'); cv.width = 90; cv.height = 60; const g = cv.getContext('2d'); g.fillStyle = '#2a6'; g.fillRect(0, 0, 90, 60);
+    const b = await new Promise(res => cv.toBlob(res, 'image/jpeg', 0.9));
+    const mk = async t => (await (await fetch('/api/notes', { method: 'POST', headers: H, body: JSON.stringify({ title: t }) })).json()).id;
+    const a = await mk('Bildquelle'), z = await mk('Bildziel');
+    const fd = new FormData(); fd.append('image', b, 'gruen.jpg');
+    const up = await (await fetch('/api/files', { method: 'POST', headers: { 'X-Saga': '1' }, body: fd })).json();
+    const blocks = [{ type: 'paragraph', data: { text: 'Oben' } }, { type: 'image', data: { file: { url: up.file.url }, caption: 'Grün', withBorder: true, withBackground: false, stretched: false } },
+      { type: 'paragraph', data: { text: 'Unten' } }];
+    await fetch('/api/notes/' + a, { method: 'PATCH', headers: H, body: JSON.stringify({ body: JSON.stringify({ blocks }) }) });
+    await fetch('/api/notes/' + z, { method: 'PATCH', headers: H, body: JSON.stringify({ body: JSON.stringify({ blocks: [{ type: 'paragraph', data: { text: 'Ziel' } }, { type: 'paragraph', data: { text: '' } }] }) }) });
+    return { a, z, url: up.file.url };
+  });
+  const blocks = async id => JSON.parse((await p.api('GET', '/api/notes/' + id)).body || '{}').blocks || [];
+  await p.open(s.a);
+  await p.click('#pg-editor .image-tool__image-picture'); await p.waitForTimeout(300);
+  ok('2.1 Bild kopieren: Klick aufs Bild markiert den Block', await p.evaluate(() => document.querySelectorAll('#pg-editor .pg-picked').length === 1));
+  await p.keyboard.press(mod + '+c'); await p.waitForTimeout(1200);
+  const clip = await p.evaluate(async () => {
+    try { const it = await navigator.clipboard.read(); const t = it[0].types; const h = t.includes('text/html') ? await (await it[0].getType('text/html')).text() : '';
+      return { types: t, saga: h.includes('data-saga-block') }; } catch (e) { return { err: String(e) }; }
+  });
+  ok('2.1 Bild kopieren: Zwischenablage hat image/png (andere Programme) + HTML mit Saga-Block', clip.types && clip.types.includes('image/png') && clip.saga, clip);
+  const p2 = await p.context().newPage();
+  await p2.goto(BASE + '/notes#' + s.z); await p2.waitForSelector('#pg-editor .ce-paragraph'); await p2.waitForTimeout(900);
+  await p2.locator('#pg-editor .ce-paragraph').nth(1).click(); await p2.keyboard.press(mod + '+v'); await p2.waitForTimeout(2500);
+  const zb = await blocks(s.z);
+  ok('2.1 Bild einfuegen: andere Seite im anderen Tab – gleiche Datei, Unterschrift/Rahmen bleiben, leerer Absatz ersetzt',
+    zb.length === 2 && zb[1].type === 'image' && zb[1].data.file.url === s.url && zb[1].data.caption === 'Grün' && zb[1].data.withBorder, zb.map(b => b.type));
+  await p2.close(); await p.bringToFront();
+  await p.click('#pg-editor .image-tool__image-picture'); await p.waitForTimeout(300);
+  await p.keyboard.press(mod + '+x'); await p.waitForTimeout(2500);
+  let ab = await blocks(s.a);
+  ok('2.1 Bild ausschneiden: Block aus der Seite entfernt (gespeichert)', ab.length === 2 && !ab.some(b => b.type === 'image'), ab.map(b => b.type));
+  await p.locator('#pg-editor .ce-paragraph').first().click(); await p.keyboard.press('End');
+  await p.keyboard.press(mod + '+v'); await p.waitForTimeout(2500);
+  ab = await blocks(s.a);
+  ok('2.1 Bild einfuegen: in derselben Seite wieder an der Schreibmarke', ab.length === 3 && ab[1].type === 'image' && ab[1].data.file.url === s.url, ab.map(b => b.type));
+  if (E.SAGA_USER2) {
+    const q = await session(browser, { user: E.SAGA_USER2, pass: E.SAGA_PASS2 });
+    const f = (await q.api('POST', '/api/notes', { title: 'Fremde Seite' })).id;
+    await q.api('PATCH', '/api/notes/' + f, { body: JSON.stringify({ blocks: [{ type: 'paragraph', data: { text: 'fremd' } }] }) });
+    await q.api('PUT', '/api/notes/' + f + '/shares', { type: 'user', target: USER, role: 'edit' });
+    await p.click('#pg-editor .image-tool__image-picture'); await p.waitForTimeout(300);
+    await p.keyboard.press(mod + '+c'); await p.waitForTimeout(800);
+    await p.open(f);
+    await p.locator('#pg-editor .ce-paragraph').first().click(); await p.keyboard.press('End');
+    await p.keyboard.press(mod + '+v'); await p.waitForTimeout(2500);
+    const fb = JSON.parse((await q.api('GET', '/api/notes/' + f)).body || '{}').blocks || [], img = fb.find(b => b.type === 'image');
+    const st = img ? await q.evaluate(async u => (await fetch(u)).status, img.data.file.url) : 0;
+    ok('2.1 Bild einfuegen: fremde Seite – Kopie fuer deren Eigentuemer (eigene Datei, sichtbar)', img && img.data.file.url !== s.url && st === 200, { fb, st });
+    await q.api('DELETE', '/api/notes/' + f); await q.context().close();
+  }
+  for (const id of [s.a, s.z]) await p.api('DELETE', '/api/notes/' + id);
+  await p.context().close();
+}
+
 (async () => {
   const browser = await chromium.launch({ channel: process.env.PW_CHANNEL || 'chrome', headless: true });
   try {
     if (process.env.SAGA_ONLY === 'passkeys') { await passkeys(browser); throw null; }     // nur die Passkey-Pruefungen
     if (process.env.SAGA_ONLY === 'avatars') { await avatars(browser); await presence(browser); throw null; }   // nur die Profilbild-Pruefungen
+    if (process.env.SAGA_ONLY === 'chatimg') { await chatThumbs(browser); throw null; }                         // nur Chat-Bilder
+    if (process.env.SAGA_ONLY === 'imgclip') { await imageClipboard(browser); throw null; }                     // nur Bild kopieren/einfuegen
     const p = await session(browser);
     await enterFallback(p);
     await reloadKeeps(p);
@@ -417,6 +553,8 @@ async function presence(browser) {
     await commentSnippet(p);
     await p.context().close();
     await chatImmich(browser);
+    await chatThumbs(browser);
+    await imageClipboard(browser);
     await narrow(browser);
     await passkeys(browser);
     await avatars(browser);

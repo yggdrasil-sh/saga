@@ -10,7 +10,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import STATE_DIR, _api_guard, _bad, _session_user, t
+from saga.core import STATE_DIR, _api_guard, _bad, _body, _session_user, t
 from saga.notes import FILES_DIR, FILE_MAX, FILE_QUOTA, _disposition
 from saga.sharing import Access, access
 
@@ -161,6 +161,41 @@ async def api_file_upload(request: Request):
     ext = name.rsplit(".", 1)[-1].lower()[:10] if "." in name else ""
     return JSONResponse({"success": 1, "file": {"url": f"/files/{fid}", "name": name, "size": len(data),
                                                "extension": ext, "title": name}})
+
+
+@router.post("/api/files/copy")
+async def api_file_copy(request: Request):
+    """Kopieren/Ausschneiden + Einfuegen von Bild- und Dateibloecken (2.1): {url: "/files/<id>", note?: <ziel-seite>} -> {url}.
+    Gehoert die Datei schon dem Eigentuemer der Zielseite, bleibt die Referenz gleich. Sonst (fremde Seite, anderes Konto)
+    bekommt der Eigentuemer der Zielseite eine eigene Kopie - nur so sehen alle mit Zugriff auf die Zielseite das Bild,
+    zaehlt es bei ihm und ueberlebt das Aufraeumen. Ich muss die Quelle sehen und die Zielseite bearbeiten duerfen."""
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    b = await _body(request)
+    m = re.fullmatch(r"/files/([0-9a-f]{24})", str((b or {}).get("url") or ""))
+    if not m:
+        return _bad(t("ungültige Angabe"))
+    fid = m.group(1)
+    owner, err = upload_owner(uid, (b or {}).get("note"))
+    if err is not None:
+        return err
+    with _db() as c, c:
+        r = c.execute("SELECT name, mime, size, is_image, uid FROM file WHERE id=?", (fid,)).fetchone()
+        if not r or (r[4] != uid and not _file_visible(c, uid, r[4], fid)) or not os.path.isfile(os.path.join(FILES_DIR, fid)):
+            return _bad("not found", 404)
+        if r[4] == owner:
+            return JSONResponse({"url": f"/files/{fid}", "copied": False})
+        used = c.execute("SELECT COALESCE(SUM(size),0) FROM file WHERE uid=?", (owner,)).fetchone()[0]
+        if used + r[2] > FILE_QUOTA:
+            return JSONResponse({"error": t("Speicherplatz voll (max. {n} MB)", n=FILE_QUOTA // 1048576)}, status_code=507)
+        nid = os.urandom(12).hex()
+        with open(os.path.join(FILES_DIR, fid), "rb") as src, open(os.path.join(FILES_DIR, nid), "wb") as dst:
+            dst.write(src.read())
+        c.execute("INSERT INTO file (id, uid, name, mime, size, is_image, created) VALUES (?,?,?,?,?,?,?)",
+                  (nid, owner, r[0], r[1], r[2], r[3], time.time()))
+    print(f"files: Kopie {fid} -> {nid} fuer Seite eines anderen Kontos", flush=True)
+    return JSONResponse({"url": f"/files/{nid}", "copied": True})
 
 
 THUMB_W = (160, 320, 640, 1280, 2000)           # erlaubte Breiten fuer ?w=
