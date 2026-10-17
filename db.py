@@ -627,6 +627,14 @@ ALTER TABLE note ADD COLUMN IF NOT EXISTS updated_by TEXT;
 ALTER TABLE note ADD COLUMN IF NOT EXISTS created_by TEXT;
 ALTER TABLE note_version ADD COLUMN IF NOT EXISTS author TEXT;
 """,
+    # 2.1.0: Zweiter Faktor (mfa_*), Profilbilder (avatar*), Anrufe (chat_call*). Die Tabellen legt SCHEMA oben an
+    # (CREATE TABLE IF NOT EXISTS - auf testing-Installationen gibt es sie schon); diese Migration hebt den Schema-Stand,
+    # damit 2.0.x und aelter auf einer 2.1-Datenbank NICHT mehr starten (SchemaTooNew): sonst liefe z. B. 2.0.0 weiter
+    # und liesse Konten mit 2FA nur mit dem Passwort hinein. Sie prueft nur, dass die Tabellen da sind (aendert nichts,
+    # beliebig oft ausfuehrbar); vorher legt init_schema wie bei jeder Migration ein Backup an.
+    6: """
+SELECT 1 FROM mfa_passkey, mfa_totp, mfa_recovery, mfa_challenge, avatar, avatar_img, chat_call, chat_call_signal LIMIT 0;
+""",
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
 BACKUP_DIR = os.path.join(os.environ.get("STATE_DIR", "/data"), "backups")

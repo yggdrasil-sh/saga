@@ -1,5 +1,5 @@
 """Versionierung: /api/version, Datenbank-Migrationen (genau einmal, vorher Backup), Schutz vor zu neuer Datenbank."""
-import http.client, json, os, sys, urllib.parse
+import http.client, json, os, sys, time, urllib.parse
 import psycopg
 import db
 from version import VERSION, newer, parse
@@ -44,6 +44,31 @@ try:
     ok("Migration: vorher automatisch Backup", len(backups()) == n0 + 1 and any("vor-schema" in f for f in new))
     db.init_schema()
     ok("Zweiter Start: keine erneute Migration, kein Backup", len(backups()) == n0 + 1)
+    # 2.1: Migration 6 = Rueckweg-Sperre (2.0.x startet nicht auf einer 2.1-Datenbank). Update von einer 2.1-Testversion
+    # (Stand 5, die neuen Tabellen gibt es schon) -> Backup "vor-schema-6", dann Stand 6; Migration 6 aendert nichts.
+    ok("Schema 2.1: Migration 6 vorhanden", db.SCHEMA_VERSION >= 6 and 6 in db.MIGRATIONS)
+    with psycopg.connect(db.DATABASE_URL) as c:
+        c.execute("DELETE FROM schema_version WHERE v > 5")
+        tabs = c.execute("SELECT count(*) FROM information_schema.tables WHERE table_name IN "
+                         "('mfa_totp','mfa_passkey','mfa_recovery','avatar','chat_call')").fetchone()[0]
+    n1 = len(backups())
+    time.sleep(1.1)                                # Backup-Name hat Sekunden - nicht den von eben ueberschreiben
+    db.init_schema()
+    new6 = [f for f in backups() if f not in before and "vor-schema-6" in f]
+    ok(f"Update 2.1-testing (Stand 5) -> 6 mit Backup vorher ({len(new6)})", db.schema_version() == db.SCHEMA_VERSION
+       and len(backups()) == n1 + 1 and new6 and tabs == 5)
+    with psycopg.connect(db.DATABASE_URL) as c:
+        c.execute(db.MIGRATIONS[6])
+    ok("Migration 6 beliebig oft ausfuehrbar", True)
+    real = db.SCHEMA_VERSION
+    db.SCHEMA_VERSION = 5                          # so sieht 2.0.x / eine aeltere 2.1-Testversion die Datenbank
+    try:
+        db.init_schema()
+        ok("Rueckweg: Stand-5-Version startet nicht", False)
+    except db.SchemaTooNew as ex:
+        ok(f"Rueckweg: Stand-5-Version verweigert den Start ({str(ex)[:60]}…)", "Schema-Stand 6" in str(ex) and "kennt nur 5" in str(ex))
+    finally:
+        db.SCHEMA_VERSION = real
     with psycopg.connect(db.DATABASE_URL) as c:
         c.execute("INSERT INTO schema_version (v) VALUES (%s)", (db.SCHEMA_VERSION + 1,))
     try:
