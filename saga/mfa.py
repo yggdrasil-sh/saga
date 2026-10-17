@@ -536,7 +536,7 @@ def _state(request, uid):
     return {"supported": supported(info), "source": info["source"], "enabled": has_mfa(uid, f), "required": required(info),
             "passkeys": passkey_list(uid), "totp": f["totp"], "totp_since": tp[0] if tp else None, "recovery_left": f["recovery"],
             "recovery_total": REC_N, "passkey_problem": rp_problem(), "origin": ORIGIN, "rp_id": RP_ID, "fresh": fresh(request),
-            "methods": methods(uid)}
+            "methods": methods(uid), "user": uid}
 
 
 @router.get("/api/account/security")

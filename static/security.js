@@ -78,14 +78,16 @@
       var list = el('ol', 'mfa-codes'); list.setAttribute('aria-label', T('Wiederherstellungscodes'));
       codes.forEach(function (c) { list.appendChild(el('li', null, c)); });
       codesBox.appendChild(list);
-      var txt = T('Saga – Wiederherstellungscodes') + '\n' + location.origin + '\n\n' + codes.join('\n') + '\n';
+      // Datei/Zwischenablage mit Konto und Datum - wer mehrere Konten hat, findet die richtigen Codes wieder
+      var txt = T('Saga – Wiederherstellungscodes') + '\n' + T('Konto: {user}', { user: S.user || '' }) + ' · ' + location.origin + '\n' +
+        T('Erstellt: {date}', { date: new Date().toLocaleString(window.SAGA_LOCALE) }) + '\n\n' + codes.join('\n') + '\n';
       var bar = el('div', 'hk-actions');
       bar.appendChild(button(T('Kopieren'), '', function () {
         (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(function () { HK.toast(T('Kopiert')); },
           function () { HK.toast(T('Kopieren nicht möglich – bitte abschreiben.')); });
       }));
       bar.appendChild(button(T('Als Datei speichern'), '', function () {
-        var a = el('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' })); a.download = 'saga-recovery-codes.txt';
+        var a = el('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' })); a.download = 'saga-recovery-codes' + (S.user ? '-' + String(S.user).replace(/[^\w.-]+/g, '_') : '') + '.txt';
         document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
       }));
       bar.appendChild(button(T('Ich habe sie gespeichert'), 'btn-primary', function () { codesBox.hidden = true; codesBox.textContent = ''; }));
@@ -103,6 +105,13 @@
       passkeys(); totp(); recovery();
     }
 
+    // Hinweis, wenn der letzte Faktor geht (Bughunt 2: sonst war 2FA danach still aus)
+    function last(text, isLast) {
+      if (!isLast) return text;
+      var n = el('span'); n.appendChild(document.createTextNode(text)); n.appendChild(el('br')); n.appendChild(el('br'));
+      n.appendChild(el('strong', 'mfa-last', T('Das ist dein letzter zweiter Faktor: Danach ist die Zwei-Faktor-Anmeldung aus und deine Wiederherstellungscodes verfallen.')));
+      return n;
+    }
     function passkeys() {
       var box = el('div', 'mfa-block'); body.appendChild(box);
       box.appendChild(el('h5', null, T('Passkeys')));
@@ -122,7 +131,8 @@
         }));
         row.appendChild(button(T('Löschen'), 'btn-danger', function () {
           HK.ask({ title: T('Passkey löschen?'), ok: T('Löschen'), danger: true,
-                   text: T('„{name}“ kann sich danach nicht mehr bei Saga anmelden. Im Passwort-Manager des Geräts bleibt er stehen – dort kannst du ihn ebenfalls entfernen.', { name: p.name }) })
+                   text: last(T('„{name}“ kann sich danach nicht mehr bei Saga anmelden. Im Passwort-Manager des Geräts bleibt er stehen – dort kannst du ihn ebenfalls entfernen.', { name: p.name }),
+                              S.passkeys.length === 1 && !S.totp) })
             .then(function (yes) {
               if (!yes) return;
               guarded(function () { return api('DELETE', '/api/account/passkeys/' + p.id); }).then(load).catch(function (e) { HK.toast(e.message); });
@@ -160,7 +170,7 @@
         if (S.totp_since) row.appendChild(el('span', 'hk-hint', T('seit {date}', { date: when(S.totp_since) })));
         row.appendChild(button(T('Entfernen'), 'btn-danger', function () {
           HK.ask({ title: T('Authenticator-App entfernen?'), ok: T('Entfernen'), danger: true,
-                   text: T('Saga fragt danach keinen Code aus der App mehr ab.') }).then(function (yes) {
+                   text: last(T('Saga fragt danach keinen Code aus der App mehr ab.'), !S.passkeys.length) }).then(function (yes) {
             if (!yes) return;
             guarded(function () { return api('DELETE', '/api/account/totp'); }).then(load).catch(function (e) { HK.toast(e.message); });
           });
