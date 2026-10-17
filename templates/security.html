@@ -16,6 +16,10 @@
   <div class="auth-card" id="security-page" data-need="{{ '1' if need else '' }}">
     <div class="auth-brand"><img src="/static/icon.svg?v={{ v }}" alt="" width="44" height="44"><h1>{{ title }}</h1></div>
     <h2 class="auth-h">{{ _("Anmeldung & Sicherheit") }}</h2>
+    {% if other %}<div class="auth-note sec-other" role="alert" id="sec-other">
+      <p>{{ _("Hier ist {me} angemeldet, die App gehört zu {other}.", me=me, other=other) }}</p>
+      <a class="btn btn-primary auth-btn" href="/logout?next=/security">{{ _("Abmelden und als {other} anmelden", other=other) }}</a>
+    </div>{% endif %}
     {% if need %}<p class="auth-note">{{ _("Hallo {name}! Dein Admin verlangt für dein Konto einen zweiten Faktor. Richte jetzt einen Passkey oder eine Authenticator-App ein – das dauert eine Minute.", name=name) }}</p>{% endif %}
     <div id="security-host"></div>
     <a class="btn btn-primary auth-btn" id="sec-next" href="{{ nxt }}">{{ _("Weiter") }}</a>

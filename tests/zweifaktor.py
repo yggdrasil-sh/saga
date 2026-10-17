@@ -351,6 +351,16 @@ def flows():
     ok("... Dashboard/Seiten fuehren zur Einrichtung", wn.req("GET", "/")[1] == "/security" and wn.req("GET", "/notes")[1] == "/security")
     s, _, html = wn.req("GET", "/security")
     ok("... Einrichtungsseite erklaert es", s == 200 and 'data-need="1"' in html and "verlangt" in html)
+    # Bughunt 2 (Android): /security?user=<Anmeldename> aus der App - anderes Konto im Browser -> deutlicher Hinweis
+    s, _, html = wn.req("GET", "/security?user=zf-andere")
+    ok("?user= anderes Konto: Hinweis mit Abmelden-und-neu-anmelden", s == 200 and 'id="sec-other"' in html and "zf-andere" in html
+       and "/logout?next=/security" in html)
+    s, _, html = wn.req("GET", "/security?user=ZF-ADM")
+    ok("?user= eigenes Konto: kein Hinweis", s == 200 and 'id="sec-other"' not in html)
+    s, loc, html = client().req("GET", "/security?user=zf-adm")
+    ok(f"?user= ohne Sitzung: nur Anmeldeseite, kein Name ({loc})", s == 303 and loc == "/login?next=/security" and "zf-adm" not in (html or ""))
+    s, loc, _ = client("zf-user").req("GET", "/logout?next=/security")
+    ok(f"/logout?next=/security -> Anmeldung mit Ziel /security ({loc})", s == 303 and loc == "/login?bye=1&next=/security")
     ok("... nicht ausgesperrt (API geht)", wn.api("GET", "/api/notes")[0] == 200)
     ok("Upgrade-Pfad: bestehende Sitzung bleibt gueltig", oldsess.api("GET", "/api/notes")[0] == 200 and oldsess.req("GET", "/")[0] == 200)
     s, _, _ = Client(S2, f"localhost:{P}").req("POST", "/app/resume", js={"device_token": "hkd_zf-alt-geraet"})

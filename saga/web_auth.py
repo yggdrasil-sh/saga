@@ -117,7 +117,8 @@ def _password_ok(request, user):
 @router.get("/login")
 def login(request: Request):
     nxt = _next(request.query_params.get("next", request.session.get("next", "/")))
-    if _session_user(request):
+    # prompt=login (App: Konto wechseln, /app/login?...&prompt=login): trotz Sitzung die Anmeldemaske zeigen
+    if _session_user(request) and request.query_params.get("prompt") != "login":
         return RedirectResponse(nxt, status_code=303)
     request.session["next"] = nxt
     o = _auth_opts()
@@ -372,7 +373,8 @@ async def logout(request: Request):
                 q = {"post_logout_redirect_uri": BASE_URL + "/login?bye=1", "client_id": auth.settings()["oidc"]["client_id"],
                      "id_token_hint": id_token}
                 return RedirectResponse(f"{end}?{urlencode(q)}", status_code=303, headers=_BYE)
-    return RedirectResponse("/login?bye=1", status_code=303, headers=_BYE)
+    nxt = _next(request.query_params.get("next"))           # z. B. /security: "als anderes Konto anmelden"
+    return RedirectResponse("/login?bye=1" + ("&next=" + nxt if nxt != "/" else ""), status_code=303, headers=_BYE)
 
 
 # --- Eigenes Konto -----------------------------------------------------------------------------------

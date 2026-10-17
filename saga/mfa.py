@@ -456,12 +456,16 @@ def setup_redirect(request, uid):
 def security_page(request: Request):
     """Eigene Seite "Anmeldung & Sicherheit" - Ziel nach der Anmeldung, wenn ein zweiter Faktor verlangt wird."""
     uid = _session_user(request)
-    if not uid:
-        return RedirectResponse("/login?next=/security", status_code=303)     # z. B. aus den App-Einstellungen geoeffnet
+    if not uid:                                       # z. B. aus den App-Einstellungen geoeffnet - ohne Sitzung kein Name
+        return RedirectResponse("/login?next=/security", status_code=303)
     info = user_info(uid)
     nxt = request.session.get("mfa_next") or "/"
+    # ?user=<Anmeldename> (App "Im Browser verwalten"): ist hier ein ANDERES Konto angemeldet, deutlich darauf hinweisen
+    want = (request.query_params.get("user") or "").strip()[:100]
+    other = want if want and want.lower() != uid.lower() else ""
     html = tmpl.get_template("security.html").render(title=title(), v=ASSET_V, name=info["name"], nxt=nxt if nxt in ("/", "/notes", "/app/handoff") else "/",
-                                                     need=bool(request.session.get("mfa_setup")) and required(info) and not has_mfa(uid))
+                                                     need=bool(request.session.get("mfa_setup")) and required(info) and not has_mfa(uid),
+                                                     me=uid, other=other)
     return HTMLResponse(html, headers=SEC_HEADERS)
 
 

@@ -55,6 +55,13 @@ ok("Aeltere Apps: Kopfzeile X-Hlidskjalf gilt weiter", req("GET", "/api/notes", 
 s, loc, s2, loc2, code = flow(v := ver())
 ok(f"/app/login -> {loc}", s == 303 and loc == "/app/handoff")
 ok(f"/app/handoff -> saga://auth?code=…", s2 == 303 and loc2.startswith("saga://auth?code=") and len(code) > 30)
+# Bughunt 2 (Android): Kontowechsel in der App - prompt=login zeigt trotz Browser-Sitzung die Anmeldemaske
+s, h, sc, _ = req("GET", "/app/login?scheme=saga&prompt=login&challenge=" + chal(ver()), {"saga": ck(REAL)})
+ok(f"prompt=login mit Sitzung -> Anmeldemaske statt Uebergabe ({h.get('location')})", s == 303 and h.get("location") == "/login?next=/app/handoff&prompt=login"
+   and any(x.startswith("hk_app_t=") for x in sc))
+s, h, _, raw = req("GET", "/login?next=/app/handoff&prompt=login", {"saga": ck(REAL)})
+ok(f"/login?prompt=login mit Sitzung -> Formular ({s})", s == 200 and b'type="password"' in raw)
+ok("/login ohne prompt mit Sitzung -> weiter wie bisher", req("GET", "/login?next=/app/handoff", {"saga": ck(REAL)})[0] == 303)
 s, h, sc, raw = req("POST", "/app/exchange", body={"code": code, "verifier": ver()})
 ok("Falsches Geheimnis -> 401", s == 401)
 ok("Code nach Fehlversuch verbraucht", req("POST", "/app/exchange", body={"code": code, "verifier": v})[0] == 401)

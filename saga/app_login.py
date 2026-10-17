@@ -41,11 +41,15 @@ def _appcode_db(c):
 
 
 @router.get("/app/login")
-def app_login(request: Request, challenge: str = "", scheme: str = "hlidskjalf"):
+def app_login(request: Request, challenge: str = "", scheme: str = "hlidskjalf", prompt: str = ""):
+    """prompt=login (App: Konto wechseln): eine bestehende Browser-Sitzung zaehlt nicht - Anmeldemaske zeigen. Die alte
+    Sitzung bleibt bis zur neuen Anmeldung bestehen (kein Abmelden per fremdem Link)."""
     if not _CHALLENGE_RE.fullmatch(challenge) or scheme not in APP_SCHEMES:
         return PlainTextResponse(t("ungültige Anfrage"), status_code=400)
-    logged_in = bool(_session_user(request))
-    resp = RedirectResponse("/app/handoff" if logged_in else "/login?next=/app/handoff", status_code=303)
+    relogin = prompt == "login"
+    logged_in = bool(_session_user(request)) and not relogin
+    resp = RedirectResponse("/app/handoff" if logged_in else "/login?next=/app/handoff" + ("&prompt=login" if relogin else ""),
+                            status_code=303)
     # eigenes Cookie: die Anmeldung (callback) leert die Sitzung, dieses bleibt erhalten
     sec = BASE_URL.startswith("https")
     resp.set_cookie("hk_app_ch", challenge, max_age=600, httponly=True, secure=sec, samesite="lax", path="/app")

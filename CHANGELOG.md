@@ -36,6 +36,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Seiten:** Esc in einem Dialog im Peek schließt nur den Dialog; bei offenem Menü „+ Neue Seite“ sofort getippter
   Text wird Titel einer leeren Seite.
 - **2FA:** Rückfrage beim Löschen des letzten Faktors sagt, dass 2FA danach aus ist; Codes-Datei mit Konto und Datum.
+- **Apps, Konto wechseln:** `/security?user=<Anmeldename>` weist darauf hin, wenn im Browser ein anderes Konto
+  angemeldet ist („Abmelden und als … anmelden“); `/app/login?…&prompt=login` zeigt trotz Browser-Sitzung die
+  Anmeldemaske; `/logout?next=/security` führt danach direkt zur Anmeldung mit diesem Ziel.
 - Kleinigkeiten: Zoom-Regler beim Profilbild in Saga-Farbe, kein altes „✓ Gespeichert“ neben einer neuen Meldung;
   Anleitung zu veröffentlichten Seiten (keine Kopfzeile mit @name mehr).
 
