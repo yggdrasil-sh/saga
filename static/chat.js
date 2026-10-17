@@ -1463,6 +1463,7 @@
   window.HKChat = { state: function () { return { ready: S.ready, device: dev(), cur: S.cur && S.cur.id, msgs: S.msgs.length }; },
     callApi: { ready: function () { return !!(S.ready && K && X); }, me: function () { return ME; }, crypto: function () { return X; },
                device: function () { return K.device; }, peerKeys: callPeer, cur: function () { return S.cur; },
-               refresh: function (cid) { if (S.cur && S.cur.id === cid) loadMsgs(false); } } };
+               // Anruf vorbei: offenen Chat auffrischen - ist keiner offen (angenommen von einer anderen Seite), den des Anrufs oeffnen
+               refresh: function (cid) { if (S.cur && S.cur.id === cid) loadMsgs(false); else if (!S.cur && S.ready && cid) openChat(cid); } } };
   start();
 })();

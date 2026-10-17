@@ -170,6 +170,15 @@
     });
   }
 
+  // getMedia mit Hinweis, wenn die Freigabe-Abfrage des Browsers offen bleibt (Safari fragt oft erst nach dem Klick)
+  function mediaHint(c, video) {
+    var t = setTimeout(function () {
+      if (C === c && !c.local) status(c, video ? T('Bitte Kamera und Mikrofon im Browser erlauben – die Abfrage steht oben bzw. neben der Adresse.')
+        : T('Bitte das Mikrofon im Browser erlauben – die Abfrage steht oben bzw. neben der Adresse.'));
+    }, 2500);
+    return getMedia(video).then(function (s) { clearTimeout(t); return s; }, function (e) { clearTimeout(t); throw e; });
+  }
+
   // --- Anruf-Objekt ----------------------------------------------------------------------------------------------
   function newCall(o) {
     return Object.assign({ id: null, chat_id: null, role: 'caller', media: 'audio', peer: {}, peerDevs: {}, peerDevice: null,
@@ -248,6 +257,7 @@
   function addLocal(c, pc, fromOffer) {
     var a = c.local.getAudioTracks()[0] || null, v = c.local.getVideoTracks()[0] || null;
     c.cam = v;
+    drawCtl(c);                                        // Kamera-Knopf: beim Klingeln ohne Kamera gezeichnet (Bughunt 2)
     if (a) a.enabled = c.mic;                          // Mikrofon wirklich senden (Stumm-Zustand gilt von Anfang an)
     if (!fromOffer) {
       pc.addTransceiver(a || 'audio', { direction: 'sendrecv', streams: [c.local] });
@@ -285,7 +295,7 @@
       c.fps = X().sdpFingerprints(b.sdp);
       c.pc.setRemoteDescription({ type: 'answer', sdp: b.sdp }).then(function () { applyRemoteIce(c); }).catch(function (e) { fail(c, T('Verbindung nicht aufgebaut: {err}', { err: e.message })); });
     } else if (b.t === 'state') {
-      c.remoteState = { mic: b.mic !== false, cam: !!b.cam, screen: !!b.screen }; c.gotState = true; drawMedia(c);
+      c.remoteState = { mic: b.mic !== false, cam: !!b.cam, screen: !!b.screen }; c.gotState = true; drawMedia(c); drawInfo(c);
     }
   }
   function fpOk(b) {
@@ -315,7 +325,7 @@
       return peerKeys(c);
     }).then(function (k) {
       if (!k.devices.length) throw new Error(T('{name} hat Chats noch auf keinem Gerät eingerichtet – Anrufe gehen erst danach.', { name: c.peer.name }));
-      return getMedia(video);
+      return mediaHint(c, video);
     }).then(function (s) {
       if (C !== c) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
       c.local = s; c.media = s.getVideoTracks().length ? 'video' : 'audio'; drawMedia(c); sinkPick(c);
@@ -366,7 +376,7 @@
       });
       if (!offer || !fpOk(offer)) { securityFail(c); throw null; }
       c.peerDevice = c.call.caller_device; c.fps = X().sdpFingerprints(offer.sdp);
-      return getMedia(video);
+      return mediaHint(c, video);
     }).then(function (s) {
       if (C !== c) { s.getTracks().forEach(function (t) { t.stop(); }); throw null; }
       c.local = s; drawMedia(c); sinkPick(c);
@@ -579,7 +589,8 @@
     var r = d.reason, name = c.peer.name || '';
     var msg = r === 'declined' ? (c.role === 'caller' ? T('{name} hat abgelehnt.', { name: name }) : T('Abgelehnt.'))
       : r === 'busy' ? T('Besetzt – {name} telefoniert gerade.', { name: name })
-      : r === 'timeout' ? (c.role === 'caller' ? T('{name} hat nicht abgenommen.', { name: name }) : T('Verpasster Anruf.'))
+      : r === 'timeout' ? (c.role === 'caller' ? T('{name} hat nicht abgenommen.', { name: name })
+        : !c.ready ? T('Der Anruf ist abgelaufen, bevor Mikrofon/Kamera freigegeben waren – bitte zurückrufen.') : T('Verpasster Anruf.'))
       : r === 'cancelled' ? T('{name} hat aufgelegt.', { name: name })
       : r === 'lost' ? T('Verbindung verloren.')
       : r === 'failed' ? T('Die Verbindung kam nicht zustande.')
@@ -598,6 +609,9 @@
     if (C === c) C = null;
     if (c.ui) {
       status(c, msg || '', kind === 'error');
+      // vorbei: keine Laufzeit/Verbindungsangaben und kein schwarzes Eigenbild mehr
+      c.ui.info.textContent = ''; c.ui.un.hidden = true; if (c.ui.sink) c.ui.sink.remove();
+      c.ui.lv.srcObject = null; c.ui.lv.hidden = true; c.ui.w.classList.remove('has-video', 'screen', 'peer-muted');
       c.ui.ctl.textContent = '';
       c.ui.ctl.appendChild(btn(T('Schließen'), 'cl-pill', function () { closeWin(c); }));
       if (kind !== 'error') setTimeout(function () { closeWin(c); }, 3500);
@@ -637,7 +651,7 @@
   }
   function status(c, s, err) { if (c.ui) { c.ui.st.textContent = s || ''; c.ui.st.classList.toggle('err', !!err); c.ui.st.hidden = !s; } }
   function drawInfo(c) {
-    if (!c.ui) return;
+    if (!c.ui || c.done) return;
     var i = c.ui.info; i.textContent = '';
     if (!c.ready && !c.connected) return;
     i.appendChild(el('span', 'cl-lock', '🔒 ' + (c.verified ? T('Ende-zu-Ende verschlüsselt') : T('verschlüsselt'))));
@@ -646,7 +660,9 @@
       i.appendChild(el('span', null, dur((Date.now() - c.t0) / 1000)));
       if (c.path) i.appendChild(el('span', 'cl-path', c.path === 'relay' ? T('über Relais (TURN)') : T('direkt')));
       if (c.q) { var qq = el('span', 'cl-q cl-q-' + c.q, c.q === 'good' ? T('gute Verbindung') : c.q === 'mid' ? T('mittlere Verbindung') : T('schwache Verbindung')); i.appendChild(qq); }
-      if (c.snd === 'ok') i.appendChild(el('span', 'cl-snd', T('Ton: empfangen')));
+      // stumm beim Gegenueber: auch bei laufendem Video sichtbar (der Name mit 🔇 ist dann ausgeblendet)
+      if (c.remoteState.mic === false) i.appendChild(el('span', 'cl-snd cl-peer-muted', '🔇 ' + T('{name} ist stummgeschaltet', { name: c.peer.name || c.peer.username || '' })));
+      else if (c.snd === 'ok') i.appendChild(el('span', 'cl-snd', T('Ton: empfangen')));
       else if (c.snd === 'none' || c.snd === 'blocked') {
         var sn = el('span', 'cl-snd cl-snd-no', c.snd === 'blocked' ? T('Ton: blockiert') : T('Ton: kein Ton'));
         sn.title = c.snd === 'blocked' ? T('Der Browser hat den Ton blockiert – tippen, um ihn einzuschalten') : T('Vom Gegenüber kommt kein Ton an.');
@@ -656,7 +672,7 @@
     if (c.ui.un) c.ui.un.hidden = !c.audioBlocked;
   }
   function drawMedia(c) {
-    if (!c.ui) return;
+    if (!c.ui || c.done) return;
     var rvid = c.remote.getVideoTracks().filter(function (t) { return t.readyState === 'live' && !t.muted; }).length > 0;
     var show = rvid && (c.gotState ? c.remoteState.cam || c.remoteState.screen : true);
     c.ui.w.classList.toggle('has-video', show);
