@@ -510,8 +510,10 @@ def run():
     ok("Nachricht mit Anhang", s == 200)
     s, got = req("GET", f"/api/chat/files/{up['id']}", B.k)
     hdr = req.last_headers
-    ok("B holt den Blob und entschluesselt ihn", s == 200 and C.decrypt_file(str(cid), got, fkey) == data and hdr.get("content-type") == "application/octet-stream"
-       and "no-store" in hdr.get("cache-control", ""))
+    ok("B holt den Blob und entschluesselt ihn", s == 200 and C.decrypt_file(str(cid), got, fkey) == data and hdr.get("content-type") == "application/octet-stream")
+    ok(f"Blob einer Nachricht: privat + unveraenderlich zwischenspeicherbar ({hdr.get('cache-control')})",
+       hdr.get("cache-control", "").startswith("private, max-age=") and "immutable" in hdr.get("cache-control", "")
+       and int(hdr["cache-control"].split("max-age=")[1].split(",")[0]) > 300 * 86400)
     ok("C -> 404", req("GET", f"/api/chat/files/{up['id']}", Cc.k)[0] == 404)
     ok("Dateiname/Inhalt nicht im Klartext gespeichert", plaintext_hits("plan.txt", "Geheimer Anhang") == []
        and b"Geheimer" not in open(os.path.join(CH.CHAT_DIR, up["id"]), "rb").read())
@@ -524,6 +526,46 @@ def run():
     CH.purge()
     ok("Anhang ohne Nachricht nach 1 h aufgeraeumt", not os.path.exists(os.path.join(CH.CHAT_DIR, up2["id"])))
     ok("Anhang zu klein/kaputt -> 400", req("POST", f"/api/chats/{cid}/files", A.k, raw=b"abc")[0] == 400)
+
+    # --- Bilder mit Vorschaubild (2.1): files[] mit w/h/th, Original + Vorschaubild je eigener Anhang ----------------
+    def img_entry(i=0):
+        ob, ok_ = C.encrypt_file(str(cid), b"ORIG" * 300 + bytes([i]))
+        tb, tk = C.encrypt_file(str(cid), b"\xff\xd8\xff" + b"T" * 200)
+        o = req("POST", f"/api/chats/{cid}/files", A.k, raw=ob)[1]
+        t = req("POST", f"/api/chats/{cid}/files", A.k, raw=tb)[1]
+        return {"id": o["id"], "k": C.b64(ok_), "n": f"foto{i}.jpg", "m": "image/jpeg", "s": 1201, "w": 4000, "h": 3000,
+                "th": {"id": t["id"], "k": C.b64(tk), "m": "image/jpeg", "w": 320, "h": 240, "s": 203}}, tk
+    e, tk = img_entry()
+    s, _ = req("GET", f"/api/chat/files/{e['th']['id']}", A.k)
+    ok("Eigenes Vorschaubild vor dem Senden: no-store", s == 200 and "no-store" in req.last_headers.get("cache-control", ""))
+    s, _, im = A.send(cid, "", files=[e], extra={"files": [e["id"], e["th"]["id"]]})
+    ok(f"Bildnachricht mit Vorschaubild senden (2 Kennungen) ({s})", s == 200)
+    s, got = req("GET", f"/api/chat/files/{e['th']['id']}", B.k)
+    ok("B holt das Vorschaubild (immutable) und entschluesselt es", s == 200 and C.decrypt_file(str(cid), got, tk)[:3] == b"\xff\xd8\xff"
+       and "immutable" in req.last_headers.get("cache-control", ""))
+    with connect() as c:
+        ok("Original und Vorschaubild derselben Nachricht zugeordnet",
+           c.execute("SELECT COUNT(DISTINCT msg_seq), COUNT(*) FROM chat_file WHERE id IN (?,?)", (e["id"], e["th"]["id"])).fetchone() == (1, 2))
+    req("DELETE", f"/api/chats/{cid}/messages/{im['id']}", A.k)
+    ok("Fuer alle loeschen entfernt auch das Vorschaubild", req("GET", f"/api/chat/files/{e['th']['id']}", B.k)[0] == 404
+       and not os.path.exists(os.path.join(CH.CHAT_DIR, e["th"]["id"])) and not os.path.exists(os.path.join(CH.CHAT_DIR, e["id"])))
+    ents = [img_entry(i)[0] for i in range(10)]
+    ids = [x for en in ents for x in (en["id"], en["th"]["id"])]
+    s, _, im10 = A.send(cid, "", files=ents, extra={"files": ids})
+    ok(f"10 Bilder + 10 Vorschaubilder (20 Kennungen) in einer Nachricht ({s})", s == 200)
+    ok("me.limits.file_ids_per_msg = 20", req("GET", f"/api/chat/me?device={A.dev['id']}", A.k)[1]["limits"].get("file_ids_per_msg") == 20)
+    extra = img_entry(99)[0]
+    ok("21 Kennungen -> 400", A.send(cid, "", files=[extra], extra={"files": ids[:20] + [extra["id"]]})[0] == 400)
+    s, _, ex = A.send(cid, "", files=[extra], extra={"files": [extra["id"], extra["th"]["id"]]})
+    with connect() as c, c:
+        c.execute("UPDATE chat_msg SET expires_at=? WHERE id=?", (time.time() + 120, ex["id"]))
+    req("GET", f"/api/chat/files/{extra['th']['id']}", B.k)
+    cc = req.last_headers.get("cache-control", "")
+    ok(f"Ablaufende Nachricht: max-age hoechstens bis zum Ablauf ({cc})", "max-age=" in cc and int(cc.split("max-age=")[1].split(",")[0]) <= 120)
+    with connect() as c, c:
+        c.execute("UPDATE chat_msg SET expires_at=? WHERE id IN (?,?)", (time.time() - 1, ex["id"], im10["id"]))
+    CH.purge()
+    ok("Abgelaufen: Originale und Vorschaubilder aufgeraeumt", not any(os.path.exists(os.path.join(CH.CHAT_DIR, x)) for x in ids + [extra["id"], extra["th"]["id"]]))
 
     # --- Rate-Limit ---------------------------------------------------------------------------------------------------
     rcl = C.recipients_of(req("GET", f"/api/chats/{cid}/recipients", A.k)[1]["recipients"])

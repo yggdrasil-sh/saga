@@ -24,6 +24,50 @@ def seed(tag):
     return C.gh(("saga-chat-vector-seed:" + tag).encode())          # 32 Bytes, reproduzierbar
 
 
+# 2.1: Bildnachricht mit Vorschaubild (files[] mit w/h/th). Original und Vorschaubild sind je ein eigener Anhang mit
+# eigenem Schluessel; die Nachricht nennt beide Kennungen im files-Feld der Sende-Anfrage (send_files), damit der Server
+# beide der Nachricht zuordnet (Aufraeumen, "fuer alle loeschen"). Inhalt: ein 8x6-JPEG ohne Metadaten (Beispiel).
+THUMB_JPEG_B64 = (
+    "/9j/4AAQSkZJRgABAQAASABIAAD/wAARCAAGAAgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEG"
+    "E1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKz"
+    "tLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEE"
+    "BSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOk"
+    "paanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9sAQwACAgICAgIEAgIEBgQEBAYIBgYGBggKCAgICAgKDAoKCgoKCgwMDAwMDAwMDg4ODg4O"
+    "EBAQEBASEhISEhISEhIS/9sAQwEDAwMFBAUIBAQIEw0LDRMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMT/90ABAAB/9oADAMBAAIRAxEAPwDn"
+    "Phd+yv4a/d8x9u3/ANavfv8Ahlfw16x/l/8AWrs/hb/yz/Cvfq8POOI8x+sy/fs18NuLM1/sSj/tMv6t5H//2Q==")
+
+
+def image_vector(dev):
+    chat_id, uid = "7", "anna"
+    orig = "Original-Bild (Beispielinhalt, im echten Betrieb die Bilddatei)\n".encode()
+    thumb = C.unb64(THUMB_JPEG_B64)
+    oid, tid = "OrigFileId0123456789abcd", "ThumbFileId0123456789abc"
+    oblob, okey = C.encrypt_file(chat_id, orig, key=seed("img-Kf"), nonce=seed("img-fnonce")[:24])
+    tblob, tkey = C.encrypt_file(chat_id, thumb, key=seed("thumb-Kf"), nonce=seed("thumb-fnonce")[:24])
+    entry = {"id": oid, "k": C.b64(okey), "n": "foto.jpg", "m": "image/jpeg", "s": 3145728, "w": 4000, "h": 3000,
+             "th": {"id": tid, "k": C.b64(tkey), "m": "image/jpeg", "w": 320, "h": 240, "s": len(thumb)}}
+    body = {"v": 1, "type": "text", "text": "", "files": [entry]}
+    body_json = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
+    K, nonce, ts, mid = seed("img-K"), seed("img-nonce")[:24], 1760000000456, "0123456789abcdef0123456789abcde0"
+    m = C.encrypt(chat_id, uid, dev, None, {}, mid=mid, ts=ts, key=K, nonce=nonce, plain=body_json)
+    return {"chat_id": chat_id, "id": mid, "sender": uid, "device": dev["id"], "ts": ts, "body_json": body_json,
+            "key": C.b64(K), "nonce": C.b64(nonce), "body_ct": m["body_ct"], "sig": m["sig"],
+            "send_files": [oid, tid],
+            "orig": {"plain_b64": C.b64(orig), "key": C.b64(okey), "nonce": C.b64(seed("img-fnonce")[:24]), "blob": C.b64(oblob)},
+            "thumb": {"plain_b64": THUMB_JPEG_B64, "key": C.b64(tkey), "nonce": C.b64(seed("thumb-fnonce")[:24]), "blob": C.b64(tblob)}}
+
+
+def gen_image():
+    """nur den Abschnitt "image" ergaenzen/erneuern (deterministisch; die uebrigen Abschnitte mit zufaelligen
+    crypto_box_seal-Werten bleiben unveraendert)"""
+    v = json.load(open(PATH, encoding="utf-8"))
+    v["image"] = image_vector(C.device(v["device"]["id"], bytes.fromhex(v["device"]["enc_seed_hex"]), bytes.fromhex(v["device"]["sign_seed_hex"])))
+    with open(PATH, "w", encoding="utf-8") as f:
+        json.dump(v, f, ensure_ascii=False, indent=1)
+        f.write("\n")
+    print("geschrieben:", PATH, "(image)")
+
+
 def gen():
     uid, uid_b = "anna", "bert"
     ident = C.identity(seed("ident"), seed("backup"))
@@ -67,6 +111,7 @@ def gen():
                  "sealed_bundle": C.b64(nb.crypto_box_seal(plain.encode(), dev["enc_pk"]))},
         "safety": {"uid_a": uid, "ident_a": C.b64(ident["ident_pk"]), "uid_b": uid_b, "ident_b": C.b64(ident_b["ident_pk"]),
                    "number": C.safety_number(uid, ident["ident_pk"], uid_b, ident_b["ident_pk"])},
+        "image": image_vector(dev),
     }
     with open(PATH, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
@@ -113,12 +158,32 @@ def check(path=PATH):
     ok("link sealed bundle", nb.crypto_box_seal_open(C.unb64(lk["sealed_bundle"]), dev["enc_pk"], dev["enc_sk"]).decode() == r["plain"])
     ok("safety number", C.safety_number(s["uid_a"], C.unb64(s["ident_a"]), s["uid_b"], C.unb64(s["ident_b"])) == s["number"]
        == C.safety_number(s["uid_b"], C.unb64(s["ident_b"]), s["uid_a"], C.unb64(s["ident_a"])))
+    im = v.get("image")
+    ok("image vector present", im is not None)
+    if im:
+        ok("image message encrypt", C.encrypt(im["chat_id"], im["sender"], dev, None, {}, mid=im["id"], ts=im["ts"], key=C.unb64(im["key"]),
+                                              nonce=C.unb64(im["nonce"]), plain=im["body_json"])["body_ct"] == im["body_ct"])
+        raw = C.unb64(im["body_ct"])
+        body = json.loads(nb.crypto_aead_xchacha20poly1305_ietf_decrypt(raw[24:], C.msg_ad(im["chat_id"], im["id"], im["sender"], im["device"], im["ts"], None),
+                                                                        raw[:24], C.unb64(im["key"])))
+        ok("image message open", body == json.loads(im["body_json"]))
+        fe = body["files"][0]
+        th = fe.get("th") or {}
+        ok("image files[] format", fe["m"].startswith("image/") and isinstance(fe.get("w"), int) and isinstance(fe.get("h"), int)
+           and th.get("m") == "image/jpeg" and max(th.get("w", 0), th.get("h", 0)) <= 320 and im["send_files"] == [fe["id"], th.get("id")])
+        ok("image orig blob", C.decrypt_file(im["chat_id"], C.unb64(im["orig"]["blob"]), C.unb64(fe["k"])) == C.unb64(im["orig"]["plain_b64"])
+           and C.b64(C.encrypt_file(im["chat_id"], C.unb64(im["orig"]["plain_b64"]), C.unb64(im["orig"]["key"]), C.unb64(im["orig"]["nonce"]))[0]) == im["orig"]["blob"])
+        tp = C.decrypt_file(im["chat_id"], C.unb64(im["thumb"]["blob"]), C.unb64(th["k"]))
+        ok("image thumb blob", tp == C.unb64(im["thumb"]["plain_b64"]) and len(tp) == th["s"] and tp[:3] == b"\xff\xd8\xff"
+           and C.b64(C.encrypt_file(im["chat_id"], tp, C.unb64(im["thumb"]["key"]), C.unb64(im["thumb"]["nonce"]))[0]) == im["thumb"]["blob"])
     return res
 
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["gen"]:
         gen()
+    if sys.argv[1:] == ["gen-image"]:
+        gen_image()
     res = check()
     for n, good in res:
         print("OK  " if good else "FAIL", n)

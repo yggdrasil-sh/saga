@@ -15,7 +15,17 @@
       if (btn.dataset.admin) m.appendChild(HK.menuItem(T('Admin-Bereich'), function () { window.open(btn.dataset.admin, '_blank', 'noopener'); }, { icon: '🛡' }));
       if (inApp) m.appendChild(HK.menuItem(T('App-Einstellungen'), function () { toApp({ action: 'settings' }); }, { icon: '📱' }));
       m.appendChild(el('div', 'menu-sep'));
-      m.appendChild(HK.menuItem(T('Abmelden'), function () { location.href = '/logout'; }, { icon: '↪' }));
+      m.appendChild(HK.menuItem(T('Abmelden'), function () {
+        // Chat-Bild-Cache dieses Kontos (nur Ciphertext, static/chat.js) beim Abmelden leeren; Chat-Schluessel bleiben
+        var go = function () { location.href = '/logout'; };
+        try {
+          if (document.body.dataset.uid) indexedDB.deleteDatabase('saga-chat-blobs-' + document.body.dataset.uid);
+          if (!indexedDB.databases) return go();
+          indexedDB.databases().then(function (l) {
+            l.forEach(function (d) { if (/^saga-chat-blobs-/.test(d.name || '')) indexedDB.deleteDatabase(d.name); });
+          }).catch(function () {}).then(go);
+        } catch (e) { go(); }
+      }, { icon: '↪' }));
     });
   });
 

@@ -50,6 +50,24 @@ ok('file', b(fe.blob) === f.blob && b(C.decryptFile(f.chat_id, u(f.blob), f.key)
 ok('link code', C.linkCode(lk.uid, lk.device_id, u(lk.enc_pk), u(lk.sign_pk)) === lk.code);
 ok('link sealed bundle', C.text(C.sealOpen(u(lk.sealed_bundle), dev.enc_pk, dev.enc_sk)) === r.plain);
 ok('safety number', C.safetyNumber(s.uid_a, u(s.ident_a), s.uid_b, u(s.ident_b)) === s.number && C.safetyNumber(s.uid_b, u(s.ident_b), s.uid_a, u(s.ident_a)) === s.number);
+// 2.1: Bildnachricht mit Vorschaubild (files[] mit w/h/th)
+const im = v.image;
+ok('image vector present', !!im);
+if (im) {
+  const ie = C.encryptMessage({ chat_id: im.chat_id, sender: im.sender, device: im.device, sign_sk: dev.sign_sk, plain: im.body_json, reply_to: null,
+    recipients: [], id: im.id, ts: im.ts, key: u(im.key), nonce: u(im.nonce) });
+  ok('image message encrypt', ie.body_ct === im.body_ct && ie.sig === im.sig);
+  const ia = { id: im.id, ts: im.ts, sender: { username: im.sender }, sender_device: im.device, body_ct: im.body_ct, reply_to: null, sig: im.sig };
+  const body = C.decryptMessage(im.chat_id, ia, u(im.key));
+  const fe = body.files[0], th = fe.th || {};
+  ok('image files[] format', /^image\//.test(fe.m) && Number.isInteger(fe.w) && Number.isInteger(fe.h) && th.m === 'image/jpeg'
+    && Math.max(th.w, th.h) <= 320 && JSON.stringify(im.send_files) === JSON.stringify([fe.id, th.id]));
+  ok('image orig blob', b(C.decryptFile(im.chat_id, u(im.orig.blob), fe.k)) === im.orig.plain_b64
+    && b(C.encryptFile(im.chat_id, u(im.orig.plain_b64), { key: u(im.orig.key), nonce: u(im.orig.nonce) }).blob) === im.orig.blob);
+  const tp = C.decryptFile(im.chat_id, u(im.thumb.blob), th.k);
+  ok('image thumb blob', b(tp) === im.thumb.plain_b64 && tp.length === th.s && tp[0] === 0xff && tp[1] === 0xd8
+    && b(C.encryptFile(im.chat_id, tp, { key: u(im.thumb.key), nonce: u(im.thumb.nonce) }).blob) === im.thumb.blob);
+}
 // Gegenrichtung: libsodium.js versiegelt/signiert, PyNaCl prueft (tests/chat.py liest diese Ausgabe nicht - nur Selbsttest hier)
 const k2 = sodium.crypto_aead_xchacha20poly1305_ietf_keygen(), sealed = sodium.crypto_box_seal(k2, dev.enc_pk);
 ok('seal roundtrip', eq(sodium.crypto_box_seal_open(sealed, dev.enc_pk, dev.enc_sk), k2));

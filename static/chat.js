@@ -133,7 +133,7 @@
   function fatal(msg) {
     root.textContent = ''; var p = el('p', 'ct-off', msg); p.setAttribute('role', 'alert'); root.appendChild(p);
   }
-  function forget() { K = null; S.ready = false; return kvDel(KEYS).catch(function () {}); }
+  function forget() { K = null; S.ready = false; bClear(); return kvDel(KEYS).catch(function () {}); }
   function saveKeys(k) { K = k; return kvSet(KEYS, k); }
 
   // --- Einrichtung (erstes Geraet) -------------------------------------------------------------------------------
@@ -744,6 +744,7 @@
   function drawMsgs(scroll) {
     var box = $('ct-msgs'), c = S.cur, atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
     var prevH = box.scrollHeight, prevTop = box.scrollTop;
+    lazyReset();
     box.textContent = '';
     if (S.more) {
       var mo = btn(T('Ältere Nachrichten laden'), 'small ct-older', function () { loadMsgs(true); });
@@ -838,32 +839,248 @@
   }
 
   // --- Anhaenge (clientseitig verschluesselt) --------------------------------------------------------------------
-  var blobCache = {};
-  function fetchFile(cid, f) {
-    if (blobCache[f.id]) return blobCache[f.id];
-    blobCache[f.id] = fetch('/api/chat/files/' + encodeURIComponent(f.id), { credentials: 'same-origin', headers: { 'X-Saga': '1' } })
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
-      .then(function (buf) {
-        var plain = X.decryptFile(cid, new Uint8Array(buf), f.k);
-        var mime = /^image\/(png|jpeg|gif|webp)$/.test(f.m) ? f.m : 'application/octet-stream';    // nie text/html o. ae. als Blob-URL
-        return URL.createObjectURL(new Blob([plain], { type: mime }));
+  // 2.1 (Chat-Bilder schnell): Im Verlauf nur Vorschaubilder (files[].th, 320 px JPEG, eigener Schluessel), Platzhalter
+  // in richtiger Groesse aus w/h; Original erst beim Oeffnen. Laden nur fuer sichtbare Nachrichten (IntersectionObserver,
+  // hoechstens 4 gleichzeitig, Abbruch beim Wegscrollen). Entschluesseln und Vorschaubild-Erzeugung im Worker
+  // (static/chat-worker.js; ohne Worker im Fenster). Caches: entschluesselte Vorschaubilder als Blob-URL im Speicher (LRU),
+  // Ciphertext in IndexedDB "saga-chat-blobs-<konto>" (200 MB, LRU; Schluessel nur in der verschluesselten Nachricht),
+  // geleert bei "Abmelden", "Neu beginnen"/Geraet entfernt. Alte Nachrichten ohne th: Original laden, selbst ein
+  // Vorschaubild erzeugen und (mit dem Dateischluessel verschluesselt) als "lt:<id>" cachen. Format: tests/chat_vectors.json "image".
+  var IMG = /^image\/(png|jpeg|gif|webp)$/, THUMB_BOX = 280, MEM_MAX = 300, BLOB_MAX = 200 * 1048576, PAR = 4;
+
+  // Worker: {n, op, ...} -> {n, ok, ...}; faellt bei fehlendem Worker/OffscreenCanvas auf das Fenster zurueck
+  var W = null, wN = 0, wCb = {};
+  function worker() {
+    if (W === false || typeof Worker === 'undefined') return null;
+    if (!W) {
+      try {
+        W = new Worker('/static/chat-worker.js?v=' + encodeURIComponent(document.body.dataset.v || ''));
+        W.onmessage = function (e) { var d = e.data || {}, cb = wCb[d.n]; if (!cb) return; delete wCb[d.n]; if (d.ok) cb[0](d); else cb[1](new Error(d.err)); };
+        W.onerror = function (e) {
+          if (e && e.preventDefault) e.preventDefault();
+          var all = wCb; wCb = {}; W = false;
+          Object.keys(all).forEach(function (k) { all[k][1](new Error('worker')); });
+        };
+      } catch (e) { W = false; return null; }
+    }
+    return W;
+  }
+  function run(op, d, tr) {
+    var w = worker();
+    var p = w ? new Promise(function (res, rej) { var n = ++wN; wCb[n] = [res, rej]; d.op = op; d.n = n; w.postMessage(d, tr || []); })
+      : Promise.reject(new Error('worker'));
+    return p.catch(function (e) {
+      if (e.message !== 'worker' && e.message !== 'no-canvas') throw e;
+      d.op = op; return mainJob(d);
+    });
+  }
+  function mainJob(d) {
+    return Promise.resolve().then(function () {
+      if (d.op === 'dec') return { plain: X.decryptFile(d.cid, new Uint8Array(d.blob), d.key).buffer };
+      if (d.op === 'enc') { var r = X.encryptFile(d.cid, new Uint8Array(d.bytes)); return { blob: r.blob.buffer, key: r.key }; }
+      var bytes = d.op === 'thumb' ? X.decryptFile(d.cid, new Uint8Array(d.blob), d.key) : new Uint8Array(d.bytes);
+      return mainThumb(bytes, d.mime).then(function (t) {
+        if (d.op === 'thumb' && d.enc) t.ct = X.encryptFile(d.cid, new Uint8Array(t.jpeg), { key: ub(d.key, 32) }).blob.buffer;
+        return t;
       });
-    blobCache[f.id].catch(function () { delete blobCache[f.id]; });
-    return blobCache[f.id];
+    });
+  }
+  function mainThumb(bytes, mime) {
+    return createImageBitmap(new Blob([bytes], { type: mime || 'image/jpeg' })).then(function (bm) {
+      var w = bm.width, h = bm.height, f = Math.min(1, 320 / Math.max(w, h, 1));
+      var cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(w * f)); cv.height = Math.max(1, Math.round(h * f));
+      var g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(bm, 0, 0, cv.width, cv.height);
+      if (bm.close) bm.close();
+      return new Promise(function (res, rej) { cv.toBlob(function (b) { if (b) res(b); else rej(new Error('jpeg')); }, 'image/jpeg', 0.7); })
+        .then(function (b) { return b.arrayBuffer(); })
+        .then(function (jpeg) { return { jpeg: jpeg, w: w, h: h, tw: cv.width, th: cv.height }; });
+    });
+  }
+
+  // Platten-Cache: nur Ciphertext (Blob), LRU nach letztem Zugriff
+  var bdbP = null, bUsed = -1;
+  function bdbName() { return 'saga-chat-blobs-' + ME; }
+  function bdb() {
+    if (!bdbP) bdbP = new Promise(function (res, rej) {
+      var r = indexedDB.open(bdbName(), 1);
+      r.onupgradeneeded = function () { var db = r.result; db.createObjectStore('data'); db.createObjectStore('meta', { keyPath: 'id' }).createIndex('at', 'at'); };
+      r.onsuccess = function () { var db = r.result; db.onversionchange = function () { db.close(); bdbP = null; bUsed = -1; }; res(db); };
+      r.onerror = function () { rej(r.error); };
+      r.onblocked = function () { rej(new Error('blocked')); };
+    });
+    bdbP.catch(function () { bdbP = null; });
+    return bdbP;
+  }
+  function btx(stores, mode, fn) {
+    return bdb().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(stores, mode), out = fn(tx);
+        tx.oncomplete = function () { res(out && 'result' in out ? out.result : out); };
+        tx.onerror = tx.onabort = function () { rej(tx.error); };
+      });
+    });
+  }
+  function bGet(id) {
+    return btx(['data', 'meta'], 'readwrite', function (tx) {
+      var m = tx.objectStore('meta'), g = m.get(id);
+      g.onsuccess = function () { var x = g.result; if (x && Date.now() - x.at > 600000) { x.at = Date.now(); m.put(x); } };
+      return tx.objectStore('data').get(id);
+    }).then(function (b) { return b ? (b.arrayBuffer ? b.arrayBuffer() : b) : null; }).catch(function () { return null; });
+  }
+  function bPut(id, blob) {                            // blob: Blob (Kopie ist beim Aufruf schon gemacht)
+    if (!blob || blob.size > BLOB_MAX / 10) return Promise.resolve();
+    return (bUsed < 0 ? btx('meta', 'readonly', function (tx) {
+      var n = { result: 0 }, c = tx.objectStore('meta').openCursor();
+      c.onsuccess = function () { var x = c.result; if (x) { n.result += x.value.size || 0; x.continue(); } };
+      return n;
+    }).then(function (n) { bUsed = n; }) : Promise.resolve()).then(function () {
+      return btx(['data', 'meta'], 'readwrite', function (tx) {
+        tx.objectStore('data').put(blob, id); tx.objectStore('meta').put({ id: id, size: blob.size, at: Date.now() });
+      });
+    }).then(function () { bUsed += blob.size; if (bUsed > BLOB_MAX) return bEvict(); }).catch(function () {});
+  }
+  function bEvict() {
+    return btx(['data', 'meta'], 'readwrite', function (tx) {
+      var c = tx.objectStore('meta').index('at').openCursor(), d = tx.objectStore('data');
+      c.onsuccess = function () {
+        var x = c.result; if (!x || bUsed <= BLOB_MAX * 0.8) return;
+        bUsed -= x.value.size || 0; d.delete(x.value.id); x.delete(); x.continue();
+      };
+    });
+  }
+  function bClear() {
+    mem.forEach(function (u) { URL.revokeObjectURL(u); }); mem.clear();
+    var p = bdbP; bdbP = null; bUsed = -1;
+    return (p ? p.then(function (db) { db.close(); }, function () {}) : Promise.resolve()).then(function () {
+      try { indexedDB.deleteDatabase(bdbName()); } catch (e) { /* egal */ }
+    });
+  }
+  // Speicher-Cache: Blob-URLs entschluesselter Vorschaubilder (LRU)
+  var mem = new Map();
+  function memGet(k) { var u = mem.get(k); if (u) { mem.delete(k); mem.set(k, u); } return u; }
+  function memPut(k, u) {
+    var old = mem.get(k); if (old && old !== u) URL.revokeObjectURL(old);
+    mem.delete(k); mem.set(k, u);
+    while (mem.size > MEM_MAX) { var f = mem.keys().next().value; URL.revokeObjectURL(mem.get(f)); mem.delete(f); }
+  }
+
+  // Ciphertext holen: Platten-Cache, sonst Server (immutable, private) und in den Platten-Cache
+  function getBlob(f, signal, keep) {
+    return bGet(f.id).then(function (buf) {
+      if (buf) return buf;
+      return fetch('/api/chat/files/' + encodeURIComponent(f.id), { credentials: 'same-origin', headers: { 'X-Saga': '1' }, signal: signal })
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+        .then(function (b) { if (keep !== false) bPut(f.id, new Blob([b])); return b; });
+    });
+  }
+  var inflight = {};
+  function thumbUrl(cid, f, signal) {
+    var key = 't:' + f.id, u = memGet(key);
+    if (u) return Promise.resolve(u);
+    if (inflight[key]) return inflight[key];
+    var jpeg = function (buf) { return new Blob([buf], { type: 'image/jpeg' }); }, p;
+    if (f.th && f.th.id && f.th.k) {
+      p = getBlob(f.th, signal).then(function (buf) { return run('dec', { cid: cid, blob: buf, key: f.th.k }, [buf]); })
+        .then(function (r) { return jpeg(r.plain); });
+    } else {
+      p = bGet('lt:' + f.id).then(function (ct) {
+        if (ct) return run('dec', { cid: cid, blob: ct, key: f.k }, [ct]).then(function (r) { return jpeg(r.plain); });
+        return getBlob(f, signal, false).then(function (buf) { return run('thumb', { cid: cid, blob: buf, key: f.k, mime: f.m, enc: true }); })
+          .then(function (t) { if (t.ct) bPut('lt:' + f.id, new Blob([t.ct])); return jpeg(t.jpeg); });
+      });
+    }
+    p = p.then(function (b) { var url = URL.createObjectURL(b); memPut(key, url); return url; });
+    inflight[key] = p;
+    p.then(function () { delete inflight[key]; }, function () { delete inflight[key]; });
+    return p;
+  }
+  function plainUrl(cid, f) {                          // Original (Oeffnen/Speichern): nie text/html o. ae. als Blob-URL
+    return getBlob(f).then(function (buf) { return run('dec', { cid: cid, blob: buf, key: f.k }, [buf]); }).then(function (r) {
+      return URL.createObjectURL(new Blob([r.plain], { type: IMG.test(f.m) ? f.m : 'application/octet-stream' }));
+    });
+  }
+
+  // Sichtbarkeit: nur sichtbare (plus Vorlauf) Bilder laden, hoechstens PAR gleichzeitig, neueste zuerst
+  var queue = [], active = 0, io = null, dims = {};
+  function lazyIO() {
+    if (!io && window.IntersectionObserver) io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        var j = e.target._job; if (!j || j.done) return;
+        j.vis = e.isIntersecting;
+        if (j.vis && !j.queued && !j.running) { j.queued = true; queue.push(j); }
+        else if (!j.vis && j.queued) { j.queued = false; queue.splice(queue.indexOf(j), 1); }
+        else if (!j.vis && j.running && j.ac) j.ac.abort();
+      });
+      pump();
+    }, { root: $('ct-msgs'), rootMargin: '600px 0px' });
+    return io;
+  }
+  function lazy(node, fn, fail) {
+    var j = { el: node, fn: fn, fail: fail, vis: !window.IntersectionObserver };
+    node._job = j;
+    if (lazyIO()) io.observe(node); else { j.queued = true; queue.push(j); pump(); }
+  }
+  function lazyReset() { if (io) io.disconnect(); queue = []; }
+  function pump() {
+    while (active < PAR && queue.length) {
+      var j = queue.pop(); j.queued = false;
+      if (!j.el.isConnected || j.done) continue;
+      startJob(j);
+    }
+  }
+  function startJob(j) {
+    j.running = true; active++;
+    j.ac = window.AbortController ? new AbortController() : null;
+    j.fn(j.ac && j.ac.signal).then(function () { j.done = true; if (io) io.unobserve(j.el); }, function (e) {
+      if (e && e.name === 'AbortError') { if (j.vis && j.el.isConnected) { j.queued = true; queue.unshift(j); } return; }
+      j.done = true; if (io) io.unobserve(j.el); j.fail(e);
+    }).then(function () { j.running = false; active--; pump(); });
+  }
+  function fitBox(w, h) {
+    w = +w || 0; h = +h || 0; if (w <= 0 || h <= 0) return null;
+    var s = Math.min(1, THUMB_BOX / w, THUMB_BOX / h);
+    return { w: Math.max(48, Math.round(w * s)), h: Math.max(32, Math.round(h * s)) };
   }
   function fileEl(cid, f) {
-    var name = String(f.n || T('Datei')).slice(0, 200), img = /^image\/(png|jpeg|gif|webp)$/.test(f.m);
+    var name = String(f.n || T('Datei')).slice(0, 200), img = IMG.test(f.m);
     if (img) {
       var fig = el('button', 'ct-img'); fig.type = 'button'; fig.setAttribute('aria-label', name);
-      var im = el('img'); im.alt = name; fig.appendChild(im);
-      fetchFile(cid, f).then(function (u) { im.src = u; }, function () { fig.textContent = '🖼 ' + name + ' – ' + T('nicht geladen'); });
-      fig.addEventListener('click', function () { fetchFile(cid, f).then(function (u) { save(u, name); }); });
+      var box = fitBox(f.w, f.h) || dims[f.id];
+      var size2 = function (b) { fig.classList.remove('ct-img-nodim'); fig.style.width = b.w + 'px'; fig.style.aspectRatio = b.w + ' / ' + b.h; };
+      if (box) size2(box); else fig.classList.add('ct-img-nodim');
+      var im = el('img'); im.alt = name; im.decoding = 'async'; fig.appendChild(im);
+      if (!box) im.addEventListener('load', function () {      // alte Nachricht ohne w/h: Groesse vom Vorschaubild merken
+        var b = fitBox(im.naturalWidth, im.naturalHeight); if (b) { dims[f.id] = b; size2(b); }
+      });
+      var u = memGet('t:' + f.id);
+      if (u) im.src = u;
+      else lazy(fig, function (signal) { return thumbUrl(cid, f, signal).then(function (x) { im.src = x; }); },
+        function () { fig.classList.add('ct-img-err'); fig.textContent = '🖼 ' + name + ' – ' + T('nicht geladen'); });
+      fig.addEventListener('click', function () { viewImage(cid, f, name); });
       return fig;
     }
     var b = el('button', 'ct-file'); b.type = 'button';
     b.appendChild(el('span', 'ct-file-ic', '📎')); b.appendChild(el('span', 'ct-file-n', name)); b.appendChild(el('span', 'ct-file-s', size(f.s)));
-    b.addEventListener('click', function () { fetchFile(cid, f).then(function (u) { save(u, name); }, function (e) { HK.toast(T('Anhang nicht geladen: {err}', { err: e.message })); }); });
+    b.addEventListener('click', function () {
+      plainUrl(cid, f).then(function (url) { save(url, name); setTimeout(function () { URL.revokeObjectURL(url); }, 60000); },
+        function (e) { HK.toast(T('Anhang nicht geladen: {err}', { err: e.message })); });
+    });
     return b;
+  }
+  // Original in groß (erst hier geladen); Speichern ueber den Knopf
+  var viewUrl = null;
+  function viewImage(cid, f, name) {
+    if (viewUrl) { URL.revokeObjectURL(viewUrl); viewUrl = null; }
+    var body = overlay(name, { wide: true }), wrap = el('div', 'ct-view'), st = el('p', 'hk-status', T('Lädt …'));
+    st.setAttribute('role', 'status'); wrap.appendChild(st); body.appendChild(wrap);
+    var bar = el('div', 'hk-actions'), sv = btn(T('Speichern'), 'ct-view-save'); sv.disabled = true; bar.appendChild(sv); body.appendChild(bar);
+    var t = memGet('t:' + f.id), im = el('img'); im.alt = name;
+    if (t) { im.src = t; wrap.appendChild(im); }
+    plainUrl(cid, f).then(function (url) {
+      if (!body.isConnected) { URL.revokeObjectURL(url); return; }
+      viewUrl = url; im.src = url; if (!im.parentNode) wrap.appendChild(im); st.remove();
+      sv.disabled = false; sv.addEventListener('click', function () { save(url, name); });
+    }, function (e) { st.textContent = T('Anhang nicht geladen: {err}', { err: e.message }); });
   }
   function save(url, name) { var a = el('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
   function size(n) { n = +n || 0; return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n > 1024 ? Math.round(n / 1024) + ' KB' : n + ' B'; }
@@ -981,7 +1198,7 @@
     function attempt(rc, again) {
       var m = X.encryptMessage({ chat_id: cid, sender: ME, device: K.device.id, sign_sk: K.device.sign_sk, body: body, reply_to: reply || null, recipients: rc.list });
       m.kind = kind || 'msg';
-      if (body.files) m.files = body.files.map(function (f) { return f.id; });
+      if (body.files) m.files = body.files.reduce(function (a, f) { a.push(f.id); if (f.th && f.th.id) a.push(f.th.id); return a; }, []);
       return api('POST', '/api/chats/' + cid + '/messages', m).then(function (r) { return { m: m, r: r }; }, function (e) {
         if (e.status === 409 && e.data && e.data.recipients && !again) {
           var rc2 = useRecipients(cid, e.data.recipients);
@@ -995,13 +1212,39 @@
         return checkDevice().then(function (okDev) { if (!okDev) { e = new Error(T('Dieses Gerät ist für Chats abgemeldet.')); } throw e; });
       });
   }
+  // Bilder (2.1): Vorschaubild (320 px, JPEG 70, ohne Metadaten) im Worker erzeugen, getrennt verschluesseln und
+  // hochladen; files[] bekommt w/h des Originals und th:{id,k,m,w,h,s}. Scheitert das Vorschaubild, geht das Bild ohne th.
+  function upload(cid, blob) {
+    return fetch('/api/chats/' + cid + '/files', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/octet-stream' }, body: blob })
+      .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d.id; }); });
+  }
   function uploadFiles(cid) {
+    var ids = (S.me && S.me.limits && S.me.limits.file_ids_per_msg) || 10, slots = ids - S.files.length;
     return Promise.all(S.files.map(function (f) {
+      var mime = f.type || 'application/octet-stream', withThumb = IMG.test(mime) && slots-- > 0;
       return f.arrayBuffer().then(function (buf) {
-        var e = X.encryptFile(cid, new Uint8Array(buf));
-        return fetch('/api/chats/' + cid + '/files', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/octet-stream' }, body: e.blob })
-          .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }); })
-          .then(function (d) { return { id: d.id, k: e.key, n: f.name.slice(0, 200), m: f.type || 'application/octet-stream', s: f.size }; });
+        var tp = withThumb ? run('make', { bytes: buf, mime: mime }).catch(function () { return null; }) : Promise.resolve(null);
+        return tp.then(function (t) {
+          var e = { id: null, k: null, n: f.name.slice(0, 200), m: mime, s: f.size };
+          var th = Promise.resolve(null);
+          if (t) {
+            var thumb = new Blob([t.jpeg], { type: 'image/jpeg' }), tsz = t.jpeg.byteLength;
+            e.w = t.w; e.h = t.h;
+            th = run('enc', { cid: cid, bytes: t.jpeg }, [t.jpeg]).then(function (et) {
+              var ct = new Blob([et.blob]);
+              return upload(cid, ct).then(function (id) {
+                memPut('t:' + id, URL.createObjectURL(thumb)); bPut(id, ct);     // eigene Nachricht: sofort, ohne Nachladen
+                return { id: id, k: et.key, m: 'image/jpeg', w: t.tw, h: t.th, s: tsz };
+              });
+            });
+          }
+          var orig = run('enc', { cid: cid, bytes: buf }, [buf]).then(function (eo) { e.k = eo.key; return upload(cid, eo.blob); });
+          return Promise.all([orig, th]).then(function (r) {
+            e.id = r[0];
+            if (r[1]) { e.th = r[1]; var u = mem.get('t:' + r[1].id); if (u) memPut('t:' + e.id, u); }
+            return e;
+          });
+        });
       });
     }));
   }

@@ -33,7 +33,7 @@ import secrets
 import struct
 import time
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 import auth
 from db import connect as _db
 from saga import avatars, bus, mfa, notify
@@ -49,8 +49,10 @@ MSG_MAX = 64 * 1024                    # Ciphertext je Nachricht (B64)
 MSG_RATE = 60                          # Nachrichten je Minute und Konto
 DEVICES_MAX = 10                       # aktive Geraete je Konto
 MEMBERS_MAX = 50                       # Mitglieder je Chat (darueber spaeter MLS)
-FILES_PER_MSG = 10
-FILE_RATE = 30                         # Uploads je Minute
+FILES_PER_MSG = 10                     # Anhaenge je Nachricht (files[] im verschluesselten Inhalt)
+FILE_IDS_PER_MSG = 2 * FILES_PER_MSG   # Datei-Kennungen je Sende-Anfrage: je Bild Original + Vorschaubild (2.1)
+FILE_RATE = 60                         # Uploads je Minute (Vorschaubilder zaehlen mit)
+FILE_CACHE_MAX = 365 * 86400           # Ciphertext-Blobs aendern sich nie: so lange darf der Browser sie behalten
 QUOTA = max(1, int(E.get("CHAT_QUOTA_MB", "1024"))) * 1024 * 1024    # Anhaenge je Konto
 LINK_TTL = 600                         # Geraete-Kopplung: 10 Minuten
 PAGE = 50
@@ -407,7 +409,7 @@ def api_me(request: Request, device: str = ""):
                      "sign_pub": d["sign_pub"], "sig": d["sig"]} for d in devs],
         "links": n_link, "reauth": _reauth_need(request, uid), "reauth_methods": mfa.methods(uid),
         "limits": {"msg_max": MSG_MAX, "file_max": FILE_MAX, "members_max": MEMBERS_MAX, "devices_max": DEVICES_MAX,
-                   "files_per_msg": FILES_PER_MSG, "retention_max": retention_max(), "retentions": list(RETENTIONS)}})
+                   "files_per_msg": FILES_PER_MSG, "file_ids_per_msg": FILE_IDS_PER_MSG, "retention_max": retention_max(), "retentions": list(RETENTIONS)}})
 
 
 def _add_device(c, uid, ident_pub, d):
@@ -1169,7 +1171,7 @@ async def api_send(cid: int, request: Request):
         return _bad(t("Die Uhrzeit dieses Geräts weicht zu stark ab."), 400)
     if reply_to is not None and not (isinstance(reply_to, str) and _HEX32.fullmatch(reply_to)):
         return _bad(t("ungültige Angabe"))
-    if len(files) > FILES_PER_MSG or any(not isinstance(f, str) or not _FID.fullmatch(f) for f in files):
+    if len(files) > FILE_IDS_PER_MSG or any(not isinstance(f, str) or not _FID.fullmatch(f) for f in files):
         return _bad(t("ungültige Angabe"))
     with _db() as c, c:
         ch, m, mem, err = _chat_for(c, uid, cid)
@@ -1340,17 +1342,22 @@ def api_file_get(fid: str, request: Request):
         r = c.execute("SELECT f.chat_id, f.uid, f.msg_seq FROM chat_file f WHERE f.id=?", (fid,)).fetchone()
         if not r or not _member(c, r[0], uid) or (r[2] is None and r[1] != uid):
             return _bad("not found", 404)
-        if r[2] is not None and not c.execute("SELECT 1 FROM chat_msg WHERE seq=? AND (expires_at IS NULL OR expires_at>?)",
-                                              (r[2], time.time())).fetchone():
-            return _bad("not found", 404)
-    try:
-        with open(os.path.join(CHAT_DIR, fid), "rb") as f:
-            data = f.read()
-    except OSError:
+        cache = "private, no-store"                   # noch keiner Nachricht zugeordnet (eigener Upload): nicht zwischenspeichern
+        if r[2] is not None:
+            x = c.execute("SELECT expires_at FROM chat_msg WHERE seq=? AND (expires_at IS NULL OR expires_at>?)", (r[2], time.time())).fetchone()
+            if not x:
+                return _bad("not found", 404)
+            # Ciphertext unter dieser Kennung aendert sich nie (Schluessel nur in der verschluesselten Nachricht):
+            # privat und unveraenderlich zwischenspeichern, hoechstens bis zum Ablauf der Nachricht (2.1, Chat-Bilder)
+            age = int(min(FILE_CACHE_MAX, (x[0] - time.time()) if x[0] else FILE_CACHE_MAX))
+            if age > 0:
+                cache = f"private, max-age={age}, immutable"
+    path = os.path.join(CHAT_DIR, fid)
+    if not os.path.isfile(path):
         return _bad("not found", 404)
-    return Response(data, media_type="application/octet-stream",
-                    headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
-                             "Content-Security-Policy": "sandbox; default-src 'none'", "Content-Disposition": "attachment"})
+    return FileResponse(path, media_type="application/octet-stream",
+                        headers={"Cache-Control": cache, "X-Content-Type-Options": "nosniff",
+                                 "Content-Security-Policy": "sandbox; default-src 'none'", "Content-Disposition": "attachment"})
 
 
 # --- Aufraeumen, Kontoloeschung ---------------------------------------------------------------------------------

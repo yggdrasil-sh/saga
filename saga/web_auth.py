@@ -346,6 +346,12 @@ async def register_post(request: Request):
     return _start_session(request, user)
 
 
+# Abmelden leert den HTTP-Cache dieses Browsers (u. a. Chat-Anhaenge, die als "immutable" zwischengespeichert werden -
+# nur Ciphertext, aber nach dem Abmelden soll nichts liegen bleiben). Speicher (IndexedDB mit den Chat-Schluesseln)
+# bleibt - die leert static/settings.js nur fuer den Bild-Cache. Browser beachten den Kopf nur ueber https.
+_BYE = {"Clear-Site-Data": '"cache"'}
+
+
 @router.get("/logout")
 async def logout(request: Request):
     id_token = request.session.get("id_token")
@@ -365,8 +371,8 @@ async def logout(request: Request):
             if end:
                 q = {"post_logout_redirect_uri": BASE_URL + "/login?bye=1", "client_id": auth.settings()["oidc"]["client_id"],
                      "id_token_hint": id_token}
-                return RedirectResponse(f"{end}?{urlencode(q)}", status_code=303)
-    return RedirectResponse("/login?bye=1", status_code=303)
+                return RedirectResponse(f"{end}?{urlencode(q)}", status_code=303, headers=_BYE)
+    return RedirectResponse("/login?bye=1", status_code=303, headers=_BYE)
 
 
 # --- Eigenes Konto -----------------------------------------------------------------------------------
