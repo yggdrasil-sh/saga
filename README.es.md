@@ -32,7 +32,7 @@ Saga es una página de inicio y una base de conocimiento autoalojada para famili
 con todos tus servicios, páginas y bases de datos al estilo Notion, tareas, calendarios y marcadores. Cada
 persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio servidor.
 
-> **Novedades de Saga 2.1:** passkeys e inicio de sesión en dos pasos, fotos de perfil, llamadas de audio y vídeo
+> **Novedades de Saga 2.1:** llaves de acceso e inicio de sesión en dos pasos, fotos de perfil, llamadas de audio y vídeo
 > en el chat directo, fotos de Immich en el chat, imágenes de chat rápidas con miniaturas y un asistente de IA mucho
 > más certero. Desde la 2.0: compartir y comentar, actualización en vivo, chats cifrados de extremo a extremo,
 > notificaciones en el móvil y federación con otros servidores Saga. Todos los detalles en el
