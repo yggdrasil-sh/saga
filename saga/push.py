@@ -54,6 +54,17 @@ TYPES = ("webpush", "ntfy", "unifiedpush", "apns", "apns-voip")
 CATS = {"share": ("share.added", "share.role"), "comment": ("comment.new", "comment.reply", "comment.mention"),
         "chat": ("chat.message",), "publish": ("publish.withdrawn",), "call": ("call", "call.missed")}
 CALL_TTL = 60                        # klingelnder Anruf: Mitteilung nach einer Minute verwerfen (statt 4 h vorhalten)
+
+
+def _call_ttl():
+    """Lebensdauer einer Anruf-Mitteilung: so lange, wie der Anruf klingeln darf (Admin: bis 120 s), mindestens CALL_TTL."""
+    try:                                  # wie saga.calls.ring_s (push bleibt unabhaengig von calls)
+        ring = max(3, min(120, int((auth.settings().get("calls") or {}).get("ring_s") or 45)))
+    except (TypeError, ValueError):
+        ring = 45
+    return max(CALL_TTL, ring + 10)
+
+
 KIND_CAT = {k: cat for cat, ks in CATS.items() for k in ks}
 SUB_MAX = 20                         # Abos je Konto
 QUEUE_MAX = 300                      # offene Auftraege je Konto (darueber: keine neuen, die Glocke hat alles)
@@ -460,7 +471,7 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
                 (t("Eingehender Videoanruf") if video else t("Eingehender Anruf"))
             return {"title": title(), "body": body, "url": f"/chats#call-{cid}", "tag": "call-" + cid, "kind": kind,
                     "ts": int(created or time.time()), "call": cid, "chat": r[2], "media": r[1], "caller": nm,
-                    "ttl": max(5, int(r[3] + CALL_TTL - time.time()))}
+                    "ttl": max(5, int(r[3] + _call_ttl() - time.time()))}
         else:
             it = notify.item(c, uid, ref) if ref else None
             if not it or (kind != "publish.withdrawn" and not it["access"]):

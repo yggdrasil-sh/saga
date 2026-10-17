@@ -204,12 +204,13 @@ def _busy(c, uid):
                           (uid, uid)).fetchone())
 
 
-def _log(c, call, status, now):
-    """Eintrag im Chat (chat_msg kind='call'): nur Metadaten, die der Server ohnehin kennt."""
+def _log(c, call, status, now, end=None):
+    """Eintrag im Chat (chat_msg kind='call'): nur Metadaten, die der Server ohnehin kennt. end: Gespraechsende fuer die
+    Dauer (verlorene Verbindung: letztes Lebenszeichen statt Zeitpunkt der Erkennung)."""
     ch = chat._load(c, call["chat_id"])
     if not ch:
         return None
-    dur = int(now - call["answered"]) if call["answered"] and status == "ended" else None
+    dur = max(0, int((end or now) - call["answered"])) if call["answered"] and status == "ended" else None
     body = json.dumps({"v": 1, "type": "call", "call": call["id"], "media": call["media"], "status": status, "dur": dur,
                        "from": call["caller"], "to": call["callee"]}, separators=(",", ":"))
     eff, mx = ch["retention_s"], chat.retention_max()
@@ -235,7 +236,8 @@ def _finish(c, call, reason, now, by=None):
         status = {"declined": "declined", "busy": "busy"}.get(reason, "missed")
     else:
         status = "failed" if reason == "failed" and not call.get("_connected") else "ended"
-    _log(c, call, status, now)
+    seen = [x for x in (call.get("seen_a"), call.get("seen_b")) if x]
+    _log(c, call, status, now, min(seen) if reason == "lost" and seen else None)
     if status in ("missed", "busy"):
         notify.create(c, call["callee"], "call.missed", call["caller"], data={"chat": call["chat_id"], "call": call["id"]})
     _emit(c, [call["caller"], call["callee"]], "call.state", {"call_id": call["id"], "chat_id": call["chat_id"], "state": "ended",
@@ -316,6 +318,10 @@ async def api_call(request: Request):
                                    "devices": [d for d in (keys or {}).get("devices", []) if not d["revoked"]]}, 409)
         if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
             return _bad(t("Diesen Anruf gibt es schon."), 409)
+        inc = c.execute("SELECT id FROM chat_call WHERE state='ringing' AND caller=? AND callee=? LIMIT 1", (peer, uid)).fetchone()
+        if inc:                                            # Rueckruf, waehrend der Anruf des Gegenuebers noch klingelt
+            return chat._no_store({"error": t("{name} ruft dich gerade an – nimm den Anruf an.", name=names(c, [peer]).get(peer) or peer),
+                                   "incoming": inc[0]}, 409)
         if _busy(c, uid):
             return _bad(t("Du telefonierst gerade schon."), 409)
         if not _rate("call", uid, CALL_RATE) or not _rate("call-h", uid, CALL_RATE_H, 3600) or not _rate("pair", uid + "|" + peer, PAIR_RATE):

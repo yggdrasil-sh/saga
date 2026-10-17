@@ -423,6 +423,10 @@ def run():
     ok(f"B darf vor dem Annehmen keine Signale senden ({s})", s == 403)
     _, s2, d2 = call(A, B, ab)
     ok(f"A ruft waehrenddessen erneut an -> 409 ({s2})", s2 == 409 and "telefonierst" in d2.get("error", ""))
+    # Bughunt 2 (server, S4): B ruft zurueck, waehrend A's Anruf noch klingelt -> Hinweis + Kennung statt "telefonierst"
+    _, s2, d2 = call(B, A, ab)
+    ok(f"B ruft A zurueck, waehrend A's Anruf klingelt -> 409 'ruft dich gerade an' + incoming ({s2}, {d2})",
+       s2 == 409 and d2.get("incoming") == cid and "telefonierst" not in d2.get("error", ""))
 
     # --- Annehmen --------------------------------------------------------------------------------------------------
     mA, mB = sA.mark(), sB.mark()
@@ -539,11 +543,21 @@ def run():
 
     # --- Verbindung verloren (Lebenszeichen bleiben aus) ----------------------------------------------------------
     c6, s, _ = call(Cc, B, cb)
+    # Bughunt 2 (server, S4): Anruf-Mitteilung lebt so lange, wie der Anruf klingeln darf (Admin bis 120 s)
+    auth.save_setting("calls", dict(auth.settings(fresh=True)["calls"], ring_s=100))
+    auth._settings_cache["v"] = None
+    with connect() as c:
+        pm = P.message(c, "ca-b", "call", actor="ca-c", data={"call": c6}, sub_kind="webpush") or {}
+    auth.save_setting("calls", dict(auth.settings(fresh=True)["calls"], ring_s=45))
+    auth._settings_cache["v"] = None
+    ok(f"Klingeldauer 100 s -> Lebensdauer der Anruf-Mitteilung > 100 s ({pm.get('ttl')})", (pm.get("ttl") or 0) > 100)
     req("POST", f"/api/calls/{c6}/answer", B.k, {"device": B2["id"], "signals": seal_for(B, B2, c6, Cc, [Cc.dev], ans)})
     n = CL.tick(time.time() + CL.ALIVE_GAP + CL.ORPHAN + 5)        # anderer Prozess als der Server: erst nach der Schonfrist
     with connect() as c:
         st = c.execute("SELECT state, reason FROM chat_call WHERE id=?", (c6,)).fetchone()
     ok(f"Ohne Lebenszeichen: Anruf endet ('lost') ({n}, {st})", st == ("ended", "lost") and call_rows(cb)[-1]["status"] == "ended")
+    dur = call_rows(cb)[-1].get("dur")
+    ok(f"... Dauer bis zum letzten Lebenszeichen, nicht bis zur Erkennung ({dur})", dur is not None and dur < 10)
 
     # --- Geraet waehrend des Anrufs entfernt (Review) ----------------------------------------------------------------
     G = Person("ca-g")
