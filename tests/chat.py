@@ -461,8 +461,17 @@ def run():
     s, d = req("POST", "/api/chats", A.k, {"kind": "free", "members": ["ch-b", "ch-c"]})
     fid_ = d["chat"]["id"]
     ok(f"Freie Gruppe: A (Admin), B, C ({s})", s == 200 and d["chat"]["role"] == "admin" and d["chat"]["name"] is None)
+    # Bughunt 2 (server, S4): Titel mit Anhang ersetzen -> Anhang des alten Titels weg (zaehlte sonst ewig aufs Kontingent)
+    tblob, tkey = C.encrypt_file(str(fid_), b"Gruppenbild" * 40)
+    tup = req("POST", f"/api/chats/{fid_}/files", A.k, raw=tblob)[1]
+    s, _, _ = A.send(fid_, "Vorlaeufig", kind="title", files=[{"id": tup["id"], "k": C.b64(tkey), "n": "g.bin", "m": "image/png", "s": 440}])
+    ok(f"Titel mit Anhang ({s})", s == 200)
     s, _, tm = A.send(fid_, "Wanderfreunde", kind="title")
     ok("Name als verschluesselte title-Nachricht", s == 200)
+    with connect() as c:
+        left = c.execute("SELECT COUNT(*) FROM chat_file WHERE id=?", (tup["id"],)).fetchone()[0]
+    ok(f"Neuer Titel: Anhang des alten Titels samt Blob entfernt ({left})",
+       left == 0 and not os.path.exists(os.path.join(CH.CHAT_DIR, tup["id"])))
     ch_b = [x for x in req("GET", f"/api/chats?device={B.dev['id']}", B.k)[1]["chats"] if x["id"] == fid_][0]
     ok("B entschluesselt den Gruppennamen aus der Liste", B.open(fid_, ch_b["title_msg"])["title"] == "Wanderfreunde")
     ok("... Name steht nirgends im Klartext", plaintext_hits("Wanderfreunde") == [])

@@ -1211,8 +1211,11 @@ async def api_send(cid: int, request: Request):
         if kind == "title":
             old = ch["title_seq"]
             c.execute("UPDATE chat SET title_seq=? WHERE id=?", (seq, ch["id"]))
-            if old:
+            if old:                                        # alter Titel samt Anhaengen weg (sonst zaehlen sie weiter)
+                gone = [r[0] for r in c.execute("SELECT id FROM chat_file WHERE msg_seq=?", (old,))]
+                c.execute("DELETE FROM chat_file WHERE msg_seq=?", (old,))
                 c.execute("DELETE FROM chat_msg WHERE seq=?", (old,))
+                _rm_blobs(c, gone)
             _changed(c, ch["id"], mem)
         else:
             c.execute("UPDATE chat SET last_seq=?, last_at=? WHERE id=?", (seq, now, ch["id"]))
