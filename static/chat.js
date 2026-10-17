@@ -1431,6 +1431,7 @@
     else if (t === 'chat.deleted') { if (S.cur && S.cur.id === d.chat_id) dropMsg(d.id); listSoon(); }
     else if (t === 'chat.read') listSoon();
     else if (t === 'chat.changed') { listSoon(); if (S.cur && S.cur.id === d.chat_id) { S.rc = null; openChat(d.chat_id); } }
+    else if (t === 'avatar.changed') { listSoon(); if (S.cur) loadMsgs(false); }     // neues Profilbild einer Person (2.1)
     else if (t === 'chat.typing' && S.cur && S.cur.id === d.chat_id && d.user) {
       S.typing[d.user.username] = { name: d.user.name, until: Date.now() + 4500 }; drawTyping();
     }

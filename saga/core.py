@@ -312,9 +312,8 @@ def _too_large(e):
     """True, wenn e ein BodyTooLarge ist oder eine (verschachtelte) ExceptionGroup nur aus solchen."""
     if isinstance(e, BodyTooLarge):
         return True
-    if isinstance(e, BaseExceptionGroup):
-        return all(_too_large(x) for x in e.exceptions)
-    return False
+    subs = getattr(e, "exceptions", None)                  # (Base)ExceptionGroup
+    return isinstance(subs, tuple) and bool(subs) and all(_too_large(x) for x in subs)
 
 
 SEC_HEADERS = {

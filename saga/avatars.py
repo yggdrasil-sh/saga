@@ -34,7 +34,7 @@ from starlette.concurrency import run_in_threadpool
 
 import auth
 from db import connect as _db
-from saga import netguard
+from saga import bus, netguard
 from saga.core import E, SECRET, _api_guard, _bad, _body, _session_user, _tok_hash, t, user_info
 from version import VERSION
 
@@ -135,6 +135,18 @@ def _row(c, uid):
 
 def _ensure(c, uid):
     c.execute("INSERT INTO avatar (uid, updated) VALUES (?, ?) ON CONFLICT (uid) DO NOTHING", (uid, time.time()))
+
+
+def announce(c, uid):
+    """Live-Ereignis avatar.changed {user, avatar} nach dem Commit: an die Person selbst (andere Tabs/Geraete) und alle,
+    mit denen sie einen Chat teilt - deren Clients tauschen das Bild aus, ohne Listen neu laden zu muessen.
+    Nur lokale Konten; avatar = neue Adresse (anderes v) oder null (Initialen)."""
+    if not uid or uid.startswith("@"):
+        return
+    uids = {uid} | {r[0] for r in c.execute(
+        "SELECT DISTINCT m2.uid FROM chat_member m1 JOIN chat_member m2 ON m2.chat_id=m1.chat_id "
+        "WHERE m1.uid=? AND m1.left_at IS NULL AND m2.left_at IS NULL LIMIT 5000", (uid,))}
+    bus.emit_after(c, "direct", {"uids": sorted(uids), "typ": "avatar.changed", "data": {"user": uid, "avatar": url_of(c, uid)}})
 
 
 def _fresh(ts, now):
@@ -416,6 +428,8 @@ def _fetch(uid, src, email):
             else:
                 c.execute("UPDATE avatar SET g_hash=?, g_checked=?, g_found=?, ver=ver+?, updated=? WHERE uid=?",
                           (h, now, 1 if enc else 0, 1 if changed else 0, now, uid))
+            if changed:
+                announce(c, uid)
 
 
 def resolve(uid, email, remote=False):
@@ -479,6 +493,7 @@ def sso_photo(username, kind, value):
             _put(c, username, "sso", None)
             c.execute("UPDATE avatar SET sso_kind=?, sso_ref=?, sso_checked=NULL, sso_found=0, ver=ver+1, updated=? WHERE uid=?",
                       ("oidc" if url else None, url, now, username))
+            announce(c, username)
         return
     data = value if isinstance(value, (bytes, bytearray)) and 0 < len(value) <= FETCH_MAX else None
     h = hashlib.sha256(data).hexdigest() if data else None
@@ -490,6 +505,7 @@ def sso_photo(username, kind, value):
         _put(c, username, "sso", enc)
         c.execute("UPDATE avatar SET sso_kind=?, sso_ref=?, sso_checked=?, sso_found=?, ver=ver+1, updated=? WHERE uid=?",
                   ("ldap" if data else None, h, now, 1 if enc else 0, now, username))
+        announce(c, username)
 
 
 auth.photo_hook = sso_photo
@@ -623,8 +639,11 @@ def api_my_avatar(request: Request):
 def _store_upload(uid, enc):
     with _db() as c, c:
         _ensure(c, uid)
-        _put(c, uid, "upload", enc)
-        c.execute("UPDATE avatar SET upload=1, ver=ver+1, updated=? WHERE uid=?", (time.time(), uid))
+        changed = _put(c, uid, "upload", enc) or not (_row(c, uid) or {}).get("upload")
+        # dasselbe Bild noch einmal: Version (Cache-Buster) bleibt, Clients laden nichts neu
+        c.execute("UPDATE avatar SET upload=1, ver=ver+?, updated=? WHERE uid=?", (1 if changed else 0, time.time(), uid))
+        if changed:
+            announce(c, uid)
 
 
 @router.put("/api/account/avatar")
@@ -677,8 +696,11 @@ def api_my_avatar_delete(request: Request):
         return err
     with _db() as c, c:
         _ensure(c, uid)
+        had = bool((_row(c, uid) or {}).get("upload"))
         _put(c, uid, "upload", None)
-        c.execute("UPDATE avatar SET upload=0, ver=ver+1, updated=? WHERE uid=?", (time.time(), uid))
+        c.execute("UPDATE avatar SET upload=0, ver=ver+?, updated=? WHERE uid=?", (1 if had else 0, time.time(), uid))
+        if had:
+            announce(c, uid)
     return JSONResponse(state(uid, resolve_now=True), headers={"Cache-Control": "no-store"})
 
 
@@ -703,5 +725,7 @@ async def api_my_avatar_patch(request: Request):
             if "public" in b:                                # aendert das Bild nicht - Adresse (Version) bleibt
                 c.execute("UPDATE avatar SET public=? WHERE uid=?", (1 if b["public"] else 0, uid))
             c.execute("UPDATE avatar SET ver=ver+?, updated=? WHERE uid=?", (1 if "gravatar" in b else 0, time.time(), uid))
+            if "gravatar" in b:
+                announce(c, uid)
         return state(uid, resolve_now=True)
     return JSONResponse(await run_in_threadpool(save), headers={"Cache-Control": "no-store"})

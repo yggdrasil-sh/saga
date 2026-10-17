@@ -688,8 +688,13 @@ async def settings_post(request: Request):
     req = f.get("mfa_require") if f.get("mfa_require") in ("none", "admins", "all") else "none"
     acr = ", ".join(a for a in (x.strip() for x in _s(f, "mfa_oidc_acr", 300).split(",")) if re.fullmatch(r"[\w.:/#-]{1,100}", a))
     auth.save_setting("mfa", {"require": req, "oidc_mfa": _on(f, "mfa_oidc"), "oidc_acr": acr})
-    auth.save_setting("avatar", {"gravatar": _on(f, "avatar_gravatar"), "oidc_picture": _on(f, "avatar_oidc"),
-                                 "ldap_photo": _on(f, "avatar_ldap")})
+    av_old = dict(auth.settings(fresh=True).get("avatar") or {})
+    av_new = {"gravatar": _on(f, "avatar_gravatar"), "oidc_picture": _on(f, "avatar_oidc"), "ldap_photo": _on(f, "avatar_ldap")}
+    auth.save_setting("avatar", av_new)
+    if any(bool(av_old.get(k, k == "gravatar")) != bool(v) for k, v in av_new.items()):
+        # Quelle kann wechseln (z. B. SSO-Bild aus -> Gravatar): neue Version, sonst behalten Clients das alte Bild bis 24 h
+        with _db() as c, c:
+            c.execute("UPDATE avatar SET ver=ver+1 WHERE uid NOT LIKE '@%'")
     err = _calls_save(f)
     if err:
         _flash(request, err, "err")

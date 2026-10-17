@@ -962,7 +962,12 @@ def fetch_avatar(principal):
         p = peer_by(c, "host", host)
     if not enabled() or not p or p["status"] != "active":
         return None
-    status, rh, data = call(p, "GET", "/fed/v1/avatar/" + quote(n, safe=""), limit=AVATAR_MAX, timeout=6)
+    try:
+        status, rh, data = call(p, "GET", "/fed/v1/avatar/" + quote(n, safe=""), limit=AVATAR_MAX, timeout=6)
+    except FedError as ex:
+        if ex.code == 404:         # aeltere Gegenstelle ohne Profilbilder (unsignierte 404): kein Bild
+            return None
+        raise
     if status == 404:
         return None
     if status != 200:

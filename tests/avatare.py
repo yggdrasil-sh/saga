@@ -126,6 +126,49 @@ def req(m, p, user=None, body=None, raw=None, hdr=None, ctype=None):
     return r.status, {k.lower(): v for k, v in r.getheaders()}, data
 
 
+class Events:
+    """Live-Ereignisse (/api/events) einer Person im Hintergrund mitschreiben."""
+
+    def __init__(self, user):
+        self.c = http.client.HTTPConnection(B.hostname, B.port, timeout=60)
+        self.c.request("GET", "/api/events", headers={"Host": HOST, "Accept": "text/event-stream", "Cookie": ck(user)})
+        self.r, self.ev = self.c.getresponse(), []
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        cur = {}
+        try:
+            while True:
+                line = self.r.readline()
+                if not line:
+                    break
+                line = line.decode("utf-8").rstrip("\r\n")
+                if line == "":
+                    if "event" in cur:
+                        self.ev.append((cur["event"], json.loads(cur.get("data") or "null")))
+                    cur = {}
+                elif not line.startswith(":"):
+                    k, _, v = line.partition(":")
+                    cur[k] = v[1:] if v.startswith(" ") else v
+        except Exception:  # noqa: BLE001
+            pass
+
+    def wait(self, typ, timeout=6.0):
+        end = time.time() + timeout
+        while time.time() < end:
+            for e in list(self.ev):
+                if e[0] == typ:
+                    return e[1]
+            time.sleep(0.05)
+        return None
+
+    def close(self):
+        try:
+            self.c.sock.shutdown(2); self.c.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def api(user, m, p, body=None):
     s, _, d = req(m, p, user, body=body, hdr={"X-Saga": "1"})
     try:
@@ -405,6 +448,27 @@ def main():
     ok("Alte Version in der Adresse: nur kurz", "max-age=600" in h.get("cache-control", ""))
     s, st = upload("av-anna", png(200, 200), "image/png")
     ok(f"Upload als Rohinhalt (Apps: Content-Type image/png) ({s})", s == 200 and st["source"] == "upload")
+    # Bughunt 2 (server, S4): dasselbe Bild noch einmal -> Version bleibt (Clients laden nichts neu)
+    s, st2 = upload("av-anna", png(200, 200), "image/png")
+    ok(f"Dasselbe Bild noch einmal: Adresse/Version unveraendert ({st.get('url')} -> {st2.get('url')})", s == 200 and st2.get("url") == st.get("url"))
+    # Bughunt 2 (linux, S4): Live-Ereignis avatar.changed an die Person selbst und alle, mit denen sie einen Chat teilt
+    with connect() as c, c:
+        chid = c.execute("INSERT INTO chat (kind, dm_key, created_by, created) VALUES ('dm', 'av-anna|av-dora', 'av-anna', ?) RETURNING id",
+                         (time.time(),)).fetchone()[0]
+        c.executemany("INSERT INTO chat_member (chat_id, uid, joined) VALUES (?,?,?)", [(chid, "av-anna", time.time()), (chid, "av-dora", time.time())])
+    sd, sa = Events("av-dora"), Events("av-anna")
+    time.sleep(0.8)
+    s, st3 = upload("av-anna", png(180, 180, (200, 40, 40, 255)), "image/png")
+    ed, ea = sd.wait("avatar.changed"), sa.wait("avatar.changed")
+    ok(f"Neues Bild: avatar.changed live an Chat-Partnerin und eigene Tabs mit neuer Adresse ({ed}, {ea})",
+       ed and ea and ed.get("user") == "av-anna" and ed.get("avatar") == st3.get("url") != st.get("url") and ea.get("avatar") == st3.get("url"))
+    m = len(sd.ev)
+    upload("av-anna", png(180, 180, (200, 40, 40, 255)), "image/png")
+    time.sleep(1.2)
+    ok("... dasselbe Bild noch einmal: kein Ereignis", not [e for e in sd.ev[m:] if e[0] == "avatar.changed"])
+    sd.close(); sa.close()
+    with connect() as c, c:
+        c.execute("DELETE FROM chat WHERE id=?", (chid,))
     s, st = upload("av-anna", HEIC or b"", "image/heic")
     ok(f"Upload HEIC (iPhone, ungeschnitten -> mittig zugeschnitten) ({s})", s == 200 and st["source"] == "upload"
        and img(st.get("url") or "/x", "av-dora", s=128)[0] == 200)
