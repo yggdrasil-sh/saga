@@ -515,13 +515,26 @@ def _expand(qw, vocab, surf):
     affix(w, 0.6)
     if len(w) >= 8 and s not in vocab:
         best = None
+
+        def hit(part, seam_ok):
+            # Teil zaehlt, wenn er als Wort vorkommt - oder sein Stamm, solange die Trennstelle plausibel ist
+            # (kein Doppelbuchstabe am Anfang des zweiten Teils: "karto|ffelsalat" ist keine Zerlegung)
+            if part in surf:
+                return True
+            return seam_ok and len(part) >= 4 and stem(part) in vocab
         for i in range(3, len(w) - 3):
             mod, tail = w[:i], w[i:]
             if mod.endswith("s") and len(mod) > 4 and stem(mod) not in vocab:     # Fugen-s: "Arbeitszeit"
                 mod = mod[:-1]
-            score = (stem(tail) in vocab) * 2 + (stem(mod) in vocab)
-            if score and (best is None or score > best[0]):
-                best = (score, mod, tail)
+            seam_ok = not _DBL.match(tail)
+            score = hit(tail, seam_ok) * 2 + hit(mod, seam_ok)
+            if not score:
+                continue
+            # Gleichstand: echte Woerter vor blossen Stamm-Treffern, dann der laengere Wortteil
+            # ("garten|schere" statt "gar|tenschere", weil stem("garten") = "gar")
+            key = (score, (tail in surf) + (mod in surf), i)
+            if best is None or key > best[0]:
+                best = (key, mod, tail)
         if best:
             for part in best[1:]:
                 if len(part) >= 4:
@@ -797,13 +810,23 @@ def num_ctx(messages, max_tokens):
     return max(4096, min(32768, -(-need // 2048) * 2048))
 
 
+_THINK_OPEN = {}                                   # (anbieter, url, modell) -> True: Antwort beginnt ohne '<think>' in der Denkphase
+
+
 class ThinkFilter:
     """'<think>…</think>' von Modellen mit Denkphase (DeepSeek-R1, Qwen3 ...) aus dem Antwortstrom entfernen - auch
-    ueber Stueckgrenzen hinweg. thinking = True, sobald eine Denkphase begonnen hat."""
+    ueber Stueckgrenzen hinweg. thinking = True, sobald eine Denkphase begonnen hat.
+    - '<think>' zaehlt nur ganz am Anfang (vor sichtbarem Text) - spaeter ist es woertlicher Text der Antwort.
+    - '</think>' ohne Anfang (Chat-Vorlage setzt '<think>' schon in den Prompt): alles davor war Denkphase. Wurde davon
+      schon etwas ausgegeben, ist reset = True (der Aufrufer verwirft das Gezeigte).
+    - inside=True: Strom beginnt (nach frueherer Beobachtung) schon in der Denkphase. Kommt dann kein '</think>', wird am
+      Ende doch alles ausgegeben (Modell gewechselt)."""
     A, B = "<think>", "</think>"
+    KEEP = 65536                                           # so viel haelt ein angenommener Denkteil zurueck
 
-    def __init__(self):
-        self.buf, self.inside, self.lstrip, self.thinking = "", False, False, False
+    def __init__(self, inside=False):
+        self.buf, self.inside, self.lstrip, self.thinking = "", inside, False, inside
+        self.assumed, self.done, self.shown, self.reset, self.orphan = inside, False, False, False, False
 
     @staticmethod
     def _partial(s, tag):
@@ -819,27 +842,48 @@ class ThinkFilter:
             if self.inside:
                 i = self.buf.find(self.B)
                 if i < 0:
+                    if self.assumed and len(self.buf) < self.KEEP:
+                        break
+                    self.assumed = False
                     self.buf = self.buf[-(len(self.B) - 1):]
                     break
-                self.buf, self.inside, self.lstrip = self.buf[i + len(self.B):], False, True
+                self.buf, self.inside, self.assumed, self.done, self.lstrip = self.buf[i + len(self.B):], False, False, True, True
                 continue
             if self.lstrip:
                 self.buf = self.buf.lstrip()
                 if not self.buf:
                     break
                 self.lstrip = False
-            i = self.buf.find(self.A)
-            if i < 0:
-                keep = self._partial(self.buf, self.A)
-                out.append(self.buf[:len(self.buf) - keep])
-                self.buf = self.buf[len(self.buf) - keep:]
+            if self.done:                                  # Denkphase vorbei: der Rest ist Antwort, Tags woertlich
+                out.append(self.buf)
+                self.buf = ""
                 break
-            out.append(self.buf[:i])
-            self.buf, self.inside, self.thinking = self.buf[i + len(self.A):], True, True
+            ia = self.buf.find(self.A)
+            if ia >= 0 and (self.shown or self.buf[:ia].strip()):
+                ia = -1
+            ib = self.buf.find(self.B)
+            if ib >= 0 and (ia < 0 or ib < ia):            # Ende ohne Anfang: alles davor war Denkphase
+                self.buf, self.thinking, self.done, self.lstrip, self.orphan = self.buf[ib + len(self.B):], True, True, True, True
+                if self.shown:
+                    self.reset, self.shown = True, False
+                continue
+            if ia >= 0:
+                self.buf, self.inside, self.thinking = self.buf[ia + len(self.A):], True, True
+                continue
+            keep = self._partial(self.buf, self.B)
+            pa = 0 if self.shown else self._partial(self.buf, self.A)
+            if pa and not self.buf[:len(self.buf) - pa].strip():
+                keep = max(keep, pa)
+            txt = self.buf[:len(self.buf) - keep]
+            if txt.strip():
+                self.shown = True
+            out.append(txt)
+            self.buf = self.buf[len(self.buf) - keep:]
+            break
         return "".join(out)
 
     def flush(self):
-        s = "" if self.inside else self.buf
+        s = self.buf if (not self.inside or self.assumed) else ""
         self.buf = ""
         return s
 
@@ -861,7 +905,8 @@ def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=Non
     total = total_limit(c)
     t0 = time.monotonic()
     st = {"n": 0, "first": None, "finish": None, "thinking": False}
-    flt = ThinkFilter()
+    mkey = (prov, base, c.get("model"))
+    flt = ThinkFilter(inside=mkey in _THINK_OPEN)
 
     def think():
         if not st["thinking"]:
@@ -901,7 +946,14 @@ def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=Non
                         think()
                     if piece:
                         st["first"] = st["first"] or now
-                        out(flt.feed(piece))
+                        txt = flt.feed(piece)
+                        if flt.reset:                      # '</think>' ohne Anfang: Gezeigtes war Denkphase
+                            flt.reset, st["n"] = False, 0
+                            if status:
+                                status("reset")
+                        if flt.orphan and mkey not in _THINK_OPEN:
+                            _THINK_OPEN[mkey] = True       # naechste Antworten dieses Modells beginnen in der Denkphase
+                        out(txt)
                         if flt.thinking:
                             think()
                         if st["n"] > ANSWER_MAX:
@@ -909,6 +961,8 @@ def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=Non
                     if done:
                         break
             break
+        if flt.assumed:                                    # angenommene Denkphase kam nicht: Modell ohne Vorlage-<think>
+            _THINK_OPEN.pop(mkey, None)
         out(flt.flush())
     except AIError:
         raise
@@ -1111,6 +1165,10 @@ def _respond(uid, c, messages, first, finish, quota_left, quota=0):
                 if kind == "d":
                     text.append(val)
                     yield _fmt("delta", {"t": val})
+                elif kind == "s" and val == "reset":     # bisher Gezeigtes war Denkphase: Clients verwerfen es
+                    text.clear()
+                    yield _fmt("reset", {})
+                    yield _fmt("status", {"thinking": True})
                 elif kind == "s":
                     yield _fmt("status", {"thinking": True})
                 elif kind == "err":

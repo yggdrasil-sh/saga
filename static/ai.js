@@ -241,8 +241,8 @@
         if (srcs.length) { srcNode = sourcesNode(srcs); item.appendChild(srcNode); }      // gleich zeigen, was durchsucht wird
       } else if (ev === 'status') {
         var ty = ans.querySelector('.ai-typing'); if (ty && d.thinking) ty.textContent = T('Das Modell denkt nach …');
-      } else if (ev === 'delta') {
-        text += d.t || '';
+      } else if (ev === 'delta' || ev === 'reset') {     // reset: das bisher Gezeigte war die Denkphase des Modells
+        text = ev === 'reset' ? '' : text + (d.t || '');
         if (!pend) { pend = true; (window.requestAnimationFrame || setTimeout)(paint); }
       } else if (ev === 'done') {
         info = d || {};
@@ -407,8 +407,8 @@
     saved.catch(function () { /* Konflikt: der Server nimmt den gespeicherten Stand */ }).then(function () {
       var rich = action === 'summarize' || action === 'tasks';           // Verbessern/Uebersetzen: Text genau so zeigen
       A.run = stream('/api/ai/page/' + pid, { action: action, blocks: ids, target: target.value }, function (ev, d) {
-        if (ev === 'delta') {
-          text += d.t || '';
+        if (ev === 'delta' || ev === 'reset') {
+          text = ev === 'reset' ? '' : text + (d.t || '');
           var n = rich ? answerNode(text, []) : el('div', 'ai-answer', text); n.classList.add('ai-live'); resBox.replaceChild(n, out); out = n;
         } else if (ev === 'status') {
           var ty = out.querySelector('.ai-typing'); if (ty && d.thinking) ty.textContent = T('Das Modell denkt nach …');

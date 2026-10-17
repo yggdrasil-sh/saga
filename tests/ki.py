@@ -104,7 +104,13 @@ def ask(cookie, q, **kw):
 
 
 def text_of(ev):
-    return "".join(d["t"] for typ, d in ev if typ == "delta") if isinstance(ev, list) else ""
+    out = []
+    for typ, d in ev if isinstance(ev, list) else []:
+        if typ == "reset":                       # Client verwirft das bisher Gezeigte (war Denkphase)
+            out = []
+        elif typ == "delta":
+            out.append(d["t"])
+    return "".join(out)
 
 
 def get(ev, typ):
@@ -424,6 +430,19 @@ def run():
     s, ev, _ = ask(A, "Zitronenfalter?")
     ok(f"<think>…</think> (ueber Stueckgrenzen) wird herausgefiltert, status-Ereignis ({text_of(ev)!r})",
        text_of(ev) == "Antwort nach dem Denken [1]." and "Überlegung" not in text_of(ev) and get(ev, "status") == {"thinking": True})
+    # Bughunt 2 (server, S3/S4): '</think>' ohne Anfang (Vorlage setzt '<think>' in den Prompt), woertliches '<think>' im Text
+    setai(model="fake-openthink")
+    s, ev, _ = ask(A, "Zitronenfalter?")
+    ok(f"'</think>' ohne Anfang: Denkphase verworfen, reset-Ereignis ({text_of(ev)!r})",
+       text_of(ev) == "Antwort ohne Anfangsmarke [1]." and get(ev, "reset") == {} and get(ev, "status") == {"thinking": True})
+    s, ev, _ = ask(A, "Zitronenfalter?")
+    ok(f"... beim naechsten Mal gleich als Denkphase erkannt, nichts davon gesendet ({text_of(ev)!r})",
+       text_of(ev) == "Antwort ohne Anfangsmarke [1]." and get(ev, "reset") is None
+       and "denke" not in "".join(d["t"] for typ, d in ev if typ == "delta"))
+    setai(model="fake-tagtext")
+    s, ev, _ = ask(A, "Zitronenfalter?")
+    ok(f"Woertliches '<think>' mitten in der Antwort bleibt stehen ({text_of(ev)!r})",
+       text_of(ev) == "Der Tag <think> wird von Modellen benutzt [1]." and get(ev, "status") is None)
     setai(model="fake-reason")
     s, ev, _ = ask(A, "Zitronenfalter?")
     ok(f"OpenAI: reasoning_content nicht angezeigt ({text_of(ev)!r})", text_of(ev) == "Antwort nach dem Nachdenken [1]."
@@ -477,6 +496,16 @@ def run():
     s, ev, _ = ask(A, "Welche Zutaten brauche ich fuer die Suppe?")
     ids = [x["id"] for x in (get(ev, "sources") or {}).get("sources") or []]
     ok(f"Suche: Kompositum im Titel (Suppe findet Linsensuppe) auf Platz 1 ({ids[:3]})", ids[:1] == [lp])
+    # Bughunt 2 (server, S3/S4): stem("garten") = "gar" - die Zerlegung muss "garten|schere" nehmen, nicht "gar|tenschere";
+    # "karto|ffelsalat" ist keine Zerlegung (Stamm von "Kartons")
+    gp = page(A, "Garten", "Hochbeet mit Tomaten und Zucchini anlegen.")
+    up = page(A, "Umzug nach Leipzig", "Kartons packen und den Transporter mieten.")
+    s, ev, _ = ask(A, "Wo ist die Gartenschere?")
+    ids = [x["id"] for x in (get(ev, "sources") or {}).get("sources") or []]
+    ok(f"Suche: Gartenschere findet die Seite Garten ({ids[:3]})", gp in ids[:3])
+    s, ev, _ = ask(A, "Wie mache ich Kartoffelsalat?")
+    ids = [x["id"] for x in (get(ev, "sources") or {}).get("sources") or []]
+    ok(f"Suche: Kartoffelsalat findet nicht die Seite mit Kartons ({ids[:3]})", up not in ids)
 
     # --- Fehler -------------------------------------------------------------------------------------------------------------
     setai(model="fake-500")

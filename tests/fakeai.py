@@ -9,6 +9,8 @@ Verhalten nach Modellname:
   fake-500       HTTP 500
   fake-auth      verlangt 'Authorization: Bearer sk-test-123' (sonst 401)
   fake-think     Denkphase als <think>…</think> im Text, Marken ueber Stueckgrenzen verteilt (2.1)
+  fake-openthink Denkphase ohne '<think>' (nur '</think>', wie R1-Destillate ohne Reasoning-Parser)
+  fake-tagtext   woertliches '<think>' mitten in der Antwort
   fake-reason    Denkphase im eigenen Feld (OpenAI delta.reasoning_content, Ollama message.thinking), dann Antwort
   fake-empty     keine Antwort (nur Ende)
   fake-length    Antwort, dann finish_reason/done_reason "length"
@@ -140,6 +142,10 @@ class H(BaseHTTPRequestHandler):
         parts = pieces(text)
         if model == "fake-think":
             parts = ["<thi", "nk>geheime Über", "legung</thi", "nk>\n\nAntwort nach", " dem Denken [1]."]
+        elif model == "fake-openthink":
+            parts = ["Ich denke über", " die Frage nach.", "</th", "ink>", "\n\nAntwort ohne", " Anfangsmarke [1]."]
+        elif model == "fake-tagtext":
+            parts = ["Der Tag <thi", "nk> wird", " von Modellen benutzt [1]."]
         elif model == "fake-empty":
             parts = []
         elif model == "fake-length":
