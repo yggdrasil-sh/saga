@@ -420,6 +420,21 @@ async function chatThumbs(browser) {
   a.on('response', r => { if (r.request().method() === 'POST' && /\/api\/chats\/\d+\/files$/.test(r.url())) r.json().then(d => ups.push(d.size), () => ups.push(-1)); });
   await a.click('#ct-new'); await a.fill('.ct-people-q', E.SAGA_USER3); await a.waitForSelector('.ct-person');
   await a.click('.ct-person'); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(800);
+  // Direkt-Chat gibt es je Paar nur einmal: Nachrichten frueherer Laeufe (alle von USER2) erst entfernen
+  const old = await a.evaluate(async uu => {
+    const [u, me] = uu.split('|'), H = { headers: { 'X-Saga': '1' } }, cs = (await (await fetch('/api/chats', H)).json()).chats || [];
+    const c = cs.find(x => x.kind === 'dm' && (x.members || []).some(m => m.username === u)); if (!c) return 0;
+    let n = 0;
+    for (;;) {
+      const r = await (await fetch('/api/chats/' + c.id + '/messages?limit=200', H)).json();
+      const ms = (r.messages || []).filter(m => m.kind !== 'call' && m.sender && m.sender.username === me);
+      let k = 0;
+      for (const m of ms) k += (await fetch('/api/chats/' + c.id + '/messages/' + m.id, { method: 'DELETE', headers: { 'X-Saga': '1' } })).ok ? 1 : 0;
+      n += k; if (!k || n > 1000) break;
+    }
+    return n;
+  }, [E.SAGA_USER3, E.SAGA_USER2].join('|')).catch(() => 0);
+  if (old) { await a.reload(); await a.waitForTimeout(2000); await a.click('.ct-item-b'); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(800); }
   const send = async text => {
     await a.setInputFiles('#ct-file', file); await a.fill('#ct-input', text);
     await Promise.all([a.waitForResponse(r => /\/api\/chats\/\d+\/messages$/.test(r.url()) && r.request().method() === 'POST', { timeout: 30000 }).catch(() => {}),
@@ -441,6 +456,7 @@ async function chatThumbs(browser) {
   b.on('request', r => { if (/\/api\/chat\/files\//.test(r.url())) got.push(r.url()); });
   await b.goto(BASE + '/chats'); await b.waitForTimeout(2000);
   await b.click('.ct-item-b'); await b.waitForSelector('#ct-chat:not([hidden])');
+  for (let i = 0; i < 80 && (await b.$$('.ct-img')).length < 2; i++) await b.waitForTimeout(100);
   const box0 = await b.evaluate(() => [...document.querySelectorAll('.ct-img')].map(f => ({ w: f.style.width, ar: f.style.aspectRatio })));
   ok('2.1 Chat-Bilder: Platzhalter mit Breite/Seitenverhaeltnis vor dem Laden', box0.length === 2 && box0[0].w === '280px' && /280 \/ 210/.test(box0[0].ar), box0);
   const loadedAll = () => b.evaluate(() => [...document.querySelectorAll('.ct-img img')].filter(i => i.naturalWidth > 0).map(i => i.naturalWidth));
@@ -463,7 +479,8 @@ async function chatThumbs(browser) {
     r.onerror = () => res(null);
   }));
   ok('2.1 Chat-Bilder: Cache enthaelt th-Blob und eigenes Vorschaubild (lt:) der alten Nachricht', Array.isArray(stored) && stored.some(k => /^lt:/.test(k)) && stored.length >= 2, stored);
-  await b.click('#hk-user'); await b.click('.menu-item:has-text("Abmelden")'); await b.waitForURL(/\/login/);
+  await b.keyboard.press('Escape'); await b.waitForTimeout(300);
+  await b.click('#hk-user', { force: true }); await b.click('.menu-item:has-text("Abmelden")'); await b.waitForURL(/\/login/);
   const left = await b.evaluate(() => indexedDB.databases ? indexedDB.databases().then(l => l.map(d => d.name)) : []);
   ok('2.1 Chat-Bilder: Abmelden leert den Bild-Cache', !left.some(n => /^saga-chat-blobs-/.test(n)), left);
   await chatDevicesGone(a); await a.context().close(); await b.context().close();
