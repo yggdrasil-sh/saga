@@ -300,7 +300,9 @@ async function chatImmich(browser) {
   for (let i = 0; i < 60 && !await shown(); i++) await p.waitForTimeout(250);
   ok('2.1 Chat: Bild gesendet und wieder entschluesselt angezeigt', await shown(),
     await p.evaluate(() => ({ msgs: document.getElementById('ct-msgs').innerHTML.slice(-600), toast: (document.querySelector('.toast') || {}).textContent })));
-  ok('2.1 Chat: Upload ist verschluesselt (keine PNG-Bytes)', up.length > 0 && up.every(b => b && b.indexOf(PNG.slice(0, 8)) < 0 && b.indexOf(PNG.slice(16, 40)) < 0), up.length);
+  // WebKit liefert postDataBuffer() fuer Blob-Bodies nicht (null) - dort zaehlen nur die lesbaren
+  const ups = ENGINE === 'chromium' ? up : up.filter(Boolean);
+  ok('2.1 Chat: Upload ist verschluesselt (keine PNG-Bytes)', up.length > 0 && ups.every(b => b && b.indexOf(PNG.slice(0, 8)) < 0 && b.indexOf(PNG.slice(16, 40)) < 0), up.length);
   await chatDevicesGone(p); await p.context().close();
 }
 
@@ -520,13 +522,17 @@ async function chatThumbs(browser) {
   got.length = 0;
   await b.reload(); await b.waitForTimeout(2000); await b.click('.ct-item-b'); await b.waitForSelector('#ct-chat:not([hidden])');
   for (let i = 0; i < 40 && (await loadedAll()).length < 2; i++) await b.waitForTimeout(250);
-  ok('2.1 Chat-Bilder: nach Neuladen aus dem Cache (IndexedDB, nur Ciphertext) – kein Abruf', (await loadedAll()).length === 2 && got.length === 0, got);
+  // Playwright-WebKit-Kontexte sind fluechtig (wie privates Surfen): dort speichert WebKit keine Blobs in IndexedDB -
+  // der Cache faellt still weg (gewollt: .catch), echtes Safari speichert sie. Deshalb nur in Chrome pruefen.
+  const idb = ENGINE === 'chromium';
+  if (!idb) console.log('--   Chat-Bilder-Cache: in Playwright-WebKit (fluechtiger Kontext, keine IDB-Blobs) uebersprungen');
+  if (idb) ok('2.1 Chat-Bilder: nach Neuladen aus dem Cache (IndexedDB, nur Ciphertext) – kein Abruf', (await loadedAll()).length === 2 && got.length === 0, got);
   const stored = await b.evaluate(() => new Promise(res => {
     const r = indexedDB.open('saga-chat-blobs-' + document.body.dataset.uid);
     r.onsuccess = () => { const q = r.result.transaction('data').objectStore('data').getAllKeys(); q.onsuccess = () => { r.result.close(); res(q.result); }; };
     r.onerror = () => res(null);
   }));
-  ok('2.1 Chat-Bilder: Cache enthaelt th-Blob und eigenes Vorschaubild (lt:) der alten Nachricht', Array.isArray(stored) && stored.some(k => /^lt:/.test(k)) && stored.length >= 2, stored);
+  if (idb) ok('2.1 Chat-Bilder: Cache enthaelt th-Blob und eigenes Vorschaubild (lt:) der alten Nachricht', Array.isArray(stored) && stored.some(k => /^lt:/.test(k)) && stored.length >= 2, stored);
   await b.keyboard.press('Escape'); await b.waitForTimeout(300);
   await b.click('#hk-user', { force: true }); await b.click('.menu-item:has-text("Abmelden")'); await b.waitForURL(/\/login/);
   const left = await b.evaluate(() => indexedDB.databases ? indexedDB.databases().then(l => l.map(d => d.name)) : []);
