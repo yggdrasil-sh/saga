@@ -15,6 +15,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Verbessert
+- **KI-Assistent mit kleinen lokalen Modellen** (gemessen mit Ollama + `llama3:8b`): Die Antwortsprache wird aus der
+  Frage erkannt und am Ende der Anfrage noch einmal genannt (vorher antwortete das Modell auf deutsche Fragen öfter
+  englisch); die Seiten-Hilfen wiederholen ihren Auftrag nach dem Seitentext. Einleitungen wie „Here is the improved
+  text:“ landen beim Verbessern/Übersetzen nicht mehr im ersetzten Block. Ollama bekommt ein gleichbleibendes
+  `num_ctx` (aus „Seiteninhalt je Anfrage“) – vorher lud Ollama das Modell bei jedem Wechsel neu (5–6 s Wartezeit).
+  „Nichts gefunden“ erscheint in der Sprache der Frage.
+
 ## [2.1.0] – 2026-10-17
 
 Saga 2.1 macht die Anmeldung sicherer und den Chat persönlicher: Passkeys und Zwei-Faktor-Anmeldung, Profilbilder,

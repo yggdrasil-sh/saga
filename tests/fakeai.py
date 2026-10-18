@@ -36,10 +36,11 @@ def answer(messages, model=None):
     data = user.split("<<<SAGA_DATA", 1)[-1].rsplit("SAGA_DATA>>>", 1)[0].strip("\n")
     if "List the concrete action items" in sys_txt:
         return "- Angebot schicken\n- Termin mit Team vereinbaren\n* Bericht schreiben\n"
+    pre = "Here is the improved text:\n\n" if model == "fake-preamble" else ""   # Einleitung wie bei kleinen Modellen
     if "Improve spelling" in sys_txt:
-        return "\n---\n".join("VERBESSERT: " + s.strip() for s in re.split(r"(?m)^---$", data))
+        return pre + "\n---\n".join("VERBESSERT: " + s.strip() for s in re.split(r"(?m)^---$", data))
     if "Translate the text" in sys_txt:
-        return "\n---\n".join("UEBERSETZT: " + s.strip() for s in re.split(r"(?m)^---$", data))
+        return pre + "\n---\n".join("UEBERSETZT: " + s.strip() for s in re.split(r"(?m)^---$", data))
     if "Summarize the page" in sys_txt:
         rest = data.split("\n\n", 1)[-1].replace("\n", " ")
         return "Zusammenfassung: " + " ".join(re.split(r"(?<=[.!?])\s", rest)[:2])[:200]

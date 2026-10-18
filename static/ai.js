@@ -425,7 +425,10 @@
       if (done.truncated) resBox.insertBefore(el('p', 'ai-hint', T('Die Seite ist lang – verwendet wurden Anfang und Ende.')), out);
       if (done.cut) resBox.insertBefore(el('p', 'ai-hint', T('Die Antwort wurde abgeschnitten (Längengrenze des Modells).')), out);
       if (action === 'tasks') taskSuggest(done.tasks || [], out);
-      else if (action === 'improve' || action === 'translate') textSuggest(text, done, out);
+      else if (action === 'improve' || action === 'translate') {
+        if (typeof done.text === 'string') { text = done.text; out.textContent = text; }   // ohne Einleitung des Modells
+        textSuggest(text, done, out);
+      }
       else resBox.appendChild(copyBar(text));
     }).catch(function (err) {
       out.classList.remove('ai-pending');

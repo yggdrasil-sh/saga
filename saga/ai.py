@@ -677,8 +677,35 @@ def extra_context(uid, with_tasks, with_cal):
 _WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
+LANG_NAMES = {"de": "German", "en": "English", "es": "Spanish"}
+# Haeufige Woerter in Fragen je Sprache (Erkennung der Fragesprache; kleine lokale Modelle wie llama3:8b antworten
+# sonst gern auf Englisch, weil die Anweisungen englisch sind)
+_Q_HINTS = {
+    "de": set("der die das den dem des und ist ich mein meine meinen mir mich wie was wann wo wohin woher welche welcher "
+              "welches warum wer habe hat hast muss musste kann ein eine einen nicht mit für bis um zum zur sind wird "
+              "wurde gibt auf von bei noch schon".split()),
+    "en": set("the and is i my me what when where which who whom why how do does did have has had can could a an not with "
+              "for to of are will would should was were there their your".split()),
+    "es": set("el la los las y es mi mis me qué que cuándo cuando dónde donde cuál cuáles quién por cómo un una no con "
+              "para del en son tengo tiene hay está están".split()),
+}
+
+
+def q_lang(q):
+    """Sprache einer Frage (de/en/es) oder None, wenn nicht eindeutig."""
+    s = str(q or "").lower()
+    w = re.findall(r"[^\W\d_]+", s)
+    score = {k: sum(x in v for x in w) for k, v in _Q_HINTS.items()}
+    if re.search(r"[äöüß]", s):
+        score["de"] += 2
+    if re.search(r"[ñ¿¡áéíóú]", s):
+        score["es"] += 2
+    best = max(score, key=score.get)
+    return best if score[best] and sorted(score.values())[-2] < score[best] else None
+
+
 def _lang_name():
-    return {"de": "German", "en": "English", "es": "Spanish"}.get(i18n.get_lang(), "English")
+    return LANG_NAMES.get(i18n.get_lang(), "English")
 
 
 def system_prompt(task):
@@ -697,35 +724,56 @@ def system_prompt(task):
 
 
 def ask_messages(q, ctx, extra):
+    ql = LANG_NAMES.get(q_lang(q))
+    lang = ql or _lang_name()
     task = ("Answer the question using only the material. Each excerpt starts with [n], its page title and details "
             "(where the page is, when it was last changed, tags); database rows list their properties. "
             "Put the number of the excerpt you used in square brackets right after each statement, e.g. [2]. "
+            "Do not copy the excerpt headers into the answer. "
             "If the material does not contain the answer, say so in one short sentence and do not guess. "
             "If excerpts contradict each other, mention both and prefer the more recently changed one. "
             "Be brief (at most about 200 words). Plain text only; for lists start each line with '- '; no tables, no headings. "
-            "Answer in the language of the question; if that is unclear, answer in " + _lang_name() + ".")
+            "Answer in the language of the question" + (f" ({ql})" if ql else "") + "; if that is unclear, answer in "
+            + _lang_name() + ".")
     data = "\n\n".join(x for x in (ctx, extra) if x) or "(no matching pages)"
+    # Kleine lokale Modelle befolgen die letzte Zeile am zuverlaessigsten: Sprache und Quellenangabe dort wiederholen
     return [{"role": "system", "content": system_prompt(task)},
-            {"role": "user", "content": f"{MARK_A}\n{data}\n{MARK_B}\n\nQuestion: {q}"}]
+            {"role": "user", "content": f"{MARK_A}\n{data}\n{MARK_B}\n\nQuestion: {q}\n\n"
+                                        f"(Answer in {lang}, only from the material above, with [n] after each statement.)"}]
 
 
 def page_messages(action, title, text, target=None):
     lang = _lang_name()
+    tl = TARGETS.get(target, "English")
+    ml = LANG_NAMES.get(q_lang(str(text or "")[:3000]))   # Sprache des Seitentexts (sonst schwenken kleine Modelle auf Englisch)
+    in_ml = f" ({ml})" if ml else ""
+    plain = " Do not add an introduction, explanations or notes."
     task = {
         "summarize": f"Summarize the page in a few short sentences or bullet points (lines starting with '- '). Plain text, "
                      f"no headings. Answer in {lang}.",
         "tasks": "List the concrete action items (to-dos) that follow from the material. Output one item per line, "
                  "each line starting with '- '. At most 15 items, each short. No other text. Write the items in the "
-                 "language of the material.",
+                 f"language of the material{in_ml}.",
         "improve": "Improve spelling, grammar and wording of the text. Keep meaning, language and tone. The text consists of "
                    "blocks separated by a line containing only '---'; keep exactly the same blocks and separators. Output "
-                   "only the improved text.",
-        "translate": f"Translate the text into {TARGETS.get(target, 'English')}. The text consists of blocks separated by a "
-                     "line containing only '---'; keep exactly the same blocks and separators. Output only the translation.",
+                   "only the improved text." + plain,
+        "translate": f"Translate the text into {tl}. The text consists of blocks separated by a "
+                     "line containing only '---'; keep exactly the same blocks and separators. Output only the translation."
+                     + plain,
+    }[action]
+    # Auftrag nach den Daten kurz wiederholen (kleine Modelle vergessen den System-Prompt bei laengeren Seiten)
+    again = {
+        "summarize": f"Summarize the page above in {lang}. Start directly with the summary.",
+        "tasks": f"List the action items from the material above in its language{in_ml}, one per line starting with "
+                 "'- '. No other text.",
+        "improve": f"Output only the improved text in its original language{in_ml}, with the same '---' separators."
+                   + plain,
+        "translate": f"Translate everything above completely into {tl}, with the same '---' separators. "
+                     "Output only the translation." + plain,
     }[action]
     head = f"Page title: {clean_data(title)}\n\n" if action in ("summarize", "tasks") else ""
     return [{"role": "system", "content": system_prompt(task)},
-            {"role": "user", "content": f"{MARK_A}\n{head}{clean_data(text)}\n{MARK_B}"}]
+            {"role": "user", "content": f"{MARK_A}\n{head}{clean_data(text)}\n{MARK_B}\n\n({again})"}]
 
 
 def parse_tasks(text):
@@ -741,8 +789,33 @@ def parse_tasks(text):
     return out
 
 
-def split_segments(text):
-    return [s.strip() for s in re.split(r"(?m)^\s*-{3,}\s*$", str(text or ""))]
+# Beiwerk kleiner Modelle (gemessen mit llama3:8b), das sonst beim Ersetzen in den Bloecken landete: Einleitung
+# ("Here is the improved text:"), wiederholte Datenmarker, Schlusssatz ("Let me know if ...", ggf. nach '---')
+_PREAMBLE = re.compile(r"^\s*(?:here(?:'s| is| are)|hier (?:ist|sind)|aquí (?:está|tienes)|sure|certainly|gerne|claro)\b"
+                       r"[^\n]{0,100}:[ \t]*\n+", re.I)
+_POSTAMBLE = re.compile(r"\n\s*(?:-{3,}\s*\n\s*)?\(?(?:let me know|i hope|feel free|note:|ich hoffe|lass mich wissen|"
+                        r"gib (?:mir )?bescheid|hinweis:|avísame|espero que)[^\n]*\s*$", re.I)
+_MARK_LINE = re.compile(r"(?m)^[ \t]*(?:<<<\s*SAGA_DATA|SAGA_DATA\s*>>>)[ \t]*\n?")
+
+
+def strip_preamble(text, src=""):
+    """src = Ausgangstext: beginnt/endet er selbst so ("Hier ist die Liste:"), bleibt die Zeile stehen."""
+    text = _MARK_LINE.sub("", str(text or "")).strip("\n")
+    src = str(src or "")
+    m = _PREAMBLE.match(text)
+    if m and src.lstrip()[:12].lower() != m.group(0).lstrip()[:12].lower():
+        text = text[m.end():]
+    m = _POSTAMBLE.search(text)
+    if m and m.start() > 0 and not _POSTAMBLE.search("\n" + src):
+        text = text[:m.start()]
+    return text
+
+
+def split_segments(text, src=""):
+    segs = [s.strip() for s in re.split(r"(?m)^\s*-{3,}\s*$", strip_preamble(text, src))]
+    while len(segs) > 1 and not segs[-1]:                  # '---' am Ende ohne weiteren Block
+        segs.pop()
+    return segs
 
 
 # --- Verbindung zum Modell ---------------------------------------------------------------------------
@@ -803,11 +876,14 @@ def _http_error(code, detail=""):
     return AIError(f"{msg} ({detail})" if detail and code == 400 else msg)
 
 
-def num_ctx(messages, max_tokens):
+def num_ctx(messages, max_tokens, budget=0):
     """Kontextfenster fuer Ollama: Prompt (~3 Zeichen je Token) + Antwort + Reserve, auf 2048 gerundet, 4096-32768.
     Ohne diese Angabe nimmt Ollama seinen Standard (oft 2048/4096) und schneidet den Prompt still VORNE ab -
-    also die Regeln im System-Prompt."""
-    chars = sum(len(str(m.get("content") or "")) for m in messages)
+    also die Regeln im System-Prompt.
+    budget (Admin 'Seiteninhalt je Anfrage'): mindestens Platz fuer volles Budget + Anweisungen + Frage, damit der Wert
+    von Anfrage zu Anfrage gleich bleibt - Ollama laedt das Modell bei jedem anderen num_ctx neu (llama3:8b auf
+    GPU: 5-6 s je Wechsel, auf CPU deutlich mehr)."""
+    chars = max(sum(len(str(m.get("content") or "")) for m in messages), int(budget or 0) + 2500 + Q_MAX)
     need = chars // 3 + max_tokens + 512
     return max(4096, min(32768, -(-need // 2048) * 2048))
 
@@ -899,7 +975,8 @@ def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=Non
     if prov == "ollama":
         url, body = base + "/api/chat", {"model": c.get("model"), "messages": messages, "stream": True, "think": False,
                                          "keep_alive": "10m", "options": {"temperature": 0.2, "num_predict": max_tokens,
-                                                                          "num_ctx": num_ctx(messages, max_tokens)}}
+                                                                          "num_ctx": num_ctx(messages, max_tokens,
+                                                                                             c.get("context") or 8000)}}
     else:
         url, body = base + "/chat/completions", {"model": c.get("model"), "messages": messages, "stream": True,
                                                  "temperature": 0.2, "max_tokens": max_tokens}
@@ -1247,7 +1324,7 @@ async def api_ai_ask(request: Request):
         quota = int(c.get("quota") or 0)
         if not srcs and not extra:                         # nichts gefunden: kein Modellaufruf, kein Kontingent
             _release(uid)
-            return await _no_match(uid, quota)
+            return await _no_match(uid, quota, q)
         left = await asyncio.to_thread(_take_quota, uid, quota)
         if left == -1:
             _release(uid)
@@ -1262,13 +1339,17 @@ async def api_ai_ask(request: Request):
         raise
 
 
-async def _no_match(uid, quota):
+async def _no_match(uid, quota, q=""):
     """Antwort ohne Modell, wenn keine Seite passt (das Modell wuerde sonst raten)."""
     def left():
         with _db() as c:
             return max(0, quota - used_today(c, uid)) if quota else None
     ql = await asyncio.to_thread(left)
     msg = t("Dazu habe ich in deinen Seiten nichts gefunden. Versuch es mit anderen Begriffen oder mit der Suche.")
+    lq = q_lang(q)
+    if lq and lq != i18n.get_lang():                       # in der Sprache der Frage
+        msg = i18n.t_lang(lq, "Dazu habe ich in deinen Seiten nichts gefunden. Versuch es mit anderen Begriffen oder mit "
+                              "der Suche.")
 
     async def gen():
         yield ":" + " " * 2048 + "\n\n"
@@ -1393,7 +1474,11 @@ async def api_ai_page(nid: int, request: Request):
         if action == "tasks":
             out["tasks"] = parse_tasks(answer)
         elif action in ("improve", "translate"):
-            segs = split_segments(answer)
+            src = picked[0][2] if picked else ""
+            segs = split_segments(answer, src)
+            clean = strip_preamble(answer, src)
+            if clean != answer:                            # Einleitung des Modells weglassen (Kopieren/Einfuegen)
+                out["text"] = clean
             out["blocks"] = [{"id": p[0], "type": p[1], "replaceable": p[1] in TEXT_TYPES} for p in picked]
             out["segments"] = segs if len(segs) == len(picked) else None
         return out

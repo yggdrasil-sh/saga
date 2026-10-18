@@ -411,6 +411,20 @@ def run():
     nc = (bd.get("options") or {}).get("num_ctx")
     ok(f"Ollama: num_ctx passend zum Prompt, Denkphase aus, keep_alive (2.1) ({nc}, {bd.get('think')}, {bd.get('keep_alive')})",
        isinstance(nc, int) and 4096 <= nc <= 32768 and nc % 2048 == 0 and bd.get("think") is False and bd.get("keep_alive") == "10m")
+    # llama3-Test (kleine lokale Modelle): num_ctx bleibt gleich (sonst laedt Ollama das Modell neu), Sprache am Ende
+    sysm, user, _p, _a = last()
+    ok(f"Ollama: Antwortsprache der Frage am Ende der Anfrage wiederholt ({user[-90:]!r})",
+       user.rstrip().endswith("with [n] after each statement.)") and "(Answer in " in user)
+    sse(f"/api/ai/page/{p3}", A, {"action": "summarize"})
+    nc2 = (lastbody().get("options") or {}).get("num_ctx")
+    ok(f"Ollama: num_ctx fuer kurze Frage und Seiten-Hilfe gleich (kein Neuladen des Modells) ({nc}, {nc2})", nc == nc2)
+    ok("Seiten-Hilfe: Auftrag nach den Daten wiederholt", last()[1].rstrip().endswith("Start directly with the summary.)"))
+    ask(A, "What do I know about Zitronenfalter?")
+    ok("Englische Frage: Antwortsprache Englisch im Prompt", "language of the question (English)" in last()[0]
+       and "(Answer in English" in last()[1])
+    ask(A, "Was weiss ich ueber Zitronenfalter?")
+    ok("Deutsche Frage: Antwortsprache Deutsch im Prompt", "language of the question (German)" in last()[0]
+       and "(Answer in German" in last()[1])
     setai(model="fake-nothink")
     fake("POST", "/_reset")
     s, ev, _ = ask(A, "Zitronenfalter?")
@@ -466,6 +480,13 @@ def run():
     dn = get(ev, "done") or {}
     ok(f"Keine passende Seite: kein Modellaufruf, kein Kontingent, Hinweis ({dn}, {text_of(ev)!r})", s == 200
        and fake("GET", "/_count")["n"] == 0 and dn.get("no_match") is True and used("ki-a") == n0 and "nichts gefunden" in text_of(ev))
+    s, ev, _ = ask(A, "¿Qué es Xylophonquadrat Bergkristall?")
+    ok(f"Keine passende Seite: Hinweis in der Sprache der Frage ({text_of(ev)!r})", "No he encontrado" in text_of(ev))
+    setai(model="fake-preamble")
+    s, ev, _ = sse(f"/api/ai/page/{p3}", A, {"action": "improve", "blocks": ["b0"]})
+    dn = get(ev, "done") or {}
+    ok(f"Verbessern: Einleitung des Modells nicht im Vorschlag ({dn.get('segments')}, {str(dn.get('text'))[:40]!r})",
+       (dn.get("segments") or [""])[0].startswith("VERBESSERT:") and str(dn.get("text") or "").startswith("VERBESSERT:"))
     setai(model="fake-drip", timeout=5, quota=0)
     t0 = time.time()
     s, ev, _ = ask(A, "Zitronenfalter?")
