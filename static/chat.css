@@ -171,3 +171,33 @@ a.ct-chip:hover{color:var(--fg);border-color:var(--accent)}
 .ct-picker .ct-pick-ai{gap:.5rem}
 .ct-pick-n{font-weight:600}
 .ct-pick-h{margin-left:auto;font-size:.75rem;color:var(--muted)}
+/* Archiv und Chat loeschen (2.1): Bereich "Archiviert" unten in der Liste, Loeschen-Dialog mit Auswahl */
+.ct-list .ct-item-b{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}    /* Langdruck = Menue */
+.ct-arch-h{margin:.4rem 0 .1rem;border-top:1px solid var(--border);padding-top:.3rem}
+.ct-arch-t{display:flex;align-items:center;gap:.45rem;width:100%;padding:.45rem .55rem;border:0;border-radius:8px;background:none;
+  color:var(--muted);font:inherit;font-size:.82rem;font-weight:600;text-align:left;cursor:pointer}
+.ct-arch-t:hover{background:var(--card-h);color:var(--fg)}
+.ct-arch-t:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.ct-arch-ic{width:1em;text-align:center}
+.ct-badge-q{margin-left:auto;background:var(--muted)}
+.ct-item.ct-archived .ct-item-n{font-weight:500}
+.ct-chip-arch{border-style:dashed}
+.ct-cleared{font-style:italic}
+.ct-del{border:0;margin:0 0 .6rem;padding:0;display:flex;flex-direction:column;gap:.5rem}
+.ct-del-l{font-weight:600;margin-bottom:.35rem;padding:0}
+.ct-del-o{display:flex;gap:.65rem;align-items:flex-start;padding:.6rem .7rem;border:1px solid var(--border);border-radius:10px;cursor:pointer}
+.ct-del-o:hover{background:var(--card-h)}
+.ct-del-o:has(input:checked){border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.ct-del-o:has(input[value="all"]:checked){border-color:var(--down);box-shadow:inset 3px 0 0 var(--down)}
+.ct-del-o:focus-within{outline:2px solid var(--accent);outline-offset:1px}
+.ct-del-o input{margin-top:.2rem;accent-color:var(--accent);flex:none}
+.ct-del-o input[value="all"]{accent-color:var(--down)}
+.ct-del-o.dis{opacity:.62;cursor:not-allowed}
+.ct-del-t{display:flex;flex-direction:column;gap:.15rem;min-width:0}
+.ct-del-t .hk-hint{margin:0;font-size:.82rem;line-height:1.4}
+.ct-del-sub{display:flex;gap:.5rem;align-items:center;font-size:.86rem;margin:-.1rem 0 0 2.1rem}
+.ct-del-sub.dis{opacity:.55}
+.ct-del-warn{margin:.2rem 0 .4rem;padding:.5rem .7rem;border-radius:8px;background:var(--critbg);color:var(--fg)}
+.ct-del-go{background:var(--down);border-color:var(--down);color:var(--bg);font-weight:600}
+.ct-del-go:hover:not(:disabled){filter:brightness(1.08);color:var(--bg)}
+@media (max-width:640px){.ct-del-sub{margin-left:1.6rem}.ct-del-o{padding:.55rem .6rem}}

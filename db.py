@@ -612,6 +612,18 @@ CREATE TABLE IF NOT EXISTS chat_ai_reply (
     sha256 TEXT NOT NULL,                             -- Hex, ueber den UTF-8-Text der Antwort
     msg_id TEXT);                                     -- gesendete Chat-Nachricht mit dieser Antwort (einmalig)
 CREATE INDEX IF NOT EXISTS chat_ai_reply_msg ON chat_ai_reply (msg_id);
+
+-- Chats archivieren / "fuer mich loeschen" (2.1, saga/chat.py): Stand je Person und Chat. Eigene Tabelle statt neuer
+-- Spalten in chat_member: kein neuer Schema-Stand noetig, aeltere Versionen ignorieren sie gefahrlos (die versiegelten
+-- Schluessel der geloeschten Nachrichten sind fuer diese Person ohnehin entfernt).
+CREATE TABLE IF NOT EXISTS chat_pref (
+    chat_id BIGINT NOT NULL REFERENCES chat(id) ON DELETE CASCADE, uid TEXT NOT NULL,
+    archived DOUBLE PRECISION,                        -- archiviert seit (NULL = nicht archiviert)
+    cleared_seq BIGINT NOT NULL DEFAULT 0,            -- "fuer mich geloescht": Nachrichten bis hier nie mehr ausliefern
+    cleared_at DOUBLE PRECISION,
+    hidden INTEGER NOT NULL DEFAULT 0,                -- Direkt-Chat aus der Liste, bis eine neue Nachricht kommt
+    PRIMARY KEY (chat_id, uid));
+CREATE INDEX IF NOT EXISTS chat_pref_uid ON chat_pref (uid);
 """
 # --- Schema-Versionen und Migrationen ----------------------------------------------------------------
 # SCHEMA oben ist Stand 1 (plus neue Tabellen mit CREATE TABLE IF NOT EXISTS). Alles, was bestehende

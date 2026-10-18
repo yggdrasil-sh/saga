@@ -621,6 +621,15 @@ only stores encrypted data. The admin can't read any content either.
   and “Mark as verified”; if it changes, the chat warns you), members, **mute** (no notification, not counted as
   unread), **delete messages automatically after** 1 hour … 1 year (applies to new messages), rename or leave a custom
   group. The magnifier searches loaded messages – on this device only.
+- **Archive and delete:** in the chat menu (⋯) or by right-clicking or long-pressing a chat in the list. **Archive**
+  moves the chat to the **“Archived”** section at the bottom of the list – it no longer counts as unread and comes
+  back by itself with the next message (muted chats stay archived). **Delete chat …** asks: **Just for me** – the
+  history disappears only for you, on all your devices (the server deletes the keys for it); a direct chat leaves the
+  list until a new message arrives, other chats are archived; you can also leave a free group at the same time.
+  **For everyone** – direct chat (both people) and free group (its admins): the chat is gone for everyone with all
+  messages, attachments and calls, the others see “Name deleted the chat”. Group chat (Saga admins) and page chat (the
+  page owner): only the history is deleted, the chat stays. Neither can be undone; anyone who has already seen messages
+  may have copies. API for apps: `docs/APP-API-CHAT.md`.
 - **⚙ Chats & devices:** devices with access, remove devices (they get nothing more, immediately), create a new
   recovery key (the old one stops working).
 - Notification “New message from Name” – without content; can be turned off under Settings → Account → Notifications.

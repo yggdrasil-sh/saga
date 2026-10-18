@@ -302,6 +302,38 @@ def _member(c, cid, uid):
     return dict(zip(("role", "muted", "last_read", "joined"), r)) if r else None
 
 
+def _pref(c, cid, uid):
+    """Stand je Person (2.1, chat_pref): archiviert seit, "fuer mich geloescht" bis seq, Direkt-Chat ausgeblendet."""
+    r = c.execute("SELECT archived, cleared_seq, hidden FROM chat_pref WHERE chat_id=? AND uid=?", (cid, uid)).fetchone()
+    return {"archived": r[0], "cleared_seq": r[1] or 0, "hidden": bool(r[2])} if r else {"archived": None, "cleared_seq": 0, "hidden": False}
+
+
+def may_delete_all(c, uid, ch, m):
+    """Was darf uid "fuer alle" loeschen? 'chat' (Direkt-Chat: beide; freie Gruppe: Chat-Admins) - Chat samt Verlauf weg;
+    'history' (Gruppen-Chat: Saga-Admins; Seiten-Chat: Eigentuemer der Seite) - nur der Verlauf, der Chat bleibt mit
+    der Gruppe/Seite; sonst None."""
+    if not m:
+        return None
+    if ch["kind"] == "dm":
+        return "chat"
+    if ch["kind"] == "free":
+        return "chat" if m["role"] == "admin" else None
+    if ch["kind"] == "group":
+        u = user_info(uid)
+        return "history" if u and u.get("is_admin") else None
+    if ch["kind"] == "page" and ch["note_id"]:
+        return "history" if c.execute("SELECT 1 FROM note WHERE id=? AND uid=?", (ch["note_id"], uid)).fetchone() else None
+    return None
+
+
+def revive(c, cid, sender=None):
+    """Neue Nachricht (2.1): Chat kommt aus dem Archiv - fuer den Absender und alle nicht stummgeschalteten Mitglieder
+    (stumm + archiviert bleibt archiviert); ausgeblendete Direkt-Chats erscheinen wieder (leer bis auf das Neue)."""
+    c.execute("UPDATE chat_pref SET archived=NULL WHERE chat_id=? AND archived IS NOT NULL AND (uid=? OR NOT EXISTS "
+              "(SELECT 1 FROM chat_member m WHERE m.chat_id=chat_pref.chat_id AND m.uid=chat_pref.uid AND m.muted<>0))", (cid, sender or ""))
+    c.execute("UPDATE chat_pref SET hidden=0 WHERE chat_id=? AND hidden<>0", (cid,))
+
+
 def _chat_for(c, uid, cid, do_sync=True):
     """-> (chat, mitglied, aktuelle mitglieder, fehler). Ohne Mitgliedschaft 404 (den Chat "gibt es nicht")."""
     ch = _load(c, cid)
@@ -758,15 +790,17 @@ def _my_device(c, uid, device):
 
 def _msgs(c, uid, cid, device, where="", args=(), limit=PAGE, desc=True):
     """Nachrichten mit dem fuer mich versiegelten Schluessel (Geraet, sonst Backup). Nur, was fuer mich verschluesselt ist -
-    dazu Anruf-Eintraege (kind='call', Metadaten ohne Schluessel; nur wenn where sie zulaesst)."""
+    dazu Anruf-Eintraege (kind='call', Metadaten ohne Schluessel; nur wenn where sie zulaesst). Nichts bis zur Grenze
+    "fuer mich geloescht" (chat_pref.cleared_seq; der Name einer freien Gruppe, kind='title', bleibt)."""
     bk = "backup:" + uid
     dv = device or "-"
     rows = c.execute(
         f"SELECT {M_COLS}, (SELECT sealed FROM chat_msg_key k WHERE k.msg_seq=m.seq AND k.recipient=?), "
         "(SELECT sealed FROM chat_msg_key k WHERE k.msg_seq=m.seq AND k.recipient=?) FROM chat_msg m "
         "WHERE m.chat_id=? AND (m.expires_at IS NULL OR m.expires_at>?) AND (m.kind='call' OR EXISTS (SELECT 1 FROM chat_msg_key k "
-        f"WHERE k.msg_seq=m.seq AND k.recipient IN (?,?))) {where} ORDER BY m.seq {'DESC' if desc else 'ASC'} LIMIT ?",
-        (dv, bk, cid, time.time(), dv, bk, *args, limit)).fetchall()
+        "WHERE k.msg_seq=m.seq AND k.recipient IN (?,?))) AND (m.kind='title' OR m.seq > COALESCE((SELECT p.cleared_seq FROM chat_pref p "
+        f"WHERE p.chat_id=m.chat_id AND p.uid=?), 0)) {where} ORDER BY m.seq {'DESC' if desc else 'ASC'} LIMIT ?",
+        (dv, bk, cid, time.time(), dv, bk, uid, *args, limit)).fetchall()
     return rows
 
 
@@ -840,6 +874,10 @@ def _chat_dict(c, uid, ch, mem, m, device, full=False):
          "members": [{"username": u, "name": nm.get(u, u), "me": u == uid, "avatar": nm.avatar(u)} for u in mem], "member_count": len(mem),
          # KI im Chat (2.1, saga/ai_chat.py): in diesem Chat erlaubt? (ob der Server sie anbietet: /api/ai/status "chat")
          "ai": bool(c.execute("SELECT 1 FROM chat_ai WHERE chat_id=?", (ch["id"],)).fetchone())}
+    # Archiv und Loeschen (2.1): nur fuer mich; delete_for_all = 'chat' | 'history' | None (was "Fuer alle loeschen" darf)
+    p = _pref(c, ch["id"], uid)
+    d.update(archived=p["archived"] is not None, archived_at=p["archived"], cleared_seq=p["cleared_seq"],
+             delete_for_all=may_delete_all(c, uid, ch, m))
     if ch["kind"] == "dm":
         a, _, b = ch["dm_key"].partition("|")
         d["peer"] = {"username": b if a == uid else a, "name": d["name"], "avatar": nm.avatar(b if a == uid else a)}
@@ -870,7 +908,9 @@ def _candidates(c, uid):
 
 @router.get("/api/chats")
 def api_chats(request: Request, device: str = ""):
-    """Meine Chats (neueste zuerst) mit Ungelesen-Zahl; Gruppen-/Seiten-Chats werden dabei mit Gruppe/Freigaben abgeglichen."""
+    """Meine Chats (neueste zuerst) mit Ungelesen-Zahl; Gruppen-/Seiten-Chats werden dabei mit Gruppe/Freigaben abgeglichen.
+    Archivierte Chats sind dabei (archived=true), zaehlen aber nicht zu unread; "fuer mich geloeschte" Direkt-Chats fehlen,
+    bis eine neue Nachricht kommt."""
     uid, err = _me(request)
     if err:
         return err
@@ -884,20 +924,22 @@ def api_chats(request: Request, device: str = ""):
                 sync(c, ch)
         out = []
         for r in c.execute(f"SELECT {', '.join('ch.' + x.strip() for x in C_COLS.split(','))} FROM chat ch JOIN chat_member m "
-                           "ON m.chat_id=ch.id WHERE m.uid=? AND m.left_at IS NULL ORDER BY COALESCE(ch.last_at, ch.created) DESC LIMIT 500",
-                           (uid,)).fetchall():
+                           "ON m.chat_id=ch.id LEFT JOIN chat_pref p ON p.chat_id=ch.id AND p.uid=m.uid WHERE m.uid=? AND m.left_at IS NULL "
+                           "AND NOT (COALESCE(p.hidden, 0)<>0 AND ch.last_seq<=p.cleared_seq) "
+                           "ORDER BY COALESCE(ch.last_at, ch.created) DESC LIMIT 500", (uid,)).fetchall():
             ch = _row(r)
             out.append(_chat_dict(c, uid, ch, members(c, ch["id"]), _member(c, ch["id"], uid), dev))
-    return _no_store({"chats": out, "unread": sum(x["unread"] for x in out if not x["muted"])})
+    return _no_store({"chats": out, "unread": sum(x["unread"] for x in out if not x["muted"] and not x["archived"])})
 
 
 def unread_total(c, uid):
-    """Ungelesene Nachrichten in nicht stummgeschalteten Chats (Knopf "Chats" auf Dashboard/Seiten)."""
+    """Ungelesene Nachrichten in nicht stummgeschalteten, nicht archivierten Chats (Knopf "Chats" auf Dashboard/Seiten)."""
     if not enabled():
         return 0
     return c.execute(
         "SELECT COUNT(*) FROM chat_msg x JOIN chat_member m ON m.chat_id=x.chat_id AND m.uid=? AND m.left_at IS NULL AND m.muted=0 "
-        "WHERE x.kind='msg' AND x.seq>m.last_read AND (x.sender_uid IS NULL OR x.sender_uid<>?) AND (x.expires_at IS NULL OR x.expires_at>?)",
+        "WHERE x.kind='msg' AND x.seq>m.last_read AND (x.sender_uid IS NULL OR x.sender_uid<>?) AND (x.expires_at IS NULL OR x.expires_at>?) "
+        "AND NOT EXISTS (SELECT 1 FROM chat_pref p WHERE p.chat_id=x.chat_id AND p.uid=m.uid AND p.archived IS NOT NULL)",
         (uid, uid, time.time())).fetchone()[0]
 
 
@@ -983,6 +1025,8 @@ async def api_chat_new(request: Request):
         m = _member(c, ch["id"], uid)
         if not m:
             return _bad("not found", 404)
+        # "fuer mich geloeschter" Direkt-Chat wird bewusst wieder geoeffnet: zurueck in die Liste (leer)
+        c.execute("UPDATE chat_pref SET hidden=0 WHERE chat_id=? AND uid=? AND hidden<>0", (ch["id"], uid))
         return _no_store({"chat": _chat_dict(c, uid, ch, mem, m, _my_device(c, uid, str(b.get("device") or "")), full=True)})
 
 
@@ -1000,13 +1044,16 @@ def api_chat(cid: int, request: Request, device: str = ""):
 
 @router.patch("/api/chats/{cid}")
 async def api_chat_patch(cid: int, request: Request):
-    """{muted: bool} (nur fuer mich) und/oder {retention_s: 0|3600|...} (fuer alle; gilt fuer neue Nachrichten)."""
+    """{muted: bool} / {archived: bool} (nur fuer mich) und/oder {retention_s: 0|3600|...} (fuer alle; gilt fuer neue
+    Nachrichten). Archivierte Chats kommen bei einer neuen Nachricht von selbst zurueck (ausser stummgeschaltete)."""
     uid, err = _me(request)
     if err:
         return err
     b = await _body(request)
     if b is None:
         return _bad(t("ungültige Anfrage"))
+    if "archived" in b and not isinstance(b["archived"], bool):
+        return _bad(t("ungültige Angabe"))
     with _db() as c, c:
         ch, m, mem, err = _chat_for(c, uid, cid)
         if err:
@@ -1014,6 +1061,10 @@ async def api_chat_patch(cid: int, request: Request):
         if "muted" in b:
             c.execute("UPDATE chat_member SET muted=? WHERE chat_id=? AND uid=?", (1 if b["muted"] else 0, ch["id"], uid))
             _direct(c, [uid], "chat.changed", {"chat_id": ch["id"]})
+        if "archived" in b:
+            c.execute("INSERT INTO chat_pref (chat_id, uid, archived) VALUES (?,?,?) ON CONFLICT (chat_id, uid) DO UPDATE "
+                      "SET archived=EXCLUDED.archived", (ch["id"], uid, time.time() if b["archived"] else None))
+            _direct(c, [uid], "chat.changed", {"chat_id": ch["id"], "archived": b["archived"]})
         if "retention_s" in b:
             v = b["retention_s"]
             if not isinstance(v, int) or isinstance(v, bool) or v not in RETENTIONS:
@@ -1100,6 +1151,96 @@ def api_member_remove(cid: int, who: str, request: Request):
             c.execute("UPDATE chat_member SET role='admin' WHERE chat_id=? AND uid=?", (ch["id"], rest[0]))
         _changed(c, ch["id"], set(mem))
     return _no_store({"ok": True})
+
+
+# --- Chat loeschen (2.1): "fuer mich" oder "fuer alle" -----------------------------------------------------------
+def _drop_notifs(c, uids, cid):
+    """Benachrichtigungen dieses Chats (neue Nachricht, verpasster Anruf) fuer diese Konten entfernen."""
+    pat = '{"chat": %d, %%' % cid
+    for u in sorted(set(uids)):
+        ids = [r[0] for r in c.execute("SELECT id FROM notification WHERE uid=? AND kind IN ('chat.message','call.missed') AND data LIKE ?",
+                                       (u, pat))]
+        if ids:
+            c.execute(f"DELETE FROM notification WHERE id IN ({','.join('?' * len(ids))})", tuple(ids))
+            bus.emit_after(c, "notification.read", {"uid": u, "ids": ids, "unread": notify.count_unread(c, u)})
+
+
+def clear_for(c, uid, ch):
+    """"Fuer mich loeschen": Grenze cleared_seq = neueste Nachricht; die fuer uid versiegelten Inhaltsschluessel (alle
+    eigenen Geraete + backup:<uid>) dieser Nachrichten werden geloescht - der Server liefert sie nie mehr aus, und selbst
+    eine alte Kopie des Ciphertexts laesst sich mit dem Konto nicht mehr oeffnen. Die Nachrichten der anderen bleiben.
+    Direkt-Chat: aus der Liste, bis eine neue Nachricht kommt; sonst archiviert. Der Name einer freien Gruppe (kind
+    'title') bleibt lesbar. -> (cleared_seq, Anzahl entfernter Schluessel)"""
+    now = time.time()
+    floor = c.execute("SELECT COALESCE(MAX(seq), 0) FROM chat_msg WHERE chat_id=?", (ch["id"],)).fetchone()[0]
+    rcpt = [r[0] for r in c.execute("SELECT id FROM chat_device WHERE uid=?", (uid,))] + ["backup:" + uid]
+    n = c.execute(f"DELETE FROM chat_msg_key WHERE recipient IN ({','.join('?' * len(rcpt))}) AND msg_seq IN "
+                  "(SELECT seq FROM chat_msg WHERE chat_id=? AND seq<=? AND kind<>'title')", (*rcpt, ch["id"], floor)).rowcount
+    dm = ch["kind"] == "dm"
+    c.execute("INSERT INTO chat_pref (chat_id, uid, archived, cleared_seq, cleared_at, hidden) VALUES (?,?,?,?,?,?) ON CONFLICT (chat_id, uid) "
+              "DO UPDATE SET archived=EXCLUDED.archived, cleared_seq=GREATEST(chat_pref.cleared_seq, EXCLUDED.cleared_seq), "
+              "cleared_at=EXCLUDED.cleared_at, hidden=EXCLUDED.hidden", (ch["id"], uid, None if dm else now, floor, now, 1 if dm else 0))
+    c.execute("UPDATE chat_member SET last_read=GREATEST(last_read, ?) WHERE chat_id=? AND uid=?", (ch["last_seq"], ch["id"], uid))
+    _drop_notifs(c, [uid], ch["id"])
+    return floor, n
+
+
+def _wipe_history(c, ch):
+    """Verlauf fuer alle loeschen (Gruppen-/Seiten-Chat, der Chat selbst bleibt): Nachrichten samt Schluesseln, Anhaenge,
+    KI-Belege, beendete Anrufe. -> (Datei-ids, Anzahl Nachrichten)"""
+    cid = ch["id"]
+    now, top = time.time(), c.execute("SELECT COALESCE(MAX(seq), 0) FROM chat_msg WHERE chat_id=?", (cid,)).fetchone()[0]
+    # Grenze fuer alle Mitglieder: Clients zeigen "Der bisherige Verlauf wurde geloescht" statt "nicht lesbar"
+    c.execute("INSERT INTO chat_pref (chat_id, uid, cleared_seq, cleared_at) SELECT ?, uid, ?, ? FROM chat_member WHERE chat_id=? "
+              "AND left_at IS NULL ON CONFLICT (chat_id, uid) DO UPDATE SET cleared_seq=GREATEST(chat_pref.cleared_seq, EXCLUDED.cleared_seq), "
+              "cleared_at=EXCLUDED.cleared_at", (cid, top, now, cid))
+    fids = [r[0] for r in c.execute("SELECT id FROM chat_file WHERE chat_id=? AND msg_seq IS NOT NULL", (cid,))]
+    c.execute("DELETE FROM chat_file WHERE chat_id=? AND msg_seq IS NOT NULL", (cid,))
+    c.execute("DELETE FROM chat_ai_reply WHERE chat_id=?", (cid,))
+    c.execute("DELETE FROM chat_call WHERE chat_id=? AND state='ended'", (cid,))
+    n = c.execute("DELETE FROM chat_msg WHERE chat_id=? AND kind<>'title'", (cid,)).rowcount    # Schluessel: ON DELETE CASCADE
+    c.execute("UPDATE chat_member SET last_read=GREATEST(last_read, ?) WHERE chat_id=?", (ch["last_seq"], cid))
+    return fids, n
+
+
+@router.delete("/api/chats/{cid}")
+def api_chat_delete(cid: int, request: Request, scope: str = "me"):
+    """Chat loeschen. ?scope=me (Standard): Verlauf bis jetzt nur fuer mich (siehe clear_for), jede Chat-Art.
+    ?scope=all: Direkt-Chat (beide) bzw. freie Gruppe (Chat-Admins) - Chat samt Nachrichten, Schluesseln, Anhaengen,
+    Lesestaenden, KI-Belegen und Anruf-Eintraegen weg, alle Mitglieder bekommen chat.removed {chat_id, by}.
+    Gruppen-Chat (Saga-Admins) bzw. Seiten-Chat (Eigentuemer): nur der Verlauf, chat.cleared {chat_id, scope:'all', by}.
+    Ohne Recht 403, ohne Mitgliedschaft 404."""
+    uid, err = _me(request)
+    if err:
+        return err
+    if scope not in ("me", "all"):
+        return _bad(t("ungültige Angabe"))
+    with _db() as c, c:
+        ch, m, mem, err = _chat_for(c, uid, cid)
+        if err:
+            return err
+        if scope == "me":
+            floor, n = clear_for(c, uid, ch)
+            _direct(c, [uid], "chat.cleared", {"chat_id": ch["id"], "scope": "me", "cleared_seq": floor})
+            print(f"chat: Chat {ch['id']} fuer {uid} geleert ({n} Schluessel entfernt)", flush=True)
+            return _no_store({"ok": True, "scope": "me", "removed": False, "cleared_seq": floor,
+                              "archived": ch["kind"] != "dm", "hidden": ch["kind"] == "dm"})
+        mode = may_delete_all(c, uid, ch, m)
+        if not mode:
+            return _bad(t("Dafür fehlt dir die Berechtigung."), 403)
+        by = {"username": uid, "name": names(c, [uid]).get(uid, uid)}
+        everyone = set(mem) | set(members(c, ch["id"]))
+        _drop_notifs(c, everyone, ch["id"])
+        if mode == "chat":
+            _rm_blobs(c, _drop_chat(c, ch["id"]))       # Mitglieder, Nachrichten, Schluessel, Anrufe, KI, chat_pref: CASCADE
+            _direct(c, everyone, "chat.removed", {"chat_id": ch["id"], "kind": ch["kind"], "by": by})
+            print(f"chat: Chat {ch['id']} ({ch['kind']}) von {uid} fuer alle geloescht", flush=True)
+            return _no_store({"ok": True, "scope": "all", "removed": True})
+        fids, n = _wipe_history(c, ch)
+        _rm_blobs(c, fids)
+        _direct(c, everyone, "chat.cleared", {"chat_id": ch["id"], "scope": "all", "by": by})
+        print(f"chat: Verlauf von Chat {ch['id']} ({ch['kind']}) von {uid} fuer alle geloescht ({n} Nachrichten)", flush=True)
+        return _no_store({"ok": True, "scope": "all", "removed": False, "deleted": n})
 
 
 def recipients(c, mem):
@@ -1254,6 +1395,7 @@ async def api_send(cid: int, request: Request):
         else:
             c.execute("UPDATE chat SET last_seq=?, last_at=? WHERE id=?", (seq, now, ch["id"]))
             c.execute("UPDATE chat_member SET last_read=? WHERE chat_id=? AND uid=?", (seq, ch["id"], uid))
+            revive(c, ch["id"], uid)                       # (2.1) aus dem Archiv holen, ausgeblendeten Direkt-Chat zeigen
             muted = {r[0] for r in c.execute("SELECT uid FROM chat_member WHERE chat_id=? AND left_at IS NULL AND muted<>0", (ch["id"],))}
             for u in mem:
                 if u != uid and u not in muted:
@@ -1382,8 +1524,8 @@ def api_file_get(fid: str, request: Request):
             return _bad("not found", 404)
         cache = "private, no-store"                   # noch keiner Nachricht zugeordnet (eigener Upload): nicht zwischenspeichern
         if r[2] is not None:
-            x = c.execute("SELECT expires_at FROM chat_msg WHERE seq=? AND (expires_at IS NULL OR expires_at>?)", (r[2], time.time())).fetchone()
-            if not x:
+            x = c.execute("SELECT expires_at, kind FROM chat_msg WHERE seq=? AND (expires_at IS NULL OR expires_at>?)", (r[2], time.time())).fetchone()
+            if not x or (x[1] != "title" and r[2] <= _pref(c, r[0], uid)["cleared_seq"]):    # (2.1) "fuer mich geloescht"
                 return _bad("not found", 404)
             # Ciphertext unter dieser Kennung aendert sich nie (Schluessel nur in der verschluesselten Nachricht):
             # privat und unveraenderlich zwischenspeichern, hoechstens bis zum Ablauf der Nachricht (2.1, Chat-Bilder)
@@ -1458,6 +1600,7 @@ def delete_account(c, uid):
         fids += _drop_chat(c, cid)                         # Seiten-Chats eigener Seiten (die Seiten gehen mit)
     chats = [r[0] for r in c.execute("SELECT chat_id FROM chat_member WHERE uid=?", (uid,))]
     c.execute("DELETE FROM chat_member WHERE uid=?", (uid,))
+    c.execute("DELETE FROM chat_pref WHERE uid=?", (uid,))                         # Archiv / "fuer mich geloescht" (2.1)
     for cid in chats:
         ch = _load(c, cid)
         if not ch:
