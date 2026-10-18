@@ -475,6 +475,19 @@ def _gz_ok(msg):
     return ctype.startswith(_GZ_TYPES) and not ctype.startswith(_GZ_NEVER)
 
 
+def _gz_bytes(body, level):
+    z = zlib.compressobj(level, zlib.DEFLATED, 31)
+    return z.compress(body) + z.flush()
+
+
+async def _gz_whole(body, level):
+    """Ganze Antwort packen. Grosse Antworten (Seitenbaum: mehrere MB) mit Stufe 1 (halb so viel CPU, kaum groesser)
+    und in einem Thread - zlib gibt dabei den GIL frei, die Ereignisschleife bleibt fuer andere Anfragen frei."""
+    if len(body) < 65536:
+        return _gz_bytes(body, level)
+    return await asyncio.to_thread(_gz_bytes, body, min(level, 1) if len(body) >= 524288 else level)
+
+
 class Compress:
     """ASGI-Middleware: gzip fuer passende Antworten, wenn der Client es anbietet (Accept-Encoding)."""
 
@@ -527,8 +540,7 @@ class Compress:
                         st["mode"] = "plain"
                         await send(st["start"])
                         return await send({"type": "http.response.body", "body": body})
-                    z = zlib.compressobj(self.level, zlib.DEFLATED, 31)
-                    data = z.compress(body) + z.flush()
+                    data = await _gz_whole(body, self.level)
                     st["mode"] = "gzip"
                     await send(headers(st["start"], len(data)))
                     return await send({"type": "http.response.body", "body": data})

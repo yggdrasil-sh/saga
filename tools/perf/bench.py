@@ -6,6 +6,7 @@ durch parallele Geraete, Live-Kanal, CPU/RAM der Container (docker stats). Daten
 --info: die Zeile "PERF {...}" von gen.py (ohne "PERF "). Ergebnis: JSON (je Messung name/p50/p95/max/bytes/status)
 und eine Markdown-Tabelle auf stdout."""
 import argparse
+import gzip
 import http.client
 import json
 import statistics
@@ -41,9 +42,10 @@ def req(method, path, cookie=None, body=None, bearer=None, timeout=120):
     enc = r.getheader("content-encoding")
     c.close()
     d = None
-    if "json" in (r.getheader("content-type") or "") and not enc:
+    plain = gzip.decompress(data) if enc == "gzip" else data       # Groesse = uebertragene Bytes (ggf. komprimiert)
+    if "json" in (r.getheader("content-type") or "") and enc in (None, "gzip"):
         try:
-            d = json.loads(data)
+            d = json.loads(plain)
         except ValueError:
             pass
     return r.status, len(data), dt, d

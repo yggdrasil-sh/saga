@@ -16,6 +16,28 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Schneller
+
+- **Kompression:** JSON-, Text-, JS- und CSS-Antworten ab 1 KB kommen gzip-komprimiert, wenn Browser oder App es
+  anbieten (alle tun das). Seitenbaum, Freigaben, Datenbank-Zeilen und Widget-Listen werden dadurch um 80–90 % kleiner
+  (z. B. 5,2 MB → 0,6 MB bei 25.000 Notizen; App im Vordergrund 8 h: 2,5 GB → 0,28 GB). Nie komprimiert werden der
+  Live-Kanal und der KI-Stream (`text/event-stream`), Bilder, Dateien, Zip-Exporte und Teilantworten (Video spulen).
+  Einstellbar mit `GZIP_LEVEL` (Standard 5, `0` = aus) und `GZIP_MIN_BYTES` (Standard 1024).
+- **Seitenbaum im Web:** Aufbau über einen Index statt wiederholter Suche durch alle Seiten; Auf- und Zuklappen baut nur
+  den betroffenen Ast neu. Bei 25.000 Notizen: Baum sichtbar nach 1,3 statt 3,1 s, Ast aufklappen 0,15 statt 1 s,
+  Seite öffnen 1,1 statt 2,7 s.
+- **Rückverweise** („Verlinkt von“) werden erst geladen, wenn das Seitenende in Sicht kommt – kurze Seiten wie bisher
+  sofort, lange erst beim Hinscrollen.
+- **Weniger Neuladen des Seitenbaums:** Mehrere Aktionen kurz hintereinander teilen sich eine Abfrage (immer mit Daten
+  von nach der Aktion); ein neuer Datenbank-Eintrag („+ Neu“, „+ Neu in …“ bei Relationen) wird direkt eingetragen statt
+  den ganzen Baum neu zu laden.
+- **Papierkorb:** eigener Index; die 30-Tage-Frist läuft beim Seitenbaum höchstens stündlich statt bei jedem Laden
+  (die Papierkorb-Liste prüft weiterhin jedes Mal).
+- **Seiten-Grenze:** `NOTE_MAX_COUNT` (5.000) zählt nur noch normale Seiten ohne Papierkorb. Datenbank-Einträge haben
+  eine eigene Grenze `NOTE_ROW_MAX_COUNT` (Standard 50.000 bzw. 10 × `NOTE_MAX_COUNT`); alles zusammen inkl. Papierkorb
+  höchstens doppelt so viel wie beide Grenzen. Bisher war ein Konto mit größeren Datenbanken schon nach 5.000 Einträgen
+  „voll“. Keine Grenze ist strenger als vorher.
+
 ### Lastmessung (nur Werkzeuge, keine Änderung an Saga selbst)
 
 - `tools/perf/`: wiederholbare Lastmessung für Test-Stacks. `gen.py` erzeugt realistische Testdaten in drei Stufen
@@ -27,6 +49,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - `tools/perf/run.sh` führt alles je Stufe aus und prüft Grenzwerte aus `tools/perf/limits.json` (Exit 1 bei
   Überschreitung), z. B. `SAGA_SCRIPT=perf/run.sh tools/test-stack.sh "S M"`. Nur für Test-Stacks: legt die Konten
   `perf-a`/`perf-b` neu an und setzt `NOTE_MAX_COUNT=200000` in der `.env` des Test-Stacks.
+- `bench.py` misst als Größe die übertragenen Bytes (mit gzip komprimiert) und entpackt Antworten selbst.
 
 ### Testing-Builds als Release Candidates
 

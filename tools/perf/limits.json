@@ -9,7 +9,7 @@
  "M": {
   "GET /api/notes (Seitenbaum": 1000, "GET /api/shared": 700, "GET /api/notes/{id}": 60, "GET /rows groesste DB (": 200,
   "POST /api/notes/search ohne Treffer": 5000, "GET / Dashboard (HTML, B)": 500, "GET /api/notes/{id}/backlinks": 350,
-  "GET /api/trash": 150, "POST /api/notes neuer": 80, "PATCH": 80, "Seite oeffnen waehrend": 4000, "Live: Speichern": 250,
+  "GET /api/trash": 100, "POST /api/notes neuer": 80, "PATCH": 80, "Seite oeffnen waehrend": 4000, "Live: Speichern": 250,
   "iOS/macOS: Start": 1000
  },
  "L": {
