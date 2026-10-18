@@ -1,20 +1,21 @@
 {
- "_info": "p95-Grenzwerte in ms je Stufe (Praefix des Messungsnamens aus bench.py). S/M/L = Regressionsschutz (Stand testing 18.10.2026 x ~1.5-2, auf 4-Kern-CT mit Nachbarlast). ziel_S/ziel_M/ziel_L = Ziele fuer 2.2 (heute teils verfehlt): mit SAGA_PERF_ZIEL=1 pruefen.",
+ "_info": "p95-Grenzwerte in ms je Stufe (Praefix des Messungsnamens aus bench.py). S/M/L = Regressionsschutz (Stand testing 18.10.2026 x ~1.5-2, auf 4-Kern-CT mit Nachbarlast; Suche/Freigaben/Rueckverweise/rows nach 2.2-Server-Umbau). ziel_S/ziel_M/ziel_L = Ziele fuer 2.2 (heute teils verfehlt): mit SAGA_PERF_ZIEL=1 pruefen.",
  "S": {
   "GET /api/notes (Seitenbaum": 150, "GET /api/shared": 150, "GET /api/notes/{id}": 60, "GET /rows": 120,
-  "POST /api/notes/search Treffer": 300, "POST /api/notes/search ohne Treffer": 700, "GET / Dashboard": 100,
+  "POST /api/notes/search Treffer": 200, "POST /api/notes/search ohne Treffer": 150, "GET / Dashboard": 100,
   "GET /api/notes/{id}/backlinks": 80, "GET /api/trash": 80, "GET /api/chats": 80, "POST /api/notes neuer": 80,
   "PATCH": 80, "Seite oeffnen waehrend": 800, "Live: Speichern": 250, "iOS/macOS: Start": 400
  },
  "M": {
-  "GET /api/notes (Seitenbaum": 1000, "GET /api/shared": 700, "GET /api/notes/{id}": 60, "GET /rows groesste DB (": 200,
+  "GET /api/notes (Seitenbaum": 1000, "GET /api/shared": 350, "GET /api/notes/{id}": 60, "GET /rows groesste DB (": 150,
   "POST /api/notes/search ohne Treffer": 5000, "GET / Dashboard (HTML, B)": 500, "GET /api/notes/{id}/backlinks": 350,
   "GET /api/trash": 150, "POST /api/notes neuer": 80, "PATCH": 80, "Seite oeffnen waehrend": 4000, "Live: Speichern": 250,
   "iOS/macOS: Start": 1000
  },
  "L": {
-  "GET /api/notes (Seitenbaum": 2200, "GET /api/shared": 2000, "GET /api/notes/{id}": 60, "GET /rows groesste DB (": 800,
-  "POST /api/notes/search ohne Treffer": 11000, "GET / Dashboard (HTML, B)": 1200, "GET /api/notes/{id}/backlinks": 600,
+  "GET /api/notes (Seitenbaum": 2200, "GET /api/shared": 1000, "GET /api/notes/{id}": 60, "GET /rows groesste DB (": 500,
+  "POST /api/notes/search": 500, "POST /api/notes/search ohne Treffer": 400, "GET / Dashboard (HTML, B)": 700,
+  "GET /api/notes/{id}/backlinks": 50,
   "GET /api/trash": 250, "POST /api/notes neuer": 80, "PATCH": 80, "Seite oeffnen waehrend": 8000, "Live: Speichern": 250,
   "iOS/macOS: Start": 2500
  },
