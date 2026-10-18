@@ -767,7 +767,7 @@ def ask_messages(q, ctx, extra):
                                         f"(Answer in {lang}, only from the material above, with [n] after each statement.)"}]
 
 
-def page_messages(action, title, text, target=None):
+def page_messages(action, title, text, target=None, row=False):
     """Sprache: Zusammenfassen/Aufgaben in der Sprache der Oberflaeche (Konto > Server > Browser), Verbessern behaelt
     die Sprache des Textes, Uebersetzen die Zielsprache."""
     lang = _lang_name()
@@ -798,11 +798,14 @@ def page_messages(action, title, text, target=None):
         "summarize": f"Summarize the page above in {lang}. Start directly with the summary.",
         "tasks": f"Next steps for the material above, in {lang}: one per line as 'TASK: <instruction starting with a "
                  "verb>', or only NONE. No facts, no other text.",
-        "improve": f"Output only the improved text in its original language{in_ml}, with the same '---' separators."
-                   + plain,
+        "improve": f"Output only the improved text in its original language{in_ml} - do not translate it - with the "
+                   "same '---' separators." + plain,
         "translate": f"Translate everything above completely into {tl}, with the same '---' separators. "
                      "Output only the translation." + plain,
     }[action]
+    if row and action == "tasks":                          # Buch/Projekt als Datenbank-Zeile: Schritte aus Fortschritt usw.
+        again += (" This page is a database row: next steps can follow from its properties, e.g. reading progress, "
+                  "status or due dates.")
     head = f"Page title: {clean_data(title)}\n\n" if action in ("summarize", "tasks") else ""
     return [{"role": "system", "content": system_prompt(task)},
             {"role": "user", "content": f"{MARK_A}\n{head}{clean_data(text)}\n{MARK_B}\n\n({again})"}]
@@ -1586,7 +1589,7 @@ async def api_ai_page(nid: int, request: Request):
             out["blocks"] = [{"id": p[0], "type": p[1], "replaceable": p[1] in TEXT_TYPES} for p in picked]
             out["segments"] = segs if len(segs) == len(picked) else None
         return out
-    return _respond(uid, c, page_messages(action, title, text, target), [_fmt("sources", {"sources": src1})],
+    return _respond(uid, c, page_messages(action, title, text, target, bool(pairs)), [_fmt("sources", {"sources": src1})],
                     finish, left, quota)
 
 

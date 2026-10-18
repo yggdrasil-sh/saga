@@ -435,7 +435,7 @@ def run():
     user = last()[1]
     ok(f"Datenbank-Zeile: Eigenschaften je Zeile mit Namen, Rechen-Spalte mit Herkunft ({s})", s == 200
        and 'row of the database "Bücher KI"' in user and "- Seiten: 258" in user and "- Tag: Finance" in user
-       and "- Fortschritt: 4 % (Gelesen 11 / Seiten 258)" in user)
+       and "- Fortschritt: 4 % (Gelesen 11 / Seiten 258)" in user and "This page is a database row" in user)
     fake("POST", "/_reset")
     s, ev, _ = sse(f"/api/ai/page/{row}", A, {"action": "summarize"})
     ok(f"Zeile ohne Text: Zusammenfassen sagt ehrlich 'Kaum Inhalt', ohne Modell ({text_of(ev)!r})",
