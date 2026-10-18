@@ -68,6 +68,30 @@ Q = [
      "SELECT DISTINCT owner_uid FROM note_share WHERE ((target_type='user' AND target=%s))", (B,)),
     ("Kinder einer Seite (note_parent)", "SELECT id FROM note WHERE uid=%s AND parent_id=%s AND deleted_at IS NULL", (A, I["shared_root"])),
 ]
+# 2.2 (saga/pageindex.py, sharing.Access.tree): die neuen Abfragen - nur, wenn es die Tabellen schon gibt
+with db.pool().connection() as c:
+    NEW = c.execute("SELECT to_regclass('public.note_stale')").fetchone()[0] is not None
+    SH = c.execute("SELECT note_id, max(CASE role WHEN 'edit' THEN 3 WHEN 'comment' THEN 2 ELSE 1 END) FROM note_share "
+                   "WHERE owner_uid=%s AND target_type='user' AND target=%s GROUP BY note_id ORDER BY note_id", (A, B)).fetchall()
+if NEW:
+    CAND = ("SELECT n.updated, n.id FROM note n JOIN note_derived d ON d.note_id=n.id WHERE n.uid=%s AND n.deleted_at IS NULL "
+            "AND n.archived IS NULL AND d.search LIKE %s ORDER BY n.updated DESC, n.id DESC LIMIT 200")
+    OK = "n.uid=%s AND n.deleted_at IS NULL AND n.archived IS NULL AND n.is_template=0"
+    Q += [
+        ("2.2 Suche: Kandidaten 'projekt' (pages._search_cands)", CAND, (A, "%projekt%")),
+        ("2.2 Suche: Kandidaten ohne Treffer (pages._search_cands)", CAND, (A, "%zzzkeintreffer%")),
+        ("2.2 Rueckverweise: note_link (pages.api_note_backlinks)", "SELECT src FROM note_link WHERE dst=%s", (I["page_normal"],)),
+        ("2.2 Access.tree: rekursiv ab den Freigaben an B (sharing.Access.tree)",
+         f"WITH RECURSIVE t(id, r, depth) AS (SELECT n.id, x.r, 0 FROM unnest(%s::bigint[], %s::int[]) AS x(id, r) JOIN note n ON n.id=x.id "
+         f"WHERE {OK} UNION ALL SELECT n.id, t.r, t.depth + 1 FROM t JOIN note n ON n.parent_id=t.id WHERE {OK} AND t.depth < 10000) "
+         "SELECT n.id, v.r FROM (SELECT id, max(r) AS r FROM t GROUP BY id) v JOIN note n ON n.id=v.id ORDER BY n.sort NULLS FIRST, n.created, n.id",
+         ([r[0] for r in SH], [r[1] for r in SH], A, A)),
+        ("2.2 _db_rows: Zeilen der groessten DB ohne body (app_api._db_rows)",
+         "SELECT id, title, icon, props, updated, created, cover, format FROM note WHERE uid=%s AND parent_id=%s "
+         "AND deleted_at IS NULL AND is_template=0 ORDER BY sort NULLS FIRST, created", (A, I["db_big"])),
+        ("2.2 _db_rows: Vorschaubilder (note_derived)", "SELECT d.note_id, d.preview FROM note_derived d JOIN note n ON n.id=d.note_id "
+         "WHERE n.uid=%s AND n.parent_id=%s", (A, I["db_big"])),
+    ]
 
 with db.pool().connection() as c:
     print(f"{'Abfrage':<66} {'ms':>8} {'Zeilen':>7}  Knoten")

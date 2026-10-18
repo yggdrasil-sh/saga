@@ -723,3 +723,33 @@ def _tok_db(c):
 
 def _tok_hash(tok):
     return hashlib.sha256(tok.encode()).hexdigest()
+
+
+# =====================================================================================
+# Schnellere JSON-Antworten (2.2): orjson statt json.dumps fuer JSONResponse - gilt fuer alle Endpunkte (auch fastapi.
+# responses.JSONResponse, dieselbe Klasse). Ausgabe wie bisher: UTF-8 ohne \u-Ersatz, ohne Leerzeichen, Schluessel in
+# Einfuegereihenfolge, gleiche Zeichen-Maskierung. Einziger Unterschied in den Bytes: sehr kleine Kommazahlen
+# (|x| < 0.0001) schreibt orjson als 0.00001 statt 1e-05 - derselbe Zahlenwert fuer jeden JSON-Leser. Was orjson nicht
+# kann (Schluessel, die keine Zeichenketten sind; Ganzzahlen ueber 64 Bit; fremde Typen), geht unveraendert an den alten
+# Weg - samt dessen Fehlern. SAGA_ORJSON=0 schaltet ab.
+# =====================================================================================
+def _install_orjson():
+    from starlette.responses import JSONResponse as _JR
+    try:
+        import orjson
+    except ImportError:
+        return False
+    if E.get("SAGA_ORJSON", "1") == "0" or getattr(_JR, "_saga_orjson", False):
+        return False
+    std = _JR.render
+
+    def render(self, content):
+        try:
+            return orjson.dumps(content)
+        except TypeError:                     # orjson.JSONEncodeError ist ein TypeError
+            return std(self, content)
+    _JR.render, _JR._saga_orjson, _JR._saga_std_render = render, True, std
+    return True
+
+
+ORJSON = _install_orjson()
