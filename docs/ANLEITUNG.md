@@ -856,8 +856,9 @@ passenden Ausschnitte aus Seiten –, geht an diesen Endpunkt**; die Adresse ste
   Archiv nicht), schickt die passendsten Abschnitte mit und zeigt die Antwort Wort für Wort. Die Zahlen **[1]**, **[2]**
   führen zu den Quellseiten; darunter stehen alle Quellen. Verweise auf Seiten, die du nicht sehen darfst, gehen nur
   als „Seite ohne Zugriff“ mit. **Aufgaben** und **Kalender** nimmt der Assistent nur dazu, wenn du die Schalter unter
-  dem Eingabefeld einschaltest. Chats (Ende-zu-Ende-verschlüsselt) liest er nie,
-  ebenso keine Seiten anderer Saga-Instanzen (Föderation).
+  dem Eingabefeld einschaltest. Chats (Ende-zu-Ende-verschlüsselt) liest er nicht – außer
+  Nachrichten, in denen du ihn dort ausdrücklich mit @Name erwähnst (siehe unten); ebenso keine Seiten anderer
+  Saga-Instanzen (Föderation).
 - **Diese Seite** (auch im Seitenmenü „…“ → KI-Assistent): **Zusammenfassen**, **Aufgaben vorschlagen** (Auswahl
   ankreuzen → „In Aufgaben übernehmen“ oder „Als Checkliste einfügen“), **Markierten Text verbessern** und
   **Übersetzen nach …** für die Blöcke, die du gerade markiert hast. Das Ergebnis ist immer nur ein **Vorschlag**:
@@ -895,6 +896,16 @@ zugeschnitten und neu kodiert – ohne Bild zeigt Saga ein neutrales ✦-Symbol)
 und Tonfall** (höchstens 500 Zeichen, z. B. „freundlich und knapp, duzt die Personen“). Der Tonfall wirkt nur auf die
 Formulierung eigener Antworten; Regeln, Quellenangaben und Formate haben Vorrang, Verbessern und Übersetzen behalten
 den Ton des Textes. Web und Apps zeigen Name und Bild überall, wo die KI vorkommt, und übernehmen Änderungen sofort.
+
+**KI im Chat – nur auf Zuruf:** Schaltet der Admin „KI in Chats erlauben“ ein (Standard: aus), kann die KI in einzelnen
+Chats zugelassen werden (Chat-Menü „…“ → „Marin in diesem Chat erlauben“: in freien Gruppen die Chat-Admins, im
+Direkt-Chat beide, im Gruppen-Chat Saga-Admins, im Seiten-Chat der Eigentümer der Seite). Alle Mitglieder sehen dann
+oben im Chat einen Hinweis. Wer **@Marin** schreibt (beim Tippen von „@“ wird die KI vorgeschlagen), schickt **diese
+Nachricht und bis zu 12 Nachrichten davor im Klartext** an den KI-Endpunkt – alles andere bleibt Ende-zu-Ende-
+verschlüsselt. Die KI sieht dabei keine Seiten, Aufgaben oder Kalender. Ihre Antwort verschlüsselt das Gerät des
+Fragenden wie jede Nachricht für alle Mitglieder; sie erscheint mit Name und Bild der KI („gefragt von …“). Der Server
+speichert weder Frage noch Antwort, nur eine Prüfsumme der Antwort, mit der die anderen Geräte prüfen, dass sie
+wirklich von der KI stammt. Es gelten Kontingent und Gruppen des Assistenten, dazu höchstens 6 Fragen je Minute.
 
 ### Konto, Kalender, Immich, Apps
 

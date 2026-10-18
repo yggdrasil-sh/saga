@@ -597,6 +597,21 @@ CREATE TABLE IF NOT EXISTS avatar_img (
     size INTEGER NOT NULL, fmt TEXT NOT NULL,         -- 64/128/256, 'webp' | 'std' (PNG mit Transparenz, sonst JPEG)
     mime TEXT NOT NULL, data BYTEA NOT NULL, etag TEXT NOT NULL,
     PRIMARY KEY (uid, src, size, fmt));
+
+-- KI im Chat (2.1, saga/ai_chat.py): "nur auf Zuruf". chat_ai = im Chat erlaubt (von wem, wann); chat_ai_reply = Beleg
+-- fuer eine KI-Antwort: der Server speichert nur den SHA-256 der Antwort, nie Frage oder Antwort. Die App des Fragenden
+-- verschluesselt die Antwort wie jede Nachricht; beim Senden verweist sie auf den Beleg (msg_id), die anderen Clients
+-- vergleichen den Hash und zeigen die Nachricht dann als Antwort der KI.
+CREATE TABLE IF NOT EXISTS chat_ai (
+    chat_id BIGINT PRIMARY KEY REFERENCES chat(id) ON DELETE CASCADE,
+    by_uid TEXT NOT NULL, at DOUBLE PRECISION NOT NULL);
+CREATE TABLE IF NOT EXISTS chat_ai_reply (
+    id TEXT PRIMARY KEY, chat_id BIGINT NOT NULL REFERENCES chat(id) ON DELETE CASCADE,
+    uid TEXT NOT NULL, created DOUBLE PRECISION NOT NULL,
+    q_msg TEXT,                                       -- Nachricht mit der Erwaehnung (optional)
+    sha256 TEXT NOT NULL,                             -- Hex, ueber den UTF-8-Text der Antwort
+    msg_id TEXT);                                     -- gesendete Chat-Nachricht mit dieser Antwort (einmalig)
+CREATE INDEX IF NOT EXISTS chat_ai_reply_msg ON chat_ai_reply (msg_id);
 """
 # --- Schema-Versionen und Migrationen ----------------------------------------------------------------
 # SCHEMA oben ist Stand 1 (plus neue Tabellen mit CREATE TABLE IF NOT EXISTS). Alles, was bestehende

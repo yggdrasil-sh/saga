@@ -51,3 +51,75 @@ Nach einer Wiederverbindung ohne Nachholen (`reset`) ebenfalls neu abfragen.
 Der Admin kann eine kurze Persönlichkeit/Tonfall-Beschreibung hinterlegen. Sie geht nur serverseitig in den
 System-Prompt; Apps sehen sie nicht und müssen nichts tun. Antwortformate (z. B. Aufgaben-Vorschläge `done.tasks`)
 bleiben unverändert.
+
+## 2. KI im Chat – nur auf Zuruf
+
+Grundsatz: Chats bleiben Ende-zu-Ende-verschlüsselt. Die KI liest **nur** Nachrichten, in denen sie mit `@Name`
+erwähnt wird, plus einen kleinen Verlauf, den **die App des Fragenden** mitschickt. Der Server speichert weder Frage
+noch Antwort, nur den SHA-256 der Antwort als Beleg.
+
+### Freischalten
+
+- Server: `GET /api/ai/status` → `"chat": true`, wenn der Admin „KI in Chats erlauben“ eingeschaltet hat.
+- Chat: `GET /api/chats/{cid}` (und `/api/chats`) → `"ai": true`, wenn die KI in diesem Chat erlaubt ist.
+- Umschalten: `PUT /api/chats/{cid}/ai {"allowed": true|false}` → `{"ai": …}`. Erlaubt: freie Gruppe – Chat-Admins
+  (`role == "admin"`), Direkt-Chat – beide, Gruppen-Chat – Saga-Admins, Seiten-Chat – Eigentümer der Seite; sonst 403.
+  Einschalten bei ausgeschaltetem Server-Schalter: 403. Alle Mitglieder bekommen `chat.changed`.
+- Die App zeigt in Chats mit `ai == true` (und `status.chat == true`) **sichtbar einen Hinweis**, z. B. „Marin ist in
+  diesem Chat erlaubt – nur auf Zuruf: Nachrichten mit @Marin und bis zu 12 Nachrichten davor gehen im Klartext an
+  die KI (host). Alles andere bleibt Ende-zu-Ende-verschlüsselt.“ (`host` aus `/api/ai/status`). Beim Schreiben einer
+  Nachricht mit `@Name` ebenfalls kurz anzeigen, dass sie an die KI geht. Bei `@` die KI als ersten Vorschlag anbieten.
+
+### Ablauf
+
+1. Die Person schreibt z. B. `@Marin wann fährt der Zug?` – die App sendet diese Nachricht **ganz normal**
+   verschlüsselt (`POST /api/chats/{cid}/messages`) und merkt sich ihre `id`.
+2. Erwähnung erkannt (`@` + Name, Groß-/Kleinschreibung egal, danach kein Buchstabe/keine Ziffer; davor Anfang,
+   Leerraum oder `( [ " '`) → `POST /api/chats/{cid}/ai`, `Accept: text/event-stream`:
+
+   ```json
+   {"q": "@Marin wann fährt der Zug?", "msg_id": "<id der Nachricht, 32 Hex>",
+    "history": [{"name": "Ben", "text": "…"}, {"name": "Clara", "text": "…"}]}
+   ```
+
+   `history`: höchstens **12** Nachrichten **vor** der Frage, älteste zuerst, je höchstens 600 Zeichen (Server kürzt,
+   ältere fallen weg, wenn zusammen über 4000 Zeichen); mehr als 12 → 400. Nur Text, keine Anhänge. Eigene frühere
+   KI-Antworten mit dem Namen der KI. `q` höchstens 1000 Zeichen und muss `@Name` enthalten (sonst 400).
+3. Antwort als Stream wie `/api/ai/ask`: `delta {t}` (mitlaufend anzeigen, z. B. „Marin denkt nach …“), `status`,
+   `reset`, dann `done {text, reply: {id, sha256}, persona: {name}, quota_left}` oder `error {error}`.
+   **`done.text` ist maßgeblich** (ohne Leerraum am Anfang/Ende); `sha256` = SHA-256 (hex) über dessen UTF-8-Bytes.
+4. Die App sendet die Antwort als normale verschlüsselte Nachricht an alle Mitglieder:
+   Inhalt `{"v": 1, "type": "text", "text": done.text, "ai": {"reply": done.reply.id, "name": "Marin"}}`,
+   `reply_to` = id der Frage, und im Sende-Body zusätzlich `"ai_reply": done.reply.id` (nicht signiert, nur Verweis).
+   Der Server prüft: Beleg gehört zu diesem Chat und diesem Konto, ist höchstens 1 Stunde alt und noch unbenutzt –
+   sonst 409. Ein Beleg kann genau einmal verwendet werden.
+5. Die App des Fragenden muss dafür online bleiben, bis `done` da ist; bricht sie ab, gibt es keine Antwort im Chat.
+
+### Anzeige bei allen Mitgliedern
+
+`GET /api/chats/{cid}/messages` liefert für Nachrichten mit Beleg zusätzlich
+
+```json
+"ai": {"ref": "<beleg-id>", "sha256": "<hex>", "by": "<benutzername des Fragenden>", "q_msg": "<id der Frage>"}
+```
+
+Als **KI-Antwort** (Profilbild + Name der KI, z. B. „gefragt von Ben“) nur anzeigen, wenn nach dem Entschlüsseln
+`body.ai.reply == ai.ref` **und** `sha256(trim(body.text)) == ai.sha256`. Hat der Inhalt `body.ai`, aber es fehlt
+`ai` oder der Hash passt nicht: als normale Nachricht des Absenders mit Warnung „Als KI-Antwort ausgegeben, aber nicht
+bestätigt“ zeigen.
+
+### Fehler
+
+| Status | Bedeutung |
+|---|---|
+| 400 | ohne `@Name`, `history`/`msg_id` in falscher Form, zu lang |
+| 403 | Assistent für die Person aus (Gruppen), Server-Schalter aus, KI im Chat nicht erlaubt |
+| 404 | kein Mitglied des Chats |
+| 409 | eine Anfrage läuft schon (eine je Person) |
+| 429 | Kontingent aufgebraucht, mehr als 6 Fragen je Minute (Person) oder 20 je 10 Minuten (Chat) |
+| 503 | Assistent ausgelastet (`Retry-After`) |
+
+### Was die KI sieht
+
+Nur Frage, Namen und mitgeschickten Verlauf (als Daten markiert), dazu Persona und Tonfall. **Keine** Seiten, Aufgaben,
+Kalender oder Dateien – sonst könnte jemand über die KI eigene Inhalte in einen Chat mit anderen tragen.

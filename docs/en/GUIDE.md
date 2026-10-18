@@ -873,6 +873,15 @@ a square and re-encoded – without a picture Saga shows a neutral ✦ symbol) a
 take precedence, improving and translating keep the tone of the text. Web and apps show name and picture wherever the AI
 appears and pick up changes immediately.
 
+**AI in chats – only when mentioned:** if the admin turns on “Allow AI in chats” (default: off), the AI can be allowed
+in individual chats (chat menu “…” → “Allow Marin in this chat”: chat admins in free groups, both people in a direct
+chat, Saga admins in group chats, the page owner in page chats). All members then see a notice at the top of the
+chat. Writing **@Marin** (typing “@” suggests the AI) sends **that message and up to 12 messages before it in plain
+text** to the AI endpoint – everything else stays end-to-end encrypted. The AI sees no pages, tasks or calendars.
+The asker's device encrypts the reply like any message for all members; it appears with the AI's name and picture
+(“asked by …”). The server stores neither question nor answer, only a checksum of the answer that lets the other
+devices verify it really came from the AI. The assistant's quota and groups apply, plus at most 6 questions per minute.
+
 ### Account, calendars, Immich, apps
 
 In the user menu at the top right under **Settings** (one tab each):

@@ -1435,7 +1435,7 @@ def api_ai_status(request: Request):
                          "history_allowed": bool(c.get("history", True)), "history": hist,
                          "notice": t("Inhalte, die du dem Assistenten gibst, gehen an {host}.", host=host),
                          "targets": sorted(TARGETS), "q_max": Q_MAX, "blocks_max": BLOCKS_MAX,
-                         "persona": persona()},
+                         "persona": persona(), "chat": bool(c.get("chat"))},
                         headers={"Cache-Control": "no-store"})
 
 

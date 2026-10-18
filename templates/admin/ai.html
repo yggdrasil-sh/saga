@@ -31,6 +31,7 @@
     {{ field(_('Anfragen je Person und Tag'), 'quota', a.quota, type='number', max=6, hint=_('0 = unbegrenzt')) }}
     {{ field(_('Seiteninhalt je Anfrage (Zeichen)'), 'context', a.context, type='number', max=5, hint=_('mehr Kontext = bessere Antworten, aber langsamer (1000–50000)')) }}
     {{ check(_('Personen dürfen einen Verlauf einschalten'), 'history', a.history, _('Standard bei jeder Person: aus. Ausschalten löscht den eigenen Verlauf.')) }}
+    {{ check(_('KI in Chats erlauben (nur auf Zuruf)'), 'chat', a.chat, _('Standard: aus. Dann dürfen die Verantwortlichen eines Chats die KI dort zulassen. Sie liest nur Nachrichten, in denen sie mit @Name erwähnt wird, plus ein paar Nachrichten davor als Zusammenhang – diese gehen im Klartext an den Endpunkt. Alles andere bleibt Ende-zu-Ende-verschlüsselt.')) }}
     <p class="hk-hint">{{ _("Heute: {n} Anfragen von {p} Personen · höchstens {k} gleichzeitig (AI_MAX_PARALLEL)", n=used, p=people, k=parallel) }}</p>
   </section>
   <div class="adm-actions">

@@ -909,6 +909,17 @@ breve **personalidad y tono** (como máximo 500 caracteres). El tono solo influy
 las reglas, las fuentes y los formatos tienen prioridad, y mejorar y traducir mantienen el tono del texto. La web y las
 apps muestran el nombre y la foto allí donde aparece la IA y aplican los cambios al instante.
 
+**IA en los chats, solo si se la menciona:** si el administrador activa «Permitir la IA en los chats» (por defecto:
+desactivado), la IA puede permitirse en chats concretos (menú del chat «…» → «Permitir a Marin en este chat»: en grupos
+libres, los administradores del chat; en chats directos, ambas personas; en chats de grupo, los administradores de
+Saga; en chats de página, el propietario de la página). Todos los miembros ven entonces un aviso arriba en el chat.
+Quien escribe **@Marin** (al teclear «@» se sugiere la IA) envía **ese mensaje y hasta 12 mensajes anteriores en texto
+claro** al endpoint de IA; todo lo demás sigue cifrado de extremo a extremo. La IA no ve páginas, tareas ni
+calendarios. El dispositivo de quien pregunta cifra la respuesta como cualquier mensaje para todos los miembros;
+aparece con el nombre y la foto de la IA («preguntado por …»). El servidor no guarda ni la pregunta ni la respuesta,
+solo una suma de comprobación con la que los demás dispositivos verifican que de verdad viene de la IA. Se aplican la
+cuota y los grupos del asistente y, además, como máximo 6 preguntas por minuto.
+
 ### Cuenta, calendarios, Immich, apps
 
 En el menú de usuario, arriba a la derecha, en **Ajustes** (una pestaña para cada cosa):

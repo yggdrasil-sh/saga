@@ -51,6 +51,14 @@ def answer(messages, model=None):
         return "Zusammenfassung: " + " ".join(re.split(r"(?<=[.!?])\s", rest)[:2])[:200]
     if "Reply with the single word" in user:
         return "OK"
+    if "Someone in a chat mentioned you" in sys_txt:       # KI im Chat (2.1): Zahl der Verlaufszeilen + Frage zurueck
+        hist = data.split("Message that mentions you", 1)[0]
+        n = len([x for x in hist.splitlines()[1:] if x.strip()])
+        ask = data.rsplit("\n", 1)[-1].strip()
+        if model == "fake-demo":                           # Browser-Pruefung/Screenshots: feste, lesbare Antwort
+            return ("Mitte Mai ist es in Lissabon meist frühsommerlich: tagsüber etwa 21–23 °C, abends um 15 °C. "
+                    "Für den Abend am Wasser lohnt sich eine leichte Jacke.")
+        return f"  Hallo aus dem Chat! Verlauf: {n} Nachrichten. Frage: {ask[:80]}  \n"
     if model == "fake-demo":                               # Browser-Pruefung: lesbare Antwort aus den Auszuegen
         out, seen = [], set()
         for m in re.finditer(r"(?m)^\[(\d+)\] [^\n]*\n([^\n]+)", data):

@@ -1167,7 +1167,7 @@ def _ai_from(f, cur):
     v = {"enabled": _on(f, "enabled"), "provider": prov, "url": url or "", "model": _s(f, "model", 200),
          "api_key": str(f.get("api_key") or "").strip()[:500], "groups": _groups_list(_s(f, "groups", 1000)),
          "timeout": num("timeout", 5, 600, 60), "quota": num("quota", 0, 100000, 50), "context": num("context", 1000, 50000, 8000),
-         "history": _on(f, "history"), "pinned": list(cur.get("pinned") or [])}
+         "history": _on(f, "history"), "pinned": list(cur.get("pinned") or []), "chat": _on(f, "chat")}
     return v, err
 
 
@@ -1216,8 +1216,8 @@ async def ai_post(request: Request):
             st["api_key"] = ""
             c.execute("UPDATE setting SET v=? WHERE k='ai'", (json.dumps(st, ensure_ascii=False),))
         auth._settings_cache["v"] = None
-    print(f"admin: {me['username']} speichert KI-Assistent (aktiv={v['enabled']})", flush=True)
-    if bool(cur.get("enabled")) != bool(v["enabled"]):    # Clients blenden die KI ein/aus (Live-Ereignis, fragen neu nach)
+    print(f"admin: {me['username']} speichert KI-Assistent (aktiv={v['enabled']}, Chats={v['chat']})", flush=True)
+    if any(bool(cur.get(k)) != bool(v[k]) for k in ("enabled", "chat")):   # Clients blenden die KI ein/aus (Live-Ereignis)
         with _db() as c, c:
             ai.announce_persona(c)
     _flash(request, t("Einstellungen für den KI-Assistenten gespeichert."))

@@ -12,7 +12,7 @@
   var X = null;                                        // SagaChatCrypto, nach sodium.ready
   var K = null;                                        // lokale Schluessel {device:{...}, ident_sk, ident_pk, backup_sk, backup_pk}
   var S = { me: null, chats: [], cur: null, msgs: [], byId: {}, more: false, reply: null, files: [], rc: null, notes: {},
-            typing: {}, mentions: {}, searchQ: '', loading: false, linkWait: null, ready: false };
+            typing: {}, mentions: {}, ai: null, aiPending: null, searchQ: '', loading: false, linkWait: null, ready: false };
   var RET = [[0, T('Aus')], [3600, T('1 Stunde')], [86400, T('1 Tag')], [604800, T('7 Tage')], [2592000, T('30 Tage')],
              [7776000, T('90 Tage')], [31536000, T('1 Jahr')]];
   var fTime = new Intl.DateTimeFormat(HK.locale, { hour: '2-digit', minute: '2-digit' });
@@ -393,6 +393,7 @@
 
   // --- Bereit: Liste, Hash-Ziel, Live ----------------------------------------------------------------------------
   function ready() {
+    loadAI();
     S.ready = true;
     loadList().then(function () { route(); });
     checkLinks();
@@ -648,6 +649,7 @@
     }
     document.title = chatName(c) + ' · ' + T('Chats');
     if (window.HKCalls) window.HKCalls.head(c);           // Anruf-Knoepfe (static/calls.js) nur im Direkt-Chat
+    drawAI();
   }
   function loadMsgs(older) {
     var c = S.cur; if (!c || S.loading) return Promise.resolve();
@@ -664,7 +666,7 @@
           m.body = null; m.verified = true; S.byId[m.id] = m; return m;
         }
         try { d = decrypt(c.id, m, r.devices || {}, r.idents || {}); } catch (e) { d = { body: null, verified: false, error: true }; }
-        m.body = d.body; m.verified = d.verified; m.error = !!d.error;
+        m.body = d.body; m.verified = d.verified; m.error = !!d.error; m._ai = aiCheck(m);
         S.byId[m.id] = m; return m;
       });
       if (older) { S.msgs = add.concat(S.msgs); S.more = r.more; }
@@ -758,16 +760,22 @@
     S.msgs.forEach(function (m) {
       var d = new Date(m.created * 1000), day = fDay.format(d);
       if (day !== lastDay) { box.appendChild(el('div', 'ct-day', day)); lastDay = day; lastWho = null; }
-      var mine = m.sender && m.sender.username === ME;
+      var isAI = m._ai === 'ok', mine = !isAI && m.sender && m.sender.username === ME;
       if (m.kind === 'call') { box.appendChild(callRow(m, d, mine)); lastWho = null; return; }
-      var row = el('div', 'ct-msg' + (mine ? ' mine' : '')); row.dataset.id = m.id;
-      if (!mine && c.kind !== 'dm' && lastWho !== (m.sender || {}).username) {   // Absender in Gruppen: kleines Profilbild + Name
+      var row = el('div', 'ct-msg' + (mine ? ' mine' : '') + (isAI ? ' ct-ai' : '')); row.dataset.id = m.id;
+      if (isAI) {                                         // KI-Antwort (2.1): Bild + Name der KI, wer gefragt hat
+        if (lastWho !== '#ai:' + (m.sender || {}).username) box.appendChild(aiWho(m));
+      } else if (!mine && c.kind !== 'dm' && lastWho !== (m.sender || {}).username) {   // Absender in Gruppen: kleines Profilbild + Name
         var who = el('div', 'ct-who'), sn = m.sender ? m.sender.name : T('Gelöschtes Konto');
         who.appendChild(avatar((sn || '?').charAt(0).toUpperCase(), (m.sender || {}).username || '', 'ct-av-s', m.sender && m.sender.avatar));
         who.appendChild(el('span', null, sn)); box.appendChild(who);
       }
-      lastWho = (m.sender || {}).username;
+      lastWho = (isAI ? '#ai:' : '') + (m.sender || {}).username;
       var b = el('div', 'ct-bubble');
+      if (m._ai === 'bad') {                              // gibt sich als KI-Antwort aus, Beleg passt nicht
+        var ub2 = el('div', 'ct-unv', '⚠ ' + T('Als KI-Antwort ausgegeben, aber nicht bestätigt'));
+        ub2.setAttribute('role', 'note'); b.appendChild(ub2);
+      }
       if (!m.verified && !m.error) {                      // Signatur/Geraete-Schluessel passen nicht: deutlich kennzeichnen
         row.classList.add('ct-unverified');
         var uv = el('div', 'ct-unv', '⚠ ' + T('Echtheit nicht bestätigt'));
@@ -776,7 +784,7 @@
       }
       if (m.reply_to) {
         var o = S.byId[m.reply_to], qd = el('button', 'ct-quote'); qd.type = 'button';
-        qd.appendChild(el('b', null, o && o.sender ? o.sender.name : '…')); qd.appendChild(el('span', null, preview(o)));
+        qd.appendChild(el('b', null, o && o._ai === 'ok' ? aiP().name : o && o.sender ? o.sender.name : '…')); qd.appendChild(el('span', null, preview(o)));
         qd.addEventListener('click', function () { var t = box.querySelector('.ct-msg[data-id="' + m.reply_to + '"]'); if (t) { t.scrollIntoView({ block: 'center' }); t.classList.add('flash'); setTimeout(function () { t.classList.remove('flash'); }, 1200); } });
         b.appendChild(qd);
       }
@@ -795,6 +803,7 @@
       row.appendChild(act);
       box.appendChild(row);
     });
+    if (S.aiPending && S.aiPending.cid === c.id) box.appendChild(S.aiPending.el);   // wartende KI-Antwort bleibt unten
     applySearch();
     if (scroll === 'keep') box.scrollTop = box.scrollHeight - prevH + prevTop;
     else if (scroll === 'bottom' || atBottom) box.scrollTop = box.scrollHeight;
@@ -1194,10 +1203,11 @@
       throw new Error(T('Die Sicherheitsnummer von {name} hat sich geändert – erst prüfen oder „Verstanden“ wählen.', { name: bad.map(function (p) { return p.name; }).join(', ') }));
     });
   }
-  function sendBody(cid, body, kind, reply) {
+  function sendBody(cid, body, kind, reply, extra) {
     function attempt(rc, again) {
       var m = X.encryptMessage({ chat_id: cid, sender: ME, device: K.device.id, sign_sk: K.device.sign_sk, body: body, reply_to: reply || null, recipients: rc.list });
       m.kind = kind || 'msg';
+      if (extra) Object.keys(extra).forEach(function (k) { m[k] = extra[k]; });   // z. B. ai_reply (nicht signiert, nur Verweis)
       if (body.files) m.files = body.files.reduce(function (a, f) { a.push(f.id); if (f.th && f.th.id) a.push(f.th.id); return a; }, []);
       return api('POST', '/api/chats/' + cid + '/messages', m).then(function (r) { return { m: m, r: r }; }, function (e) {
         if (e.status === 409 && e.data && e.data.recipients && !again) {
@@ -1258,7 +1268,7 @@
       if (text.indexOf(label) >= 0) { text = text.split(label).join('[[note:' + S.mentions[label] + ']]'); notes.push(S.mentions[label]); }
     });
     sending = true; $('ct-send').disabled = true;
-    var reply = S.reply ? S.reply.id : null;
+    var reply = S.reply ? S.reply.id : null, askAi = aiOn(c) && aiMention(text);
     (S.files.length ? uploadFiles(c.id) : Promise.resolve([])).then(function (files) {
       var body = { v: 1, type: 'text', text: text };
       if (files.length) body.files = files;
@@ -1267,7 +1277,8 @@
     }).then(function (x) {
       inp.value = ''; autosize(); S.reply = null; S.files = []; S.mentions = {}; drawReply(); drawFiles();
       if (S.rc && S.rc.missing.length) HK.toast(T('{names} hat Chats noch nicht eingerichtet und kann diese Nachricht nicht lesen.', { names: S.rc.missing.join(', ') }), null, null, 6000);
-      return loadMsgs(false).then(function () { return x; });
+      aiHint();
+      return loadMsgs(false).then(function () { if (askAi && x && x.m) askAI(c, text, x.m.id); return x; });
     }).catch(function (err) { HK.toast(T('Nicht gesendet: {err}', { err: err.message })); })
       .finally(function () { sending = false; $('ct-send').disabled = false; inp.focus(); });
   });
@@ -1278,7 +1289,7 @@
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('ct-compose').requestSubmit(); }
   });
   $('ct-input').addEventListener('input', function () {
-    autosize(); picker();
+    autosize(); picker(); aiHint();
     if (S.cur && Date.now() - typT > 3000 && this.value) { typT = Date.now(); api('POST', '/api/chats/' + S.cur.id + '/typing').catch(function () {}); }
   });
 
@@ -1291,18 +1302,23 @@
     if (!m) { box.hidden = true; return; }
     pk.start = v.length - m[2].length - 1;
     clearTimeout(pk.t);
+    var aiItem = aiOn(S.cur) && aiP().name.toLowerCase().indexOf(m[2].toLowerCase()) === 0 ? [{ ai: true, title: aiP().name }] : [];
     pk.t = setTimeout(function () {
-      api('GET', '/api/chat/pages?q=' + q(m[2])).then(function (r) {
-        pk.items = r.pages || []; pk.i = 0; box.textContent = '';
+      api('GET', '/api/chat/pages?q=' + q(m[2])).catch(function () { return { pages: [] }; }).then(function (r) {
+        pk.items = aiItem.concat(r.pages || []); pk.i = 0; box.textContent = '';
         if (!pk.items.length) { box.hidden = true; return; }
         pk.items.forEach(function (p, i) {
-          var b = el('button', 'picker-item' + (i === 0 ? ' on' : ''), (p.icon || '📄') + ' ' + p.title); b.type = 'button'; b.setAttribute('role', 'option');
+          var b = el('button', 'picker-item' + (i === 0 ? ' on' : ''), p.ai ? '' : (p.icon || '📄') + ' ' + p.title); b.type = 'button'; b.setAttribute('role', 'option');
+          if (p.ai) {                                    // KI (2.1): "@Marin" fragt die KI (nur auf Zuruf)
+            b.classList.add('ct-pick-ai'); b.appendChild(HKAIAvatar(aiP(), 20)); b.appendChild(el('span', 'ct-pick-n', p.title));
+            b.appendChild(el('span', 'ct-pick-h', T('KI fragen')));
+          }
           b.addEventListener('mousedown', function (e) { e.preventDefault(); pickApply(i); });
           box.appendChild(b);
         });
         box.hidden = false;
-      }).catch(function () { box.hidden = true; });
-    }, 150);
+      });
+    }, aiItem.length ? 0 : 150);
   }
   function pickKey(e) {
     var box = $('ct-picker');
@@ -1317,10 +1333,10 @@
   function pickApply(i) {
     var p = pk.items[i], t = $('ct-input'); if (!p) return;
     var label = '@' + p.title.replace(/\s+/g, ' ').slice(0, 60);
-    S.mentions[label] = p.id;
+    if (!p.ai) S.mentions[label] = p.id;
     t.value = t.value.slice(0, pk.start) + label + ' ' + t.value.slice(t.selectionStart);
     var pos = pk.start + label.length + 1; t.setSelectionRange(pos, pos);
-    $('ct-picker').hidden = true; t.focus();
+    $('ct-picker').hidden = true; t.focus(); aiHint();
   }
 
   // --- Kopf: Suche, Menue ---------------------------------------------------------------------------------------
@@ -1345,6 +1361,8 @@
       var others = c.members.filter(function (m) { return !m.me; });
       if (c.kind === 'dm' && others[0]) menu.appendChild(HK.menuItem(T('Sicherheitsnummer'), function () { HK.closeMenu(); safety(others[0]); }, { icon: '🔐' }));
       menu.appendChild(HK.menuItem(T('Mitglieder'), function () { HK.closeMenu(); members(); }, { icon: '👥', hint: String(c.member_count) }));
+      if (S.ai && S.ai.chat) menu.appendChild(HK.menuItem(c.ai ? T('{name} hier nicht mehr erlauben', { name: aiP().name }) : T('{name} in diesem Chat erlauben', { name: aiP().name }),
+        function () { HK.closeMenu(); aiToggle(c); }, { icon: '✦' }));
       menu.appendChild(HK.menuItem(c.muted ? T('Benachrichtigungen an') : T('Stummschalten'), function () {
         HK.closeMenu(); api('PATCH', '/api/chats/' + c.id, { muted: !c.muted }).then(function () { loadList(); }).catch(function (e) { HK.toast(e.message); });
       }, { icon: c.muted ? '🔔' : '🔕' }));
@@ -1418,6 +1436,118 @@
     }
   }
 
+  // --- KI im Chat (2.1, saga/ai_chat.py): nur auf Zuruf -----------------------------------------------------------
+  // Die KI liest nur Nachrichten mit @Name: dieses Geraet schickt die Nachricht und hoechstens AI_CTX Nachrichten davor
+  // im Klartext an den Server, bekommt die Antwort als Stream und verschluesselt sie wie jede Nachricht fuer alle
+  // (mit ai_reply = Beleg des Servers). Andere Clients zeigen sie als KI-Antwort, wenn der SHA-256 zum Text passt.
+  var AI_CTX = 12;
+  function aiP() { return (S.ai && S.ai.persona) || { name: T('Saga KI'), avatar: null }; }
+  function aiOn(c) { return !!(c && c.ai && S.ai && S.ai.enabled && S.ai.chat); }
+  function aiMention(text) {
+    var n = aiP().name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    try { return new RegExp('(^|[\\s(\\["\'])@' + n + '(?![\\p{L}\\p{N}_])', 'iu').test(text || ''); } catch (e) { return false; }
+  }
+  function loadAI() {
+    return api('GET', '/api/ai/status').then(function (d) { S.ai = d && d.enabled ? d : null; }, function () { S.ai = null; })
+      .then(function () { if (S.cur) { drawAI(); drawMsgs(); } aiHint(); });
+  }
+  function aiCheck(m) {
+    var b = m.body;
+    if (!b || !b.ai) return null;
+    if (!m.ai || typeof b.text !== 'string' || b.ai.reply !== m.ai.ref || !window.sodium) return 'bad';
+    try {
+      var h = window.sodium.to_hex(window.sodium.crypto_hash_sha256(window.sodium.from_string(b.text.trim())));
+      return h === m.ai.sha256 ? 'ok' : 'bad';
+    } catch (e) { return 'bad'; }
+  }
+  function aiWho(m) {
+    var w = el('div', 'ct-who ct-ai-who');
+    w.appendChild(HKAIAvatar(aiP(), 22)); w.appendChild(el('span', null, aiP().name));
+    if (m && m.sender) w.appendChild(el('span', 'ct-ai-by', T('gefragt von {name}', { name: m.sender.username === ME ? T('dir') : m.sender.name })));
+    return w;
+  }
+  function drawAI() {
+    var n = $('ct-ai-note'), c = S.cur; if (!n) return;
+    n.textContent = ''; n.hidden = !aiOn(c); if (n.hidden) return;
+    n.appendChild(HKAIAvatar(aiP(), 20));
+    n.appendChild(el('span', null, T('{name} ist in diesem Chat erlaubt – nur auf Zuruf: Nachrichten mit @{name} und bis zu {n} Nachrichten davor gehen im Klartext an die KI ({host}). Alles andere bleibt Ende-zu-Ende-verschlüsselt.',
+      { name: aiP().name, n: AI_CTX, host: S.ai.host || '?' })));
+  }
+  function aiHint() {
+    var h = $('ct-ai-hint'); if (!h) return;
+    var on = aiOn(S.cur) && aiMention($('ct-input').value);
+    h.hidden = !on; if (!on) return;
+    h.textContent = ''; h.appendChild(HKAIAvatar(aiP(), 16));
+    h.appendChild(el('span', null, T('Geht an {name}: diese Nachricht und bis zu {n} davor, im Klartext an {host}.', { name: aiP().name, n: AI_CTX, host: S.ai.host || '?' })));
+  }
+  function aiToggle(c) {
+    var on = !c.ai, P = aiP();
+    (on ? HK.ask({ title: T('{name} in diesem Chat erlauben?', { name: P.name }),
+      text: T('Dann kann jede Person im Chat {name} mit @{name} fragen. Nur diese Nachricht und bis zu {n} Nachrichten davor gehen im Klartext an die KI ({host}) – der Server speichert sie nicht. Alle Mitglieder sehen einen Hinweis.', { name: P.name, n: AI_CTX, host: (S.ai && S.ai.host) || '?' }),
+      ok: T('Erlauben') }) : Promise.resolve(true)).then(function (y) {
+      if (!y) return;
+      return api('PUT', '/api/chats/' + c.id + '/ai', { allowed: on }).then(function () {
+        c.ai = on; drawAI(); aiHint(); HK.toast(on ? T('{name} ist in diesem Chat erlaubt.', { name: P.name }) : T('{name} ist hier nicht mehr erlaubt.', { name: P.name }));
+      });
+    }).catch(function (e) { HK.toast(e.message); });
+  }
+  function aiHistory(qid) {
+    var out = [];
+    for (var i = S.msgs.length - 1; i >= 0 && out.length < AI_CTX; i--) {
+      var m = S.msgs[i];
+      if (m.id === qid || m.kind !== 'msg' || !m.body || !m.body.text) continue;
+      out.unshift({ name: m._ai === 'ok' ? aiP().name : (m.sender ? m.sender.name : '?'), text: String(m.body.text).slice(0, 600) });
+    }
+    return out;
+  }
+  function aiStream(url, body, on) {
+    return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/json', 'Accept': 'text/event-stream' }, body: JSON.stringify(body) })
+      .then(function (r) {
+        if (!r.ok || (r.headers.get('content-type') || '').indexOf('text/event-stream') !== 0)
+          return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.error || ('HTTP ' + r.status)); });
+        var rd = r.body.getReader(), dec = new TextDecoder(), buf = '';
+        function emit(chunk) {
+          var ev = null, data = '';
+          chunk.split('\n').forEach(function (ln) { if (ln.indexOf('event:') === 0) ev = ln.slice(6).trim(); else if (ln.indexOf('data:') === 0) data += ln.slice(5).trim(); });
+          if (ev) { try { on(ev, JSON.parse(data || 'null') || {}); } catch (e) { /* kaputte Zeile */ } }
+        }
+        function pump() {
+          return rd.read().then(function (x) {
+            if (x.done) { if (buf.trim()) emit(buf); return; }
+            buf += dec.decode(x.value, { stream: true });
+            var i; while ((i = buf.indexOf('\n\n')) >= 0) { emit(buf.slice(0, i)); buf = buf.slice(i + 2); }
+            return pump();
+          });
+        }
+        return pump();
+      });
+  }
+  function askAI(c, text, qid) {
+    if (S.aiPending) return;
+    var wrap = el('div', 'ct-ai-wait'), row = el('div', 'ct-msg ct-ai'), b = el('div', 'ct-bubble');
+    var tx = el('div', 'ct-text ct-ai-typing', T('{name} denkt nach …', { name: aiP().name }));
+    b.appendChild(tx); row.appendChild(b); wrap.appendChild(aiWho(null)); wrap.appendChild(row);
+    S.aiPending = { cid: c.id, el: wrap };
+    var box = $('ct-msgs'); box.appendChild(wrap); box.scrollTop = box.scrollHeight;
+    var acc = '', done = null, err = null;
+    aiStream('/api/chats/' + c.id + '/ai', { q: text, msg_id: qid, history: aiHistory(qid) }, function (ev, d) {
+      if (ev === 'delta') { acc += d.t || ''; tx.classList.remove('ct-ai-typing'); tx.textContent = acc; if (S.cur && S.cur.id === c.id) box.scrollTop = box.scrollHeight; }
+      else if (ev === 'reset') acc = '';
+      else if (ev === 'done') done = d;
+      else if (ev === 'error') err = d.error || T('Fehler');
+    }).then(function () {
+      if (err) throw new Error(err);
+      if (!done || !done.reply || !done.text) throw new Error(T('Keine Antwort bekommen.'));
+      return sendBody(c.id, { v: 1, type: 'text', text: done.text, ai: { reply: done.reply.id, name: aiP().name } }, 'msg', qid, { ai_reply: done.reply.id });
+    }).then(function () {
+      S.aiPending = null; wrap.remove();
+      if (S.cur && S.cur.id === c.id) return loadMsgs(false);
+    }).catch(function (e) {
+      S.aiPending = null; wrap.remove();
+      HK.toast(T('{name} konnte nicht antworten: {err}', { name: aiP().name, err: e.message }));
+    });
+  }
+
   // --- Live (live.js -> 'hk-live'), sonst Abfrage ---------------------------------------------------------------
   var listT = null;
   function listSoon() { clearTimeout(listT); listT = setTimeout(loadList, 300); }
@@ -1432,6 +1562,7 @@
     else if (t === 'chat.read') listSoon();
     else if (t === 'chat.changed') { listSoon(); if (S.cur && S.cur.id === d.chat_id) { S.rc = null; openChat(d.chat_id); } }
     else if (t === 'avatar.changed') listSoon();      // neues Profilbild (Bilder tauscht live.js; Liste fuer neue Adressen)
+    else if (t === 'ai.persona.changed') loadAI();     // Name/Bild/Schalter der KI geaendert
     else if (t === 'chat.typing' && S.cur && S.cur.id === d.chat_id && d.user) {
       S.typing[d.user.username] = { name: d.user.name, until: Date.now() + 4500 }; drawTyping();
     }
@@ -1460,7 +1591,8 @@
       });
     });
   }
-  window.HKChat = { state: function () { return { ready: S.ready, device: dev(), cur: S.cur && S.cur.id, msgs: S.msgs.length }; },
+  window.HKChat = { state: function () { return { ready: S.ready, device: dev(), cur: S.cur && S.cur.id, msgs: S.msgs.length, ai: aiOn(S.cur),
+                                                   aiMsgs: S.msgs.filter(function (m) { return m._ai === 'ok'; }).length }; },
     callApi: { ready: function () { return !!(S.ready && K && X); }, me: function () { return ME; }, crypto: function () { return X; },
                device: function () { return K.device; }, peerKeys: callPeer, cur: function () { return S.cur; },
                // Anruf vorbei: offenen Chat auffrischen - ist keiner offen (angenommen von einer anderen Seite), den des Anrufs oeffnen

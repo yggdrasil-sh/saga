@@ -65,7 +65,7 @@ DEFAULTS = {
     # (interne Adressen nur diese), groups leer = alle, quota = Anfragen je Person und Tag (0 = unbegrenzt),
     # context = Zeichen Seiteninhalt je Anfrage, history = Personen duerfen einen Verlauf einschalten
     "ai": {"enabled": False, "provider": "openai", "url": "", "model": "", "api_key": "", "groups": [], "timeout": 60,
-           "quota": 50, "context": 8000, "history": True, "pinned": []},
+           "quota": 50, "context": 8000, "history": True, "pinned": [], "chat": False},
     # Persona der KI (2.1): Name (leer = "Saga KI"), Tonfall als Stil-Zusatz im System-Prompt; das Bild liegt in avatar_img
     "ai_persona": {"name": "", "tone": ""},
     # Zweiter Faktor (2.1, saga/mfa.py): require = none | admins | all (wer verlangt wird und keinen hat, wird nach der

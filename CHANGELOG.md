@@ -28,6 +28,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `/api/ai/status`, Bild unter `/api/ai/avatar` (nur angemeldet), Live-Ereignis `ai.persona.changed`. Vertrag:
   `docs/APP-API-KI.md`. Keine Datenbank-Migration (Bild in `avatar_img` unter der Kennung `#ai`).
 
+### Neu: KI im Chat – nur auf Zuruf
+- **Die KI kann in Chats mitmachen**, wenn der Admin „KI in Chats erlauben“ einschaltet (Standard: aus) und der Chat sie
+  zulässt (Chat-Menü: freie Gruppe – Chat-Admins, Direkt-Chat – beide, Gruppen-Chat – Saga-Admins, Seiten-Chat –
+  Eigentümer). Alle Mitglieder sehen dann einen Hinweis. Die KI liest **nur Nachrichten mit @Name** plus bis zu 12
+  Nachrichten davor, die das Gerät des Fragenden gezielt schickt (`POST /api/chats/{cid}/ai`); alles andere bleibt
+  Ende-zu-Ende-verschlüsselt. Sie sieht keine Seiten, Aufgaben oder Kalender.
+- Die Antwort verschlüsselt das Gerät des Fragenden für alle Mitglieder; der Server speichert nur den SHA-256 als Beleg
+  (`chat_ai_reply`), Clients zeigen die Nachricht nur bei passendem Hash als Antwort der KI (Name + Bild, „gefragt von
+  …“). Kontingent und Gruppen des Assistenten gelten, dazu 6 Fragen je Minute und Person, 20 je 10 Minuten und Chat.
+- **Web**: KI als erster Vorschlag bei „@“, Hinweis beim Schreiben, Antwort erscheint live. Vertrag für die Apps:
+  `docs/APP-API-KI.md`. Neue Tabellen `chat_ai`, `chat_ai_reply` (ohne Migration, `CREATE TABLE IF NOT EXISTS`).
+
 ### Verbessert
 - **KI-Assistent – „Aufgaben vorschlagen“** liefert nur noch konkrete nächste Schritte im Imperativ (z. B.
   „Weiterlesen ab Seite 12“) statt Feststellungen („Das Buch hat 258 Seiten“): das Modell schreibt je Aufgabe eine Zeile

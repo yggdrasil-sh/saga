@@ -776,6 +776,20 @@ def _msg_dict(r, nm):
             "reply_to": r[10], "key": key, "key_for": via}
 
 
+def ai_marks(c, cid, msgs):
+    """KI-Antworten (2.1) kennzeichnen: ai = {ref, sha256, by} - die Clients vergleichen sha256 mit dem entschluesselten Text.
+    Gilt nur, wenn der Absender der Nachricht auch die Antwort angefordert hat."""
+    ids = [m["id"] for m in msgs if m.get("kind") == "msg"]
+    if not ids:
+        return
+    got = {r[0]: r for r in c.execute(f"SELECT msg_id, id, sha256, uid, q_msg FROM chat_ai_reply WHERE chat_id=? AND msg_id IN "
+                                      f"({','.join('?' * len(ids))})", (cid, *ids))}
+    for m in msgs:
+        r = got.get(m["id"])
+        if r and m.get("sender") and m["sender"]["username"] == r[3]:
+            m["ai"] = {"ref": r[1], "sha256": r[2], "by": r[3], "q_msg": r[4]}
+
+
 def _senders(c, rows):
     """Geraete der Absender (auch entfernte) + aktuelle Identitaetsschluessel - zur Pruefung der Signaturen im Client."""
     dids = sorted({r[4] for r in rows if r[4]})
@@ -816,7 +830,9 @@ def _chat_dict(c, uid, ch, mem, m, device, full=False):
     d = {"id": ch["id"], "kind": ch["kind"], "name": _name(c, uid, ch, mem, nm), "group": ch["group_name"], "note_id": ch["note_id"],
          "created": ch["created"], "last_at": ch["last_at"] or ch["created"], "last_seq": ch["last_seq"], "retention_s": ch["retention_s"],
          "muted": bool(m["muted"]), "role": m["role"], "last_read": m["last_read"], "unread": _unread(c, uid, ch["id"], m["last_read"]),
-         "members": [{"username": u, "name": nm.get(u, u), "me": u == uid, "avatar": nm.avatar(u)} for u in mem], "member_count": len(mem)}
+         "members": [{"username": u, "name": nm.get(u, u), "me": u == uid, "avatar": nm.avatar(u)} for u in mem], "member_count": len(mem),
+         # KI im Chat (2.1, saga/ai_chat.py): in diesem Chat erlaubt? (ob der Server sie anbietet: /api/ai/status "chat")
+         "ai": bool(c.execute("SELECT 1 FROM chat_ai WHERE chat_id=?", (ch["id"],)).fetchone())}
     if ch["kind"] == "dm":
         a, _, b = ch["dm_key"].partition("|")
         d["peer"] = {"username": b if a == uid else a, "name": d["name"], "avatar": nm.avatar(b if a == uid else a)}
@@ -1135,7 +1151,9 @@ def api_messages(cid: int, request: Request, device: str = "", before: int = 0, 
             rows.reverse()
         nm = names(c, [r[3] for r in rows])
         devs, ids = _senders(c, rows)
-        return _no_store({"chat_id": ch["id"], "messages": [_msg_dict(r, nm) for r in rows], "more": more,
+        msgs = [_msg_dict(r, nm) for r in rows]
+        ai_marks(c, ch["id"], msgs)
+        return _no_store({"chat_id": ch["id"], "messages": msgs, "more": more,
                           "devices": devs, "idents": ids, "last_read": m["last_read"], "last_seq": ch["last_seq"]})
 
 
@@ -1154,6 +1172,9 @@ async def api_send(cid: int, request: Request):
     kind = b.get("kind") or "msg"
     reply_to = b.get("reply_to") or None
     keys, files = b.get("keys"), b.get("files") or []
+    ai_ref = b.get("ai_reply")                             # (2.1) Beleg einer KI-Antwort (POST /api/chats/{cid}/ai)
+    if ai_ref is not None and not (isinstance(ai_ref, str) and _HEX32.fullmatch(ai_ref)):
+        return _bad(t("ungültige Angabe"))
     try:
         ts = int(b.get("ts"))
     except (TypeError, ValueError, OverflowError):
@@ -1192,6 +1213,10 @@ async def api_send(cid: int, request: Request):
             return _bad(t("Diese Nachricht gibt es schon."), 409)
         if reply_to and not c.execute("SELECT 1 FROM chat_msg WHERE id=? AND chat_id=?", (reply_to, ch["id"])).fetchone():
             return _bad(t("ungültige Angabe"))
+        if ai_ref and (kind != "msg" or not c.execute(
+                "SELECT 1 FROM chat_ai_reply WHERE id=? AND chat_id=? AND uid=? AND msg_id IS NULL AND created>?",
+                (ai_ref, ch["id"], uid, now - 3600)).fetchone()):
+            return _bad(t("Diese KI-Antwort gibt es nicht (mehr) oder sie wurde schon gesendet."), 409)
         rc, want = recipients(c, mem)
         if set(keys) != want or any(b64d(v, SEAL_LEN) is None for v in keys.values()):
             return _no_store({"error": t("Die Mitglieder oder ihre Geräte haben sich geändert – bitte erneut senden."), "recipients": rc}, 409)
@@ -1206,6 +1231,8 @@ async def api_send(cid: int, request: Request):
                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?) RETURNING seq",
                         (mid, ch["id"], kind, uid, dev, ts, now, now + eff if eff else None, body_ct, sig, reply_to, len(body_ct))).fetchone()[0]
         c.executemany("INSERT INTO chat_msg_key (msg_seq, recipient, sealed) VALUES (?,?,?)", [(seq, k, v) for k, v in sorted(keys.items())])
+        if ai_ref:
+            c.execute("UPDATE chat_ai_reply SET msg_id=? WHERE id=?", (mid, ai_ref))
         if files:
             c.execute(f"UPDATE chat_file SET msg_seq=? WHERE id IN ({','.join('?' * len(files))})", (seq, *files))
         if kind == "title":
