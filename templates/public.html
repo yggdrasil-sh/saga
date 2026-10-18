@@ -84,6 +84,7 @@
   {%- if mode == "nf" and next_url %}
   <p class="pub-next-wrap"><a class="pub-next" href="{{ next_url }}">{{ _("Zur Startseite") if next_home else _("Anmelden") }}</a></p>
   {%- endif %}
+  {{ lang_links() }}
 </main>
 {%- endif %}
 <footer class="pub-foot"><a href="{{ project_url }}" rel="noopener">{{ _("Erstellt mit Saga") }}</a></footer>

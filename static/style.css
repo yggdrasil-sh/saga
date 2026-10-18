@@ -1206,6 +1206,15 @@ time.hk-date::before{content:"@";opacity:.55}
 .auth-note{background:var(--card-h);border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem;font-size:.9rem;margin:0 0 .9rem}
 .auth-foot{color:var(--muted);font-size:.88rem;text-align:center;margin:1.1rem 0 .2rem}
 .auth-foot a{color:var(--accent)}
+/* Sprachumschalter (saga.core.lang_switch): unter der Anmeldekarte, im Admin-Bereich in der Kopfzeile */
+.lang-sw{display:flex;align-items:center;justify-content:center;gap:.5rem;font-size:.85rem;color:var(--muted)}
+.lang-sw-l{display:inline-flex;align-items:center;gap:.35rem;cursor:pointer}
+.lang-sw-sel{background:transparent;color:var(--muted);border:1px solid transparent;border-radius:6px;font:inherit;padding:.25rem .4rem;cursor:pointer}
+.lang-sw-sel:hover,.lang-sw-sel:focus-visible{color:var(--fg);border-color:var(--border)}
+.lang-sw-sel option{background:var(--card);color:var(--fg)}
+.lang-sw-go{font-size:.8rem;padding:.25rem .6rem}
+.auth-lang{margin:1rem 0 0}
+.adm-lang{font-size:.8rem}
 /* Zweiter Faktor (2.1): Passkey-Knopf auf der Anmeldeseite, Zwischenschritt, Einstellungen "Anmeldung & Sicherheit" */
 .pk-box{margin-top:.5rem}
 .pk-box .auth-err{margin:.6rem 0 0}
@@ -1502,6 +1511,8 @@ box-shadow:0 20px 60px rgba(0,0,0,.45);padding:1.1rem 1.2rem 1rem}
 @media (max-width:560px){.pg-pub-b .pg-pub-l{display:none}.pg-pub-b{margin-right:.15rem}}   /* Handy: nur "🌐", Kopfzeile bleibt in der Breite */
 /* Einstellungen -> Konto: oeffentlicher Name als eigener, abgesetzter Block */
 .hk-pubname{margin-top:1.2rem;padding-top:.2rem;border-top:1px solid var(--border)}
+.hk-langsec{padding-bottom:.6rem;border-bottom:1px solid var(--border)}
+.hk-langsec h4{margin-top:.6rem}
 /* Deaktivierte Knoepfe sehen deaktiviert aus (z. B. "Weiter" bei ungueltigem Namen) */
 .btn:disabled,.btn[disabled],button.btn:disabled:hover{opacity:.45;cursor:not-allowed;filter:none}
 .btn:disabled:hover{color:var(--muted);border-color:var(--border)}

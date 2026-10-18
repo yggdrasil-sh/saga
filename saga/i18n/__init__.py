@@ -7,7 +7,8 @@
 - Jinja: _("Anmelden") und lang()/locale() als Globale (install()).
 - JavaScript: T('Speichern') aus static/common.js; das Woerterbuch liefert /i18n/<lang>.js -
   nur die Schluessel, die in static/*.js als T('...') vorkommen.
-Sprachwahl (resolve): Konto-Einstellung > Standardsprache des Servers (Admin) > Accept-Language > Englisch.
+Sprachwahl (resolve): Konto-Einstellung > Sprach-Cookie (Umschalter auf der Anmeldeseite, COOKIE) > Standardsprache
+des Servers (Admin) > Accept-Language > Englisch.
 """
 import contextvars
 import glob
@@ -82,9 +83,41 @@ def from_header(header):
     return min(best)[2] if best else ""
 
 
-def resolve(user="", server="", header=""):
-    """Konto > Standardsprache des Servers > Browser (Accept-Language) > Englisch."""
-    return norm(user) or norm(server) or from_header(header) or DEFAULT
+def resolve(user="", server="", header="", cookie=""):
+    """Konto > Umschalter auf diesem Geraet (Cookie) > Standardsprache des Servers > Browser (Accept-Language) > Englisch."""
+    return norm(user) or norm(cookie) or norm(server) or from_header(header) or DEFAULT
+
+
+# --- Sprach-Cookie: Umschalter vor der Anmeldung (fremder Rechner) ------------------------------------------------
+# Nur die Sprache (de/en/es), kein Tracking; gilt fuer Anmelde-, 2FA-, App-Anmelde- und oeffentliche Fehlerseiten und
+# nach der Anmeldung, solange das Konto "Automatisch" eingestellt hat.
+COOKIE = "saga_lang"
+COOKIE_MAX_AGE = 365 * 86400
+# Sprache der App, die die Anmeldung/Kopplung im Browser oeffnet (?lang=): nur fuer diese Browser-Sitzung (ohne
+# Ablaufdatum), schwaecher als Konto und Umschalter (saga.core.LangMiddleware)
+HINT_COOKIE = "saga_lang_app"
+
+
+def cookie_from_header(raw, name=COOKIE):
+    """Cookie-Kopfzeile -> gewaehlte Sprache oder '' (ohne http.cookies: ein kaputtes fremdes Cookie stoert nicht)."""
+    for part in str(raw or "").split(";"):
+        k, _, v = part.strip().partition("=")
+        if k == name:
+            return norm(v.strip().strip('"'))
+    return ""
+
+
+# Laufende Anfrage: (Wahl des Umschalters bzw. des Kontos, '' = automatisch; aktuelle Adresse fuer den Ruecksprung)
+_ui = contextvars.ContextVar("saga_lang_ui", default=("", "/"))
+
+
+def set_ui(pref, here):
+    return _ui.set((norm(pref), here or "/"))
+
+
+def pref():
+    """Ausdruecklich gewaehlte Sprache dieser Anfrage (Konto, sonst Cookie); '' = automatisch."""
+    return _ui.get()[0]
 
 
 def set_lang(lang):
@@ -163,5 +196,5 @@ def fmt_date(ts, tz=None, with_time=False):
 
 
 def install(env):
-    """Jinja-Umgebung: _(), t(), lang(), locale() als Globale."""
+    """Jinja-Umgebung: _(), t(), lang(), locale() als Globale (Sprachumschalter: saga.core.install_lang_ui)."""
     env.globals.update(_=t, t=t, lang=get_lang, locale=locale, LANG_NAMES=NAMES, i18n_v=VERSION)

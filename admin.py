@@ -30,7 +30,7 @@ import app as hk
 import auth
 from db import clean_line, connect as _db
 from saga import ai, avatars, calls, federation, i18n, live, mfa, publish, push, sharing
-from saga.core import TZ, BodyLimit, LangMiddleware
+from saga.core import TZ, BodyLimit, LangMiddleware, install_lang_ui, lang_switch_response
 from saga.i18n import t
 from version import REPO, VERSION, newer
 
@@ -51,6 +51,7 @@ admin.add_middleware(BodyLimit, default=1024 * 1024,      # nur Formulare: 1 MB 
 admin.mount("/static", StaticFiles(directory=os.path.join(hk.HERE, "static")), name="static")
 tmpl = Environment(loader=FileSystemLoader(os.path.join(hk.HERE, "templates", "admin")), autoescape=select_autoescape(["html"]))
 i18n.install(tmpl)
+install_lang_ui(tmpl)
 HEADERS = {
     "Cache-Control": "no-store",
     "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
@@ -174,6 +175,13 @@ def icon(name: str, request: Request):
     if not path:
         return PlainTextResponse("not found", status_code=code)
     return FileResponse(path, media_type="image/png", headers={"Cache-Control": "private, max-age=604800"})
+
+
+@admin.get("/lang")
+def lang_switch(request: Request):
+    """Sprachumschalter (Kopfzeile bzw. unter der Anmeldung): Cookie; angemeldet mit fester Konto-Sprache auch diese."""
+    me = _me(request)
+    return lang_switch_response(request, me["username"] if me else None, ADMIN_URL.startswith("https://"))
 
 
 # --- Anmeldung ------------------------------------------------------------------------------------

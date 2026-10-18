@@ -21,6 +21,7 @@
   </nav>
   <span class="spacer"></span>
   <a class="btn adm-dash" href="{{ base_url }}" target="_blank" rel="noopener">{{ _("Zum Dashboard") }} ↗</a>
+  {{ lang_switch("adm-lang") }}
   <span class="greet">{{ me.username }}</span>
   <a class="btn adm-out" href="/logout" title="{{ me.username }}">{{ _("Abmelden") }}</a>
 </header>
@@ -32,6 +33,8 @@
   {% block content %}{% endblock %}
 </main>
 {% if me %}<footer class="adm-foot">Saga {{ version }}{% if "-testing" in version %} · 🧪 {{ _("Testversion") }}{% endif %} · <a href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md" target="_blank" rel="noopener">{{ _("Änderungen") }}</a></footer>{% endif %}
+{% if not me %}{{ lang_switch("auth-lang") }}{% endif %}
+<script src="/static/lang.js?v={{ v }}"></script>
 <script src="/static/admin.js?v={{ v }}"></script>
 </body>
 </html>

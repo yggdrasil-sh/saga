@@ -111,6 +111,7 @@ def _app_back(request, query):
 # Deshalb hier eine kleine Seite, die die Kette beendet und dann per Meta-Refresh (plus Knopf) in die App springt.
 _BACK_TPL = """{% extends "_auth_base.html" %}
 {% block pagetitle %}{{ head }}{% endblock %}
+{% block langsw %}{% endblock %}
 {% block content %}
 <meta http-equiv="refresh" content="0;url={{ url }}">
 <h2 class="auth-h">{{ head }}</h2>

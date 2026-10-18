@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import secrets
 import time
 from datetime import timezone
@@ -74,7 +75,8 @@ tmpl = Environment(loader=FileSystemLoader(os.path.join(HERE, "templates")),
 i18n.install(tmpl)
 
 
-# --- Sprache: Konto-Einstellung (user_kv 'lang') > Standardsprache des Servers > Accept-Language > Englisch ---
+# --- Sprache: Konto-Einstellung (user_kv 'lang') > Sprach-Cookie (Umschalter) > Standardsprache des Servers
+#     > Accept-Language > Englisch ---
 _lang_cache = {}      # uid -> (zeit, sprache)
 
 
@@ -151,7 +153,8 @@ def remember_ui_lang(uid, request):
     try:
         if user_lang(uid) or server_lang():
             return
-        lang = i18n.from_header(request.headers.get("accept-language", ""))
+        lang = (i18n.norm(request.cookies.get(i18n.COOKIE))                     # Umschalter dieses Browsers
+                or i18n.from_header(request.headers.get("accept-language", "")))
         if not lang or seen_lang(uid) == lang:
             return
         from db import connect
@@ -205,28 +208,147 @@ class LangMiddleware:
         self.app, self.key = app, session_key
 
     @staticmethod
-    def _lookup(uid, header):
+    def _lookup(uid, header, cookie, hint=""):
+        """-> (Sprache, ausdruecklich gewaehlte Sprache: Konto, sonst Cookie). hint = Sprache der App (?lang=):
+        nach der Wahl der Person (Konto, Umschalter), vor Server-Standard und Browser."""
         try:
-            return i18n.resolve(user_lang(uid) if uid else "", server_lang(), header)
-        except Exception:  # noqa: BLE001 - Datenbank gerade weg: Browser-Sprache reicht
-            return i18n.resolve("", "", header)
+            ul = user_lang(uid) if uid else ""
+            return i18n.resolve(ul, server_lang(), header, cookie or hint), ul or cookie
+        except Exception:  # noqa: BLE001 - Datenbank gerade weg: Cookie bzw. Browser-Sprache reicht
+            return i18n.resolve("", "", header, cookie or hint), cookie
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
         uid = (scope.get("session") or {}).get(self.key)
-        header = next((v.decode("latin-1") for k, v in scope.get("headers") or () if k == b"accept-language"), "")
-        if scope.get("path", "").startswith("/static/"):
-            lang = i18n.resolve("", "", header)                   # Dateien brauchen keine Konto-Sprache
+        hdrs = scope.get("headers") or ()
+        header = next((v.decode("latin-1") for k, v in hdrs if k == b"accept-language"), "")
+        raw_ck = next((v.decode("latin-1") for k, v in hdrs if k == b"cookie"), "")
+        cookie = i18n.cookie_from_header(raw_ck)
+        path = scope.get("path", "")
+        # Apps oeffnen Anmeldung/Kopplung mit ?lang=de|en|es: gilt fuer diese Browser-Sitzung (Sitzungs-Cookie, auch
+        # ueber die Weiterleitungen /app/login -> /login -> 2FA -> /app/handoff), unbekannte Werte zaehlen nicht
+        qhint = _app_lang_param(scope) if _APP_LANG_PATHS.match(path) else ""
+        hint = qhint or i18n.cookie_from_header(raw_ck, i18n.HINT_COOKIE)
+        if path.startswith("/static/"):
+            lang, pref = i18n.resolve("", "", header, cookie), cookie          # Dateien brauchen keine Konto-Sprache
         elif _lang_is_cached(uid):
-            lang = self._lookup(uid, header)
+            lang, pref = self._lookup(uid, header, cookie, hint)
         else:                                                     # Datenbank fragen: im Thread, nie im Event-Loop
-            lang = await asyncio.to_thread(self._lookup, uid, header)
-        token = i18n.set_lang(lang)
+            lang, pref = await asyncio.to_thread(self._lookup, uid, header, cookie, hint)
+        if qhint:
+            send = _with_cookie(send, f"{i18n.HINT_COOKIE}={qhint}; Path=/; HttpOnly; SameSite=Lax"
+                                      + ("; Secure" if BASE_URL.startswith("https://") else ""))
+        token, tok_ui = i18n.set_lang(lang), i18n.set_ui(pref, _here(scope))
         try:
             await self.app(scope, receive, send)
         finally:
             i18n._cur.reset(token)
+            i18n._ui.reset(tok_ui)
+
+
+_APP_LANG_PATHS = re.compile(r"/(login(/.*)?|register|security|app/.*)\Z")
+
+
+def _app_lang_param(scope):
+    from urllib.parse import parse_qs
+    try:
+        q = parse_qs((scope.get("query_string") or b"").decode("latin-1"))
+    except ValueError:
+        return ""
+    v = (q.get("lang") or [""])[0]
+    return i18n.norm(v) if len(v) <= 8 else ""
+
+
+def _with_cookie(send, value):
+    """send-Wrapper: Set-Cookie an den Kopf der Antwort haengen."""
+    async def wrapped(msg):
+        if msg["type"] == "http.response.start":
+            msg = dict(msg, headers=list(msg.get("headers") or []) + [(b"set-cookie", value.encode("latin-1"))])
+        await send(msg)
+    return wrapped
+
+
+def _here(scope):
+    """Adresse der laufenden Anfrage als Ruecksprung fuer den Sprachumschalter. Ohne Abfrage bei /app/handoff (?go=
+    ist ein Einmal-Code der Bestaetigung) und bei sehr langen Adressen."""
+    path = scope.get("path") or "/"
+    q = (scope.get("query_string") or b"").decode("latin-1")
+    if q and path != "/app/handoff" and len(path) + len(q) < 600:
+        return path + "?" + q
+    return path
+
+
+def safe_next(v, default="/"):
+    """Ruecksprungziel des Sprachumschalters: nur eine Adresse auf diesem Server (/..., kein //host, kein \\)."""
+    v = str(v or "")
+    if not v.startswith("/") or v.startswith("//") or "\\" in v or len(v) > 1000 or any(ord(ch) < 33 for ch in v):
+        return default
+    return v
+
+
+def lang_switch_response(request, uid, secure):
+    """GET /lang?l=de|en|es|''&next=/pfad (Hauptseite und Admin-Bereich): Sprach-Cookie setzen bzw. ('' = automatisch)
+    loeschen, zurueck zur Seite. Angemeldet und im Konto eine feste Sprache eingestellt: die Konto-Sprache mit
+    aendern - sonst haette der Umschalter keine sichtbare Wirkung (das Konto hat Vorrang)."""
+    from starlette.responses import RedirectResponse
+    lang = i18n.norm(request.query_params.get("l"))
+    if uid:
+        try:
+            if user_lang(uid):
+                set_user_lang(uid, lang)
+        except Exception:  # noqa: BLE001 - Datenbank gerade weg: dann nur das Cookie
+            pass
+    resp = RedirectResponse(safe_next(request.query_params.get("next")), status_code=303,
+                            headers={"Cache-Control": "no-store"})
+    if lang:
+        resp.set_cookie(i18n.COOKIE, lang, max_age=i18n.COOKIE_MAX_AGE, httponly=True, secure=secure, samesite="lax", path="/")
+    else:
+        resp.delete_cookie(i18n.COOKIE, path="/")
+    return resp
+
+
+# --- Sprachumschalter in den Vorlagen (Anmeldeseiten, Admin-Bereich, oeffentliche Fehlerseiten) --------------------
+def _switch_label():
+    """Beschriftung des Umschalters - ausser auf Englisch zusaetzlich 'Language', damit man ihn in fremder Sprache findet."""
+    s = t("Sprache")
+    return s if i18n.get_lang() == "en" else s + " · Language"
+
+
+def lang_switch(cls=""):
+    """Auswahlmenue -> GET /lang. static/lang.js schickt die Auswahl sofort ab; ohne JavaScript bleibt der Knopf sichtbar."""
+    from markupsafe import Markup, escape
+    cur, here = i18n._ui.get()
+    lbl = escape(_switch_label())
+    opts = [f'<option value=""{" selected" if not cur else ""}>{escape(t("Automatisch (Browser)"))}</option>']
+    for code, name in i18n.NAMES.items():
+        opts.append(f'<option value="{code}" lang="{code}"{" selected" if cur == code else ""}>{escape(name)}</option>')
+    return Markup(f'<form class="lang-sw{" " + escape(cls) if cls else ""}" method="get" action="/lang">'
+                  f'<input type="hidden" name="next" value="{escape(here)}">'
+                  f'<label class="lang-sw-l" title="{lbl}"><span aria-hidden="true">🌐</span>'
+                  f'<select class="lang-sw-sel" name="l" aria-label="{lbl}">{"".join(opts)}</select></label>'
+                  f'<button class="btn lang-sw-go" type="submit">{escape(t("Sprache wechseln"))}</button></form>')
+
+
+def lang_links():
+    """Dasselbe als Links (oeffentliche Fehlerseiten: dort laufen keine Skripte)."""
+    from urllib.parse import urlencode
+    from markupsafe import Markup, escape
+    here, cur = i18n._ui.get()[1], i18n.get_lang()
+    items = []
+    for code, name in i18n.NAMES.items():
+        href = "/lang?" + urlencode({"l": code, "next": here})
+        att = ' aria-current="true"' if code == cur else ""
+        items.append(f'<a href="{escape(href)}" lang="{code}" hreflang="{code}"{att}>{escape(name)}</a>')
+    return Markup(f'<nav class="pub-lang" aria-label="{escape(_switch_label())}"><span aria-hidden="true">🌐</span> '
+                  + " · ".join(items) + "</nav>")
+
+
+def install_lang_ui(env):
+    env.globals.update(lang_switch=lang_switch, lang_links=lang_links)
+
+
+install_lang_ui(tmpl)
 
 
 # --- Groesse von Anfragen begrenzen (vor jeder Anmeldung/Pruefung) -----------------------------------

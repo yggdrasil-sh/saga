@@ -53,6 +53,24 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Sprache der Seiten-Hilfen**: Zusammenfassen und Aufgaben in der Sprache der Oberfläche (Konto > Server-Standard >
   Browser), Verbessern behält die Sprache des Textes, Übersetzen die Zielsprache.
 
+### Sprache wählbar – Web
+- **Sprachumschalter auf der Anmeldeseite** (🌐 unten: Automatisch (Browser) · Deutsch · English · Español) – für den
+  fremden Rechner, der nicht die eigene Sprache spricht. Gilt auch für 2FA-Schritt, Registrierung,
+  „Anmeldung & Sicherheit“, App-Anmeldung/-Kopplung und die öffentlichen Fehlerseiten (404/zu viele Anfragen, dort als
+  Links ohne Skript). Gemerkt wird nur die Sprache im Cookie `saga_lang` (ein Jahr, HttpOnly, kein Tracking);
+  „Automatisch“ löscht es. Ohne JavaScript gibt es den Knopf „Sprache wechseln“.
+- **Sprache der App:** Öffnen die Apps Anmeldung oder Geräte-Kopplung mit `&lang=de|en|es`, gilt diese Sprache für die
+  Browser-Sitzung (Sitzungs-Cookie `saga_lang_app`, auch über die Weiterleitungen `/app/login` → `/login` → 2FA →
+  Rückgabe an die App); unbekannte Werte werden ignoriert.
+- **Reihenfolge:** Konto-Sprache > Umschalter (Cookie) > Sprache der App > Standardsprache des Servers > Browser >
+  Englisch. Nach der Anmeldung gilt also die Sprache des Kontos, falls eine eingestellt ist, sonst die gewählte bzw.
+  die des Browsers.
+- **Admin-Bereich:** Umschalter in der Kopfzeile und unter der Admin-Anmeldung. Angemeldet mit fester Konto-Sprache
+  ändert der Umschalter die Konto-Sprache mit (sonst hätte er keine Wirkung).
+- **Konto-Sprache leichter zu finden:** Einstellungen → Konto zeigt „🌐 Sprache“ jetzt als ersten Block (bisher
+  unauffällig zwischen Profilbild und Mitteilungen), „Automatisch“ nennt die gerade aktive Sprache; neu im
+  Benutzermenü: **„Sprache“** öffnet direkt diese Auswahl.
+
 ## [2.1.0] – 2026-10-17
 
 Saga 2.1 macht die Anmeldung sicherer und den Chat persönlicher: Passkeys und Zwei-Faktor-Anmeldung, Profilbilder,

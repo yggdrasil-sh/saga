@@ -114,7 +114,9 @@ _BASE_HOST = urlparse(BASE_URL).netloc.lower()
 
 def _public_path(path):
     # /api/avatar/: Profilbilder auf veroeffentlichten Seiten (nur, wenn die Person es erlaubt hat - prueft saga.avatars)
-    return path == "/" or path.startswith("/@") or path.startswith("/static/") or path.startswith("/api/avatar/")
+    # /lang: Sprachumschalter der oeffentlichen 404-Seite (setzt nur das Sprach-Cookie dieser Domain)
+    return (path in ("/", "/lang") or path.startswith("/@") or path.startswith("/static/")
+            or path.startswith("/api/avatar/"))
 
 
 @app.middleware("http")

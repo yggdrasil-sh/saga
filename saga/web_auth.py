@@ -10,8 +10,8 @@ import auth
 from db import clean_line, connect as _db
 from fastapi import APIRouter
 from saga import avatars, i18n, mfa
-from saga.core import (ADMIN_URL, ASSET_V, BASE_URL, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, set_user_lang, t,
-                       title, tmpl, user_info, user_lang)
+from saga.core import (ADMIN_URL, ASSET_V, BASE_URL, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, lang_switch_response,
+                       set_user_lang, t, title, tmpl, user_info, user_lang)
 from saga.dashboard import source_label
 
 router = APIRouter()
@@ -447,6 +447,12 @@ async def api_account_password(request: Request):
         from saga.userdata import revoke_user_logins
         n = await run_in_threadpool(revoke_user_logins, uid, request.session.get("did"))
     return JSONResponse({"ok": True, "devices_revoked": n})
+
+
+@router.get("/lang")
+def lang_switch(request: Request):
+    """Sprachumschalter unten auf der Anmeldeseite (auch 2FA, Registrierung, App-Anmeldung, oeffentliche Fehlerseiten)."""
+    return lang_switch_response(request, _session_user(request), BASE_URL.startswith("https://"))
 
 
 @router.put("/api/account/lang")
