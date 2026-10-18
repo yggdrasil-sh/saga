@@ -1225,9 +1225,10 @@ async def ai_post(request: Request):
             c.execute("UPDATE setting SET v=? WHERE k='ai'", (json.dumps(st, ensure_ascii=False),))
         auth._settings_cache["v"] = None
     print(f"admin: {me['username']} speichert KI-Assistent (aktiv={v['enabled']}, Chats={v['chat']})", flush=True)
-    if any(bool(cur.get(k)) != bool(v[k]) for k in ("enabled", "chat")):   # Clients blenden die KI ein/aus (Live-Ereignis)
+    # Clients blenden die KI ein/aus (Live-Ereignis) - an alle, die sie jetzt oder bisher nutzen durften
+    if any(bool(cur.get(k)) != bool(v[k]) for k in ("enabled", "chat")) or sorted(cur.get("groups") or []) != sorted(v["groups"]):
         with _db() as c, c:
-            ai.announce_persona(c)
+            ai.announce_persona(c, before=cur)
     _flash(request, t("Einstellungen für den KI-Assistenten gespeichert."))
     return _go("/settings/ai")
 

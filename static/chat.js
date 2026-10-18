@@ -1463,7 +1463,10 @@
   function aiWho(m) {
     var w = el('div', 'ct-who ct-ai-who');
     w.appendChild(HKAIAvatar(aiP(), 22)); w.appendChild(el('span', null, aiP().name));
-    if (m && m.sender) w.appendChild(el('span', 'ct-ai-by', T('gefragt von {name}', { name: m.sender.username === ME ? T('dir') : m.sender.name })));
+    if (m) {                                         // Fragender geloescht (Beleg anonymisiert, Absender fehlt): neutral benennen
+      var by = !m.sender ? T('Gelöschtes Konto') : m.sender.username === ME ? T('dir') : (m.sender.name || T('Gelöschtes Konto'));
+      w.appendChild(el('span', 'ct-ai-by', T('gefragt von {name}', { name: by })));
+    }
     return w;
   }
   function drawAI() {

@@ -59,6 +59,8 @@ PAGE = 50
 SKEW = 600                             # erlaubte Abweichung der Client-Zeit (ts) in Sekunden
 RETENTIONS = (0, 3600, 86400, 7 * 86400, 30 * 86400, 90 * 86400, 365 * 86400)
 SEAL_LEN = 32 + 48                     # crypto_box_seal(32-Byte-Schluessel)
+AI_REPLY_TTL = 3600                    # (2.1) so lange kann eine KI-Antwort (Beleg in chat_ai_reply) gesendet werden
+AI_GONE = ""                           # (2.1) chat_ai_reply.uid / chat_ai.by_uid nach Kontoloeschung (kein Personenbezug)
 _HEX32 = re.compile(r"[0-9a-f]{32}")
 REAUTH_SEC = 300                       # "Neu beginnen": Passwort oder Anmeldung hoechstens 5 Minuten alt
 _FID = re.compile(r"[A-Za-z0-9_-]{22,40}")
@@ -778,7 +780,8 @@ def _msg_dict(r, nm):
 
 def ai_marks(c, cid, msgs):
     """KI-Antworten (2.1) kennzeichnen: ai = {ref, sha256, by} - die Clients vergleichen sha256 mit dem entschluesselten Text.
-    Gilt nur, wenn der Absender der Nachricht auch die Antwort angefordert hat."""
+    Gilt nur, wenn der Absender der Nachricht auch die Antwort angefordert hat. Nach einer Kontoloeschung ist der Beleg
+    anonymisiert (uid ''): er gilt dann nur fuer eine Nachricht ohne Absender, by = None."""
     ids = [m["id"] for m in msgs if m.get("kind") == "msg"]
     if not ids:
         return
@@ -786,8 +789,12 @@ def ai_marks(c, cid, msgs):
                                       f"({','.join('?' * len(ids))})", (cid, *ids))}
     for m in msgs:
         r = got.get(m["id"])
-        if r and m.get("sender") and m["sender"]["username"] == r[3]:
+        if not r:
+            continue
+        if m.get("sender") and m["sender"]["username"] == r[3]:
             m["ai"] = {"ref": r[1], "sha256": r[2], "by": r[3], "q_msg": r[4]}
+        elif r[3] == AI_GONE and not m.get("sender"):
+            m["ai"] = {"ref": r[1], "sha256": r[2], "by": None, "q_msg": r[4]}
 
 
 def _senders(c, rows):
@@ -1215,7 +1222,7 @@ async def api_send(cid: int, request: Request):
             return _bad(t("ungültige Angabe"))
         if ai_ref and (kind != "msg" or not c.execute(
                 "SELECT 1 FROM chat_ai_reply WHERE id=? AND chat_id=? AND uid=? AND msg_id IS NULL AND created>? FOR UPDATE",   # sperrt: Beleg nur einmal
-                (ai_ref, ch["id"], uid, now - 3600)).fetchone()):
+                (ai_ref, ch["id"], uid, now - AI_REPLY_TTL)).fetchone()):
             return _bad(t("Diese KI-Antwort gibt es nicht (mehr) oder sie wurde schon gesendet."), 409)
         rc, want = recipients(c, mem)
         if set(keys) != want or any(b64d(v, SEAL_LEN) is None for v in keys.values()):
@@ -1276,6 +1283,7 @@ def api_msg_delete(cid: int, mid: str, request: Request):
             return _bad(t("Nur eigene Nachrichten lassen sich löschen."), 403)
         fids = [x[0] for x in c.execute("SELECT id FROM chat_file WHERE msg_seq=?", (r[0],))]
         c.execute("DELETE FROM chat_file WHERE msg_seq=?", (r[0],))
+        c.execute("DELETE FROM chat_ai_reply WHERE msg_id=?", (mid,))     # Beleg einer KI-Antwort geht mit (2.1)
         c.execute("DELETE FROM chat_msg WHERE seq=?", (r[0],))
         _rm_blobs(c, fids)
         _direct(c, mem, "chat.deleted", {"chat_id": ch["id"], "id": mid, "seq": r[0]})
@@ -1410,7 +1418,12 @@ def purge(c=None):
         fids = [r[0] for r in c.execute(f"SELECT id FROM chat_file WHERE msg_seq IN ({ph})", tuple(seqs))]
         c.execute(f"DELETE FROM chat_file WHERE msg_seq IN ({ph})", tuple(seqs))
         c.execute(f"UPDATE chat SET title_seq=NULL WHERE title_seq IN ({ph})", tuple(seqs))
+        c.execute(f"DELETE FROM chat_ai_reply WHERE msg_id IN (SELECT id FROM chat_msg WHERE seq IN ({ph}))", tuple(seqs))
         c.execute(f"DELETE FROM chat_msg WHERE seq IN ({ph})", tuple(seqs))
+    # KI-Belege (2.1): nie gesendete nach Ablauf, und solche, deren Nachricht es nicht mehr gibt (Nachrichten ohne Beleg-
+    # Bezug geloescht, z. B. mit dem Chat per CASCADE oder von aelteren Versionen) - kein Hash bleibt ohne Nachricht liegen
+    c.execute("DELETE FROM chat_ai_reply WHERE msg_id IS NULL AND created<?", (now - AI_REPLY_TTL,))
+    c.execute("DELETE FROM chat_ai_reply r WHERE r.msg_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM chat_msg m WHERE m.id=r.msg_id)")
     for (cid,) in c.execute("SELECT id FROM chat WHERE kind='page' AND NOT EXISTS (SELECT 1 FROM note n WHERE n.id=chat.note_id)").fetchall():
         fids += _drop_chat(c, cid)                         # Seite endgueltig geloescht (Papierkorb geleert): Seiten-Chat auch
     orphan = [r[0] for r in c.execute("SELECT id FROM chat_file WHERE msg_seq IS NULL AND created<?", (now - 3600,))]
@@ -1433,7 +1446,14 @@ def delete_account(c, uid):
     if fids:
         c.execute(f"DELETE FROM chat_file WHERE id IN ({','.join('?' * len(fids))})", tuple(fids))
     c.execute("UPDATE chat SET title_seq=NULL WHERE title_seq IN (SELECT seq FROM chat_msg WHERE sender_uid=?)", (uid,))
+    c.execute("DELETE FROM chat_ai_reply WHERE msg_id IN (SELECT id FROM chat_msg WHERE sender_uid=?)", (uid,))
     n = c.execute("DELETE FROM chat_msg WHERE sender_uid=?", (uid,)).rowcount
+    # KI im Chat (2.1): nie gesendete Belege weg; Belege, deren Nachricht bleibt, ohne Personenbezug behalten (die
+    # Kennzeichnung als KI-Antwort bleibt gueltig). Wer die KI in einem Chat erlaubt hat, wird vergessen.
+    c.execute("DELETE FROM chat_ai_reply WHERE uid=? AND (msg_id IS NULL OR NOT EXISTS (SELECT 1 FROM chat_msg m WHERE m.id=chat_ai_reply.msg_id))",
+              (uid,))
+    c.execute("UPDATE chat_ai_reply SET uid=? WHERE uid=?", (AI_GONE, uid))
+    c.execute("UPDATE chat_ai SET by_uid=? WHERE by_uid=?", (AI_GONE, uid))
     for (cid,) in c.execute("SELECT id FROM chat WHERE kind='page' AND note_id IN (SELECT id FROM note WHERE uid=?)", (uid,)).fetchall():
         fids += _drop_chat(c, cid)                         # Seiten-Chats eigener Seiten (die Seiten gehen mit)
     chats = [r[0] for r in c.execute("SELECT chat_id FROM chat_member WHERE uid=?", (uid,))]

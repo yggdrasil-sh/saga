@@ -15,6 +15,7 @@ import chat as CT  # noqa: E402  (tests/chat.py: Person, req, ck, Stream)
 import ki as K  # noqa: E402
 
 PREV = {}
+KONTO = {}
 
 
 def ok(n, c):
@@ -217,6 +218,53 @@ def run():
     setai(quota=0)
     codes = [ask(Cc.k, free, {"q": f"@Marin Nummer {i}"})[0] for i in range(8)]
     ok(f"Rate-Limit je Person ({codes})", codes[:6] == [200] * 6 and 429 in codes[6:])
+
+    # --- Belege raeumen mit der Nachricht ab (Loeschen, Ablauf, Chat geloescht) -----------------------------------------
+    def beleg(mid):
+        with connect() as c:
+            return c.execute("SELECT COUNT(*) FROM chat_ai_reply WHERE msg_id=?", (mid,)).fetchone()[0]
+
+    def answer(p, cid, q):
+        s, ev, _ = ask(p.k, cid, {"q": q})
+        dn = K.get(ev, "done") or {}
+        s2, _, m = send_ai(p, cid, dn.get("text") or "", (dn.get("reply") or {}).get("id") or "0" * 32)
+        return s, s2, m
+    n0 = beleg(am["id"])
+    s = CT.req("DELETE", f"/api/chats/{dm}/messages/{am['id']}", A.k)[0]
+    ok(f"Nachricht geloescht: Beleg weg ({n0} -> {beleg(am['id'])}, {s})", s == 200 and n0 == 1 and beleg(am["id"]) == 0)
+    s, s2, rm = answer(A, dm, "@Marin bitte kurz")
+    n0 = beleg(rm["id"])
+    from saga import chat as SC
+    with connect() as c, c:
+        c.execute("UPDATE chat_msg SET expires_at=? WHERE id=?", (time.time() - 5, rm["id"]))
+        c.execute("INSERT INTO chat_ai_reply (id, chat_id, uid, created, sha256, msg_id) VALUES (?,?,?,?,?,?)",
+                  ("e" * 32, dm, "ki-cb", time.time(), "0" * 64, "f" * 32))                          # Nachricht gibt es nicht
+        c.execute("INSERT INTO chat_ai_reply (id, chat_id, uid, created, sha256) VALUES (?,?,?,?,?)",
+                  ("d" * 32, dm, "ki-cb", time.time() - 7200, "0" * 64))                              # nie gesendet, abgelaufen
+    SC.purge()
+    with connect() as c:
+        left = c.execute("SELECT COUNT(*) FROM chat_ai_reply WHERE id IN (?,?)", ("e" * 32, "d" * 32)).fetchone()[0]
+    ok(f"Ablauf (Frist des Chats): Beleg weg ({s}, {s2}, {n0} -> {beleg(rm['id'])})", (s, s2, n0) == (200, 200, 1) and beleg(rm["id"]) == 0)
+    ok(f"Aufraeumen: Belege ohne Nachricht und abgelaufene ungesendete weg ({left})", left == 0)
+    s, d = CT.req("POST", "/api/chats", A.k, {"kind": "free", "members": ["ki-cb"]})
+    f2 = d["chat"]["id"]
+    CT.req("PUT", f"/api/chats/{f2}/ai", A.k, {"allowed": True})
+    s, s2, fm2 = answer(A, f2, "@Marin und hier?")
+    n0 = beleg(fm2["id"])
+    CT.req("DELETE", f"/api/chats/{f2}/members/ki-cb", B.k)
+    CT.req("DELETE", f"/api/chats/{f2}/members/ki-ca", A.k)
+    with connect() as c:
+        gone = not c.execute("SELECT 1 FROM chat WHERE id=?", (f2,)).fetchone()
+    ok(f"Chat geloescht: Beleg weg ({s}, {s2}, {n0} -> {beleg(fm2['id'])}, {gone})", (s, s2, n0) == (200, 200, 1) and gone and beleg(fm2["id"]) == 0)
+
+    # --- Kontoloeschung: Beleg einer bleibenden Nachricht ohne Personenbezug, Freigabe vergessen ---------------------
+    s, s2, km = answer(A, free, "@Marin letzte Frage")
+    with connect() as c, c:                     # Nachricht bleibt ohne Absender (wie Nachrichten geloeschter Konten)
+        c.execute("UPDATE chat_msg SET sender_uid=NULL WHERE id=?", (km["id"],))
+        c.execute("INSERT INTO chat_ai_reply (id, chat_id, uid, created, sha256) VALUES (?,?,?,?,?)",
+                  ("c" * 32, free, "ki-ca", time.time(), "0" * 64))                                   # ungesendet
+        by0 = c.execute("SELECT by_uid FROM chat_ai WHERE chat_id=?", (free,)).fetchone()
+    KONTO.update(km=km, free=free, B=B, s=(s, s2), by0=by0)
     s, d = CT.req("PUT", f"/api/chats/{dm}/ai", A.k, {"allowed": False})
     s2 = ask(B.k, dm, {"q": "@Marin hallo"})[0]
     ok(f"Wieder verboten: fragen -> 403 ({s}, {s2})", s == 200 and s2 == 403 and CT.req("GET", f"/api/chats/{dm}", B.k)[1]["chat"]["ai"] is False)
@@ -226,9 +274,19 @@ def run():
 
     from saga.userdata import delete_user_data
     delete_user_data("ki-ca")
+    km, B = KONTO["km"], KONTO["B"]
     with connect() as c:
         n = c.execute("SELECT COUNT(*) FROM chat_ai_reply WHERE uid='ki-ca'").fetchone()[0]
-    ok(f"Kontoloeschung entfernt Belege ({n})", n == 0)
+        kept = c.execute("SELECT uid FROM chat_ai_reply WHERE msg_id=?", (km["id"],)).fetchall()
+        by = c.execute("SELECT by_uid FROM chat_ai WHERE chat_id=?", (free,)).fetchone()
+        unsent = c.execute("SELECT COUNT(*) FROM chat_ai_reply WHERE id=?", ("c" * 32,)).fetchone()[0]
+    ok(f"Kontoloeschung: keine Belege mit Personenbezug, ungesendete weg ({n}, {unsent})", n == 0 and unsent == 0)
+    ok(f"... Beleg der bleibenden Nachricht anonymisiert ({KONTO['s']}, {kept})", KONTO["s"] == (200, 200) and kept == [("",)])
+    ok(f"... wer die KI erlaubt hat, ist vergessen ({KONTO['by0']} -> {by})", KONTO["by0"] == ("ki-ca",) and by == ("",))
+    mm = [m for m in B.read(free)[1]["messages"] if m["id"] == km["id"]]
+    mark = mm[0].get("ai") if mm else None
+    ok(f"... Kennzeichnung bleibt gueltig, ohne Person ({mark})", mm and mm[0]["sender"] is None and mark is not None
+       and mark["by"] is None and mark["ref"] and len(mark["sha256"]) == 64)
 
 
 if __name__ == "__main__":

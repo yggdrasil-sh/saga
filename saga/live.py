@@ -25,11 +25,12 @@ Ereignisse (event: ..., data: JSON) - die Rechte werden beim VERSAND geprueft (s
   call.ring        {call_id, chat_id, from, from_device, media, ring_s}   Anruf (2.1, saga.calls) - an das Gegenueber
   call.signal      {call_id, seq, from_device, to_device, sealed}   versiegelt fuer das Zielgeraet (SDP/ICE, der Server liest nichts)
   call.state       {call_id, chat_id, state: active|ended, device?, reason?, status?}   an beide
-  ai.persona.changed {name, custom_name, avatar, avatar_etag}   (2.1) Name/Bild/Schalter der KI geaendert - an alle
+  ai.persona.changed {name, custom_name, avatar, avatar_etag}   (2.1) Name/Bild/Schalter der KI geaendert - an Konten, die die KI nutzen duerfen (bzw. bisher durften)
 Jedes Ereignis ausser hello/reset/bye hat eine id (<boot>-<nummer>); mit Last-Event-ID holt ein neuer Aufbau verpasste
 Ereignisse der letzten 10 Minuten nach. Heartbeat: Kommentarzeile alle ~25 s (haelt Proxys offen).
 Hoechstens 5 Verbindungen je Konto - die aelteste wird mit "bye" (limit) geschlossen."""
 import asyncio
+import importlib
 import json
 import secrets
 import time
@@ -235,7 +236,10 @@ def _resolve(kind, p, aud, pres):
                 if u in aud:
                     out.append((u, p["typ"], p["data"]))
         elif kind == "broadcast":                            # (2.1) an alle verbundenen Konten, z. B. ai.persona.changed
-            for u in sorted(aud):
+            to = aud
+            if p.get("only") == "ai":                        # nur Konten, die die KI nutzen duerfen (jetzt oder bisher)
+                to = importlib.import_module("saga.ai").hears(c, aud, p.get("before") or ())
+            for u in sorted(to):
                 out.append((u, p["typ"], p["data"]))
         elif kind == "notification.read":
             if p["uid"] in aud:

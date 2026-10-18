@@ -44,6 +44,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **KI mit neueren Claude-Modellen über die OpenAI-kompatible Schnittstelle** (`https://api.anthropic.com/v1`): Saga
   schickt `temperature` nicht mehr, wenn das Modell den Parameter ablehnt (Fehler 400 „temperature is deprecated“), und
   „Verbindung testen“ listet dort auch die angebotenen Modelle.
+- **KI im Chat – Belege räumen mit auf**: Der Hash-Beleg einer KI-Antwort (`chat_ai_reply`) wird jetzt mit der
+  Nachricht entfernt – beim Löschen der Nachricht, beim Ablauf (Frist des Chats bzw. Admin-Höchstwert) und beim Löschen
+  des Chats; das stündliche Aufräumen entfernt zusätzlich abgelaufene, nie gesendete Belege und Belege ohne Nachricht.
+- **KI im Chat – Kontolöschung**: Belege, deren Nachricht bestehen bleibt, verlieren den Personenbezug statt zu
+  verschwinden (die Kennzeichnung als KI-Antwort bleibt gültig, `ai.by` = `null`); der Vermerk, wer die KI im Chat
+  erlaubt hat (`chat_ai.by_uid`), wird geleert. Web zeigt dann „gefragt von Gelöschtes Konto“.
+- **KI-Persona – Live-Ereignis `ai.persona.changed`** geht nur noch an Konten, die die KI nutzen dürfen (Gruppen) bzw.
+  bis zur Änderung nutzen durften (KI aus, Gruppen geändert – deren Clients blenden sie aus), nicht mehr an alle.
+  Gruppenänderungen im Admin-Bereich lösen das Ereignis jetzt auch aus.
+- **Tests – Avatare**: „Veröffentlichte Seite“ schlug ab dem zweiten Lauf auf demselben Stack mit 400 („Dieser Name
+  ist schon vergeben“) fehl. Kein Serverfehler: der feste Testname eines gelöschten Kontos ist gesperrt, sobald die
+  Föderation einen Schlüssel hat (`fed_name_retired`, gewollt). Der Test nimmt jetzt je Lauf einen neuen Namen.
 
 ### Verbessert
 - **KI-Assistent – „Aufgaben vorschlagen“** liefert nur noch konkrete nächste Schritte im Imperativ (z. B.

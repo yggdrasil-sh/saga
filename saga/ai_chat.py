@@ -36,7 +36,7 @@ LINE_MAX = 600                   # Zeichen je Verlaufs-Nachricht
 NAME_MAX = 80
 RATE_USER = 6                    # Anfragen je Person und Minute
 RATE_CHAT = 20                   # Anfragen je Chat in 10 Minuten
-REPLY_TTL = 3600                 # so lange kann eine Antwort als Nachricht gesendet werden
+REPLY_TTL = chat.AI_REPLY_TTL    # so lange kann eine Antwort als Nachricht gesendet werden
 _HEX32 = re.compile(r"[0-9a-f]{32}")
 
 

@@ -506,14 +506,18 @@ def main():
 def published(nid, url):
     """Veroeffentlichte Seite: Profilbild nur mit Erlaubnis der Person (Standard aus)."""
     from saga import publish
-    publish.set_name("av-anna", "av-anna-pub")
-    s, d = api("av-anna", "PUT", f"/api/notes/{nid}/publish", {"slug": "avatar-test", "name": "av-anna-pub"})
-    ok(f"Seite veroeffentlicht ({s})", s == 200)
-    s, _, html = req("GET", "/@av-anna-pub/avatar-test")
+    # Je Lauf ein neuer Name: Namen geloeschter Konten bleiben gesperrt, sobald die Foederation einen Schluessel hat
+    # (fed_name_retired, nie an ein anderes Konto) - ein fester Name schlug ab dem zweiten Lauf mit 400 fehl
+    pub = "av-anna-" + secrets.token_hex(4)
+    _, err = publish.set_name("av-anna", pub)
+    ok(f"Oeffentlicher Name gesetzt ({err})", err is None)
+    s, d = api("av-anna", "PUT", f"/api/notes/{nid}/publish", {"slug": "avatar-test", "name": pub})
+    ok(f"Seite veroeffentlicht ({s}{'' if s == 200 else ', ' + str(d)[:300]})", s == 200)
+    s, _, html = req("GET", f"/@{pub}/avatar-test")
     html = html.decode("utf-8", "replace")
     ok("Oeffentliche Seite ohne Erlaubnis: kein Profilbild", s == 200 and "/api/avatar/" not in html)
     api("av-anna", "PATCH", "/api/account/avatar", {"public": True})
-    s, _, html = req("GET", "/@av-anna-pub/avatar-test")
+    s, _, html = req("GET", f"/@{pub}/avatar-test")
     m = re.search(r'src="(/api/avatar/[^"]+)"', html.decode("utf-8", "replace"))
     ok("Mit Erlaubnis: Profilbild neben @name", s == 200 and m is not None)
     if m:

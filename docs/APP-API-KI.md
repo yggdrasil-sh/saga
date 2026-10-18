@@ -31,8 +31,9 @@ ist das Bild einen Tag cachebar. 404 = kein Bild (Symbol zeigen).
 
 ### Live-Ereignis `ai.persona.changed`
 
-Über `/api/events` an **alle** verbundenen Konten, wenn der Admin Name/Bild ändert oder die KI bzw. „KI in Chats“
-ein- oder ausschaltet:
+Über `/api/events` an die verbundenen Konten, die die KI nutzen dürfen (Gruppen des Assistenten) bzw. bis zur Änderung
+nutzen durften, wenn der Admin Name/Bild ändert, die KI bzw. „KI in Chats“ ein- oder ausschaltet oder die Gruppen
+ändert:
 
 ```
 event: ai.persona.changed
@@ -107,6 +108,10 @@ Als **KI-Antwort** (Profilbild + Name der KI, z. B. „gefragt von Ben“) nur a
 `body.ai.reply == ai.ref` **und** `sha256(trim(body.text)) == ai.sha256`. Hat der Inhalt `body.ai`, aber es fehlt
 `ai` oder der Hash passt nicht: als normale Nachricht des Absenders mit Warnung „Als KI-Antwort ausgegeben, aber nicht
 bestätigt“ zeigen.
+
+`ai.by` kann `null` sein (Konto des Fragenden gelöscht, Nachricht ohne Absender `sender == null`): dann trotzdem als
+KI-Antwort zeigen, „gefragt von“ mit dem neutralen Text für gelöschte Konten („Gelöschtes Konto“). Löscht der
+Absender die Nachricht oder läuft sie ab, verschwindet der Beleg mit ihr.
 
 ### Fehler
 

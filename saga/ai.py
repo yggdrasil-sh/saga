@@ -235,10 +235,21 @@ def persona(c=None, enabled=None):
     return out
 
 
-def announce_persona(c):
-    """Live-Ereignis an alle verbundenen Konten nach dem Commit (Name/Bild/Schalter geaendert) - ohne 'enabled':
-    das ist je Person verschieden (Gruppen), Clients fragen /api/ai/persona bzw. /api/ai/status erneut."""
-    bus.emit_after(c, "broadcast", {"typ": "ai.persona.changed", "data": persona(c)})
+def announce_persona(c, before=None):
+    """Live-Ereignis nach dem Commit (Name/Bild/Schalter geaendert) - ohne 'enabled': das ist je Person verschieden
+    (Gruppen), Clients fragen /api/ai/persona bzw. /api/ai/status erneut. Nur an verbundene Konten, die die KI nutzen
+    duerfen - mit before (Einstellungen vor dem Speichern) auch an die, die sie bisher nutzen durften (KI aus/Gruppe
+    geaendert: deren Clients blenden sie aus). Die Pruefung laeuft beim Zustellen (saga.live, hears)."""
+    cfgs = [{k: v for k, v in (before or {}).items() if k != "api_key"}] if before else []
+    bus.emit_after(c, "broadcast", {"typ": "ai.persona.changed", "data": persona(c), "only": "ai", "before": cfgs})
+
+
+def hears(conn, uids, before=()):
+    """Live-Ereignisse der KI: welche der Konten sie bekommen (jetzt erlaubt oder vorher erlaubt)."""
+    cfgs = [cfg(), *before]
+    if not any(configured(x) for x in cfgs):
+        return set()
+    return {u for u in uids if any(allowed(u, x, conn) for x in cfgs)}
 
 
 # --- Kontingent, Verlauf -----------------------------------------------------------------------------

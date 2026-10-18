@@ -278,6 +278,19 @@ def run():
     ok(f"Bild entfernt: Symbol, 404, Ereignis ({d.get('avatar')}, {n})", d.get("avatar") is None and n == 0 and e is not None
        and raw(v1 + "&s=64", A)[0] == 404 and d.get("name") == "Marin")
 
+    # --- Ereignis nur an Konten, die die KI nutzen duerfen --------------------------------------------------------------
+    auth.save_setting("ai", dict(auth.settings(fresh=True)["ai"], groups=["ki-pniemand"]))
+    time.sleep(WAIT)
+    m = len(ev.ev)
+    admin_mp(adm, "/settings/ai/persona", {"name": "Nebel", "tone": tone, "action": "save"})
+    ok("Ohne Nutzungsrecht (Gruppe): kein ai.persona.changed", ev.wait("ai.persona.changed", m, timeout=2.5) is None
+       and auth.settings(fresh=True)["ai_persona"]["name"] == "Nebel")
+    auth.save_setting("ai", dict(auth.settings(fresh=True)["ai"], groups=[]))
+    time.sleep(WAIT)
+    m = len(ev.ev)
+    admin_mp(adm, "/settings/ai/persona", {"name": "Marin", "tone": tone, "action": "save"})
+    ok("Mit Nutzungsrecht wieder: Ereignis", ev.wait("ai.persona.changed", m, lambda x: x.get("name") == "Marin") is not None)
+
     # --- KI aus: Ereignis, enabled=false ---------------------------------------------------------------------------------
     m = len(ev.ev)
     cur = auth.settings(fresh=True)["ai"]
