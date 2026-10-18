@@ -227,6 +227,24 @@ async function perfTree(p) {
     && (await p.evaluate(() => HKPages.k.pages().length)) === before + 1, { lists: lists.length, neu, mine });
 }
 
+// 2.2 notes.tree: neue/umbenannte/geloeschte Seite aus einer anderen Sitzung erscheint im Baum ohne Neuladen
+async function liveTree(browser, p) {
+  const L = (await p.api('POST', '/api/notes', { title: 'Baum-Live-Start' })).id;
+  const q = await session(browser);
+  await q.open(L); await q.waitForTimeout(1500);
+  const has = t => q.evaluate(t => [...document.querySelectorAll('#pg-tree .pg-name')].some(x => x.textContent === t), t);
+  const id = (await p.api('POST', '/api/notes', { title: 'Baum-Live-Neu' })).id;
+  await q.waitForTimeout(3000);
+  ok('2.2 notes.tree: neue Seite aus anderer Sitzung erscheint im Baum', await has('Baum-Live-Neu'));
+  await p.api('PATCH', '/api/notes/' + id, { title: 'Baum-Live-Umbenannt' });
+  await q.waitForTimeout(3500);
+  ok('2.2 notes.tree: Umbenennung kommt an', await has('Baum-Live-Umbenannt') && !(await has('Baum-Live-Neu')));
+  await p.api('DELETE', '/api/notes/' + id);
+  await q.waitForTimeout(3500);
+  ok('2.2 notes.tree: Papierkorb entfernt sie aus dem Baum', !(await has('Baum-Live-Umbenannt')));
+  await q.context().close();
+}
+
 // BUG-049/BUG-001: Datenbank in einer zweiten Sitzung offen - Zeile und neue Spalte aus der ersten kommen live an
 async function dbLive(browser, p) {
   const D = (await p.api('POST', '/api/notes', { kind: 'database', title: 'Live-DB' })).id;
@@ -727,7 +745,7 @@ async function pasteSanitize(browser) {
     if (process.env.SAGA_ONLY === 'chatimg') { await chatThumbs(browser); throw null; }                         // nur Chat-Bilder
     if (process.env.SAGA_ONLY === 'imgclip') { await imageClipboard(browser); throw null; }                     // nur Bild kopieren/einfuegen
     if (process.env.SAGA_ONLY === 'paste') { await pasteSanitize(browser); throw null; }                        // nur Einfuegen bereinigt
-    if (process.env.SAGA_ONLY === 'perf') { const q = await session(browser); await perfTree(q); throw null; }  // nur Schneller (Baum, Rueckverweise, + Neu)
+    if (process.env.SAGA_ONLY === 'perf') { const q = await session(browser); await perfTree(q); await liveTree(browser, q); throw null; }  // nur Schneller (Baum, Rueckverweise, + Neu)
     const p = await session(browser);
     await enterFallback(p);
     await reloadKeeps(p);
@@ -737,6 +755,7 @@ async function pasteSanitize(browser) {
     await typeAheadMenu(p);
     await trashLink(p);
     await perfTree(p);
+    await liveTree(browser, p);
     await dbLive(browser, p);
     await peekMove(browser, p);
     await peekEscDialog(browser, p);
