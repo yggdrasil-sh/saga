@@ -169,6 +169,64 @@ async function trashLink(p) {
   ok('BUG-056 Wiederherstellen oeffnet die Seite', (await p.inputValue('#pg-title')) === 'Papierkorb-Eltern');
 }
 
+// Schneller (Phase 1): Ast auf-/zuklappen ohne Neuaufbau = gleiches Bild wie ein kompletter Neuaufbau; Rueckverweise
+// erst beim Sichtbarwerden (kurze Seite: sofort); "+ Neu" in einer Datenbank ohne Baum-Neuladen, Eintrag trotzdem bekannt
+async function perfTree(p) {
+  const P = (await p.api('POST', '/api/notes', { title: 'Baum-Eltern' })).id;
+  const K1 = (await p.api('POST', '/api/notes', { title: 'Baum-Kind 1', parent_id: P })).id;
+  await p.api('POST', '/api/notes', { title: 'Baum-Kind 2', parent_id: P });
+  await p.api('POST', '/api/notes', { title: 'Baum-Enkel', parent_id: K1 });
+  const L = (await p.api('POST', '/api/notes', { title: 'Baum-Start' })).id;
+  await p.evaluate(() => localStorage.removeItem('hk-pg-open'));
+  await p.open(L);
+  const tree = () => p.evaluate(() => document.getElementById('pg-tree').innerText);
+  const tw = async name => p.evaluate(n => [...document.querySelectorAll('#pg-tree .pg-row')].find(r => r.querySelector('.pg-name').textContent === n).querySelector('.pg-twisty').click(), name);
+  await tw('Baum-Eltern'); await p.waitForTimeout(150);
+  ok('Schneller: Ast aufklappen zeigt die Kinder', /Baum-Kind 1[\s\S]*Baum-Kind 2/.test(await tree()));
+  await tw('Baum-Kind 1'); await p.waitForTimeout(150);
+  const local = await tree();
+  ok('Schneller: tieferer Ast aufklappen', /Baum-Enkel/.test(local));
+  await p.evaluate(() => HKPages.k.reloadList()); await p.waitForTimeout(500);
+  ok('Schneller: aufgeklappter Baum = kompletter Neuaufbau', (await tree()) === local);
+  await tw('Baum-Eltern'); await p.waitForTimeout(150);
+  ok('Schneller: zuklappen versteckt die Kinder', !/Baum-Kind 1/.test(await tree()));
+  await tw('Baum-Eltern'); await p.waitForTimeout(150);
+  ok('Schneller: erneut aufklappen behaelt den offenen Unterast', /Baum-Enkel/.test(await tree()));
+  // Rueckverweise
+  const T1 = (await p.api('POST', '/api/notes', { title: 'Ziel kurz' })).id;
+  const ln = id => JSON.stringify({ blocks: [{ type: 'paragraph', data: { text: `<a href="/notes#${id}">hin</a>` } }] });
+  await p.api('POST', '/api/notes', { title: 'Quelle kurz' }).then(d => p.api('PATCH', '/api/notes/' + d.id, { body: ln(T1), format: 'blocks' }));
+  await p.open(T1); await p.waitForTimeout(800);
+  ok('Schneller: Rueckverweise auf kurzer Seite sofort da', await p.evaluate(() => !document.getElementById('pg-backlinks').hidden
+    && /Quelle kurz/.test(document.getElementById('pg-backlinks').textContent)));
+  const T2 = (await p.api('POST', '/api/notes', { title: 'Ziel lang' })).id;
+  const long = { blocks: Array.from({ length: 120 }, (_, i) => ({ type: 'paragraph', data: { text: 'Absatz ' + i + ' ' + 'lorem ipsum '.repeat(8) } })) };
+  await p.api('PATCH', '/api/notes/' + T2, { body: JSON.stringify(long), format: 'blocks' });
+  await p.api('POST', '/api/notes', { title: 'Quelle lang' }).then(d => p.api('PATCH', '/api/notes/' + d.id, { body: ln(T2), format: 'blocks' }));
+  const bl = []; const onReq = r => { if (/\/backlinks$/.test(r.url())) bl.push(r.url()); }; p.on('request', onReq);
+  await p.open(T2); await p.waitForTimeout(800);
+  const early = bl.filter(u => u.indexOf('/' + T2 + '/') >= 0).length;
+  await p.evaluate(() => document.querySelector('#pg-editor .ce-block:last-child').scrollIntoView()); await p.waitForTimeout(1500);   // ans Seitenende scrollen
+  p.off('request', onReq);
+  ok('Schneller: lange Seite laedt Rueckverweise erst beim Hinscrollen', early === 0 && await p.evaluate(() => !document.getElementById('pg-backlinks').hidden
+    && /Quelle lang/.test(document.getElementById('pg-backlinks').textContent)), { early });
+  ok('Schneller: keine Rueckverweise der vorigen Seite stehen geblieben', !/Quelle kurz/.test(await p.evaluate(() => document.getElementById('pg-backlinks').textContent)));
+  // Datenbank "+ Neu": kein /api/notes, Eintrag aber in der Seitenliste (wie nach dem Neuladen)
+  const D = (await p.api('POST', '/api/notes', { kind: 'database', title: 'Schnell-DB' })).id;
+  await p.api('POST', '/api/notes', { parent_id: D, title: 'Erste' });
+  await p.open(D);
+  const lists = []; const onL = r => { if (/\/api\/notes$/.test(r.url()) && r.method() === 'GET') lists.push(1); }; p.on('request', onL);
+  const before = await p.evaluate(() => HKPages.k.pages().length);
+  await p.click('button.db-new-row'); await p.waitForTimeout(1500);
+  p.off('request', onL);
+  const rows = (await p.api('GET', '/api/notes')).filter(x => x.parent_id === D);
+  const neu = rows.find(x => x.title === '');
+  const mine = neu && await p.evaluate(id => HKPages.k.byId(id), neu.id);
+  const same = !!mine && Object.keys(neu).every(k => k === 'updated' ? Math.abs(mine[k] - neu[k]) < 0.01 : JSON.stringify(mine[k]) === JSON.stringify(neu[k]));
+  ok('Schneller: "+ Neu" ohne Baum-Neuladen, neuer Eintrag mit denselben Feldern bekannt', lists.length === 0 && same
+    && (await p.evaluate(() => HKPages.k.pages().length)) === before + 1, { lists: lists.length, neu, mine });
+}
+
 // BUG-049/BUG-001: Datenbank in einer zweiten Sitzung offen - Zeile und neue Spalte aus der ersten kommen live an
 async function dbLive(browser, p) {
   const D = (await p.api('POST', '/api/notes', { kind: 'database', title: 'Live-DB' })).id;
@@ -664,6 +722,7 @@ async function pasteSanitize(browser) {
     if (process.env.SAGA_ONLY === 'chatimg') { await chatThumbs(browser); throw null; }                         // nur Chat-Bilder
     if (process.env.SAGA_ONLY === 'imgclip') { await imageClipboard(browser); throw null; }                     // nur Bild kopieren/einfuegen
     if (process.env.SAGA_ONLY === 'paste') { await pasteSanitize(browser); throw null; }                        // nur Einfuegen bereinigt
+    if (process.env.SAGA_ONLY === 'perf') { const q = await session(browser); await perfTree(q); throw null; }  // nur Schneller (Baum, Rueckverweise, + Neu)
     const p = await session(browser);
     await enterFallback(p);
     await reloadKeeps(p);
@@ -672,6 +731,7 @@ async function pasteSanitize(browser) {
     await typeAheadTitle(p);
     await typeAheadMenu(p);
     await trashLink(p);
+    await perfTree(p);
     await dbLive(browser, p);
     await peekMove(browser, p);
     await peekEscDialog(browser, p);

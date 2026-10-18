@@ -268,7 +268,28 @@
   try { S.open = JSON.parse(HK.store('hk-pg-open') || '{}') || {}; } catch (e) { S.open = {}; }
   function saveOpen() { HK.store('hk-pg-open', JSON.stringify(S.open)); }
   // Eigene Seiten (S.pages) und fuer mich freigegebene fremde Seiten (S.shared, /api/shared)
-  function byId(id) { return S.pages.find(function (p) { return p.id === id; }) || S.shared.find(function (p) { return p.id === id; }) || null; }
+  // Index ueber S.pages/S.shared (ID -> Seite, Elternseite -> Kinder): statt Array.find je Seite (O(n^2) beim Baum).
+  // Wird neu gebaut, sobald S.pages/S.shared ersetzt werden oder ihre Laenge sich aendert; wer parent_id einer
+  // Seite direkt aendert, ruft dropIdx(). Reihenfolge der Kinder = Reihenfolge in S.pages (wie vorher filter()).
+  var IX = null;
+  function dropIdx() { IX = null; }
+  function pix() {
+    if (IX && IX.p === S.pages && IX.s === S.shared && IX.np === S.pages.length && IX.ns === S.shared.length) return IX;
+    var ix = { p: S.pages, s: S.shared, np: S.pages.length, ns: S.shared.length, own: new Map(), sh: new Map(),
+               kids: new Map(), top: [], shKids: new Map() };
+    S.pages.forEach(function (p) { if (!ix.own.has(p.id)) ix.own.set(p.id, p); });
+    S.shared.forEach(function (p) {
+      if (!ix.sh.has(p.id)) ix.sh.set(p.id, p);
+      if (!p.root) { var l = ix.shKids.get(p.parent_id); if (!l) ix.shKids.set(p.parent_id, l = []); l.push(p); }
+    });
+    S.pages.forEach(function (p) {
+      var k = p.parent_id || null, l = ix.kids.get(k); if (!l) ix.kids.set(k, l = []); l.push(p);
+      if (k !== null && !ix.own.has(k) && !ix.sh.has(k)) ix.top.push(p);            // Elternseite unbekannt: oben anzeigen
+      else if (k === null) ix.top.push(p);
+    });
+    return (IX = ix);
+  }
+  function byId(id) { var ix = pix(); return ix.own.get(id) || ix.sh.get(id) || null; }
   function allPages() { return S.pages.concat(S.shared); }
   // Rolle auf der offenen Seite: owner > edit > comment > view (fehlt das Feld: aeltere Antwort = eigene Seite)
   function role() { return S.cur ? (S.cur.role || 'owner') : null; }
@@ -293,9 +314,16 @@
   // Uploads in fremde Seiten: Datei gehoert dem Eigentuemer (Server prueft 'edit') - Editor.js liest die Kopfzeilen beim Hochladen
   var UPH = { 'X-Saga': '1' };
   function uploadNote() { if (foreign()) UPH['X-Saga-Note'] = String(S.cur.id); else delete UPH['X-Saga-Note']; HK.fileNote = foreign() ? S.cur.id : null; }
-  function children(pid) { return S.pages.filter(function (p) { return (p.parent_id || null) === pid || (pid === null && p.parent_id && !byId(p.parent_id)); }); }
+  function children(pid) { var ix = pix(); return (pid === null ? ix.top : ix.kids.get(pid) || []).slice(); }
   function ancestors(id) { var out = [], p = byId(id), guard = 0; while (p && p.parent_id && guard++ < 50) { p = byId(p.parent_id); if (p) out.unshift(p); } return out; }
-  function descendants(id) { var out = [], st = [id]; while (st.length) { var x = st.pop(); S.pages.forEach(function (p) { if (p.parent_id === x) { out.push(p.id); st.push(p.id); } }); } return out; }
+  function descendants(id) {
+    var out = [], st = [id], ix = pix();
+    while (st.length) {
+      var x = st.pop();
+      (x === null ? S.pages.filter(function (p) { return p.parent_id === null; }) : ix.kids.get(x) || []).forEach(function (p) { out.push(p.id); st.push(p.id); });
+    }
+    return out;
+  }
   function label(p) { return p && p.title ? p.title : T('Unbenannt'); }
   function nSub(n) { return n === 1 ? T('1 Unterseite') : T('{n} Unterseiten', { n: n }); }
 
@@ -341,7 +369,15 @@
       tw.type = 'button'; tw.tabIndex = kids.length ? 0 : -1;
       if (S.open[p.id]) tw.classList.add('open');
       tw.setAttribute('aria-label', S.open[p.id] ? T('Zuklappen') : T('Aufklappen'));
-      tw.addEventListener('click', function (e) { e.stopPropagation(); S.open[p.id] = !S.open[p.id]; saveOpen(); renderTree(); });
+      // Auf-/Zuklappen: nur diesen Ast neu aufbauen bzw. entfernen (nicht den ganzen Baum)
+      tw.addEventListener('click', function (e) {
+        e.stopPropagation(); S.open[p.id] = !S.open[p.id]; saveOpen();
+        var now = p.kind === 'database' ? [] : kidsOf(p.id), old = li.querySelector(':scope > .pg-sub');
+        if (old) li.removeChild(old);
+        tw.classList.toggle('open', !!S.open[p.id]);
+        tw.setAttribute('aria-label', S.open[p.id] ? T('Zuklappen') : T('Aufklappen'));
+        if (now.length && S.open[p.id]) { var s2 = el('ul', 'pg-sub'); s2.setAttribute('role', 'group'); treeNodes(s2, now, depth + 1, kidsOf, own); li.appendChild(s2); }
+      });
       var go = el('button', 'pg-go'); go.type = 'button';
       go.appendChild(icoNode(p.icon, '📄', 'pg-ic'));
       go.appendChild(el('span', 'pg-name', label(p)));
@@ -365,7 +401,7 @@
       list.appendChild(li);
     });
   }
-  function sharedKids(pid) { return S.shared.filter(function (p) { return p.parent_id === pid && !p.root; }); }
+  function sharedKids(pid) { return (pix().shKids.get(pid) || []).slice(); }
   // "Mit mir geteilt": oberste geteilte Seiten (mit Eigentuemer im Tooltip und klein darunter), aufklappbar
   function renderShared() {
     var box = $('pg-shared-box'), ul = $('pg-shared-tree'); if (!box || !ul) return;
@@ -395,7 +431,36 @@
     c.appendChild(el('span', 'crumb cur', (ti(S.cur.icon) ? ti(S.cur.icon) + ' ' : '') + label(S.cur)));
   }
 
+  // Seitenbaum neu laden. Mehrere Aufrufe, waehrend eine Anfrage laeuft, teilen sich EINE weitere Anfrage, die erst danach
+  // startet - jeder Aufrufer bekommt also Daten, die nach seinem Aufruf geholt wurden (nichts veraltet), aber 5 Aktionen
+  // kurz hintereinander kosten 2 statt 5 vollstaendige Baum-Abfragen.
+  var LL = null, LLnext = null;
   function loadList() {
+    if (LLnext) return LLnext;
+    if (LL) return (LLnext = LL.catch(function () {}).then(function () { LLnext = null; return startList(); }));
+    return startList();
+  }
+  function startList() {
+    var p = LL = loadListNow();
+    var done = function () { if (LL === p) LL = null; };
+    p.then(done, done);
+    return p;
+  }
+  // Neuer Datenbank-Eintrag (eigene Datenbank): lokal in S.pages/S.all eintragen statt den ganzen Baum neu zu laden.
+  // Eintraege erscheinen nicht im Baum; gebraucht werden sie fuer byId (Pfad, Seitenkopf), Relationen und Suche. Gleiche
+  // Felder wie /api/notes; der naechste vollstaendige Abgleich (Aktion, Live-Kanal, Rueckkehr in den Tab) ersetzt den Eintrag.
+  // false: Datenbank gehoert jemand anderem -> der Aufrufer laedt wie bisher neu (S.shared braucht Rolle/Eigentuemer).
+  function addRowLocal(dbId, d, title) {
+    var db = pix().own.get(dbId);
+    if (LL || !db || db.kind !== 'database' || !d || !d.id || byId(d.id)) return false;   // LL: laufender Abgleich kaeme ohne ihn zurueck
+    var p = { id: d.id, title: title || '', icon: '', parent_id: dbId, updated: d.updated, tags: [], pinned: false, template: false,
+              kind: 'page', archived: false, locked: false, shared: false, unread: false };
+    if (S.all && S.all !== S.pages) S.all.push(p);
+    S.pages.push(p);
+    renderTree(); renderCrumbs(); renderTagBar(); renderFiltered();      // wie nach loadList (Zaehler, Leer-Hinweise)
+    return true;
+  }
+  function loadListNow() {
     var sh = api('GET', '/api/shared').catch(function () { return []; });      // Mit mir geteilt (aeltere Server: leer)
     // andere Saga-Instanzen (Foederation): eigene Anfrage, wartet nicht auf langsame Instanzen - kommt nach
     var my = S.fedSeq = (S.fedSeq || 0) + 1;
@@ -1432,12 +1497,36 @@
   document.addEventListener('mousedown', function (e) { if (!$('pg-picker').hidden && !$('pg-picker').contains(e.target)) closePicker(false); });
 
   // --- Rueckverweise ----------------------------------------------------------
+  // Rueckverweise erst laden, wenn das Seitenende in die Naehe des sichtbaren Bereichs kommt (der Server durchsucht dafuer
+  // alle Inhalte). Kurze Seiten: sofort sichtbar = sofort geladen. Merkpunkt (1 px) vor dem Abschnitt, weil der
+  // Abschnitt selbst bis zum Ergebnis versteckt ist.
+  var BLW = null;
+  function scrollRoot(n) {
+    for (var x = n && n.parentElement; x && x !== document.body; x = x.parentElement) {
+      var o = getComputedStyle(x).overflowY; if (o === 'auto' || o === 'scroll') return x;
+    }
+    return null;
+  }
   function loadBacklinks(id) {
     var sec = $('pg-backlinks'), ul = $('pg-backlinks-list');
+    if (BLW) { BLW.disconnect(); BLW = null; }
     if (remoteId(id)) { sec.hidden = true; ul.textContent = ''; return; }   // andere Instanz: keine Rueckverweise (BUG-097)
+    if (!window.IntersectionObserver) return fetchBacklinks(id);
+    if (ul.dataset.id !== String(id)) { sec.hidden = true; ul.textContent = ''; }   // keine Liste der vorigen Seite stehen lassen
+    var w = $('pg-bl-watch');
+    if (!w) { w = el('div'); w.id = 'pg-bl-watch'; w.style.height = '1px'; w.setAttribute('aria-hidden', 'true'); sec.parentNode.insertBefore(w, sec); }
+    var io = BLW = new IntersectionObserver(function (es) {
+      if (!es.some(function (e) { return e.isIntersecting; })) return;
+      io.disconnect(); if (BLW === io) BLW = null;
+      fetchBacklinks(id);
+    }, { root: scrollRoot(w), rootMargin: '600px 0px' });
+    io.observe(w);
+  }
+  function fetchBacklinks(id) {
+    var sec = $('pg-backlinks'), ul = $('pg-backlinks-list');
     api('GET', '/api/notes/' + id + '/backlinks').then(function (list) {
       if (!S.cur || S.cur.id !== id) return;
-      ul.textContent = ''; sec.hidden = !list.length;
+      ul.dataset.id = String(id); ul.textContent = ''; sec.hidden = !list.length;
       list.forEach(function (p) {
         var b = el('button', 'bl-item', (ti(p.icon) || '📄') + ' ' + label(p)); b.type = 'button';
         b.addEventListener('click', function () { openPage(p.id); });
@@ -2001,7 +2090,10 @@
             var nb = el('button', 'menu-item'); nb.type = 'button'; nb.appendChild(el('span', 'mi-t', T('+ Neu in „{db}“: {name}', { db: label(target || {}), name: inp.value.trim() })));
             nb.addEventListener('click', function () {
               api('POST', '/api/notes', { parent_id: prop.target, title: inp.value.trim() })
-                .then(function (d) { return loadList().then(function () { cur.push(d.id); HK.closeMenu(); return setProp(row, prop.id, cur); }); })
+                .then(function (d) {
+                  var listed = addRowLocal(prop.target, d, inp.value.trim()) ? Promise.resolve() : loadList();   // wie newRow
+                  return listed.then(function () { cur.push(d.id); HK.closeMenu(); return setProp(row, prop.id, cur); });
+                })
                 .then(onDone).catch(function (err) { HK.toast(T('Nicht angelegt: {err}', { err: err.message })); });
             });
             list.appendChild(nb);
@@ -2285,11 +2377,13 @@
           if (typeAhead) { inp.value = typeAhead; inp.setSelectionRange(inp.value.length, inp.value.length); growTitle(inp); }
         }
         typeAhead = null;   // erst nach renderDb (die alte Zeile sammelt bis dahin)
+        // Baum nicht komplett neu laden: Eintrag lokal ergaenzen (fremde Datenbank oder laufender Abgleich: wie bisher)
+        var listed = addRowLocal(DB.id, d, '') ? Promise.resolve() : loadList();
         if (curView().type === 'board') {     // Board: neue Karte direkt als Seite oeffnen, Cursor im Titel
-          return loadList().then(function () { return openRowUI(d.id); })
+          return listed.then(function () { return openRowUI(d.id); })
             .then(function () { if ((curView().open || 'side') === 'page') $('pg-title').focus(); });   // im Peek setzt die Seite selbst den Cursor
         }
-        return loadList();
+        return listed;
       }).catch(function (err) { typeAhead = null; HK.toast(T('Zeile nicht angelegt: {err}', { err: err.message })); });
     }
 
@@ -3747,13 +3841,13 @@
   function moveFromMenu(id, parentId) {
     var p = byId(id), idx = children(parentId).length, prev = p ? p.parent_id : null;
     if (S.cur && S.cur.id === id) S.cur.parent_id = parentId;
-    if (p) { p.parent_id = parentId; if (parentId) { S.open[parentId] = true; saveOpen(); } renderTree(); renderCrumbs(); }
+    if (p) { p.parent_id = parentId; dropIdx(); if (parentId) { S.open[parentId] = true; saveOpen(); } renderTree(); renderCrumbs(); }
     return api('POST', '/api/notes/' + id + '/move', { parent_id: parentId, index: idx })
       .then(function () {
         HK.toast(parentId ? T('Verschoben nach „{name}“', { name: label(byId(parentId) || {}) }) : T('Auf die oberste Ebene verschoben'));
         return loadList();
       })
-      .catch(function (err) { if (p) { p.parent_id = prev; renderTree(); renderCrumbs(); } HK.toast(T('Nicht verschoben: {err}', { err: err.message })); });
+      .catch(function (err) { if (p) { p.parent_id = prev; dropIdx(); renderTree(); renderCrumbs(); } HK.toast(T('Nicht verschoben: {err}', { err: err.message })); });
   }
   function movePageTo(id, parentId, index) {
     return api('POST', '/api/notes/' + id + '/move', { parent_id: parentId, index: index })
