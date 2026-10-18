@@ -4390,7 +4390,7 @@
         add(h.type, h.target, h.name, h.type === 'remote' ? T('Andere Saga-Instanz') : T('Gruppe auf einer anderen Saga-Instanz'));
       });
       hits.hidden = !any; inp.setAttribute('aria-expanded', any ? 'true' : 'false');
-      if (!any && inp.value.trim().length >= 3) setErr(T('Niemand gefunden.'));
+      if (!any && inp.value.trim().length >= 3) setErr(d.remote_hint || T('Niemand gefunden.'));   // name@server: Grund vom Server
     }
     function search() {
       var q = inp.value.trim(); setErr(''); lenHint(q); pubStatus(msg, ''); clearTimeout(tmr); drawChips();

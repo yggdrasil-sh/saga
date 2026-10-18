@@ -40,6 +40,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Docker: zusätzlich das Tag `rc` neben `testing` (das bleibt, bestehende Installationen laufen unverändert weiter).
   Release-Builds (main) unverändert, z. B. `2.2.0`. Apps: nichts zu tun, `MIN_APP` bleibt.
 
+### Behoben
+
+- Chat → „Neue Unterhaltung“ (auch „+ Gruppe mit mehreren Personen“ und „Person hinzufügen“): Wer `name@server`,
+  `@name@server` oder eine E-Mail-Adresse eingab, sah nur „Keine Treffer.“. Jetzt erklärt ein Hinweis, dass es Chats mit
+  Personen anderer Saga-Server noch nicht gibt, Seiten aber mit `name@server` (öffentlicher Name) geteilt werden
+  können, und dass Personen hier über Namen oder Benutzernamen gefunden werden – mit Link zur Anleitung (Föderation).
+- Teilen-Dialog: Bei `name@server` ohne Treffer steht statt „Niemand gefunden.“ der Grund – die Person gibt es dort
+  nicht bzw. sie hat keinen öffentlichen Namen, der Server ist nicht verbunden, er ist gerade nicht erreichbar oder
+  es ist dieser Server selbst; bei E-Mail-artigen Eingaben der Hinweis, dass der öffentliche Name gemeint ist.
+  `GET /api/share/targets` liefert dafür das neue, optionale Feld `remote_hint` (nur ohne Treffer). Apps: nichts zu
+  tun, `MIN_APP` bleibt.
+
 ## [2.1.0] – 2026-10-18
 
 Saga 2.1 macht die Anmeldung sicherer und den Chat persönlicher: Passkeys und Zwei-Faktor-Anmeldung, Profilbilder,

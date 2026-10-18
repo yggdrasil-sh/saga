@@ -281,7 +281,12 @@ async function chatImmich(browser) {
   p.on('request', r => { if (r.method() === 'POST' && /\/api\/chat/.test(r.url()) && /file/.test(r.url())) up.push(r.postDataBuffer()); });
   await chatKeys(p, E.SAGA_USER2);
   if (await p.$('.ct-ov')) { ok('2.1 Chat: Schluessel des Testkontos verfuegbar', false, 'Wiederherstellungsschluessel fehlt (' + RKF(E.SAGA_USER2) + ')'); await p.context().close(); return; }
-  await p.click('#ct-new'); await p.fill('.ct-people-q', E.SAGA_USER3); await p.waitForSelector('.ct-person');
+  await p.click('#ct-new');
+  // name@server (andere Saga-Instanz): Hinweis mit Link zur Anleitung statt "Keine Treffer."
+  await p.fill('.ct-people-q', 'hd@saga.example.org');
+  const fh = await p.waitForSelector('.ct-fed-hint', { timeout: 5000 }).then(e => e.evaluate(x => ({ t: x.textContent, a: (x.querySelector('a') || {}).href || '' }))).catch(() => null);
+  ok('2.2 Chat: name@server -> Hinweis "anderer Saga-Server" mit Anleitung', !!fh && /anderer Saga-Server/.test(fh.t) && /ANLEITUNG\.md#/.test(fh.a), fh);
+  await p.fill('.ct-people-q', E.SAGA_USER3); await p.waitForSelector('.ct-person');
   await p.click('.ct-person'); await p.waitForSelector('#ct-chat:not([hidden])');
   await p.waitForTimeout(800);
   await p.click('#ct-attach'); await p.waitForTimeout(200);

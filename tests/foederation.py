@@ -394,8 +394,16 @@ def part2(privb, kid):
     ok("Personensuche gruppe@host: Gruppe gefunden", any(h["type"] == "remote_group" and h["target"] == f"fbteam@{HB}" for h in d.get("remote", [])))
     s, d = api("a", "fa-anna", "GET", "/api/share/targets?q=" + urllib.parse.quote(f"@niemand@{HB}"))
     ok("Personensuche: unbekannte Person -> kein Treffer", not d.get("remote"))
+    ok(f"Personensuche: unbekannte Person -> Hinweis auf oeffentlichen Namen ({d.get('remote_hint')!r})",
+       HB in (d.get("remote_hint") or "") and "öffentliche Name" in (d.get("remote_hint") or ""))
+    s, d = api("a", "fa-anna", "GET", "/api/share/targets?q=" + urllib.parse.quote(f"max.muster@{HB}"))
+    ok(f"Personensuche: E-Mail-artige Eingabe -> Hinweis statt nur 'Niemand gefunden' ({d.get('remote_hint')!r})",
+       not d.get("remote") and "E-Mail" in (d.get("remote_hint") or ""))
+    s, d = api("a", "fa-anna", "GET", "/api/share/targets?q=" + urllib.parse.quote(f"@bert@{HB}"))
+    ok("Personensuche: Treffer -> kein Hinweis", d.get("remote") and "remote_hint" not in d)
     s, d = api("a", "fa-anna", "GET", "/api/share/targets?q=" + urllib.parse.quote("@bert@unverbunden.example"))
     ok("Personensuche: nicht verbundene Instanz -> kein Treffer, keine Anfrage", not d.get("remote"))
+    ok(f"Personensuche: nicht verbundene Instanz -> Hinweis ({d.get('remote_hint')!r})", "nicht verbunden" in (d.get("remote_hint") or ""))
     s, d = api("a", "fa-anna", "PUT", f"/api/notes/{Pid}/shares", {"type": "remote", "target": f"@dora@{HB}", "role": "view"})
     ok(f"Teilen an Person ohne oeffentlichen Namen -> 400 ({s})", s == 400)
     s, d = api("a", "fa-anna", "PUT", f"/api/notes/{Pid}/shares", {"type": "remote", "target": "@bert@unverbunden.example", "role": "view"})
