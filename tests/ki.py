@@ -393,7 +393,7 @@ def run():
     s, ev, _ = sse(f"/api/ai/page/{p3}", Bk, {"action": "translate", "blocks": ["b0"], "target": "en"})
     ok(f"Uebersetzen (B): Vorschlag ({(get(ev, 'done') or {}).get('segments')})", ((get(ev, "done") or {}).get("segments") or [""])[0].startswith("UEBERSETZT:")
        and "English" in last()[0])
-    # --- Aufgaben/Zeilen/Auswahl (Svens Buch-Zeile mit llama3.1:8b: Fakten statt Aufgaben) -------------------------------
+    # --- Aufgaben/Zeilen/Auswahl (Buch-Zeile mit llama3.1:8b: Fakten statt Aufgaben) -------------------------------
     setai(model="fake-facts")
     req("PUT", "/api/account/lang", A, {"lang": "de"})                 # Meldungen unten auf Deutsch
     s, ev, _ = sse(f"/api/ai/page/{p3}", A, {"action": "tasks"})
