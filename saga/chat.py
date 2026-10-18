@@ -1214,7 +1214,7 @@ async def api_send(cid: int, request: Request):
         if reply_to and not c.execute("SELECT 1 FROM chat_msg WHERE id=? AND chat_id=?", (reply_to, ch["id"])).fetchone():
             return _bad(t("ungültige Angabe"))
         if ai_ref and (kind != "msg" or not c.execute(
-                "SELECT 1 FROM chat_ai_reply WHERE id=? AND chat_id=? AND uid=? AND msg_id IS NULL AND created>?",
+                "SELECT 1 FROM chat_ai_reply WHERE id=? AND chat_id=? AND uid=? AND msg_id IS NULL AND created>? FOR UPDATE",   # sperrt: Beleg nur einmal
                 (ai_ref, ch["id"], uid, now - 3600)).fetchone()):
             return _bad(t("Diese KI-Antwort gibt es nicht (mehr) oder sie wurde schon gesendet."), 409)
         rc, want = recipients(c, mem)

@@ -203,4 +203,3 @@ async def api_chat_ai_ask(cid: int, request: Request):
 def reply_sha(text):
     """Fuer Tests und Clients: so wird der Beleg berechnet (UTF-8, ohne Leerraum am Anfang/Ende)."""
     return hashlib.sha256(str(text).strip().encode("utf-8")).hexdigest()
-
