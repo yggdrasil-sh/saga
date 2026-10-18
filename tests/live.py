@@ -69,7 +69,7 @@ def admin(path, form, aid="lv-adm"):
 class Stream:
     """SSE-Leser in einem Thread: alle Ereignisse in self.ev [(typ, daten, id)], Heartbeats zaehlen."""
 
-    def __init__(self, cookie=None, hdr=None, last=None, qlast=None):
+    def __init__(self, cookie=None, hdr=None, last=None, qlast=None, tab=None):
         self.c = http.client.HTTPConnection(B_.hostname, B_.port, timeout=300)
         h = {"Host": HOST, "Accept": "text/event-stream", "Accept-Language": "de"}
         if cookie:
@@ -77,7 +77,8 @@ class Stream:
         if last:
             h["Last-Event-ID"] = last
         h.update(hdr or {})
-        self.c.request("GET", "/api/events" + ("?last=" + urllib.parse.quote(qlast) if qlast else ""), headers=h)
+        q = {k: v for k, v in (("last", qlast), ("tab", tab)) if v}
+        self.c.request("GET", "/api/events" + ("?" + urllib.parse.urlencode(q) if q else ""), headers=h)
         self.r = self.c.getresponse()
         self.status, self.headers = self.r.status, {k.lower(): v for k, v in self.r.getheaders()}
         self.ev, self.pings, self.closed = [], 0, False
@@ -250,6 +251,7 @@ def main():
     sa2 = Stream(A2)
     ok("A: zweites Geraet verbunden", sa2.wait("hello") is not None)
     time.sleep(2.2)                                   # Buendelung frueherer Ereignisse abwarten
+    a_mark = sa.last_id()                             # Nachholen beim Eigentuemer (unten)
     ma, ma2, mb, mc = sa.mark(), sa2.mark(), sb.mark(), sc.mark()
     kid = req("POST", "/api/notes", A, {"title": "Baum Kind", "parent_id": pg})[1]["id"]
     t2 = sa2.wait("notes.tree", lambda d: kid in d["ids"], since=ma2)
@@ -280,16 +282,58 @@ def main():
     tb = sb.wait("notes.tree", lambda d: kid in d["ids"], since=mb)
     ok(f"notes.tree: wiederhergestellt -> 'restored' ({t2}, {tb})", t2 and t2["op"] == "restored" and tb and tb["op"] == "restored")
     time.sleep(2.2)
-    m2 = sa2.mark()
+    m2, mb = sa2.mark(), sb.mark()
     req("POST", f"/api/notes/{kid}/move", A, {"parent_id": None, "index": 0})
     t2 = sa2.wait("notes.tree", lambda d: kid in d["ids"], since=m2)
     ok(f"notes.tree: verschoben -> 'moved' ({t2})", t2 and t2["op"] == "moved")
+    # aus dem geteilten Teilbaum HERAUS: B (nur ueber die alte Kette berechtigt) bekommt die ID als "weg" + shared.changed
+    tb = sb.wait("notes.tree", lambda d: kid in d["ids"], since=mb)
+    ok(f"Verschieben aus geteiltem Baum: B (alte Kette) bekommt notes.tree ({tb})", tb and tb["op"] == "moved")
+    ok("... und shared.changed", sb.wait("shared.changed", since=mb) is not None)
+    ok("... B hat danach keinen Zugriff mehr", req("GET", f"/api/notes/{kid}", Bk)[0] in (403, 404))
+    time.sleep(2.2)
+    m2, mb = sa2.mark(), sb.mark()
+    req("PATCH", f"/api/notes/{kid}", A, {"parent_id": pg})          # per PATCH wieder HINEIN
+    tb = sb.wait("notes.tree", lambda d: kid in d["ids"], since=mb)
+    ok(f"Verschieben in geteilten Baum (PATCH parent_id): B (neue Kette) bekommt notes.tree ({tb})", tb and tb["op"] == "moved")
+    ok("... und shared.changed", sb.wait("shared.changed", since=mb) is not None)
+    time.sleep(2.2)
+    mb = sb.mark()
+    req("PATCH", f"/api/notes/{kid}", A, {"parent_id": None})        # per PATCH wieder HERAUS
+    tb = sb.wait("notes.tree", lambda d: kid in d["ids"], since=mb)
+    ok(f"Verschieben aus geteiltem Baum (PATCH parent_id): B bekommt notes.tree ({tb})", tb and tb["op"] == "moved"
+       and sb.wait("shared.changed", since=mb) is not None)
+    time.sleep(2.2)
+    req("POST", f"/api/notes/{kid}/move", A, {"parent_id": pg, "index": 0})
+    time.sleep(2.2)
+    # --- Ausschluss je Tab: zwei Tabs derselben Browser-Sitzung (?tab= / X-Saga-Tab) ----------------------------------
+    T1, T2 = "lvtab" + secrets.token_hex(6), "lvtab" + secrets.token_hex(6)
+    st1, st2 = Stream(A, tab=T1), Stream(A, tab=T2)
+    ok("Zwei Tabs von A verbunden", st1.wait("hello") is not None and st2.wait("hello") is not None)
+    m1, m2t = st1.mark(), st2.mark()
+    tk = req("POST", "/api/notes", A, {"title": "Tab Kind"}, hdr={"X-Saga-Tab": T1})[1]["id"]
+    ok("Tab: zweiter Tab derselben Sitzung bekommt notes.tree", st2.wait("notes.tree", lambda d: tk in d["ids"], since=m2t) is not None)
+    ok("Tab: ausloesender Tab bekommt es nicht zurueck", st1.find("notes.tree", lambda d: tk in d["ids"], since=m1) is None)
+    time.sleep(2.2)
+    m1, m2t = st1.mark(), st2.mark()
+    req("PATCH", f"/api/notes/{tk}", A, {"title": "Tab Kind ohne Kopf"})   # ohne X-Saga-Tab: wie bisher ganze Sitzung
+    got = [e for e in st1.quiet(m1, 2.5) + st2.ev[m2t:] if e[0] == "notes.tree" and tk in e[1]["ids"]]
+    ok(f"Tab: Anfrage ohne Tab-Kennung -> kein Tab dieser Sitzung ({got})", got == [])
+    st1.close(); st2.close()
+    req("DELETE", f"/api/notes/{tk}", A)
     time.sleep(2.2)
     m2 = sa2.mark()
     req("DELETE", f"/api/notes/{kid}", A); time.sleep(2.2); req("DELETE", f"/api/trash/{kid}", A)
     t2 = sa2.wait("notes.tree", lambda d: kid in d["ids"] and d["op"] == "deleted", since=m2, timeout=5)
     ok(f"notes.tree: endgueltig geloescht -> 'deleted' ({t2})", t2 is not None)
     sa2.close()
+    time.sleep(2.5)
+    sra = Stream(A2, last=a_mark)                     # Nachholen beim Eigentuemer: eigene IDs bleiben (auch geloeschte)
+    sra.wait("hello"); time.sleep(1.0)
+    rt = [e[1] for e in sra.ev if e[0] == "notes.tree"]
+    ok(f"Nachholen (Eigentuemer): notes.tree mit eigenen IDs, auch 'deleted' ({len(rt)})",
+       any(kid in d["ids"] and d["op"] == "deleted" for d in rt) and sra.find("reset") is None)
+    sra.close()
     time.sleep(2.2)
 
     # --- Anwesenheit + note.changed ----------------------------------------------------------------------------
@@ -402,6 +446,46 @@ def main():
     ok(f"notes.tree: Gruppenmitglied C bekommt die neue Unterseite der Gruppen-Freigabe ({tc})", tc and tc["op"] == "created")
     ok("notes.tree: B (kein Mitglied) bekommt die ID nicht", sb.find("notes.tree", lambda d: gk in d["ids"], since=mb) is None)
 
+    # --- Gruppen-Mitgliedschaft geaendert (Admin-Bereich): shared.changed + notes.tree {full} an das Konto ------------
+    cid = auth.get_user("lv-c")["id"]
+    cform = {"action": "save", "name": "Cora Live", "email": ""}
+    time.sleep(2.2)
+    mc, mb = sc.mark(), sb.mark()
+    s, _ = admin(f"/users/{cid}", cform)                                   # C aus lv-team entfernen
+    ok(f"Gruppenwechsel (Admin entfernt C aus lv-team): C bekommt shared.changed ({s})", sc.wait("shared.changed", since=mc) is not None)
+    tc = sc.wait("notes.tree", since=mc)
+    ok(f"... und notes.tree full ohne IDs ({tc})", tc and tc["full"] is True and tc["ids"] == [])
+    ok("... C sieht die Gruppen-Seite nicht mehr", req("GET", f"/api/notes/{pg2}", Ck)[0] in (403, 404))
+    ok("... B (nicht betroffen) bekommt nichts", [e for e in sb.quiet(mb, 0.5) if e[0] in ("shared.changed", "notes.tree")] == [])
+    time.sleep(2.2)
+    mc = sc.mark()
+    for g in ("lv-team", "", "lv-team"):                                   # schnell hintereinander: entprellt
+        admin(f"/users/{cid}", dict(cform, groups=g) if g else cform)
+    time.sleep(3.5)
+    n_sc = len([e for e in sc.ev[mc:] if e[0] == "shared.changed"])
+    n_tr = len([e for e in sc.ev[mc:] if e[0] == "notes.tree"])
+    ok(f"Gruppenwechsel 3x schnell: entprellt (shared.changed {n_sc}, notes.tree {n_tr}, je hoechstens 2)", 1 <= n_sc <= 2 and 1 <= n_tr <= 2)
+    ok("... C ist wieder Mitglied und sieht die Seite", req("GET", f"/api/notes/{pg2}", Ck)[0] == 200)
+    time.sleep(2.2)
+    mc = sc.mark()
+    admin(f"/users/{cid}", dict(cform, groups="lv-team"))                  # unveraendert: kein Ereignis
+    ok("Gruppen unveraendert gespeichert: kein Ereignis", [e for e in sc.quiet(mc, 1.5) if e[0] in ("shared.changed", "notes.tree")] == [])
+    with connect() as c, c:                                                # Gruppe loeschen: Mitglieder bekommen es mit
+        auth.ensure_group(c, "lv-weg")
+    auth.set_user_groups(auth.get_user("lv-a")["id"], ["lv-team", "lv-weg"])   # Teilen nur mit eigenen Gruppen
+    admin(f"/users/{cid}", dict(cform, groups="lv-team", new_groups="lv-weg"))
+    ok("Freigabe an Gruppe lv-weg", req("PUT", f"/api/notes/{pg2}/shares", A, {"type": "group", "target": "lv-weg", "role": "view"})[0] == 200)
+    time.sleep(2.5)
+    mc = sc.mark()
+    with connect() as c:
+        wid = c.execute("SELECT id FROM groups WHERE name='lv-weg'").fetchone()[0]
+        pre = (sorted(auth.groups_of(cid)[0]), c.execute("SELECT COUNT(*) FROM note_share WHERE target_type='group' AND target='lv-weg'").fetchone()[0])
+    s, _ = admin("/groups", {"action": "delete", "id": str(wid)})
+    sc.wait("shared.changed", since=mc)
+    ok(f"Gruppe geloescht (Admin): Mitglied C bekommt shared.changed + notes.tree full ({s}, {pre}, {[e[:2] for e in sc.ev[mc:]]})",
+       sc.find("shared.changed", since=mc) is not None and sc.wait("notes.tree", lambda d: d["full"], since=mc) is not None)
+    time.sleep(2.2)
+
     # --- Last-Event-ID ------------------------------------------------------------------------------------------
     last = sb.last_id()
     sb.close()
@@ -454,6 +538,9 @@ def main():
     ok(f"Nach Entzug: Last-Event-ID holt nichts zur Seite nach (Rechte beim Nachholen) ({page_ev})",
        sr.find("shared.changed") is not None and sr.find("reset") is None and page_ev == []
        and "Live Projekt" not in raw and "Antwort eins" not in raw and "Antwort zwei" not in raw and "Bitte pruefen" not in raw)
+    rt = [e[1] for e in sr.ev if e[0] == "notes.tree"]
+    ok(f"Nach Entzug: Nachholen liefert notes.tree nur noch als full ohne IDs ({len(rt)} Ereignisse, {rt[:3]})",
+       rt and all(d["full"] is True and d["ids"] == [] for d in rt))
     sr.close()
 
     # --- Fremde Seite (Cross-Site/Nachbar-Subdomain): EventSource mit Cookie abgewiesen ------------------------------

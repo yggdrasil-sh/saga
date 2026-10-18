@@ -19,6 +19,8 @@ Ereignisse (event: ..., data: JSON) - die Rechte werden beim VERSAND geprueft (s
   notes.tree       {ids, op, ops, full}                (2.2) Seitenbaum geaendert, nur IDs - an alle Verbindungen des Eigentuemers
                    und an Konten mit Freigabe in der Kette; je Konto hoechstens eins je 2 s (gesammelt). op: created|updated|
                    moved|trashed|restored|archived|deleted|shared|mixed; full: zu viele IDs -> ganzen Baum laden. docs/APP-API-LIVE.md
+                   Verschieben: alte UND neue Kette; Gruppenwechsel: {full} + shared.changed (entprellt); Nachholen: IDs
+                   fremder Seiten erneut geprueft, sonst {full} ohne IDs. Ausschluss je Tab (?tab= / X-Saga-Tab) bzw. Geraet
   presence         {note_id, users:[{username, name, editing}]}
   reset            {}                                  Wiederaufnahme nicht moeglich (Neustart/zu alt): alles neu laden
   bye              {reason: limit|auth|account|shutdown}   Server beendet die Verbindung
@@ -44,7 +46,7 @@ from db import connect as _db
 from saga import avatars, bus, i18n, notify
 from saga.comments import counts as comment_counts
 from saga.core import E, _api_guard, _bad, _body, _session_user, _tok_hash, account_lang, device_alive, origin_of, user_info
-from saga.notes import note_chain
+from saga.notes import note_chain, share_targets
 from saga.sharing import Access, names
 
 router = APIRouter()
@@ -164,19 +166,38 @@ def _note_of(typ, data):
     return None
 
 
-def _deliver(uid, typ, data, skip=None):
-    """skip: Herkunft (Sitzung/Geraet), die das Ereignis selbst ausgeloest hat - deren Verbindungen bekommen es nicht."""
+def _same_origin(conn, skip):
+    """Gehoert die Verbindung (Herkunft conn) zur ausloesenden Stelle skip? Web: '<sitzung>#<tab>' (X-Saga-Tab) - nur
+    genau dieser Tab; ohne Tab-Kennung (aeltere Seiten, Anfragen ohne Kopf) wie bisher die ganze Sitzung."""
+    if skip is None or conn is None:
+        return False
+    if conn == skip:
+        return True
+    return "#" not in skip and conn.split("#", 1)[0] == skip
+
+
+def _skipped(conn, skip):
+    """skip: eine Herkunft oder (gesammeltes notes.tree) eine Menge - dann nur ausgelassen, wenn ALLE gesammelten
+    Aenderungen von dieser Stelle kamen (z. B. Sitzung ohne Tab-Kennung + dieser Tab)."""
+    if isinstance(skip, frozenset):
+        return bool(skip) and all(_same_origin(conn, s) for s in skip)
+    return _same_origin(conn, skip)
+
+
+def _deliver(uid, typ, data, skip=None, ref=None):
+    """skip: Herkunft (Sitzung/Tab/Geraet), die das Ereignis selbst ausgeloest hat - deren Verbindungen bekommen es nicht.
+    ref: Bezug fuer die Rechtepruefung beim Nachholen (Standard: _note_of)."""
     _S["seq"] += 1
     seq = _S["seq"]
     msg = _fmt(typ, data, seq)
     buf = _buf.get(uid)
     if buf is None:
         buf = _buf[uid] = deque()
-    buf.append((seq, time.time(), msg, _note_of(typ, data), skip))
+    buf.append((seq, time.time(), msg, ref if ref is not None else _note_of(typ, data), skip))
     while len(buf) > REPLAY_MAX:
         _lost[uid] = max(_lost.get(uid, 0), buf.popleft()[0])
     for cl in list(_clients.get(uid, ())):
-        if skip is None or cl.origin != skip:
+        if not _skipped(cl.origin, skip):
             cl.put(msg)
 
 
@@ -202,23 +223,46 @@ async def _dispatch():
                 if typ == "notes.tree":                       # gebuendelt zustellen (_tree_flush)
                     _tree_queue(uid, data, item[3] if len(item) > 3 else None)
                     continue
+                if len(item) > 4 and item[4] == "debounce":   # hoechstens eins je TREE_GAP und Konto (Gruppenwechsel)
+                    _debounced(uid, typ, data)
+                    continue
                 _deliver(uid, typ, data, item[3] if len(item) > 3 else None)
         except Exception as ex:  # noqa: BLE001 - z. B. Datenbank gerade weg: dieses Ereignis entfaellt, der Kanal bleibt
             print(f"live: {kind}: {type(ex).__name__}: {ex}", flush=True)
 
 
-_tree_pend = {}          # uid -> {"ids", "check" (Rechte beim Versand pruefen), "ops", "full", "skips"}   (nur Event-Schleife)
+_tree_pend = {}          # uid -> {"ids", "check" (Rechte beim Versand pruefen), "own", "ops", "full", "skips"}   (nur Event-Schleife)
 _tree_last = {}          # uid -> time.monotonic() der letzten Zustellung
+_deb_pend = set()        # (uid, ereignis) - entprellt zugestellt (_debounced)
+_deb_last = {}           # (uid, ereignis) -> time.monotonic() der letzten Zustellung
+
+
+def _debounced(uid, typ, data):
+    """Ereignis ohne Inhalt (shared.changed nach Gruppenwechsel): das erste sofort, weitere innerhalb von TREE_GAP
+    Sekunden zu einem zusammengefasst (LDAP/OIDC-Abgleich bei jeder Anmeldung, viele Gruppen auf einmal)."""
+    key = (uid, typ)
+    if key in _deb_pend:
+        return
+    _deb_pend.add(key)
+
+    def go():
+        _deb_pend.discard(key)
+        _deb_last[key] = time.monotonic()
+        _deliver(uid, typ, data)
+    wait = max(0.0, _deb_last.get(key, 0) + TREE_GAP - time.monotonic())
+    _S["loop"].call_later(wait, go)
 
 
 def _tree_queue(uid, data, skip):
     """notes.tree sammeln: das erste Ereignis geht sofort raus, weitere innerhalb von TREE_GAP Sekunden gesammelt danach."""
     p = _tree_pend.get(uid)
     if p is None:
-        p = _tree_pend[uid] = {"ids": set(), "check": set(), "ops": set(), "full": False, "skips": set()}
+        p = _tree_pend[uid] = {"ids": set(), "check": set(), "own": set(), "ops": set(), "full": False, "skips": set()}
         wait = max(0.0, _tree_last.get(uid, 0) + TREE_GAP - time.monotonic())
         _S["loop"].call_later(wait, _tree_flush, uid)
     (p["check"] if data.get("check") else p["ids"]).update(data["ids"])
+    if data.get("own"):                    # eigene Seiten des Empfaengers: beim Nachholen nicht erneut pruefen
+        p["own"].update(data["ids"])
     p["ops"].add(data["op"])
     p["full"] = p["full"] or bool(data.get("full")) or len(p["ids"]) + len(p["check"]) > TREE_IDS_MAX
     p["skips"].add(skip)
@@ -249,10 +293,12 @@ def _tree_send(uid, p, ids):
     if not ids and not p["full"]:
         return
     ops = sorted(p["ops"])
-    # nur von EINER Sitzung/einem Geraet ausgeloest: dorthin nicht zurueck (die laedt selbst nach)
-    skip = next(iter(p["skips"])) if len(p["skips"]) == 1 else None
+    # nicht dorthin zurueck, wo ALLE gesammelten Aenderungen herkamen (die Stelle laedt selbst nach) - _skipped
+    skip = next(iter(p["skips"])) if len(p["skips"]) == 1 else frozenset(p["skips"])
     data = {"ids": [] if p["full"] else sorted(ids), "op": ops[0] if len(ops) == 1 else "mixed", "ops": ops, "full": p["full"]}
-    _deliver(uid, "notes.tree", data, skip)
+    # Nachholen (Last-Event-ID): IDs fremder Seiten dann erneut gegen die Rechte pruefen (_replay_filter)
+    foreign = frozenset(i for i in data["ids"] if i not in p["own"])
+    _deliver(uid, "notes.tree", data, skip, ref=("tree", data, foreign) if foreign else None)
 
 
 def _person(nm, u):
@@ -337,7 +383,7 @@ def _resolve(kind, p, aud, pres):
             full = len(ids) > TREE_IDS_MAX
             ids = ids[:TREE_IDS_MAX]
             if owner in aud:
-                out.append((owner, "notes.tree", {"ids": ids, "op": op, "full": full}, origin))
+                out.append((owner, "notes.tree", {"ids": ids, "op": op, "full": full, "own": True}, origin))
             gone = op in ("trashed", "archived", "deleted")
             for u in sorted(set(p.get("cands") or ()) & aud):
                 if gone:
@@ -347,6 +393,14 @@ def _resolve(kind, p, aud, pres):
                     mine = [i for i in ids if acc.role(i)]
                 if mine or full:          # check: beim (gesammelten) Versand die Rechte erneut pruefen
                     out.append((u, "notes.tree", {"ids": mine, "op": op, "full": full, "check": not gone}, origin))
+            for u in sorted(set(p.get("lost") or ()) & aud):   # nur ueber die alte Kette berechtigt: "weg"
+                out.append((u, "notes.tree", {"ids": ids, "op": op, "full": full, "check": False}, origin))
+        elif kind == "groups.changed":
+            # Gruppen eines Kontos geaendert (Admin-Bereich, LDAP/OIDC bei der Anmeldung, Gruppe geloescht): geteilte
+            # Seiten koennen sichtbar/unsichtbar werden -> "Mit mir geteilt" und Seitenbaum ganz neu laden (ohne IDs)
+            for u in sorted(set(p.get("uids") or ()) & aud):
+                out.append((u, "shared.changed", {}, None, "debounce"))
+                out.append((u, "notes.tree", {"ids": [], "op": "shared", "full": True}))
         elif kind == "presence":
             nid = p["note_id"]
             entries = pres.get(nid, {})
@@ -410,6 +464,9 @@ async def _housekeeping():
             for uid, ts in list(_tree_last.items()):
                 if mono - ts > 60 and uid not in _tree_pend:
                     _tree_last.pop(uid, None)
+            for key, ts in list(_deb_last.items()):
+                if mono - ts > 60 and key not in _deb_pend:
+                    _deb_last.pop(key, None)
         except Exception as ex:  # noqa: BLE001
             print(f"live: housekeeping: {type(ex).__name__}: {ex}", flush=True)
 
@@ -444,7 +501,30 @@ def _replay(uid, last, origin=None):
         return [], False
     if boot != BOOT or n > _S["seq"] or n < max(_lost.get(uid, 0), _S["floor"]):
         return [], False
-    return [(nid, m) for s, _, m, nid, skip in _buf.get(uid, ()) if s > n and (skip is None or skip != origin)], True
+    return [(ref, m, s) for s, _, m, ref, skip in _buf.get(uid, ()) if s > n and not _skipped(origin, skip)], True
+
+
+def _replay_filter(uid, msgs):
+    """Im Thread: Rechte beim Nachholen JETZT pruefen (Entzug, Verschieben, Gruppenwechsel seitdem). Seitengebundene
+    Ereignisse ohne Zugriff entfallen; notes.tree mit IDs fremder Seiten, von denen eine nicht mehr sichtbar ist, kommt
+    als {"full": true} ohne IDs (der Client laedt den ganzen Baum - keine IDs an Konten ohne Zugriff)."""
+    nids = set()
+    for ref, _, _ in msgs:
+        if isinstance(ref, tuple):
+            nids |= ref[2]
+        elif ref:
+            nids.add(ref)
+    allowed = _allowed(uid, nids) if nids else set()
+    out = []
+    for ref, m, s in msgs:
+        if isinstance(ref, tuple):                            # ("tree", daten, fremde IDs)
+            if not ref[2] <= allowed:
+                d = ref[1]
+                m = _fmt("notes.tree", {"ids": [], "op": d["op"], "ops": d["ops"], "full": True}, s)
+        elif ref and ref not in allowed:
+            continue
+        out.append(m)
+    return out
 
 
 def _allowed(uid, nids):
@@ -476,7 +556,7 @@ def _who(request):
         info = user_info(uid)
         return info is not None and info["epoch"] <= pwc and (did is None or device_alive(uid, did))
     did = request.session.get("did")
-    return uid, "web", ok, origin_of(request)
+    return uid, "web", ok, origin_of(request, request.query_params.get("tab") or "")    # Tab: ?tab= (EventSource ohne Kopf)
 
 
 @router.get("/api/events")
@@ -505,16 +585,16 @@ async def api_events(request: Request):
             # retry: Wartezeit vor dem Neuaufbau; Fuellzeile: manche Proxys geben erst ab ein paar KB weiter
             yield "retry: 5000\n:" + " " * 2048 + "\n\n"
             yield _fmt("hello", {"boot": BOOT, "ping": PING, "presence_ttl": PRESENCE_TTL})
-            nids = {n for n, _ in msgs if n}
-            if nids:                                              # Rechte beim Nachholen JETZT pruefen (Entzug seitdem)
+            if any(ref for ref, _, _ in msgs):                    # Rechte beim Nachholen JETZT pruefen (Entzug seitdem)
                 try:
-                    allowed = await asyncio.to_thread(_allowed, uid, nids)
-                    msgs = [(n, m) for n, m in msgs if not n or n in allowed]
+                    msgs = await asyncio.to_thread(_replay_filter, uid, msgs)
                 except Exception:  # noqa: BLE001 - Datenbank gerade weg: nichts nachholen, Client gleicht ab
                     msgs, ok = [], False
+            else:
+                msgs = [m for _, m, _ in msgs]
             if not ok:
                 yield _fmt("reset", {})
-            for _, m in msgs:
+            for m in msgs:
                 yield m
             checked = born = time.monotonic()
             while True:
@@ -644,32 +724,31 @@ def _saved(c, note_id, rev=None, by=None, updated=None, gone=False, origin=None,
     bus.emit_after(c, "note.changed", {"id": note_id, "rev": rev, "by": by, "updated": updated, "gone": gone, "origin": origin, "row": row})
 
 
-def _tree_cands(c, owner, ids):
-    """In der Transaktion (vor dem Commit/Loeschen): Konten mit einer Freigabe auf einer der Seiten oder einer Seite
-    darueber (Kette ohne Ruecksicht auf Papierkorb/Archiv - so erreichen auch "weg"-Meldungen die bisher Berechtigten)."""
-    if not c.execute("SELECT 1 FROM note_share WHERE owner_uid=? LIMIT 1", (owner,)).fetchone():
-        return []
-    marks = ",".join("?" * len(ids))
-    chain = [r[0] for r in c.execute(
-        f"WITH RECURSIVE t(id, parent_id, depth) AS (SELECT id, parent_id, 0 FROM note WHERE uid=? AND id IN ({marks}) "
-        "UNION SELECT n.id, n.parent_id, t.depth + 1 FROM note n JOIN t ON n.id=t.parent_id WHERE n.uid=? AND t.depth < 64) "
-        "SELECT DISTINCT id FROM t", (owner, *ids, owner)).fetchall()]
-    if not chain:
-        return []
+def _target_uids(c, targets, owner=None):
+    """Freigabe-Ziele (target_type, target) -> Konten (Gruppen aufgeloest), ohne den Eigentuemer."""
     cand = set()
-    for tt, tg in c.execute(f"SELECT DISTINCT target_type, target FROM note_share WHERE owner_uid=? AND note_id IN ({','.join('?' * len(chain))})",
-                            (owner, *chain)).fetchall():
+    for tt, tg in targets:
         if tt == "user":
             cand.add(tg)
         elif tt == "group":
             cand.update(notify.group_members(c, tg))
     cand.discard(owner)
-    return sorted(cand)
+    return cand
 
 
-def _tree(c, owner, ids, op, origin=None, **_):
+def _tree_cands(c, owner, ids):
+    """In der Transaktion (vor dem Commit/Loeschen): Konten mit einer Freigabe auf einer der Seiten oder einer Seite
+    darueber (Kette ohne Ruecksicht auf Papierkorb/Archiv - so erreichen auch "weg"-Meldungen die bisher Berechtigten)."""
+    return sorted(_target_uids(c, share_targets(c, owner, ids), owner))
+
+
+def _tree(c, owner, ids, op, origin=None, before=None, **_):
     ids = list(dict.fromkeys(ids))[:TREE_IDS_MAX + 1]
-    bus.emit_after(c, "notes.tree", {"owner": owner, "ids": ids, "op": op, "origin": origin, "cands": _tree_cands(c, owner, ids)})
+    cands = _tree_cands(c, owner, ids)
+    # Verschoben aus einem geteilten Teilbaum heraus: wer nur ueber die ALTE Kette Zugriff hatte, bekommt die IDs als
+    # "weg" (wie bei trashed) - sonst bliebe die Seite in seinem Baum stehen
+    lost = sorted(_target_uids(c, [tuple(x) for x in before or ()], owner) - set(cands)) if before else []
+    bus.emit_after(c, "notes.tree", {"owner": owner, "ids": ids, "op": op, "origin": origin, "cands": cands, "lost": lost})
 
 
 def _share_tree(c, owner, note_id, **_):

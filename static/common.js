@@ -63,7 +63,14 @@
     }
     return rtf ? rtf.format(v, u) : String(v) + ' ' + u;
   }
-  var H = { 'X-Saga': '1' };
+  // Kennung dieses Tabs (nur im Speicher, je Laden neu): der Live-Kanal schickt eigene Aenderungen an alle anderen
+  // Tabs, nur nicht an den ausloesenden zurueck (X-Saga-Tab bei Anfragen, ?tab= beim Live-Kanal)
+  var TAB = (function () {
+    var a = new Uint8Array(12);
+    try { crypto.getRandomValues(a); } catch (e) { for (var i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256); }
+    return Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+  })();
+  var H = { 'X-Saga': '1', 'X-Saga-Tab': TAB };
   function $(id) { return document.getElementById(id); }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 
@@ -398,7 +405,7 @@
     return box;
   }
 
-  window.HK = { avatarImg: avatarImg, parseNum: parseNum, editNum: editNum, scrollFade: scrollFade, $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
+  window.HK = { tab: TAB, avatarImg: avatarImg, parseNum: parseNum, editNum: editNum, scrollFade: scrollFade, $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
                 openMenu: openMenu, closeMenu: closeMenu, menuItem: menuItem, menuLabel: menuLabel,
                 menuOpen: function () { return !!menuOwner; }, closeSub: closeSub, ask: ask, urlNode: urlNode, fmtNodes: fmtNodes, fieldMsg: fieldMsg };
 })();

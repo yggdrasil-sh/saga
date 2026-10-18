@@ -618,6 +618,10 @@ async def groups_post(request: Request):
                 c.execute("UPDATE groups SET description=? WHERE id=?", (_s(f, "description", 300), gid))
             else:
                 g = c.execute("SELECT name FROM groups WHERE id=?", (gid,)).fetchone()
+                if g:                                # Live: lokale Mitglieder verlieren die Gruppe (vor dem Loeschen der Freigaben)
+                    auth.groups_changed(c, [r[0] for r in c.execute(
+                        "SELECT u.username FROM user_group ug JOIN users u ON u.id=ug.user_id WHERE ug.group_id=? "
+                        "AND NOT EXISTS (SELECT 1 FROM user_ext_group e WHERE e.user_id=u.id AND e.name=?)", (gid, g[0])).fetchall()], [g[0]])
                 c.execute("DELETE FROM groups WHERE id=?", (gid,))
                 if g:
                     sharing.drop_group(c, g[0])        # Freigaben an diese Gruppe enden mit ihr

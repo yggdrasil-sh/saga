@@ -246,7 +246,8 @@
     if (L.stopped) return;
     if (!window.EventSource) { startPoll(); return; }
     if (L.es) { L.es.close(); L.es = null; }
-    var es = new EventSource('/api/events' + (L.lastId ? '?last=' + encodeURIComponent(L.lastId) : '')); L.es = es; L.hello = false;
+    var qs = (HK.tab ? '&tab=' + encodeURIComponent(HK.tab) : '') + (L.lastId ? '&last=' + encodeURIComponent(L.lastId) : '');
+    var es = new EventSource('/api/events' + (qs ? '?' + qs.slice(1) : '')); L.es = es; L.hello = false;
     var helloT = setTimeout(function () { if (!L.hello && L.es === es) fallback('timeout'); }, 15000);   // Proxy puffert?
     on(es, 'hello', function () {
       clearTimeout(helloT); L.hello = true; L.fails = 0; stopPoll();

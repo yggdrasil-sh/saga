@@ -624,15 +624,21 @@ def device_alive(uid, did):
     return alive
 
 
-def origin_of(request):
-    """Herkunft einer Anfrage: Geraet (App-Sitzung) bzw. Browser-Sitzung. Live-Kanal: eigene Aenderungen gehen an die
-    anderen Geraete/Sitzungen desselben Kontos, nur nicht an die ausloesende zurueck (BUG-032)."""
+_TAB_RE = re.compile(r"[A-Za-z0-9_-]{8,40}")
+
+
+def origin_of(request, tab=None):
+    """Herkunft einer Anfrage: Geraet (App-Sitzung) bzw. Browser-Sitzung, im Web mit Tab: '<sitzung>#<tab>' (Kopf
+    X-Saga-Tab bzw. beim Live-Kanal ?tab=). Live-Kanal: eigene Aenderungen gehen an die anderen Tabs/Geraete/Sitzungen
+    desselben Kontos, nur nicht an den ausloesenden Tab zurueck (BUG-032); ohne Tab-Kennung an keinen Tab dieser Sitzung."""
     did = request.session.get("did")
     if did is not None:
         return f"d{did}"
     o = request.session.get("lo")             # bei der Anmeldung vergeben (_set_session)
     # aeltere Sitzungen ohne Kennung: alle zusammen wie bisher (eigene Aenderungen gehen an keine von ihnen zurueck)
-    return o if isinstance(o, str) else "s:" + str(request.session.get("uid"))
+    o = o if isinstance(o, str) else "s:" + str(request.session.get("uid"))
+    tab = tab if tab is not None else request.headers.get("x-saga-tab")
+    return f"{o}#{tab}" if tab and _TAB_RE.fullmatch(tab) else o
 
 
 def forget_device(uid, did=None):

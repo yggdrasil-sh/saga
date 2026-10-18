@@ -180,31 +180,53 @@ def announce_row(c, owner, row_id, by, now, origin=None):
         bus.fire("note.saved", c, note_id=r[0], owner=owner, by=by, updated=now, origin=origin, row=row_id)
 
 
-def tree_changed(c, owner, ids, op, origin=None):
+def share_targets(c, owner, ids):
+    """Freigaben (target_type, target) auf den Seiten ids oder einer Seite darueber - ohne Ruecksicht auf Papierkorb/
+    Archiv/Vorlage (lieber einmal zu oft "neu laden" als einen Empfaenger vergessen). Nur Personen und Gruppen.
+    Vor einer Aenderung der Kette (Verschieben, Elternseite weg) aufgerufen: wer die Seiten bis eben sehen durfte."""
+    ids = [int(i) for i in ids if i is not None]
+    if not ids or not c.execute("SELECT 1 FROM note_share WHERE owner_uid=? LIMIT 1", (owner,)).fetchone():
+        return set()
+    marks = ",".join("?" * len(ids))
+    chain = [r[0] for r in c.execute(
+        f"WITH RECURSIVE t(id, parent_id, depth) AS (SELECT id, parent_id, 0 FROM note WHERE uid=? AND id IN ({marks}) "
+        "UNION SELECT n.id, n.parent_id, t.depth + 1 FROM note n JOIN t ON n.id=t.parent_id WHERE n.uid=? AND t.depth < 64) "
+        "SELECT DISTINCT id FROM t", (owner, *ids, owner)).fetchall()]
+    if not chain:
+        return set()
+    return {(tt, tg) for tt, tg in c.execute(
+        f"SELECT DISTINCT target_type, target FROM note_share WHERE owner_uid=? AND note_id IN ({','.join('?' * len(chain))})",
+        (owner, *chain)).fetchall() if tt in ("user", "group")}
+
+
+def tree_changed(c, owner, ids, op, origin=None, before=None):
     """Live-Ereignis notes.tree (Seitenbaum geaendert, nur IDs): an alle Verbindungen des Eigentuemers und an Personen,
     die eine betroffene Seite (oder eine darueber) geteilt bekommen haben - gebuendelt in saga.live. op: created, updated,
-    moved, trashed, restored, archived, deleted, shared. Nach dem Commit (bei Rollback nie)."""
+    moved, trashed, restored, archived, deleted, shared. Nach dem Commit (bei Rollback nie).
+    before: share_targets() VOR einer Aenderung der Kette (Verschieben) - wer dadurch den Zugriff verliert, bekommt
+    die IDs als "weg" (wie bei trashed)."""
     from saga import bus
     ids = [int(i) for i in ids if i is not None]
     if ids:
-        bus.fire("notes.tree", c, owner=owner, ids=ids, op=op, origin=origin)
+        bus.fire("notes.tree", c, owner=owner, ids=ids, op=op, origin=origin, before=sorted(before or ()))
 
 
-def announce_tree(c, owner, root, ids, by, now, gone, rev=None, origin=None):
+def announce_tree(c, owner, root, ids, by, now, gone, rev=None, origin=None, before=None):
     """Live-Kanal (BUG-033): jede Seite eines Teilbaums melden (geloescht/archiviert: "weg"; wiederhergestellt,
-    verschoben, Version zurueck: geaendert) und "Mit mir geteilt" bei allen neu laden lassen, mit denen der Teilbaum (oder eine Seite darueber) geteilt ist."""
+    verschoben, Version zurueck: geaendert) und "Mit mir geteilt" bei allen neu laden lassen, mit denen der Teilbaum
+    (oder eine Seite darueber) geteilt ist - JETZT oder (before, s. share_targets) vor dem Verschieben."""
     from saga import bus
     for i in ids:
         bus.fire("note.saved", c, note_id=i, owner=owner, by=by, updated=now, gone=gone, rev=rev if i == root else None, origin=origin)
     announce_row(c, owner, root, by, now, origin)
-    chain = set(ids) | set(note_chain(c, owner, root))
-    if not chain:
-        return
-    marks = ",".join("?" * len(chain))
-    for tt, tg in c.execute(f"SELECT DISTINCT target_type, target FROM note_share WHERE owner_uid=? AND note_id IN ({marks})",
-                            (owner, *chain)).fetchall():
-        if tt in ("user", "group"):
-            bus.emit_after(c, "shared.changed", {"owner": owner, "note_id": root, "target_type": tt, "target": tg})
+    announce_shared(c, owner, root, ids, before)
+
+
+def announce_shared(c, owner, root, ids, before=None):
+    """shared.changed an alle mit Freigabe auf dem Teilbaum oder einer Seite darueber (jetzt und - before - vorher)."""
+    from saga import bus
+    for tt, tg in sorted(share_targets(c, owner, set(ids) | {root}) | set(before or ())):
+        bus.emit_after(c, "shared.changed", {"owner": owner, "note_id": root, "target_type": tt, "target": tg})
 
 
 _PURGED = {}               # uid -> Zeitpunkt der letzten Papierkorb-Frist (nur fuer _purge_old(..., every=...))

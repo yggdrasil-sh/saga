@@ -42,6 +42,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Freigabe geändert) – nur IDs, an alle Geräte des Eigentümers und an Personen mit Freigabe, gesammelt höchstens eins je
   2 s. Apps können damit bei verbundenem Live-Kanal seltener abgleichen (5 min statt 60 s). Die Weboberfläche lädt den
   Baum in anderen Tabs und auf anderen Geräten damit sofort nach.
+  - **Ausschluss je Tab:** Nur der Tab, der eine Änderung ausgelöst hat, bekommt sie nicht zurück – andere Tabs
+    derselben Browser-Sitzung schon (Kennung je Tab: Kopf `X-Saga-Tab`, beim Live-Kanal `?tab=`). Das gilt auch für
+    `note.changed`: eine Seite, die in zwei Tabs offen ist, bleibt in beiden aktuell. Apps: je Gerät wie bisher.
+  - **Verschieben** aus einem geteilten Teilbaum heraus oder hinein (auch per `PATCH parent_id` und beim
+    Wiederherstellen auf die oberste Ebene): Empfänger der alten **und** der neuen Kette bekommen `notes.tree` und
+    `shared.changed` – bisher nur die neue Kette. Papierkorb/Archiv: `shared.changed` erreicht jetzt auch Freigaben auf
+    Seiten oberhalb.
+  - **Gruppenwechsel** (Admin-Bereich, LDAP/OIDC-Abgleich bei der Anmeldung, Gruppe gelöscht): betroffene Konten
+    bekommen `shared.changed` und `notes.tree` (ganzer Baum), wenn eine der Gruppen Ziel einer Freigabe ist; entprellt.
+  - **Nachholen mit `Last-Event-ID`:** `notes.tree` wird gegen die aktuellen Rechte geprüft; ist eine fremde Seite nicht
+    mehr sichtbar, kommt das Ereignis als „ganzen Baum laden“ ohne IDs.
+- **ETag bei gzip:** gepackte Antworten tragen ein schwaches ETag (`W/"…"`); `If-None-Match` vergleicht schwach, 304
+  funktioniert für gepackte und ungepackte Fassung gleich.
 
 ### Lastmessung (nur Werkzeuge, keine Änderung an Saga selbst)
 

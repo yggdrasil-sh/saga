@@ -14,7 +14,7 @@ from fastapi import APIRouter
 from saga import i18n
 from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, origin_of, t
 from saga.sharing import Access, access, mask_links, names, person, viewer
-from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _snapshot, announce_tree, blocks_text, tree_changed
+from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _snapshot, announce_tree, blocks_text, share_targets, tree_changed
 
 router = APIRouter()
 
@@ -61,10 +61,12 @@ def api_trash_restore(nid: int, request: Request):
         c.executemany("UPDATE note SET deleted_at=NULL WHERE id=? AND uid=?", [(i, uid) for i in ids])
         # Elternseite weg oder selbst im Papierkorb -> auf oberste Ebene
         par = c.execute("SELECT parent_id FROM note WHERE id=? AND uid=?", (nid, uid)).fetchone()[0]
+        before = None
         if par and not c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (par, uid)).fetchone():
+            before = share_targets(c, uid, [nid])                     # Kette vorher (Live: alte und neue Kette)
             c.execute("UPDATE note SET parent_id=NULL WHERE id=? AND uid=?", (nid, uid))
-        announce_tree(c, uid, nid, ids, uid, time.time(), False, origin=origin_of(request))       # Live: zurueck (BUG-033)
-        tree_changed(c, uid, ids, "restored", origin_of(request))
+        announce_tree(c, uid, nid, ids, uid, time.time(), False, origin=origin_of(request), before=before)   # Live: zurueck (BUG-033)
+        tree_changed(c, uid, ids, "restored", origin_of(request), before=before)
     return JSONResponse({"restored": len(ids)})
 
 

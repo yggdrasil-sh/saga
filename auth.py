@@ -319,23 +319,56 @@ def set_password(username, pw):
     drop_pw_file(username)                 # erzeugtes Start-Passwort gilt nicht mehr
 
 
-def set_user_groups(user_id, names):
+def _all_groups(c, user_id):
+    return {r[0] for r in c.execute(
+        "SELECT g.name FROM user_group ug JOIN groups g ON g.id=ug.group_id WHERE ug.user_id=? "
+        "UNION SELECT name FROM user_ext_group WHERE user_id=?", (user_id, user_id)).fetchall()}
+
+
+def groups_changed(c, usernames, groups):
+    """Live-Kanal: Gruppen dieser Konten haben sich geaendert (groups = betroffene Gruppennamen). Ist eine davon Ziel
+    einer Freigabe, koennen geteilte Seiten sichtbar/unsichtbar werden -> shared.changed + notes.tree {full} an die
+    Konten (entprellt in saga.live). Nach dem Commit; vor dem Loeschen von Freigaben aufrufen."""
+    groups, usernames = sorted({g for g in groups if g}), sorted({u for u in usernames if u})
+    if not groups or not usernames:
+        return
+    if not c.execute(f"SELECT 1 FROM note_share WHERE target_type='group' AND target IN ({','.join('?' * len(groups))}) LIMIT 1",
+                     tuple(groups)).fetchone():
+        return
+    from saga import bus
+    bus.emit_after(c, "groups.changed", {"uids": usernames, "groups": groups})
+
+
+def _set_groups(user_id, fill):
+    """Gruppen eines Kontos neu setzen (fill(c) schreibt) und Aenderungen dem Live-Kanal melden."""
     with _db() as c, c:
+        before = _all_groups(c, user_id)
+        fill(c)
+        diff = before ^ _all_groups(c, user_id)
+        if diff:
+            r = c.execute("SELECT username FROM users WHERE id=?", (user_id,)).fetchone()
+            if r:
+                groups_changed(c, [r[0]], diff)
+    _ui_cache.clear()
+
+
+def set_user_groups(user_id, names):
+    def fill(c):
         c.execute("DELETE FROM user_group WHERE user_id=?", (user_id,))
         for g in names:
             gid = ensure_group(c, g)
             if gid:
                 c.execute("INSERT OR IGNORE INTO user_group (user_id, group_id) VALUES (?,?)", (user_id, gid))
-    _ui_cache.clear()
+    _set_groups(user_id, fill)
 
 
 def set_ext_groups(user_id, names):
-    with _db() as c, c:
+    def fill(c):
         c.execute("DELETE FROM user_ext_group WHERE user_id=?", (user_id,))
         for g in {norm_group(n) for n in names}:
             if g:
                 c.execute("INSERT OR IGNORE INTO user_ext_group (user_id, name) VALUES (?,?)", (user_id, g))
-    _ui_cache.clear()
+    _set_groups(user_id, fill)
 
 
 def groups_of(user_id):

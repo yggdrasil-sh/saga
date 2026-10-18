@@ -20,7 +20,7 @@ from saga.dashboard import visible_tiles
 from saga.publish import published_via
 from saga.comments import counts as comment_counts
 from saga.sharing import RANK, Access, access, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
-from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, tree_changed
+from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
 
 router = APIRouter()
 
@@ -452,7 +452,7 @@ def _note_update(uid, nid, b, origin=None):
         # Speichern ohne rev (aeltere Apps, Zeilen umbenennen) ueber den Stand einer anderen Person: vorher sichern
         foreign = content and not check_rev and bool(old[5]) and old[5] != uid
         atomic = check_rev or (content and bool(b.get("overwrite"))) or foreign
-        shrink, srev = False, None
+        shrink, srev, moved_from = False, None, None
         try:
             if "pinned" in b:
                 sets.append("pinned=?"); args.append(1 if b["pinned"] else 0)
@@ -582,10 +582,12 @@ def _note_update(uid, nid, b, origin=None):
                 shrink = _shrinks(old[1], body, fmt)
             if "parent_id" in b:
                 newpar = _check_parent(c, owner, nid, b["parent_id"])
+                cur_par = c.execute("SELECT parent_id FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()[0]
                 if newpar is not None:          # wie beim Verschieben: keine normale Seite in eine Datenbank
-                    cur_par = c.execute("SELECT parent_id FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()[0]
                     if c.execute("SELECT kind FROM note WHERE id=? AND uid=?", (newpar, owner)).fetchone()[0] == "database" and cur_par != newpar:
                         raise ValueError(t("Seiten können nicht in eine Datenbank verschoben werden"))
+                if cur_par != newpar:           # Kette VOR dem Verschieben: wer bisher Zugriff hatte (Live)
+                    moved_from = share_targets(c, owner, [nid])
                 sets.append("parent_id=?"); args.append(newpar)
         except LookupError:
             raise _Reply(_bad("not found", 404))
@@ -613,9 +615,11 @@ def _note_update(uid, nid, b, origin=None):
         if "props" in b or "title" in b or "icon" in b:
             announce_row(c, owner, nid, uid, now, origin)     # Datenbank-Zeile: auch an Betrachter der Tabelle (BUG-049)
         # Seitenbaum (notes.tree): nur Felder, die /api/notes zeigt (bzw. Titelbild) - Titel nur, wenn er sich aendert
+        if moved_from is not None:          # andere Elternseite: geerbte Freigaben aendern sich (alte UND neue Kette)
+            announce_shared(c, owner, nid, [nid], moved_from)
         if ("parent_id" in b or any(k in b for k in ("icon", "cover", "tags", "pinned", "template", "locked"))
                 or ("title" in b and _title_in(b["title"]) != old[0])):
-            tree_changed(c, owner, [nid], "moved" if "parent_id" in b else "updated", origin)
+            tree_changed(c, owner, [nid], "moved" if "parent_id" in b else "updated", origin, before=moved_from)
     out = {"ok": True, "updated": now, "rev": old[3] + (1 if content else 0)}
     if srev is not None:
         out["srev"] = srev                   # neuer Schema-Stand (Client kann ihn fuer die naechste Aenderung uebernehmen)
@@ -657,11 +661,12 @@ async def api_note_move(nid: int, request: Request):
             + ("parent_id=?" if parent is not None else "parent_id IS NULL") + " ORDER BY sort NULLS FIRST, created",
             (owner, nid, parent) if parent is not None else (owner, nid))]
         sib.insert(min(index, len(sib)), nid)
+        before = share_targets(c, owner, [nid]) if me[0] != parent else None    # Kette VOR dem Verschieben
         c.execute("UPDATE note SET parent_id=? WHERE id=? AND uid=?", (parent, nid, owner))
         c.executemany("UPDATE note SET sort=? WHERE id=? AND uid=?", [(i + 1, x, owner) for i, x in enumerate(sib)])
-        if me[0] != parent:                  # andere Elternseite: geerbte Freigaben aendern sich (BUG-033)
-            announce_tree(c, owner, nid, [nid], uid, time.time(), False, origin=origin_of(request))
-        tree_changed(c, owner, [nid], "moved", origin_of(request))       # auch nur umsortiert
+        if me[0] != parent:                  # andere Elternseite: geerbte Freigaben aendern sich - alte UND neue Kette (BUG-033)
+            announce_tree(c, owner, nid, [nid], uid, time.time(), False, origin=origin_of(request), before=before)
+        tree_changed(c, owner, [nid], "moved", origin_of(request), before=before)       # auch nur umsortiert
     return JSONResponse({"ok": True, "parent_id": parent, "index": sib.index(nid)})
 
 
@@ -697,12 +702,14 @@ async def api_note_archive(nid: int, request: Request):
         if me[0] is None:
             return JSONResponse({"ok": True, "restored": 0})
         n = sum(c.execute("UPDATE note SET archived=NULL WHERE id=? AND uid=? AND archived=?", (i, owner, me[0])).rowcount for i in ids)
+        before = None
         if me[1]:             # Eltern noch archiviert (und keine Datenbank): Seite nach oben holen, sonst waere sie unsichtbar
             par = c.execute("SELECT archived, kind FROM note WHERE id=? AND uid=?", (me[1], owner)).fetchone()
             if par and par[0] is not None and par[1] != "database":
+                before = share_targets(c, owner, [nid])                 # Kette vorher (Live)
                 c.execute("UPDATE note SET parent_id=NULL WHERE id=? AND uid=?", (nid, owner))
-        announce_tree(c, owner, nid, ids, uid, time.time(), False, origin=origin_of(request))
-        tree_changed(c, owner, ids, "restored", origin_of(request))
+        announce_tree(c, owner, nid, ids, uid, time.time(), False, origin=origin_of(request), before=before)
+        tree_changed(c, owner, ids, "restored", origin_of(request), before=before)
         return JSONResponse({"ok": True, "restored": n})
 
 

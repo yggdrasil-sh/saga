@@ -243,6 +243,16 @@ async function liveTree(browser, p) {
   await q.waitForTimeout(3500);
   ok('2.2 notes.tree: Papierkorb entfernt sie aus dem Baum', !(await has('Baum-Live-Umbenannt')));
   await q.context().close();
+  // Ausschluss je Tab: zweiter Tab DERSELBEN Browser-Sitzung sieht eine Aenderung aus dem ersten (X-Saga-Tab)
+  await p.open(L);
+  const p2 = await p.context().newPage();
+  await p2.goto(BASE + '/notes#' + L); await p2.waitForSelector('#pg-editor .ce-paragraph'); await p2.waitForTimeout(3000);   // Live-Kanal steht
+  const has2 = t => p2.evaluate(t => [...document.querySelectorAll('#pg-tree .pg-name')].some(x => x.textContent === t), t);
+  const tid = await p.evaluate(() => HK.api('POST', '/api/notes', { title: 'Baum-Tab-Neu' }).then(r => r.id));
+  await p2.waitForTimeout(3000);
+  ok('2.2 notes.tree: zweiter Tab derselben Sitzung sieht die neue Seite', await has2('Baum-Tab-Neu'), { tid });
+  await p.api('DELETE', '/api/notes/' + tid);
+  await p2.close(); await p.bringToFront();       // erster Tab wieder im Vordergrund (sonst rendert der Editor gebremst)
 }
 
 // BUG-049/BUG-001: Datenbank in einer zweiten Sitzung offen - Zeile und neue Spalte aus der ersten kommen live an
@@ -308,7 +318,9 @@ async function commentSnippet(p) {
     { id: 'cl1', type: 'list', data: { style: 'checklist', meta: {}, items: [{ content: 'Milch', meta: { checked: true }, items: [] }, { content: 'Brot', meta: { checked: false }, items: [] }] } }];
   await p.api('PATCH', '/api/notes/' + id, { body: JSON.stringify({ time: Date.now(), blocks, version: '2.31.0' }) });
   for (const b of ['tb1', 'cl1']) await p.api('POST', `/api/notes/${id}/comments`, { block_id: b, body: 'Kommentar zu ' + b });
-  await p.open(id);
+  // nur Tabelle/Checkliste (kein Absatz): auf die eigenen Bloecke warten - p.open wartete sonst auf eine evtl. noch
+  // versteckte .db-row einer vorher offenen Datenbank (reihenfolgeabhaengig)
+  await p.goto(BASE + '/notes#' + id); await p.waitForSelector('#pg-editor .ce-block[data-id="tb1"]'); await p.waitForTimeout(800);
   await p.evaluate(() => HKComments.openAll()); await p.waitForTimeout(800);
   const s = await p.evaluate(() => [...document.querySelectorAll('.cm-where-t')].map(x => x.textContent));
   ok('2.1 Kommentar-Auszug Tabelle: Zellen getrennt, ohne Werkzeugleiste', s.some(x => x === 'Name · Menge · Milch · 2'), s);
