@@ -82,6 +82,24 @@ Gleiches Verhalten, gleiche Ergebnisse – nur schneller; API unverändert, `MIN
   vom Typ `numeric` ist (sonst kein Durchlauf über jeden Wert großer Listen).
 - `tools/perf`: wartet nach dem Erzeugen der Testdaten auf den Abgleich; `explain.py` zeigt zusätzlich die neuen Abfragen.
 
+### Schneller (Seitenbaum: Abgleich statt ganzer Liste)
+
+Gleiches Verhalten, nur weniger Daten; `GET /api/notes` ohne Parameter liefert byte-gleich dasselbe wie bisher, `MIN_APP`
+unverändert.
+
+- **Abgleich:** `GET /api/notes?delta=1` liefert den Baum mit einem Stand (`cursor`), `?since=<cursor>` danach nur neue,
+  geänderte und entfernte Seiten (Papierkorb, endgültig gelöscht). Passt der Stand nicht (zu alt, Neustart, Backup
+  zurückgespielt), kommt der ganze Baum (`full: true`). Erfasst wird alles, was der Baum zeigt – auch Freigabe-Symbol und
+  „neue Kommentare“. Der Baum enthält wie bisher nur eigene Seiten; „Mit mir geteilt“ kommt unverändert aus
+  `/api/shared`. Vertrag für die Apps: `docs/APP-API-LIVE.md`, Abschnitt „Seitenbaum abgleichen“.
+- **Schlank:** `?rows=0` ohne Datenbank-Einträge (`rows=only`: nur diese), `?fields=…` nur die genannten Felder.
+- **Weboberfläche:** lädt den Baum nach Aktionen, Live-Ereignissen und der Rückkehr in den Tab nur noch per Abgleich
+  (beim Öffnen und spätestens alle 30 Minuten einmal ganz).
+- Technik: ein Trigger merkt je Seite die Transaktion der letzten baum-relevanten Änderung (Tabellen `note_tseq`,
+  `note_tseq_meta`, Grabsteine gelöschter Seiten 30 Tage). Kein neuer Schema-Stand: ältere Versionen ignorieren die
+  Tabellen, Backup/Zurückspielen wie bisher (danach laden Clients einmal ganz).
+- `tools/perf`: misst zusätzlich `delta=1`, `rows=0`, `since` und „neuer Eintrag + Abgleich“; Web: Baum neu laden.
+
 ### Lastmessung (nur Werkzeuge, keine Änderung an Saga selbst)
 
 - `tools/perf/`: wiederholbare Lastmessung für Test-Stacks. `gen.py` erzeugt realistische Testdaten in drei Stufen

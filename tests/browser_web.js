@@ -215,7 +215,7 @@ async function perfTree(p) {
   const D = (await p.api('POST', '/api/notes', { kind: 'database', title: 'Schnell-DB' })).id;
   await p.api('POST', '/api/notes', { parent_id: D, title: 'Erste' });
   await p.open(D);
-  const lists = []; const onL = r => { if (/\/api\/notes$/.test(r.url()) && r.method() === 'GET') lists.push(1); }; p.on('request', onL);
+  const lists = []; const onL = r => { if (/\/api\/notes(\?|$)/.test(r.url()) && r.method() === 'GET') lists.push(1); }; p.on('request', onL);
   const before = await p.evaluate(() => HKPages.k.pages().length);
   await p.click('button.db-new-row'); await p.waitForTimeout(1500);
   p.off('request', onL);
@@ -253,6 +253,51 @@ async function liveTree(browser, p) {
   ok('2.2 notes.tree: zweiter Tab derselben Sitzung sieht die neue Seite', await has2('Baum-Tab-Neu'), { tid });
   await p.api('DELETE', '/api/notes/' + tid);
   await p2.close(); await p.bringToFront();       // erster Tab wieder im Vordergrund (sonst rendert der Editor gebremst)
+}
+
+// 2.2 Abgleich: das Web laedt den Baum nach Aktionen/notes.tree nur noch per since - der Stand im Browser muss danach
+// GENAU dem ganzen /api/notes entsprechen (Inhalt und Reihenfolge), auch nach Verschieben, Archiv, Papierkorb, Datenbank
+const treeEq = p => p.evaluate(async () => {
+  const full = await (await fetch('/api/notes', { headers: { 'X-Saga': '1', 'X-Test-Ref': '1' } })).json();
+  const f = x => JSON.stringify([x.id, x.title, x.icon, x.parent_id, x.updated, x.tags, x.pinned, x.template, x.kind, x.archived, x.locked, x.shared, x.unread]);
+  const a = full.filter(x => !x.archived).map(f), b = HKPages.k.pages().map(f);
+  return { eq: a.join('\n') === b.join('\n'), na: a.length, nb: b.length, diff: a.filter(x => b.indexOf(x) < 0).slice(0, 2).concat(b.filter(x => a.indexOf(x) < 0).slice(0, 2)) };
+});
+async function deltaWeb(browser, p) {
+  const since = [], plain = [];
+  const onR = r => { if (r.method() !== 'GET') return; if (/\/api\/notes\?since=/.test(r.url())) since.push(1); else if (/\/api\/notes$/.test(r.url()) && !r.headers()['x-test-ref']) plain.push(r.url()); };
+  const P = (await p.api('POST', '/api/notes', { title: 'Abgleich-Eltern' })).id;
+  await p.open(P);
+  p.on('request', onR);
+  const step = async (label, fn) => {
+    await fn(); await p.evaluate(() => HKPages.k.reloadList()); await p.waitForTimeout(200);
+    const r = await treeEq(p);
+    ok('2.2 Abgleich Web: ' + label + ' -> Baum = ganzes /api/notes', r.eq, r);
+  };
+  let A, B, D, R;
+  await step('neue Seiten', async () => { A = (await p.api('POST', '/api/notes', { title: 'Abgleich-A', parent_id: P })).id; B = (await p.api('POST', '/api/notes', { title: 'Abgleich-B' })).id; });
+  await step('umbenennen, Symbol, Favorit', async () => { await p.api('PATCH', '/api/notes/' + A, { title: 'Abgleich-A2', icon: '⭐', pinned: true }); });
+  await step('verschieben/umsortieren', async () => { await p.api('POST', '/api/notes/' + B + '/move', { parent_id: P, index: 0 }); });
+  await step('archivieren', async () => { await p.api('POST', '/api/notes/' + A + '/archive', { archived: true }); });
+  await step('zurueck aus dem Archiv', async () => { await p.api('POST', '/api/notes/' + A + '/archive', { archived: false }); });
+  await step('Papierkorb', async () => { await p.api('DELETE', '/api/notes/' + B); });
+  await step('wiederhergestellt', async () => { await p.api('POST', '/api/trash/' + B + '/restore'); });
+  await step('Datenbank mit Eintraegen', async () => { D = (await p.api('POST', '/api/notes', { kind: 'database', title: 'Abgleich-DB' })).id; R = (await p.api('POST', '/api/notes', { parent_id: D, title: 'Zeile 1' })).id; });
+  await step('Eintrag umbenannt, endgueltig geloescht', async () => { await p.api('PATCH', '/api/notes/' + R, { title: 'Zeile 1b' }); await p.api('DELETE', '/api/notes/' + B); await p.api('DELETE', '/api/trash/' + B); });
+  ok('2.2 Abgleich Web: Nachladen per since statt ganzer Liste', since.length >= 9 && plain.length === 0, { since: since.length, plain });
+  // Live aus einer anderen Sitzung: notes.tree -> Abgleich
+  const q = await session(browser);
+  const n = (await q.api('POST', '/api/notes', { title: 'Abgleich-Live', parent_id: P })).id;
+  await p.waitForTimeout(3500);
+  const r = await treeEq(p);
+  ok('2.2 Abgleich Web: Seite aus anderer Sitzung per notes.tree + since da', r.eq && await p.evaluate(id => !!HKPages.k.byId(id), n), r);
+  await q.context().close();
+  // nach Neuladen der Seite: wieder ganz (delta=1), Baum gleich
+  await p.reload(); await p.waitForSelector('#pg-tree li.pg-node'); await p.waitForTimeout(800);
+  const r2 = await treeEq(p);
+  ok('2.2 Abgleich Web: nach Neuladen gleicher Baum', r2.eq, r2);
+  p.off('request', onR);
+  for (const x of [n, A, D, P]) await p.api('DELETE', '/api/notes/' + x);
 }
 
 // BUG-049/BUG-001: Datenbank in einer zweiten Sitzung offen - Zeile und neue Spalte aus der ersten kommen live an
@@ -757,7 +802,7 @@ async function pasteSanitize(browser) {
     if (process.env.SAGA_ONLY === 'chatimg') { await chatThumbs(browser); throw null; }                         // nur Chat-Bilder
     if (process.env.SAGA_ONLY === 'imgclip') { await imageClipboard(browser); throw null; }                     // nur Bild kopieren/einfuegen
     if (process.env.SAGA_ONLY === 'paste') { await pasteSanitize(browser); throw null; }                        // nur Einfuegen bereinigt
-    if (process.env.SAGA_ONLY === 'perf') { const q = await session(browser); await perfTree(q); await liveTree(browser, q); throw null; }  // nur Schneller (Baum, Rueckverweise, + Neu)
+    if (process.env.SAGA_ONLY === 'perf') { const q = await session(browser); await perfTree(q); await liveTree(browser, q); await deltaWeb(browser, q); throw null; }  // nur Schneller (Baum, Rueckverweise, + Neu, Abgleich)
     const p = await session(browser);
     await enterFallback(p);
     await reloadKeeps(p);
@@ -768,6 +813,7 @@ async function pasteSanitize(browser) {
     await trashLink(p);
     await perfTree(p);
     await liveTree(browser, p);
+    await deltaWeb(browser, p);
     await dbLive(browser, p);
     await peekMove(browser, p);
     await peekEscDialog(browser, p);

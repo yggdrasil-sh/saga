@@ -59,9 +59,10 @@ derselben `id` – ein Konto ohne Zugriff erfährt so keine IDs. IDs eigener Sei
 
 1. Live-Kanal verbunden (`hello` erhalten): Abgleich-Takt **5 min** statt 60 s. Ohne Live-Kanal (Fehler, `bye`,
    Hintergrund) wie bisher 60 s.
-2. `notes.tree` mit IDs: Seitenbaum gezielt nachladen – heute `GET /api/notes` (eigene Seiten) bzw. `GET /api/shared`
-   (Seiten anderer), entprellt (z. B. 300 ms). Betrifft eine ID die gerade offene Seite und ist `op` `trashed`,
-   `archived` oder `deleted`, kommt zusätzlich wie bisher `note.changed` mit `gone: true`.
+2. `notes.tree` mit IDs: Seitenbaum gezielt nachladen – `GET /api/notes?since=…` (eigene Seiten, siehe „Seitenbaum
+   abgleichen“; ältere Server: `GET /api/notes`) bzw. `GET /api/shared` (Seiten anderer), entprellt (z. B. 300 ms).
+   Betrifft eine ID die gerade offene Seite und ist `op` `trashed`, `archived` oder `deleted`, kommt zusätzlich wie
+   bisher `note.changed` mit `gone: true`.
 3. `full: true`, `reset` oder ein Wiederaufbau ohne Nachholen: alles neu laden.
 4. Eigene Aktionen weiter wie bisher selbst nachziehen (das Ereignis kommt nicht an das auslösende Gerät zurück).
 5. `shared.changed`: „Mit mir geteilt“ (`GET /api/shared`) neu laden – kommt jetzt auch beim Verschieben aus einem bzw.
@@ -69,6 +70,56 @@ derselben `id` – ein Konto ohne Zugriff erfährt so keine IDs. IDs eigener Sei
 
 Die Weboberfläche nutzt das Ereignis bereits: Andere Tabs (auch derselben Browser-Sitzung) und Geräte zeigen neue,
 umbenannte, verschobene oder gelöschte Seiten ohne Neuladen.
+
+## Seitenbaum abgleichen (`GET /api/notes?since=…`)
+
+Statt nach jedem `notes.tree` (und im Sicherheitsnetz-Takt) den ganzen Baum zu laden, holt eine App nur, was sich seit
+ihrem letzten Stand geändert hat. Alles opt-in: **`GET /api/notes` ohne Parameter bleibt byte-gleich** (Liste wie
+bisher); ältere Server ignorieren die Parameter und liefern die Liste – daran erkennt die App, dass es keinen Abgleich
+gibt (Antwort ist ein Array statt eines Objekts). `MIN_APP` ändert sich nicht.
+
+| Parameter | Wirkung |
+|---|---|
+| `delta=1` | Ganzer Baum als Objekt mit Stand: `{"cursor": "…", "full": true, "notes": […], "removed": []}` |
+| `since=<cursor>` | Nur Geändertes seit `cursor`: `{"cursor": "…", "full": false, "notes": [neu/geändert], "removed": [ids]}` |
+| `rows=0` | ohne Datenbank-Einträge (Seiten, deren Elternseite eine Datenbank ist); `rows=only`: nur diese |
+| `fields=a,b,…` | nur diese Felder je Seite (`id` immer; unbekannte Namen werden ignoriert) |
+
+Die Parameter lassen sich kombinieren (`?since=…&rows=0`); `rows`/`fields` ohne `delta`/`since` liefern eine Liste wie
+bisher, nur gefiltert. Je Seite dieselben Felder wie bisher (`id, title, icon, parent_id, updated, tags, pinned,
+template, kind, archived, locked, shared, unread`), mit `delta`/`since` zusätzlich **`sort`** (Zahl oder `null`) und
+**`created`** – damit sortiert die App eingearbeitete Seiten wie der Server: `sort` aufsteigend, `null` zuerst, dann
+`created`, dann `id` (das ist die Reihenfolge der Liste; Geschwister im Baum stehen in dieser Reihenfolge).
+
+**Einarbeiten:** `full: true` → Liste ersetzen. `full: false` → jede ID aus `removed` entfernen (auch IDs, die die App
+nicht kennt – einfach ignorieren), jede Seite aus `notes` per `id` ersetzen bzw. hinzufügen, danach sortieren. Den
+neuen `cursor` merken (er ist undurchsichtig – nicht zerlegen). `removed` meldet: in den Papierkorb gelegt, endgültig
+gelöscht, mit `rows=0` auch „ist jetzt ein Datenbank-Eintrag“. Archivierte Seiten bleiben wie bisher in der Liste
+(`archived: true`).
+
+**`full: true` statt Abgleich** (immer korrekt, nur größer), wenn der Stand nicht passt: unbekannt/kaputt, älter als
+30 Tage nach dem Aufräumen gelöschter Seiten, nach einem Neustart des Servers (z. B. nach dem Zurückspielen eines
+Backups) oder auf Postgres < 13. `cursor: null` → beim nächsten Mal wieder `delta=1`.
+
+**Rechte:** Der Baum enthält nur **eigene** Seiten des Kontos – der Abgleich auch. Seiten anderer („Mit mir geteilt“)
+kommen weiter ganz aus `GET /api/shared` (nach `shared.changed`). Eine Freigabe hinzufügen/entfernen ändert das Feld
+`shared` der eigenen Seite und kommt im Abgleich mit; ebenso neue Kommentare anderer und „gelesen“ (`unread`).
+
+Beispiel:
+
+```
+GET /api/notes?delta=1
+→ {"cursor":"3f9c0a1b2c4d.88412","full":true,"removed":[],
+   "notes":[{"id":812,"title":"Projekt","icon":"","parent_id":null,"updated":1760860000.1,"tags":[],"pinned":false,
+             "template":false,"kind":"page","archived":false,"locked":false,"shared":true,"unread":false,
+             "sort":1.0,"created":1760000000.0}, …]}
+GET /api/notes?since=3f9c0a1b2c4d.88412
+→ {"cursor":"3f9c0a1b2c4d.88430","full":false,"notes":[{"id":815,…}],"removed":[790]}
+```
+
+Empfehlung: beim Start `delta=1` (oder Zwischenspeicher + `since`), nach `notes.tree` und im Takt `since`. Ein Stand
+ist je Konto gültig, nicht je Gerät – nach Abmelden/Kontowechsel verwerfen. Geteilte Seiten in derselben Antwort gibt
+es nicht; der Datenbank-Inhalt (Eigenschaften, Zeilen einer Ansicht) kommt weiter aus `/rows`.
 
 ## Kompression und ETag
 

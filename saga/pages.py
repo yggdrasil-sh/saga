@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import clean_line, connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
-from saga import bus
+from saga import bus, treesync
 from saga.core import BASE_URL, E, STATE_DIR, account_lang, _api_guard, _bad, _body, _json_load, _session_user, origin_of, t, user_error
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
@@ -249,6 +249,13 @@ def api_notes(request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
+    q = request.query_params
+    if any(k in q for k in ("rows", "fields", "delta", "since")):    # schlank/Abgleich (2.2, saga/treesync.py) - nur auf Wunsch
+        rows = q.get("rows") if q.get("rows") in ("0", "only") else "1"
+        with _db() as c:
+            out = treesync.tree(c, uid, rows=rows, fields=treesync.parse_fields(q.get("fields")),
+                                delta=q.get("delta") == "1", since=q.get("since"))
+        return JSONResponse(out, headers={"Cache-Control": "no-store"})
     with _db() as c:
         _purge_old(c, uid, every=3600)             # Papierkorb-Frist: hoechstens stuendlich je Konto (nicht bei jedem Baum)
         rows = c.execute(f"SELECT {NOTE_META_COLS}, archived, locked FROM note WHERE uid=? AND deleted_at IS NULL ORDER BY sort NULLS FIRST, created",

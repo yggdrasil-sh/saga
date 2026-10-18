@@ -142,6 +142,12 @@ def bench_read():
     I, a, b = INFO, INFO["cookie_a"], INFO["cookie_b"]
     print("Lesen", flush=True)
     measure("GET /api/notes (Seitenbaum, A)", "GET", "/api/notes", a)
+    # Abgleich (2.2): ganz mit Stand, ohne Datenbank-Eintraege, nur Geaendertes (aeltere Server: ignorieren die Parameter)
+    measure("GET /api/notes?delta=1 (Seitenbaum mit Stand, A)", "GET", "/api/notes?delta=1", a)
+    measure("GET /api/notes?rows=0 (ohne DB-Eintraege, A)", "GET", "/api/notes?rows=0", a)
+    _, _, _, d = req("GET", "/api/notes?delta=1", a)
+    if isinstance(d, dict) and d.get("cursor"):
+        measure("GET /api/notes?since (unveraendert, A)", "GET", "/api/notes?since=" + urllib.parse.quote(d["cursor"]), a)
     measure("GET /api/shared (Mit mir geteilt, B)", "GET", "/api/shared", b)
     measure("GET /api/notes (B, eigene 50)", "GET", "/api/notes", b)
     measure("GET /api/notes/{id} normale Seite", "GET", f"/api/notes/{I['page_normal']}", a)
@@ -188,7 +194,18 @@ def bench_write():
     n = ARGS.n
     # Neuer Eintrag in der groessten DB: nur POST, dann wie das Web (POST + /api/notes + /api/shared), wie die App vor 2.1 (+ /rows)
     ts, ss, cs, web, app, made = [], [], [], [], [], []
+    _, _, _, d0 = req("GET", "/api/notes?delta=1", a)
+    cur = d0.get("cursor") if isinstance(d0, dict) else None
+    sync = []
     for i in range(n):
+        if cur:                                        # wie das Web ab 2.2: POST + Abgleich (since) + /api/shared
+            s, bts, dt, d = req("POST", "/api/notes", a, {"parent_id": I["db_big"], "title": f"perf s{i}", "props": {"status": "todo"}})
+            if d and d.get("id"):
+                made.append(d["id"])
+            t0 = time.perf_counter()
+            _, _, _, dd = req("GET", "/api/notes?since=" + urllib.parse.quote(cur), a); req("GET", "/api/shared", a)
+            sync.append(dt + time.perf_counter() - t0)
+            cur = (dd or {}).get("cursor") or cur
         s, bts, dt, d = req("POST", "/api/notes", a, {"parent_id": I["db_big"], "title": f"perf {i}", "props": {"status": "todo"}})
         ts.append(dt); ss.append(bts); cs.append(s)
         if d and d.get("id"):
@@ -202,6 +219,8 @@ def bench_write():
     stats("POST /api/notes neuer DB-Eintrag (nur Anlegen)", ts, ss, cs, "Schreiben")
     stats("Neuer Eintrag + Nachladen Web (notes+shared)", web, [0], [200], "Ablauf")
     stats("Neuer Eintrag + Nachladen inkl. /rows", app, [0], [200], "Ablauf")
+    if sync:
+        stats("Neuer Eintrag + Abgleich Web (since+shared)", sync, [0], [200], "Ablauf")
     # Zeile aendern (Status) - announce_row/Live
     ts, cs = [], []
     for i in range(n):

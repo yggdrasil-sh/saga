@@ -804,6 +804,104 @@ def init_search(c):
         print(f"saga: Suche ohne Trigramm-Index (pg_trgm nicht verfuegbar: {str(ex).strip()[:200]})", flush=True)
 
 
+# Seitenbaum-Abgleich (2.2, saga/treesync.py: GET /api/notes?since=...): je Seite die Transaktion (xid8 als BIGINT) der
+# letzten Aenderung an etwas, das der Seitenbaum zeigt - Seite selbst (Titel, Symbol, Eltern, Reihenfolge, Tags, Favorit,
+# Vorlage, Archiv, Sperre, Papierkorb, geaendert), ihre Freigaben (Symbol "geteilt") und Kommentare/Gelesen-Stand (Punkt
+# "neue Kommentare"). Geloeschte Seiten bleiben als gone=1 stehen (Grabstein, nach TOMB_DAYS weg). Eigene Tabellen und
+# Trigger: kein neuer Schema-Stand; aeltere Versionen ignorieren sie (die Trigger arbeiten dort weiter). Die Kennung
+# "epoch" wird bei jedem Start neu gewuerfelt: nach Zurueckspielen eines Backups oder Wechsel des Datenbank-Servers
+# passen alte Stände der Clients nicht mehr -> sie laden einmal den ganzen Baum.
+TREE_SEQ_SQL = """
+CREATE TABLE IF NOT EXISTS note_tseq (
+    uid TEXT NOT NULL, id BIGINT NOT NULL, xid BIGINT NOT NULL, gone INTEGER NOT NULL DEFAULT 0,
+    at DOUBLE PRECISION NOT NULL, PRIMARY KEY (uid, id));
+CREATE INDEX IF NOT EXISTS note_tseq_xid ON note_tseq (uid, xid);
+CREATE TABLE IF NOT EXISTS note_tseq_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+CREATE OR REPLACE FUNCTION saga_tseq_bump(u TEXT, n BIGINT, g INTEGER) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    IF u IS NULL OR n IS NULL THEN RETURN; END IF;
+    -- g NULL: Freigabe/Kommentar - Grabstein-Kennung nicht aendern
+    INSERT INTO note_tseq (uid, id, xid, gone, at)
+        VALUES (u, n, pg_current_xact_id()::text::bigint, COALESCE(g, 0), extract(epoch FROM clock_timestamp()))
+        ON CONFLICT (uid, id) DO UPDATE SET xid = EXCLUDED.xid, at = EXCLUDED.at,
+                                            gone = CASE WHEN g IS NULL THEN note_tseq.gone ELSE EXCLUDED.gone END;
+END $$;
+CREATE OR REPLACE FUNCTION saga_note_tseq() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    -- Datenbank weg (oder Art geaendert): ihre Eintraege sind fuer "?rows=0/only" jetzt etwas anderes -> mit melden
+    IF (TG_OP = 'DELETE' AND OLD.kind = 'database')
+       OR (TG_OP = 'UPDATE' AND (NEW.kind IS DISTINCT FROM OLD.kind
+                                 OR (OLD.kind = 'database' AND (NEW.uid IS DISTINCT FROM OLD.uid OR NEW.id IS DISTINCT FROM OLD.id)))) THEN
+        PERFORM saga_tseq_bump(n.uid, n.id, NULL) FROM note n WHERE n.uid = OLD.uid AND n.parent_id = OLD.id;
+    END IF;
+    IF TG_OP = 'DELETE' THEN
+        PERFORM saga_tseq_bump(OLD.uid, OLD.id, 1);
+        RETURN NULL;
+    END IF;
+    IF TG_OP = 'UPDATE' THEN
+        IF (NEW.id, NEW.uid, NEW.title, NEW.icon, NEW.parent_id, NEW.updated, NEW.tags, NEW.pinned, NEW.is_template, NEW.kind,
+            NEW.archived, NEW.locked, NEW.deleted_at, NEW.sort, NEW.created)
+           IS NOT DISTINCT FROM
+           (OLD.id, OLD.uid, OLD.title, OLD.icon, OLD.parent_id, OLD.updated, OLD.tags, OLD.pinned, OLD.is_template, OLD.kind,
+            OLD.archived, OLD.locked, OLD.deleted_at, OLD.sort, OLD.created) THEN
+            RETURN NULL;
+        END IF;
+        IF NEW.uid IS DISTINCT FROM OLD.uid OR NEW.id IS DISTINCT FROM OLD.id THEN
+            PERFORM saga_tseq_bump(OLD.uid, OLD.id, 1);
+        END IF;
+    END IF;
+    PERFORM saga_tseq_bump(NEW.uid, NEW.id, CASE WHEN NEW.deleted_at IS NULL THEN 0 ELSE 1 END);
+    RETURN NULL;
+END $$;
+CREATE OR REPLACE FUNCTION saga_share_tseq() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP <> 'INSERT' THEN PERFORM saga_tseq_bump(OLD.owner_uid, OLD.note_id, NULL); END IF;
+    IF TG_OP <> 'DELETE' THEN PERFORM saga_tseq_bump(NEW.owner_uid, NEW.note_id, NULL); END IF;
+    RETURN NULL;
+END $$;
+CREATE OR REPLACE FUNCTION saga_seen_tseq() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE r RECORD;
+BEGIN
+    FOR r IN SELECT owner_uid, note_id FROM note_comment
+              WHERE id IN (CASE WHEN TG_OP = 'DELETE' THEN OLD.thread_id ELSE NEW.thread_id END,
+                           CASE WHEN TG_OP = 'INSERT' THEN NEW.thread_id ELSE OLD.thread_id END) LOOP
+        PERFORM saga_tseq_bump(r.owner_uid, r.note_id, NULL);
+    END LOOP;
+    RETURN NULL;
+END $$;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'note_tseq_t' AND tgrelid = 'note'::regclass) THEN
+        CREATE TRIGGER note_tseq_t AFTER INSERT OR UPDATE OR DELETE ON note FOR EACH ROW EXECUTE FUNCTION saga_note_tseq();
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'note_share_tseq_t' AND tgrelid = 'note_share'::regclass) THEN
+        CREATE TRIGGER note_share_tseq_t AFTER INSERT OR UPDATE OR DELETE ON note_share FOR EACH ROW EXECUTE FUNCTION saga_share_tseq();
+    END IF;
+    -- Kommentare: dieselbe Funktion wie Freigaben (owner_uid, note_id)
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'note_comment_tseq_t' AND tgrelid = 'note_comment'::regclass) THEN
+        CREATE TRIGGER note_comment_tseq_t AFTER INSERT OR UPDATE OR DELETE ON note_comment FOR EACH ROW EXECUTE FUNCTION saga_share_tseq();
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'note_seen_tseq_t' AND tgrelid = 'note_comment_seen'::regclass) THEN
+        CREATE TRIGGER note_seen_tseq_t AFTER INSERT OR UPDATE OR DELETE ON note_comment_seen FOR EACH ROW EXECUTE FUNCTION saga_seen_tseq();
+    END IF;
+END $$;
+"""
+
+
+def init_tree_seq(c):
+    """Abgleich-Stand fuer den Seitenbaum (siehe TREE_SEQ_SQL) anlegen und die Kennung neu wuerfeln. Ohne pg_current_xact_id
+    (Postgres < 13) oder ohne Rechte: kein Abgleich - GET /api/notes?since=... liefert dann immer den ganzen Baum."""
+    import secrets
+    c.execute("SAVEPOINT saga_tseq")
+    try:
+        c.execute(TREE_SEQ_SQL)
+        c.execute("INSERT INTO note_tseq_meta (k, v) VALUES ('epoch', %s) ON CONFLICT (k) DO UPDATE SET v = EXCLUDED.v",
+                  (secrets.token_hex(6),))
+        c.execute("RELEASE SAVEPOINT saga_tseq")
+    except psycopg.Error as ex:
+        c.execute("ROLLBACK TO SAVEPOINT saga_tseq")
+        print(f"saga: Seitenbaum-Abgleich (since) nicht verfuegbar: {str(ex).strip()[:200]}", flush=True)
+
+
 def init_schema():
     """Schema anlegen bzw. auf den Stand dieser Version bringen. Mehrere Prozesse gleichzeitig: Advisory-Lock."""
     with psycopg.connect(DATABASE_URL, autocommit=False) as c:
@@ -819,6 +917,7 @@ def init_schema():
             print(f"saga: Backup vor dem Update: {p}", flush=True)
         c.execute(SCHEMA)
         init_search(c)
+        init_tree_seq(c)
         if cur is None:
             c.execute("INSERT INTO schema_version (v) VALUES (1)")
             cur = 1

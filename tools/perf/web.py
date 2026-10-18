@@ -89,6 +89,14 @@ def main():
         rec("Suche: ohne Treffer bis Hinweis", timed(p, lambda: p.fill("#pg-search", "zzkeintrefferzz"),
                                                       "() => !!document.querySelector('#pg-results .pg-noresult')"), **lt(p))
         p.fill("#pg-search", "")
+        # Baum neu laden wie nach jeder Aktion/notes.tree (loadList; ab 2.2 per Abgleich): unveraendert und nach Umbenennen
+        js_reload = "() => { var t = performance.now(); return window.HKPages.k.reloadList().then(function () { return performance.now() - t; }); }"
+        js_rename = ("(id) => fetch('/api/notes/' + id, {method: 'PATCH', credentials: 'same-origin', headers: {'X-Saga': '1', "
+                     "'Content-Type': 'application/json'}, body: JSON.stringify({title: 'perf ' + Date.now()})}).then(function () {"
+                     " var t = performance.now(); return window.HKPages.k.reloadList().then(function () { return performance.now() - t; }); })")
+        for label, js, arg in (("unveraendert", js_reload, None), ("nach Umbenennen", js_rename, info["page_normal"])):
+            ms = sorted(p.evaluate(js, arg) if arg else p.evaluate(js) for _ in range(5))
+            rec(f"Baum neu laden ({label}, Median von 5)", ms[2], **lt(p))
         try:
             db_steps(p, cdp, info, reqs, a.db_timeout * 1000)
         except Exception as ex:                       # Zeitueberschreitung: festhalten, mit frischem Tab weitermachen
