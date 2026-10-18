@@ -183,6 +183,11 @@ def run():
     s, d = CT.req("POST", "/api/chats", B.k, {"kind": "dm", "user": "cl-a"})
     ok("B oeffnet den Direkt-Chat wieder bewusst (neu beginnen) -> in der Liste, leer", s == 200 and d["chat"]["id"] == dm
        and dm in chats(B) and texts(B, dm) == [])
+    s, _, gm = A.send(dm, "Gleich wieder weg")
+    CT.req("DELETE", f"/api/chats/{dm}/messages/{gm['id']}", A.k)       # neueste Nachricht geloescht: last_seq > MAX(seq)
+    s, d = CT.req("DELETE", f"/api/chats/{dm}?scope=me", B.k)
+    ok(f"Leeren nach geloeschter letzter Nachricht: Direkt-Chat trotzdem aus Bs Liste ({s})", s == 200 and dm not in chats(B))
+    CT.req("POST", "/api/chats", B.k, {"kind": "dm", "user": "cl-a"})
 
     # --- Freie Gruppe: fuer mich, Rechte, fuer alle ----------------------------------------------------------------
     sC = CT.Stream(Cc.k)

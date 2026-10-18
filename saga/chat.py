@@ -1165,6 +1165,15 @@ def _drop_notifs(c, uids, cid):
             bus.emit_after(c, "notification.read", {"uid": u, "ids": ids, "unread": notify.count_unread(c, u)})
 
 
+def _floor(c, cid):
+    """Grenze fuer "geloescht bis": sperrt die Chat-Zeile (FOR UPDATE wartet auf laufende Sende-Transaktionen, die per
+    Fremdschluessel FOR KEY SHARE halten - deren Nachricht ist danach sichtbar und faellt nicht unbemerkt unter die
+    Grenze) und nimmt das Groessere aus neuester Nachricht und chat.last_seq (die letzte Nachricht kann geloescht sein)."""
+    last = c.execute("SELECT last_seq FROM chat WHERE id=? FOR UPDATE", (cid,)).fetchone()
+    top = c.execute("SELECT COALESCE(MAX(seq), 0) FROM chat_msg WHERE chat_id=?", (cid,)).fetchone()[0]
+    return max(top, (last[0] or 0) if last else 0)
+
+
 def clear_for(c, uid, ch):
     """"Fuer mich loeschen": Grenze cleared_seq = neueste Nachricht; die fuer uid versiegelten Inhaltsschluessel (alle
     eigenen Geraete + backup:<uid>) dieser Nachrichten werden geloescht - der Server liefert sie nie mehr aus, und selbst
@@ -1172,7 +1181,7 @@ def clear_for(c, uid, ch):
     Direkt-Chat: aus der Liste, bis eine neue Nachricht kommt; sonst archiviert. Der Name einer freien Gruppe (kind
     'title') bleibt lesbar. -> (cleared_seq, Anzahl entfernter Schluessel)"""
     now = time.time()
-    floor = c.execute("SELECT COALESCE(MAX(seq), 0) FROM chat_msg WHERE chat_id=?", (ch["id"],)).fetchone()[0]
+    floor = _floor(c, ch["id"])
     rcpt = [r[0] for r in c.execute("SELECT id FROM chat_device WHERE uid=?", (uid,))] + ["backup:" + uid]
     n = c.execute(f"DELETE FROM chat_msg_key WHERE recipient IN ({','.join('?' * len(rcpt))}) AND msg_seq IN "
                   "(SELECT seq FROM chat_msg WHERE chat_id=? AND seq<=? AND kind<>'title')", (*rcpt, ch["id"], floor)).rowcount
@@ -1189,7 +1198,7 @@ def _wipe_history(c, ch):
     """Verlauf fuer alle loeschen (Gruppen-/Seiten-Chat, der Chat selbst bleibt): Nachrichten samt Schluesseln, Anhaenge,
     KI-Belege, beendete Anrufe. -> (Datei-ids, Anzahl Nachrichten)"""
     cid = ch["id"]
-    now, top = time.time(), c.execute("SELECT COALESCE(MAX(seq), 0) FROM chat_msg WHERE chat_id=?", (cid,)).fetchone()[0]
+    now, top = time.time(), _floor(c, cid)
     # Grenze fuer alle Mitglieder: Clients zeigen "Der bisherige Verlauf wurde geloescht" statt "nicht lesbar"
     c.execute("INSERT INTO chat_pref (chat_id, uid, cleared_seq, cleared_at) SELECT ?, uid, ?, ? FROM chat_member WHERE chat_id=? "
               "AND left_at IS NULL ON CONFLICT (chat_id, uid) DO UPDATE SET cleared_seq=GREATEST(chat_pref.cleared_seq, EXCLUDED.cleared_seq), "
