@@ -12,6 +12,7 @@ pillow>=10.4
 pillow-heif>=0.18       # HEIC/HEIF-Profilbilder (iPhone), saga/avatars.py
 psycopg[binary]>=3.2
 psycopg-pool>=3.2
+orjson>=3.10             # schnellere JSON-Antworten (saga/core.py); ohne: wie bisher json
 cryptography>=42
 segno>=1.6
 webauthn==3.0.1           # Passkeys (WebAuthn/FIDO2) pruefen - py_webauthn, saga/mfa.py

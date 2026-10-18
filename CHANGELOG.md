@@ -16,6 +16,32 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Schneller (Server: Suche, Freigaben, Rückverweise, Datenbank-Zeilen, JSON)
+
+Gleiches Verhalten, gleiche Ergebnisse – nur schneller; API unverändert, `MIN_APP` unverändert.
+
+- **Suche** lädt und parst nicht mehr jede Seite: Saga leitet beim Speichern einen Suchtext ab (Titel, Klartext, Tags in
+  Kleinbuchstaben) und sucht darin per `LIKE '%…%'` mit Trigramm-Index (`pg_trgm`, im Postgres-Image enthalten) –
+  dieselbe Teilwort-Suche wie bisher, auch für Thai ohne Wortgrenzen, Russisch, Umlaute, `%`/`_` im Suchbegriff.
+  Geprüft werden nur noch die Kandidaten, mit genau der bisherigen Trefferlogik (Ausschnitt, Rollen, in fremden Seiten
+  nur der sichtbare Text). Ohne `pg_trgm` (eigener Postgres ohne Erweiterung) gleiches Ergebnis ohne Index.
+  Einzige Änderung: Bei mehr als 500 für dich geteilten Seiten eines Kontos sind deren Treffer jetzt durchgehend nach
+  Änderungsdatum sortiert (bisher blockweise je 500 Seiten).
+- **Freigaben** (`/api/shared`, Startseite, Suche, Rückverweise, Export, Bilder in geteilten Seiten): Die sichtbaren
+  Seiten kommen aus einer rekursiven Abfrage ab den Freigaben statt aus dem ganzen Seitenbaum der anderen Person – gleiche
+  Rollen und Vererbung (Papierkorb, Archiv und Vorlagen unterbrechen wie bisher).
+- **Rückverweise** aus einer Verweis-Tabelle statt Volltext-Scan über alle Inhalte; **Datenbank-Zeilen** (`/rows`,
+  Widget) mit gespeichertem Vorschaubild statt jeden Inhalt zu lesen.
+- Abgeleitete Daten liegen in eigenen Tabellen (`note_derived`, `note_link`, `note_stale`); ein Trigger merkt jede
+  Änderung an Titel, Inhalt, Format oder Tags vor, ein Hintergrund-Abgleich arbeitet sie ab (beim ersten Start einmal
+  alle Seiten, etwa 1–2 s je 1.000 Seiten). Noch nicht abgeglichene Seiten prüft Saga wie bisher direkt am Inhalt – das
+  Ergebnis hängt nie vom Stand des Abgleichs ab. Kein neuer Schema-Stand: Ein Wechsel zurück auf eine ältere Version
+  geht ohne Backup (die Tabellen werden dort ignoriert, der Trigger arbeitet weiter).
+- JSON-Antworten mit `orjson` (gleiche Ausgabe; nur sehr kleine Kommazahlen wie `1e-05` erscheinen als `0.00001`,
+  derselbe Wert). Abschaltbar mit `SAGA_ORJSON=0`. Die Datenbank-Schicht wandelt Zeilen nur noch um, wenn eine Spalte
+  vom Typ `numeric` ist (sonst kein Durchlauf über jeden Wert großer Listen).
+- `tools/perf`: wartet nach dem Erzeugen der Testdaten auf den Abgleich; `explain.py` zeigt zusätzlich die neuen Abfragen.
+
 ### Lastmessung (nur Werkzeuge, keine Änderung an Saga selbst)
 
 - `tools/perf/`: wiederholbare Lastmessung für Test-Stacks. `gen.py` erzeugt realistische Testdaten in drei Stufen

@@ -7,6 +7,7 @@ import threading
 import time
 from html import escape as html_escape
 from html.parser import HTMLParser
+from itertools import islice
 from urllib.parse import urlparse
 import httpx
 from fastapi import Request
@@ -732,7 +733,7 @@ async def api_note_search(request: Request):
     tag = str(b.get("tag", "")).strip().lower()[:TAG_MAX_LEN]
     if not q and not tag:
         return JSONResponse([])
-    hits = await run_in_threadpool(_note_search, uid, q, tag)      # laedt und parst alle Seiten: nicht im Event-Loop
+    hits = await run_in_threadpool(_note_search, uid, q, tag)      # Datenbank + Pruefen der Kandidaten: nicht im Event-Loop
     return JSONResponse(hits, headers={"Cache-Control": "no-store"})
 
 
@@ -753,11 +754,88 @@ def _search_hit(r, q, tag):
     return d
 
 
+def _touches(q, p):
+    """Kann ein Treffer von q den Platzhalter p (Verweis auf eine Seite ohne Zugriff) beruehren - ganz, teilweise oder
+    ueber seinen Rand hinaus? Dann kommen fuer die Suche in fremden Seiten alle Seiten mit Verweisen in Frage."""
+    if not q or not p:
+        return False
+    return (q in p or p in q or any(q.startswith(p[i:]) for i in range(1, len(p)))
+            or any(q.endswith(p[:i]) for i in range(1, len(p))))
+
+
+SEARCH_PAGE = 200                  # Kandidaten je Abfrage (waechst je Folgeseite x4 bis 5000)
+SEARCH_IDS_SQL = 2000              # bis zu so vielen sichtbaren fremden Seiten: als Liste an die Abfrage, darueber hier filtern
+
+
+def _search_cands(c, owner, q, tag, ids=None, masked=False):
+    """Kandidaten-ids der Seiten von owner, neueste zuerst (updated, id absteigend) - eine Obermenge der Treffer, geprueft
+    wird danach wie bisher mit _search_hit: abgeglichene Seiten, deren Suchtext passt (saga.pageindex; bei masked auch
+    alle mit Seitenverweisen), dazu jede noch nicht abgeglichene Seite. Seitenweise (LIMIT), damit die Suche bei
+    haeufigen Woertern nach den ersten 50 Treffern aufhoert. ids: nur diese Seiten (Freigaben), sonst eigene ohne Archiv."""
+    from saga.pageindex import SEP, kick, like_any
+    conds, args = [], []
+    if q:
+        conds.append("d.search LIKE ?"); args.append(like_any(q))
+    if tag:
+        conds.append("d.tags LIKE ?"); args.append(like_any(SEP + tag + SEP))
+    keep = None
+    if ids is not None and len(ids) > SEARCH_IDS_SQL:
+        # Viele sichtbare Seiten: ohne die lange id-Liste abfragen (Index nach Datum, bricht frueh ab) und hier filtern
+        keep, scope, sargs = set(ids), "TRUE", []
+    else:
+        scope, sargs = ("n.id = ANY(?)", [ids]) if ids is not None else ("n.archived IS NULL", [])
+    base = f"n.uid=? AND n.deleted_at IS NULL AND {scope}"
+    match = " AND ".join(conds)
+    if masked:
+        match = f"({match} OR EXISTS (SELECT 1 FROM note_link l WHERE l.src=n.id))"
+    # noch nicht abgeglichene Seiten: erst ihre ids (meist keine), dann gezielt - unabhaengig von der Statistik von note_stale
+    sids = [r[0] for r in c.execute("SELECT note_id FROM note_stale WHERE uid=?", (owner,)).fetchall()]
+    stale = sorted((r for r in c.execute(f"SELECT n.updated, n.id FROM note n WHERE n.id = ANY(?) AND {base}",
+                                         (sids, owner, *sargs)).fetchall() if keep is None or r[1] in keep), reverse=True) if sids else []
+    skip = {i for _, i in stale}
+    if stale:
+        kick()                             # Abgleich gleich anstossen (sonst spaetestens nach pageindex.IDLE)
+    k, last, size = 0, None, SEARCH_PAGE if q else SEARCH_PAGE * 25     # nur Tag: wenige Treffer, auf einmal (Tag-Index)
+    while True:
+        rows = c.execute(f"SELECT n.updated, n.id FROM note n JOIN note_derived d ON d.note_id=n.id WHERE {base} AND {match}"
+                         + (" AND (n.updated, n.id) < (?, ?)" if last else "") + " ORDER BY n.updated DESC, n.id DESC LIMIT ?",
+                         (owner, *sargs, *args, *(last or ()), size)).fetchall()
+        for r in rows:
+            while k < len(stale) and stale[k] > tuple(r):
+                yield stale[k][1]
+                k += 1
+            if r[1] not in skip and (keep is None or r[1] in keep):
+                yield r[1]
+        if len(rows) < size:
+            break
+        last, size = tuple(rows[-1]), min(size * 4, 5000)
+    for _, i in stale[k:]:
+        yield i
+
+
+def _search_rows(c, owner, cands, body=True):
+    """Zeilen (NOTE_META_COLS..., body, format) der Kandidaten in deren Reihenfolge - Inhalte in Portionen
+    (body=False: nur Tag-Filter, der Inhalt wird nicht gebraucht -> None)."""
+    it = iter(cands)
+    while True:
+        part = list(islice(it, 100))
+        if not part:
+            return
+        rows = {r[0]: r for r in c.execute(f"SELECT {NOTE_META_COLS}, {'body' if body else 'NULL'}, format FROM note "
+                                           "WHERE uid=? AND id = ANY(?)", (owner, part)).fetchall()}
+        for x in part:
+            if x in rows:
+                yield rows[x]
+
+
 def _note_search(uid, q, tag):
-    """Eigene Seiten, danach fuer mich freigegebene (Mengen-Abfrage je Eigentuemer, mit role/owner) - hoechstens 50."""
+    """Eigene Seiten (neueste zuerst), danach fuer mich freigegebene (je Eigentuemer neueste zuerst, mit role/owner) -
+    hoechstens 50. Treffer wie bisher (_search_hit: Teilwort in Titel, Inhalt oder Tag, Gross/Klein egal; fremde Seiten
+    nur im sichtbaren Text), aber nur fuer Kandidaten aus dem Suchtext-Index statt fuer jede Seite (saga.pageindex)."""
     hits = []
     with _db() as c:
-        for r in c.execute(f"SELECT {NOTE_META_COLS}, body, format FROM note WHERE uid=? AND deleted_at IS NULL AND archived IS NULL ORDER BY updated DESC", (uid,)):
+        c.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")     # ein Datenstand fuer alle Abfragen
+        for r in _search_rows(c, uid, _search_cands(c, uid, q, tag), bool(q)):
             d = _search_hit(r, q, tag)
             if d:
                 hits.append(d)
@@ -767,23 +845,23 @@ def _note_search(uid, q, tag):
         vis = viewer(acc)
         owners = acc.owners()
         nm = names(c, owners)
+        masked = _touches(q, t("Seite ohne Zugriff").lower())
         for o in owners:
             roles = acc.tree(o)
-            ids = list(roles)
-            for k in range(0, len(ids), 500):
-                part = ids[k:k + 500]
-                for r in c.execute(f"SELECT {NOTE_META_COLS}, body, format FROM note WHERE uid=? AND deleted_at IS NULL AND id IN "
-                                   f"({','.join('?' * len(part))}) ORDER BY updated DESC", (o, *part)):
+            if not roles:
+                continue
+            for r in _search_rows(c, o, _search_cands(c, o, q, tag, list(roles), masked), bool(q)):
+                if q:
                     r = tuple(r[:9]) + (mask_links(r[9], r[10], vis), r[10])      # Suche nur im sichtbaren Text
-                    d = _search_hit(r, q, tag)
-                    if d:
-                        d.update(role=roles[r[0]], pinned=False, owner={"name": nm.get(o) or o, "username": o, "me": False,
-                                                                             "avatar": nm.avatar(o)})
-                        if d["parent_id"] not in roles:
-                            d["parent_id"] = None
-                        hits.append(d)
-                        if len(hits) >= 50:
-                            return hits
+                d = _search_hit(r, q, tag)
+                if d:
+                    d.update(role=roles[r[0]], pinned=False, owner={"name": nm.get(o) or o, "username": o, "me": False,
+                                                                         "avatar": nm.avatar(o)})
+                    if d["parent_id"] not in roles:
+                        d["parent_id"] = None
+                    hits.append(d)
+                    if len(hits) >= 50:
+                        return hits
     return hits
 
 
@@ -794,6 +872,7 @@ def api_note_backlinks(nid: int, request: Request):
     if not uid:
         return _bad("unauthorized", 401)
     with _db() as c:
+        c.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
         acc = Access(c, uid)
         owner, role, err = access(c, uid, nid, "view", acc)
         if err is not None:
@@ -801,10 +880,16 @@ def api_note_backlinks(nid: int, request: Request):
         if not c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone():
             return _bad("not found", 404)
         # Im gespeicherten JSON steht der Link als href=\"/notes#<id>\" - der Backslash vor dem
-        # Anfuehrungszeichen grenzt die Zahl ab (#1 trifft nicht #12).
-        rows = c.execute(f"SELECT {NOTE_META_COLS} FROM note WHERE uid=? AND id<>? AND format='blocks' AND deleted_at IS NULL "
-                         "AND instr(body, ?) > 0 ORDER BY updated DESC",
-                         (owner, nid, f'/notes#{nid}\\"')).fetchall()
+        # Anfuehrungszeichen grenzt die Zahl ab (#1 trifft nicht #12). Abgeglichene Seiten: Verweis-Tabelle note_link
+        # (saga.pageindex, mit genau diesem Muster gefuellt); gerade geaenderte (note_stale) wie bisher am Inhalt.
+        # Einzelne kleine Abfragen (ein Datenstand: REPEATABLE READ oben) - keine Planwahl, die von note_stale abhaengt.
+        stale = [r[0] for r in c.execute("SELECT note_id FROM note_stale WHERE uid=?", (owner,)).fetchall()]
+        ids = {r[0] for r in c.execute("SELECT src FROM note_link WHERE dst=?", (nid,)).fetchall()} - set(stale)
+        if stale:
+            ids |= {r[0] for r in c.execute("SELECT id FROM note WHERE id = ANY(?) AND strpos(body, ?) > 0",
+                                            (stale, f'/notes#{nid}\\"')).fetchall()}
+        rows = c.execute(f"SELECT {NOTE_META_COLS} FROM note WHERE id = ANY(?) AND uid=? AND id<>? AND format='blocks' "
+                         "AND deleted_at IS NULL ORDER BY updated DESC", (sorted(ids), owner, nid)).fetchall() if ids else []
         if role != "owner":
             vis = acc.tree(owner)
             rows = [r for r in rows if r[0] in vis]

@@ -141,18 +141,27 @@ def _arg(a):
     return int(a) if isinstance(a, bool) else a
 
 
+_NUMERIC = 1700                      # Postgres-Typ numeric - nur daraus macht psycopg Decimal
+
+
 class Cursor:
     def __init__(self, cur=None, lastrowid=None):
         self._cur, self.lastrowid = cur, lastrowid
         self.rowcount = cur.rowcount if cur is not None else 0
         self._rows = None
 
+    def _fix(self):
+        """Muessen Zeilen umgewandelt werden (Decimal -> int/float)? Nur, wenn eine Spalte numeric ist - sonst die Zeilen
+        unveraendert durchreichen (grosse Listen: keine Python-Schleife ueber jeden Wert)."""
+        return any(d.type_code == _NUMERIC for d in self._cur.description)
+
     def fetchone(self):
         if self._rows is not None:
             return self._rows.pop(0) if self._rows else None
         if self._cur is None or self._cur.description is None:
             return None
-        return _fix_row(self._cur.fetchone())
+        r = self._cur.fetchone()
+        return _fix_row(r) if self._fix() else r
 
     def fetchall(self):
         if self._rows is not None:
@@ -160,7 +169,8 @@ class Cursor:
             return r
         if self._cur is None or self._cur.description is None:
             return []
-        return [_fix_row(r) for r in self._cur.fetchall()]
+        rows = self._cur.fetchall()
+        return [_fix_row(r) for r in rows] if self._fix() else rows
 
     def __iter__(self):
         return iter(self.fetchall())
@@ -624,6 +634,50 @@ CREATE TABLE IF NOT EXISTS chat_pref (
     hidden INTEGER NOT NULL DEFAULT 0,                -- Direkt-Chat aus der Liste, bis eine neue Nachricht kommt
     PRIMARY KEY (chat_id, uid));
 CREATE INDEX IF NOT EXISTS chat_pref_uid ON chat_pref (uid);
+
+-- Schneller (2.2, saga/pageindex.py): aus dem Inhalt abgeleitete Daten je Seite, damit Suche, Rueckverweise und
+-- Datenbank-Zeilen nicht mehr jeden Inhalt laden und parsen. Eigene Tabellen statt neuer Spalten in note: kein neuer
+-- Schema-Stand, aeltere Versionen ignorieren sie (der Trigger arbeitet dort weiter). Alles ist jederzeit neu ableitbar.
+--   note_derived: search = Titel, Klartext und Tags in Kleinbuchstaben (getrennt durch das Steuerzeichen U+0001; LIKE '%..%' mit
+--                 Trigramm-Index, siehe db.init_search), preview = erstes eigenes Bild im Inhalt (Galerie/Widget),
+--                 tags = die Tags allein (kurz, fuer den Tag-Filter ohne den langen Suchtext)
+--   note_link:    Seitenverweise im Inhalt (src verweist auf dst), wie bisher am gespeicherten JSON erkannt
+--   note_stale:   veraltet/noch nicht abgeleitet - der Trigger traegt jede neue Seite und jede Aenderung an Titel, Inhalt,
+--                 Format oder Tags ein (n zaehlt mit), der Hintergrund-Abgleich arbeitet sie ab. Abfragen behandeln
+--                 eingetragene Seiten wie frueher direkt am Inhalt - das Ergebnis haengt nie vom Stand des Abgleichs ab.
+CREATE TABLE IF NOT EXISTS note_derived (
+    note_id BIGINT PRIMARY KEY REFERENCES note(id) ON DELETE CASCADE,
+    search TEXT NOT NULL DEFAULT '', preview TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '');
+ALTER TABLE note_derived ADD COLUMN IF NOT EXISTS tags TEXT NOT NULL DEFAULT '';     -- Vorabstand ohne Spalte (testing)
+CREATE TABLE IF NOT EXISTS note_link (
+    src BIGINT NOT NULL REFERENCES note(id) ON DELETE CASCADE, dst BIGINT NOT NULL, PRIMARY KEY (src, dst));
+CREATE INDEX IF NOT EXISTS note_link_dst ON note_link (dst);
+CREATE INDEX IF NOT EXISTS note_updated ON note (uid, updated);      -- Suche: neueste zuerst, nach 50 Treffern Schluss
+CREATE TABLE IF NOT EXISTS note_stale (
+    note_id BIGINT PRIMARY KEY REFERENCES note(id) ON DELETE CASCADE, uid TEXT NOT NULL, n BIGINT NOT NULL DEFAULT 1);
+CREATE INDEX IF NOT EXISTS note_stale_uid ON note_stale (uid);
+CREATE OR REPLACE FUNCTION saga_note_stale() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'UPDATE' THEN
+        IF NEW.title IS NOT DISTINCT FROM OLD.title AND NEW.body IS NOT DISTINCT FROM OLD.body
+           AND NEW.format IS NOT DISTINCT FROM OLD.format AND NEW.tags IS NOT DISTINCT FROM OLD.tags
+           AND NEW.uid IS NOT DISTINCT FROM OLD.uid THEN
+            RETURN NULL;
+        END IF;
+    END IF;
+    INSERT INTO note_stale (note_id, uid) VALUES (NEW.id, NEW.uid)
+        ON CONFLICT (note_id) DO UPDATE SET n = note_stale.n + 1, uid = EXCLUDED.uid;
+    RETURN NULL;
+END $$;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'note_stale_t' AND tgrelid = 'note'::regclass) THEN
+        CREATE TRIGGER note_stale_t AFTER INSERT OR UPDATE OF title, body, format, tags, uid ON note
+            FOR EACH ROW EXECUTE FUNCTION saga_note_stale();
+    END IF;
+END $$;
+-- Bestand (erster Start, Backup von vor 2.2 zurueckgespielt): alles ohne abgeleitete Daten zum Abgleich vormerken
+INSERT INTO note_stale (note_id, uid) SELECT n.id, n.uid FROM note n
+ WHERE NOT EXISTS (SELECT 1 FROM note_derived d WHERE d.note_id = n.id) ON CONFLICT (note_id) DO NOTHING;
 """
 # --- Schema-Versionen und Migrationen ----------------------------------------------------------------
 # SCHEMA oben ist Stand 1 (plus neue Tabellen mit CREATE TABLE IF NOT EXISTS). Alles, was bestehende
@@ -732,6 +786,21 @@ def restore(path):
         raise RuntimeError("Zurueckspielen fehlgeschlagen: " + r.stderr.decode("utf-8", "replace").strip()[:500])
 
 
+def init_search(c):
+    """Trigramm-Index fuer die Suche (pg_trgm, im offiziellen Postgres-Image enthalten): LIKE '%teil%' ueber
+    note_derived.search per Index - auch fuer Teilwoerter und Sprachen ohne Wortgrenzen (Thai). Fehlt die Erweiterung
+    oder das Recht, sie anzulegen, sucht Saga mit demselben Ergebnis ohne Index (Durchlauf ueber die Suchtexte)."""
+    c.execute("SAVEPOINT saga_trgm")
+    try:
+        c.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+        c.execute("CREATE INDEX IF NOT EXISTS note_derived_trgm ON note_derived USING gin (search gin_trgm_ops)")
+        c.execute("CREATE INDEX IF NOT EXISTS note_derived_tags ON note_derived USING gin (tags gin_trgm_ops)")
+        c.execute("RELEASE SAVEPOINT saga_trgm")
+    except psycopg.Error as ex:
+        c.execute("ROLLBACK TO SAVEPOINT saga_trgm")
+        print(f"saga: Suche ohne Trigramm-Index (pg_trgm nicht verfuegbar: {str(ex).strip()[:200]})", flush=True)
+
+
 def init_schema():
     """Schema anlegen bzw. auf den Stand dieser Version bringen. Mehrere Prozesse gleichzeitig: Advisory-Lock."""
     with psycopg.connect(DATABASE_URL, autocommit=False) as c:
@@ -746,6 +815,7 @@ def init_schema():
             p = backup(f"vor-schema-{SCHEMA_VERSION}")
             print(f"saga: Backup vor dem Update: {p}", flush=True)
         c.execute(SCHEMA)
+        init_search(c)
         if cur is None:
             c.execute("INSERT INTO schema_version (v) VALUES (1)")
             cur = 1

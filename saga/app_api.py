@@ -254,26 +254,36 @@ def api_db_rows(nid: int, request: Request):
         owner, role, err = access(c, uid, nid, "view", acc)
         if err is not None:
             return err
-        vis = None if role == "owner" else acc.tree(owner)      # fremd: ohne archivierte Zeilen und ohne Vorlagen
-    d = _db_rows(owner, nid, vis)
+    # fremd: ohne archivierte Zeilen und ohne Vorlagen. Wer die Datenbank sehen darf, sieht jede ihrer Zeilen, die nicht
+    # archiviert/Vorlage ist (Vererbung wie sharing.Access.tree) - dafuer braucht es keinen Freigabe-Baum
+    d = _db_rows(owner, nid, shared=role != "owner")
     if d:
         d["role"] = role
     return JSONResponse(d, headers={"Cache-Control": "no-store"}) if d else _bad("not found", 404)
 
 
-def _db_rows(owner, nid, visible=None):
+def _db_rows(owner, nid, shared=False):
     """Schema + aktive Zeilen einer Datenbank (None, wenn nicht vorhanden / nicht von owner).
-    visible: Menge sichtbarer Seiten fuer Nicht-Eigentuemer (sharing.Access.tree) - dann ohne Vorlagen."""
+    shared: Antwort fuer Nicht-Eigentuemer - ohne archivierte Zeilen und ohne Vorlagen.
+    Vorschaubild: Titelbild, sonst erstes Bild im Inhalt - aus note_derived (saga.pageindex); nur fuer gerade geaenderte,
+    noch nicht abgeglichene Zeilen (note_stale) wird der Inhalt geladen und wie bisher gelesen."""
     with _db() as c:
+        c.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")     # ein Datenstand fuer die Abfragen unten
         db = c.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database' AND deleted_at IS NULL", (nid, owner)).fetchone()
         if not db:
             return None
-        rows = c.execute("SELECT id, title, icon, props, updated, created, cover, body, format FROM note WHERE uid=? AND parent_id=? "
-                         "AND deleted_at IS NULL AND is_template=0 ORDER BY sort NULLS FIRST, created", (owner, nid)).fetchall()
-        tpls = c.execute("SELECT id, title, icon FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND is_template=1 "
-                         "ORDER BY sort NULLS FIRST, created", (owner, nid)).fetchall()      # Vorlagen der Datenbank: keine Zeilen (wie Notion)
-    if visible is not None:
-        rows, tpls = [r for r in rows if r[0] in visible], []
+        rows = c.execute("SELECT id, title, icon, props, updated, created, cover, format FROM note WHERE uid=? AND parent_id=? "
+                         "AND deleted_at IS NULL AND is_template=0" + (" AND archived IS NULL" if shared else "")
+                         + " ORDER BY sort NULLS FIRST, created", (owner, nid)).fetchall()
+        tpls = [] if shared else c.execute(
+            "SELECT id, title, icon FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND is_template=1 "
+            "ORDER BY sort NULLS FIRST, created", (owner, nid)).fetchall()      # Vorlagen der Datenbank: keine Zeilen (wie Notion)
+        ids = [r[0] for r in rows if not r[6]]                 # Titelbild gesetzt: Inhalt egal
+        pv = dict(c.execute("SELECT note_id, preview FROM note_derived WHERE note_id = ANY(?)", (ids,)).fetchall()) if ids else {}
+        stale = {r[0] for r in c.execute("SELECT note_id FROM note_stale WHERE uid=?", (owner,)).fetchall()} if ids else set()
+        need = [i for i in ids if i in stale or i not in pv]
+        for i, body, fmt in (c.execute("SELECT id, body, format FROM note WHERE id = ANY(?)", (need,)).fetchall() if need else ()):
+            pv[i] = _first_image(body, fmt)                  # wie bisher am Inhalt
     return {"schema": _json_load(db[0], {"props": []}), "templates": [{"id": t[0], "title": t[1] or "", "icon": t[2] or ""} for t in tpls],
             "rows": [{"id": r[0], "title": r[1] or "", "icon": r[2] or "", "props": _json_load(r[3], {}),
-                      "updated": r[4], "created": r[5], "preview": r[6] or _first_image(r[7], r[8])} for r in rows]}
+                      "updated": r[4], "created": r[5], "preview": r[6] or pv.get(r[0]) or ""} for r in rows]}
