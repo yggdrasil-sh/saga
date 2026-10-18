@@ -40,6 +40,28 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - Tests: neue Reihe `tests/ki_web.py` (Fake-SearXNG, Fake-Modell); der Test-Stack setzt dafür `SEARXNG_URL` der
   Test-Instanz auf den Fake.
 
+### Neu: Chats archivieren und löschen
+- **Archivieren** (jede Chat-Art, nur für mich): Chat-Menü „⋯“ oder Rechtsklick/Kontextmenü-Taste/langes Antippen in
+  der Chatliste. Archivierte Chats stehen in einem aufklappbaren Bereich „Archiviert (n)“ unten in der Liste, zählen nicht
+  zu den Ungelesenen (Liste, Dashboard-Knopf, `/api/chats/unread`) und kommen mit der nächsten Nachricht oder einem Anruf
+  von selbst zurück – außer sie sind stummgeschaltet. „Aus Archiv holen“ jederzeit.
+- **Chat löschen …** mit Auswahl und deutlicher Warnung (nicht rückgängig): **Nur für mich** – der Server setzt eine
+  Grenze und löscht die für mich versiegelten Inhaltsschlüssel (alle Geräte + Backup-Schlüssel) der bisherigen
+  Nachrichten; alte Nachrichten, Anhänge und Anruf-Einträge liefert er mir nicht mehr aus, die anderen behalten alles.
+  Direkt-Chats verschwinden aus der Liste und kommen bei einer neuen Nachricht leer wieder, andere Chats werden
+  archiviert, freie Gruppen kann man dabei zusätzlich verlassen; der verschlüsselte Gruppenname bleibt lesbar.
+  **Für alle** – Direkt-Chat (beide) und freie Gruppe (Chat-Admins): Chat samt Nachrichten, Schlüsseln, Anhängen und
+  Vorschaubildern, Lesestand, KI-Freigabe/-Belegen, Anrufen und Benachrichtigungen gelöscht; die anderen bekommen live
+  `chat.removed` und den Hinweis „Name hat den Chat gelöscht.“. Gruppen-Chat (Saga-Admins) und Seiten-Chat
+  (Eigentümer der Seite): nur der Verlauf (`chat.cleared`, „Name hat den Verlauf gelöscht.“), der Chat bleibt.
+- **Apps**: `DELETE /api/chats/{cid}?scope=me|all`, `PATCH /api/chats/{cid} {archived}`, neue Felder `archived`,
+  `archived_at`, `cleared_seq`, `delete_for_all` in der Chatliste, Live-Ereignisse `chat.cleared`/`chat.removed`.
+  Vertrag: `docs/APP-API-CHAT.md`. `MIN_APP` unverändert (ältere Apps zeigen archivierte Chats weiter in der Liste).
+- **Datenbank**: neue Tabelle `chat_pref` (Stand je Person und Chat) per `CREATE TABLE IF NOT EXISTS` – keine Migration,
+  kein neuer Schema-Stand; Kontolöschung entfernt die Einträge, beim Löschen eines Chats gehen sie mit.
+- Tests: neue Reihe `tests/chat_loeschen.py` (Rechte je Chat-Art, Archiv-Rückkehr, „für mich“ liefert nichts Altes und
+  entfernt die Schlüssel, „für alle“ räumt alles ab, Live-Ereignisse, Kontolöschung).
+
 ### Neu: KI-Persona
 - **Name, Profilbild und Tonfall für die KI** (Admin-Bereich → KI-Assistent → Persona): Name (leer = „Saga KI“ /
   „Saga AI“ / „Saga IA“), Profilbild mit denselben Prüfungen wie Profilbilder (neu kodiert, 64/128/256 px, WebP und

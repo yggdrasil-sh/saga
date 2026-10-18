@@ -221,6 +221,7 @@ def _log(c, call, status, now, end=None):
                     (mid, ch["id"], call["caller"], call["caller_device"], int(call["created"] * 1000), now, now + eff if eff else None,
                      body)).fetchone()[0]
     c.execute("UPDATE chat SET last_seq=?, last_at=? WHERE id=?", (seq, now, ch["id"]))
+    chat.revive(c, ch["id"], call["caller"])        # Anruf holt den Chat aus dem Archiv (wie eine neue Nachricht)
     _emit(c, chat.members(c, ch["id"]), "chat.message", {"chat_id": ch["id"], "seq": seq, "id": mid, "sender": call["caller"], "kind": "call"})
     return seq
 

@@ -436,8 +436,21 @@
     ul.textContent = '';
     var shown = S.chats.filter(function (c) { return !f || chatName(c).toLowerCase().indexOf(f) >= 0; });
     $('ct-list-empty').hidden = S.chats.length > 0;
-    shown.forEach(function (c) {
-      var li = el('li', 'ct-item' + (S.cur && S.cur.id === c.id ? ' on' : '') + (c.unread ? ' unread' : ''));
+    // Archiv (2.1): archivierte Chats unten in einem aufklappbaren Bereich (beim Filtern gleich mit angezeigt)
+    var act = shown.filter(function (c) { return !c.archived; }), arch = shown.filter(function (c) { return c.archived; });
+    act.forEach(function (c) { ul.appendChild(listItem(c)); });
+    if (!arch.length) return;
+    var open = S.archOpen || !!f, nUn = arch.reduce(function (s, c) { return s + (c.muted ? 0 : c.unread || 0); }, 0);
+    var hli = el('li', 'ct-arch-h'), tg = el('button', 'ct-arch-t'); tg.type = 'button'; tg.id = 'ct-arch-toggle';
+    tg.setAttribute('aria-expanded', open ? 'true' : 'false');
+    tg.appendChild(el('span', 'ct-arch-ic', open ? '▾' : '▸')); tg.appendChild(el('span', null, T('Archiviert ({n})', { n: arch.length })));
+    if (nUn) { var nb = el('span', 'ct-badge ct-badge-q', String(nUn)); nb.setAttribute('aria-label', T('{n} ungelesen', { n: nUn })); tg.appendChild(nb); }
+    tg.addEventListener('click', function () { S.archOpen = !S.archOpen; drawList(); var x = $('ct-arch-toggle'); if (x) x.focus(); });
+    hli.appendChild(tg); ul.appendChild(hli);
+    if (open) arch.forEach(function (c) { ul.appendChild(listItem(c)); });
+  }
+  function listItem(c) {
+      var li = el('li', 'ct-item' + (S.cur && S.cur.id === c.id ? ' on' : '') + (c.unread ? ' unread' : '') + (c.archived ? ' ct-archived' : ''));
       var b = el('button', 'ct-item-b'); b.type = 'button'; b.dataset.id = c.id;
       var nm = chatName(c);
       b.appendChild(avatar(kindIc(c) || (nm.charAt(0) || '?').toUpperCase(), c.kind === 'dm' ? (c.peer || {}).username : 'c' + c.id, c.kind !== 'dm' ? 'ct-av-k' : '',
@@ -451,9 +464,29 @@
       side.appendChild(el('span', 'ct-item-time', HK.relTime((c.last_at || c.created) - Date.now() / 1000)));
       if (c.unread) { var n = el('span', 'ct-badge', String(c.unread)); n.setAttribute('aria-label', T('{n} ungelesen', { n: c.unread })); side.appendChild(n); }
       b.appendChild(side);
-      b.addEventListener('click', function () { if (location.hash === '#c' + c.id) openChat(c.id); else location.hash = 'c' + c.id; });
-      li.appendChild(b); ul.appendChild(li);
-    });
+      // Rechtsklick, Kontextmenue-Taste (Shift+F10) und Langdruck: Archivieren, Stummschalten, Loeschen (2.1)
+      var lpT = null, lpAt = 0, touching = false;
+      function lpRecent() { return lpAt && Date.now() - lpAt < 1200; }
+      b.addEventListener('click', function (e) {
+        if (lpRecent()) { e.preventDefault(); return; }                 // nach Langdruck kein Oeffnen
+        if (location.hash === '#c' + c.id) openChat(c.id); else location.hash = 'c' + c.id;
+      });
+      b.setAttribute('aria-haspopup', 'menu');
+      b.addEventListener('contextmenu', function (e) {
+        e.preventDefault(); clearTimeout(lpT);
+        if (lpRecent()) return;                                          // Langdruck hat das Menue schon geoeffnet
+        if (touching) lpAt = Date.now();
+        chatMenu(b, c);
+      });
+      b.addEventListener('touchstart', function () {
+        touching = true; clearTimeout(lpT);
+        lpT = setTimeout(function () { lpAt = Date.now(); chatMenu(b, c); }, 520);
+      }, { passive: true });
+      ['touchend', 'touchmove', 'touchcancel'].forEach(function (ev) {
+        b.addEventListener(ev, function () { clearTimeout(lpT); if (ev !== 'touchmove') setTimeout(function () { touching = false; }, 0); }, { passive: true });
+      });
+      li.appendChild(b);
+      return li;
   }
   $('ct-filter').addEventListener('input', drawList);
   $('ct-new').addEventListener('click', function () { if (S.ready) newChat(); });
@@ -644,6 +677,7 @@
     } else sub.appendChild(document.createTextNode(c.members.map(function (m) { return m.me ? T('du') : m.name; }).join(', ')));
     if (c.retention_s) sub.appendChild(el('span', 'ct-chip', '⏱ ' + (RET.filter(function (r) { return r[0] === c.retention_s; })[0] || [0, ''])[1]));
     if (c.muted) sub.appendChild(el('span', 'ct-chip', '🔕'));
+    if (c.archived) sub.appendChild(el('span', 'ct-chip ct-chip-arch', '🗄 ' + T('Archiviert')));
     if (c.kind === 'page' && c.note_id) {
       var a = el('a', 'ct-chip ct-pagelink', T('Seite öffnen')); a.href = '/notes#' + c.note_id; a.target = 'hk-notes'; sub.appendChild(a);
     }
@@ -754,7 +788,8 @@
     } else {
       box.appendChild(el('p', 'ct-start', '🔒 ' + T('Nachrichten in diesem Chat sind Ende-zu-Ende-verschlüsselt.') +
         (c.kind !== 'dm' ? ' ' + T('Wer neu dazukommt, sieht nur Nachrichten ab dem Beitritt.') : '')));
-      if (!S.msgs.length && S.seenSeq > 0) box.appendChild(el('p', 'ct-start', T('Frühere Nachrichten sind auf diesem Gerät nicht lesbar – z. B. vor seiner Einrichtung geschickt oder abgelaufen.')));
+      if (c.cleared_seq) box.appendChild(el('p', 'ct-start ct-cleared', T('Der bisherige Verlauf wurde gelöscht.')));     // (2.1)
+      else if (!S.msgs.length && S.seenSeq > 0) box.appendChild(el('p', 'ct-start', T('Frühere Nachrichten sind auf diesem Gerät nicht lesbar – z. B. vor seiner Einrichtung geschickt oder abgelaufen.')));
     }
     var lastDay = '', lastWho = null;
     S.msgs.forEach(function (m) {
@@ -1384,8 +1419,109 @@
           });
         }, { icon: '⎋', danger: true }));
       }
+      manageItems(menu, c);
     });
   });
+
+  // --- Archivieren und Loeschen (2.1) -------------------------------------------------------------------------------
+  // Menue der Chatliste (Rechtsklick, Kontextmenue-Taste, Langdruck)
+  function chatMenu(anchor, c) {
+    HK.openMenu(anchor, function (menu) {
+      menu.textContent = '';
+      menu.appendChild(HK.menuItem(T('Öffnen'), function () { HK.closeMenu(); location.hash = 'c' + c.id; if (S.cur && S.cur.id === c.id) openChat(c.id); }, { icon: '↗' }));
+      menu.appendChild(HK.menuItem(c.muted ? T('Benachrichtigungen an') : T('Stummschalten'), function () {
+        HK.closeMenu(); api('PATCH', '/api/chats/' + c.id, { muted: !c.muted }).then(function () { loadList(); }).catch(function (e) { HK.toast(e.message); });
+      }, { icon: c.muted ? '🔔' : '🔕' }));
+      manageItems(menu, c);
+    });
+  }
+  function manageItems(menu, c) {
+    menu.appendChild(HK.menuItem(c.archived ? T('Aus Archiv holen') : T('Archivieren'), function () { HK.closeMenu(); archive(c, !c.archived); },
+      { icon: c.archived ? '⤴' : '🗄' }));
+    menu.appendChild(HK.menuItem(T('Chat löschen …'), function () { HK.closeMenu(); deleteDialog(c); }, { icon: '🗑', danger: true }));
+  }
+  function archive(c, on) {
+    return api('PATCH', '/api/chats/' + c.id, { archived: on }).then(function () {
+      c.archived = on; drawList(); if (S.cur && S.cur.id === c.id) { S.cur.archived = on; drawHead(); }
+      HK.toast(on ? T('Chat archiviert – er kommt mit der nächsten Nachricht zurück.') : T('Chat aus dem Archiv geholt.'));
+      loadList();
+    }).catch(function (e) { HK.toast(e.message); });
+  }
+  function deleteDialog(c) {
+    var nm = chatName(c), all = c.delete_for_all, box = overlay(T('„{name}“ löschen?', { name: nm }));
+    var fs = el('fieldset', 'ct-del'); fs.appendChild(el('legend', 'ct-del-l', T('Für wen löschen?')));
+    function opt(val, label, text, dis) {
+      var lab = el('label', 'ct-del-o' + (dis ? ' dis' : '')), r = el('input'); r.type = 'radio'; r.name = 'ct-del'; r.value = val; r.disabled = !!dis;
+      var t = el('span', 'ct-del-t'); t.appendChild(el('b', null, label)); t.appendChild(el('span', 'hk-hint', text));
+      lab.appendChild(r); lab.appendChild(t); fs.appendChild(lab); return r;
+    }
+    var peer = (c.peer || {}).name || nm;
+    var rMe = opt('me', T('Nur für mich'), c.kind === 'dm'
+      ? T('Der Verlauf verschwindet nur bei dir, auf allen deinen Geräten. {name} behält ihn. Der Chat erscheint wieder, sobald eine neue Nachricht kommt.', { name: peer })
+      : T('Der Verlauf verschwindet nur bei dir, auf allen deinen Geräten; der Chat wird archiviert. Die anderen behalten ihn.'));
+    var leave = null;
+    if (c.kind === 'free') {
+      var ll = el('label', 'ct-del-sub'); leave = el('input'); leave.type = 'checkbox';
+      ll.appendChild(leave); ll.appendChild(el('span', null, T('Gruppe außerdem verlassen'))); fs.appendChild(ll);
+    }
+    var allText = all === 'history' ? T('Alle Nachrichten und Anhänge werden für alle Mitglieder gelöscht. Der Chat selbst bleibt, solange es die Gruppe bzw. Seite gibt.')
+      : c.kind === 'dm' ? T('Der Chat wird für {name} und dich gelöscht – mit allen Nachrichten, Anhängen und Anrufen.', { name: peer })
+      : T('Die Gruppe wird für alle Mitglieder gelöscht – mit allen Nachrichten, Anhängen und Anrufen.');
+    var why = c.kind === 'free' ? T('Nur Admins dieser Gruppe können sie für alle löschen.')
+      : c.kind === 'group' ? T('Den Verlauf für alle löschen können nur Saga-Admins.')
+      : c.kind === 'page' ? T('Den Verlauf für alle löschen kann nur, wem die Seite gehört.') : '';
+    var rAll = opt('all', T('Für alle'), all ? allText : why, !all);
+    rMe.checked = true;
+    box.appendChild(fs);
+    var warn = el('p', 'ct-danger ct-del-warn'); warn.setAttribute('role', 'note');
+    warn.textContent = '⚠ ' + T('Das lässt sich nicht rückgängig machen. Wer Nachrichten schon gesehen hat, kann Kopien davon haben.');
+    box.appendChild(warn);
+    var st = status(box), bar = el('div', 'hk-actions'); box.appendChild(bar);
+    bar.appendChild(btn(T('Abbrechen'), '', closeOverlay));
+    var go = btn(T('Löschen'), 'btn-danger ct-del-go'); bar.appendChild(go);
+    function sync() {
+      if (leave) { leave.disabled = !rMe.checked; leave.parentNode.classList.toggle('dis', !rMe.checked); }
+      go.textContent = rAll.checked ? (all === 'history' ? T('Verlauf für alle löschen') : T('Für alle löschen')) : T('Für mich löschen');
+    }
+    fs.addEventListener('change', sync); sync();
+    go.addEventListener('click', function () {
+      var scope = rAll.checked ? 'all' : 'me', quit = scope === 'me' && leave && leave.checked;
+      busy(go, true); st.className = 'hk-status'; st.textContent = '';
+      api('DELETE', '/api/chats/' + c.id + '?scope=' + scope).then(function (r) {
+        if (quit) return api('DELETE', '/api/chats/' + c.id + '/members/' + q(ME)).then(function () { return { removed: true, left: true }; });
+        return r;
+      }).then(function (r) {
+        closeOverlay();
+        var cur = S.cur && S.cur.id === c.id;
+        if (r.removed || (scope === 'me' && c.kind === 'dm')) {
+          S.chats = S.chats.filter(function (x) { return x.id !== c.id; });
+          if (cur) { closeChat(); history.replaceState(null, '', location.pathname); }
+        } else if (cur) wipeView();
+        HK.toast(r.left ? T('Verlauf gelöscht, Gruppe verlassen.') : scope === 'all' ? (r.removed ? T('Chat für alle gelöscht.') : T('Verlauf für alle gelöscht.'))
+          : c.kind === 'dm' ? T('Chat für dich gelöscht.') : T('Verlauf für dich gelöscht, Chat archiviert.'));
+        loadList();
+      }).catch(function (e) { st.className = 'hk-status err'; st.textContent = e.message; busy(go, false); sync(); });
+    });
+    rMe.focus();
+  }
+  // Offener Chat wurde geleert: Ansicht leeren, Hinweis "Verlauf geloescht", Neues nachladen
+  function wipeView() {
+    var c = S.cur; if (!c) return;
+    c.cleared_seq = Math.max(c.cleared_seq || 0, c.last_seq || 1);
+    S.msgs = []; S.byId = {}; S.seenSeq = 0; S.more = false; S.reply = null; drawReply();
+    drawMsgs('bottom'); loadMsgs(false);
+  }
+  // Fremdes Loeschen live (chat.removed / chat.cleared mit scope 'all'): Chat bzw. Verlauf weg, Hinweis mit Namen
+  function removedLive(d, whole) {
+    var mine = d.by && d.by.username === ME, cur = S.cur && S.cur.id === d.chat_id;
+    if (whole) {
+      S.chats = S.chats.filter(function (x) { return x.id !== d.chat_id; });
+      if (cur) { closeChat(); history.replaceState(null, '', location.pathname); }
+      drawList();
+    } else if (cur) wipeView();
+    if (!mine && d.by) HK.toast(whole ? T('{name} hat den Chat gelöscht.', { name: d.by.name || d.by.username }) : T('{name} hat den Verlauf gelöscht.', { name: d.by.name || d.by.username }));
+    listSoon();
+  }
   function rename() {
     var c = S.cur, box = overlay(T('Gruppe umbenennen')), inp = el('input', 'hk-in'); inp.maxLength = 80; inp.value = c._title || '';
     inp.setAttribute('aria-label', T('Name der Gruppe')); box.appendChild(inp);
@@ -1569,6 +1705,11 @@
     if (t === 'resync') { loadList(); if (S.cur) loadMsgs(false); return; }
     if (t === 'chat.message') { if (S.cur && S.cur.id === d.chat_id) loadMsgs(false); listSoon(); }
     else if (t === 'chat.deleted') { if (S.cur && S.cur.id === d.chat_id) dropMsg(d.id); listSoon(); }
+    else if (t === 'chat.removed') removedLive(d, true);           // (2.1) Chat fuer alle geloescht
+    else if (t === 'chat.cleared') {                                // (2.1) Verlauf geleert: fuer mich (anderer Tab) oder fuer alle
+      if (d.scope === 'all') removedLive(d, false);
+      else { if (S.cur && S.cur.id === d.chat_id) { if (S.cur.kind === 'dm') { closeChat(); history.replaceState(null, '', location.pathname); } else wipeView(); } listSoon(); }
+    }
     else if (t === 'chat.read') listSoon();
     else if (t === 'chat.changed') { listSoon(); if (S.cur && S.cur.id === d.chat_id) { S.rc = null; openChat(d.chat_id); } }
     else if (t === 'avatar.changed') listSoon();      // neues Profilbild (Bilder tauscht live.js; Liste fuer neue Adressen)

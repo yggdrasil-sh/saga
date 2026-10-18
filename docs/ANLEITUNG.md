@@ -642,6 +642,16 @@ speichert nur verschlüsselte Daten. Auch der Admin kann keine Inhalte lesen.
   (keine Benachrichtigung, zählt nicht als ungelesen), **Nachrichten automatisch löschen nach** 1 Stunde … 1 Jahr
   (gilt für neue Nachrichten), freie Gruppe umbenennen oder verlassen. Die Lupe sucht in den geladenen Nachrichten – nur auf
   diesem Gerät.
+- **Archivieren und löschen:** im Chat-Menü (⋯) oder per Rechtsklick bzw. langem Antippen in der Chatliste.
+  **Archivieren** schiebt den Chat in den Bereich **„Archiviert“** unten in der Liste – er zählt nicht mehr als
+  ungelesen und kommt mit der nächsten Nachricht von selbst zurück (stummgeschaltete bleiben im Archiv). **Chat
+  löschen …** fragt: **Nur für mich** – der Verlauf verschwindet nur bei dir, auf allen deinen Geräten (die Schlüssel
+  dafür löscht der Server); ein Direkt-Chat verschwindet aus der Liste, bis eine neue Nachricht kommt, andere Chats
+  werden archiviert; eine freie Gruppe kannst du dabei auch verlassen. **Für alle** – Direkt-Chat (beide Personen) und
+  freie Gruppe (ihre Admins): der Chat ist samt Nachrichten, Anhängen und Anrufen für alle weg, die anderen sehen
+  „Name hat den Chat gelöscht“. Gruppen-Chat (Saga-Admins) und Seiten-Chat (wem die Seite gehört): nur der Verlauf wird
+  gelöscht, der Chat bleibt. Beides lässt sich nicht rückgängig machen; wer Nachrichten schon gesehen hat, kann Kopien
+  haben. Schnittstelle für Apps: `docs/APP-API-CHAT.md`.
 - **⚙ Chats & Geräte:** Liste der Geräte mit Zugriff, Geräte entfernen (bekommen sofort nichts mehr), neuen
   Wiederherstellungsschlüssel erzeugen (der alte gilt dann nicht mehr).
 - Benachrichtigung „Neue Nachricht von Name“ – ohne Inhalt; abschaltbar unter Einstellungen → Konto → Benachrichtigungen.

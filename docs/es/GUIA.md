@@ -648,6 +648,16 @@ servidor solo guarda datos cifrados. Tampoco el administrador puede leer el cont
   teléfono y «Marcar como verificado»; si cambia, el chat avisa), miembros, **silenciar** (sin notificación, no cuenta
   como no leído), **eliminar mensajes automáticamente tras** 1 hora … 1 año (para mensajes nuevos), cambiar el nombre de
   un grupo libre o salir de él. La lupa busca en los mensajes cargados, solo en este dispositivo.
+- **Archivar y eliminar:** en el menú del chat (⋯) o con clic derecho o pulsación larga en la lista de chats.
+  **Archivar** mueve el chat a la sección **«Archivados»** al final de la lista: ya no cuenta como no leído y vuelve
+  solo con el próximo mensaje (los silenciados siguen archivados). **Eliminar chat …** pregunta: **Solo para mí** – el
+  historial desaparece solo para ti, en todos tus dispositivos (el servidor borra las claves); un chat directo sale de la
+  lista hasta que llegue un mensaje nuevo, los demás chats se archivan; en un grupo libre también puedes salir.
+  **Para todos** – chat directo (ambas personas) y grupo libre (sus administradores): el chat desaparece para todos con
+  todos los mensajes, adjuntos y llamadas; los demás ven «Nombre eliminó el chat». Chat de grupo (administradores de
+  Saga) y chat de página (quien es propietario de la página): solo se elimina el historial, el chat se mantiene. Ninguna
+  de las dos opciones se puede deshacer; quien ya haya visto mensajes puede tener copias. API para apps:
+  `docs/APP-API-CHAT.md`.
 - **⚙ Chats y dispositivos:** dispositivos con acceso, quitar dispositivos (dejan de recibir al instante), crear una
   nueva clave de recuperación (la anterior deja de funcionar).
 - Notificación «Nuevo mensaje de Nombre», sin contenido; se puede desactivar en Ajustes → Cuenta → Notificaciones.
