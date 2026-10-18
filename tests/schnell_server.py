@@ -168,7 +168,8 @@ WORDS = ("Projekt projektplan Unterprojekt ANGEBOT Rechnung Kunde Straße Größ
          "project meeting Budget invoice café niño Mañana acción ÉXITO año "
          "Проект встреча Счёт ЗАДАЧА привет мир "
          "โครงการ การประชุม ใบแจ้งหนี้ สวัสดีครับ ภาษาไทย ทดสอบระบบ "
-         "100% a_b back\\slash 50_% x%y C++ e-mail ohne Zugriff Seite seite").split()
+         "100% a_b back\\slash 50_% x%y C++ e-mail ohne Zugriff Seite seite "
+         "İstanbul ISPARTA ıslak ΟΔΟΣ Σοφία ﬁle").split()      # Sonderfaelle beim Kleinschreiben (tuerkisches I, Schluss-Sigma)
 
 
 def words(r, n):
@@ -268,6 +269,7 @@ def queries(r):
         texts = [_note_text(f, b) for b, f in c.execute("SELECT body, format FROM note WHERE uid=? LIMIT 60", (A,)).fetchall()]
     qs = ["projekt", "PROJEKT".lower(), "unterprojekt", "größe", "straße", "проект", "встре", "ประชุม", "ไทย", "ระบ", "ñ", "a",
           "100%", "a_b", "\\", "%", "_", "x%y", "c++", "ohne zugriff", "seite ohne", "zugriff", "f ", "e s", "nichtsdagewesen",
+          "i̇stanbul", "istanbul", "ı", "οδος", "οδοσ", "σοφία", "file",
           "/notes#", "notes", "kaputt", "code", "https", "e-mail"]
     for t in texts:
         if len(t) > 6:

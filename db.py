@@ -783,6 +783,12 @@ def restore(path):
     import subprocess
     if not os.path.isfile(path):
         raise RuntimeError(f"Datei nicht gefunden: {path}")
+    # Abgeleitete Tabellen (2.2, saga/pageindex.py) verweisen per Fremdschluessel auf note. Ein Backup von vor 2.2 kennt
+    # sie nicht - pg_restore --clean koennte note dann nicht loeschen ("other objects depend on it") und bricht ab. Sie
+    # sind jederzeit neu ableitbar: vorher entfernen. Ein Backup ab 2.2 bringt sie mit, sonst legt der naechste Start sie
+    # an und gleicht alle Seiten neu ab.
+    with psycopg.connect(DATABASE_URL, autocommit=True) as c:
+        c.execute("DROP TABLE IF EXISTS note_link, note_stale, note_derived")
     r = subprocess.run(["pg_restore", "--clean", "--if-exists", "--no-owner", "--no-privileges", "--single-transaction",
                         "--dbname", _pg_env()["PGDATABASE"], path], env=_pg_env(), capture_output=True, timeout=3600)
     if r.returncode != 0:
