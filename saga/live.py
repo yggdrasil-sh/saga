@@ -25,6 +25,7 @@ Ereignisse (event: ..., data: JSON) - die Rechte werden beim VERSAND geprueft (s
   call.ring        {call_id, chat_id, from, from_device, media, ring_s}   Anruf (2.1, saga.calls) - an das Gegenueber
   call.signal      {call_id, seq, from_device, to_device, sealed}   versiegelt fuer das Zielgeraet (SDP/ICE, der Server liest nichts)
   call.state       {call_id, chat_id, state: active|ended, device?, reason?, status?}   an beide
+  ai.persona.changed {name, custom_name, avatar, avatar_etag}   (2.1) Name/Bild/Schalter der KI geaendert - an alle
 Jedes Ereignis ausser hello/reset/bye hat eine id (<boot>-<nummer>); mit Last-Event-ID holt ein neuer Aufbau verpasste
 Ereignisse der letzten 10 Minuten nach. Heartbeat: Kommentarzeile alle ~25 s (haelt Proxys offen).
 Hoechstens 5 Verbindungen je Konto - die aelteste wird mit "bye" (limit) geschlossen."""
@@ -233,6 +234,9 @@ def _resolve(kind, p, aud, pres):
             for u in p.get("uids") or ():
                 if u in aud:
                     out.append((u, p["typ"], p["data"]))
+        elif kind == "broadcast":                            # (2.1) an alle verbundenen Konten, z. B. ai.persona.changed
+            for u in sorted(aud):
+                out.append((u, p["typ"], p["data"]))
         elif kind == "notification.read":
             if p["uid"] in aud:
                 out.append((p["uid"], "notification", {"unread": p["unread"], "read": p["ids"]}))

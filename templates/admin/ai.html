@@ -38,4 +38,26 @@
     <button class="btn" type="submit" name="action" value="test">{{ _("Verbindung testen") }}</button>
   </div>
 </form>
+<form method="post" action="/settings/ai/persona" class="adm-form" enctype="multipart/form-data" id="persona">
+  {{ csrf_field() }}
+  <section class="adm-card">
+    <h3>{{ _("Persona") }}</h3>
+    <p class="hk-hint">{{ _("So erscheint die KI in Saga und in den Apps – z. B. „Frage {name}“.", name=persona_name) }}</p>
+    <div class="adm-persona">
+      <span class="ai-av adm-persona-av{% if has_av %} ai-av-on{% endif %}" aria-hidden="true">✦{% if has_av %}<img src="/settings/ai/avatar?v={{ av_v }}" alt="">{% endif %}</span>
+      <span class="adm-persona-name">{{ persona_name }}</span>
+    </div>
+    {{ field(_('Name'), 'name', p.name, max=40, ph=default_name, hint=_("Leer = „{name}“. Erlaubt: Buchstaben, Ziffern, Leerzeichen, Punkt, Bindestrich, Apostroph.", name=default_name)) }}
+    <label class="adm-field"><span>{{ _("Profilbild") }}</span>
+      <input class="hk-in" type="file" name="image" accept="image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif">
+      <small>{{ _("PNG, JPEG, GIF, WebP oder HEIC, höchstens {n} MB – wird quadratisch zugeschnitten. Ohne Bild zeigt Saga ein neutrales Symbol.", n=av_max) }}</small></label>
+    <label class="adm-field"><span>{{ _("Persönlichkeit und Tonfall") }}</span>
+      <textarea class="hk-in adm-ta" name="tone" maxlength="500" rows="3" placeholder="{{ _('z. B. freundlich und knapp, duzt die Personen, gern mit einem Augenzwinkern') }}">{{ p.tone }}</textarea>
+      <small>{{ _("Optional, höchstens 500 Zeichen. Wirkt nur auf die Formulierung eigener Antworten – Regeln, Quellenangaben und Formate (z. B. Aufgaben-Vorschläge) haben immer Vorrang; Verbessern und Übersetzen bleiben beim Ton des Textes.") }}</small></label>
+  </section>
+  <div class="adm-actions">
+    <button class="btn btn-primary" type="submit" name="action" value="save">{{ _("Persona speichern") }}</button>
+    {% if has_av %}<button class="btn" type="submit" name="action" value="remove_image">{{ _("Profilbild entfernen") }}</button>{% endif %}
+  </div>
+</form>
 {% endblock %}

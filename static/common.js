@@ -343,6 +343,24 @@
     });
   }
 
+  // Profilbild der KI (2.1, Persona aus /api/ai/status bzw. /api/ai/persona): neutrales Symbol, darueber das Bild,
+  // sobald es geladen ist (404/Fehler = Symbol bleibt). px = Anzeigegroesse.
+  function aiAvatar(persona, px, cls) {
+    var box = document.createElement('span'); box.className = 'ai-av' + (cls ? ' ' + cls : '');
+    box.setAttribute('aria-hidden', 'true'); box.textContent = '✦';
+    if (px) box.style.setProperty('--ai-av', px + 'px');
+    var url = persona && persona.avatar;
+    if (typeof url === 'string' && url.indexOf('/api/ai/avatar') === 0) {
+      var img = document.createElement('img'); img.alt = ''; img.decoding = 'async'; img.draggable = false;
+      img.addEventListener('load', function () { box.classList.add('ai-av-on'); });
+      img.addEventListener('error', function () { img.remove(); box.classList.remove('ai-av-on'); });
+      img.src = url + '&s=' + Math.min(256, Math.round((px || 24) * Math.min(2, window.devicePixelRatio || 1)));
+      box.appendChild(img);
+    }
+    return box;
+  }
+  window.HKAIAvatar = aiAvatar;
+
   // Profilbild (saga/avatars.py) ueber die Initialen legen: box = vorhandenes Initialen-Element, url = person.avatar (oder
   // leer = Initialen bleiben). Das Bild erscheint erst nach dem Laden; 404/Fehler = Initialen bleiben. px = Anzeigegroesse.
   function avatarImg(box, url, px) {

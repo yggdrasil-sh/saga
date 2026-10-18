@@ -15,6 +15,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu: KI-Persona
+- **Name, Profilbild und Tonfall für die KI** (Admin-Bereich → KI-Assistent → Persona): Name (leer = „Saga KI“ /
+  „Saga AI“ / „Saga IA“), Profilbild mit denselben Prüfungen wie Profilbilder (neu kodiert, 64/128/256 px, WebP und
+  PNG/JPEG; ohne Bild ein neutrales ✦-Symbol), optional eine kurze Persönlichkeit/Tonfall (höchstens 500 Zeichen). Der
+  Tonfall geht bereinigt (eine Zeile, ohne Datenmarkierungen) als nachrangiger Stil-Zusatz in den System-Prompt aller
+  KI-Funktionen – Regeln und Formate wie `TASK:`/`NONE` bleiben unverändert. Änderungen stehen im Server-Log (ohne
+  Inhalte).
+- **Web**: „Frage Marin“ mit kleinem Profilbild im Seitenkopf und im Seitenmenü, Name und Bild im Kopf der
+  Seitenleiste und über jeder Antwort (auch im Verlauf), „Marin denkt nach …“; hell/dunkel und mobil.
+- **Apps**: `GET /api/ai/persona` (Name, Bild-Adresse, ETag, ob die KI für mich an ist), `persona` in
+  `/api/ai/status`, Bild unter `/api/ai/avatar` (nur angemeldet), Live-Ereignis `ai.persona.changed`. Vertrag:
+  `docs/APP-API-KI.md`. Keine Datenbank-Migration (Bild in `avatar_img` unter der Kennung `#ai`).
+
 ### Verbessert
 - **KI-Assistent – „Aufgaben vorschlagen“** liefert nur noch konkrete nächste Schritte im Imperativ (z. B.
   „Weiterlesen ab Seite 12“) statt Feststellungen („Das Buch hat 258 Seiten“): das Modell schreibt je Aufgabe eine Zeile

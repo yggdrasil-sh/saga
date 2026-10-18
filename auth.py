@@ -66,6 +66,8 @@ DEFAULTS = {
     # context = Zeichen Seiteninhalt je Anfrage, history = Personen duerfen einen Verlauf einschalten
     "ai": {"enabled": False, "provider": "openai", "url": "", "model": "", "api_key": "", "groups": [], "timeout": 60,
            "quota": 50, "context": 8000, "history": True, "pinned": []},
+    # Persona der KI (2.1): Name (leer = "Saga KI"), Tonfall als Stil-Zusatz im System-Prompt; das Bild liegt in avatar_img
+    "ai_persona": {"name": "", "tone": ""},
     # Zweiter Faktor (2.1, saga/mfa.py): require = none | admins | all (wer verlangt wird und keinen hat, wird nach der
     # Anmeldung zur Einrichtung gefuehrt); oidc_mfa = SSO-Anmeldung nur mit Mehr-Faktor beim Anbieter (amr/acr),
     # oidc_acr = zusaetzlich akzeptierte acr-Werte (Komma-getrennt, werden auch als acr_values angefragt)

@@ -824,7 +824,8 @@ itself when first needed; it depends on `SECRET_KEY`.
 
 ### AI assistant (optional)
 
-When the assistant is turned on, the pages view shows **✦ Assistant** at the top. It works with a language model the
+When the assistant is turned on, the pages view shows **Ask Saga AI** at the top (or the name the admin chose, e.g.
+“Ask Marin”) with its profile picture. It works with a language model the
 admin sets up (e.g. Ollama on your own network). **Everything you give the assistant – your question and the matching
 excerpts from pages – is sent to this endpoint**; its address is shown at the bottom of the side panel.
 
@@ -864,6 +865,13 @@ content and answers never end up in the log.
 To protect against injected instructions (“Ignore all rules …” inside a page), Saga marks page content as data for the
 model and gives the assistant no write access at all. A language model can still be wrong or be influenced by page
 content – so check answers, especially for shared pages.
+
+**Persona:** under admin area → AI assistant → **Persona** the AI gets a name (empty = “Saga KI” / “Saga AI” / “Saga IA”
+depending on the language), a **profile picture** (PNG, JPEG, GIF, WebP or HEIC; checked like profile pictures, cropped to
+a square and re-encoded – without a picture Saga shows a neutral ✦ symbol) and optionally a short **personality and tone**
+(at most 500 characters). The tone only shapes the wording of the AI's own answers; rules, source references and formats
+take precedence, improving and translating keep the tone of the text. Web and apps show name and picture wherever the AI
+appears and pick up changes immediately.
 
 ### Account, calendars, Immich, apps
 

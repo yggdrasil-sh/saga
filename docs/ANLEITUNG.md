@@ -847,7 +847,8 @@ Den Schlüssel für Web Push (VAPID) erzeugt Saga beim ersten Bedarf selbst; er 
 
 ### KI-Assistent (optional)
 
-Ist der Assistent eingeschaltet, steht auf der Seiten-Ansicht oben **✦ Assistent**. Er arbeitet mit einem Sprachmodell,
+Ist der Assistent eingeschaltet, steht auf der Seiten-Ansicht oben **Frage Saga KI** (bzw. der Name, den der Admin
+vergeben hat, z. B. „Frage Marin“) mit seinem Profilbild. Er arbeitet mit einem Sprachmodell,
 das der Admin einträgt (z. B. Ollama im eigenen Netz). **Alles, was du dem Assistenten gibst – deine Frage und die dazu
 passenden Ausschnitte aus Seiten –, geht an diesen Endpunkt**; die Adresse steht unten in der Seitenleiste.
 
@@ -887,6 +888,13 @@ die Adresse im DNS, einmal neu speichern. Weiterleitungen folgt Saga nicht. Glei
 Zum Schutz vor untergeschobenen Anweisungen („Ignoriere alle Regeln …“ in einer Seite) kennzeichnet Saga Seiteninhalte
 für das Modell als Daten und gibt dem Assistenten keinerlei Schreibrechte. Ein Sprachmodell kann sich trotzdem irren
 oder sich von Seiteninhalten beeinflussen lassen – Antworten deshalb prüfen, besonders bei geteilten Seiten.
+
+**Persona:** Unter Admin-Bereich → KI-Assistent → **Persona** bekommt die KI einen Namen (leer = „Saga KI“ / „Saga AI“ /
+„Saga IA“ je nach Sprache), ein **Profilbild** (PNG, JPEG, GIF, WebP oder HEIC; wird wie Profilbilder geprüft, quadratisch
+zugeschnitten und neu kodiert – ohne Bild zeigt Saga ein neutrales ✦-Symbol) und optional eine kurze **Persönlichkeit
+und Tonfall** (höchstens 500 Zeichen, z. B. „freundlich und knapp, duzt die Personen“). Der Tonfall wirkt nur auf die
+Formulierung eigener Antworten; Regeln, Quellenangaben und Formate haben Vorrang, Verbessern und Übersetzen behalten
+den Ton des Textes. Web und Apps zeigen Name und Bild überall, wo die KI vorkommt, und übernehmen Änderungen sofort.
 
 ### Konto, Kalender, Immich, Apps
 

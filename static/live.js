@@ -267,7 +267,7 @@
     // Chat (1.5): an die Chat-Seite weiterreichen (Ereignis 'hk-live'), Zahl am Knopf "Chats" aktualisieren
     // Anrufe (2.1, static/calls.js): call.ring / call.signal / call.state ebenso ueber 'hk-live'
     ['chat.message', 'chat.deleted', 'chat.read', 'chat.typing', 'chat.changed', 'chat.link', 'chat.device', 'call.ring', 'call.signal',
-     'call.state', 'avatar.changed'].forEach(function (n) {
+     'call.state', 'avatar.changed', 'ai.persona.changed'].forEach(function (n) {
       on(es, n, function (d) { chatEvent(n, d); });
     });
     on(es, 'avatar.changed', swapAvatar);

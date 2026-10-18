@@ -14,6 +14,12 @@
     pl: 'Polski', sv: 'Svenska', da: 'Dansk', nb: 'Norsk', fi: 'Suomi', cs: 'Čeština', tr: 'Türkçe', uk: 'Українська', ja: '日本語', zh: '中文' };
 
   function cur() { return K ? K.cur() : null; }
+  // Persona (2.1): Name und Profilbild der KI aus dem Status (Admin-Bereich -> KI-Assistent -> Persona)
+  function P() { return (A.st && A.st.persona) || { name: T('Saga KI'), avatar: null }; }
+  function av(px, cls) { return window.HKAIAvatar ? HKAIAvatar(P(), px, cls) : el('span', 'ai-spark', '✦'); }
+  function who() {                                     // Kopf einer Antwort: Bild + Name
+    var w = el('div', 'ai-who'); w.appendChild(av(22)); w.appendChild(el('span', 'ai-who-n', P().name)); return w;
+  }
   function canEdit() { var c = cur(); return !!c && RANK[c.role || 'owner'] >= RANK.edit && !c.locked; }
 
   // --- Antwort als Stream: POST + text/event-stream --------------------------------------------------------
@@ -55,7 +61,13 @@
   var panel = el('aside', 'ai-panel'); panel.id = 'ai-panel'; panel.hidden = true;
   panel.setAttribute('role', 'complementary'); panel.setAttribute('aria-label', T('KI-Assistent'));
   var head = el('div', 'ai-head'), grip = el('span', 'ai-grip'); grip.setAttribute('aria-hidden', 'true');
-  var htitle = el('h2', 'ai-title'); htitle.appendChild(el('span', 'ai-spark', '✦')); htitle.appendChild(el('span', null, T('KI-Assistent')));
+  var htitle = el('h2', 'ai-title');
+  function paintHead() {
+    htitle.textContent = ''; htitle.appendChild(av(28));
+    var tx = el('span', 'ai-title-t'); tx.appendChild(el('span', 'ai-title-n', P().name)); tx.appendChild(el('span', 'ai-title-s', T('KI-Assistent')));
+    htitle.appendChild(tx);
+  }
+  paintHead();
   var close = el('button', 'icon-btn ai-close', '×'); close.type = 'button'; close.setAttribute('aria-label', T('Assistent schließen'));
   head.appendChild(grip); head.appendChild(htitle); head.appendChild(close);
   var tabs = el('div', 'ai-tabs'); tabs.setAttribute('role', 'tablist');
@@ -179,7 +191,8 @@
 
   // --- Frag deine Seiten ------------------------------------------------------------------------------------------
   var askTa = el('textarea', 'hk-in ai-ta'); askTa.rows = 2; askTa.setAttribute('aria-label', T('Frage an deine Seiten'));
-  askTa.placeholder = T('Frag etwas zu deinen Seiten …');
+  function askPh() { askTa.placeholder = T('Frage {name} etwas zu deinen Seiten …', { name: P().name }); }
+  askPh();
   var optTasks = switchBox(T('Aufgaben einbeziehen')), optCal = switchBox(T('Kalender einbeziehen'));
   var sendB = el('button', 'btn btn-primary ai-send', T('Fragen')); sendB.type = 'button';
   var stopB = el('button', 'btn ai-stop', T('Stopp')); stopB.type = 'button'; stopB.hidden = true;
@@ -201,7 +214,8 @@
     if (!A.chat.length) {
       chatBox.textContent = '';
       var e = el('div', 'ai-empty');
-      e.appendChild(el('p', null, T('Frag etwas – der Assistent sucht in den Seiten, die du sehen darfst, und nennt seine Quellen.')));
+      var hi = el('div', 'ai-hello'); hi.appendChild(av(56)); hi.appendChild(el('p', 'ai-hello-n', P().name)); e.appendChild(hi);
+      e.appendChild(el('p', null, T('Frag etwas – {name} sucht in den Seiten, die du sehen darfst, und nennt die Quellen.', { name: P().name })));
       e.appendChild(el('p', 'ai-hint', T('Er kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest er nie; Aufgaben und Kalender nur, wenn du sie einschaltest.')));
       chatBox.appendChild(e);
     }
@@ -224,8 +238,8 @@
     if (!q || A.run) return;
     if (A.chat.length === 0) chatBox.textContent = '';
     var item = el('div', 'ai-item'), qn = el('p', 'ai-q', q), ans = el('div', 'ai-answer ai-pending');
-    ans.appendChild(el('span', 'ai-typing', T('Denkt nach …')));
-    item.appendChild(qn); item.appendChild(ans); chatBox.appendChild(item);
+    ans.appendChild(el('span', 'ai-typing', T('{name} denkt nach …', { name: P().name })));
+    item.appendChild(qn); item.appendChild(who()); item.appendChild(ans); chatBox.appendChild(item);
     A.chat.push(item);
     askTa.value = ''; item.scrollIntoView({ block: 'end' });
     var text = '', srcs = [], srcNode = null, fin = false, pend = false, info = {};
@@ -315,7 +329,7 @@
         var del = el('button', 'icon-btn ai-h-del', '×'); del.type = 'button'; del.setAttribute('aria-label', T('Eintrag löschen'));
         del.addEventListener('click', function () { api('DELETE', '/api/ai/history/' + it.id).then(function () { w.remove(); }).catch(function (err) { HK.toast(err.message); }); });
         hh.appendChild(del);
-        w.appendChild(hh); w.appendChild(el('p', 'ai-q', it.q)); w.appendChild(answerNode(it.answer, it.sources)); w.appendChild(sourcesNode(it.sources));
+        w.appendChild(hh); w.appendChild(el('p', 'ai-q', it.q)); w.appendChild(who()); w.appendChild(answerNode(it.answer, it.sources)); w.appendChild(sourcesNode(it.sources));
         list.appendChild(w);
       });
       bx.appendChild(list);
@@ -399,8 +413,8 @@
     var ids = idsOpt || (A.sel && A.sel.page === c.id ? A.sel.ids : []);
     if ((action === 'improve' || action === 'translate') && !ids.length) { selInfo(); return; }
     resBox.textContent = '';
-    var out = el('div', 'ai-answer ai-pending'); out.appendChild(el('span', 'ai-typing', T('Denkt nach …')));
-    resBox.appendChild(out);
+    var out = el('div', 'ai-answer ai-pending'); out.appendChild(el('span', 'ai-typing', T('{name} denkt nach …', { name: P().name })));
+    resBox.appendChild(who()); resBox.appendChild(out);
     var text = '', done = null, pid = c.id;
     busy(true);
     var saved = canEdit() && window.HKPages && HKPages.flush ? HKPages.flush() : Promise.resolve();   // markierte Bloecke muessen gespeichert sein
@@ -539,16 +553,36 @@
     if (btn) return;
     btn = el('button', 'btn ai-btn'); btn.type = 'button'; btn.id = 'ai-btn';
     btn.setAttribute('aria-controls', 'ai-panel'); btn.setAttribute('aria-expanded', 'false');
-    btn.title = T('KI-Assistent');
-    btn.appendChild(el('span', 'ai-spark', '✦')); btn.appendChild(el('span', 'ai-btn-t', T('Assistent')));
     btn.addEventListener('click', function () { if (panel.hidden) show(); else hide(); });
+    paintBtn();
     var u = $('hk-user'); if (u && u.parentNode) u.parentNode.insertBefore(btn, u);
   }
+  function paintBtn() {                                // "Frage Marin" mit kleinem Profilbild (schmal: nur das Bild)
+    if (!btn) return;
+    var lbl = T('Frage {name}', { name: P().name });
+    btn.textContent = ''; btn.title = lbl; btn.setAttribute('aria-label', lbl);
+    btn.appendChild(av(20)); btn.appendChild(el('span', 'ai-btn-t', lbl));
+  }
+  // Admin aendert Name/Bild oder schaltet die KI ein/aus (Live-Ereignis ai.persona.changed): Status neu laden
+  function refresh() {
+    return api('GET', '/api/ai/status').then(function (d) {
+      if (!d || !d.enabled) {
+        A.st = null; hide();
+        if (btn) { btn.remove(); btn = null; }
+        return;
+      }
+      A.st = d; headBtn(); paintBtn(); paintHead(); askPh();
+      if (!panel.hidden) render();
+    }).catch(function () { /* naechstes Ereignis */ });
+  }
+  document.addEventListener('hk-live', function (e) {
+    if (e.detail && e.detail.type === 'ai.persona.changed') refresh();
+  });
   window.HKAI = {
     // static/pages.js: Untermenue im Seitenmenue ("…"), nur wenn der Assistent an ist
     menu: function (m) {
       if (!A.st) return;
-      m.appendChild(HK.menuItem(T('KI-Assistent'), null, { icon: '✦', sub: function (sm) {
+      m.appendChild(HK.menuItem(T('Frage {name}', { name: P().name }), null, { icon: '✦', sub: function (sm) {
         sm.appendChild(HK.menuItem(T('Zusammenfassen'), function () { show('page'); runPage('summarize'); }, { icon: '≡' }));
         sm.appendChild(HK.menuItem(T('Aufgaben vorschlagen'), function () { show('page'); runPage('tasks'); }, { icon: '☐' }));
         sm.appendChild(HK.menuItem(T('Markierten Text verbessern'), function () { show('page'); runPage('improve'); }, { icon: '✎' }));
@@ -561,6 +595,6 @@
 
   api('GET', '/api/ai/status').then(function (d) {
     if (!d || !d.enabled) return;
-    A.st = d; headBtn();
+    A.st = d; headBtn(); paintHead(); askPh();
   }).catch(function () { /* kein Assistent */ });
 })();

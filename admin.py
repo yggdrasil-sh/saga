@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from starlette.concurrency import run_in_threadpool
@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import clean_line, connect as _db
-from saga import ai, calls, federation, i18n, live, mfa, publish, push, sharing
+from saga import ai, avatars, calls, federation, i18n, live, mfa, publish, push, sharing
 from saga.core import TZ, BodyLimit, LangMiddleware
 from saga.i18n import t
 from version import REPO, VERSION, newer
@@ -46,7 +46,8 @@ admin.add_middleware(LangMiddleware, session_key="aid")      # vor SessionMiddle
 admin.add_middleware(SessionMiddleware, secret_key=hashlib.sha256(("hk-admin|" + hk.SECRET).encode()).hexdigest(),
                      session_cookie="hk_admin", https_only=ADMIN_URL.startswith("https://"), same_site="strict",
                      max_age=int(E.get("ADMIN_SESSION_HOURS", "4")) * 3600)
-admin.add_middleware(BodyLimit, default=1024 * 1024)       # nur Formulare: 1 MB reicht; zuletzt registriert = laeuft zuerst
+admin.add_middleware(BodyLimit, default=1024 * 1024,      # nur Formulare: 1 MB reicht; zuletzt registriert = laeuft zuerst
+                     rules=[("POST", re.compile(r"/settings/ai/persona"), avatars.UPLOAD_MAX + 256 * 1024)])   # Profilbild der KI
 admin.mount("/static", StaticFiles(directory=os.path.join(hk.HERE, "static")), name="static")
 tmpl = Environment(loader=FileSystemLoader(os.path.join(hk.HERE, "templates", "admin")), autoescape=select_autoescape(["html"]))
 i18n.install(tmpl)
@@ -1142,7 +1143,15 @@ def ai_page(request: Request):
     n, people = ai.usage_today()
     return _page(request, "ai.html", me, a=a, has_key=bool(a.get("api_key")), groups_text=", ".join(a.get("groups") or []),
                  test=request.session.pop("ai_test", None), used=n, people=people, parallel=ai.PARALLEL,
-                 models=ai.LAST_MODELS["list"][:300])
+                 models=ai.LAST_MODELS["list"][:300], **_persona_ctx())
+
+
+def _persona_ctx():
+    p = dict(auth.settings(fresh=True).get("ai_persona") or {})
+    url, _etag = ai.persona_avatar()
+    return {"p": {"name": ai.clean_name(p.get("name")), "tone": ai.clean_tone(p.get("tone"))}, "persona_name": ai.persona_name(p),
+            "default_name": ai.default_name(), "has_av": bool(url), "av_v": (url or "").rsplit("=", 1)[-1],
+            "av_max": avatars.UPLOAD_MAX // 1048576}
 
 
 def _ai_from(f, cur):
@@ -1208,5 +1217,72 @@ async def ai_post(request: Request):
             c.execute("UPDATE setting SET v=? WHERE k='ai'", (json.dumps(st, ensure_ascii=False),))
         auth._settings_cache["v"] = None
     print(f"admin: {me['username']} speichert KI-Assistent (aktiv={v['enabled']})", flush=True)
+    if bool(cur.get("enabled")) != bool(v["enabled"]):    # Clients blenden die KI ein/aus (Live-Ereignis, fragen neu nach)
+        with _db() as c, c:
+            ai.announce_persona(c)
     _flash(request, t("Einstellungen für den KI-Assistenten gespeichert."))
     return _go("/settings/ai")
+
+
+# --- Persona der KI (2.1): Name, Profilbild, Tonfall ---------------------------------------------------------------
+@admin.post("/settings/ai/persona")
+async def ai_persona_post(request: Request):
+    """Formular (multipart): name, tone, image (Datei, optional), action = save | remove_image."""
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    try:
+        if int(request.headers.get("content-length") or 0) > avatars.UPLOAD_MAX + 64 * 1024:
+            _flash(request, t("Das Bild ist zu groß (höchstens {n} MB).", n=avatars.UPLOAD_MAX // 1048576), "err")
+            return _go("/settings/ai#persona")
+    except ValueError:
+        return _go("/settings/ai#persona")
+    f = await _form(request)
+    if f is None:
+        return _go("/settings/ai#persona")
+    if f.get("action") == "remove_image":
+        if await run_in_threadpool(ai.set_avatar, None):
+            print(f"admin: {me['username']} entfernt das Profilbild der KI", flush=True)
+        _flash(request, t("Profilbild der KI entfernt."))
+        return _go("/settings/ai#persona")
+    raw_name = str(f.get("name") or "")
+    name, tone = ai.clean_name(raw_name), ai.clean_tone(f.get("tone"))
+    if raw_name.strip() and not name:
+        _flash(request, t("Der Name enthält keine erlaubten Zeichen. Erlaubt: Buchstaben, Ziffern, Leerzeichen, Punkt, Bindestrich, Apostroph."), "err")
+        return _go("/settings/ai#persona")
+    up = f.get("image")
+    enc = None
+    if up is not None and hasattr(up, "read") and getattr(up, "filename", ""):
+        data = await up.read(avatars.UPLOAD_MAX + 1)
+        if data:
+            if len(data) > avatars.UPLOAD_MAX:
+                _flash(request, t("Das Bild ist zu groß (höchstens {n} MB).", n=avatars.UPLOAD_MAX // 1048576), "err")
+                return _go("/settings/ai#persona")
+            if not avatars.is_image(data[:16]):
+                _flash(request, t("kein unterstütztes Bild (PNG, JPEG, GIF, WebP, HEIC)"), "err")
+                return _go("/settings/ai#persona")
+            enc = await run_in_threadpool(avatars.encode, data)
+            if not enc:
+                _flash(request, t("Das Bild ließ sich nicht lesen (beschädigt oder kleiner als 16 × 16 Pixel)."), "err")
+                return _go("/settings/ai#persona")
+    old = dict(auth.settings(fresh=True).get("ai_persona") or {})
+    auth.save_setting("ai_persona", {"name": name, "tone": tone})
+    img = await run_in_threadpool(ai.set_avatar, enc) if enc else False
+    if not img and (old.get("name") or "") != name:       # Bild geaendert: set_avatar hat das Ereignis schon geschickt
+        with _db() as c, c:
+            ai.announce_persona(c)
+    print(f"admin: {me['username']} speichert Persona der KI (Name={'eigener' if name else 'Standard'}, "
+          f"Tonfall={'ja' if tone else 'nein'}, Bild={'neu' if img else 'unveraendert'})", flush=True)
+    _flash(request, t("Persona der KI gespeichert."))
+    return _go("/settings/ai#persona")
+
+
+@admin.get("/settings/ai/avatar")
+def ai_avatar_admin(request: Request):
+    """Vorschau im Admin-Bereich (eigener Port, eigene Sitzung - /api/ai/avatar kennt die Admin-Sitzung nicht)."""
+    if not _me(request):
+        return Response(status_code=404)
+    got = avatars.image(ai.AV_UID, "upload", 128, "std")
+    if not got:
+        return Response(status_code=404, headers={"Cache-Control": "no-store"})
+    return Response(bytes(got[1]), media_type=got[0], headers=dict(avatars._IMG_H, **{"Cache-Control": "no-store"}))

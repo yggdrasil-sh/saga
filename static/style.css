@@ -1770,3 +1770,16 @@ body.pg-lock-on #pg-editor .embed-db :is(.db-new-top,.db-tab-add,.db-gear,.db-ne
 .cm-av.cm-av-gone{background:var(--unk,#888)}
 .hk-avset-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.45rem 0;cursor:pointer;font-size:.88rem}
 .hk-avset-row[hidden]{display:none}
+/* KI-Persona (2.1): Profilbild der KI - ohne Bild ein neutrales Symbol (✦) auf Akzent-Verlauf; Groesse ueber --ai-av */
+.ai-av{--ai-av:1.5rem;position:relative;display:inline-grid;place-items:center;width:var(--ai-av);height:var(--ai-av);border-radius:50%;flex:none;
+  overflow:hidden;vertical-align:middle;font-size:calc(var(--ai-av) * .55);line-height:1;font-style:normal;font-weight:400;color:var(--accent);
+  background:linear-gradient(140deg,color-mix(in srgb,var(--accent) 30%,var(--card)),color-mix(in srgb,var(--accent) 8%,var(--card)));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 32%,transparent)}
+.ai-av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .15s;pointer-events:none}
+.ai-av.ai-av-on{color:transparent;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--fg) 12%,transparent)}
+.ai-av.ai-av-on img{opacity:1}
+.adm-persona{display:flex;align-items:center;gap:.8rem;padding-left:14rem;margin:.1rem 0 .5rem}
+.adm-persona-av{--ai-av:3.2rem}
+.adm-persona-name{font-weight:600;font-size:1.05rem}
+.adm-ta{resize:vertical;min-height:4.6rem;font:inherit;line-height:1.45}
+@media (max-width:720px){.adm-persona{padding-left:0}}

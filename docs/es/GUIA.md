@@ -859,7 +859,8 @@ la clave de Web Push (VAPID) cuando la necesita por primera vez; depende de `SEC
 
 ### Asistente de IA (opcional)
 
-Si el asistente está activado, la vista de páginas muestra arriba **✦ Asistente**. Funciona con un modelo de lenguaje que
+Si el asistente está activado, la vista de páginas muestra arriba **Pregunta a Saga IA** (o el nombre que haya elegido
+el administrador, p. ej. «Pregunta a Marin») con su foto de perfil. Funciona con un modelo de lenguaje que
 configura el administrador (p. ej. Ollama en tu propia red). **Todo lo que le das al asistente – tu pregunta y los
 fragmentos de páginas correspondientes – se envía a ese endpoint**; su dirección aparece abajo en el panel lateral.
 
@@ -900,6 +901,13 @@ simultáneas en total (por defecto 4). Las preguntas, el contenido y las respues
 Para protegerse de instrucciones inyectadas («Ignora todas las reglas …» dentro de una página), Saga marca el contenido
 de las páginas como datos para el modelo y no da al asistente ningún permiso de escritura. Aun así, un modelo de lenguaje
 puede equivocarse o dejarse influir por el contenido: revisa las respuestas, sobre todo en páginas compartidas.
+
+**Persona:** en el área de administración → Asistente de IA → **Persona** la IA recibe un nombre (vacío = «Saga KI» /
+«Saga AI» / «Saga IA» según el idioma), una **foto de perfil** (PNG, JPEG, GIF, WebP o HEIC; se comprueba como las fotos de
+perfil, se recorta en cuadrado y se vuelve a codificar; sin foto, Saga muestra un símbolo ✦ neutro) y, opcionalmente, una
+breve **personalidad y tono** (como máximo 500 caracteres). El tono solo influye en la redacción de sus propias respuestas;
+las reglas, las fuentes y los formatos tienen prioridad, y mejorar y traducir mantienen el tono del texto. La web y las
+apps muestran el nombre y la foto allí donde aparece la IA y aplican los cambios al instante.
 
 ### Cuenta, calendarios, Immich, apps
 

@@ -1,9 +1,10 @@
 /* KI-Assistent (1.6): Knopf im Seitenkopf, Seitenleiste rechts (Handy: Bottom-Sheet), Antworten mit Quellen, Vorschlaege.
    Farben nur ueber die Variablen aus style.css (hell + dunkel). */
-.ai-btn{display:inline-flex;align-items:center;gap:.35rem;padding:.4rem .65rem;line-height:1}
+.ai-btn{display:inline-flex;align-items:center;gap:.4rem;padding:.3rem .65rem .3rem .35rem;line-height:1;max-width:15rem}
+.ai-btn-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ai-spark{color:var(--accent);font-size:.95em}
 .ai-btn[aria-expanded="true"]{background:var(--card-h);border-color:color-mix(in srgb,var(--accent) 45%,var(--border))}
-@media (max-width:760px){.ai-btn-t{display:none}}
+@media (max-width:760px){.ai-btn-t{display:none}.ai-btn{padding:.3rem .4rem}}
 
 .ai-panel{position:fixed;top:0;right:0;bottom:0;z-index:56;width:min(400px,100vw);display:flex;flex-direction:column;background:var(--card);
   border-left:1px solid var(--border);box-shadow:-12px 0 40px rgba(0,0,0,.25);color:var(--fg)}
@@ -13,7 +14,15 @@
 @media (min-width:1180px){body.ai-open:not(.embed) .np-main{padding-right:calc(400px + 3.8rem)}}
 .ai-head{display:flex;align-items:center;gap:.6rem;padding:.75rem .7rem .6rem 1rem}
 .ai-grip{display:none}
-.ai-title{margin:0;flex:1;display:flex;align-items:center;gap:.45rem;font-size:1rem;font-weight:600;text-transform:none;letter-spacing:0;color:var(--fg)}
+.ai-title{margin:0;flex:1;min-width:0;display:flex;align-items:center;gap:.6rem;font-size:1rem;font-weight:600;text-transform:none;letter-spacing:0;color:var(--fg)}
+.ai-title-t{display:flex;flex-direction:column;min-width:0;line-height:1.2}
+.ai-title-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ai-title-s{font-size:.72rem;font-weight:400;color:var(--muted)}
+/* Persona (2.1): Kopf jeder Antwort mit Bild und Name, Begruessung im leeren Verlauf */
+.ai-who{display:flex;align-items:center;gap:.45rem;margin-bottom:-.15rem;font-size:.8rem;font-weight:600;color:var(--fg)}
+.ai-who-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ai-hello{display:flex;flex-direction:column;align-items:center;gap:.45rem;margin:0 0 .9rem;text-align:center}
+.ai-hello-n{margin:0!important;font-size:1rem;font-weight:600;color:var(--fg)}
 .ai-close{font-size:1.3rem;line-height:1;padding:.25rem .45rem}
 .ai-tabs{display:flex;gap:.2rem;padding:0 .8rem;border-bottom:1px solid var(--border)}
 .ai-tab{appearance:none;background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:.45rem .6rem;font:inherit;font-size:.85rem;
