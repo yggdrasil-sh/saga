@@ -790,19 +790,31 @@ def _restore_filter(src, dst, known):
     """SQL-Text von pg_restore -> psql. Laesst SET-Zeilen fuer Parameter weg, die der Server nicht kennt (pg_restore 17
     schreibt "SET transaction_timeout = 0;", Postgres 16 bricht daran ab), setzt nach BEGIN das DROP der abgeleiteten
     Tabellen ein und haelt alles ab dem abschliessenden COMMIT zurueck. Zeilen in COPY-Daten bleiben unberuehrt.
-    Rueckgabe: zurueckgehaltener Rest (bytes) oder None, wenn kein BEGIN kam (dann nie COMMIT schicken)."""
+    Rueckgabe: zurueckgehaltener Rest (bytes) oder None, wenn kein BEGIN kam (dann nie COMMIT schicken).
+    SET-Zeilen fallen nur im Kopf weg (vor dem ersten Objekt) - spaeter koennten sie in Funktionskoerpern oder
+    mehrzeiligen Texten stehen. Ein "COMMIT;" mitten im Text (z. B. in einer Prozedur) wird nicht festgehalten: Folgt
+    noch eine echte Zeile (kein Kommentar/Leerzeile/psql-Befehl), geht es sofort weiter."""
     in_copy = begun = False
+    head = True
     held = None
     for line in iter(src.readline, b""):
         if held is not None:
-            held += line
-            continue
+            s = line.strip()
+            if not s or s.startswith(b"--") or s.startswith(b"\\"):
+                held += line
+                continue
+            dst.write(held)                 # war nicht das abschliessende COMMIT
+            held = None
+        if head:
+            s = line.strip()
+            head = (not s or s.startswith(b"--") or s.startswith(b"\\") or s == b"BEGIN;" or s.startswith(b"SET ")
+                    or s.startswith(b"SELECT pg_catalog.set_config("))
         if in_copy:
             if line in (b"\\.\n", b"\\.\r\n"):
                 in_copy = False
         elif line.startswith(b"COPY ") and line.rstrip().endswith(b"FROM stdin;"):
             in_copy = True
-        elif (m := _RESTORE_SET.match(line)) and m.group(1).decode() not in known:
+        elif head and (m := _RESTORE_SET.match(line)) and m.group(1).decode() not in known:
             continue
         elif line.strip() == b"COMMIT;":
             held = line

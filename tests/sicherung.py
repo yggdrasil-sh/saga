@@ -47,6 +47,9 @@ try:
         q("INSERT INTO sich_probe VALUES (%s, %s)", (i, t))
     q("CREATE TABLE sich_eine (txt TEXT)")      # eine Spalte: COPY-Zeile = genau der Text
     q("INSERT INTO sich_eine VALUES ('SET transaction_timeout = 0;'), ('COMMIT;')")
+    # Funktionskoerper mit Steuerzeilen ausserhalb von COPY: SET darf nur im Kopf wegfallen, COMMIT nicht haengenbleiben
+    FBODY = "\nBEGIN\nSET transaction_timeout = 0;\nCOMMIT;\nRETURN 1;\nEND "
+    q(f"CREATE FUNCTION sich_f() RETURNS int LANGUAGE plpgsql AS $f${FBODY}$f$")
     for i in (1, 2, 3):
         q("INSERT INTO note (id, uid, title, body, created, updated) VALUES (%s, 'sich-a', %s, %s, 1, 1)",
           (i, f"Seite {i}", f"Text {i} [[{i + 1}]]"))
@@ -71,7 +74,8 @@ try:
     ok("Daten wieder wie beim Backup (Seiten, abgeleitete Daten, Verweise)", state() == before
        and q("SELECT count(*) FROM note_link")[0][0] == 3)
     ok("Steuerzeilen-aehnliche Inhalte unveraendert", q("SELECT txt FROM sich_probe ORDER BY id") == [(t,) for t in TRICKY]
-       and q("SELECT txt FROM sich_eine ORDER BY txt") == [("COMMIT;",), ("SET transaction_timeout = 0;",)])
+       and q("SELECT txt FROM sich_eine ORDER BY txt") == [("COMMIT;",), ("SET transaction_timeout = 0;",)]
+       and q("SELECT prosrc FROM pg_proc WHERE proname = 'sich_f'") == [(FBODY,)])
     ok("Schema-Stand wie vorher", db.schema_version() == db.SCHEMA_VERSION)
     db.restore(p)
     ok("Zweimal hintereinander zurueckspielen", state() == before)
