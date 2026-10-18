@@ -30,6 +30,7 @@ from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESS
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
 from saga.notes import FILE_MAX
+from saga import pageindex
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -56,6 +57,7 @@ async def lifespan(_app):
     push.start()                                             # Mitteilungen aufs Handy/Desktop (Warteschlange)
     federation.start()                                       # Foederation: Ausgangskorb (Ereignisse an andere Instanzen)
     calls.start()                                            # Anrufe: Klingeldauer, verlorene Verbindungen (2.1)
+    pageindex.start()                                        # Suchtext/Verweise/Vorschaubilder abgleichen (2.2)
 
     async def _gc_loop():
         purged = 0.0
@@ -84,6 +86,7 @@ async def lifespan(_app):
                 print(f"files-gc: {type(ex).__name__}: {ex}", flush=True)
     gc_task = asyncio.create_task(_gc_loop())
     yield
+    pageindex.stop()
     calls.stop()
     push.stop()
     live.stop()

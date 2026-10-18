@@ -191,35 +191,39 @@ class Access:
         return r
 
     def tree(self, owner, meta=False):
-        """Alle Seiten von owner, die ich sehen darf: {id: rolle} (meta=True: {id: (rolle, zeile)}) - EINE Abfrage fuer den
-        ganzen Baum, Vererbung in Python (Seitenleiste mit 500 Seiten = eine Abfrage, nicht 500 Ketten)."""
+        """Alle Seiten von owner, die ich sehen darf: {id: rolle} (meta=True: {id: (rolle, zeile)}), in Baum-Reihenfolge
+        (sort, created). EINE Abfrage: rekursiv von meinen Freigaben abwaerts (Index note_parent) statt des ganzen Baums
+        des Eigentuemers. Vererbung wie note_chain: jede Seite bekommt die hoechste Rolle der Freigaben auf ihr und
+        darueber; geloeschte/archivierte Seiten und Vorlagen unterbrechen die Kette (sie selbst und alles darunter, was
+        nicht unterhalb von ihnen eigens freigegeben ist, bleibt unsichtbar)."""
         if owner == self.uid or not self.on():
             return {}
         sh = self.shares_from(owner)
         if not sh:
             self._tree[owner] = {}
             return {}
-        cols = f", {NOTE_META_COLS}" if meta else ""
-        rows = self.c.execute(f"SELECT n.id, n.parent_id, (n.deleted_at IS NOT NULL OR n.archived IS NOT NULL OR n.is_template<>0){cols} "
-                              "FROM note n WHERE n.uid=? ORDER BY n.sort NULLS FIRST, n.created", (owner,)).fetchall()
-        par = {r[0]: r[1] for r in rows}
-        bad = {r[0]: bool(r[2]) for r in rows}
-        memo = {}
-        for n in par:
-            stack, x = [], n
-            while x is not None and x in par and x not in memo and len(stack) < 80:
-                stack.append(x)
-                x = par[x]
-            up = memo.get(x)
-            for y in reversed(stack):
-                up = None if bad[y] else _best(sh.get(y), up)
-                memo[y] = up
-        roles = {k: v for k, v in memo.items() if v}
+        mc = [x.strip() for x in NOTE_META_COLS.split(",") if x.strip() != "id"] if meta else []
+        tcols = "".join(f", n.{x}" for x in mc)                 # Zeilen-Spalten gleich mitfuehren: kein zweiter Zugriff
+        ok = "n.uid=? AND n.deleted_at IS NULL AND n.archived IS NULL AND n.is_template=0"
+        roots = sorted(i for i in sh if RANK.get(sh[i], 0) > 0)
+        # Jede Freigabe vererbt abwaerts; ueberlappen sich Freigaben (Seite und Unterseite freigegeben), kommt eine Seite
+        # mehrfach an - es gilt die hoechste Rolle (DISTINCT ON ... r DESC)
+        rows = self.c.execute(
+            "WITH RECURSIVE t AS ("
+            f" SELECT n.id, x.r, 0 AS depth, n.sort, n.created{tcols} FROM unnest(?::bigint[], ?::int[]) AS x(id, r)"
+            f" JOIN note n ON n.id=x.id WHERE {ok}"
+            f" UNION ALL SELECT n.id, t.r, t.depth + 1, n.sort, n.created{tcols} FROM t JOIN note n ON n.parent_id=t.id"
+            f" WHERE {ok} AND t.depth < 10000)"
+            f" SELECT id, r{''.join(', ' + x for x in (['id'] + mc if meta else []))}"
+            " FROM (SELECT DISTINCT ON (id) * FROM t ORDER BY id, r DESC) v ORDER BY sort NULLS FIRST, created, id",
+            (roots, [RANK[sh[i]] for i in roots], owner, owner)).fetchall()
+        name = {v: k for k, v in RANK.items() if k}
+        roles = {r[0]: name[r[1]] for r in rows}
         self._tree[owner] = roles
         for k, v in roles.items():
             self._role.setdefault(k, v)
         if meta:
-            return {r[0]: (roles[r[0]], r[3:]) for r in rows if r[0] in roles}
+            return {r[0]: (name[r[1]], r[2:]) for r in rows}
         return roles
 
 

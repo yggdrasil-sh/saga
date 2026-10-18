@@ -29,6 +29,15 @@ for S in $STUFEN; do
   python3 -c "import json;d=json.load(open('perf-out/$S.info.json'));print({k:v for k,v in d.items() if not k.startswith('cookie')})"
   docker restart "$C" >/dev/null; sleep 3          # frischer Prozess je Stufe (RAM vergleichbar)
   for i in $(seq 1 40); do curl -sf "http://127.0.0.1:$PORT/healthz" >/dev/null && break; sleep 1; done
+  # Abgleich der abgeleiteten Daten (saga/pageindex.py: Suchtext, Verweise, Vorschaubilder) nach dem Erzeugen abwarten -
+  # sonst misst die Stufe den einmaligen Aufbau mit. Aeltere Versionen ohne note_stale: sofort weiter.
+  T0=$(date +%s)
+  for i in $(seq 1 600); do
+    n=$(docker exec "$D" psql -U "$PGU" -d saga -tAc "SELECT count(*) FROM note_stale" 2>/dev/null || echo 0)
+    [ "${n:-0}" = "0" ] && break; sleep 1
+  done
+  echo "Abgleich (pageindex) nach dem Erzeugen: $(( $(date +%s) - T0 )) s"
+  sleep 2                                           # danach frischt der Abgleich noch die Statistik auf (ANALYZE)
   SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   python3 tools/perf/bench.py --base "http://127.0.0.1:$PORT" --info "perf-out/$S.info.json" --out "perf-out/$S.json" --n "$N" --project "$P" \
     | tee "perf-out/$S.txt"
