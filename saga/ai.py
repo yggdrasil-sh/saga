@@ -51,7 +51,7 @@ from db import connect as _db
 from saga import i18n
 from saga.core import CA_FILE, E, TZ, _api_guard, _bad, _body, t
 from saga.netguard import Blocked, guarded_client, is_public
-from saga.notes import _iter_blocks, blocks_text
+from saga.notes import _calc_value, _iter_blocks, blocks_text
 from saga.sharing import Access, access, groups_of, mask_links, names, viewer
 
 router = APIRouter()
@@ -379,19 +379,33 @@ def _plain(v):
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", str(v or ""))).strip()
 
 
-def props_text(schema, props, titles=None):
-    """Eigenschaften einer Datenbank-Zeile als Text ('Status: In Arbeit · Datum: 2026-11-03') - Auswahl-IDs -> Namen,
-    Relationen -> Titel sichtbarer Seiten (titles: id -> titel), Datum als ISO-Datum."""
+def _num(v):
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return _plain(v)
+    return str(int(f)) if f.is_integer() else f"{round(f, 2):g}"
+
+
+def prop_pairs(schema, props, titles=None):
+    """Eigenschaften einer Datenbank-Zeile -> [(name, wert)] - Auswahl-IDs -> Namen, Relationen -> Titel sichtbarer
+    Seiten (titles: id -> titel), Datum als ISO-Datum, Zahlen mit Einheit (%/€), Rechen-Spalten mit Wert und Herkunft
+    ('4 % (Gelesen 11 / Seiten 258)') - damit auch kleine Modelle daraus sinnvolle Schritte ableiten koennen."""
     if not isinstance(schema, dict) or not isinstance(props, dict):
-        return ""
+        return []
+    plist = [p for p in (schema.get("props") or [])[:30] if isinstance(p, dict)]
+    names = {p.get("id"): _plain(p.get("name")) or "?" for p in plist}
     out = []
-    for p in (schema.get("props") or [])[:30]:
-        if not isinstance(p, dict):
-            continue
+    for p in plist:
         typ, v = p.get("type"), props.get(p.get("id"))
         if typ == "checkbox" and v is None:
             v = False                                      # nicht angehakt wird nicht gespeichert - fuer die Suche aber "✗"
-        if v in (None, "", []) or typ in ("created", "edited", "calc"):
+        if typ == "calc":
+            try:
+                v = _calc_value(p, props)
+            except Exception:  # noqa: BLE001 - kaputte Rechen-Spalte: weglassen
+                v = None
+        if v in (None, "", []) or typ in ("created", "edited"):
             continue
         if typ in ("select", "multi_select"):
             opts = {o.get("id"): o.get("name") for o in p.get("options") or [] if isinstance(o, dict)}
@@ -404,11 +418,22 @@ def props_text(schema, props, titles=None):
             s = " – ".join(str(v[k]) for k in ("start", "end") if v.get(k))
         elif isinstance(v, (dict, list)):
             s = ""
+        elif typ in ("number", "calc"):
+            if p.get("fmt") == "percent" and p.get("show") in ("ring", "bar") and isinstance(v, (int, float)):
+                v = round(v)                               # wie die Anzeige (Ring/Balken: ganze Prozent)
+            s = _num(v) + {"percent": " %", "euro": " €"}.get(p.get("fmt"), "")
+            if typ == "calc" and p.get("op") in ("pct", "div") and p.get("a") in props and p.get("b") in props:
+                s += f" ({names.get(p.get('a'))} {_num(props.get(p.get('a')))} / {names.get(p.get('b'))} {_num(props.get(p.get('b')))})"
         else:
             s = _plain(v)
         if s:
-            out.append(f"{_plain(p.get('name')) or '?'}: {s}"[:300])
-    return " · ".join(out)
+            out.append((names.get(p.get("id")) or "?", s[:280]))
+    return out
+
+
+def props_text(schema, props, titles=None):
+    """Eigenschaften einer Datenbank-Zeile als Text ('Status: In Arbeit · Datum: 2026-11-03'), siehe prop_pairs."""
+    return " · ".join(f"{n}: {v}"[:300] for n, v in prop_pairs(schema, props, titles))
 
 
 def _row_list(rows, schema, titles):
@@ -743,6 +768,8 @@ def ask_messages(q, ctx, extra):
 
 
 def page_messages(action, title, text, target=None):
+    """Sprache: Zusammenfassen/Aufgaben in der Sprache der Oberflaeche (Konto > Server > Browser), Verbessern behaelt
+    die Sprache des Textes, Uebersetzen die Zielsprache."""
     lang = _lang_name()
     tl = TARGETS.get(target, "English")
     ml = LANG_NAMES.get(q_lang(str(text or "")[:3000]))   # Sprache des Seitentexts (sonst schwenken kleine Modelle auf Englisch)
@@ -750,10 +777,15 @@ def page_messages(action, title, text, target=None):
     plain = " Do not add an introduction, explanations or notes."
     task = {
         "summarize": f"Summarize the page in a few short sentences or bullet points (lines starting with '- '). Plain text, "
-                     f"no headings. Answer in {lang}.",
-        "tasks": "List the concrete action items (to-dos) that follow from the material. Output one item per line, "
-                 "each line starting with '- '. At most 15 items, each short. No other text. Write the items in the "
-                 f"language of the material{in_ml}.",
+                     f"no headings. Only use what is on the page; if it has hardly any content, say so in one sentence "
+                     f"instead of inventing more. Answer in {lang}.",
+        "tasks": "List the concrete action items (next steps) the person could do, based on the material. Every item is "
+                 "a short instruction that starts with a verb, e.g. 'Continue reading from page 12', 'Summarize the 10 "
+                 "highlights', 'Send the offer to the customer'. Never state facts about the page or repeat its "
+                 "properties (wrong: 'The book has 258 pages'). Only steps that clearly follow from the page - do not "
+                 "invent extra steps. Output one item per line, each line starting with 'TASK: '. At most 8 items. If "
+                 "there is nothing sensible to do, output only the word NONE. "
+                 f"No other text. Write the items in {lang}.",
         "improve": "Improve spelling, grammar and wording of the text. Keep meaning, language and tone. The text consists of "
                    "blocks separated by a line containing only '---'; keep exactly the same blocks and separators. Output "
                    "only the improved text." + plain,
@@ -764,8 +796,8 @@ def page_messages(action, title, text, target=None):
     # Auftrag nach den Daten kurz wiederholen (kleine Modelle vergessen den System-Prompt bei laengeren Seiten)
     again = {
         "summarize": f"Summarize the page above in {lang}. Start directly with the summary.",
-        "tasks": f"List the action items from the material above in its language{in_ml}, one per line starting with "
-                 "'- '. No other text.",
+        "tasks": f"Next steps for the material above, in {lang}: one per line as 'TASK: <instruction starting with a "
+                 "verb>', or only NONE. No facts, no other text.",
         "improve": f"Output only the improved text in its original language{in_ml}, with the same '---' separators."
                    + plain,
         "translate": f"Translate everything above completely into {tl}, with the same '---' separators. "
@@ -776,13 +808,38 @@ def page_messages(action, title, text, target=None):
             {"role": "user", "content": f"{MARK_A}\n{head}{clean_data(text)}\n{MARK_B}\n\n({again})"}]
 
 
-def parse_tasks(text):
+# Aussagen statt Aufgaben ("The Book of KASPA hat 258 Seiten."): Hilfsverb sein/haben/enthalten UND Bezug auf die Seite
+# (Titel, Eigenschaft) oder Satzanfang mit Artikel/Pronomen - Aufgaben beginnen mit einem Verb
+_BE = re.compile(r"\b(ist|sind|war|waren|hat|haben|hatte|beträgt|betragen|enthält|enthalten|gibt|is|are|was|were|has|have|"
+                 r"had|contains|es|son|está|están|tiene|tienen|contiene|hay)\b", re.I)
+_ART = re.compile(r"^(der|die|das|den|dem|ein|eine|es|dies|diese|dieser|this|the|a|an|it|there|el|la|los|las|un|una|"
+                  r"esto|esta|este)\b", re.I)
+_LABEL = re.compile(r"^[^\s:]{1,30}(?: [^\s:]{1,20})?:\s*[\d.,]+\s*\S{0,12}$")      # "Seiten: 258", "Fortschritt: 4 %"
+_NONE = re.compile(r"^\W*(none|nothing|keine?|nichts|ninguna?|nada)\W*$", re.I)
+
+
+def _is_statement(s, title="", names=()):
+    if not _BE.search(s):
+        return False
+    low = s.lower()
+    return bool(_ART.match(s)) or (len(title or "") > 3 and title.lower() in low) or \
+        any(len(n) > 2 and re.search(r"\b" + re.escape(n.lower()) + r"\b", low) for n in names)
+
+
+def parse_tasks(text, title="", props=()):
+    """Aufgaben aus der Antwort: Zeilen 'TASK: ...' (auch Listen '- ...', '1. ...'); 'NONE' = keine. Aussagen ueber
+    die Seite und wiederholte Eigenschaften ('Seiten: 258') werden verworfen. props = [(name, wert)]."""
     out = []
+    names = [n for n, _v in props]
+    pv = {f"{n}: {v}".lower() for n, v in props}
     for ln in str(text or "").splitlines():
-        m = re.match(r"^\s*(?:[-*•]|\d{1,2}[.)])\s+(?:\[[ xX]?\]\s*)?(.+?)\s*$", ln)
+        m = re.match(r"^\s*(?:[-*•]\s*|\d{1,2}[.)]\s*)?(?:\*\*)?(?:task|aufgabe|tarea)\s*:\s*(?:\*\*)?(.+?)\s*$", ln, re.I) or \
+            re.match(r"^\s*(?:[-*•]|\d{1,2}[.)])\s+(?:\[[ xX]?\]\s*)?(.+?)\s*$", ln)
         if m:
-            s = re.sub(r"[*_`]+", "", m.group(1)).strip()[:200]
-            if s and s not in out:
+            s = re.sub(r"[*_`]+", "", m.group(1)).strip().rstrip(".").strip()[:200]
+            if not s or _NONE.match(s) or s.lower() in pv or _LABEL.match(s) or _is_statement(s, title, names):
+                continue
+            if s.lower() not in (x.lower() for x in out):
                 out.append(s)
         if len(out) >= 20:
             break
@@ -1350,13 +1407,27 @@ async def _no_match(uid, quota, q=""):
     if lq and lq != i18n.get_lang():                       # in der Sprache der Frage
         msg = i18n.t_lang(lq, "Dazu habe ich in deinen Seiten nichts gefunden. Versuch es mit anderen Begriffen oder mit "
                               "der Suche.")
+    return _static(msg, {"quota_left": ql, "no_match": True}, [])
 
+
+def _static(msg, done, sources):
+    """Antwort ohne Modellaufruf (zaehlt nicht aufs Kontingent) - gleiche Ereignisse wie eine echte Antwort."""
     async def gen():
         yield ":" + " " * 2048 + "\n\n"
-        yield _fmt("sources", {"sources": []})
-        yield _fmt("delta", {"t": msg})
-        yield _fmt("done", {"quota_left": ql, "no_match": True})
+        yield _fmt("sources", {"sources": sources})
+        if msg:
+            yield _fmt("delta", {"t": msg})
+        yield _fmt("done", done)
     return StreamingResponse(gen(), media_type="text/event-stream; charset=utf-8", headers=HEADERS)
+
+
+def _quota_left(uid):
+    c = cfg()
+    quota = int(c.get("quota") or 0)
+    if not quota:
+        return None
+    with _db() as conn:
+        return max(0, quota - used_today(conn, uid))
 
 
 def _pick_blocks(fmt, body, ids):
@@ -1373,6 +1444,18 @@ def _pick_blocks(fmt, body, ids):
                 out.append((blk.get("id"), str(blk.get("type") or ""), s))
                 want.discard(blk.get("id"))
         return out
+    except (ValueError, AttributeError, RecursionError):
+        return []
+
+
+def _page_text_blocks(fmt, body):
+    """Alle Text-Bloecke der Seite (ohne Spalten-/Toggle-Huellen) -> [(id, typ, text)] wie _pick_blocks."""
+    if fmt != "blocks":
+        return []
+    try:
+        blocks = json.loads(body or "").get("blocks", [])
+        return [(b.get("id"), str(b.get("type") or ""), blocks_text([b])) for b in _iter_blocks(blocks)
+                if b.get("id") and (b.get("type") in TEXT_TYPES or b.get("type") == "list") and blocks_text([b]).strip()]
     except (ValueError, AttributeError, RecursionError):
         return []
 
@@ -1411,16 +1494,17 @@ async def api_ai_page(nid: int, request: Request):
             if not r:
                 return None, _bad("not found", 404)
             body = r[1] if role == "owner" else mask_links(r[1], r[2], viewer(acc))
-            rows = []
+            rows, pairs = [], []
             if r[5] and r[6]:                              # Datenbank-Zeile: ihre Eigenschaften gehoeren zum Inhalt
-                p = conn.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database' AND deleted_at IS NULL",
+                p = conn.execute("SELECT schema, title FROM note WHERE id=? AND uid=? AND kind='database' AND deleted_at IS NULL",
                                  (r[5], owner)).fetchone()
                 try:
-                    pt = props_text(json.loads(p[0] or "{}"), json.loads(r[6])) if p else ""
+                    pairs = prop_pairs(json.loads(p[0] or "{}"), json.loads(r[6])) if p else []
                 except ValueError:
-                    pt = ""
-                if pt:
-                    rows = [pt]
+                    pairs = []
+                if pairs:                                  # mit Spaltennamen, je Zeile eine - kleine Modelle lesen das sicherer
+                    rows = [f"Properties (this page is a row of the database \"{_plain(p[1]) or '?'}\"):"] + \
+                           [f"- {n}: {v}" for n, v in pairs]
             if r[3] == "database":                         # Datenbank: ihre Zeilen mit Eigenschaften gehoeren zum Inhalt
                 try:
                     schema = json.loads(r[4] or "{}")
@@ -1434,18 +1518,34 @@ async def api_ai_page(nid: int, request: Request):
                     except ValueError:
                         data.append((x[0], {}))
                 rows = _row_list(data, schema, {})
-            return (r[0] or t("Unbenannt"), body, r[2] or "text", role, rows), None
+            return (r[0] or t("Unbenannt"), body, r[2] or "text", role, rows, pairs), None
     page, err = await asyncio.to_thread(load)
     if err is not None:
         return err
-    title, body, fmt, role, rows = page
-    picked = []
+    title, body, fmt, role, rows, pairs = page
+    picked, notice = [], None
+    src1 = [{"n": 1, "id": nid, "title": title}]
     if action in ("summarize", "tasks"):
-        text = "\n\n".join(_block_texts(fmt, body) + (["\n".join(rows)] if rows else []))
+        own = "\n\n".join(_block_texts(fmt, body))
+        text = "\n\n".join(([own] if own.strip() else []) + (["\n".join(rows)] if rows else []))
+        if action == "summarize" and pairs and len(own.strip()) < 60:
+            # Zeile ohne nennenswerten Text: ehrlich sagen statt aufblaehen (ohne Modell, kein Kontingent)
+            msg = "\n".join([t("Kaum Inhalt – nur Eigenschaften:")] + ([own.strip()] if own.strip() else [])
+                            + [f"- {n}: {v}" for n, v in pairs])
+            ql = await asyncio.to_thread(_quota_left, uid)
+            return _static(msg, {"truncated": False, "action": action, "sparse": True, "quota_left": ql}, src1)
+        if action == "tasks" and not text.strip():
+            ql = await asyncio.to_thread(_quota_left, uid)
+            return _static("", {"truncated": False, "action": action, "tasks": [], "quota_left": ql,
+                                "message": t("Auf dieser Seite gibt es nichts zu tun.")}, src1)
     else:
         picked = _pick_blocks(fmt, body, ids)
         if not picked:
             return _bad(t("Die markierten Blöcke sind nicht (mehr) auf der Seite – bitte zuerst speichern."), 409)
+        picked = [p for p in picked if p[2].strip()]       # Bild/leere Bloecke tragen nichts bei
+        if not picked:                                     # nur Bild/leer markiert: ganze Seite (Text-Bloecke)
+            picked = _page_text_blocks(fmt, body)[:BLOCKS_MAX]
+            notice = t("Die Markierung enthält keinen Text – verwendet wird der Text der ganzen Seite.") if picked else None
         text = "\n---\n".join(p[2] for p in picked)
     if not text.strip():
         return _bad(t("Die Seite enthält keinen Text."))
@@ -1471,8 +1571,12 @@ async def api_ai_page(nid: int, request: Request):
 
     def finish(answer):
         out = {"truncated": truncated, "action": action}
+        if notice:
+            out["notice"] = notice
         if action == "tasks":
-            out["tasks"] = parse_tasks(answer)
+            out["tasks"] = parse_tasks(answer, title, pairs)
+            if not out["tasks"]:
+                out["message"] = t("Auf dieser Seite gibt es nichts zu tun.")
         elif action in ("improve", "translate"):
             src = picked[0][2] if picked else ""
             segs = split_segments(answer, src)
@@ -1482,7 +1586,7 @@ async def api_ai_page(nid: int, request: Request):
             out["blocks"] = [{"id": p[0], "type": p[1], "replaceable": p[1] in TEXT_TYPES} for p in picked]
             out["segments"] = segs if len(segs) == len(picked) else None
         return out
-    return _respond(uid, c, page_messages(action, title, text, target), [_fmt("sources", {"sources": [{"n": 1, "id": nid, "title": title}]})],
+    return _respond(uid, c, page_messages(action, title, text, target), [_fmt("sources", {"sources": src1})],
                     finish, left, quota)
 
 

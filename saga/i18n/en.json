@@ -2318,5 +2318,8 @@
  "🔗 Link zur Datenbank kopieren": "🔗 Copy link to database",
  "🖼 Bild hochladen …": "🖼 Upload image …",
  "🖼 Eigenes Bild hochladen …": "🖼 Upload your own image …",
- "🗃️ Datenbank einbetten:": "🗃️ Embed database:"
+ "🗃️ Datenbank einbetten:": "🗃️ Embed database:",
+ "Kaum Inhalt – nur Eigenschaften:": "Hardly any content – only properties:",
+ "Auf dieser Seite gibt es nichts zu tun.": "There's nothing to do on this page.",
+ "Die Markierung enthält keinen Text – verwendet wird der Text der ganzen Seite.": "The selection contains no text – using the text of the whole page."
 }

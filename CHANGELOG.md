@@ -15,6 +15,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Verbessert
+- **KI-Assistent – „Aufgaben vorschlagen“** liefert nur noch konkrete nächste Schritte im Imperativ (z. B.
+  „Weiterlesen ab Seite 12“) statt Feststellungen („Das Buch hat 258 Seiten“): das Modell schreibt je Aufgabe eine Zeile
+  `TASK: …` oder `NONE`, der Server verwirft Aussagesätze und wiederholte Eigenschaften. Gibt es nichts zu tun (auch
+  bei leeren Seiten, ohne Modellaufruf), kommt die Meldung „Auf dieser Seite gibt es nichts zu tun.“
+- **Datenbank-Zeilen**: Eigenschaften gehen je Zeile mit Spaltennamen an das Modell, Rechen-Spalten mit Wert und
+  Herkunft („Fortschritt: 4 % (Gelesen 11 / Seiten 258)“), Zahlen mit %/€. „Zusammenfassen“ einer Zeile ohne
+  nennenswerten Text antwortet ehrlich „Kaum Inhalt – nur Eigenschaften: …“ (ohne Modell).
+- **Markierung nur Bild/leer**: Verbessern/Übersetzen nimmt dann den Text der ganzen Seite und sagt das; leere Blöcke
+  einer Markierung werden übergangen.
+- **Sprache der Seiten-Hilfen**: Zusammenfassen und Aufgaben in der Sprache der Oberfläche (Konto > Server-Standard >
+  Browser), Verbessern behält die Sprache des Textes, Übersetzen die Zielsprache.
+
 ## [2.1.0] – 2026-10-17
 
 Saga 2.1 macht die Anmeldung sicherer und den Chat persönlicher: Passkeys und Zwei-Faktor-Anmeldung, Profilbilder,

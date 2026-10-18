@@ -2318,5 +2318,8 @@
  "🔗 Link zur Datenbank kopieren": "🔗 Copiar enlace a la base de datos",
  "🖼 Bild hochladen …": "🖼 Subir imagen …",
  "🖼 Eigenes Bild hochladen …": "🖼 Subir una imagen propia …",
- "🗃️ Datenbank einbetten:": "🗃️ Insertar base de datos:"
+ "🗃️ Datenbank einbetten:": "🗃️ Insertar base de datos:",
+ "Kaum Inhalt – nur Eigenschaften:": "Apenas hay contenido, solo propiedades:",
+ "Auf dieser Seite gibt es nichts zu tun.": "No hay nada que hacer en esta página.",
+ "Die Markierung enthält keinen Text – verwendet wird der Text der ganzen Seite.": "La selección no contiene texto; se usa el texto de toda la página."
 }

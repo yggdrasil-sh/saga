@@ -393,6 +393,66 @@ def run():
     s, ev, _ = sse(f"/api/ai/page/{p3}", Bk, {"action": "translate", "blocks": ["b0"], "target": "en"})
     ok(f"Uebersetzen (B): Vorschlag ({(get(ev, 'done') or {}).get('segments')})", ((get(ev, "done") or {}).get("segments") or [""])[0].startswith("UEBERSETZT:")
        and "English" in last()[0])
+    # --- Aufgaben/Zeilen/Auswahl (Svens Buch-Zeile mit llama3.1:8b: Fakten statt Aufgaben) -------------------------------
+    setai(model="fake-facts")
+    req("PUT", "/api/account/lang", A, {"lang": "de"})                 # Meldungen unten auf Deutsch
+    s, ev, _ = sse(f"/api/ai/page/{p3}", A, {"action": "tasks"})
+    ok(f"Aufgaben: Aussagen und wiederholte Eigenschaften verworfen, TASK-Zeilen gelesen ({(get(ev, 'done') or {}).get('tasks')})",
+       (get(ev, "done") or {}).get("tasks") == ["Weiterlesen ab Seite 12"])
+    ok("Aufgaben: Prompt verlangt Imperativ, TASK-Zeilen und NONE", "starts with a verb" in last()[0] and "'TASK: '" in last()[0]
+       and "NONE" in last()[0] and "NONE" in last()[1])
+    setai(model="fake-none")
+    s, ev, _ = sse(f"/api/ai/page/{p3}", A, {"action": "tasks"})
+    dn = get(ev, "done") or {}
+    ok(f"Aufgaben: NONE -> keine Aufgaben, freundliche Meldung ({dn.get('tasks')}, {dn.get('message')})",
+       dn.get("tasks") == [] and "nichts zu tun" in (dn.get("message") or ""))
+    setai(model="fake")
+    req("PUT", "/api/account/lang", A, {"lang": "en"})
+    sse(f"/api/ai/page/{p3}", A, {"action": "tasks"})
+    t_en = last()[0]
+    sse(f"/api/ai/page/{p3}", A, {"action": "summarize"})
+    s_en = last()[0]
+    req("PUT", "/api/account/lang", A, {"lang": "de"})
+    sse(f"/api/ai/page/{p3}", A, {"action": "tasks"})
+    t_de = last()[0]
+    ok("Aufgaben/Zusammenfassen in der Sprache der Oberflaeche (nicht des Seitentexts)",
+       "Write the items in English" in t_en and "Answer in English" in s_en and "Write the items in German" in t_de)
+    pe = page(A, "Leere Ideen")
+    fake("POST", "/_reset")
+    s, ev, _ = sse(f"/api/ai/page/{pe}", A, {"action": "tasks"})
+    dn = get(ev, "done") or {}
+    ok(f"Leere Seite: keine Aufgaben, Meldung, kein Modellaufruf ({s}, {dn})", s == 200 and dn.get("tasks") == []
+       and dn.get("message") and fake("GET", "/_count")["n"] == 0)
+    dbk = req("POST", "/api/notes", A, {"title": "Bücher KI", "kind": "database"})[1]["id"]
+    s, _ = req("PATCH", f"/api/notes/{dbk}", A, {"schema": {"props": [
+        {"id": "tag", "name": "Tag", "type": "multi_select", "options": [{"id": "fin", "name": "Finance", "color": "green"}]},
+        {"id": "seiten", "name": "Seiten", "type": "number"}, {"id": "gelesen", "name": "Gelesen", "type": "number"},
+        {"id": "fort", "name": "Fortschritt", "type": "calc", "op": "pct", "a": "gelesen", "b": "seiten", "fmt": "percent",
+         "show": "ring"}]}})
+    row = req("POST", "/api/notes", A, {"title": "The Book of KASPA", "parent_id": dbk,
+                                         "props": {"tag": ["fin"], "seiten": 258, "gelesen": 11}})[1]["id"]
+    sse(f"/api/ai/page/{row}", A, {"action": "tasks"})
+    user = last()[1]
+    ok(f"Datenbank-Zeile: Eigenschaften je Zeile mit Namen, Rechen-Spalte mit Herkunft ({s})", s == 200
+       and 'row of the database "Bücher KI"' in user and "- Seiten: 258" in user and "- Tag: Finance" in user
+       and "- Fortschritt: 4 % (Gelesen 11 / Seiten 258)" in user)
+    fake("POST", "/_reset")
+    s, ev, _ = sse(f"/api/ai/page/{row}", A, {"action": "summarize"})
+    ok(f"Zeile ohne Text: Zusammenfassen sagt ehrlich 'Kaum Inhalt', ohne Modell ({text_of(ev)!r})",
+       text_of(ev).startswith("Kaum Inhalt") and "- Seiten: 258" in text_of(ev) and (get(ev, "done") or {}).get("sparse") is True
+       and fake("GET", "/_count")["n"] == 0)
+    pb = page(A, "Bild und Text", "Erster Absatz zum Verbessern.")
+    d = req("GET", f"/api/notes/{pb}", A)[1]
+    bl = json.loads(d["body"])
+    bl["blocks"].insert(0, {"id": "leer0", "type": "paragraph", "data": {"text": ""}})
+    req("PATCH", f"/api/notes/{pb}", A, {"body": json.dumps(bl), "format": "blocks"})
+    s, ev, _ = sse(f"/api/ai/page/{pb}", A, {"action": "improve", "blocks": ["leer0"]})
+    dn = get(ev, "done") or {}
+    ok(f"Auswahl ohne Text (Bild/leer): ganze Seite, Hinweis ({s}, {dn.get('notice')}, {[b['id'] for b in dn.get('blocks') or []]})",
+       s == 200 and "ganzen Seite" in (dn.get("notice") or "") and len(dn.get("blocks") or []) == 1
+       and (dn.get("segments") or [""])[0].startswith("VERBESSERT: Erster Absatz"))
+    req("PUT", "/api/account/lang", A, {"lang": ""})
+
     s1 = sse(f"/api/ai/page/{p3}", A, {"action": "improve"})[0]
     s2 = sse(f"/api/ai/page/{p3}", A, {"action": "improve", "blocks": ["gibtsnicht"]})[0]
     s3 = sse(f"/api/ai/page/{p3}", A, {"action": "translate", "blocks": ["b0"], "target": "xx"})[0]

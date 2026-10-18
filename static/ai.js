@@ -424,7 +424,8 @@
       if (!done || !cur() || cur().id !== pid) return;
       if (done.truncated) resBox.insertBefore(el('p', 'ai-hint', T('Die Seite ist lang – verwendet wurden Anfang und Ende.')), out);
       if (done.cut) resBox.insertBefore(el('p', 'ai-hint', T('Die Antwort wurde abgeschnitten (Längengrenze des Modells).')), out);
-      if (action === 'tasks') taskSuggest(done.tasks || [], out);
+      if (done.notice) resBox.insertBefore(el('p', 'ai-hint', done.notice), out);     // z. B. nur Bild markiert -> ganze Seite
+      if (action === 'tasks') taskSuggest(done.tasks || [], out, done.message);
       else if (action === 'improve' || action === 'translate') {
         if (typeof done.text === 'string') { text = done.text; out.textContent = text; }   // ohne Einleitung des Modells
         textSuggest(text, done, out);
@@ -451,9 +452,9 @@
   }
 
   // Aufgaben: Auswahl -> in "Aufgaben" uebernehmen (POST /api/tasks je Eintrag) oder als Checkliste unter die Seite
-  function taskSuggest(items, out) {
+  function taskSuggest(items, out, msg) {
     out.textContent = '';
-    if (!items.length) { out.appendChild(el('p', 'ai-hint', T('Keine Aufgaben gefunden.'))); return; }
+    if (!items.length) { out.appendChild(el('p', 'ai-hint', msg || T('Keine Aufgaben gefunden.'))); return; }
     out.classList.add('ai-tasks');
     var boxes = items.map(function (txt) {
       var l = el('label', 'ai-task'), i = el('input'); i.type = 'checkbox'; i.checked = true;

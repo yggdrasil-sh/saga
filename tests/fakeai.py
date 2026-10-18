@@ -35,6 +35,11 @@ def answer(messages, model=None):
     user = " ".join(m.get("content", "") for m in messages if m.get("role") == "user")
     data = user.split("<<<SAGA_DATA", 1)[-1].rsplit("SAGA_DATA>>>", 1)[0].strip("\n")
     if "List the concrete action items" in sys_txt:
+        if model == "fake-none":
+            return "NONE"
+        if model == "fake-facts":                          # Aussagen statt Aufgaben (wie llama3.1:8b bei einer Buch-Zeile)
+            return ("TASK: Zitronenfalter Meeting hat 2 Absätze.\nTASK: Weiterlesen ab Seite 12\nTASK: Seiten: 258\n"
+                    "TASK: Die Seite ist kurz.\n- Weiterlesen ab Seite 12\nTASK: The page has 258 pages.\n")
         return "- Angebot schicken\n- Termin mit Team vereinbaren\n* Bericht schreiben\n"
     pre = "Here is the improved text:\n\n" if model == "fake-preamble" else ""   # Einleitung wie bei kleinen Modellen
     if "Improve spelling" in sys_txt:
