@@ -1069,8 +1069,8 @@ alemán. El idioma que ves se decide en este orden:
 
 "Automático" significa siempre: decide el paso siguiente. Las fechas y los números siguen el idioma elegido. El
 área de administración también tiene selector (cabecera e inicio de sesión). En las apps eliges el idioma en
-Ajustes → Idioma (Automático, Deutsch, English, Español). El ruso y el tailandés son traducciones automáticas; se
-agradecen mejoras de hablantes nativos.
+Ajustes → Idioma (Automático, Deutsch, English, Español, Русский, ไทย). El ruso y el tailandés son traducciones
+automáticas; se agradecen mejoras de hablantes nativos.
 
 ### En el móvil
 

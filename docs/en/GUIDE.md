@@ -1025,7 +1025,8 @@ and Spanish. The language you see is decided in this order:
 
 "Automatic" always means: the next step decides. Dates and numbers follow the selected language. The admin area
 has a switcher too (header and sign-in). In the apps you choose the language under Settings → Language (Automatic,
-Deutsch, English, Español). Russian and Thai are machine-translated – improvements from native speakers are welcome.
+Deutsch, English, Español, Русский, ไทย). Russian and Thai are machine-translated – improvements from native
+speakers are welcome.
 
 ### On your phone
 

@@ -179,8 +179,8 @@ die [Saga-Apps 2.1](https://github.com/yggdrasil-sh/saga-apps/releases).
 - Anrufe nur zu zweit im Direkt-Chat, noch keine Gruppenanrufe.
 - Ohne TURN-Server kommen Anrufe nicht in allen Netzen zustande (z. B. hinter strengen Firmen- oder Mobilfunk-NATs).
 - Passkeys funktionieren nur unter einem Hostnamen (nicht unter einer IP-Adresse in `BASE_URL`).
-- Russisch und Thai sind maschinell übersetzt und gibt es nur auf dem Server (Web, Admin-Bereich, Mitteilungen);
-  Apps und Anleitung sprechen Deutsch, Englisch und Spanisch.
+- Russisch und Thai sind maschinell übersetzt (Web, Admin-Bereich, Mitteilungen und Apps 2.1); die Anleitung gibt
+  es nur auf Deutsch, Englisch und Spanisch.
 - Apps vor 2.1 zeigen archivierte Chats weiter in der normalen Liste und KI-Antworten im Chat als Nachricht der fragenden Person.
 
 ## [2.0.0] – 2026-10-15

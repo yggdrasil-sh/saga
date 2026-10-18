@@ -1053,8 +1053,8 @@ und Spanisch. Welche Sprache du siehst, entscheidet sich in dieser Reihenfolge:
 
 „Automatisch“ heißt jeweils: Die nächste Stufe entscheidet. Datum und Zahlen richten sich nach der gewählten
 Sprache. Auch der Admin-Bereich hat einen Umschalter (Kopfzeile und Anmeldung). In den Apps wählst du die Sprache
-unter Einstellungen → Sprache (Automatisch, Deutsch, English, Español). Russisch und Thai sind maschinell übersetzt –
-Verbesserungen von Muttersprachlern sind willkommen.
+unter Einstellungen → Sprache (Automatisch, Deutsch, English, Español, Русский, ไทย). Russisch und Thai sind
+maschinell übersetzt – Verbesserungen von Muttersprachlern sind willkommen.
 
 ### Auf dem Handy
 
