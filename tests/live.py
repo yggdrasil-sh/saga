@@ -395,6 +395,12 @@ def main():
     time.sleep(0.5)
     ok("Gruppe: A (Mitglied, aber Ausloeser) bekommt nichts", sa.find("notification", since=ma) is None and sa.find("shared.changed", since=ma) is None)
     ok("Gruppe: B (kein Mitglied) bekommt nichts", sb.find("notification", lambda d: d.get("item", {}).get("note", {}) and d["item"]["note"]["id"] == pg2) is None)
+    time.sleep(2.2)                                   # notes.tree: Buendelung frueherer Ereignisse abwarten
+    mc, mb = sc.mark(), sb.mark()
+    gk = req("POST", "/api/notes", A, {"title": "Team Kind", "parent_id": pg2})[1]["id"]
+    tc = sc.wait("notes.tree", lambda d: gk in d["ids"], since=mc)
+    ok(f"notes.tree: Gruppenmitglied C bekommt die neue Unterseite der Gruppen-Freigabe ({tc})", tc and tc["op"] == "created")
+    ok("notes.tree: B (kein Mitglied) bekommt die ID nicht", sb.find("notes.tree", lambda d: gk in d["ids"], since=mb) is None)
 
     # --- Last-Event-ID ------------------------------------------------------------------------------------------
     last = sb.last_id()
@@ -423,6 +429,12 @@ def main():
     req("POST", f"/api/notes/{pg}/comments", A, {"block_id": "b0", "body": "Nach dem Entzug"})
     got = [e[0] for e in sb.quiet(mb, 1.5)]
     ok(f"Nach Entzug: B bekommt keine Ereignisse zur Seite ({got})", got == [])
+    time.sleep(2.2)
+    mb = sb.mark()
+    req("PATCH", f"/api/notes/{pg}", A, {"icon": "🛸"})
+    req("POST", "/api/notes", A, {"title": "Nach Entzug Kind", "parent_id": pg})
+    got = [e for e in sb.quiet(mb, 3.0) if e[0] == "notes.tree"]
+    ok(f"notes.tree nach Entzug: B bekommt keine IDs mehr ({got})", got == [])
     ok("Nach Entzug: Anwesenheit -> 404", req("POST", "/api/presence", Bk, {"note_id": pg})[0] == 404)
     lst = notes_of(Bk)
     gone = [x for x in lst["items"] if x["kind"] in ("share.added", "share.role", "comment.reply")]
