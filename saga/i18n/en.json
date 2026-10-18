@@ -725,7 +725,7 @@
  "enthält": "contains",
  "enthält nicht": "does not contain",
  "Entsperren": "Unlock",
- "Er kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest er nie; Aufgaben und Kalender nur, wenn du sie einschaltest.": "It can't change anything: you apply suggestions yourself. It never reads chats; tasks and calendar only when you turn them on.",
+ "{name} kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest {name} nur, wenn du im Chat mit @{name} fragst; Aufgaben und Kalender nur, wenn du sie einschaltest.": "{name} can't change anything: you apply suggestions yourself. {name} only reads chats when you ask with @{name} in the chat; tasks and calendar only when you turn them on.",
  "Ereignis": "Event",
  "Ereignis verworfen": "Event dropped",
  "Ergebnisse": "Results",

@@ -216,7 +216,7 @@
       var e = el('div', 'ai-empty');
       var hi = el('div', 'ai-hello'); hi.appendChild(av(56)); hi.appendChild(el('p', 'ai-hello-n', P().name)); e.appendChild(hi);
       e.appendChild(el('p', null, T('Frag etwas – {name} sucht in den Seiten, die du sehen darfst, und nennt die Quellen.', { name: P().name })));
-      e.appendChild(el('p', 'ai-hint', T('Er kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest er nie; Aufgaben und Kalender nur, wenn du sie einschaltest.')));
+      e.appendChild(el('p', 'ai-hint', T('{name} kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest {name} nur, wenn du im Chat mit @{name} fragst; Aufgaben und Kalender nur, wenn du sie einschaltest.', { name: P().name })));
       chatBox.appendChild(e);
     }
     var form = el('div', 'ai-form');

@@ -725,7 +725,7 @@
  "enthält": "contiene",
  "enthält nicht": "no contiene",
  "Entsperren": "Desbloquear",
- "Er kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest er nie; Aufgaben und Kalender nur, wenn du sie einschaltest.": "No puede cambiar nada: tú aplicas las sugerencias. Nunca lee chats; tareas y calendario solo si los activas.",
+ "{name} kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest {name} nur, wenn du im Chat mit @{name} fragst; Aufgaben und Kalender nur, wenn du sie einschaltest.": "{name} no puede cambiar nada: tú aplicas las sugerencias. {name} solo lee los chats cuando preguntas con @{name} en el chat; tareas y calendario solo si los activas.",
  "Ereignis": "Evento",
  "Ereignis verworfen": "Evento descartado",
  "Ergebnisse": "Resultados",

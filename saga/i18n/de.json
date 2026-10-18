@@ -725,7 +725,7 @@
  "enthält": "enthält",
  "enthält nicht": "enthält nicht",
  "Entsperren": "Entsperren",
- "Er kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest er nie; Aufgaben und Kalender nur, wenn du sie einschaltest.": "Er kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest er nie; Aufgaben und Kalender nur, wenn du sie einschaltest.",
+ "{name} kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest {name} nur, wenn du im Chat mit @{name} fragst; Aufgaben und Kalender nur, wenn du sie einschaltest.": "{name} kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest {name} nur, wenn du im Chat mit @{name} fragst; Aufgaben und Kalender nur, wenn du sie einschaltest.",
  "Ereignis": "Ereignis",
  "Ereignis verworfen": "Ereignis verworfen",
  "Ergebnisse": "Ergebnisse",
