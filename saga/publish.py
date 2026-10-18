@@ -838,9 +838,10 @@ def _page_images(row):
 # Antworten: Sprache des Besuchers, Kopfzeilen, neutrale 404
 # =====================================================================================================
 def _visitor_lang(request):
-    """Oeffentliche Seiten: Sprache des Besuchers (Accept-Language), sonst Standardsprache des Servers."""
-    return (i18n.from_header(request.headers.get("accept-language", "")) or i18n.norm(auth.settings().get("default_lang"))
-            or i18n.DEFAULT)
+    """Oeffentliche Seiten: Sprache des Besuchers (Umschalter/Cookie, sonst Accept-Language), sonst Standardsprache
+    des Servers."""
+    return (i18n.norm(request.cookies.get(i18n.COOKIE)) or i18n.from_header(request.headers.get("accept-language", ""))
+            or i18n.norm(auth.settings().get("default_lang")) or i18n.DEFAULT)
 
 
 def _headers(indexable=False, cache="public, max-age=60"):

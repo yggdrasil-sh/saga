@@ -25,7 +25,9 @@
     <a class="btn btn-primary auth-btn" id="sec-next" href="{{ nxt }}">{{ _("Weiter") }}</a>
     <p class="auth-foot"><a href="/logout">{{ _("Abmelden") }}</a></p>
   </div>
+  {{ lang_switch("auth-lang") }}
 </main>
+<script src="/static/lang.js?v={{ v }}"></script>
 <script src="/i18n/{{ lang() }}.js?v={{ i18n_v }}"></script>
 <script src="/static/common.js?v={{ v }}"></script>
 <script src="/static/passkey.js?v={{ v }}"></script>
