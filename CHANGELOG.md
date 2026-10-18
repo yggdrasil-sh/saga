@@ -40,6 +40,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Web**: KI als erster Vorschlag bei „@“, Hinweis beim Schreiben, Antwort erscheint live. Vertrag für die Apps:
   `docs/APP-API-KI.md`. Neue Tabellen `chat_ai`, `chat_ai_reply` (ohne Migration, `CREATE TABLE IF NOT EXISTS`).
 
+### Behoben
+- **KI mit neueren Claude-Modellen über die OpenAI-kompatible Schnittstelle** (`https://api.anthropic.com/v1`): Saga
+  schickt `temperature` nicht mehr, wenn das Modell den Parameter ablehnt (Fehler 400 „temperature is deprecated“), und
+  „Verbindung testen“ listet dort auch die angebotenen Modelle.
+
 ### Verbessert
 - **KI-Assistent – „Aufgaben vorschlagen“** liefert nur noch konkrete nächste Schritte im Imperativ (z. B.
   „Weiterlesen ab Seite 12“) statt Feststellungen („Das Buch hat 258 Seiten“): das Modell schreibt je Aufgabe eine Zeile

@@ -1104,6 +1104,9 @@ class ThinkFilter:
         return s
 
 
+_NO_TEMP = set()                                              # (provider, url, modell) ohne temperature-Parameter
+
+
 def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=None):
     """Synchron (im Thread): sichtbare Antwort Stueck fuer Stueck an emit(text); status('thinking') einmal, sobald das
     Modell nachdenkt. stop() -> True bricht ab. -> {'cut': bool} (Antwort abgeschnitten). Wirft AIError.
@@ -1118,6 +1121,8 @@ def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=Non
     else:
         url, body = base + "/chat/completions", {"model": c.get("model"), "messages": messages, "stream": True,
                                                  "temperature": 0.2, "max_tokens": max_tokens}
+        if (prov, base, c.get("model")) in _NO_TEMP:
+            body.pop("temperature", None)
     cl, tmo = _client(c)
     total = total_limit(c)
     t0 = time.monotonic()
@@ -1142,6 +1147,11 @@ def stream_model(c, messages, emit, stop=None, max_tokens=MAX_TOKENS, status=Non
                     raw = r.read()[:4096]
                     if attempt == 0 and prov == "ollama" and r.status_code == 400 and b"think" in raw.lower():
                         body.pop("think", None)                # aeltere Ollama-Versionen/Modelle ohne Denk-Schalter
+                        continue
+                    if attempt == 0 and prov != "ollama" and r.status_code == 400 and b"temperature" in raw.lower() \
+                            and "temperature" in body:
+                        body.pop("temperature", None)          # neuere Modelle (z. B. Claude ueber /v1) lehnen temperature ab
+                        _NO_TEMP.add(mkey)
                         continue
                     raise _http_error(r.status_code, _err_detail(raw))
                 for line in r.iter_lines():
@@ -1244,7 +1254,10 @@ def list_models(c):
     url = base + ("/api/tags" if c.get("provider") == "ollama" else "/models")
     cl, _tmo = _client(dict(c, timeout=15))
     try:
-        r = cl.get(url, headers=_headers(c))
+        h = _headers(c)
+        if (urlparse(base).hostname or "").endswith("anthropic.com") and c.get("api_key"):
+            h.update({"x-api-key": c["api_key"], "anthropic-version": "2023-06-01"})   # Modell-Liste dort nur so
+        r = cl.get(url, headers=h)
         if r.status_code != 200:
             raise _http_error(r.status_code)
         if len(r.content) > 4 * 1024 * 1024:
