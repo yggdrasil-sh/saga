@@ -16,6 +16,9 @@ Ereignisse (event: ..., data: JSON) - die Rechte werden beim VERSAND geprueft (s
   note.changed     {id, rev, by:{name, username}, updated, gone}   an alle, die die Seite gerade offen haben (Anwesenheit)
   comments.changed {note_id, counts:{blocks, open, unread}}   an alle mit Zugriff (Zahlen je Empfaenger)
   shared.changed   {}                                  "Mit mir geteilt" neu laden
+  notes.tree       {ids, op, ops, full}                (2.2) Seitenbaum geaendert, nur IDs - an alle Verbindungen des Eigentuemers
+                   und an Konten mit Freigabe in der Kette; je Konto hoechstens eins je 2 s (gesammelt). op: created|updated|
+                   moved|trashed|restored|archived|deleted|shared|mixed; full: zu viele IDs -> ganzen Baum laden. docs/APP-API-LIVE.md
   presence         {note_id, users:[{username, name, editing}]}
   reset            {}                                  Wiederaufnahme nicht moeglich (Neustart/zu alt): alles neu laden
   bye              {reason: limit|auth|account|shutdown}   Server beendet die Verbindung
@@ -56,6 +59,8 @@ MAX_AGE = max(60, int(E.get("LIVE_MAX_AGE", "3600")))         # nach einer Stund
 LINGER = 180                                                  # nach dem Trennen noch 3 min fuer die Wiederaufnahme sammeln
 QUEUE_MAX = 20000                                             # Verteiler-Warteschlange (alle Ereignisse)
 QUEUE = 256                                                   # Ereignisse je Verbindung im Puffer (langsamer Client -> trennen)
+TREE_GAP = 2.0                                                # notes.tree: hoechstens ein Ereignis je 2 s und Konto (gesammelt)
+TREE_IDS_MAX = 500                                            # mehr IDs: {"full": true} - der Client laedt den ganzen Baum
 BOOT = secrets.token_hex(4)
 HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Content-Type-Options": "nosniff"}
 
@@ -194,9 +199,60 @@ async def _dispatch():
                     if _presence.get(data, {}).pop(uid, None) is not None and not _presence.get(data):
                         _presence.pop(data, None)
                     continue
+                if typ == "notes.tree":                       # gebuendelt zustellen (_tree_flush)
+                    _tree_queue(uid, data, item[3] if len(item) > 3 else None)
+                    continue
                 _deliver(uid, typ, data, item[3] if len(item) > 3 else None)
         except Exception as ex:  # noqa: BLE001 - z. B. Datenbank gerade weg: dieses Ereignis entfaellt, der Kanal bleibt
             print(f"live: {kind}: {type(ex).__name__}: {ex}", flush=True)
+
+
+_tree_pend = {}          # uid -> {"ids", "check" (Rechte beim Versand pruefen), "ops", "full", "skips"}   (nur Event-Schleife)
+_tree_last = {}          # uid -> time.monotonic() der letzten Zustellung
+
+
+def _tree_queue(uid, data, skip):
+    """notes.tree sammeln: das erste Ereignis geht sofort raus, weitere innerhalb von TREE_GAP Sekunden gesammelt danach."""
+    p = _tree_pend.get(uid)
+    if p is None:
+        p = _tree_pend[uid] = {"ids": set(), "check": set(), "ops": set(), "full": False, "skips": set()}
+        wait = max(0.0, _tree_last.get(uid, 0) + TREE_GAP - time.monotonic())
+        _S["loop"].call_later(wait, _tree_flush, uid)
+    (p["check"] if data.get("check") else p["ids"]).update(data["ids"])
+    p["ops"].add(data["op"])
+    p["full"] = p["full"] or bool(data.get("full")) or len(p["ids"]) + len(p["check"]) > TREE_IDS_MAX
+    p["skips"].add(skip)
+
+
+def _tree_flush(uid):
+    p = _tree_pend.pop(uid, None)
+    if not p:
+        return
+    _tree_last[uid] = time.monotonic()
+    if p["check"] and not p["full"]:
+        asyncio.ensure_future(_tree_send_checked(uid, p))
+    else:
+        _tree_send(uid, p, p["ids"] | p["check"])
+
+
+async def _tree_send_checked(uid, p):
+    """Seiten anderer (Freigaben): Rechte beim Versand pruefen - zwischen Ereignis und gesammeltem Versand kann der
+    Zugriff entzogen worden sein (dann diese IDs nicht mehr melden)."""
+    try:
+        ok = await asyncio.to_thread(_allowed, uid, p["check"])
+    except Exception:  # noqa: BLE001 - Datenbank gerade weg: nur die ungeprueften Eigentuemer-/Weg-IDs
+        ok = set()
+    _tree_send(uid, p, p["ids"] | ok)
+
+
+def _tree_send(uid, p, ids):
+    if not ids and not p["full"]:
+        return
+    ops = sorted(p["ops"])
+    # nur von EINER Sitzung/einem Geraet ausgeloest: dorthin nicht zurueck (die laedt selbst nach)
+    skip = next(iter(p["skips"])) if len(p["skips"]) == 1 else None
+    data = {"ids": [] if p["full"] else sorted(ids), "op": ops[0] if len(ops) == 1 else "mixed", "ops": ops, "full": p["full"]}
+    _deliver(uid, "notes.tree", data, skip)
 
 
 def _person(nm, u):
@@ -274,6 +330,23 @@ def _resolve(kind, p, aud, pres):
                 who = set(notify.group_members(c, p.get("target"))) & aud if p.get("target") else set()
             for u in sorted(who - {p.get("owner")}):
                 out.append((u, "shared.changed", {}))
+        elif kind == "notes.tree":
+            # Eigentuemer: alle IDs. Freigaben: nur IDs, die sie JETZT sehen duerfen - bei "weg" (Papierkorb, Archiv,
+            # endgueltig geloescht) die IDs, deren Kette ihnen bis eben geteilt war (Kandidaten aus der Transaktion)
+            ids, op, owner, origin = p["ids"], p["op"], p["owner"], p.get("origin")
+            full = len(ids) > TREE_IDS_MAX
+            ids = ids[:TREE_IDS_MAX]
+            if owner in aud:
+                out.append((owner, "notes.tree", {"ids": ids, "op": op, "full": full}, origin))
+            gone = op in ("trashed", "archived", "deleted")
+            for u in sorted(set(p.get("cands") or ()) & aud):
+                if gone:
+                    mine = ids
+                else:
+                    acc = Access(c, u)
+                    mine = [i for i in ids if acc.role(i)]
+                if mine or full:          # check: beim (gesammelten) Versand die Rechte erneut pruefen
+                    out.append((u, "notes.tree", {"ids": mine, "op": op, "full": full, "check": not gone}, origin))
         elif kind == "presence":
             nid = p["note_id"]
             entries = pres.get(nid, {})
@@ -333,6 +406,10 @@ async def _housekeeping():
             for uid, ts in list(_pres_hits.items()):
                 if now - ts > 60:
                     _pres_hits.pop(uid, None)
+            mono = time.monotonic()
+            for uid, ts in list(_tree_last.items()):
+                if mono - ts > 60 and uid not in _tree_pend:
+                    _tree_last.pop(uid, None)
         except Exception as ex:  # noqa: BLE001
             print(f"live: housekeeping: {type(ex).__name__}: {ex}", flush=True)
 
@@ -567,9 +644,44 @@ def _saved(c, note_id, rev=None, by=None, updated=None, gone=False, origin=None,
     bus.emit_after(c, "note.changed", {"id": note_id, "rev": rev, "by": by, "updated": updated, "gone": gone, "origin": origin, "row": row})
 
 
+def _tree_cands(c, owner, ids):
+    """In der Transaktion (vor dem Commit/Loeschen): Konten mit einer Freigabe auf einer der Seiten oder einer Seite
+    darueber (Kette ohne Ruecksicht auf Papierkorb/Archiv - so erreichen auch "weg"-Meldungen die bisher Berechtigten)."""
+    if not c.execute("SELECT 1 FROM note_share WHERE owner_uid=? LIMIT 1", (owner,)).fetchone():
+        return []
+    marks = ",".join("?" * len(ids))
+    chain = [r[0] for r in c.execute(
+        f"WITH RECURSIVE t(id, parent_id, depth) AS (SELECT id, parent_id, 0 FROM note WHERE uid=? AND id IN ({marks}) "
+        "UNION SELECT n.id, n.parent_id, t.depth + 1 FROM note n JOIN t ON n.id=t.parent_id WHERE n.uid=? AND t.depth < 64) "
+        "SELECT DISTINCT id FROM t", (owner, *ids, owner)).fetchall()]
+    if not chain:
+        return []
+    cand = set()
+    for tt, tg in c.execute(f"SELECT DISTINCT target_type, target FROM note_share WHERE owner_uid=? AND note_id IN ({','.join('?' * len(chain))})",
+                            (owner, *chain)).fetchall():
+        if tt == "user":
+            cand.add(tg)
+        elif tt == "group":
+            cand.update(notify.group_members(c, tg))
+    cand.discard(owner)
+    return sorted(cand)
+
+
+def _tree(c, owner, ids, op, origin=None, **_):
+    ids = list(dict.fromkeys(ids))[:TREE_IDS_MAX + 1]
+    bus.emit_after(c, "notes.tree", {"owner": owner, "ids": ids, "op": op, "origin": origin, "cands": _tree_cands(c, owner, ids)})
+
+
+def _share_tree(c, owner, note_id, **_):
+    _tree(c, owner, [note_id], "shared")             # Symbol "geteilt" im Baum des Eigentuemers
+
+
 bus.on("share.set", _share)
 bus.on("share.removed", _share)
 bus.on("comment.added", _comments)
 bus.on("comments.changed", _comments)
 bus.on("comment.seen", _seen)
 bus.on("note.saved", _saved)
+bus.on("notes.tree", _tree)
+bus.on("share.set", _share_tree)
+bus.on("share.removed", _share_tree)

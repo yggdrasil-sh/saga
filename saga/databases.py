@@ -5,9 +5,9 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import _api_guard, _bad, _body, _json_load
+from saga.core import _api_guard, _bad, _body, _json_load, origin_of
 from saga.sharing import access
-from saga.notes import NOTE_TITLE_MAX, note_limit_error, _FILE_URL, _check_parent, _iter_blocks
+from saga.notes import NOTE_TITLE_MAX, note_limit_error, _FILE_URL, _check_parent, _iter_blocks, tree_changed
 
 router = APIRouter()
 
@@ -78,6 +78,7 @@ async def api_note_duplicate(nid: int, request: Request):
         cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, cover, cover_pos, wide, created, updated) "
                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (owner, title, r[3], r[4], r[1], parent, now, r[2], r[5] or "page", r[6], props, r[8], r[9], r[10], now, now))
+        tree_changed(c, owner, [cur.lastrowid], "created", origin_of(request))
         return JSONResponse({"id": cur.lastrowid, "updated": now})
 
 

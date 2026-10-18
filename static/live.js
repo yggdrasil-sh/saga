@@ -263,6 +263,8 @@
     });
     on(es, 'comments.changed', onComments);
     on(es, 'shared.changed', onShared);
+    // (2.2) Seitenbaum anderswo geaendert (anderer Tab/Geraet, Freigabe durch andere): Baum nachladen (entprellt)
+    on(es, 'notes.tree', function (d) { var k = K(); if (k && k.treeChanged) k.treeChanged(d); });
     on(es, 'presence', function (d) { if (d.note_id === P.id) drawPresence(d.users || []); });
     // Chat (1.5): an die Chat-Seite weiterreichen (Ereignis 'hk-live'), Zahl am Knopf "Chats" aktualisieren
     // Anrufe (2.1, static/calls.js): call.ring / call.signal / call.state ebenso ueber 'hk-live'

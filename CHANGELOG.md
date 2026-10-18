@@ -37,6 +37,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   eine eigene Grenze `NOTE_ROW_MAX_COUNT` (Standard 50.000 bzw. 10 × `NOTE_MAX_COUNT`); alles zusammen inkl. Papierkorb
   höchstens doppelt so viel wie beide Grenzen. Bisher war ein Konto mit größeren Datenbanken schon nach 5.000 Einträgen
   „voll“. Keine Grenze ist strenger als vorher.
+- **Live-Ereignis `notes.tree`** (für Apps, Vertrag in `docs/APP-API-LIVE.md`): meldet Änderungen am Seitenbaum (neu,
+  umbenannt/Symbol/Tags/Favorit/Sperre, verschoben, Papierkorb, wiederhergestellt, archiviert, endgültig gelöscht,
+  Freigabe geändert) – nur IDs, an alle Geräte des Eigentümers und an Personen mit Freigabe, gesammelt höchstens eins je
+  2 s. Apps können damit bei verbundenem Live-Kanal seltener abgleichen (5 min statt 60 s). Die Weboberfläche lädt den
+  Baum in anderen Tabs und auf anderen Geräten damit sofort nach.
 
 ### Lastmessung (nur Werkzeuge, keine Änderung an Saga selbst)
 

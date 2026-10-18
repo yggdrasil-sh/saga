@@ -4673,7 +4673,9 @@
          recents: recents, decorate: function () { decorateLinks(); }, ancestors: ancestors,
          recheck: function () { return recheck(true); },        // static/comments.js: Rolle/Zugriff nach 403/404 neu pruefen
          // Live-Kanal (static/live.js): Seitenliste neu laden, fremde Aenderung der offenen Seite, ungelesen-Punkt im Baum
-         reloadList: function () { return loadList(); }, remote: remoteChange, busy: busy, foreign: function () { return foreign(); },
+         reloadList: function () { return loadList(); }, remote: remoteChange,
+         // Live notes.tree (2.2): Baum anderswo geaendert -> kurz sammeln, dann einmal nachladen
+         treeChanged: function () { clearTimeout(S.treeT); S.treeT = setTimeout(function () { loadList().catch(function () {}); }, 300); }, busy: busy, foreign: function () { return foreign(); },
          setUnread: function (id, on) { var p = byId(id); if (p && !!p.unread !== !!on) { p.unread = !!on; renderTree(); } } },
     editor: function () { return S.editor; },   // fuer Tests/Diagnose
     flush: function () { return S.conflict ? Promise.reject(new Error('conflict')) : save(); },   // Peek: vor dem Schliessen speichern

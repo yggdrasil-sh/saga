@@ -20,7 +20,7 @@ from saga.dashboard import visible_tiles
 from saga.publish import published_via
 from saga.comments import counts as comment_counts
 from saga.sharing import RANK, Access, access, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
-from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text
+from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, tree_changed
 
 router = APIRouter()
 
@@ -360,6 +360,7 @@ async def api_note_add(request: Request):
             _rel_sync(c, owner, _json_load(ps[0], {"props": []}), cur.lastrowid, {}, json.loads(props), _may_edit(acc, role))
         if parent:
             announce_row(c, owner, cur.lastrowid, uid, now, origin_of(request))      # neue Zeile (BUG-049)
+        tree_changed(c, owner, [cur.lastrowid], "created", origin_of(request))
         return JSONResponse({"id": cur.lastrowid, "updated": now})
 
 
@@ -611,6 +612,10 @@ def _note_update(uid, nid, b, origin=None):
         bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=uid, updated=now, origin=origin)
         if "props" in b or "title" in b or "icon" in b:
             announce_row(c, owner, nid, uid, now, origin)     # Datenbank-Zeile: auch an Betrachter der Tabelle (BUG-049)
+        # Seitenbaum (notes.tree): nur Felder, die /api/notes zeigt (bzw. Titelbild) - Titel nur, wenn er sich aendert
+        if ("parent_id" in b or any(k in b for k in ("icon", "cover", "tags", "pinned", "template", "locked"))
+                or ("title" in b and _title_in(b["title"]) != old[0])):
+            tree_changed(c, owner, [nid], "moved" if "parent_id" in b else "updated", origin)
     out = {"ok": True, "updated": now, "rev": old[3] + (1 if content else 0)}
     if srev is not None:
         out["srev"] = srev                   # neuer Schema-Stand (Client kann ihn fuer die naechste Aenderung uebernehmen)
@@ -656,6 +661,7 @@ async def api_note_move(nid: int, request: Request):
         c.executemany("UPDATE note SET sort=? WHERE id=? AND uid=?", [(i + 1, x, owner) for i, x in enumerate(sib)])
         if me[0] != parent:                  # andere Elternseite: geerbte Freigaben aendern sich (BUG-033)
             announce_tree(c, owner, nid, [nid], uid, time.time(), False, origin=origin_of(request))
+        tree_changed(c, owner, [nid], "moved", origin_of(request))       # auch nur umsortiert
     return JSONResponse({"ok": True, "parent_id": parent, "index": sib.index(nid)})
 
 
@@ -686,6 +692,7 @@ async def api_note_archive(nid: int, request: Request):
             now = time.time()
             n = sum(c.execute("UPDATE note SET archived=? WHERE id=? AND uid=? AND archived IS NULL", (now, i, owner)).rowcount for i in ids)
             announce_tree(c, owner, nid, ids, uid, now, True, origin=origin_of(request))
+            tree_changed(c, owner, ids, "archived", origin_of(request))
             return JSONResponse({"ok": True, "archived": n})
         if me[0] is None:
             return JSONResponse({"ok": True, "restored": 0})
@@ -695,6 +702,7 @@ async def api_note_archive(nid: int, request: Request):
             if par and par[0] is not None and par[1] != "database":
                 c.execute("UPDATE note SET parent_id=NULL WHERE id=? AND uid=?", (nid, owner))
         announce_tree(c, owner, nid, ids, uid, time.time(), False, origin=origin_of(request))
+        tree_changed(c, owner, ids, "restored", origin_of(request))
         return JSONResponse({"ok": True, "restored": n})
 
 
@@ -718,6 +726,7 @@ def api_note_delete(nid: int, request: Request):
         now = time.time()
         c.executemany("UPDATE note SET deleted_at=? WHERE id=? AND uid=?", [(now, i, owner) for i in ids])
         announce_tree(c, owner, nid, ids, uid, now, True, origin=origin_of(request))
+        tree_changed(c, owner, ids, "trashed", origin_of(request))
     return JSONResponse({"deleted": len(ids), "trash": True})
 
 

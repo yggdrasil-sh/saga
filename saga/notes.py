@@ -143,6 +143,7 @@ VERSION_EVERY, VERSION_MAX = 600, 50     # hoechstens alle 10 Minuten eine Siche
 def _purge_ids(c, uid, ids):
     """Endgueltig loeschen - samt Versionen, Veroeffentlichung, Freigaben und Kommentaren (im Papierkorb bleiben sie
     gespeichert, wirken aber nicht: Seiten im Papierkorb sind fuer niemanden ausser dem Eigentuemer erreichbar)."""
+    tree_changed(c, uid, ids, "deleted")                 # vor dem Loeschen (Empfaenger aus den Freigaben bestimmen)
     c.executemany("DELETE FROM note_version WHERE uid=? AND note_id=?", [(uid, i) for i in ids])
     c.executemany("DELETE FROM note_publish WHERE uid=? AND note_id=?", [(uid, i) for i in ids])
     c.executemany("DELETE FROM note_share WHERE owner_uid=? AND note_id=?", [(uid, i) for i in ids])
@@ -177,6 +178,16 @@ def announce_row(c, owner, row_id, by, now, origin=None):
                   "AND d.kind='database'", (row_id, owner)).fetchone()
     if r:
         bus.fire("note.saved", c, note_id=r[0], owner=owner, by=by, updated=now, origin=origin, row=row_id)
+
+
+def tree_changed(c, owner, ids, op, origin=None):
+    """Live-Ereignis notes.tree (Seitenbaum geaendert, nur IDs): an alle Verbindungen des Eigentuemers und an Personen,
+    die eine betroffene Seite (oder eine darueber) geteilt bekommen haben - gebuendelt in saga.live. op: created, updated,
+    moved, trashed, restored, archived, deleted, shared. Nach dem Commit (bei Rollback nie)."""
+    from saga import bus
+    ids = [int(i) for i in ids if i is not None]
+    if ids:
+        bus.fire("notes.tree", c, owner=owner, ids=ids, op=op, origin=origin)
 
 
 def announce_tree(c, owner, root, ids, by, now, gone, rev=None, origin=None):

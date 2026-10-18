@@ -13,7 +13,7 @@ from saga.calendars import _cal_collect
 from saga.core import APP_CAPTURE_MAX, APP_TOKEN_MAX, TZ, _api_guard, _bad, _body, _json_load, _tok_db, _tok_hash, t, t_account, user_info
 from saga.databases import _first_image
 from saga.files import _thumb, _thumb_mime, _thumb_w
-from saga.notes import FILES_DIR, _FILE_URL, _clean_props
+from saga.notes import FILES_DIR, _FILE_URL, _clean_props, tree_changed
 from saga.pages import clean_blocks
 from saga.sharing import Access, access
 from saga.tasks import TASK_MAX_LEN, _client_today, _due, _task_done
@@ -85,6 +85,7 @@ def _inbox(c, uid):
     nid = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, created, updated) VALUES (?,?,?,?,?,?,?,?,?)",
                     (uid, t_account(uid, "Eingang"), json.dumps({"blocks": []}), "blocks", "📥", None, now, now, now)).lastrowid
     c.execute("INSERT OR REPLACE INTO user_kv (uid, k, v) VALUES (?, 'inbox', ?)", (uid, str(nid)))
+    tree_changed(c, uid, [nid], "created")
     return nid
 
 
@@ -128,6 +129,7 @@ async def api_app_capture(request: Request):
         parent = _inbox(c, uid)
         nid = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, created, updated) VALUES (?,?,?,?,?,?,?,?,?)",
                         (uid, title or (url or text)[:80] or t("Geteilt"), body, "blocks", "🔗" if url else "📝", parent, now, now, now)).lastrowid
+        tree_changed(c, uid, [nid], "created")
     return JSONResponse({"ok": True, "kind": "page", "id": nid, "url": f"/notes#{nid}"})
 
 
