@@ -1041,14 +1041,20 @@ Mitglieder) und beim Versionsverlauf („von …“). Ohne Bild bleiben die Init
 Saga spricht Deutsch, Englisch, Spanisch, Russisch (Русский) und Thai (ไทย); diese Anleitung gibt es auf Deutsch, Englisch
 und Spanisch. Welche Sprache du siehst, entscheidet sich in dieser Reihenfolge:
 
-1. deine eigene Wahl unter **Einstellungen** → **Konto** → **Sprache** – gilt sofort und in jedem Browser,
-   weil sie in deinem Konto gespeichert wird,
-2. die **Standardsprache**, die der Admin unter Allgemein festlegt,
-3. die Sprache deines Browsers,
-4. sonst Englisch (auch bei allen anderen Browsersprachen).
+1. deine eigene Wahl unter **Einstellungen** → **Konto** → **Sprache** (oder im Benutzermenü → **Sprache**) – gilt
+   sofort und in jedem Browser, weil sie in deinem Konto gespeichert wird,
+2. der **Umschalter 🌐 auf der Anmeldeseite** – für den fremden Rechner, der nicht deine Sprache spricht. Er gilt
+   auch für den 2FA-Schritt, die Registrierung und die Fehlerseiten; der Browser merkt sich nur die Sprache (Cookie
+   `saga_lang`, kein Tracking), „Automatisch (Browser)“ löscht sie wieder,
+3. die Sprache der App, wenn eine App die Anmeldung im Browser öffnet,
+4. die **Standardsprache**, die der Admin unter Allgemein festlegt,
+5. die Sprache deines Browsers,
+6. sonst Englisch (auch bei allen anderen Browsersprachen).
 
 „Automatisch“ heißt jeweils: Die nächste Stufe entscheidet. Datum und Zahlen richten sich nach der gewählten
-Sprache. Die Apps folgen der Sprache des Geräts.
+Sprache. Auch der Admin-Bereich hat einen Umschalter (Kopfzeile und Anmeldung). In den Apps wählst du die Sprache
+unter Einstellungen → Sprache (Automatisch, Deutsch, English, Español). Russisch und Thai sind maschinell übersetzt –
+Verbesserungen von Muttersprachlern sind willkommen.
 
 ### Auf dem Handy
 
@@ -1156,7 +1162,8 @@ Reverse Proxy für den Live-Kanal prüfen (Abschnitt 3). Alles Weitere steht im 
 (vorher Backup, danach kein Rückweg auf 2.0.x außer über dieses Backup). Neu und gleich aktiv: Profilbilder mit
 **Gravatar** (abschaltbar unter Allgemein → Profilbilder) und **Anrufe** mit dem STUN-Server
 `stun:stun.nextcloud.com:443` (Allgemein → Anrufe; TURN optional, Abschnitt „Anrufe“). Passkeys brauchen in
-`BASE_URL` einen Hostnamen, keine IP-Adresse; die 2FA-Richtlinie steht auf „niemanden“.
+`BASE_URL` einen Hostnamen, keine IP-Adresse; die 2FA-Richtlinie steht auf „niemanden“. **KI im Chat** und die
+**Websuche der KI** sind aus, bis du sie unter KI-Assistent einschaltest (Websuche nur mit SearXNG, Abschnitt 10).
 
 **Zurück zur vorigen Version:** Eine ältere Saga startet nicht auf einer Datenbank, die schon eine neuere
 Version umgebaut hat (sie meldet das im Log, statt Daten zu beschädigen). Das gilt auch für **2.1 → 2.0.x**: 2.1

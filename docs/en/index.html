@@ -46,7 +46,7 @@
       <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md">📖 Guide</a>
       <a class="btn" href="https://github.com/yggdrasil-sh/saga">★ Star on GitHub</a>
     </div>
-    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>iOS · macOS · Linux · Android</span><span>English · Deutsch · Español</span></div>
+    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>iOS · macOS · Linux · Android</span><span>English · Deutsch · Español · Русский · ไทย</span></div>
     <div class="shot"><img src="../screenshots/dashboard.png" alt="Saga dashboard" width="2880" height="1800"></div>
   </header>
 </div>
@@ -54,7 +54,7 @@
 <section id="new">
   <div class="wrap">
     <h2>New in Saga 2.1</h2>
-    <p class="sub">Safer sign-in, faces instead of initials and talking to each other – end-to-end encrypted, no extra port.</p>
+    <p class="sub">Safer sign-in, faces instead of initials, talking to each other – and an AI with a name that helps when you call it.</p>
     <div class="feat">
       <figure class="fc"><a href="../screenshots/v21-sicherheit.png"><img src="../screenshots/v21-sicherheit.png" alt="“Sign-in &amp; security” page: a passkey called “MacBook”, authenticator app set up, 10 of 10 recovery codes left" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:20%;--z:1.55"></a>
         <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔑</span>Passkeys &amp; two-factor</h3><p>Sign in without a password using a passkey (fingerprint, face, device PIN), or use it as a second step after your password – or an authenticator app. Recovery codes for emergencies; the admin can require 2FA for admins or everyone.</p></figcaption></figure>
@@ -68,14 +68,24 @@
         <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📷</span>Immich in chats</h3><p>Pick photos straight from your own Immich library – with the same picker as on pages. The image is end-to-end encrypted like any attachment.</p></figcaption></figure>
       <figure class="fc"><a href="../screenshots/v21-login-passkey.png"><img src="../screenshots/v21-login-passkey.png" alt="Sign-in page in the light theme with “Sign in” and “Sign in with a passkey”" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:30%;--z:1.9"></a>
         <figcaption class="fb"><h3><span class="ic" aria-hidden="true">✨</span>Sign in with one tap</h3><p>“Sign in with a passkey” – the browser even suggests your passkey in the user name field. Passkeys are bound to your Saga and can’t be phished.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-ki-chat.png"><img src="../screenshots/v21-ki-chat.png" alt="Direct chat between Anna Berg and Ben Okafor: notice “Marin is allowed in this chat – on request only”, Anna’s question “@Marin how warm is it in Lisbon in mid-May?” and Marin’s answer with profile picture, “asked by Anna Berg” (German interface)" loading="lazy" width="1366" height="860" style="--fx:60%;--fy:45%;--z:1.35"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">💬</span>Your AI – with a name, in chat on request</h3><p>Give the AI a name, a picture and a tone of voice. If you like, it also helps in chats – but only when someone asks it with @name. Only that message and a few before it go to the AI; everything else stays end-to-end encrypted. Off by default.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-ki-websuche.png"><img src="../screenshots/v21-ki-websuche.png" alt="AI sidebar “Marin”: answer to a weather question with web sources as links, at the bottom the “Search the web” switch (German interface)" loading="lazy" width="1366" height="900" style="--fx:100%;--fy:0%;--z:2.1"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔎</span>Web search for the AI</h3><p>Weather, opening hours, news: the AI searches the web through your SearXNG instance and links its sources – even with small local models. The admin turns it on; in the assistant it can be switched off per question.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-chat-loeschen.png"><img src="../screenshots/v21-chat-loeschen.png" alt="Dialog “Delete ‘Bert Demo’?” with the choice “Just for me” or “For everyone” and a warning that this can’t be undone; on the left the chat list with “Archived (1)” (German interface)" loading="lazy" width="2560" height="1600" style="--fx:50%;--fy:50%;--z:1.5"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🗂️</span>Archive and delete chats</h3><p>Archived chats move to their own section and come back with the next message. Delete just for you – the others keep everything – or for everyone, with a clear warning.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-sprache.png"><img src="../screenshots/v21-sprache.png" alt="Sign-in page in Spanish with user name, password and “Iniciar sesión”, below it the language switcher set to “Español”" loading="lazy" width="1280" height="860" style="--fx:50%;--fy:50%;--z:2"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🌐</span>Five languages, your choice</h3><p>New: Русский and ไทย. You can switch the language right on the sign-in page – handy on someone else’s computer – and any time under “Language” in the user menu.</p></figcaption></figure>
     </div>
     <h3 class="more-h">A closer look</h3>
-    <p class="more-sub">Also: the AI assistant finds a lot more (word stems, compound words, database properties) and copes better with local models, and images can be copied and pasted between pages.</p>
+    <p class="more-sub">Also: the AI assistant finds a lot more (word stems, compound words, database properties), only suggests real next steps as tasks and copes better with local models; images can be copied and pasted between pages.</p>
     <div class="gallery two">
       <figure><div class="shot"><a href="../screenshots/v21-login-2fa.png"><img src="../screenshots/v21-login-2fa.png" alt="Second step after the password: “Confirm with passkey” or a code from the authenticator app" loading="lazy" width="2880" height="1800"></a></div><figcaption>Second step: passkey or code</figcaption></figure>
       <figure><div class="shot"><a href="../screenshots/v21-profilbild-zuschneiden.png"><img src="../screenshots/v21-profilbild-zuschneiden.png" alt="“Crop profile picture” dialog with a round frame and zoom slider" loading="lazy" width="2880" height="1800"></a></div><figcaption>Cropping a profile picture</figcaption></figure>
       <figure><div class="shot"><a href="../screenshots/v21-admin-2fa.png"><img src="../screenshots/v21-admin-2fa.png" alt="Admin area, General: “Require 2FA for” nobody, admins or everyone" loading="lazy" width="2880" height="1800"></a></div><figcaption>Admin: 2FA policy</figcaption></figure>
       <figure><div class="shot"><a href="../screenshots/v21-admin-anrufe.png"><img src="../screenshots/v21-admin-anrufe.png" alt="Admin area, General: calls with STUN server, optional TURN server and ring time" loading="lazy" width="2880" height="1800"></a></div><figcaption>Admin: calls, STUN and TURN</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-admin-ki.png"><img src="../screenshots/v21-admin-ki.png" alt="Admin area, AI assistant: “Allow AI in chats (on request only)” and “Allow web search” switched on, below the privacy note and the persona “Marin” (German interface)" loading="lazy" width="1366" height="854"></a></div><figcaption>Admin: AI in chats, web search and persona</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-chat-archiv.png"><img src="../screenshots/v21-chat-archiv.png" alt="Chat list in the dark theme with the “Archived (1)” section expanded and the message “Chat archived – it comes back with the next message.” (German interface)" loading="lazy" width="2560" height="1600"></a></div><figcaption>Archived chats</figcaption></figure>
     </div>
     <h3 class="more-h">On your phone too</h3>
     <p class="more-sub">Ringing, talking, looking at photos and signing in with a passkey – in the phone’s browser.</p>
@@ -143,7 +153,7 @@
       <div class="card"><div class="ic">👥</div><h3>Multi-user</h3><p>Local accounts with self-registration, LDAP/Active Directory and single sign-on – with strictly separated content.</p></div>
       <div class="card"><div class="ic">🛡️</div><h3>Admin area</h3><p>On its own port: users, groups, services, registration, LDAP and SSO with built-in connection tests.</p></div>
       <div class="card"><div class="ic">📱</div><h3>Native apps</h3><p>iPhone, iPad, Mac, Linux and Android – edit pages, databases and tasks natively, sign in via QR code.</p></div>
-      <div class="card"><div class="ic">🌍</div><h3>Three languages</h3><p>Web UI, admin area, apps and guide in English, German and Spanish – set per account.</p></div>
+      <div class="card"><div class="ic">🌍</div><h3>Five languages</h3><p>Web UI and admin area in English, German, Spanish, Russian and Thai, apps and guide in English, German and Spanish – set per account or right on the sign-in page.</p></div>
       <div class="card"><div class="ic">🔒</div><h3>Secure by default</h3><p>Strict CSP, request and login limits, hashed keys, all devices signed out when the password changes.</p></div>
     </div>
   </div>

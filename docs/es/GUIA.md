@@ -1057,14 +1057,20 @@ presencia de una página, en las notificaciones, en el diálogo de compartir y l
 Saga habla español, inglés, alemán, ruso (Русский) y tailandés (ไทย); esta guía está en español, inglés y
 alemán. El idioma que ves se decide en este orden:
 
-1. tu propia elección en **Ajustes** → **Cuenta** → **Idioma**: se aplica al instante y en cualquier navegador,
-   porque se guarda en tu cuenta,
-2. el **idioma predeterminado** que el administrador fija en General,
-3. el idioma de tu navegador,
-4. si no, inglés (también para cualquier otro idioma del navegador).
+1. tu propia elección en **Ajustes** → **Cuenta** → **Idioma** (o menú de usuario → **Idioma**): se aplica al
+   instante y en cualquier navegador, porque se guarda en tu cuenta,
+2. el **selector 🌐 de la página de inicio de sesión**, para un ordenador ajeno que no habla tu idioma. También vale
+   para el paso de 2FA, el registro y las páginas de error; el navegador solo recuerda el idioma (cookie
+   `saga_lang`, sin seguimiento) y "Automático (navegador)" lo borra,
+3. el idioma de la app, cuando una app abre el inicio de sesión en el navegador,
+4. el **idioma predeterminado** que el administrador fija en General,
+5. el idioma de tu navegador,
+6. si no, inglés (también para cualquier otro idioma del navegador).
 
-"Automático" significa siempre: decide el paso siguiente. Las fechas y los números siguen el idioma elegido. Las
-apps siguen el idioma del dispositivo.
+"Automático" significa siempre: decide el paso siguiente. Las fechas y los números siguen el idioma elegido. El
+área de administración también tiene selector (cabecera e inicio de sesión). En las apps eliges el idioma en
+Ajustes → Idioma (Automático, Deutsch, English, Español). El ruso y el tailandés son traducciones automáticas; se
+agradecen mejoras de hablantes nativos.
 
 ### En el móvil
 
@@ -1177,7 +1183,9 @@ Todo lo demás está en el [registro de cambios](../../CHANGELOG.md).
 esquema 6 (antes copia de seguridad; después no se puede volver a 2.0.x salvo con esa copia). Nuevo y activo desde
 el principio: fotos de perfil con **Gravatar** (se desactiva en General → Fotos de perfil) y **llamadas** con el
 servidor STUN `stun:stun.nextcloud.com:443` (General → Llamadas; TURN opcional, ver «Llamadas»). Las passkeys
-necesitan un nombre de host en `BASE_URL`, no una dirección IP; la política de 2FA está en «nadie».
+necesitan un nombre de host en `BASE_URL`, no una dirección IP; la política de 2FA está en «nadie». **La IA en el
+chat** y la **búsqueda web de la IA** siguen desactivadas hasta que las actives en Asistente de IA (la búsqueda web
+solo con SearXNG, sección 10).
 
 **Volver a la versión anterior:** una versión antigua de Saga no arranca sobre una base de datos que una versión
 más nueva ya ha modificado (lo indica en el log en lugar de dañar datos). Esto vale también para **2.1 → 2.0.x**:

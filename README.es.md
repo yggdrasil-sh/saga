@@ -33,8 +33,10 @@ con todos tus servicios, páginas y bases de datos al estilo Notion, tareas, cal
 persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio servidor.
 
 > **Novedades de Saga 2.1:** llaves de acceso e inicio de sesión en dos pasos, fotos de perfil, llamadas de audio y vídeo
-> en el chat directo, fotos de Immich en el chat, imágenes de chat rápidas con miniaturas y un asistente de IA mucho
-> más certero. Desde la 2.0: compartir y comentar, actualización en vivo, chats cifrados de extremo a extremo,
+> en el chat directo, fotos de Immich en el chat, imágenes de chat rápidas con miniaturas, archivar y eliminar chats,
+> un asistente de IA mucho más certero con nombre propio, que ayuda en el chat cuando se le menciona y puede buscar en
+> la web, y cinco idiomas (nuevos: ruso y tailandés), a elegir ya en la página de inicio de sesión.
+> Desde la 2.0: compartir y comentar, actualización en vivo, chats cifrados de extremo a extremo,
 > notificaciones en el móvil y federación con otros servidores Saga. Todos los detalles en el
 > [registro de cambios](CHANGELOG.md) (en alemán).
 
@@ -53,13 +55,15 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
   Comentar, Editar, las subpáginas heredan el acceso; comentarios discretos en los bloques con «Resuelto»
 - **Chats cifrados de extremo a extremo:** chats directos, de grupo y de página con adjuntos, respuestas y enlaces @ a
   páginas; el servidor (y el administrador) solo ve datos cifrados: libsodium, clave de recuperación, números de
-  seguridad, varios dispositivos
+  seguridad, varios dispositivos; archivar o eliminar chats (solo para mí o para todos)
 - **Llamadas de audio y vídeo:** desde el chat directo, con pantalla compartida – WebRTC entre los dispositivos, cifradas
   de extremo a extremo y verificadas con las claves del chat, sin puerto adicional (TURN opcional por el 443)
 - **Notificaciones y push:** campana con actualización en directo; si quieres, al móvil/escritorio por Web Push (cifrado
   de extremo a extremo, también iPhone como app en la pantalla de inicio), ntfy/UnifiedPush o Apple Push, sin contenido
 - **Asistente de IA (opcional):** pregunta a tus páginas, resume, sugiere tareas, mejora o traduce texto, con el modelo
-  que elijas (p. ej. Ollama en tu propia red). Solo contenido que puedes ver, fuentes enlazadas, solo sugerencias, desactivado por defecto
+  que elijas (p. ej. Ollama en tu propia red). Solo contenido que puedes ver, fuentes enlazadas, solo sugerencias, desactivado por defecto.
+  Con nombre, imagen y tono propios; opcionalmente **en el chat solo cuando se la menciona** (@nombre, todo lo demás
+  sigue cifrado) y con **búsqueda web** a través de tu propia instancia de SearXNG (fuentes enlazadas), ambas desactivadas por defecto
 - **Federación:** conecta servidores Saga y comparte páginas con nombre@servidor: el contenido se queda con el
   propietario y cada solicitud entre servidores va firmada (Ed25519, HTTP Message Signatures)
 - **Tareas** con fecha límite, prioridad y repetición
@@ -75,6 +79,7 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
 - **Fotos de perfil:** imagen propia (recortada, recodificada sin metadatos) o Gravatar: la obtiene y guarda el
   servidor, los navegadores nunca consultan Gravatar; opcionalmente desde SSO/LDAP
 - **Español, inglés, alemán, ruso y tailandés:** cada usuario puede elegir su idioma en sus ajustes
+  y, en la página de inicio de sesión, incluso antes de entrar
   (ruso y tailandés con traducción automática; se agradecen mejoras de hablantes nativos)
 - **[Apps](https://github.com/yggdrasil-sh/saga-apps/blob/main/README.es.md)** (iOS/iPadOS/macOS, Linux/GTK, Android) con la misma
   API, sesión permanente y vinculación con código QR

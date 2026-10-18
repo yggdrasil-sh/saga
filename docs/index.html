@@ -54,7 +54,7 @@ location.replace("en/")}catch(e){}})();
       <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md">📖 Anleitung</a>
       <a class="btn" href="https://github.com/yggdrasil-sh/saga">★ Auf GitHub</a>
     </div>
-    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>iOS · macOS · Linux · Android</span><span>Deutsch · English · Español</span></div>
+    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>iOS · macOS · Linux · Android</span><span>Deutsch · English · Español · Русский · ไทย</span></div>
     <div class="shot"><img src="screenshots/dashboard.png" alt="Saga Dashboard" width="2880" height="1800"></div>
   </header>
 </div>
@@ -62,7 +62,7 @@ location.replace("en/")}catch(e){}})();
 <section id="neu">
   <div class="wrap">
     <h2>Neu in Saga 2.1</h2>
-    <p class="sub">Sicherer anmelden, Gesichter statt Initialen und miteinander reden – Ende-zu-Ende verschlüsselt, ohne zusätzlichen Port.</p>
+    <p class="sub">Sicherer anmelden, Gesichter statt Initialen, miteinander reden – und eine KI mit Namen, die hilft, wenn du sie rufst.</p>
     <div class="feat">
       <figure class="fc"><a href="screenshots/v21-sicherheit.png"><img src="screenshots/v21-sicherheit.png" alt="Seite „Anmeldung &amp; Sicherheit“: ein Passkey „MacBook“, Authenticator-App eingerichtet, 10 von 10 Wiederherstellungscodes übrig" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:20%;--z:1.55"></a>
         <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔑</span>Passkeys &amp; Zwei-Faktor</h3><p>Anmeldung ohne Passwort per Passkey (Fingerabdruck, Gesicht, Geräte-PIN) oder als zweiter Schritt nach dem Passwort, alternativ mit Authenticator-App. Wiederherstellungscodes für den Notfall; der Admin kann 2FA für Admins oder alle verlangen.</p></figcaption></figure>
@@ -76,14 +76,24 @@ location.replace("en/")}catch(e){}})();
         <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📷</span>Immich im Chat</h3><p>Fotos direkt aus der eigenen Immich-Bibliothek in den Chat holen – mit derselben Auswahl wie auf Seiten. Das Bild wird wie jeder Anhang Ende-zu-Ende verschlüsselt.</p></figcaption></figure>
       <figure class="fc"><a href="screenshots/v21-login-passkey.png"><img src="screenshots/v21-login-passkey.png" alt="Anmeldeseite im hellen Design mit „Anmelden“ und „Mit Passkey anmelden“" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:30%;--z:1.9"></a>
         <figcaption class="fb"><h3><span class="ic" aria-hidden="true">✨</span>Anmelden mit einem Tipp</h3><p>„Mit Passkey anmelden“ – der Browser schlägt den Passkey schon beim Benutzernamen vor. Passkeys sind an deine Saga gebunden und lassen sich nicht abphishen.</p></figcaption></figure>
+      <figure class="fc"><a href="screenshots/v21-ki-chat.png"><img src="screenshots/v21-ki-chat.png" alt="Direkt-Chat zwischen Anna Berg und Ben Okafor: Hinweis „Marin ist in diesem Chat erlaubt – nur auf Zuruf“, Annas Frage „@Marin wie warm ist es Mitte Mai in Lissabon?“ und Marins Antwort mit Profilbild, „gefragt von Anna Berg“" loading="lazy" width="1366" height="860" style="--fx:60%;--fy:45%;--z:1.35"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">💬</span>Deine KI – mit Namen, auf Zuruf im Chat</h3><p>Gib der KI einen Namen, ein Bild und einen Tonfall. Auf Wunsch hilft sie auch im Chat – aber nur, wenn jemand sie mit @Name fragt. Nur diese Nachricht und ein paar davor gehen an die KI, alles andere bleibt Ende-zu-Ende verschlüsselt. Standardmäßig aus.</p></figcaption></figure>
+      <figure class="fc"><a href="screenshots/v21-ki-websuche.png"><img src="screenshots/v21-ki-websuche.png" alt="KI-Seitenleiste „Marin“: Antwort auf „Wie wird das Wetter heute in Testort?“ mit Webquellen als Links, unten der Schalter „Im Web suchen“" loading="lazy" width="1366" height="900" style="--fx:100%;--fy:0%;--z:2.1"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔎</span>Websuche für die KI</h3><p>Wetter, Öffnungszeiten, Nachrichten: Die KI sucht über deine SearXNG-Instanz im Web und nennt ihre Quellen mit Link – auch mit kleinen lokalen Modellen. Der Admin schaltet sie ein, im Assistenten ist sie je Frage abschaltbar.</p></figcaption></figure>
+      <figure class="fc"><a href="screenshots/v21-chat-loeschen.png"><img src="screenshots/v21-chat-loeschen.png" alt="Dialog „„Bert Demo“ löschen?“ mit der Wahl „Nur für mich“ oder „Für alle“ und dem Hinweis, dass sich das nicht rückgängig machen lässt; links in der Chatliste der Bereich „Archiviert (1)“" loading="lazy" width="2560" height="1600" style="--fx:50%;--fy:50%;--z:1.5"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🗂️</span>Chats archivieren und löschen</h3><p>Archivierte Chats wandern in einen eigenen Bereich und kommen mit der nächsten Nachricht zurück. Löschen geht nur für dich – die anderen behalten alles – oder für alle, mit deutlicher Warnung.</p></figcaption></figure>
+      <figure class="fc"><a href="screenshots/v21-sprache.png"><img src="screenshots/v21-sprache.png" alt="Anmeldeseite auf Spanisch mit „Nombre de usuario“, „Contraseña“ und „Iniciar sesión“, darunter der Sprachumschalter „Español“" loading="lazy" width="1280" height="860" style="--fx:50%;--fy:50%;--z:2"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🌐</span>Fünf Sprachen, frei wählbar</h3><p>Neu dabei: Русский und ไทย. Die Sprache lässt sich schon auf der Anmeldeseite umstellen – praktisch am fremden Rechner – und jederzeit im Benutzermenü unter „Sprache“.</p></figcaption></figure>
     </div>
     <h3 class="more-h">Genauer hingeschaut</h3>
-    <p class="more-sub">Außerdem: Der KI-Assistent findet deutlich mehr (Wortstämme, zusammengesetzte Wörter, Datenbank-Eigenschaften) und kommt besser mit lokalen Modellen zurecht, Bilder lassen sich in Seiten kopieren und einfügen.</p>
+    <p class="more-sub">Außerdem: Der KI-Assistent findet deutlich mehr (Wortstämme, zusammengesetzte Wörter, Datenbank-Eigenschaften), schlägt nur noch echte nächste Schritte als Aufgaben vor und kommt besser mit lokalen Modellen zurecht; Bilder lassen sich in Seiten kopieren und einfügen.</p>
     <div class="gallery two">
       <figure><div class="shot"><a href="screenshots/v21-login-2fa.png"><img src="screenshots/v21-login-2fa.png" alt="Zweiter Schritt nach dem Passwort: „Mit Passkey bestätigen“ oder ein Code aus der Authenticator-App" loading="lazy" width="2880" height="1800"></a></div><figcaption>Zweiter Schritt: Passkey oder Code</figcaption></figure>
       <figure><div class="shot"><a href="screenshots/v21-profilbild-zuschneiden.png"><img src="screenshots/v21-profilbild-zuschneiden.png" alt="Dialog „Profilbild zuschneiden“ mit rundem Ausschnitt und Zoom-Regler" loading="lazy" width="2880" height="1800"></a></div><figcaption>Profilbild zuschneiden</figcaption></figure>
       <figure><div class="shot"><a href="screenshots/v21-admin-2fa.png"><img src="screenshots/v21-admin-2fa.png" alt="Admin-Bereich, Allgemein: „2FA verlangen für“ niemanden, Admins oder alle" loading="lazy" width="2880" height="1800"></a></div><figcaption>Admin: 2FA-Richtlinie</figcaption></figure>
       <figure><div class="shot"><a href="screenshots/v21-admin-anrufe.png"><img src="screenshots/v21-admin-anrufe.png" alt="Admin-Bereich, Allgemein: Anrufe mit STUN-Server, optionalem TURN-Server und Klingeldauer" loading="lazy" width="2880" height="1800"></a></div><figcaption>Admin: Anrufe, STUN und TURN</figcaption></figure>
+      <figure><div class="shot"><a href="screenshots/v21-admin-ki.png"><img src="screenshots/v21-admin-ki.png" alt="Admin-Bereich, KI-Assistent: „KI in Chats erlauben (nur auf Zuruf)“ und „Websuche erlauben“ eingeschaltet, darunter der Datenschutzhinweis und die Persona „Marin“" loading="lazy" width="1366" height="854"></a></div><figcaption>Admin: KI im Chat, Websuche und Persona</figcaption></figure>
+      <figure><div class="shot"><a href="screenshots/v21-chat-archiv.png"><img src="screenshots/v21-chat-archiv.png" alt="Chatliste im dunklen Design mit aufgeklapptem Bereich „Archiviert (1)“ und der Meldung „Chat archiviert – er kommt mit der nächsten Nachricht zurück.“" loading="lazy" width="2560" height="1600"></a></div><figcaption>Archivierte Chats</figcaption></figure>
     </div>
     <h3 class="more-h">Auch auf dem Handy</h3>
     <p class="more-sub">Klingeln, telefonieren, Fotos ansehen und mit Passkey anmelden – im Handy-Browser.</p>
@@ -151,7 +161,7 @@ location.replace("en/")}catch(e){}})();
       <div class="card"><div class="ic">👥</div><h3>Mehrbenutzerfähig</h3><p>Lokale Konten mit Registrierung, LDAP/Active Directory und Single Sign-On – Inhalte strikt getrennt.</p></div>
       <div class="card"><div class="ic">🛡️</div><h3>Admin-Bereich</h3><p>Auf eigenem Port: Benutzer, Gruppen, Dienste, Registrierung, LDAP und SSO mit Verbindungstests.</p></div>
       <div class="card"><div class="ic">📱</div><h3>Native Apps</h3><p>iPhone, iPad, Mac, Linux und Android – Seiten, Datenbanken und Aufgaben nativ bearbeiten, anmelden per QR-Code.</p></div>
-      <div class="card"><div class="ic">🌍</div><h3>Drei Sprachen</h3><p>Oberfläche, Admin-Bereich, Apps und Anleitung auf Deutsch, Englisch und Spanisch – je Konto einstellbar.</p></div>
+      <div class="card"><div class="ic">🌍</div><h3>Fünf Sprachen</h3><p>Oberfläche und Admin-Bereich auf Deutsch, Englisch, Spanisch, Russisch und Thai, Apps und Anleitung auf Deutsch, Englisch und Spanisch – je Konto und schon auf der Anmeldeseite wählbar.</p></div>
       <div class="card"><div class="ic">🔒</div><h3>Sicher von Haus aus</h3><p>Strenge CSP, Größen- und Login-Grenzen, gehashte Schlüssel, Abmelden aller Geräte beim Passwortwechsel.</p></div>
     </div>
   </div>

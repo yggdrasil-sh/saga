@@ -1013,14 +1013,19 @@ members) and in the version history (“by …”). Without a picture, the initi
 Saga speaks English, German, Spanish, Russian (Русский) and Thai (ไทย); this guide is available in English, German
 and Spanish. The language you see is decided in this order:
 
-1. your own choice under **Settings** → **Account** → **Language** – it applies immediately and in every
-   browser, because it is stored in your account,
-2. the **default language** the admin sets under General,
-3. your browser's language,
-4. otherwise English (also for any other browser language).
+1. your own choice under **Settings** → **Account** → **Language** (or user menu → **Language**) – it applies
+   immediately and in every browser, because it is stored in your account,
+2. the **🌐 switcher on the sign-in page** – for someone else's computer that doesn't speak your language. It also
+   applies to the 2FA step, registration and error pages; the browser only remembers the language (cookie
+   `saga_lang`, no tracking), "Automatic (browser)" removes it again,
+3. the app's language, when an app opens the sign-in in the browser,
+4. the **default language** the admin sets under General,
+5. your browser's language,
+6. otherwise English (also for any other browser language).
 
-"Automatic" always means: the next step decides. Dates and numbers follow the selected language. The apps follow
-your device's language.
+"Automatic" always means: the next step decides. Dates and numbers follow the selected language. The admin area
+has a switcher too (header and sign-in). In the apps you choose the language under Settings → Language (Automatic,
+Deutsch, English, Español). Russian and Thai are machine-translated – improvements from native speakers are welcome.
 
 ### On your phone
 
@@ -1128,7 +1133,8 @@ check your reverse proxy for the live channel (section 3). Everything else is in
 version 6 (backup first; afterwards no way back to 2.0.x except via that backup). New and active right away:
 profile pictures with **Gravatar** (can be turned off under General → Profile pictures) and **calls** using the STUN
 server `stun:stun.nextcloud.com:443` (General → Calls; TURN optional, see "Calls"). Passkeys need a host name in
-`BASE_URL`, not an IP address; the 2FA policy is set to "nobody".
+`BASE_URL`, not an IP address; the 2FA policy is set to "nobody". **AI in chats** and the AI's **web search** stay
+off until you turn them on under AI assistant (web search only with SearXNG, section 10).
 
 **Going back to the previous version:** An older Saga will not start on a database that a newer version has
 already changed (it reports this in the log instead of damaging data). This also applies to **2.1 → 2.0.x**: 2.1

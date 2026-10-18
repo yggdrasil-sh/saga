@@ -29,7 +29,9 @@
 ![Saga Dashboard](docs/screenshots/dashboard.png)
 
 > **Neu in Saga 2.1:** Passkeys und Zwei-Faktor-Anmeldung, Profilbilder, Audio- und Videoanrufe im Direkt-Chat,
-> Bilder aus Immich im Chat, schnelle Chat-Bilder mit Vorschau und ein treffsicherer KI-Assistent.
+> Bilder aus Immich im Chat, schnelle Chat-Bilder mit Vorschau, Chats archivieren und löschen, ein treffsicherer
+> KI-Assistent mit eigenem Namen, der auf Zuruf im Chat hilft und im Web suchen kann, und fünf Sprachen (neu: Russisch
+> und Thai), wählbar schon auf der Anmeldeseite.
 > Seit 2.0: Teilen und Kommentare, Live-Aktualisierung, Ende-zu-Ende-verschlüsselte Chats, Mitteilungen aufs Handy
 > und Föderation mit anderen Saga-Servern. Alles Weitere im [Changelog](CHANGELOG.md).
 
@@ -48,13 +50,15 @@
   Lesen, Kommentieren, Bearbeiten, Unterseiten erben die Freigabe; dezente Kommentare am Block mit „Erledigt“
 - **Chats mit Ende-zu-Ende-Verschlüsselung:** Direkt-, Gruppen- und Seiten-Chats mit Anhängen, Antworten und
   @-Seitenverweisen; der Server (und der Admin) sieht nur verschlüsselte Daten – libsodium, Wiederherstellungsschlüssel,
-  Sicherheitsnummern, mehrere Geräte
+  Sicherheitsnummern, mehrere Geräte; Chats archivieren oder löschen (nur für mich oder für alle)
 - **Audio- und Videoanrufe:** aus dem Direkt-Chat, mit Bildschirm teilen – WebRTC zwischen den Geräten,
   Ende-zu-Ende verschlüsselt und mit den Chat-Schlüsseln geprüft, kein zusätzlicher Port (optional TURN über 443)
 - **Benachrichtigungen und Mitteilungen:** Glocke mit Live-Aktualisierung; auf Wunsch aufs Handy/Desktop per Web Push
   (Ende-zu-Ende verschlüsselt, auch iPhone als Home-Bildschirm-App), ntfy/UnifiedPush oder Apple Push – ohne Inhalte
 - **KI-Assistent (optional):** Fragen an die eigenen Seiten, Zusammenfassen, Aufgaben vorschlagen, Text verbessern oder
-  übersetzen – mit einem Modell nach Wahl (z. B. Ollama im eigenen Netz). Nur sichtbare Inhalte, Quellen verlinkt, nur Vorschläge, standardmäßig aus
+  übersetzen – mit einem Modell nach Wahl (z. B. Ollama im eigenen Netz). Nur sichtbare Inhalte, Quellen verlinkt, nur Vorschläge, standardmäßig aus.
+  Mit eigenem Namen, Bild und Tonfall; auf Wunsch **im Chat nur auf Zuruf** (@Name, alles andere bleibt verschlüsselt)
+  und mit **Websuche** über die eigene SearXNG-Instanz (Quellen verlinkt) – beides standardmäßig aus
 - **Föderation:** Saga-Server verbinden und Seiten mit name@server teilen – Inhalte bleiben beim Eigentümer, jede
   Anfrage zwischen den Servern ist signiert (Ed25519, HTTP Message Signatures)
 - **Aufgaben** mit Fälligkeit, Priorität und Wiederholung
@@ -69,7 +73,8 @@
 - **Profilbilder:** eigenes Bild (zugeschnitten, ohne Metadaten neu kodiert) oder Gravatar – vom Server geholt
   und zwischengespeichert, Browser fragen nie bei Gravatar; optional aus SSO/LDAP
 - **Admin-Bereich auf eigenem Port** für Benutzer, Gruppen, Dienste und Anmeldung
-- **Deutsch, Englisch, Spanisch, Russisch und Thai:** jeder Benutzer kann seine Sprache in den Einstellungen wählen
+- **Deutsch, Englisch, Spanisch, Russisch und Thai:** jeder Benutzer kann seine Sprache in den Einstellungen wählen,
+  auf der Anmeldeseite schon vor dem Login
   (Russisch und Thai maschinell übersetzt – Verbesserungen von Muttersprachlern sind willkommen)
 - **[Apps](https://github.com/yggdrasil-sh/saga-apps/blob/main/README.de.md)** (iOS/iPadOS/macOS, Linux/GTK, Android) über dieselbe
   Schnittstelle, mit dauerhafter Anmeldung und Kopplung per QR-Code

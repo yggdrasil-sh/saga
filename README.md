@@ -33,7 +33,9 @@ all your services, Notion-style pages and databases, tasks, calendars and bookma
 private space – no cloud, no subscription, on your own server.
 
 > **New in Saga 2.1:** passkeys and two-factor sign-in, profile pictures, audio and video calls in direct chats,
-> Immich photos in chats, fast chat images with previews and a much better AI assistant.
+> Immich photos in chats, fast chat images with previews, archiving and deleting chats, a much better AI assistant
+> with its own name that helps in chats on request and can search the web, and five languages (new: Russian and
+> Thai), selectable right on the sign-in page.
 > Since 2.0: sharing and comments, live updates, end-to-end encrypted chats, push notifications to your phone and
 > federation with other Saga servers. Details in the [changelog](CHANGELOG.md) (in German).
 
@@ -51,13 +53,16 @@ private space – no cloud, no subscription, on your own server.
 - **Sharing and comments:** share pages and databases with people or groups (local, LDAP, SSO) – roles View,
   Comment, Edit, subpages inherit the share; unobtrusive comments on blocks with “Resolved”
 - **End-to-end encrypted chats:** direct, group and page chats with attachments, replies and @ page links; the
-  server (and the admin) only sees encrypted data – libsodium, recovery key, safety numbers, multiple devices
+  server (and the admin) only sees encrypted data – libsodium, recovery key, safety numbers, multiple devices;
+  archive or delete chats (just for me or for everyone)
 - **Audio and video calls:** from the direct chat, with screen sharing – WebRTC between the devices, end-to-end encrypted
   and verified with the chat keys, no extra port (optional TURN over 443)
 - **Notifications and push:** bell with live updates; optionally to phone/desktop via Web Push (end-to-end encrypted,
   also iPhone as a home screen app), ntfy/UnifiedPush or Apple Push – without content
 - **AI assistant (optional):** ask your pages, summarize, suggest tasks, improve or translate text – with a model
-  you choose (e.g. Ollama on your own network). Only content you may see, sources linked, suggestions only, off by default
+  you choose (e.g. Ollama on your own network). Only content you may see, sources linked, suggestions only, off by default.
+  With its own name, picture and tone of voice; optionally **in chats on request only** (@name, everything else stays
+  encrypted) and with **web search** through your own SearXNG instance (sources linked) – both off by default
 - **Federation:** connect Saga servers and share pages with name@server – content stays with the owner, every
   request between servers is signed (Ed25519, HTTP Message Signatures)
 - **Tasks** with due dates, priorities and recurrence
@@ -72,7 +77,8 @@ private space – no cloud, no subscription, on your own server.
 - **Profile pictures:** upload your own (cropped, re-encoded without metadata) or use Gravatar – fetched and
   cached by the server, browsers never contact Gravatar; optionally from SSO/LDAP
 - **Admin area on a separate port** for users, groups, services and sign-in
-- **English, German, Spanish, Russian and Thai:** every user can choose their language in their settings
+- **English, German, Spanish, Russian and Thai:** every user can choose their language in their settings,
+  and on the sign-in page even before logging in
   (Russian and Thai are machine-translated – improvements from native speakers are welcome)
 - **[Apps](https://github.com/yggdrasil-sh/saga-apps)** (iOS/iPadOS/macOS, Linux/GTK, Android) using the same
   API, with persistent sign-in and pairing via QR code

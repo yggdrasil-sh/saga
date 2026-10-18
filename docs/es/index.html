@@ -46,7 +46,7 @@
       <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/es/GUIA.md">📖 Guía</a>
       <a class="btn" href="https://github.com/yggdrasil-sh/saga">★ En GitHub</a>
     </div>
-    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>iOS · macOS · Linux · Android</span><span>Español · English · Deutsch</span></div>
+    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>iOS · macOS · Linux · Android</span><span>Español · English · Deutsch · Русский · ไทย</span></div>
     <div class="shot"><img src="../screenshots/dashboard.png" alt="Panel de Saga" width="2880" height="1800"></div>
   </header>
 </div>
@@ -54,7 +54,7 @@
 <section id="novedades">
   <div class="wrap">
     <h2>Novedades de Saga 2.1</h2>
-    <p class="sub">Inicio de sesión más seguro, caras en lugar de iniciales y hablar entre vosotros – cifrado de extremo a extremo, sin puerto adicional.</p>
+    <p class="sub">Inicio de sesión más seguro, caras en lugar de iniciales, hablar entre vosotros – y una IA con nombre que ayuda cuando la llamas.</p>
     <div class="feat">
       <figure class="fc"><a href="../screenshots/v21-sicherheit.png"><img src="../screenshots/v21-sicherheit.png" alt="Página «Inicio de sesión y seguridad»: una llave de acceso «MacBook», app de autenticación configurada, quedan 10 de 10 códigos de recuperación" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:20%;--z:1.55"></a>
         <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔑</span>Llaves de acceso y dos factores</h3><p>Inicia sesión sin contraseña con una llave de acceso (huella, cara, PIN del dispositivo) o úsala como segundo paso tras la contraseña; también con una app de autenticación. Códigos de recuperación para emergencias; el administrador puede exigir 2FA a los administradores o a todos.</p></figcaption></figure>
@@ -68,14 +68,24 @@
         <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📷</span>Immich en el chat</h3><p>Trae fotos directamente de tu biblioteca de Immich, con el mismo selector que en las páginas. La imagen se cifra de extremo a extremo como cualquier adjunto.</p></figcaption></figure>
       <figure class="fc"><a href="../screenshots/v21-login-passkey.png"><img src="../screenshots/v21-login-passkey.png" alt="Página de inicio de sesión en el tema claro con «Iniciar sesión» e «Iniciar sesión con llave de acceso»" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:30%;--z:1.9"></a>
         <figcaption class="fb"><h3><span class="ic" aria-hidden="true">✨</span>Entrar con un toque</h3><p>«Iniciar sesión con llave de acceso»: el navegador ya te la sugiere en el campo del usuario. Las llaves de acceso están ligadas a tu Saga y no se pueden robar con phishing.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-ki-chat.png"><img src="../screenshots/v21-ki-chat.png" alt="Chat directo entre Anna Berg y Ben Okafor: aviso «Marin está permitido en este chat, solo cuando se le llama», la pregunta de Anna «@Marin ¿qué temperatura hace en Lisboa a mediados de mayo?» y la respuesta de Marin con foto de perfil, «preguntado por Anna Berg» (interfaz en alemán)" loading="lazy" width="1366" height="860" style="--fx:60%;--fy:45%;--z:1.35"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">💬</span>Tu IA: con nombre y en el chat cuando la llamas</h3><p>Dale a la IA un nombre, una imagen y un tono. Si quieres, también ayuda en los chats, pero solo cuando alguien la menciona con @nombre. Solo ese mensaje y unos pocos anteriores llegan a la IA; todo lo demás sigue cifrado de extremo a extremo. Desactivado por defecto.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-ki-websuche.png"><img src="../screenshots/v21-ki-websuche.png" alt="Barra lateral de la IA «Marin»: respuesta a una pregunta sobre el tiempo con fuentes web enlazadas y, abajo, el interruptor «Buscar en la web» (interfaz en alemán)" loading="lazy" width="1366" height="900" style="--fx:100%;--fy:0%;--z:2.1"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔎</span>Búsqueda web para la IA</h3><p>El tiempo, horarios, noticias: la IA busca en la web a través de tu instancia de SearXNG y enlaza sus fuentes, incluso con modelos locales pequeños. La activa el administrador; en el asistente se puede desactivar para cada pregunta.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-chat-loeschen.png"><img src="../screenshots/v21-chat-loeschen.png" alt="Diálogo «¿Eliminar “Bert Demo”?» con la opción «Solo para mí» o «Para todos» y el aviso de que no se puede deshacer; a la izquierda la lista de chats con «Archivados (1)» (interfaz en alemán)" loading="lazy" width="2560" height="1600" style="--fx:50%;--fy:50%;--z:1.5"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🗂️</span>Archivar y eliminar chats</h3><p>Los chats archivados pasan a su propia sección y vuelven con el siguiente mensaje. Eliminar solo para ti (los demás lo conservan todo) o para todos, con un aviso claro.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-sprache.png"><img src="../screenshots/v21-sprache.png" alt="Página de inicio de sesión en español con «Nombre de usuario», «Contraseña» e «Iniciar sesión» y, debajo, el selector de idioma en «Español»" loading="lazy" width="1280" height="860" style="--fx:50%;--fy:50%;--z:2"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🌐</span>Cinco idiomas a elegir</h3><p>Nuevos: Русский y ไทย. El idioma se puede cambiar ya en la página de inicio de sesión (práctico en un ordenador ajeno) y en cualquier momento en «Idioma» del menú de usuario.</p></figcaption></figure>
     </div>
     <h3 class="more-h">Más de cerca</h3>
-    <p class="more-sub">Además: el asistente de IA encuentra mucho más (raíces de palabras, palabras compuestas, propiedades de bases de datos) y funciona mejor con modelos locales, y las imágenes se pueden copiar y pegar entre páginas.</p>
+    <p class="more-sub">Además: el asistente de IA encuentra mucho más (raíces de palabras, palabras compuestas, propiedades de bases de datos), solo propone como tareas pasos concretos y funciona mejor con modelos locales; las imágenes se pueden copiar y pegar entre páginas.</p>
     <div class="gallery two">
       <figure><div class="shot"><a href="../screenshots/v21-login-2fa.png"><img src="../screenshots/v21-login-2fa.png" alt="Segundo paso tras la contraseña: «Confirmar con llave de acceso» o un código de la app de autenticación" loading="lazy" width="2880" height="1800"></a></div><figcaption>Segundo paso: llave de acceso o código</figcaption></figure>
       <figure><div class="shot"><a href="../screenshots/v21-profilbild-zuschneiden.png"><img src="../screenshots/v21-profilbild-zuschneiden.png" alt="Diálogo «Recortar foto de perfil» con marco redondo y control de zoom" loading="lazy" width="2880" height="1800"></a></div><figcaption>Recortar la foto de perfil</figcaption></figure>
       <figure><div class="shot"><a href="../screenshots/v21-admin-2fa.png"><img src="../screenshots/v21-admin-2fa.png" alt="Área de administración, General: «Exigir 2FA a» nadie, administradores o todos" loading="lazy" width="2880" height="1800"></a></div><figcaption>Admin: política de 2FA</figcaption></figure>
       <figure><div class="shot"><a href="../screenshots/v21-admin-anrufe.png"><img src="../screenshots/v21-admin-anrufe.png" alt="Área de administración, General: llamadas con servidor STUN, servidor TURN opcional y duración del tono" loading="lazy" width="2880" height="1800"></a></div><figcaption>Admin: llamadas, STUN y TURN</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-admin-ki.png"><img src="../screenshots/v21-admin-ki.png" alt="Área de administración, asistente de IA: «Permitir la IA en los chats (solo cuando se la llama)» y «Permitir búsqueda web» activados, debajo el aviso de privacidad y la persona «Marin» (interfaz en alemán)" loading="lazy" width="1366" height="854"></a></div><figcaption>Admin: IA en el chat, búsqueda web y persona</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-chat-archiv.png"><img src="../screenshots/v21-chat-archiv.png" alt="Lista de chats en el tema oscuro con la sección «Archivados (1)» desplegada y el mensaje «Chat archivado: vuelve con el siguiente mensaje» (interfaz en alemán)" loading="lazy" width="2560" height="1600"></a></div><figcaption>Chats archivados</figcaption></figure>
     </div>
     <h3 class="more-h">También en el móvil</h3>
     <p class="more-sub">Recibir llamadas, hablar, ver fotos e iniciar sesión con llave de acceso, en el navegador del móvil.</p>
@@ -143,7 +153,7 @@
       <div class="card"><div class="ic">👥</div><h3>Multiusuario</h3><p>Cuentas locales con registro, LDAP/Active Directory e inicio de sesión único, con el contenido estrictamente separado.</p></div>
       <div class="card"><div class="ic">🛡️</div><h3>Área de administración</h3><p>En su propio puerto: usuarios, grupos, servicios, registro, LDAP y SSO con pruebas de conexión.</p></div>
       <div class="card"><div class="ic">📱</div><h3>Apps nativas</h3><p>iPhone, iPad, Mac, Linux y Android – edita páginas, bases de datos y tareas de forma nativa e inicia sesión con un código QR.</p></div>
-      <div class="card"><div class="ic">🌍</div><h3>Tres idiomas</h3><p>Interfaz web, administración, apps y guía en español, inglés y alemán – configurable por cuenta.</p></div>
+      <div class="card"><div class="ic">🌍</div><h3>Cinco idiomas</h3><p>Interfaz web y administración en español, inglés, alemán, ruso y tailandés; apps y guía en español, inglés y alemán – configurable por cuenta y ya en la página de inicio de sesión.</p></div>
       <div class="card"><div class="ic">🔒</div><h3>Seguro de serie</h3><p>CSP estricta, límites de tamaño y de inicio de sesión, claves con hash y cierre de sesión en todos los dispositivos al cambiar la contraseña.</p></div>
     </div>
   </div>

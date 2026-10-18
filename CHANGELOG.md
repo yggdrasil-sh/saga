@@ -15,148 +15,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
-### Neu: Russisch und Thai
-- **Zwei neue Oberflächensprachen:** Русский (ru) und ไทย (th) für Web-Oberfläche, Admin-Bereich, öffentliche Seiten,
-  Fehlermeldungen der API und Mitteilungstexte – wählbar wie bisher unter Einstellungen → Konto → Sprache, im
-  Umschalter der Anmeldeseite (`/lang`), als Standardsprache im Admin-Bereich, per `?lang=th`/`?lang=ru` der Apps und
-  automatisch über Accept-Language (`th`, `th-TH`, `ru`, `ru-RU` …). Sprachnamen erscheinen in der eigenen Sprache.
-  Die Übersetzungen sind **maschinell erstellt** und sollten von Muttersprachlern gegengelesen werden (Russisch in der
-  „ты“-Form wie das deutsche „du“; Thai neutral-höflich).
-- **Pluralformen:** Übersetzungen können `{n:eins|wenige|viele}` neben `{n}` enthalten (Server `t()` und `T()` im
-  Browser, CLDR-Regeln für de/en/es/ru/th – Russisch 1 / 2–4 / 5+ mit 11–14 = viele, Thai ohne Pluralformen). Bestehende
-  Schlüssel bleiben unverändert; `tools/i18n.py check` prüft die Anzahl der Formen je Sprache und HTML-Tags,
-  `tools/i18n.py merge <lang> <datei.json>` übernimmt Übersetzungen.
-- **Datum/Zahlen:** Thai mit gregorianischem Kalender (`th-TH-u-ca-gregory` statt buddhistischer Jahreszählung),
-  Russisch `ru-RU`; Server-Datumsformat für ru `TT.MM.JJJJ`, th `T/M/JJJJ`. Der @-Datumsvorschlag im Editor versteht
-  auch „завтра“, „пятница“, „через 3 дня“, „พรุ่งนี้“, „วันศุกร์“.
-- **KI:** Antworten und Zusammenfassungen in der Oberflächensprache auch für Russisch/Thai; Fragesprache wird bei
-  Kyrillisch/Thai an der Schrift erkannt; „Übersetzen nach“ bietet Русский und ไทย.
-- **Darstellung:** Thai mit Schrift-Fallbacks (Leelawadee UI, Thonburi, Noto Sans Thai) und etwas mehr Zeilenhöhe.
-
-### Neu: Websuche für die KI
-- **Die KI kann im Web suchen** – über die vorhandene SearXNG-Anbindung (`SEARXNG_URL`, wie die Websuche im Dashboard).
-  Admin-Bereich → KI-Assistent → „Websuche erlauben“ (Standard: aus; nur wählbar, wenn SearXNG eingerichtet ist, mit
-  Datenschutz-Hinweis: Suchbegriffe gehen über SearXNG an Suchmaschinen).
-- **Modellunabhängig** (auch kleine Ollama-Modelle, ohne Tool-Calls): Ein kurzer Vorab-Aufruf entscheidet, ob eine Suche
-  nötig ist (`NONE` oder höchstens zwei Zeilen `SEARCH: …`, serverseitig streng gefiltert). Dann fragt Saga SearXNG
-  (Zeitlimit, höchstens 6 Treffer) und liest den Text der besten zwei Treffer – nur öffentliche Adressen (Prüfung bei
-  jeder Verbindung, auch nach Weiterleitungen), nur Port 80/443, nur `text/html`/`text/plain`, mit Größen- und
-  Zeitlimit (`AI_WEB_FETCH=0`: nur Ausschnitte). Die Treffer gehen als Daten markiert in den Prompt; Anweisungen darin
-  zählen nicht. Antworten nennen die Webquellen mit `[n]` und Link.
-- Gilt für den Assistenten (neuer Schalter „Im Web suchen“ je Frage, Standard an) und für „KI im Chat“ (Quellen als
-  Links in der Antwort, vom Beleg abgedeckt). Zusammenfassen, Verbessern, Übersetzen und Aufgaben vorschlagen suchen nie.
-- Statusanzeige „Marin sucht im Web …“ (Persona-Name, de/en/es) über das `status`-Ereignis; `/api/ai/status` meldet
-  `web`, Hinweise im Chat und im Assistenten nennen dann auch die Websuche. Vertrag: `docs/APP-API-KI.md` Abschnitt 3.
-- `GET /api/ai/persona` meldet zusätzlich `chat` („KI in Chats erlauben“ an und KI eingerichtet) und `web` – auch für
-  Konten, für die der Assistent aus ist (die bekommen `/api/ai/status` nicht); so erkennen Apps, ob „KI im Chat“
-  serverweit aus ist.
-- Grenzen: jede Websuche zählt als weitere Anfrage im Kontingent, höchstens 10 Websuchen je Person in 10 Minuten
-  (`AI_WEB_RATE`), Logs nur mit Anzahl und Dauer. Ist SearXNG nicht erreichbar, kommt die Antwort trotzdem – ohne
-  Webdaten, mit kurzem Hinweis.
-- Alle KI-Funktionen bekommen jetzt auch die **Uhrzeit** (Zeitzone des Servers) im System-Prompt, damit „heute“,
-  „morgen“ und „heute Abend“ stimmen.
-- Tests: neue Reihe `tests/ki_web.py` (Fake-SearXNG, Fake-Modell); der Test-Stack setzt dafür `SEARXNG_URL` der
-  Test-Instanz auf den Fake.
-
-### Neu: Chats archivieren und löschen
-- **Archivieren** (jede Chat-Art, nur für mich): Chat-Menü „⋯“ oder Rechtsklick/Kontextmenü-Taste/langes Antippen in
-  der Chatliste. Archivierte Chats stehen in einem aufklappbaren Bereich „Archiviert (n)“ unten in der Liste, zählen nicht
-  zu den Ungelesenen (Liste, Dashboard-Knopf, `/api/chats/unread`) und kommen mit der nächsten Nachricht oder einem Anruf
-  von selbst zurück – außer sie sind stummgeschaltet. „Aus Archiv holen“ jederzeit.
-- **Chat löschen …** mit Auswahl und deutlicher Warnung (nicht rückgängig): **Nur für mich** – der Server setzt eine
-  Grenze und löscht die für mich versiegelten Inhaltsschlüssel (alle Geräte + Backup-Schlüssel) der bisherigen
-  Nachrichten; alte Nachrichten, Anhänge und Anruf-Einträge liefert er mir nicht mehr aus, die anderen behalten alles.
-  Direkt-Chats verschwinden aus der Liste und kommen bei einer neuen Nachricht leer wieder, andere Chats werden
-  archiviert, freie Gruppen kann man dabei zusätzlich verlassen; der verschlüsselte Gruppenname bleibt lesbar.
-  **Für alle** – Direkt-Chat (beide) und freie Gruppe (Chat-Admins): Chat samt Nachrichten, Schlüsseln, Anhängen und
-  Vorschaubildern, Lesestand, KI-Freigabe/-Belegen, Anrufen und Benachrichtigungen gelöscht; die anderen bekommen live
-  `chat.removed` und den Hinweis „Name hat den Chat gelöscht.“. Gruppen-Chat (Saga-Admins) und Seiten-Chat
-  (Eigentümer der Seite): nur der Verlauf (`chat.cleared`, „Name hat den Verlauf gelöscht.“), der Chat bleibt.
-- **Apps**: `DELETE /api/chats/{cid}?scope=me|all`, `PATCH /api/chats/{cid} {archived}`, neue Felder `archived`,
-  `archived_at`, `cleared_seq`, `delete_for_all` in der Chatliste, Live-Ereignisse `chat.cleared`/`chat.removed`.
-  Vertrag: `docs/APP-API-CHAT.md`. `MIN_APP` unverändert (ältere Apps zeigen archivierte Chats weiter in der Liste).
-- **Datenbank**: neue Tabelle `chat_pref` (Stand je Person und Chat) per `CREATE TABLE IF NOT EXISTS` – keine Migration,
-  kein neuer Schema-Stand; Kontolöschung entfernt die Einträge, beim Löschen eines Chats gehen sie mit.
-- Tests: neue Reihe `tests/chat_loeschen.py` (Rechte je Chat-Art, Archiv-Rückkehr, „für mich“ liefert nichts Altes und
-  entfernt die Schlüssel, „für alle“ räumt alles ab, Live-Ereignisse, Kontolöschung).
-
-### Neu: KI-Persona
-- **Name, Profilbild und Tonfall für die KI** (Admin-Bereich → KI-Assistent → Persona): Name (leer = „Saga KI“ /
-  „Saga AI“ / „Saga IA“), Profilbild mit denselben Prüfungen wie Profilbilder (neu kodiert, 64/128/256 px, WebP und
-  PNG/JPEG; ohne Bild ein neutrales ✦-Symbol), optional eine kurze Persönlichkeit/Tonfall (höchstens 500 Zeichen). Der
-  Tonfall geht bereinigt (eine Zeile, ohne Datenmarkierungen) als nachrangiger Stil-Zusatz in den System-Prompt aller
-  KI-Funktionen – Regeln und Formate wie `TASK:`/`NONE` bleiben unverändert. Änderungen stehen im Server-Log (ohne
-  Inhalte).
-- **Web**: „Frage Marin“ mit kleinem Profilbild im Seitenkopf und im Seitenmenü, Name und Bild im Kopf der
-  Seitenleiste und über jeder Antwort (auch im Verlauf), „Marin denkt nach …“; hell/dunkel und mobil.
-- **Apps**: `GET /api/ai/persona` (Name, Bild-Adresse, ETag, ob die KI für mich an ist), `persona` in
-  `/api/ai/status`, Bild unter `/api/ai/avatar` (nur angemeldet), Live-Ereignis `ai.persona.changed`. Vertrag:
-  `docs/APP-API-KI.md`. Keine Datenbank-Migration (Bild in `avatar_img` unter der Kennung `#ai`).
-
-### Neu: KI im Chat – nur auf Zuruf
-- **Die KI kann in Chats mitmachen**, wenn der Admin „KI in Chats erlauben“ einschaltet (Standard: aus) und der Chat sie
-  zulässt (Chat-Menü: freie Gruppe – Chat-Admins, Direkt-Chat – beide, Gruppen-Chat – Saga-Admins, Seiten-Chat –
-  Eigentümer). Alle Mitglieder sehen dann einen Hinweis. Die KI liest **nur Nachrichten mit @Name** plus bis zu 12
-  Nachrichten davor, die das Gerät des Fragenden gezielt schickt (`POST /api/chats/{cid}/ai`); alles andere bleibt
-  Ende-zu-Ende-verschlüsselt. Sie sieht keine Seiten, Aufgaben oder Kalender.
-- Die Antwort verschlüsselt das Gerät des Fragenden für alle Mitglieder; der Server speichert nur den SHA-256 als Beleg
-  (`chat_ai_reply`), Clients zeigen die Nachricht nur bei passendem Hash als Antwort der KI (Name + Bild, „gefragt von
-  …“). Kontingent und Gruppen des Assistenten gelten, dazu 6 Fragen je Minute und Person, 20 je 10 Minuten und Chat.
-- **Web**: KI als erster Vorschlag bei „@“, Hinweis beim Schreiben, Antwort erscheint live. Vertrag für die Apps:
-  `docs/APP-API-KI.md`. Neue Tabellen `chat_ai`, `chat_ai_reply` (ohne Migration, `CREATE TABLE IF NOT EXISTS`).
-
-### Behoben
-- **KI mit neueren Claude-Modellen über die OpenAI-kompatible Schnittstelle** (`https://api.anthropic.com/v1`): Saga
-  schickt `temperature` nicht mehr, wenn das Modell den Parameter ablehnt (Fehler 400 „temperature is deprecated“), und
-  „Verbindung testen“ listet dort auch die angebotenen Modelle.
-- **KI im Chat – Belege räumen mit auf**: Der Hash-Beleg einer KI-Antwort (`chat_ai_reply`) wird jetzt mit der
-  Nachricht entfernt – beim Löschen der Nachricht, beim Ablauf (Frist des Chats bzw. Admin-Höchstwert) und beim Löschen
-  des Chats; das stündliche Aufräumen entfernt zusätzlich abgelaufene, nie gesendete Belege und Belege ohne Nachricht.
-- **KI im Chat – Kontolöschung**: Belege, deren Nachricht bestehen bleibt, verlieren den Personenbezug statt zu
-  verschwinden (die Kennzeichnung als KI-Antwort bleibt gültig, `ai.by` = `null`); der Vermerk, wer die KI im Chat
-  erlaubt hat (`chat_ai.by_uid`), wird geleert. Web zeigt dann „gefragt von Gelöschtes Konto“.
-- **KI-Persona – Live-Ereignis `ai.persona.changed`** geht nur noch an Konten, die die KI nutzen dürfen (Gruppen) bzw.
-  bis zur Änderung nutzen durften (KI aus, Gruppen geändert – deren Clients blenden sie aus), nicht mehr an alle.
-  Gruppenänderungen im Admin-Bereich lösen das Ereignis jetzt auch aus.
-- **Tests – Avatare**: „Veröffentlichte Seite“ schlug ab dem zweiten Lauf auf demselben Stack mit 400 („Dieser Name
-  ist schon vergeben“) fehl. Kein Serverfehler: der feste Testname eines gelöschten Kontos ist gesperrt, sobald die
-  Föderation einen Schlüssel hat (`fed_name_retired`, gewollt). Der Test nimmt jetzt je Lauf einen neuen Namen.
-
-### Verbessert
-- **KI-Assistent – „Aufgaben vorschlagen“** liefert nur noch konkrete nächste Schritte im Imperativ (z. B.
-  „Weiterlesen ab Seite 12“) statt Feststellungen („Das Buch hat 258 Seiten“): das Modell schreibt je Aufgabe eine Zeile
-  `TASK: …` oder `NONE`, der Server verwirft Aussagesätze und wiederholte Eigenschaften. Gibt es nichts zu tun (auch
-  bei leeren Seiten, ohne Modellaufruf), kommt die Meldung „Auf dieser Seite gibt es nichts zu tun.“
-- **Datenbank-Zeilen**: Eigenschaften gehen je Zeile mit Spaltennamen an das Modell, Rechen-Spalten mit Wert und
-  Herkunft („Fortschritt: 4 % (Gelesen 11 / Seiten 258)“), Zahlen mit %/€. „Zusammenfassen“ einer Zeile ohne
-  nennenswerten Text antwortet ehrlich „Kaum Inhalt – nur Eigenschaften: …“ (ohne Modell).
-- **Markierung nur Bild/leer**: Verbessern/Übersetzen nimmt dann den Text der ganzen Seite und sagt das; leere Blöcke
-  einer Markierung werden übergangen.
-- **Sprache der Seiten-Hilfen**: Zusammenfassen und Aufgaben in der Sprache der Oberfläche (Konto > Server-Standard >
-  Browser), Verbessern behält die Sprache des Textes, Übersetzen die Zielsprache.
-
-### Sprache wählbar – Web
-- **Sprachumschalter auf der Anmeldeseite** (🌐 unten: Automatisch (Browser) · Deutsch · English · Español) – für den
-  fremden Rechner, der nicht die eigene Sprache spricht. Gilt auch für 2FA-Schritt, Registrierung,
-  „Anmeldung & Sicherheit“, App-Anmeldung/-Kopplung und die öffentlichen Fehlerseiten (404/zu viele Anfragen, dort als
-  Links ohne Skript). Gemerkt wird nur die Sprache im Cookie `saga_lang` (ein Jahr, HttpOnly, kein Tracking);
-  „Automatisch“ löscht es. Ohne JavaScript gibt es den Knopf „Sprache wechseln“.
-- **Sprache der App:** Öffnen die Apps Anmeldung oder Geräte-Kopplung mit `&lang=de|en|es`, gilt diese Sprache für die
-  Browser-Sitzung (Sitzungs-Cookie `saga_lang_app`, auch über die Weiterleitungen `/app/login` → `/login` → 2FA →
-  Rückgabe an die App); unbekannte Werte werden ignoriert.
-- **Reihenfolge:** Konto-Sprache > Umschalter (Cookie) > Sprache der App > Standardsprache des Servers > Browser >
-  Englisch. Nach der Anmeldung gilt also die Sprache des Kontos, falls eine eingestellt ist, sonst die gewählte bzw.
-  die des Browsers.
-- **Admin-Bereich:** Umschalter in der Kopfzeile und unter der Admin-Anmeldung. Angemeldet mit fester Konto-Sprache
-  ändert der Umschalter die Konto-Sprache mit (sonst hätte er keine Wirkung).
-- **Konto-Sprache leichter zu finden:** Einstellungen → Konto zeigt „🌐 Sprache“ jetzt als ersten Block (bisher
-  unauffällig zwischen Profilbild und Mitteilungen), „Automatisch“ nennt die gerade aktive Sprache; neu im
-  Benutzermenü: **„Sprache“** öffnet direkt diese Auswahl.
-
-## [2.1.0] – 2026-10-17
+## [2.1.0] – 2026-10-18
 
 Saga 2.1 macht die Anmeldung sicherer und den Chat persönlicher: Passkeys und Zwei-Faktor-Anmeldung, Profilbilder,
-Audio- und Videoanrufe im Direkt-Chat, Bilder aus Immich im Chat und ein deutlich treffsicherer KI-Assistent.
+Audio- und Videoanrufe im Direkt-Chat, Bilder aus Immich, Chats archivieren und löschen. Die KI bekommt einen Namen,
+ein Gesicht und einen Tonfall, hilft auf Zuruf im Chat und kann – wenn der Admin es erlaubt – im Web suchen. Die
+Oberfläche spricht jetzt fünf Sprachen (neu: Русский und ไทย), wählbar schon auf der Anmeldeseite.
 Die Schnittstelle wurde nur erweitert – Apps 2.0 und älter laufen weiter (`MIN_APP` bleibt). Die passenden Apps sind
 die [Saga-Apps 2.1](https://github.com/yggdrasil-sh/saga-apps/releases).
 
@@ -180,6 +44,14 @@ die [Saga-Apps 2.1](https://github.com/yggdrasil-sh/saga-apps/releases).
   den Live-Kanal). **Ende-zu-Ende geprüft:** jede Signal-Nachricht ist signiert und für das Zielgerät verschlüsselt,
   der Server sieht weder Verbindungsdaten noch IP-Adressen. Klingeln auf allen Geräten und Tabs, Push mit hoher
   Priorität, verpasste Anrufe im Chat. Admin → Allgemein → „Anrufe“: an/aus, STUN, optional TURN, Klingeldauer.
+- **Chats archivieren und löschen** (Chat-Menü „⋯“ oder Rechtsklick/langes Antippen in der Chatliste):
+  **Archivieren** (jede Chat-Art, nur für mich) schiebt den Chat in den aufklappbaren Bereich „Archiviert (n)“ – er
+  zählt nicht mehr als ungelesen und kommt mit der nächsten Nachricht oder einem Anruf von selbst zurück (außer er ist
+  stummgeschaltet). **Chat löschen …** mit deutlicher Warnung (nicht rückgängig): **Nur für mich** – der Server löscht
+  die für mich versiegelten Schlüssel der bisherigen Nachrichten und liefert mir den alten Verlauf nicht mehr aus, die
+  anderen behalten alles; freie Gruppen kann man dabei auch verlassen. **Für alle** – Direkt-Chat (beide) und freie
+  Gruppe (Chat-Admins): Chat samt Nachrichten, Anhängen, Anrufen und Benachrichtigungen weg, die anderen sehen „Name hat
+  den Chat gelöscht.“; Gruppen-Chat (Saga-Admins) und Seiten-Chat (Eigentümer der Seite): nur der Verlauf.
 - **Immich im Chat** (Web): „Aus Immich …“ beim Anhängen, mit derselben Auswahl wie auf Seiten; das Bild wird wie jeder
   Anhang Ende-zu-Ende verschlüsselt.
 - **Schnelle Chat-Bilder:** Beim Senden entsteht ein verschlüsseltes Vorschaubild. Der Verlauf lädt nur sichtbare
@@ -188,15 +60,53 @@ die [Saga-Apps 2.1](https://github.com/yggdrasil-sh/saga-apps/releases).
 - **Bilder in Seiten kopieren, ausschneiden und einfügen:** Bild anklicken, `Strg`/`⌘`+`C`/`X`/`V` – in derselben
   Seite, einer anderen oder einem anderen Tab (für andere Programme auch als PNG). Auf Seiten anderer Konten entsteht
   eine eigene Kopie.
+- **KI-Persona** (Admin → KI-Assistent → Persona): **Name** (leer = „Saga KI“ / „Saga AI“ / „Saga IA“), **Profilbild**
+  (geprüft und neu kodiert wie Profilbilder; ohne Bild ein neutrales ✦) und optional **Persönlichkeit und Tonfall**
+  (höchstens 500 Zeichen, als nachrangiger Stil-Zusatz – Regeln und Formate bleiben). Web und Apps zeigen Name und
+  Bild überall, wo die KI vorkommt („Frage Marin“, „Marin denkt nach …“), und übernehmen Änderungen sofort.
+- **KI im Chat – nur auf Zuruf** (Standard: aus): Erlaubt der Admin „KI in Chats erlauben“, kann die KI in einzelnen
+  Chats zugelassen werden (freie Gruppe – Chat-Admins, Direkt-Chat – beide, Gruppen-Chat – Saga-Admins, Seiten-Chat –
+  Eigentümer); alle Mitglieder sehen einen Hinweis. Die KI liest **nur Nachrichten mit @Name** und bis zu 12 Nachrichten
+  davor, die das Gerät des Fragenden gezielt schickt – alles andere bleibt Ende-zu-Ende-verschlüsselt; Seiten, Aufgaben
+  und Kalender sieht sie dort nicht. Die Antwort verschlüsselt das Gerät des Fragenden für alle; der Server speichert
+  nur eine Prüfsumme als Beleg, damit die anderen Geräte die Antwort als KI-Antwort erkennen („gefragt von …“). Der
+  Beleg verschwindet mit der Nachricht (Löschen, Ablauf, Chat löschen), bei Kontolöschung verliert er den
+  Personenbezug. Kontingent und Gruppen des Assistenten gelten, dazu 6 Fragen je Minute und Person, 20 je 10 Minuten
+  und Chat.
+- **Websuche für die KI** (Standard: aus; Admin → KI-Assistent → „Websuche erlauben“, nur mit eingerichtetem SearXNG,
+  `SEARXNG_URL`): Bei Fragen nach Aktuellem – Wetter, Nachrichten, Öffnungszeiten – sucht die KI im Assistenten und im
+  Chat selbst im Web und nennt die Quellen mit `[n]` und Link („Marin sucht im Web …“). **Modellunabhängig**, auch mit
+  kleinen Ollama-Modellen ohne Tool-Calls: ein kurzer Vorab-Aufruf entscheidet, ob gesucht wird (höchstens zwei
+  Suchbegriffe), Saga fragt SearXNG und liest den Text der besten zwei Treffer – nur öffentliche Adressen, Port 80/443,
+  Text/HTML, mit Größen- und Zeitlimit (`AI_WEB_FETCH=0`: nur Ausschnitte). Treffer gehen als Daten markiert in den
+  Prompt, Anweisungen darin zählen nicht. Im Assistenten je Frage abschaltbar („Im Web suchen“); Zusammenfassen,
+  Verbessern, Übersetzen und Aufgaben vorschlagen suchen nie. Jede Websuche zählt als weitere Anfrage im Kontingent,
+  höchstens 10 je Person in 10 Minuten (`AI_WEB_RATE`). Ist SearXNG nicht erreichbar, kommt die Antwort trotzdem.
+- **Sprache wählbar, schon vor der Anmeldung:** Umschalter 🌐 auf der Anmeldeseite (Automatisch (Browser) · Deutsch ·
+  English · Español · Русский · ไทย) – für den fremden Rechner, der nicht die eigene Sprache spricht. Gilt auch für
+  2FA-Schritt, Registrierung, „Anmeldung & Sicherheit“, App-Anmeldung/-Kopplung und die öffentlichen Fehlerseiten (dort
+  als Links ohne Skript). Gemerkt wird nur die Sprache im Cookie `saga_lang` (ein Jahr, HttpOnly, kein Tracking).
+  Öffnen die Apps Anmeldung oder Kopplung mit `&lang=…`, gilt deren Sprache für diese Browser-Sitzung. Reihenfolge:
+  Konto-Sprache > Umschalter > Sprache der App > Standardsprache des Servers > Browser > Englisch. Umschalter auch im
+  Admin-Bereich (Kopfzeile und Admin-Anmeldung) und im Benutzermenü („Sprache“).
+- **Russisch und Thai:** zwei neue Oberflächensprachen für Web, Admin-Bereich, öffentliche Seiten, Fehlermeldungen der
+  API und Mitteilungstexte – im Umschalter, unter Einstellungen → Konto → Sprache, als Standardsprache im Admin-Bereich,
+  per `?lang=ru`/`?lang=th` und automatisch über die Browsersprache. Datum und Zahlen passend (Thai mit gregorianischem
+  Kalender), der @-Datumsvorschlag versteht „завтра“ oder „พรุ่งนี้“, die KI antwortet auch auf Russisch und Thai,
+  „Übersetzen nach“ bietet beide an. Die Übersetzungen sind **maschinell erstellt** – Gegenlesen durch Muttersprachler
+  ist willkommen.
 - **KI-Assistent findet mehr und das Richtige:** Wortstämme, Gewichtung seltener Wörter (BM25), zusammengesetzte
   Wörter („Zahnarzttermin“ findet „Zahnarzt … Termin“), Eigenschaften von Datenbank-Zeilen („Welche Projekte sind in
   Arbeit?“), Zeitangaben wie „letzte Woche“. In 22 Testfragen: richtige Quelle 82 % → 95 %. Antworten mit Absätzen,
   Listen und Quellen; ohne passende Seite antwortet Saga selbst, ohne das Kontingent zu belasten.
 - **Lokale Modelle robuster:** Ollama bekommt einen passenden Kontext (`num_ctx`), Denkphasen (`<think>` usw.) werden
   nie angezeigt („Das Modell denkt nach …“), das Zeitlimit gilt zwischen zwei Stücken statt für die ganze Antwort.
-- **API für die Apps:** Feld `avatar` an allen Personen, `/api/account/avatar`, Live-Ereignis `avatar.changed`;
-  Anrufe unter `/api/calls…` mit Live-Ereignissen `call.*` und Push-Abo `apns-voip`; Anmeldung mit zweitem Faktor
-  über `/app/login`; „Neu beginnen“ im Chat auch mit Code oder Passkey. Alles additiv.
+- **API für die Apps** (alles additiv): Feld `avatar` an allen Personen, `/api/account/avatar`, Live-Ereignis
+  `avatar.changed`; Anrufe unter `/api/calls…` mit Live-Ereignissen `call.*` und Push-Abo `apns-voip`; Anmeldung mit
+  zweitem Faktor über `/app/login`; „Neu beginnen“ im Chat auch mit Code oder Passkey; KI-Persona
+  (`GET /api/ai/persona`, `/api/ai/avatar`, `ai.persona.changed`), KI im Chat (`POST /api/chats/{cid}/ai`), Websuche
+  (`status`-Ereignis, `web` in `/api/ai/status`); Chats archivieren/löschen (`PATCH`/`DELETE /api/chats/{cid}`,
+  `chat.cleared`/`chat.removed`). Verträge: `docs/APP-API-KI.md`, `docs/APP-API-CHAT.md`.
 - **Notfall per Kommandozeile:** `docker compose exec saga python run.py 2fa-zuruecksetzen <name>` (nur den Faktor
   entfernen, Passwort bleibt) und `… run.py 2fa-richtlinie none|admins|all`; `admin-passwort` entfernt den zweiten
   Faktor wie bisher mit.
@@ -208,22 +118,43 @@ die [Saga-Apps 2.1](https://github.com/yggdrasil-sh/saga-apps/releases).
   text:“ landen beim Verbessern/Übersetzen nicht mehr im ersetzten Block. Ollama bekommt ein gleichbleibendes
   `num_ctx` (aus „Seiteninhalt je Anfrage“) – vorher lud Ollama das Modell bei jedem Wechsel neu (5–6 s Wartezeit).
   „Nichts gefunden“ erscheint in der Sprache der Frage.
+- **„Aufgaben vorschlagen“** liefert nur noch konkrete nächste Schritte („Weiterlesen ab Seite 12“) statt
+  Feststellungen („Das Buch hat 258 Seiten“). Gibt es nichts zu tun, kommt „Auf dieser Seite gibt es nichts zu tun.“
+- **Datenbank-Zeilen für die KI:** Eigenschaften gehen mit Spaltennamen an das Modell, Rechen-Spalten mit Wert und
+  Herkunft („Fortschritt: 4 % (Gelesen 11 / Seiten 258)“). „Zusammenfassen“ einer Zeile ohne nennenswerten Text
+  antwortet ehrlich „Kaum Inhalt – nur Eigenschaften: …“ (ohne Modell).
+- **Markierung nur Bild/leer:** Verbessern/Übersetzen nimmt dann den Text der ganzen Seite und sagt das.
+- **Sprache der Seiten-Hilfen:** Zusammenfassen und Aufgaben in der Sprache der Oberfläche, Verbessern behält die
+  Sprache des Textes, Übersetzen die Zielsprache.
+- Alle KI-Funktionen kennen jetzt auch die **Uhrzeit** (Zeitzone des Servers), damit „heute“, „morgen“ und „heute
+  Abend“ stimmen.
+- **Konto-Sprache leichter zu finden:** Einstellungen → Konto zeigt „🌐 Sprache“ als ersten Block, „Automatisch“ nennt
+  die gerade aktive Sprache.
 
 ### Geändert
 - Anwesenheit erscheint sofort beim Öffnen einer Seite (vorher bis zu 20 s) und flackert nicht mehr.
 - Chat-Anhänge werden im Browser zwischengespeichert (verschlüsselt, höchstens 200 MB, geleert beim Abmelden).
   Bis zu 20 Dateien je Nachricht, 60 Uploads je Minute.
 - Admin → KI: Verbindungstest prüft das Modell gegen die ganze Liste und bietet sie zur Auswahl an.
-- Neue Abhängigkeiten: `webauthn`, `pillow-heif`.
+- Übersetzungen können Pluralformen enthalten (`{n:eins|wenige|viele}`, CLDR-Regeln); `tools/i18n.py check` prüft sie,
+  `tools/i18n.py merge <lang> <datei.json>` übernimmt Übersetzungen.
+- Neue Tabellen `chat_pref`, `chat_ai`, `chat_ai_reply` entstehen beim Start (`CREATE TABLE IF NOT EXISTS`, kein
+  weiterer Schema-Stand).
+- Neue Abhängigkeiten: `webauthn`, `pillow-heif`. Neue Testreihen `tests/chat_loeschen.py` und `tests/ki_web.py`.
 
 ### Behoben
 - **Sicherheit:** Eingefügte Blöcke aus der Zwischenablage werden im Browser geprüft (vorher hätte eine präparierte
   Zwischenablage HTML in den Editor bringen können; gespeichert wurde es schon bereinigt).
+- **KI mit neueren Claude-Modellen über die OpenAI-kompatible Schnittstelle** (`https://api.anthropic.com/v1`): Saga
+  schickt `temperature` nicht mehr, wenn das Modell den Parameter ablehnt (Fehler 400 „temperature is deprecated“), und
+  „Verbindung testen“ listet dort auch die angebotenen Modelle.
 - **Fehlerrunden aus zwei Bughunts:** Uploads ohne Längenangabe über der Grenze → 413 statt 500; Rückruf während es
   noch klingelt; Anruffenster auf dem Handy; ersetzter Gruppenname nimmt seine Anhänge mit; Esc im Peek schließt nur
   den Dialog; Untermenüs bleiben im Peek sichtbar; veröffentlichte Seiten ohne „@name“ oben; Chat-Platzhalter auf dem
   Handy; Kommentar-Auszug bei Tabellen und Checklisten; Konto wechseln in den Apps; KI-Fehltreffer durch falsche
   Wortzerlegung.
+- Tests: „Veröffentlichte Seite“ in der Avatar-Reihe lief nur beim ersten Mal auf einem Stack durch (fester Testname
+  eines gelöschten Kontos ist gewollt gesperrt); der Test nimmt jetzt je Lauf einen neuen Namen.
 
 ### Hinweise zum Update
 - **Update:** Mit `SAGA_VERSION=2` in der `.env` reicht `docker compose pull && docker compose up -d`.
@@ -236,6 +167,10 @@ die [Saga-Apps 2.1](https://github.com/yggdrasil-sh/saga-apps/releases).
 - **Anrufe** nutzen standardmäßig den STUN-Server `stun:stun.nextcloud.com:443` (Datenschutzhinweis im Admin, leer =
   keiner). **TURN** ist optional; ohne TURN klappen Anrufe nicht in allen Netzen. Anleitung für TURN über Port 443
   per Reverse Proxy (nginx, HAProxy, Traefik).
+- **KI im Chat und Websuche der KI sind standardmäßig aus.** Beides schaltet der Admin unter KI-Assistent ein; die
+  Websuche braucht eine eingerichtete SearXNG-Instanz (`SEARXNG_URL`, Anleitung Abschnitt 10). Datenschutz: Bei
+  „KI im Chat“ gehen die Nachricht mit @Name und bis zu 12 davor im Klartext an den KI-Endpunkt, bei der Websuche die
+  Suchbegriffe über SearXNG an Suchmaschinen.
 - **Passkeys** brauchen in `BASE_URL` einen Hostnamen mit https (oder `localhost`), keine IP-Adresse.
 - **2FA-Richtlinie** steht auf „niemanden“ – es ändert sich nichts, bis der Admin sie einschaltet. Bei Problemen:
   `docker compose exec saga python run.py 2fa-zuruecksetzen <name>` bzw. `… run.py 2fa-richtlinie none`.
@@ -244,6 +179,9 @@ die [Saga-Apps 2.1](https://github.com/yggdrasil-sh/saga-apps/releases).
 - Anrufe nur zu zweit im Direkt-Chat, noch keine Gruppenanrufe.
 - Ohne TURN-Server kommen Anrufe nicht in allen Netzen zustande (z. B. hinter strengen Firmen- oder Mobilfunk-NATs).
 - Passkeys funktionieren nur unter einem Hostnamen (nicht unter einer IP-Adresse in `BASE_URL`).
+- Russisch und Thai sind maschinell übersetzt und gibt es nur auf dem Server (Web, Admin-Bereich, Mitteilungen);
+  Apps und Anleitung sprechen Deutsch, Englisch und Spanisch.
+- Apps vor 2.1 zeigen archivierte Chats weiter in der normalen Liste und KI-Antworten im Chat als Nachricht der fragenden Person.
 
 ## [2.0.0] – 2026-10-15
 
