@@ -166,9 +166,9 @@ if __name__ == "__main__":
             sys.exit("Aufruf: python run.py restore /data/backups/<datei>.dump")
         do_restore(sys.argv[2])
     elif cmd in ("version", "--version"):
-        from version import VERSION
+        from version import VERSION_LABEL
         import db
-        print(f"Saga {VERSION} (Datenbank-Schema {db.SCHEMA_VERSION})")
+        print(f"Saga {VERSION_LABEL} (Datenbank-Schema {db.SCHEMA_VERSION})")
     elif cmd:
         sys.exit(f"Unbekannter Befehl: {cmd} (moeglich: admin-passwort, 2fa-zuruecksetzen, 2fa-richtlinie, backup, restore, version)")
     else:

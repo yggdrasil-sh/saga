@@ -4,16 +4,29 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 **Major** (2.0.0) = Umbau, der Handarbeit beim Update braucht · **Minor** (1.1.0) = neue Funktionen ·
 **Patch** (1.0.1) = Fehlerbehebungen. Datenbank-Änderungen laufen beim Start automatisch, vorher legt Saga ein Backup an.
 
-> **Entwicklung:** Neues landet zuerst auf dem Branch `testing` (Image `ghcr.io/yggdrasil-sh/saga:testing`, wird bei
-> jedem Push gebaut) und wird hier unter `[Unveröffentlicht]` notiert.
+> **Entwicklung:** Neues landet zuerst auf dem Branch `testing` (Image `ghcr.io/yggdrasil-sh/saga:testing`, gleich
+> `:rc`, wird bei jedem Push gebaut) und wird hier unter `[Unveröffentlicht]` notiert.
 > **Version auf `testing`:** Direkt nach einem Release steht in `VERSION` auf `testing` schon die nächste geplante Version
-> (z. B. `1.3.0`). Die Testversion heißt dann `1.3.0-testing.<commit>` – man sieht sofort, welche Version gerade entsteht.
+> (z. B. `1.3.0`). Jeder Testing-Build ist ein Release Candidate `1.3.0-rc.<N>` (N = Commits seit dem letzten
+> Release-Tag, `tools/rc-version.sh`; Commit als Build-Kennung) – man sieht sofort, welche Version gerade entsteht.
 > Ein Release entsteht dadurch noch nicht.
 > **Release:** auf `testing` `[Unveröffentlicht]` in `[x.y.z] – Datum` umbenennen (passend zu `VERSION`), dann `testing`
 > nach `main` übernehmen und pushen. Die GitHub Action legt Tag, Images und Release an. Danach auf `testing` `VERSION`
 > auf die nächste geplante Version setzen.
 
 ## [Unveröffentlicht]
+
+### Testing-Builds als Release Candidates
+
+- Testing-Images heißen jetzt `2.2.0-rc.7` statt `2.2.0-testing.<commit>` (7 = Commits seit dem letzten Release-Tag;
+  ohne Tags im Build `2.2.0-rc+<commit>`). Der Commit steht als Build-Kennung daneben: im Admin-Bereich
+  „2.2.0-rc.7 (1cc210f) · 🧪 Release Candidate“, bei `python run.py version` und in `/api/version` als neues Feld
+  `build` (dazu `channel`: `stable`, `rc` oder `testing`). `version` bleibt reines SemVer ohne Build-Kennung.
+- Ein Release Candidate ist immer neuer als die stabile Version davor: Der Update-Hinweis vergleicht nach SemVer
+  (2.1.0 < 2.2.0-rc.7 < 2.2.0) – kein Hinweis auf 2.1.0, aber auf 2.2.0, sobald es erschienen ist. Steht `VERSION`
+  noch auf der gerade veröffentlichten Version, zählt der RC zur nächsten Patch-Version (z. B. `2.1.1-rc.0`).
+- Docker: zusätzlich das Tag `rc` neben `testing` (das bleibt, bestehende Installationen laufen unverändert weiter).
+  Release-Builds (main) unverändert, z. B. `2.2.0`. Apps: nichts zu tun, `MIN_APP` bleibt.
 
 ## [2.1.0] – 2026-10-18
 

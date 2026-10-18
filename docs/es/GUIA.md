@@ -1137,7 +1137,7 @@ Qué versión se ejecuta lo decide `SAGA_VERSION` en el `.env`:
 | `2.1` | solo correcciones de la 2.1 |
 | `2.1.0` | exactamente esta versión |
 | `1` | se queda en la 1.x más reciente (1.2); las instalaciones antiguas aún tienen este valor en el `.env` |
-| `testing` | **Versión de pruebas:** lo último de la rama `testing`, antes de publicarse. Puede tener errores; solo para probar |
+| `testing` (o `rc`) | **Versión candidata:** lo último de la rama `testing`, antes de publicarse. Puede tener errores; solo para probar |
 
 **Actualizar:**
 
@@ -1163,9 +1163,12 @@ Las imágenes y archivos de las páginas (`/data/files`) **no** están en la cop
 `docker compose exec saga tar -xzf /data/backups/<archivo> -C /data`. Si ya haces copia del volumen `saga-data`
 (ver arriba), no necesitas la opción.
 
-**Versión de pruebas:** con `SAGA_VERSION=testing` recibes las funciones nuevas en cuanto están listas, antes
-de publicarse. La versión se llama entonces, por ejemplo, `2.2.0-testing.ab12cd3` (abajo en el área de
-administración, con 🧪). Para volver a la versión estable: `SAGA_VERSION=2` y después
+**Versiones candidatas (canal `testing`):** con `SAGA_VERSION=testing` (equivalente: `rc`) recibes las funciones
+nuevas en cuanto están listas, antes de publicarse. Cada compilación es una versión candidata (release candidate) de
+la siguiente versión, por ejemplo `2.2.0-rc.7` (7 cambios desde la última versión; abajo en el área de
+administración como «2.2.0-rc.7 (1cc210f)» con 🧪 Versión candidata, seguido del commit). Una versión candidata
+siempre es más nueva que la versión estable anterior (2.1.0 < 2.2.0-rc.7 < 2.2.0): el aviso de nuevas versiones solo
+aparece cuando se publica la 2.2.0. Las versiones de pruebas anteriores se llamaban `2.2.0-testing.<commit>`. Para volver a la versión estable: `SAGA_VERSION=2` y después
 `docker compose pull && docker compose up -d`. Si la versión de pruebas ya ha modificado la base de datos, la
 versión estable solo arrancará cuando incluya también ese cambio (como muy tarde con la siguiente versión), o
 bien restauras la copia de seguridad de antes del cambio.

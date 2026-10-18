@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 import auth
 import db
-from version import API_LEVEL, MIN_APP, VERSION
+from version import API_LEVEL, BUILD, MIN_APP, VERSION, channel
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
 from saga import ai, ai_chat, avatars, calls, chat, federation, i18n, live, mfa, notify, push
@@ -148,8 +148,11 @@ def healthz():
 
 @app.get("/api/version")
 def api_version():
-    """Fuer Apps und Monitoring: Server-Version, Schnittstellen-Stand und die aelteste App-Version, die alles kann."""
-    return JSONResponse({"name": "Saga", "version": VERSION, "api": API_LEVEL, "min_app": MIN_APP, "schema": db.SCHEMA_VERSION},
+    """Fuer Apps und Monitoring: Server-Version, Schnittstellen-Stand und die aelteste App-Version, die alles kann.
+    version = SemVer ohne Build-Kennung (z. B. "2.2.0" oder "2.2.0-rc.7"), build = Kurz-SHA bei Testing-Builds,
+    channel = stable | rc | testing."""
+    return JSONResponse({"name": "Saga", "version": VERSION, "build": BUILD, "channel": channel(), "api": API_LEVEL,
+                         "min_app": MIN_APP, "schema": db.SCHEMA_VERSION},
                         headers={"Cache-Control": "no-store"})
 
 

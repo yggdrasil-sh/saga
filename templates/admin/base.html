@@ -27,12 +27,12 @@
 </header>
 {% endif %}
 <main class="adm-main">
-  {% if update %}<p class="adm-flash" role="status">🎉 {{ _("Saga {new} ist erschienen (installiert: {cur})", new=update.version, cur=version) }} –
+  {% if update %}<p class="adm-flash" role="status">🎉 {{ _("Saga {new} ist erschienen (installiert: {cur})", new=update.version, cur=version_label) }} –
     <a href="{{ update.url }}" target="_blank" rel="noopener">{{ _("Was ist neu?") }}</a> · {{ _("Aktualisieren:") }} <code>docker compose pull &amp;&amp; docker compose up -d</code></p>{% endif %}
   {% if flash %}<p class="adm-flash {{ flash[1] }}" role="status">{{ flash[0] }}</p>{% endif %}
   {% block content %}{% endblock %}
 </main>
-{% if me %}<footer class="adm-foot">Saga {{ version }}{% if "-testing" in version %} · 🧪 {{ _("Testversion") }}{% endif %} · <a href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md" target="_blank" rel="noopener">{{ _("Änderungen") }}</a></footer>{% endif %}
+{% if me %}<footer class="adm-foot">Saga {{ version_label }}{% if channel == "rc" %} · 🧪 {{ _("Release Candidate") }}{% elif channel == "testing" %} · 🧪 {{ _("Testversion") }}{% endif %} · <a href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md" target="_blank" rel="noopener">{{ _("Änderungen") }}</a></footer>{% endif %}
 {% if not me %}{{ lang_switch("auth-lang") }}{% endif %}
 <script src="/static/lang.js?v={{ v }}"></script>
 <script src="/static/admin.js?v={{ v }}"></script>

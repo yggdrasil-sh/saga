@@ -1,5 +1,6 @@
-# Testversion: jeder Push auf den Branch "testing" baut ein Image ghcr.io/<repo>:testing (+ :testing-<commit>).
-# Die Version lautet dann z. B. 1.0.0-testing.ab12cd3 (im Admin-Bereich und unter /api/version zu sehen).
+# Testversion = Release Candidate: jeder Push auf den Branch "testing" baut ein Image ghcr.io/<repo>:testing
+# (gleich auch :rc und :testing-<commit>). Die Version lautet z. B. 2.2.0-rc.7 (7 Commits seit dem letzten Release-Tag,
+# tools/rc-version.sh), mit Kurz-SHA als Build-Kennung: im Admin-Bereich "2.2.0-rc.7 (1cc210f)", /api/version "build".
 # Stabil bleibt main: Releases entstehen dort (siehe release.yml).
 name: Testing
 
@@ -21,14 +22,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # ganze Historie + Tags: rc.N = Commits seit dem letzten Release-Tag
+          fetch-tags: true
 
       - name: Version setzen
         id: v
         run: |
           SHORT="${GITHUB_SHA::7}"
-          V="$(tr -d ' \n' < VERSION)-testing.$SHORT"
-          echo "$V" > VERSION
-          echo "version=$V" >> "$GITHUB_OUTPUT"
+          FULL="$(sh tools/rc-version.sh "$GITHUB_SHA")"     # z. B. 2.2.0-rc.7+1cc210f
+          echo "$FULL" > VERSION
+          echo "version=${FULL%%+*}" >> "$GITHUB_OUTPUT"
+          echo "full=$FULL" >> "$GITHUB_OUTPUT"
           echo "short=$SHORT" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-qemu-action@v3
@@ -47,12 +52,13 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ github.repository }}:testing
+            ghcr.io/${{ github.repository }}:rc
             ghcr.io/${{ github.repository }}:testing-${{ steps.v.outputs.short }}
           labels: |
-            org.opencontainers.image.version=${{ steps.v.outputs.version }}
+            org.opencontainers.image.version=${{ steps.v.outputs.full }}
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=testing
           cache-to: type=gha,mode=max,scope=testing
 
       - name: Zusammenfassung
-        run: echo "Testversion **${{ steps.v.outputs.version }}** → \`ghcr.io/${{ github.repository }}:testing\`" >> "$GITHUB_STEP_SUMMARY"
+        run: echo "Release Candidate **${{ steps.v.outputs.version }}** (${{ steps.v.outputs.short }}) → \`ghcr.io/${{ github.repository }}:testing\` / \`:rc\`" >> "$GITHUB_STEP_SUMMARY"

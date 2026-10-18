@@ -32,7 +32,7 @@ from db import clean_line, connect as _db
 from saga import ai, avatars, calls, federation, i18n, live, mfa, publish, push, sharing
 from saga.core import TZ, BodyLimit, LangMiddleware, install_lang_ui, lang_switch_response
 from saga.i18n import t
-from version import REPO, VERSION, newer
+from version import REPO, VERSION, VERSION_LABEL, channel, newer
 
 E = os.environ
 ADMIN_URL = hk.ADMIN_URL
@@ -119,6 +119,7 @@ def _update_info():
             finally:
                 _upd.update(at=time.time(), busy=False)
         threading.Thread(target=fetch, daemon=True).start()
+    # SemVer-Vergleich: ein RC 2.2.0-rc.7 zeigt keinen Hinweis auf 2.1.0, aber auf 2.2.0, sobald es erschienen ist
     if _upd["latest"] and newer(_upd["latest"], VERSION):
         return {"version": _upd["latest"], "url": _upd["url"] or f"https://github.com/{REPO}/releases"}
     return None
@@ -131,6 +132,7 @@ def _page(request, name, me=None, status=200, **kw):
                    ip=hk.PROXY_WARN["ip"]), "err"]
     html = tmpl.get_template(name).render(title=hk.title(), v=hk.ASSET_V, csrf=_csrf(request), me=me, flash=flash,
                                           base_url=hk.BASE_URL, path=request.url.path, version=VERSION,
+                                          version_label=VERSION_LABEL, channel=channel(),
                                           update=_update_info() if me else None, **kw)
     return HTMLResponse(html, status_code=status, headers=HEADERS)
 

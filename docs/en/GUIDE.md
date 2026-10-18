@@ -1091,7 +1091,7 @@ the admin area; a notice also appears there when a new version is available (can
 | `2.1` | only bug fixes for 2.1 |
 | `2.1.0` | exactly this version |
 | `1` | stays on the latest 1.x (1.2) – older installations still have this value in `.env` |
-| `testing` | **Testing version:** the latest from the `testing` branch, before the release. May contain bugs – only for trying things out |
+| `testing` (or `rc`) | **Release candidate:** the latest from the `testing` branch, before the release. May contain bugs – only for trying things out |
 
 **Updating:**
 
@@ -1116,9 +1116,12 @@ also creates `saga-dateien-<time>.tar.gz` (without thumbnails, they are recreate
 `docker compose exec saga tar -xzf /data/backups/<file> -C /data`. If you back up the `saga-data` volume anyway
 (see above), you don't need the switch.
 
-**Testing version:** With `SAGA_VERSION=testing` you get new features as soon as they are ready – before the
-release. The version is then called something like `2.2.0-testing.ab12cd3` (shown with 🧪 at the bottom of the
-admin area). Back to the stable version: `SAGA_VERSION=2`, then `docker compose pull && docker compose up -d`.
+**Release candidates (channel `testing`):** With `SAGA_VERSION=testing` (equivalent: `rc`) you get new features as
+soon as they are ready – before the release. Every build is a release candidate of the next version, e.g.
+`2.2.0-rc.7` (7 changes since the last release; shown at the bottom of the admin area as "2.2.0-rc.7 (1cc210f)" with
+🧪 Release candidate, followed by the commit). A release candidate is always newer than the stable version before it
+(2.1.0 < 2.2.0-rc.7 < 2.2.0): the new-version notice only appears once 2.2.0 is out. Older testing builds were called
+`2.2.0-testing.<commit>`. Back to the stable version: `SAGA_VERSION=2`, then `docker compose pull && docker compose up -d`.
 If the testing version has already changed the database, the stable version only starts once it contains that
 change too (with the next release at the latest) – or you restore the backup from before the switch.
 

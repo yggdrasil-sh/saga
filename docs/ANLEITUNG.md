@@ -1119,7 +1119,7 @@ Welche Version läuft, bestimmt `SAGA_VERSION` in der `.env`:
 | `2.1` | nur Fehlerbehebungen von 2.1 |
 | `2.1.0` | genau diese Version |
 | `1` | bleibt bei der neuesten 1.x (1.2) – ältere Installationen haben diesen Wert noch in der `.env` |
-| `testing` | **Testversion:** das Neueste aus dem Branch `testing`, noch vor dem Release. Kann Fehler haben – nur zum Ausprobieren |
+| `testing` (oder `rc`) | **Release Candidate:** das Neueste aus dem Branch `testing`, noch vor dem Release. Kann Fehler haben – nur zum Ausprobieren |
 
 **Aktualisieren:**
 
@@ -1144,8 +1144,12 @@ zusätzlich `saga-dateien-<zeit>.tar.gz` an (ohne Vorschaubilder, die entstehen 
 `docker compose exec saga tar -xzf /data/backups/<datei> -C /data`. Wer das Volume `saga-data` ohnehin
 sichert (siehe oben), braucht den Schalter nicht.
 
-**Testversion:** Mit `SAGA_VERSION=testing` bekommst du neue Funktionen, sobald sie fertig sind – noch vor
-dem Release. Die Version heißt dann z. B. `2.2.0-testing.ab12cd3` (unten im Admin-Bereich mit 🧪). Zurück zur
+**Release Candidates (Kanal `testing`):** Mit `SAGA_VERSION=testing` (gleichwertig: `rc`) bekommst du neue
+Funktionen, sobald sie fertig sind – noch vor dem Release. Jeder Stand ist ein Release Candidate der nächsten
+Version, z. B. `2.2.0-rc.7` (7 Änderungen seit dem letzten Release; unten im Admin-Bereich als
+„2.2.0-rc.7 (1cc210f)“ mit 🧪 Release Candidate, dahinter der Commit). Ein Release Candidate ist immer neuer als
+die stabile Version davor (2.1.0 < 2.2.0-rc.7 < 2.2.0): Der Hinweis auf neue Versionen meldet sich erst, wenn
+2.2.0 erschienen ist. Ältere Testversionen hießen `2.2.0-testing.<commit>`. Zurück zur
 stabilen Version: `SAGA_VERSION=2`, `docker compose pull && docker compose up -d`. Hat die Testversion die
 Datenbank schon umgebaut, startet die stabile Version erst, wenn sie diesen Umbau ebenfalls enthält (spätestens
 mit dem nächsten Release) – oder du spielst das Backup von vor dem Wechsel zurück.

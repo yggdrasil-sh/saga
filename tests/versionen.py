@@ -2,6 +2,7 @@
 import http.client, json, os, sys, time, urllib.parse
 import psycopg
 import db
+import version
 from version import VERSION, newer, parse
 B = urllib.parse.urlparse(os.environ.get("HK_TEST_BASE", "http://127.0.0.1:8080"))
 HOST = urllib.parse.urlparse(os.environ["BASE_URL"]).netloc
@@ -28,8 +29,23 @@ try:
     s, d = get("/api/version")
     ok(f"/api/version ohne Anmeldung ({s})", s == 200 and d["name"] == "Saga" and d["version"] == VERSION)
     ok("API-Stand und min_app", d["api"] >= 1 and parse(d["min_app"]) >= (1, 0, 0) and d["schema"] == db.SCHEMA_VERSION)
-    ok("VERSION ist SemVer", parse(VERSION) >= (1, 0, 0) and VERSION.count(".") == 2)
+    ok(f"VERSION ist SemVer ({version.VERSION_LABEL})", parse(VERSION) >= (1, 0, 0) and VERSION.split("-", 1)[0].count(".") == 2)
     ok("Vergleich: 1.10.0 neuer als 1.9.3, v1.0.0 nicht neuer als 1.0.0", newer("1.10.0", "1.9.3") and not newer("v1.0.0", "1.0.0"))
+    # Release Candidates (testing): 2.1.0 < 2.2.0-rc.7 < 2.2.0
+    ok("RC: 2.2.0-rc.7 neuer als 2.1.0 (kein Update-Hinweis auf 2.1.0)",
+       newer("2.2.0-rc.7", "2.1.0") and not newer("2.1.0", "2.2.0-rc.7") and not newer("v2.1.0", "2.2.0-rc.7+1cc210f"))
+    ok("RC: 2.2.0 neuer als 2.2.0-rc.7 (Hinweis, sobald veroeffentlicht)",
+       newer("2.2.0", "2.2.0-rc.7") and newer("v2.2.0", "2.2.0-rc.7+1cc210f") and newer("2.2.0", "2.2.0-rc+1cc210f"))
+    ok("RC: Zaehler numerisch, Build-Kennung egal", newer("2.2.0-rc.10", "2.2.0-rc.9") and newer("2.2.0-rc.1", "2.2.0-rc")
+       and not newer("2.2.0-rc.7+aaa", "2.2.0-rc.7+bbb") and not newer("2.2.0-rc.7", "2.2.0-rc.7"))
+    ok("Alte Testversion 2.2.0-testing.<sha> aelter als 2.2.0, neuer als 2.1.0",
+       newer("2.2.0", "2.2.0-testing.ab12cd3") and newer("2.2.0-testing.ab12cd3", "2.1.0"))
+    ok("parse ignoriert Vorab-/Build-Teil", parse("2.2.0-rc.7+1cc210f") == (2, 2, 0) and parse("v2.2.0+abc") == (2, 2, 0)
+       and parse("2.2.0-rc.7") >= parse(d["min_app"]))
+    ok("Kanal", version.channel("2.2.0") == "stable" and version.channel("2.2.0-rc.7") == "rc"
+       and version.channel("2.2.0-rc") == "rc" and version.channel("2.2.0-testing.ab12cd3") == "testing")
+    ok("/api/version: build und channel", d.get("build") == version.BUILD and d.get("channel") == version.channel()
+       and "+" not in d["version"] and version.VERSION_LABEL.startswith(d["version"]))
     ok("Datenbank auf aktuellem Stand", db.schema_version() == db.SCHEMA_VERSION)
     p = db.backup("test")
     ok("Backup anlegen (pg_dump)", os.path.getsize(p) > 1000 and os.path.basename(p) in backups())
