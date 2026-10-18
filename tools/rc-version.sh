@@ -20,10 +20,15 @@ if [ -z "$TAG" ]; then
   exit 0
 fi
 
-# BASE <= TAG?  -> TAG mit erhoehter Patch-Stelle als Basis
-MAX="$(printf '%s\n%s\n' "$BASE" "$TAG" | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)"
-if [ "$MAX" = "$TAG" ]; then
-  BASE="$(echo "$TAG" | awk -F. '{ printf "%d.%d.%d", $1, $2, $3 + 1 }')"
+# BASE <= hoechster Release-Tag?  -> dieser Tag mit erhoehter Patch-Stelle als Basis. Verglichen wird mit allen
+# Release-Tags, auch einem, der noch nicht nach testing zurueckgefuehrt ist (Release auf main vor dem Merge) -
+# der RC soll neuer sein als jedes veroeffentlichte Release.
+HI="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null \
+      | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1 || true)"
+[ -n "$HI" ] || HI="$TAG"
+MAX="$(printf '%s\n%s\n' "$BASE" "$HI" | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)"
+if [ "$MAX" = "$HI" ]; then
+  BASE="$(echo "$HI" | awk -F. '{ printf "%d.%d.%d", $1, $2, $3 + 1 }')"
 fi
 N="$(git rev-list --count "v${TAG}..${REV}")"
 echo "${BASE}-rc.${N}+${SHORT}"
