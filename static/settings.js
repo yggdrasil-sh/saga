@@ -12,6 +12,7 @@
     HK.openMenu(btn, function (m) {
       m.appendChild(HK.menuLabel(btn.dataset.name || ''));
       m.appendChild(HK.menuItem(T('Einstellungen'), function () { openSettings(); }, { icon: '⚙' }));
+      m.appendChild(HK.menuItem(T('Sprache'), function () { openSettings('lang'); }, { icon: '🌐' }));
       if (btn.dataset.admin) m.appendChild(HK.menuItem(T('Admin-Bereich'), function () { window.open(btn.dataset.admin, '_blank', 'noopener'); }, { icon: '🛡' }));
       if (inApp) m.appendChild(HK.menuItem(T('App-Einstellungen'), function () { toApp({ action: 'settings' }); }, { icon: '📱' }));
       m.appendChild(el('div', 'menu-sep'));
@@ -78,6 +79,7 @@
     }
     // Handy: Leiste scrollt waagrecht - Verlauf am Rand, aktiver Reiter immer ganz sichtbar
     var reveal = HK.scrollFade(tabs);
+    if (focus === 'lang') focusLang = true;                   // Benutzermenue -> Sprache: Konto, Auswahl fokussiert
     var start = typeof focus === 'string' && $tab(focus) ? focus : 'account';
     show(start);
   }
@@ -351,18 +353,33 @@
     load();
   }
 
-  // Sprache der Web-Oberflaeche (Konto-Einstellung; "Automatisch" = Standard des Servers bzw. Browsersprache)
+  // Sprache der Web-Oberflaeche (Konto-Einstellung; "Automatisch" = Wahl auf der Anmeldeseite, Standard des Servers
+  // bzw. Browsersprache). Eigener Block GANZ OBEN im Konto (vorher unauffaellig zwischen Profilbild und Mitteilungen -
+  // wurde nicht gefunden); erreichbar auch ueber Benutzermenue -> "Sprache" (openSettings('lang')).
+  var focusLang = false;
   function langField(box, a) {
-    var sel = el('select', 'hk-in');
-    (a.langs || []).forEach(function (l) { var o = el('option', null, l.name); o.value = l.code; sel.appendChild(o); });
+    var wrap = el('div', 'hk-langsec'); box.appendChild(wrap);
+    wrap.appendChild(el('h4', null, '🌐 ' + T('Sprache')));
+    var sel = el('select', 'hk-in'); sel.id = 'hk-lang'; sel.setAttribute('aria-label', T('Sprache'));
+    var names = {};
+    (a.langs || []).forEach(function (l) { names[l.code] = l.name; });
+    (a.langs || []).forEach(function (l) {
+      // "Automatisch (Deutsch)": was "automatisch" gerade ergibt (nur ohne feste Konto-Sprache bekannt)
+      var lbl = l.code ? l.name : (a.lang ? T('Automatisch') : T('Automatisch ({lang})', { lang: names[a.lang_active] || a.lang_active }));
+      var o = el('option', null, lbl); o.value = l.code;
+      if (l.code) o.lang = l.code;
+      sel.appendChild(o);
+    });
     sel.value = a.lang || '';
-    var st = el('div', 'hk-status');
+    var st = el('div', 'hk-status'); st.setAttribute('role', 'status');
     sel.addEventListener('change', function () {
       sel.disabled = true;
       api('PUT', '/api/account/lang', { lang: sel.value }).then(function () { location.reload(); })
         .catch(function (err) { sel.disabled = false; status(st, err.message, 'err'); });
     });
-    box.appendChild(field(T('Sprache'), sel)); box.appendChild(st);
+    wrap.appendChild(field(T('Oberfläche'), sel)); wrap.appendChild(st);
+    wrap.appendChild(el('p', 'hk-hint', T('Gilt für dieses Konto auf allen Geräten. „Automatisch“ nimmt die Sprache, die auf der Anmeldeseite gewählt wurde, sonst die des Browsers.')));
+    if (focusLang) { focusLang = false; setTimeout(function () { wrap.scrollIntoView({ block: 'nearest' }); sel.focus(); }, 0); }
   }
 
   // Oeffentlicher Name (Veroeffentlichen): eigener Block unten im Konto mit eigenem Knopf - steht in jeder oeffentlichen
@@ -557,8 +574,8 @@
     var box = el('div'); sec.appendChild(box);
     api('GET', '/api/account').then(function (a) {
       box.appendChild(el('p', 'hk-hint', a.username + ' · ' + a.source_label + (a.groups.length ? ' · ' + T('Gruppen: {list}', { list: a.groups.join(', ') }) : '')));
+      langField(box, a);                                       // Sprache zuerst: gut auffindbar (auch Benutzermenue -> Sprache)
       avatarField(box, a);
-      langField(box, a);
       if (window.HKLive) HKLive.settingsSection(box);          // Benachrichtigungen je Art (static/live.js)
       if (!a.can_edit) {
         box.appendChild(el('p', 'hk-hint', T('Name, E-Mail und Passwort verwaltet dein Anmeldedienst.')));

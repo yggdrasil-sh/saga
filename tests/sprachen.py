@@ -1,11 +1,11 @@
-"""Mehrsprachigkeit: Sprachwahl (Konto > Server-Standard > Accept-Language > Englisch), vollstaendige Kataloge
+"""Mehrsprachigkeit: Sprachwahl (Konto > Sprach-Cookie > Server-Standard > Accept-Language > Englisch), vollstaendige Kataloge
 (gleiche Schluessel und Platzhalter in de/en/es), Seiten und Admin-Bereich rendern in allen drei Sprachen.
 Wegwerf-Konten sp-*, raeumt auf. Umgebung wie tests/standalone.py."""
-import importlib.util, json, os, re, sys, time
+import http.client, importlib.util, json, os, re, sys, time
 import auth
 from db import connect
 from saga import i18n
-from standalone import AD, PW, Client, main_client, ok, res, restore_settings, snapshot_settings
+from standalone import AD, B, HOST, PW, Client, main_client, ok, res, restore_settings, snapshot_settings
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LANG_RE = re.compile(r'<html lang="([a-z]+)"')
@@ -33,6 +33,11 @@ def catalog_tests():
     ok("Ohne Angabe -> Englisch", i18n.resolve("", "", "") == "en")
     ok("Konto schlaegt Server-Standard und Browser", i18n.resolve("de", "es", "en") == "de")
     ok("Server-Standard schlaegt Browser", i18n.resolve("", "es", "de") == "es")
+    # Sprachumschalter (Cookie): schlaegt Server-Standard und Browser, das Konto schlaegt das Cookie
+    ok("Cookie schlaegt Server-Standard und Browser", i18n.resolve("", "es", "de", "en") == "en")
+    ok("Konto schlaegt Cookie", i18n.resolve("de", "", "es", "en") == "de")
+    ok("Cookie-Kopfzeile lesen", i18n.cookie_from_header('a=1; saga_lang=es; saga=xyz') == "es"
+       and i18n.cookie_from_header("saga_lang=fr") == "" and i18n.cookie_from_header("") == "")
     # Kataloge: alle Schluessel in allen Sprachen, gleiche Platzhalter, nichts Unbenutztes (tools/i18n.py check)
     spec = importlib.util.spec_from_file_location("i18n_tool", os.path.join(HERE, "..", "tools", "i18n.py"))
     tool = importlib.util.module_from_spec(spec); spec.loader.exec_module(tool)
@@ -54,6 +59,112 @@ def catalog_tests():
             "✓ Erledigt##Aktion": "✓ Resolver", "✓ Erledigt": "✓ Resuelto"}
     bad = {k: es.get(k) for k, v in want.items() if es.get(k) != v}
     ok(f"Spanisch Teilen/Kommentare wie im Glossar ({len(want)} Begriffe)", not bad or print("      ", bad))
+
+
+def raw(base, path, cookie="", accept="de-DE,de;q=0.9", host=None):
+    """GET ohne Client-Logik -> (status, kopfzeilen als Liste, text)"""
+    con = http.client.HTTPConnection(base.hostname, base.port, timeout=30)
+    h = {"Host": host or base.netloc, "Accept-Language": accept}
+    if cookie:
+        h["Cookie"] = cookie
+    con.request("GET", path, headers=h)
+    r = con.getresponse()
+    return r.status, r.getheaders(), r.read().decode("utf-8", "replace")
+
+
+def hdr(headers, name):
+    return [v for k, v in headers if k.lower() == name]
+
+
+def selected(html):
+    m = re.search(r'<form class="lang-sw[^"]*".*?</form>', html, re.S)
+    if not m:
+        return None
+    sel = re.search(r'<option value="([a-z]*)"[^>]*selected', m.group(0))
+    return sel.group(1) if sel else ""
+
+
+def switch_tests(u):
+    """Sprachumschalter auf der Anmeldeseite (fremder Rechner): Cookie, Vorrang, Ruecksprung, Admin, 404-Seite."""
+    # Anmeldeseite: Umschalter vorhanden, Browser de + Cookie en -> englisch
+    c = main_client(); c.lang = "de-DE,de;q=0.9"
+    s, _, html = c.req("GET", "/login")
+    ok("Anmeldeseite: Sprachumschalter mit Automatisch/de/en/es", s == 200 and 'action="/lang"' in html and selected(html) == ""
+       and all(f'<option value="{x}" lang="{x}"' in html for x in ("de", "en", "es")) and "/static/lang.js" in html)
+    s, loc, _ = c.req("GET", "/lang?l=en&next=/login")
+    ok("Umschalter: 303 zurueck zur Anmeldeseite + Cookie", s == 303 and loc.endswith("/login") and c.ck.get("saga_lang") == "en")
+    s, _, html = c.req("GET", "/login")
+    ok("Anmeldung in en mit de-Browser (Cookie)", s == 200 and html_lang(html) == "en" and "Sign in" in html and selected(html) == "en")
+    st, hs, _ = raw(B, "/lang?l=es&next=/login", host=HOST)
+    sc = " ".join(hdr(hs, "set-cookie")).lower()
+    ok("Cookie: nur Sprache, HttpOnly, SameSite=Lax, Pfad /, ein Jahr", st == 303 and "saga_lang=es" in sc and "httponly" in sc
+       and "samesite=lax" in sc and "path=/" in sc and "max-age=31536000" in sc)
+    st, _, html = raw(B, "/app/pair", "saga_lang=es", host=HOST)
+    ok("App-Kopplungsseite in Cookie-Sprache (es) mit Umschalter", html_lang(html) == "es" and selected(html) == "es")
+    # Ruecksprung nur auf diesen Server
+    for bad in ("//evil.example/x", "https://evil.example/", "/\\evil.example", "javascript:alert(1)", "/\r\nSet-Cookie:x"):
+        s, loc, _ = main_client().req("GET", "/lang?l=de&next=" + urllib_quote(bad))
+        ok(f"Ruecksprung {bad!r} -> /", s == 303 and (loc == "/" or loc.endswith(HOST + "/")) or print("      ", loc))
+    s, loc, _ = main_client().req("GET", "/lang?l=de&next=" + urllib_quote("/login?next=/notes&prompt=login"))
+    ok("Ruecksprung mit Abfrage bleibt", s == 303 and loc.endswith("/login?next=/notes&prompt=login"))
+    # Automatisch: Cookie weg, wieder Browser
+    s, _, _ = c.req("GET", "/lang?l=&next=/login")
+    ok("Automatisch loescht das Cookie", s == 303 and "saga_lang" not in c.ck)
+    ok("Danach wieder Browser-Sprache (de)", html_lang(c.req("GET", "/login")[2]) == "de")
+    # Oeffentliche 404-Seite: Cookie gilt, Links statt Skript
+    st, _, html = raw(B, "/@sp-niemand/gibts-nicht", "saga_lang=es", host=HOST)
+    ok("Oeffentliche 404 in Cookie-Sprache (es) mit Sprach-Links", st == 404 and html_lang(html) == "es" and 'class="pub-lang"' in html
+       and "/lang?l=de&amp;next=%2F%40sp-niemand%2Fgibts-nicht" in html)
+    # Angemeldet: Konto "automatisch" -> Cookie gilt; feste Konto-Sprache hat Vorrang
+    u.api("PUT", "/api/account/lang", {"lang": ""})
+    u.lang = "de"; u.ck["saga_lang"] = "en"
+    ok("Angemeldet, Konto automatisch: Cookie (en) statt Browser (de)", html_lang(u.req("GET", "/")[2]) == "en")
+    u.api("PUT", "/api/account/lang", {"lang": "es"})
+    ok("Konto-Sprache (es) hat Vorrang vor dem Cookie (en)", html_lang(u.req("GET", "/")[2]) == "es")
+    # Umschalter angemeldet (z. B. Seite "Anmeldung & Sicherheit"): feste Konto-Sprache wird mit geaendert
+    s, _, _ = u.req("GET", "/lang?l=de&next=/")
+    ok("Umschalter angemeldet aendert die feste Konto-Sprache", s == 303 and u.api("GET", "/api/account")[1].get("lang") == "de"
+       and html_lang(u.req("GET", "/")[2]) == "de")
+    u.api("PUT", "/api/account/lang", {"lang": ""})
+    s, _, _ = u.req("GET", "/lang?l=es&next=/")
+    ok("Konto automatisch: Umschalter setzt nur das Cookie", u.api("GET", "/api/account")[1].get("lang") == "" and u.ck.get("saga_lang") == "es")
+    u.ck.pop("saga_lang", None)
+    # Apps oeffnen Anmeldung/Kopplung mit ?lang=: gilt fuer diese Browser-Sitzung, nach Konto/Umschalter, vor Browser
+    a = main_client(); a.lang = "de-DE,de;q=0.9"
+    s, loc, _ = a.req("GET", "/app/login?challenge=" + "A" * 43 + "&scheme=saga&lang=es")
+    ok("App-Anmeldung ?lang=es: Weiterleitung + Sitzungs-Cookie", s == 303 and "/login" in loc and a.ck.get("saga_lang_app") == "es")
+    s, _, html = a.req("GET", "/login?next=/app/handoff")
+    ok("Anmeldeseite danach auf Spanisch (Browser de)", s == 200 and html_lang(html) == "es" and selected(html) == "")
+    st, hs, html = raw(B, "/login?next=/app/handoff&lang=en", host=HOST)
+    sc = " ".join(v for v in hdr(hs, "set-cookie") if v.startswith("saga_lang_app=")).lower()
+    ok("?lang=en direkt auf /login: en, Cookie ohne Ablauf (nur Sitzung)", html_lang(html) == "en" and "saga_lang_app=en" in sc
+       and "max-age" not in sc and "expires" not in sc)
+    st, hs, html = raw(B, "/login?lang=fr", host=HOST)
+    ok("Unbekannte Sprache ?lang=fr wird ignoriert", html_lang(html) == "de" and "saga_lang_app" not in " ".join(hdr(hs, "set-cookie")))
+    ok("Kopplungsseite ?lang=en", html_lang(raw(B, "/app/pair?c=" + "x" * 30 + "&lang=en", host=HOST)[2]) == "en")
+    ok("Umschalter (Cookie de) schlaegt ?lang=es", html_lang(raw(B, "/login?lang=es", "saga_lang=de", accept="en", host=HOST)[2]) == "de")
+    ok("?lang=es schlaegt Server-Standard/Browser nicht ausserhalb der Anmeldung (/@...)",
+       html_lang(raw(B, "/@sp-niemand/x?lang=es", host=HOST)[2]) == "de")
+    u.api("PUT", "/api/account/lang", {"lang": "en"})
+    u.ck["saga_lang_app"] = "es"
+    ok("Konto-Sprache (en) schlaegt die App-Sprache (es)", html_lang(u.req("GET", "/security?lang=es")[2]) == "en")
+    u.ck.pop("saga_lang_app", None)
+    u.api("PUT", "/api/account/lang", {"lang": ""})
+    # Admin-Bereich: Umschalter vor und nach der Anmeldung
+    adm = Client(AD); adm.lang = "de"
+    s, _, html = adm.req("GET", "/login")
+    ok("Admin-Anmeldung: Sprachumschalter", s == 200 and 'action="/lang"' in html)
+    s, loc, _ = adm.req("GET", "/lang?l=es&next=/login")
+    ok("Admin: Umschalter -> Cookie, Anmeldung auf Spanisch", s == 303 and adm.ck.get("saga_lang") == "es"
+       and html_lang(adm.req("GET", "/login")[2]) == "es")
+    s, _, _ = adm.post("/login", {"username": "sp-admin", "password": PW})
+    s, _, html = adm.req("GET", "/")
+    ok("Admin angemeldet: Umschalter in der Kopfzeile, Cookie-Sprache", s == 200 and "adm-lang" in html and html_lang(html) == "es")
+
+
+def urllib_quote(v):
+    from urllib.parse import quote
+    return quote(v, safe="")
 
 
 def main():
@@ -104,6 +215,8 @@ def main():
     ok("Ungueltige Sprache -> 400", u.api("PUT", "/api/account/lang", {"lang": "fr"})[0] == 400)
     u.api("PUT", "/api/account/lang", {"lang": ""})
     ok("Automatisch -> wieder Browser (es)", html_lang(u.req("GET", "/")[2]) == "es")
+
+    switch_tests(u)
 
     # --- Standardnamen bei Anfragen ohne Browser-Sprache (API, Apps): Sprache, die die Oberflaeche zuletzt zeigte --
     def view_name(lang_page):

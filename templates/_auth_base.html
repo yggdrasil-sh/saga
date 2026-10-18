@@ -17,6 +17,9 @@
     <div class="auth-brand"><img src="/static/icon.svg?v={{ v }}" alt="" width="44" height="44"><h1>{{ title }}</h1></div>
     {% block content %}{% endblock %}
   </div>
+  {#- Sprache vor der Anmeldung waehlen (fremder Rechner): Cookie nur mit der Sprache, siehe saga.core.lang_switch #}
+  {% block langsw %}{{ lang_switch("auth-lang") }}{% endblock %}
 </main>
+<script src="/static/lang.js?v={{ v }}"></script>
 </body>
 </html>

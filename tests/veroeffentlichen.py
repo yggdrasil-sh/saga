@@ -3,7 +3,7 @@ Unterseiten nur mit children und nur wirklich darunter, geloescht/archiviert/abg
 aus der Seite, XSS raus, CSP ohne Skript, noindex als Standard, Verweise auf private Seiten als Text, Datenbanken,
 Startseite fuer Besucher, fremde Seiten, Admin-Zurueckziehen, Konto loeschen, /@name (Profil/Liste).
 Wegwerf-Konten pv-*, raeumt auf. Umgebung wie die anderen Tests (HK_TEST_BASE, HK_TEST_ADMIN, BASE_URL, SESSION_SECRET)."""
-import base64, http.client, io, json, os, sys, time, urllib.parse
+import base64, http.client, io, json, os, re, sys, time, urllib.parse
 from itsdangerous import TimestampSigner
 from PIL import Image
 import auth
@@ -248,10 +248,17 @@ def main():
     ok(f"Bild mit Cookie: private ({h.get('cache-control')})", s == 200 and h.get("cache-control", "").startswith("private"))
 
     # --- 404 neutral ---------------------------------------------------------------------------------------------
-    s1, h1, nf1 = req("GET", "/@pv-anne/geheimes-tagebuch")
-    s2, _, nf2 = req("GET", "/@gibt-es-nicht/mein-garten")
-    s3, _, nf3 = req("GET", "/@pv-anne/mein-garten/abc")
-    s4, _, nf4 = req("GET", "/@pv-anne/mein-garten/1/2/3")
+    # Verglichen ohne die Sprach-Links: die enthalten nur die angefragte Adresse als Ruecksprung (nichts ueber die Seite)
+    def neutral(path):
+        st, hh, body = req("GET", path)
+        m = re.search(r'<nav class="pub-lang".*?</nav>', body or "", re.S)
+        back = "next=" + urllib.parse.quote(urllib.parse.unquote(path.split("?")[0]), safe="")
+        ok(f"404 {path}: Sprach-Links fuehren nur zurueck auf diese Adresse", bool(m) and m.group(0).count(back) == 3)
+        return st, hh, re.sub(r'<nav class="pub-lang".*?</nav>', "", body or "", flags=re.S)
+    s1, h1, nf1 = neutral("/@pv-anne/geheimes-tagebuch")
+    s2, _, nf2 = neutral("/@gibt-es-nicht/mein-garten")
+    s3, _, nf3 = neutral("/@pv-anne/mein-garten/abc")
+    s4, _, nf4 = neutral("/@pv-anne/mein-garten/1/2/3")
     ok(f"Unveroeffentlicht/unbekannt/Unsinn -> {s1} {s2} {s3} {s4}, immer gleiche Seite",
        (s1, s2, s3, s4) == (404, 404, 404, 404) and nf1 == nf2 == nf3 == nf4 and "Nicht gefunden" in nf1)
     # P10: Grossbuchstaben und "/" am Ende -> 301 auf die kleingeschriebene Adresse ohne "/" (rein syntaktisch)
@@ -268,7 +275,7 @@ def main():
         loc = h.get("location") or ""
         ok(f"Umleitung sicher: {src[:40]} -> {s} {loc[:60]}", "set-cookie" not in h and (s != 301 or (loc.startswith("/@") and not loc.startswith("//")
            and "\r" not in loc and "\n" not in loc and req("GET", loc.split("?")[0])[0] != 301)))
-    ok("Unsinn mit Grossbuchstaben bleibt neutrale 404", req("GET", "/@%C3%84PFEL/x")[2] == nf1 and req("GET", "/@A/x")[0] == 404)
+    ok("Unsinn mit Grossbuchstaben bleibt neutrale 404", neutral("/@%C3%84PFEL/x")[2] == nf1 and req("GET", "/@A/x")[0] == 404)
     ok("404: noindex, no-store, CSP", "noindex" in h1.get("x-robots-tag", "") and h1.get("cache-control") == "no-store"
        and "script-src 'none'" in h1.get("content-security-policy", ""))
     login = os.environ["BASE_URL"].rstrip("/") + "/login"

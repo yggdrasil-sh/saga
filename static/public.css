@@ -145,6 +145,11 @@ img.pub-sub-ic{height:1.4rem;object-fit:cover;border-radius:4px}
 .pub-next{display:inline-block;padding:.5rem 1.1rem;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--fg);
 text-decoration:none;font-weight:500}
 .pub-next:hover{border-color:var(--accent)}
+/* Sprachumschalter der 404-/Rate-Limit-Seite (Links, ohne Skript) */
+.pub-lang{margin-top:2rem;font-size:.85rem;color:var(--muted)}
+.pub-lang a{color:var(--muted);text-decoration:none;padding:.15rem .2rem}
+.pub-lang a:hover{color:var(--fg);text-decoration:underline}
+.pub-lang a[aria-current]{color:var(--fg);font-weight:600}
 /* Lesebreite: Kopf, Eigenschaften, Text und Unterseiten auf --measure, breite Bloecke bis --wide (Titelbild: ganz) */
 .pub-head,.pub-props,.pub-subpages,.pub-content>*{max-width:var(--measure);margin-inline:auto}
 .pub-content>.pub-img{max-width:none}
