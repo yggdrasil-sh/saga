@@ -2407,5 +2407,11 @@
  "Verlauf gelöscht, Gruppe verlassen.": "История удалена, выход из группы выполнен.",
  "{name} hat den Chat gelöscht.": "{name} удалил(а) чат.",
  "{name} hat den Verlauf gelöscht.": "{name} удалил(а) историю.",
- "„{name}“ löschen?": "Удалить «{name}»?"
+ "„{name}“ löschen?": "Удалить «{name}»?",
+ "Chats mit Personen anderer Saga-Server gibt es noch nicht. Seiten kannst du mit name@server teilen (über den öffentlichen Namen der Person).": "Чатов с людьми с других серверов Saga пока нет. Страницами можно делиться через имя@сервер (по публичному имени человека).",
+ "Personen auf diesem Server findest du über Namen oder Benutzernamen, nicht über die E-Mail-Adresse.": "Людей на этом сервере ищите по имени или имени пользователя, а не по адресу эл. почты.",
+ "Anleitung: Föderation": "Руководство: федерация",
+ "https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md#mit-anderen-saga-instanzen-teilen-föderation": "https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md#sharing-with-other-saga-instances-federation",
+ "E-Mail-Adressen durchsucht Saga nicht – suche nach Name oder Benutzername.": "Saga не ищет по адресам эл. почты – ищите по имени или имени пользователя.",
+ "Gemeint ist der öffentliche Name der Person, nicht ihre E-Mail-Adresse.": "Нужно публичное имя человека, а не его адрес эл. почты."
 }

@@ -39,7 +39,7 @@ REMOTE_GROUPS = contextvars.ContextVar("saga_remote_groups", default=None)
 # Von saga.federation gesetzt: remote_target(uid, typ, ziel) -> (normalisiertes ziel, fehlertext, status) - prueft
 # Verbindung und Person/Gruppe bei der fremden Instanz (Netzwerk, ausserhalb jeder Transaktion aufrufen)
 REMOTE_TARGET = None
-REMOTE_SEARCH = None          # remote_search(uid, q) -> [{type, target, name, host}] (Personensuche, genaue Adresse name@host)
+REMOTE_SEARCH = None          # remote_search(uid, q) -> ([{type, target, name, host}], hinweis|None) (Personensuche, genaue Adresse name@host)
 
 
 def is_remote(uid):
@@ -711,5 +711,7 @@ def api_share_targets(request: Request, q: str = ""):
     out = {"users": users, "groups": groups}
     # name@host einer verbundenen Instanz: dort nachfragen (signiert) - nur genaue Adressen, keine Suche ueber Instanzen
     if REMOTE_SEARCH is not None and "@" in q.lstrip("@") and fed_enabled() and not group_scope():
-        out["remote"] = REMOTE_SEARCH(uid, q)
+        out["remote"], hint = REMOTE_SEARCH(uid, q)
+        if hint and not users and not groups:
+            out["remote_hint"] = hint                      # warum nichts gefunden wurde (z. B. E-Mail statt oeffentlichem Namen)
     return JSONResponse(out, headers={"Cache-Control": "no-store"})

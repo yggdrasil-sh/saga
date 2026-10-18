@@ -1721,21 +1721,28 @@ def remote_target(uid, typ, tg, nid):
 
 
 def remote_search(uid, q):
-    """Personensuche: genaue Adresse name@host einer verbundenen Instanz -> Treffer (Person und/oder Gruppe)."""
-    out = []
+    """Personensuche: genaue Adresse name@host einer verbundenen Instanz -> (treffer, hinweis). Treffer: Person
+    und/oder Gruppe; hinweis (nur ohne Treffer): warum nichts gefunden wurde - z. B. E-Mail statt oeffentlichem Namen."""
+    out, hint, host = [], None, None
     for typ, kind in (("remote", "user"), ("remote_group", "group")):
         name, host = _parse_target(typ, q)
         if not name:
             continue
+        if host == SELF_HOST:
+            return [], t("Das ist dieser Server – bitte ohne @server teilen.")
         with _db() as c:
             p = peer_by(c, "host", host)
         if not p or p["status"] != "active":
-            return []
+            return [], (t("Mit {host} ist dieser Server nicht verbunden.", host=host) + " "
+                        + t("E-Mail-Adressen durchsucht Saga nicht – suche nach Name oder Benutzername."))
         try:
             disp = _lookup(p, name, kind)
         except FedError:
-            return out
+            return out, (None if out else t("Die andere Saga-Instanz ist gerade nicht erreichbar."))
         if disp is None:
+            if typ == "remote":
+                hint = (t("Diese Person gibt es auf {host} nicht (oder sie hat keinen öffentlichen Namen).", host=host) + " "
+                        + t("Gemeint ist der öffentliche Name der Person, nicht ihre E-Mail-Adresse."))
             continue
         target = f"@{name}@{host}" if typ == "remote" else f"{name}@{host}"
         if typ == "remote":
@@ -1743,7 +1750,9 @@ def remote_search(uid, q):
                 _person_upsert(c, target, p["id"], disp)
         out.append({"type": typ, "target": target, "name": remote_label(target if typ == "remote" else "@" + target, disp if typ == "remote" else ""),
                     "host": host})
-    return out
+    if not out and hint is None and re.fullmatch(r"@?[^@\s]+@[^@\s]+", q or ""):   # z. B. vorname.name@firma.de
+        hint = t("Gemeint ist der öffentliche Name der Person, nicht ihre E-Mail-Adresse.")
+    return out, (None if out else hint)
 
 
 def fed_render(c, uid, fed):

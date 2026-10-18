@@ -2407,5 +2407,11 @@
  "Verlauf gelöscht, Gruppe verlassen.": "Historial eliminado, has salido del grupo.",
  "{name} hat den Chat gelöscht.": "{name} eliminó el chat.",
  "{name} hat den Verlauf gelöscht.": "{name} eliminó el historial.",
- "„{name}“ löschen?": "¿Eliminar «{name}»?"
+ "„{name}“ löschen?": "¿Eliminar «{name}»?",
+ "Chats mit Personen anderer Saga-Server gibt es noch nicht. Seiten kannst du mit name@server teilen (über den öffentlichen Namen der Person).": "Todavía no hay chats con personas de otros servidores Saga. Puedes compartir páginas con nombre@servidor (con el nombre público de la persona).",
+ "Personen auf diesem Server findest du über Namen oder Benutzernamen, nicht über die E-Mail-Adresse.": "A las personas de este servidor las encuentras por nombre o nombre de usuario, no por correo electrónico.",
+ "Anleitung: Föderation": "Guía: federación",
+ "https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md#mit-anderen-saga-instanzen-teilen-föderation": "https://github.com/yggdrasil-sh/saga/blob/main/docs/es/GUIA.md#compartir-con-otras-instancias-de-saga-federación",
+ "E-Mail-Adressen durchsucht Saga nicht – suche nach Name oder Benutzername.": "Saga no busca direcciones de correo – busca por nombre o nombre de usuario.",
+ "Gemeint ist der öffentliche Name der Person, nicht ihre E-Mail-Adresse.": "Se refiere al nombre público de la persona, no a su correo electrónico."
 }

@@ -2407,5 +2407,11 @@
  "Verlauf gelöscht, Gruppe verlassen.": "Verlauf gelöscht, Gruppe verlassen.",
  "{name} hat den Chat gelöscht.": "{name} hat den Chat gelöscht.",
  "{name} hat den Verlauf gelöscht.": "{name} hat den Verlauf gelöscht.",
- "„{name}“ löschen?": "„{name}“ löschen?"
+ "„{name}“ löschen?": "„{name}“ löschen?",
+ "Chats mit Personen anderer Saga-Server gibt es noch nicht. Seiten kannst du mit name@server teilen (über den öffentlichen Namen der Person).": "Chats mit Personen anderer Saga-Server gibt es noch nicht. Seiten kannst du mit name@server teilen (über den öffentlichen Namen der Person).",
+ "Personen auf diesem Server findest du über Namen oder Benutzernamen, nicht über die E-Mail-Adresse.": "Personen auf diesem Server findest du über Namen oder Benutzernamen, nicht über die E-Mail-Adresse.",
+ "Anleitung: Föderation": "Anleitung: Föderation",
+ "https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md#mit-anderen-saga-instanzen-teilen-föderation": "https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md#mit-anderen-saga-instanzen-teilen-föderation",
+ "E-Mail-Adressen durchsucht Saga nicht – suche nach Name oder Benutzername.": "E-Mail-Adressen durchsucht Saga nicht – suche nach Name oder Benutzername.",
+ "Gemeint ist der öffentliche Name der Person, nicht ihre E-Mail-Adresse.": "Gemeint ist der öffentliche Name der Person, nicht ihre E-Mail-Adresse."
 }

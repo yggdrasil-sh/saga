@@ -504,6 +504,16 @@
   }
 
   // --- Neue Unterhaltung ----------------------------------------------------------------------------------------
+  // name@server, @name@server oder E-Mail-artig: Chats ueber Servergrenzen gibt es noch nicht -> Hinweis statt "Keine Treffer"
+  function fedAddr(v) { return /^@?[^@\s]+@[^@\s]+[.:][^@\s]+$/.test(v); }
+  function fedHint() {
+    var li = el('li', 'hk-hint ct-fed-hint', T('Chats mit Personen anderer Saga-Server gibt es noch nicht. Seiten kannst du mit name@server teilen (über den öffentlichen Namen der Person).') + ' ' +
+      T('Personen auf diesem Server findest du über Namen oder Benutzernamen, nicht über die E-Mail-Adresse.') + ' ');
+    var a = el('a', null, T('Anleitung: Föderation'));
+    a.href = T('https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md#mit-anderen-saga-instanzen-teilen-föderation');
+    a.target = '_blank'; a.rel = 'noopener';
+    li.appendChild(a); return li;
+  }
   function newChat() {
     var box = overlay(T('Neue Unterhaltung'));
     var inp = el('input', 'hk-in ct-people-q'); inp.type = 'search'; inp.placeholder = T('Person oder Gruppe suchen (ab 3 Zeichen)'); inp.setAttribute('aria-label', T('Person oder Gruppe suchen'));
@@ -552,7 +562,7 @@
             b.addEventListener('click', function () { create({ kind: 'group', group: g.name }); });
             li.appendChild(b); res.appendChild(li);
           });
-          if (!r.users.length && !r.groups.length) res.appendChild(el('li', 'hk-hint', T('Keine Treffer.')));
+          if (!r.users.length && !r.groups.length) res.appendChild(fedAddr(v) ? fedHint() : el('li', 'hk-hint', T('Keine Treffer.')));
         }).catch(function (e) { res.textContent = ''; res.appendChild(el('li', 'hk-status err', e.message)); });
       }, 250);
     });
@@ -1554,8 +1564,10 @@
       inp.addEventListener('input', function () {
         clearTimeout(tmr); tmr = setTimeout(function () {
           if (inp.value.trim().length < 3) { res.textContent = ''; return; }
-          api('GET', '/api/chat/people?q=' + q(inp.value.trim())).then(function (r) {
+          var v = inp.value.trim();
+          api('GET', '/api/chat/people?q=' + q(v)).then(function (r) {
             res.textContent = '';
+            if (!r.users.length && fedAddr(v)) res.appendChild(fedHint());
             r.users.filter(function (u) { return !c.members.some(function (m) { return m.username === u.username; }); }).forEach(function (u) {
               var li = el('li'), b = el('button', 'ct-person', u.name + ' (' + u.username + ')'); b.type = 'button';
               b.addEventListener('click', function () {
