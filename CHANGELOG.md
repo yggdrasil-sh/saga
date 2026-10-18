@@ -16,6 +16,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Lastmessung (nur Werkzeuge, keine Änderung an Saga selbst)
+
+- `tools/perf/`: wiederholbare Lastmessung für Test-Stacks. `gen.py` erzeugt realistische Testdaten in drei Stufen
+  (S: 500 Seiten · M: 5.000 Seiten + 20.000 Datenbank-Einträge · L: 10.000 Seiten + 50.000 Einträge, eine Datenbank
+  mit 10.000 Einträgen, Baum bis Tiefe 6, Bilder, Kommentare, Freigaben an ein zweites Konto, Chat mit 5.000
+  Nachrichten) direkt in Postgres. `bench.py` misst Antwortzeit (p50/p95) und Größe der wichtigsten Endpunkte, die
+  Netzwerk-Abläufe der Apps, parallele Last, den Live-Kanal sowie CPU/RAM der Container; `explain.py` zeigt die Pläne
+  der teuersten Abfragen; `web.py` misst die Weboberfläche mit Playwright (headless).
+- `tools/perf/run.sh` führt alles je Stufe aus und prüft Grenzwerte aus `tools/perf/limits.json` (Exit 1 bei
+  Überschreitung), z. B. `SAGA_SCRIPT=perf/run.sh tools/test-stack.sh "S M"`. Nur für Test-Stacks: legt die Konten
+  `perf-a`/`perf-b` neu an und setzt `NOTE_MAX_COUNT=200000` in der `.env` des Test-Stacks.
+
 ### Testing-Builds als Release Candidates
 
 - Testing-Images heißen jetzt `2.2.0-rc.7` statt `2.2.0-testing.<commit>` (7 = Commits seit dem letzten Release-Tag;
