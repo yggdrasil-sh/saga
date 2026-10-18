@@ -475,6 +475,17 @@ def _gz_ok(msg):
     return ctype.startswith(_GZ_TYPES) and not ctype.startswith(_GZ_NEVER)
 
 
+def _weak_inm(scope):
+    """If-None-Match vergleicht nach RFC 9110 schwach: 'W/' vor den Tags entfernen, bevor die Endpunkte (StaticFiles,
+    Profilbilder: exakter Vergleich) pruefen - so gibt ein gepacktes W/"x" weiter 304 wie "x"."""
+    hs = scope.get("headers") or ()
+    if not any(k == b"if-none-match" and b"W/" in v for k, v in hs):
+        return scope
+    fix = [(k, b",".join(p.strip()[2:] if p.strip().startswith(b"W/") else p.strip() for p in v.split(b",")) if k == b"if-none-match" else v)
+           for k, v in hs]
+    return dict(scope, headers=fix)
+
+
 def _gz_bytes(body, level):
     z = zlib.compressobj(level, zlib.DEFLATED, 31)
     return z.compress(body) + z.flush()
@@ -495,12 +506,17 @@ class Compress:
         self.app, self.minimum, self.level = app, minimum, level
 
     async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            scope = _weak_inm(scope)
         if scope["type"] != "http" or self.level <= 0 or scope.get("method") == "HEAD" or not _gz_wanted(scope):
             return await self.app(scope, receive, send)
         st = {"start": None, "mode": None, "z": None, "buf": [], "n": 0}   # mode: None = noch offen, "plain", "gzip"
 
         def headers(start, length=None):
             h = [(k, v) for k, v in start.get("headers") or () if k.lower() not in (b"content-length", b"vary")]
+            # gepackte Fassung ist nicht byte-gleich mit der ungepackten: ETag schwach (W/) - Caches/Proxys mischen sie
+            # so nicht als identisch; If-None-Match vergleicht ohnehin schwach (s. oben, _weak_inm)
+            h = [(k, b"W/" + v if k.lower() == b"etag" and not v.startswith(b"W/") else v) for k, v in h]
             vary = [v for k, v in start.get("headers") or () if k.lower() == b"vary"]
             parts = [p.strip() for v in vary for p in v.decode("latin-1").split(",") if p.strip()]
             if "accept-encoding" not in [p.lower() for p in parts]:
