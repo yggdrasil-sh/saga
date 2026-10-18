@@ -15,7 +15,7 @@
         <option value="">{{ _("Automatisch") }}</option>
         {% for k, n in langs.items() %}<option value="{{ k }}"{% if k == st.default_lang %} selected{% endif %}>{{ n }}</option>{% endfor %}
       </select>
-      <small>{{ _("Sprache der Anmeldeseite, des Admin-Bereichs und aller Konten ohne eigene Wahl. Automatisch = Browsersprache (Deutsch, Englisch, Spanisch, sonst Englisch).") }}</small></label>
+      <small>{{ _("Sprache der Anmeldeseite, des Admin-Bereichs und aller Konten ohne eigene Wahl. Automatisch = Browsersprache (Deutsch, Englisch, Spanisch, Russisch, Thai, sonst Englisch).") }}</small></label>
     {{ field(_('Standardgruppen'), 'default_groups', st.default_groups|join(', '), max=1000, hint=_('Bekommt jedes neue Konto (Registrierung, Admin, erste LDAP/SSO-Anmeldung) – z. B. {example}', example=(st.group_prefix or 's_') ~ 'wiki')) }}
   </section>
   <section class="adm-card" id="mfa">

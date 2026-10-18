@@ -72,7 +72,8 @@ private space – no cloud, no subscription, on your own server.
 - **Profile pictures:** upload your own (cropped, re-encoded without metadata) or use Gravatar – fetched and
   cached by the server, browsers never contact Gravatar; optionally from SSO/LDAP
 - **Admin area on a separate port** for users, groups, services and sign-in
-- **English, German and Spanish:** every user can choose their language in their settings
+- **English, German, Spanish, Russian and Thai:** every user can choose their language in their settings
+  (Russian and Thai are machine-translated – improvements from native speakers are welcome)
 - **[Apps](https://github.com/yggdrasil-sh/saga-apps)** (iOS/iPadOS/macOS, Linux/GTK, Android) using the same
   API, with persistent sign-in and pairing via QR code
 

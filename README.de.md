@@ -69,7 +69,8 @@
 - **Profilbilder:** eigenes Bild (zugeschnitten, ohne Metadaten neu kodiert) oder Gravatar – vom Server geholt
   und zwischengespeichert, Browser fragen nie bei Gravatar; optional aus SSO/LDAP
 - **Admin-Bereich auf eigenem Port** für Benutzer, Gruppen, Dienste und Anmeldung
-- **Deutsch, Englisch und Spanisch:** jeder Benutzer kann seine Sprache in den Einstellungen wählen
+- **Deutsch, Englisch, Spanisch, Russisch und Thai:** jeder Benutzer kann seine Sprache in den Einstellungen wählen
+  (Russisch und Thai maschinell übersetzt – Verbesserungen von Muttersprachlern sind willkommen)
 - **[Apps](https://github.com/yggdrasil-sh/saga-apps/blob/main/README.de.md)** (iOS/iPadOS/macOS, Linux/GTK, Android) über dieselbe
   Schnittstelle, mit dauerhafter Anmeldung und Kopplung per QR-Code
 

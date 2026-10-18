@@ -1054,7 +1054,8 @@ presencia de una página, en las notificaciones, en el diálogo de compartir y l
 
 ### Idioma
 
-Saga habla español, inglés y alemán. El idioma que ves se decide en este orden:
+Saga habla español, inglés, alemán, ruso (Русский) y tailandés (ไทย); esta guía está en español, inglés y
+alemán. El idioma que ves se decide en este orden:
 
 1. tu propia elección en **Ajustes** → **Cuenta** → **Idioma**: se aplica al instante y en cualquier navegador,
    porque se guarda en tu cuenta,

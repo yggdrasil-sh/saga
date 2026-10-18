@@ -74,7 +74,8 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
 - **Área de administración en un puerto propio** para usuarios, grupos, servicios e inicio de sesión
 - **Fotos de perfil:** imagen propia (recortada, recodificada sin metadatos) o Gravatar: la obtiene y guarda el
   servidor, los navegadores nunca consultan Gravatar; opcionalmente desde SSO/LDAP
-- **Español, inglés y alemán:** cada usuario puede elegir su idioma en sus ajustes
+- **Español, inglés, alemán, ruso y tailandés:** cada usuario puede elegir su idioma en sus ajustes
+  (ruso y tailandés con traducción automática; se agradecen mejoras de hablantes nativos)
 - **[Apps](https://github.com/yggdrasil-sh/saga-apps/blob/main/README.es.md)** (iOS/iPadOS/macOS, Linux/GTK, Android) con la misma
   API, sesión permanente y vinculación con código QR
 

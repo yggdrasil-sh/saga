@@ -10,7 +10,7 @@
   var K = window.HKPages ? window.HKPages.k : null;
   var RANK = { view: 1, comment: 2, edit: 3, owner: 4 };
   var A = { st: null, run: null, sel: null, tab: 'ask', chat: [] };
-  var TARGET_NAMES = { de: 'Deutsch', en: 'English', es: 'Español', fr: 'Français', it: 'Italiano', nl: 'Nederlands', pt: 'Português',
+  var TARGET_NAMES = { de: 'Deutsch', en: 'English', es: 'Español', ru: 'Русский', th: 'ไทย', fr: 'Français', it: 'Italiano', nl: 'Nederlands', pt: 'Português',
     pl: 'Polski', sv: 'Svenska', da: 'Dansk', nb: 'Norsk', fi: 'Suomi', cs: 'Čeština', tr: 'Türkçe', uk: 'Українська', ja: '日本語', zh: '中文' };
 
   function cur() { return K ? K.cur() : null; }

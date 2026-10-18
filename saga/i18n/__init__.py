@@ -1,7 +1,10 @@
-"""Mehrsprachigkeit: Kataloge (de/en/es als JSON neben dieser Datei), Sprachwahl und t().
+"""Mehrsprachigkeit: Kataloge (de/en/es/ru/th als JSON neben dieser Datei), Sprachwahl und t().
 
 - Schluessel = der deutsche Text (de.json enthaelt sie unveraendert), Platzhalter {name}. Gleicher deutscher Text mit
   anderer Bedeutung: Kontext hinter '##' im Schluessel ('Lesen##Rolle') - angezeigt wird nur der Teil davor.
+- Pluralformen (Zahl-Texte): in der Uebersetzung {n:form1|form2|...} neben {n} - die Formen in der Reihenfolge der
+  CLDR-Kategorien der Sprache (PLURAL_FORMS: de/en/es one|other, ru one|few|many, th nur other). Beispiel ru:
+  "{n} {n:новое сообщение|новых сообщения|новых сообщений}". Schluessel bleiben unveraendert; ohne Formen wie bisher.
 - Python: t("Gespeichert.") bzw. t("Höchstens {n} Schlüssel", n=10) - die Sprache kommt aus der
   laufenden Anfrage (ContextVar, von der Middleware gesetzt). Ohne Anfrage: Englisch.
 - Jinja: _("Anmelden") und lang()/locale() als Globale (install()).
@@ -18,13 +21,18 @@ import os
 import re
 from datetime import datetime
 
-LANGS = ("de", "en", "es")
+LANGS = ("de", "en", "es", "ru", "th")
 DEFAULT = "en"
-NAMES = {"de": "Deutsch", "en": "English", "es": "Español"}
-LOCALES = {"de": "de-DE", "en": "en-US", "es": "es-ES"}
+NAMES = {"de": "Deutsch", "en": "English", "es": "Español", "ru": "Русский", "th": "ไทย"}
+# Thai: gregorianischer Kalender (th-TH zaehlt sonst buddhistische Jahre, 2026 = 2569)
+LOCALES = {"de": "de-DE", "en": "en-US", "es": "es-ES", "ru": "ru-RU", "th": "th-TH-u-ca-gregory"}
+# Reihenfolge der Pluralformen je Sprache ({n:...} in Uebersetzungen); Thai kennt keine Pluralformen
+PLURAL_FORMS = {"de": ("one", "other"), "en": ("one", "other"), "es": ("one", "other"), "ru": ("one", "few", "many"), "th": ("other",)}
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _STATIC = os.path.join(os.path.dirname(os.path.dirname(_HERE)), "static")
 _PH = re.compile(r"\{(\w+)\}")
+_PL = re.compile(r"\{(\w+):([^{}]*)\}")                 # Pluralformen {n:eins|mehrere}
+_ANY = re.compile(r"\{\w+(?::[^{}]*)?\}")                 # Platzhalter oder Pluralformen (is_message)
 # T('...') / T("...") in den Skripten; nur Literale (keine zusammengesetzten Schluessel)
 JS_CALL = re.compile(r"""\bT\(\s*(?:'((?:\\.|[^'\\])*)'|"((?:\\.|[^"\\])*)")""")
 
@@ -132,9 +140,41 @@ def locale():
     return LOCALES[_cur.get()]
 
 
-def fill(s, params):
+def plural_cat(lang, n):
+    """CLDR-Pluralkategorie (Kardinalzahl) fuer de/en/es/ru/th."""
+    try:
+        f = float(n)
+    except (TypeError, ValueError):
+        return "other"
+    if lang == "th":
+        return "other"
+    if f != int(f):
+        return "other"
+    i = abs(int(f))
+    if lang == "ru":
+        if i % 10 == 1 and i % 100 != 11:
+            return "one"
+        if 2 <= i % 10 <= 4 and not 12 <= i % 100 <= 14:
+            return "few"
+        return "many"
+    return "one" if i == 1 else "other"
+
+
+def plural(lang, n, forms):
+    """Form fuer n aus 'a|b|c' (Reihenfolge PLURAL_FORMS[lang]); fehlt sie, die letzte."""
+    forms = forms.split("|")
+    order = PLURAL_FORMS.get(lang, ("one", "other"))
+    cat = plural_cat(lang, n)
+    i = order.index(cat) if cat in order else len(order) - 1
+    return forms[min(i, len(forms) - 1)]
+
+
+def fill(s, params, lang=None):
     if not params:
         return s
+    if "{" in s and ":" in s:
+        lang = lang or _cur.get()
+        s = _PL.sub(lambda m: plural(lang, params[m.group(1)], m.group(2)) if m.group(1) in params else m.group(0), s)
     return _PH.sub(lambda m: str(params[m.group(1)]) if m.group(1) in params else m.group(0), s)
 
 
@@ -153,6 +193,18 @@ def t(key, **params):
 _MSG = {}
 
 
+def _msg_rx(x):
+    """Muster fuer eine Meldung mit Platzhaltern: {name} = beliebiger Text, {n:a|b|c} = genau eine der Formen."""
+    out, pos = [], 0
+    for m in _ANY.finditer(x):
+        out.append(re.escape(x[pos:m.start()]))
+        forms = m.group(0)[1:-1].partition(":")[2]
+        out.append("(?:" + "|".join(re.escape(f) for f in forms.split("|")) + ")" if ":" in m.group(0) else ".+?")
+        pos = m.end()
+    out.append(re.escape(x[pos:]))
+    return "".join(out)
+
+
 def is_message(s):
     """Ist s ein Text aus dem Katalog (eigene Meldung, ggf. mit eingesetzten Platzhaltern) - und keine rohe
     Python-Fehlermeldung wie "invalid literal for int()"? (BUG-084)"""
@@ -161,8 +213,8 @@ def is_message(s):
         for cat in CATALOG.values():
             for k, v in cat.items():
                 for x in {_ctx(k, k), _ctx(v, k)}:
-                    if _PH.search(x):
-                        rx.append(re.compile(".+?".join(re.escape(part) for part in _PH.split(x)[::2]) + r"\Z", re.S))
+                    if _ANY.search(x):
+                        rx.append(re.compile(_msg_rx(x) + r"\Z", re.S))
                     else:
                         plain.add(x)
         _MSG.update(plain=plain, rx=rx)
@@ -170,7 +222,8 @@ def is_message(s):
 
 
 def t_lang(lang, key, **params):
-    return fill(_ctx(CATALOG[norm(lang) or DEFAULT].get(key) or key, key), params)
+    lang = norm(lang) or DEFAULT
+    return fill(_ctx(CATALOG[lang].get(key) or key, key), params, lang)
 
 
 def js_catalog(lang):
@@ -188,11 +241,20 @@ def fmt_date(ts, tz=None, with_time=False):
         return "–"
     d = datetime.fromtimestamp(ts, tz)
     lang = _cur.get()
-    if lang == "en":
-        s = f"{_MON_EN[d.month - 1]} {d.day}, {d.year}"
-    else:
-        s = d.strftime("%d.%m.%Y" if lang == "de" else "%d/%m/%Y")
+    s = day_str(d, lang)
     return s + d.strftime(" %H:%M") if with_time else s
+
+
+def day_str(d, lang=None):
+    """date/datetime -> Datum im ueblichen Format der Sprache (Thai: gregorianisch, wie im Browser)."""
+    lang = lang or _cur.get()
+    if lang == "en":
+        return f"{_MON_EN[d.month - 1]} {d.day}, {d.year}"
+    if lang in ("de", "ru"):
+        return d.strftime("%d.%m.%Y")
+    if lang == "th":
+        return f"{d.day}/{d.month}/{d.year}"
+    return d.strftime("%d/%m/%Y")
 
 
 def install(env):

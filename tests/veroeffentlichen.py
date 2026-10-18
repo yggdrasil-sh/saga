@@ -8,6 +8,7 @@ from itsdangerous import TimestampSigner
 from PIL import Image
 import auth
 from db import connect
+from saga import i18n
 
 B = urllib.parse.urlparse(os.environ.get("HK_TEST_BASE", "http://127.0.0.1:8099"))
 AD = urllib.parse.urlparse(os.environ.get("HK_TEST_ADMIN", "http://127.0.0.1:8098"))
@@ -253,7 +254,7 @@ def main():
         st, hh, body = req("GET", path)
         m = re.search(r'<nav class="pub-lang".*?</nav>', body or "", re.S)
         back = "next=" + urllib.parse.quote(urllib.parse.unquote(path.split("?")[0]), safe="")
-        ok(f"404 {path}: Sprach-Links fuehren nur zurueck auf diese Adresse", bool(m) and m.group(0).count(back) == 3)
+        ok(f"404 {path}: Sprach-Links fuehren nur zurueck auf diese Adresse", bool(m) and m.group(0).count(back) == len(i18n.LANGS))
         return st, hh, re.sub(r'<nav class="pub-lang".*?</nav>', "", body or "", flags=re.S)
     s1, h1, nf1 = neutral("/@pv-anne/geheimes-tagebuch")
     s2, _, nf2 = neutral("/@gibt-es-nicht/mein-garten")

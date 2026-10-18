@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Uebersetzungen pflegen (saga/i18n/{de,en,es}.json, Schluessel = deutscher Text).
+"""Uebersetzungen pflegen (saga/i18n/{de,en,es,ru,th}.json, Schluessel = deutscher Text).
 
   python3 tools/i18n.py check          Luecken, ueberzaehlige Schluessel, abweichende Platzhalter (Exit 1 bei Fehlern)
   python3 tools/i18n.py sync           de.json = alle benutzten Schluessel; unbenutzte Schluessel aus en/es entfernen
   python3 tools/i18n.py todo [lang]    fehlende Schluessel ausgeben (Vorlage fuer add)
   python3 tools/i18n.py add <datei>    Zeilen "deutsch ||| english ||| español" in en.json/es.json uebernehmen
+  python3 tools/i18n.py merge <lang> <datei.json>   {"deutsch": "Uebersetzung"} in <lang>.json uebernehmen (ru, th …)
   python3 tools/i18n.py scan <datei>   deutsch aussehende, noch nicht uebersetzte Texte in einer Datei zeigen
 
 Benutzte Schluessel: t("...") in Python, _("...") in templates/, T('...') in static/*.js.
@@ -17,7 +18,11 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CAT = os.path.join(ROOT, "saga", "i18n")
-LANGS = ("de", "en", "es")
+LANGS = ("de", "en", "es", "ru", "th")
+# Pluralformen {n:a|b|c} je Sprache (wie PLURAL_FORMS in saga/i18n)
+PLURAL_N = {"de": 2, "en": 2, "es": 2, "ru": 3, "th": 1}
+PL = re.compile(r"\{(\w+):([^{}]*)\}")
+TAG = re.compile(r"</?(a|b|i|u|s|em|strong|code|kbd|br|span|small|p|ul|ol|li|mark|div|pre|sup|sub)\b")
 STR = r"""(?:'((?:\\.|[^'\\])*)'|"((?:\\.|[^"\\])*)")"""
 PY_CALL = re.compile(r"(?<![\w.])t\(\s*" + STR)
 TPL_CALL = re.compile(r"(?<![\w.])_\(\s*" + STR)
@@ -70,6 +75,12 @@ def problems():
                 out.append(f"{lang}: fehlt: {k!r} ({keys[k]})")
             elif sorted(PH.findall(k)) != sorted(PH.findall(cat[k])):
                 out.append(f"{lang}: Platzhalter passen nicht: {k!r} -> {cat[k]!r}")
+            elif sorted(TAG.findall(k)) != sorted(TAG.findall(cat[k])):
+                out.append(f"{lang}: HTML-Tags passen nicht: {k!r} -> {cat[k]!r}")
+            else:
+                for name, forms in PL.findall(cat[k]):
+                    if name not in PH.findall(k) or len(forms.split("|")) != PLURAL_N[lang]:
+                        out.append(f"{lang}: Pluralformen falsch ({PLURAL_N[lang]} Formen fuer {{{name}}}): {k!r} -> {cat[k]!r}")
         for k in cat:
             if k not in keys:
                 out.append(f"{lang}: unbenutzt: {k!r}")
@@ -113,6 +124,21 @@ def main():
         for lang, cat in cats.items():
             save(lang, cat)
         print(f"{n} Eintraege uebernommen")
+    elif cmd == "merge":
+        lang = sys.argv[2]
+        cat = load(lang)
+        with open(sys.argv[3], encoding="utf-8") as f:
+            new = json.load(f)
+        keys = used_keys()
+        bad = [k for k in new if k not in keys]
+        for k in bad:
+            print("unbekannter Schluessel:", repr(k))
+        cat.update({k: v for k, v in new.items() if k in keys and str(v).strip()})
+        order = list(load("de"))                       # Reihenfolge wie de.json (kleine Diffs)
+        with open(os.path.join(CAT, lang + ".json"), "w", encoding="utf-8") as f:
+            json.dump({k: cat[k] for k in order if k in cat}, f, ensure_ascii=False, indent=1)
+            f.write("\n")
+        print(f"{len(new) - len(bad)} Eintraege in {lang}.json, {sum(k in cat for k in keys)}/{len(keys)} uebersetzt")
     elif cmd == "scan":
         rx = re.compile(r"""(['"])((?:\\.|(?!\1).)*?[A-Za-zÄÖÜäöüß]{2,}(?:\\.|(?!\1).)*?)\1""")
         german = re.compile(r"[äöüÄÖÜß]|\b(?:der|die|das|und|oder|nicht|kein|keine|mit|von|zu|ein|eine|ist|für|auf|bei|noch|neu|neue|alle|"

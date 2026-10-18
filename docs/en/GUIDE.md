@@ -1010,7 +1010,8 @@ members) and in the version history (“by …”). Without a picture, the initi
 
 ### Language
 
-Saga speaks English, German and Spanish. The language you see is decided in this order:
+Saga speaks English, German, Spanish, Russian (Русский) and Thai (ไทย); this guide is available in English, German
+and Spanish. The language you see is decided in this order:
 
 1. your own choice under **Settings** → **Account** → **Language** – it applies immediately and in every
    browser, because it is stored in your account,

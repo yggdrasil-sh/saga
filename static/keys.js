@@ -241,6 +241,12 @@
   var WDS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
   var MON = ['januar', 'februar', 'maerz', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'dezember'];
   var MONE = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  // Russisch/Thai: Sonntag zuerst (wie WD); russisch auch "в среду" (Akkusativ)
+  var WDR = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+  var WDRA = ['воскресенье', 'понедельник', 'вторник', 'среду', 'четверг', 'пятницу', 'субботу'];
+  var WDT = ['วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'];
+  var REL = { 'сегодня': 0, 'завтра': 1, 'послезавтра': 2, 'вчера': -1, 'วันนี้': 0, 'พรุ่งนี้': 1, 'มะรืนนี้': 2, 'เมื่อวาน': -1,
+              'на следующей неделе': 7, 'следующая неделя': 7, 'สัปดาห์หน้า': 7 };
   var MONS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
   function norm(s) {
     return String(s || '').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
@@ -264,6 +270,14 @@
     else if (q === 'morgen' || q === 'tomorrow' || q === 'manana') d = plus(t0, 1);
     else if (q === 'uebermorgen' || q === 'pasado manana') d = plus(t0, 2);
     else if (q === 'gestern' || q === 'yesterday' || q === 'ayer') d = plus(t0, -1);
+    else if (Object.prototype.hasOwnProperty.call(REL, q)) d = plus(t0, REL[q]);
+    else if ((m = q.match(/^через (\d{1,3}) (день|дня|дней|неделю|недели|недель|месяц|месяца|месяцев)$/))) {
+      var nr = +m[1]; d = /^н/.test(m[2]) ? plus(t0, 7 * nr) : /^м/.test(m[2]) ? new Date(t0.getFullYear(), t0.getMonth() + nr, t0.getDate()) : plus(t0, nr);
+    } else if ((m = q.match(/^(?:(?:во?|в следующ(?:ий|ую|ее))\s+)?([а-яё]+)$/)) && (WDR.indexOf(m[1]) >= 0 || WDRA.indexOf(m[1]) >= 0) ||
+               (m = q.match(/^(วัน\S+?)(?:หน้า)?$/)) && WDT.indexOf(m[1]) >= 0) {
+      var wr = WDR.indexOf(m[1]); if (wr < 0) wr = WDRA.indexOf(m[1]); if (wr < 0) wr = WDT.indexOf(m[1]);
+      var dr = (wr - t0.getDay() + 7) % 7; if (dr === 0) dr = 7; d = plus(t0, dr);
+    }
     else if ((m = q.match(/^(?:in|en) (\d{1,3}) (tag|tage|tagen|woche|wochen|monat|monate|monaten|day|days|week|weeks|month|months|dia|dias|semana|semanas|mes|meses)$/))) {
       var n = +m[1]; d = /^(w|se)/.test(m[2]) ? plus(t0, 7 * n) : /^(mo|me)/.test(m[2]) ? new Date(t0.getFullYear(), t0.getMonth() + n, t0.getDate()) : plus(t0, n);
     } else if (q === 'naechste woche' || q === 'next week' || q === 'proxima semana' || q === 'la proxima semana') d = plus(t0, 7);
@@ -356,7 +370,9 @@
   var DATE_WORDS = {
     de: ['heute', 'morgen', 'uebermorgen', 'montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag', 'sonntag', 'naechste woche'],
     en: ['today', 'tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'next week'],
-    es: ['hoy', 'manana', 'pasado manana', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo', 'proxima semana']
+    es: ['hoy', 'manana', 'pasado manana', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo', 'proxima semana'],
+    ru: ['сегодня', 'завтра', 'послезавтра', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье', 'на следующей неделе'],
+    th: ['วันนี้', 'พรุ่งนี้', 'มะรืนนี้', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์', 'วันอาทิตย์', 'สัปดาห์หน้า']
   }[HK.lang] || [];
   function atOptions(q) {
     var out = [], seen = {}, nq = norm(q);

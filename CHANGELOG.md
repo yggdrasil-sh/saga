@@ -15,6 +15,24 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu: Russisch und Thai
+- **Zwei neue Oberflächensprachen:** Русский (ru) und ไทย (th) für Web-Oberfläche, Admin-Bereich, öffentliche Seiten,
+  Fehlermeldungen der API und Mitteilungstexte – wählbar wie bisher unter Einstellungen → Konto → Sprache, im
+  Umschalter der Anmeldeseite (`/lang`), als Standardsprache im Admin-Bereich, per `?lang=th`/`?lang=ru` der Apps und
+  automatisch über Accept-Language (`th`, `th-TH`, `ru`, `ru-RU` …). Sprachnamen erscheinen in der eigenen Sprache.
+  Die Übersetzungen sind **maschinell erstellt** und sollten von Muttersprachlern gegengelesen werden (Russisch in der
+  „ты“-Form wie das deutsche „du“; Thai neutral-höflich).
+- **Pluralformen:** Übersetzungen können `{n:eins|wenige|viele}` neben `{n}` enthalten (Server `t()` und `T()` im
+  Browser, CLDR-Regeln für de/en/es/ru/th – Russisch 1 / 2–4 / 5+ mit 11–14 = viele, Thai ohne Pluralformen). Bestehende
+  Schlüssel bleiben unverändert; `tools/i18n.py check` prüft die Anzahl der Formen je Sprache und HTML-Tags,
+  `tools/i18n.py merge <lang> <datei.json>` übernimmt Übersetzungen.
+- **Datum/Zahlen:** Thai mit gregorianischem Kalender (`th-TH-u-ca-gregory` statt buddhistischer Jahreszählung),
+  Russisch `ru-RU`; Server-Datumsformat für ru `TT.MM.JJJJ`, th `T/M/JJJJ`. Der @-Datumsvorschlag im Editor versteht
+  auch „завтра“, „пятница“, „через 3 дня“, „พรุ่งนี้“, „วันศุกร์“.
+- **KI:** Antworten und Zusammenfassungen in der Oberflächensprache auch für Russisch/Thai; Fragesprache wird bei
+  Kyrillisch/Thai an der Schrift erkannt; „Übersetzen nach“ bietet Русский und ไทย.
+- **Darstellung:** Thai mit Schrift-Fallbacks (Leelawadee UI, Thonburi, Noto Sans Thai) und etwas mehr Zeilenhöhe.
+
 ### Neu: Websuche für die KI
 - **Die KI kann im Web suchen** – über die vorhandene SearXNG-Anbindung (`SEARXNG_URL`, wie die Websuche im Dashboard).
   Admin-Bereich → KI-Assistent → „Websuche erlauben“ (Standard: aus; nur wählbar, wenn SearXNG eingerichtet ist, mit

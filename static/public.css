@@ -10,6 +10,9 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body.pub{margin:0;background:var(--bg);color:var(--fg);font:17px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 min-height:100vh;display:flex;flex-direction:column;
 padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+/* Thai: Schrift-Fallbacks und mehr Zeilenhoehe (Vokal-/Tonzeichen), wie style.css */
+html:lang(th) body.pub{font-family:system-ui,-apple-system,"Segoe UI","Leelawadee UI",Thonburi,"Noto Sans Thai",Roboto,sans-serif;
+  line-height:1.8;overflow-wrap:break-word}
 a{color:var(--accent);text-underline-offset:.18em}
 a:hover{text-decoration-thickness:2px}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}

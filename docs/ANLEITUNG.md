@@ -1038,7 +1038,8 @@ Mitglieder) und beim Versionsverlauf („von …“). Ohne Bild bleiben die Init
 
 ### Sprache
 
-Saga spricht Deutsch, Englisch und Spanisch. Welche Sprache du siehst, entscheidet sich in dieser Reihenfolge:
+Saga spricht Deutsch, Englisch, Spanisch, Russisch (Русский) und Thai (ไทย); diese Anleitung gibt es auf Deutsch, Englisch
+und Spanisch. Welche Sprache du siehst, entscheidet sich in dieser Reihenfolge:
 
 1. deine eigene Wahl unter **Einstellungen** → **Konto** → **Sprache** – gilt sofort und in jedem Browser,
    weil sie in deinem Konto gespeichert wird,

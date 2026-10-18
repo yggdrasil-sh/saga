@@ -74,7 +74,7 @@ HEADERS = {"Cache-Control": "no-store", "X-Accel-Buffering": "no", "X-Content-Ty
 MARK_A, MARK_B = "<<<SAGA_DATA", "SAGA_DATA>>>"
 _MARK_RE = re.compile(r"<<<\s*SAGA_DATA|SAGA_DATA\s*>>>", re.I)
 # Zielsprachen fuer "Uebersetzen" (Name fuer die Anweisung an das Modell)
-TARGETS = {"de": "German", "en": "English", "es": "Spanish", "fr": "French", "it": "Italian", "nl": "Dutch", "pt": "Portuguese",
+TARGETS = {"de": "German", "en": "English", "es": "Spanish", "ru": "Russian", "th": "Thai", "fr": "French", "it": "Italian", "nl": "Dutch", "pt": "Portuguese",
            "pl": "Polish", "sv": "Swedish", "da": "Danish", "nb": "Norwegian", "fi": "Finnish", "cs": "Czech", "tr": "Turkish",
            "uk": "Ukrainian", "ja": "Japanese", "zh": "Chinese (simplified)"}
 ACTIONS = ("summarize", "tasks", "improve", "translate")
@@ -782,7 +782,7 @@ def extra_context(uid, with_tasks, with_cal):
 _WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
-LANG_NAMES = {"de": "German", "en": "English", "es": "Spanish"}
+LANG_NAMES = {"de": "German", "en": "English", "es": "Spanish", "ru": "Russian", "th": "Thai"}
 # Haeufige Woerter in Fragen je Sprache (Erkennung der Fragesprache; kleine lokale Modelle wie llama3:8b antworten
 # sonst gern auf Englisch, weil die Anweisungen englisch sind)
 _Q_HINTS = {
@@ -797,7 +797,7 @@ _Q_HINTS = {
 
 
 def q_lang(q):
-    """Sprache einer Frage (de/en/es) oder None, wenn nicht eindeutig."""
+    """Sprache einer Frage (de/en/es/ru/th) oder None, wenn nicht eindeutig."""
     s = str(q or "").lower()
     w = re.findall(r"[^\W\d_]+", s)
     score = {k: sum(x in v for x in w) for k, v in _Q_HINTS.items()}
@@ -805,6 +805,12 @@ def q_lang(q):
         score["de"] += 2
     if re.search(r"[ñ¿¡áéíóú]", s):
         score["es"] += 2
+    # Russisch und Thai an der Schrift erkennen (eigene Alphabete; Thai ohne Leerzeichen zwischen Woertern)
+    cyr, thai, lat = len(re.findall(r"[а-яё]", s)), len(re.findall(r"[\u0e00-\u0e7f]", s)), len(re.findall(r"[a-zäöüßñáéíóú]", s))
+    if thai > max(cyr, lat):
+        return "th"
+    if cyr > max(thai, lat):
+        return "ru"
     best = max(score, key=score.get)
     return best if score[best] and sorted(score.values())[-2] < score[best] else None
 

@@ -9,14 +9,37 @@
   window.T = function (key, params) {
     var s = Object.prototype.hasOwnProperty.call(dict, key) ? dict[key] : key;
     if (s === key && key.indexOf('##') > 0) s = key.slice(0, key.indexOf('##'));     // 'Lesen##Rolle': Kontext nur im Schluessel
-    if (params) s = s.replace(/\{(\w+)\}/g, function (m, k) { return Object.prototype.hasOwnProperty.call(params, k) ? String(params[k]) : m; });
+    if (params) {
+      // Pluralformen {n:eins|wenige|viele} (Reihenfolge wie PLURAL_FORMS in saga/i18n) vor den Platzhaltern
+      s = s.replace(/\{(\w+):([^{}]*)\}/g, function (m, k, forms) {
+        if (!Object.prototype.hasOwnProperty.call(params, k)) return m;
+        var f = forms.split('|'), i = PLURAL_ORDER.indexOf(pluralCat(params[k]));
+        return f[Math.min(i < 0 ? f.length - 1 : i, f.length - 1)];
+      });
+      s = s.replace(/\{(\w+)\}/g, function (m, k) { return Object.prototype.hasOwnProperty.call(params, k) ? String(params[k]) : m; });
+    }
     return s;
   };
+  // CLDR-Kardinalregeln: de/en/es eins|mehrere, ru eins|wenige|viele, th keine Formen
+  var PLURAL_ORDER = { ru: ['one', 'few', 'many'], th: ['other'] }[lang] || ['one', 'other'];
+  function pluralCat(n) {
+    var f = Number(n);
+    if (lang === 'th' || !isFinite(f) || f !== Math.floor(f)) return 'other';
+    var i = Math.abs(f);
+    if (lang === 'ru') {
+      if (i % 10 === 1 && i % 100 !== 11) return 'one';
+      if (i % 10 >= 2 && i % 10 <= 4 && !(i % 100 >= 12 && i % 100 <= 14)) return 'few';
+      return 'many';
+    }
+    return i === 1 ? 'one' : 'other';
+  }
   // Datums-/Zahlenformat: Browser-Region, wenn sie zur Sprache passt (en-GB, es-MX …), sonst Standard der Sprache
   var prefs = navigator.languages || [navigator.language || ''];
   window.SAGA_LANG = lang;
   window.SAGA_LOCALE = prefs.filter(function (l) { return String(l).toLowerCase().split('-')[0] === lang; })[0] ||
-    ({ de: 'de-DE', en: 'en-US', es: 'es-ES' }[lang] || lang);
+    ({ de: 'de-DE', en: 'en-US', es: 'es-ES', ru: 'ru-RU', th: 'th-TH' }[lang] || lang);
+  // Thai: gregorianischer Kalender statt buddhistischer Jahreszaehlung (th-TH -> th-TH-u-ca-gregory)
+  if (lang === 'th' && !/-u-.*ca-/.test(window.SAGA_LOCALE)) window.SAGA_LOCALE += '-u-ca-gregory';
 })();
 
 (function () {

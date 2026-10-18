@@ -371,10 +371,7 @@ def _day(iso):
         d = date.fromisoformat(str(iso)[:10])
     except ValueError:
         return str(iso)
-    lang = i18n.get_lang()
-    if lang == "en":
-        return f"{i18n._MON_EN[d.month - 1]} {d.day}, {d.year}"
-    return d.strftime("%d.%m.%Y" if lang == "de" else "%d/%m/%Y")
+    return i18n.day_str(d)
 
 
 _DIM = {}                       # Bild-ID -> (Breite, Hoehe) oder None; nur der Dateikopf wird gelesen
