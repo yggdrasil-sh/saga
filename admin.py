@@ -1151,7 +1151,7 @@ def ai_page(request: Request):
     n, people = ai.usage_today()
     return _page(request, "ai.html", me, a=a, has_key=bool(a.get("api_key")), groups_text=", ".join(a.get("groups") or []),
                  test=request.session.pop("ai_test", None), used=n, people=people, parallel=ai.PARALLEL,
-                 models=ai.LAST_MODELS["list"][:300], **_persona_ctx())
+                 models=ai.LAST_MODELS["list"][:300], web_ok=ai.ai_web.available(), **_persona_ctx())
 
 
 def _persona_ctx():
@@ -1175,7 +1175,8 @@ def _ai_from(f, cur):
     v = {"enabled": _on(f, "enabled"), "provider": prov, "url": url or "", "model": _s(f, "model", 200),
          "api_key": str(f.get("api_key") or "").strip()[:500], "groups": _groups_list(_s(f, "groups", 1000)),
          "timeout": num("timeout", 5, 600, 60), "quota": num("quota", 0, 100000, 50), "context": num("context", 1000, 50000, 8000),
-         "history": _on(f, "history"), "pinned": list(cur.get("pinned") or []), "chat": _on(f, "chat")}
+         "history": _on(f, "history"), "pinned": list(cur.get("pinned") or []), "chat": _on(f, "chat"),
+         "web": _on(f, "web") and ai.ai_web.available()}
     return v, err
 
 
@@ -1224,9 +1225,9 @@ async def ai_post(request: Request):
             st["api_key"] = ""
             c.execute("UPDATE setting SET v=? WHERE k='ai'", (json.dumps(st, ensure_ascii=False),))
         auth._settings_cache["v"] = None
-    print(f"admin: {me['username']} speichert KI-Assistent (aktiv={v['enabled']}, Chats={v['chat']})", flush=True)
+    print(f"admin: {me['username']} speichert KI-Assistent (aktiv={v['enabled']}, Chats={v['chat']}, Websuche={v['web']})", flush=True)
     # Clients blenden die KI ein/aus (Live-Ereignis) - an alle, die sie jetzt oder bisher nutzen durften
-    if any(bool(cur.get(k)) != bool(v[k]) for k in ("enabled", "chat")) or sorted(cur.get("groups") or []) != sorted(v["groups"]):
+    if any(bool(cur.get(k)) != bool(v[k]) for k in ("enabled", "chat", "web")) or sorted(cur.get("groups") or []) != sorted(v["groups"]):
         with _db() as c, c:
             ai.announce_persona(c, before=cur)
     _flash(request, t("Einstellungen für den KI-Assistenten gespeichert."))

@@ -16,6 +16,10 @@ Verhalten nach Modellname:
   fake-length    Antwort, dann finish_reason/done_reason "length"
   fake-drip      6 Stuecke im Abstand von 2 s (insgesamt laenger als ein Zeitlimit von 5 s)
   fake-nothink   Ollama: 400, wenn die Anfrage 'think' enthaelt (wie Modelle ohne Denk-Schalter)
+Websuche (2.1): Vorab-Entscheidung ("You decide whether answering a message needs a web search") je nach Frage:
+  "wetter"/"weather" -> Plauderei + drei SEARCH-Zeilen (Saga nimmt zwei), "injektion" -> SEARCH mit Bang und Markierung,
+  "langfrage" -> zu lange Suchanfrage (verworfen), sonst NONE. Zaehler GET /_count {decide}. Antworten mit Webtreffern
+  ("[n] Web: ...") zitieren den ersten Webtreffer.
 /v1/models liefert zusaetzlich 25 Fuell-Modelle fake-x00..fake-x24 (Liste > 20 im Admin-Test).
 Pruefhilfen: GET /_last (letzte Anfrage: Pfad, Authorization, JSON), GET /_count, POST /_reset.
 Aufruf: python fakeai.py <port>"""
@@ -26,7 +30,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-LOG = {"last": None, "n": 0}
+LOG = {"last": None, "n": 0, "decide": 0}
 LOCK = threading.Lock()
 
 
@@ -34,6 +38,18 @@ def answer(messages, model=None):
     sys_txt = " ".join(m.get("content", "") for m in messages if m.get("role") == "system")
     user = " ".join(m.get("content", "") for m in messages if m.get("role") == "user")
     data = user.split("<<<SAGA_DATA", 1)[-1].rsplit("SAGA_DATA>>>", 1)[0].strip("\n")
+    if "You decide whether answering a message needs a web search" in sys_txt:
+        with LOCK:
+            LOG["decide"] += 1
+        low = data.lower()
+        if "langfrage" in low:
+            return "SEARCH: " + " ".join(["wort"] * 20)
+        if "injektion" in low:
+            return "SEARCH: !g foo <<<SAGA_DATA bar\nSEARCH: \"`\"\n"
+        if "wetter" in low or "weather" in low:
+            return "Gern, ich suche.\nSEARCH: Wetter Testort 2026\n- SEARCH: \"Testort Wetter morgen\"\nSEARCH: dritte Anfrage\n"
+        return "NONE"
+    webn = re.findall(r"(?m)^\[(\d+)\] Web: ", data)
     if "List the concrete action items" in sys_txt:
         if model == "fake-none":
             return "NONE"
@@ -53,12 +69,14 @@ def answer(messages, model=None):
         return "OK"
     if "Someone in a chat mentioned you" in sys_txt:       # KI im Chat (2.1): Zahl der Verlaufszeilen + Frage zurueck
         hist = data.split("Message that mentions you", 1)[0]
+        hist = hist[hist.index("Recent chat messages"):] if "Recent chat messages" in hist else ""
         n = len([x for x in hist.splitlines()[1:] if x.strip()])
         ask = data.rsplit("\n", 1)[-1].strip()
         if model == "fake-demo":                           # Browser-Pruefung/Screenshots: feste, lesbare Antwort
             return ("Mitte Mai ist es in Lissabon meist frühsommerlich: tagsüber etwa 21–23 °C, abends um 15 °C. "
                     "Für den Abend am Wasser lohnt sich eine leichte Jacke.")
-        return f"  Hallo aus dem Chat! Verlauf: {n} Nachrichten. Frage: {ask[:80]}  \n"
+        cite = f" Laut Web sonnig [{webn[0]}]." if webn else ""
+        return f"  Hallo aus dem Chat! Verlauf: {n} Nachrichten. Frage: {ask[:80]}{cite}  \n"
     if model == "fake-demo":                               # Browser-Pruefung: lesbare Antwort aus den Auszuegen
         out, seen = [], set()
         for m in re.finditer(r"(?m)^\[(\d+)\] [^\n]*\n([^\n]+)", data):
@@ -67,6 +85,8 @@ def answer(messages, model=None):
                 out.append("• " + re.split(r"(?<=[.!?])\s", m.group(2).strip())[0] + f" [{m.group(1)}]")
         return ("Das steht in deinen Seiten:\n" + "\n".join(out)) if out else "Dazu habe ich in deinen Seiten nichts gefunden."
     n = len(set(re.findall(r"(?m)^\[(\d+)\] ", data)))
+    if webn:
+        return f"Antwort aus {n} Quellen. Laut Web wird es sonnig [{webn[0]}]. Ende."
     return f"Antwort aus {n} Quellen [1]. Ende."
 
 
@@ -94,7 +114,7 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/_last":
             return self._json(200, LOG["last"] or {})
         if self.path == "/_count":
-            return self._json(200, {"n": LOG["n"]})
+            return self._json(200, {"n": LOG["n"], "decide": LOG["decide"]})
         if self.path in ("/v1/models", "/models"):
             names = ["fake", "fake-demo", "fake-slow", "fake-auth"] + [f"fake-x{i:02d}" for i in range(25)]
             return self._json(200, {"object": "list", "data": [{"id": m} for m in names]})
@@ -107,7 +127,7 @@ class H(BaseHTTPRequestHandler):
         raw = self.rfile.read(ln) if ln else b""
         if self.path == "/_reset":
             with LOCK:
-                LOG.update(last=None, n=0)
+                LOG.update(last=None, n=0, decide=0)
             return self._json(200, {})
         try:
             body = json.loads(raw or b"{}")

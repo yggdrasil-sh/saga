@@ -15,6 +15,31 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu: Websuche für die KI
+- **Die KI kann im Web suchen** – über die vorhandene SearXNG-Anbindung (`SEARXNG_URL`, wie die Websuche im Dashboard).
+  Admin-Bereich → KI-Assistent → „Websuche erlauben“ (Standard: aus; nur wählbar, wenn SearXNG eingerichtet ist, mit
+  Datenschutz-Hinweis: Suchbegriffe gehen über SearXNG an Suchmaschinen).
+- **Modellunabhängig** (auch kleine Ollama-Modelle, ohne Tool-Calls): Ein kurzer Vorab-Aufruf entscheidet, ob eine Suche
+  nötig ist (`NONE` oder höchstens zwei Zeilen `SEARCH: …`, serverseitig streng gefiltert). Dann fragt Saga SearXNG
+  (Zeitlimit, höchstens 6 Treffer) und liest den Text der besten zwei Treffer – nur öffentliche Adressen (Prüfung bei
+  jeder Verbindung, auch nach Weiterleitungen), nur Port 80/443, nur `text/html`/`text/plain`, mit Größen- und
+  Zeitlimit (`AI_WEB_FETCH=0`: nur Ausschnitte). Die Treffer gehen als Daten markiert in den Prompt; Anweisungen darin
+  zählen nicht. Antworten nennen die Webquellen mit `[n]` und Link.
+- Gilt für den Assistenten (neuer Schalter „Im Web suchen“ je Frage, Standard an) und für „KI im Chat“ (Quellen als
+  Links in der Antwort, vom Beleg abgedeckt). Zusammenfassen, Verbessern, Übersetzen und Aufgaben vorschlagen suchen nie.
+- Statusanzeige „Marin sucht im Web …“ (Persona-Name, de/en/es) über das `status`-Ereignis; `/api/ai/status` meldet
+  `web`, Hinweise im Chat und im Assistenten nennen dann auch die Websuche. Vertrag: `docs/APP-API-KI.md` Abschnitt 3.
+- `GET /api/ai/persona` meldet zusätzlich `chat` („KI in Chats erlauben“ an und KI eingerichtet) und `web` – auch für
+  Konten, für die der Assistent aus ist (die bekommen `/api/ai/status` nicht); so erkennen Apps, ob „KI im Chat“
+  serverweit aus ist.
+- Grenzen: jede Websuche zählt als weitere Anfrage im Kontingent, höchstens 10 Websuchen je Person in 10 Minuten
+  (`AI_WEB_RATE`), Logs nur mit Anzahl und Dauer. Ist SearXNG nicht erreichbar, kommt die Antwort trotzdem – ohne
+  Webdaten, mit kurzem Hinweis.
+- Alle KI-Funktionen bekommen jetzt auch die **Uhrzeit** (Zeitzone des Servers) im System-Prompt, damit „heute“,
+  „morgen“ und „heute Abend“ stimmen.
+- Tests: neue Reihe `tests/ki_web.py` (Fake-SearXNG, Fake-Modell); der Test-Stack setzt dafür `SEARXNG_URL` der
+  Test-Instanz auf den Fake.
+
 ### Neu: KI-Persona
 - **Name, Profilbild und Tonfall für die KI** (Admin-Bereich → KI-Assistent → Persona): Name (leer = „Saga KI“ /
   „Saga AI“ / „Saga IA“), Profilbild mit denselben Prüfungen wie Profilbilder (neu kodiert, 64/128/256 px, WebP und

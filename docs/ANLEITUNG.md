@@ -907,6 +907,14 @@ Fragenden wie jede Nachricht für alle Mitglieder; sie erscheint mit Name und Bi
 speichert weder Frage noch Antwort, nur eine Prüfsumme der Antwort, mit der die anderen Geräte prüfen, dass sie
 wirklich von der KI stammt. Es gelten Kontingent und Gruppen des Assistenten, dazu höchstens 6 Fragen je Minute.
 
+**Websuche für die KI:** Ist die Websuche (Abschnitt 10) eingerichtet, kann der Admin unter KI-Assistent
+„Websuche erlauben“ einschalten (Standard: aus). Dann sucht die KI bei Fragen nach Aktuellem – Wetter, Nachrichten,
+Öffnungszeiten – selbst im Web: Das Modell entscheidet vorab, ob eine Suche nötig ist, und bildet höchstens zwei kurze
+Suchbegriffe; diese gehen über SearXNG an Suchmaschinen. Saga liest außerdem den Text der besten Treffer (nur
+öffentliche Adressen). Die Antwort nennt die Webquellen mit Link; währenddessen steht dort „Marin sucht im Web …“. Im
+Assistenten lässt sich das je Frage mit „Im Web suchen“ abschalten; Zusammenfassen, Verbessern, Übersetzen und
+Aufgaben vorschlagen suchen nie im Web. Jede Websuche zählt als weitere Anfrage im Kontingent.
+
 ### Konto, Kalender, Immich, Apps
 
 Im Benutzermenü oben rechts unter **Einstellungen** (je ein Reiter):
@@ -1052,6 +1060,7 @@ SEARXNG_SECRET=<openssl rand -hex 32>
 ```
 
 Danach `docker compose up -d`. Die Suchanfragen gehen nur an deinen Server, nicht direkt an Suchmaschinen.
+Dieselbe Anbindung kann auch die KI nutzen („Websuche erlauben“ unter KI-Assistent, siehe oben).
 
 ## 11. Sicherung, Wiederherstellung, Updates
 
@@ -1251,6 +1260,7 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `FED_ALLOW_HTTP` | – | `1` = Föderation auch über http (nur für Tests; sonst nur https) |
 | `FED_RATE` / `FED_TIMEOUT` | `600` / `10` | Anfragen je Minute und verbundener Instanz / Sekunden bis zur Zeitüberschreitung |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Websuche (Abschnitt 10) |
+| `AI_WEB_FETCH` / `AI_WEB_RATE` | `2` / `10` | Websuche der KI: Trefferseiten, deren Text gelesen wird (0 = nur Ausschnitte); Websuchen je Person in 10 Minuten |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Sprache und Filter der Websuche |
 | `LOG_LEVEL` | `info` | Ausführlichkeit des Logs |
 | `DATABASE_URL` | aus `POSTGRES_*` | Eigene Datenbank-Verbindung (statt des `db`-Containers) |

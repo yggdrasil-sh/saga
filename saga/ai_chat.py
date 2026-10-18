@@ -13,7 +13,11 @@ Freigabe in zwei Stufen: Admin-Bereich (KI-Assistent -> "KI in Chats erlauben", 
 Seiten-Chat - Eigentuemer der Seite. Wer fragt, muss den Assistenten nutzen duerfen (Gruppen, Kontingent wie sonst).
 
 Die KI bekommt KEINE Seiten, Aufgaben oder Kalender - nur die Frage und den mitgeschickten Verlauf. Sonst koennte eine
-Person ueber die KI Inhalte ihrer eigenen Seiten in einen Chat mit anderen tragen, ohne es zu merken."""
+Person ueber die KI Inhalte ihrer eigenen Seiten in einen Chat mit anderen tragen, ohne es zu merken.
+
+Websuche (2.1, saga/ai_web.py): Hat der Admin sie erlaubt, entscheidet das Modell vorab, ob die Frage eine Websuche
+braucht (Wetter, Nachrichten ...); dann gehen hoechstens zwei kurze Suchbegriffe ueber SearXNG an Suchmaschinen. Die
+Treffer stehen als DATEN im Prompt; die genutzten Quellen haengt Saga als Links an die Antwort (Teil des Belegs)."""
 import asyncio
 import hashlib
 import re
@@ -25,7 +29,7 @@ from fastapi.responses import JSONResponse
 
 import auth
 from db import connect as _db
-from saga import ai, chat
+from saga import ai, ai_web, chat
 from saga.core import _api_guard, _bad, _body, t, user_info
 
 router = APIRouter()
@@ -69,21 +73,42 @@ def _clean(s, n):
     return ai.clean_data(s[:n])
 
 
-def chat_messages(q, asker, history):
-    """Anweisungen fuer eine Antwort im Chat. Frage und Verlauf sind DATEN zwischen den Markierungen."""
+def chat_messages(q, asker, history, web=None):
+    """Anweisungen fuer eine Antwort im Chat. Frage, Verlauf und Webtreffer sind DATEN zwischen den Markierungen."""
     ql = ai.LANG_NAMES.get(ai.q_lang(q))
     lang = ql or ai._lang_name()
+    web = web or {}
     task = ("Someone in a chat mentioned you and asked you something. Reply to their message directly, like a helpful chat "
             "participant: short and friendly, at most about 120 words, plain text, no headings, no tables. Use the recent "
             "chat messages only as context. You have NO access to the person's pages, tasks, calendar or files - if the "
-            "question needs them, say so briefly. Do not invent facts about the people in the chat. Reply in the language "
-            "of the message" + (f" ({ql})" if ql else "") + ".")
+            "question needs them, say so briefly. Do not invent facts about the people in the chat. " +
+            (ai.WEB_TASK if web.get("material") else "") + (ai.WEB_FAILED if web.get("failed") else "") +
+            "Reply in the language of the message" + (f" ({ql})" if ql else "") + ".")
     lines = [f"{_clean(h['name'], NAME_MAX)}: {_clean(h['text'], LINE_MAX)}" for h in history]
     data = ("Recent chat messages (oldest first):\n" + "\n".join(lines) + "\n\n" if lines else "") + \
         f"Message that mentions you, from {_clean(asker, NAME_MAX)}:\n{_clean(q, ai.Q_MAX)}"
+    if web.get("material"):
+        data = web["material"] + "\n\n" + data
     return [{"role": "system", "content": ai.system_prompt(task)},
             {"role": "user", "content": f"{ai.MARK_A}\n{data}\n{ai.MARK_B}\n\n(Reply to the message above in {lang}. "
                                         "Only the reply text.)"}]
+
+
+WEB_CTX = 3                      # so viele Verlaufs-Nachrichten bekommt die Entscheidung "Websuche noetig?" mit
+_CITE = re.compile(r"\[(\d{1,2})(?:\s*[,;]\s*\d{1,2})*\]")
+
+
+def with_sources(answer, srcs, notice=None):
+    """Antwort im Chat + genutzte Webquellen als Links (zitierte; ohne Zitat die ersten drei) + ggf. Hinweis.
+    Alles ist Teil des Textes, den die App verschluesselt und der Beleg (SHA-256) abdeckt."""
+    out = answer
+    if srcs:
+        cited = {int(n) for m in _CITE.finditer(answer) for n in re.findall(r"\d{1,2}", m.group(0))}
+        use = [s for s in srcs if s["n"] in cited] or srcs[:3]
+        out += "\n\n" + t("Quellen:") + "\n" + "\n".join(f"[{s['n']}] {s['title']} – {s['url']}" for s in use)
+    if notice:
+        out += "\n\n(" + notice + ")"
+    return out
 
 
 def _history(v):
@@ -185,19 +210,35 @@ async def api_chat_ai_ask(cid: int, request: Request):
         ai._release(uid)
         return _bad(t("Dein Tageskontingent für den Assistenten ist aufgebraucht."), 429)
 
+    st = {"web": {}}
+
+    def prep(emit, stop):
+        ctxl = "\n".join(f"{_clean(h['name'], NAME_MAX)}: {_clean(h['text'], 300)}" for h in hist[-WEB_CTX:])
+        st["web"] = w = ai.web_step(uid, c, q, emit, stop, context=ctxl, start=1, quota=quota)
+        return chat_messages(q, asker, hist, web=w)
+
     def finish(answer):
         answer = answer.strip()
         if not answer:
             return {"text": ""}
+        w = st["web"]
+        answer = with_sources(answer, w.get("sources"), w.get("notice"))
         rid = secrets.token_hex(16)
         h = hashlib.sha256(answer.encode("utf-8")).hexdigest()
         with _db() as conn, conn:
             conn.execute("DELETE FROM chat_ai_reply WHERE created<? AND msg_id IS NULL", (time.time() - REPLY_TTL,))
             conn.execute("INSERT INTO chat_ai_reply (id, chat_id, uid, created, q_msg, sha256) VALUES (?,?,?,?,?,?)",
                          (rid, chat_id, uid, time.time(), qmsg, h))
-        return {"text": answer, "reply": {"id": rid, "sha256": h}, "persona": {"name": ai.persona_name()}}
-    print(f"chat: Frage an die KI in Chat {chat_id} ({len(q)} Zeichen, {len(hist)} Nachrichten Verlauf)", flush=True)
-    return ai._respond(uid, c, chat_messages(q, asker, hist), [], finish, left, quota)
+        out = {"text": answer, "reply": {"id": rid, "sha256": h}, "persona": {"name": ai.persona_name()}}
+        if w.get("sources"):
+            out["web"] = len(w["sources"])
+        if "quota_left" in w:
+            out["quota_left"] = w["quota_left"]
+        return out
+    web = ai_web.enabled(c)
+    print(f"chat: Frage an die KI in Chat {chat_id} ({len(q)} Zeichen, {len(hist)} Nachrichten Verlauf"
+          f"{', Websuche erlaubt' if web else ''})", flush=True)
+    return ai._respond(uid, c, chat_messages(q, asker, hist), [], finish, left, quota, prep=prep if web else None)
 
 
 def reply_sha(text):

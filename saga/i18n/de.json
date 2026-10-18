@@ -2360,5 +2360,19 @@
  "{name} ist in diesem Chat erlaubt.": "{name} ist in diesem Chat erlaubt.",
  "{name} ist hier nicht mehr erlaubt.": "{name} ist hier nicht mehr erlaubt.",
  "Keine Antwort bekommen.": "Keine Antwort bekommen.",
- "{name} konnte nicht antworten: {err}": "{name} konnte nicht antworten: {err}"
+ "{name} konnte nicht antworten: {err}": "{name} konnte nicht antworten: {err}",
+ "Zu viele Websuchen in kurzer Zeit – diese Antwort kommt ohne Websuche.": "Zu viele Websuchen in kurzer Zeit – diese Antwort kommt ohne Websuche.",
+ "Dein Tageskontingent reicht nicht mehr für eine Websuche – Antwort ohne Websuche.": "Dein Tageskontingent reicht nicht mehr für eine Websuche – Antwort ohne Websuche.",
+ "{name} sucht im Web …": "{name} sucht im Web …",
+ "Die Websuche ist gerade nicht erreichbar – Antwort ohne Webdaten.": "Die Websuche ist gerade nicht erreichbar – Antwort ohne Webdaten.",
+ "Websuche erlauben": "Websuche erlauben",
+ "Standard: aus. Dann darf die KI bei Fragen nach aktuellen Dingen (Wetter, Nachrichten, Öffnungszeiten …) selbst im Web suchen – im Assistenten (abschaltbar je Frage) und im Chat. Das Modell entscheidet vorab, ob eine Suche nötig ist; jede Websuche zählt als weitere Anfrage.": "Standard: aus. Dann darf die KI bei Fragen nach aktuellen Dingen (Wetter, Nachrichten, Öffnungszeiten …) selbst im Web suchen – im Assistenten (abschaltbar je Frage) und im Chat. Das Modell entscheidet vorab, ob eine Suche nötig ist; jede Websuche zählt als weitere Anfrage.",
+ "Datenschutz: Die Suchbegriffe, die die KI aus der Frage bildet, gehen über deine SearXNG-Instanz an Suchmaschinen; Saga ruft außerdem die besten Treffer ab (nur öffentliche Adressen). Die Treffer gehen mit der Frage an den KI-Endpunkt.": "Datenschutz: Die Suchbegriffe, die die KI aus der Frage bildet, gehen über deine SearXNG-Instanz an Suchmaschinen; Saga ruft außerdem die besten Treffer ab (nur öffentliche Adressen). Die Treffer gehen mit der Frage an den KI-Endpunkt.",
+ "Nicht verfügbar: Dafür muss die Websuche (SearXNG) eingerichtet sein – SEARXNG_URL in der .env, siehe Anleitung „Websuche“.": "Nicht verfügbar: Dafür muss die Websuche (SearXNG) eingerichtet sein – SEARXNG_URL in der .env, siehe Anleitung „Websuche“.",
+ "Im Web suchen": "Im Web suchen",
+ "Bei Fragen nach Aktuellem (Wetter, Nachrichten …) darf die KI im Web suchen. Suchbegriffe gehen über die Websuche an Suchmaschinen.": "Bei Fragen nach Aktuellem (Wetter, Nachrichten …) darf die KI im Web suchen. Suchbegriffe gehen über die Websuche an Suchmaschinen.",
+ "Bei Fragen nach Aktuellem (Wetter, Nachrichten …) sucht {name} im Web, wenn „Im Web suchen“ an ist: Suchbegriffe gehen über die Websuche an Suchmaschinen.": "Bei Fragen nach Aktuellem (Wetter, Nachrichten …) sucht {name} im Web, wenn „Im Web suchen“ an ist: Suchbegriffe gehen über die Websuche an Suchmaschinen.",
+ "{name} ist in diesem Chat erlaubt – nur auf Zuruf: Nachrichten mit @{name} und bis zu {n} Nachrichten davor gehen im Klartext an die KI ({host}) und Suchbegriffe über die Websuche an Suchmaschinen. Alles andere bleibt Ende-zu-Ende-verschlüsselt.": "{name} ist in diesem Chat erlaubt – nur auf Zuruf: Nachrichten mit @{name} und bis zu {n} Nachrichten davor gehen im Klartext an die KI ({host}) und Suchbegriffe über die Websuche an Suchmaschinen. Alles andere bleibt Ende-zu-Ende-verschlüsselt.",
+ "Geht an {name}: diese Nachricht und bis zu {n} davor, im Klartext an {host} – und Suchbegriffe über die Websuche.": "Geht an {name}: diese Nachricht und bis zu {n} davor, im Klartext an {host} – und Suchbegriffe über die Websuche.",
+ "Bei Fragen nach Aktuellem darf {name} im Web suchen; die Suchbegriffe gehen über die Websuche an Suchmaschinen.": "Bei Fragen nach Aktuellem darf {name} im Web suchen; die Suchbegriffe gehen über die Websuche an Suchmaschinen."
 }

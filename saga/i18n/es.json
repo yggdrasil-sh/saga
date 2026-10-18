@@ -2360,5 +2360,19 @@
  "{name} ist in diesem Chat erlaubt.": "{name} ya está permitida en este chat.",
  "{name} ist hier nicht mehr erlaubt.": "{name} ya no está permitida aquí.",
  "Keine Antwort bekommen.": "No se recibió respuesta.",
- "{name} konnte nicht antworten: {err}": "{name} no pudo responder: {err}"
+ "{name} konnte nicht antworten: {err}": "{name} no pudo responder: {err}",
+ "Zu viele Websuchen in kurzer Zeit – diese Antwort kommt ohne Websuche.": "Demasiadas búsquedas web en poco tiempo: esta respuesta llega sin búsqueda web.",
+ "Dein Tageskontingent reicht nicht mehr für eine Websuche – Antwort ohne Websuche.": "Tu cupo diario ya no alcanza para una búsqueda web: respuesta sin búsqueda web.",
+ "{name} sucht im Web …": "{name} está buscando en la web …",
+ "Die Websuche ist gerade nicht erreichbar – Antwort ohne Webdaten.": "La búsqueda web no está disponible ahora: respuesta sin datos de la web.",
+ "Websuche erlauben": "Permitir búsqueda web",
+ "Standard: aus. Dann darf die KI bei Fragen nach aktuellen Dingen (Wetter, Nachrichten, Öffnungszeiten …) selbst im Web suchen – im Assistenten (abschaltbar je Frage) und im Chat. Das Modell entscheidet vorab, ob eine Suche nötig ist; jede Websuche zählt als weitere Anfrage.": "Por defecto: desactivado. La IA podrá buscar en la web por sí misma cuando se pregunte por cosas actuales (tiempo, noticias, horarios …), en el asistente (se puede desactivar en cada pregunta) y en los chats. El modelo decide antes si hace falta buscar; cada búsqueda web cuenta como una solicitud más.",
+ "Datenschutz: Die Suchbegriffe, die die KI aus der Frage bildet, gehen über deine SearXNG-Instanz an Suchmaschinen; Saga ruft außerdem die besten Treffer ab (nur öffentliche Adressen). Die Treffer gehen mit der Frage an den KI-Endpunkt.": "Privacidad: los términos de búsqueda que la IA forma a partir de la pregunta llegan a los buscadores a través de tu instancia de SearXNG; Saga además descarga los mejores resultados (solo direcciones públicas). Los resultados se envían junto con la pregunta al endpoint de IA.",
+ "Nicht verfügbar: Dafür muss die Websuche (SearXNG) eingerichtet sein – SEARXNG_URL in der .env, siehe Anleitung „Websuche“.": "No disponible: primero hay que configurar la búsqueda web (SearXNG) – SEARXNG_URL en el .env, ver la guía «Búsqueda web».",
+ "Im Web suchen": "Buscar en la web",
+ "Bei Fragen nach Aktuellem (Wetter, Nachrichten …) darf die KI im Web suchen. Suchbegriffe gehen über die Websuche an Suchmaschinen.": "En preguntas sobre cosas actuales (tiempo, noticias …) la IA puede buscar en la web. Los términos de búsqueda llegan a los buscadores a través de la búsqueda web.",
+ "Bei Fragen nach Aktuellem (Wetter, Nachrichten …) sucht {name} im Web, wenn „Im Web suchen“ an ist: Suchbegriffe gehen über die Websuche an Suchmaschinen.": "En preguntas sobre cosas actuales (tiempo, noticias …) {name} busca en la web si «Buscar en la web» está activado: los términos de búsqueda llegan a los buscadores a través de la búsqueda web.",
+ "{name} ist in diesem Chat erlaubt – nur auf Zuruf: Nachrichten mit @{name} und bis zu {n} Nachrichten davor gehen im Klartext an die KI ({host}) und Suchbegriffe über die Websuche an Suchmaschinen. Alles andere bleibt Ende-zu-Ende-verschlüsselt.": "{name} está permitida en este chat, solo si se la menciona: los mensajes con @{name} y hasta {n} mensajes anteriores se envían en texto claro a la IA ({host}), y los términos de búsqueda llegan a los buscadores a través de la búsqueda web. Todo lo demás sigue cifrado de extremo a extremo.",
+ "Geht an {name}: diese Nachricht und bis zu {n} davor, im Klartext an {host} – und Suchbegriffe über die Websuche.": "Se envía a {name}: este mensaje y hasta {n} anteriores, en texto claro a {host}, y términos de búsqueda a través de la búsqueda web.",
+ "Bei Fragen nach Aktuellem darf {name} im Web suchen; die Suchbegriffe gehen über die Websuche an Suchmaschinen.": "En preguntas sobre cosas actuales {name} puede buscar en la web; los términos de búsqueda llegan a los buscadores a través de la búsqueda web."
 }

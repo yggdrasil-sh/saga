@@ -158,7 +158,8 @@ def run():
     # --- Standard ------------------------------------------------------------------------------------------------------
     s, d = persona(A)
     ok(f"Standard: Name 'Saga KI', kein Bild, an ({s}, {d})",
-       s == 200 and d == {"name": "Saga KI", "custom_name": False, "avatar": None, "avatar_etag": None, "enabled": True})
+       s == 200 and d == {"name": "Saga KI", "custom_name": False, "avatar": None, "avatar_etag": None, "enabled": True,
+                          "chat": False, "web": False})
     ok("Standardname je Sprache (en: Saga AI, es: Saga IA)", persona(A, "en")[1].get("name") == "Saga AI" and persona(A, "es")[1].get("name") == "Saga IA")
     st = req("GET", "/api/ai/status", A)[1]
     ok("Status enthaelt die Persona", (st.get("persona") or {}).get("name") == "Saga KI")
@@ -279,8 +280,14 @@ def run():
        and raw(v1 + "&s=64", A)[0] == 404 and d.get("name") == "Marin")
 
     # --- Ereignis nur an Konten, die die KI nutzen duerfen --------------------------------------------------------------
-    auth.save_setting("ai", dict(auth.settings(fresh=True)["ai"], groups=["ki-pniemand"]))
+    auth.save_setting("ai", dict(auth.settings(fresh=True)["ai"], groups=["ki-pniemand"], chat=True))
     time.sleep(WAIT)
+    d = persona(A)[1]
+    ok(f"Assistent fuer das Konto aus: Persona meldet trotzdem den Server-Schalter chat ({d})", d.get("enabled") is False
+       and d.get("chat") is True and d.get("web") is False and req("GET", "/api/ai/status", A)[1] == {"enabled": False})
+    auth.save_setting("ai", dict(auth.settings(fresh=True)["ai"], chat=False))
+    time.sleep(WAIT)
+    ok("... chat=false, wenn der Server-Schalter aus ist", persona(A)[1].get("chat") is False)
     m = len(ev.ev)
     admin_mp(adm, "/settings/ai/persona", {"name": "Nebel", "tone": tone, "action": "save"})
     ok("Ohne Nutzungsrecht (Gruppe): kein ai.persona.changed", ev.wait("ai.persona.changed", m, timeout=2.5) is None

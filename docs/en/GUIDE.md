@@ -882,6 +882,14 @@ The asker's device encrypts the reply like any message for all members; it appea
 (“asked by …”). The server stores neither question nor answer, only a checksum of the answer that lets the other
 devices verify it really came from the AI. The assistant's quota and groups apply, plus at most 6 questions per minute.
 
+**Web search for the AI:** if web search (section 10) is set up, the admin can turn on “Allow web search” under AI
+assistant (default: off). The AI then searches the web itself for questions about current things – weather, news,
+opening hours: the model first decides whether a search is needed and forms at most two short search terms, which go to
+search engines via SearXNG. Saga also reads the text of the best results (public addresses only). The answer names the
+web sources with links; meanwhile it shows “Marin is searching the web …”. In the assistant you can switch it off per
+question with “Search the web”; summarize, improve, translate and suggest tasks never search the web. Each web search
+counts as one more request in the quota.
+
 ### Account, calendars, Immich, apps
 
 In the user menu at the top right under **Settings** (one tab each):
@@ -1025,6 +1033,7 @@ SEARXNG_SECRET=<openssl rand -hex 32>
 ```
 
 Then run `docker compose up -d`. Search queries only go to your server, not directly to search engines.
+The AI can use the same connection (“Allow web search” under AI assistant, see above).
 
 ## 11. Backup, restore, updates
 
@@ -1224,6 +1233,7 @@ with the same account also switch the oldest ones to polling.
 | `FED_ALLOW_HTTP` | – | `1` = allow federation over http (tests only; otherwise https only) |
 | `FED_RATE` / `FED_TIMEOUT` | `600` / `10` | Requests per minute and connected instance / seconds until timeout |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Web search (section 10) |
+| `AI_WEB_FETCH` / `AI_WEB_RATE` | `2` / `10` | AI web search: result pages whose text is read (0 = snippets only); web searches per person in 10 minutes |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Language and filter of the web search |
 | `LOG_LEVEL` | `info` | Log verbosity |
 | `DATABASE_URL` | from `POSTGRES_*` | Custom database connection (instead of the `db` container) |

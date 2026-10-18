@@ -32,6 +32,9 @@
     {{ field(_('Seiteninhalt je Anfrage (Zeichen)'), 'context', a.context, type='number', max=5, hint=_('mehr Kontext = bessere Antworten, aber langsamer (1000–50000)')) }}
     {{ check(_('Personen dürfen einen Verlauf einschalten'), 'history', a.history, _('Standard bei jeder Person: aus. Ausschalten löscht den eigenen Verlauf.')) }}
     {{ check(_('KI in Chats erlauben (nur auf Zuruf)'), 'chat', a.chat, _('Standard: aus. Dann dürfen die Verantwortlichen eines Chats die KI dort zulassen. Sie liest nur Nachrichten, in denen sie mit @Name erwähnt wird, plus ein paar Nachrichten davor als Zusammenhang – diese gehen im Klartext an den Endpunkt. Alles andere bleibt Ende-zu-Ende-verschlüsselt.')) }}
+    {% if web_ok %}{{ check(_('Websuche erlauben'), 'web', a.web, _('Standard: aus. Dann darf die KI bei Fragen nach aktuellen Dingen (Wetter, Nachrichten, Öffnungszeiten …) selbst im Web suchen – im Assistenten (abschaltbar je Frage) und im Chat. Das Modell entscheidet vorab, ob eine Suche nötig ist; jede Websuche zählt als weitere Anfrage.')) }}
+    <p class="hk-hint">{{ _("Datenschutz: Die Suchbegriffe, die die KI aus der Frage bildet, gehen über deine SearXNG-Instanz an Suchmaschinen; Saga ruft außerdem die besten Treffer ab (nur öffentliche Adressen). Die Treffer gehen mit der Frage an den KI-Endpunkt.") }}</p>
+    {% else %}<label class="adm-check"><input type="checkbox" name="web" value="1" disabled><span>{{ _("Websuche erlauben") }}<small>{{ _("Nicht verfügbar: Dafür muss die Websuche (SearXNG) eingerichtet sein – SEARXNG_URL in der .env, siehe Anleitung „Websuche“.") }}</small></span></label>{% endif %}
     <p class="hk-hint">{{ _("Heute: {n} Anfragen von {p} Personen · höchstens {k} gleichzeitig (AI_MAX_PARALLEL)", n=used, p=people, k=parallel) }}</p>
   </section>
   <div class="adm-actions">

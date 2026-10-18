@@ -9,7 +9,8 @@ Alles ist rückwärtskompatibel: unbekannte Felder und Ereignisse ignorieren. `M
 ### `GET /api/ai/persona`
 
 ```json
-{"name": "Marin", "custom_name": true, "avatar": "/api/ai/avatar?v=3", "avatar_etag": "1f0c…", "enabled": true}
+{"name": "Marin", "custom_name": true, "avatar": "/api/ai/avatar?v=3", "avatar_etag": "1f0c…", "enabled": true,
+ "chat": true, "web": false}
 ```
 
 | Feld | Bedeutung |
@@ -19,9 +20,12 @@ Alles ist rückwärtskompatibel: unbekannte Felder und Ereignisse ignorieren. `M
 | `avatar` | Relativer Pfad zum Profilbild oder `null` = kein Bild: **neutrales Symbol** zeigen (Web: ✦ auf Akzentfarbe). Der Wert ändert sich (`?v=`), sobald ein neues Bild hochgeladen wird. |
 | `avatar_etag` | Kennung des Bildinhalts – zum Vergleich mit einem Zwischenspeicher. |
 | `enabled` | Ist der Assistent für **dieses Konto** eingeschaltet (Admin-Schalter + Gruppen)? `false` = keine KI-Funktionen anbieten. |
+| `chat` | (2.1) Serverweit „KI in Chats erlauben“ an **und** KI eingerichtet – unabhängig vom Konto. Damit erkennen auch Apps, für deren Konto der Assistent aus ist (kein `/api/ai/status`), ob „KI im Chat“ serverweit aus ist (z. B. Hinweis in Chats mit `ai == true` ausblenden). Fehlt das Feld (älterer Server): wie `false` behandeln bzw. `/api/ai/status` fragen. |
+| `web` | (2.1) Websuche der KI serverweit aktiv (Admin-Schalter, SearXNG eingerichtet, KI eingerichtet) – für die Hinweistexte (Abschnitt 3). |
 
-Dasselbe Objekt (ohne `enabled`) steckt auch in `GET /api/ai/status` unter `persona`, solange der Assistent für das
-Konto an ist.
+Dasselbe Objekt (ohne `enabled`, `chat`, `web` – die stehen dort auf oberster Ebene) steckt auch in
+`GET /api/ai/status` unter `persona`, solange der Assistent für das Konto an ist. Das Live-Ereignis `ai.persona.changed`
+enthält `chat`/`web` nicht – nach dem Ereignis `/api/ai/persona` neu abfragen.
 
 ### `GET /api/ai/avatar?v=…&s=64|128|256`
 
@@ -127,4 +131,47 @@ Absender die Nachricht oder läuft sie ab, verschwindet der Beleg mit ihr.
 ### Was die KI sieht
 
 Nur Frage, Namen und mitgeschickten Verlauf (als Daten markiert), dazu Persona und Tonfall. **Keine** Seiten, Aufgaben,
-Kalender oder Dateien – sonst könnte jemand über die KI eigene Inhalte in einen Chat mit anderen tragen.
+Kalender oder Dateien – sonst könnte jemand über die KI eigene Inhalte in einen Chat mit anderen tragen. Mit
+eingeschalteter Websuche (Abschnitt 3) zusätzlich Webtreffer zur Frage.
+
+## 3. Websuche (2.1)
+
+Der Admin kann der KI erlauben, bei Fragen nach Aktuellem (Wetter, Nachrichten, Öffnungszeiten …) im Web zu suchen –
+über die SearXNG-Instanz des Servers. Standard: aus. Die Apps brauchen dafür **nichts Neues**; alles läuft über die
+bekannten Streams. Für Hinweise und den Schalter je Frage:
+
+- `GET /api/ai/status` → `"web": true`, wenn die Websuche für die KI wirksam ist (Admin-Schalter an **und** SearXNG
+  eingerichtet). Fehlt das Feld (ältere Server): `false`.
+- **Hinweise ergänzen**, wenn `web == true`: Chat-Hinweis z. B. „… gehen im Klartext an die KI (host) und Suchbegriffe
+  über die Websuche an Suchmaschinen.“, beim Schreiben „… im Klartext an host – und Suchbegriffe über die Websuche.“,
+  im Assistenten „Bei Fragen nach Aktuellem (Wetter, Nachrichten …) sucht Marin im Web, wenn „Im Web suchen“ an ist:
+  Suchbegriffe gehen über die Websuche an Suchmaschinen.“ (Texte de/en/es wie im Web, Schlüssel in `saga/i18n`).
+- **Assistent** (`POST /api/ai/ask`): neues Feld `"web": true|false` – Schalter „Im Web suchen“ je Frage neben
+  Aufgaben/Kalender, Standard an; nur zeigen, wenn `status.web`. Fehlt das Feld, gilt `true`. Für Zusammenfassen,
+  Verbessern, Übersetzen und Aufgaben vorschlagen (`/api/ai/page/{nid}`) sucht Saga nie im Web.
+- **Chat** (`POST /api/chats/{cid}/ai`): kein eigener Schalter – mit `status.web` darf die KI suchen.
+
+Ablauf auf dem Server: Das Modell entscheidet in einem kurzen Vorab-Aufruf, ob eine Suche nötig ist (höchstens zwei
+knappe Suchbegriffe), dann fragt Saga SearXNG (höchstens 6 Treffer) und liest den Text der besten Treffer (nur
+öffentliche Adressen). Die Treffer gehen als Daten markiert an das Modell.
+
+**Ereignisse im Stream** (unbekannte Ereignisse/Felder ignorieren – alles rückwärtskompatibel):
+
+| Ereignis | Bedeutung |
+|---|---|
+| `status {"web": "searching", "text": "Marin sucht im Web …"}` | Suche läuft – `text` (Sprache der Person, mit Persona-Name) statt „denkt nach …“ zeigen |
+| `status {"web": "done", "results": n}` | Suche fertig – wieder „Marin denkt nach …“ |
+| `status {"web": "failed"}` | Suche fehlgeschlagen – die Antwort kommt trotzdem (ohne Webdaten) |
+| `sources {sources: […]}` (Assistent, ein **zweites** Mal) | Liste ersetzen: Seitenquellen + Webquellen `{"n", "id": null, "title", "url", "host", "web": true}` |
+| `done {…, "web": n, "notice": "…"}` | `web`: Zahl der Webquellen; `notice`: kurzer Hinweis (z. B. „Die Websuche ist gerade nicht erreichbar – Antwort ohne Webdaten.“) unter der Antwort zeigen |
+
+- **Quellen im Assistenten:** `[n]` in der Antwort kann jetzt auch auf eine Webquelle zeigen – dann `url` im Browser
+  öffnen (nur `http`/`https`), daneben `host` anzeigen. Der Verlauf (`GET /api/ai/history`) liefert Webquellen genauso.
+  Ältere Apps zeigen Webquellen wie „Seite ohne Zugriff“ (Titel ohne Link) – nichts bricht.
+- **Quellen im Chat:** Saga hängt die genutzten Webquellen an `done.text` an („Quellen:“ und je Zeile
+  `[n] Titel – https://…`) – sie sind Teil des Textes, den die App verschlüsselt sendet, und vom Beleg (`sha256`)
+  abgedeckt. Links im Text wie in normalen Nachrichten klickbar machen. Gibt es einen Hinweis (Suche fehlgeschlagen),
+  steht er in Klammern am Ende.
+- **Grenzen:** Jede Websuche zählt als **weitere Anfrage** im Tageskontingent (`quota_left` in `done` ist schon
+  verrechnet); zusätzlich höchstens 10 Websuchen je Person in 10 Minuten (darüber: Antwort ohne Websuche mit `notice`).
+  Fehlgeschlagene Suchen zählen nicht.

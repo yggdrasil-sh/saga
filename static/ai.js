@@ -145,6 +145,10 @@
           if (src && src.id) {
             var a = el('a', 'ai-cite', '[' + n + ']'); a.href = '/notes#' + src.id; a.title = src.title || '';
             p.appendChild(a); if (cited) cited[+n] = 1;
+          } else if (src && src.url && /^https?:\/\//i.test(src.url)) {      // Webquelle (2.1): Link nach aussen
+            var w = el('a', 'ai-cite', '[' + n + ']'); w.href = src.url; w.target = '_blank'; w.rel = 'noopener noreferrer';
+            w.title = (src.title || '') + (src.host ? ' – ' + src.host : '');
+            p.appendChild(w); if (cited) cited[+n] = 1;
           } else p.appendChild(document.createTextNode('[' + n + ']'));
         });
       } else if (x.charAt(0) === '`') p.appendChild(el('code', null, x.slice(1, -1)));
@@ -178,11 +182,15 @@
     var any = cited && Object.keys(cited).length;
     sources = sources.slice().sort(function (a, b) { return any ? (cited[b.n] ? 1 : 0) - (cited[a.n] ? 1 : 0) || a.n - b.n : a.n - b.n; });
     sources.forEach(function (s) {
-      var a = el(s.id ? 'a' : 'span', 'ai-src' + (any && !cited[s.n] ? ' ai-src-uncited' : '')); if (s.id) a.href = '/notes#' + s.id;
+      var link = s.id || (s.url && /^https?:\/\//i.test(s.url));
+      var a = el(link ? 'a' : 'span', 'ai-src' + (s.url ? ' ai-src-web' : '') + (any && !cited[s.n] ? ' ai-src-uncited' : ''));
+      if (s.id) a.href = '/notes#' + s.id;
+      else if (link) { a.href = s.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; }
       if (any && !cited[s.n]) a.title = T('durchsucht, aber nicht zitiert');
       a.appendChild(el('span', 'ai-src-n', String(s.n)));
       a.appendChild(el('span', 'ai-src-t', s.title || T('Unbenannt')));
       if (s.owner) a.appendChild(el('span', 'ai-src-o', s.owner));
+      if (s.url && s.host) a.appendChild(el('span', 'ai-src-o', '↗ ' + s.host));
       w.appendChild(a);
     });
     return w;
@@ -193,7 +201,9 @@
   var askTa = el('textarea', 'hk-in ai-ta'); askTa.rows = 2; askTa.setAttribute('aria-label', T('Frage an deine Seiten'));
   function askPh() { askTa.placeholder = T('Frage {name} etwas zu deinen Seiten …', { name: P().name }); }
   askPh();
-  var optTasks = switchBox(T('Aufgaben einbeziehen')), optCal = switchBox(T('Kalender einbeziehen'));
+  var optTasks = switchBox(T('Aufgaben einbeziehen')), optCal = switchBox(T('Kalender einbeziehen')), optWeb = switchBox(T('Im Web suchen'));
+  optWeb.input.checked = true;                       // Standard an, wenn der Admin die Websuche erlaubt (2.1)
+  optWeb.title = T('Bei Fragen nach Aktuellem (Wetter, Nachrichten …) darf die KI im Web suchen. Suchbegriffe gehen über die Websuche an Suchmaschinen.');
   var sendB = el('button', 'btn btn-primary ai-send', T('Fragen')); sendB.type = 'button';
   var stopB = el('button', 'btn ai-stop', T('Stopp')); stopB.type = 'button'; stopB.hidden = true;
   askTa.addEventListener('keydown', function (e) {
@@ -217,10 +227,12 @@
       var hi = el('div', 'ai-hello'); hi.appendChild(av(56)); hi.appendChild(el('p', 'ai-hello-n', P().name)); e.appendChild(hi);
       e.appendChild(el('p', null, T('Frag etwas – {name} sucht in den Seiten, die du sehen darfst, und nennt die Quellen.', { name: P().name })));
       e.appendChild(el('p', 'ai-hint', T('{name} kann nichts ändern: Vorschläge übernimmst du selbst. Chats liest {name} nur, wenn du im Chat mit @{name} fragst; Aufgaben und Kalender nur, wenn du sie einschaltest.', { name: P().name })));
+      if (A.st && A.st.web) e.appendChild(el('p', 'ai-hint', T('Bei Fragen nach Aktuellem (Wetter, Nachrichten …) sucht {name} im Web, wenn „Im Web suchen“ an ist: Suchbegriffe gehen über die Websuche an Suchmaschinen.', { name: P().name })));
       chatBox.appendChild(e);
     }
     var form = el('div', 'ai-form');
     var opts = el('div', 'ai-opts'); opts.appendChild(optTasks); opts.appendChild(optCal);
+    if (A.st && A.st.web) opts.appendChild(optWeb);
     var bar = el('div', 'ai-bar');
     if (A.st && A.st.history_allowed) {
       var hb = el('button', 'linkbtn ai-hist-b', T('Verlauf')); hb.type = 'button';
@@ -249,12 +261,20 @@
       var n = answerNode(text, srcs); n.classList.add('ai-live'); item.replaceChild(n, ans); ans = n;
       chatBox.scrollTop = chatBox.scrollHeight;
     }
-    A.run = stream('/api/ai/ask', { q: q, tasks: optTasks.input.checked, calendar: optCal.input.checked }, function (ev, d) {
-      if (ev === 'sources') {
+    var rq = { q: q, tasks: optTasks.input.checked, calendar: optCal.input.checked };
+    if (A.st && A.st.web) rq.web = optWeb.input.checked;
+    A.run = stream('/api/ai/ask', rq, function (ev, d) {
+      if (ev === 'sources') {                            // nach einer Websuche ein zweites Mal: Seiten + Webquellen
         srcs = d.sources || [];
-        if (srcs.length) { srcNode = sourcesNode(srcs); item.appendChild(srcNode); }      // gleich zeigen, was durchsucht wird
+        var sn0 = srcs.length ? sourcesNode(srcs) : null;
+        if (srcNode && srcNode.parentNode) { if (sn0) item.replaceChild(sn0, srcNode); else item.removeChild(srcNode); }
+        else if (sn0) item.appendChild(sn0);            // gleich zeigen, was durchsucht wird
+        srcNode = sn0;
       } else if (ev === 'status') {
-        var ty = ans.querySelector('.ai-typing'); if (ty && d.thinking) ty.textContent = T('Das Modell denkt nach …');
+        var ty = ans.querySelector('.ai-typing');
+        if (ty && d.thinking) ty.textContent = T('Das Modell denkt nach …');
+        else if (ty && d.web === 'searching') ty.textContent = T('{name} sucht im Web …', { name: P().name });
+        else if (ty && d.web) ty.textContent = T('{name} denkt nach …', { name: P().name });
       } else if (ev === 'delta' || ev === 'reset') {     // reset: das bisher Gezeigte war die Denkphase des Modells
         text = ev === 'reset' ? '' : text + (d.t || '');
         if (!pend) { pend = true; (window.requestAnimationFrame || setTimeout)(paint); }
@@ -272,6 +292,7 @@
       if (text) { var n = answerNode(text, srcs, null, cited); item.replaceChild(n, ans); ans = n; }
       else if (ans.parentNode) item.removeChild(ans);                 // nur Fehler: kein leerer Antwortkasten
       if (info.cut) item.insertBefore(el('p', 'ai-hint', T('Die Antwort wurde abgeschnitten (Längengrenze des Modells).')), ans.nextSibling);
+      if (info.notice) item.insertBefore(el('p', 'ai-hint', info.notice), ans.nextSibling);   // z. B. Websuche nicht erreichbar
       var sn = info.no_match ? null : sourcesNode(srcs, cited);
       if (srcNode && srcNode.parentNode) { if (sn) item.replaceChild(sn, srcNode); else item.removeChild(srcNode); }
       else if (sn) item.appendChild(sn);

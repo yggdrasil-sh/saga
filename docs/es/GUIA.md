@@ -920,6 +920,15 @@ aparece con el nombre y la foto de la IA («preguntado por …»). El servidor n
 solo una suma de comprobación con la que los demás dispositivos verifican que de verdad viene de la IA. Se aplican la
 cuota y los grupos del asistente y, además, como máximo 6 preguntas por minuto.
 
+**Búsqueda web para la IA:** si la búsqueda web (sección 10) está configurada, el administrador puede activar «Permitir
+búsqueda web» en Asistente de IA (por defecto: desactivado). Entonces la IA busca por sí misma en la web cuando se
+pregunta por cosas actuales (tiempo, noticias, horarios): el modelo decide antes si hace falta buscar y forma como
+máximo dos términos de búsqueda breves, que llegan a los buscadores a través de SearXNG. Saga además lee el texto de los
+mejores resultados (solo direcciones públicas). La respuesta indica las fuentes web con enlace; mientras tanto aparece
+«Marin está buscando en la web …». En el asistente se puede desactivar en cada pregunta con «Buscar en la web»;
+resumir, mejorar, traducir y sugerir tareas nunca buscan en la web. Cada búsqueda web cuenta como una solicitud más en
+la cuota.
+
 ### Cuenta, calendarios, Immich, apps
 
 En el menú de usuario, arriba a la derecha, en **Ajustes** (una pestaña para cada cosa):
@@ -1069,6 +1078,7 @@ SEARXNG_SECRET=<openssl rand -hex 32>
 ```
 
 Después, `docker compose up -d`. Las búsquedas solo van a tu servidor, no directamente a los buscadores.
+La IA puede usar la misma conexión («Permitir búsqueda web» en Asistente de IA, ver arriba).
 
 ## 11. Copias de seguridad, restauración y actualizaciones
 
@@ -1272,6 +1282,7 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `FED_ALLOW_HTTP` | – | `1` = federación también por http (solo para pruebas; si no, solo https) |
 | `FED_RATE` / `FED_TIMEOUT` | `600` / `10` | Solicitudes por minuto e instancia conectada / segundos hasta el tiempo de espera |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Búsqueda web (sección 10) |
+| `AI_WEB_FETCH` / `AI_WEB_RATE` | `2` / `10` | Búsqueda web de la IA: páginas de resultados cuyo texto se lee (0 = solo fragmentos); búsquedas web por persona en 10 minutos |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Idioma y filtro de la búsqueda web |
 | `LOG_LEVEL` | `info` | Nivel de detalle del log |
 | `DATABASE_URL` | de `POSTGRES_*` | Conexión propia a la base de datos (en lugar del contenedor `db`) |
