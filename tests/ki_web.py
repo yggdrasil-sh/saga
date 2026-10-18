@@ -74,6 +74,11 @@ class SX_H(BaseHTTPRequestHandler):
         if p == "/big":
             HITS["page"] += 1
             return self._send(200, "<p>" + ("Wetter Testort sonnig. " * 60000) + "</p>", "text/html")
+        if p == "/gz":                                    # komprimiert, obwohl "identity" verlangt: wird nicht gelesen
+            HITS["page"] += 1
+            import gzip
+            return self._send(200, gzip.compress(b"<p>" + b"Wetter Testort sonnig. " * 5000 + b"</p>"), "text/html",
+                              {"Content-Encoding": "gzip"})
         if p == "/redir":
             HITS["page"] += 1
             return self._send(302, "", "text/plain", {"Location": f"http://localhost:{SX_PORT}/page"})
@@ -149,8 +154,16 @@ def unit_tests():
     ok("Seitenabruf: JSON (kein text/html) -> nichts", W.fetch_text(SX + "/json", ["Wetter"], ip_ok=allow, ports=ports) is None)
     big = W.fetch_text(SX + "/big", ["Wetter"], ip_ok=allow, ports=ports)
     ok(f"Seitenabruf: Groessenlimit, Auszug kurz ({len(big or '')})", big and len(big) <= W.PAGE_CHARS)
+    ok("Seitenabruf: komprimierte Antwort (Content-Encoding gzip) wird nicht entpackt -> nichts",
+       W.fetch_text(SX + "/gz", ["Wetter"], ip_ok=allow, ports=ports) is None)
     h1 = HITS["page"]
-    ok(f"... Fake-Seiten wurden abgerufen ({h1 - h0})", h1 - h0 == 4)
+    ok(f"... Fake-Seiten wurden abgerufen ({h1 - h0})", h1 - h0 == 5)
+    from saga.netguard import is_public
+    bad = ["127.0.0.1", "10.1.2.3", "192.168.0.1", "100.64.0.1", "100.100.100.100", "169.254.169.254", "0.0.0.0", "::1",
+           "::", "fe80::1", "fd00::1", "::ffff:10.0.0.1", "::ffff:127.0.0.1", "64:ff9b::a00:1", "2002:a00:1::1", "fd7a:115c:a1e0::1"]
+    ok(f"is_public: interne Adressen (auch CGNAT, ULA, NAT64/6to4 mit interner IPv4) gesperrt "
+       f"({[x for x in bad if is_public(x)]})", not any(is_public(x) for x in bad))
+    ok("is_public: oeffentliche Adressen erlaubt", all(is_public(x) for x in ("1.1.1.1", "2606:4700:4700::1111", "64:ff9b::101:101")))
     ok("SSRF: Standard (nur oeffentliche IPs) ruft 127.0.0.1 nicht ab", W.fetch_text(SX + "/page", ["Wetter"], ports=ports) is None)
     ok("SSRF: localhost ebenso", W.fetch_text(f"http://localhost:{SX_PORT}/page", ["Wetter"], ports=ports) is None)
     ok("SSRF: kein Abruf passiert", HITS["page"] == h1)

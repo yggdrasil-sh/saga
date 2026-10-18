@@ -19,6 +19,12 @@ def is_public(ip):
         return False
     if getattr(a, "ipv4_mapped", None):
         a = a.ipv4_mapped
+    if a.version == 6:                                    # eingebettete IPv4 (NAT64 64:ff9b::/96, 6to4 2002::/16) mitpruefen
+        emb = [a.sixtofour] if a.sixtofour else []
+        if a in ipaddress.ip_network("64:ff9b::/96"):
+            emb.append(ipaddress.IPv4Address(int(a) & 0xFFFFFFFF))
+        if any(not x.is_global for x in emb):
+            return False
     return a.is_global
 
 

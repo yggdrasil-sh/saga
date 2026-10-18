@@ -245,7 +245,7 @@ def fetch_text(url, terms, ip_ok=public_only, timeout=FETCH_TIMEOUT, max_bytes=F
         cl = guarded_client(ip_ok, follow_redirects=True, max_redirects=3, event_hooks={"request": [_checker(ports)]},
                             timeout=httpx.Timeout(timeout, connect=min(4.0, timeout)),
                             headers={"User-Agent": "Mozilla/5.0 (compatible; Saga)", "Accept": "text/html, text/plain;q=0.8",
-                                     "Accept-Language": SEARCH_LANGUAGE or "en"})
+                                     "Accept-Language": SEARCH_LANGUAGE or "en", "Accept-Encoding": "identity"})
     except RuntimeError:
         return None
     t0 = time.monotonic()
@@ -256,8 +256,12 @@ def fetch_text(url, terms, ip_ok=public_only, timeout=FETCH_TIMEOUT, max_bytes=F
             ct = r.headers.get("content-type", "").split(";")[0].strip().lower()
             if ct not in _TYPES:
                 return None
+            # Nur unkomprimiert (Accept-Encoding: identity): httpx entpackt gzip/br/zstd sonst ohne Grenze je Stueck -
+            # ein kleines Paket koennte so zu vielen MB/GB werden (Dekompressionsbombe). iter_raw entpackt nichts.
+            if r.headers.get("content-encoding", "identity").strip().lower() not in ("", "identity"):
+                return None
             buf = bytearray()
-            for part in r.iter_bytes():
+            for part in r.iter_raw():
                 buf += part
                 if len(buf) >= max_bytes or time.monotonic() - t0 > timeout:
                     break
