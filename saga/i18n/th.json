@@ -1199,6 +1199,8 @@
  "Markierung durch Verweis ersetzen …": "แทนที่ส่วนที่เลือกด้วยลิงก์ …",
  "Max": "สูงสุด",
  "maximal {n} Aufgaben": "สูงสุด {n} งาน",
+ "maximal {n} Seiten": "สูงสุด {n} หน้า",
+ "maximal {n} Datenbank-Einträge": "สูงสุด {n} รายการในฐานข้อมูล",
  "maximal {n} Seiten (inkl. Papierkorb)": "สูงสุด {n} หน้า (รวมถังขยะ)",
  "maximal {n} Tags": "สูงสุด {n} แท็ก",
  "Median": "มัธยฐาน",

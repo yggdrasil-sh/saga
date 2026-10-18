@@ -1271,7 +1271,9 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `CHAT_QUOTA_MB` | `1024` | Speicher für Chat-Anhänge je Benutzer (verschlüsselt, unter `STATE_DIR/chat`) |
 | `REQUEST_MAX_MB` | `2` | Größte Anfrage außer Datei-Uploads (z. B. sehr lange Seiten); größere bekommen 413 |
 | `KDF_PARALLEL` | `4` | So viele Passwortprüfungen gleichzeitig (je ca. 32 MB Speicher); weitere warten bis 2 s |
-| `NOTE_MAX_COUNT` | `5000` | Seiten je Benutzer |
+| `NOTE_MAX_COUNT` | `5000` | Seiten je Benutzer (ohne Datenbank-Einträge und Papierkorb) |
+| `NOTE_ROW_MAX_COUNT` | `50000` (mind. 10 × `NOTE_MAX_COUNT`) | Datenbank-Einträge je Benutzer (ohne Papierkorb). Sicherheitsnetz: alles zusammen inkl. Papierkorb höchstens 2 × (beide Grenzen) |
+| `GZIP_LEVEL` / `GZIP_MIN_BYTES` | `5` / `1024` | Kompression (gzip) für JSON, Text, JS, CSS ab dieser Größe; `0` = aus. Nie für den Live-Kanal, Bilder und Dateien |
 | `IMMICH_URL` | – | Vorschlag im Immich-Dialog (wird automatisch freigegeben) |
 | `ICON_CDN` | selfh.st über jsDelivr | Quelle der Dienst-Symbole; leer = keine |
 | `STATUS_INTERVAL` | `60` | Sekunden zwischen Status-Prüfungen |

@@ -1199,6 +1199,8 @@
  "Markierung durch Verweis ersetzen …": "Replace selection with link …",
  "Max": "Max",
  "maximal {n} Aufgaben": "at most {n} tasks",
+ "maximal {n} Seiten": "at most {n} pages",
+ "maximal {n} Datenbank-Einträge": "at most {n} database entries",
  "maximal {n} Seiten (inkl. Papierkorb)": "at most {n} pages (including trash)",
  "maximal {n} Tags": "at most {n} tags",
  "Median": "Median",

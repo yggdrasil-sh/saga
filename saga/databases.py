@@ -5,9 +5,9 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import _api_guard, _bad, _body, _json_load, t
+from saga.core import _api_guard, _bad, _body, _json_load
 from saga.sharing import access
-from saga.notes import NOTE_MAX_COUNT, NOTE_TITLE_MAX, _FILE_URL, _check_parent, _iter_blocks
+from saga.notes import NOTE_TITLE_MAX, note_limit_error, _FILE_URL, _check_parent, _iter_blocks
 
 router = APIRouter()
 
@@ -63,12 +63,13 @@ async def api_note_duplicate(nid: int, request: Request):
                       "FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
         if not r:
             return _bad("not found", 404)
-        if c.execute("SELECT COUNT(*) FROM note WHERE uid=?", (owner,)).fetchone()[0] >= NOTE_MAX_COUNT:
-            return _bad(t("maximal {n} Seiten (inkl. Papierkorb)", n=NOTE_MAX_COUNT), 409)
         try:
             parent = _check_parent(c, owner, None, b.get("parent_id"))
         except LookupError:
             return _bad("not found", 404)
+        lim = note_limit_error(c, owner, parent)
+        if lim:
+            return _bad(lim, 409)
         title = str(b.get("title", r[0] or "")).strip()[:NOTE_TITLE_MAX]
         props = r[7]
         if parent != r[11]:                     # andere Datenbank (z. B. Vorlagen-Datenbank) -> Eigenschaften nach Name/Typ zuordnen

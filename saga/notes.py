@@ -15,7 +15,34 @@ from saga.core import E, SECRET, STATE_DIR, _json_load, t
 
 
 NOTE_TITLE_MAX, NOTE_BODY_MAX = 200, 20000
-NOTE_MAX_COUNT = int(E.get("NOTE_MAX_COUNT", "5000"))   # Seiten pro Konto (inkl. Papierkorb)
+NOTE_MAX_COUNT = int(E.get("NOTE_MAX_COUNT", "5000"))   # Seiten pro Konto (ohne Datenbank-Eintraege und Papierkorb)
+# Datenbank-Eintraege zaehlen getrennt (sonst ist ein Konto mit einer groesseren Tabelle nach ~5.000 Zeilen "voll")
+NOTE_ROW_MAX_COUNT = int(E.get("NOTE_ROW_MAX_COUNT", str(max(50000, 10 * NOTE_MAX_COUNT))))
+# Sicherheitsnetz gegen Anlegen+Loeschen im Kreis: alles zusammen inkl. Papierkorb (leert sich nach TRASH_DAYS)
+NOTE_TOTAL_MAX = 2 * (NOTE_MAX_COUNT + NOTE_ROW_MAX_COUNT)
+
+
+def note_limit_error(c, owner, parent):
+    """Fehlertext, wenn `owner` keine weitere Seite (parent = Elternseite oder None) anlegen darf, sonst None.
+    Bis NOTE_MAX_COUNT Notizen insgesamt (inkl. Papierkorb, Index-Zaehlung) wie bisher ohne weitere Pruefung; erst
+    darueber wird getrennt gezaehlt: normale Seiten (ohne Papierkorb) gegen NOTE_MAX_COUNT, Eintraege einer Datenbank
+    (ohne Papierkorb) gegen NOTE_ROW_MAX_COUNT, alles inkl. Papierkorb gegen NOTE_TOTAL_MAX. Damit ist jede Grenze
+    hoechstens lockerer als frueher (nichts, was bisher ging, wird abgelehnt)."""
+    total = c.execute("SELECT COUNT(*) FROM note WHERE uid=?", (owner,)).fetchone()[0]
+    if total < NOTE_MAX_COUNT:
+        return None
+    if total >= NOTE_TOTAL_MAX:
+        return t("maximal {n} Seiten (inkl. Papierkorb)", n=NOTE_TOTAL_MAX)
+    dbs = "SELECT id FROM note WHERE uid=? AND kind='database'"
+    is_row = parent is not None and c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND kind='database'",
+                                              (parent, owner)).fetchone() is not None
+    if is_row:
+        n = c.execute(f"SELECT COUNT(*) FROM note WHERE uid=? AND deleted_at IS NULL AND parent_id IN ({dbs})",
+                      (owner, owner)).fetchone()[0]
+        return t("maximal {n} Datenbank-Einträge", n=NOTE_ROW_MAX_COUNT) if n >= NOTE_ROW_MAX_COUNT else None
+    n = c.execute(f"SELECT COUNT(*) FROM note WHERE uid=? AND deleted_at IS NULL "
+                  f"AND (parent_id IS NULL OR parent_id NOT IN ({dbs}))", (owner, owner)).fetchone()[0]
+    return t("maximal {n} Seiten", n=NOTE_MAX_COUNT) if n >= NOTE_MAX_COUNT else None
 
 
 MAX_NEST, MAX_JSON_DEPTH = 8, 48
@@ -169,9 +196,19 @@ def announce_tree(c, owner, root, ids, by, now, gone, rev=None, origin=None):
             bus.emit_after(c, "shared.changed", {"owner": owner, "note_id": root, "target_type": tt, "target": tg})
 
 
-def _purge_old(c, uid):
+_PURGED = {}               # uid -> Zeitpunkt der letzten Papierkorb-Frist (nur fuer _purge_old(..., every=...))
+
+
+def _purge_old(c, uid, every=0):
+    """Seiten, die laenger als TRASH_DAYS im Papierkorb liegen, endgueltig loeschen (Index note_trash).
+    every > 0: hoechstens alle `every` Sekunden je Konto (Seitenbaum: dort sind Papierkorb-Seiten ohnehin unsichtbar,
+    eine Stunde Verzug aendert nichts; die Papierkorb-Liste selbst prueft immer)."""
+    now = time.time()
+    if every and now - _PURGED.get(uid, 0) < every:
+        return
+    _PURGED[uid] = now
     old = [r[0] for r in c.execute("SELECT id FROM note WHERE uid=? AND deleted_at IS NOT NULL AND deleted_at < ?",
-                                   (uid, time.time() - TRASH_DAYS * 86400))]
+                                   (uid, now - TRASH_DAYS * 86400))]
     if old:
         _purge_ids(c, uid, old)
 

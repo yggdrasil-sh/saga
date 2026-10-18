@@ -20,7 +20,7 @@ from saga.dashboard import visible_tiles
 from saga.publish import published_via
 from saga.comments import counts as comment_counts
 from saga.sharing import RANK, Access, access, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
-from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, NOTE_MAX_COUNT, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text
+from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text
 
 router = APIRouter()
 
@@ -249,7 +249,7 @@ def api_notes(request: Request):
     if not uid:
         return _bad("unauthorized", 401)
     with _db() as c:
-        _purge_old(c, uid)
+        _purge_old(c, uid, every=3600)             # Papierkorb-Frist: hoechstens stuendlich je Konto (nicht bei jedem Baum)
         rows = c.execute(f"SELECT {NOTE_META_COLS}, archived, locked FROM note WHERE uid=? AND deleted_at IS NULL ORDER BY sort NULLS FIRST, created",
                          (uid,)).fetchall()
         sh = shared_ids(c, uid)                    # Symbol im Baum: Seite ist (selbst) freigegeben
@@ -329,8 +329,9 @@ async def api_note_add(request: Request):
             owner, role, err = access(c, uid, pid, "edit", acc)
             if err is not None:
                 return err
-        if c.execute("SELECT COUNT(*) FROM note WHERE uid=?", (owner,)).fetchone()[0] >= NOTE_MAX_COUNT:
-            return _bad(t("maximal {n} Seiten (inkl. Papierkorb)", n=NOTE_MAX_COUNT), 409)
+        lim = note_limit_error(c, owner, pid if b.get("parent_id") is not None else None)
+        if lim:
+            return _bad(lim, 409)
         try:
             parent = _check_parent(c, owner, None, b.get("parent_id"))
             icon = _icon(b.get("icon"), c, owner)

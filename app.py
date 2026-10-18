@@ -26,7 +26,7 @@ from version import API_LEVEL, BUILD, MIN_APP, VERSION, channel
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
 from saga import ai, ai_chat, avatars, calls, chat, federation, i18n, live, mfa, notify, push
-from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, LangMiddleware, title
+from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
 from saga.notes import FILE_MAX
@@ -102,6 +102,9 @@ app.add_middleware(
     same_site="lax",
     max_age=SESSION_HOURS * 3600,
 )
+# gzip fuer JSON/Text/JS/CSS ab 1 KB (saga.core.Compress) - nicht fuer den Live-Kanal/KI-Stream (text/event-stream),
+# Bilder, Dateien, Zip, Teilantworten. Hier registriert = laeuft innerhalb von canonical_host/BodyLimit.
+app.add_middleware(Compress)
 app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
 
 # Aufrufe ueber andere Hostnamen (interne IP/DNS, alter Name) auf BASE_URL umleiten.

@@ -6,6 +6,7 @@ import os
 import re
 import secrets
 import time
+import zlib
 from datetime import timezone
 from zoneinfo import ZoneInfo
 from fastapi.responses import JSONResponse
@@ -436,6 +437,111 @@ def _too_large(e):
         return True
     subs = getattr(e, "exceptions", None)                  # (Base)ExceptionGroup
     return isinstance(subs, tuple) and bool(subs) and all(_too_large(x) for x in subs)
+
+
+# --- Kompression (gzip) fuer Antworten ---------------------------------------
+# Eigene kleine Middleware statt starlette.GZipMiddleware: die komprimiert jeden Inhaltstyp (auch JPEG/PNG/Zip,
+# Teilantworten 206 fuer Video-Spulen) und ihr Verhalten haengt von der Starlette-Version ab (requirements ohne Pin).
+# Hier: nur Text/JSON/JS/CSS/SVG, nie text/event-stream (Live-Kanal, KI-Stream) oder x-ndjson, nie bei
+# Content-Encoding/Content-Range/206/204/304, erst ab GZIP_MIN Bytes. Gestreamte Antworten (StaticFiles in 64-KB-Stuecken)
+# werden stueckweise mit Z_SYNC_FLUSH komprimiert - jedes Stueck kommt sofort beim Client an.
+GZIP_MIN = max(0, int(E.get("GZIP_MIN_BYTES", "1024")))
+GZIP_LEVEL = min(9, max(0, int(E.get("GZIP_LEVEL", "5"))))   # 0 = aus
+_GZ_TYPES = ("application/json", "text/", "application/javascript", "application/manifest+json", "image/svg+xml",
+             "application/xml", "application/activity+json", "application/ld+json")
+_GZ_NEVER = ("text/event-stream", "application/x-ndjson")
+
+
+def _gz_wanted(scope):
+    for k, v in scope.get("headers") or ():
+        if k == b"accept-encoding":
+            for part in v.decode("latin-1").lower().split(","):
+                name, _, q = part.strip().partition(";")
+                if name.strip() in ("gzip", "*") and q.replace(" ", "") not in ("q=0", "q=0.0", "q=0.00", "q=0.000"):
+                    return True
+    return False
+
+
+def _gz_ok(msg):
+    if msg.get("status", 200) in (204, 206, 304) or msg.get("status", 200) < 200:
+        return False
+    ctype = ""
+    for k, v in msg.get("headers") or ():
+        k = k.lower()
+        if k in (b"content-encoding", b"content-range"):
+            return False
+        if k == b"content-type":
+            ctype = v.decode("latin-1").lower()
+    return ctype.startswith(_GZ_TYPES) and not ctype.startswith(_GZ_NEVER)
+
+
+class Compress:
+    """ASGI-Middleware: gzip fuer passende Antworten, wenn der Client es anbietet (Accept-Encoding)."""
+
+    def __init__(self, app, minimum=GZIP_MIN, level=GZIP_LEVEL):
+        self.app, self.minimum, self.level = app, minimum, level
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or self.level <= 0 or scope.get("method") == "HEAD" or not _gz_wanted(scope):
+            return await self.app(scope, receive, send)
+        st = {"start": None, "mode": None, "z": None, "buf": [], "n": 0}   # mode: None = noch offen, "plain", "gzip"
+
+        def headers(start, length=None):
+            h = [(k, v) for k, v in start.get("headers") or () if k.lower() not in (b"content-length", b"vary")]
+            vary = [v for k, v in start.get("headers") or () if k.lower() == b"vary"]
+            parts = [p.strip() for v in vary for p in v.decode("latin-1").split(",") if p.strip()]
+            if "accept-encoding" not in [p.lower() for p in parts]:
+                parts.append("Accept-Encoding")
+            h += [(b"content-encoding", b"gzip"), (b"vary", ", ".join(parts).encode("latin-1"))]
+            if length is not None:
+                h.append((b"content-length", str(length).encode()))
+            return dict(start, headers=h)
+
+        async def snd(msg):
+            t = msg.get("type")
+            if t == "http.response.start":
+                st["start"] = msg
+                if not _gz_ok(msg):
+                    st["mode"] = "plain"
+                    await send(msg)
+                return
+            if t != "http.response.body" and st["mode"] is None and st["start"] is not None:
+                st["mode"] = "plain"                         # z. B. http.response.pathsend: unveraendert weiterreichen
+                await send(st["start"])
+                for b in st["buf"]:
+                    await send({"type": "http.response.body", "body": b, "more_body": True})
+                st["buf"] = []
+            if t != "http.response.body" or st["mode"] == "plain" or st["start"] is None:
+                return await send(msg)
+            body, more = msg.get("body") or b"", msg.get("more_body", False)
+            if st["mode"] is None:
+                # Sammeln bis zum Ende oder 64 KB: kleine/ganze Antworten bekommen eine Content-Length,
+                # Antworten in mehreren Stuecken (BaseHTTPMiddleware, StaticFiles) werden nicht kleinteilig komprimiert
+                st["buf"].append(body)
+                st["n"] += len(body)
+                if more and st["n"] < 65536:
+                    return
+                body, st["buf"] = b"".join(st["buf"]), []
+                if not more:
+                    if len(body) < self.minimum:
+                        st["mode"] = "plain"
+                        await send(st["start"])
+                        return await send({"type": "http.response.body", "body": body})
+                    z = zlib.compressobj(self.level, zlib.DEFLATED, 31)
+                    data = z.compress(body) + z.flush()
+                    st["mode"] = "gzip"
+                    await send(headers(st["start"], len(data)))
+                    return await send({"type": "http.response.body", "body": data})
+                st["mode"], st["z"] = "gzip", zlib.compressobj(self.level, zlib.DEFLATED, 31)
+                await send(headers(st["start"]))         # Laenge unbekannt -> chunked
+            z = st["z"]
+            data = z.compress(body) + (z.flush(zlib.Z_SYNC_FLUSH) if more else z.flush())
+            await send({"type": "http.response.body", "body": data, "more_body": more})
+
+        await self.app(scope, receive, snd)
+        if st["mode"] is None and st["start"] is not None:   # Endpunkt endete ohne letztes Body-Stueck
+            await send(st["start"])
+            await send({"type": "http.response.body", "body": b"".join(st["buf"])})
 
 
 SEC_HEADERS = {

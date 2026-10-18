@@ -1293,7 +1293,9 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `CHAT_QUOTA_MB` | `1024` | Espacio para adjuntos de chat por usuario (cifrados, en `STATE_DIR/chat`) |
 | `REQUEST_MAX_MB` | `2` | Petición más grande salvo subidas de archivos (p. ej. páginas muy largas); las mayores reciben 413 |
 | `KDF_PARALLEL` | `4` | Comprobaciones de contraseña a la vez (unos 32 MB de memoria cada una); las demás esperan hasta 2 s |
-| `NOTE_MAX_COUNT` | `5000` | Páginas por usuario |
+| `NOTE_MAX_COUNT` | `5000` | Páginas por usuario (sin entradas de bases de datos ni papelera) |
+| `NOTE_ROW_MAX_COUNT` | `50000` (mín. 10 × `NOTE_MAX_COUNT`) | Entradas de bases de datos por usuario (sin papelera). Red de seguridad: todo junto, incl. papelera, como máximo 2 × (ambos límites) |
+| `GZIP_LEVEL` / `GZIP_MIN_BYTES` | `5` / `1024` | Compresión (gzip) para JSON, texto, JS y CSS a partir de este tamaño; `0` = desactivada. Nunca para el canal en vivo, imágenes ni archivos |
 | `IMMICH_URL` | – | Sugerencia en el diálogo de Immich (se permite automáticamente) |
 | `ICON_CDN` | selfh.st vía jsDelivr | Origen de los iconos de servicios; vacío = ninguno |
 | `STATUS_INTERVAL` | `60` | Segundos entre comprobaciones de estado |

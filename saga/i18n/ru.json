@@ -1199,6 +1199,8 @@
  "Markierung durch Verweis ersetzen …": "Заменить выделение ссылкой …",
  "Max": "Макс.",
  "maximal {n} Aufgaben": "не более {n} {n:задачи|задач|задач}",
+ "maximal {n} Seiten": "не более {n} {n:страницы|страниц|страниц}",
+ "maximal {n} Datenbank-Einträge": "не более {n} {n:записи|записей|записей} в базах данных",
  "maximal {n} Seiten (inkl. Papierkorb)": "не более {n} {n:страницы|страниц|страниц} (включая корзину)",
  "maximal {n} Tags": "не более {n} {n:тега|тегов|тегов}",
  "Median": "Медиана",

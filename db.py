@@ -346,6 +346,9 @@ CREATE TABLE IF NOT EXISTS note (
     locked INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS note_uid ON note (uid);
 CREATE INDEX IF NOT EXISTS note_parent ON note (uid, parent_id);
+-- Papierkorb (Frist, Liste, Leeren): nur die wenigen geloeschten Zeilen. Reiner Zusatz-Index, SCHEMA laeuft bei jedem
+-- Start - daher ohne Migration; aeltere Versionen ignorieren ihn.
+CREATE INDEX IF NOT EXISTS note_trash ON note (uid, deleted_at) WHERE deleted_at IS NOT NULL;
 CREATE TABLE IF NOT EXISTS note_version (
     id BIGSERIAL PRIMARY KEY, note_id BIGINT NOT NULL, uid TEXT NOT NULL,
     title TEXT, body TEXT, format TEXT, created DOUBLE PRECISION NOT NULL);

@@ -1242,7 +1242,9 @@ with the same account also switch the oldest ones to polling.
 | `CHAT_QUOTA_MB` | `1024` | Storage for chat attachments per user (encrypted, under `STATE_DIR/chat`) |
 | `REQUEST_MAX_MB` | `2` | Largest request apart from file uploads (e.g. very long pages); larger ones get 413 |
 | `KDF_PARALLEL` | `4` | Password checks at the same time (about 32 MB of memory each); others wait up to 2 s |
-| `NOTE_MAX_COUNT` | `5000` | Pages per user |
+| `NOTE_MAX_COUNT` | `5000` | Pages per user (not counting database entries and trash) |
+| `NOTE_ROW_MAX_COUNT` | `50000` (at least 10 × `NOTE_MAX_COUNT`) | Database entries per user (not counting trash). Safety net: everything incl. trash at most 2 × (both limits) |
+| `GZIP_LEVEL` / `GZIP_MIN_BYTES` | `5` / `1024` | Compression (gzip) for JSON, text, JS, CSS from this size; `0` = off. Never for the live channel, images and files |
 | `IMMICH_URL` | – | Suggestion in the Immich dialog (allowed automatically) |
 | `ICON_CDN` | selfh.st via jsDelivr | Source of service icons; empty = none |
 | `STATUS_INTERVAL` | `60` | Seconds between status checks |
