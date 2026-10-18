@@ -16,7 +16,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# pg_dump/pg_restore fuer Backups (automatisch vor jedem Datenbank-Update, "python run.py backup")
+# pg_dump/pg_restore/psql fuer Backups (automatisch vor jedem Datenbank-Update, "python run.py backup") und
+# "python run.py restore". Debian liefert Version 17; Postgres 16 als Server geht trotzdem (siehe db.restore).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends postgresql-client \
  && rm -rf /var/lib/apt/lists/*
