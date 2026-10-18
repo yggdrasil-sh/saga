@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saga – แดชบอร์ด โน้ต และงาน แบบโฮสต์เอง</title>
+<meta name="description" content="Saga คือศูนย์รวมแบบโฮสต์เองสำหรับบริการ หน้าแบบ Notion ฐานข้อมูล งาน ปฏิทิน และบุ๊กมาร์ก รองรับหลายผู้ใช้ พร้อม LDAP และ SSO ทำงานบน Docker Compose">
+<link rel="canonical" href="https://yggdrasil-sh.github.io/saga/th/">
+<link rel="alternate" hreflang="de" href="https://yggdrasil-sh.github.io/saga/">
+<link rel="alternate" hreflang="en" href="https://yggdrasil-sh.github.io/saga/en/">
+<link rel="alternate" hreflang="es" href="https://yggdrasil-sh.github.io/saga/es/">
+<link rel="alternate" hreflang="ru" href="https://yggdrasil-sh.github.io/saga/ru/">
+<link rel="alternate" hreflang="th" href="https://yggdrasil-sh.github.io/saga/th/">
+<link rel="alternate" hreflang="x-default" href="https://yggdrasil-sh.github.io/saga/en/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Saga">
+<meta property="og:title" content="Saga – ศูนย์รวมแบบโฮสต์เองสำหรับบริการ โน้ต และงานของคุณ">
+<meta property="og:description" content="แดชบอร์ดแบบโฮสต์เอง พร้อมโน้ต ฐานข้อมูล งาน ปฏิทิน และบุ๊กมาร์ก">
+<meta property="og:url" content="https://yggdrasil-sh.github.io/saga/th/">
+<meta property="og:image" content="https://yggdrasil-sh.github.io/saga/screenshots/dashboard.png">
+<meta property="og:locale" content="th_TH">
+<meta property="og:locale:alternate" content="de_DE">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:locale:alternate" content="es_ES">
+<meta property="og:locale:alternate" content="ru_RU">
+<link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <a class="brand" href="#"><img src="../icon.svg" alt="">Saga</a>
+    <span class="sp"></span>
+    <a class="l hide" href="#new">ใหม่ใน 2.1</a>
+    <a class="l hide" href="#features">ฟีเจอร์</a>
+    <a class="l hide" href="#screenshots">ภาพหน้าจอ</a>
+    <a class="l hide" href="#apps">แอป</a>
+    <a class="l" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en" title="คู่มือ (ภาษาอังกฤษ)">คู่มือ <small>(EN)</small></a>
+    <a class="l gh" href="https://github.com/yggdrasil-sh/saga">GitHub</a>
+    <span class="lang" role="group" aria-label="ภาษา"><a href="../" lang="de" hreflang="de" data-l="de" title="Deutsch" aria-label="Deutsch">DE</a><a href="../en/" lang="en" hreflang="en" data-l="en" title="English" aria-label="English">EN</a><a href="../es/" lang="es" hreflang="es" data-l="es" title="Español" aria-label="Español">ES</a><a href="../ru/" lang="ru" hreflang="ru" data-l="ru" title="Русский" aria-label="Русский">RU</a><a href="./" lang="th" hreflang="th" data-l="th" title="ไทย" aria-label="ไทย" aria-current="page">TH</a></span>
+  </nav>
+
+  <header class="hero">
+    <img class="logo" src="../icon.svg" alt="โลโก้ Saga">
+    <h1>ศูนย์รวมของคุณสำหรับ<br><span>บริการ โน้ต และงาน</span></h1>
+    <p class="lead">Saga คือหน้าเริ่มต้นและคลังความรู้แบบโฮสต์เองสำหรับครอบครัว ทีม และโฮมแล็บ
+      มีหน้าและฐานข้อมูลแบบ Notion ปฏิทิน งาน และบุ๊กมาร์ก ทุกคนมีพื้นที่ส่วนตัวของตัวเอง</p>
+    <div class="btns">
+      <a class="btn primary" href="#quick-start">🚀 พร้อมใช้งานใน 5 นาที</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">📖 คู่มือ (ภาษาอังกฤษ)</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga">★ ให้ดาวบน GitHub</a>
+    </div>
+    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>iOS · macOS · Linux · Android</span><span>ไทย · English · Deutsch · Español · Русский</span></div>
+    <div class="shot"><img src="../screenshots/dashboard.png" alt="แดชบอร์ดของ Saga (อินเทอร์เฟซภาษาเยอรมัน)" width="2880" height="1800"></div>
+  </header>
+</div>
+
+<section id="new">
+  <div class="wrap">
+    <h2>ใหม่ใน Saga 2.1</h2>
+    <p class="sub">เข้าสู่ระบบได้ปลอดภัยขึ้น เห็นใบหน้าแทนตัวอักษรย่อ โทรคุยกันได้ และมี AI ที่มีชื่อของตัวเองคอยช่วยเมื่อคุณเรียก</p>
+    <div class="feat">
+      <figure class="fc"><a href="../screenshots/v21-sicherheit.png"><img src="../screenshots/v21-sicherheit.png" alt="หน้า “การเข้าสู่ระบบและความปลอดภัย”: พาสคีย์ชื่อ “MacBook” ตั้งค่าแอป Authenticator แล้ว เหลือรหัสกู้คืน 10 จาก 10 รหัส (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:20%;--z:1.55"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔑</span>พาสคีย์และการยืนยันสองขั้นตอน</h3><p>เข้าสู่ระบบโดยไม่ต้องใช้รหัสผ่านด้วยพาสคีย์ (ลายนิ้วมือ ใบหน้า หรือ PIN ของอุปกรณ์) หรือใช้เป็นขั้นตอนที่สองหลังรหัสผ่าน หรือจะใช้แอป Authenticator ก็ได้ มีรหัสกู้คืนไว้สำหรับกรณีฉุกเฉิน และผู้ดูแลระบบสามารถบังคับใช้ 2FA สำหรับผู้ดูแลระบบหรือทุกคนได้</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-anruf.png"><img src="../screenshots/v21-anruf.png" alt="กำลังโทรด้วยเสียงกับ Kim: ด้านบนแสดง “เข้ารหัสแบบต้นทางถึงปลายทาง” ระยะเวลา การเชื่อมต่อโดยตรง คุณภาพการเชื่อมต่อดี และกำลังรับเสียง ตรงกลางเป็นรูปโปรไฟล์ของ Kim (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800" style="--fx:15%;--fy:0%;--z:1.3"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📞</span>โทรด้วยเสียงและวิดีโอ</h3><p>โทรได้จากแชทส่วนตัว พร้อมวิดีโอและการแชร์หน้าจอ สื่อจะส่งตรงระหว่างอุปกรณ์ และทุกข้อความสัญญาณจะได้รับการตรวจสอบด้วยคีย์ของแชท Saga ไม่ต้องเปิดพอร์ตเพิ่ม ส่วน TURN นั้นเป็นตัวเลือก</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-profilbilder.png"><img src="../screenshots/v21-profilbilder.png" alt="หน้า “Urlaub Gardasee 2026” พร้อมแถบความคิดเห็น: ความคิดเห็นจาก Kim และ Robin พร้อมรูปโปรไฟล์ ด้านบนเป็นรูปของคนที่กำลังอ่านอยู่ (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800" style="--fx:100%;--fy:0%;--z:1.3"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🦊</span>รูปโปรไฟล์</h3><p>เห็นใบหน้าแทนตัวอักษรย่อ ทั้งในความคิดเห็น แชท สถานะการออนไลน์ และกระดิ่งแจ้งเตือน อัปโหลดและครอบตัดรูปของคุณเอง ใช้ Gravatar หรือใช้รูปจาก SSO/LDAP ก็ได้ Saga ดึงทุกอย่างเอง เบราว์เซอร์จึงไม่ติดต่อ Gravatar เลย</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-chat-bilder.png"><img src="../screenshots/v21-chat-bilder.png" alt="แชทส่วนตัวกับ Kim: รูปถ่ายวันหยุดสองรูปแสดงเป็นภาพตัวอย่าง มีข้อความตอบกลับ และรายการการโทรยาว 0:07 (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800" style="--fx:0%;--fy:0%;--z:1"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🖼️</span>รูปภาพในแชทที่โหลดเร็ว</h3><p>เมื่อส่งรูป ระบบจะสร้างภาพตัวอย่างที่เข้ารหัสไว้ ประวัติแชทจะโหลดเฉพาะส่วนที่มองเห็น และไม่มีอะไรกระโดดขณะเลื่อน ส่วนไฟล์ต้นฉบับจะโหลดเมื่อคุณแตะ แม้แชทที่มีรูปเยอะก็ยังลื่นไหล</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-immich.png"><img src="../screenshots/v21-immich.png" alt="ตัวเลือกรูป “จาก Immich” เหนือแชท พร้อมรูปถ่ายหลายรูปให้เลือก (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:40%;--z:1.15"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📷</span>Immich ในแชท</h3><p>เลือกรูปได้โดยตรงจากคลัง Immich ของคุณ ด้วยตัวเลือกเดียวกับที่ใช้ในหน้า รูปภาพจะเข้ารหัสแบบต้นทางถึงปลายทางเหมือนไฟล์แนบทั่วไป</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-login-passkey.png"><img src="../screenshots/v21-login-passkey.png" alt="หน้าเข้าสู่ระบบธีมสว่าง มีปุ่ม “เข้าสู่ระบบ” และ “เข้าสู่ระบบด้วยพาสคีย์” (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:30%;--z:1.9"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">✨</span>เข้าสู่ระบบด้วยการแตะครั้งเดียว</h3><p>“เข้าสู่ระบบด้วยพาสคีย์” โดยเบราว์เซอร์ยังเสนอพาสคีย์ของคุณให้ตั้งแต่ช่องชื่อผู้ใช้ พาสคีย์ผูกกับ Saga ของคุณ จึงถูกฟิชชิงขโมยไปไม่ได้</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-ki-chat.png"><img src="../screenshots/v21-ki-chat.png" alt="แชทส่วนตัวระหว่าง Anna Berg และ Ben Okafor: ข้อความแจ้งว่า Marin ได้รับอนุญาตในแชทนี้เฉพาะเมื่อมีคนเรียก คำถามของ Anna “@Marin กลางเดือนพฤษภาคมที่ลิสบอนอากาศอุ่นแค่ไหน” และคำตอบของ Marin พร้อมรูปโปรไฟล์ และระบุว่า Anna Berg เป็นผู้ถาม (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="1366" height="860" style="--fx:60%;--fy:45%;--z:1.35"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">💬</span>AI ของคุณ มีชื่อ และช่วยในแชทเมื่อถูกเรียก</h3><p>ตั้งชื่อ รูป และน้ำเสียงให้ AI ได้ หากต้องการ AI ยังช่วยในแชทได้ด้วย แต่เฉพาะเมื่อมีคนเรียกด้วย @ชื่อ เท่านั้น AI จะได้รับเพียงข้อความนั้นกับข้อความก่อนหน้าอีกไม่กี่ข้อความ ส่วนที่เหลือยังคงเข้ารหัสแบบต้นทางถึงปลายทาง ปิดไว้เป็นค่าเริ่มต้น</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-ki-websuche.png"><img src="../screenshots/v21-ki-websuche.png" alt="แถบด้านข้างของ AI “Marin”: คำตอบเรื่องสภาพอากาศพร้อมลิงก์แหล่งที่มาจากเว็บ ด้านล่างมีสวิตช์ “ค้นหาเว็บ” (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="1366" height="900" style="--fx:100%;--fy:0%;--z:2.1"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔎</span>การค้นหาเว็บสำหรับ AI</h3><p>สภาพอากาศ เวลาเปิดทำการ ข่าว: AI ค้นหาเว็บผ่าน SearXNG ของคุณและแนบลิงก์แหล่งที่มา แม้จะใช้โมเดลภายในขนาดเล็ก ผู้ดูแลระบบเป็นผู้เปิดใช้ และในผู้ช่วยสามารถปิดได้เป็นรายคำถาม</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-chat-loeschen.png"><img src="../screenshots/v21-chat-loeschen.png" alt="กล่องโต้ตอบลบแชท “Bert Demo” ให้เลือก “เฉพาะฉัน” หรือ “สำหรับทุกคน” พร้อมคำเตือนว่าย้อนกลับไม่ได้ ด้านซ้ายเป็นรายการแชทที่มีส่วน “เก็บเข้าคลังแล้ว (1)” (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2560" height="1600" style="--fx:50%;--fy:50%;--z:1.5"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🗂️</span>เก็บเข้าคลังและลบแชท</h3><p>แชทที่เก็บเข้าคลังจะย้ายไปอยู่ในส่วนของตัวเอง และกลับมาเมื่อมีข้อความใหม่ ลบเฉพาะของคุณได้ โดยคนอื่นยังเก็บทุกอย่างไว้ หรือลบสำหรับทุกคนพร้อมคำเตือนที่ชัดเจน</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-sprache.png"><img src="../screenshots/v21-sprache.png" alt="หน้าเข้าสู่ระบบภาษาสเปน มีช่องชื่อผู้ใช้ รหัสผ่าน และปุ่ม “Iniciar sesión” ด้านล่างเป็นตัวเลือกภาษาที่ตั้งเป็น “Español”" loading="lazy" width="1280" height="860" style="--fx:50%;--fy:50%;--z:2"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🌐</span>ห้าภาษาให้คุณเลือก</h3><p>ใหม่: ภาษารัสเซียและภาษาไทย คุณเปลี่ยนภาษาได้ตั้งแต่หน้าเข้าสู่ระบบ สะดวกเมื่อใช้คอมพิวเตอร์ของคนอื่น และเปลี่ยนได้ทุกเมื่อที่ “ภาษา” ในเมนูผู้ใช้</p></figcaption></figure>
+    </div>
+    <h3 class="more-h">ดูให้ละเอียดขึ้น</h3>
+    <p class="more-sub">นอกจากนี้: ผู้ช่วย AI ค้นหาได้มากขึ้น (รากศัพท์ คำประสม และคุณสมบัติของฐานข้อมูล) แนะนำเป็นงานเฉพาะขั้นตอนถัดไปที่ทำได้จริง และทำงานกับโมเดลภายในได้ดีขึ้น ส่วนรูปภาพสามารถคัดลอกและวางระหว่างหน้าได้</p>
+    <div class="gallery two">
+      <figure><div class="shot"><a href="../screenshots/v21-login-2fa.png"><img src="../screenshots/v21-login-2fa.png" alt="ขั้นตอนที่สองหลังรหัสผ่าน: “ยืนยันด้วยพาสคีย์” หรือรหัสจากแอป Authenticator (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800"></a></div><figcaption>ขั้นตอนที่สอง: พาสคีย์หรือรหัส</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-profilbild-zuschneiden.png"><img src="../screenshots/v21-profilbild-zuschneiden.png" alt="กล่องโต้ตอบ “ครอบตัดรูปโปรไฟล์” มีกรอบวงกลมและแถบเลื่อนซูม (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800"></a></div><figcaption>การครอบตัดรูปโปรไฟล์</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-admin-2fa.png"><img src="../screenshots/v21-admin-2fa.png" alt="ส่วนผู้ดูแลระบบ หมวดทั่วไป: “บังคับใช้ 2FA สำหรับ” ไม่มีใคร ผู้ดูแลระบบ หรือทุกคน (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800"></a></div><figcaption>ผู้ดูแลระบบ: นโยบาย 2FA</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-admin-anrufe.png"><img src="../screenshots/v21-admin-anrufe.png" alt="ส่วนผู้ดูแลระบบ หมวดทั่วไป: การโทร พร้อมเซิร์ฟเวอร์ STUN เซิร์ฟเวอร์ TURN (ไม่บังคับ) และระยะเวลาเรียกสาย (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800"></a></div><figcaption>ผู้ดูแลระบบ: การโทร STUN และ TURN</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-admin-ki.png"><img src="../screenshots/v21-admin-ki.png" alt="ส่วนผู้ดูแลระบบ ผู้ช่วย AI: เปิด “อนุญาต AI ในแชท (เฉพาะเมื่อถูกกล่าวถึง)” และ “อนุญาตการค้นหาเว็บ” ด้านล่างเป็นหมายเหตุเรื่องความเป็นส่วนตัวและบุคลิก “Marin” (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="1366" height="854"></a></div><figcaption>ผู้ดูแลระบบ: AI ในแชท การค้นหาเว็บ และบุคลิกของ AI</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-chat-archiv.png"><img src="../screenshots/v21-chat-archiv.png" alt="รายการแชทในธีมมืด เปิดส่วน “เก็บเข้าคลังแล้ว (1)” พร้อมข้อความว่าแชทถูกเก็บเข้าคลังและจะกลับมาเมื่อมีข้อความใหม่ (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2560" height="1600"></a></div><figcaption>แชทที่เก็บเข้าคลังแล้ว</figcaption></figure>
+    </div>
+    <h3 class="more-h">ใช้บนโทรศัพท์ได้ด้วย</h3>
+    <p class="more-sub">รับสาย คุย ดูรูป และเข้าสู่ระบบด้วยพาสคีย์ ได้ในเบราว์เซอร์ของโทรศัพท์</p>
+    <div class="phones v2">
+      <figure><img src="../screenshots/v21-handy-klingeln.png" alt="เบราว์เซอร์บนโทรศัพท์: Alex Beispiel กำลังโทรมา พร้อมปุ่มปฏิเสธและรับสาย (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="1170" height="2532"><figcaption>สายเรียกเข้า</figcaption></figure>
+      <figure><img src="../screenshots/v21-handy-anruf.png" alt="เบราว์เซอร์บนโทรศัพท์: กำลังคุยสายกับ Alex เข้ารหัสแบบต้นทางถึงปลายทาง (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="1170" height="2532"><figcaption>ระหว่างการโทร</figcaption></figure>
+      <figure><img src="../screenshots/v21-handy-chat-bilder.png" alt="เบราว์เซอร์บนโทรศัพท์: แชทกับ Alex และรูปถ่ายวันหยุดสองรูป (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="1170" height="2532"><figcaption>แชทพร้อมภาพตัวอย่าง</figcaption></figure>
+      <figure><img src="../screenshots/v21-handy-login.png" alt="เบราว์เซอร์บนโทรศัพท์: หน้าเข้าสู่ระบบธีมมืด มีปุ่ม “เข้าสู่ระบบด้วยพาสคีย์” (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="1170" height="2532"><figcaption>เข้าสู่ระบบด้วยพาสคีย์</figcaption></figure>
+    </div>
+    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 การเปลี่ยนแปลงทั้งหมดและหมายเหตุการอัปเดต (ภาษาเยอรมัน)</a></p>
+  </div>
+</section>
+
+<section id="new-2-0" class="alt">
+  <div class="wrap">
+    <h2>ใหม่ใน Saga 2.0</h2>
+    <p class="sub">สมุดบันทึกส่วนตัวของคุณกลายเป็นพื้นที่ที่ใช้ร่วมกันได้ ทุกอย่างเป็นตัวเลือก และทุกอย่างอยู่บนเซิร์ฟเวอร์ของคุณเอง</p>
+    <div class="feat">
+      <figure class="fc"><a href="../screenshots/v2-kommentare.png"><img src="../screenshots/v2-kommentare.png" alt="หน้าที่เปิดแถบความคิดเห็นไว้: มีสามเธรดในย่อหน้าต่าง ๆ หนึ่งในนั้นมีคำตอบ (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800" style="--fx:100%;--fy:0%;--z:1.28"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">💬</span>การแชร์และความคิดเห็น</h3><p>แชร์หน้าและฐานข้อมูลกับบุคคล กลุ่ม หรือ ชื่อ@เซิร์ฟเวอร์ ให้ดู แสดงความคิดเห็น หรือแก้ไขได้ ความคิดเห็นจะอยู่ข้างบล็อกอย่างไม่รบกวน พร้อมการตอบกลับและปุ่ม “แก้ไขแล้ว”</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-live.png"><img src="../screenshots/v2-live.png" alt="หน้าที่แชร์: ด้านบนมีอวตารของ Kim และ Robin พร้อมข้อความว่ามีอีกสองคนอยู่ที่นี่ กระดิ่งแจ้งเตือนมีห้ารายการที่ยังไม่อ่าน (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800" style="--fx:80%;--fy:0%;--z:1.5"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔔</span>อัปเดตสดและการแจ้งเตือน</h3><p>หน้าอัปเดตเองโดยอัตโนมัติ และด้านบนจะแสดงว่าใครกำลังอ่านหรือแก้ไขอยู่ กระดิ่งรวบรวมความคิดเห็น การแชร์ และข้อความแชทไว้ในที่เดียว</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-chat.png"><img src="../screenshots/v2-chat.png" alt="แชท: ด้านซ้ายเป็นแชทส่วนตัว แชทของหน้า และแชทกลุ่ม ด้านขวาเป็นบทสนทนากับ Kim ด้านบนมีป้าย “เข้ารหัสแบบต้นทางถึงปลายทาง” (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800" style="--fx:0%;--fy:0%;--z:1"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔐</span>แชทที่เข้ารหัสแบบต้นทางถึงปลายทาง</h3><p>แชทส่วนตัว แชทกลุ่ม และแชทของหน้า เข้ารหัสบนอุปกรณ์ของคุณ (libsodium) เซิร์ฟเวอร์เก็บเพียงข้อมูลที่เข้ารหัสแล้ว จับคู่อุปกรณ์ใหม่ด้วยรหัส และหมายเลขความปลอดภัยช่วยยืนยันว่าไม่มีใครแทรกกลาง</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-mitteilungen.png"><img src="../screenshots/v2-mitteilungen.png" alt="การตั้งค่า แท็บการแจ้งเตือนในธีมสว่าง: เบราว์เซอร์นี้ อุปกรณ์สองเครื่อง (ntfy และ UnifiedPush) และสวิตช์สำหรับการแชร์ ความคิดเห็น และแชท (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:30%;--z:1.45"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📲</span>พุชไปยังโทรศัพท์</h3><p>Web Push ในเบราว์เซอร์ ntfy UnifiedPush หรือ Apple Push เลือกได้ว่าต้องการรับการแจ้งเตือนเรื่องใด และตั้งช่วงเงียบได้ โดยจะไม่ส่งเนื้อหาไปด้วยเลย</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-ki.png"><img src="../screenshots/v2-ki.png" alt="ผู้ช่วย AI ถัดจากหน้า: คำตอบคำถามเกี่ยวกับวันหยุดพร้อมอ้างอิง [1] และ [2] และแหล่งที่มา “Urlaub Gardasee 2026” และ “Fahrräder &amp; Ausrüstung” (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800" style="--fx:100%;--fy:0%;--z:1.28"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">✦</span>ผู้ช่วย AI (ไม่บังคับ)</h3><p>“ถามหน้าของคุณ” ตอบพร้อมแหล่งที่มาจากหน้าของคุณ ส่วน “หน้านี้” ช่วยสรุป แนะนำงาน ปรับปรุง หรือแปลข้อความ ใช้กับโมเดลที่คุณเลือก เช่น Ollama ในเครือข่ายของคุณเอง ปิดไว้เป็นค่าเริ่มต้น</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-foederation.png"><img src="../screenshots/v2-foederation.png" alt="หน้า “Hüttenwochenende Allgäu” ที่ jo@saga-b.example แชร์มา อยู่ใต้ “แชร์กับฉัน” ในแถบด้านข้าง พร้อมข้อความว่าคุณแก้ไขได้ (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800" style="--fx:0%;--fy:0%;--z:1.3"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🌐</span>เฟเดอเรชัน</h3><p>เชื่อมต่อเซิร์ฟเวอร์ Saga เข้าด้วยกัน และแชร์หน้ากับ ชื่อ@เซิร์ฟเวอร์ หน้ายังคงอยู่กับเจ้าของ คุณอ่าน แสดงความคิดเห็น และแก้ไขได้ใน Saga ของคุณเอง และทุกคำขอระหว่างเซิร์ฟเวอร์จะมีการลงลายมือชื่อ</p></figcaption></figure>
+    </div>
+    <h3 class="more-h">ดูให้ละเอียดขึ้น</h3>
+    <p class="more-sub">หมายเลขความปลอดภัย การจับคู่อุปกรณ์ เครื่องมือ AI สำหรับหน้า และการแชร์ข้ามเซิร์ฟเวอร์</p>
+    <div class="gallery two">
+      <figure><div class="shot"><a href="../screenshots/v2-chat-sicherheit.png"><img src="../screenshots/v2-chat-sicherheit.png" alt="กล่องโต้ตอบ “หมายเลขความปลอดภัยกับ Kim Beispiel” มีตัวเลขสิบสองชุดและปุ่มสำหรับทำเครื่องหมายว่ายืนยันแล้ว (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800"></a></div><figcaption>เปรียบเทียบหมายเลขความปลอดภัยกับ Kim</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v2-chat-kopplung.png"><img src="../screenshots/v2-chat-kopplung.png" alt="กล่องโต้ตอบยืนยันอุปกรณ์ใหม่ด้วยรหัสสี่ส่วนและปุ่มยืนยัน (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800"></a></div><figcaption>ยืนยันอุปกรณ์ใหม่ด้วยรหัส</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v2-ki-seite.png"><img src="../screenshots/v2-ki-seite.png" alt="แท็บ “หน้านี้” ของผู้ช่วย AI ในธีมสว่าง พร้อมสรุปหน้าวันหยุด (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800"></a></div><figcaption>AI: สรุป “หน้านี้” ธีมสว่าง</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v2-teilen.png"><img src="../screenshots/v2-teilen.png" alt="กล่องโต้ตอบการแชร์: Kim แก้ไขได้ ส่วนกลุ่ม familie และ Jo Muster (jo@saga-b.example) แสดงความคิดเห็นได้ (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="2880" height="1800"></a></div><figcaption>แชร์กับบุคคล กลุ่ม และ ชื่อ@เซิร์ฟเวอร์</figcaption></figure>
+    </div>
+    <h3 class="more-h">ใช้บนโทรศัพท์ได้ด้วย</h3>
+    <p class="more-sub">ทั้งในเบราว์เซอร์และในแอป ด้านซ้ายเป็นเว็บอินเทอร์เฟซ ด้านขวาเป็นแอป iPhone</p>
+    <div class="phones v2">
+      <figure><img src="../screenshots/v2-handy-chat.png" alt="เบราว์เซอร์บนโทรศัพท์: บทสนทนาที่เข้ารหัสกับ Kim (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="1170" height="2532"><figcaption>แชทบนโทรศัพท์</figcaption></figure>
+      <figure><img src="../screenshots/v2-handy-glocke.png" alt="เบราว์เซอร์บนโทรศัพท์: กระดิ่งพร้อมความคิดเห็นและการแชร์จาก jo@saga-b.example (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy" width="1170" height="2532"><figcaption>การแจ้งเตือน</figcaption></figure>
+      <figure><img src="../screenshots/app-ios-foederation.png" alt="แอป iPhone: หน้า “Reiseplanung Sommer” ที่ anna@saga.example แชร์มา" loading="lazy" width="660" height="1435"><figcaption>iPhone: หน้าจากอินสแตนซ์อื่น</figcaption></figure>
+      <figure><img src="../screenshots/app-ios-ki.png" alt="แอป iPhone: ผู้ช่วย AI แท็บ “หน้านี้” พร้อมงานที่แนะนำสามรายการ" loading="lazy" width="660" height="1435"><figcaption>iPhone: AI แนะนำงาน</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>ทุกอย่างในที่เดียว</h2>
+    <p class="sub">Saga รวมแดชบอร์ดสำหรับบริการต่าง ๆ ของคุณเข้ากับสมุดบันทึกส่วนตัว ไม่ต้องใช้คลาวด์ ไม่มีค่าสมาชิก และทำงานบนเซิร์ฟเวอร์ของคุณเอง</p>
+    <div class="grid">
+      <div class="card"><div class="ic">🧭</div><h3>แดชบอร์ด</h3><p>ไทล์สำหรับทุกบริการของคุณ พร้อมจุดแสดงสถานะ รายการโปรด การค้นหา และคีย์ลัด รวมถึงการค้นหาเว็บแบบส่วนตัวผ่าน SearXNG (ไม่บังคับ)</p></div>
+      <div class="card"><div class="ic">🔑</div><h3>สิทธิ์เข้าถึงตามกลุ่ม</h3><p>สมาชิกของ <code>s_nextcloud</code> จะเห็น Nextcloud ใช้ได้เหมือนกันทั้งกับกลุ่มภายใน LDAP และ SSO</p></div>
+      <div class="card"><div class="ic">📝</div><h3>หน้าแบบ Notion</h3><p>บล็อก หน้าย่อย เช็กลิสต์ ตาราง โค้ด รูปภาพ คอลัมน์ เทมเพลต ประวัติเวอร์ชัน และการส่งออกเป็น Markdown</p></div>
+      <div class="card"><div class="ic">🗂️</div><h3>ฐานข้อมูล</h3><p>มุมมองแบบตาราง บอร์ด รายการ แกลเลอรี และปฏิทิน พร้อมตัวกรอง ความสัมพันธ์ สูตร และผลรวม</p></div>
+      <div class="card"><div class="ic">🌐</div><h3>เผยแพร่หน้า</h3><p>แชร์หน้าที่ใครก็อ่านได้โดยไม่ต้องมีบัญชี ดูสะอาดตา ทั้งธีมสว่างและมืด ไม่ใช้ JavaScript และใช้กับโดเมนของคุณเองได้</p></div>
+      <div class="card"><div class="ic">💬</div><h3>การแชร์และความคิดเห็น</h3><p>แชร์หน้าและฐานข้อมูลกับบุคคลหรือกลุ่ม ให้ดู แสดงความคิดเห็น หรือแก้ไขได้ พร้อมความคิดเห็นบนบล็อกที่ไม่รบกวนสายตา</p></div>
+      <div class="card"><div class="ic">📅</div><h3>ปฏิทินและงาน</h3><p>ดูและแก้ไขปฏิทิน CalDAV (Nextcloud, mailcow, Radicale, iCloud) และงานที่มีลำดับความสำคัญและการทำซ้ำ</p></div>
+      <div class="card"><div class="ic">🔖</div><h3>บุ๊กมาร์กส่วนตัว</h3><p>ทุกคนเพิ่มไทล์ของตัวเองได้ เป็นส่วนตัว และใช้งานในแอปได้ด้วย</p></div>
+      <div class="card"><div class="ic">📷</div><h3>Immich</h3><p>ใช้รูปจากคลัง Immich ของคุณเป็นรูปภาพและภาพปกในหน้า</p></div>
+      <div class="card"><div class="ic">👥</div><h3>หลายผู้ใช้</h3><p>บัญชีภายในพร้อมการลงทะเบียนด้วยตนเอง LDAP/Active Directory และการลงชื่อเข้าใช้ครั้งเดียว (SSO) โดยแยกเนื้อหาของแต่ละคนอย่างเคร่งครัด</p></div>
+      <div class="card"><div class="ic">🛡️</div><h3>ส่วนผู้ดูแลระบบ</h3><p>อยู่บนพอร์ตของตัวเอง: ผู้ใช้ กลุ่ม บริการ การลงทะเบียน LDAP และ SSO พร้อมการทดสอบการเชื่อมต่อในตัว</p></div>
+      <div class="card"><div class="ic">📱</div><h3>แอปเนทีฟ</h3><p>iPhone, iPad, Mac, Linux และ Android แก้ไขหน้า ฐานข้อมูล และงานได้แบบเนทีฟ และเข้าสู่ระบบด้วย QR โค้ด</p></div>
+      <div class="card"><div class="ic">🌍</div><h3>ห้าภาษา</h3><p>เว็บอินเทอร์เฟซ ส่วนผู้ดูแลระบบ และแอป มีภาษาอังกฤษ เยอรมัน สเปน รัสเซีย และไทย เลือกได้ต่อบัญชีหรือที่หน้าเข้าสู่ระบบ ส่วนคู่มือมีเฉพาะภาษาอังกฤษ เยอรมัน และสเปน</p></div>
+      <div class="card"><div class="ic">🔒</div><h3>ปลอดภัยตั้งแต่ค่าเริ่มต้น</h3><p>CSP แบบเข้มงวด จำกัดจำนวนคำขอและการเข้าสู่ระบบ เก็บคีย์แบบแฮช และออกจากระบบทุกอุปกรณ์เมื่อเปลี่ยนรหัสผ่าน</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap split">
+    <div class="txt">
+      <h2>เขียน วางแผน รวบรวม</h2>
+      <p class="sub">สมุดบันทึกที่เติบโตไปพร้อมกับคุณ ตั้งแต่รายการซื้อของไปจนถึงแผนโครงการ</p>
+      <ul>
+        <li><b>เมนูสแลช</b> สำหรับบล็อกใหม่ ลิงก์ไปยังหน้า และกิจกรรม</li>
+        <li><b>แผนผังหน้า</b> พร้อมหน้าย่อย รายการโปรด คลังเก็บ และถังขยะ</li>
+        <li><b>ประวัติเวอร์ชัน</b> ดูและกู้คืนเวอร์ชันก่อนหน้า</li>
+        <li><b>ส่งออก</b> เป็น Markdown รวมทุกหน้าย่อย</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="../screenshots/seite.png" alt="หน้าหนึ่งใน Saga (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy"></div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap split rev">
+    <div class="txt">
+      <h2>ฐานข้อมูลที่ปรับให้เข้ากับคุณ</h2>
+      <p class="sub">เพิ่มคุณสมบัติ เลือกมุมมอง เสร็จเรียบร้อย</p>
+      <ul>
+        <li><b>มุมมอง:</b> ตาราง บอร์ด รายการ แกลเลอรี ปฏิทิน</li>
+        <li><b>คุณสมบัติ:</b> สถานะ ตัวเลือก วันที่ ตัวเลข ช่องทำเครื่องหมาย ลิงก์ ความสัมพันธ์ สูตร</li>
+        <li><b>ตัวกรอง การเรียงลำดับ และผลรวม</b> แยกตามแต่ละมุมมอง</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="../screenshots/board.png" alt="ฐานข้อมูลในมุมมองบอร์ด (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy"></div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap split">
+    <div class="txt">
+      <h2>สร้างมาเพื่อผู้ดูแลระบบ</h2>
+      <p class="sub">ส่วนผู้ดูแลระบบแยกต่างหากบนพอร์ตของตัวเอง โดยค่าเริ่มต้นเข้าถึงได้เฉพาะภายในเครื่อง</p>
+      <ul>
+        <li><b>ผู้ใช้:</b> สร้าง ล็อก ออกจากระบบทุกที่ และตั้งรหัสผ่าน</li>
+        <li><b>บริการ</b> พร้อมไอคอน หมวดหมู่ และการกำหนดอัตโนมัติตามคำนำหน้าชื่อกลุ่ม</li>
+        <li><b>LDAP/AD</b> พร้อมเทมเพลตสำหรับ FreeIPA, Active Directory และ OpenLDAP</li>
+        <li><b>SSO/OIDC</b> สำหรับ Keycloak, Authentik, Authelia, Zitadel, Entra ID …</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="../screenshots/admin-dienste.png" alt="ส่วนผู้ดูแลระบบ: บริการ (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy"></div>
+  </div>
+</section>
+
+<section id="screenshots">
+  <div class="wrap">
+    <h2>ภาพหน้าจอ</h2>
+    <p class="sub">ธีมมืดและธีมสว่างจะเปลี่ยนตามระบบของคุณโดยอัตโนมัติ</p>
+    <div class="gallery">
+      <figure><div class="shot"><img src="../screenshots/dashboard-hell.png" alt="" loading="lazy"></div><figcaption>ธีมสว่าง</figcaption></figure>
+      <figure><div class="shot"><img src="../screenshots/datenbank.png" alt="" loading="lazy"></div><figcaption>ฐานข้อมูลในมุมมองตาราง</figcaption></figure>
+      <figure><div class="shot"><img src="../screenshots/einstellungen.png" alt="" loading="lazy"></div><figcaption>การตั้งค่าส่วนตัว: บัญชี บุ๊กมาร์ก ปฏิทิน</figcaption></figure>
+      <figure><div class="shot"><img src="../screenshots/admin-sso.png" alt="" loading="lazy"></div><figcaption>ผู้ดูแลระบบ: SSO พร้อมการทดสอบการเชื่อมต่อ</figcaption></figure>
+      <figure><div class="shot"><img src="../screenshots/admin-ldap.png" alt="" loading="lazy"></div><figcaption>ผู้ดูแลระบบ: LDAP / Active Directory</figcaption></figure>
+      <figure><div class="shot"><img src="../screenshots/login.png" alt="" loading="lazy"></div><figcaption>เข้าสู่ระบบ</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="apps" class="alt">
+  <div class="wrap">
+    <h2>แอปสำหรับพกพาและสำหรับโต๊ะทำงาน</h2>
+    <p class="sub">แอปเนทีฟสำหรับ iPhone, iPad, Mac, Linux (GNOME) และ Android ไม่ใช่เว็บไซต์ที่ห่อไว้
+      หน้า ฐานข้อมูล งาน และกิจกรรมจะแสดงและแก้ไขได้ในแอปโดยตรง
+      เข้าสู่ระบบด้วยที่อยู่เซิร์ฟเวอร์ของคุณ หรือสแกน QR โค้ดจาก “แอปและอุปกรณ์” ได้เลย
+      ตั้งแต่ Saga 2.1 มีการโทรและรูปโปรไฟล์ด้วย นอกเหนือจากแชท การแจ้งเตือน พุช ผู้ช่วย AI และเฟเดอเรชัน</p>
+    <div class="phones">
+      <figure><img src="../screenshots/app-ios-start.png" alt="iPhone: หน้าแรกพร้อมงานและหน้าที่เปิดล่าสุด" loading="lazy" width="660" height="1434"><figcaption>iPhone: หน้าแรก</figcaption></figure>
+      <figure><img src="../screenshots/app-ios-dunkel-board.png" alt="iPhone: ฐานข้อมูลในมุมมองบอร์ด ธีมมืด" loading="lazy" width="660" height="1434"><figcaption>iPhone: บอร์ด ธีมมืด</figcaption></figure>
+      <figure><img src="../screenshots/app-android-heute.png" alt="Android: วันนี้ พร้อมกิจกรรมและงาน" loading="lazy" width="660" height="1467"><figcaption>Android: วันนี้</figcaption></figure>
+      <figure><img src="../screenshots/app-android-dienste.png" alt="Android: บริการตามกลุ่ม" loading="lazy" width="660" height="1467"><figcaption>Android: บริการ</figcaption></figure>
+    </div>
+    <figure class="tablet"><img src="../screenshots/app-ipad-projekte.png" alt="iPad: แถบด้านข้างและฐานข้อมูลในมุมมองบอร์ด" loading="lazy" width="1600" height="1200"><figcaption>iPad: แถบด้านข้างและบอร์ด</figcaption></figure>
+    <p class="dl"><a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/releases/latest">⬇️ ดาวน์โหลด: macOS · Linux (RPM, Flatpak) · Android</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga-apps">📱 ซอร์สโค้ดและคำแนะนำของแอป</a></p>
+  </div>
+</section>
+
+<section id="quick-start">
+  <div class="wrap">
+    <h2>พร้อมใช้งานใน 5 นาที</h2>
+    <p class="sub">สิ่งที่ต้องมีคือเซิร์ฟเวอร์ที่ติดตั้ง Docker เท่านั้น</p>
+<pre><span class="c"># ดาวน์โหลด</span>
+git clone https://github.com/yggdrasil-sh/saga.git &amp;&amp; cd saga
+cp .env.example .env
+<span class="c"># ตั้งค่า BASE_URL, SECRET_KEY และ POSTGRES_PASSWORD ใน .env</span>
+docker compose pull &amp;&amp; docker compose up -d
+<span class="c"># แสดงรหัสผ่านผู้ดูแลระบบครั้งแรก</span>
+docker compose logs saga | grep Admin-Konto
+
+<span class="c"># อัปเดตภายหลัง (Saga จะสำรองข้อมูลให้อัตโนมัติก่อน)</span>
+git pull &amp;&amp; docker compose pull &amp;&amp; docker compose up -d</pre>
+    <div class="steps">
+      <div class="card"><b>1 · เริ่มต้น</b><p>Saga ทำงานบนพอร์ต 8080 ส่วนผู้ดูแลระบบอยู่บนพอร์ต 8081 (เฉพาะภายในเครื่อง)</p></div>
+      <div class="card"><b>2 · ตั้งค่า</b><p>เพิ่มผู้ใช้และบริการในส่วนผู้ดูแลระบบ และเชื่อมต่อ LDAP หรือ SSO ได้ตามต้องการ</p></div>
+      <div class="card"><b>3 · ใช้งาน</b><p>วาง HTTPS proxy ไว้ด้านหน้า แล้วบ้านของคุณบนเว็บก็พร้อมใช้งาน</p></div>
+    </div>
+    <p style="margin-top:28px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">📖 อ่านคู่มือฉบับเต็ม (ภาษาอังกฤษ)</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga/releases">🏷️ รุ่นที่เผยแพร่และการเปลี่ยนแปลง</a></p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">Saga · โฮสต์เอง เป็นส่วนตัว โอเพนซอร์ส (AGPL-3.0) · <a href="https://github.com/yggdrasil-sh/saga">github.com/yggdrasil-sh/saga</a><br>
+  ไอคอนบริการจาก <a href="https://selfh.st/icons">selfh.st/icons</a> · หน้านี้แปลด้วยเครื่อง</div>
+</footer>
+<script>document.querySelectorAll(".lang a").forEach(function(a){a.addEventListener("click",function(){try{localStorage.setItem("saga-lang",a.dataset.l)}catch(e){}})})</script>
+</body>
+</html>

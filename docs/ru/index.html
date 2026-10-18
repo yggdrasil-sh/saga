@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saga – self-hosted панель, заметки и задачи</title>
+<meta name="description" content="Saga – твой self-hosted центр для сервисов, страниц в стиле Notion, баз данных, задач, календарей и закладок: многопользовательский, с LDAP и SSO, на Docker Compose.">
+<link rel="canonical" href="https://yggdrasil-sh.github.io/saga/ru/">
+<link rel="alternate" hreflang="de" href="https://yggdrasil-sh.github.io/saga/">
+<link rel="alternate" hreflang="en" href="https://yggdrasil-sh.github.io/saga/en/">
+<link rel="alternate" hreflang="es" href="https://yggdrasil-sh.github.io/saga/es/">
+<link rel="alternate" hreflang="ru" href="https://yggdrasil-sh.github.io/saga/ru/">
+<link rel="alternate" hreflang="th" href="https://yggdrasil-sh.github.io/saga/th/">
+<link rel="alternate" hreflang="x-default" href="https://yggdrasil-sh.github.io/saga/en/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Saga">
+<meta property="og:title" content="Saga – твой self-hosted центр для сервисов, заметок и задач">
+<meta property="og:description" content="Self-hosted панель с заметками, базами данных, задачами, календарями и закладками.">
+<meta property="og:url" content="https://yggdrasil-sh.github.io/saga/ru/">
+<meta property="og:image" content="https://yggdrasil-sh.github.io/saga/screenshots/dashboard.png">
+<meta property="og:locale" content="ru_RU">
+<meta property="og:locale:alternate" content="de_DE">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:locale:alternate" content="es_ES">
+<meta property="og:locale:alternate" content="th_TH">
+<link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <a class="brand" href="#"><img src="../icon.svg" alt="">Saga</a>
+    <span class="sp"></span>
+    <a class="l hide" href="#new">Новое в 2.1</a>
+    <a class="l hide" href="#features">Возможности</a>
+    <a class="l hide" href="#screenshots">Скриншоты</a>
+    <a class="l hide" href="#apps">Приложения</a>
+    <a class="l" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en" title="Руководство (на английском)">Руководство <small>(EN)</small></a>
+    <a class="l gh" href="https://github.com/yggdrasil-sh/saga">GitHub</a>
+    <span class="lang" role="group" aria-label="Язык"><a href="../" lang="de" hreflang="de" data-l="de" title="Deutsch" aria-label="Deutsch">DE</a><a href="../en/" lang="en" hreflang="en" data-l="en" title="English" aria-label="English">EN</a><a href="../es/" lang="es" hreflang="es" data-l="es" title="Español" aria-label="Español">ES</a><a href="./" lang="ru" hreflang="ru" data-l="ru" title="Русский" aria-label="Русский" aria-current="page">RU</a><a href="../th/" lang="th" hreflang="th" data-l="th" title="ไทย" aria-label="ไทย">TH</a></span>
+  </nav>
+
+  <header class="hero">
+    <img class="logo" src="../icon.svg" alt="Логотип Saga">
+    <h1>Твой центр для<br><span>сервисов, заметок и задач</span></h1>
+    <p class="lead">Saga – это self-hosted стартовая страница и база знаний для семей, команд и домашних лабораторий:
+      страницы и базы данных в стиле Notion, календари, задачи и закладки. У каждого своё личное пространство.</p>
+    <div class="btns">
+      <a class="btn primary" href="#quick-start">🚀 Запуск за 5 минут</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">📖 Руководство (на английском)</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga">★ Звезда на GitHub</a>
+    </div>
+    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>iOS · macOS · Linux · Android</span><span>Русский · English · Deutsch · Español · ไทย</span></div>
+    <div class="shot"><img src="../screenshots/dashboard.png" alt="Панель Saga (интерфейс на немецком)" width="2880" height="1800"></div>
+  </header>
+</div>
+
+<section id="new">
+  <div class="wrap">
+    <h2>Новое в Saga 2.1</h2>
+    <p class="sub">Более безопасный вход, лица вместо инициалов, звонки друг другу – и ИИ с именем, который помогает, когда ты его зовёшь.</p>
+    <div class="feat">
+      <figure class="fc"><a href="../screenshots/v21-sicherheit.png"><img src="../screenshots/v21-sicherheit.png" alt="Страница «Вход и безопасность»: ключ доступа «MacBook», настроенное приложение-аутентификатор, осталось 10 из 10 кодов восстановления (интерфейс на немецком)" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:20%;--z:1.55"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔑</span>Ключи доступа и 2FA</h3><p>Входи без пароля с ключом доступа (отпечаток пальца, лицо, PIN устройства) или используй его как второй шаг после пароля – либо приложение-аутентификатор. Коды восстановления на крайний случай; администратор может требовать 2FA для администраторов или для всех.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-anruf.png"><img src="../screenshots/v21-anruf.png" alt="Идёт аудиозвонок с Kim: вверху «сквозное шифрование», длительность, «напрямую», «хорошее соединение» и «звук принимается», в центре изображение профиля Kim (интерфейс на немецком)" loading="lazy" width="2880" height="1800" style="--fx:15%;--fy:0%;--z:1.3"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📞</span>Аудио- и видеозвонки</h3><p>Звони прямо из личного чата – с видео и демонстрацией экрана. Медиа идут напрямую между устройствами, каждое сигнальное сообщение проверяется ключами чата. Отдельный порт для Saga не нужен, TURN – по желанию.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-profilbilder.png"><img src="../screenshots/v21-profilbilder.png" alt="Страница «Urlaub Gardasee 2026» с боковой панелью комментариев: комментарии Kim и Robin с изображениями профиля, вверху изображения тех, кто сейчас читает (интерфейс на немецком)" loading="lazy" width="2880" height="1800" style="--fx:100%;--fy:0%;--z:1.3"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🦊</span>Изображения профиля</h3><p>Лица вместо инициалов – в комментариях, чатах, присутствии и в колокольчике. Загрузи и обрежь своё изображение, используй Gravatar или изображение из SSO/LDAP. Saga загружает всё сама – браузер никогда не обращается к Gravatar.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-chat-bilder.png"><img src="../screenshots/v21-chat-bilder.png" alt="Личный чат с Kim: две фотографии из отпуска в виде превью, ответ и запись о звонке длительностью 0:07 (интерфейс на немецком)" loading="lazy" width="2880" height="1800" style="--fx:0%;--fy:0%;--z:1"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🖼️</span>Быстрые изображения в чате</h3><p>При отправке изображения создаётся зашифрованное превью. История загружает только то, что видно, и при прокрутке ничего не прыгает – оригинал загружается по нажатию. Даже большие чаты с кучей фото остаются плавными.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-immich.png"><img src="../screenshots/v21-immich.png" alt="Окно выбора «Из Immich» над чатом с несколькими фотографиями (интерфейс на немецком)" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:40%;--z:1.15"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📷</span>Immich в чатах</h3><p>Выбирай фото прямо из своей библиотеки Immich – тем же окном, что и на страницах. Изображение защищено сквозным шифрованием, как любое вложение.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-login-passkey.png"><img src="../screenshots/v21-login-passkey.png" alt="Страница входа в светлой теме с кнопками «Войти» и «Войти с ключом доступа» (интерфейс на немецком)" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:30%;--z:1.9"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">✨</span>Вход одним касанием</h3><p>«Войти с ключом доступа» – браузер даже предлагает твой ключ прямо в поле имени пользователя. Ключи доступа привязаны к твоей Saga, и их нельзя выудить фишингом.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-ki-chat.png"><img src="../screenshots/v21-ki-chat.png" alt="Личный чат Anna Berg и Ben Okafor: подсказка, что Marin разрешён в этом чате только по запросу, вопрос Anna «@Marin, насколько тепло в Лиссабоне в середине мая?» и ответ Marin с изображением профиля и пометкой, что спрашивала Anna Berg (интерфейс на немецком)" loading="lazy" width="1366" height="860" style="--fx:60%;--fy:45%;--z:1.35"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">💬</span>Твой ИИ – с именем, в чате по запросу</h3><p>Дай ИИ имя, изображение и манеру речи. Если хочешь, он помогает и в чатах – но только когда кто-то обращается к нему через @имя. ИИ получает только это сообщение и несколько предыдущих; всё остальное остаётся под сквозным шифрованием. По умолчанию выключено.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-ki-websuche.png"><img src="../screenshots/v21-ki-websuche.png" alt="Боковая панель ИИ «Marin»: ответ на вопрос о погоде со ссылками на веб-источники, внизу переключатель «Искать в интернете» (интерфейс на немецком)" loading="lazy" width="1366" height="900" style="--fx:100%;--fy:0%;--z:2.1"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔎</span>Веб-поиск для ИИ</h3><p>Погода, часы работы, новости: ИИ ищет в интернете через твой экземпляр SearXNG и даёт ссылки на источники – даже с небольшими локальными моделями. Включает администратор; в ассистенте поиск можно отключить для отдельного вопроса.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-chat-loeschen.png"><img src="../screenshots/v21-chat-loeschen.png" alt="Диалог удаления чата «Bert Demo» с выбором «Только у меня» или «У всех» и предупреждением, что это нельзя отменить; слева список чатов с разделом «Архив (1)» (интерфейс на немецком)" loading="lazy" width="2560" height="1600" style="--fx:50%;--fy:50%;--z:1.5"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🗂️</span>Архивировать и удалять чаты</h3><p>Архивированные чаты попадают в отдельный раздел и возвращаются со следующим сообщением. Удаляй только у себя – у остальных всё сохранится – или у всех, с понятным предупреждением.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v21-sprache.png"><img src="../screenshots/v21-sprache.png" alt="Страница входа на испанском с полями имени пользователя и пароля и кнопкой «Iniciar sesión», ниже переключатель языка со значением «Español»" loading="lazy" width="1280" height="860" style="--fx:50%;--fy:50%;--z:2"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🌐</span>Пять языков на выбор</h3><p>Новое: русский и тайский. Язык можно переключить прямо на странице входа – удобно за чужим компьютером – и в любой момент через пункт «Язык» в меню пользователя.</p></figcaption></figure>
+    </div>
+    <h3 class="more-h">Подробнее</h3>
+    <p class="more-sub">А ещё: ИИ-ассистент находит гораздо больше (основы слов, составные слова, свойства баз данных), предлагает в виде задач только реальные следующие шаги и лучше справляется с локальными моделями; изображения можно копировать и вставлять между страницами.</p>
+    <div class="gallery two">
+      <figure><div class="shot"><a href="../screenshots/v21-login-2fa.png"><img src="../screenshots/v21-login-2fa.png" alt="Второй шаг после пароля: «Подтвердить ключом доступа» или код из приложения-аутентификатора (интерфейс на немецком)" loading="lazy" width="2880" height="1800"></a></div><figcaption>Второй шаг: ключ доступа или код</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-profilbild-zuschneiden.png"><img src="../screenshots/v21-profilbild-zuschneiden.png" alt="Диалог «Обрезать изображение профиля» с круглой рамкой и ползунком масштаба (интерфейс на немецком)" loading="lazy" width="2880" height="1800"></a></div><figcaption>Обрезка изображения профиля</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-admin-2fa.png"><img src="../screenshots/v21-admin-2fa.png" alt="Панель администратора, раздел «Общее»: «Требовать 2FA для» – никого, администраторов или всех (интерфейс на немецком)" loading="lazy" width="2880" height="1800"></a></div><figcaption>Администрирование: политика 2FA</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-admin-anrufe.png"><img src="../screenshots/v21-admin-anrufe.png" alt="Панель администратора, раздел «Общее»: звонки с STUN-сервером, необязательным TURN-сервером и временем вызова (интерфейс на немецком)" loading="lazy" width="2880" height="1800"></a></div><figcaption>Администрирование: звонки, STUN и TURN</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-admin-ki.png"><img src="../screenshots/v21-admin-ki.png" alt="Панель администратора, ИИ-ассистент: включены «Разрешить ИИ в чатах (только по упоминанию)» и «Разрешить веб-поиск», ниже примечание о конфиденциальности и персона «Marin» (интерфейс на немецком)" loading="lazy" width="1366" height="854"></a></div><figcaption>Администрирование: ИИ в чатах, веб-поиск и персона</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v21-chat-archiv.png"><img src="../screenshots/v21-chat-archiv.png" alt="Список чатов в тёмной теме с раскрытым разделом «Архив (1)» и сообщением, что чат архивирован и вернётся со следующим сообщением (интерфейс на немецком)" loading="lazy" width="2560" height="1600"></a></div><figcaption>Архивированные чаты</figcaption></figure>
+    </div>
+    <h3 class="more-h">И на телефоне</h3>
+    <p class="more-sub">Звонить, разговаривать, смотреть фото и входить с ключом доступа – в браузере телефона.</p>
+    <div class="phones v2">
+      <figure><img src="../screenshots/v21-handy-klingeln.png" alt="Браузер телефона: звонит Alex Beispiel, кнопки «отклонить» и «принять» (интерфейс на немецком)" loading="lazy" width="1170" height="2532"><figcaption>Входящий звонок</figcaption></figure>
+      <figure><img src="../screenshots/v21-handy-anruf.png" alt="Браузер телефона: идёт звонок с Alex, сквозное шифрование (интерфейс на немецком)" loading="lazy" width="1170" height="2532"><figcaption>Во время звонка</figcaption></figure>
+      <figure><img src="../screenshots/v21-handy-chat-bilder.png" alt="Браузер телефона: чат с Alex и две фотографии из отпуска (интерфейс на немецком)" loading="lazy" width="1170" height="2532"><figcaption>Чат с превью</figcaption></figure>
+      <figure><img src="../screenshots/v21-handy-login.png" alt="Браузер телефона: страница входа в тёмной теме с кнопкой «Войти с ключом доступа» (интерфейс на немецком)" loading="lazy" width="1170" height="2532"><figcaption>Вход с ключом доступа</figcaption></figure>
+    </div>
+    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 Все изменения и заметки к обновлению (на немецком)</a></p>
+  </div>
+</section>
+
+<section id="new-2-0" class="alt">
+  <div class="wrap">
+    <h2>Новое в Saga 2.0</h2>
+    <p class="sub">Твой личный блокнот становится общим пространством – всё по желанию, всё на твоём собственном сервере.</p>
+    <div class="feat">
+      <figure class="fc"><a href="../screenshots/v2-kommentare.png"><img src="../screenshots/v2-kommentare.png" alt="Страница с открытой боковой панелью комментариев: три обсуждения к отдельным абзацам, в одном есть ответ (интерфейс на немецком)" loading="lazy" width="2880" height="1800" style="--fx:100%;--fy:0%;--z:1.28"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">💬</span>Общий доступ и комментарии</h3><p>Делись страницами и базами данных с людьми, группами или имя@сервер – просмотр, комментирование или редактирование. Комментарии тихо стоят рядом с блоком, с ответами и кнопкой «Решено».</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-live.png"><img src="../screenshots/v2-live.png" alt="Общая страница: вверху аватары Kim и Robin с подсказкой, что здесь ещё два человека, на колокольчике пять непрочитанных уведомлений (интерфейс на немецком)" loading="lazy" width="2880" height="1800" style="--fx:80%;--fy:0%;--z:1.5"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔔</span>В реальном времени и уведомления</h3><p>Страницы обновляются сами, а вверху видно, кто ещё читает или редактирует. Колокольчик собирает комментарии, приглашения к общему доступу и сообщения чатов.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-chat.png"><img src="../screenshots/v2-chat.png" alt="Чаты: слева личный чат, чат страницы и групповой чат, справа разговор с Kim, вверху значок «сквозное шифрование» (интерфейс на немецком)" loading="lazy" width="2880" height="1800" style="--fx:0%;--fy:0%;--z:1"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🔐</span>Чаты со сквозным шифрованием</h3><p>Личные, групповые чаты и чаты страниц шифруются на твоих устройствах (libsodium) – сервер хранит только шифротекст. Новые устройства подключаются по коду, а код безопасности показывает, что посередине никого нет.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-mitteilungen.png"><img src="../screenshots/v2-mitteilungen.png" alt="Настройки, вкладка «Уведомления» в светлой теме: этот браузер, два устройства (ntfy и UnifiedPush) и переключатели для общего доступа, комментариев и чатов (интерфейс на немецком)" loading="lazy" width="2880" height="1800" style="--fx:50%;--fy:30%;--z:1.45"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">📲</span>Push на телефон</h3><p>Web Push в браузере, ntfy, UnifiedPush или Apple Push. Выбирай, о чём получать уведомления, и задавай тихие часы – содержимое никогда не пересылается.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-ki.png"><img src="../screenshots/v2-ki.png" alt="ИИ-ассистент рядом со страницей: ответ на вопрос об отпуске со ссылками [1] и [2] и источниками «Urlaub Gardasee 2026» и «Fahrräder &amp; Ausrüstung» (интерфейс на немецком)" loading="lazy" width="2880" height="1800" style="--fx:100%;--fy:0%;--z:1.28"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">✦</span>ИИ-ассистент (по желанию)</h3><p>«Спроси свои страницы» отвечает с источниками из твоих страниц, «Эта страница» делает краткое содержание, предлагает задачи, улучшает или переводит текст. С моделью на твой выбор, например Ollama в твоей сети – по умолчанию выключено.</p></figcaption></figure>
+      <figure class="fc"><a href="../screenshots/v2-foederation.png"><img src="../screenshots/v2-foederation.png" alt="Страница «Hüttenwochenende Allgäu», которой поделился jo@saga-b.example, в боковой панели в разделе «Доступные мне» – с пометкой, что её можно редактировать (интерфейс на немецком)" loading="lazy" width="2880" height="1800" style="--fx:0%;--fy:0%;--z:1.3"></a>
+        <figcaption class="fb"><h3><span class="ic" aria-hidden="true">🌐</span>Федерация</h3><p>Соединяй серверы Saga и делись страницами с имя@сервер. Страница остаётся у владельца – ты читаешь, комментируешь и редактируешь её в своей Saga, а каждый запрос между серверами подписывается.</p></figcaption></figure>
+    </div>
+    <h3 class="more-h">Подробнее</h3>
+    <p class="more-sub">Код безопасности, подключение устройств, инструменты ИИ для страниц и общий доступ между серверами.</p>
+    <div class="gallery two">
+      <figure><div class="shot"><a href="../screenshots/v2-chat-sicherheit.png"><img src="../screenshots/v2-chat-sicherheit.png" alt="Диалог «Код безопасности с Kim Beispiel» с двенадцатью блоками цифр и кнопкой, чтобы отметить его как проверенный (интерфейс на немецком)" loading="lazy" width="2880" height="1800"></a></div><figcaption>Сравни код безопасности с Kim</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v2-chat-kopplung.png"><img src="../screenshots/v2-chat-kopplung.png" alt="Диалог подтверждения нового устройства с кодом из четырёх частей и кнопкой подтверждения (интерфейс на немецком)" loading="lazy" width="2880" height="1800"></a></div><figcaption>Подтверди новое устройство кодом</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v2-ki-seite.png"><img src="../screenshots/v2-ki-seite.png" alt="Вкладка ИИ-ассистента «Эта страница» в светлой теме с кратким содержанием страницы об отпуске (интерфейс на немецком)" loading="lazy" width="2880" height="1800"></a></div><figcaption>ИИ: краткое содержание «Этой страницы», светлая тема</figcaption></figure>
+      <figure><div class="shot"><a href="../screenshots/v2-teilen.png"><img src="../screenshots/v2-teilen.png" alt="Диалог общего доступа: Kim может редактировать, группа familie и Jo Muster (jo@saga-b.example) могут комментировать (интерфейс на немецком)" loading="lazy" width="2880" height="1800"></a></div><figcaption>Поделиться с человеком, группой и имя@сервер</figcaption></figure>
+    </div>
+    <h3 class="more-h">И на телефоне</h3>
+    <p class="more-sub">В браузере и в приложениях – слева веб-интерфейс, справа приложение для iPhone.</p>
+    <div class="phones v2">
+      <figure><img src="../screenshots/v2-handy-chat.png" alt="Браузер телефона: зашифрованный разговор с Kim (интерфейс на немецком)" loading="lazy" width="1170" height="2532"><figcaption>Чат на телефоне</figcaption></figure>
+      <figure><img src="../screenshots/v2-handy-glocke.png" alt="Браузер телефона: колокольчик с комментариями и приглашением от jo@saga-b.example (интерфейс на немецком)" loading="lazy" width="1170" height="2532"><figcaption>Уведомления</figcaption></figure>
+      <figure><img src="../screenshots/app-ios-foederation.png" alt="Приложение для iPhone: страница «Reiseplanung Sommer», которой поделился anna@saga.example" loading="lazy" width="660" height="1435"><figcaption>iPhone: страница с другого сервера</figcaption></figure>
+      <figure><img src="../screenshots/app-ios-ki.png" alt="Приложение для iPhone: ИИ-ассистент, вкладка «Эта страница» с тремя предложенными задачами" loading="lazy" width="660" height="1435"><figcaption>iPhone: ИИ предлагает задачи</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Всё в одном месте</h2>
+    <p class="sub">Saga объединяет панель для твоих сервисов с личным блокнотом – без облака, без подписки, на твоём собственном сервере.</p>
+    <div class="grid">
+      <div class="card"><div class="ic">🧭</div><h3>Панель</h3><p>Плитки для всех твоих сервисов с индикаторами состояния, избранным, поиском и горячими клавишами – плюс по желанию приватный веб-поиск через SearXNG.</p></div>
+      <div class="card"><div class="ic">🔑</div><h3>Доступ по группам</h3><p>Участники группы <code>s_nextcloud</code> видят Nextcloud. Так же работает с локальными группами, LDAP и SSO.</p></div>
+      <div class="card"><div class="ic">📝</div><h3>Страницы в стиле Notion</h3><p>Блоки, подстраницы, чек-листы, таблицы, код, изображения, колонки, шаблоны, история версий и экспорт в Markdown.</p></div>
+      <div class="card"><div class="ic">🗂️</div><h3>Базы данных</h3><p>Представления «таблица», «доска», «список», «галерея» и «календарь» – с фильтрами, связями, формулами и итогами.</p></div>
+      <div class="card"><div class="ic">🌐</div><h3>Публикация страниц</h3><p>Открывай страницы, которые любой может прочитать без учётной записи – аккуратно, в светлой или тёмной теме, без JavaScript, даже на своём домене.</p></div>
+      <div class="card"><div class="ic">💬</div><h3>Общий доступ и комментарии</h3><p>Делись страницами и базами данных с людьми или группами – просмотр, комментирование или редактирование, с ненавязчивыми комментариями к блокам.</p></div>
+      <div class="card"><div class="ic">📅</div><h3>Календари и задачи</h3><p>Просматривай и редактируй календари CalDAV (Nextcloud, mailcow, Radicale, iCloud); задачи с приоритетами и повторением.</p></div>
+      <div class="card"><div class="ic">🔖</div><h3>Личные закладки</h3><p>Каждый добавляет свои плитки – приватно, и они доступны в приложениях.</p></div>
+      <div class="card"><div class="ic">📷</div><h3>Immich</h3><p>Используй фото из своей библиотеки Immich как изображения и обложки на страницах.</p></div>
+      <div class="card"><div class="ic">👥</div><h3>Многопользовательский режим</h3><p>Локальные учётные записи с самостоятельной регистрацией, LDAP/Active Directory и единый вход (SSO) – со строго разделённым содержимым.</p></div>
+      <div class="card"><div class="ic">🛡️</div><h3>Панель администратора</h3><p>На отдельном порту: пользователи, группы, сервисы, регистрация, LDAP и SSO со встроенной проверкой подключения.</p></div>
+      <div class="card"><div class="ic">📱</div><h3>Нативные приложения</h3><p>iPhone, iPad, Mac, Linux и Android – редактируй страницы, базы данных и задачи нативно, вход по QR-коду.</p></div>
+      <div class="card"><div class="ic">🌍</div><h3>Пять языков</h3><p>Веб-интерфейс, панель администратора и приложения на английском, немецком, испанском, русском и тайском – выбор для каждой учётной записи или прямо на странице входа. Руководство пока есть только на английском, немецком и испанском.</p></div>
+      <div class="card"><div class="ic">🔒</div><h3>Безопасно по умолчанию</h3><p>Строгий CSP, ограничения запросов и попыток входа, хешированные ключи, выход со всех устройств при смене пароля.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap split">
+    <div class="txt">
+      <h2>Пиши, планируй, собирай</h2>
+      <p class="sub">Блокнот, который растёт вместе с тобой – от списка покупок до плана проекта.</p>
+      <ul>
+        <li><b>Слеш-меню</b> для новых блоков, ссылок на страницы и события</li>
+        <li><b>Дерево страниц</b> с подстраницами, избранным, архивом и корзиной</li>
+        <li><b>История версий</b> – просматривай и восстанавливай прежние версии</li>
+        <li><b>Экспорт</b> в Markdown, включая все подстраницы</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="../screenshots/seite.png" alt="Страница в Saga (интерфейс на немецком)" loading="lazy"></div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap split rev">
+    <div class="txt">
+      <h2>Базы данных под твои задачи</h2>
+      <p class="sub">Добавь свойства, выбери представление – готово.</p>
+      <ul>
+        <li><b>Представления:</b> таблица, доска, список, галерея, календарь</li>
+        <li><b>Свойства:</b> статус, выбор, дата, число, флажок, ссылка, связь, формула</li>
+        <li><b>Фильтры, сортировка и итоги</b> для каждого представления</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="../screenshots/board.png" alt="База данных в виде доски (интерфейс на немецком)" loading="lazy"></div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap split">
+    <div class="txt">
+      <h2>Создано для администраторов</h2>
+      <p class="sub">Отдельная панель администратора на своём порту – по умолчанию доступна только локально.</p>
+      <ul>
+        <li><b>Пользователи:</b> создавать, блокировать, выходить везде, задавать пароли</li>
+        <li><b>Сервисы</b> со значком, категорией и автоматическим назначением по префиксу группы</li>
+        <li><b>LDAP/AD</b> с шаблонами для FreeIPA, Active Directory и OpenLDAP</li>
+        <li><b>SSO/OIDC</b> для Keycloak, Authentik, Authelia, Zitadel, Entra ID …</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="../screenshots/admin-dienste.png" alt="Панель администратора: сервисы (интерфейс на немецком)" loading="lazy"></div>
+  </div>
+</section>
+
+<section id="screenshots">
+  <div class="wrap">
+    <h2>Скриншоты</h2>
+    <p class="sub">Тёмная и светлая темы автоматически следуют настройкам системы.</p>
+    <div class="gallery">
+      <figure><div class="shot"><img src="../screenshots/dashboard-hell.png" alt="" loading="lazy"></div><figcaption>Светлая тема</figcaption></figure>
+      <figure><div class="shot"><img src="../screenshots/datenbank.png" alt="" loading="lazy"></div><figcaption>База данных в виде таблицы</figcaption></figure>
+      <figure><div class="shot"><img src="../screenshots/einstellungen.png" alt="" loading="lazy"></div><figcaption>Личные настройки: учётная запись, закладки, календари</figcaption></figure>
+      <figure><div class="shot"><img src="../screenshots/admin-sso.png" alt="" loading="lazy"></div><figcaption>Администрирование: SSO с проверкой подключения</figcaption></figure>
+      <figure><div class="shot"><img src="../screenshots/admin-ldap.png" alt="" loading="lazy"></div><figcaption>Администрирование: LDAP / Active Directory</figcaption></figure>
+      <figure><div class="shot"><img src="../screenshots/login.png" alt="" loading="lazy"></div><figcaption>Вход</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="apps" class="alt">
+  <div class="wrap">
+    <h2>Приложения для кармана и рабочего стола</h2>
+    <p class="sub">Нативные приложения для iPhone, iPad, Mac, Linux (GNOME) и Android – а не обёрнутый сайт.
+      Страницы, базы данных, задачи и события показываются и редактируются прямо в приложении.
+      Войди с адресом своего сервера или просто отсканируй QR-код в разделе «Приложения и устройства».
+      С Saga 2.1 – ещё и звонки и изображения профиля, а также чаты, уведомления, push, ИИ-ассистент и федерация.</p>
+    <div class="phones">
+      <figure><img src="../screenshots/app-ios-start.png" alt="iPhone: главная с задачами и недавними страницами" loading="lazy" width="660" height="1434"><figcaption>iPhone: главная</figcaption></figure>
+      <figure><img src="../screenshots/app-ios-dunkel-board.png" alt="iPhone: база данных в виде доски в тёмной теме" loading="lazy" width="660" height="1434"><figcaption>iPhone: доска, тёмная тема</figcaption></figure>
+      <figure><img src="../screenshots/app-android-heute.png" alt="Android: сегодня с событиями и задачами" loading="lazy" width="660" height="1467"><figcaption>Android: сегодня</figcaption></figure>
+      <figure><img src="../screenshots/app-android-dienste.png" alt="Android: сервисы по группам" loading="lazy" width="660" height="1467"><figcaption>Android: сервисы</figcaption></figure>
+    </div>
+    <figure class="tablet"><img src="../screenshots/app-ipad-projekte.png" alt="iPad: боковая панель и база данных в виде доски" loading="lazy" width="1600" height="1200"><figcaption>iPad: боковая панель и доска</figcaption></figure>
+    <p class="dl"><a class="btn" href="https://github.com/yggdrasil-sh/saga-apps/releases/latest">⬇️ Загрузки: macOS · Linux (RPM, Flatpak) · Android</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga-apps">📱 Исходный код и инструкции к приложениям</a></p>
+  </div>
+</section>
+
+<section id="quick-start">
+  <div class="wrap">
+    <h2>Запуск за 5 минут</h2>
+    <p class="sub">Нужен только сервер с Docker.</p>
+<pre><span class="c"># скачать</span>
+git clone https://github.com/yggdrasil-sh/saga.git &amp;&amp; cd saga
+cp .env.example .env
+<span class="c"># задать в .env BASE_URL, SECRET_KEY и POSTGRES_PASSWORD</span>
+docker compose pull &amp;&amp; docker compose up -d
+<span class="c"># показать первый пароль администратора</span>
+docker compose logs saga | grep Admin-Konto
+
+<span class="c"># обновить позже (Saga сначала автоматически создаёт резервную копию)</span>
+git pull &amp;&amp; docker compose pull &amp;&amp; docker compose up -d</pre>
+    <div class="steps">
+      <div class="card"><b>1 · Запуск</b><p>Saga работает на порту 8080, панель администратора – на 8081 (только локально).</p></div>
+      <div class="card"><b>2 · Настройка</b><p>Добавь пользователей и сервисы в панели администратора и по желанию подключи LDAP или SSO.</p></div>
+      <div class="card"><b>3 · Вперёд</b><p>Поставь перед Saga HTTPS-прокси – и твой собственный дом в сети готов.</p></div>
+    </div>
+    <p style="margin-top:28px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">📖 Полное руководство (на английском)</a>
+      <a class="btn" href="https://github.com/yggdrasil-sh/saga/releases">🏷️ Релизы и изменения</a></p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">Saga · self-hosted, приватно, с открытым исходным кодом (AGPL-3.0) · <a href="https://github.com/yggdrasil-sh/saga">github.com/yggdrasil-sh/saga</a><br>
+  Значки сервисов: <a href="https://selfh.st/icons">selfh.st/icons</a> · Эта страница переведена автоматически.</div>
+</footer>
+<script>document.querySelectorAll(".lang a").forEach(function(a){a.addEventListener("click",function(){try{localStorage.setItem("saga-lang",a.dataset.l)}catch(e){}})})</script>
+</body>
+</html>

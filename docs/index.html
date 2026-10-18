@@ -9,6 +9,8 @@
 <link rel="alternate" hreflang="de" href="https://yggdrasil-sh.github.io/saga/">
 <link rel="alternate" hreflang="en" href="https://yggdrasil-sh.github.io/saga/en/">
 <link rel="alternate" hreflang="es" href="https://yggdrasil-sh.github.io/saga/es/">
+<link rel="alternate" hreflang="ru" href="https://yggdrasil-sh.github.io/saga/ru/">
+<link rel="alternate" hreflang="th" href="https://yggdrasil-sh.github.io/saga/th/">
 <link rel="alternate" hreflang="x-default" href="https://yggdrasil-sh.github.io/saga/en/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Saga">
@@ -19,14 +21,16 @@
 <meta property="og:locale" content="de_DE">
 <meta property="og:locale:alternate" content="en_US">
 <meta property="og:locale:alternate" content="es_ES">
+<meta property="og:locale:alternate" content="ru_RU">
+<meta property="og:locale:alternate" content="th_TH">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="site.css">
 <script>
-/* Erstbesuch ohne deutsche Browsersprache: zur englischen bzw. spanischen Fassung. Eine Wahl im Umschalter gilt. */
-(function(){try{var s=localStorage.getItem("saga-lang");if(s){if(s==="en"||s==="es")location.replace(s+"/");return}
+/* Erstbesuch ohne deutsche Browsersprache: zur englischen, spanischen, russischen bzw. thailaendischen Fassung. Eine Wahl im Umschalter gilt. */
+(function(){try{var o={en:1,es:1,ru:1,th:1},s=localStorage.getItem("saga-lang");if(s){if(o[s])location.replace(s+"/");return}
 if(/bot|crawl|spider|slurp|preview|lighthouse/i.test(navigator.userAgent))return;
 var ls=navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language||"de"];
-for(var i=0;i<ls.length;i++){var l=String(ls[i]).toLowerCase().slice(0,2);if(l==="de")return;if(l==="en"||l==="es"){location.replace(l+"/");return}}
+for(var i=0;i<ls.length;i++){var l=String(ls[i]).toLowerCase().slice(0,2);if(l==="de")return;if(o[l]){location.replace(l+"/");return}}
 location.replace("en/")}catch(e){}})();
 </script>
 </head>
@@ -41,7 +45,7 @@ location.replace("en/")}catch(e){}})();
     <a class="l hide" href="#apps">Apps</a>
     <a class="l" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md">Anleitung</a>
     <a class="l gh" href="https://github.com/yggdrasil-sh/saga">GitHub</a>
-    <span class="lang" aria-label="Sprache"><a href="./" lang="de" hreflang="de" data-l="de" aria-current="page">DE</a><a href="en/" lang="en" hreflang="en" data-l="en">EN</a><a href="es/" lang="es" hreflang="es" data-l="es">ES</a></span>
+    <span class="lang" role="group" aria-label="Sprache"><a href="./" lang="de" hreflang="de" data-l="de" title="Deutsch" aria-label="Deutsch" aria-current="page">DE</a><a href="en/" lang="en" hreflang="en" data-l="en" title="English" aria-label="English">EN</a><a href="es/" lang="es" hreflang="es" data-l="es" title="Español" aria-label="Español">ES</a><a href="ru/" lang="ru" hreflang="ru" data-l="ru" title="Русский" aria-label="Русский">RU</a><a href="th/" lang="th" hreflang="th" data-l="th" title="ไทย" aria-label="ไทย">TH</a></span>
   </nav>
 
   <header class="hero">
