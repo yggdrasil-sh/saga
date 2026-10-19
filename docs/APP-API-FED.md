@@ -288,6 +288,9 @@ Abschnitt „Anrufe: saga-call v3“) gilt unverändert auch für föderierte An
 `/answer` geht in `ring`/`answer` mit; ein 2.3-Server ignoriert ihn (dann ist `caps` beim Gegenüber leer – maßgeblich
 bleiben die signierten `caps` im Body). Jede Seite prüft `reneg` beim **eigenen** Server (`GET /api/calls/config`).
 Die Server-Fähigkeit `calls3` (Raum, mehrere Geräte, Gruppen) kommt erst mit E4.
+Bildschirm v2 (E3, `screen2`: zweite Videospur, `tracks`/`msid`/`screen_mid`) gilt ebenso föderiert und braucht keine
+neue Server-Fähigkeit: Jede Seite meldet `screen2` nur, wenn ihr **eigener** Server `reneg` und `screen2` liefert; fehlt
+es auf einer Seite, teilt der Client wie bisher per `replaceTrack` (Betriebsart A).
 
 ## 8. Seiten anderer Server vollständig (E4/E6)
 

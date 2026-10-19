@@ -143,13 +143,14 @@ im signierten JSON-Text `body`. Endpunkte wie 2.1/2.3 (`POST /api/calls`, `/answ
 Zusätzliche Felder (ältere Server liefern sie nicht – dann gilt: keine v3-Funktionen):
 
 ```json
-{"enabled": true, "format": "saga-call/v1", "body_v": 3, "features": ["reneg", "pip_hint"],
+{"enabled": true, "format": "saga-call/v1", "body_v": 3, "features": ["reneg", "pip_hint", "screen2"],
  "limits": {"endpoints_video": 2, "endpoints_audio": 2, "signals_max": 600, "signals_per_min": 60,
             "signals_hard": 6000, "sig_rate": 240, "sealed_max": 24576, "caps_max": 16}, "…": "…"}
 ```
 
 - `features`: `reneg` = der Server reicht offer/answer während des Gesprächs weiter (Budget unten), `pip_hint` = `want`
-  wird unterstützt. Später: `multi` (E4), `group` (E5), `screen2` (E3).
+  wird unterstützt, `screen2` = Bildschirm als zweite Videospur (E3, Abschnitt „Bildschirm v2“). Später: `multi` (E4),
+  `group` (E5).
 - `limits.endpoints_*`: Endpunkte je Anruf (E0: 2; E4/E5 heben sie an, der Admin kann nur senken).
 - Signal-Budget je Anruf: `signals_max` + `signals_per_min` je **angefangener** Minute seit der Annahme, höchstens
   `signals_hard`; darüber und über `sig_rate` je Gerät und Minute → `429`. Ein versiegeltes Signal darf `sealed_max`
@@ -167,6 +168,7 @@ Zusätzliche Felder (ältere Server liefern sie nicht – dann gilt: keine v3-Fu
 | `reneg` | versteht `offer`/`answer` während des Gesprächs (Neuverhandlung, ICE-Restart) | der **eigene** Server `features` mit `reneg` liefert |
 | `want` | beachtet `state.want` des Gegenübers (Bitrate senken) | immer (2.4-Client) |
 | `bye` | versteht `bye` | immer (2.4-Client) |
+| `screen2` | sendet und empfängt den Bildschirm als eigene Videospur (Betriebsart B) | der eigene Server `features` mit `reneg` **und** `screen2` liefert und der Client B kann |
 
 - `caps` steht im Body von **jedem** `offer` und `answer` (auch im ersten). Fehlt es (2.1/2.3), gilt `[]`.
 - Neuverhandlung und ICE-Restart nur, wenn **beide** Seiten `reneg` melden (eigene caps und die des Gegenübers).
@@ -256,3 +258,109 @@ Weg aus `getStats` alle 2 s: lokaler Kandidat `relay` mit `relayProtocol` `tcp`/
 
 Tests: `tests/anrufe_v3.py` (Server, Signalfluss, Grenzen), `tests/browser_calls3.js` (Web, gegen den 2.3-Client),
 föderiert `tests/foederation_chat.py`.
+
+## Anrufe: Bildschirm v2 (2.4, Etappe E3)
+
+Baut auf saga-call v3 auf (Neuverhandlung oben). Server: nur `features: "screen2"`, keine neuen Endpunkte; der Body
+bleibt signiert und für den Server undurchsichtig. Ein Angebot mit drei m-Zeilen (Ton, Kamera, Bildschirm) ist in Chrome
+≈ 6–10 KB SDP und passt in `sealed_max` (24 KB). `MIN_APP` ändert sich nicht.
+
+### Zwei Betriebsarten
+
+| | wann | wie |
+|---|---|---|
+| **B** – eigene Spur | **beide** Seiten melden `reneg` **und** `screen2` in den signierten `caps`, und die erste Aushandlung ist fertig | zusätzlicher Video-Transceiver (bzw. Wiederverwendung, siehe unten) über die Neuverhandlung; die Kamera läuft auf ihrer m-Zeile weiter (gedrosselt) |
+| **A** – wie 2.1/2.3 | sonst (2.1/2.3, E0-Clients ohne `screen2`, noch nicht verbunden) | `replaceTrack(screen)` auf dem Kamera-Sender, Kamera pausiert. Kein Angebot, keine neue m-Zeile |
+
+Ein Client, der B nicht kann, meldet `screen2` nicht – er bekommt dann immer A. Empfangen muss **jeder** 2.4-Client mit
+`screen2` beides können.
+
+### Sender (Betriebsart B)
+
+1. Bildschirm-Spur mit `contentHint = "detail"` (iOS/Android: entsprechend „Text“/Detail-Encoder-Einstellung).
+2. **m-Zeile finden oder anlegen:** gibt es schon einen Video-Transceiver mit Rolle `screen` – eigener aus einem früheren
+   Teilen **oder** einer, den das Gegenüber angelegt hat (seine `tracks` nennen diese mid `screen`) – diesen
+   wiederverwenden: `sender.replaceTrack(screen)`, `sender.setStreams(bildschirm-stream)`, `direction = "sendrecv"`.
+   Sonst `addTransceiver(screen, {direction: "sendrecv", streams: [bildschirm-stream]})`. Es gibt höchstens **eine**
+   Bildschirm-m-Zeile je Verbindung (beide Seiten teilen sie, auch gleichzeitig) – das SDP wächst nicht bei jedem Teilen.
+3. `negotiationneeded` → `offer` wie bei saga-call v3 (`n` + 1) mit `tracks`/`msid` (unten).
+4. **Nach** dem Angebot `state` mit `screen: true`, `screen_mid`, `tracks`, `msid` senden (die mid steht erst nach
+   `setLocalDescription` fest). Ergebnis: höchstens 4 Signale je Start (offer, answer, state).
+5. **Ende** (Knopf, System-„Teilen beenden“, Spur `ended`): `replaceTrack(null)`, `direction = "recvonly"` (nicht
+   `stopped`, nicht entfernen) → Neuverhandlung → teilt das Gegenüber nicht, ist die m-Zeile danach `inactive`.
+   Dann `state` mit `screen: false` (ohne `screen_mid`). Beim Auflegen, bei Übergabe auf ein anderes Gerät und bei
+   Verlust der PeerConnection endet das Teilen automatisch.
+6. Systemton (wo die Plattform ihn liefert, Web: Chromium-Tab/Systemton) wird **in die vorhandene Tonspur gemischt**
+   (Mikrofon + Quelle); Stumm schaltet nur das Mikrofon. Keine eigene Ton-m-Zeile. `state.screen_audio: true` als Hinweis.
+
+Betriebsart A sendet `state` mit `screen: true` wie bisher; `screen_mid` ist dann die mid der **Kamera**-m-Zeile (dort läuft
+der Bildschirm) – ältere Clients kennen das Feld nicht und zeigen wie bisher die einzige Videospur.
+
+### Neue Felder im Body
+
+| Feld | Typ | in | Bedeutung |
+|---|---|---|---|
+| `tracks` | Objekt | offer, answer, state | **Rolle jeder eigenen m-Zeile**: `{"<mid>": "mic" \| "cam" \| "screen"}`. Fest je m-Zeile (die Kamera-m-Zeile bleibt `cam`, auch wenn in A gerade der Bildschirm darauf läuft). Nur senden, wer `screen2` meldet. Höchstens 8 Einträge, mid `[A-Za-z0-9_-]{1,16}`, Unbekanntes ignorieren |
+| `msid` | Objekt | offer, answer, state | `{"<mid>": "<Stream-ID>"}` = Stream-ID aus `a=msid:<Stream-ID> <Spur-ID>` der SDP. Ton und Kamera teilen einen Stream, der Bildschirm hat einen eigenen. Nur zur Kontrolle/Anzeige; maßgeblich ist die mid |
+| `screen_mid` | Text | state | nur bei `screen: true`: mid, auf der **jetzt** der Bildschirm läuft (B: Bildschirm-m-Zeile, A: Kamera-m-Zeile) |
+| `screen_audio` | bool | state | nur bei `screen: true`: Ton der Quelle ist in die Tonspur gemischt |
+
+### Empfänger: Kamera und Bildschirm unterscheiden
+
+Die **mid** ist auf beiden Seiten dieselbe (sie gehört zur m-Zeile) und steht am Transceiver (`ontrack`:
+`event.transceiver.mid`; iOS `RTCRtpTransceiver.mid`, Android `RtpTransceiver.getMid()`).
+
+1. `tracks` aus jedem offer/answer/state des Gegenübers merken (letzter Stand gilt).
+2. `state.screen == true` **und** `screen_mid` vorhanden → die Spur auf dieser mid ist der Bildschirm. Ist es nicht die
+   `cam`-mid und meldet `state.cam == true`, ist die Spur der `cam`-mid die Kamera.
+3. `state.screen == true` **ohne** `screen_mid` (2.1/2.3/E0-Gegenstelle) → die einzige Videospur ist der Bildschirm.
+4. Ohne `tracks` (ältere Gegenstelle): die **erste** Video-m-Zeile ist die Kamera.
+5. Anzeige: Bildschirm groß (`object-fit: contain`, nicht beschneiden), Kamera klein; Tippen/„Ansicht tauschen“ tauscht.
+   Sichtbare Anzeige „<Name> teilt den Bildschirm“. Neues Teilen beginnt wieder mit dem Bildschirm groß.
+6. Eine Spur ohne eintreffende Bilder (`muted`) nicht groß zeigen (z. B. kurz nach dem Angebot).
+
+### Bitrate (wie Tabelle oben)
+
+- Bildschirm-Sender: je Weg `maxBitrate` 2 500 000 / 1 800 000 / 1 200 000, `maxFramerate` 15 / 15 / 8,
+  `scaleResolutionDownBy` 1, immer `degradationPreference: "maintain-resolution"`. `want: small` ändert nichts.
+  Aufnahme höchstens 1080p (lange Kante 1920) und 15 fps.
+- **Kamera während des Teilens (nur B):** `maxBitrate` = min(Regel, 300 000), `scaleResolutionDownBy` ≥ Quellhöhe/360;
+  über `relay-tcp` Kamera-Encoding `active: false` (Hinweis „Kamera pausiert (langsame Verbindung)“ beim Teilenden).
+  Summe je Richtung über TCP ≤ 1,6 Mbit/s. Nach dem Ende gelten wieder die normalen Kamera-Regeln.
+- Betriebsart A: der Kamera-Sender bekommt solange die Bildschirm-Regeln.
+
+### Datenschutz (alle Plattformen)
+
+- Vor dem **ersten** Teilen ein Hinweis: alles in der Auswahl ist sichtbar, auch Benachrichtigungen, Passwörter und andere
+  Fenster/Chats; nichts wird aufgezeichnet oder auf dem Server gespeichert. Kästchen „Nicht mehr anzeigen“ (je Gerät).
+- Während des Teilens dauerhaft sichtbar: „Du teilst deinen Bildschirm“ mit „Beenden“ (Web: rote Leiste; Apps: Leiste
+  bzw. Systemanzeige). Keine Aufnahme, keine Fernsteuerung; Medien nur DTLS-SRTP zwischen den Geräten.
+
+### Beispiele
+
+Anrufer (Kamera mid `1`) teilt, Neuverhandlung n = 3; der Angerufene antwortet, dann Zustand:
+
+```json
+{"t":"offer","pc":"2f67…:65fb…","n":3,"caps":["reneg","want","bye","screen2"],"media":"video","sdp":"…m=video 9 UDP/TLS/RTP/SAVPF 96 …\r\na=mid:2\r\na=sendrecv\r\na=msid:ec27dfd5… 9b1f…","fp":["sha-256 4A:AD:…"],
+ "tracks":{"0":"mic","1":"cam","2":"screen"},"msid":{"0":"9b3c97c5…","1":"9b3c97c5…","2":"ec27dfd5…"}}
+{"t":"answer","pc":"2f67…:65fb…","n":3,"caps":["reneg","want","bye","screen2"],"media":"video","sdp":"…a=mid:2\r\na=recvonly…","fp":["sha-256 1C:…"],
+ "tracks":{"0":"mic","1":"cam","2":"screen"},"msid":{"0":"452e5d05…","1":"452e5d05…"}}
+{"t":"state","pc":"2f67…:65fb…","mic":true,"cam":true,"screen":true,"screen_mid":"2","screen_audio":true,"pip":false,
+ "want":{"video":"large"},"path":"direct","tracks":{"0":"mic","1":"cam","2":"screen"},"msid":{"0":"9b3c97c5…","1":"9b3c97c5…","2":"ec27dfd5…"}}
+```
+
+Ende (Richtung `recvonly`, n = 4, danach ist die m-Zeile `inactive`):
+
+```json
+{"t":"offer","pc":"2f67…:65fb…","n":4,"caps":["reneg","want","bye","screen2"],"media":"video","sdp":"…a=mid:2\r\na=recvonly…","fp":["sha-256 4A:AD:…"],"tracks":{"0":"mic","1":"cam","2":"screen"},"msid":{"0":"9b3c97c5…","1":"9b3c97c5…"}}
+{"t":"state","pc":"2f67…:65fb…","mic":true,"cam":true,"screen":false,"pip":false,"want":{"video":"large"},"path":"direct","tracks":{"0":"mic","1":"cam","2":"screen"},"msid":{"0":"9b3c97c5…","1":"9b3c97c5…"}}
+```
+
+Betriebsart A (Gegenüber ohne `screen2`) – kein Angebot, nur der Zustand:
+
+```json
+{"t":"state","pc":"2f67…:65fb…","mic":true,"cam":false,"screen":true,"screen_mid":"1","pip":false,"want":{"video":"large"},"tracks":{"0":"mic","1":"cam"},"msid":{"0":"9b3c97c5…","1":"9b3c97c5…"}}
+```
+
+Tests: `tests/browser_screen2.js` (Web: B zwischen 2.4-Clients, A gegen E0- und 2.3-Client, Messung),
+`tests/anrufe_v3.py` (Server reicht großes Angebot und die neuen Felder unverändert weiter).

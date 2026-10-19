@@ -828,6 +828,11 @@ zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-
   einem Audioanruf nachträglich), **Bildschirm teilen** (am Computer), **Auflegen**, „▭“ verkleinert das Fenster in
   eine Ecke (weiter im Chat schreiben). Oben stehen Dauer, Verbindungsqualität und der Weg: **direkt** oder **über
   Relais (TURN)**, und „🔒 Ende-zu-Ende verschlüsselt“, sobald die Prüfung (unten) geklappt hat.
+- **Bildschirm teilen (ab 2.4):** Vor dem ersten Teilen erinnert Saga daran, dass alles in der Auswahl sichtbar ist –
+  auch Benachrichtigungen und andere Fenster (Tipp: nur ein Fenster oder einen Tab teilen). Solange geteilt wird, steht
+  oben eine rote Leiste „Du teilst deinen Bildschirm“ mit **Teilen beenden**. Haben beide Saga 2.4, läuft die Kamera weiter: das
+  Gegenüber sieht den Bildschirm groß und die Kamera klein (antippen bzw. ⇆ tauscht). In Chrome/Edge kann der Ton des
+  Tabs (unter Windows auch der Systemton) mitgeschickt werden. Nichts wird aufgezeichnet oder auf dem Server gespeichert.
 - **Nicht angenommen:** Nach der Klingeldauer (Standard 45 s) gilt der Anruf als **verpasst**. Im Chat steht dann ein
   Eintrag „Verpasster Anruf“ (mit „Zurückrufen“), dazu eine Benachrichtigung „Verpasster Anruf von Name“ (abschaltbar
   unter Benachrichtigungen bzw. Mitteilungen → „Anrufe“). Auch beendete, abgelehnte und besetzte Anrufe stehen im Chat.

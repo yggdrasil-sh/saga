@@ -805,6 +805,11 @@ up the call over the regular web port (live channel + normal requests).
   an audio call), **share screen** (on a computer), **hang up**; "▭" shrinks the window to a corner (keep chatting).
   At the top: duration, connection quality and the path – **direct** or **via relay (TURN)** – and "🔒 End-to-end
   encrypted" once the check (below) has passed.
+- **Sharing your screen (2.4 and later):** before the first share, Saga reminds you that everything in the selection is
+  visible – including notifications and other windows (tip: share a single window or tab). While sharing, a red bar
+  "You are sharing your screen" with **Stop sharing** stays on top. If both sides run Saga 2.4, the camera keeps running: the
+  other person sees the screen large and the camera small (tap it or ⇆ to swap). In Chrome/Edge the tab audio (on
+  Windows also system audio) can be shared. Nothing is recorded or stored on the server.
 - **Not answered:** after the ring duration (default 45 s) the call counts as **missed**. The chat then shows "Missed
   call" (with "Call back") and there is a notification "Missed call from Name" (can be turned off under notifications or
   push → "Calls"). Ended, declined and busy calls also appear in the chat.

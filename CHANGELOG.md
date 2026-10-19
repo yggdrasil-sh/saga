@@ -16,6 +16,25 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### 2.4 Etappe E3 – Bildschirm v2 (Server und Web)
+
+- **Bildschirm als eigene Videospur:** Zwischen 2.4-Geräten läuft der geteilte Bildschirm über eine zweite Videospur
+  (Neuverhandlung aus E0), die Kamera läuft daneben gedrosselt weiter. Das Gegenüber sieht den Bildschirm groß und die
+  Kamera klein und kann die Ansicht tauschen. Gegenstellen auf 2.1/2.3 (und ohne `screen2`) bekommen wie bisher den
+  Bildschirm statt der Kamera.
+- **Systemton:** Wo der Browser ihn liefert (Chrome/Edge: Ton des Tabs, unter Windows/ChromeOS auch der ganze Systemton),
+  wird er in die Tonspur gemischt.
+- **Datenschutz:** Vor dem ersten Teilen ein Hinweis, dass auch Benachrichtigungen und andere Fenster sichtbar sind
+  (abschaltbar je Gerät). Während des Teilens eine rote Leiste „Du teilst deinen Bildschirm“ mit „Beenden“, beim
+  Gegenüber „… teilt den Bildschirm“.
+- **Bitrate:** Bildschirm je Verbindungsweg 2,5 / 1,8 / 1,2 Mbit/s, höchstens 15 fps (über TURN per TCP 8 fps), Auflösung
+  bleibt erhalten („maintain-resolution“, Text bleibt lesbar). Die Kamera daneben sendet ≤ 300 kbit/s, über TURN per TCP
+  pausiert sie.
+- **Server:** `GET /api/calls/config` meldet `features: screen2`; sonst keine Änderung (keine Medien durch den Server,
+  3 Signale je Start bzw. Stopp).
+- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Anrufe: Bildschirm v2“ (mid-Zuordnung über `tracks`, `msid`, `screen_mid`).
+- **Tests und Messung:** `tests/browser_screen2.js` (Bildschirm-Attrappe im headless Chromium, gegen E0- und 2.3-Client).
+
 ### 2.4 Etappe E0 – Anruf-Fundament (Server und Web)
 
 - **saga-call v3:** Anrufe können während des Gesprächs neu ausgehandelt werden („Perfect Negotiation“). Bricht die

@@ -842,6 +842,12 @@ adicional: Saga coordina la llamada por el puerto web normal (canal en vivo + pe
   (también después en una llamada de audio), **compartir pantalla** (en el ordenador), **colgar**; «▭» reduce la
   ventana a una esquina (para seguir escribiendo). Arriba: duración, calidad de la conexión y el camino – **directo** o
   **por relé (TURN)** – y «🔒 Cifrado de extremo a extremo» en cuanto la comprobación (abajo) ha funcionado.
+- **Compartir pantalla (desde 2.4):** antes de compartir por primera vez, Saga recuerda que todo lo que hay en la
+  selección es visible, también notificaciones y otras ventanas (consejo: comparte solo una ventana o pestaña). Mientras
+  compartes, arriba aparece una barra roja «Estás compartiendo tu pantalla» con **Dejar de compartir**. Si ambos usan Saga 2.4, la
+  cámara sigue activa: la otra persona ve la pantalla grande y la cámara pequeña (tócala o ⇆ para intercambiar). En
+  Chrome/Edge se puede enviar el sonido de la pestaña (en Windows también el del sistema). No se graba ni se guarda nada
+  en el servidor.
 - **Sin respuesta:** tras la duración del tono (por defecto 45 s) la llamada cuenta como **perdida**. En el chat
   aparece «Llamada perdida» (con «Devolver llamada») y una notificación «Llamada perdida de Nombre» (desactivable en
   notificaciones o push → «Llamadas»). Las llamadas finalizadas, rechazadas y ocupadas también aparecen en el chat.
