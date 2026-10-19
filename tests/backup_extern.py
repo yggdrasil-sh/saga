@@ -87,6 +87,14 @@ try:
     from saga.core import SECRET
     ok("Wegwerf-Datenbank, Tabelle backup_run vorhanden", q("SELECT to_regclass('public.backup_run')")[0][0] is not None)
     ok("age im Image", backups.age_ok())
+    with psycopg.connect(URL, autocommit=True) as lk:
+        free_before = backups.running()
+        lk.execute("SELECT pg_advisory_lock(%s)", (backups.LOCK_ID,))
+        held = backups.running()
+        took, _ = backups.run("test")                      # gesperrt -> "busy", ohne Verlaufszeile
+        lk.execute("SELECT pg_advisory_unlock(%s)", (backups.LOCK_ID,))
+    ok("running() erkennt die Sperre, ohne sie selbst zu nehmen", free_before is False and held is True and took is False
+       and backups.running() is False and q("SELECT count(*) FROM backup_run")[0][0] == 0)
     auth.create_user("bkx-adm", "Bkx-Pass-12345", "Backup-Admin", is_admin=True)
     auth.create_user("bkx-user", "Bkx-Pass-12345", "Kein Admin")
     q("INSERT INTO note (uid, title, body, created, updated) VALUES ('bkx-user', %s, %s, 1, 1)", ("Probe", MARK))
@@ -153,6 +161,19 @@ try:
     ok("App-Passwort verschluesselt gespeichert", cfg["password"] not in raw and '"password": "enc:' in raw)
     ok("Ordner im Ziel angelegt", f"/remote.php/dav/files/{fakedav.UID}/Saga-Test/Backups" in stats()["dirs"])
     app_pw = cfg["password"]
+    from cryptography.fernet import Fernet
+    alien = "enc:" + Fernet(Fernet.generate_key()).encrypt(b"https://hook.example.org/x").decode()
+    v_ = json.loads(raw)
+    v_["webhook"] = alien
+    q("UPDATE setting SET v=%s WHERE k='backup'", (json.dumps(v_),))
+    auth._settings_cache["v"] = None
+    backups.save_config(backups.config())
+    raw2 = json.loads(q("SELECT v FROM setting WHERE k='backup'")[0][0])
+    ok("Nicht entschluesselbares Geheimnis (anderer SECRET_KEY) wird beim Speichern nicht geleert",
+       raw2["webhook"] == alien and backups.config()["password"] == app_pw)
+    raw2["webhook"] = ""
+    q("UPDATE setting SET v=%s WHERE k='backup'", (json.dumps(raw2),))
+    auth._settings_cache["v"] = None
 
     # --- Lauf ohne Schluessel -> Fehler ---
     good, err = backups.run("test")
@@ -334,6 +355,50 @@ try:
                        cwd=APP, env=dict(fenv, SAGA_BACKUP_URL=""), capture_output=True, text=True, timeout=900)
     ok(f"restore aus lokalem Lauf-Ordner (ohne Ziel) ({r.returncode})", r.returncode == 0)
 
+    # --- Boesartiges Ziel: jeder kann mit dem oeffentlichen Schluessel verschluesseln, manifest.json ist Klartext ---
+    import io
+    evil = os.path.join(TMPROOT, "boese", "saga-20260101-000000")
+    os.makedirs(evil)
+    shutil.copy(os.path.join(dl, "db.dump.age"), os.path.join(evil, "db.dump.age"))
+    tb = io.BytesIO()
+    with tarfile.open(fileobj=tb, mode="w") as tar:
+        def _add(name, data=b"x", **kw):
+            ti = tarfile.TarInfo(name)
+            for k, v in kw.items():
+                setattr(ti, k, v)
+            ti.size = len(data) if ti.type == tarfile.REGTYPE else 0
+            tar.addfile(ti, io.BytesIO(data) if ti.type == tarfile.REGTYPE else None)
+        _add("files/../../ausbruch1.txt")
+        _add("/tmp/bkx-ausbruch2.txt")
+        _add("files/link", type=tarfile.SYMTYPE, linkname="../../")
+        _add("files/link/ausbruch3.txt")
+        _add("nicht-erlaubt/x.txt")
+        _add("files/ok-boese.txt", b"harmlos")
+    subprocess.run(["age", "-e", "-r", pub1, "-o", os.path.join(evil, "dateien.tar.age")], input=tb.getvalue(), check=True)
+    ev_files = {p: {"size": os.path.getsize(os.path.join(evil, p)), "sha256": backups.sha256_file(os.path.join(evil, p))}
+                for p in ("db.dump.age", "dateien.tar.age")}
+    with open(os.path.join(evil, "manifest.json"), "w") as f:
+        json.dump({"name": "../../../boese-pfad", "files": ev_files}, f)
+    r = subprocess.run([sys.executable, "run.py", "restore", "--schluessel", k1, evil], cwd=APP, env=dict(fenv, SAGA_BACKUP_URL=""),
+                       capture_output=True, text=True, timeout=900)
+    outside = [p for p in (os.path.join(TMPROOT, "ausbruch1.txt"), "/tmp/bkx-ausbruch2.txt", os.path.join(TMPROOT, "ausbruch3.txt"),
+                           os.path.join(fresh_state, "ausbruch1.txt"), os.path.join(fresh_state, "nicht-erlaubt"),
+                           ) if os.path.lexists(p)] + [p for p in (os.path.join(fresh_state, "files", "link"),) if os.path.islink(p)]
+    ok(f"Boesartiges tar: nichts ausserhalb von files/chat/svc-icons, keine Links ({r.returncode} {outside})",
+       r.returncode == 0 and not outside and os.path.isfile(os.path.join(fresh_state, "files", "ok-boese.txt")))
+    ok("Name aus manifest.json wird nicht als Pfad benutzt", not any(os.path.exists(os.path.join(d_, "boese-pfad-extern.dump"))
+                                                                    for d_ in ("/", TMPROOT, fresh_state, os.path.dirname(TMPROOT)))
+       and os.path.isfile(os.path.join(fresh_state, "backups", "saga-20260101-000000-extern.dump")))
+
+    # --- Login Flow: Login-Link nur http(s) ---
+    ctl(loginlink="javascript:alert(1)")
+    try:
+        backups.flow_start(NCB, "x")
+        ok("Login-Link javascript: abgelehnt", False)
+    except backups.BackupError as ex:
+        ok("Login-Link javascript: abgelehnt", ex.code == "http")
+    ctl(loginlink="")
+
     # --- SAGA_RESTORE_TEST: zurueckgespielte Instanz startet ohne ausgehende Verbindungen ---
     with psycopg.connect(FRESH_URL, autocommit=True) as c:
         v = json.loads(c.execute("SELECT v FROM setting WHERE k='backup'").fetchone()[0])
@@ -343,10 +408,11 @@ try:
         c.execute("DELETE FROM setting WHERE k='backup_state'")
     r = subprocess.run([sys.executable, "-c", "from saga import sharing, push, backups; import auth\n"
                         "import time\nprint(auth.settings(fresh=True)['fed_enabled'], sharing.fed_enabled(), push.send((1,'u','ntfy','https://ntfy.example.org/x','','',''), {})[1],"
-                        " bool(backups.due(backups.config(), backups.state(), time.time())))"],
+                        " bool(backups.due(backups.config(), backups.state(), time.time())), backups.run('cli')[1].code,"
+                        f" backups.nc_revoke('{NCB}', 'u', 'p'))"],
                        cwd=APP, env=dict(fenv, SAGA_RESTORE_TEST="1"), capture_output=True, text=True, timeout=60)
-    ok(f"SAGA_RESTORE_TEST: Foederation aus, Push schickt nichts, Backup waere faellig ({r.stdout.strip()} {r.stderr.strip()[-200:]})",
-       r.stdout.strip() == "True False SAGA_RESTORE_TEST True")
+    ok(f"SAGA_RESTORE_TEST: Foederation aus, Push schickt nichts, Backup waere faellig, run.py backup-extern und Widerruf gesperrt"
+       f" ({r.stdout.strip()} {r.stderr.strip()[-200:]})", r.stdout.strip() == "True False SAGA_RESTORE_TEST True restore_test False")
     n0 = stats()["requests"]
     log = open(os.path.join(TMPROOT, "srv.log"), "w")
     srv_proc = subprocess.Popen([sys.executable, "run.py"], cwd=APP, stdout=log, stderr=subprocess.STDOUT,

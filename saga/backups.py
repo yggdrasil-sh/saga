@@ -112,6 +112,8 @@ def text(code, p=None):
         return t("Abgebrochen (Saga wurde beendet).")
     if code == "busy":
         return t("Es läuft schon ein Backup.")
+    if code == "restore_test":
+        return t("Testwiederherstellung (SAGA_RESTORE_TEST=1): keine Backups.")
     if code == "stale":
         return t("Seit {h} Stunden kein erfolgreiches Backup.", h=p.get("h", STALE_H))
     if code == "failed":
@@ -162,9 +164,18 @@ def config():
 def save_config(cfg):
     """Ganzen Abschnitt speichern - Geheimnisse verschluesselt, leer = wirklich leer (anders als auth.save_setting)."""
     v = dict(cfg)
-    for f in SECRET_KEYS:
-        v[f] = auth._enc(v.get(f) or "")
     with db.connect() as c, c:
+        r = c.execute("SELECT v FROM setting WHERE k='backup'").fetchone()
+        try:
+            old = json.loads(r[0]) if r else {}
+        except ValueError:
+            old = {}
+        for f in SECRET_KEYS:
+            prev = old.get(f) if isinstance(old, dict) else None
+            if not v.get(f) and isinstance(prev, str) and prev.startswith("enc:") and not auth._dec(prev):
+                v[f] = prev            # mit diesem SECRET_KEY nicht lesbar (z. B. .env noch nicht angepasst): nicht ueberschreiben
+            else:
+                v[f] = auth._enc(v.get(f) or "")
         c.execute("INSERT OR REPLACE INTO setting (k, v) VALUES (?, ?)", ("backup", json.dumps(v, ensure_ascii=False)))
     auth._settings_cache["v"] = None
 
@@ -566,6 +577,8 @@ def nc_user_id(server, login, password):
 
 def nc_revoke(server, login, password):
     """App-Passwort widerrufen (Trennen). -> True, wenn Nextcloud es bestaetigt."""
+    if RESTORE_TEST:            # Testwiederherstellung: die Zugangsdaten gehoeren der echten Instanz - nie widerrufen
+        return False
     def go():
         with _client_for(urlparse(server).hostname, timeout=20.0, auth_=(login, password)) as cl:
             return cl.delete(server + "/ocs/v2.php/core/apppassword", headers={"OCS-APIRequest": "true", "Accept": "application/json"})
@@ -601,6 +614,8 @@ def flow_start(server, folder):
         j = r.json()
         login, token, endpoint = j["login"], j["poll"]["token"], j["poll"]["endpoint"]
     except (ValueError, KeyError, TypeError):
+        raise BackupError("http", status=r.status_code, what="login/v2")
+    if urlparse(str(login)).scheme not in ("https", "http"):     # Link landet im Admin-Bereich (kein javascript: o. ae.)
         raise BackupError("http", status=r.status_code, what="login/v2")
     # Poll-Adresse nur auf demselben Host (sonst die bekannte Adresse) - keine Zugangsdaten an fremde Server
     if (urlparse(endpoint).hostname or "").lower() != (host or "").lower() or urlparse(endpoint).scheme != urlparse(server).scheme:
@@ -885,6 +900,10 @@ def list_runs(dav, manifests=False):
                 man = json.loads(dav.get_bytes(dav.url(e["name"], "manifest.json"), 1 * MB))
             except (BackupError, ValueError):
                 man = None
+            if not (isinstance(man, dict) and isinstance(man.get("files"), dict)
+                    and all(isinstance(v, dict) and isinstance(v.get("size"), int) for v in man["files"].values())
+                    and isinstance(man.get("recipients", []), list)):
+                man = None                                 # kaputtes/fremdes Manifest: nur anzeigen als unvollstaendig
             complete = man is not None
         else:
             complete = dav.stat(dav.url(e["name"], "manifest.json")) is not None
@@ -915,15 +934,18 @@ def prune(dav, cfg, keep=(), now=None):
 # =====================================================================================================
 def running():
     """Laeuft gerade ein Backup (irgendein Prozess dieser Datenbank)?"""
+    # Nur nachsehen, nicht selbst sperren: ein kurzes pg_try_advisory_lock hier liess einen gleichzeitig startenden Lauf
+    # (Admin "Jetzt sichern" + Neuladen der Seite, Zeitplan) still mit "busy" ausfallen.
     with psycopg.connect(db.DATABASE_URL, autocommit=True) as c:
-        got = c.execute("SELECT pg_try_advisory_lock(%s)", (LOCK_ID,)).fetchone()[0]
-        if got:
-            c.execute("SELECT pg_advisory_unlock(%s)", (LOCK_ID,))
-        return not got
+        return bool(c.execute("SELECT EXISTS (SELECT 1 FROM pg_locks l JOIN pg_database d ON d.oid = l.database "
+                              "WHERE l.locktype = 'advisory' AND l.granted AND d.datname = current_database() "
+                              "AND l.classid = 0 AND l.objid = %s AND l.objsubid = 1)", (LOCK_ID,)).fetchone()[0])
 
 
 def run(trigger="manuell", slot=None, now=None):
     """Ein Lauf -> (ok, Ergebnis | BackupError). slot: nur, wenn fuer diesen Zeitpunkt noch kein Versuch lief (Zeitplan)."""
+    if RESTORE_TEST:            # Testwiederherstellung: nichts hochladen, nichts im echten Ziel aufraeumen
+        return False, BackupError("restore_test")
     lc = psycopg.connect(db.DATABASE_URL, autocommit=True)
     try:
         if not lc.execute("SELECT pg_try_advisory_lock(%s)", (LOCK_ID,)).fetchone()[0]:
@@ -1228,7 +1250,8 @@ def restore_cmd(keyfile, ref, out=print):
         raise SystemExit(f"Schluesseldatei nicht gefunden: {keyfile}")
     d = _resolve(ref, out)
     man = verify_dir(d)
-    name = man.get("name") or os.path.basename(d.rstrip("/"))
+    # Name nur in bekannter Form (das Manifest liegt unverschluesselt im Ziel - kein Pfad aus fremden Daten)
+    name = next((n for n in (str(man.get("name") or ""), os.path.basename(os.path.abspath(d))) if RUN_RE.match(n)), "saga-extern")
     os.makedirs(db.BACKUP_DIR, exist_ok=True)
     dump = os.path.join(db.BACKUP_DIR, f"{name}-extern.dump")
     out("Entschluessele Datenbank ...")

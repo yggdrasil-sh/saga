@@ -5,7 +5,7 @@ Nextcloud-Teil: POST /index.php/login/v2 -> login + poll; der Test "meldet sich 
 einmalig server/loginName/appPassword); GET /ocs/v2.php/cloud/user -> Benutzer-ID (weicht absichtlich vom Anmeldenamen
 ab); DELETE /ocs/v2.php/core/apppassword widerruft das App-Passwort. Chunking v2 wie Nextcloud: Teile 1..10000,
 mindestens 5 MB ausser dem letzten, Destination + OC-Total-Length bei jedem Schritt, MOVE .file setzt zusammen.
-Steuerung: GET /_ctl?down=1|0&quota=<bytes>|-3&corrupt=1|0&reset=1, GET /_stats (JSON), POST /_hook (Webhook-Empfang).
+Steuerung: GET /_ctl?down=1|0&quota=<bytes>|-3&corrupt=1|0&loginlink=<url>&reset=1, GET /_stats (JSON), POST /_hook (Webhook-Empfang).
 Aufruf auch als Programm: python fakedav.py <port> [nc|dav]"""
 import base64
 import json
@@ -105,6 +105,8 @@ def make_handler(st):
                         st.down = q["down"][0] == "1"
                     if "quota" in q:
                         st.quota = int(q["quota"][0])
+                    if "loginlink" in q:                           # Login Flow: anderer Login-Link (Test: javascript:)
+                        st.loginlink = q["loginlink"][0]
                     if "corrupt" in q:
                         st.corrupt = q["corrupt"][0] == "1"
                     if "pw" in q:                                  # schlichtes WebDAV: Zugang setzen
@@ -144,7 +146,8 @@ def make_handler(st):
                     st.flow_token, st.granted = secrets.token_hex(16), False
                 base = f"http://127.0.0.1:{st.port}"
                 return self._send(200, json.dumps({"poll": {"token": st.flow_token, "endpoint": base + "/login/v2/poll"},
-                                                   "login": base + "/login/v2/flow/" + secrets.token_hex(8)}), "application/json")
+                                                   "login": getattr(st, "loginlink", "") or base + "/login/v2/flow/" + secrets.token_hex(8)}),
+                                  "application/json")
             if st.nc and p == "/login/v2/poll" and self.command == "POST":
                 tok = parse_qs(self._body().decode()).get("token", [""])[0]
                 with st.lock:
