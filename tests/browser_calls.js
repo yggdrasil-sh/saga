@@ -49,6 +49,7 @@ async function chatKeys(q, user) {
 }
 const st = p => p.evaluate(() => window.HKCalls && window.HKCalls.state());
 const audioOk = s => !!(s && s.audio && s.audio.packetsIn > 0 && s.audio.bytesOut > 0 && s.audio.playing && s.audio.state === 'ok');
+const PERF = {};                                     // Zeitstempel des Anrufaufbaus (Konzept 2.4 §8): am Ende eine Zeile "PERF {...}"
 async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; let v; while (Date.now() < end) { v = await fn(); if (v) return v; await new Promise(r => setTimeout(r, step)); } return v; }
 
 (async () => {
@@ -71,18 +72,22 @@ async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; 
     ok('CSP unveraendert streng (kein unsafe-inline, nur wasm fuer libsodium)', csp && !/unsafe-inline/.test(csp) && /default-src 'self'/.test(csp), csp);
 
     // --- 1. Videoanruf: Klingeln auf dem Dashboard, Annehmen oeffnet den Chat-Tab -----------------------------------------
+    let t0 = Date.now();
     await a.click('#ct-call-v');
     await b.waitForSelector('.cl-ring', { timeout: 15000 }).catch(() => {});
+    PERF.klingeln_ms = Date.now() - t0;
     ok('Klingeln auf dem Dashboard (anderer Seite)', await b.isVisible('.cl-ring'));
     ok('... mit Name und "Videoanruf"', /Videoanruf/.test(await b.textContent('.cl-ring').catch(() => '')), await b.textContent('.cl-ring').catch(() => ''));
     await b.waitForTimeout(400);
     await shot(b, '01-klingeln-dashboard-dunkel');
     await shot(a, '02-anrufer-klingelt');
+    t0 = Date.now();
     const [bc] = await Promise.all([b.context().waitForEvent('page', { timeout: 15000 }), b.click('.cl-ring .cl-big')]);
     bc.on('pageerror', e => console.log('  [pageerror b-chat] ' + e.message));
     await bc.waitForLoadState('domcontentloaded');
     const conA = await until(async () => { const s = await st(a); return s && s.connected && s; });
     const conB = await until(async () => { const s = await st(bc); return s && s.connected && s; });
+    PERF.annahme_neuer_tab_bis_verbunden_ms = Date.now() - t0;
     ok('Verbindung kommt zustande (beide Seiten connected)', conA && conB, { conA, conB });
     await a.waitForTimeout(4500);
     const sa = await st(a), sb = await st(bc);
@@ -163,8 +168,10 @@ async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; 
     await bc.waitForSelector('.cl-ring', { timeout: 15000 }).catch(() => {});
     await bc.waitForTimeout(400);
     await shot(bc, '09-klingeln-handy-hell');
+    t0 = Date.now();
     await bc.click('.cl-ring .cl-big');
-    ok('Handy: Audioanruf verbunden', await until(async () => { const s = await st(bc); return s && s.connected; }));
+    ok('Handy: Audioanruf verbunden', await until(async () => { const s = await st(bc); return s && s.connected; }, 20000, 40));
+    PERF.annahme_im_chat_bis_verbunden_ms = Date.now() - t0;
     // Bughunt 2 (web, S3): Anruffenster passt auf 390 px - "Verkleinern" erreichbar, nichts ragt hinaus
     const fit = await bc.evaluate(() => {
       const w = document.querySelector('.cl-win'), sh = document.querySelector('.cl-shrink').getBoundingClientRect();
@@ -210,6 +217,7 @@ async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; 
     await shot(a, '12-mikrofon-verweigert');
   } catch (e) { console.error(e); res.push(false); }
   await browser.close();
+  console.log('PERF ' + JSON.stringify(PERF));
   console.log(`\nBROWSER-ANRUFE ${res.filter(Boolean).length}/${res.length}`, res.every(Boolean) ? '- ALLES GRUEN' : '- FEHLER');
   process.exit(res.every(Boolean) ? 0 : 1);
 })();

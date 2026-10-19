@@ -64,6 +64,21 @@
 .cl-sink{max-width:11rem;min-width:0;flex:0 1 auto;font:inherit;font-size:.8rem;color:#e6ebf2;background:#1a2230;border:1px solid #3a475b;border-radius:8px;padding:.25rem .4rem}
 .cl-win.small .cl-sink{display:none}
 .cl-shrink{color:#e6ebf2}
+/* 2.4: Bild-im-Bild (Knopf im Anruffenster, eigenes Document-PiP-Fenster) */
+.cl-pip{color:#e6ebf2}
+.cl-pip[hidden]{display:none}
+.cl-pip svg{width:20px;height:20px}
+.cl-btn.cl-pip.on{background:var(--accent);border-color:var(--accent);color:#111}
+.cl-pipdoc{margin:0;height:100vh;background:#0b0f15;color:#e6ebf2;display:grid;grid-template-rows:minmax(0,1fr) auto;
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}
+.cl-pip-stage{position:relative;overflow:hidden;display:grid;place-items:center}
+.cl-pip-v{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;display:none}
+.cl-pip-stage.has-video .cl-pip-v{display:block}
+.cl-pip-stage.has-video .cl-pip-who{display:none}
+.cl-pip-who{font-size:1.1rem;font-weight:600;padding:.6rem;text-align:center;overflow-wrap:anywhere}
+.cl-pip-ctl{display:flex;justify-content:center;gap:.5rem;padding:.4rem .5rem .55rem;background:#0b0f15}
+.cl-pipdoc .cl-round{width:40px;height:40px;min-width:40px}
+.cl-pipdoc .cl-round svg{width:18px;height:18px}
 .cl-status{grid-row:3;grid-column:1;z-index:3;text-align:center;padding:.4rem 1rem;font-size:.95rem;color:#e6ebf2;
   text-shadow:0 1px 3px #000}
 .cl-status.err{color:#ffb3ad;font-weight:600;max-width:46rem;justify-self:center}
