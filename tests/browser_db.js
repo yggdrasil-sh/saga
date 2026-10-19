@@ -28,9 +28,17 @@ async function session(browser, opts = {}) {
   p.open = async (id) => { await p.goto(BASE + '/notes?t=' + Date.now() + '#' + id); await p.waitForSelector('.db-row, .dbl-row, .dbg-card, .board-card'); await p.waitForTimeout(600); };
   return p;
 }
-async function until(p, fn, ms = 60000) {        // wie waitForFunction, aber ohne eval (Saga erlaubt kein 'unsafe-eval')
-  for (const t0 = Date.now(); Date.now() - t0 < ms; await p.waitForTimeout(100)) if (await p.evaluate(fn)) return true;
+async function until(p, fn, arg, ms = 60000) {   // wie waitForFunction, aber ohne eval (Saga erlaubt kein 'unsafe-eval')
+  for (const t0 = Date.now(); Date.now() - t0 < ms; await p.waitForTimeout(100)) if (await p.evaluate(fn, arg)) return true;
   return false;
+}
+async function drag(p, from, to) {                  // HTML5-Ziehen wie im Browser: dragstart -> dragover -> drop -> dragend
+  const dt = await p.evaluateHandle(() => new DataTransfer());
+  await from.scrollIntoViewIfNeeded();
+  await from.dispatchEvent('dragstart', { dataTransfer: dt });
+  await to.dispatchEvent('dragover', { dataTransfer: dt });
+  await to.dispatchEvent('drop', { dataTransfer: dt });
+  await from.dispatchEvent('dragend', { dataTransfer: dt }).catch(() => {});
 }
 const rowsInDom = (p) => p.evaluate(() => document.querySelectorAll('tr.db-row').length);
 const total = (p) => p.evaluate(() => { const t = document.querySelector('table.db-table'); return t ? +t.dataset.rows : -1; });
@@ -163,6 +171,16 @@ async function others(p, D, st) {
   await view(p, D, 'brd'); await p.goto(BASE + '/notes?t=2#' + D);
   await until(p, () => { const l = document.querySelectorAll('.board-cards'); return l.length > 0 && [...l].every((x) => x.dataset.done === '1'); });
   ok('Board: alle Karten in ihren Spalten', (await p.evaluate(() => document.querySelectorAll('.board-card').length)) === N + 1);
+  // Ziehen: erste Karte (sofort eingesetzt) und letzte Karte (spaetes Haeppchen) der ersten Spalte in die zweite Spalte
+  for (const [name, pick] of [['erste', (l) => l.first()], ['aus spaetem Haeppchen', (l) => l.last()]]) {
+    const card = pick(p.locator('.board-col').first().locator('.board-card')), title = (await card.locator('.board-title').innerText()).trim();
+    await drag(p, card, p.locator('.board-col').nth(1));
+    await until(p, (t) => [...document.querySelectorAll('.board-col')[1].querySelectorAll('.board-title')].some((x) => x.textContent.trim() === t), title, 10000);
+    ok('Board: Karte (' + name + ') in andere Spalte gezogen', await p.evaluate((t) =>
+      [...document.querySelectorAll('.board-col')[1].querySelectorAll('.board-title')].some((x) => x.textContent.trim() === t) &&
+      ![...document.querySelectorAll('.board-col')[0].querySelectorAll('.board-title')].some((x) => x.textContent.trim() === t), title), title);
+    await until(p, () => [...document.querySelectorAll('.board-cards')].every((x) => x.dataset.done === '1'));
+  }
 }
 
 async function embedded(p, D) {

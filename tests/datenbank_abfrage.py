@@ -94,6 +94,29 @@ def vectors():
             same = got["ids"] == exp["ids"] and got["matched"] == exp["matched"] and got["groups"] == exp.get("groups")
         if not same:
             bad.append((c["k"], exp, got))
+    # Schnellweg der Sortierung (_sort_fast, ohne Vergleichsfunktion) = Vergleichsfunktion wie im Web, Fall fuer Fall
+    fast_used, diff = 0, []
+    orig = dbquery.Query._sort_fast
+    for c in v["cases"]:
+        d = v["dbs"][c["db"]]
+        schema = dict(d["schema"], views=c["views"])
+        args = {"view": c["view"], "tz": ZoneInfo(c["tz"]), "today": date.fromisoformat(c["today"]), "q": c["q"]}
+        try:
+            a = [r["id"] for r in dbquery.run(schema, d["rows"], args, labels=labels_of(d["labels"]))[0]]
+            dbquery.Query._sort_fast = lambda self, rows, keys: None
+            b = [r["id"] for r in dbquery.run(schema, d["rows"], args, labels=labels_of(d["labels"]))[0]]
+        except dbquery.JsError:
+            continue
+        finally:
+            dbquery.Query._sort_fast = orig
+        q = dbquery.Query(schema, [], [s for s in (dbquery.view_of(schema, c["view"]) or {}).get("sorts") or [] if isinstance(s, dict)])
+        try:
+            fast_used += len(d["rows"]) > 2 and bool(q.sort_keys()) and orig(q, d["rows"], q.sort_keys()) is not None
+        except dbquery.JsError:
+            pass
+        if a != b and not c["expected"].get("engine"):
+            diff.append((c["k"], a, b))
+    ok(f"Sortierung: Schnellweg = Vergleichsfunktion (Schnellweg in {fast_used} Faellen)", not diff and fast_used >= 30, diff[:3])
     n = len(v["cases"])
     ok(f"Testvektoren: {n} Faelle aus dem Web-Code (static/pages.js) = saga.dbquery", not bad, bad[:3])
     ok(f"Testvektoren: Blaettern lueckenlos ({paged} Faelle)", paged > 100 and not [b for b in bad if b[1] == "Blaettern"])

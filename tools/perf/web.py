@@ -149,7 +149,13 @@ def db_steps(p, cdp, info, reqs, to):
                             ("Kalender", "() => { var t = document.querySelector('.db-tab.on'); return t && t.textContent.indexOf('Kalender') >= 0; }"),
                             ("Tabelle", f"() => {ROWS} >= {db_rows}")):
             tab = p.locator(".db-tab", has_text=label).first
-            rec(f"DB: Ansicht '{label}'", timed(p, lambda: tab.click(), cond, to), **lt(p))
+            t0 = time.perf_counter()
+            ms = timed(p, lambda: tab.click(), cond, to)
+            extra = {}
+            if label == "Board":                      # 2.2: Karten kommen in Haeppchen - auch "alle Karten da" messen
+                p.wait_for_function(f"() => document.querySelectorAll('.board-card').length >= {db_rows}", timeout=to, polling=50)
+                extra["alle_karten_ms"] = round((time.perf_counter() - t0) * 1000)
+            rec(f"DB: Ansicht '{label}'", ms, **extra, **lt(p))
         # Neuer Eintrag (+ Neu): POST + loadList + Zeile im DOM
         n0 = p.evaluate(ROWS)
         reqs.clear()

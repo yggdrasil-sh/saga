@@ -3201,15 +3201,17 @@
     }
     // Viele Karten (Galerie, Board): die ersten sofort, den Rest in kurzen Haeppchen danach (Seite bleibt bedienbar) -
     // am Ende steht genau derselbe DOM wie frueher. Neu gerendert (renderDb) -> laufende Haeppchen hoeren auf.
+    // Karten entstehen in Haeppchen von ~12 ms, eingehaengt werden sie erst, wenn sich die Anzahl im DOM verdoppelt
+    // (bzw. am Ende): jedes Einhaengen kostet ein Layout des ganzen Boards - so bleibt es bei wenigen Layouts.
     var renderGen = 0;
     function chunked(list, make, parent, before, first) {
-      var gen = renderGen, i = Math.min(list.length, first);
+      var gen = renderGen, i = Math.min(list.length, first), shown = i, frag = document.createDocumentFragment(), held = 0;
       for (var k = 0; k < i; k++) parent.insertBefore(make(list[k]), before);
       function step() {
         if (gen !== renderGen) return;
-        var t0 = Date.now(), frag = document.createDocumentFragment();
-        while (i < list.length && Date.now() - t0 < 12) frag.appendChild(make(list[i++]));
-        parent.insertBefore(frag, before);
+        var t0 = Date.now();
+        while (i < list.length && Date.now() - t0 < 12) { frag.appendChild(make(list[i++])); held++; }
+        if (i >= list.length || held >= shown) { parent.insertBefore(frag, before); shown += held; held = 0; }
         if (i < list.length) setTimeout(step, 0); else parent.dataset.done = '1';
       }
       if (i < list.length) setTimeout(step, 0); else parent.dataset.done = '1';

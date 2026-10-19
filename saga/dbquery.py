@@ -216,6 +216,36 @@ def _key(v):
     return js_str(v)
 
 
+def _tkey(v):
+    """Hashbarer Schluessel mit derselben Gleichheit wie js_seq (fuer Nachschlage-Tabellen) - None: nicht moeglich
+    (Array/Objekt: === nur bei demselben Objekt; dann wie bisher Eintrag fuer Eintrag vergleichen)."""
+    if v is None:
+        return ("null",)
+    if v is UNDEF:
+        return ("undef",)
+    if isinstance(v, bool):
+        return ("b", v)
+    if _isnum(v):
+        try:
+            x = float(v)
+        except OverflowError:
+            return None
+        return None if x != x else ("n", x)            # NaN: nie gleich - Vergleich Eintrag fuer Eintrag
+    if isinstance(v, str):
+        return ("s", v)
+    return None
+
+
+def _first_match(items, field):
+    """{_tkey(item[field]): erstes item} - wie items.find(x => x[field] === v) ueber eine Tabelle."""
+    m = {}
+    for it in items:
+        k = _tkey(it.get(field, UNDEF))
+        if k is not None and k not in m:
+            m[k] = it
+    return m
+
+
 def _days_from_civil(y, m, d):
     """Tage seit 1970-01-01 im proleptischen gregorianischen Kalender (beliebige Jahre)."""
     y -= m <= 2
@@ -262,9 +292,15 @@ class Query:
         self.labels_fn = labels
         self._labels = None
         self.untitled = untitled
+        self._pmap = _first_match(self.props, "id")
+        self._fcache = {}
+        self._rtcols = None
 
     # Spalten
     def prop_by_id(self, pid):
+        k = _tkey(pid)
+        if k is not None:
+            return self._pmap.get(k, UNDEF)
         for p in self.props:
             if js_seq(p.get("id", UNDEF), pid):
                 return p
@@ -340,59 +376,74 @@ class Query:
         x = _rel_date_day(js_str(iso) if js_truthy(iso) else "")
         return x is not None and a <= x < b
 
+    def _fc(self, f):
+        """Feste Teile eines Filters (Spalte, Operator, Wert) - einmal je Filter statt je Zeile (Ergebnis wie matchFilter)."""
+        c = self._fcache.get(id(f))
+        if c is not None and c[0] is f:
+            return c[1]
+        p = self.fprop(f.get("pid", UNDEF))
+        if p is UNDEF:
+            out = None
+        else:
+            op = f.get("op", UNDEF)
+            fv = f.get("value", UNDEF)
+            novalue = js_nullish(fv) or (isinstance(fv, str) and fv == "")
+            if not novalue and js_seq(p.get("type"), "relation"):
+                fv = js_num(fv)
+            out = (p, js_seq(f.get("pid", UNDEF), "title"), isinstance(p.get("type"), str) and p["type"] in AUTO,
+                   op if isinstance(op, str) else None, fv, novalue,          # js_seq(op, "x") <=> op ist Text "x"
+                   js_lower(fv) if isinstance(fv, str) else None, js_num(fv) if not novalue else None, self.num_like(p))
+        self._fcache[id(f)] = (f, out)
+        return out
+
     def match(self, r, f):
         if not isinstance(f, dict):
             if f is None:
                 raise JsError("filter")
             return True
-        p = self.fprop(f.get("pid", UNDEF))
-        if p is UNDEF:
+        c = self._fc(f)
+        if c is None:
             return True
-        title = js_seq(f.get("pid", UNDEF), "title")
+        p, title, auto, op, fv, novalue, fv_low, fv_num, numlike = c
         v = r.get("title", UNDEF) if title else self.prop_value(p, r)
-        if isinstance(p.get("type"), str) and p["type"] in AUTO and js_truthy(v):
+        if auto and js_truthy(v):
             v = self.iso_day(v)
         empty = js_nullish(v) or (isinstance(v, str) and v == "") or v is False or (isinstance(v, list) and not v)
-        op = f.get("op", UNDEF)
-        if js_seq(op, "is_empty"):
+        if op == "is_empty":
             return empty
-        if js_seq(op, "not_empty"):
+        if op == "not_empty":
             return not empty
-        if js_seq(op, "checked"):
+        if op == "checked":
             return js_truthy(v)
-        if js_seq(op, "unchecked"):
+        if op == "unchecked":
             return not js_truthy(v)
-        if js_seq(op, "today") or js_seq(op, "this_week") or js_seq(op, "this_month"):
+        if op == "today" or op == "this_week" or op == "this_month":
             return not empty and self.rel_date(op, v)
-        fv = f.get("value", UNDEF)
-        if js_nullish(fv) or (isinstance(fv, str) and fv == ""):
+        if novalue:
             return True
-        if js_seq(p.get("type"), "relation"):
-            fv = js_num(fv)
-        if js_seq(op, "contains") or js_seq(op, "not_contains"):
+        if op == "contains" or op == "not_contains":
             if isinstance(v, list):
                 hit = any(js_seq(x, fv) for x in v)
             else:
-                if not isinstance(fv, str):
+                if fv_low is None:
                     raise JsError("fv.toLowerCase")
-                hit = js_lower(js_str(v) if js_truthy(v) else "").find(js_lower(fv)) >= 0
-            return hit if js_seq(op, "contains") else not hit
-        if js_seq(op, "is"):
+                hit = js_lower(js_str(v) if js_truthy(v) else "").find(fv_low) >= 0
+            return hit if op == "contains" else not hit
+        if op == "is":
             return js_seq(v, fv)
-        if js_seq(op, "is_not"):
+        if op == "is_not":
             return not js_seq(v, fv)
-        if js_seq(op, "eq"):
-            if self.num_like(p):
+        if op == "eq":
+            if numlike:
                 if js_nullish(v):
                     return False
-                x, y = js_num(v), js_num(fv)
-                return x == y                                  # NaN == NaN ist auch hier falsch
+                return js_num(v) == fv_num                     # NaN == NaN ist auch hier falsch
             return js_seq(v, fv)
-        if js_seq(op, "gt"):
-            return not js_nullish(v) and js_lt(js_num(fv), js_num(v))
-        if js_seq(op, "lt"):
-            return not js_nullish(v) and js_lt(js_num(v), js_num(fv))
-        if js_seq(op, "before"):
+        if op == "gt":
+            return not js_nullish(v) and js_lt(fv_num, js_num(v))
+        if op == "lt":
+            return not js_nullish(v) and js_lt(js_num(v), fv_num)
+        if op == "before":
             return js_truthy(v) and js_lt(v, fv)
         if js_seq(op, "after"):
             return js_truthy(v) and js_lt(fv, v)
@@ -423,15 +474,31 @@ class Query:
         got = self.labels_fn(sorted(ids)) if ids else {}
         self._labels = {i: got.get(i, UNDEF) for i in ids}
 
+    def _row_text_cols(self):
+        """Spalten fuer rowText einmal vorbereiten: (Schluessel, Art, {Option-ID: Option}, Optionen)."""
+        if self._rtcols is None:
+            cols = []
+            for p in self.props:
+                t = p.get("type")
+                if js_seq(t, "relation"):
+                    kind, opts = "rel", []
+                elif js_seq(t, "select") or js_seq(t, "multi_select"):
+                    kind = "sel"
+                    opts = [x for x in p.get("options") if isinstance(x, dict)] if isinstance(p.get("options"), list) else []
+                else:
+                    kind, opts = "", []
+                cols.append((_key(p.get("id", UNDEF)), kind, _first_match(opts, "id"), opts))
+            self._rtcols = cols
+        return self._rtcols
+
     def row_text(self, r):
         parts = [r.get("title") if js_truthy(r.get("title")) else ""]
         pr = self._props(r)
-        for p in self.props:
-            v = pr.get(_key(p.get("id", UNDEF)), UNDEF)
+        for key, kind, omap, opts in self._row_text_cols():
+            v = pr.get(key, UNDEF)
             if js_nullish(v):
                 continue
-            t = p.get("type")
-            if js_seq(t, "relation"):
+            if kind == "rel":
                 if not js_truthy(v):
                     continue
                 if not isinstance(v, list):
@@ -441,10 +508,10 @@ class Query:
                         lab = self._label(int(i))
                         if lab is not UNDEF:
                             parts.append(lab)
-            elif js_seq(t, "select") or js_seq(t, "multi_select"):
-                opts = p.get("options") if isinstance(p.get("options"), list) else []
+            elif kind == "sel":
                 for i in (v if isinstance(v, list) else [v]):
-                    o = next((x for x in opts if isinstance(x, dict) and js_seq(x.get("id", UNDEF), i)), None)
+                    k = _tkey(i)                                       # options.find(o => o.id === i)
+                    o = omap.get(k) if k is not None else next((x for x in opts if js_seq(x.get("id", UNDEF), i)), None)
                     if o is not None:
                         parts.append(o.get("name", UNDEF))
             else:
@@ -489,6 +556,9 @@ class Query:
         keys = self.sort_keys()
         if not keys:
             return rows
+        fast = self._sort_fast(rows, keys)
+        if fast is not None:
+            return fast
         cache = {}
 
         def key(i, k, r):
@@ -509,6 +579,47 @@ class Query:
                 return (-1 if js_lt(x, y) else 1) * d
             return 0
         return sorted(rows, key=cmp_to_key(cmp))
+
+    def _sort_fast(self, rows, keys):
+        """Dieselbe Reihenfolge wie der Vergleich oben, aber ohne Vergleichsfunktion - nur wenn jede Sortierstufe eine
+        echte Ordnung ist: Werte alle Text (UTF-16-Reihenfolge) oder alle Zahlen ohne NaN, Leeres (null) dazwischen.
+        Dann ist das Ergebnis einer stabilen Sortierung eindeutig: Stufe fuer Stufe von hinten stabil sortieren, Leeres
+        jeweils ans Ende (unabhaengig von der Richtung). Gemischte Typen/NaN/undefined -> None (Vergleichsfunktion)."""
+        if len(rows) < 2:
+            return None
+        cols = []
+        for p, d in keys:
+            vals, kind = [], None
+            for r in rows:
+                v = self.sort_key(p, r)
+                if v is None:
+                    vals.append(None)
+                    continue
+                if isinstance(v, str):
+                    k = "s"
+                    v = _u16(v)
+                elif _isnum(v):
+                    k = "n"
+                    try:
+                        v = float(v)
+                    except OverflowError:
+                        return None
+                    if v != v:
+                        return None
+                else:
+                    return None
+                if kind is None:
+                    kind = k
+                elif kind != k:
+                    return None
+                vals.append(v)
+            cols.append((vals, d))
+        idx = list(range(len(rows)))
+        for vals, d in reversed(cols):
+            full = [i for i in idx if vals[i] is not None]
+            full.sort(key=vals.__getitem__, reverse=d < 0)          # stabil, auch rueckwaerts
+            idx = full + [i for i in idx if vals[i] is None]
+        return [rows[i] for i in idx]
 
     def filter_rows(self, rows):
         fl = self.filters
