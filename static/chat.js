@@ -404,14 +404,20 @@
   // Identitaetsschluessel passt (der Server kann so keine fremden Geraete unterschieben).
   function fedCerts() {
     if (!K || !K.ident_sk || !X) return Promise.resolve(null);
-    return api('GET', '/api/chat/v2/me').then(function (v) {
-      if (!v || !v.need || !v.handle) return v;
-      var body = {}, me = S.me || {};
+    var v;
+    return api('GET', '/api/chat/v2/me').then(function (r) {
+      v = r;
+      if (!v || !v.need || !v.handle) return null;
+      return api('GET', '/api/chat/me?device=' + q(dev()));          // frischer Stand (auch gerade angemeldete Geraete)
+    }).then(function (me) {
+      if (!me) return v;
+      var body = {};
       if (!v.cert_ok) body.handle_sig = b64(X.handleSig(v.handle, K.ident_sk, K.ident_pk, K.backup_pk));
       var devs = {};
+      if (v.missing.indexOf(K.device.id) >= 0) devs[K.device.id] = b64(X.deviceSigV2(v.handle, K.ident_sk, K.device));   // dieses Geraet
       (me.devices || []).forEach(function (d) {
-        if (d.revoked || v.missing.indexOf(d.id) < 0) return;
-        if (!X.verifyDevice(ME, K.ident_pk, d)) return;
+        if (d.revoked || d.id === K.device.id || v.missing.indexOf(d.id) < 0) return;
+        if (!X.verifyDevice(ME, K.ident_pk, d)) return;            // nur Geraete mit gueltigem v1-Zertifikat
         devs[d.id] = b64(X.deviceSigV2(v.handle, K.ident_sk, { id: d.id, enc_pk: ub(d.enc_pub, 32), sign_pk: ub(d.sign_pub, 32) }));
       });
       if (Object.keys(devs).length) body.devices = devs;
