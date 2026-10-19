@@ -240,8 +240,8 @@ def _flush(cid):
                 if fed:
                     it["handle"] = hs.get(reader)
                 per.setdefault(viewer, []).append(it)
-            for viewer, items in per.items():
-                chat._direct(c, [viewer], "chat.receipt", {"chat_id": cid, "receipts": items})
+            if per:                                # ein Ereignis fuer den Verteiler, je Konto eigene Daten
+                bus.emit_after(c, "direct_each", {"items": [(v, "chat.receipt", {"chat_id": cid, "receipts": its}) for v, its in sorted(per.items())]})
             for reader, rem in fedp.items():
                 if fed and reader in rd and not sharing.is_remote(reader) and reader not in off:
                     _fed_send(c, ch, hs.get(reader), rem)

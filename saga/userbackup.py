@@ -69,7 +69,7 @@ DATA_MAX = max(1, int(E.get("USER_BACKUP_DATA_MB", "64"))) * 1024 * 1024
 IMPORT_FILES_MAX = max(1, int(E.get("USER_BACKUP_FILES_MAX", "20000")))
 KEY_TTL = 900
 MB = backups.MB
-KV_KEYS = ("lang", "notify_off", "push", "ai_history", "fed_directory")    # eigene Einstellungen (keine Sicherheitsdaten)
+KV_KEYS = ("lang", "notify_off", "push", "ai_history", "fed_directory", "chat_receipts", "chat_online")    # eigene Einstellungen (keine Sicherheitsdaten; 2.4: Gelesen/Online)
 CATS = ("pages", "templates", "archive", "trash", "versions", "files", "comments", "comments_others", "tasks", "bookmarks", "settings")
 CAT_DEFAULT = {k: k != "comments_others" for k in CATS}
 SCHEDULES = ("off", "weekly", "daily")

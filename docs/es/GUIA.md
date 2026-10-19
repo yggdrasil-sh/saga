@@ -807,6 +807,13 @@ servidor solo guarda datos cifrados. Tampoco el administrador puede leer el cont
   `docs/APP-API-CHAT.md`.
 - **⚙ Chats y dispositivos:** dispositivos con acceso, quitar dispositivos (dejan de recibir al instante), crear una
   nueva clave de recuperación (la anterior deja de funcionar).
+- **Leído y en línea (2.4):** tus mensajes muestran **✓** (llegó al servidor) y **✓✓** en cuanto la otra persona los
+  ha leído; en los grupos el visto cuenta, y con un clic aparece **«Leído por»** con la hora. En la cabecera de un chat
+  directo pone **«en línea»** o **«en línea por última vez hace …»** (redondeado a 5 minutos); en la lista, un anillo
+  verde. Ambas cosas están activadas por defecto y se pueden desactivar por separado en **«⚙ Chats y dispositivos» →
+  Privacidad**, de forma recíproca: si desactivas las confirmaciones de lectura o el estado en línea, tampoco los ves en
+  los demás. La confirmación de lectura está cifrada de extremo a extremo (el servidor solo ve que existe); el estado en
+  línea solo lo ven las personas con las que tienes un chat. Entre servidores funciona si ambos tienen la versión 2.4.
 - Notificación «Nuevo mensaje de Nombre», sin contenido; se puede desactivar en Ajustes → Cuenta → Notificaciones.
 
 **Administración:** General → «Chats»: **Permitir chats** (activado por defecto) y **Conservar mensajes como máximo
@@ -1696,6 +1703,7 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Tamaño por archivo / espacio por usuario |
 | `AVATAR_MAX_MB` | `5` | Archivo más grande al subir una foto de perfil |
 | `CHAT_QUOTA_MB` | `1024` | Espacio para adjuntos de chat por usuario (cifrados, en `STATE_DIR/chat`) |
+| `CHAT_OFFLINE_GRACE` | `30` | Segundos sin conexión en vivo hasta que una persona cuenta como desconectada (estado en línea en chats, 2.4) |
 | `REQUEST_MAX_MB` | `2` | Petición más grande salvo subidas de archivos (p. ej. páginas muy largas); las mayores reciben 413 |
 | `KDF_PARALLEL` | `4` | Comprobaciones de contraseña a la vez (unos 32 MB de memoria cada una); las demás esperan hasta 2 s |
 | `NOTE_MAX_COUNT` | `5000` | Páginas por usuario (sin entradas de bases de datos ni papelera) |

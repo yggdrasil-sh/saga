@@ -256,3 +256,128 @@ Weg aus `getStats` alle 2 s: lokaler Kandidat `relay` mit `relayProtocol` `tcp`/
 
 Tests: `tests/anrufe_v3.py` (Server, Signalfluss, Grenzen), `tests/browser_calls3.js` (Web, gegen den 2.3-Client),
 föderiert `tests/foederation_chat.py`.
+
+## Gelesen-Bestätigungen und Online-Status (2.4)
+
+Verbindlicher Vertrag für iOS/iPadOS/macOS, Android und Linux (Web: `static/chat.js`, Server: `saga/chat_status.py`).
+„Wie WhatsApp“: **standardmäßig an**, je Konto getrennt abschaltbar, **gegenseitig** (wer etwas abschaltet, sendet es
+nicht und sieht es bei anderen auch nicht). Nur neue Endpunkte und optionale Felder – ältere Apps merken nichts,
+`MIN_APP` ändert sich nicht. Föderiert: `APP-API-FED.md`, Abschnitt 11.
+
+### Erkennen, ob der Server es kann
+
+`GET /api/chat/me` liefert zusätzlich (ältere Server nicht → Funktion ausblenden):
+
+```json
+{"privacy": {"receipts": true, "online": true}, "features": ["receipts", "online"],
+ "status_limits": {"receipt_gap": 2.0, "presence_ttl": 90, "presence_users": 50, "last_round": 300}, "…": "…"}
+```
+
+Chats über Servergrenzen (`v: 2`) tragen in `/api/chats` und `/api/chats/{id}` zusätzlich `receipts_ok` und `online_ok`:
+`false` = der andere Server (Saga 2.3) kann es nicht → keine Bestätigung versiegeln, keinen Online-Status anzeigen.
+Lokale Chats haben die Felder nicht (= `true`).
+
+### Einstellungen
+
+- `GET /api/chat/privacy` → `{"receipts": true, "online": true}`
+- `PUT /api/chat/privacy` mit `{"receipts": false}` und/oder `{"online": false}` → neuer Stand (400 bei anderen Typen).
+  Live-Ereignis `chat.privacy {receipts, online}` an die eigenen anderen Geräte/Tabs.
+- Texte (de): „Gelesen-Bestätigungen senden“ – „Aus: Andere sehen nicht, ob du ihre Nachrichten gelesen hast – und du
+  siehst es bei ihnen auch nicht.“ · „Online-Status zeigen“ – „Aus: Deine Chat-Partner sehen nicht, ob und wann du
+  zuletzt online warst – und du siehst es bei ihnen auch nicht.“ (alle fünf Sprachen in `saga/i18n/*.json`).
+- `receipts: false`: Der Server zieht alle eigenen Bestätigungen zurück (auch über Servergrenzen), nimmt keine neuen an
+  (`receipt: "off"`) und liefert keine fremden mehr (`enabled: false`). `online: false`: niemand sieht den eigenen
+  Status, Abfragen liefern `enabled: false` und nichts.
+
+### Format (Ende-zu-Ende)
+
+Eine Bestätigung sagt „gelesen bis Nachricht `id` (Position `n`)“. `n` ist die Reihenfolge, die alle Teilnehmer gleich
+sehen: in lokalen Chats `seq`, in Chats über Servergrenzen `fseq` (Reihenfolge des Heims).
+
+```
+body   = JSON-Text {"id": "<msg_id, 32 hex>", "n": <int>, "ts": <ms seit 1970>}     (genau dieser Text wird signiert)
+sig    = sign_detached(LP("saga-chat/v1/receipt", str(chat_id), benutzername, geraet, body), device_sign_sk)    lokal
+       = sign_detached(LP("saga-chat/v2/receipt", chat_ref, handle, geraet, body), device_sign_sk)             v2
+inner  = JSON-Text {"v": 1, "dev": "<geraet>", "body": body, "sig": B64(sig)}
+sealed = B64(crypto_box_seal(inner, backup_pub des Gegenübers))          je anderem Mitglied eines
+```
+
+Versiegelt wird für den **Backup-Schlüssel** jedes anderen Mitglieds (alle Geräte eines Kontos haben `backup_sk`) –
+eine Bestätigung je Person, nicht je Gerät. Testvektoren (Pflicht in der CI jeder App): `tests/vectors/receipts.json`
+(Erzeugen/Prüfen `tools/receipt_vectors.py`, Gegenprobe libsodium.js `tools/receipt_vectors.mjs`). Web:
+`sealReceipt`, `openReceipt`, `verifyReceipt`, `receiptMsg` in `static/chat-crypto.js`; Python: `tests/chatlib.py`.
+
+### Senden
+
+Zusammen mit dem Lese-Zeiger: `POST /api/chats/{id}/read` mit `{"seq": <wie bisher>, "receipt": {"keys": {…}}}`.
+
+- `keys`: lokal `"backup:<benutzername>"`, v2 `"backup:<handle>"` → `sealed`, für jedes andere Mitglied mit
+  Chat-Schlüsseln. Schlüssel lokal aus `GET /api/chats/{id}/recipients` (`backup_pub`, vorher `backup_sig` prüfen wie
+  beim Senden), v2 aus `GET /api/chat/v2/keys` (selbst geprüft; bei TOFU `reject`/`block` weglassen). Höchstens 50
+  Einträge, je 112–2048 Zeichen; Unbekannte (keine Mitglieder, man selbst) ignoriert der Server.
+- **Wann:** nur wenn der Chat wirklich sichtbar ist (App bzw. Tab im Vordergrund, Chat offen – wie beim Lese-Zeiger),
+  die neueste Nachricht mit Position **nicht von dir** ist und ihr `n` größer als das zuletzt bestätigte.
+  Höchstens **eine je Chat und 2 s** (`status_limits.receipt_gap`; nachziehen statt verwerfen). Nicht bei
+  Nachrichtenanfragen (`request`), schreibgeschützten Chats, `receipts_ok: false` oder eigener Einstellung aus.
+- Antwort wie bisher plus `receipt`: `"ok"` · `"off"` (eigene Einstellung aus) · `"none"` (niemand zu benachrichtigen,
+  Anfrage noch offen, schreibgeschützt – nicht wiederholen) · `"rate"` (mehr als 120 je Minute – später erneut) ·
+  `"bad"` (Form falsch). Ohne `receipt` im Body bleibt `/read` Byte für Byte wie bisher.
+
+### Empfangen und anzeigen
+
+- Beim Öffnen eines Chats: `GET /api/chats/{id}/receipts` →
+  `{"chat_id": 7, "enabled": true, "receipts": [{"from": "bert", "sealed": "…"}]}` (v2 zusätzlich `"handle"`; `from` ist
+  dann der Benutzername bzw. Prinzipal `@~x@host` wie in `members[].username`). Je anderem Mitglied nur die neueste.
+  Eigene Einstellung aus → `enabled: false`, leer.
+- Live: `chat.receipt {"chat_id": 7, "receipts": [{"from", "handle"?, "sealed"}]}` – je Chat gebündelt (höchstens ein
+  Ereignis je 2 s mit allen neuen).
+- Öffnen mit `backup_pk/backup_sk`, dann **prüfen**: Gerät `dev` muss ein geprüftes Gerät von `from` sein (lokal: Geräte
+  aus `/recipients` mit gültigem Zertifikat; v2: Geräte aus den geprüften v2-Schlüsseln von `handle`), Signatur mit
+  `chat_id`/`chat_ref` und Benutzername/Handle wie oben. Nicht prüfbar → ignorieren. Je Person nur das größte `n` merken.
+- **Haken an eigenen Nachrichten:** `⏳` wird zugestellt (`fstate: "pending"`) → `✓` zugestellt (beim Server bzw. Heim
+  angekommen) → `✓✓` gelesen (`n` der Bestätigung ≥ Position der Nachricht). Direkt-Chat: `✓✓`, sobald das Gegenüber
+  bestätigt hat. Gruppen: `✓✓`, wenn alle anderen bestätigt haben, sonst `✓` bzw. `✓✓` mit Zähler; Tippen öffnet
+  „Gelesen von“ (Name + Zeit aus `ts`) mit dem Hinweis „Wer Gelesen-Bestätigungen abgeschaltet hat, erscheint hier nicht.“
+- Position eigener Nachrichten in v2-Chats: `fseq` aus der Antwort von `POST …/messages` bzw. – war sie ausstehend – aus
+  dem Live-Ereignis `chat.message`, das die Zustellung meldet (enthält jetzt `fseq`).
+- Der Server sieht nur, **dass** es eine Bestätigung gibt (und wann), nicht bis wohin. Der Lese-Zeiger `last_read`
+  (Ungelesen-Zähler, Benachrichtigungen) bleibt wie bisher auf dem eigenen Server.
+
+### Online-Status
+
+- Nur für Personen mit einem gemeinsamen, angenommenen Chat. Abo: `POST /api/chat/presence` mit
+  `{"users": ["bert", "@~abcdefghijklmnop@b.example"]}` (Benutzernamen bzw. Prinzipale aus `members[].username` /
+  `peer.username`, höchstens 50, höchstens 30 Abfragen je Minute) →
+
+  ```json
+  {"enabled": true, "ttl": 90, "users": {"bert": {"online": true, "last": null},
+                                          "@~abcdefghijklmnop@b.example": {"online": false, "last": 1792449900.0}}}
+  ```
+
+  `last` = „zuletzt online“ (Unix-Sekunden, auf 5 Minuten abgerundet, `null` = unbekannt). Fehlt eine Person: kein
+  Status (kein gemeinsamer Chat, abgeschaltet oder noch unbekannt) – nichts anzeigen.
+- Nur abonnieren, was **sichtbar** ist (offener Direkt-Chat, sichtbare Direkt-Chats der Liste), alle **60 s** erneuern,
+  solange sichtbar; beim Verlassen `{"users": [...], "leave": true}` (optional – das Abo läuft nach `ttl` aus).
+- Live: `chat.presence {"username": "bert", "online": true|false, "last": <zahl>|null}` nur an Konten mit laufendem Abo.
+  `online: false` mit `last: null` = Status nicht mehr verfügbar (Person hat ihn abgeschaltet) → entfernen.
+- Personen anderer Server: Der eigene Server fragt beim Server der Person nach; die erste Antwort kann leer sein (z. B.
+  gleich nach dem Annehmen einer Anfrage) – dann eine Minute lang alle 10 s erneut fragen, danach im 60-s-Takt.
+- Online = mindestens eine Live-Verbindung (`/api/events`), offline 30 s nach der letzten (Server-Einstellung
+  `CHAT_OFFLINE_GRACE`). Apps halten die Live-Verbindung wie bisher nur im Vordergrund. Anzeige: „online“ bzw.
+  „zuletzt online vor 5 Minuten“ (relativ, gerundet).
+- Kein Verlauf: Der Server speichert je Konto nur „zuletzt online“ im 5-Minuten-Raster, nirgends für Admins sichtbar.
+
+### Beispiele
+
+```http
+POST /api/chats/7/read
+{"seq": 812, "receipt": {"keys": {"backup:bert": "u3J…", "backup:cora": "kQ9…"}}}
+→ 200 {"ok": true, "last_read": 812, "unread": 0, "receipt": "ok"}
+
+GET /api/chats/7/receipts
+→ 200 {"chat_id": 7, "enabled": true, "receipts": [{"from": "bert", "sealed": "pT1…"}]}
+
+PUT /api/chat/privacy
+{"online": false}
+→ 200 {"receipts": true, "online": false}
+```

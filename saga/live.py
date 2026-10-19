@@ -240,6 +240,11 @@ async def _dispatch():
                             _deliver(uid, typ, data)
                 continue
             aud = _audience()
+            if kind == "direct_each":                         # (2.4) je Konto eigene Daten, ohne Rechtepruefung (Empfaenger
+                for uid, typ, data in payload.get("items") or ():    # stehen fest, z. B. gebuendelte Gelesen-Bestaetigungen)
+                    if uid in aud:
+                        _deliver(uid, typ, data)
+                continue
             if not aud and not (FED_FANOUT is not None and kind in ("note.changed", "presence", "comments.changed", "notes.tree")):
                 continue
             pres = {k: {u: bool(e[1]) for u, e in v.items()} for k, v in _presence.items()}     # Kopie fuer den Thread

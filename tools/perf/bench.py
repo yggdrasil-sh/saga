@@ -9,6 +9,7 @@ import argparse
 import gzip
 import http.client
 import json
+import os
 import statistics
 import subprocess
 import threading
@@ -426,6 +427,75 @@ def bench_calls():
     stats("Anruf: Ablauf anrufen+annehmen+20 Signale", tall or [0], [0], [200], "Ablauf")
 
 
+def _cpu(pid):
+    """CPU-Sekunden (utime+stime) des Server-Prozesses (/proc, nur nativ - im Container ueber docker stats)."""
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            v = f.read().rsplit(")", 1)[1].split()
+        return (int(v[11]) + int(v[12])) / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def bench_receipts():
+    """2.4: Gelesen-Bestaetigungen und Online-Status in einer Gruppe mit 50 Mitgliedern (gen.py). Alle 50 haben den
+    Live-Kanal offen; 49 lesen 20 s lang alle 2 s (POST /read mit versiegelten Bestaetigungen fuer die 49 anderen,
+    Zufallsbytes in echter Groesse - der Server sieht nur Base64). Gemessen: p95 von /read mit Bestaetigung, Live-Ereignisse
+    je Konto (Buendelung: hoechstens eins je 2 s und Chat), Python-CPU waehrend der Phase (--pid). Danach abonnieren alle
+    den Online-Status der anderen (POST /api/chat/presence, 49 Personen). Gegen einen Server ohne 2.4 laufen dieselben
+    Anfragen (/read ohne Wirkung der Bestaetigung, Presence 404) - so vergleicht die Python-CPU gleiche Last."""
+    import base64
+    I = INFO
+    if not I.get("group") or not I.get("cookies_g"):
+        return
+    print("Gelesen/Online (Gruppe mit %d)" % len(I["group_members"]), flush=True)
+    ck = dict(I["cookies_g"], **{"perf-a": I["cookie_a"], "perf-b": I["cookie_b"]})
+    mem = I["group_members"]
+    seal = lambda: base64.b64encode(os.urandom(250)).decode()  # noqa: E731   (~ echte Groesse: Siegel + Signatur + JSON)
+    ls = {u: Listener(ck[u]) for u in mem}
+    for x in ls.values():
+        x.start()
+    for x in ls.values():
+        x.ok.wait(10)
+    time.sleep(1.0)
+    c0, t_start = _cpu(ARGS.pid) if ARGS.pid else None, time.perf_counter()
+    times, codes, lock = [], [], threading.Lock()
+
+    def reader(u, k):
+        for r in range(10):
+            body = {"seq": I["group_last"], "receipt": {"keys": {"backup:" + v: seal() for v in mem if v != u}}}
+            s, _, dt, d = req("POST", f"/api/chats/{I['group']}/read", ck[u], body)
+            with lock:
+                times.append(dt); codes.append(s)
+            time.sleep(max(0.0, 2.0 - dt))
+    th = [threading.Thread(target=reader, args=(u, i)) for i, u in enumerate(mem[1:])]
+    for i, t_ in enumerate(th):
+        t_.start()
+        time.sleep(2.0 / len(th))                   # gleichmaessig ueber die 2 s verteilt
+    for t_ in th:
+        t_.join()
+    time.sleep(2.5)                                 # letzte Buendelung
+    dur = time.perf_counter() - t_start
+    c1 = _cpu(ARGS.pid) if ARGS.pid else None
+    evs = [sum(1 for _, e in x.events if e == "chat.receipt") for x in ls.values()]
+    cpu = round((c1 - c0) / dur * 100, 1) if c0 is not None and c1 is not None else None
+    stats("Gelesen: POST /read mit Bestaetigung (49 Leser, 50er-Gruppe)", times or [0], [0], sorted(set(codes)), "Gelesen",
+          extra={"cpu_pct": cpu, "events_max": max(evs), "events_avg": round(sum(evs) / len(evs), 1), "requests": len(times),
+                 "seconds": round(dur, 1)})
+    print(f"  Python-CPU {cpu} % ueber {dur:.0f} s, {len(times)} Bestaetigungen, chat.receipt je Konto max {max(evs)}", flush=True)
+    # Online-Status: jedes Mitglied abonniert die 49 anderen
+    pt, pc = [], []
+    c0, t0 = _cpu(ARGS.pid) if ARGS.pid else None, time.perf_counter()
+    for u in mem:
+        s, _, dt, d = req("POST", "/api/chat/presence", ck[u], {"users": [v for v in mem if v != u]})
+        pt.append(dt); pc.append(s)
+    c1, dur = _cpu(ARGS.pid) if ARGS.pid else None, time.perf_counter() - t0
+    stats("Online: POST /api/chat/presence (49 Personen)", pt, [0], sorted(set(pc)), "Gelesen",
+          extra={"cpu_s": round(c1 - c0, 2) if c0 is not None and c1 is not None else None})
+    for x in ls.values():
+        x.close()
+
+
 def main():
     global ARGS, INFO
     ap = argparse.ArgumentParser()
@@ -434,7 +504,8 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--n", type=int, default=10)
     ap.add_argument("--project", default="saga-perf")
-    ap.add_argument("--only", default="read,write,apps,parallel,live,calls")
+    ap.add_argument("--only", default="read,write,apps,parallel,live,calls,receipts")
+    ap.add_argument("--pid", type=int, default=0, help="Server-Prozess (nativ): Python-CPU je Phase aus /proc")
     ARGS = ap.parse_args()
     INFO = json.load(open(ARGS.info))
     smp = Sampler()
@@ -442,7 +513,7 @@ def main():
     only = ARGS.only.split(",")
     phases = {}
     for name, fn in (("read", bench_read), ("write", bench_write), ("apps", bench_apps), ("parallel", bench_parallel), ("live", bench_live),
-                     ("calls", bench_calls)):
+                     ("calls", bench_calls), ("receipts", bench_receipts)):
         if name in only:
             t0 = time.time()
             fn()
