@@ -575,13 +575,33 @@ Anfragen – nie Inhalte. Interne Adressen (192.168.x, 10.x …) erreicht Saga n
 Person bzw. Gruppe gibt, und zeigt sie mit Herkunft an („Bert (bert@verein.example)“). Dafür brauchst du einen
 öffentlichen Namen (Einstellungen → Konto). Personen anderer Server erscheinen in „Mit mir geteilt“, in Kommentaren und
 Benachrichtigungen immer mit `@server`, damit niemand mit einem gleichnamigen Konto hier verwechselt wird. Ist „Teilen
-nur innerhalb gemeinsamer Gruppen“ an, geht Teilen mit anderen Servern nicht.
+nur innerhalb gemeinsamer Gruppen“ an, geht Teilen mit anderen Servern nicht – außer mit Servern, für die der Admin die
+Ausnahme eingeschaltet hat (siehe unten).
 
 **Geteilt bekommen:** Seiten anderer Server stehen in **„Mit mir geteilt“** (mit `name@server`), öffnen sich im
 normalen Editor und lassen sich je nach Rolle lesen, kommentieren und bearbeiten (Titel und Inhalt; bei
 gleichzeitigem Bearbeiten greift der bekannte Konflikt-Hinweis). Bilder kommen über den eigenen Server. Du brauchst
 dafür einen öffentlichen Namen. Benachrichtigungen („hat eine Seite mit dir geteilt“, „hat geantwortet“) kommen auch
 über Servergrenzen – ohne Kommentartext.
+
+**Protokoll 2 und Funktionen je Server (ab 2.3):** Verbundene Server mit Saga 2.3 handeln beim Verbinden (und danach
+alle 6 Stunden) aus, was beide können; Server mit 2.1/2.2 bleiben ganz normal verbunden (Teilen, Kommentare,
+Benachrichtigungen wie bisher). Unter **Admin → Föderation → „Funktionen je Instanz“** stehen je verbundenem Server
+Protokoll, gemeinsame Fähigkeiten und die Schalter:
+- **Chat** (Schlüsselverzeichnis für Chats über Servergrenzen; die Chats selbst folgen mit dem nächsten Update) und
+  **Anrufe** – Standard an.
+- **Adressbuch mit dieser Instanz teilen** – Standard an. Personen dort finden Personen von hier dann über den
+  Anzeigenamen (Chat- und Teilen-Suche, „Anna Berg · b.example“). Übertragen werden nur Anzeigename, Profilbild und eine
+  zufällige, feste Kennung (`~…@server`) – nie Anmeldenamen, E-Mail-Adressen oder Gruppen. Optional nur Personen aus
+  bestimmten Gruppen. Konten ohne Anzeigenamen, deaktivierte Konten und alle, die unter Einstellungen → Konto →
+  „In Adressbüchern verbundener Server erscheinen“ widersprechen, erscheinen nie. Abschalten oder Trennen löscht das
+  Adressbuch auf beiden Seiten sofort.
+- **Ausnahme von „Teilen nur innerhalb gemeinsamer Gruppen“** – Standard aus. Ist die Beschränkung (Allgemein) an,
+  sind Freigaben, Adressbuch und Chats mit anderen Servern gesperrt; mit der Ausnahme sind sie für diesen Server erlaubt.
+Ereignisse zwischen den Servern gehen sofort raus („Express“, höchstens 5 s Wartezeit, `FED_EXPRESS_TIMEOUT`); ist der
+andere Server nicht erreichbar, wartet das Ereignis im Ausgangskorb und wird in der richtigen Reihenfolge nachgeliefert
+(bis zu 3 Tage). Für Skripte gibt es im Admin-Bereich `GET /api/federation` und
+`PUT /api/federation/peers/{id}` (`{"chat": false, …}`, Admin-Sitzung und Kopfzeile `X-CSRF-Token`).
 
 **Noch nicht über Servergrenzen** (diese Runde): Datenbanken anderer Server öffnen (es erscheint ein Hinweis), Bilder
 in fremde Seiten hochladen, Unterseiten anlegen, Versionen, Export, „Wer gerade hier ist“ und Live-Aktualisierung,

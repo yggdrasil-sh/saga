@@ -16,6 +16,37 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Föderation 2.3
+
+- **Protokoll 2** zwischen verbundenen Saga-Servern: `/.well-known/saga` meldet `protocol: 2` und Fähigkeiten
+  (`v2 express handles directory keys`); beide Seiten handeln sie signiert aus (`POST /fed/v2/hello`). Eine Funktion gilt
+  nur, wenn beide sie können und der Admin-Schalter an ist. Server mit 2.1/2.2 bleiben verbunden wie bisher (Protokoll 1).
+- **Express-Zustellung:** Ereignisse an andere Server gehen sofort raus (eigener Thread-Pool, harte Frist
+  `FED_EXPRESS_TIMEOUT`, Standard 5 s); scheitert das, übernimmt der Ausgangskorb. Neu: Ereignisse mit Kennung
+  (beim Empfänger höchstens einmal verarbeitet) und **Reihenfolge je Kette** – eine wartende ältere Nachricht hält die
+  Kette an, Lücken werden protokolliert.
+- **Admin-Schalter je verbundenem Server** (Admin → Föderation → „Funktionen je Instanz“, dazu JSON-API
+  `GET /api/federation`, `PUT /api/federation/peers/{id}`): Chat, Anrufe, Adressbuch (optional nur bestimmte Gruppen),
+  Ausnahme von „Teilen nur innerhalb gemeinsamer Gruppen“ (Standard aus; mit Ausnahme ist Teilen mit diesem Server
+  trotz Beschränkung erlaubt).
+- **Adressbuch-Abgleich:** Personen verbundener Server findet man in Chat- und Teilen-Suche über den Anzeigenamen
+  („Anna Berg · b.example“, gleiche Namen unterscheidbar, mit Profilbild). Jedes Konto hat dafür eine zufällige, feste
+  Kennung (`~…@server`) – nie der Anmeldename; keine E-Mail, keine Gruppen. Abgleich signiert und inkrementell
+  (`GET /fed/v2/directory?since=`, Ereignis `directory.changed`), Trennen oder Abschalten löscht sofort. Jede Person kann
+  unter Einstellungen → Konto „In Adressbüchern verbundener Server erscheinen“ abschalten; deaktivierte Konten nie.
+- **Schlüsselverzeichnis und Chat-Krypto `saga-chat/v2`** (Grundlage für Chats über Servergrenzen): Handle-Zertifikat,
+  Geräte-Zertifikat v2, Nachrichten gebunden an globale Chat-Kennung, Absender-Handle und (neu mitsigniert) KI-Hash,
+  Empfänger `dev:<id>@host`/`backup:<handle>`, Sicherheitsnummer v2. Fremde Schlüssel holt der eigene Server signiert
+  beim Heimserver der Person, prüft sie und speichert sie zwischen (`chat.keys.changed`); die Apps prüfen selbst + TOFU.
+  Gemeinsame Testvektoren `tests/vectors/chat_v2.json` (PyNaCl, Server-Referenz `saga/chat_v2.py`, libsodium.js).
+  Lokale Chats bleiben unverändert `saga-chat/v1`. Vertrag für die Apps: `docs/APP-API-FED.md`.
+- **Datenbank:** Migration 7 (neue Spalten in `fed_peer` und `fed_outbox`) plus neue Tabellen (`fed_handle`,
+  `fed_dir_local`, `fed_directory`, `fed_event_seen`, `fed_chain_in/out`, `fed_chat_keys`, `chat_fed_cert`,
+  `chat_device_fed`). Vor der Migration legt Saga wie immer ein Backup an; ältere Versionen starten danach nicht mehr auf
+  dieser Datenbank (Backup zurückspielen).
+- **Tests:** neue Reihen `foederation2` (zwei Instanzen; mit `FED_B_APP=<älterer Stand>` Kompatibilität zu 2.1/2.2) und
+  `chat_v2_vektoren`; `foederation` unverändert grün.
+
 ### Schneller
 
 - **Kompression:** JSON-, Text-, JS- und CSS-Antworten ab 1 KB kommen gzip-komprimiert, wenn Browser oder App es
