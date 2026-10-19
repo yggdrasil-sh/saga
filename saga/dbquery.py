@@ -709,6 +709,61 @@ def parse_args(params):
     return a
 
 
+_NUMCHARS = frozenset("0123456789.e+-nainfty")      # String(zahl) kleingeschrieben: Ziffern, Exponent, NaN, Infinity
+_OBJ = "[object object]"
+
+
+def q_prefilter(schema, args):
+    """Suche (q) in /rows ohne JSON-Lesen jeder Zeile vorfiltern: -> None (nicht sicher moeglich) oder
+    f(titel, props_roh) -> bool. False heisst: die Zeile kann die Suche NICHT bestehen (rowText enthaelt q sicher nicht);
+    True: Kandidat, danach entscheidet die unveraenderte Logik (filter_rows) - Treffer, Reihenfolge, Gruppen, Fehler gleich.
+
+    Begruendung: rowText = lower(Teile mit " " verbunden); Teile = Titel, String(wert) je Spalte, Optionsnamen, Titel von
+    Relationen. Ohne Leerzeichen in q liegt jeder Treffer in EINEM Teil; ohne σ/ς in q stimmt lower(Teil) dort mit
+    lower(ganzer Text) ueberein (einzige kontextabhaengige Kleinschreibung in Python: Schluss-Sigma). Ein Text-Wert steht
+    im gespeicherten JSON woertlich, solange es keinen Backslash gibt (sonst Kandidat); true/false ebenso. Zahlen
+    (String(zahl) besteht nur aus _NUMCHARS), Arrays (mit Komma verbunden) und Objekte ("[object Object]") schliesst q
+    selbst aus. Optionsnamen: Zeile ist Kandidat, wenn sie die id einer passenden Option enthaelt. Nicht vorfiltern bei
+    Relationen (Titel anderer Seiten), q mit Leerzeichen/Komma/Sigma, q nur aus Zahlzeichen und bei Filtern, die je Zeile
+    einen Fehler ausloesen koennen (null, enthaelt mit Nicht-Text-Wert) - der Fehler darf nicht von der Suche abhaengen."""
+    q = js_lower(js_trim(args.get("q", "") or ""))
+    if not q or any(ch in q for ch in " ,σς") or q in _OBJ or set(q) <= _NUMCHARS:
+        return None
+    view = view_of(schema, args["view"]) if "view" in args else None
+    filters = args["filters"] if "filters" in args else (view.get("filters") if view and isinstance(view.get("filters"), list) else [])
+    for f in filters:
+        if f is None:
+            return None
+        if isinstance(f, dict) and isinstance(f.get("op"), str) and f["op"] in ("contains", "not_contains") \
+                and not isinstance(f.get("value"), str):
+            return None
+    needles = set()
+    for _key_, kind, _omap, opts in Query(schema)._row_text_cols():
+        if kind == "rel":
+            return None
+        if kind == "sel":
+            for o in opts:
+                name = o.get("name", UNDEF)
+                if q in js_lower("" if js_nullish(name) else js_str(name)):
+                    oid = o.get("id", UNDEF)
+                    if not isinstance(oid, str):
+                        return None
+                    needles.add('"' + oid + '"')
+    needles = tuple(needles)
+
+    def cand(title, raw):
+        if not isinstance(title, str) and title is not None:
+            return True
+        if q in js_lower(title or ""):
+            return True
+        if not raw:
+            return False                             # keine Werte (wie _json_load -> {})
+        if not isinstance(raw, str) or "\\" in raw:
+            return True
+        return q in raw.lower() or any(n in raw for n in needles)
+    return cand
+
+
 def run(schema, rows, args, labels=None, untitled="Unbenannt"):
     """Ansicht anwenden. -> (zeilen der Seite, treffer, gruppen | None). rows in Server-Reihenfolge (sort, created)."""
     view = view_of(schema, args["view"]) if "view" in args else None

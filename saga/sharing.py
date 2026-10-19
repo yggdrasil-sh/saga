@@ -16,6 +16,7 @@ Rollen: owner (Eigentuemer) > edit (Bearbeiten) > comment (Kommentieren) > view 
 import contextvars
 import json
 import re
+import threading
 import time
 from html import escape as _esc
 from fastapi import APIRouter, Request
@@ -121,6 +122,61 @@ def person(c, uid, me, cache=None):
     return {"name": nm, "username": uid, "me": uid == me, "avatar": av}
 
 
+# --- Zwischenspeicher fuer Access.tree (2.2) ------------------------------------------------------------------------
+# Der Freigabe-Baum haengt nur an den Seiten des Eigentuemers (Spalten, die der Abgleich-Trigger in db.TREE_SEQ_SQL
+# beobachtet: Titel, Symbol, Eltern, Papierkorb, Archiv, Vorlage, Art, sort, created, updated, Schlagworte, angeheftet)
+# und an den Freigabe-Wurzeln mit Rolle (Teil des Schluessels - Freigaben und Gruppen werden je Anfrage frisch gelesen).
+# Gueltig ist ein Eintrag, solange es keine Aenderung an Seiten des Eigentuemers gibt, die der Leser nicht sehen konnte:
+# jede solche Transaktion hat eine Nummer >= xmin seines Datenstands und hinterlaesst eine Zeile in note_tseq (in
+# derselben Transaktion wie die Aenderung). Nur in READ COMMITTED (jede Anweisung sieht mindestens den Stand des
+# Eintrags), nur ohne eigene Schreibvorgaenge der Transaktion (nie einen unbestaetigten Stand merken), dieselbe Kennung
+# (epoch, neu je Start/Backup). Im Zweifel (Tabelle fehlt, Fehler): kein Zwischenspeicher, Abfrage wie bisher.
+TREE_CACHE_ROWS = 150000          # Zeilen insgesamt (aelteste Eintraege fliegen zuerst)
+TREE_CACHE_AGE = 300              # Sekunden; danach neu (Grabsteine in note_tseq werden nach 30 Tagen geloescht)
+_TREE_CACHE = {}                  # key -> (epoch, xmin, zeit, anzahl, rollen, mit_zeilen); zuletzt benutzt zuletzt
+_TREE_LOCK = threading.Lock()
+
+
+def _tree_cached(c, key):
+    """-> ((rollen, mit_zeilen) | None, stand fuer _tree_store | None). Die Woerterbuecher nur lesen (kopieren)."""
+    with _TREE_LOCK:
+        ent = _TREE_CACHE.get(key)
+    try:
+        c.execute("SAVEPOINT tree_cache")
+        r = c.execute("SELECT (SELECT v FROM note_tseq_meta WHERE k='epoch'), pg_snapshot_xmin(pg_current_snapshot())::text::bigint, "
+                      "current_setting('transaction_isolation') = 'read committed' AND pg_current_xact_id_if_assigned() IS NULL, "
+                      "EXISTS (SELECT 1 FROM note_tseq WHERE uid=? AND xid >= ?)",
+                      (key[0], ent[1] if ent else 2 ** 62)).fetchone()
+        c.execute("RELEASE SAVEPOINT tree_cache")
+    except Exception:              # kein Abgleich-Stand (Postgres < 13, Rechte): immer frisch abfragen
+        c.execute("ROLLBACK TO SAVEPOINT tree_cache")
+        return None, None
+    epoch, xmin, clean, changed = r
+    if not epoch or not clean:
+        return None, None
+    if ent and ent[0] == epoch and not changed and time.monotonic() - ent[2] < TREE_CACHE_AGE:
+        with _TREE_LOCK:
+            if _TREE_CACHE.get(key) is ent:
+                _TREE_CACHE[key] = _TREE_CACHE.pop(key)          # zuletzt benutzt
+        return ent[4:], None
+    return None, (epoch, int(xmin), time.monotonic())
+
+
+def _tree_store(key, st, roles, full):
+    if st is None or len(roles) > TREE_CACHE_ROWS:
+        return
+    with _TREE_LOCK:
+        old = _TREE_CACHE.pop(key, None)
+        if old is not None and old[1] > st[1]:          # ein neuerer Stand ist schon da
+            _TREE_CACHE[key] = old
+            return
+        _TREE_CACHE[key] = (*st, len(roles), roles, full)
+        total = sum(e[3] for e in _TREE_CACHE.values())
+        while total > TREE_CACHE_ROWS:
+            k = next(iter(_TREE_CACHE))
+            total -= _TREE_CACHE.pop(k)[3]
+
+
 class Access:
     """Zugriff EINES Kontos auf Seiten - je Anfrage einmal anlegen; Eigentuemer, Freigaben, Gruppen und Rollen werden
     zwischengespeichert (kurzer Cache je Anfrage)."""
@@ -206,24 +262,34 @@ class Access:
         tcols = "".join(f", n.{x}" for x in mc)                 # Zeilen-Spalten gleich mitfuehren: kein zweiter Zugriff
         ok = "n.uid=? AND n.deleted_at IS NULL AND n.archived IS NULL AND n.is_template=0"
         roots = sorted(i for i in sh if RANK.get(sh[i], 0) > 0)
-        # Jede Freigabe vererbt abwaerts; ueberlappen sich Freigaben (Seite und Unterseite freigegeben), kommt eine Seite
-        # mehrfach an - es gilt die hoechste Rolle (DISTINCT ON ... r DESC)
-        rows = self.c.execute(
-            "WITH RECURSIVE t AS ("
-            f" SELECT n.id, x.r, 0 AS depth, n.sort, n.created{tcols} FROM unnest(?::bigint[], ?::int[]) AS x(id, r)"
-            f" JOIN note n ON n.id=x.id WHERE {ok}"
-            f" UNION ALL SELECT n.id, t.r, t.depth + 1, n.sort, n.created{tcols} FROM t JOIN note n ON n.parent_id=t.id"
-            f" WHERE {ok} AND t.depth < 10000)"
-            f" SELECT id, r{''.join(', ' + x for x in (['id'] + mc if meta else []))}"
-            " FROM (SELECT DISTINCT ON (id) * FROM t ORDER BY id, r DESC) v ORDER BY sort NULLS FIRST, created, id",
-            (roots, [RANK[sh[i]] for i in roots], owner, owner)).fetchall()
-        name = {v: k for k, v in RANK.items() if k}
-        roles = {r[0]: name[r[1]] for r in rows}
+        ranks = [RANK[sh[i]] for i in roots]
+        key = (owner, bool(meta), tuple(roots), tuple(ranks))
+        hit, st = _tree_cached(self.c, key)
+        if hit is None:
+            # Jede Freigabe vererbt abwaerts; ueberlappen sich Freigaben (Seite und Unterseite freigegeben), kommt eine
+            # Seite mehrfach an - es gilt die hoechste Rolle (DISTINCT ON ... r DESC)
+            rows = self.c.execute(
+                "WITH RECURSIVE t AS ("
+                f" SELECT n.id, x.r, 0 AS depth, n.sort, n.created{tcols} FROM unnest(?::bigint[], ?::int[]) AS x(id, r)"
+                f" JOIN note n ON n.id=x.id WHERE {ok}"
+                f" UNION ALL SELECT n.id, t.r, t.depth + 1, n.sort, n.created{tcols} FROM t JOIN note n ON n.parent_id=t.id"
+                f" WHERE {ok} AND t.depth < 10000)"
+                f" SELECT id, r{''.join(', ' + x for x in (['id'] + mc if meta else []))}"
+                " FROM (SELECT DISTINCT ON (id) * FROM t ORDER BY id, r DESC) v ORDER BY sort NULLS FIRST, created, id",
+                (roots, ranks, owner, owner)).fetchall()
+            name = {v: k for k, v in RANK.items() if k}
+            roles = {r[0]: name[r[1]] for r in rows}
+            full = {r[0]: (name[r[1]], r[2:]) for r in rows} if meta else None
+            _tree_store(key, st, roles, full)
+        else:
+            roles, full = hit
+        roles = dict(roles)                                # eigene Kopie (der Zwischenspeicher bleibt, wie er ist)
         self._tree[owner] = roles
-        for k, v in roles.items():
-            self._role.setdefault(k, v)
+        merged = dict(roles)                               # = setdefault je Seite: schon bekannte Rollen bleiben
+        merged.update(self._role)
+        self._role = merged
         if meta:
-            return {r[0]: (name[r[1]], r[2:]) for r in rows}
+            return dict(full)
         return roles
 
 

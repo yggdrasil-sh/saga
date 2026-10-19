@@ -329,8 +329,12 @@ def _db_query(c, owner, nid, shared, sql, schema_json, query, viewer):
         rows = c.execute(sql + order + " LIMIT ? OFFSET ?", (owner, nid, lim if lim is not None else 2 ** 62, off)).fetchall()
         return rows, {}, dict(extra, total=total, matched=total)
     rows = c.execute(sql + order, (owner, nid)).fetchall()
-    parsed = {r[0]: _json_load(r[3], {}) for r in rows}
-    data = [{"id": r[0], "title": r[1] or "", "props": parsed[r[0]], "updated": r[4], "created": r[5], "_r": r} for r in rows]
+    schema = _json_load(schema_json, {"props": []})
+    # Suche: Zeilen, die q sicher nicht enthalten, gar nicht erst lesen (dbquery.q_prefilter; Ergebnis unveraendert)
+    pf = dbquery.q_prefilter(schema, query) if query.get("q") else None
+    src = [r for r in rows if pf(r[1], r[3])] if pf else rows
+    parsed = {r[0]: _json_load(r[3], {}) for r in src}
+    data = [{"id": r[0], "title": r[1] or "", "props": parsed[r[0]], "updated": r[4], "created": r[5], "_r": r} for r in src]
 
     def labels(ids):
         """Titel verknuepfter Eintraege - nur, was der Betrachter im Web kennt (eigener Baum ohne Archiv bzw. Freigabe-Baum)."""
@@ -342,7 +346,7 @@ def _db_query(c, owner, nid, shared, sql, schema_json, query, viewer):
             ok = [i for i in ids if i in vis]
             got = c.execute("SELECT id, title FROM note WHERE id = ANY(?)", (ok,)).fetchall() if ok else []
         return {i: tl or "" for i, tl in got}
-    page, matched, groups = dbquery.run(_json_load(schema_json, {"props": []}), data, query, labels=labels, untitled=t("Unbenannt"))
+    page, matched, groups = dbquery.run(schema, data, query, labels=labels, untitled=t("Unbenannt"))
     extra.update(total=len(rows), matched=matched)
     if groups is not None:
         extra["groups"] = groups

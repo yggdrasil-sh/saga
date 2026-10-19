@@ -1,5 +1,6 @@
 """Grundlagen der Seiten, gemeinsam genutzt von Seiten, Datenbanken, Dateien und Export:
 Bloecke, Eigenschaften, Relationen, Versionen, Papierkorb-Fristen, Datei-Pfade."""
+import functools
 import hashlib
 import hmac
 import json
@@ -105,11 +106,24 @@ def _note_text(fmt, body, lines=False):
 
 
 def _tags_load(s):
+    if not s or s == "[]":
+        return []
+    if isinstance(s, str) and len(s) <= 1024:      # dieselben Schlagwort-Listen wiederholen sich (Listen mit vielen Seiten)
+        return list(_tags_parsed(s))
     try:
-        v = json.loads(s) if s else []
+        v = json.loads(s)
         return [str(x) for x in v] if isinstance(v, list) else []
     except ValueError:
         return []
+
+
+@functools.lru_cache(maxsize=4096)
+def _tags_parsed(s):
+    try:
+        v = json.loads(s)
+        return tuple(str(x) for x in v) if isinstance(v, list) else ()
+    except ValueError:
+        return ()
 
 
 def _check_parent(c, uid, nid, parent):
