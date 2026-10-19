@@ -397,6 +397,30 @@ y las muestran como tabla, tablero, lista, galería o calendario, con filtros, o
 
 ![Base de datos como tablero](../screenshots/board.png)
 
+**Archivos de Nextcloud en las páginas:** en Ajustes → **Nextcloud** vinculas tu **propio** Nextcloud (escribe la
+dirección, entra en Nextcloud en la pestaña nueva y permite el acceso: Saga recibe una contraseña de aplicación propia
+y nunca ve tu contraseña). Después, el menú «/» ofrece **«Archivo de Nextcloud»**: archivos modificados recientemente,
+navegar por carpetas o buscar por nombre. Un enlace de Nextcloud de tu propia instancia pegado en una página
+(`…/f/123`, `…/apps/files/?fileid=123`) se convierte automáticamente en bloque. Dos formas:
+
+- **Insertar como enlace:** el archivo se queda en Nextcloud. Las imágenes aparecen a lo ancho de la página y los demás
+  archivos como tarjeta con vista previa (si Nextcloud la ofrece), «Descargar» y «Abrir en Nextcloud»; las carpetas
+  muestran sus primeras entradas. **Quien ve la página ve también el archivo**: la vista previa y la descarga pasan por
+  Saga con tu cuenta, también para personas sin Nextcloud propio. Si desconectas, pierdes el permiso de edición de la
+  página o el archivo desaparece de Nextcloud, el bloque solo muestra una tarjeta sin contenido.
+- **Copiar a Saga:** el archivo se convierte en un archivo normal de Saga (bloque de imagen o de archivo) y sigue
+  entonces los permisos de Saga, también sin conexión, en la copia de seguridad y en la exportación.
+
+Quien puede editar una página de otra cuenta solo puede insertar archivos de su **propio** Nextcloud; los bloques de
+otras personas no cambian y no se pueden copiar a otras páginas. Solo quien insertó un bloque ve debajo dos
+interruptores (desactivados por defecto): **«Mostrar en la página publicada»** (los visitantes ven la vista previa y la
+descarga a través de la dirección de la página, nunca la dirección de Nextcloud) y **«Mostrar a través de servidores
+conectados»** (personas de otras instancias de Saga con las que se comparte la página). La exportación contiene un
+enlace en lugar del archivo y la búsqueda encuentra el nombre del archivo. Sin autorización en el área de
+administración solo funcionan direcciones https públicas; el administrador autoriza servidores de la red local en
+General → «Conexiones de los usuarios», donde también puede desactivar la función por completo. Saga guarda en caché las
+miniaturas (`/data/nc-cache`, fuera de la copia de seguridad, límite `NC_CACHE_MB`).
+
 ### Publicar páginas
 
 Cualquier página puede hacerse **pública**: se lee sin iniciar sesión, con un diseño sencillo, claro u oscuro según
@@ -580,35 +604,142 @@ direcciones internas (192.168.x, 10.x …) si figuran en General → «Hosts int
 solo se conectan por https.
 
 **Compartir:** en el diálogo de compartir, escribe `nombre@servidor` (o `@nombre@servidor`): Saga pregunta al servidor
-conectado si existe la persona o el grupo y lo muestra con su origen («Bert (bert@asociacion.example)»). Para ello
-necesitas un nombre público (Ajustes → Cuenta). Las personas de otros servidores aparecen siempre con `@servidor` en
-«Compartido conmigo», en los comentarios y en las notificaciones, para que nadie se confunda con una cuenta de aquí del
-mismo nombre. Si está activado «Solo dentro de grupos en común», no se puede compartir con otros servidores.
+conectado si existe la persona o el grupo y lo muestra con su origen («Bert (bert@asociacion.example)»). Con servidores
+2.3 también encuentras a las personas de allí por su nombre visible (libreta de direcciones); así se puede compartir
+también con personas sin nombre público (mediante un identificador aleatorio y fijo, nunca el nombre de inicio de
+sesión). Con servidores más antiguos necesitas un nombre público (Ajustes → Cuenta). Las personas de otros servidores
+aparecen siempre con `@servidor` en «Compartido conmigo», en los comentarios y en las notificaciones, para que nadie se
+confunda con una cuenta de aquí del mismo nombre. Si está activado «Compartir solo dentro de grupos comunes», no se
+puede compartir con otros servidores, salvo con aquellos para los que el administrador haya activado la excepción (ver
+más abajo).
 
 **Recibir:** las páginas de otros servidores aparecen en **«Compartido conmigo»** (con `nombre@servidor`), se abren en
 el editor normal y, según el rol, se pueden leer, comentar y editar (título y contenido; si se edita a la vez aparece
-el aviso de conflicto de siempre). Las imágenes llegan a través de tu propio servidor. Para ello necesitas un nombre
-público. Las notificaciones («ha compartido una página contigo», «ha respondido») también funcionan entre servidores,
-sin el texto del comentario.
+el aviso de conflicto de siempre). Las imágenes llegan a través de tu propio servidor. Con servidores anteriores a la
+2.3 necesitas para ello un nombre público. Las notificaciones («ha compartido una página contigo», «ha respondido»)
+también funcionan entre servidores, sin el texto del comentario.
 
-**Páginas de otros servidores, completas (2.3, ambos servidores 2.3):** según el rol (lo comprueba siempre el servidor
-de la página) puedes abrir, filtrar y editar **bases de datos** (valores, columnas, vistas, entradas nuevas), crear
-**subpáginas** y moverlas dentro del área compartida, **subir imágenes y archivos** (se guardan con el propietario; por
-persona de otro servidor hay además un límite `FED_UPLOAD_QUOTA_MB`, 200 MB por defecto), usar el **historial de
-versiones** (Editar) y **exportar**. Mientras la página está abierta, tu servidor mantiene una suscripción corta con el
-servidor de la página (`FED_WATCH_TTL`, 90 s) para «quién está aquí», cambios en directo y contadores de comentarios,
-nunca contenido. Con servidores 2.1/2.2 se sigue pudiendo leer, comentar y editar título y contenido.
+**Protocolo 2 y funciones por servidor (2.3):** los servidores conectados con Saga 2.3 acuerdan al conectarse (y luego
+cada 6 horas) lo que pueden hacer ambos; los servidores 2.1 siguen conectados como hasta ahora (compartir, comentarios,
+notificaciones). En **Administración → Federación → «Funciones por instancia»** aparecen, para cada servidor conectado,
+el protocolo, las capacidades comunes y los interruptores:
+- **Chat** (chats directos entre servidores, ver más abajo) y **llamadas**: activados por defecto.
+- **Compartir la libreta de direcciones con esta instancia**: activado por defecto. Las personas de allí encuentran
+  entonces a las de aquí por su nombre visible (búsqueda del chat y de compartir, «Anna Berg · b.example»). Solo se
+  transmiten el nombre visible, la foto de perfil y un identificador aleatorio y fijo (`~…@servidor`), nunca nombres de
+  inicio de sesión, direcciones de correo ni grupos. Opcionalmente solo personas de ciertos grupos. Nunca aparecen las
+  cuentas sin nombre visible, las desactivadas ni quien desactive «Aparecer en las libretas de direcciones de servidores
+  conectados» en Ajustes → Cuenta. Al desactivarlo o desconectar, la libreta se borra al instante en ambos lados.
+- **Excepción de «Compartir solo dentro de grupos comunes»**: desactivada por defecto. Si esa restricción (General) está
+  activada, se bloquean los usos compartidos, la libreta y los chats con otros servidores; con la excepción se permiten
+  para este servidor.
+Los eventos entre servidores salen de inmediato («express», como máximo 5 s de espera, `FED_EXPRESS_TIMEOUT`); si el
+otro servidor no está disponible, el evento espera en la bandeja de salida y se entrega después en el orden correcto
+(hasta 3 días). Para scripts, el área de administración ofrece `GET /api/federation` y
+`PUT /api/federation/peers/{id}` (`{"chat": false, …}`, sesión de administración y cabecera `X-CSRF-Token`).
 
-**Chats entre servidores (2.3):** chats directos (solicitudes de mensaje, adjuntos, llamadas), **grupos libres** con
-personas de varios servidores (el hogar es el servidor de quien lo crea; los cambios pasan por el hogar y se muestran
-como avisos con su origen) y **chats de página** de páginas compartidas con personas o grupos de otros servidores (el
-hogar es el servidor de la página; los miembros de un grupo de otro servidor solo los comunica ese servidor y solo si
-el grupo es destino de un uso compartido). Cifrado de extremo a extremo; las claves y los adjuntos de personas de un
-tercer servidor llegan a través del hogar y tu app comprueba las claves. Al desconectar, las personas de ese servidor
-salen de los grupos; allí el chat queda de solo lectura.
+**Chats y llamadas entre servidores (2.3, ambos servidores 2.3):** en los chats, en **«+ Nueva»**, escribe el nombre:
+las personas de servidores conectados aparecen con su origen («Bert Invitado · asociacion.example»). Un clic inicia el
+chat directo; a la otra persona le aparece como **solicitud de mensaje** arriba en la lista, sin notificación, push ni
+timbre hasta que la **acepta**. También puede **rechazarla** o **bloquear** (a la persona o al servidor entero); la otra
+parte no se entera. Las personas bloqueadas aparecen en «Chats y dispositivos», donde se pueden desbloquear. Los
+mensajes siguen cifrados de extremo a extremo; los servidores solo ven datos cifrados.
+- El servidor de quien inicia el chat es su **hogar**: decide el orden y reparte los mensajes, los borrados, «Eliminar
+  automáticamente tras …» y el interruptor de la IA. Si no está disponible un momento, el mensaje espera en tu propio
+  servidor («⏳ entregando») y sale después en el orden correcto (hasta 3 días; si no, «⚠ no entregado» con «Enviar de
+  nuevo»).
+- Los **adjuntos** se quedan en el servidor de quien los envía; la otra parte los obtiene al abrirlos (las miniaturas,
+  enseguida).
+- El **número de seguridad** y «Marcar como verificado» funcionan como en los chats locales. Si cambia la clave de la
+  otra persona, aparece un aviso hasta que lo confirmes; si estaba marcada como «verificada», no se puede enviar hasta
+  que vuelvas a comparar el número.
+- La **IA en el chat** está desactivada en estos chats hasta que alguien la active; todos lo ven como aviso en el chat.
+- Las **llamadas** funcionan desde chats directos aceptados como siempre; cada lado usa su propio servidor TURN.
+- **Desconectar** los servidores deja estos chats en solo lectura (el historial sigue legible) y termina las llamadas
+  en curso; si se elimina una cuenta, sus chats directos desaparecen también en el otro servidor.
+- Las apps antiguas solo muestran estos chats con el aviso «actualiza la app».
 
-Quien cambia su nombre público o elimina su cuenta pierde los usos compartidos de otros servidores (se eliminan allí);
-el nombre antiguo queda bloqueado para otras cuentas.
+**Páginas de otros servidores, completas (2.3, ambos servidores 2.3):** las páginas compartidas de otros servidores se
+pueden usar como las propias, según el rol, que siempre comprueba el servidor de la página:
+- Abrir, filtrar, ordenar, agrupar y paginar **bases de datos** (también grandes); con «Editar», cambiar valores,
+  columnas y vistas y **crear entradas**. Funcionan las relaciones con otras bases de datos compartidas del mismo
+  servidor; los enlaces a páginas que no se han compartido contigo desaparecen.
+- **Crear subpáginas** y **moverlas** dentro del área compartida (mismos usos compartidos, ver «Roles» más abajo).
+- **Subir imágenes y archivos** (editor, icono, portada): se guardan en el servidor de la página y cuentan para el
+  propietario. Además, cada persona de otro servidor tiene allí su propio límite (`FED_UPLOAD_QUOTA_MB`, 200 MB por
+  defecto). Justo después de subirlo solo lo ve quien lo sube; tras guardar, todos los que tienen acceso.
+- **Historial de versiones** (con «Editar») y **exportación** (Markdown, con subpáginas como ZIP).
+- **«Quién está aquí» y actualización en directo:** mientras la página está abierta, tu servidor mantiene una
+  suscripción corta con el servidor de la página (caduca a los 90 segundos sin renovarse, `FED_WATCH_TTL`). Por ella
+  llegan cambios, presencia y contadores de comentarios, nunca contenido. Las subpáginas nuevas o movidas en áreas
+  compartidas actualizan solas «Compartido conmigo».
+- No entre servidores: eliminar, archivar, publicar, gestionar usos compartidos, enlaces entrantes, IA en la página.
+Con servidores 2.1 se sigue pudiendo leer, comentar y editar título y contenido; las funciones nuevas indican entonces
+«El servidor … todavía no puede hacer esto». **Roles (también en local):** quien puede «Editar» ahora también ve las
+versiones y las restaura (las páginas bloqueadas, solo el propietario) y mueve páginas dentro de un área compartida,
+solo a lugares con exactamente los mismos usos compartidos. Quien cambia su nombre público o elimina su cuenta pierde
+los usos compartidos de otros servidores (se eliminan allí); el nombre antiguo queda bloqueado para otras cuentas.
+
+**Grupos y chats de página entre servidores (2.3, todos los servidores implicados 2.3):**
+- **Grupo libre:** en «+ Nueva» → «+ Grupo con varias personas…» también se pueden elegir personas de servidores
+  conectados. Tu servidor se convierte en el **hogar** del grupo; a los demás les aparece como **solicitud de mensaje**
+  (aceptar, rechazar o bloquear a quien invita o a su servidor). Los administradores del grupo añaden o quitan
+  personas, también desde otro servidor; el cambio pasa siempre por el hogar. Cada cambio aparece para todos como aviso
+  en el chat, con su origen («Anna Berg (a.example) ha añadido a Bert (b.example)»).
+- **Chat de página:** si una página está compartida con personas o grupos de otros servidores, forman parte de su chat
+  de página (el hogar es el servidor de la página). Los miembros de un grupo de otro servidor solo los comunica ese
+  servidor, y solo si allí el grupo es destino de un uso compartido. El chat también se abre desde una página de otro
+  servidor («💬 Chat»). Un chat de página existente se cambia al nuevo formato; los mensajes antiguos siguen legibles
+  para todos los miembros anteriores y la IA queda desactivada.
+- Las personas de un tercer servidor con el que el tuyo no está conectado también participan: claves y adjuntos llegan
+  a través del hogar y tu app comprueba las claves por sí misma (número de seguridad, aviso si cambian).
+- **Desconectar:** si el hogar se desconecta de un servidor, sus personas dejan de ser miembros (aviso en el chat); en
+  el servidor desconectado, el chat queda en solo lectura.
+
+**Para administradores: resumen, privacidad, mensajes de error**
+
+*En resumen:* activar la federación → crear un código de invitación → el otro administrador se conecta y compara la
+huella → confirmar. Después, decide por servidor en **«Funciones por instancia»** qué se permite: **chat**,
+**llamadas**, **compartir la libreta de direcciones con esta instancia** (opcionalmente solo ciertos grupos) y la
+**excepción de «Compartir solo dentro de grupos comunes»**. Cada cambio surte efecto al instante; «Desconectar» lo
+termina todo con ese servidor.
+
+*Privacidad: lo que un servidor conectado sabe de aquí:*
+- Al compartir y comentar: el nombre público o un identificador aleatorio y fijo (`~…`) y el nombre visible de quien
+  actúa, los grupos que él mismo ha indicado como destino de un uso compartido y el contenido de las páginas
+  compartidas con personas de allí. **Nunca** nombres de inicio de sesión, direcciones de correo, contraseñas ni otros
+  grupos.
+- En la libreta de direcciones (solo si el interruptor está activado): nombre visible, versión de la foto de perfil,
+  identificador y, si existe, el nombre público. Quien desactiva «Aparecer en las libretas de direcciones de servidores
+  conectados» en Ajustes → Cuenta desaparece allí al instante; los otros servidores borran también el nombre guardado
+  si la persona no aparece en ningún otro sitio (los comentarios y los historiales de chat lo conservan).
+- Chats y llamadas: solo datos cifrados y los identificadores de los participantes; ningún servidor ve el contenido.
+- **Desconectar** borra usos compartidos, libreta, caché de claves, eventos pendientes y nombres de personas del otro
+  servidor, en la medida en que ya no aparezcan aquí.
+- Indica en tu política de privacidad con qué servidores estáis conectados y que los nombres visibles se transmiten a
+  ellos (libreta de direcciones).
+
+*Protección frente a un servidor defectuoso o malicioso:* cada solicitud y respuesta va firmada; Saga comprueba por sí
+mismo remitente, orden y firmas, frena las avalanchas por servidor (solicitudes, eventos, mensajes, búsqueda de
+nombres, subidas) y deja que un servidor lento ocupe como mucho unas pocas tareas en segundo plano; los demás
+servidores no lo notan. Lo rechazado figura en el **registro de auditoría** (sin contenido).
+
+*Mensajes de error:*
+
+| Mensaje / entrada del registro de auditoría | Significado y qué hacer |
+|---|---|
+| «Dirección no permitida (dirección interna …)» | El otro servidor tiene una dirección interna: añádela en General → «Hosts internos autorizados» |
+| «no es una instancia de Saga con federación» / «no disponible» | La federación está desactivada allí, la dirección es incorrecta o hay un problema de certificado/proxy: comprueba la dirección en el navegador y luego «Comprobar estado» |
+| «La huella ha cambiado» al conectar | El servidor indica una clave distinta de la esperada: **no** conectes, acláralo con el otro administrador |
+| «Sin capacidades adicionales» / protocolo 1 | El otro servidor tiene la 2.1: compartir y comentar funcionan; chats, libreta y demás, tras su actualización |
+| «Retroceso al protocolo 1» | Un servidor con protocolo 2 indica de repente protocolo 1 (se restauró una versión anterior, o un ataque). Los chats con él se pausan y los eventos pendientes se quedan en la bandeja de salida hasta que vuelva a indicar protocolo 2 |
+| «El otro servidor limita (demasiadas solicitudes)» | El otro servidor nos frena: Saga espera el tiempo indicado y después lo entrega todo |
+| `event.stuck` / `event.dropped` | Un evento se rechaza repetidamente o se descartó tras 3 días; suele ser una diferencia de versión o un error del otro servidor |
+| `sig.rejected` / `sig.replay` | Solicitud con firma incorrecta o repetida (comprueba la hora de ambos servidores; basta una diferencia de más de 5 minutos) |
+| `chat.forged`, `chat.badsig`, `chat.replay`, `chat.reorder`, `chat.keymismatch` | El otro servidor envió datos de chat falsificados, mal firmados, repetidos o reordenados: rechazados. Si se acumulan, revisa la conexión o desconecta |
+| `chat.gap` | Faltaban mensajes: se volvieron a pedir al hogar (raro con un servidor sano) |
+| `chat.rate` | Avalancha de un servidor frenada (mensajes, solicitudes, listas de miembros, resolución de nombres): no se pierde nada, llega más tarde |
+| `chat.cache` | Copias en caché de adjuntos de otros servidores por encima del límite (`FED_CHAT_CACHE_MB`): se quitaron las menos usadas y se vuelven a obtener cuando hace falta |
 
 ### Notificaciones y actualización en directo
 
@@ -967,6 +1098,10 @@ En el menú de usuario, arriba a la derecha, en **Ajustes** (una pestaña para c
   Lo mejor es crear una contraseña de aplicación solo para calendarios.
 - **Immich:** introduce la dirección y una clave de API con los permisos `album.read`, `asset.read`,
   `asset.view`, `asset.download`, `user.read`. Así podrás usar tus fotos como imágenes y portadas.
+- **Nextcloud:** vincula tu propio Nextcloud (Login Flow, contraseña de aplicación propia; «Desconectar» la revoca),
+  para los archivos de Nextcloud en las páginas (ver «Páginas y bases de datos»).
+- **Mi copia de seguridad:** guarda tu propio espacio, cifrado, en **tu propio** destino (ver «Copia de seguridad
+  personal» en la sección 11).
 - **Apps y dispositivos:** lista de todas las apps con sesión iniciada. Cada una lleva una pequeña clave para el
   widget, la extensión para compartir y los atajos; **Cerrar sesión** elimina ambas cosas. Las claves creadas a
   mano (p. ej. para scripts) aparecen plegadas en "Más claves".
@@ -1138,6 +1273,207 @@ docker compose up -d
 
 (El nombre del volumen empieza por el nombre de la carpeta del proyecto: `docker volume ls` lo muestra.)
 
+Lo más fácil es que lo haga Saga: **copias de seguridad cifradas en S3, en una carpeta o en Nextcloud/WebDAV** (área de
+administración → Copias de seguridad, ver más abajo).
+
+Las copias que crea Saga (`/data/backups`, ver Actualizaciones) se restauran con `python run.py restore` (apartado
+«Volver a la versión anterior»), no con el `pg_restore` del contenedor de la base de datos: proceden de `pg_dump` 17 de
+la imagen de Saga, y `pg_restore` 16 de `postgres:16` indica para ellas «unsupported version (1.16) in file header».
+
+### Copias de seguridad cifradas (S3, carpeta, Nextcloud/WebDAV)
+
+Área de administración → **Copias de seguridad**: cada día (a la hora que elijas) Saga guarda la base de datos, los
+archivos (`/data/files` sin miniaturas, `/data/chat`, `/data/svc-icons`) y, si quieres, las claves del `.env`
+(`SECRET_KEY`, `CAL_SECRET_KEY`), cifrado, en un destino: **S3** (MinIO, Garage, Backblaze B2, Hetzner Object Storage,
+Wasabi, AWS…), una **carpeta en el contenedor** (p. ej. una unidad montada o un recurso compartido de un NAS) o
+**WebDAV** (Nextcloud, ownCloud, Storage Box…). Las copias locales antes de las actualizaciones (`/data/backups`,
+`run.py backup`/`restore`) no cambian. La copia del servidor contiene los datos de **todas** las personas: el destino
+debe estar pensado para ello (bucket o cuenta propios), no el almacenamiento privado en la nube de alguien.
+
+1. **Conectar un destino**: elige el tipo.
+
+   **S3.** Endpoint (`https://host[:puerto]`, sin el bucket), región (vacía = `us-east-1`; Garage: `garage`, Hetzner
+   p. ej. `fsn1`, Backblaze p. ej. `eu-central-003`), bucket (debe existir: Saga no lo crea), prefijo (carpeta dentro
+   del bucket, por defecto `saga-backups`), clave de acceso y clave secreta (ambas guardadas cifradas como los demás
+   secretos de administración). El direccionamiento «automático» usa virtual-hosted en AWS (`https://bucket.host/…`) y
+   path-style en los demás (`https://host/bucket/…`, MinIO/Garage); si hace falta, fíjalo. Saga firma cada solicitud
+   por sí mismo (AWS Signature v4, sin bibliotecas adicionales) con el SHA-256 del contenido; los archivos grandes se
+   suben como subida multiparte (partes de `BACKUP_CHUNK_MB`, 32 MB por defecto; las subidas interrumpidas se
+   descartan). Recomendación: una clave solo para este bucket con lectura/escritura/borrado/listado; el versionado o
+   Object Lock protegen además de que un servidor comprometido borre las copias; en ese caso, limpia las versiones
+   antiguas con una regla de ciclo de vida del bucket (Saga borra según la regla de retención de abajo). S3 no indica
+   el espacio libre; la comprobación previa se omite.
+
+   **Carpeta en el contenedor.** Solo por debajo de las raíces de `SAGA_BACKUP_DIRS` (por defecto `/backup`, varias
+   separadas por comas); Saga rechaza rutas con `..` o enlaces simbólicos hacia fuera. Monta la carpeta como volumen
+   adicional y da permiso de escritura al usuario de Saga (UID 10001):
+
+   ```yaml
+   # docker-compose.yml, servicio saga
+       volumes:
+         - saga-data:/data
+         - ./certs:/certs:ro
+         - /srv/saga-backups:/backup        # volumen adicional para las copias (carpeta del host o montaje NAS)
+   ```
+
+   ```sh
+   sudo mkdir -p /srv/saga-backups && sudo chown 10001 /srv/saga-backups
+   docker compose up -d
+   ```
+
+   Después, en el área de administración, escribe `/backup` (o `/backup/saga`). Si la carpeta está en el mismo
+   servidor, solo protege frente a errores de Saga o de la base de datos, no frente a la pérdida del servidor: copia la
+   carpeta además a otro lugar (restic, rsync…); los archivos ya están cifrados.
+
+   **WebDAV/Nextcloud.** Con Nextcloud basta la dirección (`https://cloud.example.org`): Saga detecta Nextcloud,
+   muestra un enlace de inicio de sesión, entras en Nextcloud y permites el acceso (Login Flow v2). Saga solo guarda el
+   nombre de usuario y una **contraseña de aplicación** propia (cifrada); «Desconectar» la revoca en Nextcloud. Otro
+   WebDAV: dirección de la carpeta más usuario y contraseña. Recomendación: una **cuenta de Nextcloud propia** solo para
+   las copias (una contraseña de aplicación puede hacer todo lo que puede la cuenta) con papelera corta y pocas
+   versiones; si no, las copias antiguas borradas siguen ocupando espacio en la papelera. Las direcciones internas
+   (homelab) funcionan sin más autorización.
+2. **Clave.** Se cifra con [age](https://age-encryption.org) y una clave **pública**. O bien «Generar par de claves»:
+   Saga muestra la clave privada una sola vez (texto y descarga `saga-backup-<servidor>.key`) y **no** la guarda; para
+   confirmar, escribe los 6 últimos caracteres. O bien introduce tu propia clave pública (`age-keygen -o
+   saga-backup.key` en tu ordenador y copia la línea `# public key: age1…`; también sirve `ssh-ed25519 …`). Se pueden
+   indicar varios destinatarios (p. ej. una segunda clave en una caja fuerte). Sin la clave privada no se puede
+   restaurar ninguna copia, ni siquiera nosotros.
+3. **Programación y retención.** «Copia automática diaria», hora (zona horaria `TIMEZONE`), retención
+   «abuelo-padre-hijo»: por defecto 7 diarias, 4 semanales y 6 mensuales (la más reciente de cada día/semana/mes; las
+   de las últimas 24 horas se conservan siempre). Antes de subir, Saga comprueba el espacio libre; después, el tamaño y
+   la suma de comprobación (hasta `BACKUP_VERIFY_MB` enseguida, los archivos más grandes los domingos). Los archivos
+   grandes se suben por partes en Nextcloud (Chunking v2) y como subida multiparte en S3. La ejecución tiene prioridad
+   baja (`nice`/`ionice`); si varios procesos de Saga usan la misma base de datos, solo uno hace la copia.
+4. **Errores.** Estado en el área de administración (último éxito, próxima ejecución, historial). Si falla una
+   ejecución o no ha habido ningún éxito en 48 horas, todos los administradores reciben una notificación (campana y, si
+   está configurado, en el móvil); opcionalmente también un webhook (tema de ntfy, Gotify `…/message?token=…` o
+   cualquier dirección).
+
+**Qué hay en el destino**: una carpeta (en S3: prefijo) por ejecución, `saga-AAAAMMDD-hhmmss/`:
+
+| Archivo | Contenido |
+|---|---|
+| `db.dump.age` | Base de datos (`pg_dump --format=custom`, comprobada con `pg_restore --list` antes de cifrarla) |
+| `dateien.tar.age` | `files/` (sin `thumbs`), `chat/`, `svc-icons/` |
+| `geheimnisse.env.age` | `SECRET_KEY`, `CAL_SECRET_KEY` (desactivable) |
+| `manifest.json.age` | Sumas de comprobación del contenido sin cifrar |
+| `manifest.json` | sin cifrar, sin nombres ni nombres de host: versión de Saga, versión del esquema, tamaños y SHA-256 de los archivos `.age`, huellas de las claves. Se sube al final: una carpeta sin `manifest.json` está incompleta. |
+
+**Restaurar con Saga** (servidor nuevo, pila instalada como en la sección 2):
+
+```sh
+# 1. leer los secretos y copiar SECRET_KEY / CAL_SECRET_KEY al .env (archivo del destino, p. ej. con el cliente de Nextcloud)
+age -d -i saga-backup.key geheimnisse.env.age
+# 2. detener Saga, obtener la ejecución, comprobar, descifrar, restaurar base de datos y archivos
+docker compose stop saga
+docker compose run --rm -v "$PWD/saga-backup.key:/key:ro" \
+  -e SAGA_BACKUP_S3_ENDPOINT=https://s3.example.org -e SAGA_BACKUP_S3_BUCKET=saga-backups \
+  -e SAGA_BACKUP_S3_ACCESS_KEY='…' -e SAGA_BACKUP_S3_SECRET_KEY='…' -e SAGA_BACKUP_S3_PREFIX=saga-backups \
+  saga python run.py restore --schluessel /key saga-20261019-032000
+docker compose up -d
+```
+
+En una pila nueva, el destino se toma del entorno:
+
+| Destino | Datos |
+|---|---|
+| S3 | `SAGA_BACKUP_S3_ENDPOINT`, `SAGA_BACKUP_S3_BUCKET`, `SAGA_BACKUP_S3_ACCESS_KEY`, `SAGA_BACKUP_S3_SECRET_KEY`, opcionalmente `SAGA_BACKUP_S3_REGION`, `SAGA_BACKUP_S3_PREFIX`, `SAGA_BACKUP_S3_STYLE` (`auto`/`path`/`virtual`) |
+| Carpeta | `SAGA_BACKUP_PATH=/backup` (volumen montado como arriba), o directamente la carpeta de la ejecución en lugar de un nombre |
+| WebDAV/Nextcloud | `SAGA_BACKUP_URL` (dirección WebDAV de la carpeta de copias, p. ej. `https://cloud.example.org/remote.php/dav/files/saga-backup/Saga-Backups`), `SAGA_BACKUP_USER`, `SAGA_BACKUP_PASSWORD` |
+
+Sin nombre de ejecución, Saga toma la más reciente completa; `run.py backup-holen --liste` las muestra todas. Si el
+destino ya está configurado en el área de administración (misma base de datos), no hacen falta los datos
+`SAGA_BACKUP_*`. En lugar de un nombre también vale una carpeta local con la ejecución descargada (guárdala en
+`/data/…`). Saga compara las sumas de `manifest.json` antes de descifrar. La base de datos se restaura con el mismo
+`db.restore` que `run.py restore` (todo o nada); los secretos se guardan además en
+`/data/backups/<ejecución>-geheimnisse.env` (legible solo para Saga), y Saga avisa si difieren del `.env`.
+
+**Restaurar sin Saga** (solo `age` y las herramientas de PostgreSQL; `age` existe para Linux, macOS y Windows):
+
+```sh
+cd saga-20261019-032000
+sha256sum db.dump.age dateien.tar.age      # comparar con manifest.json
+age -d -i saga-backup.key db.dump.age > db.dump
+age -d -i saga-backup.key dateien.tar.age | tar -x -C /ruta/a/data
+age -d -i saga-backup.key geheimnisse.env.age
+pg_restore --list db.dump | head           # ver el contenido; restaurar p. ej. con pg_restore -d ... --clean --if-exists
+```
+
+**Restauración de prueba.** Recomendada una vez al mes (el área de administración lo recuerda):
+
+```sh
+docker compose run --rm -v "$PWD/saga-backup.key:/key:ro" saga python run.py backup-pruefen --schluessel /key
+```
+
+obtiene la ejecución más reciente, compara las sumas, lo descifra todo, restaura la base de datos en una **base de
+datos desechable** (se borra después) y comprueba el archivo de ficheros; la base de datos real no se toca.
+
+**Atención, identidad:** una copia restaurada *es* la instancia, incluida su clave de federación. Si pruebas una copia
+en un segundo servidor, pon allí `SAGA_RESTORE_TEST=1` en el `.env`: Saga no establece entonces conexiones salientes con
+los servicios de la instancia real: ni federación, ni notificaciones, ni copias de seguridad (tampoco limpieza en el
+destino ni revocación de la contraseña de aplicación de Nextcloud), ni aviso de versiones, ni sincronización de
+calendarios, ni IA, ni Immich, ni búsqueda web, ni avatares externos. Saga en sí, el inicio de sesión (también
+LDAP/OIDC) y el estado de los servicios en el panel siguen funcionando. Solo se permite *leer* del destino configurado
+desde la línea de comandos (`backup-holen`, `restore --schluessel`, `backup-pruefen`): únicamente a su dirección y solo
+lectura (WebDAV GET/PROPFIND, S3 GET/listado); subir, borrar y limpiar en el destino siguen bloqueados.
+
+Carpeta de trabajo: durante una ejecución, las partes (antes de cifrar, brevemente también `db.dump` sin cifrar) están
+en `/data/backups/extern-tmp/`, la ejecución y `backup-pruefen` cada una en su propia subcarpeta; Saga borra los restos
+de una ejecución interrumpida en el siguiente arranque.
+
+### Copia de seguridad personal (por persona)
+
+En **Ajustes → Mi copia de seguridad** cada persona guarda **su propio** espacio, independientemente de la copia del
+servidor que hace el administrador, en **su propio** destino y con **su propia** clave.
+
+1. **Destino:** tu propio Nextcloud (solo escribe la dirección, entra en Nextcloud y permite el acceso: Saga recibe una
+   contraseña de aplicación propia, «Desconectar» la revoca) u otro destino WebDAV (dirección de la carpeta, usuario,
+   contraseña). Solo se permiten **direcciones https en Internet**; servidores de la red interna solo si el
+   administrador los autoriza en Copias de seguridad → Copias de seguridad personales (protección de la red interna).
+2. **Clave:** como para el administrador: «Generar par de claves» (la clave privada se muestra una sola vez y no se
+   guarda; se confirma con los 6 últimos caracteres) o introduce tu propia clave pública (`age1…`, `ssh-ed25519 …`);
+   hasta 5 destinatarios.
+3. **Qué se guarda:** solo lo que es tuyo: tus páginas y subpáginas, bases de datos con sus entradas, tus archivos e
+   imágenes, plantillas, archivo, papelera, versiones, tus comentarios en tus páginas, tareas, marcadores, perfil y
+   ajustes. Cada categoría se puede desactivar; se pueden excluir **árboles de páginas** concretos (con todas las
+   subpáginas y los archivos que solo aparecen allí). **Nunca** se incluyen: páginas y archivos de otras personas (ni
+   siquiera «Compartido conmigo»), listas de usos compartidos ni chats (cifrados de extremo a extremo, pertenecen a
+   todos los participantes y no se pueden restaurar sin las claves de los dispositivos). Los **comentarios de otros** en
+   tus páginas están **desactivados** por defecto (pertenecen a quien los escribió) y se pueden activar. Los nombres de
+   otras personas (p. ej. quién escribió una versión) se omiten.
+4. **Programación:** desactivada, semanal o diaria (hora, día de la semana); «Copias a conservar» = cuántas de las más
+   recientes se quedan en el destino. «Hacer copia ahora» empieza enseguida. Si falla una copia, aparece una
+   notificación en la campana.
+
+**Formato** (abierto, legible sin Saga): `saga-AAAAMMDD-hhmmss.zip.age`, un ZIP cifrado con age, y a su lado
+`….zip.age.sha256` (suma de comprobación, funciona `sha256sum -c`). Dentro del ZIP: `manifest.json` (SHA-256 de cada
+archivo), `daten.json` (todo completo, para restaurar), `seiten/`, `vorlagen/`, `archiv/`, `papierkorb/` (Markdown como
+en la exportación, con enlaces relativos), `dateien/`, `profil/` y `LIESMICH.txt`. Descifrar sin Saga:
+
+```bash
+age -d -i saga-backup.key -o backup.zip saga-20261019-024000.zip.age
+```
+
+**Restaurar copia** (misma pestaña): sube un archivo (`.zip.age` o un `.zip` ya descifrado) o elige una copia de tu
+destino y pega la clave privada (solo se envía al servidor para esta operación, no se guarda). Saga restaura **solo en
+tu propia cuenta**, como **páginas nuevas**: los enlaces entre páginas, las relaciones de bases de datos, las bases de
+datos incrustadas, los botones y las imágenes apuntan después a las páginas y archivos nuevos; las páginas existentes no
+cambian. Por defecto: en una página nueva «Restaurado <fecha>»; papelera, tareas y marcadores si quieres. Los
+comentarios y ajustes están en la copia para consultarlos, pero no se restauran. Una exportación Markdown (página →
+Exportar) no contiene `daten.json` y por eso no se puede restaurar. Límites al restaurar: `daten.json` como máximo 64 MB
+(`USER_BACKUP_DATA_MB`), como máximo 20.000 archivos (`USER_BACKUP_FILES_MAX`), las 50 versiones más recientes por
+página. El archivo subido se borra justo después de restaurar, también tras un error; solo tras una clave incorrecta se
+conserva una copia cifrada para otro intento (como máximo 30 minutos).
+
+**Para administradores: privacidad.** La **copia del servidor** (arriba) guarda todo lo necesario para el
+funcionamiento en *tu* destino. Las **copias personales** van solo al destino de cada persona, cifradas con su clave:
+no tienes que meter datos privados de tus usuarios en tu nube y Saga nunca ve una clave privada. En el área de
+administración, en **Copias de seguridad → Copias de seguridad personales**: activar/desactivar (activado por defecto;
+desactivado = sin ejecuciones, sin conectar, sin restaurar), **tamaño por copia** (1024 MB por defecto, límite superior
+`USER_BACKUP_MAX_MB`, 4096 por defecto), **intervalo mínimo** para «Hacer copia ahora», **programación más frecuente**
+(diaria/semanal) y **hosts internos autorizados** (si no, solo direcciones https públicas). Con `SAGA_RESTORE_TEST=1`
+Saga tampoco se conecta a ningún sitio para las copias personales.
+
 ### Actualizaciones
 
 Saga usa números de versión según [Semantic Versioning](https://semver.org/lang/es/): **1.2.3** =
@@ -1150,8 +1486,8 @@ Qué versión se ejecuta lo decide `SAGA_VERSION` en el `.env`:
 | Valor | Significado |
 |---|---|
 | `2` (por defecto) | siempre la 2.x más reciente: funciones nuevas y correcciones, nada que requiera trabajo manual |
-| `2.1` | solo correcciones de la 2.1 |
-| `2.1.0` | exactamente esta versión |
+| `2.3` | solo correcciones de la 2.3 |
+| `2.3.0` | exactamente esta versión |
 | `1` | se queda en la 1.x más reciente (1.2); las instalaciones antiguas aún tienen este valor en el `.env` |
 | `testing` (o `rc`) | **Versión candidata:** lo último de la rama `testing`, antes de publicarse. Puede tener errores; solo para probar |
 
@@ -1181,10 +1517,10 @@ Las imágenes y archivos de las páginas (`/data/files`) **no** están en la cop
 
 **Versiones candidatas (canal `testing`):** con `SAGA_VERSION=testing` (equivalente: `rc`) recibes las funciones
 nuevas en cuanto están listas, antes de publicarse. Cada compilación es una versión candidata (release candidate) de
-la siguiente versión, por ejemplo `2.2.0-rc.7` (7 cambios desde la última versión; abajo en el área de
-administración como «2.2.0-rc.7 (1cc210f)» con 🧪 Versión candidata, seguido del commit). Una versión candidata
-siempre es más nueva que la versión estable anterior (2.1.0 < 2.2.0-rc.7 < 2.2.0): el aviso de nuevas versiones solo
-aparece cuando se publica la 2.2.0. Las versiones de pruebas anteriores se llamaban `2.2.0-testing.<commit>`. Para volver a la versión estable: `SAGA_VERSION=2` y después
+la siguiente versión, por ejemplo `2.4.0-rc.7` (7 cambios desde la última versión; abajo en el área de
+administración como «2.4.0-rc.7 (1cc210f)» con 🧪 Versión candidata, seguido del commit). Una versión candidata
+siempre es más nueva que la versión estable anterior (2.3.0 < 2.4.0-rc.7 < 2.4.0): el aviso de nuevas versiones solo
+aparece cuando se publica la 2.4.0. Las versiones de pruebas anteriores se llamaban `x.y.z-testing.<commit>`. Para volver a la versión estable: `SAGA_VERSION=2` y después
 `docker compose pull && docker compose up -d`. Si la versión de pruebas ya ha modificado la base de datos, la
 versión estable solo arrancará cuando incluya también ese cambio (como muy tarde con la siguiente versión), o
 bien restauras la copia de seguridad de antes del cambio.
@@ -1206,8 +1542,42 @@ necesitan un nombre de host en `BASE_URL`, no una dirección IP; la política de
 chat** y la **búsqueda web de la IA** siguen desactivadas hasta que las actives en Asistente de IA (la búsqueda web
 solo con SearXNG, sección 10).
 
+**De 2.1 a 2.3:** no existe la versión 2.2: con `SAGA_VERSION=2`, la 2.3 llega directamente desde la 2.1 con la
+actualización normal. Qué ocurre y qué conviene tener en cuenta:
+
+1. **Copia previa (recomendada):** Saga crea por sí mismo una copia antes de modificar la base de datos; una adicional
+   con los archivos no sobra: `docker compose exec saga python run.py backup --dateien`. Si ya tienes un destino para
+   copias cifradas, inicia allí «Hacer copia ahora».
+2. **Actualizar** como arriba (`git pull`, `docker compose pull`, `docker compose up -d`). La base de datos pasa del
+   esquema 6 al **9** (migraciones 7–9 para la federación; antes, copia `…-vor-schema-9.dump` en `/data/backups`). El
+   log muestra líneas `saga:` con la copia y la migración. En el primer arranque Saga indexa una vez todas las páginas
+   para la búsqueda, los enlaces entrantes y los usos compartidos (unos 1–2 s por cada 1.000 páginas, en segundo
+   plano: Saga ya se puede usar y los resultados son correctos desde el principio).
+3. **Revisar la federación:** los servidores conectados con la 2.3 reciben por servidor **chat, llamadas y libreta de
+   direcciones**, activados por defecto. Así, los nombres visibles y las fotos de perfil de tus personas llegan a esos
+   servidores. Si no lo quieres, desactívalo en Administración → Federación → «Funciones por instancia» (o comparte solo
+   ciertos grupos) e informa a las personas de la opción de exclusión en Ajustes → Cuenta. Los servidores 2.1 siguen
+   conectados como hasta ahora.
+4. **Configurar las funciones nuevas (opcional):** copias cifradas en Administración → **Copias de seguridad**
+   (desactivadas hasta configurar un destino; un destino de carpeta necesita un volumen adicional, ver «Copias de
+   seguridad cifradas»). Las **copias personales** y los **archivos de Nextcloud en las páginas** están permitidos,
+   pero solo hacia direcciones https públicas hasta que autorices hosts internos (Copias de seguridad → Copias de
+   seguridad personales y General → «Conexiones de los usuarios»; ahí también se pueden desactivar).
+5. **Nuevos ajustes del `.env`**, todos opcionales; los valores por defecto suelen servir (sección 13): `FED_*`
+   (federación: límite de subidas, entrega, límites de ritmo, caché de adjuntos de chat), `SAGA_BACKUP_DIRS` (raíces
+   para el destino de carpeta) y `SAGA_BACKUP_*` (solo para restaurar en un servidor nuevo), `BACKUP_VERIFY_MB`,
+   `BACKUP_CHUNK_MB`, `USER_BACKUP_*` (copias personales), `NC_*` (archivos de Nextcloud), `SAGA_RESTORE_TEST`
+   (restauración de prueba), `GZIP_LEVEL`/`GZIP_MIN_BYTES`, `NOTE_ROW_MAX_COUNT`, `SAGA_ORJSON`.
+6. **Apps:** se recomiendan las apps 2.3 ([apps de Saga](https://github.com/yggdrasil-sh/saga-apps/releases)), con
+   chats y llamadas federados, compartir entre servidores y «Mi copia de seguridad». Las apps 2.1 siguen funcionando,
+   solo que sin estas funciones; muestran los chats con personas de otros servidores con el aviso «actualiza la app».
+
+**Volver de 2.3 a 2.1:** solo con la copia de antes de la actualización (`…-vor-schema-9.dump`), ver abajo. Sobre la
+base de datos modificada, la 2.1 indica «Die Datenbank hat Schema-Stand 9, diese Saga-Version kennt nur 6» y no arranca.
+
 **Volver a la versión anterior:** una versión antigua de Saga no arranca sobre una base de datos que una versión
-más nueva ya ha modificado (lo indica en el log en lugar de dañar datos). Esto vale también para **2.1 → 2.0.x**:
+más nueva ya ha modificado (lo indica en el log en lugar de dañar datos). Esto vale para **2.3 → 2.1** (copia
+`…-vor-schema-9.dump`) y también para **2.1 → 2.0.x**:
 2.1 sube el esquema a la versión 6 (copia `…-vor-schema-6.dump`) y 2.0.x se detiene con «Die Datenbank hat
 Schema-Stand 6, diese Saga-Version kennt nur 5»; si no, 2.0 seguiría funcionando y dejaría entrar a cuentas con
 segundo factor solo con la contraseña. En ese caso, restaura la copia de seguridad de antes de la actualización:
@@ -1222,6 +1592,16 @@ docker compose pull && docker compose up -d
 
 Todo lo que se haya cambiado después de la copia se pierde, así que hazlo solo poco después de una
 actualización fallida.
+
+Por tanto, restaura **antes** de cambiar `SAGA_VERSION`, con la versión más nueva (como arriba): restaura la copia en
+una sola transacción (si algo falla, todo queda como estaba), funciona con `postgres:16` y `:17` y elimina antes las
+tablas que una versión antigua no conoce. Las versiones antiguas de Saga fallan al restaurar con `postgres:16` por
+«unrecognized configuration parameter transaction_timeout» y, en una base de datos que ya ha usado la 2.3 (o una versión
+de pruebas 2.2.0-rc), por las nuevas tablas `note_derived`, `note_link` y `note_stale` («cannot drop table note because
+other objects depend on it»). Si ya has cambiado, usa la versión más nueva solo para restaurar, p. ej.
+`docker compose run --rm saga …` con `SAGA_VERSION=2` (o `testing`) en el `.env`. También puedes eliminar las tres tablas
+a mano (la 2.3 las vuelve a crear en el siguiente arranque):
+`docker compose exec -T db psql -U saga -d saga -c "DROP TABLE IF EXISTS note_link, note_stale, note_derived"`.
 
 **Apps:** al arrancar, las apps comprueban la versión del servidor. Si una app es demasiado antigua para el
 servidor, te pide que la actualices. En los ajustes de la app aparecen la versión de la app y la del servidor.
@@ -1299,8 +1679,17 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `PUBLIC_RATE` | `120` | Solicitudes a páginas públicas por dirección IP y minuto (imágenes: cinco veces más) |
 | `SESSION_HOURS` | `12` | Duración de una sesión del navegador (las apps siguen con la sesión iniciada) |
 | `PASSKEY_RP_ID` | nombre de host de `BASE_URL` | Dominio de las llaves de acceso; solo si deben valer para un dominio superior (p. ej. `example.org`) |
-| `SAGA_VERSION` | `2` | Qué versión descarga `docker compose pull`: `2`, `2.1`, `2.1.0` o `testing` (sección 11) |
+| `SAGA_VERSION` | `2` | Qué versión descarga `docker compose pull`: `2`, `2.3`, `2.3.0` o `testing` (sección 11) |
 | `BACKUP_KEEP` | `10` | Cuántas copias automáticas/manuales se conservan en `/data/backups` |
+| `BACKUP_VERIFY_MB` | `512` | Copias cifradas (sección 11): los archivos hasta este tamaño se vuelven a descargar enteros tras subirlos y se comparan (los más grandes, los domingos) |
+| `BACKUP_CHUNK_MB` / `BACKUP_CHUNK_MIN_MB` | `32` / `10` | Tamaño de las partes al subir por partes (Nextcloud Chunking v2, multiparte de S3) y a partir de qué tamaño de archivo |
+| `USER_BACKUP_MAX_MB` | `4096` | Copias personales (sección 11): límite superior del tamaño por copia y de las subidas al restaurar (el límite del área de administración solo puede ser menor) |
+| `USER_BACKUP_DATA_MB` / `USER_BACKUP_FILES_MAX` | `64` / `20000` | Restaurar copias personales: tamaño de `daten.json` y número de archivos por copia |
+| `SAGA_BACKUP_DIRS` | `/backup` | Copias cifradas, destino «Carpeta en el contenedor»: solo por debajo de estas raíces (separadas por comas) |
+| `SAGA_BACKUP_URL` / `SAGA_BACKUP_USER` / `SAGA_BACKUP_PASSWORD` | – | Solo para `run.py backup-holen`/`restore --schluessel` en un servidor nuevo: dirección WebDAV de la carpeta de copias y acceso |
+| `SAGA_BACKUP_S3_ENDPOINT` / `_BUCKET` / `_ACCESS_KEY` / `_SECRET_KEY` / `_REGION` / `_PREFIX` / `_STYLE` | – | Lo mismo para un destino S3 (sección 11, «Restaurar con Saga») |
+| `SAGA_BACKUP_PATH` | – | Lo mismo para un destino de carpeta (p. ej. `/backup`) |
+| `SAGA_RESTORE_TEST` | – | `1` = restauración de prueba: sin conexiones salientes (federación, notificaciones, copias, aviso de versiones, calendarios, IA, Immich, búsqueda web, avatares); solo se permite leer del destino de copias desde la línea de comandos |
 | `SAGA_UPDATE_CHECK` | `1` | `0` = no preguntar nunca a GitHub por versiones nuevas (también desactivable en el área de administración) |
 | `ADMIN_SESSION_HOURS` | `4` | Duración de una sesión en el área de administración |
 | `TIMEZONE` | `Europe/Berlin` | Zona horaria para exportaciones |
@@ -1312,7 +1701,12 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `NOTE_MAX_COUNT` | `5000` | Páginas por usuario (sin entradas de bases de datos ni papelera) |
 | `NOTE_ROW_MAX_COUNT` | `50000` (mín. 10 × `NOTE_MAX_COUNT`) | Entradas de bases de datos por usuario (sin papelera). Red de seguridad: todo junto, incl. papelera, como máximo 2 × (ambos límites) |
 | `GZIP_LEVEL` / `GZIP_MIN_BYTES` | `5` / `1024` | Compresión (gzip) para JSON, texto, JS y CSS a partir de este tamaño; `0` = desactivada. Nunca para el canal en vivo, imágenes ni archivos |
+| `SAGA_ORJSON` | `1` | `0` = respuestas JSON con la biblioteca estándar en lugar de `orjson` (misma salida, solo más lenta) |
 | `IMMICH_URL` | – | Sugerencia en el diálogo de Immich (se permite automáticamente) |
+| `NEXTCLOUD_URL` | – | Sugerencia en la pestaña «Nextcloud» de los ajustes (el host se permite automáticamente) |
+| `NC_CACHE_MB` | `300` | Archivos de Nextcloud en las páginas: límite de miniaturas en caché (`/data/nc-cache`, se borran primero las más antiguas) |
+| `NC_DOWNLOAD_MAX_MB` | `2048` | Archivos de Nextcloud en las páginas: descarga más grande a través de Saga (en streaming) |
+| `NC_FED_MAX_MB` | `50` | Archivos de Nextcloud en las páginas: descarga más grande para personas de otras instancias de Saga |
 | `ICON_CDN` | selfh.st vía jsDelivr | Origen de los iconos de servicios; vacío = ninguno |
 | `STATUS_INTERVAL` | `60` | Segundos entre comprobaciones de estado |
 | `CACHE_TTL` | `60` | Segundos que se guardan en caché los datos de cuentas y servicios |
@@ -1323,6 +1717,10 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `FED_RATE` / `FED_TIMEOUT` | `600` / `10` | Solicitudes por minuto e instancia conectada / segundos hasta el tiempo de espera |
 | `FED_UPLOAD_QUOTA_MB` | `200` | Espacio por persona de otro servidor para subidas a páginas de aquí (cuenta también para el propietario) |
 | `FED_WATCH_TTL` | `90` | Segundos que dura sin renovarse una suscripción (directo/presencia) a una página de otro servidor |
+| `FED_EXPRESS_TIMEOUT` / `FED_EXPRESS_WORKERS` | `5` / `8` | Segundos para la entrega inmediata (después, bandeja de salida) / hilos para ello |
+| `FED_PEER_SLOTS` / `FED_OUT_WORKERS` | `3` / `4` | Tareas en segundo plano simultáneas por servidor conectado (un servidor lento no ocupa más) / hilos de la bandeja de salida |
+| `FED_CHAT_IN_RATE` | `1200` | Mensajes de chat por minuto que un servidor, como hogar, puede entregar aquí (por encima: más tarde, de nuevo) |
+| `FED_CHAT_CACHE_MB` / `FED_CHAT_CACHE_DAYS` | `1024` / `30` | Copias en caché de adjuntos de chat de otros servidores: espacio por servidor / días sin acceso hasta que caducan (se vuelven a obtener cuando hace falta; las de servidores desconectados se conservan) |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Búsqueda web (sección 10) |
 | `AI_WEB_FETCH` / `AI_WEB_RATE` | `2` / `10` | Búsqueda web de la IA: páginas de resultados cuyo texto se lee (0 = solo fragmentos); búsquedas web por persona en 10 minutos |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Idioma y filtro de la búsqueda web |

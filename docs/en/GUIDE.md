@@ -1501,7 +1501,9 @@ update. What happens and what to watch out for:
    (only for restoring on a fresh server), `BACKUP_VERIFY_MB`, `BACKUP_CHUNK_MB`, `USER_BACKUP_*` (personal backups),
    `NC_*` (Nextcloud files), `SAGA_RESTORE_TEST` (test restore), `GZIP_LEVEL`/`GZIP_MIN_BYTES`, `NOTE_ROW_MAX_COUNT`,
    `SAGA_ORJSON`.
-6. **Apps:** apps 2.1 keep working. They show chats with people on other servers with “please update the app”.
+6. **Apps:** apps 2.3 are recommended ([Saga apps](https://github.com/yggdrasil-sh/saga-apps/releases)) – with
+   federated chats and calls, sharing across servers and “My backup”. Apps 2.1 keep working, just without these
+   features; they show chats with people on other servers with “please update the app”.
 
 **Way back 2.3 → 2.1:** only via the backup from before the update (`…-vor-schema-9.dump`) – see below. On the changed
 database 2.1 reports “Die Datenbank hat Schema-Stand 9, diese Saga-Version kennt nur 6” and doesn't start.

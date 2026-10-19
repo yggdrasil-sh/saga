@@ -22,8 +22,10 @@ Saga 2.3 ist das große Herbst-Update: spürbar schneller bei vielen Seiten und 
 Chats, Anrufen und vollständig gemeinsam bearbeiteten Seiten über Servergrenzen, verschlüsselte Backups für Admins
 und für jede Person sowie Dateien aus der eigenen Nextcloud direkt in Seiten. Eine Version 2.2 gibt es nicht: Die
 Optimierungswoche (Testversionen `2.2.0-rc.*`) steckt vollständig in 2.3.
-Die Schnittstelle wurde nur erweitert – Apps 2.1 und älter laufen weiter (`MIN_APP` bleibt). Chats mit Personen
-anderer Server zeigen ältere Apps mit „bitte App aktualisieren“.
+Gleichzeitig erscheinen die [Saga-Apps 2.3](https://github.com/yggdrasil-sh/saga-apps/releases) mit Föderation,
+Backups und Nextcloud-Dateien auf allen Plattformen. Die Schnittstelle wurde nur erweitert – Apps 2.1 und älter laufen
+weiter (`MIN_APP` bleibt), nur ohne die neuen Funktionen; Chats mit Personen anderer Server zeigen sie mit „bitte App
+aktualisieren“.
 
 ### Höhepunkte
 
@@ -121,7 +123,7 @@ anderer Server zeigen ältere Apps mit „bitte App aktualisieren“.
 - **Als Kopie übernehmen:** Datei wird normale Saga-Datei (folgt den Saga-Rechten, Backup, Export, offline).
 - **Veröffentlichte Seiten und verbundene Saga-Server** nur mit Schalter je Block (Standard aus); Vorschau/Download dann
   über die Adresse der Seite bzw. den eigenen Server.
-- Export: Link statt Kopie; Suche findet den Dateinamen. Apps zeigen den Block vorerst als Karte.
+- Export: Link statt Kopie; Suche findet den Dateinamen.
 
 #### Schneller
 
@@ -167,6 +169,8 @@ anderer Server zeigen ältere Apps mit „bitte App aktualisieren“.
   `@name@server` oder eine E-Mail-Adresse eingab, sah nur „Keine Treffer.“. Jetzt erklärt ein Hinweis, dass Personen
   verbundener Saga-Server über ihren Anzeigenamen oder `name@server` gefunden werden und Personen hier über Namen oder
   Benutzernamen (nicht über die E-Mail-Adresse) – mit Link zur Anleitung (Föderation).
+- Nachrichtenanfrage: Die Schaltfläche zum Annehmen hieß auf Englisch, Spanisch, Russisch und Thai wie das Annehmen
+  eines Anrufs („Answer“, „Responder“ …) – jetzt eigener Text („Anfrage annehmen“, „Accept request“ …).
 - Teilen-Dialog: Bei `name@server` ohne Treffer steht statt „Niemand gefunden.“ der Grund – die Person gibt es dort
   nicht bzw. sie hat keinen öffentlichen Namen, der Server ist nicht verbunden, er ist gerade nicht erreichbar oder
   es ist dieser Server selbst; bei E-Mail-artigen Eingaben der Hinweis, dass der öffentliche Name gemeint ist.
@@ -459,6 +463,8 @@ anderer Server zeigen ältere Apps mit „bitte App aktualisieren“.
   `FED_CHAT_CACHE_DAYS`), `SAGA_BACKUP_*` (nur für die Wiederherstellung auf einem frischen Server und
   `SAGA_BACKUP_DIRS`), `BACKUP_VERIFY_MB`, `BACKUP_CHUNK_MB`, `USER_BACKUP_*`, `NC_*`, `SAGA_RESTORE_TEST`,
   `GZIP_LEVEL`/`GZIP_MIN_BYTES`, `NOTE_ROW_MAX_COUNT`, `SAGA_ORJSON`.
+- **Apps 2.3 empfohlen** (Föderations-Chats und -Anrufe, Teilen über Servergrenzen, Mein Backup):
+  [Saga-Apps](https://github.com/yggdrasil-sh/saga-apps/releases). Apps 2.1 laufen weiter, nur ohne diese Funktionen.
 - **Ordner-Ziel für Backups:** braucht ein zusätzliches Volume in der `docker-compose.yml` (Beispiel in der Anleitung,
   Abschnitt 11).
 - **Release Candidates:** Wer `SAGA_VERSION=testing` nutzt, sieht jetzt `2.x.y-rc.N`; `rc` geht als Kanal ebenso.
@@ -469,7 +475,7 @@ anderer Server zeigen ältere Apps mit „bitte App aktualisieren“.
   bleibt es bei Teilen, Kommentaren und Benachrichtigungen.
 - Über Servergrenzen nicht möglich: Seiten löschen, archivieren, veröffentlichen, Freigaben verwalten, Rückverweise,
   KI auf der Seite. Anrufe weiterhin nur zu zweit.
-- Die Apps suchen Personen vorerst erst ab 3 Zeichen und zeigen Nextcloud-Blöcke als einfache Karte.
+- Die Apps suchen Personen vorerst erst ab 3 Zeichen.
 - Die Browsersuche (Strg+F) findet in langen Datenbank-Tabellen nur Zeilen im sichtbaren Ausschnitt.
 - Persönliche Backups enthalten keine Chats und keine Seiten anderer; Kommentare und Einstellungen werden beim
   Einspielen nicht übernommen.

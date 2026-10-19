@@ -1538,7 +1538,9 @@ Reverse Proxy für den Live-Kanal prüfen (Abschnitt 3). Alles Weitere steht im 
    das Ordner-Ziel) und `SAGA_BACKUP_*` (nur zum Wiederherstellen auf einem frischen Server), `BACKUP_VERIFY_MB`,
    `BACKUP_CHUNK_MB`, `USER_BACKUP_*` (persönliche Backups), `NC_*` (Nextcloud-Dateien), `SAGA_RESTORE_TEST`
    (Testwiederherstellung), `GZIP_LEVEL`/`GZIP_MIN_BYTES`, `NOTE_ROW_MAX_COUNT`, `SAGA_ORJSON`.
-6. **Apps:** Apps 2.1 laufen weiter. Chats mit Personen anderer Server zeigen sie mit „bitte App aktualisieren“.
+6. **Apps:** Apps 2.3 empfohlen ([Saga-Apps](https://github.com/yggdrasil-sh/saga-apps/releases)) – mit
+   Föderations-Chats und -Anrufen, Teilen über Servergrenzen und „Mein Backup“. Apps 2.1 laufen weiter, nur ohne diese
+   Funktionen; Chats mit Personen anderer Server zeigen sie mit „bitte App aktualisieren“.
 
 **Rückweg 2.3 → 2.1:** nur über das Backup von vor dem Update (`…-vor-schema-9.dump`) – siehe unten. 2.1 meldet auf
 der umgebauten Datenbank „Die Datenbank hat Schema-Stand 9, diese Saga-Version kennt nur 6“ und startet nicht.
