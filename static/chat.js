@@ -12,7 +12,8 @@
   var X = null;                                        // SagaChatCrypto, nach sodium.ready
   var K = null;                                        // lokale Schluessel {device:{...}, ident_sk, ident_pk, backup_sk, backup_pk}
   var S = { me: null, chats: [], cur: null, msgs: [], byId: {}, more: false, reply: null, files: [], rc: null, notes: {},
-            typing: {}, mentions: {}, ai: null, aiPending: null, searchQ: '', loading: false, linkWait: null, ready: false };
+            typing: {}, mentions: {}, ai: null, aiPending: null, searchQ: '', loading: false, linkWait: null, ready: false,
+            rcpts: {}, rcSent: {}, rcAt: {}, rcT: null, pres: {} };            // (2.4) Gelesen-Bestaetigungen, Online-Status
   var RET = [[0, T('Aus')], [3600, T('1 Stunde')], [86400, T('1 Tag')], [604800, T('7 Tage')], [2592000, T('30 Tage')],
              [7776000, T('90 Tage')], [31536000, T('1 Jahr')]];
   var fTime = new Intl.DateTimeFormat(HK.locale, { hour: '2-digit', minute: '2-digit' });
@@ -387,6 +388,23 @@
         }));
       });
     }));
+    // Datenschutz (2.4): Gelesen-Bestaetigungen und Online-Status - je getrennt, gegenseitig
+    if (hasFeat('receipts')) {
+      box.appendChild(el('h3', null, T('Datenschutz')));
+      [['receipts', T('Gelesen-Bestätigungen senden'), T('Aus: Andere sehen nicht, ob du ihre Nachrichten gelesen hast – und du siehst es bei ihnen auch nicht.')],
+       ['online', T('Online-Status zeigen'), T('Aus: Deine Chat-Partner sehen nicht, ob und wann du zuletzt online warst – und du siehst es bei ihnen auch nicht.')]].forEach(function (x) {
+        var lab = el('label', 'ct-priv ct-priv-' + x[0]), cb = el('input'); cb.type = 'checkbox'; cb.checked = priv()[x[0]] !== false;
+        lab.appendChild(cb); var tx = el('span'); tx.appendChild(el('b', null, x[1])); tx.appendChild(el('span', 'hk-hint', x[2])); lab.appendChild(tx);
+        cb.addEventListener('change', function () {
+          var b = {}; b[x[0]] = cb.checked; cb.disabled = true;
+          api('PUT', '/api/chat/privacy', b).then(function (r) {
+            if (S.me) S.me.privacy = r; S.rcpts = {}; S.rcSent = {};
+            if (S.cur) { loadReceipts(S.cur); drawMsgs(); } presenceSync();
+          }).catch(function (e) { cb.checked = !cb.checked; HK.toast(e.message); }).finally(function () { cb.disabled = false; });
+        });
+        box.appendChild(lab);
+      });
+    }
     // Sperren (2.3): Personen bzw. ganze Server anderer Saga-Instanzen - von dort kommen keine Nachrichtenanfragen mehr
     var bh = el('h3', null, T('Gesperrt (andere Saga-Server)')), bl = el('ul', 'ct-devs ct-blocks');
     api('GET', '/api/chat/blocks').then(function (r) {
@@ -526,6 +544,7 @@
       S.chats = r.chats || [];
       S.chats.forEach(freeTitle);
       drawList();
+      presenceSoon();
       if (S.cur) {
         var c = S.chats.filter(function (x) { return x.id === S.cur.id; })[0];
         if (!c) closeChat(); else { S.cur = Object.assign(S.cur, c); drawHead(); }
@@ -562,8 +581,11 @@
       var li = el('li', 'ct-item' + (S.cur && S.cur.id === c.id ? ' on' : '') + (c.unread ? ' unread' : '') + (c.archived ? ' ct-archived' : ''));
       var b = el('button', 'ct-item-b'); b.type = 'button'; b.dataset.id = c.id;
       var nm = chatName(c);
-      b.appendChild(avatar(kindIc(c) || (nm.charAt(0) || '?').toUpperCase(), c.kind === 'dm' ? (c.peer || {}).username : 'c' + c.id, c.kind !== 'dm' ? 'ct-av-k' : '',
-                           c.kind === 'dm' ? (c.peer || {}).avatar : null));
+      var lav = avatar(kindIc(c) || (nm.charAt(0) || '?').toUpperCase(), c.kind === 'dm' ? (c.peer || {}).username : 'c' + c.id, c.kind !== 'dm' ? 'ct-av-k' : '',
+                       c.kind === 'dm' ? (c.peer || {}).avatar : null);
+      var lp = c.kind === 'dm' ? S.pres[(c.peer || {}).username] : null;
+      if (lp && lp.online) { lav.classList.add('ct-on'); b.title = T('online'); }       // (2.4) Online-Status im Direkt-Chat
+      b.appendChild(lav);
       var t = el('span', 'ct-item-t');
       t.appendChild(el('span', 'ct-item-n', nm));
       t.appendChild(el('span', 'ct-item-s', isFed(c) && c.kind === 'dm'
@@ -840,7 +862,7 @@
 
   // --- Unterhaltung -----------------------------------------------------------------------------------------------
   function closeChat() {
-    S.cur = null; S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = [];
+    S.cur = null; S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; S.rcpts = {};
     $('ct-chat').hidden = true; $('ct-none').hidden = false; root.classList.remove('ct-open');
     drawList();
   }
@@ -849,13 +871,14 @@
     var same = S.cur && S.cur.id === cid;
     return api('GET', '/api/chats/' + cid + '?device=' + q(dev())).then(function (r) {
       var c = r.chat; freeTitle(c);
-      if (!same) { S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; S.fk = null; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; }
+      if (!same) { S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; S.fk = null; S.rcpts = {}; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; }
       S.cur = c;
       $('ct-none').hidden = true; $('ct-chat').hidden = false; root.classList.add('ct-open');
       drawHead(); drawList(); drawWarn();
       c.members.forEach(function (m) { if (!m.me && !trust[m.username]) trustP[m.username] = kvGet(trustKey(m.username)).then(function (t) { if (t) trust[m.username] = t; drawWarn(); return t; }).catch(function () { return null; }); });
       checkIdents(c);
-      return loadMsgs(false);
+      presenceSoon();
+      return loadMsgs(false).then(function () { loadReceipts(c); });
     }).catch(function (e) {
       if (e.status === 404) { HK.toast(T('Diesen Chat gibt es nicht (mehr) oder du gehörst nicht mehr dazu.')); closeChat(); loadList(); }
       else HK.toast(e.message);
@@ -880,10 +903,12 @@
       else if (ff && (ff.trust === 'block' || ff.trust === 'reject')) sub.appendChild(el('span', 'ct-chip ct-blocked', '⛔ ' + T('gesperrt')));
       if (c.request) sub.appendChild(el('span', 'ct-chip', T('Anfrage')));
       if (c.readonly) sub.appendChild(el('span', 'ct-chip', '🔒 ' + T('schreibgeschützt')));
+      presenceChip(sub, fp.username);
     } else if (c.kind === 'dm') {
       var p = others[0] || c.peer || {}, t = trust[p.username];
       sub.appendChild(document.createTextNode(p.username || ''));
       if (t && t.verified && !t.changed) sub.appendChild(el('span', 'ct-chip ct-verified', '✓ ' + T('überprüft')));
+      presenceChip(sub, p.username);
     } else {
       var mine = String(c.my_handle || '').split('@').slice(1).join('@');
       sub.appendChild(document.createTextNode(c.members.map(function (m) {
@@ -949,7 +974,7 @@
       if (!S.cur || S.cur.id !== c.id) return;
       var add = r.messages.filter(function (m) { return !S.byId[m.id]; }).map(function (m) {
         var d;
-        if (m.fstate === 'pending' && S.okIds && S.okIds[m.id]) m.fstate = null;
+        if (m.fstate === 'pending' && S.okIds && S.okIds[m.id]) { m.fstate = null; if (!m.fseq && S.okIds[m.id] !== true) m.fseq = S.okIds[m.id]; }
         if (m.kind === 'call') {                          // Anruf-Eintrag: Metadaten vom Server (nicht verschluesselt, nur wer/wann/wie lange)
           try { m.call = JSON.parse(m.body_ct); } catch (e) { m.call = {}; }
           if (isFed(c) && m.sender && m.sender.username === ME) m.call.from = ME;     // v2: Anrufer steht als Prinzipal/Konto drin
@@ -977,11 +1002,172 @@
   function markRead() {
     var c = S.cur; if (!c || document.hidden) return;
     var seq = Math.max(S.msgs.length ? S.msgs[S.msgs.length - 1].seq : 0, S.seenSeq || 0);
-    if (!seq || seq <= (c.last_read || 0)) return;
-    c.last_read = seq;
-    api('POST', '/api/chats/' + c.id + '/read', { seq: seq }).then(function () {
-      var x = S.chats.filter(function (y) { return y.id === c.id; })[0]; if (x) { x.unread = 0; x.last_read = seq; drawList(); }
+    var want = receiptWant(c), wait = want ? 2000 - (Date.now() - (S.rcAt[c.id] || 0)) : 0;
+    if (want && wait > 0) {                              // (2.4) hoechstens eine Bestaetigung je Chat und 2 s
+      clearTimeout(S.rcT); S.rcT = setTimeout(markRead, wait + 50); want = null;
+    }
+    if ((!seq || seq <= (c.last_read || 0)) && !want) return;
+    var body = { seq: Math.max(seq, c.last_read || 0) };
+    if (want) {
+      try { body.receipt = { keys: receiptKeys(c, want) }; } catch (e) { body.receipt = null; }
+      if (!body.receipt || !Object.keys(body.receipt.keys).length) delete body.receipt;
+      else S.rcAt[c.id] = Date.now();
+    }
+    if (!body.receipt && seq <= (c.last_read || 0)) return;
+    c.last_read = body.seq;
+    api('POST', '/api/chats/' + c.id + '/read', body).then(function (r) {
+      var x = S.chats.filter(function (y) { return y.id === c.id; })[0]; if (x) { x.unread = 0; x.last_read = body.seq; drawList(); }
+      if (body.receipt) {
+        if (r.receipt === 'ok' || r.receipt === 'none') S.rcSent[c.id] = want.n;
+        else if (r.receipt === 'off') { if (S.me) S.me.privacy = Object.assign({}, S.me.privacy, { receipts: false }); }
+        else if (r.receipt === 'rate') { clearTimeout(S.rcT); S.rcT = setTimeout(markRead, 5000); }
+      }
     }).catch(function () {});
+  }
+
+  // --- Gelesen-Bestaetigungen und Online-Status (2.4) -----------------------------------------------------------------
+  // Bestaetigung "gelesen bis Nachricht id (Position n)": vom Geraet signiert, je Mitglied fuer dessen Backup-Schluessel
+  // versiegelt - der Server sieht nur, DASS es eine gibt. Position n = seq (Chat auf diesem Server) bzw. fseq (Heim).
+  function priv() { return (S.me && S.me.privacy) || { receipts: true, online: true }; }
+  function hasFeat(f) { return !!(S.me && (S.me.features || []).indexOf(f) >= 0); }
+  function ordOf(c, m) { return isFed(c) ? (m.fseq || 0) : (m.seq || 0); }
+  function rcOk(c) { return hasFeat('receipts') && priv().receipts && !(isFed(c) && (c.request || c.readonly || c.receipts_ok === false)); }
+  function receiptWant(c) {
+    if (!rcOk(c) || !K) return null;
+    for (var i = S.msgs.length - 1; i >= 0; i--) {     // neueste Nachricht mit Position, die nicht von mir ist
+      var m = S.msgs[i], n = ordOf(c, m);
+      if (!n || (m.sender && m.sender.username === ME && m._ai !== 'ok')) continue;
+      return n > (S.rcSent[c.id] || 0) ? { id: m.id, n: n } : null;
+    }
+    return null;
+  }
+  function receiptKeys(c, want) {
+    var body = { id: want.id, n: want.n, ts: Date.now() }, keys = {};
+    var o = { chat: isFed(c) ? c.ref : String(c.id), reader: isFed(c) ? c.my_handle : ME, device: K.device.id, sign_sk: K.device.sign_sk, body: body, v2: isFed(c) };
+    if (isFed(c)) {
+      c.members.forEach(function (m) {
+        var f = (S.fk || {})[m.handle];
+        if (m.me || !m.handle || !f || !f.keys || f.trust === 'reject' || f.trust === 'block') return;
+        keys['backup:' + m.handle] = X.sealReceipt(Object.assign({ to_pk: f.keys.backup_pk }, o));
+      });
+    } else if (S.rc && S.rc.cid === c.id) {
+      S.rc.raw.forEach(function (p) {
+        if (!p.ready || p.username === ME) return;
+        keys['backup:' + p.username] = X.sealReceipt(Object.assign({ to_pk: ub(p.backup_pub, 32) }, o));
+      });
+    } else {                                             // Empfaenger (gepruefte Schluessel) erst laden, dann erneut
+      recipients(c.id).then(function () { setTimeout(markRead, 0); }).catch(function () {});
+    }
+    return keys;
+  }
+  // Signierendes Geraet einer lesenden Person -> Ed25519-Schluessel (nur gepruefte Geraete) oder null
+  function readerKey(c, from, handle, dev) {
+    if (isFed(c)) {
+      var f = (S.fk || {})[handle];
+      if (!f || !f.keys || f.trust === 'reject') return null;
+      var d = f.keys.devices.filter(function (x) { return x.id === dev; })[0];
+      return d ? ub(d.sign_pub, 32) : null;
+    }
+    var p = S.rc && S.rc.cid === c.id ? S.rc.raw.filter(function (x) { return x.username === from && x.ready; })[0] : null;
+    var dv = p ? p.devices.filter(function (x) { return x.id === dev; })[0] : null;
+    return dv ? ub(dv.sign_pub, 32) : null;
+  }
+  function takeReceipts(c, list) {
+    var changed = false;
+    (list || []).forEach(function (x) {
+      try {
+        var r = X.openReceipt(x.sealed, K.backup_pk, K.backup_sk), pk = readerKey(c, x.from, x.handle, r.dev);
+        if (!pk || !X.verifyReceipt(isFed(c) ? c.ref : String(c.id), isFed(c) ? x.handle : x.from, r, pk, isFed(c))) return;
+        var b = JSON.parse(r.body), old = S.rcpts[x.from];
+        if (typeof b.n !== 'number' || (old && old.n > b.n)) return;
+        S.rcpts[x.from] = { n: b.n, id: b.id, ts: b.ts };
+        changed = true;
+      } catch (e) { /* nicht lesbar/ungueltig: ignorieren */ }
+    });
+    return changed;
+  }
+  function loadReceipts(c) {
+    if (!hasFeat('receipts') || !K || !priv().receipts) return;
+    var keysP = isFed(c) ? (S.fk ? Promise.resolve() : fedLoad(c)) : recipients(c.id);
+    Promise.all([api('GET', '/api/chats/' + c.id + '/receipts'), keysP]).then(function (a) {
+      if (!S.cur || S.cur.id !== c.id) return;
+      S.rcpts = {};
+      if (takeReceipts(c, a[0].receipts)) drawMsgs();
+    }).catch(function () {});
+  }
+  // Wer hat Nachricht m gelesen? -> [{name, ts}] (ohne mich)
+  function readersOf(c, m) {
+    var n = ordOf(c, m), out = [];
+    if (!n) return out;
+    c.members.forEach(function (x) {
+      var r = !x.me && S.rcpts[x.username];
+      if (r && r.n >= n) out.push({ name: x.name || x.username, ts: r.ts });
+    });
+    return out;
+  }
+  function tickEl(c, m) {
+    var others = c.members.filter(function (x) { return !x.me; }).length, rd = rcOk(c) ? readersOf(c, m) : [];
+    var all = others > 0 && rd.length >= others, grp = c.kind !== 'dm';
+    var tk = el(grp ? 'button' : 'span', 'ct-tick' + (rd.length ? ' ct-read' : '') + (all ? ' ct-all' : ''), rd.length ? '✓✓' : '✓');
+    if (grp && rd.length && !all) tk.appendChild(el('span', 'ct-tick-n', String(rd.length)));
+    var lbl = !rd.length ? T('Zugestellt') : grp ? (all ? T('Von allen gelesen') : T('Gelesen von {n}', { n: rd.length }))
+      : T('Gelesen {when}', { when: rd[0].ts ? fDay.format(new Date(rd[0].ts)) + ' ' + fTime.format(new Date(rd[0].ts)) : '' });
+    tk.title = lbl; tk.setAttribute('aria-label', lbl);
+    if (grp) { tk.type = 'button'; tk.addEventListener('click', function () { readBy(c, m); }); }
+    return tk;
+  }
+  function readBy(c, m) {
+    var box = overlay(T('Gelesen von'));
+    var rd = readersOf(c, m), ul = el('ul', 'ct-devs ct-readby');
+    if (!rd.length) ul.appendChild(el('li', 'hk-hint', T('Noch von niemandem gelesen.')));
+    rd.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); }).forEach(function (r) {
+      var li = el('li', 'ct-dev'), t = el('div', 'ct-dev-t');
+      t.appendChild(el('b', null, r.name));
+      if (r.ts) t.appendChild(el('span', 'hk-hint', fDay.format(new Date(r.ts)) + ' ' + fTime.format(new Date(r.ts))));
+      li.appendChild(t); ul.appendChild(li);
+    });
+    box.appendChild(ul);
+    box.appendChild(el('p', 'hk-hint', T('Wer Gelesen-Bestätigungen abgeschaltet hat, erscheint hier nicht.')));
+  }
+  // Online-Status: nur sichtbare Direkt-Chats abonnieren (offener Chat + Liste), alle 60 s erneuern, solange sichtbar
+  var presT = null, presAt = 0;
+  function presenceSoon() { clearTimeout(presT); presT = setTimeout(presenceSync, 400); }
+  function presenceWant() {
+    if (!hasFeat('online') || !priv().online) return [];
+    var out = [];
+    function add(c) {
+      if (!c || c.kind !== 'dm' || c.request || (isFed(c) && c.online_ok === false)) return;
+      var u = (c.peer || {}).username; if (u && out.indexOf(u) < 0) out.push(u);
+    }
+    add(S.cur);
+    S.chats.filter(function (c) { return !c.archived; }).slice(0, 30).forEach(add);
+    return out.slice(0, 50);
+  }
+  function presenceSync() {
+    if (!S.ready || document.hidden) return;
+    var users = presenceWant();
+    if (!users.length) { if (Object.keys(S.pres).length) { S.pres = {}; drawList(); drawHead(); } return; }
+    presAt = Date.now();
+    api('POST', '/api/chat/presence', { users: users }).then(function (r) {
+      var nx = {};
+      Object.keys(r.users || {}).forEach(function (u) { nx[u] = r.users[u]; });
+      S.pres = nx;
+      // Personen anderer Server: der eigene Server fragt dort erst nach (bzw. erneut, z. B. gleich nach dem Annehmen einer
+      // Nachrichtenanfrage) - fehlende eine Minute lang alle 10 s nachfragen, danach im normalen Takt
+      var miss = users.some(function (u) { return u.charAt(0) === '@' && !nx[u]; });
+      S.presMiss = miss ? (S.presMiss || 0) + 1 : 0;
+      clearTimeout(S.presRe); if (miss && S.presMiss <= 6) S.presRe = setTimeout(presenceSync, 10000);
+      if (r.enabled === false && S.me) S.me.privacy = Object.assign({}, S.me.privacy, { online: false });
+      drawList(); drawHead();
+    }).catch(function () {});
+  }
+  setInterval(function () { if (S.ready && !document.hidden && Date.now() - presAt > 60000) presenceSync(); }, 15000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && Date.now() - presAt > 30000) presenceSync(); });
+  function presenceChip(sub, u) {
+    var p = u && S.pres[u];
+    if (!p) return;
+    if (p.online) { var on = el('span', 'ct-chip ct-online', T('online')); sub.appendChild(on); return; }
+    if (p.last) sub.appendChild(el('span', 'ct-chip ct-lastseen', T('zuletzt online {when}', { when: HK.relTime(p.last - Date.now() / 1000) })));
   }
   document.addEventListener('visibilitychange', function () { if (!document.hidden) markRead(); });
 
@@ -1095,6 +1281,7 @@
       if (m.fstate === 'failed') { row.classList.add('ct-failed'); meta.appendChild(el('span', 'ct-fail', '⚠ ' + T('nicht zugestellt'))); }
       if (m.expires_at) meta.appendChild(el('span', 'ct-exp', '⏱'));
       var tm = el('time', null, fTime.format(d)); tm.dateTime = d.toISOString(); tm.title = fDay.format(d) + ' ' + fTime.format(d); meta.appendChild(tm);
+      if (mine && !m.fstate && !m.error) meta.appendChild(tickEl(c, m));       // (2.4) ✓ zugestellt, ✓✓ gelesen
       b.appendChild(meta);
       row.appendChild(b);
       var act = el('button', 'icon-btn ct-act', '⋯'); act.type = 'button'; act.setAttribute('aria-label', T('Nachricht …')); act.setAttribute('aria-haspopup', 'menu');
@@ -1572,7 +1759,7 @@
         if (body.files) m.files = body.files.reduce(function (a, f) { a.push(f.id); if (f.th && f.th.id) a.push(f.th.id); return a; }, []);
         return api('POST', '/api/chats/' + c.id + '/messages', m).then(function (r) {
           if (r.pending) HK.toast(T('Der andere Server ist gerade nicht erreichbar – die Nachricht wird zugestellt, sobald er wieder da ist.'), null, null, 6000);
-          else delivered(m.id);
+          else delivered(m.id, r.fseq);
           return { m: m, r: r };
         }, function (e) {
           if (e.status === 409 && e.data && e.data.handles && !again) return attempt(true, true);
@@ -1584,9 +1771,10 @@
   }
   // (2.3) Heim hat die Nachricht sofort bestaetigt: "wird zugestellt" nicht stehen lassen - auch wenn sie schon (ueber das
   // Live-Ereignis) mit fstate 'pending' geladen wurde oder erst gleich geladen wird (Server 2.3.0 melden das nicht nach)
-  function delivered(id) {
-    S.okIds = S.okIds || {}; S.okIds[id] = true;
+  function delivered(id, fseq) {
+    S.okIds = S.okIds || {}; S.okIds[id] = fseq || true;
     var k = S.byId[id];
+    if (k && fseq && !k.fseq) k.fseq = fseq;                  // (2.4) Position des Heims fuer die Gelesen-Haken
     if (k && k.fstate === 'pending') { k.fstate = null; drawMsgs(); }
   }
   function sendBody(cid, body, kind, reply, extra) {
@@ -2082,6 +2270,7 @@
     if (t === 'chat.message') {
       if (S.cur && S.cur.id === d.chat_id) {
         var known = S.byId[d.id];                       // (2.3) ausstehende Nachricht bestaetigt bzw. abgewiesen
+        if (known && d.fseq && !known.fseq) known.fseq = d.fseq;      // (2.4) Position des Heims fuer die Gelesen-Haken
         if (known && known.fstate) { known.fstate = d.failed ? 'failed' : null; drawMsgs(); }
         loadMsgs(false);
       }
@@ -2102,6 +2291,12 @@
     else if (t === 'chat.changed') { listSoon(); if (S.cur && S.cur.id === d.chat_id) { S.rc = null; openChat(d.chat_id); } }
     else if (t === 'avatar.changed') listSoon();      // neues Profilbild (Bilder tauscht live.js; Liste fuer neue Adressen)
     else if (t === 'ai.persona.changed') loadAI();     // Name/Bild/Schalter der KI geaendert
+    else if (t === 'chat.receipt') { if (S.cur && S.cur.id === d.chat_id && K && takeReceipts(S.cur, d.receipts)) drawMsgs(); }   // (2.4)
+    else if (t === 'chat.presence') {
+      if (d.online || d.last) S.pres[d.username] = { online: !!d.online, last: d.last || null }; else delete S.pres[d.username];
+      drawList(); drawHead();
+    }
+    else if (t === 'chat.privacy') { if (S.me) S.me.privacy = { receipts: !!d.receipts, online: !!d.online }; S.rcpts = {}; presenceSync(); if (S.cur) { loadReceipts(S.cur); drawMsgs(); } }
     else if (t === 'chat.typing' && S.cur && S.cur.id === d.chat_id && d.user) {
       S.typing[d.user.username] = { name: d.user.name, until: Date.now() + 4500 }; drawTyping();
     }

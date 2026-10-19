@@ -2799,5 +2799,18 @@
  "Bild-im-Bild": "ภาพซ้อนภาพ",
  "Bild-im-Bild beenden": "ออกจากภาพซ้อนภาพ",
  "Zurück zum Anruffenster": "กลับไปที่หน้าต่างการโทร",
- "Verbindung wird neu aufgebaut …": "กำลังเชื่อมต่อใหม่ …"
+ "Verbindung wird neu aufgebaut …": "กำลังเชื่อมต่อใหม่ …",
+ "Datenschutz": "ความเป็นส่วนตัว",
+ "Gelesen-Bestätigungen senden": "ส่งการยืนยันการอ่าน",
+ "Aus: Andere sehen nicht, ob du ihre Nachrichten gelesen hast – und du siehst es bei ihnen auch nicht.": "ปิด: คนอื่นจะไม่เห็นว่าคุณอ่านข้อความของเขาแล้วหรือยัง – และคุณก็จะไม่เห็นของเขาเช่นกัน",
+ "Online-Status zeigen": "แสดงสถานะออนไลน์",
+ "Aus: Deine Chat-Partner sehen nicht, ob und wann du zuletzt online warst – und du siehst es bei ihnen auch nicht.": "ปิด: คู่สนทนาจะไม่เห็นว่าคุณออนไลน์อยู่หรือออนไลน์ล่าสุดเมื่อไร – และคุณก็จะไม่เห็นของเขาเช่นกัน",
+ "Zugestellt": "ส่งถึงแล้ว",
+ "Von allen gelesen": "ทุกคนอ่านแล้ว",
+ "Gelesen von {n}": "อ่านแล้ว {n} คน",
+ "Gelesen {when}": "อ่านแล้ว {when}",
+ "Gelesen von": "อ่านโดย",
+ "Noch von niemandem gelesen.": "ยังไม่มีใครอ่าน",
+ "Wer Gelesen-Bestätigungen abgeschaltet hat, erscheint hier nicht.": "ผู้ที่ปิดการยืนยันการอ่านจะไม่แสดงที่นี่",
+ "zuletzt online {when}": "ออนไลน์ล่าสุด {when}"
 }

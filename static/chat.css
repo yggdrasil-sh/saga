@@ -217,3 +217,15 @@ a.ct-chip:hover{color:var(--fg);border-color:var(--accent)}
 .ct-fail{color:var(--down);font-weight:600}
 .ct-msg.ct-failed .ct-bubble{border-color:var(--down)}
 .ct-sys{font-style:italic}
+/* 2.4: Zustellstatus (✓ zugestellt, ✓✓ gelesen), "gelesen von" in Gruppen, Online-Status, Datenschutz-Schalter */
+.ct-tick{font:inherit;font-size:.72rem;letter-spacing:-.12em;color:var(--muted);background:none;border:0;padding:0 .1em 0 0;line-height:inherit;white-space:nowrap}
+button.ct-tick{cursor:pointer}
+button.ct-tick:hover,button.ct-tick:focus-visible{color:var(--fg)}
+.ct-tick.ct-read{color:var(--accent);font-weight:700}
+.ct-tick-n{letter-spacing:0;margin-left:.3em;font-weight:600}
+.ct-av.ct-on{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--up)}
+.ct-online{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,var(--border))}
+.ct-online::before{content:"";width:.5em;height:.5em;border-radius:50%;background:var(--up)}
+.ct-priv{display:flex;gap:.6rem;align-items:flex-start;margin:.5rem 0;cursor:pointer}
+.ct-priv input{margin-top:.2rem;flex:none}
+.ct-priv span{display:flex;flex-direction:column;gap:.1rem}

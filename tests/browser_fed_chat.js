@@ -83,6 +83,12 @@ const st = (p) => p.evaluate(() => window.HKCalls && window.HKCalls.state());
       && !(await pa.$('#ct-msgs .ct-unverified')), await texts(pa));
     // Heim = A: die eigene Antwort darf bei B nicht auf "wird zugestellt" (⏳) haengen bleiben (Fehler 2.3.0)
     ok('B: eigene Antwort zugestellt (kein ⏳)', await until(async () => (await texts(pb)).includes('Hallo zurück aus B') && !(await pb.$('#ct-msgs .ct-pend')), 10000));
+    // 2.4: Gelesen-Haken ueber Servergrenzen (versiegelt ueber das Heim) und Online-Status vom Server der Person
+    const readTick = p => p.evaluate(() => { const t = [...document.querySelectorAll('#ct-msgs .ct-msg.mine .ct-tick')].pop(); return t ? t.classList.contains('ct-read') : null; });
+    ok('A: ✓✓ fuer die Nachricht an B (B hat den Chat offen)', await until(() => readTick(pa), 20000), await readTick(pa));
+    ok('B: ✓✓ fuer die Antwort (A hat den Chat offen)', await until(() => readTick(pb), 20000), await readTick(pb));
+    ok('A: Online-Status von B (anderer Server) im Kopf', await until(() => pa.isVisible('#ct-sub .ct-online'), 30000));
+    await shot(pa, 'chat-gelesen-foederiert');
     // --- Sicherheitsnummer v2 auf beiden Seiten gleich, "ueberprueft" --------------------------------------------------------
     async function safetyOf(p) {
       await p.click('#ct-more'); await p.click('button.menu-item:has-text("Sicherheitsnummer")');

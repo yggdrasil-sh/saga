@@ -819,7 +819,8 @@ def apply_msg(c, peer, ch, ev, jump=False):
         c.execute("UPDATE chat SET fseq=GREATEST(fseq, ?) WHERE id=?", (fseq, ch["id"]))
         ch["fseq"] = max(ch["fseq"], fseq)
         if old[3] is None or old[4]:                         # bisher ausstehend (bzw. nicht zugestellt): Anzeige auffrischen
-            chat._direct(c, local_members(c, ch["id"]), "chat.message", {"chat_id": ch["id"], "seq": old[0], "id": m["id"], "sender": sender})
+            chat._direct(c, local_members(c, ch["id"]), "chat.message", {"chat_id": ch["id"], "seq": old[0], "id": m["id"], "sender": sender,
+                                                                         "fseq": fseq})     # 2.4: Position fuer Gelesen-Haken
         return "dup"
     if fseq <= ch["fseq"]:
         F.log(c, "chat.reorder", peer, f"{ch['fseq']} >= {fseq}", throttle=(peer["id"], "reorder"))
@@ -1421,7 +1422,8 @@ def send(uid, cid, b):
             # (kam die Bestaetigung ueber den Fan-out des Heims schon an, hat apply_msg das bereits erledigt).
             if c.execute("UPDATE chat_msg SET fseq=COALESCE(fseq, ?), fstate=NULL WHERE seq=? AND fstate IS NOT NULL RETURNING seq",
                          (d.get("fseq"), seq)).fetchone():
-                chat._direct(c, local_members(c, ch["id"]), "chat.message", {"chat_id": ch["id"], "seq": seq, "id": m["id"], "sender": uid})
+                chat._direct(c, local_members(c, ch["id"]), "chat.message", {"chat_id": ch["id"], "seq": seq, "id": m["id"], "sender": uid,
+                                                                             "fseq": d.get("fseq")})
             out["fseq"] = d.get("fseq")
         elif status is None:
             out["pending"] = True

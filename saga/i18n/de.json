@@ -2799,5 +2799,18 @@
  "Bild-im-Bild": "Bild-im-Bild",
  "Bild-im-Bild beenden": "Bild-im-Bild beenden",
  "Zurück zum Anruffenster": "Zurück zum Anruffenster",
- "Verbindung wird neu aufgebaut …": "Verbindung wird neu aufgebaut …"
+ "Verbindung wird neu aufgebaut …": "Verbindung wird neu aufgebaut …",
+ "Datenschutz": "Datenschutz",
+ "Gelesen-Bestätigungen senden": "Gelesen-Bestätigungen senden",
+ "Aus: Andere sehen nicht, ob du ihre Nachrichten gelesen hast – und du siehst es bei ihnen auch nicht.": "Aus: Andere sehen nicht, ob du ihre Nachrichten gelesen hast – und du siehst es bei ihnen auch nicht.",
+ "Online-Status zeigen": "Online-Status zeigen",
+ "Aus: Deine Chat-Partner sehen nicht, ob und wann du zuletzt online warst – und du siehst es bei ihnen auch nicht.": "Aus: Deine Chat-Partner sehen nicht, ob und wann du zuletzt online warst – und du siehst es bei ihnen auch nicht.",
+ "Zugestellt": "Zugestellt",
+ "Von allen gelesen": "Von allen gelesen",
+ "Gelesen von {n}": "Gelesen von {n}",
+ "Gelesen {when}": "Gelesen {when}",
+ "Gelesen von": "Gelesen von",
+ "Noch von niemandem gelesen.": "Noch von niemandem gelesen.",
+ "Wer Gelesen-Bestätigungen abgeschaltet hat, erscheint hier nicht.": "Wer Gelesen-Bestätigungen abgeschaltet hat, erscheint hier nicht.",
+ "zuletzt online {when}": "zuletzt online {when}"
 }

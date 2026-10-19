@@ -2799,5 +2799,18 @@
  "Bild-im-Bild": "Картинка в картинке",
  "Bild-im-Bild beenden": "Выйти из режима «картинка в картинке»",
  "Zurück zum Anruffenster": "Вернуться в окно звонка",
- "Verbindung wird neu aufgebaut …": "Переподключение …"
+ "Verbindung wird neu aufgebaut …": "Переподключение …",
+ "Datenschutz": "Конфиденциальность",
+ "Gelesen-Bestätigungen senden": "Отправлять отчёты о прочтении",
+ "Aus: Andere sehen nicht, ob du ihre Nachrichten gelesen hast – und du siehst es bei ihnen auch nicht.": "Выкл.: другие не видят, прочитали ли вы их сообщения, — и вы тоже этого у них не видите.",
+ "Online-Status zeigen": "Показывать статус «в сети»",
+ "Aus: Deine Chat-Partner sehen nicht, ob und wann du zuletzt online warst – und du siehst es bei ihnen auch nicht.": "Выкл.: собеседники не видят, в сети ли вы и когда были в последний раз, — и вы тоже этого у них не видите.",
+ "Zugestellt": "Доставлено",
+ "Von allen gelesen": "Прочитали все",
+ "Gelesen von {n}": "Прочитали: {n}",
+ "Gelesen {when}": "Прочитано {when}",
+ "Gelesen von": "Прочитали",
+ "Noch von niemandem gelesen.": "Пока никто не прочитал.",
+ "Wer Gelesen-Bestätigungen abgeschaltet hat, erscheint hier nicht.": "Те, кто отключил отчёты о прочтении, здесь не отображаются.",
+ "zuletzt online {when}": "был(а) в сети {when}"
 }

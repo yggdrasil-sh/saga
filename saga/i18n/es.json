@@ -2799,5 +2799,18 @@
  "Bild-im-Bild": "Imagen en imagen",
  "Bild-im-Bild beenden": "Salir de imagen en imagen",
  "Zurück zum Anruffenster": "Volver a la ventana de llamada",
- "Verbindung wird neu aufgebaut …": "Reconectando …"
+ "Verbindung wird neu aufgebaut …": "Reconectando …",
+ "Datenschutz": "Privacidad",
+ "Gelesen-Bestätigungen senden": "Enviar confirmaciones de lectura",
+ "Aus: Andere sehen nicht, ob du ihre Nachrichten gelesen hast – und du siehst es bei ihnen auch nicht.": "Desactivado: los demás no ven si has leído sus mensajes, y tú tampoco lo ves en los suyos.",
+ "Online-Status zeigen": "Mostrar estado en línea",
+ "Aus: Deine Chat-Partner sehen nicht, ob und wann du zuletzt online warst – und du siehst es bei ihnen auch nicht.": "Desactivado: tus contactos de chat no ven si estás en línea ni cuándo lo estuviste por última vez, y tú tampoco lo ves en los suyos.",
+ "Zugestellt": "Entregado",
+ "Von allen gelesen": "Leído por todos",
+ "Gelesen von {n}": "Leído por {n}",
+ "Gelesen {when}": "Leído {when}",
+ "Gelesen von": "Leído por",
+ "Noch von niemandem gelesen.": "Todavía nadie lo ha leído.",
+ "Wer Gelesen-Bestätigungen abgeschaltet hat, erscheint hier nicht.": "Quien haya desactivado las confirmaciones de lectura no aparece aquí.",
+ "zuletzt online {when}": "en línea por última vez {when}"
 }

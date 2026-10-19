@@ -43,6 +43,7 @@ FED_RCPT_RATE = 1200               # Bestaetigungen je Instanz und Minute (Auftr
 ROUND = 300                        # "zuletzt online": 5-Minuten-Raster
 WATCH_TTL = 90                     # Abo des Online-Status (lokal und bei anderen Servern)
 WATCH_RENEW = 60                   # Abo bei einem anderen Server spaetestens nach so vielen Sekunden erneuern
+RETRY_UNKNOWN = 5                  # ... ohne bekannten Stand (dort nicht erlaubt/unbekannt) schon nach so vielen Sekunden
 USERS_MAX = 50                     # Personen je Abfrage
 WATCH_MAX = 200                    # gleichzeitig abonnierte Personen je Konto
 PRES_RATE = 30                     # Abfragen je Konto und Minute
@@ -471,7 +472,9 @@ def presence(uid, users, leave=False):
                 st = _rstate.get(u)
                 if st and st["exp"] > now and st.get("online") is not None:
                     out[u] = {"online": st["online"], "last": st["last"]}
-                if now - _rsub.get(u, 0) >= WATCH_RENEW:
+                known = bool(st) and st["exp"] > now and st.get("online") is not None
+                # unbekannt bzw. dort (noch) nicht erlaubt, z. B. Nachrichtenanfrage gerade angenommen: bald erneut fragen
+                if now - _rsub.get(u, 0) >= (WATCH_RENEW if known else RETRY_UNKNOWN):
                     ref = c.execute("SELECT ch.ref FROM chat ch JOIN chat_member a ON a.chat_id=ch.id AND a.uid=? AND a.left_at IS NULL AND a.state='ok' "
                                     "JOIN chat_member b ON b.chat_id=ch.id AND b.uid=? AND b.left_at IS NULL AND b.state='ok' "
                                     "WHERE ch.v=2 AND ch.ref IS NOT NULL AND ch.fstate='' ORDER BY (ch.kind='dm') DESC LIMIT 1", (uid, u)).fetchone()
@@ -486,7 +489,7 @@ def presence(uid, users, leave=False):
             for _, u in sorted(mine)[:len(mine) - WATCH_MAX]:
                 _watch[u].pop(uid, None)
     for pid, body in renew.items():
-        F.peer_submit(pid, _subscribe, pid, body, drop=True)
+        F.peer_submit(pid, _subscribe, pid, body)      # nicht verwerfen: sonst erst nach WATCH_RENEW erneut
     return {"enabled": True, "ttl": WATCH_TTL, "users": out}
 
 

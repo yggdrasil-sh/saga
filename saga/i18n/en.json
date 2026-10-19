@@ -2799,5 +2799,18 @@
  "Bild-im-Bild": "Picture-in-picture",
  "Bild-im-Bild beenden": "Exit picture-in-picture",
  "Zurück zum Anruffenster": "Back to the call window",
- "Verbindung wird neu aufgebaut …": "Reconnecting …"
+ "Verbindung wird neu aufgebaut …": "Reconnecting …",
+ "Datenschutz": "Privacy",
+ "Gelesen-Bestätigungen senden": "Send read receipts",
+ "Aus: Andere sehen nicht, ob du ihre Nachrichten gelesen hast – und du siehst es bei ihnen auch nicht.": "Off: others don't see whether you have read their messages – and you don't see it for them either.",
+ "Online-Status zeigen": "Show online status",
+ "Aus: Deine Chat-Partner sehen nicht, ob und wann du zuletzt online warst – und du siehst es bei ihnen auch nicht.": "Off: your chat partners don't see whether or when you were last online – and you don't see it for them either.",
+ "Zugestellt": "Delivered",
+ "Von allen gelesen": "Read by everyone",
+ "Gelesen von {n}": "Read by {n}",
+ "Gelesen {when}": "Read {when}",
+ "Gelesen von": "Read by",
+ "Noch von niemandem gelesen.": "Not read by anyone yet.",
+ "Wer Gelesen-Bestätigungen abgeschaltet hat, erscheint hier nicht.": "People who have turned off read receipts don't appear here.",
+ "zuletzt online {when}": "last online {when}"
 }
