@@ -401,6 +401,38 @@ try:
         ok("Login-Link javascript: abgelehnt", ex.code == "http")
     ctl(loginlink="")
 
+    # --- SAGA_RESTORE_TEST: Lesen vom Backup-Ziel bleibt erlaubt (holen, restore, pruefen), Schreiben/Loeschen nicht ---
+    rtenv = dict(fenv, SAGA_RESTORE_TEST="1")
+    r = subprocess.run([sys.executable, "run.py", "backup-holen", "--liste"], cwd=APP, env=rtenv, capture_output=True, text=True, timeout=120)
+    ok(f"SAGA_RESTORE_TEST: run.py backup-holen --liste liest das Ziel (WebDAV) {r.stderr.strip()[-120:]}",
+       r.returncode == 0 and good_name in r.stdout)
+    r = subprocess.run([sys.executable, "run.py", "restore", "--schluessel", k1, good_name], cwd=APP, env=rtenv,
+                       capture_output=True, text=True, timeout=900)
+    ok(f"SAGA_RESTORE_TEST: run.py restore --schluessel holt aus dem Ziel ({r.returncode}) {(r.stdout + r.stderr).strip()[-200:]}",
+       r.returncode == 0 and q("SELECT count(*) FROM note WHERE body = %s", (MARK,), url=FRESH_URL)[0][0] == 1)
+    WRITE_PROBE = ("from saga import backups, netguard\n"
+                   "d = backups.cli_dav()\n"
+                   "for n, fn in (('put', lambda: d.put_bytes(b'x', d.url('rt-probe.bin'))), ('mkdir', lambda: d.mkdir(d.url('rt-probe'))),\n"
+                   "              ('delete', lambda: d.delete(d.url('saga-19990101-000000'))),\n"
+                   "              ('delete_run', lambda: d.delete_run('RUN'))):\n"
+                   "    try:\n        fn(); print(n, 'offen')\n"
+                   "    except backups.BackupError as ex:\n        print(n, ex.code)\n"
+                   "print('liste', len(backups.list_runs(d)) > 0)\n"
+                   "try:\n    d.client().get(d.base.replace('127.0.0.1', 'localhost')); print('anderer Host offen')\n"
+                   "except Exception as ex:\n    print('anderer Host', type(ex).__name__)\n"
+                   "t = backups.target(backups.config())\n"
+                   "try:\n    t.listdir(t.url()); print('Ziel ohne restore_ok offen')\n"
+                   "except backups.BackupError as ex:\n    print('Ziel ohne restore_ok', ex.code)\n"
+                   "try:\n    netguard.guarded_client(lambda *a: True, restore_hosts=['127.0.0.1']).get(d.base); print('ohne restore_ok offen')\n"
+                   "except Exception as ex:\n    print('ohne restore_ok', type(ex).__name__)\n")
+    n0 = stats()["puts"]
+    r = subprocess.run([sys.executable, "-c", WRITE_PROBE.replace("RUN", "saga-19990101-000000")], cwd=APP, env=rtenv, capture_output=True, text=True, timeout=120)
+    ok(f"SAGA_RESTORE_TEST: Hochladen/Ordner/Loeschen im Ziel gesperrt, anderer Host und Ziel ohne restore_ok gesperrt"
+       f" ({r.stdout.strip()} {r.stderr.strip()[-200:]})",
+       r.stdout.strip().splitlines() == ["put blocked", "mkdir blocked", "delete blocked", "delete_run blocked", "liste True",
+                                         "anderer Host ConnectError", "Ziel ohne restore_ok blocked", "ohne restore_ok ConnectError"]
+       and stats()["puts"] == n0)
+
     # --- SAGA_RESTORE_TEST: zurueckgespielte Instanz startet ohne ausgehende Verbindungen ---
     with psycopg.connect(FRESH_URL, autocommit=True) as c:
         v = json.loads(c.execute("SELECT v FROM setting WHERE k='backup'").fetchone()[0])
@@ -650,6 +682,26 @@ try:
                            capture_output=True, text=True, timeout=600)
         ok(f"S3: run.py backup-pruefen holt aus S3 und spielt in Wegwerf-Datenbank ({r.returncode}) {(r.stdout + r.stderr).strip()[-160:]}",
            r.returncode == 0 and "Testwiederherstellung in Ordnung" in r.stdout)
+        # SAGA_RESTORE_TEST: aus S3 lesen erlaubt (Liste, restore, pruefen), Hochladen/Loeschen weiter gesperrt
+        s3rt = dict(s3env, SAGA_RESTORE_TEST="1")
+        r = subprocess.run([sys.executable, "run.py", "backup-holen", "--liste"], cwd=APP, env=s3rt, capture_output=True, text=True, timeout=120)
+        ok(f"S3 + SAGA_RESTORE_TEST: backup-holen --liste {r.stderr.strip()[-120:]}", r.returncode == 0 and sname in r.stdout)
+        r = subprocess.run([sys.executable, "run.py", "restore", "--schluessel", k1, sname], cwd=APP, env=s3rt,
+                           capture_output=True, text=True, timeout=900)
+        ok(f"S3 + SAGA_RESTORE_TEST: restore --schluessel aus S3 ({r.returncode}) {(r.stdout + r.stderr).strip()[-200:]}",
+           r.returncode == 0 and "Datenbank zurueckgespielt" in r.stdout)
+        r = subprocess.run([sys.executable, "run.py", "backup-pruefen", "--schluessel", k1, sname], cwd=APP, env=s3rt,
+                           capture_output=True, text=True, timeout=600)
+        ok(f"S3 + SAGA_RESTORE_TEST: backup-pruefen ({r.returncode}) {(r.stdout + r.stderr).strip()[-160:]}",
+           r.returncode == 0 and "Testwiederherstellung in Ordnung" in r.stdout)
+        st0 = s3stats()
+        r = subprocess.run([sys.executable, "-c", WRITE_PROBE.replace("RUN", sname)], cwd=APP, env=s3rt,
+                           capture_output=True, text=True, timeout=120)
+        st1 = s3stats()
+        lines = r.stdout.strip().splitlines()
+        ok(f"S3 + SAGA_RESTORE_TEST: Hochladen/Loeschen gesperrt ({r.stdout.strip()} {r.stderr.strip()[-200:]})",
+           lines[:6] == ["put blocked", "mkdir offen", "delete blocked", "delete_run blocked", "liste True", "anderer Host ConnectError"]
+           and lines[7:] == ["ohne restore_ok ConnectError"] and st1["puts"] == st0["puts"] and st1.get("deletes", 0) == st0.get("deletes", 0))
         os.remove(os.path.join(STATE, "files/ab/gross.bin"))
     finally:
         S3S.shutdown()

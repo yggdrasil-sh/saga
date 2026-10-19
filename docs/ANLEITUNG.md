@@ -1285,7 +1285,9 @@ einem zweiten Server ausprobiert, setzt dort `SAGA_RESTORE_TEST=1` in der `.env`
 Verbindungen zu den Diensten der echten Instanz auf – keine Föderation, keine Mitteilungen, keine Backups (auch kein
 Aufräumen im Ziel, kein Widerruf des Nextcloud-App-Passworts), kein Versionshinweis, kein Kalender-Abgleich, keine KI,
 kein Immich, keine Websuche, keine Avatare von außen. Saga selbst, Anmeldung (auch LDAP/OIDC) und die Statusanzeige
-der Dienste auf der Startseite laufen weiter.
+der Dienste auf der Startseite laufen weiter. Erlaubt bleibt nur das *Lesen* vom eingetragenen Backup-Ziel auf der
+Kommandozeile (`backup-holen`, `restore --schluessel`, `backup-pruefen`): ausschließlich zu dessen Adresse und nur
+lesend (WebDAV GET/PROPFIND, S3 GET/Auflisten) – Hochladen, Löschen und Aufräumen im Ziel bleiben gesperrt.
 
 Arbeitsordner: Während eines Laufs liegen die Teile (vor dem Verschlüsseln kurz auch `db.dump` im Klartext) unter
 `/data/backups/extern-tmp/` – Lauf und `backup-pruefen` je in einem eigenen Unterordner; Reste eines abgebrochenen
@@ -1463,7 +1465,7 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `BACKUP_VERIFY_MB` | `512` | Verschlüsselte Backups (Abschnitt 11): Dateien bis zu dieser Größe nach dem Hochladen ganz erneut herunterladen und vergleichen (größere sonntags) |
 | `BACKUP_CHUNK_MB` / `BACKUP_CHUNK_MIN_MB` | `32` / `10` | Nextcloud: Teilgröße beim Hochladen in Stücken (Chunking v2) und ab welcher Dateigröße |
 | `SAGA_BACKUP_URL` / `SAGA_BACKUP_USER` / `SAGA_BACKUP_PASSWORD` | – | Nur für `run.py backup-holen`/`restore --schluessel` auf einem frischen Server: WebDAV-Adresse des Backup-Ordners und Zugang |
-| `SAGA_RESTORE_TEST` | – | `1` = Testwiederherstellung: keine ausgehenden Verbindungen (Föderation, Mitteilungen, Backups, Versionshinweis) |
+| `SAGA_RESTORE_TEST` | – | `1` = Testwiederherstellung: keine ausgehenden Verbindungen (Föderation, Mitteilungen, Backups, Versionshinweis); nur Lesen vom Backup-Ziel per Kommandozeile erlaubt |
 | `SAGA_UPDATE_CHECK` | `1` | `0` = nie bei GitHub nach neuen Versionen fragen (auch im Admin-Bereich abschaltbar) |
 | `ADMIN_SESSION_HOURS` | `4` | Gültigkeit einer Sitzung im Admin-Bereich |
 | `TIMEZONE` | `Europe/Berlin` | Zeitzone für Exporte |

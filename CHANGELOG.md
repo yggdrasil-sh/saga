@@ -55,6 +55,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **`SAGA_RESTORE_TEST=1`:** Testwiederherstellung auf einem zweiten Server ohne ausgehende Verbindungen zu den Diensten
   der echten Instanz (Föderation, Mitteilungen, Backups, Versionshinweis, Kalender-Abgleich, KI, Immich, Websuche,
   Avatare aus – zentral im SSRF-Schutz `netguard`) – ein zurückgespieltes Backup trägt die Identität der Instanz.
+  Erlaubt bleibt nur das Lesen vom eingetragenen Backup-Ziel auf der Kommandozeile (`backup-holen`, `restore
+  --schluessel`, `backup-pruefen`): nur dessen Host, nur GET/HEAD/PROPFIND; Hochladen, Löschen und Aufräumen bleiben gesperrt.
 - **Arbeitsordner** `/data/backups/extern-tmp/`: Lauf und `backup-pruefen` je in eigenem Unterordner (räumen sich nicht
   mehr gegenseitig weg); Reste abgebrochener Läufe (mit `db.dump` im Klartext) löscht der nächste Start. Die
   PROPFIND-Antwort wird mit Größengrenze gestreamt statt erst ganz geladen.

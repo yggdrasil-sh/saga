@@ -26,7 +26,8 @@
 - Arbeitsordner: <BACKUP_DIR>/extern-tmp/lauf-* (Lauf) und pruefung-* (backup-pruefen) getrennt; Reste mit Klartext
   (db.dump) raeumt der Start auf.
 - Fehler und "seit 48 h kein Erfolg": Benachrichtigung an alle Admins (Glocke + Push, Art backup.failed), optional Webhook.
-- SAGA_RESTORE_TEST=1 (Testwiederherstellung auf einem zweiten Server): kein Zeitplan, keine ausgehenden Verbindungen.
+- SAGA_RESTORE_TEST=1 (Testwiederherstellung auf einem zweiten Server): kein Zeitplan, keine ausgehenden Verbindungen -
+  ausser LESEN vom eingetragenen Ziel auf der Kommandozeile (backup-holen, restore --schluessel, backup-pruefen; cli_dav).
 - Das lokale db.backup()/db.restore() (Backups vor Migrationen, run.py backup/restore) bleibt davon unberuehrt.
 """
 import contextlib
@@ -383,14 +384,17 @@ def _tls():
     return ssl.create_default_context(cafile=CA_FILE) if os.path.isfile(CA_FILE) else ssl.create_default_context()
 
 
-def _client_for(host, timeout=60.0, auth_=None):
-    """host: freigegebener Name (oder mehrere, z. B. S3 path-style + virtual-hosted) - andere nur mit oeffentlicher IP."""
+def _client_for(host, timeout=60.0, auth_=None, restore_ok=False):
+    """host: freigegebener Name (oder mehrere, z. B. S3 path-style + virtual-hosted) - andere nur mit oeffentlicher IP.
+    restore_ok=True nur fuer das Lesen vom Backup-Ziel auf der Kommandozeile (cli_dav): dann bleibt bei SAGA_RESTORE_TEST=1
+    das Lesen (GET/HEAD/PROPFIND) von genau diesen Hosts erlaubt (saga/netguard.py)."""
     hosts = {(h or "").lower() for h in ((host,) if isinstance(host, str) or host is None else host)} - {""}
 
     def ip_ok(ip, h, port):
         return str(h).lower() in hosts or netguard.is_public(ip)
     return netguard.guarded_client(ip_ok, transport_kw={"verify": _tls()}, timeout=httpx.Timeout(timeout, connect=15.0),
-                                   follow_redirects=False, auth=auth_, headers={"User-Agent": UA})
+                                   follow_redirects=False, auth=auth_, headers={"User-Agent": UA},
+                                   restore_ok=restore_ok, restore_hosts=hosts)
 
 
 def _net_call(fn):
@@ -442,10 +446,11 @@ class Dav:
         self.host = (urlparse(self.base).hostname or "").lower()
         self._cl = None
         self.chunked = 0                          # Anzahl Uploads mit Chunking v2 (Tests, Anzeige)
+        self.restore_read = False                 # nur cli_dav: Lesen trotz SAGA_RESTORE_TEST
 
     def client(self):
         if self._cl is None:
-            self._cl = _client_for(self.host, auth_=self.auth)
+            self._cl = _client_for(self.host, auth_=self.auth, restore_ok=self.restore_read)
         return self._cl
 
     def close(self):
@@ -704,10 +709,11 @@ class S3:
         self.root = self.prefix + "/" if self.prefix else ""
         self._cl = None
         self.chunked = 0                          # Anzahl Multipart-Uploads (Tests, Anzeige)
+        self.restore_read = False                 # nur cli_dav: Lesen trotz SAGA_RESTORE_TEST
 
     def client(self):
         if self._cl is None:
-            self._cl = _client_for(self.hosts)
+            self._cl = _client_for(self.hosts, restore_ok=self.restore_read)
         return self._cl
 
     def close(self):
@@ -1741,11 +1747,19 @@ def stop():
 # Kommandozeile: holen, zurueckspielen, pruefen
 # =====================================================================================================
 def cli_dav():
-    """Ziel fuer die Kommandozeile: eingerichtetes Ziel - oder (frischer Stack) per Umgebung:
+    """Ziel fuer die Kommandozeile (nur lesend: backup-holen, restore --schluessel, backup-pruefen): eingerichtetes Ziel -
+    oder (frischer Stack) per Umgebung:
     WebDAV: SAGA_BACKUP_URL (Adresse des Backup-Ordners), SAGA_BACKUP_USER, SAGA_BACKUP_PASSWORD;
     S3: SAGA_BACKUP_S3_ENDPOINT, SAGA_BACKUP_S3_BUCKET, SAGA_BACKUP_S3_ACCESS_KEY, SAGA_BACKUP_S3_SECRET_KEY,
         optional SAGA_BACKUP_S3_REGION, SAGA_BACKUP_S3_PREFIX, SAGA_BACKUP_S3_STYLE (auto|path|virtual);
-    Ordner: SAGA_BACKUP_PATH (unterhalb von SAGA_BACKUP_DIRS)."""
+    Ordner: SAGA_BACKUP_PATH (unterhalb von SAGA_BACKUP_DIRS).
+    Auch mit SAGA_RESTORE_TEST=1 darf dieses Ziel gelesen werden (GET/HEAD/PROPFIND an seinen Host, saga/netguard.py)."""
+    tg = _cli_target()
+    tg.restore_read = True
+    return tg
+
+
+def _cli_target():
     url = E.get("SAGA_BACKUP_URL", "").strip()
     if url:
         return Dav({"mode": "webdav", "url": url, "user": E.get("SAGA_BACKUP_USER", ""), "password": E.get("SAGA_BACKUP_PASSWORD", ""),
