@@ -16,6 +16,38 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Verschlüsselte Backups auf Nextcloud/WebDAV
+
+- **Admin-Bereich → Backups:** tägliches Backup (Uhrzeit wählbar) von Datenbank, Dateien (`files` ohne Vorschaubilder,
+  `chat`, `svc-icons`) und – abschaltbar, Standard an – `SECRET_KEY`/`CAL_SECRET_KEY` auf ein **WebDAV-Ziel**. Nextcloud
+  wird über `/status.php` erkannt: Anmeldung per **Login Flow v2** (gespeichert werden nur Anmeldename und App-Passwort,
+  verschlüsselt wie die anderen Admin-Geheimnisse; „Trennen“ widerruft das App-Passwort), große Dateien mit
+  **Chunking v2**. Sonst Benutzer/Passwort + PUT. Abrufe über den SSRF-Schutz (netguard); die eingetragene Adresse gilt
+  als freigegeben, keine Weiterleitungen.
+- **Verschlüsselung mit age** (Paket `age` im Image) und **öffentlichen Schlüsseln** – Saga kennt den privaten Schlüssel
+  nie. „Schlüsselpaar erzeugen“ zeigt ihn einmal (Text + Download), Bestätigung mit den letzten 6 Zeichen; oder eigenen
+  öffentlichen Schlüssel eintragen (`age1…`, `ssh-ed25519 …`), mehrere Empfänger möglich.
+- Je Lauf ein Ordner `saga-<zeit>/` mit `db.dump.age` (vorher mit `pg_restore --list` geprüft), `dateien.tar.age`,
+  `geheimnisse.env.age`, `manifest.json.age` (Prüfsummen der Klartexte) und zuletzt `manifest.json` (Version, Schema,
+  Größen + SHA-256, Schlüssel-Fingerabdrücke; ohne Namen/Hostnamen). Vor dem Upload Prüfung des freien Platzes, danach
+  Größe + erneutes Herunterladen mit SHA-256-Vergleich (`BACKUP_VERIFY_MB`).
+- **Zeitplan** im Hintergrund: genau ein Läufer je Datenbank (Advisory-Lock), niedrige Priorität (`nice`/`ionice`);
+  **Aufbewahrung GFS** 7 täglich / 4 wöchentlich / 6 monatlich (einstellbar, Läufe der letzten 24 h bleiben immer);
+  unvollständige Läufe werden nach einem Tag entfernt, fremde Ordner im Ziel nie angefasst.
+- **Status und Benachrichtigung:** letzter Erfolg, nächster Lauf, Verlauf, Backups im Ziel mit Fingerabdrücken. Bei
+  Fehlern und nach 48 h ohne Erfolg Benachrichtigung an alle Admins (Glocke + Mitteilung, neue Art `backup.failed`,
+  Push-Kategorie „admin“ nur für Admins), optional Webhook (ntfy, Gotify, beliebige URL).
+- **Kommandozeile:** `run.py backup-extern`, `run.py backup-holen [<lauf>] [--liste]`,
+  `run.py restore --schluessel <datei> [<lauf>|<ordner>]` (holt, prüft, entschlüsselt, spielt Datenbank über das
+  unveränderte `db.restore` sowie Dateien und Geheimnisse zurück; frischer Server: Ziel per `SAGA_BACKUP_URL`/`_USER`/
+  `_PASSWORD`), `run.py backup-pruefen --schluessel <datei>` (Testwiederherstellung in eine Wegwerf-Datenbank).
+  `run.py backup`/`restore <datei>` und die Backups vor Migrationen bleiben unverändert.
+- **`SAGA_RESTORE_TEST=1`:** Testwiederherstellung auf einem zweiten Server ohne ausgehende Verbindungen (Föderation,
+  Mitteilungen, Backups, Versionshinweis aus) – ein zurückgespieltes Backup trägt die Identität der Instanz.
+- Neue Tabelle `backup_run` (Verlauf, per `CREATE TABLE IF NOT EXISTS`, keine Migration). Texte in de/en/es/ru/th.
+  Anleitung: Abschnitt 11 „Verschlüsselte Backups“ (auch Wiederherstellung ohne Saga mit `age -d`).
+- Tests: neue Reihe `backup_extern` gegen ein nachgemachtes Nextcloud/WebDAV (`tests/fakedav.py`).
+
 ### Föderation 2.3
 
 - **Protokoll 2** zwischen verbundenen Saga-Servern: `/.well-known/saga` meldet `protocol: 2` und Fähigkeiten

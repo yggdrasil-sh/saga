@@ -35,6 +35,10 @@ ADMIN_URL = (E.get("ADMIN_URL") or "").rstrip("/")       # Link "Admin-Bereich" 
 PUBLIC_HOSTS = frozenset(h.strip().lower() for h in E.get("PUBLIC_HOSTS", "").split(",") if h.strip())
 CACHE_TTL = int(E.get("CACHE_TTL", "60"))
 STATE_DIR = E.get("STATE_DIR", "/var/lib/saga")
+# Testwiederherstellung auf einem zweiten Server (saga/backups.py): ein zurueckgespieltes Backup IST dieselbe Instanz
+# (Foederations-Schluessel in der Datenbank) - daher keine ausgehenden Verbindungen: Foederation, Push, Backups und
+# Versionshinweis bleiben aus.
+RESTORE_TEST = E.get("SAGA_RESTORE_TEST", "").strip().lower() in ("1", "true", "yes", "on")
 STATUS_INTERVAL = int(E.get("STATUS_INTERVAL", "60"))
 SESSION_HOURS = int(E.get("SESSION_HOURS", "12"))
 CA_FILE = E.get("CA_FILE", "/etc/ssl/certs/ca-certificates.crt")

@@ -32,7 +32,7 @@ _pool_lock = threading.Lock()
 # Tabellen mit Ganzzahl-Schluessel "id" -> INSERT liefert die neue id (cur.lastrowid)
 ID_TABLES = {"task", "note", "note_version", "device_login", "cal_account", "app_token", "users", "groups",
              "service", "bookmark", "note_share", "note_comment", "notification", "chat",
-             "push_sub", "push_queue", "ai_history", "fed_invite", "fed_log", "fed_outbox"}
+             "push_sub", "push_queue", "ai_history", "fed_invite", "fed_log", "fed_outbox", "backup_run"}
 # INSERT OR REPLACE: Konfliktspalten je Tabelle
 UPSERT_KEYS = {"immich_key": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",),
                "note_share": ("note_id", "target_type", "target"), "note_comment_seen": ("uid", "thread_id"),
@@ -708,6 +708,13 @@ DO $$ BEGIN
             FOR EACH ROW EXECUTE FUNCTION saga_note_stale();
     END IF;
 END $$;
+-- Verschluesselte Backups auf ein WebDAV-Ziel (2.3, saga/backups.py): Verlauf der Laeufe (Status im Admin-Bereich).
+-- step/error: JSON {code, p} - der Text entsteht erst beim Anzeigen (Sprache des Admins); detail: Groessen, Name im Ziel
+CREATE TABLE IF NOT EXISTS backup_run (
+    id BIGSERIAL PRIMARY KEY, started DOUBLE PRECISION NOT NULL, finished DOUBLE PRECISION, trigger TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL DEFAULT '', ok INTEGER NOT NULL DEFAULT 0, size BIGINT NOT NULL DEFAULT 0,
+    step TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '{}', error TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS backup_run_started ON backup_run (started);
 -- Bestand (erster Start, Backup von vor 2.2 zurueckgespielt): alles ohne abgeleitete Daten zum Abgleich vormerken
 INSERT INTO note_stale (note_id, uid) SELECT n.id, n.uid FROM note n
  WHERE NOT EXISTS (SELECT 1 FROM note_derived d WHERE d.note_id = n.id) ON CONFLICT (note_id) DO NOTHING;

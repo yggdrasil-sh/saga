@@ -1107,6 +1107,9 @@ Dieselbe Anbindung kann auch die KI nutzen („Websuche erlauben“ unter KI-Ass
 2. das Volume `saga-data` (Bilder und Dateien der Seiten),
 3. die Datei `.env` (vor allem `SECRET_KEY`).
 
+Am einfachsten erledigt das Saga selbst: **verschlüsselte Backups auf Nextcloud oder WebDAV** (Admin-Bereich →
+Backups, siehe unten). Von Hand geht es so:
+
 ```sh
 # Datenbank sichern
 docker compose exec -T db pg_dump -U saga -d saga -Fc > saga-$(date +%F).dump
@@ -1128,6 +1131,90 @@ Die Backups, die Saga selbst anlegt (`/data/backups`, siehe Updates), spielst du
 `python run.py restore` zurück (Abschnitt „Zurück zur vorigen Version“), nicht mit dem `pg_restore` im
 Datenbank-Container: Sie stammen von `pg_dump` 17 aus dem Saga-Image, und `pg_restore` 16 aus `postgres:16`
 meldet dafür „unsupported version (1.16) in file header“.
+
+### Verschlüsselte Backups auf Nextcloud oder WebDAV
+
+Admin-Bereich → **Backups**: Saga sichert jeden Tag (Uhrzeit wählbar) die Datenbank, die Dateien (`/data/files` ohne
+Vorschaubilder, `/data/chat`, `/data/svc-icons`) und auf Wunsch die Schlüssel aus der `.env` (`SECRET_KEY`,
+`CAL_SECRET_KEY`) – verschlüsselt – auf ein WebDAV-Ziel: Nextcloud, ownCloud, eine Storage-Box mit WebDAV …
+Die lokalen Backups vor Updates (`/data/backups`, `run.py backup`/`restore`) bleiben unverändert.
+
+1. **Ziel verbinden.** Bei Nextcloud reicht die Adresse (`https://cloud.example.org`): Saga erkennt Nextcloud, zeigt
+   einen Anmelde-Link, du meldest dich in Nextcloud an und erlaubst den Zugriff (Login Flow v2). Saga speichert nur den
+   Anmeldenamen und ein eigenes **App-Passwort** (verschlüsselt); „Trennen“ widerruft es in Nextcloud. Anderes WebDAV:
+   Adresse des Ordners plus Benutzer und Passwort. Empfehlung: ein **eigenes Nextcloud-Konto** nur für die Backups (ein
+   App-Passwort darf alles, was das Konto darf) mit kurzem Papierkorb und wenigen Versionen – gelöschte alte Backups
+   zählen sonst im Papierkorb weiter zum Speicherplatz. Interne Adressen (Homelab) gehen ohne weitere Freigabe.
+2. **Schlüssel.** Verschlüsselt wird mit [age](https://age-encryption.org) und einem **öffentlichen** Schlüssel. Entweder
+   „Schlüsselpaar erzeugen“: Saga zeigt den privaten Schlüssel genau einmal (Text und Download
+   `saga-backup-<server>.key`) und speichert ihn **nicht** – zur Bestätigung die letzten 6 Zeichen eintippen. Oder einen
+   eigenen öffentlichen Schlüssel eintragen (`age-keygen -o saga-backup.key` auf deinem Rechner, die Zeile
+   `# public key: age1…` übernehmen; auch `ssh-ed25519 …` geht). Mehrere Empfänger sind möglich (z. B. ein Zweitschlüssel
+   im Tresor). Ohne privaten Schlüssel lässt sich kein Backup wiederherstellen – auch nicht von uns.
+3. **Zeitplan und Aufbewahrung.** „Täglich automatisch sichern“, Uhrzeit (Zeitzone `TIMEZONE`), Aufbewahrung
+   „Großvater-Vater-Sohn“: Standard 7 tägliche, 4 wöchentliche, 6 monatliche (je Tag/Woche/Monat der neueste Lauf; Läufe
+   der letzten 24 Stunden bleiben immer). Vor dem Hochladen prüft Saga den freien Platz, danach Größe und Prüfsumme (bis
+   `BACKUP_VERIFY_MB` sofort, größere Dateien sonntags). Große Dateien gehen bei Nextcloud in Stücken (Chunking v2).
+   Der Lauf hat niedrige Priorität (`nice`/`ionice`); laufen mehrere Saga-Prozesse an derselben Datenbank, sichert nur
+   einer.
+4. **Fehler.** Status im Admin-Bereich (letzter Erfolg, nächster Lauf, Verlauf). Schlägt ein Lauf fehl oder gab es seit
+   48 Stunden keinen Erfolg, bekommen alle Admins eine Benachrichtigung (Glocke und, wenn eingerichtet, aufs Handy);
+   optional zusätzlich ein Webhook (ntfy-Topic, Gotify `…/message?token=…` oder beliebige Adresse).
+
+**Was im Ziel liegt** – je Lauf ein Ordner `saga-JJJJMMTT-hhmmss/`:
+
+| Datei | Inhalt |
+|---|---|
+| `db.dump.age` | Datenbank (`pg_dump --format=custom`, vor dem Verschlüsseln mit `pg_restore --list` geprüft) |
+| `dateien.tar.age` | `files/` (ohne `thumbs`), `chat/`, `svc-icons/` |
+| `geheimnisse.env.age` | `SECRET_KEY`, `CAL_SECRET_KEY` (abschaltbar) |
+| `manifest.json.age` | Prüfsummen der unverschlüsselten Inhalte |
+| `manifest.json` | unverschlüsselt, ohne Namen/Hostnamen: Saga-Version, Schema-Stand, Größen und SHA-256 der `.age`-Dateien, Fingerabdrücke der Schlüssel. Wird zuletzt hochgeladen – ein Ordner ohne `manifest.json` ist unvollständig. |
+
+**Wiederherstellen mit Saga** (neuer Server, Stack wie in Abschnitt 2 aufgesetzt):
+
+```sh
+# 1. Geheimnisse lesen und SECRET_KEY / CAL_SECRET_KEY in die .env übernehmen (Datei aus dem Ziel, z. B. per Nextcloud-Client)
+age -d -i saga-backup.key geheimnisse.env.age
+# 2. Saga stoppen, Lauf holen, prüfen, entschlüsseln, Datenbank + Dateien zurückspielen
+docker compose stop saga
+docker compose run --rm -v "$PWD/saga-backup.key:/key:ro" \
+  -e SAGA_BACKUP_URL=https://cloud.example.org/remote.php/dav/files/saga-backup/Saga-Backups \
+  -e SAGA_BACKUP_USER=saga-backup -e SAGA_BACKUP_PASSWORD='app-passwort' \
+  saga python run.py restore --schluessel /key saga-20261019-032000
+docker compose up -d
+```
+
+Ohne Lauf-Namen nimmt Saga den neuesten vollständigen; `run.py backup-holen --liste` zeigt alle. Ist das Ziel im
+Admin-Bereich schon eingerichtet (gleiche Datenbank), entfallen die `SAGA_BACKUP_*`-Angaben. Statt eines Namens geht auch
+ein lokaler Ordner mit dem heruntergeladenen Lauf (unter `/data/…` ablegen). Die Prüfsummen aus `manifest.json`
+vergleicht Saga vor dem Entschlüsseln. Die Datenbank kommt über dasselbe `db.restore` zurück wie `run.py restore` (alles
+oder nichts); die Geheimnisse landen zusätzlich in `/data/backups/<lauf>-geheimnisse.env` (nur für Saga lesbar), und Saga
+warnt, wenn sie von der `.env` abweichen.
+
+**Wiederherstellen ohne Saga** (nur `age` und die PostgreSQL-Werkzeuge; `age` gibt es für Linux, macOS und Windows):
+
+```sh
+cd saga-20261019-032000
+sha256sum db.dump.age dateien.tar.age      # mit manifest.json vergleichen
+age -d -i saga-backup.key db.dump.age > db.dump
+age -d -i saga-backup.key dateien.tar.age | tar -x -C /pfad/zu/data
+age -d -i saga-backup.key geheimnisse.env.age
+pg_restore --list db.dump | head           # Inhalt ansehen; einspielen z. B. mit pg_restore -d ... --clean --if-exists
+```
+
+**Testwiederherstellung.** Einmal im Monat empfohlen (der Admin-Bereich erinnert daran):
+
+```sh
+docker compose run --rm -v "$PWD/saga-backup.key:/key:ro" saga python run.py backup-pruefen --schluessel /key
+```
+
+holt den neuesten Lauf, vergleicht die Prüfsummen, entschlüsselt alles, spielt die Datenbank in eine
+**Wegwerf-Datenbank** ein (danach gelöscht) und prüft das Datei-Archiv – die echte Datenbank bleibt unberührt.
+
+**Achtung, Identität:** Ein zurückgespieltes Backup *ist* die Instanz – samt Föderations-Schlüssel. Wer ein Backup auf
+einem zweiten Server ausprobiert, setzt dort `SAGA_RESTORE_TEST=1` in der `.env`: Dann baut Saga keine ausgehenden
+Verbindungen auf (keine Föderation, keine Mitteilungen, keine Backups, kein Versionshinweis).
 
 ### Updates
 
@@ -1298,6 +1385,10 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `PASSKEY_RP_ID` | Rechnername aus `BASE_URL` | Domain der Passkeys; nur setzen, wenn sie für eine übergeordnete Domain gelten sollen (z. B. `example.org`) |
 | `SAGA_VERSION` | `2` | Welche Version `docker compose pull` holt: `2`, `2.1`, `2.1.0` oder `testing` (Abschnitt 11) |
 | `BACKUP_KEEP` | `10` | So viele automatische/manuelle Backups bleiben in `/data/backups` |
+| `BACKUP_VERIFY_MB` | `512` | Verschlüsselte Backups (Abschnitt 11): Dateien bis zu dieser Größe nach dem Hochladen ganz erneut herunterladen und vergleichen (größere sonntags) |
+| `BACKUP_CHUNK_MB` / `BACKUP_CHUNK_MIN_MB` | `32` / `10` | Nextcloud: Teilgröße beim Hochladen in Stücken (Chunking v2) und ab welcher Dateigröße |
+| `SAGA_BACKUP_URL` / `SAGA_BACKUP_USER` / `SAGA_BACKUP_PASSWORD` | – | Nur für `run.py backup-holen`/`restore --schluessel` auf einem frischen Server: WebDAV-Adresse des Backup-Ordners und Zugang |
+| `SAGA_RESTORE_TEST` | – | `1` = Testwiederherstellung: keine ausgehenden Verbindungen (Föderation, Mitteilungen, Backups, Versionshinweis) |
 | `SAGA_UPDATE_CHECK` | `1` | `0` = nie bei GitHub nach neuen Versionen fragen (auch im Admin-Bereich abschaltbar) |
 | `ADMIN_SESSION_HOURS` | `4` | Gültigkeit einer Sitzung im Admin-Bereich |
 | `TIMEZONE` | `Europe/Berlin` | Zeitzone für Exporte |
