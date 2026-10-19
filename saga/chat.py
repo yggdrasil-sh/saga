@@ -24,6 +24,7 @@ Arten: dm (zwei Konten), group (Saga-Gruppe: Mitglieder = Gruppe), free (freie G
 als Nachricht kind='title'), page (alle mit Zugriff auf die Seite laut sharing.Access). Mitglieder von group/page werden bei
 jedem Zugriff abgeglichen; neue Nachrichten gehen nur an aktuelle Mitglieder (Senden verlangt genau deren Geraete)."""
 import base64
+import asyncio
 import binascii
 import contextvars
 import hashlib
@@ -34,11 +35,11 @@ import secrets
 import struct
 import time
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 import auth
 from db import connect as _db
 from saga import avatars, bus, mfa, notify, sharing
-from saga.core import (ADMIN_URL, ASSET_V, E, SEC_HEADERS, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
+from saga.core import (ADMIN_URL, ASSET_V, E, MEDIA_FRONT, MEDIA_KEY, SEC_HEADERS, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
                        tmpl, user_info)
 from saga.notes import FILE_MAX, note_chain
 from saga.sharing import REMOTE_TYPES, Access, enabled as share_enabled, group_scope, groups_of, names
@@ -68,6 +69,18 @@ _FID = re.compile(r"[A-Za-z0-9_-]{22,40}")
 _hits = {}                             # (art, uid) -> [zeiten] fuer Tipp-/Upload-/Such-Bremsen
 # 2.3: Chats ueber Servergrenzen (saga.fed_chat setzt sich hier ein - kein zyklischer Import). Chats mit v=2 laufen dort.
 FED = None
+# Medienpfad (2.4): Anhaenge sollen nicht durch Python laufen. Im Container steht saga-media (media/, Go) vor uvicorn,
+# liefert GET/HEAD /api/chat/files/{fid} selbst aus und fragt hier nur die Berechtigung ab (/internal/media/authz, mit
+# dem Geheimnis SAGA_MEDIA_KEY, das saga-media beim Start erzeugt). Ohne saga-media: MEDIA_ACCEL=nginx|caddy (der Reverse
+# Proxy liefert per X-Accel-Redirect aus) oder Python selbst mit Grenze fuer gleichzeitige Stroeme (MEDIA_PY_STREAMS).
+MEDIA_ACCEL = (E.get("MEDIA_ACCEL") or "off").strip().lower()
+if MEDIA_ACCEL not in ("nginx", "caddy"):
+    MEDIA_ACCEL = "off"
+# Pfad im X-Accel-Redirect: nginx eine internal-location (Standard /_saga_media/), Caddy direkt die Datei unter root
+MEDIA_ACCEL_PREFIX = ("/" + (E.get("MEDIA_ACCEL_PREFIX") or ("/" if MEDIA_ACCEL == "caddy" else "/_saga_media/")).strip("/") + "/").replace("//", "/")
+MEDIA_PY_STREAMS = max(1, int(E.get("MEDIA_PY_STREAMS", "4") or 4))
+MEDIA_AUTHZ_TTL = 60                   # saga-media merkt sich eine Erlaubnis hoechstens so lange (Entzug wirkt danach)
+_py_streams = {"sem": None}
 # Kann der anfragende Client saga-chat/v2 (Kopfzeile X-Saga-Chat: 2)? Aeltere Apps sehen foederierte Chats nur mit Hinweis.
 V2_CLIENT = contextvars.ContextVar("saga_chat_v2", default=False)
 
@@ -1633,38 +1646,106 @@ async def api_file_up(cid: int, request: Request):
     return _no_store({"id": fid, "size": len(data)})
 
 
-@router.get("/api/chat/files/{fid}")
-def api_file_get(fid: str, request: Request):
+def _file_access(fid, request):
+    """Darf der Anfragende den Anhang holen? -> (fehler-antwort, None, 0) oder (None, Cache-Control, Sekunden bis zum Ablauf).
+    Gemeinsam fuer den Abruf hier und die Abfrage von saga-media. Liegt der Anhang bei einem anderen Server (2.3),
+    wird er jetzt geholt (Zwischenkopie)."""
     uid = _api_guard(request)
     if not uid:
-        return _bad("unauthorized", 401)
+        return _bad("unauthorized", 401), None, 0
     if not enabled() or not _FID.fullmatch(fid):
-        return _bad("not found", 404)
+        return _bad("not found", 404), None, 0
+    left = MEDIA_AUTHZ_TTL
     with _db() as c:
         r = c.execute("SELECT f.chat_id, f.uid, f.msg_seq FROM chat_file f WHERE f.id=?", (fid,)).fetchone()
         if not r or not _member(c, r[0], uid) or (r[2] is None and r[1] != uid):
-            return _bad("not found", 404)
+            return _bad("not found", 404), None, 0
         cache = "private, no-store"                   # noch keiner Nachricht zugeordnet (eigener Upload): nicht zwischenspeichern
         if r[2] is not None:
             x = c.execute("SELECT expires_at, kind FROM chat_msg WHERE seq=? AND (expires_at IS NULL OR expires_at>?)", (r[2], time.time())).fetchone()
             if not x or (x[1] != "title" and r[2] <= _pref(c, r[0], uid)["cleared_seq"]):    # (2.1) "fuer mich geloescht"
-                return _bad("not found", 404)
+                return _bad("not found", 404), None, 0
             # Ciphertext unter dieser Kennung aendert sich nie (Schluessel nur in der verschluesselten Nachricht):
             # privat und unveraenderlich zwischenspeichern, hoechstens bis zum Ablauf der Nachricht (2.1, Chat-Bilder)
             age = int(min(FILE_CACHE_MAX, (x[0] - time.time()) if x[0] else FILE_CACHE_MAX))
             if age > 0:
                 cache = f"private, max-age={age}, immutable"
+            if x[0]:
+                left = max(0, min(left, int(x[0] - time.time())))
     path = os.path.join(CHAT_DIR, fid)
     if FED is not None:
         if not os.path.isfile(path):
             FED.fetch_file(fid)                       # 2.3: Anhang liegt beim Absender-Server - jetzt holen (Zwischenkopie)
         else:
             FED.touch(fid)                            # zuletzt benutzt (Zwischenkopien werden je Instanz begrenzt)
-    if not os.path.isfile(path):
+    if not os.path.isfile(path) or os.path.islink(path):    # nur echte Dateien im Blob-Verzeichnis (wie saga-media)
+        return _bad("not found", 404), None, 0
+    return None, cache, left
+
+
+def _file_headers(cache, fid):
+    return {"Cache-Control": cache, "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox; default-src 'none'",
+            "Content-Disposition": "attachment", "ETag": f'"{fid}"'}
+
+
+def _inm_match(request, fid):
+    inm = request.headers.get("if-none-match") or ""
+    return any(p.strip() == "*" or p.strip().removeprefix("W/") == f'"{fid}"' for p in inm.split(",")) if inm else False
+
+
+class _PyFile(FileResponse):
+    """Ausliefern durch Python (ohne saga-media und ohne MEDIA_ACCEL): hoechstens MEDIA_PY_STREAMS gleichzeitig, weitere
+    warten bis zu 30 s (Galerien mit vielen Bildern), danach 503."""
+
+    async def __call__(self, scope, receive, send):
+        sem = _py_streams["sem"]
+        if sem is None:
+            sem = _py_streams["sem"] = asyncio.Semaphore(MEDIA_PY_STREAMS)
+        try:
+            await asyncio.wait_for(sem.acquire(), 30)
+        except asyncio.TimeoutError:
+            await Response("busy", 503, headers={"Retry-After": "2", "Cache-Control": "no-store"})(scope, receive, send)
+            return
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            sem.release()
+
+
+def media_mode():
+    """-> (art, grenze) fuer den Admin-Bereich: saga-media | nginx | caddy | python."""
+    if MEDIA_FRONT:
+        return "saga-media", 0
+    if MEDIA_ACCEL != "off":
+        return MEDIA_ACCEL, 0
+    return "python", MEDIA_PY_STREAMS
+
+
+@router.api_route("/api/chat/files/{fid}", methods=["GET", "HEAD"])
+def api_file_get(fid: str, request: Request):
+    err, cache, _ = _file_access(fid, request)
+    if err:
+        return err
+    h = _file_headers(cache, fid)
+    if _inm_match(request, fid):
+        return Response(status_code=304, headers={"Cache-Control": cache, "ETag": h["ETag"]})
+    if MEDIA_ACCEL != "off":
+        # Reverse Proxy liefert die Datei selbst (nginx: internal-location, Caddy: handle_response) - siehe Anleitung
+        return Response(status_code=200, media_type="application/octet-stream",
+                        headers=dict(h, **{"X-Accel-Redirect": MEDIA_ACCEL_PREFIX + fid, "Accept-Ranges": "bytes"}))
+    return _PyFile(os.path.join(CHAT_DIR, fid), media_type="application/octet-stream", headers=h)
+
+
+@router.get("/internal/media/authz")
+def api_media_authz(request: Request, fid: str = ""):
+    """Nur fuer saga-media (gleicher Container, Geheimnis im Kopf; von aussen sperrt saga-media /internal/). Prueft genau
+    wie der Abruf - die Anfrage traegt Cookie/Authorization/X-Saga/Host des Clients. Kein Inhalt, nur die Entscheidung."""
+    if not MEDIA_KEY or not secrets.compare_digest(request.headers.get("x-saga-media-key", ""), MEDIA_KEY):
         return _bad("not found", 404)
-    return FileResponse(path, media_type="application/octet-stream",
-                        headers={"Cache-Control": cache, "X-Content-Type-Options": "nosniff",
-                                 "Content-Security-Policy": "sandbox; default-src 'none'", "Content-Disposition": "attachment"})
+    err, cache, left = _file_access(fid, request)
+    if err:
+        return err
+    return _no_store({"ok": True, "ttl": left, "headers": _file_headers(cache, fid)})
 
 
 # --- Aufraeumen, Kontoloeschung ---------------------------------------------------------------------------------

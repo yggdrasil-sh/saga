@@ -80,7 +80,7 @@ try:
     ok("404 bleibt JSON", s == 404 and json.loads(plain) is not None)
     # zu grosse Anfrage: 413 weiterhin (BodyLimit vor gzip)
     c = http.client.HTTPConnection(U.hostname, U.port, timeout=20)      # nur Kopfzeilen: Server lehnt sofort ab
-    c.putrequest("POST", "/api/notes"); c.putheader("Host", HOST); c.putheader("Cookie", "saga=" + A); c.putheader("X-Saga", "1")
+    c.putrequest("POST", "/api/notes", skip_host=True); c.putheader("Host", HOST); c.putheader("Cookie", "saga=" + A); c.putheader("X-Saga", "1")
     c.putheader("Accept-Encoding", "gzip"); c.putheader("Content-Type", "application/json"); c.putheader("Content-Length", str(3 * 1024 * 1024))
     c.endheaders(); r = c.getresponse(); body = r.read(); c.close()
     ok("Zu grosse Anfrage: weiterhin 413 (JSON)", r.status == 413 and b"too large" in body)

@@ -10,7 +10,7 @@ import auth
 from db import clean_line, connect as _db
 from fastapi import APIRouter
 from saga import avatars, i18n, mfa
-from saga.core import (ADMIN_URL, ASSET_V, BASE_URL, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, lang_switch_response,
+from saga.core import (ADMIN_URL, ASSET_V, BASE_URL, MEDIA_FRONT, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, lang_switch_response,
                        set_user_lang, t, title, tmpl, user_info, user_lang)
 from saga.dashboard import source_label
 
@@ -33,8 +33,11 @@ PROXY_WARN = {"at": 0.0, "ip": ""}      # zuletzt erkannter, nicht vertrauter Re
 
 def _ip(request):
     ip = (request.client.host if request.client else "") or "?"
-    if request.headers.get("x-forwarded-for"):
-        _check_proxy(ip, request.headers["x-forwarded-for"])
+    # hinter saga-media (2.4) kommt der vom nicht vertrauten Proxy mitgeschickte X-Forwarded-For in X-Saga-Orig-For
+    # (saga-media setzt den Kopf immer selbst; X-Forwarded-For enthaelt dort nur noch den ermittelten Client)
+    xff = request.headers.get("x-saga-orig-for") if MEDIA_FRONT else request.headers.get("x-forwarded-for")
+    if xff:
+        _check_proxy(ip, xff)
     return ip
 
 

@@ -50,6 +50,10 @@ try:                                   # Zeitzone fuer serverseitig formatierte 
     TZ = ZoneInfo(E.get("TIMEZONE", "Europe/Berlin"))
 except Exception:
     TZ = timezone.utc
+# Medienpfad (2.4): saga-media (media/, Go) steht vor uvicorn und setzt beim Start SAGA_MEDIA_KEY (Geheimnis fuer
+# /internal/media/authz, saga/chat.py) und SAGA_INTERNAL_PORT. Das Geheimnis nicht an Kindprozesse weitergeben.
+MEDIA_KEY = E.pop("SAGA_MEDIA_KEY", "")
+MEDIA_FRONT = bool(MEDIA_KEY and E.get("SAGA_INTERNAL_PORT"))
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # Repo-/App-Verzeichnis (static/, templates/), nicht saga/
 
 

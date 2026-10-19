@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import clean_line, connect as _db
-from saga import ai, avatars, backups, calls, federation, i18n, live, mfa, publish, push, sharing, userbackup
+from saga import ai, avatars, backups, calls, chat, federation, i18n, live, mfa, publish, push, sharing, userbackup
 from saga.core import RESTORE_TEST, TZ, BodyLimit, LangMiddleware, install_lang_ui, lang_switch_response
 from saga.i18n import t
 from version import REPO, VERSION, VERSION_LABEL, channel, newer
@@ -393,7 +393,7 @@ def home(request: Request):
                  "pages": n("SELECT COUNT(*) FROM note WHERE deleted_at IS NULL")}
         recent = c.execute("SELECT username, display_name, source, last_login FROM users WHERE last_login IS NOT NULL "
                            "ORDER BY last_login DESC LIMIT 8").fetchall()
-    return _page(request, "home.html", me, stats=stats, st=auth.settings(fresh=True), recent=recent)
+    return _page(request, "home.html", me, stats=stats, st=auth.settings(fresh=True), recent=recent, media=chat.media_mode())
 
 
 # --- Benutzer -------------------------------------------------------------------------------------

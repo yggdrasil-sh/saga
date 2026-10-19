@@ -22,21 +22,34 @@ class _HideSecrets(logging.Filter):
                 record.args = tuple(a)
             elif record.args[2].startswith("/api/calls"):
                 record.args = ("-",) + tuple(record.args[1:])
+            elif record.args[2].startswith("/internal/media/"):     # Berechtigungsabfrage von saga-media (eigene Zeile dort)
+                return False
         return True
 
 
-def _config(app, host, port, lifespan):
+def _config(app, host, port, lifespan, behind_media=False):
     # timeout_graceful_shutdown: offene Live-Verbindungen (SSE) halten das Beenden sonst beliebig lange auf
-    return uvicorn.Config(app, host=host, port=port, proxy_headers=True, lifespan=lifespan,
-                          forwarded_allow_ips=os.environ.get("TRUSTED_PROXIES", "127.0.0.1"),
-                          server_header=False, log_level=os.environ.get("LOG_LEVEL", "info"), timeout_graceful_shutdown=5)
+    trusted = os.environ.get("TRUSTED_PROXIES", "127.0.0.1")
+    extra = {}
+    if behind_media:
+        # Hinter saga-media (2.4, media/): es haengt die echte Gegenstelle an X-Forwarded-For an und laesst
+        # X-Forwarded-Proto nur von vertrauten Proxys durch - uvicorn vertraut daher zusaetzlich 127.0.0.1 (nur saga-media
+        # erreicht diesen Port) und ermittelt den Client wie bisher. Keep-Alive laenger als bei saga-media (30 s).
+        trusted = (trusted + ",127.0.0.1") if trusted.strip() != "*" else trusted
+        extra["timeout_keep_alive"] = 75
+    return uvicorn.Config(app, host=host, port=port, proxy_headers=True, lifespan=lifespan, forwarded_allow_ips=trusted,
+                          server_header=False, log_level=os.environ.get("LOG_LEVEL", "info"), timeout_graceful_shutdown=5, **extra)
 
 
 async def main():
     import app as hk          # prueft die Konfiguration (BASE_URL, SECRET_KEY ...)
     import admin
 
-    servers = [uvicorn.Server(_config(hk.app, os.environ.get("HOST", "0.0.0.0"), int(os.environ.get("PORT", "8080")), "on"))]
+    internal = os.environ.get("SAGA_INTERNAL_PORT", "")     # von saga-media gesetzt: nur intern lauschen, saga-media hat PORT
+    if internal:
+        servers = [uvicorn.Server(_config(hk.app, "127.0.0.1", int(internal), "on", behind_media=True))]
+    else:
+        servers = [uvicorn.Server(_config(hk.app, os.environ.get("HOST", "0.0.0.0"), int(os.environ.get("PORT", "8080")), "on"))]
     if os.environ.get("ADMIN_PORT", "8081") not in ("", "0", "off"):
         servers.append(uvicorn.Server(_config(admin.admin, os.environ.get("ADMIN_HOST", "0.0.0.0"),
                                               int(os.environ.get("ADMIN_PORT", "8081")), "off")))
