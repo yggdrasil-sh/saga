@@ -786,6 +786,7 @@
  "Filter bearbeiten …": "Edit filters …",
  "Filter entfernen": "Remove filter",
  "Filter hinzufügen": "Add filter",
+ "Filter oder Sortierung lässt sich nicht auswerten.": "The filter or sort order can't be evaluated.",
  "Filter und Attribute der Vorlage übernehmen (und speichern)?": "Apply the preset's filters and attributes (and save)?",
  "Filtern …": "Filter …",
  "Fingerprint": "Fingerprint",

@@ -153,6 +153,11 @@ def bench_read():
     measure(f"GET /rows groesste DB ({I['db_big_rows']} Zeilen)", "GET", f"/api/notes/{I['db_big']}/rows", a)
     measure("GET /rows groesste DB als B (geteilt)", "GET", f"/api/notes/{I['db_big']}/rows", b)
     measure(f"GET /rows mittlere DB ({I['db_mid_rows']} Zeilen)", "GET", f"/api/notes/{I['db_mid']}/rows", a)
+    # 2.2 opt-in: nur eine Seite (SQL) bzw. Ansicht "Offen" (Filter, serverseitig wie im Web) + Seite
+    measure("GET /rows groesste DB: Seite limit=100", "GET", f"/api/notes/{I['db_big']}/rows?limit=100&offset=100", a)
+    measure("GET /rows groesste DB: Ansicht Offen + Suche, limit=100", "GET",
+            f"/api/notes/{I['db_big']}/rows?view=offen&q=server&limit=100&tz=Europe%2FBerlin", a)
+    measure("GET /rows groesste DB: Ansicht Offen, limit=100 (als B)", "GET", f"/api/notes/{I['db_big']}/rows?view=offen&limit=100", b)
     measure("POST /api/notes/search Treffer (\"projekt\")", "POST", "/api/notes/search", a, {"q": "projekt"})
     measure("POST /api/notes/search ohne Treffer", "POST", "/api/notes/search", a, {"q": "zzkeintrefferzz"})
     measure("POST /api/notes/search Schlagwort", "POST", "/api/notes/search", a, {"tag": "kunde"})
@@ -178,6 +183,8 @@ def bench_read():
     if tok:
         measure("GET /api/app/pages (Widget-Auswahl)", "GET", "/api/app/pages", bearer=tok)
         measure("GET /api/app/rows groesste DB (Widget)", "GET", f"/api/app/rows/{I['db_big']}", bearer=tok)
+        measure("GET /api/app/rows groesste DB: Widget Ansicht Offen, limit=8", "GET",
+                f"/api/app/rows/{I['db_big']}?view=offen&limit=8&tz=Europe%2FBerlin", bearer=tok)
         measure("GET /api/app/today (Widget)", "GET", "/api/app/today", bearer=tok)
         req("DELETE", f"/api/settings/tokens/{d['id']}", a)
 

@@ -786,6 +786,7 @@
  "Filter bearbeiten …": "แก้ไขตัวกรอง …",
  "Filter entfernen": "ลบตัวกรอง",
  "Filter hinzufügen": "เพิ่มตัวกรอง",
+ "Filter oder Sortierung lässt sich nicht auswerten.": "ไม่สามารถใช้ตัวกรองหรือการเรียงลำดับได้",
  "Filter und Attribute der Vorlage übernehmen (und speichern)?": "ใช้ตัวกรองและแอตทริบิวต์จากค่าที่กำหนดไว้ (และบันทึก) หรือไม่",
  "Filtern …": "กรอง …",
  "Fingerprint": "ลายนิ้วมือ",
