@@ -33,6 +33,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Anrufe: saga-call v3“ (Föderation: `APP-API-FED.md` §7.1).
 - **Messung:** `tools/perf/bench.py` misst die Anruf-Signalisierung, `tests/browser_calls.js` den Anrufaufbau.
 
+### Behoben
+
+- **Chats über Servergrenzen: eigene Nachricht blieb auf „⏳ wird zugestellt“.** Liegt der Direkt-Chat auf dem anderen
+  Server (Heim), legt der eigene Server die Nachricht zuerst als ausstehend an und meldet sie sofort an die Geräte. Bestätigte
+  das Heim gleich, kam dafür kein Live-Ereignis mehr – Web und Apps zeigten die längst zugestellte Nachricht bis zum
+  Neuladen als ausstehend. Der Server meldet die Bestätigung jetzt (ebenso „nicht zugestellt“ und eine wegen geänderter
+  Empfänger verworfene Kopie); die Weboberfläche übernimmt zusätzlich die Bestätigung aus der Antwort beim Senden.
+
 ## [2.3.0] – 2026-10-19
 
 Saga 2.3 ist das große Herbst-Update: spürbar schneller bei vielen Seiten und großen Datenbanken, Föderation mit

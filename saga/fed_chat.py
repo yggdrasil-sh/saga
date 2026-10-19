@@ -807,7 +807,7 @@ def apply_msg(c, peer, ch, ev, jump=False):
         # abgelehnt/gesperrt: verwerfen - kein Speichern, kein Vorababruf, kein Ereignis. fseq bleibt stehen: nimmt die Person
         # spaeter doch an, holt ihr Server den Verlauf beim Heim (fill_gap); bis dahin keine Lueckensuche
         return "declined"
-    old = c.execute("SELECT seq, chat_id, sig, fseq FROM chat_msg WHERE id=?", (m["id"],)).fetchone()
+    old = c.execute("SELECT seq, chat_id, sig, fseq, fstate FROM chat_msg WHERE id=?", (m["id"],)).fetchone()
     if old:
         if old[1] != ch["id"] or old[2] != m["sig"]:
             F.log(c, "chat.replay", peer, m["id"][:8], throttle=(peer["id"], "replay"))
@@ -817,7 +817,7 @@ def apply_msg(c, peer, ch, ev, jump=False):
         c.execute("UPDATE chat_msg SET fseq=?, fstate=NULL WHERE seq=?", (fseq, old[0]))
         c.execute("UPDATE chat SET fseq=GREATEST(fseq, ?) WHERE id=?", (fseq, ch["id"]))
         ch["fseq"] = max(ch["fseq"], fseq)
-        if old[3] is None:                                   # aus der Warteschlange bestaetigt: Anzeige auffrischen
+        if old[3] is None or old[4]:                         # bisher ausstehend (bzw. nicht zugestellt): Anzeige auffrischen
             chat._direct(c, local_members(c, ch["id"]), "chat.message", {"chat_id": ch["id"], "seq": old[0], "id": m["id"], "sender": sender})
         return "dup"
     if fseq <= ch["fseq"]:
@@ -1415,19 +1415,27 @@ def send(uid, cid, b):
     status, d = to_home(ch, {"op": "send", "ref": ch["ref"], "msg": m, "keys": keys, "files": files, "sender_keys": mine})
     with _db() as c, c:
         if status == 200:
-            c.execute("UPDATE chat_msg SET fseq=COALESCE(fseq, ?), fstate=NULL WHERE seq=?", (d.get("fseq"), seq))
+            # Die Nachricht wurde oben schon als 'pending' gemeldet (deliver -> chat.message): Apps haben sie mit "wird
+            # zugestellt" geladen. Bestaetigung wie aus der Warteschlange als Ereignis melden - sonst bleibt die Anzeige haengen
+            # (kam die Bestaetigung ueber den Fan-out des Heims schon an, hat apply_msg das bereits erledigt).
+            if c.execute("UPDATE chat_msg SET fseq=COALESCE(fseq, ?), fstate=NULL WHERE seq=? AND fstate IS NOT NULL RETURNING seq",
+                         (d.get("fseq"), seq)).fetchone():
+                chat._direct(c, local_members(c, ch["id"]), "chat.message", {"chat_id": ch["id"], "seq": seq, "id": m["id"], "sender": uid})
             out["fseq"] = d.get("fseq")
         elif status is None:
             out["pending"] = True
         elif status == 409 and d.get("error") == "recipients":
             c.execute("DELETE FROM chat_msg WHERE seq=?", (seq,))
             c.execute("UPDATE chat_file SET msg_seq=NULL WHERE msg_seq=?", (seq,))
+            # schon gemeldet (deliver): wieder entfernen - die App versiegelt neu und sendet unter neuer Kennung
+            chat._direct(c, local_members(c, ch["id"]), "chat.deleted", {"chat_id": ch["id"], "id": m["id"], "seq": seq})
             if ai_ref:
                 c.execute("UPDATE chat_ai_reply SET msg_id=NULL WHERE id=?", (ai_ref,))
             return chat._no_store({"error": t("Die Mitglieder oder ihre Geräte haben sich geändert – bitte erneut senden."),
                                    "handles": handles, "fresh": True}, 409)
         else:
             c.execute("UPDATE chat_msg SET fstate='failed' WHERE seq=?", (seq,))
+            chat._direct(c, [uid], "chat.message", {"chat_id": ch["id"], "seq": seq, "id": m["id"], "sender": uid, "failed": True})
             if status == 404:
                 c.execute("UPDATE chat SET fstate='old', dm_key=NULL WHERE id=? AND fstate=''", (ch["id"],))
                 chat._changed(c, ch["id"], [uid])

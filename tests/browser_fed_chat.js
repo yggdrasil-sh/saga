@@ -81,6 +81,8 @@ const st = (p) => p.evaluate(() => window.HKCalls && window.HKCalls.state());
     await pb.fill('#ct-input', 'Hallo zurück aus B'); await pb.press('#ct-input', 'Enter');
     ok('A: Antwort angekommen, Echtheit bestaetigt', await until(async () => (await texts(pa)).includes('Hallo zurück aus B'), 20000)
       && !(await pa.$('#ct-msgs .ct-unverified')), await texts(pa));
+    // Heim = A: die eigene Antwort darf bei B nicht auf "wird zugestellt" (⏳) haengen bleiben (Fehler 2.3.0)
+    ok('B: eigene Antwort zugestellt (kein ⏳)', await until(async () => (await texts(pb)).includes('Hallo zurück aus B') && !(await pb.$('#ct-msgs .ct-pend')), 10000));
     // --- Sicherheitsnummer v2 auf beiden Seiten gleich, "ueberprueft" --------------------------------------------------------
     async function safetyOf(p) {
       await p.click('#ct-more'); await p.click('button.menu-item:has-text("Sicherheitsnummer")');
