@@ -123,8 +123,8 @@ try:
     # Seitenbaum-Abgleich (2.2): Stand nach dem Zurueckspielen weg, naechster Start legt ihn mit neuer Kennung an
     ep1 = q("SELECT v FROM note_tseq_meta WHERE k='epoch'")
     trg = q("SELECT count(*) FROM pg_trigger WHERE tgname = 'note_tseq_t'")[0][0]
-    ok("Abgleich-Stand: nach Zurueckspielen weg, naechster Start legt ihn an (Kennung, Trigger)",
-       ep0 == (None, None) and ep1 and trg == 1, (ep0, ep1, trg))
+    ok(f"Abgleich-Stand: nach Zurueckspielen weg, naechster Start legt ihn an (Kennung, Trigger) {ep0} {len(ep1)} {trg}",
+       ep0 == (None, None) and len(ep1) == 1 and trg == 1)
 
     # Kommandozeile wie in der Anleitung (python run.py restore <datei>)
     import subprocess
