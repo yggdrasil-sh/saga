@@ -63,8 +63,11 @@ private space – no cloud, no subscription, on your own server.
   you choose (e.g. Ollama on your own network). Only content you may see, sources linked, suggestions only, off by default.
   With its own name, picture and tone of voice; optionally **in chats on request only** (@name, everything else stays
   encrypted) and with **web search** through your own SearXNG instance (sources linked) – both off by default
-- **Federation:** connect Saga servers and share pages with name@server – content stays with the owner, every
-  request between servers is signed (Ed25519, HTTP Message Signatures)
+- **Federation:** connect Saga servers – share pages with people and groups there (including databases, subpages,
+  uploads, versions, export and live presence), find people by name in the shared address book (opt-out per account),
+  end-to-end encrypted direct chats, group and page chats and calls across servers, with message requests and blocking.
+  Content stays with its owner, every request between servers is signed (Ed25519, HTTP Message Signatures), and a
+  misbehaving server is contained (checks, rate limits per server, audit log)
 - **Tasks** with due dates, priorities and recurrence
 - **Calendars (CalDAV):** view and edit Nextcloud, mailcow/SOGo, Radicale, iCloud …
 - **Immich:** use your own photos as images and cover images

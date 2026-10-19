@@ -18,108 +18,112 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ### Föderation 2.3
 
-- **Protokoll 2** zwischen verbundenen Saga-Servern: `/.well-known/saga` meldet `protocol: 2` und Fähigkeiten
-  (`v2 express handles directory keys`); beide Seiten handeln sie signiert aus (`POST /fed/v2/hello`). Eine Funktion gilt
-  nur, wenn beide sie können und der Admin-Schalter an ist. Server mit 2.1/2.2 bleiben verbunden wie bisher (Protokoll 1).
-- **Express-Zustellung:** Ereignisse an andere Server gehen sofort raus (eigener Thread-Pool, harte Frist
-  `FED_EXPRESS_TIMEOUT`, Standard 5 s); scheitert das, übernimmt der Ausgangskorb. Neu: Ereignisse mit Kennung
-  (beim Empfänger höchstens einmal verarbeitet) und **Reihenfolge je Kette** – eine wartende ältere Nachricht hält die
-  Kette an, Lücken werden protokolliert.
-- **Admin-Schalter je verbundenem Server** (Admin → Föderation → „Funktionen je Instanz“, dazu JSON-API
-  `GET /api/federation`, `PUT /api/federation/peers/{id}`): Chat, Anrufe, Adressbuch (optional nur bestimmte Gruppen),
-  Ausnahme von „Teilen nur innerhalb gemeinsamer Gruppen“ (Standard aus; mit Ausnahme ist Teilen mit diesem Server
-  trotz Beschränkung erlaubt).
-- **Adressbuch-Abgleich:** Personen verbundener Server findet man in Chat- und Teilen-Suche über den Anzeigenamen
-  („Anna Berg · b.example“, gleiche Namen unterscheidbar, mit Profilbild). Jedes Konto hat dafür eine zufällige, feste
-  Kennung (`~…@server`) – nie der Anmeldename; keine E-Mail, keine Gruppen. Abgleich signiert und inkrementell
-  (`GET /fed/v2/directory?since=`, Ereignis `directory.changed`), Trennen oder Abschalten löscht sofort. Jede Person kann
-  unter Einstellungen → Konto „In Adressbüchern verbundener Server erscheinen“ abschalten; deaktivierte Konten nie.
-- **Schlüsselverzeichnis und Chat-Krypto `saga-chat/v2`** (Grundlage für Chats über Servergrenzen): Handle-Zertifikat,
-  Geräte-Zertifikat v2, Nachrichten gebunden an globale Chat-Kennung, Absender-Handle und (neu mitsigniert) KI-Hash,
-  Empfänger `dev:<id>@host`/`backup:<handle>`, Sicherheitsnummer v2. Fremde Schlüssel holt der eigene Server signiert
-  beim Heimserver der Person, prüft sie und speichert sie zwischen (`chat.keys.changed`); die Apps prüfen selbst + TOFU.
-  Gemeinsame Testvektoren `tests/vectors/chat_v2.json` (PyNaCl, Server-Referenz `saga/chat_v2.py`, libsodium.js).
-  Lokale Chats bleiben unverändert `saga-chat/v1`. Vertrag für die Apps: `docs/APP-API-FED.md`.
-- **Direkt-Chats über Servergrenzen** (Fähigkeit `chat2`): In „+ Neu“ Personen verbundener Server über den
-  Anzeigenamen finden und anschreiben. Jeder Chat hat eine globale Kennung und einen Heimserver (Server der Person, die
-  beginnt); er vergibt die Reihenfolge, die anderen Server halten Kopien. Nachrichten gehen sofort ans Heim, ist es nicht
-  erreichbar, wartet die Nachricht beim eigenen Server (bis 3 Tage, „wird zugestellt …“) und geht später in der richtigen
-  Reihenfolge raus. Doppelte Zustellung, Lücken, Umsortieren und gefälschte Absender erkennt Saga (Lücken holt der Server
-  nach, alles andere wird abgewiesen und im Prüfprotokoll vermerkt). Ende-zu-Ende wie bisher, Server sehen keine Inhalte.
-- **Nachrichtenanfragen:** Der erste Kontakt erscheint als Anfrage (eigener Bereich oben in der Liste) – ohne
-  Benachrichtigung, Push oder Klingeln, bis man annimmt. Ablehnen oder Sperren (Person bzw. ganzer Server) erfährt die
-  andere Seite nicht; Sperrliste unter „Chats & Geräte“. Raten je Server und Absender bremsen Fluten.
-- **Anhänge, Löschen, Frist, KI:** Anhänge bleiben beim Server der sendenden Person, die anderen holen sie bei Bedarf
-  (Vorschaubilder gleich vorab) und behalten eine Zwischenkopie. Nachricht oder ganzen Chat „für alle löschen“ und
-  „Automatisch löschen nach …“ laufen über das Heim; die strengere Vorgabe des eigenen Admins gilt immer. KI ist in
-  diesen Chats aus, bis jemand sie einschaltet (Hinweis im Chat für alle). Gelesen bleibt auf dem eigenen Server,
-  Tippen geht direkt, Push löst nur der eigene Server aus.
-- **Anrufe über Servergrenzen** (Fähigkeit `calls2`): 1:1 aus angenommenen Chats, Format `saga-call/v2` (an die Handles
-  gebunden, Server sehen keine SDP). Signalisierung synchron über die Föderation, der Server der anrufenden Person führt
-  den Zustand, jede Seite nutzt ihren eigenen TURN-Server.
-- **Trennen und Kontolöschung:** Wird eine Verbindung getrennt, bleiben Chats mit Personen dieses Servers lesbar, sind
-  aber schreibgeschützt; laufende Anrufe enden. Wird ein Konto gelöscht, verschwinden seine Direkt-Chats auch auf den
-  anderen Servern.
-- **Schlüssel:** Die Geräte einer Person stehen in einer von ihr signierten Geräte-Liste (Version steigt) – ein Server
-  kann Geräte weder unterschieben noch Widerrufe verschweigen. TOFU: eine Warnung „Sicherheitsnummer geändert“ bleibt,
-  bis man sie bestätigt; „überprüft“ markierte Personen werden bei einem Wechsel blockiert. Live-Ereignis
-  `chat.keys.changed` für die Apps. Ältere Apps sehen Chats über Servergrenzen mit Hinweis „bitte App aktualisieren“.
-- **Teilen an Personen ohne öffentlichen Namen:** Mit Servern ab 2.3 geht Teilen auch über den pseudonymen Handle
-  (Adressbuch-Treffer im Teilen-Dialog); ältere Server brauchen weiter den öffentlichen Namen.
-- **Seiten anderer Server vollständig** (Fähigkeiten `db subpages upload versions export presence live`): Datenbanken
-  öffnen und bearbeiten (Zeilen = Unterseiten mit Werten; Ansichten, Filter, Sortierung, Gruppen und Blättern laufen beim
-  Server der Seite), Unterseiten und Einträge anlegen, innerhalb des geteilten Bereichs verschieben, Bilder und Dateien
-  hochladen (liegen beim Eigentümer und zählen dort; je fremder Person zusätzlich `FED_UPLOAD_QUOTA_MB`, Standard 200),
-  Versionen ansehen/wiederherstellen, Markdown-/ZIP-Export. Muster: die App spricht mit dem eigenen Server (negative IDs),
-  der ruft `/fed/v2/notes/{id}/…` signiert beim Server der Seite auf, dort läuft der normale Handler mit der Rolle der
-  fremden Person. IDs (Seiten, Zeilen, Relationen, eingebettete Datenbanken, Bilder) rechnet der eigene Server um.
-- **„Wer gerade hier ist“ und Live über Servergrenzen:** kurzlebiges Abo beim Server der Seite (`FED_WATCH_TTL`, 90 s,
-  erneuert mit jeder Anwesenheitsmeldung); Änderungen, Anwesenheit und Kommentar-Zähler kommen ohne Inhalt
-  (`POST /fed/v2/live`, verwerfbar). Neue/verschobene Unterseiten in geteilten Bereichen melden „Mit mir geteilt neu laden“.
-- **Rollen (auch lokal):** Personen mit „Bearbeiten“ dürfen jetzt Versionen ansehen und wiederherstellen (vorher nur der
-  Eigentümer; bei gesperrten Seiten weiter nur er) und Seiten innerhalb eines geteilten Bereichs verschieben – nur dorthin,
-  wo exakt dieselben Freigaben gelten (niemand bekommt oder verliert dadurch Zugriff).
-- **Gruppen und Seiten-Chats über Servergrenzen** (Fähigkeit `chatgroups`): freie Gruppen mit Personen mehrerer Server
-  (Heim = Server der Erstellerin, Einladung als Nachrichtenanfrage, Name verschlüsselt auch in `saga-chat/v2`) und
-  Seiten-Chats geteilter Seiten mit Personen und Gruppen anderer Server (Heim = Server der Seite; Mitglieder fremder
-  Gruppen meldet deren Server nur, wenn die Gruppe Ziel einer Freigabe ist). Mitgliederwechsel laufen über das Heim
-  (`chat.members`, Aufträge `members`/`leave`/`resolve`/`pagechat`) und erscheinen als Systemzeile mit Herkunft. Personen
-  eines dritten, nicht verbundenen Servers: Schlüssel und Anhänge über das Heim (`GET /fed/v2/chat/keys`), die Apps prüfen
-  selbst (TOFU). Ein bestehender Seiten-Chat wird auf v2 umgestellt, sobald Personen anderer Server Zugriff haben (ältere
-  Nachrichten bleiben v1 lesbar, KI danach aus). Trennen: Personen des getrennten Servers raus, dort schreibgeschützt.
-- **Kurze Namen finden:** Alle Personensuchen (Chat „+ Neu“/„Person hinzufügen“, Teilen-Dialog, `/api/chat/people`,
-  `/api/share/targets`, `/api/fed/people`, Adressbücher verbundener Server) liefern bei 1–2 Zeichen genaue Treffer auf
-  Anzeigenamen, Benutzernamen bzw. öffentlichen Namen (Groß/Klein egal, z. B. „hd“); ab 3 Zeichen wie bisher auch Teile
-  von Namen. Eine Liste aller Konten lässt sich so weiterhin nicht abrufen. `name@server` findet auch mit kurzem Namen
-  genau diese Person, jetzt auch in der Chat-Suche. Die Web-Oberfläche sucht ab dem ersten Zeichen; `/api/fed/people`
-  ist wie die anderen Suchen auf 60 Anfragen je Minute begrenzt. Die Apps suchen vorerst weiter ab 3 Zeichen (folgt mit
-  der App-Etappe).
-- **Ablehnen und Sperren wirken auch gegen ein fehlerhaftes Heim:** In abgelehnten oder gesperrten Chats über
-  Servergrenzen verwirft der eigene Server Nachrichten, die das Heim trotzdem schickt (nichts gespeichert, kein Vorabruf
-  von Anhängen, keine Meldung); nimmt man später doch an, holt er den Verlauf nach. Ist das Heim selbst der Server der
-  ablehnenden Person, weist es Nachrichten ab („nicht zugestellt“). Versiegelte Schlüssel vom Heim werden geprüft.
-- **WebFinger:** Wer „In Adressbüchern verbundener Server erscheinen“ abgeschaltet hat, dessen Anzeigename ist auch über
-  den pseudonymen Handle nicht mehr abfragbar (der öffentliche Name bleibt, wie er ist).
-- **Robuster Ausgangskorb:** Weist ein Server ein einzelnes Ereignis dauerhaft ab, hält das nur dessen Kette an, nicht
-  den ganzen Ausgangskorb („event.stuck“ im Prüfprotokoll). Wird ein Backup zurückgespielt, beginnen die Ketten mit
-  neuer Epoche – die Gegenstellen verwerfen dann nichts still als „schon gesehen“.
-- **Datenbank:** Migration 9 (Spalten `file.fed_by`/`fed_note`: Uploads von Personen anderer Server) und neue Tabellen
-  `fed_name_handle`, `fed_group_members` (Zwischenspeicher für Seiten-Chats).
-- **Datenbank:** Migration 8 (Spalten für Chats und Anrufe über Servergrenzen, Ketten-Epoche, Geräte-Liste) und neue
-  Tabellen `fed_chat_block`, `chat_file_fed`.
-- **Datenbank:** Migration 7 (neue Spalten in `fed_peer` und `fed_outbox`) plus neue Tabellen (`fed_handle`,
-  `fed_dir_local`, `fed_directory`, `fed_event_seen`, `fed_chain_in/out`, `fed_chat_keys`, `chat_fed_cert`,
-  `chat_device_fed`). Vor der Migration legt Saga wie immer ein Backup an; ältere Versionen starten danach nicht mehr auf
-  dieser Datenbank (Backup zurückspielen).
-- **Tests:** neue Reihen `foederation2` (zwei Instanzen; mit `FED_B_APP=<älterer Stand>` Kompatibilität zu 2.1/2.2),
-  `foederation_chat` (Chats und Anrufe über zwei Instanzen, Heim offline, Lücken, Duplikate, Fälschungen, Anfragen,
-  Sperren, Anhänge, Löschen, Frist, Trennen, Kontolöschung, Ketten-Epoche, Totmann; ebenfalls mit `FED_B_APP`) und
-  `chat_v2_vektoren`; Browser-Test `tests/browser_fed_chat.js` (Chat und Anruf zwischen zwei Stacks). `foederation`
-  prüft statt „nur mit öffentlichem Namen“ jetzt das Teilen über den pseudonymen Handle. Neu: `foederation_teilen`
-  (Datenbanken, Unterseiten, Verschieben, Rechte, Hochladen mit Grenze, Versionen, Export, Live-Abo und Ablauf) und
-  `foederation_gruppen` (drei Server: Gruppe, dritter Server über das Heim, Seiten-Chat mit fremder Gruppe, Umstellung
-  auf v2, Trennen) – beide mit `FED_B_APP` für 2.1/2.2; Browser-Test `tests/browser_fed_share.js` (fremde Datenbank,
-  Titelbild hochladen, Anwesenheit, Gruppen-Chat).
+Verbundene Saga-Server können jetzt fast alles miteinander, was innerhalb eines Servers geht: Personen über ihren Namen
+finden, Ende-zu-Ende-verschlüsselt chatten und telefonieren, Seiten vollständig gemeinsam bearbeiten. Beide Server
+brauchen dafür 2.3; mit Servern 2.1/2.2 bleibt die Verbindung wie bisher (Teilen, Kommentare, Benachrichtigungen).
+Anleitung: `docs/ANLEITUNG.md`, Abschnitt Föderation; Vertrag für die Apps: `docs/APP-API-FED.md`.
+
+**Für alle**
+
+- **Personen finden:** In der Chat- und Teilen-Suche erscheinen Personen verbundener Server mit Anzeigename und Herkunft
+  („Anna Berg · b.example“, gleiche Namen unterscheidbar, mit Profilbild). Übertragen werden nur Anzeigename, Profilbild
+  und eine zufällige, feste Kennung (`~…@server`) – nie Anmeldename, E-Mail oder Gruppen. Wer nicht gefunden werden will,
+  schaltet unter Einstellungen → Konto „In Adressbüchern verbundener Server erscheinen“ ab; die anderen Server löschen den
+  Eintrag dann sofort (und den Namen, wo die Person dort nirgends vorkommt); auch über die Kennung ist der Anzeigename
+  dann nicht mehr abfragbar (ein selbst gewählter öffentlicher Name bleibt auffindbar). Deaktivierte Konten erscheinen
+  nie. Alle Personensuchen finden bei 1–2 Zeichen genaue Treffer („hd“), ab 3 Zeichen auch Teile von Namen; `name@server`
+  findet genau diese Person. Die Weboberfläche sucht ab dem ersten Zeichen (höchstens 60 Suchen je Minute), die Apps
+  vorerst weiter ab 3 Zeichen.
+- **Direkt-Chats über Servergrenzen:** In „+ Neu“ Personen anderer Server anschreiben. Der erste Kontakt kommt als
+  **Nachrichtenanfrage** – ohne Benachrichtigung, Push oder Klingeln, bis man annimmt. Ablehnen oder Sperren (die Person
+  oder den ganzen Server) erfährt die andere Seite nicht; die Sperrliste steht unter „Chats & Geräte“. Ist der andere
+  Server kurz weg, wartet die Nachricht („wird zugestellt …“, bis 3 Tage) und geht später in der richtigen Reihenfolge
+  raus. Anhänge, „für alle löschen“ und „Automatisch löschen nach …“ funktionieren wie gewohnt (die strengere Vorgabe des
+  eigenen Admins gilt immer); die KI ist in diesen Chats aus, bis jemand sie einschaltet (Hinweis für alle). Anhänge
+  bleiben beim Server der sendenden Person, die anderen holen sie beim Öffnen (Vorschaubilder gleich). „Gelesen“ bleibt
+  auf dem eigenen Server, Push löst nur der eigene Server aus.
+- **Gruppen und Seiten-Chats** mit Personen mehrerer Server: Einladung als Nachrichtenanfrage, Änderungen an den
+  Mitgliedern erscheinen für alle mit Herkunft. Ist eine Seite mit Personen oder Gruppen anderer Server geteilt, gehören
+  sie zum Seiten-Chat (ältere Nachrichten bleiben lesbar, die KI ist danach aus); Mitglieder einer Gruppe eines anderen
+  Servers meldet nur dieser – und nur, wenn die Gruppe dort Ziel einer Freigabe ist. Personen eines dritten Servers, mit
+  dem der eigene nicht verbunden ist, sind trotzdem dabei (Schlüssel und Anhänge über das Heim, die App prüft selbst).
+  Sperren in einer Gruppe trifft genau die Person, die dich eingeladen hat.
+- **Anrufe** (Audio, Video, Bildschirm) aus angenommenen Direkt-Chats auch über Servergrenzen; jede Seite nutzt ihren
+  eigenen TURN-Server.
+- **Sicherheit der Chats:** Ende-zu-Ende wie bisher – die Server sehen keine Inhalte. Sicherheitsnummer und „überprüft“
+  funktionieren wie lokal; ändert sich der Schlüssel der anderen Person, warnt Saga, bei „überprüft“ markierten Personen
+  wird Senden gesperrt, bis man neu verglichen hat. Die Geräte einer Person stehen in einer von ihr selbst signierten
+  Liste – ein Server kann keine Geräte unterschieben oder Widerrufe verschweigen. Ältere Apps zeigen solche Chats mit
+  „bitte App aktualisieren“.
+- **Seiten anderer Server vollständig:** Datenbanken öffnen, filtern und bearbeiten, Einträge und Unterseiten anlegen,
+  innerhalb des geteilten Bereichs verschieben, Bilder und Dateien hochladen (liegen beim Eigentümer; je Person eines
+  anderen Servers eigene Grenze `FED_UPLOAD_QUOTA_MB`, Standard 200), Versionen ansehen/wiederherstellen, exportieren,
+  „Wer gerade hier ist“ und Live-Aktualisierung (kurzes Abo ohne Inhalte, `FED_WATCH_TTL` 90 s; neue oder verschobene
+  Unterseiten aktualisieren „Mit mir geteilt“). Teilen geht auch an Personen ohne öffentlichen Namen.
+- **Rollen (auch lokal):** Wer „Bearbeiten“ darf, sieht jetzt auch Versionen und stellt sie wieder her (gesperrte Seiten
+  weiter nur der Eigentümer) und verschiebt Seiten innerhalb eines geteilten Bereichs – nur dorthin, wo genau dieselben
+  Freigaben gelten.
+- **Trennen und Kontolöschung:** Nach dem Trennen bleiben Chats mit Personen des anderen Servers lesbar, sind aber
+  schreibgeschützt; laufende Anrufe enden. Ein gelöschtes Konto verschwindet auch auf den anderen Servern aus seinen
+  Direkt-Chats.
+
+**Für Admins**
+
+- **Schalter je verbundenem Server** (Admin → Föderation → „Funktionen je Instanz“): Chat, Anrufe, Adressbuch (optional
+  nur bestimmte Gruppen) und die Ausnahme von „Teilen nur innerhalb gemeinsamer Gruppen“ (Standard aus). Für Skripte:
+  `GET /api/federation`, `PUT /api/federation/peers/{id}`.
+- **Zustellung:** Ereignisse gehen sofort raus (höchstens `FED_EXPRESS_TIMEOUT`, Standard 5 s), sonst übernimmt der
+  Ausgangskorb in der richtigen Reihenfolge. Ein Ereignis, das ein Server dauerhaft abweist, hält nur seine eigene Kette
+  an („event.stuck“); nach dem Zurückspielen eines Backups beginnen die Ketten neu, ohne dass die Gegenstellen etwas
+  still verwerfen.
+- **Schutz vor fehlerhaften oder böswilligen Servern:** Absender, Signaturen, Reihenfolge und Schlüssel prüft jeder
+  Server selbst; Fälschungen, Wiederholungen, umsortierte oder unterdrückte Nachrichten werden abgewiesen bzw. nachgeholt
+  und im Prüfprotokoll vermerkt. Abgelehnte und gesperrte Chats bleiben es, auch wenn das Heim weiter zustellt
+  (nichts gespeichert, kein Vorabruf); versiegelte Schlüssel vom Heim werden geprüft.
+  Schlüssel einer Person kommen nur von ihrem eigenen Server, wenn dieser verbunden ist (ein anderer Server kann sie
+  nicht unterschieben). Personen, die ein Server als Gruppenmitglieder „erfindet“, erscheinen mit ihrer wahren Herkunft;
+  Namen anderer Server dürfen keine Herkunft vortäuschen (Trennpunkte werden entfernt).
+- **Fluten und langsame Server:** Raten je Server für Anfragen, Ereignisse, Chat-Nachrichten, Mitgliederlisten,
+  Namensauflösung, Personensuche (WebFinger) und Uploads; Nachrichten und Mitgliederlisten werden bei Überlast später
+  erneut zugestellt statt verworfen (`FED_CHAT_IN_RATE`). Antworten „zu viele Anfragen“ sind signiert und nennen eine
+  Wartezeit – ein bremsender Server bekommt dann eine Pause je Server statt vieler Einzelversuche („Gegenseite bremst“).
+  Ein langsamer Server belegt höchstens ein paar Hintergrund-Aufträge gleichzeitig (`FED_PEER_SLOTS`), der Ausgangskorb
+  arbeitet je Server getrennt (`FED_OUT_WORKERS`) – Chats mit anderen Servern laufen ungebremst weiter.
+- **Zwischenkopien fremder Chat-Anhänge** sind je Server begrenzt (`FED_CHAT_CACHE_MB`, Standard 1024; die zuletzt
+  benutzten bleiben) und verfallen nach `FED_CHAT_CACHE_DAYS` (30) ohne Abruf – bei Bedarf holt Saga sie neu.
+- **Rückfall auf Protokoll 1** (ältere Version beim anderen Server zurückgespielt oder ein Angriff) steht im
+  Prüfprotokoll; Chats mit diesem Server ruhen, wartende Ereignisse bleiben im Ausgangskorb, bis er wieder Protokoll 2
+  meldet.
+- **Datenschutz beim Trennen:** Freigaben, Adressbuch, Schlüssel-Zwischenspeicher, wartende Ereignisse und die Namen von
+  Personen des anderen Servers werden gelöscht – außer dort, wo sie hier noch vorkommen (Kommentare, Chat-Verläufe).
+  Neu in der Anleitung: Überblick für Admins mit Datenschutz-Hinweis und Fehlerbildern.
+
+**Technisch** (für App-Teams und Betreiber)
+
+- **Protokoll 2:** `/.well-known/saga` meldet `protocol: 2` und Fähigkeiten (`v2 express handles directory keys chat2
+  calls2 chatgroups live presence db subpages upload versions export`), Austausch signiert über `POST /fed/v2/hello`;
+  eine Funktion gilt nur, wenn beide Server sie melden und der Admin-Schalter an ist. Ereignisse mit Kennung (höchstens
+  einmal verarbeitet) und Ketten (`chain`/`cseq`, mit Epoche), Adressbuch `GET /fed/v2/directory?since=` mit
+  `directory.changed`, Schlüssel `GET /fed/v2/keys`, Chats `POST /fed/v2/chat` (Aufträge an das Heim), Ereignisse
+  `chat.msg`, `chat.members`, `chat.keys.changed` …, Seiten `/fed/v2/notes/{id}/…`, Live `POST /fed/v2/live`.
+  `429`-Antworten sind signiert und tragen `Retry-After`.
+- **Chat-Krypto `saga-chat/v2`:** Handle- und Geräte-Zertifikat v2, Nachrichten gebunden an die globale Chat-Kennung,
+  den Absender-Handle und den mitsignierten KI-Hash, Empfänger `dev:<id>@host`/`backup:<handle>`, Sicherheitsnummer v2,
+  Anrufe `saga-call/v2`. Gemeinsame Testvektoren `tests/vectors/chat_v2.json` (PyNaCl, Server-Referenz
+  `saga/chat_v2.py`, libsodium.js). Lokale Chats bleiben unverändert `saga-chat/v1`; `MIN_APP` unverändert.
+  Neu im Chat-Objekt: `invited_by.remote` (eingeladen von einer Person dieses Servers: nur Ablehnen anbieten).
+- **Datenbank:** Migration 7 (Spalten in `fed_peer`, `fed_outbox`; Tabellen `fed_handle`, `fed_dir_local`,
+  `fed_directory`, `fed_event_seen`, `fed_chain_in/out`, `fed_chat_keys`, `chat_fed_cert`, `chat_device_fed`),
+  Migration 8 (Chats und Anrufe über Servergrenzen, Ketten-Epoche, Geräte-Liste; Tabellen `fed_chat_block`,
+  `chat_file_fed`), Migration 9 (`file.fed_by`/`fed_note`; Tabellen `fed_name_handle`, `fed_group_members`), neue Tabelle
+  `chat_invite` (wer in eine Gruppe eingeladen hat). Vor der Migration legt Saga wie immer ein Backup an; ältere Versionen
+  starten danach nicht mehr auf dieser Datenbank (Backup zurückspielen).
+- **Tests:** Reihen `foederation2`, `foederation_chat`, `foederation_teilen`, `foederation_gruppen` (drei Server, mit
+  `FED_B_APP` auch gemischt mit 2.1/2.2), `chat_v2_vektoren` und neu `foederation_boese`: ein dritter Server verhält sich
+  protokollwidrig (gefälschte Absender und Signaturen, Replays, Lücken, Geister-Mitglieder, Schlüsseltausch, Fluten,
+  übergroße und langsame Antworten, ID-Tricks, Rückfall auf Protokoll 1, gefälschtes Adressbuch) – alles abgewiesen
+  bzw. sichtbar, ohne Serverfehler, ohne andere Server aufzuhalten; ebenfalls mit `FED_B_APP`. Browser-Tests
+  `tests/browser_fed_chat.js` und `tests/browser_fed_share.js`.
 
 ### Schneller
 

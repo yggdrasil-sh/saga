@@ -64,8 +64,12 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
   que elijas (p. ej. Ollama en tu propia red). Solo contenido que puedes ver, fuentes enlazadas, solo sugerencias, desactivado por defecto.
   Con nombre, imagen y tono propios; opcionalmente **en el chat solo cuando se la menciona** (@nombre, todo lo demás
   sigue cifrado) y con **búsqueda web** a través de tu propia instancia de SearXNG (fuentes enlazadas), ambas desactivadas por defecto
-- **Federación:** conecta servidores Saga y comparte páginas con nombre@servidor: el contenido se queda con el
-  propietario y cada solicitud entre servidores va firmada (Ed25519, HTTP Message Signatures)
+- **Federación:** conecta servidores Saga: comparte páginas con personas y grupos de allí (también bases de datos,
+  subpáginas, subidas, versiones, exportación y presencia), encuentra personas por nombre en la libreta de direcciones
+  compartida (cada cuenta puede excluirse), chats directos, de grupo y de página cifrados de extremo a extremo y
+  llamadas entre servidores, con solicitudes de mensaje y bloqueo. El contenido se queda con su propietario, cada
+  solicitud entre servidores va firmada (Ed25519, HTTP Message Signatures) y un servidor que se comporta mal queda
+  contenido (comprobaciones, límites por servidor, registro de auditoría)
 - **Tareas** con fecha límite, prioridad y repetición
 - **Calendarios (CalDAV):** ver y editar Nextcloud, mailcow/SOGo, Radicale, iCloud…
 - **Immich:** usa tus propias fotos como imágenes y portadas
