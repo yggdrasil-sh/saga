@@ -16,112 +16,33 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
-### Nextcloud-Dateien in Seiten
+## [2.3.0] – 2026-10-19
 
-- **Einstellungen → Nextcloud:** jede Person verknüpft ihre **eigene** Nextcloud (beliebige eigene Adresse, Login Flow v2,
-  eigenes App-Passwort verschlüsselt gespeichert, „Trennen“ widerruft es). Ohne Admin-Freigabe nur https und öffentliche
-  Adressen (netguard); Heimnetz-Server und der Schalter „Nextcloud-Dateien in Seiten erlauben“ unter Admin → Allgemein →
-  „Verbindungen der Benutzer“.
-- **Block „Nextcloud-Datei“** im „/“-Menü: Auswahl (Zuletzt, Ordner, Suche), eingefügte Nextcloud-Links der eigenen
-  Instanz werden zum Block. Bilder in Seitenbreite, Dateien als Karte mit Vorschau/Download/„In Nextcloud öffnen“,
-  Ordner mit ersten Einträgen. Hinweis beim Einfügen: alle, die die Seite sehen, sehen auch die Datei.
-- **Vorschau und Download mit den Rechten des Autors** (Person, die den Block eingefügt hat – setzt nur der Server, mit
-  Signatur je Seite): Leser brauchen kein eigenes Nextcloud, aber Leserecht auf die Seite. Mitbearbeitende fügen nur
-  Dateien aus ihrer eigenen Nextcloud ein; Blöcke anderer bleiben unverändert und lassen sich nicht in andere Seiten
-  kopieren. Getrennt, kein Bearbeiten-Recht mehr oder Datei weg → Karte ohne Inhalt.
-- **Als Kopie übernehmen:** Datei wird normale Saga-Datei (folgt den Saga-Rechten, Backup, Export, offline).
-- **Veröffentlichte Seiten und verbundene Saga-Server** nur mit Schalter je Block (Standard aus); Vorschau/Download dann
-  über die Adresse der Seite bzw. den eigenen Server (neue Föderations-Fähigkeit `nc_files`, Autor nur als Platzhalter).
-- Export: Link statt Kopie; Suche findet den Dateinamen; Vorschaubilder auf Platte (`/data/nc-cache`, nicht im Backup,
-  `NC_CACHE_MB`), Metadaten je Autor in einer WebDAV-SEARCH-Anfrage. Neue Tabelle `nc_account` (keine Migration),
-  Kontolöschung widerruft das App-Passwort. App-API: `docs/APP-API.md` (Block-Format für Apps; Apps zeigen den Block
-  vorerst als Karte). Neue Testreihe `nextcloud_dateien` (`tests/fakedav.py` mit PROPFIND/SEARCH/Vorschau).
+Saga 2.3 ist das große Herbst-Update: spürbar schneller bei vielen Seiten und großen Datenbanken, Föderation mit
+Chats, Anrufen und vollständig gemeinsam bearbeiteten Seiten über Servergrenzen, verschlüsselte Backups für Admins
+und für jede Person sowie Dateien aus der eigenen Nextcloud direkt in Seiten. Eine Version 2.2 gibt es nicht: Die
+Optimierungswoche (Testversionen `2.2.0-rc.*`) steckt vollständig in 2.3.
+Die Schnittstelle wurde nur erweitert – Apps 2.1 und älter laufen weiter (`MIN_APP` bleibt). Chats mit Personen
+anderer Server zeigen ältere Apps mit „bitte App aktualisieren“.
 
-### Persönliche Backups je Person
+### Höhepunkte
 
-- **Einstellungen → Mein Backup:** jede Person sichert ihren eigenen Workspace in ihr **eigenes** Ziel – eigene
-  Nextcloud (Login Flow v2, eigenes App-Passwort, „Trennen“ widerruft) oder anderes WebDAV – verschlüsselt mit ihrem
-  **eigenen age-Schlüssel** (erzeugen wie beim Admin, privater Schlüssel nur einmal angezeigt, oder eigenen öffentlichen
-  eintragen). Zeitplan aus/wöchentlich/täglich, Aufbewahrung, „Jetzt sichern“, Status, Benachrichtigung bei Fehlern.
-- **Nur eigene Daten:** eigene Seiten/Unterseiten/Datenbanken samt Einträgen, eigene Dateien, Vorlagen, Archiv,
-  Papierkorb, Versionen, eigene Kommentare, Aufgaben, Lesezeichen, Profil/Einstellungen – je Kategorie abschaltbar,
-  einzelne Seitenbäume ausschließbar. Nie: „Mit mir geteilt“, Seiten/Dateien anderer Konten, Chats. Kommentare anderer
-  auf eigenen Seiten standardmäßig aus; fremde Benutzernamen werden weggelassen.
-- **Offenes Format:** `saga-<zeit>.zip.age` (age-verschlüsseltes ZIP mit `manifest.json` + SHA-256 je Datei,
-  `daten.json`, Markdown wie der Export, Dateien, `LIESMICH.txt`) und `.sha256` daneben.
-- **Backup einspielen:** Datei hochladen oder aus dem eigenen Ziel wählen, privater Schlüssel nur für den Vorgang; Import
-  nur ins eigene Konto als neue Seiten (neue IDs, Verweise, Relationen, eingebettete Datenbanken, Schaltflächen und
-  Bilder umgeschrieben, Inhalte bereinigt), optional in „Wiederhergestellt <Datum>“.
-- **Admin → Backups → Persönliche Backups:** erlauben (Standard an), Größe je Backup, Mindestabstand für „Jetzt
-  sichern“, häufigster Zeitplan, freigegebene interne Hosts (sonst nur öffentliche https-Ziele, netguard); Hinweis zum
-  Datenschutz (Server-Backup vs. persönliches Backup). `USER_BACKUP_MAX_MB` (Standard 4096) begrenzt Uploads.
-- Neue Tabellen `user_backup`, `user_backup_run` (keine Migration nötig); Kontolöschung entfernt sie und widerruft das
-  App-Passwort. App-API: `docs/APP-API.md` (Persönliches Backup). Neue Testreihe `backup_persoenlich`.
-- **Grenzen beim Einspielen:** `daten.json` höchstens 64 MB (`USER_BACKUP_DATA_MB`, beim Lesen abgebrochen), höchstens
-  20 000 Dateien (`USER_BACKUP_FILES_MAX`) und begrenzt viele ZIP-Einträge (geprüft, bevor etwas geschrieben wird), je
-  Seite die neuesten 50 Versionen; Textseiten auf die Länge wie beim Speichern gekürzt. Hochgeladene Backups werden nach
-  dem Einspielen sofort gelöscht, auch nach einem Fehler (nur nach falschem Schlüssel bleibt ein verschlüsselter Upload).
-- Intern: Ziel-Schnittstelle in `saga/backups.py` nimmt eine eigene Freigabe-Regel (`ip_ok`); die Markdown-Erzeugung des
-  Exports ist als `page_tools.md_page` wiederverwendbar.
+- **Schneller.** Große Antworten kommen gzip-komprimiert (80–90 % kleiner; App 8 h im Vordergrund: 2,5 GB → 0,28 GB),
+  der Seitenbaum gleicht nur noch Änderungen ab, lange Datenbanken zeigen nur den sichtbaren Ausschnitt. Gemessen mit
+  `tools/perf`: Seitenbaum bei 25.000 Notizen sichtbar nach 1,3 statt 3,1 s, Baum neu laden bei 60.000 Seiten/Einträgen
+  0,05 statt 1,0 s, Datenbank mit 2.000 Zeilen bedienbar nach 0,6 statt 12,0 s, „Mit mir geteilt“ 180 statt 498 ms.
+- **Föderation komplett.** Personen verbundener Server über ihren Namen finden, Ende-zu-Ende-verschlüsselt chatten
+  (direkt, in Gruppen, im Seiten-Chat) und telefonieren, geteilte Seiten samt Datenbanken, Unterseiten, Uploads und
+  Versionen gemeinsam bearbeiten – geschützt gegen fehlerhafte und böswillige Server. Beide Server brauchen 2.3.
+- **Verschlüsselte Backups.** Der Admin-Bereich sichert täglich Datenbank, Dateien und Schlüssel – mit age
+  verschlüsselt – nach S3, in einen Ordner oder auf Nextcloud/WebDAV; Wiederherstellung auch ohne Saga. Dazu
+  **persönliche Backups**: jede Person sichert ihren eigenen Workspace in ihre eigene Nextcloud, mit eigenem Schlüssel.
+- **Nextcloud-Dateien in Seiten.** Die eigene Nextcloud verknüpfen und Bilder, Dateien und Ordner als Block einfügen –
+  alle, die die Seite sehen, sehen auch die Datei, ohne eigenes Nextcloud-Konto.
 
-### Verschlüsselte Backups (S3, Ordner, Nextcloud/WebDAV)
+### Für alle
 
-- **Admin-Bereich → Backups:** tägliches Backup (Uhrzeit wählbar) von Datenbank, Dateien (`files` ohne Vorschaubilder,
-  `chat`, `svc-icons`) und – abschaltbar, Standard an – `SECRET_KEY`/`CAL_SECRET_KEY` auf ein **WebDAV-Ziel**. Nextcloud
-  wird über `/status.php` erkannt: Anmeldung per **Login Flow v2** (gespeichert werden nur Anmeldename und App-Passwort,
-  verschlüsselt wie die anderen Admin-Geheimnisse; „Trennen“ widerruft das App-Passwort), große Dateien mit
-  **Chunking v2**. Sonst Benutzer/Passwort + PUT. Abrufe über den SSRF-Schutz (netguard); die eingetragene Adresse gilt
-  als freigegeben, keine Weiterleitungen.
-- **Ziel S3** (MinIO, Garage, Backblaze B2, Hetzner, Wasabi, AWS …): Endpunkt, Region, Bucket, Präfix, Access-/Secret-Key
-  (verschlüsselt gespeichert), path-style oder virtual-hosted (automatisch: AWS virtual, sonst path). AWS-Signatur v4
-  ohne Zusatzbibliothek (hmac/hashlib, geprüft gegen die Beispiele der AWS-Dokumentation), jede Anfrage mit SHA-256 des
-  Inhalts; große Dateien als **Multipart-Upload** (streamend von der Platte, bei Fehlern abgebrochen). Auflisten mit
-  Seiten (continuation-token), Löschen je Lauf, Holen für `backup-holen`/`restore --schluessel`/`backup-pruefen`.
-- **Ziel Ordner im Container** (eingebundenes Volume, NAS-Mount): nur unterhalb von `SAGA_BACKUP_DIRS` (Standard
-  `/backup`), Pfade aufgelöst (Symlinks, `..`) – kein Ausbrechen; Schreiben über `.part` + `fsync` + Umbenennen.
-  docker-compose-Beispiel in der Anleitung. Die Ziel-Art ist im Admin-Bereich wählbar (S3, Ordner, WebDAV/Nextcloud);
-  beim Wechsel oder Trennen werden die Zugangsdaten des vorigen Ziels geleert.
-- **Verschlüsselung mit age** (Paket `age` im Image) und **öffentlichen Schlüsseln** – Saga kennt den privaten Schlüssel
-  nie. „Schlüsselpaar erzeugen“ zeigt ihn einmal (Text + Download), Bestätigung mit den letzten 6 Zeichen; oder eigenen
-  öffentlichen Schlüssel eintragen (`age1…`, `ssh-ed25519 …`), mehrere Empfänger möglich.
-- Je Lauf ein Ordner `saga-<zeit>/` mit `db.dump.age` (vorher mit `pg_restore --list` geprüft), `dateien.tar.age`,
-  `geheimnisse.env.age`, `manifest.json.age` (Prüfsummen der Klartexte) und zuletzt `manifest.json` (Version, Schema,
-  Größen + SHA-256, Schlüssel-Fingerabdrücke; ohne Namen/Hostnamen). Vor dem Upload Prüfung des freien Platzes, danach
-  Größe + erneutes Herunterladen mit SHA-256-Vergleich (`BACKUP_VERIFY_MB`).
-- **Zeitplan** im Hintergrund: genau ein Läufer je Datenbank (Advisory-Lock), niedrige Priorität (`nice`/`ionice`);
-  **Aufbewahrung GFS** 7 täglich / 4 wöchentlich / 6 monatlich (einstellbar, Läufe der letzten 24 h bleiben immer);
-  unvollständige Läufe werden nach einem Tag entfernt, fremde Ordner im Ziel nie angefasst.
-- **Status und Benachrichtigung:** letzter Erfolg, nächster Lauf, Verlauf, Backups im Ziel mit Fingerabdrücken. Bei
-  Fehlern und nach 48 h ohne Erfolg Benachrichtigung an alle Admins (Glocke + Mitteilung, neue Art `backup.failed`,
-  Push-Kategorie „admin“ nur für Admins), optional Webhook (ntfy, Gotify, beliebige URL).
-- **Kommandozeile:** `run.py backup-extern`, `run.py backup-holen [<lauf>] [--liste]`,
-  `run.py restore --schluessel <datei> [<lauf>|<ordner>]` (holt, prüft, entschlüsselt, spielt Datenbank über das
-  unveränderte `db.restore` sowie Dateien und Geheimnisse zurück; frischer Server: Ziel per `SAGA_BACKUP_URL`/`_USER`/
-  `_PASSWORD`, `SAGA_BACKUP_S3_*` oder `SAGA_BACKUP_PATH`), `run.py backup-pruefen --schluessel <datei>`
-  (Testwiederherstellung in eine Wegwerf-Datenbank).
-  `run.py backup`/`restore <datei>` und die Backups vor Migrationen bleiben unverändert.
-- **`SAGA_RESTORE_TEST=1`:** Testwiederherstellung auf einem zweiten Server ohne ausgehende Verbindungen zu den Diensten
-  der echten Instanz (Föderation, Mitteilungen, Backups, Versionshinweis, Kalender-Abgleich, KI, Immich, Websuche,
-  Avatare aus – zentral im SSRF-Schutz `netguard`) – ein zurückgespieltes Backup trägt die Identität der Instanz.
-  Erlaubt bleibt nur das Lesen vom eingetragenen Backup-Ziel auf der Kommandozeile (`backup-holen`, `restore
-  --schluessel`, `backup-pruefen`): nur dessen Host, nur GET/HEAD/PROPFIND; Hochladen, Löschen und Aufräumen bleiben gesperrt.
-- **Arbeitsordner** `/data/backups/extern-tmp/`: Lauf und `backup-pruefen` je in eigenem Unterordner (räumen sich nicht
-  mehr gegenseitig weg); Reste abgebrochener Läufe (mit `db.dump` im Klartext) löscht der nächste Start. Die
-  PROPFIND-Antwort wird mit Größengrenze gestreamt statt erst ganz geladen.
-- Neue Tabelle `backup_run` (Verlauf, per `CREATE TABLE IF NOT EXISTS`, keine Migration). Texte in de/en/es/ru/th.
-  Anleitung: Abschnitt 11 „Verschlüsselte Backups“ (auch Wiederherstellung ohne Saga mit `age -d`).
-- Tests: neue Reihe `backup_extern` gegen ein nachgemachtes Nextcloud/WebDAV (`tests/fakedav.py`) und einen
-  nachgemachten S3-Server (`tests/fakes3.py`: prüft Signatur v4 unabhängig nach, SHA-256 des Inhalts, Multipart mit
-  Mindestgröße je Teil, Seiten beim Auflisten, virtual-hosted) sowie ein Ordner-Ziel mit Ausbruchsversuchen.
-
-### Föderation 2.3
-
-Verbundene Saga-Server können jetzt fast alles miteinander, was innerhalb eines Servers geht: Personen über ihren Namen
-finden, Ende-zu-Ende-verschlüsselt chatten und telefonieren, Seiten vollständig gemeinsam bearbeiten. Beide Server
-brauchen dafür 2.3; mit Servern 2.1/2.2 bleibt die Verbindung wie bisher (Teilen, Kommentare, Benachrichtigungen).
-Anleitung: `docs/ANLEITUNG.md`, Abschnitt Föderation; Vertrag für die Apps: `docs/APP-API-FED.md`.
-
-**Für alle**
+#### Föderation
 
 - **Personen finden:** In der Chat- und Teilen-Suche erscheinen Personen verbundener Server mit Anzeigename und Herkunft
   („Anna Berg · b.example“, gleiche Namen unterscheidbar, mit Profilbild). Übertragen werden nur Anzeigename, Profilbild
@@ -164,12 +85,155 @@ Anleitung: `docs/ANLEITUNG.md`, Abschnitt Föderation; Vertrag für die Apps: `d
 - **Trennen und Kontolöschung:** Nach dem Trennen bleiben Chats mit Personen des anderen Servers lesbar, sind aber
   schreibgeschützt; laufende Anrufe enden. Ein gelöschtes Konto verschwindet auch auf den anderen Servern aus seinen
   Direkt-Chats.
+- Mit Servern 2.1 bleibt die Verbindung wie bisher (Teilen, Kommentare, Benachrichtigungen). Anleitung:
+  `docs/ANLEITUNG.md`, Abschnitt Föderation.
 
-**Für Admins**
+#### Persönliches Backup
+
+- **Einstellungen → Mein Backup:** jede Person sichert ihren eigenen Workspace in ihr **eigenes** Ziel – eigene
+  Nextcloud (Login Flow v2, eigenes App-Passwort, „Trennen“ widerruft) oder anderes WebDAV – verschlüsselt mit ihrem
+  **eigenen age-Schlüssel** (erzeugen wie beim Admin, privater Schlüssel nur einmal angezeigt, oder eigenen öffentlichen
+  eintragen). Zeitplan aus/wöchentlich/täglich, Aufbewahrung, „Jetzt sichern“, Status, Benachrichtigung bei Fehlern.
+- **Nur eigene Daten:** eigene Seiten/Unterseiten/Datenbanken samt Einträgen, eigene Dateien, Vorlagen, Archiv,
+  Papierkorb, Versionen, eigene Kommentare, Aufgaben, Lesezeichen, Profil/Einstellungen – je Kategorie abschaltbar,
+  einzelne Seitenbäume ausschließbar. Nie: „Mit mir geteilt“, Seiten/Dateien anderer Konten, Chats. Kommentare anderer
+  auf eigenen Seiten standardmäßig aus; fremde Benutzernamen werden weggelassen.
+- **Offenes Format:** `saga-<zeit>.zip.age` (age-verschlüsseltes ZIP mit `manifest.json` + SHA-256 je Datei,
+  `daten.json`, Markdown wie der Export, Dateien, `LIESMICH.txt`) und `.sha256` daneben.
+- **Backup einspielen:** Datei hochladen oder aus dem eigenen Ziel wählen, privater Schlüssel nur für den Vorgang; Import
+  nur ins eigene Konto als neue Seiten (neue IDs, Verweise, Relationen, eingebettete Datenbanken, Schaltflächen und
+  Bilder umgeschrieben, Inhalte bereinigt), optional in „Wiederhergestellt <Datum>“. Grenzen: `daten.json` höchstens
+  64 MB, höchstens 20 000 Dateien, je Seite die neuesten 50 Versionen; Textseiten auf die Länge wie beim Speichern
+  gekürzt. Hochgeladene Backups werden nach dem Einspielen sofort gelöscht, auch nach einem Fehler (nur nach falschem
+  Schlüssel bleibt ein verschlüsselter Upload für einen neuen Versuch).
+
+#### Nextcloud-Dateien in Seiten
+
+- **Einstellungen → Nextcloud:** jede Person verknüpft ihre **eigene** Nextcloud (beliebige eigene Adresse, Login Flow v2,
+  eigenes App-Passwort verschlüsselt gespeichert, „Trennen“ widerruft es).
+- **Block „Nextcloud-Datei“** im „/“-Menü: Auswahl (Zuletzt, Ordner, Suche), eingefügte Nextcloud-Links der eigenen
+  Instanz werden zum Block. Bilder in Seitenbreite, Dateien als Karte mit Vorschau/Download/„In Nextcloud öffnen“,
+  Ordner mit ersten Einträgen. Hinweis beim Einfügen: alle, die die Seite sehen, sehen auch die Datei.
+- **Vorschau und Download mit den Rechten des Autors** (Person, die den Block eingefügt hat – setzt nur der Server, mit
+  Signatur je Seite): Leser brauchen kein eigenes Nextcloud, aber Leserecht auf die Seite. Mitbearbeitende fügen nur
+  Dateien aus ihrer eigenen Nextcloud ein; Blöcke anderer bleiben unverändert und lassen sich nicht in andere Seiten
+  kopieren. Getrennt, kein Bearbeiten-Recht mehr oder Datei weg → Karte ohne Inhalt.
+- **Als Kopie übernehmen:** Datei wird normale Saga-Datei (folgt den Saga-Rechten, Backup, Export, offline).
+- **Veröffentlichte Seiten und verbundene Saga-Server** nur mit Schalter je Block (Standard aus); Vorschau/Download dann
+  über die Adresse der Seite bzw. den eigenen Server.
+- Export: Link statt Kopie; Suche findet den Dateinamen. Apps zeigen den Block vorerst als Karte.
+
+#### Schneller
+
+- **Seitenbaum im Web:** Aufbau über einen Index statt wiederholter Suche durch alle Seiten; Auf- und Zuklappen baut nur
+  den betroffenen Ast neu. Bei 25.000 Notizen: Baum sichtbar nach 1,3 statt 3,1 s, Ast aufklappen 0,15 statt 1 s,
+  Seite öffnen 1,1 statt 2,7 s.
+- **Seitenbaum nur noch abgleichen:** Nach Aktionen, Live-Ereignissen und der Rückkehr in den Tab lädt die
+  Weboberfläche nur noch die Änderungen (beim Öffnen und spätestens alle 30 Minuten einmal ganz). Mehrere Aktionen kurz
+  hintereinander teilen sich eine Abfrage (immer mit Daten von nach der Aktion); ein neuer Datenbank-Eintrag („+ Neu“,
+  „+ Neu in …“ bei Relationen) wird direkt eingetragen. Bei 60.000 Seiten/Einträgen: Baum neu laden 1,0 s → 0,05 s,
+  neuer Datenbank-Eintrag samt Nachladen 1,2 s → 0,04 s; der erste Aufbau bleibt gleich.
+- **Andere Tabs und Geräte** laden den Seitenbaum nach Änderungen sofort nach; eine Seite, die in zwei Tabs offen ist,
+  bleibt in beiden aktuell.
+- **Lange Tabellen und Listen** (ab 150 Einträgen): Nur die sichtbaren Zeilen (plus Vorlauf) stehen im DOM,
+  Platzhalter halten die volle Scrollhöhe. Summenzeile, Anzahl, Gruppen, Suche, Sortierung, Filter, bedingte Farben,
+  Spaltenbreiten, „Öffnen“/Seitenansicht mit Vor/Zurück rechnen weiter über **alle** Zeilen. Tastatur: Enter springt
+  auch über den Ausschnitt hinaus in die nächste Zeile; die Zeile mit dem Fokus bleibt beim Wegscrollen erhalten
+  (keine verlorenen Eingaben); „+ Neu“ holt die neue Zeile ins Bild. Drucken setzt vorher alle Zeilen ein.
+  Gemessen (`tools/perf`, Stufe M, Datenbank mit 2.000 Zeilen): öffnen bis bedienbar 12,0 s → 0,6 s (DOM-Knoten
+  176.000 → 12.000, längste Blockade 9,9 s → 0,15 s), Suchfeld 4,4 s → 0,5 s, Ansicht „Offen“ 9,5 s → 0,5 s, zurück zur
+  Tabelle 11,1 s → 0,3 s, „+ Neu“ 16,8 s → 0,9 s. Stufe L (10.000 Zeilen; vorher brach die Messung ab): öffnen
+  0,9 s, Suche 0,6 s, ans Ende scrollen 0,4 s.
+  Kurze Tabellen (unter 150 Einträgen) entstehen genau wie bisher. Einschränkung: Die Suche des Browsers (Strg+F) findet
+  in langen Tabellen nur Zeilen im Ausschnitt – dafür gibt es das Suchfeld der Datenbank.
+- **Galerie und Board** setzen die ersten Karten sofort ein, den Rest in kurzen Häppchen danach – die Seite bleibt
+  bedienbar, am Ende steht dieselbe Ansicht wie bisher (Ziehen zwischen Spalten wie gehabt). Board mit 2.000 Karten:
+  erste Karten nach 1,1 s, alle nach 2,0 s (vorher 2,4 s blockiert).
+- **Rückverweise** („Verlinkt von“) werden erst geladen, wenn das Seitenende in Sicht kommt – kurze Seiten wie bisher
+  sofort, lange erst beim Hinscrollen.
+- **Suche, „Mit mir geteilt“ und Startseite** rechnen auf dem Server über vorbereitete Daten statt über jede Seite
+  (Einzelheiten unter „Technisch“): gleiche Treffer und Rollen, nur schneller. Stufe L: `/api/shared` 498 → 180 ms,
+  Startseite als Empfänger 251 → 36 ms, voller Seitenbaum (ältere Apps) 815 → 616 ms, `?rows=0` 204 → 154 ms, Suche
+  in einer Datenbank-Ansicht mit 10.000 Einträgen 346 → 181 ms. Einzige sichtbare Änderung: Bei mehr als 500 für dich
+  geteilten Seiten eines Kontos sind deren Treffer jetzt durchgehend nach Änderungsdatum sortiert (bisher blockweise je
+  500 Seiten).
+- **Mehr Platz für Datenbanken:** `NOTE_MAX_COUNT` (5.000) zählt nur noch normale Seiten ohne Papierkorb; Datenbank-
+  Einträge haben eine eigene, größere Grenze (siehe „Für Admins“). Bisher war ein Konto mit größeren Datenbanken schon
+  nach 5.000 Einträgen „voll“.
+
+#### Behoben
+
+- Chat → „Neue Unterhaltung“ (auch „+ Gruppe mit mehreren Personen“ und „Person hinzufügen“): Wer `name@server`,
+  `@name@server` oder eine E-Mail-Adresse eingab, sah nur „Keine Treffer.“. Jetzt erklärt ein Hinweis, dass Personen
+  verbundener Saga-Server über ihren Anzeigenamen oder `name@server` gefunden werden und Personen hier über Namen oder
+  Benutzernamen (nicht über die E-Mail-Adresse) – mit Link zur Anleitung (Föderation).
+- Teilen-Dialog: Bei `name@server` ohne Treffer steht statt „Niemand gefunden.“ der Grund – die Person gibt es dort
+  nicht bzw. sie hat keinen öffentlichen Namen, der Server ist nicht verbunden, er ist gerade nicht erreichbar oder
+  es ist dieser Server selbst; bei E-Mail-artigen Eingaben der Hinweis, dass der öffentliche Name gemeint ist.
+
+### Für Admins
+
+#### Verschlüsselte Backups (S3, Ordner, Nextcloud/WebDAV)
+
+- **Admin-Bereich → Backups:** tägliches Backup (Uhrzeit wählbar) von Datenbank, Dateien (`files` ohne Vorschaubilder,
+  `chat`, `svc-icons`) und – abschaltbar, Standard an – `SECRET_KEY`/`CAL_SECRET_KEY` in ein Ziel nach Wahl (S3, Ordner,
+  WebDAV/Nextcloud); beim Wechsel oder Trennen werden die Zugangsdaten des vorigen Ziels geleert.
+- **Ziel WebDAV/Nextcloud:** Nextcloud wird über `/status.php` erkannt: Anmeldung per **Login Flow v2** (gespeichert
+  werden nur Anmeldename und App-Passwort, verschlüsselt wie die anderen Admin-Geheimnisse; „Trennen“ widerruft das
+  App-Passwort), große Dateien mit **Chunking v2**. Sonst Benutzer/Passwort + PUT. Abrufe über den SSRF-Schutz
+  (netguard); die eingetragene Adresse gilt als freigegeben, keine Weiterleitungen.
+- **Ziel S3** (MinIO, Garage, Backblaze B2, Hetzner, Wasabi, AWS …): Endpunkt, Region, Bucket, Präfix, Access-/Secret-Key
+  (verschlüsselt gespeichert), path-style oder virtual-hosted (automatisch: AWS virtual, sonst path). Große Dateien als
+  **Multipart-Upload** (streamend von der Platte, bei Fehlern abgebrochen).
+- **Ziel Ordner im Container** (eingebundenes Volume, NAS-Mount): nur unterhalb von `SAGA_BACKUP_DIRS` (Standard
+  `/backup`), Pfade aufgelöst (Symlinks, `..`) – kein Ausbrechen; Schreiben über `.part` + `fsync` + Umbenennen.
+  docker-compose-Beispiel in der Anleitung.
+- **Verschlüsselung mit age** (Paket `age` im Image) und **öffentlichen Schlüsseln** – Saga kennt den privaten Schlüssel
+  nie. „Schlüsselpaar erzeugen“ zeigt ihn einmal (Text + Download), Bestätigung mit den letzten 6 Zeichen; oder eigenen
+  öffentlichen Schlüssel eintragen (`age1…`, `ssh-ed25519 …`), mehrere Empfänger möglich.
+- Je Lauf ein Ordner `saga-<zeit>/` mit `db.dump.age` (vorher mit `pg_restore --list` geprüft), `dateien.tar.age`,
+  `geheimnisse.env.age`, `manifest.json.age` (Prüfsummen der Klartexte) und zuletzt `manifest.json` (Version, Schema,
+  Größen + SHA-256, Schlüssel-Fingerabdrücke; ohne Namen/Hostnamen). Vor dem Upload Prüfung des freien Platzes, danach
+  Größe + erneutes Herunterladen mit SHA-256-Vergleich (`BACKUP_VERIFY_MB`).
+- **Zeitplan** im Hintergrund: genau ein Läufer je Datenbank (Advisory-Lock), niedrige Priorität (`nice`/`ionice`);
+  **Aufbewahrung GFS** 7 täglich / 4 wöchentlich / 6 monatlich (einstellbar, Läufe der letzten 24 h bleiben immer);
+  unvollständige Läufe werden nach einem Tag entfernt, fremde Ordner im Ziel nie angefasst.
+- **Status und Benachrichtigung:** letzter Erfolg, nächster Lauf, Verlauf, Backups im Ziel mit Fingerabdrücken. Bei
+  Fehlern und nach 48 h ohne Erfolg Benachrichtigung an alle Admins (Glocke + Mitteilung, neue Art `backup.failed`,
+  Push-Kategorie „admin“ nur für Admins), optional Webhook (ntfy, Gotify, beliebige URL).
+- **Kommandozeile:** `run.py backup-extern`, `run.py backup-holen [<lauf>] [--liste]`,
+  `run.py restore --schluessel <datei> [<lauf>|<ordner>]` (holt, prüft, entschlüsselt, spielt Datenbank über das
+  unveränderte `db.restore` sowie Dateien und Geheimnisse zurück; frischer Server: Ziel per `SAGA_BACKUP_URL`/`_USER`/
+  `_PASSWORD`, `SAGA_BACKUP_S3_*` oder `SAGA_BACKUP_PATH`), `run.py backup-pruefen --schluessel <datei>`
+  (Testwiederherstellung in eine Wegwerf-Datenbank).
+  `run.py backup`/`restore <datei>` und die Backups vor Migrationen bleiben unverändert.
+- **`SAGA_RESTORE_TEST=1`:** Testwiederherstellung auf einem zweiten Server ohne ausgehende Verbindungen zu den Diensten
+  der echten Instanz (Föderation, Mitteilungen, Backups, auch persönliche, Versionshinweis, Kalender-Abgleich, KI,
+  Immich, Websuche, Avatare aus – zentral im SSRF-Schutz `netguard`) – ein zurückgespieltes Backup trägt die Identität
+  der Instanz. Erlaubt bleibt nur das Lesen vom eingetragenen Backup-Ziel auf der Kommandozeile (`backup-holen`,
+  `restore --schluessel`, `backup-pruefen`): nur dessen Host, nur GET/HEAD/PROPFIND; Hochladen, Löschen und Aufräumen
+  bleiben gesperrt.
+- **Arbeitsordner** `/data/backups/extern-tmp/`: Lauf und `backup-pruefen` je in eigenem Unterordner (räumen sich nicht
+  gegenseitig weg); Reste abgebrochener Läufe (mit `db.dump` im Klartext) löscht der nächste Start.
+- Anleitung: Abschnitt 11 „Verschlüsselte Backups“ (auch Wiederherstellung ohne Saga mit `age -d`).
+
+#### Persönliche Backups und Nextcloud-Dateien
+
+- **Admin → Backups → Persönliche Backups:** erlauben (Standard an), Größe je Backup, Mindestabstand für „Jetzt
+  sichern“, häufigster Zeitplan, freigegebene interne Hosts (sonst nur öffentliche https-Ziele, netguard); Hinweis zum
+  Datenschutz (Server-Backup vs. persönliches Backup). `USER_BACKUP_MAX_MB` (Standard 4096) begrenzt Größe und Uploads,
+  `USER_BACKUP_DATA_MB` (64) und `USER_BACKUP_FILES_MAX` (20 000) das Einspielen. Kontolöschung entfernt die
+  Einstellungen und widerruft das App-Passwort.
+- **Nextcloud-Dateien in Seiten:** Ohne Admin-Freigabe nur https und öffentliche Adressen (netguard); Heimnetz-Server
+  und der Schalter „Nextcloud-Dateien in Seiten erlauben“ (Standard an) unter Admin → Allgemein → „Verbindungen der
+  Benutzer“. Vorschaubilder auf Platte (`/data/nc-cache`, nicht im Backup, `NC_CACHE_MB`), Downloads gestreamt
+  (`NC_DOWNLOAD_MAX_MB`, für andere Server `NC_FED_MAX_MB`). Kontolöschung widerruft das App-Passwort.
+
+#### Föderation
 
 - **Schalter je verbundenem Server** (Admin → Föderation → „Funktionen je Instanz“): Chat, Anrufe, Adressbuch (optional
-  nur bestimmte Gruppen) und die Ausnahme von „Teilen nur innerhalb gemeinsamer Gruppen“ (Standard aus). Für Skripte:
-  `GET /api/federation`, `PUT /api/federation/peers/{id}`.
+  nur bestimmte Gruppen) – Standard an – und die Ausnahme von „Teilen nur innerhalb gemeinsamer Gruppen“ (Standard aus).
+  Für Skripte: `GET /api/federation`, `PUT /api/federation/peers/{id}`.
 - **Zustellung:** Ereignisse gehen sofort raus (höchstens `FED_EXPRESS_TIMEOUT`, Standard 5 s), sonst übernimmt der
   Ausgangskorb in der richtigen Reihenfolge. Ein Ereignis, das ein Server dauerhaft abweist, hält nur seine eigene Kette
   an („event.stuck“); nach dem Zurückspielen eines Backups beginnen die Ketten neu, ohne dass die Gegenstellen etwas
@@ -197,62 +261,75 @@ Anleitung: `docs/ANLEITUNG.md`, Abschnitt Föderation; Vertrag für die Apps: `d
   Personen des anderen Servers werden gelöscht – außer dort, wo sie hier noch vorkommen (Kommentare, Chat-Verläufe).
   Neu in der Anleitung: Überblick für Admins mit Datenschutz-Hinweis und Fehlerbildern.
 
-**Technisch** (für App-Teams und Betreiber)
-
-- **Protokoll 2:** `/.well-known/saga` meldet `protocol: 2` und Fähigkeiten (`v2 express handles directory keys chat2
-  calls2 chatgroups live presence db subpages upload versions export`), Austausch signiert über `POST /fed/v2/hello`;
-  eine Funktion gilt nur, wenn beide Server sie melden und der Admin-Schalter an ist. Ereignisse mit Kennung (höchstens
-  einmal verarbeitet) und Ketten (`chain`/`cseq`, mit Epoche), Adressbuch `GET /fed/v2/directory?since=` mit
-  `directory.changed`, Schlüssel `GET /fed/v2/keys`, Chats `POST /fed/v2/chat` (Aufträge an das Heim), Ereignisse
-  `chat.msg`, `chat.members`, `chat.keys.changed` …, Seiten `/fed/v2/notes/{id}/…`, Live `POST /fed/v2/live`.
-  `429`-Antworten sind signiert und tragen `Retry-After`.
-- **Chat-Krypto `saga-chat/v2`:** Handle- und Geräte-Zertifikat v2, Nachrichten gebunden an die globale Chat-Kennung,
-  den Absender-Handle und den mitsignierten KI-Hash, Empfänger `dev:<id>@host`/`backup:<handle>`, Sicherheitsnummer v2,
-  Anrufe `saga-call/v2`. Gemeinsame Testvektoren `tests/vectors/chat_v2.json` (PyNaCl, Server-Referenz
-  `saga/chat_v2.py`, libsodium.js). Lokale Chats bleiben unverändert `saga-chat/v1`; `MIN_APP` unverändert.
-  Neu im Chat-Objekt: `invited_by.remote` (eingeladen von einer Person dieses Servers: nur Ablehnen anbieten).
-- **Datenbank:** Migration 7 (Spalten in `fed_peer`, `fed_outbox`; Tabellen `fed_handle`, `fed_dir_local`,
-  `fed_directory`, `fed_event_seen`, `fed_chain_in/out`, `fed_chat_keys`, `chat_fed_cert`, `chat_device_fed`),
-  Migration 8 (Chats und Anrufe über Servergrenzen, Ketten-Epoche, Geräte-Liste; Tabellen `fed_chat_block`,
-  `chat_file_fed`), Migration 9 (`file.fed_by`/`fed_note`; Tabellen `fed_name_handle`, `fed_group_members`), neue Tabelle
-  `chat_invite` (wer in eine Gruppe eingeladen hat). Vor der Migration legt Saga wie immer ein Backup an; ältere Versionen
-  starten danach nicht mehr auf dieser Datenbank (Backup zurückspielen).
-- **Tests:** Reihen `foederation2`, `foederation_chat`, `foederation_teilen`, `foederation_gruppen` (drei Server, mit
-  `FED_B_APP` auch gemischt mit 2.1/2.2), `chat_v2_vektoren` und neu `foederation_boese`: ein dritter Server verhält sich
-  protokollwidrig (gefälschte Absender und Signaturen, Replays, Lücken, Geister-Mitglieder, Schlüsseltausch, Fluten,
-  übergroße und langsame Antworten, ID-Tricks, Rückfall auf Protokoll 1, gefälschtes Adressbuch) – alles abgewiesen
-  bzw. sichtbar, ohne Serverfehler, ohne andere Server aufzuhalten; ebenfalls mit `FED_B_APP`. Browser-Tests
-  `tests/browser_fed_chat.js` und `tests/browser_fed_share.js`.
-
-### Schneller
+#### Leistung und Betrieb
 
 - **Kompression:** JSON-, Text-, JS- und CSS-Antworten ab 1 KB kommen gzip-komprimiert, wenn Browser oder App es
   anbieten (alle tun das). Seitenbaum, Freigaben, Datenbank-Zeilen und Widget-Listen werden dadurch um 80–90 % kleiner
   (z. B. 5,2 MB → 0,6 MB bei 25.000 Notizen; App im Vordergrund 8 h: 2,5 GB → 0,28 GB). Nie komprimiert werden der
   Live-Kanal und der KI-Stream (`text/event-stream`), Bilder, Dateien, Zip-Exporte und Teilantworten (Video spulen).
   Einstellbar mit `GZIP_LEVEL` (Standard 5, `0` = aus) und `GZIP_MIN_BYTES` (Standard 1024).
-- **Seitenbaum im Web:** Aufbau über einen Index statt wiederholter Suche durch alle Seiten; Auf- und Zuklappen baut nur
-  den betroffenen Ast neu. Bei 25.000 Notizen: Baum sichtbar nach 1,3 statt 3,1 s, Ast aufklappen 0,15 statt 1 s,
-  Seite öffnen 1,1 statt 2,7 s.
-- **Rückverweise** („Verlinkt von“) werden erst geladen, wenn das Seitenende in Sicht kommt – kurze Seiten wie bisher
-  sofort, lange erst beim Hinscrollen.
-- **Weniger Neuladen des Seitenbaums:** Mehrere Aktionen kurz hintereinander teilen sich eine Abfrage (immer mit Daten
-  von nach der Aktion); ein neuer Datenbank-Eintrag („+ Neu“, „+ Neu in …“ bei Relationen) wird direkt eingetragen statt
-  den ganzen Baum neu zu laden.
-- **Papierkorb:** eigener Index; die 30-Tage-Frist läuft beim Seitenbaum höchstens stündlich statt bei jedem Laden
-  (die Papierkorb-Liste prüft weiterhin jedes Mal).
 - **Seiten-Grenze:** `NOTE_MAX_COUNT` (5.000) zählt nur noch normale Seiten ohne Papierkorb. Datenbank-Einträge haben
   eine eigene Grenze `NOTE_ROW_MAX_COUNT` (Standard 50.000 bzw. 10 × `NOTE_MAX_COUNT`); alles zusammen inkl. Papierkorb
-  höchstens doppelt so viel wie beide Grenzen. Bisher war ein Konto mit größeren Datenbanken schon nach 5.000 Einträgen
-  „voll“. Keine Grenze ist strenger als vorher.
-- **Live-Ereignis `notes.tree`** (für Apps, Vertrag in `docs/APP-API-LIVE.md`): meldet Änderungen am Seitenbaum (neu,
+  höchstens doppelt so viel wie beide Grenzen. Keine Grenze ist strenger als vorher.
+- **Papierkorb:** eigener Index; die 30-Tage-Frist läuft beim Seitenbaum höchstens stündlich statt bei jedem Laden
+  (die Papierkorb-Liste prüft weiterhin jedes Mal).
+- **Erster Start nach dem Update:** Saga gleicht einmal alle Seiten für Suche, Rückverweise und Freigaben ab (etwa
+  1–2 s je 1.000 Seiten, im Hintergrund). Bis dahin prüft Saga noch nicht abgeglichene Seiten wie bisher direkt am
+  Inhalt – das Ergebnis hängt nie vom Stand des Abgleichs ab.
+- **Backup zurückspielen** (`python run.py restore`) scheiterte mit der Standard-Compose (`postgres:16`) immer: Das Image
+  bringt `pg_restore` 17 mit, das `SET transaction_timeout` schickt („unrecognized configuration parameter“);
+  `pg_restore` 16 kann die Backups von `pg_dump` 17 umgekehrt nicht lesen. Jetzt erzeugt `pg_restore` 17 die SQL-Liste,
+  Saga lässt Einstellungen weg, die der Server nicht kennt, und `psql` spielt alles in **einer** Transaktion ein – mit
+  `postgres:16` und `:17`, für alle bisherigen Backups. Ein beschädigtes Backup ändert nichts mehr (COMMIT erst, wenn
+  das Backup vollständig gelesen ist). Ein Backup von vor 2.3 lässt sich auf einer 2.3-Datenbank einspielen (die neuen
+  abgeleiteten Tabellen werden in derselben Transaktion vorher entfernt, der nächste Start legt sie neu an). Backups
+  selbst (automatisch vor Updates, `python run.py backup`) unverändert, Image unverändert groß.
+- **Testing-Builds als Release Candidates:** Testing-Images heißen jetzt `x.y.z-rc.N` statt `x.y.z-testing.<commit>`
+  (z. B. `2.3.0-rc.7`, N = Commits seit dem letzten Release-Tag; ohne Tags im Build `2.3.0-rc+<commit>`). Der Commit
+  steht als Build-Kennung daneben: im Admin-Bereich „2.3.0-rc.7 (1cc210f) · 🧪 Release Candidate“, bei
+  `python run.py version` und in `/api/version` als neues Feld `build` (dazu `channel`: `stable`, `rc` oder `testing`).
+  `version` bleibt reines SemVer ohne Build-Kennung. Ein Release Candidate ist immer neuer als die stabile Version davor:
+  Der Update-Hinweis vergleicht nach SemVer (2.1.0 < 2.3.0-rc.7 < 2.3.0) – kein Hinweis auf 2.1.0, aber auf 2.3.0,
+  sobald es erschienen ist. Steht `VERSION` noch auf der gerade veröffentlichten Version, zählt der RC zur nächsten
+  Patch-Version (z. B. `2.1.1-rc.0`). Docker: zusätzlich das Tag `rc` neben `testing` (das bleibt, bestehende
+  Installationen laufen unverändert weiter). Release-Builds (main) unverändert.
+
+### Technisch (für App-Teams und Betreiber)
+
+#### Föderation, Protokoll 2
+
+- **Protokoll 2:** `/.well-known/saga` meldet `protocol: 2` und Fähigkeiten (`v2 express handles directory keys chat2
+  calls2 chatgroups live presence db subpages upload versions export nc_files`), Austausch signiert über
+  `POST /fed/v2/hello`; eine Funktion gilt nur, wenn beide Server sie melden und der Admin-Schalter an ist. Ereignisse
+  mit Kennung (höchstens einmal verarbeitet) und Ketten (`chain`/`cseq`, mit Epoche), Adressbuch
+  `GET /fed/v2/directory?since=` mit `directory.changed`, Schlüssel `GET /fed/v2/keys`, Chats `POST /fed/v2/chat`
+  (Aufträge an das Heim), Ereignisse `chat.msg`, `chat.members`, `chat.keys.changed` …, Seiten `/fed/v2/notes/{id}/…`,
+  Live `POST /fed/v2/live`. `429`-Antworten sind signiert und tragen `Retry-After`. Fähigkeit `nc_files`:
+  Nextcloud-Blöcke über Servergrenzen (Autor nur als Platzhalter). Vertrag für die Apps: `docs/APP-API-FED.md`.
+- **Chat-Krypto `saga-chat/v2`:** Handle- und Geräte-Zertifikat v2, Nachrichten gebunden an die globale Chat-Kennung,
+  den Absender-Handle und den mitsignierten KI-Hash, Empfänger `dev:<id>@host`/`backup:<handle>`, Sicherheitsnummer v2,
+  Anrufe `saga-call/v2`. Gemeinsame Testvektoren `tests/vectors/chat_v2.json` (PyNaCl, Server-Referenz
+  `saga/chat_v2.py`, libsodium.js). Lokale Chats bleiben unverändert `saga-chat/v1`.
+  Neu im Chat-Objekt: `invited_by.remote` (eingeladen von einer Person dieses Servers: nur Ablehnen anbieten).
+- `GET /api/share/targets` liefert das neue, optionale Feld `remote_hint` (nur ohne Treffer).
+
+#### Seitenbaum, Datenbanken, Live (App-Verträge)
+
+- **Seitenbaum-Abgleich:** `GET /api/notes?delta=1` liefert den Baum mit einem Stand (`cursor`), `?since=<cursor>`
+  danach nur neue, geänderte und entfernte Seiten (Papierkorb, endgültig gelöscht), jede mit ihrer Position (`after`:
+  hinter welcher Seite sie in der Liste steht). Passt der Stand nicht (zu alt, Neustart, Backup zurückgespielt), kommt
+  der ganze Baum (`full: true`). Erfasst wird alles, was der Baum zeigt – auch Freigabe-Symbol und „neue Kommentare“.
+  Der Baum enthält wie bisher nur eigene Seiten; „Mit mir geteilt“ kommt unverändert aus `/api/shared`. Schlank:
+  `?rows=0` ohne Datenbank-Einträge (`rows=only`: nur diese), `?fields=…` nur die genannten Felder. `GET /api/notes`
+  ohne Parameter liefert byte-gleich dasselbe wie bisher. Vertrag: `docs/APP-API-LIVE.md`, Abschnitt „Seitenbaum
+  abgleichen“.
+- **Live-Ereignis `notes.tree`** (Vertrag in `docs/APP-API-LIVE.md`): meldet Änderungen am Seitenbaum (neu,
   umbenannt/Symbol/Tags/Favorit/Sperre, verschoben, Papierkorb, wiederhergestellt, archiviert, endgültig gelöscht,
   Freigabe geändert) – nur IDs, an alle Geräte des Eigentümers und an Personen mit Freigabe, gesammelt höchstens eins je
-  2 s. Apps können damit bei verbundenem Live-Kanal seltener abgleichen (5 min statt 60 s). Die Weboberfläche lädt den
-  Baum in anderen Tabs und auf anderen Geräten damit sofort nach.
+  2 s. Apps können damit bei verbundenem Live-Kanal seltener abgleichen (5 min statt 60 s).
   - **Ausschluss je Tab:** Nur der Tab, der eine Änderung ausgelöst hat, bekommt sie nicht zurück – andere Tabs
     derselben Browser-Sitzung schon (Kennung je Tab: Kopf `X-Saga-Tab`, beim Live-Kanal `?tab=`). Das gilt auch für
-    `note.changed`: eine Seite, die in zwei Tabs offen ist, bleibt in beiden aktuell. Apps: je Gerät wie bisher.
+    `note.changed`. Apps: je Gerät wie bisher.
   - **Verschieben** aus einem geteilten Teilbaum heraus oder hinein (auch per `PATCH parent_id` und beim
     Wiederherstellen auf die oberste Ebene): Empfänger der alten **und** der neuen Kette bekommen `notes.tree` und
     `shared.changed` – bisher nur die neue Kette. Papierkorb/Archiv: `shared.changed` erreicht jetzt auch Freigaben auf
@@ -261,72 +338,6 @@ Anleitung: `docs/ANLEITUNG.md`, Abschnitt Föderation; Vertrag für die Apps: `d
     bekommen `shared.changed` und `notes.tree` (ganzer Baum), wenn eine der Gruppen Ziel einer Freigabe ist; entprellt.
   - **Nachholen mit `Last-Event-ID`:** `notes.tree` wird gegen die aktuellen Rechte geprüft; ist eine fremde Seite nicht
     mehr sichtbar, kommt das Ereignis als „ganzen Baum laden“ ohne IDs.
-- **ETag bei gzip:** gepackte Antworten tragen ein schwaches ETag (`W/"…"`); `If-None-Match` vergleicht schwach, 304
-  funktioniert für gepackte und ungepackte Fassung gleich.
-
-### Schneller (Server: Suche, Freigaben, Rückverweise, Datenbank-Zeilen, JSON)
-
-Gleiches Verhalten, gleiche Ergebnisse – nur schneller; API unverändert, `MIN_APP` unverändert.
-
-- **Suche** lädt und parst nicht mehr jede Seite: Saga leitet beim Speichern einen Suchtext ab (Titel, Klartext, Tags in
-  Kleinbuchstaben) und sucht darin per `LIKE '%…%'` mit Trigramm-Index (`pg_trgm`, im Postgres-Image enthalten) –
-  dieselbe Teilwort-Suche wie bisher, auch für Thai ohne Wortgrenzen, Russisch, Umlaute, `%`/`_` im Suchbegriff.
-  Geprüft werden nur noch die Kandidaten, mit genau der bisherigen Trefferlogik (Ausschnitt, Rollen, in fremden Seiten
-  nur der sichtbare Text). Ohne `pg_trgm` (eigener Postgres ohne Erweiterung) gleiches Ergebnis ohne Index.
-  Einzige Änderung: Bei mehr als 500 für dich geteilten Seiten eines Kontos sind deren Treffer jetzt durchgehend nach
-  Änderungsdatum sortiert (bisher blockweise je 500 Seiten).
-- **Freigaben** (`/api/shared`, Startseite, Suche, Rückverweise, Export, Bilder in geteilten Seiten): Die sichtbaren
-  Seiten kommen aus einer rekursiven Abfrage ab den Freigaben statt aus dem ganzen Seitenbaum der anderen Person – gleiche
-  Rollen und Vererbung (Papierkorb, Archiv und Vorlagen unterbrechen wie bisher).
-- **Rückverweise** aus einer Verweis-Tabelle statt Volltext-Scan über alle Inhalte; **Datenbank-Zeilen** (`/rows`,
-  Widget) mit gespeichertem Vorschaubild statt jeden Inhalt zu lesen.
-- Abgeleitete Daten liegen in eigenen Tabellen (`note_derived`, `note_link`, `note_stale`); ein Trigger merkt jede
-  Änderung an Titel, Inhalt, Format oder Tags vor, ein Hintergrund-Abgleich arbeitet sie ab (beim ersten Start einmal
-  alle Seiten, etwa 1–2 s je 1.000 Seiten). Noch nicht abgeglichene Seiten prüft Saga wie bisher direkt am Inhalt – das
-  Ergebnis hängt nie vom Stand des Abgleichs ab. Kein neuer Schema-Stand: Ein Wechsel zurück auf eine ältere Version
-  geht ohne Backup (die Tabellen werden dort ignoriert, der Trigger arbeitet weiter).
-- JSON-Antworten mit `orjson` (gleiche Ausgabe; nur sehr kleine Kommazahlen wie `1e-05` erscheinen als `0.00001`,
-  derselbe Wert). Abschaltbar mit `SAGA_ORJSON=0`. Die Datenbank-Schicht wandelt Zeilen nur noch um, wenn eine Spalte
-  vom Typ `numeric` ist (sonst kein Durchlauf über jeden Wert großer Listen).
-- `tools/perf`: wartet nach dem Erzeugen der Testdaten auf den Abgleich; `explain.py` zeigt zusätzlich die neuen Abfragen.
-
-### Schneller (Seitenbaum: Abgleich statt ganzer Liste)
-
-Gleiches Verhalten, nur weniger Daten; `GET /api/notes` ohne Parameter liefert byte-gleich dasselbe wie bisher, `MIN_APP`
-unverändert.
-
-- **Abgleich:** `GET /api/notes?delta=1` liefert den Baum mit einem Stand (`cursor`), `?since=<cursor>` danach nur neue,
-  geänderte und entfernte Seiten (Papierkorb, endgültig gelöscht), jede mit ihrer Position (`after`: hinter welcher
-  Seite sie in der Liste steht). Passt der Stand nicht (zu alt, Neustart, Backup
-  zurückgespielt), kommt der ganze Baum (`full: true`). Erfasst wird alles, was der Baum zeigt – auch Freigabe-Symbol und
-  „neue Kommentare“. Der Baum enthält wie bisher nur eigene Seiten; „Mit mir geteilt“ kommt unverändert aus
-  `/api/shared`. Vertrag für die Apps: `docs/APP-API-LIVE.md`, Abschnitt „Seitenbaum abgleichen“.
-- **Schlank:** `?rows=0` ohne Datenbank-Einträge (`rows=only`: nur diese), `?fields=…` nur die genannten Felder.
-- **Weboberfläche:** lädt den Baum nach Aktionen, Live-Ereignissen und der Rückkehr in den Tab nur noch per Abgleich
-  (beim Öffnen und spätestens alle 30 Minuten einmal ganz). Bei 60.000 Seiten/Einträgen: Baum neu laden 1,0 s → 0,05 s,
-  neuer Datenbank-Eintrag samt Nachladen 1,2 s → 0,04 s; der erste Aufbau bleibt gleich.
-- Technik: ein Trigger merkt je Seite die Transaktion der letzten baum-relevanten Änderung (Tabellen `note_tseq`,
-  `note_tseq_meta`, Grabsteine gelöschter Seiten 30 Tage). Kein neuer Schema-Stand: ältere Versionen ignorieren die
-  Tabellen, Backup/Zurückspielen wie bisher (danach laden Clients einmal ganz).
-- `tools/perf`: misst zusätzlich `delta=1`, `rows=0`, `since` und „neuer Eintrag + Abgleich“; Web: Baum neu laden.
-### Schneller (lange Datenbanken: Web und `/rows`)
-
-Gleiches Verhalten, nur schneller; ältere Apps funktionieren unverändert, `MIN_APP` unverändert.
-
-- **Lange Tabellen und Listen im Web** (ab 150 Einträgen): Nur die sichtbaren Zeilen (plus Vorlauf) stehen im DOM,
-  Platzhalter halten die volle Scrollhöhe. Summenzeile, Anzahl, Gruppen, Suche, Sortierung, Filter, bedingte Farben,
-  Spaltenbreiten, „Öffnen“/Seitenansicht mit Vor/Zurück rechnen weiter über **alle** Zeilen. Tastatur: Enter springt
-  auch über den Ausschnitt hinaus in die nächste Zeile; die Zeile mit dem Fokus bleibt beim Wegscrollen erhalten
-  (keine verlorenen Eingaben); „+ Neu“ holt die neue Zeile ins Bild. Drucken setzt vorher alle Zeilen ein.
-  Gemessen (`tools/perf`, Stufe M, Datenbank mit 2.000 Zeilen): öffnen bis bedienbar 12,0 s → 0,6 s (DOM-Knoten
-  176.000 → 12.000, längste Blockade 9,9 s → 0,15 s), Suchfeld 4,4 s → 0,5 s, Ansicht „Offen“ 9,5 s → 0,5 s, zurück zur
-  Tabelle 11,1 s → 0,3 s, „+ Neu“ 16,8 s → 0,9 s. Stufe L (10.000 Zeilen; vorher brach die Messung ab): öffnen
-  0,9 s, Suche 0,6 s, ans Ende scrollen 0,4 s.
-  Kurze Tabellen (unter 150 Einträgen) entstehen genau wie bisher. Einschränkung: Die Suche des Browsers (Strg+F) findet
-  in langen Tabellen nur Zeilen im Ausschnitt – dafür gibt es das Suchfeld der Datenbank.
-- **Galerie und Board** setzen die ersten Karten sofort ein, den Rest in kurzen Häppchen danach – die Seite bleibt
-  bedienbar, am Ende steht dieselbe Ansicht wie bisher (Ziehen zwischen Spalten wie gehabt). Board mit 2.000 Karten:
-  erste Karten nach 1,1 s, alle nach 2,0 s (vorher 2,4 s blockiert).
 - **`/rows` mit Ansicht, Filter, Sortierung und Seiten (opt-in, für Apps/Widgets):** `GET /api/notes/{id}/rows` und
   `GET /api/app/rows/{id}` verstehen `view`, `filters`, `sorts`, `q`, `group`, `limit`, `offset`, `tz`, `today` und
   liefern dann nur den Ausschnitt samt `total`, `matched` und `groups`. Ohne diese Parameter ist die Antwort
@@ -334,85 +345,134 @@ Gleiches Verhalten, nur schneller; ältere Apps funktionieren unverändert, `MIN
   „Berechnet“, Relationen-Titel nur, wenn der Betrachter sie sehen darf) – geprüft mit Testvektoren, die aus dem
   Web-Code selbst erzeugt werden (`tools/dbquery_vectors.mjs`). Nur Blättern ohne Filter läuft direkt in SQL
   (2.000 Zeilen: Seite à 100 in 15 ms statt 51 ms für alles); Widget „Ansicht, 8 Einträge“: 1,3 KB statt 136 KB
-  (10.000 Zeilen: 1,3 KB statt 675 KB, Antwortzeit gleich). Vertrag:
-  `docs/APP-API.md`. Das Web lädt weiterhin alle Zeilen (Summen, Gruppen, Suche beim Tippen, Kalender, Relationen und
-  die Seitenansicht brauchen sie).
-- `tools/perf/web.py`: misst zusätzlich „erste Zeile sichtbar“, „danach bedienbar“ und „ans Ende scrollen“; zählt
-  Zeilen virtualisierter Tabellen über `data-rows`. `tests/browser_db.js`: Browser-Tests für lange Datenbanken.
+  (10.000 Zeilen: 1,3 KB statt 675 KB, Antwortzeit gleich). Bei `q=…` werden Einträge, deren Text den Suchbegriff
+  sicher nicht enthält, gar nicht erst gelesen (wo das nicht sicher geht – Relationen, Suchbegriff mit Leerzeichen,
+  Komma oder Sigma, nur Ziffern – wie bisher). Vertrag: `docs/APP-API.md`. Das Web lädt weiterhin alle Zeilen (Summen,
+  Gruppen, Suche beim Tippen, Kalender, Relationen und die Seitenansicht brauchen sie).
+- **ETag bei gzip:** gepackte Antworten tragen ein schwaches ETag (`W/"…"`); `If-None-Match` vergleicht schwach, 304
+  funktioniert für gepackte und ungepackte Fassung gleich.
+- **Nextcloud-Block und persönliches Backup** für Apps: `docs/APP-API.md` (Block-Format, Abschnitt „Persönliches
+  Backup“).
 
-### Schneller (Nacharbeit: Freigaben, Startseite, Suche in Datenbanken)
+#### Server intern
 
-Gleiches Verhalten, nur schneller; Antworten unverändert, `MIN_APP` unverändert.
+- **Suche** lädt und parst nicht mehr jede Seite: Saga leitet beim Speichern einen Suchtext ab (Titel, Klartext, Tags in
+  Kleinbuchstaben) und sucht darin per `LIKE '%…%'` mit Trigramm-Index (`pg_trgm`, im Postgres-Image enthalten) –
+  dieselbe Teilwort-Suche wie bisher, auch für Thai ohne Wortgrenzen, Russisch, Umlaute, `%`/`_` im Suchbegriff.
+  Geprüft werden nur noch die Kandidaten, mit genau der bisherigen Trefferlogik (Ausschnitt, Rollen, in fremden Seiten
+  nur der sichtbare Text). Ohne `pg_trgm` (eigener Postgres ohne Erweiterung) gleiches Ergebnis ohne Index.
+- **Freigaben** (`/api/shared`, Startseite, Suche, Rückverweise, Export, Bilder in geteilten Seiten): Die sichtbaren
+  Seiten kommen aus einer rekursiven Abfrage ab den Freigaben statt aus dem ganzen Seitenbaum der anderen Person – gleiche
+  Rollen und Vererbung (Papierkorb, Archiv und Vorlagen unterbrechen wie bisher). Der Freigabe-Baum wird
+  zwischengespeichert, solange sich an den Seiten der anderen Person nichts geändert hat (derselbe Änderungs-Zähler wie
+  beim Seitenbaum-Abgleich: jede Änderung an Titel, Symbol, Ort, Papierkorb, Archiv, Vorlage, Art, Reihenfolge,
+  Schlagworten oder Favorit verwirft den Eintrag sofort – auch aus Transaktionen, die beim Füllen noch liefen).
+  Freigaben und Gruppen werden weiter bei jeder Anfrage frisch gelesen (Entzug wirkt sofort); nichts Unbestätigtes wird
+  gemerkt; höchstens 5 Minuten und 150.000 Seiten.
+- **Rückverweise** aus einer Verweis-Tabelle statt Volltext-Scan über alle Inhalte; **Datenbank-Zeilen** (`/rows`,
+  Widget) mit gespeichertem Vorschaubild statt jeden Inhalt zu lesen; **Schlagworte** in Listen ohne erneutes JSON-Lesen
+  leerer und wiederholter Listen.
+- Abgeleitete Daten liegen in eigenen Tabellen (`note_derived`, `note_link`, `note_stale`); ein Trigger merkt jede
+  Änderung an Titel, Inhalt, Format oder Tags vor, ein Hintergrund-Abgleich arbeitet sie ab. Für den Seitenbaum-Abgleich
+  merkt ein Trigger je Seite die Transaktion der letzten baum-relevanten Änderung (Tabellen `note_tseq`,
+  `note_tseq_meta`, Grabsteine gelöschter Seiten 30 Tage; nach dem Zurückspielen eines Backups laden Clients einmal ganz).
+  Diese Tabellen brauchen keinen eigenen Schema-Stand.
+- JSON-Antworten mit `orjson` (gleiche Ausgabe; nur sehr kleine Kommazahlen wie `1e-05` erscheinen als `0.00001`,
+  derselbe Wert). Abschaltbar mit `SAGA_ORJSON=0`. Die Datenbank-Schicht wandelt Zeilen nur noch um, wenn eine Spalte
+  vom Typ `numeric` ist (sonst kein Durchlauf über jeden Wert großer Listen).
+- **Backups:** AWS-Signatur v4 ohne Zusatzbibliothek (hmac/hashlib, geprüft gegen die Beispiele der AWS-Dokumentation),
+  jede Anfrage mit SHA-256 des Inhalts; S3-Auflisten mit Seiten (continuation-token), Löschen je Lauf, Holen für
+  `backup-holen`/`restore --schluessel`/`backup-pruefen`. Die PROPFIND-Antwort wird mit Größengrenze gestreamt statt erst
+  ganz geladen. Ziel-Schnittstelle in `saga/backups.py` nimmt eine eigene Freigabe-Regel (`ip_ok`); die
+  Markdown-Erzeugung des Exports ist als `page_tools.md_page` wiederverwendbar. Persönliches Backup: Grenzen beim
+  Einspielen werden beim Lesen geprüft (`daten.json` abgebrochen, ZIP-Einträge gezählt, bevor etwas geschrieben wird).
+- **Nextcloud-Dateien:** Metadaten je Autor in einer WebDAV-SEARCH-Anfrage; Signatur je Seite, damit nur der Server den
+  Autor eines Blocks setzt.
 
-- **„Mit mir geteilt“ und Startseite als Empfänger:** Der Freigabe-Baum (welche fremden Seiten ich mit welcher Rolle
-  sehe) wird zwischengespeichert, solange sich an den Seiten der anderen Person nichts geändert hat. Grundlage ist
-  derselbe Änderungs-Zähler wie beim Seitenbaum-Abgleich: jede Änderung an Titel, Symbol, Ort, Papierkorb, Archiv,
-  Vorlage, Art, Reihenfolge, Schlagworten oder Favorit verwirft den Eintrag sofort – auch aus Transaktionen, die beim
-  Füllen noch liefen. Freigaben und Gruppen werden weiter bei jeder Anfrage frisch gelesen (Entzug wirkt sofort); nichts
-  Unbestätigtes wird gemerkt; höchstens 5 Minuten und 150.000 Seiten. Stufe L (`tools/perf`): `/api/shared` 498 → 180 ms,
-  Startseite als Empfänger 251 → 36 ms. Nach einer Änderung der anderen Person rechnet die erste Anfrage wie bisher.
-- **Suche in Datenbank-Ansichten** (`/rows?q=…`, Apps/Widgets): Einträge, deren Text den Suchbegriff sicher nicht
-  enthält, werden gar nicht erst gelesen; danach rechnet der Server wie bisher (gleiche Treffer, Reihenfolge, Gruppen,
-  Fehler). Wo das nicht sicher geht (Relationen, Suchbegriff mit Leerzeichen, Komma oder Sigma, nur Ziffern), wie
-  bisher. 10.000 Einträge, Ansicht „Offen“ + Suche: 346 → 181 ms.
-- **Schlagworte** in Listen (Seitenbaum, Freigaben, Suche): leere und wiederholte Listen ohne erneutes JSON-Lesen –
-  voller Seitenbaum (ältere Apps) Stufe L 815 → 616 ms, `?rows=0` 204 → 154 ms.
-- Tests: `tests/baum_cache.py` (Zwischenspeicher nach jeder Art von Änderung, laufende und offene Transaktionen,
-  Rollback, REPEATABLE READ), `tests/zeilen_suche.py` (mit/ohne Vorfilter über die Web-Testvektoren, Zufallsdaten in
-  de/ru/th, türkisches I, Schluss-Sigma, Escapes, Zahlen; per HTTP byte-gleich).
+#### Datenbank
 
-### Lastmessung (nur Werkzeuge, keine Änderung an Saga selbst)
+- **Migration 7** (Spalten in `fed_peer`, `fed_outbox`; Tabellen `fed_handle`, `fed_dir_local`, `fed_directory`,
+  `fed_event_seen`, `fed_chain_in/out`, `fed_chat_keys`, `chat_fed_cert`, `chat_device_fed`), **Migration 8** (Chats und
+  Anrufe über Servergrenzen, Ketten-Epoche, Geräte-Liste; Tabellen `fed_chat_block`, `chat_file_fed`), **Migration 9**
+  (`file.fed_by`/`fed_note`; Tabellen `fed_name_handle`, `fed_group_members`). Vor der Migration legt Saga wie immer ein
+  Backup an (`…-vor-schema-9.dump`); ältere Versionen starten danach nicht mehr auf dieser Datenbank (Backup
+  zurückspielen, siehe „Hinweise zum Update“).
+- Neue Tabellen ohne Migration (`CREATE TABLE IF NOT EXISTS`): `chat_invite` (wer in eine Gruppe eingeladen hat),
+  `backup_run` (Verlauf der Server-Backups), `user_backup`, `user_backup_run` (persönliche Backups), `nc_account`
+  (Nextcloud-Verknüpfung), dazu die abgeleiteten Tabellen oben. Kontolöschung entfernt die persönlichen Einträge.
 
-- `tools/perf/`: wiederholbare Lastmessung für Test-Stacks. `gen.py` erzeugt realistische Testdaten in drei Stufen
+#### Tests und Werkzeuge
+
+- **Föderation:** Reihen `foederation2`, `foederation_chat`, `foederation_teilen`, `foederation_gruppen` (drei Server,
+  mit `FED_B_APP` auch gemischt mit 2.1/2.2), `chat_v2_vektoren` und `foederation_boese`: ein dritter Server verhält sich
+  protokollwidrig (gefälschte Absender und Signaturen, Replays, Lücken, Geister-Mitglieder, Schlüsseltausch, Fluten,
+  übergroße und langsame Antworten, ID-Tricks, Rückfall auf Protokoll 1, gefälschtes Adressbuch) – alles abgewiesen
+  bzw. sichtbar, ohne Serverfehler, ohne andere Server aufzuhalten; ebenfalls mit `FED_B_APP`. Browser-Tests
+  `tests/browser_fed_chat.js` und `tests/browser_fed_share.js`.
+- **Backups:** Reihe `backup_extern` gegen ein nachgemachtes Nextcloud/WebDAV (`tests/fakedav.py`) und einen
+  nachgemachten S3-Server (`tests/fakes3.py`: prüft Signatur v4 unabhängig nach, SHA-256 des Inhalts, Multipart mit
+  Mindestgröße je Teil, Seiten beim Auflisten, virtual-hosted) sowie ein Ordner-Ziel mit Ausbruchsversuchen; Reihe
+  `backup_persoenlich`; `tests/sicherung.py` (Zurückspielen mit `postgres:16`/`:17`, alte Backups).
+- **Nextcloud-Dateien:** Reihe `nextcloud_dateien` (`tests/fakedav.py` mit PROPFIND/SEARCH/Vorschau).
+- **Leistung:** `tests/browser_db.js` (lange Datenbanken), `tests/baum_cache.py` (Zwischenspeicher nach jeder Art von
+  Änderung, laufende und offene Transaktionen, Rollback, REPEATABLE READ), `tests/zeilen_suche.py` (mit/ohne Vorfilter
+  über die Web-Testvektoren, Zufallsdaten in de/ru/th, türkisches I, Schluss-Sigma, Escapes, Zahlen; per HTTP
+  byte-gleich).
+- **Lastmessung `tools/perf/`** (nur Werkzeuge für Test-Stacks): `gen.py` erzeugt realistische Testdaten in drei Stufen
   (S: 500 Seiten · M: 5.000 Seiten + 20.000 Datenbank-Einträge · L: 10.000 Seiten + 50.000 Einträge, eine Datenbank
   mit 10.000 Einträgen, Baum bis Tiefe 6, Bilder, Kommentare, Freigaben an ein zweites Konto, Chat mit 5.000
-  Nachrichten) direkt in Postgres. `bench.py` misst Antwortzeit (p50/p95) und Größe der wichtigsten Endpunkte, die
-  Netzwerk-Abläufe der Apps, parallele Last, den Live-Kanal sowie CPU/RAM der Container; `explain.py` zeigt die Pläne
-  der teuersten Abfragen; `web.py` misst die Weboberfläche mit Playwright (headless).
-- `tools/perf/run.sh` führt alles je Stufe aus und prüft Grenzwerte aus `tools/perf/limits.json` (Exit 1 bei
-  Überschreitung), z. B. `SAGA_SCRIPT=perf/run.sh tools/test-stack.sh "S M"`. Nur für Test-Stacks: legt die Konten
-  `perf-a`/`perf-b` neu an und setzt `NOTE_MAX_COUNT=200000` in der `.env` des Test-Stacks.
-- `bench.py` misst als Größe die übertragenen Bytes (mit gzip komprimiert) und entpackt Antworten selbst.
+  Nachrichten) direkt in Postgres und wartet danach auf den Abgleich. `bench.py` misst Antwortzeit (p50/p95) und
+  übertragene Größe (mit gzip, entpackt selbst) der wichtigsten Endpunkte – auch `delta=1`, `rows=0`, `since` und „neuer
+  Eintrag + Abgleich“ –, die Netzwerk-Abläufe der Apps, parallele Last (auch mit 2.2-Clients), den Live-Kanal sowie
+  CPU/RAM der Container; `explain.py` zeigt die Pläne der teuersten Abfragen (auch der neuen); `web.py` misst die
+  Weboberfläche mit Playwright (headless): Baum neu laden, „erste Zeile sichtbar“, „danach bedienbar“, „ans Ende
+  scrollen“, zählt Zeilen virtualisierter Tabellen über `data-rows`, läuft auch gegen Versionen vor 2.2
+  (`SAGA_PERF_WEB_ARGS`). `tools/perf/run.sh` führt alles je Stufe aus und prüft Grenzwerte aus
+  `tools/perf/limits.json` (Exit 1 bei Überschreitung), z. B. `SAGA_SCRIPT=perf/run.sh tools/test-stack.sh "S M"`. Nur
+  für Test-Stacks: legt die Konten `perf-a`/`perf-b` neu an und setzt `NOTE_MAX_COUNT=200000` in der `.env` des
+  Test-Stacks.
 
-### Testing-Builds als Release Candidates
+### Hinweise zum Update
 
-- Testing-Images heißen jetzt `2.2.0-rc.7` statt `2.2.0-testing.<commit>` (7 = Commits seit dem letzten Release-Tag;
-  ohne Tags im Build `2.2.0-rc+<commit>`). Der Commit steht als Build-Kennung daneben: im Admin-Bereich
-  „2.2.0-rc.7 (1cc210f) · 🧪 Release Candidate“, bei `python run.py version` und in `/api/version` als neues Feld
-  `build` (dazu `channel`: `stable`, `rc` oder `testing`). `version` bleibt reines SemVer ohne Build-Kennung.
-- Ein Release Candidate ist immer neuer als die stabile Version davor: Der Update-Hinweis vergleicht nach SemVer
-  (2.1.0 < 2.2.0-rc.7 < 2.2.0) – kein Hinweis auf 2.1.0, aber auf 2.2.0, sobald es erschienen ist. Steht `VERSION`
-  noch auf der gerade veröffentlichten Version, zählt der RC zur nächsten Patch-Version (z. B. `2.1.1-rc.0`).
-- Docker: zusätzlich das Tag `rc` neben `testing` (das bleibt, bestehende Installationen laufen unverändert weiter).
-  Release-Builds (main) unverändert, z. B. `2.2.0`. Apps: nichts zu tun, `MIN_APP` bleibt.
+- **Update:** Mit `SAGA_VERSION=2` in der `.env` reicht `docker compose pull && docker compose up -d`. Von 2.1 kommend
+  gibt es keine Zwischenschritte (2.2 wurde nie veröffentlicht).
+- **Datenbank:** 2.3 hebt die Datenbank von Schema-Stand 6 auf 9 (Migrationen 7–9) und legt vorher automatisch ein
+  Backup an (`/data/backups/saga-…-vor-schema-9.dump`). Wer ganz sicher gehen will, sichert vorher zusätzlich selbst
+  (`docker compose exec saga python run.py backup --dateien`). Beim ersten Start gleicht Saga einmal alle Seiten ab
+  (etwa 1–2 s je 1.000 Seiten, im Hintergrund).
+- **Kein Rückweg auf 2.1 ohne Backup:** 2.1 startet auf Schema-Stand 9 nicht mehr. Zurück nur über das Backup von vor
+  dem Update – und zwar **mit 2.3 zurückspielen, dann** `SAGA_VERSION` ändern (2.1 scheitert beim Zurückspielen mit
+  `postgres:16`): `docker compose stop saga`, `docker compose run --rm saga python run.py restore
+  /data/backups/<…-vor-schema-9.dump>`, dann `SAGA_VERSION=2.1` und `docker compose pull && docker compose up -d`.
+  Alles nach dem Backup Geänderte ist dann weg. Schon gewechselt? Die neuere Version nur zum Zurückspielen nehmen
+  oder vorher `DROP TABLE IF EXISTS note_link, note_stale, note_derived` (Anleitung, Abschnitt 11 „Updates“).
+- **Föderation:** Verbundene Server mit 2.3 schalten Chat, Anrufe und **Adressbuch** je Server standardmäßig ein –
+  Anzeigenamen und Profilbilder eurer Personen werden dann an diese Server übertragen. Wer das nicht will, schaltet es
+  vor oder direkt nach dem Update unter Admin → Föderation → „Funktionen je Instanz“ ab; Personen können unter
+  Einstellungen → Konto widersprechen. Datenschutzerklärung prüfen (Anleitung, „Für Admins: Überblick, Datenschutz,
+  Fehlerbilder“).
+- **Nextcloud-Dateien in Seiten** und **persönliche Backups** sind standardmäßig erlaubt (nur öffentliche https-Adressen,
+  bis der Admin interne Hosts freigibt); abschaltbar unter Allgemein → „Verbindungen der Benutzer“ bzw. Backups →
+  „Persönliche Backups“. Das Server-Backup ist aus, bis du ein Ziel einrichtest.
+- **Neue Einstellungen der `.env`** (alle optional, Anleitung Abschnitt 13): `FED_*` (u. a. `FED_UPLOAD_QUOTA_MB`,
+  `FED_WATCH_TTL`, `FED_EXPRESS_TIMEOUT`, `FED_PEER_SLOTS`, `FED_OUT_WORKERS`, `FED_CHAT_IN_RATE`, `FED_CHAT_CACHE_MB`,
+  `FED_CHAT_CACHE_DAYS`), `SAGA_BACKUP_*` (nur für die Wiederherstellung auf einem frischen Server und
+  `SAGA_BACKUP_DIRS`), `BACKUP_VERIFY_MB`, `BACKUP_CHUNK_MB`, `USER_BACKUP_*`, `NC_*`, `SAGA_RESTORE_TEST`,
+  `GZIP_LEVEL`/`GZIP_MIN_BYTES`, `NOTE_ROW_MAX_COUNT`, `SAGA_ORJSON`.
+- **Ordner-Ziel für Backups:** braucht ein zusätzliches Volume in der `docker-compose.yml` (Beispiel in der Anleitung,
+  Abschnitt 11).
+- **Release Candidates:** Wer `SAGA_VERSION=testing` nutzt, sieht jetzt `2.x.y-rc.N`; `rc` geht als Kanal ebenso.
 
-### Backup zurückspielen
+### Bekannte Grenzen
 
-- `python run.py restore` scheiterte mit der Standard-Compose (`postgres:16`) immer: Das Image bringt `pg_restore` 17
-  mit, das `SET transaction_timeout` schickt („unrecognized configuration parameter“); `pg_restore` 16 kann die
-  Backups von `pg_dump` 17 umgekehrt nicht lesen. Jetzt erzeugt `pg_restore` 17 die SQL-Liste, Saga lässt
-  Einstellungen weg, die der Server nicht kennt, und `psql` spielt alles in **einer** Transaktion ein – mit
-  `postgres:16` und `:17`, für alle bisherigen Backups. Ein beschädigtes Backup ändert nichts mehr (COMMIT erst, wenn
-  das Backup vollständig gelesen ist). Backups selbst (automatisch vor Updates, `python run.py backup`) unverändert.
-  Image unverändert groß.
-- Ein Backup von vor 2.2 lässt sich auf einer 2.2-Datenbank einspielen: Die abgeleiteten Tabellen `note_derived`,
-  `note_link` und `note_stale` werden in derselben Transaktion vorher entfernt (der nächste Start legt sie neu an).
-- **Zurückwechseln von 2.2 auf eine ältere Version:** das Backup mit 2.2 zurückspielen, *dann* `SAGA_VERSION`
-  ändern. Ältere Versionen scheitern dort mit `postgres:16` an `transaction_timeout` und an den Fremdschlüsseln der
-  neuen Tabellen; Abhilfe für Letzteres: vorher `DROP TABLE IF EXISTS note_link, note_stale, note_derived`
-  (Anleitung, Abschnitt 11). Neue Testreihe `tests/sicherung.py`.
-
-### Behoben
-
-- Chat → „Neue Unterhaltung“ (auch „+ Gruppe mit mehreren Personen“ und „Person hinzufügen“): Wer `name@server`,
-  `@name@server` oder eine E-Mail-Adresse eingab, sah nur „Keine Treffer.“. Jetzt erklärt ein Hinweis, dass es Chats mit
-  Personen anderer Saga-Server noch nicht gibt, Seiten aber mit `name@server` (öffentlicher Name) geteilt werden
-  können, und dass Personen hier über Namen oder Benutzernamen gefunden werden – mit Link zur Anleitung (Föderation).
-- Teilen-Dialog: Bei `name@server` ohne Treffer steht statt „Niemand gefunden.“ der Grund – die Person gibt es dort
-  nicht bzw. sie hat keinen öffentlichen Namen, der Server ist nicht verbunden, er ist gerade nicht erreichbar oder
-  es ist dieser Server selbst; bei E-Mail-artigen Eingaben der Hinweis, dass der öffentliche Name gemeint ist.
-  `GET /api/share/targets` liefert dafür das neue, optionale Feld `remote_hint` (nur ohne Treffer). Apps: nichts zu
-  tun, `MIN_APP` bleibt.
+- Chats, Anrufe, Adressbuch und vollständige Seiten über Servergrenzen nur, wenn **beide** Server 2.3 haben; mit 2.1
+  bleibt es bei Teilen, Kommentaren und Benachrichtigungen.
+- Über Servergrenzen nicht möglich: Seiten löschen, archivieren, veröffentlichen, Freigaben verwalten, Rückverweise,
+  KI auf der Seite. Anrufe weiterhin nur zu zweit.
+- Die Apps suchen Personen vorerst erst ab 3 Zeichen und zeigen Nextcloud-Blöcke als einfache Karte.
+- Die Browsersuche (Strg+F) findet in langen Datenbank-Tabellen nur Zeilen im sichtbaren Ausschnitt.
+- Persönliche Backups enthalten keine Chats und keine Seiten anderer; Kommentare und Einstellungen werden beim
+  Einspielen nicht übernommen.
 
 ## [2.1.0] – 2026-10-18
 
