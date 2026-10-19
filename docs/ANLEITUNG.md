@@ -572,8 +572,10 @@ Anfragen – nie Inhalte. Interne Adressen (192.168.x, 10.x …) erreicht Saga n
 „Freigegebene interne Hosts“ stehen; andere Server verbinden sich nur über https.
 
 **Teilen:** Im Teilen-Dialog `name@server` (oder `@name@server`) eingeben – Saga fragt den verbundenen Server, ob es die
-Person bzw. Gruppe gibt, und zeigt sie mit Herkunft an („Bert (bert@verein.example)“). Dafür brauchst du einen
-öffentlichen Namen (Einstellungen → Konto). Personen anderer Server erscheinen in „Mit mir geteilt“, in Kommentaren und
+Person bzw. Gruppe gibt, und zeigt sie mit Herkunft an („Bert (bert@verein.example)“). Mit Servern ab 2.3 findest du
+Personen dort auch über ihren Anzeigenamen (Adressbuch) – dann geht Teilen auch an Personen ohne öffentlichen Namen und
+ohne eigenen öffentlichen Namen (über eine zufällige, feste Kennung, nie den Anmeldenamen). Mit älteren Servern brauchst
+du einen öffentlichen Namen (Einstellungen → Konto). Personen anderer Server erscheinen in „Mit mir geteilt“, in Kommentaren und
 Benachrichtigungen immer mit `@server`, damit niemand mit einem gleichnamigen Konto hier verwechselt wird. Ist „Teilen
 nur innerhalb gemeinsamer Gruppen“ an, geht Teilen mit anderen Servern nicht – außer mit Servern, für die der Admin die
 Ausnahme eingeschaltet hat (siehe unten).
@@ -588,8 +590,7 @@ dafür einen öffentlichen Namen. Benachrichtigungen („hat eine Seite mit dir 
 alle 6 Stunden) aus, was beide können; Server mit 2.1/2.2 bleiben ganz normal verbunden (Teilen, Kommentare,
 Benachrichtigungen wie bisher). Unter **Admin → Föderation → „Funktionen je Instanz“** stehen je verbundenem Server
 Protokoll, gemeinsame Fähigkeiten und die Schalter:
-- **Chat** (Schlüsselverzeichnis für Chats über Servergrenzen; die Chats selbst folgen mit dem nächsten Update) und
-  **Anrufe** – Standard an.
+- **Chat** (Direkt-Chats über Servergrenzen, siehe unten) und **Anrufe** – Standard an.
 - **Adressbuch mit dieser Instanz teilen** – Standard an. Personen dort finden Personen von hier dann über den
   Anzeigenamen (Chat- und Teilen-Suche, „Anna Berg · b.example“). Übertragen werden nur Anzeigename, Profilbild und eine
   zufällige, feste Kennung (`~…@server`) – nie Anmeldenamen, E-Mail-Adressen oder Gruppen. Optional nur Personen aus
@@ -603,9 +604,29 @@ andere Server nicht erreichbar, wartet das Ereignis im Ausgangskorb und wird in 
 (bis zu 3 Tage). Für Skripte gibt es im Admin-Bereich `GET /api/federation` und
 `PUT /api/federation/peers/{id}` (`{"chat": false, …}`, Admin-Sitzung und Kopfzeile `X-CSRF-Token`).
 
-**Noch nicht über Servergrenzen** (diese Runde): Datenbanken anderer Server öffnen (es erscheint ein Hinweis), Bilder
-in fremde Seiten hochladen, Unterseiten anlegen, Versionen, Export, „Wer gerade hier ist“ und Live-Aktualisierung,
-Chat. Wer seinen öffentlichen Namen ändert oder sein Konto löscht, verliert Freigaben anderer Server (sie werden dort
+**Chats und Anrufe über Servergrenzen (ab 2.3, beide Server 2.3):** In den Chats unter **„+ Neu“** den Namen eintippen
+– Personen verbundener Server erscheinen mit Herkunft („Bert Gast · verein.example“). Ein Klick beginnt den
+Direkt-Chat; bei der anderen Person erscheint er als **Nachrichtenanfrage** oben in der Liste – ohne Benachrichtigung,
+ohne Push und ohne Klingeln, bis sie **annimmt**. Sie kann auch **ablehnen** oder **sperren** (die Person oder gleich
+den ganzen Server); das erfährt die andere Seite nicht. Gesperrte stehen unter „Chats & Geräte“ und lassen sich dort
+entsperren. Nachrichten bleiben Ende-zu-Ende-verschlüsselt; die Server sehen nur verschlüsselte Daten.
+- Der Server der Person, die den Chat beginnt, ist sein **Heim**: Er legt die Reihenfolge fest und verteilt Nachrichten,
+  Löschen, „Automatisch löschen nach …“ und den KI-Schalter. Ist er kurz nicht erreichbar, wartet eine Nachricht beim
+  eigenen Server („⏳ wird zugestellt“) und geht später in der richtigen Reihenfolge raus (bis zu 3 Tage, sonst
+  „⚠ nicht zugestellt“ mit „Erneut senden“).
+- **Anhänge** bleiben beim Server der sendenden Person; die andere Seite holt sie beim Öffnen (Vorschaubilder gleich).
+- **Sicherheitsnummer** und „Als überprüft markieren“ funktionieren wie in lokalen Chats. Ändert sich der Schlüssel der
+  anderen Person, erscheint eine Warnung, bis du sie bestätigst; war sie als „überprüft“ markiert, ist Senden gesperrt,
+  bis du die Nummer erneut verglichen hast.
+- **KI im Chat** ist in solchen Chats aus, bis jemand sie einschaltet – alle sehen das als Hinweis im Chat.
+- **Anrufe** gehen aus angenommenen Direkt-Chats wie gewohnt; jede Seite nutzt dabei ihren eigenen TURN-Server.
+- **Trennen** der Server macht solche Chats schreibgeschützt (der Verlauf bleibt lesbar) und beendet laufende Anrufe;
+  wird ein Konto gelöscht, verschwinden seine Direkt-Chats auch auf dem anderen Server.
+- Ältere Apps zeigen solche Chats nur mit dem Hinweis „bitte App aktualisieren“.
+
+**Noch nicht über Servergrenzen** (diese Runde): Gruppen-Chats mit Personen anderer Server, Datenbanken anderer Server
+öffnen (es erscheint ein Hinweis), Bilder in fremde Seiten hochladen, Unterseiten anlegen, Versionen, Export, „Wer
+gerade hier ist“ und Live-Aktualisierung. Wer seinen öffentlichen Namen ändert oder sein Konto löscht, verliert Freigaben anderer Server (sie werden dort
 entfernt); der alte Name wird für andere Konten gesperrt.
 
 ### Benachrichtigungen und Live-Aktualisierung

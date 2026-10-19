@@ -285,7 +285,7 @@ def op_end(c, peer, d):
     if call["state"] == "ended":
         return 200, {"ok": True, "already": True}
     reason = d.get("reason") if d.get("reason") in ("hangup", "declined", "busy", "cancelled", "failed", "lost", "timeout", "gone") else "hangup"
-    if call["state"] == "ringing" and d.get("op") == "end" and reason not in ("busy", "declined"):
+    if call["state"] == "ringing" and reason == "hangup":      # Auflegen waehrend es klingelt: abgebrochen bzw. abgelehnt
         reason = "cancelled" if is_caller else "declined"
     call["_connected"] = call["state"] == "active"
     calls._finish(c, call, reason, time.time(), by=rem, remote=True)

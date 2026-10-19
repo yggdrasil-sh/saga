@@ -295,6 +295,17 @@ def part_more(A, B, pa, pb, anna, bert, ch, bc):
     # --- KI standardmaessig aus -------------------------------------------------------------------------------------------
     ai_msg = anna.msg(ch, "ich tu so, als waere ich die KI", ai="0" * 64)
     ok("A: KI-Antwort ohne erlaubte KI -> 403", api("a", "fa-anna", "POST", f"/api/chats/{ch['id']}/messages", ai_msg)[0] == 403)
+    # KI-Schalter ueber das Heim (B schaltet ein - hier direkt als signierter Auftrag, die KI selbst ist nicht eingerichtet)
+    s, d = signed_post("a", own_priv("b"), "b", "/fed/v2/chat", {"op": "meta", "ref": ch["ref"], "actor": bert.handle, "ai": True})
+    ok(f"Heim: KI-Schalter von Bert angenommen ({s})", s == 200)
+    ok("A + B: KI an, Systemzeile 'KI eingeschaltet' bei beiden",
+       wait(lambda: api("b", "fb-bert", "GET", f"/api/chats/{bc['id']}")[1]["chat"]["ai"] is True, 15)
+       and any(m["kind"] == "sys" and json.loads(m["body_ct"]).get("on") is True for m in anna.msgs(ch["id"]))
+       and wait(lambda: any(m["kind"] == "sys" for m in bert.msgs(bc["id"])), 10))
+    s, d = signed_post("a", own_priv("b"), "b", "/fed/v2/chat", {"op": "meta", "ref": ch["ref"], "actor": anna.handle, "ai": False})
+    ok("Heim: KI-Schalter im Namen einer Person des Heims -> abgewiesen", s == 404)
+    api("a", "fa-anna", "PUT", f"/api/chats/{ch['id']}/ai", {"allowed": False})
+    ok("A: KI wieder aus (Heim), bei B uebernommen", wait(lambda: api("b", "fb-bert", "GET", f"/api/chats/{bc['id']}")[1]["chat"]["ai"] is False, 15))
     # --- aeltere App: Hinweis statt kaputt --------------------------------------------------------------------------------
     s, d = api("b", "fb-bert", "GET", "/api/chats", v2=False)
     old = next((x for x in d["chats"] if x.get("ref") == ch["ref"]), {})
