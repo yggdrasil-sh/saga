@@ -101,6 +101,36 @@ unverändert.
   `note_tseq_meta`, Grabsteine gelöschter Seiten 30 Tage). Kein neuer Schema-Stand: ältere Versionen ignorieren die
   Tabellen, Backup/Zurückspielen wie bisher (danach laden Clients einmal ganz).
 - `tools/perf`: misst zusätzlich `delta=1`, `rows=0`, `since` und „neuer Eintrag + Abgleich“; Web: Baum neu laden.
+### Schneller (lange Datenbanken: Web und `/rows`)
+
+Gleiches Verhalten, nur schneller; ältere Apps funktionieren unverändert, `MIN_APP` unverändert.
+
+- **Lange Tabellen und Listen im Web** (ab 150 Einträgen): Nur die sichtbaren Zeilen (plus Vorlauf) stehen im DOM,
+  Platzhalter halten die volle Scrollhöhe. Summenzeile, Anzahl, Gruppen, Suche, Sortierung, Filter, bedingte Farben,
+  Spaltenbreiten, „Öffnen“/Seitenansicht mit Vor/Zurück rechnen weiter über **alle** Zeilen. Tastatur: Enter springt
+  auch über den Ausschnitt hinaus in die nächste Zeile; die Zeile mit dem Fokus bleibt beim Wegscrollen erhalten
+  (keine verlorenen Eingaben); „+ Neu“ holt die neue Zeile ins Bild. Drucken setzt vorher alle Zeilen ein.
+  Gemessen (`tools/perf`, Stufe M, Datenbank mit 2.000 Zeilen): öffnen bis bedienbar 12,0 s → 0,6 s (DOM-Knoten
+  176.000 → 12.000, längste Blockade 9,9 s → 0,15 s), Suchfeld 4,4 s → 0,5 s, Ansicht „Offen“ 9,5 s → 0,5 s, zurück zur
+  Tabelle 11,1 s → 0,3 s, „+ Neu“ 16,8 s → 0,9 s. Stufe L (10.000 Zeilen; vorher brach die Messung ab): öffnen
+  0,9 s, Suche 0,6 s, ans Ende scrollen 0,4 s.
+  Kurze Tabellen (unter 150 Einträgen) entstehen genau wie bisher. Einschränkung: Die Suche des Browsers (Strg+F) findet
+  in langen Tabellen nur Zeilen im Ausschnitt – dafür gibt es das Suchfeld der Datenbank.
+- **Galerie und Board** setzen die ersten Karten sofort ein, den Rest in kurzen Häppchen danach – die Seite bleibt
+  bedienbar, am Ende steht dieselbe Ansicht wie bisher (Ziehen zwischen Spalten wie gehabt). Board mit 2.000 Karten:
+  erste Karten nach 1,1 s, alle nach 2,0 s (vorher 2,4 s blockiert).
+- **`/rows` mit Ansicht, Filter, Sortierung und Seiten (opt-in, für Apps/Widgets):** `GET /api/notes/{id}/rows` und
+  `GET /api/app/rows/{id}` verstehen `view`, `filters`, `sorts`, `q`, `group`, `limit`, `offset`, `tz`, `today` und
+  liefern dann nur den Ausschnitt samt `total`, `matched` und `groups`. Ohne diese Parameter ist die Antwort
+  unverändert. Der Server rechnet dabei exakt wie das Web (gleiche Vergleiche, Leeres unten, Zeichencode-Sortierung,
+  „Berechnet“, Relationen-Titel nur, wenn der Betrachter sie sehen darf) – geprüft mit Testvektoren, die aus dem
+  Web-Code selbst erzeugt werden (`tools/dbquery_vectors.mjs`). Nur Blättern ohne Filter läuft direkt in SQL
+  (2.000 Zeilen: Seite à 100 in 15 ms statt 51 ms für alles); Widget „Ansicht, 8 Einträge“: 1,3 KB statt 136 KB
+  (10.000 Zeilen: 1,3 KB statt 675 KB, Antwortzeit gleich). Vertrag:
+  `docs/APP-API.md`. Das Web lädt weiterhin alle Zeilen (Summen, Gruppen, Suche beim Tippen, Kalender, Relationen und
+  die Seitenansicht brauchen sie).
+- `tools/perf/web.py`: misst zusätzlich „erste Zeile sichtbar“, „danach bedienbar“ und „ans Ende scrollen“; zählt
+  Zeilen virtualisierter Tabellen über `data-rows`. `tests/browser_db.js`: Browser-Tests für lange Datenbanken.
 
 ### Lastmessung (nur Werkzeuge, keine Änderung an Saga selbst)
 

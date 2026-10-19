@@ -9,6 +9,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse
 from db import connect as _db
 from fastapi import APIRouter
+from saga import dbquery
 from saga.calendars import _cal_collect
 from saga.core import APP_CAPTURE_MAX, APP_TOKEN_MAX, TZ, _api_guard, _bad, _body, _json_load, _tok_db, _tok_hash, t, t_account, user_info
 from saga.databases import _first_image
@@ -203,7 +204,14 @@ def api_app_rows(nid: int, request: Request):
     uid = _app_uid(request)
     if not uid:
         return _bad("unauthorized", 401)
-    d = _db_rows(uid, nid)
+    try:
+        query = dbquery.parse_args(request.query_params)
+    except ValueError as e:
+        return _bad(f"bad parameter: {e}")
+    try:
+        d = _db_rows(uid, nid, query=query, viewer=uid)
+    except dbquery.JsError:
+        return _bad(t("Filter oder Sortierung lässt sich nicht auswerten."))
     return JSONResponse(d, headers={"Cache-Control": "no-store"}) if d else _bad("not found", 404)
 
 
@@ -251,6 +259,10 @@ def api_db_rows(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
+    try:
+        query = dbquery.parse_args(request.query_params)      # Filter/Sortierung/Blaettern: nur auf Wunsch (2.2)
+    except ValueError as e:
+        return _bad(f"bad parameter: {e}")
     with _db() as c:
         acc = Access(c, uid)
         owner, role, err = access(c, uid, nid, "view", acc)
@@ -258,15 +270,19 @@ def api_db_rows(nid: int, request: Request):
             return err
     # fremd: ohne archivierte Zeilen und ohne Vorlagen. Wer die Datenbank sehen darf, sieht jede ihrer Zeilen, die nicht
     # archiviert/Vorlage ist (Vererbung wie sharing.Access.tree) - dafuer braucht es keinen Freigabe-Baum
-    d = _db_rows(owner, nid, shared=role != "owner")
+    try:
+        d = _db_rows(owner, nid, shared=role != "owner", query=query, viewer=uid)
+    except dbquery.JsError:
+        return _bad(t("Filter oder Sortierung lässt sich nicht auswerten."))
     if d:
         d["role"] = role
     return JSONResponse(d, headers={"Cache-Control": "no-store"}) if d else _bad("not found", 404)
 
 
-def _db_rows(owner, nid, shared=False):
+def _db_rows(owner, nid, shared=False, query=None, viewer=None):
     """Schema + aktive Zeilen einer Datenbank (None, wenn nicht vorhanden / nicht von owner).
     shared: Antwort fuer Nicht-Eigentuemer - ohne archivierte Zeilen und ohne Vorlagen.
+    query (dbquery.parse_args, opt-in): Ansicht/Filter/Sortierung/Suche/Gruppen/Blaettern; viewer: wer fragt (Relationen).
     Vorschaubild: Titelbild, sonst erstes Bild im Inhalt - aus note_derived (saga.pageindex); nur fuer gerade geaenderte,
     noch nicht abgeglichene Zeilen (note_stale) wird der Inhalt geladen und wie bisher gelesen."""
     with _db() as c:
@@ -274,9 +290,13 @@ def _db_rows(owner, nid, shared=False):
         db = c.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database' AND deleted_at IS NULL", (nid, owner)).fetchone()
         if not db:
             return None
-        rows = c.execute("SELECT id, title, icon, props, updated, created, cover, format FROM note WHERE uid=? AND parent_id=? "
-                         "AND deleted_at IS NULL AND is_template=0" + (" AND archived IS NULL" if shared else "")
-                         + " ORDER BY sort NULLS FIRST, created", (owner, nid)).fetchall()
+        sql = ("SELECT id, title, icon, props, updated, created, cover, format FROM note WHERE uid=? AND parent_id=? "
+               "AND deleted_at IS NULL AND is_template=0" + (" AND archived IS NULL" if shared else ""))
+        parsed, extra = {}, None
+        if query is None:                                    # wie immer: alle Zeilen (Antwort byte-gleich zu frueher)
+            rows = c.execute(sql + " ORDER BY sort NULLS FIRST, created", (owner, nid)).fetchall()
+        else:
+            rows, parsed, extra = _db_query(c, owner, nid, shared, sql, db[0], query, viewer)
         tpls = [] if shared else c.execute(
             "SELECT id, title, icon FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND is_template=1 "
             "ORDER BY sort NULLS FIRST, created", (owner, nid)).fetchall()      # Vorlagen der Datenbank: keine Zeilen (wie Notion)
@@ -286,6 +306,44 @@ def _db_rows(owner, nid, shared=False):
         need = [i for i in ids if i in stale or i not in pv]
         for i, body, fmt in (c.execute("SELECT id, body, format FROM note WHERE id = ANY(?)", (need,)).fetchall() if need else ()):
             pv[i] = _first_image(body, fmt)                  # wie bisher am Inhalt
-    return {"schema": _json_load(db[0], {"props": []}), "templates": [{"id": t[0], "title": t[1] or "", "icon": t[2] or ""} for t in tpls],
-            "rows": [{"id": r[0], "title": r[1] or "", "icon": r[2] or "", "props": _json_load(r[3], {}),
-                      "updated": r[4], "created": r[5], "preview": r[6] or pv.get(r[0]) or ""} for r in rows]}
+    out = {"schema": _json_load(db[0], {"props": []}), "templates": [{"id": t[0], "title": t[1] or "", "icon": t[2] or ""} for t in tpls],
+           "rows": [{"id": r[0], "title": r[1] or "", "icon": r[2] or "", "props": parsed[r[0]] if r[0] in parsed else _json_load(r[3], {}),
+                     "updated": r[4], "created": r[5], "preview": r[6] or pv.get(r[0]) or ""} for r in rows]}
+    if extra:
+        out.update(extra)
+    return out
+
+
+def _db_query(c, owner, nid, shared, sql, schema_json, query, viewer):
+    """Opt-in-Abfrage von /rows (saga.dbquery): -> (zeilen der Seite, {id: props}, Zusatzfelder total/matched/...).
+    Nur Blaettern (ohne Ansicht/Filter/Sortierung/Suche/Gruppen): LIMIT/OFFSET in SQL. Sonst rechnet dbquery GENAU wie
+    das Web - Reihenfolge der Zeilen dabei stabil (sort, created, id), damit Seiten lueckenlos aneinander passen."""
+    order = " ORDER BY sort NULLS FIRST, created, id"
+    off, lim = query.get("offset", 0), query.get("limit")
+    extra = {"offset": off}
+    if lim is not None:
+        extra["limit"] = lim
+    if not any(k in query for k in ("view", "filters", "sorts", "q", "group")):
+        total = c.execute("SELECT count(*) FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND is_template=0"
+                          + (" AND archived IS NULL" if shared else ""), (owner, nid)).fetchone()[0]
+        rows = c.execute(sql + order + " LIMIT ? OFFSET ?", (owner, nid, lim if lim is not None else 2 ** 62, off)).fetchall()
+        return rows, {}, dict(extra, total=total, matched=total)
+    rows = c.execute(sql + order, (owner, nid)).fetchall()
+    parsed = {r[0]: _json_load(r[3], {}) for r in rows}
+    data = [{"id": r[0], "title": r[1] or "", "props": parsed[r[0]], "updated": r[4], "created": r[5], "_r": r} for r in rows]
+
+    def labels(ids):
+        """Titel verknuepfter Eintraege - nur, was der Betrachter im Web kennt (eigener Baum ohne Archiv bzw. Freigabe-Baum)."""
+        if viewer == owner:
+            got = c.execute("SELECT id, title FROM note WHERE id = ANY(?) AND uid=? AND deleted_at IS NULL AND archived IS NULL",
+                            (list(ids), owner)).fetchall()
+        else:
+            vis = Access(c, viewer).tree(owner)
+            ok = [i for i in ids if i in vis]
+            got = c.execute("SELECT id, title FROM note WHERE id = ANY(?)", (ok,)).fetchall() if ok else []
+        return {i: tl or "" for i, tl in got}
+    page, matched, groups = dbquery.run(_json_load(schema_json, {"props": []}), data, query, labels=labels, untitled=t("Unbenannt"))
+    extra.update(total=len(rows), matched=matched)
+    if groups is not None:
+        extra["groups"] = groups
+    return [d["_r"] for d in page], parsed, extra
