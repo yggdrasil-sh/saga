@@ -874,8 +874,11 @@ def backup(label="manuell"):
 # jederzeit neu ableitbar: vorher entfernen. Ein Backup ab 2.2 bringt sie mit, sonst legt der naechste Start sie an und
 # gleicht alle Seiten neu ab. Seitenbaum-Abgleich (note_tseq*, kein Fremdschluessel): der Stand gehoert zur alten
 # Datenbank - der naechste Start legt ihn leer an und wuerfelt eine neue Kennung (Clients laden einmal ganz).
+# chat_invite (2.3, Fremdschluessel auf chat): ein Backup von davor kennt sie nicht (sonst bricht DROP chat ab); ein
+# neueres bringt sie mit, sonst legt der naechste Start sie leer an (Sperren trifft dann wie bisher die Erstellerin).
 _RESTORE_DROP = (b"DROP TABLE IF EXISTS public.note_link, public.note_stale, public.note_derived;\n"
-                 b"DROP TABLE IF EXISTS public.note_tseq, public.note_tseq_meta;\n")
+                 b"DROP TABLE IF EXISTS public.note_tseq, public.note_tseq_meta;\n"
+                 b"DROP TABLE IF EXISTS public.chat_invite;\n")
 _RESTORE_SET = re.compile(rb"^SET ([a-z_]+) = .*;\r?\n?$")
 
 

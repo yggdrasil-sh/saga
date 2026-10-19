@@ -465,6 +465,21 @@ def part_block(x):
     # Eingeladen von einer Person desselben Servers: nur ablehnen (kein Sperren einer fremden Person)
     s, d = api("a", "fa-carl", "GET", "/api/chats")
     ok("A: Carl (eingeladen von Dora, C) - Einladung nennt Dora", any((c_.get("invited_by") or {}).get("name") == "Dora Dritt" for c_ in d.get("chats", [])))
+    # Das Heim nennt als Einladende eine Person von A, die gar nicht (angenommenes) Mitglied ist (Carl: nur Anfrage) - damit
+    # liesse sich das Sperren verhindern: zaehlt nicht, es bleibt die Erstellerin (Dora). Mit Anna (Mitglied) gilt es.
+    mem = [{"handle": x.dora.handle, "name": "Dora Dritt", "role": "admin"}, {"handle": x.anna.handle}, {"handle": x.carl.handle}]
+    inv_of = lambda: (sql("a", "SELECT i.by_uid FROM chat_invite i JOIN chat ch ON ch.id=i.chat_id WHERE ch.ref=? AND i.uid='fa-lisa'",
+                          (x.gc["ref"],)) or [[None]])[0][0]
+    s, d = events_c([ev("chat.members", ref=x.gc["ref"], kind="free", members=mem + [{"handle": x.lisa.handle}],
+                        sys={"added": [{"handle": x.lisa.handle}], "by": {"handle": x.carl.handle, "name": "Carl Ohne"}})])
+    lg = wait(lambda: x.lisa.chat(x.gc["ref"]), 10) or {}
+    ok(f"Heim nennt Nicht-Mitglied von A als Einladende -> zaehlt nicht, Sperren bleibt moeglich ({d.get('results')}, {inv_of()})",
+       d.get("results") == ["ok"] and (inv_of() or "").startswith("@") and (lg.get("invited_by") or {}).get("remote") is True)
+    events_c([ev("chat.members", ref=x.gc["ref"], kind="free", members=mem)])
+    s, d = events_c([ev("chat.members", ref=x.gc["ref"], kind="free", members=mem + [{"handle": x.lisa.handle}],
+                        sys={"added": [{"handle": x.lisa.handle}], "by": {"handle": x.anna.handle, "name": "Anna Berg"}})])
+    ok(f"eingeladen von Anna (Mitglied, A) -> nur ablehnen ({inv_of()})", d.get("results") == ["ok"] and inv_of() == "fa-anna")
+    events_c([ev("chat.members", ref=x.gc["ref"], kind="free", members=mem)])
 
 
 def part_cache(x):
@@ -637,6 +652,14 @@ def part_disconnect(x, adm):
     rest = [r[0] for r in sql("a", "SELECT principal FROM fed_person WHERE peer_id=?", (x.pc,))]
     ok(f"A: Namen von C nur noch, wo sie hier vorkommen ({n_before} -> {len(rest)})", len(rest) < n_before
        and ("@" + x.dora.handle) in rest and not sql("a", "SELECT 1 FROM fed_directory WHERE peer_id=?", (x.pc,)))
+    if not COMPAT:                                      # Zwischenkopien von C lassen sich nicht mehr neu holen: sie bleiben
+        r = F2.py("a", "import os\nfrom db import connect\nfrom saga import chat, fed_chat\n"
+                       "q = lambda: [r[0] for r in connect().__enter__().execute('SELECT id FROM chat_file_fed WHERE cached=1').fetchall()]\n"
+                       "ids = q()\nfor i in ids: os.utime(os.path.join(chat.CHAT_DIR, i), (1, 1))\n"
+                       "fed_chat._st['t'] = 0\nfed_chat.periodic()\nn = fed_chat.cache_trim(" + str(x.pc) + ")\nleft = q()\n"
+                       "print(json.dumps([len(ids), len(left), n, all(os.path.isfile(os.path.join(chat.CHAT_DIR, i)) for i in left)]))")
+        ok(f"A: Zwischenkopien von Anhaengen des getrennten Servers bleiben (kein Ablauf, keine Grenze) {r}",
+           r and r[0] >= 1 and r[1] == r[0] and r[2] == 0 and r[3])
     ok("A: Direkt-Chat mit Dora schreibgeschuetzt, Verlauf lesbar mit Namen", api("a", "fa-anna", "GET", f"/api/chats/{x.ad['id']}")[1]["chat"].get("readonly")
        and x.anna.texts(x.ad)[:1] == ["Hallo Dora"])
     bystander(x, "nach dem Trennen von C")

@@ -980,7 +980,10 @@ def _prework_events(peer, evs):
             if FK._peer_ok(F.peer_by(c, "host", host)):
                 need.add(sh)
     if need:
-        entries(sorted(need)[:20])
+        # nur EIN Server je Sendung (Abruf bis 6 s): ein haengender Dritt-Server darf die Anfrage nicht beliebig lange
+        # aufhalten - die uebrigen holt der Hintergrund nach 'keys' (-> 'retry')
+        first = split_handle(sorted(need)[0])[1]
+        entries(sorted(h for h in need if split_handle(h)[1] == first)[:20])
 
 
 F.EV2_PREWORK.append(_prework_events)
@@ -1175,6 +1178,8 @@ def cache_trim(peer_id, keep=None):
     """Zwischenkopien der Anhaenge einer Instanz auf CACHE_PEER_MAX begrenzen (am laengsten unbenutzte zuerst).
     -> Anzahl entfernter."""
     with _db() as c:
+        if not peer_ok(F.peer_by(c, "id", peer_id)):    # getrennt/abgeschaltet: nicht neu zu holen - Kopien bleiben
+            return 0
         rows = c.execute("SELECT x.id, f.size FROM chat_file_fed x JOIN chat_file f ON f.id=x.id WHERE x.peer_id=? AND x.cached=1",
                          (peer_id,)).fetchall()
     total = sum(r[1] for r in rows)
@@ -1914,6 +1919,9 @@ def apply_members(c, peer, ev, create=True):
     sby = ev["sys"].get("by") if isinstance(ev.get("sys"), dict) and isinstance(ev["sys"].get("by"), dict) else {}
     ibn, ibh = split_handle(sby.get("handle"))
     inv = (F.uid_by_handle(c, ibn) if ibh == F.SELF_HOST else principal(f"{ibn}@{ibh}")) if ibn else None
+    if inv and not sharing.is_remote(inv) and cur.get(inv) != "ok":
+        inv = None                           # "eingeladen von einer Person hier" nur, wenn sie wirklich Mitglied ist (sonst
+                                             # koennte das Heim so das Sperren verhindern) - sonst wie bisher die Erstellerin
     for u in want:
         if u in cur:
             c.execute("UPDATE chat_member SET role=? WHERE chat_id=? AND uid=?", (roles[u], ch["id"], u))
@@ -2541,7 +2549,12 @@ def periodic():
         c.execute("DELETE FROM chat_file_fed x WHERE NOT EXISTS (SELECT 1 FROM chat_file f WHERE f.id=x.id)")
         # Zwischenkopien, die CACHE_DAYS niemand gelesen hat, verfallen (werden bei Bedarf neu geholt)
         old = now - CACHE_DAYS * 86400
-        for (fid,) in c.execute("SELECT id FROM chat_file_fed WHERE cached=1").fetchall():
+        okp = {}
+        for (fid, xp) in c.execute("SELECT id, peer_id FROM chat_file_fed WHERE cached=1").fetchall():
+            if xp not in okp:                # nur, was sich beim Absender-Server neu holen laesst (nach Trennen: bleibt)
+                okp[xp] = peer_ok(F.peer_by(c, "id", xp))
+            if not okp[xp]:
+                continue
             try:
                 stale = os.stat(os.path.join(chat.CHAT_DIR, fid)).st_mtime < old
             except OSError:

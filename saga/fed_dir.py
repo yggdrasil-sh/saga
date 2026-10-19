@@ -301,20 +301,21 @@ def pull(pid, full=False):
 
 
 _plock = threading.Lock()
-_running, _again = set(), {}     # je Instanz hoechstens ein Abgleich gleichzeitig (Rest: einmal nachholen)
+_running, _again = {}, {}        # je Instanz hoechstens ein Abgleich gleichzeitig (Rest: einmal nachholen); pid -> seit
+RUN_STALE = 3600                 # laenger "laufend" = Auftrag verloren (z. B. aus der Warteschlange je Instanz verdraengt)
 
 
 def pull_bg(pid, full=False):
     """Abgleich im Express-Pool - je Instanz hoechstens einer laufend und einer vorgemerkt: eine Flut von
     'directory.changed' (oder eine langsame Gegenstelle) belegt nicht den ganzen Pool."""
     with _plock:
-        if pid in _running:
+        if pid in _running and time.time() - _running[pid] < RUN_STALE:
             _again[pid] = _again.get(pid, False) or bool(full)
             return
-        _running.add(pid)
+        _running[pid] = time.time()
     if F.peer_submit(pid, _pull_loop, pid, bool(full)) is False:     # Pool beendet (Herunterfahren)
         with _plock:
-            _running.discard(pid)
+            _running.pop(pid, None)
             _again.pop(pid, None)
 
 
@@ -324,12 +325,12 @@ def _pull_loop(pid, full):
             pull(pid, full)
             with _plock:
                 if pid not in _again:
-                    _running.discard(pid)
+                    _running.pop(pid, None)
                     return
                 full = _again.pop(pid)
     except BaseException:
         with _plock:
-            _running.discard(pid)
+            _running.pop(pid, None)
             _again.pop(pid, None)
         raise
 

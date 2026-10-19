@@ -1422,7 +1422,7 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `FED_EXPRESS_TIMEOUT` / `FED_EXPRESS_WORKERS` | `5` / `8` | Sekunden für die sofortige Zustellung (danach Ausgangskorb) / Threads dafür |
 | `FED_PEER_SLOTS` / `FED_OUT_WORKERS` | `3` / `4` | Hintergrund-Aufträge je verbundenem Server gleichzeitig (ein langsamer Server belegt nicht mehr) / Threads für den Ausgangskorb |
 | `FED_CHAT_IN_RATE` | `1200` | Chat-Nachrichten je Minute, die ein Server als Heim hierher zustellen darf (darüber: später erneut) |
-| `FED_CHAT_CACHE_MB` / `FED_CHAT_CACHE_DAYS` | `1024` / `30` | Zwischenkopien von Chat-Anhängen anderer Server: Speicher je Server / Tage ohne Abruf, bis sie verfallen (werden bei Bedarf neu geholt) |
+| `FED_CHAT_CACHE_MB` / `FED_CHAT_CACHE_DAYS` | `1024` / `30` | Zwischenkopien von Chat-Anhängen anderer Server: Speicher je Server / Tage ohne Abruf, bis sie verfallen (werden bei Bedarf neu geholt; von getrennten Servern bleiben sie) |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Websuche (Abschnitt 10) |
 | `AI_WEB_FETCH` / `AI_WEB_RATE` | `2` / `10` | Websuche der KI: Trefferseiten, deren Text gelesen wird (0 = nur Ausschnitte); Websuchen je Person in 10 Minuten |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Sprache und Filter der Websuche |

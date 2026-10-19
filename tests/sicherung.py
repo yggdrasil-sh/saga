@@ -126,6 +126,21 @@ try:
     ok(f"Abgleich-Stand: nach Zurueckspielen weg, naechster Start legt ihn an (Kennung, Trigger) {ep0} {len(ep1)} {trg}",
        ep0 == (None, None) and len(ep1) == 1 and trg == 1)
 
+    # Backup von vor 2.3 E8: ohne chat_invite (Fremdschluessel auf chat) - einspielbar auf einer Datenbank, die sie hat
+    q("DROP TABLE chat_invite")
+    old23 = db.backup("sicherung-vor-2-3-e8")
+    made.append(old23)
+    db.init_schema()
+    ok("chat_invite nach dem Start da", q("SELECT to_regclass('public.chat_invite')")[0][0] is not None)
+    try:
+        db.restore(old23)
+        okr = True
+    except RuntimeError as ex:
+        okr, _ = False, print(str(ex)[:300])
+    db.init_schema()
+    ok("Backup ohne chat_invite einspielbar, naechster Start legt sie an",
+       okr and q("SELECT to_regclass('public.chat_invite')")[0][0] is not None)
+
     # Kommandozeile wie in der Anleitung (python run.py restore <datei>)
     import subprocess
     q("UPDATE note SET title = 'per run.py weg' WHERE id = 1")

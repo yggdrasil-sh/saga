@@ -91,6 +91,7 @@ Anleitung: `docs/ANLEITUNG.md`, Abschnitt Föderation; Vertrag für die Apps: `d
   arbeitet je Server getrennt (`FED_OUT_WORKERS`) – Chats mit anderen Servern laufen ungebremst weiter.
 - **Zwischenkopien fremder Chat-Anhänge** sind je Server begrenzt (`FED_CHAT_CACHE_MB`, Standard 1024; die zuletzt
   benutzten bleiben) und verfallen nach `FED_CHAT_CACHE_DAYS` (30) ohne Abruf – bei Bedarf holt Saga sie neu.
+  Von getrennten (oder für Chats abgeschalteten) Servern bleiben sie, da sie sich nicht neu holen lassen.
 - **Rückfall auf Protokoll 1** (ältere Version beim anderen Server zurückgespielt oder ein Angriff) steht im
   Prüfprotokoll; Chats mit diesem Server ruhen, wartende Ereignisse bleiben im Ausgangskorb, bis er wieder Protokoll 2
   meldet.

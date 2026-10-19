@@ -405,6 +405,8 @@ def prune_persons(c, peer_id=None, principals=None):
     for pr in cand:
         if any(c.execute(f"SELECT 1 FROM {tb} WHERE {col}=? LIMIT 1", (pr,)).fetchone() for tb, col in _PERSON_REFS):
             continue
+        if c.execute("SELECT 1 FROM fed_chat_block WHERE target=? LIMIT 1", (pr[1:],)).fetchone():
+            continue                         # Sperrliste zeigt den Namen ('~x@host' ohne fuehrendes @)
         n += c.execute("DELETE FROM fed_person WHERE principal=?", (pr,)).rowcount
     return n
 
