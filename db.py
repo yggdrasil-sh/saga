@@ -833,6 +833,22 @@ ALTER TABLE file ADD COLUMN IF NOT EXISTS fed_by TEXT;
 ALTER TABLE file ADD COLUMN IF NOT EXISTS fed_note BIGINT;
 CREATE INDEX IF NOT EXISTS file_fed_by ON file (uid, fed_by) WHERE fed_by IS NOT NULL;
 """,
+    # 2.4.0 (Etappe E0, Anrufe - Grundgeruest): Raum-Fassung v (1 = 1:1 wie 2.1/2.3, 3 = Raum ab E4), Topologie topo
+    # (p2p | mesh | spaeter sfu) und Art kind (dm | group) - in E0 bleiben alle Anrufe v=1/p2p/dm. Dazu die beim Anrufen
+    # bzw. Annehmen vom Geraet gemeldeten Faehigkeiten (caps_a = anrufendes, caps_b = annehmendes Geraet; JSON-Liste, nur
+    # Hinweis fuer Oberflaeche und Grenzen - massgeblich sind die signierten caps im versiegelten Body).
+    # Erweiterung in E4 (Migration 12): Endpunkte je Geraet in einer EIGENEN Tabelle chat_call_leg (call_id, device, who,
+    # peer_id, role, state, replaces, caps, joined, left_at, seen; PK (call_id, device), FK auf chat_call ON DELETE CASCADE)
+    # und chat_call_invite; caps_a/caps_b werden dort als caps der beiden ersten Endpunkte uebernommen, caller/callee und
+    # caller_device/callee_device bleiben fuer 2.3-Code und Foederation gefuellt. Neue Tabellen mit Fremdschluessel auf
+    # chat_call muessen dann auch in _RESTORE_DROP (sonst scheitert das Zurueckspielen eines aelteren Backups an DROP chat_call).
+    10: """
+ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS v SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS topo TEXT NOT NULL DEFAULT 'p2p';
+ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'dm';
+ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS caps_a TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS caps_b TEXT NOT NULL DEFAULT '[]';
+""",
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
 BACKUP_DIR = os.path.join(os.environ.get("STATE_DIR", "/data"), "backups")
@@ -899,6 +915,8 @@ def backup(label="manuell"):
 # Datenbank - der naechste Start legt ihn leer an und wuerfelt eine neue Kennung (Clients laden einmal ganz).
 # chat_invite (2.3, Fremdschluessel auf chat): ein Backup von davor kennt sie nicht (sonst bricht DROP chat ab); ein
 # neueres bringt sie mit, sonst legt der naechste Start sie leer an (Sperren trifft dann wie bisher die Erstellerin).
+# 2.4: Migration 10 aendert nur Spalten von chat_call (ein aelteres Backup legt chat_call ohne sie an, der naechste Start
+# ergaenzt sie). Tabellen mit Fremdschluessel auf chat_call (E4: chat_call_leg, chat_call_invite) gehoeren dann hierher.
 _RESTORE_DROP = (b"DROP TABLE IF EXISTS public.note_link, public.note_stale, public.note_derived;\n"
                  b"DROP TABLE IF EXISTS public.note_tseq, public.note_tseq_meta;\n"
                  b"DROP TABLE IF EXISTS public.chat_invite;\n")

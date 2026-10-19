@@ -22,7 +22,10 @@ T.I["a"].update(port=8295, admin=8294, db="saga_fca", url="http://127.0.0.1:8295
 T.I["b"].update(port=8297, admin=8296, db="saga_fcb", url="http://localhost:8297", host="localhost:8297", state="/tmp/fedchat-b", allow="127.0.0.1:8295")
 HA, HB = T.I["a"]["host"], T.I["b"]["host"]
 ok, hreq, wait, jd, sql, py = T.ok, T.hreq, T.wait, T.jd, T.sql, T.py
-COMPAT = F2.COMPAT
+# FED_B_23=1 (mit FED_B_APP = Saga 2.3): B kann Chats/Anrufe (calls2), kennt aber saga-call v3 auf dem Server nicht ->
+# voller Ablauf, die caps-Hinweise fehlen auf der 2.3-Seite (die Neuverhandlung laeuft trotzdem durch)
+B23 = os.environ.get("FED_B_23") == "1"
+COMPAT = F2.COMPAT and not B23
 
 
 def api(k, uid, m, p, body=None, v2=True):
@@ -430,7 +433,7 @@ def part_calls(A, B, pa, pb, anna, bert, ch, bc):
                 continue
             body = json.dumps({"t": "offer", "sdp": "v=0", "media": "audio", "fp": []})
             sig[d["id"]] = C.seal_signal_v2(cid, caller.handle, caller.dev, bert.handle, d["id"], C.unb64(d["enc_pub"], 32), body)
-        return {"id": cid, "chat_id": ch["id"], "media": "audio", "device": caller.dev["id"], "signals": sig}
+        return {"id": cid, "chat_id": ch["id"], "media": "audio", "device": caller.dev["id"], "signals": sig, "caps": ["reneg", "want", "bye"]}
     e = anna.keys([bert.handle], fresh=True)[bert.handle]
     b = ring_body(anna, e)
     s, d = api("a", "fa-anna", "POST", "/api/calls", b)
@@ -439,12 +442,15 @@ def part_calls(A, B, pa, pb, anna, bert, ch, bc):
     s, d = api("b", "fb-bert", "GET", "/api/calls/active")
     rc = next((x for x in d.get("calls", []) if x["id"] == cid), None)
     ok("B: es klingelt bei Bert", bool(rc) and rc["role"] == "callee" and rc["peer"]["handle"] == anna.handle)
+    ok(f"B: 2.4 - Faehigkeiten des anrufenden Geraets kommen ueber die Foederation mit ({rc and rc.get('caps')})",
+       bool(rc) and rc.get("caps", {}).get("caller") == (None if B23 else ["reneg", "want", "bye"]))
     s, d = api("b", "fb-bert", "GET", f"/api/calls/{cid}?device={bert.dev['id']}")
     body, sig = C.open_signal_v2(d["signals"][0]["sealed"], bert.dev["enc_pk"], bert.dev["enc_sk"])
     ok("B: Angebot entschluesselt + Signatur (Handles) gueltig", json.loads(body)["t"] == "offer" and
        C.verify_signal_v2(cid, anna.handle, anna.dev["id"], bert.handle, bert.dev["id"], body, sig, anna.dev["sign_pk"]))
     ans = C.seal_signal_v2(cid, bert.handle, bert.dev, anna.handle, anna.dev["id"], anna.dev["enc_pk"], json.dumps({"t": "answer", "sdp": "v=0"}))
-    s, d = api("b", "fb-bert", "POST", f"/api/calls/{cid}/answer", {"device": bert.dev["id"], "signals": {anna.dev["id"]: ans}})
+    s, d = api("b", "fb-bert", "POST", f"/api/calls/{cid}/answer", {"device": bert.dev["id"], "signals": {anna.dev["id"]: ans},
+                                                                    "caps": ["reneg", "want"]})
     ok(f"B: angenommen ({s})", s == 200 and d["call"]["state"] == "active")
     s, d = api("a", "fa-anna", "GET", f"/api/calls/{cid}?device={anna.dev['id']}")
     ok("A: aktiv, Antwort fuer Annas Geraet da", d["call"]["state"] == "active" and d["call"]["callee_device"] == bert.dev["id"]
@@ -456,6 +462,30 @@ def part_calls(A, B, pa, pb, anna, bert, ch, bc):
     ok("B: Signal angekommen", len(d["signals"]) >= 2)
     ice2 = C.seal_signal_v2(cid, bert.handle, bert.dev, anna.handle, anna.dev["id"], anna.dev["enc_pk"], json.dumps({"t": "ice", "c": []}))
     ok("B -> A: ICE-Signal", api("b", "fb-bert", "POST", f"/api/calls/{cid}/signal", {"device": bert.dev["id"], "signals": {anna.dev["id"]: ice2}})[0] == 200)
+    # 2.4 (saga-call v3): Faehigkeiten des annehmenden Geraets beim Server des Anrufers; Neuverhandlung und ICE-Restart
+    # waehrend des Gespraechs in beide Richtungen (mehrere offer/answer je Anruf, foederiert synchron weitergereicht)
+    s, d = api("a", "fa-anna", "GET", f"/api/calls/{cid}?device={anna.dev['id']}")
+    ok(f"A: 2.4 - Faehigkeiten des annehmenden Geraets ({d['call'].get('caps')})", d["call"].get("caps", {}).get("callee") == ([] if B23 else ["reneg", "want"]))
+    pc = ":".join(sorted([anna.dev["id"], bert.dev["id"]]))
+    seen_a = max(x["seq"] for x in d["signals"])
+    rounds = []
+    for n in range(2, 6):
+        fr, to, frm, rcp = (bert, anna, "fb-bert", "fa-anna") if n % 2 == 0 else (anna, bert, "fa-anna", "fb-bert")
+        fk, tk = ("b", "a") if fr is bert else ("a", "b")
+        off = json.dumps({"t": "offer", "pc": pc, "n": n, "sdp": "v=0 r" + str(n), "fp": [], "caps": ["reneg"], "restart": n % 2 == 1})
+        s1 = api(fk, frm, "POST", f"/api/calls/{cid}/signal", {"device": fr.dev["id"], "signals": {to.dev["id"]: C.seal_signal_v2(
+            cid, fr.handle, fr.dev, to.handle, to.dev["id"], to.dev["enc_pk"], off)}})[0]
+        got = api(tk, rcp, "GET", f"/api/calls/{cid}?device={to.dev['id']}&after=0")[1]["signals"]
+        last = json.loads(C.open_signal_v2(got[-1]["sealed"], to.dev["enc_pk"], to.dev["enc_sk"])[0])
+        ans3 = json.dumps({"t": "answer", "pc": pc, "n": n, "sdp": "v=0 a" + str(n), "fp": []})
+        s2 = api(tk, rcp, "POST", f"/api/calls/{cid}/signal", {"device": to.dev["id"], "signals": {fr.dev["id"]: C.seal_signal_v2(
+            cid, to.handle, to.dev, fr.handle, fr.dev["id"], fr.dev["enc_pk"], ans3)}})[0]
+        back = api(fk, frm, "GET", f"/api/calls/{cid}?device={fr.dev['id']}&after=0")[1]["signals"]
+        lb = json.loads(C.open_signal_v2(back[-1]["sealed"], fr.dev["enc_pk"], fr.dev["enc_sk"])[0])
+        rounds.append(s1 == 200 and s2 == 200 and last.get("t") == "offer" and last.get("n") == n and lb.get("t") == "answer" and lb.get("n") == n)
+    ok(f"Foederiert: Neuverhandlung/ICE-Restart in beide Richtungen, 4 Runden offer/answer ({rounds})", all(rounds))
+    s, d = api("a", "fa-anna", "GET", f"/api/calls/{cid}?device={anna.dev['id']}&after={seen_a}")
+    ok("A: Signale der Runden in Reihenfolge (seq steigt)", [x["seq"] for x in d["signals"]] == sorted(x["seq"] for x in d["signals"]) and len(d["signals"]) == 4)
     ok("Lebenszeichen", api("b", "fb-bert", "POST", f"/api/calls/{cid}/alive", {})[1]["state"] == "active")
     ok("A: Anna legt auf", api("a", "fa-anna", "POST", f"/api/calls/{cid}/end", {"reason": "hangup", "connected": True})[0] == 200)
     ok("B: Anruf auch dort beendet + Eintrag im Chat", wait(lambda: api("b", "fb-bert", "GET", f"/api/calls/{cid}")[1]["call"]["state"] == "ended", 10)

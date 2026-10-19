@@ -21,7 +21,14 @@ endet der Anruf ("lost"). Live-Ereignisse: call.ring {call_id, chat_id, from, fr
 call.signal {call_id, seq, from_device, to_device, sealed}, call.state {call_id, state, reason, device}.
 
 Im Chat bleibt ein Eintrag chat_msg kind='call' mit Metadaten (unverschluesselt, nur was der Server ohnehin weiss:
-Art, Ergebnis, Dauer) - Apps/Clients bekommen ihn nur mit ?calls=1 (aeltere Apps sehen ihn nicht)."""
+Art, Ergebnis, Dauer) - Apps/Clients bekommen ihn nur mit ?calls=1 (aeltere Apps sehen ihn nicht).
+
+2.4 (Etappe E0, "saga-call v3"): Versiegelung und Signatur bleiben v1/v2; neu sind nur Felder im (fuer den Server
+undurchsichtigen) Body - pc, caps, n, Neuverhandlung (offer/answer auch waehrend des Gespraechs, "Perfect Negotiation"),
+ICE-Restart, state.want, bye (Vertrag: docs/APP-API.md "Anrufe: saga-call v3"). Der Server reicht dafuer beliebig viele
+Signale in beide Richtungen weiter (Budget waechst mit der Gespraechsdauer, sig_budget) und merkt sich die vom Geraet
+gemeldeten Faehigkeiten nur als Hinweis (caps_a/caps_b, nicht sicherheitsrelevant - massgeblich sind die signierten caps
+im Body). GET /api/calls/config meldet features und limits."""
 import asyncio
 import base64
 import hashlib
@@ -42,7 +49,11 @@ router = APIRouter()
 
 MEDIA = ("audio", "video")
 SEALED_MAX = 24 * 1024                 # versiegelte Signal-Nachricht (B64) - SDP mit Video ~6 KB
-SIGNALS_MAX = 600                      # Signal-Nachrichten je Anruf
+SIGNALS_MAX = 600                      # Signal-Nachrichten je Anruf (Grundbudget bis zur Annahme und in der ersten Minute)
+SIG_PER_MIN = 60                       # 2.4: + so viele je angefangener Gespraechsminute (Neuverhandlung, ICE-Restart, Zustand)
+SIGNALS_HARD = 6000                    # 2.4: harte Obergrenze je Anruf (auch bei sehr langen Gespraechen)
+FEATURES = ("reneg", "pip_hint")       # 2.4: GET /api/calls/config -> features (E0: Neuverhandlung, PiP-Hinweis want)
+CAPS_MAX, _CAP = 16, re.compile(r"[a-z0-9_]{1,16}")
 SIG_RATE = 240                         # je Geraet und Minute
 CALL_RATE, CALL_RATE_H = 6, 40         # neue Anrufe je Konto: je Minute / je Stunde
 PAIR_RATE = 3                          # an dieselbe Person je Minute
@@ -117,6 +128,33 @@ def has_turn():
 
 
 # --- Hilfen ---------------------------------------------------------------------------------------------------------
+def sig_budget(call, now=None):
+    """Wie viele Signal-Nachrichten dieser Anruf insgesamt haben darf: Grundbudget, dazu SIG_PER_MIN je angefangener
+    Minute seit der Annahme (Neuverhandlung, ICE-Restart bei Netzwechsel, Zustandswechsel), hoechstens SIGNALS_HARD."""
+    ans = call.get("answered")
+    mins = int(((now or time.time()) - ans) // 60) + 1 if ans else 0
+    return min(SIGNALS_HARD, SIGNALS_MAX + SIG_PER_MIN * mins)
+
+
+def caps_in(v):
+    """Vom Geraet gemeldete Faehigkeiten (nur Hinweis) -> JSON-Text einer Liste kurzer Namen; Ungueltiges faellt weg."""
+    if not isinstance(v, list):
+        return "[]"
+    out = []
+    for x in v[:4 * CAPS_MAX]:
+        if isinstance(x, str) and _CAP.fullmatch(x) and x not in out:
+            out.append(x)
+    return json.dumps(out[:CAPS_MAX], separators=(",", ":"))
+
+
+def caps_out(s):
+    try:
+        v = json.loads(s or "[]")
+    except ValueError:
+        return []
+    return v if isinstance(v, list) else []
+
+
 def _rate(kind, key, n, per=60.0):
     now = time.time()
     k = (kind, key)
@@ -139,7 +177,8 @@ def _me(request):
     return uid, None
 
 
-C_COLS = "id, chat_id, caller, callee, caller_device, callee_device, media, state, reason, created, answered, ended, seen_a, seen_b, nsig, peer_id"
+C_COLS = ("id, chat_id, caller, callee, caller_device, callee_device, media, state, reason, created, answered, ended, seen_a, seen_b, nsig, "
+          "peer_id, caps_a, caps_b")
 
 
 def _row(r):
@@ -194,6 +233,8 @@ def _dict(c, call, uid, nm=None):
             "role": "caller" if me_caller else "callee", "peer": pd, **({"v": 2} if call.get("peer_id") else {}),
             "caller_device": call["caller_device"], "callee_device": call["callee_device"], "created": call["created"],
             "answered": call["answered"], "ended": call["ended"], "ring_s": ring_s(),
+            # 2.4: Faehigkeiten, die die Geraete beim Anrufen/Annehmen gemeldet haben (Hinweis fuer die Oberflaeche)
+            "caps": {"caller": caps_out(call.get("caps_a")), "callee": caps_out(call.get("caps_b"))},
             "expires_in": max(0, round(call["created"] + ring_s() - now, 1)) if call["state"] == "ringing" else None}
 
 
@@ -263,7 +304,11 @@ def api_config(request: Request):
     c = cfg()
     return chat._no_store({"enabled": on, "ice_servers": ice_servers(uid) if on else [], "relay_only": bool(c.get("relay_only")) and has_turn(),
                            "turn": has_turn(), "stun": bool(urls(c.get("stun"), ("stun", "stuns"))[0]), "ring_s": ring_s(),
-                           "alive_s": 15, "max_s": MAX_S, "format": "saga-call/v1"})
+                           "alive_s": 15, "max_s": MAX_S, "format": "saga-call/v1",
+                           # 2.4: Body-Fassung, Server-Faehigkeiten und Grenzen (Endpunkte: E4/E5 heben sie an)
+                           "body_v": 3, "features": list(FEATURES),
+                           "limits": {"endpoints_video": 2, "endpoints_audio": 2, "signals_max": SIGNALS_MAX, "signals_per_min": SIG_PER_MIN,
+                                      "signals_hard": SIGNALS_HARD, "sig_rate": SIG_RATE, "sealed_max": SEALED_MAX, "caps_max": CAPS_MAX}})
 
 
 @router.get("/api/calls/active")
@@ -318,7 +363,7 @@ async def api_call(request: Request):
             fed = None
     if fed is not None:
         from starlette.concurrency import run_in_threadpool
-        return await run_in_threadpool(FED.start, uid, fed[0], cid, media, dev, fed[1])
+        return await run_in_threadpool(FED.start, uid, fed[0], cid, media, dev, fed[1], caps_in(b.get("caps")))
     with _db() as c, c:
         ch, m, mem, err = chat._chat_for(c, uid, chat_id, do_sync=False)
         if err:
@@ -350,8 +395,8 @@ async def api_call(request: Request):
             return _bad(t("Du telefonierst gerade schon."), 409)
         if not _rate("call", uid, CALL_RATE) or not _rate("call-h", uid, CALL_RATE_H, 3600) or not _rate("pair", uid + "|" + peer, PAIR_RATE):
             return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
-        c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a) "
-                  "VALUES (?,?,?,?,?,?,'ringing',?,?)", (cid, ch["id"], uid, peer, dev, media, now, now))
+        c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, caps_a) "
+                  "VALUES (?,?,?,?,?,?,'ringing',?,?,?)", (cid, ch["id"], uid, peer, dev, media, now, now, caps_in(b.get("caps"))))
         _OWN.add(cid)
         call = _load(c, cid)
         if _busy_other(c, peer, cid):
@@ -418,9 +463,10 @@ async def api_answer(cid: str, request: Request):
         sig = _sealed_map(b.get("signals"), {call["caller_device"]})
         if sig is None:
             return _bad(t("ungültige Angabe"))
+        caps = caps_in(b.get("caps"))
         if not (call["peer_id"] and FED is not None):
-            c.execute("UPDATE chat_call SET state='active', callee_device=?, answered=?, seen_a=?, seen_b=? WHERE id=?",
-                      (dev, now, now, now, call["id"]))
+            c.execute("UPDATE chat_call SET state='active', callee_device=?, answered=?, seen_a=?, seen_b=?, caps_b=? WHERE id=?",
+                      (dev, now, now, now, caps, call["id"]))
             seq = c.execute("INSERT INTO chat_call_signal (call_id, from_device, to_device, sealed, created) VALUES (?,?,?,?,?) RETURNING seq",
                             (call["id"], dev, call["caller_device"], sig[call["caller_device"]], now)).fetchone()[0]
             c.execute("UPDATE chat_call SET nsig=nsig+1 WHERE id=?", (call["id"],))
@@ -431,7 +477,7 @@ async def api_answer(cid: str, request: Request):
             print(f"call: {call['id'][:8]} angenommen", flush=True)
             return chat._no_store({"ok": True, "call": _dict(c, _load(c, call["id"]), uid)})
     from starlette.concurrency import run_in_threadpool         # 2.3: der Server des Anrufers fuehrt den Zustand
-    return await run_in_threadpool(FED.answer, uid, call, dev, sig)
+    return await run_in_threadpool(FED.answer, uid, call, dev, sig, caps)
 
 
 @router.post("/api/calls/{cid}/decline")
@@ -477,7 +523,9 @@ async def api_end(cid: str, request: Request):
 @router.post("/api/calls/{cid}/signal")
 async def api_signal(cid: str, request: Request):
     """Signal weiterreichen (ICE-Kandidaten, neue Angebote, Zustand): {device, signals:{zielgeraet: versiegelt}}.
-    Anrufer -> alle Geraete des Gegenuebers (vor dem Annehmen) bzw. das annehmende Geraet; Gegenueber -> anrufendes Geraet."""
+    Anrufer -> alle Geraete des Gegenuebers (vor dem Annehmen) bzw. das annehmende Geraet; Gegenueber -> anrufendes Geraet.
+    2.4: auch weitere offer/answer waehrend des Gespraechs (Neuverhandlung, ICE-Restart) in beide Richtungen - der Server
+    sieht den Typ nicht, er begrenzt nur Menge (sig_budget), Rate je Geraet und Groesse."""
     uid, err = _me(request)
     if err:
         return err
@@ -505,7 +553,7 @@ async def api_signal(cid: str, request: Request):
             fsig = _sealed_map(b.get("signals"), allowed if uid != call["caller"] or call["callee_device"] else None)
             if fsig is None:
                 return _bad(t("ungültige Angabe"))
-            if call["nsig"] + len(fsig) > SIGNALS_MAX or not _rate("sig", dev, SIG_RATE):
+            if call["nsig"] + len(fsig) > sig_budget(call, now) or not _rate("sig", dev, SIG_RATE):
                 return _bad(t("Zu viele Signale – bitte kurz warten."), 429)
             fed = call
         else:
@@ -513,7 +561,7 @@ async def api_signal(cid: str, request: Request):
             sig = _sealed_map(b.get("signals"), allowed)
             if sig is None:
                 return _bad(t("ungültige Angabe"))
-            if call["nsig"] + len(sig) > SIGNALS_MAX or not _rate("sig", dev, SIG_RATE):
+            if call["nsig"] + len(sig) > sig_budget(call, now) or not _rate("sig", dev, SIG_RATE):
                 return _bad(t("Zu viele Signale – bitte kurz warten."), 429)
         out = []
         for k, v in sorted(sig.items()) if fed is None else ():

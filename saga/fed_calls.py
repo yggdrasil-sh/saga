@@ -9,7 +9,10 @@
   der Server des Gegenuebers spiegelt ihn (eigene Zeile in chat_call mit peer_id) fuer seine Geraete (Klingeln, Push,
   Signale, "verpasst"). Lebenszeichen gehen in beide Richtungen, jede Seite beendet bei Ausfall und meldet es der anderen.
 - Jede Seite nutzt ihren eigenen STUN/TURN-Server (GET /api/calls/config des eigenen Servers).
-- Nur aus angenommenen Chats: Nachrichtenanfragen klingeln nie. Trennen beendet laufende Anrufe."""
+- Nur aus angenommenen Chats: Nachrichtenanfragen klingeln nie. Trennen beendet laufende Anrufe.
+- 2.4 (E0, saga-call v3 im Body): ring/answer tragen optional "caps" (Hinweis, 2.3-Server ignorieren es); weitere
+  offer/answer laufen als "signal" in beide Richtungen, begrenzt wie lokal (calls.sig_budget, Rate je Geraet). Die Cap
+  "calls3" (Raum, Mehrgeraete) kommt erst mit E4."""
 import time
 
 from fastapi import Request
@@ -37,7 +40,7 @@ def _remote_of(call):
 # =====================================================================================================
 # Eigene Konten (aus saga.calls)
 # =====================================================================================================
-def start(uid, ch, cid, media, dev, sig):
+def start(uid, ch, cid, media, dev, sig, caps="[]"):
     """POST /api/calls in einem foederierten Direkt-Chat: beim Server des Gegenuebers klingeln lassen (synchron)."""
     now = time.time()
     with _db() as c, c:
@@ -60,7 +63,8 @@ def start(uid, ch, cid, media, dev, sig):
                 or not calls._rate("pair", uid + "|" + other, calls.PAIR_RATE):
             return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
         mh = FC.my_handle(c, uid)
-    st, d = FC.sync_call(p, {"op": "ring", "id": cid, "ref": ch["ref"], "from": mh, "from_device": dev, "media": media, "signals": sig},
+    st, d = FC.sync_call(p, {"op": "ring", "id": cid, "ref": ch["ref"], "from": mh, "from_device": dev, "media": media, "signals": sig,
+                                "caps": calls.caps_out(caps)},
                          path="/fed/v2/call")
     name = None
     with _db() as c:
@@ -81,8 +85,8 @@ def start(uid, ch, cid, media, dev, sig):
     if st != 200:
         return _bad(t("{name} ist gerade nicht erreichbar.", name=name), 404 if st == 404 else 409)
     with _db() as c, c:
-        c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, peer_id, nsig) "
-                  "VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,?)", (cid, ch["id"], uid, other, dev, media, now, now, now, p["id"], len(sig)))
+        c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, peer_id, nsig, caps_a) "
+                  "VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,?,?)", (cid, ch["id"], uid, other, dev, media, now, now, now, p["id"], len(sig), caps))
         calls._OWN.add(cid)
         call = calls._load(c, cid)
         print(f"call: {cid[:8]} klingelt bei {p['host']} ({media}, Chat {ch['id']}, {len(sig)} Geraet(e))", flush=True)
@@ -103,9 +107,9 @@ def actor(uid):
         return FC.my_handle(c, uid)
 
 
-def answer(uid, call, dev, sig):
+def answer(uid, call, dev, sig, caps="[]"):
     """Annehmen auf dem Server des Gegenuebers: erst beim Server des Anrufers (er fuehrt den Zustand), dann hier."""
-    st, d = _send(call, {"op": "answer", "actor": actor(uid), "device": dev, "signals": sig})
+    st, d = _send(call, {"op": "answer", "actor": actor(uid), "device": dev, "signals": sig, "caps": calls.caps_out(caps)})
     now = time.time()
     with _db() as c, c:
         cur = calls._load(c, call["id"], lock=True)
@@ -114,8 +118,8 @@ def answer(uid, call, dev, sig):
                 calls._finish(c, cur, "gone", now, remote=True)
             return chat._no_store({"error": t("Der Anruf ist schon beendet oder wurde auf einem anderen Gerät angenommen."),
                                    "call": calls._dict(c, cur or call, uid)}, 409)
-        c.execute("UPDATE chat_call SET state='active', callee_device=?, answered=?, seen_a=?, seen_b=?, nsig=nsig+1 WHERE id=?",
-                  (dev, now, now, now, call["id"]))
+        c.execute("UPDATE chat_call SET state='active', callee_device=?, answered=?, seen_a=?, seen_b=?, nsig=nsig+1, caps_b=? WHERE id=?",
+                  (dev, now, now, now, caps, call["id"]))
         calls._emit(c, [uid], "call.state", {"call_id": call["id"], "chat_id": call["chat_id"], "state": "active", "device": dev})
         print(f"call: {call['id'][:8]} angenommen (foederiert)", flush=True)
         return chat._no_store({"ok": True, "call": calls._dict(c, calls._load(c, call["id"]), uid)})
@@ -192,8 +196,8 @@ def op_ring(c, peer, d):
     if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
         return 409, {"error": "duplicate id"}
     now = time.time()
-    c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, peer_id) "
-              "VALUES (?,?,?,?,?,?,'ringing',?,?,?,?)", (cid, ch["id"], p_, callee, dev, media, now, now, now, peer["id"]))
+    c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, peer_id, caps_a) "
+              "VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,?)", (cid, ch["id"], p_, callee, dev, media, now, now, now, peer["id"], calls.caps_in(d.get("caps"))))
     calls._OWN.add(cid)
     call = calls._load(c, cid)
     if calls._busy_other(c, callee, cid):
@@ -238,7 +242,8 @@ def op_answer(c, peer, d):
     sig = _sealed(d.get("signals"), {call["caller_device"]})
     if sig is None:
         return 400, {"error": "bad signals"}
-    c.execute("UPDATE chat_call SET state='active', callee_device=?, answered=?, seen_a=?, seen_b=? WHERE id=?", (dev, now, now, now, call["id"]))
+    c.execute("UPDATE chat_call SET state='active', callee_device=?, answered=?, seen_a=?, seen_b=?, caps_b=? WHERE id=?",
+              (dev, now, now, now, calls.caps_in(d.get("caps")), call["id"]))
     seq = c.execute("INSERT INTO chat_call_signal (call_id, from_device, to_device, sealed, created) VALUES (?,?,?,?,?) RETURNING seq",
                     (call["id"], dev, call["caller_device"], sig[call["caller_device"]], now)).fetchone()[0]
     c.execute("UPDATE chat_call SET nsig=nsig+1 WHERE id=?", (call["id"],))
@@ -267,9 +272,9 @@ def op_signal(c, peer, d):
     sig = _sealed(d.get("signals"), allowed)
     if sig is None:
         return 400, {"error": "bad signals"}
-    if call["nsig"] + len(sig) > calls.SIGNALS_MAX or not F._rate.allow("csig:" + dev, calls.SIG_RATE):
-        return 429, {"error": "too many signals"}
     now = time.time()
+    if call["nsig"] + len(sig) > calls.sig_budget(call, now) or not F._rate.allow("csig:" + dev, calls.SIG_RATE):
+        return 429, {"error": "too many signals"}
     for k, v in sorted(sig.items()):
         seq = c.execute("INSERT INTO chat_call_signal (call_id, from_device, to_device, sealed, created) VALUES (?,?,?,?,?) RETURNING seq",
                         (call["id"], dev, k, v, now)).fetchone()[0]
