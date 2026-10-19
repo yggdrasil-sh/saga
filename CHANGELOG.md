@@ -16,6 +16,29 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Persönliche Backups je Person
+
+- **Einstellungen → Mein Backup:** jede Person sichert ihren eigenen Workspace in ihr **eigenes** Ziel – eigene
+  Nextcloud (Login Flow v2, eigenes App-Passwort, „Trennen“ widerruft) oder anderes WebDAV – verschlüsselt mit ihrem
+  **eigenen age-Schlüssel** (erzeugen wie beim Admin, privater Schlüssel nur einmal angezeigt, oder eigenen öffentlichen
+  eintragen). Zeitplan aus/wöchentlich/täglich, Aufbewahrung, „Jetzt sichern“, Status, Benachrichtigung bei Fehlern.
+- **Nur eigene Daten:** eigene Seiten/Unterseiten/Datenbanken samt Einträgen, eigene Dateien, Vorlagen, Archiv,
+  Papierkorb, Versionen, eigene Kommentare, Aufgaben, Lesezeichen, Profil/Einstellungen – je Kategorie abschaltbar,
+  einzelne Seitenbäume ausschließbar. Nie: „Mit mir geteilt“, Seiten/Dateien anderer Konten, Chats. Kommentare anderer
+  auf eigenen Seiten standardmäßig aus; fremde Benutzernamen werden weggelassen.
+- **Offenes Format:** `saga-<zeit>.zip.age` (age-verschlüsseltes ZIP mit `manifest.json` + SHA-256 je Datei,
+  `daten.json`, Markdown wie der Export, Dateien, `LIESMICH.txt`) und `.sha256` daneben.
+- **Backup einspielen:** Datei hochladen oder aus dem eigenen Ziel wählen, privater Schlüssel nur für den Vorgang; Import
+  nur ins eigene Konto als neue Seiten (neue IDs, Verweise, Relationen, eingebettete Datenbanken, Schaltflächen und
+  Bilder umgeschrieben, Inhalte bereinigt), optional in „Wiederhergestellt <Datum>“.
+- **Admin → Backups → Persönliche Backups:** erlauben (Standard an), Größe je Backup, Mindestabstand für „Jetzt
+  sichern“, häufigster Zeitplan, freigegebene interne Hosts (sonst nur öffentliche https-Ziele, netguard); Hinweis zum
+  Datenschutz (Server-Backup vs. persönliches Backup). `USER_BACKUP_MAX_MB` (Standard 4096) begrenzt Uploads.
+- Neue Tabellen `user_backup`, `user_backup_run` (keine Migration nötig); Kontolöschung entfernt sie und widerruft das
+  App-Passwort. App-API: `docs/APP-API.md` (Persönliches Backup). Neue Testreihe `backup_persoenlich`.
+- Intern: Ziel-Schnittstelle in `saga/backups.py` nimmt eine eigene Freigabe-Regel (`ip_ok`); die Markdown-Erzeugung des
+  Exports ist als `page_tools.md_page` wiederverwendbar.
+
 ### Verschlüsselte Backups (S3, Ordner, Nextcloud/WebDAV)
 
 - **Admin-Bereich → Backups:** tägliches Backup (Uhrzeit wählbar) von Datenbank, Dateien (`files` ohne Vorschaubilder,

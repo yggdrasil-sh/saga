@@ -1013,6 +1013,8 @@ Im Benutzermenü oben rechts unter **Einstellungen** (je ein Reiter):
   Am besten ein eigenes App-Passwort nur für Kalender anlegen.
 - **Immich:** Adresse und einen API-Schlüssel mit den Rechten `album.read`, `asset.read`, `asset.view`,
   `asset.download`, `user.read` eintragen. Dann gibt es Fotos als Bilder und Titelbilder.
+- **Mein Backup:** deinen eigenen Workspace verschlüsselt in **dein eigenes** Ziel sichern (siehe „Persönliches
+  Backup“ in Abschnitt 11).
 - **Apps & Geräte:** eine Liste aller angemeldeten Apps. Zu jeder gehört ein kleiner Schlüssel für Widget,
   Teilen-Erweiterung und Kurzbefehle; **Abmelden** entfernt beides. Von Hand erzeugte Schlüssel (z. B. für
   Skripte) stehen eingeklappt unter „Weitere Schlüssel“.
@@ -1327,6 +1329,54 @@ Arbeitsordner: Während eines Laufs liegen die Teile (vor dem Verschlüsseln kur
 `/data/backups/extern-tmp/` – Lauf und `backup-pruefen` je in einem eigenen Unterordner; Reste eines abgebrochenen
 Laufs löscht Saga beim nächsten Start.
 
+### Persönliches Backup (je Person)
+
+Unter **Einstellungen → Mein Backup** sichert jede Person **ihren eigenen** Workspace – unabhängig vom Server-Backup des
+Admins, in ihr **eigenes** Ziel und mit ihrem **eigenen** Schlüssel.
+
+1. **Ziel:** eigene Nextcloud (nur die Adresse eingeben, dann in Nextcloud anmelden und den Zugriff erlauben – Saga
+   bekommt ein eigenes App-Passwort, „Trennen“ widerruft es) oder ein anderes WebDAV-Ziel (Adresse des Ordners, Benutzer,
+   Passwort). Erlaubt sind nur **https-Adressen im Internet**; Server im internen Netz nur, wenn der Admin sie unter
+   Backups → Persönliche Backups freigibt (Schutz des internen Netzes).
+2. **Schlüssel:** wie beim Admin – „Schlüsselpaar erzeugen“ (der private Schlüssel wird genau einmal angezeigt und nicht
+   gespeichert, Bestätigung mit den letzten 6 Zeichen) oder eigenen öffentlichen Schlüssel (`age1…`, `ssh-ed25519 …`)
+   eintragen; bis zu 5 Empfänger.
+3. **Was gesichert wird:** nur, was dir gehört – eigene Seiten und Unterseiten, Datenbanken samt Einträgen, eigene
+   Dateien und Bilder, Vorlagen, Archiv, Papierkorb, Versionen, eigene Kommentare auf eigenen Seiten, Aufgaben,
+   Lesezeichen, Profil und Einstellungen. Jede Kategorie lässt sich abschalten; einzelne **Seitenbäume** (mit allen
+   Unterseiten und Dateien, die nur dort vorkommen) lassen sich ausschließen. **Nie** enthalten: Seiten und Dateien
+   anderer Personen (auch nicht „Mit mir geteilt“), Freigabe-Listen und Chats (Ende-zu-Ende-verschlüsselt, gehören allen
+   Beteiligten und lassen sich ohne die Geräteschlüssel nicht wiederherstellen). **Kommentare anderer** auf deinen Seiten
+   sind standardmäßig **aus** (sie gehören den Kommentierenden) und lassen sich einschalten. Namen anderer Personen
+   (z. B. wer eine Version geschrieben hat) werden weggelassen.
+4. **Zeitplan:** aus, wöchentlich oder täglich (Uhrzeit, Wochentag), „Backups behalten“ = so viele neueste bleiben im
+   Ziel. „Jetzt sichern“ startet sofort. Schlägt ein Backup fehl, erscheint eine Benachrichtigung in der Glocke.
+
+**Format** (offen, ohne Saga lesbar): `saga-JJJJMMTT-hhmmss.zip.age` – ein mit age verschlüsseltes ZIP – und daneben
+`….zip.age.sha256` (Prüfsumme, `sha256sum -c` geht). Im ZIP: `manifest.json` (SHA-256 jeder Datei), `daten.json`
+(alles vollständig, zum Einspielen), `seiten/`, `vorlagen/`, `archiv/`, `papierkorb/` (Markdown wie beim Export, mit
+relativen Verweisen), `dateien/`, `profil/` und `LIESMICH.txt`. Entschlüsseln ohne Saga:
+
+```bash
+age -d -i saga-backup.key -o backup.zip saga-20261019-024000.zip.age
+```
+
+**Backup einspielen** (gleicher Reiter): Datei hochladen (`.zip.age` oder schon entschlüsseltes `.zip`) oder ein Backup
+aus dem eigenen Ziel wählen, privaten Schlüssel einfügen (geht nur für diesen Vorgang an den Server, wird nicht
+gespeichert). Saga spielt **nur ins eigene Konto** ein, als **neue Seiten** – Verweise zwischen den Seiten,
+Datenbank-Relationen, eingebettete Datenbanken, Schaltflächen und Bilder zeigen danach auf die neuen Seiten und Dateien;
+bestehende Seiten bleiben unverändert. Standard: in eine neue Seite „Wiederhergestellt <Datum>“; Papierkorb, Aufgaben und
+Lesezeichen auf Wunsch. Kommentare und Einstellungen stehen zum Nachlesen im Backup, werden aber nicht eingespielt. Ein
+Markdown-Export (Seite → Exportieren) enthält kein `daten.json` und lässt sich daher nicht einspielen.
+
+**Für Admins – Datenschutz:** Das **Server-Backup** (oben) sichert alles, was für den Betrieb nötig ist, in *dein* Ziel.
+**Persönliche Backups** landen nur im Ziel der jeweiligen Person, verschlüsselt mit deren Schlüssel – du musst keine
+privaten Daten deiner Nutzer in deine Cloud packen, und Saga sieht nie einen privaten Schlüssel. Im Admin-Bereich unter
+**Backups → Persönliche Backups**: ein-/ausschalten (Standard an; aus = keine Läufe, kein Verbinden, kein Einspielen),
+**Größe je Backup** (Standard 1024 MB, obere Grenze `USER_BACKUP_MAX_MB`, Standard 4096), **Mindestabstand** für „Jetzt
+sichern“, **häufigster Zeitplan** (täglich/wöchentlich) und **freigegebene interne Hosts** (sonst nur öffentliche
+https-Adressen). Mit `SAGA_RESTORE_TEST=1` verbindet sich Saga auch für persönliche Backups nirgendwohin.
+
 ### Updates
 
 Saga hat Versionsnummern nach [Semantic Versioning](https://semver.org/lang/de/): **1.2.3** = Major.Minor.Patch.
@@ -1497,6 +1547,7 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `SAGA_VERSION` | `2` | Welche Version `docker compose pull` holt: `2`, `2.1`, `2.1.0` oder `testing` (Abschnitt 11) |
 | `BACKUP_KEEP` | `10` | So viele automatische/manuelle Backups bleiben in `/data/backups` |
 | `BACKUP_VERIFY_MB` | `512` | Verschlüsselte Backups (Abschnitt 11): Dateien bis zu dieser Größe nach dem Hochladen ganz erneut herunterladen und vergleichen (größere sonntags) |
+| `USER_BACKUP_MAX_MB` | `4096` | Persönliche Backups (Abschnitt 11): obere Grenze für die Größe je Backup und für Uploads beim Einspielen (die Grenze im Admin-Bereich kann nur kleiner sein) |
 | `BACKUP_CHUNK_MB` / `BACKUP_CHUNK_MIN_MB` | `32` / `10` | Nextcloud: Teilgröße beim Hochladen in Stücken (Chunking v2) und ab welcher Dateigröße |
 | `SAGA_BACKUP_URL` / `SAGA_BACKUP_USER` / `SAGA_BACKUP_PASSWORD` | – | Nur für `run.py backup-holen`/`restore --schluessel` auf einem frischen Server: WebDAV-Adresse des Backup-Ordners und Zugang |
 | `SAGA_RESTORE_TEST` | – | `1` = Testwiederherstellung: keine ausgehenden Verbindungen (Föderation, Mitteilungen, Backups, Versionshinweis); nur Lesen vom Backup-Ziel per Kommandozeile erlaubt |

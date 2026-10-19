@@ -255,6 +255,57 @@ def _safe_name(s):
     return s[:80]
 
 
+def md_page(rows, r, link):
+    """Eine Seite als Markdown (Export, persoenliches Backup). rows: id -> [id, title, icon, parent_id, body, format, kind,
+    schema, props, created, updated] (alle exportierten Seiten; Datenbank-Zeilen, Relationen und Eltern daraus)."""
+    def val_of(p, row, pv):
+        if p["type"] == "calc":
+            return _calc_value(p, pv)
+        return {"created": row[9], "edited": row[10]}.get(p["type"], pv.get(p["id"]))
+
+    def fmt_val(p, v):
+        if v is None:
+            return ""
+        if p["type"] in AUTO_TYPES:
+            return i18n.fmt_date(v, TZ, with_time=True)          # Datumsformat der Sprache
+        if p["type"] == "relation":
+            return ", ".join((rows[x][1] or t("Unbenannt")) for x in v if x in rows)
+        if p["type"] in ("number", "calc"):
+            v = round(v, 2) if isinstance(v, float) else v
+            return f"{v} %" if p.get("fmt") == "percent" else f"{v} €" if p.get("fmt") == "euro" else str(v)
+        if p["type"] in ("select", "multi_select"):
+            names = {o["id"]: o["name"] for o in p.get("options", [])}
+            return ", ".join(names.get(x, "") for x in (v if isinstance(v, list) else [v]))
+        if p["type"] == "checkbox":
+            return "✓" if v else ""
+        return str(v)
+
+    head = f"# {(r[2] + ' ') if r[2] and not r[2].startswith('/files/') else ''}{r[1] or t('Unbenannt')}\n\n"
+    par = rows.get(r[3])
+    if r[6] == "database":           # Datenbank -> Markdown-Tabelle aller Zeilen
+        props = _json_load(r[7], {"props": []}).get("props", [])
+        cells = lambda s: str(s).replace("|", "\\|").replace("\n", " ")
+        tname = _json_load(r[7], {}).get("title_name") or t("Name")
+        lines = [f"| {cells(tname)} | " + " | ".join(cells(p["name"]) for p in props) + " |", "|---|" + "---|" * len(props)]
+        for x in sorted((x for x in rows.values() if x[3] == r[0]), key=lambda x: x[1] or ""):
+            pv = _json_load(x[8], {})
+            lines.append(f"| [{cells(x[1] or t('Unbenannt'))}]({link('/notes#' + str(x[0]))}) | "
+                         + " | ".join(cells(fmt_val(p, val_of(p, x, pv))) for p in props) + " |")
+        return head + "\n".join(lines) + "\n"
+    if par and par[6] == "database":  # Zeile -> Eigenschaften als Liste unter dem Titel
+        pv = _json_load(r[8], {})
+        lst = [f"- **{p['name']}:** {fmt_val(p, val_of(p, r, pv))}"
+               for p in _json_load(par[7], {"props": []}).get("props", []) if val_of(p, r, pv) not in (None, "", [])]
+        if lst:
+            head += "\n".join(lst) + "\n\n"
+    if r[5] == "blocks":
+        try:
+            return head + blocks_to_md(json.loads(r[4]).get("blocks", []), link)
+        except ValueError:
+            return head
+    return head + (r[4] or "") + "\n"
+
+
 @router.get("/api/notes/{nid}/export")
 def api_note_export(nid: int, request: Request, sub: int = 0):
     """Seite als Markdown (.md) oder mit allen Unterseiten als ZIP (Ordnerstruktur)."""
@@ -289,54 +340,7 @@ def note_export(uid, nid, sub=0):
                     # fremd: Verweise auf Seiten ohne Zugriff ohne ihren Titel
                     rows[i][4] = mask_links(body, rows[i][5], vis) if vis else body
 
-    def val_of(p, row, pv):
-        if p["type"] == "calc":
-            return _calc_value(p, pv)
-        return {"created": row[9], "edited": row[10]}.get(p["type"], pv.get(p["id"]))
-
-    def fmt_val(p, v):
-        if v is None:
-            return ""
-        if p["type"] in AUTO_TYPES:
-            return i18n.fmt_date(v, TZ, with_time=True)          # Datumsformat der Sprache
-        if p["type"] == "relation":
-            return ", ".join((rows[x][1] or t("Unbenannt")) for x in v if x in rows)
-        if p["type"] in ("number", "calc"):
-            v = round(v, 2) if isinstance(v, float) else v
-            return f"{v} %" if p.get("fmt") == "percent" else f"{v} €" if p.get("fmt") == "euro" else str(v)
-        if p["type"] in ("select", "multi_select"):
-            names = {o["id"]: o["name"] for o in p.get("options", [])}
-            return ", ".join(names.get(x, "") for x in (v if isinstance(v, list) else [v]))
-        if p["type"] == "checkbox":
-            return "✓" if v else ""
-        return str(v)
-
-    def md_of(r, link):
-        head = f"# {(r[2] + ' ') if r[2] and not r[2].startswith('/files/') else ''}{r[1] or t('Unbenannt')}\n\n"
-        par = rows.get(r[3])
-        if r[6] == "database":           # Datenbank -> Markdown-Tabelle aller Zeilen
-            props = _json_load(r[7], {"props": []}).get("props", [])
-            cells = lambda s: str(s).replace("|", "\\|").replace("\n", " ")
-            tname = _json_load(r[7], {}).get("title_name") or t("Name")
-            lines = [f"| {cells(tname)} | " + " | ".join(cells(p["name"]) for p in props) + " |", "|---|" + "---|" * len(props)]
-            for x in sorted((x for x in rows.values() if x[3] == r[0]), key=lambda x: x[1] or ""):
-                pv = _json_load(x[8], {})
-                lines.append(f"| [{cells(x[1] or t('Unbenannt'))}]({link('/notes#' + str(x[0]))}) | "
-                             + " | ".join(cells(fmt_val(p, val_of(p, x, pv))) for p in props) + " |")
-            return head + "\n".join(lines) + "\n"
-        if par and par[6] == "database":  # Zeile -> Eigenschaften als Liste unter dem Titel
-            pv = _json_load(r[8], {})
-            lst = [f"- **{p['name']}:** {fmt_val(p, val_of(p, r, pv))}"
-                   for p in _json_load(par[7], {"props": []}).get("props", []) if val_of(p, r, pv) not in (None, "", [])]
-            if lst:
-                head += "\n".join(lst) + "\n\n"
-        if r[5] == "blocks":
-            try:
-                return head + blocks_to_md(json.loads(r[4]).get("blocks", []), link)
-            except ValueError:
-                return head
-        return head + (r[4] or "") + "\n"
-
+    md_of = lambda r, link: md_page(rows, r, link)      # noqa: E731
     ext_link = lambda h: (BASE_URL + h) if h.startswith(("/notes#", "/files/")) else h
     if not sub:
         load_bodies([nid])

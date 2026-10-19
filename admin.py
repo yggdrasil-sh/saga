@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import clean_line, connect as _db
-from saga import ai, avatars, backups, calls, federation, i18n, live, mfa, publish, push, sharing
+from saga import ai, avatars, backups, calls, federation, i18n, live, mfa, publish, push, sharing, userbackup
 from saga.core import RESTORE_TEST, TZ, BodyLimit, LangMiddleware, install_lang_ui, lang_switch_response
 from saga.i18n import t
 from version import REPO, VERSION, VERSION_LABEL, channel, newer
@@ -1418,7 +1418,14 @@ def _bk_ctx(request, cfg, show_remote=False):
             "pending": pend, "pending_tok": tok, "restore_test": hk_restore_test(), "size": backups.size_text,
             "ready": backups.has_target(cfg) and bool(backups.recipients(cfg)) and backups.age_ok(),
             "check_due": lc < time.time() - 31 * 86400, "last_check": lc, "roots": backups.backup_roots(),
+            "ub": userbackup.admin_cfg(), "ub_users": _ub_users(),
             "s3_key_short": backups.short_key(cfg.get("s3_key") or "") if cfg.get("mode") == "s3" else ""}
+
+
+def _ub_users():
+    """Anzahl Konten mit persoenlichem Backup-Ziel (nur die Zahl, keine Namen/Ziele)."""
+    with _db() as c:
+        return c.execute("SELECT COUNT(*) FROM user_backup WHERE COALESCE(cfg::jsonb->>'mode', '') <> ''").fetchone()[0]
 
 
 def hk_restore_test():
@@ -1633,6 +1640,24 @@ async def backups_post(request: Request):
         print(f"admin: {who} bestaetigt einen neuen Backup-Schluessel", flush=True)
         _flash(request, t("Schlüssel eingetragen. Der private Schlüssel ist jetzt nur noch bei dir – Saga hat ihn vergessen."))
         return _go("/backups#schluessel")
+    if act == "ub_save":
+        try:
+            mx, mh = int(f.get("ub_max_mb") or 0), int(f.get("ub_min_h") or 0)
+        except ValueError:
+            _flash(request, t("Nur ganze Zahlen."), "err")
+            return _go("/backups#persoenlich")
+        hosts = [h for h in re.split(r"[,\s]+", _s(f, "ub_hosts", 2000).lower()) if h]
+        if any(not re.fullmatch(r"[a-z0-9.\-]+(:\d{1,5})?|\[[0-9a-f:]+\](:\d{1,5})?", h) for h in hosts):
+            _flash(request, t("Host ungültig (Name oder IP, optional mit :Port)."), "err")
+            return _go("/backups#persoenlich")
+        cur = dict(auth.settings(fresh=True).get("user_backup") or {})
+        cur.update(enabled=_on(f, "ub_enabled"), max_mb=max(1, min(userbackup.HARD_MAX_MB, mx or 1)), min_h=max(0, min(168, mh)),
+                   max_schedule="weekly" if _s(f, "ub_max_schedule", 10) == "weekly" else "daily", hosts=", ".join(hosts))
+        auth.save_setting("user_backup", cur)
+        print(f"admin: {who} speichert persoenliche Backups (an={cur['enabled']}, {cur['max_mb']} MB, {cur['min_h']} h, "
+              f"{cur['max_schedule']}, {len(hosts)} Host(s))", flush=True)
+        _flash(request, t("Gespeichert."))
+        return _go("/backups#persoenlich")
     if act == "save":
         tm = _s(f, "time", 5)
         if not backups.TIME_RE.match(tm):

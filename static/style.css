@@ -1809,3 +1809,17 @@ body.pg-lock-on #pg-editor .embed-db :is(.db-new-top,.db-tab-add,.db-gear,.db-ne
 .adm-persona-name{font-weight:600;font-size:1.05rem}
 .adm-ta{resize:vertical;min-height:4.6rem;font:inherit;line-height:1.45}
 @media (max-width:720px){.adm-persona{padding-left:0}}
+/* Einstellungen -> Mein Backup (static/backup.js, 2.3) */
+.ub-part{padding:.6rem 0;border-top:1px dashed var(--border)}
+.ub-part:first-child{border-top:0}
+.ub-part h4{margin:.1rem 0 .45rem;font-size:.92rem}
+.ub-part .hk-field{margin:.35rem 0}
+.ub-dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.2rem .8rem;margin:0 0 .4rem;font-size:.86rem}
+.ub-dl dt{color:var(--muted)}
+.ub-dl dd{margin:0}
+.ub-runs{list-style:none;margin:.3rem 0;padding:0;font-size:.84rem}
+.ub-runs li{padding:.2rem 0;overflow-wrap:anywhere}
+.ub-runs li.ub-bad{color:var(--down)}
+.ub-key{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem;width:100%;resize:vertical}
+.ub-sm{padding:.1rem .45rem;font-size:.78rem;margin-left:.3rem}
+.ub-link{color:var(--accent)}

@@ -30,6 +30,14 @@
     });
   });
 
+  // Adresse ?settings=<reiter> (z. B. Benachrichtigung "Mein Backup fehlgeschlagen"): Einstellungen auf diesem Reiter oeffnen
+  window.addEventListener('load', function () {
+    var m = /[?&]settings=([a-z]+)/.exec(location.search);
+    if (!m) return;
+    try { history.replaceState(null, '', location.pathname + location.search.replace(/([?&])settings=[a-z]+&?/, '$1').replace(/[?&]$/, '') + location.hash); } catch (e) { /* egal */ }
+    openSettings(m[1]);
+  });
+
   var dlg = null;
   function closeSettings() { if (dlg) { dlg.remove(); dlg = null; document.removeEventListener('keydown', onKey); btn.focus(); } }
   function onKey(e) { if (e.key === 'Escape' && !HK.menuOpen()) { e.preventDefault(); closeSettings(); } }
@@ -53,7 +61,9 @@
     immichSection(body);
     tokenSection(body);
     if (window.HKPush) HKPush.section(body);                 // Mitteilungen aufs Handy/Desktop (static/push.js)
-    var TABS = [['account', T('Konto')], ['push', T('Mitteilungen')], ['bookmarks', T('Lesezeichen')], ['calendar', T('Kalender')], ['immich', 'Immich'], ['apps', T('Apps & Geräte')]];
+    if (window.HKBackup) HKBackup.section(body);             // Mein Backup (static/backup.js, 2.3)
+    var TABS = [['account', T('Konto')], ['push', T('Mitteilungen')], ['bookmarks', T('Lesezeichen')], ['calendar', T('Kalender')], ['immich', 'Immich'], ['backup', T('Mein Backup')], ['apps', T('Apps & Geräte')]];
+    if (!window.HKBackup) TABS.splice(5, 1);
     if (!window.HKPush) TABS.splice(1, 1);
     var btns = TABS.map(function (t, i) {
       var b = el('button', 'hk-tab', t[1]); b.type = 'button'; b.id = 'hk-tab-' + t[0];

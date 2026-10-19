@@ -177,6 +177,25 @@
   </form>
 </section>
 
+<section class="adm-card" id="persoenlich">
+  <h3>{{ _("Persönliche Backups") }}</h3>
+  <p class="hk-hint">{{ _("Jede Person kann ihren eigenen Workspace selbst sichern – in ihre eigene Nextcloud oder ein anderes WebDAV-Ziel, verschlüsselt mit ihrem eigenen Schlüssel (Einstellungen → Mein Backup). Enthalten ist nur, was der Person gehört; was andere mit ihr geteilt haben, bleibt außen vor.") }}</p>
+  <p class="hk-hint">{{ _("Datenschutz: Das Server-Backup oben sichert alles (für den Betrieb, in dein Ziel). Persönliche Backups landen dagegen nur im Ziel der jeweiligen Person – du musst keine privaten Daten deiner Nutzer in deine eigene Cloud packen. Saga sieht dabei nie einen privaten Schlüssel.") }}</p>
+  <p class="hk-hint">{{ _("Eingerichtet: {n} Konten.", n=bk.ub_users) }}</p>
+  <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="ub_save">
+    {{ check(_('Persönliche Backups erlauben'), 'ub_enabled', bk.ub.enabled, _('Aus: keine Läufe, kein Verbinden, kein Einspielen. Gespeicherte Ziele bleiben, bis die Person sie trennt.')) }}
+    {{ field(_('Größe je Backup (MB)'), 'ub_max_mb', bk.ub.max_mb, type='number', max=6, hint=_('Obergrenze (verschlüsselt). Größere Backups brechen mit einer Meldung an die Person ab.')) }}
+    {{ field(_('Mindestabstand für „Jetzt sichern“ (Stunden)'), 'ub_min_h', bk.ub.min_h, type='number', max=3) }}
+    <label class="adm-field"><span>{{ _("Häufigster Zeitplan") }}</span>
+      <select class="hk-in" name="ub_max_schedule">
+        <option value="daily"{% if bk.ub.max_schedule == 'daily' %} selected{% endif %}>{{ _("täglich") }}</option>
+        <option value="weekly"{% if bk.ub.max_schedule == 'weekly' %} selected{% endif %}>{{ _("wöchentlich") }}</option>
+      </select></label>
+    {{ field(_('Freigegebene interne Hosts'), 'ub_hosts', bk.ub.hosts, max=2000, ph='nextcloud.lan, 192.168.1.20:8443', hint=_('Persönliche Ziele müssen sonst öffentlich und https sein (Schutz vor Zugriffen ins interne Netz). Komma-getrennt, optional mit :Port.')) }}
+    <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button></div>
+  </form>
+</section>
+
 <section class="adm-card">
   <h3>{{ _("Wiederherstellen") }}</h3>
   <p class="hk-hint">{{ _("Auf einem neuen Server: Saga-Stack aufsetzen, Werte aus geheimnisse.env in die .env übernehmen, dann:") }}</p>

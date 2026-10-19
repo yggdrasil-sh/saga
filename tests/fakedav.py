@@ -97,6 +97,8 @@ def make_handler(st):
             q = parse_qs(u.query)
             with st.lock:
                 st.stats["requests"] += 1
+                if not p.startswith("/_"):
+                    st.stats.setdefault("paths", []).append(f"{self.command} {p}")
             if p == "/_ctl":
                 with st.lock:
                     if q.get("reset"):

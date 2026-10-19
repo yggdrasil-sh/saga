@@ -384,17 +384,18 @@ def _tls():
     return ssl.create_default_context(cafile=CA_FILE) if os.path.isfile(CA_FILE) else ssl.create_default_context()
 
 
-def _client_for(host, timeout=60.0, auth_=None, restore_ok=False):
+def _client_for(host, timeout=60.0, auth_=None, ip_ok=None, restore_ok=False):
     """host: freigegebener Name (oder mehrere, z. B. S3 path-style + virtual-hosted) - andere nur mit oeffentlicher IP.
+    ip_ok(ip, host, port): eigene, strengere Freigabe-Regel (persoenliche Backups, saga/userbackup.py) statt dieser.
     restore_ok=True nur fuer das Lesen vom Backup-Ziel auf der Kommandozeile (cli_dav): dann bleibt bei SAGA_RESTORE_TEST=1
     das Lesen (GET/HEAD/PROPFIND) von genau diesen Hosts erlaubt (saga/netguard.py)."""
     hosts = {(h or "").lower() for h in ((host,) if isinstance(host, str) or host is None else host)} - {""}
 
-    def ip_ok(ip, h, port):
+    def admin_ok(ip, h, port):
         return str(h).lower() in hosts or netguard.is_public(ip)
-    return netguard.guarded_client(ip_ok, transport_kw={"verify": _tls()}, timeout=httpx.Timeout(timeout, connect=15.0),
+    return netguard.guarded_client(ip_ok or admin_ok, transport_kw={"verify": _tls()}, timeout=httpx.Timeout(timeout, connect=15.0),
                                    follow_redirects=False, auth=auth_, headers={"User-Agent": UA},
-                                   restore_ok=restore_ok, restore_hosts=hosts)
+                                   restore_ok=restore_ok and ip_ok is None, restore_hosts=hosts)
 
 
 def _net_call(fn):
@@ -426,10 +427,11 @@ def _read_limited(r, limit, what):
 
 
 class Dav:
-    """WebDAV-Ziel. cfg: mode (nextcloud|webdav), server/url, user, password, dav_user, folder."""
+    """WebDAV-Ziel. cfg: mode (nextcloud|webdav), server/url, user, password, dav_user, folder.
+    ip_ok: Freigabe-Regel fuer Verbindungen (siehe _client_for; persoenliche Backups: strenger)."""
     kind = "webdav"
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, ip_ok=None):
         self.mode = cfg.get("mode") or "webdav"
         if self.mode == "nextcloud":
             self.server = str(cfg.get("server") or "").rstrip("/")
@@ -445,12 +447,13 @@ class Dav:
         self.auth = (cfg.get("user") or "", cfg.get("password") or "") if cfg.get("user") else None
         self.host = (urlparse(self.base).hostname or "").lower()
         self._cl = None
+        self.ip_ok = ip_ok
         self.chunked = 0                          # Anzahl Uploads mit Chunking v2 (Tests, Anzeige)
         self.restore_read = False                 # nur cli_dav: Lesen trotz SAGA_RESTORE_TEST
 
     def client(self):
         if self._cl is None:
-            self._cl = _client_for(self.host, auth_=self.auth, restore_ok=self.restore_read)
+            self._cl = _client_for(self.host, auth_=self.auth, ip_ok=self.ip_ok, restore_ok=self.restore_read)
         return self._cl
 
     def close(self):
@@ -1129,14 +1132,14 @@ def norm_url(url):
     return f"{u.scheme}://{u.netloc.lower()}{u.path}".rstrip("/")
 
 
-def detect(url):
+def detect(url, ip_ok=None):
     """-> {'nextcloud': bool, 'server': ..., 'version': ...}. Nextcloud = /status.php mit installed=true.
     Eine WebDAV-Adresse von Nextcloud (.../remote.php/...) zaehlt ebenfalls (Server = Teil davor)."""
     server = url.split("/remote.php/")[0] if "/remote.php/" in url else url
     host = urlparse(server).hostname or ""
 
     def go():
-        with _client_for(host, timeout=15.0) as cl:
+        with _client_for(host, timeout=15.0, ip_ok=ip_ok) as cl:
             return cl.get(server + "/status.php", headers={"Accept": "application/json"})
     try:
         r = _net_call(go)
@@ -1154,10 +1157,10 @@ def detect(url):
     return {"nextcloud": False, "server": url, "version": ""}
 
 
-def nc_user_id(server, login, password):
+def nc_user_id(server, login, password, ip_ok=None):
     """Benutzer-ID fuer den WebDAV-Pfad (kann vom Anmeldenamen abweichen, z. B. Anmeldung per E-Mail)."""
     def go():
-        with _client_for(urlparse(server).hostname, timeout=20.0, auth_=(login, password)) as cl:
+        with _client_for(urlparse(server).hostname, timeout=20.0, auth_=(login, password), ip_ok=ip_ok) as cl:
             return cl.get(server + "/ocs/v2.php/cloud/user?format=json", headers={"OCS-APIRequest": "true", "Accept": "application/json"})
     r = _net_call(go)
     if r.status_code in (401, 403):
@@ -1169,12 +1172,12 @@ def nc_user_id(server, login, password):
     return str(uid or login)
 
 
-def nc_revoke(server, login, password):
+def nc_revoke(server, login, password, ip_ok=None):
     """App-Passwort widerrufen (Trennen). -> True, wenn Nextcloud es bestaetigt."""
     if RESTORE_TEST:            # Testwiederherstellung: die Zugangsdaten gehoeren der echten Instanz - nie widerrufen
         return False
     def go():
-        with _client_for(urlparse(server).hostname, timeout=20.0, auth_=(login, password)) as cl:
+        with _client_for(urlparse(server).hostname, timeout=20.0, auth_=(login, password), ip_ok=ip_ok) as cl:
             return cl.delete(server + "/ocs/v2.php/core/apppassword", headers={"OCS-APIRequest": "true", "Accept": "application/json"})
     try:
         return _net_call(go).status_code == 200
@@ -1279,9 +1282,9 @@ def _flow_poll(fid, server, endpoint, token, folder):
             return
 
 
-def test_target(cfg):
+def test_target(cfg, ip_ok=None):
     """Ordner anlegen, kleine Datei schreiben/lesen/loeschen -> freier Platz (Bytes oder None)."""
-    dav = target(cfg)
+    dav = target(cfg) if ip_ok is None else Dav(cfg, ip_ok=ip_ok)     # persoenliche Ziele: nur WebDAV/Nextcloud
     try:
         dav.ensure_root()
         url = dav.url(".saga-test")
