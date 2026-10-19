@@ -925,7 +925,7 @@
         closeChat(); history.replaceState(null, '', location.pathname); return loadList();
       }).catch(function (e) { HK.toast(e.message); });
     }
-    bar.appendChild(btn(T('Annehmen'), 'btn-primary ct-req-accept', function () { act('accept'); }));
+    bar.appendChild(btn(T('Anfrage annehmen'), 'btn-primary ct-req-accept', function () { act('accept'); }));
     bar.appendChild(btn(T('Ablehnen'), 'ct-req-decline', function () { act('decline'); }));
     var blk = btn(T('Sperren …'), 'btn-danger ct-req-block');
     blk.addEventListener('click', function () {
