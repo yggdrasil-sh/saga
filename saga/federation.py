@@ -51,6 +51,9 @@ REF = 1024                                   # negative ID = -(id_dort * REF + p
 PEER_MAX = REF - 1
 REMOTE_ID_MAX = 2 ** 43                      # JS-sichere Zahlen nach der Umrechnung
 RATE = max(60, int(E.get("FED_RATE", "600")))          # Anfragen je Minute und verbundener Instanz
+EV_RATE = 120                                # Ereignis-Sendungen (/fed/v1|v2/events, je bis EVENTS_MAX) je Minute und Instanz
+WF_RATE = 120                                # WebFinger-Abfragen (Personensuche) je Minute und Instanz
+PEER_SLOTS = max(1, int(E.get("FED_PEER_SLOTS", "3")))  # gleichzeitige Hintergrund-Auftraege je Instanz im Express-Pool
 TIMEOUT = float(E.get("FED_TIMEOUT", "10"))
 LIST_TIMEOUT = 4.0                           # "Mit mir geteilt": je Instanz hoechstens so lange warten
 RESP_MAX = 4 * 1024 * 1024
@@ -86,9 +89,10 @@ _HOST_RE = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0
 class FedError(Exception):
     """Fehler bei der Verbindung zu einer anderen Instanz. code: HTTP-Status der Gegenseite (oder None)."""
 
-    def __init__(self, msg, code=None):
+    def __init__(self, msg, code=None, retry_after=None):
         super().__init__(msg)
         self.code = code
+        self.retry_after = retry_after           # HTTP 429: Wartezeit der Gegenseite in Sekunden (Retry-After, begrenzt)
 
 
 def enabled():
@@ -129,6 +133,16 @@ def _ok_rid(v):
     return isinstance(v, int) and not isinstance(v, bool) and 0 < v < REMOTE_ID_MAX
 
 
+# Trennpunkte, mit denen Saga die Herkunft anzeigt ("Anna Berg · b.example") - in Namen anderer Server ersetzt, damit
+# niemand eine fremde Herkunft vortaeuschen kann ("Bert · b.example" als Name auf c.example)
+_SEP = re.compile("[\u00b7\u2022\u2219\u22c5\u30fb\uff65\u2027\u0387\u16eb\u2e31\u2e33]")
+
+
+def remote_name(s, n=None):
+    """Anzeigename von einer anderen Instanz: bereinigt (_clean_text), ohne Trennpunkte."""
+    return re.sub(r"\s{2,}", " ", _SEP.sub(" ", _clean_text(s, n or DISPLAY_MAX))).strip()
+
+
 def _clean_text(s, n):
     """Text der Gegenstelle: nur Zeichenketten/Zahlen, ohne Steuer-, Bidi- und unsichtbare Zeichen (BUG-038)."""
     if isinstance(s, bool) or not isinstance(s, (str, int, float)):
@@ -167,8 +181,23 @@ class _Rate:
             self.hits[key] = (start, n + 1)
             return n + 1 <= limit
 
+    def wait(self, key, window=60.0):
+        """Sekunden bis zum naechsten Zeitfenster (fuer Retry-After)."""
+        with self.lock:
+            start, _ = self.hits.get(key, (time.monotonic(), 0))
+        return max(1, int(window - (time.monotonic() - start)) + 1)
+
 
 _rate = _Rate()
+
+
+def retry_after(v):
+    """Retry-After der Gegenseite (Sekunden) -> 1..900 oder None. Datumsangaben und Unsinn: None (eigener Backoff)."""
+    try:
+        n = int(str(v or "").strip())
+    except ValueError:
+        return None
+    return max(1, min(900, n)) if n >= 0 else None
 
 
 # =====================================================================================================
@@ -291,7 +320,7 @@ def _free_id(c):
 
 
 def _person_upsert(c, principal, peer_id, display):
-    display = _clean_text(display, DISPLAY_MAX)
+    display = remote_name(display)
     r = c.execute("SELECT display FROM fed_person WHERE principal=?", (principal,)).fetchone()
     if r is None or r[0] != display:
         c.execute("INSERT OR REPLACE INTO fed_person (principal, peer_id, display, updated) VALUES (?,?,?,?)",
@@ -358,9 +387,31 @@ def _host_tail(host):
     return "@" + host
 
 
+# Wo Personen anderer Instanzen ('@name@host') hier noch vorkommen - solange, bleibt ihr Anzeigename (fed_person) gespeichert
+_PERSON_REFS = (("note_comment", "uid"), ("note_comment", "resolved_by"), ("note", "updated_by"), ("note", "created_by"),
+                ("note_version", "author"), ("notification", "actor_uid"), ("note_share", "target"), ("fed_inbound", "owner"),
+                ("chat_member", "uid"), ("chat_msg", "sender_uid"), ("file", "fed_by"))
+
+
+def prune_persons(c, peer_id=None, principals=None):
+    """Anzeigenamen fremder Personen entfernen, die hier nirgends mehr vorkommen (nach dem Trennen bzw. wenn eine Person
+    nicht mehr im Adressbuch ihres Servers stehen will). Wer in Kommentaren, Versionen, Chats o. ae. steht, behaelt den
+    Namen (sonst stuenden dort nur Kennungen). -> Anzahl entfernter."""
+    if principals is not None:
+        cand = [p for p in principals if isinstance(p, str) and p.startswith("@")]
+    else:
+        cand = [r[0] for r in c.execute("SELECT principal FROM fed_person WHERE peer_id=?", (peer_id,)).fetchall()]
+    n = 0
+    for pr in cand:
+        if any(c.execute(f"SELECT 1 FROM {tb} WHERE {col}=? LIMIT 1", (pr,)).fetchone() for tb, col in _PERSON_REFS):
+            continue
+        n += c.execute("DELETE FROM fed_person WHERE principal=?", (pr,)).rowcount
+    return n
+
+
 def cleanup_peer(c, p):
     """Verbindung getrennt: Freigaben an Personen/Gruppen dieser Instanz, Eingangs-Verweise, Gelesen-Marken und offene
-    Ereignisse weg. (Anzeigenamen bleiben fuer alte Kommentare.)"""
+    Ereignisse weg; Anzeigenamen nur noch, wo sie hier vorkommen (alte Kommentare, Chat-Verlauf)."""
     tail = _host_tail(p["host"])
     rows = c.execute("SELECT note_id, owner_uid, target_type, target FROM note_share WHERE target_type IN ('remote','remote_group') "
                      "AND right(target, ?)=?", (len(tail), tail)).fetchall()
@@ -376,6 +427,7 @@ def cleanup_peer(c, p):
     c.execute("UPDATE fed_peer SET dir_seq=0, dir_cfg='', dir_at=NULL WHERE id=?", (p["id"],))
     for fn in list(PEER_GONE_HOOKS):         # 2.3: foederierte Chats schreibgeschuetzt, Anrufe enden (saga.fed_chat, saga.fed_calls)
         fn(c, p)
+    prune_persons(c, peer_id=p["id"])
     return len(rows)
 
 
@@ -453,7 +505,9 @@ def call(peer, method, path, query="", body=None, actor=None, limit=RESP_MAX, ti
     try:
         fedsig.verify_response(fedsig.unb64u(peer["public_key"]), peer["base_url"], status, rh, data, nonce)
     except fedsig.SigError as ex:
-        raise FedError(f"Antwort nicht signiert/ungueltig ({ex}; HTTP {status})", status)
+        # (aeltere Instanzen antworten auf "zu viele Anfragen" unsigniert - der Status zaehlt trotzdem fuer den Backoff)
+        raise FedError(f"Antwort nicht signiert/ungueltig ({ex}; HTTP {status})", status,
+                       retry_after(rh.get("retry-after")) if status == 429 else None)
     return status, rh, data
 
 
@@ -526,7 +580,12 @@ def _verify_sync(method, path, query, headers, body, statuses, connect_key=None,
         return None, _unauth()
     peer = holder.get("peer") or {"id": None, "host": host_of(keyid), "base_url": keyid}
     if not _rate.allow(peer["base_url"], RATE):
-        return None, _unauth("too many requests", 429)
+        # signiert (die Gegenstelle erkennt eine echte Bremse) und mit Wartezeit - sie wartet je Instanz, statt einzeln zu probieren
+        priv, _ = own_key()
+        body_ = json.dumps({"error": "too many requests"}).encode()
+        h = fedsig.sign_response(priv, SELF_URL, 429, body_, nonce)
+        h.update({"Cache-Control": "no-store", "Retry-After": str(_rate.wait(peer["base_url"]))})
+        return None, Response(body_, status_code=429, media_type="application/json", headers=h)
     inp = _In()
     inp.peer, inp.nonce, inp.body, inp.data = peer, nonce, body, None
     inp.principal, inp.name, inp.groups = None, None, set()
@@ -668,6 +727,8 @@ async def webfinger(request: Request, resource: str = "", kind: str = "user"):
     inp, err = await _verify(request)
     if err is not None:
         return err
+    if not _rate.allow("wf:" + inp.peer["base_url"], WF_RATE):      # Personensuche: Flut gebremst (Namen durchprobieren)
+        return _signed(inp, 429, {"error": "too many requests"}, extra={"Retry-After": str(_rate.wait("wf:" + inp.peer["base_url"]))})
     m = re.fullmatch(r"acct:([^@\s]{1,100})@([^@\s]{1,260})", resource or "")
     if not m or fedsig.authority(m.group(2)) != SELF_HOST:
         return _signed(inp, 404, {"error": "not found"})
@@ -682,7 +743,8 @@ async def webfinger(request: Request, resource: str = "", kind: str = "user"):
             if not is_name(m.group(1)):
                 return None
             uid, disp = _local_user_by_name(c, m.group(1))
-            # pseudonymer Handle: Anzeigename nur, wenn das Konto im Adressbuch dieser Instanz steht (Opt-out je Konto)
+            # pseudonymer Handle: Anzeigename nur, wenn das Konto im Adressbuch dieser Instanz steht (Opt-out je Konto);
+            # ein bewusst gesetzter oeffentlicher Name bleibt wie bisher mit Anzeigenamen auffindbar
             if uid and PSEUDO_RE.fullmatch(m.group(1)) and not (DIR_VISIBLE is not None and DIR_VISIBLE(c, uid, inp.peer)):
                 disp = m.group(1)
             return {"subject": f"acct:{m.group(1)}@{SELF_HOST}", "kind": "user", "name": disp} if uid else None
@@ -773,7 +835,7 @@ async def fed_confirm(request: Request):
             if inp.peer["status"] != "active":
                 c.execute("UPDATE fed_peer SET status='active', confirmed_at=?, last_error=NULL WHERE id=?", (time.time(), inp.peer["id"]))
                 log(c, "peer.confirmed_remote", inp.peer)
-                c.after_commit(lambda: _express.submit(hello, inp.peer["id"]))      # Protokoll 2: Faehigkeiten austauschen
+                c.after_commit(lambda: peer_submit(inp.peer["id"], hello, inp.peer["id"]))      # Protokoll 2: Faehigkeiten austauschen
     await run_in_threadpool(run)
     return _signed(inp, 200, {"status": "active"})
 
@@ -927,8 +989,8 @@ async def fed_events(request: Request):
     evs = (inp.data or {}).get("events") if isinstance(inp.data, dict) else None
     if not isinstance(evs, list) or len(evs) > EVENTS_MAX:
         return _signed(inp, 400, {"error": "bad events"})
-    if not _rate.allow("ev:" + inp.peer["base_url"], 120):
-        return _signed(inp, 429, {"error": "too many events"})
+    if not _rate.allow("ev:" + inp.peer["base_url"], EV_RATE):
+        return _signed(inp, 429, {"error": "too many events"}, extra={"Retry-After": str(_rate.wait("ev:" + inp.peer["base_url"]))})
 
     def run():
         out = []
@@ -957,6 +1019,10 @@ def _store_caps(pid, protocol, caps):
         changed = old["protocol"] != protocol or sorted(old["caps"]) != caps
         if changed:
             log(c, "peer.capabilities", old, f"protocol={protocol} " + " ".join(x for x in caps if x in CAPS2))
+            if old["protocol"] >= 2 and (protocol < 2 or "v2" not in caps) and "v2" in old["caps"]:
+                # Rueckfall auf Protokoll 1 (aeltere Version zurueckgespielt - oder ein Versuch, Schutz abzuschalten): sichtbar im
+                # Pruefprotokoll; Ereignisse, die Protokoll 2 brauchen, warten im Ausgangskorb statt still verloren zu gehen
+                log(c, "peer.downgrade", old, f"protocol {old['protocol']} -> {protocol}")
     if changed:
         _run_hooks(pid)
 
@@ -968,10 +1034,7 @@ def _run_hooks(pid):
                 fn(pid)
             except Exception as ex:  # noqa: BLE001
                 print(f"federation: hook {getattr(fn, '__name__', '?')}: {type(ex).__name__}: {ex}", flush=True)
-    try:
-        _express.submit(run)
-    except RuntimeError:
-        pass
+    peer_submit(pid, run)
 
 
 def hello(pid):
@@ -1073,10 +1136,15 @@ async def fed_events2(request: Request):
     evs = (inp.data or {}).get("events") if isinstance(inp.data, dict) else None
     if not isinstance(evs, list) or len(evs) > EVENTS_MAX:
         return _signed(inp, 400, {"error": "bad events"})
-    if not _rate.allow("ev:" + inp.peer["base_url"], 120):
-        return _signed(inp, 429, {"error": "too many events"})
+    if not _rate.allow("ev:" + inp.peer["base_url"], EV_RATE):
+        return _signed(inp, 429, {"error": "too many events"}, extra={"Retry-After": str(_rate.wait("ev:" + inp.peer["base_url"]))})
 
     def run():
+        for fn in list(EV2_PREWORK):         # Netzwerk VOR der Transaktion (z. B. Schluessel bei verbundenen Dritt-Servern)
+            try:
+                fn(inp.peer, evs)
+            except Exception as ex:  # noqa: BLE001 - Vorarbeit ist optional (sonst 'retry' im Zuhoerer)
+                print(f"federation: prework {type(ex).__name__}: {ex}", flush=True)
         out = []
         with _db() as c, c:
             for ev in evs:
@@ -1285,6 +1353,7 @@ _worker = {"thread": None, "stop": False, "house": 0.0, "hello": 0.0}
 # noch den Ausgangskorb-Arbeiter. Faellt die Zustellung aus (Frist, Fehler), bleibt das Ereignis im Ausgangskorb.
 _express = ThreadPoolExecutor(max_workers=max(2, int(E.get("FED_EXPRESS_WORKERS", "8"))), thread_name_prefix="saga-fed-express")
 EV2_HANDLERS = {}            # Ereignis-Art -> fn(c, peer, ev) -> 'ok' | 'ignored' (saga.fed_dir, saga.fed_keys)
+EV2_PREWORK = []             # fn(peer, events) - vor der Transaktion von POST /fed/v2/events (saga.fed_chat)
 PERIODIC = []                # fn() - im Arbeiter-Thread nach jedem Durchlauf (eigene Taktung, Fehler werden protokolliert)
 HELLO_HOOKS = []             # fn(peer_id) - Faehigkeiten oder Admin-Schalter einer Instanz haben sich geaendert (im Thread)
 PEER_GONE_HOOKS = []         # fn(c, peer) - Verbindung getrennt (in der Transaktion von cleanup_peer)
@@ -1313,21 +1382,108 @@ def _enqueue(c, peer_id, ev, chain=None, express=True):
     return oid
 
 
-def _express_submit(peer_id, oid):
+# --- Je Instanz begrenzt: eine langsame oder boesartige Gegenstelle belegt hoechstens PEER_SLOTS Threads des Express-Pools ---
+_slots_lock = threading.Lock()
+_slots = {}                  # peer_id -> laufende Auftraege
+_backlog = {}                # peer_id -> wartende Auftraege [(fn, args)] (begrenzt)
+BACKLOG_MAX = 200
+
+
+def peer_submit(peer_id, fn, *args, drop=False):
+    """Hintergrund-Auftrag fuer eine Instanz im Express-Pool. Laufen fuer sie schon PEER_SLOTS Auftraege, wartet er (drop:
+    wird verworfen - Tippen, Live-Hinweise). -> Future, None (wartet/verworfen) oder False (Pool beendet)."""
+    with _slots_lock:
+        if _slots.get(peer_id, 0) >= PEER_SLOTS:
+            if drop:
+                return None
+            q = _backlog.setdefault(peer_id, [])
+            if len(q) >= BACKLOG_MAX:
+                q.pop(0)                     # aeltester Auftrag weg (alle sind wiederholbar: Luecke, Vorabruf, Abgleich)
+            q.append((fn, args))
+            return None
+        _slots[peer_id] = _slots.get(peer_id, 0) + 1
     try:
-        return _express.submit(_express_one, peer_id, oid)
-    except RuntimeError:                     # Pool beendet (Herunterfahren): der Arbeiter stellt zu
+        return _express.submit(_peer_run, peer_id, fn, args)
+    except RuntimeError:                     # Pool beendet (Herunterfahren)
+        with _slots_lock:
+            _slots[peer_id] -= 1
+        return False
+
+
+def _peer_run(peer_id, fn, args):
+    try:
+        return fn(*args)
+    finally:                                 # Platz an den naechsten wartenden Auftrag dieser Instanz weitergeben
+        with _slots_lock:
+            q = _backlog.get(peer_id)
+            nxt = q.pop(0) if q else None
+            if not q:
+                _backlog.pop(peer_id, None)
+            if nxt is None:
+                _slots[peer_id] -= 1
+                if _slots[peer_id] <= 0:
+                    del _slots[peer_id]
+        if nxt is not None:
+            try:
+                _express.submit(_peer_run, peer_id, nxt[0], nxt[1])
+            except RuntimeError:
+                with _slots_lock:
+                    _slots[peer_id] = max(0, _slots.get(peer_id, 1) - 1)
+
+
+# --- Backoff je Instanz (HTTP 429 der Gegenseite, Retry-After) ---------------------------------------------------------------
+_backoff = {}                # peer_id -> (bis, stufe)
+
+
+def backoff_until(peer_id):
+    b = _backoff.get(peer_id)
+    return b[0] if b and b[0] > time.time() else 0
+
+
+def _note_busy(peer_id, after=None):
+    """Gegenstelle bremst (429): warten - Retry-After, sonst 15 s verdoppelt bis 10 min. -> Zeitpunkt."""
+    _, n = _backoff.get(peer_id, (0, 0))
+    wait = after if after else min(600, 15 * 2 ** min(n, 6))
+    until = time.time() + wait
+    _backoff[peer_id] = (until, n + 1)
+    return until
+
+
+def _express_submit(peer_id, oid):
+    if backoff_until(peer_id):
         _wake.set()
         return None
+    f = peer_submit(peer_id, _express_one, peer_id, oid, drop=True)
+    if not f:                                # Instanz ausgelastet (oder Pool beendet): der Arbeiter stellt zu
+        _wake.set()
+        return None
+    return f
+
+
+def _events_call(p, events, timeout=TIMEOUT):
+    """Ereignisse senden -> (status, antwort, retry_after). FedError bei Netz-/Signaturfehlern."""
+    path = "/fed/v2/events" if "v2" in caps_of(p) else "/fed/v1/events"
+    status, rh, data = call(p, "POST", path, body=json.dumps({"events": events}, ensure_ascii=False).encode(), timeout=timeout)
+    try:
+        d = parse_json(data) if data else {}
+    except (ValueError, RecursionError):
+        raise FedError("ungueltige Antwort", status)
+    if not pages._json_depth_ok(d, 32):
+        raise FedError("ungueltige Antwort", status)
+    return status, d, retry_after(rh.get("retry-after")) if status == 429 else None
 
 
 def _post_events(p, events, timeout=TIMEOUT):
-    """Ereignisse an eine Instanz senden -> None (zugestellt) oder Fehlertext. Protokoll 2: /fed/v2/events, sonst v1."""
-    path = "/fed/v2/events" if "v2" in caps_of(p) else "/fed/v1/events"
+    """Ereignisse an eine Instanz senden -> None (zugestellt) oder Fehlertext ('busy:<s>' = Gegenseite bremst).
+    Protokoll 2: /fed/v2/events, sonst v1."""
     try:
-        status, d = call_json(p, "POST", path, body={"events": events}, timeout=timeout)
+        status, d, ra = _events_call(p, events, timeout)
     except FedError as ex:
+        if ex.code == 429:
+            return f"busy:{ex.retry_after or 0}"
         return str(ex)
+    if status == 429:
+        return f"busy:{ra or 0}"
     if status != 200:
         return f"HTTP {status}"
     res = d.get("results") if isinstance(d, dict) else None
@@ -1341,7 +1497,7 @@ def _express_one(peer_id, oid):
     now = time.time()
     with _db() as c:
         p = peer_by(c, "id", peer_id)
-    if not feature(p, "express"):
+    if not feature(p, "express") or backoff_until(peer_id):
         _wake.set()
         return False
     with _db() as c, c:
@@ -1354,9 +1510,14 @@ def _express_one(peer_id, oid):
     err = _post_events(p, [json.loads(r[0])], timeout=max(1.0, EXPRESS_TIMEOUT / 3))
     with _db() as c, c:
         if err is None:
+            _backoff.pop(peer_id, None)
             c.execute("DELETE FROM fed_outbox WHERE id=?", (oid,))
             _touch(c, p)
             return True
+        if err.startswith("busy:"):          # Gegenseite bremst: kein Fehlversuch, ganze Instanz wartet
+            until = _note_busy(peer_id, int(err[5:]) or None)
+            c.execute("UPDATE fed_outbox SET next_try=?, locked_until=0, last_error=? WHERE id=?", (until, "busy", oid))
+            return False
         _touch(c, p, err)
         c.execute("UPDATE fed_outbox SET attempts=attempts+1, next_try=?, locked_until=0, last_error=? WHERE id=?", (now + 15, err[:300], oid))
     return False
@@ -1488,13 +1649,16 @@ def _pick_due(c, now, limit=60):
 
 
 def _post_events_r(p, events, timeout=TIMEOUT):
-    """-> (fehler, ergebnisse): fehler None (zugestellt; ergebnisse je Ereignis), 'net:...' (Instanz nicht erreichbar) oder
-    'HTTP n' / 'bad response' (die Instanz hat die Sendung abgewiesen)."""
-    path = "/fed/v2/events" if "v2" in caps_of(p) else "/fed/v1/events"
+    """-> (fehler, ergebnisse): fehler None (zugestellt; ergebnisse je Ereignis), 'net:...' (Instanz nicht erreichbar),
+    'busy:<s>' (Instanz bremst, HTTP 429 - Retry-After) oder 'HTTP n' / 'bad response' (die Instanz hat die Sendung abgewiesen)."""
     try:
-        status, d = call_json(p, "POST", path, body={"events": events}, timeout=timeout)
+        status, d, ra = _events_call(p, events, timeout)
     except FedError as ex:
+        if ex.code == 429:
+            return f"busy:{ex.retry_after or 0}", None
         return ("net:" if ex.code is None else f"HTTP {ex.code}: ") + str(ex), None
+    if status == 429:
+        return f"busy:{ra or 0}", None
     if status != 200:
         return f"HTTP {status}", None
     res = d.get("results") if isinstance(d, dict) else None
@@ -1504,6 +1668,14 @@ def _post_events_r(p, events, timeout=TIMEOUT):
 
 
 STUCK_AFTER = 6              # so viele Fehlversuche einer Zeile -> Pruefprotokoll "event.stuck" (Kette steht, Rest laeuft)
+V1_TYPES = frozenset(("share.added", "share.role", "share.removed", "comment.new", "comment.reply", "person.gone"))
+
+
+def _needs_v2(r):
+    try:
+        return json.loads(r[2]).get("type") not in V1_TYPES
+    except (ValueError, AttributeError):
+        return False
 
 
 def _row_failed(c, p, r, err, now):
@@ -1518,10 +1690,15 @@ def _row_failed(c, p, r, err, now):
         log(c, "event.stuck", p, (f"chain={r[5]} " if r[5] else "") + err)
 
 
-def deliver_due():
-    """Faellige Ereignisse senden (mehrere Prozesse: Zeilen werden reserviert). -> Anzahl zugestellter.
+_out_pool = ThreadPoolExecutor(max_workers=max(2, int(E.get("FED_OUT_WORKERS", "4"))), thread_name_prefix="saga-fed-out")
+_out_busy, _out_lock = set(), threading.Lock()
+
+
+def deliver_due(wait=True):
+    """Faellige Ereignisse senden (mehrere Prozesse: Zeilen werden reserviert). -> Anzahl zugestellter (wait=False: 0).
     Ist die Instanz nicht erreichbar, wartet alles fuer sie. Weist sie dagegen einzelne Ereignisse ab (Fehler, 'retry'),
-    trifft das nur diese Zeilen und den Rest ihrer Kette ("Totmann" je Zeile) - andere Ereignisse und Ketten laufen weiter."""
+    trifft das nur diese Zeilen und den Rest ihrer Kette ("Totmann" je Zeile) - andere Ereignisse und Ketten laufen weiter.
+    wait=False (Arbeiter): je Instanz ein eigener Auftrag - eine langsame Gegenstelle haelt die anderen nicht auf."""
     now = time.time()
     with _db() as c, c:
         rows = _pick_due(c, now)
@@ -1530,50 +1707,105 @@ def deliver_due():
     by = {}
     for r in rows:
         by.setdefault(r[1], []).append(r)
-    sent = 0
+    if wait:
+        return sum(_deliver_peer(pid, lst, now) for pid, lst in by.items())
     for pid, lst in by.items():
-        with _db() as c:
-            p = peer_by(c, "id", pid)
-        if not p or p["status"] != "active":
+        with _out_lock:
+            busy = pid in _out_busy
+            if not busy:
+                _out_busy.add(pid)
+        if busy:                                         # laeuft schon (langsame Instanz): Zeilen freigeben, spaeter
             with _db() as c, c:
-                c.execute(f"DELETE FROM fed_outbox WHERE id IN ({','.join('?' * len(lst))})", tuple(r[0] for r in lst))
+                c.execute(f"UPDATE fed_outbox SET locked_until=0 WHERE id IN ({','.join('?' * len(lst))})", tuple(r[0] for r in lst))
             continue
-        down, held = None, set()
-        queue = [lst[k:k + EVENTS_MAX] for k in range(0, len(lst), EVENTS_MAX)]
-        while queue:
-            part = queue.pop(0)
-            skip = [r for r in part if r[5] and r[5] in held]
-            part = [r for r in part if not (r[5] and r[5] in held)]
-            if skip:                                     # fruehere Zeile der Kette steckt: diese spaeter (Reihenfolge)
-                with _db() as c, c:
-                    c.execute(f"UPDATE fed_outbox SET locked_until=0 WHERE id IN ({','.join('?' * len(skip))})", tuple(r[0] for r in skip))
-            if not part:
-                continue
-            err, res = (down, None) if down else _post_events_r(p, [json.loads(r[2]) for r in part])
-            if err and not err.startswith("net:") and len(part) > 1:
-                queue = [[r] for r in part] + queue          # abgewiesen: einzeln versuchen, um die eine Zeile zu finden
-                continue
+        try:
+            _out_pool.submit(_deliver_bg, pid, lst, now)
+        except RuntimeError:                             # Pool beendet (Herunterfahren)
+            with _out_lock:
+                _out_busy.discard(pid)
+    return 0
+
+
+def _deliver_bg(pid, lst, now):
+    try:
+        if _deliver_peer(pid, lst, now) == len(lst) and len(lst) >= EVENTS_MAX:
+            _wake.set()                                  # (viel zu tun: gleich weiter)
+    except Exception as ex:  # noqa: BLE001
+        print(f"federation: Zustellung: {type(ex).__name__}: {ex}", flush=True)
+    finally:
+        with _out_lock:
+            _out_busy.discard(pid)
+
+
+def _deliver_peer(pid, lst, now):
+    """Zeilen des Ausgangskorbs fuer eine Instanz zustellen -> Anzahl zugestellter."""
+    sent = 0
+    with _db() as c:
+        p = peer_by(c, "id", pid)
+    if not p or p["status"] != "active":
+        with _db() as c, c:
+            c.execute(f"DELETE FROM fed_outbox WHERE id IN ({','.join('?' * len(lst))})", tuple(r[0] for r in lst))
+        return 0
+    down, held = None, set()
+    queue = [lst[k:k + EVENTS_MAX] for k in range(0, len(lst), EVENTS_MAX)]
+    while queue:
+        part = queue.pop(0)
+        skip = [r for r in part if r[5] and r[5] in held]
+        part = [r for r in part if not (r[5] and r[5] in held)]
+        if skip:                                     # fruehere Zeile der Kette steckt: diese spaeter (Reihenfolge)
             with _db() as c, c:
-                if err is None:
-                    done = [r[0] for r, x in zip(part, res) if x != "retry"]
-                    if done:
-                        c.execute(f"DELETE FROM fed_outbox WHERE id IN ({','.join('?' * len(done))})", tuple(done))
-                        sent += len(done)
-                    _touch(c, p)
-                    for r, x in zip(part, res):
-                        if x == "retry":
-                            _row_failed(c, p, r, "retry", now)
-                            if r[5]:
-                                held.add(r[5])
+                c.execute(f"UPDATE fed_outbox SET locked_until=0 WHERE id IN ({','.join('?' * len(skip))})", tuple(r[0] for r in skip))
+        if not part:
+            continue
+        if "v2" not in caps_of(p):              # Protokoll 1 (Rueckfall): Ereignisse von Protokoll 2 warten (nicht still verloren)
+            hold = [r for r in part if _needs_v2(r)]
+            if hold:
+                part = [r for r in part if not _needs_v2(r)]
+                with _db() as c, c:
+                    for r in hold:
+                        _row_failed(c, p, r, "protocol 2 required", now)
+                        if r[5]:
+                            held.add(r[5])
+                if not part:
                     continue
-                if err.startswith("net:"):
-                    if down is None:
-                        _touch(c, p, err[4:])
-                    down = err
-                for r in part:
-                    _row_failed(c, p, r, err[4:] if err.startswith("net:") else err, now)
-                    if r[5]:
-                        held.add(r[5])
+        bu = backoff_until(pid)
+        if bu:                                       # Instanz bremst (429): alles fuer sie wartet bis dahin - kein Fehlversuch
+            with _db() as c, c:
+                c.execute(f"UPDATE fed_outbox SET next_try=GREATEST(next_try, ?), locked_until=0 WHERE id IN ({','.join('?' * len(part))})",
+                          (bu, *[r[0] for r in part]))
+            continue
+        err, res = (down, None) if down else _post_events_r(p, [json.loads(r[2]) for r in part])
+        if err and err.startswith("busy:"):
+            _note_busy(pid, int(err[5:]) or None)
+            with _db() as c, c:
+                log(c, "peer.busy", p, f"retry_after={err[5:]}", throttle=(pid, "busy"))
+            queue.insert(0, part)                    # (oben: wartet mit allen weiteren Zeilen der Instanz)
+            continue
+        if err and not err.startswith("net:") and len(part) > 1:
+            queue = [[r] for r in part] + queue          # abgewiesen: einzeln versuchen, um die eine Zeile zu finden
+            continue
+        with _db() as c, c:
+            if err is None:
+                _backoff.pop(pid, None)
+                done = [r[0] for r, x in zip(part, res) if x != "retry"]
+                if done:
+                    c.execute(f"DELETE FROM fed_outbox WHERE id IN ({','.join('?' * len(done))})", tuple(done))
+                    sent += len(done)
+                _touch(c, p)
+                for r, x in zip(part, res):
+                    if x == "retry":
+                        _row_failed(c, p, r, "retry", now)
+                        if r[5]:
+                            held.add(r[5])
+                continue
+            if err.startswith("net:"):
+                if down is None:
+                    _touch(c, p, err[4:])
+                down = err
+            for r in part:
+                _row_failed(c, p, r, err[4:] if err.startswith("net:") else err, now)
+                if r[5]:
+                    held.add(r[5])
     return sent
 
 
@@ -1592,7 +1824,7 @@ def _hello_due():
     with _db() as c:
         due = [p["id"] for p in peers(c) if p["status"] == "active" and (not p["caps_at"] or now - p["caps_at"] > HELLO_EVERY)]
     for pid in due[:20]:
-        hello(pid)
+        peer_submit(pid, hello, pid)         # je Instanz im Express-Pool (eine langsame haelt den Arbeiter nicht auf)
 
 
 def _loop():
@@ -1604,7 +1836,7 @@ def _loop():
         try:
             if not enabled():
                 continue
-            deliver_due()
+            deliver_due(wait=False)
             if time.time() - _worker["house"] > 600:
                 _worker["house"] = time.time()
                 housekeeping()
@@ -1727,7 +1959,7 @@ def _proxy(uid, peer_id, method, path, query="", body=None):
 
 def _in_person(c, p, peer, uid, cache):
     """Person aus der Antwort einer anderen Instanz -> Anzeige hier (fremde immer mit Herkunft)."""
-    u, name = p.get("username"), _clean_text(p.get("name"), DISPLAY_MAX)
+    u, name = p.get("username"), remote_name(p.get("name"))
     if u and is_remote(u) and _handle(u)[0]:
         n, host = _handle(u)
         if host == SELF_HOST:                               # eigene Person (z. B. ich selbst)

@@ -39,9 +39,16 @@ from saga.notes import FILE_MAX
 router = APIRouter()
 
 PREFETCH_MAX = 256 * 1024          # kleinere Anhaenge (Vorschaubilder) holt der Server des Empfaengers gleich vorab
+# Zwischenkopien fremder Anhaenge: Speicher je Instanz begrenzt (zuletzt benutzte bleiben), unbenutzte verfallen - danach
+# holt der Server sie bei Bedarf erneut beim Absender-Server (nichts geht verloren, solange die Nachricht dort besteht)
+CACHE_PEER_MAX = max(2 * (FILE_MAX + 64), int(F.E.get("FED_CHAT_CACHE_MB", "1024")) * 1024 * 1024)
+CACHE_DAYS = max(1, int(F.E.get("FED_CHAT_CACHE_DAYS", "30")))
 REQ_RATE_H, REQ_RATE_PEER_H = 20, 200      # Nachrichtenanfragen je Absender bzw. je Instanz und Stunde
 MSG_RATE_PEER = 600                # Nachrichten je Instanz und Minute (je Absender: chat.MSG_RATE)
 TYPING_RATE = 120                  # Tipp-Meldungen je Instanz und Minute
+MSG_IN_RATE = max(60, int(F.E.get("FED_CHAT_IN_RATE", "1200")))    # Nachrichten vom Heim je Instanz und Minute (sonst 'retry')
+MEMBERS_RATE = 300                 # Mitgliederlisten vom Heim (chat.members) je Instanz und Minute (sonst 'retry')
+RESOLVE_RATE = 60                  # Auftraege 'resolve' (Namen/Gruppen aufloesen) je Instanz und Minute (sonst 429)
 LATE = 4 * 86400                   # zugestellte Nachrichten (Warteschlange) duerfen so alt sein
 GAP_PAGE = 100
 STATES = ("ok", "request", "declined")
@@ -153,7 +160,16 @@ def _rate_ok(kind, key, n, window=60.0):
     return F._rate.allow(f"{kind}:{key}", n, window)
 
 
-def _volatile(peer_id, body, path="/fed/v2/chat"):
+def _log_retry(c, peer, event, detail, throttle):
+    """Pruefprotokoll fuer ein Ereignis, das mit 'retry' endet (dessen Sicherungspunkt wird zurueckgerollt): nach dem Commit
+    in eigener Transaktion."""
+    def go():
+        with _db() as c2, c2:
+            F.log(c2, event, peer, detail, throttle=throttle)
+    c.after_commit(go)
+
+
+def _volatile(peer_id, body, path="/fed/v2/chat", drop=None):
     """Ohne Ausgangskorb (Tippen, Lebenszeichen): sofort im Express-Pool, Fehler egal."""
     def go():
         with _db() as c:
@@ -164,10 +180,8 @@ def _volatile(peer_id, body, path="/fed/v2/chat"):
             F.call_json(p, "POST", path, body=body, timeout=max(1.0, F.EXPRESS_TIMEOUT / 3))
         except F.FedError:
             pass
-    try:
-        F._express.submit(go)
-    except RuntimeError:
-        pass
+    # je Instanz begrenzt; ausgelastet: Tippen faellt weg, alles andere (Anruf-Ende, Lebenszeichen) wartet kurz
+    F.peer_submit(peer_id, go, drop=body.get("op") == "typing" if drop is None else drop)
 
 
 def sync_call(p, body, path="/fed/v2/chat"):
@@ -483,7 +497,7 @@ def op_request(c, peer, d):
         c.execute("UPDATE chat SET dm_key=NULL, fstate=CASE WHEN fstate='' THEN 'old' ELSE fstate END WHERE id=?", (ex["id"],))
         chat._changed(c, ex["id"], local_members(c, ex["id"]))
     now = time.time()
-    _person(c, peer, fh, F._clean_text(fr.get("name"), F.DISPLAY_MAX))
+    _person(c, peer, fh, F.remote_name(fr.get("name")))
     cid = c.execute("INSERT INTO chat (kind, dm_key, created_by, created, v, ref, home_peer) VALUES ('dm',?,NULL,?,2,?,?)",
                     (key, now, ref, peer["id"])).lastrowid
     c.execute("INSERT INTO chat_member (chat_id, uid, joined, state) VALUES (?,?,?,'request')", (cid, uid, now))
@@ -563,7 +577,7 @@ def op_send(c, peer, d):
     seq = store(c, ch, m, p_, local_keys(c, ch, keys), files, origin=peer, fseq=fseq, all_keys=keys)
     deliver(c, ch, seq, m["id"], p_, m.get("kind") or "msg")
     fanout(c, ch, {"type": "chat.msg", "fseq": fseq, "msg": m, "files": files, "sender_keys": se}, keys=keys, declined=False)
-    _prefetch_after(c, files)
+    _prefetch_after(c, files, peer)
     return 200, {"ok": True, "fseq": fseq}
 
 
@@ -775,7 +789,8 @@ def _sender_of(c, ch, h):
 
 
 def apply_msg(c, peer, ch, ev, jump=False):
-    """Nachricht vom Heim uebernehmen -> 'ok' | 'dup' | 'gap' | 'declined' | 'ignored'. Prueft Reihenfolge (fseq lueckenlos, nichts
+    """Nachricht vom Heim uebernehmen -> 'ok' | 'dup' | 'gap' | 'keys' (Schluessel erst beim Server der Person holen) |
+    'declined' | 'ignored'. Prueft Reihenfolge (fseq lueckenlos, nichts
     Aelteres), Wiederholungen (msg_id) und die Signatur des Absender-Geraets (eigene Konten: eigene Schluessel; Konten
     des Heims: von dort mitgeschickt; andere: Zwischenspeicher)."""
     fseq = ev.get("fseq")
@@ -824,6 +839,10 @@ def apply_msg(c, peer, ch, ev, jump=False):
             # zwischengespeichert nur, wenn wir mit ihrem Server nicht selbst verbunden sind (sonst gilt der Abruf dort)
             e2 = FK.check_entry(m["sender_handle"], ev.get("sender_keys"))
             tp = F.peer_by(c, "host", host)
+            if FK._peer_ok(tp) and not e:
+                # mit ihrem Server selbst verbunden, Schluessel aber noch nicht hier: es zaehlt nur der Abruf dort (E8) - das Heim
+                # koennte sonst mit selbst erzeugten Schluesseln Nachrichten dieser Person faelschen. Abruf, dann erneut.
+                return "keys"
             if e2 and FK._peer_ok(tp) and e and e2["ident_pub"] != e.get("ident_pub"):
                 # mit ihrem Server selbst verbunden: einen ANDEREN Identitaetsschluessel nimmt nur der Abruf dort an - das
                 # Heim kann so keine Person eines dritten Servers mit eigenen Schluesseln faelschen (neue Geraete ja)
@@ -844,11 +863,17 @@ def apply_msg(c, peer, ch, ev, jump=False):
     seq = store(c, ch, m, sender, local_keys(c, ch, keys), files if origin else [], origin=origin, fseq=fseq)
     deliver(c, ch, seq, m["id"], sender, m.get("kind") or "msg")
     if origin:
-        _prefetch_after(c, files)
+        _prefetch_after(c, files, origin)
     return "ok"
 
 
 def _ev_msg(c, peer, ev):
+    if not peer_ok(peer):                # Chat mit dieser Instanz aus (Admin-Schalter) oder Rueckfall auf Protokoll 1
+        return "ignored"
+    if not _rate_ok("cmsgin", peer["host"], MSG_IN_RATE):
+        # Flut vom Heim: nicht verwerfen - die Gegenstelle stellt spaeter erneut zu (Reihenfolge der Kette bleibt)
+        _log_retry(c, peer, "chat.rate", "msg in", (peer["id"], "cmsgin"))
+        return "retry"
     ch = _from_home(c, peer, ev, lock=True)
     if not ch:
         return "ignored"
@@ -863,6 +888,11 @@ def _ev_msg(c, peer, ev):
             ch["fseq"] = fs - 1
         c.execute("UPDATE chat SET fep=? WHERE id=?", (cep, ch["id"]))
     r = apply_msg(c, peer, ch, ev)
+    if r == "keys":                      # Schluessel der Person bei ihrem Server holen, dann stellt das Heim erneut zu
+        h = (ev.get("msg") or {}).get("sender_handle")
+        tp = F.peer_by(c, "host", split_handle(h)[1])
+        c.after_commit(lambda: F.peer_submit(tp["id"], entries, [h]))
+        return "retry"
     if r == "gap":                       # Luecke: erst beim Heim nachholen, dann stellt das Heim dieses Ereignis erneut zu
         ref, upto, have = ch["ref"], ev.get("fseq"), ch["fseq"]
 
@@ -870,12 +900,14 @@ def _ev_msg(c, peer, ev):
             with _db() as c2, c2:
                 F.log(c2, "chat.gap", peer, f"{have} -> {upto}", throttle=(peer["id"], "gap", ref))
             fill_gap(peer["id"], ref, upto)
-        c.after_commit(lambda: _submit(gap))         # (Pruefprotokoll erst dort: 'retry' rollt diese Transaktion zurueck)
+        c.after_commit(lambda: F.peer_submit(peer["id"], gap))         # (Pruefprotokoll erst dort: 'retry' rollt diese Transaktion zurueck)
         return "retry"
     return "ok" if r in ("ok", "dup") else "ignored"
 
 
 def _ev_del(c, peer, ev):
+    if not peer_ok(peer):
+        return "ignored"
     ch = _from_home(c, peer, ev, lock=True)
     mid = ev.get("mid")
     if not ch or not isinstance(mid, str) or not _HEX32.fullmatch(mid):
@@ -895,7 +927,7 @@ def _ev_removed(c, peer, ev):
         u = F.uid_by_handle(c, n)
         bd = {"username": u, "name": sharing.names(c, [u]).get(u) or u} if u else None
     else:
-        bd = {"username": principal(h), "handle": h, "name": F._clean_text(by.get("name"), F.DISPLAY_MAX) or (n or "?")} if n else None
+        bd = {"username": principal(h), "handle": h, "name": F.remote_name(by.get("name")) or (n or "?")} if n else None
     chat._drop_notifs(c, local_members(c, ch["id"]), ch["id"])
     removed_live(c, ch, bd)
     drop_chat(c, ch)
@@ -904,6 +936,8 @@ def _ev_removed(c, peer, ev):
 
 
 def _ev_meta(c, peer, ev):
+    if not peer_ok(peer):
+        return "ignored"
     ch = _from_home(c, peer, ev, lock=True)
     if not ch:
         return "ignored"
@@ -928,6 +962,28 @@ def _ev_reject(c, peer, ev):
     return "ok"
 
 
+def _prework_events(peer, evs):
+    """Vor der Transaktion: Absender von Nachrichten, die von einem Server stammen, mit dem wir selbst verbunden sind, und
+    deren Schluessel noch nicht hier liegen -> dort holen (sonst 'keys' -> 'retry' und das Heim stellt spaeter erneut zu)."""
+    need = set()
+    with _db() as c:
+        for ev in evs[:F.EVENTS_MAX]:
+            if not isinstance(ev, dict) or ev.get("type") != "chat.msg" or not isinstance(ev.get("msg"), dict):
+                continue
+            sh = ev["msg"].get("sender_handle")
+            n, host = split_handle(sh)
+            if not n or host in (F.SELF_HOST, peer["host"]) or _cached(c, sh):
+                continue
+            ch = by_ref(c, ev.get("ref")) if isinstance(ev.get("ref"), str) else None
+            if not ch or ch["home_peer"] != peer["id"] or not _sender_of(c, ch, sh):
+                continue
+            if FK._peer_ok(F.peer_by(c, "host", host)):
+                need.add(sh)
+    if need:
+        entries(sorted(need)[:20])
+
+
+F.EV2_PREWORK.append(_prework_events)
 F.EV2_HANDLERS.update({"chat.msg": _ev_msg, "chat.msg.del": _ev_del, "chat.removed": _ev_removed, "chat.meta": _ev_meta,
                        "chat.reject": _ev_reject})
 
@@ -999,6 +1055,15 @@ def fill_gap(peer_id, ref, upto=None):
             return False
         if status != 200 or not isinstance(d, dict) or not isinstance(d.get("items"), list):
             return False
+        need = set()                     # Personen von Servern, mit denen wir verbunden sind: Schluessel dort (nicht vom Heim)
+        with _db() as c:
+            for it in d["items"][:GAP_PAGE + 1]:
+                sh = (it.get("msg") or {}).get("sender_handle") if isinstance(it, dict) and isinstance(it.get("msg"), dict) else None
+                n_, host_ = split_handle(sh)
+                if n_ and host_ not in (F.SELF_HOST, p["host"]) and not _cached(c, sh) and FK._peer_ok(F.peer_by(c, "host", host_)):
+                    need.add(sh)
+        if need:
+            entries(sorted(need))
         with _db() as c, c:
             ch = by_ref(c, ref, lock=True)
             if not ch:
@@ -1006,8 +1071,8 @@ def fill_gap(peer_id, ref, upto=None):
             for it in sorted((x for x in d["items"] if isinstance(x, dict) and isinstance(x.get("fseq"), int)), key=lambda x: x["fseq"]):
                 if upto and it["fseq"] >= upto:
                     break
-                if it["fseq"] > ch["fseq"]:
-                    apply_msg(c, p, ch, it, jump=True)
+                if it["fseq"] > ch["fseq"] and apply_msg(c, p, ch, it, jump=True) == "keys":
+                    return False             # Schluessel nicht zu bekommen: Luecke bleibt offen (spaeter erneut)
             top = d.get("top") if isinstance(d.get("top"), int) else 0
             if not d.get("more"):
                 end = min(top, upto - 1) if upto else top
@@ -1043,6 +1108,8 @@ async def fed_chat_file(fid: str, request: Request):
                 return None
         if r[2] is not None and not fetch_file(fid):      # Heim: Anhang eines dritten Servers erst selbst holen (E5)
             return None
+        if r[2] is not None:
+            touch(fid)
         try:
             with open(os.path.join(chat.CHAT_DIR, fid), "rb") as f:
                 return f.read(FILE_MAX + 128)
@@ -1084,13 +1151,60 @@ def fetch_file(fid):
             return False
         os.replace(tmp, path)
         c.execute("UPDATE chat_file_fed SET cached=1 WHERE id=?", (fid,))
+    cache_trim(p["id"], keep=fid)
     return True
 
 
-def _prefetch_after(c, files):
+def touch(fid):
+    """Zwischenkopie wurde gelesen (zuletzt benutzt - bleibt beim Begrenzen am laengsten)."""
+    try:
+        os.utime(os.path.join(chat.CHAT_DIR, fid))
+    except OSError:
+        pass
+
+
+def _evict(c, fid):
+    try:
+        os.remove(os.path.join(chat.CHAT_DIR, fid))
+    except FileNotFoundError:
+        pass
+    c.execute("UPDATE chat_file_fed SET cached=0 WHERE id=?", (fid,))
+
+
+def cache_trim(peer_id, keep=None):
+    """Zwischenkopien der Anhaenge einer Instanz auf CACHE_PEER_MAX begrenzen (am laengsten unbenutzte zuerst).
+    -> Anzahl entfernter."""
+    with _db() as c:
+        rows = c.execute("SELECT x.id, f.size FROM chat_file_fed x JOIN chat_file f ON f.id=x.id WHERE x.peer_id=? AND x.cached=1",
+                         (peer_id,)).fetchall()
+    total = sum(r[1] for r in rows)
+    if total <= CACHE_PEER_MAX:
+        return 0
+    def used(fid):
+        try:
+            return os.stat(os.path.join(chat.CHAT_DIR, fid)).st_mtime
+        except OSError:
+            return 0.0
+    n = 0
+    with _db() as c, c:
+        for fid, size in sorted(rows, key=lambda r: used(r[0])):
+            if total <= CACHE_PEER_MAX:
+                break
+            if fid == keep:
+                continue
+            _evict(c, fid)
+            total -= size
+            n += 1
+        if n:
+            p = F.peer_by(c, "id", peer_id)
+            F.log(c, "chat.cache", p, f"evicted={n}", throttle=(peer_id, "cache"))
+    return n
+
+
+def _prefetch_after(c, files, origin):
     small = [f["id"] for f in files if f["size"] <= PREFETCH_MAX]
-    if small:
-        c.after_commit(lambda: _submit(_prefetch, small))
+    if small:                            # (je Instanz begrenzt: eine langsame Gegenstelle belegt nicht den ganzen Pool)
+        c.after_commit(lambda: F.peer_submit(origin["id"], _prefetch, small))
 
 
 def _prefetch(fids):
@@ -1192,7 +1306,7 @@ def create_dm(uid, h, device=""):
         chat._changed(c, cid, [uid])
         out = _reopen(c, uid, ch, device)
     if home:
-        _submit(fill_gap, p["id"], use, None)
+        F.peer_submit(p["id"], fill_gap, p["id"], use, None)
     return out
 
 
@@ -1207,7 +1321,7 @@ def _reopen(c, uid, ch, device=""):
             F._enqueue(c, ch["home_peer"], {"type": "chat.op", "op_body": {"op": "accept", "ref": ch["ref"], "actor": my_handle(c, uid)}},
                        chain=chain_up(ch["ref"]))
             hp, ref = ch["home_peer"], ch["ref"]
-            c.after_commit(lambda: _submit(fill_gap, hp, ref, None))
+            c.after_commit(lambda: F.peer_submit(hp, fill_gap, hp, ref, None))
     c.execute("UPDATE chat_pref SET hidden=0 WHERE chat_id=? AND uid=? AND hidden<>0", (ch["id"], uid))
     mem = chat.members(c, ch["id"])
     return chat._no_store({"chat": chat._chat_dict(c, uid, ch, mem, chat._member(c, ch["id"], uid), chat._my_device(c, uid, str(device or "")), full=True)})
@@ -1395,8 +1509,11 @@ def request_action(uid, cid, action, scope="person"):
         if ch["v"] != 2 or ch["kind"] not in ("dm", "free"):
             return _bad(t("ungültige Angabe"))
         other = next((u for u in mem if sharing.is_remote(u)), None)
-        if ch["kind"] == "free":                         # Gruppe (E5): gesperrt wird, wer eingeladen hat
-            other = ch["created_by"] if ch["created_by"] and sharing.is_remote(ch["created_by"]) else other
+        if ch["kind"] == "free":
+            # Gruppe (E5/E8): gesperrt wird genau, wer eingeladen hat (nie irgendein anderes Mitglied) - war das eine Person
+            # dieses Servers, wird nur abgelehnt
+            inv = inviter(c, ch, uid)
+            other = inv if inv and sharing.is_remote(inv) else None
         mh = my_handle(c, uid)
         if action == "accept":
             return _reopen(c, uid, ch)
@@ -1413,7 +1530,20 @@ def request_action(uid, cid, action, scope="person"):
                         _decline(c, uid, chat._load(c, cid2), mh)
             F.log(c, "chat.block", None, scope, host=split_handle(handle_of(other))[1])
         _decline(c, uid, ch, mh)
-        return chat._no_store({"ok": True, "state": "declined", "blocked": action == "block", "targets": targets})
+        return chat._no_store({"ok": True, "state": "declined", "blocked": action == "block" and bool(other), "targets": targets})
+
+
+def inviter(c, ch, uid):
+    """Wer uid in die Gruppe ch eingeladen hat (lokaler Benutzername bzw. Prinzipal) - aeltere Kopien ohne Angabe: die
+    Person, die die Gruppe angelegt hat."""
+    r = c.execute("SELECT by_uid FROM chat_invite WHERE chat_id=? AND uid=?", (ch["id"], uid)).fetchone()
+    return r[0] if r else ch["created_by"]
+
+
+def _set_inviter(c, ch, uid, by):
+    if by and by != uid:
+        c.execute("INSERT INTO chat_invite (chat_id, uid, by_uid) VALUES (?,?,?) ON CONFLICT (chat_id, uid) DO UPDATE SET by_uid=EXCLUDED.by_uid",
+                  (ch["id"], uid, by))
 
 
 def _decline(c, uid, ch, mh):
@@ -1492,10 +1622,11 @@ def chat_extra(c, uid, ch, d, mem, m):
         d.update(name=ch["group_name"] or t("Seite"), group=None)
     if ch["kind"] in ("free", "page"):
         d["delete_for_all"] = "chat" if ch["kind"] == "free" and (m or {}).get("role") == "admin" else None
-        if ch["kind"] == "free" and ch["home_peer"] is not None and ch["created_by"]:
-            lab = label_of(c, ch["created_by"]) if sharing.is_remote(ch["created_by"]) else None
-            if lab:
-                d["invited_by"] = {"name": lab["name"], "host": lab["host"], "label": lab["label"]}
+        inv = inviter(c, ch, uid) if ch["kind"] == "free" else None
+        if inv and (ch["home_peer"] is not None or (m or {}).get("state") == "request"):
+            lab = label_of(c, inv) if sharing.is_remote(inv) else {"name": sharing.names(c, [inv]).get(inv) or inv, "host": F.SELF_HOST,
+                                                                  "label": sharing.names(c, [inv]).get(inv) or inv}
+            d["invited_by"] = {"name": lab["name"], "host": lab["host"], "label": lab["label"], "remote": sharing.is_remote(inv)}
     if ch["kind"] == "dm":
         o = next((x for x in out if x.get("remote")), None) or {}
         d["name"] = o.get("name") or d.get("name")
@@ -1696,16 +1827,16 @@ def resolve_page(nid, only_stale=False):
                 h = e.get("handle") if isinstance(e, dict) and isinstance(e.get("handle"), str) and F.PSEUDO_RE.fullmatch(e["handle"]) else None
                 c.execute("INSERT INTO fed_name_handle (principal, peer_id, handle, name, fetched) VALUES (?,?,?,?,?) ON CONFLICT (principal) DO UPDATE "
                           "SET peer_id=EXCLUDED.peer_id, handle=EXCLUDED.handle, name=EXCLUDED.name, fetched=EXCLUDED.fetched",
-                          (f"@{n}@{p['host']}", pid, h, F._clean_text((e or {}).get("name"), F.DISPLAY_MAX) if isinstance(e, dict) else "", now))
+                          (f"@{n}@{p['host']}", pid, h, F.remote_name((e or {}).get("name")) if isinstance(e, dict) else "", now))
                 if h:
-                    _person(c, p, f"{h}@{p['host']}", F._clean_text(e.get("name"), F.DISPLAY_MAX))
+                    _person(c, p, f"{h}@{p['host']}", F.remote_name(e.get("name")))
             for g in d["groups"]:
                 lst = (out.get("groups") or {}).get(g) if isinstance(out.get("groups"), dict) else None
                 mem = []
                 for m in (lst if isinstance(lst, list) else [])[:chat.MEMBERS_MAX]:
                     if isinstance(m, dict) and isinstance(m.get("handle"), str) and F.PSEUDO_RE.fullmatch(m["handle"]):
-                        mem.append({"handle": m["handle"], "name": F._clean_text(m.get("name"), F.DISPLAY_MAX)})
-                        _person(c, p, f"{m['handle']}@{p['host']}", F._clean_text(m.get("name"), F.DISPLAY_MAX))
+                        mem.append({"handle": m["handle"], "name": F.remote_name(m.get("name"))})
+                        _person(c, p, f"{m['handle']}@{p['host']}", F.remote_name(m.get("name")))
                 c.execute("INSERT INTO fed_group_members (peer_id, grp, members, fetched) VALUES (?,?,?,?) ON CONFLICT (peer_id, grp) DO UPDATE "
                           "SET members=EXCLUDED.members, fetched=EXCLUDED.fetched", (pid, g, json.dumps(mem), now))
 
@@ -1733,7 +1864,10 @@ def apply_members(c, peer, ev, create=True):
     hx, host = split_ref(ref)
     kind = ev.get("kind")
     lst = ev.get("members")
-    if not hx or host != peer["host"] or kind not in ("free", "page") or not isinstance(lst, list) or len(lst) > chat.MEMBERS_MAX + 5:
+    if hx and host != peer["host"]:
+        F.log(c, "chat.forged", peer, f"members: not home of {hx[:8]}", throttle=(peer["id"], "nothome-m"))
+        return None
+    if not hx or kind not in ("free", "page") or not isinstance(lst, list) or len(lst) > chat.MEMBERS_MAX + 5:
         return None
     want, roles, mine = {}, {}, set()
     for m in lst:
@@ -1749,7 +1883,7 @@ def apply_members(c, peer, ev, create=True):
             mine.add(u)
         else:
             u = principal(f"{n}@{h_host}")
-            nm = F._clean_text(m.get("name"), F.DISPLAY_MAX)
+            nm = F.remote_name(m.get("name"))
             if h_host == peer["host"] or not c.execute("SELECT 1 FROM fed_person WHERE principal=?", (u,)).fetchone():
                 F._person_upsert(c, u, peer["id"], nm or n)
         want[u] = m
@@ -1777,14 +1911,18 @@ def apply_members(c, peer, ev, create=True):
     elif kind == "page" and isinstance(ev.get("title"), str):
         c.execute("UPDATE chat SET group_name=? WHERE id=?", (F._clean_text(ev["title"], 300), ch["id"]))
     cur = dict(members(c, ch["id"]))
+    sby = ev["sys"].get("by") if isinstance(ev.get("sys"), dict) and isinstance(ev["sys"].get("by"), dict) else {}
+    ibn, ibh = split_handle(sby.get("handle"))
+    inv = (F.uid_by_handle(c, ibn) if ibh == F.SELF_HOST else principal(f"{ibn}@{ibh}")) if ibn else None
     for u in want:
         if u in cur:
             c.execute("UPDATE chat_member SET role=? WHERE chat_id=? AND uid=?", (roles[u], ch["id"], u))
             continue
         st = "ok"
         if not sharing.is_remote(u) and kind == "free":
-            creator_h = handle_of(ch["created_by"]) if ch["created_by"] else None
-            st = "declined" if creator_h and blocked(c, u, creator_h) else "request"     # Erstkontakt: Nachrichtenanfrage (still)
+            hs = [handle_of(x) for x in (ch["created_by"], inv) if x and sharing.is_remote(x)]
+            st = "declined" if any(blocked(c, u, h) for h in hs) else "request"     # Erstkontakt: Nachrichtenanfrage (still)
+            _set_inviter(c, ch, u, inv or ch["created_by"])
         elif not sharing.is_remote(u) and not _inbound(c, peer, u):
             st = "request"                       # Seiten-Chat ohne Freigabe dieses Servers an die Person: nur als stille Anfrage
         c.execute("INSERT INTO chat_member (chat_id, uid, role, joined, last_read, state) VALUES (?,?,?,?,?,?) ON CONFLICT (chat_id, uid) DO UPDATE "
@@ -1824,14 +1962,19 @@ def _sys_people(lst):
     out = []
     for x in (lst if isinstance(lst, list) else [])[:chat.MEMBERS_MAX]:
         if isinstance(x, dict):
-            out.append({"name": F._clean_text(x.get("name"), F.DISPLAY_MAX), "host": F._clean_text(x.get("host"), 260),
-                        "handle": x.get("handle") if isinstance(x.get("handle"), str) and _H.fullmatch(x["handle"]) else None})
+            h = x.get("handle") if isinstance(x.get("handle"), str) and _H.fullmatch(x["handle"]) else None
+            # Herkunft: aus dem Handle (nicht frei waehlbar), sonst die Angabe des Heims (bereinigt)
+            out.append({"name": F.remote_name(x.get("name")), "host": split_handle(h)[1] if h else F._clean_text(x.get("host"), 260),
+                        "handle": h})
     return out
 
 
 def _ev_members(c, peer, ev):
     if not groups_ok(peer):
         return "ignored"
+    if not _rate_ok("cmemin", peer["host"], MEMBERS_RATE):
+        _log_retry(c, peer, "chat.rate", "members in", (peer["id"], "cmemin"))
+        return "retry"
     apply_members(c, peer, ev)
     return "ok"
 
@@ -1886,7 +2029,7 @@ def op_members(c, peer, d):
             added.append(u)
             if sharing.is_remote(u):
                 tp = F.peer_by(c, "host", split_handle(handle_of(u))[1])
-                _person(c, tp, handle_of(u), F._clean_text(m.get("name"), F.DISPLAY_MAX))
+                _person(c, tp, handle_of(u), F.remote_name(m.get("name")))
     for x in (d.get("remove") or [])[:chat.MEMBERS_MAX]:
         u = _member_of(c, x)
         if u and u in cur:
@@ -1897,6 +2040,7 @@ def op_members(c, peer, d):
         _add_member(c, ch, u)
         if not sharing.is_remote(u):         # Konto hier, eingeladen von einer Person eines anderen Servers: Erstkontakt = Anfrage
             c.execute("UPDATE chat_member SET state='request' WHERE chat_id=? AND uid=?", (ch["id"], u))
+            _set_inviter(c, ch, u, p_)
             chat._direct(c, [u], "chat.request", {"chat_id": ch["id"]})
     for u in removed:
         _remove_member(c, ch, u)
@@ -1928,6 +2072,9 @@ def op_resolve(c, peer, d):
     names, groups = d.get("names") or [], d.get("groups") or []
     if not isinstance(names, list) or not isinstance(groups, list) or len(names) > 50 or len(groups) > 20:
         return 400, {"error": "bad request"}
+    if not _rate_ok("cres", peer["host"], RESOLVE_RATE):
+        F.log(c, "chat.rate", peer, "resolve", throttle=(peer["id"], "cres"))
+        return 429, {"error": "too many requests"}
     out_n, out_g = {}, {}
     for n in names:
         if not isinstance(n, str) or not F.is_name(n):
@@ -2278,7 +2425,7 @@ def open_remote_page_chat(uid, nid, device=""):
         if not ch:
             return _bad("not found", 404)
         out = _reopen(c, uid, ch, device)
-    _submit(fill_gap, p["id"], ch["ref"], None)
+    F.peer_submit(p["id"], fill_gap, p["id"], ch["ref"], None)
     return out
 
 
@@ -2392,6 +2539,18 @@ def periodic():
         for cid, u, mid, seq in rows:
             chat._direct(c, [u], "chat.message", {"chat_id": cid, "seq": seq, "id": mid, "sender": u, "failed": True})
         c.execute("DELETE FROM chat_file_fed x WHERE NOT EXISTS (SELECT 1 FROM chat_file f WHERE f.id=x.id)")
+        # Zwischenkopien, die CACHE_DAYS niemand gelesen hat, verfallen (werden bei Bedarf neu geholt)
+        old = now - CACHE_DAYS * 86400
+        for (fid,) in c.execute("SELECT id FROM chat_file_fed WHERE cached=1").fetchall():
+            try:
+                stale = os.stat(os.path.join(chat.CHAT_DIR, fid)).st_mtime < old
+            except OSError:
+                stale = True
+            if stale:
+                _evict(c, fid)
+        pids = [r[0] for r in c.execute("SELECT DISTINCT peer_id FROM chat_file_fed WHERE cached=1").fetchall()]
+    for pid in pids:
+        cache_trim(pid)
 
 
 _st = {"t": 0.0}

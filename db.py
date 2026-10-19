@@ -613,6 +613,9 @@ CREATE TABLE IF NOT EXISTS fed_name_handle (          -- Freigabe an '@name@host
     principal TEXT PRIMARY KEY, peer_id INTEGER NOT NULL, handle TEXT, name TEXT NOT NULL DEFAULT '', fetched DOUBLE PRECISION NOT NULL);
 CREATE TABLE IF NOT EXISTS fed_group_members (        -- Mitglieder einer Gruppe einer anderen Instanz (nur wenn Ziel einer Freigabe)
     peer_id INTEGER NOT NULL, grp TEXT NOT NULL, members TEXT NOT NULL, fetched DOUBLE PRECISION NOT NULL, PRIMARY KEY (peer_id, grp));
+CREATE TABLE IF NOT EXISTS chat_invite (              -- 2.3 E8: wer ein Konto hier in eine Gruppe ueber Servergrenzen eingeladen hat
+    chat_id BIGINT NOT NULL REFERENCES chat(id) ON DELETE CASCADE, uid TEXT NOT NULL,       -- (Sperren trifft genau diese Person)
+    by_uid TEXT NOT NULL, PRIMARY KEY (chat_id, uid));
 
 -- Zweiter Faktor (2.1, saga/mfa.py): Passkeys (WebAuthn), Authenticator-App (TOTP), Wiederherstellungscodes.
 -- Nur oeffentliche Schluessel, das TOTP-Geheimnis verschluesselt (wie Geheimnisse der Einstellungen), Codes nur als Hash.

@@ -255,6 +255,20 @@ def part_compat(adm, pab, pba, pac, pca):
     s, d = api("a", "fa-anna", "POST", "/api/chats", {"kind": "page", "note_id": pg, "device": anna.dev["id"]})
     ok(f"A: Seiten-Chat bleibt lokal (v1), ohne Personen der alten Instanz ({s})", s == 200 and d["chat"].get("v") is None
        and all(not m.get("remote") for m in d["chat"]["members"]))
+    # Drei Server gemischt (E8): A und C sprechen 2.3, B ist alt - Gruppe A + C geht, B bleibt bei Protokoll 1 (Teilen/Lesen)
+    dora = User("c", "fc-dora")
+    s, d = api("a", "fa-anna", "POST", "/api/chats", {"kind": "free", "members": ["fa-carl"], "handles": [dora.handle], "device": anna.dev["id"]})
+    ch = d.get("chat") or {}
+    ok(f"gemischt: Gruppe A + C (2.3) geht, waehrend B alt ist ({s})", s == 200 and ch.get("v") == 2)
+    dc = wait(lambda: dora.chat(ch.get("ref")), 15)
+    if dc:
+        api("c", "fc-dora", "POST", f"/api/chats/{dc['id']}/request", {"action": "accept"})
+    anna.send(ch, "Hallo C trotz altem B")
+    ok("gemischt: C hat die Nachricht", wait(lambda: "Hallo C trotz altem B" in dora.texts(dora.chat(ch["ref"])), 20))
+    dora.send(dora.chat(ch["ref"]), "Antwort von C")
+    ok("gemischt: A hat die Antwort von C", wait(lambda: "Antwort von C" in anna.texts(ch), 20))
+    s, d = api("b", "fb-bert", "GET", f"/api/notes/{-(pg * 1024 + pba)}")
+    ok(f"gemischt: B (alt) liest die mit Bert geteilte Seite (Protokoll 1) ({s})", s == 200 and d.get("title") == "Seite fuer alt")
 
 
 def run():

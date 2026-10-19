@@ -198,9 +198,24 @@ _H = re.compile(r"~[a-z2-7]{16}")
 _AV = re.compile(r"[0-9a-f]{1,32}")
 
 
+def _forget(c, host, pairs):
+    """Eintraege (handle, pub) sind aus dem Adressbuch einer Instanz verschwunden: Anzeigenamen nur noch, wo die Personen
+    hier vorkommen (saga.federation.prune_persons)."""
+    prs = []
+    for h, pub in pairs:
+        prs.append(f"@{h}@{host}")
+        if pub:
+            prs.append(f"@{pub}@{host}")
+    if prs:
+        F.prune_persons(c, principals=prs)
+
+
 def _drop(c, pid):
-    c.execute("DELETE FROM fed_directory WHERE peer_id=?", (pid,))
+    p = F.peer_by(c, "id", pid)
+    gone = c.execute("DELETE FROM fed_directory WHERE peer_id=? RETURNING handle, pub", (pid,)).fetchall()
     c.execute("UPDATE fed_peer SET dir_seq=0, dir_cfg='', dir_at=? WHERE id=?", (time.time(), pid))
+    if p:
+        _forget(c, p["host"], gone)
 
 
 def _principal(e, host):
@@ -218,6 +233,7 @@ def pull(pid, full=False):
                     _drop(c, pid)
         return None
     since, cfg, n = (0 if full else p["dir_seq"]), ("" if full else p["dir_cfg"]), 0
+    prior = None                                           # vollstaendiger Abgleich: Stand davor (wer fehlt, ist weg)
     for _ in range(200):                                   # hoechstens 200 Seiten je Durchlauf
         try:
             status, d = F.call_json(p, "GET", "/fed/v2/directory", f"since={int(since)}&cfg={cfg}", timeout=10)
@@ -238,7 +254,9 @@ def pull(pid, full=False):
             if not r or not F.feature(F.peer_by(c, "id", pid), "directory"):
                 return None
             if d.get("full"):
-                c.execute("DELETE FROM fed_directory WHERE peer_id=?", (pid,))
+                gone = c.execute("DELETE FROM fed_directory WHERE peer_id=? RETURNING handle, pub", (pid,)).fetchall()
+                if prior is None:
+                    prior = dict(gone)
             old = {r[0]: r[1:] for r in c.execute("SELECT handle, name, pub, av FROM fed_directory WHERE peer_id=?", (pid,)).fetchall()}
             for e in d["entries"][:PAGE_MAX]:
                 if not isinstance(e, dict) or not isinstance(e.get("handle"), str) or not _H.fullmatch(e["handle"]):
@@ -249,9 +267,10 @@ def pull(pid, full=False):
                         o = old.pop(h)
                         c.execute("DELETE FROM fed_directory WHERE peer_id=? AND handle=?", (pid, h))
                         avatars.forget_remote(c, principal=_principal({"handle": h, "pub": o[1]}, p["host"]))
+                        _forget(c, p["host"], [(h, o[1])])     # (Opt-out, deaktiviert: Name nur noch, wo die Person vorkommt)
                         n += 1
                     continue
-                name = F._clean_text(e.get("name"), F.DISPLAY_MAX)
+                name = F.remote_name(e.get("name"))
                 pub = e.get("pub") if isinstance(e.get("pub"), str) and F.NAME_RE.fullmatch(e.get("pub")) else ""
                 av = e.get("av") if isinstance(e.get("av"), str) and _AV.fullmatch(e.get("av")) else ""
                 if not name:
@@ -273,6 +292,10 @@ def pull(pid, full=False):
                       (max(0, nxt), str(d.get("cfg") or "")[:40], now, pid))
         since, cfg = nxt, str(d.get("cfg") or "")[:40]
         if not d.get("more"):
+            if prior:
+                with _db() as c, c:
+                    now_ = {r[0] for r in c.execute("SELECT handle FROM fed_directory WHERE peer_id=?", (pid,)).fetchall()}
+                    _forget(c, p["host"], [(h, pub) for h, pub in prior.items() if h not in now_])
             break
     return n
 
@@ -289,9 +312,7 @@ def pull_bg(pid, full=False):
             _again[pid] = _again.get(pid, False) or bool(full)
             return
         _running.add(pid)
-    try:
-        F._express.submit(_pull_loop, pid, bool(full))
-    except RuntimeError:                     # Pool beendet (Herunterfahren)
+    if F.peer_submit(pid, _pull_loop, pid, bool(full)) is False:     # Pool beendet (Herunterfahren)
         with _plock:
             _running.discard(pid)
             _again.pop(pid, None)
@@ -384,7 +405,7 @@ def periodic():
         with _db() as c:
             due = [p["id"] for p in F.peers(c) if F.feature(p, "directory") and (not p["dir_at"] or now - p["dir_at"] > SYNC_EVERY)]
         for pid in due[:10]:
-            pull(pid)
+            pull_bg(pid)                     # im Express-Pool, je Instanz begrenzt (eine langsame haelt den Arbeiter nicht auf)
 
 
 F.PERIODIC.append(periodic)

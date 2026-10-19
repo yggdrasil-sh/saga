@@ -1655,8 +1655,11 @@ def api_file_get(fid: str, request: Request):
             if age > 0:
                 cache = f"private, max-age={age}, immutable"
     path = os.path.join(CHAT_DIR, fid)
-    if not os.path.isfile(path) and FED is not None:
-        FED.fetch_file(fid)                           # 2.3: Anhang liegt beim Absender-Server - jetzt holen (Zwischenkopie)
+    if FED is not None:
+        if not os.path.isfile(path):
+            FED.fetch_file(fid)                       # 2.3: Anhang liegt beim Absender-Server - jetzt holen (Zwischenkopie)
+        else:
+            FED.touch(fid)                            # zuletzt benutzt (Zwischenkopien werden je Instanz begrenzt)
     if not os.path.isfile(path):
         return _bad("not found", 404)
     return FileResponse(path, media_type="application/octet-stream",

@@ -297,10 +297,7 @@ def _post_live(pid, items):
                 F.call_json(p, "POST", "/fed/v2/live", body={"items": items[k:k + LIVE_MAX]}, timeout=max(1.0, F.EXPRESS_TIMEOUT / 3))
             except F.FedError:
                 return
-    try:
-        F._express.submit(go)
-    except RuntimeError:
-        pass
+    F.peer_submit(pid, go, drop=True)        # je Instanz begrenzt - ausgelastet: Hinweis faellt weg (verwerfbar)
 
 
 def fanout(kind, p, pres):
