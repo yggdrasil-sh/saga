@@ -395,6 +395,21 @@ def part_publish(P, ids, a_blocks):
     ok(f"Besucher: Vorschau ({s})", s == 200 and body.startswith(b"\x89PNG"))
     s, _, _ = call("GET", f"{path}/nc/{ids['bericht']}?a={A}&dl=1", uid=None, api=False, raw=True)
     ok(f"Besucher: Datei ohne Schalter weiter gesperrt ({s})", s == 404)
+    # Schalter wieder aus: B darf ihn weder mit dem alten signierten Block noch ueber eine alte Version wieder oeffnen
+    on_body = q("SELECT body FROM note WHERE id=?", (P,))[0][0]
+    on_blocks = json.loads(on_body)["blocks"]
+    s, d = save(P, json.dumps({"blocks": a_blocks}))
+    ok(f"A: Schalter wieder aus ({s})", s == 200 and ncdata(P)[0]["public"] is False)
+    s, d = save(P, json.dumps({"blocks": on_blocks + [para("B spielt alten Block ein")]}), uid=BB)
+    s2, _, _ = call("GET", f"{path}/nc/{ids['foto']}?a={A}&w=640", uid=None, api=False, raw=True)
+    ok(f"B: alter signierter Block mit Schalter an -> bleibt aus ({s}, Besucher {s2})", s == 200 and ncdata(P)[0]["public"] is False and s2 == 404)
+    vid = q("INSERT INTO note_version (note_id, uid, title, body, format, created) VALUES (?,?,?,?,?,?) RETURNING id",
+            (P, A, "NC-Seite " + TAG, on_body, "blocks", time.time()))[0][0]
+    s, d = call("POST", f"/api/notes/{P}/versions/{vid}/restore", uid=BB)
+    s2, _, _ = call("GET", f"{path}/nc/{ids['foto']}?a={A}&w=640", uid=None, api=False, raw=True)
+    ok(f"B: alte Version mit Schalter an zurueckgeholt -> bleibt aus ({s}, Besucher {s2})", s == 200 and ncdata(P)[0]["public"] is False and s2 == 404)
+    s, d = call("POST", f"/api/notes/{P}/versions/{vid}/restore")
+    ok(f"A (Autor): dieselbe Version zurueckgeholt -> Schalter an ({s})", s == 200 and ncdata(P)[0]["public"] is True)
     call("DELETE", f"/api/notes/{P}/publish")
     s, _, _ = call("GET", f"{path}/nc/{ids['foto']}?a={A}&w=640", uid=None, api=False, raw=True)
     ok(f"Veroeffentlichung beendet: nichts mehr ({s})", s == 404)

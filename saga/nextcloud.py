@@ -642,6 +642,7 @@ def check_body(uid, nid, old_body, old_fmt, new_body):
             keys += [_key(dict(od, author=pseudo(od["author"]))), _key(dict(od, author=pseudo(od["author"]), sig=""))]
         for k in dict.fromkeys(keys):
             old.setdefault(k, []).append(od)
+    prev = _flags(old_body, old_fmt)
     used = {}
     acct = None
     for b in blocks:
@@ -655,6 +656,8 @@ def check_body(uid, nid, old_body, old_fmt, new_body):
             b["data"] = json.loads(json.dumps(old[k][min(i, len(old[k]) - 1)]))
             continue
         if sig_ok(nid, d) and not ({"author", "inst", "fileid", "sig"} - set(d)):
+            if d.get("author") != uid:                  # fremder Block aus einer frueheren Fassung: Schalter nie weiter als jetzt
+                b["data"] = _limit_flags(nid, d, prev)
             continue
         author = d.get("author")
         if author not in (None, uid) or is_remote(uid):
@@ -675,6 +678,44 @@ def check_body(uid, nid, old_body, old_fmt, new_body):
         clean["sig"] = sign(nid, clean)
         b["data"] = clean
     return json.dumps(doc, ensure_ascii=False)
+
+
+def _flags(body, fmt):
+    """(autor, nextcloud, datei) -> (public, fed) im gespeicherten Stand (irgendein Block mit dieser Datei)."""
+    out = {}
+    for b in nc_blocks(body, fmt):
+        od = b["data"]
+        k = (str(od.get("author") or ""), str(od.get("inst") or ""), str(od.get("fileid") or ""))
+        p, f = out.get(k, (False, False))
+        out[k] = (p or od.get("public") is True, f or od.get("fed") is True)
+    return out
+
+
+def _limit_flags(nid, d, prev):
+    """Signierter Block einer anderen Person, der so nicht im gespeicherten Stand steht (wieder eingefuegt, alte Fassung):
+    "veroeffentlicht"/"verbundene Server" nur, wenn sie jetzt schon an sind - Schalter oeffnet nur der Autor selbst."""
+    p, f = prev.get((str(d.get("author") or ""), str(d.get("inst") or ""), str(d.get("fileid") or "")), (False, False))
+    pub, fed = d.get("public") is True and p, d.get("fed") is True and f
+    if pub == (d.get("public") is True) and fed == (d.get("fed") is True):
+        return d
+    d = dict(d, public=pub, fed=fed)
+    d["sig"] = sign(nid, d)
+    return d
+
+
+def limit_restore(uid, nid, cur_body, cur_fmt, body, fmt):
+    """Version zurueckholen (page_tools.version_restore): Schalter fremder Bloecke nicht weiter oeffnen als im aktuellen Stand."""
+    if fmt != "blocks" or '"nextcloud"' not in str(body or ""):
+        return body
+    doc = _json_load(body, {})
+    prev, changed = _flags(cur_body, cur_fmt), False
+    for b in nc_blocks(doc):
+        d = b["data"]
+        if d.get("author") and d.get("author") != uid and sig_ok(nid, d):
+            nd = _limit_flags(nid, d, prev)
+            if nd is not d:
+                b["data"], changed = nd, True
+    return json.dumps(doc, ensure_ascii=False) if changed else body
 
 
 def adopt(body, fmt, uid, nid):

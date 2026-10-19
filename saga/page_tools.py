@@ -170,8 +170,9 @@ def version_restore(uid, nid, vid, origin=None):
             return JSONResponse({"error": t("Seite ist gesperrt – erst entsperren")}, status_code=423)
         now = time.time()
         _snapshot(c, owner, nid, cur[:4], now, force=True, author=cur[3], by=uid)       # aktueller Stand bleibt als Version erhalten
+        body = nextcloud.limit_restore(uid, nid, cur[1], cur[2], v[1], v[2])     # Nextcloud: fremde Schalter nicht wieder oeffnen
         c.execute("UPDATE note SET title=?, body=?, format=?, updated=?, rev=rev+1, updated_by=? WHERE id=? AND uid=?",
-                  (v[0], v[1], v[2], now, uid, nid, owner))
+                  (v[0], body, v[2], now, uid, nid, owner))
         rev = c.execute("SELECT rev FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()[0]
         announce_tree(c, owner, nid, [nid], uid, now, False, rev, origin=origin)       # Live: Version zurueck (BUG-033)
         if v[0] != cur[0]:
