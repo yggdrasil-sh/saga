@@ -395,6 +395,27 @@ try:
     st, r = call("POST", "/api/account/backup/restore", {"token": up["token"], "folder": False}, uid=NEW)
     xb = q("SELECT body FROM note WHERE uid=? AND title='X'", (NEW,))
     ok(f"Eingespielte Inhalte werden bereinigt (kein onerror/script) ({st})", st == 200 and xb and "onerror" not in xb[0][0] and "<script" not in xb[0][0])
+    # Bild-/Datei-Bloecke nur mit eigenen Dateien (wie beim Speichern): fremde Datei, fremde Adresse -> Absatz mit Namen
+    evil = {"format": "saga-userbackup/1", "notes": [{"id": 1, "title": "Y", "format": "blocks", "body": blocks(
+        ("image", {"file": {"url": "https://tracker.example/px.png"}, "caption": "Pixel"}),
+        ("columns", {"cols": [{"blocks": [{"id": "i1", "type": "attaches", "data": {"file": {"url": f"/files/{fb}", "name": "fremd.png"}}}]}]}))}],
+            "versions": [{"note_id": 1, "title": "Y", "format": "blocks", "created": 1,
+                          "body": blocks(("image", {"file": {"url": f"/files/{fb}"}, "caption": "alt"}))}]}
+    ev = json.dumps(evil).encode()
+    yz = io.BytesIO()
+    with zipfile.ZipFile(yz, "w") as zz:
+        zz.writestr("daten.json", ev)
+        zz.writestr("manifest.json", json.dumps({"format": "saga-userbackup/1", "files": {"daten.json": {"size": len(ev), "sha256": hashlib.sha256(ev).hexdigest()}}}))
+    st, up1 = call("POST", "/api/account/backup/restore/upload", raw=yz.getvalue(), uid=NEW)
+    st, up = call("POST", "/api/account/backup/restore/upload", raw=yz.getvalue(), uid=NEW)
+    st0, r0 = call("POST", "/api/account/backup/restore", {"token": up1["token"], "folder": False}, uid=NEW)
+    ok(f"Neuer Upload ersetzt den wartenden (hoechstens einer je Konto) ({st0})", st0 == 404)
+    st, r = call("POST", "/api/account/backup/restore", {"token": up["token"], "folder": False}, uid=NEW)
+    yb = q("SELECT id, body FROM note WHERE uid=? AND title='Y'", (NEW,))
+    yv = q("SELECT body FROM note_version WHERE uid=? AND note_id=?", (NEW, yb[0][0])) if yb else []
+    ok(f"Fremde Datei/Adresse in Bild-/Datei-Bloecken entfernt (Seite + Version) ({st})", st == 200 and yb and yv
+       and "tracker.example" not in yb[0][1] and fb not in yb[0][1] and fb not in yv[0][0] and '"image"' not in yb[0][1]
+       and "attaches" not in yb[0][1] and "fremd.png" in yb[0][1])
 
     # --- Grenzen ---
     admin_set(min_h=1)

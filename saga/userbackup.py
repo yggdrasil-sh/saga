@@ -813,7 +813,24 @@ def _remap_blocks(obj, nmap):
                 _remap_blocks(v, nmap)
 
 
-def _clean_body(body, fmt, nmap, fmap):
+def _own_files_only(blocks, own):
+    """Wie beim Speichern (notes._check_file_refs): Bild-/Datei-Bloecke nur mit EIGENEN hochgeladenen Dateien. Sonst (fremde
+    Datei, fremde Adresse aus einem manipulierten Backup, Datei nicht im Backup) -> Absatz mit dem Dateinamen."""
+    from html import escape
+    from saga.notes import _iter_blocks
+    for b in _iter_blocks(blocks):
+        if b.get("type") not in ("image", "attaches"):
+            continue
+        d = b.get("data") if isinstance(b.get("data"), dict) else {}
+        f = d.get("file") if isinstance(d.get("file"), dict) else {}
+        m = _FILE_URL.fullmatch(str(f.get("url") or ""))
+        if m and own(m.group(1)):
+            continue
+        label = next((str(x) for x in (f.get("name"), d.get("title"), d.get("caption")) if isinstance(x, str) and x.strip()), "")
+        b["type"], b["data"] = "paragraph", {"text": escape(re.sub(r"<[^>]*>", "", label), quote=False)[:300]}
+
+
+def _clean_body(body, fmt, nmap, fmap, own=lambda fid: False):
     from saga.pages import NOTE_BLOCKS_MAX, clean_blocks
     body = _remap_text(str(body or ""), nmap, fmap)
     if fmt != "blocks":
@@ -821,7 +838,9 @@ def _clean_body(body, fmt, nmap, fmap):
     try:
         doc = json.loads(body) if body else {"blocks": []}
         _remap_blocks(doc.get("blocks") if isinstance(doc, dict) else [], nmap)
-        return clean_blocks(json.dumps(doc, ensure_ascii=False))[0], "blocks"
+        out = json.loads(clean_blocks(json.dumps(doc, ensure_ascii=False))[0])
+        _own_files_only(out["blocks"], own)
+        return clean_blocks(json.dumps(out, ensure_ascii=False))[0], "blocks"
     except (ValueError, TypeError, AttributeError):
         return json.dumps({"blocks": []}), "blocks"
 
@@ -894,6 +913,12 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
     now = time.time()
     fids = {old: new for old, (new, _) in fmap.items()}
     with _db() as c, c:
+        own_cache = {}
+
+        def own(fid):
+            if fid not in own_cache:
+                own_cache[fid] = bool(c.execute("SELECT 1 FROM file WHERE id=? AND uid=?", (fid, uid)).fetchone())
+            return own_cache[fid]
         for old, (new, f) in fmap.items():
             with open(os.path.join(FILES_DIR, new), "rb") as fh:
                 img = _sniff_image(fh.read(16))
@@ -924,7 +949,7 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
                 nid = nmap[n["id"]]
                 par = nmap.get(n.get("parent_id")) if n.get("parent_id") in by_id else folder
                 kind = "database" if n.get("kind") == "database" else "page"
-                body, fmt = _clean_body(n.get("body"), n.get("format"), nmap, fids)
+                body, fmt = _clean_body(n.get("body"), n.get("format"), nmap, fids, own)
                 schema = None
                 if kind == "database":
                     raw = _json_load(n.get("schema"), {"props": []})
@@ -985,7 +1010,7 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
             for v in data.get("versions") or []:
                 if not isinstance(v, dict) or v.get("note_id") not in nmap or nmap[v["note_id"]] not in made:
                     continue
-                body, fmt = _clean_body(v.get("body"), v.get("format"), nmap, fids)
+                body, fmt = _clean_body(v.get("body"), v.get("format"), nmap, fids, own)
                 c.execute("INSERT INTO note_version (note_id, uid, title, body, format, created, author) VALUES (?,?,?,?,?,?,?)",
                           (nmap[v["note_id"]], uid, str(v.get("title") or "")[:300], body, fmt,
                            float(v["created"]) if isinstance(v.get("created"), (int, float)) else now, uid))
@@ -1459,12 +1484,15 @@ def api_remote_get(name: str, request: Request):
     q = queue.Queue(maxsize=8)
 
     def pump():
-        try:
-            dav.get_to(dav.url(name), lambda b: q.put(b))
+        try:                                          # Gegenstelle bricht ab -> nach 2 Minuten ohne Abnehmer Schluss
+            dav.get_to(dav.url(name), lambda b: q.put(b, timeout=120))
         except Exception:  # noqa: BLE001 - Abbruch: Download endet unvollstaendig
             pass
         finally:
-            q.put(None)
+            try:
+                q.put(None, timeout=5)
+            except queue.Full:
+                pass
             dav.close()
     threading.Thread(target=pump, daemon=True).start()
 
@@ -1532,8 +1560,11 @@ async def api_restore_upload(request: Request):
         os.remove(path)
         return _bad(t("Keine gültige Backup-Datei."))
     _drop_upload(None)                                # abgelaufene aufraeumen
-    with _mem_lock:
+    with _mem_lock:                                   # hoechstens ein wartender Upload je Konto (sonst Platte voll)
+        prev = [k for k, v in _uploads.items() if v["uid"] == uid]
         _uploads[tok] = {"uid": uid, "path": path, "until": time.time() + UPLOAD_TTL, "size": n}
+    for k in prev:
+        _drop_upload(k)
     return JSONResponse({"token": tok, "size": n, "encrypted": enc})
 
 
