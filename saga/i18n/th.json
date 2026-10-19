@@ -2748,5 +2748,7 @@
  "Lade hoch …": "กำลังอัปโหลด …",
  "Hole aus dem Ziel …": "กำลังดึงจากปลายทาง …",
  "Spiele ein …": "กำลังกู้คืน …",
- "Eingespielt: {pages} Seiten, {files} Dateien.": "กู้คืนแล้ว: {pages} หน้า, {files} ไฟล์"
+ "Eingespielt: {pages} Seiten, {files} Dateien.": "กู้คืนแล้ว: {pages} หน้า, {files} ไฟล์",
+ "Backup enthält zu viele Einträge.": "ข้อมูลสำรองมีรายการมากเกินไป",
+ "Backup enthält zu viele Dateien (höchstens {n}).": "ข้อมูลสำรองมีไฟล์มากเกินไป (สูงสุด {n})"
 }

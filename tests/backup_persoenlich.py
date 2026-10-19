@@ -417,6 +417,53 @@ try:
        and "tracker.example" not in yb[0][1] and fb not in yb[0][1] and fb not in yv[0][0] and '"image"' not in yb[0][1]
        and "attaches" not in yb[0][1] and "fremd.png" in yb[0][1])
 
+    # --- Grenzen beim Einspielen (A3): daten.json, Dateizahl, Versionen je Seite, Textseiten; Upload danach sofort weg ---
+    def mkzip(data, extra=(), sums_extra=None, raw_data=None):
+        ev = raw_data if raw_data is not None else json.dumps(data).encode()
+        bz = io.BytesIO()
+        sums = {"daten.json": {"size": len(ev), "sha256": hashlib.sha256(ev).hexdigest()}}
+        sums.update(sums_extra or {})
+        with zipfile.ZipFile(bz, "w", zipfile.ZIP_DEFLATED) as zz:
+            zz.writestr("daten.json", ev)
+            for n_, d_ in extra:
+                zz.writestr(n_, d_)
+            zz.writestr("manifest.json", json.dumps({"format": "saga-userbackup/1", "files": sums}))
+        return bz.getvalue()
+
+    def up_path(tok):
+        return os.path.join(db.BACKUP_DIR, "user-tmp", "uploads", tok)
+    st, up = call("POST", "/api/account/backup/restore/upload", raw=bad.getvalue(), uid=NEW)
+    there = os.path.isfile(up_path(up["token"]))
+    st, r = call("POST", "/api/account/backup/restore", {"token": up["token"]}, uid=NEW)
+    st2, r2 = call("POST", "/api/account/backup/restore", {"token": up["token"]}, uid=NEW)
+    ok(f"Fehlgeschlagenes Einspielen: hochgeladenes ZIP sofort geloescht, Token verbraucht ({st} {st2})",
+       there and st == 400 and st2 == 404 and not os.path.exists(up_path(up["token"])))
+    long_txt = "L" * 50000
+    vers = [{"note_id": 1, "title": f"V{i}", "format": "text", "body": f"v{i}", "created": 1000 + i} for i in range(60)]
+    st, up = call("POST", "/api/account/backup/restore/upload", raw=mkzip({"format": "saga-userbackup/1", "versions": vers, "notes": [
+        {"id": 1, "title": "Textseite " + MARK, "format": "text", "body": long_txt}]}), uid=NEW)
+    st, r = call("POST", "/api/account/backup/restore", {"token": up["token"], "folder": False}, uid=NEW)
+    tn = q("SELECT id, body FROM note WHERE uid=? AND title=?", (NEW, "Textseite " + MARK))
+    tv = q("SELECT title FROM note_version WHERE uid=? AND note_id=? ORDER BY created", (NEW, tn[0][0])) if tn else []
+    ok(f"Textseite auf NOTE_BODY_MAX gekuerzt ({len(tn[0][1]) if tn else '-'}), je Seite hoechstens 50 Versionen, die neuesten ({len(tv)})",
+       st == 200 and tn and len(tn[0][1]) == 20000 and len(tv) == 50 and tv[0][0] == "V10" and tv[-1][0] == "V59"
+       and r["versions"] == 50 and not os.path.exists(up_path(up["token"])))
+    big_json = b'{"format": "saga-userbackup/1", "notes": []' + b" " * (64 * 1024 * 1024) + b"}"
+    st, up = call("POST", "/api/account/backup/restore/upload", raw=mkzip(None, raw_data=big_json), uid=NEW)
+    del big_json
+    st, r = call("POST", "/api/account/backup/restore", {"token": up["token"]}, uid=NEW)
+    ok(f"daten.json ueber 64 MB abgelehnt ({st} {r})", st == 400 and not os.path.exists(up_path(up["token"])))
+    nfiles = 20001
+    fl = [{"id": "%024x" % i, "name": f"f{i}", "path": f"dateien/{i}"} for i in range(nfiles)]
+    st, up = call("POST", "/api/account/backup/restore/upload", raw=mkzip(
+        {"format": "saga-userbackup/1", "notes": [{"id": 1, "title": "Viele " + MARK}], "files": fl},
+        extra=[(f["path"], b"x") for f in fl],
+        sums_extra={f["path"]: {"size": 1, "sha256": hashlib.sha256(b"x").hexdigest()} for f in fl}), uid=NEW)
+    nf0 = q("SELECT COUNT(*) FROM file WHERE uid=?", (NEW,))[0][0]
+    st, r = call("POST", "/api/account/backup/restore", {"token": up["token"]}, uid=NEW)
+    ok(f"Mehr als 20000 Dateien abgelehnt, bevor etwas geschrieben wird ({st} {r})", st == 400 and "20000" in str(r)
+       and q("SELECT COUNT(*) FROM file WHERE uid=?", (NEW,))[0][0] == nf0 and not q("SELECT 1 FROM note WHERE uid=? AND title=?", (NEW, "Viele " + MARK)))
+
     # --- Grenzen ---
     admin_set(min_h=1)
     st, r = call("POST", "/api/account/backup/run")

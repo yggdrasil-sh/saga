@@ -49,7 +49,7 @@ from db import connect as _db
 from saga import backups, i18n, netguard, notify
 from saga.backups import BackupError
 from saga.core import BASE_URL, E, RESTORE_TEST, SECRET, TZ, _api_guard, _bad, _body, _json_load, account_lang, t
-from saga.notes import FILES_DIR, FILE_QUOTA, NOTE_TOTAL_MAX, _FILE_URL, _clean_props, _clean_schema, tree_changed
+from saga.notes import FILES_DIR, FILE_QUOTA, NOTE_BODY_MAX, NOTE_TOTAL_MAX, VERSION_MAX, _FILE_URL, _clean_props, _clean_schema, tree_changed
 from version import VERSION
 
 router = APIRouter()
@@ -62,6 +62,11 @@ TIME_RE = backups.TIME_RE
 HARD_MAX_MB = max(1, int(E.get("USER_BACKUP_MAX_MB", "4096")))     # obere Grenze fuer Uploads (BodyLimit in app.py)
 HISTORY_KEEP = 30
 UPLOAD_TTL = 1800                                  # hochgeladenes Backup (zum Einspielen) bleibt so lange liegen
+# Grenzen beim Einspielen (unabhaengig von der Backup-Groesse): daten.json wird ganz gelesen (JSON) - daher eigene Grenze,
+# beim Lesen abgebrochen; Dateien und Eintraege im ZIP gezaehlt, bevor etwas geschrieben wird; Versionen je Seite wie im
+# Verlauf (VERSION_MAX, die neuesten).
+DATA_MAX = max(1, int(E.get("USER_BACKUP_DATA_MB", "64"))) * 1024 * 1024
+IMPORT_FILES_MAX = max(1, int(E.get("USER_BACKUP_FILES_MAX", "20000")))
 KEY_TTL = 900
 MB = backups.MB
 KV_KEYS = ("lang", "notify_off", "push", "ai_history", "fed_directory")    # eigene Einstellungen (keine Sicherheitsdaten)
@@ -749,22 +754,33 @@ class ImportError_(ValueError):
     pass
 
 
+class KeyError_(ImportError_):
+    """Entschluesseln fehlgeschlagen (falscher/fehlender Schluessel): der Upload bleibt fuer einen neuen Versuch."""
+
+
 def decrypt_to(src, dst, key):
     """age -d mit dem privaten Schluessel ueber stdin (nie auf der Platte) -> dst."""
     key = str(key or "").strip()
     if "AGE-SECRET-KEY-" not in key:
-        raise ImportError_(t("Bitte den privaten Schlüssel (AGE-SECRET-KEY-…) angeben."))
+        raise KeyError_(t("Bitte den privaten Schlüssel (AGE-SECRET-KEY-…) angeben."))
     lines = [ln.strip() for ln in key.splitlines() if ln.strip().startswith("AGE-SECRET-KEY-")]
     r = subprocess.run(["age", "-d", "-i", "-", "-o", dst, src], input=("\n".join(lines) + "\n").encode(),
                        capture_output=True, timeout=3600)
     if r.returncode:
-        raise ImportError_(t("Entschlüsseln fehlgeschlagen – passt der Schlüssel zu diesem Backup?"))
+        raise KeyError_(t("Entschlüsseln fehlgeschlagen – passt der Schlüssel zu diesem Backup?"))
     return dst
 
 
 def is_age(path):
     with open(path, "rb") as f:
         return f.read(22) == b"age-encryption.org/v1\n"
+
+
+def _is_age_safe(path):
+    try:
+        return is_age(path)
+    except OSError:
+        return False
 
 
 def _read_member(z, name, limit, want=None):
@@ -831,10 +847,10 @@ def _own_files_only(blocks, own):
 
 
 def _clean_body(body, fmt, nmap, fmap, own=lambda fid: False):
-    from saga.pages import NOTE_BLOCKS_MAX, clean_blocks
+    from saga.pages import clean_blocks
     body = _remap_text(str(body or ""), nmap, fmap)
     if fmt != "blocks":
-        return body[:NOTE_BLOCKS_MAX], "text"
+        return body[:NOTE_BODY_MAX], "text"            # Textseite: Grenze wie beim Speichern (pages.py)
     try:
         doc = json.loads(body) if body else {"blocks": []}
         _remap_blocks(doc.get("blocks") if isinstance(doc, dict) else [], nmap)
@@ -855,6 +871,8 @@ def import_zip(uid, zpath, opts):
     except (zipfile.BadZipFile, OSError):
         raise ImportError_(t("Keine gültige Backup-Datei."))
     with z:
+        if len(z.infolist()) > IMPORT_FILES_MAX + 4 * NOTE_TOTAL_MAX + 100:      # Dateien + Markdown je Seite + Rahmen
+            raise ImportError_(t("Backup enthält zu viele Einträge."))
         names = set(z.namelist())
         if "manifest.json" not in names or "daten.json" not in names:
             raise ImportError_(t("Keine gültige Backup-Datei (manifest.json/daten.json fehlen)."))
@@ -862,7 +880,7 @@ def import_zip(uid, zpath, opts):
         if not isinstance(man, dict) or man.get("format") != FORMAT:
             raise ImportError_(t("Unbekanntes Backup-Format."))
         sums = man.get("files") if isinstance(man.get("files"), dict) else {}
-        data = _json_load(_read_member(z, "daten.json", limit, sums.get("daten.json")).decode("utf-8", "replace"), {})
+        data = _json_load(_read_member(z, "daten.json", min(limit, DATA_MAX), sums.get("daten.json")).decode("utf-8", "replace"), {})
         if not isinstance(data, dict) or data.get("format") != FORMAT or not isinstance(data.get("notes"), list):
             raise ImportError_(t("Unbekanntes Backup-Format."))
         notes = [n for n in data["notes"] if isinstance(n, dict) and isinstance(n.get("id"), int)]
@@ -872,6 +890,8 @@ def import_zip(uid, zpath, opts):
         by_id = {n["id"]: n for n in notes}
         files = [f for f in (data.get("files") or []) if isinstance(f, dict) and re.fullmatch(r"[0-9a-f]{24}", str(f.get("id")))
                  and f.get("path") in names and f.get("path") in sums]
+        if len(files) > IMPORT_FILES_MAX:
+            raise ImportError_(t("Backup enthält zu viele Dateien (höchstens {n}).", n=IMPORT_FILES_MAX))
         need = sum(int(sums[f["path"]].get("size") or 0) for f in files)
         with _db() as c:
             have = c.execute("SELECT COUNT(*) FROM note WHERE uid=?", (uid,)).fetchone()[0]
@@ -1007,8 +1027,13 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
                 nmap.pop(n["id"], None)
         versions = 0
         if opts.get("versions", True):
-            for v in data.get("versions") or []:
-                if not isinstance(v, dict) or v.get("note_id") not in nmap or nmap[v["note_id"]] not in made:
+            per, made_set = {}, set(made)
+            vs = [v for v in data.get("versions") or [] if isinstance(v, dict) and v.get("note_id") in nmap
+                  and nmap[v["note_id"]] in made_set]
+            vs.sort(key=lambda v: -(v["created"] if isinstance(v.get("created"), (int, float)) else 0))
+            for v in vs:                              # je Seite hoechstens VERSION_MAX (die neuesten), wie im Verlauf
+                per[v["note_id"]] = per.get(v["note_id"], 0) + 1
+                if per[v["note_id"]] > VERSION_MAX:
                     continue
                 body, fmt = _clean_body(v.get("body"), v.get("format"), nmap, fids, own)
                 c.execute("INSERT INTO note_version (note_id, uid, title, body, format, created, author) VALUES (?,?,?,?,?,?,?)",
@@ -1629,8 +1654,12 @@ async def api_restore(request: Request):
             return import_zip(uid, zp, opts)
         finally:
             shutil.rmtree(wd, ignore_errors=True)
+    keep = False
     try:
         res = await asyncio.to_thread(work)
+    except KeyError_ as ex:
+        keep = bool(up and _is_age_safe(up["path"]))        # verschluesselt: mit anderem Schluessel erneut
+        return _bad(str(ex))
     except ImportError_ as ex:
         return _bad(str(ex))
     except BackupError as ex:
@@ -1638,7 +1667,7 @@ async def api_restore(request: Request):
     finally:
         with _mem_lock:
             _restore_busy.discard(uid)
-    if up:
-        _drop_upload(tok)                            # erst nach Erfolg (falscher Schluessel: noch einmal versuchen)
+        if up and not keep:
+            _drop_upload(tok)                        # Erfolg oder Fehler beim Einspielen: Datei (ggf. Klartext-ZIP) sofort weg
     print(f"userbackup: Backup eingespielt ({res['pages']} Seiten, {res['files']} Dateien)", flush=True)
     return JSONResponse(res)

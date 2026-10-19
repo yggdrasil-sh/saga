@@ -2748,5 +2748,7 @@
  "Lade hoch …": "Uploading …",
  "Hole aus dem Ziel …": "Fetching from the target …",
  "Spiele ein …": "Restoring …",
- "Eingespielt: {pages} Seiten, {files} Dateien.": "Restored: {pages} pages, {files} files."
+ "Eingespielt: {pages} Seiten, {files} Dateien.": "Restored: {pages} pages, {files} files.",
+ "Backup enthält zu viele Einträge.": "The backup contains too many entries.",
+ "Backup enthält zu viele Dateien (höchstens {n}).": "The backup contains too many files (at most {n})."
 }

@@ -2748,5 +2748,7 @@
  "Lade hoch …": "Lade hoch …",
  "Hole aus dem Ziel …": "Hole aus dem Ziel …",
  "Spiele ein …": "Spiele ein …",
- "Eingespielt: {pages} Seiten, {files} Dateien.": "Eingespielt: {pages} Seiten, {files} Dateien."
+ "Eingespielt: {pages} Seiten, {files} Dateien.": "Eingespielt: {pages} Seiten, {files} Dateien.",
+ "Backup enthält zu viele Einträge.": "Backup enthält zu viele Einträge.",
+ "Backup enthält zu viele Dateien (höchstens {n}).": "Backup enthält zu viele Dateien (höchstens {n})."
 }

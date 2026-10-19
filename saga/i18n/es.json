@@ -2748,5 +2748,7 @@
  "Lade hoch …": "Subiendo …",
  "Hole aus dem Ziel …": "Obteniendo del destino …",
  "Spiele ein …": "Restaurando …",
- "Eingespielt: {pages} Seiten, {files} Dateien.": "Restaurado: {pages} páginas, {files} archivos."
+ "Eingespielt: {pages} Seiten, {files} Dateien.": "Restaurado: {pages} páginas, {files} archivos.",
+ "Backup enthält zu viele Einträge.": "La copia de seguridad contiene demasiadas entradas.",
+ "Backup enthält zu viele Dateien (höchstens {n}).": "La copia de seguridad contiene demasiados archivos (como máximo {n})."
 }

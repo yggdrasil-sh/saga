@@ -36,6 +36,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Datenschutz (Server-Backup vs. persönliches Backup). `USER_BACKUP_MAX_MB` (Standard 4096) begrenzt Uploads.
 - Neue Tabellen `user_backup`, `user_backup_run` (keine Migration nötig); Kontolöschung entfernt sie und widerruft das
   App-Passwort. App-API: `docs/APP-API.md` (Persönliches Backup). Neue Testreihe `backup_persoenlich`.
+- **Grenzen beim Einspielen:** `daten.json` höchstens 64 MB (`USER_BACKUP_DATA_MB`, beim Lesen abgebrochen), höchstens
+  20 000 Dateien (`USER_BACKUP_FILES_MAX`) und begrenzt viele ZIP-Einträge (geprüft, bevor etwas geschrieben wird), je
+  Seite die neuesten 50 Versionen; Textseiten auf die Länge wie beim Speichern gekürzt. Hochgeladene Backups werden nach
+  dem Einspielen sofort gelöscht, auch nach einem Fehler (nur nach falschem Schlüssel bleibt ein verschlüsselter Upload).
 - Intern: Ziel-Schnittstelle in `saga/backups.py` nimmt eine eigene Freigabe-Regel (`ip_ok`); die Markdown-Erzeugung des
   Exports ist als `page_tools.md_page` wiederverwendbar.
 

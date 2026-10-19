@@ -1367,7 +1367,10 @@ gespeichert). Saga spielt **nur ins eigene Konto** ein, als **neue Seiten** – 
 Datenbank-Relationen, eingebettete Datenbanken, Schaltflächen und Bilder zeigen danach auf die neuen Seiten und Dateien;
 bestehende Seiten bleiben unverändert. Standard: in eine neue Seite „Wiederhergestellt <Datum>“; Papierkorb, Aufgaben und
 Lesezeichen auf Wunsch. Kommentare und Einstellungen stehen zum Nachlesen im Backup, werden aber nicht eingespielt. Ein
-Markdown-Export (Seite → Exportieren) enthält kein `daten.json` und lässt sich daher nicht einspielen.
+Markdown-Export (Seite → Exportieren) enthält kein `daten.json` und lässt sich daher nicht einspielen. Grenzen beim
+Einspielen: `daten.json` höchstens 64 MB (`USER_BACKUP_DATA_MB`), höchstens 20 000 Dateien (`USER_BACKUP_FILES_MAX`), je
+Seite die neuesten 50 Versionen. Die hochgeladene Datei wird nach dem Einspielen sofort gelöscht – auch nach einem Fehler;
+nur nach einem falschen Schlüssel bleibt ein verschlüsseltes Backup für einen neuen Versuch liegen (höchstens 30 Minuten).
 
 **Für Admins – Datenschutz:** Das **Server-Backup** (oben) sichert alles, was für den Betrieb nötig ist, in *dein* Ziel.
 **Persönliche Backups** landen nur im Ziel der jeweiligen Person, verschlüsselt mit deren Schlüssel – du musst keine
@@ -1548,6 +1551,7 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `BACKUP_KEEP` | `10` | So viele automatische/manuelle Backups bleiben in `/data/backups` |
 | `BACKUP_VERIFY_MB` | `512` | Verschlüsselte Backups (Abschnitt 11): Dateien bis zu dieser Größe nach dem Hochladen ganz erneut herunterladen und vergleichen (größere sonntags) |
 | `USER_BACKUP_MAX_MB` | `4096` | Persönliche Backups (Abschnitt 11): obere Grenze für die Größe je Backup und für Uploads beim Einspielen (die Grenze im Admin-Bereich kann nur kleiner sein) |
+| `USER_BACKUP_DATA_MB` / `USER_BACKUP_FILES_MAX` | `64` / `20000` | Persönliche Backups einspielen: Größe von `daten.json` und Anzahl Dateien je Backup |
 | `BACKUP_CHUNK_MB` / `BACKUP_CHUNK_MIN_MB` | `32` / `10` | Nextcloud: Teilgröße beim Hochladen in Stücken (Chunking v2) und ab welcher Dateigröße |
 | `SAGA_BACKUP_URL` / `SAGA_BACKUP_USER` / `SAGA_BACKUP_PASSWORD` | – | Nur für `run.py backup-holen`/`restore --schluessel` auf einem frischen Server: WebDAV-Adresse des Backup-Ordners und Zugang |
 | `SAGA_RESTORE_TEST` | – | `1` = Testwiederherstellung: keine ausgehenden Verbindungen (Föderation, Mitteilungen, Backups, Versionshinweis); nur Lesen vom Backup-Ziel per Kommandozeile erlaubt |

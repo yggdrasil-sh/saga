@@ -2748,5 +2748,7 @@
  "Lade hoch …": "Загрузка …",
  "Hole aus dem Ziel …": "Получение из хранилища …",
  "Spiele ein …": "Восстановление …",
- "Eingespielt: {pages} Seiten, {files} Dateien.": "Восстановлено: страниц – {pages}, файлов – {files}."
+ "Eingespielt: {pages} Seiten, {files} Dateien.": "Восстановлено: страниц – {pages}, файлов – {files}.",
+ "Backup enthält zu viele Einträge.": "В резервной копии слишком много записей.",
+ "Backup enthält zu viele Dateien (höchstens {n}).": "В резервной копии слишком много файлов (не более {n})."
 }
