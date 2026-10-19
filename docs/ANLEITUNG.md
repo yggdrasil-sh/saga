@@ -1056,6 +1056,8 @@ Im Benutzermenü oben rechts unter **Einstellungen** (je ein Reiter):
   Am besten ein eigenes App-Passwort nur für Kalender anlegen.
 - **Immich:** Adresse und einen API-Schlüssel mit den Rechten `album.read`, `asset.read`, `asset.view`,
   `asset.download`, `user.read` eintragen. Dann gibt es Fotos als Bilder und Titelbilder.
+- **Mein Backup:** deinen eigenen Workspace verschlüsselt in **dein eigenes** Ziel sichern (siehe „Persönliches
+  Backup“ in Abschnitt 11).
 - **Apps & Geräte:** eine Liste aller angemeldeten Apps. Zu jeder gehört ein kleiner Schlüssel für Widget,
   Teilen-Erweiterung und Kurzbefehle; **Abmelden** entfernt beides. Von Hand erzeugte Schlüssel (z. B. für
   Skripte) stehen eingeklappt unter „Weitere Schlüssel“.
@@ -1206,6 +1208,9 @@ Dieselbe Anbindung kann auch die KI nutzen („Websuche erlauben“ unter KI-Ass
 2. das Volume `saga-data` (Bilder und Dateien der Seiten),
 3. die Datei `.env` (vor allem `SECRET_KEY`).
 
+Am einfachsten erledigt das Saga selbst: **verschlüsselte Backups nach S3, in einen Ordner oder auf Nextcloud/WebDAV**
+(Admin-Bereich → Backups, siehe unten). Von Hand geht es so:
+
 ```sh
 # Datenbank sichern
 docker compose exec -T db pg_dump -U saga -d saga -Fc > saga-$(date +%F).dump
@@ -1227,6 +1232,196 @@ Die Backups, die Saga selbst anlegt (`/data/backups`, siehe Updates), spielst du
 `python run.py restore` zurück (Abschnitt „Zurück zur vorigen Version“), nicht mit dem `pg_restore` im
 Datenbank-Container: Sie stammen von `pg_dump` 17 aus dem Saga-Image, und `pg_restore` 16 aus `postgres:16`
 meldet dafür „unsupported version (1.16) in file header“.
+
+### Verschlüsselte Backups (S3, Ordner, Nextcloud/WebDAV)
+
+Admin-Bereich → **Backups**: Saga sichert jeden Tag (Uhrzeit wählbar) die Datenbank, die Dateien (`/data/files` ohne
+Vorschaubilder, `/data/chat`, `/data/svc-icons`) und auf Wunsch die Schlüssel aus der `.env` (`SECRET_KEY`,
+`CAL_SECRET_KEY`) – verschlüsselt – in ein Ziel: **S3** (MinIO, Garage, Backblaze B2, Hetzner Object Storage, Wasabi,
+AWS …), einen **Ordner im Container** (z. B. ein eingebundenes Laufwerk oder eine NAS-Freigabe) oder **WebDAV**
+(Nextcloud, ownCloud, Storage-Box …). Die lokalen Backups vor Updates (`/data/backups`, `run.py backup`/`restore`)
+bleiben unverändert. Das Server-Backup enthält die Daten **aller** Personen – das Ziel sollte dafür gedacht sein (eigener
+Bucket bzw. eigenes Konto), nicht der private Cloud-Speicher von jemandem.
+
+1. **Ziel verbinden** – Art wählen:
+
+   **S3.** Endpunkt (`https://host[:port]`, ohne Bucket), Region (leer = `us-east-1`; Garage: `garage`, Hetzner z. B.
+   `fsn1`, Backblaze z. B. `eu-central-003`), Bucket (muss existieren – Saga legt keinen an), Präfix (Ordner im
+   Bucket, Standard `saga-backups`), Access-Key und Secret-Key (beide verschlüsselt gespeichert wie die anderen
+   Admin-Geheimnisse). Adressierung „automatisch“ nimmt bei AWS virtual-hosted (`https://bucket.host/…`), sonst
+   path-style (`https://host/bucket/…`, MinIO/Garage) – bei Bedarf fest einstellen. Saga signiert jede Anfrage selbst
+   (AWS-Signatur v4, keine Zusatzbibliothek) samt SHA-256 des Inhalts, große Dateien gehen als Multipart-Upload (Teile
+   `BACKUP_CHUNK_MB`, Standard 32 MB; abgebrochene Uploads verwirft Saga). Empfehlung: ein Schlüssel nur für diesen
+   Bucket mit Lesen/Schreiben/Löschen/Auflisten; Versionierung oder Object Lock schützen zusätzlich davor, dass ein
+   übernommener Server die Backups löscht – alte Versionen dann per Lebenszyklus-Regel des Buckets aufräumen (Saga löscht
+   nach der Aufbewahrungsregel unten). S3 meldet keinen freien Platz; die Prüfung davor entfällt.
+
+   **Ordner im Container.** Nur unterhalb der Wurzeln in `SAGA_BACKUP_DIRS` (Standard `/backup`, mehrere mit Komma);
+   Pfade mit `..` oder Symlinks nach draußen lehnt Saga ab. Den Ordner als zusätzliches Volume einbinden und dem
+   Saga-Benutzer (UID 10001) Schreibrechte geben:
+
+   ```yaml
+   # docker-compose.yml, Dienst saga
+       volumes:
+         - saga-data:/data
+         - ./certs:/certs:ro
+         - /srv/saga-backups:/backup        # zusätzliches Volume für Backups (Host-Ordner oder NAS-Mount)
+   ```
+
+   ```sh
+   sudo mkdir -p /srv/saga-backups && sudo chown 10001 /srv/saga-backups
+   docker compose up -d
+   ```
+
+   Im Admin-Bereich dann `/backup` (oder `/backup/saga`) eintragen. Liegt der Ordner auf demselben Server, schützt er nur
+   vor Fehlern in Saga oder der Datenbank, nicht vor dem Verlust des Servers – den Ordner zusätzlich woandershin kopieren
+   (restic, rsync …); die Dateien sind schon verschlüsselt.
+
+   **WebDAV/Nextcloud.** Bei Nextcloud reicht die Adresse (`https://cloud.example.org`): Saga erkennt Nextcloud, zeigt
+   einen Anmelde-Link, du meldest dich in Nextcloud an und erlaubst den Zugriff (Login Flow v2). Saga speichert nur den
+   Anmeldenamen und ein eigenes **App-Passwort** (verschlüsselt); „Trennen“ widerruft es in Nextcloud. Anderes WebDAV:
+   Adresse des Ordners plus Benutzer und Passwort. Empfehlung: ein **eigenes Nextcloud-Konto** nur für die Backups (ein
+   App-Passwort darf alles, was das Konto darf) mit kurzem Papierkorb und wenigen Versionen – gelöschte alte Backups
+   zählen sonst im Papierkorb weiter zum Speicherplatz. Interne Adressen (Homelab) gehen ohne weitere Freigabe.
+2. **Schlüssel.** Verschlüsselt wird mit [age](https://age-encryption.org) und einem **öffentlichen** Schlüssel. Entweder
+   „Schlüsselpaar erzeugen“: Saga zeigt den privaten Schlüssel genau einmal (Text und Download
+   `saga-backup-<server>.key`) und speichert ihn **nicht** – zur Bestätigung die letzten 6 Zeichen eintippen. Oder einen
+   eigenen öffentlichen Schlüssel eintragen (`age-keygen -o saga-backup.key` auf deinem Rechner, die Zeile
+   `# public key: age1…` übernehmen; auch `ssh-ed25519 …` geht). Mehrere Empfänger sind möglich (z. B. ein Zweitschlüssel
+   im Tresor). Ohne privaten Schlüssel lässt sich kein Backup wiederherstellen – auch nicht von uns.
+3. **Zeitplan und Aufbewahrung.** „Täglich automatisch sichern“, Uhrzeit (Zeitzone `TIMEZONE`), Aufbewahrung
+   „Großvater-Vater-Sohn“: Standard 7 tägliche, 4 wöchentliche, 6 monatliche (je Tag/Woche/Monat der neueste Lauf; Läufe
+   der letzten 24 Stunden bleiben immer). Vor dem Hochladen prüft Saga den freien Platz, danach Größe und Prüfsumme (bis
+   `BACKUP_VERIFY_MB` sofort, größere Dateien sonntags). Große Dateien gehen bei Nextcloud in Stücken (Chunking v2), bei
+   S3 als Multipart-Upload.
+   Der Lauf hat niedrige Priorität (`nice`/`ionice`); laufen mehrere Saga-Prozesse an derselben Datenbank, sichert nur
+   einer.
+4. **Fehler.** Status im Admin-Bereich (letzter Erfolg, nächster Lauf, Verlauf). Schlägt ein Lauf fehl oder gab es seit
+   48 Stunden keinen Erfolg, bekommen alle Admins eine Benachrichtigung (Glocke und, wenn eingerichtet, aufs Handy);
+   optional zusätzlich ein Webhook (ntfy-Topic, Gotify `…/message?token=…` oder beliebige Adresse).
+
+**Was im Ziel liegt** – je Lauf ein Ordner (bei S3: Präfix) `saga-JJJJMMTT-hhmmss/`:
+
+| Datei | Inhalt |
+|---|---|
+| `db.dump.age` | Datenbank (`pg_dump --format=custom`, vor dem Verschlüsseln mit `pg_restore --list` geprüft) |
+| `dateien.tar.age` | `files/` (ohne `thumbs`), `chat/`, `svc-icons/` |
+| `geheimnisse.env.age` | `SECRET_KEY`, `CAL_SECRET_KEY` (abschaltbar) |
+| `manifest.json.age` | Prüfsummen der unverschlüsselten Inhalte |
+| `manifest.json` | unverschlüsselt, ohne Namen/Hostnamen: Saga-Version, Schema-Stand, Größen und SHA-256 der `.age`-Dateien, Fingerabdrücke der Schlüssel. Wird zuletzt hochgeladen – ein Ordner ohne `manifest.json` ist unvollständig. |
+
+**Wiederherstellen mit Saga** (neuer Server, Stack wie in Abschnitt 2 aufgesetzt):
+
+```sh
+# 1. Geheimnisse lesen und SECRET_KEY / CAL_SECRET_KEY in die .env übernehmen (Datei aus dem Ziel, z. B. per Nextcloud-Client)
+age -d -i saga-backup.key geheimnisse.env.age
+# 2. Saga stoppen, Lauf holen, prüfen, entschlüsseln, Datenbank + Dateien zurückspielen
+docker compose stop saga
+docker compose run --rm -v "$PWD/saga-backup.key:/key:ro" \
+  -e SAGA_BACKUP_S3_ENDPOINT=https://s3.example.org -e SAGA_BACKUP_S3_BUCKET=saga-backups \
+  -e SAGA_BACKUP_S3_ACCESS_KEY='…' -e SAGA_BACKUP_S3_SECRET_KEY='…' -e SAGA_BACKUP_S3_PREFIX=saga-backups \
+  saga python run.py restore --schluessel /key saga-20261019-032000
+docker compose up -d
+```
+
+Das Ziel für einen frischen Stack kommt aus der Umgebung:
+
+| Ziel | Angaben |
+|---|---|
+| S3 | `SAGA_BACKUP_S3_ENDPOINT`, `SAGA_BACKUP_S3_BUCKET`, `SAGA_BACKUP_S3_ACCESS_KEY`, `SAGA_BACKUP_S3_SECRET_KEY`, optional `SAGA_BACKUP_S3_REGION`, `SAGA_BACKUP_S3_PREFIX`, `SAGA_BACKUP_S3_STYLE` (`auto`/`path`/`virtual`) |
+| Ordner | `SAGA_BACKUP_PATH=/backup` (Volume wie oben eingebunden) – oder gleich den Lauf-Ordner statt eines Namens angeben |
+| WebDAV/Nextcloud | `SAGA_BACKUP_URL` (WebDAV-Adresse des Backup-Ordners, z. B. `https://cloud.example.org/remote.php/dav/files/saga-backup/Saga-Backups`), `SAGA_BACKUP_USER`, `SAGA_BACKUP_PASSWORD` |
+
+Ohne Lauf-Namen nimmt Saga den neuesten vollständigen; `run.py backup-holen --liste` zeigt alle. Ist das Ziel im
+Admin-Bereich schon eingerichtet (gleiche Datenbank), entfallen die `SAGA_BACKUP_*`-Angaben. Statt eines Namens geht auch
+ein lokaler Ordner mit dem heruntergeladenen Lauf (unter `/data/…` ablegen). Die Prüfsummen aus `manifest.json`
+vergleicht Saga vor dem Entschlüsseln. Die Datenbank kommt über dasselbe `db.restore` zurück wie `run.py restore` (alles
+oder nichts); die Geheimnisse landen zusätzlich in `/data/backups/<lauf>-geheimnisse.env` (nur für Saga lesbar), und Saga
+warnt, wenn sie von der `.env` abweichen.
+
+**Wiederherstellen ohne Saga** (nur `age` und die PostgreSQL-Werkzeuge; `age` gibt es für Linux, macOS und Windows):
+
+```sh
+cd saga-20261019-032000
+sha256sum db.dump.age dateien.tar.age      # mit manifest.json vergleichen
+age -d -i saga-backup.key db.dump.age > db.dump
+age -d -i saga-backup.key dateien.tar.age | tar -x -C /pfad/zu/data
+age -d -i saga-backup.key geheimnisse.env.age
+pg_restore --list db.dump | head           # Inhalt ansehen; einspielen z. B. mit pg_restore -d ... --clean --if-exists
+```
+
+**Testwiederherstellung.** Einmal im Monat empfohlen (der Admin-Bereich erinnert daran):
+
+```sh
+docker compose run --rm -v "$PWD/saga-backup.key:/key:ro" saga python run.py backup-pruefen --schluessel /key
+```
+
+holt den neuesten Lauf, vergleicht die Prüfsummen, entschlüsselt alles, spielt die Datenbank in eine
+**Wegwerf-Datenbank** ein (danach gelöscht) und prüft das Datei-Archiv – die echte Datenbank bleibt unberührt.
+
+**Achtung, Identität:** Ein zurückgespieltes Backup *ist* die Instanz – samt Föderations-Schlüssel. Wer ein Backup auf
+einem zweiten Server ausprobiert, setzt dort `SAGA_RESTORE_TEST=1` in der `.env`: Dann baut Saga keine ausgehenden
+Verbindungen zu den Diensten der echten Instanz auf – keine Föderation, keine Mitteilungen, keine Backups (auch kein
+Aufräumen im Ziel, kein Widerruf des Nextcloud-App-Passworts), kein Versionshinweis, kein Kalender-Abgleich, keine KI,
+kein Immich, keine Websuche, keine Avatare von außen. Saga selbst, Anmeldung (auch LDAP/OIDC) und die Statusanzeige
+der Dienste auf der Startseite laufen weiter. Erlaubt bleibt nur das *Lesen* vom eingetragenen Backup-Ziel auf der
+Kommandozeile (`backup-holen`, `restore --schluessel`, `backup-pruefen`): ausschließlich zu dessen Adresse und nur
+lesend (WebDAV GET/PROPFIND, S3 GET/Auflisten) – Hochladen, Löschen und Aufräumen im Ziel bleiben gesperrt.
+
+Arbeitsordner: Während eines Laufs liegen die Teile (vor dem Verschlüsseln kurz auch `db.dump` im Klartext) unter
+`/data/backups/extern-tmp/` – Lauf und `backup-pruefen` je in einem eigenen Unterordner; Reste eines abgebrochenen
+Laufs löscht Saga beim nächsten Start.
+
+### Persönliches Backup (je Person)
+
+Unter **Einstellungen → Mein Backup** sichert jede Person **ihren eigenen** Workspace – unabhängig vom Server-Backup des
+Admins, in ihr **eigenes** Ziel und mit ihrem **eigenen** Schlüssel.
+
+1. **Ziel:** eigene Nextcloud (nur die Adresse eingeben, dann in Nextcloud anmelden und den Zugriff erlauben – Saga
+   bekommt ein eigenes App-Passwort, „Trennen“ widerruft es) oder ein anderes WebDAV-Ziel (Adresse des Ordners, Benutzer,
+   Passwort). Erlaubt sind nur **https-Adressen im Internet**; Server im internen Netz nur, wenn der Admin sie unter
+   Backups → Persönliche Backups freigibt (Schutz des internen Netzes).
+2. **Schlüssel:** wie beim Admin – „Schlüsselpaar erzeugen“ (der private Schlüssel wird genau einmal angezeigt und nicht
+   gespeichert, Bestätigung mit den letzten 6 Zeichen) oder eigenen öffentlichen Schlüssel (`age1…`, `ssh-ed25519 …`)
+   eintragen; bis zu 5 Empfänger.
+3. **Was gesichert wird:** nur, was dir gehört – eigene Seiten und Unterseiten, Datenbanken samt Einträgen, eigene
+   Dateien und Bilder, Vorlagen, Archiv, Papierkorb, Versionen, eigene Kommentare auf eigenen Seiten, Aufgaben,
+   Lesezeichen, Profil und Einstellungen. Jede Kategorie lässt sich abschalten; einzelne **Seitenbäume** (mit allen
+   Unterseiten und Dateien, die nur dort vorkommen) lassen sich ausschließen. **Nie** enthalten: Seiten und Dateien
+   anderer Personen (auch nicht „Mit mir geteilt“), Freigabe-Listen und Chats (Ende-zu-Ende-verschlüsselt, gehören allen
+   Beteiligten und lassen sich ohne die Geräteschlüssel nicht wiederherstellen). **Kommentare anderer** auf deinen Seiten
+   sind standardmäßig **aus** (sie gehören den Kommentierenden) und lassen sich einschalten. Namen anderer Personen
+   (z. B. wer eine Version geschrieben hat) werden weggelassen.
+4. **Zeitplan:** aus, wöchentlich oder täglich (Uhrzeit, Wochentag), „Backups behalten“ = so viele neueste bleiben im
+   Ziel. „Jetzt sichern“ startet sofort. Schlägt ein Backup fehl, erscheint eine Benachrichtigung in der Glocke.
+
+**Format** (offen, ohne Saga lesbar): `saga-JJJJMMTT-hhmmss.zip.age` – ein mit age verschlüsseltes ZIP – und daneben
+`….zip.age.sha256` (Prüfsumme, `sha256sum -c` geht). Im ZIP: `manifest.json` (SHA-256 jeder Datei), `daten.json`
+(alles vollständig, zum Einspielen), `seiten/`, `vorlagen/`, `archiv/`, `papierkorb/` (Markdown wie beim Export, mit
+relativen Verweisen), `dateien/`, `profil/` und `LIESMICH.txt`. Entschlüsseln ohne Saga:
+
+```bash
+age -d -i saga-backup.key -o backup.zip saga-20261019-024000.zip.age
+```
+
+**Backup einspielen** (gleicher Reiter): Datei hochladen (`.zip.age` oder schon entschlüsseltes `.zip`) oder ein Backup
+aus dem eigenen Ziel wählen, privaten Schlüssel einfügen (geht nur für diesen Vorgang an den Server, wird nicht
+gespeichert). Saga spielt **nur ins eigene Konto** ein, als **neue Seiten** – Verweise zwischen den Seiten,
+Datenbank-Relationen, eingebettete Datenbanken, Schaltflächen und Bilder zeigen danach auf die neuen Seiten und Dateien;
+bestehende Seiten bleiben unverändert. Standard: in eine neue Seite „Wiederhergestellt <Datum>“; Papierkorb, Aufgaben und
+Lesezeichen auf Wunsch. Kommentare und Einstellungen stehen zum Nachlesen im Backup, werden aber nicht eingespielt. Ein
+Markdown-Export (Seite → Exportieren) enthält kein `daten.json` und lässt sich daher nicht einspielen. Grenzen beim
+Einspielen: `daten.json` höchstens 64 MB (`USER_BACKUP_DATA_MB`), höchstens 20 000 Dateien (`USER_BACKUP_FILES_MAX`), je
+Seite die neuesten 50 Versionen. Die hochgeladene Datei wird nach dem Einspielen sofort gelöscht – auch nach einem Fehler;
+nur nach einem falschen Schlüssel bleibt ein verschlüsseltes Backup für einen neuen Versuch liegen (höchstens 30 Minuten).
+
+**Für Admins – Datenschutz:** Das **Server-Backup** (oben) sichert alles, was für den Betrieb nötig ist, in *dein* Ziel.
+**Persönliche Backups** landen nur im Ziel der jeweiligen Person, verschlüsselt mit deren Schlüssel – du musst keine
+privaten Daten deiner Nutzer in deine Cloud packen, und Saga sieht nie einen privaten Schlüssel. Im Admin-Bereich unter
+**Backups → Persönliche Backups**: ein-/ausschalten (Standard an; aus = keine Läufe, kein Verbinden, kein Einspielen),
+**Größe je Backup** (Standard 1024 MB, obere Grenze `USER_BACKUP_MAX_MB`, Standard 4096), **Mindestabstand** für „Jetzt
+sichern“, **häufigster Zeitplan** (täglich/wöchentlich) und **freigegebene interne Hosts** (sonst nur öffentliche
+https-Adressen). Mit `SAGA_RESTORE_TEST=1` verbindet sich Saga auch für persönliche Backups nirgendwohin.
 
 ### Updates
 
@@ -1397,6 +1592,12 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `PASSKEY_RP_ID` | Rechnername aus `BASE_URL` | Domain der Passkeys; nur setzen, wenn sie für eine übergeordnete Domain gelten sollen (z. B. `example.org`) |
 | `SAGA_VERSION` | `2` | Welche Version `docker compose pull` holt: `2`, `2.1`, `2.1.0` oder `testing` (Abschnitt 11) |
 | `BACKUP_KEEP` | `10` | So viele automatische/manuelle Backups bleiben in `/data/backups` |
+| `BACKUP_VERIFY_MB` | `512` | Verschlüsselte Backups (Abschnitt 11): Dateien bis zu dieser Größe nach dem Hochladen ganz erneut herunterladen und vergleichen (größere sonntags) |
+| `USER_BACKUP_MAX_MB` | `4096` | Persönliche Backups (Abschnitt 11): obere Grenze für die Größe je Backup und für Uploads beim Einspielen (die Grenze im Admin-Bereich kann nur kleiner sein) |
+| `USER_BACKUP_DATA_MB` / `USER_BACKUP_FILES_MAX` | `64` / `20000` | Persönliche Backups einspielen: Größe von `daten.json` und Anzahl Dateien je Backup |
+| `BACKUP_CHUNK_MB` / `BACKUP_CHUNK_MIN_MB` | `32` / `10` | Nextcloud: Teilgröße beim Hochladen in Stücken (Chunking v2) und ab welcher Dateigröße |
+| `SAGA_BACKUP_URL` / `SAGA_BACKUP_USER` / `SAGA_BACKUP_PASSWORD` | – | Nur für `run.py backup-holen`/`restore --schluessel` auf einem frischen Server: WebDAV-Adresse des Backup-Ordners und Zugang |
+| `SAGA_RESTORE_TEST` | – | `1` = Testwiederherstellung: keine ausgehenden Verbindungen (Föderation, Mitteilungen, Backups, Versionshinweis); nur Lesen vom Backup-Ziel per Kommandozeile erlaubt |
 | `SAGA_UPDATE_CHECK` | `1` | `0` = nie bei GitHub nach neuen Versionen fragen (auch im Admin-Bereich abschaltbar) |
 | `ADMIN_SESSION_HOURS` | `4` | Gültigkeit einer Sitzung im Admin-Bereich |
 | `TIMEZONE` | `Europe/Berlin` | Zeitzone für Exporte |

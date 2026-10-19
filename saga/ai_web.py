@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from saga.core import E, SEARCH_LANGUAGE, SEARCH_SAFESEARCH, SEARXNG_URL
+from saga.core import E, RESTORE_TEST, SEARCH_LANGUAGE, SEARCH_SAFESEARCH, SEARXNG_URL
 from saga.netguard import guarded_client, is_public
 
 RESULTS = 6                      # Treffer je Antwort (alle Suchanfragen zusammen)
@@ -122,6 +122,8 @@ def _txt(s, n):
 
 def search(queries, client=None):
     """SearXNG fragen -> ([{title, url, host, content}], [kurzantworten]). Wirft bei Fehlern (Aufrufer faengt)."""
+    if RESTORE_TEST:                                      # Testwiederherstellung: nichts nach aussen (saga/backups.py)
+        raise RuntimeError("SAGA_RESTORE_TEST")
     own = client is None
     cl = client or httpx.Client(timeout=SEARCH_TIMEOUT, follow_redirects=False, headers={"User-Agent": "Saga/1"})
     results, answers, seen, errors = [], [], set(), 0

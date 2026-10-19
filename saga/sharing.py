@@ -25,7 +25,7 @@ from starlette.concurrency import run_in_threadpool
 import auth
 from db import connect as _db
 from saga import avatars, bus, i18n
-from saga.core import _api_guard, _bad, _body, t
+from saga.core import RESTORE_TEST, _api_guard, _bad, _body, t
 from saga.notes import NOTE_META_COLS, _note_meta, note_chain
 
 router = APIRouter()
@@ -66,7 +66,7 @@ def enabled():
 
 
 def fed_enabled():
-    return bool(auth.settings().get("fed_enabled", False))
+    return not RESTORE_TEST and bool(auth.settings().get("fed_enabled", False))
 
 
 def group_scope():

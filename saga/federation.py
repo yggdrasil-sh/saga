@@ -33,7 +33,7 @@ from starlette.convertors import Convertor, register_url_convertor
 import auth
 from db import clean_line, connect as _db
 from saga import avatars, bus, comments, fedsig, i18n, netguard, notify, pages, sharing
-from saga.core import BASE_URL, E, SECRET, STATE_DIR, _api_guard, _bad, _body, _session_user, parse_json, t, title
+from saga.core import BASE_URL, E, RESTORE_TEST, SECRET, STATE_DIR, _api_guard, _bad, _body, _session_user, parse_json, t, title
 from saga.files import _thumb, _thumb_mime, _thumb_w
 from saga.notes import FILE_MAX, FILES_DIR, _disposition, _iter_blocks
 from saga.publish import NAME_RE, get_name
@@ -458,6 +458,8 @@ def _send(method, url, headers, body, limit, timeout=TIMEOUT):
     """-> (status, kopfzeilen (klein), bytes). Bricht bei mehr als limit Bytes ab. FedError bei Netzfehlern."""
     # Zeitlimit von httpx gilt je Lesevorgang - eine Gegenseite, die Byte fuer Byte traeufelt, haette sonst unbegrenzt
     # einen Arbeits-Thread. Daher zusaetzlich eine Gesamtfrist (Dateien bekommen mehr Zeit).
+    if RESTORE_TEST:                                      # Testwiederherstellung: nie nach aussen (saga/backups.py)
+        raise FedError("SAGA_RESTORE_TEST")
     deadline = time.monotonic() + (timeout * 3 if limit <= RESP_MAX else max(60.0, timeout * 6))
     try:
         with _client(timeout) as cl:
@@ -1883,6 +1885,10 @@ def check_epoch():
 
 
 def start():
+    if RESTORE_TEST:
+        # Restore-Test: keine Foederation, auch keine neue Epoche (die Marke im Daten-Verzeichnis bleibt unberuehrt;
+        # wird diese Datenbank spaeter produktiv, erkennt der naechste normale Start den Umzug)
+        return
     try:
         check_epoch()
     except Exception as ex:  # noqa: BLE001 - Datenbank beim Start kurz weg: dann beim naechsten Start

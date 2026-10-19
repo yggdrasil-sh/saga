@@ -11,6 +11,9 @@
   document.querySelectorAll('button[data-confirm]').forEach(function (b) {
     b.addEventListener('click', function (e) { if (!confirm(b.dataset.confirm)) e.preventDefault(); });
   });
+  // Seite, die auf etwas wartet (Backup laeuft, Nextcloud-Anmeldung): nach ein paar Sekunden neu laden
+  var rl = document.querySelector('[data-reload]');
+  if (rl) setTimeout(function () { location.reload(); }, (parseFloat(rl.dataset.reload) || 5) * 1000);
   // Zeitpunkte (<time class="adm-ts" data-ts="<Unix-Sekunden>">) in der Zeitzone des Browsers, mit Kurzname (MESZ, GMT+2 …)
   var lang = document.documentElement.lang || undefined, f = null, zone = '';
   try {

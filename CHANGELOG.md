@@ -16,6 +16,83 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Persönliche Backups je Person
+
+- **Einstellungen → Mein Backup:** jede Person sichert ihren eigenen Workspace in ihr **eigenes** Ziel – eigene
+  Nextcloud (Login Flow v2, eigenes App-Passwort, „Trennen“ widerruft) oder anderes WebDAV – verschlüsselt mit ihrem
+  **eigenen age-Schlüssel** (erzeugen wie beim Admin, privater Schlüssel nur einmal angezeigt, oder eigenen öffentlichen
+  eintragen). Zeitplan aus/wöchentlich/täglich, Aufbewahrung, „Jetzt sichern“, Status, Benachrichtigung bei Fehlern.
+- **Nur eigene Daten:** eigene Seiten/Unterseiten/Datenbanken samt Einträgen, eigene Dateien, Vorlagen, Archiv,
+  Papierkorb, Versionen, eigene Kommentare, Aufgaben, Lesezeichen, Profil/Einstellungen – je Kategorie abschaltbar,
+  einzelne Seitenbäume ausschließbar. Nie: „Mit mir geteilt“, Seiten/Dateien anderer Konten, Chats. Kommentare anderer
+  auf eigenen Seiten standardmäßig aus; fremde Benutzernamen werden weggelassen.
+- **Offenes Format:** `saga-<zeit>.zip.age` (age-verschlüsseltes ZIP mit `manifest.json` + SHA-256 je Datei,
+  `daten.json`, Markdown wie der Export, Dateien, `LIESMICH.txt`) und `.sha256` daneben.
+- **Backup einspielen:** Datei hochladen oder aus dem eigenen Ziel wählen, privater Schlüssel nur für den Vorgang; Import
+  nur ins eigene Konto als neue Seiten (neue IDs, Verweise, Relationen, eingebettete Datenbanken, Schaltflächen und
+  Bilder umgeschrieben, Inhalte bereinigt), optional in „Wiederhergestellt <Datum>“.
+- **Admin → Backups → Persönliche Backups:** erlauben (Standard an), Größe je Backup, Mindestabstand für „Jetzt
+  sichern“, häufigster Zeitplan, freigegebene interne Hosts (sonst nur öffentliche https-Ziele, netguard); Hinweis zum
+  Datenschutz (Server-Backup vs. persönliches Backup). `USER_BACKUP_MAX_MB` (Standard 4096) begrenzt Uploads.
+- Neue Tabellen `user_backup`, `user_backup_run` (keine Migration nötig); Kontolöschung entfernt sie und widerruft das
+  App-Passwort. App-API: `docs/APP-API.md` (Persönliches Backup). Neue Testreihe `backup_persoenlich`.
+- **Grenzen beim Einspielen:** `daten.json` höchstens 64 MB (`USER_BACKUP_DATA_MB`, beim Lesen abgebrochen), höchstens
+  20 000 Dateien (`USER_BACKUP_FILES_MAX`) und begrenzt viele ZIP-Einträge (geprüft, bevor etwas geschrieben wird), je
+  Seite die neuesten 50 Versionen; Textseiten auf die Länge wie beim Speichern gekürzt. Hochgeladene Backups werden nach
+  dem Einspielen sofort gelöscht, auch nach einem Fehler (nur nach falschem Schlüssel bleibt ein verschlüsselter Upload).
+- Intern: Ziel-Schnittstelle in `saga/backups.py` nimmt eine eigene Freigabe-Regel (`ip_ok`); die Markdown-Erzeugung des
+  Exports ist als `page_tools.md_page` wiederverwendbar.
+
+### Verschlüsselte Backups (S3, Ordner, Nextcloud/WebDAV)
+
+- **Admin-Bereich → Backups:** tägliches Backup (Uhrzeit wählbar) von Datenbank, Dateien (`files` ohne Vorschaubilder,
+  `chat`, `svc-icons`) und – abschaltbar, Standard an – `SECRET_KEY`/`CAL_SECRET_KEY` auf ein **WebDAV-Ziel**. Nextcloud
+  wird über `/status.php` erkannt: Anmeldung per **Login Flow v2** (gespeichert werden nur Anmeldename und App-Passwort,
+  verschlüsselt wie die anderen Admin-Geheimnisse; „Trennen“ widerruft das App-Passwort), große Dateien mit
+  **Chunking v2**. Sonst Benutzer/Passwort + PUT. Abrufe über den SSRF-Schutz (netguard); die eingetragene Adresse gilt
+  als freigegeben, keine Weiterleitungen.
+- **Ziel S3** (MinIO, Garage, Backblaze B2, Hetzner, Wasabi, AWS …): Endpunkt, Region, Bucket, Präfix, Access-/Secret-Key
+  (verschlüsselt gespeichert), path-style oder virtual-hosted (automatisch: AWS virtual, sonst path). AWS-Signatur v4
+  ohne Zusatzbibliothek (hmac/hashlib, geprüft gegen die Beispiele der AWS-Dokumentation), jede Anfrage mit SHA-256 des
+  Inhalts; große Dateien als **Multipart-Upload** (streamend von der Platte, bei Fehlern abgebrochen). Auflisten mit
+  Seiten (continuation-token), Löschen je Lauf, Holen für `backup-holen`/`restore --schluessel`/`backup-pruefen`.
+- **Ziel Ordner im Container** (eingebundenes Volume, NAS-Mount): nur unterhalb von `SAGA_BACKUP_DIRS` (Standard
+  `/backup`), Pfade aufgelöst (Symlinks, `..`) – kein Ausbrechen; Schreiben über `.part` + `fsync` + Umbenennen.
+  docker-compose-Beispiel in der Anleitung. Die Ziel-Art ist im Admin-Bereich wählbar (S3, Ordner, WebDAV/Nextcloud);
+  beim Wechsel oder Trennen werden die Zugangsdaten des vorigen Ziels geleert.
+- **Verschlüsselung mit age** (Paket `age` im Image) und **öffentlichen Schlüsseln** – Saga kennt den privaten Schlüssel
+  nie. „Schlüsselpaar erzeugen“ zeigt ihn einmal (Text + Download), Bestätigung mit den letzten 6 Zeichen; oder eigenen
+  öffentlichen Schlüssel eintragen (`age1…`, `ssh-ed25519 …`), mehrere Empfänger möglich.
+- Je Lauf ein Ordner `saga-<zeit>/` mit `db.dump.age` (vorher mit `pg_restore --list` geprüft), `dateien.tar.age`,
+  `geheimnisse.env.age`, `manifest.json.age` (Prüfsummen der Klartexte) und zuletzt `manifest.json` (Version, Schema,
+  Größen + SHA-256, Schlüssel-Fingerabdrücke; ohne Namen/Hostnamen). Vor dem Upload Prüfung des freien Platzes, danach
+  Größe + erneutes Herunterladen mit SHA-256-Vergleich (`BACKUP_VERIFY_MB`).
+- **Zeitplan** im Hintergrund: genau ein Läufer je Datenbank (Advisory-Lock), niedrige Priorität (`nice`/`ionice`);
+  **Aufbewahrung GFS** 7 täglich / 4 wöchentlich / 6 monatlich (einstellbar, Läufe der letzten 24 h bleiben immer);
+  unvollständige Läufe werden nach einem Tag entfernt, fremde Ordner im Ziel nie angefasst.
+- **Status und Benachrichtigung:** letzter Erfolg, nächster Lauf, Verlauf, Backups im Ziel mit Fingerabdrücken. Bei
+  Fehlern und nach 48 h ohne Erfolg Benachrichtigung an alle Admins (Glocke + Mitteilung, neue Art `backup.failed`,
+  Push-Kategorie „admin“ nur für Admins), optional Webhook (ntfy, Gotify, beliebige URL).
+- **Kommandozeile:** `run.py backup-extern`, `run.py backup-holen [<lauf>] [--liste]`,
+  `run.py restore --schluessel <datei> [<lauf>|<ordner>]` (holt, prüft, entschlüsselt, spielt Datenbank über das
+  unveränderte `db.restore` sowie Dateien und Geheimnisse zurück; frischer Server: Ziel per `SAGA_BACKUP_URL`/`_USER`/
+  `_PASSWORD`, `SAGA_BACKUP_S3_*` oder `SAGA_BACKUP_PATH`), `run.py backup-pruefen --schluessel <datei>`
+  (Testwiederherstellung in eine Wegwerf-Datenbank).
+  `run.py backup`/`restore <datei>` und die Backups vor Migrationen bleiben unverändert.
+- **`SAGA_RESTORE_TEST=1`:** Testwiederherstellung auf einem zweiten Server ohne ausgehende Verbindungen zu den Diensten
+  der echten Instanz (Föderation, Mitteilungen, Backups, Versionshinweis, Kalender-Abgleich, KI, Immich, Websuche,
+  Avatare aus – zentral im SSRF-Schutz `netguard`) – ein zurückgespieltes Backup trägt die Identität der Instanz.
+  Erlaubt bleibt nur das Lesen vom eingetragenen Backup-Ziel auf der Kommandozeile (`backup-holen`, `restore
+  --schluessel`, `backup-pruefen`): nur dessen Host, nur GET/HEAD/PROPFIND; Hochladen, Löschen und Aufräumen bleiben gesperrt.
+- **Arbeitsordner** `/data/backups/extern-tmp/`: Lauf und `backup-pruefen` je in eigenem Unterordner (räumen sich nicht
+  mehr gegenseitig weg); Reste abgebrochener Läufe (mit `db.dump` im Klartext) löscht der nächste Start. Die
+  PROPFIND-Antwort wird mit Größengrenze gestreamt statt erst ganz geladen.
+- Neue Tabelle `backup_run` (Verlauf, per `CREATE TABLE IF NOT EXISTS`, keine Migration). Texte in de/en/es/ru/th.
+  Anleitung: Abschnitt 11 „Verschlüsselte Backups“ (auch Wiederherstellung ohne Saga mit `age -d`).
+- Tests: neue Reihe `backup_extern` gegen ein nachgemachtes Nextcloud/WebDAV (`tests/fakedav.py`) und einen
+  nachgemachten S3-Server (`tests/fakes3.py`: prüft Signatur v4 unabhängig nach, SHA-256 des Inhalts, Multipart mit
+  Mindestgröße je Teil, Seiten beim Auflisten, virtual-hosted) sowie ein Ordner-Ziel mit Ausbruchsversuchen.
+
 ### Föderation 2.3
 
 Verbundene Saga-Server können jetzt fast alles miteinander, was innerhalb eines Servers geht: Personen über ihren Namen

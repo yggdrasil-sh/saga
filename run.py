@@ -148,6 +148,63 @@ def do_restore(path):
           "(saga-dateien-<zeit>.tar.gz) bei Bedarf so zurueckholen: tar -xzf /data/backups/<datei> -C /data")
 
 
+def _opt(args, name):
+    """--name wert aus der Liste nehmen -> (wert oder None, restliche Argumente)."""
+    if name in args:
+        i = args.index(name)
+        if i + 1 >= len(args):
+            sys.exit(f"{name} braucht einen Wert")
+        return args[i + 1], args[:i] + args[i + 2:]
+    return None, args
+
+
+def _backups():
+    import db
+    db.wait_ready(30)
+    db.init_schema()
+    from saga import backups
+    return backups
+
+
+def do_backup_extern():
+    """python run.py backup-extern  - verschluesseltes Backup jetzt ins eingerichtete Ziel (Admin -> Backups)."""
+    bk = _backups()
+    ok, res = bk.run("cli")
+    if ok:
+        print(f"Backup {res['name']} im Ziel ({bk.size_text(res['total'])}).")
+    else:
+        sys.exit("Backup fehlgeschlagen: " + (bk.text(res.code, res.p) if res else "laeuft schon"))
+
+
+def do_backup_fetch(args):
+    """python run.py backup-holen [<lauf>] [--liste] [--nach <ordner>]  - Lauf aus dem Ziel holen und Pruefsummen
+    vergleichen (ohne Lauf: den neuesten). Frischer Stack ohne eingerichtetes Ziel: SAGA_BACKUP_URL (WebDAV-Adresse des
+    Backup-Ordners), SAGA_BACKUP_USER, SAGA_BACKUP_PASSWORD."""
+    bk = _backups()
+    dest, args = _opt(args, "--nach")
+    if "--liste" in args:
+        dav = bk.cli_dav()
+        try:
+            for r in bk.list_runs(dav):
+                print(r["name"], "" if r["complete"] else "(unvollstaendig)")
+        except bk.BackupError as ex:
+            sys.exit("Ziel: " + bk.text(ex.code, ex.p))
+        finally:
+            dav.close()
+        return
+    path = bk.fetch(args[0] if args else None, dest)
+    print(f"Geholt und geprueft: {path}")
+
+
+def do_backup_check(args):
+    """python run.py backup-pruefen --schluessel <datei> [<lauf>|<ordner>]  - Testwiederherstellung in eine
+    Wegwerf-Datenbank (danach geloescht); die echte Datenbank bleibt unberuehrt."""
+    key, args = _opt(args, "--schluessel")
+    if not key:
+        sys.exit("Aufruf: python run.py backup-pruefen --schluessel <datei> [<lauf>]")
+    _backups().check_cmd(key, args[0] if args else None)
+
+
 if __name__ == "__main__":
     import sys
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -162,14 +219,26 @@ if __name__ == "__main__":
     elif cmd == "backup":
         do_backup(with_files=any(a in ("--dateien", "--files") for a in sys.argv[2:]))
     elif cmd == "restore":
-        if len(sys.argv) < 3:
-            sys.exit("Aufruf: python run.py restore /data/backups/<datei>.dump")
-        do_restore(sys.argv[2])
+        key, rest = _opt(sys.argv[2:], "--schluessel")
+        if key:                                    # verschluesselter Lauf aus dem Backup-Ziel (saga/backups.py)
+            if len(rest) > 1:
+                sys.exit("Aufruf: python run.py restore --schluessel <datei> [<lauf>|<ordner>]")
+            _backups().restore_cmd(key, rest[0] if rest else None)
+        else:
+            if len(sys.argv) < 3:
+                sys.exit("Aufruf: python run.py restore /data/backups/<datei>.dump  |  restore --schluessel <datei> <lauf>")
+            do_restore(sys.argv[2])
+    elif cmd == "backup-extern":
+        do_backup_extern()
+    elif cmd == "backup-holen":
+        do_backup_fetch(sys.argv[2:])
+    elif cmd == "backup-pruefen":
+        do_backup_check(sys.argv[2:])
     elif cmd in ("version", "--version"):
         from version import VERSION_LABEL
         import db
         print(f"Saga {VERSION_LABEL} (Datenbank-Schema {db.SCHEMA_VERSION})")
     elif cmd:
-        sys.exit(f"Unbekannter Befehl: {cmd} (moeglich: admin-passwort, 2fa-zuruecksetzen, 2fa-richtlinie, backup, restore, version)")
+        sys.exit(f"Unbekannter Befehl: {cmd} (moeglich: admin-passwort, 2fa-zuruecksetzen, 2fa-richtlinie, backup, restore, backup-extern, backup-holen, backup-pruefen, version)")
     else:
         asyncio.run(main())

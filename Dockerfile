@@ -18,8 +18,9 @@ WORKDIR /app
 
 # pg_dump/pg_restore/psql fuer Backups (automatisch vor jedem Datenbank-Update, "python run.py backup") und
 # "python run.py restore". Debian liefert Version 17; Postgres 16 als Server geht trotzdem (siehe db.restore).
+# age: Verschluesselung der Backups auf WebDAV/Nextcloud (saga/backups.py, nur oeffentliche Schluessel).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends postgresql-client \
+ && apt-get install -y --no-install-recommends postgresql-client age \
  && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

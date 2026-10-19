@@ -7,7 +7,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga.core import SEARCH_LANGUAGE, SEARCH_SAFESEARCH, SEARXNG_URL, _api_guard, _bad, _body, t
+from saga.core import RESTORE_TEST, SEARCH_LANGUAGE, SEARCH_SAFESEARCH, SEARXNG_URL, _api_guard, _bad, _body, t
 from saga.dashboard import BOOKMARK_MAX, bookmarks
 
 router = APIRouter()
@@ -113,6 +113,8 @@ async def api_search(request: Request):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     if not SEARXNG_URL:
         return JSONResponse({"error": t("Websuche ist nicht eingerichtet")}, status_code=404)
+    if RESTORE_TEST:                                     # Testwiederherstellung: nichts nach aussen (saga/backups.py)
+        return JSONResponse({"error": t("Suche gerade nicht erreichbar")}, status_code=503)
     try:
         body = await request.json()
         q = str(body.get("q", "")).strip()[:200]

@@ -29,8 +29,8 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import clean_line, connect as _db
-from saga import ai, avatars, calls, federation, i18n, live, mfa, publish, push, sharing
-from saga.core import TZ, BodyLimit, LangMiddleware, install_lang_ui, lang_switch_response
+from saga import ai, avatars, backups, calls, federation, i18n, live, mfa, publish, push, sharing, userbackup
+from saga.core import RESTORE_TEST, TZ, BodyLimit, LangMiddleware, install_lang_ui, lang_switch_response
 from saga.i18n import t
 from version import REPO, VERSION, VERSION_LABEL, channel, newer
 
@@ -102,7 +102,7 @@ _upd = {"at": 0.0, "latest": None, "url": "", "busy": False}
 
 def _update_info():
     """-> {'version': '1.2.0', 'url': ...} wenn es eine neuere Version gibt, sonst None. Blockiert nie."""
-    if not auth.settings().get("update_check", True):
+    if RESTORE_TEST or not auth.settings().get("update_check", True):
         return None
     if time.time() - _upd["at"] > 12 * 3600 and not _upd["busy"]:
         _upd["busy"] = True
@@ -1357,3 +1357,336 @@ def ai_avatar_admin(request: Request):
     if not got:
         return Response(status_code=404, headers={"Cache-Control": "no-store"})
     return Response(bytes(got[1]), media_type=got[0], headers=dict(avatars._IMG_H, **{"Cache-Control": "no-store"}))
+
+
+# --- Backups (2.3, saga/backups.py): verschluesselt auf WebDAV/Nextcloud ----------------------------------------------
+_bk_keys = {}                 # Token -> {priv, pub, aid, until} - privater Schluessel NUR im Speicher, bis bestaetigt (15 Min.)
+_bk_lock = threading.Lock()
+BK_KEY_TTL = 900
+
+
+def _bk_pending(request):
+    tok = request.session.get("bk_key")
+    with _bk_lock:
+        for k in [k for k, v in _bk_keys.items() if v["until"] < time.time()]:
+            _bk_keys.pop(k, None)
+        p = _bk_keys.get(tok) if tok else None
+    if p and p["aid"] != request.session.get("aid"):
+        return None, None
+    return tok, p
+
+
+def _bk_runs(limit=12):
+    with _db() as c:
+        rows = c.execute("SELECT id, started, finished, trigger, name, ok, size, step, detail, error FROM backup_run "
+                         "ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    out = []
+    for r in rows:
+        try:
+            det = json.loads(r[8] or "{}")
+        except ValueError:
+            det = {}
+        out.append({"id": r[0], "started": r[1], "finished": r[2], "trigger": r[3], "name": r[4], "ok": bool(r[5]), "size": r[6],
+                    "step": backups.text_json(r[7]) if r[7] else "", "detail": det,
+                    "error": backups.text_json(r[9]) if r[9] else "",
+                    "dur": int(r[2] - r[1]) if r[2] else None})
+    return out
+
+
+def _bk_ctx(request, cfg, show_remote=False):
+    st = backups.state()
+    runs = _bk_runs()
+    busy = backups.running()
+    remote, remote_err = None, ""
+    if show_remote and backups.has_target(cfg):
+        dav = backups.target(cfg)
+        try:
+            remote = backups.list_runs(dav, manifests=True)
+        except backups.BackupError as ex:
+            remote_err = backups.text(ex.code, ex.p)
+        finally:
+            dav.close()
+    tok, pend = _bk_pending(request)
+    lc = float(st.get("last_check") or 0)
+    fl = backups.flow_state()
+    code = fl.get("code") or ""
+    fl_msg = (t("Anmeldung abgelaufen – bitte neu verbinden.") if code == "flow_expired"
+              else backups.text(code.split(":", 1)[-1], fl.get("p")) if code else "")
+    if fl.get("state") in ("ok", "err"):
+        backups.flow_cancel()                     # Ergebnis der Nextcloud-Anmeldung nur einmal zeigen
+    return {"cfg": cfg, "st": st, "runs": runs, "busy": busy, "last_ok": backups.last_ok(), "next": backups.next_run(cfg, st),
+            "recips": [{"key": r, "short": backups.short_key(r), "fp": backups.fingerprint(r)} for r in backups.recipients(cfg)],
+            "flow": fl, "flow_msg": fl_msg, "age_ok": backups.age_ok(), "remote": remote, "remote_err": remote_err,
+            "pending": pend, "pending_tok": tok, "restore_test": hk_restore_test(), "size": backups.size_text,
+            "ready": backups.has_target(cfg) and bool(backups.recipients(cfg)) and backups.age_ok(),
+            "check_due": lc < time.time() - 31 * 86400, "last_check": lc, "roots": backups.backup_roots(),
+            "ub": userbackup.admin_cfg(), "ub_users": _ub_users(),
+            "s3_key_short": backups.short_key(cfg.get("s3_key") or "") if cfg.get("mode") == "s3" else ""}
+
+
+def _ub_users():
+    """Anzahl Konten mit persoenlichem Backup-Ziel (nur die Zahl, keine Namen/Ziele)."""
+    with _db() as c:
+        return c.execute("SELECT COUNT(*) FROM user_backup WHERE COALESCE(cfg::jsonb->>'mode', '') <> ''").fetchone()[0]
+
+
+def hk_restore_test():
+    return RESTORE_TEST
+
+
+@admin.get("/backups")
+def backups_page(request: Request, ziel: int = 0):
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    cfg = backups.config()
+    ctx = _bk_ctx(request, cfg, show_remote=bool(ziel))
+    return _page(request, "backups.html", me, bk=ctx, show_remote=bool(ziel))
+
+
+@admin.get("/backups/schluessel/{tok}")
+def backups_key_download(tok: str, request: Request):
+    """Privaten Schluessel herunterladen (nur waehrend der Bestaetigung, nur fuer diesen Admin, nie gespeichert)."""
+    if not _me(request):
+        return Response(status_code=404)
+    cur, p = _bk_pending(request)
+    if not p or cur != tok:
+        return PlainTextResponse(t("Abgelaufen – bitte neu erzeugen."), status_code=404, headers=HEADERS)
+    host = re.sub(r"[^a-z0-9.-]+", "-", (urlparse(hk.BASE_URL).hostname or "saga").lower())[:60]
+    return Response(p["priv"], media_type="text/plain; charset=utf-8",
+                    headers=dict(HEADERS, **{"Content-Disposition": f'attachment; filename="saga-backup-{host}.key"'}))
+
+
+_BK_CLEAR = backups.TARGET_CLEAR
+
+
+def _bk_finish(new, cfg, kind):
+    """Neues Ziel pruefen und speichern (vorheriges Nextcloud-App-Passwort widerrufen) -> (art, meldung)."""
+    try:
+        free = backups.test_target(new)
+    except backups.BackupError as ex:
+        return "err", backups.text(ex.code, ex.p)
+    if cfg.get("flow") and cfg.get("password") and cfg.get("server"):
+        backups.nc_revoke(cfg["server"], cfg.get("user") or "", cfg["password"])
+    backups.save_config(new)
+    return "ok", t("Verbunden ({kind}). Frei im Ziel: {free}.", kind=kind,
+                   free=backups.size_text(free) if free is not None else t("unbekannt"))
+
+
+def _bk_connect_s3(f, cfg):
+    ep = backups.norm_url(_s(f, "s3_endpoint", 300))
+    if not ep or urlparse(ep).path not in ("", "/"):
+        return "err", t("Endpunkt ungültig (https://host[:port], ohne Pfad).")
+    bucket, region = _s(f, "s3_bucket", 63), _s(f, "s3_region", 40) or "us-east-1"
+    prefix = backups.s3_norm_prefix(_s(f, "s3_prefix", 200))
+    style = _s(f, "s3_style", 10) or "auto"
+    if not backups.S3_BUCKET_RE.match(bucket):
+        return "err", t("Bucket-Name ungültig.")
+    if not backups.S3_REGION_RE.match(region) or prefix is None or style not in backups.S3_STYLES:
+        return "err", t("Region oder Präfix ungültig (Präfix: Buchstaben, Ziffern, . _ - /).")
+    key, secret = _s(f, "s3_key", 200), str(f.get("s3_secret") or "").strip()[:500]
+    if not key or not secret:
+        return "err", t("Access-Key und Secret-Key angeben.")
+    new = dict(cfg, **_BK_CLEAR)
+    new.update(mode="s3", s3_endpoint=ep, s3_region=region, s3_bucket=bucket, s3_prefix=prefix, s3_key=key, s3_secret=secret,
+               s3_style=style)
+    return _bk_finish(new, cfg, "S3")
+
+
+def _bk_connect_folder(f, cfg):
+    path = backups.norm_folder(_s(f, "path", 400))
+    if not path:
+        return "err", backups.text("folder_path")
+    new = dict(cfg, **_BK_CLEAR)
+    new.update(mode="folder", path=path)
+    return _bk_finish(new, cfg, t("Ordner"))
+
+
+def _bk_connect(f, cfg):
+    """Ziel verbinden: Nextcloud ohne Zugangsdaten -> Login Flow v2, sonst Benutzer/Passwort pruefen + speichern;
+    kind=s3 bzw. folder: S3 oder Ordner im Container. -> (art, meldung) mit art ok | flow | err."""
+    kind = _s(f, "kind", 10)
+    if kind == "s3":
+        return _bk_connect_s3(f, cfg)
+    if kind == "folder":
+        return _bk_connect_folder(f, cfg)
+    url = backups.norm_url(_s(f, "url", 500))
+    folder = _s(f, "folder", 200).strip("/") or cfg.get("folder") or "Saga-Backups"
+    if not url:
+        return "err", t("Adresse ungültig (http:// oder https://, ohne Zugangsdaten in der Adresse).")
+    if ".." in folder.split("/") or not re.fullmatch(r"[^\x00-\x1f\\]{1,200}", folder):
+        return "err", t("Ordnername ungültig.")
+    user, pw = _s(f, "user", 200), str(f.get("password") or "")[:500]
+    try:
+        info = backups.detect(url)
+        if info["nextcloud"] and not user:
+            backups.flow_start(info["server"], folder)
+            return "flow", ""
+        new = dict(cfg, **_BK_CLEAR)
+        new.update(folder=folder, flow=False, user=user, password=pw)
+        if info["nextcloud"]:
+            new.update(mode="nextcloud", server=info["server"], url=info["server"], dav_user=backups.nc_user_id(info["server"], user, pw))
+        else:
+            new.update(mode="webdav", server="", url=url, dav_user="")
+    except backups.BackupError as ex:
+        return "err", backups.text(ex.code, ex.p)
+    return _bk_finish(new, cfg, "Nextcloud" if info["nextcloud"] else "WebDAV")
+
+
+@admin.post("/backups")
+async def backups_post(request: Request):
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    f = await _form(request)
+    if f is None:
+        return _go("/backups")
+    act = _s(f, "action", 40)
+    cfg = backups.config()
+    who = me["username"]
+    if act == "connect":
+        kind, msg = await run_in_threadpool(_bk_connect, f, cfg)
+        print(f"admin: {who} verbindet Backup-Ziel ({kind})", flush=True)
+        if kind != "flow":
+            _flash(request, msg, "ok" if kind == "ok" else "err")
+        return _go("/backups#ziel")
+    if act == "flow_cancel":
+        backups.flow_cancel()
+        return _go("/backups#ziel")
+    if act == "disconnect":
+        revoked = None
+        if cfg.get("flow") and cfg.get("password") and cfg.get("server"):
+            revoked = await run_in_threadpool(backups.nc_revoke, cfg["server"], cfg.get("user") or "", cfg["password"])
+        cfg.update(mode="", **_BK_CLEAR)
+        backups.save_config(cfg)
+        backups.flow_cancel()
+        print(f"admin: {who} trennt das Backup-Ziel (App-Passwort widerrufen: {revoked})", flush=True)
+        _flash(request, t("Ziel getrennt, App-Passwort in Nextcloud widerrufen.") if revoked else
+               (t("Ziel getrennt. Das App-Passwort konnte nicht widerrufen werden – bitte in Nextcloud unter Einstellungen → Sicherheit löschen.")
+                if revoked is False else t("Ziel getrennt.")), "ok" if revoked is not False else "err")
+        return _go("/backups#ziel")
+    if act == "test":
+        try:
+            free = await run_in_threadpool(backups.test_target, cfg)
+            _flash(request, t("Verbindung in Ordnung. Frei im Ziel: {free}.", free=backups.size_text(free) if free is not None else t("unbekannt")))
+        except backups.BackupError as ex:
+            _flash(request, backups.text(ex.code, ex.p), "err")
+        return _go("/backups#ziel")
+    if act == "run":
+        if hk_restore_test():
+            _flash(request, t("Testwiederherstellung (SAGA_RESTORE_TEST=1): keine Backups."), "err")
+        elif await run_in_threadpool(backups.running):
+            _flash(request, backups.text("busy"), "err")
+        else:
+            backups.run_async("manuell")
+            print(f"admin: {who} startet ein Backup", flush=True)
+            _flash(request, t("Backup gestartet."))
+        return _go("/backups")
+    if act == "add_key":
+        keys = [k for k in re.split(r"[\r\n]+", str(f.get("key") or "")[:5000]) if k.strip() and not k.strip().startswith("#")]
+        got = [await run_in_threadpool(backups.norm_recipient, k) for k in keys[:10]]
+        if not keys or None in got:
+            _flash(request, t("Kein gültiger öffentlicher Schlüssel (age1… oder ssh-ed25519 …). Private Schlüssel (AGE-SECRET-KEY-…) gehören nicht hierher."), "err")
+            return _go("/backups#schluessel")
+        rs = backups.recipients(cfg)
+        for r in got:
+            if r not in rs:
+                rs.append(r)
+        if len(rs) > 10:
+            _flash(request, t("Höchstens {n} Schlüssel.", n=10), "err")
+            return _go("/backups#schluessel")
+        cfg["recipients"] = rs
+        backups.save_config(cfg)
+        print(f"admin: {who} fuegt einen Backup-Schluessel hinzu", flush=True)
+        _flash(request, t("Schlüssel hinzugefügt. Neue Backups sind ab jetzt (auch) mit diesem Schlüssel lesbar."))
+        return _go("/backups#schluessel")
+    if act == "del_key":
+        fp = _s(f, "fp", 40)
+        cfg["recipients"] = [r for r in backups.recipients(cfg) if backups.fingerprint(r) != fp]
+        backups.save_config(cfg)
+        print(f"admin: {who} entfernt einen Backup-Schluessel", flush=True)
+        _flash(request, t("Schlüssel entfernt. Ältere Backups bleiben mit ihm lesbar."))
+        return _go("/backups#schluessel")
+    if act == "genkey":
+        if not backups.age_ok():
+            _flash(request, t("age fehlt auf dem Server."), "err")
+            return _go("/backups#schluessel")
+        priv, pub = await run_in_threadpool(backups.keygen)
+        tok = secrets.token_urlsafe(18)
+        with _bk_lock:
+            _bk_keys[tok] = {"priv": priv, "pub": pub, "aid": request.session.get("aid"), "until": time.time() + BK_KEY_TTL}
+        request.session["bk_key"] = tok
+        print(f"admin: {who} erzeugt ein Backup-Schluesselpaar (privater Schluessel wird nicht gespeichert)", flush=True)
+        return _go("/backups#neuer-schluessel")
+    if act in ("confirm_key", "drop_key"):
+        tok, p = _bk_pending(request)
+        if act == "drop_key" or not p:
+            with _bk_lock:
+                _bk_keys.pop(tok, None)
+            request.session.pop("bk_key", None)
+            if not p and act == "confirm_key":
+                _flash(request, t("Abgelaufen – bitte neu erzeugen."), "err")
+            return _go("/backups#schluessel")
+        last = p["priv"].strip().splitlines()[-1].strip()[-6:]
+        if _s(f, "last6", 20).upper() != last.upper():
+            _flash(request, t("Die letzten 6 Zeichen stimmen nicht – bitte den privaten Schlüssel noch einmal prüfen."), "err")
+            return _go("/backups#neuer-schluessel")
+        rs = backups.recipients(cfg)
+        if p["pub"] not in rs:
+            rs.append(p["pub"])
+        cfg["recipients"] = rs[-10:]
+        backups.save_config(cfg)
+        with _bk_lock:
+            _bk_keys.pop(tok, None)
+        request.session.pop("bk_key", None)
+        print(f"admin: {who} bestaetigt einen neuen Backup-Schluessel", flush=True)
+        _flash(request, t("Schlüssel eingetragen. Der private Schlüssel ist jetzt nur noch bei dir – Saga hat ihn vergessen."))
+        return _go("/backups#schluessel")
+    if act == "ub_save":
+        try:
+            mx, mh = int(f.get("ub_max_mb") or 0), int(f.get("ub_min_h") or 0)
+        except ValueError:
+            _flash(request, t("Nur ganze Zahlen."), "err")
+            return _go("/backups#persoenlich")
+        hosts = [h for h in re.split(r"[,\s]+", _s(f, "ub_hosts", 2000).lower()) if h]
+        if any(not re.fullmatch(r"[a-z0-9.\-]+(:\d{1,5})?|\[[0-9a-f:]+\](:\d{1,5})?", h) for h in hosts):
+            _flash(request, t("Host ungültig (Name oder IP, optional mit :Port)."), "err")
+            return _go("/backups#persoenlich")
+        cur = dict(auth.settings(fresh=True).get("user_backup") or {})
+        cur.update(enabled=_on(f, "ub_enabled"), max_mb=max(1, min(userbackup.HARD_MAX_MB, mx or 1)), min_h=max(0, min(168, mh)),
+                   max_schedule="weekly" if _s(f, "ub_max_schedule", 10) == "weekly" else "daily", hosts=", ".join(hosts))
+        auth.save_setting("user_backup", cur)
+        print(f"admin: {who} speichert persoenliche Backups (an={cur['enabled']}, {cur['max_mb']} MB, {cur['min_h']} h, "
+              f"{cur['max_schedule']}, {len(hosts)} Host(s))", flush=True)
+        _flash(request, t("Gespeichert."))
+        return _go("/backups#persoenlich")
+    if act == "save":
+        tm = _s(f, "time", 5)
+        if not backups.TIME_RE.match(tm):
+            _flash(request, t("Uhrzeit ungültig (hh:mm)."), "err")
+            return _go("/backups#plan")
+        try:
+            keep = {k: max(0, min(365, int(f.get(k) or 0))) for k in ("keep_d", "keep_w", "keep_m")}
+        except ValueError:
+            _flash(request, t("Aufbewahrung: nur ganze Zahlen."), "err")
+            return _go("/backups#plan")
+        if not any(keep.values()):
+            keep["keep_d"] = 1
+        hook = _s(f, "webhook", 500)
+        if hook and not backups.norm_url(hook.split("?")[0]):
+            _flash(request, t("Webhook-Adresse ungültig."), "err")
+            return _go("/backups#plan")
+        on = _on(f, "enabled")
+        cfg.update(time=tm, secrets=_on(f, "secrets"), **keep)
+        if on and not cfg.get("enabled"):
+            cfg["since"] = time.time()
+        cfg["enabled"] = on
+        if hook:
+            cfg["webhook"] = hook
+        elif _on(f, "clear_webhook"):
+            cfg["webhook"] = ""
+        backups.save_config(cfg)
+        print(f"admin: {who} speichert Backup-Zeitplan (an={on}, {tm}, {keep})", flush=True)
+        _flash(request, t("Gespeichert."))
+        return _go("/backups#plan")
+    return _go("/backups")

@@ -1749,6 +1749,16 @@ body.pg-lock-on #pg-editor .embed-db :is(.db-new-top,.db-tab-add,.db-gear,.db-ne
 .fed-fp{font-size:.82rem;overflow-wrap:anywhere}
 .fed-code{border:1px dashed var(--up);border-radius:9px;padding:.5rem .8rem;margin:.6rem 0}
 .fed-code p{margin:.2rem 0}
+/* Admin: Backups (2.3) */
+.bk-dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:.3rem 1rem;margin:.2rem 0 .8rem;font-size:.9rem}
+.bk-dl dt{color:var(--muted)}
+.bk-dl dd{margin:0;overflow-wrap:anywhere}
+.bk-key{width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem;resize:vertical}
+.bk-kind{border:1px solid var(--border);border-radius:9px;padding:.4rem .8rem;margin:.5rem 0}
+.bk-kind>summary{cursor:pointer;font-weight:600;padding:.2rem 0}
+.bk-kind>summary small{font-weight:400;color:var(--muted)}
+.bk-pre{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:.6rem .8rem;font-size:.78rem;overflow-x:auto;white-space:pre}
+@media (max-width:720px){.bk-dl{grid-template-columns:minmax(0,1fr)}.bk-dl dd{margin-bottom:.3rem}}
 .fed-st{display:inline-block;padding:.05rem .5rem;border-radius:999px;font-size:.82rem;border:1px solid var(--border)}
 .fed-st.ok{border-color:var(--up);color:var(--up)}
 .fed-st.wait{border-color:var(--warn);color:var(--warn)}
@@ -1799,3 +1809,17 @@ body.pg-lock-on #pg-editor .embed-db :is(.db-new-top,.db-tab-add,.db-gear,.db-ne
 .adm-persona-name{font-weight:600;font-size:1.05rem}
 .adm-ta{resize:vertical;min-height:4.6rem;font:inherit;line-height:1.45}
 @media (max-width:720px){.adm-persona{padding-left:0}}
+/* Einstellungen -> Mein Backup (static/backup.js, 2.3) */
+.ub-part{padding:.6rem 0;border-top:1px dashed var(--border)}
+.ub-part:first-child{border-top:0}
+.ub-part h4{margin:.1rem 0 .45rem;font-size:.92rem}
+.ub-part .hk-field{margin:.35rem 0}
+.ub-dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.2rem .8rem;margin:0 0 .4rem;font-size:.86rem}
+.ub-dl dt{color:var(--muted)}
+.ub-dl dd{margin:0}
+.ub-runs{list-style:none;margin:.3rem 0;padding:0;font-size:.84rem}
+.ub-runs li{padding:.2rem 0;overflow-wrap:anywhere}
+.ub-runs li.ub-bad{color:var(--down)}
+.ub-key{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem;width:100%;resize:vertical}
+.ub-sm{padding:.1rem .45rem;font-size:.78rem;margin-left:.3rem}
+.ub-link{color:var(--accent)}

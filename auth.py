@@ -82,9 +82,25 @@ DEFAULTS = {
     # (IP-Adressen bleiben vor dem Gegenueber verborgen); ring_s = Klingeldauer in Sekunden
     "calls": {"enabled": True, "stun": "stun:stun.nextcloud.com:443", "turn_urls": "", "turn_mode": "rest", "turn_secret": "",
               "turn_user": "", "turn_password": "", "turn_ttl": 43200, "relay_only": False, "ring_s": 45},
+    # Verschluesselte Backups auf ein WebDAV-Ziel (2.3, saga/backups.py): mode nextcloud|webdav, server (Nextcloud) bzw.
+    # url (WebDAV-Ordner), user/password (Nextcloud: Anmeldename + App-Passwort aus dem Login Flow v2, flow=True ->
+    # beim Trennen widerrufen), dav_user = Nextcloud-Benutzer-ID im WebDAV-Pfad, folder = Ordner fuer die Laeufe,
+    # recipients = oeffentliche age-Schluessel, secrets = SECRET_KEY/CAL_SECRET_KEY mitsichern, enabled = Zeitplan
+    # (taeglich um time, Zeitzone TIMEZONE; since = eingeschaltet am), keep_* = Aufbewahrung (GFS), webhook = optionale URL.
+    # mode s3: s3_endpoint, s3_region, s3_bucket, s3_prefix, s3_key/s3_secret (verschluesselt), s3_style auto|path|virtual;
+    # mode folder: path (Ordner im Container unterhalb von SAGA_BACKUP_DIRS)
+    "backup": {"mode": "", "server": "", "url": "", "user": "", "password": "", "flow": False, "dav_user": "",
+               "folder": "Saga-Backups", "recipients": [], "secrets": True, "enabled": False, "time": "03:20", "since": 0,
+               "keep_d": 7, "keep_w": 4, "keep_m": 6, "webhook": "", "s3_endpoint": "", "s3_region": "", "s3_bucket": "",
+               "s3_prefix": "", "s3_key": "", "s3_secret": "", "s3_style": "auto", "path": ""},
+    # Persoenliche Backups je Konto (2.3, saga/userbackup.py): enabled = erlaubt, max_mb = Groesse je Backup, min_h = Abstand
+    # zwischen "Jetzt sichern" (Stunden), max_schedule = daily|weekly (haeufigster Zeitplan), hosts = freigegebene interne
+    # Hosts (Komma-getrennt, optional :Port) - sonst nur https und oeffentliche Adressen
+    "user_backup": {"enabled": True, "max_mb": 1024, "min_h": 1, "max_schedule": "daily", "hosts": ""}
 }
 SECRET_FIELDS = {("oidc", "client_secret"), ("ldap", "bind_password"), ("apns", "p8"), ("ai", "api_key"), ("calls", "turn_secret"),
-                 ("calls", "turn_password")}
+                 ("calls", "turn_password"), ("backup", "password"), ("backup", "webhook"), ("backup", "s3_key"),
+                 ("backup", "s3_secret")}
 LDAP_PRESETS = {
     "freeipa": {"user_filter": "(&(objectClass=person)(uid={username})(!(nsAccountLock=TRUE)))", "attr_username": "uid", "attr_name": "cn",
                 "attr_mail": "mail", "group_mode": "memberof", "group_filter": "(member={dn})", "group_name_attr": "cn"},

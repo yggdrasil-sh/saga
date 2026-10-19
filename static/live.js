@@ -89,18 +89,20 @@
     else if (it.kind === 'publish.withdrawn') s = T('Ein Admin hat deine Veröffentlichung zurückgezogen');
     else if (it.kind === 'chat.message') s = n > 1 ? T('{n} neue Nachrichten') : T('Neue Nachricht von {name}');
     else if (it.kind === 'call.missed') s = T('Verpasster Anruf von {name}');
+    else if (it.kind === 'backup.failed') return document.createTextNode(it.text || T('Backup fehlgeschlagen'));   // Text vom Server (Admins)
     else return document.createTextNode(it.text || it.kind);
     return HK.fmtNodes(s, { name: name, role: ROLE[it.role] || '', n: n });
   }
   var fFull = new Intl.DateTimeFormat(HK.locale, { dateStyle: 'medium', timeStyle: 'short' });
   function itemNode(it) {
     var li = el('li', 'lv-li'), b = el('button', 'lv-item' + (it.read ? '' : ' unread')); b.type = 'button';
-    if (it.kind === 'publish.withdrawn') { var sh = el('span', 'lv-av lv-av-sys', '🛡'); sh.setAttribute('aria-hidden', 'true'); b.appendChild(sh); }
+    if (it.kind === 'publish.withdrawn' || it.kind === 'backup.failed') { var sh = el('span', 'lv-av lv-av-sys', '🛡'); sh.setAttribute('aria-hidden', 'true'); b.appendChild(sh); }
     else b.appendChild(avatar(it.actor ? it.actor.name : '?', it.actor ? it.actor.username : '', it.actor ? '' : 'lv-av-gone', it.actor && it.actor.avatar));
     var body = el('span', 'lv-body');
     var tx = el('span', 'lv-text'); tx.appendChild(sentence(it)); body.appendChild(tx);
     var ic = it.note && it.note.icon && it.note.icon.charAt(0) !== '/' ? it.note.icon : '📄';
-    if (it.chat) body.appendChild(el('span', 'lv-page' + (it.access ? '' : ' gone'), it.access ? '💬 ' + (it.title || T('Chat')) : '🔒 ' + T('Kein Zugriff mehr')));
+    if (it.kind === 'backup.failed') body.appendChild(el('span', 'lv-page', '🗄 ' + (it.title || T('Backups'))));
+    else if (it.chat) body.appendChild(el('span', 'lv-page' + (it.access ? '' : ' gone'), it.access ? '💬 ' + (it.title || T('Chat')) : '🔒 ' + T('Kein Zugriff mehr')));
     else body.appendChild(el('span', 'lv-page' + (it.access ? '' : ' gone'), it.access ? ic + ' ' + (it.note.title || T('Unbenannt')) : '🔒 ' + T('Kein Zugriff mehr')));
     if (it.excerpt) body.appendChild(el('span', 'lv-ex', it.excerpt));
     var tm = el('span', 'lv-time', HK.relTime(it.created - Date.now() / 1000)); tm.title = fFull.format(new Date(it.created * 1000));
@@ -204,6 +206,10 @@
   function activate(it) {
     if (!it.read) markRead([it.id]);
     closePanel(false);
+    if (it.kind === 'backup.failed') {                   // Admin-Bereich (eigener Port) in einem neuen Tab
+      if (it.url) { var aw = window.open(it.url, '_blank', 'noopener'); if (aw) aw.focus(); }
+      return;
+    }
     if ((it.kind === 'chat.message' || it.kind === 'call.missed') && it.access && it.url) {           // Chat (1.5): im Chat-Tab oeffnen
       if (location.pathname === '/chats') { location.hash = it.url.split('#')[1] || ''; return; }
       var cw = window.open(it.url, 'hk-chats'); if (cw) cw.focus(); return;

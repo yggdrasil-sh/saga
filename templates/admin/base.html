@@ -9,13 +9,14 @@
 <title>{% block pagetitle %}{{ _('Admin') }}{% endblock %} – {{ title }}</title>
 <link rel="icon" href="/static/icon.svg?v={{ v }}" type="image/svg+xml">
 <link rel="stylesheet" href="/static/style.css?v={{ v }}">
+{% block head %}{% endblock %}
 </head>
 <body class="adm">
 {% if me %}
 <header class="adm-head">
   <h1>🛡 {{ title }} · {{ _('Admin') }}</h1>
   <nav class="adm-nav">
-    {% for href, label in [('/', _('Übersicht')), ('/users', _('Benutzer')), ('/groups', _('Gruppen')), ('/services', _('Dienste')), ('/published', _('Veröffentlicht')), ('/federation', _('Föderation')), ('/settings', _('Allgemein')), ('/settings/push', _('Mitteilungen')), ('/settings/oidc', 'SSO / OIDC'), ('/settings/ldap', 'LDAP / AD'), ('/settings/ai', _('KI-Assistent'))] %}
+    {% for href, label in [('/', _('Übersicht')), ('/users', _('Benutzer')), ('/groups', _('Gruppen')), ('/services', _('Dienste')), ('/published', _('Veröffentlicht')), ('/federation', _('Föderation')), ('/backups', _('Backups')), ('/settings', _('Allgemein')), ('/settings/push', _('Mitteilungen')), ('/settings/oidc', 'SSO / OIDC'), ('/settings/ldap', 'LDAP / AD'), ('/settings/ai', _('KI-Assistent'))] %}
     <a href="{{ href }}"{% if path == href or (href not in ('/', '/settings') and path.startswith(href + '/')) %} class="on"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>

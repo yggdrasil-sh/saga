@@ -44,7 +44,7 @@ from fastapi.responses import JSONResponse, Response
 import auth
 from db import connect as _db
 from saga import bus, i18n, notify
-from saga.core import BASE_URL, HERE, TZ, _api_guard, _bad, _body, _json_load, _tok_hash, account_lang, t, title
+from saga.core import BASE_URL, HERE, RESTORE_TEST, TZ, _api_guard, _bad, _body, _json_load, _tok_hash, account_lang, t, title
 from saga.netguard import Blocked, guarded_client, is_public
 
 router = APIRouter()
@@ -52,7 +52,8 @@ router = APIRouter()
 E = os.environ
 TYPES = ("webpush", "ntfy", "unifiedpush", "apns", "apns-voip")
 CATS = {"share": ("share.added", "share.role"), "comment": ("comment.new", "comment.reply", "comment.mention"),
-        "chat": ("chat.message",), "publish": ("publish.withdrawn",), "call": ("call", "call.missed")}
+        "chat": ("chat.message",), "publish": ("publish.withdrawn",), "call": ("call", "call.missed"),
+        "admin": ("backup.failed",)}                 # nur Admin-Konten (Backups, saga/backups.py)
 CALL_TTL = 60                        # klingelnder Anruf: Mitteilung nach einer Minute verwerfen (statt 4 h vorhalten)
 
 
@@ -434,6 +435,8 @@ def _anon(kind):
         return t("Ein Admin hat deine Veröffentlichung zurückgezogen")
     if kind == "call.missed":
         return t("Verpasster Anruf")
+    if kind == "backup.failed":
+        return t("Backup fehlgeschlagen")
     return t("Neue Benachrichtigung")
 
 
@@ -477,7 +480,7 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
             if not it or (kind != "publish.withdrawn" and not it["access"]):
                 return None
             body = it["text"] if names else _anon(kind)
-            url = it["url"] or "/"
+            url = it["url"] if (it["url"] or "").startswith("/") else "/"     # Admin-Bereich (Backups): eigener Port
             tag = (f"thread-{it['thread_id']}" if it.get("thread_id") else f"note-{it['note']['id']}" if it.get("note") else f"n-{ref}")
         return {"title": title(), "body": body, "url": url, "tag": tag, "kind": kind, "ts": int(created or time.time())}
     finally:
@@ -511,6 +514,8 @@ def send(sub, msg):
     """Eine Mitteilung an EIN Abo -> (ergebnis, detail); ergebnis: ok | gone (Abo entfernen) | retry | fail."""
     import httpx
     sid, uid, kind, endpoint, p256dh, auth_s, secret = sub
+    if RESTORE_TEST:                                      # Testwiederherstellung: nichts nach aussen (saga/backups.py)
+        return "fail", "SAGA_RESTORE_TEST"
     if kind in ("apns", "apns-voip"):
         return _send_apns(endpoint, msg, voip=kind == "apns-voip")
     raw = json.dumps(msg, ensure_ascii=False, separators=(",", ":")).encode()
@@ -668,6 +673,8 @@ def _loop():
 
 
 def start():
+    if RESTORE_TEST:
+        return
     if _thread["t"] is None:
         _thread["stop"] = False
         _thread["t"] = threading.Thread(target=_loop, name="push", daemon=True)
@@ -736,7 +743,8 @@ def _state(c, uid, did=None):
     return {"server": {"enabled": srv["enabled"], "webpush": srv["webpush"] and bool(pub), "vapid_public": pub,
                        "ntfy": srv["ntfy"], "unifiedpush": srv["unifiedpush"], "apns": srv["apns"],
                        "apns_bundle": a.get("bundle_id") if srv["apns"] else None},
-            "settings": prefs(c, uid), "categories": list(CATS), "kinds": CATS,
+            "settings": prefs(c, uid), "categories": [k for k in CATS if k != "admin" or (auth.user_info(uid) or {}).get("is_admin")],
+            "kinds": CATS,
             "devices": _devices(c, uid, did), "limit": SUB_MAX}
 
 

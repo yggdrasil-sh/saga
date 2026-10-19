@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check, ts, csrf_field with context %}
+{% block pagetitle %}{{ _('Backups') }}{% endblock %}
+{% block head %}{% if bk.busy or bk.flow.state == 'wait' %}<noscript><meta http-equiv="refresh" content="4"></noscript>{% endif %}{% endblock %}
+{% block content %}
+<h2>{{ _("Backups") }}</h2>
+{% if bk.busy or bk.flow.state == 'wait' %}<span hidden data-reload="4"></span>{% endif %}
+<p class="hk-hint">{{ _("Saga sichert Datenbank, Dateien und (auf Wunsch) die Schlüssel aus der .env verschlüsselt in ein Ziel: S3 (z. B. MinIO, Garage, Backblaze B2, Hetzner, AWS), einen Ordner im Container (z. B. ein eingebundenes Laufwerk) oder WebDAV/Nextcloud. Verschlüsselt wird mit age und einem öffentlichen Schlüssel – den privaten Schlüssel zum Wiederherstellen hast nur du. Die lokalen Backups vor Updates (/data/backups) bleiben wie bisher.") }}</p>
+{% if bk.restore_test %}<p class="adm-flash err" role="status">🧪 {{ _("Testwiederherstellung (SAGA_RESTORE_TEST=1): Föderation, Mitteilungen, Backups, Kalender-Abgleich, KI, Immich, Websuche und Avatare von außen sind aus – dieser Server verbindet sich nicht mit den Diensten der echten Instanz.") }}</p>{% endif %}
+{% if not bk.age_ok %}<p class="adm-flash err" role="status">{{ _("age fehlt auf dem Server.") }}</p>{% endif %}
+
+<section class="adm-card" id="status">
+  <h3>{{ _("Status") }}</h3>
+  <dl class="bk-dl">
+    <dt>{{ _("Letztes erfolgreiches Backup") }}</dt><dd>{% if bk.last_ok %}{{ ts(bk.last_ok) }}{% else %}{{ _("noch keines") }}{% endif %}</dd>
+    <dt>{{ _("Nächster Lauf") }}</dt><dd>{% if bk.next %}{{ ts(bk.next) }}{% else %}{{ _("Zeitplan aus") }}{% endif %}</dd>
+    <dt>{{ _("Letzte Testwiederherstellung") }}</dt><dd>{% if bk.last_check %}{{ ts(bk.last_check) }}{% else %}{{ _("noch keine") }}{% endif %}</dd>
+  </dl>
+  {% if bk.busy %}<p class="adm-flash" role="status">⏳ {{ _("Backup läuft:") }} {{ (bk.runs[0].step if bk.runs and not bk.runs[0].finished else '') or '…' }}</p>{% endif %}
+  {% if bk.ready and bk.check_due %}<p class="hk-hint">{{ _("Tipp: Einmal im Monat eine Testwiederherstellung machen (braucht den privaten Schlüssel, spielt in eine Wegwerf-Datenbank ein):") }}
+    <code class="adm-key">docker compose run --rm -v "$PWD/saga-backup.key:/key:ro" saga python run.py backup-pruefen --schluessel /key</code></p>{% endif %}
+  <form method="post" class="adm-actions">{{ csrf_field() }}<input type="hidden" name="action" value="run">
+    <button class="btn btn-primary" type="submit"{% if not bk.ready or bk.busy or bk.restore_test %} disabled{% endif %}>{{ _("Jetzt sichern") }}</button>
+    <a class="btn" href="/backups?ziel=1#laeufe">{{ _("Backups im Ziel anzeigen") }}</a>
+  </form>
+  {% if not bk.ready %}<p class="hk-hint">{{ _("Zum Sichern fehlt noch: ein Ziel und mindestens ein öffentlicher Schlüssel.") }}</p>{% endif %}
+  {% if bk.runs %}
+  <table class="adm-table">
+    <tr><th>{{ _("Start") }}</th><th>{{ _("Dauer") }}</th><th>{{ _("Auslöser") }}</th><th>{{ _("Ergebnis") }}</th></tr>
+    {% for r in bk.runs %}
+    <tr><td>{{ ts(r.started) }}</td>
+      <td data-l="{{ _('Dauer') }}">{% if r.dur is not none %}{{ r.dur }} s{% else %}…{% endif %}</td>
+      <td data-l="{{ _('Auslöser') }}">{{ {'zeitplan': _('Zeitplan'), 'manuell': _('von Hand'), 'cli': _('Kommandozeile')}.get(r.trigger, r.trigger) }}</td>
+      <td data-l="{{ _('Ergebnis') }}">{% if r.ok %}✓ <code>{{ r.name }}</code> · {{ bk.size(r.size) }}{% elif r.finished %}✗ {{ r.error }}{% else %}⏳ {{ r.step }}{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</section>
+
+{% if show_remote %}
+<section class="adm-card" id="laeufe">
+  <h3>{{ _("Backups im Ziel") }}</h3>
+  {% if bk.remote_err %}<p class="adm-flash err">{{ bk.remote_err }}</p>
+  {% elif not bk.remote %}<p class="hk-hint">{{ _("Noch keine Backups im Ziel.") }}</p>
+  {% else %}
+  <table class="adm-table">
+    <tr><th>{{ _("Lauf") }}</th><th>{{ _("Größe") }}</th><th>{{ _("Schlüssel") }}</th><th>{{ _("Inhalt") }}</th></tr>
+    {% for r in bk.remote %}
+    <tr{% if not r.complete %} class="off"{% endif %}><td><code>{{ r.name }}</code>{% if not r.complete %} <small>({{ _("unvollständig") }})</small>{% endif %}</td>
+      <td data-l="{{ _('Größe') }}">{% if r.manifest %}{{ bk.size(r.manifest.files.values()|sum(attribute='size')) }}{% endif %}</td>
+      <td data-l="{{ _('Schlüssel') }}">{% if r.manifest %}{% for fp in r.manifest.recipients %}<code class="fed-fp">{{ fp }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}</td>
+      <td data-l="{{ _('Inhalt') }}">{% if r.manifest %}{{ _("Datenbank, Dateien") }}{% if r.manifest.secrets %}, {{ _("Geheimnisse") }}{% endif %} · Saga {{ r.manifest.saga }}{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="adm-card" id="ziel">
+  <h3>{{ _("Ziel") }}</h3>
+  {% if bk.flow.state == 'wait' %}
+  <div class="fed-code" role="status">
+    <p><b>{{ _("Nextcloud gefunden.") }}</b> {{ _("Melde dich jetzt in Nextcloud an und erlaube den Zugriff – Saga bekommt dann ein eigenes App-Passwort (dein Passwort sieht Saga nie). Diese Seite aktualisiert sich von selbst.") }}</p>
+    <p><a class="btn btn-primary" href="{{ bk.flow.login }}" target="_blank" rel="noopener noreferrer">{{ _("In Nextcloud anmelden") }} ↗</a></p>
+    <form method="post">{{ csrf_field() }}<input type="hidden" name="action" value="flow_cancel"><button class="btn" type="submit">{{ _("Abbrechen") }}</button></form>
+  </div>
+  {% elif bk.flow.state == 'ok' and not bk.flow_msg %}<p class="adm-flash" role="status">{{ _("Nextcloud verbunden.") }}</p>
+  {% elif bk.flow_msg %}<p class="adm-flash err" role="status">{{ bk.flow_msg }}</p>{% endif %}
+  {% if bk.cfg.mode %}
+  <dl class="bk-dl">
+    {% if bk.cfg.mode == 's3' %}
+    <dt>{{ _("Art") }}</dt><dd>S3{% if bk.cfg.s3_style != 'auto' %} · {{ bk.cfg.s3_style }}-style{% endif %}</dd>
+    <dt>{{ _("Endpunkt") }}</dt><dd><code class="adm-key">{{ bk.cfg.s3_endpoint }}</code> · {{ bk.cfg.s3_region or 'us-east-1' }}</dd>
+    <dt>{{ _("Bucket") }}</dt><dd><code>{{ bk.cfg.s3_bucket }}</code>{% if bk.cfg.s3_prefix %} / <code>{{ bk.cfg.s3_prefix }}</code>{% endif %}</dd>
+    <dt>{{ _("Access-Key") }}</dt><dd><code>{{ bk.s3_key_short }}</code> · {{ _("gespeichert ✓ (verschlüsselt)") }}</dd>
+    {% elif bk.cfg.mode == 'folder' %}
+    <dt>{{ _("Art") }}</dt><dd>{{ _("Ordner im Container") }}</dd>
+    <dt>{{ _("Ordner") }}</dt><dd><code class="adm-key">{{ bk.cfg.path }}</code></dd>
+    {% else %}
+    <dt>{{ _("Art") }}</dt><dd>{{ 'Nextcloud' if bk.cfg.mode == 'nextcloud' else 'WebDAV' }}{% if bk.cfg.flow %} · {{ _("App-Passwort (Login Flow)") }}{% endif %}</dd>
+    <dt>{{ _("Adresse") }}</dt><dd><code class="adm-key">{{ bk.cfg.server if bk.cfg.mode == 'nextcloud' else bk.cfg.url }}</code></dd>
+    {% if bk.cfg.user %}<dt>{{ _("Konto") }}</dt><dd>{{ bk.cfg.user }}</dd>{% endif %}
+    <dt>{{ _("Ordner") }}</dt><dd><code>{{ bk.cfg.folder }}</code></dd>
+    {% endif %}
+  </dl>
+  <div class="adm-actions">
+    <form method="post">{{ csrf_field() }}<input type="hidden" name="action" value="test"><button class="btn" type="submit">{{ _("Verbindung prüfen") }}</button></form>
+    <form method="post" data-confirm="{{ _('Ziel trennen? Vorhandene Backups im Ziel bleiben erhalten.') }}">{{ csrf_field() }}<input type="hidden" name="action" value="disconnect"><button class="btn" type="submit">{{ _("Trennen") }}</button></form>
+  </div>
+  {% else %}
+  <p class="hk-hint">{{ _("Art des Ziels wählen:") }}</p>
+  <details class="bk-kind" id="ziel-s3" open><summary>S3 <small>{{ _("(MinIO, Garage, Backblaze B2, Hetzner, AWS …)") }}</small></summary>
+  <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="connect"><input type="hidden" name="kind" value="s3">
+    {{ field(_('Endpunkt'), 's3_endpoint', '', max=300, ph='https://s3.eu-central-003.backblazeb2.com', req=true, hint=_('Adresse der S3-Schnittstelle ohne Bucket und Pfad, z. B. https://minio.example.org:9000 oder https://s3.eu-central-1.amazonaws.com.')) }}
+    {{ field(_('Region'), 's3_region', '', max=40, ph='us-east-1', hint=_('Leer = us-east-1 (MinIO). Garage: garage, Hetzner: z. B. fsn1, Backblaze: z. B. eu-central-003.')) }}
+    {{ field(_('Bucket'), 's3_bucket', '', max=63, req=true, hint=_('Muss schon existieren – Saga legt keinen Bucket an.')) }}
+    {{ field(_('Präfix (Ordner im Bucket)'), 's3_prefix', 'saga-backups', max=200) }}
+    {{ field(_('Access-Key'), 's3_key', '', max=200, req=true, auto='off') }}
+    {{ field(_('Secret-Key'), 's3_secret', '', max=500, secret=true, req=true) }}
+    <label class="adm-field"><span>{{ _("Adressierung") }}</span>
+      <select class="hk-in" name="s3_style"><option value="auto">{{ _("automatisch (AWS: virtual-hosted, sonst path-style)") }}</option>
+        <option value="path">path-style (https://host/bucket/…)</option><option value="virtual">virtual-hosted (https://bucket.host/…)</option></select></label>
+    <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Verbinden") }}</button></div>
+  </form>
+  <p class="hk-hint">{{ _("Empfehlung: eigener Bucket und ein Schlüssel nur für diesen Bucket (Lesen, Schreiben, Löschen, Auflisten). Object Lock/Versionierung schützen zusätzlich vor Löschen durch einen übernommenen Server; dann alte Versionen per Lebenszyklus-Regel aufräumen.") }}</p>
+  </details>
+  <details class="bk-kind" id="ziel-ordner"><summary>{{ _("Ordner im Container") }} <small>{{ _("(eingebundenes Laufwerk, NAS-Freigabe …)") }}</small></summary>
+  <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="connect"><input type="hidden" name="kind" value="folder">
+    {{ field(_('Ordner'), 'path', (bk.roots[0] if bk.roots else '/backup'), max=400, req=true, hint=_('Nur unterhalb von {roots} (SAGA_BACKUP_DIRS). Den Ordner in docker-compose.yml als zusätzliches Volume einbinden – siehe docs/ANLEITUNG.md (Backups).', roots=', '.join(bk.roots) or '-')) }}
+    <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Verbinden") }}</button></div>
+  </form>
+  <p class="hk-hint">{{ _("Liegt der Ordner auf demselben Server, schützt er nur vor Fehlern in Saga und der Datenbank, nicht vor dem Verlust des Servers – den Ordner zusätzlich woandershin kopieren (z. B. restic, rsync).") }}</p>
+  </details>
+  <details class="bk-kind" id="ziel-webdav"><summary>WebDAV / Nextcloud</summary>
+  <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="connect"><input type="hidden" name="kind" value="dav">
+    {{ field(_('Adresse'), 'url', '', max=500, ph='https://cloud.example.org', req=true, hint=_('Nextcloud: nur die Adresse – die Anmeldung läuft dann in Nextcloud (Login Flow). Anderes WebDAV: Adresse des Ordners, in dem Saga sichern darf.')) }}
+    {{ field(_('Benutzer'), 'user', '', max=200, hint=_('Nur für WebDAV ohne Nextcloud-Anmeldung (oder mit einem App-Passwort von Hand).')) }}
+    {{ field(_('Passwort'), 'password', '', max=500, secret=true) }}
+    {{ field(_('Ordner'), 'folder', bk.cfg.folder, max=200) }}
+    <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Verbinden") }}</button></div>
+  </form>
+  <p class="hk-hint">{{ _("Empfehlung: ein eigenes Nextcloud-Konto (oder ein Gruppenordner) nur für die Backups – ein App-Passwort darf alles, was das Konto darf. Gelöschte alte Backups landen im Nextcloud-Papierkorb und zählen dort weiter zum Speicherplatz; für dieses Konto den Papierkorb und die Versionen kurz halten.") }}</p>
+  </details>
+  {% endif %}
+</section>
+
+<section class="adm-card" id="schluessel">
+  <h3>{{ _("Verschlüsselung") }}</h3>
+  {% if bk.pending %}
+  <div class="fed-code" id="neuer-schluessel" role="status">
+    <p><b>{{ _("Neuer privater Schlüssel – wird nur jetzt angezeigt und von Saga nicht gespeichert:") }}</b></p>
+    <textarea class="hk-in bk-key" readonly rows="4" spellcheck="false">{{ bk.pending.priv }}</textarea>
+    <p><a class="btn" href="/backups/schluessel/{{ bk.pending_tok }}">{{ _("Als Datei herunterladen") }}</a></p>
+    <p class="hk-hint">{{ _("Lege ihn an einem sicheren Ort ab (Passwort-Manager, Ausdruck im Tresor) – nicht auf diesem Server. Ohne ihn lassen sich die Backups nicht wiederherstellen.") }}</p>
+    <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="confirm_key">
+      {{ field(_('Zur Bestätigung: die letzten 6 Zeichen des privaten Schlüssels'), 'last6', '', max=6, auto='off', req=true) }}
+      <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Schlüssel ist sicher abgelegt – eintragen") }}</button></div>
+    </form>
+    <form method="post">{{ csrf_field() }}<input type="hidden" name="action" value="drop_key"><button class="btn" type="submit">{{ _("Verwerfen") }}</button></form>
+  </div>
+  {% endif %}
+  {% if bk.recips %}
+  <table class="adm-table">
+    <tr><th>{{ _("Öffentlicher Schlüssel") }}</th><th>{{ _("Fingerabdruck") }}</th><th></th></tr>
+    {% for r in bk.recips %}
+    <tr><td><code class="adm-key" title="{{ r.key }}">{{ r.short }}</code></td><td data-l="{{ _('Fingerabdruck') }}"><code class="fed-fp">{{ r.fp }}</code></td>
+      <td><form method="post" data-confirm="{{ _('Schlüssel entfernen? Neue Backups sind dann nicht mehr mit ihm lesbar.') }}">{{ csrf_field() }}<input type="hidden" name="action" value="del_key"><input type="hidden" name="fp" value="{{ r.fp }}">
+        <button class="btn" type="submit">{{ _("Entfernen") }}</button></form></td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="hk-hint">{{ _("Noch kein Schlüssel – ohne Schlüssel sichert Saga nicht.") }}</p>{% endif %}
+  {% if not bk.pending %}
+  <form method="post" class="adm-actions">{{ csrf_field() }}<input type="hidden" name="action" value="genkey">
+    <button class="btn" type="submit"{% if not bk.age_ok %} disabled{% endif %}>{{ _("Schlüsselpaar erzeugen") }}</button></form>
+  {% endif %}
+  <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="add_key">
+    <label class="adm-field"><span>{{ _("Eigenen öffentlichen Schlüssel eintragen") }}</span>
+      <textarea class="hk-in bk-key" name="key" rows="2" maxlength="5000" spellcheck="false" placeholder="age1…"></textarea>
+      <small>{{ _("age1… (age-keygen) oder ssh-ed25519 …; mehrere Empfänger möglich (z. B. Zweitschlüssel im Tresor). Jedes Backup ist mit jedem eingetragenen Schlüssel lesbar.") }}</small></label>
+    <div class="adm-actions"><button class="btn" type="submit">{{ _("Hinzufügen") }}</button></div>
+  </form>
+</section>
+
+<section class="adm-card" id="plan">
+  <h3>{{ _("Zeitplan und Aufbewahrung") }}</h3>
+  <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="save">
+    {{ check(_('Täglich automatisch sichern'), 'enabled', bk.cfg.enabled) }}
+    {{ field(_('Uhrzeit'), 'time', bk.cfg.time, type='time', max=5, hint=_('Zeitzone des Servers (TIMEZONE). Der Lauf hat niedrige Priorität (nice/ionice).')) }}
+    {{ check(_('Schlüssel aus der .env mitsichern (SECRET_KEY, CAL_SECRET_KEY)'), 'secrets', bk.cfg.secrets, _('Ohne sie lassen sich gespeicherte Passwörter (Kalender, Anmeldedienste) nach einer Wiederherstellung nicht mehr lesen. Verschlüsselt wie alles andere.')) }}
+    {{ field(_('Tägliche Backups behalten'), 'keep_d', bk.cfg.keep_d, type='number', max=3) }}
+    {{ field(_('Wöchentliche Backups behalten'), 'keep_w', bk.cfg.keep_w, type='number', max=3) }}
+    {{ field(_('Monatliche Backups behalten'), 'keep_m', bk.cfg.keep_m, type='number', max=3) }}
+    {{ field(_('Webhook bei Fehlern (optional)'), 'webhook', '', max=500, secret=true, ph='https://ntfy.example.org/saga-backup',
+             hint=(_('gespeichert ✓ (verschlüsselt) – leer lassen = behalten') if bk.cfg.webhook else _('z. B. ntfy-Topic oder Gotify (…/message?token=…). Admins bekommen Fehler außerdem in der Glocke und als Mitteilung.'))) }}
+    {% if bk.cfg.webhook %}{{ check(_('Webhook entfernen'), 'clear_webhook', false) }}{% endif %}
+    <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button></div>
+  </form>
+</section>
+
+<section class="adm-card" id="persoenlich">
+  <h3>{{ _("Persönliche Backups") }}</h3>
+  <p class="hk-hint">{{ _("Jede Person kann ihren eigenen Workspace selbst sichern – in ihre eigene Nextcloud oder ein anderes WebDAV-Ziel, verschlüsselt mit ihrem eigenen Schlüssel (Einstellungen → Mein Backup). Enthalten ist nur, was der Person gehört; was andere mit ihr geteilt haben, bleibt außen vor.") }}</p>
+  <p class="hk-hint">{{ _("Datenschutz: Das Server-Backup oben sichert alles (für den Betrieb, in dein Ziel). Persönliche Backups landen dagegen nur im Ziel der jeweiligen Person – du musst keine privaten Daten deiner Nutzer in deine eigene Cloud packen. Saga sieht dabei nie einen privaten Schlüssel.") }}</p>
+  <p class="hk-hint">{{ _("Eingerichtet: {n} Konten.", n=bk.ub_users) }}</p>
+  <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="ub_save">
+    {{ check(_('Persönliche Backups erlauben'), 'ub_enabled', bk.ub.enabled, _('Aus: keine Läufe, kein Verbinden, kein Einspielen. Gespeicherte Ziele bleiben, bis die Person sie trennt.')) }}
+    {{ field(_('Größe je Backup (MB)'), 'ub_max_mb', bk.ub.max_mb, type='number', max=6, hint=_('Obergrenze (verschlüsselt). Größere Backups brechen mit einer Meldung an die Person ab.')) }}
+    {{ field(_('Mindestabstand für „Jetzt sichern“ (Stunden)'), 'ub_min_h', bk.ub.min_h, type='number', max=3) }}
+    <label class="adm-field"><span>{{ _("Häufigster Zeitplan") }}</span>
+      <select class="hk-in" name="ub_max_schedule">
+        <option value="daily"{% if bk.ub.max_schedule == 'daily' %} selected{% endif %}>{{ _("täglich") }}</option>
+        <option value="weekly"{% if bk.ub.max_schedule == 'weekly' %} selected{% endif %}>{{ _("wöchentlich") }}</option>
+      </select></label>
+    {{ field(_('Freigegebene interne Hosts'), 'ub_hosts', bk.ub.hosts, max=2000, ph='nextcloud.lan, 10.0.0.20:8443', hint=_('Persönliche Ziele müssen sonst öffentlich und https sein (Schutz vor Zugriffen ins interne Netz). Komma-getrennt, optional mit :Port.')) }}
+    <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button></div>
+  </form>
+</section>
+
+<section class="adm-card">
+  <h3>{{ _("Wiederherstellen") }}</h3>
+  <p class="hk-hint">{{ _("Auf einem neuen Server: Saga-Stack aufsetzen, Werte aus geheimnisse.env in die .env übernehmen, dann:") }}</p>
+  <pre class="bk-pre">docker compose stop saga
+docker compose run --rm -v "$PWD/saga-backup.key:/key:ro" \
+  -e SAGA_BACKUP_S3_ENDPOINT=https://s3.example.org -e SAGA_BACKUP_S3_BUCKET=saga-backups \
+  -e SAGA_BACKUP_S3_ACCESS_KEY=… -e SAGA_BACKUP_S3_SECRET_KEY=… -e SAGA_BACKUP_S3_PREFIX=saga-backups \
+  saga python run.py restore --schluessel /key saga-JJJJMMTT-hhmmss
+docker compose up -d</pre>
+  <p class="hk-hint">{{ _("Ordner statt S3: SAGA_BACKUP_PATH=/backup (Volume eingebunden). WebDAV/Nextcloud: SAGA_BACKUP_URL, SAGA_BACKUP_USER, SAGA_BACKUP_PASSWORD.") }}</p>
+  <p class="hk-hint">{{ _("Ohne Saga geht es auch von Hand: age -d -i saga-backup.key db.dump.age > db.dump – Einzelheiten in docs/ANLEITUNG.md (Backups). Ein zurückgespieltes Backup ist dieselbe Instanz (Föderation!) – zum Ausprobieren auf einem zweiten Server SAGA_RESTORE_TEST=1 setzen.") }}</p>
+</section>
+{% endblock %}
