@@ -679,7 +679,7 @@ def parse_args(params):
                 n = int(params[k])
             except ValueError:
                 raise ValueError(k)
-            if n < (1 if k == "limit" else 0):
+            if n < (1 if k == "limit" else 0) or n > 2 ** 62:           # groesser: Postgres-OFFSET (bigint) -> 500
                 raise ValueError(k)
             a[k] = min(n, LIMIT_MAX) if k == "limit" else n
     for k in ("filters", "sorts"):

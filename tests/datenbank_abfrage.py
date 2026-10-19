@@ -350,7 +350,7 @@ def rest(db, tgt, u):
         ok(f"filters/sorts/group explizit {json.dumps(fl, ensure_ascii=False)[:40]} {grp!r} q={q!r} = Referenz",
            s == 200 and [r["id"] for r in d["rows"]] == exp[0] and d["matched"] == exp[1] and d.get("groups") == exp[2], (d, exp))
     for bad in ("limit=0", "limit=abc", "offset=-1", "filters=nicht-json", "filters=%7B%7D", "sorts=5", "tz=Mars%2FBasis", "today=2026-13-01",
-                "q=" + "x" * 600):
+                "q=" + "x" * 600, "offset=99999999999999999999"):
         s, d, _ = req(f"/api/notes/{db}/rows?{bad}", u)
         ok(f"falscher Parameter {bad[:20]} -> 400", s == 400)
     s, d, _ = req(f"/api/notes/{db}/rows" + qs(filters=[{"pid": "r1", "op": "contains", "value": "1"}]), u)
