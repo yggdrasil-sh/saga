@@ -31,7 +31,7 @@
   <nav>
     <a class="brand" href="#"><img src="../icon.svg" alt="">Saga</a>
     <span class="sp"></span>
-    <a class="l hide" href="#new">Новое в 2.1</a>
+    <a class="l hide" href="#new">Новое в 2.3</a>
     <a class="l hide" href="#features">Возможности</a>
     <a class="l hide" href="#screenshots">Скриншоты</a>
     <a class="l hide" href="#apps">Приложения</a>
@@ -50,12 +50,39 @@
       <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">📖 Руководство (на английском)</a>
       <a class="btn" href="https://github.com/yggdrasil-sh/saga">★ Звезда на GitHub</a>
     </div>
-    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>iOS · macOS · Linux · Android</span><span>Русский · English · Deutsch · Español · ไทย</span></div>
+    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>Nextcloud</span><span>S3</span><span>iOS · macOS · Linux · Android</span><span>Русский · English · Deutsch · Español · ไทย</span></div>
     <div class="shot"><img src="../screenshots/dashboard.png" alt="Панель Saga (интерфейс на немецком)" width="2880" height="1800"></div>
   </header>
 </div>
 
-<section id="new">
+<section id="new" class="alt">
+  <div class="wrap">
+    <h2>Новое в Saga 2.3</h2>
+    <p class="sub">Быстрее с большими объёмами данных, федерация без ограничений – и резервные копии, о которых больше не нужно думать.</p>
+    <div class="stats">
+      <div class="stat"><b>0,6 с</b><small>вместо 12 с</small><span>до готовности базы данных на 2000 строк</span></div>
+      <div class="stat"><b>0,05 с</b><small>вместо 1,0 с</small><span>перезагрузка дерева страниц при 60 000 страниц и записей</span></div>
+      <div class="stat"><b>1,3 с</b><small>вместо 3,1 с</small><span>до появления дерева страниц при 25 000 заметок</span></div>
+      <div class="stat"><b>−89 %</b><small>2,5 → 0,28 ГБ</small><span>трафик приложения за 8 часов на переднем плане</span></div>
+    </div>
+    <p class="stat-note">Измерено воспроизводимым нагрузочным тестом <code>tools/perf</code> на тестовых данных.</p>
+    <div class="grid two">
+      <div class="card"><div class="ic" aria-hidden="true">⚡</div><h3>Заметно быстрее</h3><p>Ответы приходят сжатыми, дерево страниц синхронизирует только изменения, длинные таблицы показывают лишь видимые строки. Поиск, общий доступ и обратные ссылки сервер считает по заранее подготовленным данным – те же результаты, только быстрее.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">🌐</div><h3>Федерация полностью</h3><p>Находи людей с подключённых серверов по имени, общайся со сквозным шифрованием – лично, в группах и в чате страницы – и звони. Редактируйте общие страницы вместе, включая базы данных, подстраницы, загрузки и версии. Запросы на переписку и блокировка защищают от нежелательных контактов, а каждый сервер сам всё проверяет.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">🗄️</div><h3>Зашифрованные резервные копии</h3><p>Каждый день база данных, файлы и ключи уходят в S3, в папку или в Nextcloud/WebDAV – в зашифрованном виде с помощью age и твоего открытого ключа. Хранение 7/4/6, контрольные суммы, оповещения об ошибках, пробное восстановление и открытый формат, который можно расшифровать и без Saga.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">☁️</div><h3>Файлы Nextcloud и личные копии</h3><p>Подключи свой Nextcloud и вставляй изображения, файлы и папки блоками – кто видит страницу, видит и файл, даже без своей учётной записи Nextcloud. А каждый человек сохраняет своё рабочее пространство в свой Nextcloud со своим ключом.</p></div>
+    </div>
+    <h3 class="more-h">Полезно знать</h3>
+    <div class="steps">
+      <div class="card"><b>Обновление с 2.1</b><p><code>docker compose pull &amp;&amp; docker compose up -d</code> – перед этим Saga автоматически создаёт резервную копию. Версии 2.2 нет.</p></div>
+      <div class="card"><b>Конфиденциальность</b><p>Адресную книгу, чат и звонки можно отключить для каждого подключённого сервера, а каждый человек может отказаться от адресной книги.</p></div>
+      <div class="card"><b>Приложения</b><p>Приложения 2.1 продолжают работать. Для чатов между серверами обнови приложения.</p></div>
+    </div>
+    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 Все изменения и заметки к обновлению (на немецком)</a></p>
+  </div>
+</section>
+
+<section id="new-2-1">
   <div class="wrap">
     <h2>Новое в Saga 2.1</h2>
     <p class="sub">Более безопасный вход, лица вместо инициалов, звонки друг другу – и ИИ с именем, который помогает, когда ты его зовёшь.</p>
@@ -159,6 +186,7 @@
       <div class="card"><div class="ic">📱</div><h3>Нативные приложения</h3><p>iPhone, iPad, Mac, Linux и Android – редактируй страницы, базы данных и задачи нативно, вход по QR-коду.</p></div>
       <div class="card"><div class="ic">🌍</div><h3>Пять языков</h3><p>Веб-интерфейс, панель администратора и приложения на английском, немецком, испанском, русском и тайском – выбор для каждой учётной записи или прямо на странице входа. Руководство пока есть только на английском, немецком и испанском.</p></div>
       <div class="card"><div class="ic">🔒</div><h3>Безопасно по умолчанию</h3><p>Строгий CSP, ограничения запросов и попыток входа, хешированные ключи, выход со всех устройств при смене пароля.</p></div>
+      <div class="card"><div class="ic">🗄️</div><h3>Резервные копии и Nextcloud</h3><p>Ежедневные резервные копии, зашифрованные age, в S3, папку или Nextcloud – плюс личные копии для каждого и файлы Nextcloud прямо на страницах.</p></div>
     </div>
   </div>
 </section>
@@ -204,6 +232,7 @@
         <li><b>Сервисы</b> со значком, категорией и автоматическим назначением по префиксу группы</li>
         <li><b>LDAP/AD</b> с шаблонами для FreeIPA, Active Directory и OpenLDAP</li>
         <li><b>SSO/OIDC</b> для Keycloak, Authentik, Authelia, Zitadel, Entra ID …</li>
+        <li><b>Резервные копии</b> с шифрованием в S3, папку или Nextcloud – с пробным восстановлением</li>
       </ul>
     </div>
     <div class="shot"><img src="../screenshots/admin-dienste.png" alt="Панель администратора: сервисы (интерфейс на немецком)" loading="lazy"></div>

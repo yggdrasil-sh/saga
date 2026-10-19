@@ -31,7 +31,7 @@
   <nav>
     <a class="brand" href="#"><img src="../icon.svg" alt="">Saga</a>
     <span class="sp"></span>
-    <a class="l hide" href="#new">ใหม่ใน 2.1</a>
+    <a class="l hide" href="#new">ใหม่ใน 2.3</a>
     <a class="l hide" href="#features">ฟีเจอร์</a>
     <a class="l hide" href="#screenshots">ภาพหน้าจอ</a>
     <a class="l hide" href="#apps">แอป</a>
@@ -50,12 +50,39 @@
       <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md" hreflang="en">📖 คู่มือ (ภาษาอังกฤษ)</a>
       <a class="btn" href="https://github.com/yggdrasil-sh/saga">★ ให้ดาวบน GitHub</a>
     </div>
-    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>iOS · macOS · Linux · Android</span><span>ไทย · English · Deutsch · Español · Русский</span></div>
+    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>Nextcloud</span><span>S3</span><span>iOS · macOS · Linux · Android</span><span>ไทย · English · Deutsch · Español · Русский</span></div>
     <div class="shot"><img src="../screenshots/dashboard.png" alt="แดชบอร์ดของ Saga (อินเทอร์เฟซภาษาเยอรมัน)" width="2880" height="1800"></div>
   </header>
 </div>
 
-<section id="new">
+<section id="new" class="alt">
+  <div class="wrap">
+    <h2>ใหม่ใน Saga 2.3</h2>
+    <p class="sub">เร็วขึ้นแม้มีข้อมูลมาก เฟเดอเรชันครบทุกความสามารถ และการสำรองข้อมูลที่คุณไม่ต้องกังวลอีกต่อไป</p>
+    <div class="stats">
+      <div class="stat"><b>0.6 วินาที</b><small>แทน 12 วินาที</small><span>จนฐานข้อมูล 2,000 แถวพร้อมใช้งาน</span></div>
+      <div class="stat"><b>0.05 วินาที</b><small>แทน 1.0 วินาที</small><span>โหลดแผนผังหน้าใหม่เมื่อมีหน้าและรายการ 60,000 รายการ</span></div>
+      <div class="stat"><b>1.3 วินาที</b><small>แทน 3.1 วินาที</small><span>จนแผนผังหน้าแสดงครบเมื่อมีโน้ต 25,000 รายการ</span></div>
+      <div class="stat"><b>−89 %</b><small>2.5 → 0.28 GB</small><span>ข้อมูลของแอปตลอด 8 ชั่วโมงที่เปิดใช้งานอยู่</span></div>
+    </div>
+    <p class="stat-note">วัดด้วยการทดสอบโหลดที่ทำซ้ำได้ <code>tools/perf</code> บนข้อมูลทดสอบ</p>
+    <div class="grid two">
+      <div class="card"><div class="ic" aria-hidden="true">⚡</div><h3>เร็วขึ้นอย่างเห็นได้ชัด</h3><p>การตอบกลับถูกบีบอัด แผนผังหน้าซิงก์เฉพาะส่วนที่เปลี่ยน ตารางยาวแสดงเฉพาะแถวที่มองเห็น เซิร์ฟเวอร์คำนวณการค้นหา การแชร์ และลิงก์ย้อนกลับจากข้อมูลที่เตรียมไว้ ผลลัพธ์เหมือนเดิม แต่เร็วกว่า</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">🌐</div><h3>เฟเดอเรชันครบถ้วน</h3><p>ค้นหาผู้คนบนเซิร์ฟเวอร์ที่เชื่อมต่อด้วยชื่อ แชตแบบเข้ารหัสต้นทางถึงปลายทาง ทั้งแบบตัวต่อตัว ในกลุ่ม และในแชตของหน้า รวมถึงโทรหากัน แก้ไขหน้าที่แชร์ร่วมกันได้ทั้งฐานข้อมูล หน้าย่อย ไฟล์ที่อัปโหลด และเวอร์ชัน คำขอส่งข้อความและการบล็อกช่วยกันสิ่งที่ไม่ต้องการ และทุกเซิร์ฟเวอร์ตรวจสอบทุกอย่างด้วยตัวเอง</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">🗄️</div><h3>สำรองข้อมูลแบบเข้ารหัส</h3><p>ทุกวัน ฐานข้อมูล ไฟล์ และกุญแจจะถูกส่งไปยัง S3 โฟลเดอร์ หรือ Nextcloud/WebDAV โดยเข้ารหัสด้วย age และกุญแจสาธารณะของคุณ เก็บรักษาแบบ 7/4/6 มีผลรวมตรวจสอบ แจ้งเตือนเมื่อผิดพลาด ทดสอบการกู้คืน และใช้รูปแบบเปิดที่ถอดรหัสได้แม้ไม่มี Saga</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">☁️</div><h3>ไฟล์ Nextcloud และการสำรองข้อมูลส่วนตัว</h3><p>เชื่อมต่อ Nextcloud ของคุณเอง แล้วแทรกรูปภาพ ไฟล์ และโฟลเดอร์เป็นบล็อก ใครเห็นหน้าก็เห็นไฟล์ด้วย โดยไม่ต้องมีบัญชี Nextcloud ของตัวเอง และทุกคนสำรองพื้นที่ทำงานของตัวเองไปยัง Nextcloud ของตัวเองด้วยกุญแจของตัวเอง</p></div>
+    </div>
+    <h3 class="more-h">ควรรู้</h3>
+    <div class="steps">
+      <div class="card"><b>อัปเดตจาก 2.1</b><p><code>docker compose pull &amp;&amp; docker compose up -d</code> ก่อนหน้านั้น Saga จะสร้างข้อมูลสำรองให้อัตโนมัติ ไม่มีเวอร์ชัน 2.2</p></div>
+      <div class="card"><b>ความเป็นส่วนตัว</b><p>สมุดที่อยู่ แชต และการโทร ปิดได้แยกตามเซิร์ฟเวอร์ที่เชื่อมต่อ และทุกคนเลือกไม่ปรากฏในสมุดที่อยู่ได้</p></div>
+      <div class="card"><b>แอป</b><p>แอป 2.1 ยังใช้งานได้ สำหรับแชตข้ามเซิร์ฟเวอร์ให้อัปเดตแอป</p></div>
+    </div>
+    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 การเปลี่ยนแปลงทั้งหมดและหมายเหตุการอัปเดต (ภาษาเยอรมัน)</a></p>
+  </div>
+</section>
+
+<section id="new-2-1">
   <div class="wrap">
     <h2>ใหม่ใน Saga 2.1</h2>
     <p class="sub">เข้าสู่ระบบได้ปลอดภัยขึ้น เห็นใบหน้าแทนตัวอักษรย่อ โทรคุยกันได้ และมี AI ที่มีชื่อของตัวเองคอยช่วยเมื่อคุณเรียก</p>
@@ -159,6 +186,7 @@
       <div class="card"><div class="ic">📱</div><h3>แอปเนทีฟ</h3><p>iPhone, iPad, Mac, Linux และ Android แก้ไขหน้า ฐานข้อมูล และงานได้แบบเนทีฟ และเข้าสู่ระบบด้วย QR โค้ด</p></div>
       <div class="card"><div class="ic">🌍</div><h3>ห้าภาษา</h3><p>เว็บอินเทอร์เฟซ ส่วนผู้ดูแลระบบ และแอป มีภาษาอังกฤษ เยอรมัน สเปน รัสเซีย และไทย เลือกได้ต่อบัญชีหรือที่หน้าเข้าสู่ระบบ ส่วนคู่มือมีเฉพาะภาษาอังกฤษ เยอรมัน และสเปน</p></div>
       <div class="card"><div class="ic">🔒</div><h3>ปลอดภัยตั้งแต่ค่าเริ่มต้น</h3><p>CSP แบบเข้มงวด จำกัดจำนวนคำขอและการเข้าสู่ระบบ เก็บคีย์แบบแฮช และออกจากระบบทุกอุปกรณ์เมื่อเปลี่ยนรหัสผ่าน</p></div>
+      <div class="card"><div class="ic">🗄️</div><h3>สำรองข้อมูลและ Nextcloud</h3><p>สำรองข้อมูลรายวันที่เข้ารหัสด้วย age ไปยัง S3 โฟลเดอร์ หรือ Nextcloud พร้อมการสำรองข้อมูลส่วนตัวสำหรับทุกคน และไฟล์ Nextcloud ในหน้าโดยตรง</p></div>
     </div>
   </div>
 </section>
@@ -204,6 +232,7 @@
         <li><b>บริการ</b> พร้อมไอคอน หมวดหมู่ และการกำหนดอัตโนมัติตามคำนำหน้าชื่อกลุ่ม</li>
         <li><b>LDAP/AD</b> พร้อมเทมเพลตสำหรับ FreeIPA, Active Directory และ OpenLDAP</li>
         <li><b>SSO/OIDC</b> สำหรับ Keycloak, Authentik, Authelia, Zitadel, Entra ID …</li>
+        <li><b>สำรองข้อมูล</b> แบบเข้ารหัสไปยัง S3 โฟลเดอร์ หรือ Nextcloud พร้อมการทดสอบกู้คืน</li>
       </ul>
     </div>
     <div class="shot"><img src="../screenshots/admin-dienste.png" alt="ส่วนผู้ดูแลระบบ: บริการ (อินเทอร์เฟซภาษาเยอรมัน)" loading="lazy"></div>

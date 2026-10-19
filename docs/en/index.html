@@ -31,7 +31,7 @@
   <nav>
     <a class="brand" href="#"><img src="../icon.svg" alt="">Saga</a>
     <span class="sp"></span>
-    <a class="l hide" href="#new">New in 2.1</a>
+    <a class="l hide" href="#new">New in 2.3</a>
     <a class="l hide" href="#features">Features</a>
     <a class="l hide" href="#screenshots">Screenshots</a>
     <a class="l hide" href="#apps">Apps</a>
@@ -50,12 +50,39 @@
       <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/en/GUIDE.md">📖 Guide</a>
       <a class="btn" href="https://github.com/yggdrasil-sh/saga">★ Star on GitHub</a>
     </div>
-    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>iOS · macOS · Linux · Android</span><span>English · Deutsch · Español · Русский · ไทย</span></div>
+    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>Nextcloud</span><span>S3</span><span>iOS · macOS · Linux · Android</span><span>English · Deutsch · Español · Русский · ไทย</span></div>
     <div class="shot"><img src="../screenshots/dashboard.png" alt="Saga dashboard" width="2880" height="1800"></div>
   </header>
 </div>
 
-<section id="new">
+<section id="new" class="alt">
+  <div class="wrap">
+    <h2>New in Saga 2.3</h2>
+    <p class="sub">Faster with lots of data, federation without compromises – and backups you no longer have to think about.</p>
+    <div class="stats">
+      <div class="stat"><b>0.6 s</b><small>instead of 12 s</small><span>until a database with 2,000 rows is usable</span></div>
+      <div class="stat"><b>0.05 s</b><small>instead of 1.0 s</small><span>to reload the page tree with 60,000 pages and entries</span></div>
+      <div class="stat"><b>1.3 s</b><small>instead of 3.1 s</small><span>until the page tree is ready with 25,000 notes</span></div>
+      <div class="stat"><b>−89 %</b><small>2.5 → 0.28 GB</small><span>app data over 8 hours in the foreground</span></div>
+    </div>
+    <p class="stat-note">Measured with the repeatable load test <code>tools/perf</code> on test data.</p>
+    <div class="grid two">
+      <div class="card"><div class="ic" aria-hidden="true">⚡</div><h3>Noticeably faster</h3><p>Responses are compressed, the page tree only syncs changes, long tables only render the visible rows. The server computes search, shares and backlinks from prepared data – same results, just faster.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">🌐</div><h3>Federation, complete</h3><p>Find people on connected servers by name, chat end-to-end encrypted – directly, in groups and in page chats – and call each other. Edit shared pages together, including databases, subpages, uploads and versions. Message requests and blocking keep unwanted contact out, and every server checks everything itself.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">🗄️</div><h3>Encrypted backups</h3><p>Every day, database, files and keys go to S3, a folder or Nextcloud/WebDAV – encrypted with age and your public key. Retention 7/4/6, checksums, alerts on errors, test restores and an open format you can decrypt even without Saga.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">☁️</div><h3>Nextcloud files &amp; personal backups</h3><p>Link your own Nextcloud and insert images, files and folders as blocks – whoever can see the page sees the file too, without a Nextcloud account of their own. And everyone backs up their own workspace to their own Nextcloud, with their own key.</p></div>
+    </div>
+    <h3 class="more-h">Good to know</h3>
+    <div class="steps">
+      <div class="card"><b>Updating from 2.1</b><p><code>docker compose pull &amp;&amp; docker compose up -d</code> – Saga creates a backup automatically first. There is no version 2.2.</p></div>
+      <div class="card"><b>Privacy</b><p>Address book, chat and calls can be turned off per connected server, and everyone can opt out of the address book.</p></div>
+      <div class="card"><b>Apps</b><p>Apps 2.1 keep working. Update the apps for chats across servers.</p></div>
+    </div>
+    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 All changes and update notes</a></p>
+  </div>
+</section>
+
+<section id="new-2-1">
   <div class="wrap">
     <h2>New in Saga 2.1</h2>
     <p class="sub">Safer sign-in, faces instead of initials, talking to each other – and an AI with a name that helps when you call it.</p>
@@ -159,6 +186,7 @@
       <div class="card"><div class="ic">📱</div><h3>Native apps</h3><p>iPhone, iPad, Mac, Linux and Android – edit pages, databases and tasks natively, sign in via QR code.</p></div>
       <div class="card"><div class="ic">🌍</div><h3>Five languages</h3><p>Web UI, admin area and apps in English, German, Spanish, Russian and Thai – set per account or right on the sign-in page. Only the guide is in English, German and Spanish.</p></div>
       <div class="card"><div class="ic">🔒</div><h3>Secure by default</h3><p>Strict CSP, request and login limits, hashed keys, all devices signed out when the password changes.</p></div>
+      <div class="card"><div class="ic">🗄️</div><h3>Backups &amp; Nextcloud</h3><p>Daily backups encrypted with age to S3, a folder or Nextcloud – plus personal backups for everyone and Nextcloud files right in your pages.</p></div>
     </div>
   </div>
 </section>
@@ -204,6 +232,7 @@
         <li><b>Services</b> with icon, category and automatic assignment via the group prefix</li>
         <li><b>LDAP/AD</b> with templates for FreeIPA, Active Directory and OpenLDAP</li>
         <li><b>SSO/OIDC</b> for Keycloak, Authentik, Authelia, Zitadel, Entra ID …</li>
+        <li><b>Backups</b> encrypted to S3, a folder or Nextcloud – with test restores</li>
       </ul>
     </div>
     <div class="shot"><img src="../screenshots/admin-dienste.png" alt="Admin area: services" loading="lazy"></div>

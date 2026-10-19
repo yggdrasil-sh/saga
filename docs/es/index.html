@@ -31,7 +31,7 @@
   <nav>
     <a class="brand" href="#"><img src="../icon.svg" alt="">Saga</a>
     <span class="sp"></span>
-    <a class="l hide" href="#novedades">Novedades 2.1</a>
+    <a class="l hide" href="#novedades">Novedades 2.3</a>
     <a class="l hide" href="#funciones">Funciones</a>
     <a class="l hide" href="#capturas">Capturas</a>
     <a class="l hide" href="#apps">Apps</a>
@@ -50,12 +50,39 @@
       <a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/docs/es/GUIA.md">📖 Guía</a>
       <a class="btn" href="https://github.com/yggdrasil-sh/saga">★ En GitHub</a>
     </div>
-    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>iOS · macOS · Linux · Android</span><span>Español · English · Deutsch · Русский · ไทย</span></div>
+    <div class="badges"><span>Docker Compose</span><span>PostgreSQL</span><span>LDAP / Active Directory</span><span>SSO / OIDC</span><span>CalDAV</span><span>Immich</span><span>Nextcloud</span><span>S3</span><span>iOS · macOS · Linux · Android</span><span>Español · English · Deutsch · Русский · ไทย</span></div>
     <div class="shot"><img src="../screenshots/dashboard.png" alt="Panel de Saga" width="2880" height="1800"></div>
   </header>
 </div>
 
-<section id="novedades">
+<section id="novedades" class="alt">
+  <div class="wrap">
+    <h2>Novedades de Saga 2.3</h2>
+    <p class="sub">Más rápido con muchos datos, federación sin recortes – y copias de seguridad de las que ya no tienes que preocuparte.</p>
+    <div class="stats">
+      <div class="stat"><b>0,6 s</b><small>en lugar de 12 s</small><span>hasta poder usar una base de datos de 2.000 filas</span></div>
+      <div class="stat"><b>0,05 s</b><small>en lugar de 1,0 s</small><span>para recargar el árbol de páginas con 60.000 páginas y entradas</span></div>
+      <div class="stat"><b>1,3 s</b><small>en lugar de 3,1 s</small><span>hasta tener el árbol de páginas con 25.000 notas</span></div>
+      <div class="stat"><b>−89 %</b><small>2,5 → 0,28 GB</small><span>datos de la app en 8 horas en primer plano</span></div>
+    </div>
+    <p class="stat-note">Medido con la prueba de carga repetible <code>tools/perf</code> sobre datos de prueba.</p>
+    <div class="grid two">
+      <div class="card"><div class="ic" aria-hidden="true">⚡</div><h3>Notablemente más rápido</h3><p>Las respuestas llegan comprimidas, el árbol de páginas solo sincroniza los cambios y las tablas largas solo muestran las filas visibles. El servidor calcula la búsqueda, los accesos compartidos y los enlaces entrantes con datos preparados: mismos resultados, solo que más rápido.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">🌐</div><h3>Federación completa</h3><p>Encuentra por nombre a personas de servidores conectados, chatea con cifrado de extremo a extremo – en directo, en grupos y en el chat de página – y llamaos. Editad juntos páginas compartidas con bases de datos, subpáginas, subidas y versiones. Las solicitudes de mensaje y el bloqueo mantienen fuera lo no deseado, y cada servidor lo comprueba todo por sí mismo.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">🗄️</div><h3>Copias de seguridad cifradas</h3><p>Cada día, base de datos, archivos y claves a S3, a una carpeta o a Nextcloud/WebDAV, cifrados con age y tu clave pública. Retención 7/4/6, sumas de comprobación, avisos de errores, restauración de prueba y un formato abierto que se puede descifrar incluso sin Saga.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">☁️</div><h3>Archivos de Nextcloud y copias personales</h3><p>Vincula tu propio Nextcloud e inserta imágenes, archivos y carpetas como bloques: quien ve la página ve también el archivo, sin cuenta de Nextcloud propia. Y cada persona guarda su propio espacio en su propio Nextcloud, con su propia clave.</p></div>
+    </div>
+    <h3 class="more-h">Conviene saber</h3>
+    <div class="steps">
+      <div class="card"><b>Actualizar desde 2.1</b><p><code>docker compose pull &amp;&amp; docker compose up -d</code>: antes, Saga crea automáticamente una copia de seguridad. No existe la versión 2.2.</p></div>
+      <div class="card"><b>Privacidad</b><p>La libreta de direcciones, el chat y las llamadas se pueden desactivar por servidor conectado, y cada persona puede excluirse de la libreta.</p></div>
+      <div class="card"><b>Apps</b><p>Las apps 2.1 siguen funcionando. Para los chats entre servidores, actualiza las apps.</p></div>
+    </div>
+    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 Todos los cambios y notas de actualización</a></p>
+  </div>
+</section>
+
+<section id="novedades-2-1">
   <div class="wrap">
     <h2>Novedades de Saga 2.1</h2>
     <p class="sub">Inicio de sesión más seguro, caras en lugar de iniciales, hablar entre vosotros – y una IA con nombre que ayuda cuando la llamas.</p>
@@ -159,6 +186,7 @@
       <div class="card"><div class="ic">📱</div><h3>Apps nativas</h3><p>iPhone, iPad, Mac, Linux y Android – edita páginas, bases de datos y tareas de forma nativa e inicia sesión con un código QR.</p></div>
       <div class="card"><div class="ic">🌍</div><h3>Cinco idiomas</h3><p>Interfaz web, administración y apps en español, inglés, alemán, ruso y tailandés – configurable por cuenta y ya en la página de inicio de sesión. Solo la guía está en español, inglés y alemán.</p></div>
       <div class="card"><div class="ic">🔒</div><h3>Seguro de serie</h3><p>CSP estricta, límites de tamaño y de inicio de sesión, claves con hash y cierre de sesión en todos los dispositivos al cambiar la contraseña.</p></div>
+      <div class="card"><div class="ic">🗄️</div><h3>Copias y Nextcloud</h3><p>Copias diarias cifradas con age en S3, una carpeta o Nextcloud, además de copias personales para cada persona y archivos de Nextcloud directamente en las páginas.</p></div>
     </div>
   </div>
 </section>
@@ -204,6 +232,7 @@
         <li><b>Servicios</b> con icono, categoría y asignación automática por el prefijo de grupo</li>
         <li><b>LDAP/AD</b> con plantillas para FreeIPA, Active Directory y OpenLDAP</li>
         <li><b>SSO/OIDC</b> para Keycloak, Authentik, Authelia, Zitadel, Entra ID…</li>
+        <li><b>Copias de seguridad</b> cifradas en S3, una carpeta o Nextcloud, con restauración de prueba</li>
       </ul>
     </div>
     <div class="shot"><img src="../screenshots/admin-dienste.png" alt="Área de administración: servicios" loading="lazy"></div>
