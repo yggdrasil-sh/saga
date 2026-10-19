@@ -1129,8 +1129,8 @@ Dieselbe Anbindung kann auch die KI nutzen („Websuche erlauben“ unter KI-Ass
 2. das Volume `saga-data` (Bilder und Dateien der Seiten),
 3. die Datei `.env` (vor allem `SECRET_KEY`).
 
-Am einfachsten erledigt das Saga selbst: **verschlüsselte Backups auf Nextcloud oder WebDAV** (Admin-Bereich →
-Backups, siehe unten). Von Hand geht es so:
+Am einfachsten erledigt das Saga selbst: **verschlüsselte Backups nach S3, in einen Ordner oder auf Nextcloud/WebDAV**
+(Admin-Bereich → Backups, siehe unten). Von Hand geht es so:
 
 ```sh
 # Datenbank sichern
