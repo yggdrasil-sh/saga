@@ -2007,6 +2007,114 @@
     inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); if (onEnter) onEnter(); } });
   }
 
+  // --- Lange Tabellen/Listen (2.2): nur der sichtbare Ausschnitt steht im DOM -------------------------------------------
+  // Ab VLIST_MIN Eintraegen setzt vlist nur die Eintraege im Sichtfenster (+ Vorlauf VLIST_OVER px oben/unten) ein;
+  // Platzhalter halten die volle Scrollhoehe. Gemessene Hoehen merkt sich die Ansicht je Eintrag (hcache), unbekannte
+  // werden geschaetzt. Der Eintrag mit dem Fokus bleibt immer im DOM (laufende Eingaben gehen nicht verloren); Tab/Enter
+  // laufen ueber den Vorlauf weiter. Drucken: vorher alle Eintraege einsetzen, danach wieder nur den Ausschnitt.
+  // box: Eltern der Eintraege (tbody bzw. Liste), make(i) -> Knoten, key(i) -> Schluessel fuer hcache, pad(px) ->
+  // Platzhalter, end: fester letzter Knoten in box (oder null), after(nodes): nach dem Einsetzen neuer Knoten.
+  var VLIST_MIN = 150, VLIST_OVER = 900;
+  function vlist(box, n, make, key, pad, end, hcache, after) {
+    var H = new Array(n), nodes = new Map(), pads = [], raf = 0, all = false, clips = null, pin = -1, est = hcache.est || 38;
+    for (var i = 0; i < n; i++) H[i] = hcache.get(key(i)) || 0;
+    function off() { var o = new Array(n + 1); o[0] = 0; for (var k = 0; k < n; k++) o[k + 1] = o[k] + (H[k] || est); return o; }
+    function clipRange() {                       // sichtbarer Bereich (Fenster geschnitten mit scrollenden Vorfahren)
+      var c0 = 0, c1 = window.innerHeight || document.documentElement.clientHeight;
+      if (!clips) {
+        clips = [];
+        for (var x = box.parentElement; x && x !== document.body && x !== document.documentElement; x = x.parentElement) {
+          var cs = getComputedStyle(x); if (cs.overflowY !== 'visible') clips.push(x);
+        }
+      }
+      clips.forEach(function (x) { var r = x.getBoundingClientRect(); if (r.height) { c0 = Math.max(c0, r.top); c1 = Math.min(c1, r.bottom); } });
+      return [c0, c1];
+    }
+    function focusedIdx() {
+      var a = document.activeElement, hit = -1;
+      if (!a || !box.contains(a)) return -1;
+      nodes.forEach(function (nd, k) { if (nd.contains(a)) hit = k; });
+      return hit;
+    }
+    function insert(k, prev) {
+      var nd = make(k); nodes.set(k, nd);
+      box.insertBefore(nd, prev ? prev.nextSibling : box.firstChild);
+      return nd;
+    }
+    var seen = false, tries = 0;
+    function update() {
+      raf = 0;
+      if (!box.isConnected) {                    // noch nicht eingehaengt (eingebettet): spaeter; schon entfernt: abmelden
+        if (seen) detach(); else if (tries++ < 300) schedule();
+        return;
+      }
+      seen = true;
+      if (all) return;
+      var o = off(), top = box.getBoundingClientRect().top, c = clipRange(), y0, y1;
+      if (c[1] <= c[0]) { y0 = 0; y1 = 600; } else { y0 = c[0] - top - VLIST_OVER; y1 = c[1] - top + VLIST_OVER; }
+      var a = 0; while (a < n - 1 && o[a + 1] <= y0) a++;
+      var b = a; while (b < n - 1 && o[b + 1] < y1) b++;
+      var want = {}, f = focusedIdx(), W = [];
+      for (var k = a; k <= b && n; k++) want[k] = 1;
+      if (f >= 0) want[f] = 1;
+      if (pin >= 0 && pin < n) want[pin] = 1;
+      pads.forEach(function (p) { p.remove(); }); pads = [];
+      nodes.forEach(function (nd, k) { if (!want[k]) { nd.remove(); nodes.delete(k); } });
+      Object.keys(want).forEach(function (k) { W.push(+k); }); W.sort(function (x, y) { return x - y; });
+      var prev = null, fresh = [];
+      W.forEach(function (k) { var nd = nodes.get(k); if (!nd) { nd = insert(k, prev); fresh.push(nd); } prev = nd; });
+      if (fresh.length && after) after(fresh);
+      var changed = measure(W);
+      place(W);
+      if (changed) schedule();                   // geschaetzte Hoehen korrigiert: Ausschnitt noch einmal pruefen
+    }
+    function measure(W) {
+      var changed = false, sum = 0, cnt = 0;
+      W.forEach(function (k) {
+        var hh = nodes.get(k).offsetHeight; if (!hh) return;
+        sum += hh; cnt++;
+        if (hh !== H[k]) { H[k] = hh; hcache.set(key(k), hh); changed = true; }
+      });
+      if (cnt && !hcache.est) { est = hcache.est = Math.round(sum / cnt); changed = true; }
+      return changed;
+    }
+    function place(W) {                          // Platzhalter vor, zwischen und nach den eingesetzten Eintraegen
+      var o = off();
+      function gap(px, ref) { if (px <= 0) return; var p = pad(px); box.insertBefore(p, ref); pads.push(p); }
+      if (!W.length) { gap(o[n], end); return; }
+      gap(o[W[0]], nodes.get(W[0]));
+      for (var k = 0; k < W.length - 1; k++) if (W[k + 1] > W[k] + 1) gap(o[W[k + 1]] - o[W[k] + 1], nodes.get(W[k + 1]));
+      gap(o[n] - o[W[W.length - 1] + 1], end);
+    }
+    function schedule() { if (!raf) raf = requestAnimationFrame(update); }
+    function renderAll() {                       // Drucken: alles einsetzen
+      all = true; pads.forEach(function (p) { p.remove(); }); pads = [];
+      var prev = null, fresh = [];
+      for (var k = 0; k < n; k++) { var nd = nodes.get(k); if (!nd) { nd = insert(k, prev); fresh.push(nd); } prev = nd; }
+      if (fresh.length && after) after(fresh);
+    }
+    function afterPrint() { all = false; update(); }
+    var ro = window.ResizeObserver ? new ResizeObserver(schedule) : null;     // sichtbar geworden, Spaltenbreite ...
+    function detach() {
+      document.removeEventListener('scroll', schedule, true); window.removeEventListener('resize', schedule);
+      window.removeEventListener('beforeprint', renderAll); window.removeEventListener('afterprint', afterPrint);
+      if (ro) ro.disconnect();
+    }
+    document.addEventListener('scroll', schedule, { capture: true, passive: true }); window.addEventListener('resize', schedule);
+    window.addEventListener('beforeprint', renderAll); window.addEventListener('afterprint', afterPrint);
+    if (ro) ro.observe(box);
+    return {
+      update: update, schedule: schedule, renderAll: renderAll,
+      node: function (k) { return nodes.get(k) || null; },
+      reveal: function (k) {                     // Eintrag k einsetzen und ins Bild holen -> Knoten
+        if (k < 0 || k >= n) return null;
+        pin = k; update(); var nd = nodes.get(k);
+        if (nd && nd.scrollIntoView) nd.scrollIntoView({ block: 'nearest' });
+        update(); pin = -1; return nodes.get(k) || null;
+      }
+    };
+  }
+
   // --- Datenbank-Ansicht als Baustein: jede Instanz hat ihren EIGENEN Zustand (Seite, eingebettet, Zeilen-Eigenschaften)
   function makeDbView(BOX, OPTS) {
     OPTS = OPTS || {};
@@ -2364,7 +2472,7 @@
 
     // Enter im Namen der letzten Zeile legt die naechste an. Was bis dahin weitergetippt wird, sammelt typeAhead
     // und landet danach im neuen Namen (sonst ging es verloren bzw. haengte sich an die alte Zeile).
-    var typeAhead = null;
+    var typeAhead = null, tableV = null;
     function newRow(props) {
       if (ro()) return Promise.resolve();
       if (props instanceof Event) props = null;
@@ -2372,6 +2480,9 @@
         DB.rows.push({ id: d.id, title: '', icon: '', props: props || {}, updated: d.updated, created: d.updated });
         renderDb();
         var inp = BOX.querySelector('tr[data-id="' + d.id + '"] .db-title-in');
+        if (!inp && tableV) {                // lange Tabelle: neue Zeile ausserhalb des Ausschnitts -> einsetzen und hinscrollen
+          var nd = tableV.reveal(tableV.indexOfRow(d.id)); inp = nd && nd.querySelector('.db-title-in');
+        }
         if (inp) {
           inp.focus();
           if (typeAhead) { inp.value = typeAhead; inp.setSelectionRange(inp.value.length, inp.value.length); growTitle(inp); }
@@ -2409,12 +2520,12 @@
     }
 
     function renderDb() {
-      var box = BOX; box.textContent = ''; box.classList.toggle('db-ro', ro());
+      var box = BOX; box.textContent = ''; box.classList.toggle('db-ro', ro()); tableV = null; renderGen++;
       if (OPTS.embedded) box.appendChild(embedHead());
       box.appendChild(viewBar());
       var vt = curView().type;
       if (vt === 'board') { box.appendChild(renderBoard()); return; }
-      if (vt === 'list') { box.appendChild(renderList()); return; }
+      if (vt === 'list') { var L = renderList(); box.appendChild(L); if (L.vlist) L.vlist.update(); return; }
       if (vt === 'gallery') { box.appendChild(renderGallery()); return; }
       if (vt === 'calendar') { box.appendChild(renderCalendar()); return; }
       var scroll = el('div', 'db-scroll'), tb = el('table', 'db-table'), thead = el('thead'), hr = el('tr');
@@ -2476,12 +2587,15 @@
       var add = el('th', 'db-th db-th-add'); var ab = el('button', 'db-add-col', '+'); ab.type = 'button'; ab.title = T('Spalte hinzufügen');
       ab.setAttribute('aria-label', T('Spalte hinzufügen')); ab.addEventListener('click', function () { addColumn(ab); }); if (!locked() && !ro()) add.appendChild(ab); hr.appendChild(add);
       thead.appendChild(hr); tb.appendChild(thead);
-      var body = el('tbody');
-      eachGrouped(sortedRows(), function (o, n, g) {
+      var body = el('tbody'), items = [], V = null;
+      // Eintraege (Gruppenkopf | Zeile) erst sammeln: kurze Tabellen setzen alle ein, lange nur den Ausschnitt (vlist)
+      eachGrouped(sortedRows(), function (o, n, g) { items.push({ o: o, n: n, g: g }); }, function (r) { items.push({ r: r }); });
+      function mkHead(it) {
         var gr = el('tr', 'db-grow'), gd = el('td'); gd.colSpan = vis.length + 2;
-        gd.appendChild(o ? optChip(o) : el('span', 'board-none', T('Ohne {name}', { name: g.name }))); gd.appendChild(el('span', 'board-n', String(n)));
-        gr.appendChild(gd); body.appendChild(gr);
-      }, function (r) {
+        gd.appendChild(it.o ? optChip(it.o) : el('span', 'board-none', T('Ohne {name}', { name: it.g.name }))); gd.appendChild(el('span', 'board-n', String(it.n)));
+        gr.appendChild(gd); return gr;
+      }
+      function mkRow(r, idx) {
         var tr = tint(el('tr', 'db-row'), r); tr.dataset.id = r.id;
         var td = el('td', 'db-cell db-title'), ti = el('textarea', 'db-title-in'); ti.rows = 1; ti.maxLength = 200; ti.value = r.title; ti.placeholder = T('Unbenannt');   // Textfeld: lange Namen brechen um
         ti.readOnly = ro();
@@ -2502,7 +2616,9 @@
           e.preventDefault();
           if (typeAhead !== null) return;                       // naechste Zeile entsteht gerade
           commitTitle();
-          var rows = [].slice.call(body.querySelectorAll('tr.db-row')), nx = rows[rows.indexOf(tr) + 1];
+          var nx;
+          if (V) { var j = idx + 1; while (j < items.length && !items[j].r) j++; nx = V.reveal(j); }     // naechste Zeile, auch ausserhalb des Ausschnitts
+          else { var rows = [].slice.call(body.querySelectorAll('tr.db-row')); nx = rows[rows.indexOf(tr) + 1]; }
           var ni = nx && nx.querySelector('.db-title-in');
           if (ni) { ni.focus(); ni.setSelectionRange(ni.value.length, ni.value.length); return; }
           if (!ti.value.trim()) return;                          // leere letzte Zeile: einfach stehen bleiben
@@ -2527,13 +2643,25 @@
           tr.appendChild(c);
         });
         tr.appendChild(el('td', 'db-cell db-cell-pad'));
-        body.appendChild(tr);
-      });
+        return tr;
+      }
+      function mkItem(i) { var it = items[i]; return it.r ? mkRow(it.r, i) : mkHead(it); }
+      if (items.length >= VLIST_MIN) {
+        V = vlist(body, items.length, mkItem, function (i) { var it = items[i]; return tv.id + ':' + (it.r ? it.r.id : 'g:' + (it.o ? it.o.id : '')); },
+          function (px) {
+            var p = el('tr', 'db-vpad'), d = el('td'); d.colSpan = vis.length + 2; d.style.height = px + 'px'; d.style.padding = '0'; d.style.border = '0';
+            p.setAttribute('aria-hidden', 'true'); p.appendChild(d); return p;
+          }, null, DB.vh || (DB.vh = new Map()), function (nodes) { nodes.forEach(function (n) { growTitles(n); }); });
+        V.indexOfRow = function (id) { for (var i = 0; i < items.length; i++) if (items[i].r && items[i].r.id === id) return i; return -1; };
+      } else items.forEach(function (it, i) { body.appendChild(mkItem(i)); });
+      tableV = V;
+      tb.dataset.rows = String(items.filter(function (it) { return it.r; }).length);   // Anzahl Zeilen (auch ausserhalb des Ausschnitts)
       tb.appendChild(body);
       var tf = el('tfoot'), fr = el('tr'), fd = el('td'); fd.colSpan = vis.length + 2;
       var nr = el('button', 'db-new-row', T('+ Neu')); nr.type = 'button'; nr.addEventListener('click', newRow); nr.hidden = ro();
       fd.appendChild(nr); fr.appendChild(fd); tf.appendChild(fr); tf.appendChild(calcRow(vis, tv)); tb.appendChild(tf);
       scroll.appendChild(tb); box.appendChild(scroll); scrollHints(scroll);
+      if (V) V.update();
     }
     // --- Fusszeile: Berechnung je Spalte (Anzahl, Summe, Durchschnitt, % angehakt ...) - pro Ansicht gespeichert
     var CALC_NAMES = { count: T('Anzahl'), filled: T('Ausgefüllt'), empty: T('Leer'), pct_filled: T('% ausgefüllt'), unique: T('Verschiedene'),
@@ -2978,7 +3106,7 @@
         var c = el('div', 'board-col'), h = el('div', 'board-head');
         h.appendChild(col.o ? optChip(col.o) : el('span', 'board-none', T('Ohne {name}', { name: g.name }))); h.appendChild(el('span', 'board-n', String(col.rows.length)));
         c.appendChild(h);
-        var list = el('div', 'board-cards'); col.rows.forEach(function (r) { list.appendChild(boardCard(r, g)); }); c.appendChild(list);
+        var list = el('div', 'board-cards'); chunked(col.rows, function (r) { return boardCard(r, g); }, list, null, 60); c.appendChild(list);
         var add = el('button', 'board-add', T('+ Neu')); add.type = 'button';
         add.addEventListener('click', function () { var pr = {}; if (col.o) pr[g.id] = col.o.id; newRow(pr); });
         c.appendChild(add);
@@ -3024,25 +3152,38 @@
     }
     function openRow(r) { return function () { openRowUI(r.id); }; }
     function renderList() {
-      var wrap = el('div', 'dbl');
-      eachGrouped(sortedRows(), function (o, n, g) {
-        var h = el('div', 'dbl-group'); h.appendChild(o ? optChip(o) : el('span', 'board-none', T('Ohne {name}', { name: g.name }))); h.appendChild(el('span', 'board-n', String(n)));
-        wrap.appendChild(h);
-      }, function (r) {
+      var wrap = el('div', 'dbl'), items = [], vp = visibleProps();
+      eachGrouped(sortedRows(), function (o, n, g) { items.push({ o: o, n: n, g: g }); }, function (r) { items.push({ r: r }); });
+      function mk(i) {
+        var it = items[i], r = it.r;
+        if (!r) {
+          var h = el('div', 'dbl-group'); h.appendChild(it.o ? optChip(it.o) : el('span', 'board-none', T('Ohne {name}', { name: it.g.name }))); h.appendChild(el('span', 'board-n', String(it.n)));
+          return h;
+        }
         var line = tint(el('div', 'dbl-row'), r); line.tabIndex = 0; line.setAttribute('role', 'button');
         var left = el('div', 'dbl-left'); left.appendChild(icoNode(r.icon, '📄', 'dbl-ic')); left.appendChild(el('span', 'dbl-title', r.title || T('Unbenannt')));
         var right = el('div', 'dbl-props');
-        visibleProps().forEach(function (p) { var n = valueDisplay(p, r); if (n) right.appendChild(n); });
+        vp.forEach(function (p) { var n = valueDisplay(p, r); if (n) right.appendChild(n); });
         line.appendChild(left); line.appendChild(right);
         line.addEventListener('click', openRow(r)); line.addEventListener('keydown', function (e) { if (e.key === 'Enter') openRowUI(r.id); });
-        wrap.appendChild(line);
-      });
-      var nb = el('button', 'db-new-row', T('+ Neu')); nb.type = 'button'; nb.addEventListener('click', function () { newRow(); }); wrap.appendChild(nb);
+        return line;
+      }
+      var nb = el('button', 'db-new-row', T('+ Neu')); nb.type = 'button'; nb.addEventListener('click', function () { newRow(); });
+      if (items.length >= VLIST_MIN) {               // lange Liste: nur der Ausschnitt (wie die Tabelle)
+        var tv = curView(), V = vlist(wrap, items.length, mk, function (i) { var it = items[i]; return 'l:' + tv.id + ':' + (it.r ? it.r.id : 'g:' + (it.o ? it.o.id : '')); },
+          function (px) { var p = el('div', 'dbl-vpad'); p.style.height = px + 'px'; p.style.flex = 'none'; p.setAttribute('aria-hidden', 'true'); return p; },
+          nb, DB.vh || (DB.vh = new Map()), null);
+        wrap.appendChild(nb);
+        wrap.vlist = V;                              // renderDb setzt den Ausschnitt nach dem Einhaengen ein
+      } else items.forEach(function (it, i) { wrap.appendChild(mk(i)); });
+      if (!nb.parentNode) wrap.appendChild(nb);
+      wrap.dataset.rows = String(items.filter(function (it) { return it.r; }).length);
       return wrap;
     }
     function renderGallery() {
       var g = el('div', 'dbg' + (curView().card ? ' dbg-' + curView().card : ''));
-      sortedRows().forEach(function (r) {
+      var nb = el('button', 'dbg-new', T('+ Neu')); nb.type = 'button'; nb.addEventListener('click', function () { newRow(); }); g.appendChild(nb);
+      chunked(sortedRows(), function (r) {
         var c = tint(el('div', 'dbg-card'), r); c.tabIndex = 0; c.setAttribute('role', 'button');
         var pv = el('div', 'dbg-prev');
         if (r.preview) { var im = el('img'); im.loading = 'lazy'; im.decoding = 'async'; im.src = thumb(r.preview, 640); im.alt = ''; pv.appendChild(im); }
@@ -3054,10 +3195,24 @@
         visibleProps().forEach(function (p) { var n = valueDisplay(p, r); if (n) body.appendChild(n); });
         c.appendChild(body);
         c.addEventListener('click', openRow(r)); c.addEventListener('keydown', function (e) { if (e.key === 'Enter') openRowUI(r.id); });
-        g.appendChild(c);
-      });
-      var nb = el('button', 'dbg-new', T('+ Neu')); nb.type = 'button'; nb.addEventListener('click', function () { newRow(); }); g.appendChild(nb);
+        return c;
+      }, g, nb, 120);
       return g;
+    }
+    // Viele Karten (Galerie, Board): die ersten sofort, den Rest in kurzen Haeppchen danach (Seite bleibt bedienbar) -
+    // am Ende steht genau derselbe DOM wie frueher. Neu gerendert (renderDb) -> laufende Haeppchen hoeren auf.
+    var renderGen = 0;
+    function chunked(list, make, parent, before, first) {
+      var gen = renderGen, i = Math.min(list.length, first);
+      for (var k = 0; k < i; k++) parent.insertBefore(make(list[k]), before);
+      function step() {
+        if (gen !== renderGen) return;
+        var t0 = Date.now(), frag = document.createDocumentFragment();
+        while (i < list.length && Date.now() - t0 < 12) frag.appendChild(make(list[i++]));
+        parent.insertBefore(frag, before);
+        if (i < list.length) setTimeout(step, 0); else parent.dataset.done = '1';
+      }
+      if (i < list.length) setTimeout(step, 0); else parent.dataset.done = '1';
     }
     // Kopf einer eingebetteten Datenbank: Titel fuehrt zur vollen Datenbank-Seite
     // Kalender: Monatsraster, Eintraege am Tag ihres Datums, Ziehen aendert das Datum

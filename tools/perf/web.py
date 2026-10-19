@@ -76,7 +76,10 @@ def main():
         p.goto(a.base + "/notes", wait_until="commit")
         p.wait_for_selector("#pg-tree li.pg-node", timeout=300_000)
         t_tree = (time.perf_counter() - t0) * 1000
-        p.wait_for_load_state("networkidle", timeout=300_000)
+        try:
+            p.wait_for_load_state("networkidle", timeout=120_000)
+        except Exception:                             # Live-Verbindung haelt das Netz ggf. dauerhaft offen
+            pass
         rec("Seiten: bis Baum sichtbar", t_tree, **lt(p))
         rec("Seiten: bis Netz ruhig", (time.perf_counter() - t0) * 1000, requests=len(reqs), kb=round(sum(s for _, s in reqs) / 1024),
             **metrics(cdp))
@@ -109,35 +112,49 @@ def main():
         br.close()
 
 
+# Zeilen der Tabelle: virtualisiert (2.2) steht die Gesamtzahl in table.db-table[data-rows], sonst alle <tr> im DOM
+ROWS = "(function () { var t = document.querySelector('table.db-table'); if (!t) return 0; return t.dataset.rows != null ? +t.dataset.rows : t.querySelectorAll('tr.db-row').length; })()"
+
+
 def db_steps(p, cdp, info, reqs, to):
-    """Grosse Datenbank: oeffnen (Tabelle: alle Zeilen im DOM), Suchfeld, Ansichten, '+ Neu'"""
+    """Grosse Datenbank: oeffnen (erste Zeile sichtbar / Tabelle fertig), Suchfeld, Ansichten, ans Ende scrollen, '+ Neu'"""
     db_rows = info["db_big_rows"]
     if True:
         reqs.clear()
         t0 = time.perf_counter()
         p.evaluate(f"location.hash = '#{info['db_big']}'")
-        p.wait_for_function(f"() => document.querySelectorAll('tr.db-row').length >= {db_rows}", timeout=to, polling=100)
+        p.wait_for_function("() => !!document.querySelector('tr.db-row')", timeout=to, polling=50)
+        t_first = (time.perf_counter() - t0) * 1000
+        p.wait_for_function(f"() => {ROWS} >= {db_rows}", timeout=to, polling=100)
         rec(f"DB oeffnen ({db_rows} Zeilen) bis alle Zeilen da", (time.perf_counter() - t0) * 1000,
-            requests=len(reqs), kb=round(sum(s for _, s in reqs) / 1024), **lt(p), **metrics(cdp))
+            requests=len(reqs), kb=round(sum(s for _, s in reqs) / 1024), erste_zeile_ms=round(t_first), **lt(p), **metrics(cdp))
+        # bedienbar: ein Klick in den Namen der ersten Zeile kommt an (Fokus) - misst blockierende Arbeit danach
+        rec("DB: danach bedienbar (Fokus im Namen)", timed(p, lambda: p.locator("tr.db-row .db-title-in").first.click(),
+            "() => document.activeElement && document.activeElement.classList.contains('db-title-in')", to), **lt(p))
         # Suchfeld der Datenbank (clientseitiges Filtern, 200 ms Verzoegerung eingeschlossen)
         p.locator("input.db-search").first.click()
         rec("DB: Suchfeld 'server' bis gefiltert", timed(p, lambda: p.keyboard.type("server"),
-            f"() => document.querySelectorAll('tr.db-row').length < {db_rows}", to), **lt(p))
+            f"() => {ROWS} < {db_rows}", to), **lt(p))
         p.locator("input.db-search").first.fill("")
-        p.wait_for_function(f"() => document.querySelectorAll('tr.db-row').length >= {db_rows}", timeout=to, polling=100)
+        p.wait_for_function(f"() => {ROWS} >= {db_rows}", timeout=to, polling=100)
         lt(p)
+        # ans Ende scrollen: letzte Zeile sichtbar (virtualisiert: wird erst dann eingesetzt)
+        rec("DB: ans Ende scrollen bis letzte Zeile da", timed(p, lambda: p.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)"),
+            "() => { var r = document.querySelectorAll('tr.db-row'), l = r[r.length - 1], f = document.querySelector('.db-table tfoot');"
+            " return l && f && f.getBoundingClientRect().top - l.getBoundingClientRect().bottom < 5; }", to), **lt(p), **metrics(cdp))
+        p.evaluate("window.scrollTo(0, 0)")
         # Ansicht "Offen" (Filter + Sortierung), Board, zurueck
-        for label, cond in (("Offen", "() => { var t = document.querySelector('.db-tab.on'); return t && t.textContent.indexOf('Offen') >= 0 && document.querySelectorAll('tr.db-row').length > 0; }"),
+        for label, cond in (("Offen", f"() => {{ var t = document.querySelector('.db-tab.on'); return t && t.textContent.indexOf('Offen') >= 0 && {ROWS} > 0; }}"),
                             ("Board", "() => !!document.querySelector('.board-col, .db-board, .board')"),
                             ("Kalender", "() => { var t = document.querySelector('.db-tab.on'); return t && t.textContent.indexOf('Kalender') >= 0; }"),
-                            ("Tabelle", f"() => document.querySelectorAll('tr.db-row').length >= {db_rows}")):
+                            ("Tabelle", f"() => {ROWS} >= {db_rows}")):
             tab = p.locator(".db-tab", has_text=label).first
             rec(f"DB: Ansicht '{label}'", timed(p, lambda: tab.click(), cond, to), **lt(p))
         # Neuer Eintrag (+ Neu): POST + loadList + Zeile im DOM
-        n0 = p.evaluate("document.querySelectorAll('tr.db-row').length")
+        n0 = p.evaluate(ROWS)
         reqs.clear()
         rec("DB: '+ Neu' bis neue Zeile", timed(p, lambda: p.locator("button.db-new-row").first.click(),
-                                                f"() => document.querySelectorAll('tr.db-row').length > {n0}", to),
+                                                f"() => {ROWS} > {n0}", to),
             requests=len(reqs), kb=round(sum(s for _, s in reqs) / 1024), **lt(p))
         p.wait_for_timeout(1500)
 

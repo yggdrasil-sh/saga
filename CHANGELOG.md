@@ -82,6 +82,31 @@ Gleiches Verhalten, gleiche Ergebnisse – nur schneller; API unverändert, `MIN
   vom Typ `numeric` ist (sonst kein Durchlauf über jeden Wert großer Listen).
 - `tools/perf`: wartet nach dem Erzeugen der Testdaten auf den Abgleich; `explain.py` zeigt zusätzlich die neuen Abfragen.
 
+### Schneller (lange Datenbanken: Web und `/rows`)
+
+Gleiches Verhalten, nur schneller; ältere Apps funktionieren unverändert, `MIN_APP` unverändert.
+
+- **Lange Tabellen und Listen im Web** (ab 150 Einträgen): Nur die sichtbaren Zeilen (plus Vorlauf) stehen im DOM,
+  Platzhalter halten die volle Scrollhöhe. Summenzeile, Anzahl, Gruppen, Suche, Sortierung, Filter, bedingte Farben,
+  Spaltenbreiten, „Öffnen“/Seitenansicht mit Vor/Zurück rechnen weiter über **alle** Zeilen. Tastatur: Enter springt
+  auch über den Ausschnitt hinaus in die nächste Zeile; die Zeile mit dem Fokus bleibt beim Wegscrollen erhalten
+  (keine verlorenen Eingaben); „+ Neu“ holt die neue Zeile ins Bild. Drucken setzt vorher alle Zeilen ein.
+  WERTE_FOLGEN
+  Kurze Tabellen (unter 150 Einträgen) entstehen genau wie bisher. Einschränkung: Die Suche des Browsers (Strg+F) findet
+  in langen Tabellen nur Zeilen im Ausschnitt – dafür gibt es das Suchfeld der Datenbank.
+- **Galerie und Board** setzen die ersten Karten sofort ein, den Rest in kurzen Häppchen danach – die Seite bleibt
+  bedienbar, am Ende steht dieselbe Ansicht wie bisher.
+- **`/rows` mit Ansicht, Filter, Sortierung und Seiten (opt-in, für Apps/Widgets):** `GET /api/notes/{id}/rows` und
+  `GET /api/app/rows/{id}` verstehen `view`, `filters`, `sorts`, `q`, `group`, `limit`, `offset`, `tz`, `today` und
+  liefern dann nur den Ausschnitt samt `total`, `matched` und `groups`. Ohne diese Parameter ist die Antwort
+  unverändert. Der Server rechnet dabei exakt wie das Web (gleiche Vergleiche, Leeres unten, Zeichencode-Sortierung,
+  „Berechnet“, Relationen-Titel nur, wenn der Betrachter sie sehen darf) – geprüft mit Testvektoren, die aus dem
+  Web-Code selbst erzeugt werden (`tools/dbquery_vectors.mjs`). Nur Blättern ohne Filter läuft direkt in SQL. Vertrag:
+  `docs/APP-API.md`. Das Web lädt weiterhin alle Zeilen (Summen, Gruppen, Suche beim Tippen, Kalender, Relationen und
+  die Seitenansicht brauchen sie).
+- `tools/perf/web.py`: misst zusätzlich „erste Zeile sichtbar“, „danach bedienbar“ und „ans Ende scrollen“; zählt
+  Zeilen virtualisierter Tabellen über `data-rows`. `tests/browser_db.js`: Browser-Tests für lange Datenbanken.
+
 ### Lastmessung (nur Werkzeuge, keine Änderung an Saga selbst)
 
 - `tools/perf/`: wiederholbare Lastmessung für Test-Stacks. `gen.py` erzeugt realistische Testdaten in drei Stufen
