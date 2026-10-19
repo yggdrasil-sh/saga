@@ -23,6 +23,7 @@ Funktionen nur, wenn beide Server die Faehigkeit melden (db subpages upload vers
   alle Server mit Freigaben dort -> "Mit mir geteilt" neu laden.
 Aeltere Gegenstellen (2.1/2.2) bleiben bei Protokoll 1 (Lesen, Bearbeiten von Titel/Inhalt, Kommentare, Dateien lesen)."""
 import json
+import os
 import re
 import threading
 import time
@@ -198,7 +199,6 @@ def _export_owner(inp, nid, sub):
     path = getattr(resp, "path", None)
     try:
         if path:
-            import os
             if os.path.getsize(path) > EXPORT_MAX:
                 return F._signed(inp, 413, {"error": t("Export zu groß")})
             with open(path, "rb") as fh:
@@ -208,7 +208,6 @@ def _export_owner(inp, nid, sub):
     finally:
         if path:
             try:
-                import os
                 os.remove(path)
             except OSError:
                 pass
@@ -631,7 +630,6 @@ def copy(uid, url, note):
     m = re.fullmatch(r"/files/([0-9a-f]{24})", url)
     if not m:
         return _bad(t("ungültige Angabe"))
-    import os
     with _db() as c:
         r = c.execute("SELECT name, uid, is_image FROM file WHERE id=?", (m.group(1),)).fetchone()
         okv = bool(r) and (r[1] == uid or files._file_visible(c, uid, r[1], m.group(1)))

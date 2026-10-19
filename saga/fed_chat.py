@@ -1578,8 +1578,14 @@ def upgrade_page_chat(c, ch):
 def _schedule_resolve(c, nid):
     if nid in _res["pending"] or time.monotonic() - _res["last"].get(nid, -1e9) < 30:
         return
+    c.after_commit(lambda: _resolve_bg(nid))         # (ohne Commit, z. B. reine Lese-Verbindung: nichts vormerken)
+
+
+def _resolve_bg(nid):
+    if nid in _res["pending"]:
+        return
     _res["pending"].add(nid)
-    c.after_commit(lambda: _submit(_resolve_run, nid))
+    _submit(_resolve_run, nid)
 
 
 def _resolve_run(nid):
