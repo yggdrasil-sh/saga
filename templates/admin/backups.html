@@ -191,7 +191,7 @@
         <option value="daily"{% if bk.ub.max_schedule == 'daily' %} selected{% endif %}>{{ _("täglich") }}</option>
         <option value="weekly"{% if bk.ub.max_schedule == 'weekly' %} selected{% endif %}>{{ _("wöchentlich") }}</option>
       </select></label>
-    {{ field(_('Freigegebene interne Hosts'), 'ub_hosts', bk.ub.hosts, max=2000, ph='nextcloud.lan, 192.168.1.20:8443', hint=_('Persönliche Ziele müssen sonst öffentlich und https sein (Schutz vor Zugriffen ins interne Netz). Komma-getrennt, optional mit :Port.')) }}
+    {{ field(_('Freigegebene interne Hosts'), 'ub_hosts', bk.ub.hosts, max=2000, ph='nextcloud.lan, 10.0.0.20:8443', hint=_('Persönliche Ziele müssen sonst öffentlich und https sein (Schutz vor Zugriffen ins interne Netz). Komma-getrennt, optional mit :Port.')) }}
     <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button></div>
   </form>
 </section>
