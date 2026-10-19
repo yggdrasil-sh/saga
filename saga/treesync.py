@@ -80,8 +80,11 @@ def _entry(r, sh, un):
     return dict(_note_meta(r), archived=bool(r[9]), locked=bool(r[10]), shared=r[0] in sh, unread=r[0] in un)
 
 
-def _changes(c, uid, rows, ids):
-    """Geaenderte Seiten (in Listen-Reihenfolge) -> (zeilen, {id: vorgaenger in der ganzen gefilterten Liste})."""
+def _changes(c, uid, rows, ids, xid):
+    """Geaenderte Seiten (in Listen-Reihenfolge) -> (zeilen, {id: vorgaenger in der ganzen gefilterten Liste}).
+    Welche Seiten geaendert sind, liest dieselbe Anweisung erneut (xid): sonst koennte eine Seite, die sich zwischen dem
+    Lesen der IDs und dieser Anweisung bewegt, Vorgaenger ("after") einer gemeldeten Seite sein, ohne selbst gemeldet zu
+    werden - der Client sortierte dann hinter ihre alte Position (bis zum naechsten ganzen Baum)."""
     flt = _FILTER[rows]
     p = (uid, uid) if flt else (uid,)
     if len(ids) <= FEW:
@@ -90,13 +93,16 @@ def _changes(c, uid, rows, ids):
         fq, fn = _FILTER_AS[rows].format(a="q"), _FILTER_AS[rows].format(a="n")
         res = c.execute(f"SELECT {_COLS}, (SELECT q.id FROM note q WHERE q.uid=n.uid AND q.deleted_at IS NULL{fq} "
                         f"AND ({_IKEY.format(a='q')}) < ({_IKEY.format(a='n')}) ORDER BY {_IDESC} LIMIT 1) AS prev "
-                        f"FROM note n WHERE n.uid=? AND n.deleted_at IS NULL{fn} AND n.id = ANY(?) "
+                        f"FROM note n WHERE n.uid=? AND n.deleted_at IS NULL{fn} "
+                        "AND n.id IN (SELECT t.id FROM note_tseq t WHERE t.uid=n.uid AND t.xid >= ?) "
                         "ORDER BY n.sort NULLS FIRST, n.created, n.id",
-                        (*((uid,) if flt else ()), *p, ids)).fetchall()
+                        (*((uid,) if flt else ()), *p, xid)).fetchall()
     else:
         # Viele: Fensterfunktion ueber die ganze Liste (eine Anweisung, ein Datenstand)
         res = c.execute(f"SELECT * FROM (SELECT {_COLS}, lag(id) OVER (ORDER BY {_KEY}) AS prev, sort, created FROM note "
-                        f"WHERE uid=? AND deleted_at IS NULL{flt}) w WHERE id = ANY(?) ORDER BY {_KEY}", (*p, ids)).fetchall()
+                        f"WHERE uid=? AND deleted_at IS NULL{flt}) w "
+                        f"WHERE id IN (SELECT t.id FROM note_tseq t WHERE t.uid=? AND t.xid >= ?) ORDER BY {_KEY}",
+                        (*p, uid, xid)).fetchall()
     return res, {r[0]: r[11] for r in res}
 
 
@@ -116,7 +122,7 @@ def tree(c, uid, rows="1", fields=None, delta=False, since=None):
     if st and m and m.group(1) == st[0] and st[1] < int(m.group(2)) <= st[2]:
         ids = [r[0] for r in c.execute("SELECT id FROM note_tseq WHERE uid=? AND xid >= ?", (uid, int(m.group(2))))]
         if len(ids) <= MAX_DELTA:
-            res, prev = _changes(c, uid, rows, ids) if ids else ([], {})
+            res, prev = _changes(c, uid, rows, ids, int(m.group(2))) if ids else ([], {})
             got = [r[0] for r in res]
             if len(got) <= SMALL:
                 sh = {r[0] for r in c.execute("SELECT DISTINCT note_id FROM note_share WHERE owner_uid=? AND note_id = ANY(?)",

@@ -81,6 +81,10 @@ class Client:
         s, d, _ = jget(p, self.uid)
         if s != 200 or not isinstance(d, dict):
             return s, d
+        return self.apply(d), d
+
+    def apply(self, d):
+        s = 200
         if d["full"]:
             self.fulls += 1
             self.list = list(d["notes"])
@@ -108,7 +112,7 @@ class Client:
             self.list = out
         self.items = {x["id"]: x for x in self.list}
         self.cur = d["cursor"]
-        return s, d
+        return s
 
     def ordered(self):
         return self.list
@@ -372,6 +376,39 @@ def main():
         ok("Offene Transaktion: nach Commit im naechsten Abgleich", cl.items[n1]["title"] == "offene Transaktion", d)
         check_clients([cl], "Nach offener Transaktion")
 
+        # Aenderung WAEHREND eines Abgleichs (zwischen dem Lesen der geaenderten IDs und der Seiten): eine Seite rueckt
+        # direkt vor eine gemeldete - Position ("after") und gemeldete Seiten muessen zu EINEM Datenstand gehoeren
+        from saga import treesync
+        ps = [req("POST", "/api/notes", A, {"title": f"Rennen {i}"}) for i in range(4)]
+        ps = [json.loads(raw)["id"] for _, raw in ps]
+        with connect() as c, c:
+            for i, nid in enumerate(ps):
+                c.execute("UPDATE note SET sort=? WHERE id=?", (1000.1 + i / 10, nid))
+        cl = Client(A, "Rennen", "")
+        cl.sync()
+        req("PATCH", f"/api/notes/{ps[3]}", A, {"title": "Rennen 3 neu"})
+
+        class Racer:                                  # wie eine Verbindung, nur: nach dem Lesen der IDs aendert jemand anders
+            def __init__(self, c):
+                self.c, self.done = c, False
+
+            def execute(self, sql, args=()):
+                r = self.c.execute(sql, args)
+                if not self.done and "FROM note_tseq WHERE uid" in sql:
+                    self.done = True
+                    with connect() as c2, c2:
+                        c2.execute("UPDATE note SET sort=? WHERE id=?", (1000.35, ps[0]))
+                return r
+
+            def __getattr__(self, k):
+                return getattr(self.c, k)
+        with connect() as c:
+            rc = Racer(c)
+            cl.apply(treesync.tree(rc, A, since=cl.cur))
+        treesync._PRUNED[0] = 0.0                     # tree() hat hier (im Testprozess) schon aufgeraeumt - unten erneut pruefen
+        ok("Aenderung waehrend des Abgleichs: Rennen tatsaechlich ausgeloest", rc.done)
+        check_clients([cl], "Aenderung waehrend des Abgleichs")
+
         # Unpassende Stände -> full (nie ein falscher Abgleich)
         good = clients[0].cur
         ep, x = good.split(".")
@@ -387,11 +424,18 @@ def main():
         with connect() as c, c:
             c.execute("DELETE FROM note_tseq_meta WHERE k='horizon'")
         old_ep = epoch()
+        with connect() as c, c:                       # Stand aus einem anderen Datenbank-Server (Backup nach Umzug zurueckgespielt):
+            c.execute("INSERT INTO note_tseq (uid, id, xid, gone, at) VALUES (?, ?, ?, 0, ?) ON CONFLICT (uid, id) "   # dort
+                      "DO UPDATE SET xid=EXCLUDED.xid", (A, live_ids(A)[0], 10 ** 15, time.time()))    # hoehere Nummern
+            c.execute("INSERT INTO note_tseq_meta (k, v) VALUES ('horizon', ?) ON CONFLICT (k) DO UPDATE SET v=EXCLUDED.v", (str(10 ** 15),))
         with psycopg.connect(db.DATABASE_URL) as pc:  # wie ein Neustart (z. B. nach Zurueckspielen eines Backups)
             db.init_tree_seq(pc)
             pc.commit()
         s, d, _ = jget("/api/notes?since=" + urllib.parse.quote(good), A)
         ok("Neue Kennung nach Neustart -> full", epoch() != old_ep and s == 200 and d["full"] is True and d["cursor"].startswith(epoch()))
+        s, d, _ = jget("/api/notes?since=" + urllib.parse.quote(d["cursor"]), A)
+        ok("Nach Neustart: Eintraege aus fremden Transaktionsnummern weg, Abgleich wieder leer (nicht dauernd full)",
+           s == 200 and d["full"] is False and d["notes"] == [] and d["removed"] == [], str(d)[:300])
         for cl in clients:
             cl.fulls = 0
         check_clients(clients, "Nach neuer Kennung")

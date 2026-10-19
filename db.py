@@ -986,9 +986,17 @@ def init_tree_seq(c):
     import secrets
     c.execute("SAVEPOINT saga_tseq")
     try:
+        # Erst pruefen: plpgsql prueft Funktionsnamen erst beim Aufruf - ohne pg_current_xact_id (Postgres < 13) liessen
+        # sich die Trigger anlegen und jede Aenderung an einer Seite scheiterte danach
+        c.execute("SELECT pg_snapshot_xmin(pg_current_snapshot())")
         c.execute(TREE_SEQ_SQL)
         c.execute("INSERT INTO note_tseq_meta (k, v) VALUES ('epoch', %s) ON CONFLICT (k) DO UPDATE SET v = EXCLUDED.v",
                   (secrets.token_hex(6),))
+        # Stand aus einem anderen Datenbank-Server (Backup nach einem Umzug zurueckgespielt): Transaktionsnummern, die es
+        # hier noch gar nicht gab, kaemen sonst bei jedem Abgleich mit bzw. die Grenze erzwaenge immer den ganzen Baum.
+        # Mit der neuen Kennung braucht sie niemand mehr.
+        c.execute("DELETE FROM note_tseq WHERE xid >= pg_snapshot_xmax(pg_current_snapshot())::text::bigint")
+        c.execute("DELETE FROM note_tseq_meta WHERE k = 'horizon' AND v::bigint >= pg_snapshot_xmax(pg_current_snapshot())::text::bigint")
         c.execute("RELEASE SAVEPOINT saga_tseq")
     except psycopg.Error as ex:
         c.execute("ROLLBACK TO SAVEPOINT saga_tseq")
