@@ -70,13 +70,15 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # db = Datenbanken (Zeilen, Ansichten, Werte), subpages = Unterseiten anlegen/verschieben, upload = Bilder/Dateien
 # hochladen, versions = Versionen, export = Export; chatgroups = freie Gruppen und Seiten-Chats ueber Servergrenzen;
 # nc_files = Nextcloud-Dateien in Seiten (saga.nextcloud): Vorschau/Download nur fuer Bloecke mit Schalter "fed".
+# chatfile2 (2.4): grosse Chat-Anhaenge (saga-file/v2, Videos) bereichsweise abrufen (GET /fed/v2/chat/files/{id}?range=a-b,
+# signiert je Teil) - ohne chatfile2 gehen nur Anhaenge bis FILE_MAX (wie 2.3).
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
-         "export", "chatgroups", "nc_files"]
+         "export", "chatgroups", "nc_files", "chatfile2"]
 # Admin-Schalter je verbundener Instanz (fed_peer.opts) - Standard: alles an, Ausnahme "Teilen nur in gemeinsamen
 # Gruppen" aus. directory_groups: nur Personen dieser Gruppen erscheinen im Adressbuch der Instanz (leer = alle).
 OPT_DEFAULTS = {"chat": True, "calls": True, "directory": True, "scope_exception": False, "directory_groups": []}
 # Faehigkeit -> Admin-Schalter, der sie zusaetzlich braucht
-CAP_OPT = {"directory": "directory", "keys": "chat", "chat2": "chat", "calls2": "calls", "chatgroups": "chat"}
+CAP_OPT = {"directory": "directory", "keys": "chat", "chat2": "chat", "calls2": "calls", "chatgroups": "chat", "chatfile2": "chat"}
 EXPRESS_TIMEOUT = float(E.get("FED_EXPRESS_TIMEOUT", "5"))      # synchrone Zustellung: harte Frist in Sekunden
 HELLO_EVERY = 6 * 3600                       # Faehigkeiten der Gegenstelle so oft neu abfragen
 SEEN_KEEP = 7 * 86400                        # Ereignis-Kennungen so lange merken (idempotent)

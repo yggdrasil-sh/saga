@@ -140,6 +140,67 @@
     return S.crypto_aead_xchacha20poly1305_ietf_decrypt(null, blob.subarray(24), lp(V + 'file', String(chat_id)), blob.subarray(0, 24), unb64(key, 32));
   }
 
+  // --- saga-file/v2 (2.4, Videos im Chat): blockweise, wahlfreier Zugriff. Format: saga/file_v2.py, Vektoren:
+  // tests/vectors/file_v2.json. Kopf(48) || Block_0 .. Block_{N-1}; Block_i = xchacha20poly1305(plain_i, AD_i, prefix16||u64(i), K)
+  var F2 = { HEADER: 48, TAG: 16, CS: 262144 };
+  function u64(n) {                                    // u64 big-endian (Zahlen bis 2^53)
+    var b = new Uint8Array(8), dv = new DataView(b.buffer);
+    dv.setUint32(0, Math.floor(n / 4294967296), false); dv.setUint32(4, n >>> 0, false); return b;
+  }
+  function u32(n) { var b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n >>> 0, false); return b; }
+  function f2Blocks(size, cs) { cs = cs || F2.CS; return Math.max(1, Math.ceil(size / cs)); }
+  function f2Size(size, cs) { cs = cs || F2.CS; return F2.HEADER + size + F2.TAG * f2Blocks(size, cs); }
+  function f2Off(i, cs) { return F2.HEADER + i * ((cs || F2.CS) + F2.TAG); }
+  function f2Header(size, prefix, cs) {
+    cs = cs || F2.CS;
+    var h = new Uint8Array(48), dv = new DataView(h.buffer);
+    h.set([0x53, 0x47, 0x46, 0x32, 2, 0], 0); dv.setUint32(8, cs, false); h.set(u64(size), 16); h.set(prefix, 24);
+    return h;
+  }
+  function f2Parse(h) {                                 // -> {cs, size, n, prefix}; Error bei falschem Kopf
+    if (!h || h.length < 48 || h[0] !== 0x53 || h[1] !== 0x47 || h[2] !== 0x46 || h[3] !== 0x32 || h[4] !== 2 || h[5] !== 0) throw new Error('header');
+    var dv = new DataView(h.buffer, h.byteOffset, 48), cs = dv.getUint32(8, false);
+    if (dv.getUint16(6, false) || dv.getUint32(12, false) || cs < 65536 || cs > 1048576 || (cs & (cs - 1))) throw new Error('header');
+    for (var k = 40; k < 48; k++) if (h[k]) throw new Error('header');
+    var size = dv.getUint32(16, false) * 4294967296 + dv.getUint32(20, false);
+    return { cs: cs, size: size, n: f2Blocks(size, cs), prefix: h.slice(24, 40) };
+  }
+  function f2Nonce(prefix, i) { var n = new Uint8Array(24); n.set(prefix, 0); n.set(u64(i), 16); return n; }
+  function f2Ad(i, n, cs, size) { return lp('saga-file/v2', u64(i), u64(n), u32(cs), u64(size), new Uint8Array([i === n - 1 ? 1 : 0])); }
+  function f2Seal(K, info, i, plain) { return S.crypto_aead_xchacha20poly1305_ietf_encrypt(plain, f2Ad(i, info.n, info.cs, info.size), null, f2Nonce(info.prefix, i), K); }
+  function f2Open(K, info, i, ct) {
+    if (i < 0 || i >= info.n) throw new Error('block');
+    return S.crypto_aead_xchacha20poly1305_ietf_decrypt(null, ct, f2Ad(i, info.n, info.cs, info.size), f2Nonce(info.prefix, i), K);
+  }
+  // Klartext-Bereich a..b (einschliesslich) -> {i, j, from, to} (Bloecke i..j, Ciphertext-Bytes from..to einschliesslich)
+  function f2Range(size, a, b, cs) {
+    cs = cs || F2.CS; var i = Math.floor(a / cs), j = Math.floor(b / cs);
+    return { i: i, j: j, from: f2Off(i, cs), to: Math.min(f2Off(j, cs) + cs + F2.TAG, f2Size(size, cs)) - 1 };
+  }
+  // Streaming beim Senden: e = f2Encryptor(size); e.header; e.seal(i, plain_i) je Block (plain_i = cs Bytes, letzter kuerzer)
+  function f2Encryptor(size, opt) {
+    opt = opt || {};
+    var K = opt.key || S.crypto_aead_xchacha20poly1305_ietf_keygen(), prefix = opt.prefix || S.randombytes_buf(16), cs = opt.cs || F2.CS;
+    var info = { cs: cs, size: size, n: f2Blocks(size, cs), prefix: prefix };
+    return { key: b64(K), info: info, header: f2Header(size, prefix, cs), seal: function (i, plain) { return f2Seal(K, info, i, plain); } };
+  }
+  function encryptFileF2(bytes, opt) {
+    var e = f2Encryptor(bytes.length, opt), cs = e.info.cs, out = new Uint8Array(f2Size(bytes.length, cs));
+    out.set(e.header, 0);
+    for (var i = 0; i < e.info.n; i++) out.set(e.seal(i, bytes.subarray(i * cs, Math.min((i + 1) * cs, bytes.length))), f2Off(i, cs));
+    return { blob: out, key: e.key };
+  }
+  function decryptFileF2(blob, key) {
+    var info = f2Parse(blob.subarray(0, 48)), K = typeof key === 'string' ? unb64(key, 32) : key;
+    if (blob.length !== f2Size(info.size, info.cs)) throw new Error('size');
+    var out = new Uint8Array(info.size);
+    for (var i = 0; i < info.n; i++) {
+      var a = f2Off(i, info.cs), p = f2Open(K, info, i, blob.subarray(a, Math.min(a + info.cs + F2.TAG, blob.length)));
+      out.set(p, i * info.cs);
+    }
+    return out;
+  }
+
   // --- Geraete-Kopplung, Sicherheitsnummer --------------------------------------------------------------------
   // 20 Ziffern (~66 Bit): Der Server sieht die oeffentlichen Schluessel des neuen Geraets und koennte bei einem kurzen
   // Code (6 Ziffern) in Sekundenbruchteilen eigene Schluessel mit gleichem Code erzeugen ("grinding") und sich das
@@ -336,6 +397,8 @@
     bundlePlain: bundlePlain, parsePlain: parsePlain, sealBundle: sealBundle, openBundle: openBundle, bundleUpdateSig: bundleUpdateSig,
     msgAd: msgAd, sigMsg: sigMsg, encryptMessage: encryptMessage, openKey: openKey, decryptMessage: decryptMessage,
     verifyMessage: verifyMessage, encryptFile: encryptFile, decryptFile: decryptFile, linkCode: linkCode, safetyNumber: safetyNumber,
+    F2: F2, f2Blocks: f2Blocks, f2Size: f2Size, f2Off: f2Off, f2Header: f2Header, f2Parse: f2Parse, f2Nonce: f2Nonce, f2Ad: f2Ad,
+    f2Seal: f2Seal, f2Open: f2Open, f2Range: f2Range, f2Encryptor: f2Encryptor, encryptFileF2: encryptFileF2, decryptFileF2: decryptFileF2,
     seal: function (msg, pk) { return S.crypto_box_seal(u8(msg), pk); },
     sealOpen: function (ct, pk, sk) { return S.crypto_box_seal_open(ct, pk, sk); },
     text: function (bytes) { return dec.decode(bytes); }

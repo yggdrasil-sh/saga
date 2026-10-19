@@ -25,7 +25,7 @@ import db
 from version import API_LEVEL, BUILD, MIN_APP, VERSION, channel
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
-from saga import ai, ai_chat, avatars, calls, chat, federation, i18n, live, mfa, notify, push
+from saga import ai, ai_chat, avatars, calls, chat, chat_files, federation, i18n, live, mfa, notify, push
 from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, title
 from saga.dashboard import _status_loop
@@ -148,6 +148,7 @@ async def canonical_host(request: Request, call_next):
 app.add_middleware(BodyLimit, default=REQUEST_MAX,
                    rules=[("POST", re.compile(r"/api/files"), max(REQUEST_MAX, FILE_MAX + 256 * 1024)),
                           ("POST", re.compile(r"/api/chats/[0-9]+/files"), max(REQUEST_MAX, FILE_MAX + 1024)),
+                          ("PUT", re.compile(r"/api/chat/uploads/[A-Za-z0-9_-]+"), chat.UPLOAD_PART + 1024),     # 2.4 ohne saga-media
                           ("POST", re.compile(r"/fed/v2/notes/[0-9]+/files"), max(REQUEST_MAX, FILE_MAX + 64 * 1024)),
                           ("PUT", re.compile(r"/api/account/avatar"), max(REQUEST_MAX, avatars.UPLOAD_MAX + 64 * 1024)),
                           ("POST", re.compile(r"/api/account/backup/restore/upload"), userbackup.HARD_MAX_MB * 1024 * 1024 + 1024 * 1024)])
@@ -216,6 +217,7 @@ app.include_router(comments.router)         # Kommentare: /api/notes/{nid}/comme
 app.include_router(notify.router)           # Benachrichtigungen: /api/notifications, .../read, .../settings
 app.include_router(live.router)             # Live-Kanal: /api/events (SSE), /api/presence
 app.include_router(chat.router)             # Chat (E2E): /chats, /api/chat/..., /api/chats/...
+app.include_router(chat_files.router)       # Videos im Chat (2.4): /api/chats/{cid}/uploads, /api/chat/uploads/{id}, Medien-Token
 app.include_router(push.router)             # Mitteilungen: /api/push..., /sw.js
 app.include_router(ai.router)               # KI-Assistent: /api/ai/status, /api/ai/ask, /api/ai/page/{nid}, /api/ai/history
 app.include_router(ai_chat.router)          # KI im Chat (nur auf Zuruf): /api/chats/{cid}/ai

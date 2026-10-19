@@ -48,6 +48,8 @@ DEFAULTS = {
     "share_group_scope": False,            # nur mit Konten teilen, mit denen man eine Gruppe gemeinsam hat
     "chat_enabled": True,                  # Chats mit Ende-zu-Ende-Verschluesselung (1.5)
     "chat_retention_max_days": 0,          # Chat-Nachrichten spaetestens nach so vielen Tagen loeschen (0 = unbegrenzt)
+    "chat_quota_mb": 0,                    # 2.4: Speicher fuer Chat-Anhaenge je Konto in MB (0 = CHAT_QUOTA_MB, Standard 4096)
+    "chat_video_max_mb": 0,                # 2.4: groesstes Video im Chat in MB (0 = VIDEO_MAX_MB, Standard 500)
     "push": {"enabled": True, "webpush": True, "ntfy": True, "unifiedpush": True},   # Mitteilungen aufs Handy/Desktop (1.7)
     "apns": {"enabled": False, "team_id": "", "key_id": "", "bundle_id": "", "p8": "", "url": ""},  # iOS/macOS-App (url: nur Tests)
     "update_check": E.get("SAGA_UPDATE_CHECK", "1") not in ("0", "false", "no", "off"),   # im Admin-Bereich neue Versionen melden

@@ -608,6 +608,14 @@ CREATE TABLE IF NOT EXISTS fed_chat_block (           -- Sperren je Person ('~x@
     uid TEXT NOT NULL, target TEXT NOT NULL, created DOUBLE PRECISION NOT NULL, PRIMARY KEY (uid, target));
 CREATE TABLE IF NOT EXISTS chat_file_fed (            -- Anhang liegt beim Absender-Server (origin); hier ggf. Zwischenkopie
     id TEXT PRIMARY KEY, peer_id INTEGER NOT NULL, cached INTEGER NOT NULL DEFAULT 0);
+-- Videos im Chat (2.4 E2, saga/chat.py): fortsetzbarer Upload im Format saga-file/v2. Die Bytes schreibt saga-media (bzw.
+-- ohne saga-media Python) nach STATE_DIR/chat/up/<id>; hier nur Groesse und Verfall. Abschluss -> chat_file (fmt=2).
+-- Neue Spalten chat_file.fmt und chat_file_fed.have (Blockbitmap der Zwischenkopie) kommen mit Migration 11.
+CREATE TABLE IF NOT EXISTS chat_upload (
+    id TEXT PRIMARY KEY, uid TEXT NOT NULL, chat_id BIGINT NOT NULL REFERENCES chat(id) ON DELETE CASCADE,
+    size BIGINT NOT NULL, received BIGINT NOT NULL DEFAULT 0, fmt SMALLINT NOT NULL, created DOUBLE PRECISION NOT NULL,
+    expires DOUBLE PRECISION NOT NULL);
+CREATE INDEX IF NOT EXISTS chat_upload_uid ON chat_upload (uid);
 -- Teilen vollstaendig + Gruppen-/Seiten-Chats ueber Servergrenzen (2.3 E4-E6, saga/fed_pages.py, saga/fed_chat.py).
 -- Neue Spalten in file (fed_by/fed_note: Upload einer Person einer anderen Instanz, Grenze je Person) mit Migration 9.
 CREATE TABLE IF NOT EXISTS fed_name_handle (          -- Freigabe an '@name@host' (oeffentlicher Name) -> Handle '~x' der Person
@@ -849,6 +857,13 @@ ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'dm';
 ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS caps_a TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS caps_b TEXT NOT NULL DEFAULT '[]';
 """,
+    # 2.4.0 (Etappe E2, Videos im Chat): Format je Anhang (1 = ein Block wie bis 2.3, 2 = saga-file/v2 blockweise mit
+    # wahlfreiem Zugriff) und fuer Zwischenkopien von Anhaengen anderer Server (Range-Abruf, chatfile2) die Bitmap der schon
+    # geholten 1-MiB-Einheiten (NULL = ganze Datei wie bis 2.3). Die Tabelle chat_upload legt SCHEMA an.
+    11: """
+ALTER TABLE chat_file ADD COLUMN IF NOT EXISTS fmt SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE chat_file_fed ADD COLUMN IF NOT EXISTS have BYTEA;
+""",
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
 BACKUP_DIR = os.path.join(os.environ.get("STATE_DIR", "/data"), "backups")
@@ -917,9 +932,12 @@ def backup(label="manuell"):
 # neueres bringt sie mit, sonst legt der naechste Start sie leer an (Sperren trifft dann wie bisher die Erstellerin).
 # 2.4: Migration 10 aendert nur Spalten von chat_call (ein aelteres Backup legt chat_call ohne sie an, der naechste Start
 # ergaenzt sie). Tabellen mit Fremdschluessel auf chat_call (E4: chat_call_leg, chat_call_invite) gehoeren dann hierher.
+# chat_upload (2.4 E2, Fremdschluessel auf chat): laufende Uploads gehoeren zur alten Datenbank - weg (die Teil-Dateien unter
+# STATE_DIR/chat/up raeumt der naechste purge() ab, ein Neustart des Uploads legt einen neuen an).
 _RESTORE_DROP = (b"DROP TABLE IF EXISTS public.note_link, public.note_stale, public.note_derived;\n"
                  b"DROP TABLE IF EXISTS public.note_tseq, public.note_tseq_meta;\n"
-                 b"DROP TABLE IF EXISTS public.chat_invite;\n")
+                 b"DROP TABLE IF EXISTS public.chat_invite;\n"
+                 b"DROP TABLE IF EXISTS public.chat_upload;\n")
 _RESTORE_SET = re.compile(rb"^SET ([a-z_]+) = .*;\r?\n?$")
 
 

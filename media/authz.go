@@ -15,7 +15,21 @@ import (
 type grant struct {
 	exp     time.Time
 	headers map[string]string // Cache-Control, Content-Disposition, CSP ... genau wie die Python-Antwort
+	fed     *fedInfo          // 2.4: lueckenhafte Zwischenkopie eines Anhangs eines anderen Servers (Bereiche bei Bedarf)
+	size    int64             // 2.4 Upload: angekuendigte Groesse
+	partMax int64             // 2.4 Upload: hoechstens je PUT
 }
+
+// fedInfo: Anhang liegt beim Absender-Server (chatfile2) - saga-media holt fehlende Bereiche (fed.go).
+type fedInfo struct {
+	Size int64 `json:"size"`
+}
+
+// Arten der Abfrage: Datei lesen (GET/HEAD /api/chat/files) bzw. in einen Upload schreiben (PUT/HEAD /api/chat/uploads).
+const (
+	kindFile   = "file"
+	kindUpload = "upload"
+)
 
 type flight struct {
 	done chan struct{}
@@ -42,11 +56,12 @@ func newAuthz(c *config, tr http.RoundTripper) *authz {
 		cache: map[[32]byte]*grant{}, pending: map[[32]byte]*flight{}, now: time.Now}
 }
 
-// cacheKey: alles, was die Entscheidung in Python beeinflusst - Datei, Anmeldung (Cookie, Authorization),
-// der Pflicht-Kopf X-Saga und der Hostname (Umleitung auf BASE_URL).
-func cacheKey(fid string, r *http.Request) [32]byte {
+// cacheKey: alles, was die Entscheidung in Python beeinflusst - Art, Datei, Anmeldung (Cookie, Authorization,
+// Medien-Token), der Pflicht-Kopf X-Saga und der Hostname (Umleitung auf BASE_URL).
+func cacheKey(kind, fid string, r *http.Request) [32]byte {
 	h := sha256.New()
 	put := func(s string) { _, _ = io.WriteString(h, s); _, _ = h.Write([]byte{0}) }
+	put(kind)
 	put(fid)
 	put(r.Host)
 	for _, v := range r.Header.Values("X-Forwarded-Host") {
@@ -58,16 +73,19 @@ func cacheKey(fid string, r *http.Request) [32]byte {
 	put(r.Header.Get("Authorization"))
 	put(r.Header.Get("X-Saga"))
 	put(r.Header.Get("X-Hlidskjalf"))
+	put(r.Header.Get(tokenHeader))
 	var k [32]byte
 	copy(k[:], h.Sum(nil))
 	return k
 }
 
-func (a *authz) check(r *http.Request, fid string) *grant {
+func (a *authz) check(r *http.Request, fid string) *grant { return a.checkKind(r, kindFile, fid) }
+
+func (a *authz) checkKind(r *http.Request, kind, fid string) *grant {
 	if a.c.ttl <= 0 {
-		return a.ask(r, fid)
+		return a.ask(r, kind, fid)
 	}
-	k := cacheKey(fid, r)
+	k := cacheKey(kind, fid, r)
 	a.mu.Lock()
 	if g := a.cache[k]; g != nil {
 		if a.now().Before(g.exp) {
@@ -89,7 +107,7 @@ func (a *authz) check(r *http.Request, fid string) *grant {
 	a.pending[k] = f
 	a.mu.Unlock()
 
-	g := a.ask(r, fid)
+	g := a.ask(r, kind, fid)
 
 	a.mu.Lock()
 	delete(a.pending, k)
@@ -106,8 +124,10 @@ func (a *authz) check(r *http.Request, fid string) *grant {
 }
 
 // forget: Datei fehlt auf der Platte - gemerkte Erlaubnisse fuer diese Anfrage verwerfen.
-func (a *authz) forget(r *http.Request, fid string) {
-	k := cacheKey(fid, r)
+func (a *authz) forget(r *http.Request, fid string) { a.forgetKind(r, kindFile, fid) }
+
+func (a *authz) forgetKind(r *http.Request, kind, fid string) {
+	k := cacheKey(kind, fid, r)
 	a.mu.Lock()
 	delete(a.cache, k)
 	a.mu.Unlock()
@@ -129,23 +149,39 @@ type authzReply struct {
 	OK      bool              `json:"ok"`
 	TTL     float64           `json:"ttl"`
 	Headers map[string]string `json:"headers"`
+	Fed     *fedInfo          `json:"fed"`
+	Size    int64             `json:"size"`
+	PartMax int64             `json:"part_max"`
+}
+
+// tokenHeader: Medien-Token (2.4) fuer lange Wiedergaben - an Datei und Sitzung gebunden, Python prueft es je Abfrage.
+const tokenHeader = "X-Saga-Media-Token"
+
+// authHeaders: Koepfe, die Python fuer die Entscheidung braucht (Anmeldung, Sprache).
+var authHeaders = []string{"Cookie", "Authorization", "X-Saga", "X-Hlidskjalf", tokenHeader, "Accept-Language", "User-Agent"}
+
+func copyAuth(dst http.Header, r *http.Request) {
+	for _, h := range authHeaders {
+		if v := r.Header.Values(h); len(v) > 0 {
+			dst[h] = append([]string(nil), v...)
+		}
+	}
 }
 
 // ask: einmal Python fragen. Die Anfrage traegt dieselben Anmelde- und Host-Koepfe wie die des Clients.
-func (a *authz) ask(r *http.Request, fid string) *grant {
+func (a *authz) ask(r *http.Request, kind, fid string) *grant {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	u := "http://" + a.c.upstream + "/internal/media/authz?fid=" + url.QueryEscape(fid)
+	if kind == kindUpload {
+		u = "http://" + a.c.upstream + "/internal/media/upload?id=" + url.QueryEscape(fid)
+	}
 	q, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil
 	}
 	q.Host = r.Host
-	for _, h := range []string{"Cookie", "Authorization", "X-Saga", "X-Hlidskjalf", "Accept-Language", "User-Agent"} {
-		if v := r.Header.Values(h); len(v) > 0 {
-			q.Header[h] = append([]string(nil), v...)
-		}
-	}
+	copyAuth(q.Header, r)
 	setForwarded(q.Header, r, a.c.trusted)
 	q.Header.Set(keyHeader, a.c.key)
 	resp, err := a.client.Do(q)
@@ -171,5 +207,5 @@ func (a *authz) ask(r *http.Request, fid string) *grant {
 	if ttl < 0 {
 		ttl = 0
 	}
-	return &grant{exp: a.now().Add(ttl), headers: rep.Headers}
+	return &grant{exp: a.now().Add(ttl), headers: rep.Headers, fed: rep.Fed, size: rep.Size, partMax: rep.PartMax}
 }

@@ -80,8 +80,10 @@ type bufPool struct{ p sync.Pool }
 func (b *bufPool) Get() []byte  { return *(b.p.Get().(*[]byte)) }
 func (b *bufPool) Put(x []byte) { b.p.Put(&x) }
 
-func newBufPool() *bufPool {
-	return &bufPool{p: sync.Pool{New: func() any { b := make([]byte, 32*1024); return &b }}}
+func newBufPool() *bufPool { return newBufPoolSize(32 * 1024) }
+
+func newBufPoolSize(n int) *bufPool {
+	return &bufPool{p: sync.Pool{New: func() any { b := make([]byte, n); return &b }}}
 }
 
 func newTransport() *http.Transport {

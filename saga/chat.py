@@ -38,7 +38,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 import auth
 from db import connect as _db
-from saga import avatars, bus, mfa, notify, sharing
+from saga import avatars, bus, file_v2, mfa, notify, sharing
 from saga.core import (ADMIN_URL, ASSET_V, E, MEDIA_FRONT, MEDIA_KEY, SEC_HEADERS, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
                        tmpl, user_info)
 from saga.notes import FILE_MAX, note_chain
@@ -47,6 +47,8 @@ from saga.sharing import REMOTE_TYPES, Access, enabled as share_enabled, group_s
 router = APIRouter()
 
 CHAT_DIR = os.path.join(STATE_DIR, "chat")
+UP_DIR = os.path.join(CHAT_DIR, "up")          # 2.4: angefangene Uploads (saga-file/v2)
+FED_DIR = os.path.join(CHAT_DIR, "fed")        # 2.4: lueckenhafte Zwischenkopien grosser Anhaenge anderer Server (Range)
 MSG_MAX = 64 * 1024                    # Ciphertext je Nachricht (B64)
 MSG_RATE = 60                          # Nachrichten je Minute und Konto
 DEVICES_MAX = 10                       # aktive Geraete je Konto
@@ -55,7 +57,16 @@ FILES_PER_MSG = 10                     # Anhaenge je Nachricht (files[] im versc
 FILE_IDS_PER_MSG = 2 * FILES_PER_MSG   # Datei-Kennungen je Sende-Anfrage: je Bild Original + Vorschaubild (2.1)
 FILE_RATE = 60                         # Uploads je Minute (Vorschaubilder zaehlen mit)
 FILE_CACHE_MAX = 365 * 86400           # Ciphertext-Blobs aendern sich nie: so lange darf der Browser sie behalten
-QUOTA = max(1, int(E.get("CHAT_QUOTA_MB", "1024"))) * 1024 * 1024    # Anhaenge je Konto
+# Anhaenge je Konto (2.4: Standard 4 GB statt 1 GB, Videos) und groesste Videodatei (Klartext) - beides im Admin-Bereich
+# aenderbar (Einstellungen -> Chats); die Umgebung gibt nur den Standard vor. Siehe quota() und video_max().
+QUOTA_MB_DEFAULT = max(1, int(E.get("CHAT_QUOTA_MB", "4096") or 4096))
+VIDEO_MAX_MB_DEFAULT = max(1, int(E.get("VIDEO_MAX_MB", "500") or 500))
+QUOTA = QUOTA_MB_DEFAULT * 1024 * 1024       # (Kompatibilitaet; massgeblich ist quota())
+# Videos im Chat (2.4 E2): fortsetzbarer Upload im Format saga-file/v2 (saga/file_v2.py). Die Bytes schreibt saga-media
+# direkt auf die Platte (STATE_DIR/chat/up/<id>), Python legt nur Metadaten und Kontingent an (saga/chat_files.py).
+UPLOAD_PART = 8 * 1024 * 1024          # hoechstens so viele Bytes je PUT
+UPLOADS_PAR = 2                        # gleichzeitige Uploads je Konto
+UPLOAD_TTL = 24 * 3600                 # angefangene Uploads verfallen danach
 LINK_TTL = 600                         # Geraete-Kopplung: 10 Minuten
 PAGE = 50
 SKEW = 600                             # erlaubte Abweichung der Client-Zeit (ts) in Sekunden
@@ -85,9 +96,37 @@ _py_streams = {"sem": None}
 V2_CLIENT = contextvars.ContextVar("saga_chat_v2", default=False)
 
 
+# 2.4: Medien-Token (saga.chat_files setzt sich hier ein): (token, fid) -> uid oder None
+TOKEN_USER = None
+
+
 # --- Hilfen -------------------------------------------------------------------------------------------------
 def enabled():
     return bool(auth.settings().get("chat_enabled", True))
+
+
+def _mb_setting(key, default):
+    try:
+        v = int(auth.settings().get(key) or 0)
+    except (TypeError, ValueError):
+        v = 0
+    return (v if v > 0 else default) * 1024 * 1024
+
+
+def quota():
+    """Speicher fuer Chat-Anhaenge je Konto in Bytes (Admin: Einstellungen -> Chats, sonst CHAT_QUOTA_MB, Standard 4096)."""
+    return _mb_setting("chat_quota_mb", QUOTA_MB_DEFAULT)
+
+
+def video_max():
+    """Groesste Datei im Format saga-file/v2 (Klartext, Bytes) - Admin oder VIDEO_MAX_MB (Standard 500)."""
+    return _mb_setting("chat_video_max_mb", VIDEO_MAX_MB_DEFAULT)
+
+
+def used_bytes(c, uid):
+    """Belegt: fertige Anhaenge plus angekuendigte Groesse laufender Uploads (die zaehlen schon mit)."""
+    return c.execute("SELECT COALESCE(SUM(size), 0) FROM chat_file WHERE uid=?", (uid,)).fetchone()[0] + \
+        c.execute("SELECT COALESCE(SUM(size), 0) FROM chat_upload WHERE uid=? AND expires>?", (uid, time.time())).fetchone()[0]
 
 
 def retention_max():
@@ -477,6 +516,7 @@ def api_me(request: Request, device: str = ""):
         devs = _devices(c, [uid], active=False).get(uid, [])
         n_link = c.execute("SELECT COUNT(*) FROM chat_link WHERE uid=? AND approved IS NULL AND expires>?", (uid, time.time())).fetchone()[0]
         nm = names(c, [uid])
+        used = used_bytes(c, uid)
     return _no_store({
         "enabled": enabled(), "uid": uid, "name": nm.get(uid, uid), "identity": ident,
         "devices": [{"id": d["id"], "name": d["name"], "created": d["created"], "last_seen": d["last_seen"],
@@ -484,7 +524,11 @@ def api_me(request: Request, device: str = ""):
                      "sign_pub": d["sign_pub"], "sig": d["sig"]} for d in devs],
         "links": n_link, "reauth": _reauth_need(request, uid), "reauth_methods": mfa.methods(uid),
         "limits": {"msg_max": MSG_MAX, "file_max": FILE_MAX, "members_max": MEMBERS_MAX, "devices_max": DEVICES_MAX,
-                   "files_per_msg": FILES_PER_MSG, "file_ids_per_msg": FILE_IDS_PER_MSG, "retention_max": retention_max(), "retentions": list(RETENTIONS)}})
+                   "files_per_msg": FILES_PER_MSG, "file_ids_per_msg": FILE_IDS_PER_MSG, "retention_max": retention_max(), "retentions": list(RETENTIONS),
+                   # 2.4 (Videos im Chat): saga-file/v2 mit fortsetzbarem Upload; video_max = groesste Datei (Klartext-Bytes),
+                   # upload_part = hoechstens je PUT, file2_cs = Blockgroesse, quota/used = Chat-Speicher des Kontos (Bytes)
+                   "file2": True, "video_max": video_max(), "upload_part": UPLOAD_PART, "file2_cs": file_v2.CS,
+                   "uploads_max": UPLOADS_PAR, "quota": quota(), "used": used}})
 
 
 def _add_device(c, uid, ident_pub, d):
@@ -1214,11 +1258,24 @@ def _drop_chat(c, cid):
 def _rm_blobs(c, fids):
     def go():
         for f in fids:
+            for d in (CHAT_DIR, FED_DIR):              # 2.4: auch lueckenhafte Zwischenkopien
+                try:
+                    os.remove(os.path.join(d, f))
+                except OSError:
+                    pass
+    if fids:
+        c.after_commit(go)
+
+
+def _rm_uploads(c, ids):
+    """Angefangene Uploads (2.4): Teil-Dateien nach dem Commit entfernen."""
+    def go():
+        for u in ids:
             try:
-                os.remove(os.path.join(CHAT_DIR, f))
+                os.remove(os.path.join(UP_DIR, u))
             except OSError:
                 pass
-    if fids:
+    if ids:
         c.after_commit(go)
 
 
@@ -1634,9 +1691,8 @@ async def api_file_up(cid: int, request: Request):
         ch, m, mem, err = _chat_for(c, uid, cid, do_sync=False)
         if err:
             return err
-        used = c.execute("SELECT COALESCE(SUM(size), 0) FROM chat_file WHERE uid=?", (uid,)).fetchone()[0]
-        if used + len(data) > QUOTA:
-            return _bad(t("Speicher für Chat-Anhänge voll ({n} MB).", n=QUOTA // 1048576), 413)
+        if used_bytes(c, uid) + len(data) > quota():
+            return _bad(t("Speicher für Chat-Anhänge voll ({n} MB).", n=quota() // 1048576), 413)
         fid = secrets.token_urlsafe(18)
         os.makedirs(CHAT_DIR, mode=0o700, exist_ok=True)
         path = os.path.join(CHAT_DIR, fid)
@@ -1646,11 +1702,21 @@ async def api_file_up(cid: int, request: Request):
     return _no_store({"id": fid, "size": len(data)})
 
 
-def _file_access(fid, request):
+def _req_uid(request, fid):
+    """Anmeldung fuer einen Anhang: Medien-Token (2.4, Kopf X-Saga-Media-Token, an Datei und Sitzung gebunden) oder wie
+    bisher Sitzung/App-Schluessel mit X-Saga."""
+    tok = request.headers.get("x-saga-media-token")
+    if tok:
+        return TOKEN_USER(tok, fid) if TOKEN_USER is not None else None
+    return _api_guard(request)
+
+
+def _file_access(fid, request, part=None):
     """Darf der Anfragende den Anhang holen? -> (fehler-antwort, None, 0) oder (None, Cache-Control, Sekunden bis zum Ablauf).
     Gemeinsam fuer den Abruf hier und die Abfrage von saga-media. Liegt der Anhang bei einem anderen Server (2.3),
-    wird er jetzt geholt (Zwischenkopie)."""
-    uid = _api_guard(request)
+    wird er jetzt geholt (Zwischenkopie). 2.4: grosse Anhaenge eines Servers mit chatfile2 werden nicht ganz geholt -
+    part (dict) bekommt dann {"size": Groesse} (lueckenhafte Zwischenkopie, Bereiche holt der Abruf selbst)."""
+    uid = _req_uid(request, fid)
     if not uid:
         return _bad("unauthorized", 401), None, 0
     if not enabled() or not _FID.fullmatch(fid):
@@ -1675,6 +1741,12 @@ def _file_access(fid, request):
     path = os.path.join(CHAT_DIR, fid)
     if FED is not None:
         if not os.path.isfile(path):
+            ranged = FED.ranged(fid)                  # 2.4: grosser Anhang eines Servers mit chatfile2 -> Bereiche bei Bedarf
+            if ranged:
+                if part is not None:
+                    part.update(ranged)
+                    return None, cache, left
+                return _bad("not found", 404), None, 0
             FED.fetch_file(fid)                       # 2.3: Anhang liegt beim Absender-Server - jetzt holen (Zwischenkopie)
         else:
             FED.touch(fid)                            # zuletzt benutzt (Zwischenkopien werden je Instanz begrenzt)
@@ -1723,12 +1795,15 @@ def media_mode():
 
 @router.api_route("/api/chat/files/{fid}", methods=["GET", "HEAD"])
 def api_file_get(fid: str, request: Request):
-    err, cache, _ = _file_access(fid, request)
+    part = {}
+    err, cache, _ = _file_access(fid, request, part)
     if err:
         return err
     h = _file_headers(cache, fid)
     if _inm_match(request, fid):
         return Response(status_code=304, headers={"Cache-Control": cache, "ETag": h["ETag"]})
+    if part:                                       # 2.4: lueckenhafte Zwischenkopie - fehlende Bereiche jetzt holen
+        return FED.serve_range(fid, part, request, h)
     if MEDIA_ACCEL != "off":
         # Reverse Proxy liefert die Datei selbst (nginx: internal-location, Caddy: handle_response) - siehe Anleitung
         return Response(status_code=200, media_type="application/octet-stream",
@@ -1742,10 +1817,14 @@ def api_media_authz(request: Request, fid: str = ""):
     wie der Abruf - die Anfrage traegt Cookie/Authorization/X-Saga/Host des Clients. Kein Inhalt, nur die Entscheidung."""
     if not MEDIA_KEY or not secrets.compare_digest(request.headers.get("x-saga-media-key", ""), MEDIA_KEY):
         return _bad("not found", 404)
-    err, cache, left = _file_access(fid, request)
+    part = {}
+    err, cache, left = _file_access(fid, request, part)
     if err:
         return err
-    return _no_store({"ok": True, "ttl": left, "headers": _file_headers(cache, fid)})
+    out = {"ok": True, "ttl": left, "headers": _file_headers(cache, fid)}
+    if part:
+        out["fed"] = part                          # 2.4: Bereiche einer lueckenhaften Zwischenkopie (saga-media fragt je Bereich)
+    return _no_store(out)
 
 
 # --- Aufraeumen, Kontoloeschung ---------------------------------------------------------------------------------
@@ -1784,6 +1863,22 @@ def purge(c=None):
         c.execute(f"DELETE FROM chat_file WHERE id IN ({','.join('?' * len(orphan))})", tuple(orphan))
     c.execute("DELETE FROM chat_link WHERE expires<?", (now - 60,))
     _rm_blobs(c, fids + orphan)
+    # 2.4: verfallene Uploads und Teil-Dateien ohne Eintrag (Chat geloescht, Backup zurueckgespielt)
+    ups = [r[0] for r in c.execute("DELETE FROM chat_upload WHERE expires<? RETURNING id", (now,))]
+    try:
+        names_ = [f for f in os.listdir(UP_DIR) if _FID.fullmatch(f)]
+    except OSError:
+        names_ = []
+    if names_:
+        known = {r[0] for r in c.execute("SELECT id FROM chat_upload")}
+        for f in names_:
+            try:
+                old = now - os.stat(os.path.join(UP_DIR, f)).st_mtime > 3600
+            except OSError:
+                continue
+            if f not in known and old:
+                ups.append(f)
+    _rm_uploads(c, ups)
     return len(seqs)
 
 
@@ -1831,6 +1926,7 @@ def delete_account(c, uid):
             _changed(c, cid)
     c.execute("UPDATE chat SET created_by=NULL WHERE created_by=?", (uid,))
     c.execute("DELETE FROM chat_call WHERE caller=? OR callee=?", (uid, uid))      # Anrufe (2.1)
+    _rm_uploads(c, [r[0] for r in c.execute("DELETE FROM chat_upload WHERE uid=? RETURNING id", (uid,))])   # 2.4
     for tbl in ("chat_identity", "chat_device", "chat_link"):
         c.execute(f"DELETE FROM {tbl} WHERE uid=?", (uid,))
     _rm_blobs(c, fids)

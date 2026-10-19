@@ -51,19 +51,42 @@ func (m *media) access(r *http.Request, ip string, status int, n int64, t0 time.
 func (m *media) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	w := &lowerWriter{ResponseWriter: rw}
 	p := r.URL.Path
+	if p == "/internal/media/warm" && r.Method == http.MethodPost && keyOK(r, m.c.key) { // 2.4: nur Python (Vorababruf)
+		m.serveWarm(w, r)
+		return
+	}
 	if c := path.Clean("/" + p); c == "/internal" || strings.HasPrefix(c, "/internal/") {
 		w.Header().Set("Cache-Control", "no-store")
 		http.NotFound(w, r)
 		return
 	}
 	r.Header.Del(keyHeader)
-	// Was saga-media selbst bedient. E2 (Videos) ergaenzt hier PUT/HEAD /api/chat/uploads/{id} (Datenstrom direkt auf
-	// die Platte, Berechtigung ebenso ueber /internal/media/...); alles andere geht an Saga.
+	// Was saga-media selbst bedient (alles andere geht an Saga): Dateien lesen (Range), 2.4 Uploads schreiben
+	// (PUT/HEAD /api/chat/uploads/{id}) und Teile eigener Anhaenge fuer andere Server (/fed/v2/chat/files/{id}?range=).
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:
 		if fid := fileID(p); fid != "" {
 			m.serveFile(w, r, fid)
 			return
+		}
+		if id := uploadID(p); id != "" && r.Method == http.MethodHead {
+			m.serveUpload(w, r, id)
+			return
+		}
+		if r.Method == http.MethodGet && strings.HasPrefix(p, fedFilesPrefix) && r.URL.Query().Has("range") {
+			if fid := p[len(fedFilesPrefix):]; fidRe.MatchString(fid) {
+				m.serveFedOrigin(w, r, fid)
+				return
+			}
+		}
+	case http.MethodPut:
+		if id := uploadID(p); id != "" {
+			m.serveUpload(w, r, id)
+			return
+		}
+	case http.MethodDelete:
+		if id := uploadID(p); id != "" { // Abbrechen: Python loescht, die gemerkte Erlaubnis gilt nicht mehr
+			m.az.forgetKind(r, kindUpload, id)
 		}
 	}
 	if r.Body != nil && r.Body != http.NoBody && r.ContentLength != 0 {
@@ -147,7 +170,9 @@ func main() {
 
 	tr := newTransport()
 	m := &media{c: c, az: newAuthz(c, tr), proxy: newProxy(c, tr),
-		lim: &limits{perIP: map[string]int{}, max: c.maxStreams, maxIP: c.maxStreamsIP}}
+		lim:    &limits{perIP: map[string]int{}, max: c.maxStreams, maxIP: c.maxStreamsIP},
+		client: &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		ups:    &upLocks{m: map[string]bool{}}, fed: newFedCache(), bufs: newBufPoolSize(256 << 10)}
 	lc := net.ListenConfig{KeepAlive: 30 * time.Second}
 	ln, err := lc.Listen(context.Background(), "tcp", c.listen)
 	if err != nil {

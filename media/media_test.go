@@ -211,3 +211,39 @@ func TestAuthzCacheAndServe(t *testing.T) {
 		t.Errorf("/internal von aussen: %d", w.Code)
 	}
 }
+
+func TestParseCRange(t *testing.T) {
+	cases := []struct {
+		v       string
+		a, b, n int64
+		ok      bool
+	}{
+		{"bytes 0-99/1000", 0, 99, 1000, true},
+		{"bytes 900-999/1000", 900, 999, 1000, true},
+		{"bytes 900-1000/1000", 0, 0, 0, false},
+		{"bytes 5-4/1000", 0, 0, 0, false},
+		{"bytes */1000", 0, 0, 0, false},
+		{"bytes 0-1/x", 0, 0, 0, false},
+		{" bytes 1-1/2 ", 1, 1, 2, true},
+	}
+	for _, c := range cases {
+		a, b, n, ok := parseCRange(c.v)
+		if ok != c.ok || (ok && (a != c.a || b != c.b || n != c.n)) {
+			t.Errorf("%q: %d-%d/%d ok=%v", c.v, a, b, n, ok)
+		}
+	}
+	if uploadID("/api/chat/uploads/../../x") != "" || uploadID("/api/chat/uploads/"+strings.Repeat("a", 24)) == "" {
+		t.Errorf("uploadID")
+	}
+}
+
+func TestBitsHave(t *testing.T) {
+	have := []byte{0b00000101, 0b1} // Einheiten 0, 2, 8
+	u := int64(1 << 20)
+	if !bitsHave(have, u, 0, u-1) || bitsHave(have, u, 0, u) || !bitsHave(have, u, 2*u, 3*u-1) || !bitsHave(have, u, 8*u+5, 8*u+9) || bitsHave(have, u, 9*u, 9*u) {
+		t.Errorf("bitsHave")
+	}
+	if bitsHave(nil, u, 0, 0) || bitsHave(have, 0, 0, 0) {
+		t.Errorf("bitsHave leer")
+	}
+}

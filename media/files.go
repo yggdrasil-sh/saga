@@ -52,10 +52,14 @@ func (l *limits) release(ip string) {
 }
 
 type media struct {
-	c     *config
-	az    *authz
-	proxy http.Handler
-	lim   *limits
+	c      *config
+	az     *authz
+	proxy  http.Handler
+	lim    *limits
+	client *http.Client // interne Aufrufe an Python
+	ups    *upLocks     // 2.4: ein PUT je Upload
+	fed    *fedCache    // 2.4: Zwischenkopien anderer Server
+	bufs   *bufPool     // 2.4: Puffer fuer Platte/Netz (256 KiB)
 }
 
 // fileID: "/api/chat/files/<fid>" -> fid (sonst "").
@@ -98,6 +102,10 @@ func (m *media) serveFile(w http.ResponseWriter, r *http.Request, fid string) {
 	g := m.az.check(r, fid)
 	if g == nil {
 		m.proxy.ServeHTTP(w, r)
+		return
+	}
+	if g.fed != nil && g.fed.Size > 0 { // 2.4: lueckenhafte Zwischenkopie (fed.go)
+		m.serveFed(w, r, fid, g, t0)
 		return
 	}
 	f, size, err := openBlob(m.c.blobDir, fid)
