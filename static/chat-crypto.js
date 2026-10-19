@@ -6,6 +6,31 @@
   'use strict';
   if (typeof module === 'object' && module.exports) module.exports = factory;
   else root.SagaChatCrypto = factory;
+  // saga-file/v2 (2.4): Auftrag fuer viele Bloecke am Stueck (Worker static/chat-worker.js, sonst im Fenster). X = SagaChatCrypto(sodium)
+  //   {op:'f2enc', key, prefix, cs, size, i, bytes} -> {ct}   {op:'f2dec', key, head, i, ct} -> {plain}
+  root.SagaF2Job = function (X, d) {
+    var K = typeof d.key === 'string' ? X.unb64(d.key, 32) : new Uint8Array(d.key), cs, info, out, n, k, off;
+    if (d.op === 'f2enc') {
+      cs = d.cs; info = { cs: cs, size: d.size, n: X.f2Blocks(d.size, cs), prefix: new Uint8Array(d.prefix) };
+      var pb = new Uint8Array(d.bytes), parts = [], len = 0, nb = Math.max(1, Math.ceil(pb.length / cs));
+      for (k = 0; k < nb; k++) {
+        var c = X.f2Seal(K, info, d.i + k, pb.subarray(k * cs, Math.min((k + 1) * cs, pb.length)));
+        parts.push(c); len += c.length;
+      }
+      out = new Uint8Array(len); n = 0;
+      parts.forEach(function (p) { out.set(p, n); n += p.length; });
+      return { ct: out.buffer };
+    }
+    info = X.f2Parse(new Uint8Array(d.head)); cs = info.cs;
+    var cb = new Uint8Array(d.ct), plain = [], pl = 0;
+    for (k = 0, off = 0; off < cb.length; k++, off += cs + 16) {
+      var p = X.f2Open(K, info, d.i + k, cb.subarray(off, Math.min(off + cs + 16, cb.length)));
+      plain.push(p); pl += p.length;
+    }
+    out = new Uint8Array(pl); n = 0;
+    plain.forEach(function (p) { out.set(p, n); n += p.length; });
+    return { plain: out.buffer };
+  };
 })(typeof self !== 'undefined' ? self : this, function (sodium) {
   'use strict';
   var S = sodium, V = 'saga-chat/v1/';

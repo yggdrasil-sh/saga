@@ -19,6 +19,9 @@
       m.appendChild(HK.menuItem(T('Abmelden'), function () {
         // Chat-Bild-Cache dieses Kontos (nur Ciphertext, static/chat.js) beim Abmelden leeren; Chat-Schluessel bleiben
         var go = function () { location.href = '/logout'; };
+        try {                                          // Videos (2.4): Schluessel laufender Wiedergaben im Service Worker vergessen
+          if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage({ op: 'clear' });
+        } catch (e) { /* egal */ }
         try {
           if (document.body.dataset.uid) indexedDB.deleteDatabase('saga-chat-blobs-' + document.body.dataset.uid);
           if (!indexedDB.databases) return go();

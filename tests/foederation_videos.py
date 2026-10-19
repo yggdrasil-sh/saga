@@ -187,6 +187,8 @@ def direction(src, dst, su, du, sender, receiver, sch, dch, label):
 def part_new(anna, bert, ch, bc):
     ok("chatfile2 ausgehandelt (A-B)", wait(lambda: "chatfile2" in sql("a", "SELECT caps FROM fed_peer")[0][0]
                                             and "chatfile2" in sql("b", "SELECT caps FROM fed_peer")[0][0], 20))
+    ok("Chat-Objekt: big_files true (beide 2.4)", wait(lambda: (anna.chat(ch["ref"]) or {}).get("big_files") is True
+                                                       and (bert.chat(ch["ref"]) or {}).get("big_files") is True, 10))
     fid_ab, size_ab, m_ab = direction("a", "b", "fa-anna", "fb-bert", anna, bert, ch, bc, "A->B")
     fid_ba, size_ba, m_ba = direction("b", "a", "fb-bert", "fa-anna", bert, anna, bc, ch, "B->A")
     if MEDIA:
@@ -263,6 +265,7 @@ print(json.dumps(FCH.cache_trim({sql('b', 'SELECT id FROM fed_peer')[0][0]})))""
 def part_23(anna, bert, ch, bc):
     ok("A: B (2.3) ohne chatfile2", wait(lambda: sql("a", "SELECT caps_at FROM fed_peer")[0][0] is not None, 20)
        and "chatfile2" not in sql("a", "SELECT caps FROM fed_peer")[0][0] and "chat2" in sql("a", "SELECT caps FROM fed_peer")[0][0])
+    ok("A: Chat-Objekt big_files false (Gegenueber 2.3)", (anna.chat(ch["ref"]) or {}).get("big_files") is False)
     blob, key = C.encrypt_file_f2(os.urandom(3 * MiB))
     s, d = api("a", "fa-anna", "POST", f"/api/chats/{ch['id']}/uploads", {"size": len(blob), "fmt": 2})
     ok(f"A: grosses Video in den Chat mit 2.3-Server -> 409 mit Hinweis ({s})", s == 409 and "noch nicht" in d.get("error", ""))

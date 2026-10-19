@@ -2056,7 +2056,8 @@ def chat_extra(c, uid, ch, d, mem, m):
     hh = home_host(c, ch)
     ro = _ro_error(c, ch)
     d.update(v=2, ref=ch["ref"], fed=True, home=hh, home_self=ch["home_peer"] is None, my_handle=my_handle(c, uid),
-             state=(m or {}).get("state") or "ok", request=(m or {}).get("state") == "request", readonly=bool(ro), readonly_reason=ro)
+             state=(m or {}).get("state") or "ok", request=(m or {}).get("state") == "request", readonly=bool(ro), readonly_reason=ro,
+             big_files=big_files_ok(c, ch))      # 2.4: grosse Anhaenge (saga-file/v2 ueber ATTACH_MAX_MB) moeglich (alle mit chatfile2)
     out = []
     av = sharing.names(c, mem)
     for x in d["members"]:

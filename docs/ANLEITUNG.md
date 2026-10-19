@@ -861,7 +861,17 @@ speichert nur verschlüsselte Daten. Auch der Admin kann keine Inhalte lesen.
 Nachrichten und Anhänge löscht der Server stündlich, auch wenn ein Chat eine längere Frist hat. Beim Benutzer stehen nur
 Anzahlen (Chats, Geräte). Konto löschen entfernt Schlüssel, Geräte, Mitgliedschaften, gesendete Nachrichten und Anhänge;
 Direkt-Chats mit dem Konto verschwinden ganz. Grenzen: 64 KB je Nachricht, 60 Nachrichten je Minute, 10 Geräte je Konto,
-50 Mitglieder je Chat, `CHAT_QUOTA_MB` (Standard 1024) für Anhänge je Konto. Kein zusätzlicher Port.
+50 Mitglieder je Chat, **Speicher für Chat-Anhänge je Konto** (Standard 4096 MB, `CHAT_QUOTA_MB`) und **Größtes Video
+im Chat** (Standard 500 MB, `VIDEO_MAX_MB`) – beides im Admin unter „Chats“ änderbar. Kein zusätzlicher Port.
+
+**Videos (2.4):** Videos zeigen im Verlauf ein Poster mit Dauer und spielen per Streaming (Spulen ohne Komplett-Download).
+Poster, Dauer und Abmessungen erzeugt das sendende Gerät; der Server sieht davon nichts und wandelt nie um (bei
+Ende-zu-Ende-Verschlüsselung ginge das ohnehin nicht). Vom Handy gehen Videos standardmäßig „optimiert 720p“, „Original“
+ist wählbar. Videos über `ATTACH_MAX_MB` gehen im Blockformat `saga-file/v2` mit fortsetzbarem Upload (Teile bis 8 MB –
+die Proxy-Grenze aus Abschnitt 3 reicht); ältere Apps zeigen sie als Anhang mit dem Hinweis „Mit Saga 2.4 öffnen“.
+Laufende Uploads zählen beim Speicher mit und verfallen nach 24 Stunden. Über Servergrenzen holt der eigene Server große
+Videos nur bereichsweise beim Server des Absenders (Zwischenkopie, `FED_CHAT_CACHE_MB`); mit Servern auf Saga 2.3 gehen
+nur Anhänge bis `ATTACH_MAX_MB`.
 
 **Technik (Format v1):** nur libsodium (Browser: libsodium.js, mitgeliefert unter `static/vendor/libsodium`). Je Konto
 ein Identitätsschlüssel (Ed25519) und ein Backup-Schlüssel (X25519), je Gerät X25519 + Ed25519, vom Identitätsschlüssel
@@ -1724,7 +1734,8 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `TIMEZONE` | `Europe/Berlin` | Zeitzone für Exporte |
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Größe je Datei / Speicher je Benutzer |
 | `AVATAR_MAX_MB` | `5` | Größte Datei beim Hochladen eines Profilbilds |
-| `CHAT_QUOTA_MB` | `1024` | Speicher für Chat-Anhänge je Benutzer (verschlüsselt, unter `STATE_DIR/chat`) |
+| `CHAT_QUOTA_MB` | `4096` | Speicher für Chat-Anhänge je Benutzer (verschlüsselt, unter `STATE_DIR/chat`; laufende Uploads zählen mit). Im Admin änderbar |
+| `VIDEO_MAX_MB` | `500` | Größtes Video im Chat (Format `saga-file/v2`, fortsetzbarer Upload). Im Admin änderbar |
 | `SAGA_MEDIA` | `on` | `off` = Container ohne saga-media starten (Saga direkt auf Port 8080, wie bis 2.3; Abschnitt 3 „Medienpfad“) |
 | `MEDIA_INTERNAL_PORT` | `8079` | Mit saga-media: interner Port von Saga (nur `127.0.0.1`) |
 | `MEDIA_AUTHZ_TTL` | `60` | saga-media: so viele Sekunden höchstens gilt eine Leseerlaubnis für einen Anhang (0–60) |

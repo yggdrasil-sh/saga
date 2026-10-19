@@ -1972,5 +1972,6 @@ def chats_page(request: Request):
                                                   enabled=enabled(), admin_url=ADMIN_URL if info and info["is_admin"] else "",
                                                   me_avatar=avatars.my_url(uid))
     headers = dict(SEC_HEADERS)
-    headers["Content-Security-Policy"] = headers["Content-Security-Policy"].replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'")
+    headers["Content-Security-Policy"] = headers["Content-Security-Policy"].replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'") \
+        + "; media-src 'self' blob:"          # 2.4: Videos (Service Worker /_m/..., ohne ihn als Blob)
     return HTMLResponse(html, headers=headers)

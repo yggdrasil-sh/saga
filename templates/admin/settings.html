@@ -76,7 +76,7 @@
       <small>{{ _("0 = Standard ({n} MB, Umgebungsvariable CHAT_QUOTA_MB). Laufende Uploads zählen mit ihrer vollen Größe.", n=chat_quota_default) }}</small></label>
     <label class="adm-field"><span>{{ _("Größtes Video im Chat (MB)") }}</span>
       <input class="hk-in" type="number" name="chat_video_max_mb" min="0" max="65536" value="{{ st.chat_video_max_mb or 0 }}">
-      <small>{{ _("0 = Standard ({n} MB, Umgebungsvariable VIDEO_MAX_MB). Videos über 10 MB gehen im Blockformat (Saga 2.4) und werden gestreamt; ältere Apps zeigen dann „Mit Saga 2.4 öffnen“.", n=chat_video_default) }}</small></label>
+      <small>{{ _("0 = Standard ({n} MB, Umgebungsvariable VIDEO_MAX_MB). Videos über der Grenze für Anhänge (ATTACH_MAX_MB, Standard 10 MB) gehen im Blockformat von Saga 2.4 und werden gestreamt; ältere Apps zeigen dann „Mit Saga 2.4 öffnen“.", n=chat_video_default) }}</small></label>
   </section>
   <section class="adm-card" id="anrufe">
     <h3>{{ _("Anrufe") }}</h3>

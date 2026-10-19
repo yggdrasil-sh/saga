@@ -251,6 +251,31 @@ Push und Benachrichtigungen kommen nur vom eigenen Server.
 - `PUT /api/chats/{id}/ai {"allowed": true}` – in Chats über Servergrenzen standardmäßig aus; Ein-/Ausschalten erscheint
   bei allen als Systemzeile. Fragen an die KI gehen an den Server der fragenden Person.
 
+### 6.5a Große Anhänge und Videos über Servergrenzen (2.4, `chatfile2`)
+
+Für die Apps ändert sich nichts gegenüber lokalen Chats: Upload, Range-Abruf und Medien-Token wie in `APP-API.md`,
+Abschnitt „Videos im Chat“. Zu beachten:
+
+- Chat-Objekt `big_files`: `true`, wenn **alle** beteiligten Server (Heim und Server aller Mitglieder) die Fähigkeit
+  `chatfile2` haben. Bei `false` (mindestens ein Server mit Saga 2.3) nur Anhänge bis `limits.file_max` – der Server
+  weist größere beim Anlegen des Uploads und beim Senden mit `409` ab („Der Server des Gegenübers kann große Videos noch
+  nicht“). Videos bis `file_max` (v1 oder v2) gehen wie bisher, auch an 2.3.
+- Ein großer Anhang bleibt beim Server des Absenders. Der eigene Server holt **nur die angefragten Bereiche**
+  (Range) und legt sie als lückenhafte Zwischenkopie ab; Anfang und Ende (je 1 MiB, `moov` vorn oder hinten) holt er
+  gleich beim Eingang der Nachricht. Der erste Abruf eines noch fehlenden Bereichs dauert daher etwas länger (Messung
+  lokal: ~30–60 ms je MiB); danach wie lokal. Ohne saga-media kann eine Antwort kürzer sein als angefragt (höchstens
+  8 MiB, `Content-Range` beachten).
+- Zwischenkopien zählen bei `FED_CHAT_CACHE_MB` mit ihren geholten 1-MiB-Einheiten; geräumte Bereiche werden bei Bedarf
+  neu geholt.
+
+Zwischen den Servern (zur Einordnung): `GET /fed/v2/chat/files/{fid}?range=a-b` – der Bereich steht in der **signierten**
+Query (die Signatur deckt `@path` und `@query`), höchstens 4 MiB je Teil. Antwort `206`, signiert mit `Content-Digest` über
+genau diesen Teil und der Nonce der Anfrage, dazu `Saga-Size` (Gesamtgröße) und `Content-Range`. Ohne `range` liefert der
+Server nur Anhänge bis `FILE_MAX` (sonst `413`), ungültige Bereiche `416`. Ankündigungen (`files: [{id, size}]`) dürfen mit
+`chatfile2` bis 8 GiB groß sein, sonst bis `FILE_MAX`; an Server ohne `chatfile2` gehen größere Anhänge gar nicht erst
+(der Fan-out lässt sie weg). Im Container liefert und holt saga-media die Bytes selbst; Python prüft und signiert nur
+(`/internal/media/fed-serve`, `fed-need`, `fed-got`).
+
 ### 6.6 Zwischen den Servern (zur Einordnung)
 
 Heim = Server der Person, die den Chat beginnt; maßgeblich für Mitglieder, Empfängerliste (prüft sie exakt), Reihenfolge

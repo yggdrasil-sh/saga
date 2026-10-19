@@ -7,6 +7,9 @@
 //                                                                       verschluesselt, fuer den Platten-Cache)
 //   make  {bytes, mime}                   -> {jpeg, w, h, tw, th}       Vorschaubild zum Senden
 //   enc   {cid, bytes}                    -> {blob, key}                Anhang verschluesseln (Senden)
+//   f2enc {key, prefix, cs, size, i, bytes} -> {ct}                       saga-file/v2 (2.4): Bloecke ab Nummer i verschluesseln
+//                                                                       (bytes = Klartext ab i*cs, ganze Bloecke, der letzte ggf. kuerzer)
+//   f2dec {key, head, i, ct}               -> {plain}                    saga-file/v2: Bloecke ab i entschluesseln (ct ab Blockanfang)
 'use strict';
 var V = (self.location.search.match(/v=([^&]+)/) || [])[1] || '';
 importScripts('/static/vendor/libsodium/libsodium-sumo.js?v=' + V, '/static/vendor/libsodium/libsodium-wrappers.js?v=' + V,
@@ -46,6 +49,7 @@ self.onmessage = function (e) {
       });
     }
     if (d.op === 'make') return thumbOf(new Uint8Array(d.bytes), d.mime).then(function (t) { done(t, [t.jpeg]); });
+    if (d.op === 'f2enc' || d.op === 'f2dec') { var r2 = self.SagaF2Job(X, d); return done(r2, [r2.ct || r2.plain]); }
     if (d.op === 'enc') {
       var r = enc(d.cid, new Uint8Array(d.bytes));
       return done({ blob: r.blob.buffer, key: r.key }, [r.blob.buffer]);

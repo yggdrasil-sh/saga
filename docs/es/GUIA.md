@@ -872,8 +872,19 @@ servidor solo guarda datos cifrados. Tampoco el administrador puede leer el cont
 (días)**: el servidor elimina cada hora los mensajes y adjuntos más antiguos, aunque un chat tenga un plazo mayor. En el
 usuario solo aparecen recuentos (chats, dispositivos). Eliminar una cuenta borra claves, dispositivos, pertenencias,
 mensajes enviados y adjuntos; los chats directos con esa cuenta desaparecen por completo. Límites: 64 KB por mensaje,
-60 mensajes por minuto, 10 dispositivos por cuenta, 50 miembros por chat, `CHAT_QUOTA_MB` (1024 por defecto) para
-adjuntos por cuenta. Sin puerto adicional.
+60 mensajes por minuto, 10 dispositivos por cuenta, 50 miembros por chat, **espacio para adjuntos de chat por cuenta**
+(4096 MB por defecto, `CHAT_QUOTA_MB`) y **vídeo más grande en el chat** (500 MB por defecto, `VIDEO_MAX_MB`), ambos
+ajustables en la administración en «Chats». Sin puerto adicional.
+
+**Vídeos (2.4):** los vídeos muestran en la conversación una imagen de portada con la duración y se reproducen en streaming
+(avanzar sin descargar todo). La portada, la duración y las dimensiones las genera el dispositivo que envía; el servidor
+no ve nada de eso y nunca convierte (con cifrado de extremo a extremo tampoco sería posible). Desde el móvil los vídeos se
+envían «optimizado 720p» por defecto; se puede elegir «Original». Los vídeos por encima de `ATTACH_MAX_MB` usan el formato
+por bloques `saga-file/v2` con subida reanudable (partes de hasta 8 MB: basta el límite del proxy de la sección 3); las
+apps antiguas los muestran como adjunto con el aviso «Abrir con Saga 2.4». Las subidas en curso cuentan en el espacio y
+caducan a las 24 horas. Entre servidores, tu servidor obtiene los vídeos grandes solo por tramos del servidor del
+remitente (copia en caché, `FED_CHAT_CACHE_MB`); con servidores en Saga 2.3 solo funcionan adjuntos de hasta
+`ATTACH_MAX_MB`.
 
 **Técnica (formato v1):** solo libsodium (navegador: libsodium.js, incluido en `static/vendor/libsodium`). Por cuenta una
 clave de identidad (Ed25519) y una clave de copia de seguridad (X25519); por dispositivo X25519 + Ed25519, firmadas por
@@ -1754,7 +1765,8 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `TIMEZONE` | `Europe/Berlin` | Zona horaria para exportaciones |
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Tamaño por archivo / espacio por usuario |
 | `AVATAR_MAX_MB` | `5` | Archivo más grande al subir una foto de perfil |
-| `CHAT_QUOTA_MB` | `1024` | Espacio para adjuntos de chat por usuario (cifrados, en `STATE_DIR/chat`) |
+| `CHAT_QUOTA_MB` | `4096` | Espacio para adjuntos de chat por usuario (cifrados, en `STATE_DIR/chat`; cuentan las subidas en curso). Ajustable en la administración |
+| `VIDEO_MAX_MB` | `500` | Vídeo más grande en el chat (formato `saga-file/v2`, subida reanudable). Ajustable en la administración |
 | `SAGA_MEDIA` | `on` | `off` = arrancar el contenedor sin saga-media (Saga directamente en el puerto 8080, como hasta la 2.3; sección 3 «Ruta de medios») |
 | `MEDIA_INTERNAL_PORT` | `8079` | Con saga-media: puerto interno de Saga (solo `127.0.0.1`) |
 | `MEDIA_AUTHZ_TTL` | `60` | saga-media: segundos que como máximo vale un permiso de lectura de un adjunto (0–60) |

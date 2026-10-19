@@ -859,10 +859,12 @@ ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS caps_b TEXT NOT NULL DEFAULT '[]'
 """,
     # 2.4.0 (Etappe E2, Videos im Chat): Format je Anhang (1 = ein Block wie bis 2.3, 2 = saga-file/v2 blockweise mit
     # wahlfreiem Zugriff) und fuer Zwischenkopien von Anhaengen anderer Server (Range-Abruf, chatfile2) die Bitmap der schon
-    # geholten 1-MiB-Einheiten (NULL = ganze Datei wie bis 2.3). Die Tabelle chat_upload legt SCHEMA an.
+    # geholten 1-MiB-Einheiten (NULL = ganze Datei wie bis 2.3); Index je Konto fuer den Chat-Speicher (/api/chat/me "used").
+    # Die Tabelle chat_upload legt SCHEMA an.
     11: """
 ALTER TABLE chat_file ADD COLUMN IF NOT EXISTS fmt SMALLINT NOT NULL DEFAULT 1;
 ALTER TABLE chat_file_fed ADD COLUMN IF NOT EXISTS have BYTEA;
+CREATE INDEX IF NOT EXISTS chat_file_uid ON chat_file (uid);
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
