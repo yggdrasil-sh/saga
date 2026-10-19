@@ -16,7 +16,8 @@ Grundsaetze (Vertrag fuer Apps: docs/APP-API-FED.md, Abschnitt 6):
   schickt es trotzdem, verwirft der eigene Server; ist das Heim der Server der ablehnenden Person, weist es Nachrichten ab).
   Sperren je Person ('~x@host') oder je Instanz ('host'), Raten je Instanz und Absender, Pruefprotokoll (fed_log).
 - Anhaenge bleiben beim Absender-Server; die anderen holen sie bei Bedarf (Zwischenkopie), kleine (Vorschaubilder) vorab.
-- Gelesen bleibt lokal, Tippen geht direkt und verwerfbar, Push loest nur der eigene Server aus. KI im Chat ist in
+- Der Lese-Zeiger (Ungelesen-Zaehler) bleibt lokal; Gelesen-Bestaetigungen (2.4) gehen nur versiegelt und nur mit der
+  Faehigkeit 'receipts' ueber das Heim (saga.chat_status). Tippen geht direkt und verwerfbar, Push loest nur der eigene Server aus. KI im Chat ist in
   foederierten Chats aus, bis jemand sie einschaltet (Systemzeile fuer alle). Trennen: Chats mit Personen bzw. Heim der
   getrennten Instanz werden schreibgeschuetzt (Verlauf bleibt lesbar)."""
 import json
@@ -1646,7 +1647,12 @@ def chat_extra(c, uid, ch, d, mem, m):
         d["peer"] = {"username": o.get("username"), "handle": o.get("handle"), "name": o.get("name") or "?", "label": o.get("label"),
                      "host": o.get("host"), "avatar": av.avatar(o.get("username")) if o.get("username") else None}
         d["delete_for_all"] = "chat"
+    for fn in EXTRA_HOOKS:                          # 2.4 (saga.chat_status): receipts_ok / online_ok
+        fn(c, ch, d)
     return d
+
+
+EXTRA_HOOKS = []
 
 
 # =====================================================================================================

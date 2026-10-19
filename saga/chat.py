@@ -70,6 +70,10 @@ _hits = {}                             # (art, uid) -> [zeiten] fuer Tipp-/Uploa
 FED = None
 # Kann der anfragende Client saga-chat/v2 (Kopfzeile X-Saga-Chat: 2)? Aeltere Apps sehen foederierte Chats nur mit Hinweis.
 V2_CLIENT = contextvars.ContextVar("saga_chat_v2", default=False)
+# 2.4: Gelesen-Bestaetigungen und Online-Status (saga.chat_status setzt sich hier ein): RECEIPT(uid, chat, mitglied, beleg)
+# -> Zustand fuer POST /api/chats/{cid}/read mit receipt; STATUS_ME(c, uid) -> Zusatzfelder fuer /api/chat/me
+RECEIPT = None
+STATUS_ME = None
 
 
 # --- Hilfen -------------------------------------------------------------------------------------------------
@@ -464,7 +468,8 @@ def api_me(request: Request, device: str = ""):
         devs = _devices(c, [uid], active=False).get(uid, [])
         n_link = c.execute("SELECT COUNT(*) FROM chat_link WHERE uid=? AND approved IS NULL AND expires>?", (uid, time.time())).fetchone()[0]
         nm = names(c, [uid])
-    return _no_store({
+        extra = STATUS_ME(c, uid) if STATUS_ME is not None else {}
+    return _no_store({**extra,
         "enabled": enabled(), "uid": uid, "name": nm.get(uid, uid), "identity": ident,
         "devices": [{"id": d["id"], "name": d["name"], "created": d["created"], "last_seen": d["last_seen"],
                      "revoked": bool(d["revoked_at"]), "current": d["id"] == device, "enc_pub": d["enc_pub"],
@@ -1554,7 +1559,9 @@ def api_msg_delete(cid: int, mid: str, request: Request):
 
 @router.post("/api/chats/{cid}/read")
 async def api_read(cid: int, request: Request):
-    """Gelesen bis {seq}; Benachrichtigungen dieses Chats werden mit gelesen. Live: chat.read an meine anderen Tabs/Geraete."""
+    """Gelesen bis {seq}; Benachrichtigungen dieses Chats werden mit gelesen. Live: chat.read an meine anderen Tabs/Geraete.
+    2.4: {receipt: {keys: {'backup:<konto|handle>': versiegelt}}} dazu - Gelesen-Bestaetigung fuer die anderen Mitglieder
+    (saga.chat_status, docs/APP-API.md); Antwort dann mit receipt: ok|off|none|rate|bad."""
     uid, err = _me(request)
     if err:
         return err
@@ -1576,7 +1583,11 @@ async def api_read(cid: int, request: Request):
             bus.emit_after(c, "notification.read", {"uid": uid, "ids": ids, "unread": notify.count_unread(c, uid)})
         _direct(c, [uid], "chat.read", {"chat_id": ch["id"], "seq": seq})
         total = unread_total(c, uid)
-    return _no_store({"ok": True, "last_read": seq, "unread": total})
+    out = {"ok": True, "last_read": seq, "unread": total}
+    if RECEIPT is not None and "receipt" in b:
+        from starlette.concurrency import run_in_threadpool
+        out["receipt"] = await run_in_threadpool(RECEIPT, uid, ch, m, b.get("receipt"))
+    return _no_store(out)
 
 
 @router.post("/api/chats/{cid}/typing")

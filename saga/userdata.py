@@ -17,7 +17,7 @@ USER_TABLES = ("task", "note", "note_version", "bookmark", "fav", "device_login"
                "immich_key", "cal_account", "app_code", "pair_code", "note_publish", "public_name", "notification",
                "chat_identity", "chat_device", "chat_link", "push_sub", "push_queue", "ai_history", "ai_usage", "chat_ai_reply",
                "mfa_passkey", "mfa_totp", "mfa_recovery", "mfa_challenge", "fed_handle", "chat_fed_cert", "chat_device_fed",
-               "fed_chat_block", "chat_invite", "nc_account")
+               "fed_chat_block", "chat_invite", "nc_account", "chat_seen")
 
 
 def delete_user_data(uid, drop_user=False):
@@ -34,6 +34,7 @@ def delete_user_data(uid, drop_user=False):
         shares = delete_account(c, uid)          # Freigaben (eigene + an das Konto), Kommentare anonymisieren/loeschen
         notes_n = notify.delete_account(c, uid)  # Benachrichtigungen: eigene weg, als Ausloeser anonymisiert
         chat_n = chat.delete_account(c, uid)     # Chat: Schluessel, Geraete, Mitgliedschaften, gesendete Nachrichten, Anhaenge
+        c.execute("DELETE FROM chat_receipt WHERE reader=? OR viewer=?", (uid, uid))    # Gelesen-Bestaetigungen (2.4)
         pushed = push.delete_account(c, uid)     # Mitteilungs-Abos und -Auftraege weg, als Absender anonymisiert
         avatar_n = avatars.delete_account(c, uid)  # Profilbild und zwischengespeicherte Gravatar-/SSO-Bilder
         ub_n = userbackup.delete_account(c, uid)  # persoenliches Backup: Ziel, Schluessel, Verlauf (Backups im Ziel bleiben)

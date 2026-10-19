@@ -27,6 +27,7 @@ from version import API_LEVEL, BUILD, MIN_APP, VERSION, channel
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
 from saga import ai, ai_chat, avatars, calls, chat, federation, i18n, live, mfa, notify, push
 from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
+from saga import chat_status                     # 2.4: Gelesen-Bestaetigungen und Online-Status (haengt sich in chat, live, fed_chat ein)
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
@@ -224,6 +225,7 @@ app.include_router(calls.router)            # Anrufe (WebRTC, Signalisierung ueb
 app.include_router(fed_dir.router)          # Adressbuch (2.3): /fed/v2/directory, /api/fed/people, /api/account/federation
 app.include_router(fed_keys.router)         # Schluesselverzeichnis + Krypto v2 (2.3): /fed/v2/keys, /api/chat/v2/...
 app.include_router(fed_chat.router)         # Chats + Anrufe ueber Servergrenzen (2.3): /fed/v2/chat..., /fed/v2/call, /api/chat/blocks
+app.include_router(chat_status.router)      # Gelesen/Online (2.4): /api/chat/privacy, /api/chat/presence, /api/chats/{cid}/receipts
 assert fed_calls.router is fed_chat.router
 app.include_router(nextcloud.router)         # Nextcloud-Dateien in Seiten (2.3): /api/settings/nextcloud, /api/nextcloud/..., /api/notes/{nid}/nc
 app.include_router(userbackup.router)        # Persoenliche Backups (2.3): /api/account/backup...

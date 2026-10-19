@@ -373,3 +373,29 @@ def open_signal_v2(sealed, pk, sk):
 
 def verify_signal_v2(call_id, from_handle, from_device, to_handle, to_device, body, sig, sign_pk):
     return verify(sig, signal_msg_v2(call_id, from_handle, from_device, to_handle, to_device, body), sign_pk)
+
+
+# --- Gelesen-Bestaetigungen (2.4, saga/chat_status.py): signiert vom Geraet, versiegelt fuer den Backup-Schluessel -----------
+def receipt_msg(chat, reader, dev_id, body, v2=False):
+    """chat = str(chat_id) (v1) bzw. chat_ref (v2); reader = Benutzername (v1) bzw. Handle (v2); body = JSON-Text."""
+    return lp((V2 if v2 else "saga-chat/v1/") + "receipt", str(chat), reader, dev_id, body)
+
+
+def seal_receipt(chat, reader, dev, body, pk, v2=False):
+    """body (dict {id, n, ts}) signieren und fuer pk (backup_pub des Gegenuebers) versiegeln -> B64."""
+    bs = json.dumps(body, separators=(",", ":"))
+    sig = sign(receipt_msg(chat, reader, dev["id"], bs, v2), dev["sign_sk"])
+    inner = json.dumps({"v": 1, "dev": dev["id"], "body": bs, "sig": b64(sig)}, separators=(",", ":"))
+    return b64(nb.crypto_box_seal(inner.encode(), pk))
+
+
+def open_receipt(sealed, pk, sk):
+    """-> (geraet, body-text, signatur)"""
+    d = json.loads(nb.crypto_box_seal_open(unb64(sealed), pk, sk))
+    if d.get("v") != 1 or not isinstance(d.get("body"), str) or not isinstance(d.get("dev"), str):
+        raise ValueError("receipt version")
+    return d["dev"], d["body"], unb64(d["sig"], 64)
+
+
+def verify_receipt(chat, reader, dev_id, body, sig, sign_pk, v2=False):
+    return verify(sig, receipt_msg(chat, reader, dev_id, body, v2), sign_pk)
