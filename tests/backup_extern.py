@@ -453,6 +453,13 @@ try:
        f" Kalender/KI/Immich/Avatare (netguard) und Websuche gesperrt ({r.stdout.strip()} {r.stderr.strip()[-200:]})",
        r.stdout.strip().splitlines() == ["True False SAGA_RESTORE_TEST True restore_test False", "netguard ConnectError",
                                          "suche SAGA_RESTORE_TEST"])
+    # 2.3 E8: Hintergrundpfade der Foederation (Ausgangs-Worker, hello/Adressbuch im Express-Pool) gehen alle ueber _send
+    r = subprocess.run([sys.executable, "-c", "from saga import federation\nfederation.start(); print(federation._worker['thread'])\n"
+                        "try:\n    federation._send('POST', 'https://b.example/fed/v2/hello', {}, b'{}', 1000); print('send offen')\n"
+                        "except federation.FedError as ex:\n    print('send', ex)\n"],
+                       cwd=APP, env=dict(fenv, SAGA_RESTORE_TEST="1"), capture_output=True, text=True, timeout=60)
+    ok(f"SAGA_RESTORE_TEST: kein Foederations-Arbeiter, Senden an andere Instanzen gesperrt ({r.stdout.strip()} {r.stderr.strip()[-200:]})",
+       r.stdout.strip().splitlines() == ["None", "send SAGA_RESTORE_TEST"])
     n0 = stats()["requests"]
     log = open(os.path.join(TMPROOT, "srv.log"), "w")
     srv_proc = subprocess.Popen([sys.executable, "run.py"], cwd=APP, stdout=log, stderr=subprocess.STDOUT,
