@@ -279,6 +279,16 @@ versiegelt wird `{"v":2,"body":body,"sig":B64(sig)}` für das Zielgerät (Web: `
 - ICE/TURN: jede Seite holt ihre Server wie bisher über `GET /api/calls/config` beim **eigenen** Server.
 - Nachrichtenanfragen klingeln nie; Trennen der Server beendet laufende Anrufe.
 
+### 7.1 saga-call v3 über Servergrenzen (2.4, E0)
+
+Der v3-Body (`pc`, `caps`, `n`, Neuverhandlung, ICE-Restart, `state.pip/want/path`, `bye`; Vertrag in `APP-API.md`,
+Abschnitt „Anrufe: saga-call v3“) gilt unverändert auch für föderierte Anrufe: Er steckt im versiegelten
+`saga-call/v2`-Text, die Server sehen ihn nicht. Weitere `offer`/`answer` laufen wie ICE als `signal` über
+`/fed/v2/call` (synchron, in beide Richtungen, Budget wie lokal). Der `caps`-Hinweis aus `POST /api/calls` bzw.
+`/answer` geht in `ring`/`answer` mit; ein 2.3-Server ignoriert ihn (dann ist `caps` beim Gegenüber leer – maßgeblich
+bleiben die signierten `caps` im Body). Jede Seite prüft `reneg` beim **eigenen** Server (`GET /api/calls/config`).
+Die Server-Fähigkeit `calls3` (Raum, mehrere Geräte, Gruppen) kommt erst mit E4.
+
 ## 8. Seiten anderer Server vollständig (E4/E6)
 
 Seiten anderer Server haben wie bisher **negative IDs** (`-(id_dort * 1024 + peer_id)`) und laufen über die gewohnten
