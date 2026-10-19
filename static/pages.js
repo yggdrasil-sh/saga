@@ -4542,10 +4542,10 @@
     var wrap = el('div', 'sh-addwrap');                     // Treffer als Liste UEBER dem Dialog (kein Verschieben beim Klicken)
     row.appendChild(inp); row.appendChild(rsel); wrap.appendChild(row); box.appendChild(wrap);
     var fm = el('p', 'hk-fieldmsg'); box.appendChild(fm);
-    // "Mindestens 3 Zeichen." nur bei 1-2 Zeichen (direkt am Feld); sonst hoechstens der Hinweis auf die Gruppen
+    // Bei 1-2 Zeichen sucht der Server nur genaue Treffer (kurze Namen wie "hd") - Hinweis direkt am Feld; sonst hoechstens der Gruppen-Hinweis
     var scopeHint = st.scope ? T('Nur Personen aus deinen Gruppen.') : st.federation ? T('Andere Saga-Instanzen: name@server eingeben.') : '';
     var setErr = HK.fieldMsg(inp, fm, scopeHint);
-    function lenHint(q) { setErr.hint(q.length && q.length < 3 ? (st.scope ? T('Nur Personen aus deinen Gruppen. Mindestens 3 Zeichen.') : T('Mindestens 3 Zeichen.')) : scopeHint); }
+    function lenHint(q) { setErr.hint(q.length && q.length < 3 ? (st.scope ? T('Nur Personen aus deinen Gruppen. Bei 1–2 Zeichen nur genaue Treffer.') : T('Bei 1–2 Zeichen nur genaue Treffer.')) : scopeHint); }
     var help = el('p', 'sh-help'); box.appendChild(help);                 // was die gewaehlte Rolle darf
     var chips = el('div', 'sh-chips'); box.appendChild(chips);             // leeres Suchfeld: eigene Gruppen als Chips
     var hits = el('div', 'sh-hits'); hits.id = 'sh-hits'; hits.setAttribute('role', 'listbox'); hits.hidden = true; wrap.appendChild(hits);
@@ -4689,10 +4689,10 @@
     }
     function search() {
       var q = inp.value.trim(); setErr(''); lenHint(q); pubStatus(msg, ''); clearTimeout(tmr); drawChips();
-      if (q.length < 3) { hideHits(); return; }
+      if (!q) { hideHits(); return; }
       var my = ++seq;
       tmr = setTimeout(function () {
-        api('GET', '/api/share/targets?q=' + encodeURIComponent(q)).then(function (d) { if (my === seq && inp.value.trim().length >= 3) hitList(d); })
+        api('GET', '/api/share/targets?q=' + encodeURIComponent(q)).then(function (d) { if (my === seq && inp.value.trim()) hitList(d); })
           .catch(function (err) { setErr(err.message); });
       }, 200);
     }
@@ -4712,7 +4712,7 @@
     inp.disabled = rsel.disabled = !st.enabled || !st.shareable;
     drawHelp(); draw(); drawChips();
     setTimeout(function () { if (!inp.disabled) inp.focus(); }, 0);
-    inp.addEventListener('click', function () { if (hits.hidden && last && inp.value.trim().length >= 3) hitList(last); });
+    inp.addEventListener('click', function () { if (hits.hidden && last && inp.value.trim()) hitList(last); });
   }
   document.addEventListener('keydown', function (e) {
     if (!lockBlocked(e)) return;

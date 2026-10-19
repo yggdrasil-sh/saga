@@ -416,7 +416,7 @@ def main():
 
     # --- 6. Personensuche, Grenzen, Admin-Einstellungen ---------------------------------------------------------------------
     s, d = req("GET", "/api/share/targets?q=sh", A)
-    ok(f"Suche: unter 3 Zeichen keine Liste ({s})", s == 200 and d["users"] == [])
+    ok(f"Suche: unter 3 Zeichen keine Liste (nur genaue Treffer) ({s})", s == 200 and d["users"] == [])
     d = req("GET", "/api/share/targets?q=sh-", A)[1]
     us = {u["username"]: u for u in d["users"]}
     ok(f"Suche: Konten mit Name, ohne mich, ohne gesperrte ({sorted(us)})", "sh-b" in us and us["sh-b"]["name"] == "Bert Liest" and "sh-a" not in us
@@ -651,7 +651,13 @@ def main():
        and req("GET", f"/api/notes/{priv}/publish", A)[1].get("shared_edit") is False)
     s, d = req("GET", "/api/share/targets?q=sh-", A)
     req("DELETE", f"/api/notes/{y1}/shares?type=user&target=sh-b", A); req("DELETE", f"/api/notes/{y3}/shares?type=user&target=sh-b", A)
-    ok(f"Personensuche: 2 Zeichen leer, 3 Zeichen Treffer ({s})", s == 200 and d["users"] and req("GET", "/api/share/targets?q=co", A)[1]["users"] == [])
+    ok(f"Personensuche: 2 Zeichen ohne Teiltreffer, 3 Zeichen Treffer ({s})", s == 200 and d["users"] and req("GET", "/api/share/targets?q=co", A)[1]["users"] == [])
+    # Kurze Namen (z. B. "hd"): bei 1-2 Zeichen nur genaue Treffer auf Anzeige- bzw. Benutzername, Gross/Klein egal
+    auth.create_user("sh-hd", PW, "Hd"); auth.create_user("sh-hdx", PW, "Hdmann")
+    us = lambda q: {u["username"] for u in req("GET", "/api/share/targets?q=" + q, A)[1]["users"]}
+    ok(f"Kurzsuche 'hd': genau 'Hd', nicht 'Hdmann' ({sorted(us('hd'))})", us("hd") == {"sh-hd"} and us("HD") == {"sh-hd"})
+    ok("Kurzsuche: 1 Zeichen bzw. Teil eines Namens -> nichts", us("h") == set() and us("dm") == set() and us("co") == set())
+    ok(f"ab 3 Zeichen wieder Teilwort-Suche ({sorted(us('hdm'))})", us("hdm") == {"sh-hdx"} and us("sh-hd") >= {"sh-hd", "sh-hdx"})
 
     # --- 7d. Nachbesserung Runde 2: Konflikt ohne Datenverlust, Autoren, tatsaechliche Rolle, Ungelesenes, Laenge, Platzhalter ----
     req("PUT", f"/api/notes/{root}/shares", A, {"type": "user", "target": "sh-b", "role": "edit"})

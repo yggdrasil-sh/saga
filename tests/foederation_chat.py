@@ -369,12 +369,22 @@ def part_requests(A, B, pa, pb, anna, bert, ch, bc):
     ok("A: Carl sendet weiter (merkt nichts)", s == 200)
     time.sleep(2)
     ok("B: abgelehnt -> nichts mehr zugestellt", not sql("b", "SELECT 1 FROM chat_msg WHERE id=?", (mc["id"],)))
+    # Pruefer-Fund 6: stellt das Heim trotz Ablehnung weiter zu, verwirft B (nichts gespeichert, kein Ereignis, kein Vorababruf)
+    fseq_b = sql("b", "SELECT fseq FROM chat WHERE ref=?", (cc["ref"],))[0][0]
+    sql("a", "UPDATE chat_member SET state='ok' WHERE chat_id=? AND uid LIKE '@%'", (cc["id"],))
+    s, d, mt = carl.send(cc, "Trotzdem?")
+    sql("a", "UPDATE chat_member SET state='declined' WHERE chat_id=? AND uid LIKE '@%'", (cc["id"],))
+    ok("A: Heim stellt (absichtlich) trotzdem zu", s == 200 and wait(lambda: not sql("a", "SELECT 1 FROM fed_outbox"), 15))
+    time.sleep(1)
+    ok("B: abgelehnt -> Nachricht verworfen (nicht gespeichert, Stand unveraendert, keine Meldung)",
+       not sql("b", "SELECT 1 FROM chat_msg WHERE id=?", (mt["id"],)) and sql("b", "SELECT fseq FROM chat WHERE ref=?", (cc["ref"],))[0][0] == fseq_b
+       and not notifs("b", "fb-olga"))
     ok("A: Anruf in abgelehnter Anfrage klingelt nicht", api("a", "fa-carl", "POST", "/api/calls", {"id": C.hexid(), "chat_id": cc["id"], "media": "audio",
                                                                                             "device": carl.dev["id"], "signals": {olga.dev["id"]: C.b64(os.urandom(80))}})[0] == 409)
     # Olga oeffnet den Chat doch noch (selbst beginnen): wieder da, Nachrichten nachgeholt
     s, d = api("b", "fb-olga", "POST", "/api/chats", {"kind": "dm", "handle": carl.handle})
     ok("B: Olga beginnt selbst -> derselbe Chat, angenommen", s == 200 and d["chat"]["ref"] == cc["ref"] and d["chat"]["state"] == "ok")
-    ok("B: verpasste Nachricht nachgeholt", wait(lambda: olga.texts(d["chat"]) == ["Hallo Olga?", "Noch da?"], 20))
+    ok("B: verpasste Nachrichten nachgeholt (auch die verworfene)", wait(lambda: olga.texts(d["chat"]) == ["Hallo Olga?", "Noch da?", "Trotzdem?"], 20))
     # Sperren je Instanz: Olga sperrt A -> neue Anfragen von A kommen nicht an
     s, d = api("b", "fb-olga", "POST", f"/api/chats/{d['chat']['id']}/request", {"action": "block", "scope": "instance"})
     ok("B: Olga sperrt den Server A", s == 200 and d.get("blocked"))
@@ -392,6 +402,21 @@ def part_requests(A, B, pa, pb, anna, bert, ch, bc):
     cb = wait(lambda: bert.chat(d["chat"]["ref"]), 10)
     s, d2 = api("b", "fb-bert", "POST", f"/api/chats/{cb['id']}/request", {"action": "block"})
     ok("B: Bert sperrt Carl (Person)", s == 200 and sql("b", "SELECT target FROM fed_chat_block WHERE uid='fb-bert'") == [[carl.handle]])
+    # Pruefer-Fund 6 beim Heim: Anna Berg (B, Heim) beginnt mit Carl und sperrt ihn -> Carls Nachrichten verwirft das Heim
+    annb = User("b", "fb-anna")
+    s, d = api("b", "fb-anna", "POST", "/api/chats", {"kind": "dm", "handle": carl.handle})
+    hc = d.get("chat") or {}
+    s1, _, _ = annb.send(hc, "Hallo Carl")
+    cch = wait(lambda: carl.chat(hc.get("ref")), 10)
+    ok(f"A: Carl sieht die Anfrage von Anna B ({s}, {s1})", s == 200 and s1 == 200 and cch)
+    s, _, m1 = carl.send(cch, "Hallo zurueck")
+    ok(f"B (Heim): Carls Antwort kommt an ({s})", s == 200 and wait(lambda: sql("b", "SELECT 1 FROM chat_msg WHERE id=?", (m1["id"],)), 10))
+    s, _ = api("b", "fb-anna", "POST", f"/api/chats/{hc['id']}/request", {"action": "block"})
+    ok(f"B: Anna B sperrt Carl im eigenen Chat ({s})", s == 200)
+    s, d, m2 = carl.send(cch, "Darf ich noch?")
+    ok(f"A: Heim meldet Ablehnung -> nicht zugestellt ({s})", s == 409 and "declined" in d.get("error", ""))
+    ok("B (Heim): verworfen, nicht gespeichert, Pruefprotokoll", not sql("b", "SELECT 1 FROM chat_msg WHERE id=?", (m2["id"],)) and fed_log("b", "chat.declined"))
+    ok("A: Nachricht als nicht zugestellt markiert", sql("a", "SELECT fstate FROM chat_msg WHERE id=?", (m2["id"],)) == [["failed"]])
     # Anfrage-Rate je Absender
     return carl, olga
 

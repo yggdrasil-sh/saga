@@ -717,21 +717,21 @@ def _like(q):
 
 @router.get("/api/chat/people")
 def api_people(request: Request, q: str = ""):
-    """Personensuche fuer neue Unterhaltungen (wie beim Teilen: ab 3 Zeichen, hoechstens 10) + passende eigene Gruppen."""
+    """Personensuche fuer neue Unterhaltungen (wie beim Teilen, hoechstens 10) + passende eigene Gruppen. Ab 3 Zeichen
+    Teilwort-Suche, bei 1-2 Zeichen nur genaue Treffer (Benutzername bzw. Anzeigename, z. B. "hd") - nie eine Liste aller Konten."""
     uid, err = _me(request)
     if err:
         return err
     q = re.sub(r"\s+", " ", q or "").strip().lower()[:60]
     if not _rate("people", uid, 60):
         return _bad(t("zu schnell"), 429)
-    if len(q) < 3:
+    if not q:
         return _no_store({"users": [], "groups": []})
     with _db() as c:
         mine = sorted(groups_of(c, uid))
-        pat = _like(q)
         sql = ("SELECT u.username, u.display_name, (i.uid IS NOT NULL) FROM users u LEFT JOIN chat_identity i ON i.uid=u.username "
-               "WHERE u.disabled=0 AND u.username<>? AND (u.username LIKE ? OR lower(u.display_name) LIKE ?)")
-        args = [uid, pat + "%", "%" + pat + "%"]
+               "WHERE u.disabled=0 AND u.username<>? AND " + sharing.name_match())
+        args = [uid] + sharing.name_args(q)
         rows = []
         if group_scope():
             if mine:
@@ -747,7 +747,8 @@ def api_people(request: Request, q: str = ""):
     # 2.3: Personen anderer Instanzen aus dem Adressbuch (saga.fed_dir) - Chats ueber Servergrenzen folgen mit Protokoll 2
     remote = sharing.DIR_SEARCH(uid, q, "chat") if sharing.DIR_SEARCH is not None else []
     return _no_store({"users": [{"username": r[0], "name": r[1] or r[0], "ready": bool(r[2]), "avatar": av.get(r[0])} for r in rows],
-                      "groups": [{"name": g} for g in mine if q in g][:10], "remote": remote})
+                      "groups": [{"name": g} for g in mine if (q in g if len(q) >= sharing.SHORT_Q else q == g)][:10],
+                      "remote": remote})
 
 
 def _note_info(c, uid, ids):

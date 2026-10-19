@@ -11,6 +11,7 @@ Zwischenspeicher, chat.keys.changed, Ende-zu-Ende mit den geholten Schluesseln, 
 Kompatibilitaet: FED_B_APP=<Verzeichnis mit Saga 2.1/2.2> startet B aus diesem Stand -> Protokoll 1 laeuft weiter (Teilen,
 Benachrichtigung), A erkennt Protokoll 1, keine Zusatzfunktionen, keine Serverfehler. Raeumt auf (Datenbanken geloescht)."""
 import io, json, os, re, sys, time
+from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import foederation as T  # noqa: E402  (Helfer: HTTP, Admin, Signaturen, Instanzen)
@@ -371,6 +372,50 @@ print(json.dumps(n[0]))
 
 
 # =====================================================================================================
+def part_short(A, B, pa, pb):
+    """Kurze Namen (z. B. "hd"): bei 1-2 Zeichen nur genaue Treffer, auch im Adressbuch fremder Server; name@host mit kurzem
+    Namen; WebFinger auf einen pseudonymen Handle verraet bei Adressbuch-Opt-out keinen Anzeigenamen."""
+    py("b", "import auth\nfrom saga import publish\nauth.create_user('fb-hd', 'Fed-User-Pass-123', 'Hd')\nprint(json.dumps(publish.set_name('fb-hd', 'hd')))")
+    py("b", "from saga import fed_dir\nprint(json.dumps(fed_dir.refresh_local(force=True)))")
+    ok("A: Hd von B im Adressbuch", wait(lambda: dirn("a") == 5, 20))
+    fp = lambda q: [x["name"] for x in api("a", "fa-anna", "GET", "/api/fed/people?q=" + quote(q))[1]["people"]]
+    ok(f"Adressbuch-Kurzsuche 'hd' bzw. 'HD': genau Hd ({fp('hd')})", fp("hd") == ["Hd"] and fp("HD") == ["Hd"])
+    ok("... 1-2 Zeichen ohne Teiltreffer ('h', 'be', 'an', 'gast' teilweise)", fp("h") == [] and fp("be") == [] and fp("an") == [] and fp("ga") == [])
+    ok(f"... ab 3 Zeichen Teilwort wie bisher ({fp('gas')})", fp("gas") == ["Bert Gast"])
+    ok(f"name@host mit kurzem Namen: hd@{HB}, @hd@{HB}", fp(f"hd@{HB}") == ["Hd"] and fp(f"@hd@{HB}") == ["Hd"])
+    ok("name@host: nur genau, nur dieser Server", fp(f"h@{HB}") == [] and fp(f"hd@{HA}") == [] and fp("hd@anders.example") == []
+       and fp(f"bert@{HB}") == ["Bert Gast"])
+    ok("name@host: Opt-out (Olga) nicht auffindbar", fp(f"olga@{HB}") == [])
+    rem = api("a", "fa-anna", "GET", "/api/chat/people?q=hd")[1].get("remote") or []
+    ok(f"Chat-Suche 'hd': Hd von B ({[x['label'] for x in rem]})", [x["name"] for x in rem] == ["Hd"])
+    rem = api("a", "fa-anna", "GET", "/api/chat/people?q=" + quote(f"hd@{HB}"))[1].get("remote") or []
+    ok("Chat-Suche hd@host: Hd von B", [x["name"] for x in rem] == ["Hd"])
+    d = api("a", "fa-anna", "GET", "/api/share/targets?q=hd")[1]
+    ok(f"Teilen-Suche 'hd': @hd@host ({[x['target'] for x in d.get('remote') or []]})", [x["target"] for x in d.get("remote") or []] == [f"@hd@{HB}"])
+    d = api("a", "fa-anna", "GET", "/api/share/targets?q=" + quote(f"hd@{HB}"))[1]
+    ok("Teilen-Suche hd@host: genau ein Treffer", [x["target"] for x in d.get("remote") or []] == [f"@hd@{HB}"])
+    codes = [api("a", "fa-carl", "GET", "/api/fed/people?q=hd")[0] for _ in range(62)]
+    ok(f"/api/fed/people: Rate-Limit ({codes.count(429)}x 429)", 429 in codes and 429 not in codes[:59])
+
+    # --- WebFinger auf pseudonymen Handle: Anzeigename nur bei Adressbuch-Eintrag -------------------------------------------
+    hs = py("b", "from db import connect\nfrom saga import federation as F\nwith connect() as c, c:\n"
+                 "    print(json.dumps([F.own_handle(c, 'fb-olga'), F.own_handle(c, 'fb-bert')]))")
+    priva = fedsig.unb64u(py("a", "from saga import federation, fedsig\npriv, pub = federation.own_key()\nprint(json.dumps(fedsig.b64u(priv)))"))
+
+    def wf(n):
+        s, _, d, _, _ = T.signed("b", priva, T.I["a"]["url"], "GET", "/.well-known/webfinger", "resource=" + quote(f"acct:{n}@{HB}", safe=""))
+        return s, jd(d) if s == 200 else None
+    s, d = wf(hs[0])
+    ok(f"WebFinger Handle von Olga (Opt-out): kein Anzeigename ({s}, {d})", s == 200 and d["name"] == hs[0] and "Olga" not in json.dumps(d))
+    s, d = wf(hs[1])
+    ok(f"WebFinger Handle von Bert (im Adressbuch): Anzeigename ({d})", s == 200 and d["name"] == "Bert Gast")
+    s, d = wf("olga")
+    ok("WebFinger oeffentlicher Name (bewusst gesetzt): wie bisher", s == 200 and d["name"] == "Olga Aus")
+    sql("b", "UPDATE users SET disabled=1 WHERE username='fb-hd'")
+    py("b", "from saga import fed_dir\nprint(json.dumps(fed_dir.refresh_local(force=True)))")
+    ok("A: Hd wieder weg", wait(lambda: dirn("a") == 4, 20))
+
+
 def chat_user(k, uid):
     ident, dev = C.identity(), C.device()
     s, d = api(k, uid, "PUT", "/api/chat/identity", C.setup_body(uid, ident, dev, ops=1, mem=8 << 20))
@@ -454,6 +499,7 @@ def run():
         else:
             part_protocol(A, B, pa, pb)
             part_directory(A, B, pa, pb)
+            part_short(A, B, pa, pb)
             part_keys(A, B, pa, pb)
             part_disconnect(A, B, pa, pb)
     except Exception:

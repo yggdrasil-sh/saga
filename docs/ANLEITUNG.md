@@ -476,7 +476,8 @@ blog.example.org {
 
 Seiten und Datenbanken lassen sich mit **anderen Konten** und **Gruppen** derselben Saga-Instanz teilen. Knopf
 **„Teilen“** oben rechts über der eigenen Seite (oder Seitenmenü **⋯** → „Teilen …“): Person oder Gruppe suchen
-(ab 3 Zeichen; angezeigt werden Anzeigename und Benutzername, nie eine Liste aller Konten), Rolle wählen und den
+(ab 3 Zeichen auch Teile von Namen, bei 1–2 Zeichen nur genaue Treffer wie „hd“; angezeigt werden Anzeigename und
+Benutzername, nie eine Liste aller Konten), Rolle wählen und den
 Treffer anklicken. Gruppen bietet der Dialog nur an, wenn du selbst darin bist – lokale Gruppen ebenso wie Gruppen aus
 LDAP oder SSO; bei leerem Suchfeld stehen sie als Chips „Deine Gruppen:“ bereit. Unter dem Feld steht, was die
 gewählte Rolle darf. In der Liste darunter änderst du die Rolle oder entfernst eine Freigabe (mit Rückfrage; der
@@ -667,7 +668,7 @@ speichert nur verschlüsselte Daten. Auch der Admin kann keine Inhalte lesen.
   überein, bestätigen – oder den **Wiederherstellungsschlüssel eingeben**. Danach liest das neue Gerät auch den bisherigen Verlauf.
   Wer beides nicht mehr hat, kann **neu beginnen** (neue Schlüssel; alte Nachrichten sind dann nicht mehr lesbar).
   Dafür fragt Saga nach deinem Passwort; bei SSO-Konten meldest du dich kurz neu an (danach 5 Minuten Zeit).
-- **Unterhaltungen:** **„+ Neu“** → Person suchen (ab 3 Zeichen) für einen **Direkt-Chat**, eine eigene Gruppe für einen
+- **Unterhaltungen:** **„+ Neu“** → Person suchen (kurze Namen wie „hd“ genau, sonst ab 3 Zeichen auch Teile) für einen **Direkt-Chat**, eine eigene Gruppe für einen
   **Gruppen-Chat** (Mitglieder folgen der Gruppe, auch aus LDAP/SSO) oder „Gruppe mit mehreren Personen“ für eine
   **freie Gruppe** (der Ersteller lädt ein und entfernt; der Name ist verschlüsselt). Auf geteilten Seiten öffnet
   **„💬 Chat“** im Seitenkopf den **Seiten-Chat** mit allen, die die Seite sehen dürfen – ändern sich die Freigaben,

@@ -12,7 +12,8 @@ Grundsaetze (Vertrag fuer Apps: docs/APP-API-FED.md, Abschnitt 6):
   Idempotent ueber msg_id; Luecken (fseq springt) holt der Teilnehmer beim Heim nach, Umsortieren/Wiederholen wird
   abgewiesen und protokolliert.
 - Erstkontakt = Nachrichtenanfrage: beim Gegenueber erscheint der Chat als Anfrage (Annehmen/Ablehnen/Sperren), ohne
-  Benachrichtigung, Push oder Klingeln. Ablehnen/Sperren erfaehrt die andere Seite nicht (das Heim stellt nur nicht mehr zu).
+  Benachrichtigung, Push oder Klingeln. Ablehnen/Sperren erfaehrt die andere Seite nicht (das Heim stellt nur nicht mehr zu;
+  schickt es trotzdem, verwirft der eigene Server; ist das Heim der Server der ablehnenden Person, weist es Nachrichten ab).
   Sperren je Person ('~x@host') oder je Instanz ('host'), Raten je Instanz und Absender, Pruefprotokoll (fed_log).
 - Anhaenge bleiben beim Absender-Server; die anderen holen sie bei Bedarf (Zwischenkopie), kleine (Vorschaubilder) vorab.
 - Gelesen bleibt lokal, Tippen geht direkt und verwerfbar, Push loest nur der eigene Server aus. KI im Chat ist in
@@ -138,6 +139,13 @@ def label_of(c, u):
 def blocked(c, uid, h):
     n, host = split_handle(h)
     return bool(c.execute("SELECT 1 FROM fed_chat_block WHERE uid=? AND target IN (?,?)", (uid, h, host)).fetchone())
+
+
+def refused(c, mem, sender, h):
+    """Wollen die Konten DIESES Servers im Chat (ausser dem Absender) von h nichts mehr? (alle abgelehnt oder h bzw. seine
+    Instanz gesperrt) - dann wird nichts gespeichert, vorab geholt oder gemeldet. mem: {mitglied: state}."""
+    loc = [(u, st) for u, st in mem.items() if u != sender and not sharing.is_remote(u)]
+    return bool(loc) and all(st == "declined" or blocked(c, u, h) for u, st in loc)
 
 
 def _rate_ok(kind, key, n, window=60.0):
@@ -498,6 +506,9 @@ def op_send(c, peer, d):
     mem = dict(members(c, ch["id"]))
     if p_ not in mem:
         return 403, {"error": "not a member"}
+    if refused(c, mem, p_, h):                   # abgelehnt/gesperrt: verwerfen, der Absender-Server markiert "nicht zugestellt"
+        F.log(c, "chat.declined", peer, m["id"][:8], throttle=(peer["id"], "cdecl", ch["ref"]))
+        return 403, {"error": "declined"}
     old = c.execute("SELECT chat_id, sig, fseq FROM chat_msg WHERE id=?", (m["id"],)).fetchone()
     if old:
         if old[0] == ch["id"] and old[1] == m["sig"]:
@@ -720,19 +731,23 @@ def _sender_of(c, ch, h):
 
 
 def apply_msg(c, peer, ch, ev, jump=False):
-    """Nachricht vom Heim uebernehmen -> 'ok' | 'dup' | 'gap' | 'ignored'. Prueft Reihenfolge (fseq lueckenlos, nichts
+    """Nachricht vom Heim uebernehmen -> 'ok' | 'dup' | 'gap' | 'declined' | 'ignored'. Prueft Reihenfolge (fseq lueckenlos, nichts
     Aelteres), Wiederholungen (msg_id) und die Signatur des Absender-Geraets (eigene Konten: eigene Schluessel; Konten
     des Heims: von dort mitgeschickt; andere: Zwischenspeicher)."""
     fseq = ev.get("fseq")
     m = msg_in(ev.get("msg"))
     files = files_in(ev.get("files"))
-    keys = ev.get("keys") if isinstance(ev.get("keys"), dict) else {}
-    if not isinstance(fseq, int) or isinstance(fseq, bool) or not 0 < fseq < 2 ** 62 or not m or files is None:
+    keys = ev.get("keys")
+    if not isinstance(fseq, int) or isinstance(fseq, bool) or not 0 < fseq < 2 ** 62 or not m or files is None or not _keys_ok(keys):
         return "ignored"
     sender = _sender_of(c, ch, m["sender_handle"])
     if not sender:
         F.log(c, "chat.forged", peer, f"sender {str(m['sender_handle'])[:40]}", throttle=(peer["id"], "fsender"))
         return "ignored"
+    if sharing.is_remote(sender) and refused(c, dict(members(c, ch["id"])), sender, m["sender_handle"]):
+        # abgelehnt/gesperrt: verwerfen - kein Speichern, kein Vorababruf, kein Ereignis. fseq bleibt stehen: nimmt die Person
+        # spaeter doch an, holt ihr Server den Verlauf beim Heim (fill_gap); bis dahin keine Lueckensuche
+        return "declined"
     old = c.execute("SELECT seq, chat_id, sig, fseq FROM chat_msg WHERE id=?", (m["id"],)).fetchone()
     if old:
         if old[1] != ch["id"] or old[2] != m["sig"]:

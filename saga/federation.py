@@ -679,6 +679,9 @@ async def webfinger(request: Request, resource: str = "", kind: str = "user"):
             if not is_name(m.group(1)):
                 return None
             uid, disp = _local_user_by_name(c, m.group(1))
+            # pseudonymer Handle: Anzeigename nur, wenn das Konto im Adressbuch dieser Instanz steht (Opt-out je Konto)
+            if uid and PSEUDO_RE.fullmatch(m.group(1)) and not (DIR_VISIBLE is not None and DIR_VISIBLE(c, uid, inp.peer)):
+                disp = m.group(1)
             return {"subject": f"acct:{m.group(1)}@{SELF_HOST}", "kind": "user", "name": disp} if uid else None
     d = await run_in_threadpool(run)
     return _signed(inp, 200 if d else 404, d or {"error": "not found"})

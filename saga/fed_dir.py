@@ -24,7 +24,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from db import connect as _db
-from saga import avatars, federation as F, sharing
+from saga import avatars, federation as F, fedsig, sharing
 from saga.core import _api_guard, _bad, _body, t
 
 router = APIRouter()
@@ -398,12 +398,15 @@ def _like(q):
 
 
 def search(uid, q, purpose="chat"):
-    """Personen anderer Instanzen nach Anzeigename (ab 3 Zeichen, hoechstens SEARCH_MAX). purpose 'share': nur Instanzen,
-    mit denen Teilen erlaubt ist; Ziel ist der oeffentliche Name bzw. (2.3) der pseudonyme Handle ('@~x@host').
+    """Personen anderer Instanzen nach Anzeigename (hoechstens SEARCH_MAX): ab 3 Zeichen Teilwort-Suche, bei 1-2 Zeichen nur
+    genaue Treffer (Anzeigename, oeffentlicher Name) - nie das ganze Adressbuch. 'name@host' bzw. '@name@host': genau diese
+    Person (oeffentlicher Name oder Handle) auf dieser Instanz, auch mit kurzem Namen ('hd@b.example'). purpose 'share': nur
+    Instanzen, mit denen Teilen erlaubt ist; Ziel ist der oeffentliche Name bzw. (2.3) der pseudonyme Handle ('@~x@host').
     -> [{type: 'remote', target, handle, name, host, label, avatar}]"""
     q = re.sub(r"\s+", " ", str(q or "")).strip().lower()[:60]
-    if len(q) < 3 or not F.enabled():
+    if not q or not F.enabled():
         return []
+    addr = re.fullmatch(r"@?([^@\s]+)@([^@\s]+)", q)
     with _db() as c:
         ps = {p["id"]: p for p in F.peers(c) if F.feature(p, "directory") and (purpose != "share" or F.scope_ok(p["host"]))}
         if not ps:
@@ -413,10 +416,18 @@ def search(uid, q, purpose="chat"):
             if not ps:
                 return []
         pat = _like(q)
-        sql = (f"SELECT peer_id, handle, name, pub, av FROM fed_directory WHERE peer_id IN ({','.join('?' * len(ps))}) "
-               "AND (lower(name) LIKE ? OR pub LIKE ?)" +
+        if addr:                                       # genaue Adresse: nur diese Instanz, nur genau dieser Name
+            ps = {k: p for k, p in ps.items() if p["host"] == fedsig.authority(addr.group(2))}
+            if not ps:
+                return []
+            cond, args = "(pub=? OR handle=?)", (addr.group(1), addr.group(1))
+        elif len(q) < sharing.SHORT_Q:
+            cond, args = "(lower(name)=? OR pub=?)", (q, q)
+        else:
+            cond, args = "(lower(name) LIKE ? OR pub LIKE ?)", ("%" + pat + "%", pat + "%")
+        sql = (f"SELECT peer_id, handle, name, pub, av FROM fed_directory WHERE peer_id IN ({','.join('?' * len(ps))}) AND " + cond +
                " ORDER BY (lower(name)=?) DESC, (lower(name) LIKE ?) DESC, name, peer_id, handle LIMIT ?")
-        rows = c.execute(sql, (*ps, "%" + pat + "%", pat + "%", q, pat + "%", SEARCH_MAX)).fetchall()
+        rows = c.execute(sql, (*ps, *args, q, pat + "%", SEARCH_MAX)).fetchall()
         hits = []
         for pid, h, name, pub, av in rows:
             p = ps[pid]
@@ -438,12 +449,22 @@ def search(uid, q, purpose="chat"):
 sharing.DIR_SEARCH = search
 
 
+_people_hits = {}    # uid -> [zeitstempel]
+
+
 @router.get("/api/fed/people")
 def api_people(request: Request, q: str = "", purpose: str = "chat"):
     """Adressbuch-Suche fuer Apps (Chat, Teilen, Erwaehnungen): Personen anderer Instanzen nach Anzeigename."""
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
+    now = time.time()                                   # wie die anderen Personensuchen: hoechstens 60 Anfragen je Minute
+    hits = [x for x in _people_hits.get(uid, []) if now - x < 60]
+    if len(hits) >= 60:
+        return _bad(t("zu schnell"), 429)
+    _people_hits[uid] = hits + [now]
+    if len(_people_hits) > 5000:
+        _people_hits.clear()
     return JSONResponse({"people": search(uid, q, "share" if purpose == "share" else "chat")}, headers={"Cache-Control": "no-store"})
 
 

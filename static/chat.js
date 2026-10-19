@@ -601,7 +601,7 @@
   // Suche ueber ihren Anzeigenamen (Adressbuch der verbundenen Server, 2.3)
   function fedAddr(v) { return /^@?[^@\s]+@[^@\s]+[.:][^@\s]+$/.test(v); }
   function fedHint() {
-    var li = el('li', 'hk-hint ct-fed-hint', T('Personen anderer, verbundener Saga-Server findest du über ihren Anzeigenamen (nicht über name@server oder die E-Mail-Adresse).') + ' ' +
+    var li = el('li', 'hk-hint ct-fed-hint', T('Personen anderer, verbundener Saga-Server findest du über ihren Anzeigenamen oder name@server (nicht über die E-Mail-Adresse).') + ' ' +
       T('Personen auf diesem Server findest du über Namen oder Benutzernamen, nicht über die E-Mail-Adresse.') + ' ');
     var a = el('a', null, T('Anleitung: Föderation'));
     a.href = T('https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md#mit-anderen-saga-instanzen-teilen-föderation');
@@ -610,7 +610,7 @@
   }
   function newChat() {
     var box = overlay(T('Neue Unterhaltung'));
-    var inp = el('input', 'hk-in ct-people-q'); inp.type = 'search'; inp.placeholder = T('Person oder Gruppe suchen (ab 3 Zeichen)'); inp.setAttribute('aria-label', T('Person oder Gruppe suchen'));
+    var inp = el('input', 'hk-in ct-people-q'); inp.type = 'search'; inp.placeholder = T('Person oder Gruppe suchen'); inp.setAttribute('aria-label', T('Person oder Gruppe suchen'));
     box.appendChild(inp);
     var res = el('ul', 'ct-people'); box.appendChild(res);
     var pick = [], chips = el('div', 'ct-chips'), name = el('input', 'hk-in'), mk = btn(T('Gruppe anlegen'), 'btn-primary ct-free-go');
@@ -635,7 +635,7 @@
       clearTimeout(tmr);
       tmr = setTimeout(function () {
         var v = inp.value.trim();
-        if (v.length < 3) { res.textContent = ''; return; }
+        if (!v) { res.textContent = ''; return; }          // 1-2 Zeichen: nur genaue Treffer (Server), z. B. "hd"
         api('GET', '/api/chat/people?q=' + q(v)).then(function (r) {
           res.textContent = '';
           r.users.forEach(function (u) {
@@ -1825,12 +1825,12 @@
       ul.appendChild(li);
     });
     if (c.kind === 'free' && c.role === 'admin') {
-      var inp = el('input', 'hk-in'); inp.type = 'search'; inp.placeholder = T('Person hinzufügen (ab 3 Zeichen)'); inp.setAttribute('aria-label', T('Person hinzufügen'));
+      var inp = el('input', 'hk-in'); inp.type = 'search'; inp.placeholder = T('Person hinzufügen'); inp.setAttribute('aria-label', T('Person hinzufügen'));
       var res = el('ul', 'ct-people'); box.appendChild(inp); box.appendChild(res);
       var tmr = null;
       inp.addEventListener('input', function () {
         clearTimeout(tmr); tmr = setTimeout(function () {
-          if (inp.value.trim().length < 3) { res.textContent = ''; return; }
+          if (!inp.value.trim()) { res.textContent = ''; return; }
           var v = inp.value.trim();
           api('GET', '/api/chat/people?q=' + q(v)).then(function (r) {
             res.textContent = '';
