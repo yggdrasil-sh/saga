@@ -280,6 +280,28 @@ def bench_parallel():
         t.join()
     dt = time.perf_counter() - t0
     stats("10x /api/notes gleichzeitig (Gesamtdauer)", [dt], [0], [200], "Parallel")
+    # 2.2-Clients: Baum ohne DB-Eintraege bzw. nur Abgleich (aeltere Server ignorieren die Parameter = voller Baum)
+    _, _, _, d = req("GET", "/api/notes?delta=1", a)
+    cur = d.get("cursor") if isinstance(d, dict) else None
+    for label, path in (("rows=0", "/api/notes?rows=0"), ("since", "/api/notes?since=" + urllib.parse.quote(cur) if cur else None)):
+        if not path:
+            continue
+        stop, small = [False], []
+
+        def heavy2(p=path):
+            while not stop[0]:
+                req("GET", p, a)
+        th = [threading.Thread(target=heavy2, daemon=True) for _ in range(8)]
+        for t in th:
+            t.start()
+        time.sleep(1)
+        for _ in range(ARGS.n):
+            s, b, dt, _ = req("GET", f"/api/notes/{I['page_normal']}", a)
+            small.append(dt)
+        stop[0] = True
+        for t in th:
+            t.join(timeout=300)
+        stats(f"Seite oeffnen waehrend 8x /api/notes?{label} parallel", small, [0], [200], "Parallel")
 
 
 def bench_live():
