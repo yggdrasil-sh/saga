@@ -901,7 +901,7 @@ def _chat_dict(c, uid, ch, mem, m, device, full=False):
     d.update(archived=p["archived"] is not None, archived_at=p["archived"], cleared_seq=p["cleared_seq"],
              delete_for_all=may_delete_all(c, uid, ch, m))
     if ch["kind"] == "dm":
-        a, _, b = ch["dm_key"].partition("|")
+        a, _, b = (ch["dm_key"] or "").partition("|")   # (2.3: alter foederierter Chat ohne Paar)
         d["peer"] = {"username": b if a == uid else a, "name": d["name"], "avatar": nm.avatar(b if a == uid else a)}
     if ch["kind"] == "free" and ch["title_seq"]:
         rows = _msgs(c, uid, ch["id"], device, "AND m.seq=?", (ch["title_seq"],), 1)

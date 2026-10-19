@@ -253,6 +253,7 @@ print(json.dumps(True))""")
     F2.start("a")
     s, d, mt = anna.send(ch, "trotz Giftpille")
     ok("B: neue Nachricht kommt trotz abgewiesener Zeile im Ausgangskorb an", wait(lambda: bert.texts(bc)[-1:] == ["trotz Giftpille"], 40))
+    ok("A: normaler Neustart -> keine weitere Epoche (Pruefer)", len(fed_log("a", "chain.epoch.new")) == 1)
     ok("A: abgewiesene Zeile wartet mit Fehlversuch", wait(lambda: (sql("a", "SELECT attempts FROM fed_outbox WHERE payload LIKE '%pad%'") or [[0]])[0][0] >= 1, 30))
     sql("a", "DELETE FROM fed_outbox WHERE payload LIKE '%pad%'")
 
@@ -268,6 +269,12 @@ def part_more(A, B, pa, pb, anna, bert, ch, bc):
     ok(f"B: Nachricht mit Anhaengen ({s})", s == 200)
     ok("A: kleiner Anhang vorab geholt (Zwischenkopie)", wait(lambda: sql("a", "SELECT cached FROM chat_file_fed WHERE id=?", (f1,)) == [[1]], 20))
     ok("A: grosser Anhang noch nicht geholt", sql("a", "SELECT cached FROM chat_file_fed WHERE id=?", (f2,)) == [[0]])
+    # Pruefer: angekuendigte Groesse muss stimmen (sonst koennte ein boeser Server als "Vorschaubild" Riesendateien unterschieben)
+    real = sql("a", "SELECT size FROM chat_file WHERE id=?", (f2,))[0][0]
+    sql("a", "UPDATE chat_file SET size=1000 WHERE id=?", (f2,))
+    s, *_ = hreq("a", "GET", f"/api/chat/files/{f2}", hdr={"X-Saga": "1"}, cookie=T.ck("a", "fa-anna"))
+    ok(f"A: Anhang mit falscher Groesse wird nicht uebernommen ({s})", s == 404 and sql("a", "SELECT cached FROM chat_file_fed WHERE id=?", (f2,)) == [[0]])
+    sql("a", "UPDATE chat_file SET size=? WHERE id=?", (real, f2))
     s, h, data = hreq("a", "GET", f"/api/chat/files/{f2}", hdr={"X-Saga": "1"}, cookie=T.ck("a", "fa-anna"))
     ok("A: grosser Anhang bei Bedarf geholt, entschluesselbar", s == 200 and C.decrypt_file_v2(ch["ref"], data, key_l) and
        sql("a", "SELECT cached FROM chat_file_fed WHERE id=?", (f2,)) == [[1]])
@@ -453,9 +460,11 @@ def part_calls(A, B, pa, pb, anna, bert, ch, bc):
 def part_gone(A, B, pa, pb, anna, bert, ch, bc, carl, olga, ringing):
     # Kontoloeschung: Olga (B) wird geloescht -> der Chat mit Carl verschwindet bei A
     oc = olga.chats()
+    sql("b", "INSERT INTO fed_chat_block (uid, target, created) VALUES ('fb-olga', ?, 1) ON CONFLICT DO NOTHING", (HA,))
     py("b", "import app\napp.delete_user_data('fb-olga')\nfrom db import connect\nwith connect() as c, c:\n    c.execute(\"DELETE FROM users WHERE username='fb-olga'\")\nprint(json.dumps(True))")
     refs = [x["ref"] for x in oc if x.get("ref")]
     ok("A: Chats mit der geloeschten Person beendet", wait(lambda: not any(carl.chat(r) for r in refs), 20))
+    ok("B: Sperrliste der geloeschten Person mit weg", sql("b", "SELECT COUNT(*) FROM fed_chat_block WHERE uid='fb-olga'") == [[0]])
     # Chat fuer alle loeschen (vom Teilnehmer aus)
     ab = User("b", "fb-anna2")
     s, d = api("a", "fa-carl", "POST", "/api/chats", {"kind": "dm", "handle": ab.handle})
@@ -470,6 +479,13 @@ def part_gone(A, B, pa, pb, anna, bert, ch, bc, carl, olga, ringing):
     s, d, _ = bert.send(bert.chat(bc["ref"]), "nach dem Trennen")
     ok(f"B: Senden -> 403 mit Hinweis ({s})", s == 403 and "schreibgeschützt" in d.get("error", ""))
     ok("A: laufender Anruf beendet", wait(lambda: api("a", "fa-anna", "GET", f"/api/calls/{ringing}")[1]["call"]["state"] == "ended", 10))
+    # Pruefer: wieder verbunden (hier per Datenbank) -> neuer Chat moeglich, der alte bleibt schreibgeschuetzt lesbar
+    sql("a", "UPDATE fed_peer SET status='active'")
+    sql("b", "UPDATE fed_peer SET status='active'")
+    s, d = api("a", "fa-anna", "POST", "/api/chats", {"kind": "dm", "handle": bert.handle})
+    nc = d.get("chat") or {}
+    ok(f"A: nach neuem Verbinden neuer Chat statt des schreibgeschuetzten ({s})", s == 200 and nc.get("ref") not in (None, ch["ref"])
+       and not nc.get("readonly") and (anna.chat(ch["ref"]) or {}).get("readonly"))
 
 
 def part_compat(A, B, pa, pb):

@@ -978,17 +978,19 @@ def fetch_file(fid):
     if os.path.isfile(path):
         return True
     with _db() as c:
-        r = c.execute("SELECT x.peer_id FROM chat_file_fed x JOIN chat_file f ON f.id=x.id WHERE x.id=? AND f.msg_seq IS NOT NULL", (fid,)).fetchone()
+        r = c.execute("SELECT x.peer_id, f.size FROM chat_file_fed x JOIN chat_file f ON f.id=x.id WHERE x.id=? AND f.msg_seq IS NOT NULL",
+                      (fid,)).fetchone()
         p = F.peer_by(c, "id", r[0]) if r else None
     if not peer_ok(p):
         return False
     try:
-        status, _, data = F.call(p, "GET", f"/fed/v2/chat/files/{fid}", limit=FILE_MAX + 1024, timeout=20)
+        status, _, data = F.call(p, "GET", f"/fed/v2/chat/files/{fid}", limit=min(r[1], FILE_MAX + 64) + 1024, timeout=20)
     except F.FedError as ex:
         with _db() as c, c:
             F._touch(c, p, ex)
         return False
-    if status != 200 or len(data) < 40 or len(data) > FILE_MAX + 64:
+    # genau die angekuendigte Groesse (wie beim Absender gespeichert) - sonst koennte ein "Vorschaubild" beliebig gross sein
+    if status != 200 or len(data) < 40 or len(data) > FILE_MAX + 64 or len(data) != r[1]:
         return False
     os.makedirs(chat.CHAT_DIR, mode=0o700, exist_ok=True)
     tmp = path + ".part-" + secrets.token_hex(4)
@@ -1065,7 +1067,7 @@ def create_dm(uid, h, device=""):
         if blocked(c, uid, h):
             return _bad(t("Du hast diese Person bzw. ihren Server gesperrt – erst in „Chats & Geräte“ entsperren."), 403)
         ex = chat._row(c.execute(f"SELECT {chat.C_COLS} FROM chat WHERE dm_key=?", (key,)).fetchone())
-        if ex:
+        if ex and not ex["fstate"]:               # schreibgeschuetzt (z. B. nach Trennen + neu Verbinden): neuer Chat, alter bleibt lesbar
             return _reopen(c, uid, ex, device)
         if c.execute("SELECT COUNT(*) FROM chat WHERE created_by=? AND created>?", (uid, time.time() - 3600)).fetchone()[0] >= 60:
             return _bad(t("Zu viele neue Chats in kurzer Zeit – bitte kurz warten."), 429)
