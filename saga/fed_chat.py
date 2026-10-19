@@ -514,6 +514,8 @@ def op_send(c, peer, d):
         F.log(c, "chat.forged", peer, f"sender {str(h)[:40]}", throttle=(peer["id"], "forged"))
         return 403, {"error": "forged sender"}
     p_ = principal(h)
+    if ch["kind"] == "page":                     # Seiten-Chat: Freigaben jetzt pruefen (Entzug wirkt sofort)
+        chat.sync(c, ch)
     mem = dict(members(c, ch["id"]))
     if p_ not in mem:
         return 403, {"error": "not a member"}
@@ -1204,6 +1206,10 @@ def send(uid, cid, b):
         return _bad(t("ungültige Angabe"))
     if abs(m["ts"] / 1000 - time.time()) > chat.SKEW:
         return _bad(t("Die Uhrzeit dieses Geräts weicht zu stark ab."), 400)
+    with _db() as c, c:                                  # Seiten-Chat mit Heim hier: Freigaben jetzt pruefen (Entzug wirkt sofort)
+        ch0 = chat._load(c, cid)
+        if ch0 and ch0["kind"] == "page" and ch0["home_peer"] is None and chat.is_fed(ch0):
+            chat.sync(c, ch0)
     with _db() as c:
         ch, mm, mem, err = chat._chat_for(c, uid, cid, do_sync=False)
         if err:
@@ -1751,6 +1757,8 @@ def apply_members(c, peer, ev, create=True):
         if not sharing.is_remote(u) and kind == "free":
             creator_h = handle_of(ch["created_by"]) if ch["created_by"] else None
             st = "declined" if creator_h and blocked(c, u, creator_h) else "request"     # Erstkontakt: Nachrichtenanfrage (still)
+        elif not sharing.is_remote(u) and not _inbound(c, peer, u):
+            st = "request"                       # Seiten-Chat ohne Freigabe dieses Servers an die Person: nur als stille Anfrage
         c.execute("INSERT INTO chat_member (chat_id, uid, role, joined, last_read, state) VALUES (?,?,?,?,?,?) ON CONFLICT (chat_id, uid) DO UPDATE "
                   "SET left_at=NULL, role=EXCLUDED.role, joined=EXCLUDED.joined, last_read=EXCLUDED.last_read, state=EXCLUDED.state",
                   (ch["id"], u, roles[u], now, ch["last_seq"], st))
@@ -1774,6 +1782,14 @@ def apply_members(c, peer, ev, create=True):
         drop_chat(c, ch)
         return None
     return chat._load(c, ch["id"])
+
+
+def _inbound(c, peer, u):
+    """Hat die Instanz peer etwas mit u (oder einer Gruppe von u) geteilt?"""
+    gs = sorted(sharing.groups_of(c, u))
+    sql = "SELECT 1 FROM fed_inbound WHERE peer_id=? AND ((target_type='user' AND target=?)" + \
+          (f" OR (target_type='group' AND target IN ({','.join('?' * len(gs))}))" if gs else "") + ") LIMIT 1"
+    return bool(c.execute(sql, (peer["id"], u, *gs)).fetchone())
 
 
 def _sys_people(lst):

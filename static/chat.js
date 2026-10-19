@@ -566,8 +566,11 @@
                            c.kind === 'dm' ? (c.peer || {}).avatar : null));
       var t = el('span', 'ct-item-t');
       t.appendChild(el('span', 'ct-item-n', nm));
-      t.appendChild(el('span', 'ct-item-s', isFed(c)
+      t.appendChild(el('span', 'ct-item-s', isFed(c) && c.kind === 'dm'
         ? (c.request ? T('Anfrage') : T('Direkt')) + ' · ' + ((c.peer || {}).host || '') + (c.readonly ? ' · ' + T('schreibgeschützt') : '') + (c.muted ? ' · 🔕' : '')
+        : isFed(c)                                         // Gruppe/Seiten-Chat ueber Servergrenzen (2.3)
+        ? (c.request ? T('Anfrage') : c.kind === 'page' ? T('Seite') : T('Gruppe')) + ' · ' + T('{n} Personen', { n: c.member_count })
+          + (c.home_self ? '' : ' · ' + (c.home || '')) + (c.readonly ? ' · ' + T('schreibgeschützt') : '') + (c.muted ? ' · 🔕' : '')
         : (c.kind === 'dm' ? T('Direkt') : c.kind === 'group' ? T('Gruppe') : c.kind === 'page' ? T('Seite') : T('Gruppe')) +
           ' · ' + T('{n} Personen', { n: c.member_count }) + (c.muted ? ' · 🔕' : '')));
       b.appendChild(t);
