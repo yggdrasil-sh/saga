@@ -61,6 +61,8 @@ def gen():
     hmsg = C.handle_msg(HA, ia["ident_pk"], ia["backup_pk"])
     dmsg = C.device_msg_v2(HA, dev["id"], dev["enc_pk"], dev["sign_pk"])
     v1dev = C.sign(C.device_msg("anna", dev["id"], dev["enc_pk"], dev["sign_pk"]), ia["ident_sk"])
+    ds_ids = [dev["id"], "ffffffffffffffffffffffffffffffff"]
+    dset = C.devices_sig_v2(HA, ia, 3, ds_ids)
     out = {
         "format": "saga-chat/v2",
         "note": ("Erzeugt mit tools/chat_vectors_v2.py (PyNaCl %s). B64 = Standard-Base64 mit Padding; *_hex = Hex. Format: saga/chat_v2.py, "
@@ -72,6 +74,7 @@ def gen():
         "device": {"id": dev["id"], "enc_seed_hex": seed("enc-a").hex(), "enc_pk": C.b64(dev["enc_pk"]), "enc_sk": C.b64(dev["enc_sk"]),
                    "sign_seed_hex": seed("sign-a").hex(), "sign_pk": C.b64(dev["sign_pk"]), "sign_sk": C.b64(dev["sign_sk"]),
                    "msg_hex": dmsg.hex(), "fed_sig": C.b64(C.device_sig_v2(HA, ia, dev))},
+        "device_set": {"handle": HA, "ver": 3, "ids": dset["ids"], "msg_hex": C.devices_msg_v2(HA, 3, ds_ids).hex(), "sig": dset["sig"]},
         "recipient": {"identity": {"handle": HB, "ident_seed_hex": seed("ident-b").hex(), "backup_seed_hex": seed("backup-b").hex(),
                                    "ident_pk": C.b64(ib["ident_pk"]), "backup_pk": C.b64(ib["backup_pk"])},
                       "device": {"id": devb["id"], "enc_seed_hex": seed("enc-b").hex(), "sign_seed_hex": seed("sign-b").hex(),
@@ -90,15 +93,30 @@ def gen():
             {"case": "message_other_sender", "what": "message", "message": "m1", "sender_handle": HB},
             {"case": "message_ai_removed", "what": "message", "message": "m2", "ai": None},
             {"case": "message_ts_changed", "what": "message", "message": "m1", "ts": m1["ts"] + 1},
+            {"case": "device_set_other_ids", "what": "device_set", "handle": HA, "ver": 3, "ids": [dev["id"]], "sig": dset["sig"]},
+            {"case": "device_set_other_ver", "what": "device_set", "handle": HA, "ver": 4, "ids": dset["ids"], "sig": dset["sig"]},
+            {"case": "device_set_other_handle", "what": "device_set", "handle": HB, "ver": 3, "ids": dset["ids"], "sig": dset["sig"]},
         ],
         "tofu": {
             "key": "handle (vollstaendig, '~x@host')",
+            "note": ("ver = Version der signierten Geraete-Liste (device_set). Eine Warnung bleibt bestehen, bis die Person sie "
+                     "bestaetigt (changed bleibt gespeichert); eine aeltere Geraete-Liste als schon gesehen wird abgelehnt."),
             "rules": [
-                {"step": "first_seen", "stored": None, "seen": "ident_a", "result": "trust", "store": {"ident": "ident_a", "verified": False}},
-                {"step": "same", "stored": {"ident": "ident_a", "verified": False}, "seen": "ident_a", "result": "trust"},
-                {"step": "changed", "stored": {"ident": "ident_a", "verified": False}, "seen": "ident_b", "result": "warn",
-                 "store": {"ident": "ident_b", "verified": False, "changed": True, "old": "ident_a"}},
-                {"step": "changed_verified", "stored": {"ident": "ident_a", "verified": True}, "seen": "ident_b", "result": "block"},
+                {"step": "first_seen", "stored": None, "seen": "ident_a", "ver": 1, "result": "trust",
+                 "store": {"ident": "ident_a", "verified": False, "dver": 1}},
+                {"step": "same", "stored": {"ident": "ident_a", "verified": False, "dver": 1}, "seen": "ident_a", "ver": 1, "result": "trust"},
+                {"step": "same_newer_devices", "stored": {"ident": "ident_a", "verified": False, "dver": 1}, "seen": "ident_a", "ver": 2,
+                 "result": "trust", "store": {"ident": "ident_a", "verified": False, "dver": 2}},
+                {"step": "device_set_rollback", "stored": {"ident": "ident_a", "verified": False, "dver": 2}, "seen": "ident_a", "ver": 1,
+                 "result": "reject"},
+                {"step": "changed", "stored": {"ident": "ident_a", "verified": False, "dver": 2}, "seen": "ident_b", "ver": 1, "result": "warn",
+                 "store": {"ident": "ident_b", "verified": False, "changed": True, "old": "ident_a", "dver": 1}},
+                {"step": "changed_again", "stored": {"ident": "ident_b", "verified": False, "changed": True, "old": "ident_a", "dver": 1},
+                 "seen": "ident_b", "ver": 1, "result": "warn"},
+                {"step": "changed_acknowledged", "stored": {"ident": "ident_b", "verified": False, "changed": False, "old": "ident_a", "dver": 1},
+                 "seen": "ident_b", "ver": 1, "result": "trust"},
+                {"step": "changed_verified", "stored": {"ident": "ident_a", "verified": True, "dver": 1}, "seen": "ident_b", "ver": 1,
+                 "result": "block"},
                 {"step": "bad_cert", "stored": None, "seen": "invalid handle_cert", "result": "reject"},
             ]},
     }
@@ -160,7 +178,14 @@ def check(path=PATH):
     ok("safety number v2", C.safety_number_v2(s["handle_a"], C.unb64(s["ident_a"]), s["handle_b"], C.unb64(s["ident_b"])) == s["number"]
        == C.safety_number_v2(s["handle_b"], C.unb64(s["ident_b"]), s["handle_a"], C.unb64(s["ident_a"]))
        == SV.safety_number(s["handle_a"], C.unb64(s["ident_a"]), s["handle_b"], C.unb64(s["ident_b"])))
+    ds = v["device_set"]
+    ok("device set msg", C.devices_msg_v2(ds["handle"], ds["ver"], ds["ids"]).hex() == ds["msg_hex"] == SV.devices_msg(ds["handle"], ds["ver"], ds["ids"]).hex())
+    ok("device set sig", C.devices_sig_v2(ds["handle"], ia, ds["ver"], ds["ids"])["sig"] == ds["sig"]
+       and SV.verify_devices(ds["handle"], i["ident_pk"], {"ver": ds["ver"], "ids": ds["ids"], "sig": ds["sig"]}))
     for r in v["reject"]:
+        if r["what"] == "device_set":
+            ok(f"reject: {r['case']}", not SV.verify_devices(r["handle"], i["ident_pk"], {"ver": r["ver"], "ids": r["ids"], "sig": r["sig"]}))
+            continue
         if r["what"] == "handle_cert":
             good = SV.verify_handle(r["handle"], i["ident_pk"], i["backup_pk"], r["sig"])
         elif r["what"] == "device_cert":
@@ -173,6 +198,11 @@ def check(path=PATH):
             good = SV.verify_message(d["sign_pk"], r.get("chat_ref", m["chat_ref"]), m)
         ok(f"reject: {r['case']}", not good)
     ok("tofu rules present", len(v["tofu"]["rules"]) >= 4)
+    for r in v["tofu"]["rules"]:
+        if r["step"] == "bad_cert":
+            continue
+        got = C.tofu_v2(r["stored"], r["seen"], r.get("ver"))
+        ok(f"tofu: {r['step']}", got[0] == r["result"] and (got[1] or None) == (r.get("store") or None))
     return res
 
 

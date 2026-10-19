@@ -205,6 +205,15 @@ a.ct-chip:hover{color:var(--fg);border-color:var(--accent)}
 .ct-fed-hint{padding:.3rem .2rem}
 .ct-fed-hint a{color:var(--accent);white-space:nowrap}
 
-/* 2.3: Personen anderer Saga-Server (Adressbuch) - Chats ueber Servergrenzen folgen */
-.ct-person.ct-remote { opacity: .8; }
+/* 2.3: Personen anderer Saga-Server (Adressbuch) und Chats ueber Servergrenzen */
 .ct-person.ct-remote .ct-item-s { font-style: italic; }
+.ct-req-h{margin:.4rem 0 .1rem;padding:.2rem .6rem;font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.ct-state{padding:.6rem 1rem;border-top:1px solid var(--border);background:var(--card);font-size:.9rem}
+.ct-state p{margin:.2rem 0 .5rem}
+.ct-state .hk-actions{justify-content:flex-start;flex-wrap:wrap}
+.ct-warn .ct-warn-block,.ct-warn .ct-warn-reject{font-weight:600}
+.ct-blocked{color:var(--down);border-color:color-mix(in srgb,var(--down) 45%,var(--border))}
+.ct-pend{opacity:.8}
+.ct-fail{color:var(--down);font-weight:600}
+.ct-msg.ct-failed .ct-bubble{border-color:var(--down)}
+.ct-sys{font-style:italic}

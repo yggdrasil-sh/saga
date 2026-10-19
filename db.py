@@ -601,6 +601,12 @@ CREATE TABLE IF NOT EXISTS chat_fed_cert (            -- Handle-Zertifikat (saga
 CREATE TABLE IF NOT EXISTS chat_device_fed (          -- Geraete-Zertifikat v2 (saga-chat/v2/device) je Geraet
     device_id TEXT PRIMARY KEY, uid TEXT NOT NULL, fed_sig TEXT NOT NULL, created DOUBLE PRECISION NOT NULL);
 CREATE INDEX IF NOT EXISTS chat_device_fed_uid ON chat_device_fed (uid);
+-- Foederierte Chats (2.3 E2/E3, saga/fed_chat.py, saga/fed_calls.py). Neue Spalten in chat, chat_member, chat_msg und
+-- chat_call kommen mit Migration 8 (unten).
+CREATE TABLE IF NOT EXISTS fed_chat_block (           -- Sperren je Person ('~x@host') bzw. je Instanz ('host') eines Kontos
+    uid TEXT NOT NULL, target TEXT NOT NULL, created DOUBLE PRECISION NOT NULL, PRIMARY KEY (uid, target));
+CREATE TABLE IF NOT EXISTS chat_file_fed (            -- Anhang liegt beim Absender-Server (origin); hier ggf. Zwischenkopie
+    id TEXT PRIMARY KEY, peer_id INTEGER NOT NULL, cached INTEGER NOT NULL DEFAULT 0);
 
 -- Zweiter Faktor (2.1, saga/mfa.py): Passkeys (WebAuthn), Authenticator-App (TOTP), Wiederherstellungscodes.
 -- Nur oeffentliche Schluessel, das TOTP-Geheimnis verschluesselt (wie Geheimnisse der Einstellungen), Codes nur als Hash.
@@ -770,6 +776,29 @@ ALTER TABLE fed_outbox ADD COLUMN IF NOT EXISTS chain TEXT;
 ALTER TABLE fed_outbox ADD COLUMN IF NOT EXISTS ev_id TEXT;
 CREATE INDEX IF NOT EXISTS fed_outbox_chain ON fed_outbox (peer_id, chain, id) WHERE chain IS NOT NULL;
 CREATE INDEX IF NOT EXISTS fed_outbox_due ON fed_outbox (next_try);
+""",
+    # 2.3.0: Chats und Anrufe ueber Servergrenzen (saga/fed_chat.py, saga/fed_calls.py) - globale Chat-Kennung (ref) mit
+    # Heimserver (home_peer, NULL = dieser Server), Reihenfolge des Heims (fseq), Zustand je Mitglied (Nachrichtenanfrage),
+    # Absender-Handle und mitsignierter KI-Hash je Nachricht, Gegenstelle eines Anrufs, Epoche je Kette (nach Zurueckspielen
+    # eines Backups neu) und die signierte Geraete-Liste (saga-chat/v2/devices). Lokale Chats (v=1) bleiben unveraendert.
+    8: """
+ALTER TABLE chat ADD COLUMN IF NOT EXISTS v INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE chat ADD COLUMN IF NOT EXISTS ref TEXT;
+ALTER TABLE chat ADD COLUMN IF NOT EXISTS home_peer INTEGER;
+ALTER TABLE chat ADD COLUMN IF NOT EXISTS fseq BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE chat ADD COLUMN IF NOT EXISTS fstate TEXT NOT NULL DEFAULT '';
+CREATE UNIQUE INDEX IF NOT EXISTS chat_ref_u ON chat (ref) WHERE ref IS NOT NULL;
+ALTER TABLE chat_member ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'ok';
+ALTER TABLE chat_msg ADD COLUMN IF NOT EXISTS fseq BIGINT;
+ALTER TABLE chat_msg ADD COLUMN IF NOT EXISTS sender_handle TEXT;
+ALTER TABLE chat_msg ADD COLUMN IF NOT EXISTS ai TEXT;
+ALTER TABLE chat_msg ADD COLUMN IF NOT EXISTS fstate TEXT;
+CREATE INDEX IF NOT EXISTS chat_msg_fseq ON chat_msg (chat_id, fseq) WHERE fseq IS NOT NULL;
+ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS peer_id INTEGER;
+ALTER TABLE chat ADD COLUMN IF NOT EXISTS fep TEXT NOT NULL DEFAULT '';
+ALTER TABLE fed_chain_out ADD COLUMN IF NOT EXISTS epoch TEXT NOT NULL DEFAULT '';
+ALTER TABLE fed_chain_in ADD COLUMN IF NOT EXISTS epoch TEXT NOT NULL DEFAULT '';
+ALTER TABLE chat_fed_cert ADD COLUMN IF NOT EXISTS dset TEXT;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

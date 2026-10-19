@@ -15,6 +15,9 @@ Lokale Chats bleiben v1 - unveraendert.
                   sig = sign_detached(LP(V2+"sig", chat_ref, msg_id, sender_handle, sender_device, ts, reply_to|"", ai|"",
                         generichash32(raw(body_ct))), device_sign_sk)
                   ai = "" oder Hex-SHA-256 des Textes einer KI-Antwort (mitsigniert)
+  Geraete-Liste   dsig = sign_detached(LP(V2+"devices", handle, ver, ids), ident_sk) - ids = aktive Geraete-IDs sortiert, mit ","
+                  verbunden; ver steigt bei jeder Aenderung. Nur Geraete in der signierten Liste gelten als aktiv (der Server
+                  kann Widerrufe so weder faelschen noch unterdruecken; aeltere Listen lehnen die Clients ab, TOFU je Handle)
   Empfaenger      K mit crypto_box_seal je Geraet ('dev:<device_id>@<host>') und je Mitglied ('backup:<handle>')
   Datei           AD = LP(V2+"file", chat_ref)
   Sicherheitsnr.  beide (handle, ident_pk) nach handle (UTF-8-Bytes) sortiert; h = generichash64(LP(V2+"safety", h_a, i_a,
@@ -78,6 +81,22 @@ def handle_msg(handle, ident_pk, backup_pk):
 
 def device_msg(handle, device_id, enc_pk, sign_pk):
     return lp(V2 + "device", handle, device_id, enc_pk, sign_pk)
+
+
+def devices_msg(handle, ver, ids):
+    return lp(V2 + "devices", handle, str(int(ver)), ",".join(sorted(ids)))
+
+
+def verify_devices(handle, ident_pub, dset):
+    """Signierte Geraete-Liste {ver, ids, sig} pruefen."""
+    if not isinstance(dset, dict):
+        return False
+    ver, ids, sig = dset.get("ver"), dset.get("ids"), dset.get("sig")
+    if not isinstance(ver, int) or isinstance(ver, bool) or not 0 < ver < 2 ** 53 or not isinstance(ids, list) or len(ids) > 100:
+        return False
+    if any(not isinstance(x, str) or not DEVICE_RE.fullmatch(x) for x in ids) or len(set(ids)) != len(ids):
+        return False
+    return verify(ident_pub, sig, devices_msg(handle, ver, ids))
 
 
 def msg_ad(chat_ref, msg_id, sender_handle, sender_device, ts, reply_to=None, ai=None):

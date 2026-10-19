@@ -468,7 +468,8 @@ blog.example.org {
 
 Pages and databases can be shared with **other accounts** and **groups** on the same Saga instance. Use the
 **“Share”** button at the top right of your own page (or the page menu **⋯** → “Share …”): search for a person or a
-group (from 3 characters; you see display name and username, never a list of all accounts), pick a role and click
+group (from 3 characters also parts of names, with 1–2 characters exact matches only, e.g. “hd”; you see display
+name and username, never a list of all accounts), pick a role and click
 the match. The dialog only offers groups you belong to – local groups as well as groups from LDAP or SSO. In the list
 below you change the role or remove access (with a confirmation; access ends immediately). With an empty search field
 your groups appear as chips (“Your groups:”), and a line under the field explains what the chosen role may do. The
@@ -606,7 +607,7 @@ only stores encrypted data. The admin can't read any content either.
   Afterwards the new device can also read the previous history. If you have neither, you can **start over** (new keys;
   old messages can no longer be read). Saga asks for your password first; SSO accounts sign in again briefly
   (then you have 5 minutes).
-- **Conversations:** **“+ New”** → search a person (3+ characters) for a **direct chat**, one of your groups for a
+- **Conversations:** **“+ New”** → search a person (short names like “hd” exactly, otherwise parts from 3 characters) for a **direct chat**, one of your groups for a
   **group chat** (members follow the group, also from LDAP/SSO) or “group with several people” for a **custom group**
   (the creator invites and removes; the name is encrypted). On shared pages **“💬 Chat”** in the page header opens the
   **page chat** with everyone who can see the page – when the shares change, the members change. New members only see

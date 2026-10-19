@@ -52,10 +52,13 @@ def is_remote(uid):
 
 
 def remote_label(principal, display=None):
-    """'@bert@b.example' + 'Bert' -> 'Bert (bert@b.example)' - fremde Namen immer mit Herkunft (keine Verwechslung)."""
+    """'@bert@b.example' + 'Bert' -> 'Bert (bert@b.example)' - fremde Namen immer mit Herkunft (keine Verwechslung).
+    Pseudonymer Handle (2.3, '@~x@host'): 'Bert (b.example)' - die Zufallskennung sagt Menschen nichts."""
     h = principal[1:]
+    if h.startswith("~") and "@" in h:
+        h = h.split("@", 1)[1]
     d = re.sub(r"[\x00-\x1f\x7f]", "", str(display or "")).strip()
-    return f"{d} ({h})" if d else h
+    return f"{d} ({h})" if d else principal[1:]
 
 
 def enabled():
@@ -752,10 +755,27 @@ def _like(q):
     return re.sub(r"([\\%_])", r"\\\1", q)
 
 
+SHORT_Q = 3          # Personensuche: ab so vielen Zeichen Teilwort-Suche, darunter nur genaue Treffer (kurze Namen wie "hd")
+
+
+def name_match():
+    """SQL-Bedingung der lokalen Personensuche (Tabelle users u) - passend zu name_args(q)."""
+    return "(u.username LIKE ? OR lower(u.display_name) LIKE ?)"
+
+
+def name_args(q):
+    """Ab SHORT_Q Zeichen: Benutzername beginnt mit q oder Anzeigename enthaelt q; bei 1-2 Zeichen nur genaue Treffer
+    (Gross/Klein egal) - so laesst sich mit kurzen Anfragen keine Liste aller Konten abrufen."""
+    if len(q) < SHORT_Q:
+        return [_like(q), _like(q)]
+    pat = _like(q)
+    return [pat + "%", "%" + pat + "%"]
+
+
 @router.get("/api/share/targets")
 def api_share_targets(request: Request, q: str = ""):
-    """Personensuche fuer den Teilen-Dialog: ab 3 Zeichen, hoechstens 10 Konten (Anzeigename + Benutzername), nie die
-    ganze Liste; mit "nur gemeinsame Gruppen" nur Konten aus eigenen Gruppen. Dazu die eigenen Gruppen, die passen."""
+    """Personensuche fuer den Teilen-Dialog: hoechstens 10 Konten (Anzeigename + Benutzername; ab 3 Zeichen Teilwort-Suche,
+    bei 1-2 Zeichen nur genaue Treffer), nie die ganze Liste; mit "nur gemeinsame Gruppen" nur Konten aus eigenen Gruppen. Dazu die eigenen Gruppen, die passen."""
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
@@ -767,14 +787,13 @@ def api_share_targets(request: Request, q: str = ""):
     _tgt_hits[uid] = hits + [now]
     if len(_tgt_hits) > 5000:
         _tgt_hits.clear()
-    if len(q) < 3 or not enabled():
+    if not q or not enabled():
         return JSONResponse({"users": [], "groups": []}, headers={"Cache-Control": "no-store"})
     with _db() as c:
         mine = sorted(groups_of(c, uid))
         pat = _like(q)
-        sql = ("SELECT u.username, u.display_name FROM users u WHERE u.disabled=0 AND u.username<>? "
-               "AND (u.username LIKE ? OR lower(u.display_name) LIKE ?)")
-        args = [uid, pat + "%", "%" + pat + "%"]
+        sql = "SELECT u.username, u.display_name FROM users u WHERE u.disabled=0 AND u.username<>? AND " + name_match()
+        args = [uid] + name_args(q)
         if group_scope():
             if not mine:
                 rows = []
@@ -789,7 +808,7 @@ def api_share_targets(request: Request, q: str = ""):
                              (*args, q, pat + "%", TARGETS_MAX)).fetchall()
         av = avatars.urls(c, [r[0] for r in rows]) if rows else {}
     users = [{"username": r[0], "name": r[1] or r[0], "avatar": av.get(r[0])} for r in rows]
-    groups = [{"name": g} for g in mine if q in g][:TARGETS_MAX]
+    groups = [{"name": g} for g in mine if (q in g if len(q) >= SHORT_Q else q == g)][:TARGETS_MAX]
     out = {"users": users, "groups": groups}
     # name@host einer verbundenen Instanz: dort nachfragen (signiert) - nur genaue Adressen, keine Suche ueber Instanzen
     if REMOTE_SEARCH is not None and "@" in q.lstrip("@") and fed_enabled() and fed_share_ok(q):

@@ -25,6 +25,7 @@ als Nachricht kind='title'), page (alle mit Zugriff auf die Seite laut sharing.A
 jedem Zugriff abgeglichen; neue Nachrichten gehen nur an aktuelle Mitglieder (Senden verlangt genau deren Geraete)."""
 import base64
 import binascii
+import contextvars
 import hashlib
 import json
 import os
@@ -65,6 +66,10 @@ _HEX32 = re.compile(r"[0-9a-f]{32}")
 REAUTH_SEC = 300                       # "Neu beginnen": Passwort oder Anmeldung hoechstens 5 Minuten alt
 _FID = re.compile(r"[A-Za-z0-9_-]{22,40}")
 _hits = {}                             # (art, uid) -> [zeiten] fuer Tipp-/Upload-/Such-Bremsen
+# 2.3: Chats ueber Servergrenzen (saga.fed_chat setzt sich hier ein - kein zyklischer Import). Chats mit v=2 laufen dort.
+FED = None
+# Kann der anfragende Client saga-chat/v2 (Kopfzeile X-Saga-Chat: 2)? Aeltere Apps sehen foederierte Chats nur mit Hinweis.
+V2_CLIENT = contextvars.ContextVar("saga_chat_v2", default=False)
 
 
 # --- Hilfen -------------------------------------------------------------------------------------------------
@@ -139,6 +144,7 @@ def _rate(kind, uid, n, per=60.0):
 
 def _me(request):
     """-> (uid, fehler)"""
+    V2_CLIENT.set(request.headers.get("x-saga-chat", "") == "2")
     uid = _api_guard(request)
     if not uid:
         return None, _bad("unauthorized", 401)
@@ -218,12 +224,20 @@ def _keys(c, uids):
 
 
 # --- Mitglieder ----------------------------------------------------------------------------------------------
-C_COLS = "id, kind, dm_key, group_name, note_id, created_by, created, retention_s, title_seq, last_seq, last_at"
+C_COLS = "id, kind, dm_key, group_name, note_id, created_by, created, retention_s, title_seq, last_seq, last_at, v, ref, home_peer, fseq, fstate"
 
 
 def _row(r):
     return dict(zip(("id", "kind", "dm_key", "group_name", "note_id", "created_by", "created", "retention_s", "title_seq",
-                     "last_seq", "last_at"), r)) if r else None
+                     "last_seq", "last_at", "v", "ref", "home_peer", "fseq", "fstate"), r)) if r else None
+
+
+def fed_hint():
+    return t("Chat mit einer Person eines anderen Saga-Servers – in dieser App-Version nicht lesbar. Bitte die App aktualisieren.")
+
+
+def is_fed(ch):
+    return bool(ch) and ch.get("v") == 2 and FED is not None
 
 
 def _load(c, cid):
@@ -298,8 +312,8 @@ def sync(c, ch):
 
 
 def _member(c, cid, uid):
-    r = c.execute("SELECT role, muted, last_read, joined FROM chat_member WHERE chat_id=? AND uid=? AND left_at IS NULL", (cid, uid)).fetchone()
-    return dict(zip(("role", "muted", "last_read", "joined"), r)) if r else None
+    r = c.execute("SELECT role, muted, last_read, joined, state FROM chat_member WHERE chat_id=? AND uid=? AND left_at IS NULL", (cid, uid)).fetchone()
+    return dict(zip(("role", "muted", "last_read", "joined", "state"), r)) if r else None
 
 
 def _pref(c, cid, uid):
@@ -703,21 +717,21 @@ def _like(q):
 
 @router.get("/api/chat/people")
 def api_people(request: Request, q: str = ""):
-    """Personensuche fuer neue Unterhaltungen (wie beim Teilen: ab 3 Zeichen, hoechstens 10) + passende eigene Gruppen."""
+    """Personensuche fuer neue Unterhaltungen (wie beim Teilen, hoechstens 10) + passende eigene Gruppen. Ab 3 Zeichen
+    Teilwort-Suche, bei 1-2 Zeichen nur genaue Treffer (Benutzername bzw. Anzeigename, z. B. "hd") - nie eine Liste aller Konten."""
     uid, err = _me(request)
     if err:
         return err
     q = re.sub(r"\s+", " ", q or "").strip().lower()[:60]
     if not _rate("people", uid, 60):
         return _bad(t("zu schnell"), 429)
-    if len(q) < 3:
+    if not q:
         return _no_store({"users": [], "groups": []})
     with _db() as c:
         mine = sorted(groups_of(c, uid))
-        pat = _like(q)
         sql = ("SELECT u.username, u.display_name, (i.uid IS NOT NULL) FROM users u LEFT JOIN chat_identity i ON i.uid=u.username "
-               "WHERE u.disabled=0 AND u.username<>? AND (u.username LIKE ? OR lower(u.display_name) LIKE ?)")
-        args = [uid, pat + "%", "%" + pat + "%"]
+               "WHERE u.disabled=0 AND u.username<>? AND " + sharing.name_match())
+        args = [uid] + sharing.name_args(q)
         rows = []
         if group_scope():
             if mine:
@@ -733,7 +747,8 @@ def api_people(request: Request, q: str = ""):
     # 2.3: Personen anderer Instanzen aus dem Adressbuch (saga.fed_dir) - Chats ueber Servergrenzen folgen mit Protokoll 2
     remote = sharing.DIR_SEARCH(uid, q, "chat") if sharing.DIR_SEARCH is not None else []
     return _no_store({"users": [{"username": r[0], "name": r[1] or r[0], "ready": bool(r[2]), "avatar": av.get(r[0])} for r in rows],
-                      "groups": [{"name": g} for g in mine if q in g][:10], "remote": remote})
+                      "groups": [{"name": g} for g in mine if (q in g if len(q) >= sharing.SHORT_Q else q == g)][:10],
+                      "remote": remote})
 
 
 def _note_info(c, uid, ids):
@@ -800,8 +815,8 @@ def _msgs(c, uid, cid, device, where="", args=(), limit=PAGE, desc=True):
     dv = device or "-"
     rows = c.execute(
         f"SELECT {M_COLS}, (SELECT sealed FROM chat_msg_key k WHERE k.msg_seq=m.seq AND k.recipient=?), "
-        "(SELECT sealed FROM chat_msg_key k WHERE k.msg_seq=m.seq AND k.recipient=?) FROM chat_msg m "
-        "WHERE m.chat_id=? AND (m.expires_at IS NULL OR m.expires_at>?) AND (m.kind='call' OR EXISTS (SELECT 1 FROM chat_msg_key k "
+        "(SELECT sealed FROM chat_msg_key k WHERE k.msg_seq=m.seq AND k.recipient=?), m.fseq, m.sender_handle, m.ai, m.fstate FROM chat_msg m "
+        "WHERE m.chat_id=? AND (m.expires_at IS NULL OR m.expires_at>?) AND (m.kind IN ('call','sys') OR EXISTS (SELECT 1 FROM chat_msg_key k "
         "WHERE k.msg_seq=m.seq AND k.recipient IN (?,?))) AND (m.kind='title' OR m.seq > COALESCE((SELECT p.cleared_seq FROM chat_pref p "
         f"WHERE p.chat_id=m.chat_id AND p.uid=?), 0)) {where} ORDER BY m.seq {'DESC' if desc else 'ASC'} LIMIT ?",
         (dv, bk, cid, time.time(), dv, bk, uid, *args, limit)).fetchall()
@@ -813,7 +828,8 @@ def _msg_dict(r, nm):
     return {"seq": r[0], "id": r[1], "kind": r[2], "sender": {"username": r[3], "name": nm.get(r[3]) or t("Gelöschtes Konto"),
                                                          "avatar": nm.avatar(r[3]) if hasattr(nm, "avatar") else None} if r[3] else None,
             "sender_device": r[4], "ts": r[5], "created": r[6], "expires_at": r[7], "body_ct": r[8], "sig": r[9],
-            "reply_to": r[10], "key": key, "key_for": via}
+            "reply_to": r[10], "key": key, "key_for": via,
+            **({"fseq": r[13], "sender_handle": r[14], "ai": r[15], "fstate": r[16]} if len(r) > 16 and (r[14] or r[2] == "sys") else {})}
 
 
 def ai_marks(c, cid, msgs):
@@ -854,6 +870,9 @@ def _senders(c, rows):
 def _name(c, uid, ch, mem, nm):
     """Anzeigename: dm = Gegenueber, group = Gruppenname, page = Seitentitel (mit Zugriff), free = None (verschluesselt)."""
     if ch["kind"] == "dm":
+        if is_fed(ch):
+            other = next((u for u in mem if sharing.is_remote(u)), None)
+            return FED.label_of(c, other)["name"] if other else t("Gelöschtes Konto")
         a, _, b = (ch["dm_key"] or "").partition("|")
         other = b if a == uid else a
         return nm.get(other) or t("Gelöschtes Konto")
@@ -883,7 +902,7 @@ def _chat_dict(c, uid, ch, mem, m, device, full=False):
     d.update(archived=p["archived"] is not None, archived_at=p["archived"], cleared_seq=p["cleared_seq"],
              delete_for_all=may_delete_all(c, uid, ch, m))
     if ch["kind"] == "dm":
-        a, _, b = ch["dm_key"].partition("|")
+        a, _, b = (ch["dm_key"] or "").partition("|")   # (2.3: alter foederierter Chat ohne Paar)
         d["peer"] = {"username": b if a == uid else a, "name": d["name"], "avatar": nm.avatar(b if a == uid else a)}
     if ch["kind"] == "free" and ch["title_seq"]:
         rows = _msgs(c, uid, ch["id"], device, "AND m.seq=?", (ch["title_seq"],), 1)
@@ -893,6 +912,11 @@ def _chat_dict(c, uid, ch, mem, m, device, full=False):
             d["title_msg"] = dict(_msg_dict(rows[0], nmt), device=devs.get(rows[0][4]), ident_pub=ids.get(rows[0][3]))
     if full:
         d["max_members"] = MEMBERS_MAX
+    if is_fed(ch):                                    # 2.3: Chat ueber Servergrenzen (saga.fed_chat)
+        FED.chat_extra(c, uid, ch, d, mem, m)
+        if not V2_CLIENT.get():                       # aeltere App: Hinweis statt kaputter Nachrichten
+            d["name"] = (d.get("name") or "") + " · " + t("bitte App aktualisieren")
+            d["fed_hint"] = fed_hint()
     return d
 
 
@@ -928,12 +952,13 @@ def api_chats(request: Request, device: str = ""):
                 sync(c, ch)
         out = []
         for r in c.execute(f"SELECT {', '.join('ch.' + x.strip() for x in C_COLS.split(','))} FROM chat ch JOIN chat_member m "
-                           "ON m.chat_id=ch.id LEFT JOIN chat_pref p ON p.chat_id=ch.id AND p.uid=m.uid WHERE m.uid=? AND m.left_at IS NULL "
+                           "ON m.chat_id=ch.id LEFT JOIN chat_pref p ON p.chat_id=ch.id AND p.uid=m.uid WHERE m.uid=? AND m.left_at IS NULL AND m.state<>'declined' "
                            "AND NOT (COALESCE(p.hidden, 0)<>0 AND ch.last_seq<=p.cleared_seq) "
                            "ORDER BY COALESCE(ch.last_at, ch.created) DESC LIMIT 500", (uid,)).fetchall():
             ch = _row(r)
             out.append(_chat_dict(c, uid, ch, members(c, ch["id"]), _member(c, ch["id"], uid), dev))
-    return _no_store({"chats": out, "unread": sum(x["unread"] for x in out if not x["muted"] and not x["archived"])})
+    return _no_store({"chats": out, "unread": sum(x["unread"] for x in out if not x["muted"] and not x["archived"] and not x.get("request")),
+                      "requests": sum(1 for x in out if x.get("request"))})
 
 
 def unread_total(c, uid):
@@ -941,7 +966,7 @@ def unread_total(c, uid):
     if not enabled():
         return 0
     return c.execute(
-        "SELECT COUNT(*) FROM chat_msg x JOIN chat_member m ON m.chat_id=x.chat_id AND m.uid=? AND m.left_at IS NULL AND m.muted=0 "
+        "SELECT COUNT(*) FROM chat_msg x JOIN chat_member m ON m.chat_id=x.chat_id AND m.uid=? AND m.left_at IS NULL AND m.muted=0 AND m.state='ok' "
         "WHERE x.kind='msg' AND x.seq>m.last_read AND (x.sender_uid IS NULL OR x.sender_uid<>?) AND (x.expires_at IS NULL OR x.expires_at>?) "
         "AND NOT EXISTS (SELECT 1 FROM chat_pref p WHERE p.chat_id=x.chat_id AND p.uid=m.uid AND p.archived IS NOT NULL)",
         (uid, uid, time.time())).fetchone()[0]
@@ -967,6 +992,14 @@ async def api_chat_new(request: Request):
     if b is None:
         return _bad(t("ungültige Anfrage"))
     kind, now = b.get("kind"), time.time()
+    if kind == "dm" and b.get("handle") and FED is not None:         # 2.3: Person eines anderen Servers (Handle '~x@host')
+        hn, _, hh = str(b.get("handle")).strip().lower().partition("@")
+        with _db() as c:
+            lu = FED.F.uid_by_handle(c, hn) if hh and FED.fedsig.authority(hh) == FED.F.SELF_HOST else None
+        if not lu:
+            from starlette.concurrency import run_in_threadpool
+            return await run_in_threadpool(FED.create_dm, uid, b.get("handle"), str(b.get("device") or ""))
+        b["user"] = lu                                                # eigener Server: wie bisher (lokaler Chat, v1)
     with _db() as c, c:
         if c.execute("SELECT COUNT(*) FROM chat WHERE created_by=? AND created>?", (uid, now - 3600)).fetchone()[0] >= 60:
             return _bad(t("Zu viele neue Chats in kurzer Zeit – bitte kurz warten."), 429)
@@ -1058,6 +1091,7 @@ async def api_chat_patch(cid: int, request: Request):
         return _bad(t("ungültige Anfrage"))
     if "archived" in b and not isinstance(b["archived"], bool):
         return _bad(t("ungültige Angabe"))
+    fed_retention, wait = None, False
     with _db() as c, c:
         ch, m, mem, err = _chat_for(c, uid, cid)
         if err:
@@ -1076,10 +1110,22 @@ async def api_chat_patch(cid: int, request: Request):
             mx = retention_max()
             if mx and (v == 0 or v > mx):
                 return _bad(t("Höchstens {n} Tage (Vorgabe des Servers).", n=mx // 86400))
-            c.execute("UPDATE chat SET retention_s=? WHERE id=?", (v, ch["id"]))
-            _changed(c, ch["id"], mem)
+            if is_fed(ch):
+                fed_retention = v                    # beim Heim (Netzwerk) - nach dieser Transaktion
+            else:
+                c.execute("UPDATE chat SET retention_s=? WHERE id=?", (v, ch["id"]))
+                _changed(c, ch["id"], mem)
+    if fed_retention is not None:
+        from starlette.concurrency import run_in_threadpool
+        e, wait = await run_in_threadpool(FED.set_meta, uid, ch, {"retention_s": fed_retention})
+        if e is not None:
+            return e
+    with _db() as c, c:
         ch = _load(c, ch["id"])
-        return _no_store({"chat": _chat_dict(c, uid, ch, mem, _member(c, ch["id"], uid), None, full=True)})
+        out = _chat_dict(c, uid, ch, mem if fed_retention is None else members(c, ch["id"]), _member(c, ch["id"], uid), None, full=True)
+        if fed_retention is not None and wait:
+            out["pending"] = True
+        return _no_store({"chat": out})
 
 
 @router.post("/api/chats/{cid}/members")
@@ -1241,6 +1287,9 @@ def api_chat_delete(cid: int, request: Request, scope: str = "me"):
         mode = may_delete_all(c, uid, ch, m)
         if not mode:
             return _bad(t("Dafür fehlt dir die Berechtigung."), 403)
+        if is_fed(ch):
+            c.rollback()
+            return FED.delete_all(uid, ch)
         by = {"username": uid, "name": names(c, [uid]).get(uid, uid)}
         everyone = set(mem) | set(members(c, ch["id"]))
         _drop_notifs(c, everyone, ch["id"])
@@ -1283,6 +1332,10 @@ def api_recipients(cid: int, request: Request):
         ch, m, mem, err = _chat_for(c, uid, cid)
         if err:
             return err
+        if is_fed(ch):
+            if not V2_CLIENT.get():
+                return _bad(fed_hint(), 400)
+            return FED.recipients(c, uid, ch, mem)
         out, _ = recipients(c, mem)
     return _no_store({"chat_id": ch["id"], "recipients": out})
 
@@ -1300,7 +1353,11 @@ def api_messages(cid: int, request: Request, device: str = "", before: int = 0, 
         if err:
             return err
         dev = _my_device(c, uid, device)
-        where, args, desc = ("AND m.kind IN ('msg','call')" if calls else "AND m.kind='msg'"), (), True
+        if is_fed(ch) and not V2_CLIENT.get():          # aeltere App: keine v2-Nachrichten, nur der Hinweis
+            return _no_store({"chat_id": ch["id"], "messages": [], "more": False, "devices": {}, "idents": {}, "last_read": m["last_read"],
+                              "last_seq": ch["last_seq"], "fed_hint": fed_hint()})
+        where, args, desc = ("AND m.kind IN ('msg','call','sys')" if calls and is_fed(ch) else "AND m.kind IN ('msg','call')" if calls
+                             else "AND m.kind='msg'"), (), True
         if after > 0:
             where, args, desc = where + " AND m.seq>?", (min(after, 2 ** 63 - 1),), False
         elif before > 0:
@@ -1313,7 +1370,8 @@ def api_messages(cid: int, request: Request, device: str = "", before: int = 0, 
         nm = names(c, [r[3] for r in rows])
         devs, ids = _senders(c, rows)
         msgs = [_msg_dict(r, nm) for r in rows]
-        ai_marks(c, ch["id"], msgs)
+        if not is_fed(ch):                              # v2: KI-Hash ist mitsigniert (Feld ai), kein Server-Beleg
+            ai_marks(c, ch["id"], msgs)
         return _no_store({"chat_id": ch["id"], "messages": msgs, "more": more,
                           "devices": devs, "idents": ids, "last_read": m["last_read"], "last_seq": ch["last_seq"]})
 
@@ -1329,6 +1387,14 @@ async def api_send(cid: int, request: Request):
     b = await _body(request)
     if b is None:
         return _bad(t("ungültige Anfrage"))
+    if FED is not None:
+        with _db() as c:
+            fch = _load(c, cid)
+        if is_fed(fch):                                   # 2.3: Chat ueber Servergrenzen (saga-chat/v2)
+            if not V2_CLIENT.get() and b.get("v") != 2:
+                return _bad(fed_hint(), 400)
+            from starlette.concurrency import run_in_threadpool
+            return await run_in_threadpool(FED.send, uid, cid, b)
     mid, dev, body_ct, sig = str(b.get("id") or ""), str(b.get("sender_device") or ""), b.get("body_ct"), b.get("sig")
     kind = b.get("kind") or "msg"
     reply_to = b.get("reply_to") or None
@@ -1430,6 +1496,9 @@ def api_msg_delete(cid: int, mid: str, request: Request):
         ch, m, mem, err = _chat_for(c, uid, cid, do_sync=False)
         if err:
             return err
+        if is_fed(ch):
+            c.rollback()
+            return FED.delete_msg(uid, ch, mid)
         mem = _fresh(c, ch, mem)                 # Seiten-/Gruppen-Chat: gerade Entzogene bekommen nichts mehr (BUG-088)
         r = c.execute("SELECT seq, sender_uid FROM chat_msg WHERE id=? AND chat_id=? AND kind='msg'", (mid, ch["id"])).fetchone()
         if not r:
@@ -1487,6 +1556,8 @@ def api_typing(cid: int, request: Request):
         mem = _fresh(c, ch, mem)                 # Seiten-/Gruppen-Chat: gerade Entzogene bekommen nichts mehr (BUG-088)
         if uid not in mem:
             return _bad("not found", 404)
+        if is_fed(ch) and not ch["fstate"] and m.get("state") == "ok":
+            FED.typing(uid, ch)                  # an die anderen Server: direkt, verwerfbar
         nm = names(c, [uid])
         _direct(c, [u for u in mem if u != uid], "chat.typing", {"chat_id": ch["id"], "user": {"username": uid, "name": nm.get(uid, uid)}})
     return _no_store({"ok": True})
@@ -1546,6 +1617,8 @@ def api_file_get(fid: str, request: Request):
             if age > 0:
                 cache = f"private, max-age={age}, immutable"
     path = os.path.join(CHAT_DIR, fid)
+    if not os.path.isfile(path) and FED is not None:
+        FED.fetch_file(fid)                           # 2.3: Anhang liegt beim Absender-Server - jetzt holen (Zwischenkopie)
     if not os.path.isfile(path):
         return _bad("not found", 404)
     return FileResponse(path, media_type="application/octet-stream",
@@ -1592,6 +1665,8 @@ def purge(c=None):
 def delete_account(c, uid):
     """Kontoloeschung: Identitaet, Geraete, Kopplungen, Mitgliedschaften, gesendete Nachrichten und Anhaenge des Kontos;
     Direkt-Chats mit dem Konto und leere freie Gruppen ganz. Blobs werden nach dem Commit entfernt. -> Anzahl Nachrichten."""
+    if FED is not None:
+        FED.account_gone(c, uid)                      # 2.3: foederierte Chats bei den anderen Servern beenden
     devs = [r[0] for r in c.execute("SELECT id FROM chat_device WHERE uid=?", (uid,))]
     rcpt = devs + ["backup:" + uid]
     for i in range(0, len(rcpt), 500):

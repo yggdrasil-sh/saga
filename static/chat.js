@@ -387,6 +387,22 @@
         }));
       });
     }));
+    // Sperren (2.3): Personen bzw. ganze Server anderer Saga-Instanzen - von dort kommen keine Nachrichtenanfragen mehr
+    var bh = el('h3', null, T('Gesperrt (andere Saga-Server)')), bl = el('ul', 'ct-devs ct-blocks');
+    api('GET', '/api/chat/blocks').then(function (r) {
+      if (!(r.blocks || []).length) { bl.appendChild(el('li', 'hk-hint', T('Niemand gesperrt.'))); return; }
+      r.blocks.forEach(function (x) {
+        var li = el('li', 'ct-dev'), t = el('div', 'ct-dev-t');
+        t.appendChild(el('b', null, x.kind === 'instance' ? x.host : x.label));
+        t.appendChild(el('span', 'hk-hint', x.kind === 'instance' ? T('ganzer Server') : T('Person')));
+        li.appendChild(t);
+        li.appendChild(btn(T('Entsperren'), 'small', function () {
+          api('DELETE', '/api/chat/blocks?target=' + q(x.target)).then(function () { HK.toast(T('Entsperrt.')); li.remove(); }).catch(function (e) { HK.toast(e.message); });
+        }));
+        bl.appendChild(li);
+      });
+    }).catch(function () { bh.hidden = true; });
+    box.appendChild(bh); box.appendChild(bl);
     box.appendChild(el('h3', null, T('Sicherheit')));
     box.appendChild(el('p', 'hk-hint', T('Private Schlüssel verlassen dieses Gerät nie unverschlüsselt. Auf dem Server liegen nur öffentliche Schlüssel, verschlüsselte Nachrichten und dein mit dem Wiederherstellungsschlüssel verschlüsseltes Schlüssel-Bündel. Vergleiche Sicherheitsnummern, um sicherzugehen, dass niemand dazwischen sitzt.')));
   }
@@ -407,6 +423,7 @@
     var v;
     return api('GET', '/api/chat/v2/me').then(function (r) {
       v = r;
+      if (v && v.handle) S.myHandle = v.handle;
       if (!v || !v.need || !v.handle) return null;
       return api('GET', '/api/chat/me?device=' + q(dev()));          // frischer Stand (auch gerade angemeldete Geraete)
     }).then(function (me) {
@@ -423,30 +440,41 @@
       if (Object.keys(devs).length) body.devices = devs;
       if (!body.handle_sig && !body.devices) return v;
       return api('PUT', '/api/chat/v2/cert', body);
+    }).then(function (r) {
+      // signierte Liste der aktiven Geraete (Review 2.3): neu, sobald Geraete dazukommen oder wegfallen
+      if (!r || !r.handle || r.device_set_ok || !r.cert_ok || !(r.device_set_want || []).length) return r;
+      var ver = ((r.device_set || {}).ver || 0) + 1;
+      return api('PUT', '/api/chat/v2/cert', { device_set: X.deviceSetSig(r.handle, K.ident_sk, ver, r.device_set_want) });
     });
   }
   function trust2Key(h) { return 'trust2:' + ME + ':' + h; }
   // Schluessel zu foederierten Handles holen (ueber den eigenen Server), Zertifikate selbst pruefen, TOFU anwenden.
   // -> {handle: {keys: {...} | null, trust: 'trust'|'warn'|'block'|'reject'|'missing', safety?}}
-  function fedKeys(handles) {
-    return api('GET', '/api/chat/v2/keys?handles=' + q(handles.join(','))).then(function (r) {
+  function fedKeys(handles, fresh) {
+    return api('GET', '/api/chat/v2/keys?handles=' + q(handles.join(',')) + (fresh ? '&fresh=1' : '')).then(function (r) {
       var out = {};
       return Promise.all(handles.map(function (h) {
         var e = (r.keys || {})[h];
         if (!e) { out[h] = { keys: null, trust: 'missing' }; return null; }
         var k = X.checkKeysV2(h, e);
         if (!k) { out[h] = { keys: null, trust: 'reject' }; return null; }
+        if (h === S.myHandle) {                            // eigene Schluessel: muessen zu diesem Geraet passen
+          out[h] = { keys: k, trust: eqB(k.ident_pk, K.ident_pk) ? 'trust' : 'reject' };
+          return null;
+        }
         return kvGet(trust2Key(h)).catch(function () { return null; }).then(function (st) {
-          var t = X.tofuV2(st || null, k.ident_pub);
-          out[h] = { keys: k, trust: t.result, stale: !!e.stale, stored: st || null };
+          var t = X.tofuV2(st || null, k.ident_pub, k.ver);
+          out[h] = { keys: k, trust: t.result, stale: !!e.stale, stored: t.store || st || null };
           if (t.store) return kvSet(trust2Key(h), t.store).catch(function () {});
         });
       })).then(function () { return out; });
     });
   }
-  // "Ueberprueft" (Sicherheitsnummer verglichen) bzw. Warnung bestaetigen
+  // "Ueberprueft" (Sicherheitsnummer verglichen) bzw. Warnung bestaetigen ("Verstanden": verified false, Warnung weg)
   function fedVerify(h, ident_pub, verified) {
-    return kvSet(trust2Key(h), { ident: ident_pub, verified: !!verified });
+    return kvGet(trust2Key(h)).catch(function () { return null; }).then(function (st) {
+      return kvSet(trust2Key(h), { ident: ident_pub, verified: !!verified, dver: (st && st.ident === ident_pub && st.dver) || 0 });
+    });
   }
   window.SagaChatFed = { certs: fedCerts, keys: fedKeys, verify: fedVerify,
                          safety: function (myHandle, theirHandle, theirIdentPk) { return X.safetyNumberV2(myHandle, K.ident_pk, theirHandle, theirIdentPk); } };
@@ -460,6 +488,8 @@
   }
   window.addEventListener('hashchange', function () { if (S.ready) route(); });
 
+  function isFed(c) { return !!(c && c.v === 2); }          // 2.3: Chat ueber Servergrenzen (saga-chat/v2, saga/fed_chat.py)
+  function fileCid(c) { return isFed(c) ? c.ref : c.id; }   // AD fuer Anhaenge: v1 chat_id, v2 chat_ref
   function chatName(c) {
     if (c.kind === 'free') return c._title || c.members.filter(function (m) { return !m.me; }).map(function (m) { return m.name; }).join(', ') || T('Gruppen-Chat');
     return c.name || '';
@@ -489,6 +519,14 @@
     ul.textContent = '';
     var shown = S.chats.filter(function (c) { return !f || chatName(c).toLowerCase().indexOf(f) >= 0; });
     $('ct-list-empty').hidden = S.chats.length > 0;
+    // Nachrichtenanfragen (2.3, Personen anderer Saga-Server) oben, eigener Bereich - bis zur Annahme ohne Benachrichtigung
+    var reqs = shown.filter(function (c) { return c.request; });
+    if (reqs.length) {
+      var rh = el('li', 'ct-req-h'); rh.id = 'ct-req-h';
+      rh.appendChild(el('span', null, T('Nachrichtenanfragen ({n})', { n: reqs.length }))); ul.appendChild(rh);
+      reqs.forEach(function (c) { ul.appendChild(listItem(c)); });
+    }
+    shown = shown.filter(function (c) { return !c.request; });
     // Archiv (2.1): archivierte Chats unten in einem aufklappbaren Bereich (beim Filtern gleich mit angezeigt)
     var act = shown.filter(function (c) { return !c.archived; }), arch = shown.filter(function (c) { return c.archived; });
     act.forEach(function (c) { ul.appendChild(listItem(c)); });
@@ -510,8 +548,10 @@
                            c.kind === 'dm' ? (c.peer || {}).avatar : null));
       var t = el('span', 'ct-item-t');
       t.appendChild(el('span', 'ct-item-n', nm));
-      t.appendChild(el('span', 'ct-item-s', (c.kind === 'dm' ? T('Direkt') : c.kind === 'group' ? T('Gruppe') : c.kind === 'page' ? T('Seite') : T('Gruppe')) +
-        ' · ' + T('{n} Personen', { n: c.member_count }) + (c.muted ? ' · 🔕' : '')));
+      t.appendChild(el('span', 'ct-item-s', isFed(c)
+        ? (c.request ? T('Anfrage') : T('Direkt')) + ' · ' + ((c.peer || {}).host || '') + (c.readonly ? ' · ' + T('schreibgeschützt') : '') + (c.muted ? ' · 🔕' : '')
+        : (c.kind === 'dm' ? T('Direkt') : c.kind === 'group' ? T('Gruppe') : c.kind === 'page' ? T('Seite') : T('Gruppe')) +
+          ' · ' + T('{n} Personen', { n: c.member_count }) + (c.muted ? ' · 🔕' : '')));
       b.appendChild(t);
       var side = el('span', 'ct-item-r');
       side.appendChild(el('span', 'ct-item-time', HK.relTime((c.last_at || c.created) - Date.now() / 1000)));
@@ -557,10 +597,11 @@
   }
 
   // --- Neue Unterhaltung ----------------------------------------------------------------------------------------
-  // name@server, @name@server oder E-Mail-artig: Chats ueber Servergrenzen gibt es noch nicht -> Hinweis statt "Keine Treffer"
+  // name@server, @name@server oder E-Mail-artig: Hinweis statt "Keine Treffer" - Personen anderer Saga-Server findet die
+  // Suche ueber ihren Anzeigenamen (Adressbuch der verbundenen Server, 2.3)
   function fedAddr(v) { return /^@?[^@\s]+@[^@\s]+[.:][^@\s]+$/.test(v); }
   function fedHint() {
-    var li = el('li', 'hk-hint ct-fed-hint', T('Chats mit Personen anderer Saga-Server gibt es noch nicht. Seiten kannst du mit name@server teilen (über den öffentlichen Namen der Person).') + ' ' +
+    var li = el('li', 'hk-hint ct-fed-hint', T('Personen anderer, verbundener Saga-Server findest du über ihren Anzeigenamen oder name@server (nicht über die E-Mail-Adresse).') + ' ' +
       T('Personen auf diesem Server findest du über Namen oder Benutzernamen, nicht über die E-Mail-Adresse.') + ' ');
     var a = el('a', null, T('Anleitung: Föderation'));
     a.href = T('https://github.com/yggdrasil-sh/saga/blob/main/docs/ANLEITUNG.md#mit-anderen-saga-instanzen-teilen-föderation');
@@ -569,7 +610,7 @@
   }
   function newChat() {
     var box = overlay(T('Neue Unterhaltung'));
-    var inp = el('input', 'hk-in ct-people-q'); inp.type = 'search'; inp.placeholder = T('Person oder Gruppe suchen (ab 3 Zeichen)'); inp.setAttribute('aria-label', T('Person oder Gruppe suchen'));
+    var inp = el('input', 'hk-in ct-people-q'); inp.type = 'search'; inp.placeholder = T('Person oder Gruppe suchen'); inp.setAttribute('aria-label', T('Person oder Gruppe suchen'));
     box.appendChild(inp);
     var res = el('ul', 'ct-people'); box.appendChild(res);
     var pick = [], chips = el('div', 'ct-chips'), name = el('input', 'hk-in'), mk = btn(T('Gruppe anlegen'), 'btn-primary ct-free-go');
@@ -594,7 +635,7 @@
       clearTimeout(tmr);
       tmr = setTimeout(function () {
         var v = inp.value.trim();
-        if (v.length < 3) { res.textContent = ''; return; }
+        if (!v) { res.textContent = ''; return; }          // 1-2 Zeichen: nur genaue Treffer (Server), z. B. "hd"
         api('GET', '/api/chat/people?q=' + q(v)).then(function (r) {
           res.textContent = '';
           r.users.forEach(function (u) {
@@ -615,12 +656,15 @@
             b.addEventListener('click', function () { create({ kind: 'group', group: g.name }); });
             li.appendChild(b); res.appendChild(li);
           });
-          (r.remote || []).forEach(function (u) {                // 2.3: Adressbuch verbundener Server (Chats folgen)
-            var li = el('li'), b = el('button', 'ct-person ct-remote'); b.type = 'button'; b.setAttribute('aria-disabled', 'true');
+          (r.remote || []).forEach(function (u) {                // 2.3: Adressbuch verbundener Server -> Direkt-Chat ueber Servergrenzen
+            var li = el('li'), b = el('button', 'ct-person ct-remote'); b.type = 'button';
             b.appendChild(avatar((u.name || '?').charAt(0).toUpperCase(), u.handle, '', u.avatar));
             var t = el('span', 'ct-item-t'); t.appendChild(el('span', 'ct-item-n', u.label || u.name));
-            t.appendChild(el('span', 'ct-item-s', T('Person auf {host} · Chats über Servergrenzen folgen in Kürze', { host: u.host }))); b.appendChild(t);
-            b.addEventListener('click', function () { HK.toast(T('Chats mit Personen anderer Saga-Server kommen mit dem nächsten Update.')); });
+            t.appendChild(el('span', 'ct-item-s', T('Person auf {host} · erste Nachricht als Anfrage', { host: u.host }))); b.appendChild(t);
+            b.addEventListener('click', function () {
+              if (!grp.hidden) { HK.toast(T('Gruppen mit Personen anderer Saga-Server kommen mit einem späteren Update.')); return; }
+              create({ kind: 'dm', handle: u.handle });
+            });
             li.appendChild(b); res.appendChild(li);
           });
           if (!r.users.length && !r.groups.length && !(r.remote || []).length) res.appendChild(fedAddr(v) ? fedHint() : el('li', 'hk-hint', T('Keine Treffer.')));
@@ -638,6 +682,24 @@
   }
 
   // --- Entschluesseln, pruefen, Vertrauen (TOFU) ----------------------------------------------------------------
+  // v2 (Chats ueber Servergrenzen): Absender-Geraet aus den selbst geprueften Schluesseln (S.fk, TOFU) -> {body, verified}
+  function decryptV2(c, m) {
+    var key = m.key_for === 'device' ? X.openKey(m.key, K.device.enc_pk, K.device.enc_sk) : X.openKey(m.key, K.backup_pk, K.backup_sk);
+    var body = X.decryptMessageV2(c.ref, m, key), f = (S.fk || {})[m.sender_handle], ok = false;
+    if (f && f.keys && f.trust !== 'reject') {
+      var d = f.keys.devices.filter(function (x) { return x.id === m.sender_device; })[0];
+      ok = !!d && X.verifyMessageV2(c.ref, m, ub(d.sign_pub, 32));
+    }
+    return { body: body, verified: ok };
+  }
+  // Schluessel der Mitglieder eines foederierten Chats laden (ueber den eigenen Server, selbst gepruefte Zertifikate + TOFU)
+  function fedLoad(c, fresh) {
+    var hs = c.members.map(function (m) { return m.handle; }).filter(Boolean);
+    return fedKeys(hs, fresh).then(function (fk) {
+      if (S.cur && S.cur.id === c.id) { S.fk = fk; drawWarn(); drawHead(); }
+      return fk;
+    });
+  }
   // -> {body, verified}; wirft, wenn sich die Nachricht nicht oeffnen laesst
   function decrypt(cid, m, devices, idents) {
     var key = m.key_for === 'device' ? X.openKey(m.key, K.device.enc_pk, K.device.enc_sk) : X.openKey(m.key, K.backup_pk, K.backup_sk);
@@ -665,6 +727,7 @@
   // "Sicherheitsnummer geaendert" erscheint sofort, nicht erst nach einer neuen Nachricht oder dem Oeffnen der
   // Sicherheitsnummer (BUG-016). Nur Konten mit eingerichteten Chats liefern einen Schluessel.
   function checkIdents(c) {
+    if (isFed(c)) { fedLoad(c).catch(function () {}); return; }
     var users = c.members.filter(function (m) { return !m.me; }).map(function (m) { return m.username; }).slice(0, 60);
     if (!users.length) return;
     api('GET', '/api/chat/keys?users=' + users.map(q).join(',')).then(function (r) {
@@ -674,6 +737,7 @@
   }
   function drawWarn() {
     var w = $('ct-warn'), c = S.cur; if (!c) { w.hidden = true; return; }
+    if (isFed(c)) { drawWarnV2(c, w); return; }
     var bad = c.members.filter(function (m) { return trust[m.username] && trust[m.username].changed; });
     w.textContent = ''; w.hidden = !bad.length;
     bad.forEach(function (m) {
@@ -686,7 +750,48 @@
       w.appendChild(p);
     });
   }
+  // 2.3: TOFU fuer Personen anderer Server - Warnung (Schluessel gewechselt), Blockade ("ueberprueft" und gewechselt),
+  // ungueltig (Zertifikat/Geraete-Liste). Senden geht erst nach Pruefen bzw. "Verstanden" (Warnung) wieder.
+  function drawWarnV2(c, w) {
+    w.textContent = '';
+    var n = 0;
+    c.members.filter(function (m) { return !m.me && m.handle; }).forEach(function (m) {
+      var f = (S.fk || {})[m.handle]; if (!f) return;
+      var p = el('p', 'ct-warn-' + f.trust);
+      if (f.trust === 'warn') {
+        p.appendChild(document.createTextNode('⚠ ' + T('Die Sicherheitsnummer von {name} hat sich geändert – z. B. nach „Neu beginnen“ oder bei einem neuen Konto. Prüfe sie, bevor du Vertrauliches schreibst.', { name: m.name }) + ' '));
+        p.appendChild(btn(T('Sicherheitsnummer'), 'small', function () { safety(m); }));
+        p.appendChild(btn(T('Verstanden'), 'small ct-warn-ok', function () {
+          fedVerify(m.handle, f.keys.ident_pub, false).then(function () { return fedLoad(c); });
+        }));
+      } else if (f.trust === 'block') {
+        p.appendChild(document.createTextNode('⛔ ' + T('Du hattest {name} als überprüft markiert – jetzt meldet der Server einen anderen Schlüssel. Senden ist gesperrt, bis du die Sicherheitsnummer erneut verglichen hast.', { name: m.name }) + ' '));
+        p.appendChild(btn(T('Sicherheitsnummer'), 'small', function () { safety(m); }));
+      } else if (f.trust === 'reject') {
+        p.appendChild(document.createTextNode('⛔ ' + T('Die Schlüssel von {name} sind ungültig (Zertifikat oder Geräte-Liste) – Senden ist gesperrt.', { name: m.name })));
+      } else return;
+      n++; w.appendChild(p);
+    });
+    w.hidden = !n;
+  }
+  function safetyV2(m) {
+    var c = S.cur;
+    fedKeys([m.handle]).then(function (fk) {
+      var f = fk[m.handle], box = overlay(T('Sicherheitsnummer mit {name}', { name: m.name }));
+      if (!f.keys) { box.appendChild(el('p', null, T('{name} hat Chats noch nicht eingerichtet.', { name: m.name }))); return; }
+      var g = el('div', 'ct-safety'); g.id = 'ct-safety';
+      X.safetyNumberV2(c.my_handle, K.ident_pk, m.handle, f.keys.ident_pk).split(' ').forEach(function (x) { g.appendChild(el('span', null, x)); });
+      box.appendChild(g);
+      box.appendChild(el('p', null, T('Vergleiche diese Nummer mit {name} – persönlich, per Anruf oder auf deren Gerät. Stimmt sie überein, liest niemand mit. Sie ist auf beiden Seiten gleich.', { name: m.name })));
+      box.appendChild(el('p', 'hk-hint', T('{name} ist auf {host} – die Nummer gehört zu diesem Server-übergreifenden Chat.', { name: m.name, host: m.host || '' })));
+      if (f.stored && f.stored.verified && f.stored.ident === f.keys.ident_pub && f.trust === 'trust') box.appendChild(el('p', 'ct-ok', '✓ ' + T('Als überprüft markiert.')));
+      else box.appendChild(btn(T('Als überprüft markieren'), 'btn-primary ct-verify', function () {
+        fedVerify(m.handle, f.keys.ident_pub, true).then(function () { closeOverlay(); HK.toast(T('Als überprüft markiert.')); return fedLoad(c); });
+      }));
+    }).catch(function (e) { HK.toast(e.message); });
+  }
   function safety(m) {
+    if (isFed(S.cur) && m.handle) { safetyV2(m); return; }
     api('GET', '/api/chat/keys?users=' + q(m.username)).then(function (r) {
       var k = r.users[m.username];
       var box = overlay(T('Sicherheitsnummer mit {name}', { name: m.name }));
@@ -718,7 +823,7 @@
     var same = S.cur && S.cur.id === cid;
     return api('GET', '/api/chats/' + cid + '?device=' + q(dev())).then(function (r) {
       var c = r.chat; freeTitle(c);
-      if (!same) { S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; }
+      if (!same) { S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; S.fk = null; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; }
       S.cur = c;
       $('ct-none').hidden = true; $('ct-chat').hidden = false; root.classList.add('ct-open');
       drawHead(); drawList(); drawWarn();
@@ -741,7 +846,15 @@
       hav = avatar((chatName(c) || '?').charAt(0).toUpperCase(), pp.username, 'ct-av-h', pp.avatar || (c.peer || {}).avatar);
       hav.id = 'ct-head-av'; if (ht) ht.parentNode.insertBefore(hav, ht);
     }
-    if (c.kind === 'dm') {
+    if (c.kind === 'dm' && isFed(c)) {                    // 2.3: Person eines anderen Servers - Herkunft, TOFU-Stand
+      var fp = c.peer || {}, ff = (S.fk || {})[fp.handle];
+      sub.appendChild(document.createTextNode(T('auf {host}', { host: fp.host || '' })));
+      if (ff && ff.trust === 'trust' && ff.stored && ff.stored.verified && ff.stored.ident === ff.keys.ident_pub)
+        sub.appendChild(el('span', 'ct-chip ct-verified', '✓ ' + T('überprüft')));
+      else if (ff && (ff.trust === 'block' || ff.trust === 'reject')) sub.appendChild(el('span', 'ct-chip ct-blocked', '⛔ ' + T('gesperrt')));
+      if (c.request) sub.appendChild(el('span', 'ct-chip', T('Anfrage')));
+      if (c.readonly) sub.appendChild(el('span', 'ct-chip', '🔒 ' + T('schreibgeschützt')));
+    } else if (c.kind === 'dm') {
       var p = others[0] || c.peer || {}, t = trust[p.username];
       sub.appendChild(document.createTextNode(p.username || ''));
       if (t && t.verified && !t.changed) sub.appendChild(el('span', 'ct-chip ct-verified', '✓ ' + T('überprüft')));
@@ -755,22 +868,61 @@
     document.title = chatName(c) + ' · ' + T('Chats');
     if (window.HKCalls) window.HKCalls.head(c);           // Anruf-Knoepfe (static/calls.js) nur im Direkt-Chat
     drawAI();
+    drawState(c);
+  }
+  // Nachrichtenanfrage (Annehmen/Ablehnen/Sperren) bzw. schreibgeschuetzt: statt des Eingabefelds (2.3)
+  function drawState(c) {
+    var box = $('ct-state');
+    if (!box) { box = el('div', 'ct-state'); box.id = 'ct-state'; box.setAttribute('role', 'region'); $('ct-compose').parentNode.insertBefore(box, $('ct-compose')); }
+    box.textContent = '';
+    var req = isFed(c) && c.request, ro = isFed(c) && c.readonly && !req;
+    box.hidden = !req && !ro; $('ct-compose').hidden = req || ro;
+    if ($('ct-call-a') && (req || ro)) { $('ct-call-a').hidden = true; $('ct-call-v').hidden = true; }
+    if (ro) { box.appendChild(el('p', 'hk-hint', '🔒 ' + (c.readonly_reason || T('Diese Unterhaltung ist schreibgeschützt.')))); return; }
+    if (!req) return;
+    var p = c.peer || {};
+    box.appendChild(el('p', null, T('{name} ({host}) möchte dir schreiben. Bis du annimmst, bekommst du keine Benachrichtigungen und keine Anrufe – und {name} erfährt nicht, ob du die Nachrichten gelesen hast.', { name: p.name || '?', host: p.host || '?' })));
+    var bar = el('div', 'hk-actions');
+    function act(a, scope) {
+      return api('POST', '/api/chats/' + c.id + '/request', { action: a, scope: scope || 'person' }).then(function (r) {
+        if (a === 'accept') { HK.toast(T('Anfrage angenommen.')); return openChat(c.id).then(loadList); }
+        HK.toast(a === 'block' ? T('Gesperrt – von dort kommen keine Anfragen mehr.') : T('Anfrage abgelehnt.'));
+        closeChat(); history.replaceState(null, '', location.pathname); return loadList();
+      }).catch(function (e) { HK.toast(e.message); });
+    }
+    bar.appendChild(btn(T('Annehmen'), 'btn-primary ct-req-accept', function () { act('accept'); }));
+    bar.appendChild(btn(T('Ablehnen'), 'ct-req-decline', function () { act('decline'); }));
+    var blk = btn(T('Sperren …'), 'btn-danger ct-req-block');
+    blk.addEventListener('click', function () {
+      HK.openMenu(blk, function (menu) {
+        menu.textContent = '';
+        menu.appendChild(HK.menuItem(T('{name} sperren', { name: p.name || '?' }), function () { HK.closeMenu(); act('block', 'person'); }, { icon: '⛔', danger: true }));
+        menu.appendChild(HK.menuItem(T('Ganzen Server {host} sperren', { host: p.host || '?' }), function () { HK.closeMenu(); act('block', 'instance'); }, { icon: '⛔', danger: true }));
+      });
+    });
+    bar.appendChild(blk); box.appendChild(bar);
   }
   function loadMsgs(older) {
     var c = S.cur; if (!c || S.loading) return Promise.resolve();
     S.loading = true;
     var first = S.msgs.length ? S.msgs[0].seq : 0, last = S.msgs.length ? S.msgs[S.msgs.length - 1].seq : 0;
     var url = '/api/chats/' + c.id + '/messages?calls=1&device=' + q(dev()) + (older && first ? '&before=' + first : (!older && last ? '&after=' + last : ''));
-    return api('GET', url).then(function (r) {
+    // v2: Schluessel der Absender (selbst geprueft) vor dem Entschluesseln - sonst stuende kurz "Echtheit nicht bestaetigt"
+    return (isFed(c) && !S.fk ? fedLoad(c).catch(function () { return null; }) : Promise.resolve()).then(function () { return api('GET', url); }).then(function (r) {
       S.loading = false;
       if (!S.cur || S.cur.id !== c.id) return;
       var add = r.messages.filter(function (m) { return !S.byId[m.id]; }).map(function (m) {
         var d;
         if (m.kind === 'call') {                          // Anruf-Eintrag: Metadaten vom Server (nicht verschluesselt, nur wer/wann/wie lange)
           try { m.call = JSON.parse(m.body_ct); } catch (e) { m.call = {}; }
+          if (isFed(c) && m.sender && m.sender.username === ME) m.call.from = ME;     // v2: Anrufer steht als Prinzipal/Konto drin
           m.body = null; m.verified = true; S.byId[m.id] = m; return m;
         }
-        try { d = decrypt(c.id, m, r.devices || {}, r.idents || {}); } catch (e) { d = { body: null, verified: false, error: true }; }
+        if (m.kind === 'sys') {                           // Systemzeile (2.3, z. B. KI ein-/ausgeschaltet) - Metadaten vom Heim
+          try { m.sys = JSON.parse(m.body_ct); } catch (e) { m.sys = {}; }
+          m.body = null; m.verified = true; S.byId[m.id] = m; return m;
+        }
+        try { d = isFed(c) ? decryptV2(c, m) : decrypt(c.id, m, r.devices || {}, r.idents || {}); } catch (e) { d = { body: null, verified: false, error: true }; }
         m.body = d.body; m.verified = d.verified; m.error = !!d.error; m._ai = aiCheck(m);
         S.byId[m.id] = m; return m;
       });
@@ -868,6 +1020,7 @@
       if (day !== lastDay) { box.appendChild(el('div', 'ct-day', day)); lastDay = day; lastWho = null; }
       var isAI = m._ai === 'ok', mine = !isAI && m.sender && m.sender.username === ME;
       if (m.kind === 'call') { box.appendChild(callRow(m, d, mine)); lastWho = null; return; }
+      if (m.kind === 'sys') { box.appendChild(sysRow(m, d)); lastWho = null; return; }
       var row = el('div', 'ct-msg' + (mine ? ' mine' : '') + (isAI ? ' ct-ai' : '')); row.dataset.id = m.id;
       if (isAI) {                                         // KI-Antwort (2.1): Bild + Name der KI, wer gefragt hat
         if (lastWho !== '#ai:' + (m.sender || {}).username) box.appendChild(aiWho(m));
@@ -897,9 +1050,11 @@
       if (m.error || !m.body) b.appendChild(el('div', 'ct-text ct-err', '🔒 ' + T('Diese Nachricht lässt sich auf diesem Gerät nicht entschlüsseln.')));
       else {
         if (m.body.text) { var tx = el('div', 'ct-text'); renderText(tx, m.body.text); b.appendChild(tx); }
-        (Array.isArray(m.body.files) ? m.body.files : []).slice(0, 10).forEach(function (f) { b.appendChild(fileEl(c.id, f)); });
+        (Array.isArray(m.body.files) ? m.body.files : []).slice(0, 10).forEach(function (f) { b.appendChild(fileEl(fileCid(c), f)); });
       }
       var meta = el('div', 'ct-meta');
+      if (m.fstate === 'pending') { var pe = el('span', 'ct-pend', '⏳'); pe.title = T('Wird zugestellt, sobald der andere Server erreichbar ist.'); meta.appendChild(pe); }
+      if (m.fstate === 'failed') { row.classList.add('ct-failed'); meta.appendChild(el('span', 'ct-fail', '⚠ ' + T('nicht zugestellt'))); }
       if (m.expires_at) meta.appendChild(el('span', 'ct-exp', '⏱'));
       var tm = el('time', null, fTime.format(d)); tm.dateTime = d.toISOString(); tm.title = fDay.format(d) + ' ' + fTime.format(d); meta.appendChild(tm);
       b.appendChild(meta);
@@ -913,6 +1068,15 @@
     applySearch();
     if (scroll === 'keep') box.scrollTop = box.scrollHeight - prevH + prevTop;
     else if (scroll === 'bottom' || atBottom) box.scrollTop = box.scrollHeight;
+  }
+  // Systemzeile (2.3): mittig, z. B. "Anna hat die KI in diesem Chat eingeschaltet"
+  function sysRow(m, d) {
+    var k = m.sys || {}, row = el('div', 'ct-call ct-sys'); row.dataset.id = m.id;
+    var who = k.by === (S.cur || {}).my_handle ? T('Du') : (k.name || '?');
+    row.appendChild(el('span', null, k.type === 'ai' ? (k.on ? T('{name} hat die KI in diesem Chat eingeschaltet.', { name: who })
+      : T('{name} hat die KI in diesem Chat ausgeschaltet.', { name: who })) : T('Hinweis')));
+    var tm = el('time', null, fTime.format(d)); tm.dateTime = d.toISOString(); row.appendChild(tm);
+    return row;
   }
   // Anruf-Eintrag (2.1): mittig, mit Richtung, Ergebnis, Uhrzeit und "Zurueckrufen"
   function callRow(m, d, mine) {
@@ -932,6 +1096,12 @@
       if (m.body && m.body.text) menu.appendChild(HK.menuItem(T('Text kopieren'), function () {
         HK.closeMenu(); if (navigator.clipboard) navigator.clipboard.writeText(m.body.text).then(function () { HK.toast(T('Kopiert.')); });
       }, { icon: '⧉' }));
+      if (m.fstate === 'failed' && m.body && m.sender && m.sender.username === ME) menu.appendChild(HK.menuItem(T('Erneut senden'), function () {
+        HK.closeMenu();
+        sendBody(S.cur.id, m.body, 'msg', m.reply_to).then(function () {
+          return api('DELETE', '/api/chats/' + S.cur.id + '/messages/' + m.id).catch(function () {});
+        }).then(function () { dropMsg(m.id); return loadMsgs(false); }).catch(function (e) { HK.toast(T('Nicht gesendet: {err}', { err: e.message })); });
+      }, { icon: '↻' }));
       if (m.sender && m.sender.username === ME) menu.appendChild(HK.menuItem(T('Für alle löschen'), function () {
         HK.closeMenu();
         HK.ask({ title: T('Nachricht für alle löschen?'), text: T('Die Nachricht und ihre Anhänge werden vom Server gelöscht. Wer sie schon gelesen hat, kann eine Kopie haben.'), ok: T('Löschen'), danger: true })
@@ -991,11 +1161,12 @@
   }
   function mainJob(d) {
     return Promise.resolve().then(function () {
-      if (d.op === 'dec') return { plain: X.decryptFile(d.cid, new Uint8Array(d.blob), d.key).buffer };
-      if (d.op === 'enc') { var r = X.encryptFile(d.cid, new Uint8Array(d.bytes)); return { blob: r.blob.buffer, key: r.key }; }
-      var bytes = d.op === 'thumb' ? X.decryptFile(d.cid, new Uint8Array(d.blob), d.key) : new Uint8Array(d.bytes);
+      var v2 = typeof d.cid === 'string', dec = v2 ? X.decryptFileV2 : X.decryptFile, enc = v2 ? X.encryptFileV2 : X.encryptFile;   // v2: chat_ref
+      if (d.op === 'dec') return { plain: dec(d.cid, new Uint8Array(d.blob), d.key).buffer };
+      if (d.op === 'enc') { var r = enc(d.cid, new Uint8Array(d.bytes)); return { blob: r.blob.buffer, key: r.key }; }
+      var bytes = d.op === 'thumb' ? dec(d.cid, new Uint8Array(d.blob), d.key) : new Uint8Array(d.bytes);
       return mainThumb(bytes, d.mime).then(function (t) {
-        if (d.op === 'thumb' && d.enc) t.ct = X.encryptFile(d.cid, new Uint8Array(t.jpeg), { key: ub(d.key, 32) }).blob.buffer;
+        if (d.op === 'thumb' && d.enc) t.ct = enc(d.cid, new Uint8Array(t.jpeg), { key: ub(d.key, 32) }).blob.buffer;
         return t;
       });
     });
@@ -1309,7 +1480,40 @@
       throw new Error(T('Die Sicherheitsnummer von {name} hat sich geändert – erst prüfen oder „Verstanden“ wählen.', { name: bad.map(function (p) { return p.name; }).join(', ') }));
     });
   }
+  // 2.3: Senden in Chats ueber Servergrenzen (saga-chat/v2): Empfaenger = Geraete aus den selbst geprueften Schluesseln
+  // aller Mitglieder (signierte Geraete-Liste, TOFU); passt das dem Server/Heim nicht (409), einmal frisch holen.
+  function sendV2(c, body, reply, extra) {
+    var hs = c.members.map(function (m) { return m.handle; }).filter(Boolean);
+    function attempt(fresh, again) {
+      return fedKeys(hs, fresh).then(function (fk) {
+        if (S.cur && S.cur.id === c.id) { S.fk = fk; drawWarn(); }
+        var bad = c.members.filter(function (m) { return !m.me && fk[m.handle] && ['warn', 'block', 'reject'].indexOf(fk[m.handle].trust) >= 0; });
+        if (bad.length) throw new Error(T('Die Sicherheitsnummer von {name} hat sich geändert – erst prüfen oder „Verstanden“ wählen.', { name: bad.map(function (m) { return m.name; }).join(', ') }));
+        var mine = fk[c.my_handle];
+        if (!mine || !mine.keys || mine.trust !== 'trust') throw new Error(T('Deine Schlüssel für Chats über Servergrenzen sind noch nicht bereit – bitte die Seite neu laden.'));
+        var ents = hs.filter(function (h) { return fk[h] && fk[h].keys; }).map(function (h) { return fk[h].keys; });
+        S.rc = { cid: c.id, missing: c.members.filter(function (m) { return !m.me && !(fk[m.handle] || {}).keys; }).map(function (m) { return m.name; }) };
+        var m = X.encryptMessageV2({ chat_ref: c.ref, sender_handle: c.my_handle, device: K.device.id, sign_sk: K.device.sign_sk, body: body,
+                                     reply_to: reply || null, ai: (extra && extra.ai) || null, recipients: X.recipientsV2(ents) });
+        m.v = 2;
+        if (extra && extra.ai_reply) m.ai_reply = extra.ai_reply;
+        if (body.files) m.files = body.files.reduce(function (a, f) { a.push(f.id); if (f.th && f.th.id) a.push(f.th.id); return a; }, []);
+        return api('POST', '/api/chats/' + c.id + '/messages', m).then(function (r) {
+          if (r.pending) HK.toast(T('Der andere Server ist gerade nicht erreichbar – die Nachricht wird zugestellt, sobald er wieder da ist.'), null, null, 6000);
+          return { m: m, r: r };
+        }, function (e) {
+          if (e.status === 409 && e.data && e.data.handles && !again) return attempt(true, true);
+          throw e;
+        });
+      });
+    }
+    return attempt(false, false);
+  }
   function sendBody(cid, body, kind, reply, extra) {
+    var fc = S.cur && S.cur.id === cid ? S.cur : S.chats.filter(function (x) { return x.id === cid; })[0];
+    if (isFed(fc)) return sendV2(fc, body, reply, extra).catch(function (e) {
+      return checkDevice().then(function (okDev) { if (!okDev) { e = new Error(T('Dieses Gerät ist für Chats abgemeldet.')); } throw e; });
+    });
     function attempt(rc, again) {
       var m = X.encryptMessage({ chat_id: cid, sender: ME, device: K.device.id, sign_sk: K.device.sign_sk, body: body, reply_to: reply || null, recipients: rc.list });
       m.kind = kind || 'msg';
@@ -1336,6 +1540,7 @@
   }
   function uploadFiles(cid) {
     var ids = (S.me && S.me.limits && S.me.limits.file_ids_per_msg) || 10, slots = ids - S.files.length;
+    var fc = S.cur && S.cur.id === cid ? fileCid(S.cur) : cid;          // Verschluesselung: v1 chat_id, v2 chat_ref
     return Promise.all(S.files.map(function (f) {
       var mime = f.type || 'application/octet-stream', withThumb = IMG.test(mime) && slots-- > 0;
       return f.arrayBuffer().then(function (buf) {
@@ -1346,7 +1551,7 @@
           if (t) {
             var thumb = new Blob([t.jpeg], { type: 'image/jpeg' }), tsz = t.jpeg.byteLength;
             e.w = t.w; e.h = t.h;
-            th = run('enc', { cid: cid, bytes: t.jpeg }, [t.jpeg]).then(function (et) {
+            th = run('enc', { cid: fc, bytes: t.jpeg }, [t.jpeg]).then(function (et) {
               var ct = new Blob([et.blob]);
               return upload(cid, ct).then(function (id) {
                 memPut('t:' + id, URL.createObjectURL(thumb)); bPut(id, ct);     // eigene Nachricht: sofort, ohne Nachladen
@@ -1354,7 +1559,7 @@
               });
             });
           }
-          var orig = run('enc', { cid: cid, bytes: buf }, [buf]).then(function (eo) { e.k = eo.key; return upload(cid, eo.blob); });
+          var orig = run('enc', { cid: fc, bytes: buf }, [buf]).then(function (eo) { e.k = eo.key; return upload(cid, eo.blob); });
           return Promise.all([orig, th]).then(function (r) {
             e.id = r[0];
             if (r[1]) { e.th = r[1]; var u = mem.get('t:' + r[1].id); if (u) memPut('t:' + e.id, u); }
@@ -1611,7 +1816,8 @@
     var ul = el('ul', 'ct-devs'); box.appendChild(ul);
     c.members.forEach(function (m) {
       var li = el('li', 'ct-dev'); li.appendChild(avatar((m.name || '?').charAt(0).toUpperCase(), m.username, '', m.avatar));
-      var t = el('div', 'ct-dev-t'); t.appendChild(el('b', null, m.me ? m.name + ' (' + T('du') + ')' : m.name)); t.appendChild(el('span', 'hk-hint', m.username)); li.appendChild(t);
+      var t = el('div', 'ct-dev-t'); t.appendChild(el('b', null, m.me ? m.name + ' (' + T('du') + ')' : m.name));
+      t.appendChild(el('span', 'hk-hint', m.handle && m.host ? T('auf {host}', { host: m.host }) : m.username)); li.appendChild(t);
       if (!m.me) li.appendChild(btn(T('Sicherheitsnummer'), 'small', function () { safety(m); }));
       if (c.kind === 'free' && c.role === 'admin' && !m.me) li.appendChild(btn(T('Entfernen'), 'btn-danger small', function () {
         api('DELETE', '/api/chats/' + c.id + '/members/' + q(m.username)).then(function () { closeOverlay(); openChat(c.id); loadList(); }).catch(function (e) { HK.toast(e.message); });
@@ -1619,12 +1825,12 @@
       ul.appendChild(li);
     });
     if (c.kind === 'free' && c.role === 'admin') {
-      var inp = el('input', 'hk-in'); inp.type = 'search'; inp.placeholder = T('Person hinzufügen (ab 3 Zeichen)'); inp.setAttribute('aria-label', T('Person hinzufügen'));
+      var inp = el('input', 'hk-in'); inp.type = 'search'; inp.placeholder = T('Person hinzufügen'); inp.setAttribute('aria-label', T('Person hinzufügen'));
       var res = el('ul', 'ct-people'); box.appendChild(inp); box.appendChild(res);
       var tmr = null;
       inp.addEventListener('input', function () {
         clearTimeout(tmr); tmr = setTimeout(function () {
-          if (inp.value.trim().length < 3) { res.textContent = ''; return; }
+          if (!inp.value.trim()) { res.textContent = ''; return; }
           var v = inp.value.trim();
           api('GET', '/api/chat/people?q=' + q(v)).then(function (r) {
             res.textContent = '';
@@ -1663,6 +1869,10 @@
   function aiCheck(m) {
     var b = m.body;
     if (!b || !b.ai) return null;
+    if (typeof m.ai === 'string') {                  // v2: KI-Hash ist Teil der signierten Nachricht
+      try { return typeof b.text === 'string' && window.sodium.to_hex(window.sodium.crypto_hash_sha256(window.sodium.from_string(b.text.trim()))) === m.ai ? 'ok' : 'bad'; }
+      catch (e) { return 'bad'; }
+    }
     if (!m.ai || typeof b.text !== 'string' || b.ai.reply !== m.ai.ref || !window.sodium) return 'bad';
     try {
       var h = window.sodium.to_hex(window.sodium.crypto_hash_sha256(window.sodium.from_string(b.text.trim())));
@@ -1757,7 +1967,8 @@
     }).then(function () {
       if (err) throw new Error(err);
       if (!done || !done.reply || !done.text) throw new Error(T('Keine Antwort bekommen.'));
-      return sendBody(c.id, { v: 1, type: 'text', text: done.text, ai: { reply: done.reply.id, name: aiP().name } }, 'msg', qid, { ai_reply: done.reply.id });
+      return sendBody(c.id, { v: 1, type: 'text', text: done.text, ai: { reply: done.reply.id, name: aiP().name } }, 'msg', qid,
+                      { ai_reply: done.reply.id, ai: done.reply.sha256 });      // v2: Hash wird mitsigniert (v1: ignoriert)
     }).then(function () {
       S.aiPending = null; wrap.remove();
       if (S.cur && S.cur.id === c.id) return loadMsgs(false);
@@ -1776,7 +1987,19 @@
     if (t === 'chat.device' && K && d.id === K.device.id) { forget().then(function () { closeChat(); newDevice(); }); return; }
     if (!S.ready) return;
     if (t === 'resync') { loadList(); if (S.cur) loadMsgs(false); return; }
-    if (t === 'chat.message') { if (S.cur && S.cur.id === d.chat_id) loadMsgs(false); listSoon(); }
+    if (t === 'chat.message') {
+      if (S.cur && S.cur.id === d.chat_id) {
+        var known = S.byId[d.id];                       // (2.3) ausstehende Nachricht bestaetigt bzw. abgewiesen
+        if (known && known.fstate) { known.fstate = d.failed ? 'failed' : null; drawMsgs(); }
+        loadMsgs(false);
+      }
+      listSoon();
+    }
+    else if (t === 'chat.request') listSoon();                     // (2.3) neue Nachrichtenanfrage
+    else if (t === 'chat.keys.changed') {                           // (2.3) Schluessel einer Person (bzw. die eigenen) geaendert
+      if (d.own) fedCerts().catch(function () {});
+      else if (S.cur && isFed(S.cur) && S.cur.members.some(function (m) { return m.handle === d.handle; })) fedLoad(S.cur, true).catch(function () {});
+    }
     else if (t === 'chat.deleted') { if (S.cur && S.cur.id === d.chat_id) dropMsg(d.id); listSoon(); }
     else if (t === 'chat.removed') removedLive(d, true);           // (2.1) Chat fuer alle geloescht
     else if (t === 'chat.cleared') {                                // (2.1) Verlauf geleert: fuer mich (anderer Tab) oder fuer alle
@@ -1815,10 +2038,21 @@
       });
     });
   }
+  // 2.3: Gegenueber auf einem anderen Server - Schluessel ueber den eigenen Server, selbst geprueft (signierte Geraete-Liste, TOFU)
+  function callPeerV2(h, name) {
+    return fedKeys([h]).then(function (fk) {
+      var f = fk[h];
+      if (!f || !f.keys) throw new Error(T('{name} hat Chats noch auf keinem Gerät eingerichtet – Anrufe gehen erst danach.', { name: name || h }));
+      if (f.trust !== 'trust') throw new Error(T('Die Sicherheitsnummer von {name} hat sich geändert – erst prüfen oder „Verstanden“ wählen.', { name: name || h }));
+      return { handle: h, ident_pub: f.keys.ident_pub, devices: f.keys.devices.filter(function (d) { return !d.revoked; })
+        .map(function (d) { return { id: d.id, enc_pk: ub(d.enc_pub, 32), sign_pk: ub(d.sign_pub, 32) }; }) };
+    });
+  }
   window.HKChat = { state: function () { return { ready: S.ready, device: dev(), cur: S.cur && S.cur.id, msgs: S.msgs.length, ai: aiOn(S.cur),
                                                    aiMsgs: S.msgs.filter(function (m) { return m._ai === 'ok'; }).length }; },
     callApi: { ready: function () { return !!(S.ready && K && X); }, me: function () { return ME; }, crypto: function () { return X; },
                device: function () { return K.device; }, peerKeys: callPeer, cur: function () { return S.cur; },
+               peerKeysV2: callPeerV2, myHandle: function () { return S.myHandle || (S.cur && S.cur.my_handle) || null; },
                // Anruf vorbei: offenen Chat auffrischen - ist keiner offen (angenommen von einer anderen Seite), den des Anrufs oeffnen
                refresh: function (cid) { if (S.cur && S.cur.id === cid) loadMsgs(false); else if (!S.cur && S.ready && cid) openChat(cid); } } };
   start();

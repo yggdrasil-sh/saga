@@ -1,10 +1,10 @@
-# Föderation 2.3 – Vertrag für die App-Teams (Etappen E0 + E1)
+# Föderation 2.3 – Vertrag für die App-Teams (Etappen E0 – E3)
 
 Saga 2.3 bringt Protokoll 2 zwischen verbundenen Saga-Servern. Für die Apps (Web, iOS/macOS, Android, Linux) kommen in
 dieser Etappe drei Dinge dazu: **Adressbuch-Suche** (Personen anderer Server nach Anzeigename), **föderierte Handles**
-und das **Chat-Krypto-Format `saga-chat/v2`** mit Schlüsselverzeichnis, gemeinsamen Testvektoren und TOFU. Chats über
-Servergrenzen selbst (Senden, Empfangen, Anfragen) folgen mit E2 – die Apps können v2 jetzt schon umsetzen und gegen die
-Testvektoren prüfen.
+und das **Chat-Krypto-Format `saga-chat/v2`** mit Schlüsselverzeichnis, gemeinsamen Testvektoren und TOFU (E0/E1),
+dazu **Direkt-Chats über Servergrenzen** mit Nachrichtenanfragen (E2, Abschnitt 6) und **Anrufe** im Format
+`saga-call/v2` (E3, Abschnitt 7).
 
 Alle Endpunkte wie gewohnt mit Sitzung oder Geräte-Schlüssel (`Authorization: Bearer hkd_…`) und `X-Saga: 1`. Alles
 ist rückwärtskompatibel: neue Felder und Ereignisse ignorieren ältere Apps; lokale Chats bleiben **`saga-chat/v1`**,
@@ -24,7 +24,11 @@ Jedes Konto hat einen stabilen, pseudonymen Handle: `~` + 16 Zeichen aus `a–z2
 
 ## 2. Adressbuch-Suche
 
-`GET /api/fed/people?q=<ab 3 Zeichen>[&purpose=chat|share]` → `{"people": [...]}`, höchstens 10 Treffer:
+`GET /api/fed/people?q=<Suchtext>[&purpose=chat|share]` → `{"people": [...]}`, höchstens 10 Treffer. Ab 3 Zeichen
+Teilwort-Suche im Anzeigenamen; bei 1–2 Zeichen nur genaue Treffer (Anzeigename oder öffentlicher Name, Groß/Klein
+egal – z. B. `hd`); `name@host` bzw. `@name@host` findet genau diese Person (öffentlicher Name oder Handle) auf diesem
+Server, auch mit kurzem Namen. Höchstens 60 Anfragen je Minute (sonst 429). Apps dürfen deshalb schon ab 1 Zeichen
+suchen (entprellt); dasselbe gilt für `GET /api/chat/people` und `GET /api/share/targets`:
 
 | Feld | Bedeutung |
 |---|---|
@@ -37,11 +41,14 @@ Jedes Konto hat einen stabilen, pseudonymen Handle: `~` + 16 Zeichen aus `a–z2
 | `pub` | `name@host`, falls die Person einen öffentlichen Namen hat, sonst `null` |
 | `avatar` | Profilbild-Adresse beim eigenen Server oder `null` (Initialen) |
 
-- `purpose=share` liefert nur Personen mit öffentlichem Namen und nur Server, mit denen Teilen erlaubt ist; zum Teilen
-  `PUT /api/notes/{nid}/shares {"type":"remote","target":<target>,"role":…}` wie bisher.
+- `purpose=share` liefert nur Server, mit denen Teilen erlaubt ist. Seit E2 auch Personen **ohne** öffentlichen Namen:
+  `target` ist dann `@~x@host` (pseudonymer Handle, `pub` = `null`); zum Teilen
+  `PUT /api/notes/{nid}/shares {"type":"remote","target":<target>,"role":…}` wie bisher. Nur Server ab 2.3 (Fähigkeit
+  `handles`) verstehen Handles – bei älteren bleibt es beim öffentlichen Namen. Zeigt den Handle nicht an (`label`/
+  `host` reichen).
 - Dieselben Treffer stehen zusätzlich in den bestehenden Suchen: `GET /api/chat/people` → neues Feld `remote` (Liste
-  wie oben; bis E2 zum Anzeigen, ein Direkt-Chat lässt sich damit noch nicht beginnen) und `GET /api/share/targets` →
-  `remote` (Treffer mit `label`/`host`/`avatar`, vor exakten `name@server`-Treffern).
+  wie oben; Direkt-Chat beginnen: Abschnitt 6.1) und `GET /api/share/targets` → `remote` (Treffer mit
+  `label`/`host`/`avatar`/`pub`, vor exakten `name@server`-Treffern).
 - Erwähnungen von Personen (`@Person`) gibt es in Saga noch nicht; wenn sie kommen, nutzen sie denselben Endpunkt.
 - Gleiche Namen immer über `label`/`host` unterscheidbar machen, nie nur den Namen zeigen.
 
@@ -67,6 +74,7 @@ Notation wie v1: `B64` = Standard-Base64 mit Padding, `LP(f1..fn)` = je Feld `ui
 | `ai` | `""` oder Hex-SHA-256 des Textes einer KI-Antwort (mitsigniert – v1 kannte das nur als Server-Beleg) |
 | Empfänger | `K` per `crypto_box_seal` je Gerät `dev:<device_id>@<host>` und je Mitglied `backup:<handle>` |
 | Datei | Blob `nonce24 ‖ xchacha20poly1305(datei, AD = LP(V2+"file", chat_ref))` |
+| Geräte-Liste | `dset = {ver, ids, sig}`, `sig = sign_detached(LP(V2+"devices", handle, ver, ids sortiert mit "," verbunden), ident_sk)`; `ver` steigt bei jeder Änderung |
 | Sicherheitsnummer v2 | beide `(handle, ident_pk)` nach Handle (UTF-8-Bytes) sortiert, `h = generichash64(LP(V2+"safety", h_a, i_a, h_b, i_b))`, 12 Blöcke: je 5 Bytes big-endian mod 100000, fünfstellig |
 
 Identitäts-, Backup- und Geräteschlüssel sind **dieselben** wie in v1 – es kommen nur die Zertifikate v2 dazu.
@@ -78,23 +86,29 @@ Nach dem Entsperren (das Gerät kennt `ident_sk`):
 1. `GET /api/chat/v2/me` → `{handle, host, identity, cert_ok, devices:[{id, fed_sig, ok}], missing:[ids], need, federation}`.
 2. Ist `need` true: `PUT /api/chat/v2/cert` mit
    `{"handle_sig": B64(Handle-Zertifikat)}` (wenn `cert_ok` false) und/oder
-   `{"devices": {"<device_id>": B64(fed_sig), …}}` für die IDs aus `missing`.
+   `{"devices": {"<device_id>": B64(fed_sig), …}}` für die IDs aus `missing`; danach (Antwort erneut prüfen), wenn
+   `device_set_ok` false: `{"device_set": {"ver": (device_set.ver oder 0) + 1, "ids": device_set_want, "sig": …}}` – die
+   signierte Liste der aktiven Geräte (genau `device_set_want`, sonst 409; gleiche oder kleinere `ver` → 409).
    Für **andere** eigene Geräte nur signieren, wenn deren v1-Zertifikat (aus `GET /api/chat/me`) gegen den eigenen
    Identitätsschlüssel stimmt. Der Server prüft jede Signatur (403 bei Fehler) und meldet die Änderung verbundenen Servern.
-3. Nach „Neu beginnen“ (neue Identität), neuem oder gekoppeltem Gerät: wieder 1.–2. (still im Hintergrund).
+3. Nach „Neu beginnen“ (neue Identität), neuem, gekoppeltem oder entferntem Gerät: wieder 1.–2. (still im Hintergrund;
+   Auslöser auch das Live-Ereignis `chat.keys.changed` mit `own: true`).
 
 ### 3.2 Schlüssel anderer Personen
 
 `GET /api/chat/v2/keys?handles=~a@b.example,~c@c.example[&fresh=1]` (höchstens 20) →
 `{"keys": {"<handle>": eintrag | null}}`, Eintrag:
-`{v:2, handle, ident_pub, backup_pub, sig, devices:[{id, enc_pub, sign_pub, fed_sig, revoked}], source, fetched, stale?}`.
+`{v:2, handle, ident_pub, backup_pub, sig, dset?, devices:[{id, enc_pub, sign_pub, fed_sig, revoked}], source, fetched, stale?}`.
 
 - `source`: `local` (eigener Server), `remote` (gerade beim Heimserver geholt), `cache` (Zwischenspeicher ≤ 1 h oder
   bis `chat.keys.changed`); `stale: true` = Heimserver gerade nicht erreichbar, letzter bekannter Stand.
 - `null`: unbekannt, Person ohne Zertifikat v2, Server nicht verbunden bzw. Chat/Schlüssel dort abgeschaltet.
 - **Die App prüft selbst** (der eigene Server könnte lügen): Handle-Zertifikat gegen `ident_pub` mit genau dem
   angefragten Handle; jedes Gerät gegen `fed_sig` – ungültige Geräte verwerfen, bei ungültigem Handle-Zertifikat den
-  ganzen Eintrag. Web: `SagaChatCrypto.checkKeysV2(handle, eintrag)`.
+  ganzen Eintrag. `dset` gegen `ident_pub` prüfen: **aktiv ist ein Gerät nur, wenn es in der gültigen signierten Liste
+  steht und nicht `revoked` ist** (ein Server kann Geräte so nicht unterschieben und Widerrufe nicht verschweigen; eine
+  falsche `revoked`-Meldung kostet höchstens Zustellung). Ohne gültige `dset` (Altbestand): `revoked` vom Server.
+  Web: `SagaChatCrypto.checkKeysV2(handle, eintrag)` → `{…, ver, devices (mit berechnetem revoked)}`.
 - Empfängerliste: je nicht widerrufenem Gerät `dev:<id>@<host aus dem Handle>`, dazu `backup:<handle>`
   (`recipientsV2` in `static/chat-crypto.js`, `recipients_v2` in `tests/chatlib.py`).
 
@@ -103,31 +117,47 @@ Nach dem Entsperren (das Gerät kennt `ident_sk`):
 Je Handle merkt sich die App lokal `{ident, verified}` (Web: IndexedDB `trust2:<eigenes Konto>:<handle>`; getrennt von
 den v1-Einträgen `trust:<uid>`). Regeln (maschinenlesbar in `tests/vectors/chat_v2.json` → `tofu`):
 
+Je Handle merkt sich die App zusätzlich die höchste gesehene Version der Geräte-Liste (`dver`).
+
 | gespeichert | gesehen | Ergebnis |
 |---|---|---|
-| nichts | ident A | vertrauen, `{ident: A, verified: false}` speichern |
-| A | A | vertrauen |
-| A (nicht überprüft) | B | **Warnung** („Schlüssel hat sich geändert“), `{ident: B, verified: false, changed: true, old: A}` speichern |
+| nichts | ident A, ver v | vertrauen, `{ident: A, verified: false, dver: v}` speichern |
+| A | A, ver ≥ dver | vertrauen (größere ver merken) |
+| A | A, ver < dver | **ablehnen** (ältere Geräte-Liste – ein Server will einen Widerruf zurückdrehen) |
+| A (nicht überprüft) | B | **Warnung** („Schlüssel hat sich geändert“), `{ident: B, verified: false, changed: true, old: A, dver}` speichern |
+| B mit `changed: true` | B | **weiter Warnung** – bis die Person sie bestätigt („Verstanden“: `changed` weg) oder überprüft |
 | A (überprüft) | B | **blockieren** – erst nach erneutem Vergleich der Sicherheitsnummer weiter |
 | – | ungültiges Zertifikat | ablehnen |
 
-„Überprüft“ setzt die Person nach dem Vergleich der Sicherheitsnummer v2 (Web: `SagaChatFed.verify(handle, ident_pub, true)`).
+Bei Warnung, Blockade oder Ablehnung **nicht senden und nicht anrufen** (Web: Hinweis im Chat-Kopf mit „Sicherheitsnummer“
+und „Verstanden“). „Überprüft“ setzt die Person nach dem Vergleich der Sicherheitsnummer v2
+(Web: `SagaChatFed.verify(handle, ident_pub, true)`); im Chat-Kopf erscheint dann „✓ überprüft“.
 
 ### 3.4 Testvektoren (Pflicht in der CI jeder App)
 
 `tests/vectors/chat_v2.json` – erzeugt mit PyNaCl (`python3 tools/chat_vectors_v2.py gen|check`), Gegenprobe
 libsodium.js + `static/chat-crypto.js` (`node tools/chat_vectors_v2.mjs`), Server-Referenz `saga/chat_v2.py`, Testreihe
-`tests/chat_v2_vektoren.py`. Inhalt: Schlüssel aus Seeds, Handle- und Geräte-Zertifikat (Nachricht + Signatur), zwei
+`tests/chat_v2_vektoren.py`. Inhalt: Schlüssel aus Seeds, Handle- und Geräte-Zertifikat (Nachricht + Signatur), signierte
+Geräte-Liste (`device_set`), zwei
 Nachrichten (mit `reply_to` bzw. `ai`) mit AD, Ciphertext und Signatur, versiegelte Schlüssel für `dev:`/`backup:`, die
 jede Umsetzung **öffnen** muss (crypto_box_seal ist zufällig), Datei, Sicherheitsnummer, Abschnitt `reject` (Fälle,
 die **abgelehnt** werden müssen: falscher Handle, v1-Zertifikat als v2, andere `chat_ref`, anderer Absender, entferntes
-`ai`, geänderte Zeit) und `tofu`. Die v1-Vektoren `tests/chat_vectors.json` bleiben unverändert gültig.
+`ai`, geänderte Zeit, Geräte-Liste mit anderen IDs/anderer Version/anderem Handle) und `tofu` (mit `ver`). Die v1-Vektoren `tests/chat_vectors.json` bleiben unverändert gültig.
 
 ## 4. Live-Ereignisse und Server-Ereignisse
 
-Zwischen den Servern neu (nicht an Apps): `directory.changed` (Adressbuch neu holen), `chat.keys.changed` (Schlüssel
-eines Handles geändert → Zwischenspeicher veraltet). Apps bekommen dazu in E1 kein eigenes Live-Ereignis; sie holen
-Schlüssel vor dem Senden ohnehin über `GET /api/chat/v2/keys`.
+Zwischen den Servern: `directory.changed` (Adressbuch neu holen), `chat.keys.changed` (Schlüssel eines Handles geändert
+→ Zwischenspeicher veraltet), dazu die Chat-Ereignisse aus Abschnitt 6.6.
+
+Live-Ereignisse an Apps (wie alle über `/api/events`, Art `direct`):
+
+| Ereignis | Daten | Bedeutung |
+|---|---|---|
+| `chat.keys.changed` | `{handle, own?}` | Schlüssel einer Person, mit der du einen Chat über Servergrenzen hast, haben sich geändert → Schlüssel frisch holen (`fresh=1`), TOFU prüfen. `own: true`: deine eigenen (Geräte-Liste neu signieren, 3.1) |
+| `chat.request` | `{chat_id}` | neue Nachrichtenanfrage (still – keine Benachrichtigung) |
+| `chat.message` | wie bisher, zusätzlich `kind: 'sys'` bzw. `failed: true` | neue Nachricht, Systemzeile; bei `id` einer eigenen wartenden Nachricht: jetzt zugestellt bzw. abgewiesen |
+| `chat.typing` | `{chat_id, user:{username, handle, name}}` | tippt (auch Personen anderer Server) |
+| `chat.removed` / `chat.deleted` / `chat.changed` | wie bisher | auch für Chats über Servergrenzen |
 
 ## 5. Server-zu-Server (zur Einordnung)
 
@@ -140,3 +170,105 @@ Kette), `GET /fed/v2/directory?since=&cfg=`, `GET /fed/v2/keys?handles=`. Zustel
 harte Frist `FED_EXPRESS_TIMEOUT`, Standard 5 s, eigener Thread-Pool), sonst Ausgangskorb mit Wiederholung in der
 Reihenfolge der Kette. Server mit Protokoll 1 (2.1/2.2) bleiben voll verbunden: Teilen, Kommentare,
 Benachrichtigungen wie bisher; Adressbuch und Schlüssel gibt es mit ihnen nicht.
+
+## 6. Direkt-Chats über Servergrenzen (E2)
+
+Alle bisherigen Chat-Endpunkte gelten weiter; Chats über Servergrenzen haben `v: 2`. **Apps, die sie verstehen, senden
+bei jeder Anfrage die Kopfzeile `X-Saga-Chat: 2`.** Ohne sie (ältere Apps) erscheinen diese Chats mit dem Zusatz „bitte
+App aktualisieren“ im Namen und `fed_hint`, `GET …/messages` liefert keine Nachrichten (nur `fed_hint`), Senden und
+`…/recipients` antworten 400 mit dem Hinweis – nichts geht kaputt. `MIN_APP` ändert sich nicht.
+
+### 6.1 Chat beginnen
+
+`POST /api/chats {"kind":"dm","handle":"~x@host","device":…}` (Handle aus der Adressbuch-Suche). Der eigene Server wird
+**Heim** des Chats und fragt beim Server der Person an (synchron): beim Gegenüber erscheint eine **Nachrichtenanfrage**.
+Gibt es schon einen gemeinsamen Chat (auch einen, den die andere Seite begonnen hat), kommt dieser zurück. Fehler: 403
+(Chats mit diesem Server aus, gesperrt), 404 (Person unbekannt), 502 (Server nicht erreichbar), 429. Ein Handle des
+eigenen Servers ergibt einen normalen lokalen Chat (v1).
+
+### 6.2 Chat-Objekt (zusätzliche Felder bei `v: 2`)
+
+| Feld | Bedeutung |
+|---|---|
+| `v`, `ref`, `fed` | `2`, globale Kennung `chat_ref` (`<32 hex>@<heim>`), `true` |
+| `home`, `home_self` | Host des Heimservers; ob es der eigene ist |
+| `my_handle` | eigener Handle (Absender in v2) |
+| `state`, `request` | eigener Stand `ok` / `request` (Nachrichtenanfrage, noch nicht angenommen) |
+| `readonly`, `readonly_reason` | schreibgeschützt (Verbindung getrennt, Konto der anderen Person gelöscht, vom Admin abgeschaltet) |
+| `peer` | `{username: '@~x@host', handle, name, label, host, avatar}` |
+| `members[]` | zusätzlich `handle`, `host`, bei fremden `remote: true`, `label` |
+| `ai` | KI erlaubt? Standard **aus** |
+
+`GET /api/chats` liefert dazu `requests` (Anzahl); Anfragen zählen nicht in `unread`. Abgelehnte Chats fehlen.
+
+### 6.3 Anfragen beantworten, Sperren
+
+`POST /api/chats/{id}/request {"action":"accept"|"decline"|"block", "scope":"person"|"instance"}` – Ablehnen und Sperren
+erfährt die andere Seite nicht (ihr Heim stellt nur nicht mehr zu; schickt es trotzdem, verwirft der eigene Server die
+Nachrichten). Ist der eigene Server selbst das Heim, weist er Nachrichten der gesperrten bzw. abgelehnten Person ab – deren
+App sieht dann „nicht zugestellt“ (HTTP 409). Nimmt man später doch an, holt der Server den Verlauf nach. Bis zur Annahme: keine Benachrichtigung, kein Push,
+kein Klingeln, aber die Nachrichten sind lesbar (zeigt sie als Anfrage). Wer selbst schreibt oder den Chat selbst
+beginnt, nimmt an. `GET /api/chat/blocks` → `{blocks:[{target, kind: person|instance, name, host, label, created}]}`,
+`DELETE /api/chat/blocks?target=…` entsperrt.
+
+### 6.4 Senden und Empfangen
+
+1. Empfänger: Handles aller Mitglieder (`members[].handle`, auch der eigene) → `GET /api/chat/v2/keys?handles=…` →
+   selbst prüfen + TOFU (Abschnitt 3) → Empfänger `recipientsV2` (aktive Geräte + `backup:<handle>` je Person).
+2. Nachricht v2 verschlüsseln und signieren (Abschnitt 3, `chat_ref` = `ref`, `sender_handle` = `my_handle`) und
+   `POST /api/chats/{id}/messages` mit `{v:2, id, ts, sender_device, body_ct, sig, reply_to?, ai?, ai_reply?, keys, files}`
+   (`keys`: `dev:<id>@host` / `backup:<handle>` → versiegelt). `ai` = Hex-SHA-256 des Textes einer KI-Antwort
+   (mitsigniert), `ai_reply` = Beleg wie in v1.
+3. Antwort `{ok, seq, fseq, pending?}`: `pending: true` = Heim gerade nicht erreichbar, die Nachricht wartet beim
+   eigenen Server (bis 3 Tage) – anzeigen als „wird zugestellt“. **409 mit `handles`**: Mitglieder/Geräte haben sich
+   geändert → Schlüssel mit `fresh=1` holen und neu versiegeln (einmal). 403 mit Hinweis: schreibgeschützt bzw. Gerät
+   noch ohne Zertifikat v2 (3.1). Abgewiesen → 409 mit Text.
+4. Abruf wie bisher (`GET …/messages?calls=1&device=…`); Nachrichten in v2-Chats haben zusätzlich `fseq` (Reihenfolge des
+   Heims), `sender_handle`, `ai` (Hash, Text) und `fstate` (`pending` | `failed` | `null`). Schlüssel `key`/`key_for` wie
+   v1. Prüfen: Gerät `sender_device` aus den geprüften Schlüsseln von `sender_handle`, Signatur v2. `kind: 'sys'` =
+   Systemzeile (Klartext-Metadaten in `body_ct`, z. B. `{"type":"ai","on":true,"by":handle,"name":…}`).
+5. Nachricht mit `fstate: 'failed'`: „nicht zugestellt“, anbieten „erneut senden“ (neu verschlüsseln, alte löschen).
+
+Gelesen (`…/read`) bleibt auf dem eigenen Server, Tippen (`…/typing`) geht direkt an den anderen Server (verwerfbar).
+Push und Benachrichtigungen kommen nur vom eigenen Server.
+
+### 6.5 Anhänge, Löschen, Frist, KI
+
+- Anhänge: Upload wie v1 (`POST /api/chats/{id}/files`), aber verschlüsselt mit `AD = LP(V2+"file", chat_ref)`. Abruf
+  wie v1 (`GET /api/chat/files/{fid}`); liegt der Anhang bei einem anderen Server, holt der eigene ihn bei Bedarf
+  (Zwischenkopie; kleine bis 256 KB gleich vorab) – der erste Abruf kann etwas dauern.
+- `DELETE …/messages/{mid}` (eigene) und `DELETE /api/chats/{id}?scope=all` (Direkt-Chat für beide) laufen über das Heim
+  an alle; `scope=me` bleibt lokal.
+- `PATCH /api/chats/{id} {"retention_s": …}` gilt für alle (über das Heim, Antwort ggf. `pending`); jeder Server wendet
+  zusätzlich seine eigene Höchstfrist an (die strengere gilt).
+- `PUT /api/chats/{id}/ai {"allowed": true}` – in Chats über Servergrenzen standardmäßig aus; Ein-/Ausschalten erscheint
+  bei allen als Systemzeile. Fragen an die KI gehen an den Server der fragenden Person.
+
+### 6.6 Zwischen den Servern (zur Einordnung)
+
+Heim = Server der Person, die den Chat beginnt; maßgeblich für Mitglieder, Empfängerliste (prüft sie exakt), Reihenfolge
+(`fseq`), Frist, Löschen, KI-Schalter. Signierte Endpunkte: `POST /fed/v2/chat` (Aufträge `request accept decline send
+del drop meta typing`, synchron, harte Frist `FED_EXPRESS_TIMEOUT`; sonst Warteschlange beim Absender-Server als
+Ereignis `chat.op`, Kette `chatup:<id>`), `GET /fed/v2/chat/msgs?ref=&after=` (Lücken nachholen),
+`GET /fed/v2/chat/files/{fid}` (Anhang beim Absender-Server). Ereignisse vom Heim (Kette `chat:<id>`, mit Epoche):
+`chat.msg`, `chat.msg.del`, `chat.removed`, `chat.meta`, `chat.reject`. Absender müssen zum anfragenden Server
+gehören und richtig signiert sein; Wiederholungen (`msg_id`), Umsortieren und Fälschungen werden abgewiesen und im
+Prüfprotokoll vermerkt. Trennen → Chats mit Personen bzw. Heim dort schreibgeschützt.
+
+## 7. Anrufe über Servergrenzen (E3)
+
+Aus angenommenen Direkt-Chats mit `v: 2` (nicht bei `request`/`readonly`), Endpunkte wie bisher (`/api/calls…`); der
+Anruf trägt `v: 2`, `peer.handle`. Format **`saga-call/v2`** – wie v1, aber mit Handles:
+
+`sig = sign_detached(LP("saga-call/v2/signal", call_id, from_handle, from_device, to_handle, to_device, body), device_sign_sk)`,
+versiegelt wird `{"v":2,"body":body,"sig":B64(sig)}` für das Zielgerät (Web: `sealSignalV2`, `openSignalV2`,
+`verifySignalV2` in `static/chat-crypto.js`; Python: `tests/chatlib.py`).
+
+- Anrufen: `POST /api/calls` mit `signals` für **alle aktiven Geräte des Gegenübers aus den geprüften v2-Schlüsseln**
+  (Geräte-IDs ohne Host); 409 mit `devices` → Schlüssel frisch holen. Weitere Antworten wie v1 (busy, 409 „erst
+  annehmen“, 502 nicht erreichbar).
+- Annehmen, Ablehnen, Signale, Auflegen, Lebenszeichen wie v1. Der Server der anrufenden Person führt den Zustand, die
+  Signalisierung läuft synchron über die Föderation (keine Warteschlange).
+- ICE/TURN: jede Seite holt ihre Server wie bisher über `GET /api/calls/config` beim **eigenen** Server.
+- Nachrichtenanfragen klingeln nie; Trennen der Server beendet laufende Anrufe.
+

@@ -34,6 +34,16 @@
   "msg_hex": "00000013736167612d636861742f76322f6465766963650000001b7e6162636465666768696a6b6c6d6e6f7040612e6578616d706c65000000203031323334353637383961626364656630313233343536373839616263646566000000201d23c75fef81079c40b04b848d4d266708b070e078bb9c1c459f400dbc67a75a00000020841ae46052fb9734e6c4d14037e2848087049d844b3619ff6b84931b22d4b2b5",
   "fed_sig": "ATax+kWmRXV5mt/GlcdDL6PpxG1enZKXyzBSf6bFA2Cj6jwkteyFh+qCnuwK1QQXlrfp6I9+HMoEg0rMOwRwBg=="
  },
+ "device_set": {
+  "handle": "~abcdefghijklmnop@a.example",
+  "ver": 3,
+  "ids": [
+   "0123456789abcdef0123456789abcdef",
+   "ffffffffffffffffffffffffffffffff"
+  ],
+  "msg_hex": "00000014736167612d636861742f76322f646576696365730000001b7e6162636465666768696a6b6c6d6e6f7040612e6578616d706c6500000001330000004130313233343536373839616263646566303132333435363738396162636465662c6666666666666666666666666666666666666666666666666666666666666666",
+  "sig": "DtdeMenTB9MP5qdK0pF6MCSq1yGpmAuBq23xMw2ku1Ci2oqoA3Gh5Op7xq/gEk9FS6b98w9EHR3X7XxgHY6bDw=="
+ },
  "recipient": {
   "identity": {
    "handle": "~qrstuvwxyz234567@b.example:8443",
@@ -53,8 +63,8 @@
    "dev:fedcba9876543210fedcba9876543210@b.example:8443"
   ],
   "sealed": {
-   "dev:fedcba9876543210fedcba9876543210@b.example:8443": "o357t/lkLyWI2bAmaBAnMwFhygHLLF971X40kd8712Slt3AetKJZgQlbNCOg+yCvzCkw6FQUUshMAD1PbWl7KZHqsfqCXFqLTJLfjc6mIWI=",
-   "backup:~qrstuvwxyz234567@b.example:8443": "fmV2xmmT78lPAHLJJ3ZH9O8tAhHS5pFtHnlRVnOAdkWe8Lq5sD8461N4ofdWr5/utdqt1CiJSOq3mdGXWken/8XajNH2oRq/9AlBdBzf/qs="
+   "dev:fedcba9876543210fedcba9876543210@b.example:8443": "R5IFG6ChNC45uAQCg/hXAmsoY8uPNRFzQTPYKUX6Kj/PzVQg/oM/Wb9E44GVhaoIAJzjHX5HXpSbLHmal1e3CmhC+gPJwDJinlf0Yb5D85M=",
+   "backup:~qrstuvwxyz234567@b.example:8443": "vOXVWXzysgOTubWXmMQYZORoFqksuj3i6W9RYtZPPjbgewTkUiSzcJ37C/f7+Fg0ai6X3oJ7leuOb5Hcz+j5LPKePqIDEJce87wyTYRZiRE="
   },
   "message": "m1"
  },
@@ -149,52 +159,147 @@
    "what": "message",
    "message": "m1",
    "ts": 1767225600124
+  },
+  {
+   "case": "device_set_other_ids",
+   "what": "device_set",
+   "handle": "~abcdefghijklmnop@a.example",
+   "ver": 3,
+   "ids": [
+    "0123456789abcdef0123456789abcdef"
+   ],
+   "sig": "DtdeMenTB9MP5qdK0pF6MCSq1yGpmAuBq23xMw2ku1Ci2oqoA3Gh5Op7xq/gEk9FS6b98w9EHR3X7XxgHY6bDw=="
+  },
+  {
+   "case": "device_set_other_ver",
+   "what": "device_set",
+   "handle": "~abcdefghijklmnop@a.example",
+   "ver": 4,
+   "ids": [
+    "0123456789abcdef0123456789abcdef",
+    "ffffffffffffffffffffffffffffffff"
+   ],
+   "sig": "DtdeMenTB9MP5qdK0pF6MCSq1yGpmAuBq23xMw2ku1Ci2oqoA3Gh5Op7xq/gEk9FS6b98w9EHR3X7XxgHY6bDw=="
+  },
+  {
+   "case": "device_set_other_handle",
+   "what": "device_set",
+   "handle": "~qrstuvwxyz234567@b.example:8443",
+   "ver": 3,
+   "ids": [
+    "0123456789abcdef0123456789abcdef",
+    "ffffffffffffffffffffffffffffffff"
+   ],
+   "sig": "DtdeMenTB9MP5qdK0pF6MCSq1yGpmAuBq23xMw2ku1Ci2oqoA3Gh5Op7xq/gEk9FS6b98w9EHR3X7XxgHY6bDw=="
   }
  ],
  "tofu": {
   "key": "handle (vollstaendig, '~x@host')",
+  "note": "ver = Version der signierten Geraete-Liste (device_set). Eine Warnung bleibt bestehen, bis die Person sie bestaetigt (changed bleibt gespeichert); eine aeltere Geraete-Liste als schon gesehen wird abgelehnt.",
   "rules": [
    {
     "step": "first_seen",
     "stored": null,
     "seen": "ident_a",
+    "ver": 1,
     "result": "trust",
     "store": {
      "ident": "ident_a",
-     "verified": false
+     "verified": false,
+     "dver": 1
     }
    },
    {
     "step": "same",
     "stored": {
      "ident": "ident_a",
-     "verified": false
+     "verified": false,
+     "dver": 1
     },
     "seen": "ident_a",
+    "ver": 1,
     "result": "trust"
+   },
+   {
+    "step": "same_newer_devices",
+    "stored": {
+     "ident": "ident_a",
+     "verified": false,
+     "dver": 1
+    },
+    "seen": "ident_a",
+    "ver": 2,
+    "result": "trust",
+    "store": {
+     "ident": "ident_a",
+     "verified": false,
+     "dver": 2
+    }
+   },
+   {
+    "step": "device_set_rollback",
+    "stored": {
+     "ident": "ident_a",
+     "verified": false,
+     "dver": 2
+    },
+    "seen": "ident_a",
+    "ver": 1,
+    "result": "reject"
    },
    {
     "step": "changed",
     "stored": {
      "ident": "ident_a",
-     "verified": false
+     "verified": false,
+     "dver": 2
     },
     "seen": "ident_b",
+    "ver": 1,
     "result": "warn",
     "store": {
      "ident": "ident_b",
      "verified": false,
      "changed": true,
-     "old": "ident_a"
+     "old": "ident_a",
+     "dver": 1
     }
+   },
+   {
+    "step": "changed_again",
+    "stored": {
+     "ident": "ident_b",
+     "verified": false,
+     "changed": true,
+     "old": "ident_a",
+     "dver": 1
+    },
+    "seen": "ident_b",
+    "ver": 1,
+    "result": "warn"
+   },
+   {
+    "step": "changed_acknowledged",
+    "stored": {
+     "ident": "ident_b",
+     "verified": false,
+     "changed": false,
+     "old": "ident_a",
+     "dver": 1
+    },
+    "seen": "ident_b",
+    "ver": 1,
+    "result": "trust"
    },
    {
     "step": "changed_verified",
     "stored": {
      "ident": "ident_a",
-     "verified": true
+     "verified": true,
+     "dver": 1
     },
     "seen": "ident_b",
+    "ver": 1,
     "result": "block"
    },
    {

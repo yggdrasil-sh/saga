@@ -188,6 +188,25 @@
   }
   // o: {call_id, from_uid, from_device, to_uid, to_device, body}
   function verifySignal(o, sig, sign_pk) { return verify(sig, signalMsg(o.call_id, o.from_uid, o.from_device, o.to_uid, o.to_device, o.body), sign_pk); }
+  // --- Anrufe saga-call/v2 (2.3, saga/fed_calls.py): wie v1, aber an die foederierten Handles gebunden -------------------
+  // sig = sign_detached(LP("saga-call/v2/signal", call_id, from_handle, from_device, to_handle, to_device, body), device_sign_sk)
+  // sealed = B64(crypto_box_seal(UTF8(JSON {"v":2,"body":body,"sig":B64(sig)}), ziel_enc_pk))
+  var VC2 = 'saga-call/v2/';
+  function signalMsgV2(call_id, from_handle, from_device, to_handle, to_device, body) {
+    return lp(VC2 + 'signal', call_id, from_handle, from_device, to_handle, to_device, body);
+  }
+  // o: {call_id, from_handle, from_device, sign_sk, to_handle, to_device, to_pk, body}
+  function sealSignalV2(o) {
+    var sig = S.crypto_sign_detached(signalMsgV2(o.call_id, o.from_handle, o.from_device, o.to_handle, o.to_device, o.body), o.sign_sk);
+    return b64(S.crypto_box_seal(enc.encode(JSON.stringify({ v: 2, body: o.body, sig: b64(sig) })), o.to_pk));
+  }
+  function openSignalV2(sealed, pk, sk) {
+    var d = JSON.parse(dec.decode(S.crypto_box_seal_open(unb64(sealed), pk, sk)));
+    if (!d || d.v !== 2 || typeof d.body !== 'string') throw new Error('signal version');
+    return { body: d.body, sig: unb64(d.sig, 64) };
+  }
+  // o: {call_id, from_handle, from_device, to_handle, to_device, body}
+  function verifySignalV2(o, sig, sign_pk) { return verify(sig, signalMsgV2(o.call_id, o.from_handle, o.from_device, o.to_handle, o.to_device, o.body), sign_pk); }
   // DTLS-Fingerabdruecke aus einer SDP: ["sha-256 AB:CD:..."] (Algorithmus klein, Hex gross, sortiert, ohne Doppelte)
   function sdpFingerprints(sdp) {
     var out = {}, re = /^a=fingerprint:(\S+) ([0-9A-Fa-f:]+)\s*$/gm, m;
@@ -202,17 +221,30 @@
   function handleSig(handle, ident_sk, ident_pk, backup_pk) { return S.crypto_sign_detached(handleMsg(handle, ident_pk, backup_pk), ident_sk); }
   function deviceMsgV2(handle, id, enc_pk, sign_pk) { return lp(V2 + 'device', handle, id, enc_pk, sign_pk); }
   function deviceSigV2(handle, ident_sk, d) { return S.crypto_sign_detached(deviceMsgV2(handle, d.id, d.enc_pk, d.sign_pk), ident_sk); }
-  // Eintrag aus /api/chat/v2/keys ({handle, ident_pub, backup_pub, sig, devices:[{id, enc_pub, sign_pub, fed_sig, revoked}]})
-  // selbst pruefen -> {handle, ident_pk, backup_pk, devices (nur gueltige)} oder null (Handle-Zertifikat ungueltig)
+  // Signierte Geraete-Liste: dsig = sign_detached(LP(V2+"devices", handle, ver, ids sortiert mit ","), ident_sk)
+  function deviceSetMsg(handle, ver, ids) { return lp(V2 + 'devices', handle, String(ver), ids.slice().sort().join(',')); }
+  function deviceSetSig(handle, ident_sk, ver, ids) { return { ver: ver, ids: ids.slice().sort(), sig: b64(S.crypto_sign_detached(deviceSetMsg(handle, ver, ids), ident_sk)) }; }
+  function verifyDeviceSet(handle, ip, ds) {
+    try {
+      if (!ds || typeof ds.ver !== 'number' || ds.ver < 1 || !Array.isArray(ds.ids)) return false;
+      return verify(unb64(ds.sig, 64), deviceSetMsg(handle, ds.ver, ds.ids), ip);
+    } catch (x) { return false; }
+  }
+  // Eintrag aus /api/chat/v2/keys ({handle, ident_pub, backup_pub, sig, dset:{ver, ids, sig}, devices:[{id, enc_pub, sign_pub, fed_sig,
+  // revoked}]}) selbst pruefen -> {handle, ident_pk, backup_pk, ver, devices (nur gueltige)} oder null (Handle-Zertifikat ungueltig).
+  // Aktiv ist ein Geraet nur, wenn es in der signierten Geraete-Liste steht (und der Server es nicht widerrufen meldet).
   function checkKeysV2(handle, e) {
     try {
       if (!e || e.handle !== handle) return null;
       var ip = unb64(e.ident_pub, 32), bp = unb64(e.backup_pub, 32);
       if (!verify(unb64(e.sig, 64), handleMsg(handle, ip, bp), ip)) return null;
+      var ds = e.dset && verifyDeviceSet(handle, ip, e.dset) ? e.dset : null;
       var devs = (e.devices || []).filter(function (d) {
         try { return verify(unb64(d.fed_sig, 64), deviceMsgV2(handle, d.id, unb64(d.enc_pub, 32), unb64(d.sign_pub, 32)), ip); } catch (x) { return false; }
+      }).map(function (d) {
+        return Object.assign({}, d, { revoked: !!d.revoked || (!!ds && ds.ids.indexOf(d.id) < 0) });
       });
-      return { handle: handle, ident_pk: ip, backup_pk: bp, ident_pub: e.ident_pub, devices: devs };
+      return { handle: handle, ident_pk: ip, backup_pk: bp, ident_pub: e.ident_pub, ver: ds ? ds.ver : 0, signed: !!ds, devices: devs };
     } catch (x) { return null; }
   }
   function msgAdV2(ref, id, sender, device, ts, reply_to, ai) { return lp(V2 + 'msg', ref, id, sender, device, String(ts), reply_to || '', ai || ''); }
@@ -264,13 +296,20 @@
     }
     return out.join(' ');
   }
-  // TOFU-Entscheidung je Handle (Regeln: tests/vectors/chat_v2.json "tofu"): stored = {ident, verified} | null,
-  // ident = B64 des gesehenen Identitaetsschluessels -> {result: trust|warn|block, store: neuer Eintrag | null}
-  function tofuV2(stored, ident) {
-    if (!stored) return { result: 'trust', store: { ident: ident, verified: false } };
-    if (stored.ident === ident) return { result: 'trust', store: null };
+  // TOFU-Entscheidung je Handle (Regeln: tests/vectors/chat_v2.json "tofu"): stored = {ident, verified, changed?, old?, dver} | null,
+  // ident = B64 des gesehenen Identitaetsschluessels, ver = Version der signierten Geraete-Liste
+  // -> {result: trust|warn|block|reject, store: neuer Eintrag | null}. Eine Warnung bleibt, bis die Person sie bestaetigt
+  // (Hintergrund-Abrufe verbrauchen sie nicht); eine aeltere Geraete-Liste als schon gesehen wird abgelehnt.
+  function tofuV2(stored, ident, ver) {
+    ver = ver || 0;
+    if (!stored) return { result: 'trust', store: { ident: ident, verified: false, dver: ver } };
+    if (stored.ident === ident) {
+      if (ver < (stored.dver || 0)) return { result: 'reject', store: null };
+      var up = ver > (stored.dver || 0) ? Object.assign({}, stored, { dver: ver }) : null;
+      return { result: stored.changed ? 'warn' : 'trust', store: up };
+    }
     if (stored.verified) return { result: 'block', store: null };
-    return { result: 'warn', store: { ident: ident, verified: false, changed: true, old: stored.ident } };
+    return { result: 'warn', store: { ident: ident, verified: false, changed: true, old: stored.ident, dver: ver } };
   }
   function recipientsV2(entries) {
     var out = [];
@@ -286,9 +325,10 @@
     V2: V2, handleMsg: handleMsg, handleSig: handleSig, deviceMsgV2: deviceMsgV2, deviceSigV2: deviceSigV2, checkKeysV2: checkKeysV2,
     msgAdV2: msgAdV2, sigMsgV2: sigMsgV2, encryptMessageV2: encryptMessageV2, decryptMessageV2: decryptMessageV2,
     verifyMessageV2: verifyMessageV2, encryptFileV2: encryptFileV2, decryptFileV2: decryptFileV2, safetyNumberV2: safetyNumberV2,
-    tofuV2: tofuV2, recipientsV2: recipientsV2,
+    tofuV2: tofuV2, recipientsV2: recipientsV2, deviceSetMsg: deviceSetMsg, deviceSetSig: deviceSetSig, verifyDeviceSet: verifyDeviceSet,
     signalMsg: signalMsg, signalSig: signalSig, signalInner: signalInner, sealSignal: sealSignal, openSignal: openSignal,
     verifySignal: verifySignal, sdpFingerprints: sdpFingerprints,
+    signalMsgV2: signalMsgV2, sealSignalV2: sealSignalV2, openSignalV2: openSignalV2, verifySignalV2: verifySignalV2,
     VERSION: 1, OPS: OPS, MEM: MEM, b64: b64, unb64: unb64, lp: lp, hex: hex,
     newIdentity: newIdentity, newDevice: newDevice, backupSig: backupSig, deviceSig: deviceSig, deviceMsg: deviceMsg,
     verifyDevice: verifyDevice, verifyBackup: verifyBackup, verify: verify,

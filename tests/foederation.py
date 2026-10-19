@@ -410,10 +410,18 @@ def part2(privb, kid):
     ok("Teilen an nicht verbundene Instanz -> 400", s == 400 and "nicht verbunden" in d.get("error", ""))
     s, cp = api("a", "fa-carl", "POST", "/api/notes", {"title": "Carls Seite"})
     s, d = api("a", "fa-carl", "PUT", f"/api/notes/{cp['id']}/shares", {"type": "remote", "target": f"@bert@{HB}", "role": "view"})
-    ok("Teilen ohne eigenen oeffentlichen Namen -> 400", s == 400 and "öffentlichen Namen" in d.get("error", ""))
+    # 2.3 E2: ohne oeffentlichen Namen teilt Carl ueber seinen pseudonymen Handle (B spricht Protokoll 2 mit 'handles');
+    # mit Instanzen vor 2.3 bleibt es beim Hinweis "oeffentlicher Name noetig" (tests/foederation2.py, Kompatibilitaet)
+    ok(f"Teilen ohne eigenen oeffentlichen Namen -> ueber den pseudonymen Handle ({s})", s == 200)
+    nc = wait(lambda: [x for x in notes_of("b", "fb-bert") if x["kind"] == "share.added" and x.get("title") == "Carls Seite"])
+    ok("B: Carls Freigabe kommt mit Anzeigename, ohne Anmeldename", bool(nc) and "Carl" in (nc[0].get("actor") or {}).get("name", "")
+       and "fa-carl" not in json.dumps(nc[0]))
+    s, _, _ = hreq("a", "DELETE", f"/api/notes/{cp['id']}/shares?type=remote&target=" + urllib.parse.quote(f"@bert@{HB}"),
+                   hdr={"X-Saga": "1"}, cookie=ck("a", "fa-carl"))
+    ok("A: Carls Freigabe wieder entfernt", s == 200)
     s, d = api("a", "fa-anna", "PUT", f"/api/notes/{Pid}/shares", {"type": "remote", "target": f"@bert@{HB}", "role": "view"})
     ok(f"A teilt mit @bert@{HB} (Lesen)", s == 200 and any(x["type"] == "remote" and x["target"] == f"@bert@{HB}" for x in d.get("shares", [])))
-    n = wait(lambda: [x for x in notes_of("b", "fb-bert") if x["kind"] == "share.added"])
+    n = wait(lambda: [x for x in notes_of("b", "fb-bert") if x["kind"] == "share.added" and x.get("title") == "Projekt Föderation"])
     ok("B: Benachrichtigung „hat geteilt“ (signiertes Ereignis)", bool(n) and n[0].get("title") == "Projekt Föderation" and "anna@" + HA in (n[0].get("actor") or {}).get("name", ""))
     ok("B: Benachrichtigung verweist auf die negative ID", bool(n) and n[0].get("url") == f"/notes#{rP}")
 
@@ -441,7 +449,8 @@ def part2(privb, kid):
     s, d = api("b", "fb-cleo", "GET", f"/api/notes/{rP}")
     ok("B: Cleo (nicht geteilt) -> 404", s == 404)
     s, d = api("b", "fb-dora", "GET", f"/api/notes/{rP}")
-    ok("B: Dora ohne oeffentlichen Namen -> 403 mit Hinweis", s == 403 and "öffentlichen Namen" in d.get("error", ""))
+    # 2.3 E2: Dora (ohne oeffentlichen Namen) fragt ueber ihren pseudonymen Handle - die Seite ist nicht mit ihr geteilt
+    ok(f"B: Dora ohne oeffentlichen Namen, nicht geteilt -> 404 ({s})", s == 404 and "fa-anna" not in json.dumps(d))
     s, d = api("b", "fb-bert", "GET", f"/api/notes/{ref(pa, X)}")
     ok("B: nicht geteilte Seite -> 404", s == 404)
     s, d = api("b", "fb-bert", "GET", f"/api/notes/{rP}/versions")

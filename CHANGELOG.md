@@ -72,12 +72,59 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   beim Heimserver der Person, prüft sie und speichert sie zwischen (`chat.keys.changed`); die Apps prüfen selbst + TOFU.
   Gemeinsame Testvektoren `tests/vectors/chat_v2.json` (PyNaCl, Server-Referenz `saga/chat_v2.py`, libsodium.js).
   Lokale Chats bleiben unverändert `saga-chat/v1`. Vertrag für die Apps: `docs/APP-API-FED.md`.
+- **Direkt-Chats über Servergrenzen** (Fähigkeit `chat2`): In „+ Neu“ Personen verbundener Server über den
+  Anzeigenamen finden und anschreiben. Jeder Chat hat eine globale Kennung und einen Heimserver (Server der Person, die
+  beginnt); er vergibt die Reihenfolge, die anderen Server halten Kopien. Nachrichten gehen sofort ans Heim, ist es nicht
+  erreichbar, wartet die Nachricht beim eigenen Server (bis 3 Tage, „wird zugestellt …“) und geht später in der richtigen
+  Reihenfolge raus. Doppelte Zustellung, Lücken, Umsortieren und gefälschte Absender erkennt Saga (Lücken holt der Server
+  nach, alles andere wird abgewiesen und im Prüfprotokoll vermerkt). Ende-zu-Ende wie bisher, Server sehen keine Inhalte.
+- **Nachrichtenanfragen:** Der erste Kontakt erscheint als Anfrage (eigener Bereich oben in der Liste) – ohne
+  Benachrichtigung, Push oder Klingeln, bis man annimmt. Ablehnen oder Sperren (Person bzw. ganzer Server) erfährt die
+  andere Seite nicht; Sperrliste unter „Chats & Geräte“. Raten je Server und Absender bremsen Fluten.
+- **Anhänge, Löschen, Frist, KI:** Anhänge bleiben beim Server der sendenden Person, die anderen holen sie bei Bedarf
+  (Vorschaubilder gleich vorab) und behalten eine Zwischenkopie. Nachricht oder ganzen Chat „für alle löschen“ und
+  „Automatisch löschen nach …“ laufen über das Heim; die strengere Vorgabe des eigenen Admins gilt immer. KI ist in
+  diesen Chats aus, bis jemand sie einschaltet (Hinweis im Chat für alle). Gelesen bleibt auf dem eigenen Server,
+  Tippen geht direkt, Push löst nur der eigene Server aus.
+- **Anrufe über Servergrenzen** (Fähigkeit `calls2`): 1:1 aus angenommenen Chats, Format `saga-call/v2` (an die Handles
+  gebunden, Server sehen keine SDP). Signalisierung synchron über die Föderation, der Server der anrufenden Person führt
+  den Zustand, jede Seite nutzt ihren eigenen TURN-Server.
+- **Trennen und Kontolöschung:** Wird eine Verbindung getrennt, bleiben Chats mit Personen dieses Servers lesbar, sind
+  aber schreibgeschützt; laufende Anrufe enden. Wird ein Konto gelöscht, verschwinden seine Direkt-Chats auch auf den
+  anderen Servern.
+- **Schlüssel:** Die Geräte einer Person stehen in einer von ihr signierten Geräte-Liste (Version steigt) – ein Server
+  kann Geräte weder unterschieben noch Widerrufe verschweigen. TOFU: eine Warnung „Sicherheitsnummer geändert“ bleibt,
+  bis man sie bestätigt; „überprüft“ markierte Personen werden bei einem Wechsel blockiert. Live-Ereignis
+  `chat.keys.changed` für die Apps. Ältere Apps sehen Chats über Servergrenzen mit Hinweis „bitte App aktualisieren“.
+- **Teilen an Personen ohne öffentlichen Namen:** Mit Servern ab 2.3 geht Teilen auch über den pseudonymen Handle
+  (Adressbuch-Treffer im Teilen-Dialog); ältere Server brauchen weiter den öffentlichen Namen.
+- **Kurze Namen finden:** Alle Personensuchen (Chat „+ Neu“/„Person hinzufügen“, Teilen-Dialog, `/api/chat/people`,
+  `/api/share/targets`, `/api/fed/people`, Adressbücher verbundener Server) liefern bei 1–2 Zeichen genaue Treffer auf
+  Anzeigenamen, Benutzernamen bzw. öffentlichen Namen (Groß/Klein egal, z. B. „hd“); ab 3 Zeichen wie bisher auch Teile
+  von Namen. Eine Liste aller Konten lässt sich so weiterhin nicht abrufen. `name@server` findet auch mit kurzem Namen
+  genau diese Person, jetzt auch in der Chat-Suche. Die Web-Oberfläche sucht ab dem ersten Zeichen; `/api/fed/people`
+  ist wie die anderen Suchen auf 60 Anfragen je Minute begrenzt. Die Apps suchen vorerst weiter ab 3 Zeichen (folgt mit
+  der App-Etappe).
+- **Ablehnen und Sperren wirken auch gegen ein fehlerhaftes Heim:** In abgelehnten oder gesperrten Chats über
+  Servergrenzen verwirft der eigene Server Nachrichten, die das Heim trotzdem schickt (nichts gespeichert, kein Vorabruf
+  von Anhängen, keine Meldung); nimmt man später doch an, holt er den Verlauf nach. Ist das Heim selbst der Server der
+  ablehnenden Person, weist es Nachrichten ab („nicht zugestellt“). Versiegelte Schlüssel vom Heim werden geprüft.
+- **WebFinger:** Wer „In Adressbüchern verbundener Server erscheinen“ abgeschaltet hat, dessen Anzeigename ist auch über
+  den pseudonymen Handle nicht mehr abfragbar (der öffentliche Name bleibt, wie er ist).
+- **Robuster Ausgangskorb:** Weist ein Server ein einzelnes Ereignis dauerhaft ab, hält das nur dessen Kette an, nicht
+  den ganzen Ausgangskorb („event.stuck“ im Prüfprotokoll). Wird ein Backup zurückgespielt, beginnen die Ketten mit
+  neuer Epoche – die Gegenstellen verwerfen dann nichts still als „schon gesehen“.
+- **Datenbank:** Migration 8 (Spalten für Chats und Anrufe über Servergrenzen, Ketten-Epoche, Geräte-Liste) und neue
+  Tabellen `fed_chat_block`, `chat_file_fed`.
 - **Datenbank:** Migration 7 (neue Spalten in `fed_peer` und `fed_outbox`) plus neue Tabellen (`fed_handle`,
   `fed_dir_local`, `fed_directory`, `fed_event_seen`, `fed_chain_in/out`, `fed_chat_keys`, `chat_fed_cert`,
   `chat_device_fed`). Vor der Migration legt Saga wie immer ein Backup an; ältere Versionen starten danach nicht mehr auf
   dieser Datenbank (Backup zurückspielen).
-- **Tests:** neue Reihen `foederation2` (zwei Instanzen; mit `FED_B_APP=<älterer Stand>` Kompatibilität zu 2.1/2.2) und
-  `chat_v2_vektoren`; `foederation` unverändert grün.
+- **Tests:** neue Reihen `foederation2` (zwei Instanzen; mit `FED_B_APP=<älterer Stand>` Kompatibilität zu 2.1/2.2),
+  `foederation_chat` (Chats und Anrufe über zwei Instanzen, Heim offline, Lücken, Duplikate, Fälschungen, Anfragen,
+  Sperren, Anhänge, Löschen, Frist, Trennen, Kontolöschung, Ketten-Epoche, Totmann; ebenfalls mit `FED_B_APP`) und
+  `chat_v2_vektoren`; Browser-Test `tests/browser_fed_chat.js` (Chat und Anruf zwischen zwei Stacks). `foederation`
+  prüft statt „nur mit öffentlichem Namen“ jetzt das Teilen über den pseudonymen Handle.
 
 ### Schneller
 

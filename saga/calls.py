@@ -56,6 +56,7 @@ _hits = {}
 _S = {"task": None}
 _OWN = set()                           # Anrufe, die DIESER Prozess vermittelt (Live-Ereignisse gehen an seine Verbindungen)
 ORPHAN = 30                            # fremde/verwaiste Anrufe erst so viel spaeter beenden (Neustart, zweiter Prozess)
+FED = None                             # 2.3: saga.fed_calls (Anrufe ueber Servergrenzen) setzt sich hier ein
 
 
 # --- Einstellungen --------------------------------------------------------------------------------------------------
@@ -138,7 +139,7 @@ def _me(request):
     return uid, None
 
 
-C_COLS = "id, chat_id, caller, callee, caller_device, callee_device, media, state, reason, created, answered, ended, seen_a, seen_b, nsig"
+C_COLS = "id, chat_id, caller, callee, caller_device, callee_device, media, state, reason, created, answered, ended, seen_a, seen_b, nsig, peer_id"
 
 
 def _row(r):
@@ -186,9 +187,11 @@ def _dict(c, call, uid, nm=None):
     peer = call["callee"] if me_caller else call["caller"]
     nm = nm or names(c, [peer])
     now = time.time()
+    pd = {"username": peer, "name": nm.get(peer) or t("Gelöschtes Konto"), "avatar": nm.avatar(peer)}
+    if call.get("peer_id") and FED is not None:        # 2.3: Gegenueber auf einem anderen Server (saga-call/v2, Handles)
+        pd.update(handle=FED.FC.handle_of(peer), name=FED.FC.label_of(c, peer)["name"])
     return {"id": call["id"], "chat_id": call["chat_id"], "media": call["media"], "state": call["state"], "reason": call["reason"],
-            "role": "caller" if me_caller else "callee", "peer": {"username": peer, "name": nm.get(peer) or t("Gelöschtes Konto"),
-                                                                    "avatar": nm.avatar(peer)},
+            "role": "caller" if me_caller else "callee", "peer": pd, **({"v": 2} if call.get("peer_id") else {}),
             "caller_device": call["caller_device"], "callee_device": call["callee_device"], "created": call["created"],
             "answered": call["answered"], "ended": call["ended"], "ring_s": ring_s(),
             "expires_in": max(0, round(call["created"] + ring_s() - now, 1)) if call["state"] == "ringing" else None}
@@ -226,7 +229,7 @@ def _log(c, call, status, now, end=None):
     return seq
 
 
-def _finish(c, call, reason, now, by=None):
+def _finish(c, call, reason, now, by=None, remote=False):
     """Anruf beenden (in der Transaktion, Zeile gesperrt bzw. Zustand schon geprueft): Zustand, Chat-Eintrag, verpasst,
     Ereignis an beide. reason: hangup | declined | busy | missed | cancelled | failed | lost | timeout | gone."""
     n = c.execute("UPDATE chat_call SET state='ended', reason=?, ended=? WHERE id=? AND state<>'ended'", (reason, now, call["id"])).rowcount
@@ -239,8 +242,10 @@ def _finish(c, call, reason, now, by=None):
         status = "failed" if reason == "failed" and not call.get("_connected") else "ended"
     seen = [x for x in (call.get("seen_a"), call.get("seen_b")) if x]
     _log(c, call, status, now, min(seen) if reason == "lost" and seen else None)
-    if status in ("missed", "busy"):
+    if status in ("missed", "busy") and not call["callee"].startswith("@"):
         notify.create(c, call["callee"], "call.missed", call["caller"], data={"chat": call["chat_id"], "call": call["id"]})
+    if call.get("peer_id") and not remote and FED is not None:
+        FED.ended(c, call, reason)                     # 2.3: der anderen Instanz melden (verwerfbar)
     _emit(c, [call["caller"], call["callee"]], "call.state", {"call_id": call["id"], "chat_id": call["chat_id"], "state": "ended",
                                                                "reason": reason, "status": status, "by": by})
     print(f"call: {call['id'][:8]} beendet ({was} -> {reason}/{status})", flush=True)
@@ -300,6 +305,24 @@ async def api_call(request: Request):
             return err
         if ch["kind"] != "dm":
             return _bad(t("Anrufe gibt es nur im Direkt-Chat."), 400)
+        if chat.is_fed(ch):                              # 2.3: Gegenueber auf einem anderen Server
+            if FED is None:
+                return _bad(t("Diese Person ist nicht erreichbar."), 404)
+            if not _my_device(c, uid, dev):
+                return _bad(t("Dieses Gerät ist für Chats nicht (mehr) angemeldet."), 403)
+            sig = _sealed_map(b.get("signals"))
+            if sig is None:
+                return _bad(t("ungültige Angabe"))
+            fed = (ch, sig)
+        else:
+            fed = None
+    if fed is not None:
+        from starlette.concurrency import run_in_threadpool
+        return await run_in_threadpool(FED.start, uid, fed[0], cid, media, dev, fed[1])
+    with _db() as c, c:
+        ch, m, mem, err = chat._chat_for(c, uid, chat_id, do_sync=False)
+        if err:
+            return err
         if not _my_device(c, uid, dev):
             return _bad(t("Dieses Gerät ist für Chats nicht (mehr) angemeldet."), 403)
         a, _, z = (ch["dm_key"] or "").partition("|")
@@ -395,17 +418,20 @@ async def api_answer(cid: str, request: Request):
         sig = _sealed_map(b.get("signals"), {call["caller_device"]})
         if sig is None:
             return _bad(t("ungültige Angabe"))
-        c.execute("UPDATE chat_call SET state='active', callee_device=?, answered=?, seen_a=?, seen_b=? WHERE id=?",
-                  (dev, now, now, now, call["id"]))
-        seq = c.execute("INSERT INTO chat_call_signal (call_id, from_device, to_device, sealed, created) VALUES (?,?,?,?,?) RETURNING seq",
-                        (call["id"], dev, call["caller_device"], sig[call["caller_device"]], now)).fetchone()[0]
-        c.execute("UPDATE chat_call SET nsig=nsig+1 WHERE id=?", (call["id"],))
-        _emit(c, [call["caller"]], "call.signal", {"call_id": call["id"], "seq": seq, "from_device": dev, "to_device": call["caller_device"],
-                                                   "sealed": sig[call["caller_device"]]})
-        _emit(c, [call["caller"], call["callee"]], "call.state", {"call_id": call["id"], "chat_id": call["chat_id"], "state": "active",
-                                                                   "device": dev})
-        print(f"call: {call['id'][:8]} angenommen", flush=True)
-        return chat._no_store({"ok": True, "call": _dict(c, _load(c, call["id"]), uid)})
+        if not (call["peer_id"] and FED is not None):
+            c.execute("UPDATE chat_call SET state='active', callee_device=?, answered=?, seen_a=?, seen_b=? WHERE id=?",
+                      (dev, now, now, now, call["id"]))
+            seq = c.execute("INSERT INTO chat_call_signal (call_id, from_device, to_device, sealed, created) VALUES (?,?,?,?,?) RETURNING seq",
+                            (call["id"], dev, call["caller_device"], sig[call["caller_device"]], now)).fetchone()[0]
+            c.execute("UPDATE chat_call SET nsig=nsig+1 WHERE id=?", (call["id"],))
+            _emit(c, [call["caller"]], "call.signal", {"call_id": call["id"], "seq": seq, "from_device": dev, "to_device": call["caller_device"],
+                                                       "sealed": sig[call["caller_device"]]})
+            _emit(c, [call["caller"], call["callee"]], "call.state", {"call_id": call["id"], "chat_id": call["chat_id"], "state": "active",
+                                                                       "device": dev})
+            print(f"call: {call['id'][:8]} angenommen", flush=True)
+            return chat._no_store({"ok": True, "call": _dict(c, _load(c, call["id"]), uid)})
+    from starlette.concurrency import run_in_threadpool         # 2.3: der Server des Anrufers fuehrt den Zustand
+    return await run_in_threadpool(FED.answer, uid, call, dev, sig)
 
 
 @router.post("/api/calls/{cid}/decline")
@@ -475,20 +501,33 @@ async def api_signal(cid: str, request: Request):
             allowed, to_uid = {call["caller_device"]}, call["caller"]
         if not _my_device(c, uid, dev):                    # inzwischen abgemeldetes/gesperrtes Geraet
             return _bad(t("Dieses Gerät ist für Chats nicht (mehr) angemeldet."), 403)
-        sig = _sealed_map(b.get("signals"), allowed)
-        if sig is None:
-            return _bad(t("ungültige Angabe"))
-        if call["nsig"] + len(sig) > SIGNALS_MAX or not _rate("sig", dev, SIG_RATE):
-            return _bad(t("Zu viele Signale – bitte kurz warten."), 429)
+        if call["peer_id"] and FED is not None:            # 2.3: Zielgeraete auf dem anderen Server - der prueft sie
+            fsig = _sealed_map(b.get("signals"), allowed if uid != call["caller"] or call["callee_device"] else None)
+            if fsig is None:
+                return _bad(t("ungültige Angabe"))
+            if call["nsig"] + len(fsig) > SIGNALS_MAX or not _rate("sig", dev, SIG_RATE):
+                return _bad(t("Zu viele Signale – bitte kurz warten."), 429)
+            fed = call
+        else:
+            fed = None
+            sig = _sealed_map(b.get("signals"), allowed)
+            if sig is None:
+                return _bad(t("ungültige Angabe"))
+            if call["nsig"] + len(sig) > SIGNALS_MAX or not _rate("sig", dev, SIG_RATE):
+                return _bad(t("Zu viele Signale – bitte kurz warten."), 429)
         out = []
-        for k, v in sorted(sig.items()):
+        for k, v in sorted(sig.items()) if fed is None else ():
             seq = c.execute("INSERT INTO chat_call_signal (call_id, from_device, to_device, sealed, created) VALUES (?,?,?,?,?) RETURNING seq",
                             (call["id"], dev, k, v, now)).fetchone()[0]
             out.append({"call_id": call["id"], "seq": seq, "from_device": dev, "to_device": k, "sealed": v})
-        c.execute("UPDATE chat_call SET nsig=nsig+?, " + ("seen_a" if uid == call["caller"] else "seen_b") + "=? WHERE id=?",
-                  (len(sig), now, call["id"]))
+        if fed is None:
+            c.execute("UPDATE chat_call SET nsig=nsig+?, " + ("seen_a" if uid == call["caller"] else "seen_b") + "=? WHERE id=?",
+                      (len(sig), now, call["id"]))
         for ev in out:
             _emit(c, [to_uid], "call.signal", ev)
+    if fed is not None:
+        from starlette.concurrency import run_in_threadpool
+        return await run_in_threadpool(FED.signal, uid, fed, dev, fsig)
     return chat._no_store({"ok": True, "n": len(out)})
 
 
@@ -504,6 +543,8 @@ async def api_alive(cid: str, request: Request):
             return err
         if call["state"] != "ended":
             c.execute("UPDATE chat_call SET " + ("seen_a" if uid == call["caller"] else "seen_b") + "=? WHERE id=?", (time.time(), call["id"]))
+            if call["peer_id"] and FED is not None:
+                FED.alive(uid, call)                   # 2.3: Lebenszeichen auch an die andere Instanz (verwerfbar)
         return chat._no_store({"state": call["state"], "reason": call["reason"]})
 
 

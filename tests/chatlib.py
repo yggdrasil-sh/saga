@@ -324,3 +324,52 @@ def recipients_v2(entries):
             if not d.get("revoked"):
                 out[f"dev:{d['id']}@{host}"] = unb64(d["enc_pub"], 32)
     return out
+
+
+def devices_msg_v2(handle, ver, ids):
+    return lp(V2 + "devices", handle, str(int(ver)), ",".join(sorted(ids)))
+
+
+def devices_sig_v2(handle, ident, ver, ids):
+    """Signierte Geraete-Liste {ver, ids, sig} (saga-chat/v2/devices)."""
+    return {"ver": ver, "ids": sorted(ids), "sig": b64(sign(devices_msg_v2(handle, ver, ids), ident["ident_sk"]))}
+
+
+def tofu_v2(stored, ident, ver=None):
+    """TOFU-Regel je Handle (tests/vectors/chat_v2.json "tofu") -> (ergebnis, neuer eintrag | None). Eine Warnung bleibt bis
+    zur Bestaetigung stehen (changed); eine aeltere Geraete-Liste (ver kleiner als gesehen) wird abgelehnt."""
+    ver = ver or 0
+    if not stored:
+        return "trust", {"ident": ident, "verified": False, "dver": ver}
+    if stored.get("ident") == ident:
+        if ver < (stored.get("dver") or 0):
+            return "reject", None
+        up = dict(stored, dver=ver) if ver > (stored.get("dver") or 0) else None
+        return ("warn" if stored.get("changed") else "trust"), up
+    if stored.get("verified"):
+        return "block", None
+    return "warn", {"ident": ident, "verified": False, "changed": True, "old": stored.get("ident"), "dver": ver}
+
+
+# --- Anrufe saga-call/v2 (2.3, saga/fed_calls.py): wie v1, gebunden an die foederierten Handles -------------------------
+VC2 = "saga-call/v2/"
+
+
+def signal_msg_v2(call_id, from_handle, from_device, to_handle, to_device, body):
+    return lp(VC2 + "signal", call_id, from_handle, from_device, to_handle, to_device, body)
+
+
+def seal_signal_v2(call_id, from_handle, dev, to_handle, to_device, to_pk, body):
+    sig = sign(signal_msg_v2(call_id, from_handle, dev["id"], to_handle, to_device, body), dev["sign_sk"])
+    return b64(nb.crypto_box_seal(json.dumps({"v": 2, "body": body, "sig": b64(sig)}, separators=(",", ":")).encode(), to_pk))
+
+
+def open_signal_v2(sealed, pk, sk):
+    d = json.loads(nb.crypto_box_seal_open(unb64(sealed), pk, sk))
+    if d.get("v") != 2 or not isinstance(d.get("body"), str):
+        raise ValueError("signal version")
+    return d["body"], unb64(d["sig"], 64)
+
+
+def verify_signal_v2(call_id, from_handle, from_device, to_handle, to_device, body, sig, sign_pk):
+    return verify(sig, signal_msg_v2(call_id, from_handle, from_device, to_handle, to_device, body), sign_pk)

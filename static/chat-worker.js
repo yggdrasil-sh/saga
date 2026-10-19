@@ -32,20 +32,22 @@ self.onmessage = function (e) {
   var d = e.data || {}, n = d.n;
   function done(r, tr) { r.n = n; r.ok = true; self.postMessage(r, tr || []); }
   ready.then(function () {
+    // Chats ueber Servergrenzen (2.3): cid ist dann die chat_ref (Text) - Anhaenge mit AD saga-chat/v2/file
+    var v2 = typeof d.cid === 'string', dec = v2 ? X.decryptFileV2 : X.decryptFile, enc = v2 ? X.encryptFileV2 : X.encryptFile;
     if (d.op === 'dec') {
-      var p = X.decryptFile(d.cid, new Uint8Array(d.blob), d.key);
+      var p = dec(d.cid, new Uint8Array(d.blob), d.key);
       return done({ plain: p.buffer }, [p.buffer]);
     }
     if (d.op === 'thumb') {
-      var plain = X.decryptFile(d.cid, new Uint8Array(d.blob), d.key);
+      var plain = dec(d.cid, new Uint8Array(d.blob), d.key);
       return thumbOf(plain, d.mime).then(function (t) {
-        if (d.enc) t.ct = X.encryptFile(d.cid, new Uint8Array(t.jpeg), { key: X.unb64(d.key, 32) }).blob.buffer;
+        if (d.enc) t.ct = enc(d.cid, new Uint8Array(t.jpeg), { key: X.unb64(d.key, 32) }).blob.buffer;
         done(t, [t.jpeg].concat(t.ct ? [t.ct] : []));
       });
     }
     if (d.op === 'make') return thumbOf(new Uint8Array(d.bytes), d.mime).then(function (t) { done(t, [t.jpeg]); });
     if (d.op === 'enc') {
-      var r = X.encryptFile(d.cid, new Uint8Array(d.bytes));
+      var r = enc(d.cid, new Uint8Array(d.bytes));
       return done({ blob: r.blob.buffer, key: r.key }, [r.blob.buffer]);
     }
     throw new Error('op');

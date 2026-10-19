@@ -146,6 +146,8 @@ async def api_chat_ai_toggle(cid: int, request: Request):
                 return _bad(t("KI in Chats ist auf diesem Server nicht freigeschaltet."), 403)
             if not may_toggle(c, uid, ch, m):
                 return _bad(t("Dafür fehlt dir die Berechtigung."), 403)
+            if chat.is_fed(ch):                       # 2.3: Chat ueber Servergrenzen - Schalter beim Heim, Systemzeile fuer alle
+                return ch
             if b["allowed"]:
                 c.execute("INSERT INTO chat_ai (chat_id, by_uid, at) VALUES (?,?,?) ON CONFLICT (chat_id) DO NOTHING", (ch["id"], uid, time.time()))
             else:
@@ -153,7 +155,14 @@ async def api_chat_ai_toggle(cid: int, request: Request):
             chat._changed(c, ch["id"], mem)
             print(f"chat: KI in Chat {ch['id']} {'erlaubt' if b['allowed'] else 'verboten'} von {uid}", flush=True)
             return JSONResponse({"ai": b["allowed"]}, headers={"Cache-Control": "no-store"})
-    return await asyncio.to_thread(run)
+    r = await asyncio.to_thread(run)
+    if isinstance(r, dict):
+        e, wait = await asyncio.to_thread(chat.FED.set_meta, uid, r, {"ai": b["allowed"]})
+        if e is not None:
+            return e
+        print(f"chat: KI in foederiertem Chat {r['id']} {'erlaubt' if b['allowed'] else 'verboten'} von {uid}", flush=True)
+        return JSONResponse({"ai": b["allowed"], **({"pending": True} if wait else {})}, headers={"Cache-Control": "no-store"})
+    return r
 
 
 @router.post("/api/chats/{cid}/ai")
