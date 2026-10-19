@@ -317,7 +317,7 @@ def collect(c, uid, cfg):
             part = ids[k:k + 500]
             for r in c.execute(f"SELECT note_id, title, body, format, created, author FROM note_version WHERE uid=? AND note_id IN "
                                f"({','.join('?' * len(part))}) ORDER BY id", (uid, *part)):
-                versions.append({"note_id": r[0], "title": r[1], "body": r[2], "format": r[3], "created": r[4],
+                versions.append({"note_id": r[0], "title": r[1], "body": nextcloud.strip_authors(r[2], r[3], uid), "format": r[3], "created": r[4],
                                  "author": r[5] if r[5] == uid else None})
     if ids and cats.get("comments", True):
         others = cats.get("comments_others", False)
@@ -365,6 +365,7 @@ def collect(c, uid, cfg):
         for k in ("created_by", "updated_by"):
             if n.get(k) and n[k] != uid:
                 n[k] = None                           # keine fremden Benutzernamen
+        n["body"] = nextcloud.strip_authors(n.get("body"), n.get("format"), uid)    # auch nicht in Nextcloud-Bloecken
         out_notes.append(n)
     data = {"format": FORMAT, "saga": VERSION, "created": time.time(), "account": account, "settings": settings,
             "options": {k: bool(cats.get(k, CAT_DEFAULT[k])) for k in CATS}, "excluded": len([x for x in exclude]),

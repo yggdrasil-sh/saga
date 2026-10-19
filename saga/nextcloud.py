@@ -713,6 +713,19 @@ def mask_authors(body, fmt):
     return json.dumps(doc, ensure_ascii=False) if bl else body
 
 
+def strip_authors(body, fmt, uid):
+    """Persoenliches Backup: Nextcloud-Bloecke anderer Personen ohne deren Anmeldenamen (author leer, ohne Signatur)."""
+    if fmt != "blocks" or '"nextcloud"' not in str(body or ""):
+        return body
+    doc = _json_load(body, {})
+    changed = False
+    for b in nc_blocks(doc):
+        if b["data"].get("author") and b["data"]["author"] != uid:
+            b["data"]["author"], b["data"]["sig"] = "", ""
+            changed = True
+    return json.dumps(doc, ensure_ascii=False) if changed else body
+
+
 def find_block(body, fmt, nid, fileid, author):
     """Block mit dieser Datei und diesem Autor (Anmeldename oder - von anderen Instanzen - Platzhalter) und gueltiger
     Signatur fuer genau diese Seite."""

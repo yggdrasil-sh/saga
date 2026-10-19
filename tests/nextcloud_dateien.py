@@ -38,6 +38,7 @@ NC1, NC2 = fakedav.start(P1, True), fakedav.start(P2, True)
 U1, U2 = f"http://127.0.0.1:{P1}", f"http://127.0.0.1:{P2}"
 PNG = fakedav.PNG1
 res = []
+MADE = {"notes": []}                             # zum Aufraeumen (hk-test-a/-b bleiben fuer spaetere Reihen wie vorher)
 
 
 def ok(n, c, info=None):
@@ -215,6 +216,7 @@ def part_pick():
 def part_blocks(ids):
     s, d = call("POST", "/api/notes", {"title": "NC-Seite " + TAG})
     P = d["id"]
+    MADE["notes"].append(P)
     for u, role in ((BB, "edit"), (C, "view")):
         s, _ = call("PUT", f"/api/notes/{P}/shares", {"type": "user", "target": u, "role": role})
         ok(f"Seite geteilt mit {u[:12]} ({role}) ({s})", s == 200)
@@ -335,6 +337,7 @@ def part_editor(P, ids):
     # 5) Kopie eines signierten Blocks in eine andere Seite: B's eigene Seite
     s, d = call("POST", "/api/notes", {"title": "B-Seite " + TAG}, uid=BB)
     PB = d["id"]
+    MADE["notes"].append(PB)
     s, d = save(PB, json.dumps({"blocks": [a_blocks[1]]}), uid=BB)
     ok(f"B: A's signierten Block in eigene Seite kopieren abgewiesen ({s})", s == 403)
     with db.connect() as c, c:                      # an der Pruefung vorbei (Import o. ae.): Signatur gilt nicht fuer PB
@@ -539,7 +542,27 @@ def part_fed():
         NC3.shutdown()
 
 
+def cleanup():
+    """Seiten, Versionen, Dateien, Veroeffentlichung, oeffentlichen Namen und Verknuepfungen dieser Reihe entfernen."""
+    with db.connect() as c, c:
+        for nid in MADE["notes"]:
+            for t in ("note_version", "note_share", "note_publish", "note_comment"):
+                c.execute(f"DELETE FROM {t} WHERE note_id=?", (nid,))
+            c.execute("DELETE FROM note WHERE id=?", (nid,))
+        for fid in [r[0] for r in c.execute("SELECT id FROM file WHERE uid IN (?, ?) AND created>=?", (A, BB, MADE["t0"]))]:
+            c.execute("DELETE FROM file WHERE id=?", (fid,))
+            try:
+                os.remove(os.path.join(STATE, "files", fid))
+            except OSError:
+                pass
+        if not MADE.get("had_name"):
+            c.execute("DELETE FROM public_name WHERE uid=?", (A,))
+        c.execute("DELETE FROM nc_account WHERE uid IN (?, ?)", (A, BB))
+
+
 def main():
+    MADE["t0"] = time.time()
+    MADE["had_name"] = bool(q("SELECT 1 FROM public_name WHERE uid=?", (A,)))
     try:
         part_unit()
         part_connect()
@@ -557,6 +580,10 @@ def main():
         traceback.print_exc()
         res.append(False)
     finally:
+        try:
+            cleanup()
+        except Exception as ex:  # noqa: BLE001
+            print("aufraeumen:", ex)
         for u in (C, D):
             try:
                 with db.connect() as c, c:
