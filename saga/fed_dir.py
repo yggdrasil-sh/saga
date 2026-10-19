@@ -398,8 +398,8 @@ def _like(q):
 
 
 def search(uid, q, purpose="chat"):
-    """Personen anderer Instanzen nach Anzeigename (ab 3 Zeichen, hoechstens SEARCH_MAX). purpose 'share': nur mit
-    oeffentlichem Namen (Seiten teilen laeuft ueber Protokoll 1) und nur Instanzen, mit denen Teilen erlaubt ist.
+    """Personen anderer Instanzen nach Anzeigename (ab 3 Zeichen, hoechstens SEARCH_MAX). purpose 'share': nur Instanzen,
+    mit denen Teilen erlaubt ist; Ziel ist der oeffentliche Name bzw. (2.3) der pseudonyme Handle ('@~x@host').
     -> [{type: 'remote', target, handle, name, host, label, avatar}]"""
     q = re.sub(r"\s+", " ", str(q or "")).strip().lower()[:60]
     if len(q) < 3 or not F.enabled():
@@ -414,7 +414,7 @@ def search(uid, q, purpose="chat"):
                 return []
         pat = _like(q)
         sql = (f"SELECT peer_id, handle, name, pub, av FROM fed_directory WHERE peer_id IN ({','.join('?' * len(ps))}) "
-               "AND (lower(name) LIKE ? OR pub LIKE ?)" + (" AND pub<>''" if purpose == "share" else "") +
+               "AND (lower(name) LIKE ? OR pub LIKE ?)" +
                " ORDER BY (lower(name)=?) DESC, (lower(name) LIKE ?) DESC, name, peer_id, handle LIMIT ?")
         rows = c.execute(sql, (*ps, "%" + pat + "%", pat + "%", q, pat + "%", SEARCH_MAX)).fetchall()
         hits = []

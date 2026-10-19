@@ -33,7 +33,7 @@ from starlette.convertors import Convertor, register_url_convertor
 import auth
 from db import clean_line, connect as _db
 from saga import avatars, bus, comments, fedsig, i18n, netguard, notify, pages, sharing
-from saga.core import BASE_URL, E, SECRET, _api_guard, _bad, _body, _session_user, parse_json, t, title
+from saga.core import BASE_URL, E, SECRET, STATE_DIR, _api_guard, _bad, _body, _session_user, parse_json, t, title
 from saga.files import _thumb, _thumb_mime, _thumb_w
 from saga.notes import FILE_MAX, FILES_DIR, _disposition, _iter_blocks
 from saga.publish import NAME_RE, get_name
@@ -62,8 +62,9 @@ STATUSES = ("pending_in", "pending_out", "active", "disconnected")
 CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # Protokoll 2 (2.3): v2 = /fed/v2/hello + /fed/v2/events (Ereignis-Kennung, Ketten), express = synchrone Zustellung,
 # handles = pseudonyme Handles ('~xxxx') wie oeffentliche Namen, directory = Adressbuch-Abgleich, keys = Schluessel-
-# verzeichnis fuer saga-chat/v2. Spaetere Etappen ergaenzen chat2 calls2 live presence db subpages upload versions export.
-CAPS2 = ["v2", "express", "handles", "directory", "keys"]
+# verzeichnis fuer saga-chat/v2, chat2 = foederierte Chats (saga.fed_chat), calls2 = Anrufe ueber Servergrenzen
+# (saga.fed_calls). Spaetere Etappen ergaenzen live presence db subpages upload versions export.
+CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2"]
 # Admin-Schalter je verbundener Instanz (fed_peer.opts) - Standard: alles an, Ausnahme "Teilen nur in gemeinsamen
 # Gruppen" aus. directory_groups: nur Personen dieser Gruppen erscheinen im Adressbuch der Instanz (leer = alle).
 OPT_DEFAULTS = {"chat": True, "calls": True, "directory": True, "scope_exception": False, "directory_groups": []}
@@ -338,9 +339,10 @@ def display_of(c, uid):
     return (safe_display(r[0], uid, r[1]) if r else "") or get_name(c, uid) or ""
 
 
-def fed_name(c, uid, p=None, pseudo=False):
-    """Name eines lokalen Kontos fuer die Instanz p: oeffentlicher Name. pseudo=True: ohne ihn der pseudonyme Handle -
-    nur, wenn p Protokoll 2 mit 'handles' spricht. Seiten teilen (Protokoll 1) bleibt bei oeffentlichen Namen."""
+def fed_name(c, uid, p=None, pseudo=True):
+    """Name eines lokalen Kontos fuer die Instanz p: oeffentlicher Name, ohne ihn (2.3) der pseudonyme Handle - nur, wenn
+    p Protokoll 2 mit 'handles' spricht (aeltere Instanzen: weiter nur mit oeffentlichem Namen). pseudo=False: nur der
+    oeffentliche Name."""
     pub = get_name(c, uid)
     if pub:
         return pub
@@ -369,6 +371,8 @@ def cleanup_peer(c, p):
     for tb in ("fed_directory", "fed_chat_keys", "fed_chain_in", "fed_chain_out", "fed_event_seen"):
         c.execute(f"DELETE FROM {tb} WHERE peer_id=?", (p["id"],))
     c.execute("UPDATE fed_peer SET dir_seq=0, dir_cfg='', dir_at=NULL WHERE id=?", (p["id"],))
+    for fn in list(PEER_GONE_HOOKS):         # 2.3: foederierte Chats schreibgeschuetzt, Anrufe enden (saga.fed_chat, saga.fed_calls)
+        fn(c, p)
     return len(rows)
 
 
@@ -851,6 +855,8 @@ def _ev(c, peer, ev):
         c.execute("DELETE FROM fed_directory WHERE peer_id=? AND (handle=? OR pub=?)", (peer["id"], name, name))
         if PSEUDO_RE.fullmatch(name):
             c.execute("DELETE FROM fed_chat_keys WHERE handle=?", (f"{name}@{peer['host']}",))
+        for fn in list(PERSON_GONE_HOOKS):
+            fn(c, peer, name, deleted=bool(ev.get("deleted")))
         if ev.get("deleted"):
             c.execute("DELETE FROM fed_inbound WHERE peer_id=? AND owner=?", (peer["id"], p))
         log(c, "person.gone", peer, f"{name} shares={n}")
@@ -1001,7 +1007,27 @@ async def fed_hello(request: Request):
     return _signed(inp, 200, {"protocol": PROTOCOL, "protocols": PROTOCOLS, "capabilities": CAPS + CAPS2})
 
 
+class _RetryEv(Exception):
+    pass
+
+
 def _ev2(c, peer, ev):
+    """Ereignis ueber Protokoll 2. Gibt der Zuhoerer 'retry' zurueck (z. B. foederierter Chat: Luecke wird erst nachgeholt),
+    zaehlt das Ereignis als nicht verarbeitet (Kennung und Kette zurueckgesetzt) - der Absender stellt es spaeter erneut zu."""
+    sp = getattr(c, "savepoint", None)
+    if sp is None:
+        return _ev2_one(c, peer, ev)
+    try:
+        with sp():
+            r = _ev2_one(c, peer, ev)
+            if r == "retry":
+                raise _RetryEv()
+            return r
+    except _RetryEv:
+        return "retry"
+
+
+def _ev2_one(c, peer, ev):
     """Ereignis ueber Protokoll 2: Kennung (hoechstens einmal), Kette (streng aufsteigend), dann wie v1 bzw. EV2_HANDLERS."""
     eid = ev.get("id")
     if eid is not None:
@@ -1015,13 +1041,18 @@ def _ev2(c, peer, ev):
         if not isinstance(chain, str) or not _CHAIN_RE.fullmatch(chain) or not isinstance(cseq, int) or isinstance(cseq, bool) \
                 or not 0 < cseq < 2 ** 62:
             return "ignored"
-        r = c.execute("SELECT seq FROM fed_chain_in WHERE peer_id=? AND chain=?", (peer["id"], chain)).fetchone()
+        cep = ev.get("cep") if isinstance(ev.get("cep"), str) and re.fullmatch(r"[0-9a-f]{8,32}", ev.get("cep")) else ""
+        r = c.execute("SELECT seq, epoch FROM fed_chain_in WHERE peer_id=? AND chain=?", (peer["id"], chain)).fetchone()
+        if r and cep and r[1] and cep != r[1]:
+            log(c, "chain.epoch", peer, f"{chain}: {r[0]} -> neu ab {cseq}")       # Gegenstelle hat ein Backup zurueckgespielt
+            r = None
         if r and cseq <= r[0]:
             return "stale"                   # aelter als schon Verarbeitetes (Reihenfolge je Kette)
         if r and cseq > r[0] + 1:
             log(c, "chain.gap", peer, f"{chain}: {r[0]} -> {cseq}", throttle=(peer["id"], "gap", chain))
-        c.execute("INSERT INTO fed_chain_in (peer_id, chain, seq, ts) VALUES (?,?,?,?) ON CONFLICT (peer_id, chain) "
-                  "DO UPDATE SET seq=EXCLUDED.seq, ts=EXCLUDED.ts", (peer["id"], chain, cseq, time.time()))
+        c.execute("INSERT INTO fed_chain_in (peer_id, chain, seq, ts, epoch) VALUES (?,?,?,?,?) ON CONFLICT (peer_id, chain) "
+                  "DO UPDATE SET seq=EXCLUDED.seq, ts=EXCLUDED.ts, epoch=CASE WHEN EXCLUDED.epoch='' THEN fed_chain_in.epoch "
+                  "ELSE EXCLUDED.epoch END", (peer["id"], chain, cseq, time.time(), cep))
     h = EV2_HANDLERS.get(ev.get("type"))
     if h is not None:
         return h(c, peer, ev)
@@ -1246,6 +1277,8 @@ _express = ThreadPoolExecutor(max_workers=max(2, int(E.get("FED_EXPRESS_WORKERS"
 EV2_HANDLERS = {}            # Ereignis-Art -> fn(c, peer, ev) -> 'ok' | 'ignored' (saga.fed_dir, saga.fed_keys)
 PERIODIC = []                # fn() - im Arbeiter-Thread nach jedem Durchlauf (eigene Taktung, Fehler werden protokolliert)
 HELLO_HOOKS = []             # fn(peer_id) - Faehigkeiten oder Admin-Schalter einer Instanz haben sich geaendert (im Thread)
+PEER_GONE_HOOKS = []         # fn(c, peer) - Verbindung getrennt (in der Transaktion von cleanup_peer)
+PERSON_GONE_HOOKS = []       # fn(c, peer, name, deleted) - Person einer anderen Instanz weg (Ereignis person.gone)
 
 
 def _enqueue(c, peer_id, ev, chain=None, express=True):
@@ -1256,9 +1289,12 @@ def _enqueue(c, peer_id, ev, chain=None, express=True):
     now = time.time()
     ev = dict(ev, id=secrets.token_hex(16))
     if chain:
-        seq = c.execute("INSERT INTO fed_chain_out (peer_id, chain, seq) VALUES (?,?,1) ON CONFLICT (peer_id, chain) "
-                        "DO UPDATE SET seq=fed_chain_out.seq+1 RETURNING seq", (peer_id, chain)).fetchone()[0]
-        ev.update(chain=chain, cseq=int(seq))
+        # Epoche je Kette (zufaellig): nach dem Zurueckspielen eines Backups neu (check_epoch) - die Gegenstelle beginnt
+        # die Kette dann neu, statt die wieder kleinen Nummern still als "schon gesehen" zu verwerfen
+        seq, ep = c.execute("INSERT INTO fed_chain_out (peer_id, chain, seq, epoch) VALUES (?,?,1,?) ON CONFLICT (peer_id, chain) "
+                            "DO UPDATE SET seq=fed_chain_out.seq+1, epoch=CASE WHEN fed_chain_out.epoch='' THEN EXCLUDED.epoch "
+                            "ELSE fed_chain_out.epoch END RETURNING seq, epoch", (peer_id, chain, secrets.token_hex(8))).fetchone()
+        ev.update(chain=chain, cseq=int(seq), cep=ep)
     oid = c.execute("INSERT INTO fed_outbox (peer_id, payload, created, next_try, chain, ev_id) VALUES (?,?,?,?,?,?)",
                     (peer_id, json.dumps(ev, ensure_ascii=False), now, now, chain, ev["id"])).lastrowid
     after = getattr(c, "after_commit", None)
@@ -1441,8 +1477,41 @@ def _pick_due(c, now, limit=60):
     return pick
 
 
+def _post_events_r(p, events, timeout=TIMEOUT):
+    """-> (fehler, ergebnisse): fehler None (zugestellt; ergebnisse je Ereignis), 'net:...' (Instanz nicht erreichbar) oder
+    'HTTP n' / 'bad response' (die Instanz hat die Sendung abgewiesen)."""
+    path = "/fed/v2/events" if "v2" in caps_of(p) else "/fed/v1/events"
+    try:
+        status, d = call_json(p, "POST", path, body={"events": events}, timeout=timeout)
+    except FedError as ex:
+        return ("net:" if ex.code is None else f"HTTP {ex.code}: ") + str(ex), None
+    if status != 200:
+        return f"HTTP {status}", None
+    res = d.get("results") if isinstance(d, dict) else None
+    if not isinstance(res, list) or len(res) != len(events):
+        return "bad response", None
+    return None, res
+
+
+STUCK_AFTER = 6              # so viele Fehlversuche einer Zeile -> Pruefprotokoll "event.stuck" (Kette steht, Rest laeuft)
+
+
+def _row_failed(c, p, r, err, now):
+    """Eine Zeile des Ausgangskorbs ist (noch) nicht zugestellt: spaeter erneut (Backoff) bzw. nach OUTBOX_KEEP verworfen."""
+    if r[4] < now - OUTBOX_KEEP:
+        c.execute("DELETE FROM fed_outbox WHERE id=?", (r[0],))
+        log(c, "event.dropped", p, (f"chain={r[5]} " if r[5] else "") + err)
+        return
+    c.execute("UPDATE fed_outbox SET attempts=attempts+1, next_try=?, locked_until=0, last_error=? WHERE id=?",
+              (now + min(3600, 15 * 2 ** min(r[3], 12)), err[:300], r[0]))
+    if r[3] + 1 == STUCK_AFTER:
+        log(c, "event.stuck", p, (f"chain={r[5]} " if r[5] else "") + err)
+
+
 def deliver_due():
-    """Faellige Ereignisse senden (mehrere Prozesse: Zeilen werden reserviert). -> Anzahl zugestellter."""
+    """Faellige Ereignisse senden (mehrere Prozesse: Zeilen werden reserviert). -> Anzahl zugestellter.
+    Ist die Instanz nicht erreichbar, wartet alles fuer sie. Weist sie dagegen einzelne Ereignisse ab (Fehler, 'retry'),
+    trifft das nur diese Zeilen und den Rest ihrer Kette ("Totmann" je Zeile) - andere Ereignisse und Ketten laufen weiter."""
     now = time.time()
     with _db() as c, c:
         rows = _pick_due(c, now)
@@ -1459,27 +1528,42 @@ def deliver_due():
             with _db() as c, c:
                 c.execute(f"DELETE FROM fed_outbox WHERE id IN ({','.join('?' * len(lst))})", tuple(r[0] for r in lst))
             continue
-        failed = None
-        for k in range(0, len(lst), EVENTS_MAX):
-            part = lst[k:k + EVENTS_MAX]
-            ids = tuple(r[0] for r in part)
-            err = failed or _post_events(p, [json.loads(r[2]) for r in part])
+        down, held = None, set()
+        queue = [lst[k:k + EVENTS_MAX] for k in range(0, len(lst), EVENTS_MAX)]
+        while queue:
+            part = queue.pop(0)
+            skip = [r for r in part if r[5] and r[5] in held]
+            part = [r for r in part if not (r[5] and r[5] in held)]
+            if skip:                                     # fruehere Zeile der Kette steckt: diese spaeter (Reihenfolge)
+                with _db() as c, c:
+                    c.execute(f"UPDATE fed_outbox SET locked_until=0 WHERE id IN ({','.join('?' * len(skip))})", tuple(r[0] for r in skip))
+            if not part:
+                continue
+            err, res = (down, None) if down else _post_events_r(p, [json.loads(r[2]) for r in part])
+            if err and not err.startswith("net:") and len(part) > 1:
+                queue = [[r] for r in part] + queue          # abgewiesen: einzeln versuchen, um die eine Zeile zu finden
+                continue
             with _db() as c, c:
                 if err is None:
-                    c.execute(f"DELETE FROM fed_outbox WHERE id IN ({','.join('?' * len(ids))})", ids)
+                    done = [r[0] for r, x in zip(part, res) if x != "retry"]
+                    if done:
+                        c.execute(f"DELETE FROM fed_outbox WHERE id IN ({','.join('?' * len(done))})", tuple(done))
+                        sent += len(done)
                     _touch(c, p)
-                    sent += len(ids)
+                    for r, x in zip(part, res):
+                        if x == "retry":
+                            _row_failed(c, p, r, "retry", now)
+                            if r[5]:
+                                held.add(r[5])
                     continue
-                if failed is None:
-                    _touch(c, p, err)
-                failed = err                     # Rest dieser Instanz nicht mehr versuchen (Reihenfolge der Ketten)
+                if err.startswith("net:"):
+                    if down is None:
+                        _touch(c, p, err[4:])
+                    down = err
                 for r in part:
-                    if r[4] < now - OUTBOX_KEEP:
-                        c.execute("DELETE FROM fed_outbox WHERE id=?", (r[0],))
-                        log(c, "event.dropped", p, err)
-                    else:
-                        c.execute("UPDATE fed_outbox SET attempts=attempts+1, next_try=?, locked_until=0, last_error=? WHERE id=?",
-                                  (now + min(3600, 15 * 2 ** min(r[3], 12)), err[:300], r[0]))
+                    _row_failed(c, p, r, err[4:] if err.startswith("net:") else err, now)
+                    if r[5]:
+                        held.add(r[5])
     return sent
 
 
@@ -1526,7 +1610,39 @@ def _loop():
             print(f"federation: {type(ex).__name__}: {ex}", flush=True)
 
 
+def check_epoch():
+    """Wurde ein Backup zurueckgespielt (oder die Datenbank umgezogen)? Dann stimmen die Ketten-Nummern nicht mehr mit dem
+    ueberein, was andere Instanzen schon gesehen haben: neue Epoche je Kette. Erkannt ueber eine Marke, die bei jedem Start
+    in der Datenbank UND im Daten-Verzeichnis neu gesetzt wird - nach dem Zurueckspielen passen beide nicht mehr zusammen."""
+    path = os.path.join(STATE_DIR, "fed-epoch")
+    try:
+        with open(path) as f:
+            mark = f.read().strip()
+    except OSError:
+        mark = ""
+    new = secrets.token_hex(12)
+    with _db() as c, c:
+        r = c.execute("SELECT v FROM setting WHERE k='fed_epoch_mark'").fetchone()
+        db_mark = json.loads(r[0]) if r and r[0] else ""
+        if db_mark != mark and c.execute("SELECT 1 FROM fed_chain_out LIMIT 1").fetchone():
+            n = c.execute("UPDATE fed_chain_out SET epoch=md5(random()::text || chain || peer_id::text)").rowcount
+            log(c, "chain.epoch.new", None, f"chains={n}", host=SELF_HOST)
+            print(f"federation: Ketten mit neuer Epoche ({n}) - Datenbank stammt aus einem Backup oder ist umgezogen", flush=True)
+        c.execute("INSERT INTO setting (k, v) VALUES ('fed_epoch_mark', ?) ON CONFLICT (k) DO UPDATE SET v=EXCLUDED.v", (json.dumps(new),))
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(path + ".tmp", "w") as f:
+            f.write(new)
+        os.replace(path + ".tmp", path)
+    except OSError as ex:
+        print(f"federation: Epochen-Marke nicht gespeichert ({type(ex).__name__})", flush=True)
+
+
 def start():
+    try:
+        check_epoch()
+    except Exception as ex:  # noqa: BLE001 - Datenbank beim Start kurz weg: dann beim naechsten Start
+        print(f"federation: Epochen-Pruefung: {type(ex).__name__}: {ex}", flush=True)
     if _worker["thread"] is None:
         _worker["stop"] = False
         th = threading.Thread(target=_loop, name="saga-federation", daemon=True)
@@ -2068,7 +2184,7 @@ def remote_target(uid, typ, tg, nid):
         return None, t("Adresse bitte als name@server angeben."), 400
     with _db() as c:
         p = peer_by(c, "host", host)
-        if not fed_name(c, uid, p if host != SELF_HOST else None):
+        if not fed_name(c, uid, p if host != SELF_HOST else None) and host != SELF_HOST:
             return None, t("Zum Teilen mit anderen Saga-Instanzen brauchst du einen öffentlichen Namen (Einstellungen)."), 400
         if host == SELF_HOST:
             return None, t("Das ist dieser Server – bitte ohne @server teilen."), 400

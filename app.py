@@ -26,7 +26,7 @@ from version import API_LEVEL, BUILD, MIN_APP, VERSION, channel
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
 from saga import ai, ai_chat, avatars, calls, chat, federation, i18n, live, mfa, notify, push
-from saga import fed_dir, fed_keys                           # Foederation 2.3: Adressbuch, Schluesselverzeichnis
+from saga import fed_calls, fed_chat, fed_dir, fed_keys      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
@@ -216,3 +216,5 @@ app.include_router(avatars.router)          # Profilbilder: /api/avatar/{schlues
 app.include_router(calls.router)            # Anrufe (WebRTC, Signalisierung ueber den Live-Kanal): /api/calls...
 app.include_router(fed_dir.router)          # Adressbuch (2.3): /fed/v2/directory, /api/fed/people, /api/account/federation
 app.include_router(fed_keys.router)         # Schluesselverzeichnis + Krypto v2 (2.3): /fed/v2/keys, /api/chat/v2/...
+app.include_router(fed_chat.router)         # Chats + Anrufe ueber Servergrenzen (2.3): /fed/v2/chat..., /fed/v2/call, /api/chat/blocks
+assert fed_calls.router is fed_chat.router

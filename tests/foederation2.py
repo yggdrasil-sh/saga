@@ -292,7 +292,9 @@ print(json.dumps(n[0]))
     ok("Chat-Suche: Treffer mit Handle ~x@host", all(re.fullmatch(r"~[a-z2-7]{16}@" + re.escape(HB), x["handle"]) for x in rem))
     s, d = api("a", "fa-anna", "GET", "/api/share/targets?q=anna")
     tg = [x["target"] for x in d.get("remote") or []]
-    ok(f"Teilen-Suche: nur mit oeffentlichem Namen ({tg})", tg == [f"@annab@{HB}"])
+    # 2.3 E2: Teilen geht auch an Personen ohne oeffentlichen Namen - Ziel ist dann der pseudonyme Handle (nie Anmeldename)
+    ok(f"Teilen-Suche: beide, ohne oeffentlichen Namen ueber den Handle ({tg})", len(tg) == 2 and f"@annab@{HB}" in tg
+       and any(re.fullmatch(r"@~[a-z2-7]{16}@" + re.escape(HB), x) for x in tg) and not any("fb-anna" in x for x in tg))
     s, d = api("a", "fa-anna", "GET", "/api/fed/people?q=olga")
     ok("Olga (Schalter aus) nicht auffindbar", s == 200 and d["people"] == [])
     s, d = api("a", "fa-anna", "GET", "/api/fed/people?q=dieter")
@@ -387,7 +389,10 @@ def part_keys(A, B, pa, pb):
     s, _ = api("b", "fb-bert", "PUT", "/api/chat/v2/cert", {"devices": {db["id"]: C.b64(C.sign(C.device_msg("fb-bert", db["id"], db["enc_pk"], db["sign_pk"]), ib["ident_sk"]))}})
     ok("Geraete-Zertifikat v1 statt v2 -> 403", s == 403)
     s, me = api("b", "fb-bert", "PUT", "/api/chat/v2/cert", {"handle_sig": C.b64(C.handle_sig(hb, ib)), "devices": {db["id"]: C.b64(C.device_sig_v2(hb, ib, db))}})
-    ok("Zertifikate v2 hochgeladen", s == 200 and me["cert_ok"] and not me["need"])
+    ok("Zertifikate v2 hochgeladen (Geraete-Liste fehlt noch)", s == 200 and me["cert_ok"] and not me["missing"] and not me["device_set_ok"])
+    # 2.3 E2 (Review): aktive Geraete nur ueber die signierte Geraete-Liste - erst danach ist nichts mehr offen
+    s, me = api("b", "fb-bert", "PUT", "/api/chat/v2/cert", {"device_set": C.devices_sig_v2(hb, ib, 1, me["device_set_want"])})
+    ok("Geraete-Liste signiert -> nichts mehr offen", s == 200 and me["device_set_ok"] and not me["need"])
     s, mea = api("a", "fa-anna", "GET", "/api/chat/v2/me")
     ha = mea["handle"]
     api("a", "fa-anna", "PUT", "/api/chat/v2/cert", {"handle_sig": C.b64(C.handle_sig(ha, ia)), "devices": {da["id"]: C.b64(C.device_sig_v2(ha, ia, da))}})

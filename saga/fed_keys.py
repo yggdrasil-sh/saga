@@ -38,7 +38,7 @@ def _v2_state(c, uid):
     """-> (handle, identitaet, cert-zeile, geraete [(id, enc, sign, revoked, fed_sig)])"""
     h = full_handle(F.own_handle(c, uid))
     ident = chat._identity(c, uid)
-    cert = c.execute("SELECT handle, ident_pub, sig FROM chat_fed_cert WHERE uid=?", (uid,)).fetchone()
+    cert = c.execute("SELECT handle, ident_pub, sig, dset FROM chat_fed_cert WHERE uid=?", (uid,)).fetchone()
     devs = c.execute("SELECT d.id, d.enc_pub, d.sign_pub, d.revoked_at, f.fed_sig FROM chat_device d LEFT JOIN chat_device_fed f "
                      "ON f.device_id=d.id AND f.uid=d.uid WHERE d.uid=? ORDER BY d.created", (uid,)).fetchall()
     return h, ident, cert, devs
@@ -49,11 +49,24 @@ def _entry(h, ident, cert, devs):
     if not ident or not cert or cert[0] != h or cert[1] != ident["ident_pub"] or \
             not V.verify_handle(h, ident["ident_pub"], ident["backup_pub"], cert[2]):
         return None
+    ds = _dset(h, ident["ident_pub"], cert[3])
     out = []
     for did, enc, sign, rev, fs in devs:
         if fs and V.verify_device(h, ident["ident_pub"], did, enc, sign, fs):
-            out.append({"id": did, "enc_pub": enc, "sign_pub": sign, "fed_sig": fs, "revoked": bool(rev)})
-    return {"v": 2, "handle": h, "ident_pub": ident["ident_pub"], "backup_pub": ident["backup_pub"], "sig": cert[2], "devices": out}
+            out.append({"id": did, "enc_pub": enc, "sign_pub": sign, "fed_sig": fs, "revoked": bool(rev) or (ds is not None and did not in ds["ids"])})
+    e = {"v": 2, "handle": h, "ident_pub": ident["ident_pub"], "backup_pub": ident["backup_pub"], "sig": cert[2], "devices": out}
+    if ds:
+        e["dset"] = ds
+    return e
+
+
+def _dset(h, ident_pub, raw):
+    """Gespeicherte signierte Geraete-Liste (saga-chat/v2/devices) -> {ver, ids, sig} oder None."""
+    try:
+        d = json.loads(raw) if raw else None
+    except ValueError:
+        return None
+    return d if V.verify_devices(h, ident_pub, d) else None
 
 
 @router.get("/api/chat/v2/me")
@@ -68,14 +81,22 @@ def api_me(request: Request):
               and V.verify_handle(h, ident["ident_pub"], ident["backup_pub"], cert[2]))
     dl = [{"id": d[0], "fed_sig": d[4], "ok": bool(ok and d[4] and V.verify_device(h, ident["ident_pub"], d[0], d[1], d[2], d[4]))}
           for d in devs if not d[3]]
+    # signierte Geraete-Liste: muss genau die aktiven Geraete mit Zertifikat v2 enthalten (nach Hinzufuegen/Entfernen neu)
+    ds = _dset(h, ident["ident_pub"], cert[3]) if ok else None
+    act = sorted(d["id"] for d in dl if d["ok"])
+    set_ok = bool(ds) and sorted(ds["ids"]) == act
     return chat._no_store({"v": 2, "handle": h, "host": F.SELF_HOST, "identity": bool(ident), "cert_ok": ok,
-                           "devices": dl, "missing": [d["id"] for d in dl if not d["ok"]], "need": bool(ident) and (not ok or any(not d["ok"] for d in dl)),
+                           "devices": dl, "missing": [d["id"] for d in dl if not d["ok"]],
+                           "device_set": ds, "device_set_ok": set_ok, "device_set_want": act,
+                           "need": bool(ident) and (not ok or any(not d["ok"] for d in dl) or not set_ok),
                            "federation": F.enabled()})
 
 
 @router.put("/api/chat/v2/cert")
 async def api_cert(request: Request):
-    """{handle_sig?, devices?: {device_id: fed_sig}} - vom Geraet signierte Zertifikate v2 (saga/chat_v2.py)."""
+    """{handle_sig?, devices?: {device_id: fed_sig}, device_set?: {ver, ids, sig}} - vom Geraet signierte Zertifikate v2 und
+    die signierte Liste der aktiven Geraete (saga/chat_v2.py). device_set: ver groesser als bisher, ids = genau die aktiven
+    Geraete mit gueltigem Zertifikat v2 (nach den Zertifikaten aus derselben Anfrage)."""
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
@@ -107,6 +128,19 @@ async def api_cert(request: Request):
                     return _bad(t("Ungültige Signatur des Geräts."), 403)
                 c.execute("INSERT INTO chat_device_fed (device_id, uid, fed_sig, created) VALUES (?,?,?,?) ON CONFLICT (device_id) "
                           "DO UPDATE SET uid=EXCLUDED.uid, fed_sig=EXCLUDED.fed_sig, created=EXCLUDED.created", (did, uid, fs, now))
+                changed = True
+            ds = b.get("device_set")
+            if ds is not None:
+                h, ident, cert, devs = _v2_state(c, uid)
+                if not cert or cert[1] != ident["ident_pub"] or not V.verify_devices(h, ident["ident_pub"], ds):
+                    c.rollback()
+                    return _bad(t("Ungültige Signatur."), 403)
+                act = sorted(d[0] for d in devs if not d[3] and d[4] and V.verify_device(h, ident["ident_pub"], d[0], d[1], d[2], d[4]))
+                old = _dset(h, ident["ident_pub"], cert[3])
+                if sorted(ds["ids"]) != act or (old and ds["ver"] <= old["ver"]):
+                    c.rollback()
+                    return _bad(t("Die Geräte-Liste passt nicht (mehr) – bitte neu laden."), 409)
+                c.execute("UPDATE chat_fed_cert SET dset=? WHERE uid=?", (json.dumps({"ver": ds["ver"], "ids": sorted(ds["ids"]), "sig": ds["sig"]}), uid))
                 changed = True
             if changed:
                 _announce(c, uid)
@@ -190,14 +224,19 @@ def check_entry(handle, e):
     ip, bp, sig = e.get("ident_pub"), e.get("backup_pub"), e.get("sig")
     if not all(isinstance(x, str) for x in (ip, bp, sig)) or not V.verify_handle(handle, ip, bp, sig):
         return None
+    ds = e.get("dset") if V.verify_devices(handle, ip, e.get("dset")) else None
     devs = []
     for d in (e.get("devices") or [])[:chat.DEVICES_MAX * 5]:
         if not isinstance(d, dict):
             continue
         did, enc, sign, fs = d.get("id"), d.get("enc_pub"), d.get("sign_pub"), d.get("fed_sig")
         if all(isinstance(x, str) for x in (did, enc, sign, fs)) and V.verify_device(handle, ip, did, enc, sign, fs):
-            devs.append({"id": did, "enc_pub": enc, "sign_pub": sign, "fed_sig": fs, "revoked": bool(d.get("revoked"))})
-    return {"v": 2, "handle": handle, "ident_pub": ip, "backup_pub": bp, "sig": sig, "devices": devs}
+            devs.append({"id": did, "enc_pub": enc, "sign_pub": sign, "fed_sig": fs,
+                         "revoked": bool(d.get("revoked")) or (ds is not None and did not in ds["ids"])})
+    out = {"v": 2, "handle": handle, "ident_pub": ip, "backup_pub": bp, "sig": sig, "devices": devs}
+    if ds:
+        out["dset"] = {"ver": ds["ver"], "ids": sorted(ds["ids"]), "sig": ds["sig"]}
+    return out
 
 
 def fetch_remote(p, handles, force=False):

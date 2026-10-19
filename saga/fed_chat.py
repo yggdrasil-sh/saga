@@ -1,0 +1,1495 @@
+"""Chats ueber Servergrenzen (2.3, Etappe E2): foederierte Direkt-Chats im Format saga-chat/v2 (saga/chat_v2.py).
+
+Grundsaetze (Vertrag fuer Apps: docs/APP-API-FED.md, Abschnitt 6):
+- Jeder Chat hat eine globale Kennung chat_ref ('<32 hex>@<host>') und einen Heimserver: den Server der Person, die den
+  Direkt-Chat beginnt. Das Heim ist massgeblich fuer Mitglieder, Empfaengerliste, Reihenfolge (fseq), Frist, Loeschen und
+  KI-Schalter. Die Server der Teilnehmer halten Kopien (Ciphertext + versiegelte Schluessel ihrer eigenen Geraete).
+  Geraete sprechen nur mit dem eigenen Server. Lokale Chats bleiben v1 (chat.v = 1) und unveraendert.
+- Zustellung: Geraet -> eigener Server (prueft Signatur und Empfaenger) -> Heim (synchron, harte Frist FED_EXPRESS_TIMEOUT;
+  sonst Warteschlange beim Absender-Server, Kette 'chatup:<id>', bis 3 Tage) -> Heim prueft Absender (Handle gehoert zur
+  anfragenden Instanz, Signatur mit dem Geraeteschluessel), Empfaenger exakt, vergibt fseq -> Fan-out an alle Teilnehmer-
+  Server (Express, sonst Ausgangskorb mit Kette 'chat:<id>'; auch zurueck an den Absender-Server als Bestaetigung).
+  Idempotent ueber msg_id; Luecken (fseq springt) holt der Teilnehmer beim Heim nach, Umsortieren/Wiederholen wird
+  abgewiesen und protokolliert.
+- Erstkontakt = Nachrichtenanfrage: beim Gegenueber erscheint der Chat als Anfrage (Annehmen/Ablehnen/Sperren), ohne
+  Benachrichtigung, Push oder Klingeln. Ablehnen/Sperren erfaehrt die andere Seite nicht (das Heim stellt nur nicht mehr zu).
+  Sperren je Person ('~x@host') oder je Instanz ('host'), Raten je Instanz und Absender, Pruefprotokoll (fed_log).
+- Anhaenge bleiben beim Absender-Server; die anderen holen sie bei Bedarf (Zwischenkopie), kleine (Vorschaubilder) vorab.
+- Gelesen bleibt lokal, Tippen geht direkt und verwerfbar, Push loest nur der eigene Server aus. KI im Chat ist in
+  foederierten Chats aus, bis jemand sie einschaltet (Systemzeile fuer alle). Trennen: Chats mit Personen bzw. Heim der
+  getrennten Instanz werden schreibgeschuetzt (Verlauf bleibt lesbar)."""
+import json
+import os
+import re
+import secrets
+import sys
+import time
+from urllib.parse import quote
+
+from fastapi import APIRouter, Request
+from starlette.concurrency import run_in_threadpool
+
+from db import connect as _db
+from saga import bus, chat, chat_v2 as V, fed_keys as FK, federation as F, fedsig, notify, sharing
+from saga.core import _bad, _body, t
+from saga.notes import FILE_MAX
+
+router = APIRouter()
+
+PREFETCH_MAX = 256 * 1024          # kleinere Anhaenge (Vorschaubilder) holt der Server des Empfaengers gleich vorab
+REQ_RATE_H, REQ_RATE_PEER_H = 20, 200      # Nachrichtenanfragen je Absender bzw. je Instanz und Stunde
+MSG_RATE_PEER = 600                # Nachrichten je Instanz und Minute (je Absender: chat.MSG_RATE)
+TYPING_RATE = 120                  # Tipp-Meldungen je Instanz und Minute
+LATE = 4 * 86400                   # zugestellte Nachrichten (Warteschlange) duerfen so alt sein
+GAP_PAGE = 100
+STATES = ("ok", "request", "declined")
+_REF = re.compile(r"([0-9a-f]{32})@([a-z0-9.:-]{1,260})")
+_H = re.compile(r"(~[a-z2-7]{16})@([a-z0-9.:-]{1,260})")
+_HEX32 = re.compile(r"[0-9a-f]{32}")
+_HEX64 = re.compile(r"[0-9a-f]{64}")
+
+
+# =====================================================================================================
+# Kleinkram
+# =====================================================================================================
+def on():
+    return F.enabled() and chat.enabled()
+
+
+def principal(h):
+    return "@" + h
+
+
+def handle_of(u):
+    """Mitglied (lokaler Benutzername oder '@~x@host') -> Handle '~x@host' (lokal: eigener Handle) oder None."""
+    if sharing.is_remote(u):
+        return u[1:] if _H.fullmatch(u[1:]) else None
+    return None
+
+
+def my_handle(c, uid):
+    return FK.full_handle(F.own_handle(c, uid))
+
+
+def split_ref(ref):
+    m = _REF.fullmatch(ref or "") if isinstance(ref, str) else None
+    return (m.group(1), fedsig.authority(m.group(2))) if m else (None, None)
+
+
+def split_handle(h):
+    m = _H.fullmatch(h or "") if isinstance(h, str) else None
+    return (m.group(1), fedsig.authority(m.group(2))) if m else (None, None)
+
+
+def chain_down(ref):
+    return "chat:" + ref.split("@")[0]
+
+
+def chain_up(ref):
+    return "chatup:" + ref.split("@")[0]
+
+
+def peer_ok(p):
+    """Chats mit Instanz p erlaubt? (beide Seiten melden 'chat2', Admin-Schalter "Chat" an, "nur gemeinsame Gruppen" nur
+    mit Ausnahme je Instanz)"""
+    return F.feature(p, "chat2") and (not sharing.group_scope() or bool(p["opts"].get("scope_exception")))
+
+
+def by_ref(c, ref, lock=False):
+    return chat._row(c.execute(f"SELECT {chat.C_COLS} FROM chat WHERE ref=?" + (" FOR UPDATE" if lock else ""), (ref,)).fetchone())
+
+
+def members(c, cid):
+    """[(mitglied, state)] - lokale Benutzernamen und fremde Prinzipale '@~x@host'."""
+    return [tuple(r) for r in c.execute("SELECT uid, state FROM chat_member WHERE chat_id=? AND left_at IS NULL ORDER BY joined, uid",
+                                        (cid,)).fetchall()]
+
+
+def member_handle(c, u):
+    return handle_of(u) if sharing.is_remote(u) else my_handle(c, u)
+
+
+def home_host(c, ch):
+    if ch["home_peer"] is None:
+        return F.SELF_HOST
+    p = F.peer_by(c, "id", ch["home_peer"])
+    return p["host"] if p else None
+
+
+def _person(c, peer, h, name=None):
+    """Anzeigename einer fremden Person (Adressbuch, sonst mitgeschickter Name) zwischenspeichern."""
+    n, host = split_handle(h)
+    r = c.execute("SELECT name FROM fed_directory WHERE peer_id=? AND handle=?", (peer["id"], n)).fetchone()
+    F._person_upsert(c, principal(h), peer["id"], (r[0] if r else "") or name or n)
+
+
+def label_of(c, u):
+    """Anzeige einer fremden Person im Chat: {name, host, label} ("Anna Berg · b.example")."""
+    h = handle_of(u) or ""
+    n, host = split_handle(h)
+    r = c.execute("SELECT d.name FROM fed_directory d JOIN fed_peer p ON p.id=d.peer_id WHERE p.host=? AND d.handle=?", (host, n)).fetchone()
+    name = (r[0] if r else "") or ""
+    if not name:
+        r = c.execute("SELECT display FROM fed_person WHERE principal=?", (u,)).fetchone()
+        name = (r[0] if r else "") or (n or "?")
+    return {"name": name, "host": host, "label": f"{name} · {host}"}
+
+
+def blocked(c, uid, h):
+    n, host = split_handle(h)
+    return bool(c.execute("SELECT 1 FROM fed_chat_block WHERE uid=? AND target IN (?,?)", (uid, h, host)).fetchone())
+
+
+def _rate_ok(kind, key, n, window=60.0):
+    return F._rate.allow(f"{kind}:{key}", n, window)
+
+
+def _volatile(peer_id, body, path="/fed/v2/chat"):
+    """Ohne Ausgangskorb (Tippen, Lebenszeichen): sofort im Express-Pool, Fehler egal."""
+    def go():
+        with _db() as c:
+            p = F.peer_by(c, "id", peer_id)
+        if not peer_ok(p):
+            return
+        try:
+            F.call_json(p, "POST", path, body=body, timeout=max(1.0, F.EXPRESS_TIMEOUT / 3))
+        except F.FedError:
+            pass
+    try:
+        F._express.submit(go)
+    except RuntimeError:
+        pass
+
+
+def sync_call(p, body, path="/fed/v2/chat"):
+    """Synchron an eine Instanz (harte Frist FED_EXPRESS_TIMEOUT). -> (status, antwort) oder (None, fehlertext)."""
+    try:
+        return F.call_json(p, "POST", path, body=body, timeout=max(1.0, F.EXPRESS_TIMEOUT / 3))
+    except F.FedError as ex:
+        with _db() as c, c:
+            F._touch(c, p, ex)
+        return None, str(ex)
+
+
+# =====================================================================================================
+# Schluessel und Empfaenger
+# =====================================================================================================
+def _cached(c, h):
+    r = c.execute("SELECT data FROM fed_chat_keys WHERE handle=?", (h,)).fetchone()
+    try:
+        return json.loads(r[0]) if r else None
+    except ValueError:
+        return None
+
+
+def _cache_entry(c, peer, h, e):
+    """Von der Instanz der Person mitgeschickter (selbst geprueften) Eintrag -> Zwischenspeicher."""
+    c.execute("INSERT INTO fed_chat_keys (handle, peer_id, data, fetched, stale) VALUES (?,?,?,?,0) ON CONFLICT (handle) DO UPDATE "
+              "SET peer_id=EXCLUDED.peer_id, data=EXCLUDED.data, fetched=EXCLUDED.fetched, stale=0", (h, peer["id"], json.dumps(e), time.time()))
+
+
+def local_entry(c, h):
+    n, host = split_handle(h)
+    if host != F.SELF_HOST:
+        return None
+    return FK.keys_local(c, [n]).get(n)
+
+
+def entries(handles, fresh=False):
+    """{handle: eintrag|None}: eigene Konten direkt, fremde ueber den Heimserver der Person (Zwischenspeicher, Netzwerk -
+    nie in einer Transaktion aufrufen)."""
+    out, by = {}, {}
+    for h in handles:
+        n, host = split_handle(h)
+        if n:
+            by.setdefault(host, []).append(h)
+    for host, hs in by.items():
+        if host == F.SELF_HOST:
+            with _db() as c:
+                out.update({h: local_entry(c, h) for h in hs})
+            continue
+        with _db() as c:
+            p = F.peer_by(c, "host", host)
+        if not FK._peer_ok(p):
+            out.update({h: None for h in hs})
+            continue
+        r = FK.fetch_remote(p, hs, force=fresh)
+        out.update({h: r.get(h) for h in hs})
+    return out
+
+
+def want_of(ents):
+    """Empfaengerkennungen: je Person 'backup:<handle>', je aktivem Geraet 'dev:<id>@<host>'."""
+    out = set()
+    for h, e in ents.items():
+        if not e:
+            continue
+        host = h.rpartition("@")[2]
+        out.add("backup:" + h)
+        out.update(f"dev:{d['id']}@{host}" for d in e.get("devices") or [] if not d.get("revoked"))
+    return out
+
+
+def _keys_ok(keys):
+    return isinstance(keys, dict) and 0 < len(keys) <= chat.MEMBERS_MAX * (chat.DEVICES_MAX + 1) and all(
+        isinstance(k, str) and len(k) < 300 and isinstance(v, str) and chat.b64d(v, chat.SEAL_LEN) is not None for k, v in keys.items())
+
+
+def keys_for_host(keys, host):
+    return {r: v for r, v in keys.items() if r.rpartition("@")[2] == host}
+
+
+def local_keys(c, ch, keys):
+    """Versiegelte Schluessel fuer Geraete/Konten DIESES Servers -> [(empfaenger, sealed)] in der lokalen Form (Geraete-ID bzw.
+    'backup:<benutzer>') - so arbeiten Abruf, "fuer mich loeschen" und Kontoloeschung wie bei lokalen Chats."""
+    out = []
+    mem = {u for u, _ in members(c, ch["id"]) if not sharing.is_remote(u)}
+    for r, v in keys.items():
+        if r.startswith("dev:"):
+            did, _, host = r[4:].partition("@")
+            if host != F.SELF_HOST or not _HEX32.fullmatch(did):
+                continue
+            row = c.execute("SELECT uid FROM chat_device WHERE id=?", (did,)).fetchone()
+            if row and row[0] in mem:
+                out.append((did, v))
+        elif r.startswith("backup:"):
+            n, host = split_handle(r[7:])
+            if host != F.SELF_HOST:
+                continue
+            uid = F.uid_by_handle(c, n)
+            if uid in mem:
+                out.append(("backup:" + uid, v))
+    return out
+
+
+def sig_ok(e, ref, m, revoked_ok=False):
+    if not e:
+        return False
+    d = next((x for x in e.get("devices") or [] if x.get("id") == m["sender_device"]), None)
+    return bool(d) and (revoked_ok or not d.get("revoked")) and V.verify_message(d["sign_pub"], ref, m)
+
+
+def msg_in(d):
+    """Nachricht (vom Geraet oder einer anderen Instanz) pruefen -> dict oder None (Form, nicht Signatur)."""
+    if not isinstance(d, dict):
+        return None
+    mid, dev, body_ct, sig = d.get("id"), d.get("sender_device"), d.get("body_ct"), d.get("sig")
+    reply, ai = d.get("reply_to") or None, d.get("ai") or None
+    try:
+        ts = int(d.get("ts"))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not (isinstance(mid, str) and _HEX32.fullmatch(mid) and isinstance(dev, str) and _HEX32.fullmatch(dev)) or (d.get("kind") or "msg") != "msg":
+        return None
+    if not isinstance(body_ct, str) or len(body_ct) > chat.MSG_MAX:
+        return None
+    raw = chat.b64d(body_ct)
+    if raw is None or len(raw) < 40 or chat.b64d(sig, 64) is None or not 0 < ts < 2 ** 53:
+        return None
+    if reply is not None and not (isinstance(reply, str) and _HEX32.fullmatch(reply)):
+        return None
+    if ai is not None and not (isinstance(ai, str) and _HEX64.fullmatch(ai)):
+        return None
+    h = d.get("sender_handle")
+    return {"id": mid, "ts": ts, "sender_handle": h if isinstance(h, str) else None, "sender_device": dev, "body_ct": body_ct, "sig": sig,
+            "reply_to": reply, "ai": ai}
+
+
+def files_in(v):
+    """[{id, size}] einer anderen Instanz pruefen -> Liste oder None."""
+    if v is None:
+        return []
+    if not isinstance(v, list) or len(v) > chat.FILE_IDS_PER_MSG:
+        return None
+    out = []
+    for f in v:
+        if not isinstance(f, dict) or not isinstance(f.get("id"), str) or not chat._FID.fullmatch(f["id"]):
+            return None
+        s = f.get("size")
+        if not isinstance(s, int) or isinstance(s, bool) or not 0 < s <= FILE_MAX + 64:
+            return None
+        out.append({"id": f["id"], "size": s})
+    return out
+
+
+# =====================================================================================================
+# Speichern und lokal zustellen
+# =====================================================================================================
+def store(c, ch, m, sender, lkeys, files=(), origin=None, fseq=None, fstate=None, all_keys=None):
+    """Nachricht speichern (in der Transaktion). sender: lokaler Benutzername oder '@~x@host'. files: [{id, size}] - mit
+    origin (peer) liegen sie bei einer anderen Instanz (Abruf bei Bedarf), sonst sind es eigene Uploads. all_keys (Heim):
+    zusaetzlich alle Schluessel der anderen Server (fuer das Nachholen von Luecken). -> seq"""
+    now = time.time()
+    eff, mx = ch["retention_s"], chat.retention_max()
+    eff = min(eff, mx) if eff and mx else (eff or mx)
+    seq = c.execute("INSERT INTO chat_msg (id, chat_id, kind, sender_uid, sender_device, ts, created, expires_at, body_ct, sig, reply_to, size, "
+                    "fseq, sender_handle, ai, fstate) VALUES (?,?,'msg',?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING seq",
+                    (m["id"], ch["id"], sender, m["sender_device"], m["ts"], now, now + eff if eff else None, m["body_ct"], m["sig"],
+                     m["reply_to"], len(m["body_ct"]), fseq, m["sender_handle"], m["ai"], fstate)).fetchone()[0]
+    rows = dict(lkeys)
+    if all_keys:
+        rows.update({k: v for k, v in all_keys.items() if not k.endswith("@" + F.SELF_HOST)})
+    c.executemany("INSERT INTO chat_msg_key (msg_seq, recipient, sealed) VALUES (?,?,?) ON CONFLICT DO NOTHING",
+                  [(seq, k, v) for k, v in sorted(rows.items())])
+    ids = [f["id"] for f in files]
+    if ids and origin is None:
+        c.execute(f"UPDATE chat_file SET msg_seq=? WHERE chat_id=? AND id IN ({','.join('?' * len(ids))})", (seq, ch["id"], *ids))
+    elif ids:
+        for f in files:
+            if c.execute("INSERT INTO chat_file (id, chat_id, uid, size, created, msg_seq) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING",
+                         (f["id"], ch["id"], sender, f["size"], now, seq)).rowcount:
+                c.execute("INSERT INTO chat_file_fed (id, peer_id, cached) VALUES (?,?,0) ON CONFLICT DO NOTHING", (f["id"], origin["id"]))
+    c.execute("UPDATE chat SET last_seq=GREATEST(last_seq, ?), last_at=? WHERE id=?", (seq, now, ch["id"]))
+    return seq
+
+
+def deliver(c, ch, seq, mid, sender, kind="msg"):
+    """Neue Nachricht fuer die Konten DIESES Servers: Archiv, Benachrichtigung und Push nur in angenommenen Chats (Anfragen
+    melden sich still), Live-Ereignis an alle lokalen Mitglieder."""
+    chat.revive(c, ch["id"], sender)
+    rows = c.execute("SELECT uid, muted, state FROM chat_member WHERE chat_id=? AND left_at IS NULL", (ch["id"],)).fetchall()
+    loc = [r for r in rows if not sharing.is_remote(r[0])]
+    if not sharing.is_remote(sender):
+        c.execute("UPDATE chat_member SET last_read=GREATEST(last_read, ?) WHERE chat_id=? AND uid=?", (seq, ch["id"], sender))
+    for u, muted, st in loc:
+        if u == sender or muted or st != "ok" or kind != "msg":
+            continue
+        notify.create(c, u, "chat.message", sender, data={"chat": ch["id"]}, bundle=ch["id"])
+        bus.fire("push.send", c, uid=u, kind="chat.message", actor=sender, data={"chat": ch["id"]})
+    chat._direct(c, [r[0] for r in loc], "chat.message", {"chat_id": ch["id"], "seq": seq, "id": mid, "sender": sender, **({"kind": kind} if kind != "msg" else {})})
+
+
+def local_members(c, cid):
+    return [u for u, _ in members(c, cid) if not sharing.is_remote(u)]
+
+
+def participants(c, ch, declined=False):
+    """Fremde Instanzen mit Mitgliedern in diesem Chat (Heim: Empfaenger des Fan-outs)."""
+    hosts = {split_handle(handle_of(u))[1] for u, st in members(c, ch["id"]) if sharing.is_remote(u) and (declined or st != "declined")}
+    out = []
+    for host in sorted(h for h in hosts if h):
+        p = F.peer_by(c, "host", host)
+        if p and p["status"] == "active":
+            out.append(p)
+    return out
+
+
+def fanout(c, ch, ev, keys=None, declined=True, skip=None):
+    """Heim: Ereignis an die Teilnehmer-Server (Kette je Chat, Express). keys: je Server nur die eigenen Empfaenger."""
+    for p in participants(c, ch, declined):
+        if skip is not None and p["id"] == skip:
+            continue
+        if not F.feature(p, "chat2"):
+            continue
+        e = dict(ev, ref=ch["ref"])
+        if keys is not None:
+            e["keys"] = keys_for_host(keys, p["host"])
+        F._enqueue(c, p["id"], e, chain=chain_down(ch["ref"]))
+
+
+def sysline(c, ch, by, data):
+    """Systemzeile im Chat (z. B. "KI eingeschaltet von ...") - Klartext-Metadaten wie Anruf-Eintraege (kind 'sys')."""
+    now = time.time()
+    body = json.dumps(dict(data, v=1), separators=(",", ":"))
+    mid = secrets.token_hex(16)
+    seq = c.execute("INSERT INTO chat_msg (id, chat_id, kind, sender_uid, sender_device, ts, created, expires_at, body_ct, sig, reply_to, size) "
+                    "VALUES (?,?,'sys',?,'',?,?,NULL,?,'',NULL,0) RETURNING seq", (mid, ch["id"], by, int(now * 1000), now, body)).fetchone()[0]
+    c.execute("UPDATE chat SET last_seq=GREATEST(last_seq, ?), last_at=? WHERE id=?", (seq, now, ch["id"]))
+    chat._direct(c, local_members(c, ch["id"]), "chat.message", {"chat_id": ch["id"], "seq": seq, "id": mid, "sender": by, "kind": "sys"})
+    return seq
+
+
+# =====================================================================================================
+# Server-zu-Server: Auftraege (synchron POST /fed/v2/chat, sonst als Ereignis 'chat.op' aus der Warteschlange)
+# =====================================================================================================
+def _actor(c, peer, d):
+    """Handelnde Person einer Anfrage: Handle der anfragenden Instanz -> (handle, prinzipal) oder (None, None)."""
+    h = d.get("actor")
+    n, host = split_handle(h)
+    if not n or host != peer["host"]:
+        return None, None
+    return h, principal(h)
+
+
+def _home_chat(c, d, lock=False):
+    """Chat, dessen Heim WIR sind."""
+    ch = by_ref(c, d.get("ref"), lock) if isinstance(d.get("ref"), str) else None
+    return ch if ch and ch["home_peer"] is None and ch["v"] == 2 else None
+
+
+def op_request(c, peer, d):
+    """Heim der anfragenden Person -> wir: Direkt-Chat mit einem unserer Konten (erscheint dort als Nachrichtenanfrage)."""
+    ref = d.get("ref")
+    hx, rhost = split_ref(ref)
+    fr = d.get("from") if isinstance(d.get("from"), dict) else {}
+    fh = fr.get("handle")
+    fn, fhost = split_handle(fh)
+    if not hx or rhost != peer["host"] or d.get("kind") != "dm":
+        return 400, {"error": "bad request"}
+    if not fn or fhost != peer["host"]:
+        F.log(c, "chat.forged", peer, "request from")
+        return 403, {"error": "forged"}
+    tn, thost = split_handle(d.get("to"))
+    uid = F.uid_by_handle(c, tn) if thost == F.SELF_HOST else None
+    if not uid:
+        return 404, {"error": "unknown person"}
+    if not _rate_ok("creq", fh, REQ_RATE_H, 3600) or not _rate_ok("creqp", peer["host"], REQ_RATE_PEER_H, 3600):
+        F.log(c, "chat.rate", peer, "request", throttle=(peer["id"], "creq"))
+        return 429, {"error": "too many requests"}
+    p_ = principal(fh)
+    if blocked(c, uid, fh):                      # gesperrt: die andere Seite erfaehrt es nicht
+        F.log(c, "chat.blocked", peer, "request", throttle=(peer["id"], "cblk", fh))
+        return 200, {"ok": True}
+    key = "|".join(sorted([uid, p_]))
+    other = by_ref(c, ref)
+    if other and other["dm_key"] != key:
+        F.log(c, "chat.forged", peer, "request ref reused")
+        return 409, {"error": "ref in use"}
+    ex = chat._row(c.execute(f"SELECT {chat.C_COLS} FROM chat WHERE dm_key=?", (key,)).fetchone())
+    if ex and ex["ref"] == ref:
+        return 200, {"ok": True}
+    if ex and ex["home_peer"] is None and not ex["fstate"] and ex["v"] == 2:
+        # Es gibt den Chat schon (bei uns zu Hause, z. B. hat unser Konto ihn begonnen): die anfragende Seite nimmt ihn
+        c.execute("UPDATE chat_member SET state='ok', left_at=NULL WHERE chat_id=? AND uid=?", (ex["id"], p_))
+        return 200, {"existing": ex["ref"]}
+    if ex:                                       # alter Chat (dort verloren bzw. schreibgeschuetzt): bleibt lesbar, aber ohne Paar
+        c.execute("UPDATE chat SET dm_key=NULL, fstate=CASE WHEN fstate='' THEN 'old' ELSE fstate END WHERE id=?", (ex["id"],))
+        chat._changed(c, ex["id"], local_members(c, ex["id"]))
+    now = time.time()
+    _person(c, peer, fh, F._clean_text(fr.get("name"), F.DISPLAY_MAX))
+    cid = c.execute("INSERT INTO chat (kind, dm_key, created_by, created, v, ref, home_peer) VALUES ('dm',?,NULL,?,2,?,?)",
+                    (key, now, ref, peer["id"])).lastrowid
+    c.execute("INSERT INTO chat_member (chat_id, uid, joined, state) VALUES (?,?,?,'request')", (cid, uid, now))
+    c.execute("INSERT INTO chat_member (chat_id, uid, joined, state) VALUES (?,?,?,'ok')", (cid, p_, now))
+    chat._direct(c, [uid], "chat.request", {"chat_id": cid})
+    F.log(c, "chat.request", peer, f"chat={cid}")
+    return 200, {"ok": True}
+
+
+def op_state(c, peer, d, state):
+    """Teilnehmer nimmt die Anfrage an bzw. lehnt ab (das Heim stellt dann nicht mehr zu)."""
+    ch = _home_chat(c, d)
+    h, p_ = _actor(c, peer, d)
+    if not ch or not h:
+        return 404, {"error": "gone"}
+    if not c.execute("UPDATE chat_member SET state=? WHERE chat_id=? AND uid=? AND left_at IS NULL", (state, ch["id"], p_)).rowcount:
+        return 404, {"error": "not a member"}
+    return 200, {"ok": True, "fseq": ch["fseq"]}
+
+
+def op_send(c, peer, d):
+    """Teilnehmer -> Heim: Nachricht. Prueft Absender (Handle der anfragenden Instanz), Signatur, Empfaenger exakt; vergibt fseq."""
+    ch = _home_chat(c, d, lock=True)
+    if not ch:
+        return 404, {"error": "gone"}
+    if ch["fstate"]:
+        return 409, {"error": "readonly"}
+    m = msg_in(d.get("msg"))
+    files = files_in(d.get("files"))
+    keys = d.get("keys")
+    if not m or files is None or not _keys_ok(keys):
+        return 400, {"error": "bad message"}
+    h = m["sender_handle"]
+    n, host = split_handle(h)
+    if not n or host != peer["host"]:
+        F.log(c, "chat.forged", peer, f"sender {str(h)[:40]}", throttle=(peer["id"], "forged"))
+        return 403, {"error": "forged sender"}
+    p_ = principal(h)
+    mem = dict(members(c, ch["id"]))
+    if p_ not in mem:
+        return 403, {"error": "not a member"}
+    old = c.execute("SELECT chat_id, sig, fseq FROM chat_msg WHERE id=?", (m["id"],)).fetchone()
+    if old:
+        if old[0] == ch["id"] and old[1] == m["sig"]:
+            return 200, {"ok": True, "fseq": old[2], "dup": True}
+        F.log(c, "chat.replay", peer, m["id"][:8], throttle=(peer["id"], "replay"))
+        return 409, {"error": "duplicate id"}
+    if not _rate_ok("cmsg", h, chat.MSG_RATE) or not _rate_ok("cmsgp", peer["host"], MSG_RATE_PEER):
+        F.log(c, "chat.rate", peer, "send", throttle=(peer["id"], "cmsg"))
+        return 429, {"error": "too many messages"}
+    now = time.time()
+    if not now - LATE < m["ts"] / 1000 < now + chat.SKEW:
+        return 400, {"error": "bad time"}
+    se = FK.check_entry(h, d.get("sender_keys"))
+    if not se:
+        return 400, {"error": "bad keys"}
+    if not sig_ok(se, ch["ref"], m):
+        F.log(c, "chat.badsig", peer, m["id"][:8], throttle=(peer["id"], "badsig"))
+        return 403, {"error": "bad signature"}
+    _cache_entry(c, peer, h, se)
+    if m["ai"] and not c.execute("SELECT 1 FROM chat_ai WHERE chat_id=?", (ch["id"],)).fetchone():
+        return 403, {"error": "ai not allowed"}
+    ents = {}
+    for u in mem:
+        hh = member_handle(c, u)
+        ents[hh] = se if hh == h else (local_entry(c, hh) if not sharing.is_remote(u) else _cached(c, hh))
+    if set(keys) != want_of(ents):
+        return 409, {"error": "recipients", "handles": sorted(ents)}
+    if mem[p_] != "ok":                          # wer schreibt, hat angenommen
+        c.execute("UPDATE chat_member SET state='ok' WHERE chat_id=? AND uid=?", (ch["id"], p_))
+    fseq = c.execute("UPDATE chat SET fseq=fseq+1 WHERE id=? RETURNING fseq", (ch["id"],)).fetchone()[0]
+    seq = store(c, ch, m, p_, local_keys(c, ch, keys), files, origin=peer, fseq=fseq, all_keys=keys)
+    deliver(c, ch, seq, m["id"], p_)
+    fanout(c, ch, {"type": "chat.msg", "fseq": fseq, "msg": m, "files": files}, keys=keys, declined=False)
+    _prefetch_after(c, files)
+    return 200, {"ok": True, "fseq": fseq}
+
+
+def drop_msg(c, ch, mid):
+    """Nachricht samt Schluesseln, Anhaengen und KI-Beleg loeschen (in der Transaktion). -> seq oder None."""
+    r = c.execute("SELECT seq FROM chat_msg WHERE id=? AND chat_id=? AND kind='msg'", (mid, ch["id"])).fetchone()
+    if not r:
+        return None
+    fids = [x[0] for x in c.execute("SELECT id FROM chat_file WHERE msg_seq=?", (r[0],))]
+    c.execute("DELETE FROM chat_file WHERE msg_seq=?", (r[0],))
+    c.execute("DELETE FROM chat_ai_reply WHERE msg_id=?", (mid,))
+    c.execute("DELETE FROM chat_msg WHERE seq=?", (r[0],))
+    chat._rm_blobs(c, fids)
+    chat._direct(c, local_members(c, ch["id"]), "chat.deleted", {"chat_id": ch["id"], "id": mid, "seq": r[0]})
+    return r[0]
+
+
+def op_del(c, peer, d):
+    """Eigene Nachricht fuer alle loeschen (nur, wer sie geschickt hat)."""
+    ch = _home_chat(c, d, lock=True)
+    h, p_ = _actor(c, peer, d)
+    mid = d.get("id")
+    if not ch or not h or not isinstance(mid, str) or not _HEX32.fullmatch(mid):
+        return 404, {"error": "gone"}
+    r = c.execute("SELECT sender_handle FROM chat_msg WHERE id=? AND chat_id=?", (mid, ch["id"])).fetchone()
+    if r and r[0] != h:
+        F.log(c, "chat.forged", peer, "delete", throttle=(peer["id"], "fdel"))
+        return 403, {"error": "not yours"}
+    drop_msg(c, ch, mid)
+    fanout(c, ch, {"type": "chat.msg.del", "mid": mid})
+    return 200, {"ok": True}
+
+
+def drop_chat(c, ch):
+    chat._rm_blobs(c, chat._drop_chat(c, ch["id"]))
+
+
+def removed_live(c, ch, by):
+    chat._direct(c, local_members(c, ch["id"]), "chat.removed", {"chat_id": ch["id"], "kind": ch["kind"], "by": by})
+
+
+def op_drop(c, peer, d):
+    """Direkt-Chat "fuer alle loeschen" bzw. Konto geloescht: das Heim loescht und meldet es allen Teilnehmer-Servern."""
+    ch = _home_chat(c, d, lock=True)
+    h, p_ = _actor(c, peer, d)
+    if not ch or not h:
+        return 200, {"ok": True}
+    if p_ not in dict(members(c, ch["id"])):
+        return 403, {"error": "not a member"}
+    lab = label_of(c, p_)
+    by = {"username": p_, "handle": h, "name": lab["label"]}
+    fanout(c, ch, {"type": "chat.removed", "by": {"handle": h, "name": lab["name"]}}, skip=peer["id"])
+    chat._drop_notifs(c, local_members(c, ch["id"]), ch["id"])
+    removed_live(c, ch, by)
+    drop_chat(c, ch)
+    F.log(c, "chat.removed", peer, f"chat={ch['id']}")
+    return 200, {"ok": True}
+
+
+def apply_meta(c, ch, d, by):
+    """Frist und KI-Schalter uebernehmen (Heim und Teilnehmer). by: lokaler Benutzername oder Prinzipal. -> geaendert?"""
+    changed = False
+    if "retention_s" in d:
+        v = d["retention_s"]
+        if isinstance(v, int) and not isinstance(v, bool) and v in chat.RETENTIONS and v != ch["retention_s"]:
+            c.execute("UPDATE chat SET retention_s=? WHERE id=?", (v, ch["id"]))
+            changed = True
+    if isinstance(d.get("ai"), bool):
+        had = bool(c.execute("SELECT 1 FROM chat_ai WHERE chat_id=?", (ch["id"],)).fetchone())
+        if d["ai"] and not had:
+            c.execute("INSERT INTO chat_ai (chat_id, by_uid, at) VALUES (?,?,?) ON CONFLICT (chat_id) DO NOTHING", (ch["id"], by, time.time()))
+        elif not d["ai"] and had:
+            c.execute("DELETE FROM chat_ai WHERE chat_id=?", (ch["id"],))
+        if d["ai"] != had:
+            nm = label_of(c, by)["name"] if sharing.is_remote(by) else (sharing.names(c, [by]).get(by) or by)
+            sysline(c, ch, by, {"type": "ai", "on": d["ai"], "by": member_handle(c, by), "name": nm})
+            changed = True
+    if changed:
+        chat._changed(c, ch["id"], local_members(c, ch["id"]))
+    return changed
+
+
+def op_meta(c, peer, d):
+    ch = _home_chat(c, d, lock=True)
+    h, p_ = _actor(c, peer, d)
+    if not ch or not h:
+        return 404, {"error": "gone"}
+    if p_ not in dict(members(c, ch["id"])):
+        return 403, {"error": "not a member"}
+    if ch["fstate"]:
+        return 409, {"error": "readonly"}
+    want = {k: d[k] for k in ("retention_s", "ai") if k in d}
+    if apply_meta(c, ch, want, p_):
+        fanout(c, ch, dict({"type": "chat.meta", "by": h}, **want))
+    return 200, {"ok": True}
+
+
+def op_typing(c, peer, d):
+    """Tippen (verwerfbar): an die lokalen Mitglieder, beim Heim auch an die anderen Teilnehmer (Gruppen, E5)."""
+    ch = by_ref(c, d.get("ref")) if isinstance(d.get("ref"), str) else None
+    h, p_ = _actor(c, peer, d)
+    if not ch or not h or not _rate_ok("ctyp", peer["host"], TYPING_RATE):
+        return 200, {"ok": True}
+    mem = dict(members(c, ch["id"]))
+    if p_ not in mem or mem[p_] != "ok":
+        return 200, {"ok": True}
+    lab = label_of(c, p_)
+    loc = [u for u, st in mem.items() if not sharing.is_remote(u) and st == "ok"]
+    chat._direct(c, loc, "chat.typing", {"chat_id": ch["id"], "user": {"username": p_, "handle": h, "name": lab["name"]}})
+    return 200, {"ok": True}
+
+
+OPS = {"request": op_request, "accept": lambda c, p, d: op_state(c, p, d, "ok"), "decline": lambda c, p, d: op_state(c, p, d, "declined"),
+       "send": op_send, "del": op_del, "drop": op_drop, "meta": op_meta, "typing": op_typing}
+
+
+def run_op(c, peer, d):
+    if not isinstance(d, dict) or d.get("op") not in OPS:
+        return 400, {"error": "bad op"}
+    if not chat.enabled():
+        return 403, {"error": "chat disabled"}
+    return OPS[d["op"]](c, peer, d)
+
+
+@router.post("/fed/v2/chat")
+async def fed_chat(request: Request):
+    inp, err = await F._verify(request)
+    if err is not None:
+        return err
+    if not peer_ok(inp.peer):
+        return F._signed(inp, 403, {"error": "chat disabled"})
+
+    def run():
+        with _db() as c, c:
+            return run_op(c, inp.peer, inp.data)
+    status, out = await run_in_threadpool(run)
+    return F._signed(inp, status, out)
+
+
+def _ev_op(c, peer, ev):
+    """Auftrag aus der Warteschlange eines Teilnehmer-Servers (Heim war nicht erreichbar)."""
+    if not peer_ok(peer):
+        return "ignored"
+    d = ev.get("op_body") if isinstance(ev.get("op_body"), dict) else {}
+    status, out = run_op(c, peer, d)
+    if status == 429:
+        return "retry"
+    if status != 200 and d.get("op") == "send" and isinstance(d.get("ref"), str):
+        m = d.get("msg") if isinstance(d.get("msg"), dict) else {}
+        if isinstance(m.get("id"), str) and _HEX32.fullmatch(m["id"]):
+            F._enqueue(c, peer["id"], {"type": "chat.reject", "ref": d["ref"], "mid": m["id"], "reason": str(out.get("error") or status)[:40],
+                                       "handles": out.get("handles")}, chain=chain_down(d["ref"]))
+    return "ok" if status == 200 else "ignored"
+
+
+F.EV2_HANDLERS["chat.op"] = _ev_op
+
+
+# =====================================================================================================
+# Teilnehmer-Server: Ereignisse vom Heim (Kette 'chat:<id>')
+# =====================================================================================================
+def _from_home(c, peer, ev, lock=False):
+    """Chat zu ev['ref'], wenn peer wirklich dessen Heim ist - sonst None (und Pruefprotokoll)."""
+    ref = ev.get("ref")
+    hx, host = split_ref(ref)
+    if not hx:
+        return None
+    if host != peer["host"]:
+        F.log(c, "chat.forged", peer, f"not home of {hx[:8]}", throttle=(peer["id"], "nothome"))
+        return None
+    ch = by_ref(c, ref, lock)
+    if not ch or ch["home_peer"] != peer["id"]:
+        return None
+    return ch
+
+
+def _sender_of(c, ch, h):
+    """Absender-Handle -> lokaler Benutzername bzw. Prinzipal (nur Mitglieder des Chats), sonst None."""
+    n, host = split_handle(h)
+    if not n:
+        return None
+    u = F.uid_by_handle(c, n) if host == F.SELF_HOST else principal(h)
+    if not u or not c.execute("SELECT 1 FROM chat_member WHERE chat_id=? AND uid=?", (ch["id"], u)).fetchone():
+        return None
+    return u
+
+
+def apply_msg(c, peer, ch, ev, jump=False):
+    """Nachricht vom Heim uebernehmen -> 'ok' | 'dup' | 'gap' | 'ignored'. Prueft Reihenfolge (fseq lueckenlos, nichts
+    Aelteres), Wiederholungen (msg_id) und die Signatur des Absender-Geraets (eigene Konten: eigene Schluessel; Konten
+    des Heims: von dort mitgeschickt; andere: Zwischenspeicher)."""
+    fseq = ev.get("fseq")
+    m = msg_in(ev.get("msg"))
+    files = files_in(ev.get("files"))
+    keys = ev.get("keys") if isinstance(ev.get("keys"), dict) else {}
+    if not isinstance(fseq, int) or isinstance(fseq, bool) or not 0 < fseq < 2 ** 62 or not m or files is None:
+        return "ignored"
+    sender = _sender_of(c, ch, m["sender_handle"])
+    if not sender:
+        F.log(c, "chat.forged", peer, f"sender {str(m['sender_handle'])[:40]}", throttle=(peer["id"], "fsender"))
+        return "ignored"
+    old = c.execute("SELECT seq, chat_id, sig, fseq FROM chat_msg WHERE id=?", (m["id"],)).fetchone()
+    if old:
+        if old[1] != ch["id"] or old[2] != m["sig"]:
+            F.log(c, "chat.replay", peer, m["id"][:8], throttle=(peer["id"], "replay"))
+            return "ignored"
+        if fseq > ch["fseq"] + 1 and not jump:
+            return "gap"
+        c.execute("UPDATE chat_msg SET fseq=?, fstate=NULL WHERE seq=?", (fseq, old[0]))
+        c.execute("UPDATE chat SET fseq=GREATEST(fseq, ?) WHERE id=?", (fseq, ch["id"]))
+        ch["fseq"] = max(ch["fseq"], fseq)
+        if old[3] is None:                                   # aus der Warteschlange bestaetigt: Anzeige auffrischen
+            chat._direct(c, local_members(c, ch["id"]), "chat.message", {"chat_id": ch["id"], "seq": old[0], "id": m["id"], "sender": sender})
+        return "dup"
+    if fseq <= ch["fseq"]:
+        F.log(c, "chat.reorder", peer, f"{ch['fseq']} >= {fseq}", throttle=(peer["id"], "reorder"))
+        return "ignored"
+    if fseq > ch["fseq"] + 1 and not jump:
+        return "gap"
+    n, host = split_handle(m["sender_handle"])
+    if host == F.SELF_HOST:
+        e = local_entry(c, m["sender_handle"])
+    elif host == peer["host"]:
+        e = FK.check_entry(m["sender_handle"], ev.get("sender_keys"))
+        if e:
+            _cache_entry(c, peer, m["sender_handle"], e)
+    else:
+        e = _cached(c, m["sender_handle"])
+    c.execute("UPDATE chat SET fseq=? WHERE id=?", (fseq, ch["id"]))
+    ch["fseq"] = fseq
+    if not sig_ok(e, ch["ref"], m, revoked_ok=True):
+        F.log(c, "chat.badsig", peer, m["id"][:8], throttle=(peer["id"], "badsig"))
+        return "ignored"
+    origin = peer if host == peer["host"] else (F.peer_by(c, "host", host) if host != F.SELF_HOST else None)
+    seq = store(c, ch, m, sender, local_keys(c, ch, keys), files if origin else [], origin=origin, fseq=fseq)
+    deliver(c, ch, seq, m["id"], sender)
+    if origin:
+        _prefetch_after(c, files)
+    return "ok"
+
+
+def _ev_msg(c, peer, ev):
+    ch = _from_home(c, peer, ev, lock=True)
+    if not ch:
+        return "ignored"
+    cep = ev.get("cep") if isinstance(ev.get("cep"), str) and len(ev["cep"]) <= 40 else ""
+    fep = c.execute("SELECT fep FROM chat WHERE id=?", (ch["id"],)).fetchone()[0]
+    if cep and cep != fep:
+        fs = ev.get("fseq")
+        if fep and isinstance(fs, int) and not isinstance(fs, bool) and 0 < fs <= ch["fseq"]:
+            # Heim hat ein Backup zurueckgespielt (neue Ketten-Epoche): seine Zaehlung beginnt wieder tiefer - weiterlesen
+            F.log(c, "chat.epoch", peer, f"{ch['fseq']} -> {fs}")
+            c.execute("UPDATE chat SET fseq=? WHERE id=?", (fs - 1, ch["id"]))
+            ch["fseq"] = fs - 1
+        c.execute("UPDATE chat SET fep=? WHERE id=?", (cep, ch["id"]))
+    r = apply_msg(c, peer, ch, ev)
+    if r == "gap":                       # Luecke: erst beim Heim nachholen, dann stellt das Heim dieses Ereignis erneut zu
+        ref, upto, have = ch["ref"], ev.get("fseq"), ch["fseq"]
+
+        def gap():
+            with _db() as c2, c2:
+                F.log(c2, "chat.gap", peer, f"{have} -> {upto}", throttle=(peer["id"], "gap", ref))
+            fill_gap(peer["id"], ref, upto)
+        c.after_commit(lambda: _submit(gap))         # (Pruefprotokoll erst dort: 'retry' rollt diese Transaktion zurueck)
+        return "retry"
+    return "ok" if r in ("ok", "dup") else "ignored"
+
+
+def _ev_del(c, peer, ev):
+    ch = _from_home(c, peer, ev, lock=True)
+    mid = ev.get("mid")
+    if not ch or not isinstance(mid, str) or not _HEX32.fullmatch(mid):
+        return "ignored"
+    drop_msg(c, ch, mid)
+    return "ok"
+
+
+def _ev_removed(c, peer, ev):
+    ch = _from_home(c, peer, ev, lock=True)
+    if not ch:
+        return "ignored"
+    by = ev.get("by") if isinstance(ev.get("by"), dict) else {}
+    h = by.get("handle")
+    n, host = split_handle(h)
+    if n and host == F.SELF_HOST:
+        u = F.uid_by_handle(c, n)
+        bd = {"username": u, "name": sharing.names(c, [u]).get(u) or u} if u else None
+    else:
+        bd = {"username": principal(h), "handle": h, "name": F._clean_text(by.get("name"), F.DISPLAY_MAX) or (n or "?")} if n else None
+    chat._drop_notifs(c, local_members(c, ch["id"]), ch["id"])
+    removed_live(c, ch, bd)
+    drop_chat(c, ch)
+    F.log(c, "chat.removed", peer, f"chat={ch['id']}")
+    return "ok"
+
+
+def _ev_meta(c, peer, ev):
+    ch = _from_home(c, peer, ev, lock=True)
+    if not ch:
+        return "ignored"
+    n, host = split_handle(ev.get("by"))
+    by = (F.uid_by_handle(c, n) if host == F.SELF_HOST else principal(ev["by"])) if n else None
+    if not by:
+        return "ignored"
+    apply_meta(c, ch, {k: ev[k] for k in ("retention_s", "ai") if k in ev}, by)
+    return "ok"
+
+
+def _ev_reject(c, peer, ev):
+    """Heim hat eine Nachricht aus unserer Warteschlange abgewiesen (z. B. Empfaenger geaendert): als nicht zugestellt markieren."""
+    ch = _from_home(c, peer, ev)
+    mid = ev.get("mid")
+    if not ch or not isinstance(mid, str):
+        return "ignored"
+    r = c.execute("UPDATE chat_msg SET fstate='failed' WHERE id=? AND chat_id=? AND fseq IS NULL RETURNING seq, sender_uid", (mid, ch["id"])).fetchone()
+    if r:
+        chat._direct(c, [r[1]], "chat.message", {"chat_id": ch["id"], "seq": r[0], "id": mid, "sender": r[1], "failed": True})
+        F.log(c, "chat.rejected", peer, f"{mid[:8]} {str(ev.get('reason'))[:30]}")
+    return "ok"
+
+
+F.EV2_HANDLERS.update({"chat.msg": _ev_msg, "chat.msg.del": _ev_del, "chat.removed": _ev_removed, "chat.meta": _ev_meta,
+                       "chat.reject": _ev_reject})
+
+
+def _submit(fn, *args):
+    try:
+        F._express.submit(fn, *args)
+    except RuntimeError:
+        pass
+
+
+# --- Luecken nachholen ------------------------------------------------------------------------------------------------
+def gap_items(c, ch, peer, after, limit=GAP_PAGE):
+    """Heim: Nachrichten mit fseq > after fuer die Instanz peer (nur ihre Empfaenger-Schluessel)."""
+    out = []
+    rows = c.execute("SELECT seq, id, sender_handle, sender_device, ts, body_ct, sig, reply_to, ai, fseq FROM chat_msg WHERE chat_id=? AND fseq>? "
+                     "AND kind='msg' AND (expires_at IS NULL OR expires_at>?) ORDER BY fseq LIMIT ?", (ch["id"], after, time.time(), limit)).fetchall()
+    for seq, mid, sh, dev, ts, body, sig, reply, ai, fseq in rows:
+        keys = {r: v for r, v in c.execute("SELECT recipient, sealed FROM chat_msg_key WHERE msg_seq=?", (seq,)).fetchall()
+                if r.rpartition("@")[2] == peer["host"]}
+        files = [{"id": f, "size": s} for f, s in c.execute("SELECT id, size FROM chat_file WHERE msg_seq=?", (seq,)).fetchall()]
+        it = {"fseq": fseq, "msg": {"id": mid, "ts": ts, "sender_handle": sh, "sender_device": dev, "body_ct": body, "sig": sig,
+                                    "reply_to": reply, "ai": ai}, "keys": keys, "files": files}
+        if split_handle(sh)[1] == F.SELF_HOST:
+            it["sender_keys"] = local_entry(c, sh)
+        out.append(it)
+    return out
+
+
+@router.get("/fed/v2/chat/msgs")
+async def fed_chat_msgs(request: Request, ref: str = "", after: int = 0):
+    inp, err = await F._verify(request)
+    if err is not None:
+        return err
+    if not peer_ok(inp.peer):
+        return F._signed(inp, 403, {"error": "chat disabled"})
+
+    def run():
+        with _db() as c:
+            ch = _home_chat(c, {"ref": ref})
+            if not ch:
+                return 404, {"error": "gone"}
+            # (auch nach Ablehnen: nimmt die Person spaeter doch an, holt ihr Server so den Verlauf - nur ihre Schluessel)
+            if not any(sharing.is_remote(u) and split_handle(handle_of(u))[1] == inp.peer["host"] for u, st in members(c, ch["id"])):
+                return 403, {"error": "not a participant"}
+            items = gap_items(c, ch, inp.peer, max(0, min(after, 2 ** 62)), GAP_PAGE + 1)
+            return 200, {"items": items[:GAP_PAGE], "more": len(items) > GAP_PAGE, "top": ch["fseq"]}
+    status, out = await run_in_threadpool(run)
+    return F._signed(inp, status, out)
+
+
+def fill_gap(peer_id, ref, upto=None):
+    """Teilnehmer: fehlende Nachrichten beim Heim holen (Netzwerk). upto: bis vor diese fseq (das Ereignis kommt erneut).
+    Was das Heim nicht mehr hat (geloescht/abgelaufen), gilt als erledigt. -> True, wenn die Luecke zu ist."""
+    for _ in range(50):
+        with _db() as c:
+            p = F.peer_by(c, "id", peer_id)
+            ch = by_ref(c, ref)
+        if not ch or not peer_ok(p) or ch["home_peer"] != peer_id:
+            return False
+        try:
+            status, d = F.call_json(p, "GET", "/fed/v2/chat/msgs", f"ref={quote(ref, safe='')}&after={ch['fseq']}", timeout=10)
+        except F.FedError as ex:
+            with _db() as c, c:
+                F._touch(c, p, ex)
+            return False
+        if status != 200 or not isinstance(d, dict) or not isinstance(d.get("items"), list):
+            return False
+        with _db() as c, c:
+            ch = by_ref(c, ref, lock=True)
+            if not ch:
+                return False
+            for it in sorted((x for x in d["items"] if isinstance(x, dict) and isinstance(x.get("fseq"), int)), key=lambda x: x["fseq"]):
+                if upto and it["fseq"] >= upto:
+                    break
+                if it["fseq"] > ch["fseq"]:
+                    apply_msg(c, p, ch, it, jump=True)
+            top = d.get("top") if isinstance(d.get("top"), int) else 0
+            if not d.get("more"):
+                end = min(top, upto - 1) if upto else top
+                if end > ch["fseq"]:
+                    c.execute("UPDATE chat SET fseq=? WHERE id=?", (end, ch["id"]))
+                return True
+    return False
+
+
+# --- Anhaenge: beim Absender-Server, Abruf bei Bedarf (Zwischenkopie) ----------------------------------------------------
+@router.get("/fed/v2/chat/files/{fid}")
+async def fed_chat_file(fid: str, request: Request):
+    inp, err = await F._verify(request)
+    if err is not None:
+        return err
+    if not peer_ok(inp.peer) or not chat._FID.fullmatch(fid):
+        return F._signed(inp, 404, {"error": "not found"})
+
+    def run():
+        with _db() as c:
+            r = c.execute("SELECT f.chat_id, f.msg_seq FROM chat_file f WHERE f.id=? AND NOT EXISTS (SELECT 1 FROM chat_file_fed x WHERE x.id=f.id)",
+                          (fid,)).fetchone()
+            ch = chat._load(c, r[0]) if r and r[1] else None
+            if not ch or ch["v"] != 2:
+                return None
+            x = c.execute("SELECT 1 FROM chat_msg WHERE seq=? AND (expires_at IS NULL OR expires_at>?)", (r[1], time.time())).fetchone()
+            host = inp.peer["host"]
+            part = ch["home_peer"] == inp.peer["id"] or any(sharing.is_remote(u) and split_handle(handle_of(u))[1] == host and st != "declined"
+                                                            for u, st in members(c, ch["id"]))
+            if not x or not part:
+                return None
+        try:
+            with open(os.path.join(chat.CHAT_DIR, fid), "rb") as f:
+                return f.read(FILE_MAX + 128)
+        except OSError:
+            return None
+    data = await run_in_threadpool(run)
+    if data is None:
+        return F._signed(inp, 404, {"error": "not found"})
+    return F._signed(inp, 200, data, media="application/octet-stream")
+
+
+def fetch_file(fid):
+    """Anhang einer anderen Instanz holen und als Zwischenkopie ablegen (Netzwerk). -> True, wenn er jetzt hier liegt."""
+    path = os.path.join(chat.CHAT_DIR, fid)
+    if os.path.isfile(path):
+        return True
+    with _db() as c:
+        r = c.execute("SELECT x.peer_id FROM chat_file_fed x JOIN chat_file f ON f.id=x.id WHERE x.id=? AND f.msg_seq IS NOT NULL", (fid,)).fetchone()
+        p = F.peer_by(c, "id", r[0]) if r else None
+    if not peer_ok(p):
+        return False
+    try:
+        status, _, data = F.call(p, "GET", f"/fed/v2/chat/files/{fid}", limit=FILE_MAX + 1024, timeout=20)
+    except F.FedError as ex:
+        with _db() as c, c:
+            F._touch(c, p, ex)
+        return False
+    if status != 200 or len(data) < 40 or len(data) > FILE_MAX + 64:
+        return False
+    os.makedirs(chat.CHAT_DIR, mode=0o700, exist_ok=True)
+    tmp = path + ".part-" + secrets.token_hex(4)
+    with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as f:
+        f.write(data)
+    with _db() as c, c:
+        if not c.execute("SELECT 1 FROM chat_file WHERE id=?", (fid,)).fetchone():       # inzwischen geloescht
+            os.remove(tmp)
+            return False
+        os.replace(tmp, path)
+        c.execute("UPDATE chat_file_fed SET cached=1 WHERE id=?", (fid,))
+    return True
+
+
+def _prefetch_after(c, files):
+    small = [f["id"] for f in files if f["size"] <= PREFETCH_MAX]
+    if small:
+        c.after_commit(lambda: _submit(_prefetch, small))
+
+
+def _prefetch(fids):
+    for f in fids:
+        try:
+            fetch_file(f)
+        except OSError as ex:
+            print(f"fed_chat: Anhang vorab: {type(ex).__name__}", flush=True)
+
+
+# =====================================================================================================
+# Fuer die eigenen Konten (aufgerufen aus saga.chat: Endpunkte /api/chats/... bei Chats mit v=2)
+# =====================================================================================================
+def to_home(ch, body):
+    """Auftrag an das Heim: synchron (harte Frist) - ist es nicht erreichbar oder wartet schon etwas in der Warteschlange
+    dieses Chats, in die Warteschlange (Reihenfolge je Chat, bis 3 Tage). -> (status, antwort) bzw. (None, None) = wartet."""
+    with _db() as c:
+        p = F.peer_by(c, "id", ch["home_peer"])
+        queued = bool(c.execute("SELECT 1 FROM fed_outbox WHERE peer_id=? AND chain=? LIMIT 1", (ch["home_peer"], chain_up(ch["ref"]))).fetchone())
+    if not p:
+        return 404, {"error": "gone"}
+    if not queued:
+        status, d = sync_call(p, body)
+        if status is not None and status != 429 and status < 500:
+            return status, d if isinstance(d, dict) else {}
+    with _db() as c, c:
+        F._enqueue(c, p["id"], {"type": "chat.op", "op_body": body}, chain=chain_up(ch["ref"]), express=False)
+    return None, None
+
+
+def _ro_error(c, ch):
+    """Warum hier gerade nicht geschrieben werden kann - oder None."""
+    if ch["fstate"] == "gone":
+        return t("Das Konto der anderen Person gibt es nicht mehr.")
+    if ch["fstate"]:
+        return t("Diese Unterhaltung ist schreibgeschützt – die Verbindung zum anderen Saga-Server wurde getrennt.")
+    for p in ([F.peer_by(c, "id", ch["home_peer"])] if ch["home_peer"] else participants(c, ch)):
+        if not peer_ok(p):
+            return t("Chats mit {host} sind gerade nicht möglich (vom Admin abgeschaltet oder Verbindung getrennt).", host=p["host"] if p else "?")
+    return None
+
+
+def create_dm(uid, h, device=""):
+    """Direkt-Chat mit einer Person einer anderen Instanz ('~x@host'). Unser Server wird das Heim; beim Gegenueber erscheint
+    der Chat als Nachrichtenanfrage. Gibt es dort schon einen gemeinsamen Chat, wird der genommen. -> Antwort (JSONResponse)"""
+    n, host = split_handle(str(h or "").strip().lower())
+    if not n or not on():
+        return _bad(t("ungültige Angabe"))
+    h = f"{n}@{host}"
+    p_ = principal(h)
+    key = "|".join(sorted([uid, p_]))
+    with _db() as c, c:
+        p = F.peer_by(c, "host", host)
+        if not peer_ok(p):
+            return _bad(t("Mit Personen auf {host} sind Chats nicht möglich.", host=host), 403)
+        if blocked(c, uid, h):
+            return _bad(t("Du hast diese Person bzw. ihren Server gesperrt – erst in „Chats & Geräte“ entsperren."), 403)
+        ex = chat._row(c.execute(f"SELECT {chat.C_COLS} FROM chat WHERE dm_key=?", (key,)).fetchone())
+        if ex:
+            return _reopen(c, uid, ex, device)
+        if c.execute("SELECT COUNT(*) FROM chat WHERE created_by=? AND created>?", (uid, time.time() - 3600)).fetchone()[0] >= 60:
+            return _bad(t("Zu viele neue Chats in kurzer Zeit – bitte kurz warten."), 429)
+        mh, name = my_handle(c, uid), F.display_of(c, uid) or ""
+    ref = secrets.token_hex(16) + "@" + F.SELF_HOST
+    status, d = sync_call(p, {"op": "request", "ref": ref, "kind": "dm", "from": {"handle": mh, "name": name}, "to": h})
+    if status is None:
+        return _bad(t("Der Server {host} ist gerade nicht erreichbar.", host=host), 502)
+    if status == 404:
+        return _bad(t("Diese Person gibt es auf {host} nicht (mehr).", host=host), 404)
+    if status == 429:
+        return _bad(t("Zu viele neue Chats in kurzer Zeit – bitte kurz warten."), 429)
+    if status != 200 or not isinstance(d, dict):
+        return _bad(t("Mit dieser Person ist kein Chat möglich."), 403)
+    use, home = ref, None
+    if isinstance(d.get("existing"), str) and split_ref(d["existing"])[1] == host:
+        use, home = d["existing"], p["id"]
+    now = time.time()
+    with _db() as c, c:
+        ex = chat._row(c.execute(f"SELECT {chat.C_COLS} FROM chat WHERE dm_key=? FOR UPDATE", (key,)).fetchone())
+        if ex and ex["ref"] != use:              # gleichzeitig von beiden Seiten begonnen: die kleinere Kennung gilt ueberall
+            if ex["v"] == 2 and not ex["fstate"] and ex["ref"] < use:
+                return _reopen(c, uid, ex, device)
+            if c.execute("SELECT 1 FROM chat_msg WHERE chat_id=? LIMIT 1", (ex["id"],)).fetchone():
+                c.execute("UPDATE chat SET dm_key=NULL, fstate=CASE WHEN fstate='' THEN 'old' ELSE fstate END WHERE id=?", (ex["id"],))
+            else:
+                drop_chat(c, ex)
+            ex = None
+        if ex:
+            return _reopen(c, uid, ex, device)
+        _person(c, p, h)
+        cid = c.execute("INSERT INTO chat (kind, dm_key, created_by, created, v, ref, home_peer) VALUES ('dm',?,?,?,2,?,?)",
+                        (key, uid, now, use, home)).lastrowid
+        c.execute("INSERT INTO chat_member (chat_id, uid, joined, state) VALUES (?,?,?,'ok')", (cid, uid, now))
+        c.execute("INSERT INTO chat_member (chat_id, uid, joined, state) VALUES (?,?,?,'ok')", (cid, p_, now))
+        F.log(c, "chat.started", p, f"chat={cid}" + (" (existing)" if home else ""))
+        ch = chat._load(c, cid)
+        chat._changed(c, cid, [uid])
+        out = _reopen(c, uid, ch, device)
+    if home:
+        _submit(fill_gap, p["id"], use, None)
+    return out
+
+
+def _reopen(c, uid, ch, device=""):
+    """Vorhandener Direkt-Chat wird (wieder) geoeffnet: abgelehnt/ausgeblendet -> wieder da (Annehmen beim Heim)."""
+    m = chat._member(c, ch["id"], uid)
+    if not m:
+        return _bad("not found", 404)
+    if m.get("state") != "ok":
+        c.execute("UPDATE chat_member SET state='ok' WHERE chat_id=? AND uid=?", (ch["id"], uid))
+        if ch["home_peer"] is not None:
+            F._enqueue(c, ch["home_peer"], {"type": "chat.op", "op_body": {"op": "accept", "ref": ch["ref"], "actor": my_handle(c, uid)}},
+                       chain=chain_up(ch["ref"]))
+            hp, ref = ch["home_peer"], ch["ref"]
+            c.after_commit(lambda: _submit(fill_gap, hp, ref, None))
+    c.execute("UPDATE chat_pref SET hidden=0 WHERE chat_id=? AND uid=? AND hidden<>0", (ch["id"], uid))
+    mem = chat.members(c, ch["id"])
+    return chat._no_store({"chat": chat._chat_dict(c, uid, ch, mem, chat._member(c, ch["id"], uid), chat._my_device(c, uid, str(device or "")), full=True)})
+
+
+def send(uid, cid, b):
+    """POST /api/chats/{cid}/messages fuer foederierte Chats: {id, ts, sender_device, body_ct, sig, reply_to?, ai?, ai_reply?,
+    keys: {'dev:<id>@host'|'backup:<handle>': sealed}, files: [ids]}. Signatur saga-chat/v2 (chat_ref, eigener Handle)."""
+    m = msg_in(b)
+    keys, fids, ai_ref = b.get("keys"), b.get("files") or [], b.get("ai_reply")
+    if not m or not isinstance(fids, list) or len(fids) > chat.FILE_IDS_PER_MSG or any(not isinstance(f, str) or not chat._FID.fullmatch(f) for f in fids):
+        if isinstance(b.get("body_ct"), str) and len(b["body_ct"]) > chat.MSG_MAX:
+            return _bad(t("Nachricht zu groß."), 413)
+        return _bad(t("ungültige Angabe"))
+    if ai_ref is not None and not (isinstance(ai_ref, str) and _HEX32.fullmatch(ai_ref) and m["ai"]):
+        return _bad(t("ungültige Angabe"))
+    if not _keys_ok(keys):
+        return _bad(t("ungültige Angabe"))
+    if abs(m["ts"] / 1000 - time.time()) > chat.SKEW:
+        return _bad(t("Die Uhrzeit dieses Geräts weicht zu stark ab."), 400)
+    with _db() as c:
+        ch, mm, mem, err = chat._chat_for(c, uid, cid, do_sync=False)
+        if err:
+            return err
+        ro = _ro_error(c, ch)
+        if ro:
+            return _bad(ro, 403)
+        mh = my_handle(c, uid)
+        m["sender_handle"] = mh
+        mine = local_entry(c, mh)
+        handles = [member_handle(c, u) for u in mem]
+        if not c.execute("SELECT 1 FROM chat_device WHERE id=? AND uid=? AND revoked_at IS NULL", (m["sender_device"], uid)).fetchone():
+            return _bad(t("Dieses Gerät ist für Chats nicht (mehr) angemeldet."), 403)
+        if not mine or not any(d["id"] == m["sender_device"] for d in mine["devices"]):
+            return _bad(t("Dieses Gerät hat noch kein Zertifikat für Chats über Servergrenzen – bitte die Seite neu laden."), 403)
+        if not sig_ok(mine, ch["ref"], m):
+            return _bad(t("Ungültige Signatur."), 400)
+        if c.execute("SELECT COUNT(*) FROM chat_msg WHERE sender_uid=? AND created>?", (uid, time.time() - 60)).fetchone()[0] >= chat.MSG_RATE:
+            return _bad(t("Zu viele Nachrichten in kurzer Zeit – bitte kurz warten."), 429)
+        if c.execute("SELECT 1 FROM chat_msg WHERE id=?", (m["id"],)).fetchone():
+            return _bad(t("Diese Nachricht gibt es schon."), 409)
+        if m["ai"] and not c.execute("SELECT 1 FROM chat_ai WHERE chat_id=?", (ch["id"],)).fetchone():
+            return _bad(t("Die KI ist in diesem Chat nicht erlaubt."), 403)
+        if ai_ref and not c.execute("SELECT 1 FROM chat_ai_reply WHERE id=? AND chat_id=? AND uid=? AND msg_id IS NULL AND created>? AND sha256=?",
+                                    (ai_ref, ch["id"], uid, time.time() - chat.AI_REPLY_TTL, m["ai"])).fetchone():
+            return _bad(t("Diese KI-Antwort gibt es nicht (mehr) oder sie wurde schon gesendet."), 409)
+        files = []
+        if fids:
+            files = [{"id": r[0], "size": r[1]} for r in c.execute(
+                f"SELECT id, size FROM chat_file WHERE chat_id=? AND uid=? AND msg_seq IS NULL AND id IN ({','.join('?' * len(fids))})",
+                (ch["id"], uid, *fids)).fetchall()]
+            if len(files) != len(set(fids)):
+                return _bad(t("Anhang nicht gefunden."), 400)
+    ents = entries(handles)                          # Netzwerk: Schluessel der anderen (Zwischenspeicher)
+    if set(keys) != want_of(ents):
+        return chat._no_store({"error": t("Die Mitglieder oder ihre Geräte haben sich geändert – bitte erneut senden."), "handles": handles}, 409)
+    home = ch["home_peer"] is None
+    with _db() as c, c:
+        ch = chat._load(c, ch["id"])
+        c.execute("SELECT 1 FROM chat WHERE id=? FOR UPDATE", (ch["id"],))
+        if c.execute("SELECT 1 FROM chat_msg WHERE id=?", (m["id"],)).fetchone():
+            return _bad(t("Diese Nachricht gibt es schon."), 409)
+        if ai_ref and not c.execute("SELECT 1 FROM chat_ai_reply WHERE id=? AND msg_id IS NULL FOR UPDATE", (ai_ref,)).fetchone():
+            return _bad(t("Diese KI-Antwort gibt es nicht (mehr) oder sie wurde schon gesendet."), 409)
+        if mm.get("state") != "ok":                 # wer schreibt, nimmt die Anfrage an
+            c.execute("UPDATE chat_member SET state='ok' WHERE chat_id=? AND uid=?", (ch["id"], uid))
+            if not home:
+                F._enqueue(c, ch["home_peer"], {"type": "chat.op", "op_body": {"op": "accept", "ref": ch["ref"], "actor": mh}}, chain=chain_up(ch["ref"]))
+        fseq = c.execute("UPDATE chat SET fseq=fseq+1 WHERE id=? RETURNING fseq", (ch["id"],)).fetchone()[0] if home else None
+        seq = store(c, ch, m, uid, local_keys(c, ch, keys), files, fseq=fseq, fstate=None if home else "pending", all_keys=keys if home else None)
+        if ai_ref:
+            c.execute("UPDATE chat_ai_reply SET msg_id=? WHERE id=?", (m["id"], ai_ref))
+        deliver(c, ch, seq, m["id"], uid)
+        if home:
+            fanout(c, ch, {"type": "chat.msg", "fseq": fseq, "msg": m, "files": files, "sender_keys": mine}, keys=keys, declined=False)
+    out = {"ok": True, "seq": seq, "fseq": fseq, "created": time.time()}
+    if home:
+        print(f"chat: Nachricht in Chat {ch['id']} (foederiert, Heim, {len(keys)} Empfaenger)", flush=True)
+        return chat._no_store(out)
+    status, d = to_home(ch, {"op": "send", "ref": ch["ref"], "msg": m, "keys": keys, "files": files, "sender_keys": mine})
+    with _db() as c, c:
+        if status == 200:
+            c.execute("UPDATE chat_msg SET fseq=COALESCE(fseq, ?), fstate=NULL WHERE seq=?", (d.get("fseq"), seq))
+            out["fseq"] = d.get("fseq")
+        elif status is None:
+            out["pending"] = True
+        elif status == 409 and d.get("error") == "recipients":
+            c.execute("DELETE FROM chat_msg WHERE seq=?", (seq,))
+            c.execute("UPDATE chat_file SET msg_seq=NULL WHERE msg_seq=?", (seq,))
+            if ai_ref:
+                c.execute("UPDATE chat_ai_reply SET msg_id=NULL WHERE id=?", (ai_ref,))
+            return chat._no_store({"error": t("Die Mitglieder oder ihre Geräte haben sich geändert – bitte erneut senden."),
+                                   "handles": handles, "fresh": True}, 409)
+        else:
+            c.execute("UPDATE chat_msg SET fstate='failed' WHERE seq=?", (seq,))
+            if status == 404:
+                c.execute("UPDATE chat SET fstate='old', dm_key=NULL WHERE id=? AND fstate=''", (ch["id"],))
+                chat._changed(c, ch["id"], [uid])
+            return _bad(t("Nicht zugestellt: der andere Saga-Server hat die Nachricht abgewiesen ({err}).", err=str(d.get("error") or status)), 409)
+    print(f"chat: Nachricht in Chat {ch['id']} (foederiert, an {('Warteschlange' if out.get('pending') else 'Heim')})", flush=True)
+    return chat._no_store(out)
+
+
+def delete_msg(uid, ch, mid):
+    """Eigene Nachricht fuer alle loeschen: hier sofort, beim Heim (das es allen meldet) synchron bzw. ueber die Warteschlange."""
+    with _db() as c, c:
+        r = c.execute("SELECT sender_uid FROM chat_msg WHERE id=? AND chat_id=? AND kind='msg'", (mid, ch["id"])).fetchone()
+        if not r:
+            return _bad("not found", 404)
+        if r[0] != uid:
+            return _bad(t("Nur eigene Nachrichten lassen sich löschen."), 403)
+        drop_msg(c, ch, mid)
+        mh = my_handle(c, uid)
+        if ch["home_peer"] is None:
+            fanout(c, ch, {"type": "chat.msg.del", "mid": mid})
+        else:
+            F._enqueue(c, ch["home_peer"], {"type": "chat.op", "op_body": {"op": "del", "ref": ch["ref"], "id": mid, "actor": mh}},
+                       chain=chain_up(ch["ref"]))
+    return chat._no_store({"ok": True})
+
+
+def delete_all(uid, ch):
+    """Direkt-Chat fuer beide loeschen: hier sofort; das Heim loescht ihn bei allen (Heim = wir: Ereignis an die anderen)."""
+    with _db() as c, c:
+        mh = my_handle(c, uid)
+        by = {"username": uid, "name": sharing.names(c, [uid]).get(uid, uid)}
+        if ch["home_peer"] is None:
+            fanout(c, ch, {"type": "chat.removed", "by": {"handle": mh, "name": by["name"]}})
+        else:
+            F._enqueue(c, ch["home_peer"], {"type": "chat.op", "op_body": {"op": "drop", "ref": ch["ref"], "actor": mh}}, chain=chain_up(ch["ref"]))
+        chat._drop_notifs(c, local_members(c, ch["id"]), ch["id"])
+        removed_live(c, ch, by)
+        drop_chat(c, ch)
+    print(f"chat: foederierter Chat {ch['id']} von {uid} fuer alle geloescht", flush=True)
+    return chat._no_store({"ok": True, "scope": "all", "removed": True})
+
+
+def set_meta(uid, ch, want):
+    """Frist ({retention_s}) bzw. KI ({ai}) fuer alle: beim Heim (synchron, sonst Warteschlange). -> (fehler oder None, wartet)"""
+    with _db() as c:
+        ro = _ro_error(c, ch)
+        mh = my_handle(c, uid)
+    if ro:
+        return _bad(ro, 403), False
+    if ch["home_peer"] is None:
+        with _db() as c, c:
+            ch2 = by_ref(c, ch["ref"], lock=True)
+            if apply_meta(c, ch2, want, uid):
+                fanout(c, ch2, dict({"type": "chat.meta", "by": mh}, **want))
+        return None, False
+    status, d = to_home(ch, dict({"op": "meta", "ref": ch["ref"], "actor": mh}, **want))
+    if status is None:
+        return None, True
+    if status != 200:
+        return _bad(t("Der andere Saga-Server hat die Änderung abgewiesen ({err}).", err=str((d or {}).get("error") or status)), 409), False
+    with _db() as c, c:
+        ch2 = by_ref(c, ch["ref"], lock=True)
+        if ch2:
+            apply_meta(c, ch2, want, uid)
+    return None, False
+
+
+def typing(uid, ch):
+    with _db() as c:
+        mh = my_handle(c, uid)
+        ps = [ch["home_peer"]] if ch["home_peer"] is not None else [p["id"] for p in participants(c, ch)]
+    for pid in ps:
+        _volatile(pid, {"op": "typing", "ref": ch["ref"], "actor": mh})
+
+
+def request_action(uid, cid, action, scope="person"):
+    """Nachrichtenanfrage: accept | decline | block (scope person|instance). Ablehnen/Sperren erfaehrt die andere Seite nicht."""
+    if action not in ("accept", "decline", "block") or scope not in ("person", "instance"):
+        return _bad(t("ungültige Angabe"))
+    with _db() as c, c:
+        ch, m, mem, err = chat._chat_for(c, uid, cid, do_sync=False)
+        if err:
+            return err
+        if ch["v"] != 2 or ch["kind"] != "dm":
+            return _bad(t("ungültige Angabe"))
+        other = next((u for u in mem if sharing.is_remote(u)), None)
+        mh = my_handle(c, uid)
+        if action == "accept":
+            return _reopen(c, uid, ch)
+        targets = [handle_of(other)] if other else []
+        if action == "block" and other:
+            tg = handle_of(other) if scope == "person" else split_handle(handle_of(other))[1]
+            c.execute("INSERT INTO fed_chat_block (uid, target, created) VALUES (?,?,?) ON CONFLICT DO NOTHING", (uid, tg, time.time()))
+            if scope == "instance":                  # alle offenen Anfragen von dort gleich mit ablehnen
+                host = split_handle(handle_of(other))[1]
+                for (cid2, u2) in c.execute("SELECT m.chat_id, o.uid FROM chat_member m JOIN chat ch ON ch.id=m.chat_id JOIN chat_member o "
+                                            "ON o.chat_id=m.chat_id AND o.uid LIKE '@%' WHERE m.uid=? AND m.state='request' AND ch.v=2",
+                                            (uid,)).fetchall():
+                    if split_handle(handle_of(u2))[1] == host and cid2 != ch["id"]:
+                        _decline(c, uid, chat._load(c, cid2), mh)
+            F.log(c, "chat.block", None, scope, host=split_handle(handle_of(other))[1])
+        _decline(c, uid, ch, mh)
+        return chat._no_store({"ok": True, "state": "declined", "blocked": action == "block", "targets": targets})
+
+
+def _decline(c, uid, ch, mh):
+    c.execute("UPDATE chat_member SET state='declined' WHERE chat_id=? AND uid=?", (ch["id"], uid))
+    chat._drop_notifs(c, [uid], ch["id"])
+    if ch["home_peer"] is not None:
+        F._enqueue(c, ch["home_peer"], {"type": "chat.op", "op_body": {"op": "decline", "ref": ch["ref"], "actor": mh}}, chain=chain_up(ch["ref"]))
+    chat._direct(c, [uid], "chat.changed", {"chat_id": ch["id"]})
+
+
+@router.get("/api/chat/blocks")
+def api_blocks(request: Request):
+    """Gesperrte Personen ('~x@host') und Server ('host')."""
+    uid, err = chat._me(request)
+    if err:
+        return err
+    with _db() as c:
+        out = []
+        for tg, at in c.execute("SELECT target, created FROM fed_chat_block WHERE uid=? ORDER BY created DESC", (uid,)).fetchall():
+            if tg.startswith("~"):
+                lab = label_of(c, principal(tg))
+                out.append({"target": tg, "kind": "person", "name": lab["name"], "host": lab["host"], "label": lab["label"], "created": at})
+            else:
+                out.append({"target": tg, "kind": "instance", "name": tg, "host": tg, "label": tg, "created": at})
+    return chat._no_store({"blocks": out})
+
+
+@router.delete("/api/chat/blocks")
+def api_unblock(request: Request, target: str = ""):
+    uid, err = chat._me(request)
+    if err:
+        return err
+    with _db() as c, c:
+        n = c.execute("DELETE FROM fed_chat_block WHERE uid=? AND target=?", (uid, target.strip().lower())).rowcount
+    return chat._no_store({"ok": True, "deleted": n})
+
+
+@router.post("/api/chats/{cid}/request")
+async def api_request(cid: int, request: Request):
+    """Nachrichtenanfrage beantworten: {action: 'accept'|'decline'|'block', scope?: 'person'|'instance'}."""
+    uid, err = chat._me(request)
+    if err:
+        return err
+    b = await _body(request) or {}
+    return await run_in_threadpool(request_action, uid, cid, b.get("action"), b.get("scope") or "person")
+
+
+def recipients(c, uid, ch, mem):
+    """GET /api/chats/{cid}/recipients bei foederierten Chats: Handles der Mitglieder (Schluessel: /api/chat/v2/keys)."""
+    out = []
+    for u in mem:
+        h = member_handle(c, u)
+        lab = label_of(c, u) if sharing.is_remote(u) else {"name": sharing.names(c, [u]).get(u, u), "host": F.SELF_HOST}
+        out.append({"username": u, "handle": h, "name": lab["name"], "host": lab["host"], "me": u == uid})
+    return chat._no_store({"chat_id": ch["id"], "v": 2, "ref": ch["ref"], "handles": [x["handle"] for x in out], "recipients_v2": out})
+
+
+def chat_extra(c, uid, ch, d, mem, m):
+    """Zusatzfelder fuer foederierte Chats in /api/chats und /api/chats/{cid}."""
+    hh = home_host(c, ch)
+    ro = _ro_error(c, ch)
+    d.update(v=2, ref=ch["ref"], fed=True, home=hh, home_self=ch["home_peer"] is None, my_handle=my_handle(c, uid),
+             state=(m or {}).get("state") or "ok", request=(m or {}).get("state") == "request", readonly=bool(ro), readonly_reason=ro)
+    out = []
+    av = sharing.names(c, mem)
+    for x in d["members"]:
+        u = x["username"]
+        if sharing.is_remote(u):
+            lab = label_of(c, u)
+            x.update(name=lab["name"], label=lab["label"], host=lab["host"], handle=handle_of(u), remote=True)
+        else:
+            x.update(handle=my_handle(c, u), host=F.SELF_HOST)
+        out.append(x)
+    d["members"] = out
+    if ch["kind"] == "dm":
+        o = next((x for x in out if x.get("remote")), None) or {}
+        d["name"] = o.get("name") or d.get("name")
+        d["peer"] = {"username": o.get("username"), "handle": o.get("handle"), "name": o.get("name") or "?", "label": o.get("label"),
+                     "host": o.get("host"), "avatar": av.avatar(o.get("username")) if o.get("username") else None}
+        d["delete_for_all"] = "chat"
+    return d
+
+
+def account_gone(c, uid):
+    """Kontoloeschung (aus chat.delete_account, vor dem Loeschen): foederierte Chats bei allen beenden."""
+    try:
+        mh = my_handle(c, uid)
+    except F.FedError:
+        return
+    nm = F.display_of(c, uid) or ""
+    for (cid,) in c.execute("SELECT m.chat_id FROM chat_member m JOIN chat ch ON ch.id=m.chat_id WHERE m.uid=? AND ch.v=2", (uid,)).fetchall():
+        ch = chat._load(c, cid)
+        if not ch or ch["fstate"] in ("readonly", "gone"):
+            continue
+        if ch["home_peer"] is None:
+            fanout(c, ch, {"type": "chat.removed", "by": {"handle": mh, "name": nm}})
+        else:
+            F._enqueue(c, ch["home_peer"], {"type": "chat.op", "op_body": {"op": "drop", "ref": ch["ref"], "actor": mh}}, chain=chain_up(ch["ref"]))
+
+
+def _peer_gone(c, p):
+    """Verbindung getrennt (saga.federation.cleanup_peer): Chats mit Heim bzw. Personen dort schreibgeschuetzt, Wartendes
+    als nicht zugestellt, Anrufe enden (saga.fed_calls)."""
+    tail = "@" + p["host"]
+    rows = c.execute("SELECT DISTINCT ch.id FROM chat ch LEFT JOIN chat_member m ON m.chat_id=ch.id AND m.uid LIKE '@%' "
+                     "WHERE ch.v=2 AND ch.fstate='' AND (ch.home_peer=? OR right(m.uid, ?)=?)", (p["id"], len(tail), tail)).fetchall()
+    for (cid,) in rows:
+        c.execute("UPDATE chat SET fstate='readonly' WHERE id=?", (cid,))
+        c.execute("UPDATE chat_msg SET fstate='failed' WHERE chat_id=? AND fstate='pending'", (cid,))
+        chat._changed(c, cid, local_members(c, cid))
+    if rows:
+        F.log(c, "chat.readonly", p, f"chats={len(rows)}")
+
+
+def _person_gone(c, peer, name, deleted=False):
+    """Person einer anderen Instanz geloescht: Direkt-Chats mit ihr bleiben lesbar, sind aber schreibgeschuetzt."""
+    if not deleted or not F.PSEUDO_RE.fullmatch(name or ""):
+        return
+    p_ = principal(f"{name}@{peer['host']}")
+    for (cid,) in c.execute("SELECT ch.id FROM chat ch JOIN chat_member m ON m.chat_id=ch.id WHERE ch.v=2 AND ch.kind='dm' AND m.uid=? "
+                            "AND ch.fstate=''", (p_,)).fetchall():
+        c.execute("UPDATE chat SET fstate='gone' WHERE id=?", (cid,))
+        chat._changed(c, cid, local_members(c, cid))
+
+
+def _keys_changed(c, peer, ev):
+    """Schluessel einer fremden Person geaendert: Zwischenspeicher veraltet (saga.fed_keys) + Live-Ereignis an unsere
+    Konten mit Chats mit ihr (Apps pruefen TOFU neu)."""
+    r = FK._ev_changed(c, peer, ev)
+    h = ev.get("handle")
+    if r == "ok":
+        full = f"{h}@{peer['host']}"
+        uids = [u for (u,) in c.execute("SELECT DISTINCT m.uid FROM chat_member m JOIN chat_member o ON o.chat_id=m.chat_id WHERE o.uid=? "
+                                        "AND m.uid NOT LIKE '@%'", (principal(full),)).fetchall()]
+        if uids:
+            chat._direct(c, uids, "chat.keys.changed", {"handle": full})
+    return r
+
+
+F.EV2_HANDLERS["chat.keys.changed"] = _keys_changed
+
+
+def _local_keys_changed(c, uid, **_):
+    """Eigene Schluessel geaendert: andere Konten DIESES Servers mit foederierten Chats nicht betroffen; die Apps des
+    Kontos selbst laden ihre Zertifikate neu (chat.keys.changed mit eigenem Handle)."""
+    r = c.execute("SELECT handle FROM fed_handle WHERE uid=?", (uid,)).fetchone()
+    if r:
+        chat._direct(c, [uid], "chat.keys.changed", {"handle": FK.full_handle(r[0]), "own": True})
+
+
+bus.on("chat.keys.changed", _local_keys_changed)
+
+
+def periodic():
+    """Warteschlange: was laenger als die Aufbewahrung des Ausgangskorbs wartet, gilt als nicht zugestellt; verwaiste
+    Verweise auf fremde Anhaenge weg."""
+    now = time.time()
+    if now - _st["t"] < 300:
+        return
+    _st["t"] = now
+    with _db() as c, c:
+        rows = c.execute("UPDATE chat_msg SET fstate='failed' WHERE fstate='pending' AND created<? RETURNING chat_id, sender_uid, id, seq",
+                         (now - F.OUTBOX_KEEP - 600,)).fetchall()
+        for cid, u, mid, seq in rows:
+            chat._direct(c, [u], "chat.message", {"chat_id": cid, "seq": seq, "id": mid, "sender": u, "failed": True})
+        c.execute("DELETE FROM chat_file_fed x WHERE NOT EXISTS (SELECT 1 FROM chat_file f WHERE f.id=x.id)")
+
+
+_st = {"t": 0.0}
+F.PERIODIC.append(periodic)
+F.PEER_GONE_HOOKS.append(_peer_gone)
+F.PERSON_GONE_HOOKS.append(_person_gone)
+chat.FED = sys.modules[__name__]

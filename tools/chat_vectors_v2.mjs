@@ -55,8 +55,16 @@ const fe = C.encryptFileV2(f.chat_ref, u(f.plain_b64), { key: u(f.key), nonce: u
 ok('file', b(fe.blob) === f.blob && b(C.decryptFileV2(f.chat_ref, u(f.blob), f.key)) === f.plain_b64);
 ok('safety number v2', C.safetyNumberV2(s.handle_a, u(s.ident_a), s.handle_b, u(s.ident_b)) === s.number
   && C.safetyNumberV2(s.handle_b, u(s.ident_b), s.handle_a, u(s.ident_a)) === s.number);
+const ds = v.device_set;
+ok('device set', sodium.to_hex(C.deviceSetMsg(ds.handle, ds.ver, ds.ids)) === ds.msg_hex && C.deviceSetSig(ds.handle, ik.privateKey, ds.ver, ds.ids).sig === ds.sig
+  && C.verifyDeviceSet(ds.handle, ik.publicKey, { ver: ds.ver, ids: ds.ids, sig: ds.sig }));
+const ce2 = C.checkKeysV2(i.handle, Object.assign({}, entry, { dset: { ver: ds.ver, ids: [d.id], sig: C.deviceSetSig(i.handle, ik.privateKey, ds.ver, [d.id]).sig } }));
+ok('checkKeysV2 mit signierter Geraete-Liste (Version)', ce2 && ce2.ver === ds.ver && ce2.devices.every((x) => !x.revoked));
+const ce3 = C.checkKeysV2(i.handle, Object.assign({}, entry, { devices: [Object.assign({}, entry.devices[0])], dset: { ver: 2, ids: [], sig: C.deviceSetSig(i.handle, ik.privateKey, 2, []).sig } }));
+ok('checkKeysV2: Server unterdrueckt Widerruf nicht', ce3 && ce3.devices[0].revoked === true);
 for (const r of v.reject) {
   let good;
+  if (r.what === 'device_set') { ok('reject: ' + r.case, !C.verifyDeviceSet(r.handle, ik.publicKey, { ver: r.ver, ids: r.ids, sig: r.sig })); continue; }
   if (r.what === 'handle_cert') good = C.checkKeysV2(r.handle, Object.assign({}, entry, { handle: r.handle, sig: r.sig })) !== null;
   else if (r.what === 'device_cert') good = (C.checkKeysV2(i.handle, Object.assign({}, entry, { devices: [{ id: d.id, enc_pub: d.enc_pk, sign_pub: d.sign_pk, fed_sig: r.fed_sig }] })) || { devices: [] }).devices.length > 0
     && r.handle === i.handle;
@@ -69,7 +77,7 @@ for (const r of v.reject) {
 }
 for (const r of v.tofu.rules) {
   if (r.step === 'bad_cert') continue;
-  const t = C.tofuV2(r.stored, r.seen);
+  const t = C.tofuV2(r.stored, r.seen, r.ver);
   ok('tofu: ' + r.step, t.result === r.result && JSON.stringify(t.store || null) === JSON.stringify(r.store || null));
 }
 console.log(`VEKTOREN v2 (libsodium.js) ${res.filter(Boolean).length}/${res.length}` + (res.every(Boolean) ? ' - ALLES GRUEN' : ' - FEHLER'));

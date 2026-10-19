@@ -82,6 +82,13 @@ try:
         c.execute(db.MIGRATIONS[7]); c.execute(db.MIGRATIONS[7])
         cols = {r[0] for r in c.execute("SELECT column_name FROM information_schema.columns WHERE table_name IN ('fed_peer','fed_outbox')")}
     ok("Migration 7 beliebig oft ausfuehrbar, Spalten da", {"protocol", "caps", "opts", "dir_seq", "chain", "ev_id"} <= cols)
+    # 2.3: Migration 8 (foederierte Chats/Anrufe: Spalten in chat, chat_member, chat_msg, chat_call) - idempotent
+    ok("Schema 2.3: Migration 8 vorhanden", db.SCHEMA_VERSION >= 8 and 8 in db.MIGRATIONS)
+    with psycopg.connect(db.DATABASE_URL) as c:
+        c.execute(db.MIGRATIONS[8]); c.execute(db.MIGRATIONS[8])
+        cols = {r[0] for r in c.execute("SELECT column_name FROM information_schema.columns WHERE table_name IN "
+                                        "('chat','chat_member','chat_msg','chat_call')")}
+    ok("Migration 8 beliebig oft ausfuehrbar, Spalten da", {"ref", "home_peer", "fseq", "fstate", "state", "sender_handle", "ai", "peer_id"} <= cols)
     real = db.SCHEMA_VERSION
     db.SCHEMA_VERSION = 5                          # so sieht 2.0.x / eine aeltere 2.1-Testversion die Datenbank
     try:
