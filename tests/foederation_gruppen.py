@@ -225,6 +225,24 @@ def part_page(adm, pab, pba, pac, pca, anna, carl, bert, cleo, dora):
        len(old) == 1 and not old[0].get("sender_handle") and C.decrypt(lc["id"], old[0], *((carl.dev["enc_pk"], carl.dev["enc_sk"]) if old[0]["key_for"] == "device"
                                                                                               else (carl.ident["backup_pk"], carl.ident["backup_sk"])))["text"] == "alt (v1)")
     ok("A: Systemzeile 'ab jetzt ueber Servergrenzen'", any(x.get("type") == "fed" for x in sys_lines(anna, lc["id"])))
+    # Seiten-Chat geoeffnet, bevor die Freigabe beim anderen Server ankam: "kein Handle" gilt nur kurz (nicht 10 Minuten) und
+    # eine Aenderung der Freigabe verwirft es sofort
+    pr = f"@bert@{HB}"
+    for title, age, reshare in (("Zu frueh geoeffnet", 40, False), ("Freigabe geaendert", 0, True)):
+        s, d = api("a", "fa-anna", "POST", "/api/notes", {"title": title})
+        p3 = d["id"]
+        n0 = len(sql("b", "SELECT 1 FROM fed_inbound WHERE target='fb-bert'"))
+        api("a", "fa-anna", "PUT", f"/api/notes/{p3}/shares", {"type": "remote", "target": pr, "role": "view"})
+        wait(lambda: len(sql("b", "SELECT 1 FROM fed_inbound WHERE target='fb-bert'")) > n0, 15)
+        sql("a", "INSERT INTO fed_name_handle (principal, peer_id, handle, name, fetched) VALUES (?,?,NULL,'',?) ON CONFLICT (principal) "
+                 "DO UPDATE SET handle=NULL, fetched=EXCLUDED.fetched", (pr, pab, time.time() - age))
+        if reshare:
+            api("a", "fa-anna", "PUT", f"/api/notes/{p3}/shares", {"type": "remote", "target": pr, "role": "comment"})
+        s, d = api("a", "fa-anna", "POST", "/api/chats", {"kind": "page", "note_id": p3, "device": anna.dev["id"]})
+        c3 = d.get("chat") or {}
+        ok(f"A: {title}: frueheres 'kein Handle' haelt den Seiten-Chat nicht auf v1 ({s}, v={c3.get('v')})", s == 200 and wait(
+            lambda: (lambda x: x.get("v") == 2 and any(mm.get("host") == HB for mm in x.get("members", [])))(
+                api("a", "fa-anna", "GET", f"/api/chats/{c3.get('id')}")[1].get("chat") or {}), 10))
     return ch
 
 

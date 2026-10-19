@@ -1651,6 +1651,7 @@ def chat_extra(c, uid, ch, d, mem, m):
 # Gruppen anderer Server in Seiten-Chats: deren Server meldet die Mitglieder (Auftrag 'resolve') - nur, wenn die Gruppe Ziel
 # einer Freigabe dieses Servers ist; ebenso Handle zu einem oeffentlichen Namen nur fuer Personen mit Freigabe.
 RESOLVE_TTL = 600                 # Mitglieder fremder Gruppen / Handles hoechstens so lange zwischenspeichern
+RESOLVE_NEG_TTL = 30              # "kein Handle"/leere Gruppe nur kurz (die Freigabe ist dort evtl. noch nicht angekommen)
 _res = {"pending": set(), "last": {}}
 
 
@@ -1791,14 +1792,14 @@ def page_remote(c, ch):
             r = c.execute("SELECT handle, fetched FROM fed_name_handle WHERE principal=?", (f"@{name}@{p['host']}",)).fetchone()
             if r and r[0]:
                 out.add(principal(f"{r[0]}@{p['host']}"))
-            stale = stale or not r or now - r[1] > RESOLVE_TTL
+            stale = stale or not r or now - r[1] > (RESOLVE_TTL if r[0] else RESOLVE_NEG_TTL)
         else:
             r = c.execute("SELECT members, fetched FROM fed_group_members WHERE peer_id=? AND grp=?", (p["id"], name)).fetchone()
             if r:
                 for m in F._jl(r[0], list):
                     if isinstance(m, dict) and isinstance(m.get("handle"), str) and F.PSEUDO_RE.fullmatch(m["handle"]):
                         out.add(principal(f"{m['handle']}@{p['host']}"))
-            stale = stale or not r or now - r[1] > RESOLVE_TTL
+            stale = stale or not r or now - r[1] > (RESOLVE_TTL if F._jl(r[0], list) else RESOLVE_NEG_TTL)
     if stale and hasattr(c, "after_commit"):
         _schedule_resolve(c, ch["note_id"])
     return out
@@ -1814,10 +1815,12 @@ def resolve_page(nid, only_stale=False):
                 continue
             if only_stale:
                 if tt == "remote":
-                    r = c.execute("SELECT fetched FROM fed_name_handle WHERE principal=?", (f"@{name}@{p['host']}",)).fetchone()
+                    r = c.execute("SELECT handle, fetched FROM fed_name_handle WHERE principal=?", (f"@{name}@{p['host']}",)).fetchone()
+                    pos = bool(r and r[0])
                 else:
-                    r = c.execute("SELECT fetched FROM fed_group_members WHERE peer_id=? AND grp=?", (p["id"], name)).fetchone()
-                if r and now - r[0] <= RESOLVE_TTL:
+                    r = c.execute("SELECT members, fetched FROM fed_group_members WHERE peer_id=? AND grp=?", (p["id"], name)).fetchone()
+                    pos = bool(r and F._jl(r[0], list))
+                if r and now - r[1] <= (RESOLVE_TTL if pos else RESOLVE_NEG_TTL):
                     continue
             d = by.setdefault(p["id"], {"p": p, "names": set(), "groups": set()})
             d["names" if tt == "remote" else "groups"].add(name)
@@ -1844,6 +1847,24 @@ def resolve_page(nid, only_stale=False):
                         _person(c, p, f"{m['handle']}@{p['host']}", F.remote_name(m.get("name")))
                 c.execute("INSERT INTO fed_group_members (peer_id, grp, members, fetched) VALUES (?,?,?,?) ON CONFLICT (peer_id, grp) DO UPDATE "
                           "SET members=EXCLUDED.members, fetched=EXCLUDED.fetched", (pid, g, json.dumps(mem), now))
+
+
+def _share_changed(c, owner, note_id, target_type, target, **_):
+    """Freigabe an eine Person/Gruppe eines anderen Servers gesetzt oder geaendert: deren Aufloesung neu holen (ein frueher
+    gemerktes "kein Handle" kann von vor der Ankunft der Freigabe dort stammen)."""
+    if target_type not in ("remote", "remote_group") or not isinstance(target, str):
+        return
+    if target_type == "remote":
+        c.execute("DELETE FROM fed_name_handle WHERE principal=?", (target,))
+    else:
+        name, _, host = target.rpartition("@")
+        p = F.peer_by(c, "host", host) if name and host else None
+        if p:
+            c.execute("DELETE FROM fed_group_members WHERE peer_id=? AND grp=?", (p["id"], name))
+    _res["last"].pop(note_id, None)
+
+
+bus.on("share.set", _share_changed)
 
 
 def prepare_page(nid):
