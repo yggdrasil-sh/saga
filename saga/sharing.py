@@ -52,10 +52,13 @@ def is_remote(uid):
 
 
 def remote_label(principal, display=None):
-    """'@bert@b.example' + 'Bert' -> 'Bert (bert@b.example)' - fremde Namen immer mit Herkunft (keine Verwechslung)."""
+    """'@bert@b.example' + 'Bert' -> 'Bert (bert@b.example)' - fremde Namen immer mit Herkunft (keine Verwechslung).
+    Pseudonymer Handle (2.3, '@~x@host'): 'Bert (b.example)' - die Zufallskennung sagt Menschen nichts."""
     h = principal[1:]
+    if h.startswith("~") and "@" in h:
+        h = h.split("@", 1)[1]
     d = re.sub(r"[\x00-\x1f\x7f]", "", str(display or "")).strip()
-    return f"{d} ({h})" if d else h
+    return f"{d} ({h})" if d else principal[1:]
 
 
 def enabled():

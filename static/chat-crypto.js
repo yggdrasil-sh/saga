@@ -188,6 +188,25 @@
   }
   // o: {call_id, from_uid, from_device, to_uid, to_device, body}
   function verifySignal(o, sig, sign_pk) { return verify(sig, signalMsg(o.call_id, o.from_uid, o.from_device, o.to_uid, o.to_device, o.body), sign_pk); }
+  // --- Anrufe saga-call/v2 (2.3, saga/fed_calls.py): wie v1, aber an die foederierten Handles gebunden -------------------
+  // sig = sign_detached(LP("saga-call/v2/signal", call_id, from_handle, from_device, to_handle, to_device, body), device_sign_sk)
+  // sealed = B64(crypto_box_seal(UTF8(JSON {"v":2,"body":body,"sig":B64(sig)}), ziel_enc_pk))
+  var VC2 = 'saga-call/v2/';
+  function signalMsgV2(call_id, from_handle, from_device, to_handle, to_device, body) {
+    return lp(VC2 + 'signal', call_id, from_handle, from_device, to_handle, to_device, body);
+  }
+  // o: {call_id, from_handle, from_device, sign_sk, to_handle, to_device, to_pk, body}
+  function sealSignalV2(o) {
+    var sig = S.crypto_sign_detached(signalMsgV2(o.call_id, o.from_handle, o.from_device, o.to_handle, o.to_device, o.body), o.sign_sk);
+    return b64(S.crypto_box_seal(enc.encode(JSON.stringify({ v: 2, body: o.body, sig: b64(sig) })), o.to_pk));
+  }
+  function openSignalV2(sealed, pk, sk) {
+    var d = JSON.parse(dec.decode(S.crypto_box_seal_open(unb64(sealed), pk, sk)));
+    if (!d || d.v !== 2 || typeof d.body !== 'string') throw new Error('signal version');
+    return { body: d.body, sig: unb64(d.sig, 64) };
+  }
+  // o: {call_id, from_handle, from_device, to_handle, to_device, body}
+  function verifySignalV2(o, sig, sign_pk) { return verify(sig, signalMsgV2(o.call_id, o.from_handle, o.from_device, o.to_handle, o.to_device, o.body), sign_pk); }
   // DTLS-Fingerabdruecke aus einer SDP: ["sha-256 AB:CD:..."] (Algorithmus klein, Hex gross, sortiert, ohne Doppelte)
   function sdpFingerprints(sdp) {
     var out = {}, re = /^a=fingerprint:(\S+) ([0-9A-Fa-f:]+)\s*$/gm, m;
@@ -309,6 +328,7 @@
     tofuV2: tofuV2, recipientsV2: recipientsV2, deviceSetMsg: deviceSetMsg, deviceSetSig: deviceSetSig, verifyDeviceSet: verifyDeviceSet,
     signalMsg: signalMsg, signalSig: signalSig, signalInner: signalInner, sealSignal: sealSignal, openSignal: openSignal,
     verifySignal: verifySignal, sdpFingerprints: sdpFingerprints,
+    signalMsgV2: signalMsgV2, sealSignalV2: sealSignalV2, openSignalV2: openSignalV2, verifySignalV2: verifySignalV2,
     VERSION: 1, OPS: OPS, MEM: MEM, b64: b64, unb64: unb64, lp: lp, hex: hex,
     newIdentity: newIdentity, newDevice: newDevice, backupSig: backupSig, deviceSig: deviceSig, deviceMsg: deviceMsg,
     verifyDevice: verifyDevice, verifyBackup: verifyBackup, verify: verify,

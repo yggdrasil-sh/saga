@@ -70,7 +70,7 @@
     try { crypto.getRandomValues(a); } catch (e) { for (var i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256); }
     return Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
   })();
-  var H = { 'X-Saga': '1', 'X-Saga-Tab': TAB };
+  var H = { 'X-Saga': '1', 'X-Saga-Tab': TAB, 'X-Saga-Chat': '2' };       // X-Saga-Chat: kann saga-chat/v2 (Chats ueber Servergrenzen, 2.3)
   function $(id) { return document.getElementById(id); }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 

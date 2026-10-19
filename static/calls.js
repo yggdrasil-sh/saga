@@ -188,15 +188,20 @@
   }
   function myDev() { return bridge().device(); }
   function X() { return bridge().crypto(); }
+  // 2.3: Gegenueber auf einem anderen Server (c.v2): saga-call/v2 mit foederierten Handles statt Benutzernamen
+  function me(c) { return c.v2 ? bridge().myHandle() : bridge().me(); }
+  function them(c) { return c.v2 ? c.peer.handle : c.peer.username; }
   function peerKeys(c, fresh) {
     if (!fresh && c._keys) return c._keys;
-    c._keys = bridge().peerKeys(c.peer.username, c.peer.name).then(function (k) {
+    c._keys = (c.v2 ? bridge().peerKeysV2(c.peer.handle, c.peer.name) : bridge().peerKeys(c.peer.username, c.peer.name)).then(function (k) {
       c.peerDevs = {}; k.devices.forEach(function (d) { c.peerDevs[d.id] = d; }); return k;
     }, function (e) { c._keys = null; throw e; });
     return c._keys;
   }
   function seal(c, toDev, body) {
     var d = myDev(), pd = c.peerDevs[toDev];
+    if (c.v2) return X().sealSignalV2({ call_id: c.id, from_handle: me(c), from_device: d.id, sign_sk: d.sign_sk, to_handle: them(c),
+                                        to_device: toDev, to_pk: pd.enc_pk, body: body });
     return X().sealSignal({ call_id: c.id, from_uid: bridge().me(), from_device: d.id, sign_sk: d.sign_sk, to_uid: c.peer.username,
                             to_device: toDev, to_pk: pd.enc_pk, body: body });
   }
@@ -207,8 +212,9 @@
     var d = myDev();
     var go = function () {
       var pd = c.peerDevs[s.from_device]; if (!pd) return null;
-      var o = X().openSignal(s.sealed, d.enc_pk, d.enc_sk);
-      var ok = X().verifySignal({ call_id: c.id, from_uid: c.peer.username, from_device: s.from_device, to_uid: bridge().me(), to_device: d.id, body: o.body }, o.sig, pd.sign_pk);
+      var o = c.v2 ? X().openSignalV2(s.sealed, d.enc_pk, d.enc_sk) : X().openSignal(s.sealed, d.enc_pk, d.enc_sk);
+      var ok = c.v2 ? X().verifySignalV2({ call_id: c.id, from_handle: them(c), from_device: s.from_device, to_handle: me(c), to_device: d.id, body: o.body }, o.sig, pd.sign_pk)
+        : X().verifySignal({ call_id: c.id, from_uid: c.peer.username, from_device: s.from_device, to_uid: bridge().me(), to_device: d.id, body: o.body }, o.sig, pd.sign_pk);
       if (!ok) return null;
       var b = JSON.parse(o.body); b._from = s.from_device; return b;
     };
@@ -316,8 +322,9 @@
     if (!b) { HK.toast(T('Chats sind auf diesem Gerät noch nicht bereit.')); return; }
     if (C) { HK.toast(T('Du telefonierst gerade schon.')); return; }
     if (!chat || chat.kind !== 'dm' || !chat.peer) return;
+    if (chat.v === 2 && (chat.request || chat.readonly)) { HK.toast(T('Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben.')); return; }
     if (!window.RTCPeerConnection) { HK.toast(T('Dieser Browser kann keine Anrufe (WebRTC fehlt).')); return; }
-    var c = C = newCall({ chat_id: chat.id, role: 'caller', media: video ? 'video' : 'audio', peer: chat.peer });
+    var c = C = newCall({ chat_id: chat.id, role: 'caller', media: video ? 'video' : 'audio', peer: chat.peer, v2: chat.v === 2 });
     audioCtx();
     win(c); status(c, T('Kamera und Mikrofon …'));
     config(true).then(function () {
@@ -361,7 +368,7 @@
     config(true).then(function () {
       return api('GET', '/api/calls/' + id + '?device=' + q(dev));
     }).then(function (r) {
-      c.call = r.call; c.chat_id = r.call.chat_id; c.media = r.call.media; c.peer = r.call.peer; drawPeer(c);
+      c.call = r.call; c.chat_id = r.call.chat_id; c.media = r.call.media; c.peer = r.call.peer; c.v2 = r.call.v === 2; drawPeer(c);
       if (r.call.role !== 'callee' || r.call.state !== 'ringing') throw new Error(r.call.state === 'active' ? T('Der Anruf wurde auf einem anderen Gerät angenommen.') : T('Der Anruf ist schon beendet.'));
       r.signals.forEach(function (s) { c.seen[s.seq] = true; });
       return peerKeys(c).then(function () {
@@ -769,7 +776,7 @@
   function head(chat) {
     var a = document.getElementById('ct-call-a'), v = document.getElementById('ct-call-v');
     if (!a || !v) return;
-    var on = !!(chat && chat.kind === 'dm' && cfg && cfg.enabled && window.RTCPeerConnection);
+    var on = !!(chat && chat.kind === 'dm' && cfg && cfg.enabled && window.RTCPeerConnection && !(chat.v === 2 && (chat.request || chat.readonly)));
     a.hidden = v.hidden = !on;
   }
   if (CHATS) {
