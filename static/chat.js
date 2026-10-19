@@ -935,6 +935,7 @@
         menu.appendChild(HK.menuItem(T('Ganzen Server {host} sperren', { host: p.host || '?' }), function () { HK.closeMenu(); act('block', 'instance'); }, { icon: '⛔', danger: true }));
       });
     });
+    if (c.kind !== 'dm' && p.remote === false) blk.hidden = true;     // eingeladen von einer Person dieses Servers: nur ablehnen
     bar.appendChild(blk); box.appendChild(bar);
   }
   function loadMsgs(older) {

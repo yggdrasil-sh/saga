@@ -68,7 +68,7 @@ async function vectors(p) {
       const m = Object.assign({}, v.messages[x.message]); ['sender_handle', 'ai', 'ts'].forEach((k) => { if (k in x) m[k] = x[k]; });
       return !C.verifyMessageV2(x.chat_ref || m.chat_ref, m, sk.publicKey);
     });
-    out.tofu = v.tofu.rules.filter((x) => x.step !== 'bad_cert').every((x) => C.tofuV2(x.stored, x.seen).result === x.result);
+    out.tofu = v.tofu.rules.filter((x) => x.step !== 'bad_cert').every((x) => C.tofuV2(x.stored, x.seen, x.ver).result === x.result);
     return out;
   }, VEC);
   for (const k of Object.keys(r)) ok('Browser-Vektoren v2: ' + k, r[k]);

@@ -59,8 +59,11 @@
   übersetzen – mit einem Modell nach Wahl (z. B. Ollama im eigenen Netz). Nur sichtbare Inhalte, Quellen verlinkt, nur Vorschläge, standardmäßig aus.
   Mit eigenem Namen, Bild und Tonfall; auf Wunsch **im Chat nur auf Zuruf** (@Name, alles andere bleibt verschlüsselt)
   und mit **Websuche** über die eigene SearXNG-Instanz (Quellen verlinkt) – beides standardmäßig aus
-- **Föderation:** Saga-Server verbinden und Seiten mit name@server teilen – Inhalte bleiben beim Eigentümer, jede
-  Anfrage zwischen den Servern ist signiert (Ed25519, HTTP Message Signatures)
+- **Föderation:** Saga-Server verbinden – Seiten mit Personen und Gruppen dort teilen (auch Datenbanken, Unterseiten,
+  Hochladen, Versionen, Export und Anwesenheit), Personen im gemeinsamen Adressbuch nach Namen finden (Widerspruch je
+  Konto), Ende-zu-Ende-verschlüsselte Direkt-, Gruppen- und Seiten-Chats und Anrufe über Servergrenzen, mit
+  Nachrichtenanfragen und Sperren. Inhalte bleiben beim Eigentümer, jede Anfrage zwischen den Servern ist signiert
+  (Ed25519, HTTP Message Signatures), ein fehlerhafter Server wird eingedämmt (Prüfungen, Raten je Server, Prüfprotokoll)
 - **Aufgaben** mit Fälligkeit, Priorität und Wiederholung
 - **Kalender (CalDAV):** Nextcloud, mailcow/SOGo, Radicale, iCloud … anzeigen und bearbeiten
 - **Immich:** eigene Fotos als Bilder und Titelbilder einbinden

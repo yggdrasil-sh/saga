@@ -687,6 +687,49 @@ anderer Server (sie werden dort entfernt); der alte Name wird für andere Konten
 - **Trennen:** Trennt das Heim die Verbindung zu einem Server, sind dessen Personen nicht mehr Mitglied (Hinweis im
   Chat); auf dem getrennten Server ist der Chat schreibgeschützt.
 
+**Für Admins: Überblick, Datenschutz, Fehlerbilder**
+
+*In Kurzform:* Föderation einschalten → Einladungscode erzeugen → der andere Admin verbindet sich und vergleicht den
+Fingerprint → Bestätigen. Danach unter **„Funktionen je Instanz“** je Server festlegen, was erlaubt ist: **Chat**,
+**Anrufe**, **Adressbuch mit dieser Instanz teilen** (optional nur bestimmte Gruppen) und die **Ausnahme von „Teilen nur
+innerhalb gemeinsamer Gruppen“**. Jede Änderung wirkt sofort; „Trennen“ beendet alles mit diesem Server.
+
+*Datenschutz – was ein verbundener Server von hier erfährt:*
+- Beim Teilen und Kommentieren: öffentlicher Name bzw. eine zufällige, feste Kennung (`~…`) und der Anzeigename der
+  handelnden Person, die Gruppen, die er selbst als Ziel einer Freigabe genannt hat, und die Inhalte der Seiten, die mit
+  Personen dort geteilt sind. **Nie** Anmeldenamen, E-Mail-Adressen, Passwörter oder andere Gruppen.
+- Im Adressbuch (nur wenn der Schalter an ist): Anzeigename, Profilbild-Stand, Kennung und – falls gesetzt – der
+  öffentliche Name. Wer unter Einstellungen → Konto „In Adressbüchern verbundener Server erscheinen“ ausschaltet,
+  verschwindet dort sofort; die anderen Server löschen dann auch den gespeicherten Namen, sofern die Person bei ihnen
+  nirgends vorkommt (Kommentare und Chat-Verläufe behalten ihn).
+- Chats und Anrufe: nur verschlüsselte Daten und die Kennungen der Beteiligten – Inhalte sieht kein Server.
+- **Trennen** löscht Freigaben, Adressbuch, Schlüssel-Zwischenspeicher, wartende Ereignisse und Namen von Personen des
+  anderen Servers, soweit sie hier nicht mehr vorkommen.
+- Weise die Nutzerinnen und Nutzer in eurer Datenschutzerklärung darauf hin, mit welchen Servern ihr verbunden seid und
+  dass Anzeigenamen dorthin übertragen werden (Adressbuch).
+
+*Schutz vor einem fehlerhaften oder böswilligen Server:* Jede Anfrage und Antwort ist signiert; Saga prüft Absender,
+Reihenfolge und Signaturen selbst, bremst Fluten je Server (Anfragen, Ereignisse, Nachrichten, Namenssuche, Hochladen)
+und lässt einen langsamen Server höchstens ein paar Hintergrund-Aufträge belegen – die anderen Server merken davon
+nichts. Was abgewiesen wurde, steht im **Prüfprotokoll** (ohne Inhalte).
+
+*Fehlerbilder:*
+
+| Meldung / Eintrag im Prüfprotokoll | Bedeutung und was zu tun ist |
+|---|---|
+| „Adresse nicht erlaubt (interne Adresse …)“ | Der andere Server hat eine interne Adresse: unter Allgemein → „Freigegebene interne Hosts“ eintragen |
+| „keine Saga-Instanz mit Föderation“ / „nicht erreichbar“ | Föderation dort aus, Adresse falsch, Zertifikat/Proxy-Problem – Adresse im Browser prüfen, dann „Status prüfen“ |
+| „Fingerprint geändert“ beim Verbinden | Der Server meldet einen anderen Schlüssel als erwartet – **nicht** verbinden, mit dem anderen Admin klären |
+| „Keine Zusatzfähigkeiten“ / Protokoll 1 | Der andere Server hat 2.1/2.2: Teilen und Kommentare gehen, Chats, Adressbuch & Co. erst nach seinem Update |
+| „Rückfall auf Protokoll 1“ | Ein Server mit Protokoll 2 meldet plötzlich Protokoll 1 (ältere Version zurückgespielt – oder ein Angriff). Chats mit ihm ruhen, wartende Ereignisse bleiben im Ausgangskorb, bis er wieder Protokoll 2 meldet |
+| „Gegenseite bremst (zu viele Anfragen)“ | Der andere Server bremst uns (zu viele Anfragen): Saga wartet die genannte Zeit und stellt dann alles zu |
+| `event.stuck` / `event.dropped` | Ein Ereignis wird wiederholt abgewiesen bzw. nach 3 Tagen verworfen – meist Versionsunterschied oder Fehler beim anderen Server |
+| `sig.rejected` / `sig.replay` | Anfrage mit falscher Signatur bzw. wiederholt (Uhrzeit beider Server prüfen – mehr als 5 Minuten Abweichung genügt) |
+| `chat.forged`, `chat.badsig`, `chat.replay`, `chat.reorder`, `chat.keymismatch` | Der andere Server hat gefälschte, falsch signierte, wiederholte oder umsortierte Chat-Daten geschickt – abgewiesen. Häufen sie sich, Verbindung prüfen bzw. trennen |
+| `chat.gap` | Es fehlten Nachrichten – sie wurden beim Heim nachgeholt (bei einem gesunden Server selten) |
+| `chat.rate` | Flut von einem Server gebremst (Nachrichten, Anfragen, Mitgliederlisten, Namensauflösung) – nichts geht verloren, es kommt später |
+| `chat.cache` | Zwischenkopien fremder Anhänge über der Grenze (`FED_CHAT_CACHE_MB`) – die am längsten unbenutzten wurden entfernt und werden bei Bedarf neu geholt |
+
 ### Benachrichtigungen und Live-Aktualisierung
 
 Saga hält das Dashboard und offene Seiten auf dem neuesten Stand – ohne Neuladen.
@@ -1606,6 +1649,10 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `FED_RATE` / `FED_TIMEOUT` | `600` / `10` | Anfragen je Minute und verbundener Instanz / Sekunden bis zur Zeitüberschreitung |
 | `FED_UPLOAD_QUOTA_MB` | `200` | Speicher je Person eines anderen Servers für Uploads in Seiten hier (zählt zusätzlich beim Eigentümer) |
 | `FED_WATCH_TTL` | `90` | Sekunden, die ein Abo (Live/Anwesenheit) einer fremden Seite ohne Erneuerung gilt |
+| `FED_EXPRESS_TIMEOUT` / `FED_EXPRESS_WORKERS` | `5` / `8` | Sekunden für die sofortige Zustellung (danach Ausgangskorb) / Threads dafür |
+| `FED_PEER_SLOTS` / `FED_OUT_WORKERS` | `3` / `4` | Hintergrund-Aufträge je verbundenem Server gleichzeitig (ein langsamer Server belegt nicht mehr) / Threads für den Ausgangskorb |
+| `FED_CHAT_IN_RATE` | `1200` | Chat-Nachrichten je Minute, die ein Server als Heim hierher zustellen darf (darüber: später erneut) |
+| `FED_CHAT_CACHE_MB` / `FED_CHAT_CACHE_DAYS` | `1024` / `30` | Zwischenkopien von Chat-Anhängen anderer Server: Speicher je Server / Tage ohne Abruf, bis sie verfallen (werden bei Bedarf neu geholt; von getrennten Servern bleiben sie) |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Websuche (Abschnitt 10) |
 | `AI_WEB_FETCH` / `AI_WEB_RATE` | `2` / `10` | Websuche der KI: Trefferseiten, deren Text gelesen wird (0 = nur Ausschnitte); Websuchen je Person in 10 Minuten |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Sprache und Filter der Websuche |

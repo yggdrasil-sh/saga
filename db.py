@@ -614,6 +614,9 @@ CREATE TABLE IF NOT EXISTS fed_name_handle (          -- Freigabe an '@name@host
     principal TEXT PRIMARY KEY, peer_id INTEGER NOT NULL, handle TEXT, name TEXT NOT NULL DEFAULT '', fetched DOUBLE PRECISION NOT NULL);
 CREATE TABLE IF NOT EXISTS fed_group_members (        -- Mitglieder einer Gruppe einer anderen Instanz (nur wenn Ziel einer Freigabe)
     peer_id INTEGER NOT NULL, grp TEXT NOT NULL, members TEXT NOT NULL, fetched DOUBLE PRECISION NOT NULL, PRIMARY KEY (peer_id, grp));
+CREATE TABLE IF NOT EXISTS chat_invite (              -- 2.3 E8: wer ein Konto hier in eine Gruppe ueber Servergrenzen eingeladen hat
+    chat_id BIGINT NOT NULL REFERENCES chat(id) ON DELETE CASCADE, uid TEXT NOT NULL,       -- (Sperren trifft genau diese Person)
+    by_uid TEXT NOT NULL, PRIMARY KEY (chat_id, uid));
 
 -- Zweiter Faktor (2.1, saga/mfa.py): Passkeys (WebAuthn), Authenticator-App (TOTP), Wiederherstellungscodes.
 -- Nur oeffentliche Schluessel, das TOTP-Geheimnis verschluesselt (wie Geheimnisse der Einstellungen), Codes nur als Hash.
@@ -894,8 +897,11 @@ def backup(label="manuell"):
 # jederzeit neu ableitbar: vorher entfernen. Ein Backup ab 2.2 bringt sie mit, sonst legt der naechste Start sie an und
 # gleicht alle Seiten neu ab. Seitenbaum-Abgleich (note_tseq*, kein Fremdschluessel): der Stand gehoert zur alten
 # Datenbank - der naechste Start legt ihn leer an und wuerfelt eine neue Kennung (Clients laden einmal ganz).
+# chat_invite (2.3, Fremdschluessel auf chat): ein Backup von davor kennt sie nicht (sonst bricht DROP chat ab); ein
+# neueres bringt sie mit, sonst legt der naechste Start sie leer an (Sperren trifft dann wie bisher die Erstellerin).
 _RESTORE_DROP = (b"DROP TABLE IF EXISTS public.note_link, public.note_stale, public.note_derived;\n"
-                 b"DROP TABLE IF EXISTS public.note_tseq, public.note_tseq_meta;\n")
+                 b"DROP TABLE IF EXISTS public.note_tseq, public.note_tseq_meta;\n"
+                 b"DROP TABLE IF EXISTS public.chat_invite;\n")
 _RESTORE_SET = re.compile(rb"^SET ([a-z_]+) = .*;\r?\n?$")
 
 

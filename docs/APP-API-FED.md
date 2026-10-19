@@ -1,4 +1,4 @@
-# Föderation 2.3 – Vertrag für die App-Teams (Etappen E0 – E6)
+# Föderation 2.3 – Vertrag für die App-Teams (Etappen E0 – E8)
 
 Saga 2.3 bringt Protokoll 2 zwischen verbundenen Saga-Servern. Für die Apps (Web, iOS/macOS, Android, Linux) kommen in
 dieser Etappe drei Dinge dazu: **Adressbuch-Suche** (Personen anderer Server nach Anzeigename), **föderierte Handles**
@@ -6,7 +6,8 @@ und das **Chat-Krypto-Format `saga-chat/v2`** mit Schlüsselverzeichnis, gemeins
 dazu **Direkt-Chats über Servergrenzen** mit Nachrichtenanfragen (E2, Abschnitt 6), **Anrufe** im Format
 `saga-call/v2` (E3, Abschnitt 7), **Seiten anderer Server vollständig** – Datenbanken, Unterseiten, Hochladen,
 Versionen, Export, Anwesenheit und Live (E4/E6, Abschnitt 8) – sowie **freie Gruppen und Seiten-Chats** mit Mitgliedern
-mehrerer Server (E5, Abschnitt 9).
+mehrerer Server (E5, Abschnitt 9). Abschnitt 10 fasst zusammen, wie sich die Server gegen protokollwidrige Gegenstellen
+schützen (E8) und was Apps davon sehen.
 
 Alle Endpunkte wie gewohnt mit Sitzung oder Geräte-Schlüssel (`Authorization: Bearer hkd_…`) und `X-Saga: 1`. Alles
 ist rückwärtskompatibel: neue Felder und Ereignisse ignorieren ältere Apps; lokale Chats bleiben **`saga-chat/v1`**,
@@ -37,7 +38,7 @@ suchen (entprellt); dasselbe gilt für `GET /api/chat/people` und `GET /api/shar
 | `type` | immer `"remote"` |
 | `name` | Anzeigename der Person (vom Heimserver; nie Anmeldename) |
 | `host` | Server der Person |
-| `label` | fertig zum Anzeigen: `"Anna Berg · b.example"`; bei gleichen Namen auf demselben Server zusätzlich `· annab` (öffentlicher Name) bzw. `· ~k3m5q7…` |
+| `label` | fertig zum Anzeigen: `"Anna Berg · b.example"`; bei gleichen Namen auf demselben Server zusätzlich `· annab` (öffentlicher Name) bzw. `· ~k3m5q7…`. Der Trennpunkt kommt nur vom eigenen Server: aus Namen anderer Server entfernt er Trennpunkte (`·`, `•`, `・` …), damit niemand eine fremde Herkunft vortäuscht |
 | `handle` | föderierter Handle `~x@host` (für Chat/Schlüssel) |
 | `target` | Ziel zum Teilen: `@name@host` (öffentlicher Name) bzw. `@~x@host` |
 | `pub` | `name@host`, falls die Person einen öffentlichen Namen hat, sonst `null` |
@@ -239,7 +240,10 @@ Push und Benachrichtigungen kommen nur vom eigenen Server.
 
 - Anhänge: Upload wie v1 (`POST /api/chats/{id}/files`), aber verschlüsselt mit `AD = LP(V2+"file", chat_ref)`. Abruf
   wie v1 (`GET /api/chat/files/{fid}`); liegt der Anhang bei einem anderen Server, holt der eigene ihn bei Bedarf
-  (Zwischenkopie; kleine bis 256 KB gleich vorab) – der erste Abruf kann etwas dauern.
+  (Zwischenkopie; kleine bis 256 KB gleich vorab) – der erste Abruf kann etwas dauern. Zwischenkopien sind je Server
+  begrenzt (`FED_CHAT_CACHE_MB`, Standard 1024; zuletzt benutzte bleiben) und verfallen nach `FED_CHAT_CACHE_DAYS`
+  (Standard 30) ohne Abruf – danach holt der eigene Server sie beim nächsten Abruf erneut (Anhänge in der App ruhig
+  selbst zwischenspeichern, die Antwort ist `immutable`).
 - `DELETE …/messages/{mid}` (eigene) und `DELETE /api/chats/{id}?scope=all` (Direkt-Chat für beide) laufen über das Heim
   an alle; `scope=me` bleibt lokal.
 - `PATCH /api/chats/{id} {"retention_s": …}` gilt für alle (über das Heim, Antwort ggf. `pending`); jeder Server wendet
@@ -319,8 +323,10 @@ der Person, die sie anlegt; Heim eines Seiten-Chats ist der Server der Seite (`h
 
 - **Gruppe anlegen:** `POST /api/chats {kind:'free', members:[benutzer hier], handles:['~x@host', …], device}` – Handles
   aus der Adressbuch-Suche (`/api/chat/people` → `remote`). Bei den anderen erscheint die Gruppe als
-  **Nachrichtenanfrage** (`request: true`, `invited_by: {name, host, label}`); Annehmen/Ablehnen/Sperren wie 6.3
-  (`block` sperrt die einladende Person bzw. ihren Server).
+  **Nachrichtenanfrage** (`request: true`, `invited_by: {name, host, label, remote}`); Annehmen/Ablehnen/Sperren wie 6.3.
+  `invited_by` ist die Person, die **dich** eingeladen hat (nicht unbedingt die, die die Gruppe angelegt hat); `block`
+  sperrt genau diese Person bzw. ihren Server. `remote: false` = eingeladen von einer Person des eigenen Servers – dann
+  nur Annehmen/Ablehnen anbieten (`block` lehnt nur ab, `targets` ist leer).
 - **Name der Gruppe:** wie v1 als verschlüsselte Nachricht `kind: 'title'` – in v2 mit denselben Feldern wie eine
   Nachricht (`v: 2`, `kind: 'title'`); `title_msg` im Chat-Objekt hat `sender_handle`, prüfen wie jede v2-Nachricht.
 - **Mitglieder:** `POST /api/chats/{id}/members {handle:'~x@host'}` bzw. `{user}` (Konto hier), `DELETE …/members/{who}`
@@ -328,7 +334,9 @@ der Person, die sie anlegt; Heim eines Seiten-Chats ist der Server der Seite (`h
   Änderung läuft über das Heim (ist es nicht erreichbar: 502). Danach `chat.changed`; die neue Liste kommt vom Heim.
 - **Systemzeilen** (`kind: 'sys'`, Klartext-Metadaten in `body_ct`):
   `{"type":"members","added":[{name,host,handle}],"removed":[…],"by":{name,host,handle}|null,"reason":"disconnected"|"gone"|"access"?}`
-  – Herkunft (`host`) immer anzeigen; `by` = `removed[0]` heißt „hat die Gruppe verlassen“.
+  – Herkunft (`host`) immer anzeigen (der eigene Server nimmt sie aus dem Handle, nicht aus der Angabe des Heims – ein
+  „Geist“ eines Servers, den das Heim gar nicht kennen kann, ist so als fremd erkennbar); `by` = `removed[0]` heißt
+  „hat die Gruppe verlassen“.
   `{"type":"fed","on":true,"ai_off":true?}` – ein Seiten-Chat ist ab hier ein Chat über Servergrenzen.
 - **Seiten-Chat einer fremden Seite:** `POST /api/chats {kind:'page', note_id:<negativ>, device}` → derselbe Chat wie
   beim Server der Seite (`note_id` negativ, `name` = Titel). Mitglieder ergeben sich aus den Freigaben (Personen und
@@ -344,3 +352,27 @@ der Person, die sie anlegt; Heim eines Seiten-Chats ist der Server der Seite (`h
 - Zwischen den Servern (zur Einordnung): Ereignis `chat.members` vom Heim (Kette `chat:<id>`), Aufträge an das Heim
   `members`, `leave`, `pagechat`, an Teilnehmer `resolve` (Handles/Gruppen nur für Ziele eigener Freigaben),
   `GET /fed/v2/chat/keys?ref=&handles=` (nur Mitglieder, nur für Teilnehmer-Server).
+
+## 10. Schutz vor protokollwidrigen Servern (E8)
+
+Ein verbundener Server kann sich falsch verhalten (Fehler, alte Version, Übernahme). Die Server prüfen deshalb alles,
+was von dort kommt, selbst – Apps müssen dafür nichts tun außer dem, was ohnehin gilt: **Zertifikate, Signaturen und TOFU
+prüft die App immer selbst** (Abschnitt 3), Herkunft (`host`, `label`) immer anzeigen.
+
+| Angriff / Fehlerbild | Verhalten des eigenen Servers |
+|---|---|
+| gefälschte Absender (Konten anderer Server oder des eigenen), falsche Signaturen, Wiederholungen (Replay), Umsortieren | abgewiesen, Prüfprotokoll (`chat.forged`, `chat.badsig`, `chat.replay`, `chat.reorder`, `sig.replay`) |
+| Unterdrücken von Nachrichten (Lücke in `fseq`) | Lücke erkannt, beim Heim nachgeholt (`chat.gap`) |
+| Heim liefert eigene Schlüssel für eine Person eines Servers, mit dem der eigene Server **selbst verbunden** ist | nur der Abruf dort zählt (Nachricht wartet kurz, bis die Schlüssel geholt sind) |
+| Geister-Mitglieder (Personen, die das Heim nicht kennen kann) | sichtbar mit Herkunft aus dem Handle; Systemzeile |
+| neuer Identitätsschlüssel einer Person | geliefert wie jeder Schlüssel + Live-Ereignis `chat.keys.changed` – **die App warnt (TOFU)** bzw. blockiert bei „überprüft“ |
+| Flut (Nachrichten, Mitgliederlisten, Namensauflösung, Hochladen, Personensuche, Ereignisse) | Raten je Server; Nachrichten und Mitgliederlisten werden später erneut zugestellt (nichts verworfen), sonst `429` mit `Retry-After` |
+| langsame oder zu große Antworten | harte Fristen und Größengrenzen; je Server höchstens wenige Hintergrund-Aufträge gleichzeitig (`FED_PEER_SLOTS`), die Zustellung an andere Server läuft getrennt weiter |
+| Zugriff mit negativen IDs außerhalb einer Freigabe, ID-Tricks | 404; unsinnige IDs aus Antworten fallen weg |
+| Rückfall auf Protokoll 1 | sichtbar im Prüfprotokoll („Rückfall auf Protokoll 1“); Chat-Ereignisse von dort werden ignoriert, eigene warten im Ausgangskorb, bis Protokoll 2 wieder da ist; Chats zeigen `readonly` bzw. senden mit `pending` |
+| Adressbuch mit fremden Namen/Hosts | Herkunft immer vom verbundenen Server, Namen bereinigt (keine Trennpunkte, keine Steuerzeichen) |
+
+Für Apps sichtbar: `429` aus `/api/fed/people` (60/min), Nachrichten mit `pending` bzw. `fstate: 'failed'`, ein
+erneuter (langsamerer) erster Abruf eines Anhangs nach Ablauf der Zwischenkopie, `invited_by.remote`. Verlässt eine
+Person das Adressbuch ihres Servers (Opt-out) oder trennt der Admin die Verbindung, löscht der eigene Server ihren
+Anzeigenamen, sofern sie hier nirgends mehr vorkommt (Kommentare, Versionen und Chat-Verläufe behalten ihn).

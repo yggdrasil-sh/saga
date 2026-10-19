@@ -876,7 +876,9 @@ def _fed_events():
             "event.dropped": t("Ereignis verworfen"),
             "peer.capabilities": t("Fähigkeiten der Gegenseite"),
             "peer.options": t("Schalter geändert"),
-            "chain.gap": t("Lücke in einer Ereignis-Kette")}
+            "chain.gap": t("Lücke in einer Ereignis-Kette"),
+            "peer.downgrade": t("Rückfall auf Protokoll 1"),
+            "peer.busy": t("Gegenseite bremst (zu viele Anfragen)")}
 
 
 def _fed_page(request, me, **kw):
