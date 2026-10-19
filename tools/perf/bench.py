@@ -478,11 +478,13 @@ def bench_receipts():
     dur = time.perf_counter() - t_start
     c1 = _cpu(ARGS.pid) if ARGS.pid else None
     evs = [sum(1 for _, e in x.events if e == "chat.receipt") for x in ls.values()]
+    live_kb = round(sum(x.bytes for x in ls.values()) / 1024)
     cpu = round((c1 - c0) / dur * 100, 1) if c0 is not None and c1 is not None else None
     stats("Gelesen: POST /read mit Bestaetigung (49 Leser, 50er-Gruppe)", times or [0], [0], sorted(set(codes)), "Gelesen",
           extra={"cpu_pct": cpu, "events_max": max(evs), "events_avg": round(sum(evs) / len(evs), 1), "requests": len(times),
-                 "seconds": round(dur, 1)})
-    print(f"  Python-CPU {cpu} % ueber {dur:.0f} s, {len(times)} Bestaetigungen, chat.receipt je Konto max {max(evs)}", flush=True)
+                 "seconds": round(dur, 1), "live_kb": live_kb})
+    print(f"  Python-CPU {cpu} % ueber {dur:.0f} s, {len(times)} Bestaetigungen, chat.receipt je Konto max {max(evs)}, "
+          f"Live-Kanal gesamt {live_kb} KB", flush=True)
     # Online-Status: jedes Mitglied abonniert die 49 anderen
     pt, pc = [], []
     c0, t0 = _cpu(ARGS.pid) if ARGS.pid else None, time.perf_counter()

@@ -50,9 +50,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Über Servergrenzen:** neue Fähigkeiten `receipts` und `online` (Protokoll 2). Bestätigungen gehen versiegelt über
   das Heim des Chats (in der Reihenfolge der Nachrichten), der Online-Status als kurzes Abo (90 s) beim Server der
   Person. Mit 2.3-Servern wird nichts davon gesendet. Ersetzt die frühere Regel „Gelesen bleibt lokal“.
-- **Last:** Bestätigungen werden je Chat gebündelt (höchstens ein Live-Ereignis je 2 s), Clients senden höchstens eine je
-  Chat und 2 s; der Online-Status geht nur an Konten, die die Person gerade sichtbar haben (Abo). Messung (50er-Gruppe,
-  49 Lesende alle 2 s): siehe unten.
+- **Last:** Bestätigungen werden je Chat gebündelt (höchstens ein Live-Ereignis je 2 s; mehr als 8 auf einmal nur als
+  Hinweis, den offene Chats abrufen), Clients senden höchstens eine je Chat und 2 s; der Online-Status geht nur an Konten,
+  die die Person gerade sichtbar haben (Abo). Messung gegen E0 (Stufe S, 2-Kern-Container, Median aus 3 Läufen):
+  bestehende Endpunkte unverändert im Rauschen, alle Grenzwerte eingehalten. 50er-Gruppe, 49 Lesende alle 2 s (490
+  Bestätigungen mit je 49 Siegeln in 25 s): `/read` mit Bestätigung p95 21–33 ms (E0 ohne Wirkung 14 ms), Python-CPU
+  14 % statt 9 %, je Konto ≤ 12 Live-Ereignisse, Live-Kanal aller 50 zusammen ~210 KB, Speicher unverändert;
+  Online-Abo für 49 Personen p95 24–36 ms. Neue Grenzwerte in `tools/perf/limits.json`.
 - **Server:** `GET/PUT /api/chat/privacy`, `POST /api/chats/{id}/read` mit `receipt`, `GET /api/chats/{id}/receipts`,
   `POST /api/chat/presence`, Live-Ereignisse `chat.receipt`, `chat.presence`, `chat.privacy`; `chat.message` meldet bei
   der Zustellbestätigung des Heims auch `fseq`. **Migration 11** (vorläufige Nummer, siehe `db.py`): Tabellen

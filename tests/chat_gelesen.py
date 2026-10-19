@@ -213,6 +213,25 @@ def run():
     with connect() as c:
         ok("... und aufgeraeumt", not c.execute("SELECT 1 FROM chat_receipt WHERE chat_id=? AND reader='cg-c' AND viewer='cg-a'", (gid,)).fetchone())
 
+    # --- Grosse Gruppe: viele Bestaetigungen auf einmal -> Ereignis nur mit Hinweis "more", Abruf per GET ---------------
+    many = []
+    for i in range(1, 11):
+        auth.create_user(f"cg-m{i:02d}", PW, f"Mitglied {i}")
+        many.append(P(f"cg-m{i:02d}"))
+    s, d = req("POST", "/api/chats", A.k, {"kind": "free", "members": [x.uid for x in many]})
+    fid = d["chat"]["id"]
+    s, d, f1 = A.send(fid, "Hallo alle")
+    time.sleep(2.2)
+    mk = evA.mark()
+    for x in many:
+        x.read_rc(fid, d["seq"], x.rcpt(fid, f1["id"], d["seq"], ["cg-a"]))
+    time.sleep(3.0)
+    evs = [x for t_, x in evA.ev[mk:] if t_ == "chat.receipt" and x.get("chat_id") == fid]
+    inline = sum(len(x["receipts"]) for x in evs)
+    ok(f"Grosse Gruppe: {len(evs)} Ereignisse, {inline} Bestaetigungen direkt, Rest nur als Hinweis 'more'",
+       1 <= len(evs) <= 3 and any(x.get("more") is True and x["receipts"] == [] for x in evs) and all(len(x["receipts"]) <= 8 for x in evs))
+    ok("Grosse Gruppe: GET /receipts liefert alle 10", len(A.receipts(fid)[1]["receipts"]) == 10)
+
     # --- Rate -------------------------------------------------------------------------------------------------------
     s, d = req("POST", "/api/chats", D.k, {"kind": "dm", "user": "cg-a"})
     did = d["chat"]["id"]

@@ -37,6 +37,7 @@ router = APIRouter()
 
 KV_RCPT, KV_ONLINE = "chat_receipts", "chat_online"     # user_kv: '0' = aus (fehlt = an)
 GAP = 2.0                          # Buendelung je Chat (Sekunden)
+INLINE = 8                         # Live-Ereignis traegt hoechstens so viele Bestaetigungen, sonst nur "more" (Abruf per GET)
 SEAL_MIN, SEAL_MAX = 48 + 64, 2048  # versiegelte Bestaetigung (B64-Zeichen): Siegel + Signatur ... Obergrenze
 RCPT_RATE = 120                    # Bestaetigungen je Konto und Minute (Clients: hoechstens eine je Chat und 2 s)
 FED_RCPT_RATE = 1200               # Bestaetigungen je Instanz und Minute (Auftraege + Ereignisse)
@@ -240,8 +241,10 @@ def _flush(cid):
                 if fed:
                     it["handle"] = hs.get(reader)
                 per.setdefault(viewer, []).append(it)
-            if per:                                # ein Ereignis fuer den Verteiler, je Konto eigene Daten
-                bus.emit_after(c, "direct_each", {"items": [(v, "chat.receipt", {"chat_id": cid, "receipts": its}) for v, its in sorted(per.items())]})
+            if per:                                # ein Ereignis fuer den Verteiler, je Konto eigene Daten; viele auf einmal (grosse
+                # Gruppe): nur der Hinweis - wer den Chat offen hat, holt sie mit GET /receipts (Bandbreite, Live-Puffer)
+                bus.emit_after(c, "direct_each", {"items": [(v, "chat.receipt", {"chat_id": cid, "receipts": its} if len(its) <= INLINE
+                                                             else {"chat_id": cid, "receipts": [], "more": True}) for v, its in sorted(per.items())]})
             for reader, rem in fedp.items():
                 if fed and reader in rd and not sharing.is_remote(reader) and reader not in off:
                     _fed_send(c, ch, hs.get(reader), rem)

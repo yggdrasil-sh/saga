@@ -161,7 +161,7 @@ Live-Ereignisse an Apps (wie alle über `/api/events`, Art `direct`):
 | `chat.request` | `{chat_id}` | neue Nachrichtenanfrage (still – keine Benachrichtigung) |
 | `chat.message` | wie bisher, zusätzlich `kind: 'sys'` bzw. `failed: true` | neue Nachricht, Systemzeile; bei `id` einer eigenen wartenden Nachricht: jetzt zugestellt bzw. abgewiesen |
 | `chat.typing` | `{chat_id, user:{username, handle, name}}` | tippt (auch Personen anderer Server) |
-| `chat.receipt` | `{chat_id, receipts:[{from, handle, sealed}]}` | (2.4) Gelesen-Bestätigungen, auch von Personen anderer Server (Abschnitt 11) |
+| `chat.receipt` | `{chat_id, receipts:[{from, handle, sealed}], more?}` | (2.4) Gelesen-Bestätigungen, auch von Personen anderer Server (Abschnitt 11) |
 | `chat.presence` | `{username, online, last}` | (2.4) Online-Status einer abonnierten Person, auch anderer Server |
 | `chat.removed` / `chat.deleted` / `chat.changed` | wie bisher | auch für Chats über Servergrenzen |
 

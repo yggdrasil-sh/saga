@@ -2291,7 +2291,9 @@
     else if (t === 'chat.changed') { listSoon(); if (S.cur && S.cur.id === d.chat_id) { S.rc = null; openChat(d.chat_id); } }
     else if (t === 'avatar.changed') listSoon();      // neues Profilbild (Bilder tauscht live.js; Liste fuer neue Adressen)
     else if (t === 'ai.persona.changed') loadAI();     // Name/Bild/Schalter der KI geaendert
-    else if (t === 'chat.receipt') { if (S.cur && S.cur.id === d.chat_id && K && takeReceipts(S.cur, d.receipts)) drawMsgs(); }   // (2.4)
+    else if (t === 'chat.receipt' && S.cur && S.cur.id === d.chat_id && K) {          // (2.4) viele auf einmal: nur Hinweis -> abrufen
+      if (d.more) loadReceipts(S.cur); else if (takeReceipts(S.cur, d.receipts)) drawMsgs();
+    }
     else if (t === 'chat.presence') {
       if (d.online || d.last) S.pres[d.username] = { online: !!d.online, last: d.last || null }; else delete S.pres[d.username];
       drawList(); drawHead();

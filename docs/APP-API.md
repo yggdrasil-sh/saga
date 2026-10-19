@@ -330,7 +330,8 @@ Zusammen mit dem Lese-Zeiger: `POST /api/chats/{id}/read` mit `{"seq": <wie bish
   dann der Benutzername bzw. Prinzipal `@~x@host` wie in `members[].username`). Je anderem Mitglied nur die neueste.
   Eigene Einstellung aus → `enabled: false`, leer.
 - Live: `chat.receipt {"chat_id": 7, "receipts": [{"from", "handle"?, "sealed"}]}` – je Chat gebündelt (höchstens ein
-  Ereignis je 2 s mit allen neuen).
+  Ereignis je 2 s mit allen neuen). Sind es mehr als 8 (große Gruppe), kommt nur `{"chat_id": 7, "receipts": [],
+  "more": true}` – dann, falls der Chat offen ist, `GET …/receipts` holen.
 - Öffnen mit `backup_pk/backup_sk`, dann **prüfen**: Gerät `dev` muss ein geprüftes Gerät von `from` sein (lokal: Geräte
   aus `/recipients` mit gültigem Zertifikat; v2: Geräte aus den geprüften v2-Schlüsseln von `handle`), Signatur mit
   `chat_id`/`chat_ref` und Benutzername/Handle wie oben. Nicht prüfbar → ignorieren. Je Person nur das größte `n` merken.

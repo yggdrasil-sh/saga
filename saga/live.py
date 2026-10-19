@@ -30,7 +30,7 @@ Ereignisse (event: ..., data: JSON) - die Rechte werden beim VERSAND geprueft (s
   call.ring        {call_id, chat_id, from, from_device, media, ring_s}   Anruf (2.1, saga.calls) - an das Gegenueber
   call.signal      {call_id, seq, from_device, to_device, sealed}   versiegelt fuer das Zielgeraet (SDP/ICE, der Server liest nichts)
   call.state       {call_id, chat_id, state: active|ended, device?, reason?, status?}   an beide
-  chat.receipt     {chat_id, receipts:[{from, handle?, sealed}]}   (2.4, saga.chat_status) Gelesen-Bestaetigungen, versiegelt fuer das Konto
+  chat.receipt     {chat_id, receipts:[{from, handle?, sealed}], more?}   (2.4, saga.chat_status) Gelesen-Bestaetigungen (more: GET holen)
   chat.presence    {username, online, last}            (2.4) Online-Status - nur an Konten, die die Person gerade abonniert haben
   chat.privacy     {receipts, online}                  (2.4) eigene Einstellung geaendert (andere Tabs/Geraete)
   ai.persona.changed {name, custom_name, avatar, avatar_etag}   (2.1) Name/Bild/Schalter der KI geaendert - an Konten, die die KI nutzen duerfen (bzw. bisher durften)
