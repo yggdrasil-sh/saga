@@ -98,9 +98,12 @@ def main():
         js_rename = ("(id) => fetch('/api/notes/' + id, {method: 'PATCH', credentials: 'same-origin', headers: {'X-Saga': '1', "
                      "'Content-Type': 'application/json'}, body: JSON.stringify({title: 'perf ' + Date.now()})}).then(function () {"
                      " var t = performance.now(); return window.HKPages.k.reloadList().then(function () { return performance.now() - t; }); })")
-        for label, js, arg in (("unveraendert", js_reload, None), ("nach Umbenennen", js_rename, info["page_normal"])):
-            ms = sorted(p.evaluate(js, arg) if arg else p.evaluate(js) for _ in range(5))
-            rec(f"Baum neu laden ({label}, Median von 5)", ms[2], **lt(p))
+        if p.evaluate("() => !!(window.HKPages && window.HKPages.k && window.HKPages.k.reloadList)"):
+            for label, js, arg in (("unveraendert", js_reload, None), ("nach Umbenennen", js_rename, info["page_normal"])):
+                ms = sorted(p.evaluate(js, arg) if arg else p.evaluate(js) for _ in range(5))
+                rec(f"Baum neu laden ({label}, Median von 5)", ms[2], **lt(p))
+        else:                                         # aeltere Versionen (vor 2.2) haben kein reloadList: Schritt auslassen
+            rec("Baum neu laden: nicht messbar (kein HKPages.k.reloadList)", 0)
         try:
             if not a.ohne_db:
                 db_steps(p, cdp, info, reqs, a.db_timeout * 1000)
@@ -149,9 +152,12 @@ def db_steps(p, cdp, info, reqs, to):
         p.wait_for_function(f"() => {ROWS} >= {db_rows}", timeout=to, polling=100)
         lt(p)
         # ans Ende scrollen: letzte Zeile sichtbar (virtualisiert: wird erst dann eingesetzt)
-        rec("DB: ans Ende scrollen bis letzte Zeile da", timed(p, lambda: p.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)"),
-            "() => { var r = document.querySelectorAll('tr.db-row'), l = r[r.length - 1], f = document.querySelector('.db-table tfoot');"
-            " return l && f && f.getBoundingClientRect().top - l.getBoundingClientRect().bottom < 5; }", to), **lt(p), **metrics(cdp))
+        try:                                          # aeltere Versionen: ggf. ohne tfoot - dann Schritt auslassen
+            rec("DB: ans Ende scrollen bis letzte Zeile da", timed(p, lambda: p.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)"),
+                "() => { var r = document.querySelectorAll('tr.db-row'), l = r[r.length - 1], f = document.querySelector('.db-table tfoot');"
+                " return l && f && f.getBoundingClientRect().top - l.getBoundingClientRect().bottom < 5; }", min(to, 60_000)), **lt(p), **metrics(cdp))
+        except Exception as ex:
+            rec("DB: ans Ende scrollen: nicht messbar", 0, error=str(ex).splitlines()[0][:120])
         p.evaluate("window.scrollTo(0, 0)")
         # Ansicht "Offen" (Filter + Sortierung), Board, zurueck
         for label, cond in (("Offen", f"() => {{ var t = document.querySelector('.db-tab.on'); return t && t.textContent.indexOf('Offen') >= 0 && {ROWS} > 0; }}"),
@@ -163,8 +169,11 @@ def db_steps(p, cdp, info, reqs, to):
             ms = timed(p, lambda: tab.click(), cond, to)
             extra = {}
             if label == "Board":                      # 2.2: Karten kommen in Haeppchen - auch "alle Karten da" messen
-                p.wait_for_function(f"() => document.querySelectorAll('.board-card').length >= {db_rows}", timeout=to, polling=50)
-                extra["alle_karten_ms"] = round((time.perf_counter() - t0) * 1000)
+                try:
+                    p.wait_for_function(f"() => document.querySelectorAll('.board-card').length >= {db_rows}", timeout=min(to, 120_000), polling=50)
+                    extra["alle_karten_ms"] = round((time.perf_counter() - t0) * 1000)
+                except Exception:                     # aeltere Versionen: andere Karten-Klasse/Begrenzung
+                    extra["karten"] = p.evaluate("document.querySelectorAll('.board-card').length")
             rec(f"DB: Ansicht '{label}'", ms, **extra, **lt(p))
         # Neuer Eintrag (+ Neu): POST + loadList + Zeile im DOM
         n0 = p.evaluate(ROWS)

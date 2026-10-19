@@ -6,7 +6,7 @@
 # werden vorher geloescht), Endpunkte messen (bench.py), EXPLAIN der teuersten Abfragen (explain.py), langsame Abfragen
 # aus dem Postgres-Log (> 25 ms), Grenzwerte aus tools/perf/limits.json pruefen. Ergebnis: perf-out/<stufe>.json/.txt.
 # Exit 1, wenn ein Grenzwert ueberschritten ist. SAGA_PERF_KEEP=1: Testkonten danach behalten. SAGA_PERF_N: Wiederholungen.
-# SAGA_PERF_WEB=1: zusaetzlich Weboberflaeche (Playwright-Image, headless). SAGA_PERF_ZIEL=1: gegen die 2.2-Ziele (ziel_*) pruefen.
+# SAGA_PERF_WEB=1: zusaetzlich Weboberflaeche (Playwright-Image, headless; SAGA_PERF_WEB_ARGS z. B. "--db-timeout 180"). SAGA_PERF_ZIEL=1: gegen die 2.2-Ziele (ziel_*) pruefen.
 # NUR auf Test-Stacks: legt NOTE_MAX_COUNT=200000 in die .env (sonst scheitert schon Stufe M am Seiten-Limit).
 set -e
 cd "$(dirname "$0")/../.."
@@ -44,7 +44,7 @@ for S in $STUFEN; do
   docker exec -i -w /app "$C" python - "$(cat perf-out/$S.info.json)" < tools/perf/explain.py | tee "perf-out/$S.explain.txt"
   if [ "$SAGA_PERF_WEB" = "1" ]; then                # Weboberflaeche (Playwright im Container, headless)
     docker run --rm --network host -v "$PWD/tools/perf:/w:ro" -v "$PWD/perf-out:/o" mcr.microsoft.com/playwright/python:v1.48.0-noble \
-      sh -c "pip install -q --break-system-packages playwright==1.48.0 >/dev/null 2>&1; python /w/web.py --base http://127.0.0.1:$PORT --info /o/$S.info.json --out /o/$S.web.json" \
+      sh -c "pip install -q --break-system-packages playwright==1.48.0 >/dev/null 2>&1; python /w/web.py --base http://127.0.0.1:$PORT --info /o/$S.info.json --out /o/$S.web.json $SAGA_PERF_WEB_ARGS" \
       | tee "perf-out/$S.web.txt" || FAIL=1
   fi
   docker logs --since "$SINCE" "$D" 2>&1 | grep -E 'duration: [0-9.]+ ms' | sed -E 's/^.*duration: ([0-9.]+) ms +(statement|execute [^:]*): /\1 ms  /' \
