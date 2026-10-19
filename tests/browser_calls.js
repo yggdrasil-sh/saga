@@ -122,7 +122,10 @@ async function until(fn, ms = 20000, step = 250) { const end = Date.now() + ms; 
     // Bildschirm teilen (headless: Quelle automatisch gewaehlt, falls der Browser es kann)
     const canShare = await a.$('.cl-ctl .cl-round >> nth=2');
     if (canShare && (await canShare.getAttribute('aria-label')) === 'Bildschirm teilen') {
-      await canShare.click(); await a.waitForTimeout(2000);
+      await canShare.click(); await a.waitForTimeout(400);
+      // 2.4 E3: einmaliger Datenschutzhinweis vor dem ersten Teilen
+      if (await a.isVisible('.cl-hint-go')) await a.click('.cl-hint-go');
+      await a.waitForTimeout(2000);
       const s = await st(a);
       if (s && s.screen) {
         ok('Bildschirm teilen: Gegenueber bekommt screen=true', await until(async () => { const x = await st(bc); return x && x.remote.screen; }, 6000));

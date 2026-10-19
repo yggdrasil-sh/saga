@@ -2799,5 +2799,14 @@
  "Bild-im-Bild": "Picture-in-picture",
  "Bild-im-Bild beenden": "Exit picture-in-picture",
  "Zurück zum Anruffenster": "Back to the call window",
- "Verbindung wird neu aufgebaut …": "Reconnecting …"
+ "Verbindung wird neu aufgebaut …": "Reconnecting …",
+ "Alles, was in der Auswahl sichtbar ist, sieht dein Gegenüber – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.": "Everything visible in your selection is seen by the other person – including notifications, passwords and other windows or chats.",
+ "Nichts wird aufgezeichnet oder auf dem Server gespeichert. Teile am besten nur ein Fenster oder einen Tab.": "Nothing is recorded or stored on the server. Ideally share just one window or tab.",
+ "Nicht mehr anzeigen": "Don't show again",
+ "Bildschirm wählen": "Choose screen",
+ "Ansicht tauschen": "Swap view",
+ "Du teilst deinen Bildschirm und den Ton": "You are sharing your screen and audio",
+ "Du teilst deinen Bildschirm": "You are sharing your screen",
+ "Kamera pausiert (langsame Verbindung)": "Camera paused (slow connection)",
+ "{name} teilt den Bildschirm": "{name} is sharing their screen"
 }

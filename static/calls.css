@@ -79,6 +79,36 @@
 .cl-pip-ctl{display:flex;justify-content:center;gap:.5rem;padding:.4rem .5rem .55rem;background:#0b0f15}
 .cl-pipdoc .cl-round{width:40px;height:40px;min-width:40px}
 .cl-pipdoc .cl-round svg{width:18px;height:18px}
+/* 2.4 E3: Bildschirm v2 - zweites Fernbild (klein), Leiste beim Teilen, Hinweis vor dem ersten Teilen */
+.cl-remote2{position:absolute;left:1rem;bottom:6.2rem;width:min(26vw,200px);aspect-ratio:4/3;object-fit:cover;border-radius:10px;
+  background:#000;border:1px solid #3a475b;z-index:2;cursor:pointer;display:none}
+.cl-win.has-small .cl-remote2{display:block}
+.cl-win.peer-screen .cl-remote{object-fit:contain}
+.cl-share{grid-row:2;grid-column:1;z-index:4;align-self:start;justify-self:center;margin-top:.4rem;display:flex;align-items:center;
+  flex-wrap:wrap;justify-content:center;gap:.5rem .7rem;max-width:calc(100% - 2rem);padding:.35rem .5rem .35rem .9rem;border-radius:999px;
+  background:#1a2230e6;border:1px solid #3a475b;font-size:.9rem;color:#e6ebf2}
+.cl-share[hidden]{display:none}
+.cl-share.me{background:var(--cl-red);border-color:var(--cl-red);color:#fff;font-weight:600}
+.cl-share-dot{width:.6rem;height:.6rem;border-radius:50%;background:#fff;animation:cl-blink 1.4s ease-in-out infinite}
+@keyframes cl-blink{50%{opacity:.35}}
+@media (prefers-reduced-motion: reduce){.cl-share-dot{animation:none}}
+.cl-share-s{font-weight:400;opacity:.9}
+.cl-share .cl-pill{height:32px;font-size:.85rem;padding:0 .9rem}
+.cl-share.me .cl-pill{background:#fff;border-color:#fff;color:#8b1c1a}
+.cl-share .cl-swap{color:#e6ebf2}
+.cl-share .cl-swap svg{width:18px;height:18px}
+.cl-hint{grid-row:1/-1;grid-column:1;z-index:6;align-self:center;justify-self:center;width:min(30rem,calc(100% - 2rem));
+  background:#151c27;border:1px solid #3a475b;border-radius:14px;padding:1.1rem 1.2rem;box-shadow:0 14px 44px rgba(0,0,0,.55)}
+.cl-hint b{font-size:1.05rem}
+.cl-hint p{margin:.6rem 0;line-height:1.45}
+.cl-hint .cl-hint-s{color:var(--muted);font-size:.9rem}
+.cl-hint-c{display:flex;align-items:center;gap:.4rem;font-size:.9rem;color:var(--muted);margin:.4rem 0 .9rem}
+.cl-hint-b{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:.6rem}
+.cl-btn.cl-hint-go{background:var(--accent);border-color:var(--accent);color:#111;font-weight:600}
+.cl-win.small .cl-remote2{width:24%;bottom:4.4rem;left:.5rem}
+.cl-win.small .cl-share{font-size:.78rem;margin-top:.2rem}
+.cl-win.small .cl-share-s{display:none}
+.cl-win.small .cl-hint{font-size:.85rem;padding:.7rem}
 .cl-status{grid-row:3;grid-column:1;z-index:3;text-align:center;padding:.4rem 1rem;font-size:.95rem;color:#e6ebf2;
   text-shadow:0 1px 3px #000}
 .cl-status.err{color:#ffb3ad;font-weight:600;max-width:46rem;justify-self:center}
@@ -104,6 +134,7 @@
   .cl-ring{left:.6rem;right:.6rem;top:auto;bottom:calc(.6rem + env(safe-area-inset-bottom));max-width:none;flex-wrap:wrap}
   .cl-ring-b{width:100%;justify-content:flex-end}
   .cl-local{width:32vw;bottom:6rem;right:.6rem}
+  .cl-remote2{width:30vw;bottom:6rem;left:.6rem}
   .cl-ctl{gap:.6rem}
   .cl-top{flex-wrap:wrap}
   .cl-info{flex-basis:calc(100% - 3rem)}

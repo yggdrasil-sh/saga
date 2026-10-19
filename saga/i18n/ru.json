@@ -2799,5 +2799,14 @@
  "Bild-im-Bild": "Картинка в картинке",
  "Bild-im-Bild beenden": "Выйти из режима «картинка в картинке»",
  "Zurück zum Anruffenster": "Вернуться в окно звонка",
- "Verbindung wird neu aufgebaut …": "Переподключение …"
+ "Verbindung wird neu aufgebaut …": "Переподключение …",
+ "Alles, was in der Auswahl sichtbar ist, sieht dein Gegenüber – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.": "Всё, что видно в выбранной области, увидит собеседник – в том числе уведомления, пароли и другие окна или чаты.",
+ "Nichts wird aufgezeichnet oder auf dem Server gespeichert. Teile am besten nur ein Fenster oder einen Tab.": "Ничего не записывается и не сохраняется на сервере. Лучше показывайте только одно окно или вкладку.",
+ "Nicht mehr anzeigen": "Больше не показывать",
+ "Bildschirm wählen": "Выбрать экран",
+ "Ansicht tauschen": "Поменять местами",
+ "Du teilst deinen Bildschirm und den Ton": "Вы показываете свой экран и звук",
+ "Du teilst deinen Bildschirm": "Вы показываете свой экран",
+ "Kamera pausiert (langsame Verbindung)": "Камера приостановлена (медленное соединение)",
+ "{name} teilt den Bildschirm": "{name} показывает экран"
 }

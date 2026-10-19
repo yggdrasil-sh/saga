@@ -9,6 +9,11 @@
 // bye. Neuverhandlung und want nur, wenn das Gegenueber sie in caps meldet - 2.1/2.3-Gegenstellen verhalten sich wie
 // bisher. Bitrate je Weg (direkt / Relais UDP / Relais TCP) und je Wunsch des Gegenuebers (want small, z. B. Bild-im-Bild)
 // ueber RTCRtpSender.setParameters. Bild-im-Bild: Document-PiP (eigene Knoepfe) bzw. Video-PiP, wo der Browser es kann.
+// 2.4 (E3, "Bildschirm v2"): Bildschirm als eigene, zweite Videospur (Betriebsart B, eigener Transceiver mit contentHint
+// "detail", Neuverhandlung), wenn beide Seiten reneg und screen2 melden - die Kamera laeuft daneben gedrosselt weiter und
+// das Gegenueber zeigt Bildschirm gross, Kamera klein (umschaltbar). Sonst wie 2.3 replaceTrack auf dem Kamera-Sender
+// (Betriebsart A). Systemton (wo der Browser ihn liefert) wird in die Tonspur gemischt. Vor dem ersten Teilen ein
+// Datenschutzhinweis, waehrend des Teilens eine rote Leiste "Du teilst deinen Bildschirm".
 (function () {
   'use strict';
   var HK = window.HK, T = window.T;
@@ -23,8 +28,10 @@
   // 2.4: Faehigkeiten dieses Clients im signierten Body (offer/answer). reneg = offer/answer waehrend des Gespraechs
   // (auch ICE-Restart), want = beachtet state.want des Gegenuebers, bye = meldet das Verlassen
   // reneg nur, wenn auch der eigene Server sie meldet (GET /api/calls/config -> features)
-  var CAPS_ALL = ['reneg', 'want', 'bye'];
-  function myCaps() { return CAPS_ALL.filter(function (x) { return x !== 'reneg' || (cfg && (cfg.features || []).indexOf('reneg') >= 0); }); }
+  // screen2 (E3) = zweite Videospur fuer den Bildschirm; braucht reneg und die Server-Faehigkeit screen2
+  var CAPS_ALL = ['reneg', 'want', 'bye', 'screen2'];
+  function feat(x) { return !!(cfg && (cfg.features || []).indexOf(x) >= 0); }
+  function myCaps() { return CAPS_ALL.filter(function (x) { return x === 'reneg' ? feat('reneg') : x === 'screen2' ? feat('reneg') && feat('screen2') : true; }); }
   var RESTART_MAX = 3, DISC_S = 2.5, FAIL_S = 20;    // ICE-Restart: Versuche je Abbruch, Wartezeit bei disconnected, Frist bei failed
   // Bitrate-Regeln je Weg (Konzept 2.4 §1.3), kbit/s. cam/screen/mesh je Strom, H = hoechste Bildhoehe, fps = Bildrate
   var RATES = {
@@ -34,8 +41,10 @@
   };
   var PATHS = ['direct', 'relay-udp', 'relay-tcp'];
   // -> Sende-Parameter fuer eine Spur: kind 'cam'|'screen'|'audio', path, want ('large'|'small'|'off') des Gegenuebers,
-  // n Endpunkte (ab 3: Mesh-Werte, E5), h Bildhoehe der Quelle
-  function rules(kind, path, want, n, h) {
+  // n Endpunkte (ab 3: Mesh-Werte, E5), h Bildhoehe der Quelle, share = ich teile gerade daneben den Bildschirm (Betriebsart
+  // B: Kamera <= 300 kbit/s, ueber Relais TCP aus - Summe je Richtung <= 1,6 Mbit/s, Konzept §4.5)
+  var SHARE_CAM = 300;
+  function rules(kind, path, want, n, h, share) {
     var r = RATES[path] || RATES.direct, o = {};
     if (kind === 'audio') return { maxBitrate: r.audio * 1000 };
     if (kind === 'screen') {                          // Bildschirm: Text muss lesbar bleiben - want aendert nichts
@@ -49,6 +58,12 @@
       o.maxBitrate = Math.min(o.maxBitrate, mesh ? 200000 : 300000);
       o.scaleResolutionDownBy = Math.max(2, Math.min(3, (h || 480) / 240));
     } else if (want === 'off') o.active = false;
+    if (share && kind === 'cam') {
+      o.maxBitrate = Math.min(o.maxBitrate, SHARE_CAM * 1000);
+      o.scaleResolutionDownBy = Math.max(o.scaleResolutionDownBy, Math.max(1, (h || 480) / 360));
+      o.scaleResolutionDownBy = Math.round(o.scaleResolutionDownBy * 100) / 100;
+      if (path === 'relay-tcp') o.active = false;
+    }
     return o;
   }
   function bridge() { var b = window.HKChat && window.HKChat.callApi; return b && b.ready() ? b : null; }
@@ -68,7 +83,8 @@
     phone: ['M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z'],
     x: ['M6 6l12 12', 'M18 6L6 18'],
     pip: ['M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z', 'M13 12h6v5h-6z'],
-    back: ['M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z', 'M14 10l-4 4', 'M10 10v4h4']
+    back: ['M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z', 'M14 10l-4 4', 'M10 10v4h4'],
+    swap: ['M7 4L3 8l4 4', 'M3 8h14', 'M17 20l4-4-4-4', 'M21 16H7']
   };
   function icon(name) {
     var NS = 'http://www.w3.org/2000/svg', s = document.createElementNS(NS, 'svg');
@@ -224,7 +240,11 @@
       ending: false, remoteState: { mic: true, cam: false, screen: false, pip: false, want: 'large', path: '' }, ui: null,
       // 2.4 (saga-call v3)
       peerCaps: [], established: false, n: 0, remoteN: 0, makingOffer: false, ignoreOffer: false, restarts: 0, restarting: false,
-      lastUf: null, oldUf: {}, net: '', pip: false, pipWin: null, wantSent: 'large', rates: {}, sent: {} }, o);
+      lastUf: null, oldUf: {}, net: '', pip: false, pipWin: null, wantSent: 'large', rates: {}, sent: {},
+      // 2.4 E3: eigene Transceiver (Ton, Kamera, Bildschirm), Betriebsart des Teilens ('track' = B, 'replace' = A),
+      // Rollen der m-Zeilen beim Gegenueber (mid -> mic|cam|screen), Fernspuren je mid, Ansicht getauscht
+      micTr: null, camTr: null, scrTr: null, scrStream: null, scrMode: '', mix: null, peerTracks: {}, rmid: {}, swap: false,
+      shareStarts: 0 }, o);
   }
   function myDev() { return bridge().device(); }
   function X() { return bridge().crypto(); }
@@ -254,6 +274,8 @@
   function polite(c) { return myDev().id > c.peerDevice; }
   function peerCan(c, cap) { return (c.peerCaps || []).indexOf(cap) >= 0; }
   function canReneg(c) { return peerCan(c, 'reneg') && myCaps().indexOf('reneg') >= 0; }    // beide Seiten muessen reneg melden
+  // Betriebsart B (zweite Videospur) nur, wenn beide Seiten reneg UND screen2 melden
+  function canScreen2(c) { return canReneg(c) && peerCan(c, 'screen2') && myCaps().indexOf('screen2') >= 0; }
   function capsOf(b) { return Array.isArray(b && b.caps) ? b.caps.filter(function (x) { return typeof x === 'string'; }).slice(0, 16) : []; }
   function targets(c) { return c.peerDevice ? [c.peerDevice] : Object.keys(c.peerDevs); }
   // Signal oeffnen + pruefen -> Objekt oder null (wirft nicht). Unbekanntes Geraet: Schluessel einmal neu holen.
@@ -299,6 +321,7 @@
     };
     pc.ontrack = function (e) {
       var t = e.track;
+      if (e.transceiver && e.transceiver.mid != null) c.rmid[t.id] = String(e.transceiver.mid);    // E3: Rolle ueber die mid
       // ontrack kann mehrfach und in beliebiger Reihenfolge kommen (Ton nach Bild, neue Spur nach Neuverhandlung):
       // beendete Spuren derselben Art raus, neue rein - die Wiedergabe-Elemente bekommen danach eigene Streams (bindRemote)
       c.remote.getTracks().forEach(function (o) { if (o !== t && o.kind === t.kind && o.readyState === 'ended') c.remote.removeTrack(o); });
@@ -323,8 +346,8 @@
     drawCtl(c);                                        // Kamera-Knopf: beim Klingeln ohne Kamera gezeichnet (Bughunt 2)
     if (a) a.enabled = c.mic;                          // Mikrofon wirklich senden (Stumm-Zustand gilt von Anfang an)
     if (!fromOffer) {
-      pc.addTransceiver(a || 'audio', { direction: 'sendrecv', streams: [c.local] });
-      pc.addTransceiver(v || 'video', { direction: 'sendrecv', streams: [c.local] });    // immer: Kamera/Bildschirm spaeter ohne neues Angebot
+      c.micTr = pc.addTransceiver(a || 'audio', { direction: 'sendrecv', streams: [c.local] });
+      c.camTr = pc.addTransceiver(v || 'video', { direction: 'sendrecv', streams: [c.local] });    // immer: Kamera/Bildschirm spaeter ohne neues Angebot
       return;
     }
     // Antwort: Spuren erst fertig einsetzen, dann createAnswer (nicht jeder Browser reiht replaceTrack in die
@@ -332,6 +355,9 @@
     var wait = [];
     pc.getTransceivers().forEach(function (tr) {
       var kind = tr.receiver && tr.receiver.track && tr.receiver.track.kind;
+      // Erstes Angebot: eine Ton- und eine Video-m-Zeile (weitere, z. B. ein Bildschirm einer spaeteren Fassung, nur empfangen)
+      if (kind === 'audio' && c.micTr || kind === 'video' && c.camTr) { tr.direction = 'recvonly'; return; }
+      if (kind === 'audio') c.micTr = tr; else if (kind === 'video') c.camTr = tr;
       tr.direction = 'sendrecv';
       if (kind === 'audio' && a) wait.push(tr.sender.replaceTrack(a));
       if (kind === 'video') { if (v) wait.push(tr.sender.replaceTrack(v)); tr.sender.setStreams && tr.sender.setStreams(c.local); }
@@ -340,8 +366,58 @@
     return Promise.all(wait);
   }
   function videoSender(c) {
+    if (c.camTr) return c.camTr.sender;
     var s = null; c.pc.getTransceivers().forEach(function (tr) { if (!s && tr.receiver.track && tr.receiver.track.kind === 'video') s = tr.sender; });
     return s;
+  }
+  function audioSender(c) {
+    if (c.micTr) return c.micTr.sender;
+    var s = null; c.pc.getTransceivers().forEach(function (tr) { if (!s && tr.receiver.track && tr.receiver.track.kind === 'audio') s = tr.sender; });
+    return s;
+  }
+  // --- 2.4 E3: Rollen der m-Zeilen (Vertrag docs/APP-API.md "Bildschirm v2") -------------------------------------------
+  // tracks = {mid: "mic"|"cam"|"screen"} fuer die eigenen Transceiver (feste Rolle je m-Zeile), msid = {mid: Stream-ID}
+  function myTracks(c) {
+    var o = {}, m = {};
+    [[c.micTr, 'mic', c.local], [c.camTr, 'cam', c.local], [c.scrTr, 'screen', c.scrStream]].forEach(function (x) {
+      if (!x[0] || x[0].mid == null) return;
+      o[x[0].mid] = x[1];
+      if (x[2]) m[x[0].mid] = x[2].id;
+    });
+    return { tracks: o, msid: m };
+  }
+  // mid, auf der gerade der eigene Bildschirm laeuft (B: eigene m-Zeile, A: die Kamera-m-Zeile) - sonst null
+  function myScreenMid(c) {
+    if (!c.screen) return null;
+    var tr = c.scrMode === 'track' ? c.scrTr : c.camTr;
+    return tr && tr.mid != null ? String(tr.mid) : null;
+  }
+  var ROLES = ['mic', 'cam', 'screen'];
+  function tracksOf(x) {
+    var o = {}, n = 0;
+    if (!x || typeof x !== 'object' || Array.isArray(x)) return o;
+    Object.keys(x).forEach(function (k) { if (n < 8 && /^[A-Za-z0-9_-]{1,16}$/.test(k) && ROLES.indexOf(x[k]) >= 0) { o[k] = x[k]; n++; } });
+    return o;
+  }
+  // Fernspuren: welche Videospur ist Kamera, welche Bildschirm? Massgeblich ist state.screen_mid (bzw. die Rolle "screen"
+  // der m-Zeile); ohne Angaben (2.3/E0, Betriebsart A) ist die einzige Videospur bei screen=true der Bildschirm.
+  function remoteVideo(c) {
+    var vids = c.remote.getVideoTracks().filter(function (t) { return t.readyState === 'live'; });
+    var byMid = {}; vids.forEach(function (t) { var m = c.rmid[t.id]; if (m != null) byMid[m] = t; });
+    var camMid = null;
+    Object.keys(c.peerTracks).forEach(function (m) { if (c.peerTracks[m] === 'cam' && camMid == null) camMid = m; });
+    if (camMid == null && c.pc) {                                  // ohne Rollen: erste Video-m-Zeile = Kamera
+      c.pc.getTransceivers().some(function (tr) { if (tr.receiver.track && tr.receiver.track.kind === 'video' && tr.mid != null) { camMid = String(tr.mid); return true; } return false; });
+    }
+    var cam = camMid != null && byMid[camMid] ? byMid[camMid] : (vids.length && !Object.keys(byMid).length ? vids[0] : null);
+    var rs = c.remoteState, scr = null;
+    if (rs.screen) {
+      if (rs.screenMid != null && byMid[rs.screenMid]) scr = byMid[rs.screenMid];
+      else if (rs.screenMid == null) { scr = cam; cam = null; }        // Betriebsart A: Bildschirm statt Kamera
+      if (scr === cam) cam = null;
+    }
+    var on = function (t) { return t && !t.muted ? t : null; };
+    return { cam: rs.screen && rs.screenMid == null ? null : on(cam), screen: on(scr), camAny: cam, screenAny: scr };
   }
   function remoteUfrag(c) {
     var d = c.pc && c.pc.remoteDescription, m = d && /a=ice-ufrag:(\S+)/.exec(d.sdp || '');
@@ -370,20 +446,30 @@
       if (!fpOk(b)) { securityFail(c); return; }
       c.peerDevice = b._from;                          // ab jetzt Signale nur noch an das annehmende Geraet
       c.fps = X().sdpFingerprints(b.sdp);
-      c.peerCaps = capsOf(b);
+      c.peerCaps = capsOf(b); peerTracksIn(c, b);
       c.pc.setRemoteDescription({ type: 'answer', sdp: b.sdp }).then(function () { c.established = true; applyRemoteIce(c); }).catch(function (e) { fail(c, T('Verbindung nicht aufgebaut: {err}', { err: e.message })); });
     } else if (b.t === 'offer' && c.established && b._from === c.peerDevice) reOffer(c, b);
     else if (b.t === 'answer' && c.established && b._from === c.peerDevice) reAnswer(c, b);
     else if (b.t === 'state') {
       var w = b.want && typeof b.want === 'object' && ['off', 'small', 'large'].indexOf(b.want.video) >= 0 ? b.want.video : 'large';
+      var sm = typeof b.screen_mid === 'string' && /^[A-Za-z0-9_-]{1,16}$/.test(b.screen_mid) ? b.screen_mid : null;
+      var was = c.remoteState.screen;
       c.remoteState = { mic: b.mic !== false, cam: !!b.cam, screen: !!b.screen, pip: !!b.pip, want: w,
-                        path: PATHS.indexOf(b.path) >= 0 ? b.path : '' };
-      c.gotState = true; drawMedia(c); drawInfo(c); applyRates(c);
+                        path: PATHS.indexOf(b.path) >= 0 ? b.path : '', screenMid: b.screen ? sm : null, audio: !!b.screen_audio };
+      peerTracksIn(c, b);
+      if (c.remoteState.screen && !was) c.swap = false;               // neues Teilen: Bildschirm gross
+      c.gotState = true; bindRemote(c); drawMedia(c); drawInfo(c); applyRates(c);
     } else if (b.t === 'bye' && c.established && b._from === c.peerDevice) remoteEnded(c, { reason: 'hangup' });
+  }
+  function peerTracksIn(c, b) {
+    var t = tracksOf(b && b.tracks);
+    if (Object.keys(t).length) c.peerTracks = t;
   }
   // --- 2.4: Neuverhandlung ("Perfect Negotiation") und ICE-Restart ------------------------------------------------------
   function sdpBody(c, t, sdp, n) {
-    return { t: t, sdp: sdp, fp: X().sdpFingerprints(sdp), n: n, caps: myCaps(), media: c.media };
+    var o = { t: t, sdp: sdp, fp: X().sdpFingerprints(sdp), n: n, caps: myCaps(), media: c.media };
+    if (myCaps().indexOf('screen2') >= 0) { var m = myTracks(c); o.tracks = m.tracks; o.msid = m.msid; }    // E3: Rolle je m-Zeile
+    return o;
   }
   // Eigenes Angebot waehrend des Gespraechs (negotiationneeded, ICE-Restart). setLocalDescription() ohne Argument erzeugt
   // das passende Angebot (inkl. iceRestart nach restartIce())
@@ -394,7 +480,9 @@
     return p.then(function () {
       if (C !== c || pc.signalingState !== 'have-local-offer') return;
       c.n += 1;
-      return sendSignal(c, Object.assign(sdpBody(c, 'offer', pc.localDescription.sdp, c.n), c.restarting ? { restart: true } : {}));
+      return sendSignal(c, Object.assign(sdpBody(c, 'offer', pc.localDescription.sdp, c.n), c.restarting ? { restart: true } : {})).then(function () {
+        if (c.stateDue) { c.stateDue = false; stateOut(c); }            // E3: Zustand (screen_mid) erst, wenn die mid feststeht
+      });
     }).catch(function () { /* naechster Versuch beim naechsten Anlass */ }).then(function () { c.makingOffer = false; });
   }
   function sameFp(c, b) { return fpOk(b) && JSON.stringify(X().sdpFingerprints(b.sdp)) === JSON.stringify(c.fps.slice().sort()); }
@@ -408,6 +496,7 @@
     if (!sameFp(c, b)) { securityFail(c); return; }
     c.remoteN = b.n;
     if (capsOf(b).length) c.peerCaps = capsOf(b);
+    peerTracksIn(c, b);
     pc.setRemoteDescription({ type: 'offer', sdp: b.sdp }).then(function () {          // bei Kollision: implizites Rollback
       applyRemoteIce(c);
       return pc.setLocalDescription();
@@ -420,6 +509,7 @@
     var pc = c.pc;
     if (pc.signalingState !== 'have-local-offer' || b.n !== c.n) return;   // Antwort auf ein ueberholtes Angebot
     if (!sameFp(c, b)) { securityFail(c); return; }
+    peerTracksIn(c, b);
     pc.setRemoteDescription({ type: 'answer', sdp: b.sdp }).then(function () { applyRemoteIce(c); settled(c); }).catch(function () {});
   }
   // Neuverhandlung abgeschlossen: steht ICE schon (Restart ohne Unterbrechung), gilt der Neuaufbau als fertig
@@ -529,7 +619,7 @@
       });
       if (!offer || !fpOk(offer)) { securityFail(c); throw null; }
       c.peerDevice = c.call.caller_device; c.fps = X().sdpFingerprints(offer.sdp);
-      c.peerCaps = capsOf(offer); c.remoteN = typeof offer.n === 'number' ? offer.n : 1;
+      c.peerCaps = capsOf(offer); c.remoteN = typeof offer.n === 'number' ? offer.n : 1; peerTracksIn(c, offer);
       if (typeof offer.pc === 'string' && /^[0-9a-f:]{1,200}$/.test(offer.pc)) c.pcFixed = offer.pc;
       return mediaHint(c, video);
     }).then(function (s) {
@@ -622,28 +712,33 @@
   // Sende-Parameter nach §1.3 setzen (nur bei Aenderung; setParameters ist billig, aber nicht kostenlos)
   function applyRates(c) {
     if (!c.pc || !c.pc.getSenders || C !== c) return;
-    var path = pathOf(c), want = c.remoteState.want || 'large';
+    var path = pathOf(c), want = c.remoteState.want || 'large', share = !!(c.screen && c.scrMode === 'track');
     c.pc.getSenders().forEach(function (snd) {
       var tr = snd.track; if (!tr || !snd.getParameters || !snd.setParameters) return;
       var kind = tr.kind === 'audio' ? 'audio' : tr === c.screen ? 'screen' : 'cam';
+      // Platz je Sender: audio, video (Kamera-m-Zeile, in Betriebsart A auch der Bildschirm), screen (eigene m-Zeile, E3)
+      var slot = tr.kind === 'audio' ? 'audio' : c.scrTr && snd === c.scrTr.sender ? 'screen' : 'video';
       var h = 0; try { h = (tr.getSettings && tr.getSettings().height) || 0; } catch (e) { h = 0; }
-      var want_ = rules(kind, path, want, 2, h), key = kind + ':' + JSON.stringify(want_);
-      if (c.rates[tr.kind] === key) return;
+      var want_ = rules(kind, path, want, 2, h, share), key = kind + ':' + JSON.stringify(want_);
+      if (c.rates[slot] === key) return;
       var p = snd.getParameters();
       if (!p.encodings || !p.encodings.length) return;                 // noch nicht ausgehandelt
       var e = p.encodings[0];
       ['maxBitrate', 'maxFramerate', 'scaleResolutionDownBy', 'active'].forEach(function (k) { if (want_[k] !== undefined) e[k] = want_[k]; });
       if (kind !== 'screen' && e.maxFramerate && want_.maxFramerate === undefined) delete e.maxFramerate;
       if (tr.kind === 'video') p.degradationPreference = want_.degradationPreference || 'balanced';
-      c.rates[tr.kind] = key;
-      var done = function () { c.applied = c.applied || {}; c.applied[tr.kind] = Object.assign({ kind: kind, path: path, want: want }, want_); };
+      c.rates[slot] = key;
+      var done = function () { c.applied = c.applied || {}; c.applied[slot] = Object.assign({ kind: kind, path: path, want: want }, want_); };
       snd.setParameters(p).then(done, function () {
         // aeltere Browser kennen degradationPreference nicht: ohne nochmal (frische Parameter, neue Transaktion)
         var q = snd.getParameters(); if (!q.encodings || !q.encodings.length) throw new Error('-');
         ['maxBitrate', 'maxFramerate', 'scaleResolutionDownBy', 'active'].forEach(function (k) { if (want_[k] !== undefined) q.encodings[0][k] = want_[k]; });
         return snd.setParameters(q).then(done);
-      }).catch(function () { if (c.rates[tr.kind] === key) delete c.rates[tr.kind]; });
+      }).catch(function () { if (c.rates[slot] === key) delete c.rates[slot]; });
     });
+    // Relais TCP: Kamera waehrend des Teilens aus (Hinweis beim Teilenden)
+    var off = share && path === 'relay-tcp' && !!c.cam;
+    if (off !== !!c.camPaused) { c.camPaused = off; drawShare(c); }
   }
   function quality(c, rep) {
     (function () {
@@ -677,10 +772,17 @@
   // Wiedergabe: Ton ueber das eigene <audio> (nur Audiospuren), Bild stumm im <video> (nur Videospuren). Bei jeder
   // Aenderung der Spuren ein frischer MediaStream - einem schon gesetzten Stream spaeter hinzugefuegte Spuren spielt
   // Safari nicht zuverlaessig ab (Ton kommt oft nach dem Bild an).
+  // E3: zwei Videospuren (Kamera und Bildschirm) - gross der Bildschirm, klein die Kamera; c.swap tauscht
   function bindRemote(c) {
     if (!c.ui) return;
     var live = function (t) { return t.readyState === 'live'; };
-    [[c.ui.ra, c.remote.getAudioTracks().filter(live)], [c.ui.rv, c.remote.getVideoTracks().filter(live)]].forEach(function (x) {
+    var rvt = remoteVideo(c), big = [], small = [];
+    if (rvt.screen) {
+      var sc = rvt.screen, cm = rvt.camAny && c.remoteState.cam ? rvt.camAny : null;
+      if (c.swap && cm) { big = [cm]; small = [sc]; } else { big = [sc]; small = cm ? [cm] : []; }
+    } else if (rvt.camAny) big = [rvt.camAny];
+    else big = c.remote.getVideoTracks().filter(live).slice(0, 1);
+    [[c.ui.ra, c.remote.getAudioTracks().filter(live)], [c.ui.rv, big.filter(live)], [c.ui.rv2, small.filter(live)]].forEach(function (x) {
       var m = x[0], want = x[1], have = m.srcObject ? m.srcObject.getTracks() : [];
       if (want.length === have.length && want.every(function (t) { return have.indexOf(t) >= 0; })) return;
       m.srcObject = want.length ? new MediaStream(want) : null;
@@ -746,8 +848,16 @@
   function stateOut(c) {
     if (!c.ready) return;
     c.wantSent = wantNow(c);
-    sendSignal(c, { t: 'state', mic: c.mic, cam: !!(c.cam && c.cam.readyState === 'live' && c.cam.enabled), screen: !!c.screen,
-                    pip: !!c.pip, want: { video: c.wantSent }, path: c.net || undefined });
+    var o = { t: 'state', mic: c.mic, cam: !!(c.cam && c.cam.readyState === 'live' && c.cam.enabled), screen: !!c.screen,
+              pip: !!c.pip, want: { video: c.wantSent }, path: c.net || undefined };
+    // E3: welche m-Zeile was traegt (nur fuer 2.4-Gegenstellen mit screen2; aeltere ignorieren unbekannte Felder ohnehin)
+    if (myCaps().indexOf('screen2') >= 0) {
+      var m = myTracks(c), sm = myScreenMid(c);
+      o.tracks = m.tracks; o.msid = m.msid;
+      if (sm != null) o.screen_mid = sm;
+      if (c.screen) o.screen_audio = !!c.mix;
+    }
+    sendSignal(c, o);
   }
   var visT = null;
   document.addEventListener('visibilitychange', function () {
@@ -764,33 +874,146 @@
     var snd = c.pc && videoSender(c);
     if (c.cam) {
       c.cam.stop(); if (c.local) c.local.removeTrack(c.cam); c.cam = null;
-      if (snd && !c.screen) snd.replaceTrack(null);
+      if (snd && (!c.screen || c.scrMode === 'track')) snd.replaceTrack(null);
       drawMedia(c); drawCtl(c); stateOut(c); return;
     }
     navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } }).then(function (s) {
       if (C !== c) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
       c.cam = s.getVideoTracks()[0]; c.local.addTrack(c.cam);
-      if (snd && !c.screen) snd.replaceTrack(c.cam).then(function () { delete c.rates.video; applyRates(c); });
+      if (snd && (!c.screen || c.scrMode === 'track')) snd.replaceTrack(c.cam).then(function () { delete c.rates.video; applyRates(c); });
       drawMedia(c); drawCtl(c); stateOut(c);
     }).catch(function (e) { HK.toast(mediaError(e, true)); });
   }
+  // --- 2.4 E3: Bildschirm teilen ------------------------------------------------------------------------------------
+  // Betriebsart B ('track'): eigene Videospur ueber Neuverhandlung, die Kamera bleibt (gedrosselt). A ('replace', 2.1/2.3
+  // und E0-Gegenstellen ohne screen2): replaceTrack auf dem Kamera-Sender wie bisher.
+  function hintOff() { try { return localStorage.getItem('saga-screen-hint') === '0'; } catch (e) { return false; } }
   function toggleScreen(c) {
-    var snd = c.pc && videoSender(c); if (!snd) return;
+    if (!c.pc || !videoSender(c)) return;
     if (c.screen) { stopScreen(c); return; }
-    navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }).then(function (s) {
-      if (C !== c) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
-      c.screen = s.getVideoTracks()[0];
-      c.screen.onended = function () { if (C === c && c.screen) stopScreen(c); };
+    if (hintOff()) { pickScreen(c); return; }
+    screenHint(c);
+  }
+  // Einmaliger Hinweis vor dem ersten Teilen (je Geraet abschaltbar). Der Knopf "Bildschirm waehlen" ist die Bedienung,
+  // die der Browser fuer getDisplayMedia verlangt.
+  function screenHint(c) {
+    if (!c.ui || c.ui.hint) return;
+    var box = el('div', 'cl-hint'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-label', T('Bildschirm teilen'));
+    box.appendChild(el('b', null, T('Bildschirm teilen')));
+    box.appendChild(el('p', null, T('Alles, was in der Auswahl sichtbar ist, sieht dein Gegenüber – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.')));
+    box.appendChild(el('p', 'cl-hint-s', T('Nichts wird aufgezeichnet oder auf dem Server gespeichert. Teile am besten nur ein Fenster oder einen Tab.')));
+    var lab = el('label', 'cl-hint-c'), cb = el('input'); cb.type = 'checkbox'; lab.appendChild(cb); lab.appendChild(document.createTextNode(' ' + T('Nicht mehr anzeigen')));
+    box.appendChild(lab);
+    var row = el('div', 'cl-hint-b');
+    var close = function () { box.remove(); if (c.ui) c.ui.hint = null; };
+    row.appendChild(btn(T('Abbrechen'), 'cl-pill cl-hint-no', close));
+    row.appendChild(btn(T('Bildschirm wählen'), 'cl-pill cl-hint-go', function () {
+      if (cb.checked) { try { localStorage.setItem('saga-screen-hint', '0'); } catch (e) { /* privat */ } }
+      close(); if (C === c && !c.done) pickScreen(c);
+    }));
+    box.appendChild(row);
+    c.ui.w.appendChild(box); c.ui.hint = box;
+    var go = box.querySelector('.cl-hint-go'); if (go) go.focus({ preventScroll: true });
+  }
+  function displayMedia() {
+    var md = navigator.mediaDevices;
+    // Systemton (Chromium: Tab-Ton, unter Windows/ChromeOS auch der ganze Systemton) - wo der Browser es kann
+    var full = { video: { frameRate: { max: 15 }, width: { max: 1920 }, height: { max: 1080 } },
+                 audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true },
+                 systemAudio: 'include', selfBrowserSurface: 'exclude', surfaceSwitching: 'include', monitorTypeSurfaces: 'include' };
+    return md.getDisplayMedia(full).catch(function (e) {
+      if (e && e.name === 'TypeError') return md.getDisplayMedia({ video: true });    // aeltere Browser: ohne Zusatzwuensche
+      throw e;
+    });
+  }
+  function pickScreen(c) {
+    displayMedia().then(function (s) {
+      if (C !== c || c.done || c.screen) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
+      var v = s.getVideoTracks()[0]; if (!v) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
+      c.screen = v; c.scrStream = s; c.shareStarts += 1;
+      c.screen.onended = function () { if (C === c && c.screen === v) stopScreen(c); };
       try { c.screen.contentHint = 'detail'; } catch (e) { /* aeltere Browser */ }
-      snd.replaceTrack(c.screen).then(function () { delete c.rates.video; applyRates(c); });
-      drawMedia(c); drawCtl(c); stateOut(c);
+      var at = s.getAudioTracks()[0];
+      if (at) mixOn(c, at);
+      c.scrMode = canScreen2(c) && c.established ? 'track' : 'replace';
+      if (c.scrMode === 'track') screenTrackOn(c);
+      else videoSender(c).replaceTrack(c.screen).then(function () { delete c.rates.video; applyRates(c); });
+      drawMedia(c); drawCtl(c); drawShare(c);
+      if (c.scrMode === 'track') stateLater(c); else stateOut(c);
     }).catch(function (e) { if (e && e.name !== 'NotAllowedError' && e.name !== 'AbortError') HK.toast(T('Bildschirm teilen nicht möglich: {err}', { err: e.message })); });
   }
+  // Betriebsart B: vorhandene Bildschirm-m-Zeile wiederverwenden (eigene oder vom Gegenueber angelegte, Rolle "screen") -
+  // so waechst das SDP nicht bei jedem Teilen; sonst neuen Transceiver anlegen. Beides loest negotiationneeded aus.
+  function screenTrackOn(c) {
+    var tr = c.scrTr;
+    if (!tr) {
+      c.pc.getTransceivers().some(function (x) {
+        if (x !== c.camTr && x.mid != null && c.peerTracks[x.mid] === 'screen' && x.receiver.track && x.receiver.track.kind === 'video') { tr = x; return true; }
+        return false;
+      });
+    }
+    if (tr) {
+      c.scrTr = tr;
+      tr.sender.replaceTrack(c.screen).then(function () { delete c.rates.screen; applyRates(c); });
+      if (tr.sender.setStreams) tr.sender.setStreams(c.scrStream);
+      tr.direction = 'sendrecv';
+    } else {
+      c.scrTr = c.pc.addTransceiver(c.screen, { direction: 'sendrecv', streams: [c.scrStream] });
+      delete c.rates.screen;
+    }
+    delete c.rates.video;                                          // Kamera daneben drosseln
+    applyRates(c);
+  }
   function stopScreen(c) {
-    var snd = c.pc && videoSender(c);
-    if (c.screen) { c.screen.onended = null; c.screen.stop(); c.screen = null; }
-    if (snd) snd.replaceTrack(c.cam || null).then(function () { delete c.rates.video; applyRates(c); });
-    drawMedia(c); drawCtl(c); stateOut(c);
+    var v = c.screen;
+    if (v) { v.onended = null; v.stop(); }
+    if (c.scrStream) c.scrStream.getTracks().forEach(function (t) { t.stop(); });
+    mixOff(c);
+    var mode = c.scrMode;
+    c.screen = null; c.scrStream = null; c.scrMode = ''; c.camPaused = false;
+    if (c.pc && mode === 'track' && c.scrTr) {
+      // Spur weg, Richtung "nur empfangen": teilt das Gegenueber nicht, ist die m-Zeile danach inaktiv (bleibt fuer das
+      // naechste Teilen bestehen). Die Richtungsaenderung loest die Neuverhandlung aus.
+      c.scrTr.sender.replaceTrack(null);
+      c.scrTr.direction = 'recvonly';
+      delete c.rates.screen; delete c.rates.video;
+      if (c.applied) delete c.applied.screen;
+      applyRates(c);
+      stateLater(c);
+    } else {
+      var snd = c.pc && videoSender(c);
+      if (snd) snd.replaceTrack(c.cam || null).then(function () { delete c.rates.video; applyRates(c); });
+    }
+    drawMedia(c); drawCtl(c); drawShare(c);
+    if (!c.stateDue) stateOut(c);
+  }
+  // Zustand nach der Neuverhandlung senden (screen_mid steht erst nach setLocalDescription fest); offerNow schickt ihn
+  // direkt nach dem Angebot, sonst spaetestens nach 3 s
+  function stateLater(c) {
+    c.stateDue = true;
+    setTimeout(function () { if (C === c && c.stateDue) { c.stateDue = false; stateOut(c); } }, 3000);
+  }
+  // Systemton in die Tonspur mischen (Mikrofon + Ton der Quelle). Stumm schaltet weiter nur das Mikrofon.
+  function mixOn(c, at) {
+    var ctx = audioCtx(), snd = c.pc && audioSender(c), mic = c.local && c.local.getAudioTracks()[0];
+    if (!ctx || !snd || !ctx.createMediaStreamDestination) return;
+    try {
+      var dst = ctx.createMediaStreamDestination(), nodes = [];
+      if (mic) { var a = ctx.createMediaStreamSource(new MediaStream([mic])); a.connect(dst); nodes.push(a); }
+      var b = ctx.createMediaStreamSource(new MediaStream([at])); b.connect(dst); nodes.push(b);
+      var out = dst.stream.getAudioTracks()[0];
+      c.mix = { dst: dst, nodes: nodes, out: out, src: at };
+      snd.replaceTrack(out).then(function () { delete c.rates.audio; applyRates(c); });
+    } catch (e) { c.mix = null; }
+  }
+  function mixOff(c) {
+    var m = c.mix; if (!m) return;
+    c.mix = null;
+    var snd = c.pc && audioSender(c), mic = c.local && c.local.getAudioTracks()[0];
+    if (snd) snd.replaceTrack(mic || null).then(function () { delete c.rates.audio; applyRates(c); }).catch(function () {});
+    m.nodes.forEach(function (n) { try { n.disconnect(); } catch (e) { /* egal */ } });
+    try { m.out.stop(); } catch (e) { /* egal */ }
   }
   function hangup(c) {
     if (C !== c) return;
@@ -826,7 +1049,8 @@
     clearInterval(c.alive); clearInterval(c.statsT); clearTimeout(c.outT); clearTimeout(c.connT); clearTimeout(c.failT); clearTimeout(c.discT);
     pipClose(c); mediaSession(null);
     stopTone(); if (kind !== 'error' && c.ready) playTone('end');
-    [c.local, c.screen && { getTracks: function () { return [c.screen]; } }].forEach(function (s) { if (s) s.getTracks().forEach(function (t) { t.stop(); }); });
+    mixOff(c);
+    [c.local, c.screen && { getTracks: function () { return [c.screen]; } }, c.scrStream].forEach(function (s) { if (s) s.getTracks().forEach(function (t) { t.stop(); }); });
     if (c.cam) c.cam.stop();
     try { if (c.pc) c.pc.close(); } catch (e) { /* schon zu */ }
     if (C === c) C = null;
@@ -834,7 +1058,8 @@
       status(c, msg || '', kind === 'error');
       // vorbei: keine Laufzeit/Verbindungsangaben und kein schwarzes Eigenbild mehr
       c.ui.info.textContent = ''; c.ui.un.hidden = true; if (c.ui.sink) c.ui.sink.remove();
-      c.ui.lv.srcObject = null; c.ui.lv.hidden = true; c.ui.w.classList.remove('has-video', 'screen', 'peer-muted');
+      c.ui.lv.srcObject = null; c.ui.lv.hidden = true; c.ui.w.classList.remove('has-video', 'screen', 'peer-muted', 'peer-screen', 'has-small');
+      c.ui.rv2.srcObject = null; c.ui.share.hidden = true; if (c.ui.hint) { c.ui.hint.remove(); c.ui.hint = null; }
       c.ui.ctl.textContent = '';
       c.ui.ctl.appendChild(btn(T('Schließen'), 'cl-pill', function () { closeWin(c); }));
       if (kind !== 'error') setTimeout(function () { closeWin(c); }, 3500);
@@ -851,7 +1076,10 @@
     var ra = el('audio', 'cl-raudio'); ra.autoplay = true;
     ra.addEventListener('playing', function () { if (c.audioBlocked) { c.audioBlocked = false; c.snd = ''; drawInfo(c); } });
     var who = el('div', 'cl-who'), lv = el('video', 'cl-local'); lv.hidden = true; lv.autoplay = true; lv.muted = true; lv.playsInline = true; lv.setAttribute('playsinline', '');
-    stage.appendChild(rv); stage.appendChild(ra); stage.appendChild(who); stage.appendChild(lv);
+    // E3: zweites Fernbild (klein: Kamera neben dem Bildschirm, nach dem Tauschen der Bildschirm) - Klick tauscht
+    var rv2 = el('video', 'cl-remote2'); rv2.autoplay = true; rv2.muted = true; rv2.playsInline = true; rv2.setAttribute('playsinline', '');
+    rv2.title = T('Ansicht tauschen'); rv2.addEventListener('click', function () { swapView(c); });
+    stage.appendChild(rv); stage.appendChild(ra); stage.appendChild(who); stage.appendChild(rv2); stage.appendChild(lv);
     var top = el('div', 'cl-top'), info = el('div', 'cl-info'), st = el('div', 'cl-status'); st.setAttribute('role', 'status');
     var mini = btn('▭', 'cl-mini cl-shrink', function () { w.classList.toggle('small'); }, T('Kleiner/größer'));
     // 2.4: Bild-im-Bild - nur, wo der Browser es kann (Document-PiP mit eigenen Knoepfen, sonst Video-PiP)
@@ -863,9 +1091,11 @@
     var ctl = el('div', 'cl-ctl');
     var un = btn(T('Ton einschalten'), 'cl-pill cl-unmute', function () { playAudio(c); }, T('Der Browser hat den Ton blockiert – tippen, um ihn einzuschalten'));
     un.hidden = true;
-    w.appendChild(stage); w.appendChild(top); w.appendChild(un); w.appendChild(st); w.appendChild(ctl);
+    // E3: Leiste "Du teilst deinen Bildschirm" (rot) bzw. "… teilt den Bildschirm" (Empfaenger) - immer sichtbar beim Teilen
+    var share = el('div', 'cl-share'); share.setAttribute('role', 'status'); share.hidden = true;
+    w.appendChild(stage); w.appendChild(top); w.appendChild(share); w.appendChild(un); w.appendChild(st); w.appendChild(ctl);
     document.body.appendChild(w);
-    c.ui = { w: w, rv: rv, ra: ra, lv: lv, who: who, info: info, st: st, ctl: ctl, un: un, pipB: pipB };
+    c.ui = { w: w, rv: rv, rv2: rv2, ra: ra, lv: lv, who: who, info: info, st: st, ctl: ctl, un: un, pipB: pipB, share: share, hint: null };
     mediaSession(c);
     unlockAudio(c);                                    // laeuft im Klick "Anrufen"/"Annehmen"
     bindRemote(c);
@@ -902,8 +1132,14 @@
   }
   function drawMedia(c) {
     if (!c.ui || c.done) return;
-    var rvid = c.remote.getVideoTracks().filter(function (t) { return t.readyState === 'live' && !t.muted; }).length > 0;
+    var bigT = c.ui.rv.srcObject && c.ui.rv.srcObject.getVideoTracks()[0];
+    var rvid = !!(bigT && bigT.readyState === 'live' && !bigT.muted);
     var show = rvid && (c.gotState ? c.remoteState.cam || c.remoteState.screen : true);
+    var smT = c.ui.rv2.srcObject && c.ui.rv2.srcObject.getVideoTracks()[0];
+    var small = !!(show && smT && smT.readyState === 'live' && !smT.muted);
+    c.ui.w.classList.toggle('has-small', small);
+    c.ui.w.classList.toggle('peer-screen', !!(show && c.remoteState.screen));
+    if (small && c.ui.rv2.paused) c.ui.rv2.play().catch(function () {});
     c.ui.w.classList.toggle('has-video', show);
     c.ui.w.classList.toggle('peer-muted', c.remoteState.mic === false);
     var mine = c.screen || c.cam;
@@ -914,7 +1150,27 @@
     if (show && c.ui.rv.srcObject && c.ui.rv.paused) c.ui.rv.play().catch(function () {});
     pipBtn(c, show);
     pipDraw(c);
+    drawShare(c);
     playAudio(c);
+  }
+  function swapView(c) { if (C !== c || !c.remoteState.screen) return; c.swap = !c.swap; bindRemote(c); drawMedia(c); }
+  // Leiste beim Teilen: eigene (rot, mit "Beenden") hat Vorrang; beim Empfaenger Name und - mit Kamera daneben - Tauschen
+  function drawShare(c) {
+    var b = c.ui && c.ui.share; if (!b || c.done) return;
+    b.textContent = '';
+    b.classList.toggle('me', !!c.screen);
+    if (c.screen) {
+      b.appendChild(el('span', 'cl-share-dot'));
+      b.appendChild(el('span', 'cl-share-t', c.mix ? T('Du teilst deinen Bildschirm und den Ton') : T('Du teilst deinen Bildschirm')));
+      if (c.camPaused) b.appendChild(el('span', 'cl-share-s', T('Kamera pausiert (langsame Verbindung)')));
+      b.appendChild(btn(T('Teilen beenden'), 'cl-pill cl-share-stop', function () { if (C === c && c.screen) stopScreen(c); }, T('Teilen beenden')));
+      b.hidden = false;
+    } else if (c.remoteState.screen && c.connected) {
+      var name = (c.peer && (c.peer.name || c.peer.username)) || '';
+      b.appendChild(el('span', 'cl-share-t', T('{name} teilt den Bildschirm', { name: name })));
+      if (c.ui.w.classList.contains('has-small')) b.appendChild(btn(icon('swap'), 'cl-mini cl-swap', function () { swapView(c); }, T('Ansicht tauschen')));
+      b.hidden = false;
+    } else b.hidden = true;
   }
   function drawCtl(c) {
     if (!c.ui || c.done) return;
@@ -1111,6 +1367,20 @@
                        wantSent: C.wantSent, rates: C.applied || {}, sent: C.sent,
                        signaling: C.pc ? C.pc.signalingState : '', ice: C.pc ? C.pc.iceConnectionState : '', ufrag: C.pc ? remoteUfrag(C) : null } } : null;
   }, ringing: function () { return Object.keys(RINGS); },
+  // 2.4 E3: Bildschirm - Betriebsart, eigene/fremde m-Zeilen, was gross und klein gezeigt wird
+  screen: function () {
+    var c = C; if (!c) return null;
+    var big = c.ui && c.ui.rv.srcObject && c.ui.rv.srcObject.getVideoTracks()[0], sm = c.ui && c.ui.rv2.srcObject && c.ui.rv2.srcObject.getVideoTracks()[0];
+    var rvt = remoteVideo(c), role = function (t) { return !t ? '' : t === rvt.screenAny ? 'screen' : t === rvt.camAny ? 'cam' : '?'; };
+    var mt = myTracks(c);
+    return { mode: c.scrMode, sharing: !!c.screen, caps: canScreen2(c), mine: mt.tracks, msid: mt.msid, screenMid: myScreenMid(c),
+             hint: c.screen ? c.screen.contentHint : '', audio: !!c.mix, camPaused: !!c.camPaused, starts: c.shareStarts,
+             scrDir: c.scrTr ? c.scrTr.direction : '', scrCur: c.scrTr ? c.scrTr.currentDirection : '',
+             mlines: c.pc && c.pc.localDescription ? (c.pc.localDescription.sdp.match(/^m=/gm) || []).length : 0,
+             peerTracks: c.peerTracks, remoteMid: c.remoteState.screenMid, big: role(big), small: role(sm), swap: c.swap,
+             bar: c.ui && !c.ui.share.hidden ? c.ui.share.textContent : '', hintOpen: !!(c.ui && c.ui.hint),
+             audioTrack: c.pc && audioSender(c) && audioSender(c).track ? (c.mix && audioSender(c).track === c.mix.out ? 'mix' : 'mic') : '' };
+  },
   // 2.4: fuer Tests und die Diagnose - ICE neu aushandeln (wie bei einem Netzwechsel), Bild-im-Bild, Regeltabelle
   restartIce: function () { return restartIce(C); }, pip: function (on) { if (!C) return Promise.resolve(false); return on === false ? (pipClose(C), Promise.resolve(true)) : pipOpen(C); },
   rules: rules, limits: { restartMax: RESTART_MAX, discS: DISC_S, failS: FAIL_S } };

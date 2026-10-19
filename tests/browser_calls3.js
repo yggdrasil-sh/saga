@@ -125,7 +125,8 @@ async function ringAccept(b, video) {
     ok('2.4 <-> 2.4: verbunden', ca && cb, { ca, cb });
     ok('Grenzen ICE-Restart wie in den Apps: 3 Versuche, disconnected 2,5 s, failed 20 s',
       JSON.stringify(await a.evaluate(() => window.HKCalls.limits)) === JSON.stringify({ restartMax: 3, discS: 2.5, failS: 20 }));
-    ok('caps im signierten Body auf beiden Seiten (reneg, want, bye)', ca && cb && ca.v3.peerCaps.join() === 'reneg,want,bye' && cb.v3.peerCaps.join() === 'reneg,want,bye',
+    const has3 = x => ['reneg', 'want', 'bye'].every(k => x.indexOf(k) >= 0);   // ab E3 zusaetzlich screen2
+    ok('caps im signierten Body auf beiden Seiten (reneg, want, bye)', ca && cb && has3(ca.v3.peerCaps) && has3(cb.v3.peerCaps),
       { a: ca && ca.v3.peerCaps, b: cb && cb.v3.peerCaps });
     ok('gleiche pc-Kennung (sortiertes Geraete-Paar), genau eine Seite hoeflich', ca && cb && ca.v3.pc && ca.v3.pc === cb.v3.pc && ca.v3.polite === !cb.v3.polite,
       { a: ca && ca.v3.pc, b: cb && cb.v3.pc });

@@ -2799,5 +2799,14 @@
  "Bild-im-Bild": "Imagen en imagen",
  "Bild-im-Bild beenden": "Salir de imagen en imagen",
  "Zurück zum Anruffenster": "Volver a la ventana de llamada",
- "Verbindung wird neu aufgebaut …": "Reconectando …"
+ "Verbindung wird neu aufgebaut …": "Reconectando …",
+ "Alles, was in der Auswahl sichtbar ist, sieht dein Gegenüber – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.": "Todo lo que sea visible en tu selección lo verá la otra persona, incluidas notificaciones, contraseñas y otras ventanas o chats.",
+ "Nichts wird aufgezeichnet oder auf dem Server gespeichert. Teile am besten nur ein Fenster oder einen Tab.": "No se graba ni se guarda nada en el servidor. Lo mejor es compartir solo una ventana o una pestaña.",
+ "Nicht mehr anzeigen": "No volver a mostrar",
+ "Bildschirm wählen": "Elegir pantalla",
+ "Ansicht tauschen": "Intercambiar vista",
+ "Du teilst deinen Bildschirm und den Ton": "Estás compartiendo tu pantalla y el sonido",
+ "Du teilst deinen Bildschirm": "Estás compartiendo tu pantalla",
+ "Kamera pausiert (langsame Verbindung)": "Cámara en pausa (conexión lenta)",
+ "{name} teilt den Bildschirm": "{name} está compartiendo su pantalla"
 }

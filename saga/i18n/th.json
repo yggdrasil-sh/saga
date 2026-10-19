@@ -2799,5 +2799,14 @@
  "Bild-im-Bild": "ภาพซ้อนภาพ",
  "Bild-im-Bild beenden": "ออกจากภาพซ้อนภาพ",
  "Zurück zum Anruffenster": "กลับไปที่หน้าต่างการโทร",
- "Verbindung wird neu aufgebaut …": "กำลังเชื่อมต่อใหม่ …"
+ "Verbindung wird neu aufgebaut …": "กำลังเชื่อมต่อใหม่ …",
+ "Alles, was in der Auswahl sichtbar ist, sieht dein Gegenüber – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.": "ทุกอย่างที่มองเห็นในส่วนที่เลือก คู่สนทนาจะเห็นด้วย รวมถึงการแจ้งเตือน รหัสผ่าน และหน้าต่างหรือแชทอื่น ๆ",
+ "Nichts wird aufgezeichnet oder auf dem Server gespeichert. Teile am besten nur ein Fenster oder einen Tab.": "ไม่มีการบันทึกหรือจัดเก็บสิ่งใดบนเซิร์ฟเวอร์ ควรแชร์เพียงหน้าต่างหรือแท็บเดียว",
+ "Nicht mehr anzeigen": "ไม่ต้องแสดงอีก",
+ "Bildschirm wählen": "เลือกหน้าจอ",
+ "Ansicht tauschen": "สลับมุมมอง",
+ "Du teilst deinen Bildschirm und den Ton": "คุณกำลังแชร์หน้าจอและเสียง",
+ "Du teilst deinen Bildschirm": "คุณกำลังแชร์หน้าจอ",
+ "Kamera pausiert (langsame Verbindung)": "หยุดกล้องชั่วคราว (การเชื่อมต่อช้า)",
+ "{name} teilt den Bildschirm": "{name} กำลังแชร์หน้าจอ"
 }
