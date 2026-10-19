@@ -36,7 +36,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 import auth
 from db import connect as _db
-from saga import avatars, bus, mfa, notify
+from saga import avatars, bus, mfa, notify, sharing
 from saga.core import (ADMIN_URL, ASSET_V, E, SEC_HEADERS, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
                        tmpl, user_info)
 from saga.notes import FILE_MAX, note_chain
@@ -456,6 +456,7 @@ def _add_device(c, uid, ident_pub, d):
         return _bad(t("Höchstens {n} Geräte je Konto – bitte ein altes Gerät entfernen.", n=DEVICES_MAX), 409)
     c.execute("INSERT INTO chat_device (id, uid, name, enc_pub, sign_pub, sig, created, last_seen) VALUES (?,?,?,?,?,?,?,?)",
               (d["id"], uid, d["name"], d["enc_pub"], d["sign_pub"], d["sig"], time.time(), time.time()))
+    bus.fire("chat.keys.changed", c, uid=uid)          # 2.3 (saga.fed_keys): verbundene Instanzen holen die Schluessel neu
     return None
 
 
@@ -567,6 +568,7 @@ def api_device_delete(did: str, request: Request):
             return _bad("not found", 404)
         c.execute("DELETE FROM chat_msg_key WHERE recipient=?", (did,))
         _direct(c, [uid], "chat.device", {"id": did, "revoked": True})
+        bus.fire("chat.keys.changed", c, uid=uid)
     return _no_store({"ok": True})
 
 
@@ -728,8 +730,10 @@ def api_people(request: Request, q: str = ""):
         if sql:
             rows = c.execute(sql + " ORDER BY (u.username=?) DESC, u.username LIMIT 10", (*args, q)).fetchall()
         av = avatars.urls(c, [r[0] for r in rows]) if rows else {}
+    # 2.3: Personen anderer Instanzen aus dem Adressbuch (saga.fed_dir) - Chats ueber Servergrenzen folgen mit Protokoll 2
+    remote = sharing.DIR_SEARCH(uid, q, "chat") if sharing.DIR_SEARCH is not None else []
     return _no_store({"users": [{"username": r[0], "name": r[1] or r[0], "ready": bool(r[2]), "avatar": av.get(r[0])} for r in rows],
-                      "groups": [{"name": g} for g in mine if q in g][:10]})
+                      "groups": [{"name": g} for g in mine if q in g][:10], "remote": remote})
 
 
 def _note_info(c, uid, ids):

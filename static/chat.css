@@ -204,3 +204,7 @@ a.ct-chip:hover{color:var(--fg);border-color:var(--accent)}
 /* Hinweis bei name@server in der Personensuche (Chats ueber Servergrenzen gibt es noch nicht) */
 .ct-fed-hint{padding:.3rem .2rem}
 .ct-fed-hint a{color:var(--accent);white-space:nowrap}
+
+/* 2.3: Personen anderer Saga-Server (Adressbuch) - Chats ueber Servergrenzen folgen */
+.ct-person.ct-remote { opacity: .8; }
+.ct-person.ct-remote .ct-item-s { font-style: italic; }

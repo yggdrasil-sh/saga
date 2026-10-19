@@ -1,0 +1,208 @@
+{
+ "format": "saga-chat/v2",
+ "note": "Erzeugt mit tools/chat_vectors_v2.py (PyNaCl 1.6.2). B64 = Standard-Base64 mit Padding; *_hex = Hex. Format: saga/chat_v2.py, docs/APP-API-FED.md. Lokale Chats bleiben saga-chat/v1 (tests/chat_vectors.json).",
+ "lp": {
+  "fields": [
+   "saga-chat/v2/handle",
+   "~abcdefghijklmnop@a.example",
+   ""
+  ],
+  "hex": "00000013736167612d636861742f76322f68616e646c650000001b7e6162636465666768696a6b6c6d6e6f7040612e6578616d706c6500000000"
+ },
+ "identity": {
+  "handle": "~abcdefghijklmnop@a.example",
+  "ident_seed_hex": "5eee07af40bc2226dd8283ed8757114e17ab5e0209100a05d24f24dd7a65843a",
+  "ident_pk": "iwDj0Wj3jAxedJvHwhq95696T06aB9/GLSJS8qz+28U=",
+  "ident_sk": "Xu4Hr0C8IibdgoPth1cRTherXgIJEAoF0k8k3XplhDqLAOPRaPeMDF50m8fCGr3nr3pPTpoH38YtIlLyrP7bxQ==",
+  "backup_seed_hex": "6686a3c2df8d7516af566423676fdba6437d184f54d8d2cb568c572896a8a8ac",
+  "backup_pk": "FPryJ3GGTY5bj9dvehWY9ufZ2U/xovtJ8okxWv+3EQ4=",
+  "backup_sk": "aNc3o8v57LOvYkOQrSIhotdBgsM9y2QfTuAQIX23sNw="
+ },
+ "handle_cert": {
+  "handle": "~abcdefghijklmnop@a.example",
+  "msg_hex": "00000013736167612d636861742f76322f68616e646c650000001b7e6162636465666768696a6b6c6d6e6f7040612e6578616d706c65000000208b00e3d168f78c0c5e749bc7c21abde7af7a4f4e9a07dfc62d2252f2acfedbc50000002014faf22771864d8e5b8fd76f7a1598f6e7d9d94ff1a2fb49f289315affb7110e",
+  "sig": "2M+FGMIxDDAKlfEoDMePSKkTduQ3UimiH1z/jATscfS+OtiasRh6cFus1Lc+YmGn1w7cqTg1mt4663RBB1cXBw=="
+ },
+ "device": {
+  "id": "0123456789abcdef0123456789abcdef",
+  "enc_seed_hex": "106a9ad5c871c9fca22d4e01ecfda14dc56555ebfda72b1df74006f3caacc041",
+  "enc_pk": "HSPHX++BB5xAsEuEjU0mZwiwcOB4u5wcRZ9ADbxnp1o=",
+  "enc_sk": "KAjKq0UIk8+9p5e+hKtkIafx5w3sDwDQYoGHjyhaM+I=",
+  "sign_seed_hex": "edfa1989e72a07aa2211fb26b990f9341cef955276c625f85d1ff82af7f4d1c0",
+  "sign_pk": "hBrkYFL7lzTmxNFAN+KEgIcEnYRLNhn/a4STGyLUsrU=",
+  "sign_sk": "7foZiecqB6oiEfsmuZD5NBzvlVJ2xiX4XR/4Kvf00cCEGuRgUvuXNObE0UA34oSAhwSdhEs2Gf9rhJMbItSytQ==",
+  "msg_hex": "00000013736167612d636861742f76322f6465766963650000001b7e6162636465666768696a6b6c6d6e6f7040612e6578616d706c65000000203031323334353637383961626364656630313233343536373839616263646566000000201d23c75fef81079c40b04b848d4d266708b070e078bb9c1c459f400dbc67a75a00000020841ae46052fb9734e6c4d14037e2848087049d844b3619ff6b84931b22d4b2b5",
+  "fed_sig": "ATax+kWmRXV5mt/GlcdDL6PpxG1enZKXyzBSf6bFA2Cj6jwkteyFh+qCnuwK1QQXlrfp6I9+HMoEg0rMOwRwBg=="
+ },
+ "recipient": {
+  "identity": {
+   "handle": "~qrstuvwxyz234567@b.example:8443",
+   "ident_seed_hex": "57ebe0df8a65c2f1737e07d4f68f2287fbcf6dcbc10d0e0046ee0f44e3a52a68",
+   "backup_seed_hex": "a1a412f008d6f4c6cb16eb1de380cec110af0eaebbfbe797636925b204e6088b",
+   "ident_pk": "GL7vKc6bSjFDRkFqVAZpOdiMR40CecFWgWow7i040+k=",
+   "backup_pk": "3Wm/953rSOnJzFJsQbLehIyZuQNV04ierHgpMBcquGk="
+  },
+  "device": {
+   "id": "fedcba9876543210fedcba9876543210",
+   "enc_seed_hex": "b9c171d21ff0d84ce14cfef059c36ad52057cbe0bb40d59c46ba011e0e86fd88",
+   "sign_seed_hex": "d3c27bab58399c2e92f27b53497e341a30ef0bdbe6f32440cf16a583ad422b84",
+   "enc_pk": "LjuZEGDzbwnlVUvbBSn1IOJwPc1uLLmX1io79Sv1I3E="
+  },
+  "ids": [
+   "backup:~qrstuvwxyz234567@b.example:8443",
+   "dev:fedcba9876543210fedcba9876543210@b.example:8443"
+  ],
+  "sealed": {
+   "dev:fedcba9876543210fedcba9876543210@b.example:8443": "o357t/lkLyWI2bAmaBAnMwFhygHLLF971X40kd8712Slt3AetKJZgQlbNCOg+yCvzCkw6FQUUshMAD1PbWl7KZHqsfqCXFqLTJLfjc6mIWI=",
+   "backup:~qrstuvwxyz234567@b.example:8443": "fmV2xmmT78lPAHLJJ3ZH9O8tAhHS5pFtHnlRVnOAdkWe8Lq5sD8461N4ofdWr5/utdqt1CiJSOq3mdGXWken/8XajNH2oRq/9AlBdBzf/qs="
+  },
+  "message": "m1"
+ },
+ "messages": {
+  "m1": {
+   "chat_ref": "00112233445566778899aabbccddeeff@a.example",
+   "id": "d8fa3e0343f6a0704ac3c045bfa5254f",
+   "sender_handle": "~abcdefghijklmnop@a.example",
+   "sender_device": "0123456789abcdef0123456789abcdef",
+   "ts": 1767225600123,
+   "reply_to": "ffeeddccbbaa99887766554433221100",
+   "ai": null,
+   "body_json": "{\"v\":1,\"type\":\"text\",\"text\":\"Hallo Bert – über Servergrenzen! 👋\"}",
+   "key": "MdSnEfeXSmqa+oPQ0M0HmSZAW1LYmwaBQBzhJl9hVP8=",
+   "nonce": "9m9T4Xfe9DJPeeXs+8EMTWR/PmDc2o0R",
+   "ad_hex": "00000010736167612d636861742f76322f6d73670000002a303031313232333334343535363637373838393961616262636364646565666640612e6578616d706c650000002064386661336530333433663661303730346163336330343562666135323534660000001b7e6162636465666768696a6b6c6d6e6f7040612e6578616d706c650000002030313233343536373839616263646566303132333435363738396162636465660000000d3137363732323536303031323300000020666665656464636362626161393938383737363635353434333332323131303000000000",
+   "body_ct": "9m9T4Xfe9DJPeeXs+8EMTWR/PmDc2o0RCUjuDMmO5V83PG8phZeCII6bJFy+veG3JbCJyogCYRAIMjfVwaa1KCRLdU5oCqaZPRL8YC8oPOQibFATnE1JR+2UvanqbtYlXoRaXn3u6VoRVgtFg8rw",
+   "sig_msg_hex": "00000010736167612d636861742f76322f7369670000002a303031313232333334343535363637373838393961616262636364646565666640612e6578616d706c650000002064386661336530333433663661303730346163336330343562666135323534660000001b7e6162636465666768696a6b6c6d6e6f7040612e6578616d706c650000002030313233343536373839616263646566303132333435363738396162636465660000000d3137363732323536303031323300000020666665656464636362626161393938383737363635353434333332323131303000000000000000208a735ee4dddd85ba07bda6fba875751d92f7578a6fec77fd017a6b0393c5cd27",
+   "sig": "nLqyDNWkdUREMgCkUyKmAUkyKsHLCAhQLI4TbQWzd4sQAOW0UAnnYG8qOqUZjLpj4+kQfAlJcqaibq/h14VWCQ=="
+  },
+  "m2": {
+   "chat_ref": "00112233445566778899aabbccddeeff@a.example",
+   "id": "891f086669bd545e96cfd092b0a7a949",
+   "sender_handle": "~abcdefghijklmnop@a.example",
+   "sender_device": "0123456789abcdef0123456789abcdef",
+   "ts": 1767225600123,
+   "reply_to": null,
+   "ai": "b45d7476ed00d8e4319496dada8b5d405e3f45b503efd786b331f0a61e98b9e2",
+   "body_json": "{\"v\":1,\"type\":\"text\",\"text\":\"Gern – hier ist die Zusammenfassung.\"}",
+   "key": "hcBdTPC5tzMQWInXq45NaFSjKIxj6cma/iACEADBV+4=",
+   "nonce": "1Sv+eAl/jYF5RK7j5hLOZEnE3rltN9ld",
+   "ad_hex": "00000010736167612d636861742f76322f6d73670000002a303031313232333334343535363637373838393961616262636364646565666640612e6578616d706c650000002038393166303836363639626435343565393663666430393262306137613934390000001b7e6162636465666768696a6b6c6d6e6f7040612e6578616d706c650000002030313233343536373839616263646566303132333435363738396162636465660000000d31373637323235363030313233000000000000004062343564373437366564303064386534333139343936646164613862356434303565336634356235303365666437383662333331663061363165393862396532",
+   "body_ct": "1Sv+eAl/jYF5RK7j5hLOZEnE3rltN9ldBYx2tabkfdX9x+eK4cxV78qJduX6wY1QxGn1Is66AlO2anF3b8e37ZLwUj6s2HSkUf6jwbjbsInLEbxtYAO4tCRAxbxv8Uoy7WtNmDJva+x2OKDEtQ==",
+   "sig_msg_hex": "00000010736167612d636861742f76322f7369670000002a303031313232333334343535363637373838393961616262636364646565666640612e6578616d706c650000002038393166303836363639626435343565393663666430393262306137613934390000001b7e6162636465666768696a6b6c6d6e6f7040612e6578616d706c650000002030313233343536373839616263646566303132333435363738396162636465660000000d3137363732323536303031323300000000000000406234356437343736656430306438653433313934393664616461386235643430356533663435623530336566643738366233333166306136316539386239653200000020267b2c93f7222b1f951c094ee31e24fa4799fe21091b83d9c42c9f6491ac1971",
+   "sig": "t4dNEKgDvsyJb0ogfdk/pDsOyR2Afxlrb4Mqg0FUpx7v611/ndaW+hpxob6gGYB4+psi1t6uBHxas7LFL/HyDA=="
+  }
+ },
+ "file": {
+  "chat_ref": "00112233445566778899aabbccddeeff@a.example",
+  "ad_hex": "00000011736167612d636861742f76322f66696c650000002a303031313232333334343535363637373838393961616262636364646565666640612e6578616d706c65",
+  "plain_b64": "QW5oYW5nIMO8YmVyIFNlcnZlcmdyZW56ZW4gw6TDtsO8Cg==",
+  "key": "sCUBE1RcQdK/lA3k4LGwPvbZdHLqoQfELa/dqC2k9D8=",
+  "nonce": "NamZn8g1Sb36THrLvRY8xEDB+ZBkd4CY",
+  "blob": "NamZn8g1Sb36THrLvRY8xEDB+ZBkd4CYylC7C7yyY0qNhyAYYWLmziA9qXI5Q1PBSaORDIBFKq5RHJOD7HSqG/hT29w++zxKGTU="
+ },
+ "safety": {
+  "handle_a": "~abcdefghijklmnop@a.example",
+  "ident_a": "iwDj0Wj3jAxedJvHwhq95696T06aB9/GLSJS8qz+28U=",
+  "handle_b": "~qrstuvwxyz234567@b.example:8443",
+  "ident_b": "GL7vKc6bSjFDRkFqVAZpOdiMR40CecFWgWow7i040+k=",
+  "number": "96129 00276 60426 63318 67084 44115 40327 39422 75647 66270 77134 66718"
+ },
+ "reject": [
+  {
+   "case": "handle_cert_other_handle",
+   "what": "handle_cert",
+   "handle": "~qrstuvwxyz234567@b.example:8443",
+   "sig": "2M+FGMIxDDAKlfEoDMePSKkTduQ3UimiH1z/jATscfS+OtiasRh6cFus1Lc+YmGn1w7cqTg1mt4663RBB1cXBw=="
+  },
+  {
+   "case": "device_cert_v1_as_v2",
+   "what": "device_cert",
+   "handle": "~abcdefghijklmnop@a.example",
+   "fed_sig": "iOOjwpDR5v+1kEAEFB6C3NNPvFe+lkfq3qnHQm37fzm2sMBEmWVETA+aPZ4KHj4ler7g3PMYOT6QmRZBGeM2Ag=="
+  },
+  {
+   "case": "device_cert_other_handle",
+   "what": "device_cert",
+   "handle": "~qrstuvwxyz234567@b.example:8443",
+   "fed_sig": "ATax+kWmRXV5mt/GlcdDL6PpxG1enZKXyzBSf6bFA2Cj6jwkteyFh+qCnuwK1QQXlrfp6I9+HMoEg0rMOwRwBg=="
+  },
+  {
+   "case": "message_other_chat_ref",
+   "what": "message",
+   "message": "m1",
+   "chat_ref": "ffffffffffffffffffffffffffffffff@a.example"
+  },
+  {
+   "case": "message_other_sender",
+   "what": "message",
+   "message": "m1",
+   "sender_handle": "~qrstuvwxyz234567@b.example:8443"
+  },
+  {
+   "case": "message_ai_removed",
+   "what": "message",
+   "message": "m2",
+   "ai": null
+  },
+  {
+   "case": "message_ts_changed",
+   "what": "message",
+   "message": "m1",
+   "ts": 1767225600124
+  }
+ ],
+ "tofu": {
+  "key": "handle (vollstaendig, '~x@host')",
+  "rules": [
+   {
+    "step": "first_seen",
+    "stored": null,
+    "seen": "ident_a",
+    "result": "trust",
+    "store": {
+     "ident": "ident_a",
+     "verified": false
+    }
+   },
+   {
+    "step": "same",
+    "stored": {
+     "ident": "ident_a",
+     "verified": false
+    },
+    "seen": "ident_a",
+    "result": "trust"
+   },
+   {
+    "step": "changed",
+    "stored": {
+     "ident": "ident_a",
+     "verified": false
+    },
+    "seen": "ident_b",
+    "result": "warn",
+    "store": {
+     "ident": "ident_b",
+     "verified": false,
+     "changed": true,
+     "old": "ident_a"
+    }
+   },
+   {
+    "step": "changed_verified",
+    "stored": {
+     "ident": "ident_a",
+     "verified": true
+    },
+    "seen": "ident_b",
+    "result": "block"
+   },
+   {
+    "step": "bad_cert",
+    "stored": null,
+    "seen": "invalid handle_cert",
+    "result": "reject"
+   }
+  ]
+ }
+}

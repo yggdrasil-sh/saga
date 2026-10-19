@@ -442,6 +442,29 @@
     }).catch(function () { wrap.remove(); });
   }
 
+  // --- Foederation 2.3 (saga/fed_dir.py): "In Adressbuechern verbundener Server erscheinen" (Standard an) ----------------
+  // Nur sichtbar, wenn der Server mit anderen Saga-Servern verbunden ist. Gezeigt werden dort Anzeigename, Profilbild und
+  // eine zufaellige Kennung - nie Anmeldename, E-Mail oder Gruppen.
+  function fedField(box) {
+    api('GET', '/api/account/federation').then(function (f) {
+      if (!f.federation) return;
+      var wrap = el('div', 'hk-fedsec'); box.appendChild(wrap);
+      wrap.appendChild(el('h4', null, T('Verbundene Saga-Server')));
+      var l = el('label', 'hk-avset-row'), i = el('input', 'hk-switch'); i.type = 'checkbox'; i.setAttribute('role', 'switch'); i.checked = !!f.directory;
+      i.id = 'hk-fed-dir';
+      l.appendChild(el('span', null, T('In Adressbüchern verbundener Server erscheinen'))); l.appendChild(i); wrap.appendChild(l);
+      var st = el('div', 'hk-status'); st.setAttribute('role', 'status'); wrap.appendChild(st);
+      wrap.appendChild(el('p', 'hk-hint', T('Personen auf verbundenen Saga-Servern finden dich dann über deinen Anzeigenamen (für Chats und zum Teilen). Sichtbar sind nur Anzeigename, Profilbild und eine zufällige Kennung – nie dein Anmeldename, deine E-Mail-Adresse oder deine Gruppen.')));
+      if (f.handle) wrap.appendChild(el('p', 'hk-hint', T('Deine Kennung für andere Server: {h}', { h: f.handle })));
+      i.addEventListener('change', function () {
+        i.disabled = true;
+        api('PUT', '/api/account/federation', { directory: i.checked }).then(function (d) {
+          i.checked = !!d.directory; status(st, T('✓ Gespeichert'), 'ok');
+        }).catch(function (err) { i.checked = !i.checked; status(st, err.message, 'err'); }).then(function () { i.disabled = false; });
+      });
+    }).catch(function () {});
+  }
+
   // --- Profilbild (saga/avatars.py): im Benutzer-Knopf oben und unter Einstellungen -> Konto ------------------------
   function hueOf(s) { var h = 0; s = String(s || ''); for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   function headAvatar(url) {
@@ -581,6 +604,7 @@
         box.appendChild(el('p', 'hk-hint', T('Name, E-Mail und Passwort verwaltet dein Anmeldedienst.')));
         if (window.HKSecurity) HKSecurity.section(box);          // Passkeys/2FA (LDAP-Konten; bei SSO nur ein Hinweis)
         publicNameField(box);
+        fedField(box);
         return;
       }
       var nm = input('text', a.name === a.username ? '' : a.name, T('Anzeigename')); nm.maxLength = 120;
@@ -604,6 +628,7 @@
       box.appendChild(el('p', 'hk-hint', T('Andere Browser-Sitzungen und angemeldete Apps werden danach abgemeldet – außer dieser Sitzung und der App, in der du gerade bist.')));
       if (window.HKSecurity) HKSecurity.section(box);          // Anmeldung & Sicherheit: Passkeys, Authenticator-App (static/security.js)
       publicNameField(box);
+      fedField(box);
       pwb.addEventListener('click', function () {
         if (n1.value !== n2.value) { status(st2, T('Die neuen Passwörter stimmen nicht überein.'), 'err'); return; }
         pwb.disabled = true;

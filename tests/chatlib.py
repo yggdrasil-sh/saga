@@ -248,3 +248,79 @@ def sdp_fingerprints(sdp):
     import re
     return sorted({m.group(1).lower() + " " + m.group(2).upper()
                    for m in re.finditer(r"^a=fingerprint:(\S+) ([0-9A-Fa-f:]+)\s*$", str(sdp or ""), re.M)})
+
+
+# --- saga-chat/v2 (2.3): Chats ueber Servergrenzen - gebunden an foederierten Handle und chat_ref (saga/chat_v2.py) ------
+V2 = "saga-chat/v2/"
+
+
+def handle_msg(handle, ident_pk, backup_pk):
+    return lp(V2 + "handle", handle, ident_pk, backup_pk)
+
+
+def handle_sig(handle, ident):
+    return sign(handle_msg(handle, ident["ident_pk"], ident["backup_pk"]), ident["ident_sk"])
+
+
+def device_msg_v2(handle, did, enc_pk, sign_pk):
+    return lp(V2 + "device", handle, did, enc_pk, sign_pk)
+
+
+def device_sig_v2(handle, ident, dev):
+    return sign(device_msg_v2(handle, dev["id"], dev["enc_pk"], dev["sign_pk"]), ident["ident_sk"])
+
+
+def msg_ad_v2(chat_ref, mid, sender_handle, dev_id, ts, reply_to=None, ai=None):
+    return lp(V2 + "msg", chat_ref, mid, sender_handle, dev_id, str(ts), reply_to or "", ai or "")
+
+
+def sig_msg_v2(chat_ref, mid, sender_handle, dev_id, ts, reply_to, ai, body_ct):
+    return lp(V2 + "sig", chat_ref, mid, sender_handle, dev_id, str(ts), reply_to or "", ai or "", gh(unb64(body_ct)))
+
+
+def encrypt_v2(chat_ref, sender_handle, dev, recipients, plain, reply_to=None, ai=None, mid=None, ts=None, key=None, nonce=None):
+    """recipients: {'dev:<id>@host' | 'backup:<handle>': x25519_pk}"""
+    mid = mid or hexid()
+    ts = int(time.time() * 1000) if ts is None else ts
+    key, nonce = key or rnd(32), nonce or rnd(24)
+    ct = nb.crypto_aead_xchacha20poly1305_ietf_encrypt(plain.encode(), msg_ad_v2(chat_ref, mid, sender_handle, dev["id"], ts, reply_to, ai), nonce, key)
+    body_ct = b64(nonce + ct)
+    return {"id": mid, "ts": ts, "sender_handle": sender_handle, "sender_device": dev["id"], "body_ct": body_ct, "reply_to": reply_to, "ai": ai,
+            "sig": b64(sign(sig_msg_v2(chat_ref, mid, sender_handle, dev["id"], ts, reply_to, ai, body_ct), dev["sign_sk"])),
+            "keys": {r: b64(nb.crypto_box_seal(key, pk)) for r, pk in recipients.items()}}
+
+
+def decrypt_v2(chat_ref, m, sealed, pk, sk):
+    key = nb.crypto_box_seal_open(unb64(sealed, 80), pk, sk)
+    raw = unb64(m["body_ct"])
+    return nb.crypto_aead_xchacha20poly1305_ietf_decrypt(raw[24:], msg_ad_v2(chat_ref, m["id"], m["sender_handle"], m["sender_device"], m["ts"],
+                                                                               m.get("reply_to"), m.get("ai")), raw[:24], key).decode()
+
+
+def encrypt_file_v2(chat_ref, data, key=None, nonce=None):
+    key, nonce = key or rnd(32), nonce or rnd(24)
+    return nonce + nb.crypto_aead_xchacha20poly1305_ietf_encrypt(data, lp(V2 + "file", chat_ref), nonce, key), key
+
+
+def decrypt_file_v2(chat_ref, blob, key):
+    return nb.crypto_aead_xchacha20poly1305_ietf_decrypt(blob[24:], lp(V2 + "file", chat_ref), blob[:24], key)
+
+
+def safety_number_v2(handle_a, ident_a, handle_b, ident_b):
+    a, b = (handle_a.encode(), ident_a), (handle_b.encode(), ident_b)
+    if a[0] > b[0]:
+        a, b = b, a
+    h = gh(lp(V2 + "safety", a[0], a[1], b[0], b[1]), 64)
+    return " ".join("%05d" % (int.from_bytes(h[i * 5:i * 5 + 5], "big") % 100000) for i in range(12))
+
+
+def recipients_v2(entries):
+    """Eintraege aus /api/chat/v2/keys -> {'dev:<id>@host': pk, 'backup:<handle>': pk} (nur aktive Geraete)."""
+    out = {}
+    for e in entries:
+        host = e["handle"].split("@", 1)[1]
+        out["backup:" + e["handle"]] = unb64(e["backup_pub"], 32)
+        for d in e["devices"]:
+            if not d.get("revoked"):
+                out[f"dev:{d['id']}@{host}"] = unb64(d["enc_pub"], 32)
+    return out

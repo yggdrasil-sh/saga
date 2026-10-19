@@ -394,10 +394,57 @@
   // --- Bereit: Liste, Hash-Ziel, Live ----------------------------------------------------------------------------
   function ready() {
     loadAI();
+    fedCerts().catch(function () {});                      // 2.3: Zertifikate v2 fuer Chats ueber Servergrenzen (still)
     S.ready = true;
     loadList().then(function () { route(); });
     checkLinks();
   }
+  // --- Foederation 2.3 (saga-chat/v2): Handle-Zertifikat und Geraete-Zertifikate v2 signieren, fremde Schluessel mit TOFU ----
+  // Nur dieses Geraet kennt ident_sk. Geraete-Zertifikate v2 bekommt jedes aktive Geraet, dessen v1-Zertifikat zum eigenen
+  // Identitaetsschluessel passt (der Server kann so keine fremden Geraete unterschieben).
+  function fedCerts() {
+    if (!K || !K.ident_sk || !X) return Promise.resolve(null);
+    return api('GET', '/api/chat/v2/me').then(function (v) {
+      if (!v || !v.need || !v.handle) return v;
+      var body = {}, me = S.me || {};
+      if (!v.cert_ok) body.handle_sig = b64(X.handleSig(v.handle, K.ident_sk, K.ident_pk, K.backup_pk));
+      var devs = {};
+      (me.devices || []).forEach(function (d) {
+        if (d.revoked || v.missing.indexOf(d.id) < 0) return;
+        if (!X.verifyDevice(ME, K.ident_pk, d)) return;
+        devs[d.id] = b64(X.deviceSigV2(v.handle, K.ident_sk, { id: d.id, enc_pk: ub(d.enc_pub, 32), sign_pk: ub(d.sign_pub, 32) }));
+      });
+      if (Object.keys(devs).length) body.devices = devs;
+      if (!body.handle_sig && !body.devices) return v;
+      return api('PUT', '/api/chat/v2/cert', body);
+    });
+  }
+  function trust2Key(h) { return 'trust2:' + ME + ':' + h; }
+  // Schluessel zu foederierten Handles holen (ueber den eigenen Server), Zertifikate selbst pruefen, TOFU anwenden.
+  // -> {handle: {keys: {...} | null, trust: 'trust'|'warn'|'block'|'reject'|'missing', safety?}}
+  function fedKeys(handles) {
+    return api('GET', '/api/chat/v2/keys?handles=' + q(handles.join(','))).then(function (r) {
+      var out = {};
+      return Promise.all(handles.map(function (h) {
+        var e = (r.keys || {})[h];
+        if (!e) { out[h] = { keys: null, trust: 'missing' }; return null; }
+        var k = X.checkKeysV2(h, e);
+        if (!k) { out[h] = { keys: null, trust: 'reject' }; return null; }
+        return kvGet(trust2Key(h)).catch(function () { return null; }).then(function (st) {
+          var t = X.tofuV2(st || null, k.ident_pub);
+          out[h] = { keys: k, trust: t.result, stale: !!e.stale, stored: st || null };
+          if (t.store) return kvSet(trust2Key(h), t.store).catch(function () {});
+        });
+      })).then(function () { return out; });
+    });
+  }
+  // "Ueberprueft" (Sicherheitsnummer verglichen) bzw. Warnung bestaetigen
+  function fedVerify(h, ident_pub, verified) {
+    return kvSet(trust2Key(h), { ident: ident_pub, verified: !!verified });
+  }
+  window.SagaChatFed = { certs: fedCerts, keys: fedKeys, verify: fedVerify,
+                         safety: function (myHandle, theirHandle, theirIdentPk) { return X.safetyNumberV2(myHandle, K.ident_pk, theirHandle, theirIdentPk); } };
+
   function route() {
     var h = decodeURIComponent(location.hash.slice(1) || ''), m;
     if ((m = /^c(\d+)$/.exec(h))) openChat(+m[1]);
@@ -562,7 +609,15 @@
             b.addEventListener('click', function () { create({ kind: 'group', group: g.name }); });
             li.appendChild(b); res.appendChild(li);
           });
-          if (!r.users.length && !r.groups.length) res.appendChild(fedAddr(v) ? fedHint() : el('li', 'hk-hint', T('Keine Treffer.')));
+          (r.remote || []).forEach(function (u) {                // 2.3: Adressbuch verbundener Server (Chats folgen)
+            var li = el('li'), b = el('button', 'ct-person ct-remote'); b.type = 'button'; b.setAttribute('aria-disabled', 'true');
+            b.appendChild(avatar((u.name || '?').charAt(0).toUpperCase(), u.handle, '', u.avatar));
+            var t = el('span', 'ct-item-t'); t.appendChild(el('span', 'ct-item-n', u.label || u.name));
+            t.appendChild(el('span', 'ct-item-s', T('Person auf {host} · Chats über Servergrenzen folgen in Kürze', { host: u.host }))); b.appendChild(t);
+            b.addEventListener('click', function () { HK.toast(T('Chats mit Personen anderer Saga-Server kommen mit dem nächsten Update.')); });
+            li.appendChild(b); res.appendChild(li);
+          });
+          if (!r.users.length && !r.groups.length && !(r.remote || []).length) res.appendChild(fedAddr(v) ? fedHint() : el('li', 'hk-hint', T('Keine Treffer.')));
         }).catch(function (e) { res.textContent = ''; res.appendChild(el('li', 'hk-status err', e.message)); });
       }, 250);
     });

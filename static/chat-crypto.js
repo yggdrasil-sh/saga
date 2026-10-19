@@ -195,7 +195,98 @@
     return Object.keys(out).sort();
   }
 
+  // --- saga-chat/v2 (2.3): Chats ueber Servergrenzen, gebunden an den foederierten Handle ('~x@host') und chat_ref ----
+  // Format: saga/chat_v2.py, docs/APP-API-FED.md; Testvektoren tests/vectors/chat_v2.json. Lokale Chats bleiben v1.
+  var V2 = 'saga-chat/v2/';
+  function handleMsg(handle, ident_pk, backup_pk) { return lp(V2 + 'handle', handle, ident_pk, backup_pk); }
+  function handleSig(handle, ident_sk, ident_pk, backup_pk) { return S.crypto_sign_detached(handleMsg(handle, ident_pk, backup_pk), ident_sk); }
+  function deviceMsgV2(handle, id, enc_pk, sign_pk) { return lp(V2 + 'device', handle, id, enc_pk, sign_pk); }
+  function deviceSigV2(handle, ident_sk, d) { return S.crypto_sign_detached(deviceMsgV2(handle, d.id, d.enc_pk, d.sign_pk), ident_sk); }
+  // Eintrag aus /api/chat/v2/keys ({handle, ident_pub, backup_pub, sig, devices:[{id, enc_pub, sign_pub, fed_sig, revoked}]})
+  // selbst pruefen -> {handle, ident_pk, backup_pk, devices (nur gueltige)} oder null (Handle-Zertifikat ungueltig)
+  function checkKeysV2(handle, e) {
+    try {
+      if (!e || e.handle !== handle) return null;
+      var ip = unb64(e.ident_pub, 32), bp = unb64(e.backup_pub, 32);
+      if (!verify(unb64(e.sig, 64), handleMsg(handle, ip, bp), ip)) return null;
+      var devs = (e.devices || []).filter(function (d) {
+        try { return verify(unb64(d.fed_sig, 64), deviceMsgV2(handle, d.id, unb64(d.enc_pub, 32), unb64(d.sign_pub, 32)), ip); } catch (x) { return false; }
+      });
+      return { handle: handle, ident_pk: ip, backup_pk: bp, ident_pub: e.ident_pub, devices: devs };
+    } catch (x) { return null; }
+  }
+  function msgAdV2(ref, id, sender, device, ts, reply_to, ai) { return lp(V2 + 'msg', ref, id, sender, device, String(ts), reply_to || '', ai || ''); }
+  function sigMsgV2(ref, id, sender, device, ts, reply_to, ai, body_ct) {
+    return lp(V2 + 'sig', ref, id, sender, device, String(ts), reply_to || '', ai || '', S.crypto_generichash(32, unb64(body_ct)));
+  }
+  // o: {chat_ref, sender_handle, device, sign_sk, plain|body, reply_to?, ai?, recipients:[{id:'dev:<id>@host'|'backup:<handle>', pk}], id?, ts?, key?, nonce?}
+  function encryptMessageV2(o) {
+    var id = o.id || hex(16), ts = o.ts != null ? o.ts : Date.now();
+    var K = o.key || S.crypto_aead_xchacha20poly1305_ietf_keygen(), nonce = o.nonce || S.randombytes_buf(24);
+    var ct = S.crypto_aead_xchacha20poly1305_ietf_encrypt(enc.encode(o.plain != null ? o.plain : JSON.stringify(o.body)),
+      msgAdV2(o.chat_ref, id, o.sender_handle, o.device, ts, o.reply_to, o.ai), null, nonce, K);
+    var raw = new Uint8Array(24 + ct.length); raw.set(nonce, 0); raw.set(ct, 24);
+    var body_ct = b64(raw), keys = {};
+    (o.recipients || []).forEach(function (r) { keys[r.id] = b64(S.crypto_box_seal(K, r.pk)); });
+    var sig = b64(S.crypto_sign_detached(sigMsgV2(o.chat_ref, id, o.sender_handle, o.device, ts, o.reply_to, o.ai, body_ct), o.sign_sk));
+    return { v: 2, id: id, ts: ts, body_ct: body_ct, sig: sig, keys: keys, reply_to: o.reply_to || null, ai: o.ai || null,
+             sender_handle: o.sender_handle, sender_device: o.device };
+  }
+  // m: {id, ts, sender_handle, sender_device, body_ct, reply_to, ai}
+  function decryptMessageV2(ref, m, K) {
+    var raw = unb64(m.body_ct);
+    var pt = S.crypto_aead_xchacha20poly1305_ietf_decrypt(null, raw.subarray(24), msgAdV2(ref, m.id, m.sender_handle, m.sender_device, m.ts, m.reply_to, m.ai),
+      raw.subarray(0, 24), K);
+    return JSON.parse(dec.decode(pt));
+  }
+  function verifyMessageV2(ref, m, sign_pk) {
+    try { return verify(unb64(m.sig, 64), sigMsgV2(ref, m.id, m.sender_handle, m.sender_device, m.ts, m.reply_to, m.ai, m.body_ct), sign_pk); }
+    catch (e) { return false; }
+  }
+  function encryptFileV2(ref, bytes, opt) {
+    opt = opt || {};
+    var K = opt.key || S.crypto_aead_xchacha20poly1305_ietf_keygen(), nonce = opt.nonce || S.randombytes_buf(24);
+    var ct = S.crypto_aead_xchacha20poly1305_ietf_encrypt(bytes, lp(V2 + 'file', ref), null, nonce, K);
+    var blob = new Uint8Array(24 + ct.length); blob.set(nonce, 0); blob.set(ct, 24);
+    return { blob: blob, key: b64(K) };
+  }
+  function decryptFileV2(ref, blob, key) {
+    return S.crypto_aead_xchacha20poly1305_ietf_decrypt(null, blob.subarray(24), lp(V2 + 'file', ref), blob.subarray(0, 24), unb64(key, 32));
+  }
+  function safetyNumberV2(handleA, identA, handleB, identB) {
+    var a = [u8(handleA), identA], b = [u8(handleB), identB];
+    if (cmpBytes(a[0], b[0]) > 0) { var x = a; a = b; b = x; }
+    var h = S.crypto_generichash(64, lp(V2 + 'safety', a[0], a[1], b[0], b[1])), out = [];
+    for (var i = 0; i < 12; i++) {
+      var v = 0; for (var j = 0; j < 5; j++) v = v * 256 + h[i * 5 + j];
+      var s = String(v % 100000); while (s.length < 5) s = '0' + s;
+      out.push(s);
+    }
+    return out.join(' ');
+  }
+  // TOFU-Entscheidung je Handle (Regeln: tests/vectors/chat_v2.json "tofu"): stored = {ident, verified} | null,
+  // ident = B64 des gesehenen Identitaetsschluessels -> {result: trust|warn|block, store: neuer Eintrag | null}
+  function tofuV2(stored, ident) {
+    if (!stored) return { result: 'trust', store: { ident: ident, verified: false } };
+    if (stored.ident === ident) return { result: 'trust', store: null };
+    if (stored.verified) return { result: 'block', store: null };
+    return { result: 'warn', store: { ident: ident, verified: false, changed: true, old: stored.ident } };
+  }
+  function recipientsV2(entries) {
+    var out = [];
+    (entries || []).forEach(function (e) {
+      var host = e.handle.slice(e.handle.indexOf('@') + 1);
+      out.push({ id: 'backup:' + e.handle, pk: e.backup_pk });
+      e.devices.forEach(function (d) { if (!d.revoked) out.push({ id: 'dev:' + d.id + '@' + host, pk: unb64(d.enc_pub, 32) }); });
+    });
+    return out;
+  }
+
   return {
+    V2: V2, handleMsg: handleMsg, handleSig: handleSig, deviceMsgV2: deviceMsgV2, deviceSigV2: deviceSigV2, checkKeysV2: checkKeysV2,
+    msgAdV2: msgAdV2, sigMsgV2: sigMsgV2, encryptMessageV2: encryptMessageV2, decryptMessageV2: decryptMessageV2,
+    verifyMessageV2: verifyMessageV2, encryptFileV2: encryptFileV2, decryptFileV2: decryptFileV2, safetyNumberV2: safetyNumberV2,
+    tofuV2: tofuV2, recipientsV2: recipientsV2,
     signalMsg: signalMsg, signalSig: signalSig, signalInner: signalInner, sealSignal: sealSignal, openSignal: openSignal,
     verifySignal: verifySignal, sdpFingerprints: sdpFingerprints,
     VERSION: 1, OPS: OPS, MEM: MEM, b64: b64, unb64: unb64, lp: lp, hex: hex,

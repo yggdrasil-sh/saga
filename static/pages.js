@@ -4679,8 +4679,9 @@
       }
       (d.users || []).forEach(function (u) { add('user', u.username, u.name, u.username, u.avatar); });
       (d.groups || []).forEach(function (g) { add('group', g.name, g.name, T('Gruppe')); });
-      (d.remote || []).forEach(function (h) {             // andere Saga-Instanz (genaue Adresse name@server)
-        add(h.type, h.target, h.name, h.type === 'remote' ? T('Andere Saga-Instanz') : T('Gruppe auf einer anderen Saga-Instanz'));
+      (d.remote || []).forEach(function (h) {             // andere Saga-Instanz: Adressbuch (2.3) bzw. genaue Adresse name@server
+        if (h.label) add(h.type, h.target, h.label, T('Person auf {host} · {addr}', { host: h.host, addr: h.target.replace(/^@/, '') }), h.avatar);
+        else add(h.type, h.target, h.name, h.type === 'remote' ? T('Andere Saga-Instanz') : T('Gruppe auf einer anderen Saga-Instanz'));
       });
       hits.hidden = !any; inp.setAttribute('aria-expanded', any ? 'true' : 'false');
       if (!any && inp.value.trim().length >= 3) setErr(d.remote_hint || T('Niemand gefunden.'));   // name@server: Grund vom Server
