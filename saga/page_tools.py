@@ -11,7 +11,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from db import connect as _db
 from fastapi import APIRouter
-from saga import i18n
+from saga import i18n, nextcloud
 from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, origin_of, t
 from saga.sharing import Access, access, mask_links, names, person, viewer
 from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _snapshot, announce_tree, blocks_text, share_targets, tree_changed
@@ -232,6 +232,8 @@ def blocks_to_md(blocks, link=lambda h: h):
         elif typ == "attaches":
             f = d.get("file") or {}
             out += [f"[📎 {d.get('title') or f.get('name') or t('Datei')}]({link(f.get('url', ''))})", ""]
+        elif typ == "nextcloud":                       # Link statt Kopie (die Datei bleibt in Nextcloud)
+            out += [nextcloud.block_md(d), ""]
         elif typ == "columns":
             for col in d.get("cols") if isinstance(d.get("cols"), list) else []:
                 sub = blocks_to_md(col.get("blocks") or [], link).strip() if isinstance(col, dict) else ""

@@ -87,11 +87,17 @@ def blocks_text(blocks, lines=False):
             for x in v:
                 walk(x, key)
         elif isinstance(v, dict):
+            if v.get("type") == "nextcloud" and isinstance(v.get("data"), dict):     # verschachtelt: nur der Name
+                walk(v["data"].get("name"))
+                return
             for k, x in v.items():
                 if k not in ("type", "id", "tunes"):     # technische Felder verschachtelter Bloecke
                     walk(x, k)
 
     for b in blocks:
+        if b.get("type") == "nextcloud":                 # Nextcloud-Datei: nur der Name (keine Adressen, Kennungen)
+            walk((b.get("data") or {}).get("name") if isinstance(b.get("data"), dict) else None)
+            continue
         walk(b.get("data", {}))
     return re.sub(r"\s+", " ", " ".join(parts)).strip()
 

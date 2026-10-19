@@ -65,9 +65,10 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # verzeichnis fuer saga-chat/v2, chat2 = foederierte Chats (saga.fed_chat), calls2 = Anrufe ueber Servergrenzen
 # (saga.fed_calls). E4-E6 (saga.fed_pages): live = Live-Ereignisse fuer Abos fremder Seiten, presence = Anwesenheit,
 # db = Datenbanken (Zeilen, Ansichten, Werte), subpages = Unterseiten anlegen/verschieben, upload = Bilder/Dateien
-# hochladen, versions = Versionen, export = Export; chatgroups = freie Gruppen und Seiten-Chats ueber Servergrenzen.
+# hochladen, versions = Versionen, export = Export; chatgroups = freie Gruppen und Seiten-Chats ueber Servergrenzen;
+# nc_files = Nextcloud-Dateien in Seiten (saga.nextcloud): Vorschau/Download nur fuer Bloecke mit Schalter "fed".
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
-         "export", "chatgroups"]
+         "export", "chatgroups", "nc_files"]
 # Admin-Schalter je verbundener Instanz (fed_peer.opts) - Standard: alles an, Ausnahme "Teilen nur in gemeinsamen
 # Gruppen" aus. directory_groups: nur Personen dieser Gruppen erscheinen im Adressbuch der Instanz (leer = alle).
 OPT_DEFAULTS = {"chat": True, "calls": True, "directory": True, "scope_exception": False, "directory_groups": []}

@@ -2,7 +2,7 @@
 import importlib
 import os
 from db import connect as _db
-from saga import avatars, bus, chat, notify, push, userbackup
+from saga import avatars, bus, chat, nextcloud, notify, push, userbackup
 from saga.calendars import _cal_cache_drop
 from saga.core import forget_device
 from saga.files import _drop_thumbs
@@ -17,12 +17,13 @@ USER_TABLES = ("task", "note", "note_version", "bookmark", "fav", "device_login"
                "immich_key", "cal_account", "app_code", "pair_code", "note_publish", "public_name", "notification",
                "chat_identity", "chat_device", "chat_link", "push_sub", "push_queue", "ai_history", "ai_usage", "chat_ai_reply",
                "mfa_passkey", "mfa_totp", "mfa_recovery", "mfa_challenge", "fed_handle", "chat_fed_cert", "chat_device_fed",
-               "fed_chat_block")
+               "fed_chat_block", "nc_account")
 
 
 def delete_user_data(uid, drop_user=False):
     """drop_user=True: das Konto selbst in DERSELBEN Transaktion loeschen (Admin: Konto loeschen, BUG-042)."""
     userbackup.revoke_on_delete(uid)         # App-Passwort des persoenlichen Backup-Ziels in Nextcloud widerrufen
+    nextcloud.revoke_on_delete(uid)          # Nextcloud-Dateien in Seiten: App-Passwort widerrufen, Vorschauen weg
     with _db() as c, c:
         fids = [r[0] for r in c.execute("SELECT id FROM file WHERE uid=?", (uid,)).fetchall()]
         pub = c.execute("SELECT name FROM public_name WHERE uid=?", (uid,)).fetchone()
@@ -70,6 +71,7 @@ def user_usage(uid):
                 "tokens": q("SELECT COUNT(*) FROM app_token WHERE uid=?"),
                 "calendars": q("SELECT COUNT(*) FROM cal_account WHERE uid=?"),
                 "immich": q("SELECT COUNT(*) FROM immich_key WHERE uid=?"),
+                "nextcloud": q("SELECT COUNT(*) FROM nc_account WHERE uid=?"),
                 "shares": share_counts(c, uid)[0], "shared_with": share_counts(c, uid)[1], **chat.counts(c, uid)}
 
 

@@ -393,6 +393,29 @@ springt `Enter` im Namen in die nächste Zeile; in der letzten legt es gleich de
 
 ![Datenbank als Board](screenshots/board.png)
 
+**Nextcloud-Dateien in Seiten:** Unter Einstellungen → **Nextcloud** verknüpfst du deine **eigene** Nextcloud (Adresse
+eintragen, im neuen Tab bei Nextcloud anmelden und den Zugriff erlauben – Saga bekommt ein eigenes App-Passwort, dein
+Passwort sieht Saga nie). Danach gibt es im „/“-Menü **„Nextcloud-Datei“**: zuletzt geänderte Dateien, Ordner blättern
+oder nach Namen suchen. Ein eingefügter Nextcloud-Link der eigenen Instanz (`…/f/123`, `…/apps/files/?fileid=123`) wird
+automatisch zum Block. Zwei Wege:
+
+- **Als Verweis einfügen:** Die Datei bleibt in Nextcloud. Bilder erscheinen in Seitenbreite, andere Dateien als Karte
+  mit Vorschau (wenn Nextcloud eine liefert), „Herunterladen“ und „In Nextcloud öffnen“; Ordner zeigen ihre ersten
+  Einträge. **Alle, die die Seite sehen, sehen auch die Datei** – Vorschau und Download laufen über Saga mit deinem
+  Konto, auch für Personen ohne eigenes Nextcloud. Trennst du die Verknüpfung, verlierst du das Bearbeiten-Recht an der
+  Seite oder ist die Datei in Nextcloud weg, zeigt der Block nur noch eine Karte ohne Inhalt.
+- **Als Kopie übernehmen:** Die Datei wird zur normalen Saga-Datei (Bild- bzw. Datei-Block) und folgt dann den
+  Saga-Rechten – auch offline, im Backup und im Export.
+
+Wer eine Seite eines anderen Kontos bearbeiten darf, kann nur Dateien aus seiner **eigenen** Nextcloud einfügen; die
+Blöcke anderer Personen bleiben unverändert und lassen sich nicht in andere Seiten kopieren. Nur wer einen Block
+eingefügt hat, sieht unter ihm zwei Schalter (Standard aus): **„Auf veröffentlichter Seite zeigen“** (Besucher sehen
+Vorschau und Download über die Adresse der Seite, nie die Nextcloud-Adresse) und **„Über verbundene Server zeigen“**
+(Personen anderer Saga-Instanzen, mit denen die Seite geteilt ist). Der Export enthält einen Link statt der Datei, die
+Suche findet den Dateinamen. Ohne Freigabe im Admin-Bereich gehen nur öffentliche https-Adressen; Heimnetz-Server gibt
+der Admin unter Allgemein → „Verbindungen der Benutzer“ frei, dort lässt sich die Funktion auch ganz abschalten.
+Vorschaubilder speichert Saga zwischen (`/data/nc-cache`, nicht im Backup, Obergrenze `NC_CACHE_MB`).
+
 ### Seiten veröffentlichen
 
 Jede Seite lässt sich **öffentlich** machen – lesbar ohne Anmeldung, schlicht dargestellt, hell oder dunkel nach
@@ -1013,6 +1036,8 @@ Im Benutzermenü oben rechts unter **Einstellungen** (je ein Reiter):
   Am besten ein eigenes App-Passwort nur für Kalender anlegen.
 - **Immich:** Adresse und einen API-Schlüssel mit den Rechten `album.read`, `asset.read`, `asset.view`,
   `asset.download`, `user.read` eintragen. Dann gibt es Fotos als Bilder und Titelbilder.
+- **Nextcloud:** deine eigene Nextcloud verknüpfen (Login Flow, eigenes App-Passwort; „Trennen“ widerruft es) – für
+  Nextcloud-Dateien in Seiten (siehe „Seiten und Datenbanken“).
 - **Mein Backup:** deinen eigenen Workspace verschlüsselt in **dein eigenes** Ziel sichern (siehe „Persönliches
   Backup“ in Abschnitt 11).
 - **Apps & Geräte:** eine Liste aller angemeldeten Apps. Zu jeder gehört ein kleiner Schlüssel für Widget,
@@ -1567,6 +1592,10 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `NOTE_ROW_MAX_COUNT` | `50000` (mind. 10 × `NOTE_MAX_COUNT`) | Datenbank-Einträge je Benutzer (ohne Papierkorb). Sicherheitsnetz: alles zusammen inkl. Papierkorb höchstens 2 × (beide Grenzen) |
 | `GZIP_LEVEL` / `GZIP_MIN_BYTES` | `5` / `1024` | Kompression (gzip) für JSON, Text, JS, CSS ab dieser Größe; `0` = aus. Nie für den Live-Kanal, Bilder und Dateien |
 | `IMMICH_URL` | – | Vorschlag im Immich-Dialog (wird automatisch freigegeben) |
+| `NEXTCLOUD_URL` | – | Vorschlag im Reiter „Nextcloud“ der Einstellungen (Host wird automatisch freigegeben) |
+| `NC_CACHE_MB` | `300` | Nextcloud-Dateien in Seiten: Obergrenze für zwischengespeicherte Vorschaubilder (`/data/nc-cache`, älteste zuerst weg) |
+| `NC_DOWNLOAD_MAX_MB` | `2048` | Nextcloud-Dateien in Seiten: größter Download über Saga (gestreamt) |
+| `NC_FED_MAX_MB` | `50` | Nextcloud-Dateien in Seiten: größter Download für Personen anderer Saga-Instanzen |
 | `ICON_CDN` | selfh.st über jsDelivr | Quelle der Dienst-Symbole; leer = keine |
 | `STATUS_INTERVAL` | `60` | Sekunden zwischen Status-Prüfungen |
 | `CACHE_TTL` | `60` | Sekunden, die Konto- und Dienstdaten zwischengespeichert werden |

@@ -24,14 +24,14 @@ import unicodedata
 from datetime import date, datetime, timedelta
 from html import escape
 from html.parser import HTMLParser
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from starlette.concurrency import run_in_threadpool
 import psycopg
 import auth
 from db import connect as _db
-from saga import avatars, bus, i18n
+from saga import avatars, bus, i18n, nextcloud
 from saga.core import (ASSET_V, BASE_URL, E, PUBLIC_HOSTS, TZ, _api_guard, _bad, _body, _json_load, seen_lang, server_lang, t, title,
                        tmpl, user_lang)
 from saga.files import _thumb, _thumb_mime, _thumb_w
@@ -521,6 +521,8 @@ def _block(ctx, typ, d, depth):
         ic = "▶" if d.get("kind") == "youtube" else "🔗"
         return (f'<p class="pub-embed"><a href="{escape(url, quote=True)}" rel="{EXT_REL}" target="_blank">'
                 f'<span aria-hidden="true">{ic}</span> <span>{escape(name)}</span> <small>{escape(host.removeprefix("www."))}</small></a></p>')
+    if typ == "nextcloud":
+        return _nc_block(ctx, d)
     if typ == "database":
         try:
             dbid = int(d.get("db"))
@@ -528,6 +530,27 @@ def _block(ctx, typ, d, depth):
             return ""
         return _database(ctx, dbid, d.get("views") if isinstance(d.get("views"), list) else None, d.get("view"), caption=True)
     return ""          # unbekannt, privat oder interaktiv (Aufgaben, Kalender, Immich, Schaltflaechen, Dateien): weglassen
+
+
+def _nc_block(ctx, d):
+    """Nextcloud-Datei: nur, wenn der Autor "auf veroeffentlichter Seite zeigen" eingeschaltet hat (und die Signatur fuer
+    diese Seite stimmt). Vorschau/Download ueber die Adresse dieser Seite - nie die Adresse der Nextcloud."""
+    nid = getattr(ctx, "nid", None)
+    if not nid or d.get("public") is not True or not nextcloud.sig_ok(nid, d):
+        return ""
+    fid, author = str(d.get("fileid") or ""), str(d.get("author") or "")
+    if not nextcloud.FILEID_RE.match(fid):
+        return ""
+    name = _plain(d.get("name", "")) or t("Nextcloud-Datei")
+    q = f"a={quote(author, safe='')}"
+    base = f"{ctx.base}/nc/{fid}"
+    if d.get("kind") == "image":
+        return (f'<figure class="pub-img"><img src="{escape(base)}?{q}&amp;w=1280" alt="{escape(name)}" loading="lazy">'
+                f"<figcaption>{escape(name)}</figcaption></figure>")
+    if d.get("kind") == "folder":
+        return f'<p class="pub-embed pub-nc"><span><span aria-hidden="true">📁</span> <span>{escape(name)}</span></span></p>'
+    return (f'<p class="pub-embed pub-nc"><a href="{escape(base)}?{q}&amp;dl=1" rel="nofollow" download>'
+            f'<span aria-hidden="true">📄</span> <span>{escape(name)}</span> <small>{escape(t("Herunterladen"))}</small></a></p>')
 
 
 # =====================================================================================================
@@ -756,6 +779,7 @@ def _icon_html(ctx, icon, cls, default=""):
 
 def render_page(ctx, row):
     """-> Werte fuer die Vorlage. ctx.base = Adresse dieser (Unter-)Seite (Bilder liegen darunter)."""
+    ctx.nid = row["id"]                            # Nextcloud-Bloecke: Signatur gilt fuer genau diese Seite
     v = {"title": row["title"] or t("Unbenannt"), "wide": bool(row["wide"]), "props": [], "subpages": [], "crumbs": []}
     # Absenderzeile "@name · aktualisiert 14.10.2026" (Datum in der Sprache des Besuchers)
     upd = row["updated"] or row["created"]
@@ -1066,6 +1090,37 @@ def public_subfile(name: str, slug: str, nid: str, fid: str, request: Request):
         ctx = _resolve(c, name, slug)
         sub = ctx and _sub_id(ctx, nid)
         return _file(request, ctx, _note(c, ctx.uid, sub), fid) if sub else not_found()
+
+
+def _nc(request, name, slug, nid, fid):
+    if _limited(request, "f"):
+        return _too_many()
+    q = request.query_params
+    try:
+        w, dl = int(q.get("w") or 0), q.get("dl") == "1"
+    except ValueError:
+        return not_found()
+    with _Lang(request), _db() as c:
+        ctx = _resolve(c, name, slug)
+        if not ctx:
+            return not_found()
+        page = _sub_id(ctx, nid) if nid is not None else ctx.pub["note_id"]
+        row = page and _note(c, ctx.uid, page)
+        d, acct = nextcloud.locate(c, page, ctx.uid, fid, q.get("a") or "", "public") if row else (None, None)
+    if not d or not acct:
+        return not_found()
+    return nextcloud.deliver(acct, d, "download" if dl else "preview", w, cache="public, max-age=300")
+
+
+@router.api_route("/@{name}/{slug}/nc/{fid}", methods=GET_HEAD)
+def public_nc(name: str, slug: str, fid: str, request: Request):
+    """Nextcloud-Datei der veroeffentlichten Seite (nur Bloecke mit Schalter "auf veroeffentlichter Seite zeigen")."""
+    return _nc(request, name, slug, None, fid)
+
+
+@router.api_route("/@{name}/{slug}/{nid}/nc/{fid}", methods=GET_HEAD)
+def public_subnc(name: str, slug: str, nid: str, fid: str, request: Request):
+    return _nc(request, name, slug, nid, fid)
 
 
 def home_response(request):

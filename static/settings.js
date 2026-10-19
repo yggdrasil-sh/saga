@@ -62,8 +62,10 @@
     tokenSection(body);
     if (window.HKPush) HKPush.section(body);                 // Mitteilungen aufs Handy/Desktop (static/push.js)
     if (window.HKBackup) HKBackup.section(body);             // Mein Backup (static/backup.js, 2.3)
-    var TABS = [['account', T('Konto')], ['push', T('Mitteilungen')], ['bookmarks', T('Lesezeichen')], ['calendar', T('Kalender')], ['immich', 'Immich'], ['backup', T('Mein Backup')], ['apps', T('Apps & Geräte')]];
-    if (!window.HKBackup) TABS.splice(5, 1);
+    if (window.HKNextcloud) HKNextcloud.section(body);       // Nextcloud-Dateien in Seiten (static/nextcloud.js, 2.3)
+    var TABS = [['account', T('Konto')], ['push', T('Mitteilungen')], ['bookmarks', T('Lesezeichen')], ['calendar', T('Kalender')], ['immich', 'Immich'], ['nextcloud', 'Nextcloud'], ['backup', T('Mein Backup')], ['apps', T('Apps & Geräte')]];
+    if (!window.HKBackup) TABS.splice(6, 1);
+    if (!window.HKNextcloud) TABS.splice(5, 1);
     if (!window.HKPush) TABS.splice(1, 1);
     var btns = TABS.map(function (t, i) {
       var b = el('button', 'hk-tab', t[1]); b.type = 'button'; b.id = 'hk-tab-' + t[0];

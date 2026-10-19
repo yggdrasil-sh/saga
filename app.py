@@ -31,7 +31,7 @@ from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESS
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
 from saga.notes import FILE_MAX
-from saga import backups, pageindex, userbackup
+from saga import backups, nextcloud, pageindex, userbackup
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -225,4 +225,5 @@ app.include_router(fed_dir.router)          # Adressbuch (2.3): /fed/v2/director
 app.include_router(fed_keys.router)         # Schluesselverzeichnis + Krypto v2 (2.3): /fed/v2/keys, /api/chat/v2/...
 app.include_router(fed_chat.router)         # Chats + Anrufe ueber Servergrenzen (2.3): /fed/v2/chat..., /fed/v2/call, /api/chat/blocks
 assert fed_calls.router is fed_chat.router
+app.include_router(nextcloud.router)         # Nextcloud-Dateien in Seiten (2.3): /api/settings/nextcloud, /api/nextcloud/..., /api/notes/{nid}/nc
 app.include_router(userbackup.router)        # Persoenliche Backups (2.3): /api/account/backup...

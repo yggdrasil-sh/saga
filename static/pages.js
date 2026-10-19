@@ -560,6 +560,7 @@
             endpoint: '/api/files', field: 'file', additionalRequestHeaders: UPH,
             buttonText: T('Datei auswählen …'), errorMessage: T('Hochladen fehlgeschlagen') } },
           immich: { class: ImmichTool },
+          nextcloud: { class: NextcloudTool },
           embed: { class: EmbedTool },
           table: { class: window.Table, inlineToolbar: true, config: { rows: 2, cols: 3, withHeadings: true } },
           toggle: { class: ToggleTool, inlineToolbar: true },
@@ -831,6 +832,8 @@
       var data;
       try { data = n.format === 'blocks' ? JSON.parse(n.body || '{"blocks":[]}') : textToBlocks(n.body); }
       catch (e) { data = { blocks: [] }; }
+      S.ncKeys = ncKeys(data); S.ncStat = null;        // Nextcloud-Bloecke dieser Seite (Schutz beim Einfuegen fremder Bloecke)
+      if (HK.nc && !S.ncMe) HK.nc.info().then(function (s) { S.ncMe = s.me; }).catch(function () {});
       ancestors(id).forEach(function (a) { S.open[a.id] = true; }); saveOpen();
       if (!EMBED) HK.store('hk-pg-last', String(id));
       setLocation();
@@ -3755,6 +3758,163 @@
   ImmichTool.prototype.save = function () { return {}; };
   ImmichTool.prototype.validate = function () { return false; };     // Platzhalter nie mitspeichern
 
+  // "/Nextcloud-Datei" (2.3): Verweis auf eine Datei/einen Ordner im EIGENEN Nextcloud. Vorschau und Download laufen ueber
+  // Saga mit dem Konto der Person, die den Block eingefuegt hat (author - setzt der Server). Schalter "veroeffentlichte
+  // Seite" / "verbundene Server" (Standard aus) nur fuer diese Person. Fremde Bloecke lassen sich nicht in andere Seiten
+  // kopieren (der Server wuerde das Speichern ablehnen) - sie fallen beim Speichern mit einem Hinweis weg.
+  function ncKeys(data) {
+    var keys = {};
+    (function walk(bs) {
+      (Array.isArray(bs) ? bs : []).forEach(function (b) {
+        if (!b || typeof b !== 'object') return;
+        var d = b.data || {};
+        if (b.type === 'nextcloud') keys[ncKey(d)] = true;
+        if (Array.isArray(d.blocks)) walk(d.blocks);
+        if (Array.isArray(d.cols)) d.cols.forEach(function (c) { walk(c && c.blocks); });
+      });
+    })(data && data.blocks);
+    return keys;
+  }
+  function ncKey(d) { return [d.author || '', d.inst || '', d.fileid || ''].join('|'); }
+  function ncStatus() {
+    var id = S.cur && S.cur.id;
+    if (!id) return Promise.resolve({ items: [] });
+    if (!S.ncStat || S.ncStat.id !== id || Date.now() - S.ncStat.t > 60000)
+      S.ncStat = { id: id, t: Date.now(), p: api('GET', '/api/notes/' + id + '/nc').catch(function () { return { items: [], failed: true }; }) };
+    return S.ncStat.p;
+  }
+  function decodeHtml(s) { var t = document.createElement('textarea'); t.innerHTML = String(s || ''); return t.value; }
+  function NextcloudTool(o) {
+    this.api = o.api; this.block = o.block; this.ro = !!o.readOnly;
+    var d = o.data || {}; this.data = {};
+    var self = this;
+    ['inst', 'fileid', 'kind', 'name', 'mime', 'size', 'mtime', 'author', 'public', 'fed', 'sig'].forEach(function (k) { if (d[k] !== undefined) self.data[k] = d[k]; });
+  }
+  NextcloudTool.toolbox = { title: T('Nextcloud-Datei'), icon: '<svg width="18" height="14" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16h11a4 4 0 0 0 .6-7.95A6 6 0 0 0 7.2 7 4.5 4.5 0 0 0 7 16z"/></svg>' };
+  NextcloudTool.isReadOnlySupported = true;
+  NextcloudTool.prototype.render = function () { this.w = el('div', 'nc-block'); isolate(this.w); this.draw(); return this.w; };
+  NextcloudTool.prototype.changed = function () { if (this.block && this.block.dispatchChange) this.block.dispatchChange(); else { S.dirtyBody = true; schedule(); } };
+  NextcloudTool.prototype.index = function () {
+    for (var i = 0, n = this.api.blocks.getBlocksCount(); i < n; i++) { var b = this.api.blocks.getBlockByIndex(i); if (b && b.holder && b.holder.contains(this.w)) return i; }
+    return -1;
+  };
+  NextcloudTool.prototype.open = function () {
+    var self = this; if (!HK.nc || this.opening) return; this.opening = true;
+    HK.nc.pick(function (r) {
+      self.opening = false;
+      if (r.mode === 'copy') {                          // Kopie: normaler Bild-/Datei-Block (folgt den Saga-Rechten)
+        var i = self.index(); if (i < 0) return;
+        if (r.image) self.api.blocks.insert('image', { file: { url: r.file.url }, caption: '', withBorder: false, withBackground: false, stretched: false }, {}, i, true);
+        else self.api.blocks.insert('attaches', { file: { url: r.file.url, name: r.file.name, size: r.file.size, extension: r.file.extension }, title: r.file.name }, {}, i, true);
+        self.api.blocks.delete(i + 1); return;
+      }
+      HK.nc.info().then(function (s) {
+        self.data = r.block; self.data.author = s.me; S.ncKeys = S.ncKeys || {}; S.ncKeys[ncKey(self.data)] = true;
+        S.ncStat = null; self.draw(); self.changed();
+      });
+    }, function () { self.opening = false; if (!self.data.fileid) { var i = self.index(); if (i >= 0) self.api.blocks.delete(i); } },
+    // Seite einer anderen Saga-Instanz: nur "Als Kopie" (ein Verweis liefe ueber ein Konto, das der Server dort nicht kennt)
+    { note: foreign() ? S.cur.id : null, link: !(S.cur && remoteId(S.cur.id)) });
+  };
+  NextcloudTool.prototype.draw = function () {
+    var self = this, w = this.w, d = this.data; w.textContent = '';
+    var remote = !!S.cur && remoteId(S.cur.id);
+    if (!d.fileid) {
+      if (this.ro) return;
+      var ph = el('button', 'nc-empty', '☁ ' + T('Datei aus Nextcloud wählen …')); ph.type = 'button';
+      ph.addEventListener('click', function () { self.open(); }); w.appendChild(ph);
+      setTimeout(function () { self.open(); }, 0); return;
+    }
+    var name = decodeHtml(d.name) || T('Nextcloud-Datei');
+    var nid = S.cur ? S.cur.id : 0;
+    var base = '/api/notes/' + nid + '/nc/' + encodeURIComponent(d.fileid) + '?a=' + encodeURIComponent(d.author || '');
+    var card = el('div', 'nc-cardb'); w.appendChild(card);
+    var top = el('div', 'nc-top'); card.appendChild(top);
+    top.appendChild(el('span', 'nc-ic', HK.nc ? HK.nc.icon(d) : '📄'));
+    var tx = el('div', 'nc-tx'); top.appendChild(tx);
+    tx.appendChild(el('span', 'nc-name', name));
+    var meta = el('span', 'nc-meta', [d.kind === 'folder' ? T('Ordner') : (HK.nc ? HK.nc.size(d.size) : ''), 'Nextcloud'].filter(Boolean).join(' · '));
+    tx.appendChild(meta);
+    var acts = el('div', 'nc-acts'); top.appendChild(acts);
+    var media = el('div', 'nc-media'); card.appendChild(media);
+    var note = el('p', 'nc-note'); note.hidden = true; card.appendChild(note);
+    // eben eingefuegt (noch ohne Signatur): der Server kennt den Block erst nach dem Speichern - kurz nachfragen
+    var fresh = !d.sig && !remote;
+    function retry() {
+      if (!fresh || (self.tries = (self.tries || 0) + 1) > 8 || !document.contains(w)) return false;
+      note.hidden = false; note.textContent = T('Lade …');
+      setTimeout(function () { if (S.ncStat && S.ncStat.id === nid) S.ncStat = null; self.draw(); }, 1500);
+      return true;
+    }
+    function unavailable(txt) { if (retry()) return; media.textContent = ''; note.hidden = false; note.textContent = txt; card.classList.add('off'); acts.querySelectorAll('.nc-dl').forEach(function (a) { a.remove(); }); }
+    if (d.kind !== 'folder') {
+      var dl = el('a', 'btn nc-dl', T('Herunterladen')); dl.href = base + '&dl=1'; dl.setAttribute('download', name); acts.appendChild(dl);
+    }
+    if (/^https?:\/\/[^\s"<>]+$/.test(d.inst || '') && !remote) {
+      var op = el('a', 'btn nc-open', T('In Nextcloud öffnen') + ' ↗'); op.href = d.inst.replace(/\/$/, '') + '/f/' + encodeURIComponent(d.fileid);
+      op.target = '_blank'; op.rel = 'noopener noreferrer'; acts.appendChild(op);
+    }
+    ncStatus().then(function (st) {
+      var it = (st.items || []).filter(function (x) { return x.fileid === String(d.fileid) && (x.author === d.author || remote); })[0];
+      if (st.failed && !it) { if (remote) unavailable(T('Nur auf dem Server der Seite sichtbar (Freigabe für verbundene Server ist aus).')); return; }
+      if (!it || !it.ok) {
+        unavailable(remote ? T('Nur auf dem Server der Seite sichtbar (Freigabe für verbundene Server ist aus).')
+          : T('Nicht verfügbar – Verknüpfung getrennt, kein Zugriff mehr oder Datei gelöscht.'));
+        return;
+      }
+      if (it.name && it.name !== name) tx.firstChild.textContent = it.name;
+      meta.textContent = [it.dir ? T('Ordner') : HK.nc.size(it.size), it.mtime ? new Date(it.mtime * 1000).toLocaleDateString() : '', 'Nextcloud'].filter(Boolean).join(' · ');
+      if (it.dir) {
+        var ul = el('ul', 'nc-entries');
+        (it.entries || []).forEach(function (e) { ul.appendChild(el('li', null, (e.dir ? '📁 ' : '📄 ') + e.name)); });
+        if (!(it.entries || []).length) ul.appendChild(el('li', 'nc-meta', T('Leerer Ordner')));
+        media.appendChild(ul);
+      } else if (d.kind === 'image' || it.preview) {
+        var img = el('img', d.kind === 'image' ? 'nc-img' : 'nc-prev'); img.alt = name; img.loading = 'lazy';
+        img.src = base + '&w=' + (d.kind === 'image' ? 1280 : 320);
+        img.addEventListener('error', function () { img.remove(); retry(); });
+        if (d.kind === 'image') img.addEventListener('click', function () { window.open(base + '&w=2000', '_blank', 'noopener'); });
+        media.appendChild(img);
+      }
+    });
+    // Nur die Person, die den Block eingefuegt hat: Schalter + "Als Kopie uebernehmen"
+    if (this.ro || remote || !canEdit()) return;
+    HK.nc && HK.nc.info().then(function (s) {
+      if (s.me !== d.author) { card.appendChild(el('p', 'nc-by', T('Eingefügt aus dem Nextcloud einer anderen Person – nur sie kann die Freigaben ändern.'))); return; }
+      var opts = el('div', 'nc-opts'); card.appendChild(opts);
+      function sw(label, key, hint) {
+        var l = el('label', 'nc-sw'), i = el('input'); i.type = 'checkbox'; i.checked = d[key] === true;
+        l.appendChild(i); l.appendChild(el('span', null, label)); l.title = hint;
+        i.addEventListener('change', function () { d[key] = i.checked; delete d.sig; self.changed(); });
+        opts.appendChild(l);
+      }
+      sw(T('Auf veröffentlichter Seite zeigen'), 'public', T('Besucher der veröffentlichten Seite sehen Vorschau und Download (über Saga, nicht über deine Nextcloud-Adresse).'));
+      sw(T('Über verbundene Server zeigen'), 'fed', T('Personen anderer Saga-Server, mit denen die Seite geteilt ist, sehen Vorschau und Download.'));
+      if (d.kind !== 'folder') {
+        var cp = el('button', 'btn nc-copy', T('Als Kopie übernehmen')); cp.type = 'button'; opts.appendChild(cp);
+        cp.addEventListener('click', function () {
+          cp.disabled = true;
+          api('POST', '/api/nextcloud/import', foreign() ? { fileid: d.fileid, note: S.cur.id } : { fileid: d.fileid }).then(function (r) {
+            var i = self.index(); if (i < 0) return;
+            if (/^image\//.test(r.file.mime || '')) self.api.blocks.insert('image', { file: { url: r.file.url }, caption: '', withBorder: false, withBackground: false, stretched: false }, {}, i, true);
+            else self.api.blocks.insert('attaches', { file: { url: r.file.url, name: r.file.name, size: r.file.size, extension: r.file.extension }, title: r.file.name }, {}, i, true);
+            self.api.blocks.delete(i + 1);
+          }).catch(function (e) { cp.disabled = false; HK.toast(e.message); });
+        });
+      }
+    }).catch(function () {});
+  };
+  NextcloudTool.prototype.save = function () { return JSON.parse(JSON.stringify(this.data)); };
+  NextcloudTool.prototype.validate = function (d) {
+    if (!d || !d.fileid) return false;
+    // fremder Block, der nicht schon in dieser Seite stand (Kopieren aus einer anderen Seite): nicht mitspeichern
+    if (d.author && S.ncMe && d.author !== S.ncMe && !(S.ncKeys || {})[ncKey(d)]) {
+      if (!this.warned) { this.warned = true; HK.toast(T('Nextcloud-Dateien anderer Personen lassen sich nicht in andere Seiten kopieren.')); }
+      return false;
+    }
+    return true;
+  };
+
   // "/Einbetten": YouTube als Player (youtube-nocookie), alle anderen Links als Karte (GoodNotes, Webseiten ...)
   function ytId(u) {
     var m = String(u || '').match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/);
@@ -3810,7 +3970,25 @@
       bar.appendChild(cb); w.appendChild(bar);
     }
   };
-  EmbedTool.prototype.onPaste = function (e) { this.url = e.detail.data; if (this.w) this.draw(); this.changed(); };
+  EmbedTool.prototype.onPaste = function (e) {
+    this.url = e.detail.data; if (this.w) this.draw(); this.changed();
+    // Link aus der eigenen (verknuepften) Nextcloud -> Block "Nextcloud-Datei"
+    var self = this, url = this.url;
+    if (!HK.nc || !S.cur || remoteId(S.cur.id)) return;
+    HK.nc.info().then(function (s) {
+      if (!s.connected || !s.server || url.toLowerCase().indexOf(String(s.server).toLowerCase() + '/') !== 0) return null;
+      return api('POST', '/api/nextcloud/resolve', { url: url }).then(function (r) {
+        if (!r.match || self.url !== url) return;
+        var i = -1;
+        for (var k = 0, n = self.api.blocks.getBlocksCount(); k < n; k++) { var b = self.api.blocks.getBlockByIndex(k); if (b && b.holder && b.holder.contains(self.w)) { i = k; break; } }
+        if (i < 0) return;
+        var d = r.block; d.author = s.me; d.public = false; d.fed = false;
+        S.ncKeys = S.ncKeys || {}; S.ncKeys[ncKey(d)] = true; S.ncStat = null;
+        self.api.blocks.insert('nextcloud', d, {}, i, true); self.api.blocks.delete(i + 1);
+        HK.toast(T('Nextcloud-Datei eingefügt. Alle, die diese Seite sehen, sehen auch diese Datei.'));
+      });
+    }).catch(function () { /* bleibt ein normaler Link */ });
+  };
   EmbedTool.prototype.save = function () { var d = { url: this.url }; if (this.title) d.title = this.title; if (ytId(this.url)) d.kind = 'youtube'; return d; };
   EmbedTool.prototype.validate = function (d) { return /^https?:\/\//i.test(d.url || ''); };
 
@@ -4823,7 +5001,7 @@
     if (c && own) add(c.archived ? T('Aus dem Archiv holen') : T('Seite archivieren'), '📦', function () { setArchived(c.id, !c.archived); }, { kw: 'archiv archive' });
     add(T('Archiv anzeigen'), '📦', showArchive, { kw: 'archiv archive' });
     add(T('Papierkorb'), '🗑', showTrash, { kw: 'trash geloescht' });
-    if (window.HKSettings) add(T('Einstellungen'), '⚙', function () { HKSettings.open(); }, { kw: 'settings kalender immich schluessel' });
+    if (window.HKSettings) add(T('Einstellungen'), '⚙', function () { HKSettings.open(); }, { kw: 'settings kalender immich nextcloud schluessel' });
     add(T('Übersicht (Startseite)'), '⌂', function () { location.href = '/'; }, { kw: 'home dashboard start' });
     return a;
   }

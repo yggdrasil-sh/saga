@@ -1823,3 +1823,40 @@ body.pg-lock-on #pg-editor .embed-db :is(.db-new-top,.db-tab-add,.db-gear,.db-ne
 .ub-key{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem;width:100%;resize:vertical}
 .ub-sm{padding:.1rem .45rem;font-size:.78rem;margin-left:.3rem}
 .ub-link{color:var(--accent)}
+
+/* Nextcloud-Dateien in Seiten (2.3, static/nextcloud.js + NextcloudTool in static/pages.js) */
+.nc-block{margin:.3rem 0}
+.nc-empty{display:block;width:100%;text-align:left;border:1px dashed var(--border);border-radius:8px;padding:.7rem .9rem;background:none;color:var(--muted);font:inherit;cursor:pointer;margin:0}
+.nc-cardb{border:1px solid var(--border);border-radius:8px;background:var(--card);overflow:hidden}
+.nc-cardb.off{opacity:.85}
+.nc-top{display:flex;align-items:center;gap:.7rem;padding:.6rem .8rem;flex-wrap:wrap}
+.nc-ic{font-size:1.35rem;flex:none}
+.nc-tx{display:flex;flex-direction:column;min-width:0;flex:1}
+.nc-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nc-meta,.nc-path{color:var(--muted);font-size:.82rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nc-acts{display:flex;gap:.4rem;flex-wrap:wrap}
+.nc-acts .btn{font-size:.85rem;padding:.25rem .6rem;text-decoration:none}
+.nc-media:empty{display:none}
+.nc-img{display:block;max-width:100%;max-height:70vh;margin:0 auto;cursor:zoom-in;background:var(--card-h)}
+.nc-prev{display:block;max-width:min(320px,100%);margin:0 .8rem .7rem;border-radius:6px;border:1px solid var(--border)}
+.nc-entries{margin:0 .8rem .6rem;padding-left:1.1rem;font-size:.9rem;columns:2 14rem}
+.nc-note{margin:0;padding:.45rem .8rem;border-top:1px solid var(--border);color:var(--muted);font-size:.85rem}
+.nc-opts{display:flex;flex-wrap:wrap;gap:.4rem 1.1rem;align-items:center;padding:.45rem .8rem;border-top:1px solid var(--border);font-size:.85rem}
+.nc-sw{display:inline-flex;gap:.35rem;align-items:center;cursor:pointer}
+.nc-opts .nc-copy{font-size:.8rem;padding:.15rem .55rem;margin-left:auto}
+.nc-by{margin:0;padding:.4rem .8rem;border-top:1px solid var(--border);color:var(--muted);font-size:.82rem}
+.nc-card{width:min(760px,96vw);max-height:88vh;display:flex;flex-direction:column}
+.nc-crumb{font-size:.85rem;color:var(--muted);min-height:1.2rem;display:flex;flex-wrap:wrap;gap:.2rem;align-items:center}
+.nc-crumb .nc-here{margin-left:auto;font-size:.8rem;padding:.15rem .5rem}
+.nc-list{list-style:none;margin:0;padding:0;overflow:auto;flex:1;min-height:6rem}
+.nc-item{display:flex;align-items:center;gap:.6rem;width:100%;text-align:left;border:0;border-bottom:1px solid var(--border);background:none;color:var(--fg);font:inherit;padding:.45rem .3rem;cursor:pointer}
+.nc-item:hover,.nc-item:focus-visible,.nc-item.on{background:var(--card-h)}
+.nc-th{width:40px;height:40px;object-fit:cover;border-radius:4px;flex:none}
+.nc-foot:empty{display:none}
+.nc-foot{border-top:1px solid var(--border);padding-top:.6rem;margin-top:.4rem}
+.nc-sel{display:flex;flex-direction:column}
+.nc-warn{margin:.4rem 0}
+@media (max-width:600px){.nc-acts{width:100%}.nc-entries{columns:1}}
+.nc-card>.imm-bar,.nc-card>.nc-crumb,.nc-card>.imm-info,.nc-card>.nc-list,.nc-card>.nc-foot{margin-left:1rem;margin-right:1rem}
+.nc-card>.nc-foot{margin-bottom:1rem}
+.nc-crumb .linkish{background:none;border:0;padding:0 .1rem;color:var(--accent);font:inherit;cursor:pointer}

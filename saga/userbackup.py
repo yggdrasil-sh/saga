@@ -46,7 +46,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 import auth
 import db
 from db import connect as _db
-from saga import backups, i18n, netguard, notify
+from saga import backups, i18n, netguard, nextcloud, notify
 from saga.backups import BackupError
 from saga.core import BASE_URL, E, RESTORE_TEST, SECRET, TZ, _api_guard, _bad, _body, _json_load, account_lang, t
 from saga.notes import FILES_DIR, FILE_QUOTA, NOTE_BODY_MAX, NOTE_TOTAL_MAX, VERSION_MAX, _FILE_URL, _clean_props, _clean_schema, tree_changed
@@ -970,6 +970,7 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
                 par = nmap.get(n.get("parent_id")) if n.get("parent_id") in by_id else folder
                 kind = "database" if n.get("kind") == "database" else "page"
                 body, fmt = _clean_body(n.get("body"), n.get("format"), nmap, fids, own)
+                body = nextcloud.adopt(body, fmt, uid, nid)     # Nextcloud-Bloecke: eigene neu signieren, fremde nur als Karte
                 schema = None
                 if kind == "database":
                     raw = _json_load(n.get("schema"), {"props": []})

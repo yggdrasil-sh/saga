@@ -34,7 +34,7 @@ from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from db import connect as _db
-from saga import app_api, avatars, bus, files, live, notify, page_tools, pages, sharing
+from saga import app_api, avatars, bus, files, live, nextcloud, notify, page_tools, pages, sharing
 from saga import federation as F
 from saga.comments import counts as comment_counts
 from saga.core import E, _bad, _body, t
@@ -173,11 +173,50 @@ async def _owner_req(request, nid, rest):
         if _need(inp, "upload"):
             return _need(inp, "upload")
         return _signed_resp(inp, await run_in_threadpool(F._as, inp, _copy_owner, str(b.get("url") or ""), nid))
+    mn = re.fullmatch(r"nc(?:/([1-9][0-9]{0,19}))?", rest)
+    if mn and m == "GET":
+        if _need(inp, "nc_files"):
+            return _need(inp, "nc_files")
+        return await run_in_threadpool(_nc_owner, inp, nid, mn.group(1), q)
     if m == "POST" and rest == "presence":
         if _need(inp, "presence"):
             return _need(inp, "presence")
         return await run_in_threadpool(_presence_owner, inp, nid, b.get("editing") is True, b.get("leave") is True)
     return F._signed(inp, 404, {"error": "not found"})
+
+
+def _nc_owner(inp, nid, fileid, q):
+    """Nextcloud-Dateien einer Seite fuer eine fremde Person: nur Bloecke mit Schalter "fed" (saga.nextcloud).
+    Ohne Datei-ID: Status aller solchen Bloecke; mit: Vorschau (w) bzw. Datei (dl=1, gepuffert bis NC_FED_MAX_MB)."""
+    def run(principal):
+        with _db() as c:
+            if fileid is None:
+                plan = nextcloud.fed_status_plan(c, principal, nid)
+            else:
+                d, acct = nextcloud.fed_locate(c, principal, nid, fileid, str(q.get("a") or ""))
+        if fileid is None:
+            if plan is None:
+                return None
+            out = nextcloud.status_run(plan)
+            for it in out["items"]:
+                it["author"] = nextcloud.pseudo(it["author"]) if it.get("author") else ""
+            return ("json", out)
+        if not d or not acct:
+            return None
+        try:
+            w = int(q.get("w") or 0)
+        except ValueError:
+            w = 0
+        resp = nextcloud.deliver(acct, d, "download" if q.get("dl") == "1" else "preview", w, buffered_max=nextcloud.FED_MAX)
+        if resp.status_code != 200:
+            return None
+        return ("raw", resp.body, resp.media_type, resp.headers.get("content-disposition") or "")
+    got = F._as(inp, run)
+    if not got:
+        return F._signed(inp, 404, {"error": "not found"})
+    if got[0] == "json":
+        return F._signed(inp, 200, got[1])
+    return F._signed(inp, 200, got[1], got[2], {"Content-Disposition": got[3]} if got[3] else None)
 
 
 @router.api_route("/fed/v2/notes/{nid}", methods=["GET", "PATCH"])
@@ -773,10 +812,16 @@ async def fed_live(request: Request):
 async def home_other(nid: int, rest: str, request: Request):
     """Datenbank-Zeilen, Versionen, Export, Verschieben fuer Seiten anderer Instanzen; alles andere (Freigaben,
     Veroeffentlichen, Archivieren ...) gibt es dort nicht."""
+    m = request.method
+    mn = re.fullmatch(r"nc(?:/([1-9][0-9]{0,19}))?", rest)
+    if mn and mn.group(1) and m == "GET":                # Vorschau/Download fuer <img>/Links: Sitzung reicht (wie /api/fed/files)
+        uid = F._session_user(request)
+        if not uid:
+            return Response(b"not found", status_code=404, media_type="text/plain")
+        return await run_in_threadpool(F._run, _w_nc, uid, nid, mn.group(1), dict(request.query_params))
     uid, err = F._uid_or_401(request)
     if err:
         return err
-    m = request.method
     mv = re.fullmatch(r"versions/([1-9][0-9]{0,17})(/restore)?", rest)
     if m == "GET" and rest == "rows":
         q = request.url.query or ""
@@ -792,7 +837,61 @@ async def home_other(nid: int, rest: str, request: Request):
     if m == "POST" and rest == "move":
         b = await _body(request) or {}
         return await run_in_threadpool(F._run, _w_move, uid, nid, b)
+    if mn and m == "GET":
+        return await run_in_threadpool(F._run, _w_nc, uid, nid, None, dict(request.query_params))
     return _bad(t("Für Seiten anderer Saga-Instanzen nicht verfügbar."), 404)
+
+
+def _w_nc(uid, nid, fileid, q):
+    """Nextcloud-Dateien einer Seite einer anderen Instanz (Heim): ueber den Eigentuemer-Server, nur mit Schalter "fed"."""
+    p, rid = _peer_for(uid, nid, "nc_files")
+    if fileid is None:
+        status, _, d = _call(uid, p, "GET", f"/fed/v2/notes/{rid}/nc")
+        if status != 200 or not isinstance(d, dict) or not isinstance(d.get("items"), list):
+            return _bad("not found", 404)
+        items = []
+        for it in d["items"][:nextcloud.BLOCKS_MAX]:
+            if not isinstance(it, dict):
+                continue
+            x = {"fileid": str(it.get("fileid") or "")[:20], "author": str(it.get("author") or "")[:80], "ok": it.get("ok") is True}
+            for k in ("name", "mime"):
+                if isinstance(it.get(k), str):
+                    x[k] = it[k][:250]
+            for k in ("size", "mtime"):
+                if isinstance(it.get(k), (int, float)) and not isinstance(it.get(k), bool):
+                    x[k] = it[k]
+            x["dir"], x["preview"] = it.get("dir") is True, it.get("preview") is True
+            if isinstance(it.get("entries"), list):
+                x["entries"] = [{"name": str(e.get("name") or "")[:250], "dir": e.get("dir") is True,
+                                 "size": e.get("size") if isinstance(e.get("size"), int) else None}
+                                for e in it["entries"][:20] if isinstance(e, dict)]
+            items.append(x)
+        return JSONResponse({"items": items, "enabled": True}, headers={"Cache-Control": "no-store"})
+    qs = "a=" + quote(str(q.get("a") or "")[:80], safe="")
+    try:
+        w = int(q.get("w") or 0)
+    except ValueError:
+        w = 0
+    if w:
+        qs += f"&w={max(1, min(4000, w))}"
+    dl = q.get("dl") == "1"
+    if dl:
+        qs += "&dl=1"
+    status, rh, data = _call(uid, p, "GET", f"/fed/v2/notes/{rid}/nc/{fileid}", qs, limit=nextcloud.FED_MAX + 4096)
+    if status != 200:
+        return Response(b"not found", status_code=404, media_type="text/plain")
+    h = {"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox", "Referrer-Policy": "no-referrer",
+         "Cache-Control": "private, max-age=300"}
+    if not dl:
+        img = _sniff_image(data[:16])
+        if not img:
+            return Response(b"not found", status_code=404, media_type="text/plain")
+        h["Content-Disposition"] = "inline"
+        return Response(data, media_type=img, headers=h)
+    disp = (rh or {}).get("content-disposition") or ""
+    mm = re.search(r'filename="([A-Za-z0-9 ._()\-]{1,200})"', disp)
+    h["Content-Disposition"] = f'attachment; filename="{mm.group(1) if mm else "datei"}"'
+    return Response(data, media_type="application/octet-stream", headers=h)
 
 
 def _home_periodic():

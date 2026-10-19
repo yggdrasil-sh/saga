@@ -16,6 +16,27 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Nextcloud-Dateien in Seiten
+
+- **Einstellungen → Nextcloud:** jede Person verknüpft ihre **eigene** Nextcloud (beliebige eigene Adresse, Login Flow v2,
+  eigenes App-Passwort verschlüsselt gespeichert, „Trennen“ widerruft es). Ohne Admin-Freigabe nur https und öffentliche
+  Adressen (netguard); Heimnetz-Server und der Schalter „Nextcloud-Dateien in Seiten erlauben“ unter Admin → Allgemein →
+  „Verbindungen der Benutzer“.
+- **Block „Nextcloud-Datei“** im „/“-Menü: Auswahl (Zuletzt, Ordner, Suche), eingefügte Nextcloud-Links der eigenen
+  Instanz werden zum Block. Bilder in Seitenbreite, Dateien als Karte mit Vorschau/Download/„In Nextcloud öffnen“,
+  Ordner mit ersten Einträgen. Hinweis beim Einfügen: alle, die die Seite sehen, sehen auch die Datei.
+- **Vorschau und Download mit den Rechten des Autors** (Person, die den Block eingefügt hat – setzt nur der Server, mit
+  Signatur je Seite): Leser brauchen kein eigenes Nextcloud, aber Leserecht auf die Seite. Mitbearbeitende fügen nur
+  Dateien aus ihrer eigenen Nextcloud ein; Blöcke anderer bleiben unverändert und lassen sich nicht in andere Seiten
+  kopieren. Getrennt, kein Bearbeiten-Recht mehr oder Datei weg → Karte ohne Inhalt.
+- **Als Kopie übernehmen:** Datei wird normale Saga-Datei (folgt den Saga-Rechten, Backup, Export, offline).
+- **Veröffentlichte Seiten und verbundene Saga-Server** nur mit Schalter je Block (Standard aus); Vorschau/Download dann
+  über die Adresse der Seite bzw. den eigenen Server (neue Föderations-Fähigkeit `nc_files`, Autor nur als Platzhalter).
+- Export: Link statt Kopie; Suche findet den Dateinamen; Vorschaubilder auf Platte (`/data/nc-cache`, nicht im Backup,
+  `NC_CACHE_MB`), Metadaten je Autor in einer WebDAV-SEARCH-Anfrage. Neue Tabelle `nc_account` (keine Migration),
+  Kontolöschung widerruft das App-Passwort. App-API: `docs/APP-API.md` (Block-Format für Apps; Apps zeigen den Block
+  vorerst als Karte). Neue Testreihe `nextcloud_dateien` (`tests/fakedav.py` mit PROPFIND/SEARCH/Vorschau).
+
 ### Persönliche Backups je Person
 
 - **Einstellungen → Mein Backup:** jede Person sichert ihren eigenen Workspace in ihr **eigenes** Ziel – eigene

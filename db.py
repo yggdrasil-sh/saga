@@ -738,6 +738,11 @@ CREATE TABLE IF NOT EXISTS user_backup_run (
     trigger TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', ok INTEGER NOT NULL DEFAULT 0, size BIGINT NOT NULL DEFAULT 0,
     step TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '{}', error TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS user_backup_run_uid ON user_backup_run (uid, id);
+-- Nextcloud-Dateien in Seiten (2.3, saga/nextcloud.py): verknuepftes Konto je Person (Login Flow v2), App-Passwort
+-- verschluesselt (secret, eigene Fernet-Ableitung); used = zuletzt genutzt (Anzeige)
+CREATE TABLE IF NOT EXISTS nc_account (
+    uid TEXT PRIMARY KEY, server TEXT NOT NULL, login TEXT NOT NULL, dav_user TEXT NOT NULL, secret TEXT NOT NULL,
+    created DOUBLE PRECISION, used DOUBLE PRECISION);
 -- Bestand (erster Start, Backup von vor 2.2 zurueckgespielt): alles ohne abgeleitete Daten zum Abgleich vormerken
 INSERT INTO note_stale (note_id, uid) SELECT n.id, n.uid FROM note n
  WHERE NOT EXISTS (SELECT 1 FROM note_derived d WHERE d.note_id = n.id) ON CONFLICT (note_id) DO NOTHING;

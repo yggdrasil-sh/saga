@@ -35,10 +35,11 @@
     {{ field(_('Gruppen-Kennung'), 'group_prefix', st.group_prefix, max=20, hint=_('Gruppe <Kennung><Kurzname> gibt den Dienst frei. Standard s_ (wie s_nextcloud). Leer = Gruppe heißt wie der Kurzname.')) }}
   </section>
   <section class="adm-card">
-    <h3>{{ _("Verbindungen der Benutzer (Kalender, Immich)") }}</h3>
+    <h3>{{ _("Verbindungen der Benutzer (Kalender, Immich, Nextcloud)") }}</h3>
     <p class="hk-hint">{{ _("Jeder Benutzer verbindet seine eigenen Kalender (CalDAV) und sein Immich. Öffentliche Server (https) gehen immer. Interne Adressen (192.168.x, 10.x, localhost …) schützen das Heimnetz vor Missbrauch und sind nur mit Freigabe erreichbar.") }}</p>
     {{ check(_('Interne Adressen für alle erlauben'), 'allow_private_hosts', st.allow_private_hosts, _('Nur bei vertrauenswürdigen Benutzern – sonst einzelne Hosts freigeben')) }}
     {{ field(_('Freigegebene interne Hosts'), 'allowed_hosts', st.allowed_hosts, max=2000, ph='immich.lan, nextcloud.lan:8443', hint=_('Komma-getrennt, optional mit :Port')) }}
+    {{ check(_('Nextcloud-Dateien in Seiten erlauben'), 'nc_files', st.nc_files, _('Jede Person verknüpft ihre eigene Nextcloud (Einstellungen → Nextcloud) und fügt Dateien daraus in Seiten ein. Vorschau und Download laufen mit dem Konto der Person, die die Datei eingefügt hat – alle, die die Seite sehen, sehen auch die Datei. Aus: keine Verknüpfung, keine Vorschau, Dateien erscheinen nur als Karte.')) }}
   </section>
   <section class="adm-card">
     <h3>{{ _("Veröffentlichen") }}</h3>

@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import clean_line, connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
-from saga import bus, treesync
+from saga import bus, nextcloud, treesync
 from saga.core import BASE_URL, E, STATE_DIR, account_lang, _api_guard, _bad, _body, _json_load, _session_user, origin_of, t, user_error
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
@@ -297,6 +297,8 @@ def note_get(uid, nid):
         nm = names(c, [owner, r[20], r[21]])
         if not mine:                               # Verweise auf Seiten ohne Zugriff: Titel nie ausliefern
             body = mask_links(r[9], r[10], viewer(acc))
+            if is_remote(uid):                     # Nextcloud-Bloecke: Autor fuer andere Instanzen nur als Platzhalter
+                body = nextcloud.mask_authors(body, r[10])
             parent_hidden = r[3] is not None and not acc.role(r[3])
     d = _note_meta(r)
     d["published"] = bool(pub)                     # Seitenkopf: Hinweis "Oeffentlich" (Einzelheiten: /api/notes/{nid}/publish)
@@ -595,6 +597,11 @@ def _note_update(uid, nid, b, origin=None):
                     else:
                         body, _ = clean_blocks(raw)
                     _check_file_refs(owner, json.loads(body)["blocks"])
+                    if '"nextcloud"' in body:          # Nextcloud-Bloecke: author/sig setzt nur der Server (saga/nextcloud.py)
+                        try:
+                            body = nextcloud.check_body(uid, nid, old[1], old[2], body)
+                        except nextcloud.Rejected as ex:
+                            raise _Reply(_bad(str(ex), ex.status))
                 elif fmt == "text":
                     body = str(b["body"])
                     if len(body) > NOTE_BODY_MAX:

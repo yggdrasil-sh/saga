@@ -6,9 +6,17 @@ einmalig server/loginName/appPassword); GET /ocs/v2.php/cloud/user -> Benutzer-I
 ab); DELETE /ocs/v2.php/core/apppassword widerruft das App-Passwort. Chunking v2 wie Nextcloud: Teile 1..10000,
 mindestens 5 MB ausser dem letzten, Destination + OC-Total-Length bei jedem Schritt, MOVE .file setzt zusammen.
 Steuerung: GET /_ctl?down=1|0&quota=<bytes>|-3&corrupt=1|0&loginlink=<url>&reset=1, GET /_stats (JSON), POST /_hook (Webhook-Empfang).
+Nextcloud-Dateien (tests/nextcloud_dateien.py): jede Datei/jeder Ordner hat eine feste oc:fileid; PROPFIND liefert auch
+displayname, getcontenttype, getetag, getlastmodified, nc:has-preview; SEARCH (basicsearch: eq fileid, or, like displayname,
+not is-collection, orderby getlastmodified, nresults); GET /index.php/core/preview?fileId=&x=&y= (PNG); POST /_put?f=<pfad>
+legt eine Datei an (Pfad relativ zu den Dateien des Kontos), GET /_rm?f=<pfad> loescht sie, GET /_ids (pfad -> fileid).
 Aufruf auch als Programm: python fakedav.py <port> [nc|dav]"""
 import base64
 import json
+import mimetypes
+import time
+import xml.etree.ElementTree as ET
+from email.utils import formatdate
 import re
 import secrets
 import sys
@@ -28,6 +36,7 @@ class Store:
 
     def reset(self):
         self.files, self.dirs = {}, set()
+        self.ids, self.mtimes, self.next_id = {}, {}, 100
         self.down = self.corrupt = False
         self.quota = -3
         self.pw = {"plain-user": "plain-pass-123"} if not self.nc else {}
@@ -43,6 +52,45 @@ class Store:
 
     def used(self):
         return sum(len(v) for v in self.files.values())
+
+    def fid(self, p):
+        if p not in self.ids:
+            self.next_id += 1
+            self.ids[p] = self.next_id
+        return self.ids[p]
+
+    def touch(self, p):
+        self.mtimes[p] = time.time()
+        self.fid(p)
+
+
+PNG1 = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+DAVNS = {"d": "DAV:", "oc": "http://owncloud.org/ns", "nc": "http://nextcloud.org/ns"}
+
+
+def prop_xml(st, x):
+    """Eigenschaften eines Eintrags (wie Nextcloud) - st.lock muss gehalten werden."""
+    isdir = x in st.dirs
+    name = x.rsplit("/", 1)[-1]
+    props = "<d:resourcetype><d:collection/></d:resourcetype>" if isdir else "<d:resourcetype/>"
+    props += f"<oc:fileid>{st.fid(x)}</oc:fileid><d:displayname>{_esc(name)}</d:displayname>"
+    props += f"<d:getlastmodified>{formatdate(st.mtimes.get(x, 1700000000.0), usegmt=True)}</d:getlastmodified>"
+    if isdir:
+        free = -3 if st.quota < 0 else max(0, st.quota - st.used())
+        props += f"<d:quota-available-bytes>{free}</d:quota-available-bytes>"
+        props += f"<oc:size>{sum(len(v) for k, v in st.files.items() if k.startswith(x + '/'))}</oc:size>"
+    else:
+        b = st.files[x]
+        mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        props += f"<d:getcontentlength>{len(b)}</d:getcontentlength><d:getcontenttype>{mime}</d:getcontenttype>"
+        props += f'<d:getetag>"{abs(hash(b)) % 10 ** 12}"</d:getetag><nc:has-preview>{"true" if mime.startswith("image/") or mime == "application/pdf" else "false"}</nc:has-preview>'
+    href = quote(x + ("/" if isdir else ""))
+    return (f"<d:response><d:href>{href}</d:href><d:propstat><d:prop>{props}</d:prop>"
+            "<d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>")
+
+
+def _esc(s):
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def make_handler(st):
@@ -125,6 +173,31 @@ def make_handler(st):
                 with st.lock:
                     b = st.files.get(f)
                 return self._send(200 if b is not None else 404, b or b"", "application/octet-stream")
+            if p == "/_put":                                       # Testdatei anlegen (Eltern-Ordner automatisch)
+                body = self._body()
+                f = st.root + "/" + q.get("f", [""])[0].strip("/")
+                with st.lock:
+                    parts = f.split("/")
+                    for i in range(len(parts) - 1, 1, -1):
+                        d = "/".join(parts[:i])
+                        if d.startswith(st.root) and d not in st.dirs:
+                            st.dirs.add(d)
+                            st.touch(d)
+                    st.files[f] = body
+                    st.touch(f)
+                    i = st.fid(f)
+                return self._send(200, json.dumps({"fileid": i}), "application/json")
+            if p == "/_rm":
+                f = st.root + "/" + q.get("f", [""])[0].strip("/")
+                with st.lock:
+                    st.files.pop(f, None)
+                    st.dirs.discard(f)
+                    st.ids.pop(f, None)
+                return self._send(200, "ok")
+            if p == "/_ids":
+                with st.lock:
+                    d = {k[len(st.root):]: v for k, v in st.ids.items()}
+                return self._send(200, json.dumps(d), "application/json")
             if p == "/_hook":
                 body = self._body()
                 with st.lock:
@@ -160,6 +233,25 @@ def make_handler(st):
                     st.pw[LOGIN] = pw
                 return self._send(200, json.dumps({"server": f"http://127.0.0.1:{st.port}", "loginName": LOGIN, "appPassword": pw}),
                                   "application/json")
+            if st.nc and p == "/index.php/core/preview" and self.command == "GET":
+                if not self._authed():
+                    return self._send(401, "")
+                with st.lock:
+                    st.stats["previews"] = st.stats.get("previews", 0) + 1
+                    fid = q.get("fileId", [""])[0]
+                    path = next((k for k, v in st.ids.items() if str(v) == fid and k in st.files), None)
+                    b = st.files.get(path) if path else None
+                if b is None:
+                    return self._send(404, "")
+                mime = mimetypes.guess_type(path)[0] or ""
+                if not (mime.startswith("image/") or mime == "application/pdf"):
+                    return self._send(404, "")
+                return self._send(200, b if b.startswith(b"\x89PNG") else PNG1, "image/png")
+            if st.nc and p == "/remote.php/dav" and self.command == "SEARCH":
+                body = self._body()
+                if not self._authed():
+                    return self._send(401, "")
+                return self.search(body)
             if st.nc and p.startswith("/ocs/"):
                 self._body()
                 if not self._authed():
@@ -198,19 +290,9 @@ def make_handler(st):
                     items = [p]
                     if p in st.dirs and depth != "0":
                         items += sorted(x for x in list(st.dirs) + list(st.files) if x.rsplit("/", 1)[0] == p and x != p)
-                    free = -3 if st.quota < 0 else max(0, st.quota - st.used())
-                    out = ['<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">']
-                    for x in items:
-                        isdir = x in st.dirs
-                        href = quote(x + ("/" if isdir else ""))
-                        props = "<d:resourcetype><d:collection/></d:resourcetype>" if isdir else "<d:resourcetype/>"
-                        if isdir:
-                            props += f"<d:quota-available-bytes>{free}</d:quota-available-bytes>"
-                            props += f"<oc:size>{sum(len(v) for k, v in st.files.items() if k.startswith(x + '/'))}</oc:size>"
-                        else:
-                            props += f"<d:getcontentlength>{len(st.files[x])}</d:getcontentlength>"
-                        out.append(f"<d:response><d:href>{href}</d:href><d:propstat><d:prop>{props}</d:prop>"
-                                   "<d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>")
+                    out = ['<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns" '
+                           'xmlns:nc="http://nextcloud.org/ns">']
+                    out += [prop_xml(st, x) for x in items]
                     out.append("</d:multistatus>")
                 return self._send(207, "".join(out), "application/xml; charset=utf-8")
             if m == "MKCOL":
@@ -221,6 +303,7 @@ def make_handler(st):
                     if parent not in st.dirs:
                         return self._send(409, "parent missing")
                     st.dirs.add(p)
+                    st.touch(p)
                     if p.startswith("/remote.php/dav/uploads/"):
                         st.uploads[p] = {"dest": self.headers.get("Destination"), "total": self.headers.get("OC-Total-Length")}
                 return self._send(201, "")
@@ -243,6 +326,7 @@ def make_handler(st):
                     else:
                         st.stats["puts"] += 1
                     st.files[p] = body
+                    st.touch(p)
                 return self._send(201, "")
             if m == "GET":
                 self._body()
@@ -297,7 +381,53 @@ def make_handler(st):
             self._body()
             return self._send(405, "")
 
-        do_GET = do_POST = do_PUT = do_DELETE = do_PROPFIND = do_MKCOL = do_MOVE = do_HEAD = handle_one
+        def search(self, raw):
+            """basicsearch wie Nextcloud (Teilmenge): where eq fileid / or / like displayname / not is-collection."""
+            try:
+                root = ET.fromstring(raw)
+            except ET.ParseError:
+                return self._send(400, "bad xml")
+            bs = root.find("d:basicsearch", DAVNS)
+            scope = (bs.findtext("d:from/d:scope/d:href", "", DAVNS) or "").strip()
+            if scope != "/files/" + UID:
+                return self._send(403, "scope")
+            where = bs.find("d:where", DAVNS)
+
+            def match(node, x):
+                tag = node.tag.split("}")[1]
+                if tag == "or":
+                    return any(match(c, x) for c in node)
+                if tag == "and":
+                    return all(match(c, x) for c in node)
+                if tag == "not":
+                    return not match(list(node)[0], x)
+                if tag == "is-collection":
+                    return x in st.dirs
+                prop = list(node.find("d:prop", DAVNS))[0].tag.split("}")[1]
+                lit = node.findtext("d:literal", "", DAVNS)
+                if tag == "eq" and prop == "fileid":
+                    return str(st.fid(x)) == lit.strip()
+                if tag == "like" and prop == "displayname":
+                    return lit.strip("%").lower() in x.rsplit("/", 1)[-1].lower()
+                return False
+            try:
+                n = int(bs.findtext("d:limit/d:nresults", "100", DAVNS))
+            except ValueError:
+                n = 100
+            with st.lock:
+                st.stats["searches"] = st.stats.get("searches", 0) + 1
+                cands = [x for x in list(st.dirs) + list(st.files) if x.startswith(st.root + "/")]
+                hits = [x for x in cands if where is None or not list(where) or match(list(where)[0], x)]
+                if bs.find("d:orderby/d:order", DAVNS) is not None:
+                    hits.sort(key=lambda x: st.mtimes.get(x, 0), reverse=True)
+                else:
+                    hits.sort()
+                out = ['<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns" xmlns:nc="http://nextcloud.org/ns">']
+                out += [prop_xml(st, x) for x in hits[:n]]
+                out.append("</d:multistatus>")
+            return self._send(207, "".join(out), "application/xml; charset=utf-8")
+
+        do_GET = do_POST = do_PUT = do_DELETE = do_PROPFIND = do_MKCOL = do_MOVE = do_HEAD = do_SEARCH = handle_one
     return H
 
 
