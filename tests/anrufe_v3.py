@@ -123,8 +123,8 @@ def run():
     ok(f"SCHEMA_VERSION >= 10, Datenbank auf dem Stand ({db.SCHEMA_VERSION}, Datenbank {ver})", db.SCHEMA_VERSION >= 10 and 10 in db.MIGRATIONS
        and ver == db.SCHEMA_VERSION)
     s, cf = req("GET", "/api/calls/config", A.k)
-    ok(f"Konfiguration: body_v 3, features reneg + pip_hint ({cf.get('body_v')}, {cf.get('features')})",
-       s == 200 and cf.get("body_v") == 3 and set(cf.get("features") or []) >= {"reneg", "pip_hint"} and cf.get("format") == "saga-call/v1")
+    ok(f"Konfiguration: body_v 3, features reneg + pip_hint + screen2 ({cf.get('body_v')}, {cf.get('features')})",
+       s == 200 and cf.get("body_v") == 3 and set(cf.get("features") or []) >= {"reneg", "pip_hint", "screen2"} and cf.get("format") == "saga-call/v1")
     lim = cf.get("limits") or {}
     ok(f"... limits: Endpunkte 2/2 (E0), Signal-Budget, Rate, Groesse ({lim})",
        lim.get("endpoints_video") == 2 and lim.get("endpoints_audio") == 2 and lim.get("signals_max") == CL.SIGNALS_MAX
@@ -204,6 +204,23 @@ def run():
     ga4 = fetch(A, A.dev, cid, B, B.dev, ga3[-1][0])
     ok("state (pip, want, path) und bye werden wie jedes Signal weitergereicht", st == st2 == 200
        and ga4[0][1]["want"] == {"video": "small"} and ga4[1][1]["t"] == "bye")
+    # --- E3: Bildschirm v2 (zweite Videospur) - realistisch grosses Angebot mit 3 m-Zeilen, tracks/msid, screen_mid -------
+    big = "".join(f"a=rtpmap:{96 + i} VP8/90000\r\na=rtcp-fb:{96 + i} nack pli\r\na=extmap:{i % 14 + 1} urn:ietf:params:rtp-hdrext:x{i}\r\n" for i in range(70))
+    s3 = sdp("scr1", "m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=mid:1\r\n" + big + "m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=mid:2\r\na=sendrecv\r\n"
+             "a=msid:scrstream scrtrack\r\n" + big)
+    b3 = json.dumps({"t": "offer", "pc": pc_ab, "n": 10, "sdp": s3, "fp": C.sdp_fingerprints(s3), "caps": ["reneg", "want", "bye", "screen2"],
+                     "media": "video", "tracks": {"0": "mic", "1": "cam", "2": "screen"}, "msid": {"0": "camstream", "1": "camstream", "2": "scrstream"}},
+                    separators=(",", ":"))
+    sealed_len = len(sig(A, A.dev, cid, B, B.dev, b3)[B.dev["id"]])
+    st = [post_sig(A, A.dev, cid, B, B.dev, b3)[0],
+          post_sig(A, A.dev, cid, B, B.dev, json.dumps({"t": "state", "pc": pc_ab, "mic": True, "cam": True, "screen": True, "pip": False,
+                                                        "want": {"video": "large"}, "tracks": {"0": "mic", "1": "cam", "2": "screen"},
+                                                        "msid": {"2": "scrstream"}, "screen_mid": "2", "screen_audio": True}))[0]]
+    gb4 = fetch(B, B.dev, cid, A, A.dev, gb3[-1][0])
+    ok(f"Bildschirm v2: Angebot mit 3 m-Zeilen ({len(s3)} Zeichen SDP, versiegelt {sealed_len} <= {CL.SEALED_MAX}) und state mit "
+       f"screen_mid/tracks/msid kommen unveraendert an ({st})",
+       st == [200, 200] and sealed_len <= CL.SEALED_MAX and len(s3) > 8000 and gb4[0][1]["tracks"]["2"] == "screen"
+       and gb4[1][1]["screen_mid"] == "2" and gb4[1][1]["msid"] == {"2": "scrstream"})
     hits = A_.plaintext_hits(SDP_MARK, "neu9", "10.0.0.1")
     ok(f"Server sieht keine SDP/Kandidaten (nirgends in der Datenbank) ({hits})", not hits)
 

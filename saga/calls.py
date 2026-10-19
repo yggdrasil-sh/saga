@@ -28,7 +28,10 @@ undurchsichtigen) Body - pc, caps, n, Neuverhandlung (offer/answer auch waehrend
 ICE-Restart, state.want, bye (Vertrag: docs/APP-API.md "Anrufe: saga-call v3"). Der Server reicht dafuer beliebig viele
 Signale in beide Richtungen weiter (Budget waechst mit der Gespraechsdauer, sig_budget) und merkt sich die vom Geraet
 gemeldeten Faehigkeiten nur als Hinweis (caps_a/caps_b, nicht sicherheitsrelevant - massgeblich sind die signierten caps
-im Body). GET /api/calls/config meldet features und limits."""
+im Body). GET /api/calls/config meldet features und limits.
+
+2.4 (Etappe E3, "Bildschirm v2"): features enthaelt screen2 - Bildschirm als eigene Videospur ueber die Neuverhandlung;
+am Server aendert sich sonst nichts (Body bleibt undurchsichtig, keine Medien durch Python)."""
 import asyncio
 import base64
 import hashlib
@@ -52,7 +55,8 @@ SEALED_MAX = 24 * 1024                 # versiegelte Signal-Nachricht (B64) - SD
 SIGNALS_MAX = 600                      # Signal-Nachrichten je Anruf (Grundbudget bis zur Annahme und in der ersten Minute)
 SIG_PER_MIN = 60                       # 2.4: + so viele je angefangener Gespraechsminute (Neuverhandlung, ICE-Restart, Zustand)
 SIGNALS_HARD = 6000                    # 2.4: harte Obergrenze je Anruf (auch bei sehr langen Gespraechen)
-FEATURES = ("reneg", "pip_hint")       # 2.4: GET /api/calls/config -> features (E0: Neuverhandlung, PiP-Hinweis want)
+FEATURES = ("reneg", "pip_hint", "screen2")   # 2.4: GET /api/calls/config -> features (E0: Neuverhandlung, PiP-Hinweis
+#                                        want; E3: Bildschirm als zweite Videospur - der Server reicht nur Signale weiter)
 CAPS_MAX, _CAP = 16, re.compile(r"[a-z0-9_]{1,16}")
 SIG_RATE = 240                         # je Geraet und Minute
 CALL_RATE, CALL_RATE_H = 6, 40         # neue Anrufe je Konto: je Minute / je Stunde
