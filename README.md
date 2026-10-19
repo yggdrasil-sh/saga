@@ -32,12 +32,13 @@ Saga is a self-hosted start page and personal knowledge base for families, teams
 all your services, Notion-style pages and databases, tasks, calendars and bookmarks. Everyone gets their own
 private space – no cloud, no subscription, on your own server.
 
-> **New in Saga 2.1:** passkeys and two-factor sign-in, profile pictures, audio and video calls in direct chats,
-> Immich photos in chats, fast chat images with previews, archiving and deleting chats, a much better AI assistant
-> with its own name that helps in chats on request and can search the web, and five languages (new: Russian and
-> Thai), selectable right on the sign-in page.
-> Since 2.0: sharing and comments, live updates, end-to-end encrypted chats, push notifications to your phone and
-> federation with other Saga servers. Details in the [changelog](CHANGELOG.md) (in German).
+> **New in Saga 2.3:** much faster with many pages and large databases (e.g. the page tree reloads in 0.05 instead
+> of 1 s with 60,000 entries, a 2,000-row database is usable after 0.6 instead of 12 s, 80–90 % less data thanks to
+> compression), **federation complete** – find people on connected servers by name, end-to-end encrypted chats and
+> calls across servers, edit shared pages together including databases, subpages and uploads –, **encrypted backups**
+> to S3, a folder or Nextcloud/WebDAV plus **personal backups** for everyone, and **Nextcloud files in pages**.
+> Since 2.1: passkeys and two-factor sign-in, profile pictures, audio and video calls, an AI assistant with its own
+> name and web search, five languages. Details in the [changelog](CHANGELOG.md) (in German).
 
 ## Features
 
@@ -68,6 +69,16 @@ private space – no cloud, no subscription, on your own server.
   end-to-end encrypted direct chats, group and page chats and calls across servers, with message requests and blocking.
   Content stays with its owner, every request between servers is signed (Ed25519, HTTP Message Signatures), and a
   misbehaving server is contained (checks, rate limits per server, audit log)
+- **Encrypted backups:** daily backups of database, files and keys to **S3** (MinIO, Garage, Backblaze B2, Hetzner,
+  AWS …), a **folder** (NAS mount) or **Nextcloud/WebDAV** – encrypted with [age](https://age-encryption.org) and your
+  public key (Saga never sees the private key), retention 7/4/6, verification, alerts, test restore, and restore even
+  without Saga
+- **Personal backups:** everyone backs up their own workspace to their own Nextcloud or WebDAV with their own key – an
+  open format (encrypted ZIP with Markdown and JSON), restorable into their own account
+- **Nextcloud files in pages:** link your own Nextcloud and insert images, files and folders as blocks – everyone who
+  can see the page sees the file, without a Nextcloud account; or take it over as a copy
+- **Fast with lots of data:** compressed responses, page tree sync with changes only, long tables render only the
+  visible rows, server-side search with a trigram index – measured with a repeatable load test (`tools/perf`)
 - **Tasks** with due dates, priorities and recurrence
 - **Calendars (CalDAV):** view and edit Nextcloud, mailcow/SOGo, Radicale, iCloud …
 - **Immich:** use your own photos as images and cover images
@@ -99,7 +110,8 @@ docker compose pull && docker compose up -d
 ```
 
 **Update:** `git pull && docker compose pull && docker compose up -d` – Saga automatically creates a backup
-before any database change. From 1.x to 2.x: set `SAGA_VERSION=2` in `.env` first. 2.1 upgrades the database (no way back to 2.0.x except via the backup). What's new is listed in the **[changelog](CHANGELOG.md)** (in German) and in the
+before any database change. From 1.x to 2.x: set `SAGA_VERSION=2` in `.env` first. 2.3 upgrades the database (schema 9; no way back to 2.1
+except via the automatic backup – see the guide, section 11). What's new is listed in the **[changelog](CHANGELOG.md)** (in German) and in the
 [releases](https://github.com/yggdrasil-sh/saga/releases). Curious about the latest? `SAGA_VERSION=testing` in
 `.env` pulls the testing version from the `testing` branch. Images and files of pages are not part of the
 database backup: back up the `saga-data` volume, or run `docker compose exec saga python run.py backup --dateien`.
@@ -141,6 +153,7 @@ Browser / apps ──► Saga (Python, FastAPI)  :8080  dashboard, pages, API
 - Passwords hashed with scrypt, lockout after repeated failed attempts, CSRF protection, strict
   Content Security Policy
 - Calendar, Immich, LDAP and SSO credentials encrypted in the database (key: `SECRET_KEY`)
+- Backups encrypted with public keys (age) – the server never holds the private key
 - User data strictly separated – tested automatically (`tests/isolation.py`)
 - Internal (home network) addresses for calendars/Immich only after the admin allows them (SSRF protection)
 - Locking an account immediately ends all its sessions and app sign-ins

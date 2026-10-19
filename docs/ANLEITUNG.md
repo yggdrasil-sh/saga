@@ -609,8 +609,8 @@ Ausnahme eingeschaltet hat (siehe unten).
 
 **Geteilt bekommen:** Seiten anderer Server stehen in **„Mit mir geteilt“** (mit `name@server`), öffnen sich im
 normalen Editor und lassen sich je nach Rolle lesen, kommentieren und bearbeiten (Titel und Inhalt; bei
-gleichzeitigem Bearbeiten greift der bekannte Konflikt-Hinweis). Bilder kommen über den eigenen Server. Du brauchst
-dafür einen öffentlichen Namen. Benachrichtigungen („hat eine Seite mit dir geteilt“, „hat geantwortet“) kommen auch
+gleichzeitigem Bearbeiten greift der bekannte Konflikt-Hinweis). Bilder kommen über den eigenen Server. Mit Servern
+vor 2.3 brauchst du dafür einen öffentlichen Namen. Benachrichtigungen („hat eine Seite mit dir geteilt“, „hat geantwortet“) kommen auch
 über Servergrenzen – ohne Kommentartext.
 
 **Protokoll 2 und Funktionen je Server (ab 2.3):** Verbundene Server mit Saga 2.3 handeln beim Verbinden (und danach
@@ -1460,8 +1460,8 @@ Welche Version läuft, bestimmt `SAGA_VERSION` in der `.env`:
 | Wert | Bedeutung |
 |---|---|
 | `2` (Standard) | immer die neueste 2.x – neue Funktionen und Fehlerbehebungen, nichts, was Handarbeit braucht |
-| `2.1` | nur Fehlerbehebungen von 2.1 |
-| `2.1.0` | genau diese Version |
+| `2.3` | nur Fehlerbehebungen von 2.3 |
+| `2.3.0` | genau diese Version |
 | `1` | bleibt bei der neuesten 1.x (1.2) – ältere Installationen haben diesen Wert noch in der `.env` |
 | `testing` (oder `rc`) | **Release Candidate:** das Neueste aus dem Branch `testing`, noch vor dem Release. Kann Fehler haben – nur zum Ausprobieren |
 
@@ -1490,10 +1490,10 @@ sichert (siehe oben), braucht den Schalter nicht.
 
 **Release Candidates (Kanal `testing`):** Mit `SAGA_VERSION=testing` (gleichwertig: `rc`) bekommst du neue
 Funktionen, sobald sie fertig sind – noch vor dem Release. Jeder Stand ist ein Release Candidate der nächsten
-Version, z. B. `2.2.0-rc.7` (7 Änderungen seit dem letzten Release; unten im Admin-Bereich als
-„2.2.0-rc.7 (1cc210f)“ mit 🧪 Release Candidate, dahinter der Commit). Ein Release Candidate ist immer neuer als
-die stabile Version davor (2.1.0 < 2.2.0-rc.7 < 2.2.0): Der Hinweis auf neue Versionen meldet sich erst, wenn
-2.2.0 erschienen ist. Ältere Testversionen hießen `2.2.0-testing.<commit>`. Zurück zur
+Version, z. B. `2.4.0-rc.7` (7 Änderungen seit dem letzten Release; unten im Admin-Bereich als
+„2.4.0-rc.7 (1cc210f)“ mit 🧪 Release Candidate, dahinter der Commit). Ein Release Candidate ist immer neuer als
+die stabile Version davor (2.3.0 < 2.4.0-rc.7 < 2.4.0): Der Hinweis auf neue Versionen meldet sich erst, wenn
+2.4.0 erschienen ist. Ältere Testversionen hießen `x.y.z-testing.<commit>`. Zurück zur
 stabilen Version: `SAGA_VERSION=2`, `docker compose pull && docker compose up -d`. Hat die Testversion die
 Datenbank schon umgebaut, startet die stabile Version erst, wenn sie diesen Umbau ebenfalls enthält (spätestens
 mit dem nächsten Release) – oder du spielst das Backup von vor dem Wechsel zurück.
@@ -1513,8 +1513,39 @@ Reverse Proxy für den Live-Kanal prüfen (Abschnitt 3). Alles Weitere steht im 
 `BASE_URL` einen Hostnamen, keine IP-Adresse; die 2FA-Richtlinie steht auf „niemanden“. **KI im Chat** und die
 **Websuche der KI** sind aus, bis du sie unter KI-Assistent einschaltest (Websuche nur mit SearXNG, Abschnitt 10).
 
+**Von 2.1 auf 2.3:** Eine Version 2.2 gibt es nicht – mit `SAGA_VERSION=2` kommt 2.3 beim normalen Update direkt von
+2.1. Was dabei passiert und worauf du achten solltest:
+
+1. **Vorher sichern (empfohlen):** Saga legt vor dem Umbau selbst ein Backup an, ein zusätzliches mit Dateien schadet
+   nicht: `docker compose exec saga python run.py backup --dateien`. Wer schon ein Ziel für verschlüsselte Backups hat,
+   startet dort „Jetzt sichern“.
+2. **Aktualisieren** wie oben (`git pull`, `docker compose pull`, `docker compose up -d`). Die Datenbank geht von
+   Schema-Stand 6 auf **9** (Migrationen 7–9 für die Föderation; vorher Backup `…-vor-schema-9.dump` in
+   `/data/backups`). Im Log steht `saga:` mit Backup und Migration. Beim ersten Start gleicht Saga einmal alle Seiten
+   für Suche, Rückverweise und Freigaben ab (etwa 1–2 s je 1.000 Seiten, im Hintergrund – Saga ist dabei schon
+   benutzbar, Ergebnisse stimmen von Anfang an).
+3. **Föderation prüfen:** Verbundene Server mit 2.3 bekommen je Server **Chat, Anrufe und Adressbuch** – standardmäßig
+   an. Damit gehen Anzeigenamen und Profilbilder eurer Personen an diese Server. Wenn du das nicht willst, unter
+   Admin → Föderation → „Funktionen je Instanz“ abschalten (oder nur bestimmte Gruppen teilen) und die Personen auf den
+   Widerspruch unter Einstellungen → Konto hinweisen. Server mit 2.1 bleiben verbunden wie bisher.
+4. **Neue Funktionen einrichten (optional):** verschlüsselte Backups unter Admin → **Backups** (aus, bis ein Ziel
+   eingerichtet ist; für ein Ordner-Ziel ein zusätzliches Volume, siehe „Verschlüsselte Backups“). **Persönliche
+   Backups** und **Nextcloud-Dateien in Seiten** sind erlaubt, gehen aber nur zu öffentlichen https-Adressen, bis du
+   interne Hosts freigibst (Backups → Persönliche Backups bzw. Allgemein → „Verbindungen der Benutzer“; dort auch ganz
+   abschaltbar).
+5. **Neue Einstellungen der `.env`** – alle optional, die Standardwerte passen meist (Abschnitt 13): `FED_*`
+   (Föderation: Upload-Grenze, Zustellung, Raten, Zwischenspeicher für Chat-Anhänge), `SAGA_BACKUP_DIRS` (Wurzeln für
+   das Ordner-Ziel) und `SAGA_BACKUP_*` (nur zum Wiederherstellen auf einem frischen Server), `BACKUP_VERIFY_MB`,
+   `BACKUP_CHUNK_MB`, `USER_BACKUP_*` (persönliche Backups), `NC_*` (Nextcloud-Dateien), `SAGA_RESTORE_TEST`
+   (Testwiederherstellung), `GZIP_LEVEL`/`GZIP_MIN_BYTES`, `NOTE_ROW_MAX_COUNT`, `SAGA_ORJSON`.
+6. **Apps:** Apps 2.1 laufen weiter. Chats mit Personen anderer Server zeigen sie mit „bitte App aktualisieren“.
+
+**Rückweg 2.3 → 2.1:** nur über das Backup von vor dem Update (`…-vor-schema-9.dump`) – siehe unten. 2.1 meldet auf
+der umgebauten Datenbank „Die Datenbank hat Schema-Stand 9, diese Saga-Version kennt nur 6“ und startet nicht.
+
 **Zurück zur vorigen Version:** Eine ältere Saga startet nicht auf einer Datenbank, die schon eine neuere
-Version umgebaut hat (sie meldet das im Log, statt Daten zu beschädigen). Das gilt auch für **2.1 → 2.0.x**: 2.1
+Version umgebaut hat (sie meldet das im Log, statt Daten zu beschädigen). So auch bei **2.3 → 2.1** (Backup
+`…-vor-schema-9.dump`) und bei **2.1 → 2.0.x**: 2.1
 hebt den Schema-Stand auf 6 (Backup `…-vor-schema-6.dump`), 2.0.x bricht dann mit „Die Datenbank hat Schema-Stand 6,
 diese Saga-Version kennt nur 5“ ab – sonst liefe 2.0 weiter und ließe Konten mit zweitem Faktor nur mit dem
 Passwort hinein. Dann das Backup von vor dem Update zurückspielen:
@@ -1533,10 +1564,11 @@ Zurückspielen also **vor** dem Wechsel der `SAGA_VERSION`, mit der neueren Vers
 Backup in einer Transaktion ein (bei einem Fehler bleibt alles, wie es war), funktioniert mit `postgres:16` und `:17`
 und entfernt vorher die Tabellen, die eine ältere Version nicht kennt. Ältere Saga-Versionen scheitern beim
 Zurückspielen mit `postgres:16` an „unrecognized configuration parameter transaction_timeout“ und – auf einer
-Datenbank, die schon 2.2 benutzt hat – an den neuen Tabellen `note_derived`, `note_link` und `note_stale`
-(„cannot drop table note because other objects depend on it“). Hast du schon gewechselt, die neuere Version nur zum
-Zurückspielen nehmen, z. B. `docker compose run --rm saga …` mit `SAGA_VERSION=2` (bzw. `testing`) in der `.env`.
-Die drei Tabellen kannst du auch von Hand entfernen (sie entstehen beim nächsten Start von 2.2 neu):
+Datenbank, die schon 2.3 (oder eine Testversion 2.2.0-rc) benutzt hat – an den neuen Tabellen `note_derived`,
+`note_link` und `note_stale` („cannot drop table note because other objects depend on it“). Hast du schon gewechselt,
+die neuere Version nur zum Zurückspielen nehmen, z. B. `docker compose run --rm saga …` mit `SAGA_VERSION=2` (bzw.
+`testing`) in der `.env`. Die drei Tabellen kannst du auch von Hand entfernen (sie entstehen beim nächsten Start von
+2.3 neu):
 `docker compose exec -T db psql -U saga -d saga -c "DROP TABLE IF EXISTS note_link, note_stale, note_derived"`.
 
 **Apps:** Die Apps prüfen beim Start die Version des Servers. Ist eine App zu alt für den Server, zeigt sie
@@ -1615,14 +1647,17 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `PUBLIC_RATE` | `120` | Aufrufe öffentlicher Seiten je IP-Adresse und Minute (Bilder: das Fünffache) |
 | `SESSION_HOURS` | `12` | Gültigkeit einer Browser-Sitzung (Apps bleiben angemeldet) |
 | `PASSKEY_RP_ID` | Rechnername aus `BASE_URL` | Domain der Passkeys; nur setzen, wenn sie für eine übergeordnete Domain gelten sollen (z. B. `example.org`) |
-| `SAGA_VERSION` | `2` | Welche Version `docker compose pull` holt: `2`, `2.1`, `2.1.0` oder `testing` (Abschnitt 11) |
+| `SAGA_VERSION` | `2` | Welche Version `docker compose pull` holt: `2`, `2.3`, `2.3.0` oder `testing` (Abschnitt 11) |
 | `BACKUP_KEEP` | `10` | So viele automatische/manuelle Backups bleiben in `/data/backups` |
 | `BACKUP_VERIFY_MB` | `512` | Verschlüsselte Backups (Abschnitt 11): Dateien bis zu dieser Größe nach dem Hochladen ganz erneut herunterladen und vergleichen (größere sonntags) |
 | `USER_BACKUP_MAX_MB` | `4096` | Persönliche Backups (Abschnitt 11): obere Grenze für die Größe je Backup und für Uploads beim Einspielen (die Grenze im Admin-Bereich kann nur kleiner sein) |
 | `USER_BACKUP_DATA_MB` / `USER_BACKUP_FILES_MAX` | `64` / `20000` | Persönliche Backups einspielen: Größe von `daten.json` und Anzahl Dateien je Backup |
 | `BACKUP_CHUNK_MB` / `BACKUP_CHUNK_MIN_MB` | `32` / `10` | Nextcloud: Teilgröße beim Hochladen in Stücken (Chunking v2) und ab welcher Dateigröße |
+| `SAGA_BACKUP_DIRS` | `/backup` | Verschlüsselte Backups, Ziel „Ordner im Container“: nur unterhalb dieser Wurzeln (Komma-Liste) |
 | `SAGA_BACKUP_URL` / `SAGA_BACKUP_USER` / `SAGA_BACKUP_PASSWORD` | – | Nur für `run.py backup-holen`/`restore --schluessel` auf einem frischen Server: WebDAV-Adresse des Backup-Ordners und Zugang |
-| `SAGA_RESTORE_TEST` | – | `1` = Testwiederherstellung: keine ausgehenden Verbindungen (Föderation, Mitteilungen, Backups, Versionshinweis); nur Lesen vom Backup-Ziel per Kommandozeile erlaubt |
+| `SAGA_BACKUP_S3_ENDPOINT` / `_BUCKET` / `_ACCESS_KEY` / `_SECRET_KEY` / `_REGION` / `_PREFIX` / `_STYLE` | – | Ebenso für ein S3-Ziel (Abschnitt 11, „Wiederherstellen mit Saga“) |
+| `SAGA_BACKUP_PATH` | – | Ebenso für ein Ordner-Ziel (z. B. `/backup`) |
+| `SAGA_RESTORE_TEST` | – | `1` = Testwiederherstellung: keine ausgehenden Verbindungen (Föderation, Mitteilungen, Backups, Versionshinweis, Kalender, KI, Immich, Websuche, Avatare); nur Lesen vom Backup-Ziel per Kommandozeile erlaubt |
 | `SAGA_UPDATE_CHECK` | `1` | `0` = nie bei GitHub nach neuen Versionen fragen (auch im Admin-Bereich abschaltbar) |
 | `ADMIN_SESSION_HOURS` | `4` | Gültigkeit einer Sitzung im Admin-Bereich |
 | `TIMEZONE` | `Europe/Berlin` | Zeitzone für Exporte |
@@ -1634,6 +1669,7 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `NOTE_MAX_COUNT` | `5000` | Seiten je Benutzer (ohne Datenbank-Einträge und Papierkorb) |
 | `NOTE_ROW_MAX_COUNT` | `50000` (mind. 10 × `NOTE_MAX_COUNT`) | Datenbank-Einträge je Benutzer (ohne Papierkorb). Sicherheitsnetz: alles zusammen inkl. Papierkorb höchstens 2 × (beide Grenzen) |
 | `GZIP_LEVEL` / `GZIP_MIN_BYTES` | `5` / `1024` | Kompression (gzip) für JSON, Text, JS, CSS ab dieser Größe; `0` = aus. Nie für den Live-Kanal, Bilder und Dateien |
+| `SAGA_ORJSON` | `1` | `0` = JSON-Antworten mit der Standardbibliothek statt `orjson` (gleiche Ausgabe, nur langsamer) |
 | `IMMICH_URL` | – | Vorschlag im Immich-Dialog (wird automatisch freigegeben) |
 | `NEXTCLOUD_URL` | – | Vorschlag im Reiter „Nextcloud“ der Einstellungen (Host wird automatisch freigegeben) |
 | `NC_CACHE_MB` | `300` | Nextcloud-Dateien in Seiten: Obergrenze für zwischengespeicherte Vorschaubilder (`/data/nc-cache`, älteste zuerst weg) |

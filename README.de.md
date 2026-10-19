@@ -28,12 +28,14 @@
 
 ![Saga Dashboard](docs/screenshots/dashboard.png)
 
-> **Neu in Saga 2.1:** Passkeys und Zwei-Faktor-Anmeldung, Profilbilder, Audio- und Videoanrufe im Direkt-Chat,
-> Bilder aus Immich im Chat, schnelle Chat-Bilder mit Vorschau, Chats archivieren und löschen, ein treffsicherer
-> KI-Assistent mit eigenem Namen, der auf Zuruf im Chat hilft und im Web suchen kann, und fünf Sprachen (neu: Russisch
-> und Thai), wählbar schon auf der Anmeldeseite.
-> Seit 2.0: Teilen und Kommentare, Live-Aktualisierung, Ende-zu-Ende-verschlüsselte Chats, Mitteilungen aufs Handy
-> und Föderation mit anderen Saga-Servern. Alles Weitere im [Changelog](CHANGELOG.md).
+> **Neu in Saga 2.3:** deutlich schneller bei vielen Seiten und großen Datenbanken (z. B. Seitenbaum neu laden bei
+> 60.000 Einträgen 0,05 statt 1 s, Datenbank mit 2.000 Zeilen bedienbar nach 0,6 statt 12 s, 80–90 % weniger Daten
+> durch Kompression), **Föderation komplett** – Personen verbundener Server über ihren Namen finden,
+> Ende-zu-Ende-verschlüsselte Chats und Anrufe über Servergrenzen, geteilte Seiten samt Datenbanken, Unterseiten und
+> Uploads gemeinsam bearbeiten –, **verschlüsselte Backups** nach S3, in einen Ordner oder auf Nextcloud/WebDAV plus
+> **persönliche Backups** für jede Person und **Nextcloud-Dateien in Seiten**.
+> Seit 2.1: Passkeys und Zwei-Faktor-Anmeldung, Profilbilder, Audio- und Videoanrufe, KI-Assistent mit eigenem Namen
+> und Websuche, fünf Sprachen. Alles Weitere im [Changelog](CHANGELOG.md).
 
 ## Funktionen
 
@@ -64,6 +66,17 @@
   Konto), Ende-zu-Ende-verschlüsselte Direkt-, Gruppen- und Seiten-Chats und Anrufe über Servergrenzen, mit
   Nachrichtenanfragen und Sperren. Inhalte bleiben beim Eigentümer, jede Anfrage zwischen den Servern ist signiert
   (Ed25519, HTTP Message Signatures), ein fehlerhafter Server wird eingedämmt (Prüfungen, Raten je Server, Prüfprotokoll)
+- **Verschlüsselte Backups:** täglich Datenbank, Dateien und Schlüssel nach **S3** (MinIO, Garage, Backblaze B2,
+  Hetzner, AWS …), in einen **Ordner** (NAS-Mount) oder auf **Nextcloud/WebDAV** – verschlüsselt mit
+  [age](https://age-encryption.org) und deinem öffentlichen Schlüssel (Saga kennt den privaten nie), Aufbewahrung
+  7/4/6, Prüfung, Benachrichtigung, Testwiederherstellung und Wiederherstellung auch ohne Saga
+- **Persönliche Backups:** jede Person sichert ihren eigenen Workspace in ihre eigene Nextcloud oder ihr WebDAV, mit
+  eigenem Schlüssel – offenes Format (verschlüsseltes ZIP mit Markdown und JSON), einspielbar ins eigene Konto
+- **Nextcloud-Dateien in Seiten:** eigene Nextcloud verknüpfen und Bilder, Dateien und Ordner als Block einfügen –
+  alle, die die Seite sehen, sehen auch die Datei, ohne eigenes Nextcloud-Konto; oder als Kopie übernehmen
+- **Schnell auch mit vielen Daten:** komprimierte Antworten, Seitenbaum per Abgleich, lange Tabellen zeigen nur die
+  sichtbaren Zeilen, Suche auf dem Server mit Trigramm-Index – gemessen mit einer wiederholbaren Lastmessung
+  (`tools/perf`)
 - **Aufgaben** mit Fälligkeit, Priorität und Wiederholung
 - **Kalender (CalDAV):** Nextcloud, mailcow/SOGo, Radicale, iCloud … anzeigen und bearbeiten
 - **Immich:** eigene Fotos als Bilder und Titelbilder einbinden
@@ -95,7 +108,8 @@ docker compose pull && docker compose up -d
 ```
 
 **Update:** `git pull && docker compose pull && docker compose up -d` – vor Datenbank-Änderungen legt Saga
-automatisch ein Backup an. Von 1.x auf 2.x: vorher `SAGA_VERSION=2` in der `.env` setzen. 2.1 baut die Datenbank um (zurück auf 2.0.x nur über das Backup). Was neu ist, steht im **[Changelog](CHANGELOG.md)**. Neugierig auf das Neueste?
+automatisch ein Backup an. Von 1.x auf 2.x: vorher `SAGA_VERSION=2` in der `.env` setzen. 2.3 baut die Datenbank um (Schema-Stand 9; zurück auf
+2.1 nur über das automatische Backup – Anleitung, Abschnitt 11). Was neu ist, steht im **[Changelog](CHANGELOG.md)**. Neugierig auf das Neueste?
 `SAGA_VERSION=testing` in der `.env` holt die Testversion aus dem Branch `testing`. Bilder und Dateien der Seiten
 stecken nicht im Datenbank-Backup: das Volume `saga-data` sichern oder
 `docker compose exec saga python run.py backup --dateien`.
@@ -136,6 +150,7 @@ Browser / Apps ──► Saga (Python, FastAPI)  :8080  Dashboard, Seiten, API
 
 - Passwörter mit scrypt, Sperre nach wiederholten Fehlversuchen, CSRF-Schutz, strenge Content-Security-Policy
 - Kalender-, Immich-, LDAP- und SSO-Zugangsdaten verschlüsselt in der Datenbank (Schlüssel: `SECRET_KEY`)
+- Backups mit öffentlichen Schlüsseln verschlüsselt (age) – der Server hat nie den privaten Schlüssel
 - Benutzerdaten strikt getrennt – automatisch getestet (`tests/isolation.py`)
 - Interne Adressen (Heimnetz) für Kalender/Immich nur nach Freigabe durch den Admin (Schutz vor SSRF)
 - Sperren eines Kontos beendet sofort alle Sitzungen und App-Anmeldungen

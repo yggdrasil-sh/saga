@@ -32,12 +32,14 @@ Saga es una página de inicio y una base de conocimiento autoalojada para famili
 con todos tus servicios, páginas y bases de datos al estilo Notion, tareas, calendarios y marcadores. Cada
 persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio servidor.
 
-> **Novedades de Saga 2.1:** llaves de acceso e inicio de sesión en dos pasos, fotos de perfil, llamadas de audio y vídeo
-> en el chat directo, fotos de Immich en el chat, imágenes de chat rápidas con miniaturas, archivar y eliminar chats,
-> un asistente de IA mucho más certero con nombre propio, que ayuda en el chat cuando se le menciona y puede buscar en
-> la web, y cinco idiomas (nuevos: ruso y tailandés), a elegir ya en la página de inicio de sesión.
-> Desde la 2.0: compartir y comentar, actualización en vivo, chats cifrados de extremo a extremo,
-> notificaciones en el móvil y federación con otros servidores Saga. Todos los detalles en el
+> **Novedades de Saga 2.3:** mucho más rápido con muchas páginas y bases de datos grandes (p. ej. el árbol de páginas
+> se recarga en 0,05 s en lugar de 1 s con 60.000 entradas, una base de datos de 2.000 filas se puede usar tras 0,6 s
+> en lugar de 12 s, 80–90 % menos datos gracias a la compresión), **federación completa** – encontrar por nombre a
+> personas de servidores conectados, chats y llamadas cifrados de extremo a extremo entre servidores, editar juntos
+> páginas compartidas con bases de datos, subpáginas y subidas –, **copias de seguridad cifradas** en S3, una carpeta o
+> Nextcloud/WebDAV, además de **copias personales** para cada persona, y **archivos de Nextcloud en las páginas**.
+> Desde la 2.1: llaves de acceso e inicio de sesión en dos pasos, fotos de perfil, llamadas de audio y vídeo, asistente
+> de IA con nombre propio y búsqueda web, cinco idiomas. Todos los detalles en el
 > [registro de cambios](CHANGELOG.md) (en alemán).
 
 ## Funciones
@@ -70,6 +72,17 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
   llamadas entre servidores, con solicitudes de mensaje y bloqueo. El contenido se queda con su propietario, cada
   solicitud entre servidores va firmada (Ed25519, HTTP Message Signatures) y un servidor que se comporta mal queda
   contenido (comprobaciones, límites por servidor, registro de auditoría)
+- **Copias de seguridad cifradas:** a diario base de datos, archivos y claves en **S3** (MinIO, Garage, Backblaze B2,
+  Hetzner, AWS…), una **carpeta** (montaje NAS) o **Nextcloud/WebDAV**, cifradas con [age](https://age-encryption.org)
+  y tu clave pública (Saga nunca conoce la privada); retención 7/4/6, verificación, avisos, restauración de prueba y
+  restauración incluso sin Saga
+- **Copias personales:** cada persona guarda su propio espacio en su propio Nextcloud o WebDAV, con su propia clave:
+  formato abierto (ZIP cifrado con Markdown y JSON), restaurable en la propia cuenta
+- **Archivos de Nextcloud en las páginas:** vincula tu propio Nextcloud e inserta imágenes, archivos y carpetas como
+  bloques; quien ve la página ve también el archivo, sin cuenta de Nextcloud; o tómalo como copia
+- **Rápido también con muchos datos:** respuestas comprimidas, árbol de páginas sincronizado solo con cambios, las
+  tablas largas solo muestran las filas visibles, búsqueda en el servidor con índice de trigramas, medido con una
+  prueba de carga repetible (`tools/perf`)
 - **Tareas** con fecha límite, prioridad y repetición
 - **Calendarios (CalDAV):** ver y editar Nextcloud, mailcow/SOGo, Radicale, iCloud…
 - **Immich:** usa tus propias fotos como imágenes y portadas
@@ -101,7 +114,8 @@ docker compose pull && docker compose up -d
 ```
 
 **Actualizar:** `git pull && docker compose pull && docker compose up -d`. Antes de cualquier cambio en la base
-de datos, Saga crea automáticamente una copia de seguridad. De 1.x a 2.x: antes pon `SAGA_VERSION=2` en el `.env`. La 2.1 actualiza la base de datos (volver a 2.0.x solo con la copia de seguridad). Las novedades están en el
+de datos, Saga crea automáticamente una copia de seguridad. De 1.x a 2.x: antes pon `SAGA_VERSION=2` en el `.env`. La 2.3 actualiza la base de datos (esquema 9; volver a 2.1
+solo con la copia automática, ver la guía, sección 11). Las novedades están en el
 **[registro de cambios](CHANGELOG.md)** (en alemán) y en las
 [versiones publicadas](https://github.com/yggdrasil-sh/saga/releases). ¿Quieres lo último?
 `SAGA_VERSION=testing` en el `.env` descarga la versión de pruebas de la rama `testing`. Las imágenes y archivos
@@ -145,6 +159,7 @@ Navegador / apps ──► Saga (Python, FastAPI)  :8080  panel, páginas, API
 - Contraseñas con scrypt, bloqueo tras varios intentos fallidos, protección CSRF, Content Security Policy
   estricta
 - Credenciales de calendarios, Immich, LDAP y SSO cifradas en la base de datos (clave: `SECRET_KEY`)
+- Copias de seguridad cifradas con claves públicas (age): el servidor nunca tiene la clave privada
 - Datos de usuarios estrictamente separados, con pruebas automáticas (`tests/isolation.py`)
 - Direcciones internas (red local) para calendarios/Immich solo con permiso del administrador (protección SSRF)
 - Bloquear una cuenta cierra al instante todas sus sesiones e inicios de sesión de apps

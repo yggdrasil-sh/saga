@@ -387,6 +387,29 @@ moves to the next row; in the last row it creates the next entry right away.
 
 ![Database as a board](../screenshots/board.png)
 
+**Nextcloud files in pages:** under Settings → **Nextcloud** you link your **own** Nextcloud (enter the address, sign in
+to Nextcloud in the new tab and allow access – Saga gets its own app password and never sees your password). The “/”
+menu then offers **“Nextcloud file”**: recently changed files, browse folders or search by name. A Nextcloud link of
+your own instance pasted into a page (`…/f/123`, `…/apps/files/?fileid=123`) turns into a block automatically. Two
+ways:
+
+- **Insert as link:** the file stays in Nextcloud. Images appear at page width, other files as a card with a preview
+  (if Nextcloud provides one), “Download” and “Open in Nextcloud”; folders show their first entries. **Everyone who
+  can see the page also sees the file** – preview and download go through Saga with your account, also for people
+  without a Nextcloud of their own. If you disconnect, lose the right to edit the page or the file is gone from
+  Nextcloud, the block only shows a card without content.
+- **Copy into Saga:** the file becomes a normal Saga file (image or file block) and then follows Saga's permissions –
+  also offline, in the backup and in the export.
+
+Whoever may edit a page of another account can only insert files from their **own** Nextcloud; other people's blocks
+stay unchanged and can't be copied into other pages. Only the person who inserted a block sees two switches below it
+(default off): **“Show on published page”** (visitors see preview and download through the page's address, never the
+Nextcloud address) and **“Show via connected servers”** (people on other Saga instances the page is shared with). The
+export contains a link instead of the file, and search finds the file name. Without approval in the admin area only
+public https addresses work; the admin allows home network servers under General → “User connections”, where the
+feature can also be turned off completely. Saga caches thumbnails (`/data/nc-cache`, not in the backup, limit
+`NC_CACHE_MB`).
+
 ### Publishing pages
 
 Any page can be made **public** – readable without signing in, shown in a clean layout, light or dark depending on
@@ -558,32 +581,135 @@ requests – never content. Saga only reaches internal addresses (192.168.x, 10.
 “Allowed internal hosts”; other servers only connect over https.
 
 **Sharing:** in the share dialog, enter `name@server` (or `@name@server`) – Saga asks the connected server whether the
-person or group exists and shows them with their origin (“Bert (bert@club.example)”). You need a public name for this
-(Settings → Account). People from other servers always appear with `@server` in “Shared with me”, comments and
-notifications, so nobody is mistaken for an account here with the same name. If “Only within shared groups” is on,
-sharing with other servers isn't possible.
+person or group exists and shows them with their origin (“Bert (bert@club.example)”). With servers on 2.3 you can also
+find people there by their display name (address book) – sharing then also works with people who have no public name
+(via a random, permanent ID, never the sign-in name). With older servers you need a public name (Settings → Account).
+People from other servers always appear with `@server` in “Shared with me”, comments and notifications, so nobody is
+mistaken for an account here with the same name. If “Share only within common groups” is on, sharing with other servers
+isn't possible – except with servers for which the admin has turned on the exception (see below).
 
 **Receiving shares:** pages from other servers are listed under **“Shared with me”** (with `name@server`), open in the
 normal editor and can be read, commented on and edited depending on the role (title and content; editing at the same
-time triggers the usual conflict notice). Images come through your own server. You need a public name for this.
-Notifications (“shared a page with you”, “replied”) also work across servers – without the comment text.
+time triggers the usual conflict notice). Images come through your own server. With servers before 2.3 you need a
+public name for this. Notifications (“shared a page with you”, “replied”) also work across servers – without the
+comment text.
 
-**Pages of other servers, complete (2.3, both servers 2.3):** depending on the role (always checked by the page's
-server) you can open, filter and edit **databases** (values, columns, views, new entries), create **subpages** and move
-them within the shared area, **upload images and files** (stored with the page owner; per person of another server an
-extra limit `FED_UPLOAD_QUOTA_MB`, default 200 MB), use the **version history** (Edit) and **export**. While a page is
-open, your server keeps a short subscription with the page's server (`FED_WATCH_TTL`, 90 s) for “who's here”, live
-changes and comment counts – never content. Servers with 2.1/2.2 keep reading, commenting and editing title and content.
+**Protocol 2 and features per server (2.3):** connected servers running Saga 2.3 negotiate what both of them support
+when connecting (and every 6 hours after that); servers on 2.1 stay connected as before (sharing, comments,
+notifications). **Admin → Federation → “Features per instance”** lists the protocol, the common capabilities and the
+switches for every connected server:
+- **Chat** (direct chats across servers, see below) and **calls** – on by default.
+- **Share the address book with this instance** – on by default. People there can then find people from here by their
+  display name (chat and share search, “Anna Berg · b.example”). Only the display name, the profile picture and a
+  random, permanent ID (`~…@server`) are transferred – never sign-in names, email addresses or groups. Optionally only
+  people from certain groups. Accounts without a display name, deactivated accounts and everyone who turns off
+  “Appear in the address books of connected servers” under Settings → Account never appear. Turning it off or
+  disconnecting deletes the address book on both sides immediately.
+- **Exception from “Share only within common groups”** – off by default. If that restriction (General) is on, shares,
+  address book and chats with other servers are blocked; with the exception they are allowed for this server.
+Events between servers go out immediately (“express”, at most 5 s wait, `FED_EXPRESS_TIMEOUT`); if the other server
+can't be reached, the event waits in the outbox and is delivered later in the right order (for up to 3 days). For
+scripts the admin area offers `GET /api/federation` and `PUT /api/federation/peers/{id}` (`{"chat": false, …}`, admin
+session and the `X-CSRF-Token` header).
 
-**Chats across servers (2.3):** direct chats (message requests, attachments, calls), **free groups** with people of
-several servers (home = server of the creator; changes go through the home and show up as notices with origin) and
-**page chats** of pages shared with people or groups of other servers (home = server of the page; members of a group of
-another server are reported only by that server and only when the group is the target of a share). End-to-end
-encrypted; keys and attachments of people on a third server come through the home, your app checks the keys itself.
-Disconnecting removes that server's people from groups; there, the chat becomes read-only.
+**Chats and calls across servers (2.3, both servers 2.3):** in Chats, under **“+ New”**, type the name – people on
+connected servers appear with their origin (“Bert Guest · club.example”). One click starts the direct chat; the other
+person sees it as a **message request** at the top of the list – without a notification, push or ringing until they
+**accept**. They can also **decline** or **block** (the person or the whole server); the other side isn't told.
+Blocked people are listed under “Chats & devices”, where you can unblock them. Messages stay end-to-end encrypted; the
+servers only see encrypted data.
+- The server of the person who starts the chat is its **home**: it decides the order and distributes messages,
+  deletions, “Delete automatically after …” and the AI switch. If it is briefly unreachable, a message waits on your
+  own server (“⏳ being delivered”) and goes out later in the right order (for up to 3 days, otherwise “⚠ not
+  delivered” with “Send again”).
+- **Attachments** stay on the sender's server; the other side fetches them when opening them (thumbnails right away).
+- The **safety number** and “Mark as verified” work as in local chats. If the other person's key changes, a warning
+  appears until you confirm it; if they were marked as “verified”, sending is blocked until you have compared the number
+  again.
+- **AI in chats** is off in such chats until someone turns it on – everyone sees a notice in the chat.
+- **Calls** work from accepted direct chats as usual; each side uses its own TURN server.
+- **Disconnecting** the servers makes such chats read-only (the history stays readable) and ends running calls; if an
+  account is deleted, its direct chats disappear on the other server too.
+- Older apps only show such chats with the notice “please update the app”.
 
-Anyone who changes their public name or deletes their account loses shares from other servers (they are removed
+**Pages of other servers, complete (2.3, both servers 2.3):** shared pages from other servers can be used like your own
+pages – depending on the role, which the page's server always checks:
+- Open, filter, sort, group and page through **databases** (large ones too); with “Edit”, change values, columns and
+  views and **create entries**. Relations to other shared databases on the same server work; links to pages that
+  aren't shared with you are dropped.
+- **Create subpages** and **move** them within the shared area (same shares, see “Roles” below).
+- **Upload images and files** (editor, icon, cover image): they are stored on the page's server and count for the
+  owner. On top of that, every person from another server has their own limit there (`FED_UPLOAD_QUOTA_MB`, default
+  200 MB). Right after uploading only the uploader sees the file, after saving everyone with access.
+- **Version history** (with “Edit”) and **export** (Markdown, with subpages as a ZIP).
+- **“Who's here” and live updates:** while the page is open, your server keeps a short subscription with the page's
+  server (expires after 90 seconds without renewal, `FED_WATCH_TTL`). Changes, presence and comment counts come through
+  it – never content. New or moved subpages in shared areas update “Shared with me” by themselves.
+- Not across servers: deleting, archiving, publishing, managing shares, backlinks, AI on the page.
+With servers on 2.1, reading, commenting and editing title and content still work; new features then report “The
+server … can't do this yet”. **Roles (also locally):** whoever may “Edit” now also sees versions and restores them
+(locked pages still only the owner) and moves pages within a shared area – only to places where exactly the same shares
+apply. Anyone who changes their public name or deletes their account loses shares from other servers (they are removed
 there); the old name is blocked for other accounts.
+
+**Groups and page chats across servers (2.3, all servers involved on 2.3):**
+- **Free group:** in “+ New” → “+ Group with several people …” you can also pick people on connected servers. Your own
+  server becomes the group's **home**; for the others it appears as a **message request** (accept, decline, or block
+  the inviting person or their server). Admins of the group add or remove people – also from another server, the
+  change always goes through the home. Every change shows up for everyone as a notice in the chat, with origin (“Anna
+  Berg (a.example) added Bert (b.example)”).
+- **Page chat:** if a page is shared with people or groups of other servers, they belong to its page chat (the page's
+  server is the home). Members of a group on another server are reported only by that server – and only if the group
+  is the target of a share there. You can also open the chat from a page of another server (“💬 Chat”). An existing
+  page chat is switched to the new format; older messages stay readable for all previous members, and the AI is off
+  afterwards.
+- People on a third server that your server isn't connected to can still take part: keys and attachments come through
+  the home, and your app checks the keys itself (safety number, warning when they change).
+- **Disconnecting:** if the home disconnects from a server, that server's people are no longer members (notice in the
+  chat); on the disconnected server, the chat becomes read-only.
+
+**For admins: overview, privacy, error messages**
+
+*In short:* turn on federation → create an invite code → the other admin connects and compares the fingerprint →
+confirm. Then decide per server under **“Features per instance”** what is allowed: **chat**, **calls**, **share the
+address book with this instance** (optionally only certain groups) and the **exception from “Share only within common
+groups”**. Every change takes effect immediately; “Disconnect” ends everything with that server.
+
+*Privacy – what a connected server learns from here:*
+- When sharing and commenting: the public name or a random, permanent ID (`~…`) and the display name of the acting
+  person, the groups it named itself as the target of a share, and the content of the pages shared with people there.
+  **Never** sign-in names, email addresses, passwords or other groups.
+- In the address book (only if the switch is on): display name, profile picture version, ID and – if set – the public
+  name. Anyone who turns off “Appear in the address books of connected servers” under Settings → Account disappears
+  there immediately; the other servers then also delete the stored name unless the person still appears there
+  (comments and chat histories keep it).
+- Chats and calls: only encrypted data and the IDs of those involved – no server sees content.
+- **Disconnecting** deletes shares, address book, key cache, waiting events and names of people on the other server,
+  as far as they no longer appear here.
+- Mention in your privacy policy which servers you are connected to and that display names are transferred there
+  (address book).
+
+*Protection against a faulty or malicious server:* every request and response is signed; Saga checks sender, order and
+signatures itself, throttles floods per server (requests, events, messages, name lookups, uploads) and lets a slow
+server occupy only a few background jobs – the other servers don't notice anything. Whatever was rejected is listed in
+the **audit log** (without content).
+
+*Error messages:*
+
+| Message / audit log entry | Meaning and what to do |
+|---|---|
+| “Address not allowed (internal address …)” | The other server has an internal address: add it under General → “Allowed internal hosts” |
+| “not a Saga instance with federation” / “unreachable” | Federation is off there, wrong address, certificate/proxy problem – check the address in the browser, then “Check status” |
+| “Fingerprint changed” when connecting | The server reports a different key than expected – do **not** connect, sort it out with the other admin |
+| “No additional capabilities” / protocol 1 | The other server runs 2.1: sharing and comments work, chats, address book & co. only after its update |
+| “Fell back to protocol 1” | A server with protocol 2 suddenly reports protocol 1 (older version restored – or an attack). Chats with it pause, waiting events stay in the outbox until it reports protocol 2 again |
+| “Other server is throttling (too many requests)” | The other server is slowing us down: Saga waits the time it names and then delivers everything |
+| `event.stuck` / `event.dropped` | An event is rejected repeatedly or was dropped after 3 days – usually a version difference or an error on the other server |
+| `sig.rejected` / `sig.replay` | Request with a wrong signature or a repeated one (check both servers' clocks – a difference of more than 5 minutes is enough) |
+| `chat.forged`, `chat.badsig`, `chat.replay`, `chat.reorder`, `chat.keymismatch` | The other server sent forged, wrongly signed, repeated or reordered chat data – rejected. If they pile up, check or disconnect the connection |
+| `chat.gap` | Messages were missing – they were fetched again from the home (rare with a healthy server) |
+| `chat.rate` | Flood from a server throttled (messages, requests, member lists, name lookups) – nothing is lost, it arrives later |
+| `chat.cache` | Cached copies of attachments from other servers over the limit (`FED_CHAT_CACHE_MB`) – the least recently used ones were removed and are fetched again when needed |
 
 ### Notifications and live updates
 
@@ -926,6 +1052,9 @@ In the user menu at the top right under **Settings** (one tab each):
   Ideally create a separate app password just for calendars.
 - **Immich:** enter the address and an API key with the permissions `album.read`, `asset.read`, `asset.view`,
   `asset.download`, `user.read`. Your photos are then available as images and cover images.
+- **Nextcloud:** link your own Nextcloud (Login Flow, its own app password; “Disconnect” revokes it) – for Nextcloud
+  files in pages (see “Pages and databases”).
+- **My backup:** back up your own workspace, encrypted, to **your own** target (see “Personal backup” in section 11).
 - **Apps & devices:** a list of all signed-in apps. Each one comes with a small key for the widget, share
   extension and shortcuts; **Sign out** removes both. Keys created by hand (e.g. for scripts) are listed,
   collapsed, under "More keys".
@@ -1091,6 +1220,199 @@ docker compose up -d
 
 (The volume name starts with the name of the project folder – `docker volume ls` shows it.)
 
+The easiest way is to let Saga do it: **encrypted backups to S3, a folder or Nextcloud/WebDAV** (admin area → Backups,
+see below).
+
+Restore the backups that Saga creates itself (`/data/backups`, see Updates) with `python run.py restore` (section
+“Going back to the previous version”), not with the `pg_restore` in the database container: they come from `pg_dump`
+17 in the Saga image, and `pg_restore` 16 from `postgres:16` reports “unsupported version (1.16) in file header” for
+them.
+
+### Encrypted backups (S3, folder, Nextcloud/WebDAV)
+
+Admin area → **Backups**: every day (time of your choice) Saga backs up the database, the files (`/data/files` without
+thumbnails, `/data/chat`, `/data/svc-icons`) and, if you want, the keys from `.env` (`SECRET_KEY`, `CAL_SECRET_KEY`) –
+encrypted – to a target: **S3** (MinIO, Garage, Backblaze B2, Hetzner Object Storage, Wasabi, AWS …), a **folder in
+the container** (e.g. a mounted drive or a NAS share) or **WebDAV** (Nextcloud, ownCloud, Storage Box …). The local
+backups before updates (`/data/backups`, `run.py backup`/`restore`) stay as they are. The server backup contains the
+data of **all** people – the target should be meant for that (its own bucket or account), not someone's private cloud
+storage.
+
+1. **Connect a target** – choose the type:
+
+   **S3.** Endpoint (`https://host[:port]`, without the bucket), region (empty = `us-east-1`; Garage: `garage`, Hetzner
+   e.g. `fsn1`, Backblaze e.g. `eu-central-003`), bucket (must exist – Saga doesn't create one), prefix (folder in the
+   bucket, default `saga-backups`), access key and secret key (both stored encrypted like the other admin secrets).
+   Addressing “automatic” uses virtual-hosted style for AWS (`https://bucket.host/…`), otherwise path style
+   (`https://host/bucket/…`, MinIO/Garage) – set it explicitly if needed. Saga signs every request itself (AWS
+   Signature v4, no extra library) including the SHA-256 of the content; large files go up as a multipart upload (parts
+   of `BACKUP_CHUNK_MB`, default 32 MB; aborted uploads are discarded). Recommendation: a key just for this bucket with
+   read/write/delete/list; versioning or Object Lock additionally protect against a compromised server deleting the
+   backups – then clean up old versions with a lifecycle rule of the bucket (Saga deletes according to the retention
+   rule below). S3 doesn't report free space; the check before uploading is skipped.
+
+   **Folder in the container.** Only below the roots in `SAGA_BACKUP_DIRS` (default `/backup`, several separated by
+   commas); paths with `..` or symlinks pointing outside are rejected. Mount the folder as an additional volume and
+   give the Saga user (UID 10001) write access:
+
+   ```yaml
+   # docker-compose.yml, service saga
+       volumes:
+         - saga-data:/data
+         - ./certs:/certs:ro
+         - /srv/saga-backups:/backup        # additional volume for backups (host folder or NAS mount)
+   ```
+
+   ```sh
+   sudo mkdir -p /srv/saga-backups && sudo chown 10001 /srv/saga-backups
+   docker compose up -d
+   ```
+
+   Then enter `/backup` (or `/backup/saga`) in the admin area. If the folder is on the same server, it only protects
+   against errors in Saga or the database, not against losing the server – copy the folder somewhere else as well
+   (restic, rsync …); the files are already encrypted.
+
+   **WebDAV/Nextcloud.** For Nextcloud the address is enough (`https://cloud.example.org`): Saga detects Nextcloud,
+   shows a sign-in link, you sign in to Nextcloud and allow access (Login Flow v2). Saga only stores the sign-in name
+   and its own **app password** (encrypted); “Disconnect” revokes it in Nextcloud. Other WebDAV: address of the folder
+   plus user and password. Recommendation: a **separate Nextcloud account** just for the backups (an app password may
+   do everything the account may do) with a short trash retention and few versions – otherwise deleted old backups keep
+   counting towards the storage in the trash. Internal addresses (homelab) work without any further approval.
+2. **Key.** Encryption uses [age](https://age-encryption.org) and a **public** key. Either “Create key pair”: Saga
+   shows the private key exactly once (text and download `saga-backup-<server>.key`) and does **not** store it – type
+   the last 6 characters to confirm. Or enter your own public key (`age-keygen -o saga-backup.key` on your computer,
+   take the line `# public key: age1…`; `ssh-ed25519 …` works too). Several recipients are possible (e.g. a second key
+   in a safe). Without the private key no backup can be restored – not even by us.
+3. **Schedule and retention.** “Back up automatically every day”, time (time zone `TIMEZONE`), retention
+   “grandfather-father-son”: by default 7 daily, 4 weekly, 6 monthly (the newest run per day/week/month; runs from the
+   last 24 hours are always kept). Before uploading Saga checks the free space, afterwards size and checksum (up to
+   `BACKUP_VERIFY_MB` right away, larger files on Sundays). Large files go up in chunks on Nextcloud (Chunking v2) and
+   as a multipart upload on S3. The run has low priority (`nice`/`ionice`); if several Saga processes use the same
+   database, only one of them backs up.
+4. **Errors.** Status in the admin area (last success, next run, history). If a run fails or there has been no success
+   for 48 hours, all admins get a notification (bell and, if set up, on their phone); optionally also a webhook (ntfy
+   topic, Gotify `…/message?token=…` or any address).
+
+**What is stored at the target** – one folder (on S3: prefix) per run, `saga-YYYYMMDD-hhmmss/`:
+
+| File | Content |
+|---|---|
+| `db.dump.age` | Database (`pg_dump --format=custom`, checked with `pg_restore --list` before encrypting) |
+| `dateien.tar.age` | `files/` (without `thumbs`), `chat/`, `svc-icons/` |
+| `geheimnisse.env.age` | `SECRET_KEY`, `CAL_SECRET_KEY` (can be turned off) |
+| `manifest.json.age` | Checksums of the unencrypted content |
+| `manifest.json` | unencrypted, without names/host names: Saga version, schema version, sizes and SHA-256 of the `.age` files, key fingerprints. Uploaded last – a folder without `manifest.json` is incomplete. |
+
+**Restoring with Saga** (new server, stack set up as in section 2):
+
+```sh
+# 1. read the secrets and copy SECRET_KEY / CAL_SECRET_KEY into .env (file from the target, e.g. via the Nextcloud client)
+age -d -i saga-backup.key geheimnisse.env.age
+# 2. stop Saga, fetch the run, check, decrypt, restore database + files
+docker compose stop saga
+docker compose run --rm -v "$PWD/saga-backup.key:/key:ro" \
+  -e SAGA_BACKUP_S3_ENDPOINT=https://s3.example.org -e SAGA_BACKUP_S3_BUCKET=saga-backups \
+  -e SAGA_BACKUP_S3_ACCESS_KEY='…' -e SAGA_BACKUP_S3_SECRET_KEY='…' -e SAGA_BACKUP_S3_PREFIX=saga-backups \
+  saga python run.py restore --schluessel /key saga-20261019-032000
+docker compose up -d
+```
+
+For a fresh stack, the target comes from the environment:
+
+| Target | Settings |
+|---|---|
+| S3 | `SAGA_BACKUP_S3_ENDPOINT`, `SAGA_BACKUP_S3_BUCKET`, `SAGA_BACKUP_S3_ACCESS_KEY`, `SAGA_BACKUP_S3_SECRET_KEY`, optionally `SAGA_BACKUP_S3_REGION`, `SAGA_BACKUP_S3_PREFIX`, `SAGA_BACKUP_S3_STYLE` (`auto`/`path`/`virtual`) |
+| Folder | `SAGA_BACKUP_PATH=/backup` (volume mounted as above) – or give the run folder itself instead of a name |
+| WebDAV/Nextcloud | `SAGA_BACKUP_URL` (WebDAV address of the backup folder, e.g. `https://cloud.example.org/remote.php/dav/files/saga-backup/Saga-Backups`), `SAGA_BACKUP_USER`, `SAGA_BACKUP_PASSWORD` |
+
+Without a run name Saga takes the newest complete one; `run.py backup-holen --liste` lists them all. If the target is
+already set up in the admin area (same database), the `SAGA_BACKUP_*` settings aren't needed. Instead of a name you can
+also give a local folder with the downloaded run (put it under `/data/…`). Saga compares the checksums from
+`manifest.json` before decrypting. The database is restored through the same `db.restore` as `run.py restore` (all or
+nothing); the secrets are also written to `/data/backups/<run>-geheimnisse.env` (readable only by Saga), and Saga warns
+if they differ from `.env`.
+
+**Restoring without Saga** (only `age` and the PostgreSQL tools; `age` is available for Linux, macOS and Windows):
+
+```sh
+cd saga-20261019-032000
+sha256sum db.dump.age dateien.tar.age      # compare with manifest.json
+age -d -i saga-backup.key db.dump.age > db.dump
+age -d -i saga-backup.key dateien.tar.age | tar -x -C /path/to/data
+age -d -i saga-backup.key geheimnisse.env.age
+pg_restore --list db.dump | head           # look at the content; restore e.g. with pg_restore -d ... --clean --if-exists
+```
+
+**Test restore.** Recommended once a month (the admin area reminds you):
+
+```sh
+docker compose run --rm -v "$PWD/saga-backup.key:/key:ro" saga python run.py backup-pruefen --schluessel /key
+```
+
+fetches the newest run, compares the checksums, decrypts everything, restores the database into a **throwaway
+database** (deleted afterwards) and checks the file archive – the real database stays untouched.
+
+**Careful, identity:** a restored backup *is* the instance – including its federation key. If you try a backup on a
+second server, set `SAGA_RESTORE_TEST=1` in `.env` there: Saga then makes no outgoing connections to the services of
+the real instance – no federation, no notifications, no backups (no cleanup at the target, no revoking of the
+Nextcloud app password either), no version check, no calendar sync, no AI, no Immich, no web search, no avatars from
+outside. Saga itself, sign-in (including LDAP/OIDC) and the service status on the dashboard keep working. Only
+*reading* from the configured backup target on the command line stays allowed (`backup-holen`, `restore --schluessel`,
+`backup-pruefen`): exclusively to its address and read-only (WebDAV GET/PROPFIND, S3 GET/list) – uploading, deleting
+and cleaning up at the target stay blocked.
+
+Working folder: during a run the parts (before encryption briefly also `db.dump` in plain text) are kept under
+`/data/backups/extern-tmp/` – the run and `backup-pruefen` each in their own subfolder; Saga deletes leftovers of an
+aborted run on the next start.
+
+### Personal backup (per person)
+
+Under **Settings → My backup** everyone backs up **their own** workspace – independently of the admin's server backup,
+to **their own** target and with **their own** key.
+
+1. **Target:** your own Nextcloud (just enter the address, then sign in to Nextcloud and allow access – Saga gets its
+   own app password, “Disconnect” revokes it) or another WebDAV target (address of the folder, user, password). Only
+   **https addresses on the internet** are allowed; servers on the internal network only if the admin allows them under
+   Backups → Personal backups (protection of the internal network).
+2. **Key:** as for the admin – “Create key pair” (the private key is shown exactly once and not stored, confirm with
+   the last 6 characters) or enter your own public key (`age1…`, `ssh-ed25519 …`); up to 5 recipients.
+3. **What is backed up:** only what belongs to you – your own pages and subpages, databases with their entries, your
+   own files and images, templates, archive, trash, versions, your own comments on your own pages, tasks, bookmarks,
+   profile and settings. Every category can be turned off; individual **page trees** (with all subpages and files that
+   only appear there) can be excluded. **Never** included: pages and files of other people (not even “Shared with
+   me”), share lists and chats (end-to-end encrypted, they belong to everyone involved and can't be restored without
+   the device keys). **Comments by others** on your pages are **off** by default (they belong to the people who wrote
+   them) and can be turned on. Names of other people (e.g. who wrote a version) are left out.
+4. **Schedule:** off, weekly or daily (time, weekday), “Backups to keep” = how many of the newest stay at the target.
+   “Back up now” starts right away. If a backup fails, a notification appears in the bell.
+
+**Format** (open, readable without Saga): `saga-YYYYMMDD-hhmmss.zip.age` – a ZIP encrypted with age – and next to it
+`….zip.age.sha256` (checksum, `sha256sum -c` works). Inside the ZIP: `manifest.json` (SHA-256 of every file),
+`daten.json` (everything, complete, for restoring), `seiten/`, `vorlagen/`, `archiv/`, `papierkorb/` (Markdown as in
+the export, with relative links), `dateien/`, `profil/` and `LIESMICH.txt`. Decrypting without Saga:
+
+```bash
+age -d -i saga-backup.key -o backup.zip saga-20261019-024000.zip.age
+```
+
+**Restore backup** (same tab): upload a file (`.zip.age` or an already decrypted `.zip`) or pick a backup from your own
+target, paste the private key (only sent to the server for this one operation, not stored). Saga restores **only into
+your own account**, as **new pages** – links between the pages, database relations, embedded databases, buttons and
+images then point to the new pages and files; existing pages stay unchanged. Default: into a new page “Restored
+<date>”; trash, tasks and bookmarks if you want. Comments and settings are in the backup for reference but aren't
+restored. A Markdown export (page → Export) contains no `daten.json` and therefore can't be restored. Limits when
+restoring: `daten.json` at most 64 MB (`USER_BACKUP_DATA_MB`), at most 20,000 files (`USER_BACKUP_FILES_MAX`), the
+newest 50 versions per page. The uploaded file is deleted right after restoring – also after an error; only after a
+wrong key an encrypted backup stays for another attempt (at most 30 minutes).
+
+**For admins – privacy:** the **server backup** (above) backs up everything needed to run the server, to *your*
+target. **Personal backups** only go to the target of the person concerned, encrypted with their key – you don't have
+to put your users' private data into your cloud, and Saga never sees a private key. In the admin area under
+**Backups → Personal backups**: turn on/off (default on; off = no runs, no connecting, no restoring), **size per
+backup** (default 1024 MB, upper limit `USER_BACKUP_MAX_MB`, default 4096), **minimum interval** for “Back up now”,
+**most frequent schedule** (daily/weekly) and **allowed internal hosts** (otherwise only public https addresses). With
+`SAGA_RESTORE_TEST=1` Saga doesn't connect anywhere for personal backups either.
+
 ### Updates
 
 Saga uses version numbers according to [Semantic Versioning](https://semver.org/): **1.2.3** =
@@ -1103,8 +1425,8 @@ the admin area; a notice also appears there when a new version is available (can
 | Value | Meaning |
 |---|---|
 | `2` (default) | always the latest 2.x – new features and fixes, nothing that needs manual work |
-| `2.1` | only bug fixes for 2.1 |
-| `2.1.0` | exactly this version |
+| `2.3` | only bug fixes for 2.3 |
+| `2.3.0` | exactly this version |
 | `1` | stays on the latest 1.x (1.2) – older installations still have this value in `.env` |
 | `testing` (or `rc`) | **Release candidate:** the latest from the `testing` branch, before the release. May contain bugs – only for trying things out |
 
@@ -1133,10 +1455,10 @@ also creates `saga-dateien-<time>.tar.gz` (without thumbnails, they are recreate
 
 **Release candidates (channel `testing`):** With `SAGA_VERSION=testing` (equivalent: `rc`) you get new features as
 soon as they are ready – before the release. Every build is a release candidate of the next version, e.g.
-`2.2.0-rc.7` (7 changes since the last release; shown at the bottom of the admin area as "2.2.0-rc.7 (1cc210f)" with
+`2.4.0-rc.7` (7 changes since the last release; shown at the bottom of the admin area as "2.4.0-rc.7 (1cc210f)" with
 🧪 Release candidate, followed by the commit). A release candidate is always newer than the stable version before it
-(2.1.0 < 2.2.0-rc.7 < 2.2.0): the new-version notice only appears once 2.2.0 is out. Older testing builds were called
-`2.2.0-testing.<commit>`. Back to the stable version: `SAGA_VERSION=2`, then `docker compose pull && docker compose up -d`.
+(2.3.0 < 2.4.0-rc.7 < 2.4.0): the new-version notice only appears once 2.4.0 is out. Older testing builds were called
+`x.y.z-testing.<commit>`. Back to the stable version: `SAGA_VERSION=2`, then `docker compose pull && docker compose up -d`.
 If the testing version has already changed the database, the stable version only starts once it contains that
 change too (with the next release at the latest) – or you restore the backup from before the switch.
 
@@ -1155,8 +1477,38 @@ server `stun:stun.nextcloud.com:443` (General → Calls; TURN optional, see "Cal
 `BASE_URL`, not an IP address; the 2FA policy is set to "nobody". **AI in chats** and the AI's **web search** stay
 off until you turn them on under AI assistant (web search only with SearXNG, section 10).
 
+**From 2.1 to 2.3:** there is no version 2.2 – with `SAGA_VERSION=2`, 2.3 arrives directly from 2.1 with the normal
+update. What happens and what to watch out for:
+
+1. **Back up first (recommended):** Saga creates a backup itself before changing the database; an extra one including
+   the files doesn't hurt: `docker compose exec saga python run.py backup --dateien`. If you already have a target for
+   encrypted backups, start “Back up now” there.
+2. **Update** as above (`git pull`, `docker compose pull`, `docker compose up -d`). The database moves from schema
+   version 6 to **9** (migrations 7–9 for federation; backup `…-vor-schema-9.dump` in `/data/backups` first). The log
+   shows `saga:` lines with backup and migration. On the first start Saga indexes all pages once for search, backlinks
+   and shares (about 1–2 s per 1,000 pages, in the background – Saga is usable meanwhile and results are correct from
+   the start).
+3. **Check federation:** connected servers on 2.3 get **chat, calls and address book** per server – on by default.
+   Display names and profile pictures of your people are then sent to those servers. If you don't want that, turn it
+   off under Admin → Federation → “Features per instance” (or only share certain groups) and point people to the
+   opt-out under Settings → Account. Servers on 2.1 stay connected as before.
+4. **Set up new features (optional):** encrypted backups under Admin → **Backups** (off until a target is set up; a
+   folder target needs an extra volume, see “Encrypted backups”). **Personal backups** and **Nextcloud files in
+   pages** are allowed, but only to public https addresses until you allow internal hosts (Backups → Personal backups
+   and General → “User connections”; both can also be turned off there).
+5. **New `.env` settings** – all optional, the defaults usually fit (section 13): `FED_*` (federation: upload limit,
+   delivery, rates, cache for chat attachments), `SAGA_BACKUP_DIRS` (roots for the folder target) and `SAGA_BACKUP_*`
+   (only for restoring on a fresh server), `BACKUP_VERIFY_MB`, `BACKUP_CHUNK_MB`, `USER_BACKUP_*` (personal backups),
+   `NC_*` (Nextcloud files), `SAGA_RESTORE_TEST` (test restore), `GZIP_LEVEL`/`GZIP_MIN_BYTES`, `NOTE_ROW_MAX_COUNT`,
+   `SAGA_ORJSON`.
+6. **Apps:** apps 2.1 keep working. They show chats with people on other servers with “please update the app”.
+
+**Way back 2.3 → 2.1:** only via the backup from before the update (`…-vor-schema-9.dump`) – see below. On the changed
+database 2.1 reports “Die Datenbank hat Schema-Stand 9, diese Saga-Version kennt nur 6” and doesn't start.
+
 **Going back to the previous version:** An older Saga will not start on a database that a newer version has
-already changed (it reports this in the log instead of damaging data). This also applies to **2.1 → 2.0.x**: 2.1
+already changed (it reports this in the log instead of damaging data). This applies to **2.3 → 2.1** (backup
+`…-vor-schema-9.dump`) and to **2.1 → 2.0.x**: 2.1
 raises the schema version to 6 (backup `…-vor-schema-6.dump`), and 2.0.x then stops with "Die Datenbank hat
 Schema-Stand 6, diese Saga-Version kennt nur 5" – otherwise 2.0 would keep running and let accounts with a second
 factor in with just the password. In that case, restore the backup from before the update:
@@ -1170,6 +1522,16 @@ docker compose pull && docker compose up -d
 ```
 
 Everything changed after the backup is lost – so only do this shortly after a failed update.
+
+So restore **before** changing `SAGA_VERSION`, with the newer version (as above): it restores the backup in one
+transaction (if something fails, everything stays as it was), works with `postgres:16` and `:17` and removes the
+tables an older version doesn't know first. Older Saga versions fail to restore with `postgres:16` because of
+“unrecognized configuration parameter transaction_timeout” and – on a database that 2.3 (or a 2.2.0-rc testing
+version) has already used – because of the new tables `note_derived`, `note_link` and `note_stale` (“cannot drop table
+note because other objects depend on it”). If you have already switched, use the newer version just for restoring,
+e.g. `docker compose run --rm saga …` with `SAGA_VERSION=2` (or `testing`) in `.env`. You can also remove the three
+tables by hand (2.3 recreates them on its next start):
+`docker compose exec -T db psql -U saga -d saga -c "DROP TABLE IF EXISTS note_link, note_stale, note_derived"`.
 
 **Apps:** The apps check the server version on start. If an app is too old for the server, it asks you to
 update it. The app's settings show both the app and the server version.
@@ -1247,8 +1609,17 @@ with the same account also switch the oldest ones to polling.
 | `PUBLIC_RATE` | `120` | Requests to public pages per IP address and minute (images: five times as many) |
 | `SESSION_HOURS` | `12` | Lifetime of a browser session (apps stay signed in) |
 | `PASSKEY_RP_ID` | host name from `BASE_URL` | Domain of the passkeys; only set it if they should be valid for a parent domain (e.g. `example.org`) |
-| `SAGA_VERSION` | `2` | Which version `docker compose pull` fetches: `2`, `2.1`, `2.1.0` or `testing` (section 11) |
+| `SAGA_VERSION` | `2` | Which version `docker compose pull` fetches: `2`, `2.3`, `2.3.0` or `testing` (section 11) |
 | `BACKUP_KEEP` | `10` | How many automatic/manual backups are kept in `/data/backups` |
+| `BACKUP_VERIFY_MB` | `512` | Encrypted backups (section 11): files up to this size are downloaded again completely after uploading and compared (larger ones on Sundays) |
+| `BACKUP_CHUNK_MB` / `BACKUP_CHUNK_MIN_MB` | `32` / `10` | Part size for chunked uploads (Nextcloud Chunking v2, S3 multipart) and from which file size |
+| `USER_BACKUP_MAX_MB` | `4096` | Personal backups (section 11): upper limit for the size per backup and for uploads when restoring (the limit in the admin area can only be smaller) |
+| `USER_BACKUP_DATA_MB` / `USER_BACKUP_FILES_MAX` | `64` / `20000` | Restoring personal backups: size of `daten.json` and number of files per backup |
+| `SAGA_BACKUP_DIRS` | `/backup` | Encrypted backups, target “Folder in the container”: only below these roots (comma-separated) |
+| `SAGA_BACKUP_URL` / `SAGA_BACKUP_USER` / `SAGA_BACKUP_PASSWORD` | – | Only for `run.py backup-holen`/`restore --schluessel` on a fresh server: WebDAV address of the backup folder and credentials |
+| `SAGA_BACKUP_S3_ENDPOINT` / `_BUCKET` / `_ACCESS_KEY` / `_SECRET_KEY` / `_REGION` / `_PREFIX` / `_STYLE` | – | The same for an S3 target (section 11, “Restoring with Saga”) |
+| `SAGA_BACKUP_PATH` | – | The same for a folder target (e.g. `/backup`) |
+| `SAGA_RESTORE_TEST` | – | `1` = test restore: no outgoing connections (federation, notifications, backups, version check, calendars, AI, Immich, web search, avatars); only reading from the backup target on the command line is allowed |
 | `SAGA_UPDATE_CHECK` | `1` | `0` = never ask GitHub for new versions (can also be turned off in the admin area) |
 | `ADMIN_SESSION_HOURS` | `4` | Lifetime of a session in the admin area |
 | `TIMEZONE` | `Europe/Berlin` | Time zone for exports |
@@ -1260,7 +1631,12 @@ with the same account also switch the oldest ones to polling.
 | `NOTE_MAX_COUNT` | `5000` | Pages per user (not counting database entries and trash) |
 | `NOTE_ROW_MAX_COUNT` | `50000` (at least 10 × `NOTE_MAX_COUNT`) | Database entries per user (not counting trash). Safety net: everything incl. trash at most 2 × (both limits) |
 | `GZIP_LEVEL` / `GZIP_MIN_BYTES` | `5` / `1024` | Compression (gzip) for JSON, text, JS, CSS from this size; `0` = off. Never for the live channel, images and files |
+| `SAGA_ORJSON` | `1` | `0` = JSON responses with the standard library instead of `orjson` (same output, just slower) |
 | `IMMICH_URL` | – | Suggestion in the Immich dialog (allowed automatically) |
+| `NEXTCLOUD_URL` | – | Suggestion in the “Nextcloud” tab of the settings (host allowed automatically) |
+| `NC_CACHE_MB` | `300` | Nextcloud files in pages: limit for cached thumbnails (`/data/nc-cache`, oldest removed first) |
+| `NC_DOWNLOAD_MAX_MB` | `2048` | Nextcloud files in pages: largest download through Saga (streamed) |
+| `NC_FED_MAX_MB` | `50` | Nextcloud files in pages: largest download for people on other Saga instances |
 | `ICON_CDN` | selfh.st via jsDelivr | Source of service icons; empty = none |
 | `STATUS_INTERVAL` | `60` | Seconds between status checks |
 | `CACHE_TTL` | `60` | Seconds that account and service data is cached |
@@ -1271,6 +1647,10 @@ with the same account also switch the oldest ones to polling.
 | `FED_RATE` / `FED_TIMEOUT` | `600` / `10` | Requests per minute and connected instance / seconds until timeout |
 | `FED_UPLOAD_QUOTA_MB` | `200` | Storage per person of another server for uploads into pages here (also counts for the owner) |
 | `FED_WATCH_TTL` | `90` | Seconds a subscription (live/presence) to a page of another server lasts without renewal |
+| `FED_EXPRESS_TIMEOUT` / `FED_EXPRESS_WORKERS` | `5` / `8` | Seconds for immediate delivery (then the outbox) / threads for it |
+| `FED_PEER_SLOTS` / `FED_OUT_WORKERS` | `3` / `4` | Background jobs per connected server at the same time (a slow server can't occupy more) / threads for the outbox |
+| `FED_CHAT_IN_RATE` | `1200` | Chat messages per minute a server, as home, may deliver here (above that: later, again) |
+| `FED_CHAT_CACHE_MB` / `FED_CHAT_CACHE_DAYS` | `1024` / `30` | Cached copies of chat attachments from other servers: storage per server / days without access until they expire (fetched again when needed; those from disconnected servers are kept) |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Web search (section 10) |
 | `AI_WEB_FETCH` / `AI_WEB_RATE` | `2` / `10` | AI web search: result pages whose text is read (0 = snippets only); web searches per person in 10 minutes |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Language and filter of the web search |
