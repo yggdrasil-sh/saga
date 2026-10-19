@@ -5,7 +5,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestParseRange(t *testing.T) {
@@ -132,5 +135,79 @@ func TestLowerKeys(t *testing.T) {
 	lowerKeys(h)
 	if h["location"][0] != "/x" || len(h["set-cookie"]) != 2 || h["Content-Length"][0] != "3" || h["Location"] != nil {
 		t.Errorf("lowerKeys: %v", h)
+	}
+}
+
+func TestAuthzCacheAndServe(t *testing.T) {
+	var calls int
+	var mu sync.Mutex
+	allow := true
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/internal/media/authz" {
+			mu.Lock()
+			calls++
+			ok := allow
+			mu.Unlock()
+			if r.Header.Get(keyHeader) != "k" || r.Header.Get("X-Saga") != "1" || !ok {
+				w.WriteHeader(404)
+				return
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"ttl":60,"headers":{"Cache-Control":"private, no-store","Content-Disposition":"attachment"}}`))
+			return
+		}
+		w.WriteHeader(418) // an Python weitergeleitet
+	}))
+	defer up.Close()
+	dir := t.TempDir()
+	fid := "abcdefghijklmnopqrstuvwxyz"
+	_ = os.WriteFile(filepath.Join(dir, fid), []byte("0123456789"), 0o600)
+	c := &config{upstream: strings.TrimPrefix(up.URL, "http://"), blobDir: dir, trusted: parseTrust("127.0.0.1"), ttl: time.Minute,
+		stall: 5 * time.Second, key: "k"}
+	tr := newTransport()
+	now := time.Now()
+	m := &media{c: c, az: newAuthz(c, tr), proxy: newProxy(c, tr), lim: &limits{perIP: map[string]int{}, max: 10, maxIP: 10}}
+	m.az.now = func() time.Time { return now }
+	get := func(hdr map[string]string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", "/api/chat/files/"+fid, nil)
+		r.Header.Set("Cookie", "saga=x")
+		r.Header.Set("X-Saga", "1")
+		for k, v := range hdr {
+			r.Header.Set(k, v)
+		}
+		w := httptest.NewRecorder()
+		m.ServeHTTP(w, r)
+		return w
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); get(nil) }()
+	}
+	wg.Wait()
+	if calls != 1 {
+		t.Errorf("10 parallele Abrufe: %d Abfragen statt 1", calls)
+	}
+	w := get(map[string]string{"Range": "bytes=2-4"})
+	if w.Code != 206 || w.Body.String() != "234" || w.Header()["content-range"][0] != "bytes 2-4/10" || w.Header()["etag"][0] != `"`+fid+`"` {
+		t.Errorf("Range: %d %q %v", w.Code, w.Body.String(), w.Header())
+	}
+	if w := get(map[string]string{"X-Saga": ""}); w.Code != 418 {
+		t.Errorf("ohne X-Saga muss an Python gehen: %d", w.Code)
+	}
+	mu.Lock()
+	allow = false
+	mu.Unlock()
+	if w := get(nil); w.Code != 206 && w.Code != 200 {
+		t.Errorf("innerhalb TTL gemerkt: %d", w.Code)
+	}
+	now = now.Add(61 * time.Second)
+	if w := get(nil); w.Code != 418 {
+		t.Errorf("nach TTL neu gefragt und abgelehnt -> Python: %d", w.Code)
+	}
+	r := httptest.NewRequest("GET", "/internal/media/authz?fid="+fid, nil)
+	w = httptest.NewRecorder()
+	m.ServeHTTP(w, r)
+	if w.Code != 404 {
+		t.Errorf("/internal von aussen: %d", w.Code)
 	}
 }

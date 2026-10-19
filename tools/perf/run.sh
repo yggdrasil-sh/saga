@@ -6,6 +6,7 @@
 # werden vorher geloescht), Endpunkte messen (bench.py), EXPLAIN der teuersten Abfragen (explain.py), langsame Abfragen
 # aus dem Postgres-Log (> 25 ms), Grenzwerte aus tools/perf/limits.json pruefen. Ergebnis: perf-out/<stufe>.json/.txt.
 # Exit 1, wenn ein Grenzwert ueberschritten ist. SAGA_PERF_KEEP=1: Testkonten danach behalten. SAGA_PERF_N: Wiederholungen.
+# Stufe MEDIA (2.4): 20 parallele Chat-Anhaenge, CPU/RAM von Python und saga-media getrennt (tools/perf/media.py).
 # SAGA_PERF_WEB=1: zusaetzlich Weboberflaeche (Playwright-Image, headless; SAGA_PERF_WEB_ARGS z. B. "--db-timeout 180"). SAGA_PERF_ZIEL=1: gegen die 2.2-Ziele (ziel_*) pruefen.
 # NUR auf Test-Stacks: legt NOTE_MAX_COUNT=200000 in die .env (sonst scheitert schon Stufe M am Seiten-Limit).
 set -e
@@ -25,6 +26,16 @@ docker exec "$D" psql -U "$PGU" -d saga -qc "ALTER SYSTEM SET log_min_duration_s
 FAIL=0
 for S in $STUFEN; do
   echo "=== Stufe $S ==="
+  if [ "$S" = "MEDIA" ]; then                       # 2.4: Medien parallel (tools/perf/media.py), Grenzwerte "MEDIA"
+    docker exec -i -w /app "$C" python - --setup < tools/perf/media.py | grep '^PERF ' | cut -c6- > perf-out/MEDIA.info.json
+    PYP=$(docker top "$C" -eo pid,args | awk '/run\.py/ && !/saga-media/ {print $1; exit}')
+    MDP=$(docker top "$C" -eo pid,args | awk '/saga-media/ {print $1; exit}')
+    python3 tools/perf/media.py --base "http://127.0.0.1:$PORT" --info perf-out/MEDIA.info.json --out perf-out/MEDIA.json \
+      --py-pid "${PYP:-0}" --media-pid "${MDP:-0}" ${MDP:+--limits} | tee perf-out/MEDIA.txt || FAIL=1
+    [ -n "$MDP" ] || echo "Hinweis: kein saga-media im Container - Grenzwerte MEDIA nicht geprueft (Messung vorher)"
+    docker exec -i -w /app "$C" python - --cleanup < tools/perf/media.py
+    continue
+  fi
   docker exec -i -w /app "$C" python - --stufe "$S" < tools/perf/gen.py | grep '^PERF ' | cut -c6- > "perf-out/$S.info.json"
   python3 -c "import json;d=json.load(open('perf-out/$S.info.json'));print({k:v for k,v in d.items() if not k.startswith('cookie')})"
   docker restart "$C" >/dev/null; sleep 3          # frischer Prozess je Stufe (RAM vergleichbar)

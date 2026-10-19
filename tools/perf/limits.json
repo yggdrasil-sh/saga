@@ -19,6 +19,10 @@
   "GET /api/trash": 250, "POST /api/notes neuer": 80, "PATCH": 80, "Seite oeffnen waehrend": 8000, "Live: Speichern": 250,
   "iOS/macOS: Start": 2500
  },
+ "MEDIA": {
+  "_info": "tools/perf/media.py (2.4, Konzept 8 Medien parallel): 20 Stroeme je 2 Mbit/s mit saga-media. CPU in % eines Kerns (Python abzueglich Ruhewert), RAM in MB. Stand E1 (nativ, 2 Kerne, Median aus 3): vorher 2.3.0 Python 2.9 % / +14 MB, Range-p95 8.8 ms; nachher Python 0.1 % / +0 MB, saga-media 0.1 % / 8 MB, Range-p95 1.6 ms.",
+  "py_cpu_pct": 5, "py_rss_plus_mb": 10, "media_cpu_pct": 10, "media_rss_mb": 50, "range_ttfb_p95_ms": 30
+ },
  "ziel_L": {
   "GET /api/notes (Seitenbaum": 250, "GET /api/shared": 250, "GET /rows groesste DB (": 250, "POST /api/notes/search": 300,
   "GET / Dashboard": 100, "GET /api/notes/{id}/backlinks": 50, "GET /api/trash": 50, "Seite oeffnen waehrend": 300,

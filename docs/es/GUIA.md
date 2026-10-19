@@ -172,6 +172,65 @@ formulario) y el área de administración por encima de 1 MB. Aun así, conviene
 (como arriba, algo por encima de `ATTACH_MAX_MB`): así las peticiones enormes ni siquiera llegan a Saga. Si subes
 `ATTACH_MAX_MB`, sube también el límite del proxy.
 
+### Ruta de medios (saga-media)
+
+Desde la 2.4 el contenedor incluye un pequeño servicio adicional, **saga-media** (Go, solo biblioteca estándar, código en
+`media/`). Escucha en el puerto habitual 8080 y reenvía todo a Saga, con una excepción: entrega él mismo los adjuntos del
+chat (`GET /api/chat/files/…`) directamente desde el disco, con rangos (Range), `sendfile` y límites de tiempo. Los bytes
+de los archivos ya no pasan por Python, así que muchas descargas simultáneas no frenan el servidor. Quién puede ver qué
+lo sigue decidiendo Saga: saga-media pregunta una vez por archivo y sesión y recuerda la respuesta como máximo
+60 segundos. Si alguien sale de un chat o se borra un mensaje, el cambio surte efecto como muy tarde al cabo de un minuto
+(un archivo borrado, al instante).
+
+- **Nada que configurar:** ningún puerto nuevo, ningún cambio en el proxy inverso, `TRUSTED_PROXIES` funciona como antes.
+  Dentro del contenedor, Saga solo escucha ahora en `127.0.0.1:8079` (`MEDIA_INTERNAL_PORT`).
+- **Desactivarlo:** `SAGA_MEDIA=off` en el `.env`; Saga funciona entonces directamente en el puerto 8080, como hasta la 2.3.
+- El área de administración muestra en Resumen → «Medios» cómo se entregan los adjuntos del chat.
+
+**Sin contenedor** (Saga con `python run.py`): o bien compilar saga-media y arrancarlo delante
+(`cd media && CGO_ENABLED=0 go build -o saga-media .`, luego `saga-media -- python run.py` con las mismas variables de
+entorno), o dejar que el proxy inverso entregue los archivos (`MEDIA_ACCEL`). Tras comprobar los permisos, Saga solo
+responde con una cabecera `X-Accel-Redirect` y el proxy lee el archivo del disco. El proxy necesita permiso de lectura en
+`STATE_DIR/chat` (en los ejemplos, `/var/lib/saga/chat`).
+
+`MEDIA_ACCEL=nginx` – añadir dentro de `server { … }`:
+
+```nginx
+    location /_saga_media/ {               # adjuntos del chat: solo interno, directo del disco
+        internal;
+        alias /var/lib/saga/chat/;         # STATE_DIR/chat
+        types { }
+        default_type application/octet-stream;
+        add_header X-Content-Type-Options nosniff always;
+        add_header Content-Security-Policy "sandbox; default-src 'none'" always;
+    }
+```
+
+`MEDIA_ACCEL=caddy` – en el bloque `reverse_proxy`:
+
+```
+saga.example.org {
+    reverse_proxy 127.0.0.1:8080 {
+        @accel header X-Accel-Redirect *
+        handle_response @accel {
+            root * /var/lib/saga/chat         # STATE_DIR/chat
+            rewrite * {rp.header.X-Accel-Redirect}
+            copy_response_headers {
+                include Cache-Control Content-Disposition
+            }
+            header Content-Type application/octet-stream
+            header X-Content-Type-Options nosniff
+            header Content-Security-Policy "sandbox; default-src 'none'"
+            file_server
+        }
+    }
+}
+```
+
+Ambos ejemplos están probados con nginx 1.24 y Caddy 2.8 (`tests/medienpfad.py`). Sin saga-media y sin `MEDIA_ACCEL`,
+Saga entrega los archivos él mismo como antes, pero como máximo `MEDIA_PY_STREAMS` (4 por defecto) a la vez; las demás
+descargas esperan un momento. El área de administración lo indica.
+
 ## 4. El área de administración
 
 El área de administración funciona en un **puerto propio (8081)** con su propio inicio de sesión. Por defecto
@@ -1696,6 +1755,13 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Tamaño por archivo / espacio por usuario |
 | `AVATAR_MAX_MB` | `5` | Archivo más grande al subir una foto de perfil |
 | `CHAT_QUOTA_MB` | `1024` | Espacio para adjuntos de chat por usuario (cifrados, en `STATE_DIR/chat`) |
+| `SAGA_MEDIA` | `on` | `off` = arrancar el contenedor sin saga-media (Saga directamente en el puerto 8080, como hasta la 2.3; sección 3 «Ruta de medios») |
+| `MEDIA_INTERNAL_PORT` | `8079` | Con saga-media: puerto interno de Saga (solo `127.0.0.1`) |
+| `MEDIA_AUTHZ_TTL` | `60` | saga-media: segundos que como máximo vale un permiso de lectura de un adjunto (0–60) |
+| `MEDIA_MAX_CONNS` / `MEDIA_MAX_STREAMS` / `MEDIA_MAX_STREAMS_IP` | `4096` / `1024` / `128` | saga-media: conexiones abiertas / descargas simultáneas en total / por dirección de cliente |
+| `MEDIA_STALL_TIMEOUT` | `60` | saga-media: segundos sin avance al subir o descargar antes de cerrar la conexión |
+| `MEDIA_ACCEL` / `MEDIA_ACCEL_PREFIX` | `off` / `/_saga_media/` (Caddy `/`) | Sin saga-media: `nginx` o `caddy` = el proxy inverso entrega los adjuntos del chat mediante `X-Accel-Redirect` |
+| `MEDIA_PY_STREAMS` | `4` | Sin saga-media ni `MEDIA_ACCEL`: Python entrega como máximo tantos adjuntos a la vez |
 | `REQUEST_MAX_MB` | `2` | Petición más grande salvo subidas de archivos (p. ej. páginas muy largas); las mayores reciben 413 |
 | `KDF_PARALLEL` | `4` | Comprobaciones de contraseña a la vez (unos 32 MB de memoria cada una); las demás esperan hasta 2 s |
 | `NOTE_MAX_COUNT` | `5000` | Páginas por usuario (sin entradas de bases de datos ni papelera) |

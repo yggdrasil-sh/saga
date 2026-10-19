@@ -16,6 +16,35 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### 2.4 E1 – Medienpfad „saga-media“ (Server)
+
+- **Chat-Anhänge ohne Python.** Im Container steht vor Saga der kleine Dienst `saga-media` (Go, nur Standardbibliothek,
+  statisch gelinkt, Quelltext in `media/`). Er lauscht auf dem bisherigen Port, leitet alles an Saga weiter (Streaming,
+  Live-Kanal ungepuffert) und liefert `GET/HEAD /api/chat/files/{fid}` selbst von der Platte: Range (206/416), `sendfile`,
+  `ETag` = Kennung, If-None-Match (304), If-Range, dieselben Sicherheitsköpfe wie bisher. Gemessen (`tools/perf/media.py`,
+  Median aus drei Läufen, 2 Kerne): 20 × 10 MB parallel 0,22 statt 0,67 s, Python-CPU dabei 0 statt 0,64 s; 20 Ströme
+  je 2 Mbit/s Python 0,3 % (Ruhewert) statt 2,9 % eines Kerns und kein RAM-Zuwachs statt +14 MB, saga-media 0,1 % und
+  8 MB; Range-TTFB 1 MiB p95 1,6 statt 8,8 ms. Image etwa +7,5 MB.
+- **Berechtigung bleibt in Saga:** `saga-media` fragt je Datei und Sitzung einmal `/internal/media/authz` (nur mit
+  einem beim Start erzeugten Geheimnis, von außen gesperrt) und merkt sich die Erlaubnis höchstens 60 s
+  (`MEDIA_AUTHZ_TTL`). Entzug wirkt also spätestens nach einer Minute, eine gelöschte Datei sofort. Ablehnungen beantwortet
+  wie bisher Saga selbst (401/404, föderierte Anhänge werden dort nachgeholt).
+- **Sicher davor:** Client-Adresse nach denselben Regeln wie bisher (`TRUSTED_PROXIES`; eingeschleuste
+  X-Forwarded-For/-Proto zählen nicht), nur echte Dateien direkt im Blob-Verzeichnis (kein Traversal, keine Symlinks –
+  das prüft jetzt auch Python), Grenzen für Verbindungen und gleichzeitige Downloads, Zeitlimits gegen Slowloris
+  (Kopfzeilen 15 s, stockende Uploads/Downloads `MEDIA_STALL_TIMEOUT`). Upload-Grenzen unverändert.
+- **Container:** mehrstufiger Build (Go auf der Build-Plattform für amd64/arm64), `tini` als Init; `saga-media` startet
+  und überwacht Saga (intern `127.0.0.1:8079`, `MEDIA_INTERNAL_PORT`) und endet mit ihm. Kein neuer Port, Healthcheck
+  unverändert. `SAGA_MEDIA=off` startet wie bis 2.3.
+- **Ohne Container:** `MEDIA_ACCEL=nginx|caddy` – der Reverse Proxy liefert per `X-Accel-Redirect` (Beispiele in der
+  Anleitung, „Medienpfad“, mit nginx 1.24 und Caddy 2.8 geprüft). Sonst liefert Python wie bisher, aber höchstens
+  `MEDIA_PY_STREAMS` (Standard 4) gleichzeitig; der Admin-Bereich zeigt unter „Medien“, welcher Weg aktiv ist.
+- Föderation (`/fed/v2/chat/files`) unverändert; Teilbereiche mit Signatur folgen mit den Videos (E2).
+- Tests: neue Reihe `tests/medienpfad.py` (Range-Varianten, 304/ETag, Rechteentzug, gelöschte Dateien, Traversal,
+  `/internal` gesperrt, SSE durch den Proxy, X-Forwarded-For, Upload-Grenzen, Slowloris, Python-Grenze, nginx/Caddy),
+  Go-Tests in `media/`. Die Testinstanz von `tools/stack-remote.sh` läuft hinter `saga-media`. Messstufe `MEDIA` in
+  `tools/perf/run.sh`, Grenzwerte in `tools/perf/limits.json`.
+
 ## [2.3.0] – 2026-10-19
 
 Saga 2.3 ist das große Herbst-Update: spürbar schneller bei vielen Seiten und großen Datenbanken, Föderation mit

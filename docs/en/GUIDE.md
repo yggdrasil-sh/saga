@@ -169,6 +169,64 @@ don't kick in.
 A limit in the reverse proxy (as above, slightly above `ATTACH_MAX_MB`) is still recommended: huge requests then
 never reach Saga. If you raise `ATTACH_MAX_MB`, raise the proxy limit too.
 
+### Media path (saga-media)
+
+Since 2.4 the container includes a small extra service, **saga-media** (Go, standard library only, source in `media/`).
+It listens on the usual port 8080 and forwards everything to Saga – with one exception: it serves chat attachments
+(`GET /api/chat/files/…`) itself, straight from disk, with range requests, `sendfile` and timeouts. File bytes no longer
+pass through Python, so many parallel downloads don't slow the server down. Saga still decides who may see what:
+saga-media asks once per file and session and remembers the answer for at most 60 seconds. Removing someone from a chat
+or deleting a message therefore takes effect within a minute at the latest (a deleted file immediately).
+
+- **Nothing to set up:** no new port, no change to the reverse proxy, `TRUSTED_PROXIES` works as before. Inside the
+  container Saga itself now only listens on `127.0.0.1:8079` (`MEDIA_INTERNAL_PORT`).
+- **Turn it off:** `SAGA_MEDIA=off` in `.env` – Saga then runs directly on port 8080 as up to 2.3.
+- The admin area shows under Overview → “Media” how chat attachments are served.
+
+**Without a container** (Saga started with `python run.py`): either build saga-media and start it in front
+(`cd media && CGO_ENABLED=0 go build -o saga-media .`, then `saga-media -- python run.py` with the same environment), or
+let the reverse proxy serve the files (`MEDIA_ACCEL`). After checking permissions Saga then only answers with an
+`X-Accel-Redirect` header and the proxy reads the file from disk. The proxy needs read access to `STATE_DIR/chat`
+(`/var/lib/saga/chat` in the examples).
+
+`MEDIA_ACCEL=nginx` – add inside `server { … }`:
+
+```nginx
+    location /_saga_media/ {               # chat attachments: internal only, straight from disk
+        internal;
+        alias /var/lib/saga/chat/;         # STATE_DIR/chat
+        types { }
+        default_type application/octet-stream;
+        add_header X-Content-Type-Options nosniff always;
+        add_header Content-Security-Policy "sandbox; default-src 'none'" always;
+    }
+```
+
+`MEDIA_ACCEL=caddy` – in the `reverse_proxy` block:
+
+```
+saga.example.org {
+    reverse_proxy 127.0.0.1:8080 {
+        @accel header X-Accel-Redirect *
+        handle_response @accel {
+            root * /var/lib/saga/chat         # STATE_DIR/chat
+            rewrite * {rp.header.X-Accel-Redirect}
+            copy_response_headers {
+                include Cache-Control Content-Disposition
+            }
+            header Content-Type application/octet-stream
+            header X-Content-Type-Options nosniff
+            header Content-Security-Policy "sandbox; default-src 'none'"
+            file_server
+        }
+    }
+}
+```
+
+Both examples are tested with nginx 1.24 and Caddy 2.8 (`tests/medienpfad.py`). Without saga-media and without
+`MEDIA_ACCEL`, Saga serves the files itself as before, but at most `MEDIA_PY_STREAMS` (default 4) at a time; further
+downloads wait briefly. The admin area points this out.
+
 ## 4. The admin area
 
 The admin area runs on its **own port (8081)** with its own sign-in. By default it is only reachable on the
@@ -1628,6 +1686,13 @@ with the same account also switch the oldest ones to polling.
 | `ATTACH_MAX_MB` / `ATTACH_QUOTA_MB` | `10` / `500` | Size per file / storage per user |
 | `AVATAR_MAX_MB` | `5` | Largest file when uploading a profile picture |
 | `CHAT_QUOTA_MB` | `1024` | Storage for chat attachments per user (encrypted, under `STATE_DIR/chat`) |
+| `SAGA_MEDIA` | `on` | `off` = start the container without saga-media (Saga directly on port 8080 as up to 2.3; section 3 “Media path”) |
+| `MEDIA_INTERNAL_PORT` | `8079` | With saga-media: Saga's internal port (`127.0.0.1` only) |
+| `MEDIA_AUTHZ_TTL` | `60` | saga-media: a read permission for an attachment is remembered for at most this many seconds (0–60) |
+| `MEDIA_MAX_CONNS` / `MEDIA_MAX_STREAMS` / `MEDIA_MAX_STREAMS_IP` | `4096` / `1024` / `128` | saga-media: open connections / parallel file downloads in total / per client address |
+| `MEDIA_STALL_TIMEOUT` | `60` | saga-media: seconds without progress on an upload or download before the connection is closed |
+| `MEDIA_ACCEL` / `MEDIA_ACCEL_PREFIX` | `off` / `/_saga_media/` (Caddy `/`) | Without saga-media: `nginx` or `caddy` = the reverse proxy serves chat attachments via `X-Accel-Redirect` |
+| `MEDIA_PY_STREAMS` | `4` | Without saga-media and `MEDIA_ACCEL`: Python serves at most this many attachments at a time |
 | `REQUEST_MAX_MB` | `2` | Largest request apart from file uploads (e.g. very long pages); larger ones get 413 |
 | `KDF_PARALLEL` | `4` | Password checks at the same time (about 32 MB of memory each); others wait up to 2 s |
 | `NOTE_MAX_COUNT` | `5000` | Pages per user (not counting database entries and trash) |
