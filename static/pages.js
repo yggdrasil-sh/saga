@@ -297,6 +297,9 @@
   // Schlagworte defensiv: Daten anderer Instanzen koennen kaputt sein (BUG-034)
   function tagsOf(p) { return p && Array.isArray(p.tags) ? p.tags.filter(function (t) { return typeof t === 'string'; }) : []; }
   function remoteId(id) { return typeof id === 'number' && id < 0; }
+  // 2.3: was mit dem Server einer fremden Seite geht (db subpages upload versions export presence live chatgroups);
+  // eigene Seiten koennen alles. Aeltere Gegenstellen (2.1/2.2) melden nichts - dann wie bisher nur Lesen/Bearbeiten/Kommentare.
+  function remCap(p, cap) { return !p || !remoteId(p.id) || ((p.remote || {}).caps || []).indexOf(cap) >= 0; }
   function isOwner() { return role() === 'owner'; }
   function foreign() { return !!S.cur && !isOwner(); }
   function canEdit() { var r = role(); return r === 'owner' || r === 'edit'; }
@@ -389,7 +392,7 @@
       if (!own && p.root && p.owner) go.title = T('Geteilt von {name} · {role}', { name: p.owner.name, role: ROLE_YOU[p.role] || '' });
       go.addEventListener('click', function () { openPage(p.id); });
       row.appendChild(tw); row.appendChild(go);
-      if (own || (p.role === 'edit' && !remoteId(p.id))) {      // fremde Instanz: keine neuen Unterseiten
+      if (own || (p.role === 'edit' && remCap(p, 'subpages'))) {      // fremde Instanz: nur, wenn ihr Server es kann (2.3)
         var plus = el('button', 'pg-add', '+'); plus.type = 'button'; plus.title = T('Unterseite hinzufügen');
         plus.setAttribute('aria-label', T('Unterseite zu {name} hinzufügen', { name: label(p) }));
         plus.addEventListener('click', function (e) { e.stopPropagation(); if (own) newPageMenu(plus, p.id); else newPage(p.id); });
@@ -925,7 +928,7 @@
   var EMOJI = ['📄', '📝', '📌', '📚', '💡', '✅', '🗂️', '📅', '🧭', '🛠️', '🖥️', '🌐', '🔐', '🔑', '🧪', '🐛',
                '🚀', '⚙️', '📦', '🗄️', '☁️', '🧾', '💶', '📊', '🎯', '⭐', '❤️', '🏠', '👪', '✈️', '🎮', '🍳'];
   $('pg-icon').addEventListener('click', function () {
-    var btn = this; if (readOnly() || (S.cur && remoteId(S.cur.id))) return;
+    var btn = this; if (readOnly() || !remCap(S.cur, 'db')) return;
     HK.openMenu(btn, function (m) {
       m.appendChild(HK.menuLabel(T('Icon')));
       var g = el('div', 'emoji-grid');
@@ -1011,25 +1014,46 @@
     });
   });
 
-  // Seitenmenue auf einer fremden Seite: Breite/Unterseite nur mit 'Bearbeiten'; Link, Kommentare und Export fuer alle
+  // Seitenmenue auf einer fremden Seite: Breite/Unterseite/Verschieben/Versionen nur mit 'Bearbeiten'; Link, Kommentare
+  // und Export fuer alle. Seiten anderer Saga-Server (2.3): je nach dem, was ihr Server kann (remCap)
   function foreignMenu(m, c) {
     m.appendChild(HK.menuLabel(T('Geteilt von {name} · {role}', { name: (c.owner || {}).name || '', role: ROLE_YOU[role()] || '' })));
-    var rem = remoteId(c.id);                         // andere Saga-Instanz: kein Layout, keine Unterseiten, kein Export
-    if (canEdit() && !rem) {
-      m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { icon: '↔', on: !!c.wide }));
-      m.appendChild(HK.menuItem(T('Unterseite hinzufügen'), function () { newPage(c.id); }, { icon: '＋' }));
+    var rem = remoteId(c.id);
+    if (canEdit()) {
+      if (remCap(c, 'db')) m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { icon: '↔', on: !!c.wide }));
+      if (remCap(c, 'subpages')) {
+        m.appendChild(HK.menuItem(T('Unterseite hinzufügen'), function () { newPage(c.id); }, { icon: '＋' }));
+        var cand = sharedMoveTargets(c);
+        if (cand.length) m.appendChild(HK.menuItem(T('Verschieben nach'), null, { icon: '↪', subSearch: T('Seite suchen …'), sub: function (sm) {
+          cand.forEach(function (p) {
+            sm.appendChild(HK.menuItem(label(p), function () { moveFromMenu(c.id, p.id); }, { icon: ti(p.icon) || '📄', hint: ancestors(p.id).map(label).join(' / ') }));
+          });
+          sm.appendChild(el('div', 'menu-hint', T('Nur innerhalb des geteilten Bereichs mit denselben Freigaben.')));
+        } }));
+      }
+      if (remCap(c, 'versions')) m.appendChild(HK.menuItem(T('Versionsverlauf'), openVersions, { icon: '🕘' }));
     }
     m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
       { icon: '💬', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
     m.appendChild(HK.menuItem(T('Link zur Seite kopieren'), function () { copyLink(); }, { icon: '🔗' }));
     if (window.HKAI && !rem) HKAI.menu(m);            // KI nur fuer Seiten dieses Servers (andere Instanz: 404, BUG-052)
     var n = descendants(c.id).length || S.shared.filter(function (p) { return p.parent_id === c.id; }).length;
-    if (!rem) m.appendChild(HK.menuItem(T('Exportieren'), null, { icon: '⬇', sub: function (sm) {
+    if (remCap(c, 'export')) m.appendChild(HK.menuItem(T('Exportieren'), null, { icon: '⬇', sub: function (sm) {
       sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { icon: '📄' }));
       if (n) sm.appendChild(HK.menuItem(T('Mit Unterseiten (.zip)'), function () { exportPage(true); }, { icon: '🗜' }));
     } }));
-    m.appendChild(el('div', 'menu-hint', rem ? T('Diese Seite liegt auf {host}. Hier kannst du sie lesen, kommentieren und – mit Bearbeiten – Titel und Inhalt ändern.', { host: (c.remote || {}).host || '' })
-                                             : T('Verschieben, Löschen, Versionen und Freigaben verwaltet der Eigentümer.')));
+    m.appendChild(el('div', 'menu-hint', rem && !remCap(c, 'db') ? T('Diese Seite liegt auf {host}. Hier kannst du sie lesen, kommentieren und – mit Bearbeiten – Titel und Inhalt ändern.', { host: (c.remote || {}).host || '' })
+                                             : rem ? T('Diese Seite liegt auf {host}. Löschen und Freigaben verwaltet der Eigentümer.', { host: (c.remote || {}).host || '' })
+                                             : T('Löschen und Freigaben verwaltet der Eigentümer.')));
+  }
+  // Verschieben fuer Bearbeiter (2.3): Ziele im selben geteilten Baum (gleicher Eigentuemer, gleicher Server), keine
+  // Datenbanken, nicht unter sich selbst - ob die Freigaben gleich sind, prueft der Server (sonst 403 mit Hinweis)
+  function sharedMoveTargets(c) {
+    var blocked = descendants(c.id).concat([c.id, c.parent_id]), ou = (c.owner || {}).username, host = (c.remote || {}).host;
+    return S.shared.filter(function (p) {
+      return blocked.indexOf(p.id) < 0 && p.kind !== 'database' && p.role === 'edit' && (p.owner || {}).username === ou
+        && ((p.remote || {}).host || null) === (host || null) && remoteId(p.id) === remoteId(c.id);
+    });
   }
 
   function setFull(on) {
@@ -3438,7 +3462,7 @@
     var b = $('pg-icon'); b.textContent = '';
     if (isImg(icon)) b.appendChild(icoNode(icon, '', 'page-icon-img')); else b.textContent = icon || '';
     b.classList.toggle('empty', !icon);
-    b.hidden = !icon && (readOnly() || (!!S.cur && remoteId(S.cur.id)));   // "+ Icon" nur, wenn man es setzen darf (BUG-093)
+    b.hidden = !icon && (readOnly() || !remCap(S.cur, 'db'));   // "+ Icon" nur, wenn man es setzen darf (BUG-093; fremde Server: 2.3)
   }
   function uploadImage(file) {
     var fd = new FormData(); fd.append('image', file);
@@ -4454,7 +4478,7 @@
     document.body.classList.toggle('pg-ro', roRole());
     document.body.classList.toggle('pg-lock-on', on);        // gesperrt: in Datenbank-Bloecken kein "Neu", keine Ansichts-Einstellungen
     // Seite einer anderen Saga-Instanz: nur Titel und Inhalt aenderbar (kein Symbol, Titelbild, keine Tags)
-    document.body.classList.toggle('pg-remote', !!S.cur && remoteId(S.cur.id));
+    document.body.classList.toggle('pg-remote', !!S.cur && remoteId(S.cur.id) && !remCap(S.cur, 'db'));   // aeltere Gegenstelle: nur Titel/Inhalt
     $('pg-title').readOnly = ro;
     var b = $('pg-lock');
     if (!b) {
@@ -4484,7 +4508,8 @@
   function applyShare() {
     var c = S.cur, bar = $('pg-sharedby');
     $('pg-share').hidden = !c || !isOwner() || EMBED;
-    if ($('pg-chat')) $('pg-chat').hidden = !c || EMBED || !(c.shared || foreign()) || remoteId(c.id);     // Seiten-Chat (1.5): nur auf geteilten Seiten dieser Instanz
+    // Seiten-Chat (1.5): nur auf geteilten Seiten; Seiten anderer Server (2.3), wenn ihr Server Gruppen-Chats kann
+    if ($('pg-chat')) $('pg-chat').hidden = !c || EMBED || !(c.shared || foreign()) || !remCap(c, 'chatgroups');
     $('pg-share').classList.toggle('on', !!(c && c.shared));
     $('pg-share').title = c && c.shared ? T('Geteilt – Freigaben verwalten') : T('Mit Personen oder Gruppen teilen');
     if (bar) bar.remove();
@@ -4776,17 +4801,16 @@
     add(T('Neue Seite'), '＋', function () { newPage(null); }, { kw: 'new page anlegen erstellen' });
     var own = isOwner(), ed = canEdit();
     if (c) {
-      var rem = remoteId(c.id);                                    // andere Saga-Instanz: nur Lesen/Bearbeiten/Kommentieren
-      if (ed && !rem) add(T('Neue Unterseite'), '＋', function () { newPage(c.id); }, { kw: 'subpage unterseite anlegen' });
+      if (ed && remCap(c, 'subpages')) add(T('Neue Unterseite'), '＋', function () { newPage(c.id); }, { kw: 'subpage unterseite anlegen' });
       add(T('Link zur Seite kopieren'), '🔗', function () { copyLink(); }, { kw: 'url teilen copy link', kbd: mk + 'L' });
       if (own) add(T('Teilen …'), 'grp', openShare, { kw: 'share teilen freigeben personen gruppen' });
       add(T('Kommentare'), '💬', function () { if (window.HKComments) HKComments.openAll(); }, { kw: 'comments kommentar unterhaltung' });
       if (own) add(c.pinned ? T('Von Favoriten lösen') : T('Zu Favoriten'), '★', function () { setPinned(!c.pinned); }, { kw: 'favorit stern pin' });
-      if (ed && !rem) add(c.wide ? T('Volle Breite aus') : T('Volle Breite ein'), '↔', function () { setWide(!c.wide); }, { kw: 'breite wide layout' });
+      if (ed && remCap(c, 'db')) add(c.wide ? T('Volle Breite aus') : T('Volle Breite ein'), '↔', function () { setWide(!c.wide); }, { kw: 'breite wide layout' });
       add(T('Vollbild'), '⤢', function () { setFull(!$('pages').classList.contains('pg-full')); }, { kw: 'fullscreen fokus' });
       if (own) add(T('Seite duplizieren'), '⧉', duplicatePage, { kw: 'kopie duplicate' });
-      if (own) add(T('Versionsverlauf'), '🕘', openVersions, { kw: 'history versionen' });
-      if (!rem) add(T('Als Markdown exportieren'), '⬇', function () { exportPage(false); }, { kw: 'export md download' });
+      if (ed && remCap(c, 'versions')) add(T('Versionsverlauf'), '🕘', openVersions, { kw: 'history versionen' });
+      if (remCap(c, 'export')) add(T('Als Markdown exportieren'), '⬇', function () { exportPage(false); }, { kw: 'export md download' });
       if (c.parent_id) add(T('Übergeordnete Seite'), '↑', goParent, { kw: 'eltern parent hoch', kbd: mk + '⇧U' });
       if (window.HKKeys) add(T('Inhaltsverzeichnis ein/aus'), '☰', HKKeys.toggleToc, { kw: 'toc gliederung ueberschriften' });
     }

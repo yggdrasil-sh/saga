@@ -1826,6 +1826,33 @@ def _clean_remote_body(s, fmt):
     return json.dumps(doc, ensure_ascii=False)
 
 
+def _db_blocks(body, pid, inbound):
+    """Eingebettete Datenbanken (Block 'database', data.db) einer fremden Seite: IDs der anderen Instanz <-> negative IDs.
+    Beim Speichern: nur Datenbanken derselben Instanz, alles andere wird leer (wie entschaerfte Verweise)."""
+    if not isinstance(body, str) or '"database"' not in body:
+        return body
+    try:
+        doc = json.loads(body)
+    except ValueError:
+        return body
+    changed = False
+    try:
+        for b in _iter_blocks(doc.get("blocks") or []) if isinstance(doc, dict) else []:
+            if b.get("type") != "database" or not isinstance(b.get("data"), dict):
+                continue
+            v = b["data"].get("db")
+            if inbound:
+                nv = ref(pid, v) if _ok_rid(v) else None
+            else:
+                nv = unref(v)[1] if isinstance(v, int) and not isinstance(v, bool) and v < 0 and unref(v)[0] == pid else None
+            if nv != v:
+                b["data"]["db"] = nv
+                changed = True
+    except ValueError:
+        return body
+    return json.dumps(doc, ensure_ascii=False) if changed else body
+
+
 def _num(v, default=0):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) < 1e15 else default
 
@@ -1869,13 +1896,13 @@ def _note_in(c, peer, d, uid):
     d["title"] = _clean_text(d.get("title"), 500)
     d["format"] = "blocks" if d.get("format") == "blocks" else "text"
     # Inhalt der anderen Instanz wie eigenen behandeln: erst bereinigen (IDs noch in deren Form), dann umschreiben
-    d["body"] = _rw_in(_clean_remote_body(d.get("body"), d["format"]), pid, pr)
+    d["body"] = _db_blocks(_rw_in(_clean_remote_body(d.get("body"), d["format"]), pid, pr), pid, True)
     d["icon"] = _rw_in(_safe_pic(d.get("icon"), True), pid, pr)
     d["cover"] = _rw_in(_safe_pic(d.get("cover"), False), pid, pr)
     if d.get("role") not in ROLES:
         d["role"] = "view"
     d.update(pinned=False, published=False, public_url=None, published_via=None, shared=True, locked=bool(d.get("locked")),
-             remote={"peer": pid, "host": peer["host"], "name": peer["name"]})
+             remote=remote_info(peer))
     if isinstance(d.get("props"), dict):     # Relationen (Listen von Seiten-IDs) auf negative IDs
         d["props"] = props_in(pid, d["props"])
     if d.get("kind") == "database" and feature(peer, "db"):      # 2.3: Datenbanken anderer Instanzen oeffnen/bearbeiten
@@ -1887,6 +1914,14 @@ def _note_in(c, peer, d, uid):
                      t("Diese Datenbank liegt auf {host}. Datenbanken anderer Saga-Instanzen lassen sich hier noch nicht öffnen.",
                        host=peer["host"]))}}]}, ensure_ascii=False))
     return d
+
+
+PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups")
+
+
+def remote_info(peer):
+    """Herkunft einer fremden Seite fuer Web/Apps: {peer, host, name, caps} - caps: was mit diesem Server geht (2.3)."""
+    return {"peer": peer["id"], "host": peer["host"], "name": peer["name"], "caps": [x for x in PAGE_CAPS if feature(peer, x)]}
 
 
 def props_in(pid, props):
@@ -2018,7 +2053,7 @@ def _w_note_patch(uid, nid, b):
     if not b:
         return _bad(t("Bei Seiten anderer Saga-Instanzen lassen sich nur Titel und Inhalt ändern."), 403)
     if "body" in b:
-        b["body"] = _rw_out(b["body"], pid)
+        b["body"] = _db_blocks(_rw_out(b["body"], pid), pid, False)
     for k in ("icon", "cover"):
         if k in b and b[k]:
             b[k] = _pic_out(b[k], pid)
@@ -2227,7 +2262,7 @@ def home_shared(request: Request):
                     d["title"] = _clean_text(d.get("title"), 500)
                     if d.get("role") not in ROLES:
                         d["role"] = "view"
-                    d.update(shared=True, pinned=False, remote={"peer": p["id"], "host": p["host"], "name": p["name"]})
+                    d.update(shared=True, pinned=False, remote=remote_info(p))
                     items.append(d)
     return _json(200, {"items": items, "unreachable": bad})
 

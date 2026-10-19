@@ -489,13 +489,16 @@ Dialog kopierst du den Link zur Seite – er öffnet sie für alle, die Zugriff 
 |---|---|
 | **Lesen** | Seite, Unterseiten und Datenbank-Einträge lesen, exportieren, Kommentare lesen |
 | **Kommentieren** | zusätzlich kommentieren, antworten, Unterhaltungen erledigen |
-| **Bearbeiten** | zusätzlich Titel, Inhalt, Symbol, Titelbild, Tags und Eigenschaften ändern, Unterseiten und Einträge anlegen, Bilder hochladen |
+| **Bearbeiten** | zusätzlich Titel, Inhalt, Symbol, Titelbild, Tags und Eigenschaften ändern, Unterseiten und Einträge anlegen, Bilder hochladen, Versionen ansehen und wiederherstellen (ab 2.3), innerhalb des geteilten Bereichs verschieben (ab 2.3) |
 
 - **Unterseiten kommen mit:** Eine Freigabe gilt auch für alle Unterseiten und die Einträge von Datenbanken darunter.
   Es zählt die höchste Rolle (Person oder Gruppe, diese Seite oder eine Seite darüber). Archivierte Seiten, Seiten im
   Papierkorb und Vorlagen sieht nur der Eigentümer.
-- **Was nur der Eigentümer darf:** löschen, archivieren, verschieben, sperren, als Vorlage markieren, veröffentlichen,
-  Versionen ansehen und wiederherstellen, Freigaben verwalten. Was andere anlegen oder hochladen, gehört dem
+- **Was nur der Eigentümer darf:** löschen, archivieren, frei verschieben, sperren, als Vorlage markieren, veröffentlichen,
+  Freigaben verwalten. Personen mit „Bearbeiten“ dürfen (ab 2.3) Versionen ansehen und wiederherstellen (der bisherige
+  Stand bleibt als Version erhalten; bei gesperrten Seiten nur der Eigentümer) und Seiten **innerhalb des geteilten
+  Bereichs verschieben** – nur dorthin, wo genau dieselben Freigaben gelten, damit niemand dadurch Zugriff bekommt oder
+  verliert (Menü „⋯“ → „Verschieben nach“). Was andere anlegen oder hochladen, gehört dem
   Eigentümer der Seite; Versionen entstehen bei ihm. Personen mit „Bearbeiten“ verbrauchen also **Speicherplatz des
   Eigentümers** – ihre Bilder und Dateien zählen bei ihm.
 - **Teilen und Veröffentlichen:** Ist eine Seite mit „Unterseiten mit veröffentlichen“ öffentlich und zugleich mit
@@ -624,10 +627,41 @@ entsperren. Nachrichten bleiben Ende-zu-Ende-verschlüsselt; die Server sehen nu
   wird ein Konto gelöscht, verschwinden seine Direkt-Chats auch auf dem anderen Server.
 - Ältere Apps zeigen solche Chats nur mit dem Hinweis „bitte App aktualisieren“.
 
-**Noch nicht über Servergrenzen** (diese Runde): Gruppen-Chats mit Personen anderer Server, Datenbanken anderer Server
-öffnen (es erscheint ein Hinweis), Bilder in fremde Seiten hochladen, Unterseiten anlegen, Versionen, Export, „Wer
-gerade hier ist“ und Live-Aktualisierung. Wer seinen öffentlichen Namen ändert oder sein Konto löscht, verliert Freigaben anderer Server (sie werden dort
-entfernt); der alte Name wird für andere Konten gesperrt.
+**Seiten anderer Server vollständig (ab 2.3, beide Server 2.3):** Geteilte Seiten anderer Server lassen sich wie
+eigene Seiten nutzen – je nach Rolle, die immer der Server der Seite prüft:
+- **Datenbanken** öffnen, filtern, sortieren, gruppieren und blättern (auch große Datenbanken); mit „Bearbeiten“ Werte,
+  Spalten und Ansichten ändern und **Einträge anlegen**. Relationen auf andere geteilte Datenbanken desselben Servers
+  funktionieren; Verweise auf Seiten, die nicht mit dir geteilt sind, fallen weg.
+- **Unterseiten anlegen** und innerhalb des geteilten Bereichs **verschieben** (gleiche Freigaben, wie oben).
+- **Bilder und Dateien hochladen** (Editor, Symbol, Titelbild): Sie liegen beim Server der Seite und zählen beim
+  Eigentümer. Für jede Person eines anderen Servers gilt dort zusätzlich eine eigene Grenze (`FED_UPLOAD_QUOTA_MB`,
+  Standard 200 MB). Gleich nach dem Hochladen sieht nur die hochladende Person die Datei, nach dem Speichern alle mit
+  Zugriff.
+- **Versionsverlauf** (mit „Bearbeiten“) und **Export** (Markdown, mit Unterseiten als ZIP).
+- **„Wer gerade hier ist“ und Live-Aktualisierung:** Solange die Seite offen ist, meldet dein Server ein kurzes Abo beim
+  Server der Seite an (läuft nach 90 Sekunden ohne Erneuerung aus, `FED_WATCH_TTL`). Darüber kommen Änderungen,
+  Anwesenheit und Kommentar-Zähler – ohne Inhalte. Neue oder verschobene Unterseiten in geteilten Bereichen
+  aktualisieren „Mit mir geteilt“ von selbst.
+- Nicht über Servergrenzen: löschen, archivieren, veröffentlichen, Freigaben verwalten, Rückverweise, KI auf der Seite.
+Mit Servern 2.1/2.2 bleibt es bei Lesen, Kommentieren und Bearbeiten von Titel und Inhalt; neue Funktionen melden
+dann „Der Server … kann das noch nicht“. Wer seinen öffentlichen Namen ändert oder sein Konto löscht, verliert Freigaben
+anderer Server (sie werden dort entfernt); der alte Name wird für andere Konten gesperrt.
+
+**Gruppen und Seiten-Chats über Servergrenzen (ab 2.3, alle beteiligten Server 2.3):**
+- **Freie Gruppe:** In „+ Neu“ → „+ Gruppe mit mehreren Personen …“ lassen sich auch Personen verbundener Server
+  auswählen. Der eigene Server wird das **Heim** der Gruppe; bei den anderen erscheint sie als **Nachrichtenanfrage**
+  (Annehmen, Ablehnen oder die einladende Person bzw. ihren Server sperren). Admins der Gruppe fügen Personen hinzu
+  oder entfernen sie – auch von einem anderen Server aus, die Änderung läuft immer über das Heim. Jede Änderung
+  erscheint für alle als Hinweis im Chat mit Herkunft („Anna Berg (a.example) hat Bert (b.example) hinzugefügt“).
+- **Seiten-Chat:** Ist eine Seite mit Personen oder Gruppen anderer Server geteilt, gehören sie zum Seiten-Chat (der
+  Server der Seite ist das Heim). Mitglieder einer Gruppe eines anderen Servers meldet nur dieser Server – und nur, wenn
+  die Gruppe dort Ziel einer Freigabe ist. Den Chat öffnest du auch von einer fremden Seite aus („💬 Chat“). Ein
+  bestehender Seiten-Chat wird dabei auf das neue Format umgestellt; ältere Nachrichten bleiben für alle bisherigen
+  Mitglieder lesbar, die KI ist danach aus.
+- Personen eines dritten Servers, mit dem dein Server nicht verbunden ist, sind trotzdem dabei: Schlüssel und Anhänge
+  kommen über das Heim, deine App prüft die Schlüssel selbst (Sicherheitsnummer, Warnung bei Wechsel).
+- **Trennen:** Trennt das Heim die Verbindung zu einem Server, sind dessen Personen nicht mehr Mitglied (Hinweis im
+  Chat); auf dem getrennten Server ist der Chat schreibgeschützt.
 
 ### Benachrichtigungen und Live-Aktualisierung
 
@@ -1339,6 +1373,8 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `LIVE_MAX_AGE` | `3600` | Nach so vielen Sekunden baut der Browser die Live-Verbindung neu auf (Sitzung wird dabei frisch geprüft) |
 | `FED_ALLOW_HTTP` | – | `1` = Föderation auch über http (nur für Tests; sonst nur https) |
 | `FED_RATE` / `FED_TIMEOUT` | `600` / `10` | Anfragen je Minute und verbundener Instanz / Sekunden bis zur Zeitüberschreitung |
+| `FED_UPLOAD_QUOTA_MB` | `200` | Speicher je Person eines anderen Servers für Uploads in Seiten hier (zählt zusätzlich beim Eigentümer) |
+| `FED_WATCH_TTL` | `90` | Sekunden, die ein Abo (Live/Anwesenheit) einer fremden Seite ohne Erneuerung gilt |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Websuche (Abschnitt 10) |
 | `AI_WEB_FETCH` / `AI_WEB_RATE` | `2` / `10` | Websuche der KI: Trefferseiten, deren Text gelesen wird (0 = nur Ausschnitte); Websuchen je Person in 10 Minuten |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Sprache und Filter der Websuche |

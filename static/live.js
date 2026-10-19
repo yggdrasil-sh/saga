@@ -454,7 +454,7 @@
     document.addEventListener('hk-page-open', function (e) {
       var id = e.detail && e.detail.id;
       if (P.id && P.id !== id) { leave(P.id); drawPresence([]); }
-      P.id = id > 0 ? id : null; ping(); restart();          // Seite einer anderen Saga-Instanz (negative ID): keine Anwesenheit
+      P.id = id || null; ping(); restart();          // auch Seiten anderer Saga-Server (negative ID, 2.3: Abo beim Eigentuemer)
     });
     document.addEventListener('input', function (e) {
       var pg = $('page'); if (!pg || !e.target || !pg.contains(e.target)) return;
