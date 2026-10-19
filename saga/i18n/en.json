@@ -2801,5 +2801,9 @@
  "Vorschau und Download laufen über dein Nextcloud-Konto, solange es verknüpft ist.": "Preview and download use your Nextcloud account as long as it is linked.",
  "Zuletzt genutzt": "Last used",
  "Über verbundene Server zeigen": "Show via connected servers",
- "Anfrage annehmen": "Accept request"
+ "Anfrage annehmen": "Accept request",
+ "Bild-im-Bild": "Picture-in-picture",
+ "Bild-im-Bild beenden": "Exit picture-in-picture",
+ "Zurück zum Anruffenster": "Back to the call window",
+ "Verbindung wird neu aufgebaut …": "Reconnecting …"
 }

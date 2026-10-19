@@ -389,6 +389,43 @@ def bench_apps():
                     "bytes": t["bytes"] * 480, "mb": round(t["bytes"] * 480 / 1048576, 1)})
 
 
+def bench_calls():
+    """2.4 (E0): Anruf-Signalisierung ueber den Server (Medien laufen nie durch Saga). Versiegelte Signale sind fuer den
+    Server undurchsichtig - hier Zufallsbytes in der Groesse eines echten Angebots. Je Anruf: anrufen, annehmen, 20 Signale
+    (Trickle-ICE, Neuverhandlung/ICE-Restart in beide Richtungen), auflegen. Hoechstens 3 Anrufe (PAIR_RATE je Minute)."""
+    import base64
+    import os
+    import secrets
+    I, a, b = INFO, INFO["cookie_a"], INFO["cookie_b"]
+    if not (I.get("chat") and I.get("dev_a") and I.get("dev_b")):
+        return
+    print("Anrufe", flush=True)
+    fake = lambda n: base64.b64encode(os.urandom(n)).decode()  # noqa: E731
+    tc, ta, tsig, tall, cs = [], [], [], [], []
+    for _ in range(3):
+        cid = secrets.token_hex(16)
+        t0 = time.perf_counter()
+        s, _, dt, d = req("POST", "/api/calls", a, {"id": cid, "chat_id": I["chat"], "media": "video", "device": I["dev_a"],
+                                                     "signals": {I["dev_b"]: fake(4200)}, "caps": ["reneg", "want", "bye"]})
+        tc.append(dt); cs.append(s)
+        if s != 200:
+            print("  Anruf nicht moeglich:", s, d, flush=True)
+            break
+        s, _, dt, _ = req("POST", f"/api/calls/{cid}/answer", b, {"device": I["dev_b"], "signals": {I["dev_a"]: fake(4000)},
+                                                                   "caps": ["reneg", "want", "bye"]})
+        ta.append(dt); cs.append(s)
+        for i in range(20):
+            who, dev, to = (a, I["dev_a"], I["dev_b"]) if i % 2 == 0 else (b, I["dev_b"], I["dev_a"])
+            s, _, dt, _ = req("POST", f"/api/calls/{cid}/signal", who, {"device": dev, "signals": {to: fake(600 if i % 5 else 4200)}})
+            tsig.append(dt); cs.append(s)
+        tall.append(time.perf_counter() - t0)
+        req("POST", f"/api/calls/{cid}/end", a, {"reason": "hangup", "connected": True})
+    stats("Anruf: anrufen (POST /api/calls)", tc, [0], cs[:1] if tc else [0], "Anrufe")
+    stats("Anruf: annehmen", ta or [0], [0], [200], "Anrufe")
+    stats("Anruf: Signal weiterreichen", tsig or [0], [0], sorted(set(cs)), "Anrufe")
+    stats("Anruf: Ablauf anrufen+annehmen+20 Signale", tall or [0], [0], [200], "Ablauf")
+
+
 def main():
     global ARGS, INFO
     ap = argparse.ArgumentParser()
@@ -397,14 +434,15 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--n", type=int, default=10)
     ap.add_argument("--project", default="saga-perf")
-    ap.add_argument("--only", default="read,write,apps,parallel,live")
+    ap.add_argument("--only", default="read,write,apps,parallel,live,calls")
     ARGS = ap.parse_args()
     INFO = json.load(open(ARGS.info))
     smp = Sampler()
     smp.start()
     only = ARGS.only.split(",")
     phases = {}
-    for name, fn in (("read", bench_read), ("write", bench_write), ("apps", bench_apps), ("parallel", bench_parallel), ("live", bench_live)):
+    for name, fn in (("read", bench_read), ("write", bench_write), ("apps", bench_apps), ("parallel", bench_parallel), ("live", bench_live),
+                     ("calls", bench_calls)):
         if name in only:
             t0 = time.time()
             fn()

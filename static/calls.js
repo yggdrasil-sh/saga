@@ -4,6 +4,11 @@
 // versiegelt (static/chat-crypto.js, Format saga-call/v1) - der Server sieht weder SDP noch IP-Adressen und kann keinen
 // eigenen DTLS-Schluessel unterschieben. Auf der Chat-Seite (Schluessel vorhanden, window.HKChat.callApi) laeuft hier der
 // ganze Anruf; auf anderen Seiten nur das Klingeln - "Annehmen" oeffnet den Anruf im Chat-Tab.
+// 2.4 (E0, "saga-call v3", Vertrag docs/APP-API.md): Body-Felder pc/caps/n, Neuverhandlung waehrend des Gespraechs nach
+// "Perfect Negotiation" (hoeflich = groessere device_id), ICE-Restart bei Abbruch/Netzwechsel, state mit pip/want/path,
+// bye. Neuverhandlung und want nur, wenn das Gegenueber sie in caps meldet - 2.1/2.3-Gegenstellen verhalten sich wie
+// bisher. Bitrate je Weg (direkt / Relais UDP / Relais TCP) und je Wunsch des Gegenuebers (want small, z. B. Bild-im-Bild)
+// ueber RTCRtpSender.setParameters. Bild-im-Bild: Document-PiP (eigene Knoepfe) bzw. Video-PiP, wo der Browser es kann.
 (function () {
   'use strict';
   var HK = window.HK, T = window.T;
@@ -15,7 +20,37 @@
   var GONE = {};                                      // call_id -> schon erledigt (abgelehnt/angenommen/vorbei)
   var cfgP = null, cfg = null;
   var mobile = window.matchMedia('(pointer: coarse)').matches;
-
+  // 2.4: Faehigkeiten dieses Clients im signierten Body (offer/answer). reneg = offer/answer waehrend des Gespraechs
+  // (auch ICE-Restart), want = beachtet state.want des Gegenuebers, bye = meldet das Verlassen
+  // reneg nur, wenn auch der eigene Server sie meldet (GET /api/calls/config -> features)
+  var CAPS_ALL = ['reneg', 'want', 'bye'];
+  function myCaps() { return CAPS_ALL.filter(function (x) { return x !== 'reneg' || (cfg && (cfg.features || []).indexOf('reneg') >= 0); }); }
+  var RESTART_MAX = 3, DISC_S = 2.5, FAIL_S = 20;    // ICE-Restart: Versuche je Abbruch, Wartezeit bei disconnected, Frist bei failed
+  // Bitrate-Regeln je Weg (Konzept 2.4 §1.3), kbit/s. cam/screen/mesh je Strom, H = hoechste Bildhoehe, fps = Bildrate
+  var RATES = {
+    direct: { cam: 1500, camH: 720, screen: 2500, screenFps: 15, mesh: 600, meshH: 540, audio: 32 },
+    'relay-udp': { cam: 1200, camH: 720, screen: 1800, screenFps: 15, mesh: 500, meshH: 540, audio: 32 },
+    'relay-tcp': { cam: 800, camH: 540, screen: 1200, screenFps: 8, mesh: 350, meshH: 360, meshFps: 15, audio: 24 }
+  };
+  var PATHS = ['direct', 'relay-udp', 'relay-tcp'];
+  // -> Sende-Parameter fuer eine Spur: kind 'cam'|'screen'|'audio', path, want ('large'|'small'|'off') des Gegenuebers,
+  // n Endpunkte (ab 3: Mesh-Werte, E5), h Bildhoehe der Quelle
+  function rules(kind, path, want, n, h) {
+    var r = RATES[path] || RATES.direct, o = {};
+    if (kind === 'audio') return { maxBitrate: r.audio * 1000 };
+    if (kind === 'screen') {                          // Bildschirm: Text muss lesbar bleiben - want aendert nichts
+      o = { maxBitrate: r.screen * 1000, maxFramerate: r.screenFps, degradationPreference: 'maintain-resolution', scaleResolutionDownBy: 1 };
+      return o;
+    }
+    var mesh = (n || 2) >= 3, br = mesh ? r.mesh : r.cam, capH = mesh ? r.meshH : r.camH;
+    o = { maxBitrate: br * 1000, scaleResolutionDownBy: h && h > capH ? Math.round(h / capH * 100) / 100 : 1, active: true };
+    if (mesh && r.meshFps) o.maxFramerate = r.meshFps;
+    if (want === 'small') {                           // Gegenueber zeigt uns klein (Bild-im-Bild, Tab im Hintergrund)
+      o.maxBitrate = Math.min(o.maxBitrate, mesh ? 200000 : 300000);
+      o.scaleResolutionDownBy = Math.max(2, Math.min(3, (h || 480) / 240));
+    } else if (want === 'off') o.active = false;
+    return o;
+  }
   function bridge() { var b = window.HKChat && window.HKChat.callApi; return b && b.ready() ? b : null; }
   function config(fresh) {
     if (!cfgP || fresh) cfgP = api('GET', '/api/calls/config').then(function (r) { cfg = r; return r; }, function (e) { cfgP = null; throw e; });
@@ -31,7 +66,9 @@
     camOff: ['M2 2l20 20', 'M23 7l-7 5 7 5V7z', 'M10.7 5H14a2 2 0 0 1 2 2v3.3', 'M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2'],
     screen: ['M3 4h18a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z', 'M8 21h8', 'M12 17v4', 'M12 13V8', 'M9.5 10.5L12 8l2.5 2.5'],
     phone: ['M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z'],
-    x: ['M6 6l12 12', 'M18 6L6 18']
+    x: ['M6 6l12 12', 'M18 6L6 18'],
+    pip: ['M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z', 'M13 12h6v5h-6z'],
+    back: ['M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z', 'M14 10l-4 4', 'M10 10v4h4']
   };
   function icon(name) {
     var NS = 'http://www.w3.org/2000/svg', s = document.createElementNS(NS, 'svg');
@@ -184,7 +221,10 @@
     return Object.assign({ id: null, chat_id: null, role: 'caller', media: 'audio', peer: {}, peerDevs: {}, peerDevice: null,
       pc: null, local: null, cam: null, screen: null, remote: new MediaStream(), mic: true, seen: {}, early: [], remoteIce: [],
       outIce: [], outT: null, ready: false, connected: false, verified: false, path: '', fps: [], t0: 0, alive: null, statsT: null,
-      ending: false, remoteState: { mic: true, cam: false, screen: false }, ui: null }, o);
+      ending: false, remoteState: { mic: true, cam: false, screen: false, pip: false, want: 'large', path: '' }, ui: null,
+      // 2.4 (saga-call v3)
+      peerCaps: [], established: false, n: 0, remoteN: 0, makingOffer: false, ignoreOffer: false, restarts: 0, restarting: false,
+      lastUf: null, oldUf: {}, net: '', pip: false, pipWin: null, wantSent: 'large', rates: {}, sent: {} }, o);
   }
   function myDev() { return bridge().device(); }
   function X() { return bridge().crypto(); }
@@ -205,7 +245,16 @@
     return X().sealSignal({ call_id: c.id, from_uid: bridge().me(), from_device: d.id, sign_sk: d.sign_sk, to_uid: c.peer.username,
                             to_device: toDev, to_pk: pd.enc_pk, body: body });
   }
-  function sealAll(c, devs, body) { var out = {}; devs.forEach(function (id) { out[id] = seal(c, id, body); }); return out; }
+  // body: Text oder Funktion(geraet) -> Text (2.4: je Zielgeraet eigenes pc)
+  function sealAll(c, devs, body) { var out = {}; devs.forEach(function (id) { out[id] = seal(c, id, typeof body === 'function' ? body(id) : body); }); return out; }
+  // 2.4: Kennung der PeerConnection = sortiertes Paar der beiden Geraete-IDs; hoeflich ist die groessere device_id
+  function pair(a, b) { return a < b ? a + ':' + b : b + ':' + a; }
+  // Der Anrufer legt die Kennung fest (je Zielgeraet das sortierte Paar), der Angerufene uebernimmt sie aus dem Angebot
+  function pcId(c) { return c.pcFixed || (c.peerDevice ? pair(myDev().id, c.peerDevice) : ''); }
+  function polite(c) { return myDev().id > c.peerDevice; }
+  function peerCan(c, cap) { return (c.peerCaps || []).indexOf(cap) >= 0; }
+  function canReneg(c) { return peerCan(c, 'reneg') && myCaps().indexOf('reneg') >= 0; }    // beide Seiten muessen reneg melden
+  function capsOf(b) { return Array.isArray(b && b.caps) ? b.caps.filter(function (x) { return typeof x === 'string'; }).slice(0, 16) : []; }
   function targets(c) { return c.peerDevice ? [c.peerDevice] : Object.keys(c.peerDevs); }
   // Signal oeffnen + pruefen -> Objekt oder null (wirft nicht). Unbekanntes Geraet: Schluessel einmal neu holen.
   function openSig(c, s) {
@@ -226,7 +275,11 @@
   function sendSignal(c, body) {
     if (!c.id || c.ending) return Promise.resolve();
     var devs = targets(c); if (!devs.length) return Promise.resolve();
-    return api('POST', '/api/calls/' + c.id + '/signal', { device: myDev().id, signals: sealAll(c, devs, JSON.stringify(body)) }).catch(function (e) {
+    c.sent[body.t] = (c.sent[body.t] || 0) + 1;
+    var me_ = myDev().id;
+    return api('POST', '/api/calls/' + c.id + '/signal', { device: me_, signals: sealAll(c, devs, function (id) {
+      return JSON.stringify(Object.assign({}, body, { pc: c.pcFixed || pair(me_, id) }));
+    }) }).catch(function (e) {
       if (e.status === 409) remoteEnded(c, { reason: 'gone' });
     });
   }
@@ -257,7 +310,11 @@
       drawMedia(c);
     };
     pc.onconnectionstatechange = function () { onConn(c); };
-    pc.oniceconnectionstatechange = function () { if (!pc.connectionState) onConn(c); };      // aeltere Browser
+    pc.oniceconnectionstatechange = function () {
+      onConn(c);              // auch neuere Browser: nach einem ICE-Restart bleibt connectionState oft "connected"
+    };
+    // 2.4: Neuverhandlung (Perfect Negotiation) erst nach dem ersten Angebot/Antwort und nur mit einer 2.4-Gegenstelle
+    pc.onnegotiationneeded = function () { if (C === c && c.established && canReneg(c) && !c.done) offerNow(c); };
     return pc;
   }
   function addLocal(c, pc, fromOffer) {
@@ -286,29 +343,116 @@
     var s = null; c.pc.getTransceivers().forEach(function (tr) { if (!s && tr.receiver.track && tr.receiver.track.kind === 'video') s = tr.sender; });
     return s;
   }
+  function remoteUfrag(c) {
+    var d = c.pc && c.pc.remoteDescription, m = d && /a=ice-ufrag:(\S+)/.exec(d.sdp || '');
+    return m ? m[1] : null;
+  }
+  // Kandidaten erst anwenden, wenn die passende Beschreibung (ice-ufrag) gesetzt ist: nach einem ICE-Restart kommen neue
+  // Kandidaten oft vor der neuen Antwort an; Kandidaten alter Generationen fallen weg
   function applyRemoteIce(c) {
     if (!c.pc || !c.pc.remoteDescription) return;
-    var list = c.remoteIce.splice(0);
-    list.forEach(function (x) { c.pc.addIceCandidate(x).catch(function () { /* veraltet/ungueltig */ }); });
+    var uf = remoteUfrag(c), keep = [];
+    if (c.lastUf && uf && c.lastUf !== uf) c.oldUf[c.lastUf] = true;
+    c.lastUf = uf;
+    c.remoteIce.splice(0).forEach(function (x) {
+      if (x.usernameFragment && uf && x.usernameFragment !== uf) { if (!c.oldUf[x.usernameFragment]) keep.push(x); return; }
+      c.pc.addIceCandidate(x).catch(function () { /* veraltet/ungueltig */ });
+    });
+    c.remoteIce = keep.slice(-120);
   }
+  // Unbekannte Typen ("t") werden ignoriert - so koennen spaetere Fassungen neue Nachrichten schicken (Vertrag v3)
   function handle(c, b) {
     if (!b) { securityFail(c); return; }
+    if (b.pc && c.peerDevice && b.pc !== pcId(c)) return;            // andere PeerConnection (Mehrgeraete/Mesh ab E4)
     if (b.t === 'ice') { (Array.isArray(b.c) ? b.c : []).slice(0, 60).forEach(function (x) { if (x && x.candidate) c.remoteIce.push(x); }); applyRemoteIce(c); }
     else if (b.t === 'answer' && c.role === 'caller' && !c.pc.remoteDescription) {
       if (c.peerDevice && b._from !== c.peerDevice) return;
       if (!fpOk(b)) { securityFail(c); return; }
       c.peerDevice = b._from;                          // ab jetzt Signale nur noch an das annehmende Geraet
       c.fps = X().sdpFingerprints(b.sdp);
-      c.pc.setRemoteDescription({ type: 'answer', sdp: b.sdp }).then(function () { applyRemoteIce(c); }).catch(function (e) { fail(c, T('Verbindung nicht aufgebaut: {err}', { err: e.message })); });
-    } else if (b.t === 'state') {
-      c.remoteState = { mic: b.mic !== false, cam: !!b.cam, screen: !!b.screen }; c.gotState = true; drawMedia(c); drawInfo(c);
-    }
+      c.peerCaps = capsOf(b);
+      c.pc.setRemoteDescription({ type: 'answer', sdp: b.sdp }).then(function () { c.established = true; applyRemoteIce(c); }).catch(function (e) { fail(c, T('Verbindung nicht aufgebaut: {err}', { err: e.message })); });
+    } else if (b.t === 'offer' && c.established && b._from === c.peerDevice) reOffer(c, b);
+    else if (b.t === 'answer' && c.established && b._from === c.peerDevice) reAnswer(c, b);
+    else if (b.t === 'state') {
+      var w = b.want && typeof b.want === 'object' && ['off', 'small', 'large'].indexOf(b.want.video) >= 0 ? b.want.video : 'large';
+      c.remoteState = { mic: b.mic !== false, cam: !!b.cam, screen: !!b.screen, pip: !!b.pip, want: w,
+                        path: PATHS.indexOf(b.path) >= 0 ? b.path : '' };
+      c.gotState = true; drawMedia(c); drawInfo(c); applyRates(c);
+    } else if (b.t === 'bye' && c.established && b._from === c.peerDevice) remoteEnded(c, { reason: 'hangup' });
   }
+  // --- 2.4: Neuverhandlung ("Perfect Negotiation") und ICE-Restart ------------------------------------------------------
+  function sdpBody(c, t, sdp, n) {
+    return { t: t, sdp: sdp, fp: X().sdpFingerprints(sdp), n: n, caps: myCaps(), media: c.media };
+  }
+  // Eigenes Angebot waehrend des Gespraechs (negotiationneeded, ICE-Restart). setLocalDescription() ohne Argument erzeugt
+  // das passende Angebot (inkl. iceRestart nach restartIce())
+  function offerNow(c, restart) {
+    var pc = c.pc;
+    c.makingOffer = true;
+    var p = restart && !pc.restartIce ? pc.createOffer({ iceRestart: true }).then(function (o) { return pc.setLocalDescription(o); }) : pc.setLocalDescription();
+    return p.then(function () {
+      if (C !== c || pc.signalingState !== 'have-local-offer') return;
+      c.n += 1;
+      return sendSignal(c, Object.assign(sdpBody(c, 'offer', pc.localDescription.sdp, c.n), c.restarting ? { restart: true } : {}));
+    }).catch(function () { /* naechster Versuch beim naechsten Anlass */ }).then(function () { c.makingOffer = false; });
+  }
+  function sameFp(c, b) { return fpOk(b) && JSON.stringify(X().sdpFingerprints(b.sdp)) === JSON.stringify(c.fps.slice().sort()); }
+  function reOffer(c, b) {
+    var pc = c.pc;
+    if (typeof b.n !== 'number' || b.n <= c.remoteN) return;           // alt oder doppelt
+    var collision = c.makingOffer || pc.signalingState !== 'stable';
+    c.ignoreOffer = !polite(c) && collision;
+    if (c.ignoreOffer) return;                                         // unhoeflich: eigenes Angebot gewinnt
+    // Der DTLS-Schluessel bleibt fuer die ganze Verbindung gleich: ein anderer Fingerabdruck waere ein Angriff
+    if (!sameFp(c, b)) { securityFail(c); return; }
+    c.remoteN = b.n;
+    if (capsOf(b).length) c.peerCaps = capsOf(b);
+    pc.setRemoteDescription({ type: 'offer', sdp: b.sdp }).then(function () {          // bei Kollision: implizites Rollback
+      applyRemoteIce(c);
+      return pc.setLocalDescription();
+    }).then(function () {
+      if (C !== c) return;
+      return sendSignal(c, sdpBody(c, 'answer', pc.localDescription.sdp, b.n)).then(function () { settled(c); });
+    }).catch(function () { /* Gegenueber versucht es erneut (ICE-Restart) */ });
+  }
+  function reAnswer(c, b) {
+    var pc = c.pc;
+    if (pc.signalingState !== 'have-local-offer' || b.n !== c.n) return;   // Antwort auf ein ueberholtes Angebot
+    if (!sameFp(c, b)) { securityFail(c); return; }
+    pc.setRemoteDescription({ type: 'answer', sdp: b.sdp }).then(function () { applyRemoteIce(c); settled(c); }).catch(function () {});
+  }
+  // Neuverhandlung abgeschlossen: steht ICE schon (Restart ohne Unterbrechung), gilt der Neuaufbau als fertig
+  function settled(c) {
+    var x = c.pc && c.pc.iceConnectionState;
+    if (C === c && c.pc.signalingState === 'stable' && (x === 'connected' || x === 'completed')) onConn(c);
+  }
+  // ICE neu aushandeln (Netzwechsel WLAN <-> LTE, Verbindung weg). Nur mit einer 2.4-Gegenstelle; sonst wie bisher.
+  // Hoechstens RESTART_MAX Versuche je Abbruch (zurueckgesetzt, sobald die Verbindung wieder steht); kommt sie nach
+  // FAIL_S Sekunden nicht wieder, endet der Anruf wie bisher
+  function restartIce(c) {
+    if (!c || C !== c || !c.pc || c.done || !c.established || !canReneg(c)) return false;
+    if (c.restarting && Date.now() - c.restartAt < 6000) return true;
+    if (c.tries >= RESTART_MAX) return false;
+    c.restarting = true; c.restartAt = Date.now(); c.restarts += 1; c.tries = (c.tries || 0) + 1;
+    status(c, T('Verbindung wird neu aufgebaut …'));
+    if (!c.failT) c.failT = setTimeout(function () { c.failT = null; if (C === c && c.restarting) iceFailed(c); }, FAIL_S * 1000);
+    if (c.pc.restartIce) c.pc.restartIce();                       // -> negotiationneeded -> offerNow
+    else offerNow(c, true);
+    return true;
+  }
+  var netT = null;
+  function netChanged() {
+    clearTimeout(netT);
+    netT = setTimeout(function () { var c = C; if (c && c.connected && !c.done) restartIce(c); }, 800);
+  }
+  window.addEventListener('online', netChanged);
+  if (navigator.connection && navigator.connection.addEventListener) navigator.connection.addEventListener('change', netChanged);
   function fpOk(b) {
     var fp = X().sdpFingerprints(b.sdp);
     return fp.length > 0 && JSON.stringify(fp) === JSON.stringify((b.fp || []).slice().sort());
   }
-  function signalIn(d) {
+  function signalIn(d) {   // (2.4: Reihenfolge je Geraet bleibt - die Signale kommen in seq-Folge an)
     var c = C;
     if (!c || d.call_id !== c.id || !bridge() || d.to_device !== myDev().id || c.seen[d.seq]) return;
     c.seen[d.seq] = true;
@@ -343,8 +487,10 @@
   function dial(c, again) {
     status(c, T('Verbinde …'));
     c.id = c.id || X().hex(16);
-    var sdp = c.pc.localDescription.sdp, body = JSON.stringify({ t: 'offer', sdp: sdp, media: c.media, fp: X().sdpFingerprints(sdp) });
-    return api('POST', '/api/calls', { id: c.id, chat_id: c.chat_id, media: c.media, device: myDev().id, signals: sealAll(c, Object.keys(c.peerDevs), body) })
+    var sdp = c.pc.localDescription.sdp, me_ = myDev().id;
+    c.n = 1;
+    var body = function (id) { return JSON.stringify(Object.assign(sdpBody(c, 'offer', sdp, 1), { pc: pair(me_, id) })); };
+    return api('POST', '/api/calls', { id: c.id, chat_id: c.chat_id, media: c.media, device: me_, signals: sealAll(c, Object.keys(c.peerDevs), body), caps: myCaps() })
       .then(function (r) {
         if (C !== c) { api('POST', '/api/calls/' + c.id + '/end', { reason: 'hangup' }).catch(function () {}); return; }
         c.ready = true; c.call = r.call;
@@ -383,6 +529,8 @@
       });
       if (!offer || !fpOk(offer)) { securityFail(c); throw null; }
       c.peerDevice = c.call.caller_device; c.fps = X().sdpFingerprints(offer.sdp);
+      c.peerCaps = capsOf(offer); c.remoteN = typeof offer.n === 'number' ? offer.n : 1;
+      if (typeof offer.pc === 'string' && /^[0-9a-f:]{1,200}$/.test(offer.pc)) c.pcFixed = offer.pc;
       return mediaHint(c, video);
     }).then(function (s) {
       if (C !== c) { s.getTracks().forEach(function (t) { t.stop(); }); throw null; }
@@ -394,12 +542,12 @@
     }).then(function () {
       return c.pc.createAnswer();
     }).then(function (a) { return c.pc.setLocalDescription(a); }).then(function () {
-      var sdp = c.pc.localDescription.sdp, body = JSON.stringify({ t: 'answer', sdp: sdp, fp: X().sdpFingerprints(sdp) });
+      var sdp = c.pc.localDescription.sdp, body = JSON.stringify(Object.assign(sdpBody(c, 'answer', sdp, c.remoteN), { pc: pcId(c) }));
       var sig = {}; sig[c.peerDevice] = seal(c, c.peerDevice, body);
-      return api('POST', '/api/calls/' + id + '/answer', { device: dev, signals: sig });
+      return api('POST', '/api/calls/' + id + '/answer', { device: dev, signals: sig, caps: myCaps() });
     }).then(function () {
       if (C !== c) return;
-      c.ready = true; c.t0 = 0;
+      c.ready = true; c.t0 = 0; c.established = true;
       status(c, T('Verbinde …'));
       applyRemoteIce(c); flushIce(c); aliveOn(c); stateOut(c);
       var early = c.early.splice(0);
@@ -414,20 +562,35 @@
   // --- Verbindung, Pruefung, Qualitaet ---------------------------------------------------------------------------------
   function onConn(c) {
     if (C !== c || !c.pc) return;
-    var st = c.pc.connectionState || c.pc.iceConnectionState;
-    if (st === 'connected' || st === 'completed') {
-      if (!c.connected) { c.connected = true; c.t0 = Date.now(); stopTone(); clearTimeout(c.connT); checkPath(c); stateOut(c); }
-      status(c, ''); tick(c);
-    } else if (st === 'disconnected') status(c, T('Verbindung unterbrochen – versuche es weiter …'));
-    else if (st === 'failed') iceFailed(c);
+    var st = c.pc.connectionState || c.pc.iceConnectionState, ice = c.pc.iceConnectionState;
+    if ((st === 'connected' || st === 'completed') && ice !== 'failed' && ice !== 'disconnected') {
+      clearTimeout(c.failT); clearTimeout(c.discT); c.discT = null; c.failT = null; c.tries = 0;
+      if (c.restarting) { c.restarting = false; c.path = ''; c.net = ''; }
+      if (!c.connected) { c.connected = true; c.t0 = Date.now(); stopTone(); clearTimeout(c.connT); stateOut(c); }
+      status(c, ''); tick(c); poll(c);
+    } else if (st === 'disconnected' || ice === 'disconnected') {
+      status(c, T('Verbindung unterbrochen – versuche es weiter …'));
+      // 2.4: kommt die Verbindung nicht von selbst wieder (Netzwechsel), ICE neu aushandeln
+      if (!c.discT) c.discT = setTimeout(function () { c.discT = null; var x = c.pc && c.pc.iceConnectionState; if (C === c && (x === 'disconnected' || x === 'failed')) restartIce(c); }, DISC_S * 1000);
+    } else if (st === 'failed' || ice === 'failed') {
+      if (!restartIce(c) && !c.failT) iceFailed(c);     // laufende Frist (failT) abwarten, sonst wie bisher beenden
+    }
   }
   function iceFailed(c) {
     fail(c, cfg && cfg.turn ? T('Keine Verbindung möglich – auch nicht über den TURN-Server. Bitte später erneut versuchen.')
       : T('Direktverbindung nicht möglich (z. B. strenge Firewall oder Mobilfunknetz). Der Admin kann einen TURN-Server eintragen.'), 'failed');
   }
   // Nach dem Verbinden: DTLS-Fingerabdruck des Gegenuebers (getStats) muss zur SIGNIERTEN SDP passen; Weg (direkt/Relais)
-  function checkPath(c) {
+  // Alle 2 s ein getStats: Fingerabdruck pruefen, Weg erkennen, Qualitaet, Bitrate-Regeln anwenden
+  function poll(c) {
+    if (!c.pc) return;
     c.pc.getStats().then(function (rep) {
+      if (C !== c) return;
+      checkPath(c, rep); quality(c, rep); applyRates(c);
+    }).catch(function () {});
+  }
+  function checkPath(c, rep) {
+    (function () {
       var tr = null, pair = null, certFp = null, byId = {};
       rep.forEach(function (s) { byId[s.id] = s; if (s.type === 'transport' && !tr) tr = s; });
       if (tr && tr.remoteCertificateId && byId[tr.remoteCertificateId]) {
@@ -441,13 +604,49 @@
       if (pair) {
         var l = byId[pair.localCandidateId], r = byId[pair.remoteCandidateId];
         c.path = (l && l.candidateType === 'relay') || (r && r.candidateType === 'relay') ? 'relay' : 'direct';
+        // 2.4: genauer Weg fuer die Bitrate-Regeln. Ob das GEGENUEBER ueber TCP relayt, sieht man hier nicht - das meldet
+        // es selbst in state.path
+        // ICE-TCP ohne Relais hat dieselben Nachteile (Head-of-Line-Blocking) -> Grenzen von "Relais TCP"
+        var net = l && l.candidateType === 'relay' ? (/^(tcp|tls)$/.test(String(l.relayProtocol || l.protocol || '').toLowerCase()) ? 'relay-tcp' : 'relay-udp')
+          : l && String(l.protocol || '').toLowerCase() === 'tcp' ? 'relay-tcp' : c.path === 'relay' ? 'relay-udp' : 'direct';
+        if (net !== c.net) { c.net = net; if (c.connected) stateOut(c); }
       }
       drawInfo(c);
-    }).catch(function () {});
+    })();
   }
-  function quality(c) {
-    if (!c.pc) return;
-    c.pc.getStats().then(function (rep) {
+  // Schlechterer Weg von beiden Seiten
+  function pathOf(c) {
+    var a = PATHS.indexOf(c.net), b = PATHS.indexOf(c.remoteState.path);
+    return PATHS[Math.max(a, b, 0)];
+  }
+  // Sende-Parameter nach §1.3 setzen (nur bei Aenderung; setParameters ist billig, aber nicht kostenlos)
+  function applyRates(c) {
+    if (!c.pc || !c.pc.getSenders || C !== c) return;
+    var path = pathOf(c), want = c.remoteState.want || 'large';
+    c.pc.getSenders().forEach(function (snd) {
+      var tr = snd.track; if (!tr || !snd.getParameters || !snd.setParameters) return;
+      var kind = tr.kind === 'audio' ? 'audio' : tr === c.screen ? 'screen' : 'cam';
+      var h = 0; try { h = (tr.getSettings && tr.getSettings().height) || 0; } catch (e) { h = 0; }
+      var want_ = rules(kind, path, want, 2, h), key = kind + ':' + JSON.stringify(want_);
+      if (c.rates[tr.kind] === key) return;
+      var p = snd.getParameters();
+      if (!p.encodings || !p.encodings.length) return;                 // noch nicht ausgehandelt
+      var e = p.encodings[0];
+      ['maxBitrate', 'maxFramerate', 'scaleResolutionDownBy', 'active'].forEach(function (k) { if (want_[k] !== undefined) e[k] = want_[k]; });
+      if (kind !== 'screen' && e.maxFramerate && want_.maxFramerate === undefined) delete e.maxFramerate;
+      if (tr.kind === 'video') p.degradationPreference = want_.degradationPreference || 'balanced';
+      c.rates[tr.kind] = key;
+      var done = function () { c.applied = c.applied || {}; c.applied[tr.kind] = Object.assign({ kind: kind, path: path, want: want }, want_); };
+      snd.setParameters(p).then(done, function () {
+        // aeltere Browser kennen degradationPreference nicht: ohne nochmal (frische Parameter, neue Transaktion)
+        var q = snd.getParameters(); if (!q.encodings || !q.encodings.length) throw new Error('-');
+        ['maxBitrate', 'maxFramerate', 'scaleResolutionDownBy', 'active'].forEach(function (k) { if (want_[k] !== undefined) q.encodings[0][k] = want_[k]; });
+        return snd.setParameters(q).then(done);
+      }).catch(function () { if (c.rates[tr.kind] === key) delete c.rates[tr.kind]; });
+    });
+  }
+  function quality(c, rep) {
+    (function () {
       var lost = 0, recv = 0, rtt = null, bytes = 0, ai = null, ao = null;
       rep.forEach(function (s) {
         if (s.type === 'inbound-rtp') { lost += s.packetsLost || 0; recv += s.packetsReceived || 0; bytes += s.bytesReceived || 0; }
@@ -462,7 +661,7 @@
       c.q = rtt == null && !dr ? '' : (loss > 0.08 || rtt > 0.6) ? 'bad' : (loss > 0.02 || rtt > 0.3) ? 'mid' : 'good';
       c.bytesIn = bytes;
       drawInfo(c);
-    }).catch(function () {});
+    })();
   }
   // Ton-Diagnose aus getStats: kommen Audio-Pakete an, spielt das <audio>-Element sie ab, geht eigener Ton raus?
   function soundStats(c, ai, ao) {
@@ -530,7 +729,7 @@
   }
   function tick(c) {
     clearInterval(c.statsT);
-    c.statsT = setInterval(function () { if (C !== c) return clearInterval(c.statsT); quality(c); drawInfo(c); if (!c.path) checkPath(c); }, 2000);
+    c.statsT = setInterval(function () { if (C !== c) return clearInterval(c.statsT); poll(c); }, 2000);
   }
   function aliveOn(c) {
     clearInterval(c.alive);
@@ -541,10 +740,24 @@
   }
 
   // --- Bedienung -------------------------------------------------------------------------------------------------
-  function stateOut(c) { if (c.ready) sendSignal(c, { t: 'state', mic: c.mic, cam: !!(c.cam && c.cam.readyState === 'live' && c.cam.enabled), screen: !!c.screen }); }
+  // Zustand ans Gegenueber. 2.4: dazu pip, want (wie gross es uns zeigen soll) und path - immer, auch ohne reneg
+  // (aeltere Gegenstellen ignorieren die Felder)
+  function wantNow(c) { return c.pip || document.visibilityState === 'hidden' ? 'small' : 'large'; }
+  function stateOut(c) {
+    if (!c.ready) return;
+    c.wantSent = wantNow(c);
+    sendSignal(c, { t: 'state', mic: c.mic, cam: !!(c.cam && c.cam.readyState === 'live' && c.cam.enabled), screen: !!c.screen,
+                    pip: !!c.pip, want: { video: c.wantSent }, path: c.net || undefined });
+  }
+  var visT = null;
+  document.addEventListener('visibilitychange', function () {
+    clearTimeout(visT);
+    visT = setTimeout(function () { var c = C; if (c && c.connected && !c.done && wantNow(c) !== c.wantSent) stateOut(c); }, 600);
+  });
   function toggleMic(c) {
     c.mic = !c.mic;
     (c.local ? c.local.getAudioTracks() : []).forEach(function (t) { t.enabled = c.mic; });
+    try { if (navigator.mediaSession && navigator.mediaSession.setMicrophoneActive) navigator.mediaSession.setMicrophoneActive(c.mic); } catch (e) { /* egal */ }
     drawCtl(c); stateOut(c);
   }
   function toggleCam(c) {
@@ -557,7 +770,7 @@
     navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } }).then(function (s) {
       if (C !== c) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
       c.cam = s.getVideoTracks()[0]; c.local.addTrack(c.cam);
-      if (snd && !c.screen) snd.replaceTrack(c.cam);
+      if (snd && !c.screen) snd.replaceTrack(c.cam).then(function () { delete c.rates.video; applyRates(c); });
       drawMedia(c); drawCtl(c); stateOut(c);
     }).catch(function (e) { HK.toast(mediaError(e, true)); });
   }
@@ -568,18 +781,20 @@
       if (C !== c) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
       c.screen = s.getVideoTracks()[0];
       c.screen.onended = function () { if (C === c && c.screen) stopScreen(c); };
-      snd.replaceTrack(c.screen);
+      try { c.screen.contentHint = 'detail'; } catch (e) { /* aeltere Browser */ }
+      snd.replaceTrack(c.screen).then(function () { delete c.rates.video; applyRates(c); });
       drawMedia(c); drawCtl(c); stateOut(c);
     }).catch(function (e) { if (e && e.name !== 'NotAllowedError' && e.name !== 'AbortError') HK.toast(T('Bildschirm teilen nicht möglich: {err}', { err: e.message })); });
   }
   function stopScreen(c) {
     var snd = c.pc && videoSender(c);
     if (c.screen) { c.screen.onended = null; c.screen.stop(); c.screen = null; }
-    if (snd) snd.replaceTrack(c.cam || null);
+    if (snd) snd.replaceTrack(c.cam || null).then(function () { delete c.rates.video; applyRates(c); });
     drawMedia(c); drawCtl(c); stateOut(c);
   }
   function hangup(c) {
     if (C !== c) return;
+    if (c.established && peerCan(c, 'bye') && !c.ending) sendSignal(c, { t: 'bye', reason: 'hangup' });
     if (c.id && !c.ending) api('POST', '/api/calls/' + c.id + '/end', { reason: 'hangup', connected: c.connected }).catch(function () {});
     finish(c, c.connected ? T('Anruf beendet · {d}', { d: dur((Date.now() - c.t0) / 1000) }) : T('Anruf beendet'));
   }
@@ -608,7 +823,8 @@
   function finish(c, msg, kind) {
     if (c.done) return;
     c.done = true; c.ending = true;
-    clearInterval(c.alive); clearInterval(c.statsT); clearTimeout(c.outT); clearTimeout(c.connT);
+    clearInterval(c.alive); clearInterval(c.statsT); clearTimeout(c.outT); clearTimeout(c.connT); clearTimeout(c.failT); clearTimeout(c.discT);
+    pipClose(c); mediaSession(null);
     stopTone(); if (kind !== 'error' && c.ready) playTone('end');
     [c.local, c.screen && { getTracks: function () { return [c.screen]; } }].forEach(function (s) { if (s) s.getTracks().forEach(function (t) { t.stop(); }); });
     if (c.cam) c.cam.stop();
@@ -638,13 +854,19 @@
     stage.appendChild(rv); stage.appendChild(ra); stage.appendChild(who); stage.appendChild(lv);
     var top = el('div', 'cl-top'), info = el('div', 'cl-info'), st = el('div', 'cl-status'); st.setAttribute('role', 'status');
     var mini = btn('▭', 'cl-mini cl-shrink', function () { w.classList.toggle('small'); }, T('Kleiner/größer'));
-    top.appendChild(info); top.appendChild(mini);
+    // 2.4: Bild-im-Bild - nur, wo der Browser es kann (Document-PiP mit eigenen Knoepfen, sonst Video-PiP)
+    var pipB = btn(icon('pip'), 'cl-mini cl-pip', function () { togglePip(c); }, T('Bild-im-Bild'));
+    pipB.hidden = true;
+    rv.addEventListener('enterpictureinpicture', function () { pipSet(c, true); });
+    rv.addEventListener('leavepictureinpicture', function () { if (!c.pipWin) pipSet(c, false); });
+    top.appendChild(info); top.appendChild(pipB); top.appendChild(mini);
     var ctl = el('div', 'cl-ctl');
     var un = btn(T('Ton einschalten'), 'cl-pill cl-unmute', function () { playAudio(c); }, T('Der Browser hat den Ton blockiert – tippen, um ihn einzuschalten'));
     un.hidden = true;
     w.appendChild(stage); w.appendChild(top); w.appendChild(un); w.appendChild(st); w.appendChild(ctl);
     document.body.appendChild(w);
-    c.ui = { w: w, rv: rv, ra: ra, lv: lv, who: who, info: info, st: st, ctl: ctl, un: un };
+    c.ui = { w: w, rv: rv, ra: ra, lv: lv, who: who, info: info, st: st, ctl: ctl, un: un, pipB: pipB };
+    mediaSession(c);
     unlockAudio(c);                                    // laeuft im Klick "Anrufen"/"Annehmen"
     bindRemote(c);
     drawPeer(c); drawCtl(c); drawInfo(c);
@@ -690,6 +912,8 @@
     c.ui.lv.hidden = !mine;
     c.ui.w.classList.toggle('screen', !!c.screen);
     if (show && c.ui.rv.srcObject && c.ui.rv.paused) c.ui.rv.play().catch(function () {});
+    pipBtn(c, show);
+    pipDraw(c);
     playAudio(c);
   }
   function drawCtl(c) {
@@ -704,6 +928,95 @@
       s.setAttribute('aria-pressed', String(!!c.screen)); x.appendChild(s);
     }
     x.appendChild(btn(icon('phone'), 'cl-round cl-red', function () { hangup(c); }, T('Auflegen')));
+    pipBtn(c, c.ui.w.classList.contains('has-video'));
+    pipDraw(c);
+  }
+
+  // --- 2.4: Bild-im-Bild -----------------------------------------------------------------------------------------------
+  // Document-PiP (Chromium): eigenes kleines Fenster mit Fernbild, Stumm, Zurueck, Auflegen. Sonst Video-PiP des Fernbilds
+  // (Chrome/Edge/Safari; Knoepfe ueber Media Session, wo es geht). Firefox: kein API -> Knopf ausgeblendet. Im PiP und bei
+  // verstecktem Tab bittet der Client das Gegenueber per state.want um ein kleines Bild (spart Bandbreite und Akku).
+  function pipKind() {
+    if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') return 'doc';
+    if (document.pictureInPictureEnabled && window.HTMLVideoElement && typeof HTMLVideoElement.prototype.requestPictureInPicture === 'function') return 'video';
+    return '';
+  }
+  // Knopf nur, wo der Browser Bild-im-Bild kann (Video-PiP braucht ein Fernbild)
+  function pipBtn(c, show) {
+    var pk = pipKind(), b = c.ui && c.ui.pipB; if (!b) return;
+    b.hidden = !pk || (pk === 'video' && !show && !c.pip);
+    b.classList.toggle('on', !!c.pip); b.setAttribute('aria-pressed', String(!!c.pip));
+    b.title = c.pip ? T('Bild-im-Bild beenden') : T('Bild-im-Bild'); b.setAttribute('aria-label', b.title);
+  }
+  function pipSet(c, on) {
+    on = !!on;
+    if (c.pip === on) return;
+    c.pip = on;
+    if (c.ui && !c.done) drawMedia(c);
+    stateOut(c);
+  }
+  function togglePip(c) { if (c.pip) pipClose(c); else pipOpen(c); }
+  function pipOpen(c) {
+    var k = pipKind();
+    if (!k || !c.ui || c.done) return Promise.resolve(false);
+    if (k === 'doc') return window.documentPictureInPicture.requestWindow({ width: 360, height: 270 }).then(function (w) { pipDoc(c, w); return true; },
+      function () { return pipVideo(c); });
+    return pipVideo(c);
+  }
+  function pipVideo(c) {
+    var v = c.ui && c.ui.rv;
+    if (!v || !v.srcObject || v.readyState < 1 || !v.requestPictureInPicture) return Promise.resolve(false);
+    return v.requestPictureInPicture().then(function () { pipSet(c, true); return true; }, function () { return false; });
+  }
+  function pipDoc(c, w) {
+    if (C !== c || c.done) { w.close(); return; }
+    c.pipWin = w;
+    var d = w.document;
+    [].forEach.call(document.querySelectorAll('link[rel="stylesheet"]'), function (l) {
+      var n = d.createElement('link'); n.rel = 'stylesheet'; n.href = l.href; d.head.appendChild(n);
+    });
+    d.title = T('Anruf'); d.documentElement.className = document.documentElement.className;
+    if (document.documentElement.dataset.theme) d.documentElement.dataset.theme = document.documentElement.dataset.theme;
+    d.body.className = 'cl-pipdoc';
+    var mk = function (tag, cls, txt) { var x = d.createElement(tag); if (cls) x.className = cls; if (txt) x.textContent = txt; return x; };
+    var stage = mk('div', 'cl-pip-stage'), v = mk('video', 'cl-pip-v'), who = mk('div', 'cl-pip-who', (c.peer && (c.peer.name || c.peer.username)) || '');
+    v.autoplay = true; v.muted = true; v.playsInline = true; v.setAttribute('playsinline', '');
+    var ctl = mk('div', 'cl-pip-ctl');
+    stage.appendChild(v); stage.appendChild(who); d.body.appendChild(stage); d.body.appendChild(ctl);
+    c.pipUi = { d: d, v: v, stage: stage, ctl: ctl };
+    w.addEventListener('pagehide', function () { if (c.pipWin === w) { c.pipWin = null; c.pipUi = null; pipSet(c, false); } });
+    pipSet(c, true);
+    pipDraw(c);
+  }
+  function pipDraw(c) {
+    var u = c.pipUi; if (!u || !c.ui) return;
+    var src = c.ui.rv.srcObject, vid = c.ui.w.classList.contains('has-video');
+    if (u.v.srcObject !== src) { u.v.srcObject = src; if (src) u.v.play().catch(function () {}); }
+    u.stage.classList.toggle('has-video', vid);
+    u.ctl.textContent = '';
+    var m = btn(icon(c.mic ? 'mic' : 'micOff'), 'cl-round' + (c.mic ? '' : ' off'), function () { toggleMic(c); }, c.mic ? T('Stummschalten') : T('Mikrofon einschalten'));
+    m.setAttribute('aria-pressed', String(!c.mic));
+    u.ctl.appendChild(u.d.adoptNode(m));
+    u.ctl.appendChild(u.d.adoptNode(btn(icon('back'), 'cl-round', function () { pipClose(c); try { window.focus(); } catch (e) { /* egal */ } }, T('Zurück zum Anruffenster'))));
+    u.ctl.appendChild(u.d.adoptNode(btn(icon('phone'), 'cl-round cl-red', function () { hangup(c); }, T('Auflegen'))));
+  }
+  function pipClose(c) {
+    var w = c.pipWin;
+    c.pipWin = null; c.pipUi = null;
+    if (w) { try { w.close(); } catch (e) { /* schon zu */ } }
+    if (c.ui && document.pictureInPictureElement && document.pictureInPictureElement === c.ui.rv && document.exitPictureInPicture) {
+      document.exitPictureInPicture().catch(function () {});
+    }
+    pipSet(c, false);
+  }
+  // Media Session: Stumm/Auflegen in der Video-PiP-Ansicht, automatisches Bild-im-Bild beim Tab-Wechsel (Chrome)
+  function mediaSession(c) {
+    var ms = navigator.mediaSession; if (!ms || !ms.setActionHandler) return;
+    var set = function (a, fn) { try { ms.setActionHandler(a, fn); } catch (e) { /* Browser kennt die Aktion nicht */ } };
+    set('togglemicrophone', c ? function () { if (C === c) toggleMic(c); } : null);
+    set('hangup', c ? function () { if (C === c) hangup(c); } : null);
+    set('enterpictureinpicture', c ? function () { if (C === c && !c.pip) pipOpen(c); } : null);
+    try { if (c && ms.setMicrophoneActive) ms.setMicrophoneActive(c.mic); } catch (e) { /* egal */ }
   }
 
   // --- Live-Ereignisse ---------------------------------------------------------------------------------------------
@@ -791,6 +1104,14 @@
   window.HKCalls = { head: head, start: start, state: function () {
     return C ? { id: C.id, role: C.role, connected: C.connected, verified: C.verified, path: C.path, bytesIn: C.bytesIn || 0,
                  mic: C.mic, cam: !!C.cam, screen: !!C.screen, remote: C.remoteState,
-                 audio: Object.assign({ state: C.snd || '', blocked: !!C.audioBlocked }, C.audio || {}) } : null;
-  }, ringing: function () { return Object.keys(RINGS); } };
+                 audio: Object.assign({ state: C.snd || '', blocked: !!C.audioBlocked }, C.audio || {}),
+                 // 2.4 (saga-call v3)
+                 v3: { caps: myCaps(), peerCaps: C.peerCaps, established: C.established, pc: C.peerDevice ? pcId(C) : '', polite: C.peerDevice ? polite(C) : null,
+                       n: C.n, remoteN: C.remoteN, restarts: C.restarts, tries: C.tries || 0, restarting: C.restarting, net: C.net, pip: C.pip, pipKind: pipKind(),
+                       wantSent: C.wantSent, rates: C.applied || {}, sent: C.sent,
+                       signaling: C.pc ? C.pc.signalingState : '', ice: C.pc ? C.pc.iceConnectionState : '', ufrag: C.pc ? remoteUfrag(C) : null } } : null;
+  }, ringing: function () { return Object.keys(RINGS); },
+  // 2.4: fuer Tests und die Diagnose - ICE neu aushandeln (wie bei einem Netzwechsel), Bild-im-Bild, Regeltabelle
+  restartIce: function () { return restartIce(C); }, pip: function (on) { if (!C) return Promise.resolve(false); return on === false ? (pipClose(C), Promise.resolve(true)) : pipOpen(C); },
+  rules: rules, limits: { restartMax: RESTART_MAX, discS: DISC_S, failS: FAIL_S } };
 })();

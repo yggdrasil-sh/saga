@@ -45,6 +45,23 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Go-Tests in `media/`. Die Testinstanz von `tools/stack-remote.sh` läuft hinter `saga-media`. Messstufe `MEDIA` in
   `tools/perf/run.sh`, Grenzwerte in `tools/perf/limits.json`.
 
+### 2.4 Etappe E0 – Anruf-Fundament (Server und Web)
+
+- **saga-call v3:** Anrufe können während des Gesprächs neu ausgehandelt werden („Perfect Negotiation“). Bricht die
+  Verbindung ab oder wechselt das Netz (WLAN ↔ Mobilfunk), baut Saga sie per ICE-Restart neu auf, statt aufzulegen
+  (bis zu 3 Versuche, 20 s Frist). Signatur und Verschlüsselung bleiben unverändert, nur der signierte Inhalt hat neue
+  Felder (`pc`, `caps`, `n`, `state.pip/want/path`, `bye`). Mit Gegenstellen auf 2.1/2.3 läuft alles wie bisher.
+- **Bitrate je Verbindungsweg:** Kamera, Bildschirm und Ton passen sich an, je nachdem ob die Verbindung direkt, über
+  TURN per UDP oder über TURN per TCP/TLS (Port 443) läuft. Zeigt das Gegenüber das Bild nur klein (Bild-im-Bild, Tab im
+  Hintergrund), sendet Saga nur noch ≤ 300 kbit/s (gemessen 1,5 Mbit/s → 0,29 Mbit/s).
+- **Bild-im-Bild im Web:** Knopf im Anruffenster (Chrome/Edge: eigenes kleines Fenster mit Stumm, Zurück und Auflegen;
+  sonst Video-Bild-im-Bild). Ohne Browser-Unterstützung (z. B. Firefox) erscheint der Knopf nicht.
+- **Server:** `GET /api/calls/config` meldet `body_v`, `features` und `limits`; mehrere offer/answer je Anruf in beide
+  Richtungen, lokal und föderiert, mit einem Signal-Budget, das mit der Gesprächsdauer wächst (statt fester 600).
+  Migration 10 (Grundgerüst für Räume): `chat_call.v`, `topo`, `kind`, `caps_a`, `caps_b`.
+- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Anrufe: saga-call v3“ (Föderation: `APP-API-FED.md` §7.1).
+- **Messung:** `tools/perf/bench.py` misst die Anruf-Signalisierung, `tests/browser_calls.js` den Anrufaufbau.
+
 ## [2.3.0] – 2026-10-19
 
 Saga 2.3 ist das große Herbst-Update: spürbar schneller bei vielen Seiten und großen Datenbanken, Föderation mit

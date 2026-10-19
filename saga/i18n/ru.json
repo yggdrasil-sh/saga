@@ -2801,5 +2801,9 @@
  "Vorschau und Download laufen über dein Nextcloud-Konto, solange es verknüpft ist.": "Предпросмотр и скачивание идут через вашу учётную запись Nextcloud, пока она подключена.",
  "Zuletzt genutzt": "Последнее использование",
  "Über verbundene Server zeigen": "Показывать через подключённые серверы",
- "Anfrage annehmen": "Принять запрос"
+ "Anfrage annehmen": "Принять запрос",
+ "Bild-im-Bild": "Картинка в картинке",
+ "Bild-im-Bild beenden": "Выйти из режима «картинка в картинке»",
+ "Zurück zum Anruffenster": "Вернуться в окно звонка",
+ "Verbindung wird neu aufgebaut …": "Переподключение …"
 }

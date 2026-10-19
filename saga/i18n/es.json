@@ -2801,5 +2801,9 @@
  "Vorschau und Download laufen über dein Nextcloud-Konto, solange es verknüpft ist.": "La vista previa y la descarga usan tu cuenta de Nextcloud mientras esté vinculada.",
  "Zuletzt genutzt": "Último uso",
  "Über verbundene Server zeigen": "Mostrar a través de servidores conectados",
- "Anfrage annehmen": "Aceptar solicitud"
+ "Anfrage annehmen": "Aceptar solicitud",
+ "Bild-im-Bild": "Imagen en imagen",
+ "Bild-im-Bild beenden": "Salir de imagen en imagen",
+ "Zurück zum Anruffenster": "Volver a la ventana de llamada",
+ "Verbindung wird neu aufgebaut …": "Reconectando …"
 }
