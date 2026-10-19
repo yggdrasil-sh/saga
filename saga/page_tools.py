@@ -94,14 +94,23 @@ def api_trash_empty(request: Request):
     return JSONResponse({"purged": len(ids)})
 
 
+# Versionen (2.3): ansehen und wiederherstellen ab Rolle 'edit' (vorher nur der Eigentuemer) - auch fuer Personen
+# anderer Saga-Instanzen (saga.fed_pages). Die Fassungen bleiben beim Eigentuemer; Verweise auf Seiten ohne Zugriff
+# zeigen Nicht-Eigentuemern wie beim Lesen nur den Platzhalter.
+VERSION_ROLE = "edit"
+
+
 @router.get("/api/notes/{nid}/versions")
 def api_versions(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid                              # Versionen: nur der Eigentuemer (sie bleiben bei ihm)
+    return versions_list(uid, nid)
+
+
+def versions_list(uid, nid):
     with _db() as c:
-        _, _, err = access(c, uid, nid, "owner")
+        owner, _, err = access(c, uid, nid, VERSION_ROLE)
         if err is not None:
             return err
         if not c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone():
@@ -109,10 +118,10 @@ def api_versions(nid: int, request: Request):
         rows = c.execute("SELECT id, title, created, length(body), author FROM note_version WHERE uid=? AND note_id=? "
                          "ORDER BY created DESC", (owner, nid)).fetchall()
         nm = names(c, [r[4] for r in rows])
-    # author: wer diese Fassung geschrieben hat (None = du selbst bzw. unbekannt); by: "me" | "other" | "unknown" (BUG-092)
+    # author: wer diese Fassung geschrieben hat (None = Eigentuemer bzw. unbekannt); by: "me" | "other" | "unknown" (BUG-092)
     return JSONResponse([{"id": r[0], "title": r[1] or "", "created": r[2], "size": r[3] or 0,
-                          "author": person(c, r[4], uid, nm) if r[4] and r[4] != owner else None,
-                          "by": "me" if r[4] == owner else "other" if r[4] else "unknown"} for r in rows],
+                          "author": person(c, r[4], uid, nm) if r[4] and r[4] != uid else None,
+                          "by": "me" if r[4] == uid else "other" if r[4] else "unknown"} for r in rows],
                         headers={"Cache-Control": "no-store"})
 
 
@@ -121,16 +130,21 @@ def api_version_get(nid: int, vid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid                              # Versionen: nur der Eigentuemer
+    return version_get(uid, nid, vid)
+
+
+def version_get(uid, nid, vid):
     with _db() as c:
-        _, _, err = access(c, uid, nid, "owner")
+        acc = Access(c, uid)
+        owner, role, err = access(c, uid, nid, VERSION_ROLE, acc)
         if err is not None:
             return err
         r = c.execute("SELECT v.title, v.body, v.format, v.created FROM note_version v JOIN note n ON n.id=v.note_id AND n.uid=v.uid "
-                      "WHERE v.id=? AND v.note_id=? AND v.uid=? AND n.deleted_at IS NULL", (vid, nid, owner)).fetchone()
+                      "WHERE v.id=? AND v.note_id=? AND v.uid=? AND n.deleted_at IS NULL", (vid, nid, owner)).fetchone() if 0 < vid < 2 ** 63 else None
+        body = (mask_links(r[1], r[2], viewer(acc)) if role != "owner" else r[1]) if r else None
     if not r:
         return _bad("not found", 404)
-    return JSONResponse({"title": r[0] or "", "created": r[3], "text": _note_text(r[2], r[1], True)[:5000]},
+    return JSONResponse({"title": r[0] or "", "created": r[3], "text": _note_text(r[2], body, True)[:5000]},
                         headers={"Cache-Control": "no-store"})
 
 
@@ -139,24 +153,30 @@ def api_version_restore(nid: int, vid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid                              # Version wiederherstellen: nur der Eigentuemer
+    return version_restore(uid, nid, vid, origin_of(request))
+
+
+def version_restore(uid, nid, vid, origin=None):
     with _db() as c, c:
-        _, _, err = access(c, uid, nid, "owner")
+        owner, role, err = access(c, uid, nid, VERSION_ROLE)
         if err is not None:
             return err
-        cur = c.execute("SELECT title, body, format, updated_by FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
-        v = c.execute("SELECT title, body, format FROM note_version WHERE id=? AND note_id=? AND uid=?", (vid, nid, owner)).fetchone()
+        cur = c.execute("SELECT title, body, format, updated_by, locked FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
+        v = c.execute("SELECT title, body, format FROM note_version WHERE id=? AND note_id=? AND uid=?", (vid, nid, owner)).fetchone() \
+            if 0 < vid < 2 ** 63 else None
         if not cur or not v:
             return _bad("not found", 404)
+        if cur[4] and role != "owner":                  # gesperrte Seite: nur der Eigentuemer
+            return JSONResponse({"error": t("Seite ist gesperrt – erst entsperren")}, status_code=423)
         now = time.time()
-        _snapshot(c, owner, nid, cur, now, force=True, author=cur[3])       # aktueller Stand bleibt als Version erhalten
+        _snapshot(c, owner, nid, cur[:4], now, force=True, author=cur[3], by=uid)       # aktueller Stand bleibt als Version erhalten
         c.execute("UPDATE note SET title=?, body=?, format=?, updated=?, rev=rev+1, updated_by=? WHERE id=? AND uid=?",
                   (v[0], v[1], v[2], now, uid, nid, owner))
         rev = c.execute("SELECT rev FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()[0]
-        announce_tree(c, owner, nid, [nid], uid, now, False, rev, origin=origin_of(request))       # Live: Version zurueck (BUG-033)
+        announce_tree(c, owner, nid, [nid], uid, now, False, rev, origin=origin)       # Live: Version zurueck (BUG-033)
         if v[0] != cur[0]:
-            tree_changed(c, owner, [nid], "updated", origin_of(request))                      # anderer Titel im Baum
-    return JSONResponse({"ok": True, "updated": now})
+            tree_changed(c, owner, [nid], "updated", origin)                      # anderer Titel im Baum
+    return JSONResponse({"ok": True, "updated": now, "rev": rev})
 
 
 # --- Markdown-Export -------------------------------------------------------------
@@ -241,6 +261,11 @@ def api_note_export(nid: int, request: Request, sub: int = 0):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
+    return note_export(uid, nid, sub)
+
+
+def note_export(uid, nid, sub=0):
+    """Fuer die Weboberflaeche und die Foederation (uid = fremde Person: nur, was sie sehen darf)."""
     with _db() as c:                     # erst ohne Inhalte (Baum, Titel, Eigenschaften); Inhalte nur fuer exportierte Seiten
         acc = Access(c, uid)
         owner, role, err = access(c, uid, nid, "view", acc)      # Lesen reicht; fremde Seiten: nur was ich sehen darf

@@ -89,6 +89,12 @@ try:
         cols = {r[0] for r in c.execute("SELECT column_name FROM information_schema.columns WHERE table_name IN "
                                         "('chat','chat_member','chat_msg','chat_call')")}
     ok("Migration 8 beliebig oft ausfuehrbar, Spalten da", {"ref", "home_peer", "fseq", "fstate", "state", "sender_handle", "ai", "peer_id"} <= cols)
+    # 2.3: Migration 9 (Teilen ueber Servergrenzen: Uploads fremder Personen in file) - idempotent
+    ok("Schema 2.3: Migration 9 vorhanden", db.SCHEMA_VERSION >= 9 and 9 in db.MIGRATIONS)
+    with psycopg.connect(db.DATABASE_URL) as c:
+        c.execute(db.MIGRATIONS[9]); c.execute(db.MIGRATIONS[9])
+        cols = {r[0] for r in c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='file'")}
+    ok("Migration 9 beliebig oft ausfuehrbar, Spalten da", {"fed_by", "fed_note"} <= cols)
     real = db.SCHEMA_VERSION
     db.SCHEMA_VERSION = 5                          # so sieht 2.0.x / eine aeltere 2.1-Testversion die Datenbank
     try:

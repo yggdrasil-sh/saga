@@ -90,6 +90,33 @@ def files_gc(min_age=86400):
     return removed
 
 
+# 2.3 (saga.fed_pages): Upload in eine Seite einer anderen Saga-Instanz - fn(uid, nid, name, data, image) -> Antwort
+FED_UPLOAD = None
+FED_COPY = None              # fn(uid, url, note) -> Antwort: Bild/Datei einer fremden Seite in dieselbe Seite kopieren
+
+
+def store_upload(owner, name, data, img, fed_by=None, fed_note=None, fed_quota=None):
+    """Datei speichern (Quote des Eigentuemers; fed_by: fremde Person, die hochlaedt - zusaetzlich ihre eigene Grenze
+    fed_quota). -> (antwort-dict, None) oder (None, fehlerantwort)."""
+    with _db() as c, c:
+        c.execute("SELECT pg_advisory_xact_lock(hashtext(?))", ("file:" + owner,))
+        used = c.execute("SELECT COALESCE(SUM(size),0) FROM file WHERE uid=?", (owner,)).fetchone()[0]
+        if used + len(data) > FILE_QUOTA:
+            return None, JSONResponse({"success": 0, "error": t("Speicherplatz voll (max. {n} MB)", n=FILE_QUOTA // 1048576)}, status_code=507)
+        if fed_by is not None and fed_quota is not None:
+            mine = c.execute("SELECT COALESCE(SUM(size),0) FROM file WHERE uid=? AND fed_by=?", (owner, fed_by)).fetchone()[0]
+            if mine + len(data) > fed_quota:
+                return None, JSONResponse({"success": 0, "error": t("Speicherplatz für Personen anderer Saga-Server voll (max. {n} MB)",
+                                                                    n=max(1, fed_quota // 1048576))}, status_code=507)
+        fid = os.urandom(12).hex()
+        with open(os.path.join(FILES_DIR, fid), "wb") as f:
+            f.write(data)
+        c.execute("INSERT INTO file (id, uid, name, mime, size, is_image, created, fed_by, fed_note) VALUES (?,?,?,?,?,?,?,?,?)",
+                  (fid, owner, name, img or "application/octet-stream", len(data), 1 if img else 0, time.time(), fed_by, fed_note))
+    ext = name.rsplit(".", 1)[-1].lower()[:10] if "." in name else ""
+    return {"success": 1, "file": {"url": f"/files/{fid}", "name": name, "size": len(data), "extension": ext, "title": name}}, None
+
+
 def upload_owner(uid, note):
     """Wem gehoert eine neue Datei? Ohne Seite: mir. Mit Seite: deren Eigentuemer, wenn ich sie bearbeiten darf.
     -> (eigentuemer, fehlerantwort)"""
@@ -131,7 +158,9 @@ async def api_file_upload(request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner, err = upload_owner(uid, request.headers.get("x-saga-note") or request.query_params.get("note"))
+    note = request.headers.get("x-saga-note") or request.query_params.get("note")
+    fed = FED_UPLOAD is not None and isinstance(note, str) and re.fullmatch(r"-[1-9][0-9]{0,17}", note.strip() or "")
+    owner, err = (None, None) if fed else upload_owner(uid, note)
     if err is not None:
         return err
     if int(request.headers.get("content-length") or 0) > FILE_MAX + 64 * 1024:
@@ -149,18 +178,11 @@ async def api_file_upload(request: Request):
     img = _sniff_image(data[:16])
     if "image" in form and not img:
         return JSONResponse({"success": 0, "error": t("kein unterstütztes Bild (PNG, JPEG, GIF, WebP)")}, status_code=415)
-    with _db() as c, c:
-        used = c.execute("SELECT COALESCE(SUM(size),0) FROM file WHERE uid=?", (owner,)).fetchone()[0]
-        if used + len(data) > FILE_QUOTA:
-            return JSONResponse({"success": 0, "error": t("Speicherplatz voll (max. {n} MB)", n=FILE_QUOTA // 1048576)}, status_code=507)
-        fid = os.urandom(12).hex()
-        with open(os.path.join(FILES_DIR, fid), "wb") as f:
-            f.write(data)
-        c.execute("INSERT INTO file (id, uid, name, mime, size, is_image, created) VALUES (?,?,?,?,?,?,?)",
-                  (fid, owner, name, img or "application/octet-stream", len(data), 1 if img else 0, time.time()))
-    ext = name.rsplit(".", 1)[-1].lower()[:10] if "." in name else ""
-    return JSONResponse({"success": 1, "file": {"url": f"/files/{fid}", "name": name, "size": len(data),
-                                               "extension": ext, "title": name}})
+    if fed:                                  # Seite einer anderen Saga-Instanz: Datei liegt beim Eigentuemer (saga.fed_pages)
+        from starlette.concurrency import run_in_threadpool
+        return await run_in_threadpool(FED_UPLOAD, uid, int(note), name, data, "image" in form)
+    out, err = store_upload(owner, name, data, img)
+    return err if err is not None else JSONResponse(out)
 
 
 @router.post("/api/files/copy")
@@ -173,11 +195,20 @@ async def api_file_copy(request: Request):
     if not uid:
         return _bad("unauthorized", 401)
     b = await _body(request)
-    m = re.fullmatch(r"/files/([0-9a-f]{24})", str((b or {}).get("url") or ""))
+    note = (b or {}).get("note")
+    if FED_COPY is not None and isinstance(note, int) and not isinstance(note, bool) and note < 0:
+        from starlette.concurrency import run_in_threadpool
+        return await run_in_threadpool(FED_COPY, uid, str((b or {}).get("url") or ""), note)
+    return file_copy(uid, str((b or {}).get("url") or ""), (b or {}).get("note"))
+
+
+def file_copy(uid, url, note):
+    """Fuer die Weboberflaeche und die Foederation (uid = fremde Person, note = Seite hier, die sie bearbeiten darf)."""
+    m = re.fullmatch(r"/files/([0-9a-f]{24})", url)
     if not m:
         return _bad(t("ungültige Angabe"))
     fid = m.group(1)
-    owner, err = upload_owner(uid, (b or {}).get("note"))
+    owner, err = upload_owner(uid, note)
     if err is not None:
         return err
     with _db() as c, c:

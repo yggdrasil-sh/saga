@@ -72,6 +72,10 @@ _left = {}               # uid -> Zeitpunkt, an dem die letzte Verbindung endete
 _buf = {}                # uid -> deque[(seq, zeit, nachricht, seite|None)]
 _lost = {}               # uid -> hoechste Nummer, die fuer dieses Konto NICHT mehr nachgeholt werden kann
 _presence = {}           # note_id -> {uid: [zeit, bearbeitet]}
+# 2.3 (saga.fed_pages): Seiten anderer Saga-Instanzen und Personen anderer Instanzen auf Seiten hier
+FED_PRESENCE = None      # fn(uid, negative_id, editing, leave, name) -> Antwort fuer POST /api/presence
+FED_WATCHERS = None      # fn(c, nid, me) -> [{username, name, editing, avatar, remote}] - fremde Personen auf der Seite (Abo)
+FED_FANOUT = None        # fn(kind, payload, anwesenheit) - im Thread nach jedem Seiten-Ereignis: an die Abos anderer Instanzen weitergeben
 _pres_hits = {}          # uid -> letzte Anwesenheitsmeldung (Bremse)
 
 
@@ -210,9 +214,11 @@ async def _dispatch():
                 _drop_user(payload.get("uid"))
                 continue
             aud = _audience()
-            if not aud:
+            if not aud and not (FED_FANOUT is not None and kind in ("note.changed", "presence", "comments.changed", "notes.tree")):
                 continue
             pres = {k: {u: bool(e[1]) for u, e in v.items()} for k, v in _presence.items()}     # Kopie fuer den Thread
+            if FED_FANOUT is not None and kind in ("note.changed", "presence", "comments.changed", "notes.tree"):
+                await asyncio.to_thread(FED_FANOUT, kind, payload, pres)
             out = await asyncio.to_thread(_resolve, kind, payload, aud, pres)
             for item in out:
                 uid, typ, data = item[:3]
@@ -409,6 +415,8 @@ def _resolve(kind, p, aud, pres):
             out += [(u, "_unpresent", nid) for u in here if u not in ok]
             nm = names(c, ok)
             users = [dict(_person(nm, u), editing=entries[u]) for u in ok]
+            if FED_WATCHERS is not None:
+                users += FED_WATCHERS(c, nid, None)
             for u in ok:
                 if u in aud:
                     out.append((u, "presence", {"note_id": nid, "users": [dict(x, me=x["username"] == u) for x in users]}))
@@ -641,6 +649,8 @@ def _here(c, uid, nid, entries):
     ok = [u for u in sorted(entries) if u == uid or Access(c, u).role(nid)]
     nm = names(c, ok + ([r[2]] if r[2] else []))
     users = [dict(_person(nm, u), editing=bool(entries[u][1])) for u in ok if u in entries]
+    if FED_WATCHERS is not None:
+        users += FED_WATCHERS(c, nid, uid)
     by = _person(nm, r[2]) if r[2] and r[2] != uid else None
     return {"rev": r[0], "updated": r[1], "by": by}, users
 
@@ -656,6 +666,10 @@ async def api_presence(request: Request):
     if b is None:
         return _bad("bad request")
     raw_id = b.get("note_id")                                # nur ganze Zahl (auch als Text) - nicht 1.5/true (BUG-083)
+    if FED_PRESENCE is not None and isinstance(raw_id, int) and not isinstance(raw_id, bool) and -2 ** 62 < raw_id < 0:
+        # 2.3: Seite einer anderen Saga-Instanz - Abo beim Eigentuemer-Server (saga.fed_pages), ohne Inhalt
+        name = request.session.get("name") or uid
+        return await asyncio.to_thread(FED_PRESENCE, uid, raw_id, b.get("editing") is True, bool(b.get("leave")), name)
     if isinstance(raw_id, bool) or not (isinstance(raw_id, int) or (isinstance(raw_id, str) and raw_id.isdigit())):
         return _bad("bad request")
     nid = int(raw_id)

@@ -20,8 +20,8 @@ from saga.core import BASE_URL, E, STATE_DIR, account_lang, _api_guard, _bad, _b
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
 from saga.comments import counts as comment_counts
-from saga.sharing import RANK, Access, access, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
-from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
+from saga.sharing import RANK, Access, access, is_remote, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
+from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
 
 router = APIRouter()
 
@@ -318,14 +318,29 @@ def note_get(uid, nid):
     return JSONResponse(d, headers={"Cache-Control": "no-store"})
 
 
+# 2.3 (saga.fed_pages): Unterseite in einer Seite einer anderen Saga-Instanz (parent_id negativ) - fn(uid, b, origin)
+FED_CREATE = None
+
+
 @router.post("/api/notes")
 async def api_note_add(request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner, role = uid, "owner"
     b = await _body(request) or {}
+    pid_raw = b.get("parent_id")
+    if FED_CREATE is not None and isinstance(pid_raw, (int, str)) and not isinstance(pid_raw, bool) and str(pid_raw).startswith("-"):
+        return await run_in_threadpool(FED_CREATE, uid, b, origin_of(request))
+    return note_create(uid, b, origin_of(request))
+
+
+def note_create(uid, b, origin=None):
+    """Neue Seite bzw. Unterseite (b: parent_id, title, icon, tags, kind, props) - fuer die Weboberflaeche und die
+    Foederation (uid = fremde Person '@name@host': nur als Unterseite einer Seite, die sie bearbeiten darf)."""
+    owner, role = uid, "owner"
     now = time.time()
+    if is_remote(uid) and b.get("parent_id") is None:      # fremde Person: nie eine eigene Seite hier
+        return _bad("not found", 404)
     with _db() as c, c:
         acc = Access(c, uid)
         if b.get("parent_id") is not None:
@@ -367,8 +382,8 @@ async def api_note_add(request: Request):
         if props and ps:                                   # zweiseitige Relationen: Gegenseite nachziehen
             _rel_sync(c, owner, _json_load(ps[0], {"props": []}), cur.lastrowid, {}, json.loads(props), _may_edit(acc, role))
         if parent:
-            announce_row(c, owner, cur.lastrowid, uid, now, origin_of(request))      # neue Zeile (BUG-049)
-        tree_changed(c, owner, [cur.lastrowid], "created", origin_of(request))
+            announce_row(c, owner, cur.lastrowid, uid, now, origin)      # neue Zeile (BUG-049)
+        tree_changed(c, owner, [cur.lastrowid], "created", origin)
         return JSONResponse({"id": cur.lastrowid, "updated": now})
 
 
@@ -641,25 +656,48 @@ async def api_note_move(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid                              # Verschieben: v1 nur der Eigentuemer
     b = await _body(request) or {}
+    return await run_in_threadpool(note_move, uid, nid, b, origin_of(request))
+
+
+def _chain_shares(c, owner, nid):
+    """Freigaben (Art, Ziel, Rolle) auf nid und allen Seiten darueber (Vererbung wie sharing.Access)."""
+    chain = note_chain(c, owner, nid) if nid is not None else []
+    if not chain:
+        return set()
+    return {tuple(r) for r in c.execute(f"SELECT target_type, target, role FROM note_share WHERE owner_uid=? AND note_id IN "
+                                        f"({','.join('?' * len(chain))})", (owner, *chain)).fetchall()}
+
+
+def note_move(uid, nid, b, origin=None):
+    """Verschieben fuer die Weboberflaeche und die Foederation. Eigentuemer: frei. Wer 'Bearbeiten' hat (2.3), darf
+    innerhalb eines geteilten Baums verschieben: Seite und neue Elternseite bearbeitbar, und die Freigaben ueber der
+    alten und der neuen Stelle sind genau dieselben - so bekommt niemand Zugriff dazu und niemand verliert ihn."""
     try:
         index = max(0, int(b.get("index", 0)))
     except (TypeError, ValueError):
         return _bad(t("ungültige Position"))
     with _db() as c, c:
-        _, _, err = access(c, uid, nid, "owner")
+        acc = Access(c, uid)
+        owner, role, err = access(c, uid, nid, "edit", acc)
         if err is not None:
             return err
         me = c.execute("SELECT parent_id FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
         if not me:
             return _bad("not found", 404)
+        if role != "owner" and "parent_id" not in b:
+            b = dict(b, parent_id=me[0])               # nur umsortieren
         try:
             parent = _check_parent(c, owner, nid, b.get("parent_id"))
         except LookupError:
             return _bad("not found", 404)
         except (ValueError, TypeError) as ex:
             return _bad(user_error(ex, t("ungültige Angabe")))
+        if role != "owner":
+            if parent is None or me[0] is None or RANK.get(acc.role(parent), 0) < RANK["edit"]:
+                return _bad(t("Dafür fehlt dir die Berechtigung."), 403)
+            if parent != me[0] and _chain_shares(c, owner, parent) != _chain_shares(c, owner, me[0]):
+                return _bad(t("Verschieben geht nur innerhalb desselben geteilten Bereichs (gleiche Freigaben) – sonst nur durch den Eigentümer."), 403)
         if parent is not None:
             pk = c.execute("SELECT kind FROM note WHERE id=? AND uid=?", (parent, owner)).fetchone()[0]
             if pk == "database" and me[0] != parent:
@@ -673,8 +711,8 @@ async def api_note_move(nid: int, request: Request):
         c.execute("UPDATE note SET parent_id=? WHERE id=? AND uid=?", (parent, nid, owner))
         c.executemany("UPDATE note SET sort=? WHERE id=? AND uid=?", [(i + 1, x, owner) for i, x in enumerate(sib)])
         if me[0] != parent:                  # andere Elternseite: geerbte Freigaben aendern sich - alte UND neue Kette (BUG-033)
-            announce_tree(c, owner, nid, [nid], uid, time.time(), False, origin=origin_of(request), before=before)
-        tree_changed(c, owner, [nid], "moved", origin_of(request), before=before)       # auch nur umsortiert
+            announce_tree(c, owner, nid, [nid], uid, time.time(), False, origin=origin, before=before)
+        tree_changed(c, owner, [nid], "moved", origin, before=before)       # auch nur umsortiert
     return JSONResponse({"ok": True, "parent_id": parent, "index": sib.index(nid)})
 
 
