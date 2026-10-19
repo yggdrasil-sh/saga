@@ -267,7 +267,7 @@ async function deltaWeb(browser, p) {
   const since = [], plain = [];
   const onR = r => { if (r.method() !== 'GET') return; if (/\/api\/notes\?since=/.test(r.url())) since.push(1); else if (/\/api\/notes$/.test(r.url()) && !r.headers()['x-test-ref']) plain.push(r.url()); };
   const P = (await p.api('POST', '/api/notes', { title: 'Abgleich-Eltern' })).id;
-  await p.open(P);
+  await p.goto(BASE + '/notes#' + P); await p.waitForSelector('#pg-tree li.pg-node'); await p.waitForTimeout(1200);
   p.on('request', onR);
   const step = async (label, fn) => {
     await fn(); await p.evaluate(() => HKPages.k.reloadList()); await p.waitForTimeout(200);

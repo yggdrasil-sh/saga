@@ -3,16 +3,19 @@ bisher (saga/pages.py, byte-gleich). Vertrag fuer Apps: docs/APP-API-LIVE.md, Ab
 
 - rows=0      ohne Datenbank-Eintraege (Seiten, deren Elternseite eine Datenbank ist); rows=only: nur diese
 - fields=a,b  nur diese Felder je Seite (id immer); unbekannte Namen werden ignoriert
-- delta=1     Antwort als Objekt {cursor, full: true, notes: [...], removed: []} - jede Seite zusaetzlich mit sort und
-              created (Reihenfolge wie im Baum: sort aufsteigend, ohne sort zuerst, dann created, dann id)
-- since=<c>   nur Geaendertes seit Stand c: {cursor, full: false, notes: [geaendert/neu], removed: [ids]}. Ist c zu alt,
-              unbekannt oder von einer anderen Datenbank (Backup zurueckgespielt, Neustart), kommt full: true mit allem.
+- delta=1     Antwort als Objekt {cursor, full: true, notes: [...], removed: []} - Liste wie bisher (Reihenfolge: sort,
+              ohne sort zuerst, dann created, bei Gleichstand id)
+- since=<c>   nur Geaendertes seit Stand c: {cursor, full: false, notes: [geaendert/neu], removed: [ids]}; jede Seite in
+              notes traegt "after" = ID der Seite, hinter der sie jetzt in der Liste steht (null = ganz vorn), notes
+              selbst in Listen-Reihenfolge. Ist c zu alt, unbekannt oder von einer anderen Datenbank (Backup
+              zurueckgespielt, Neustart) oder hat sich sehr viel geaendert, kommt full: true mit allem.
 
 Der Stand (cursor) ist "<kennung>.<xmin>": xmin = aelteste beim Lesen noch laufende Transaktion. Der Trigger (db.py,
 TREE_SEQ_SQL) merkt je Seite die Transaktion der letzten Aenderung; alles, was ein Abruf noch nicht sehen konnte, hat
-eine Transaktion >= xmin und kommt beim naechsten Abgleich (manches doppelt - das schadet nicht). Der Baum enthaelt nur
-eigene Seiten des Kontos (geteilte kommen wie bisher aus /api/shared); auch der Abgleich liest nur Seiten mit uid = Konto,
-"removed" nennt nur IDs eigener (frueherer) Seiten."""
+eine Transaktion >= xmin und kommt beim naechsten Abgleich (manches doppelt - das schadet nicht). Die Position einer
+Seite haengt nur an ihren eigenen Werten (sort, created, id) - aendert sie sich, wird die Seite selbst gemeldet; die
+Reihenfolge der uebrigen bleibt. Der Baum enthaelt nur eigene Seiten des Kontos (geteilte kommen wie bisher aus
+/api/shared); auch der Abgleich liest nur Seiten mit uid = Konto, "removed" nennt nur IDs eigener (frueherer) Seiten."""
 import re
 import time
 from db import connect as _db
@@ -20,13 +23,20 @@ from saga.notes import NOTE_META_COLS, _note_meta, _purge_old
 from saga.sharing import shared_ids, unread_notes
 
 FIELDS = ("id", "title", "icon", "parent_id", "updated", "tags", "pinned", "template", "kind", "archived", "locked", "shared",
-          "unread", "sort", "created")
+          "unread")
 TOMB_DAYS = 30                       # Grabsteine geloeschter Seiten: so lange kann ein Client per since nachholen
 _CURSOR = re.compile(r"([0-9a-f]{12})\.([0-9]{1,19})")
 _PRUNED = [0.0]
-_COLS = f"{NOTE_META_COLS}, archived, locked, sort, created"
-_ORDER = "ORDER BY sort NULLS FIRST, created, id"
+_COLS = f"{NOTE_META_COLS}, archived, locked"
+_KEY = "sort NULLS FIRST, created, id"
 SMALL = 2000                         # bis zu so vielen geaenderten Seiten: Freigabe/Kommentar-Punkt nur fuer diese pruefen
+MAX_DELTA = 5000                     # mehr geaenderte Seiten: ganzer Baum (einfacher fuer Clients, kaum teurer)
+_FILTER_AS = {"1": "", "0": " AND ({a}.parent_id IS NULL OR {a}.parent_id NOT IN (SELECT id FROM note WHERE uid=? AND kind='database'))",
+              "only": " AND {a}.parent_id IN (SELECT id FROM note WHERE uid=? AND kind='database')"}
+_FILTER = {k: v.format(a="note") for k, v in _FILTER_AS.items()}
+FEW = 50                             # bis zu so vielen Aenderungen: Vorgaenger je Seite per Index, sonst Fensterfunktion
+_IKEY = "{a}.sort IS NOT NULL, COALESCE({a}.sort, 0), {a}.created, {a}.id"      # = sort NULLS FIRST, created, id
+_IDESC = "q.sort IS NOT NULL DESC, COALESCE(q.sort, 0) DESC, q.created DESC, q.id DESC"
 
 
 def parse_fields(s):
@@ -66,66 +76,67 @@ def _prune():
                       "SET v = GREATEST(note_tseq_meta.v::bigint, EXCLUDED.v::bigint)::text", (str(r[0]),))
 
 
-def _db_ids(c, uid):
-    return {r[0] for r in c.execute("SELECT id FROM note WHERE uid=? AND kind='database'", (uid,))}
+def _entry(r, sh, un):
+    return dict(_note_meta(r), archived=bool(r[9]), locked=bool(r[10]), shared=r[0] in sh, unread=r[0] in un)
 
 
-def _entry(r, sh, un, extra):
-    d = dict(_note_meta(r), archived=bool(r[9]), locked=bool(r[10]), shared=r[0] in sh, unread=r[0] in un)
-    if extra:
-        d["sort"] = r[11]
-        d["created"] = r[12]
-    return d
+def _changes(c, uid, rows, ids):
+    """Geaenderte Seiten (in Listen-Reihenfolge) -> (zeilen, {id: vorgaenger in der ganzen gefilterten Liste})."""
+    flt = _FILTER[rows]
+    p = (uid, uid) if flt else (uid,)
+    if len(ids) <= FEW:
+        # Wenige: je Seite der Vorgaenger ueber den Index note_tree_order (rueckwaerts ab der eigenen Position) - in
+        # DERSELBEN Anweisung wie die Seiten selbst (ein Datenstand)
+        fq, fn = _FILTER_AS[rows].format(a="q"), _FILTER_AS[rows].format(a="n")
+        res = c.execute(f"SELECT {_COLS}, (SELECT q.id FROM note q WHERE q.uid=n.uid AND q.deleted_at IS NULL{fq} "
+                        f"AND ({_IKEY.format(a='q')}) < ({_IKEY.format(a='n')}) ORDER BY {_IDESC} LIMIT 1) AS prev "
+                        f"FROM note n WHERE n.uid=? AND n.deleted_at IS NULL{fn} AND n.id = ANY(?) "
+                        "ORDER BY n.sort NULLS FIRST, n.created, n.id",
+                        (*((uid,) if flt else ()), *p, ids)).fetchall()
+    else:
+        # Viele: Fensterfunktion ueber die ganze Liste (eine Anweisung, ein Datenstand)
+        res = c.execute(f"SELECT * FROM (SELECT {_COLS}, lag(id) OVER (ORDER BY {_KEY}) AS prev, sort, created FROM note "
+                        f"WHERE uid=? AND deleted_at IS NULL{flt}) w WHERE id = ANY(?) ORDER BY {_KEY}", (*p, ids)).fetchall()
+    return res, {r[0]: r[11] for r in res}
 
 
 def tree(c, uid, rows="1", fields=None, delta=False, since=None):
     """-> Liste (ohne delta/since) bzw. Objekt {cursor, full, notes, removed}."""
     _purge_old(c, uid, every=3600)
-    st = _state(c) if (delta or since is not None) else None
+    ext = delta or since is not None
+    st = _state(c) if ext else None
     if st:
         try:
             _prune()
         except Exception:          # Aufraeumen ist Nebensache - der Abruf selbst darf daran nicht scheitern
             pass
     cursor = f"{st[0]}.{st[2]}" if st else None
-    dbs = _db_ids(c, uid) if rows != "1" else None
-
-    def keep(r):
-        if dbs is None:
-            return True
-        is_row = r[3] in dbs
-        return is_row if rows == "only" else not is_row
-
     m = _CURSOR.fullmatch(str(since or "")) if since is not None else None
-    ok = bool(st and m and m.group(1) == st[0] and st[1] < int(m.group(2)) <= st[2])
-    if ok:
-        x = int(m.group(2))
-        ids = [r[0] for r in c.execute("SELECT id FROM note_tseq WHERE uid=? AND xid >= ?", (uid, x))]
-        res = c.execute(f"SELECT {_COLS} FROM note WHERE uid=? AND deleted_at IS NULL AND id = ANY(?) {_ORDER}",
-                        (uid, ids)).fetchall() if ids else []
-        if len(res) <= SMALL:
+    out = None
+    if st and m and m.group(1) == st[0] and st[1] < int(m.group(2)) <= st[2]:
+        ids = [r[0] for r in c.execute("SELECT id FROM note_tseq WHERE uid=? AND xid >= ?", (uid, int(m.group(2))))]
+        if len(ids) <= MAX_DELTA:
+            res, prev = _changes(c, uid, rows, ids) if ids else ([], {})
             got = [r[0] for r in res]
-            sh = {r[0] for r in c.execute("SELECT DISTINCT note_id FROM note_share WHERE owner_uid=? AND note_id = ANY(?)",
-                                          (uid, got))} if got else set()
-            un = unread_notes(c, uid, [uid]) & set(got) if got else set()
-        else:
-            sh, un = shared_ids(c, uid), unread_notes(c, uid, [uid])
-        present = set()
-        notes = []
-        for r in res:
-            if keep(r):
-                present.add(r[0])
-                notes.append(_entry(r, sh, un, True))
-        removed = sorted(set(ids) - present)
-        out = {"cursor": cursor, "full": False, "notes": notes, "removed": removed}
-    else:
-        res = c.execute(f"SELECT {_COLS} FROM note WHERE uid=? AND deleted_at IS NULL "
-                        + (_ORDER if (delta or since is not None) else "ORDER BY sort NULLS FIRST, created"), (uid,)).fetchall()
+            if len(got) <= SMALL:
+                sh = {r[0] for r in c.execute("SELECT DISTINCT note_id FROM note_share WHERE owner_uid=? AND note_id = ANY(?)",
+                                              (uid, got))} if got else set()
+                un = unread_notes(c, uid, [uid]) & set(got) if got else set()
+            else:
+                sh, un = shared_ids(c, uid), unread_notes(c, uid, [uid])
+            notes = [dict(_entry(r, sh, un), after=prev.get(r[0])) for r in res]
+            out = {"cursor": cursor, "full": False, "notes": notes, "removed": sorted(set(ids) - set(got))}
+    if out is None:
+        # Eintraege gleich in der Abfrage ausfiltern (sonst liest rows=0 bei 50.000 Eintraegen alles und wirft es weg).
+        # Ohne delta/since: Reihenfolge exakt wie bisher (ORDER BY ohne id)
+        flt = _FILTER[rows]
+        res = c.execute(f"SELECT {_COLS} FROM note WHERE uid=? AND deleted_at IS NULL{flt} ORDER BY "
+                        + (_KEY if ext else "sort NULLS FIRST, created"), (uid, uid) if flt else (uid,)).fetchall()
         sh, un = shared_ids(c, uid), unread_notes(c, uid, [uid])
-        ext = delta or since is not None
-        notes = [_entry(r, sh, un, ext) for r in res if keep(r)]
+        notes = [_entry(r, sh, un) for r in res]
         out = {"cursor": cursor, "full": True, "notes": notes, "removed": []} if ext else notes
     if fields:
+        keys = fields + ("after",)
         lst = out["notes"] if isinstance(out, dict) else out
-        lst[:] = [{k: d[k] for k in fields if k in d} for d in lst]
+        lst[:] = [{k: d[k] for k in keys if k in d} for d in lst]
     return out

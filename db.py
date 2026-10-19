@@ -789,6 +789,9 @@ def restore(path):
     # an und gleicht alle Seiten neu ab.
     with psycopg.connect(DATABASE_URL, autocommit=True) as c:
         c.execute("DROP TABLE IF EXISTS note_link, note_stale, note_derived")
+        # Seitenbaum-Abgleich (note_tseq*, kein Fremdschluessel): Stand gehoert zur alten Datenbank - der naechste Start
+        # legt ihn leer an und wuerfelt eine neue Kennung (Clients laden einmal ganz)
+        c.execute("DROP TABLE IF EXISTS note_tseq, note_tseq_meta")
     r = subprocess.run(["pg_restore", "--clean", "--if-exists", "--no-owner", "--no-privileges", "--single-transaction",
                         "--dbname", _pg_env()["PGDATABASE"], path], env=_pg_env(), capture_output=True, timeout=3600)
     if r.returncode != 0:
@@ -823,6 +826,9 @@ CREATE TABLE IF NOT EXISTS note_tseq (
     at DOUBLE PRECISION NOT NULL, PRIMARY KEY (uid, id));
 CREATE INDEX IF NOT EXISTS note_tseq_xid ON note_tseq (uid, xid);
 CREATE TABLE IF NOT EXISTS note_tseq_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+-- Reihenfolge des Baums (sort NULLS FIRST, created, id) als Index: Vorgaenger einer geaenderten Seite ohne die ganze Liste
+CREATE INDEX IF NOT EXISTS note_tree_order ON note (uid, (sort IS NOT NULL), (COALESCE(sort, 0)), created, id)
+    WHERE deleted_at IS NULL;
 CREATE OR REPLACE FUNCTION saga_tseq_bump(u TEXT, n BIGINT, g INTEGER) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
     IF u IS NULL OR n IS NULL THEN RETURN; END IF;

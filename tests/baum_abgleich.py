@@ -69,10 +69,6 @@ def old_tree_bytes(uid):
     return JSONResponse([dict(_note_meta(r), archived=bool(r[9]), locked=bool(r[10]), shared=r[0] in sh, unread=r[0] in un) for r in rows]).body
 
 
-def key(p):
-    return (0 if p.get("sort") is None else 1, p.get("sort") or 0, p.get("created") or 0, p["id"])
-
-
 class Client:
     """Wie ein App-/Web-Client: einmal ganz, danach nur Geaendertes einarbeiten."""
 
@@ -87,17 +83,35 @@ class Client:
             return s, d
         if d["full"]:
             self.fulls += 1
-            self.items = {x["id"]: x for x in d["notes"]}
+            self.list = list(d["notes"])
         else:
-            for i in d["removed"]:
-                self.items.pop(i, None)
+            # wie das Web (static/pages.js fetchTree): Entferntes und Geaendertes raus, Geaendertes hinter "after" wieder rein
+            gone = set(d["removed"]) | {x["id"] for x in d["notes"]}
+            chains = {}
             for x in d["notes"]:
-                self.items[x["id"]] = x
+                chains.setdefault(x["after"], []).append({k: v for k, v in x.items() if k != "after"})
+            out = []
+
+            def emit(k):
+                for n in chains.pop(k, []):
+                    out.append(n)
+                    emit(n["id"])
+            emit(None)
+            for p in self.list:
+                if p["id"] not in gone:
+                    out.append(p)
+                    emit(p["id"])
+            if chains:                                # Vorgaenger unbekannt: darf nicht vorkommen
+                self.lost = getattr(self, "lost", 0) + 1
+                for lst in chains.values():
+                    out.extend(lst)
+            self.list = out
+        self.items = {x["id"]: x for x in self.list}
         self.cur = d["cursor"]
         return s, d
 
     def ordered(self):
-        return sorted(self.items.values(), key=key)
+        return self.list
 
 
 def owned_ever(uid):
@@ -121,15 +135,17 @@ def check_clients(clients, label):
         if cl.items != ref:
             diff = [(i, cl.items.get(i), ref.get(i)) for i in set(cl.items) | set(ref) if cl.items.get(i) != ref.get(i)]
             ok_all = False; bad.append((cl.uid, cl.name, len(diff), diff[:3])); continue
-        if "fields" not in cl.var and [x["id"] for x in cl.ordered()] != [x["id"] for x in full["notes"]]:
-            ok_all = False; bad.append((cl.uid, cl.name, "Reihenfolge")); continue
+        if [x["id"] for x in cl.ordered()] != [x["id"] for x in full["notes"]] or getattr(cl, "lost", 0):
+            ok_all = False; bad.append((cl.uid, cl.name, "Reihenfolge", getattr(cl, "lost", 0))); continue
+        if not d["full"] and any("after" not in x for x in d["notes"]):
+            ok_all = False; bad.append((cl.uid, cl.name, "after fehlt")); continue
         if "fields" in cl.var and any(set(x) - {"id", "title", "parent_id", "archived", "shared", "unread"} for x in full["notes"]):
             ok_all = False; bad.append((cl.uid, cl.name, "Felder")); continue
     ok(f"{label}: Abgleich = ganzer Baum (alle Konten, alle Varianten)", ok_all, bad)
 
 
 def check_plain(label):
-    """Ohne Parameter: byte-gleich zur bisherigen Umsetzung; ?delta=1 enthaelt dieselben Seiten (plus sort/created)."""
+    """Ohne Parameter: byte-gleich zur bisherigen Umsetzung; ?delta=1 enthaelt dieselben Seiten in derselben Reihenfolge."""
     good, bad = True, []
     for u in USERS:
         s, raw = req("GET", "/api/notes", u)
@@ -137,8 +153,7 @@ def check_plain(label):
             good = False; bad.append((u, "bytes", s, raw[:200])); continue
         plain = json.loads(raw)
         _, d, _ = jget("/api/notes?delta=1", u)
-        strip = [{k: v for k, v in x.items() if k not in ("sort", "created")} for x in d["notes"]]
-        if sorted(plain, key=lambda x: x["id"]) != sorted(strip, key=lambda x: x["id"]) or [x["id"] for x in plain] != [x["id"] for x in strip]:
+        if plain != d["notes"]:
             good = False; bad.append((u, "delta=1 != Liste"))
         _, slim, _ = jget("/api/notes?rows=0", u)
         with connect() as c:
@@ -324,6 +339,10 @@ def main():
                                   (A, "page" if rnd == 1 else "database")).fetchone()
                     if p:
                         c.execute("UPDATE note SET kind=? WHERE id=?", ("database" if rnd == 1 else "page", p[0]))
+            if rnd in (4, 6):                         # viele auf einmal umsortiert (> 50: Vorgaenger per Fensterfunktion)
+                with connect() as c, c:
+                    for nid in rr.sample(live_ids(A), 80):
+                        c.execute("UPDATE note SET sort=? WHERE id=?", (rr.choice([None, rr.random() * 100]), nid))
             if rnd == 3:                              # Gruppe: Mitglied raus, Freigaben an die Gruppe weg (Gruppe geloescht)
                 with connect() as c, c:
                     c.execute("DELETE FROM user_group WHERE group_id=(SELECT id FROM groups WHERE name=?)", (GRP,))

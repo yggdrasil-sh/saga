@@ -87,19 +87,26 @@ gibt (Antwort ist ein Array statt eines Objekts). `MIN_APP` ändert sich nicht.
 
 Die Parameter lassen sich kombinieren (`?since=…&rows=0`); `rows`/`fields` ohne `delta`/`since` liefern eine Liste wie
 bisher, nur gefiltert. Je Seite dieselben Felder wie bisher (`id, title, icon, parent_id, updated, tags, pinned,
-template, kind, archived, locked, shared, unread`), mit `delta`/`since` zusätzlich **`sort`** (Zahl oder `null`) und
-**`created`** – damit sortiert die App eingearbeitete Seiten wie der Server: `sort` aufsteigend, `null` zuerst, dann
-`created`, dann `id` (das ist die Reihenfolge der Liste; Geschwister im Baum stehen in dieser Reihenfolge).
+template, kind, archived, locked, shared, unread`), in derselben Reihenfolge wie die Liste (Geschwister im Baum stehen
+in dieser Reihenfolge; bei Gleichstand entscheidet jetzt die `id`). Seiten in einer `since`-Antwort tragen zusätzlich
+**`after`**: die ID der Seite, hinter der sie in der ganzen Liste steht (`null` = ganz vorn); `notes` selbst ist in
+Listen-Reihenfolge.
 
-**Einarbeiten:** `full: true` → Liste ersetzen. `full: false` → jede ID aus `removed` entfernen (auch IDs, die die App
-nicht kennt – einfach ignorieren), jede Seite aus `notes` per `id` ersetzen bzw. hinzufügen, danach sortieren. Den
-neuen `cursor` merken (er ist undurchsichtig – nicht zerlegen). `removed` meldet: in den Papierkorb gelegt, endgültig
-gelöscht, mit `rows=0` auch „ist jetzt ein Datenbank-Eintrag“. Archivierte Seiten bleiben wie bisher in der Liste
-(`archived: true`).
+**Einarbeiten:** `full: true` → Liste ersetzen. `full: false` →
+1. alle IDs aus `removed` **und** alle IDs aus `notes` aus der Liste nehmen (unbekannte IDs einfach ignorieren),
+2. die Seiten aus `notes` der Reihe nach einsetzen, jede direkt hinter ihr `after` (bzw. an den Anfang) – steht
+   `after` selbst in `notes`, ist es zu diesem Zeitpunkt schon eingesetzt,
+3. `after` weglassen (gehört nicht zur Seite), den neuen `cursor` merken (undurchsichtig – nicht zerlegen).
+
+Ergebnis: genau die Liste, die `GET /api/notes?delta=1` jetzt liefern würde. Kennt die App ein `after` nicht (Stand
+weicht ab), die Seite ans Ende setzen und beim nächsten Mal `delta=1` holen. `removed` meldet: in den Papierkorb gelegt,
+endgültig gelöscht, mit `rows=0` auch „ist jetzt ein Datenbank-Eintrag“. Archivierte Seiten bleiben wie bisher in der
+Liste (`archived: true`).
 
 **`full: true` statt Abgleich** (immer korrekt, nur größer), wenn der Stand nicht passt: unbekannt/kaputt, älter als
 30 Tage nach dem Aufräumen gelöschter Seiten, nach einem Neustart des Servers (z. B. nach dem Zurückspielen eines
-Backups) oder auf Postgres < 13. `cursor: null` → beim nächsten Mal wieder `delta=1`.
+Backups), bei sehr vielen Änderungen (> 5.000 Seiten) oder auf Postgres < 13. `cursor: null` → beim nächsten Mal
+wieder `delta=1`.
 
 **Rechte:** Der Baum enthält nur **eigene** Seiten des Kontos – der Abgleich auch. Seiten anderer („Mit mir geteilt“)
 kommen weiter ganz aus `GET /api/shared` (nach `shared.changed`). Eine Freigabe hinzufügen/entfernen ändert das Feld
@@ -111,10 +118,9 @@ Beispiel:
 GET /api/notes?delta=1
 → {"cursor":"3f9c0a1b2c4d.88412","full":true,"removed":[],
    "notes":[{"id":812,"title":"Projekt","icon":"","parent_id":null,"updated":1760860000.1,"tags":[],"pinned":false,
-             "template":false,"kind":"page","archived":false,"locked":false,"shared":true,"unread":false,
-             "sort":1.0,"created":1760000000.0}, …]}
+             "template":false,"kind":"page","archived":false,"locked":false,"shared":true,"unread":false}, …]}
 GET /api/notes?since=3f9c0a1b2c4d.88412
-→ {"cursor":"3f9c0a1b2c4d.88430","full":false,"notes":[{"id":815,…}],"removed":[790]}
+→ {"cursor":"3f9c0a1b2c4d.88430","full":false,"notes":[{"id":815,"title":"Neu",…,"after":812}],"removed":[790]}
 ```
 
 Empfehlung: beim Start `delta=1` (oder Zwischenspeicher + `since`), nach `notes.tree` und im Takt `since`. Ein Stand

@@ -88,13 +88,15 @@ Gleiches Verhalten, nur weniger Daten; `GET /api/notes` ohne Parameter liefert b
 unverändert.
 
 - **Abgleich:** `GET /api/notes?delta=1` liefert den Baum mit einem Stand (`cursor`), `?since=<cursor>` danach nur neue,
-  geänderte und entfernte Seiten (Papierkorb, endgültig gelöscht). Passt der Stand nicht (zu alt, Neustart, Backup
+  geänderte und entfernte Seiten (Papierkorb, endgültig gelöscht), jede mit ihrer Position (`after`: hinter welcher
+  Seite sie in der Liste steht). Passt der Stand nicht (zu alt, Neustart, Backup
   zurückgespielt), kommt der ganze Baum (`full: true`). Erfasst wird alles, was der Baum zeigt – auch Freigabe-Symbol und
   „neue Kommentare“. Der Baum enthält wie bisher nur eigene Seiten; „Mit mir geteilt“ kommt unverändert aus
   `/api/shared`. Vertrag für die Apps: `docs/APP-API-LIVE.md`, Abschnitt „Seitenbaum abgleichen“.
 - **Schlank:** `?rows=0` ohne Datenbank-Einträge (`rows=only`: nur diese), `?fields=…` nur die genannten Felder.
 - **Weboberfläche:** lädt den Baum nach Aktionen, Live-Ereignissen und der Rückkehr in den Tab nur noch per Abgleich
-  (beim Öffnen und spätestens alle 30 Minuten einmal ganz).
+  (beim Öffnen und spätestens alle 30 Minuten einmal ganz). Bei 60.000 Seiten/Einträgen: Baum neu laden 1,0 s → 0,05 s,
+  neuer Datenbank-Eintrag samt Nachladen 1,2 s → 0,04 s; der erste Aufbau bleibt gleich.
 - Technik: ein Trigger merkt je Seite die Transaktion der letzten baum-relevanten Änderung (Tabellen `note_tseq`,
   `note_tseq_meta`, Grabsteine gelöschter Seiten 30 Tage). Kein neuer Schema-Stand: ältere Versionen ignorieren die
   Tabellen, Backup/Zurückspielen wie bisher (danach laden Clients einmal ganz).

@@ -454,23 +454,18 @@
     var db = pix().own.get(dbId);
     if (LL || !db || db.kind !== 'database' || !d || !d.id || byId(d.id)) return false;   // LL: laufender Abgleich kaeme ohne ihn zurueck
     var p = { id: d.id, title: title || '', icon: '', parent_id: dbId, updated: d.updated, tags: [], pinned: false, template: false,
-              kind: 'page', archived: false, locked: false, shared: false, unread: false, sort: d.updated, created: d.updated };
+              kind: 'page', archived: false, locked: false, shared: false, unread: false };
     if (S.all && S.all !== S.pages) S.all.push(p);
     S.pages.push(p);
     renderTree(); renderCrumbs(); renderTagBar(); renderFiltered();      // wie nach loadList (Zaehler, Leer-Hinweise)
     return true;
   }
   // Seitenbaum per Abgleich (2.2, docs/APP-API-LIVE.md "Seitenbaum abgleichen"): beim ersten Mal ganz (delta=1, mit Stand),
-  // danach nur Geaendertes seit dem Stand (since=...) - eingearbeitet in eine NEUE Liste in Baum-Reihenfolge (gleicher
-  // Inhalt wie ein ganzes /api/notes; unveraenderte Eintraege bleiben dieselben Objekte). Der Server antwortet mit
-  // full:true, wenn der Stand nicht mehr passt; spaetestens alle 30 min holt das Web trotzdem einmal alles.
+  // danach nur Geaendertes seit dem Stand (since=...) - eingearbeitet in eine NEUE Liste in derselben Reihenfolge wie ein
+  // ganzes /api/notes (jede geaenderte Seite steht hinter ihrem "after"; unveraenderte Eintraege bleiben dieselben
+  // Objekte). Der Server antwortet mit full:true, wenn der Stand nicht mehr passt; spaetestens alle 30 min holt das Web
+  // trotzdem einmal alles.
   var TREE_FULL_MS = 30 * 60 * 1000;
-  function treeKey(a, b) {
-    var x = a.sort == null ? null : a.sort, y = b.sort == null ? null : b.sort;
-    if (x !== y) { if (x === null) return -1; if (y === null) return 1; return x < y ? -1 : 1; }
-    if (a.created !== b.created) return (a.created || 0) < (b.created || 0) ? -1 : 1;
-    return a.id - b.id;
-  }
   function fetchTree() {
     var cur = S.treeCur, base = S.all;
     var full = !cur || !base || Date.now() - (S.treeFullAt || 0) > TREE_FULL_MS;
@@ -480,17 +475,30 @@
       if (d.full || full) { S.treeFullAt = Date.now(); return d.notes; }
       if (S.all !== base) { S.treeCur = null; return fetchTree(); }               // inzwischen ganz neu geladen: sicher ist sicher
       if (!d.notes.length && !d.removed.length) return base.slice();
-      var gone = new Set(d.removed), upd = new Map(), resort = false;
-      d.notes.forEach(function (p) { upd.set(p.id, p); });
-      var pos = new Map(); base.forEach(function (p, i) { pos.set(p.id, i); });
-      upd.forEach(function (p, id) {
-        var i = pos.get(id), o = i === undefined ? null : base[i];
-        if (!o || o.sort !== p.sort || o.created !== p.created) resort = true;
+      var gone = new Set(d.removed), chains = new Map(), out = [];
+      d.notes.forEach(function (p) {                    // Ketten: Vorgaenger -> Seiten direkt dahinter (in Listen-Reihenfolge)
+        gone.add(p.id);
+        var k = p.after == null ? 'start' : p.after, l = chains.get(k); if (!l) chains.set(k, l = []);
+        var n = {}; Object.keys(p).forEach(function (x) { if (x !== 'after') n[x] = p[x]; }); l.push(n);
       });
-      var out = [];
-      base.forEach(function (p) { if (!gone.has(p.id)) { var n = upd.get(p.id); out.push(n || p); if (n) upd.delete(p.id); } });
-      upd.forEach(function (p) { out.push(p); });
-      if (resort) out.sort(treeKey);
+      function emit(k) {                                // ohne Rekursion (lange Ketten bei vielen neuen Seiten)
+        var l = chains.get(k); if (!l) return;
+        chains.delete(k);
+        var st = [[l, 0]];
+        while (st.length) {
+          var top = st[st.length - 1];
+          if (top[1] >= top[0].length) { st.pop(); continue; }
+          var n = top[0][top[1]++], c = chains.get(n.id);
+          out.push(n);
+          if (c) { chains.delete(n.id); st.push([c, 0]); }
+        }
+      }
+      emit('start');
+      base.forEach(function (p) { if (!gone.has(p.id)) { out.push(p); emit(p.id); } });
+      if (chains.size) {                                // Vorgaenger unbekannt (Stand weicht ab): anhaengen, naechstes Mal ganz
+        chains.forEach(function (l) { l.forEach(function (n) { out.push(n); }); });
+        S.treeCur = null;
+      }
       return out;
     });
   }

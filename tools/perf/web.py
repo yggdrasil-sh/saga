@@ -51,6 +51,7 @@ def main():
     ap.add_argument("--info", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--db-timeout", type=int, default=600, help="Sekunden je Datenbank-Schritt, danach abbrechen")
+    ap.add_argument("--ohne-db", action="store_true", help="Datenbank-Schritte auslassen (nur Baum/Suche/Seite)")
     a = ap.parse_args()
     info = json.load(open(a.info))
     OUT.update(path=a.out, stufe=info.get("stufe"))
@@ -98,7 +99,8 @@ def main():
             ms = sorted(p.evaluate(js, arg) if arg else p.evaluate(js) for _ in range(5))
             rec(f"Baum neu laden ({label}, Median von 5)", ms[2], **lt(p))
         try:
-            db_steps(p, cdp, info, reqs, a.db_timeout * 1000)
+            if not a.ohne_db:
+                db_steps(p, cdp, info, reqs, a.db_timeout * 1000)
         except Exception as ex:                       # Zeitueberschreitung: festhalten, mit frischem Tab weitermachen
             rec(f"DB-Schritte abgebrochen ({type(ex).__name__})", 0, error=str(ex).splitlines()[0][:200])
             p.close()
