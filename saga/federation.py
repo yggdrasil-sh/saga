@@ -322,13 +322,20 @@ def uid_by_handle(c, h):
     return r[0] if r else None
 
 
+def safe_display(disp, uid, email=""):
+    """Anzeigename, wenn er weder der Anmeldename noch die E-Mail-Adresse ist (SSO/LDAP liefern als Namen manchmal die
+    Adresse oder die Kennung) - sonst ''."""
+    d = _clean_text(disp or "", DISPLAY_MAX)
+    low = d.lower()
+    if not d or low == str(uid).lower() or (email and low == str(email).strip().lower()):
+        return ""
+    return d
+
+
 def display_of(c, uid):
-    """Anzeigename fuer andere Instanzen: Anzeigename (nie der Anmeldename), sonst oeffentlicher Name, sonst ''."""
-    r = c.execute("SELECT display_name FROM users WHERE username=?", (uid,)).fetchone()
-    d = _clean_text(r[0] if r else "", DISPLAY_MAX)
-    if d and d.lower() != str(uid).lower():
-        return d
-    return get_name(c, uid) or ""
+    """Anzeigename fuer andere Instanzen: Anzeigename (nie der Anmeldename/die E-Mail), sonst oeffentlicher Name, sonst ''."""
+    r = c.execute("SELECT display_name, email FROM users WHERE username=?", (uid,)).fetchone()
+    return (safe_display(r[0], uid, r[1]) if r else "") or get_name(c, uid) or ""
 
 
 def fed_name(c, uid, p=None, pseudo=False):
@@ -637,9 +644,9 @@ def _local_user_by_name(c, name):
     if isinstance(name, str) and PSEUDO_RE.fullmatch(name):          # pseudonymer Handle (Protokoll 2)
         uid = uid_by_handle(c, name)
         return (uid, display_of(c, uid) or name) if uid else (None, None)
-    r = c.execute("SELECT p.uid, u.display_name FROM public_name p JOIN users u ON u.username=p.uid WHERE p.name=? AND u.disabled=0",
+    r = c.execute("SELECT p.uid FROM public_name p JOIN users u ON u.username=p.uid WHERE p.name=? AND u.disabled=0",
                   (name,)).fetchone()
-    return (r[0], r[1] or name) if r else (None, None)
+    return (r[0], display_of(c, r[0]) or name) if r else (None, None)
 
 
 def _local_group(c, name):

@@ -16,6 +16,7 @@ pseudonyme Handle ('~' + 16 Zeichen, saga.federation.own_handle) - dazu der oeff
 import hashlib
 import json
 import re
+import threading
 import time
 
 from fastapi import APIRouter, Request
@@ -56,17 +57,16 @@ def _groups_all(c):
 
 def _current(c):
     """uid -> (name, pub, av, groups_json) fuer alle Konten, die im Adressbuch stehen duerfen (aktiv, Schalter an, mit Namen)."""
-    rows = c.execute("SELECT u.username, u.display_name, p.name, kv.v FROM users u LEFT JOIN public_name p ON p.uid=u.username "
+    rows = c.execute("SELECT u.username, u.display_name, p.name, kv.v, u.email FROM users u LEFT JOIN public_name p ON p.uid=u.username "
                      "LEFT JOIN user_kv kv ON kv.uid=u.username AND kv.k=? WHERE u.disabled=0", (KV,)).fetchall()
     uids = [r[0] for r in rows if r[3] != "0"]
     av = avatars.urls(c, uids, known_only=True) if uids else {}
     gs = _groups_all(c)
     out = {}
-    for uid, disp, pub, flag in rows:
+    for uid, disp, pub, flag, email in rows:
         if flag == "0":
             continue
-        d = F._clean_text(disp, F.DISPLAY_MAX)
-        name = d if d and d.lower() != uid.lower() else (pub or "")      # nie der Anmeldename
+        name = F.safe_display(disp, uid, email) or (pub or "")          # nie der Anmeldename, nie die E-Mail-Adresse
         if not name:
             continue                                                     # ohne Namen nicht auffindbar
         a = av.get(uid)
@@ -277,12 +277,48 @@ def pull(pid, full=False):
     return n
 
 
+_plock = threading.Lock()
+_running, _again = set(), {}     # je Instanz hoechstens ein Abgleich gleichzeitig (Rest: einmal nachholen)
+
+
+def pull_bg(pid, full=False):
+    """Abgleich im Express-Pool - je Instanz hoechstens einer laufend und einer vorgemerkt: eine Flut von
+    'directory.changed' (oder eine langsame Gegenstelle) belegt nicht den ganzen Pool."""
+    with _plock:
+        if pid in _running:
+            _again[pid] = _again.get(pid, False) or bool(full)
+            return
+        _running.add(pid)
+    try:
+        F._express.submit(_pull_loop, pid, bool(full))
+    except RuntimeError:                     # Pool beendet (Herunterfahren)
+        with _plock:
+            _running.discard(pid)
+            _again.pop(pid, None)
+
+
+def _pull_loop(pid, full):
+    try:
+        while True:
+            pull(pid, full)
+            with _plock:
+                if pid not in _again:
+                    _running.discard(pid)
+                    return
+                full = _again.pop(pid)
+    except BaseException:
+        with _plock:
+            _running.discard(pid)
+            _again.pop(pid, None)
+        raise
+
+
 def _ev_changed(c, peer, ev):
     """'directory.changed': nach dem Commit holen (im Express-Pool, nicht in der Anfrage)."""
     if not F.feature(peer, "directory"):
         return "ignored"
     full = bool(ev.get("full"))
-    c.after_commit(lambda: F._express.submit(pull, peer["id"], full))
+    c.after_commit(lambda: pull_bg(peer["id"], full))
     return "ok"
 
 
@@ -313,7 +349,7 @@ def _on_opts(pid, old, new):
             c.execute("DELETE FROM fed_outbox WHERE peer_id=? AND chain='dir' AND locked_until=0", (pid,))
             F._enqueue(c, pid, {"type": "directory.changed", "full": True}, chain="dir")
     if new.get("directory") and not old.get("directory"):
-        F._express.submit(pull, pid, True)
+        pull_bg(pid, True)
 
 
 F.HELLO_HOOKS.append(_on_hello)

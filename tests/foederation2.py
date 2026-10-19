@@ -105,12 +105,14 @@ def main():
             except OSError:
                 pass
     py("a", T.SETUP.format(allow=T.I["a"]["allow"], users=[("fa-anna", "Anna Berg", "anna"), ("fa-carl", "Carl Ohne", None),
-                                                            ("fa-lisa", "fa-lisa", None)], groups=[("fateam", ["fa-anna"])]))
+                                                            ("fa-lisa", "fa-lisa", None), ("fa-mia", "mia@example.org", None)],
+                                    groups=[("fateam", ["fa-anna"])]))
     py("b", SETUP_B.format(allow=T.I["b"]["allow"], users=[("fb-bert", "Bert Gast", "bert"), ("fb-anna", "Anna Berg", None),
                                                           ("fb-anna2", "Anna Berg", "annab"), ("fb-olga", "Olga Aus", "olga"),
                                                           ("fb-dis", "Dieter Aus", "dieter")], groups=[("fbteam", ["fb-bert"])]))
     sql("b", "UPDATE users SET disabled=1, email='dieter@example.org' WHERE username='fb-dis'")
     sql("b", "UPDATE users SET email='bert@example.org' WHERE username='fb-bert'")
+    sql("a", "UPDATE users SET email='Mia@Example.org' WHERE username='fa-mia'")      # SSO: Anzeigename = E-Mail-Adresse
     start("a"); start("b")
     A, B = T.Admin("a"), T.Admin("b")
     ok("Admin A und B angemeldet", A.login() and B.login())
@@ -252,7 +254,8 @@ def part_directory(A, B, pa, pb):
     ok("A: Adressbuch von B da (Admin, Bert, Anna, Anna; ohne Olga/deaktiviert)", wait(lambda: dirn("a") == 4, 30))
     ok("B: Adressbuch von A da (Admin, Anna, Carl)", wait(lambda: dirn("b") == 3, 30))
     names_b = sorted(r[0] for r in sql("b", "SELECT name FROM fed_directory"))
-    ok(f"B: Lisa (Anzeigename = Anmeldename) fehlt ({names_b})", names_b == ["Administrator", "Anna Berg", "Carl Ohne"])
+    ok(f"B: Lisa (Anzeigename = Anmeldename) und Mia (Anzeigename = E-Mail) fehlen ({names_b})",
+       names_b == ["Administrator", "Anna Berg", "Carl Ohne"] and "example.org" not in json.dumps(sql("b", "SELECT * FROM fed_directory")))
     rows = sql("a", "SELECT handle, name, pub FROM fed_directory ORDER BY name, pub")
     ok("Handles pseudonym (~ + 16 Zeichen), nie Anmeldename", all(re.fullmatch(r"~[a-z2-7]{16}", r[0]) for r in rows)
        and not any("fb-" in json.dumps(r) for r in rows))
@@ -265,6 +268,22 @@ def part_directory(A, B, pa, pb):
     s, h, d, _, _ = T.signed("b", priva, T.I["a"]["url"], "GET", "/fed/v2/directory", f"since={nxt}&cfg={cfg}")
     ok("inkrementell: seit Stand X nichts Neues", s == 200 and jd(d)["full"] is False and jd(d)["entries"] == [])
     ok("unsigniert -> 401", hreq("b", "GET", "/fed/v2/directory")[0] == 401)
+    n = py("a", f"""
+import time
+from saga import federation as F, fed_dir as D
+n = [0]
+_cj = F.call_json
+def cj(*a, **k):
+    n[0] += 1; time.sleep(0.3); return _cj(*a, **k)
+F.call_json = cj
+for _ in range(30):
+    D.pull_bg({pa}, True)
+t0 = time.time()
+while D._running and time.time() - t0 < 30:
+    time.sleep(0.1)
+print(json.dumps(n[0]))
+""")
+    ok(f"Flut 'directory.changed': je Instanz ein Abgleich + einer nachgeholt ({n} Abrufe)", isinstance(n, int) and 1 <= n <= 4)
 
     s, d = api("a", "fa-anna", "GET", "/api/chat/people?q=anna")
     rem = d.get("remote") or []
