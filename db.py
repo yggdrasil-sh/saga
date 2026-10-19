@@ -778,24 +778,105 @@ def backup(label="manuell"):
     return path
 
 
+# Abgeleitete Tabellen (2.2, saga/pageindex.py) verweisen per Fremdschluessel auf note. Ein Backup von vor 2.2 kennt sie
+# nicht - pg_restore --clean koennte note dann nicht loeschen ("other objects depend on it") und bricht ab. Sie sind
+# jederzeit neu ableitbar: vorher entfernen. Ein Backup ab 2.2 bringt sie mit, sonst legt der naechste Start sie an und
+# gleicht alle Seiten neu ab. Seitenbaum-Abgleich (note_tseq*, kein Fremdschluessel): der Stand gehoert zur alten
+# Datenbank - der naechste Start legt ihn leer an und wuerfelt eine neue Kennung (Clients laden einmal ganz).
+_RESTORE_DROP = (b"DROP TABLE IF EXISTS public.note_link, public.note_stale, public.note_derived;\n"
+                 b"DROP TABLE IF EXISTS public.note_tseq, public.note_tseq_meta;\n")
+_RESTORE_SET = re.compile(rb"^SET ([a-z_]+) = .*;\r?\n?$")
+
+
+def _restore_filter(src, dst, known):
+    """SQL-Text von pg_restore -> psql. Laesst SET-Zeilen fuer Parameter weg, die der Server nicht kennt (pg_restore 17
+    schreibt "SET transaction_timeout = 0;", Postgres 16 bricht daran ab), setzt nach BEGIN das DROP der abgeleiteten
+    Tabellen ein und haelt alles ab dem abschliessenden COMMIT zurueck. Zeilen in COPY-Daten bleiben unberuehrt.
+    Rueckgabe: zurueckgehaltener Rest (bytes) oder None, wenn kein BEGIN kam (dann nie COMMIT schicken).
+    SET-Zeilen fallen nur im Kopf weg (vor dem ersten Objekt) - spaeter koennten sie in Funktionskoerpern oder
+    mehrzeiligen Texten stehen. Ein "COMMIT;" mitten im Text (z. B. in einer Prozedur) wird nicht festgehalten: Folgt
+    noch eine echte Zeile (kein Kommentar/Leerzeile/psql-Befehl), geht es sofort weiter."""
+    in_copy = begun = False
+    head = True
+    held = None
+    for line in iter(src.readline, b""):
+        if held is not None:
+            s = line.strip()
+            if not s or s.startswith(b"--") or s.startswith(b"\\"):
+                held += line
+                continue
+            dst.write(held)                 # war nicht das abschliessende COMMIT
+            held = None
+        if head:
+            s = line.strip()
+            head = (not s or s.startswith(b"--") or s.startswith(b"\\") or s == b"BEGIN;" or s.startswith(b"SET ")
+                    or s.startswith(b"SELECT pg_catalog.set_config("))
+        if in_copy:
+            if line in (b"\\.\n", b"\\.\r\n"):
+                in_copy = False
+        elif line.startswith(b"COPY ") and line.rstrip().endswith(b"FROM stdin;"):
+            in_copy = True
+        elif head and (m := _RESTORE_SET.match(line)) and m.group(1).decode() not in known:
+            continue
+        elif line.strip() == b"COMMIT;":
+            held = line
+            continue
+        dst.write(line)
+        if not begun and not in_copy and line.strip() == b"BEGIN;":
+            begun = True
+            dst.write(_RESTORE_DROP)
+    return held if begun else None
+
+
 def restore(path):
-    """Backup zurueckspielen (Saga vorher stoppen!). Ersetzt alle Tabellen durch den Stand im Backup."""
+    """Backup zurueckspielen (Saga vorher stoppen!). Ersetzt alle Tabellen durch den Stand im Backup - alles oder nichts.
+
+    Nicht pg_restore direkt gegen die Datenbank: Das Image bringt pg_restore 17 mit (liest Archive aller Versionen, auch
+    die eigenen Backups im Format 1.16, die pg_restore 16 nicht lesen kann), Postgres 16 kennt aber das von pg_restore 17
+    gesetzte transaction_timeout nicht. Deshalb: pg_restore erzeugt SQL, _restore_filter laesst unbekannte SET-Zeilen
+    weg, psql spielt es in EINER Transaktion ein. COMMIT geht erst raus, wenn pg_restore fehlerfrei fertig ist - ein
+    beschaedigtes Backup aendert nichts. Funktioniert so mit Postgres 16 und 17 (und neueren Clients)."""
+    import shutil
     import subprocess
+    import tempfile
     if not os.path.isfile(path):
         raise RuntimeError(f"Datei nicht gefunden: {path}")
-    # Abgeleitete Tabellen (2.2, saga/pageindex.py) verweisen per Fremdschluessel auf note. Ein Backup von vor 2.2 kennt
-    # sie nicht - pg_restore --clean koennte note dann nicht loeschen ("other objects depend on it") und bricht ab. Sie
-    # sind jederzeit neu ableitbar: vorher entfernen. Ein Backup ab 2.2 bringt sie mit, sonst legt der naechste Start sie
-    # an und gleicht alle Seiten neu ab.
+    for tool in ("pg_restore", "psql"):
+        if not shutil.which(tool):
+            raise RuntimeError(f"{tool} fehlt - Zurueckspielen nicht moeglich (im Saga-Image enthalten)")
     with psycopg.connect(DATABASE_URL, autocommit=True) as c:
-        c.execute("DROP TABLE IF EXISTS note_link, note_stale, note_derived")
-        # Seitenbaum-Abgleich (note_tseq*, kein Fremdschluessel): Stand gehoert zur alten Datenbank - der naechste Start
-        # legt ihn leer an und wuerfelt eine neue Kennung (Clients laden einmal ganz)
-        c.execute("DROP TABLE IF EXISTS note_tseq, note_tseq_meta")
-    r = subprocess.run(["pg_restore", "--clean", "--if-exists", "--no-owner", "--no-privileges", "--single-transaction",
-                        "--dbname", _pg_env()["PGDATABASE"], path], env=_pg_env(), capture_output=True, timeout=3600)
-    if r.returncode != 0:
-        raise RuntimeError("Zurueckspielen fehlgeschlagen: " + r.stderr.decode("utf-8", "replace").strip()[:500])
+        known = {r[0] for r in c.execute("SELECT name FROM pg_settings")}
+    env = _pg_env()
+    with tempfile.TemporaryFile() as e1, tempfile.TemporaryFile() as e2:
+        rp = subprocess.Popen(["pg_restore", "--clean", "--if-exists", "--no-owner", "--no-privileges",
+                               "--single-transaction", "--file", "-", path], env=env, stdout=subprocess.PIPE, stderr=e1)
+        sp = subprocess.Popen(["psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "--no-password", "-o", os.devnull],
+                              env=env, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=e2)
+        held = None
+        try:
+            held = _restore_filter(rp.stdout, sp.stdin, known)
+            rc = rp.wait(timeout=3600)
+            if rc == 0 and held is not None:
+                sp.stdin.write(held)        # COMMIT (+ Schlusskommentar) nur nach fehlerfreiem pg_restore
+        except BrokenPipeError:            # psql hat abgebrochen (ON_ERROR_STOP) - Fehlertext steht in e2
+            pass
+        finally:
+            try:
+                sp.stdin.close()            # ohne COMMIT: psql beendet sich, der Server rollt alles zurueck
+            except BrokenPipeError:
+                pass
+            if rp.poll() is None:
+                rp.kill()
+            rp.wait()
+            rp.stdout.close()
+            src = sp.wait(timeout=3600)
+        err = b""
+        for f in (e1, e2):
+            f.seek(0)
+            err += f.read()
+        if rp.returncode != 0 or src != 0 or held is None:
+            msg = err.decode("utf-8", "replace").strip()[:500] or "pg_restore lieferte kein vollstaendiges Backup"
+            raise RuntimeError("Zurueckspielen fehlgeschlagen (nichts geaendert): " + msg)
 
 
 def init_search(c):

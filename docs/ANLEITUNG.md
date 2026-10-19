@@ -1104,6 +1104,11 @@ docker compose up -d
 
 (Der Volume-Name beginnt mit dem Ordnernamen des Projekts – `docker volume ls` zeigt ihn.)
 
+Die Backups, die Saga selbst anlegt (`/data/backups`, siehe Updates), spielst du mit
+`python run.py restore` zurück (Abschnitt „Zurück zur vorigen Version“), nicht mit dem `pg_restore` im
+Datenbank-Container: Sie stammen von `pg_dump` 17 aus dem Saga-Image, und `pg_restore` 16 aus `postgres:16`
+meldet dafür „unsupported version (1.16) in file header“.
+
 ### Updates
 
 Saga hat Versionsnummern nach [Semantic Versioning](https://semver.org/lang/de/): **1.2.3** = Major.Minor.Patch.
@@ -1184,6 +1189,16 @@ docker compose pull && docker compose up -d
 ```
 
 Alles, was nach dem Backup geändert wurde, ist dann weg – also nur kurz nach einem missglückten Update.
+
+Zurückspielen also **vor** dem Wechsel der `SAGA_VERSION`, mit der neueren Version (wie oben): Sie spielt das
+Backup in einer Transaktion ein (bei einem Fehler bleibt alles, wie es war), funktioniert mit `postgres:16` und `:17`
+und entfernt vorher die Tabellen, die eine ältere Version nicht kennt. Ältere Saga-Versionen scheitern beim
+Zurückspielen mit `postgres:16` an „unrecognized configuration parameter transaction_timeout“ und – auf einer
+Datenbank, die schon 2.2 benutzt hat – an den neuen Tabellen `note_derived`, `note_link` und `note_stale`
+(„cannot drop table note because other objects depend on it“). Hast du schon gewechselt, die neuere Version nur zum
+Zurückspielen nehmen, z. B. `docker compose run --rm saga …` mit `SAGA_VERSION=2` (bzw. `testing`) in der `.env`.
+Die drei Tabellen kannst du auch von Hand entfernen (sie entstehen beim nächsten Start von 2.2 neu):
+`docker compose exec -T db psql -U saga -d saga -c "DROP TABLE IF EXISTS note_link, note_stale, note_derived"`.
 
 **Apps:** Die Apps prüfen beim Start die Version des Servers. Ist eine App zu alt für den Server, zeigt sie
 „Bitte App aktualisieren“. In den Einstellungen der App stehen App- und Server-Version.

@@ -127,6 +127,22 @@ unverändert.
 - Docker: zusätzlich das Tag `rc` neben `testing` (das bleibt, bestehende Installationen laufen unverändert weiter).
   Release-Builds (main) unverändert, z. B. `2.2.0`. Apps: nichts zu tun, `MIN_APP` bleibt.
 
+### Backup zurückspielen
+
+- `python run.py restore` scheiterte mit der Standard-Compose (`postgres:16`) immer: Das Image bringt `pg_restore` 17
+  mit, das `SET transaction_timeout` schickt („unrecognized configuration parameter“); `pg_restore` 16 kann die
+  Backups von `pg_dump` 17 umgekehrt nicht lesen. Jetzt erzeugt `pg_restore` 17 die SQL-Liste, Saga lässt
+  Einstellungen weg, die der Server nicht kennt, und `psql` spielt alles in **einer** Transaktion ein – mit
+  `postgres:16` und `:17`, für alle bisherigen Backups. Ein beschädigtes Backup ändert nichts mehr (COMMIT erst, wenn
+  das Backup vollständig gelesen ist). Backups selbst (automatisch vor Updates, `python run.py backup`) unverändert.
+  Image unverändert groß.
+- Ein Backup von vor 2.2 lässt sich auf einer 2.2-Datenbank einspielen: Die abgeleiteten Tabellen `note_derived`,
+  `note_link` und `note_stale` werden in derselben Transaktion vorher entfernt (der nächste Start legt sie neu an).
+- **Zurückwechseln von 2.2 auf eine ältere Version:** das Backup mit 2.2 zurückspielen, *dann* `SAGA_VERSION`
+  ändern. Ältere Versionen scheitern dort mit `postgres:16` an `transaction_timeout` und an den Fremdschlüsseln der
+  neuen Tabellen; Abhilfe für Letzteres: vorher `DROP TABLE IF EXISTS note_link, note_stale, note_derived`
+  (Anleitung, Abschnitt 11). Neue Testreihe `tests/sicherung.py`.
+
 ### Behoben
 
 - Chat → „Neue Unterhaltung“ (auch „+ Gruppe mit mehreren Personen“ und „Person hinzufügen“): Wer `name@server`,
