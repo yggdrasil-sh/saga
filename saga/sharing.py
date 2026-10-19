@@ -170,7 +170,7 @@ def _tree_store(key, st, roles, full):
         if old is not None and old[1] > st[1]:          # ein neuerer Stand ist schon da
             _TREE_CACHE[key] = old
             return
-        _TREE_CACHE[key] = (*st, len(roles), roles, full)
+        _TREE_CACHE[key] = (*st, max(1, len(roles)), roles, full)       # leere Baeume zaehlen mit (sonst unbegrenzt viele)
         total = sum(e[3] for e in _TREE_CACHE.values())
         while total > TREE_CACHE_ROWS:
             k = next(iter(_TREE_CACHE))

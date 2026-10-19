@@ -325,6 +325,9 @@ def special():
         bad = compare("Begrenzung 5 Zeilen", http=False)
         total = sum(e[3] for e in sharing._TREE_CACHE.values())
         ok("Begrenzung: Ergebnis gleich, hoechstens 5 Zeilen gemerkt", not bad and total <= 5, (bad, total))
+        for i in range(20):                             # leere Baeume (Freigabe-Wurzeln geloescht) zaehlen mit
+            sharing._tree_store(("bc-leer", False, (i,), (1,)), ("e", 1, time.monotonic()), {}, None)
+        ok("Begrenzung: auch leere Baeume begrenzt", len(sharing._TREE_CACHE) <= 5, len(sharing._TREE_CACHE))
     finally:
         sharing.TREE_CACHE_ROWS = lim
 
