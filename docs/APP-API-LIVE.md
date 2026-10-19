@@ -127,6 +127,12 @@ Empfehlung: beim Start `delta=1` (oder Zwischenspeicher + `since`), nach `notes.
 ist je Konto gültig, nicht je Gerät – nach Abmelden/Kontowechsel verwerfen. Geteilte Seiten in derselben Antwort gibt
 es nicht; der Datenbank-Inhalt (Eigenschaften, Zeilen einer Ansicht) kommt weiter aus `/rows`.
 
+Bestandsaufnahme (Stand 2.2): Web, iOS/macOS (`Store.doRefresh`, Zwischenspeicher der rohen Antwort), Android
+(`SagaRepository.loadPages`, `PageMeta`) und Linux (`store.py`) laden bisher nach jeder Baum-Änderung und im Takt den
+ganzen Baum. Alle lesen jedes Feld (Symbol, Favorit, Schlagwörter, Vorlage, Archiv, Sperre, geteilt, neue Kommentare)
+und nutzen auch die Datenbank-Einträge aus der Liste (Eltern-Kette, Verschiebe-Ziele, Verweise, Suche/Palette) –
+`fields`/`rows=0` sparen für sie daher wenig; der Gewinn liegt im Abgleich (`since`). Die Weboberfläche nutzt ihn seit 2.2.
+
 ## Kompression und ETag
 
 Gepackte Antworten (`Content-Encoding: gzip`) tragen ein **schwaches** ETag (`W/"…"`), ungepackte das starke. Für
