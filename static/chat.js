@@ -949,6 +949,7 @@
       if (!S.cur || S.cur.id !== c.id) return;
       var add = r.messages.filter(function (m) { return !S.byId[m.id]; }).map(function (m) {
         var d;
+        if (m.fstate === 'pending' && S.okIds && S.okIds[m.id]) m.fstate = null;
         if (m.kind === 'call') {                          // Anruf-Eintrag: Metadaten vom Server (nicht verschluesselt, nur wer/wann/wie lange)
           try { m.call = JSON.parse(m.body_ct); } catch (e) { m.call = {}; }
           if (isFed(c) && m.sender && m.sender.username === ME) m.call.from = ME;     // v2: Anrufer steht als Prinzipal/Konto drin
@@ -1571,6 +1572,7 @@
         if (body.files) m.files = body.files.reduce(function (a, f) { a.push(f.id); if (f.th && f.th.id) a.push(f.th.id); return a; }, []);
         return api('POST', '/api/chats/' + c.id + '/messages', m).then(function (r) {
           if (r.pending) HK.toast(T('Der andere Server ist gerade nicht erreichbar – die Nachricht wird zugestellt, sobald er wieder da ist.'), null, null, 6000);
+          else delivered(m.id);
           return { m: m, r: r };
         }, function (e) {
           if (e.status === 409 && e.data && e.data.handles && !again) return attempt(true, true);
@@ -1579,6 +1581,13 @@
       });
     }
     return attempt(false, false);
+  }
+  // (2.3) Heim hat die Nachricht sofort bestaetigt: "wird zugestellt" nicht stehen lassen - auch wenn sie schon (ueber das
+  // Live-Ereignis) mit fstate 'pending' geladen wurde oder erst gleich geladen wird (Server 2.3.0 melden das nicht nach)
+  function delivered(id) {
+    S.okIds = S.okIds || {}; S.okIds[id] = true;
+    var k = S.byId[id];
+    if (k && k.fstate === 'pending') { k.fstate = null; drawMsgs(); }
   }
   function sendBody(cid, body, kind, reply, extra) {
     var fc = S.cur && S.cur.id === cid ? S.cur : S.chats.filter(function (x) { return x.id === cid; })[0];
