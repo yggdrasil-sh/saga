@@ -1,10 +1,12 @@
-# Föderation 2.3 – Vertrag für die App-Teams (Etappen E0 – E3)
+# Föderation 2.3 – Vertrag für die App-Teams (Etappen E0 – E6)
 
 Saga 2.3 bringt Protokoll 2 zwischen verbundenen Saga-Servern. Für die Apps (Web, iOS/macOS, Android, Linux) kommen in
 dieser Etappe drei Dinge dazu: **Adressbuch-Suche** (Personen anderer Server nach Anzeigename), **föderierte Handles**
 und das **Chat-Krypto-Format `saga-chat/v2`** mit Schlüsselverzeichnis, gemeinsamen Testvektoren und TOFU (E0/E1),
-dazu **Direkt-Chats über Servergrenzen** mit Nachrichtenanfragen (E2, Abschnitt 6) und **Anrufe** im Format
-`saga-call/v2` (E3, Abschnitt 7).
+dazu **Direkt-Chats über Servergrenzen** mit Nachrichtenanfragen (E2, Abschnitt 6), **Anrufe** im Format
+`saga-call/v2` (E3, Abschnitt 7), **Seiten anderer Server vollständig** – Datenbanken, Unterseiten, Hochladen,
+Versionen, Export, Anwesenheit und Live (E4/E6, Abschnitt 8) – sowie **freie Gruppen und Seiten-Chats** mit Mitgliedern
+mehrerer Server (E5, Abschnitt 9).
 
 Alle Endpunkte wie gewohnt mit Sitzung oder Geräte-Schlüssel (`Authorization: Bearer hkd_…`) und `X-Saga: 1`. Alles
 ist rückwärtskompatibel: neue Felder und Ereignisse ignorieren ältere Apps; lokale Chats bleiben **`saga-chat/v1`**,
@@ -162,7 +164,8 @@ Live-Ereignisse an Apps (wie alle über `/api/events`, Art `direct`):
 ## 5. Server-zu-Server (zur Einordnung)
 
 `/.well-known/saga` meldet `protocol: 2`, `protocols: [1, 2]` und `capabilities` (v1: `share read edit comment files
-notify`; neu: `v2 express handles directory keys`). Funktionen gelten nur, wenn **beide** Server sie melden (Austausch
+notify`; neu: `v2 express handles directory keys chat2 calls2 live presence db subpages upload versions export
+chatgroups`). Funktionen gelten nur, wenn **beide** Server sie melden (Austausch
 über `POST /fed/v2/hello`, signiert) **und** der Admin-Schalter je Instanz an ist (Chat, Anrufe, Adressbuch; Ausnahme
 von „Teilen nur innerhalb gemeinsamer Gruppen“ – Standard aus). Neue signierte Endpunkte: `POST /fed/v2/hello`,
 `POST /fed/v2/events` (Ereignisse mit Kennung `id`, optional Kette `chain` + `cseq`: idempotent, streng aufsteigend je
@@ -272,3 +275,72 @@ versiegelt wird `{"v":2,"body":body,"sig":B64(sig)}` für das Zielgerät (Web: `
 - ICE/TURN: jede Seite holt ihre Server wie bisher über `GET /api/calls/config` beim **eigenen** Server.
 - Nachrichtenanfragen klingeln nie; Trennen der Server beendet laufende Anrufe.
 
+## 8. Seiten anderer Server vollständig (E4/E6)
+
+Seiten anderer Server haben wie bisher **negative IDs** (`-(id_dort * 1024 + peer_id)`) und laufen über die gewohnten
+Endpunkte des **eigenen** Servers. Was mit dem Server der Seite geht, steht in jedem Seiten-Objekt einer fremden Seite
+(`GET /api/notes/{id}`, `GET /api/fed/shared` → `items[]`) unter `remote`:
+
+| Feld | Bedeutung |
+|---|---|
+| `remote.peer`, `remote.host`, `remote.name` | wie bisher |
+| `remote.caps` | NEU: Liste aus `db subpages upload versions export presence live chatgroups` – nur, was beide Server können und der Admin erlaubt. Fehlt eine Fähigkeit (Server 2.1/2.2), bleibt es bei Lesen, Kommentieren und Titel/Inhalt bearbeiten |
+
+Die Rolle prüft immer der Server der Seite (`role` wie bei eigenen Freigaben). Fehler kommen wie gewohnt (403/404/409/
+423); kann der andere Server etwas noch nicht, antwortet der eigene Server mit **404** und dem Text „Der Server … kann das
+noch nicht (ältere Saga-Version)“; nicht erreichbar → 502.
+
+| Fähigkeit | Endpunkt (negative ID) | Hinweise |
+|---|---|---|
+| `db` | `GET /api/notes/{id}` | Datenbanken kommen mit `schema` (statt des früheren Hinweises); Relationen: `schema.props[].target` und Werte in `props` sind negative IDs |
+| `db` | `GET /api/notes/{id}/rows[?limit&offset&view&filters&sorts&q&group&tz&today]` | wie bei eigenen Datenbanken (2.2, Phase 2c), rechnet der Server der Seite; `templates` immer leer |
+| `db` | `PATCH /api/notes/{id}` | zusätzlich zu `title body format rev overwrite`: `props schema icon cover cover_pos tags wide`. Relationen nur auf Seiten desselben Servers (andere fallen weg), Bilder nur dieser Seite (`/api/fed/files/{id}/{fid}`) |
+| `subpages` | `POST /api/notes {parent_id: <negativ>, title, icon?, tags?, kind?, props?}` | Unterseite bzw. Datenbank-Zeile (mit `props`) → `{id: <negativ>, updated}`; braucht `edit` |
+| `subpages` | `POST /api/notes/{id}/move {parent_id: <negativ>, index}` | nur innerhalb desselben Servers und des geteilten Bereichs mit **gleichen Freigaben** (sonst 403 mit Hinweis); `parent_id: null` nie |
+| `upload` | `POST /api/files` mit `X-Saga-Note: <negativ>` (bzw. `?note=`) | Multipart wie bisher → `file.url = /api/fed/files/{id}/{fid}`. Die Datei liegt beim Server der Seite; 507 = Grenze erreicht (Eigentümer bzw. `FED_UPLOAD_QUOTA_MB` je fremder Person). Bis zum Speichern sieht nur die hochladende Person die Datei |
+| `upload` | `POST /api/files/copy {url, note: <negativ>}` | eigene Datei (`/files/<id>`) wird hochgeladen; Datei derselben fremden Seite (`/api/fed/files/…`) dort kopiert |
+| `versions` | `GET /api/notes/{id}/versions`, `GET …/versions/{vid}`, `POST …/versions/{vid}/restore` | ab Rolle `edit` (lokal jetzt ebenso); `vid` bleibt die ID des anderen Servers |
+| `export` | `GET /api/notes/{id}/export[?sub=1]` | Markdown bzw. ZIP wie lokal |
+| `presence` / `live` | `POST /api/presence {note_id: <negativ>, editing, leave?}` | wie lokal (alle ~20 s); meldet zugleich ein **Abo** beim Server der Seite an (`FED_WATCH_TTL`, Standard 90 s). Solange es läuft, kommen über `/api/events` die gewohnten Ereignisse `note.changed`, `presence`, `comments.changed` mit negativen IDs; Personen anderer Server mit `remote: true` und Herkunft im Namen. Ohne `presence` antwortet der eigene Server mit `{users:[ich], live:false}` |
+| – | `shared.changed` (Live) | Unterseiten in geteilten Bereichen eines anderen Servers neu/verschoben/gelöscht → „Mit mir geteilt“ neu laden |
+
+Eingebettete Datenbanken in fremden Seiten (Block `database`, `data.db`) tragen ebenfalls negative IDs. Nicht über
+Servergrenzen: Löschen, Archivieren, Duplizieren/Vorlagen, Veröffentlichen, Freigaben, Rückverweise, KI auf der Seite.
+
+**Auch lokal neu (Rollen):** `GET/POST …/versions…` ab `edit` (vorher nur Eigentümer; Wiederherstellen gesperrter Seiten
+nur Eigentümer, 423); `POST /api/notes/{id}/move` für `edit` innerhalb eines geteilten Bereichs mit gleichen Freigaben
+(Ziel muss bearbeitbar sein, oberste Ebene nur Eigentümer).
+
+## 9. Freie Gruppen und Seiten-Chats über Servergrenzen (E5)
+
+Chats mit `v: 2` und `kind: 'free'` bzw. `'page'` funktionieren wie Direkt-Chats über Servergrenzen (Abschnitt 6:
+`X-Saga-Chat: 2`, Krypto `saga-chat/v2`, Empfänger aus `members[].handle`). **Heim** einer freien Gruppe ist der Server
+der Person, die sie anlegt; Heim eines Seiten-Chats ist der Server der Seite (`home`, `home_self`).
+
+- **Gruppe anlegen:** `POST /api/chats {kind:'free', members:[benutzer hier], handles:['~x@host', …], device}` – Handles
+  aus der Adressbuch-Suche (`/api/chat/people` → `remote`). Bei den anderen erscheint die Gruppe als
+  **Nachrichtenanfrage** (`request: true`, `invited_by: {name, host, label}`); Annehmen/Ablehnen/Sperren wie 6.3
+  (`block` sperrt die einladende Person bzw. ihren Server).
+- **Name der Gruppe:** wie v1 als verschlüsselte Nachricht `kind: 'title'` – in v2 mit denselben Feldern wie eine
+  Nachricht (`v: 2`, `kind: 'title'`); `title_msg` im Chat-Objekt hat `sender_handle`, prüfen wie jede v2-Nachricht.
+- **Mitglieder:** `POST /api/chats/{id}/members {handle:'~x@host'}` bzw. `{user}` (Konto hier), `DELETE …/members/{who}`
+  (`who` = `members[].username`, ich selbst = verlassen). Nur Admins der Gruppe (`role: 'admin'`) ändern andere; die
+  Änderung läuft über das Heim (ist es nicht erreichbar: 502). Danach `chat.changed`; die neue Liste kommt vom Heim.
+- **Systemzeilen** (`kind: 'sys'`, Klartext-Metadaten in `body_ct`):
+  `{"type":"members","added":[{name,host,handle}],"removed":[…],"by":{name,host,handle}|null,"reason":"disconnected"|"gone"|"access"?}`
+  – Herkunft (`host`) immer anzeigen; `by` = `removed[0]` heißt „hat die Gruppe verlassen“.
+  `{"type":"fed","on":true,"ai_off":true?}` – ein Seiten-Chat ist ab hier ein Chat über Servergrenzen.
+- **Seiten-Chat einer fremden Seite:** `POST /api/chats {kind:'page', note_id:<negativ>, device}` → derselbe Chat wie
+  beim Server der Seite (`note_id` negativ, `name` = Titel). Mitglieder ergeben sich aus den Freigaben (Personen und
+  Gruppen anderer Server inklusive); Ändern geht dort nicht.
+- **Umgestellte Seiten-Chats:** Bekommen Personen anderer Server Zugriff, wird ein bestehender Seiten-Chat zu `v: 2`
+  (gleiche `id`). Nachrichten **ohne `sender_handle`** stammen aus der Zeit davor: mit v1 entschlüsseln und prüfen
+  (`chat_id`, Absender `sender.username`, Geräte aus `devices`/`idents` der Antwort). Neue Nachrichten immer v2.
+- **Personen dritter Server:** `GET /api/chat/v2/keys` liefert auch Personen von Servern, mit denen der eigene Server
+  nicht verbunden ist (über das Heim eines gemeinsamen Chats, `source: 'home'`). Zertifikate und TOFU prüft die App wie
+  immer selbst; Anhänge solcher Personen holt der eigene Server über das Heim (`GET /api/chat/files/{fid}` wie gewohnt).
+- **Trennen:** Personen des getrennten Servers fallen aus Gruppen mit Heim hier (Systemzeile `reason: 'disconnected'`);
+  auf dem getrennten Server ist der Chat `readonly`.
+- Zwischen den Servern (zur Einordnung): Ereignis `chat.members` vom Heim (Kette `chat:<id>`), Aufträge an das Heim
+  `members`, `leave`, `pagechat`, an Teilnehmer `resolve` (Handles/Gruppen nur für Ziele eigener Freigaben),
+  `GET /fed/v2/chat/keys?ref=&handles=` (nur Mitglieder, nur für Teilnehmer-Server).

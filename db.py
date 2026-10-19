@@ -607,6 +607,12 @@ CREATE TABLE IF NOT EXISTS fed_chat_block (           -- Sperren je Person ('~x@
     uid TEXT NOT NULL, target TEXT NOT NULL, created DOUBLE PRECISION NOT NULL, PRIMARY KEY (uid, target));
 CREATE TABLE IF NOT EXISTS chat_file_fed (            -- Anhang liegt beim Absender-Server (origin); hier ggf. Zwischenkopie
     id TEXT PRIMARY KEY, peer_id INTEGER NOT NULL, cached INTEGER NOT NULL DEFAULT 0);
+-- Teilen vollstaendig + Gruppen-/Seiten-Chats ueber Servergrenzen (2.3 E4-E6, saga/fed_pages.py, saga/fed_chat.py).
+-- Neue Spalten in file (fed_by/fed_note: Upload einer Person einer anderen Instanz, Grenze je Person) mit Migration 9.
+CREATE TABLE IF NOT EXISTS fed_name_handle (          -- Freigabe an '@name@host' (oeffentlicher Name) -> Handle '~x' der Person
+    principal TEXT PRIMARY KEY, peer_id INTEGER NOT NULL, handle TEXT, name TEXT NOT NULL DEFAULT '', fetched DOUBLE PRECISION NOT NULL);
+CREATE TABLE IF NOT EXISTS fed_group_members (        -- Mitglieder einer Gruppe einer anderen Instanz (nur wenn Ziel einer Freigabe)
+    peer_id INTEGER NOT NULL, grp TEXT NOT NULL, members TEXT NOT NULL, fetched DOUBLE PRECISION NOT NULL, PRIMARY KEY (peer_id, grp));
 
 -- Zweiter Faktor (2.1, saga/mfa.py): Passkeys (WebAuthn), Authenticator-App (TOTP), Wiederherstellungscodes.
 -- Nur oeffentliche Schluessel, das TOTP-Geheimnis verschluesselt (wie Geheimnisse der Einstellungen), Codes nur als Hash.
@@ -799,6 +805,14 @@ ALTER TABLE chat ADD COLUMN IF NOT EXISTS fep TEXT NOT NULL DEFAULT '';
 ALTER TABLE fed_chain_out ADD COLUMN IF NOT EXISTS epoch TEXT NOT NULL DEFAULT '';
 ALTER TABLE fed_chain_in ADD COLUMN IF NOT EXISTS epoch TEXT NOT NULL DEFAULT '';
 ALTER TABLE chat_fed_cert ADD COLUMN IF NOT EXISTS dset TEXT;
+""",
+    # 2.3.0: Teilen ueber Servergrenzen vollstaendig (saga/fed_pages.py) - Dateien, die eine Person einer anderen Instanz in
+    # eine Seite hier hochlaedt: gehoeren dem Eigentuemer der Seite (zaehlen bei ihm), fed_by = Prinzipal '@name@host'
+    # (eigene Grenze je fremder Person), fed_note = Seite (Vorschau gleich nach dem Hochladen, noch vor dem Speichern).
+    9: """
+ALTER TABLE file ADD COLUMN IF NOT EXISTS fed_by TEXT;
+ALTER TABLE file ADD COLUMN IF NOT EXISTS fed_note BIGINT;
+CREATE INDEX IF NOT EXISTS file_fed_by ON file (uid, fed_by) WHERE fed_by IS NOT NULL;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

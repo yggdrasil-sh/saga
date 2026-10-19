@@ -116,6 +116,27 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `chat.keys.changed` für die Apps. Ältere Apps sehen Chats über Servergrenzen mit Hinweis „bitte App aktualisieren“.
 - **Teilen an Personen ohne öffentlichen Namen:** Mit Servern ab 2.3 geht Teilen auch über den pseudonymen Handle
   (Adressbuch-Treffer im Teilen-Dialog); ältere Server brauchen weiter den öffentlichen Namen.
+- **Seiten anderer Server vollständig** (Fähigkeiten `db subpages upload versions export presence live`): Datenbanken
+  öffnen und bearbeiten (Zeilen = Unterseiten mit Werten; Ansichten, Filter, Sortierung, Gruppen und Blättern laufen beim
+  Server der Seite), Unterseiten und Einträge anlegen, innerhalb des geteilten Bereichs verschieben, Bilder und Dateien
+  hochladen (liegen beim Eigentümer und zählen dort; je fremder Person zusätzlich `FED_UPLOAD_QUOTA_MB`, Standard 200),
+  Versionen ansehen/wiederherstellen, Markdown-/ZIP-Export. Muster: die App spricht mit dem eigenen Server (negative IDs),
+  der ruft `/fed/v2/notes/{id}/…` signiert beim Server der Seite auf, dort läuft der normale Handler mit der Rolle der
+  fremden Person. IDs (Seiten, Zeilen, Relationen, eingebettete Datenbanken, Bilder) rechnet der eigene Server um.
+- **„Wer gerade hier ist“ und Live über Servergrenzen:** kurzlebiges Abo beim Server der Seite (`FED_WATCH_TTL`, 90 s,
+  erneuert mit jeder Anwesenheitsmeldung); Änderungen, Anwesenheit und Kommentar-Zähler kommen ohne Inhalt
+  (`POST /fed/v2/live`, verwerfbar). Neue/verschobene Unterseiten in geteilten Bereichen melden „Mit mir geteilt neu laden“.
+- **Rollen (auch lokal):** Personen mit „Bearbeiten“ dürfen jetzt Versionen ansehen und wiederherstellen (vorher nur der
+  Eigentümer; bei gesperrten Seiten weiter nur er) und Seiten innerhalb eines geteilten Bereichs verschieben – nur dorthin,
+  wo exakt dieselben Freigaben gelten (niemand bekommt oder verliert dadurch Zugriff).
+- **Gruppen und Seiten-Chats über Servergrenzen** (Fähigkeit `chatgroups`): freie Gruppen mit Personen mehrerer Server
+  (Heim = Server der Erstellerin, Einladung als Nachrichtenanfrage, Name verschlüsselt auch in `saga-chat/v2`) und
+  Seiten-Chats geteilter Seiten mit Personen und Gruppen anderer Server (Heim = Server der Seite; Mitglieder fremder
+  Gruppen meldet deren Server nur, wenn die Gruppe Ziel einer Freigabe ist). Mitgliederwechsel laufen über das Heim
+  (`chat.members`, Aufträge `members`/`leave`/`resolve`/`pagechat`) und erscheinen als Systemzeile mit Herkunft. Personen
+  eines dritten, nicht verbundenen Servers: Schlüssel und Anhänge über das Heim (`GET /fed/v2/chat/keys`), die Apps prüfen
+  selbst (TOFU). Ein bestehender Seiten-Chat wird auf v2 umgestellt, sobald Personen anderer Server Zugriff haben (ältere
+  Nachrichten bleiben v1 lesbar, KI danach aus). Trennen: Personen des getrennten Servers raus, dort schreibgeschützt.
 - **Kurze Namen finden:** Alle Personensuchen (Chat „+ Neu“/„Person hinzufügen“, Teilen-Dialog, `/api/chat/people`,
   `/api/share/targets`, `/api/fed/people`, Adressbücher verbundener Server) liefern bei 1–2 Zeichen genaue Treffer auf
   Anzeigenamen, Benutzernamen bzw. öffentlichen Namen (Groß/Klein egal, z. B. „hd“); ab 3 Zeichen wie bisher auch Teile
@@ -132,6 +153,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Robuster Ausgangskorb:** Weist ein Server ein einzelnes Ereignis dauerhaft ab, hält das nur dessen Kette an, nicht
   den ganzen Ausgangskorb („event.stuck“ im Prüfprotokoll). Wird ein Backup zurückgespielt, beginnen die Ketten mit
   neuer Epoche – die Gegenstellen verwerfen dann nichts still als „schon gesehen“.
+- **Datenbank:** Migration 9 (Spalten `file.fed_by`/`fed_note`: Uploads von Personen anderer Server) und neue Tabellen
+  `fed_name_handle`, `fed_group_members` (Zwischenspeicher für Seiten-Chats).
 - **Datenbank:** Migration 8 (Spalten für Chats und Anrufe über Servergrenzen, Ketten-Epoche, Geräte-Liste) und neue
   Tabellen `fed_chat_block`, `chat_file_fed`.
 - **Datenbank:** Migration 7 (neue Spalten in `fed_peer` und `fed_outbox`) plus neue Tabellen (`fed_handle`,
@@ -142,7 +165,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `foederation_chat` (Chats und Anrufe über zwei Instanzen, Heim offline, Lücken, Duplikate, Fälschungen, Anfragen,
   Sperren, Anhänge, Löschen, Frist, Trennen, Kontolöschung, Ketten-Epoche, Totmann; ebenfalls mit `FED_B_APP`) und
   `chat_v2_vektoren`; Browser-Test `tests/browser_fed_chat.js` (Chat und Anruf zwischen zwei Stacks). `foederation`
-  prüft statt „nur mit öffentlichem Namen“ jetzt das Teilen über den pseudonymen Handle.
+  prüft statt „nur mit öffentlichem Namen“ jetzt das Teilen über den pseudonymen Handle. Neu: `foederation_teilen`
+  (Datenbanken, Unterseiten, Verschieben, Rechte, Hochladen mit Grenze, Versionen, Export, Live-Abo und Ablauf) und
+  `foederation_gruppen` (drei Server: Gruppe, dritter Server über das Heim, Seiten-Chat mit fremder Gruppe, Umstellung
+  auf v2, Trennen) – beide mit `FED_B_APP` für 2.1/2.2; Browser-Test `tests/browser_fed_share.js` (fremde Datenbank,
+  Titelbild hochladen, Anwesenheit, Gruppen-Chat).
 
 ### Schneller
 

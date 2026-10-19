@@ -26,7 +26,7 @@ from version import API_LEVEL, BUILD, MIN_APP, VERSION, channel
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
 from saga import ai, ai_chat, avatars, calls, chat, federation, i18n, live, mfa, notify, push
-from saga import fed_calls, fed_chat, fed_dir, fed_keys      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe
+from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
@@ -146,6 +146,7 @@ async def canonical_host(request: Request, call_next):
 app.add_middleware(BodyLimit, default=REQUEST_MAX,
                    rules=[("POST", re.compile(r"/api/files"), max(REQUEST_MAX, FILE_MAX + 256 * 1024)),
                           ("POST", re.compile(r"/api/chats/[0-9]+/files"), max(REQUEST_MAX, FILE_MAX + 1024)),
+                          ("POST", re.compile(r"/fed/v2/notes/[0-9]+/files"), max(REQUEST_MAX, FILE_MAX + 64 * 1024)),
                           ("PUT", re.compile(r"/api/account/avatar"), max(REQUEST_MAX, avatars.UPLOAD_MAX + 64 * 1024))])
 
 
@@ -198,6 +199,7 @@ app.include_router(tasks.router)
 # Foederation zuerst: faengt nur NEGATIVE Seiten-/Kommentar-IDs (Seiten anderer Instanzen, Konverter "fedid") ab, dazu
 # /.well-known/saga, /fed/v1/... und /api/fed/... - alle positiven IDs laufen unveraendert zu pages/comments
 app.include_router(federation.router)
+app.include_router(fed_pages.router)         # Teilen vollstaendig (2.3): /fed/v2/notes/..., /fed/v2/live, /api/notes/{-id}/rows|versions|export|move
 app.include_router(pages.router)
 app.include_router(page_tools.router)
 app.include_router(files.router)

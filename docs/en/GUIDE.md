@@ -487,8 +487,10 @@ page for everyone who has access.
 - **Subpages are included:** a share also applies to all subpages and to the entries of databases below. The highest
   role counts (person or group, this page or a page above it). Archived pages, pages in the trash and templates are
   only visible to the owner.
-- **Only the owner may:** delete, archive, move, lock, mark as template, publish, view and restore versions, manage
-  sharing. Whatever others create or upload belongs to the page owner; versions are kept with the owner. So people
+- **Only the owner may:** delete, archive, move freely, lock, mark as template, publish, manage sharing. Since 2.3,
+  people with “Edit” may view and restore versions (the previous state is kept as a version) and move pages **within the
+  shared area** – only to places with exactly the same shares, so nobody gains or loses access (“⋯” → “Move to”).
+  Whatever others create or upload belongs to the page owner; versions are kept with the owner. So people
   with “Edit” use the **owner’s storage** – their images and files count towards it.
 - **Sharing and publishing:** if a page is public with “Also publish subpages” and is also shared with “Edit”,
   subpages and images those people create become public immediately – the publish dialog points this out.
@@ -566,10 +568,22 @@ normal editor and can be read, commented on and edited depending on the role (ti
 time triggers the usual conflict notice). Images come through your own server. You need a public name for this.
 Notifications (“shared a page with you”, “replied”) also work across servers – without the comment text.
 
-**Not yet across servers** (this round): opening databases from other servers (a notice is shown), uploading images
-into other servers' pages, creating subpages, versions, export, “who's here” and live updates, chat. Anyone who
-changes their public name or deletes their account loses shares from other servers (they are removed there); the old
-name is blocked for other accounts.
+**Pages of other servers, complete (2.3, both servers 2.3):** depending on the role (always checked by the page's
+server) you can open, filter and edit **databases** (values, columns, views, new entries), create **subpages** and move
+them within the shared area, **upload images and files** (stored with the page owner; per person of another server an
+extra limit `FED_UPLOAD_QUOTA_MB`, default 200 MB), use the **version history** (Edit) and **export**. While a page is
+open, your server keeps a short subscription with the page's server (`FED_WATCH_TTL`, 90 s) for “who's here”, live
+changes and comment counts – never content. Servers with 2.1/2.2 keep reading, commenting and editing title and content.
+
+**Chats across servers (2.3):** direct chats (message requests, attachments, calls), **free groups** with people of
+several servers (home = server of the creator; changes go through the home and show up as notices with origin) and
+**page chats** of pages shared with people or groups of other servers (home = server of the page; members of a group of
+another server are reported only by that server and only when the group is the target of a share). End-to-end
+encrypted; keys and attachments of people on a third server come through the home, your app checks the keys itself.
+Disconnecting removes that server's people from groups; there, the chat becomes read-only.
+
+Anyone who changes their public name or deletes their account loses shares from other servers (they are removed
+there); the old name is blocked for other accounts.
 
 ### Notifications and live updates
 
@@ -1255,6 +1269,8 @@ with the same account also switch the oldest ones to polling.
 | `LIVE_MAX_AGE` | `3600` | After this many seconds the browser reopens the live connection (the session is checked again) |
 | `FED_ALLOW_HTTP` | – | `1` = allow federation over http (tests only; otherwise https only) |
 | `FED_RATE` / `FED_TIMEOUT` | `600` / `10` | Requests per minute and connected instance / seconds until timeout |
+| `FED_UPLOAD_QUOTA_MB` | `200` | Storage per person of another server for uploads into pages here (also counts for the owner) |
+| `FED_WATCH_TTL` | `90` | Seconds a subscription (live/presence) to a page of another server lasts without renewal |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Web search (section 10) |
 | `AI_WEB_FETCH` / `AI_WEB_RATE` | `2` / `10` | AI web search: result pages whose text is read (0 = snippets only); web searches per person in 10 minutes |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Language and filter of the web search |

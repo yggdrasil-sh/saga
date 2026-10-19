@@ -63,13 +63,16 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # Protokoll 2 (2.3): v2 = /fed/v2/hello + /fed/v2/events (Ereignis-Kennung, Ketten), express = synchrone Zustellung,
 # handles = pseudonyme Handles ('~xxxx') wie oeffentliche Namen, directory = Adressbuch-Abgleich, keys = Schluessel-
 # verzeichnis fuer saga-chat/v2, chat2 = foederierte Chats (saga.fed_chat), calls2 = Anrufe ueber Servergrenzen
-# (saga.fed_calls). Spaetere Etappen ergaenzen live presence db subpages upload versions export.
-CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2"]
+# (saga.fed_calls). E4-E6 (saga.fed_pages): live = Live-Ereignisse fuer Abos fremder Seiten, presence = Anwesenheit,
+# db = Datenbanken (Zeilen, Ansichten, Werte), subpages = Unterseiten anlegen/verschieben, upload = Bilder/Dateien
+# hochladen, versions = Versionen, export = Export; chatgroups = freie Gruppen und Seiten-Chats ueber Servergrenzen.
+CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
+         "export", "chatgroups"]
 # Admin-Schalter je verbundener Instanz (fed_peer.opts) - Standard: alles an, Ausnahme "Teilen nur in gemeinsamen
 # Gruppen" aus. directory_groups: nur Personen dieser Gruppen erscheinen im Adressbuch der Instanz (leer = alle).
 OPT_DEFAULTS = {"chat": True, "calls": True, "directory": True, "scope_exception": False, "directory_groups": []}
 # Faehigkeit -> Admin-Schalter, der sie zusaetzlich braucht
-CAP_OPT = {"directory": "directory", "keys": "chat", "chat2": "chat", "calls2": "calls"}
+CAP_OPT = {"directory": "directory", "keys": "chat", "chat2": "chat", "calls2": "calls", "chatgroups": "chat"}
 EXPRESS_TIMEOUT = float(E.get("FED_EXPRESS_TIMEOUT", "5"))      # synchrone Zustellung: harte Frist in Sekunden
 HELLO_EVERY = 6 * 3600                       # Faehigkeiten der Gegenstelle so oft neu abfragen
 SEEN_KEEP = 7 * 86400                        # Ereignis-Kennungen so lange merken (idempotent)
@@ -499,7 +502,7 @@ def _raw_target(request):
     return path, (request.scope.get("query_string") or b"").decode("latin-1")
 
 
-def _verify_sync(method, path, query, headers, body, statuses, connect_key=None, connect_base=None):
+def _verify_sync(method, path, query, headers, body, statuses, connect_key=None, connect_base=None, raw=False):
     """-> (_In, None) oder (None, fehlerantwort). Laeuft im Thread (Datenbank)."""
     holder = {}
 
@@ -545,7 +548,7 @@ def _verify_sync(method, path, query, headers, body, statuses, connect_key=None,
             _person_upsert(c, inp.principal, peer["id"], actor.get("display") or name)
         if peer.get("id"):
             _touch(c, peer)
-    if body:
+    if body and not raw:
         try:
             inp.data = parse_json(body)              # Surrogate/NUL der Gegenseite bereinigt (BUG-008)
         except (ValueError, RecursionError):
@@ -553,13 +556,13 @@ def _verify_sync(method, path, query, headers, body, statuses, connect_key=None,
     return inp, None
 
 
-async def _verify(request, statuses=("active",), need_actor=False):
-    """Signatur einer verbundenen Instanz pruefen -> (_In, None) oder (None, antwort)."""
+async def _verify(request, statuses=("active",), need_actor=False, raw=False):
+    """Signatur einer verbundenen Instanz pruefen -> (_In, None) oder (None, antwort). raw: Koerper sind Bytes (Datei)."""
     if not enabled():
         return None, _not_found()
     body = await request.body()
     path, query = _raw_target(request)
-    inp, err = await run_in_threadpool(_verify_sync, request.method, path, query, request.headers, body, statuses)
+    inp, err = await run_in_threadpool(_verify_sync, request.method, path, query, request.headers, body, statuses, None, None, raw)
     if err is None and need_actor and inp.principal is None:
         return None, _unauth("actor required", 400)
     return inp, err
@@ -1088,6 +1091,8 @@ async def fed_events2(request: Request):
 # Server-zu-Server: Inhalte im Namen einer Person (Eigentuemer-Seite)
 # =====================================================================================================
 EDIT_KEYS = ("title", "body", "format", "rev", "overwrite")
+# 2.3 (Faehigkeit 'db'): zusaetzlich Werte von Datenbank-Zeilen, Schema, Symbol, Titelbild, Schlagworte, Breite
+EDIT2_KEYS = EDIT_KEYS + ("props", "schema", "icon", "cover", "cover_pos", "tags", "wide")
 
 
 @router.get("/fed/v1/shared")
@@ -1186,9 +1191,11 @@ def _file_for(principal, fid, nid, request):
         if not acc.role(nid):
             return None
         n = c.execute("SELECT uid, body, icon, cover FROM note WHERE id=? AND deleted_at IS NULL", (nid,)).fetchone()
-        f = c.execute("SELECT name, mime, is_image, uid FROM file WHERE id=?", (fid,)).fetchone()
+        f = c.execute("SELECT name, mime, is_image, uid, fed_by, fed_note FROM file WHERE id=?", (fid,)).fetchone()
     ref_ = f"/files/{fid}"
-    if not n or not f or f[3] != n[0] or not (ref_ in (n[1] or "") or n[2] == ref_ or n[3] == ref_):
+    # 2.3: gerade von dieser Person fuer diese Seite hochgeladen (Vorschau im Editor, noch nicht gespeichert)
+    fresh = bool(f) and f[4] == principal and f[5] == nid
+    if not n or not f or f[3] != n[0] or not (fresh or ref_ in (n[1] or "") or n[2] == ref_ or n[3] == ref_):
         return None
     path = os.path.join(FILES_DIR, fid)
     if not os.path.isfile(path) or os.path.getsize(path) > FILE_MAX + 1024:
@@ -1828,6 +1835,33 @@ def _clean_remote_body(s, fmt):
     return json.dumps(doc, ensure_ascii=False)
 
 
+def _db_blocks(body, pid, inbound):
+    """Eingebettete Datenbanken (Block 'database', data.db) einer fremden Seite: IDs der anderen Instanz <-> negative IDs.
+    Beim Speichern: nur Datenbanken derselben Instanz, alles andere wird leer (wie entschaerfte Verweise)."""
+    if not isinstance(body, str) or '"database"' not in body:
+        return body
+    try:
+        doc = json.loads(body)
+    except ValueError:
+        return body
+    changed = False
+    try:
+        for b in _iter_blocks(doc.get("blocks") or []) if isinstance(doc, dict) else []:
+            if b.get("type") != "database" or not isinstance(b.get("data"), dict):
+                continue
+            v = b["data"].get("db")
+            if inbound:
+                nv = ref(pid, v) if _ok_rid(v) else None
+            else:
+                nv = unref(v)[1] if isinstance(v, int) and not isinstance(v, bool) and v < 0 and unref(v)[0] == pid else None
+            if nv != v:
+                b["data"]["db"] = nv
+                changed = True
+    except ValueError:
+        return body
+    return json.dumps(doc, ensure_ascii=False) if changed else body
+
+
 def _num(v, default=0):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) < 1e15 else default
 
@@ -1871,20 +1905,86 @@ def _note_in(c, peer, d, uid):
     d["title"] = _clean_text(d.get("title"), 500)
     d["format"] = "blocks" if d.get("format") == "blocks" else "text"
     # Inhalt der anderen Instanz wie eigenen behandeln: erst bereinigen (IDs noch in deren Form), dann umschreiben
-    d["body"] = _rw_in(_clean_remote_body(d.get("body"), d["format"]), pid, pr)
+    d["body"] = _db_blocks(_rw_in(_clean_remote_body(d.get("body"), d["format"]), pid, pr), pid, True)
     d["icon"] = _rw_in(_safe_pic(d.get("icon"), True), pid, pr)
     d["cover"] = _rw_in(_safe_pic(d.get("cover"), False), pid, pr)
     if d.get("role") not in ROLES:
         d["role"] = "view"
     d.update(pinned=False, published=False, public_url=None, published_via=None, shared=True, locked=bool(d.get("locked")),
-             remote={"peer": pid, "host": peer["host"], "name": peer["name"]})
-    if d.get("kind") == "database":          # Datenbanken anderer Instanzen: in dieser Runde nur ein Hinweis
+             remote=remote_info(peer))
+    if isinstance(d.get("props"), dict):     # Relationen (Listen von Seiten-IDs) auf negative IDs
+        d["props"] = props_in(pid, d["props"])
+    if d.get("kind") == "database" and feature(peer, "db"):      # 2.3: Datenbanken anderer Instanzen oeffnen/bearbeiten
+        d["schema"] = schema_in(pid, d.get("schema"))
+    elif d.get("kind") == "database":        # aeltere Gegenstelle (Protokoll 1): nur ein Hinweis
         d.pop("schema", None)
         d.update(kind="page", role="view", format="blocks", comment_counts={}, comments_open=0, comments_unread=0,
                  body=json.dumps({"blocks": [{"id": "fed-db", "type": "paragraph", "data": {"text": _esc_text(
                      t("Diese Datenbank liegt auf {host}. Datenbanken anderer Saga-Instanzen lassen sich hier noch nicht öffnen.",
                        host=peer["host"]))}}]}, ensure_ascii=False))
     return d
+
+
+PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups")
+
+
+def remote_info(peer):
+    """Herkunft einer fremden Seite fuer Web/Apps: {peer, host, name, caps} - caps: was mit diesem Server geht (2.3)."""
+    return {"peer": peer["id"], "host": peer["host"], "name": peer["name"], "caps": [x for x in PAGE_CAPS if feature(peer, x)]}
+
+
+def props_in(pid, props):
+    """Werte einer Zeile der anderen Instanz: Relationen (Listen von Seiten-IDs) auf negative IDs, sonst unveraendert."""
+    out = {}
+    for k, v in (props or {}).items():
+        if not isinstance(k, str) or len(k) > 40:
+            continue
+        if isinstance(v, list) and v and all(isinstance(x, int) and not isinstance(x, bool) for x in v):
+            v = [ref(pid, x) for x in v if _ok_rid(x)]
+        out[k] = v
+    return out
+
+
+def props_out(pid, props):
+    """Beim Speichern zurueck: negative IDs derselben Instanz -> deren IDs; andere Verweise fallen weg."""
+    if not isinstance(props, dict):
+        return props
+    out = {}
+    for k, v in props.items():
+        if isinstance(v, list) and v and all(isinstance(x, int) and not isinstance(x, bool) for x in v):
+            v = [unref(x)[1] for x in v if x < 0 and unref(x)[0] == pid]
+        out[k] = v
+    return out
+
+
+def schema_in(pid, schema):
+    """Schema einer Datenbank der anderen Instanz: Ziel-Datenbanken von Relationen auf negative IDs."""
+    if not isinstance(schema, dict):
+        return {"props": []}
+    props = []
+    for p in schema.get("props") or []:
+        if isinstance(p, dict):
+            p = dict(p)
+            if p.get("type") == "relation":
+                p["target"] = ref(pid, p["target"]) if _ok_rid(p.get("target")) else 0
+            props.append(p)
+    return dict(schema, props=props)
+
+
+def schema_out(pid, schema):
+    if not isinstance(schema, dict) or not isinstance(schema.get("props"), list):
+        return schema
+    props = []
+    for p in schema["props"]:
+        if isinstance(p, dict) and p.get("type") == "relation":
+            tg = p.get("target")
+            try:
+                tg = int(tg)
+            except (TypeError, ValueError):
+                tg = 0
+            p = dict(p, target=unref(tg)[1] if tg < 0 and unref(tg)[0] == pid else 0)
+        props.append(p)
+    return dict(schema, props=props)
 
 
 def _esc_text(s):
@@ -1933,24 +2033,47 @@ def _pass_err(peer, status, d):
 
 def _w_note_get(uid, nid):
     pid, rid = unref(nid)
-    p, status, d = _proxy(uid, pid, "GET", f"/fed/v1/notes/{rid}")
+    with _db() as c:
+        v2 = feature(_home_peer(c, pid), "db")
+    p, status, d = _proxy(uid, pid, "GET", f"/fed/v2/notes/{rid}" if v2 else f"/fed/v1/notes/{rid}")
     if status != 200 or not isinstance(d, dict):
         return _pass_err(p, status, d)
     with _db() as c:
         return _json(200, _note_in(c, p, d, uid))
 
 
+def _pic_out(v, pid):
+    """Symbol/Titelbild beim Speichern: Bild derselben Instanz (/api/fed/files/-id/fid) -> /files/fid, Emoji bleibt."""
+    if not isinstance(v, str):
+        return v
+    m = _FILES_OUT.fullmatch(v.strip())
+    if m:
+        p, _ = unref(int(m.group(1)))
+        return f"/files/{m.group(2)}" if p == pid else ""
+    return "" if v.strip().startswith("/") else v
+
+
 def _w_note_patch(uid, nid, b):
     pid, rid = unref(nid)
-    b = {k: v for k, v in b.items() if k in EDIT_KEYS}
+    with _db() as c:
+        v2 = feature(_home_peer(c, pid), "db")
+    keys = EDIT2_KEYS if v2 else EDIT_KEYS
+    b = {k: v for k, v in b.items() if k in keys}
     if not b:
         return _bad(t("Bei Seiten anderer Saga-Instanzen lassen sich nur Titel und Inhalt ändern."), 403)
     if "body" in b:
-        b["body"] = _rw_out(b["body"], pid)
-    p, status, d = _proxy(uid, pid, "PATCH", f"/fed/v1/notes/{rid}", body=b)
+        b["body"] = _db_blocks(_rw_out(b["body"], pid), pid, False)
+    for k in ("icon", "cover"):
+        if k in b and b[k]:
+            b[k] = _pic_out(b[k], pid)
+    if "props" in b:
+        b["props"] = props_out(pid, b["props"])
+    if "schema" in b:
+        b["schema"] = schema_out(pid, b["schema"])
+    p, status, d = _proxy(uid, pid, "PATCH", f"/fed/v2/notes/{rid}" if v2 else f"/fed/v1/notes/{rid}", body=b)
     if status != 200 or not isinstance(d, dict):
         return _pass_err(p, status, d)
-    return _json(200, {k: d.get(k) for k in ("ok", "updated", "rev")})
+    return _json(200, {k: d.get(k) for k in ("ok", "updated", "rev", "srev") if k in d or k != "srev"})
 
 
 def _w_comments(uid, nid, resolved):
@@ -2066,12 +2189,6 @@ def home_comment_seen(cid: int, request: Request):
     return err or _run(_w_comment, uid, cid, "POST", "/seen", {})
 
 
-@router.api_route("/api/notes/{nid:fedid}/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-def home_other(nid: int, rest: str, request: Request):
-    """Alles andere (Versionen, Export, Freigaben, Verschieben ...) gibt es fuer Seiten anderer Instanzen nicht."""
-    return _bad(t("Für Seiten anderer Saga-Instanzen nicht verfügbar."), 404)
-
-
 _IMG_TYPES = ("image/png", "image/jpeg", "image/gif", "image/webp")
 
 
@@ -2154,7 +2271,7 @@ def home_shared(request: Request):
                     d["title"] = _clean_text(d.get("title"), 500)
                     if d.get("role") not in ROLES:
                         d["role"] = "view"
-                    d.update(shared=True, pinned=False, remote={"peer": p["id"], "host": p["host"], "name": p["name"]})
+                    d.update(shared=True, pinned=False, remote=remote_info(p))
                     items.append(d)
     return _json(200, {"items": items, "unreachable": bad})
 

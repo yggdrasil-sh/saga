@@ -372,12 +372,26 @@ def main():
     for name, body in (("Favorit", {"pinned": True}), ("Vorlage", {"template": True}), ("Sperren", {"locked": True}), ("Verschieben", {"parent_id": None})):
         ok(f"B (Bearbeiten): {name} nur Eigentuemer -> 403", st("PATCH", f"/api/notes/{child}", Bk, body) == 403)
     for name, (m, p, b) in {"Loeschen": ("DELETE", f"/api/notes/{bchild}", None), "Verschieben": ("POST", f"/api/notes/{child}/move", {"parent_id": None, "index": 0}),
-                            "Archivieren": ("POST", f"/api/notes/{child}/archive", {"archived": True}), "Versionen": ("GET", f"/api/notes/{root}/versions", None),
-                            "Version wiederherstellen": ("POST", f"/api/notes/{root}/versions/{ver}/restore", None),
+                            "Archivieren": ("POST", f"/api/notes/{child}/archive", {"archived": True}),
                             "Duplizieren": ("POST", f"/api/notes/{root}/duplicate", {}), "Freigaben lesen": ("GET", f"/api/notes/{root}/shares", None),
                             "Freigabe weitergeben": ("PUT", f"/api/notes/{root}/shares", {"type": "user", "target": "sh-c", "role": "view"}),
                             "Veroeffentlichen": ("PUT", f"/api/notes/{root}/publish", {})}.items():
         ok(f"B (Bearbeiten): {name} -> 403", st(m, p, Bk, b) == 403)
+    # 2.3: Versionen ab 'Bearbeiten' (ansehen + wiederherstellen; die Fassungen bleiben bei A, Verweise maskiert)
+    s, vl = req("GET", f"/api/notes/{root}/versions", Bk)
+    ok(f"B (Bearbeiten): Versionen ansehen ({s}, {len(vl) if isinstance(vl, list) else vl})", s == 200 and isinstance(vl, list) and any(v["id"] == ver for v in vl))
+    ok("B (Bearbeiten): Fassung lesen", st("GET", f"/api/notes/{root}/versions/{ver}", Bk) == 200)
+    with connect() as c:
+        nv0 = c.execute("SELECT COUNT(*) FROM note_version WHERE note_id=? AND uid='sh-a'", (root,)).fetchone()[0]
+    ok("B (Bearbeiten): Fassung wiederherstellen", st("POST", f"/api/notes/{root}/versions/{ver}/restore", Bk) == 200)
+    with connect() as c:
+        rv = c.execute("SELECT updated_by FROM note WHERE id=?", (root,)).fetchone()[0]
+        nv1 = c.execute("SELECT COUNT(*) FROM note_version WHERE note_id=? AND uid='sh-a'", (root,)).fetchone()[0]
+    ok(f"Wiederhergestellt von B, vorheriger Stand als Version bei A ({nv0} -> {nv1})", rv == "sh-b" and nv1 == nv0 + 1)
+    with connect() as c:                       # zurueck auf den Stand davor (neueste Version) - die Tests danach bauen darauf auf
+        last = c.execute("SELECT id FROM note_version WHERE note_id=? AND uid='sh-a' ORDER BY created DESC, id DESC LIMIT 1", (root,)).fetchone()[0]
+    ok("B (Bearbeiten): Stand vor dem Wiederherstellen zurueckgeholt", st("POST", f"/api/notes/{root}/versions/{last}/restore", Bk) == 200
+       and req("GET", f"/api/notes/{root}", A)[1].get("title") == "Projekt Teilen (von B)")
     ok("B: eigene Seite unter A's geteilte Seite haengen -> 403/404", st("PATCH", f"/api/notes/{bp}", Bk, {"parent_id": root}) in (403, 404))
     ok("B: Seite unter gesperrter Seite: Inhalt gesperrt (423)",
        st("PATCH", f"/api/notes/{child}", A, {"locked": True}) == 200 and st("PATCH", f"/api/notes/{child}", Bk, {"title": "x"}) == 423)

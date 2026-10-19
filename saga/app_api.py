@@ -259,8 +259,13 @@ def api_db_rows(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
+    return db_rows(uid, nid, request.query_params)
+
+
+def db_rows(uid, nid, params):
+    """Fuer die Weboberflaeche/Apps und die Foederation (uid = fremde Person '@name@host'). params: Abfrage-Parameter."""
     try:
-        query = dbquery.parse_args(request.query_params)      # Filter/Sortierung/Blaettern: nur auf Wunsch (2.2)
+        query = dbquery.parse_args(params)      # Filter/Sortierung/Blaettern: nur auf Wunsch (2.2)
     except ValueError as e:
         return _bad(f"bad parameter: {e}")
     with _db() as c:

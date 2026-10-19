@@ -482,7 +482,7 @@
   function route() {
     var h = decodeURIComponent(location.hash.slice(1) || ''), m;
     if ((m = /^c(\d+)$/.exec(h))) openChat(+m[1]);
-    else if ((m = /^p(\d+)$/.exec(h))) create({ kind: 'page', note_id: +m[1] });
+    else if ((m = /^p(-?\d+)$/.exec(h))) create({ kind: 'page', note_id: +m[1] });      // negativ: Seite eines anderen Servers (2.3)
     else if ((m = /^u(.+)$/.exec(h))) create({ kind: 'dm', user: m[1] });
     else if (h === 'settings') settings();
   }
@@ -496,11 +496,29 @@
   }
   function freeTitle(c) {
     if (c.kind !== 'free' || !c.title_msg) return;
+    if (isFed(c)) { freeTitleV2(c); return; }
     try {
       var b = decrypt(c.id, c.title_msg, c.title_msg.device ? { [c.title_msg.sender_device]: c.title_msg.device } : {},
                       c.title_msg.ident_pub ? { [c.title_msg.sender.username]: c.title_msg.ident_pub } : {});
       if (b && b.verified && b.body && b.body.type === 'title') c._title = String(b.body.title || '').slice(0, 100);
     } catch (e) { /* Name bleibt die Mitgliederliste */ }
+  }
+  // Gruppe ueber Servergrenzen (2.3): Name als v2-Nachricht - Absender-Schluessel selbst pruefen (TOFU), dann anzeigen
+  function freeTitleV2(c) {
+    var m = c.title_msg;
+    if (!m.sender_handle) return;
+    fedKeys([m.sender_handle]).then(function (fk) {
+      var f = fk[m.sender_handle], d = f && f.keys && f.trust !== 'reject' && f.keys.devices.filter(function (x) { return x.id === m.sender_device; })[0];
+      if (!d || !X.verifyMessageV2(c.ref, m, ub(d.sign_pub, 32))) return;
+      var key = m.key_for === 'device' ? X.openKey(m.key, K.device.enc_pk, K.device.enc_sk) : X.openKey(m.key, K.backup_pk, K.backup_sk);
+      var b = X.decryptMessageV2(c.ref, m, key);
+      if (b && b.type === 'title') {
+        var t = String(b.title || '').slice(0, 100), x = S.chats.filter(function (y) { return y.id === c.id; })[0];
+        c._title = t; if (x) x._title = t;
+        if (S.cur && S.cur.id === c.id) { S.cur._title = t; drawHead(); }
+        drawList();
+      }
+    }).catch(function () { /* Name bleibt die Mitgliederliste */ });
   }
   function kindIc(c) { return c.kind === 'group' ? '#' : c.kind === 'page' ? '📄' : c.kind === 'free' ? '👥' : ''; }
   function loadList() {
@@ -548,8 +566,11 @@
                            c.kind === 'dm' ? (c.peer || {}).avatar : null));
       var t = el('span', 'ct-item-t');
       t.appendChild(el('span', 'ct-item-n', nm));
-      t.appendChild(el('span', 'ct-item-s', isFed(c)
+      t.appendChild(el('span', 'ct-item-s', isFed(c) && c.kind === 'dm'
         ? (c.request ? T('Anfrage') : T('Direkt')) + ' · ' + ((c.peer || {}).host || '') + (c.readonly ? ' · ' + T('schreibgeschützt') : '') + (c.muted ? ' · 🔕' : '')
+        : isFed(c)                                         // Gruppe/Seiten-Chat ueber Servergrenzen (2.3)
+        ? (c.request ? T('Anfrage') : c.kind === 'page' ? T('Seite') : T('Gruppe')) + ' · ' + T('{n} Personen', { n: c.member_count })
+          + (c.home_self ? '' : ' · ' + (c.home || '')) + (c.readonly ? ' · ' + T('schreibgeschützt') : '') + (c.muted ? ' · 🔕' : '')
         : (c.kind === 'dm' ? T('Direkt') : c.kind === 'group' ? T('Gruppe') : c.kind === 'page' ? T('Seite') : T('Gruppe')) +
           ' · ' + T('{n} Personen', { n: c.member_count }) + (c.muted ? ' · 🔕' : '')));
       b.appendChild(t);
@@ -662,7 +683,10 @@
             var t = el('span', 'ct-item-t'); t.appendChild(el('span', 'ct-item-n', u.label || u.name));
             t.appendChild(el('span', 'ct-item-s', T('Person auf {host} · erste Nachricht als Anfrage', { host: u.host }))); b.appendChild(t);
             b.addEventListener('click', function () {
-              if (!grp.hidden) { HK.toast(T('Gruppen mit Personen anderer Saga-Server kommen mit einem späteren Update.')); return; }
+              if (!grp.hidden) {                                  // 2.3: Gruppe mit Personen anderer Server (Heim = dieser Server)
+                if (!pick.some(function (p) { return p.handle === u.handle; })) pick.push({ username: u.handle, handle: u.handle, name: u.label || u.name, remote: true });
+                drawChips(); inp.value = ''; res.textContent = ''; inp.focus(); return;
+              }
               create({ kind: 'dm', handle: u.handle });
             });
             li.appendChild(b); res.appendChild(li);
@@ -674,7 +698,9 @@
     mk.addEventListener('click', function () {
       busy(mk, true);
       var title = name.value.trim();
-      create({ kind: 'free', members: pick.map(function (p) { return p.username; }) }).then(function (c) {
+      var loc = pick.filter(function (p) { return !p.remote; }).map(function (p) { return p.username; });
+      var rem = pick.filter(function (p) { return p.remote; }).map(function (p) { return p.handle; });
+      create(rem.length ? { kind: 'free', members: loc, handles: rem } : { kind: 'free', members: loc }).then(function (c) {
         if (c && title) return sendBody(c.id, { v: 1, type: 'title', title: title }, 'title').then(function () { loadList(); });
       }).finally(function () { busy(mk, false); });
     });
@@ -858,7 +884,14 @@
       var p = others[0] || c.peer || {}, t = trust[p.username];
       sub.appendChild(document.createTextNode(p.username || ''));
       if (t && t.verified && !t.changed) sub.appendChild(el('span', 'ct-chip ct-verified', '✓ ' + T('überprüft')));
-    } else sub.appendChild(document.createTextNode(c.members.map(function (m) { return m.me ? T('du') : m.name; }).join(', ')));
+    } else {
+      var mine = String(c.my_handle || '').split('@').slice(1).join('@');
+      sub.appendChild(document.createTextNode(c.members.map(function (m) {
+        return m.me ? T('du') : m.name + (isFed(c) && m.host && m.host !== mine ? ' (' + m.host + ')' : '');
+      }).join(', ')));
+      if (isFed(c) && c.request) sub.appendChild(el('span', 'ct-chip', T('Anfrage')));
+      if (isFed(c) && c.readonly) sub.appendChild(el('span', 'ct-chip', '🔒 ' + T('schreibgeschützt')));
+    }
     if (c.retention_s) sub.appendChild(el('span', 'ct-chip', '⏱ ' + (RET.filter(function (r) { return r[0] === c.retention_s; })[0] || [0, ''])[1]));
     if (c.muted) sub.appendChild(el('span', 'ct-chip', '🔕'));
     if (c.archived) sub.appendChild(el('span', 'ct-chip ct-chip-arch', '🗄 ' + T('Archiviert')));
@@ -880,8 +913,10 @@
     if ($('ct-call-a') && (req || ro)) { $('ct-call-a').hidden = true; $('ct-call-v').hidden = true; }
     if (ro) { box.appendChild(el('p', 'hk-hint', '🔒 ' + (c.readonly_reason || T('Diese Unterhaltung ist schreibgeschützt.')))); return; }
     if (!req) return;
-    var p = c.peer || {};
-    box.appendChild(el('p', null, T('{name} ({host}) möchte dir schreiben. Bis du annimmst, bekommst du keine Benachrichtigungen und keine Anrufe – und {name} erfährt nicht, ob du die Nachrichten gelesen hast.', { name: p.name || '?', host: p.host || '?' })));
+    var p = c.kind === 'dm' ? (c.peer || {}) : (c.invited_by || {});
+    box.appendChild(el('p', null, c.kind === 'dm'
+      ? T('{name} ({host}) möchte dir schreiben. Bis du annimmst, bekommst du keine Benachrichtigungen und keine Anrufe – und {name} erfährt nicht, ob du die Nachrichten gelesen hast.', { name: p.name || '?', host: p.host || '?' })
+      : T('{name} ({host}) hat dich in diese Gruppe eingeladen. Bis du annimmst, bekommst du keine Benachrichtigungen.', { name: p.name || '?', host: p.host || c.home || '?' })));
     var bar = el('div', 'hk-actions');
     function act(a, scope) {
       return api('POST', '/api/chats/' + c.id + '/request', { action: a, scope: scope || 'person' }).then(function (r) {
@@ -922,7 +957,8 @@
           try { m.sys = JSON.parse(m.body_ct); } catch (e) { m.sys = {}; }
           m.body = null; m.verified = true; S.byId[m.id] = m; return m;
         }
-        try { d = isFed(c) ? decryptV2(c, m) : decrypt(c.id, m, r.devices || {}, r.idents || {}); } catch (e) { d = { body: null, verified: false, error: true }; }
+        // v2-Chat: Nachrichten ohne sender_handle stammen aus der Zeit vor der Umstellung (Seiten-Chat, 2.3) - v1 mit chat_id
+        try { d = isFed(c) && m.sender_handle ? decryptV2(c, m) : decrypt(c.id, m, r.devices || {}, r.idents || {}); } catch (e) { d = { body: null, verified: false, error: true }; }
         m.body = d.body; m.verified = d.verified; m.error = !!d.error; m._ai = aiCheck(m);
         S.byId[m.id] = m; return m;
       });
@@ -1070,11 +1106,41 @@
     else if (scroll === 'bottom' || atBottom) box.scrollTop = box.scrollHeight;
   }
   // Systemzeile (2.3): mittig, z. B. "Anna hat die KI in diesem Chat eingeschaltet"
+  // Person in Systemzeilen: Name mit Herkunft (Server), ich selbst als "du"
+  function sysWho(x, acc) {
+    if (!x) return '';
+    if (acc && x.handle && x.handle === (S.cur || {}).my_handle) return T('dich');      // "… hat dich hinzugefuegt"
+    var mine = String((S.cur || {}).my_handle || '').split('@').slice(1).join('@');     // eigener Server: ohne Zusatz
+    return (x.name || '?') + (x.host && x.host !== mine ? ' (' + x.host + ')' : '');
+  }
+  function sysText(k) {
+    if (k.type === 'ai') {
+      var who = k.by === (S.cur || {}).my_handle ? T('Du') : (k.name || '?');
+      return k.on ? T('{name} hat die KI in diesem Chat eingeschaltet.', { name: who }) : T('{name} hat die KI in diesem Chat ausgeschaltet.', { name: who });
+    }
+    if (k.type === 'fed') return T('Ab jetzt mit Personen anderer Saga-Server (Ende-zu-Ende verschlüsselt).') + (k.ai_off ? ' ' + T('Die KI ist hier jetzt aus.') : '');
+    if (k.type === 'members') {
+      var acc = function (x) { return sysWho(x, true); }, nom = function (x) { return sysWho(x, false); };
+      var meBy = !!(k.by && k.by.handle && k.by.handle === (S.cur || {}).my_handle), by = k.by && !meBy ? nom(k.by) : '';
+      var add = (k.added || []).map(k.by ? acc : nom).join(', '), rm = (k.removed || []).map(k.by ? acc : nom).join(', ');
+      var out = [];
+      if (add) out.push(meBy ? T('Du hast {names} hinzugefügt.', { names: add }) : by ? T('{by} hat {names} hinzugefügt.', { by: by, names: add })
+                             : T('{names} ist jetzt dabei.', { names: add }));
+      if (rm) {
+        var left = k.by && (k.removed || []).length === 1 && (k.removed[0] || {}).handle === k.by.handle;
+        if (k.reason === 'disconnected') out.push(T('{names} ist nicht mehr dabei – die Verbindung zu diesem Saga-Server wurde getrennt.', { names: (k.removed || []).map(nom).join(', ') }));
+        else if (k.reason === 'gone') out.push(T('{names} ist nicht mehr dabei (Konto gelöscht).', { names: (k.removed || []).map(nom).join(', ') }));
+        else if (left) out.push(meBy ? T('Du hast die Gruppe verlassen.') : T('{names} hat die Gruppe verlassen.', { names: nom(k.removed[0]) }));
+        else out.push(meBy ? T('Du hast {names} entfernt.', { names: rm }) : by ? T('{by} hat {names} entfernt.', { by: by, names: rm })
+                           : T('{names} ist nicht mehr dabei.', { names: (k.removed || []).map(nom).join(', ') }));
+      }
+      return out.join(' ') || T('Hinweis');
+    }
+    return T('Hinweis');
+  }
   function sysRow(m, d) {
     var k = m.sys || {}, row = el('div', 'ct-call ct-sys'); row.dataset.id = m.id;
-    var who = k.by === (S.cur || {}).my_handle ? T('Du') : (k.name || '?');
-    row.appendChild(el('span', null, k.type === 'ai' ? (k.on ? T('{name} hat die KI in diesem Chat eingeschaltet.', { name: who })
-      : T('{name} hat die KI in diesem Chat ausgeschaltet.', { name: who })) : T('Hinweis')));
+    row.appendChild(el('span', null, sysText(k)));
     var tm = el('time', null, fTime.format(d)); tm.dateTime = d.toISOString(); row.appendChild(tm);
     return row;
   }
@@ -1482,10 +1548,13 @@
   }
   // 2.3: Senden in Chats ueber Servergrenzen (saga-chat/v2): Empfaenger = Geraete aus den selbst geprueften Schluesseln
   // aller Mitglieder (signierte Geraete-Liste, TOFU); passt das dem Server/Heim nicht (409), einmal frisch holen.
-  function sendV2(c, body, reply, extra) {
+  function sendV2(c, body, reply, extra, kind) {
     var hs = c.members.map(function (m) { return m.handle; }).filter(Boolean);
     function attempt(fresh, again) {
-      return fedKeys(hs, fresh).then(function (fk) {
+      // Mitglieder geaendert (Gruppe/Seiten-Chat, 2.3): erst die aktuelle Liste holen, dann die Schluessel
+      return (again ? api('GET', '/api/chats/' + c.id + '?device=' + q(dev())).then(function (r) {
+        if (r && r.chat) { c.members = r.chat.members; hs = c.members.map(function (m) { return m.handle; }).filter(Boolean); }
+      }).catch(function () {}) : Promise.resolve()).then(function () { return fedKeys(hs, fresh); }).then(function (fk) {
         if (S.cur && S.cur.id === c.id) { S.fk = fk; drawWarn(); }
         var bad = c.members.filter(function (m) { return !m.me && fk[m.handle] && ['warn', 'block', 'reject'].indexOf(fk[m.handle].trust) >= 0; });
         if (bad.length) throw new Error(T('Die Sicherheitsnummer von {name} hat sich geändert – erst prüfen oder „Verstanden“ wählen.', { name: bad.map(function (m) { return m.name; }).join(', ') }));
@@ -1496,6 +1565,7 @@
         var m = X.encryptMessageV2({ chat_ref: c.ref, sender_handle: c.my_handle, device: K.device.id, sign_sk: K.device.sign_sk, body: body,
                                      reply_to: reply || null, ai: (extra && extra.ai) || null, recipients: X.recipientsV2(ents) });
         m.v = 2;
+        if (kind === 'title') m.kind = 'title';
         if (extra && extra.ai_reply) m.ai_reply = extra.ai_reply;
         if (body.files) m.files = body.files.reduce(function (a, f) { a.push(f.id); if (f.th && f.th.id) a.push(f.th.id); return a; }, []);
         return api('POST', '/api/chats/' + c.id + '/messages', m).then(function (r) {
@@ -1511,7 +1581,7 @@
   }
   function sendBody(cid, body, kind, reply, extra) {
     var fc = S.cur && S.cur.id === cid ? S.cur : S.chats.filter(function (x) { return x.id === cid; })[0];
-    if (isFed(fc)) return sendV2(fc, body, reply, extra).catch(function (e) {
+    if (isFed(fc)) return sendV2(fc, body, reply, extra, kind).catch(function (e) {
       return checkDevice().then(function (okDev) { if (!okDev) { e = new Error(T('Dieses Gerät ist für Chats abgemeldet.')); } throw e; });
     });
     function attempt(rc, again) {
@@ -1813,6 +1883,8 @@
     var c = S.cur, box = overlay(T('Mitglieder'));
     if (c.kind === 'group') box.appendChild(el('p', 'hk-hint', T('Alle Mitglieder der Gruppe „{g}“ – ändert sich mit der Gruppe.', { g: c.group })));
     if (c.kind === 'page') box.appendChild(el('p', 'hk-hint', T('Alle, die die Seite sehen dürfen – ändert sich mit den Freigaben.')));
+    if (isFed(c) && c.kind !== 'dm') box.appendChild(el('p', 'hk-hint', c.home_self ? T('Dieser Chat liegt auf diesem Server; Personen anderer Saga-Server sind über ihren Server dabei.')
+      : T('Dieser Chat liegt auf {host}. Mitglieder ändert man dort (über diesen Server).', { host: c.home || '?' })));
     var ul = el('ul', 'ct-devs'); box.appendChild(ul);
     c.members.forEach(function (m) {
       var li = el('li', 'ct-dev'); li.appendChild(avatar((m.name || '?').charAt(0).toUpperCase(), m.username, '', m.avatar));
@@ -1834,7 +1906,17 @@
           var v = inp.value.trim();
           api('GET', '/api/chat/people?q=' + q(v)).then(function (r) {
             res.textContent = '';
-            if (!r.users.length && fedAddr(v)) res.appendChild(fedHint());
+            if (!r.users.length && !(r.remote || []).length && fedAddr(v)) res.appendChild(fedHint());
+            if (isFed(c)) (r.remote || []).filter(function (u) { return !c.members.some(function (m) { return m.handle === u.handle; }); }).forEach(function (u) {
+              var li = el('li'), b = el('button', 'ct-person ct-remote', (u.label || u.name)); b.type = 'button';
+              b.addEventListener('click', function () {
+                api('POST', '/api/chats/' + c.id + '/members', { handle: u.handle }).then(function () {
+                  closeOverlay(); openChat(c.id); loadList();
+                  if (c._title) sendBody(c.id, { v: 1, type: 'title', title: c._title }, 'title').catch(function () {});
+                }).catch(function (e) { HK.toast(e.message); });
+              });
+              li.appendChild(b); res.appendChild(li);
+            });
             r.users.filter(function (u) { return !c.members.some(function (m) { return m.username === u.username; }); }).forEach(function (u) {
               var li = el('li'), b = el('button', 'ct-person', u.name + ' (' + u.username + ')'); b.type = 'button';
               b.addEventListener('click', function () {

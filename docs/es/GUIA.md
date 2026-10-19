@@ -500,8 +500,10 @@ enlace a la página superior. Abajo puedes copiar el enlace de la página: la ab
 - **Las subpáginas se incluyen:** un uso compartido vale también para todas las subpáginas y para las entradas de las
   bases de datos que hay debajo. Cuenta el rol más alto (persona o grupo, esta página o una superior). Las páginas
   archivadas, las de la papelera y las plantillas solo las ve el propietario.
-- **Solo el propietario puede:** eliminar, archivar, mover, bloquear, marcar como plantilla, publicar, ver y restaurar
-  versiones y gestionar el acceso. Lo que otros crean o suben pertenece al propietario de la página; las versiones se
+- **Solo el propietario puede:** eliminar, archivar, mover libremente, bloquear, marcar como plantilla, publicar y
+  gestionar el acceso. Desde 2.3, quien tiene «Editar» puede ver y restaurar versiones (el estado anterior se guarda como
+  versión) y mover páginas **dentro del área compartida**, solo a lugares con exactamente los mismos permisos («⋯» →
+  «Mover a»). Lo que otros crean o suben pertenece al propietario de la página; las versiones se
   guardan con él. Así, las personas con «Editar» usan el **espacio del propietario**: sus imágenes y archivos cuentan
   en él.
 - **Compartir y publicar:** si una página es pública con «Publicar también las subpáginas» y además está compartida
@@ -589,10 +591,24 @@ el aviso de conflicto de siempre). Las imágenes llegan a través de tu propio s
 público. Las notificaciones («ha compartido una página contigo», «ha respondido») también funcionan entre servidores,
 sin el texto del comentario.
 
-**Todavía no entre servidores** (en esta versión): abrir bases de datos de otros servidores (aparece un aviso), subir
-imágenes a páginas de otros servidores, crear subpáginas, versiones, exportar, «quién está aquí» y actualización en
-directo, chat. Quien cambia su nombre público o elimina su cuenta pierde los usos compartidos de otros servidores (se
-eliminan allí); el nombre antiguo queda bloqueado para otras cuentas.
+**Páginas de otros servidores, completas (2.3, ambos servidores 2.3):** según el rol (lo comprueba siempre el servidor
+de la página) puedes abrir, filtrar y editar **bases de datos** (valores, columnas, vistas, entradas nuevas), crear
+**subpáginas** y moverlas dentro del área compartida, **subir imágenes y archivos** (se guardan con el propietario; por
+persona de otro servidor hay además un límite `FED_UPLOAD_QUOTA_MB`, 200 MB por defecto), usar el **historial de
+versiones** (Editar) y **exportar**. Mientras la página está abierta, tu servidor mantiene una suscripción corta con el
+servidor de la página (`FED_WATCH_TTL`, 90 s) para «quién está aquí», cambios en directo y contadores de comentarios,
+nunca contenido. Con servidores 2.1/2.2 se sigue pudiendo leer, comentar y editar título y contenido.
+
+**Chats entre servidores (2.3):** chats directos (solicitudes de mensaje, adjuntos, llamadas), **grupos libres** con
+personas de varios servidores (el hogar es el servidor de quien lo crea; los cambios pasan por el hogar y se muestran
+como avisos con su origen) y **chats de página** de páginas compartidas con personas o grupos de otros servidores (el
+hogar es el servidor de la página; los miembros de un grupo de otro servidor solo los comunica ese servidor y solo si
+el grupo es destino de un uso compartido). Cifrado de extremo a extremo; las claves y los adjuntos de personas de un
+tercer servidor llegan a través del hogar y tu app comprueba las claves. Al desconectar, las personas de ese servidor
+salen de los grupos; allí el chat queda de solo lectura.
+
+Quien cambia su nombre público o elimina su cuenta pierde los usos compartidos de otros servidores (se eliminan allí);
+el nombre antiguo queda bloqueado para otras cuentas.
 
 ### Notificaciones y actualización en directo
 
@@ -1305,6 +1321,8 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `LIVE_MAX_AGE` | `3600` | Tras estos segundos el navegador vuelve a abrir la conexión en directo (se comprueba de nuevo la sesión) |
 | `FED_ALLOW_HTTP` | – | `1` = federación también por http (solo para pruebas; si no, solo https) |
 | `FED_RATE` / `FED_TIMEOUT` | `600` / `10` | Solicitudes por minuto e instancia conectada / segundos hasta el tiempo de espera |
+| `FED_UPLOAD_QUOTA_MB` | `200` | Espacio por persona de otro servidor para subidas a páginas de aquí (cuenta también para el propietario) |
+| `FED_WATCH_TTL` | `90` | Segundos que dura sin renovarse una suscripción (directo/presencia) a una página de otro servidor |
 | `SEARXNG_URL` / `SEARXNG_SECRET` | – | Búsqueda web (sección 10) |
 | `AI_WEB_FETCH` / `AI_WEB_RATE` | `2` / `10` | Búsqueda web de la IA: páginas de resultados cuyo texto se lee (0 = solo fragmentos); búsquedas web por persona en 10 minutos |
 | `SEARCH_LANGUAGE` / `SEARCH_SAFESEARCH` | `de-DE` / `0` | Idioma y filtro de la búsqueda web |
