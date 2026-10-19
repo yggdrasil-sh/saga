@@ -571,6 +571,36 @@ CREATE TABLE IF NOT EXISTS fed_outbox (               -- Ereignisse an andere In
     last_error TEXT);
 CREATE TABLE IF NOT EXISTS fed_name_retired (         -- oeffentliche Namen, die schon foederiert waren: nie an ein anderes Konto
     name TEXT PRIMARY KEY, uid TEXT, retired DOUBLE PRECISION NOT NULL);
+-- Foederation 2.3 (Protokoll 2, saga/federation.py, saga/fed_dir.py, saga/fed_keys.py). Neue Spalten in fed_peer und
+-- fed_outbox kommen mit Migration 7 (unten).
+CREATE TABLE IF NOT EXISTS fed_handle (               -- stabiler, pseudonymer foederierter Handle je Konto ('~' + 16 Zeichen)
+    uid TEXT PRIMARY KEY, handle TEXT NOT NULL UNIQUE, created DOUBLE PRECISION NOT NULL);
+CREATE SEQUENCE IF NOT EXISTS fed_dir_seq;
+CREATE TABLE IF NOT EXISTS fed_dir_local (            -- eigenes Adressbuch (Abgleich-Stand je Konto; visible=0 = Grabstein)
+    uid TEXT PRIMARY KEY, handle TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', pub TEXT NOT NULL DEFAULT '',
+    av TEXT NOT NULL DEFAULT '', groups TEXT NOT NULL DEFAULT '[]', visible INTEGER NOT NULL DEFAULT 1,
+    seq BIGINT NOT NULL, updated DOUBLE PRECISION NOT NULL);
+CREATE INDEX IF NOT EXISTS fed_dir_local_seq ON fed_dir_local (seq);
+CREATE TABLE IF NOT EXISTS fed_directory (            -- Adressbuecher verbundener Instanzen (nur Anzeigename, Handle, Bild-Stand)
+    peer_id INTEGER NOT NULL, handle TEXT NOT NULL,   -- handle: '~xxxx' (ohne @host)
+    name TEXT NOT NULL DEFAULT '', pub TEXT NOT NULL DEFAULT '', av TEXT NOT NULL DEFAULT '',
+    updated DOUBLE PRECISION NOT NULL, PRIMARY KEY (peer_id, handle));
+CREATE INDEX IF NOT EXISTS fed_directory_name ON fed_directory (lower(name));
+CREATE TABLE IF NOT EXISTS fed_event_seen (           -- Protokoll 2: schon verarbeitete Ereignisse (idempotent, 7 Tage)
+    peer_id INTEGER NOT NULL, ev_id TEXT NOT NULL, ts DOUBLE PRECISION NOT NULL, PRIMARY KEY (peer_id, ev_id));
+CREATE INDEX IF NOT EXISTS fed_event_seen_ts ON fed_event_seen (ts);
+CREATE TABLE IF NOT EXISTS fed_chain_out (            -- Protokoll 2: Reihenfolge je Kette (Absender)
+    peer_id INTEGER NOT NULL, chain TEXT NOT NULL, seq BIGINT NOT NULL, PRIMARY KEY (peer_id, chain));
+CREATE TABLE IF NOT EXISTS fed_chain_in (             -- Protokoll 2: zuletzt verarbeitete Nummer je Kette (Empfaenger)
+    peer_id INTEGER NOT NULL, chain TEXT NOT NULL, seq BIGINT NOT NULL, ts DOUBLE PRECISION NOT NULL, PRIMARY KEY (peer_id, chain));
+CREATE TABLE IF NOT EXISTS fed_chat_keys (            -- Schluesselverzeichnis: Zwischenspeicher fremder Chat-Schluessel (saga-chat/v2)
+    handle TEXT PRIMARY KEY, peer_id INTEGER NOT NULL, data TEXT NOT NULL, fetched DOUBLE PRECISION NOT NULL,
+    stale INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS chat_fed_cert (            -- Handle-Zertifikat (saga-chat/v2/handle, vom Identitaetsschluessel signiert)
+    uid TEXT PRIMARY KEY, handle TEXT NOT NULL, ident_pub TEXT NOT NULL, sig TEXT NOT NULL, created DOUBLE PRECISION NOT NULL);
+CREATE TABLE IF NOT EXISTS chat_device_fed (          -- Geraete-Zertifikat v2 (saga-chat/v2/device) je Geraet
+    device_id TEXT PRIMARY KEY, uid TEXT NOT NULL, fed_sig TEXT NOT NULL, created DOUBLE PRECISION NOT NULL);
+CREATE INDEX IF NOT EXISTS chat_device_fed_uid ON chat_device_fed (uid);
 
 -- Zweiter Faktor (2.1, saga/mfa.py): Passkeys (WebAuthn), Authenticator-App (TOTP), Wiederherstellungscodes.
 -- Nur oeffentliche Schluessel, das TOTP-Geheimnis verschluesselt (wie Geheimnisse der Einstellungen), Codes nur als Hash.
@@ -718,6 +748,21 @@ ALTER TABLE note_version ADD COLUMN IF NOT EXISTS author TEXT;
     # beliebig oft ausfuehrbar); vorher legt init_schema wie bei jeder Migration ein Backup an.
     6: """
 SELECT 1 FROM mfa_passkey, mfa_totp, mfa_recovery, mfa_challenge, avatar, avatar_img, chat_call, chat_call_signal LIMIT 0;
+""",
+    # 2.3.0: Foederation Protokoll 2 - Faehigkeiten und Admin-Schalter je verbundener Instanz, Adressbuch-Stand,
+    # Ausgangskorb mit Reihenfolge je Kette (chain) und Ereignis-Kennung (idempotent beim Empfaenger)
+    7: """
+ALTER TABLE fed_peer ADD COLUMN IF NOT EXISTS protocol INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE fed_peer ADD COLUMN IF NOT EXISTS caps TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE fed_peer ADD COLUMN IF NOT EXISTS caps_at DOUBLE PRECISION;
+ALTER TABLE fed_peer ADD COLUMN IF NOT EXISTS opts TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE fed_peer ADD COLUMN IF NOT EXISTS dir_seq BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE fed_peer ADD COLUMN IF NOT EXISTS dir_cfg TEXT NOT NULL DEFAULT '';
+ALTER TABLE fed_peer ADD COLUMN IF NOT EXISTS dir_at DOUBLE PRECISION;
+ALTER TABLE fed_outbox ADD COLUMN IF NOT EXISTS chain TEXT;
+ALTER TABLE fed_outbox ADD COLUMN IF NOT EXISTS ev_id TEXT;
+CREATE INDEX IF NOT EXISTS fed_outbox_chain ON fed_outbox (peer_id, chain, id) WHERE chain IS NOT NULL;
+CREATE INDEX IF NOT EXISTS fed_outbox_due ON fed_outbox (next_try);
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

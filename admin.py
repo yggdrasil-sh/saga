@@ -872,7 +872,10 @@ def _fed_events():
             "share.set": t("Freigabe"),
             "share.removed": t("Freigabe entfernt"),
             "person.gone": t("Person entfernt"),
-            "event.dropped": t("Ereignis verworfen")}
+            "event.dropped": t("Ereignis verworfen"),
+            "peer.capabilities": t("Fähigkeiten der Gegenseite"),
+            "peer.options": t("Schalter geändert"),
+            "chain.gap": t("Lücke in einer Ereignis-Kette")}
 
 
 def _fed_page(request, me, **kw):
@@ -931,9 +934,59 @@ async def federation_post(request: Request):
                 _flash(request, t("Verbindung getrennt."))
         elif act == "remove":
             await run_in_threadpool(federation.remove, pid)
+        elif act == "opts":                  # 2.3: Admin-Schalter je verbundener Instanz
+            groups = [g for g in re.split(r"[,\s]+", _s(f, "directory_groups", 2000)) if g]
+            new = await run_in_threadpool(federation.set_opts, pid, {"chat": _on(f, "chat"), "calls": _on(f, "calls"), "directory": _on(f, "directory"),
+                                                                  "scope_exception": _on(f, "scope_exception"), "directory_groups": groups}, who)
+            if new is not None:
+                print(f"admin: {who} aendert Schalter der Foederation {pid}", flush=True)
+                _flash(request, t("Gespeichert."))
+        elif act == "hello":
+            caps = await run_in_threadpool(federation.hello, pid)
+            _flash(request, t("Fähigkeiten abgefragt.") if caps is not None else t("Die andere Saga-Instanz ist gerade nicht erreichbar."),
+                   "ok" if caps is not None else "err")
     except federation.FedError as ex:
         _flash(request, t("Fehler: {err}", err=str(ex)), "err")
     return _go("/federation")
+
+
+# JSON-Schnittstelle (2.3) fuer Skripte/Apps im Admin-Bereich: Sitzung des Admins + Kopfzeile X-CSRF-Token (= Token der
+# Sitzung, steht in jedem Admin-Formular). GET liefert den Stand der Foederation inkl. Faehigkeiten und Schalter je Instanz.
+def _api_admin(request):
+    me = _me(request)
+    if not me:
+        return None, JSONResponse({"error": "unauthorized"}, status_code=401)
+    if request.method != "GET" and not secrets.compare_digest(str(request.headers.get("x-csrf-token") or ""), str(request.session.get("csrf") or "-")):
+        return None, JSONResponse({"error": "csrf"}, status_code=403)
+    return me, None
+
+
+@admin.get("/api/federation")
+def api_federation(request: Request):
+    me, err = _api_admin(request)
+    if err:
+        return err
+    st = federation.admin_state()
+    st.pop("log", None)
+    return JSONResponse(st, headers={"Cache-Control": "no-store"})
+
+
+@admin.put("/api/federation/peers/{pid}")
+async def api_federation_peer(pid: int, request: Request):
+    """{chat?, calls?, directory?, scope_exception?, directory_groups?: [..]} - Admin-Schalter einer Instanz."""
+    me, err = _api_admin(request)
+    if err:
+        return err
+    try:
+        b = await request.json()
+    except ValueError:
+        b = None
+    if not isinstance(b, dict):
+        return JSONResponse({"error": "bad request"}, status_code=400)
+    new = await run_in_threadpool(federation.set_opts, pid, b, me["username"])
+    if new is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse({"id": pid, "opts": new}, headers={"Cache-Control": "no-store"})
 
 
 # --- Mitteilungen aufs Handy/Desktop (Web Push, ntfy/UnifiedPush, APNs) ------------------------------------

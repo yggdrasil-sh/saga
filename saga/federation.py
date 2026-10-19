@@ -42,7 +42,8 @@ from version import VERSION
 
 router = APIRouter()
 
-PROTOCOL = 1
+PROTOCOL = 2                                 # 2.3: Protokoll 2 (Faehigkeiten, Express, Ketten); Protokoll 1 bleibt gueltig
+PROTOCOLS = [1, 2]
 ALLOW_HTTP = E.get("FED_ALLOW_HTTP", "").lower() in ("1", "true", "yes", "on")
 SELF_URL = BASE_URL.rstrip("/")
 SELF_HOST = fedsig.authority(urlparse(SELF_URL).netloc)
@@ -59,6 +60,21 @@ EVENTS_MAX = 20
 DISPLAY_MAX = 120
 STATUSES = ("pending_in", "pending_out", "active", "disconnected")
 CAPS = ["share", "read", "edit", "comment", "files", "notify"]
+# Protokoll 2 (2.3): v2 = /fed/v2/hello + /fed/v2/events (Ereignis-Kennung, Ketten), express = synchrone Zustellung,
+# handles = pseudonyme Handles ('~xxxx') wie oeffentliche Namen, directory = Adressbuch-Abgleich, keys = Schluessel-
+# verzeichnis fuer saga-chat/v2. Spaetere Etappen ergaenzen chat2 calls2 live presence db subpages upload versions export.
+CAPS2 = ["v2", "express", "handles", "directory", "keys"]
+# Admin-Schalter je verbundener Instanz (fed_peer.opts) - Standard: alles an, Ausnahme "Teilen nur in gemeinsamen
+# Gruppen" aus. directory_groups: nur Personen dieser Gruppen erscheinen im Adressbuch der Instanz (leer = alle).
+OPT_DEFAULTS = {"chat": True, "calls": True, "directory": True, "scope_exception": False, "directory_groups": []}
+# Faehigkeit -> Admin-Schalter, der sie zusaetzlich braucht
+CAP_OPT = {"directory": "directory", "keys": "chat", "chat2": "chat", "calls2": "calls"}
+EXPRESS_TIMEOUT = float(E.get("FED_EXPRESS_TIMEOUT", "5"))      # synchrone Zustellung: harte Frist in Sekunden
+HELLO_EVERY = 6 * 3600                       # Faehigkeiten der Gegenstelle so oft neu abfragen
+SEEN_KEEP = 7 * 86400                        # Ereignis-Kennungen so lange merken (idempotent)
+PSEUDO_RE = re.compile(r"~[a-z2-7]{16}")      # pseudonymer Handle (stabil, zufaellig, nie der Anmeldename)
+_CHAIN_RE = re.compile(r"[A-Za-z0-9:._-]{1,80}")
+_EVID_RE = re.compile(r"[0-9a-f]{32}")
 _FID = re.compile(r"[0-9a-f]{24}")
 _HOST_RE = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?")
 
@@ -194,14 +210,63 @@ def has_key(c):
 # =====================================================================================================
 # Gegenstellen (Peers)
 # =====================================================================================================
-P_COLS = "id, host, base_url, name, public_key, fingerprint, status, created, confirmed_at, last_seen, last_error"
+P_COLS = ("id, host, base_url, name, public_key, fingerprint, status, created, confirmed_at, last_seen, last_error, protocol, caps, caps_at, "
+          "opts, dir_seq, dir_cfg, dir_at")
+_P_NAMES = ("id", "host", "base_url", "name", "public_key", "fingerprint", "status", "created", "confirmed_at", "last_seen", "last_error",
+            "protocol", "caps", "caps_at", "opts", "dir_seq", "dir_cfg", "dir_at")
+
+
+def _jl(v, typ):
+    try:
+        x = json.loads(v or "")
+    except ValueError:
+        return typ()
+    return x if isinstance(x, typ) else typ()
 
 
 def _peer(r):
     if not r:
         return None
-    return dict(zip(("id", "host", "base_url", "name", "public_key", "fingerprint", "status", "created", "confirmed_at", "last_seen",
-                     "last_error"), r))
+    p = dict(zip(_P_NAMES, r))
+    p["caps"] = [x for x in _jl(p["caps"], list) if isinstance(x, str)]
+    p["opts"] = peer_opts(p["opts"])
+    return p
+
+
+def peer_opts(raw):
+    """Admin-Schalter einer Instanz (fed_peer.opts) mit Standardwerten."""
+    d = raw if isinstance(raw, dict) else _jl(raw, dict)
+    out = dict(OPT_DEFAULTS)
+    for k, v in d.items():
+        if k == "directory_groups":
+            out[k] = sorted({auth.norm_group(g) for g in v if isinstance(g, str) and auth.norm_group(g)})[:50] if isinstance(v, list) else []
+        elif k in OPT_DEFAULTS:
+            out[k] = bool(v)
+    return out
+
+
+def caps_of(p):
+    """Gemeinsame Faehigkeiten (beide Seiten melden sie) - ohne Admin-Schalter."""
+    return set(CAPS2) & set(p.get("caps") or []) if p else set()
+
+
+def feature(p, name):
+    """Darf Funktion name mit Instanz p genutzt werden? Beide Seiten melden die Faehigkeit, die Verbindung ist aktiv,
+    die Foederation an und der zugehoerige Admin-Schalter je Instanz an (Aushandlung, Protokoll 2)."""
+    if not p or p.get("status") != "active" or not enabled() or name not in caps_of(p):
+        return False
+    opt = CAP_OPT.get(name)
+    return bool(peer_opts(p.get("opts")).get(opt, True)) if opt else True
+
+
+def scope_ok(host=None):
+    """"Teilen nur in gemeinsamen Gruppen" (Admin) sperrt die Foederation beim Teilen - ausser fuer Instanzen mit der
+    Ausnahme (Schalter je Instanz). host None: gibt es ueberhaupt eine Instanz, mit der es geht?"""
+    if not sharing.group_scope():
+        return True
+    with _db() as c:
+        ps = [peer_by(c, "host", host)] if host else peers(c)
+    return any(p and p["status"] == "active" and p["opts"].get("scope_exception") for p in ps)
 
 
 def peer_by(c, col, v):
@@ -229,6 +294,54 @@ def _person_upsert(c, principal, peer_id, display):
                   (principal, peer_id, display, time.time()))
 
 
+def is_name(n):
+    """Name einer Person ueber Instanzgrenzen: oeffentlicher Name oder pseudonymer Handle ('~' + 16 Zeichen)."""
+    return isinstance(n, str) and bool(NAME_RE.fullmatch(n) or PSEUDO_RE.fullmatch(n))
+
+
+_A32 = "abcdefghijklmnopqrstuvwxyz234567"
+
+
+def own_handle(c, uid):
+    """Stabiler pseudonymer Handle eines lokalen Kontos ('~' + 16 Zeichen, zufaellig; beim ersten Bedarf angelegt).
+    Er aendert sich nie (auch nicht mit dem oeffentlichen Namen) - an ihn binden sich die Chat-Schluessel (saga-chat/v2)."""
+    r = c.execute("SELECT handle FROM fed_handle WHERE uid=?", (uid,)).fetchone()
+    if r:
+        return r[0]
+    for _ in range(5):
+        h = "~" + "".join(secrets.choice(_A32) for _ in range(16))
+        c.execute("INSERT INTO fed_handle (uid, handle, created) VALUES (?,?,?) ON CONFLICT DO NOTHING", (uid, h, time.time()))
+        r = c.execute("SELECT handle FROM fed_handle WHERE uid=?", (uid,)).fetchone()
+        if r:
+            return r[0]
+    raise FedError("handle")
+
+
+def uid_by_handle(c, h):
+    r = c.execute("SELECT f.uid FROM fed_handle f JOIN users u ON u.username=f.uid WHERE f.handle=? AND u.disabled=0", (h,)).fetchone()
+    return r[0] if r else None
+
+
+def display_of(c, uid):
+    """Anzeigename fuer andere Instanzen: Anzeigename (nie der Anmeldename), sonst oeffentlicher Name, sonst ''."""
+    r = c.execute("SELECT display_name FROM users WHERE username=?", (uid,)).fetchone()
+    d = _clean_text(r[0] if r else "", DISPLAY_MAX)
+    if d and d.lower() != str(uid).lower():
+        return d
+    return get_name(c, uid) or ""
+
+
+def fed_name(c, uid, p=None, pseudo=False):
+    """Name eines lokalen Kontos fuer die Instanz p: oeffentlicher Name. pseudo=True: ohne ihn der pseudonyme Handle -
+    nur, wenn p Protokoll 2 mit 'handles' spricht. Seiten teilen (Protokoll 1) bleibt bei oeffentlichen Namen."""
+    pub = get_name(c, uid)
+    if pub:
+        return pub
+    if pseudo and p is not None and "handles" in caps_of(p) and p.get("status") == "active":
+        return own_handle(c, uid)
+    return None
+
+
 def _host_tail(host):
     return "@" + host
 
@@ -245,6 +358,10 @@ def cleanup_peer(c, p):
     c.execute("DELETE FROM note_comment_seen WHERE uid LIKE '@%' AND right(uid, ?)=?", (len(tail), tail))
     c.execute("DELETE FROM fed_outbox WHERE peer_id=?", (p["id"],))
     avatars.forget_remote(c, host=p["host"])
+    # Protokoll 2: Adressbuch der Instanz sofort weg, Schluessel-Zwischenspeicher, Ketten- und Ereignis-Stand
+    for tb in ("fed_directory", "fed_chat_keys", "fed_chain_in", "fed_chain_out", "fed_event_seen"):
+        c.execute(f"DELETE FROM {tb} WHERE peer_id=?", (p["id"],))
+    c.execute("UPDATE fed_peer SET dir_seq=0, dir_cfg='', dir_at=NULL WHERE id=?", (p["id"],))
     return len(rows)
 
 
@@ -406,7 +523,7 @@ def _verify_sync(method, path, query, headers, body, statuses, connect_key=None,
         if actor is not None:
             name = actor.get("name")
             groups = actor.get("groups") or []
-            if not isinstance(name, str) or not NAME_RE.fullmatch(name) or not isinstance(groups, list) or len(groups) > 50 \
+            if not is_name(name) or not isinstance(groups, list) or len(groups) > 50 \
                     or any(not isinstance(g, str) or auth.norm_group(g) != g for g in groups) or peer.get("id") is None:
                 return None, _unauth("bad actor", 400)
             inp.name = name
@@ -464,12 +581,12 @@ def _is_person(obj):
     return {"name", "username", "me"} <= set(obj) and set(obj) <= PERSON_KEYS
 
 
-def _ext_persons(c, obj, cache=None):
+def _ext_persons(c, obj, cache=None, peer=None):
     """Antwort an eine andere Instanz: Personen nur mit oeffentlichem Namen ('@name@host') - nie der Anmeldename.
     Fremde Personen behalten ihre Adresse, der Name kommt ohne Herkunfts-Zusatz (setzt der Empfaenger)."""
     cache = {} if cache is None else cache
     if isinstance(obj, list):
-        return [_ext_persons(c, x, cache) for x in obj]
+        return [_ext_persons(c, x, cache, peer) for x in obj]
     if not isinstance(obj, dict):
         return obj
     if _is_person(obj):                      # Profilbild-Adressen gelten nur hier - die andere Instanz setzt eigene
@@ -481,11 +598,10 @@ def _ext_persons(c, obj, cache=None):
                 r = c.execute("SELECT display FROM fed_person WHERE principal=?", (u,)).fetchone()
                 cache[u] = {"name": (r[0] if r else "") or u[1:].split("@")[0], "username": u}
             else:
-                r = c.execute("SELECT display_name FROM users WHERE username=?", (u,)).fetchone()
-                pub = get_name(c, u)
-                cache[u] = {"name": (r[0] if r else "") or pub or "?", "username": f"@{pub}@{SELF_HOST}" if pub else None}
+                pub = fed_name(c, u, peer)          # oeffentlicher Name bzw. (Protokoll 2) pseudonymer Handle
+                cache[u] = {"name": display_of(c, u) or pub or "?", "username": f"@{pub}@{SELF_HOST}" if pub else None}
         return dict(cache[u], me=bool(obj.get("me")))
-    return {k: _ext_persons(c, v, cache) for k, v in obj.items()}
+    return {k: _ext_persons(c, v, cache, peer) for k, v in obj.items()}
 
 
 def _relay(inp, resp):
@@ -495,7 +611,7 @@ def _relay(inp, resp):
     except ValueError:
         data = None
     with _db() as c:
-        data = _ext_persons(c, data)
+        data = _ext_persons(c, data, peer=inp.peer)
     return _signed(inp, resp.status_code, data)
 
 
@@ -511,13 +627,16 @@ def well_known():
         _, pub = own_key()
     except FedError:
         return _not_found()
-    return JSONResponse({"software": "saga", "protocol": PROTOCOL, "version": VERSION, "base_url": SELF_URL, "host": SELF_HOST,
-                         "name": title(), "key": {"id": SELF_URL, "alg": "ed25519", "public": fedsig.b64u(pub)},
-                         "fingerprint": fedsig.fingerprint(pub), "capabilities": CAPS},
+    return JSONResponse({"software": "saga", "protocol": PROTOCOL, "protocols": PROTOCOLS, "version": VERSION, "base_url": SELF_URL,
+                         "host": SELF_HOST, "name": title(), "key": {"id": SELF_URL, "alg": "ed25519", "public": fedsig.b64u(pub)},
+                         "fingerprint": fedsig.fingerprint(pub), "capabilities": CAPS + CAPS2},
                         headers={"Cache-Control": "public, max-age=300", "X-Content-Type-Options": "nosniff"})
 
 
 def _local_user_by_name(c, name):
+    if isinstance(name, str) and PSEUDO_RE.fullmatch(name):          # pseudonymer Handle (Protokoll 2)
+        uid = uid_by_handle(c, name)
+        return (uid, display_of(c, uid) or name) if uid else (None, None)
     r = c.execute("SELECT p.uid, u.display_name FROM public_name p JOIN users u ON u.username=p.uid WHERE p.name=? AND u.disabled=0",
                   (name,)).fetchone()
     return (r[0], r[1] or name) if r else (None, None)
@@ -546,7 +665,7 @@ async def webfinger(request: Request, resource: str = "", kind: str = "user"):
                 if g and g == m.group(1) and _local_group(c, g):
                     return {"subject": f"acct:{g}@{SELF_HOST}", "kind": "group", "name": g}
                 return None
-            if not NAME_RE.fullmatch(m.group(1)):
+            if not is_name(m.group(1)):
                 return None
             uid, disp = _local_user_by_name(c, m.group(1))
             return {"subject": f"acct:{m.group(1)}@{SELF_HOST}", "kind": "user", "name": disp} if uid else None
@@ -637,6 +756,7 @@ async def fed_confirm(request: Request):
             if inp.peer["status"] != "active":
                 c.execute("UPDATE fed_peer SET status='active', confirmed_at=?, last_error=NULL WHERE id=?", (time.time(), inp.peer["id"]))
                 log(c, "peer.confirmed_remote", inp.peer)
+                c.after_commit(lambda: _express.submit(hello, inp.peer["id"]))      # Protokoll 2: Faehigkeiten austauschen
     await run_in_threadpool(run)
     return _signed(inp, 200, {"status": "active"})
 
@@ -671,7 +791,7 @@ async def fed_status(request: Request):
 # =====================================================================================================
 def _handle(v):
     """'name@host' -> (name, host) oder (None, None)."""
-    m = re.fullmatch(r"@?([a-z0-9][a-z0-9_-]{1,31})@([a-z0-9.:-]{1,260})", str(v or ""))
+    m = re.fullmatch(r"@?([a-z0-9][a-z0-9_-]{1,31}|~[a-z2-7]{16})@([a-z0-9.:-]{1,260})", str(v or ""))
     return (m.group(1), fedsig.authority(m.group(2))) if m else (None, None)
 
 
@@ -708,7 +828,7 @@ def _ev(c, peer, ev):
     rid = note.get("id")
     if typ == "person.gone":
         name = ev.get("name")
-        if not isinstance(name, str) or not NAME_RE.fullmatch(name):
+        if not is_name(name):
             return "ignored"
         p = f"@{name}@{peer['host']}"
         n = c.execute("DELETE FROM note_share WHERE target_type='remote' AND target=?", (p,)).rowcount
@@ -721,6 +841,9 @@ def _ev(c, peer, ev):
         c.execute("UPDATE notification SET actor_uid=NULL WHERE actor_uid=?", (p,))
         c.execute("DELETE FROM fed_person WHERE principal=?", (p,))
         avatars.forget_remote(c, principal=p)
+        c.execute("DELETE FROM fed_directory WHERE peer_id=? AND (handle=? OR pub=?)", (peer["id"], name, name))
+        if PSEUDO_RE.fullmatch(name):
+            c.execute("DELETE FROM fed_chat_keys WHERE handle=?", (f"{name}@{peer['host']}",))
         if ev.get("deleted"):
             c.execute("DELETE FROM fed_inbound WHERE peer_id=? AND owner=?", (peer["id"], p))
         log(c, "person.gone", peer, f"{name} shares={n}")
@@ -729,7 +852,7 @@ def _ev(c, peer, ev):
         return "ignored"
     tt, tname = to.get("type"), to.get("name")
     if tt == "user":
-        if not isinstance(tname, str) or not NAME_RE.fullmatch(tname):
+        if not is_name(tname):
             return "ignored"
         target = _local_user_by_name(c, tname)[0]
         if not target:
@@ -746,7 +869,7 @@ def _ev(c, peer, ev):
         role = ev.get("role")
         owner = ev.get("owner") if isinstance(ev.get("owner"), dict) else {}
         oname = owner.get("name")
-        if role not in ROLES or not isinstance(oname, str) or not NAME_RE.fullmatch(oname):
+        if role not in ROLES or not is_name(oname):
             return "ignored"
         op = f"@{oname}@{peer['host']}"
         _person_upsert(c, op, peer["id"], owner.get("display") or oname)
@@ -798,6 +921,127 @@ async def fed_events(request: Request):
 
 
 # =====================================================================================================
+# Protokoll 2 (2.3): Faehigkeiten aushandeln, Ereignisse mit Kennung und Kette
+# =====================================================================================================
+def _clean_caps(v):
+    return sorted({x for x in v if isinstance(x, str) and re.fullmatch(r"[a-z0-9_-]{1,32}", x)})[:64] if isinstance(v, list) else []
+
+
+def _store_caps(pid, protocol, caps):
+    """Faehigkeiten der Gegenstelle speichern; bei Aenderung HELLO_HOOKS (z. B. Adressbuch holen) im Hintergrund."""
+    protocol = protocol if isinstance(protocol, int) and not isinstance(protocol, bool) and 1 <= protocol <= 99 else 1
+    with _db() as c, c:
+        old = peer_by(c, "id", pid)
+        if not old:
+            return
+        c.execute("UPDATE fed_peer SET protocol=?, caps=?, caps_at=? WHERE id=?", (protocol, json.dumps(caps), time.time(), pid))
+        changed = old["protocol"] != protocol or sorted(old["caps"]) != caps
+        if changed:
+            log(c, "peer.capabilities", old, f"protocol={protocol} " + " ".join(x for x in caps if x in CAPS2))
+    if changed:
+        _run_hooks(pid)
+
+
+def _run_hooks(pid):
+    def run():
+        for fn in list(HELLO_HOOKS):
+            try:
+                fn(pid)
+            except Exception as ex:  # noqa: BLE001
+                print(f"federation: hook {getattr(fn, '__name__', '?')}: {type(ex).__name__}: {ex}", flush=True)
+    try:
+        _express.submit(run)
+    except RuntimeError:
+        pass
+
+
+def hello(pid):
+    """Faehigkeiten mit einer verbundenen Instanz austauschen (signiert, POST /fed/v2/hello). Aeltere Instanzen kennen
+    den Endpunkt nicht (404) -> Protokoll 1 ohne Zusatzfaehigkeiten. -> Faehigkeiten der Gegenstelle oder None."""
+    with _db() as c:
+        p = peer_by(c, "id", pid)
+    if not p or p["status"] != "active" or not enabled():
+        return None
+    try:
+        status, d = call_json(p, "POST", "/fed/v2/hello", body={"protocol": PROTOCOL, "protocols": PROTOCOLS, "capabilities": CAPS + CAPS2},
+                              timeout=6)
+    except FedError as ex:
+        if ex.code == 404:                   # 2.1/2.2: unsignierte 404 - Protokoll 1
+            _store_caps(pid, 1, [])
+            return []
+        with _db() as c, c:
+            _touch(c, p, ex)
+        return None
+    if status == 404:
+        _store_caps(pid, 1, [])
+        return []
+    if status != 200 or not isinstance(d, dict):
+        return None
+    caps = _clean_caps(d.get("capabilities"))
+    _store_caps(pid, d.get("protocol"), caps)
+    return caps
+
+
+@router.post("/fed/v2/hello")
+async def fed_hello(request: Request):
+    """Gegenstelle nennt Protokoll und Faehigkeiten; Antwort: unsere. Beide Seiten speichern, was die andere kann."""
+    inp, err = await _verify(request, ("pending_out", "active"))
+    if err is not None:
+        return err
+    d = inp.data if isinstance(inp.data, dict) else {}
+    if inp.peer.get("id") and inp.peer.get("status") == "active":
+        await run_in_threadpool(_store_caps, inp.peer["id"], d.get("protocol"), _clean_caps(d.get("capabilities")))
+    return _signed(inp, 200, {"protocol": PROTOCOL, "protocols": PROTOCOLS, "capabilities": CAPS + CAPS2})
+
+
+def _ev2(c, peer, ev):
+    """Ereignis ueber Protokoll 2: Kennung (hoechstens einmal), Kette (streng aufsteigend), dann wie v1 bzw. EV2_HANDLERS."""
+    eid = ev.get("id")
+    if eid is not None:
+        if not isinstance(eid, str) or not _EVID_RE.fullmatch(eid):
+            return "ignored"
+        if c.execute("INSERT INTO fed_event_seen (peer_id, ev_id, ts) VALUES (?,?,?) ON CONFLICT DO NOTHING",
+                     (peer["id"], eid, time.time())).rowcount == 0:
+            return "dup"
+    chain, cseq = ev.get("chain"), ev.get("cseq")
+    if chain is not None:
+        if not isinstance(chain, str) or not _CHAIN_RE.fullmatch(chain) or not isinstance(cseq, int) or isinstance(cseq, bool) \
+                or not 0 < cseq < 2 ** 62:
+            return "ignored"
+        r = c.execute("SELECT seq FROM fed_chain_in WHERE peer_id=? AND chain=?", (peer["id"], chain)).fetchone()
+        if r and cseq <= r[0]:
+            return "stale"                   # aelter als schon Verarbeitetes (Reihenfolge je Kette)
+        if r and cseq > r[0] + 1:
+            log(c, "chain.gap", peer, f"{chain}: {r[0]} -> {cseq}", throttle=(peer["id"], "gap", chain))
+        c.execute("INSERT INTO fed_chain_in (peer_id, chain, seq, ts) VALUES (?,?,?,?) ON CONFLICT (peer_id, chain) "
+                  "DO UPDATE SET seq=EXCLUDED.seq, ts=EXCLUDED.ts", (peer["id"], chain, cseq, time.time()))
+    h = EV2_HANDLERS.get(ev.get("type"))
+    if h is not None:
+        return h(c, peer, ev)
+    return _ev(c, peer, ev)
+
+
+@router.post("/fed/v2/events")
+async def fed_events2(request: Request):
+    inp, err = await _verify(request)
+    if err is not None:
+        return err
+    evs = (inp.data or {}).get("events") if isinstance(inp.data, dict) else None
+    if not isinstance(evs, list) or len(evs) > EVENTS_MAX:
+        return _signed(inp, 400, {"error": "bad events"})
+    if not _rate.allow("ev:" + inp.peer["base_url"], 120):
+        return _signed(inp, 429, {"error": "too many events"})
+
+    def run():
+        out = []
+        with _db() as c, c:
+            for ev in evs:
+                out.append(_ev2(c, inp.peer, ev) if isinstance(ev, dict) else "ignored")
+        return out
+    return _signed(inp, 200, {"results": await run_in_threadpool(run)})
+
+
+# =====================================================================================================
 # Server-zu-Server: Inhalte im Namen einer Person (Eigentuemer-Seite)
 # =====================================================================================================
 EDIT_KEYS = ("title", "body", "format", "rev", "overwrite")
@@ -812,7 +1056,7 @@ async def fed_shared(request: Request):
     def run():
         items = _as(inp, sharing.shared_list)
         with _db() as c:
-            return _ext_persons(c, items)
+            return _ext_persons(c, items, peer=inp.peer)
     return _signed(inp, 200, await run_in_threadpool(run))
 
 
@@ -934,11 +1178,17 @@ async def fed_file(fid: str, request: Request, note: int = 0):
 AVATAR_MAX = 512 * 1024
 
 
-def _avatar_for(name):
-    if not isinstance(name, str) or not NAME_RE.fullmatch(name):
+DIR_VISIBLE = None        # von saga.fed_dir: dir_visible(c, uid, peer) - steht das Konto im Adressbuch fuer peer?
+
+
+def _avatar_for(name, peer=None):
+    if not is_name(name):
         return None
     with _db() as c:
         uid, _ = _local_user_by_name(c, name)
+        # pseudonymer Handle: Bild nur, wenn das Konto im Adressbuch dieser Instanz steht (Schalter je Konto/Instanz)
+        if uid and PSEUDO_RE.fullmatch(name) and not (DIR_VISIBLE is not None and peer is not None and DIR_VISIBLE(c, uid, peer)):
+            uid = None
     return avatars.local_image(uid, 256, "webp") if uid else None
 
 
@@ -947,7 +1197,7 @@ async def fed_avatar(name: str, request: Request):
     inp, err = await _verify(request)
     if err is not None:
         return err
-    got = await run_in_threadpool(_avatar_for, name)
+    got = await run_in_threadpool(_avatar_for, name, inp.peer)
     if not got:
         return _signed(inp, 404, b"not found", "text/plain")
     return _signed(inp, 200, got[1], got[0])
@@ -982,16 +1232,95 @@ avatars.REMOTE_FETCH = fetch_avatar
 # Ausgehende Ereignisse: Ausgangskorb + Arbeiter
 # =====================================================================================================
 _wake = threading.Event()
-_worker = {"thread": None, "stop": False, "house": 0.0}
+_worker = {"thread": None, "stop": False, "house": 0.0, "hello": 0.0}
+# Express-Zustellung (Protokoll 2): eigener, begrenzter Thread-Pool - eine langsame Gegenstelle blockiert weder Anfragen
+# noch den Ausgangskorb-Arbeiter. Faellt die Zustellung aus (Frist, Fehler), bleibt das Ereignis im Ausgangskorb.
+_express = ThreadPoolExecutor(max_workers=max(2, int(E.get("FED_EXPRESS_WORKERS", "8"))), thread_name_prefix="saga-fed-express")
+EV2_HANDLERS = {}            # Ereignis-Art -> fn(c, peer, ev) -> 'ok' | 'ignored' (saga.fed_dir, saga.fed_keys)
+PERIODIC = []                # fn() - im Arbeiter-Thread nach jedem Durchlauf (eigene Taktung, Fehler werden protokolliert)
+HELLO_HOOKS = []             # fn(peer_id) - Faehigkeiten oder Admin-Schalter einer Instanz haben sich geaendert (im Thread)
 
 
-def _enqueue(c, peer_id, ev):
+def _enqueue(c, peer_id, ev, chain=None, express=True):
+    """Ereignis fuer eine Instanz vormerken (in der Transaktion). Jedes Ereignis bekommt eine Kennung (id, Empfaenger
+    verarbeitet es hoechstens einmal); chain: Ereignisse derselben Kette gehen streng der Reihe nach (cseq). Nach dem
+    Commit: Express-Zustellung, wenn die Gegenstelle sie kann - sonst (und bei Fehlern) der Arbeiter mit Wiederholung.
+    -> Zeilen-ID im Ausgangskorb."""
     now = time.time()
-    c.execute("INSERT INTO fed_outbox (peer_id, payload, created, next_try) VALUES (?,?,?,?)",
-              (peer_id, json.dumps(ev, ensure_ascii=False), now, now))
+    ev = dict(ev, id=secrets.token_hex(16))
+    if chain:
+        seq = c.execute("INSERT INTO fed_chain_out (peer_id, chain, seq) VALUES (?,?,1) ON CONFLICT (peer_id, chain) "
+                        "DO UPDATE SET seq=fed_chain_out.seq+1 RETURNING seq", (peer_id, chain)).fetchone()[0]
+        ev.update(chain=chain, cseq=int(seq))
+    oid = c.execute("INSERT INTO fed_outbox (peer_id, payload, created, next_try, chain, ev_id) VALUES (?,?,?,?,?,?)",
+                    (peer_id, json.dumps(ev, ensure_ascii=False), now, now, chain, ev["id"])).lastrowid
     after = getattr(c, "after_commit", None)
     if after:
-        after(_wake.set)
+        after((lambda: _express_submit(peer_id, oid)) if express else _wake.set)
+    return oid
+
+
+def _express_submit(peer_id, oid):
+    try:
+        return _express.submit(_express_one, peer_id, oid)
+    except RuntimeError:                     # Pool beendet (Herunterfahren): der Arbeiter stellt zu
+        _wake.set()
+        return None
+
+
+def _post_events(p, events, timeout=TIMEOUT):
+    """Ereignisse an eine Instanz senden -> None (zugestellt) oder Fehlertext. Protokoll 2: /fed/v2/events, sonst v1."""
+    path = "/fed/v2/events" if "v2" in caps_of(p) else "/fed/v1/events"
+    try:
+        status, d = call_json(p, "POST", path, body={"events": events}, timeout=timeout)
+    except FedError as ex:
+        return str(ex)
+    if status != 200:
+        return f"HTTP {status}"
+    res = d.get("results") if isinstance(d, dict) else None
+    if isinstance(res, list) and "retry" in res:
+        return "retry"
+    return None
+
+
+def _express_one(peer_id, oid):
+    """Eine Zeile des Ausgangskorbs sofort zustellen (harte Frist EXPRESS_TIMEOUT). -> True = zugestellt."""
+    now = time.time()
+    with _db() as c:
+        p = peer_by(c, "id", peer_id)
+    if not feature(p, "express"):
+        _wake.set()
+        return False
+    with _db() as c, c:
+        r = c.execute("UPDATE fed_outbox o SET locked_until=? WHERE id=? AND locked_until<? AND (chain IS NULL OR NOT EXISTS "
+                      "(SELECT 1 FROM fed_outbox o2 WHERE o2.peer_id=o.peer_id AND o2.chain=o.chain AND o2.id<o.id)) RETURNING payload",
+                      (now + 3 * EXPRESS_TIMEOUT + 30, oid, now)).fetchone()
+    if not r:                                # schon zugestellt, gesperrt oder eine fruehere Zeile der Kette wartet
+        _wake.set()
+        return False
+    err = _post_events(p, [json.loads(r[0])], timeout=max(1.0, EXPRESS_TIMEOUT / 3))
+    with _db() as c, c:
+        if err is None:
+            c.execute("DELETE FROM fed_outbox WHERE id=?", (oid,))
+            _touch(c, p)
+            return True
+        _touch(c, p, err)
+        c.execute("UPDATE fed_outbox SET attempts=attempts+1, next_try=?, locked_until=0, last_error=? WHERE id=?", (now + 15, err[:300], oid))
+    return False
+
+
+def send_now(peer_id, ev, chain=None, timeout=None):
+    """Synchron zustellen (Express, harte Frist): -> True, wenn die Gegenstelle das Ereignis bestaetigt hat. Sonst liegt
+    es im Ausgangskorb und wird spaeter (in Reihenfolge der Kette) zugestellt."""
+    with _db() as c, c:
+        oid = _enqueue(c, peer_id, ev, chain, express=False)
+    fut = _express_submit(peer_id, oid)
+    if fut is None:
+        return False
+    try:
+        return bool(fut.result(timeout=timeout or EXPRESS_TIMEOUT))
+    except Exception:  # noqa: BLE001 - Frist abgelaufen: bleibt im Ausgangskorb
+        return False
 
 
 def _target_peer(c, target):
@@ -1001,10 +1330,9 @@ def _target_peer(c, target):
     return (p, name) if p and p["status"] == "active" else (None, None)
 
 
-def _owner_info(c, uid):
-    pub = get_name(c, uid)
-    r = c.execute("SELECT display_name FROM users WHERE username=?", (uid,)).fetchone()
-    return {"name": pub, "display": (r[0] if r else "") or pub}
+def _owner_info(c, uid, p=None):
+    pub = fed_name(c, uid, p)
+    return {"name": pub, "display": display_of(c, uid) or pub}
 
 
 def _note_title(c, nid):
@@ -1018,7 +1346,7 @@ def _on_share_set(c, owner, note_id, target_type, target, role, old_role=None, *
     p, name = _target_peer(c, target)
     if not p:
         return
-    o = _owner_info(c, owner)
+    o = _owner_info(c, owner, p)
     if not o["name"]:
         return
     _enqueue(c, p["id"], {"type": "share.role" if old_role else "share.added", "to": {"type": "user" if target_type == "remote" else "group", "name": name},
@@ -1037,18 +1365,18 @@ def _on_share_removed(c, owner, note_id, target_type, target, **_):
     log(c, "share.removed", p, f"note={note_id} {target_type}")
 
 
-def _handle_for(c, uid):
-    """Ausloeser fuer andere Instanzen: {handle: 'name@host', display} - lokale Konten nur mit oeffentlichem Namen."""
+def _handle_for(c, uid, p=None):
+    """Ausloeser fuer andere Instanzen: {handle: 'name@host', display} - lokale Konten nur mit oeffentlichem Namen
+    (Protokoll 2 mit 'handles': sonst mit pseudonymem Handle)."""
     if not uid:
         return None
     if is_remote(uid):
         r = c.execute("SELECT display FROM fed_person WHERE principal=?", (uid,)).fetchone()
         return {"handle": uid[1:], "display": (r[0] if r else "") or uid[1:]}
-    pub = get_name(c, uid)
+    pub = fed_name(c, uid, p)
     if not pub:
         return None
-    r = c.execute("SELECT display_name FROM users WHERE username=?", (uid,)).fetchone()
-    return {"handle": f"{pub}@{SELF_HOST}", "display": (r[0] if r else "") or pub}
+    return {"handle": f"{pub}@{SELF_HOST}", "display": display_of(c, uid) or pub}
 
 
 def _on_notify(c, uid, kind, actor=None, note_id=None, comment_id=None, data=None, **_):
@@ -1059,7 +1387,7 @@ def _on_notify(c, uid, kind, actor=None, note_id=None, comment_id=None, data=Non
     if not p or not sharing.Access(c, uid).role(note_id):
         return
     cm = c.execute("SELECT thread_id, block_id FROM note_comment WHERE id=?", (comment_id,)).fetchone() if comment_id else None
-    _enqueue(c, p["id"], {"type": kind, "to": {"type": "user", "name": name}, "actor": _handle_for(c, actor),
+    _enqueue(c, p["id"], {"type": kind, "to": {"type": "user", "name": name}, "actor": _handle_for(c, actor, p),
                           "note": {"id": note_id, "title": _note_title(c, note_id)},
                           "comment": {"id": comment_id, "thread": (cm[0] or comment_id) if cm else comment_id, "block": (cm[1] if cm else "") or ""}})
 
@@ -1068,6 +1396,12 @@ def _on_name_released(c, uid, pub=None, deleted=False, **_):
     """Oeffentlicher Name geaendert oder Konto geloescht: Eingangs-Verweise weg; war die Foederation je aktiv, Name sperren
     (nie an ein anderes Konto) und alle verbundenen Instanzen informieren (Freigaben an den alten Namen enden dort)."""
     c.execute("DELETE FROM fed_inbound WHERE target_type='user' AND target=?", (uid,))
+    if deleted and has_key(c):           # Protokoll 2: auch der pseudonyme Handle verschwindet (Freigaben/Adressbuch dort)
+        h = c.execute("SELECT handle FROM fed_handle WHERE uid=?", (uid,)).fetchone()
+        if h:
+            for p in peers(c):
+                if p["status"] == "active" and "handles" in caps_of(p):
+                    _enqueue(c, p["id"], {"type": "person.gone", "name": h[0], "deleted": True})
     if not pub or not has_key(c):
         return
     c.execute("INSERT OR REPLACE INTO fed_name_retired (name, uid, retired) VALUES (?,?,?)", (pub, None if deleted else uid, time.time()))
@@ -1082,13 +1416,29 @@ bus.on("fed.notify", _on_notify)
 bus.on("public_name.released", _on_name_released)
 
 
+def _pick_due(c, now, limit=60):
+    """Faellige Zeilen waehlen und sperren. Ketten: nur ein lueckenloser Anfang (die aelteste offene Zeile der Kette und
+    die direkt folgenden) - eine wartende/gesperrte fruehere Zeile haelt den Rest der Kette zurueck."""
+    rows = c.execute("SELECT id, peer_id, payload, attempts, created, chain FROM fed_outbox WHERE next_try<=? AND locked_until<? "
+                     "ORDER BY id LIMIT 300 FOR UPDATE SKIP LOCKED", (now, now)).fetchall()
+    due = {r[0] for r in rows}
+    ok_ids = set()
+    for pid, ch in {(r[1], r[5]) for r in rows if r[5]}:
+        for (i,) in c.execute("SELECT id FROM fed_outbox WHERE peer_id=? AND chain=? ORDER BY id LIMIT 300", (pid, ch)).fetchall():
+            if i not in due:
+                break
+            ok_ids.add(i)
+    pick = [r for r in rows if not r[5] or r[0] in ok_ids][:limit]
+    if pick:
+        c.execute(f"UPDATE fed_outbox SET locked_until=? WHERE id IN ({','.join('?' * len(pick))})", (now + 120, *[r[0] for r in pick]))
+    return pick
+
+
 def deliver_due():
     """Faellige Ereignisse senden (mehrere Prozesse: Zeilen werden reserviert). -> Anzahl zugestellter."""
     now = time.time()
     with _db() as c, c:
-        rows = c.execute("UPDATE fed_outbox SET locked_until=? WHERE id IN (SELECT id FROM fed_outbox WHERE next_try<=? AND locked_until<? "
-                         "ORDER BY id LIMIT 60 FOR UPDATE SKIP LOCKED) RETURNING id, peer_id, payload, attempts, created",
-                         (now + 120, now, now)).fetchall()
+        rows = _pick_due(c, now)
     if not rows:
         return 0
     by = {}
@@ -1102,23 +1452,20 @@ def deliver_due():
             with _db() as c, c:
                 c.execute(f"DELETE FROM fed_outbox WHERE id IN ({','.join('?' * len(lst))})", tuple(r[0] for r in lst))
             continue
+        failed = None
         for k in range(0, len(lst), EVENTS_MAX):
             part = lst[k:k + EVENTS_MAX]
             ids = tuple(r[0] for r in part)
-            err = None
-            try:
-                status, _ = call_json(p, "POST", "/fed/v1/events", body={"events": [json.loads(r[2]) for r in part]})
-                if status != 200:
-                    err = f"HTTP {status}"
-            except FedError as ex:
-                err = str(ex)
+            err = failed or _post_events(p, [json.loads(r[2]) for r in part])
             with _db() as c, c:
                 if err is None:
                     c.execute(f"DELETE FROM fed_outbox WHERE id IN ({','.join('?' * len(ids))})", ids)
                     _touch(c, p)
                     sent += len(ids)
                     continue
-                _touch(c, p, err)
+                if failed is None:
+                    _touch(c, p, err)
+                failed = err                     # Rest dieser Instanz nicht mehr versuchen (Reihenfolge der Ketten)
                 for r in part:
                     if r[4] < now - OUTBOX_KEEP:
                         c.execute("DELETE FROM fed_outbox WHERE id=?", (r[0],))
@@ -1135,6 +1482,16 @@ def housekeeping():
         c.execute("DELETE FROM fed_nonce WHERE created < ?", (now - 2 * fedsig.SKEW - 60,))
         c.execute("DELETE FROM fed_invite WHERE expires < ? AND used_at IS NULL", (now - 7 * 86400,))
         c.execute("DELETE FROM fed_log WHERE ts < ?", (now - 180 * 86400,))
+        c.execute("DELETE FROM fed_event_seen WHERE ts < ?", (now - SEEN_KEEP,))
+
+
+def _hello_due():
+    """Faehigkeiten verbundener Instanzen nachfragen: noch nie oder seit HELLO_EVERY nicht mehr (Protokoll 2)."""
+    now = time.time()
+    with _db() as c:
+        due = [p["id"] for p in peers(c) if p["status"] == "active" and (not p["caps_at"] or now - p["caps_at"] > HELLO_EVERY)]
+    for pid in due[:20]:
+        hello(pid)
 
 
 def _loop():
@@ -1150,6 +1507,14 @@ def _loop():
             if time.time() - _worker["house"] > 600:
                 _worker["house"] = time.time()
                 housekeeping()
+            if time.time() - _worker["hello"] > 60:
+                _worker["hello"] = time.time()
+                _hello_due()
+            for fn in list(PERIODIC):
+                try:
+                    fn()
+                except Exception as ex:  # noqa: BLE001 - ein Zusatz darf den Ausgangskorb nicht anhalten
+                    print(f"federation: {getattr(fn, '__module__', '?')}.{getattr(fn, '__name__', '?')}: {type(ex).__name__}: {ex}", flush=True)
         except Exception as ex:  # noqa: BLE001 - Datenbank kurz weg o. ae.: naechster Durchlauf
             print(f"federation: {type(ex).__name__}: {ex}", flush=True)
 
@@ -1196,13 +1561,13 @@ def _unavailable():
 
 
 def _home_actor(c, uid, peer_id):
-    """Wer fragt: oeffentlicher Name, Anzeigename und die Gruppen, die die andere Instanz als Ziel genannt hat."""
-    pub = get_name(c, uid)
+    """Wer fragt: oeffentlicher Name (Protokoll 2: sonst pseudonymer Handle), Anzeigename und die Gruppen, die die andere
+    Instanz als Ziel genannt hat."""
+    pub = fed_name(c, uid, peer_by(c, "id", peer_id))
     if not pub:
         raise _Fail(_bad(t("Für Seiten anderer Saga-Instanzen brauchst du einen öffentlichen Namen (Einstellungen)."), 403))
-    r = c.execute("SELECT display_name FROM users WHERE username=?", (uid,)).fetchone()
     named = {x[0] for x in c.execute("SELECT DISTINCT target FROM fed_inbound WHERE peer_id=? AND target_type='group'", (peer_id,))}
-    return {"name": pub, "display": _clean_text((r[0] if r else "") or pub, DISPLAY_MAX),
+    return {"name": pub, "display": _clean_text(display_of(c, uid) or pub, DISPLAY_MAX),
             "groups": sorted(sharing.groups_of(c, uid) & named)}
 
 
@@ -1636,7 +2001,7 @@ def home_shared(request: Request):
         jobs = []
         for pid in pids:
             p = peer_by(c, "id", pid)
-            if p and p["status"] == "active" and get_name(c, uid):
+            if p and p["status"] == "active" and fed_name(c, uid, p):
                 jobs.append((p, _home_actor(c, uid, pid)))
     items, bad = [], []
     if jobs:
@@ -1671,7 +2036,7 @@ def _parse_target(typ, tg):
     host = fedsig.authority(host)
     if not name or not _HOST_RE.fullmatch(host or "-"):
         return None, None
-    if typ == "remote" and not NAME_RE.fullmatch(name):
+    if typ == "remote" and not is_name(name):
         return None, None
     if typ == "remote_group" and auth.norm_group(name) != name:
         return None, None
@@ -1695,13 +2060,15 @@ def remote_target(uid, typ, tg, nid):
     if not name:
         return None, t("Adresse bitte als name@server angeben."), 400
     with _db() as c:
-        if not get_name(c, uid):
-            return None, t("Zum Teilen mit anderen Saga-Instanzen brauchst du einen öffentlichen Namen (Einstellungen)."), 400
         p = peer_by(c, "host", host)
+        if not fed_name(c, uid, p if host != SELF_HOST else None):
+            return None, t("Zum Teilen mit anderen Saga-Instanzen brauchst du einen öffentlichen Namen (Einstellungen)."), 400
         if host == SELF_HOST:
             return None, t("Das ist dieser Server – bitte ohne @server teilen."), 400
         if not p or p["status"] != "active":
             return None, t("Mit {host} ist dieser Server nicht verbunden.", host=host), 400
+        if PSEUDO_RE.fullmatch(name) and "handles" not in caps_of(p):
+            return None, t("Diese Person gibt es auf {host} nicht (oder sie hat keinen öffentlichen Namen).", host=host), 400
         target = f"@{name}@{host}" if typ == "remote" else f"{name}@{host}"
         if c.execute("SELECT 1 FROM note_share WHERE note_id=? AND target_type=? AND target=?", (nid, typ, target)).fetchone():
             return target, None, 200                       # nur Rolle aendern: keine Nachfrage noetig
@@ -1780,6 +2147,7 @@ def fed_render(c, uid, fed):
 
 sharing.REMOTE_TARGET = remote_target
 sharing.REMOTE_SEARCH = remote_search
+sharing.FED_SCOPE_OK = scope_ok
 notify.FED_RENDER = fed_render
 
 
@@ -1808,12 +2176,47 @@ def admin_state():
         fp = own_fingerprint() if enabled() else None
     except FedError as ex:
         err = str(ex)
+    with _db() as c:
+        dirn = {r[0]: r[1] for r in c.execute("SELECT peer_id, COUNT(*) FROM fed_directory GROUP BY peer_id")}
     for p in ps:
-        p.update(shares=counts.get(p["id"], 0), inbound=inbound.get(p["id"], 0), queued=queued.get(p["id"], 0))
+        p.update(shares=counts.get(p["id"], 0), inbound=inbound.get(p["id"], 0), queued=queued.get(p["id"], 0), directory=dirn.get(p["id"], 0),
+                 common=sorted(caps_of(p)), features={k: feature(p, k) for k in CAPS2})
     return {"enabled": enabled(), "base_url": SELF_URL, "host": SELF_HOST, "fingerprint": fp, "key_error": err, "peers": ps,
             "log": [{"ts": r[0], "host": r[1], "event": r[2], "detail": r[3]} for r in logs],
             "invites": [{"id": r[0], "created": r[1], "expires": r[2]} for r in invites],
-            "https": SELF_URL.startswith("https://") or ALLOW_HTTP}
+            "https": SELF_URL.startswith("https://") or ALLOW_HTTP, "protocol": PROTOCOL, "capabilities": CAPS + CAPS2,
+            "scope": sharing.group_scope(), "groups": _all_groups()}
+
+
+def _all_groups():
+    with _db() as c:
+        return sorted({r[0] for r in c.execute("SELECT name FROM groups UNION SELECT DISTINCT name FROM user_ext_group")})
+
+
+OPTS_HOOKS = []              # fn(peer_id, alt, neu) - nach dem Speichern der Admin-Schalter (saga.fed_dir)
+
+
+def set_opts(pid, d, by=""):
+    """Admin-Schalter einer verbundenen Instanz setzen (nur bekannte Schluessel). -> neue Schalter oder None."""
+    if not isinstance(d, dict):
+        return None
+    with _db() as c, c:
+        p = peer_by(c, "id", pid)
+        if not p:
+            return None
+        old = p["opts"]
+        new = peer_opts(dict(old, **{k: v for k, v in d.items() if k in OPT_DEFAULTS}))
+        if new == old:
+            return new
+        c.execute("UPDATE fed_peer SET opts=? WHERE id=?", (json.dumps(new), pid))
+        log(c, "peer.options", p, (by + ": " if by else "") + " ".join(f"{k}={'on' if v else 'off'}" if isinstance(v, bool) else f"{k}={','.join(v) or '-'}"
+                                                                   for k, v in new.items() if v != old.get(k)))
+    for fn in list(OPTS_HOOKS):
+        try:
+            fn(pid, old, new)
+        except Exception as ex:  # noqa: BLE001
+            print(f"federation: opts hook: {type(ex).__name__}: {ex}", flush=True)
+    return new
 
 
 def make_invite(by):
@@ -1889,6 +2292,8 @@ def confirm(pid, by=""):
         err = str(ex)
     with _db() as c, c:
         _touch(c, p, err)
+    if err is None:
+        hello(pid)                           # Protokoll 2: Faehigkeiten austauschen (aeltere Gegenstelle: Protokoll 1)
     return True, err
 
 
@@ -1910,6 +2315,8 @@ def refresh(pid):
         if st == "active" and p["status"] == "pending_out":
             c.execute("UPDATE fed_peer SET status='active', confirmed_at=? WHERE id=?", (time.time(), pid))
             log(c, "peer.confirmed_remote", p, "status")
+    if st == "active":
+        hello(pid)
     return st or f"HTTP {status}"
 
 

@@ -54,7 +54,7 @@ REMOTE_FETCH = None
 A_KEYS = ("ver", "upload", "gravatar", "public", "g_hash", "g_checked", "g_found", "sso_kind", "sso_ref", "sso_checked", "sso_found")
 A_COLS = ", ".join(A_KEYS)
 _KEY = re.compile(r"u([1-9][0-9]{0,17})\.([A-Za-z0-9_-]{16})|r([A-Za-z0-9_-]{6,400})\.([A-Za-z0-9_-]{16})")
-_PRINCIPAL = re.compile(r"@[a-z0-9][a-z0-9_-]{1,31}@[a-z0-9.:-]{1,260}")
+_PRINCIPAL = re.compile(r"@(?:[a-z0-9][a-z0-9_-]{1,31}|~[a-z2-7]{16})@[a-z0-9.:-]{1,260}")     # 2.3: auch pseudonyme Handles
 _MAGIC = [(b"\x89PNG\r\n\x1a\n", "png"), (b"\xff\xd8\xff", "jpeg"), (b"GIF87a", "gif"), (b"GIF89a", "gif")]
 _HEIF_BRANDS = (b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx", b"mif1", b"msf1")
 

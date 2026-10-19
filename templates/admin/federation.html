@@ -111,6 +111,33 @@
     {% endfor %}
   </table>
 </section>
+
+{% set act = fed.peers|selectattr('status', 'equalto', 'active')|list %}
+{% if act %}
+<section class="adm-card">
+  <h3>{{ _("Funktionen je Instanz") }}</h3>
+  <p class="hk-hint">{{ _("Eine Funktion gilt nur, wenn beide Instanzen sie können (Protokoll 2) und sie hier eingeschaltet ist. Ältere Instanzen (Protokoll 1) teilen weiter Seiten wie bisher.") }}</p>
+  {% for p in act %}
+  <form method="post" class="adm-form fed-opts" id="fed-opts-{{ p.id }}">{{ csrf_field() }}<input type="hidden" name="action" value="opts"><input type="hidden" name="id" value="{{ p.id }}">
+    <h4>{{ p.name or p.host }} <small><code>{{ p.host }}</code></small></h4>
+    <p class="hk-hint">{{ _("Protokoll {n}", n=p.protocol) }} ·
+      {% if p.common %}{{ _("Gemeinsame Fähigkeiten: {list}", list=p.common|join(', ')) }}{% else %}{{ _("Keine Zusatzfähigkeiten (ältere Saga-Version)") }}{% endif %}
+      {% if p.directory %} · {{ _("{n} Personen im Adressbuch", n=p.directory) }}{% endif %}</p>
+    {{ check(_('Chat (Schlüsselverzeichnis, Chats über Servergrenzen)'), 'chat', p.opts.chat) }}
+    {{ check(_('Anrufe'), 'calls', p.opts.calls) }}
+    {{ check(_('Adressbuch mit dieser Instanz teilen'), 'directory', p.opts.directory, _('Anzeigenamen, Profilbilder und pseudonyme Kennungen der Personen hier – nie Anmeldenamen, E-Mail-Adressen oder Gruppen. Wer in den Einstellungen widerspricht oder deaktiviert ist, erscheint nie.')) }}
+    {% if fed.groups %}
+    {{ field(_('Nur Personen aus diesen Gruppen im Adressbuch (leer = alle)'), 'directory_groups', p.opts.directory_groups|join(', '), max=2000, list='fed-groups') }}
+    {% endif %}
+    {{ check(_('Ausnahme von „Teilen nur innerhalb gemeinsamer Gruppen“'), 'scope_exception', p.opts.scope_exception, _('Ist „nur gemeinsame Gruppen“ eingeschaltet, sind Freigaben, Adressbuch und Chats mit anderen Instanzen gesperrt – mit dieser Ausnahme für diese Instanz erlaubt.') if fed.scope else _('Wirkt nur, wenn unter Allgemein „Teilen nur innerhalb gemeinsamer Gruppen“ eingeschaltet ist.')) }}
+    <div class="fed-acts"><button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button></div>
+  </form>
+  <form method="post" class="fed-acts">{{ csrf_field() }}<input type="hidden" name="action" value="hello"><input type="hidden" name="id" value="{{ p.id }}">
+    <button class="btn" type="submit">{{ _("Fähigkeiten neu abfragen") }}</button></form>
+  {% endfor %}
+  {% if fed.groups %}<datalist id="fed-groups">{% for g in fed.groups %}<option value="{{ g }}">{% endfor %}</datalist>{% endif %}
+</section>
+{% endif %}
 {% endif %}
 
 <section class="adm-card">

@@ -41,6 +41,9 @@ REMOTE_GROUPS = contextvars.ContextVar("saga_remote_groups", default=None)
 # Verbindung und Person/Gruppe bei der fremden Instanz (Netzwerk, ausserhalb jeder Transaktion aufrufen)
 REMOTE_TARGET = None
 REMOTE_SEARCH = None          # remote_search(uid, q) -> ([{type, target, name, host}], hinweis|None) (Personensuche, genaue Adresse name@host)
+# 2.3 (saga.federation / saga.fed_dir): Ausnahme je Instanz von "nur gemeinsame Gruppen" und Adressbuch-Suche
+FED_SCOPE_OK = None           # scope_ok(host|None) -> bool: Instanz (bzw. irgendeine) hat die Admin-Ausnahme
+DIR_SEARCH = None             # dir_search(uid, q, zweck) -> [{type: 'remote', target, name, host, label, avatar}]
 
 
 def is_remote(uid):
@@ -65,6 +68,15 @@ def fed_enabled():
 
 def group_scope():
     return bool(auth.settings().get("share_group_scope", False))
+
+
+def fed_share_ok(target=None):
+    """Teilen ueber Instanzgrenzen erlaubt? "Nur gemeinsame Gruppen" sperrt es - ausser fuer Instanzen mit der
+    Admin-Ausnahme (2.3). target: 'name@host' / '@name@host' (None: mit irgendeiner Instanz)."""
+    if not group_scope():
+        return True
+    host = str(target).rpartition("@")[2].strip().lower() if target and "@" in str(target).lstrip("@") else None
+    return FED_SCOPE_OK is not None and bool(FED_SCOPE_OK(host))
 
 
 def _best(a, b):
@@ -610,7 +622,7 @@ def _state(c, uid, nid):
             d.update(effective=r[2], remote=True)
         shares.append(d)
     return {"enabled": enabled(), "scope": group_scope(), "max": SHARE_MAX, "shareable": bool(chain),
-            "federation": fed_enabled() and REMOTE_TARGET is not None and not group_scope(),
+            "federation": fed_enabled() and REMOTE_TARGET is not None and fed_share_ok(),
             "shares": shares,
             "inherited": [{"note_id": r[0], "title": r[1] or t("Unbenannt"), "type": r[2], "target": r[3], "name": who(r[2], r[3]), "role": r[4]}
                           for r in inh],
@@ -667,7 +679,7 @@ async def api_shares_put(nid: int, request: Request):
             return _bad(t("Teilen ist auf diesem Server abgeschaltet."), 403)
         if role not in ROLES or not tg:
             return _bad(t("ungültige Angabe"))
-        if REMOTE_TARGET is None or not fed_enabled() or group_scope():
+        if REMOTE_TARGET is None or not fed_enabled() or not fed_share_ok(tg):
             return _bad(t("Teilen mit anderen Saga-Instanzen ist auf diesem Server nicht eingeschaltet."), 403)
         tg, msg, code = await run_in_threadpool(REMOTE_TARGET, uid, typ, tg, nid)
         if msg:
@@ -780,8 +792,14 @@ def api_share_targets(request: Request, q: str = ""):
     groups = [{"name": g} for g in mine if q in g][:TARGETS_MAX]
     out = {"users": users, "groups": groups}
     # name@host einer verbundenen Instanz: dort nachfragen (signiert) - nur genaue Adressen, keine Suche ueber Instanzen
-    if REMOTE_SEARCH is not None and "@" in q.lstrip("@") and fed_enabled() and not group_scope():
+    if REMOTE_SEARCH is not None and "@" in q.lstrip("@") and fed_enabled() and fed_share_ok(q):
         out["remote"], hint = REMOTE_SEARCH(uid, q)
         if hint and not users and not groups:
             out["remote_hint"] = hint                      # warum nichts gefunden wurde (z. B. E-Mail statt oeffentlichem Namen)
+    if DIR_SEARCH is not None and fed_enabled():           # 2.3: Adressbuecher verbundener Instanzen (nach Anzeigename)
+        seen = {h["target"] for h in out.get("remote") or []}
+        extra = [h for h in DIR_SEARCH(uid, q, "share") if h["target"] not in seen]
+        if extra:
+            out["remote"] = extra + (out.get("remote") or [])
+            out.pop("remote_hint", None)
     return JSONResponse(out, headers={"Cache-Control": "no-store"})
