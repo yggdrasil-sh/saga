@@ -42,7 +42,7 @@ Jedes Konto hat einen stabilen, pseudonymen Handle: `~` + 16 Zeichen aus `a–z2
 - Dieselben Treffer stehen zusätzlich in den bestehenden Suchen: `GET /api/chat/people` → neues Feld `remote` (Liste
   wie oben; bis E2 zum Anzeigen, ein Direkt-Chat lässt sich damit noch nicht beginnen) und `GET /api/share/targets` →
   `remote` (Treffer mit `label`/`host`/`avatar`, vor exakten `name@server`-Treffern).
-- Erwähnungen (@Person) gibt es in Saga noch nicht; wenn sie kommen, nutzen sie denselben Endpunkt.
+- Erwähnungen von Personen (`@Person`) gibt es in Saga noch nicht; wenn sie kommen, nutzen sie denselben Endpunkt.
 - Gleiche Namen immer über `label`/`host` unterscheidbar machen, nie nur den Namen zeigen.
 
 **Datenschutz-Schalter je Konto** (Einstellungen → Konto → „Verbundene Saga-Server“):
