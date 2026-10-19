@@ -2,7 +2,7 @@
 import importlib
 import os
 from db import connect as _db
-from saga import avatars, bus, chat, notify, push
+from saga import avatars, bus, chat, notify, push, userbackup
 from saga.calendars import _cal_cache_drop
 from saga.core import forget_device
 from saga.files import _drop_thumbs
@@ -21,6 +21,7 @@ USER_TABLES = ("task", "note", "note_version", "bookmark", "fav", "device_login"
 
 def delete_user_data(uid, drop_user=False):
     """drop_user=True: das Konto selbst in DERSELBEN Transaktion loeschen (Admin: Konto loeschen, BUG-042)."""
+    userbackup.revoke_on_delete(uid)         # App-Passwort des persoenlichen Backup-Ziels in Nextcloud widerrufen
     with _db() as c, c:
         fids = [r[0] for r in c.execute("SELECT id FROM file WHERE uid=?", (uid,)).fetchall()]
         pub = c.execute("SELECT name FROM public_name WHERE uid=?", (uid,)).fetchone()
@@ -33,11 +34,13 @@ def delete_user_data(uid, drop_user=False):
         chat_n = chat.delete_account(c, uid)     # Chat: Schluessel, Geraete, Mitgliedschaften, gesendete Nachrichten, Anhaenge
         pushed = push.delete_account(c, uid)     # Mitteilungs-Abos und -Auftraege weg, als Absender anonymisiert
         avatar_n = avatars.delete_account(c, uid)  # Profilbild und zwischengespeicherte Gravatar-/SSO-Bilder
+        ub_n = userbackup.delete_account(c, uid)  # persoenliches Backup: Ziel, Schluessel, Verlauf (Backups im Ziel bleiben)
         counts = {t: c.execute(f"DELETE FROM {t} WHERE uid=?", (uid,)).rowcount for t in USER_TABLES}
         counts["note_share"] = shares
         counts["notification"] += notes_n
         counts["chat_msg"] = chat_n
         counts["avatar"] = avatar_n
+        counts["user_backup"] = ub_n
         for k, v in pushed.items():
             counts[k] += v
         bus.emit_after(c, "account.deleted", {"uid": uid})     # Live-Verbindungen und Anwesenheit des Kontos beenden

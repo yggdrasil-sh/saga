@@ -31,7 +31,7 @@ from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESS
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
 from saga.notes import FILE_MAX
-from saga import backups, pageindex
+from saga import backups, pageindex, userbackup
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -60,6 +60,7 @@ async def lifespan(_app):
     calls.start()                                            # Anrufe: Klingeldauer, verlorene Verbindungen (2.1)
     pageindex.start()                                        # Suchtext/Verweise/Vorschaubilder abgleichen (2.2)
     backups.start()                                          # verschluesselte Backups auf WebDAV/Nextcloud (2.3, Zeitplan)
+    userbackup.start()                                       # persoenliche Backups je Konto (2.3, Zeitplan)
 
     async def _gc_loop():
         purged = 0.0
@@ -89,6 +90,7 @@ async def lifespan(_app):
     gc_task = asyncio.create_task(_gc_loop())
     yield
     backups.stop()
+    userbackup.stop()
     pageindex.stop()
     calls.stop()
     push.stop()
@@ -146,7 +148,8 @@ async def canonical_host(request: Request, call_next):
 app.add_middleware(BodyLimit, default=REQUEST_MAX,
                    rules=[("POST", re.compile(r"/api/files"), max(REQUEST_MAX, FILE_MAX + 256 * 1024)),
                           ("POST", re.compile(r"/api/chats/[0-9]+/files"), max(REQUEST_MAX, FILE_MAX + 1024)),
-                          ("PUT", re.compile(r"/api/account/avatar"), max(REQUEST_MAX, avatars.UPLOAD_MAX + 64 * 1024))])
+                          ("PUT", re.compile(r"/api/account/avatar"), max(REQUEST_MAX, avatars.UPLOAD_MAX + 64 * 1024)),
+                          ("POST", re.compile(r"/api/account/backup/restore/upload"), userbackup.HARD_MAX_MB * 1024 * 1024 + 1024 * 1024)])
 
 
 # --- Routes -----------------------------------------------------------------
@@ -218,3 +221,4 @@ app.include_router(avatars.router)          # Profilbilder: /api/avatar/{schlues
 app.include_router(calls.router)            # Anrufe (WebRTC, Signalisierung ueber den Live-Kanal): /api/calls...
 app.include_router(fed_dir.router)          # Adressbuch (2.3): /fed/v2/directory, /api/fed/people, /api/account/federation
 app.include_router(fed_keys.router)         # Schluesselverzeichnis + Krypto v2 (2.3): /fed/v2/keys, /api/chat/v2/...
+app.include_router(userbackup.router)        # Persoenliche Backups (2.3): /api/account/backup...

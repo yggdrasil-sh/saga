@@ -294,12 +294,14 @@ def _tls():
     return ssl.create_default_context(cafile=CA_FILE) if os.path.isfile(CA_FILE) else ssl.create_default_context()
 
 
-def _client_for(host, timeout=60.0, auth_=None):
+def _client_for(host, timeout=60.0, auth_=None, ip_ok=None):
+    """ip_ok(ip, host, port): eigene Freigabe-Regel (persoenliche Backups, saga/userbackup.py); Standard (Admin-Ziel):
+    der eingetragene Host ist frei, alles andere nur mit oeffentlicher Adresse."""
     host = (host or "").lower()
 
-    def ip_ok(ip, h, port):
+    def admin_ok(ip, h, port):
         return str(h).lower() == host or netguard.is_public(ip)
-    return netguard.guarded_client(ip_ok, transport_kw={"verify": _tls()}, timeout=httpx.Timeout(timeout, connect=15.0),
+    return netguard.guarded_client(ip_ok or admin_ok, transport_kw={"verify": _tls()}, timeout=httpx.Timeout(timeout, connect=15.0),
                                    follow_redirects=False, auth=auth_, headers={"User-Agent": UA})
 
 
@@ -322,9 +324,10 @@ def _q(path):
 
 
 class Dav:
-    """WebDAV-Ziel. cfg: mode (nextcloud|webdav), server/url, user, password, dav_user, folder."""
+    """WebDAV-Ziel. cfg: mode (nextcloud|webdav), server/url, user, password, dav_user, folder.
+    ip_ok: Freigabe-Regel fuer Verbindungen (siehe _client_for; persoenliche Backups: strenger)."""
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, ip_ok=None):
         self.mode = cfg.get("mode") or "webdav"
         if self.mode == "nextcloud":
             self.server = str(cfg.get("server") or "").rstrip("/")
@@ -340,11 +343,12 @@ class Dav:
         self.auth = (cfg.get("user") or "", cfg.get("password") or "") if cfg.get("user") else None
         self.host = (urlparse(self.base).hostname or "").lower()
         self._cl = None
+        self.ip_ok = ip_ok
         self.chunked = 0                          # Anzahl Uploads mit Chunking v2 (Tests, Anzeige)
 
     def client(self):
         if self._cl is None:
-            self._cl = _client_for(self.host, auth_=self.auth)
+            self._cl = _client_for(self.host, auth_=self.auth, ip_ok=self.ip_ok)
         return self._cl
 
     def close(self):
@@ -524,14 +528,14 @@ def norm_url(url):
     return f"{u.scheme}://{u.netloc.lower()}{u.path}".rstrip("/")
 
 
-def detect(url):
+def detect(url, ip_ok=None):
     """-> {'nextcloud': bool, 'server': ..., 'version': ...}. Nextcloud = /status.php mit installed=true.
     Eine WebDAV-Adresse von Nextcloud (.../remote.php/...) zaehlt ebenfalls (Server = Teil davor)."""
     server = url.split("/remote.php/")[0] if "/remote.php/" in url else url
     host = urlparse(server).hostname or ""
 
     def go():
-        with _client_for(host, timeout=15.0) as cl:
+        with _client_for(host, timeout=15.0, ip_ok=ip_ok) as cl:
             return cl.get(server + "/status.php", headers={"Accept": "application/json"})
     try:
         r = _net_call(go)
@@ -549,10 +553,10 @@ def detect(url):
     return {"nextcloud": False, "server": url, "version": ""}
 
 
-def nc_user_id(server, login, password):
+def nc_user_id(server, login, password, ip_ok=None):
     """Benutzer-ID fuer den WebDAV-Pfad (kann vom Anmeldenamen abweichen, z. B. Anmeldung per E-Mail)."""
     def go():
-        with _client_for(urlparse(server).hostname, timeout=20.0, auth_=(login, password)) as cl:
+        with _client_for(urlparse(server).hostname, timeout=20.0, auth_=(login, password), ip_ok=ip_ok) as cl:
             return cl.get(server + "/ocs/v2.php/cloud/user?format=json", headers={"OCS-APIRequest": "true", "Accept": "application/json"})
     r = _net_call(go)
     if r.status_code in (401, 403):
@@ -564,10 +568,10 @@ def nc_user_id(server, login, password):
     return str(uid or login)
 
 
-def nc_revoke(server, login, password):
+def nc_revoke(server, login, password, ip_ok=None):
     """App-Passwort widerrufen (Trennen). -> True, wenn Nextcloud es bestaetigt."""
     def go():
-        with _client_for(urlparse(server).hostname, timeout=20.0, auth_=(login, password)) as cl:
+        with _client_for(urlparse(server).hostname, timeout=20.0, auth_=(login, password), ip_ok=ip_ok) as cl:
             return cl.delete(server + "/ocs/v2.php/core/apppassword", headers={"OCS-APIRequest": "true", "Accept": "application/json"})
     try:
         return _net_call(go).status_code == 200
@@ -669,9 +673,9 @@ def _flow_poll(fid, server, endpoint, token, folder):
             return
 
 
-def test_target(cfg):
+def test_target(cfg, ip_ok=None):
     """Ordner anlegen, kleine Datei schreiben/lesen/loeschen -> freier Platz (Bytes oder None)."""
-    dav = Dav(cfg)
+    dav = Dav(cfg, ip_ok=ip_ok)
     try:
         dav.ensure_root()
         url = dav.url(".saga-test")
