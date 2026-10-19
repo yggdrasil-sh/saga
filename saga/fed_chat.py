@@ -12,7 +12,8 @@ Grundsaetze (Vertrag fuer Apps: docs/APP-API-FED.md, Abschnitt 6):
   Idempotent ueber msg_id; Luecken (fseq springt) holt der Teilnehmer beim Heim nach, Umsortieren/Wiederholen wird
   abgewiesen und protokolliert.
 - Erstkontakt = Nachrichtenanfrage: beim Gegenueber erscheint der Chat als Anfrage (Annehmen/Ablehnen/Sperren), ohne
-  Benachrichtigung, Push oder Klingeln. Ablehnen/Sperren erfaehrt die andere Seite nicht (das Heim stellt nur nicht mehr zu).
+  Benachrichtigung, Push oder Klingeln. Ablehnen/Sperren erfaehrt die andere Seite nicht (das Heim stellt nur nicht mehr zu;
+  schickt es trotzdem, verwirft der eigene Server; ist das Heim der Server der ablehnenden Person, weist es Nachrichten ab).
   Sperren je Person ('~x@host') oder je Instanz ('host'), Raten je Instanz und Absender, Pruefprotokoll (fed_log).
 - Anhaenge bleiben beim Absender-Server; die anderen holen sie bei Bedarf (Zwischenkopie), kleine (Vorschaubilder) vorab.
 - Gelesen bleibt lokal, Tippen geht direkt und verwerfbar, Push loest nur der eigene Server aus. KI im Chat ist in
@@ -139,6 +140,13 @@ def label_of(c, u):
 def blocked(c, uid, h):
     n, host = split_handle(h)
     return bool(c.execute("SELECT 1 FROM fed_chat_block WHERE uid=? AND target IN (?,?)", (uid, h, host)).fetchone())
+
+
+def refused(c, mem, sender, h):
+    """Wollen die Konten DIESES Servers im Chat (ausser dem Absender) von h nichts mehr? (alle abgelehnt oder h bzw. seine
+    Instanz gesperrt) - dann wird nichts gespeichert, vorab geholt oder gemeldet. mem: {mitglied: state}."""
+    loc = [(u, st) for u, st in mem.items() if u != sender and not sharing.is_remote(u)]
+    return bool(loc) and all(st == "declined" or blocked(c, u, h) for u, st in loc)
 
 
 def _rate_ok(kind, key, n, window=60.0):
@@ -519,6 +527,9 @@ def op_send(c, peer, d):
     mem = dict(members(c, ch["id"]))
     if p_ not in mem:
         return 403, {"error": "not a member"}
+    if refused(c, mem, p_, h):                   # abgelehnt/gesperrt: verwerfen, der Absender-Server markiert "nicht zugestellt"
+        F.log(c, "chat.declined", peer, m["id"][:8], throttle=(peer["id"], "cdecl", ch["ref"]))
+        return 403, {"error": "declined"}
     old = c.execute("SELECT chat_id, sig, fseq FROM chat_msg WHERE id=?", (m["id"],)).fetchone()
     if old:
         if old[0] == ch["id"] and old[1] == m["sig"]:
@@ -764,19 +775,23 @@ def _sender_of(c, ch, h):
 
 
 def apply_msg(c, peer, ch, ev, jump=False):
-    """Nachricht vom Heim uebernehmen -> 'ok' | 'dup' | 'gap' | 'ignored'. Prueft Reihenfolge (fseq lueckenlos, nichts
+    """Nachricht vom Heim uebernehmen -> 'ok' | 'dup' | 'gap' | 'declined' | 'ignored'. Prueft Reihenfolge (fseq lueckenlos, nichts
     Aelteres), Wiederholungen (msg_id) und die Signatur des Absender-Geraets (eigene Konten: eigene Schluessel; Konten
     des Heims: von dort mitgeschickt; andere: Zwischenspeicher)."""
     fseq = ev.get("fseq")
     m = msg_in(ev.get("msg"))
     files = files_in(ev.get("files"))
-    keys = ev.get("keys") if isinstance(ev.get("keys"), dict) else {}
-    if not isinstance(fseq, int) or isinstance(fseq, bool) or not 0 < fseq < 2 ** 62 or not m or files is None:
+    keys = ev.get("keys")
+    if not isinstance(fseq, int) or isinstance(fseq, bool) or not 0 < fseq < 2 ** 62 or not m or files is None or not _keys_ok(keys):
         return "ignored"
     sender = _sender_of(c, ch, m["sender_handle"])
     if not sender:
         F.log(c, "chat.forged", peer, f"sender {str(m['sender_handle'])[:40]}", throttle=(peer["id"], "fsender"))
         return "ignored"
+    if sharing.is_remote(sender) and refused(c, dict(members(c, ch["id"])), sender, m["sender_handle"]):
+        # abgelehnt/gesperrt: verwerfen - kein Speichern, kein Vorababruf, kein Ereignis. fseq bleibt stehen: nimmt die Person
+        # spaeter doch an, holt ihr Server den Verlauf beim Heim (fill_gap); bis dahin keine Lueckensuche
+        return "declined"
     old = c.execute("SELECT seq, chat_id, sig, fseq FROM chat_msg WHERE id=?", (m["id"],)).fetchone()
     if old:
         if old[1] != ch["id"] or old[2] != m["sig"]:
@@ -1040,17 +1055,19 @@ def fetch_file(fid):
     if os.path.isfile(path):
         return True
     with _db() as c:
-        r = c.execute("SELECT x.peer_id FROM chat_file_fed x JOIN chat_file f ON f.id=x.id WHERE x.id=? AND f.msg_seq IS NOT NULL", (fid,)).fetchone()
+        r = c.execute("SELECT x.peer_id, f.size FROM chat_file_fed x JOIN chat_file f ON f.id=x.id WHERE x.id=? AND f.msg_seq IS NOT NULL",
+                      (fid,)).fetchone()
         p = F.peer_by(c, "id", r[0]) if r else None
     if not peer_ok(p):
         return False
     try:
-        status, _, data = F.call(p, "GET", f"/fed/v2/chat/files/{fid}", limit=FILE_MAX + 1024, timeout=20)
+        status, _, data = F.call(p, "GET", f"/fed/v2/chat/files/{fid}", limit=min(r[1], FILE_MAX + 64) + 1024, timeout=20)
     except F.FedError as ex:
         with _db() as c, c:
             F._touch(c, p, ex)
         return False
-    if status != 200 or len(data) < 40 or len(data) > FILE_MAX + 64:
+    # genau die angekuendigte Groesse (wie beim Absender gespeichert) - sonst koennte ein "Vorschaubild" beliebig gross sein
+    if status != 200 or len(data) < 40 or len(data) > FILE_MAX + 64 or len(data) != r[1]:
         return False
     os.makedirs(chat.CHAT_DIR, mode=0o700, exist_ok=True)
     tmp = path + ".part-" + secrets.token_hex(4)
@@ -1129,7 +1146,7 @@ def create_dm(uid, h, device=""):
         if blocked(c, uid, h):
             return _bad(t("Du hast diese Person bzw. ihren Server gesperrt – erst in „Chats & Geräte“ entsperren."), 403)
         ex = chat._row(c.execute(f"SELECT {chat.C_COLS} FROM chat WHERE dm_key=?", (key,)).fetchone())
-        if ex:
+        if ex and not ex["fstate"]:               # schreibgeschuetzt (z. B. nach Trennen + neu Verbinden): neuer Chat, alter bleibt lesbar
             return _reopen(c, uid, ex, device)
         if c.execute("SELECT COUNT(*) FROM chat WHERE created_by=? AND created>?", (uid, time.time() - 3600)).fetchone()[0] >= 60:
             return _bad(t("Zu viele neue Chats in kurzer Zeit – bitte kurz warten."), 429)

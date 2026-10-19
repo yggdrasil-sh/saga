@@ -87,6 +87,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   eines dritten, nicht verbundenen Servers: Schlüssel und Anhänge über das Heim (`GET /fed/v2/chat/keys`), die Apps prüfen
   selbst (TOFU). Ein bestehender Seiten-Chat wird auf v2 umgestellt, sobald Personen anderer Server Zugriff haben (ältere
   Nachrichten bleiben v1 lesbar, KI danach aus). Trennen: Personen des getrennten Servers raus, dort schreibgeschützt.
+- **Kurze Namen finden:** Alle Personensuchen (Chat „+ Neu“/„Person hinzufügen“, Teilen-Dialog, `/api/chat/people`,
+  `/api/share/targets`, `/api/fed/people`, Adressbücher verbundener Server) liefern bei 1–2 Zeichen genaue Treffer auf
+  Anzeigenamen, Benutzernamen bzw. öffentlichen Namen (Groß/Klein egal, z. B. „hd“); ab 3 Zeichen wie bisher auch Teile
+  von Namen. Eine Liste aller Konten lässt sich so weiterhin nicht abrufen. `name@server` findet auch mit kurzem Namen
+  genau diese Person, jetzt auch in der Chat-Suche. Die Web-Oberfläche sucht ab dem ersten Zeichen; `/api/fed/people`
+  ist wie die anderen Suchen auf 60 Anfragen je Minute begrenzt. Die Apps suchen vorerst weiter ab 3 Zeichen (folgt mit
+  der App-Etappe).
+- **Ablehnen und Sperren wirken auch gegen ein fehlerhaftes Heim:** In abgelehnten oder gesperrten Chats über
+  Servergrenzen verwirft der eigene Server Nachrichten, die das Heim trotzdem schickt (nichts gespeichert, kein Vorabruf
+  von Anhängen, keine Meldung); nimmt man später doch an, holt er den Verlauf nach. Ist das Heim selbst der Server der
+  ablehnenden Person, weist es Nachrichten ab („nicht zugestellt“). Versiegelte Schlüssel vom Heim werden geprüft.
+- **WebFinger:** Wer „In Adressbüchern verbundener Server erscheinen“ abgeschaltet hat, dessen Anzeigename ist auch über
+  den pseudonymen Handle nicht mehr abfragbar (der öffentliche Name bleibt, wie er ist).
 - **Robuster Ausgangskorb:** Weist ein Server ein einzelnes Ereignis dauerhaft ab, hält das nur dessen Kette an, nicht
   den ganzen Ausgangskorb („event.stuck“ im Prüfprotokoll). Wird ein Backup zurückgespielt, beginnen die Ketten mit
   neuer Epoche – die Gegenstellen verwerfen dann nichts still als „schon gesehen“.

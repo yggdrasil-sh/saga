@@ -26,7 +26,11 @@ Jedes Konto hat einen stabilen, pseudonymen Handle: `~` + 16 Zeichen aus `a–z2
 
 ## 2. Adressbuch-Suche
 
-`GET /api/fed/people?q=<ab 3 Zeichen>[&purpose=chat|share]` → `{"people": [...]}`, höchstens 10 Treffer:
+`GET /api/fed/people?q=<Suchtext>[&purpose=chat|share]` → `{"people": [...]}`, höchstens 10 Treffer. Ab 3 Zeichen
+Teilwort-Suche im Anzeigenamen; bei 1–2 Zeichen nur genaue Treffer (Anzeigename oder öffentlicher Name, Groß/Klein
+egal – z. B. `hd`); `name@host` bzw. `@name@host` findet genau diese Person (öffentlicher Name oder Handle) auf diesem
+Server, auch mit kurzem Namen. Höchstens 60 Anfragen je Minute (sonst 429). Apps dürfen deshalb schon ab 1 Zeichen
+suchen (entprellt); dasselbe gilt für `GET /api/chat/people` und `GET /api/share/targets`:
 
 | Feld | Bedeutung |
 |---|---|
@@ -203,7 +207,9 @@ eigenen Servers ergibt einen normalen lokalen Chat (v1).
 ### 6.3 Anfragen beantworten, Sperren
 
 `POST /api/chats/{id}/request {"action":"accept"|"decline"|"block", "scope":"person"|"instance"}` – Ablehnen und Sperren
-erfährt die andere Seite nicht (ihr Heim stellt nur nicht mehr zu). Bis zur Annahme: keine Benachrichtigung, kein Push,
+erfährt die andere Seite nicht (ihr Heim stellt nur nicht mehr zu; schickt es trotzdem, verwirft der eigene Server die
+Nachrichten). Ist der eigene Server selbst das Heim, weist er Nachrichten der gesperrten bzw. abgelehnten Person ab – deren
+App sieht dann „nicht zugestellt“ (HTTP 409). Nimmt man später doch an, holt der Server den Verlauf nach. Bis zur Annahme: keine Benachrichtigung, kein Push,
 kein Klingeln, aber die Nachrichten sind lesbar (zeigt sie als Anfrage). Wer selbst schreibt oder den Chat selbst
 beginnt, nimmt an. `GET /api/chat/blocks` → `{blocks:[{target, kind: person|instance, name, host, label, created}]}`,
 `DELETE /api/chat/blocks?target=…` entsperrt.
