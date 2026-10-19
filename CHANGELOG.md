@@ -288,7 +288,7 @@ die [Saga-Apps 2.1](https://github.com/yggdrasil-sh/saga-apps/releases).
   Bild überall, wo die KI vorkommt („Frage Marin“, „Marin denkt nach …“), und übernehmen Änderungen sofort.
 - **KI im Chat – nur auf Zuruf** (Standard: aus): Erlaubt der Admin „KI in Chats erlauben“, kann die KI in einzelnen
   Chats zugelassen werden (freie Gruppe – Chat-Admins, Direkt-Chat – beide, Gruppen-Chat – Saga-Admins, Seiten-Chat –
-  Eigentümer); alle Mitglieder sehen einen Hinweis. Die KI liest **nur Nachrichten mit @Name** und bis zu 12 Nachrichten
+  Eigentümer); alle Mitglieder sehen einen Hinweis. Die KI liest **nur Nachrichten mit `@Name`** und bis zu 12 Nachrichten
   davor, die das Gerät des Fragenden gezielt schickt – alles andere bleibt Ende-zu-Ende-verschlüsselt; Seiten, Aufgaben
   und Kalender sieht sie dort nicht. Die Antwort verschlüsselt das Gerät des Fragenden für alle; der Server speichert
   nur eine Prüfsumme als Beleg, damit die anderen Geräte die Antwort als KI-Antwort erkennen („gefragt von …“). Der
@@ -372,7 +372,7 @@ die [Saga-Apps 2.1](https://github.com/yggdrasil-sh/saga-apps/releases).
   „Verbindung testen“ listet dort auch die angebotenen Modelle.
 - **Fehlerrunden aus zwei Bughunts:** Uploads ohne Längenangabe über der Grenze → 413 statt 500; Rückruf während es
   noch klingelt; Anruffenster auf dem Handy; ersetzter Gruppenname nimmt seine Anhänge mit; Esc im Peek schließt nur
-  den Dialog; Untermenüs bleiben im Peek sichtbar; veröffentlichte Seiten ohne „@name“ oben; Chat-Platzhalter auf dem
+  den Dialog; Untermenüs bleiben im Peek sichtbar; veröffentlichte Seiten ohne „`@name`“ oben; Chat-Platzhalter auf dem
   Handy; Kommentar-Auszug bei Tabellen und Checklisten; Konto wechseln in den Apps; KI-Fehltreffer durch falsche
   Wortzerlegung.
 - Tests: „Veröffentlichte Seite“ in der Avatar-Reihe lief nur beim ersten Mal auf einem Stack durch (fester Testname
@@ -391,7 +391,7 @@ die [Saga-Apps 2.1](https://github.com/yggdrasil-sh/saga-apps/releases).
   per Reverse Proxy (nginx, HAProxy, Traefik).
 - **KI im Chat und Websuche der KI sind standardmäßig aus.** Beides schaltet der Admin unter KI-Assistent ein; die
   Websuche braucht eine eingerichtete SearXNG-Instanz (`SEARXNG_URL`, Anleitung Abschnitt 10). Datenschutz: Bei
-  „KI im Chat“ gehen die Nachricht mit @Name und bis zu 12 davor im Klartext an den KI-Endpunkt, bei der Websuche die
+  „KI im Chat“ gehen die Nachricht mit `@Name` und bis zu 12 davor im Klartext an den KI-Endpunkt, bei der Websuche die
   Suchbegriffe über SearXNG an Suchmaschinen.
 - **Passkeys** brauchen in `BASE_URL` einen Hostnamen mit https (oder `localhost`), keine IP-Adresse.
 - **2FA-Richtlinie** steht auf „niemanden“ – es ändert sich nichts, bis der Admin sie einschaltet. Bei Problemen:
@@ -530,8 +530,8 @@ anderen Saga-Servern teilen. Alle neuen Funktionen sind optional; die Schnittste
     („Beenden“, „Adresse ändern“, „Ändern“); Adressen brechen nur nach „/“ um; „beendet“ steht nur noch einmal da.
     Einstellungen → Öffentlicher Name zeigt beim Tippen „Neue Adresse: … (bisher …)“
   - **Öffentliche Seite:** Inhalt mit `lang` der Kontosprache des Besitzers (sonst Server-Standard), Bedienung in der
-    Sprache des Besuchers; Absenderzeile „@name · aktualisiert <Datum>“; Lesebreite ~70 Zeichen (Bilder, Tabellen,
-    Datenbanken, Spalten breiter); Leiste mit @name bzw. Name der Instanz, „Anmelden“ als ruhiger Textlink;
+    Sprache des Besuchers; Absenderzeile „`@name` · aktualisiert <Datum>“; Lesebreite ~70 Zeichen (Bilder, Tabellen,
+    Datenbanken, Spalten breiter); Leiste mit `@name` bzw. Name der Instanz, „Anmelden“ als ruhiger Textlink;
     Checklisten-Häkchen wirken nicht mehr bedienbar; die neutrale 404 bietet „Zur Startseite“ bzw. „Anmelden“
   - Neue Tabellen `public_name` und `note_publish`; Datenbank-Migration 3 (Spalten `active`, `withdrawn_at`,
     `withdrawn_by` – vorher legt Saga wie immer ein Backup an)
