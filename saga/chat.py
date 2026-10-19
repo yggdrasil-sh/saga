@@ -278,11 +278,18 @@ def page_members(c, nid):
 
 
 def entitled(c, ch):
-    """Wer gehoert gerade zum Chat? group/page: berechnet; dm/free: None (feste Mitglieder)."""
+    """Wer gehoert gerade zum Chat? group/page: berechnet; dm/free: None (feste Mitglieder). 2.3: Seiten-Chat mit Personen
+    anderer Server (Heim = Server der Seite) - zusaetzlich deren Prinzipale; Kopie eines Chats mit anderem Heim: None
+    (die Mitglieder meldet das Heim, saga.fed_chat)."""
+    if ch.get("home_peer") is not None:
+        return None
     if ch["kind"] == "group":
         return set(notify.group_members(c, ch["group_name"]))
     if ch["kind"] == "page":
-        return page_members(c, ch["note_id"])
+        want = page_members(c, ch["note_id"])
+        if FED is not None:
+            want |= FED.page_remote(c, ch)
+        return want
     return None
 
 
@@ -296,9 +303,12 @@ def sync(c, ch):
     cur = members(c, ch["id"])
     if want is None:
         return cur
+    if FED is not None and any(sharing.is_remote(u) for u in want) and not is_fed(ch):
+        FED.upgrade_page_chat(c, ch)                   # 2.3: Seiten-Chat bekommt Personen anderer Server -> saga-chat/v2
     now = time.time()
     changed = False
-    for u in sorted(want - set(cur)):
+    added = sorted(want - set(cur))
+    for u in added:
         c.execute("INSERT INTO chat_member (chat_id, uid, joined) VALUES (?,?,?) ON CONFLICT (chat_id, uid) DO UPDATE "
                   "SET left_at=NULL, joined=EXCLUDED.joined, last_read=GREATEST(chat_member.last_read, ?)", (ch["id"], u, now, ch["last_seq"]))
         changed = True
@@ -308,6 +318,8 @@ def sync(c, ch):
         changed = True
     if changed:
         _changed(c, ch["id"], set(cur) | want)
+        if is_fed(ch):                                 # 2.3: Heim meldet die neuen Mitglieder den anderen Servern
+            FED.members_changed(c, ch, added, gone)
     return sorted(want, key=lambda u: (u not in cur, u))
 
 
@@ -336,6 +348,8 @@ def may_delete_all(c, uid, ch, m):
         u = user_info(uid)
         return "history" if u and u.get("is_admin") else None
     if ch["kind"] == "page" and ch["note_id"]:
+        if is_fed(ch):                                 # 2.3: Seiten-Chat ueber Servergrenzen - Verlauf liegt auch dort
+            return None
         return "history" if c.execute("SELECT 1 FROM note WHERE id=? AND uid=?", (ch["note_id"], uid)).fetchone() else None
     return None
 
@@ -999,6 +1013,19 @@ async def api_chat_new(request: Request):
             from starlette.concurrency import run_in_threadpool
             return await run_in_threadpool(FED.create_dm, uid, b.get("handle"), str(b.get("device") or ""))
         b["user"] = lu                                                # eigener Server: wie bisher (lokaler Chat, v1)
+    if FED is not None and kind == "free" and b.get("handles"):       # 2.3: freie Gruppe mit Personen anderer Server
+        from starlette.concurrency import run_in_threadpool
+        return await run_in_threadpool(FED.create_group, uid, b)
+    if FED is not None and kind == "page":
+        from starlette.concurrency import run_in_threadpool
+        try:
+            pnid = int(b.get("note_id") or 0)
+        except (TypeError, ValueError):
+            pnid = 0
+        if pnid < 0:                                                  # 2.3: Seiten-Chat einer Seite eines anderen Servers
+            return await run_in_threadpool(FED.open_remote_page_chat, uid, pnid, str(b.get("device") or ""))
+        if pnid > 0:
+            await run_in_threadpool(FED.prepare_page, pnid)          # Personen/Gruppen anderer Server vorher aufloesen (Netzwerk)
     with _db() as c, c:
         if c.execute("SELECT COUNT(*) FROM chat WHERE created_by=? AND created>?", (uid, now - 3600)).fetchone()[0] >= 60:
             return _bad(t("Zu viele neue Chats in kurzer Zeit – bitte kurz warten."), 429)
@@ -1135,6 +1162,12 @@ async def api_member_add(cid: int, request: Request):
         return err
     b = await _body(request) or {}
     who = str(b.get("user") or "").strip().lower()[:100]
+    if FED is not None:
+        with _db() as c:
+            fch = _load(c, cid)
+        if is_fed(fch) or b.get("handle"):                # 2.3: Gruppe ueber Servergrenzen (Aenderung ueber das Heim)
+            from starlette.concurrency import run_in_threadpool
+            return await run_in_threadpool(FED.group_add, uid, cid, who, str(b.get("handle") or ""))
     with _db() as c, c:
         ch, m, mem, err = _chat_for(c, uid, cid)
         if err:
@@ -1182,6 +1215,11 @@ def api_member_remove(cid: int, who: str, request: Request):
     if err:
         return err
     who = who.strip().lower()
+    if FED is not None:
+        with _db() as c:
+            fch = _load(c, cid)
+        if is_fed(fch):                                   # 2.3: Gruppe ueber Servergrenzen (Aenderung ueber das Heim)
+            return FED.group_remove(uid, cid, who)
     with _db() as c, c:
         ch, m, mem, err = _chat_for(c, uid, cid)
         if err:
@@ -1651,7 +1689,10 @@ def purge(c=None):
     # Bezug geloescht, z. B. mit dem Chat per CASCADE oder von aelteren Versionen) - kein Hash bleibt ohne Nachricht liegen
     c.execute("DELETE FROM chat_ai_reply WHERE msg_id IS NULL AND created<?", (now - AI_REPLY_TTL,))
     c.execute("DELETE FROM chat_ai_reply r WHERE r.msg_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM chat_msg m WHERE m.id=r.msg_id)")
-    for (cid,) in c.execute("SELECT id FROM chat WHERE kind='page' AND NOT EXISTS (SELECT 1 FROM note n WHERE n.id=chat.note_id)").fetchall():
+    for (cid,) in c.execute("SELECT id FROM chat WHERE kind='page' AND home_peer IS NULL AND NOT EXISTS (SELECT 1 FROM note n "
+                            "WHERE n.id=chat.note_id)").fetchall():
+        if FED is not None:
+            FED.chat_dropping(c, _load(c, cid))            # 2.3: Seiten-Chat ueber Servergrenzen - die anderen Server raeumen auch
         fids += _drop_chat(c, cid)                         # Seite endgueltig geloescht (Papierkorb geleert): Seiten-Chat auch
     orphan = [r[0] for r in c.execute("SELECT id FROM chat_file WHERE msg_seq IS NULL AND created<?", (now - 3600,))]
     if orphan:
@@ -1683,7 +1724,10 @@ def delete_account(c, uid):
               (uid,))
     c.execute("UPDATE chat_ai_reply SET uid=? WHERE uid=?", (AI_GONE, uid))
     c.execute("UPDATE chat_ai SET by_uid=? WHERE by_uid=?", (AI_GONE, uid))
-    for (cid,) in c.execute("SELECT id FROM chat WHERE kind='page' AND note_id IN (SELECT id FROM note WHERE uid=?)", (uid,)).fetchall():
+    for (cid,) in c.execute("SELECT id FROM chat WHERE kind='page' AND home_peer IS NULL AND note_id IN (SELECT id FROM note WHERE uid=?)",
+                            (uid,)).fetchall():
+        if FED is not None:
+            FED.chat_dropping(c, _load(c, cid))
         fids += _drop_chat(c, cid)                         # Seiten-Chats eigener Seiten (die Seiten gehen mit)
     chats = [r[0] for r in c.execute("SELECT chat_id FROM chat_member WHERE uid=?", (uid,))]
     c.execute("DELETE FROM chat_member WHERE uid=?", (uid,))

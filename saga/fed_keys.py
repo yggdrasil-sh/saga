@@ -304,8 +304,11 @@ def api_keys(request: Request, handles: str = "", fresh: int = 0):
             continue
         with _db() as c:
             p = F.peer_by(c, "host", host)
-        if not _peer_ok(p):
-            out.update({h: None for h in hs})
+        if not _peer_ok(p):                  # nicht verbunden: ueber das Heim eines gemeinsamen Chats (E5, saga.fed_chat)
+            out.update(VIA_HOME(uid, hs, bool(fresh)) if VIA_HOME is not None else {h: None for h in hs})
             continue
         out.update(fetch_remote(p, hs, force=bool(fresh)))
     return chat._no_store({"keys": out})
+
+
+VIA_HOME = None              # saga.fed_chat.keys_via_home(uid, handles, fresh) -> {handle: eintrag|None}

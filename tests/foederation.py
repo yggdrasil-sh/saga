@@ -453,8 +453,10 @@ def part2(privb, kid):
     ok(f"B: Dora ohne oeffentlichen Namen, nicht geteilt -> 404 ({s})", s == 404 and "fa-anna" not in json.dumps(d))
     s, d = api("b", "fb-bert", "GET", f"/api/notes/{ref(pa, X)}")
     ok("B: nicht geteilte Seite -> 404", s == 404)
-    s, d = api("b", "fb-bert", "GET", f"/api/notes/{rP}/versions")
+    s, d = api("b", "fb-bert", "GET", f"/api/notes/{rP}/shares")
     ok("B: andere Endpunkte fuer fremde Seiten -> 404", s == 404)
+    s, d = api("b", "fb-bert", "GET", f"/api/notes/{rP}/versions")
+    ok(f"B: Versionen fremder Seiten (2.3) - Rolle prueft der Eigentuemer ({s})", s in (200, 403))
     ok("B: Signierter Akteur kann sich nicht als A-Person ausgeben (Prinzipal immer @name@B-host)",
        signed("a", privb, kid, "GET", f"/fed/v1/notes/{Pid}", actor={"name": "anna", "display": "Anna", "groups": []})[0] == 404)
 
