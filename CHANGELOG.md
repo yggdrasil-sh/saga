@@ -132,6 +132,27 @@ Gleiches Verhalten, nur schneller; ältere Apps funktionieren unverändert, `MIN
 - `tools/perf/web.py`: misst zusätzlich „erste Zeile sichtbar“, „danach bedienbar“ und „ans Ende scrollen“; zählt
   Zeilen virtualisierter Tabellen über `data-rows`. `tests/browser_db.js`: Browser-Tests für lange Datenbanken.
 
+### Schneller (Nacharbeit: Freigaben, Startseite, Suche in Datenbanken)
+
+Gleiches Verhalten, nur schneller; Antworten unverändert, `MIN_APP` unverändert.
+
+- **„Mit mir geteilt“ und Startseite als Empfänger:** Der Freigabe-Baum (welche fremden Seiten ich mit welcher Rolle
+  sehe) wird zwischengespeichert, solange sich an den Seiten der anderen Person nichts geändert hat. Grundlage ist
+  derselbe Änderungs-Zähler wie beim Seitenbaum-Abgleich: jede Änderung an Titel, Symbol, Ort, Papierkorb, Archiv,
+  Vorlage, Art, Reihenfolge, Schlagworten oder Favorit verwirft den Eintrag sofort – auch aus Transaktionen, die beim
+  Füllen noch liefen. Freigaben und Gruppen werden weiter bei jeder Anfrage frisch gelesen (Entzug wirkt sofort); nichts
+  Unbestätigtes wird gemerkt; höchstens 5 Minuten und 150.000 Seiten. Stufe L (`tools/perf`): `/api/shared` 498 → 180 ms,
+  Startseite als Empfänger 251 → 36 ms. Nach einer Änderung der anderen Person rechnet die erste Anfrage wie bisher.
+- **Suche in Datenbank-Ansichten** (`/rows?q=…`, Apps/Widgets): Einträge, deren Text den Suchbegriff sicher nicht
+  enthält, werden gar nicht erst gelesen; danach rechnet der Server wie bisher (gleiche Treffer, Reihenfolge, Gruppen,
+  Fehler). Wo das nicht sicher geht (Relationen, Suchbegriff mit Leerzeichen, Komma oder Sigma, nur Ziffern), wie
+  bisher. 10.000 Einträge, Ansicht „Offen“ + Suche: 346 → 181 ms.
+- **Schlagworte** in Listen (Seitenbaum, Freigaben, Suche): leere und wiederholte Listen ohne erneutes JSON-Lesen –
+  voller Seitenbaum (ältere Apps) Stufe L 815 → 616 ms, `?rows=0` 204 → 154 ms.
+- Tests: `tests/baum_cache.py` (Zwischenspeicher nach jeder Art von Änderung, laufende und offene Transaktionen,
+  Rollback, REPEATABLE READ), `tests/zeilen_suche.py` (mit/ohne Vorfilter über die Web-Testvektoren, Zufallsdaten in
+  de/ru/th, türkisches I, Schluss-Sigma, Escapes, Zahlen; per HTTP byte-gleich).
+
 ### Lastmessung (nur Werkzeuge, keine Änderung an Saga selbst)
 
 - `tools/perf/`: wiederholbare Lastmessung für Test-Stacks. `gen.py` erzeugt realistische Testdaten in drei Stufen
