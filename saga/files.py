@@ -202,8 +202,9 @@ async def api_file_copy(request: Request):
     return file_copy(uid, str((b or {}).get("url") or ""), (b or {}).get("note"))
 
 
-def file_copy(uid, url, note):
-    """Fuer die Weboberflaeche und die Foederation (uid = fremde Person, note = Seite hier, die sie bearbeiten darf)."""
+def file_copy(uid, url, note, fed_quota=None):
+    """Fuer die Weboberflaeche und die Foederation (uid = fremde Person, note = Seite hier, die sie bearbeiten darf;
+    fed_quota: deren eigene Grenze wie beim Hochladen - die Kopie zaehlt dort mit)."""
     m = re.fullmatch(r"/files/([0-9a-f]{24})", url)
     if not m:
         return _bad(t("ungültige Angabe"))
@@ -220,11 +221,17 @@ def file_copy(uid, url, note):
         used = c.execute("SELECT COALESCE(SUM(size),0) FROM file WHERE uid=?", (owner,)).fetchone()[0]
         if used + r[2] > FILE_QUOTA:
             return JSONResponse({"error": t("Speicherplatz voll (max. {n} MB)", n=FILE_QUOTA // 1048576)}, status_code=507)
+        fed_by = uid if fed_quota is not None else None
+        if fed_by is not None:
+            mine = c.execute("SELECT COALESCE(SUM(size),0) FROM file WHERE uid=? AND fed_by=?", (owner, fed_by)).fetchone()[0]
+            if mine + r[2] > fed_quota:
+                return JSONResponse({"error": t("Speicherplatz für Personen anderer Saga-Server voll (max. {n} MB)",
+                                                n=max(1, fed_quota // 1048576))}, status_code=507)
         nid = os.urandom(12).hex()
         with open(os.path.join(FILES_DIR, fid), "rb") as src, open(os.path.join(FILES_DIR, nid), "wb") as dst:
             dst.write(src.read())
-        c.execute("INSERT INTO file (id, uid, name, mime, size, is_image, created) VALUES (?,?,?,?,?,?,?)",
-                  (nid, owner, r[0], r[1], r[2], r[3], time.time()))
+        c.execute("INSERT INTO file (id, uid, name, mime, size, is_image, created, fed_by, fed_note) VALUES (?,?,?,?,?,?,?,?,?)",
+                  (nid, owner, r[0], r[1], r[2], r[3], time.time(), fed_by, int(note) if fed_by is not None else None))
     print(f"files: Kopie {fid} -> {nid} fuer Seite eines anderen Kontos", flush=True)
     return JSONResponse({"url": f"/files/{nid}", "copied": True})
 

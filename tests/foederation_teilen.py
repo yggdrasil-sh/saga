@@ -227,6 +227,18 @@ def part_subpages(A, B, pa, pb, P, C, Q, D, D2, k1, rows):
     s3 = api("a", "fa-carl", "POST", f"/api/notes/{loc}/move", {"parent_id": None, "index": 0})[0]
     ok(f"A lokal: Bearbeiter verschiebt im Bereich (200), nicht in anders geteilte Bereiche / hinaus (403) ({s1}, {s2}, {s3})",
        s1 == 200 and s2 == 403 and s3 == 403)
+    # Pruefer: gleiche Freigaben, aber neue Stelle "mit Unterseiten" veroeffentlicht -> nur der Eigentuemer (sonst oeffentlich)
+    loc2 = api("a", "fa-carl", "POST", "/api/notes", {"title": "Carls Entwurf", "parent_id": P})[1]["id"]
+    sp = api("a", "fa-anna", "GET", "/api/account/public-name")[1] or {}
+    if not sp.get("name"):
+        api("a", "fa-anna", "PUT", "/api/account/public-name", {"name": "fa-anna-pub"})
+    s0, _ = api("a", "fa-anna", "PUT", f"/api/notes/{C}/publish", {"children": True})
+    s4 = api("a", "fa-carl", "POST", f"/api/notes/{loc2}/move", {"parent_id": C, "index": 0})[0]
+    s5 = api("a", "fa-anna", "POST", f"/api/notes/{loc2}/move", {"parent_id": C, "index": 0})[0]
+    s6 = api("a", "fa-carl", "POST", f"/api/notes/{loc2}/move", {"parent_id": P, "index": 0})[0]
+    ok(f"A lokal: Bearbeiter verschiebt nicht in/aus Veroeffentlichung mit Unterseiten ({s0}: {s4}, {s6}; Eigentuemer {s5})",
+       s0 == 200 and s4 == 403 and s5 == 200 and s6 == 403)
+    api("a", "fa-anna", "DELETE", f"/api/notes/{C}/publish")
     api("a", "fa-anna", "DELETE", f"/api/notes/{P}/shares?type=user&target=fa-carl")
     return sub
 

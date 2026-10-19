@@ -669,6 +669,15 @@ def _chain_shares(c, owner, nid):
                                         f"({','.join('?' * len(chain))})", (owner, *chain)).fetchall()}
 
 
+def _chain_pubs(c, owner, nid):
+    """Veroeffentlichungen "mit Unterseiten" auf nid und allen Seiten darueber (vererben sich wie Freigaben)."""
+    chain = note_chain(c, owner, nid) if nid is not None else []
+    if not chain:
+        return set()
+    return {r[0] for r in c.execute(f"SELECT note_id FROM note_publish WHERE uid=? AND active=1 AND children=1 AND note_id IN "
+                                    f"({','.join('?' * len(chain))})", (owner, *chain)).fetchall()}
+
+
 def note_move(uid, nid, b, origin=None):
     """Verschieben fuer die Weboberflaeche und die Foederation. Eigentuemer: frei. Wer 'Bearbeiten' hat (2.3), darf
     innerhalb eines geteilten Baums verschieben: Seite und neue Elternseite bearbeitbar, und die Freigaben ueber der
@@ -696,7 +705,8 @@ def note_move(uid, nid, b, origin=None):
         if role != "owner":
             if parent is None or me[0] is None or RANK.get(acc.role(parent), 0) < RANK["edit"]:
                 return _bad(t("Dafür fehlt dir die Berechtigung."), 403)
-            if parent != me[0] and _chain_shares(c, owner, parent) != _chain_shares(c, owner, me[0]):
+            if parent != me[0] and (_chain_shares(c, owner, parent) != _chain_shares(c, owner, me[0])
+                                    or _chain_pubs(c, owner, parent) != _chain_pubs(c, owner, me[0])):    # nicht in/aus Veroeffentlichung
                 return _bad(t("Verschieben geht nur innerhalb desselben geteilten Bereichs (gleiche Freigaben) – sonst nur durch den Eigentümer."), 403)
         if parent is not None:
             pk = c.execute("SELECT kind FROM note WHERE id=? AND uid=?", (parent, owner)).fetchone()[0]

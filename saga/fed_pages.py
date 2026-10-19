@@ -92,7 +92,7 @@ def _present(c, nid, pres, skip=None):
         e.update(name=nm.get(u) or e.get("name") or "?", editing=bool(entries[u]))
         out.append(e)
     for pr, w in _watchers(nid).items():
-        if pr == skip:
+        if pr == skip or not _role_as(c, pr, w["groups"], nid):       # Freigabe inzwischen entzogen: nicht mehr anzeigen
             continue
         out.append({"name": w["name"], "username": pr, "editing": bool(w["editing"])})
     return out
@@ -172,7 +172,7 @@ async def _owner_req(request, nid, rest):
     if m == "POST" and rest == "files/copy":
         if _need(inp, "upload"):
             return _need(inp, "upload")
-        return _signed_resp(inp, await run_in_threadpool(F._as, inp, files.file_copy, str(b.get("url") or ""), nid))
+        return _signed_resp(inp, await run_in_threadpool(F._as, inp, _copy_owner, str(b.get("url") or ""), nid))
     if m == "POST" and rest == "presence":
         if _need(inp, "presence"):
             return _need(inp, "presence")
@@ -237,6 +237,11 @@ def _upload_owner(inp, nid, name, img_field):
             print(f"fed_pages: Upload {len(data)} Bytes einer Person von {inp.peer['host']} in Seite {nid}", flush=True)
         return err if err is not None else JSONResponse(out)
     return F._relay(inp, F._as(inp, run))
+
+
+def _copy_owner(principal, url, nid):
+    """Kopie einer Datei in die Seite: zaehlt wie ein Upload auch bei der Grenze der fremden Person."""
+    return files.file_copy(principal, url, nid, fed_quota=UPLOAD_QUOTA)
 
 
 def _presence_owner(inp, nid, editing, leave):

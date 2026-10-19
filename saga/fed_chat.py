@@ -823,9 +823,14 @@ def apply_msg(c, peer, ch, ev, jump=False):
             # Person eines dritten Servers (Gruppe, E5): Schluessel vom Heim mitgeschickt - selbst geprueft (Zertifikate);
             # zwischengespeichert nur, wenn wir mit ihrem Server nicht selbst verbunden sind (sonst gilt der Abruf dort)
             e2 = FK.check_entry(m["sender_handle"], ev.get("sender_keys"))
+            tp = F.peer_by(c, "host", host)
+            if e2 and FK._peer_ok(tp) and e and e2["ident_pub"] != e.get("ident_pub"):
+                # mit ihrem Server selbst verbunden: einen ANDEREN Identitaetsschluessel nimmt nur der Abruf dort an - das
+                # Heim kann so keine Person eines dritten Servers mit eigenen Schluesseln faelschen (neue Geraete ja)
+                F.log(c, "chat.keymismatch", peer, str(m["sender_handle"])[:40], throttle=(peer["id"], "keymm"))
+                e2 = None
             if e2:
                 e = e2
-                tp = F.peer_by(c, "host", host)
                 if not FK._peer_ok(tp):
                     _cache_entry(c, peer, m["sender_handle"], e2)
     c.execute("UPDATE chat SET fseq=? WHERE id=?", (fseq, ch["id"]))
@@ -1890,6 +1895,9 @@ def op_members(c, peer, d):
         return 409, {"error": "too many"}
     for u in added:
         _add_member(c, ch, u)
+        if not sharing.is_remote(u):         # Konto hier, eingeladen von einer Person eines anderen Servers: Erstkontakt = Anfrage
+            c.execute("UPDATE chat_member SET state='request' WHERE chat_id=? AND uid=?", (ch["id"], u))
+            chat._direct(c, [u], "chat.request", {"chat_id": ch["id"]})
     for u in removed:
         _remove_member(c, ch, u)
     members_changed(c, ch, added, removed, by=p_)
