@@ -336,6 +336,9 @@ def _check_cfg():
 
 def periodic():
     now = time.time()
+    with _db() as c:
+        if not any(F.feature(p, "directory") for p in F.peers(c)):
+            return                           # keine Instanz mit Adressbuch: nichts zu tun (beim Verbinden: _on_hello)
     if now - _st["bg"] >= REFRESH_EVERY:
         _st["bg"] = now
         refresh_local()

@@ -70,19 +70,25 @@ try:
     n1 = len(backups())
     time.sleep(1.1)                                # Backup-Name hat Sekunden - nicht den von eben ueberschreiben
     db.init_schema()
-    new6 = [f for f in backups() if f not in before and "vor-schema-6" in f]
-    ok(f"Update 2.1-testing (Stand 5) -> 6 mit Backup vorher ({len(new6)})", db.schema_version() == db.SCHEMA_VERSION
+    new6 = [f for f in backups() if f not in before and f"vor-schema-{db.SCHEMA_VERSION}" in f]
+    ok(f"Update 2.1-testing (Stand 5) -> {db.SCHEMA_VERSION} mit Backup vorher ({len(new6)})", db.schema_version() == db.SCHEMA_VERSION
        and len(backups()) == n1 + 1 and new6 and tabs == 5)
     with psycopg.connect(db.DATABASE_URL) as c:
         c.execute(db.MIGRATIONS[6])
     ok("Migration 6 beliebig oft ausfuehrbar", True)
+    # 2.3: Migration 7 (Foederation Protokoll 2: Spalten in fed_peer/fed_outbox) - idempotent, Spalten da
+    ok("Schema 2.3: Migration 7 vorhanden", db.SCHEMA_VERSION >= 7 and 7 in db.MIGRATIONS)
+    with psycopg.connect(db.DATABASE_URL) as c:
+        c.execute(db.MIGRATIONS[7]); c.execute(db.MIGRATIONS[7])
+        cols = {r[0] for r in c.execute("SELECT column_name FROM information_schema.columns WHERE table_name IN ('fed_peer','fed_outbox')")}
+    ok("Migration 7 beliebig oft ausfuehrbar, Spalten da", {"protocol", "caps", "opts", "dir_seq", "chain", "ev_id"} <= cols)
     real = db.SCHEMA_VERSION
     db.SCHEMA_VERSION = 5                          # so sieht 2.0.x / eine aeltere 2.1-Testversion die Datenbank
     try:
         db.init_schema()
         ok("Rueckweg: Stand-5-Version startet nicht", False)
     except db.SchemaTooNew as ex:
-        ok(f"Rueckweg: Stand-5-Version verweigert den Start ({str(ex)[:60]}…)", "Schema-Stand 6" in str(ex) and "kennt nur 5" in str(ex))
+        ok(f"Rueckweg: Stand-5-Version verweigert den Start ({str(ex)[:60]}…)", f"Schema-Stand {real}" in str(ex) and "kennt nur 5" in str(ex))
     finally:
         db.SCHEMA_VERSION = real
     with psycopg.connect(db.DATABASE_URL) as c:
