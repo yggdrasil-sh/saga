@@ -1754,6 +1754,9 @@ body.pg-lock-on #pg-editor .embed-db :is(.db-new-top,.db-tab-add,.db-gear,.db-ne
 .bk-dl dt{color:var(--muted)}
 .bk-dl dd{margin:0;overflow-wrap:anywhere}
 .bk-key{width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem;resize:vertical}
+.bk-kind{border:1px solid var(--border);border-radius:9px;padding:.4rem .8rem;margin:.5rem 0}
+.bk-kind>summary{cursor:pointer;font-weight:600;padding:.2rem 0}
+.bk-kind>summary small{font-weight:400;color:var(--muted)}
 .bk-pre{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:.6rem .8rem;font-size:.78rem;overflow-x:auto;white-space:pre}
 @media (max-width:720px){.bk-dl{grid-template-columns:minmax(0,1fr)}.bk-dl dd{margin-bottom:.3rem}}
 .fed-st{display:inline-block;padding:.05rem .5rem;border-radius:999px;font-size:.82rem;border:1px solid var(--border)}

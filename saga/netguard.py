@@ -6,6 +6,7 @@ jede Adresse geprueft und genau mit der gepruefften IP verbunden ("Pinning"). TL
 gegen den Namen aus der URL. Keine Abhaengigkeit von anderen Saga-Modulen (hkcal nutzt es ebenfalls).
 """
 import ipaddress
+import os
 import socket
 
 import httpcore
@@ -28,6 +29,11 @@ def is_public(ip):
     return a.is_global
 
 
+# Testwiederherstellung auf einem zweiten Server (SAGA_RESTORE_TEST=1, saga/backups.py): ein zurueckgespieltes Backup
+# enthaelt die Zugangsdaten der echten Instanz (Kalender, KI, Immich, Avatare ...) - ueber netguard geht dann nichts raus.
+RESTORE_TEST = os.environ.get("SAGA_RESTORE_TEST", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 class Blocked(httpcore.ConnectError):
     """Ziel-Adresse nicht erlaubt (intern ohne Freigabe)."""
 
@@ -40,6 +46,8 @@ class GuardBackend(httpcore.SyncBackend):
         self.ip_ok = ip_ok
 
     def connect_tcp(self, host, port, *args, **kw):
+        if RESTORE_TEST:
+            raise Blocked(f"Ziel {host}: SAGA_RESTORE_TEST=1")
         try:
             infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
         except (OSError, UnicodeError) as ex:

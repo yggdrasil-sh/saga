@@ -16,7 +16,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
-### Verschlüsselte Backups auf Nextcloud/WebDAV
+### Verschlüsselte Backups (S3, Ordner, Nextcloud/WebDAV)
 
 - **Admin-Bereich → Backups:** tägliches Backup (Uhrzeit wählbar) von Datenbank, Dateien (`files` ohne Vorschaubilder,
   `chat`, `svc-icons`) und – abschaltbar, Standard an – `SECRET_KEY`/`CAL_SECRET_KEY` auf ein **WebDAV-Ziel**. Nextcloud
@@ -24,6 +24,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   verschlüsselt wie die anderen Admin-Geheimnisse; „Trennen“ widerruft das App-Passwort), große Dateien mit
   **Chunking v2**. Sonst Benutzer/Passwort + PUT. Abrufe über den SSRF-Schutz (netguard); die eingetragene Adresse gilt
   als freigegeben, keine Weiterleitungen.
+- **Ziel S3** (MinIO, Garage, Backblaze B2, Hetzner, Wasabi, AWS …): Endpunkt, Region, Bucket, Präfix, Access-/Secret-Key
+  (verschlüsselt gespeichert), path-style oder virtual-hosted (automatisch: AWS virtual, sonst path). AWS-Signatur v4
+  ohne Zusatzbibliothek (hmac/hashlib, geprüft gegen die Beispiele der AWS-Dokumentation), jede Anfrage mit SHA-256 des
+  Inhalts; große Dateien als **Multipart-Upload** (streamend von der Platte, bei Fehlern abgebrochen). Auflisten mit
+  Seiten (continuation-token), Löschen je Lauf, Holen für `backup-holen`/`restore --schluessel`/`backup-pruefen`.
+- **Ziel Ordner im Container** (eingebundenes Volume, NAS-Mount): nur unterhalb von `SAGA_BACKUP_DIRS` (Standard
+  `/backup`), Pfade aufgelöst (Symlinks, `..`) – kein Ausbrechen; Schreiben über `.part` + `fsync` + Umbenennen.
+  docker-compose-Beispiel in der Anleitung. Die Ziel-Art ist im Admin-Bereich wählbar (S3, Ordner, WebDAV/Nextcloud);
+  beim Wechsel oder Trennen werden die Zugangsdaten des vorigen Ziels geleert.
 - **Verschlüsselung mit age** (Paket `age` im Image) und **öffentlichen Schlüsseln** – Saga kennt den privaten Schlüssel
   nie. „Schlüsselpaar erzeugen“ zeigt ihn einmal (Text + Download), Bestätigung mit den letzten 6 Zeichen; oder eigenen
   öffentlichen Schlüssel eintragen (`age1…`, `ssh-ed25519 …`), mehrere Empfänger möglich.
@@ -40,13 +49,20 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Kommandozeile:** `run.py backup-extern`, `run.py backup-holen [<lauf>] [--liste]`,
   `run.py restore --schluessel <datei> [<lauf>|<ordner>]` (holt, prüft, entschlüsselt, spielt Datenbank über das
   unveränderte `db.restore` sowie Dateien und Geheimnisse zurück; frischer Server: Ziel per `SAGA_BACKUP_URL`/`_USER`/
-  `_PASSWORD`), `run.py backup-pruefen --schluessel <datei>` (Testwiederherstellung in eine Wegwerf-Datenbank).
+  `_PASSWORD`, `SAGA_BACKUP_S3_*` oder `SAGA_BACKUP_PATH`), `run.py backup-pruefen --schluessel <datei>`
+  (Testwiederherstellung in eine Wegwerf-Datenbank).
   `run.py backup`/`restore <datei>` und die Backups vor Migrationen bleiben unverändert.
-- **`SAGA_RESTORE_TEST=1`:** Testwiederherstellung auf einem zweiten Server ohne ausgehende Verbindungen (Föderation,
-  Mitteilungen, Backups, Versionshinweis aus) – ein zurückgespieltes Backup trägt die Identität der Instanz.
+- **`SAGA_RESTORE_TEST=1`:** Testwiederherstellung auf einem zweiten Server ohne ausgehende Verbindungen zu den Diensten
+  der echten Instanz (Föderation, Mitteilungen, Backups, Versionshinweis, Kalender-Abgleich, KI, Immich, Websuche,
+  Avatare aus – zentral im SSRF-Schutz `netguard`) – ein zurückgespieltes Backup trägt die Identität der Instanz.
+- **Arbeitsordner** `/data/backups/extern-tmp/`: Lauf und `backup-pruefen` je in eigenem Unterordner (räumen sich nicht
+  mehr gegenseitig weg); Reste abgebrochener Läufe (mit `db.dump` im Klartext) löscht der nächste Start. Die
+  PROPFIND-Antwort wird mit Größengrenze gestreamt statt erst ganz geladen.
 - Neue Tabelle `backup_run` (Verlauf, per `CREATE TABLE IF NOT EXISTS`, keine Migration). Texte in de/en/es/ru/th.
   Anleitung: Abschnitt 11 „Verschlüsselte Backups“ (auch Wiederherstellung ohne Saga mit `age -d`).
-- Tests: neue Reihe `backup_extern` gegen ein nachgemachtes Nextcloud/WebDAV (`tests/fakedav.py`).
+- Tests: neue Reihe `backup_extern` gegen ein nachgemachtes Nextcloud/WebDAV (`tests/fakedav.py`) und einen
+  nachgemachten S3-Server (`tests/fakes3.py`: prüft Signatur v4 unabhängig nach, SHA-256 des Inhalts, Multipart mit
+  Mindestgröße je Teil, Seiten beim Auflisten, virtual-hosted) sowie ein Ordner-Ziel mit Ausbruchsversuchen.
 
 ### Föderation 2.3
 

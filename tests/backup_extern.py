@@ -37,6 +37,7 @@ import psycopg                                        # noqa: E402
 from psycopg.conninfo import make_conninfo           # noqa: E402
 import db                                             # noqa: E402
 import fakedav                                        # noqa: E402
+import fakes3                                         # noqa: E402
 
 res = []
 
@@ -51,7 +52,8 @@ NAME = "saga_bkx_" + secrets.token_hex(4)
 URL = make_conninfo(REAL, dbname=NAME)
 FRESH = "saga_bkr_" + secrets.token_hex(4)
 FRESH_URL = make_conninfo(REAL, dbname=FRESH)
-NCP, DVP = 18301, 18302
+PB = int(os.environ.get("BKX_PORTS", "18301"))          # erster von 5 Ports (parallele Laeufe: anderen Bereich waehlen)
+NCP, DVP, RTP, RTA, S3P = PB, PB + 1, PB + 2, PB + 3, PB + 4
 NC = fakedav.start(NCP, True)
 DV = fakedav.start(DVP, False)
 NCB, DVB = f"http://127.0.0.1:{NCP}", f"http://127.0.0.1:{DVP}"
@@ -406,22 +408,28 @@ try:
         c.execute("UPDATE setting SET v=%s WHERE k='backup'", (json.dumps(v),))
         c.execute("INSERT INTO setting (k, v) VALUES ('fed_enabled', 'true') ON CONFLICT (k) DO UPDATE SET v='true'")
         c.execute("DELETE FROM setting WHERE k='backup_state'")
-    r = subprocess.run([sys.executable, "-c", "from saga import sharing, push, backups; import auth\n"
+    r = subprocess.run([sys.executable, "-c", "from saga import sharing, push, backups, netguard, ai_web; import auth\n"
                         "import time\nprint(auth.settings(fresh=True)['fed_enabled'], sharing.fed_enabled(), push.send((1,'u','ntfy','https://ntfy.example.org/x','','',''), {})[1],"
                         " bool(backups.due(backups.config(), backups.state(), time.time())), backups.run('cli')[1].code,"
-                        f" backups.nc_revoke('{NCB}', 'u', 'p'))"],
+                        f" backups.nc_revoke('{NCB}', 'u', 'p'))\n"
+                        "try:\n    netguard.guarded_client(lambda *a: True).get('" + NCB + "/_stats'); print('netguard offen')\n"
+                        "except Exception as ex:\n    print('netguard', type(ex).__name__)\n"
+                        "try:\n    ai_web.search(['x']); print('suche offen')\n"
+                        "except Exception as ex:\n    print('suche', ex)\n"],
                        cwd=APP, env=dict(fenv, SAGA_RESTORE_TEST="1"), capture_output=True, text=True, timeout=60)
-    ok(f"SAGA_RESTORE_TEST: Foederation aus, Push schickt nichts, Backup waere faellig, run.py backup-extern und Widerruf gesperrt"
-       f" ({r.stdout.strip()} {r.stderr.strip()[-200:]})", r.stdout.strip() == "True False SAGA_RESTORE_TEST True restore_test False")
+    ok(f"SAGA_RESTORE_TEST: Foederation aus, Push schickt nichts, Backup waere faellig, run.py backup-extern und Widerruf gesperrt,"
+       f" Kalender/KI/Immich/Avatare (netguard) und Websuche gesperrt ({r.stdout.strip()} {r.stderr.strip()[-200:]})",
+       r.stdout.strip().splitlines() == ["True False SAGA_RESTORE_TEST True restore_test False", "netguard ConnectError",
+                                         "suche SAGA_RESTORE_TEST"])
     n0 = stats()["requests"]
     log = open(os.path.join(TMPROOT, "srv.log"), "w")
     srv_proc = subprocess.Popen([sys.executable, "run.py"], cwd=APP, stdout=log, stderr=subprocess.STDOUT,
-                                env=dict(fenv, SAGA_RESTORE_TEST="1", BACKUP_TICK="1", PORT="18303", ADMIN_PORT="18304",
+                                env=dict(fenv, SAGA_RESTORE_TEST="1", BACKUP_TICK="1", PORT=str(RTP), ADMIN_PORT=str(RTA),
                                          HOST="127.0.0.1", ADMIN_HOST="127.0.0.1", SAGA_BACKUP_URL=""))
     up = False
     for _ in range(60):
         try:
-            up = urllib.request.urlopen("http://127.0.0.1:18303/healthz", timeout=2).read() == b"ok"
+            up = urllib.request.urlopen(f"http://127.0.0.1:{RTP}/healthz", timeout=2).read() == b"ok"
             break
         except Exception:  # noqa: BLE001
             time.sleep(0.5)
@@ -464,6 +472,269 @@ try:
         ok("Falsches Passwort -> Anmeldung abgelehnt", False)
     except backups.BackupError as ex:
         ok("Falsches Passwort -> Anmeldung abgelehnt", ex.code == "auth")
+
+    # =================================================================================================================
+    # S3 (tests/fakes3.py: Signatur v4 und SHA-256 des Inhalts geprueft wie bei einem echten Anbieter)
+    # =================================================================================================================
+    E_ = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    AK, AS = "AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    v1 = backups.sigv4("GET", "examplebucket.s3.amazonaws.com", "/test.txt", [], {"Range": "bytes=0-9", "x-amz-content-sha256": E_,
+                       "x-amz-date": "20130524T000000Z"}, E_, AK, AS, "us-east-1", "20130524T000000Z")
+    v2 = backups.sigv4("GET", "examplebucket.s3.amazonaws.com", "/", [("max-keys", "2"), ("prefix", "J")],
+                       {"x-amz-content-sha256": E_, "x-amz-date": "20130524T000000Z"}, E_, AK, AS, "us-east-1", "20130524T000000Z")
+    ok("SigV4 = Beispiele aus der AWS-Dokumentation (GET Object, ListObjects)",
+       v1.endswith("Signature=f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41")
+       and "SignedHeaders=host;range;x-amz-content-sha256;x-amz-date" in v1
+       and v2.endswith("Signature=34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7"))
+    try:                                                   # zusaetzlich gegen botocore, falls vorhanden (nicht im Image)
+        from botocore.auth import S3SigV4Auth
+        from botocore.awsrequest import AWSRequest
+        from botocore.credentials import Credentials
+        import datetime as _dtm
+        from unittest import mock as _mock
+        rq = AWSRequest("PUT", "http://127.0.0.1:9000/b/saga%20x/a~b.age?partNumber=2&uploadId=a%2Bb%3D",
+                        headers={"x-amz-content-sha256": E_, "Content-Type": "application/octet-stream"}, data=b"")
+        with _mock.patch("botocore.auth.datetime") as _d:
+            _d.datetime.utcnow.return_value = _dtm.datetime(2026, 10, 19, 1, 2, 3)
+            _d.datetime.now.return_value = _dtm.datetime(2026, 10, 19, 1, 2, 3, tzinfo=_dtm.timezone.utc)
+            S3SigV4Auth(Credentials("k", "s"), "s3", "eu-test-1").add_auth(rq)
+        mine = backups.sigv4("PUT", "127.0.0.1:9000", "/b/saga%20x/a~b.age", [("partNumber", "2"), ("uploadId", "a+b=")],
+                             {"x-amz-content-sha256": E_, "Content-Type": "application/octet-stream", "x-amz-date": rq.headers["X-Amz-Date"]},
+                             E_, "k", "s", "eu-test-1", rq.headers["X-Amz-Date"])
+        ok("SigV4 = botocore (Pfad mit Leerzeichen, Abfrage mit + und =)",
+           mine.split("Signature=")[1] == rq.headers["Authorization"].split("Signature=")[1])
+    except ImportError:
+        print("(botocore nicht installiert - Gegenprobe uebersprungen)")
+    S3S = fakes3.start(S3P)
+    S3B = f"http://127.0.0.1:{S3P}"
+
+    def s3stats():
+        return json.loads(urllib.request.urlopen(S3B + "/_stats", timeout=10).read())
+
+    def s3ctl(**kw):
+        urllib.request.urlopen(S3B + "/_ctl?" + urllib.parse.urlencode(kw), timeout=10).read()
+
+    def s3raw(k):
+        return urllib.request.urlopen(S3B + "/_get?" + urllib.parse.urlencode({"b": fakes3.BUCKET, "k": k}), timeout=30).read()
+    try:
+        scfg = dict(backups.config(), **backups.TARGET_CLEAR)
+        scfg.update(mode="s3", s3_endpoint=S3B, s3_region=fakes3.REGION, s3_bucket=fakes3.BUCKET, s3_prefix="saga/backups",
+                    s3_key=fakes3.KEY_ID, s3_secret=fakes3.SECRET, s3_style="auto")
+        ok("S3: Ziel eingerichtet (has_target), path-style fuer eigene Endpunkte", backups.has_target(scfg)
+           and not backups.S3(scfg).virtual and backups.S3(dict(scfg, s3_endpoint="https://s3.eu-central-1.amazonaws.com")).virtual
+           and not backups.S3(dict(scfg, s3_endpoint="https://s3.eu-central-1.amazonaws.com", s3_bucket="mit.punkt")).virtual)
+        free = backups.test_target(scfg)
+        ok("S3: Verbindung pruefen (schreiben, lesen, loeschen), kein Platz bekannt", free is None and s3stats()["sigfail"] == 0
+           and not s3stats()["objects"][fakes3.BUCKET])
+        for bad, code in ((dict(scfg, s3_secret="falsch"), "auth"), (dict(scfg, s3_bucket="gibt-es-nicht"), "http")):
+            try:
+                backups.test_target(bad)
+                ok(f"S3: falsche Angaben -> Fehler {code}", False)
+            except backups.BackupError as ex:
+                ok(f"S3: falsche Angaben -> Fehler {code} ({backups.text(ex.code, ex.p)})", ex.code == code
+                   and (code != "http" or "NoSuchBucket" in str(ex.p)))
+        ok("S3: falscher Secret-Key -> Signatur vom Server abgelehnt", s3stats()["sigfail"] >= 1)
+        sf0 = s3stats()["sigfail"]
+        backups.save_config(scfg)
+        rawc = q("SELECT v FROM setting WHERE k='backup'")[0][0]
+        ok("S3: Access-Key und Secret verschluesselt gespeichert", fakes3.SECRET not in rawc and fakes3.KEY_ID not in rawc
+           and '"s3_secret": "enc:' in rawc and backups.config()["s3_secret"] == fakes3.SECRET)
+        with open(os.path.join(STATE, "files/ab/gross.bin"), "wb") as f:
+            f.write(os.urandom(12 * 1024 * 1024))
+        time.sleep(1.1)
+        good, s3out = backups.run("test")
+        ss = s3stats()
+        objs = ss["objects"][fakes3.BUCKET]
+        sname = s3out["name"] if good else ""
+        mine = {k.rsplit("/", 1)[-1]: k for k in objs if k.startswith(f"saga/backups/{sname}/")}
+        ok(f"S3: Lauf erfolgreich ({sname or s3out}), alle Teile unter dem Praefix", good and set(mine) == {
+            "db.dump.age", "dateien.tar.age", "geheimnisse.env.age", "manifest.json.age", "manifest.json"})
+        ok(f"S3: Multipart fuer die grosse Datei (Teile {ss['parts']}, Abschluesse {ss['completes']}), keine Signaturfehler",
+           good and s3out["chunked"] >= 1 and ss["completes"] >= 1 and ss["parts"] >= 3 and ss["sigfail"] == sf0 and ss["hashfail"] == 0
+           and ss["uploads"] == 0)
+        sman = json.loads(s3raw(mine.get("manifest.json", "x")) or b"{}")
+        ok("S3: Manifest stimmt mit den Objekten ueberein", sman.get("files") and all(
+            hashlib.sha256(s3raw(mine[n])).hexdigest() == v["sha256"] for n, v in sman["files"].items()))
+        sblob = b"".join(s3raw(k) for k in mine.values())
+        ok("S3: nichts im Klartext", MARK.encode() not in sblob and SECRET.encode() not in sblob and b"PGDMP" not in sblob)
+        tp2 = subprocess.run(["age", "-d", "-i", k2], input=s3raw(mine["dateien.tar.age"]), capture_output=True)
+        ok("S3: grosse Datei nach Multipart wieder lesbar (age + tar)", tp2.returncode == 0 and b"gross.bin" in tp2.stdout[:200000])
+        # Fehler: Daten verfaelscht (Multipart und einzeln) -> Nachpruefung erkennt es; Server weg
+        time.sleep(1.1)
+        s3ctl(corrupt=1)
+        g2, e2 = backups.run("test")
+        s3ctl(corrupt=0)
+        ok(f"S3: verfaelschte Daten erkannt ({getattr(e2, 'code', e2)})", not g2 and e2.code == "checksum")
+        time.sleep(1.1)
+        s3ctl(down=1)
+        g3, e3 = backups.run("test")
+        s3ctl(down=0)
+        ok(f"S3: Ziel antwortet mit Fehler -> gemeldet ({getattr(e3, 'code', e3)} {getattr(e3, 'p', '')})", not g3 and e3.code == "http"
+           and e3.p.get("status") == 503)
+        # Abbruch mitten im Multipart-Upload -> AbortMultipartUpload
+        orig = backups.S3._range_hash
+        calls = {"n": 0}
+
+        def boom(f, off, n):
+            calls["n"] += 1
+            if calls["n"] == 3:
+                raise OSError(5, "Testfehler")
+            return orig(f, off, n)
+        backups.S3._range_hash = staticmethod(boom)
+        ab0 = s3stats()["aborts"]
+        sd = backups.S3(scfg)
+        big = os.path.join(TMPROOT, "big.bin")
+        with open(big, "wb") as f:
+            f.write(os.urandom(11 * 1024 * 1024))
+        try:
+            sd.put_file(big, sd.url("abbruch.bin"))
+            ok("S3: Abbruch im Multipart-Upload", False)
+        except OSError:
+            ok("S3: Abbruch im Multipart-Upload -> Upload verworfen (Abort)", s3stats()["aborts"] == ab0 + 1 and s3stats()["uploads"] == 0
+               and "saga/backups/abbruch.bin" not in s3stats()["objects"][fakes3.BUCKET])
+        finally:
+            backups.S3._range_hash = staticmethod(orig)
+            sd.close()
+        # GFS im Bucket (Seiten zu je 2 Eintraegen: continuation-token), fremde Praefixe bleiben
+        s3ctl(page=2)
+        sd = backups.S3(scfg)
+        for i in range(25):
+            n = (t0 - timedelta(days=40 + i)).strftime("saga-%Y%m%d-%H%M%S")
+            sd.put_bytes(b"{}", sd.url(n, "manifest.json"))
+            sd.put_bytes(b"x", sd.url(n, "db.dump.age"))
+        sd.put_bytes(b"x", sd.url("Fotos", "a.jpg"))
+        sd.put_bytes(b"x", "anderes/saga-20200101-000000/manifest.json")
+        before = [r["name"] for r in backups.list_runs(sd) if r["complete"]]
+        gone = backups.prune(sd, dict(scfg, keep_d=3, keep_w=2, keep_m=3), keep={sname})
+        after = {r["name"] for r in backups.list_runs(sd) if r["complete"]}
+        want = backups.gfs_keep(before, 3, 2, 3) | {sname} | {n for n in before if time.time() - backups.run_time(n).timestamp() < 86400}
+        left = s3stats()["objects"][fakes3.BUCKET]
+        ok(f"S3: GFS ueber mehrere Listen-Seiten ({len(before)} -> {len(after)}, {len(gone)} geloescht)", len(before) >= 26
+           and after == want and len(gone) >= 10 and not any(k.startswith(f"saga/backups/{g}/") for g in gone for k in left))
+        ok("S3: fremde Objekte bleiben (anderer Ordner, anderes Praefix)", "saga/backups/Fotos/a.jpg" in left
+           and "anderes/saga-20200101-000000/manifest.json" in left)
+        sd.close()
+        s3ctl(page=1000)
+        # virtual-hosted: bucket.host (Namensaufloesung fuer *.localhost im Test auf 127.0.0.1)
+        import socket as _sock
+        _gai = _sock.getaddrinfo
+
+        def gai(host, *a, **kw):
+            return _gai("127.0.0.1" if str(host).endswith(".localhost") else host, *a, **kw)
+        _sock.getaddrinfo = gai
+        try:
+            v0 = s3stats()["virtual"]
+            vcfg = dict(scfg, s3_endpoint=f"http://localhost:{S3P}", s3_style="virtual")
+            backups.test_target(vcfg)
+            vd = backups.S3(vcfg)
+            vruns = backups.list_runs(vd)
+            vd.close()
+            ok(f"S3 virtual-hosted (Host {fakes3.BUCKET}.localhost): pruefen und auflisten",
+               s3stats()["virtual"] > v0 and any(r["name"] == sname and r["complete"] for r in vruns))
+        finally:
+            _sock.getaddrinfo = _gai
+        # netguard: intern ist nur der eingetragene Host erlaubt (127.0.0.1 ueber einen anderen Namen -> gesperrt)
+        try:
+            with backups._client_for(("s3.example.org",)) as cl_:
+                backups._net_call(lambda: cl_.get(S3B + "/_stats"))
+            ok("S3: andere interne Adresse gesperrt (netguard)", False)
+        except backups.BackupError as ex:
+            ok(f"S3: andere interne Adresse gesperrt (netguard, {ex.code})", ex.code == "blocked")
+        # Kommandozeile: frischer Stack, Ziel per Umgebung (S3)
+        s3env = dict(fenv, SAGA_BACKUP_URL="", SAGA_BACKUP_S3_ENDPOINT=S3B, SAGA_BACKUP_S3_BUCKET=fakes3.BUCKET,
+                     SAGA_BACKUP_S3_ACCESS_KEY=fakes3.KEY_ID, SAGA_BACKUP_S3_SECRET_KEY=fakes3.SECRET,
+                     SAGA_BACKUP_S3_REGION=fakes3.REGION, SAGA_BACKUP_S3_PREFIX="saga/backups")
+        r = subprocess.run([sys.executable, "run.py", "backup-holen", "--liste"], cwd=APP, env=s3env, capture_output=True, text=True, timeout=120)
+        ok(f"S3: run.py backup-holen --liste per Umgebung {r.stderr.strip()[-120:]}", r.returncode == 0 and sname in r.stdout)
+        r = subprocess.run([sys.executable, "run.py", "backup-pruefen", "--schluessel", k1, sname], cwd=APP, env=s3env,
+                           capture_output=True, text=True, timeout=600)
+        ok(f"S3: run.py backup-pruefen holt aus S3 und spielt in Wegwerf-Datenbank ({r.returncode}) {(r.stdout + r.stderr).strip()[-160:]}",
+           r.returncode == 0 and "Testwiederherstellung in Ordnung" in r.stdout)
+        os.remove(os.path.join(STATE, "files/ab/gross.bin"))
+    finally:
+        S3S.shutdown()
+        S3S.server_close()
+
+    # =================================================================================================================
+    # Ordner im Container (SAGA_BACKUP_DIRS)
+    # =================================================================================================================
+    ZR = os.path.join(TMPROOT, "ziel-wurzel")
+    os.makedirs(ZR)
+    os.environ["SAGA_BACKUP_DIRS"] = ZR + ", /nicht/da"
+    os.makedirs(os.path.join(TMPROOT, "draussen"))
+    os.symlink(os.path.join(TMPROOT, "draussen"), os.path.join(ZR, "link-raus"))
+    ok("Ordner: Pfade ausserhalb, mit .., relativ und ueber Symlinks nach draussen abgelehnt",
+       backups.norm_folder("/etc") is None and backups.norm_folder(ZR + "/../draussen") is None and backups.norm_folder("ziel") is None
+       and backups.norm_folder(os.path.join(ZR, "link-raus")) is None and backups.norm_folder(ZR + "/saga/") == ZR + "/saga"
+       and backups.norm_folder("/") is None)
+    try:
+        backups.test_target({"mode": "folder", "path": "/etc"})
+        ok("Ordner: /etc als Ziel abgelehnt", False)
+    except backups.BackupError as ex:
+        ok(f"Ordner: /etc als Ziel abgelehnt ({backups.text(ex.code, ex.p)})", ex.code == "folder_path" and ZR in backups.text(ex.code, ex.p))
+    fcfg = dict(backups.config(), **backups.TARGET_CLEAR)
+    fcfg.update(mode="folder", path=ZR + "/saga")
+    free = backups.test_target(fcfg)
+    ok("Ordner: angelegt, beschreibbar, freier Platz bekannt", isinstance(free, int) and free > 0 and os.path.isdir(ZR + "/saga")
+       and not os.listdir(ZR + "/saga"))
+    backups.save_config(fcfg)
+    # Arbeitsordner: Reste mit Klartext werden aufgeraeumt; eine laufende Pruefung (eigener Ordner) bleibt
+    tdir = backups.tmp_dir()
+    for n_ in ("lauf-saga-20260101-000000", "pruefung-frisch", "pruefung-alt", "pruefung"):
+        os.makedirs(os.path.join(tdir, n_), exist_ok=True)
+        with open(os.path.join(tdir, n_, "db.dump"), "w") as f:
+            f.write("PGDMP klartext")
+    os.utime(os.path.join(tdir, "pruefung-alt"), (time.time() - 2 * 86400, time.time() - 2 * 86400))
+    nclean = backups.cleanup_tmp()
+    ok(f"Start raeumt Klartext-Reste auf ({nclean}), laufende Pruefung bleibt", sorted(os.listdir(tdir)) == ["pruefung-frisch"])
+    time.sleep(1.1)
+    good, fout = backups.run("test")
+    fname = fout["name"] if good else ""
+    fl = sorted(os.listdir(os.path.join(ZR, "saga", fname))) if good else []
+    ok(f"Ordner: Lauf erfolgreich ({fname or fout}): {fl}", good and fl == sorted(["db.dump.age", "dateien.tar.age", "geheimnisse.env.age",
+                                                                                  "manifest.json.age", "manifest.json"]))
+    ok("Ordner: Lauf laesst den Ordner einer laufenden Pruefung stehen", os.path.isdir(os.path.join(tdir, "pruefung-frisch"))
+       and not any(x.startswith("lauf-") for x in os.listdir(tdir)))
+    shutil.rmtree(os.path.join(tdir, "pruefung-frisch"))
+    fblob = b"".join(open(os.path.join(ZR, "saga", fname, x), "rb").read() for x in fl)
+    ok("Ordner: nichts im Klartext, keine .part-Reste", MARK.encode() not in fblob and SECRET.encode() not in fblob
+       and not any(x.endswith(".part") for x in fl))
+    for i in range(20):
+        n = (t0 - timedelta(days=40 + i)).strftime("saga-%Y%m%d-%H%M%S")
+        os.makedirs(os.path.join(ZR, "saga", n))
+        with open(os.path.join(ZR, "saga", n, "manifest.json"), "w") as f:
+            f.write("{}")
+    os.makedirs(os.path.join(ZR, "saga", "Fotos"))
+    os.makedirs(os.path.join(TMPROOT, "draussen", "saga-20200101-000000"))
+    with open(os.path.join(TMPROOT, "draussen", "saga-20200101-000000", "manifest.json"), "w") as f:
+        f.write("{}")
+    os.symlink(os.path.join(TMPROOT, "draussen", "saga-20200101-000000"), os.path.join(ZR, "saga", "saga-20200102-000000"))
+    fd_ = backups.target(fcfg)
+    gone = backups.prune(fd_, dict(fcfg, keep_d=2, keep_w=1, keep_m=2), keep={fname})
+    rest = sorted(os.listdir(os.path.join(ZR, "saga")))
+    ok(f"Ordner: GFS ({len(gone)} geloescht), fremder Ordner bleibt, Symlink nach draussen nicht verfolgt",
+       len(gone) >= 15 and fname in rest and "Fotos" in rest and os.path.isfile(os.path.join(TMPROOT, "draussen", "saga-20200101-000000", "manifest.json")))
+    for bad in ("../draussen", "saga-20200102-000000/../../draussen"):
+        try:
+            fd_.delete_run(bad)
+            ok(f"Ordner: delete_run({bad}) abgelehnt", False)
+        except backups.BackupError:
+            ok(f"Ordner: delete_run({bad}) abgelehnt", os.path.isdir(os.path.join(TMPROOT, "draussen")))
+    try:
+        fd_.get_bytes("link-raus-gibts-nicht/../../x")
+        ok("Ordner: Lesen mit .. abgelehnt", False)
+    except backups.BackupError as ex:
+        ok("Ordner: Lesen mit .. abgelehnt", ex.code == "folder_path")
+    fenv2 = dict(fenv, SAGA_BACKUP_URL="", SAGA_BACKUP_PATH=ZR + "/saga", SAGA_BACKUP_DIRS=ZR)
+    r = subprocess.run([sys.executable, "run.py", "backup-pruefen", "--schluessel", k2, fname], cwd=APP, env=fenv2,
+                       capture_output=True, text=True, timeout=600)
+    ok(f"Ordner: run.py backup-pruefen per SAGA_BACKUP_PATH ({r.returncode}) {(r.stdout + r.stderr).strip()[-160:]}",
+       r.returncode == 0 and "Testwiederherstellung in Ordnung" in r.stdout and os.path.isdir(os.path.join(ZR, "saga", fname)))
+    r = subprocess.run([sys.executable, "run.py", "backup-pruefen", "--schluessel", k2, os.path.join(ZR, "saga", fname)], cwd=APP,
+                       env=dict(fenv, SAGA_BACKUP_URL=""), capture_output=True, text=True, timeout=600)
+    ok(f"Ordner: Lauf-Ordner direkt pruefen (bleibt liegen) ({r.returncode})", r.returncode == 0
+       and os.path.isfile(os.path.join(ZR, "saga", fname, "db.dump.age")))
+    os.environ.pop("SAGA_BACKUP_DIRS", None)
 finally:
     if srv_proc:
         srv_proc.kill()
@@ -490,6 +761,8 @@ if AD.hostname:
     from itsdangerous import TimestampSigner
     SA = TimestampSigner(hashlib.sha256(("hk-admin|" + os.environ["SESSION_SECRET"]).encode()).hexdigest())
     DV2 = fakedav.start(DVP, False)
+    S3S2 = fakes3.start(S3P)
+    S3B2 = f"http://127.0.0.1:{S3P}"
     NC2 = fakedav.start(NCP, True)
     DV2.store.pw["bk"] = "dav-pass-123"
     jar = {}
@@ -580,6 +853,30 @@ if AD.hostname:
         ok("Admin: Backups im Ziel mit Fingerabdruck", "saga-" in html and "Datenbank, Dateien" in html)
         s, html, _ = admin("/backups", {"action": "disconnect"})
         ok("Admin: Trennen", "Ziel getrennt" in html and json.loads(raw("backup"))["mode"] == "")
+        ok("Admin: Auswahl der Ziel-Art (S3, Ordner, WebDAV/Nextcloud)", 'value="s3"' in html and 'value="folder"' in html
+           and 'value="dav"' in html and "Ordner im Container" in html)
+        s, html, _ = admin("/backups", {"action": "connect", "kind": "folder", "path": "/etc"})
+        ok("Admin: Ordner ausserhalb von SAGA_BACKUP_DIRS abgelehnt", "Ordner nicht erlaubt" in html and json.loads(raw("backup"))["mode"] == "")
+        s, html, _ = admin("/backups", {"action": "connect", "kind": "s3", "s3_endpoint": S3B2, "s3_region": fakes3.REGION,
+                                        "s3_bucket": fakes3.BUCKET, "s3_prefix": "admin", "s3_key": fakes3.KEY_ID, "s3_secret": "falsch"})
+        ok("Admin: S3 mit falschem Secret abgelehnt", "Anmeldung am Ziel abgelehnt" in html and json.loads(raw("backup"))["mode"] == "")
+        s, html, _ = admin("/backups", {"action": "connect", "kind": "s3", "s3_endpoint": S3B2 + "/pfad", "s3_bucket": fakes3.BUCKET,
+                                        "s3_key": "k", "s3_secret": "s"})
+        ok("Admin: S3-Endpunkt mit Pfad abgelehnt", "Endpunkt ungültig" in html)
+        s, html, _ = admin("/backups", {"action": "connect", "kind": "s3", "s3_endpoint": S3B2, "s3_region": fakes3.REGION,
+                                        "s3_bucket": fakes3.BUCKET, "s3_prefix": "/admin//test/", "s3_key": fakes3.KEY_ID,
+                                        "s3_secret": fakes3.SECRET, "s3_style": "path"})
+        cfg = json.loads(raw("backup"))
+        ok("Admin: S3 verbunden, Angaben angezeigt, Geheimnisse verschluesselt", "Verbunden (S3)" in html and fakes3.BUCKET in html
+           and "admin/test" in html and fakes3.SECRET not in html and cfg["mode"] == "s3" and cfg["s3_prefix"] == "admin/test"
+           and cfg["s3_secret"].startswith("enc:") and cfg["s3_key"].startswith("enc:") and fakes3.SECRET not in raw("backup"))
+        s, html, _ = admin("/backups", {"action": "test"})
+        ok("Admin: S3-Verbindung pruefen", "Verbindung in Ordnung" in html)
+        s, html, _ = admin("/backups", {"action": "disconnect"})
+        cfg = json.loads(raw("backup"))
+        bset = _a.settings(fresh=True)["backup"]
+        ok("Admin: S3 trennen leert Zugangsdaten", "Ziel getrennt" in html and cfg["mode"] == "" and bset["s3_secret"] == ""
+           and bset["s3_key"] == "" and bset["s3_endpoint"] == "")
     finally:
         with psycopg.connect(REAL, autocommit=True) as c:
             for k, v in prev.items():
@@ -590,7 +887,7 @@ if AD.hostname:
             c.execute("DELETE FROM backup_run WHERE id > %s", (maxid,))
             c.execute("DELETE FROM notification WHERE uid='bk-adm'")
             c.execute("DELETE FROM users WHERE username='bk-adm'")
-        for s_ in (DV2, NC2):
+        for s_ in (DV2, NC2, S3S2):
             s_.shutdown()
             s_.server_close()
 else:

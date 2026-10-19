@@ -1154,14 +1154,51 @@ Die Backups, die Saga selbst anlegt (`/data/backups`, siehe Updates), spielst du
 Datenbank-Container: Sie stammen von `pg_dump` 17 aus dem Saga-Image, und `pg_restore` 16 aus `postgres:16`
 meldet dafür „unsupported version (1.16) in file header“.
 
-### Verschlüsselte Backups auf Nextcloud oder WebDAV
+### Verschlüsselte Backups (S3, Ordner, Nextcloud/WebDAV)
 
 Admin-Bereich → **Backups**: Saga sichert jeden Tag (Uhrzeit wählbar) die Datenbank, die Dateien (`/data/files` ohne
 Vorschaubilder, `/data/chat`, `/data/svc-icons`) und auf Wunsch die Schlüssel aus der `.env` (`SECRET_KEY`,
-`CAL_SECRET_KEY`) – verschlüsselt – auf ein WebDAV-Ziel: Nextcloud, ownCloud, eine Storage-Box mit WebDAV …
-Die lokalen Backups vor Updates (`/data/backups`, `run.py backup`/`restore`) bleiben unverändert.
+`CAL_SECRET_KEY`) – verschlüsselt – in ein Ziel: **S3** (MinIO, Garage, Backblaze B2, Hetzner Object Storage, Wasabi,
+AWS …), einen **Ordner im Container** (z. B. ein eingebundenes Laufwerk oder eine NAS-Freigabe) oder **WebDAV**
+(Nextcloud, ownCloud, Storage-Box …). Die lokalen Backups vor Updates (`/data/backups`, `run.py backup`/`restore`)
+bleiben unverändert. Das Server-Backup enthält die Daten **aller** Personen – das Ziel sollte dafür gedacht sein (eigener
+Bucket bzw. eigenes Konto), nicht der private Cloud-Speicher von jemandem.
 
-1. **Ziel verbinden.** Bei Nextcloud reicht die Adresse (`https://cloud.example.org`): Saga erkennt Nextcloud, zeigt
+1. **Ziel verbinden** – Art wählen:
+
+   **S3.** Endpunkt (`https://host[:port]`, ohne Bucket), Region (leer = `us-east-1`; Garage: `garage`, Hetzner z. B.
+   `fsn1`, Backblaze z. B. `eu-central-003`), Bucket (muss existieren – Saga legt keinen an), Präfix (Ordner im
+   Bucket, Standard `saga-backups`), Access-Key und Secret-Key (beide verschlüsselt gespeichert wie die anderen
+   Admin-Geheimnisse). Adressierung „automatisch“ nimmt bei AWS virtual-hosted (`https://bucket.host/…`), sonst
+   path-style (`https://host/bucket/…`, MinIO/Garage) – bei Bedarf fest einstellen. Saga signiert jede Anfrage selbst
+   (AWS-Signatur v4, keine Zusatzbibliothek) samt SHA-256 des Inhalts, große Dateien gehen als Multipart-Upload (Teile
+   `BACKUP_CHUNK_MB`, Standard 32 MB; abgebrochene Uploads verwirft Saga). Empfehlung: ein Schlüssel nur für diesen
+   Bucket mit Lesen/Schreiben/Löschen/Auflisten; Versionierung oder Object Lock schützen zusätzlich davor, dass ein
+   übernommener Server die Backups löscht – alte Versionen dann per Lebenszyklus-Regel des Buckets aufräumen (Saga löscht
+   nach der Aufbewahrungsregel unten). S3 meldet keinen freien Platz; die Prüfung davor entfällt.
+
+   **Ordner im Container.** Nur unterhalb der Wurzeln in `SAGA_BACKUP_DIRS` (Standard `/backup`, mehrere mit Komma);
+   Pfade mit `..` oder Symlinks nach draußen lehnt Saga ab. Den Ordner als zusätzliches Volume einbinden und dem
+   Saga-Benutzer (UID 10001) Schreibrechte geben:
+
+   ```yaml
+   # docker-compose.yml, Dienst saga
+       volumes:
+         - saga-data:/data
+         - ./certs:/certs:ro
+         - /srv/saga-backups:/backup        # zusätzliches Volume für Backups (Host-Ordner oder NAS-Mount)
+   ```
+
+   ```sh
+   sudo mkdir -p /srv/saga-backups && sudo chown 10001 /srv/saga-backups
+   docker compose up -d
+   ```
+
+   Im Admin-Bereich dann `/backup` (oder `/backup/saga`) eintragen. Liegt der Ordner auf demselben Server, schützt er nur
+   vor Fehlern in Saga oder der Datenbank, nicht vor dem Verlust des Servers – den Ordner zusätzlich woandershin kopieren
+   (restic, rsync …); die Dateien sind schon verschlüsselt.
+
+   **WebDAV/Nextcloud.** Bei Nextcloud reicht die Adresse (`https://cloud.example.org`): Saga erkennt Nextcloud, zeigt
    einen Anmelde-Link, du meldest dich in Nextcloud an und erlaubst den Zugriff (Login Flow v2). Saga speichert nur den
    Anmeldenamen und ein eigenes **App-Passwort** (verschlüsselt); „Trennen“ widerruft es in Nextcloud. Anderes WebDAV:
    Adresse des Ordners plus Benutzer und Passwort. Empfehlung: ein **eigenes Nextcloud-Konto** nur für die Backups (ein
@@ -1176,14 +1213,15 @@ Die lokalen Backups vor Updates (`/data/backups`, `run.py backup`/`restore`) ble
 3. **Zeitplan und Aufbewahrung.** „Täglich automatisch sichern“, Uhrzeit (Zeitzone `TIMEZONE`), Aufbewahrung
    „Großvater-Vater-Sohn“: Standard 7 tägliche, 4 wöchentliche, 6 monatliche (je Tag/Woche/Monat der neueste Lauf; Läufe
    der letzten 24 Stunden bleiben immer). Vor dem Hochladen prüft Saga den freien Platz, danach Größe und Prüfsumme (bis
-   `BACKUP_VERIFY_MB` sofort, größere Dateien sonntags). Große Dateien gehen bei Nextcloud in Stücken (Chunking v2).
+   `BACKUP_VERIFY_MB` sofort, größere Dateien sonntags). Große Dateien gehen bei Nextcloud in Stücken (Chunking v2), bei
+   S3 als Multipart-Upload.
    Der Lauf hat niedrige Priorität (`nice`/`ionice`); laufen mehrere Saga-Prozesse an derselben Datenbank, sichert nur
    einer.
 4. **Fehler.** Status im Admin-Bereich (letzter Erfolg, nächster Lauf, Verlauf). Schlägt ein Lauf fehl oder gab es seit
    48 Stunden keinen Erfolg, bekommen alle Admins eine Benachrichtigung (Glocke und, wenn eingerichtet, aufs Handy);
    optional zusätzlich ein Webhook (ntfy-Topic, Gotify `…/message?token=…` oder beliebige Adresse).
 
-**Was im Ziel liegt** – je Lauf ein Ordner `saga-JJJJMMTT-hhmmss/`:
+**Was im Ziel liegt** – je Lauf ein Ordner (bei S3: Präfix) `saga-JJJJMMTT-hhmmss/`:
 
 | Datei | Inhalt |
 |---|---|
@@ -1201,11 +1239,19 @@ age -d -i saga-backup.key geheimnisse.env.age
 # 2. Saga stoppen, Lauf holen, prüfen, entschlüsseln, Datenbank + Dateien zurückspielen
 docker compose stop saga
 docker compose run --rm -v "$PWD/saga-backup.key:/key:ro" \
-  -e SAGA_BACKUP_URL=https://cloud.example.org/remote.php/dav/files/saga-backup/Saga-Backups \
-  -e SAGA_BACKUP_USER=saga-backup -e SAGA_BACKUP_PASSWORD='app-passwort' \
+  -e SAGA_BACKUP_S3_ENDPOINT=https://s3.example.org -e SAGA_BACKUP_S3_BUCKET=saga-backups \
+  -e SAGA_BACKUP_S3_ACCESS_KEY='…' -e SAGA_BACKUP_S3_SECRET_KEY='…' -e SAGA_BACKUP_S3_PREFIX=saga-backups \
   saga python run.py restore --schluessel /key saga-20261019-032000
 docker compose up -d
 ```
+
+Das Ziel für einen frischen Stack kommt aus der Umgebung:
+
+| Ziel | Angaben |
+|---|---|
+| S3 | `SAGA_BACKUP_S3_ENDPOINT`, `SAGA_BACKUP_S3_BUCKET`, `SAGA_BACKUP_S3_ACCESS_KEY`, `SAGA_BACKUP_S3_SECRET_KEY`, optional `SAGA_BACKUP_S3_REGION`, `SAGA_BACKUP_S3_PREFIX`, `SAGA_BACKUP_S3_STYLE` (`auto`/`path`/`virtual`) |
+| Ordner | `SAGA_BACKUP_PATH=/backup` (Volume wie oben eingebunden) – oder gleich den Lauf-Ordner statt eines Namens angeben |
+| WebDAV/Nextcloud | `SAGA_BACKUP_URL` (WebDAV-Adresse des Backup-Ordners, z. B. `https://cloud.example.org/remote.php/dav/files/saga-backup/Saga-Backups`), `SAGA_BACKUP_USER`, `SAGA_BACKUP_PASSWORD` |
 
 Ohne Lauf-Namen nimmt Saga den neuesten vollständigen; `run.py backup-holen --liste` zeigt alle. Ist das Ziel im
 Admin-Bereich schon eingerichtet (gleiche Datenbank), entfallen die `SAGA_BACKUP_*`-Angaben. Statt eines Namens geht auch
@@ -1236,7 +1282,14 @@ holt den neuesten Lauf, vergleicht die Prüfsummen, entschlüsselt alles, spielt
 
 **Achtung, Identität:** Ein zurückgespieltes Backup *ist* die Instanz – samt Föderations-Schlüssel. Wer ein Backup auf
 einem zweiten Server ausprobiert, setzt dort `SAGA_RESTORE_TEST=1` in der `.env`: Dann baut Saga keine ausgehenden
-Verbindungen auf (keine Föderation, keine Mitteilungen, keine Backups, kein Versionshinweis).
+Verbindungen zu den Diensten der echten Instanz auf – keine Föderation, keine Mitteilungen, keine Backups (auch kein
+Aufräumen im Ziel, kein Widerruf des Nextcloud-App-Passworts), kein Versionshinweis, kein Kalender-Abgleich, keine KI,
+kein Immich, keine Websuche, keine Avatare von außen. Saga selbst, Anmeldung (auch LDAP/OIDC) und die Statusanzeige
+der Dienste auf der Startseite laufen weiter.
+
+Arbeitsordner: Während eines Laufs liegen die Teile (vor dem Verschlüsseln kurz auch `db.dump` im Klartext) unter
+`/data/backups/extern-tmp/` – Lauf und `backup-pruefen` je in einem eigenen Unterordner; Reste eines abgebrochenen
+Laufs löscht Saga beim nächsten Start.
 
 ### Updates
 

@@ -1,26 +1,38 @@
-"""Verschluesselte Backups auf ein WebDAV-Ziel (2.3, Admin-Bereich "Backups").
+"""Verschluesselte Backups (2.3, Admin-Bereich "Backups") auf ein Ziel: WebDAV/Nextcloud, S3 oder einen Ordner.
 
-- Ziel: generisch WebDAV (Nextcloud, ownCloud, Storage-Boxen ...). Nextcloud erkennt Saga ueber /status.php: Anmeldung per
-  Login Flow v2 (gespeichert werden nur Anmeldename + App-Passwort, verschluesselt wie die anderen Admin-Geheimnisse;
-  "Trennen" widerruft das App-Passwort), grosse Dateien mit Chunking v2. Sonst Benutzer/Passwort + PUT.
-  Abrufe ueber netguard: der Host der vom Admin eingetragenen Adresse gilt als freigegeben (auch intern, typisch im
+- Ziele (gemeinsame kleine Schnittstelle, target(cfg)):
+  * WebDAV (Nextcloud, ownCloud, Storage-Boxen ...). Nextcloud erkennt Saga ueber /status.php: Anmeldung per Login Flow v2
+    (gespeichert werden nur Anmeldename + App-Passwort, verschluesselt wie die anderen Admin-Geheimnisse; "Trennen"
+    widerruft das App-Passwort), grosse Dateien mit Chunking v2. Sonst Benutzer/Passwort + PUT.
+  * S3 (AWS, MinIO, Garage, Backblaze B2, Hetzner, Wasabi ...): AWS-Signatur v4 ohne Zusatzbibliothek (hmac/hashlib),
+    jede Anfrage mit SHA-256 des Inhalts (der Anbieter prueft ihn), grosse Dateien als Multipart-Upload (streamend,
+    Teile von der Platte gelesen), path-style oder virtual-hosted. Access-Key und Secret verschluesselt gespeichert.
+  * Ordner im Container (z. B. ein gemountetes Volume): nur unterhalb von SAGA_BACKUP_DIRS (Standard /backup), Pfade
+    werden aufgeloest (Symlinks) und duerfen nicht hinausfuehren.
+  Netz-Abrufe ueber netguard: der Host der vom Admin eingetragenen Adresse gilt als freigegeben (auch intern, typisch im
   Homelab), alles andere nur mit oeffentlicher Adresse; keine Weiterleitungen.
 - Verschluesselung mit age (X25519, oeffentliche Schluessel, mehrere Empfaenger): Saga kennt nie einen privaten
   Schluessel - ein uebernommener Server oder ein mitgelesenes Ziel kann alte Backups nicht entschluesseln.
   Wiederherstellung auch ohne Saga: age -d -i schluessel.txt datei.age > datei.
-- Ein Lauf = Ordner saga-<JJJJMMTT-hhmmss>/ im Ziel: db.dump.age (pg_dump, vorher mit pg_restore --list geprueft),
-  dateien.tar.age (files ohne thumbs, chat, svc-icons), geheimnisse.env.age (SECRET_KEY, CAL_SECRET_KEY; abschaltbar),
-  manifest.json.age (Pruefsummen der Klartexte) und ZULETZT manifest.json (unverschluesselt, ohne Personendaten und
-  Hostnamen: Version, Schema, Groessen und SHA-256 der verschluesselten Dateien, Empfaenger-Fingerabdruecke).
-  Ohne manifest.json gilt ein Lauf als unvollstaendig (wird nach einem Tag entfernt).
-- Nach jedem Upload: Groesse per PROPFIND, bis BACKUP_VERIFY_MB (und sonntags immer) erneut herunterladen + SHA-256.
+- Ein Lauf = Ordner (S3: Praefix) saga-<JJJJMMTT-hhmmss>/ im Ziel: db.dump.age (pg_dump, vorher mit pg_restore --list
+  geprueft), dateien.tar.age (files ohne thumbs, chat, svc-icons), geheimnisse.env.age (SECRET_KEY, CAL_SECRET_KEY;
+  abschaltbar), manifest.json.age (Pruefsummen der Klartexte) und ZULETZT manifest.json (unverschluesselt, ohne
+  Personendaten und Hostnamen: Version, Schema, Groessen und SHA-256 der verschluesselten Dateien, Empfaenger-
+  Fingerabdruecke). Ohne manifest.json gilt ein Lauf als unvollstaendig (wird nach einem Tag entfernt).
+- Nach jedem Upload: Groesse pruefen, bis BACKUP_VERIFY_MB (und sonntags immer) erneut herunterladen + SHA-256.
 - Zeitplan: Hintergrund-Thread, genau ein Laeufer je Instanz (pg_try_advisory_lock), nice/ionice; Aufbewahrung GFS
-  (taeglich/woechentlich/monatlich). Vor dem Hochladen Platz im Ziel pruefen (quota-available-bytes).
+  (taeglich/woechentlich/monatlich). Vor dem Hochladen Platz im Ziel pruefen (WebDAV: quota-available-bytes, Ordner:
+  freier Platz; S3 meldet keinen).
+- Arbeitsordner: <BACKUP_DIR>/extern-tmp/lauf-* (Lauf) und pruefung-* (backup-pruefen) getrennt; Reste mit Klartext
+  (db.dump) raeumt der Start auf.
 - Fehler und "seit 48 h kein Erfolg": Benachrichtigung an alle Admins (Glocke + Push, Art backup.failed), optional Webhook.
 - SAGA_RESTORE_TEST=1 (Testwiederherstellung auf einem zweiten Server): kein Zeitplan, keine ausgehenden Verbindungen.
 - Das lokale db.backup()/db.restore() (Backups vor Migrationen, run.py backup/restore) bleibt davon unberuehrt.
 """
+import contextlib
+import errno
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -32,6 +44,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, unquote, urlparse
+from xml.sax.saxutils import escape as _xml_esc
 
 import httpx
 import psycopg
@@ -55,7 +68,17 @@ PARTS = ("db.dump.age", "dateien.tar.age", "geheimnisse.env.age", "manifest.json
 DATA_DIRS = ("files", "chat", "svc-icons")        # unter STATE_DIR; files/thumbs entsteht neu
 UA = f"Saga/{VERSION} (Backup)"
 FORMAT = "saga-backup/1"
-SECRET_KEYS = ("password", "webhook")              # in auth.SECRET_FIELDS (Abschnitt "backup")
+SECRET_KEYS = ("password", "webhook", "s3_key", "s3_secret")   # in auth.SECRET_FIELDS (Abschnitt "backup")
+MODES = ("nextcloud", "webdav", "s3", "folder")
+# Felder aller Ziel-Arten: beim Wechsel/Trennen leeren (keine Zugangsdaten eines frueheren Ziels liegen lassen)
+TARGET_CLEAR = {"server": "", "url": "", "user": "", "password": "", "flow": False, "dav_user": "", "s3_endpoint": "",
+                "s3_region": "", "s3_bucket": "", "s3_prefix": "", "s3_key": "", "s3_secret": "", "s3_style": "auto", "path": ""}
+S3_STYLES = ("auto", "path", "virtual")
+S3_BUCKET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,61}[A-Za-z0-9]$")
+S3_REGION_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
+S3_PREFIX_RE = re.compile(r"^[A-Za-z0-9._/-]{0,200}$")
+S3_PARTS_MAX = 10000                                 # S3: hoechstens so viele Teile je Multipart-Upload
+LIST_MAX = 8 * MB                                    # Antworten mit Verzeichnislisten (PROPFIND, ListObjectsV2) hoechstens so gross
 RECIP_RE = re.compile(r"^(age1[0-9a-z]{58}|ssh-ed25519 [A-Za-z0-9+/=]{20,200}|ssh-rsa [A-Za-z0-9+/=]{100,1200})$")
 TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 DAV_NS = {"d": "DAV:", "oc": "http://owncloud.org/ns"}
@@ -65,6 +88,37 @@ PROPFIND = (b'<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://o
 
 def tmp_dir():
     return os.path.join(db.BACKUP_DIR, "extern-tmp")
+
+
+def cleanup_tmp(max_age_pruefung=12 * 3600, now=None):
+    """Reste abgebrochener Laeufe/Pruefungen loeschen (enthalten Klartext, z. B. db.dump). Lauf-Ordner nur, wenn gerade
+    kein Lauf dieser Datenbank laeuft; Pruefungs-Ordner (run.py backup-pruefen, eigener Prozess) erst, wenn sie alt
+    sind. -> Anzahl geloeschter Ordner."""
+    base = tmp_dir()
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return 0
+    now = now or time.time()
+    try:
+        busy = running()
+    except Exception:  # noqa: BLE001 - Datenbank beim Start kurz weg: Lauf-Ordner diesmal stehen lassen
+        busy = True
+    n = 0
+    for name in names:
+        p = os.path.join(base, name)
+        try:
+            age = now - os.lstat(p).st_mtime
+        except OSError:
+            continue
+        old_layout = RUN_RE.match(name) or name == "pruefung"            # Ordner vor der Aufteilung (2.3-Vorabstand)
+        if (name.startswith("lauf-") and not busy) or (name.startswith("pruefung-") and age > max_age_pruefung) \
+                or (old_layout and not busy):
+            shutil.rmtree(p, ignore_errors=True)
+            n += 1
+    if n:
+        print(f"backup: {n} Arbeitsordner frueherer Laeufe aufgeraeumt", flush=True)
+    return n
 
 
 # =====================================================================================================
@@ -112,6 +166,10 @@ def text(code, p=None):
         return t("Abgebrochen (Saga wurde beendet).")
     if code == "busy":
         return t("Es läuft schon ein Backup.")
+    if code == "folder":
+        return t("Ordner im Container: {detail}", detail=p.get("detail", ""))
+    if code == "folder_path":
+        return t("Ordner nicht erlaubt – nur unterhalb von {roots} (SAGA_BACKUP_DIRS).", roots=", ".join(backup_roots()) or "-")
     if code == "restore_test":
         return t("Testwiederherstellung (SAGA_RESTORE_TEST=1): keine Backups.")
     if code == "stale":
@@ -201,7 +259,27 @@ def set_state(**kw):
 
 
 def has_target(cfg):
-    return bool(cfg.get("mode") and (cfg.get("server") if cfg.get("mode") == "nextcloud" else cfg.get("url")))
+    m = cfg.get("mode")
+    if m == "nextcloud":
+        return bool(cfg.get("server"))
+    if m == "webdav":
+        return bool(cfg.get("url"))
+    if m == "s3":
+        return bool(cfg.get("s3_endpoint") and cfg.get("s3_bucket") and cfg.get("s3_key") and cfg.get("s3_secret"))
+    if m == "folder":
+        return bool(cfg.get("path"))
+    return False
+
+
+def target(cfg):
+    """Ziel-Objekt zur Einstellung (gleiche Schnittstelle: ensure_root, url, mkdir, put_file, put_bytes, stat, listdir,
+    get_to, get_bytes, delete, delete_run, free_space, close)."""
+    m = cfg.get("mode")
+    if m == "s3":
+        return S3(cfg)
+    if m == "folder":
+        return Folder(cfg)
+    return Dav(cfg)
 
 
 def recipients(cfg):
@@ -298,7 +376,7 @@ def sha256_file(path):
 
 
 # =====================================================================================================
-# WebDAV-Ziel (Nextcloud mit Chunking v2, sonst PUT). Kleine Schnittstelle: weitere Ziele (S3) spaeter daneben.
+# WebDAV-Ziel (Nextcloud mit Chunking v2, sonst PUT)
 # =====================================================================================================
 def _tls():
     import ssl
@@ -306,10 +384,11 @@ def _tls():
 
 
 def _client_for(host, timeout=60.0, auth_=None):
-    host = (host or "").lower()
+    """host: freigegebener Name (oder mehrere, z. B. S3 path-style + virtual-hosted) - andere nur mit oeffentlicher IP."""
+    hosts = {(h or "").lower() for h in ((host,) if isinstance(host, str) or host is None else host)} - {""}
 
     def ip_ok(ip, h, port):
-        return str(h).lower() == host or netguard.is_public(ip)
+        return str(h).lower() in hosts or netguard.is_public(ip)
     return netguard.guarded_client(ip_ok, transport_kw={"verify": _tls()}, timeout=httpx.Timeout(timeout, connect=15.0),
                                    follow_redirects=False, auth=auth_, headers={"User-Agent": UA})
 
@@ -332,8 +411,19 @@ def _q(path):
     return "/".join(quote(p, safe="") for p in str(path).strip("/").split("/") if p)
 
 
+def _read_limited(r, limit, what):
+    """Antwort (stream=True) hoechstens bis limit lesen - sonst Fehler, ohne den Rest zu laden."""
+    buf = bytearray()
+    for b in r.iter_bytes(64 * 1024):
+        buf.extend(b)
+        if len(buf) > limit:
+            raise BackupError("http", status=r.status_code, what=what)
+    return bytes(buf)
+
+
 class Dav:
     """WebDAV-Ziel. cfg: mode (nextcloud|webdav), server/url, user, password, dav_user, folder."""
+    kind = "webdav"
 
     def __init__(self, cfg):
         self.mode = cfg.get("mode") or "webdav"
@@ -385,14 +475,16 @@ class Dav:
 
     # --- Lesen ---
     def propfind(self, url, depth=1):
-        r = self.req("PROPFIND", url, "PROPFIND", ok=(207,), content=PROPFIND,
-                     headers={"Depth": str(depth), "Content-Type": "application/xml; charset=utf-8"})
-        if len(r.content) > 8 * MB:
-            raise BackupError("http", status=r.status_code, what="PROPFIND")
+        def go():
+            with self.client().stream("PROPFIND", url, content=PROPFIND,
+                                      headers={"Depth": str(depth), "Content-Type": "application/xml; charset=utf-8"}) as r:
+                self._check(r, "PROPFIND", ok=(207,))
+                return r.status_code, _read_limited(r, LIST_MAX, "PROPFIND")    # Groessengrenze beim Lesen, nicht danach
+        status, raw = _net_call(go)
         try:
-            root = ET.fromstring(r.content)
+            root = ET.fromstring(raw)
         except ET.ParseError:
-            raise BackupError("http", status=r.status_code, what="PROPFIND")
+            raise BackupError("http", status=status, what="PROPFIND")
         me = unquote(urlparse(url).path).rstrip("/")
         out = []
         for resp in root.findall("d:response", DAV_NS):
@@ -460,6 +552,15 @@ class Dav:
         r = self.req("MKCOL", url, "MKCOL", ok=(201, 405))
         return r.status_code == 201
 
+    def mkdir(self, url):
+        return self.mkcol(url)
+
+    def put_bytes(self, data, url):
+        self.req("PUT", url, "PUT", ok=(200, 201, 204), content=data, headers={"Content-Type": "application/octet-stream"})
+
+    def delete_run(self, name):
+        self.delete(self.url(name) + "/")
+
     def ensure_root(self):
         """Backup-Ordner (mit Eltern) anlegen; vorhandene Ordner sind in Ordnung."""
         if not self.folder:
@@ -522,6 +623,493 @@ class Dav:
             except Exception:  # noqa: BLE001 - Nextcloud raeumt verwaiste Uploads nach 24 h selbst weg
                 pass
             raise
+
+
+# =====================================================================================================
+# S3-Ziel (AWS-Signatur v4 von Hand: hmac/hashlib - keine boto-Abhaengigkeit im Image)
+# =====================================================================================================
+EMPTY_SHA = hashlib.sha256(b"").hexdigest()
+
+
+def _s3_enc(s):
+    return quote(str(s), safe="-_.~")
+
+
+def s3_canonical_query(query):
+    """[(k, v), ...] -> kanonische Abfrage (sortiert nach kodiertem Schluessel, dann Wert)."""
+    return "&".join(f"{k}={v}" for k, v in sorted((_s3_enc(k), _s3_enc(v)) for k, v in (query or ())))
+
+
+def sigv4(method, host, path, query, headers, payload_hash, key_id, secret, region, amz_date, service="s3"):
+    """AWS-Signatur v4 -> Wert fuer Authorization. path: schon kodiert (so, wie er gesendet wird); query: Paare;
+    headers: werden alle signiert (Kleinschreibung, Leerraum zusammengefasst) - host und x-amz-date muessen dabei sein."""
+    h = {str(k).lower(): " ".join(str(v).strip().split()) for k, v in headers.items()}
+    h["host"] = host
+    names = sorted(h)
+    canon = "\n".join([method, path or "/", s3_canonical_query(query), "".join(f"{k}:{h[k]}\n" for k in names), ";".join(names),
+                       payload_hash])
+    scope = f"{amz_date[:8]}/{region}/{service}/aws4_request"
+    sts = "\n".join(["AWS4-HMAC-SHA256", amz_date, scope, hashlib.sha256(canon.encode()).hexdigest()])
+    k = hmac.new(("AWS4" + secret).encode(), amz_date[:8].encode(), hashlib.sha256).digest()
+    for part in (region, service, "aws4_request"):
+        k = hmac.new(k, part.encode(), hashlib.sha256).digest()
+    sig = hmac.new(k, sts.encode(), hashlib.sha256).hexdigest()
+    return f"AWS4-HMAC-SHA256 Credential={key_id}/{scope}, SignedHeaders={';'.join(names)}, Signature={sig}"
+
+
+def _xml_strip(root):
+    """Namensraeume entfernen (AWS/MinIO/Garage/B2 setzen ihn unterschiedlich)."""
+    for el in root.iter():
+        if isinstance(el.tag, str) and "}" in el.tag:
+            el.tag = el.tag.split("}", 1)[1]
+    return root
+
+
+def s3_norm_prefix(p):
+    """Praefix im Bucket: a-z, 0-9, . _ - /, ohne .. und ohne fuehrende/abschliessende / -> Text oder None."""
+    p = "/".join(x for x in str(p or "").strip().split("/") if x)
+    if not S3_PREFIX_RE.match(p) or any(x in (".", "..") for x in p.split("/")):
+        return None
+    return p
+
+
+def s3_virtual(endpoint, bucket, style):
+    """virtual-hosted (bucket.host) oder path-style (host/bucket)? auto: AWS virtual, sonst path (MinIO, Garage ...)."""
+    if style == "virtual":
+        return True
+    if style == "path":
+        return False
+    host = (urlparse(endpoint).hostname or "").lower()
+    return host.endswith(".amazonaws.com") and bucket == bucket.lower() and "." not in bucket
+
+
+class S3:
+    """S3-Ziel. cfg: s3_endpoint (https://host[:port]), s3_region, s3_bucket, s3_prefix, s3_key, s3_secret, s3_style."""
+    kind = "s3"
+
+    def __init__(self, cfg):
+        u = urlparse(str(cfg.get("s3_endpoint") or "").strip())
+        self.scheme, self.netloc = u.scheme or "https", (u.netloc or "").lower()
+        self.bucket = str(cfg.get("s3_bucket") or "").strip()
+        self.region = str(cfg.get("s3_region") or "").strip() or "us-east-1"
+        self.prefix = s3_norm_prefix(cfg.get("s3_prefix")) or ""
+        self.key_id, self.secret = str(cfg.get("s3_key") or ""), str(cfg.get("s3_secret") or "")
+        self.virtual = s3_virtual(f"{self.scheme}://{self.netloc}", self.bucket, cfg.get("s3_style") or "auto")
+        if self.virtual:
+            self.base, self.bpath = f"{self.scheme}://{self.bucket}.{self.netloc}", ""
+        else:
+            self.base, self.bpath = f"{self.scheme}://{self.netloc}", "/" + _s3_enc(self.bucket)
+        self.host = (u.hostname or "").lower()
+        self.hosts = (self.host, f"{self.bucket.lower()}.{self.host}")
+        self.root = self.prefix + "/" if self.prefix else ""
+        self._cl = None
+        self.chunked = 0                          # Anzahl Multipart-Uploads (Tests, Anzeige)
+
+    def client(self):
+        if self._cl is None:
+            self._cl = _client_for(self.hosts)
+        return self._cl
+
+    def close(self):
+        if self._cl is not None:
+            self._cl.close()
+            self._cl = None
+
+    def url(self, *parts):
+        """Objekt-Schluessel (ohne fuehrenden /); ein Lauf-"Ordner" ist ein Praefix."""
+        return self.root + "/".join(str(p).strip("/") for p in parts if p)
+
+    def _path(self, key):
+        return (self.bpath + "/" + quote(key, safe="/-_.~")) if key else (self.bpath or "/")
+
+    def _send(self, method, key, query=(), content=None, payload_hash=EMPTY_SHA, headers=None, stream=False, timeout=None):
+        path = self._path(key)
+        qs = s3_canonical_query(query)
+        url = self.base + path + ("?" + qs if qs else "")
+        amz = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        h = dict(headers or {})
+        h.update({"x-amz-date": amz, "x-amz-content-sha256": payload_hash})
+        req = self.client().build_request(method, url, content=content, headers=h,
+                                          timeout=httpx.Timeout(timeout or 120.0, connect=15.0))
+        sign_h = {k: v for k, v in h.items() if k.lower().startswith("x-amz-") or k.lower() in ("content-type", "range")}
+        if req.url.raw_path.decode() != path + ("?" + qs if qs else ""):        # httpx hat umkodiert: Signatur passte nicht
+            raise BackupError("http", status=0, what="S3 URL")
+        req.headers["Authorization"] = sigv4(method, req.headers["host"], path, query, sign_h, payload_hash, self.key_id,
+                                             self.secret, self.region, amz)
+        return self.client().send(req, stream=stream)
+
+    @contextlib.contextmanager
+    def _stream(self, method, key, **kw):
+        r = self._send(method, key, stream=True, **kw)
+        try:
+            yield r
+        finally:
+            r.close()
+
+    def _check(self, r, what, ok):
+        if r.status_code in ok:
+            return r
+        if r.status_code in (401, 403):
+            raise BackupError("auth")
+        code = ""
+        if not r.is_stream_consumed:
+            try:
+                r.read()
+            except httpx.HTTPError:
+                pass
+        try:
+            code = (_xml_strip(ET.fromstring(r.content[:65536])).findtext("Code") or "")[:40] if r.content else ""
+        except (ET.ParseError, httpx.ResponseNotRead):
+            code = ""
+        raise BackupError("http", status=r.status_code, what=what + (f": {code}" if code else ""))
+
+    def req(self, method, key, what, ok=(200,), **kw):
+        return _net_call(lambda: self._check(self._send(method, key, **kw), what, ok))
+
+    # --- Lesen ---
+    def _list(self, prefix, delimiter="/"):
+        """ListObjectsV2 (alle Seiten) -> (Praefixe, [(Schluessel, Groesse)])."""
+        dirs, files, token = [], [], None
+        for _ in range(1000):
+            q = [("list-type", "2"), ("prefix", prefix)] + ([("delimiter", delimiter)] if delimiter else []) \
+                + ([("continuation-token", token)] if token else [])
+
+            def go():
+                with self._stream("GET", "", query=q) as r:
+                    self._check(r, "ListObjectsV2", ok=(200,))
+                    return _read_limited(r, LIST_MAX, "ListObjectsV2")
+            raw = _net_call(go)
+            try:
+                root = _xml_strip(ET.fromstring(raw))
+            except ET.ParseError:
+                raise BackupError("http", status=200, what="ListObjectsV2")
+            for cp in root.findall("CommonPrefixes"):
+                dirs.append(cp.findtext("Prefix") or "")
+            for c in root.findall("Contents"):
+                sz = (c.findtext("Size") or "").strip()
+                files.append((c.findtext("Key") or "", int(sz) if sz.isdigit() else None))
+            token = root.findtext("NextContinuationToken")
+            if (root.findtext("IsTruncated") or "").strip().lower() != "true" or not token:
+                break
+        return dirs, files
+
+    def listdir(self, prefix):
+        dirs, files = self._list(prefix)
+        out = [{"name": d[len(prefix):].strip("/"), "dir": True, "size": None} for d in dirs if d.startswith(prefix)]
+        out += [{"name": k[len(prefix):], "dir": False, "size": n} for k, n in files if k.startswith(prefix) and k != prefix]
+        return [e for e in out if e["name"] and "/" not in e["name"]]
+
+    def stat(self, key):
+        def go():
+            r = self._send("HEAD", key)
+            if r.status_code == 404:
+                return None
+            self._check(r, "HEAD", ok=(200,))
+            cl = r.headers.get("content-length")
+            return {"name": key.rsplit("/", 1)[-1], "dir": False, "size": int(cl) if cl and cl.isdigit() else None}
+        return _net_call(go)
+
+    def free_space(self):
+        return None                                # S3 kennt keine Quota-Abfrage
+
+    def get_to(self, key, sink):
+        def go():
+            with self._stream("GET", key, timeout=300.0) as r:
+                self._check(r, "GET", ok=(200,))
+                for b in r.iter_bytes(MB):
+                    sink(b)
+        _net_call(go)
+
+    def get_bytes(self, key, limit=8 * MB):
+        buf = bytearray()
+
+        def sink(b):
+            buf.extend(b)
+            if len(buf) > limit:
+                raise BackupError("http", status=413, what="GET")
+        self.get_to(key, sink)
+        return bytes(buf)
+
+    # --- Schreiben ---
+    def ensure_root(self):
+        """Zugriff pruefen (Bucket vorhanden, Schluessel gueltig) - der Bucket wird nicht angelegt."""
+        def go():
+            with self._stream("GET", "", query=[("list-type", "2"), ("max-keys", "1"), ("prefix", self.root)]) as r:
+                self._check(r, "ListObjectsV2", ok=(200,))
+                _read_limited(r, LIST_MAX, "ListObjectsV2")
+        _net_call(go)
+
+    def mkdir(self, key):
+        return False                               # Praefixe entstehen mit dem ersten Objekt
+
+    def put_bytes(self, data, key):
+        self.req("PUT", key, "PUT", ok=(200,), content=data, payload_hash=hashlib.sha256(data).hexdigest(),
+                 headers={"Content-Type": "application/octet-stream", "Content-Length": str(len(data))})
+
+    @staticmethod
+    def _range_hash(f, off, n):
+        f.seek(off)
+        h, left = hashlib.sha256(), n
+        while left > 0:
+            b = f.read(min(MB, left))
+            if not b:
+                break
+            h.update(b)
+            left -= len(b)
+        return h.hexdigest()
+
+    def put_file(self, path, key, progress=None):
+        """Datei hochladen. Jede Anfrage traegt den SHA-256 ihres Inhalts (erst gelesen, dann gestreamt) - der Anbieter
+        verwirft verfaelschte Daten. Groesser als ein Teil: Multipart-Upload, bei Fehlern abgebrochen."""
+        size = os.path.getsize(path)
+        part = max(CHUNK_SIZE, -(-size // S3_PARTS_MAX))
+        state = {"sent": 0}
+
+        def body(f, off, n):
+            f.seek(off)
+            left = n
+            while left > 0:
+                b = f.read(min(MB, left))
+                if not b:
+                    break
+                left -= len(b)
+                state["sent"] += len(b)
+                if progress:
+                    progress(state["sent"], size)
+                yield b
+
+        with open(path, "rb") as f:
+            if size <= part:
+                h = self._range_hash(f, 0, size)
+                self.req("PUT", key, "PUT", ok=(200,), content=body(f, 0, size), payload_hash=h, timeout=600.0,
+                         headers={"Content-Type": "application/octet-stream", "Content-Length": str(size)})
+                return
+            r = self.req("POST", key, "CreateMultipartUpload", ok=(200,), query=[("uploads", "")],
+                         headers={"Content-Type": "application/octet-stream"})
+            try:
+                upload_id = _xml_strip(ET.fromstring(r.content)).findtext("UploadId") or ""
+            except ET.ParseError:
+                upload_id = ""
+            if not upload_id:
+                raise BackupError("http", status=r.status_code, what="CreateMultipartUpload")
+            try:
+                etags, n, off = [], 0, 0
+                while off < size:
+                    n += 1
+                    ln = min(part, size - off)
+                    h = self._range_hash(f, off, ln)
+                    rr = self.req("PUT", key, "UploadPart", ok=(200,), query=[("partNumber", str(n)), ("uploadId", upload_id)],
+                                  content=body(f, off, ln), payload_hash=h, timeout=600.0, headers={"Content-Length": str(ln)})
+                    et = rr.headers.get("etag")
+                    if not et:
+                        raise BackupError("http", status=rr.status_code, what="UploadPart")
+                    etags.append((n, et))
+                    off += ln
+                xml = ("<CompleteMultipartUpload>" + "".join(f"<Part><PartNumber>{i}</PartNumber><ETag>{_xml_esc(e)}</ETag></Part>"
+                                                           for i, e in etags) + "</CompleteMultipartUpload>").encode()
+                rr = self.req("POST", key, "CompleteMultipartUpload", ok=(200,), query=[("uploadId", upload_id)], content=xml,
+                              payload_hash=hashlib.sha256(xml).hexdigest(), timeout=1800.0,
+                              headers={"Content-Type": "application/xml", "Content-Length": str(len(xml))})
+                if b"<Error>" in rr.content[:4096]:       # S3 kann trotz 200 scheitern (Fehler im Inhalt)
+                    raise BackupError("http", status=rr.status_code, what="CompleteMultipartUpload")
+                self.chunked += 1
+            except BaseException:
+                try:
+                    self.req("DELETE", key, "AbortMultipartUpload", ok=(200, 204, 404), query=[("uploadId", upload_id)])
+                except Exception:  # noqa: BLE001 - Lebenszyklus-Regel des Buckets raeumt sonst auf
+                    pass
+                raise
+
+    def delete(self, key):
+        self.req("DELETE", key, "DELETE", ok=(200, 204, 404))
+
+    def delete_run(self, name):
+        pre = self.url(name) + "/"
+        for k, _ in self._list(pre, delimiter="")[1]:
+            if k.startswith(pre):
+                self.delete(k)
+
+
+# =====================================================================================================
+# Ordner im Container (z. B. ein gemountetes Volume) - nur unterhalb von SAGA_BACKUP_DIRS
+# =====================================================================================================
+def backup_roots():
+    return [os.path.realpath(p.strip()) for p in E.get("SAGA_BACKUP_DIRS", "/backup").split(",")
+            if p.strip().startswith("/") and os.path.realpath(p.strip()) != "/"]
+
+
+def _inside(p, root):
+    return p == root or p.startswith(root.rstrip("/") + "/")
+
+
+def norm_folder(path):
+    """Admin-Eingabe -> normalisierter absoluter Pfad unterhalb einer erlaubten Wurzel (Symlinks aufgeloest) oder None."""
+    p = str(path or "").strip()
+    if not p.startswith("/") or "\x00" in p or len(p) > 400 or any(x in (".", "..") for x in p.split("/")):
+        return None
+    p = os.path.normpath(p)
+    real = os.path.realpath(p)
+    return p if any(_inside(real, r) for r in backup_roots()) else None
+
+
+def _os_err(ex):
+    if getattr(ex, "errno", None) in (errno.ENOSPC, errno.EDQUOT):
+        return BackupError("full", need=None, free=0)
+    return BackupError("folder", detail=(os.strerror(ex.errno) if getattr(ex, "errno", None) else type(ex).__name__))
+
+
+class Folder:
+    """Ordner-Ziel. cfg: path (absolut, unterhalb von SAGA_BACKUP_DIRS)."""
+    kind = "folder"
+
+    def __init__(self, cfg):
+        self.path = str(cfg.get("path") or "")
+        self.root = ""
+        self.chunked = 0
+
+    def _base(self):
+        p = norm_folder(self.path)
+        if not p:
+            raise BackupError("folder_path")
+        return os.path.realpath(p)
+
+    def _p(self, rel, must_exist=False):
+        """Relativer Pfad im Ziel -> absoluter Pfad; nur bekannte Namen, nichts ausserhalb (auch nicht ueber Symlinks)."""
+        base = self._base()
+        parts = [x for x in str(rel or "").split("/") if x]
+        if any(x in (".", "..") or "\x00" in x for x in parts):
+            raise BackupError("folder_path")
+        full = os.path.join(base, *parts) if parts else base
+        if not _inside(os.path.realpath(full), base) or (parts and os.path.islink(full)):
+            raise BackupError("folder_path")
+        return full
+
+    def close(self):
+        pass
+
+    def url(self, *parts):
+        return "/".join(str(p).strip("/") for p in parts if p)
+
+    def _do(self, fn):
+        try:
+            return fn()
+        except BackupError:
+            raise
+        except OSError as ex:
+            raise _os_err(ex)
+
+    def ensure_root(self):
+        def go():
+            base = norm_folder(self.path)
+            if not base:
+                raise BackupError("folder_path")
+            os.makedirs(base, mode=0o750, exist_ok=True)
+            b = self._base()
+            if not os.path.isdir(b) or not os.access(b, os.W_OK | os.X_OK):
+                raise BackupError("folder", detail=os.strerror(errno.EACCES))
+        self._do(go)
+
+    def mkdir(self, rel):
+        def go():
+            p = self._p(rel)
+            if os.path.isdir(p):
+                return False
+            os.mkdir(p, 0o750)
+            return True
+        return self._do(go)
+
+    def _write(self, rel, chunks):
+        p = self._p(rel)
+        tmp = p + ".part"
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o640)
+            with os.fdopen(fd, "wb") as f:
+                for b in chunks:
+                    f.write(b)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, p)
+        except BaseException:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise
+
+    def put_bytes(self, data, rel):
+        self._do(lambda: self._write(rel, [data]))
+
+    def put_file(self, path, rel, progress=None):
+        size = os.path.getsize(path)
+
+        def chunks():
+            sent = 0
+            with open(path, "rb") as f:
+                for b in iter(lambda: f.read(MB), b""):
+                    sent += len(b)
+                    if progress:
+                        progress(sent, size)
+                    yield b
+        self._do(lambda: self._write(rel, chunks()))
+
+    def stat(self, rel):
+        def go():
+            p = self._p(rel)
+            try:
+                st = os.stat(p, follow_symlinks=False)
+            except FileNotFoundError:
+                return None
+            d = os.path.isdir(p) and not os.path.islink(p)
+            return {"name": os.path.basename(p), "dir": d, "size": None if d else st.st_size}
+        return self._do(go)
+
+    def listdir(self, rel):
+        def go():
+            out = []
+            with os.scandir(self._p(rel)) as it:
+                for e in it:
+                    if e.is_symlink():
+                        continue
+                    d = e.is_dir(follow_symlinks=False)
+                    out.append({"name": e.name, "dir": d, "size": None if d else e.stat(follow_symlinks=False).st_size})
+            return out
+        return self._do(go)
+
+    def free_space(self):
+        try:
+            return shutil.disk_usage(self._base()).free
+        except (OSError, BackupError):
+            return None
+
+    def get_to(self, rel, sink):
+        def go():
+            with open(self._p(rel), "rb") as f:
+                for b in iter(lambda: f.read(MB), b""):
+                    sink(b)
+        self._do(go)
+
+    def get_bytes(self, rel, limit=8 * MB):
+        buf = bytearray()
+
+        def sink(b):
+            buf.extend(b)
+            if len(buf) > limit:
+                raise BackupError("http", status=413, what="GET")
+        self.get_to(rel, sink)
+        return bytes(buf)
+
+    def delete(self, rel):
+        def go():
+            try:
+                os.remove(self._p(rel))
+            except FileNotFoundError:
+                pass
+        self._do(go)
+
+    def delete_run(self, name):
+        if not RUN_RE.match(name or ""):
+            raise BackupError("folder_path")
+        self._do(lambda: shutil.rmtree(self._p(name), ignore_errors=False) if os.path.isdir(self._p(name)) else None)
 
 
 # =====================================================================================================
@@ -657,6 +1245,7 @@ def _flow_poll(fid, server, endpoint, token, folder):
             cfg = config()
             if cfg.get("flow") and cfg.get("password") and cfg.get("server"):
                 nc_revoke(cfg["server"], cfg.get("user") or "", cfg["password"])      # altes App-Passwort nicht liegen lassen
+            cfg.update(TARGET_CLEAR)
             cfg.update(mode="nextcloud", server=server, url=server, user=login, password=app_pw, dav_user=uid, flow=True,
                        folder=folder or cfg.get("folder") or "Saga-Backups")
             save_config(cfg)
@@ -686,11 +1275,11 @@ def _flow_poll(fid, server, endpoint, token, folder):
 
 def test_target(cfg):
     """Ordner anlegen, kleine Datei schreiben/lesen/loeschen -> freier Platz (Bytes oder None)."""
-    dav = Dav(cfg)
+    dav = target(cfg)
     try:
         dav.ensure_root()
         url = dav.url(".saga-test")
-        dav.req("PUT", url, "PUT", ok=(200, 201, 204), content=b"saga", headers={"Content-Type": "application/octet-stream"})
+        dav.put_bytes(b"saga", url)
         if dav.get_bytes(url) != b"saga":
             raise BackupError("checksum", name=".saga-test")
         dav.delete(url)
@@ -801,10 +1390,13 @@ def _do_run(cfg, rid, now):
         raise BackupError("nokey")
     prog = _Progress(rid)
     name = "saga-" + _stamp(now)
-    work = os.path.join(tmp_dir(), name)
-    shutil.rmtree(tmp_dir(), ignore_errors=True)          # Reste frueherer Laeufe (nur ein Laeufer gleichzeitig)
+    work = os.path.join(tmp_dir(), "lauf-" + name)
+    os.makedirs(tmp_dir(), mode=0o700, exist_ok=True)
+    for old in os.listdir(tmp_dir()):                     # Reste frueherer Laeufe (wir halten die Sperre: nur ein Laeufer);
+        if old.startswith("lauf-") or RUN_RE.match(old):  # Pruefungs-Ordner (backup-pruefen, eigener Prozess) bleiben
+            shutil.rmtree(os.path.join(tmp_dir(), old), ignore_errors=True)
     os.makedirs(work, mode=0o700)
-    dav = Dav(cfg)
+    dav = target(cfg)
     try:
         dav.ensure_root()                                  # Ziel frueh pruefen (Anmeldung, Erreichbarkeit)
         with db.connect() as c, c:
@@ -828,7 +1420,7 @@ def _do_run(cfg, rid, now):
         free = dav.free_space()
         if free is not None and free < total + total // 50 + MB:
             raise BackupError("full", need=total, free=free)
-        dav.mkcol(dav.url(name))
+        dav.mkdir(dav.url(name))
         full = datetime.fromtimestamp(now, TZ).weekday() == 6         # sonntags alles erneut herunterladen
         for p in parts:
             src = os.path.join(work, p)
@@ -922,7 +1514,7 @@ def prune(dav, cfg, keep=(), now=None):
     for r in runs:
         if r["name"] in stay or now - r["time"] < 86400:   # unvollstaendig: laeuft vielleicht noch - erst nach einem Tag
             continue
-        dav.delete(dav.url(r["name"]) + "/")
+        dav.delete_run(r["name"])
         gone.append(r["name"])
     if gone:
         print(f"backup: {len(gone)} alte(s) Backup(s) im Ziel entfernt", flush=True)
@@ -1125,6 +1717,10 @@ def _loop():
 
 
 def start():
+    try:
+        cleanup_tmp()                                      # Klartext-Reste (db.dump) abgebrochener Laeufe nicht liegen lassen
+    except Exception as ex:  # noqa: BLE001
+        print(f"backup: Aufraeumen: {type(ex).__name__}: {ex}", flush=True)
     if RESTORE_TEST:
         print("backup: SAGA_RESTORE_TEST=1 - kein Zeitplan, keine Uploads", flush=True)
         return
@@ -1145,16 +1741,26 @@ def stop():
 # Kommandozeile: holen, zurueckspielen, pruefen
 # =====================================================================================================
 def cli_dav():
-    """Ziel fuer die Kommandozeile: eingerichtetes Ziel - oder (frischer Stack) SAGA_BACKUP_URL (WebDAV-Adresse des
-    Backup-Ordners), SAGA_BACKUP_USER, SAGA_BACKUP_PASSWORD."""
+    """Ziel fuer die Kommandozeile: eingerichtetes Ziel - oder (frischer Stack) per Umgebung:
+    WebDAV: SAGA_BACKUP_URL (Adresse des Backup-Ordners), SAGA_BACKUP_USER, SAGA_BACKUP_PASSWORD;
+    S3: SAGA_BACKUP_S3_ENDPOINT, SAGA_BACKUP_S3_BUCKET, SAGA_BACKUP_S3_ACCESS_KEY, SAGA_BACKUP_S3_SECRET_KEY,
+        optional SAGA_BACKUP_S3_REGION, SAGA_BACKUP_S3_PREFIX, SAGA_BACKUP_S3_STYLE (auto|path|virtual);
+    Ordner: SAGA_BACKUP_PATH (unterhalb von SAGA_BACKUP_DIRS)."""
     url = E.get("SAGA_BACKUP_URL", "").strip()
     if url:
         return Dav({"mode": "webdav", "url": url, "user": E.get("SAGA_BACKUP_USER", ""), "password": E.get("SAGA_BACKUP_PASSWORD", ""),
                     "folder": ""})
+    if E.get("SAGA_BACKUP_S3_ENDPOINT", "").strip():
+        return S3({k: E.get("SAGA_BACKUP_S3_" + v, "").strip() for k, v in (
+            ("s3_endpoint", "ENDPOINT"), ("s3_bucket", "BUCKET"), ("s3_key", "ACCESS_KEY"), ("s3_secret", "SECRET_KEY"),
+            ("s3_region", "REGION"), ("s3_prefix", "PREFIX"), ("s3_style", "STYLE"))})
+    if E.get("SAGA_BACKUP_PATH", "").strip():
+        return Folder({"path": E["SAGA_BACKUP_PATH"].strip()})
     cfg = config()
     if not has_target(cfg):
-        raise SystemExit("Kein Backup-Ziel eingerichtet (Admin -> Backups) und SAGA_BACKUP_URL nicht gesetzt.")
-    return Dav(cfg)
+        raise SystemExit("Kein Backup-Ziel eingerichtet (Admin -> Backups) und weder SAGA_BACKUP_URL, SAGA_BACKUP_S3_ENDPOINT "
+                         "noch SAGA_BACKUP_PATH gesetzt.")
+    return target(cfg)
 
 
 def verify_dir(path):
@@ -1297,8 +1903,7 @@ def check_cmd(keyfile, ref=None, out=print):
     d = _resolve(ref, out)
     man = verify_dir(d)
     out(f"Lauf {man.get('name')}: Pruefsummen in Ordnung (Saga {man.get('saga')}, Schema {man.get('schema')}).")
-    work = os.path.join(tmp_dir(), "pruefung")
-    shutil.rmtree(work, ignore_errors=True)
+    work = os.path.join(tmp_dir(), "pruefung-" + _sec.token_hex(6))     # eigener Ordner: ein Lauf raeumt ihn nicht weg
     os.makedirs(work, mode=0o700)
     dbname = "saga_pruefung_" + _sec.token_hex(4)
     real = db.DATABASE_URL

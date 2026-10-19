@@ -37,7 +37,8 @@ CACHE_TTL = int(E.get("CACHE_TTL", "60"))
 STATE_DIR = E.get("STATE_DIR", "/var/lib/saga")
 # Testwiederherstellung auf einem zweiten Server (saga/backups.py): ein zurueckgespieltes Backup IST dieselbe Instanz
 # (Foederations-Schluessel in der Datenbank) - daher keine ausgehenden Verbindungen: Foederation, Push, Backups und
-# Versionshinweis bleiben aus.
+# Versionshinweis bleiben aus, Websuche ebenso; Kalender, KI, Immich und Avatare sperrt saga/netguard.py (liest dieselbe
+# Variable selbst, weil hkcal.py es ohne saga.core nutzt).
 RESTORE_TEST = E.get("SAGA_RESTORE_TEST", "").strip().lower() in ("1", "true", "yes", "on")
 STATUS_INTERVAL = int(E.get("STATUS_INTERVAL", "60"))
 SESSION_HOURS = int(E.get("SESSION_HOURS", "12"))

@@ -1397,7 +1397,7 @@ def _bk_ctx(request, cfg, show_remote=False):
     busy = backups.running()
     remote, remote_err = None, ""
     if show_remote and backups.has_target(cfg):
-        dav = backups.Dav(cfg)
+        dav = backups.target(cfg)
         try:
             remote = backups.list_runs(dav, manifests=True)
         except backups.BackupError as ex:
@@ -1417,7 +1417,8 @@ def _bk_ctx(request, cfg, show_remote=False):
             "flow": fl, "flow_msg": fl_msg, "age_ok": backups.age_ok(), "remote": remote, "remote_err": remote_err,
             "pending": pend, "pending_tok": tok, "restore_test": hk_restore_test(), "size": backups.size_text,
             "ready": backups.has_target(cfg) and bool(backups.recipients(cfg)) and backups.age_ok(),
-            "check_due": lc < time.time() - 31 * 86400, "last_check": lc}
+            "check_due": lc < time.time() - 31 * 86400, "last_check": lc, "roots": backups.backup_roots(),
+            "s3_key_short": backups.short_key(cfg.get("s3_key") or "") if cfg.get("mode") == "s3" else ""}
 
 
 def hk_restore_test():
@@ -1447,9 +1448,59 @@ def backups_key_download(tok: str, request: Request):
                     headers=dict(HEADERS, **{"Content-Disposition": f'attachment; filename="saga-backup-{host}.key"'}))
 
 
+_BK_CLEAR = backups.TARGET_CLEAR
+
+
+def _bk_finish(new, cfg, kind):
+    """Neues Ziel pruefen und speichern (vorheriges Nextcloud-App-Passwort widerrufen) -> (art, meldung)."""
+    try:
+        free = backups.test_target(new)
+    except backups.BackupError as ex:
+        return "err", backups.text(ex.code, ex.p)
+    if cfg.get("flow") and cfg.get("password") and cfg.get("server"):
+        backups.nc_revoke(cfg["server"], cfg.get("user") or "", cfg["password"])
+    backups.save_config(new)
+    return "ok", t("Verbunden ({kind}). Frei im Ziel: {free}.", kind=kind,
+                   free=backups.size_text(free) if free is not None else t("unbekannt"))
+
+
+def _bk_connect_s3(f, cfg):
+    ep = backups.norm_url(_s(f, "s3_endpoint", 300))
+    if not ep or urlparse(ep).path not in ("", "/"):
+        return "err", t("Endpunkt ungültig (https://host[:port], ohne Pfad).")
+    bucket, region = _s(f, "s3_bucket", 63), _s(f, "s3_region", 40) or "us-east-1"
+    prefix = backups.s3_norm_prefix(_s(f, "s3_prefix", 200))
+    style = _s(f, "s3_style", 10) or "auto"
+    if not backups.S3_BUCKET_RE.match(bucket):
+        return "err", t("Bucket-Name ungültig.")
+    if not backups.S3_REGION_RE.match(region) or prefix is None or style not in backups.S3_STYLES:
+        return "err", t("Region oder Präfix ungültig (Präfix: Buchstaben, Ziffern, . _ - /).")
+    key, secret = _s(f, "s3_key", 200), str(f.get("s3_secret") or "").strip()[:500]
+    if not key or not secret:
+        return "err", t("Access-Key und Secret-Key angeben.")
+    new = dict(cfg, **_BK_CLEAR)
+    new.update(mode="s3", s3_endpoint=ep, s3_region=region, s3_bucket=bucket, s3_prefix=prefix, s3_key=key, s3_secret=secret,
+               s3_style=style)
+    return _bk_finish(new, cfg, "S3")
+
+
+def _bk_connect_folder(f, cfg):
+    path = backups.norm_folder(_s(f, "path", 400))
+    if not path:
+        return "err", backups.text("folder_path")
+    new = dict(cfg, **_BK_CLEAR)
+    new.update(mode="folder", path=path)
+    return _bk_finish(new, cfg, t("Ordner"))
+
+
 def _bk_connect(f, cfg):
-    """Ziel verbinden: Nextcloud ohne Zugangsdaten -> Login Flow v2, sonst Benutzer/Passwort pruefen + speichern.
-    -> (art, meldung) mit art ok | flow | err."""
+    """Ziel verbinden: Nextcloud ohne Zugangsdaten -> Login Flow v2, sonst Benutzer/Passwort pruefen + speichern;
+    kind=s3 bzw. folder: S3 oder Ordner im Container. -> (art, meldung) mit art ok | flow | err."""
+    kind = _s(f, "kind", 10)
+    if kind == "s3":
+        return _bk_connect_s3(f, cfg)
+    if kind == "folder":
+        return _bk_connect_folder(f, cfg)
     url = backups.norm_url(_s(f, "url", 500))
     folder = _s(f, "folder", 200).strip("/") or cfg.get("folder") or "Saga-Backups"
     if not url:
@@ -1462,19 +1513,15 @@ def _bk_connect(f, cfg):
         if info["nextcloud"] and not user:
             backups.flow_start(info["server"], folder)
             return "flow", ""
-        new = dict(cfg, folder=folder, flow=False, user=user, password=pw)
+        new = dict(cfg, **_BK_CLEAR)
+        new.update(folder=folder, flow=False, user=user, password=pw)
         if info["nextcloud"]:
             new.update(mode="nextcloud", server=info["server"], url=info["server"], dav_user=backups.nc_user_id(info["server"], user, pw))
         else:
             new.update(mode="webdav", server="", url=url, dav_user="")
-        free = backups.test_target(new)
     except backups.BackupError as ex:
         return "err", backups.text(ex.code, ex.p)
-    if cfg.get("flow") and cfg.get("password") and cfg.get("server"):
-        backups.nc_revoke(cfg["server"], cfg.get("user") or "", cfg["password"])
-    backups.save_config(new)
-    return "ok", t("Verbunden ({kind}). Frei im Ziel: {free}.", kind="Nextcloud" if info["nextcloud"] else "WebDAV",
-                   free=backups.size_text(free) if free is not None else t("unbekannt"))
+    return _bk_finish(new, cfg, "Nextcloud" if info["nextcloud"] else "WebDAV")
 
 
 @admin.post("/backups")
@@ -1501,7 +1548,7 @@ async def backups_post(request: Request):
         revoked = None
         if cfg.get("flow") and cfg.get("password") and cfg.get("server"):
             revoked = await run_in_threadpool(backups.nc_revoke, cfg["server"], cfg.get("user") or "", cfg["password"])
-        cfg.update(mode="", server="", url="", user="", password="", flow=False, dav_user="")
+        cfg.update(mode="", **_BK_CLEAR)
         backups.save_config(cfg)
         backups.flow_cancel()
         print(f"admin: {who} trennt das Backup-Ziel (App-Passwort widerrufen: {revoked})", flush=True)
