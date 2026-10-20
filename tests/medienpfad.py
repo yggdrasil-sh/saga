@@ -362,6 +362,17 @@ http://127.0.0.1:{PORTS['C']} {{
         print("HINWEIS: saga-media fehlt (SAGA_MEDIA_BIN/PATH/go) - Teil M uebersprungen", flush=True)
     else:
         basics("M", A, B, Cc, files)
+        # Sicherheitsrunde 2 (S1b): Python kennzeichnet angemeldete Anfragen intern (X-Saga-Media-Auth), saga-media
+        # entfernt den Kopf; ohne gueltige Sitzung fehlt er schon bei Python
+        c0 = http.client.HTTPConnection("127.0.0.1", INTERNAL, timeout=10)
+        c0.request("GET", "/api/chats/unread", headers={"Cookie": "saga=" + A, "X-Saga": "1"})
+        r0 = c0.getresponse(); r0.read(); h_ok = r0.getheader("x-saga-media-auth"); c0.close()
+        c0 = http.client.HTTPConnection("127.0.0.1", INTERNAL, timeout=10)
+        c0.request("GET", "/api/chats/unread", headers={"Cookie": "saga=gefaelscht", "X-Saga": "1"})
+        r0 = c0.getresponse(); r0.read(); h_bad = r0.getheader("x-saga-media-auth"); c0.close()
+        _, _, hm = req("M", "GET", "/api/chats/unread", A)
+        ok(f"M: Anmelde-Hinweis von Python nur bei gueltiger Sitzung ({h_ok}, {h_bad}), saga-media gibt ihn nicht weiter",
+           h_ok == "1" and h_bad is None and "x-saga-media-auth" not in hm)
         L = log_of("M")
         ok("M: Dateien liefert saga-media (Zugriffszeilen), nicht Python", f"/api/chat/files/{fid} HTTP/1.1\" 206" in L and "[saga-media" in L)
         # 20 parallele Abrufe derselben Datei

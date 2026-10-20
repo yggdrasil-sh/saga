@@ -631,7 +631,10 @@ class MediaAuthHint:
             return await self.app(scope, receive, send)
 
         async def send2(msg):
-            if msg["type"] == "http.response.start" and (scope.get("state") or {}).get("saga_auth"):
+            # gueltig signierte Sitzung (SessionMiddleware hat sie geprueft, ungueltige leert _session_user) oder eine
+            # Pruefung im Endpunkt (Sitzung bzw. App-Schluessel, mark_authed)
+            if msg["type"] == "http.response.start" and ((scope.get("state") or {}).get("saga_auth")
+                                                         or (scope.get("session") or {}).get("uid")):
                 msg = dict(msg, headers=[*msg.get("headers", []), (b"x-saga-media-auth", b"1")])
             await send(msg)
         return await self.app(scope, receive, send2)
