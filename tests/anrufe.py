@@ -590,7 +590,7 @@ def run():
     ok(f"Klingel-Spam: hoechstens 3 Anrufe je Minute an dieselbe Person ({codes})", codes[:3] == [200, 200, 200] and codes[3] == 429)
 
     # --- Admin-Bereich ---------------------------------------------------------------------------------------------
-    s, html = admin("/settings")
+    s, html = admin("/calls")                          # 2.5: eigene Seite "Anrufe" (Abschnitt 1:1-Anrufe)
     ok(f"Admin: Karte 'Anrufe' mit STUN/TURN, Geheimnis nicht im Formular ({s})", s == 200 and 'name="calls_enabled"' in html
        and 'name="calls_turn_urls"' in html and "pw-statisch" not in html)
     m = re.search(r'<input[^>]*name="calls_turn_secret"[^>]*>', html) if isinstance(html, str) else None
