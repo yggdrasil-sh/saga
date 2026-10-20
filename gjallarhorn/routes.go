@@ -27,17 +27,28 @@ func (s *server) routes() http.Handler {
 	m := http.NewServeMux()
 	sub, _ := fs.Sub(webFS, "web")
 	static := http.FileServer(http.FS(sub))
-	m.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { s.secHeaders(w, r); static.ServeHTTP(w, r) })
-	m.HandleFunc("GET /app.js", func(w http.ResponseWriter, r *http.Request) { s.secHeaders(w, r); static.ServeHTTP(w, r) })
-	m.HandleFunc("GET /e2e-worker.js", func(w http.ResponseWriter, r *http.Request) { s.secHeaders(w, r); static.ServeHTTP(w, r) })
-	m.HandleFunc("GET /style.css", func(w http.ResponseWriter, r *http.Request) { s.secHeaders(w, r); static.ServeHTTP(w, r) })
+	page := func(w http.ResponseWriter, r *http.Request) { s.secHeaders(w, r); static.ServeHTTP(w, r) }
 	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "ok\n") })
 	m.HandleFunc("GET /api/session", s.apiSession)
+	m.HandleFunc("GET /ws", s.apiWS)
+	m.HandleFunc("GET /probe", s.apiWS) // Kandidatenmessung der Geraete (§2.6)
+	m.HandleFunc("GET /api/stats", s.apiStats)
+	if s.node != nil {
+		s.sfuRoutes(m)
+		if s.cfg.Dev {
+			m.HandleFunc("GET /dev/{$}", page)
+			m.HandleFunc("GET /dev/sfu.js", page)
+			m.HandleFunc("GET /style.css", page)
+		}
+		return m
+	}
+	m.HandleFunc("GET /{$}", page)
+	m.HandleFunc("GET /app.js", page)
+	m.HandleFunc("GET /e2e-worker.js", page)
+	m.HandleFunc("GET /style.css", page)
 	m.HandleFunc("POST /api/leg", s.apiLeg)
 	m.HandleFunc("GET /api/leg/{id}", s.apiLegStats)
 	m.HandleFunc("DELETE /api/leg/{id}", s.apiLegDelete)
-	m.HandleFunc("GET /ws", s.apiWS)
-	m.HandleFunc("GET /api/stats", s.apiStats)
 	if !s.cfg.Bench {
 		m.HandleFunc("POST /api/results", s.apiSaveResult)
 		m.HandleFunc("GET /results", s.apiResults)
@@ -70,6 +81,11 @@ func ipKey(r *http.Request) string {
 }
 
 func (s *server) apiSession(w http.ResponseWriter, r *http.Request) {
+	if s.node != nil { // TURN-Zugang nur gegen Medien-Token (/api/sfu/turn)
+		writeJSON(w, 200, map[string]any{"version": version, "name": s.cfg.Name, "mode": "node",
+			"udp": s.sfuUDP != nil, "udp_check": s.UDPCheck(), "dev": s.cfg.Dev})
+		return
+	}
 	user, pass, err := turn.GenerateLongTermCredentials(s.turnSecret, 30*time.Minute)
 	if err != nil {
 		writeJSON(w, 500, map[string]string{"error": "turn"})
@@ -180,6 +196,11 @@ type nodeStats struct {
 	MaxQMs        float64 `json:"max_queue_ms"`
 	FwdP95us      float64 `json:"fwd_p95_us"`
 	Uptime        float64 `json:"uptime"`
+	TIDSkipped    uint64  `json:"tid_skipped"`
+	Switches      uint64  `json:"switches"`
+	Pauses        uint64  `json:"pauses"`
+	WriteStalls   uint64  `json:"write_stalls"`
+	PLIp95ms      float64 `json:"pli_p95_ms"`
 }
 
 func (s *server) nodeStats() nodeStats {
@@ -195,7 +216,9 @@ func (s *server) nodeStats() nodeStats {
 		Overflow: fwd.Totals.Overflow.Load(), WriteErrs: fwd.Totals.WriteErrs.Load(), PLIs: fwd.Totals.PLIs.Load(),
 		Mallocs: ms.Mallocs, Goroutines: runtime.NumGoroutine(),
 		TCPConns: s.mux.Stats.Accepted.Load(), BBRConns: s.mux.Stats.BBR.Load(),
-		Uptime: time.Since(s.start).Seconds(),
+		Uptime:     time.Since(s.start).Seconds(),
+		TIDSkipped: fwd.Totals.TIDSkipped.Load(), Switches: fwd.Totals.Switches.Load(), Pauses: fwd.Totals.Pauses.Load(),
+		WriteStalls: fwd.Totals.WriteStalls.Load(), PLIp95ms: fwd.PLIRespP(0.95),
 	}
 	if s.udp != nil {
 		ns.UDPDropped = s.udp.Dropped.Load()
@@ -204,6 +227,9 @@ func (s *server) nodeStats() nodeStats {
 	s.mu.Lock()
 	ns.Legs = len(s.legs)
 	for _, l := range s.legs {
+		if l.fl == nil {
+			continue
+		}
 		if q := float64(l.fl.Stats.MaxAgeNs.Load()) / 1e6; q > ns.MaxQMs {
 			ns.MaxQMs = q
 		}

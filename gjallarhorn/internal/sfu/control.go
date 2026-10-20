@@ -91,10 +91,11 @@ func (r *Room) measurePeer(p *Peer, dt float64, now int64) {
 		b := st.Bytes.Load()
 		rate := float64(b-st.lastBytes) * 8 / dt
 		st.lastBytes = b
+		// langsam geglaettet (ca. 2 s), damit Schluesselbilder nicht pendeln
 		if st.bps == 0 {
 			st.bps = rate
 		} else {
-			st.bps = 0.7*st.bps + 0.3*rate
+			st.bps = 0.9*st.bps + 0.1*rate
 		}
 		if st.Kind == fwd.Video {
 			for i := range st.lastTID {
@@ -400,11 +401,12 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	}
 	stream := l.Path.Stream()
 	type choice struct {
-		s    *slot
-		opts []*source
-		idx  int // gewaehlte Schicht, -1 = Pause
-		tid  uint8
-		rate float64
+		s      *slot
+		opts   []*source
+		idx    int // gewaehlte Schicht, -1 = Pause
+		tid    uint8
+		rate   float64
+		wasOff bool
 	}
 	var cs []*choice
 	order := make([]*slot, 0, len(vslots))
@@ -446,7 +448,21 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		c.rate = rateOf(c)
 		sum += c.rate
 	}
-	// zu wenig: Kacheln von hinten pausieren (Bild mit Sprechring)
+	// Reserve: nach oben nur mit Abstand und ausserhalb der Sperrzeit
+	limit := budget
+	if !l.est.canUp(now) {
+		limit = 0
+	}
+	// Kacheln, die gerade nichts zeigen, starten pausiert und kommen nur mit
+	// Reserve dazu (gegen Pendeln bei schwankenden Raten)
+	for _, c := range cs {
+		if c.s.class == "tile" && c.idx >= 0 && c.s.layer == "" {
+			sum -= c.rate
+			c.idx, c.rate = -1, 0
+			c.wasOff = true
+		}
+	}
+	// zu wenig: laufende Kacheln von hinten pausieren (Bild mit Sprechring)
 	for i := len(cs) - 1; i >= 0 && sum > budget; i-- {
 		c := cs[i]
 		if c.s.class != "tile" || c.idx < 0 {
@@ -454,11 +470,6 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		}
 		sum -= c.rate
 		c.idx, c.rate = -1, 0
-	}
-	// Reserve: nach oben nur mit Abstand und ausserhalb der Sperrzeit
-	limit := budget
-	if !l.est.canUp(now) {
-		limit = 0
 	}
 	up := func(c *choice, maxIdx int) {
 		for c.idx >= 0 && c.idx+1 < len(c.opts) && c.idx+1 <= maxIdx {
@@ -476,14 +487,30 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 			break
 		}
 	}
+	// Vorrang: Bildschirm, Sprecher, dann weitere Kacheln, dann (UDP)
+	// hoehere Kachelschichten
 	for _, c := range cs {
-		switch {
-		case c.s.class == "screen":
+		if c.s.class == "screen" || c.s.class == "speaker" {
 			up(c, 2)
-		case c.s.class == "speaker":
-			up(c, 2)
-		case !stream: // UDP-Kacheln duerfen bis zur mittleren Schicht
-			up(c, 1)
+		}
+	}
+	for _, c := range cs {
+		if !c.wasOff || len(c.opts) == 0 {
+			continue
+		}
+		c.idx = 0
+		nr := rateOf(c)
+		if (sum+nr)*upHeadroom <= limit {
+			sum, c.rate = sum+nr, nr
+		} else {
+			c.idx = -1
+		}
+	}
+	if !stream { // UDP-Kacheln duerfen bis zur mittleren Schicht
+		for _, c := range cs {
+			if c.s.class == "tile" {
+				up(c, 1)
+			}
 		}
 	}
 	for _, c := range cs {
@@ -562,7 +589,7 @@ func (l *Leg) layoutChanged() (LayoutEvent, bool) {
 // estimator schaetzt die Downlink-Rate eines Beins aus der eigenen
 // Warteschlange: Auf TCP liegt der Stau dank TCP_NOTSENT_LOWAT im Knoten,
 // das Alter der Pakete beim Schreiben zeigt ihn. Auf UDP kommt GCC (TWCC)
-// dazu (Leg.Ext), wirksam ist das Minimum.
+// als Stausignal dazu (Leg.Ext).
 type estimator struct {
 	bps, start, max float64
 	lastBytes       uint64
@@ -593,8 +620,19 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 	e.lastBytes = b
 	age := time.Duration(st.TickAgeNs.Swap(0))
 	drops := st.TickDrops.Swap(0)
+	// GCC (UDP) ist ohne Probepakete anwendungsbegrenzt (Ziel ~1,5 x Rate)
+	// und taugt daher nur als Stausignal: Ziel unter der Rate = Stau.
+	gccLow := 0.0
+	if l.Ext != nil {
+		if v := float64(l.Ext()); v > 0 && v < rate*0.9 {
+			gccLow = v
+		}
+	}
 	switch {
-	case age > congAge || drops > 0:
+	case age > congAge || drops > 0 || gccLow > 0:
+		if gccLow > 0 && gccLow < rate {
+			rate = gccLow / 0.85
+		}
 		// runter auf 85 % des tatsaechlich Durchgegangenen (nicht kumulativ)
 		t := rate * 0.85
 		if t > e.bps {
@@ -638,11 +676,6 @@ func (e *estimator) update(l *Leg, dt float64, now int64) float64 {
 	}
 	if e.bps > e.max {
 		e.bps = e.max
-	}
-	if l.Ext != nil {
-		if v := float64(l.Ext()); v > 0 && v < e.bps {
-			return v
-		}
 	}
 	return e.bps
 }

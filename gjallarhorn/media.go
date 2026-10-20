@@ -13,6 +13,7 @@ import (
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/sfu"
 )
 
 const (
@@ -122,6 +123,7 @@ type leg struct {
 	ipKey               string // nur im Speicher fuer die Grenze je Adresse
 	pc                  *webrtc.PeerConnection
 	fl                  *fwd.Leg
+	sl                  *sfu.Leg // nur Betriebsart node
 	outs                []*fwd.Out
 	created             time.Time
 
@@ -214,7 +216,7 @@ func (s *server) newLeg(req legReq, ipKey string) (*leg, string, error) {
 		s.closeLeg(l)
 		return nil, "", err
 	}
-	l.pc = pc
+	l.setPC(pc)
 	pc.OnConnectionStateChange(func(st webrtc.PeerConnectionState) {
 		if st == webrtc.PeerConnectionStateConnected {
 			l.mu.Lock()
@@ -303,8 +305,8 @@ func (s *server) newLeg(req legReq, ipKey string) (*leg, string, error) {
 	}
 	for _, ln := range strings.Split(sdp, "\n") {
 		if u, ok := strings.CutPrefix(strings.TrimSpace(ln), "a=ice-ufrag:"); ok {
-			l.ufrag = u
 			s.mu.Lock()
+			l.ufrag = u
 			s.ufrags[u] = l
 			s.mu.Unlock()
 			break
@@ -371,14 +373,27 @@ func (s *server) closeLeg(l *leg) {
 	if s.perIP[l.ipKey]--; s.perIP[l.ipKey] <= 0 {
 		delete(s.perIP, l.ipKey)
 	}
+	l.mu.Lock()
+	if l.sl != nil {
+		delete(s.bySFU, l.sl)
+	}
+	l.mu.Unlock()
 	s.mu.Unlock()
 	for _, o := range l.outs {
 		s.room.RemoveOut(o)
 	}
-	if l.pc != nil {
-		_ = l.pc.Close()
+	l.mu.Lock()
+	pc, fl, sl := l.pc, l.fl, l.sl
+	l.mu.Unlock()
+	if sl != nil {
+		sl.Close()
 	}
-	l.fl.Close()
+	if pc != nil {
+		_ = pc.Close()
+	}
+	if fl != nil {
+		fl.Close()
+	}
 }
 
 // legStats ist die Knotensicht eines Beins (fuer die Messseite).
@@ -399,15 +414,36 @@ type legStats struct {
 	Secs      float64 `json:"secs"`
 }
 
+func (l *leg) setPC(pc *webrtc.PeerConnection) {
+	l.mu.Lock()
+	l.pc = pc
+	l.mu.Unlock()
+}
+
+// state liefert den Verbindungszustand (new, solange das Bein entsteht).
+func (l *leg) state() webrtc.PeerConnectionState {
+	l.mu.Lock()
+	pc := l.pc
+	l.mu.Unlock()
+	if pc == nil {
+		return webrtc.PeerConnectionStateNew
+	}
+	return pc.ConnectionState()
+}
+
 func (l *leg) stats() legStats {
 	l.mu.Lock()
 	con := l.connected
+	fl := l.fl
 	l.mu.Unlock()
-	st := legStats{ID: l.id, Path: l.path, Role: l.role, State: l.pc.ConnectionState().String(),
-		PktsOut: l.fl.Stats.PktsOut.Load(), BytesOut: l.fl.Stats.BytesOut.Load(),
-		Dropped: l.fl.Stats.FramesDropped.Load(), Stalls: l.fl.Stats.Stalls.Load(),
-		MaxQMs: float64(l.fl.Stats.MaxAgeNs.Load()) / 1e6, FwdP95us: l.fl.Stats.P95us(),
-		Overflow: l.fl.Stats.Overflow.Load(), WriteErrs: l.fl.Stats.WriteErrs.Load(),
+	if fl == nil {
+		return legStats{ID: l.id, Path: l.path, Role: l.role, State: "new"}
+	}
+	st := legStats{ID: l.id, Path: l.path, Role: l.role, State: l.state().String(),
+		PktsOut: fl.Stats.PktsOut.Load(), BytesOut: fl.Stats.BytesOut.Load(),
+		Dropped: fl.Stats.FramesDropped.Load(), Stalls: fl.Stats.Stalls.Load(),
+		MaxQMs: float64(fl.Stats.MaxAgeNs.Load()) / 1e6, FwdP95us: fl.Stats.P95us(),
+		Overflow: fl.Stats.Overflow.Load(), WriteErrs: fl.Stats.WriteErrs.Load(),
 		Secs: time.Since(l.created).Seconds()}
 	if !con.IsZero() {
 		st.ConnectMs = con.Sub(l.created).Milliseconds()

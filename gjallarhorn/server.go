@@ -27,6 +27,7 @@ import (
 	"github.com/pion/webrtc/v4"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/netx"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/sfu"
 )
 
 // config sind die Einstellungen aus der Umgebung.
@@ -42,6 +43,8 @@ type config struct {
 	RelayIP   net.IP
 	MaxLegs   int
 	Bench     bool
+	Mode      string // "probe" (Spiegel) oder "node" (Weiterleiter)
+	Dev       bool   // HORN_DEV=1: Entwicklungs-Token und Testseite (nur Tests!)
 	Certs     netx.CertOptions
 }
 
@@ -69,6 +72,11 @@ func loadConfig(bench bool) (*config, error) {
 		UDP:    env("HORN_UDP", "1") != "0",
 		Data:   env("HORN_DATA", "/data"),
 		Bench:  bench,
+		Mode:   env("HORN_MODE", "probe"),
+		Dev:    env("HORN_DEV", "0") == "1",
+	}
+	if c.Mode != "probe" && c.Mode != "node" {
+		return nil, errors.New("HORN_MODE: probe oder node")
 	}
 	c.UDPListen = env("HORN_UDP_LISTEN", c.Listen)
 	pm, err := netx.ParseProxyMode(env("HORN_PROXY_PROTOCOL", "0"))
@@ -111,6 +119,14 @@ type server struct {
 	apiUDP, apiTCP, apiTURN *webrtc.API
 	turnSecret              string
 
+	// Betriebsart node
+	node                    *sfu.Node
+	sfuUDP, sfuTCP, sfuTURN *webrtc.API
+	gcc                     gccHook
+	iceMux                  *netx.ICEMux
+	bySFU                   map[*sfu.Leg]*leg
+	devSecret               string
+
 	pubIPs   []string                      // oeffentliche Adressen (Kandidaten)
 	udpCheck atomic.Pointer[netx.UDPCheck] // Ergebnis des UDP-Selbsttests
 
@@ -128,9 +144,17 @@ func randHex(n int) string {
 }
 
 func runProbe(args []string, bench bool) error {
+	return runNode(args, bench, "")
+}
+
+// runNode startet den Knoten; mode "" = aus HORN_MODE.
+func runNode(args []string, bench bool, mode string) error {
 	cfg, err := loadConfig(bench)
 	if err != nil {
 		return err
+	}
+	if mode != "" {
+		cfg.Mode = mode
 	}
 	if pf := os.Getenv("HORN_CPUPROFILE"); pf != "" { // Entwicklung: CPU-Profil
 		f, err := os.Create(pf)
@@ -138,6 +162,14 @@ func runProbe(args []string, bench bool) error {
 			_ = pprof.StartCPUProfile(f)
 			defer func() { pprof.StopCPUProfile(); f.Close() }()
 		}
+	}
+	if pf := os.Getenv("HORN_MEMPROFILE"); pf != "" { // Entwicklung: Allokationsprofil beim Beenden
+		defer func() {
+			if f, err := os.Create(pf); err == nil {
+				_ = pprof.Lookup("allocs").WriteTo(f, 0)
+				f.Close()
+			}
+		}()
 	}
 	s, err := newServer(cfg)
 	if err != nil {
@@ -166,7 +198,16 @@ func runProbe(args []string, bench bool) error {
 }
 
 func newServer(cfg *config) (*server, error) {
-	s := &server{cfg: cfg, legs: map[string]*leg{}, ufrags: map[string]*leg{}, perIP: map[string]int{}, start: time.Now(), turnSecret: randHex(32)}
+	s := &server{cfg: cfg, legs: map[string]*leg{}, ufrags: map[string]*leg{}, perIP: map[string]int{}, start: time.Now(), turnSecret: randHex(32),
+		bySFU: map[*sfu.Leg]*leg{}, devSecret: randHex(32)}
+	if cfg.Mode == "node" {
+		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed}
+		if cfg.Dev {
+			nc.Verifier = sfu.VerifierFunc(s.verifyDev)
+			log.Printf("WARNUNG: HORN_DEV=1 - Entwicklungs-Token ohne Saga, nur fuer Tests")
+		}
+		s.node = sfu.NewNode(nc)
+	}
 	if !cfg.Bench {
 		if err := os.MkdirAll(filepath.Join(cfg.Data, "results"), 0o750); err != nil {
 			return nil, fmt.Errorf("datenordner: %w", err)
@@ -202,6 +243,12 @@ func newServer(cfg *config) (*server, error) {
 		}
 	}
 	s.mux.OnICE = s.onICEConn
+	// eigener ICE-TCP-Mux (ohne Allokation je Paket): Standard im Knoten,
+	// die Probe misst weiter mit pions Mux (HORN_ICEMUX=own|pion)
+	if im := env("HORN_ICEMUX", map[bool]string{true: "own", false: "pion"}[cfg.Mode == "node"]); im == "own" {
+		s.iceMux = netx.NewICEMux(s.mux.Addr())
+		s.mux.ICEMux = s.iceMux
+	}
 	s.mux.NoCoalesce = env("HORN_COALESCE", "1") == "0"
 	s.mux.Start()
 	s.room = fwd.NewRoom(250 * time.Millisecond)
@@ -219,7 +266,7 @@ func newServer(cfg *config) (*server, error) {
 	if s.udp != nil {
 		udpInfo = s.udp.LocalAddr().String()
 	}
-	log.Printf("gjallarhorn %s probe: name=%s tcp=%s udp=%s tls=%s proxy=%d", version, cfg.Name, s.mux.Addr(), udpInfo, certs.Mode, cfg.Proxy)
+	log.Printf("gjallarhorn %s %s: name=%s tcp=%s udp=%s tls=%s proxy=%d", version, cfg.Mode, cfg.Name, s.mux.Addr(), udpInfo, certs.Mode, cfg.Proxy)
 	return s, nil
 }
 
@@ -244,6 +291,12 @@ func (s *server) shutdown() {
 	s.mu.Unlock()
 	for _, l := range ls {
 		s.closeLeg(l)
+	}
+	if s.node != nil {
+		s.node.Close()
+	}
+	if s.iceMux != nil {
+		_ = s.iceMux.Close()
 	}
 	if s.turn != nil {
 		_ = s.turn.Close()
@@ -348,6 +401,11 @@ func (s *server) buildAPIs() error {
 			return err
 		}
 		s.apiUDP = api
+		if s.node != nil {
+			if s.sfuUDP, err = newSFUAPI(se, true, &s.gcc); err != nil {
+				return err
+			}
+		}
 	}
 	// TCP-Weg: ICE-TCP passiv ueber die Weiche, ohne NACK/RTX (H5)
 	{
@@ -357,12 +415,21 @@ func (s *server) buildAPIs() error {
 		}
 		s.iceFilter(&se)
 		se.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeTCP4, webrtc.NetworkTypeTCP6})
-		se.SetICETCPMux(ice.NewTCPMuxDefault(ice.TCPMuxParams{Listener: s.mux.ICE, Logger: lf.NewLogger("tcpmux"), ReadBufferSize: 64}))
+		if s.iceMux != nil {
+			se.SetICETCPMux(s.iceMux)
+		} else {
+			se.SetICETCPMux(ice.NewTCPMuxDefault(ice.TCPMuxParams{Listener: s.mux.ICE, Logger: lf.NewLogger("tcpmux"), ReadBufferSize: 64}))
+		}
 		api, err := newAPI(se, false)
 		if err != nil {
 			return err
 		}
 		s.apiTCP = api
+		if s.node != nil {
+			if s.sfuTCP, err = newSFUAPI(se, false, nil); err != nil {
+				return err
+			}
+		}
 	}
 	// TLS-Weg: Geraet -> TURN-TLS -> Relay auf RelayIP -> Knoten (nur zu sich selbst)
 	{
@@ -381,6 +448,11 @@ func (s *server) buildAPIs() error {
 			return err
 		}
 		s.apiTURN = api
+		if s.node != nil {
+			if s.sfuTURN, err = newSFUAPI(se, false, nil); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -473,7 +545,7 @@ func (s *server) reaper() {
 		var old []*leg
 		s.mu.Lock()
 		for _, l := range s.legs {
-			st := l.pc.ConnectionState()
+			st := l.state()
 			if now.Sub(l.created) > 15*time.Minute ||
 				(st == webrtc.PeerConnectionStateFailed || st == webrtc.PeerConnectionStateClosed) && now.Sub(l.created) > 30*time.Second ||
 				st == webrtc.PeerConnectionStateNew && now.Sub(l.created) > 60*time.Second {

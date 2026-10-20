@@ -140,7 +140,7 @@ func waitConnected(t *testing.T, s *server, n int) {
 		c := 0
 		s.mu.Lock()
 		for _, l := range s.legs {
-			if l.pc.ConnectionState() == webrtc.PeerConnectionStateConnected {
+			if l.state() == webrtc.PeerConnectionStateConnected {
 				c++
 			}
 		}

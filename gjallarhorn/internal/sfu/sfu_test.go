@@ -460,9 +460,16 @@ func TestEstimator(t *testing.T) {
 	if e.backoff != 2*b1 {
 		t.Fatalf("backoff %v %v", b1, e.backoff)
 	}
-	// GCC kleiner als die Warteschlangen-Schaetzung: GCC gilt
+	// GCC unter der gesendeten Rate (400 kbit/s): Stau, runter auf GCC
 	l.Ext = func() int { return 150_000 }
-	if v := step(10_000, 5*time.Millisecond, 0); v != 150_000 {
+	if v := step(10_000, 5*time.Millisecond, 0); v > 150_001 || v < 149_999 {
 		t.Fatalf("ext %v", v)
+	}
+	// GCC ueber der Rate (anwendungsbegrenzt): keine Obergrenze
+	now += int64(time.Minute)
+	l.Ext = func() int { return 600_000 }
+	b0 := e.bps
+	if v := step(10_000, 5*time.Millisecond, 0); v <= b0 {
+		t.Fatalf("gcc deckelt %v <= %v", v, b0)
 	}
 }

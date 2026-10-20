@@ -64,6 +64,14 @@ type benchResult struct {
 	BotLossPct float64 `json:"bot_loss_pct"`
 	BBRConns   uint64  `json:"bbr_conns"`
 	TCPConns   uint64  `json:"tcp_conns"`
+	// nur --sfu
+	Mode       string  `json:"mode,omitempty"` // "" (Spiegel) oder "sfu"
+	TIDSkipped uint64  `json:"tid_skipped,omitempty"`
+	PLIp95ms   float64 `json:"pli_p95_ms,omitempty"`
+	Freezes    int     `json:"bot_freezes,omitempty"`
+	BotFrames  int     `json:"bot_frames,omitempty"`
+	Switches   uint64  `json:"switches,omitempty"`
+	EstKbitLeg int     `json:"est_kbit_per_leg,omitempty"`
 }
 
 func runBench(args []string) error {
@@ -74,6 +82,7 @@ func runBench(args []string) error {
 	path := fs.String("path", "tcp", "Weg: tcp (ICE-TCP, je Bot Ton- und Bild-Bein) oder udp")
 	lastN := fs.Int("lastn", 9, "hoechstens so viele bewegte Kacheln je Bot (H6)")
 	data := fs.String("data", env("HORN_DATA", "/data"), "Datenordner (Ergebnis unter results/)")
+	useSFU := fs.Bool("sfu", false, "echter Weiterleiter (Raum, Top-3, Last-N, Schichtwahl) statt Spiegel")
 	if err := fs.Parse(normFlags(args)); err != nil {
 		return err
 	}
@@ -96,8 +105,12 @@ func runBench(args []string) error {
 	if *path == "udp" {
 		legsPerBot = 1
 	}
+	mode := "HORN_MODE=probe"
+	if *useSFU {
+		mode = "HORN_MODE=node"
+	}
 	cmd := exec.Command(exe, "bench-node")
-	cmd.Env = append(os.Environ(), "HORN_LISTEN=127.0.0.1:0", "HORN_ICE_IPS=127.0.0.1", "HORN_DATA="+tmp,
+	cmd.Env = append(os.Environ(), mode, "HORN_DEV=1", "HORN_LISTEN=127.0.0.1:0", "HORN_ICE_IPS=127.0.0.1", "HORN_DATA="+tmp,
 		"HORN_TLS_SELF=1", "HORN_PROXY_PROTOCOL=0", "HORN_TLS_CERT=", "HORN_PUBLIC_IP=",
 		fmt.Sprintf("HORN_MAX_LEGS=%d", *n*legsPerBot+8), "HORN_UDP="+map[bool]string{true: "1", false: "0"}[*path == "udp"])
 	out, err := cmd.StdoutPipe()
@@ -138,6 +151,9 @@ func runBench(args []string) error {
 	st0, err := fetchStats(hc, base)
 	if err != nil {
 		return err
+	}
+	if *useSFU {
+		return benchSFU(hc, base, st0, *n, *video, *secs, *lastN, *path, *data)
 	}
 	api, err := botAPI(*path)
 	if err != nil {
@@ -306,7 +322,11 @@ func expectedPPS(n, video, lastN int) float64 {
 func numCPU() int { return runtime.NumCPU() }
 
 func printBench(w io.Writer, r benchResult) {
-	fmt.Fprintf(w, "\nGjallarhorn bench %s: %d Teilnehmende, %d mit Video, Weg %s, %.0f s, %d Kerne\n", r.Version, r.N, r.Video, r.Path, r.Secs, r.Cores)
+	what := "Spiegel"
+	if r.Mode == "sfu" {
+		what = "Weiterleiter (SFU)"
+	}
+	fmt.Fprintf(w, "\nGjallarhorn bench %s, %s: %d Teilnehmende, %d mit Video, Weg %s, %.0f s, %d Kerne\n", r.Version, what, r.N, r.Video, r.Path, r.Secs, r.Cores)
 	fmt.Fprintf(w, "  Beine verbunden     %d/%d in %.1f s\n", r.Connected, r.Legs, r.ConnectS)
 	fmt.Fprintf(w, "  CPU                 %.1f %% eines Kerns, %.2f us je ausgehendem Paket (%.2f je Paket ein+aus)\n", r.CPUPct, r.CPUusPkt, r.CPUusPktIO)
 	fmt.Fprintf(w, "  Pakete              rein %.0f/s (%.1f Mbit/s), raus %.0f/s (%.1f Mbit/s)\n", r.PPSIn, r.MbitIn, r.PPSOut, r.MbitOut)
@@ -315,6 +335,10 @@ func printBench(w io.Writer, r benchResult) {
 	fmt.Fprintf(w, "  Warteschlange       max %.1f ms, Weiterleitung p95 <= %.0f us, verworfene Rahmen %d, Stalls %d, Ueberlauf %d\n", r.MaxQMs, r.FwdP95us, r.Dropped, r.Stalls, r.Overflow)
 	fmt.Fprintf(w, "  Bots empfangen      %.0f Pakete/s (erwartet ~%.0f), Verlust %.3f %%\n", r.BotPPS, r.ExpPPS, r.BotLossPct)
 	fmt.Fprintf(w, "  TCP                 %d Verbindungen, davon %d mit BBR\n", r.TCPConns, r.BBRConns)
+	if r.Mode == "sfu" {
+		fmt.Fprintf(w, "  SFU                 %d Rahmen per TID ausgelassen, %d Wechsel, PLI-Antwort p95 <= %.0f ms, Einfrieren bei Bots %d (%d Rahmen), Schaetzung %d kbit/s je Bein\n",
+			r.TIDSkipped, r.Switches, r.PLIp95ms, r.Freezes, r.BotFrames, r.EstKbitLeg)
+	}
 }
 
 func fetchStats(hc *http.Client, base string) (nodeStats, error) {
