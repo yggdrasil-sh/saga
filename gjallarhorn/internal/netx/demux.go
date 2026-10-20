@@ -100,7 +100,19 @@ func (c *bufConn) RemoteAddr() net.Addr {
 // Stats zaehlt die Weiche.
 type Stats struct {
 	Accepted, ICETCP, HTTP, TURN, ACME, Rejected, ProxyErr, BBR atomic.Uint64
+	Busy, TLSErr                                                atomic.Uint64
+	Pending                                                     atomic.Int64
 }
+
+// MaxPending begrenzt Verbindungen, die noch nicht zugeordnet sind (erstes
+// Byte, PROXY-Kopf, TLS-Handshake). Darueber wird sofort geschlossen.
+var MaxPending int64 = 512
+
+// Fristen der Weiche.
+var (
+	FirstByteTimeout = 5 * time.Second
+	HandshakeTimeout = 10 * time.Second
+)
 
 // Mux ist die Weiche auf einem TCP-Port: TLS (HTTPS, TURN-TLS) und ICE-TCP.
 type Mux struct {
@@ -117,7 +129,7 @@ type Mux struct {
 	ICE, HTTP, TURN *ChanListener
 }
 
-// ProxyMode steuert das PROXY-Protokoll v2.
+// ProxyMode steuert das PROXY-Protokoll (v1 und v2).
 type ProxyMode uint8
 
 const (
@@ -178,27 +190,42 @@ func (m *Mux) serve() {
 			continue
 		}
 		m.Stats.Accepted.Add(1)
+		if m.Stats.Pending.Add(1) > MaxPending {
+			m.Stats.Pending.Add(-1)
+			m.Stats.Busy.Add(1)
+			c.Close()
+			continue
+		}
 		go m.handle(c)
 	}
 }
 
 func (m *Mux) handle(c net.Conn) {
+	pending := true
+	done := func() {
+		if pending {
+			pending = false
+			m.Stats.Pending.Add(-1)
+		}
+	}
+	defer done()
 	if tc, ok := c.(*net.TCPConn); ok && Tune(tc) {
 		m.Stats.BBR.Add(1)
 	}
-	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_ = c.SetReadDeadline(time.Now().Add(FirstByteTimeout))
 	var remote net.Addr
-	cc := NewCoalesceConn(c)
 	br := bufio.NewReaderSize(c, 2048)
 	first, err := br.Peek(1)
 	if err != nil {
 		c.Close()
 		return
 	}
-	// Die v2-Signatur beginnt mit 0x0d, das weder TLS (0x16) noch ICE-TCP
-	// (0x00/0x01) ist. Im Modus auto entscheidet daher das erste Byte.
-	if m.Proxy == ProxyOn || (m.Proxy == ProxyAuto && first[0] == ppSig[0]) {
-		a, err := ReadProxyV2(br)
+	cc := NewCoalesceConn(c)
+	// Die PROXY-Koepfe beginnen mit 0x0d (v2) bzw. 'P' (v1), beides weder
+	// TLS (0x16) noch ICE-TCP (0x00/0x01). Im Modus auto entscheidet daher
+	// das erste Byte.
+	if m.Proxy == ProxyOn || (m.Proxy == ProxyAuto && IsProxyStart(first[0])) {
+		a, err := ReadProxy(br)
 		if err != nil {
 			m.Stats.ProxyErr.Add(1)
 			c.Close()
@@ -222,19 +249,21 @@ func (m *Mux) handle(c net.Conn) {
 			}
 		}
 		_ = c.SetReadDeadline(time.Time{})
+		done()
 		m.ICE.push(&bufConn{Conn: cc, r: br, remote: remote})
 	case RouteTLS:
-		m.handleTLS(&bufConn{Conn: cc, r: br, remote: remote}, cc)
+		m.handleTLS(&bufConn{Conn: cc, r: br, remote: remote}, cc, done)
 	default:
 		m.Stats.Rejected.Add(1)
 		c.Close()
 	}
 }
 
-func (m *Mux) handleTLS(raw *bufConn, cc *CoalesceConn) {
+func (m *Mux) handleTLS(raw *bufConn, cc *CoalesceConn, done func()) {
 	tc := tls.Server(raw, m.TLS)
-	_ = raw.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = raw.SetDeadline(time.Now().Add(HandshakeTimeout))
 	if err := tc.Handshake(); err != nil {
+		m.Stats.TLSErr.Add(1)
 		tc.Close()
 		return
 	}
@@ -255,6 +284,7 @@ func (m *Mux) handleTLS(raw *bufConn, cc *CoalesceConn) {
 		isTURN = IsSTUN(b)
 	}
 	_ = raw.SetDeadline(time.Time{})
+	done()
 	c := &bufConn{Conn: tc, r: br, remote: raw.remote}
 	if isTURN {
 		if !m.NoCoalesce {

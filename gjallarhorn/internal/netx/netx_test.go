@@ -1,12 +1,15 @@
 package netx
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"testing"
@@ -260,4 +263,140 @@ func TestCoalesce(t *testing.T) {
 		t.Fatalf("frist: %v", err)
 	}
 	cc.Close()
+}
+
+func TestProxyV1(t *testing.T) {
+	src := &net.TCPAddr{IP: net.ParseIP("192.0.2.7"), Port: 40000}
+	dst := &net.TCPAddr{IP: net.ParseIP("192.0.2.1"), Port: 443}
+	br := bufio.NewReader(bytes.NewReader(append(BuildProxyV1(src, dst), 0x16)))
+	a, err := ReadProxy(br)
+	if err != nil || a.String() != "192.0.2.7:40000" {
+		t.Fatalf("v1: %v %v", a, err)
+	}
+	if b, _ := br.ReadByte(); b != 0x16 {
+		t.Fatal("zu viel gelesen")
+	}
+	s6 := &net.TCPAddr{IP: net.ParseIP("2001:db8::5"), Port: 1234}
+	if a, err := ReadProxy(bufio.NewReader(bytes.NewReader(BuildProxyV1(s6, &net.TCPAddr{IP: net.ParseIP("2001:db8::1"), Port: 443})))); err != nil || a.String() != "[2001:db8::5]:1234" {
+		t.Fatalf("v1 v6: %v %v", a, err)
+	}
+	if a, err := ReadProxy(bufio.NewReader(bytes.NewReader([]byte("PROXY UNKNOWN\r\n")))); err != nil || a != nil {
+		t.Fatalf("unknown: %v %v", a, err)
+	}
+	for _, bad := range []string{"PROXY TCP4 192.0.2.1 192.0.2.2 1 99999\r\n", "PROXY TCP4 2001:db8::1 192.0.2.2 1 2\r\n", "PROXY TCP4 1.2.3.4\r\n", "PROXY TCP4 " + string(bytes.Repeat([]byte("1"), 120)) + "\r\n"} {
+		if _, err := ReadProxy(bufio.NewReader(bytes.NewReader([]byte(bad)))); err == nil {
+			t.Fatalf("akzeptiert: %q", bad)
+		}
+	}
+	// Weiche im Modus auto mit v1-Kopf
+	m := testMux(t, ProxyAuto)
+	c, err := net.Dial("tcp", m.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.Write(BuildProxyV1(&net.TCPAddr{IP: net.ParseIP("192.0.2.9"), Port: 5555}, m.Addr()))
+	c.Write(append([]byte{0, 20}, stunBinding...))
+	s := accept(t, m.ICE)
+	if s.RemoteAddr().String() != "192.0.2.9:5555" {
+		t.Fatalf("adresse %v", s.RemoteAddr())
+	}
+}
+
+func TestPendingLimit(t *testing.T) {
+	old := MaxPending
+	MaxPending = 2
+	defer func() { MaxPending = old }()
+	m := testMux(t, ProxyOff)
+	var cs []net.Conn
+	for i := 0; i < 4; i++ {
+		c, err := net.Dial("tcp", m.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		cs = append(cs, c)
+	}
+	defer func() {
+		for _, c := range cs {
+			c.Close()
+		}
+	}()
+	for i := 0; i < 100 && m.Stats.Busy.Load() < 2; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if m.Stats.Busy.Load() != 2 {
+		t.Fatalf("busy %d", m.Stats.Busy.Load())
+	}
+	// nach dem Zuordnen ist wieder Platz
+	cs[0].Write(append([]byte{0, 20}, stunBinding...))
+	accept(t, m.ICE)
+	for i := 0; i < 100 && m.Stats.Pending.Load() > 1; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if m.Stats.Pending.Load() != 1 {
+		t.Fatalf("pending %d", m.Stats.Pending.Load())
+	}
+}
+
+func TestUDPStunAndSelfTest(t *testing.T) {
+	uc, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc := &WebRTCPacketConn{UDPConn: uc}
+	defer pc.Close()
+	got := make(chan []byte, 4)
+	go func() {
+		buf := make([]byte, 1500)
+		for {
+			n, _, err := pc.ReadFromAddrPort(buf)
+			if err != nil {
+				return
+			}
+			got <- append([]byte(nil), buf[:n]...)
+		}
+	}()
+	target := uc.LocalAddr().(*net.UDPAddr).AddrPort()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	from, rtt, err := ProbeUDP(ctx, []netip.AddrPort{target})
+	if err != nil || from != target || rtt <= 0 {
+		t.Fatalf("selbsttest %v %v %v", from, rtt, err)
+	}
+	if pc.STUN.Answer.Load() == 0 {
+		t.Fatal("keine antwort gezaehlt")
+	}
+	// ICE-Pruefung mit USERNAME geht an pion, nicht an den Beantworter
+	ice := []byte{0, 1, 0, 8, 0x21, 0x12, 0xa4, 0x42, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0, 6, 0, 3, 'a', ':', 'b', 0}
+	if IsPlainBinding(ice) {
+		t.Fatal("ice als einfach erkannt")
+	}
+	c, _ := net.DialUDP("udp", nil, uc.LocalAddr().(*net.UDPAddr))
+	defer c.Close()
+	c.Write(ice)
+	select {
+	case b := <-got:
+		if !bytes.Equal(b, ice) {
+			t.Fatal("falsches paket")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("ice-pruefung nicht weitergereicht")
+	}
+	// Antwort-Format (v4 und v6)
+	for _, ap := range []string{"192.0.2.5:3478", "[2001:db8::7]:443"} {
+		a := netip.MustParseAddrPort(ap)
+		resp := AppendBindingSuccess(nil, stunBinding, a)
+		if back, ok := ParseXorMapped(resp); !ok || back != a {
+			t.Fatalf("xor %s -> %v", ap, back)
+		}
+	}
+	// nicht erreichbar: Zeitueberschreitung
+	dead, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
+	da := dead.LocalAddr().(*net.UDPAddr).AddrPort()
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 700*time.Millisecond)
+	defer cancel2()
+	if _, _, err := ProbeUDP(ctx2, []netip.AddrPort{da}); err == nil {
+		t.Fatal("antwort von stummem socket")
+	}
+	dead.Close()
 }

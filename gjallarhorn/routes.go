@@ -76,10 +76,11 @@ func (s *server) apiSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{
-		"version": version,
-		"name":    s.cfg.Name,
-		"udp":     s.apiUDP != nil,
-		"turn":    map[string]string{"username": user, "credential": pass},
+		"version":   version,
+		"name":      s.cfg.Name,
+		"udp":       s.apiUDP != nil,
+		"udp_check": s.UDPCheck(),
+		"turn":      map[string]string{"username": user, "credential": pass},
 	})
 }
 

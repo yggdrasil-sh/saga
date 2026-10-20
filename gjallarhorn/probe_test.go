@@ -330,3 +330,14 @@ func TestAddPtime(t *testing.T) {
 		t.Fatalf("ptime: %q", out)
 	}
 }
+
+func TestUDPSelfTest(t *testing.T) {
+	s := testServer(t, netx.ProxyOff)
+	r := s.udpSelfTest()
+	if r.State != "ok" || r.Via != "lokal" {
+		t.Fatalf("selbsttest %+v", r)
+	}
+	if s.UDPCheck().State != "ok" {
+		t.Fatal("nicht gespeichert")
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -108,6 +110,9 @@ type server struct {
 
 	apiUDP, apiTCP, apiTURN *webrtc.API
 	turnSecret              string
+
+	pubIPs   []string                      // oeffentliche Adressen (Kandidaten)
+	udpCheck atomic.Pointer[netx.UDPCheck] // Ergebnis des UDP-Selbsttests
 
 	mu     sync.Mutex
 	legs   map[string]*leg
@@ -209,6 +214,7 @@ func newServer(cfg *config) (*server, error) {
 	srv := &http.Server{Handler: s.routes(), ReadHeaderTimeout: 10 * time.Second, ErrorLog: log.New(discard{}, "", 0)}
 	go func() { _ = srv.Serve(s.mux.HTTP) }()
 	go s.reaper()
+	go s.udpSelfTest()
 	udpInfo := "aus"
 	if s.udp != nil {
 		udpInfo = s.udp.LocalAddr().String()
@@ -308,6 +314,7 @@ func (s *server) iceFilter(se *webrtc.SettingEngine) {
 
 func (s *server) buildAPIs() error {
 	pub := s.candidateIPs()
+	s.pubIPs = pub
 	if len(pub) > 0 {
 		log.Printf("kandidaten: oeffentliche adressen %v", pub)
 	}
@@ -398,6 +405,65 @@ func (s *server) startTURN() error {
 	}
 	s.turn = ts
 	return nil
+}
+
+// udpSelfTest prueft, ob 443/UDP antwortet: Binding-Anfragen von einem
+// eigenen Socket an die oeffentlichen Adressen (sonst an die gebundene
+// Adresse, Ergebnis "lokal"). Die Weiche beantwortet einfache Bindings
+// selbst. Das ist eine Vorpruefung; die Gegenprobe von aussen macht Saga
+// beim Koppeln (P3) ueber denselben Beantworter.
+func (s *server) udpSelfTest() *netx.UDPCheck {
+	res := &netx.UDPCheck{State: "aus", At: time.Now().UTC().Format(time.RFC3339)}
+	if s.udp == nil {
+		s.udpCheck.Store(res)
+		return res
+	}
+	port := s.udp.LocalAddr().(*net.UDPAddr).Port
+	var targets []netip.AddrPort
+	via := "oeffentlich"
+	for _, ip := range s.pubIPs {
+		if a, err := netip.ParseAddr(ip); err == nil {
+			targets = append(targets, netip.AddrPortFrom(a.Unmap(), uint16(port)))
+		}
+	}
+	if len(targets) == 0 {
+		via = "lokal"
+		la := s.udp.LocalAddr().(*net.UDPAddr).AddrPort()
+		a := la.Addr().Unmap()
+		if a.IsUnspecified() {
+			a = netip.MustParseAddr("127.0.0.1")
+		}
+		targets = append(targets, netip.AddrPortFrom(a, la.Port()))
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	from, rtt, err := netx.ProbeUDP(ctx, targets)
+	for _, t := range targets {
+		if via == "lokal" {
+			res.Tested = append(res.Tested, "lokal")
+		} else if t.Addr().Is4() {
+			res.Tested = append(res.Tested, "v4")
+		} else {
+			res.Tested = append(res.Tested, "v6")
+		}
+	}
+	if err != nil {
+		res.State = "fehlt"
+	} else {
+		res.State, res.Via, res.RTTms = "ok", via, float64(rtt.Microseconds())/1000
+		_ = from
+	}
+	s.udpCheck.Store(res)
+	log.Printf("udp-selbsttest: %s (%s)", res.State, via)
+	return res
+}
+
+// UDPCheck liefert das letzte Ergebnis des Selbsttests.
+func (s *server) UDPCheck() netx.UDPCheck {
+	if c := s.udpCheck.Load(); c != nil {
+		return *c
+	}
+	return netx.UDPCheck{State: "unbekannt"}
 }
 
 // reaper raeumt alte und gescheiterte Beine ab.
