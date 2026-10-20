@@ -16,6 +16,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu
+- **Gjallarhorn P4 – Frame-E2E** (Grundlage für große Gruppenanrufe über Knoten, Feature-Flag `calls.horn`, Standard
+  aus): Format `saga-horn/v1` (`docs/HORN-E2E.md`) – AES-128-GCM je codiertem Rahmen im FrameCryptor-Format, ein
+  Schlüssel je sendendem Gerät, Ratsche beim Beitritt, neuer Schlüssel beim Verlassen, Wiederholungsschutz,
+  Runensiegel. Web-Worker `static/frame-e2e.js` (`RTCRtpScriptTransform`, Rückfall `createEncodedStreams`, keine
+  CSP-Lockerung). Die Schlüssel laufen als `fkey`/`fkey-ack` versiegelt im vorhandenen Signalweg, auch über
+  Servergrenzen (Fähigkeit `horn` in `features` und `CAPS2`); der Server sieht sie nicht. Testvektoren
+  `tests/vectors/horn_e2e.json` mit Gegenproben in Python, Node und im Browser für die Apps.
+
 ## [2.4.0] – 2026-10-20
 
 Saga 2.4 bringt Videos in den Chat und macht Anrufe erwachsen: Gruppenanrufe, Bildschirm teilen mit Kamera daneben,

@@ -298,7 +298,7 @@ def gen():
     import base64
     fb = {"t": "fkey", "n": 1, "kid": 1, "key": base64.b64encode(ks[1]).decode(), "s": "0123456789abcdef"}
     inval = [dict(fb, kid=2), dict(fb, key=base64.b64encode(ks[1][:31]).decode()), dict(fb, s="0123456789ABCDEF"), dict(fb, n=-1),
-             dict(fb, t="fkeys"), dict(fb, n=1.5), dict(fb, key="kein base64!")]
+             dict(fb, t="fkeys"), dict(fb, n=1.5), dict(fb, key="kein base64!"), dict(fb, key=base64.b64encode(ks[1]).decode().rstrip("="))]
     out = {
         "format": "saga-horn/v1",
         "note": "Erzeugt mit tools/horn_e2e_vectors.py (cryptography + PyNaCl). Bytes als Hex. Rahmen = Kopf(h) || AES-128-GCM(FK, IV, "

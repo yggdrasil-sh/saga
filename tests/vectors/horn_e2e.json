@@ -2154,6 +2154,13 @@
     "kid": 1,
     "key": "kein base64!",
     "s": "0123456789abcdef"
+   },
+   {
+    "t": "fkey",
+    "n": 1,
+    "kid": 1,
+    "key": "1XYXfQAcwfiAgR8/I5xDzCIOgiAsq59QzjU0smfE4d4",
+    "s": "0123456789abcdef"
    }
   ]
  }

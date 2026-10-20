@@ -131,13 +131,13 @@
   }
 
   // --- Signale fkey / fkey-ack (Body im versiegelten saga-call-Signal) ---------------------------------------------
-  var SID = /^[0-9a-f]{16}$/;
+  var SID = /^[0-9a-f]{16}$/, KEY64 = /^[A-Za-z0-9+/]{43}=$/;          // 32 Byte, Standard-Base64 mit Padding
   function fkeyBody(o) { return JSON.stringify({ t: 'fkey', n: o.n, kid: o.n % C.RING, key: b64(o.key), s: o.s }); }
   function fkeyAckBody(n, s, ok) { return JSON.stringify({ t: 'fkey-ack', n: n, s: s, ok: !!ok }); }
   // -> {n, key, s} oder null (ungueltig: ignorieren)
   function parseFkey(b) {
     if (!b || b.t !== 'fkey' || typeof b.n !== 'number' || b.n % 1 || b.n < 0 || b.n > C.MAX_N || b.kid !== b.n % C.RING) return null;
-    if (typeof b.s !== 'string' || !SID.test(b.s) || typeof b.key !== 'string') return null;
+    if (typeof b.s !== 'string' || !SID.test(b.s) || typeof b.key !== 'string' || !KEY64.test(b.key)) return null;
     var k;
     try { k = unb64(b.key); } catch (e) { return null; }
     return k.length === 32 ? { n: b.n, key: k, s: b.s } : null;

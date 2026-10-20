@@ -150,7 +150,9 @@ Zusätzliche Felder (ältere Server liefern sie nicht – dann gilt: keine v3-Fu
 
 - `features`: `reneg` = der Server reicht offer/answer während des Gesprächs weiter (Budget unten), `pip_hint` = `want`
   wird unterstützt, `screen2` = Bildschirm als zweite Videospur (E3, Abschnitt „Bildschirm v2“), `multi` = weitere Geräte
-  im Anruf (E4), `group` = Gruppenanrufe (E5) – beides im Abschnitt „Anrufe: Mehrgeräte und Gruppen“.
+  im Anruf (E4), `group` = Gruppenanrufe (E5) – beides im Abschnitt „Anrufe: Mehrgeräte und Gruppen“. 2.5: `horn`
+  (nur bei eingeschaltetem Feature-Flag `calls.horn`, dazu `"e2e": "saga-horn/v1"`) = Gjallarhorn mit Frame-E2E,
+  Vertrag `docs/HORN-E2E.md`; Geräte melden dann `horn` in `caps`.
 - `limits.endpoints_*`: Geräte je Anruf (Mesh: 4 mit Video, 6 nur Ton; eigene Zusatzgeräte zählen mit; der Admin kann
   nur senken). E0-Server meldeten 2.
 - Signal-Budget je Anruf: `signals_max` + `signals_per_min` je **angefangener** Minute seit der Annahme, höchstens
@@ -181,7 +183,7 @@ Zusätzliche Felder (ältere Server liefern sie nicht – dann gilt: keine v3-Fu
 
 | Feld | Typ | in | Bedeutung |
 |---|---|---|---|
-| `t` | Text | alle | `offer` · `answer` · `ice` · `state` · `bye` (später `fkey`) |
+| `t` | Text | alle | `offer` · `answer` · `ice` · `state` · `bye`; 2.5: `fkey` · `fkey-ack` (nur mit `horn`, `docs/HORN-E2E.md` §4) |
 | `pc` | Text | alle | Kennung der PeerConnection. **Der Anrufer legt sie fest** (je Zielgerät `min(dev_a, dev_b) + ":" + max(dev_a, dev_b)`, device_ids als Hex), der Angerufene **übernimmt** sie aus dem ersten Angebot. Signale mit fremdem `pc` ignorieren; fehlt `pc` (2.3), gilt die einzige Verbindung |
 | `n` | Zahl | offer, answer | laufende Nummer **je Absender** (erstes Angebot des Anrufers `1`, das erste eigene Angebot des Angerufenen ebenfalls `1`). Die Antwort trägt das `n` des Angebots, das sie beantwortet |
 | `caps` | Liste | offer, answer | siehe oben |
@@ -549,6 +551,8 @@ Bewertung für 2.5:
 - Ein striktes RFC-9605-SFrame bieten die nativen Bibliotheken nicht – Empfehlung bleibt das LiveKit-kompatible Format.
 - Schlüssel: je sendendem Gerät, als `fkey`-Signal versiegelt verteilt (Abschnitt „saga-call v3“: Typ reserviert); neuer
   Schlüssel bei jedem Verlassen, HKDF-Ratsche bei jedem Beitritt.
+- **Umgesetzt in 2.5 (P4):** `docs/HORN-E2E.md` (`saga-horn/v1`). Abweichend vom Spike ist der Trailer 14 Byte
+  (IV ‖ IV-Länge `0x0C` ‖ kid, wie FrameCryptor), Zusatz also 30 Byte je Rahmen; die Ratsche ist Saga-eigen.
 ## Videos im Chat: saga-file/v2 (2.4, Etappe E2)
 
 Verbindlicher Vertrag für iOS/iPadOS/macOS, Android, Linux und Web (Referenz: `static/chat-video.js`, `static/sw.js`,
