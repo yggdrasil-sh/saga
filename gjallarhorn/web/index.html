@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Horn-Probe</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>Horn-Probe</h1>
+    <p class="sub">Messung für Saga-Gruppenanrufe über 443 · <span id="ver">…</span></p>
+  </header>
+
+  <section class="card">
+    <p>Die Seite simuliert einen Gruppenanruf mit 12 Kameras und danach einen reinen Tonanruf mit 25 Personen. Sie nutzt keine Kamera und kein Mikrofon: Bild und Ton sind künstlich erzeugt. Ein Lauf dauert etwa <span id="dauer">4</span> Minuten. Lass die Seite dabei im Vordergrund.</p>
+    <p class="hint">Beim Start fragt der Browser einmal nach dem Mikrofon. Bitte erlauben: Erst dann probiert Chrome den ICE-TCP-Weg (wie in einem echten Anruf). Das Mikrofon wird sofort wieder geschlossen, es wird nichts aufgenommen oder gesendet.</p>
+    <form id="f">
+      <label>Netz-Bezeichnung
+        <input id="net" required maxlength="80" placeholder="z. B. WLAN zu Hause, LTE, Firma" autocomplete="off">
+      </label>
+      <label>Gerät
+        <select id="dev">
+          <option>Desktop</option><option>Laptop</option><option>Handy</option><option>Tablet</option>
+        </select>
+      </label>
+      <button id="go" type="submit">Messen</button>
+    </form>
+    <p class="hint">Gespeichert werden nur Messwerte, Browser und die Netz-Bezeichnung, keine IP-Adressen.</p>
+  </section>
+
+  <section class="card" id="lauf" hidden>
+    <div class="bar"><div id="fill"></div></div>
+    <ol id="phasen"></ol>
+    <div id="tiles"></div>
+  </section>
+
+  <section class="card" id="erg" hidden>
+    <h2>Ergebnis</h2>
+    <div class="scroll"><table id="tab"></table></div>
+    <p id="saved" class="hint"></p>
+    <p id="jbt" class="hint"></p>
+  </section>
+</main>
+<canvas id="src" width="960" height="540" hidden></canvas>
+<script src="/app.js"></script>
+</body>
+</html>
