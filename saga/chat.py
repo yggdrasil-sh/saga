@@ -108,6 +108,8 @@ STATUS_ME = None
 
 # 2.4: Medien-Token (saga.chat_files setzt sich hier ein): (token, fid) -> uid oder None
 TOKEN_USER = None
+# 2.5: Reaktionen und Bearbeiten (saga.chat_x3 setzt sich hier ein): messages_extra, send_edit
+X3 = None
 
 
 # --- Hilfen -------------------------------------------------------------------------------------------------
@@ -1695,6 +1697,8 @@ def api_messages(cid: int, request: Request, device: str = "", before: int = 0, 
                     x["sender"] = dict(x["sender"], username=x["sender_handle"])
         if not hfmt(ch):                                # v2: KI-Hash ist mitsigniert (Feld ai), kein Server-Beleg
             ai_marks(c, ch["id"], msgs)
+        elif X3 is not None:                            # 2.5: Reaktionen (rx) und neueste Bearbeitung am Original
+            X3.messages_extra(c, uid, ch, msgs, dev)
         return _no_store({"chat_id": ch["id"], "messages": msgs, "more": more,
                           "devices": devs, "idents": ids, "last_read": m["last_read"], "last_seq": ch["last_seq"]})
 
@@ -1717,6 +1721,8 @@ async def api_send(cid: int, request: Request):
             if not V2_CLIENT.get() and b.get("v") != 2:
                 return _bad(v3_hint() if is_v3(fch) else fed_hint(), 400)
             from starlette.concurrency import run_in_threadpool
+            if b.get("kind") == "edit" and X3 is not None:     # 2.5: Nachricht bearbeiten (saga.chat_x3)
+                return await run_in_threadpool(X3.send_edit, uid, cid, b)
             return await run_in_threadpool(FED.send, uid, cid, b)
     mid, dev, body_ct, sig = str(b.get("id") or ""), str(b.get("sender_device") or ""), b.get("body_ct"), b.get("sig")
     kind = b.get("kind") or "msg"

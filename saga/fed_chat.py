@@ -631,6 +631,8 @@ def drop_msg(c, ch, mid):
     c.execute("DELETE FROM chat_file WHERE msg_seq=?", (r[0],))
     c.execute("DELETE FROM chat_ai_reply WHERE msg_id=?", (mid,))
     c.execute("DELETE FROM chat_msg WHERE seq=?", (r[0],))
+    for fn in DROP_HOOKS:                        # 2.5 (saga.chat_x3): Bearbeitungen gehen mit
+        fn(c, ch, mid)
     chat._rm_blobs(c, fids)
     chat._direct(c, local_members(c, ch["id"]), "chat.deleted", {"chat_id": ch["id"], "id": mid, "seq": r[0]})
     return r[0]
@@ -2112,6 +2114,7 @@ def chat_extra(c, uid, ch, d, mem, m):
 
 
 EXTRA_HOOKS = []
+DROP_HOOKS = []                    # 2.5: (c, ch, msg_id) nach dem Loeschen einer Nachricht (saga.chat_x3)
 
 
 def _extra_v3(c, uid, ch, d, members_):

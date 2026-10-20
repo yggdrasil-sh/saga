@@ -993,5 +993,17 @@ einem Gerät ab App 2.3). Bestehende Chats bleiben vorerst v1.
   `members[].handle`: daraus übernimmt die App ihr Vertrauen `trust:<benutzer>` → `trust2:<handle>`, aber nur bei gleichem
   Identitätsschlüssel (`tests/vectors/chat_v3.json`, `tofu_migrate`). Senden v1 in einen gerade umgestellten Chat: 409
   mit `chat_changed: true` – Chat neu laden.
-- **Noch nicht in Stufe 3:** Reaktionen,
-  Bearbeiten, Sprachnachrichten. Testvektoren für Reaktionen und Bearbeiten: `tests/vectors/chat_v3.json`.
+- **Reaktionen, Bearbeiten, Sprachnachrichten (`x3_ok`):** nur, wenn das Chat-Objekt `x3_ok: true` meldet (Format v2,
+  angenommen, nicht schreibgeschützt, alle Server mit `chat3`); `GET /api/chat/me` meldet `features` mit `react`, `edit`,
+  `voice` und `x3_limits` (`edit_window` 86400, `edit_max` 20, `emoji_max` 32, `react_ct_max`, `react_rate`,
+  `voice_max_s` 900, `voice_kbps` 24, `voice_max_bytes`). Formate: `saga/chat_v3.py`, Vektoren `tests/vectors/chat_v3.json`.
+  - Reaktion: `PUT /api/chats/{id}/messages/{mid}/reaction {dev, ts, ct, sig}` (eine je Person; neuere `ts` ersetzt,
+    `""` = zurücknehmen). `GET …/messages` liefert je Nachricht `rx: [{by, dev, ts, ct, sig}]` (höchstens 50, `by` =
+    Handle); `GET /api/chats/{id}/reactions?mids=a,b` → `{reactions: {mid: [...]}}`. Live `chat.react {chat_id, items:
+    [{id, by, dev, ts, ct, sig}]}` bzw. `{more: true, mids}` – je Chat höchstens einmal je Sekunde. Fehler: 409 ohne
+    `x3_ok`, 404 unbekannte Nachricht (nur `kind: msg`), 400 Signatur/Form, 403 fremdes Gerät, 429 (120 je Minute).
+  - Bearbeiten: `POST …/messages` wie eine v2-Nachricht mit `kind: "edit"`, `edit_of` und Inhalt `{"edit": <mid>, "t":
+    <text>}` (keine `files`, kein `reply_to`, kein `ai`). 403: fremde Nachricht, älter als 24 h, schon 20-mal, KI-Antwort.
+    `GET …/messages` liefert sie am Original als `edit` (vollständige Nachricht mit `key`, `edit_of`), dazu `edited_at`
+    und `edit_n`; Live `chat.edited {chat_id, id, seq, edit_seq}`. Löschen des Originals nimmt die Bearbeitung mit.
+  - Sprachnachricht: Anhang in `files[]` mit `voice: true, dur, wf` (64 Werte 0–255, B64) und `m: "audio/ogg; codecs=opus"`.

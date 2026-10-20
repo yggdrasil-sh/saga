@@ -48,7 +48,20 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Anmeldenamen; `knows()` zählt nur Mitglieder von vor der Umstellung. Clients der Stufe 3 bekommen in Chats v1
   `members[].handle` (für die Vertrauens-Übernahme) und melden ihre Stufe am Gerät (`chat3`). Kontolöschung räumt
   Reaktionen und Verweise auf Bearbeitungen auf. Neue Testreihe `chat_v3_umstellung`.
-  Noch offen: Reaktionen, Bearbeiten, Sprachnachrichten.
+
+### Chat-Grundlagen: Reaktionen, Bearbeiten, Sprachnachrichten (Server)
+- **Reaktionen:** eine je Person und Nachricht, Ende-zu-Ende verschlüsselt mit einem aus dem Nachrichtenschlüssel
+  abgeleiteten Schlüssel (`PUT /api/chats/{id}/messages/{mid}/reaction`, `rx` in `GET …/messages`,
+  `GET /api/chats/{id}/reactions`, Live `chat.react` gebündelt). Der Server sieht wer, wann und worauf, nicht womit, und
+  prüft die Signatur. Kein Push.
+- **Nachricht bearbeiten:** nur eigene, bis 24 Stunden nach dem Senden, höchstens 20-mal, nicht für KI-Antworten. Kein
+  Verlauf – der Server behält nur die neueste Bearbeitung und löscht ältere samt Schlüsseln; `GET …/messages` liefert sie am
+  Original (`edit`, `edited_at`, `edit_n`), Live `chat.edited`, kein Push, kein Ungelesen.
+- **Sprachnachrichten:** ein verschlüsselter Anhang (Ogg/Opus); der Server meldet nur die Grenzen (höchstens 15 Minuten,
+  24 kbit/s) in `GET /api/chat/me` (`x3_limits`).
+- **Über Servergrenzen** nur, wenn alle beteiligten Server die neue Fähigkeit `chat3` melden (Chat-Feld `x3_ok`):
+  Reaktionen und Bearbeitungen laufen wie Gelesen-Bestätigungen über das Heim. Server 2.4 merken nichts davon.
+  Neue Testreihen `chat_x3` und `foederation_x3` (auch gegen einen 2.4-Server).
 
 ## [2.4.0] – 2026-10-20
 
