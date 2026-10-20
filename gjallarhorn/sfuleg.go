@@ -122,6 +122,9 @@ type sfuLegReq struct {
 	Screen  bool   `json:"screen"`  // Bildschirmplatz
 	Tiles   int    `json:"tiles"`   // Kachelplaetze (Last-N kappt)
 	Device  string `json:"device"`  // Hinweis "mobile" (kann nur senken)
+	// ScreenMid: mid des Senders fuer den Bildschirm (P5). Browser koennen die Stream-ID nicht waehlen; der Knoten
+	// nimmt eine Spur als Bildschirm, wenn ihre Stream-ID mit "screen" beginnt ODER ihre mid ScreenMid ist.
+	ScreenMid string `json:"screen_mid"`
 }
 
 func (s *server) sfuAPI(p sfu.Path) *webrtc.API {
@@ -174,6 +177,9 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 		return nil, "", errLimit
 	}
 	l := &leg{id: randHex(8), sid: g.Peer, path: req.Path, role: g.Role.String(), ipKey: ipKey, created: time.Now()}
+	if len(req.ScreenMid) <= 16 {
+		l.screenMid = req.ScreenMid
+	}
 	s.legs[l.id] = l
 	s.perIP[ipKey]++
 	s.mu.Unlock()
@@ -297,6 +303,14 @@ func (s *server) sfuTrack(l *leg, sl *sfu.Leg, pc *webrtc.PeerConnection, tr *we
 		}
 	}
 	screen := strings.HasPrefix(tr.StreamID(), "screen")
+	if !screen && l.screenMid != "" && kind == fwd.Video {
+		for _, t := range pc.GetTransceivers() {
+			if t.Receiver() == rc {
+				screen = t.Mid() == l.screenMid
+				break
+			}
+		}
+	}
 	read := func(b []byte) (int, error) {
 		n, _, err := tr.Read(b)
 		return n, err

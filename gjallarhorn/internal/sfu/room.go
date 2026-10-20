@@ -126,7 +126,7 @@ func (n *Node) Admit(token string, path Path) (Grant, *Room, error) {
 	}
 	r := n.Room(g.Room)
 	if r == nil {
-		return Grant{}, nil, ErrNoRoom
+		return g, nil, ErrNoRoom // gepruefte Freigabe mit: der Knoten darf den Raum fuer ein Saga-Token selbst anlegen
 	}
 	return g, r, nil
 }

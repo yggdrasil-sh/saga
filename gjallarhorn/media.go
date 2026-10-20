@@ -124,6 +124,7 @@ type leg struct {
 	pc                  *webrtc.PeerConnection
 	fl                  *fwd.Leg
 	sl                  *sfu.Leg // nur Betriebsart node
+	screenMid           string   // P5: mid der Bildschirm-Spur (sfuLegReq.ScreenMid)
 	outs                []*fwd.Out
 	created             time.Time
 

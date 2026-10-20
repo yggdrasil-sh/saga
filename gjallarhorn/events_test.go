@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/json"
 	"net/http"
@@ -237,4 +239,35 @@ func TestSFULegPeers(t *testing.T) {
 		t.Fatalf("antwort %+v (raum %v)", ans, ids)
 	}
 	_ = bs
+}
+
+// TestRoomWithoutCtl (P5): ein Knoten mit festem Saga-Schluessel (HORN_SAGA_PUB, ohne Steuerkanal) legt den Raum fuer
+// ein gueltiges Saga-Token selbst an; gefaelschte Token bleiben draussen, ein geschlossener Raum bleibt gesperrt.
+func TestRoomWithoutCtl(t *testing.T) {
+	s := testNodeServer(t, false)
+	pub, sk, _ := ed25519.GenerateKey(rand.Reader)
+	_, other, _ := ed25519.GenerateKey(rand.Reader)
+	s.verifier.SetKey(pub)
+	base := "https://" + s.mux.Addr().String()
+	hc := httpClient()
+	tok := func(k ed25519.PrivateKey, jti string) string {
+		return signTok(k, tokBody(map[string]any{"node": "localhost", "jti": jti, "call_ref": "CallRefOhneCtl01"}))
+	}
+	if err := postJSON(hc, base+"/api/sfu/turn", map[string]string{"token": tok(other, "jti-fremd-000001")}, &struct{}{}); err == nil || !contains(err.Error(), "401") {
+		t.Fatalf("fremder schluessel: %v", err)
+	}
+	if s.node.Room("CallRefOhneCtl01") != nil {
+		t.Fatal("raum fuer gefaelschtes token")
+	}
+	var cr struct{ Username string }
+	if err := postJSON(hc, base+"/api/sfu/turn", map[string]string{"token": tok(sk, "jti-echt-0000001")}, &cr); err != nil || cr.Username == "" {
+		t.Fatalf("saga-token ohne steuerkanal: %v", err)
+	}
+	if s.node.Room("CallRefOhneCtl01") == nil {
+		t.Fatal("raum nicht angelegt")
+	}
+	s.closeRoom("CallRefOhneCtl01", "test")
+	if err := postJSON(hc, base+"/api/sfu/turn", map[string]string{"token": tok(sk, "jti-echt-0000002")}, &struct{}{}); err == nil || !contains(err.Error(), "401") {
+		t.Fatalf("geschlossener raum: %v", err)
+	}
 }
