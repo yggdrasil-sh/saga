@@ -84,7 +84,7 @@ func ipKey(r *http.Request) string {
 
 func (s *server) apiSession(w http.ResponseWriter, r *http.Request) {
 	if s.node != nil { // TURN-Zugang nur gegen Medien-Token (/api/sfu/turn)
-		writeJSON(w, 200, map[string]any{"version": version, "name": s.cfg.Name, "mode": "node",
+		writeJSON(w, 200, map[string]any{"version": version, "build": buildID(), "name": s.cfg.Name, "mode": "node",
 			"udp": s.sfuUDP != nil, "udp_check": s.UDPCheck(), "dev": s.cfg.Dev})
 		return
 	}
@@ -95,6 +95,7 @@ func (s *server) apiSession(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{
 		"version":   version,
+		"build":     buildID(),
 		"name":      s.cfg.Name,
 		"udp":       s.apiUDP != nil,
 		"udp_check": s.UDPCheck(),
@@ -142,6 +143,12 @@ func (s *server) apiLegDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	st := l.stats()
+	if l.path == "turn" {
+		l.mu.Lock()
+		pc, created, iceAt, con := l.pc, l.created, l.iceAt, l.connected
+		l.mu.Unlock()
+		st.TURN = s.ttrace.setup(pc, created, iceAt, con)
+	}
 	s.closeLeg(l)
 	writeJSON(w, 200, st)
 }
@@ -310,6 +317,7 @@ func (s *server) apiSaveResult(w http.ResponseWriter, r *http.Request) {
 	}
 	v["saved"] = time.Now().UTC().Format(time.RFC3339)
 	v["node_version"] = version
+	v["node_build"] = buildID()
 	name := time.Now().UTC().Format("20060102-150405") + "-" + randHex(3) + ".json"
 	b, _ := json.MarshalIndent(v, "", " ")
 	p := filepath.Join(s.cfg.Data, "results", name)

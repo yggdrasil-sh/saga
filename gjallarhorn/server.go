@@ -125,6 +125,7 @@ type server struct {
 	node                    *sfu.Node
 	sfuUDP, sfuTCP, sfuTURN *webrtc.API
 	gcc                     gccHook
+	ttrace                  *turnTracer
 	iceMux                  *netx.ICEMux
 	bySFU                   map[*sfu.Leg]*leg
 	devSecret               string
@@ -270,6 +271,8 @@ func newServer(cfg *config) (*server, error) {
 		}
 	}
 	s.mux.OnICE = s.onICEConn
+	s.ttrace = newTurnTracer()
+	s.mux.OnTURN = s.ttrace.conn
 	// eigener ICE-TCP-Mux (ohne Allokation je Paket): Standard im Knoten,
 	// die Probe misst weiter mit pions Mux (HORN_ICEMUX=own|pion)
 	if im := env("HORN_ICEMUX", map[bool]string{true: "own", false: "pion"}[cfg.Mode == "node"]); im == "own" {
@@ -522,6 +525,7 @@ func (s *server) startTURN() error {
 		Realm:         s.cfg.Name,
 		LoggerFactory: lf,
 		AuthHandler:   turn.NewLongTermAuthHandler(s.turnSecret, lf.NewLogger("turn")),
+		EventHandler:  s.ttrace.handlers(),
 		ListenerConfigs: []turn.ListenerConfig{{
 			Listener:              s.mux.TURN,
 			RelayAddressGenerator: &turn.RelayAddressGeneratorStatic{RelayAddress: relay, Address: relay.String()},

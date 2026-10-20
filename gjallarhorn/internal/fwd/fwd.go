@@ -594,7 +594,10 @@ func NewLeg() *Leg {
 
 // NewOut legt einen Ausgang auf diesem Bein an.
 func (l *Leg) NewOut(id, owner string, kind Kind, class Class, prefs ...string) *Out {
-	return &Out{ID: id, Owner: owner, Kind: kind, Class: class, Prefs: prefs, leg: l}
+	o := &Out{ID: id, Owner: owner, Kind: kind, Class: class, Prefs: prefs, leg: l}
+	o.maxTID.Store(3) // alle zeitlichen Schichten, bis die Steuerung begrenzt
+	o.tidCur = 3
+	return o
 }
 
 // Close beendet den Schreiber und gibt wartende Pakete frei.

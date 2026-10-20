@@ -29,6 +29,7 @@ type pPhase struct {
 	WSRTT     pRTT    `json:"ws_rtt_ms"`
 	Secs      float64 `json:"secs"`
 	Audio     *struct {
+		Tracks  *int     `json:"tracks"`
 		Conceal *float64 `json:"conceal_pct"`
 		JB      *float64 `json:"jb_ms"`
 		Loss    *float64 `json:"loss_pct"`
@@ -49,19 +50,65 @@ type pPhase struct {
 		Stable float64 `json:"stable"`
 	} `json:"up_kbps"`
 	Node []legStats `json:"node"`
+	// ungueltig (Seite im Hintergrund, kein Ton): zaehlt im Go/No-Go nicht
+	Invalid      string   `json:"invalid"`
+	ExpectedDown *float64 `json:"expected_down_kbps"`
+	ConnectTotal *float64 `json:"connect_total_ms"`
+	JBT          any      `json:"jbt"`
+	TileProfile  string   `json:"tile_profile"`
+}
+
+// invalidReason: warum eine verbundene Phase nicht zaehlt ("" = gueltig).
+// Rueckwirkend: 0 empfangene Tonspuren (z. B. AudioContext in Safari
+// angehalten, Tab im Hintergrund) machen die Phase ungueltig.
+func (p pPhase) invalidReason() string {
+	if p.Invalid != "" {
+		return p.Invalid
+	}
+	if p.OK && p.Audio != nil && p.Audio.Tracks != nil && *p.Audio.Tracks == 0 {
+		return "keine Tonspuren empfangen"
+	}
+	return ""
+}
+
+// valid: verbunden und gueltig gemessen.
+func (p pPhase) valid() bool { return p.OK && p.invalidReason() == "" }
+
+// MinMV ist die Messversion ab dem Fix der Bildrate (Commit 7857779).
+const MinMV = 2
+
+// oldVersion: Lauf vor dem Fix (Kacheln mit ~2,5 statt 10 fps); zaehlt
+// fuer G4/G5 nicht.
+func (r pResult) oldVersion() bool { return r.MV < MinMV }
+
+// expectedDown: erwartete Downlink-Rate in kbit/s laut Profil. Aeltere
+// Ergebnisse ohne Messwert: aus den Raten der Messseite (Ton 40 kbit/s,
+// Sprecher 1,5 Mbit/s, Kacheln 250 kbit/s).
+func (p pPhase) expectedDown() float64 {
+	if p.ExpectedDown != nil && *p.ExpectedDown > 0 {
+		return *p.ExpectedDown
+	}
+	if p.Profile == "a25" {
+		return 3 * 40
+	}
+	// Obergrenzen der Messseite: Sprecher 1,5 Mbit/s, 10 Kacheln je
+	// 150 kbit/s (TCP, 180p/10 fps), 3 x Ton 40 kbit/s
+	return 3*40 + 1500 + 10*150
 }
 
 type pResult struct {
-	File    string   `json:"-"`
-	Net     string   `json:"net"`
-	Device  string   `json:"device"`
-	Browser string   `json:"browser"`
-	Version string   `json:"version"`
-	OS      string   `json:"os"`
-	Saved   string   `json:"saved"`
-	Mic     string   `json:"mic_permission"`
-	Phases  []pPhase `json:"phases"`
-	Base    *struct {
+	File      string   `json:"-"`
+	Net       string   `json:"net"`
+	Device    string   `json:"device"`
+	Browser   string   `json:"browser"`
+	Version   string   `json:"version"`
+	OS        string   `json:"os"`
+	Saved     string   `json:"saved"`
+	Mic       string   `json:"mic_permission"`
+	Phases    []pPhase `json:"phases"`
+	MV        int      `json:"mv"`
+	NodeBuild string   `json:"node_build"`
+	Base      *struct {
 		WS pRTT `json:"ws_rtt_ms"`
 	} `json:"base"`
 }
@@ -176,6 +223,10 @@ func writeReport(w io.Writer, rs []pResult, bs []benchResult, now time.Time) {
 		fmt.Fprintf(w, "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 		for _, r := range rs {
 			for _, p := range r.Phases {
+				if p.OK && p.invalidReason() != "" {
+					fmt.Fprintf(w, "| %s | %s | %s | %s | %s | ⚠ ungültig: %s | | | | | | | | | | | | |\n", r.Device, esc(r.Net), platform(r), pathName[p.Path], profName[p.Profile], esc(p.invalidReason()))
+					continue
+				}
 				if !p.OK {
 					fmt.Fprintf(w, "| %s | %s | %s | %s | %s | ✘ %s | | | | | | | | | | | | |\n", r.Device, esc(r.Net), platform(r), pathName[p.Path], profName[p.Profile], esc(p.Reason))
 					continue
@@ -195,14 +246,20 @@ func writeReport(w io.Writer, rs []pResult, bs []benchResult, now time.Time) {
 				if p.Video != nil {
 					frz, frzs, vloss = fv(p.Video.Frz5, 2), fv(p.Video.FrzS5, 2), fv(p.Video.LossPct, 2)
 				}
-				fmt.Fprintf(w, "| %s | %s | %s | %s | %s | ✔ | %s | %s / %s | %s | %s | %s | %s | %s | %s | %s | %s | %d | %s |\n",
-					r.Device, esc(r.Net), platform(r), pathName[p.Path], profName[p.Profile], maxConnect(p.ConnectMs),
+				okCell := "✔"
+				if r.oldVersion() {
+					okCell = "✔ (alte Messversion)"
+				}
+				fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s | %s | %s / %s | %s | %s | %s | %s | %s | %s | %s | %s | %d | %s |\n",
+					r.Device, esc(r.Net), platform(r), pathName[p.Path], profName[p.Profile], okCell, maxConnect(p.ConnectMs),
 					fv(p.RTT.P50, 0), fv(p.RTT.P95, 0), fv(p.WSRTT.P95, 0), conceal, jb, frz, frzs,
 					fmtNum(p.Down.Stable/1000, 2), fmtNum(p.Up.Stable/1000, 2), vloss, drop, fmtNum(maxQ, 0))
 			}
 		}
 		fmt.Fprintln(w)
 	}
+
+	writeTURNSetup(w, rs)
 
 	fmt.Fprintf(w, "## Bench (Knoten-Last mit lokalen Bots)\n\n")
 	if len(bs) == 0 {
@@ -220,7 +277,7 @@ func writeReport(w io.Writer, rs []pResult, bs []benchResult, now time.Time) {
 	}
 
 	fmt.Fprintf(w, "## Go/No-Go (Konzept §5.4)\n\n")
-	fmt.Fprintf(w, "Bewertet wird der schlechteste Wert über alle Läufe des TCP-Wegs (ICE-TCP oder TURN-TLS, Profil 12 Video). Lokale Testläufe (Netz „e2e-lokal“) zählen nicht.\n\n")
+	fmt.Fprintf(w, "Bewertet wird der schlechteste gültige Wert über alle Läufe und beide TCP-Wege (ICE-TCP und TURN-TLS, Profil 12 Video). Ungültige Phasen (Seite im Hintergrund, kein Ton bzw. 0 Tonspuren) und lokale Testläufe (Netz „e2e-lokal“) zählen nicht. Läufe einer alten Messversion (vor dem Bildrate-Fix, Kacheln mit ~2,5 statt 10 fps) stehen in der Tabelle, zählen aber nicht für G4 und G5.\n\n")
 	fmt.Fprintf(w, "| # | Kriterium | Messwert | Ergebnis |\n|---|---|---|---|\n")
 	gs := evaluateGo(rs, bs)
 	for _, g := range gs {
@@ -246,7 +303,8 @@ func evaluateGo(rs []pResult, bs []benchResult) []goRow {
 			real = append(real, r)
 		}
 	}
-	// TCP-Weg: je Lauf bester TCP-Weg (ICE-TCP, sonst TURN-TLS) mit Profil v12
+	// TCP-Wege: alle gueltigen Phasen (ICE-TCP und TURN-TLS) mit Profil v12;
+	// gewertet wird jeweils die schlechteste
 	type tcpRun struct {
 		r pResult
 		p pPhase
@@ -256,19 +314,15 @@ func evaluateGo(rs []pResult, bs []benchResult) []goRow {
 	for _, r := range real {
 		k := platform(r)
 		ok := false
-		var best *pPhase
-		for i, p := range r.Phases {
+		for _, p := range r.Phases {
 			if p.Profile == "v12" && (p.Path == "tcp" || p.Path == "turn") && p.OK {
 				ok = true
-				if best == nil || p.Path == "tcp" {
-					best = &r.Phases[i]
+				if p.valid() {
+					tcp = append(tcp, tcpRun{r, p})
 				}
 			}
 		}
 		plat[k] = plat[k] || ok
-		if best != nil {
-			tcp = append(tcp, tcpRun{r, *best})
-		}
 	}
 	var out []goRow
 	// G1
@@ -304,9 +358,16 @@ func evaluateGo(rs []pResult, bs []benchResult) []goRow {
 		}
 		out = append(out, row)
 	}
-	worst := func(f func(pPhase) *float64) (float64, bool) {
+	// G4/G5 nur mit Laeufen ab der aktuellen Messversion (Bildrate-Fix)
+	var cur []tcpRun
+	for _, t := range tcp {
+		if !t.r.oldVersion() {
+			cur = append(cur, t)
+		}
+	}
+	worstIn := func(set []tcpRun, f func(pPhase) *float64) (float64, bool) {
 		m, have := 0.0, false
-		for _, t := range tcp {
+		for _, t := range set {
 			if x := f(t.p); x != nil {
 				if !have || *x > m {
 					m = *x
@@ -316,6 +377,8 @@ func evaluateGo(rs []pResult, bs []benchResult) []goRow {
 		}
 		return m, have
 	}
+	worst := func(f func(pPhase) *float64) (float64, bool) { return worstIn(tcp, f) }
+	worstCur := func(f func(pPhase) *float64) (float64, bool) { return worstIn(cur, f) }
 	thr := func(id, what string, f func(pPhase) *float64, unit string, goMax, noGoMin float64) goRow {
 		row := goRow{id: id, what: what}
 		x, ok := worst(f)
@@ -343,13 +406,13 @@ func evaluateGo(rs []pResult, bs []benchResult) []goRow {
 	}, " %", 3, 6))
 	{
 		row := goRow{id: "G4", what: "Bild-Einfrieren je Kachel (≤ 1 je 5 min, Summe ≤ 2 s)"}
-		f, ok1 := worst(func(p pPhase) *float64 {
+		f, ok1 := worstCur(func(p pPhase) *float64 {
 			if p.Video == nil {
 				return nil
 			}
 			return p.Video.Frz5
 		})
-		d, _ := worst(func(p pPhase) *float64 {
+		d, _ := worstCur(func(p pPhase) *float64 {
 			if p.Video == nil {
 				return nil
 			}
@@ -371,19 +434,25 @@ func evaluateGo(rs []pResult, bs []benchResult) []goRow {
 		out = append(out, row)
 	}
 	{
-		row := goRow{id: "G5", what: "stabile Downlink-Rate je Gerät (≥ 3 Mbit/s)"}
-		m, have := 0.0, false
-		for _, t := range tcp {
-			if !have || t.p.Down.Stable < m {
-				m = t.p.Down.Stable
+		row := goRow{id: "G5", what: "stabile Downlink-Rate je Gerät (≥ 80 % der laut Profil erwarteten Rate)"}
+		worstR, have := 0.0, false
+		var wd, we float64
+		for _, t := range cur {
+			e := t.p.expectedDown()
+			if e <= 0 {
+				continue
+			}
+			q := t.p.Down.Stable / e
+			if !have || q < worstR {
+				worstR, wd, we = q, t.p.Down.Stable, e
 			}
 			have = true
 		}
 		if !have {
 			row.value, row.v = "–", vNone
 		} else {
-			row.value = fmtNum(m/1000, 2) + " Mbit/s (kleinster Wert)"
-			if m >= 3000 {
+			row.value = fmt.Sprintf("%s %% (%s von %s Mbit/s, schlechtester Lauf)", fmtNum(100*worstR, 0), fmtNum(wd/1000, 2), fmtNum(we/1000, 2))
+			if worstR >= 0.8 {
 				row.v = vGo
 			} else {
 				row.v = vNoGo
@@ -577,4 +646,51 @@ func overall(gs []goRow) string {
 		return "Go unter Vorbehalt (Grenzbereich: " + strings.Join(grey, ", ") + ")."
 	}
 	return "Go (G1–G6 erfüllt)."
+}
+
+// writeTURNSetup zerlegt den Aufbau der TURN-TLS-Beine (ms ab TCP-Annahme am
+// Knoten): Wo steckt die Zeit (TLS, 401-Runde, Permission, ICE, DTLS)?
+func writeTURNSetup(w io.Writer, rs []pResult) {
+	type row struct {
+		r    pResult
+		p    pPhase
+		role string
+		t    *TURNSetup
+		con  int64
+	}
+	var rows []row
+	for _, r := range rs {
+		for _, p := range r.Phases {
+			if p.Path != "turn" {
+				continue
+			}
+			for _, n := range p.Node {
+				if n.TURN != nil {
+					rows = append(rows, row{r, p, n.Role, n.TURN, n.ConnectMs})
+				}
+			}
+		}
+	}
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "## TURN-TLS-Aufbau je Bein (ms ab TCP-Annahme am Knoten)\n\n")
+	fmt.Fprintf(w, "„TCP nach Bein“: so lange nach dem Anlegen des Beins kam die TCP-Verbindung an (Client: DNS, Kandidatensuche). TLS endet mit dem Finished des Clients, enthält also dessen Zertifikatsprüfung.\n\n")
+	fmt.Fprintf(w, "| Gerät | Netz | Browser | Profil | Leitung | TCP nach Bein | TLS | TLS fortgesetzt | Allocate (nach 401) | Permission | ChannelBind | ICE | DTLS = verbunden | Aufbau am Knoten |\n")
+	fmt.Fprintf(w, "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+	f := func(x float64) string {
+		if x < 0 {
+			return "–"
+		}
+		return fmtNum(x, 0)
+	}
+	for _, x := range rows {
+		res := "nein"
+		if x.t.Resumed {
+			res = "ja"
+		}
+		fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d |\n", x.r.Device, esc(x.r.Net), platform(x.r),
+			profName[x.p.Profile], x.role, f(x.t.LegBeforeTCP), f(x.t.TLS), res, f(x.t.Auth), f(x.t.Perm), f(x.t.Channel), f(x.t.ICE), f(x.t.DTLS), x.con)
+	}
+	fmt.Fprintln(w)
 }

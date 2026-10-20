@@ -147,6 +147,10 @@ type Mux struct {
 	FirstByte, Handshake time.Duration // 0 = Standard
 	Stats                Stats
 
+	// OnTURN meldet eine TURN-TLS-Verbindung mit Annahme- und Handshake-Ende
+	// (Diagnose des Verbindungsaufbaus; Adresse nur im Speicher).
+	OnTURN func(remote net.Addr, accepted, tlsDone time.Time, resumed bool)
+
 	// OnICE meldet eine ICE-TCP-Verbindung mit dem lokalen ufrag, damit das
 	// Bein seine Verbindung nach jedem Schub leeren kann.
 	OnICE func(ufrag string, c *CoalesceConn)
@@ -231,6 +235,7 @@ func (m *Mux) serve() {
 }
 
 func (m *Mux) handle(c net.Conn) {
+	t0 := time.Now()
 	pending := true
 	done := func() {
 		if pending {
@@ -288,14 +293,14 @@ func (m *Mux) handle(c net.Conn) {
 		}
 		m.ICE.push(&bufConn{Conn: cc, r: br, remote: remote})
 	case RouteTLS:
-		m.handleTLS(&bufConn{Conn: cc, r: br, remote: remote}, cc, done)
+		m.handleTLS(&bufConn{Conn: cc, r: br, remote: remote}, cc, done, t0)
 	default:
 		m.Stats.Rejected.Add(1)
 		c.Close()
 	}
 }
 
-func (m *Mux) handleTLS(raw *bufConn, cc *CoalesceConn, done func()) {
+func (m *Mux) handleTLS(raw *bufConn, cc *CoalesceConn, done func(), t0 time.Time) {
 	tc := tls.Server(raw, m.TLS)
 	_ = raw.SetDeadline(time.Now().Add(m.handshake()))
 	if err := tc.Handshake(); err != nil {
@@ -303,6 +308,7 @@ func (m *Mux) handleTLS(raw *bufConn, cc *CoalesceConn, done func()) {
 		tc.Close()
 		return
 	}
+	tlsDone := time.Now()
 	st := tc.ConnectionState()
 	if st.NegotiatedProtocol == "acme-tls/1" { // TLS-ALPN-01: erledigt im Handshake
 		m.Stats.ACME.Add(1)
@@ -327,6 +333,9 @@ func (m *Mux) handleTLS(raw *bufConn, cc *CoalesceConn, done func()) {
 			cc.Enable() // TLS-Datensaetze fuer TURN gebuendelt schreiben
 		}
 		m.Stats.TURN.Add(1)
+		if m.OnTURN != nil {
+			m.OnTURN(c.RemoteAddr(), t0, tlsDone, st.DidResume)
+		}
 		if !m.NoTailProbe && m.tailProbe() > 0 {
 			tcp, _ := cc.Conn.(*net.TCPConn)
 			m.TURN.push(&probeBufConn{bufConn: c, p: NewProbeConn(c, TailFrameTURN, m.tailProbe(), m.TailMode, tcp)})

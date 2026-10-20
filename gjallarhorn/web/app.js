@@ -14,6 +14,9 @@ const PROFILES = {
   a25: { label: '25 Ton', n: 25, audio: 3, video: 0 },    // Top-3-Ton
 };
 const PATHS = { udp: 'UDP', tcp: 'ICE-TCP', turn: 'TURN-TLS' };
+// Messversion: 2 = nach dem Fix der Bildrate (alle zeitlichen Schichten),
+// Ton-Pruefung und Sichtbarkeit. Aeltere Laeufe wertet der Report nicht fuer G4/G5.
+const MV = 2;
 
 const $ = (id) => document.getElementById(id);
 let session = null;
@@ -78,7 +81,7 @@ function startSources() {
   draw();
   drawTimer = setInterval(draw, 1000 / 30);
   srcVideo = cv.captureStream(30).getVideoTracks()[0];
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   const osc = audioCtx.createOscillator();
   const lfo = audioCtx.createOscillator();
   const lfoGain = audioCtx.createGain();
@@ -98,6 +101,7 @@ function stopSources() {
   if (srcVideo) srcVideo.stop();
   if (srcAudio) srcAudio.stop();
   if (audioCtx) audioCtx.close();
+  audioCtx = null;
 }
 
 // Chrome bildet Host- und ICE-TCP-Kandidaten nur, wenn die Seite eine
@@ -166,7 +170,7 @@ function setJbt(receiver) {
 function encodings(path) {
   // TCP-Wege: 2 Schichten (Kacheln 180p/10 fps wie der SFU auf TCP, Sprecher
   // 540p), UDP: 3 Schichten (H4), Kacheln dort 15 fps
-  const l = { rid: 'l', scaleResolutionDownBy: 3, maxBitrate: 250000, maxFramerate: path === 'udp' ? 15 : 10 };
+  const l = { rid: 'l', scaleResolutionDownBy: 3, maxBitrate: path === 'udp' ? 250000 : 150000, maxFramerate: path === 'udp' ? 15 : 10 };
   const m = { rid: 'm', scaleResolutionDownBy: 1.5, maxBitrate: 600000, maxFramerate: 30 };
   const h = { rid: 'h', scaleResolutionDownBy: 1, maxBitrate: 1500000, maxFramerate: 30 };
   return path === 'udp' ? [l, m, h] : [l, h];
@@ -257,14 +261,19 @@ async function snapshot(pc) {
         if (x.freezeCount != null) v.haveFreeze = true;
         v.frz += x.freezeCount || 0; v.frzDur += x.totalFreezesDuration || 0;
         v.dec += x.framesDecoded || 0;
+        (v.per = v.per || {})[x.mid || x.trackIdentifier] = { dec: x.framesDecoded || 0, rcv: x.framesReceived || 0, drop: x.framesDropped || 0, h: x.frameHeight || 0 };
         v.lost += Math.max(0, x.packetsLost || 0); v.recv += x.packetsReceived || 0;
       }
     } else if (x.type === 'outbound-rtp') {
       s.outBytes += x.bytesSent || 0;
-      if (x.kind === 'audio') s.outAudioPkts = (s.outAudioPkts || 0) + (x.packetsSent || 0);
+      if (x.kind === 'audio') {
+        s.outAudioPkts = (s.outAudioPkts || 0) + (x.packetsSent || 0);
+        s.outAudioBytes = (s.outAudioBytes || 0) + (x.bytesSent || 0);
+      }
+      if (x.kind === 'video') (s.outByRid = s.outByRid || {})[x.rid || '-'] = ((s.outByRid || {})[x.rid || '-'] || 0) + (x.bytesSent || 0);
       if (x.kind === 'video') s.outVideoPkts = (s.outVideoPkts || 0) + (x.packetsSent || 0);
       if (x.qualityLimitationReason && x.qualityLimitationReason !== 'none') s.ql = x.qualityLimitationReason;
-      if (x.kind === 'video' && x.frameHeight) s.outRes.push((x.rid || '-') + ':' + x.frameHeight);
+      if (x.kind === 'video' && x.frameHeight) s.outRes.push((x.rid || '-') + ':' + x.frameHeight + '@' + (x.framesPerSecond || 0) + (x.qualityLimitationReason && x.qualityLimitationReason !== 'none' ? '/' + x.qualityLimitationReason : ''));
     }
   });
   return s;
@@ -281,6 +290,37 @@ async function measure(legs, secs, onTick) {
     if (i < secs + WARM) await sleep(Math.max(0, wait));
   }
   return snaps;
+}
+
+// Erwartete Downlink-Rate aus dem Profil: der Spiegel schickt die eigenen
+// Stroeme zurueck, Ton x audio, Sprecher (obere Schicht) + (video-1) Kacheln
+// (untere Schicht). Gemessen an den eigenen Senderaten im Wertungsfenster.
+function expectedDown(snaps, prof, path) {
+  const win = snaps.slice(WARM);
+  if (win.length < 2) return null;
+  const secs = (win[win.length - 1][0] - win[0][0]) / 1000;
+  const rate = (f) => {
+    let b = 0;
+    win[win.length - 1][1].forEach((s, i) => { b += f(s) - f(win[0][1][i]); });
+    return b * 8 / 1000 / secs;
+  };
+  const a = rate((s) => s.outAudioBytes || 0);
+  const lay = (r) => rate((s) => (s.outByRid && s.outByRid[r]) || 0);
+  const top = 'h'; // Sprecher: oberste gesendete Schicht (TCP l+h, UDP l+m+h)
+  const v = prof.video ? lay(top) + (prof.video - 1) * lay('l') : 0;
+  return Math.round(a * prof.audio + v);
+}
+
+function perTrackFps(first, last, secs) {
+  const out = [];
+  last.forEach((s, i) => {
+    const a = (first[i] && first[i].v.per) || {};
+    for (const [k, x] of Object.entries(s.v.per || {})) {
+      const y = a[k] || { dec: 0, rcv: 0, drop: 0 };
+      out.push({ dec: r1((x.dec - y.dec) / secs), rcv: r1((x.rcv - y.rcv) / secs), drop: x.drop - y.drop, h: x.h });
+    }
+  });
+  return out;
 }
 
 function evaluate(snaps, legs, tStart, tEnd) {
@@ -329,6 +369,8 @@ function evaluate(snaps, legs, tStart, tEnd) {
       freezes_per5min_track: haveFreeze ? r2(frz / vTracks / (secs / 300)) : null,
       freeze_s_per5min_track: haveFreeze ? r2(frzDur / vTracks / (secs / 300)) : null,
       fps: r1(d((s) => s.v.dec) / vTracks / secs),
+      // je Spur: Bilder/s decodiert und empfangen, Hoehe (Diagnose Bildrate)
+      fps_tracks: perTrackFps(first, last, secs),
       loss_pct: vRecv + vLost > 0 ? r2(100 * vLost / (vRecv + vLost)) : null,
     } : null,
     down_kbps: { stable: Math.round(pct(stable, 0.5) || 0), mean: Math.round(stable.reduce((a, b) => a + b, 0) / (stable.length || 1)) },
@@ -350,8 +392,13 @@ async function runMedia(path, profKey, secs, prog) {
        { role: 'video', audio: 0, video: prof.video, sendAudio: false, sendVideo: true }];
   const res = { path, profile: profKey, n: prof.n, ok: false, legs: specs.map((s) => s.role) };
   const legs = [];
+  const hid0 = hiddenEvents, blur0 = blurEvents;
   try {
-    for (const sp of specs) legs.push(await openLeg(path, sid, sp));
+    // Ton- und Bild-Leitung gleichzeitig aufbauen: der Kaltstart des ersten
+    // Beins (DNS, Zertifikatspruefung, TLS) faellt nur einmal ins Gewicht
+    const t0 = performance.now();
+    legs.push(...await Promise.all(specs.map((sp) => openLeg(path, sid, sp))));
+    res.connect_total_ms = Math.round(performance.now() - t0);
     res.connect_ms = legs.map((l) => l.connectMs);
     if (path !== 'udp') {
       // Jitter-Puffer-Ziel und Kachelprofil im Ergebnis (Safari: sehen, ob es greift)
@@ -366,6 +413,12 @@ async function runMedia(path, profKey, secs, prog) {
     const tStart = performance.now() + WARM * 1000;
     const snaps = await measure(legs, secs, prog);
     Object.assign(res, evaluate(snaps, legs, tStart, performance.now()));
+    res.expected_down_kbps = expectedDown(snaps, prof, path);
+    if (blurEvents > blur0) res.focus_lost = blurEvents - blur0;
+    if (hiddenEvents > hid0 || document.hidden) res.invalid = 'Seite war im Hintergrund';
+    else if (!res.audio || !res.audio.tracks || !(audioCtx && audioCtx.state === 'running')) {
+      res.invalid = 'kein Ton (AudioContext ' + (audioCtx ? audioCtx.state : 'fehlt') + ', Tonspuren ' + ((res.audio && res.audio.tracks) || 0) + ')';
+    }
   } catch (e) {
     res.reason = String(e.message || e);
   } finally {
@@ -377,6 +430,20 @@ async function runMedia(path, profKey, secs, prog) {
   }
   return res;
 }
+
+// ---------- Sichtbarkeit ----------
+// Im Hintergrund drosseln Browser Zeitgeber, Bild und Ton: Messwerte aus
+// dieser Zeit sind wertlos. Gezaehlt wird je Phase.
+let hiddenEvents = 0;
+let blurEvents = 0;
+function markHidden(why) {
+  hiddenEvents++;
+  const w = $('warn');
+  if (w) { w.hidden = false; w.textContent = 'Ungültig – Seite war im Hintergrund (' + why + '). Bitte die Seite während der Messung im Vordergrund lassen und neu messen.'; }
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) markHidden('Tab verdeckt'); });
+window.addEventListener('pagehide', () => markHidden('Seite verlassen'));
+window.addEventListener('blur', () => { blurEvents++; });
 
 // ---------- Ablauf ----------
 function phaseList(paths) {
@@ -399,6 +466,7 @@ function setStatus(li, text, cls) {
 async function run(net, dev) {
   $('go').disabled = true;
   $('lauf').hidden = false; $('erg').hidden = true;
+  $('warn').hidden = true; hiddenEvents = 0; blurEvents = 0;
   let paths = (Q.get('paths') || 'udp,tcp,turn').split(',').filter((p) => PATHS[p]);
   if (!session.udp) paths = paths.filter((p) => p !== 'udp');
   const ph = phaseList(paths);
@@ -422,7 +490,7 @@ async function run(net, dev) {
   const mic = await unlockCandidates();
   startSources();
   startPing();
-  const result = { v: 1, net, device: dev, ...browserInfo(), mic_permission: mic, e2e: useScript ? 'RTCRtpScriptTransform' : 'createEncodedStreams',
+  const result = { v: 1, mv: MV, probe_version: session.version, probe_build: session.build, net, device: dev, ...browserInfo(), mic_permission: mic, e2e: useScript ? 'RTCRtpScriptTransform' : 'createEncodedStreams',
     jbt: jbtSupported ? JBT : 'nicht unterstützt',
     profile_secs: { base: BASE, path: DUR, ton: TON }, phases: [] };
   if (!session.udp) result.phases.push({ path: 'udp', profile: 'v12', ok: false, reason: 'am Knoten aus' });
@@ -445,7 +513,9 @@ async function run(net, dev) {
         }
         const r = await runMedia(path, p.prof, p.secs, progress(p.secs + WARM));
         result.phases.push(r);
-        if (r.ok) {
+        if (r.ok && r.invalid) {
+          setStatus(li, 'ungültig – ' + r.invalid, 'bad');
+        } else if (r.ok) {
           const txt = [`Aufbau ${Math.max(...r.connect_ms)} ms`, r.rtt_ms && r.rtt_ms.p95 != null ? `RTT p95 ${r.rtt_ms.p95} ms` : null,
             r.audio && r.audio.conceal_pct != null ? `Verdeckung ${r.audio.conceal_pct} %` : null].filter(Boolean);
           setStatus(li, txt, 'ok');
@@ -456,6 +526,13 @@ async function run(net, dev) {
   } finally {
     stopPing(); stopSources(); worker.terminate(); worker = null;
     $('fill').style.width = '100%';
+  }
+  const inv = result.phases.filter((p) => p.invalid).map((p) => `${PATHS[p.path]}: ${p.invalid}`);
+  if (inv.length) {
+    result.invalid = inv.join('; ');
+    const w = $('warn');
+    w.hidden = false;
+    w.textContent = 'Ungültige Messung – ' + result.invalid + '. Diese Phasen zählen im Bericht nicht. Bitte neu messen.';
   }
   try {
     const s = await api('POST', '/api/results', result);
@@ -482,6 +559,7 @@ function showTable(r) {
     const cells = p.ok ? [PATHS[p.path], PROFILES[p.profile].label, Math.max(...p.connect_ms),
       `${p.rtt_ms.p50 ?? '–'} / ${p.rtt_ms.p95 ?? '–'}`, p.audio.conceal_pct ?? '–', p.audio.jb_ms ?? '–',
       p.video ? (p.video.freezes_per5min_track ?? '–') : '–', r2(p.down_kbps.stable / 1000), r2(p.up_kbps.stable / 1000), dropped]
+      .map((c, i) => (i === 1 && p.invalid ? c + ' (ungültig)' : c))
       : [PATHS[p.path], PROFILES[p.profile].label, p.reason || '✘', '', '', '', '', '', '', ''];
     // data-label traegt die Spaltenueberschrift fuer die Kartenansicht (schmale Bildschirme)
     cells.forEach((c, i) => {
@@ -505,7 +583,16 @@ async function init() {
   $('ver').textContent = 'Knoten ' + session.version + (session.udp ? ' · UDP an' : ' · nur TCP');
   const paths = (Q.get('paths') || 'udp,tcp,turn').split(',').filter((p) => PATHS[p] && (p !== 'udp' || session.udp));
   $('dauer').textContent = Math.round((BASE + paths.length * (DUR + WARM) + TON + WARM) / 60 * 10) / 10;
-  $('f').onsubmit = (ev) => { ev.preventDefault(); run($('net').value.trim(), $('dev').value); };
+  $('f').onsubmit = (ev) => {
+    ev.preventDefault();
+    // Safari startet einen AudioContext nur aus einer Nutzeraktion heraus:
+    // hier im Klick anlegen und starten, nicht erst nach await.
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioCtx.resume().catch(() => {});
+    } catch (e) { audioCtx = null; }
+    run($('net').value.trim(), $('dev').value);
+  };
   if (Q.get('net')) $('net').value = Q.get('net');
   window.__hornReady = true;
 }
