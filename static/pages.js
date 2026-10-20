@@ -339,7 +339,7 @@
       if (inCap) { e.preventDefault(); e.stopPropagation(); leaveBlock(blk); return; }
       var html = txt.innerHTML, plain = txt.innerText || '';
       // zweites Enter: letzte Zeile ist leer (Editor.js-Quote fuegt <br> bzw. <div><br></div> ein)
-      if (/(<br\s*\/?>\s*|<div>(<br\s*\/?>)?<\/div>\s*)$/i.test(html) && /\n\s*$/.test(plain)) {
+      if (/(<br\s*\/?>\s*|<div[^>]*>(<br\s*\/?>)?<\/div>\s*)$/i.test(html) && /\n\s*$/.test(plain)) {
         e.preventDefault(); e.stopPropagation(); leaveBlock(blk, txt);
       }
       return;
