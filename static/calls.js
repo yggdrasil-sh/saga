@@ -100,7 +100,11 @@
     back: ['M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z', 'M14 10l-4 4', 'M10 10v4h4'],
     swap: ['M7 4L3 8l4 4', 'M3 8h14', 'M17 20l4-4-4-4', 'M21 16H7'],
     spk: ['M11 5L6 9H2v6h4l5 4V5z', 'M15.5 8.5a5 5 0 0 1 0 7', 'M19 5a10 10 0 0 1 0 14'],
-    spkOff: ['M11 5L6 9H2v6h4l5 4V5z', 'M23 9l-6 6', 'M17 9l6 6']
+    spkOff: ['M11 5L6 9H2v6h4l5 4V5z', 'M23 9l-6 6', 'M17 9l6 6'],
+    // 2.5: Kachel-/Sprecheransicht, Teilnehmende
+    grid: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M3 14h7v7H3z', 'M14 14h7v7h-7z'],
+    spkView: ['M3 3h18v12H3z', 'M3 18h4v3H3z', 'M10 18h4v3h-4z', 'M17 18h4v3h-4z'],
+    users: ['M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M23 21v-2a4 4 0 0 0-3-3.9', 'M16 3.1a4 4 0 0 1 0 7.8']
   };
   function icon(name) {
     var NS = 'http://www.w3.org/2000/svg', s = document.createElementNS(NS, 'svg');
@@ -788,7 +792,7 @@
       if (!now[d] && d !== here && R.inRoom) HK.toast(T('{name} ({dev}) hat den Anruf verlassen', { name: old[d].name || '?', dev: old[d].dev_name || T('Gerät') }));
     });
     links(R).forEach(function (L) { if (L.peerDevice && !now[L.peerDevice] && L.established) dropLink(L, ''); });
-    if (R.horn) { hornKeys(R); hornMap(R); var q0 = R.horn.X ? R.horn.q.splice(0) : []; q0.forEach(function (d) { hornSig(R, d); }); }
+    if (R.horn) { hornKeys(R); hornMap(R); var q0 = R.horn.X ? R.horn.q.splice(0) : []; q0.forEach(function (d) { hornSig(R, d); }); hornRunes(R); hornList(R); }
     drawTiles(R); drawCtl(R); drawInfo(R);
   }
   // Verbindung zu einem Geraet trennen (hat den Anruf verlassen bzw. Fehler nur auf dieser Verbindung)
@@ -997,15 +1001,26 @@
     finish(R, T('Anruf auf {dev} übernommen.', { dev: (x && x.dev_name) || T('anderes Gerät') }), 'info');
   }
   // Gruppenanruf beginnen (Gruppen-, freie und Seiten-Chats): erst allein, alle anderen klingeln (call.invite)
-  function startGroup(chat, video) {
+  function startGroup(chat, video, hinted) {
     if (!window.RTCPeerConnection) { HK.toast(T('Dieser Browser kann keine Anrufe (WebRTC fehlt).')); return; }
     if (chat.call && chat.call.group === false) { HK.toast(chat.call.group_block || T('Gruppenanrufe gehen in diesem Chat nicht.')); return; }
+    // 2.5: ohne bereiten Knoten erst der Hinweis auf die Mesh-Grenze (bekannte Einstellungen: vor dem Anruffenster; "Trotzdem
+    // anrufen" ist wieder eine Bedienung, Ton und Kamera lassen sich danach freigeben)
+    var big = cfg && cfg.limits && chat.members && chat.members.length > (video ? cfg.limits.endpoints_video : cfg.limits.endpoints_audio);
+    if (!hinted && feat('horn') && big) {              // frisch fragen (lokal, wenige ms - die Bedienung gilt noch)
+      config(true).then(function () { return hornMeshHint(chat, video); }, function () { return true; })
+        .then(function (go) { if (go && !C) startGroup(chat, video, true); });
+      return;
+    }
     var R = C = newCall({ chat_id: chat.id, role: 'caller', kind: 'group', media: video ? 'video' : 'audio', v2: chat.v === 2 });
     R.title = chat.title || chat.name || '';
     audioCtx(); win(R); status(R, T('Kamera und Mikrofon …'));
     config(true).then(function () {
       if (!cfg.enabled) throw new Error(T('Anrufe sind auf diesem Server abgeschaltet.'));
       if (myCaps().indexOf('multi') < 0) throw new Error(T('Gruppenanrufe brauchen Saga 2.4 auf diesem Server.'));
+      return hinted ? true : hornMeshHint(chat, video); // 2.5: kein Knoten bereit (frisch abgefragt) -> Hinweis
+    }).then(function (go) {
+      if (!go) { R.ending = true; finish(R, '', 'info'); closeWin(R); throw null; }
       return mediaHint(R, video);
     }).then(function (s) {
       if (!live(R)) { s.getTracks().forEach(function (t) { t.stop(); }); throw null; }
@@ -1033,7 +1048,7 @@
   function drawTiles(R) {
     R = roomOf(R);
     if (!R || !R.ui || R.done) return;
-    if (R.horn) { hornTiles(R); return; }
+    if (R.horn) { hornDraw(R); return; }
     var mesh = meshView(R), ls = links(R);
     R.ui.w.classList.toggle('mesh', mesh);
     if (!mesh) {
@@ -1359,7 +1374,7 @@
   // Zustand ans Gegenueber. 2.4: dazu pip, want (wie gross es uns zeigen soll) und path - immer, auch ohne reneg
   // (aeltere Gegenstellen ignorieren die Felder)
   function wantNow(c) { return c.pip || document.visibilityState === 'hidden' ? 'small' : 'large'; }
-  function stateAll(c) { each(c, stateOut); }
+  function stateAll(c) { var R = roomOf(c); if (R && R.horn) { hornStateOut(R); hornList(R); return; } each(c, stateOut); }
   function stateOut(c) {
     if (!c.ready || !c.pc && !c.peerDevice) return;
     c.wantSent = wantNow(c);
@@ -1433,7 +1448,8 @@
   function hintOff() { try { return localStorage.getItem('saga-screen-hint') === '0'; } catch (e) { return false; } }
   function toggleScreen(c) {
     c = roomOf(c);
-    if (!links(c).some(function (L) { return L.pc && videoSender(L); })) return;
+    if (!c.horn && !links(c).some(function (L) { return L.pc && videoSender(L); })) return;
+    if (c.horn && !c.horn.cur) return;
     if (c.screen) { stopScreen(c); return; }
     if (hintOff()) { pickScreen(c); return; }
     screenHint(c);
@@ -1481,6 +1497,7 @@
       var at = s.getAudioTracks()[0];
       if (at) mixOn(c, at);
       each(c, function (L) { screenOn(L); });            // 2.4: je Verbindung die Betriebsart nach ihren Faehigkeiten
+      hornScreen(c);                                    // 2.5: ueber den Knoten (eigener Sender je Bild-Leitung)
       drawMedia(c); drawCtl(c); drawShare(c);
     }).catch(function (e) { if (e && e.name !== 'NotAllowedError' && e.name !== 'AbortError') HK.toast(T('Bildschirm teilen nicht möglich: {err}', { err: e.message })); });
   }
@@ -1522,6 +1539,7 @@
     mixOff(c);
     c.screen = null; c.scrStream = null; c.camPaused = false;
     each(c, screenOff);
+    hornScreen(c);
     drawMedia(c); drawCtl(c); drawShare(c);
   }
   function screenOff(c) {
@@ -1751,6 +1769,7 @@
     R.ui.lv.hidden = !mine0;
     R.ui.w.classList.toggle('screen', !!R.screen);
     if (c.tile) { drawTile(c); drawShare(R); playAudio(c); return; }
+    if (R.horn) { hornDraw(R); return; }
     if (meshView(R)) { drawShare(R); pipBtn(R, false); return; }
     var bigT = c.ui.rv.srcObject && c.ui.rv.srcObject.getVideoTracks()[0];
     var rvid = !!(bigT && bigT.readyState === 'live' && !bigT.muted);
@@ -1773,6 +1792,7 @@
   function drawShare(c) {
     var R = roomOf(c);
     var b = R.ui && R.ui.share; if (!b || R.done) return;
+    if (R.horn) return;                                // 2.5: hornShare (aus hornDraw)
     c = links(R).filter(function (L) { return L.remoteState.screen && L.connected; })[0] || primary(R);   // wer teilt (2.4: Mesh)
     var mesh = meshView(R);
     b.textContent = '';
@@ -1799,7 +1819,7 @@
     var v = btn(icon(c.cam ? 'cam' : 'camOff'), 'cl-round' + (c.cam ? '' : ' off'), function () { if (c.local) toggleCam(c); }, c.cam ? T('Kamera aus') : T('Kamera an'));
     v.setAttribute('aria-pressed', String(!c.cam)); x.appendChild(v);
     if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia && !mobile) {
-      var s = btn(icon('screen'), 'cl-round' + (c.screen ? ' on' : ''), function () { if (links(c).length) toggleScreen(c); }, c.screen ? T('Teilen beenden') : T('Bildschirm teilen'));
+      var s = btn(icon('screen'), 'cl-round' + (c.screen ? ' on' : ''), function () { if (links(c).length || c.horn) toggleScreen(c); }, c.screen ? T('Teilen beenden') : T('Bildschirm teilen'));
       s.setAttribute('aria-pressed', String(!!c.screen)); x.appendChild(s);
     }
     // 2.4: Wiedergabe an/aus (Begleitgeraet startet stumm) und "Hierher uebernehmen" fuer ein Begleitgeraet
@@ -1809,6 +1829,13 @@
       k.setAttribute('aria-pressed', String(!c.spkOut)); x.appendChild(k);
     }
     if (c.companion && c.ready) x.appendChild(btn(T('Hierher übernehmen'), 'cl-pill cl-take', function () { takeOver(c); }, T('Anruf auf dieses Gerät übernehmen')));
+    if (c.horn && c.ready) {                           // 2.5: Ansicht (Kacheln/Sprecher) und Teilnehmerliste
+      var H = c.horn, sv = H.view === 'speaker';
+      var vb = btn(icon(sv ? 'grid' : 'spkView'), 'cl-round cl-view', function () { hornSetView(c, sv ? 'grid' : 'speaker'); }, sv ? T('Kachelansicht') : T('Sprecheransicht'));
+      vb.setAttribute('aria-pressed', String(sv)); x.appendChild(vb);
+      var pb = btn(icon('users'), 'cl-round cl-people' + (H.plist ? ' on' : ''), function () { H.plist = !H.plist; hornList(c); drawCtl(c); }, T('Teilnehmende'));
+      pb.setAttribute('aria-pressed', String(!!H.plist)); x.appendChild(pb);
+    }
     x.appendChild(btn(icon('phone'), 'cl-round cl-red', function () { hangup(c); }, T('Auflegen')));
     pipBtn(c, c.ui.w.classList.contains('has-video'));
     pipDraw(c);
@@ -1827,7 +1854,7 @@
   function pipBtn(c, show) {
     c = roomOf(c);
     var pk = pipKind(), b = c.ui && c.ui.pipB; if (!b) return;
-    b.hidden = !pk || (pk === 'video' && !show && !c.pip) || meshView(c);    // Kachelansicht: kein Bild-im-Bild
+    b.hidden = !pk || (pk === 'video' && !show && !c.pip) || (meshView(c) && !c.horn);   // Mesh-Kacheln: kein Bild-im-Bild; Knoten: Sprecher
     b.classList.toggle('on', !!c.pip); b.setAttribute('aria-pressed', String(!!c.pip));
     b.title = c.pip ? T('Bild-im-Bild beenden') : T('Bild-im-Bild'); b.setAttribute('aria-label', b.title);
   }
@@ -1902,34 +1929,54 @@
     try { if (c && ms.setMicrophoneActive) ms.setMicrophoneActive(c.mic); } catch (e) { /* egal */ }
   }
 
-  // --- 2.5 Gjallarhorn (Paket P3, Web-Minimum): Gruppenanruf ueber einen Knoten -------------------------------------
-  // Der Server liefert Kandidaten (horn.candidates: Knoten mit je eigenen, 60 s gueltigen Medien-Token). Das Geraet nimmt
-  // den ersten erreichbaren (/healthz, hoechstens 800 ms; ein einziger Kandidat: ohne Messung), baut zum Knoten eine Ton-
-  // und eine Bild-Leitung auf (H1; ICE-TCP, ohne Verbindung nach 4 s TURN-TLS), haengt an jeden Sender und Empfaenger den
-  // Frame-E2E-Worker (static/frame-e2e.js, saga-horn/v1) und verteilt seinen Frame-Schluessel als fkey ueber den
-  // versiegelten Signalweg (nie ueber den Knoten). Der Knoten sieht nur verschluesselte Rahmen. Empfangene Rahmen tragen
-  // die CSRC des Absenders; die Zuordnung CSRC -> Geraet kommt aus der Belegung der Plaetze am Knoten (GET /api/sfu/leg/{id})
-  // und der Teilnehmerliste (hp). Kandidatenmessung mit RTT, Live-Wechsel, UDP-Weg, Bildschirm und Last-N-Ansicht: P5.
-  var HORN_WAIT_TCP = 4000, HORN_POLL = 1500, HORN_TILES = mobile ? 4 : 9;
+  // --- 2.5 Gjallarhorn (P3 Web-Minimum, P5 voller Web-Client): Gruppenanruf ueber Knoten ------------------------------
+  // Der Server liefert Kandidaten (horn.candidates: Knoten mit je eigenen, 60 s gueltigen Medien-Token). Das Geraet misst
+  // beim Beitritt alle parallel (TLS-Aufbau + 5 WSS-Pings ueber /probe, mit udp_ok dazu ein STUN-Binding; zusammen
+  // hoechstens 800 ms), waehlt nach Punktzahl (static/horn.js, Konzept §2.6) und baut zum Knoten eine Ton- und eine
+  // Bild-Leitung auf (H1; ICE-TCP, ohne Verbindung nach 4 s TURN-TLS) bzw. auf dem UDP-Weg eine Leitung mit BUNDLE. An jedem
+  // Sender und Empfaenger haengt der Frame-E2E-Worker (static/frame-e2e.js, saga-horn/v1); den eigenen Frame-Schluessel
+  // verteilt es als fkey ueber den versiegelten Signalweg (nie ueber den Knoten). Der Knoten sieht nur verschluesselte
+  // Rahmen. Wer welche Plaetze belegt und welche CSRC jedes Geraet hat, schiebt der Knoten ueber den Ereigniskanal je Bein
+  // (/api/sfu/leg/{id}/events) - beim Beitritt sofort, also vor dem ersten Rahmen. Peer-Kennung -> Geraet: Teilnehmerliste
+  // (hpn je Knoten).
+  // Live-Umschalten (make-before-break, Hysterese in static/horn.js): Verbindung weg (ICE disconnected > 2 s, Bein
+  // beendet) bzw. Knoten leert sich -> sofort auf den naechsten Kandidaten; anderer Knoten deutlich besser -> nach den Regeln
+  // in §2.6. Das neue Bein steht und sendet, bevor das alte schliesst; die Frame-Schluessel bleiben gleich (E2E haengt nicht
+  // am Knoten). Ton: solange das neue Bein nichts liefert, spielt das alte (keine Luecke); Bild: ein Schluesselbild.
+  // Kachelansicht bis 25 mit Last-N (Desktop 9 bewegt, Handy 4; die uebrigen als Standbild mit Sprechring),
+  // Sprecheransicht, Bildschirm ueber den Knoten, Weg UDP/TCP/TLS mit Qualitaetspunkt, Runensiegel, Teilnehmerliste mit
+  // Stummschalten und Entfernen (Gastgeber).
+  // Last-N (H6): Desktop 9 bewegte Bilder, Handy 4 - der Sprecherplatz zaehlt mit (Kachelplaetze = Last-N - 1)
+  var HORN_WAIT_TCP = 4000, HORN_WAIT_UDP = 2000, HORN_WAIT_TURN = 10000, HORN_TILES = (mobile ? 4 : 9) - 1, HORN_MON = 500, HORN_PING = 2000;
+  var HORN_CANDS_EVERY = 30000, HORN_BAD_MS = 60000, HORN_RETRY_MAX = 120000;
   function hornCan() { return typeof RTCRtpScriptTransform === 'function' || !!(window.RTCRtpSender && RTCRtpSender.prototype.createEncodedStreams); }
-  var HORN_SRC = (function () {
+  var HORN_V = (function () {
     var s = (document.currentScript && document.currentScript.src) || '', m = /[?&]v=([^&#]+)/.exec(s);
-    return '/static/frame-e2e.js' + (m ? '?v=' + m[1] : '');
+    return m ? '?v=' + m[1] : '';
   })();
+  var HORN_SRC = '/static/frame-e2e.js' + HORN_V, HORN_LOGIC = '/static/horn.js' + HORN_V;
   var hornLibP = null;
-  function hornLib() {
-    if (window.SagaFrameE2E) return Promise.resolve(window.SagaFrameE2E);
-    if (!hornLibP) hornLibP = new Promise(function (ok, bad) {
-      var s = document.createElement('script'); s.src = HORN_SRC;
-      s.onload = function () { if (window.SagaFrameE2E) ok(window.SagaFrameE2E); else bad(new Error('frame-e2e')); };
-      s.onerror = function () { hornLibP = null; bad(new Error(T('Verschlüsselung für große Anrufe nicht ladbar.'))); };
+  function hornScript(src, ready) {
+    if (ready()) return Promise.resolve();
+    return new Promise(function (ok, bad) {
+      var s = document.createElement('script'); s.src = src;
+      s.onload = function () { if (ready()) ok(); else bad(new Error('horn')); };
+      s.onerror = function () { bad(new Error(T('Verschlüsselung für große Anrufe nicht ladbar.'))); };
       document.head.appendChild(s);
     });
+  }
+  function hornLib() {
+    if (!hornLibP) hornLibP = Promise.all([hornScript(HORN_SRC, function () { return !!window.SagaFrameE2E; }),
+                                           hornScript(HORN_LOGIC, function () { return !!window.SagaHorn; })])
+      .then(function () { return window.SagaFrameE2E; }, function (e) { hornLibP = null; throw e; });
     return hornLibP;
   }
+  function hornView() { try { return localStorage.getItem('saga-horn-view') === 'speaker' ? 'speaker' : 'grid'; } catch (e) { return 'grid'; } }
   function hornNew(R, blk) {
-    R.horn = { blk: blk || {}, X: null, key: null, q: [], peers: {}, legs: {}, known: {}, csrc: {}, csrcKey: '', tiles: {}, audios: [],
-               node: null, path: '', acks: {}, ackT: null, rekeyT: null, pollT: null, waitT: null, started: false };
+    R.horn = { blk: blk || {}, vown: {}, rseq: 0, X: null, L: null, key: null, q: [], peers: {}, known: {}, acks: {}, ackT: null, rekeyT: null, started: false,
+               cur: null, next: null, olds: [], seq: 0, bad: {}, sw: null, meas: {}, switches: [], switching: false, retryT: null, retry0: 0,
+               tiles: {}, more: null, view: hornView(), st: {}, stT: null, monT: null, spkT: null, candT: 0, statT: 0, q5: null, net: null,
+               runes: null, runesKey: '', plist: false, rpop: false, spk: null, speaking: {}, rosterT: 0, note: '', sent: 0 };
     return R.horn;
   }
   function hornFetch(url, body, method) {
@@ -1975,7 +2022,7 @@
     (R.legs || []).forEach(function (x) { if (x.device !== me_) now[x.device] = true; });
     Object.keys(now).forEach(function (d) { if (!H.known[d]) add.push(d); });
     Object.keys(H.known).forEach(function (d) { if (!now[d]) gone.push(d); });
-    gone.forEach(function (d) { delete H.known[d]; H.X.gone(d); });
+    gone.forEach(function (d) { delete H.known[d]; delete H.st[d]; H.X.gone(d); });
     if (gone.length) {
       clearTimeout(H.rekeyT);
       H.rekeyT = setTimeout(function () {
@@ -1994,9 +2041,10 @@
       H.key = k; var b = {};
       add.forEach(function (d) { b[d] = hornFkey(H, k); });
       return hornSend(R, b);
-    });
+    }).then(function () { hornStateOut(R, add); });
   }
-  // Signale im Knoten-Anruf: fkey (Schluessel eines Senders), fkey-ack (ok:false = Nachforderung)
+  // Signale im Knoten-Anruf: fkey (Schluessel eines Senders), fkey-ack (ok:false = Nachforderung), state (Mikrofon,
+  // Kamera, Bildschirm - fuer Kacheln und Teilnehmerliste)
   function hornSig(R, d) {
     var H = R.horn;
     if (!H.X) { H.q.push(d); return; }
@@ -2011,6 +2059,9 @@
       } else if (b.t === 'fkey-ack') {
         var a = F.parseFkeyAck(b);
         if (a && !a.ok) H.X.ownKeys().then(function (ks) { if (ks[0]) { var o = {}; o[d.from_device] = hornFkey(H, ks[0]); hornSend(R, o); } });
+      } else if (b.t === 'state') {
+        H.st[d.from_device] = { mic: b.mic !== false, cam: !!b.cam, screen: !!b.screen };
+        hornDraw(R); hornList(R);
       }
     });
   }
@@ -2019,195 +2070,761 @@
     H.acks[to] = window.SagaFrameE2E.fkeyAckBody(n, s, okk);
     if (!H.ackT) H.ackT = setTimeout(function () { H.ackT = null; var b = H.acks; H.acks = {}; hornSend(R, b); }, 100);   // gebuendelt
   }
-  // Ersten erreichbaren Kandidaten waehlen (parallel, je hoechstens 800 ms)
-  function hornPick(cands) {
-    if (!cands.length) return Promise.reject(new Error(T('Gerade ist kein Knoten für große Gruppenanrufe erreichbar – bitte gleich noch einmal.')));
-    if (cands.length === 1) return Promise.resolve(cands[0]);
-    return new Promise(function (ok, bad) {
-      var left = cands.length, done = false;
-      cands.forEach(function (c) {
-        var ac = window.AbortController ? new AbortController() : null, t = setTimeout(function () { if (ac) ac.abort(); }, 800);
-        fetch(c.url + '/healthz', { mode: 'no-cors', cache: 'no-store', credentials: 'omit', signal: ac ? ac.signal : undefined }).then(function () {
-          clearTimeout(t); if (!done) { done = true; ok(c); }
-        }, function () { clearTimeout(t); if (--left === 0 && !done) bad(new Error(T('Gerade ist kein Knoten für große Gruppenanrufe erreichbar – bitte gleich noch einmal.'))); });
-      });
+  // Eigener Zustand an alle (bzw. nur an neue Geraete) - gebuendelt
+  function hornStateOut(R, only) {
+    var H = R.horn; if (!H || !H.X || !live(R)) return;
+    var send = function (devs) {
+      var body = JSON.stringify({ t: 'state', mic: !!R.mic && !R.companion, cam: !!(R.cam && R.cam.readyState === 'live'), screen: !!R.screen }), b = {};
+      devs.forEach(function (d) { if (H.known[d]) b[d] = body; });
+      return hornSend(R, b);
+    };
+    if (only) { send(only); return; }
+    clearTimeout(H.stT);
+    H.stT = setTimeout(function () { H.stT = null; if (live(R)) send(Object.keys(H.known)); }, 300);
+  }
+  function hornDevName(R, dev) { var x = legOf(R, dev); return x ? (x.name || '?') : '?'; }
+  function hornNote(R, s) { var H = R.horn; if (H) H.note = s || ''; if (s) status(R, s); }
+
+  // --- Messung (§2.6): TLS-Aufbau + 5 WSS-Pings, dazu UDP (STUN-Binding) bei udp_ok; alles parallel, <= 800 ms ----------
+  function hornProbe(c, ms) {
+    var t0 = performance.now(), out = { ok: false, tls: null, rtts: [], udp: null };
+    var wss = new Promise(function (done) {
+      var ws, sent = {}, n = 0, fin = function () { try { ws.close(); } catch (e) { /* zu */ } done(); };
+      try { ws = new WebSocket(c.url.replace(/^http/, 'ws') + '/probe'); } catch (e) { done(); return; }
+      var ping = function () { n++; sent[n] = performance.now(); ws.send('p' + n); };
+      ws.onopen = function () { out.tls = Math.round(performance.now() - t0); ping(); };
+      ws.onmessage = function (e) {
+        var k = +String(e.data).slice(1); if (!sent[k]) return;
+        out.rtts.push(Math.round((performance.now() - sent[k]) * 10) / 10); out.ok = true;
+        if (out.rtts.length >= window.SagaHorn.K.PINGS) fin(); else ping();
+      };
+      ws.onerror = fin; ws.onclose = function () { done(); };
+      setTimeout(fin, ms);
+    });
+    var udp = !c.udp ? Promise.resolve() : new Promise(function (done) {
+      var pc, u = new URL(c.url), t1 = performance.now(), fin = function () { try { pc.close(); } catch (e) { /* zu */ } done(); };
+      try { pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:' + u.hostname + ':' + (u.port || 443) }] }); } catch (e) { done(); return; }
+      // Antwort des Knotens auf das STUN-Binding: srflx-Kandidat; ohne NAT verwirft der Browser den (gleich der eigenen
+      // Adresse) - dann zaehlt das Ende der Kandidatensuche ohne Fehler fuer diesen Server
+      var err = false;
+      out.ulog = [];
+      pc.onicecandidate = function (e) {
+        out.ulog.push(e.candidate ? (/ typ (\w+)/.exec(e.candidate.candidate) || [])[1] || '?' : 'ende');
+        if (e.candidate && / typ srflx /.test(e.candidate.candidate)) { out.udp = Math.round(performance.now() - t1); fin(); }
+      };
+      pc.onicecandidateerror = function (e) { err = true; out.ulog.push('fehler ' + (e && e.errorCode)); };
+      // nach der Frist: nur eigene Kandidaten, keine Antwort und kein Fehler = unklar (ohne NAT verwirft der Browser den
+      // srflx-Kandidaten, die Suche auf anderen Schnittstellen laeuft noch) - dann probiert hornOpen UDP kurz aus
+      setTimeout(function () { if (out.udp == null && !err && out.ulog.indexOf('host') >= 0) out.udpMaybe = true; }, ms - 5);
+      pc.onicegatheringstatechange = function () { if (pc.iceGatheringState === 'complete' && !err && out.udp == null) { out.udp = Math.round(performance.now() - t1); fin(); } };
+      pc.createDataChannel('p');
+      pc.createOffer().then(function (o) { t1 = performance.now(); return pc.setLocalDescription(o); }).catch(fin);
+      setTimeout(fin, ms);
+    });
+    return Promise.all([wss, udp]).then(function () { return out; });
+  }
+  function hornMeasure(R, cands) {
+    var H = R.horn, ms = window.SagaHorn.K.PROBE_MS, m = {};
+    return Promise.all(cands.map(function (c) { return hornProbe(c, ms).then(function (r) { m[c.node] = r; H.meas[c.node] = r; }); }))
+      .then(function () { return m; });
+  }
+  function hornBad(H, node) { return (H.bad[node] || 0) > Date.now(); }
+  // Gemiedene Knoten: nach Fehlern 60 s, dazu der Knoten, den das Geraet gerade wegen Leeren/Abbruch verlaesst (Saga erfaehrt
+  // das Leeren erst mit der naechsten Lastmeldung)
+  function hornAvoid(H, extra) {
+    var a = Object.keys(H.bad).filter(function (n) { return hornBad(H, n); });
+    if (H.leaving && H.leaving.until > Date.now() && a.indexOf(H.leaving.node) < 0) a.push(H.leaving.node);
+    (extra || []).forEach(function (n) { if (a.indexOf(n) < 0) a.push(n); });
+    return a;
+  }
+  function hornLog(H, conn, what) {
+    (H.log = H.log || []).push([Date.now() % 100000, conn ? conn.node : '', what]);
+    if (H.log.length > 30) H.log.shift();
+  }
+  function hornErr(H, node, e) {
+    hornLog(H, null, 'err ' + node + ' ' + ((e && (e.message || String(e))) || '?'));
+    (H.errs = H.errs || []).push({ t: Date.now(), node: node, err: (e && (e.message || String(e))) || '?', status: e && e.status });
+    if (H.errs.length > 12) H.errs.shift();
+  }
+  function hornNoNode() { var e = new Error(T('Gerade ist kein Knoten für große Gruppenanrufe erreichbar – bitte gleich noch einmal.')); e.noNode = true; return e; }
+  // Frische Kandidaten vom Server (avoid: diese Knoten nicht), node: dort den Endpunkt eintragen
+  function hornCands(R, node, avoid) {
+    var b = { device: myDev().id, dev_class: mobile ? 'mobile' : 'desktop', avoid: avoid || [] };
+    if (node) b.node = node;
+    return api('POST', '/api/calls/' + R.id + '/horn', b).then(function (r) { return (r.horn && r.horn.candidates) || []; });
+  }
+  function hornFresh(R, cand, avoid) {
+    return hornCands(R, cand.node, avoid).then(function (l) {
+      var c = l.filter(function (x) { return x.node === cand.node; })[0];
+      if (!c) throw hornNoNode();
+      return c;
     });
   }
+
+  // --- Verbindung zu einem Knoten: Beine, Ereigniskanal ------------------------------------------------------------------
   function hornGo(R, blk) {
     var H = R.horn || hornNew(R, blk);
     if (blk) H.blk = blk;
+    if (!R.cam && R.local) { R.cam = R.local.getVideoTracks()[0] || null; drawCtl(R); drawMedia(R); }   // eigene Kamera (wie addLocal)
+    (R.local ? R.local.getAudioTracks() : []).forEach(function (t) { t.enabled = R.mic; });
     status(R, T('Verbinde …'));
     return hornLib().then(function (F) {
       if (!live(R)) throw null;
+      H.L = window.SagaHorn;
       H.X = F.create({ url: HORN_SRC });
       H.X.on('need', function (d) { hornAck(R, d.from, d.n, d.s, false); });
+      H.X.on('vown', function (d) { H.vown[d.rid] = d.from; if (live(R)) hornDrawSoon(R); });
       return H.X.own('start');
     }).then(function (k) {
       H.key = k;
       hornKeys(R);                                     // Schluessel an alle (parallel zum Verbindungsaufbau)
       H.q.splice(0).forEach(function (d) { hornSig(R, d); });
-      return hornPick((H.blk && H.blk.candidates) || []);
-    }).then(function (cand) {
-      var first = ((H.blk && H.blk.candidates) || [])[0];
-      if (first && cand.node !== first.node)            // anderer als der vom Server vorgemerkte: melden, frische Token
-        return api('POST', '/api/calls/' + R.id + '/horn', { device: myDev().id, node: cand.node, dev_class: mobile ? 'mobile' : 'desktop' })
-          .then(function (r) { return (r.horn.candidates || []).filter(function (x) { return x.node === cand.node; })[0] || cand; });
-      return cand;
-    }).then(function (cand) {
-      return hornConnect(R, cand, 'tcp');
+      return hornStart(R, (H.blk && H.blk.candidates) || [], 'join');
     }).catch(function (e) {
       if (!live(R) || e === null) return;
+      if (e && e.noNode) { hornRetry(R, 'join'); return; }
       fail(R, (e && e.message) || T('Verbindung nicht aufgebaut: {err}', { err: '?' }));
     });
   }
-  function hornConnect(R, cand, path) {
-    var H = R.horn; H.node = cand; H.path = path;
-    var turnP = path === 'turn' ? hornFetch(cand.url + '/api/sfu/turn', { token: cand.tokens.audio }) : Promise.resolve(null);
-    return turnP.then(function (turn) {
-      return Promise.all(['audio', 'video'].map(function (role) { return hornLeg(R, cand, role, path, turn); }));
-    }).then(function () {
-      clearInterval(H.pollT);
-      H.pollT = setInterval(function () { hornPoll(R); }, HORN_POLL);
-      clearTimeout(H.waitT);
-      if (path === 'tcp') H.waitT = setTimeout(function () {         // ICE-TCP kommt nicht durch: TLS-Weg (TURN-TLS)
-        if (!live(R) || hornUp(R)) return;
-        hornClose(R);
-        api('POST', '/api/calls/' + R.id + '/horn', { device: myDev().id, dev_class: mobile ? 'mobile' : 'desktop' }).then(function (r) {
-          var c2 = (r.horn.candidates || []).filter(function (x) { return x.node === cand.node; })[0];
-          if (!c2) throw new Error(T('Gerade ist kein Knoten für große Gruppenanrufe erreichbar – bitte gleich noch einmal.'));
-          return hornConnect(R, c2, 'turn');
-        }).catch(function (e) { if (live(R)) fail(R, (e && e.message) || T('Verbindung nicht aufgebaut: {err}', { err: '?' })); });
-      }, HORN_WAIT_TCP);
+  // Kandidaten messen, nach Punktzahl ordnen, der Reihe nach versuchen. why: join | lost | draining | better | retry
+  function hornStart(R, cands, why) {
+    var H = R.horn;
+    cands = cands.filter(function (c) { return !hornBad(H, c.node) || cands.length === 1; });
+    if (!cands.length) return Promise.reject(hornNoNode());
+    var one = cands.length === 1;
+    // einziger Kandidat ohne UDP: gleich verbinden, Messung nur fuer die Anzeige; mit UDP erst messen (UDP-Probe, <= 800 ms)
+    var m = one && !cands[0].udp ? Promise.resolve(null) : hornMeasure(R, cands);
+    if (one && !cands[0].udp) hornMeasure(R, cands);
+    return m.then(function (mm) {
+      if (!live(R)) throw null;
+      var list = one ? cands : H.L.rank(cands, mm, true).map(function (x) { return x.cand; });
+      H.ranked = list.map(function (c) { return { node: c.node, score: one ? null : H.L.score(mm[c.node], c, true) }; });
+      return hornTry(R, list, why, 0);
     });
   }
-  function hornUp(R) { var H = R.horn, a = H.legs.audio, v = H.legs.video; return !!(a && v && a.pc.connectionState === 'connected' && v.pc.connectionState === 'connected'); }
-  function hornLeg(R, cand, role, path, turn) {
-    var H = R.horn, cf = { bundlePolicy: 'max-bundle', rtcpMuxPolicy: 'require' };
+  function hornTry(R, list, why, i) {
+    var H = R.horn, c = list[i];
+    if (!c) return Promise.reject(hornNoNode());
+    var first = (((H.blk && H.blk.candidates) || [])[0] || {}).node;
+    // Join mit dem vom Server vorgemerkten Knoten: Token sind frisch; sonst Knoten melden und frische Token holen
+    var fresh = why === 'join' && i === 0 && c.node === first && !c.used ? Promise.resolve(c) : hornFresh(R, c, hornAvoid(H));
+    return fresh.then(function (c2) { c2.used = true; return hornOpen(R, c2); }).then(function (conn) {
+      hornAdopt(R, conn, why);
+      return conn;
+    }, function (e) {
+      if (!live(R) || e === null) throw null;
+      hornErr(H, c.node, e);
+      if (e && e.status === 404) throw new Error(T('Der Anruf ist schon beendet.'));
+      H.bad[c.node] = Date.now() + HORN_BAD_MS;
+      var nx = list[i + 1];
+      if (nx) hornNote(R, T('Knoten {node} ist nicht erreichbar – versuche {next} …', { node: c.node, next: nx.node }));
+      return hornTry(R, list, why, i + 1);
+    });
+  }
+  // Weg waehlen: UDP (wenn der Knoten udp_ok meldet und die UDP-Probe klappt), sonst ICE-TCP, dann TURN-TLS
+  function hornOpen(R, cand) {
+    var H = R.horn, m = H.meas[cand.node];
+    var udp = !!(cand.udp && cand.tokens && cand.tokens.both && m && (m.udp != null || m.udpMaybe));
+    var p = udp ? hornConnect(R, cand, 'udp', m.udp != null ? HORN_WAIT_UDP : 1500).catch(function (e) { if (e === null) throw null; return hornConnect(R, cand, 'tcp'); })
+      : hornConnect(R, cand, 'tcp');
+    return p.catch(function (e) {
+      if (e === null || (e && (e.status === 404 || e.status === 429))) throw e;      // beendet bzw. voll/Leeren: naechster Kandidat
+      return hornFresh(R, cand, hornAvoid(H)).then(function (c2) { return hornConnect(R, c2, 'turn'); });
+    });
+  }
+  function hornConnect(R, cand, path, waitMs) {
+    var H = R.horn;
+    var conn = { key: 'c' + (++H.seq), cand: cand, node: cand.node, url: cand.url, path: path, legs: {}, peers: {}, csrc: {}, csrcKey: '',
+                 created: Date.now(), up: 0, rx: 0, dead: false, audios: [], rtts: [], pingN: 0, pings: {}, state: 'ok', ws: null };
+    H.next = conn;
+    var turnP = path === 'turn' ? hornFetch(cand.url + '/api/sfu/turn', { token: cand.tokens.audio }) : Promise.resolve(null);
+    var roles = path === 'udp' ? ['both'] : ['audio', 'video'];
+    return turnP.then(function (turn) {
+      return Promise.all(roles.map(function (role) { return hornLeg(R, conn, role, path, turn); }));
+    }).then(function () {
+      return new Promise(function (ok, bad) {
+        var wait = waitMs || (path === 'udp' ? HORN_WAIT_UDP : path === 'tcp' ? HORN_WAIT_TCP : HORN_WAIT_TURN);
+        var t = setTimeout(function () { conn.onUp = null; var e = new Error('timeout'); e.timeout = true; bad(e); }, wait);
+        conn.onUp = function (good) { clearTimeout(t); conn.onUp = null; if (good) ok(conn); else { var e = new Error('failed'); bad(e); } };
+        hornConnState(R, conn);
+      });
+    }).then(function (c) { if (!live(R)) { hornConnClose(R, conn); throw null; } return c; }, function (e) {
+      hornConnClose(R, conn);
+      if (H.next === conn) H.next = null;
+      throw live(R) ? e : null;
+    });
+  }
+  function hornAudioTrack(R) { return R.mix ? R.mix.out : (R.local ? R.local.getAudioTracks()[0] : null) || null; }
+  function hornLeg(R, conn, role, path, turn) {
+    var H = R.horn, cand = conn.cand, cf = { bundlePolicy: 'max-bundle', rtcpMuxPolicy: 'require' };
     if (H.X.mode === 'streams') cf.encodedInsertableStreams = true;
     if (turn) {
       var u = new URL(cand.url);
       cf.iceServers = [{ urls: 'turns:' + u.hostname + ':' + (u.port || 443) + '?transport=tcp', username: turn.username, credential: turn.credential }];
       cf.iceTransportPolicy = 'relay';
     }
-    var pc = new RTCPeerConnection(cf), st = R.local || new MediaStream(), L = { role: role, pc: pc, id: null, recv: [], slots: [] }, i, t;
-    H.legs[role] = L;
-    if (role === 'audio') {
-      L.tr = pc.addTransceiver(st.getAudioTracks()[0] || 'audio', { direction: 'sendonly', streams: [st] });
+    var pc = new RTCPeerConnection(cf), st = R.local || new MediaStream(), L = { role: role, pc: pc, id: null, recv: [], aud: [], vid: [], slots: [], est: 0 }, i, t;
+    conn.legs[role] = L;
+    var recv = function (kind) {
+      var x = pc.addTransceiver(kind, { direction: 'recvonly' }); x.rid = ++H.rseq; H.X.receiver(x.receiver, kind, '*', conn.key, x.rid);
+      if (kind === 'video' && path !== 'udp') { try { if ('jitterBufferTarget' in x.receiver) x.receiver.jitterBufferTarget = 150; } catch (e) { /* aelterer Browser */ } }
+      L.recv.push(x); (kind === 'audio' ? L.aud : L.vid).push(x);
+      return x;
+    };
+    if (role !== 'video') {                             // Ton-Leitung bzw. UDP-Weg: eigener Ton + 3 Tonplaetze
+      L.tr = pc.addTransceiver(hornAudioTrack(R) || 'audio', { direction: 'sendonly', streams: [st] });
       H.X.sender(L.tr.sender, 'audio');                // vor der Verhandlung: kein Rahmen geht unverschluesselt raus
-      for (i = 0; i < 3; i++) { t = pc.addTransceiver('audio', { direction: 'recvonly' }); H.X.receiver(t.receiver, 'audio', '*'); L.recv.push(t); }
-    } else {
-      // TCP-Wege: zwei Schichten (NODE.md): l = 1/4, 20 fps L1T2 (Kacheln, der Knoten nimmt 10 fps), m = voll, 30 fps L1T3
-      L.tr = pc.addTransceiver(R.cam || st.getVideoTracks()[0] || 'video', { direction: 'sendonly', streams: [st], sendEncodings: [
-        { rid: 'l', scaleResolutionDownBy: 4, maxBitrate: 150000, maxFramerate: 20, scalabilityMode: 'L1T2' },
-        { rid: 'm', scaleResolutionDownBy: 1, maxBitrate: 700000, maxFramerate: 30, scalabilityMode: 'L1T3' }] });
-      H.X.sender(L.tr.sender, 'video');
-      for (i = 0; i < 1 + HORN_TILES; i++) {
-        t = pc.addTransceiver('video', { direction: 'recvonly' }); H.X.receiver(t.receiver, 'video', '*');
-        try { if ('jitterBufferTarget' in t.receiver) t.receiver.jitterBufferTarget = 150; } catch (e) { /* aelterer Browser */ }
-        L.recv.push(t);
-      }
+      for (i = 0; i < 3; i++) recv('audio');
     }
-    pc.onconnectionstatechange = function () { hornState(R); };
+    if (role !== 'audio') {
+      // Simulcast (NODE.md): TCP-Wege l = 1/4, 20 fps L1T2 (Kacheln, der Knoten nimmt 10 fps), m = voll, 30 fps L1T3;
+      // UDP zusaetzlich h (m dann halbe Groesse)
+      var enc = path === 'udp' ? [
+        { rid: 'l', scaleResolutionDownBy: 4, maxBitrate: 150000, maxFramerate: 20, scalabilityMode: 'L1T2' },
+        { rid: 'm', scaleResolutionDownBy: 2, maxBitrate: 500000, maxFramerate: 30, scalabilityMode: 'L1T3' },
+        { rid: 'h', scaleResolutionDownBy: 1, maxBitrate: 1500000, maxFramerate: 30, scalabilityMode: 'L1T3' }] : [
+        { rid: 'l', scaleResolutionDownBy: 4, maxBitrate: 150000, maxFramerate: 20, scalabilityMode: 'L1T2' },
+        { rid: 'm', scaleResolutionDownBy: 1, maxBitrate: 700000, maxFramerate: 30, scalabilityMode: 'L1T3' }];
+      L.cam = pc.addTransceiver(R.cam || 'video', { direction: 'sendonly', streams: [st], sendEncodings: enc });
+      H.X.sender(L.cam.sender, 'video');
+      // Bildschirm: eigener Sender (mid an den Knoten: screen_mid), Raten wie 2.4 relay-tcp bzw. relay-udp
+      var sr = RATES[path === 'udp' ? 'relay-udp' : 'relay-tcp'];
+      L.scr = pc.addTransceiver(R.screen || 'video', { direction: 'sendonly', sendEncodings: [{ maxBitrate: sr.screen * 1000, maxFramerate: sr.screenFps }] });
+      H.X.sender(L.scr.sender, 'video');
+      recv('video');                                   // Sprecher
+      recv('video');                                   // Bildschirm
+      for (i = 0; i < HORN_TILES; i++) recv('video');  // Kacheln (Last-N)
+    }
+    pc.onconnectionstatechange = function () { hornConnState(R, conn); };
     return pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }).then(function () {
-      return hornFetch(cand.url + '/api/sfu/leg', { token: cand.tokens[role], path: path, offer: pc.localDescription.sdp, audio: role === 'audio' ? 3 : 0,
-                                                   speaker: role === 'video', tiles: role === 'video' ? HORN_TILES : 0, device: mobile ? 'mobile' : 'desktop' });
+      return hornFetch(cand.url + '/api/sfu/leg', { token: cand.tokens[role], path: path, offer: pc.localDescription.sdp, audio: role !== 'video' ? 3 : 0,
+                                                   speaker: role !== 'audio', screen: role !== 'audio', tiles: role !== 'audio' ? HORN_TILES : 0,
+                                                   device: mobile ? 'mobile' : 'desktop', screen_mid: L.scr ? String(L.scr.mid) : '' });
     }).then(function (res) {
-      if (!live(R) || H.legs[role] !== L) { try { pc.close(); } catch (e) { /* zu */ } throw null; }
-      L.id = res.id; H.mine = res.csrc; L.slots = res.slots || [];
+      if (!live(R) || conn.legs[role] !== L || conn.dead) { try { pc.close(); } catch (e) { /* zu */ } throw null; }
+      L.id = res.id; conn.mine = res.csrc; L.slots = res.slots || []; conn.state = res.state || 'ok';
+      hornPeersIn(R, conn, res.peers || {});
       return pc.setRemoteDescription({ type: 'answer', sdp: res.answer });
     }).then(function () {
-      if (role === 'audio') hornAudio(R, L);
-      hornMap(R); hornTiles(R);
+      hornEvents(R, conn, L);
+      hornAudioEls(R, conn); hornMap(R); hornDraw(R);
     });
   }
-  function hornState(R) {
-    var H = R.horn; if (!H || !live(R)) return;
-    if (hornUp(R)) {
-      clearTimeout(H.waitT);
-      if (!R.since) { R.since = Date.now(); stopTone(); }
-      R.connected = true;
-      if (R.ui) { R.ui.st.textContent = ''; R.ui.st.hidden = true; }
-    } else if (['failed', 'closed'].indexOf((H.legs.audio || {}).pc && H.legs.audio.pc.connectionState) >= 0 && R.since) {
-      fail(R, T('Verbindung zum Knoten verloren.'));    // P5: Live-Wechsel auf einen anderen Kandidaten
+  // Ereigniskanal je Bein: Teilnehmende/CSRC (sofort beim Beitritt), Belegung, Zustand des Knotens, Bein beendet, Ping
+  function hornEvents(R, conn, L, again) {
+    if (!window.WebSocket || !L.id || conn.dead) return;
+    var ws, opened = false;
+    try { ws = new WebSocket(conn.url.replace(/^http/, 'ws') + '/api/sfu/leg/' + encodeURIComponent(L.id) + '/events'); } catch (e) { return; }
+    L.ws = ws;
+    ws.onopen = function () { opened = true; };
+    if (!conn.ws) conn.ws = ws;                        // Ping (RTT) ueber den ersten Kanal
+    ws.onmessage = function (e) {
+      var m; try { m = JSON.parse(e.data); } catch (x) { return; }
+      if (!live(R) || conn.dead) return;
+      if (m.t === 'hello' || m.t === 'peers') hornPeersIn(R, conn, m.peers || {});
+      if (m.t === 'hello' || m.t === 'layout') { if (m.slots) L.slots = m.slots; L.est = m.est_kbit || L.est; hornMap(R); hornDraw(R); }
+      if (m.t !== 'pong' && m.t !== 'layout') hornLog(R.horn, conn, m.t + (m.state ? ':' + m.state : '') + (m.why ? ':' + m.why : ''));
+      if ((m.t === 'hello' || m.t === 'state') && m.state) {
+        conn.state = m.state;
+        if (m.state === 'draining' && R.horn.cur === conn) hornSwitch(R, 'draining');
+      }
+      if (m.t === 'closed') { conn.closed = m.why || 'zu'; if (R.horn.cur === conn) hornGone(R, conn); }
+      if (m.t === 'pong' && conn.pings[m.n]) {
+        conn.rtts.push(Math.round(performance.now() - conn.pings[m.n])); delete conn.pings[m.n];
+        if (conn.rtts.length > 10) conn.rtts.shift();
+      }
+    };
+    ws.onclose = function () {
+      if (L.ws === ws) L.ws = null;
+      if (conn.ws === ws) conn.ws = null;
+      if (!live(R) || conn.dead || conn.closed) return;
+      // Neuverbindung scheitert sofort (Knoten nimmt keine Verbindung mehr an): Knoten weg - nicht erst auf ICE warten
+      if (again && !opened) { if (R.horn.cur === conn) { hornLog(R.horn, conn, 'events weg'); hornSwitch(R, 'lost'); } return; }
+      // Kanal weg, Bein noch da (Netzwechsel): neu verbinden; sonst ueberwacht hornMon die PeerConnection
+      setTimeout(function () { if (live(R) && !conn.dead && !L.ws) hornEvents(R, conn, L, true); }, 300);
+    };
+  }
+  // Bein vom Knoten beendet: entfernt (Gastgeber) -> der Server meldet es; sonst wie Verbindung weg
+  function hornGone(R, conn) {
+    if (conn.closed === 'entfernt') {
+      api('GET', '/api/calls/' + R.id + '?device=' + q(myDev().id)).then(function (r) {
+        if (!live(R)) return;
+        if (r.call.state === 'ended') remoteEnded(R, { reason: r.call.reason });
+        else if (!(r.call.mine || []).length || (r.call.mine || []).indexOf(myDev().id) < 0) hornRemoved(R);
+        else hornSwitch(R, 'lost');
+      }).catch(function () { hornSwitch(R, 'lost'); });
+      return;
     }
+    hornSwitch(R, 'lost');
+  }
+  function hornPeersIn(R, conn, peers) {
+    conn.peers = peers || {};
+    hornMap(R);
+    // unbekannte Kennung (Geraet gerade beigetreten bzw. Knoten neu bereit): Teilnehmerliste einmal neu holen
+    var H = R.horn, me_ = myDev().id, unknown = Object.keys(conn.peers).some(function (ref) {
+      var d = hornDevOf(R, conn, ref); return !d && ref !== hornMyRef(R, conn);
+    });
+    if (unknown && Date.now() - H.rosterT > 2000) {
+      H.rosterT = Date.now();
+      api('GET', '/api/calls/' + R.id + '?device=' + q(me_)).then(function (r) { if (live(R)) rosterIn(R, r.call.legs, r.call); }).catch(function () {});
+    }
+  }
+  function hornRef(x, conn) { return x.hpn ? x.hpn[conn.node] : x.hp; }
+  function hornMyRef(R, conn) { var x = myLeg(R); return (x && hornRef(x, conn)) || (conn.cand && conn.cand.peer) || ''; }
+  function hornDevOf(R, conn, ref) {
+    var o = null;
+    if (!ref) return null;
+    (R.legs || []).forEach(function (x) { if (hornRef(x, conn) === ref) o = x.device; });
+    return o;
+  }
+  function hornConns(R) { var H = R.horn; return [H.cur].concat(H.olds, [H.next]).filter(function (c) { return c && !c.dead; }); }
+  // CSRC -> Geraet je Knoten-Verbindung (CSRCs vergibt jeder Knoten selbst): aus peers (Ereigniskanal, POST /leg) und
+  // aus der Belegung der Plaetze; nur Geraete aus der Teilnehmerliste
+  function hornMap(R) {
+    var H = R.horn; if (!H || !H.X) return;
+    var me_ = myDev().id;
+    hornConns(R).forEach(function (conn) {
+      var cp = {}, m = {};
+      Object.keys(conn.peers || {}).forEach(function (ref) { cp[conn.peers[ref] >>> 0] = ref; });
+      Object.keys(conn.legs).forEach(function (r) { (conn.legs[r].slots || []).forEach(function (s) { if (s.peer && s.csrc) cp[s.csrc >>> 0] = s.peer; }); });
+      Object.keys(cp).forEach(function (k) { var d = hornDevOf(R, conn, cp[k]); if (d && d !== me_) m[k] = d; });
+      conn.csrc = m;
+      var key = JSON.stringify(m);
+      if (key !== conn.csrcKey) { conn.csrcKey = key; H.X.csrcMap(m, conn.key); }
+    });
+  }
+  function hornConnState(R, conn) {
+    var H = R.horn; if (!H || !live(R)) return;
+    var ls = Object.keys(conn.legs).map(function (k) { return conn.legs[k]; });
+    var up = ls.length && ls.every(function (L) { return L.pc.connectionState === 'connected'; });
+    var bad = ls.some(function (L) { return L.pc.connectionState === 'failed' || L.pc.connectionState === 'closed'; });
+    if (up && !conn.up) conn.up = Date.now();
+    if (conn.onUp && (up || bad)) conn.onUp(!!up);
     drawInfo(R);
   }
-  // Belegung der Plaetze abfragen (wer ist wo, CSRC); daraus Zuordnung fuer den Worker und die Kacheln
-  function hornPoll(R) {
-    var H = R.horn; if (!H || !live(R) || !H.node) return;
-    ['audio', 'video'].forEach(function (role) {
-      var L = H.legs[role]; if (!L || !L.id) return;
-      hornFetch(H.node.url + '/api/sfu/leg/' + encodeURIComponent(L.id)).then(function (r) {
-        if (H.legs[role] !== L) return;
-        L.slots = r.slots || []; L.est = r.est_kbit;
-        hornMap(R); hornTiles(R);
-      }).catch(function () {});
+  // Neue Verbindung uebernehmen (make-before-break): die bisherige laeuft weiter, bis die neue Rahmen liefert und die
+  // anderen ebenfalls gewechselt haben (hornMon schliesst sie)
+  function hornAdopt(R, conn, why) {
+    var H = R.horn, prev = H.cur, now = Date.now();
+    if (H.next === conn) H.next = null;
+    H.cur = conn;
+    if (prev && prev !== conn) {
+      prev.retired = now; H.olds.push(prev);
+      // Bild nur noch ueber die neue Verbindung senden (ein Kodierer statt zwei; das Bild kostet beim Wechsel ohnehin ein
+      // Schluesselbild), Ton weiter ueber beide, bis die alte schliesst
+      Object.keys(prev.legs).forEach(function (k) { var L = prev.legs[k]; [L.cam, L.scr].forEach(function (x) { if (x) x.sender.replaceTrack(null).catch(function () {}); }); });
+    }
+    if (!H.sw) H.sw = new H.L.Switcher({ node: conn.node, path: conn.path, now: now });
+    else H.sw.moved(now, conn.node, conn.path, why);
+    if (prev) H.switches.push({ t: now, from: prev.node, to: conn.node, why: why, path: conn.path, fromPath: prev.path });
+    if (prev && !H.arT) H.arT = setInterval(function () {   // waehrend des Wechsels: Ton alle 100 ms umhaengen
+      if (!live(R) || !R.horn || !H.olds.length) { clearInterval(H.arT); H.arT = null; if (live(R) && R.horn) hornAudioRoute(R); return; }
+      hornAudioRoute(R);
+    }, 100);
+    clearTimeout(H.retryT); H.retryT = null; H.retry0 = 0;
+    if (!R.since) { R.since = now; stopTone(); }
+    R.connected = true;
+    if (R.ui) { R.ui.st.textContent = ''; R.ui.st.hidden = true; }
+    H.note = '';
+    hornAudioEls(R, conn); hornMap(R); hornDraw(R); hornRunes(R);
+    if (!H.monT) H.monT = setInterval(function () { hornMon(R); }, HORN_MON);
+    if (!H.spkT) hornSpeakers(R);
+    drawInfo(R); drawCtl(R);
+  }
+  // Wechseln. why: lost | draining | better (opt.to) | udp-loss / udp (opt.path, selber Knoten)
+  function hornSwitch(R, why, opt) {
+    var H = R.horn; opt = opt || {};
+    if (!H || !live(R) || H.switching || R.done) return;
+    hornLog(H, H.cur, 'switch ' + why);
+    var cur = H.cur, hard = why === 'lost' || why === 'draining';
+    H.switching = true;
+    if (why === 'lost' && cur) H.bad[cur.node] = Date.now() + HORN_BAD_MS;   // Leeren ist kein Fehler: nur beim Verlassen meiden
+    if (hard && cur) H.leaving = { node: cur.node, until: Date.now() + HORN_BAD_MS };
+    if (why === 'lost') hornNote(R, T('Verbindung zum Knoten {node} unterbrochen – wechsle …', { node: cur ? cur.node : '?' }));
+    else if (why === 'draining') hornNote(R, T('Knoten {node} wird gewartet – wechsle ohne Unterbrechung …', { node: cur ? cur.node : '?' }));
+    var p;
+    if (opt.path && cur) p = hornFresh(R, cur.cand, []).then(function (c) { return hornConnect(R, c, opt.path); }).then(function (conn) { hornAdopt(R, conn, why); });
+    else p = hornCands(R, null, hornAvoid(H)).then(function (list) {
+      if (opt.to) list = list.filter(function (c) { return c.node === opt.to; });
+      else if (hard && cur) {
+        var other = list.filter(function (c) { return c.node !== cur.node; });
+        list = other.length ? other : list;            // nur dieser eine Knoten: dorthin neu verbinden
+      }
+      if (!list.length && hard && cur) list = [cur.cand];
+      return hornStart(R, list, why);
+    });
+    p.then(function () { H.switching = false; }, function (e) {
+      H.switching = false;
+      if (!live(R) || e === null) return;
+      if (e && e.message === T('Der Anruf ist schon beendet.')) { remoteEnded(R, {}); return; }
+      if (hard) hornRetry(R, why);                     // sonst bleibt die bisherige Verbindung
     });
   }
-  function hornDevOf(R, hp) { var o = null; (R.legs || []).forEach(function (x) { if (x.hp && x.hp === hp) o = x.device; }); return o; }
-  // CSRC -> Geraet: alle je gesehenen Paare (CSRC je Teilnehmendem fest, solange er im Raum ist), solange das Geraet in der
-  // Teilnehmerliste steht - auch Rahmen, die nach einem Platzwechsel noch unterwegs sind, haben so ihren Absender
-  function hornMap(R) {
-    var H = R.horn, m = {};
-    H.cp = H.cp || {};
-    ['audio', 'video'].forEach(function (role) {
-      ((H.legs[role] || {}).slots || []).forEach(function (s) { if (s.peer && s.csrc) H.cp[s.csrc >>> 0] = s.peer; });
-    });
-    Object.keys(H.cp).forEach(function (k) { var d = hornDevOf(R, H.cp[k]); if (d) m[k] = d; else delete H.cp[k]; });
-    var key = JSON.stringify(m);
-    if (key !== H.csrcKey) { H.csrcKey = key; H.csrc = m; if (H.X) H.X.csrcMap(m); }
+  // Kein Knoten erreichbar: klare Meldung, erneut versuchen (Backoff bis 15 s), nach 2 min aufgeben
+  function hornRetry(R, why) {
+    var H = R.horn; if (!H || !live(R)) return;
+    if (!H.retry0) H.retry0 = Date.now();
+    if (Date.now() - H.retry0 > HORN_RETRY_MAX) { fail(R, T('Verbindung zum Knoten verloren.')); return; }
+    var n = (H.retryN = (H.retryN || 0) + 1), s = Math.min(15, 2 * n);
+    hornNote(R, T('Kein Knoten erreichbar – neuer Versuch in {s} s …', { s: s }));
+    clearTimeout(H.retryT);
+    H.retryT = setTimeout(function () {
+      if (!live(R)) return;
+      H.bad = {};
+      hornCands(R, null, []).then(function (list) { return hornStart(R, list, H.cur ? 'lost' : why === 'join' ? 'join' : 'retry'); })
+        .catch(function (e) { if (live(R) && e !== null) { hornErr(H, '', e); hornRetry(R, why); } });
+    }, s * 1000);
   }
-  function hornAudio(R, L) {
+  // Neuzeichnen gebuendelt (Meldungen des Workers kommen je Empfaenger einzeln)
+  function hornDrawSoon(R) {
+    var H = R.horn; if (!H || H.drawT) return;
+    H.drawT = setTimeout(function () { H.drawT = null; if (live(R) && R.horn === H) hornDraw(R); }, 80);
+  }
+  function hornConnClose(R, conn) {
+    if (!conn || conn.dead) return;
+    conn.dead = true;
     var H = R.horn;
-    L.recv.forEach(function (tr, i) {
-      var a = H.audios[i];
-      if (!a) {
-        a = H.audios[i] = el('audio', 'cl-raudio'); a.autoplay = true; a.dataset.slot = String(i);
+    Object.keys(conn.legs).forEach(function (role) {
+      var L = conn.legs[role];
+      if (L.ws) { try { L.ws.close(); } catch (e) { /* zu */ } L.ws = null; }
+      if (L.id) hornFetch(conn.url + '/api/sfu/leg/' + encodeURIComponent(L.id), null, 'DELETE').catch(function () {});
+      try { L.pc.close(); } catch (e) { /* zu */ }
+      if (H) (L.recv || []).forEach(function (x) { delete H.vown[x.rid]; });
+    });
+    conn.audios.forEach(function (a) { a.srcObject = null; a.remove(); });
+    conn.audios = [];
+    if (H && H.X) H.X.csrcDrop(conn.key);
+    if (H) { H.olds = H.olds.filter(function (x) { return x !== conn; }); if (H.cur === conn) H.cur = null; if (H.next === conn) H.next = null; }
+  }
+
+  // --- Laufende Beobachtung (alle 0,5 s): Verbindung, Wechsel, Ton, Sprecher, Ping, Qualitaet --------------------------
+  function hornMon(R) {
+    var H = R.horn; if (!H || !live(R) || R.done) { if (H) clearInterval(H.monT); return; }
+    var now = Date.now(), cur = H.cur;
+    if (cur && !H.switching) {
+      var worst = 'connected';
+      Object.keys(cur.legs).forEach(function (k) {
+        var s = cur.legs[k].pc.connectionState;
+        if (s === 'failed' || s === 'closed') worst = s; else if (s !== 'connected' && worst === 'connected') worst = 'disconnected';
+      });
+      var d = H.sw.conn(now, worst);
+      if (d) { hornLog(H, cur, 'ice ' + worst); hornSwitch(R, d.why); return; }
+    }
+    // Neues Bein liefert Rahmen? (RTP-Quellen der Tonplaetze, ersatzweise 1,5 s nach dem Verbinden)
+    hornConns(R).forEach(function (c) {
+      if (c.rx || !c.up) return;
+      var got = Object.keys(c.legs).some(function (k) {
+        return (c.legs[k].aud || []).concat(c.legs[k].vid || []).some(function (x) { return x.receiver.getSynchronizationSources && x.receiver.getSynchronizationSources().length; });
+      });
+      if (got || now - c.up > 1500) c.rx = now;
+    });
+    // Alte Verbindungen schliessen (make-before-break): 2 s nachdem die neue liefert, wenn die alte nichts Eigenes mehr
+    // bringt - kein Absender, den man nur dort hoert (der neue Knoten vergibt seine Tonplaetze erst nach ein paar
+    // Takten) - und man selbst nicht gerade spricht, waehrend am alten Knoten noch andere zuhoeren. Hoechstens 15 s.
+    if (H.olds.length && cur && cur.rx) hornSelfLevel(R, cur);
+    H.olds.slice().forEach(function (o) {
+      if (!cur || !cur.rx) return;
+      var onCur = {};
+      cur.audios.forEach(function (a) { var d = hornAudioOwner(cur, a._i); if (d && hornAudioLive(a, d)) onCur[d] = true; });
+      var uniq = o.audios.some(function (a) {
+        var d = hornAudioOwner(o, a._i), src = a._tr.receiver.getSynchronizationSources ? a._tr.receiver.getSynchronizationSources()[0] : null;
+        return d && !onCur[d] && src && (H.levels || {})[d] > 0.02;
+      });
+      var mine = hornMyRef(R, o), listeners = Object.keys(o.peers || {}).filter(function (ref) { return ref !== mine; }).length;
+      var need = uniq || (listeners > 0 && (H.selfLevel || 0) > 0.02);
+      var dead = Object.keys(o.legs).some(function (k) { var s = o.legs[k].pc.connectionState; return s === 'failed' || s === 'closed'; });
+      if (dead || o.closed || H.L.closeOld(now, Math.max(cur.rx, o.retired || 0), need ? 1 : 0)) { hornLog(H, o, 'zu' + (need ? ' (15 s)' : '') + ' uniq=' + uniq + ' hoerer=' + listeners + ' selbst=' + Math.round((H.selfLevel || 0) * 100) / 100); hornConnClose(R, o); hornDraw(R); }
+    });
+    hornAudioRoute(R);
+    if (H.olds.length || H.next) hornDraw(R);           // Wechsel: Kacheln folgen den Rahmen der neuen Verbindung
+    if (cur && cur.ws && cur.ws.readyState === 1 && now - (cur.pingAt || 0) >= HORN_PING) {
+      cur.pingAt = now; cur.pingN++; cur.pings[cur.pingN] = performance.now(); delete cur.pings[cur.pingN - 10];   // verlorene Pongs nicht sammeln
+      try { cur.ws.send(JSON.stringify({ t: 'ping', n: cur.pingN })); } catch (e) { /* zu */ }
+    }
+    if (cur && now - H.statT >= 3000) { H.statT = now; hornStats(R, cur); }
+    // Auf TCP/TLS zu einem Knoten mit UDP: alle 10 s die UDP-Probe (Rueckkehr auf UDP nach 30 s ok, hoechstens 1x je 5 min)
+    if (cur && cur.path !== 'udp' && cur.cand.udp && cur.cand.tokens && cur.cand.tokens.both && now - (H.udpProbeAt || 0) >= 10000) {
+      H.udpProbeAt = now;
+      hornProbe(cur.cand, window.SagaHorn.K.PROBE_MS).then(function (m) { if (live(R) && H.cur === cur) H.meas[cur.node] = m; });
+    }
+    // Andere Kandidaten (mit Kaskade, P9): alle 30 s frische Liste, messen, Hysterese entscheidet
+    if (cur && !H.switching && now - (H.candT || cur.created) >= HORN_CANDS_EVERY) {
+      H.candT = now;
+      hornCands(R, null, []).then(function (list) {
+        var others = list.filter(function (c) { return c.node !== cur.node; });
+        if (!others.length || !live(R)) return;
+        return hornMeasure(R, list).then(function (m) {
+          var curScore = H.L.score({ ok: true, rtts: cur.rtts.length ? cur.rtts : (m[cur.node] || {}).rtts, udp: cur.path === 'udp' ? 1 : null },
+                                   { here: true, udp: cur.path === 'udp', load: (list.filter(function (c) { return c.node === cur.node; })[0] || {}).load });
+          var x = H.sw.observe(Date.now(), curScore, others.map(function (c) { return { node: c.node, score: H.L.score(m[c.node], c, true) }; }));
+          if (x) hornSwitch(R, 'better', { to: x.to });
+        });
+      }).catch(function () {});
+    }
+  }
+  // Eigener Sprechpegel (media-source des Ton-Senders) - nur waehrend eines Wechsels gebraucht
+  function hornSelfLevel(R, conn) {
+    var H = R.horn, L = conn.aLeg || conn.legs.audio || conn.legs.both;
+    if (!L || !L.tr || H.selfT) return;
+    H.selfT = true;
+    L.tr.sender.getStats().then(function (st) {
+      var lv = 0; st.forEach(function (x) { if (x.type === 'media-source' && x.kind === 'audio' && typeof x.audioLevel === 'number') lv = x.audioLevel; });
+      H.selfLevel = R.mic ? lv : 0;
+    }).catch(function () {}).then(function () { H.selfT = false; });
+  }
+  // Qualitaet (RTT, Verlust, Einfrieren) und UDP-Regeln aus getStats
+  function hornStats(R, conn) {
+    var H = R.horn, legs = Object.keys(conn.legs).map(function (k) { return conn.legs[k]; });
+    Promise.all(legs.map(function (L) { return L.pc.getStats().catch(function () { return null; }); })).then(function (all) {
+      if (!live(R) || conn.dead) return;
+      var rtt = null, lost = 0, recv = 0, fz = 0;
+      all.forEach(function (st) {
+        if (!st) return;
+        st.forEach(function (s) {
+          if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded' && typeof s.currentRoundTripTime === 'number') rtt = Math.max(rtt || 0, s.currentRoundTripTime * 1000);
+          if (s.type === 'inbound-rtp') { lost += s.packetsLost || 0; recv += s.packetsReceived || 0; if (s.kind === 'video') fz += s.freezeCount || 0; }
+        });
+      });
+      var p = conn.q5 || { lost: lost, recv: recv, fz: fz, t: Date.now() };
+      var dl = lost - p.lost, dr = recv - p.recv, loss = dl + dr > 0 ? Math.max(0, dl) / (dl + dr) : 0;
+      var mins = Math.max(1 / 60, (Date.now() - p.t) / 60000), fzm = (fz - p.fz) / mins;
+      conn.q5 = { lost: lost, recv: recv, fz: fz, t: Date.now() };
+      if (rtt == null && conn.rtts.length) rtt = H.L.median(conn.rtts);
+      conn.net = { rtt: rtt == null ? null : Math.round(rtt), loss: Math.round(loss * 1000) / 1000, freezes: Math.round(fzm * 10) / 10 };
+      conn.q = H.L.quality(conn.net);
+      if (conn === H.cur && !H.switching) {
+        var udpOk = conn.path !== 'udp' && conn.cand.udp && (H.meas[conn.node] || {}).udp != null;
+        var x = H.sw.udp(Date.now(), loss, udpOk);
+        if (x && x.path !== conn.path && (x.path !== 'udp' || conn.cand.tokens)) hornSwitch(R, x.why, { path: x.path });
+      }
+      drawInfo(R);
+    });
+  }
+  // Tonplaetze je Verbindung: eigenes <audio> je Platz. Waehrend eines Wechsels spielt je Absender nur EINE Verbindung:
+  // die neue, sobald sie Rahmen liefert und der Absender dort einen Tonplatz hat, sonst die alte (keine Luecke, kein Doppel)
+  function hornAudioEls(R, conn) {
+    var a, H = R.horn;
+    Object.keys(conn.legs).forEach(function (k) {
+      (conn.legs[k].aud || []).forEach(function (tr, i) {
+        if (conn.audios.some(function (x) { return x._tr === tr; })) return;
+        a = el('audio', 'cl-raudio'); a.autoplay = true; a.dataset.slot = String(i); a.dataset.conn = conn.key; a._tr = tr; a._i = i;
         if (R.ui) R.ui.w.appendChild(a);
         if (R.sinkId && a.setSinkId) a.setSinkId(R.sinkId).catch(function () {});
-      }
-      a.srcObject = new MediaStream([tr.receiver.track]); a.muted = !R.spkOut;
-      var p = a.play(); if (p && p.catch) p.catch(function () { R.audioBlocked = true; drawInfo(R); });
+        a.srcObject = new MediaStream([tr.receiver.track]); a.muted = !R.spkOut;
+        var p = a.play(); if (p && p.catch) p.catch(function () { R.audioBlocked = true; drawInfo(R); });
+        conn.audios.push(a); conn.aLeg = conn.legs[k];
+      });
+    });
+    if (H) hornAudioRoute(R);
+  }
+  function hornAudioOwner(conn, i) {
+    var L = conn.aLeg, s = L && (L.slots || []).filter(function (x) { return x.class === 'audio'; })[i];
+    return s && s.csrc ? conn.csrc[s.csrc >>> 0] || null : null;
+  }
+  // Liefert dieser Tonplatz seit mindestens 400 ms Rahmen? (Jitter-Puffer gefuellt - erst dann die alte Verbindung fuer
+  // diesen Absender stumm schalten, sonst entstuende eine Luecke)
+  // Je (Platz, Absender): ein Platz, der eben noch eine andere Person trug, zaehlt fuer die neue erst nach 400 ms.
+  function hornAudioLive(a, owner) {
+    var src = a._tr.receiver.getSynchronizationSources ? a._tr.receiver.getSynchronizationSources()[0] : null, pnow = performance.now();
+    if (!(src && (!src.timestamp || pnow - src.timestamp < 500))) { a._since = 0; return false; }
+    if (a._owner !== owner) { a._owner = owner; a._since = pnow; }
+    if (!a._since) a._since = pnow;
+    return pnow - a._since >= 400;
+  }
+  function hornAudioRoute(R) {
+    var H = R.horn, cur = H.cur, onCur = {};
+    if (cur) cur.audios.forEach(function (a) { var d = hornAudioOwner(cur, a._i); if (d && hornAudioLive(a, d)) onCur[d] = true; });
+    hornConns(R).forEach(function (c) {
+      c.audios.forEach(function (a) {
+        var ow = hornAudioOwner(c, a._i), dup = c !== cur && onCur[ow];
+        var m = !R.spkOut || !!dup;
+        a.dataset.owner = ow ? ow.slice(0, 8) : '';      // Diagnose (Tests)
+        if (a.muted !== m) a.muted = m;
+        if (!m && a.paused) a.play().catch(function () {});
+      });
     });
   }
-  function hornSpk(R) { if (R.horn) R.horn.audios.forEach(function (a) { a.muted = !R.spkOut; if (!a.muted && a.paused) a.play().catch(function () {}); }); }
+  function hornSpk(R) { if (R.horn) hornAudioRoute(R); }
   function hornCam(R) {
-    var L = R.horn && R.horn.legs.video;
-    if (L && L.tr) L.tr.sender.replaceTrack(R.cam || null).catch(function () {});
+    if (!R.horn) return;
+    hornConns(R).forEach(function (c) { Object.keys(c.legs).forEach(function (k) { var L = c.legs[k]; if (L.cam) L.cam.sender.replaceTrack(R.cam || null).catch(function () {}); }); });
+    hornStateOut(R); hornDraw(R);
   }
-  // Kacheln: je anderem Geraet eine; Bild aus dem Platz, den der Knoten ihm gerade gibt (Sprecher vor Kachel)
-  function hornTiles(R) {
-    var H = R.horn; if (!H || !R.ui || R.done) return;
-    var me_ = myDev().id, L = H.legs.video, want = {}, track = {};
-    ((L && L.slots) || []).forEach(function (s) {
-      var d = s.peer ? hornDevOf(R, s.peer) : null, tr = L.recv[s.i];
-      if (d && tr && !s.paused && (s.class === 'speaker' || s.class === 'tile') && !track[d]) track[d] = tr.receiver.track;
+  function hornMic(R) {
+    if (!R.horn) return;
+    var t = hornAudioTrack(R);
+    hornConns(R).forEach(function (c) { Object.keys(c.legs).forEach(function (k) { var L = c.legs[k]; if (L.tr && L.tr.sender.track !== t) L.tr.sender.replaceTrack(t).catch(function () {}); }); });
+    hornStateOut(R); hornList(R);
+  }
+  // Bildschirm ueber den Knoten: eigener Sender je Bild-Leitung (Platz "screen" bei den anderen)
+  function hornScreen(R) {
+    if (!R.horn) return;
+    hornConns(R).forEach(function (c) {
+      Object.keys(c.legs).forEach(function (k) {
+        var L = c.legs[k]; if (!L.scr) return;
+        if (R.screen) { try { R.screen.contentHint = 'detail'; } catch (e) { /* aelterer Browser */ } }
+        L.scr.sender.replaceTrack(R.screen || null).catch(function () {});
+      });
     });
-    (R.legs || []).forEach(function (x) {
-      if (x.device === me_) return;
-      want[x.device] = true;
-      var T_ = H.tiles[x.device];
-      if (!T_) {
-        var box = el('div', 'cl-tile'); box.setAttribute('role', 'listitem'); box.dataset.dev = x.device;
-        var v = el('video', 'cl-tv'); v.autoplay = true; v.muted = true; v.playsInline = true; v.setAttribute('playsinline', '');
-        var p = personOf(x);
-        var av = HK.avatarImg(el('span', 'cl-av', (p.name || '?').charAt(0).toUpperCase()), x.avatar || null, 56); av.setAttribute('aria-hidden', 'true');
-        var lab = el('div', 'cl-tl'); lab.appendChild(el('b', null, p.me ? T('du') : (p.name || '?'))); lab.appendChild(el('span', 'cl-td', x.dev_name || ''));
-        [v, av, lab].forEach(function (y) { box.appendChild(y); });
-        R.ui.grid.appendChild(box);
-        T_ = H.tiles[x.device] = { box: box, v: v, track: null };
+    hornMic(R);                                        // Systemton (gemischt) bzw. wieder nur das Mikrofon
+    hornStateOut(R); hornDraw(R);
+  }
+
+  // --- Ansicht: Kacheln bis 25, Last-N, Sprecheransicht, Bildschirm --------------------------------------------------------
+  // Quellen je Geraet: Bild aus dem Platz, den ein Knoten ihm gerade gibt (aktuelle Verbindung zuerst), Bildschirm aus dem
+  // Bildschirmplatz, Sprecher aus dem Sprecherplatz
+  function hornVideoLive(tr) {
+    var src = tr.receiver.getSynchronizationSources ? tr.receiver.getSynchronizationSources()[0] : null;
+    return !!(src && (!src.timestamp || performance.now() - src.timestamp < 700));
+  }
+  function hornSources(R) {
+    var H = R.horn, out = { vid: {}, scr: null, spk: null }, cur = H.cur;
+    // Waehrend eines Wechsels: Bild aus der neuen Verbindung erst, wenn dort Rahmen ankommen (sonst die alte weiter)
+    var conns = hornConns(R).sort(function (a, b) { return (b === cur) - (a === cur); });
+    conns.forEach(function (c) {
+      Object.keys(c.legs).forEach(function (k) {
+        var L = c.legs[k];
+        (L.slots || []).forEach(function (s) {
+          if (s.class === 'audio' || !s.csrc || s.paused) return;
+          var d = c.csrc[s.csrc >>> 0], tr = L.recv[s.i];
+          if (!d || !tr) return;
+          // Bild: das Geraet, dessen Rahmen der Empfaenger gerade wirklich bekommt (Wechsel am Knoten erst am Schluesselbild)
+          var vd = tr.rid && H.vown[tr.rid];
+          if (s.class === 'screen') { if (!out.scr && (!vd || vd === d) && (H.st[d] || {}).screen !== false) out.scr = { dev: d, track: tr.receiver.track }; return; }
+          if (s.class === 'speaker' && (!out.spk || c === cur)) out.spk = d;
+          if (vd) d = vd;
+          if (conns.length > 1 && !hornVideoLive(tr)) return;
+          if (!out.vid[d]) out.vid[d] = { track: tr.receiver.track, cls: s.class, conn: c };
+        });
+      });
+    });
+    return out;
+  }
+  function hornTileEl(R, x) {
+    var box = el('div', 'cl-tile'); box.setAttribute('role', 'listitem'); box.dataset.dev = x.device;
+    var v = el('video', 'cl-tv'); v.autoplay = true; v.muted = true; v.playsInline = true; v.setAttribute('playsinline', '');
+    var still = el('canvas', 'cl-still'); still.width = 320; still.height = 180; still.setAttribute('aria-hidden', 'true');
+    var p = personOf(x);
+    var av = HK.avatarImg(el('span', 'cl-av', (p.name || '?').charAt(0).toUpperCase()), x.avatar || null, 56); av.setAttribute('aria-hidden', 'true');
+    var lab = el('div', 'cl-tl'); lab.appendChild(el('b', null, p.me ? T('du') : (p.name || '?'))); lab.appendChild(el('span', 'cl-td', x.dev_name || ''));
+    [v, still, av, lab].forEach(function (y) { box.appendChild(y); });
+    box.addEventListener('dblclick', function () { var H = R.horn; if (H) { H.pin = H.pin === x.device ? null : x.device; hornSetView(R, 'speaker'); } });
+    v.addEventListener('loadeddata', function () { if (live(R) && R.horn) hornDraw(R); });   // erstes Bild da: zeigen
+    return { box: box, v: v, still: still, hasStill: false, track: null };
+  }
+  function hornDraw(R) {
+    var H = R.horn; if (!H || !R.ui || R.done || !H.L) return;
+    var me_ = myDev().id, src = hornSources(R), devs = [], moving = {};
+    (R.legs || []).forEach(function (x) { if (x.device !== me_) devs.push(x.device); });
+    devs.forEach(function (d) { if (src.vid[d]) moving[d] = true; });
+    H.spk = src.spk || H.spk;
+    if (H.spk && devs.indexOf(H.spk) < 0) H.spk = null;
+    var lay = H.L.tiles(devs, moving, H.pin && devs.indexOf(H.pin) >= 0 ? H.pin : H.spk, H.view), want = {};
+    // Streifen (Sprecheransicht bzw. Bildschirm): oben gross (Sprecher-Kachel bzw. Bildschirm), unten die anderen
+    var strip = !!src.scr || (H.view === 'speaker' && lay.list.length > 1), pos = 0;
+    var hb = R.ui.hbig;
+    if (!hb) { hb = R.ui.hbig = el('div', 'cl-hbig'); R.ui.grid.parentNode.insertBefore(hb, R.ui.grid); }
+    lay.list.forEach(function (t) {
+      var x = legOf(R, t.dev); if (!x) return;
+      want[t.dev] = true;
+      var T_ = H.tiles[t.dev];
+      if (!T_) T_ = H.tiles[t.dev] = hornTileEl(R, x);
+      var s = H.st[t.dev] || {}, vs = src.vid[t.dev], tr = vs ? vs.track : null;
+      if (tr !== T_.track) {
+        // Platz weg (Last-N) bzw. anderer Platz/Knoten (Wechsel): letztes Bild als Standbild, bis neue Rahmen kommen
+        if (T_.track && T_.v.videoWidth && s.cam !== false) {
+          try { T_.still.getContext('2d').drawImage(T_.v, 0, 0, T_.still.width, T_.still.height); T_.hasStill = true; } catch (e) { T_.hasStill = false; }
+        }
+        T_.track = tr; T_.v.srcObject = tr ? new MediaStream([tr]) : null; if (tr) T_.v.play().catch(function () {});
       }
-      var t = track[x.device] || null;
-      if (t !== T_.track) { T_.track = t; T_.v.srcObject = t ? new MediaStream([t]) : null; if (t) T_.v.play().catch(function () {}); }
-      T_.box.classList.toggle('has-video', !!t);
-      T_.box.classList.toggle('wait', !hornUp(R));
+      if (s.cam === false) T_.hasStill = false;
+      var frames = !!tr && T_.v.readyState >= 2;      // Rahmen da (sonst bis zum ersten Bild Standbild bzw. Bild der Person)
+      T_.box.classList.toggle('has-video', frames && s.cam !== false);
+      T_.box.classList.toggle('still', !frames && T_.hasStill);
+      T_.box.classList.toggle('big', !!t.big);
+      T_.box.classList.toggle('muted', s.mic === false);
+      T_.box.classList.toggle('peer-screen', !!(src.scr && src.scr.dev === t.dev));
+      T_.box.classList.toggle('wait', !H.cur);
+      T_.box.classList.toggle('speaking', !!H.speaking[t.dev]);
+      T_.box.setAttribute('aria-label', (x.name || '?') + (x.dev_name ? ' (' + x.dev_name + ')' : '') + (s.mic === false ? ' – ' + T('stumm') : ''));
+      if (strip && t.big && !src.scr) { if (T_.box.parentNode !== hb) hb.appendChild(T_.box); }
+      else { if (R.ui.grid.children[pos] !== T_.box) R.ui.grid.insertBefore(T_.box, R.ui.grid.children[pos] || null); pos++; }
     });
-    Object.keys(H.tiles).forEach(function (d) { if (!want[d]) { H.tiles[d].box.remove(); delete H.tiles[d]; } });
-    R.ui.w.classList.add('mesh');
-    R.ui.w.classList.toggle('tiles', Object.keys(H.tiles).length > 0);
-    R.ui.grid.dataset.n = String(Math.min(Object.keys(H.tiles).length, 6));
-    drawPeer(R);
+    Object.keys(H.tiles).forEach(function (d) { if (!want[d]) { H.tiles[d].v.srcObject = null; H.tiles[d].box.remove(); delete H.tiles[d]; } });
+    if (lay.more) {
+      if (!H.more) H.more = el('div', 'cl-tile cl-more');
+      H.more.textContent = '+' + lay.more; H.more.title = T('{n} weitere Teilnehmende', { n: lay.more });
+      R.ui.grid.appendChild(H.more);
+    } else if (H.more) { H.more.remove(); H.more = null; }
+    var n = lay.list.length + (lay.more ? 1 : 0), w = R.ui.w, cols = H.L.cols(n, window.innerWidth);
+    w.classList.add('mesh', 'horn');
+    w.classList.toggle('tiles', n > 0);
+    w.classList.toggle('horn-strip', strip);
+    w.classList.toggle('horn-scr', !!src.scr);
+    R.ui.grid.dataset.n = String(Math.min(n, 6));
+    R.ui.grid.dataset.cols = String(cols);
+    R.ui.grid.dataset.scroll = !strip && Math.ceil(n / cols) > (window.innerWidth <= 640 ? 4 : 5) ? '1' : '0';
+    R.ui.grid.style.setProperty('--cols', String(cols));
+    // Bildschirm gross (eigenes Element), sonst Sprecherbild fuer Bild-im-Bild
+    var big = src.scr ? src.scr.track : (H.spk && src.vid[H.spk] ? src.vid[H.spk].track : (devs.length && src.vid[devs[0]] ? src.vid[devs[0]].track : null));
+    var hs = R.ui.hs;
+    if (!hs) { hs = R.ui.hs = el('video', 'cl-hscreen'); hs.autoplay = true; hs.muted = true; hs.playsInline = true; hs.setAttribute('playsinline', ''); R.ui.grid.parentNode.insertBefore(hs, R.ui.grid); }
+    var st = src.scr ? src.scr.track : null;
+    if ((hs.srcObject && hs.srcObject.getVideoTracks()[0]) !== st) { hs.srcObject = st ? new MediaStream([st]) : null; if (st) hs.play().catch(function () {}); }
+    if ((R.ui.rv.srcObject && R.ui.rv.srcObject.getVideoTracks()[0]) !== big) R.ui.rv.srcObject = big ? new MediaStream([big]) : null;
+    hornShare(R, src.scr);
+    drawPeer(R); pipBtn(R, !!big); pipDraw(R);
   }
+  // Leiste beim Teilen (wie 2.4): eigene (rot, Beenden) bzw. "… teilt den Bildschirm"
+  function hornShare(R, scr) {
+    var b = R.ui && R.ui.share; if (!b) return;
+    b.textContent = ''; b.classList.toggle('me', !!R.screen);
+    if (R.screen) {
+      b.appendChild(el('span', 'cl-share-dot'));
+      b.appendChild(el('span', 'cl-share-t', R.mix ? T('Du teilst deinen Bildschirm und den Ton') : T('Du teilst deinen Bildschirm')));
+      b.appendChild(btn(T('Teilen beenden'), 'cl-pill cl-share-stop', function () { if (live(R) && R.screen) stopScreen(R); }, T('Teilen beenden')));
+      b.hidden = false;
+    } else if (scr) {
+      b.appendChild(el('span', 'cl-share-t', T('{name} teilt den Bildschirm', { name: hornDevName(R, scr.dev) })));
+      b.hidden = false;
+    } else b.hidden = true;
+  }
+  function hornSetView(R, v) {
+    var H = R.horn; if (!H) return;
+    H.view = v === 'speaker' ? 'speaker' : 'grid';
+    if (H.view === 'grid') H.pin = null;
+    try { localStorage.setItem('saga-horn-view', H.view); } catch (e) { /* privat */ }
+    hornDraw(R); drawCtl(R);
+  }
+  // Sprechring: Pegel der Tonplaetze (RTP-Quelle), Absender ueber die CSRC des Platzes - 3x je Sekunde
+  function hornSpeakers(R) {
+    var H = R.horn; clearInterval(H.spkT);
+    H.spkT = setInterval(function () {
+      if (!live(R) || !R.horn) { clearInterval(H.spkT); return; }
+      var now = Date.now(), pnow = performance.now(), lv = {};
+      hornConns(R).forEach(function (c) {
+        c.audios.forEach(function (a) {
+          var d = hornAudioOwner(c, a._i), src = a._tr.receiver.getSynchronizationSources ? a._tr.receiver.getSynchronizationSources()[0] : null;
+          // timestamp: performance.now()-Zeitbasis; aelter als 1 s = der Platz liefert gerade nichts
+          if (src && typeof src.audioLevel === 'number') H.lvSeen = true;
+          if (d && src && typeof src.audioLevel === 'number' && !(src.timestamp && pnow - src.timestamp > 1000)) lv[d] = Math.max(lv[d] || 0, src.audioLevel);
+        });
+      });
+      H.levels = lv;
+      if (!H.lvSeen && H.spk) lv[H.spk] = 1;           // Browser ohne Pegel: Sprechring am Sprecherplatz des Knotens
+      var ch = false;
+      Object.keys(H.tiles).forEach(function (d) {
+        var on = (lv[d] || 0) > 0.03 && (H.st[d] || {}).mic !== false;
+        if (on) H.speakAt = H.speakAt || {}, H.speakAt[d] = now;
+        var keep = on || (H.speakAt && now - (H.speakAt[d] || 0) < 600);
+        if (!!H.speaking[d] !== !!keep) { ch = true; if (keep) H.speaking[d] = true; else delete H.speaking[d]; }
+        H.tiles[d].box.classList.toggle('speaking', !!keep);
+      });
+      // Teilnehmerliste: nur den Sprechring umschalten, nicht neu zeichnen (sonst gehen Klicks auf ihre Knoepfe verloren)
+      if (ch && H.plist && R.ui && R.ui.w) R.ui.w.querySelectorAll('.cl-plist .cl-pl[data-dev]').forEach(function (li) { li.classList.toggle('speaking', !!H.speaking[li.dataset.dev]); });
+    }, 330);
+  }
+  // --- Kopfzeile: Verschluesselung, Dauer, Zahl, Weg mit Qualitaetspunkt, Runensiegel --------------------------------------
   function hornInfo(R) {
     var i = R.ui.info, H = R.horn; i.textContent = '';
     if (R.companion) i.appendChild(el('span', 'cl-chip', T('Begleitgerät')));
@@ -2215,27 +2832,167 @@
     i.lastChild.title = T('Ton und Bild sind je Rahmen mit dem Schlüssel des sendenden Geräts verschlüsselt (saga-horn/v1). Der Knoten leitet nur weiter und kann nichts entschlüsseln.');
     if (R.since) i.appendChild(el('span', null, dur((Date.now() - R.since) / 1000)));
     i.appendChild(el('span', 'cl-count', T('{n} Geräte', { n: (R.legs || []).length || 1 })));
-    if (H.node && hornUp(R)) i.appendChild(el('span', 'cl-path', H.path === 'turn' ? T('über Knoten (TLS)') : T('über Knoten (TCP)')));
+    var cur = H.cur;
+    if (cur && H.L) {
+      var pn = H.L.pathName(cur.path), q_ = cur.q || 'good', net = cur.net || {};
+      var pth = el('span', 'cl-path cl-hpath cl-q cl-q-' + q_, pn);
+      var qt = q_ === 'good' ? T('gute Verbindung') : q_ === 'mid' ? T('mittlere Verbindung') : T('schwache Verbindung');
+      pth.title = T('Weg zum Knoten {node}: {path}', { node: cur.node, path: cur.path === 'udp' ? T('UDP (schnellster Weg)') : cur.path === 'turn' ? T('TLS über Port 443 (Rückfall)') : T('TCP über Port 443') })
+        + ' · ' + qt + (net.rtt != null ? ' · RTT ' + net.rtt + ' ms' : '') + (net.loss ? ' · ' + T('Verlust {p} %', { p: Math.round(net.loss * 1000) / 10 }) : '');
+      pth.setAttribute('aria-label', pth.title);
+      i.appendChild(pth);
+      if (H.next || H.olds.length) i.appendChild(el('span', 'cl-path cl-hmove', T('wechselt den Knoten …')));
+    }
+    if (H.runes) {
+      var rb = btn(H.runes.runes, 'cl-runes', function () { H.rpop = !H.rpop; hornRunePop(R); }, T('Runensiegel – zum Vergleichen'));
+      rb.setAttribute('aria-expanded', String(!!H.rpop)); rb.lang = 'und';
+      i.appendChild(rb);
+    }
     if (R.ui.un) R.ui.un.hidden = !R.audioBlocked;
+  }
+  // Runensiegel: 6 Runen aus SHA-256(call_id ‖ sortierte Geraeteschluessel aller aktiven Endpunkte) - aendert sich bei
+  // jedem Beitritt und Abgang. Alle sehen dieselben Runen = genau diese Geraete sind im Anruf.
+  function hornRunes(R) {
+    var H = R.horn; if (!H || !H.X || !R.id) return;
+    var me_ = myDev(), devs = (R.legs || []).map(function (x) { return x.device; }).sort();
+    Promise.all((R.legs || []).map(function (x) {
+      if (x.device === me_.id) return Promise.resolve(me_.sign_pk);
+      var P = hornPeer(R, x);
+      return peerKeys(P).then(function () { var d = P.peerDevs[x.device]; return d ? d.sign_pk : null; }).catch(function () { return null; });
+    })).then(function (pks) {
+      var ok = pks.filter(Boolean), key = devs.join(',') + '|' + ok.length;
+      if (!live(R) || key === H.runesKey) return;
+      H.unverified = (R.legs || []).filter(function (x, i) { return !pks[i]; }).map(function (x) { return x.device; });
+      H.runesKey = key;
+      return H.X.runes(R.id, ok).then(function (r) { if (live(R)) { H.runes = r; drawInfo(R); hornRunePop(R); hornList(R); } });
+    }).catch(function () {});
+  }
+  function hornRunePop(R) {
+    var H = R.horn, w = R.ui && R.ui.w; if (!w) return;
+    var p = w.querySelector('.cl-rpop');
+    if (!H.rpop || !H.runes) { if (p) p.remove(); return; }
+    if (!p) { p = el('div', 'cl-rpop'); p.setAttribute('role', 'dialog'); p.setAttribute('aria-label', T('Runensiegel')); w.appendChild(p); }
+    p.textContent = '';
+    var hd = el('div', 'cl-rpop-h'); hd.appendChild(el('b', null, T('Runensiegel')));
+    hd.appendChild(btn(icon('x'), 'cl-mini', function () { H.rpop = false; hornRunePop(R); drawInfo(R); }, T('Schließen')));
+    p.appendChild(hd);
+    var big = el('div', 'cl-rpop-r', H.runes.runes); big.lang = 'und'; p.appendChild(big);
+    p.appendChild(el('div', 'cl-rpop-n', H.runes.names.join(' · ')));
+    p.appendChild(el('p', null, T('Vergleicht die sechs Runen, zum Beispiel durch Vorlesen. Sehen alle dieselben, sind genau die Geräte in der Teilnehmerliste im Anruf – niemand sonst kann mithören, auch nicht der Server oder der Knoten.')));
+    p.appendChild(el('p', 'cl-rpop-s', T('Die Runen ändern sich, sobald jemand beitritt oder geht.')));
+    if ((H.unverified || []).length) p.appendChild(el('p', 'cl-rpop-w', T('Nicht geprüft: {names}', { names: H.unverified.map(function (d) { return hornDevName(R, d); }).join(', ') })));
+  }
+  // --- Teilnehmerliste (Gastgeber: Stummschalten, Entfernen) ------------------------------------------------------------
+  function hornHost(R) { return !!(R.call && (R.call.host || (R.call.peer && R.call.peer.username === meName()))); }
+  function hornList(R) {
+    var H = R.horn, w = R.ui && R.ui.w; if (!H || !w) return;
+    var p = w.querySelector('.cl-plist');
+    if (!H.plist) { if (p) p.remove(); return; }
+    if (!p) { p = el('div', 'cl-plist'); p.setAttribute('role', 'dialog'); p.setAttribute('aria-label', T('Teilnehmende')); w.appendChild(p); }
+    p.textContent = '';
+    var legs = R.legs || [], me_ = myDev().id, host = hornHost(R);
+    var hd = el('div', 'cl-plist-h'); hd.appendChild(el('b', null, T('Teilnehmende ({n})', { n: legs.length })));
+    hd.appendChild(btn(icon('x'), 'cl-mini', function () { H.plist = false; hornList(R); drawCtl(R); }, T('Schließen')));
+    p.appendChild(hd);
+    var ul = el('ul', 'cl-plist-l');
+    legs.forEach(function (x) {
+      var li = el('li', 'cl-pl' + (H.speaking[x.device] ? ' speaking' : '')); li.dataset.dev = x.device;
+      var mine = x.device === me_, s = mine ? { mic: R.mic } : (H.st[x.device] || {});
+      var av = HK.avatarImg(el('span', 'cl-av cl-av-s', (x.name || '?').charAt(0).toUpperCase()), x.avatar || null, 32); av.setAttribute('aria-hidden', 'true');
+      var t = el('div', 'cl-pl-t');
+      t.appendChild(el('b', null, (x.name || '?') + (mine ? ' (' + T('du') + ')' : '')));
+      var sub = [x.dev_name || '', x.role === 'companion' ? T('Begleitgerät') : '', R.call && R.call.peer && x.who === R.call.peer.username ? T('Gastgeber') : '']
+        .filter(Boolean).join(' · ');
+      if (sub) t.appendChild(el('span', 'cl-td', sub));
+      if ((H.unverified || []).indexOf(x.device) >= 0) t.appendChild(el('span', 'cl-pl-w', T('nicht geprüft')));
+      li.appendChild(av); li.appendChild(t);
+      li.appendChild(el('span', 'cl-pl-m' + (s.mic === false ? ' off' : ''), s.mic === false ? '🔇' : ''));
+      if (s.mic === false) li.lastChild.title = T('stumm');
+      if (host && !mine && x.who !== meName()) {
+        var b = el('div', 'cl-pl-b');
+        if (s.mic !== false) b.appendChild(btn(T('Stummschalten'), 'cl-pill cl-pl-mute', function () { hornMod(R, x, 'mute'); }, T('{name} stummschalten', { name: x.name || '?' })));
+        // Entfernen in zwei Schritten ("Wirklich entfernen?", 4 s) - der Zustand ueberlebt das Neuzeichnen der Liste
+        var sure = H.rmSure && H.rmSure.dev === x.device && H.rmSure.until > Date.now();
+        var rm = btn(sure ? T('Wirklich entfernen?') : T('Entfernen'), 'cl-pill cl-pl-rm' + (sure ? ' sure' : ''), function () {
+          if (!(H.rmSure && H.rmSure.dev === x.device && H.rmSure.until > Date.now())) {
+            H.rmSure = { dev: x.device, until: Date.now() + 4000 }; hornList(R);
+            setTimeout(function () { if (H.rmSure && H.rmSure.dev === x.device && H.rmSure.until <= Date.now()) { H.rmSure = null; hornList(R); } }, 4100);
+            return;
+          }
+          H.rmSure = null;
+          hornMod(R, x, 'remove');
+        }, T('{name} aus dem Anruf entfernen', { name: x.name || '?' }));
+        b.appendChild(rm); li.appendChild(b);
+      }
+      ul.appendChild(li);
+    });
+    p.appendChild(ul);
+  }
+  function hornMod(R, x, action) {
+    api('POST', '/api/calls/' + R.id + '/moderate', { device: myDev().id, target: x.device, action: action }).then(function () {
+      HK.toast(action === 'mute' ? T('{name} wurde stummgeschaltet.', { name: x.name || '?' }) : T('{name} wurde aus dem Anruf entfernt.', { name: x.name || '?' }));
+    }).catch(function (e) { HK.toast(e.message); });
+  }
+  // Ereignis call.mod (Gastgeber hat dieses Geraet stummgeschaltet bzw. diese Person entfernt)
+  function hornModIn(d) {
+    var R = C; if (!R || R.id !== d.call_id || R.done) return;
+    var me_ = myDev().id;
+    if (d.action === 'mute' && d.device === me_) {
+      if (R.mic) setMic(R, false);
+      HK.toast(T('{name} hat dich stummgeschaltet. Du kannst das Mikrofon selbst wieder einschalten.', { name: d.by || '?' }));
+    } else if (d.action === 'remove') {
+      api('GET', '/api/calls/' + R.id + '?device=' + q(me_)).then(function (r) {
+        if (live(R) && (r.call.mine || []).indexOf(me_) < 0) hornRemoved(R, d.by);
+      }).catch(function () {});
+    }
+  }
+  function hornRemoved(R, by) {
+    R.ending = true;
+    finish(R, by ? T('{name} hat dich aus dem Anruf entfernt.', { name: by }) : T('Du wurdest aus dem Anruf entfernt.'), 'info');
   }
   function hornClose(R) {
     var H = R.horn; if (!H) return;
-    clearInterval(H.pollT); clearTimeout(H.waitT);
-    ['audio', 'video'].forEach(function (role) {
-      var L = H.legs[role]; if (!L) return;
-      if (L.id && H.node) hornFetch(H.node.url + '/api/sfu/leg/' + encodeURIComponent(L.id), null, 'DELETE').catch(function () {});
-      try { L.pc.close(); } catch (e) { /* zu */ }
-      delete H.legs[role];
-    });
+    clearInterval(H.monT); clearInterval(H.spkT); clearInterval(H.arT); clearTimeout(H.retryT); H.monT = null; H.arT = null;
+    hornConns(R).concat(H.olds).forEach(function (c) { hornConnClose(R, c); });
+    H.cur = H.next = null; H.olds = [];
   }
   function hornStop(R) {
     var H = R.horn; if (!H) return;
     hornClose(R);
-    clearTimeout(H.ackT); clearTimeout(H.rekeyT);
-    H.audios.forEach(function (a) { a.srcObject = null; a.remove(); });
-    Object.keys(H.tiles).forEach(function (d) { H.tiles[d].box.remove(); });
+    clearTimeout(H.ackT); clearTimeout(H.rekeyT); clearTimeout(H.stT);
+    Object.keys(H.tiles).forEach(function (d) { H.tiles[d].v.srcObject = null; H.tiles[d].box.remove(); });
     H.tiles = {};
+    if (R.ui) {
+      var x = R.ui.w.querySelector('.cl-plist'), y = R.ui.w.querySelector('.cl-rpop'); if (x) x.remove(); if (y) y.remove();
+      if (R.ui.hs) { R.ui.hs.srcObject = null; R.ui.hs.remove(); R.ui.hs = null; }
+      if (R.ui.hbig) { R.ui.hbig.remove(); R.ui.hbig = null; }
+      R.ui.w.classList.remove('horn', 'horn-strip', 'horn-scr');
+    }
     if (H.X) H.X.close();
+  }
+  // Vor dem Start eines Gruppenanrufs: kein Knoten bereit und die Gruppe ist groesser als die Mesh-Grenze -> Hinweis
+  function hornHintNeeded(chat, video) {
+    var n = chat && chat.members ? chat.members.length : 0, lim = cfg && cfg.limits ? (video ? cfg.limits.endpoints_video : cfg.limits.endpoints_audio) : 0;
+    return !!(cfg && feat('horn') && cfg.horn_ready === false && lim && n > lim);
+  }
+  function hornMeshHint(chat, video) {
+    if (!hornHintNeeded(chat, video) || document.querySelector('.cl-hint-page')) return Promise.resolve(!document.querySelector('.cl-hint-page'));
+    return new Promise(function (ok) {
+      var back = el('div', 'cl-hint-back'), box = el('div', 'cl-hint cl-hint-page'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
+      box.setAttribute('aria-label', T('Gruppenanruf'));
+      box.appendChild(el('b', null, T('Kein Knoten für große Gruppenanrufe bereit')));
+      box.appendChild(el('p', null, T('Der Anruf läuft deshalb direkt zwischen den Geräten. Dabei können höchstens {v} Geräte mit Video bzw. {a} nur mit Ton teilnehmen.',
+                                       { v: cfg.limits.endpoints_video, a: cfg.limits.endpoints_audio })));
+      box.appendChild(el('p', 'cl-hint-s', T('Bitte die Verwaltung, einen Gjallarhorn-Knoten bereitzustellen – dann geht es mit bis zu 12 bzw. 25 Personen mit Video.')));
+      var row = el('div', 'cl-hint-b'), done = function (v) { box.remove(); back.remove(); ok(v); };
+      row.appendChild(btn(T('Abbrechen'), 'cl-pill cl-hint-no', function () { done(false); }));
+      row.appendChild(btn(T('Trotzdem anrufen'), 'cl-pill cl-hint-go', function () { done(true); }));
+      box.appendChild(row);
+      back.addEventListener('click', function () { done(false); });
+      box.addEventListener('keydown', function (e) { if (e.key === 'Escape') done(false); });
+      document.body.appendChild(back); document.body.appendChild(box);
+      var go = box.querySelector('.cl-hint-go'); if (go) go.focus({ preventScroll: true });
+    });
   }
 
   // --- Live-Ereignisse ---------------------------------------------------------------------------------------------
@@ -2269,7 +3026,8 @@
           finish(c, T('Der Anruf wurde auf einem anderen Gerät angenommen.'), 'info');
         }
       }
-    } else if (t === 'resync') pending();
+    } else if (t === 'call.mod') hornModIn(d);       // 2.5: Gastgeber hat stummgeschaltet bzw. entfernt
+    else if (t === 'resync') pending();
   });
   // Seite neu geladen/geoeffnet, waehrend es klingelt
   // 2.4: dazu Gruppenanrufe (Einladung klingelt) und die Leiste "Anruf laeuft" (anderes eigenes Geraet, Gruppe im Chat)
@@ -2407,15 +3165,25 @@
   },
   join: join, running: function () { return Object.keys(RUN); },
   // 2.5 Gjallarhorn: Knoten, Weg, Beine, Zuordnung, Kacheln (Tests, Diagnose) und Zaehler des Frame-E2E-Workers
+  // P5: dazu Verbindungen je Knoten (Wechsel), Messung, Ansicht, Standbilder, Sprechring, Runensiegel
   horn: function () {
     var R = C; if (!R || !R.horn) return null;
-    var H = R.horn, legs = {};
-    Object.keys(H.legs).forEach(function (k) { var L = H.legs[k]; legs[k] = { id: L.id, state: L.pc.connectionState, est: L.est || 0, slots: L.slots }; });
-    return { id: R.id, node: H.node && H.node.node, url: H.node && H.node.url, path: H.path, mode: H.X && H.X.mode, up: hornUp(R), since: R.since || 0,
-             csrc: H.csrc, mine: H.mine, key_n: H.key ? H.key.n : null, known: Object.keys(H.known), legs: legs, sent: H.sent || 0,
-             hp: (R.legs || []).reduce(function (o, x) { if (x.hp) o[x.device] = x.hp; return o; }, {}),
-             tiles: Object.keys(H.tiles).map(function (d) { var x = H.tiles[d]; return { dev: d, video: !!x.track, live: !!(x.track && x.track.readyState === 'live') }; }) };
+    var H = R.horn, cur = H.cur, legs = {};
+    var legsOf = function (c) { var o = {}; Object.keys(c.legs).forEach(function (k) { var L = c.legs[k]; o[k] = { id: L.id, state: L.pc.connectionState, est: L.est || 0, slots: L.slots, ws: !!(L.ws && L.ws.readyState === 1) }; }); return o; };
+    if (cur) legs = legsOf(cur);
+    var up = !!cur && Object.keys(cur.legs).length > 0 && Object.keys(cur.legs).every(function (k) { return cur.legs[k].pc.connectionState === 'connected'; });
+    return { id: R.id, node: cur && cur.node, url: cur && cur.url, path: cur ? cur.path : '', mode: H.X && H.X.mode, up: up, since: R.since || 0,
+             csrc: cur ? cur.csrc : {}, mine: cur && cur.mine, key_n: H.key ? H.key.n : null, known: Object.keys(H.known), legs: legs, sent: H.sent || 0,
+             hp: (R.legs || []).reduce(function (o, x) { var r = cur ? hornRef(x, cur) : x.hp; if (r) o[x.device] = r; return o; }, {}),
+             conns: hornConns(R).map(function (c) { return { key: c.key, node: c.node, path: c.path, cur: c === cur, up: c.up, rx: c.rx, peers: Object.keys(c.peers).length, legs: legsOf(c) }; }),
+             switches: H.switches, switching: !!H.switching, meas: H.meas, ranked: H.ranked || null, note: H.note, view: H.view, net: cur && cur.net, q: cur && cur.q,
+             runes: H.runes, host: hornHost(R), screen: !!R.screen, spk: H.spk || null, speaking: Object.keys(H.speaking), levels: H.levels || {}, lvSeen: !!H.lvSeen, errs: H.errs || [], bad: H.bad, log: H.log || [],
+             tiles: Object.keys(H.tiles).map(function (d) { var x = H.tiles[d]; return { dev: d, video: !!x.track, live: !!(x.track && x.track.readyState === 'live'), still: x.box.classList.contains('still'),
+                                                                                         big: x.box.classList.contains('big'), speaking: x.box.classList.contains('speaking'), muted: x.box.classList.contains('muted') }; }),
+             shared: (function () { var s = hornSources(R).scr; return s ? { dev: s.dev, live: s.track.readyState === 'live' } : null; })() };
   },
+  hornView: function (v) { if (C && C.horn) hornSetView(C, v); },
+  hornSwitch: function (why) { if (C && C.horn) hornSwitch(C, why || 'lost'); },
   caps: function () { return config().then(function () { return myCaps(); }); },
   hornStats: function (reset) { return C && C.horn && C.horn.X ? C.horn.X.stats(reset) : Promise.resolve(null); },
   // 2.4: fuer Tests und die Diagnose - ICE neu aushandeln (wie bei einem Netzwechsel), Bild-im-Bild, Regeltabelle
