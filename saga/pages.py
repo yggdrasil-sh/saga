@@ -16,7 +16,7 @@ from db import clean_line, connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
 from saga import bus, nextcloud, treesync
-from saga.core import BASE_URL, E, STATE_DIR, account_lang, _api_guard, _bad, _body, _json_load, _session_user, origin_of, t, user_error
+from saga.core import BASE_URL, E, STATE_DIR, account_lang, _api_guard, _bad, _body, _json_load, _session_user, origin_of, ref_of, t, user_error
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
 from saga.comments import counts as comment_counts
@@ -934,7 +934,7 @@ def _note_search(uid, q, tag):
                     r = tuple(r[:9]) + (mask_links(r[9], r[10], vis), r[10])      # Suche nur im sichtbaren Text
                 d = _search_hit(r, q, tag)
                 if d:
-                    d.update(role=roles[r[0]], pinned=False, owner={"name": nm.get(o) or o, "username": o, "me": False,
+                    d.update(role=roles[r[0]], pinned=False, owner={"name": nm.get(o) or o, "username": ref_of(None, o, uid), "me": False,
                                                                          "avatar": nm.avatar(o)})
                     if d["parent_id"] not in roles:
                         d["parent_id"] = None

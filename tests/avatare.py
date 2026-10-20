@@ -13,6 +13,7 @@ from itsdangerous import TimestampSigner
 from PIL import Image
 import auth
 from db import connect
+from saga.core import local_ref  # 2.4 (W4): andere Konten als pseudonymer Handle
 
 B = urllib.parse.urlparse(os.environ.get("HK_TEST_BASE", "http://127.0.0.1:8099"))
 HOST = urllib.parse.urlparse(os.environ["BASE_URL"]).netloc
@@ -418,15 +419,15 @@ def main():
     s, _ = api("av-anna", "PUT", f"/api/notes/{nid}/shares", {"type": "user", "target": "av-dora", "role": "comment"})
     s, st = api("av-anna", "GET", f"/api/notes/{nid}/shares")
     ok("Teilen-Dialog: Freigabe an Dora mit avatar-Feld (Dora: Gravatar unbekannt -> None oder Adresse)",
-       s == 200 and any(x["target"] == "av-dora" and "avatar" in x for x in st["shares"]))
+       s == 200 and any(x["target"] == local_ref("av-dora") and "avatar" in x for x in st["shares"]))
     s, d = api("av-dora", "GET", f"/api/notes/{nid}")
     base = url.split("?")[0]
     same = lambda u: (u or "").split("?")[0] == base  # noqa: E731
     ok("Seite fuer Dora: Eigentuemerin mit Profilbild-Adresse", s == 200 and same(d.get("owner", {}).get("avatar")))
     s, d = api("av-dora", "GET", "/api/share/targets?q=av-an")
-    ok("Personensuche (Teilen): Treffer mit avatar", any(u["username"] == "av-anna" and same(u.get("avatar")) for u in d.get("users", [])))
+    ok("Personensuche (Teilen): Treffer mit avatar", any(u["username"] == local_ref("av-anna") and same(u.get("avatar")) for u in d.get("users", [])))
     s, d = api("av-dora", "GET", "/api/chat/people?q=av-an")
-    ok(f"Personensuche (Chat): Treffer mit avatar ({s})", s == 200 and any(u["username"] == "av-anna" and same(u.get("avatar")) for u in d.get("users", [])))
+    ok(f"Personensuche (Chat): Treffer mit avatar ({s})", s == 200 and any(u["username"] == local_ref("av-anna") and same(u.get("avatar")) for u in d.get("users", [])))
     s, cm = api("av-anna", "POST", f"/api/notes/{nid}/comments", {"body": "Hallo mit Bild", "block_id": ""})
     ok("Kommentar: Verfasserin mit avatar", s == 200 and same(cm["comment"]["author"].get("avatar")))
     s, th = api("av-dora", "GET", f"/api/notes/{nid}/comments")

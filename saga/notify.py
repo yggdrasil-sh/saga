@@ -18,7 +18,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from db import connect as _db
 from saga import bus
-from saga.core import _api_guard, _bad, _body, _json_load, t
+from saga.core import _api_guard, _bad, _body, _json_load, t, ref_of
 from saga.sharing import Access, is_remote, names
 from saga.sharing import unread_count as pages_unread
 
@@ -202,7 +202,7 @@ def _render(c, uid, rows, acc=None):
             access, fnote, furl = FED_RENDER(c, uid, fed) if FED_RENDER else (False, None, None)
         a_name = who.get(actor) if actor else None
         item = {"id": rid, "kind": kind, "created": created, "read": read_at is not None,
-                "actor": {"name": a_name, "username": actor, "avatar": who.avatar(actor)} if a_name else None,
+                "actor": {"name": a_name, "username": ref_of(c, actor, uid), "avatar": who.avatar(actor)} if a_name else None,
                 "count": int(d.get("n") or 1), "access": access, "note": None, "url": None}
         if kind.startswith("share."):
             item["role"] = d.get("role")

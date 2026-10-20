@@ -10,6 +10,7 @@ import base64, http.client, json, os, socket, sys, threading, time, urllib.parse
 from itsdangerous import TimestampSigner
 import auth
 from db import connect
+from saga.core import local_ref  # 2.4 (W4): andere Konten als pseudonymer Handle
 from saga import chat as CH
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -234,7 +235,8 @@ def run():
         c.execute("DELETE FROM users WHERE username='zq'")
     auth.create_user("zq", PW, "Zacharias Quast")
     try:
-        pu = lambda q: {u["username"] for u in req("GET", "/api/chat/people?q=" + q, A0)[1]["users"]}
+        back = {local_ref(x): x for x in ("ch-hd", "ch-hdx", "zq", "ch-a", "ch-b", "ch-c", "ch-d")}
+        pu = lambda q: {back.get(u["username"], u["username"]) for u in req("GET", "/api/chat/people?q=" + q, A0)[1]["users"]}
         ok(f"Chat-Personensuche 'hd': nur genau 'hD' ({sorted(pu('hd'))})", pu("hd") == {"ch-hd"} and pu("Hd") == {"ch-hd"})
         ok("... Benutzername genau ('zq'), Teile davon nicht ('z', 'q')", pu("zq") == {"zq"} and pu("z") == set() and pu("q") == set())
         ok("... 1-2 Zeichen ohne Teiltreffer ('h', 'ch', 'an')", pu("h") == set() and pu("ch") == set() and pu("an") == set())

@@ -50,7 +50,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from db import connect as _db
 from saga import avatars, bus, i18n, notify
 from saga.comments import counts as comment_counts
-from saga.core import E, _api_guard, _bad, _body, _session_user, _tok_hash, account_lang, device_alive, origin_of, user_info
+from saga.core import E, _api_guard, _bad, _body, _session_user, _tok_hash, account_lang, device_alive, origin_of, ref_of, user_info
 from saga.notes import note_chain, share_targets
 from saga.sharing import Access, names
 
@@ -340,8 +340,9 @@ def _tree_send(uid, p, ids):
     _deliver(uid, "notes.tree", data, skip, ref=("tree", data, foreign) if foreign else None)
 
 
-def _person(nm, u):
-    return {"name": nm.get(u) or u, "username": u, "avatar": nm.avatar(u) if hasattr(nm, "avatar") else None}
+def _person(nm, u, viewer=None):
+    """viewer: wer es sieht - andere lokale Konten nur als pseudonymer Handle (2.4, W4). Ohne viewer: echter Name (intern)."""
+    return {"name": nm.get(u) or u, "username": ref_of(None, u, viewer) if viewer else u, "avatar": nm.avatar(u) if hasattr(nm, "avatar") else None}
 
 
 def _page_audience(c, nid, aud):
@@ -395,7 +396,7 @@ def _resolve(kind, p, aud, pres):
                 if p.get("gone"):              # geloescht/archiviert: Zugriff hat jetzt niemand mehr - nur "weg", ohne Namen
                     out.append((u, "note.changed", {"id": nid, "rev": None, "updated": p.get("updated"), "gone": True, "by": None}, skip))
                 elif Access(c, u).role(nid):
-                    d = {"id": nid, "rev": p.get("rev"), "updated": p.get("updated"), "gone": False, "by": _person(nm, by) if by else None}
+                    d = {"id": nid, "rev": p.get("rev"), "updated": p.get("updated"), "gone": False, "by": _person(nm, by, u) if by else None}
                     if p.get("row"):                 # Zeile der Datenbank geaendert (BUG-049); ID nur, wenn u sie sehen darf
                         d["row"] = p["row"] if Access(c, u).role(p["row"]) else True
                     out.append((u, "note.changed", d, skip))
@@ -452,7 +453,8 @@ def _resolve(kind, p, aud, pres):
                 users += FED_WATCHERS(c, nid, None)
             for u in ok:
                 if u in aud:
-                    out.append((u, "presence", {"note_id": nid, "users": [dict(x, me=x["username"] == u) for x in users]}))
+                    out.append((u, "presence", {"note_id": nid, "users": [dict(x, username=ref_of(None, x["username"], u), me=x["username"] == u)
+                                                                          for x in users]}))
     return out
 
 
@@ -688,10 +690,10 @@ def _here(c, uid, nid, entries):
         return None
     ok = [u for u in sorted(entries) if u == uid or Access(c, u).role(nid)]
     nm = names(c, ok + ([r[2]] if r[2] else []))
-    users = [dict(_person(nm, u), editing=bool(entries[u][1])) for u in ok if u in entries]
+    users = [dict(_person(nm, u, uid), editing=bool(entries[u][1])) for u in ok if u in entries]
     if FED_WATCHERS is not None:
         users += FED_WATCHERS(c, nid, uid)
-    by = _person(nm, r[2]) if r[2] and r[2] != uid else None
+    by = _person(nm, r[2], uid) if r[2] and r[2] != uid else None
     return {"rev": r[0], "updated": r[1], "by": by}, users
 
 

@@ -10,6 +10,17 @@ import base64, hashlib, http.client, io, json, os, sys, time, urllib.parse, zipf
 from itsdangerous import TimestampSigner
 import auth
 from db import connect
+from saga.core import local_ref
+
+
+def UN(x):
+    """2.4 (W4): andere Konten kommen als pseudonymer Handle - fuer die Pruefungen auf den Testnamen zurueckfuehren."""
+    if isinstance(x, str) and x.startswith("~"):
+        with connect() as c:
+            for (u,) in c.execute("SELECT username FROM users WHERE username LIKE 'sh-%'").fetchall():
+                if local_ref(u) == x:
+                    return u
+    return x
 
 B_ = urllib.parse.urlparse(os.environ.get("HK_TEST_BASE", "http://127.0.0.1:8099"))
 HOST = urllib.parse.urlparse(os.environ["BASE_URL"]).netloc
@@ -217,7 +228,7 @@ def main():
 
     # --- 2. Freigabe "Lesen" an B ------------------------------------------------------------------------------
     s, d = req("PUT", f"/api/notes/{root}/shares", A, {"type": "user", "target": "sh-b", "role": "view"})
-    ok(f"A teilt mit B (Lesen) -> {s}", s == 200 and any(x["target"] == "sh-b" and x["role"] == "view" and x["name"] == "Bert Liest" for x in d["shares"]))
+    ok(f"A teilt mit B (Lesen) -> {s}", s == 200 and any(UN(x["target"]) == "sh-b" and x["role"] == "view" and x["name"] == "Bert Liest" for x in d["shares"]))
     s, d = req("GET", f"/api/notes/{root}", Bk)
     ok(f"B liest: role=view, Eigentuemer-Name ({s})", s == 200 and d.get("role") == "view" and d["owner"]["name"] == "Anna Teilt"
        and d["owner"]["me"] is False and d.get("shared") is True and "zauberwort-sh" in d["body"])
@@ -423,7 +434,7 @@ def main():
     ok("Hoechste Rolle in der Kette: Unterseite edit, Wurzel nicht geteilt",
        req("GET", f"/api/notes/{grand}", Ck)[1].get("role") == "edit" and st("GET", f"/api/notes/{root}", Ck) == 404)
     inh = req("GET", f"/api/notes/{grand}/shares", A)[1]
-    ok("Freigaben-Dialog nennt geerbte Freigaben", any(x["note_id"] == root and x["target"] == "sh-b" for x in inh.get("inherited", []))
+    ok("Freigaben-Dialog nennt geerbte Freigaben", any(x["note_id"] == root and UN(x["target"]) == "sh-b" for x in inh.get("inherited", []))
        and any(x["note_id"] == child for x in inh.get("inherited", [])))
     req("DELETE", f"/api/notes/{child}/shares?type=user&target=sh-c", A)
     auth.set_user_groups(gid_of("sh-c"), [])
@@ -432,10 +443,10 @@ def main():
     s, d = req("GET", "/api/share/targets?q=sh", A)
     ok(f"Suche: unter 3 Zeichen keine Liste (nur genaue Treffer) ({s})", s == 200 and d["users"] == [])
     d = req("GET", "/api/share/targets?q=sh-", A)[1]
-    us = {u["username"]: u for u in d["users"]}
+    us = {UN(u["username"]): u for u in d["users"]}
     ok(f"Suche: Konten mit Name, ohne mich, ohne gesperrte ({sorted(us)})", "sh-b" in us and us["sh-b"]["name"] == "Bert Liest" and "sh-a" not in us
        and "sh-off" not in us and {g["name"] for g in d["groups"]} >= {"sh-team"} and "sh-andere" not in {g["name"] for g in d["groups"]})
-    ok("Suche nach Anzeigename", any(u["username"] == "sh-c" for u in req("GET", "/api/share/targets?q=cora", A)[1]["users"]))
+    ok("Suche nach Anzeigename", any(UN(u["username"]) == "sh-c" for u in req("GET", "/api/share/targets?q=cora", A)[1]["users"]))
     ok("Teilen mit sich selbst -> 400", st("PUT", f"/api/notes/{gpage}/shares", A, {"type": "user", "target": "sh-a", "role": "view"}) == 400)
     ok("Teilen mit unbekanntem Konto -> 400", st("PUT", f"/api/notes/{gpage}/shares", A, {"type": "user", "target": "sh-niemand", "role": "view"}) == 400)
     ok("Teilen mit gesperrtem Konto -> 400", st("PUT", f"/api/notes/{gpage}/shares", A, {"type": "user", "target": "sh-off", "role": "view"}) == 400)
@@ -443,7 +454,7 @@ def main():
     ok("Vorlage teilen -> 400", st("PUT", f"/api/notes/{tpl}/shares", A, {"type": "user", "target": "sh-b", "role": "view"}) == 400)
     auth.save_setting("share_group_scope", True); time.sleep(WAIT)
     auth.set_user_groups(gid_of("sh-b"), ["sh-team"])
-    us = {u["username"] for u in req("GET", "/api/share/targets?q=sh-", A)[1]["users"]}
+    us = {UN(u["username"]) for u in req("GET", "/api/share/targets?q=sh-", A)[1]["users"]}
     ok(f"Nur gemeinsame Gruppen: Suche zeigt B, nicht C ({sorted(us)})", us == {"sh-b"})
     ok("Nur gemeinsame Gruppen: Teilen mit C -> 403", st("PUT", f"/api/notes/{priv}/shares", A, {"type": "user", "target": "sh-c", "role": "view"}) == 403)
     ok("Nur gemeinsame Gruppen: Teilen mit B erlaubt", st("PUT", f"/api/notes/{priv}/shares", A, {"type": "user", "target": "sh-b", "role": "view"}) == 200)
@@ -668,7 +679,7 @@ def main():
     ok(f"Personensuche: 2 Zeichen ohne Teiltreffer, 3 Zeichen Treffer ({s})", s == 200 and d["users"] and req("GET", "/api/share/targets?q=co", A)[1]["users"] == [])
     # Kurze Namen (z. B. "hd"): bei 1-2 Zeichen nur genaue Treffer auf Anzeige- bzw. Benutzername, Gross/Klein egal
     auth.create_user("sh-hd", PW, "Hd"); auth.create_user("sh-hdx", PW, "Hdmann")
-    us = lambda q: {u["username"] for u in req("GET", "/api/share/targets?q=" + q, A)[1]["users"]}
+    us = lambda q: {UN(u["username"]) for u in req("GET", "/api/share/targets?q=" + q, A)[1]["users"]}
     ok(f"Kurzsuche 'hd': genau 'Hd', nicht 'Hdmann' ({sorted(us('hd'))})", us("hd") == {"sh-hd"} and us("HD") == {"sh-hd"})
     ok("Kurzsuche: 1 Zeichen bzw. Teil eines Namens -> nichts", us("h") == set() and us("dm") == set() and us("co") == set())
     ok(f"ab 3 Zeichen wieder Teilwort-Suche ({sorted(us('hdm'))})", us("hdm") == {"sh-hdx"} and us("sh-hd") >= {"sh-hd", "sh-hdx"})
@@ -710,13 +721,13 @@ def main():
     auth.set_user_groups(gid_of("sh-a"), ["sh-team", "sh-g2"]); auth.set_user_groups(gid_of("sh-b"), ["sh-g2"])
     req("PUT", f"/api/notes/{root}/shares", A, {"type": "user", "target": "sh-b", "role": "comment"})
     stt = req("PUT", f"/api/notes/{root}/shares", A, {"type": "group", "target": "sh-g2", "role": "edit"})[1]
-    bs = next(x for x in stt["shares"] if x["target"] == "sh-b")
-    gs = next(x for x in stt["shares"] if x["target"] == "sh-g2")
+    bs = next(x for x in stt["shares"] if UN(x["target"]) == "sh-b")
+    gs = next(x for x in stt["shares"] if UN(x["target"]) == "sh-g2")
     ok(f"Dialog: B direkt 'comment', tatsaechlich 'edit' ueber sh-g2 ({bs.get('effective')})", bs["role"] == "comment" and bs.get("effective") == "edit"
        and bs["via"][0]["type"] == "group" and bs["via"][0]["name"] == "sh-g2" and bs["via"][0]["role"] == "edit")
     ok(f"Gruppe mit Mitgliederzahl ({gs.get('members')})", gs.get("members") == 2 and gs.get("effective") == "edit")
     req("PUT", f"/api/notes/{child}/shares", A, {"type": "user", "target": "sh-b", "role": "view"})
-    cs = next(x for x in req("GET", f"/api/notes/{child}/shares", A)[1]["shares"] if x["target"] == "sh-b")
+    cs = next(x for x in req("GET", f"/api/notes/{child}/shares", A)[1]["shares"] if UN(x["target"]) == "sh-b")
     ok("Unterseite: auch Freigaben darueber zaehlen (Gruppe + direkte Freigabe der Elternseite)", cs.get("effective") == "edit"
        and {(x["type"], x["role"]) for x in cs["via"]} >= {("group", "edit"), ("user", "comment")}
        and any(x["type"] == "user" and x["title"] == "Projekt Teilen (von B)" for x in cs["via"]))

@@ -4903,7 +4903,7 @@
       var tx = el('span', 'sh-who'); tx.appendChild(el('span', 'sh-name', x.name || x.target));
       var sub = x.type === 'remote' ? T('Andere Saga-Instanz')               // Name enthaelt schon name@server
         : x.type === 'remote_group' ? T('Gruppe auf einer anderen Saga-Instanz')
-        : x.type !== 'group' ? x.target : x.members == null ? T('Gruppe')
+        : x.type !== 'group' ? T('Person') : x.members == null ? T('Gruppe')      // 2.4 (W4): nie den Anmeldenamen
         : x.members === 1 ? T('Gruppe · 1 Person') : T('Gruppe · {n} Personen', { n: x.members });
       tx.appendChild(el('small', 'sh-sub', sub)); li.appendChild(tx);
       return li;
@@ -4986,7 +4986,7 @@
         });
         hits.appendChild(b);
       }
-      (d.users || []).forEach(function (u) { add('user', u.username, u.name, u.username, u.avatar); });
+      (d.users || []).forEach(function (u) { add('user', u.username, u.name, T('Person auf diesem Server'), u.avatar); });
       (d.groups || []).forEach(function (g) { add('group', g.name, g.name, T('Gruppe')); });
       (d.remote || []).forEach(function (h) {             // andere Saga-Instanz: Adressbuch (2.3) bzw. genaue Adresse name@server
         if (h.label) add(h.type, h.target, h.label, h.pub ? T('Person auf {host} · {addr}', { host: h.host, addr: h.target.replace(/^@/, '') })

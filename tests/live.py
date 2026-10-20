@@ -12,6 +12,16 @@ import base64, hashlib, http.client, json, os, re, secrets, socket, sys, threadi
 from itsdangerous import TimestampSigner
 import auth
 from db import connect
+from saga.core import local_ref
+
+
+def UN(x):
+    """2.4 (W4): andere Konten kommen als pseudonymer Handle - fuer die Pruefungen auf den Testnamen zurueckfuehren."""
+    for u in ("lv-a", "lv-b", "lv-c", "lv-d"):
+        if x == local_ref(u):
+            return u
+    return x
+
 from saga import notify
 from saga.core import _tok_hash
 
@@ -339,17 +349,17 @@ def main():
     # --- Anwesenheit + note.changed ----------------------------------------------------------------------------
     ma = sa.mark()
     s, pb = req("POST", "/api/presence", Bk, {"note_id": pg, "editing": True})
-    ok(f"B: Anwesenheit mit Zugriff ({s}; {sorted(u['username'] for u in pb.get('users', []))})", s == 200
-       and sorted(u["username"] for u in pb["users"]) == ["lv-a", "lv-b"])
-    p = sa.wait("presence", lambda d: d["note_id"] == pg and any(u["username"] == "lv-b" for u in d["users"]), since=ma)
-    ok(f"A: presence live – Bert bearbeitet gerade ({p})", p and any(u["username"] == "lv-b" and u["editing"] and u["name"] == "Bert Live" and not u["me"]
+    ok(f"B: Anwesenheit mit Zugriff ({s}; {sorted(UN(u['username']) for u in pb.get('users', []))})", s == 200
+       and sorted(UN(u["username"]) for u in pb["users"]) == ["lv-a", "lv-b"])
+    p = sa.wait("presence", lambda d: d["note_id"] == pg and any(UN(u["username"]) == "lv-b" for u in d["users"]), since=ma)
+    ok(f"A: presence live – Bert bearbeitet gerade ({p})", p and any(UN(u["username"]) == "lv-b" and u["editing"] and u["name"] == "Bert Live" and not u["me"]
                                                                     for u in p["users"]) and any(u["me"] for u in p["users"]))
     s, d = req("POST", "/api/presence", Bk, {"note_id": pg})
     ok(f"Zu schnelle Anwesenheitsmeldung (zweiter Tab): uebersprungen, kein Fehler ({s}, {d})", s == 200 and d == {"skipped": True})
     mb = sb.mark()
     s, d = req("PATCH", f"/api/notes/{pg}", A, {"body": blocks("Dritter Stand"), "format": "blocks", "rev": rev}); rev = d.get("rev")
     nc = sb.wait("note.changed", lambda d: d["id"] == pg, since=mb)
-    ok(f"B (anwesend): note.changed {{id, rev, by}} ({nc})", nc and nc["rev"] == rev and nc["by"]["name"] == "Anna Live" and nc["by"]["username"] == "lv-a"
+    ok(f"B (anwesend): note.changed {{id, rev, by}} ({nc})", nc and nc["rev"] == rev and nc["by"]["name"] == "Anna Live" and UN(nc["by"]["username"]) == "lv-a"
        and not nc["gone"])
     ok("C (nicht anwesend, ohne Zugriff): nichts", sc.find("note.changed") is None and sc.find("presence") is None)
 
@@ -604,10 +614,10 @@ def main():
     time.sleep(1.1)
     ma = sa.mark()
     s, d = req("POST", "/api/presence", A, {"note_id": pg2})
-    ok(f"A sieht C auf der Team-Seite ({[u['username'] for u in d.get('users', [])]})", s == 200 and "lv-c" in [u["username"] for u in d["users"]])
+    ok(f"A sieht C auf der Team-Seite ({[UN(u['username']) for u in d.get('users', [])]})", s == 200 and "lv-c" in [UN(u["username"]) for u in d["users"]])
     t0, p = time.time(), None
     while p is None and time.time() - t0 < 62:      # A meldet sich weiter (wie die offene Seite alle 20 s), C nicht mehr
-        p = sa.wait("presence", lambda d: d["note_id"] == pg2 and "lv-c" not in [u["username"] for u in d["users"]], since=ma, timeout=15)
+        p = sa.wait("presence", lambda d: d["note_id"] == pg2 and "lv-c" not in [UN(u["username"]) for u in d["users"]], since=ma, timeout=15)
         if p is None:
             req("POST", "/api/presence", A, {"note_id": pg2})
     ok(f"Anwesenheit von C laeuft ohne Meldung ab ({time.time() - t0:.0f} s)", p is not None and 40 <= time.time() - t0 <= 58

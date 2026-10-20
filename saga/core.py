@@ -1,6 +1,7 @@
 """Grundlagen fuer alle Bereiche: Konfiguration, Vorlagen, Sitzung, Anfrage-Hilfen."""
 import asyncio
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -762,3 +763,68 @@ def _install_orjson():
 
 
 ORJSON = _install_orjson()
+
+
+# --- Anmeldenamen anderer Konten nicht zeigen (2.4, Testrunde W4) -------------------------------------------------------
+# Andere Konten sehen nie den Anmeldenamen (er waere die halbe Anmeldung). Statt dessen: Anzeigename, sonst oeffentlicher
+# Name, sonst ein pseudonymer Handle ('~' + 16 Zeichen, Format wie bei der Foederation). Der Handle ist hier eine
+# lokale Kennung: HMAC(SECRET_KEY, Benutzername) - stabil, nicht umkehrbar, ohne Tabelle und ohne Folgen fuer die
+# Foederation (der foederierte Handle in fed_handle bleibt davon getrennt). Schnittstellen liefern fuer andere lokale
+# Konten diesen Handle als Kennung (Feld "username" bzw. "target"); Anfragen nehmen Handle oder - wie bisher - den
+# Benutzernamen an (resolve_ref). Ausnahme: Mitglieder eines GEMEINSAMEN Chats und Anruf-Teilnehmer - Chats v1 und
+# saga-call v1 binden Schluessel und Signaturen an den Anmeldenamen (Oberflaeche zeigt ihn trotzdem nicht).
+HANDLE_RE = re.compile(r"~[a-z2-7]{16}")
+_A32 = "abcdefghijklmnopqrstuvwxyz234567"
+_REF_KEY = hashlib.sha256(b"saga-local-ref/v1\0" + SECRET.encode()).digest()
+_REV = {"t": 0.0, "n": -1, "m": {}}
+
+
+def local_ref(uid):
+    d = hmac.new(_REF_KEY, str(uid).encode(), hashlib.sha256).digest()
+    n = int.from_bytes(d[:10], "big")
+    return "~" + "".join(_A32[(n >> (5 * i)) & 31] for i in range(16))
+
+
+def handles(c, uids):
+    """Benutzername -> pseudonymer Handle (lokale Konten)."""
+    return {u: local_ref(u) for u in set(uids) if isinstance(u, str) and u and not u.startswith("@")}
+
+
+def ref_of(c, uid, viewer):
+    """Kennung eines Kontos fuer den Betrachter: eigenes Konto und fremde Personen ('@...') unveraendert, andere lokale
+    Konten als Handle."""
+    if not uid or uid == viewer or str(uid).startswith("@") or not viewer or str(viewer).startswith("@"):
+        return uid                     # fremde Instanz als Betrachter: saga.federation schreibt Personen selbst um
+    return local_ref(uid)
+
+
+def resolve_ref(c, x):
+    """Handle ('~…') -> Benutzername (aktive Konten); sonst unveraendert klein (Benutzername wie bisher, '@name@host')."""
+    x = str(x or "").strip()
+    if not HANDLE_RE.fullmatch(x):
+        return x.lower()
+    now = time.time()
+    if x not in _REV["m"] or now - _REV["t"] > 60:
+        n = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        if x not in _REV["m"] and (n != _REV["n"] or now - _REV["t"] > 60):
+            _REV.update(t=now, n=n, m={local_ref(r[0]): r[0] for r in c.execute("SELECT username FROM users WHERE disabled=0")})
+    u = _REV["m"].get(x, "")
+    if u and not c.execute("SELECT 1 FROM users WHERE username=? AND disabled=0", (u,)).fetchone():
+        return ""
+    return u
+
+
+def labels(c, uids):
+    """Benutzername -> Name zum Zeigen: Anzeigename (nicht Anmeldename/E-Mail), sonst oeffentlicher Name, sonst Handle.
+    Unbekannte (geloeschte) Konten fehlen."""
+    uids = sorted({u for u in uids if isinstance(u, str) and u and not u.startswith("@")})
+    if not uids:
+        return {}
+    ph = ",".join("?" * len(uids))
+    rows = c.execute(f"SELECT u.username, u.display_name, u.email, p.name FROM users u LEFT JOIN public_name p ON p.uid=u.username "
+                     f"WHERE u.username IN ({ph})", tuple(uids)).fetchall()
+    out = {}
+    for u, disp, mail, pub in rows:
+        d = (disp or "").strip()
+        out[u] = d if d and d.lower() != u.lower() and d.lower() != (mail or "").strip().lower() else (pub or local_ref(u))
+    return out

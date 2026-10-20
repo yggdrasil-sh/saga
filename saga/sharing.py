@@ -25,7 +25,7 @@ from starlette.concurrency import run_in_threadpool
 import auth
 from db import connect as _db
 from saga import avatars, bus, i18n
-from saga.core import RESTORE_TEST, _api_guard, _bad, _body, t
+from saga.core import RESTORE_TEST, _api_guard, _bad, _body, labels, ref_of, resolve_ref, t
 from saga.notes import NOTE_META_COLS, _note_meta, note_chain
 
 router = APIRouter()
@@ -105,7 +105,7 @@ class Names(dict):
 
 
 def names(c, uids):
-    """Benutzername -> Anzeigename (sonst Benutzername). Unbekannte/geloeschte fehlen. Profilbilder gleich mit (.av)."""
+    """Benutzername -> Name zum Zeigen (core.labels). Unbekannte/geloeschte fehlen. Profilbilder gleich mit (.av)."""
     uids = [u for u in set(uids) if u]
     out = Names()
     out.av = {}
@@ -113,9 +113,8 @@ def names(c, uids):
         return out
     loc = [u for u in uids if not is_remote(u)]
     rem = [u for u in uids if is_remote(u)]
-    if loc:
-        out.update({r[0]: (r[1] or r[0]) for r in c.execute(
-            f"SELECT username, display_name FROM users WHERE username IN ({','.join('?' * len(loc))})", tuple(loc))})
+    if loc:          # 2.4 (W4): nie der Anmeldename - Anzeigename, oeffentlicher Name oder pseudonymer Handle
+        out.update(labels(c, loc))
     if rem:          # fremde Personen: Anzeigename aus dem Zwischenspeicher, immer mit Herkunft
         disp = {r[0]: r[1] for r in c.execute(f"SELECT principal, display FROM fed_person WHERE principal IN ({','.join('?' * len(rem))})",
                                               tuple(rem))}
@@ -134,7 +133,7 @@ def person(c, uid, me, cache=None):
     av = cache.avatar(uid) if isinstance(cache, Names) else (avatars.url_of(c, uid) if c is not None else None)
     if is_remote(uid):
         return {"name": nm, "username": uid, "me": uid == me, "remote": True, "avatar": av}
-    return {"name": nm, "username": uid, "me": uid == me, "avatar": av}
+    return {"name": nm, "username": ref_of(c, uid, me), "me": uid == me, "avatar": av}     # 2.4: andere als Handle
 
 
 # --- Zwischenspeicher fuer Access.tree (2.2) ------------------------------------------------------------------------
@@ -552,7 +551,7 @@ def shared_list(uid):
     out = []
     for o, role, row, root in vis:
         d = _note_meta(row)
-        d.update(role=role, root=root, shared=True, pinned=False, owner={"name": nm.get(o) or o, "username": o, "me": False,
+        d.update(role=role, root=root, shared=True, pinned=False, owner={"name": nm.get(o) or o, "username": ref_of(None, o, uid), "me": False,
                                                                   "avatar": nm.avatar(o)},
                  unread=row[0] in un)
         if root:
@@ -613,7 +612,7 @@ def _state(c, uid, nid):
 
     shares = []
     for r in rows:
-        d = {"type": r[0], "target": r[1], "name": who(r[0], r[1]), "role": r[2], "created": r[3]}
+        d = {"type": r[0], "target": ref_of(c, r[1], uid) if r[0] == "user" else r[1], "name": who(r[0], r[1]), "role": r[2], "created": r[3]}
         if r[0] in ("user", "remote"):
             d["avatar"] = nm.avatar(r[1])
         if r[0] == "user":       # tatsaechliche Rolle: hoechste aus direkter Freigabe, Gruppen und Seiten darueber
@@ -627,7 +626,8 @@ def _state(c, uid, nid):
     return {"enabled": enabled(), "scope": group_scope(), "max": SHARE_MAX, "shareable": bool(chain),
             "federation": fed_enabled() and REMOTE_TARGET is not None and fed_share_ok(),
             "shares": shares,
-            "inherited": [{"note_id": r[0], "title": r[1] or t("Unbenannt"), "type": r[2], "target": r[3], "name": who(r[2], r[3]), "role": r[4]}
+            "inherited": [{"note_id": r[0], "title": r[1] or t("Unbenannt"), "type": r[2], "target": ref_of(c, r[3], uid) if r[2] == "user" else r[3],
+                           "name": who(r[2], r[3]), "role": r[4]}
                           for r in inh],
             "groups": sorted(groups_of(c, uid))}
 
@@ -654,10 +654,12 @@ def api_shares_get(nid: int, request: Request):
         return JSONResponse(_state(c, uid, nid), headers={"Cache-Control": "no-store"})
 
 
-def _target(b):
+def _target(b, c=None):
     typ = b.get("type") if b.get("type") in ("user", "group", *REMOTE_TYPES) else None
-    tg = str(b.get("target") or "").strip().lower()[:300]
-    return typ, tg
+    tg = str(b.get("target") or "").strip()[:300]
+    if typ == "user" and c is not None:
+        return typ, resolve_ref(c, tg)            # 2.4: Handle ('~…') oder wie bisher der Benutzername
+    return typ, tg.lower()
 
 
 @router.put("/api/notes/{nid}/shares")
@@ -670,6 +672,9 @@ async def api_shares_put(nid: int, request: Request):
     if b is None:
         return _bad(t("ungültige Anfrage"))
     typ, tg = _target(b)
+    if typ == "user" and tg:
+        with _db() as c0:
+            tg = resolve_ref(c0, tg)                 # 2.4: Handle ('~…') oder Benutzername
     role = b.get("role")
     if typ in REMOTE_TYPES:
         # andere Instanz: erst Eigentum pruefen, dann Verbindung und Person/Gruppe dort nachfragen (Netzwerk -
@@ -737,6 +742,8 @@ async def api_shares_delete(nid: int, request: Request):
         q = await _body(request) or {}
     typ, tg = _target(q)
     with _db() as c, c:
+        if typ == "user" and tg:
+            tg = resolve_ref(c, tg)
         err = _own(c, uid, nid)
         if err is not None:
             return err
@@ -807,7 +814,9 @@ def api_share_targets(request: Request, q: str = ""):
             rows = c.execute(sql + " ORDER BY (u.username=?) DESC, (u.username LIKE ?) DESC, u.username LIMIT ?",
                              (*args, q, pat + "%", TARGETS_MAX)).fetchall()
         av = avatars.urls(c, [r[0] for r in rows]) if rows else {}
-    users = [{"username": r[0], "name": r[1] or r[0], "avatar": av.get(r[0])} for r in rows]
+        lb = labels(c, [r[0] for r in rows]) if rows else {}
+    # 2.4 (W4): Kennung = pseudonymer Handle, Name ohne Anmeldename (PUT /shares nimmt den Handle an)
+    users = [{"username": ref_of(None, r[0], uid), "name": lb.get(r[0]) or ref_of(None, r[0], uid), "avatar": av.get(r[0])} for r in rows]
     groups = [{"name": g} for g in mine if (q in g if len(q) >= SHORT_Q else q == g)][:TARGETS_MAX]
     out = {"users": users, "groups": groups}
     # name@host einer verbundenen Instanz: dort nachfragen (signiert) - nur genaue Adressen, keine Suche ueber Instanzen

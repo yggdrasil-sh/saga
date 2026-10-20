@@ -39,7 +39,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 import auth
 from db import connect as _db
 from saga import avatars, bus, file_v2, mfa, notify, sharing
-from saga.core import (ADMIN_URL, ASSET_V, E, MEDIA_FRONT, MEDIA_KEY, SEC_HEADERS, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
+from saga.core import (labels, local_ref, resolve_ref, ADMIN_URL, ASSET_V, E, MEDIA_FRONT, MEDIA_KEY, SEC_HEADERS, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
                        tmpl, user_info)
 from saga.notes import FILE_MAX, note_chain
 from saga.sharing import REMOTE_TYPES, Access, enabled as share_enabled, group_scope, groups_of, names
@@ -822,9 +822,12 @@ def api_people(request: Request, q: str = ""):
         if sql:
             rows = c.execute(sql + " ORDER BY (u.username=?) DESC, u.username LIMIT 10", (*args, q)).fetchall()
         av = avatars.urls(c, [r[0] for r in rows]) if rows else {}
+        lb = labels(c, [r[0] for r in rows]) if rows else {}
     # 2.3: Personen anderer Instanzen aus dem Adressbuch (saga.fed_dir) - Chats ueber Servergrenzen folgen mit Protokoll 2
     remote = sharing.DIR_SEARCH(uid, q, "chat") if sharing.DIR_SEARCH is not None else []
-    return _no_store({"users": [{"username": r[0], "name": r[1] or r[0], "ready": bool(r[2]), "avatar": av.get(r[0])} for r in rows],
+    # 2.4 (W4): Kennung = pseudonymer Handle (POST /api/chats nimmt ihn an), Name ohne Anmeldename
+    return _no_store({"users": [{"username": local_ref(r[0]), "name": lb.get(r[0]) or local_ref(r[0]), "ready": bool(r[2]),
+                                 "avatar": av.get(r[0])} for r in rows],
                       "groups": [{"name": g} for g in mine if (q in g if len(q) >= sharing.SHORT_Q else q == g)][:10],
                       "remote": remote})
 
@@ -972,7 +975,10 @@ def _chat_dict(c, uid, ch, mem, m, device, full=False):
     d = {"id": ch["id"], "kind": ch["kind"], "name": _name(c, uid, ch, mem, nm), "group": ch["group_name"], "note_id": ch["note_id"],
          "created": ch["created"], "last_at": ch["last_at"] or ch["created"], "last_seq": ch["last_seq"], "retention_s": ch["retention_s"],
          "muted": bool(m["muted"]), "role": m["role"], "last_read": m["last_read"], "unread": _unread(c, uid, ch["id"], m["last_read"]),
-         "members": [{"username": u, "name": nm.get(u, u), "me": u == uid, "avatar": nm.avatar(u)} for u in mem], "member_count": len(mem),
+         # username: Chats v1 binden Schluessel an den Anmeldenamen (nur Mitglieder sehen ihn, die Oberflaeche zeigt ihn nicht);
+         # ref (2.4): dieselbe Kennung wie in der Personensuche (pseudonymer Handle)
+         "members": [{"username": u, "ref": u if (u == uid or u.startswith("@")) else local_ref(u), "name": nm.get(u, u), "me": u == uid,
+                      "avatar": nm.avatar(u)} for u in mem], "member_count": len(mem),
          # KI im Chat (2.1, saga/ai_chat.py): in diesem Chat erlaubt? (ob der Server sie anbietet: /api/ai/status "chat")
          "ai": bool(c.execute("SELECT 1 FROM chat_ai WHERE chat_id=?", (ch["id"],)).fetchone())}
     # Archiv und Loeschen (2.1): nur fuer mich; delete_for_all = 'chat' | 'history' | None (was "Fuer alle loeschen" darf)
@@ -1098,7 +1104,7 @@ async def api_chat_new(request: Request):
             return _bad(t("Zu viele neue Chats in kurzer Zeit – bitte kurz warten."), 429)
         ch = None
         if kind == "dm":
-            other = str(b.get("user") or "").strip().lower()[:100]
+            other = resolve_ref(c, str(b.get("user") or "")[:100])     # 2.4: Handle ('~…') oder Benutzername
             if not may_contact(c, uid, other):
                 return _bad(t("Mit diesem Konto ist kein Chat möglich."), 404)
             key = "|".join(sorted([uid, other]))
@@ -1137,7 +1143,7 @@ async def api_chat_new(request: Request):
             want = b.get("members")
             if not isinstance(want, list) or len(want) > MEMBERS_MAX:
                 return _bad(t("ungültige Angabe"))
-            want = sorted({str(x).strip().lower()[:100] for x in want} - {uid})
+            want = sorted({resolve_ref(c, str(x)[:100]) for x in want} - {uid, ""})
             if len(want) + 1 > MEMBERS_MAX:
                 return _bad(t("Höchstens {n} Mitglieder je Chat.", n=MEMBERS_MAX), 409)
             bad = [u for u in want if not may_contact(c, uid, u)]
@@ -1229,6 +1235,9 @@ async def api_member_add(cid: int, request: Request):
         return err
     b = await _body(request) or {}
     who = str(b.get("user") or "").strip().lower()[:100]
+    if who.startswith("~"):                               # 2.4: Handle aus der Personensuche
+        with _db() as c:
+            who = resolve_ref(c, who)
     if FED is not None:
         with _db() as c:
             fch = _load(c, cid)

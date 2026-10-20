@@ -692,7 +692,8 @@
           r.users.forEach(function (u) {
             var li = el('li'), b = el('button', 'ct-person'); b.type = 'button';
             b.appendChild(avatar((u.name || '?').charAt(0).toUpperCase(), u.username, '', u.avatar));
-            var t = el('span', 'ct-item-t'); t.appendChild(el('span', 'ct-item-n', u.name)); t.appendChild(el('span', 'ct-item-s', u.username + (u.ready ? '' : ' · ' + T('hat Chats noch nicht eingerichtet'))));
+            var t = el('span', 'ct-item-t'); t.appendChild(el('span', 'ct-item-n', u.name));          // 2.4 (W4): nie den Anmeldenamen zeigen
+            if (!u.ready) t.appendChild(el('span', 'ct-item-s', T('hat Chats noch nicht eingerichtet')));
             b.appendChild(t);
             b.addEventListener('click', function () {
               if (!grp.hidden) { if (!pick.some(function (p) { return p.username === u.username; })) pick.push(u); drawChips(); inp.value = ''; res.textContent = ''; inp.focus(); }
@@ -913,8 +914,7 @@
       if (c.readonly) sub.appendChild(el('span', 'ct-chip', '🔒 ' + T('schreibgeschützt')));
       presenceChip(sub, fp.username);
     } else if (c.kind === 'dm') {
-      var p = others[0] || c.peer || {}, t = trust[p.username];
-      sub.appendChild(document.createTextNode(p.username || ''));
+      var p = others[0] || c.peer || {}, t = trust[p.username];   // 2.4 (W4): Anmeldename nicht im Kopf zeigen
       if (t && t.verified && !t.changed) sub.appendChild(el('span', 'ct-chip ct-verified', '✓ ' + T('überprüft')));
       presenceChip(sub, p.username);
     } else {
@@ -2238,8 +2238,8 @@
               });
               li.appendChild(b); res.appendChild(li);
             });
-            r.users.filter(function (u) { return !c.members.some(function (m) { return m.username === u.username; }); }).forEach(function (u) {
-              var li = el('li'), b = el('button', 'ct-person', u.name + ' (' + u.username + ')'); b.type = 'button';
+            r.users.filter(function (u) { return !c.members.some(function (m) { return (m.ref || m.username) === u.username || m.username === u.username; }); }).forEach(function (u) {
+              var li = el('li'), b = el('button', 'ct-person', u.name); b.type = 'button';
               b.addEventListener('click', function () {
                 api('POST', '/api/chats/' + c.id + '/members', { user: u.username }).then(function () {
                   closeOverlay(); openChat(c.id); loadList();
