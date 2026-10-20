@@ -420,6 +420,66 @@
     return out;
   }
 
+  // --- Stufe 3 (2.5, saga/chat_v3.py, Vektoren tests/vectors/chat_v3.json): Reaktionen, Bearbeiten, Vertrauens-Uebernahme ---
+  // Reaktion: K_r = generichash(32, LP(V3+'react-key', chat_ref, msg_id), key = K der Nachricht); body = {"e", "ts"};
+  // ct = B64(nonce24 || xchacha20poly1305(body, LP(V3+'react', ref, mid, handle, geraet), nonce, K_r));
+  // sig = sign_detached(LP(V3+'react-sig', ref, mid, handle, geraet, ts, generichash32(raw(ct))), device_sign_sk)
+  var V3 = 'saga-chat/v3/', EMOJI_MAX = 32, EDIT_WINDOW = 86400;
+  function reactKey(K, ref, mid) { return S.crypto_generichash(32, lp(V3 + 'react-key', ref, mid), K); }
+  function reactAd(ref, mid, handle, device) { return lp(V3 + 'react', ref, mid, handle, device); }
+  function reactSigMsg(ref, mid, handle, device, ts, ct) {
+    return lp(V3 + 'react-sig', ref, mid, handle, device, String(ts), S.crypto_generichash(32, unb64(ct)));
+  }
+  // o = {K, chat_ref, msg_id, handle, device, sign_sk, emoji ('' = zuruecknehmen), ts?, nonce?} -> {by, dev, ts, ct, sig}
+  function encryptReaction(o) {
+    var ts = o.ts != null ? o.ts : Date.now(), nonce = o.nonce || S.randombytes_buf(24);
+    var body = enc.encode(JSON.stringify({ e: o.emoji, ts: ts }));
+    var c = S.crypto_aead_xchacha20poly1305_ietf_encrypt(body, reactAd(o.chat_ref, o.msg_id, o.handle, o.device), null, nonce,
+                                                         reactKey(o.K, o.chat_ref, o.msg_id));
+    var all = new Uint8Array(24 + c.length); all.set(nonce, 0); all.set(c, 24);
+    var ct = b64(all);
+    return { by: o.handle, dev: o.device, ts: ts, ct: ct, sig: b64(S.crypto_sign_detached(reactSigMsg(o.chat_ref, o.msg_id, o.handle, o.device, ts, ct), o.sign_sk)) };
+  }
+  function verifyReaction(ref, mid, r, sign_pk) {
+    try { return verify(unb64(r.sig, 64), reactSigMsg(ref, mid, r.by, r.dev, r.ts, r.ct), sign_pk); } catch (e) { return false; }
+  }
+  // -> Emoji ('' = zurueckgenommen); Fehler, wenn Schluessel, Bindung oder Inhalt nicht passen
+  function decryptReaction(K, ref, mid, r) {
+    var raw = unb64(r.ct);
+    var pt = dec.decode(S.crypto_aead_xchacha20poly1305_ietf_decrypt(null, raw.subarray(24), reactAd(ref, mid, r.by, r.dev), raw.subarray(0, 24),
+                                                                      reactKey(K, ref, mid)));
+    var e = reactBody(pt, r.ts);
+    if (e === null) throw new Error('reaction body');
+    return e;
+  }
+  function reactBody(pt, ts) {
+    var d;
+    try { d = JSON.parse(pt); } catch (e) { return null; }
+    if (!d || typeof d !== 'object' || Object.keys(d).sort().join() !== 'e,ts' || d.ts !== ts || typeof d.e !== 'string') return null;
+    if (enc.encode(d.e).length > EMOJI_MAX || /[\u0000-\u001f\u007f-\u009f]/.test(d.e)) return null;
+    return d.e;
+  }
+  // Bearbeitung (normale v2-Nachricht kind 'edit' mit edit_of, Inhalt {edit, t}) gegen das Original pruefen -> null | Grund
+  function editCheck(orig, edit, body) {
+    if (!body || typeof body.t !== 'string' || body.edit !== edit.edit_of || edit.edit_of !== orig.id) return 'edit_of_mismatch';
+    if (!edit.sender_handle || edit.sender_handle !== orig.sender_handle) return 'other_sender';
+    if (orig.ai) return 'ai_original';
+    if ((edit.created || 0) - (orig.created || 0) > EDIT_WINDOW) return 'window';
+    return null;
+  }
+  // Vertrauens-Uebernahme trust:<benutzer> (v1) -> trust2:<handle>, nur ohne trust2-Eintrag; gleiche Regeln wie tofuV2
+  function tofuMigrate(v1, ident, ver) {
+    ver = ver || 0;
+    if (!v1) return { result: 'trust', store: { ident: ident, verified: false, dver: ver } };
+    if (v1.ident === ident) {
+      var st = { ident: ident, verified: !!v1.verified, dver: ver };
+      if (v1.changed) { st.changed = true; st.old = v1.old; return { result: 'warn', store: st }; }
+      return { result: 'trust', store: st };
+    }
+    if (v1.verified) return { result: 'block', store: null };
+    return { result: 'warn', store: { ident: ident, verified: false, changed: true, old: v1.ident, dver: ver } };
+  }
+
   return {
     V2: V2, handleMsg: handleMsg, handleSig: handleSig, deviceMsgV2: deviceMsgV2, deviceSigV2: deviceSigV2, checkKeysV2: checkKeysV2,
     msgAdV2: msgAdV2, sigMsgV2: sigMsgV2, encryptMessageV2: encryptMessageV2, decryptMessageV2: decryptMessageV2,
@@ -429,6 +489,8 @@
     verifySignal: verifySignal, sdpFingerprints: sdpFingerprints,
     receiptMsg: receiptMsg, sealReceipt: sealReceipt, openReceipt: openReceipt, verifyReceipt: verifyReceipt,
     signalMsgV2: signalMsgV2, sealSignalV2: sealSignalV2, openSignalV2: openSignalV2, verifySignalV2: verifySignalV2,
+    V3: V3, reactKey: reactKey, reactAd: reactAd, reactSigMsg: reactSigMsg, encryptReaction: encryptReaction, verifyReaction: verifyReaction,
+    decryptReaction: decryptReaction, reactBody: reactBody, editCheck: editCheck, tofuMigrate: tofuMigrate,
     VERSION: 1, OPS: OPS, MEM: MEM, b64: b64, unb64: unb64, lp: lp, hex: hex,
     newIdentity: newIdentity, newDevice: newDevice, backupSig: backupSig, deviceSig: deviceSig, deviceMsg: deviceMsg,
     verifyDevice: verifyDevice, verifyBackup: verifyBackup, verify: verify,

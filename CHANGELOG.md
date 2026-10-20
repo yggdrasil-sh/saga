@@ -16,6 +16,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Chat-Stufe 3 (in Arbeit, Konzept „Krypto v3 über Handles“)
+- **Testvektoren für Reaktionen und Bearbeiten:** `tests/vectors/chat_v3.json` mit Schlüsselableitung, AD und Signatur einer
+  Reaktion, dem Inhalt einer Bearbeitung, Fällen, die jede Umsetzung ablehnen muss (fremder Absender, falsches `edit_of`,
+  andere `chat_ref`, fremder Schlüssel, falscher Inhalt) und den Regeln für die Übernahme des Vertrauens von v1 auf Handles.
+  Server-Referenz `saga/chat_v3.py`, Gegenproben `tools/chat_vectors_v3.py` (PyNaCl) und `tools/chat_vectors_v3.mjs`
+  (libsodium.js mit `static/chat-crypto.js`); die Testreihe `chat_v2_vektoren` prüft sie mit.
+
 ## [2.4.0] – 2026-10-20
 
 Saga 2.4 bringt Videos in den Chat und macht Anrufe erwachsen: Gruppenanrufe, Bildschirm teilen mit Kamera daneben,
