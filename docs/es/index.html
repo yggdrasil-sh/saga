@@ -31,7 +31,7 @@
   <nav>
     <a class="brand" href="#"><img src="../icon.svg" alt="">Saga</a>
     <span class="sp"></span>
-    <a class="l hide" href="#novedades">Novedades 2.3</a>
+    <a class="l hide" href="#novedades">Novedades 2.4</a>
     <a class="l hide" href="#funciones">Funciones</a>
     <a class="l hide" href="#capturas">Capturas</a>
     <a class="l hide" href="#apps">Apps</a>
@@ -56,6 +56,35 @@
 </div>
 
 <section id="novedades" class="alt">
+  <div class="wrap">
+    <h2>Novedades de Saga 2.4</h2>
+    <p class="sub">Vídeos en el chat, llamadas en grupo y una ruta de medios que descarga a Python – además de más protección para el inicio de sesión y la privacidad.</p>
+    <div class="stats">
+      <div class="stat"><b>0,22 s</b><small>en lugar de 0,67 s</small><span>para 20 adjuntos de chat de 10 MB a la vez</span></div>
+      <div class="stat"><b>0,06 %</b><small>de un núcleo</small><span>usa Python mientras se sube un vídeo de 1 GB</span></div>
+      <div class="stat"><b>1,6 ms</b><small>en lugar de 8,8 ms</small><span>hasta el primer byte al saltar en el vídeo (p95)</span></div>
+      <div class="stat"><b>≤ 1,8 s</b><small>4 dispositivos</small><span>hasta que una llamada en grupo está establecida</span></div>
+    </div>
+    <p class="stat-note">Medido con <code>tools/perf</code> (2 núcleos, mediana de tres ejecuciones) y las pruebas de navegador de las llamadas.</p>
+    <div class="grid two">
+      <div class="card"><div class="ic" aria-hidden="true">🎬</div><h3>Vídeos en el chat</h3><p>Los vídeos con portada y duración se reproducen al instante y permiten saltar sin descargarlo todo: cifrados de extremo a extremo por bloques y descifrados solo en tu dispositivo. Los vídeos grandes (hasta 500 MB por defecto) se suben de forma reanudable, también entre servidores.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">👥</div><h3>Llamadas en grupo</h3><p>En chats de grupo, libres y de página con hasta 4 dispositivos con vídeo o 6 solo con audio: entrar y salir en cualquier momento, mosaicos con quien habla resaltado. Cada par de dispositivos se conecta directamente y cifrado; el servidor no ve los medios.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">🖥️</div><h3>Pantalla, imagen en imagen, cambio de dispositivo</h3><p>Comparte la pantalla mientras la cámara sigue en pequeño. La imagen en imagen mantiene la llamada encima de otras ventanas. Una llamada en curso pasa del móvil al portátil sin cortes, o el portátil se une como dispositivo acompañante para compartir.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">✓✓</div><h3>Leído y en línea</h3><p>Marcas de entregado y leído, «Leído por» en grupos, además de «en línea» o «última vez en línea», solo para personas con las que chateas. Ambas cosas se desactivan por separado, de forma recíproca: quien no muestra nada, tampoco ve nada.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">📦</div><h3>Ruta de medios saga-media</h3><p>Un pequeño servicio en Go dentro del contenedor entrega los adjuntos del chat y los vídeos directamente desde el disco: sin puerto nuevo, nada que configurar. Quién puede ver qué lo sigue decidiendo Saga. Sin contenedor se encargan nginx o Caddy.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">🛡️</div><h3>Más protección</h3><p>Las contraseñas erróneas solo frenan la dirección de la que vienen: nadie puede bloquear a otros. Los nombres de inicio de sesión quedan privados, los segundos factores solo cambian con confirmación y Gravatar solo con consentimiento.</p></div>
+    </div>
+    <h3 class="more-h">Conviene saber</h3>
+    <div class="steps">
+      <div class="card"><b>Actualizar desde 2.3</b><p><code>docker compose pull &amp;&amp; docker compose up -d</code>: antes, Saga crea automáticamente una copia de seguridad. Después Gravatar queda desactivado para todos y se puede volver a activar en los ajustes.</p></div>
+      <div class="card"><b>Llamadas</b><p>Para llamadas en grupo compensa un servidor TURN propio por el puerto 443; la guía muestra cómo hacerlo sin abrir un puerto nuevo. Sin contenedor: compilar saga-media o usar <code>MEDIA_ACCEL</code>.</p></div>
+      <div class="card"><b>Apps</b><p>Las <a href="https://github.com/yggdrasil-sh/saga-apps/releases">apps 2.4</a> salen a la vez, con vídeos, llamadas en grupo y marcas de leído. Las apps 2.3 y 2.1 siguen funcionando, solo que sin estas funciones.</p></div>
+    </div>
+    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 Todos los cambios y notas de actualización</a></p>
+  </div>
+</section>
+
+<section id="novedades-2-3">
   <div class="wrap">
     <h2>Novedades de Saga 2.3</h2>
     <p class="sub">Más rápido con muchos datos, federación sin recortes – y copias de seguridad de las que ya no tienes que preocuparte.</p>
@@ -82,7 +111,7 @@
   </div>
 </section>
 
-<section id="novedades-2-1">
+<section id="novedades-2-1" class="alt">
   <div class="wrap">
     <h2>Novedades de Saga 2.1</h2>
     <p class="sub">Inicio de sesión más seguro, caras en lugar de iniciales, hablar entre vosotros – y una IA con nombre que ayuda cuando la llamas.</p>
@@ -130,7 +159,7 @@
   </div>
 </section>
 
-<section id="novedades-2-0" class="alt">
+<section id="novedades-2-0">
   <div class="wrap">
     <h2>Novedades de Saga 2.0</h2>
     <p class="sub">Tu cuaderno personal se convierte en un lugar compartido: todo opcional, todo en tu propio servidor.</p>
@@ -167,7 +196,7 @@
   </div>
 </section>
 
-<section id="funciones">
+<section id="funciones" class="alt">
   <div class="wrap">
     <h2>Todo en un solo lugar</h2>
     <p class="sub">Saga une un panel para tus servicios con un cuaderno personal, sin nube ni suscripciones, en tu propio servidor.</p>
@@ -185,13 +214,13 @@
       <div class="card"><div class="ic">🛡️</div><h3>Área de administración</h3><p>En su propio puerto: usuarios, grupos, servicios, registro, LDAP y SSO con pruebas de conexión.</p></div>
       <div class="card"><div class="ic">📱</div><h3>Apps nativas</h3><p>iPhone, iPad, Mac, Linux y Android – edita páginas, bases de datos y tareas de forma nativa e inicia sesión con un código QR.</p></div>
       <div class="card"><div class="ic">🌍</div><h3>Cinco idiomas</h3><p>Interfaz web, administración y apps en español, inglés, alemán, ruso y tailandés – configurable por cuenta y ya en la página de inicio de sesión. Solo la guía está en español, inglés y alemán.</p></div>
-      <div class="card"><div class="ic">🔒</div><h3>Seguro de serie</h3><p>CSP estricta, límites de tamaño y de inicio de sesión, claves con hash y cierre de sesión en todos los dispositivos al cambiar la contraseña.</p></div>
+      <div class="card"><div class="ic">🔒</div><h3>Seguro de serie</h3><p>CSP estricta, límites de tamaño, los intentos fallidos frenan en lugar de bloquear, nombres de inicio de sesión privados, claves con hash y cierre de sesión en todos los dispositivos al cambiar la contraseña.</p></div>
       <div class="card"><div class="ic">🗄️</div><h3>Copias y Nextcloud</h3><p>Copias diarias cifradas con age en S3, una carpeta o Nextcloud, además de copias personales para cada persona y archivos de Nextcloud directamente en las páginas.</p></div>
     </div>
   </div>
 </section>
 
-<section class="alt">
+<section>
   <div class="wrap split">
     <div class="txt">
       <h2>Escribir, planificar, reunir</h2>
@@ -207,7 +236,7 @@
   </div>
 </section>
 
-<section>
+<section class="alt">
   <div class="wrap split rev">
     <div class="txt">
       <h2>Bases de datos a tu medida</h2>
@@ -222,7 +251,7 @@
   </div>
 </section>
 
-<section class="alt">
+<section>
   <div class="wrap split">
     <div class="txt">
       <h2>Pensado para administradores</h2>
@@ -239,7 +268,7 @@
   </div>
 </section>
 
-<section id="capturas">
+<section id="capturas" class="alt">
   <div class="wrap">
     <h2>Capturas</h2>
     <p class="sub">Los temas oscuro y claro siguen automáticamente al sistema.</p>
@@ -254,7 +283,7 @@
   </div>
 </section>
 
-<section id="apps" class="alt">
+<section id="apps">
   <div class="wrap">
     <h2>Apps para el bolsillo y el escritorio</h2>
     <p class="sub">Apps nativas para iPhone, iPad, Mac, Linux (GNOME) y Android, no una web incrustada.
@@ -273,7 +302,7 @@
   </div>
 </section>
 
-<section id="inicio-rapido">
+<section id="inicio-rapido" class="alt">
   <div class="wrap">
     <h2>Listo en 5 minutos</h2>
     <p class="sub">Solo necesitas un servidor con Docker.</p>

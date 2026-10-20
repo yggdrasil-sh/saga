@@ -31,7 +31,7 @@
   <nav>
     <a class="brand" href="#"><img src="../icon.svg" alt="">Saga</a>
     <span class="sp"></span>
-    <a class="l hide" href="#new">New in 2.3</a>
+    <a class="l hide" href="#new">New in 2.4</a>
     <a class="l hide" href="#features">Features</a>
     <a class="l hide" href="#screenshots">Screenshots</a>
     <a class="l hide" href="#apps">Apps</a>
@@ -56,6 +56,35 @@
 </div>
 
 <section id="new" class="alt">
+  <div class="wrap">
+    <h2>New in Saga 2.4</h2>
+    <p class="sub">Videos in chats, group calls and a media path that takes the load off Python – plus more protection for sign-in and privacy.</p>
+    <div class="stats">
+      <div class="stat"><b>0.22 s</b><small>instead of 0.67 s</small><span>for 20 chat attachments of 10 MB at once</span></div>
+      <div class="stat"><b>0.06 %</b><small>of a CPU core</small><span>used by Python while a 1 GB video uploads</span></div>
+      <div class="stat"><b>1.6 ms</b><small>instead of 8.8 ms</small><span>until the first byte arrives when seeking (p95)</span></div>
+      <div class="stat"><b>≤ 1.8 s</b><small>4 devices</small><span>until a group call is set up</span></div>
+    </div>
+    <p class="stat-note">Measured with <code>tools/perf</code> (2 CPU cores, median of three runs) and the browser tests for calls.</p>
+    <div class="grid two">
+      <div class="card"><div class="ic" aria-hidden="true">🎬</div><h3>Videos in chats</h3><p>Videos with a poster and duration play right away and can be seeked without loading everything – end-to-end encrypted in blocks, decrypted only on your device. Large videos (up to 500 MB by default) upload resumably, also across servers.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">👥</div><h3>Group calls</h3><p>In group, free and page chats with up to 4 devices with video or 6 audio only – join and leave at any time, tiles with the speaker highlighted. Each pair of devices connects directly and encrypted; the server sees no media.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">🖥️</div><h3>Screen, picture-in-picture, handover</h3><p>Share your screen while the camera keeps running small. Picture-in-picture keeps the call on top of other windows. A running call moves from phone to laptop without interruption – or the laptop joins as a companion device for sharing.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">✓✓</div><h3>Read &amp; online</h3><p>Ticks for delivered and read, “Read by” in groups, plus “online” or “last seen” – only for people you chat with. Both can be turned off separately, mutually: if you show nothing, you see nothing.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">📦</div><h3>saga-media media path</h3><p>A small Go service in the container serves chat attachments and videos straight from disk – no new port, nothing to set up. Saga still decides who may see what. Without a container, nginx or Caddy take over.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">🛡️</div><h3>More protection</h3><p>Wrong passwords only slow down the address they come from – nobody can lock others out. Login names stay private, second factors only change with confirmation, and Gravatar only with consent.</p></div>
+    </div>
+    <h3 class="more-h">Good to know</h3>
+    <div class="steps">
+      <div class="card"><b>Updating from 2.3</b><p><code>docker compose pull &amp;&amp; docker compose up -d</code> – Saga creates a backup automatically first. Gravatar is then off for everyone and can be turned on again in the settings.</p></div>
+      <div class="card"><b>Calls</b><p>For group calls your own TURN server over port 443 pays off – the guide shows how without a new port. Without a container: build saga-media yourself or set <code>MEDIA_ACCEL</code>.</p></div>
+      <div class="card"><b>Apps</b><p><a href="https://github.com/yggdrasil-sh/saga-apps/releases">Apps 2.4</a> come out at the same time – with videos, group calls and read ticks. Apps 2.3 and 2.1 keep working, just without these features.</p></div>
+    </div>
+    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 All changes and update notes</a></p>
+  </div>
+</section>
+
+<section id="new-2-3">
   <div class="wrap">
     <h2>New in Saga 2.3</h2>
     <p class="sub">Faster with lots of data, federation without compromises – and backups you no longer have to think about.</p>
@@ -82,7 +111,7 @@
   </div>
 </section>
 
-<section id="new-2-1">
+<section id="new-2-1" class="alt">
   <div class="wrap">
     <h2>New in Saga 2.1</h2>
     <p class="sub">Safer sign-in, faces instead of initials, talking to each other – and an AI with a name that helps when you call it.</p>
@@ -130,7 +159,7 @@
   </div>
 </section>
 
-<section id="new-2-0" class="alt">
+<section id="new-2-0">
   <div class="wrap">
     <h2>New in Saga 2.0</h2>
     <p class="sub">Your personal notebook becomes a shared place – everything optional, everything on your own server.</p>
@@ -167,7 +196,7 @@
   </div>
 </section>
 
-<section id="features">
+<section id="features" class="alt">
   <div class="wrap">
     <h2>Everything in one place</h2>
     <p class="sub">Saga combines a dashboard for your services with a personal notebook – no cloud, no subscription, on your own server.</p>
@@ -185,13 +214,13 @@
       <div class="card"><div class="ic">🛡️</div><h3>Admin area</h3><p>On its own port: users, groups, services, registration, LDAP and SSO with built-in connection tests.</p></div>
       <div class="card"><div class="ic">📱</div><h3>Native apps</h3><p>iPhone, iPad, Mac, Linux and Android – edit pages, databases and tasks natively, sign in via QR code.</p></div>
       <div class="card"><div class="ic">🌍</div><h3>Five languages</h3><p>Web UI, admin area and apps in English, German, Spanish, Russian and Thai – set per account or right on the sign-in page. Only the guide is in English, German and Spanish.</p></div>
-      <div class="card"><div class="ic">🔒</div><h3>Secure by default</h3><p>Strict CSP, request and login limits, hashed keys, all devices signed out when the password changes.</p></div>
+      <div class="card"><div class="ic">🔒</div><h3>Secure by default</h3><p>Strict CSP, request limits, failed sign-ins slow down instead of locking out, private login names, hashed keys, all devices signed out when the password changes.</p></div>
       <div class="card"><div class="ic">🗄️</div><h3>Backups &amp; Nextcloud</h3><p>Daily backups encrypted with age to S3, a folder or Nextcloud – plus personal backups for everyone and Nextcloud files right in your pages.</p></div>
     </div>
   </div>
 </section>
 
-<section class="alt">
+<section>
   <div class="wrap split">
     <div class="txt">
       <h2>Write, plan, collect</h2>
@@ -207,7 +236,7 @@
   </div>
 </section>
 
-<section>
+<section class="alt">
   <div class="wrap split rev">
     <div class="txt">
       <h2>Databases that fit your needs</h2>
@@ -222,7 +251,7 @@
   </div>
 </section>
 
-<section class="alt">
+<section>
   <div class="wrap split">
     <div class="txt">
       <h2>Built for admins</h2>
@@ -239,7 +268,7 @@
   </div>
 </section>
 
-<section id="screenshots">
+<section id="screenshots" class="alt">
   <div class="wrap">
     <h2>Screenshots</h2>
     <p class="sub">Dark and light themes follow your system automatically.</p>
@@ -254,7 +283,7 @@
   </div>
 </section>
 
-<section id="apps" class="alt">
+<section id="apps">
   <div class="wrap">
     <h2>Apps for your pocket and your desk</h2>
     <p class="sub">Native apps for iPhone, iPad, Mac, Linux (GNOME) and Android – not a wrapped website.
@@ -273,7 +302,7 @@
   </div>
 </section>
 
-<section id="quick-start">
+<section id="quick-start" class="alt">
   <div class="wrap">
     <h2>Up and running in 5 minutes</h2>
     <p class="sub">All you need is a server with Docker.</p>

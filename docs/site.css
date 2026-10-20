@@ -108,3 +108,8 @@ html:lang(th) pre{line-height:1.7}
 html:lang(th) .stat b{font-size:clamp(24px,2.8vw,32px)}
 @media (max-width:860px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.grid.two{grid-template-columns:1fr}}
 @media (max-width:420px){.stats{grid-template-columns:1fr}}
+/* Neu in 2.4: kein seitliches Scrollen bei mittleren Breiten (lange Navigation) und sehr schmalen Handys */
+.gallery{grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr))}
+@media (max-width:1040px){nav{gap:6px}nav a.l{padding:6px 7px}}
+@media (max-width:1000px){html:lang(ru) nav a.l.hide{display:none}}
+@media (max-width:360px){nav{gap:4px}nav a.l{padding:6px 4px}nav .lang a{padding:3px 5px}}

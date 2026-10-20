@@ -39,7 +39,7 @@ location.replace("en/")}catch(e){}})();
   <nav>
     <a class="brand" href="#"><img src="icon.svg" alt="">Saga</a>
     <span class="sp"></span>
-    <a class="l hide" href="#neu">Neu in 2.3</a>
+    <a class="l hide" href="#neu">Neu in 2.4</a>
     <a class="l hide" href="#funktionen">Funktionen</a>
     <a class="l hide" href="#screenshots">Screenshots</a>
     <a class="l hide" href="#apps">Apps</a>
@@ -64,6 +64,35 @@ location.replace("en/")}catch(e){}})();
 </div>
 
 <section id="neu" class="alt">
+  <div class="wrap">
+    <h2>Neu in Saga 2.4</h2>
+    <p class="sub">Videos im Chat, Gruppenanrufe und ein Medienpfad, der Python entlastet – dazu mehr Schutz für Anmeldung und Privatsphäre.</p>
+    <div class="stats">
+      <div class="stat"><b>0,22 s</b><small>statt 0,67 s</small><span>für 20 Chat-Anhänge à 10 MB gleichzeitig</span></div>
+      <div class="stat"><b>0,06 %</b><small>eines CPU-Kerns</small><span>braucht Python, während ein 1-GB-Video hochlädt</span></div>
+      <div class="stat"><b>1,6 ms</b><small>statt 8,8 ms</small><span>bis beim Spulen das erste Byte kommt (p95)</span></div>
+      <div class="stat"><b>≤ 1,8 s</b><small>4 Geräte</small><span>bis ein Gruppenanruf aufgebaut ist</span></div>
+    </div>
+    <p class="stat-note">Gemessen mit <code>tools/perf</code> (2 CPU-Kerne, Median aus drei Läufen) und den Browser-Tests der Anrufe.</p>
+    <div class="grid two">
+      <div class="card"><div class="ic" aria-hidden="true">🎬</div><h3>Videos im Chat</h3><p>Videos mit Vorschaubild und Dauer spielen sofort und lassen sich spulen, ohne alles zu laden – Ende-zu-Ende-verschlüsselt in Blöcken, entschlüsselt erst auf deinem Gerät. Große Videos (standardmäßig bis 500 MB) laden fortsetzbar hoch, auch über Servergrenzen.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">👥</div><h3>Gruppenanrufe</h3><p>In Gruppen-, freien und Seiten-Chats mit bis zu 4 Geräten mit Video oder 6 nur mit Ton – jederzeit beitreten und gehen, Kacheln mit hervorgehobenem Sprecher. Jedes Gerätepaar verbindet sich direkt und verschlüsselt, der Server sieht keine Medien.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">🖥️</div><h3>Bildschirm, Bild-im-Bild, Gerätewechsel</h3><p>Bildschirm teilen, während die Kamera klein weiterläuft. Bild-im-Bild hält das Gespräch über anderen Fenstern. Ein laufender Anruf wandert ohne Unterbrechung vom Handy an den Laptop – oder der Laptop kommt als Begleitgerät zum Teilen dazu.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">✓✓</div><h3>Gelesen &amp; online</h3><p>Haken für zugestellt und gelesen, in Gruppen „Gelesen von“, dazu „online“ bzw. „zuletzt online“ – nur für Personen, mit denen du chattest. Beides lässt sich getrennt abschalten, gegenseitig: Wer nichts zeigt, sieht auch nichts.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">📦</div><h3>Medienpfad saga-media</h3><p>Ein kleiner Go-Dienst im Container liefert Chat-Anhänge und Videos direkt von der Platte – kein neuer Port, nichts einzurichten. Wer was sehen darf, entscheidet weiterhin Saga. Ohne Container übernehmen nginx oder Caddy.</p></div>
+      <div class="card"><div class="ic" aria-hidden="true">🛡️</div><h3>Mehr Schutz</h3><p>Falsche Passwörter bremsen nur die Adresse, von der sie kommen – niemand kann Fremde aussperren. Anmeldenamen bleiben privat, zweite Faktoren ändern sich nur mit Bestätigung, und Gravatar gibt es nur mit Einwilligung.</p></div>
+    </div>
+    <h3 class="more-h">Gut zu wissen</h3>
+    <div class="steps">
+      <div class="card"><b>Update von 2.3</b><p><code>docker compose pull &amp;&amp; docker compose up -d</code> – vorher legt Saga automatisch ein Backup an. Gravatar ist danach für alle aus und lässt sich in den Einstellungen wieder einschalten.</p></div>
+      <div class="card"><b>Anrufe</b><p>Für Gruppenanrufe lohnt sich ein eigener TURN-Server über Port 443 – die Anleitung zeigt, wie das ohne neuen Port geht. Ohne Container: saga-media selbst bauen oder <code>MEDIA_ACCEL</code> setzen.</p></div>
+      <div class="card"><b>Apps</b><p>Die <a href="https://github.com/yggdrasil-sh/saga-apps/releases">Apps 2.4</a> erscheinen gleichzeitig – mit Videos, Gruppenanrufen und Gelesen-Haken. Apps 2.3 und 2.1 laufen weiter, nur ohne diese Funktionen.</p></div>
+    </div>
+    <p style="margin-top:32px"><a class="btn" href="https://github.com/yggdrasil-sh/saga/blob/main/CHANGELOG.md">📋 Alle Änderungen und Hinweise zum Update</a></p>
+  </div>
+</section>
+
+<section id="neu-2-3">
   <div class="wrap">
     <h2>Neu in Saga 2.3</h2>
     <p class="sub">Schneller mit vielen Daten, Föderation ohne Abstriche – und Backups, um die du dich nicht mehr kümmern musst.</p>
@@ -90,7 +119,7 @@ location.replace("en/")}catch(e){}})();
   </div>
 </section>
 
-<section id="neu-2-1">
+<section id="neu-2-1" class="alt">
   <div class="wrap">
     <h2>Neu in Saga 2.1</h2>
     <p class="sub">Sicherer anmelden, Gesichter statt Initialen, miteinander reden – und eine KI mit Namen, die hilft, wenn du sie rufst.</p>
@@ -138,7 +167,7 @@ location.replace("en/")}catch(e){}})();
   </div>
 </section>
 
-<section id="neu-2-0" class="alt">
+<section id="neu-2-0">
   <div class="wrap">
     <h2>Neu in Saga 2.0</h2>
     <p class="sub">Aus dem persönlichen Notizbuch wird ein gemeinsamer Ort – alles optional, alles auf deinem Server.</p>
@@ -175,7 +204,7 @@ location.replace("en/")}catch(e){}})();
   </div>
 </section>
 
-<section id="funktionen">
+<section id="funktionen" class="alt">
   <div class="wrap">
     <h2>Alles an einem Ort</h2>
     <p class="sub">Saga verbindet ein Dashboard für deine Dienste mit einem persönlichen Notizbuch – ohne Cloud, ohne Abo, auf deinem eigenen Server.</p>
@@ -193,13 +222,13 @@ location.replace("en/")}catch(e){}})();
       <div class="card"><div class="ic">🛡️</div><h3>Admin-Bereich</h3><p>Auf eigenem Port: Benutzer, Gruppen, Dienste, Registrierung, LDAP und SSO mit Verbindungstests.</p></div>
       <div class="card"><div class="ic">📱</div><h3>Native Apps</h3><p>iPhone, iPad, Mac, Linux und Android – Seiten, Datenbanken und Aufgaben nativ bearbeiten, anmelden per QR-Code.</p></div>
       <div class="card"><div class="ic">🌍</div><h3>Fünf Sprachen</h3><p>Web, Admin-Bereich und Apps auf Deutsch, Englisch, Spanisch, Russisch und Thai – je Konto und schon auf der Anmeldeseite wählbar. Nur die Anleitung gibt es auf Deutsch, Englisch und Spanisch.</p></div>
-      <div class="card"><div class="ic">🔒</div><h3>Sicher von Haus aus</h3><p>Strenge CSP, Größen- und Login-Grenzen, gehashte Schlüssel, Abmelden aller Geräte beim Passwortwechsel.</p></div>
+      <div class="card"><div class="ic">🔒</div><h3>Sicher von Haus aus</h3><p>Strenge CSP, Größen-Grenzen, Fehlversuche bremsen statt aussperren, private Anmeldenamen, gehashte Schlüssel, Abmelden aller Geräte beim Passwortwechsel.</p></div>
       <div class="card"><div class="ic">🗄️</div><h3>Backups &amp; Nextcloud</h3><p>Tägliche, mit age verschlüsselte Backups nach S3, in einen Ordner oder auf Nextcloud – dazu persönliche Backups je Person und Nextcloud-Dateien direkt in Seiten.</p></div>
     </div>
   </div>
 </section>
 
-<section class="alt">
+<section>
   <div class="wrap split">
     <div class="txt">
       <h2>Schreiben, planen, sammeln</h2>
@@ -215,7 +244,7 @@ location.replace("en/")}catch(e){}})();
   </div>
 </section>
 
-<section>
+<section class="alt">
   <div class="wrap split rev">
     <div class="txt">
       <h2>Datenbanken wie du sie brauchst</h2>
@@ -230,7 +259,7 @@ location.replace("en/")}catch(e){}})();
   </div>
 </section>
 
-<section class="alt">
+<section>
   <div class="wrap split">
     <div class="txt">
       <h2>Für Admins gemacht</h2>
@@ -247,7 +276,7 @@ location.replace("en/")}catch(e){}})();
   </div>
 </section>
 
-<section id="screenshots">
+<section id="screenshots" class="alt">
   <div class="wrap">
     <h2>Screenshots</h2>
     <p class="sub">Dunkles und helles Design folgen automatisch dem System.</p>
@@ -262,7 +291,7 @@ location.replace("en/")}catch(e){}})();
   </div>
 </section>
 
-<section id="apps" class="alt">
+<section id="apps">
   <div class="wrap">
     <h2>Apps für unterwegs und den Schreibtisch</h2>
     <p class="sub">Native Apps für iPhone, iPad, Mac, Linux (GNOME) und Android – keine eingebettete Webseite.
@@ -281,7 +310,7 @@ location.replace("en/")}catch(e){}})();
   </div>
 </section>
 
-<section id="schnellstart">
+<section id="schnellstart" class="alt">
   <div class="wrap">
     <h2>In 5 Minuten starten</h2>
     <p class="sub">Du brauchst nur einen Server mit Docker.</p>
