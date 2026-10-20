@@ -157,7 +157,7 @@ Browser / apps ──► saga-media (Go)        :8080  serves chat attachments a
 
 ## Security at a glance
 
-- Passwords hashed with scrypt, failed attempts only slow down the attacking address (nobody can lock others out),
+- Passwords hashed with scrypt, failed attempts only slow down the attacking address (nobody can lock you out of your own account),
   CSRF protection, strict Content Security Policy
 - Login names stay private: others see the display name, public name or a handle
 - Calendar, Immich, LDAP and SSO credentials encrypted in the database (key: `SECRET_KEY`)

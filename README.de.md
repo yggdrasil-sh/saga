@@ -155,7 +155,7 @@ Browser / Apps ──► saga-media (Go)        :8080  liefert Chat-Anhänge und
 
 ## Sicherheit in Kürze
 
-- Passwörter mit scrypt, Fehlversuche bremsen nur die angreifende Adresse (niemand kann Fremde aussperren), CSRF-Schutz,
+- Passwörter mit scrypt, Fehlversuche bremsen nur die angreifende Adresse (niemand kann dich aus deinem Konto aussperren), CSRF-Schutz,
   strenge Content-Security-Policy
 - Anmeldenamen bleiben privat: andere sehen Anzeigename, öffentlichen Namen oder einen Handle
 - Kalender-, Immich-, LDAP- und SSO-Zugangsdaten verschlüsselt in der Datenbank (Schlüssel: `SECRET_KEY`)
