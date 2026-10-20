@@ -114,6 +114,45 @@ def main():
     cur = call(U, "GET", f"/api/notes/{nid}")[1]
     ok("... und der alte Stand ist zurueck", "Noch weiter" not in json.dumps(cur.get("body", "")))
 
+    # --- Sicherheitsrunde 2 (V1): Bearbeiter kann den Verlauf nicht per wiederholtem Wiederherstellen wegspuelen ------
+    auth.create_user("sv-carl", None, "Carl Version")
+    vn = call(U, "POST", "/api/notes", {"title": "Verlauf"})[1]["id"]
+    call(U, "PUT", f"/api/notes/{vn}/shares", {"type": "user", "target": "sv-bert", "role": "edit"})
+    now = time.time()
+    with connect() as c, c:
+        for i in range(40):
+            c.execute("INSERT INTO note_version (note_id, uid, title, body, format, created, author) VALUES (?,?,?,?,?,?,?)",
+                      (vn, U, f"own{i}", f"Inhalt own {i}", "text", now - 100000 + i * 100, None))
+        for i in range(8):
+            c.execute("INSERT INTO note_version (note_id, uid, title, body, format, created, author) VALUES (?,?,?,?,?,?,?)",
+                      (vn, U, f"c{i}", f"Inhalt c {i}", "text", now - 50000 + i * 100, "sv-carl"))
+        ab = [r[0] for r in c.execute("SELECT id FROM note_version WHERE note_id=? ORDER BY created DESC LIMIT 2", (vn,))]
+
+    def count(who):
+        with connect() as c:
+            return c.execute("SELECT COUNT(*) FROM note_version WHERE note_id=? AND author IS NOT DISTINCT FROM ?", (vn, who)).fetchone()[0]
+    codes = {call("sv-bert", "POST", f"/api/notes/{vn}/versions/{ab[k % 2]}/restore")[0] for k in range(60)}
+    ok("V1: 60x Wiederherstellen durch Bearbeiter laesst den Verlauf stehen",
+       codes == {200} and count(None) == 40 and count("sv-carl") == 8 and count("sv-bert") <= 1,
+       (codes, count(None), count("sv-carl"), count("sv-bert")))
+    ok("V1: aktueller Stand (leere neue Seite) dabei gesichert", len(versions(vn)) == 49, len(versions(vn)))
+    # eigener, noch nicht gesicherter Stand des Bearbeiters: wird gesichert; ein zweiter binnen einer Minute ersetzt ihn
+    rv = call("sv-bert", "GET", f"/api/notes/{vn}")[1]["rev"]
+    call("sv-bert", "PATCH", f"/api/notes/{vn}", {"body": blocks(para("Bert eins")), "format": "blocks", "rev": rv})
+    call("sv-bert", "POST", f"/api/notes/{vn}/versions/{ab[0]}/restore")
+    n1 = len(versions(vn))
+    rv = call("sv-bert", "GET", f"/api/notes/{vn}")[1]["rev"]
+    call("sv-bert", "PATCH", f"/api/notes/{vn}", {"body": blocks(para("Bert zwei")), "format": "blocks", "rev": rv})
+    call("sv-bert", "POST", f"/api/notes/{vn}/versions/{ab[0]}/restore")
+    vs = versions(vn)
+    ok("V1: zweite Sicherung des Bearbeiters binnen 1 min ersetzt seine eigene (Verlauf waechst nicht)",
+       len(vs) == n1 and "Bert zwei" in vs[-1][1] and count(None) == 40 and count("sv-carl") == 8, (n1, len(vs), vs[-1][1]))
+    rv = call(U, "GET", f"/api/notes/{vn}")[1]["rev"]
+    call(U, "PATCH", f"/api/notes/{vn}", {"body": blocks(para("Anna neu")), "format": "blocks", "rev": rv})
+    call(U, "POST", f"/api/notes/{vn}/versions/{ab[1]}/restore")
+    vs = versions(vn)
+    ok("V1: Eigentuemer wird nicht gedrosselt", "Anna neu" in vs[-1][1], vs[-1][1])
+
     # --- W6: Export, Vorschau, Suche ohne interne Werte ---------------------------------------------------------------
     db = call(U, "POST", "/api/notes", {"title": "Reiseziele", "kind": "database"})[1].get("id")
     furl = upload(U, b"Handtuch, Sonnencreme, Buch\n", "packliste.txt")

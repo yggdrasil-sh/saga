@@ -14,7 +14,7 @@ from fastapi import APIRouter
 from saga import i18n, nextcloud
 from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, origin_of, t
 from saga.sharing import Access, access, mask_links, names, person, viewer
-from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _insert_version, _latest, announce_tree, checkpoint, blocks_text, share_targets, tree_changed
+from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _forced_throttled, _insert_version, _latest, announce_tree, checkpoint, blocks_text, share_targets, tree_changed
 
 router = APIRouter()
 
@@ -192,8 +192,17 @@ def version_restore(uid, nid, vid, origin=None):
             return JSONResponse({"error": t("Seite ist gesperrt – erst entsperren")}, status_code=423)
         now = time.time()
         lv = _latest(c, owner, nid)
-        if not lv or tuple(lv[:3]) != tuple(cur[:3]):    # aktueller Stand bleibt IMMER als Version erhalten (2.4: ohne Drossel)
-            _insert_version(c, owner, nid, cur[:3], now, cur[3])
+        known = lv and (tuple(lv[:3]) == tuple(cur[:3]) or c.execute(   # aktueller Stand bleibt IMMER erhalten: steht er
+            "SELECT 1 FROM note_version WHERE uid=? AND note_id=? AND title IS NOT DISTINCT FROM ? AND body IS NOT DISTINCT FROM ? AND format IS NOT DISTINCT FROM ? LIMIT 1",
+            (owner, nid, cur[0], cur[1], cur[2])).fetchone())          # schon im Verlauf (z. B. frueher wiederhergestellt), keine Kopie
+        if not known:
+            mine = c.execute("SELECT id FROM note_version WHERE uid=? AND note_id=? AND author=? ORDER BY created DESC LIMIT 1",
+                             (owner, nid, uid)).fetchone() if _forced_throttled(c, owner, nid, cur[3], uid, now) else None
+            if mine:                                     # Drossel fuer Nicht-Eigentuemer (wie _snapshot): statt einer neuen
+                c.execute("UPDATE note_version SET title=?, body=?, format=?, created=? WHERE id=?",   # Version die eigene
+                          (cur[0], cur[1], cur[2], now, mine[0]))     # juengste ersetzen - der Verlauf waechst nicht
+            else:
+                _insert_version(c, owner, nid, cur[:3], now, cur[3])
         body = nextcloud.limit_restore(uid, nid, cur[1], cur[2], v[1], v[2])     # Nextcloud: fremde Schalter nicht wieder oeffnen
         c.execute("UPDATE note SET title=?, body=?, format=?, updated=?, rev=rev+1, updated_by=? WHERE id=? AND uid=?",
                   (v[0], body, v[2], now, uid, nid, owner))

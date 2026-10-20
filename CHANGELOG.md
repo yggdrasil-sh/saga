@@ -220,7 +220,10 @@ automatisch; Backups von 2.3 bleiben einspielbar.
   Anmeldenamen technisch weiter (Schlüssel und Signaturen von Chats v1 hängen daran), die Weboberfläche zeigt ihn nicht.
 - **Versionen beim Bearbeiten:** Saga sichert beim Speichern höchstens alle 5 (statt 10) Minuten, dazu den aktuellen
   Stand nach 2 Minuten Pause und beim Verlassen der Seite (`POST /api/notes/{id}/versions/checkpoint`, gedrosselt, keine
-  doppelten Fassungen). „Diese Version wiederherstellen“ fragt nach und sichert den aktuellen Stand immer vorher.
+  doppelten Fassungen). „Diese Version wiederherstellen“ fragt nach und sichert den aktuellen Stand immer vorher – steht
+  er schon im Verlauf, ohne Kopie; für Nicht-Eigentümer gilt dabei dieselbe Drossel wie beim Speichern (ein eigener
+  Sicherungspunkt je Seite und Minute, ein weiterer ersetzt ihn). So kann niemand mit „Bearbeiten“ durch wiederholtes
+  Wiederherstellen ältere Fassungen des Eigentümers oder Dritter aus dem Verlauf verdrängen.
 - **Export, Versionsvorschau, Suche:** Markdown-Export behält die Adresse von Einbettungen (YouTube), zeigt eingebettete
   Datenbanken mit Titel und Kalender/Aufgaben als Hinweis; Vorschau und Suchausschnitt zeigen keine internen Werte
   („month“, „task“, Ansichtsnamen) und Dateinamen nur einmal. Migration 14 leitet den Suchtext betroffener Seiten neu ab.
