@@ -92,7 +92,7 @@ def main():
                                    "WHERE ch.v=3 AND m.chat_id IN (SELECT chat_id FROM chat_member WHERE uid=?)", (a,)).fetchone()[0]
                     ed = c.execute("SELECT COUNT(*) FROM chat_msg m WHERE m.kind='edit' AND m.chat_id IN (SELECT chat_id FROM chat_member WHERE uid=?)",
                                    (a,)).fetchone()[0]
-                ok(f"{js}: Reaktionen ({rx}) und eine Bearbeitung ({ed}) gespeichert", rx >= 2 and ed == 1, (rx, ed))
+                ok(f"{js}: Reaktionen ({rx}) und je bearbeiteter Nachricht eine Bearbeitung ({ed}) gespeichert", rx >= 2 and ed == 2, (rx, ed))
             elif js not in ("browser_gelesen.js", "browser_voice.js"):
                 ok(f"{js}: Anrufe liefen in Stufe-3-Chats ({calls})", calls > 0)
                 ok(f"{js}: Anruf-Eintraege ohne Anmeldenamen ({len(logs)})", logs and not any(a in x or b in x for x in logs)

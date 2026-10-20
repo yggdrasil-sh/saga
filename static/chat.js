@@ -1627,7 +1627,7 @@
   }
   function edLive(c, d) {
     var m = S.byId[d.id]; if (!m || !m.seq) return;
-    api('GET', '/api/chats/' + c.id + '/messages?calls=1&limit=1&device=' + q(dev()) + '&after=' + (m.seq - 1)).then(function (r) {
+    api('GET', '/api/chats/' + c.id + '/messages?calls=1&limit=1&device=' + q(dev()) + '&before=' + (m.seq + 1)).then(function (r) {
       var x = (r.messages || []).filter(function (y) { return y.id === m.id; })[0];
       if (!x || !S.cur || S.cur.id !== c.id) return;
       m.edit = x.edit; m.edited_at = x.edited_at; m.edit_n = x.edit_n;

@@ -130,6 +130,13 @@ async function openChat(p) { await p.goto(BASE + '/chats'); await p.waitForTimeo
     await b.hover(rowSel(bm.id)); await b.click(rowSel(bm.id) + ' .ct-act:not(.ct-react-b)'); await b.waitForSelector('.menu .menu-item');
     ok('B: fremde Nachricht ohne "Bearbeiten"', !(await b.$$eval('.menu .menu-item', x => x.map(i => i.textContent))).some(t => /Bearbeiten/.test(t)));
     await b.keyboard.press('Escape');
+    // Erste Nachricht des Chats bearbeiten: Gegenseite sieht es live (chat.edited -> Nachricht einzeln nachladen)
+    const f0 = await msgInfo(a, 'Hallo, magst du Reaktionen?');
+    await a.hover(rowSel(f0.id)); await a.click(rowSel(f0.id) + ' .ct-act:not(.ct-react-b)'); await a.waitForSelector('.menu .menu-item');
+    await a.click('.menu .menu-item:has-text("Bearbeiten")'); await a.waitForSelector('#ct-reply.ct-editing:not([hidden])');
+    await a.fill('#ct-input', 'Hallo, magst du Reaktionen? Bitte!'); await a.press('#ct-input', 'Enter');
+    const fe = await until(async () => { const x = await msgInfo(b, 'Hallo, magst du Reaktionen? Bitte!'); return x && x.edited ? x : null; }, 15000);
+    ok('B: Bearbeitung der ersten Nachricht live angekommen (Reaktionen bleiben)', !!fe && fe.id === f0.id && fe.chips.length === 2, fe || await msgInfo(b, 'Hallo, magst du Reaktionen?'));
     // Hell + Handy-Breite
     const c = b;                                            // dasselbe Konto/Geraet, jetzt hell und schmal
     await c.setViewportSize({ width: 390, height: 844 }); await c.emulateMedia({ colorScheme: 'light' }); await openChat(c);
@@ -137,7 +144,7 @@ async function openChat(p) { await p.goto(BASE + '/chats'); await p.waitForTimeo
     const ov = await c.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
     ok('Handy (hell): keine waagrechte Scrollleiste', ov);
     await shot(c, 'x3-6-handy-hell');
-    const cm = await msgInfo(c, 'Hallo, magst du Reaktionen?');
+    const cm = await msgInfo(c, 'Hallo, magst du Reaktionen? Bitte!');
     await c.click(rowSel(cm.id) + ' .ct-react-b'); await c.waitForSelector('.menu .ct-rq');
     const box = await c.$eval('.menu', m => { const r = m.getBoundingClientRect(); return { l: r.left, r: r.right, w: window.innerWidth }; });
     ok('Handy: Schnellleiste passt in die Breite', box.l >= 0 && box.r <= box.w + 1, box);

@@ -101,10 +101,15 @@ async function recordFor(p, ms) {
     const info = await b.evaluate(async () => {
       const s = document.querySelector('#ct-msgs .vm').vmState(), buf = await (await fetch(s.src)).arrayBuffer(), h = new Uint8Array(buf.slice(0, 40));
       const ac = new AudioContext(); const ab = await ac.decodeAudioData(buf.slice(0)); ac.close();
-      return { ogg: String.fromCharCode(h[0], h[1], h[2], h[3]), head: String.fromCharCode.apply(null, h.slice(28, 36)), dur: ab.duration, bytes: buf.byteLength, rate: ab.sampleRate, ch: ab.numberOfChannels };
+      const u8 = new Uint8Array(buf), dv = new DataView(buf); let lp = -1;           // letzte Ogg-Seite: Granule (RFC 7845)
+      for (let i = u8.length - 27; i >= 0; i--) if (u8[i] === 0x4f && u8[i + 1] === 0x67 && u8[i + 2] === 0x67 && u8[i + 3] === 0x53) { lp = i; break; }
+      const gran = dv.getUint32(lp + 6, true) + dv.getUint32(lp + 10, true) * 4294967296, pre = dv.getUint16(28 + 10, true);
+      return { ogg: String.fromCharCode(h[0], h[1], h[2], h[3]), head: String.fromCharCode.apply(null, h.slice(28, 36)), dur: ab.duration, bytes: buf.byteLength, rate: ab.sampleRate, ch: ab.numberOfChannels,
+               gdur: (gran - pre) / 48000, fdur: s.dur };
     });
     ok('Datei ist Ogg/Opus (OpusHead), dekodierbar, Dauer passt zu dur, ~24 kbit/s', info.ogg === 'OggS' && info.head === 'OpusHead' && Math.abs(info.dur - 3) < 0.8
        && info.bytes * 8 / info.dur < 40000 && info.ch === 1, info);
+    ok('Ogg-Dauer nach RFC 7845: (letzte Granule - pre-skip) / 48000 = dur des Anhangs (auf 0,1 s gerundet)', Math.abs(info.gdur - info.fdur) <= 0.051, info);
     await b.click('#ct-msgs .vm-speed');
     const sp = await vstate(b, 0);
     ok('Tempo 1,5×', sp.rate === 1.5 && (await b.textContent('#ct-msgs .vm-speed')) === '1.5×', sp);
@@ -122,16 +127,28 @@ async function recordFor(p, ms) {
     await a.click('#ct-mic'); await a.waitForSelector('.ct-rec-stop:not([disabled])', { timeout: 15000 }); await a.waitForTimeout(800);
     await a.click('.ct-rec-cancel');
     ok('Abbrechen: Leiste weg, nichts gesendet', await a.evaluate(() => document.querySelector('#ct-rec').hidden) && (await voices(a)).length === n0);
+    // RFC 7845 genau (WebCodecs-Weg): letzte Granule - pre-skip = aufgenommene Samples
+    const wc = await a.evaluate(async () => {
+      const r = await window.SagaVoice.record({ mode: 'wc', maxS: 900 });
+      await new Promise(x => setTimeout(x, 1500));
+      const o = await r.stop(), buf = await o.blob.arrayBuffer(), u8 = new Uint8Array(buf), dv = new DataView(buf);
+      let lp = -1; for (let i = u8.length - 27; i >= 0; i--) if (u8[i] === 0x4f && u8[i + 1] === 0x67 && u8[i + 2] === 0x67 && u8[i + 3] === 0x53) { lp = i; break; }
+      const pre = dv.getUint16(38, true), gran = dv.getUint32(lp + 6, true) + dv.getUint32(lp + 10, true) * 4294967296;
+      return { pre, gran, dur: o.dur, gdur: (gran - pre) / 48000 };
+    });
+    ok('WebCodecs-Weg: (Granule - pre-skip) / 48000 = Aufnahmedauer (RFC 7845, Ende abgeschnitten)', wc.pre > 0 && Math.abs(wc.gdur - wc.dur) < 0.0005, wc);
     // WebM-Weg (Safari ohne WebCodecs-Opus): MediaRecorder WebM -> Ogg umgepackt
     const wm = await a.evaluate(async () => {
       const r = await window.SagaVoice.record({ mode: 'mr-webm', maxS: 900 });
       await new Promise(x => setTimeout(x, 2000));
-      const o = await r.stop(), buf = await o.blob.arrayBuffer(), h = new Uint8Array(buf.slice(0, 4));
+      const o = await r.stop(), buf = await o.blob.arrayBuffer(), h = new Uint8Array(buf.slice(0, 4)), u8 = new Uint8Array(buf), dv = new DataView(buf);
+      let lp = -1; for (let i = u8.length - 27; i >= 0; i--) if (u8[i] === 0x4f && u8[i + 1] === 0x67 && u8[i + 2] === 0x67 && u8[i + 3] === 0x53) { lp = i; break; }
+      const gdur = (dv.getUint32(lp + 6, true) + dv.getUint32(lp + 10, true) * 4294967296 - dv.getUint16(38, true)) / 48000;
       const ac = new AudioContext(); const ab = await ac.decodeAudioData(buf.slice(0)); ac.close();
-      return { ogg: String.fromCharCode.apply(null, h), dur: o.dur, dec: ab.duration, wf: o.wf.length, type: o.blob.type };
+      return { ogg: String.fromCharCode.apply(null, h), dur: o.dur, dec: ab.duration, wf: o.wf.length, type: o.blob.type, gdur };
     });
     ok('WebM-Weg: umgepackt zu Ogg, dekodierbar, Dauer stimmt', wm.ogg === 'OggS' && Math.abs(wm.dec - wm.dur) < 0.3 && wm.dur > 1.5 && wm.wf === 64
-       && /audio\/ogg/.test(wm.type), wm);
+       && /audio\/ogg/.test(wm.type) && Math.abs(wm.gdur - wm.dur) < 0.0011, wm);
     // Handy (hell): Spieler und Aufnahmeleiste
     const c = b;                                            // dasselbe Konto/Geraet, jetzt hell und schmal
     await c.setViewportSize({ width: 390, height: 844 }); await c.emulateMedia({ colorScheme: 'light' }); await openChat(c);

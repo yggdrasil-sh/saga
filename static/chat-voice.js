@@ -28,7 +28,10 @@
     else us = [2500, 5000, 10000, 20000][cfg & 3];
     return n * us * RATE / 1e6;
   }
-  function oggOpus(pkts, preskip, vendorName) {
+  // Granule (RFC 7845, 4): Zahl aller dekodierten Samples einschliesslich pre-skip - die ersten Pakete enthalten den
+  // pre-skip schon, gezaehlt wird also ab 0; Dauer = (letzte Granule - pre-skip) / 48000. endSamples (Zahl der
+  // aufgenommenen Samples, falls bekannt): letzte Granule = pre-skip + endSamples (Ende abschneiden, RFC 7845 4.4).
+  function oggOpus(pkts, preskip, vendorName, endSamples) {
     var pages = [], seq = 0, serial = (Math.random() * 0xffffffff) >>> 0;
     function page(packets, granule, flags) {
       var lace = [], len = 0;
@@ -47,10 +50,10 @@
     var vendor = te.encode(vendorName || 'Saga'), tags = new Uint8Array(8 + 4 + vendor.length + 4), td = new DataView(tags.buffer);
     tags.set(te.encode('OpusTags')); td.setUint32(8, vendor.length, true); tags.set(vendor, 12);
     page([tags], 0, 0);
-    var g = preskip, cur = [], size = 0;
+    var g = 0, cur = [], size = 0, last = endSamples != null ? preskip + endSamples : Infinity;
     for (var i = 0; i < pkts.length; i++) {               // Seiten bis ~1 s bzw. 255 Segmente
       var p = pkts[i]; g += opusSamples(p); cur.push(p); size += Math.ceil((p.length + 1) / 255);
-      if (cur.length >= 50 || size > 240 || i === pkts.length - 1) { page(cur, g, i === pkts.length - 1 ? 4 : 0); cur = []; size = 0; }
+      if (cur.length >= 50 || size > 240 || i === pkts.length - 1) { page(cur, i === pkts.length - 1 ? Math.min(g, last) : g, i === pkts.length - 1 ? 4 : 0); cur = []; size = 0; }
     }
     if (!pkts.length) page([], g, 4);
     return new Blob(pages, { type: 'audio/ogg; codecs=opus' });
@@ -177,7 +180,7 @@
             release();
             return enc.flush().then(function () {
               try { enc.close(); } catch (e) { /* egal */ }
-              return { blob: oggOpus(pkts, preskip), dur: Math.min(maxS, samples / RATE), wf: waveform(levels), mode: md };
+              return { blob: oggOpus(pkts, preskip, null, samples), dur: Math.min(maxS, samples / RATE), wf: waveform(levels), mode: md };
             });
           }
           return new Promise(function (res, rej) {

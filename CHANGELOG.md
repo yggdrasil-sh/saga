@@ -78,6 +78,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   eigener Ogg-Muxer, Firefox: MediaRecorder Ogg, Safari: WebM in Ogg umgepackt), höchstens 15 Minuten (Hinweis ab 14:00),
   unter 1 Sekunde verworfen; Vorschau zum Anhören, Verwerfen oder Senden. Abspielen über den Service Worker wie Videos,
   Wellenform mit 64 Balken zum Springen, Tempo 1×/1,5×/2×, danach die nächste Sprachnachricht.
+  Ogg-Granule nach RFC 7845 (zählt ab 0 inklusive pre-skip, Ende auf die Aufnahme abgeschnitten).
 - Neue Browser-Reihen `browser_x3.js`, `browser_voice.js` und `browser_trust3.js` (Vertrauen über die Umstellung, über `browser_v3`), Messungen `tools/perf/x3_server.py`,
   `tools/perf/x3_browser.js`, `tools/perf/x3_worker.mjs`.
 
