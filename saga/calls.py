@@ -47,7 +47,14 @@ Medienbytes laufen nie durch Python.
 2.5 (Gjallarhorn P4, Vertrag docs/HORN-E2E.md): Frame-Schluessel je sendendem Geraet gehen als Body-Typen fkey/fkey-ack
 im selben versiegelten Signalweg (POST /signal, lokal saga-call/v1 bzw. v2 mit Handles, ueber Servergrenzen Auftrag
 signal) - der Server sieht weder Typ noch Schluessel, nur Kennungen und Groessen, und gibt sie nie an einen Knoten.
-Feature-Flag calls.horn (Standard aus): features + "horn", GET /api/calls/config "e2e": "saga-horn/v1"."""
+Feature-Flag calls.horn (Standard aus): features + "horn", GET /api/calls/config "e2e": "saga-horn/v1".
+
+2.5 (Gjallarhorn P3, saga/horn.py): Gruppenanrufe in Chats mit mehr Mitgliedern als die Mesh-Grenze laufen ueber einen
+Knoten (topo 'horn'), wenn das Flag an ist, das anrufende Geraet "horn" meldet und ein Knoten bereit ist - sonst Mesh wie
+2.4. Beitritt ohne Mesh-Angebote; Antworten von POST /api/calls, /join und POST /api/calls/{id}/horn tragen horn.candidates
+(bis 3 Knoten mit je eigenen, 60 s gueltigen Medien-Token). Grenzen nach Weg: 12 Video / 50 Ton ueber TCP, 25 / 100 mit
+UDP am Knoten. Die Teilnehmerliste traegt je Endpunkt hp (Kennung des Geraets am Knoten, fuer die Zuordnung der Spuren).
+Verlassen/Ende: der Knoten beendet die Beine (kick/close ueber den Steuerkanal). Foederierte Gruppen bleiben bis P10 Mesh."""
 import asyncio
 import base64
 import hashlib
@@ -60,7 +67,7 @@ from fastapi import APIRouter, Request
 
 import auth
 from db import connect as _db
-from saga import bus, chat, notify
+from saga import bus, chat, horn, notify
 from saga.core import SECRET, _bad, _body, t
 from saga import sharing
 from saga.sharing import names
@@ -176,6 +183,41 @@ def limit(media):
     return max(2, min(top, v))
 
 
+def is_horn(call):
+    """2.5: laeuft der Anruf ueber einen Gjallarhorn-Knoten?"""
+    return bool(call) and call.get("topo") == "horn"
+
+
+def climit(c, call):
+    """Hoechstzahl Endpunkte dieses Anrufs: Mesh-Grenze (limit) bzw. ueber Knoten nach Weg (2.5: TCP 12/50, UDP 25/100)."""
+    if is_horn(call):
+        v, a = horn.limits(c, call["id"])
+        return v if call["media"] == "video" else a
+    return limit(call["media"])
+
+
+def horn_wanted(c, ch, media, caps):
+    """2.5: neuen Gruppenanruf ueber einen Knoten fuehren? Flag an, Geraet meldet "horn", Chat hat mehr Mitglieder als die
+    Mesh-Grenze (bzw. calls.horn_from, mindestens 3), nicht foederiert (P10) und ein Knoten ist bereit."""
+    if not horn_on() or not _has(caps, "horn") or chat.is_fed(ch):
+        return False
+    try:
+        frm = int(cfg().get("horn_from") or 0)
+    except (TypeError, ValueError):
+        frm = 0
+    need = max(3, frm) if frm else limit(media) + 1
+    return len(chat.members(c, ch["id"])) >= need and horn.any_ready(c)
+
+
+def horn_block(c, call, dev, role="member", dev_class="desktop"):
+    """Kandidaten fuer dieses Geraet (Antwort von POST /api/calls, /join, /horn)."""
+    return {"e2e": "saga-horn/v1", "ttl": horn.TOKEN_TTL, "candidates": horn.candidates(c, call, dev, role, dev_class)}
+
+
+def _dev_class(b):
+    return "mobile" if (b or {}).get("dev_class") == "mobile" else "desktop"
+
+
 # --- Hilfen ---------------------------------------------------------------------------------------------------------
 def sig_budget(call, now=None):
     """Wie viele Signal-Nachrichten dieser Anruf insgesamt haben darf: Grundbudget, dazu SIG_PER_MIN je angefangener
@@ -227,7 +269,7 @@ def _me(request):
 
 
 C_COLS = ("id, chat_id, caller, callee, caller_device, callee_device, media, state, reason, created, answered, ended, seen_a, seen_b, nsig, "
-          "peer_id, caps_a, caps_b, kind, v, lead")
+          "peer_id, caps_a, caps_b, kind, v, lead, topo")
 
 
 def _row(r):
@@ -257,7 +299,7 @@ def _mine(c, uid, cid, lock=False):
 
 
 # --- Raum-Modell (2.4 E4/E5): Endpunkte je Geraet -----------------------------------------------------------------
-L_COLS = "device, who, peer_id, role, state, replaces, caps, name, joined, left_at, seen, reason"
+L_COLS = "device, who, peer_id, role, state, replaces, caps, name, joined, left_at, seen, reason, node"
 
 
 def _legs(c, cid, active=True):
@@ -298,6 +340,12 @@ def _can_multi(c, uid):
                           (uid,)).fetchone())
 
 
+def _can_horn(c, uid):
+    """2.5: Hat uid ein aktives Chat-Geraet, das Anrufe ueber Knoten kann (caps "horn")?"""
+    return bool(c.execute("SELECT 1 FROM chat_device WHERE uid=? AND revoked_at IS NULL AND caps LIKE '%\"horn\"%' LIMIT 1",
+                          (uid,)).fetchone())
+
+
 def _audience(c, call):
     """Konten DIESES Servers, die Ereignisse zum Anruf bekommen: 1:1 beide Seiten, Gruppe alle Mitglieder des Chats."""
     if call["kind"] == "group":
@@ -329,6 +377,7 @@ def roster(c, call, uid=None, legs=None):
     legs = _legs(c, call["id"]) if legs is None else legs
     nm = names(c, [x["who"] for x in legs])
     fed = _fedcall(c, call)
+    cn = horn.call_node(c, call["id"]) if is_horn(call) else None
     out = []
     for x in legs:
         d = {"who": x["who"], "device": x["device"], "dev_name": x["name"] or "", "role": x["role"], "state": x["state"],
@@ -338,6 +387,8 @@ def roster(c, call, uid=None, legs=None):
             d["handle"] = FED.FC.my_handle(c, x["who"])
         if x.get("replaces"):
             d["replaces"] = x["replaces"]
+        if cn or x.get("node"):                        # 2.5: Kennung des Geraets am Knoten (Zuordnung Spur -> Geraet)
+            d["hp"] = horn.peer_ref(call["id"], x.get("node") or cn, x["device"])
         out.append(d)
     return out
 
@@ -364,7 +415,9 @@ def _joinable(c, call, uid, legs):
         return False, "old"
     if _fedcall(c, call) and not FED.can3(c, call):
         return False, "old"
-    if len(legs) >= limit(call["media"]):
+    if is_horn(call) and uid and not _can_horn(c, uid):
+        return False, "old"
+    if len(legs) >= climit(c, call):
         return False, "full"
     return True, None
 
@@ -414,8 +467,8 @@ def _dict(c, call, uid, nm=None, legs=None):
          "caps": {"caller": caps_out(call.get("caps_a")), "callee": caps_out(call.get("caps_b"))},
          "expires_in": max(0, round(call["created"] + ring_s() - now, 1)) if call["state"] == "ringing" else None,
          # 2.4 E4/E5: Raum - Art, Endpunkte je Geraet, ob (ein weiteres Geraet von) uid beitreten kann, Grenze
-         "kind": call["kind"], "legs": roster(c, call, uid, legs), "joinable": can, "join_block": why, "limit": limit(call["media"]),
-         "mine": [x["device"] for x in legs if x["who"] == uid], "rv": rv}
+         "kind": call["kind"], "legs": roster(c, call, uid, legs), "joinable": can, "join_block": why, "limit": climit(c, call),
+         "mine": [x["device"] for x in legs if x["who"] == uid], "rv": rv, "topo": call.get("topo") or "p2p"}
     if group:
         d["from"] = dict(pd)
         n = len(chat.members(c, call["chat_id"]))         # wie ring_group: grosse Gruppen klingeln nur still
@@ -493,6 +546,8 @@ def _finish(c, call, reason, now, by=None, remote=False):
         notify.create(c, call["callee"], "call.missed", call["caller"], data={"chat": call["chat_id"], "call": call["id"]})
     c.execute("UPDATE chat_call_leg SET state='left', left_at=?, reason=COALESCE(reason, ?) WHERE call_id=? AND state='active'",
               (now, reason, call["id"]))
+    if is_horn(call):
+        horn.room_close(c, call["id"])                 # 2.5: Raum am Knoten schliessen (nach dem Commit)
     if FED is not None and not remote:
         if group:
             if call.get("lead") is None and _fedcall(c, call):
@@ -511,7 +566,7 @@ def emit_roster(c, call, legs=None, fed=True):
     Anruf - an die anderen Server (Auftrag 'roster')."""
     legs = _legs(c, call["id"]) if legs is None else legs
     base = {"call_id": call["id"], "chat_id": call["chat_id"], "kind": call["kind"], "media": call["media"], "state": call["state"],
-            "limit": limit(call["media"])}
+            "limit": climit(c, call), "topo": call.get("topo") or "p2p"}
     can, why = _joinable(c, call, None, legs)
     data = dict(base, legs=roster(c, call, None, legs), joinable=can, join_block=why)
     after = getattr(c, "after_commit", None)                  # rv erst nach dem Commit (vor dem Versand, siehe _rv)
@@ -537,7 +592,15 @@ def api_config(request: Request):
                            "body_v": 3, "features": features(), **({"e2e": "saga-horn/v1"} if horn_on() else {}),
                            "limits": {"endpoints_video": limit("video"), "endpoints_audio": limit("audio"), "signals_max": SIGNALS_MAX,
                                       "signals_per_min": SIG_PER_MIN, "signals_hard": SIGNALS_HARD, "sig_rate": SIG_RATE,
-                                      "sealed_max": SEALED_MAX, "caps_max": CAPS_MAX, "ring_silent": RING_SILENT, "handover_s": 15}})
+                                      "sealed_max": SEALED_MAX, "caps_max": CAPS_MAX, "ring_silent": RING_SILENT, "handover_s": 15,
+                                      **(_horn_limits() if horn_on() else {})}})
+
+
+def _horn_limits():
+    """2.5: Grenzen ueber Knoten nach Weg (endpoints_video/_audio bleiben die Mesh-Grenzen fuer 2.4-Clients)."""
+    v, a = horn.limits(None)
+    vu, au = horn.limits(None, udp=True)
+    return {"horn": {"video_tcp": v, "audio_tcp": a, "video_udp": vu, "audio_udp": au}}
 
 
 @router.put("/api/calls/caps")
@@ -600,7 +663,7 @@ async def api_call(request: Request):
         if err:
             return err
         if ch["kind"] != "dm":                             # 2.4 E5: Gruppenanruf
-            gr = _group_start(c, uid, ch, m, cid, media, dev, caps, now)
+            gr = _group_start(c, uid, ch, m, cid, media, dev, caps, now, _dev_class(b))
             if gr is not None:
                 return gr
             fed = ("group", ch)
@@ -677,7 +740,7 @@ async def api_call(request: Request):
         return chat._no_store({"ok": True, "call": _dict(c, call, uid)})
 
 
-def _group_start(c, uid, ch, m, cid, media, dev, caps, now):
+def _group_start(c, uid, ch, m, cid, media, dev, caps, now, dev_class="desktop"):
     """POST /api/calls in einem Gruppen-/freien/Seiten-Chat. -> Antwort, oder None (foederierter Chat mit fremdem Heim:
     das Heim fuehrt den Anruf, FED.group_start nach der Transaktion)."""
     if not _my_device(c, uid, dev):
@@ -703,17 +766,27 @@ def _group_start(c, uid, ch, m, cid, media, dev, caps, now):
     if chat.is_fed(ch) and ch["home_peer"] is not None:
         return None                                    # Heim auf einem anderen Server
     call = group_create(c, ch, cid, media, uid, dev, caps, now, name=_dev_name(c, dev))
-    return chat._no_store({"ok": True, "call": _dict(c, call, uid)})
+    d = _dict(c, call, uid)
+    if is_horn(call):
+        d["horn"] = horn_block(c, call, dev, "member", dev_class)
+    return chat._no_store({"ok": True, "call": d})
 
 
 def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name="", lead=None):
     """Gruppenanruf anlegen (dieser Server fuehrt ihn, bzw. lead = fuehrender Server bei einer Kopie): Endpunkt der
     anrufenden Person, Einladungen (wer kein Geraet mit "multi" hat: 'old', "braucht Saga 2.4"), Klingeln hier, Liste an
-    alle. -> Anruf."""
+    alle. -> Anruf. 2.5: ueber einen Knoten (topo 'horn'), wenn horn_wanted - der Endpunkt der anrufenden Person kommt auf
+    den besten bereiten Knoten, Einladungen nur an Personen mit einem Geraet, das "horn" kann (sonst 'old')."""
+    node = None
+    if lead is None and peer_id is None and horn_wanted(c, ch, media, caps):
+        node = horn.ready_nodes(c)[0]
     c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, caps_a, kind, v, topo, "
-              "lead, peer_id) VALUES (?,?,?,'',?,?,'ringing',?,?,?,?,'group',3,'mesh',?,?) ON CONFLICT (id) DO NOTHING",
-              (cid, ch["id"], starter, dev, media, now, now, now, caps, lead, lead))
+              "lead, peer_id) VALUES (?,?,?,'',?,?,'ringing',?,?,?,?,'group',3,?,?,?) ON CONFLICT (id) DO NOTHING",
+              (cid, ch["id"], starter, dev, media, now, now, now, caps, "horn" if node else "mesh", lead, lead))
     _leg_put(c, cid, dev, starter, "member", peer_id, caps, name=name, now=now)
+    if node:
+        horn.set_leg_node(c, cid, dev, node["id"])
+        horn.room_open(c, cid, node["id"], climit(c, {"id": cid, "media": media, "topo": "horn"}))
     _OWN.add(cid)
     call = _load(c, cid)
     ring = []
@@ -726,14 +799,14 @@ def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name=
             mm = chat._member(c, ch["id"], u)
             if (mm or {}).get("state", "ok") != "ok":
                 continue                               # Nachrichtenanfrage: klingelt nie
-            st = "ringing" if _can_multi(c, u) else "old"
+            st = "ringing" if (_can_horn(c, u) if node else _can_multi(c, u)) else "old"
             if st == "ringing":
                 ring.append(u)
         c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,?,?) ON CONFLICT (call_id, who) DO NOTHING",
                   (cid, u, st, now))
     ring_group(c, call, ring)
     emit_roster(c, call)
-    print(f"call: {cid[:8]} Gruppenanruf ({media}, Chat {ch['id']}, {len(ring)} klingeln hier)", flush=True)
+    print(f"call: {cid[:8]} Gruppenanruf ({media}, Chat {ch['id']}, {len(ring)} klingeln hier{', Knoten ' + node['name'] if node else ''})", flush=True)
     return call
 
 
@@ -1081,6 +1154,7 @@ async def api_join(cid: str, request: Request):
     rep = b.get("replaces") if isinstance(b.get("replaces"), str) and _HEX32.fullmatch(b.get("replaces")) else None
     caps = caps_in(b.get("caps"))
     now = time.time()
+    dcl = _dev_class(b)
     with _db() as c, c:
         call, err = _mine(c, uid, cid, lock=True)
         if err:
@@ -1104,7 +1178,11 @@ async def api_join(cid: str, request: Request):
     if r["fwd"] and not await run_in_threadpool(FED.forward, call, uid, dev, r["fwd"], r["leg"]):
         print(f"call: {cid[:8]} Angebot an einen anderen Server nicht zugestellt", flush=True)
     with _db() as c:
-        return chat._no_store({"ok": True, "call": _dict(c, _load(c, cid), uid)})
+        call = _load(c, cid)
+        d = _dict(c, call, uid)
+        if is_horn(call):
+            d["horn"] = horn_block(c, call, dev, r["leg"]["role"], dcl)
+        return chat._no_store({"ok": True, "call": d})
 
 
 def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, name=""):
@@ -1120,15 +1198,28 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
         return chat._no_store({"error": t("Der Anruf ist noch nicht angenommen."), "join_block": "none"}, 409)
     if not _has(caps, "multi"):
         return chat._no_store({"error": t("Dafür braucht dieses Gerät Saga 2.4."), "join_block": "old"}, 409)
+    hn = is_horn(call)
+    if hn and not _has(caps, "horn"):
+        return chat._no_store({"error": t("Dafür braucht dieses Gerät Saga 2.5."), "join_block": "old"}, 409)
     old = [x for x in others if not _has(x["caps"], "multi")]
     if old or (_fedcall(c, call) and FED is not None and not FED.can3(c, call)):
         nm = names(c, [x["who"] for x in old])
         return chat._no_store({"error": t("Beitreten geht nicht: {names} braucht Saga 2.4.",
                                           names=", ".join(sorted({_who_label(c, x["who"], nm)["name"] for x in old})) or t("Gegenüber")),
                                "join_block": "old", "legs": roster(c, call, who, legs)}, 409)
-    if len(others) + 1 > limit(call["media"]):
-        return chat._no_store({"error": t("Der Anruf ist voll (höchstens {n} Geräte).", n=limit(call["media"])), "join_block": "full",
-                               "limit": limit(call["media"]), "legs": roster(c, call, who, legs)}, 409)
+    lim = climit(c, call)
+    if len(others) + 1 > lim:
+        return chat._no_store({"error": t("Der Anruf ist voll (höchstens {n} Geräte).", n=lim), "join_block": "full",
+                               "limit": lim, "legs": roster(c, call, who, legs)}, 409)
+    node = None
+    if hn:                                             # 2.5: Knoten des Anrufs (ohne Kaskade nur dieser), sonst der beste
+        if signals:
+            return _bad(t("ungültige Angabe"))         # ueber Knoten keine Mesh-Angebote
+        cur = horn.call_node(c, call["id"])
+        node = next((n for n in horn.ready_nodes(c) if not cur or n["id"] == cur), None)
+        if node is None:
+            return chat._no_store({"error": t("Gerade ist kein Knoten für große Gruppenanrufe erreichbar – bitte gleich noch einmal."),
+                                   "join_block": "node"}, 409)
     mine = [x for x in others if x["who"] == who]
     if role == "handover" and not any(x["device"] == rep for x in mine):
         return _bad(t("ungültige Angabe"))
@@ -1138,7 +1229,7 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
         role, rep = "member", None
     if role != "handover":
         rep = None
-    need = {x["device"] for x in others if x["who"] != who}
+    need = {x["device"] for x in others if x["who"] != who} if not hn else set()
     sig = _sealed_map(signals, {x["device"] for x in others}) if signals else {}
     if sig is None:
         return _bad(t("ungültige Angabe"))
@@ -1147,6 +1238,8 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
     if not _rate("call", who, CALL_RATE):
         return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
     _leg_put(c, call["id"], dev, who, role, peer_id, caps, rep, name=name, now=now)
+    if node is not None:
+        horn.set_leg_node(c, call["id"], dev, node["id"])
     if call["kind"] == "group":
         c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,'joined',?) "
                   "ON CONFLICT (call_id, who) DO UPDATE SET state='joined'", (call["id"], who, now))
@@ -1160,6 +1253,34 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
     c.execute("UPDATE chat_call SET nsig=nsig+? WHERE id=?", (len(sig), call["id"]))
     print(f"call: {call['id'][:8]} Beitritt ({role}, {len(legs)} Endpunkte)", flush=True)
     return {"fwd": fwd, "leg": next(x for x in legs if x["device"] == dev), "n": n}
+
+
+@router.post("/api/calls/{cid}/horn")
+async def api_horn(cid: str, request: Request):
+    """2.5 (Gjallarhorn): frische Kandidaten mit Medien-Token fuer MEIN Endpunkt {device, node?, dev_class?} - vor dem
+    Ablauf (60 s), beim Neuverbinden und nach dem Messen. node = gewaehlter Knoten (Name aus den Kandidaten): Saga merkt
+    ihn am Endpunkt (ohne Kaskade nur der Knoten des Anrufs)."""
+    uid, err = _me(request)
+    if err:
+        return err
+    b = await _body(request) or {}
+    dev = str(b.get("device") or "")
+    with _db() as c, c:
+        call, err = _mine(c, uid, cid)
+        if err:
+            return err
+        leg = c.execute("SELECT who, state, role FROM chat_call_leg WHERE call_id=? AND device=?", (cid, dev)).fetchone() if _HEX32.fullmatch(dev) else None
+        if not is_horn(call) or call["state"] == "ended" or not leg or leg[0] != uid or leg[1] != "active":
+            return _bad(t("ungültige Angabe"), 409)
+        if not _rate("horn", dev, 30):
+            return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
+        if isinstance(b.get("node"), str):
+            n = horn.node_named(c, b["node"][:253])
+            cur = horn.call_node(c, cid)
+            if not n or not horn.ready(n) or (cur and cur != n["id"] and not horn.CASCADE):
+                return _bad(t("ungültige Angabe"), 409)
+            horn.set_leg_node(c, cid, dev, n["id"])
+        return chat._no_store({"ok": True, "horn": horn_block(c, call, dev, leg[2], _dev_class(b))})
 
 
 @router.post("/api/calls/{cid}/leave")
@@ -1198,6 +1319,8 @@ def _leave(c, call, dev, now, reason="hangup", by=None):
     if not leg:
         return False
     c.execute("UPDATE chat_call_leg SET state='left', left_at=?, reason=? WHERE call_id=? AND device=?", (now, reason, call["id"], dev))
+    if is_horn(call):
+        horn.kick(c, call["id"], dev, leg.get("node"))  # 2.5: Beine am Knoten sofort beenden
     legs = _legs(c, call["id"])
     if call["kind"] == "group":
         people = {x["who"] for x in legs}
@@ -1265,7 +1388,7 @@ def invite_local(c, call, who):
         if sharing.is_remote(u):
             remote.append(u)
             continue
-        st = "ringing" if _can_multi(c, u) else "old"
+        st = "ringing" if (_can_horn(c, u) if is_horn(call) else _can_multi(c, u)) else "old"
         c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,?,?) ON CONFLICT (call_id, who) DO UPDATE "
                   "SET state=EXCLUDED.state, created=EXCLUDED.created", (call["id"], u, st, now))
         if st == "ringing":
@@ -1401,7 +1524,7 @@ def chat_extra(c, uid, ch, d):
         legs = _legs(c, call["id"])
         can, blk = _joinable(c, call, uid, legs)
         run = {"id": call["id"], "media": call["media"], "kind": call["kind"], "state": call["state"], "n": len(legs), "joinable": can,
-               "join_block": blk, "mine": [x["device"] for x in legs if x["who"] == uid]}
+               "join_block": blk, "mine": [x["device"] for x in legs if x["who"] == uid], "topo": call.get("topo") or "p2p"}
     d["call"] = {"group": ch["kind"] != "dm" and ok_, "group_block": why, "running": run}
 
 

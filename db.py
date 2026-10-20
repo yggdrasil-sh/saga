@@ -784,6 +784,18 @@ CREATE TABLE IF NOT EXISTS chat_receipt (
     PRIMARY KEY (chat_id, viewer, reader));
 CREATE INDEX IF NOT EXISTS chat_receipt_reader ON chat_receipt (reader);
 CREATE TABLE IF NOT EXISTS chat_seen (uid TEXT PRIMARY KEY, at DOUBLE PRECISION NOT NULL);
+-- Gjallarhorn (2.5, saga/horn.py, Konzept v2 §2.10, Migration 16): Knotenregister (eingebauter Knoten + gekoppelte) und
+-- Kopplungs-Token (nur als SHA-256, einmalig, 30 min). pub = Ed25519-Knotenschluessel (Base64), load = letzte Lastmeldung,
+-- dns_ids = Cloudflare-Eintraege (P7), removed = entfernt (pub gesperrt). Wahrheitswerte als SMALLINT wie ueberall (db._arg).
+-- Keine Konto- oder Geraetedaten.
+CREATE TABLE IF NOT EXISTS horn_node (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, pub TEXT NOT NULL, builtin SMALLINT NOT NULL DEFAULT 0,
+    url TEXT, v4 TEXT, v6 TEXT, udp SMALLINT NOT NULL DEFAULT 0, share SMALLINT NOT NULL DEFAULT 0,
+    version TEXT, state TEXT NOT NULL DEFAULT 'neu', load JSONB, link_mbit INTEGER,
+    dns_ids JSONB, created DOUBLE PRECISION NOT NULL, seen DOUBLE PRECISION, removed DOUBLE PRECISION);
+CREATE TABLE IF NOT EXISTS horn_pair (
+    token_hash TEXT PRIMARY KEY, name TEXT NOT NULL, share SMALLINT NOT NULL DEFAULT 0,
+    expires DOUBLE PRECISION NOT NULL, used DOUBLE PRECISION);
 -- Bestand (erster Start, Backup von vor 2.2 zurueckgespielt): alles ohne abgeleitete Daten zum Abgleich vormerken
 INSERT INTO note_stale (note_id, uid) SELECT n.id, n.uid FROM note n
  WHERE NOT EXISTS (SELECT 1 FROM note_derived d WHERE d.note_id = n.id) ON CONFLICT (note_id) DO NOTHING;
@@ -934,6 +946,14 @@ SELECT 1 FROM login_lock LIMIT 0;
 INSERT INTO note_stale (note_id, uid) SELECT id, uid FROM note WHERE format='blocks' AND (strpos(body, '"embed"') > 0
   OR strpos(body, '"buttons"') > 0 OR strpos(body, '"calendar"') > 0 OR strpos(body, '"database"') > 0
   OR strpos(body, '"attaches"') > 0 OR strpos(body, '"tasks"') > 0) ON CONFLICT (note_id) DO NOTHING;
+""",
+    # 2.5.0 (Gjallarhorn P3, saga/horn.py): aktueller Knoten eines Endpunkts (Hinweis fuer Kandidaten und Steuerung; NULL =
+    # Mesh bzw. noch keiner). Die Tabellen horn_node und horn_pair legt SCHEMA oben an. (15 ist fuer Chat-Stufe 3 auf einem
+    # anderen Zweig belegt.) Beliebig oft ausfuehrbar.
+    16: """
+ALTER TABLE chat_call_leg ADD COLUMN IF NOT EXISTS node TEXT;
+CREATE INDEX IF NOT EXISTS chat_call_leg_node ON chat_call_leg (node) WHERE node IS NOT NULL AND state='active';
+SELECT 1 FROM horn_node, horn_pair LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

@@ -348,24 +348,31 @@
       x.n++; x.ms += ms; x.bytes += bytes; if (ms > x.max) x.max = ms;
     };
     var drop = function (why) { S.drop[why] = (S.drop[why] || 0) + 1; };
+    // 2.5 P3: Empfaenger am Knoten (from '*'): Absender je Rahmen aus der CSRC (getMetadata().contributingSources) ueber die
+    // Zuordnung CSRC -> Geraet, die das Fenster aus der Belegung der Plaetze meldet (op "csrc"). Unbekannt: verwerfen.
+    var CSRC = {};
     var pipe = function (readable, writable, o) {
       var send = o.side === 'send';
       readable.pipeThrough(new TransformStream({
         transform: async function (f, c) {
           var t0 = clock(), md = f.getMetadata ? f.getMetadata() : {};
           var kind = o.kind || (f.type === undefined ? 'audio' : 'video'), type = f.type;
-          var data = new Uint8Array(f.data), r;
+          var data = new Uint8Array(f.data), r, from = o.from;
+          if (!send && from === '*') {
+            from = CSRC[((md.contributingSources || [])[0]) >>> 0];
+            if (!from) { drop('nofrom'); return; }
+          }
           try {
             if (send) {
               var ts = md.rtpTimestamp !== undefined ? md.rtpTimestamp : f.timestamp;
               r = await H.encrypt(data, kind, type, md.synchronizationSource >>> 0, ts >>> 0, Date.now(), md.mimeType);
-            } else r = await H.decrypt(o.from, data, kind, type, Date.now(), md.mimeType);
+            } else r = await H.decrypt(from, data, kind, type, Date.now(), md.mimeType);
           } catch (e) { r = 'error'; }
           if (typeof r === 'string') { drop(r); return; }  // keine Ausgabe
           f.data = r.buffer;
           c.enqueue(f);
           tally(send ? S.enc : S.dec, kind + (kind === 'video' ? ':' + type : ''), clock() - t0, data.length);
-          if (send) S.kid.send = r[r.length - 1]; else S.kid.recv[o.from] = data[data.length - 1];
+          if (send) S.kid.send = r[r.length - 1]; else S.kid.recv[from] = data[data.length - 1];
         }
       })).pipeTo(writable).catch(function () {});
     };
@@ -379,6 +386,7 @@
         else if (d.op === 'switch') H.switchNow();
         else if (d.op === 'peer') out.ok = await H.peerKey(d.from, d.n, new Uint8Array(d.key), d.s, Date.now());
         else if (d.op === 'gone') H.peerGone(d.from);
+        else if (d.op === 'csrc') { CSRC = {}; Object.keys(d.map || {}).forEach(function (k) { CSRC[k >>> 0] = String(d.map[k]); }); }
         else if (d.op === 'stats') { out.stats = S; if (d.reset) S = fresh(); }
         else if (d.op === 'selftest') out.result = await selftest(d.vectors);
         else if (d.op === 'runes') out.runes = await runes(d.call_id, d.devices);
@@ -422,6 +430,7 @@
       switchNow: function () { return call('switch'); },
       peer: function (from, n, key, s) { return call('peer', { from: from, n: n, key: key, s: s }).then(function (d) { return d.ok; }); },
       gone: function (from) { return call('gone', { from: from }); },
+      csrcMap: function (map) { return call('csrc', { map: map }); },
       stats: function (reset) { return call('stats', { reset: !!reset }).then(function (d) { return d.stats; }); },
       selftest: function (v) { return call('selftest', { vectors: v }).then(function (d) { return d.result; }); },
       runes: function (callId, devices) { return call('runes', { call_id: callId, devices: devices }).then(function (d) { return d.runes; }); },

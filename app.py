@@ -25,7 +25,7 @@ import db
 from version import API_LEVEL, BUILD, MIN_APP, VERSION, channel
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
-from saga import ai, ai_chat, avatars, calls, chat, chat_files, federation, i18n, live, mfa, notify, push
+from saga import ai, ai_chat, avatars, calls, chat, chat_files, federation, horn, i18n, live, mfa, notify, push
 from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
 from saga import chat_status                     # 2.4: Gelesen-Bestaetigungen und Online-Status (haengt sich in chat, live, fed_chat ein)
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, MEDIA_FRONT, MediaAuthHint, title
@@ -146,6 +146,10 @@ async def canonical_host(request: Request, call_next):
     return await call_next(request)
 
 
+# 2.5 Gjallarhorn: connect-src der HTML-Seiten um die Adressen der Knoten ergaenzen (nur mit Feature-Flag calls.horn)
+app.add_middleware(horn.NodeCsp)
+
+
 # Groesse von Anfragen begrenzen - als letzte registriert = laeuft zuerst (vor Sitzung, Umleitung, Endpunkten).
 # Uploads: ATTACH_MAX_MB + Formular-Rahmen (etwas mehr als die Pruefung in files.py, die mit Text antwortet).
 app.add_middleware(BodyLimit, default=REQUEST_MAX,
@@ -226,6 +230,7 @@ app.include_router(ai.router)               # KI-Assistent: /api/ai/status, /api
 app.include_router(ai_chat.router)          # KI im Chat (nur auf Zuruf): /api/chats/{cid}/ai
 app.include_router(avatars.router)          # Profilbilder: /api/avatar/{schluessel}, /api/account/avatar
 app.include_router(calls.router)            # Anrufe (WebRTC, Signalisierung ueber den Live-Kanal): /api/calls...
+app.include_router(horn.router)             # Gjallarhorn (2.5): Steuerkanal /api/horn/ctl, /internal/horn/conf (saga-media)
 app.include_router(fed_dir.router)          # Adressbuch (2.3): /fed/v2/directory, /api/fed/people, /api/account/federation
 app.include_router(fed_keys.router)         # Schluesselverzeichnis + Krypto v2 (2.3): /fed/v2/keys, /api/chat/v2/...
 app.include_router(fed_chat.router)         # Chats + Anrufe ueber Servergrenzen (2.3): /fed/v2/chat..., /fed/v2/call, /api/chat/blocks
