@@ -3,10 +3,10 @@ Anmeldenamen eines anderen Kontos - weder in HTTP-Antworten noch in Live-Ereigni
 
 Konten mit Markern 'an-<16 hex>' (Anzeigenamen ohne Marker). Durchlaufen: Direkt-Chat, freie Gruppe (hinzufuegen, entfernen),
 Saga-Gruppe, Seiten-Chat, Nachrichten (saga-chat/v2 mit chat_ref und Handles), Antwort, Gelesen (v2-Bestaetigung), Tippen,
-Verlauf fuer alle loeschen, Chat fuer alle loeschen, Schluesselwechsel (chat.keys.changed lokal), Schluessel nur fuer
+Online-Status per Handle, Verlauf fuer alle loeschen, Chat fuer alle loeschen, Schluesselwechsel (chat.keys.changed lokal), Schluessel nur fuer
 Chat-Partner, knows() ohne Stufe-3-Chats, Kompat-Sicht v: 2 fuer Clients der Stufe 2, Hinweis fuer aeltere.
 Geprueft wird JEDE Antwort und JEDES Ereignis je Konto: kein Marker eines anderen Kontos - auch nicht in Base64-dekodierten
-Feldern. Noch nicht in Stufe 3 (folgt, siehe CHANGELOG): Anrufe, Online-Status, KI-Antwort, Reaktion, Bearbeiten,
+Feldern. Noch nicht in Stufe 3 (folgt, siehe CHANGELOG): Anrufe, KI-Antwort, Reaktion, Bearbeiten,
 Sprachnachricht, Altbestand nach Umstellung.
 Wegwerf-Konten an-*, Gruppe an3-*; schaltet die Einstellung chat_v3 nur fuer den Test ein und raeumt auf."""
 import base64, binascii, json, os, re, secrets, sys, time, urllib.parse
@@ -217,6 +217,18 @@ def run():
     ok("A: GET /receipts (from = Handle), Signatur v2 mit Handle von B gueltig", s == 200 and d["receipts"][0]["from"] == B.handle
        and C.verify_receipt(dm["ref"], B.handle, dev, body, sig, B.dev["sign_pk"], v2=True), d)
 
+    # Online-Status per Handle (Antwort unter der angefragten Kennung); per Anmeldename kein Orakel
+    s, d = A.api("POST", "/api/chat/presence", {"users": [B.handle]})
+    ok("Online-Status: B per Handle abonniert, Antwort unter dem Handle", s == 200 and (d.get("users") or {}).get(B.handle, {}).get("online") is True, d)
+    s, d = A.api("POST", "/api/chat/presence", {"users": [B.uid]}, lv=3)
+    ok("Online-Status: per Anmeldename (nur Stufe-3-Chat gemeinsam) keine Auskunft", s == 200 and d.get("users") == {}, d)
+    mkA = A.ev.mark()
+    B.ev.close()
+    e = A.wait("chat.presence", lambda x: x.get("username") == B.handle, mkA, timeout=40)
+    ok("chat.presence nennt B als Handle (B offline)", bool(e) and e.get("online") is False, A.ev.types(mkA))
+    B.ev = CT.Stream(B.k)
+    time.sleep(0.5)
+
     # Kompat-Sicht und Hinweis
     s, d = B.api("GET", f"/api/chats/{dm['id']}", lv=2)
     ok("Client der Stufe 2 (App 2.3/2.4): derselbe Chat als v 2 mit ref und Handles", s == 200 and d["chat"]["v"] == 2 and d["chat"]["ref"] == dm["ref"]
@@ -248,6 +260,8 @@ def run():
     s, d = A.api("DELETE", f"/api/chats/{fg['id']}/members/" + urllib.parse.quote(Cc.handle))
     fg2 = A.chat(fg["id"])
     ok("Freie Gruppe: C per Handle aus members[] entfernt", s == 200 and not any(m["username"] == Cc.handle for m in fg2.get("members", [])), (d, fg2))
+    s, d = A.api("POST", f"/api/chats/{fg['id']}/members", {"handle": Cc.handle})
+    ok("Freie Gruppe: C per {handle} (Konto dieses Servers) wieder hinzugefuegt", s == 200 and any(m["username"] == Cc.handle for m in d["chat"]["members"]), d)
     s, _, _ = D.send(D.chat(fg["id"]), "Hallo von Dora")
     for u in (A, B, D):
         u.msgs(fg["id"])

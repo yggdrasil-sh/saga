@@ -1335,6 +1335,9 @@ async def api_member_add(cid: int, request: Request):
     if FED is not None:
         with _db() as c:
             fch = _load(c, cid)
+            if is_v3(fch) and b.get("handle"):            # 2.5: Stufe 3 - Handle eines Kontos dieses Servers wie {user}
+                who = who_in(c, uid, str(b.get("handle"))) or "~"
+                b = dict(b, handle=None) if who != "~" else b
         if is_fed(fch) or b.get("handle"):                # 2.3: Gruppe ueber Servergrenzen (Aenderung ueber das Heim)
             from starlette.concurrency import run_in_threadpool
             return await run_in_threadpool(FED.group_add, uid, cid, who, str(b.get("handle") or ""))
