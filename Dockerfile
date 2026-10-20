@@ -11,6 +11,19 @@ COPY VERSION /VERSION
 RUN go vet ./... && go test ./... \
  && GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X main.version=$(cat /VERSION)" -o /out/saga-media .
 
+# gjallarhorn (2.5, gjallarhorn/): eingebauter Knoten fuer grosse Gruppenanrufe, startet saga-media als zweiten Kindprozess
+# (nur mit Feature-Flag calls.horn). Statisch (CGO aus), wie saga-media ohne Emulation fuer amd64/arm64 uebersetzt.
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS horn
+ARG TARGETOS TARGETARCH
+ENV CGO_ENABLED=0 GOFLAGS=-trimpath
+WORKDIR /src
+COPY gjallarhorn/go.mod gjallarhorn/go.sum ./
+RUN go mod download
+COPY gjallarhorn/ ./
+COPY VERSION /VERSION
+RUN go vet ./... && go test ./internal/... \
+ && GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X main.version=$(cat /VERSION)" -o /out/gjallarhorn .
+
 FROM python:3.13-slim
 
 LABEL org.opencontainers.image.title="Saga" \
@@ -48,17 +61,20 @@ COPY templates ./templates
 COPY static ./static
 COPY docker/entrypoint.sh /entrypoint.sh
 COPY --from=media /out/saga-media /usr/local/bin/saga-media
+COPY --from=horn /out/gjallarhorn /usr/local/bin/gjallarhorn
 
 # Erst nach pip install setzen (Datei entsteht beim Start im Entrypoint).
 ENV CA_FILE=/tmp/ca-bundle.pem \
     SSL_CERT_FILE=/tmp/ca-bundle.pem
 
 USER 10001
-EXPOSE 8080 8081
+# 8443: eingebauter Gjallarhorn-Knoten (HORN_PORT, TCP und optional UDP) - lauscht nur mit Feature-Flag calls.horn
+EXPOSE 8080 8081 8443/tcp 8443/udp
 VOLUME ["/data"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('PORT','8080'), timeout=3)" || exit 1
 
 # tini -> entrypoint.sh -> saga-media (PORT, Dateien) -> python run.py (intern 127.0.0.1:MEDIA_INTERNAL_PORT, Standard 8079)
+#                                        -> gjallarhorn node (HORN_PORT, nur mit Feature-Flag calls.horn)
 ENTRYPOINT ["/usr/bin/tini", "--", "/bin/sh", "/entrypoint.sh"]

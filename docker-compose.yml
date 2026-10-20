@@ -45,6 +45,9 @@ services:
     ports:
       - "${HOST_BIND:-0.0.0.0}:${HOST_PORT:-8080}:8080"
       - "${ADMIN_BIND:-127.0.0.1}:${ADMIN_HOST_PORT:-8081}:8081"
+      # 2.5 Gjallarhorn (Feature-Flag calls.horn): eingebauter Knoten fuer grosse Gruppenanrufe auf HORN_PORT (8443).
+      # Mit eigenem Namen (z. B. horn-0.example.org) per TLS-Durchreiche (SNI) am Reverse Proxy oder per Portfreigabe:
+      # - "${HORN_BIND:-0.0.0.0}:${HORN_HOST_PORT:-8443}:8443/tcp"
     volumes:
       - saga-data:/data      # Dateien/Bilder der Seiten, Symbol-Cache
       - ./certs:/certs:ro          # optionale CA-Zertifikate (eigene LDAP-/SSO-/Kalender-Server)
