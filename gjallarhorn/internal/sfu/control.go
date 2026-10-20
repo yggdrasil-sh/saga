@@ -54,7 +54,7 @@ func (r *Room) Tick() {
 		}
 	}
 	r.lastTick = now
-	cfg := r.node.cfg
+	cfg := r.cfg
 	peers := r.sortedPeers()
 	for _, p := range peers {
 		r.measurePeer(p, dt, now)
@@ -438,8 +438,14 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 		st := c.opts[c.idx]
 		c.tid = 3
 		f := 1.0
-		if stream && c.s.class == "tile" {
-			c.tid, f = tidFor(st, cfg.TCPTileFPS)
+		if stream {
+			fps := cfg.TCPSpeakerFPS
+			if c.s.class == "tile" {
+				fps = cfg.TCPTileFPS
+			}
+			if fps > 0 {
+				c.tid, f = tidFor(st, fps)
+			}
 		}
 		return layerRate(st) * f
 	}

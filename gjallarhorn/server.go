@@ -250,6 +250,17 @@ func newServer(cfg *config) (*server, error) {
 		s.mux.ICEMux = s.iceMux
 	}
 	s.mux.NoCoalesce = env("HORN_COALESCE", "1") == "0"
+	// Nachlaeufer gegen lange TCP-Staus: Standard im Knoten, die Probe misst
+	// wie bisher ohne (HORN_TAILPROBE_MS, 0 = aus)
+	tp := "0"
+	if cfg.Mode == "node" {
+		tp = "10"
+	}
+	if ms, err := strconv.Atoi(env("HORN_TAILPROBE_MS", tp)); err == nil && ms > 0 {
+		s.mux.TailProbe = time.Duration(ms) * time.Millisecond
+	} else {
+		s.mux.NoTailProbe = true
+	}
 	s.mux.Start()
 	s.room = fwd.NewRoom(250 * time.Millisecond)
 	if err := s.buildAPIs(); err != nil {

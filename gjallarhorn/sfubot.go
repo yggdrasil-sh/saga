@@ -48,34 +48,78 @@ type sfuBot struct {
 // frameClock misst Rahmenabstaende eines Empfangsplatzes (Einfrieren nach
 // der Chrome-Definition: Abstand > max(3 * Mittel, Mittel + 150 ms)).
 type frameClock struct {
-	last     int64
-	avg      float64
-	freezes  int
-	freezeNs int64
+	class    byte // erster Buchstabe der Spur-ID: s(peaker), t(ile), ...
 	frames   int
+	freezes  int // nach Ankunft (streng, ohne Jitter-Puffer)
+	freezeNs int64
+	raw      freezeMeter
+	jb       freezeMeter // Wiedergabe mit festem Jitter-Puffer-Ziel
+	minTr    float64     // kleinste Laufzeit (Ankunft - Zeitstempel)
+	tsBase   uint32
+	tsWrap   int64
+	lastTS   uint32
+	started  bool
 }
 
-func (f *frameClock) frame(now int64) {
-	f.frames++
-	if f.last != 0 {
-		d := float64(now - f.last)
-		if f.avg > 0 && f.frames > 20 {
-			lim := 3 * f.avg
-			if f.avg+150e6 > lim {
-				lim = f.avg + 150e6
+// JitterTarget ist das Jitter-Puffer-Ziel der Wiedergabe-Messung (Empfehlung
+// fuer Clients auf TCP-Wegen: RTCRtpReceiver.jitterBufferTarget).
+var JitterTarget = 150 * time.Millisecond
+
+// freezeMeter zaehlt Einfrieren nach der Chrome-Definition: Abstand zweier
+// Bilder > max(3 x Mittel, Mittel + 150 ms).
+type freezeMeter struct {
+	last     int64
+	avg      float64
+	n, count int
+	ns       int64
+}
+
+func (m *freezeMeter) add(t int64) {
+	m.n++
+	if m.last != 0 {
+		d := float64(t - m.last)
+		if m.avg > 0 && m.n > 20 {
+			lim := 3 * m.avg
+			if m.avg+150e6 > lim {
+				lim = m.avg + 150e6
 			}
 			if d > lim {
-				f.freezes++
-				f.freezeNs += int64(d)
+				m.count++
+				m.ns += int64(d)
 			}
 		}
-		if f.avg == 0 {
-			f.avg = d
+		if m.avg == 0 {
+			m.avg = d
 		} else {
-			f.avg = 0.95*f.avg + 0.05*d
+			m.avg = 0.95*m.avg + 0.05*d
 		}
 	}
-	f.last = now
+	m.last = t
+}
+
+func (f *frameClock) frame(now int64, ts uint32) {
+	f.frames++
+	f.raw.add(now)
+	f.freezes, f.freezeNs = f.raw.count, f.raw.ns
+	// Wiedergabe: Zeitstempel in Wanduhr, Ankunft frühestens nach kleinster
+	// Laufzeit + Ziel (wie ein Jitter-Puffer mit festem Mindestverzug)
+	if !f.started {
+		f.started, f.tsBase, f.lastTS = true, ts, ts
+	}
+	if ts < f.lastTS && f.lastTS-ts > 1<<31 {
+		f.tsWrap += 1 << 32
+	}
+	f.lastTS = ts
+	media := float64(int64(ts)+f.tsWrap-int64(f.tsBase)) / 90000 * 1e9
+	tr := float64(now) - media
+	if f.frames == 1 || tr < f.minTr {
+		f.minTr = tr
+	}
+	play := f.minTr + media + float64(JitterTarget)
+	if float64(now) > play {
+		play = float64(now)
+	}
+	f.jb.add(int64(play))
 }
 
 type sfuStream struct {
@@ -258,6 +302,9 @@ func (b *sfuBot) join(hc *http.Client, base string, api *webrtc.API, room string
 func (b *sfuBot) onTrack(tr *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 	video := tr.Kind() == webrtc.RTPCodecTypeVideo
 	fc := &frameClock{}
+	if id := tr.ID(); id != "" {
+		fc.class = id[0]
+	}
 	b.mu.Lock()
 	b.frames[tr] = fc
 	b.mu.Unlock()
@@ -289,7 +336,7 @@ func (b *sfuBot) onTrack(tr *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 		if video {
 			b.rxVideo[c]++
 			if h.Marker && hn < n {
-				fc.frame(time.Now().UnixNano())
+				fc.frame(time.Now().UnixNano(), h.Timestamp)
 			}
 		} else {
 			b.rxAudio[c]++
@@ -300,12 +347,51 @@ func (b *sfuBot) onTrack(tr *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 
 // freezes liefert Einfrieren und Rahmen ueber alle Bildplaetze.
 func (b *sfuBot) freezes() (n int, dur time.Duration, frames int) {
+	n, dur, frames, _ = b.freezeStats()
+	return
+}
+
+// freezeByClass liefert je Platzart: Einfrieren roh, mit Jitter-Puffer,
+// Bildplaetze.
+func (b *sfuBot) freezeByClass() map[byte][3]int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	m := map[byte][3]int{}
+	for _, f := range b.frames {
+		if f.frames == 0 {
+			continue
+		}
+		v := m[f.class]
+		v[0] += f.raw.count
+		v[1] += f.jb.count
+		v[2]++
+		m[f.class] = v
+	}
+	return m
+}
+
+// jbFreezes: Einfrieren mit Jitter-Puffer-Ziel ueber alle Bildplaetze.
+func (b *sfuBot) jbFreezes() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	n := 0
+	for _, f := range b.frames {
+		n += f.jb.count
+	}
+	return n
+}
+
+// freezeStats wie freezes, dazu die Zahl der Bildplaetze mit Rahmen.
+func (b *sfuBot) freezeStats() (n int, dur time.Duration, frames, tracks int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for _, f := range b.frames {
 		n += f.freezes
 		dur += time.Duration(f.freezeNs)
 		frames += f.frames
+		if f.frames > 0 {
+			tracks++
+		}
 	}
 	return
 }
@@ -350,7 +436,7 @@ func (b *sfuBot) close() {
 	})
 }
 
-// run: Ton 25/s (120 B + Trailer), Bild l 180p 15 fps ~200 kbit/s (L1T2),
+// run: Ton 25/s (120 B + Trailer), Bild l 180p 20 fps ~200 kbit/s (L1T2),
 // m 360p 30 fps ~600 kbit/s (L1T3), h 720p 30 fps ~1,5 Mbit/s. Schluesselbild
 // auf PLI und alle 10 s (4-fache Groesse). PictureID 15 Bit.
 func (s *sfuStream) run(stop <-chan struct{}) {
@@ -360,7 +446,8 @@ func (s *sfuStream) run(stop <-chan struct{}) {
 	case "a":
 		fps, frameBytes, tsStep = 25, 120, 1920
 	case "l":
-		fps, frameBytes, tsStep, tlayers = 15, 200000/8/15, 6000, 2
+		// 20 fps L1T2: auf TCP-Wegen laesst der Knoten TID 1 weg (10 fps)
+		fps, frameBytes, tsStep, tlayers = 20, 200000/8/20, 4500, 2
 	case "m":
 		fps, frameBytes, tsStep, tlayers = 30, 600000/8/30, 3000, 3
 	default:

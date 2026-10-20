@@ -225,6 +225,11 @@ type Config struct {
 	// Bild auf TCP-Wegen (H4 + Messung G4): Kacheln mit hoechstens
 	// TCPTileFPS Bildern/s (Standard 10), nur die untere Schicht.
 	TCPTileFPS float64
+	// TCPSpeakerFPS begrenzt Sprecher und Bildschirm auf TCP-Wegen (0 = alle
+	// Bilder, Standard). Messung: Die Einfrier-Schwelle der Browser liegt
+	// bei Mittel + 150 ms, eine kleinere Bildrate hilft daher erst unter
+	// 10 Bildern/s; wirksam ist kuerzerer Stau (Nachlaeufer, netx).
+	TCPSpeakerFPS float64
 	// KeyframeEvery fordert vorbeugend Schluesselbilder je bewegter Quelle an
 	// (0 = aus, Standard). Siehe Bericht zur Einfrier-Ursache.
 	KeyframeEvery time.Duration
@@ -252,6 +257,7 @@ func (c Config) withDefaults() Config {
 	if c.TCPTileFPS <= 0 {
 		c.TCPTileFPS = 10
 	}
+
 	if c.StartKbit <= 0 {
 		c.StartKbit = 1200
 	}

@@ -26,7 +26,26 @@ func NewNode(cfg Config) *Node {
 }
 
 // Config liefert die wirksame Konfiguration.
-func (n *Node) Config() Config { return n.cfg }
+func (n *Node) Config() Config {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.cfg
+}
+
+// SetTCPTileFPS aendert die Bildrate der Kacheln auf TCP-Wegen (Tests,
+// spaeter Saga-Steuerung). Gilt fuer neue Raeume.
+func (n *Node) SetTCPTileFPS(fps float64) {
+	n.mu.Lock()
+	n.cfg.TCPTileFPS = fps
+	n.mu.Unlock()
+}
+
+// SetTCPSpeakerFPS wie SetTCPTileFPS fuer Sprecher und Bildschirm.
+func (n *Node) SetTCPSpeakerFPS(fps float64) {
+	n.mu.Lock()
+	n.cfg.TCPSpeakerFPS = fps
+	n.mu.Unlock()
+}
 
 // CreateRoom legt einen Raum an (Saga: Anruf auf diesem Knoten). lim nil =
 // Standardgrenzen. Ein vorhandener Raum wird zurueckgegeben (idempotent).
@@ -43,7 +62,7 @@ func (n *Node) CreateRoom(ref string, lim *Limits) (*Room, error) {
 	if lim != nil {
 		l = lim.withDefaults()
 	}
-	r := &Room{ref: ref, node: n, lim: l, peers: map[string]*Peer{}, legs: map[string]*Leg{},
+	r := &Room{ref: ref, node: n, lim: l, cfg: n.cfg, peers: map[string]*Peer{}, legs: map[string]*Leg{},
 		csrcs: map[uint32]bool{}, stop: make(chan struct{}), created: time.Now()}
 	n.rooms[ref] = r
 	go r.run(n.cfg.Tick)
@@ -171,6 +190,7 @@ func (n *Node) releaseLeg() {
 type Room struct {
 	ref     string
 	node    *Node
+	cfg     Config // Kopie bei Anlage
 	lim     Limits
 	created time.Time
 
@@ -312,7 +332,7 @@ func (r *Room) AddLeg(g Grant, path Path, want Want) (*Leg, error) {
 		r.peers[g.Peer] = p
 	}
 	l := &Leg{Ref: g.Leg, Peer: p, Path: path, Role: g.Role, Grant: g, room: r, fl: fwd.NewLeg()}
-	cfg := r.node.cfg
+	cfg := r.cfg
 	l.est.init(float64(cfg.StartKbit)*1000, float64(cfg.MaxDownKbit)*1000)
 	if g.Role.audio() {
 		na := want.Audio
@@ -533,7 +553,7 @@ func (r *Room) removeLegLocked(l *Leg) {
 func (r *Room) finishLeg(l *Leg, why string) {
 	l.fl.Close()
 	r.node.releaseLeg()
-	if f := r.node.cfg.OnLegClosed; f != nil {
+	if f := r.cfg.OnLegClosed; f != nil {
 		f(l, why)
 	}
 }
