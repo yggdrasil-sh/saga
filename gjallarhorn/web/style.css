@@ -31,7 +31,32 @@ button:disabled { opacity: .5; cursor: default; }
 #tiles video.speaker { grid-column: span 2; grid-row: span 2; }
 .scroll { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-size: .88rem; font-variant-numeric: tabular-nums; }
-th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-th { color: var(--mut); font-weight: 600; }
+th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--mut); font-weight: 600; white-space: normal; vertical-align: bottom; line-height: 1.25; }
 td.ok { color: var(--ok); } td.bad { color: var(--bad); }
-@media (max-width: 600px) { form { grid-template-columns: 1fr; } button { width: 100%; } }
+.st span { white-space: nowrap; }
+@media (max-width: 600px) {
+  form { grid-template-columns: 1fr; } button { width: 100%; }
+  main { padding: 16px 12px 40px; }
+  .card { padding: 14px; }
+  /* Phasen: Bezeichnung oben, Werte darunter */
+  #phasen li { flex-direction: column; gap: 2px; }
+  .st { text-align: left; font-size: .9rem; }
+  /* Ergebnis: jede Zeile als Karte mit Label und Wert */
+  .scroll { overflow: visible; }
+  table, tbody, tr, td { display: block; width: 100%; }
+  table { font-size: .92rem; }
+  tr.kopf { display: none; }
+  tr { display: grid; grid-template-columns: auto 1fr; column-gap: 0; border: 1px solid var(--line);
+    border-radius: 10px; padding: 4px 12px 6px; margin-bottom: 10px; background: var(--bg); }
+  td { white-space: normal; padding: 5px 0; display: flex; justify-content: space-between; gap: 12px; grid-column: 1 / -1; }
+  td::before { content: attr(data-label); color: var(--mut); }
+  td:last-child { border-bottom: 0; }
+  td.kw, td.kp { grid-column: auto; font-weight: 600; font-size: 1rem; padding: 6px 0 8px; }
+  td.kw::before, td.kp::before { content: none; }
+  td.kp::before { content: '\00a0·\00a0'; color: var(--mut); font-weight: 400; }
+  td.kp { justify-content: flex-start; gap: 0; }
+  td.grund { border-bottom: 0; }
+  td.grund::before { content: none; }
+  td.leer { display: none; }
+}

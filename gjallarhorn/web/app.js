@@ -369,9 +369,14 @@ function phaseList(paths) {
   return ph;
 }
 
+// Text oder Liste von Teilen; Teile brechen nur zwischen den Teilen um
 function setStatus(li, text, cls) {
   const st = li.querySelector('.st');
-  st.textContent = text; st.className = 'st ' + (cls || '');
+  st.textContent = ''; st.className = 'st ' + (cls || '');
+  (Array.isArray(text) ? text : [text]).forEach((t, i) => {
+    if (i) st.append(' · ');
+    const s = document.createElement('span'); s.textContent = t; st.appendChild(s);
+  });
 }
 
 async function run(net, dev) {
@@ -424,7 +429,7 @@ async function run(net, dev) {
         result.phases.push(r);
         if (r.ok) {
           const txt = [`Aufbau ${Math.max(...r.connect_ms)} ms`, r.rtt_ms && r.rtt_ms.p95 != null ? `RTT p95 ${r.rtt_ms.p95} ms` : null,
-            r.audio && r.audio.conceal_pct != null ? `Verdeckung ${r.audio.conceal_pct} %` : null].filter(Boolean).join(' · ');
+            r.audio && r.audio.conceal_pct != null ? `Verdeckung ${r.audio.conceal_pct} %` : null].filter(Boolean);
           setStatus(li, txt, 'ok');
         } else setStatus(li, r.reason || 'fehlgeschlagen', 'bad');
       }
@@ -450,7 +455,7 @@ function showTable(r) {
   const t = $('tab');
   t.innerHTML = '';
   const head = ['Weg', 'Profil', 'Aufbau ms', 'RTT p50/p95', 'Verdeckung %', 'Puffer ms', 'Einfrieren /5min', 'Runter Mbit/s', 'Rauf Mbit/s', 'Verworfen'];
-  const tr = document.createElement('tr');
+  const tr = document.createElement('tr'); tr.className = 'kopf';
   for (const h of head) { const th = document.createElement('th'); th.textContent = h; tr.appendChild(th); }
   t.appendChild(tr);
   for (const p of r.phases) {
@@ -460,7 +465,16 @@ function showTable(r) {
       `${p.rtt_ms.p50 ?? '–'} / ${p.rtt_ms.p95 ?? '–'}`, p.audio.conceal_pct ?? '–', p.audio.jb_ms ?? '–',
       p.video ? (p.video.freezes_per5min_track ?? '–') : '–', r2(p.down_kbps.stable / 1000), r2(p.up_kbps.stable / 1000), dropped]
       : [PATHS[p.path], PROFILES[p.profile].label, p.reason || '✘', '', '', '', '', '', '', ''];
-    cells.forEach((c, i) => { const td = document.createElement('td'); td.textContent = c; if (i === 2 && !p.ok) td.className = 'bad'; row.appendChild(td); });
+    // data-label traegt die Spaltenueberschrift fuer die Kartenansicht (schmale Bildschirme)
+    cells.forEach((c, i) => {
+      const td = document.createElement('td'); td.textContent = c ?? '–'; td.dataset.label = head[i];
+      const cl = [i === 0 ? 'kw' : i === 1 ? 'kp' : ''];
+      if (i === 2 && !p.ok) cl.push('bad', 'grund');
+      if (!p.ok && i > 2) cl.push('leer');
+      td.className = cl.filter(Boolean).join(' ');
+      row.appendChild(td);
+    });
+    if (!p.ok) row.className = 'fehl';
     t.appendChild(row);
   }
   $('erg').hidden = false;
