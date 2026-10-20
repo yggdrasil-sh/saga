@@ -279,7 +279,8 @@
     // 2.4 (E4/E5): call.roster (Teilnehmerliste) und call.invite (Gruppenanruf klingelt)
     ['chat.message', 'chat.deleted', 'chat.read', 'chat.typing', 'chat.changed', 'chat.link', 'chat.device', 'call.ring', 'call.signal',
      'call.state', 'call.roster', 'call.invite', 'avatar.changed', 'ai.persona.changed', 'chat.cleared', 'chat.removed',   // (2.1) Loeschen
-     'chat.receipt', 'chat.presence', 'chat.privacy'].forEach(function (n) {               // (2.4) Gelesen, Online-Status
+     'chat.receipt', 'chat.presence', 'chat.privacy',                                       // (2.4) Gelesen, Online-Status
+     'call.mod'].forEach(function (n) {                                                     // (2.5) Gastgeber: stumm/entfernt
       on(es, n, function (d) { chatEvent(n, d); });
     });
     on(es, 'avatar.changed', swapAvatar);

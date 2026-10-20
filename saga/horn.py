@@ -356,7 +356,8 @@ def _gone(nid):
 def _store_load(nid, ld, now):
     with _db() as c, c:
         st = "ok" if ld.get("state") in (None, "ok", "voll") else str(ld.get("state"))[:16]
-        c.execute("UPDATE horn_node SET load=CAST(? AS JSONB), seen=?, state=? WHERE id=? AND state IN ('ok','getrennt','voll')",
+        # P5: auch aus 'draining' zurueck (der Knoten meldet das Leeren selbst und hebt es wieder auf)
+        c.execute("UPDATE horn_node SET load=CAST(? AS JSONB), seen=?, state=? WHERE id=? AND state IN ('ok','getrennt','voll','draining')",
                   (json.dumps(ld), now, st, nid))
 
 
