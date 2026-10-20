@@ -118,6 +118,7 @@ const statusLine = p => p.evaluate(() => { const s = document.querySelector('.cl
     await n3.click('.cl-take');
     const r3 = await until(async () => { const r = await room(n3); return r && !r.companion && r.mic && r.spkOut && allConn(r, 1); }, 25000);
     ok(`Hierher übernehmen: A3 ist Hauptgeraet, verbunden mit B (${Date.now() - t0} ms)`, r3, await room(n3));
+    ok('M1: Kamera nach der Uebernahme wie beim abgebenden Geraet (an)', await until(async () => { const r = await room(n3); return r && r.cam; }, 10000), await room(n3));
     const gone = await until(async () => !(await room(a)), 15000);
     ok('A hat den Anruf abgegeben (kein Abbruch bei B)', gone && (await until(async () => { const r = allConn(await room(b), 1); return r && r.links[0].device === dA3 && r; }, 10000)), await room(b));
     await shot(n3, '3-uebernommen');
@@ -135,6 +136,7 @@ const statusLine = p => p.evaluate(() => { const s = document.querySelector('.cl
     await a2.click('.cl-run .cl-run-go');
     const r4 = await until(async () => { const r = await room(a2); return r && !r.companion && r.mic && allConn(r, 1); }, 25000);
     ok(`Leiste "Hierher übernehmen": klappt ohne Fehlermeldung (${Date.now() - t1} ms)`, r4 && !(await a2.$('.cl-err')), await room(a2));
+    ok('M1: ... Audioanruf: Kamera bleibt aus', r4 && !r4.cam, r4);
     ok('... A ist danach nicht mehr im Anruf, B weiter verbunden', await until(async () => !(await room(a)), 15000) && allConn(await room(b), 1));
     await b.click('.cl-ctl .cl-red').catch(() => {});
   } catch (e) {

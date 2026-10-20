@@ -413,6 +413,7 @@
     var a = c.local.getAudioTracks()[0] || null, v = c.local.getVideoTracks()[0] || null;
     c.cam = v;
     drawCtl(c);                                        // Kamera-Knopf: beim Klingeln ohne Kamera gezeichnet (Bughunt 2)
+    if (v && c === roomOf(c)) drawMedia(c);            // Eigenbild sofort (Web-Runde 2: Angerufene sah es erst nach ~2 min)
     if (a) a.enabled = c.mic;                          // Mikrofon wirklich senden (Stumm-Zustand gilt von Anfang an)
     if (!fromOffer) {
       c.micTr = pc.addTransceiver(a || 'audio', { direction: 'sendrecv', streams: [c.local] });
@@ -932,7 +933,12 @@
     R.ho.done = true; clearTimeout(R.hoT);
     R.companion = false; R.took = true;
     setMic(R, true); setSpk(R, true);
-    if (A && A.established) sendSignal(A, { t: 'state', ready: true, replaces: rep, mic: true, cam: !!R.cam, screen: !!R.screen });
+    // 2.4 (Web-Runde 2, M1): Kamera wie beim abgebenden Geraet (dessen letzter Zustand ueber die eigene Verbindung);
+    // ohne Zustandsmeldung: wie beim Beitreten gewaehlt
+    var camWas = A && A.gotState ? !!A.remoteState.cam : null;
+    if (camWas === true && !R.cam) toggleCam(R);
+    else if (camWas === false && R.cam) toggleCam(R);
+    if (A && A.established) sendSignal(A, { t: 'state', ready: true, replaces: rep, mic: true, cam: camWas === null ? !!R.cam : camWas, screen: !!R.screen });
     else api('POST', '/api/calls/' + R.id + '/leave', { device: rep, reason: 'handover' }).catch(function () {});   // eigenes Geraet ohne Verbindung
     R.ho = null;
     drawCtl(R); drawInfo(R);
@@ -2025,6 +2031,7 @@
   room: function () {
     var R = C; if (!R) return null;
     return { id: R.id, kind: R.kind, companion: !!R.companion, ho: !!R.ho, inRoom: !!R.inRoom, mic: R.mic, spkOut: R.spkOut, mesh: meshView(R),
+             cam: !!(R.cam && R.cam.readyState === 'live'),
              tiles: R.ui ? R.ui.grid.children.length : 0, speaker: R.spk || null, since: R.since || 0, legs: (R.legs || []).map(function (x) { return x.device; }),
              links: links(R).map(function (L) {
                var E = els(L);
