@@ -33,7 +33,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   (`X-Saga-Chat: 2`) sehen sie als `v: 2`, ältere einen Hinweis. Schlüsselwechsel melden Chat-Partnern lokal
   `chat.keys.changed`; Schlüssel eigener Konten gibt es per Handle nur für Chat-Partner; ein Stufe-3-Chat macht den
   Anmeldenamen nicht mehr als Eingabe nutzbar. Neue Testreihe `anmeldenamen_v3` (Marker-Scan über alle Antworten und
-  Ereignisse). Noch offen: Anrufe in Stufe 3, Umstellung bestehender Chats, Chats über Servergrenzen mit lokalen
+  Ereignisse). **Anrufe** in Stufe-3-Chats laufen als saga-call/v2 mit Handles (1:1 und Gruppe, `v: 2`, Gegenüber, Teilnehmerliste,
+  Klingeln, Anruf-Eintrag im Chat ohne Anmeldenamen); `tests/browser_v3.py` lässt die Browser-Tests für Anrufe und Gelesen
+  in Stufe 3 laufen. Noch offen: Umstellung bestehender Chats, Chats über Servergrenzen mit lokalen
   Mitmitgliedern als Handle, Reaktionen, Bearbeiten, Sprachnachrichten.
 
 ## [2.4.0] – 2026-10-20

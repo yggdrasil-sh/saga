@@ -981,5 +981,9 @@ einem Gerät ab App 2.3). Bestehende Chats bleiben vorerst v1.
   mit einem (früheren) gemeinsamen Chat. `GET /api/chat/keys` (v1) zählt Chats der Stufe 3 nicht. Ändern sich Schlüssel
   (neues Gerät, Zertifikate, neue Geräte-Liste), bekommen Chat-Partner mit einem gemeinsamen v2-/Stufe-3-Chat das
   Live-Ereignis `chat.keys.changed {handle}` – auch ohne Föderation.
-- **Noch nicht in Stufe 3:** Anrufe (saga-call/v2 lokal), Umstellung bestehender Chats (`v3_seq`), Reaktionen,
+- **Anrufe:** saga-call/v2 wie über Servergrenzen – Anruf-Objekt mit `v: 2`, `peer.username` = `peer.handle` (+ `host`),
+  `legs[].who` für andere als Handle (mit `handle`, `host`; Schlüssel über `/api/chat/v2/keys`), `call.ring`/`call.invite`
+  mit `from` als Handle, `call.state.by` als Handle, Anruf-Eintrag im Chat (`kind: call`) mit `from`/`to` als Handles.
+  `POST /api/calls/{id}/invite` nimmt Handles.
+- **Noch nicht in Stufe 3:** Umstellung bestehender Chats (`v3_seq`), Reaktionen,
   Bearbeiten, Sprachnachrichten. Testvektoren für Reaktionen und Bearbeiten: `tests/vectors/chat_v3.json`.

@@ -6,7 +6,7 @@ Saga-Gruppe, Seiten-Chat, Nachrichten (saga-chat/v2 mit chat_ref und Handles), A
 Online-Status per Handle, Verlauf fuer alle loeschen, Chat fuer alle loeschen, Schluesselwechsel (chat.keys.changed lokal), Schluessel nur fuer
 Chat-Partner, knows() ohne Stufe-3-Chats, Kompat-Sicht v: 2 fuer Clients der Stufe 2, Hinweis fuer aeltere.
 Geprueft wird JEDE Antwort und JEDES Ereignis je Konto: kein Marker eines anderen Kontos - auch nicht in Base64-dekodierten
-Feldern. Noch nicht in Stufe 3 (folgt, siehe CHANGELOG): Anrufe, KI-Antwort, Reaktion, Bearbeiten,
+Feldern; Anrufe 1:1 und Gruppe (saga-call/v2 lokal). Noch nicht (folgt, siehe CHANGELOG): KI-Antwort, Reaktion, Bearbeiten,
 Sprachnachricht, Altbestand nach Umstellung.
 Wegwerf-Konten an-*, Gruppe an3-*; schaltet die Einstellung chat_v3 nur fuer den Test ein und raeumt auf."""
 import base64, binascii, json, os, re, secrets, sys, time, urllib.parse
@@ -305,6 +305,48 @@ def run():
     s, rc = E.api("GET", f"/api/chats/{de['id']}/recipients")
     ok("Empfaenger (recipients_v2) ohne Anmeldenamen: andere als Handle", s == 200 and rc.get("v") == 2
        and {x["username"] for x in rc["recipients_v2"] if not x["me"]} == {A.handle}, rc)
+
+    # --- Anrufe (saga-call/v2 lokal): 1:1 und Gruppe ---------------------------------------------------------------------
+    cid1 = C.hexid()
+    sig = {d["id"]: C.seal_signal_v2(cid1, A.handle, A.dev, B.handle, d["id"], d["enc_pk"], json.dumps({"t": "offer", "sdp": "x"}))
+           for d in (B.dev, d2v)}
+    mkB = B.ev.mark()
+    s, d = A.api("POST", "/api/calls", {"id": cid1, "chat_id": dm["id"], "media": "audio", "device": A.dev["id"], "signals": sig, "caps": ["multi"]})
+    ok("Anruf 1:1 in Stufe 3: v 2, Gegenueber als Handle", s == 200 and d["call"].get("v") == 2 and d["call"]["peer"]["username"] == B.handle
+       and d["call"]["peer"]["handle"] == B.handle, d)
+    e = B.wait("call.ring", lambda x: x.get("call_id") == cid1, mkB)
+    ok("B: call.ring nennt A als Handle", bool(e) and e["from"]["username"] == A.handle and e["from"]["handle"] == A.handle and e.get("v") == 2, e)
+    s, d = B.api("GET", f"/api/calls/{cid1}?device={B.dev['id']}")
+    sg = (d.get("signals") or [{}])[0]
+    o = C.open_signal_v2(sg.get("sealed"), B.dev["enc_pk"], B.dev["enc_sk"]) if sg.get("sealed") else None
+    ok("B: Anruf als v 2 mit A als Handle; Angebot nach saga-call/v2 mit Handles gueltig", s == 200 and d["call"]["v"] == 2
+       and d["call"]["peer"]["username"] == A.handle and o is not None
+       and C.verify_signal_v2(cid1, A.handle, A.dev["id"], B.handle, B.dev["id"], o[0], o[1], A.dev["sign_pk"]), (d, o))
+    mkA = A.ev.mark()
+    s, _ = B.api("POST", f"/api/calls/{cid1}/decline", {"reason": "declined"})
+    e = A.wait("call.state", lambda x: x.get("call_id") == cid1 and x.get("state") == "ended", mkA)
+    ok("A: call.state ended, by = B als Handle", s == 200 and bool(e) and e.get("by") == B.handle, e)
+    log = next((x for x in A.msgs(dm["id"]).get("messages", []) if x["kind"] == "call"), {})
+    lb = json.loads(log.get("body_ct") or "{}")
+    ok("Anruf-Eintrag im Chat nur mit Handles", lb.get("from") == A.handle and lb.get("to") == B.handle, lb)
+    cid2 = C.hexid()
+    B.api("PUT", "/api/calls/caps", {"device": B.dev["id"], "caps": ["multi"]})      # Geraet kann Gruppenanrufe (2.4)
+    mkB = B.ev.mark()
+    s, d = A.api("POST", "/api/calls", {"id": cid2, "chat_id": fg["id"], "media": "audio", "device": A.dev["id"], "caps": ["multi"]})
+    ok("Gruppenanruf in Stufe 3: v 2", s == 200 and d["call"].get("v") == 2 and d["call"]["kind"] == "group", d)
+    e = B.wait("call.invite", lambda x: x.get("call_id") == cid2, mkB)
+    ok("B: call.invite nennt A als Handle", bool(e) and e["from"]["username"] == A.handle, e)
+    e = B.wait("call.roster", lambda x: x.get("call_id") == cid2, mkB)
+    ok("B: call.roster mit A als Handle (who, handle, host)", bool(e) and e["legs"][0]["who"] == A.handle and e["legs"][0]["handle"] == A.handle
+       and e["legs"][0].get("host"), e)
+    s, d = B.api("GET", f"/api/calls/{cid2}?device={B.dev['id']}")
+    ok("B: Gruppenanruf - Teilnehmer und Starter als Handle", s == 200 and d["call"]["from"]["username"] == A.handle
+       and all(x["who"] == A.handle for x in d["call"]["legs"]), d)
+    s, d = A.api("GET", f"/api/calls/{cid2}?device={A.dev['id']}")
+    ok("A: eigener Endpunkt mit eigenem Namen (me)", s == 200 and d["call"]["legs"][0]["who"] == A.uid and d["call"]["legs"][0]["me"], d)
+    A.api("POST", f"/api/calls/{cid2}/end", {"device": A.dev["id"]})
+    for u in (A, B, D):
+        u.api("GET", "/api/calls/active")
 
     # --- Direkt-Chat fuer alle loeschen -----------------------------------------------------------------------------------
     mkB = B.ev.mark()
