@@ -418,7 +418,7 @@ async function chatImmich(browser) {
   // name@server (andere Saga-Instanz): Hinweis mit Link zur Anleitung statt "Keine Treffer."
   await p.fill('.ct-people-q', 'hd@saga.example.org');
   const fh = await p.waitForSelector('.ct-fed-hint', { timeout: 5000 }).then(e => e.evaluate(x => ({ t: x.textContent, a: (x.querySelector('a') || {}).href || '' }))).catch(() => null);
-  ok('2.2 Chat: name@server -> Hinweis "anderer Saga-Server" mit Anleitung', !!fh && /anderer Saga-Server/.test(fh.t) && /ANLEITUNG\.md#/.test(fh.a), fh);
+  ok('2.2 Chat: name@server -> Hinweis "anderer Saga-Server" mit Anleitung', !!fh && /anderer,? (verbundener )?Saga-Server/.test(fh.t) && /ANLEITUNG\.md#/.test(fh.a), fh);
   await p.fill('.ct-people-q', E.SAGA_USER3); await p.waitForSelector('.ct-person');
   await p.click('.ct-person'); await p.waitForSelector('#ct-chat:not([hidden])');
   await p.waitForTimeout(800);
