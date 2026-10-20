@@ -483,6 +483,12 @@ def fresh(request):
     return 0 <= now - at <= FRESH_SEC
 
 
+def confirmed(request):
+    """2.4 (Web-Runde 2, M3): ausdrueckliche Bestaetigung (Passwort, Code oder Passkey ueber /security/confirm) hoechstens
+    FRESH_SEC alt - eine frische Anmeldung allein reicht nicht (gekaperte Sitzung direkt nach dem Anmelden)."""
+    return 0 <= time.time() - int(request.session.get("sec_at") or 0) <= FRESH_SEC
+
+
 def confirm(request, uid, b, area="", kind="confirm", key="wa_c"):
     """Identitaet bestaetigen: {password} | {code} (Authenticator-App) | {passkey: Antwort}. -> Fehlertext oder None."""
     ip = ip_of(request)
@@ -583,15 +589,15 @@ async def api_security_confirm(request: Request):
     return _no_store({"ok": True, "valid": FRESH_SEC})
 
 
-def _guard(request, need_fresh=True):
-    """-> (uid, info, fehlerantwort)"""
+def _guard(request, need_fresh=True, strict=False):
+    """-> (uid, info, fehlerantwort). strict: Faktor entfernen - nur nach ausdruecklicher Bestaetigung (confirmed)."""
     uid, err = _me(request)
     if err:
         return None, None, err
     info = user_info(uid)
     if not supported(info):
         return None, None, _bad(t("Zwei-Faktor-Anmeldung regelt dein Anmeldedienst (SSO)."), 403)
-    if need_fresh and not fresh(request):
+    if need_fresh and not (confirmed(request) if strict else fresh(request)):
         return None, None, _need_fresh()
     return uid, info, None
 
@@ -660,7 +666,7 @@ async def api_passkey_rename(pid: int, request: Request):
 
 @router.delete("/api/account/passkeys/{pid}")
 def api_passkey_delete(pid: int, request: Request):
-    uid, info, err = _guard(request)
+    uid, info, err = _guard(request, strict=True)
     if err:
         return err
     with _db() as c:
@@ -747,7 +753,7 @@ async def api_totp_confirm(request: Request):
 
 @router.delete("/api/account/totp")
 def api_totp_delete(request: Request):
-    uid, info, err = _guard(request)
+    uid, info, err = _guard(request, strict=True)
     if err:
         return err
     if factors(uid)["totp"] and _last_factor_blocked(uid, info):

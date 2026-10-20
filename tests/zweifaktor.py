@@ -206,7 +206,7 @@ def flows():
     ok("Liste: 1 Passkey mit Name, an", s == 200 and d["enabled"] and [p["name"] for p in d["passkeys"]] == ["Testgeraet"] and d["recovery_left"] == 10)
     pid = d["passkeys"][0]["id"]
     ok("Umbenennen", w.api("PATCH", f"/api/account/passkeys/{pid}", {"name": "Laptop"})[0] == 200)
-    ok("Fremdes Konto kann ihn nicht umbenennen/loeschen", client("zf-adm", login_at=int(time.time())).api("DELETE", f"/api/account/passkeys/{pid}")[0] == 404)
+    ok("Fremdes Konto kann ihn nicht umbenennen/loeschen", client("zf-adm", login_at=int(time.time()), sec_at=int(time.time())).api("DELETE", f"/api/account/passkeys/{pid}")[0] == 404)
 
     # --- Anmeldung: Passwort + Passkey ------------------------------------------------------------------------
     w = client()
@@ -340,6 +340,15 @@ def flows():
 
     # --- Richtlinie: 2FA fuer alle verlangen -------------------------------------------------------------------------
     auth.save_setting("mfa", {"require": "all", "oidc_mfa": False, "oidc_acr": ""}); settings_wait()
+    s, d = w5.api("DELETE", "/api/account/totp")
+    ok(f"M3: Authenticator entfernen trotz frischer Anmeldung nur nach Bestaetigung (403 reauth) ({s})", s == 403 and d.get("reauth") is True, d)
+    s, d = w5.api("DELETE", f"/api/account/passkeys/{pid}")
+    ok(f"M3: ... ebenso Passkey loeschen ({s})", s == 403 and d.get("reauth") is True, d)
+    s, d = w5.api("POST", "/api/account/security/confirm", {"password": "falsch-falsch-1"})
+    s2, _ = w5.api("DELETE", "/api/account/totp")
+    ok(f"M3: falsches Passwort bestaetigt nicht ({s}, {s2})", s == 403 and s2 == 403)
+    s, d = w5.api("POST", "/api/account/security/confirm", {"password": PW})
+    ok(f"M3: Bestaetigung mit Passwort ({s})", s == 200, d)
     s, d = w5.api("DELETE", "/api/account/totp")
     ok("Verlangt: Authenticator entfernen geht (Passkey bleibt)", s == 200 and d["passkeys"] and not d["totp"])
     s, d = w5.api("DELETE", f"/api/account/passkeys/{pid}")
