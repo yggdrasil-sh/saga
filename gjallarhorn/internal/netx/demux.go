@@ -108,18 +108,43 @@ type Stats struct {
 // Byte, PROXY-Kopf, TLS-Handshake). Darueber wird sofort geschlossen.
 var MaxPending int64 = 512
 
-// Fristen der Weiche.
+// Fristen der Weiche (Standard; je Mux aenderbar).
 var (
 	FirstByteTimeout = 5 * time.Second
 	HandshakeTimeout = 10 * time.Second
 )
 
+func (m *Mux) firstByte() time.Duration {
+	if m.FirstByte > 0 {
+		return m.FirstByte
+	}
+	return FirstByteTimeout
+}
+
+func (m *Mux) tailProbe() time.Duration {
+	if m.TailProbe > 0 {
+		return m.TailProbe
+	}
+	return TailProbeDelay
+}
+
+func (m *Mux) handshake() time.Duration {
+	if m.Handshake > 0 {
+		return m.Handshake
+	}
+	return HandshakeTimeout
+}
+
 // Mux ist die Weiche auf einem TCP-Port: TLS (HTTPS, TURN-TLS) und ICE-TCP.
 type Mux struct {
-	TLS        *tls.Config
-	Proxy      ProxyMode
-	NoCoalesce bool // Schreibvorgaenge nicht buendeln (HORN_COALESCE=0)
-	Stats      Stats
+	TLS         *tls.Config
+	Proxy       ProxyMode
+	NoCoalesce  bool          // Schreibvorgaenge nicht buendeln (HORN_COALESCE=0)
+	NoTailProbe bool          // keine Nachlaeufer (HORN_TAILPROBE_MS=0)
+	TailProbe   time.Duration // Abstand der Nachlaeufer (0 = TailProbeDelay)
+
+	FirstByte, Handshake time.Duration // 0 = Standard
+	Stats                Stats
 
 	// OnICE meldet eine ICE-TCP-Verbindung mit dem lokalen ufrag, damit das
 	// Bein seine Verbindung nach jedem Schub leeren kann.
@@ -216,7 +241,7 @@ func (m *Mux) handle(c net.Conn) {
 	if tc, ok := c.(*net.TCPConn); ok && Tune(tc) {
 		m.Stats.BBR.Add(1)
 	}
-	_ = c.SetReadDeadline(time.Now().Add(FirstByteTimeout))
+	_ = c.SetReadDeadline(time.Now().Add(m.firstByte()))
 	var remote net.Addr
 	br := bufio.NewReaderSize(c, 2048)
 	first, err := br.Peek(1)
@@ -246,6 +271,9 @@ func (m *Mux) handle(c net.Conn) {
 		m.Stats.ICETCP.Add(1)
 		if !m.NoCoalesce {
 			cc.Enable()
+			if !m.NoTailProbe {
+				cc.EnableTailProbe(TailFrameICE, m.tailProbe())
+			}
 		}
 		u := peekUfrag(br)
 		if m.OnICE != nil && u != "" {
@@ -268,7 +296,7 @@ func (m *Mux) handle(c net.Conn) {
 
 func (m *Mux) handleTLS(raw *bufConn, cc *CoalesceConn, done func()) {
 	tc := tls.Server(raw, m.TLS)
-	_ = raw.SetDeadline(time.Now().Add(HandshakeTimeout))
+	_ = raw.SetDeadline(time.Now().Add(m.handshake()))
 	if err := tc.Handshake(); err != nil {
 		m.Stats.TLSErr.Add(1)
 		tc.Close()
@@ -298,6 +326,10 @@ func (m *Mux) handleTLS(raw *bufConn, cc *CoalesceConn, done func()) {
 			cc.Enable() // TLS-Datensaetze fuer TURN gebuendelt schreiben
 		}
 		m.Stats.TURN.Add(1)
+		if !m.NoTailProbe && m.tailProbe() > 0 {
+			m.TURN.push(&probeBufConn{bufConn: c, p: NewProbeConn(c, TailFrameTURN, m.tailProbe())})
+			return
+		}
 		m.TURN.push(c)
 		return
 	}
@@ -355,3 +387,12 @@ func stunUsernameLocal(m []byte) string {
 	}
 	return ""
 }
+
+// probeBufConn: Lesen ueber den Puffer, Schreiben mit Nachlaeufer.
+type probeBufConn struct {
+	*bufConn
+	p *ProbeConn
+}
+
+func (c *probeBufConn) Write(b []byte) (int, error) { return c.p.Write(b) }
+func (c *probeBufConn) Close() error                { return c.p.Close() }

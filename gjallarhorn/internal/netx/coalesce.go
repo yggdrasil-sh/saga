@@ -28,6 +28,12 @@ type CoalesceConn struct {
 	highWater, max int
 	delay          time.Duration
 
+	// Nachlaeufer (tailprobe.go)
+	probe      []byte
+	probeDelay time.Duration
+	ptimer     *time.Timer
+	pArmed     bool
+
 	Flushes, Writes uint64 // nur unter mu
 }
 
@@ -72,6 +78,10 @@ func (c *CoalesceConn) Write(b []byte) (int, error) {
 	}
 	if c.err != nil {
 		return 0, c.err
+	}
+	if c.pArmed { // Daten folgen: kein Nachlaeufer noetig
+		c.pArmed = false
+		c.ptimer.Stop()
 	}
 	c.buf = append(c.buf, b...)
 	c.Writes++
@@ -122,6 +132,10 @@ func (c *CoalesceConn) flushLocked() {
 	if err != nil && c.err == nil {
 		c.err = err
 	}
+	if c.probe != nil && err == nil && len(c.buf) == 0 {
+		c.pArmed = true
+		c.ptimer.Reset(c.probeDelay)
+	}
 	c.cond.Broadcast()
 }
 
@@ -129,6 +143,12 @@ func (c *CoalesceConn) flushLocked() {
 func (c *CoalesceConn) Close() error {
 	c.Flush()
 	c.timer.Stop()
+	c.mu.Lock()
+	if c.ptimer != nil {
+		c.pArmed = false
+		c.ptimer.Stop()
+	}
+	c.mu.Unlock()
 	c.mu.Lock()
 	if c.err == nil {
 		c.err = net.ErrClosed

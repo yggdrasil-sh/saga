@@ -67,12 +67,10 @@ func FuzzWeiche(f *testing.F) {
 		f.Fatal(err)
 	}
 	c := &Certs{Mode: "self", cur: crt}
-	ofb, ohs := FirstByteTimeout, HandshakeTimeout
-	FirstByteTimeout, HandshakeTimeout = 100*time.Millisecond, 100*time.Millisecond
-	f.Cleanup(func() { FirstByteTimeout, HandshakeTimeout = ofb, ohs })
 	f.Fuzz(func(t *testing.T, mode byte, b []byte) {
 		addr := &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 443}
-		m := &Mux{TLS: c.TLSConfig(), Proxy: ProxyMode(mode % 3), ICE: newChanListener(addr), HTTP: newChanListener(addr), TURN: newChanListener(addr)}
+		m := &Mux{TLS: c.TLSConfig(), Proxy: ProxyMode(mode % 3), ICE: newChanListener(addr), HTTP: newChanListener(addr), TURN: newChanListener(addr),
+			FirstByte: 100 * time.Millisecond, Handshake: 100 * time.Millisecond, NoTailProbe: true}
 		defer m.ICE.Close()
 		defer m.HTTP.Close()
 		defer m.TURN.Close()
