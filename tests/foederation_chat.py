@@ -252,8 +252,9 @@ def part_chat(A, B, pa, pb):
        wait(lambda: [(x["fseq"], x.get("fstate")) for x in bert.msgs(bc["id"]) if x["id"] == m3["id"]] == [(3, None)], 15))
     # Fehler 2.3.0: der Server von B legte die Nachricht als 'pending' an und meldete sie sofort (chat.message) - die App
     # lud sie mit ⏳; die synchrone Bestaetigung des Heims kam ohne Ereignis -> die App blieb auf "wird zugestellt"
-    ok(f"B: Live-Ereignis meldet die Bestaetigung ({[sorted(x) for x in ev.of('chat.message', m3['id'])]})",
-       wait(lambda: app.msgs.get(m3["id"], {}).get("fstate", "x") is None, 10))
+    if not F2.COMPAT:                                  # B auf 2.3.0 (FED_B_APP) hat den Fehler noch
+        ok(f"B: Live-Ereignis meldet die Bestaetigung ({[sorted(x) for x in ev.of('chat.message', m3['id'])]})",
+           wait(lambda: app.msgs.get(m3["id"], {}).get("fstate", "x") is None, 10))
     app.stop = True
     ev.close()
     ok("B: Verlauf in fseq-Reihenfolge", [x["fseq"] for x in bert.msgs(bc["id"]) if x["kind"] == "msg"] == [1, 2, 3])
