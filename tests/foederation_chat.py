@@ -10,7 +10,7 @@ KI standardmaessig aus, Sperren je Person/Instanz, aeltere Apps (Hinweis statt k
 (saga-call/v2: Klingeln, Annehmen, Signale, Auflegen, Anfrage klingelt nicht, Besetzt), Kontoloeschung, Trennen (schreibgeschuetzt,
 Anrufe enden). Kompatibilitaet: FED_B_APP=<Saga 2.1/2.2> -> keine Chats ueber Servergrenzen, sinnvolle Fehlermeldung, keine
 Serverfehler. Raeumt auf (Datenbanken geloescht)."""
-import http.client, json, os, sys, threading, time
+import http.client, json, os, sys, threading, time, urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import foederation as T  # noqa: E402
@@ -212,6 +212,16 @@ def part_chat(A, B, pa, pb):
     s, d = api("a", "fa-anna", "GET", "/api/chat/people?q=bert")
     hit = next((x for x in d.get("remote") or [] if x["handle"] == bert.handle), None)
     ok(f"A: Chat-Suche findet Bert (Adressbuch) mit Handle ({[x.get('label') for x in d.get('remote') or []]})", bool(hit) and hit["host"] == HB)
+    # 2.4: name@server ohne oeffentlichen Namen -> Adressbuch dieser Instanz nach Anzeigename bzw. Handle (nur lokal)
+    for q_ in ("gast@" + HB, "bert.gast@" + HB, bert.handle):
+        s, d = api("a", "fa-anna", "GET", "/api/chat/people?q=" + urllib.parse.quote(q_))
+        h2 = next((x for x in d.get("remote") or [] if x["handle"] == bert.handle), None)
+        ok(f"A: Suche '{q_}' findet Bert ueber das Adressbuch (ohne oeffentlichen Namen), kein Anmeldename",
+           bool(h2) and "fb-bert" not in json.dumps(d))
+    s, d = api("a", "fa-anna", "GET", "/api/fed/people?q=" + urllib.parse.quote("gast@" + HB))
+    ok("A: auch /api/fed/people (Apps)", s == 200 and any(x["handle"] == bert.handle for x in d.get("people") or []))
+    s, d = api("a", "fa-anna", "GET", "/api/chat/people?q=" + urllib.parse.quote("gast@" + HA))
+    ok("A: Anzeigename auf einem anderen Server findet Bert nicht", not any(x["handle"] == bert.handle for x in d.get("remote") or []))
     s, d = api("a", "fa-anna", "POST", "/api/chats", {"kind": "dm", "handle": bert.handle, "device": anna.dev["id"]})
     ch = d.get("chat") or {}
     ok(f"A: Direkt-Chat mit Bert begonnen ({s})", s == 200 and ch.get("v") == 2 and ch.get("home_self") and ch["ref"].endswith("@" + HA))

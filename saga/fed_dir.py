@@ -442,7 +442,16 @@ def search(uid, q, purpose="chat"):
             ps = {k: p for k, p in ps.items() if p["host"] == fedsig.authority(addr.group(2))}
             if not ps:
                 return []
-            cond, args = "(pub=? OR handle=?)", (addr.group(1), addr.group(1))
+            # 2.4: ohne oeffentlichen Namen findet die WebFinger-Abfrage niemanden - dann im synchronisierten Adressbuch
+            # dieser Instanz auch nach dem Anzeigenamen (ab 3 Zeichen Teilwort, '.'/'_' wie Leerzeichen) bzw. dem Handle.
+            # Alles lokal: es geht nichts nach aussen, schon gar kein Anmeldename.
+            part = addr.group(1)
+            nm = re.sub(r"[._]+", " ", part).strip()
+            if len(nm) >= sharing.SHORT_Q:
+                cond, args = "(pub=? OR handle=? OR handle=? OR lower(name) LIKE ? OR lower(name) LIKE ?)", \
+                    (part, part, "~" + part.lstrip("~"), "%" + _like(nm) + "%", "%" + _like(part) + "%")
+            else:
+                cond, args = "(pub=? OR handle=? OR lower(name)=?)", (part, part, nm)
         elif len(q) < sharing.SHORT_Q:
             cond, args = "(lower(name)=? OR pub=?)", (q, q)
         else:
