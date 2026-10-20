@@ -163,6 +163,23 @@ try:
        okr and gone == (None, None) and q("SELECT to_regclass('public.chat_call_leg')")[0][0] is not None
        and q("SELECT count(*) FROM chat_call_leg")[0][0] == 0)
 
+    # Backup von vor 2.4 (Migration 14): ohne login_lock - eine laufende Anmelde-Sperre der aktuellen Datenbank bleibt
+    # nach dem Zurueckspielen nicht stehen (Sicherheitsrunde 2, R1)
+    q("DROP TABLE login_lock")
+    oldll = db.backup("sicherung-vor-2-4-sperre")
+    made.append(oldll)
+    db.init_schema()
+    q("INSERT INTO login_lock (username, since, until, fails, ips) VALUES ('gesperrt', 0, 9999999999, 100, 10)")
+    try:
+        db.restore(oldll)
+        okr = True
+    except RuntimeError as ex:
+        okr, _ = False, print(str(ex)[:300])
+    gone = q("SELECT to_regclass('public.login_lock')")[0][0]
+    db.init_schema()
+    ok(f"Backup ohne login_lock: laufende Sperre danach weg (vorher {gone}), naechster Start legt die Tabelle leer an",
+       okr and gone is None and q("SELECT count(*) FROM login_lock")[0][0] == 0)
+
     # Kommandozeile wie in der Anleitung (python run.py restore <datei>)
     import subprocess
     q("UPDATE note SET title = 'per run.py weg' WHERE id = 1")

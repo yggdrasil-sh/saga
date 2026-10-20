@@ -1009,12 +1009,15 @@ def backup(label="manuell"):
 # STATE_DIR/chat/up raeumt der naechste purge() ab, ein Neustart des Uploads legt einen neuen an).
 # 2.4 (Migration 13): chat_receipt (Fremdschluessel auf chat) und chat_seen - ein aelteres Backup kennt sie nicht; danach
 # legt der naechste Start sie leer an (Bestaetigungen kommen mit dem naechsten Lesen neu, "zuletzt online" fehlt bis dahin).
+# 2.4 (Migration 14, Sicherheitsrunde 2 R1): login_lock - laufende harte Anmelde-Sperren gehoeren zur alten Datenbank; ein
+# aelteres Backup kennt die Tabelle nicht (sonst bliebe eine Sperre bis zu 1 h stehen), ein neueres bringt sie mit.
 _RESTORE_DROP = (b"DROP TABLE IF EXISTS public.note_link, public.note_stale, public.note_derived;\n"
                  b"DROP TABLE IF EXISTS public.note_tseq, public.note_tseq_meta;\n"
                  b"DROP TABLE IF EXISTS public.chat_invite;\n"
                  b"DROP TABLE IF EXISTS public.chat_call_leg, public.chat_call_invite;\n"
                  b"DROP TABLE IF EXISTS public.chat_upload;\n"
-                 b"DROP TABLE IF EXISTS public.chat_receipt, public.chat_seen;\n")
+                 b"DROP TABLE IF EXISTS public.chat_receipt, public.chat_seen;\n"
+                 b"DROP TABLE IF EXISTS public.login_lock;\n")
 _RESTORE_SET = re.compile(rb"^SET ([a-z_]+) = .*;\r?\n?$")
 
 
