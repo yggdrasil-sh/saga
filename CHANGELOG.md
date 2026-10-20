@@ -20,7 +20,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 Neue Funktionen für Anrufe, Videos und Chats. Die Schnittstelle wurde nur erweitert: Apps und Server mit 2.1/2.3 laufen
 weiter (`MIN_APP` unverändert), neue Funktionen werden per Fähigkeit ausgehandelt und sonst ausgeblendet.
-Datenbank: Migrationen 10 (Anrufe), 11 (Videos/Dateien), 12 (Anruf als Raum) und 13 (Gelesen/Online) laufen beim Start
+Datenbank: Migrationen 10 (Anrufe), 11 (Videos/Dateien), 12 (Anruf als Raum), 13 (Gelesen/Online) und 14 (Testrunde) laufen beim Start
 automatisch; Backups von 2.3 bleiben einspielbar.
 
 #### Anrufe: Fundament saga-call v3 (Etappe E0)
@@ -199,6 +199,51 @@ automatisch; Backups von 2.3 bleiben einspielbar.
 - **Medien-Token undurchsichtig:** `POST /api/chat/files/{fid}/token` liefert `m2.…` (AES-GCM), aus dem sich weder
   Benutzername noch Datei-Kennung lesen lassen. Apps behandeln das Token schon als beliebige Zeichenkette; `m1`-Token
   laufen nach höchstens 15 Minuten aus.
+- **Gravatar nur mit Einwilligung:** Neue Konten beginnen mit „Gravatar verwenden“ **aus**; beim Einschalten erklärt Saga,
+  dass ein Hash der E-Mail-Adresse an Gravatar geht. Bestehende Konten behalten ihre Einstellung (Migration 14 ändert
+  nur den Standard der Spalte).
+- **Anrufe – fremder STUN-Server:** Admin → Allgemein → Anrufe weist darauf hin, dass der eingetragene STUN-Server (ab Werk
+  `stun.nextcloud.com:443`, bleibt der Standard) die IP-Adressen der Anrufenden sieht, mit Link zur Anleitung „TURN über
+  Port 443“ (eigener coturn). Alle Geheimnis-Felder im Admin-Bereich sind Passwortfelder, leer = unverändert, der Wert
+  steht nie im HTML.
+- **Fehlversuche bremsen statt Konten sperren:** Nach 8 falschen Passwörtern für ein Konto von derselben Adresse wartet
+  *diese Adresse* 2, 4, 8 … s (höchstens 15 min), ebenso nach 30 Fehlversuchen einer Adresse. Andere Adressen sind
+  nicht betroffen – ein Fremder kann niemanden mehr aussperren. Erst nach 100 Fehlversuchen von mindestens 10 Adressen in
+  einer Stunde sperrt Saga die Passwort-Anmeldung eine Stunde lang (neue Tabelle `login_lock`): Die Person bekommt eine
+  Benachrichtigung, der Admin sieht die Sperre auf der Übersicht, in der Benutzerliste und beim Konto und hebt sie mit
+  „Sperre aufheben“ auf; „Passwort setzen“ hebt sie ebenfalls auf. Passkeys und offene Sitzungen gehen weiter, LDAP wird
+  genauso gebremst, SSO ist nicht betroffen.
+- **Anmeldenamen bleiben privat:** Andere Konten sehen nie den Anmeldenamen – Personensuche (Teilen, Chats), Freigaben,
+  „Mit mir geteilt“, Kommentare, Benachrichtigungen, Anwesenheit, Versionen und Seitensuche liefern Anzeigename,
+  öffentlichen Namen oder einen pseudonymen Handle (`~` + 16 Zeichen). Freigeben, Chat beginnen und Mitglied hinzufügen
+  nehmen den Handle oder wie bisher den Benutzernamen. Mitglieder eines gemeinsamen Chats/Anrufs bekommen den
+  Anmeldenamen technisch weiter (Schlüssel und Signaturen von Chats v1 hängen daran), die Weboberfläche zeigt ihn nicht.
+- **Versionen beim Bearbeiten:** Saga sichert beim Speichern höchstens alle 5 (statt 10) Minuten, dazu den aktuellen
+  Stand nach 2 Minuten Pause und beim Verlassen der Seite (`POST /api/notes/{id}/versions/checkpoint`, gedrosselt, keine
+  doppelten Fassungen). „Diese Version wiederherstellen“ fragt nach und sichert den aktuellen Stand immer vorher.
+- **Export, Versionsvorschau, Suche:** Markdown-Export behält die Adresse von Einbettungen (YouTube), zeigt eingebettete
+  Datenbanken mit Titel und Kalender/Aufgaben als Hinweis; Vorschau und Suchausschnitt zeigen keine internen Werte
+  („month“, „task“, Ansichtsnamen) und Dateinamen nur einmal. Migration 14 leitet den Suchtext betroffener Seiten neu ab.
+- **Editor:** Schnell getipptes „/Hinweis⏎“ wählt den Block, auch wenn das Menü noch nicht gefiltert hat. Aus einem Zitat
+  kommt man per Enter in leerer Zeile, Enter in „Quelle“ oder Pfeil nach unten heraus.
+- **Videos, die der Browser nicht kann:** Statt eines stummen Players bei 0:00 erscheint „Kann im Browser nicht abgespielt
+  werden – herunterladen“, im Verlauf ein Platzhalter mit Dateiname statt einer leeren Fläche (das Vorschaubild fehlt, weil
+  das sendende Gerät das Video nicht dekodieren konnte). „Auf 720p verkleinern“ bietet Saga nur an, wenn dieser Browser
+  das Video dekodieren und als MP4 aufnehmen kann, sonst steht ehrlich „Original“ da.
+- **Mehrere Geräte im Anruf:** Die Kopplungsanfrage eines neuen Geräts erscheint über dem Vollbild-Anruf und schließt
+  sich, wenn ein anderes Gerät sie erledigt hat. Behoben: „Hinzufügen“ hing bei „Verbinde …“ und „Hierher übernehmen“
+  scheiterte, wenn das Gerät erst während des Anrufs gekoppelt wurde – die Gegenstelle kannte seine Schlüssel noch nicht
+  und holt sie jetzt einmal frisch (neue Reihe `browser_geraete.js`: alle Geräte in einem Browser wie bei der Testrunde).
+- **Gruppenanruf:** „Klingelt bei den anderen …“ bzw. „Verbinde …“ verschwinden, sobald Medien fließen; den Zustand je
+  Verbindung zeigen die Kacheln.
+- **Personensuche `name@server`:** Hat die Person keinen öffentlichen Namen, sucht Saga zusätzlich im Adressbuch genau
+  dieses Servers nach Anzeigenamen bzw. Handle (lokal, kein Anmeldename geht nach außen).
+- **Kleinigkeiten:** Einstellungs-Reiter brechen auf breiten Bildschirmen um (keine versteckten Reiter mehr), Thai-Titel
+  ohne Sperrschrift, klebende Reiterleiste deckt den Inhalt ab; „Kalender verbinden …“ öffnet den Reiter „Kalender“;
+  „1 Termin“ in der Einzahl, „… sind jetzt dabei“ bei mehreren; Dateien unter 1 KiB in Byte; Anmeldeseite setzt nach einem
+  Fehler den Fokus ins Passwortfeld und erklärt „Passwort vergessen?“; Sprachwahl mit fester Breite; einheitlicher
+  Platzhalter in Spalten; Nextcloud: Tippfehler in der Adresse heißen „Adresse ungültig“ statt „Ziel nicht erreichbar“.
+- **Server meldet 2.4.0** (`VERSION`).
 - **Bekannt (so gewollt):** Wird ein Mitglied aus einem Chat entfernt, kann es einen eigenen, schon begonnenen Upload über
   saga-media noch bis zu 60 s fortsetzen (gemerkte Erlaubnis, `MEDIA_AUTHZ_TTL`). Die Datei lässt sich ohne
   Mitgliedschaft keiner Nachricht zuordnen und wird nach einer Stunde entfernt.

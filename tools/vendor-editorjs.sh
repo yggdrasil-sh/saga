@@ -103,4 +103,16 @@ for f in "$OUT/image.umd.js" "$OUT/attaches.umd.js"; do
   sed -i.bak 's/new Function("return this")()/window/' "$f" && rm -f "$f.bak"
   echo "$(basename "$f"): eval-freie Ermittlung des globalen Objekts"
 done
+# 5) Datei-Plugin: kleine Dateien zeigte es als "0.0 KiB" (2.4, Testrunde) - unter 1 KiB in Byte
+A="$OUT/attaches.umd.js"
+OLD='Math.log10(+h.size)>=6?(r="MiB",n=h.size/Math.pow(2,20)):(r="KiB",n=h.size/Math.pow(2,10)),o.textContent=n.toFixed(1)'
+NEW='+h.size<1024?(r="B",n=+h.size):Math.log10(+h.size)>=6?(r="MiB",n=h.size/Math.pow(2,20)):(r="KiB",n=h.size/Math.pow(2,10)),o.textContent=r==="B"?String(n):n.toFixed(1)'
+python3 - "$A" "$OLD" "$NEW" <<'PY' || { echo "FEHLER: Groessenanzeige in attaches.umd.js nicht gefunden"; exit 1; }
+import sys
+p, old, new = sys.argv[1:4]
+s = open(p, encoding="utf-8").read()
+assert s.count(old) == 1
+open(p, "w", encoding="utf-8").write(s.replace(old, new))
+PY
+echo "attaches.umd.js: Groesse unter 1 KiB in Byte"
 echo "fertig -> $OUT"

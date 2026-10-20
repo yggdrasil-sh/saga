@@ -109,6 +109,8 @@ def norm_server(url):
         port = pu.port
     except ValueError:
         return None, t("Adresse ungültig (z. B. https://cloud.example.org)")
+    if not pu.hostname or re.search(r"[\s%]", u) or not re.fullmatch(r"[a-z0-9.\-\[\]:]+", pu.hostname.lower()):
+        return None, t("Adresse ungültig (z. B. https://cloud.example.org)")     # 2.4: Tippfehler wie "kein url"
     if pu.scheme != "https" and not _host_free(pu.hostname, port or 80):
         return None, t("Nur https-Adressen erlaubt (http nur für vom Admin freigegebene interne Server)")
     return u, None

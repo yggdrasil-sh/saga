@@ -6,9 +6,9 @@
 <form method="post" action="/login" class="auth-form" autocomplete="on">
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <label class="hk-field"><span>{{ _("Benutzername") }}</span>
-    <input class="hk-in" name="username" value="{{ username or '' }}" autocomplete="username{% if opts.passkey %} webauthn{% endif %}" autocapitalize="none" spellcheck="false" required autofocus maxlength="100"></label>
+    <input class="hk-in" name="username" value="{{ username or '' }}" autocomplete="username{% if opts.passkey %} webauthn{% endif %}" autocapitalize="none" spellcheck="false" required{% if not (error and username) %} autofocus{% endif %} maxlength="100"></label>
   <label class="hk-field"><span>{{ _("Passwort") }}</span>
-    <input class="hk-in" type="password" name="password" autocomplete="current-password" required maxlength="200"></label>
+    <input class="hk-in" type="password" name="password" autocomplete="current-password" required maxlength="200"{% if error and username %} autofocus{% endif %}></label>
   <button class="btn btn-primary auth-btn" type="submit">{{ _("Anmelden") }}</button>
 </form>
 {% if opts.passkey %}{% include "_passkey_box.html" %}{% endif %}
@@ -19,6 +19,9 @@
 {% endif %}
 {% if not opts.pw_login and not opts.sso %}
 <p class="auth-err">{{ _("Es ist keine Anmeldeart eingerichtet – bitte im Admin-Bereich festlegen.") }}</p>
+{% endif %}
+{% if error and opts.pw_login %}
+<p class="auth-foot">{{ _("Passwort vergessen? Dein Passwort setzt die Verwaltung dieses Servers zurück.") }}</p>
 {% endif %}
 {% if opts.registration %}
 <p class="auth-foot">{{ _("Noch kein Konto?") }} <a href="/register">{{ _("Jetzt registrieren") }}</a></p>

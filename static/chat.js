@@ -1323,7 +1323,7 @@
       var add = (k.added || []).map(k.by ? acc : nom).join(', '), rm = (k.removed || []).map(k.by ? acc : nom).join(', ');
       var out = [];
       if (add) out.push(meBy ? T('Du hast {names} hinzugefügt.', { names: add }) : by ? T('{by} hat {names} hinzugefügt.', { by: by, names: add })
-                             : T('{names} ist jetzt dabei.', { names: add }));
+                             : (k.added || []).length > 1 ? T('{names} sind jetzt dabei.', { names: add }) : T('{names} ist jetzt dabei.', { names: add }));
       if (rm) {
         var left = k.by && (k.removed || []).length === 1 && (k.removed[0] || {}).handle === k.by.handle;
         if (k.reason === 'disconnected') out.push(T('{names} ist nicht mehr dabei – die Verbindung zu diesem Saga-Server wurde getrennt.', { names: (k.removed || []).map(nom).join(', ') }));

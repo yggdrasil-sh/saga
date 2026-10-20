@@ -4278,7 +4278,7 @@
     var col = el('div', 'col'), h = el('div', 'col-ed'), add = el('button', 'col-add', T('+ Block'));
     add.type = 'button'; add.title = T('Neuer Block am Ende dieser Spalte');
     col.appendChild(h); col.appendChild(add); this.w.appendChild(col);
-    var ed = nestedEditor(h, c.blocks, i ? T('Spalte …') : T("Spalte – '/' für Blöcke"));
+    var ed = nestedEditor(h, c.blocks, T("Spalte – '/' für Blöcke"));
     add.addEventListener('click', function () {
       ed.isReady.then(function () {
         var n = ed.blocks.getBlocksCount(), last = n ? ed.blocks.getBlockByIndex(n - 1) : null;

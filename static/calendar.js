@@ -139,12 +139,12 @@
       Promise.all([accounts(), load(start, addDays(start, weeks * 7), fresh)]).then(function (r) {
         if (!r[0].length) {
           info.textContent = ''; var cn = el('button', 'btn', T('Kalender verbinden …')); cn.type = 'button';
-          cn.addEventListener('click', function () { window.HKSettings && HKSettings.open(); }); container.insertBefore(cn, grid);
+          cn.addEventListener('click', function () { window.HKSettings && HKSettings.open('calendar'); }); container.insertBefore(cn, grid);
           return;
         }
         var map = byDay(r[1].events);
         Object.keys(map).forEach(function (k) { if (cells[k]) map[k].forEach(function (e) { cells[k].appendChild(chip(e, function (ev) { eventDialog(ev, {}, function () { render(true); }); })); }); });
-        info.textContent = r[1].errors.length ? '⚠ ' + r[1].errors.map(function (x) { return x.error; }).join(' · ') : T('{n} Termine', { n: r[1].events.length });
+        info.textContent = r[1].errors.length ? '⚠ ' + r[1].errors.map(function (x) { return x.error; }).join(' · ') : T('{n} {n:Termin|Termine}', { n: r[1].events.length });
         info.classList.toggle('err', !!r[1].errors.length);
       }).catch(function (err) { info.textContent = '⚠ ' + err.message; info.classList.add('err'); });
     }
@@ -170,7 +170,7 @@
         list.textContent = '';
         if (!r[0].length) {
           var cn = el('button', 'linkish', T('Noch kein Kalender verbunden – in den Einstellungen verbinden')); cn.type = 'button';
-          cn.addEventListener('click', function () { window.HKSettings && HKSettings.open(); }); list.appendChild(cn); return;
+          cn.addEventListener('click', function () { window.HKSettings && HKSettings.open('calendar'); }); list.appendChild(cn); return;
         }
         var evs = r[1].events.slice().sort(function (a, b) { return a.start < b.start ? -1 : a.start > b.start ? 1 : 0; });
         if (!evs.length) list.appendChild(el('div', 'ag-none', T('Keine Termine')));
