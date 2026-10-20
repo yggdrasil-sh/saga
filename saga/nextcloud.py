@@ -41,7 +41,7 @@ from db import connect as _db
 from saga import backups, netguard
 from saga.backups import BackupError
 from saga.calendars import _admin_hosts
-from saga.core import E, RESTORE_TEST, SECRET, STATE_DIR, _api_guard, _bad, _body, _json_load, _session_user, t
+from saga.core import E, HANDLE_RE, RESTORE_TEST, SECRET, STATE_DIR, _api_guard, _bad, _body, _json_load, _session_user, local_ref, resolve_ref, t
 from saga.files import FILE_MAX, _sniff_image, store_upload, upload_owner
 from saga.notes import _iter_blocks
 from saga.sharing import RANK, Access, access, is_remote
@@ -642,6 +642,8 @@ def check_body(uid, nid, old_body, old_fmt, new_body):
         keys = [_key(od), _key(dict(od, sig=""))]       # ohne sig: Client kennt die Signatur noch nicht (eben eingefuegt)
         if is_remote(uid) and od.get("author"):         # fremde Instanz kennt den Autor nur als Platzhalter
             keys += [_key(dict(od, author=pseudo(od["author"]))), _key(dict(od, author=pseudo(od["author"]), sig=""))]
+        elif od.get("author") and od["author"] != uid:  # 2.4: lokale Mitlesende sehen den Autor als Handle (mask_local)
+            keys += [_key(dict(od, author=local_ref(od["author"]))), _key(dict(od, author=local_ref(od["author"]), sig=""))]
         for k in dict.fromkeys(keys):
             old.setdefault(k, []).append(od)
     prev = _flags(old_body, old_fmt)
@@ -657,6 +659,11 @@ def check_body(uid, nid, old_body, old_fmt, new_body):
             used[k] = i + 1
             b["data"] = json.loads(json.dumps(old[k][min(i, len(old[k]) - 1)]))
             continue
+        if isinstance(d.get("author"), str) and HANDLE_RE.fullmatch(d["author"]) and not is_remote(uid):
+            with _db() as c0:                            # Handle (mask_local) -> Anmeldename, die Signatur prueft ihn
+                real = resolve_ref(c0, d["author"])
+            if real:
+                d = b["data"] = dict(d, author=real)
         if sig_ok(nid, d) and not ({"author", "inst", "fileid", "sig"} - set(d)):
             if d.get("author") != uid:                  # fremder Block aus einer frueheren Fassung: Schalter nie weiter als jetzt
                 b["data"] = _limit_flags(nid, d, prev)
@@ -756,6 +763,27 @@ def mask_authors(body, fmt):
     return json.dumps(doc, ensure_ascii=False) if bl else body
 
 
+def mask_local(body, fmt, viewer):
+    """2.4 (Sicherheitsrunde 2, N1): Seiteninhalt fuer ein lokales Konto - Autor fremder Bloecke als Handle (wie in der
+    Personensuche) statt des Anmeldenamens. Speichern (check_body), Abruf (find_block, ?a=) und Status (author_ref)
+    nehmen den Handle wieder an; die Signatur bleibt die des echten Autors."""
+    if fmt != "blocks" or '"nextcloud"' not in str(body or ""):
+        return body
+    doc = _json_load(body, {})
+    changed = False
+    for b in nc_blocks(doc):
+        a = b["data"].get("author")
+        if a and a != viewer and not str(a).startswith("~"):
+            b["data"]["author"] = local_ref(a)
+            changed = True
+    return json.dumps(doc, ensure_ascii=False) if changed else body
+
+
+def author_ref(author, viewer):
+    """Autor in Statuslisten fuer ein lokales Konto: eigener Name bleibt, sonst Handle."""
+    return author if not author or author == viewer else local_ref(author)
+
+
 def strip_authors(body, fmt, uid):
     """Persoenliches Backup: Nextcloud-Bloecke anderer Personen ohne deren Anmeldenamen (author leer, ohne Signatur)."""
     if fmt != "blocks" or '"nextcloud"' not in str(body or ""):
@@ -774,7 +802,8 @@ def find_block(body, fmt, nid, fileid, author):
     Signatur fuer genau diese Seite."""
     for b in nc_blocks(body, fmt):
         d = b["data"]
-        if str(d.get("fileid")) == fileid and d.get("author") and author in (d.get("author"), pseudo(d.get("author"))) and sig_ok(nid, d):
+        if str(d.get("fileid")) == fileid and d.get("author") and author in (d.get("author"), pseudo(d.get("author")), local_ref(d.get("author"))) \
+                and sig_ok(nid, d):
             return d
     return None
 
@@ -1183,7 +1212,10 @@ def api_page_status(nid: int, request: Request):
         plan = status_plan(c, nid, owner)
     if plan is None:
         return _bad("not found", 404)
-    return JSONResponse(dict(status_run(plan), enabled=enabled()), headers={"Cache-Control": "no-store"})
+    out = status_run(plan)
+    for it in out["items"]:                              # 2.4: fremde Autoren als Handle (wie im Seiteninhalt, mask_local)
+        it["author"] = author_ref(it.get("author"), uid)
+    return JSONResponse(dict(out, enabled=enabled()), headers={"Cache-Control": "no-store"})
 
 
 @router.get("/api/notes/{nid}/nc/{fileid}")

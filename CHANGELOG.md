@@ -202,7 +202,9 @@ automatisch; Backups von 2.3 bleiben einspielbar.
 - **saga-media: Grenze je Client-Adresse.** Höchstens `MEDIA_MAX_CONNS_IP` (Standard 256) offene Verbindungen je Adresse
   (vertraute Proxys ausgenommen); Keep-Alive-Leerlauf ohne Anmeldedaten endet nach `MEDIA_IDLE_UNAUTH` (10 s). Ist die
   Grenze erreicht, schließt saga-media die am längsten ruhende Verbindung, statt neue warten zu lassen – eine einzelne
-  Adresse kann mit ruhenden Verbindungen niemanden mehr aussperren.
+  Adresse kann mit ruhenden Verbindungen niemanden mehr aussperren. Als angemeldet (75 s Leerlauf) gilt eine
+  Verbindung erst, wenn Saga die Anmeldung bestätigt hat (Berechtigung für Datei/Upload bzw. interner Antwortkopf
+  `X-Saga-Media-Auth`, den saga-media entfernt) – ein beliebiger Cookie- oder Authorization-Kopf reicht nicht.
 - **Medien-Token undurchsichtig:** `POST /api/chat/files/{fid}/token` liefert `m2.…` (AES-GCM), aus dem sich weder
   Benutzername noch Datei-Kennung lesen lassen. Apps behandeln das Token schon als beliebige Zeichenkette; `m1`-Token
   laufen nach höchstens 15 Minuten aus.
@@ -219,7 +221,15 @@ automatisch; Backups von 2.3 bleiben einspielbar.
   einer Stunde sperrt Saga die Passwort-Anmeldung eine Stunde lang (neue Tabelle `login_lock`): Die Person bekommt eine
   Benachrichtigung, der Admin sieht die Sperre auf der Übersicht, in der Benutzerliste und beim Konto und hebt sie mit
   „Sperre aufheben“ auf; „Passwort setzen“ hebt sie ebenfalls auf. Passkeys und offene Sitzungen gehen weiter, LDAP wird
-  genauso gebremst, SSO ist nicht betroffen.
+  genauso gebremst, SSO ist nicht betroffen. Am Admin-Port gilt zusätzlich wie bis 2.3 eine feste Grenze je Konto über
+  alle Adressen (40 Fehlversuche in 15 Minuten, dann wartet jede Adresse) – dort gibt es keine harte Sperre, und ohne
+  diese Grenze ließe sich ein Admin-Konto verteilt unbegrenzt raten. IPv6-Adressen zählen in allen Bremsen je /64-Netz
+  (Anmeldung, Admin-Port, zweiter Faktor, Passkeys, Registrierung und `MEDIA_MAX_CONNS_IP` in saga-media) – ein
+  Anschluss hat meist ein ganzes /64, jede Adresse einzeln zu zählen hieße praktisch keine Grenze. Die harte Sperre
+  bleibt bei 100 Fehlversuchen von 10 Adressen: Wer viele Adressen hat (Tor, Botnetz), sperrt auch bei einer höheren
+  Schwelle, während sie verteiltes Raten länger erlauben würde; Passkeys und offene Sitzungen gehen während der Sperre
+  weiter, Person und Admin werden informiert. Ein Restore spielt keine laufenden Sperren der aktuellen Datenbank mit
+  zurück (`login_lock` gehört zur alten Datenbank).
 - **Anmeldenamen bleiben privat:** Andere Konten sehen nie den Anmeldenamen – Personensuche (Teilen, Chats), Freigaben,
   „Mit mir geteilt“, Kommentare, Benachrichtigungen, Anwesenheit, Versionen und Seitensuche liefern Anzeigename,
   öffentlichen Namen oder einen pseudonymen Handle (`~` + 16 Zeichen). Freigeben, Chat beginnen und Mitglied hinzufügen
@@ -232,6 +242,9 @@ automatisch; Backups von 2.3 bleiben einspielbar.
   Anmeldenamen nur noch für Personen, mit denen man schon chattet bzw. an die man schon geteilt hat, und antworten
   sonst wie für ein unbekanntes Konto. `GET /api/chat/keys` liefert nur noch Schlüssel des eigenen Kontos und von
   Chat-Partnern (auch per Handle), unbekannte und fremde Konten fehlen gleichermaßen.
+- **Nextcloud-Dateien in Seiten:** Mitlesende Konten sehen als Autor eines eingefügten Nextcloud-Blocks den Handle
+  statt des Anmeldenamens (auch in `GET /api/notes/{id}/nc`); Speichern, Vorschau (`?a=`) und Download nehmen den Handle
+  an, gespeichert bleibt der echte Autor mit seiner Signatur.
 - **Bekannte Grenze:** Wer mit einem Konto chatten darf, erfährt beim Anlegen eines Direkt-Chats technisch dessen
   Anmeldenamen, auch bevor es antwortet – Chats v1 binden Geräte-Zertifikate, Nachrichten-Signaturen und die
   Sicherheitsnummer daran (Einzelheiten in `docs/APP-API.md`). Die Oberfläche zeigt ihn nicht.

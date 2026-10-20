@@ -295,16 +295,19 @@ def note_get(uid, nid):
         n_res = c.execute("SELECT COUNT(*) FROM note_comment WHERE note_id=? AND thread_id IS NULL AND resolved_at IS NOT NULL",
                           (nid,)).fetchone()[0]
         nm = names(c, [owner, r[20], r[21]])
+        body = r[9]
         if not mine:                               # Verweise auf Seiten ohne Zugriff: Titel nie ausliefern
             body = mask_links(r[9], r[10], viewer(acc))
             if is_remote(uid):                     # Nextcloud-Bloecke: Autor fuer andere Instanzen nur als Platzhalter
                 body = nextcloud.mask_authors(body, r[10])
             parent_hidden = r[3] is not None and not acc.role(r[3])
+        if not is_remote(uid):                     # 2.4 (N1): Autor fremder Nextcloud-Bloecke lokal als Handle
+            body = nextcloud.mask_local(body, r[10], uid)
     d = _note_meta(r)
     d["published"] = bool(pub)                     # Seitenkopf: Hinweis "Oeffentlich" (Einzelheiten: /api/notes/{nid}/publish)
     d["public_url"] = f"{BASE_URL}/@{pub[1]}/{pub[0]}" if pub and pub[1] else None
     d["published_via"] = via or None
-    d.update(body=r[9], format=r[10] or "text", props=_json_load(r[12], {}), cover=r[13] or "",
+    d.update(body=body, format=r[10] or "text", props=_json_load(r[12], {}), cover=r[13] or "",
              cover_pos=50.0 if r[14] is None else r[14], created=r[15], wide=bool(r[16]), rev=r[17], archived=bool(r[18]), locked=bool(r[19]))
     if d["kind"] == "database":
         d["schema"] = _json_load(r[11], {"props": []})

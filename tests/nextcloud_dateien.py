@@ -298,6 +298,23 @@ def part_editor(P, ids):
     cur = body_of(P)
     a_blocks = json.loads(json.dumps(cur["blocks"]))
     before = ncdata(P)
+    # 0) Sicherheitsrunde 2 (N1): B sieht A's Bloecke mit Handle statt Anmeldename; Speichern, Abruf und Status gehen damit
+    from saga.core import local_ref
+    ra = local_ref(A)
+    s, pg = call("GET", f"/api/notes/{P}", uid=BB)
+    seen = [b["data"] for b in json.loads(pg.get("body") or "{}").get("blocks", []) if b.get("type") == "nextcloud"]
+    ok("N1: B (lokal mitlesend) sieht als Autor den Handle, nicht A's Anmeldenamen",
+       s == 200 and seen and all(x.get("author") == ra for x in seen) and f'"{A}"' not in (pg.get("body") or ""), seen)
+    s, pa = call("GET", f"/api/notes/{P}", uid=A)
+    ok("N1: A sieht eigene Bloecke weiter mit eigenem Namen", s == 200 and all(x["author"] == A for x in
+       [b["data"] for b in json.loads(pa["body"])["blocks"] if b.get("type") == "nextcloud"]))
+    s, d = save(P, json.dumps({"blocks": json.loads(pg["body"])["blocks"]}), uid=BB)
+    ok(f"N1: B speichert die Seite mit Handles unveraendert -> A's Bloecke mit echtem Autor und Signatur ({s})",
+       s == 200 and ncdata(P) == before, (ncdata(P), d))
+    s, st = call("GET", f"/api/notes/{P}/nc", uid=BB)
+    ok("N1: Status fuer B: Autor als Handle", s == 200 and st.get("items") and all(x.get("author") == ra for x in st["items"]), st)
+    s, _, _ = call("GET", f"/api/notes/{P}/nc/{ids['foto']}?a={urllib.parse.quote(ra)}&w=320", uid=BB, api=False, raw=True)
+    ok(f"N1: Vorschau mit ?a=<Handle> ({s})", s == 200)
     # 1) unveraendert zurueck (wie eine App, die den Block nicht kennt) -> ok, A's Bloecke unveraendert
     s, d = save(P, json.dumps({"blocks": a_blocks + [para("von B")]}), uid=BB)
     ok(f"B: speichert Seite mit A's Bloecken unveraendert ({s})", s == 200 and ncdata(P) == before, (before, ncdata(P), d))

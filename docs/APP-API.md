@@ -927,6 +927,9 @@ PUT /api/chat/privacy
     Direkt-Chats kennen keine Annahme (anders als Chats über Servergrenzen mit Handles, v2). Eine Bindung an den Handle
     für neue lokale Chats bräuchte neue Zertifikate von allen Geräten (2.3-Apps erzeugen sie nicht) und ist für eine
     spätere Version vorgemerkt.
+- **Nextcloud-Blöcke:** Im Seiteninhalt (`GET /api/notes/{id}`) und im Status (`GET /api/notes/{id}/nc`) steht als
+  `author` fremder Blöcke der Handle; `?a=` beim Abruf und das Zurückspeichern nehmen ihn an. Eigene Blöcke behalten den
+  eigenen Namen (Vergleich mit dem eigenen Konto wie bisher).
 - **Medien-Token:** `POST /api/chat/files/{fid}/token` liefert `m2.…` (verschlüsselt, nicht lesbar). Weiter nur als
   Kopf `X-Saga-Media-Token` verwenden.
 - **Versionen:** `POST /api/notes/{id}/versions/checkpoint` (Rolle Bearbeiten) sichert den aktuellen Stand als Version,
