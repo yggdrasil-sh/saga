@@ -27,4 +27,6 @@ VOLUME /data
 EXPOSE 443/tcp 443/udp
 USER 65532:65532
 ENTRYPOINT ["/usr/local/bin/gjallarhorn"]
-CMD ["probe"]
+# Standard (P6): Waechter als PID 1 - startet "node" und uebernimmt signierte Updates nach /data/bin (kein Docker-Socket).
+# Horn-Probe weiterhin mit "... gjallarhorn:<tag> probe".
+CMD ["watch"]

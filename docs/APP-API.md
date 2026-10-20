@@ -607,6 +607,15 @@ anderen Endpunkte (`docs/HORN-E2E.md` §4); im Knoten-Anruf gibt es keine Mesh-S
 Verlassen (`/leave`, `/end` mit `device`) beendet die Beine des Geräts am Knoten sofort; das Ende des Anrufs schließt
 den Raum.
 
+**Umzug (2.5, P6):** Wird ein Knoten geleert, aktualisiert oder entfernt, bekommen alle Personen mit Endpunkt dort das
+Live-Ereignis `call.horn_move {call_id, chat_id, node, why: drain|update|removed}`. Das Gerät holt dann mit
+`POST /api/calls/{id}/horn` (ohne `node`) neue Kandidaten – ein Knoten im Leeren erscheint nicht mehr – und schaltet
+make-before-break um (Web: P5, Apps). Beitritt und `/horn` folgen dem bereiten Knoten mit den meisten Endpunkten des
+Anrufs. Ist kein Knoten bereit: 409 `join_block: "node"` (dann Mesh-Rückfall beim nächsten Anruf).
+
+**Knotenbetrieb (nur Server ↔ Knoten, nicht für Apps):** `GET /api/horn/whoami` → `{ip}`, `POST /api/horn/pair`
+(Kopplung), WebSocket `/api/horn/ctl` (Steuerung). Beschreibung: `gjallarhorn/NODE.md`.
+
 ## Videos im Chat: saga-file/v2 (2.4, Etappe E2)
 
 Verbindlicher Vertrag für iOS/iPadOS/macOS, Android, Linux und Web (Referenz: `static/chat-video.js`, `static/sw.js`,

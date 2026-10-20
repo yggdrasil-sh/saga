@@ -63,6 +63,30 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   - **Web (Minimum für den Nachweis):** `static/calls.js` baut Ton- und Bild-Leitung zum Knoten auf (ICE-TCP, sonst
     TURN-TLS), verschlüsselt jeden Rahmen mit `saga-horn/v1` und zeigt Kacheln. Die volle Oberfläche folgt mit P5.
   - Datenbank: Tabellen `horn_node`, `horn_pair`, Migration 16 (`chat_call_leg.node`).
+- **Gjallarhorn P6–P8 – weitere Knoten, DNS, Admin-Seite „Anrufe“** (Konzept v2 §2.2–2.9, §4.1):
+  - **Erweitern:** Admin → Anrufe → „Erweitern“ erzeugt einen einmaligen Kopplungs-Code (32 Byte, 30 min, nur als
+    SHA-256 gespeichert, an Name und Saga-Adresse gebunden) und ein vollständig sichtbares Deploy-Skript: Docker Compose
+    (Image `ghcr.io/yggdrasil-sh/gjallarhorn:<Version>`, per Digest gepinnt mit `SAGA_HORN_IMAGE_DIGEST`) oder systemd
+    unter Debian ohne Docker (Binär aus dem Release, Signatur per openssl geprüft). Der Knoten koppelt sich über
+    `GET /api/horn/whoami` und `POST /api/horn/pair`; Saga prüft die Erreichbarkeit zurück (443/TCP je IPv4/IPv6 mit
+    signiertem Echo, 443/UDP per STUN). Live-Fortschritt im Dialog bis „Fertig“.
+  - **Steuerkanal für gekoppelte Knoten:** nur mit dem registrierten Knotenschlüssel, gesperrte Schlüssel 4410, saga_pub
+    beim Knoten angeheftet. Lastmeldung mit Upload/Download, Leeren (Umzugsereignis `call.horn_move` an die Geräte),
+    Zielversion = Saga-Version.
+  - **Selbst-Update ohne Docker-Socket:** Wächter `gjallarhorn watch` (PID 1 im Knoten-Image bzw. systemd-Dienst) lädt
+    das signierte Binär (Ed25519, fester Release-Schlüssel `gjallarhorn/release.pub`), leert den Knoten und startet um
+    (allein: erst in einer Zeit ohne Anrufe). **Noch ohne Release-Schlüssel – Updates sind aus, bis er gesetzt ist.**
+  - **Entfernen:** Schlüssel sperren, signiertes `remove`, Anrufe ziehen um, DNS-Einträge aufräumen.
+  - **Cloudflare-DNS (P7):** Token nur „DNS bearbeiten“ für eine Zone, beim Speichern geprüft (verify, Zone, Probe-Eintrag),
+    verschlüsselt gespeichert, maskiert angezeigt. A/AAAA mit grauer Wolke, TTL 120, Kommentar `saga-horn:<id>`,
+    nachgeführt bei neuer Adresse. Zertifikate per ACME DNS-01 über Saga (TXT nur für den eigenen Namen, der Token
+    verlässt Saga nie), ohne Token per TLS-ALPN-01.
+  - **Admin-Seite „Anrufe“ (P8):** Knotentabelle (Status, Weg, Auslastung, Teilnehmende, Version, Teilen, Aktionen),
+    Port-Hinweis je Knoten mit Live-Prüfung und Firewall-Beispielen, DNS, Grenzen und Kontingent je verbundenem Server,
+    Schalter „Eingebauten Knoten für Anrufe nutzen“ (aus: nur externe Knoten, sonst Mesh), Knopf „Fähigkeiten jetzt
+    abgleichen“. Die STUN/TURN-Felder sind von „Allgemein“ in den Abschnitt „1:1-Anrufe (TURN, optional)“ umgezogen.
+  - Datenbank: Migration 17 (Kopplung, Port-Prüfung, Zertifikats-/Update-Status), Tabellen `horn_ban`, `horn_log`,
+    `horn_share`.
 
 ## [2.4.0] – 2026-10-20
 
