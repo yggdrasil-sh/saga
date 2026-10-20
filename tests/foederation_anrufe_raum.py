@@ -12,16 +12,21 @@ drei Server (Heim A), gestartet von Bert auf B (A fuehrt ihn), klingelt bei Anna
 mit Video (Doras zweites Geraet -> voll), Teilnehmerliste auf allen Servern gespiegelt, Verlassen (laeuft weiter), Ende
 (weniger als zwei Personen) auf allen Servern mit Chat-Eintrag. Boese: B schickt eine Teilnehmerliste fuer einen Anruf, den
 A fuehrt (403), C meldet ein Signal fuer ein fremdes Geraet (403). Server sehen keine SDP.
+2.5 Gjallarhorn P4 (Feature-Flag calls.horn auf allen drei Servern an): Faehigkeit horn ausgehandelt (A-B, A-C), Frame-
+Schluessel fkey von Bert (B) an Anna (A) und Dora (C, ueber A) in einer Anfrage, fkey-ack von Dora zurueck (C -> A -> B),
+versiegelt und signiert (saga-call/v2) - kein Server sieht einen Schluessel.
 Kompatibilitaet: FED_B_23=1 mit FED_B_APP=<Saga 2.3> -> B kann nur calls2: 1:1 bleibt v1 (Beitreten weiterer Geraete:
 409 "braucht Saga 2.4"), Gruppenanruf im Chat mit B: Knopf aus (group_block), POST -> 409, keine Serverfehler.
 Raeumt auf (Datenbanken geloescht)."""
-import json, os, re, sys, time
+import base64, json, os, re, secrets, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import foederation as T  # noqa: E402
 import foederation2 as F2  # noqa: E402
 import foederation_chat as FC  # noqa: E402  (App-Client User)
 import chatlib as C  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+import horn_e2e_vectors as HV  # noqa: E402  (fkey pruefen)
 
 T.I["a"].update(port=8595, admin=8594, db="saga_fra", url="http://127.0.0.1:8595", host="127.0.0.1:8595", state="/tmp/fedraum-a",
                 allow="localhost:8597, localhost:8599")
@@ -120,7 +125,7 @@ def setup():
     F2.py("c", T.SETUP.format(allow=T.I["c"]["allow"], users=[("fc-dora", "Dora Dritt", "dora")], groups=[]))
     for k in T.I:
         F2.py(k, "import auth\nauth.save_setting('calls', {'enabled': True, 'stun': 'stun:stun.example.org:3478', 'turn_urls': '', 'turn_mode': 'rest', "
-                 "'turn_secret': '', 'turn_user': '', 'turn_password': '', 'turn_ttl': 43200, 'relay_only': False, 'ring_s': 45})\nprint(1)")
+                 "'turn_secret': '', 'turn_user': '', 'turn_password': '', 'turn_ttl': 43200, 'relay_only': False, 'ring_s': 45, 'horn': True})\nprint(1)")
     for k in T.I:
         F2.start(k)
     adm = {k: T.Admin(k) for k in T.I}
@@ -253,6 +258,20 @@ def part_group(anna, bert, dora):
                                                       and [b for b in got(dora, dora.dev, cid, anna, anna.dev) if b["t"] == "offer"], 5)))
     three = sorted([anna.dev["id"], bert.dev["id"], dora.dev["id"]])
     ok("Teilnehmerliste auf A, B und C gespiegelt (3 Geraete)", wait(lambda: legs_of(anna, cid) == three and legs_of(bert, cid) == three and legs_of(dora, cid) == three, 8))
+    # 2.5 Gjallarhorn P4: Frame-Schluessel ueber Servergrenzen (versiegelt im Auftrag signal, sternfoermig ueber A)
+    kb, sb = secrets.token_bytes(32), secrets.token_hex(8)
+    fk = json.dumps({"t": "fkey", "n": 0, "kid": 0, "key": base64.b64encode(kb).decode(), "s": sb}, separators=(",", ":"))
+    s, d = api("b", "fb-bert", "POST", f"/api/calls/{cid}/signal", {"device": bert.dev["id"], "signals": {
+        anna.dev["id"]: seal(cid, bert, bert.dev, anna, anna.dev, fk), dora.dev["id"]: seal(cid, bert, bert.dev, dora, dora.dev, fk)}})
+    ok(f"B: Bert verteilt fkey an Anna (A) und Dora (C) in einer Anfrage ({s})", s == 200)
+    ka = wait(lambda: [HV.parse_fkey(b) for b in got(anna, anna.dev, cid, bert, bert.dev) if b.get("t") == "fkey"], 5)
+    kd = wait(lambda: [HV.parse_fkey(b) for b in got(dora, dora.dev, cid, bert, bert.dev) if b.get("t") == "fkey"], 5)
+    ok("A und C: fkey geoeffnet, Signatur (Handle) geprueft, Schluessel gleich", bool(ka and kd) and ka[0]["key"] == kb == kd[0]["key"] and kd[0]["s"] == sb)
+    ack = json.dumps({"t": "fkey-ack", "n": 0, "s": sb, "ok": True})
+    s, d = api("c", "fc-dora", "POST", f"/api/calls/{cid}/signal", {"device": dora.dev["id"], "signals": {bert.dev["id"]: seal(cid, dora, dora.dev, bert, bert.dev, ack)}})
+    ok(f"C -> A -> B: fkey-ack von Dora ({s})", s == 200 and bool(wait(lambda: [b for b in got(bert, bert.dev, cid, dora, dora.dev) if b.get("t") == "fkey-ack"], 5)))
+    ok("Kein Server sieht den Frame-Schluessel", all(not sql(x, "SELECT 1 FROM chat_call_signal WHERE sealed LIKE ? OR sealed LIKE ?",
+                                                             ("%" + kb.hex() + "%", "%" + base64.b64encode(kb).decode()[:40] + "%")) for x in T.I))
     # Grenze 4 mit Video: Annas Laptop (4.), Doras zweites Geraet (5.) -> voll
     a2 = anna.devs2[0]
     s, d = api("a", "fa-anna", "POST", f"/api/calls/{cid}/join", {"device": a2["id"], "role": "companion", "caps": CAPS,
@@ -292,6 +311,10 @@ def main():
            wait(lambda: has_cap("a", HC, "calls3") and has_cap("c", HA, "calls3") and (B23 or (has_cap("a", HB, "calls3") and has_cap("b", HA, "calls3"))), 25))
         if B23:
             ok("2.3-Server B meldet kein calls3", not has_cap("a", HB, "calls3"))
+        ok("2.5: Faehigkeit horn ausgehandelt (A-C" + ("" if B23 else ", A-B") + ", Flag calls.horn an)",
+           wait(lambda: has_cap("a", HC, "horn") and has_cap("c", HA, "horn") and (B23 or (has_cap("a", HB, "horn") and has_cap("b", HA, "horn"))), 25))
+        if B23:
+            ok("2.3-Server B meldet kein horn", not has_cap("a", HB, "horn"))
         if os.environ.get("BJS"):                      # Browser-Lauf (tests/browser_fed_raum.js) gegen dieselben drei Server
             import subprocess
             env = dict(os.environ, SAGA_A=T.I["a"]["url"], SAGA_B=T.I["b"]["url"], SAGA_C=T.I["c"]["url"], SAGA_USER_A="fa-anna",

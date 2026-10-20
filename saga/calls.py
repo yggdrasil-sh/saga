@@ -42,7 +42,12 @@ ENDPOINTS_VIDEO/ENDPOINTS_AUDIO Endpunkte (eigene Zusatzgeraete zaehlen mit, der
 wenn ALLE Endpunkte "multi" melden (2.1/2.3 und E0-Clients bleiben 1:1). Signale gehen sternfoermig ueber den Server,
 der den Anruf fuehrt (lead; 1:1: Server der anrufenden Person wie 2.3, Gruppe: Heim des Chats) - versiegelt je Zielgeraet,
 der Server liest nichts. Live: call.roster {call_id, legs}, call.invite (Gruppe klingelt), call.state wie bisher.
-Medienbytes laufen nie durch Python."""
+Medienbytes laufen nie durch Python.
+
+2.5 (Gjallarhorn P4, Vertrag docs/HORN-E2E.md): Frame-Schluessel je sendendem Geraet gehen als Body-Typen fkey/fkey-ack
+im selben versiegelten Signalweg (POST /signal, lokal saga-call/v1 bzw. v2 mit Handles, ueber Servergrenzen Auftrag
+signal) - der Server sieht weder Typ noch Schluessel, nur Kennungen und Groessen, und gibt sie nie an einen Knoten.
+Feature-Flag calls.horn (Standard aus): features + "horn", GET /api/calls/config "e2e": "saga-horn/v1"."""
 import asyncio
 import base64
 import hashlib
@@ -100,6 +105,16 @@ def cfg():
 
 def enabled():
     return bool(cfg().get("enabled", True)) and chat.enabled()
+
+
+def horn_on():
+    """2.5 Gjallarhorn (Feature-Flag calls.horn, Standard aus): Gruppenanrufe ueber Knoten mit Frame-E2E saga-horn/v1.
+    Solange aus, meldet der Server die Faehigkeit nicht (features, Foederation CAPS2) und alles bleibt Mesh wie 2.4."""
+    return bool(cfg().get("horn"))
+
+
+def features():
+    return list(FEATURES) + (["horn"] if horn_on() else [])
 
 
 def ring_s():
@@ -519,7 +534,7 @@ def api_config(request: Request):
                            "turn": has_turn(), "stun": bool(urls(c.get("stun"), ("stun", "stuns"))[0]), "ring_s": ring_s(),
                            "alive_s": 15, "max_s": MAX_S, "format": "saga-call/v1",
                            # 2.4: Body-Fassung, Server-Faehigkeiten und Grenzen (E4/E5: Endpunkte je Anruf im Mesh)
-                           "body_v": 3, "features": list(FEATURES),
+                           "body_v": 3, "features": features(), **({"e2e": "saga-horn/v1"} if horn_on() else {}),
                            "limits": {"endpoints_video": limit("video"), "endpoints_audio": limit("audio"), "signals_max": SIGNALS_MAX,
                                       "signals_per_min": SIG_PER_MIN, "signals_hard": SIGNALS_HARD, "sig_rate": SIG_RATE,
                                       "sealed_max": SEALED_MAX, "caps_max": CAPS_MAX, "ring_silent": RING_SILENT, "handover_s": 15}})

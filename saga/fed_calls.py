@@ -42,6 +42,12 @@ def peer3(p):
     return peer_ok(p) and F.feature(p, "calls3")
 
 
+def peer_horn(p):
+    """2.5 Gjallarhorn: beide Server melden 'horn' (Feature-Flag calls.horn) - Knoten-Anrufe mit Frame-E2E. Die Signale
+    fkey/fkey-ack brauchen nichts Eigenes: sie laufen versiegelt im Auftrag 'signal' wie jedes Anruf-Signal."""
+    return peer3(p) and F.feature(p, "horn")
+
+
 def _remote_of(call):
     """Die Person der anderen Instanz in diesem Anruf (Prinzipal) und ob sie anruft."""
     if sharing.is_remote(call["caller"]):
