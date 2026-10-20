@@ -660,7 +660,7 @@ def e2e(node0, alt, acme_bin):
             env[k] = v
     data = os.path.join(root, "var/lib/gjallarhorn")
     env.update(HORN_DATA=data, HORN_LISTEN=f":{HORN2}", HORN_ICE_IPS="127.0.0.1", HORN_ACME_URL=f"http://127.0.0.1:{aport}/dir",
-               HORN_ACME_DNS_WAIT="0", HORN_UPDATE_BASE=f"http://127.0.0.1:{RELP}/upd", HORN_UPDATE_RETRY="2s", HORN_MAX_LEGS="48")
+               HORN_ACME_DNS_WAIT="0", HORN_ACCESSLOG="1", HORN_UPDATE_BASE=f"http://127.0.0.1:{RELP}/upd", HORN_UPDATE_RETRY="2s", HORN_MAX_LEGS="48")
     nlog = open(os.path.join(STATE, "horn2.log"), "w")
     wp = subprocess.Popen([root + exe.group(1), exe.group(2)], env=env, stdout=nlog, stderr=subprocess.STDOUT)
     PROCS["horn2"] = (wp, nlog)
@@ -817,10 +817,10 @@ def browser(n):
         print("--- horn2.log ---\n" + text(os.path.join(STATE, "horn2.log"))[-4000:], flush=True)
         ok("Browser: Gruppenanruf ueber horn-2 innerhalb von 15 min", False)
         return
-    print(r.stdout[-8000:], flush=True)
+    print(r.stdout if os.environ.get("HORN_DEBUG_BROWSER") else r.stdout[-8000:], flush=True)
     if r.returncode:
         print(r.stderr[-3000:], flush=True)
-        print("--- horn2.log ---\n" + text(os.path.join(STATE, "horn2.log"))[-6000:], flush=True)
+        print("--- horn2.log ---\n" + text(os.path.join(STATE, "horn2.log"))[-20000:], flush=True)
     for ln in r.stdout.splitlines():
         if ln.startswith("OK  ") or ln.startswith("FAIL"):
             res.append(ln.startswith("OK"))

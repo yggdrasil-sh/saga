@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -44,6 +45,9 @@ func (s *server) routes() http.Handler {
 			m.HandleFunc("GET /dev/{$}", page)
 			m.HandleFunc("GET /dev/sfu.js", page)
 			m.HandleFunc("GET /style.css", page)
+		}
+		if os.Getenv("HORN_ACCESSLOG") == "1" { // nur Tests/Diagnose: Zugriffe auf /api/sfu (ohne Adressen und Token)
+			return s.cors(accessLog(m))
 		}
 		return s.cors(m)
 	}
@@ -349,4 +353,23 @@ func (s *server) apiResults(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, 200, out)
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	code int
+}
+
+func (w *statusWriter) WriteHeader(c int) { w.code = c; w.ResponseWriter.WriteHeader(c) }
+
+// accessLog: Methode, Pfad, Status und Dauer (HORN_ACCESSLOG=1).
+func accessLog(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t0 := time.Now()
+		sw := &statusWriter{ResponseWriter: w, code: 200}
+		h.ServeHTTP(sw, r)
+		if strings.HasPrefix(r.URL.Path, "/api/sfu/") {
+			log.Printf("zugriff: %s %s %d %v", r.Method, r.URL.Path, sw.code, time.Since(t0).Round(time.Millisecond))
+		}
+	})
 }
