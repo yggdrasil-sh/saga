@@ -1233,7 +1233,8 @@ members) and in the version history (“by …”). Without a picture, the initi
   if the account has an email address. Privacy: a hash of the email address (SHA-256) goes to Gravatar; **only the
   server** asks there and keeps the result for a day – including “no picture”. Browsers and apps never contact
   Gravatar themselves, so Gravatar does not learn who looks at a picture. The admin can forbid Gravatar for everyone
-  (General → Profile pictures). Accounts that existed before 2.4 keep their previous setting.
+  (General → Profile pictures). Accounts that existed before 2.4 also start
+  with “off” after the update (the old default “on” was no consent); anyone who wants Gravatar switches it on once more.
 - **Picture from the identity provider (optional, admin):** “Use the picture from SSO” takes the address from the
   OIDC claim `picture` (fetched by the server, not the browser); “Use the picture from LDAP” reads `jpegPhoto` or
   `thumbnailPhoto` at sign-in. Saga only fetches internal addresses listed under “Allowed internal hosts”

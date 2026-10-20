@@ -1287,7 +1287,9 @@ presencia de una página, en las notificaciones, en el diálogo de compartir y l
   tiene dirección de correo. Privacidad: se envía a Gravatar un hash (SHA-256) de la dirección; **solo el servidor**
   consulta Gravatar y guarda el resultado un día, también «sin imagen». Los navegadores y las apps nunca consultan
   Gravatar directamente, así que Gravatar no sabe quién mira una imagen. El admin puede prohibir Gravatar para todos
-  (General → Fotos de perfil). Las cuentas que ya existían antes de 2.4 conservan su ajuste.
+  (General → Fotos de perfil). También las cuentas que ya existían antes de
+  2.4 empiezan con «desactivado» tras la actualización (el antiguo valor «activado» no era un consentimiento); quien quiera
+  Gravatar lo vuelve a activar una vez.
 - **Imagen del proveedor de identidad (opcional, admin):** «Usar la imagen del SSO» toma la dirección del claim
   OIDC `picture` (la obtiene el servidor, no el navegador); «Usar la imagen de LDAP» lee `jpegPhoto` o
   `thumbnailPhoto` al iniciar sesión. Saga solo obtiene direcciones internas incluidas en «Hosts internos

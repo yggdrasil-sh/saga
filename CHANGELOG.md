@@ -23,6 +23,13 @@ weiter (`MIN_APP` unverändert), neue Funktionen werden per Fähigkeit ausgehand
 Datenbank: Migrationen 10 (Anrufe), 11 (Videos/Dateien), 12 (Anruf als Raum), 13 (Gelesen/Online) und 14 (Testrunde) laufen beim Start
 automatisch; Backups von 2.3 bleiben einspielbar.
 
+#### Update von 2.3
+
+- **Gravatar ist danach für alle Konten aus.** Bis 2.3 war „Gravatar verwenden“ ab Werk an; eine bewusste Wahl lässt
+  sich davon nicht unterscheiden. Migration 14 schaltet es deshalb für alle Konten ab und löscht zwischengespeicherte
+  Gravatar-Bilder – bis zur Einwilligung geht keine Anfrage an gravatar.com. Wer Gravatar will, schaltet es unter
+  Einstellungen → Konto → Profilbild einmal neu ein. Eigene Profilbilder und SSO-Bilder bleiben.
+
 #### Anrufe: Fundament saga-call v3 (Etappe E0)
 
 - **saga-call v3:** Anrufe können während des Gesprächs neu ausgehandelt werden („Perfect Negotiation“). Bricht die
@@ -200,8 +207,8 @@ automatisch; Backups von 2.3 bleiben einspielbar.
   Benutzername noch Datei-Kennung lesen lassen. Apps behandeln das Token schon als beliebige Zeichenkette; `m1`-Token
   laufen nach höchstens 15 Minuten aus.
 - **Gravatar nur mit Einwilligung:** Neue Konten beginnen mit „Gravatar verwenden“ **aus**; beim Einschalten erklärt Saga,
-  dass ein Hash der E-Mail-Adresse an Gravatar geht. Bestehende Konten behalten ihre Einstellung (Migration 14 ändert
-  nur den Standard der Spalte).
+  dass ein Hash der E-Mail-Adresse an Gravatar geht. Auch bestehende Konten starten nach dem Update mit „aus“ (siehe
+  „Update von 2.3“).
 - **Anrufe – fremder STUN-Server:** Admin → Allgemein → Anrufe weist darauf hin, dass der eingetragene STUN-Server (ab Werk
   `stun.nextcloud.com:443`, bleibt der Standard) die IP-Adressen der Anrufenden sieht, mit Link zur Anleitung „TURN über
   Port 443“ (eigener coturn). Alle Geheimnis-Felder im Admin-Bereich sind Passwortfelder, leer = unverändert, der Wert

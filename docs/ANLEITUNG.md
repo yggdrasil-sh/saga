@@ -1265,8 +1265,8 @@ Mitglieder) und beim Versionsverlauf („von …“). Ohne Bild bleiben die Init
   E-Mail-Adresse hat – sein [Gravatar](https://gravatar.com). Datenschutz: Dabei geht ein Hash der E-Mail-Adresse
   (SHA-256) an Gravatar; **nur der Server** fragt dort und speichert das Ergebnis einen Tag – auch „kein Bild“.
   Browser und Apps fragen nie selbst bei Gravatar; Gravatar erfährt also nicht, wer sich ein Bild ansieht. Der Admin
-  kann Gravatar für alle verbieten (Allgemein → Profilbilder). Konten, die vor 2.4 schon bestanden, behalten ihre
-  bisherige Einstellung.
+  kann Gravatar für alle verbieten (Allgemein → Profilbilder). Auch Konten, die vor 2.4 schon bestanden, starten nach
+  dem Update mit „aus“ (der alte Standard „an“ war keine Einwilligung); wer Gravatar will, schaltet es einmal neu ein.
 - **Bild vom Anmeldedienst (optional, Admin):** „Bild aus dem SSO übernehmen“ nimmt die Adresse aus dem
   OIDC-Claim `picture` (abgeholt vom Server, nicht vom Browser), „Bild aus LDAP übernehmen“ liest `jpegPhoto`
   bzw. `thumbnailPhoto` bei der Anmeldung. Interne Adressen holt Saga nur, wenn sie unter „Freigegebene interne

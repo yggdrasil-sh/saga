@@ -919,12 +919,17 @@ INSERT INTO chat_call_leg (call_id, device, who, peer_id, role, state, caps, joi
     13: """
 SELECT 1 FROM chat_receipt, chat_seen LIMIT 0;
 """,
-    # 2.4.0 (Testrunde): Gravatar nur mit Einwilligung - neue Konten (ohne Zeile in avatar) beginnen mit "aus".
-    # Bestehende Zeilen (die Wahl der Person bzw. ihr bisheriger Stand) bleiben unveraendert. Dazu die harte Kontosperre
+    # 2.4.0 (Testrunde): Gravatar nur mit Einwilligung - neue Konten beginnen mit "aus". Bestehende Zeilen: bis 2.3 war 1
+    # der Spaltenstandard und jede Zeile entstand beim ersten Profilbild-Abruf - eine 1 ist also keine Einwilligung, und
+    # eine ausdrueckliche Wahl "an" ist davon nicht zu unterscheiden. Daher fuer ALLE Konten aus, zwischengespeicherte
+    # Gravatar-Bilder weg (ver+1: Clients laden neu); wer Gravatar will, schaltet es einmal neu ein. Dazu die harte Kontosperre
     # nach sehr vielen Fehlversuchen ueber viele Adressen (Tabelle login_lock legt SCHEMA an) und Suchtext neu ableiten
     # fuer Seiten mit Bloecken, die bisher technische Werte lieferten (notes.SPECIAL_BLOCKS). Beliebig oft ausfuehrbar.
     14: """
 ALTER TABLE avatar ALTER COLUMN gravatar SET DEFAULT 0;
+UPDATE avatar SET gravatar=0, g_found=0, g_checked=NULL, ver=ver+1
+  WHERE uid NOT LIKE '@%' AND (gravatar<>0 OR uid IN (SELECT uid FROM avatar_img WHERE src='gravatar'));
+DELETE FROM avatar_img WHERE src='gravatar';
 SELECT 1 FROM login_lock LIMIT 0;
 INSERT INTO note_stale (note_id, uid) SELECT id, uid FROM note WHERE format='blocks' AND (strpos(body, '"embed"') > 0
   OR strpos(body, '"buttons"') > 0 OR strpos(body, '"calendar"') > 0 OR strpos(body, '"database"') > 0

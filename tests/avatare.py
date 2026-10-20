@@ -248,6 +248,35 @@ def cleanup():
         c.execute("DELETE FROM login_fail WHERE key LIKE '%av-%'")
 
 
+def migration14():
+    """Sicherheitsrunde 2 (G1): Update von 2.3 - eine alte 1 in avatar.gravatar (bis 2.3 Spaltenstandard) ist keine
+    Einwilligung. Migration 14 schaltet Gravatar fuer alle lokalen Konten ab und loescht zwischengespeicherte Bilder."""
+    import psycopg
+    import db
+    now = time.time()
+    with connect() as c, c:
+        c.execute("INSERT INTO avatar (uid, ver, gravatar, g_found, g_checked, updated) VALUES ('av-alt1', 3, 1, 1, ?, ?)", (now, now))
+        c.execute("INSERT INTO avatar (uid, ver, gravatar, upload, updated) VALUES ('av-alt2', 5, 0, 1, ?)", (now,))
+        c.execute("INSERT INTO avatar (uid, ver, gravatar, g_found, g_checked, updated) VALUES ('@av-x@fern.example', 2, 1, 1, ?, ?)", (now, now))
+        for u, src in (("av-alt1", "gravatar"), ("av-alt2", "upload"), ("@av-x@fern.example", "fed")):
+            c.execute("INSERT INTO avatar_img (uid, src, size, fmt, mime, data, etag) VALUES (?,?,64,'webp','image/webp',?,'e')",
+                      (u, src, b"x"))
+    with psycopg.connect(db.DATABASE_URL) as c:
+        c.execute(db.MIGRATIONS[14])
+        c.commit()
+    a1 = db1("SELECT gravatar, g_found, g_checked, ver FROM avatar WHERE uid='av-alt1'")[0]
+    a2 = db1("SELECT gravatar, upload, ver FROM avatar WHERE uid='av-alt2'")[0]
+    fx = db1("SELECT g_found, ver FROM avatar WHERE uid='@av-x@fern.example'")[0]
+    imgs = {(r[0], r[1]) for r in db1("SELECT uid, src FROM avatar_img WHERE uid IN ('av-alt1', 'av-alt2', '@av-x@fern.example')")}
+    ok("G1: Migration 14 schaltet Gravatar fuer bestehende Konten ab (alte 1 ist keine Einwilligung)",
+       tuple(a1) == (0, 0, None, 4), a1)
+    ok("G1: ... zwischengespeicherte Gravatar-Bilder weg, eigenes Bild und Foederationsbilder bleiben",
+       imgs == {("av-alt2", "upload"), ("@av-x@fern.example", "fed")} and tuple(a2) == (0, 1, 5) and tuple(fx) == (1, 2), (imgs, a2, fx))
+    with connect() as c, c:
+        c.execute("DELETE FROM avatar WHERE uid IN ('av-alt1', 'av-alt2', '@av-x@fern.example')")
+        c.execute("DELETE FROM avatar_img WHERE uid IN ('av-alt1', 'av-alt2', '@av-x@fern.example')")
+
+
 def db1(q, args=()):
     with connect() as c:
         return c.execute(q, args).fetchall()
@@ -329,6 +358,7 @@ def main():
     cleanup()
     start_fake()
     unit()
+    migration14()
     auth.save_setting("avatar", {"gravatar": True, "oidc_picture": False, "ldap_photo": False})
     auth.save_setting("share_enabled", True)
     auth.save_setting("chat_enabled", True)
