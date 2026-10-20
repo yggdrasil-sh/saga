@@ -1,4 +1,4 @@
-"""Profilbilder (2.1): eigenes Bild, Gravatar als Standard, optional aus dem Anmeldedienst (OIDC-Claim "picture",
+"""Profilbilder (2.1): eigenes Bild, Gravatar (2.4: nur nach Einwilligung), optional aus dem Anmeldedienst (OIDC-Claim "picture",
 LDAP jpegPhoto/thumbnailPhoto) und Personen anderer Saga-Instanzen ueber die Foederation. Ohne Bild zeigt der Client
 wie bisher die farbigen Initialen.
 
@@ -14,8 +14,9 @@ Datenschutz und Sicherheit:
   Geraete-Schluessel); ohne Anmeldung nur, wenn die Person es erlaubt (veroeffentlichte Seiten, Standard aus).
 - Konto loeschen: eigene Bilder und alle Zwischenspeicher weg (delete_account).
 
-Reihenfolge: eigenes Bild > Bild aus dem Anmeldedienst (wenn der Admin es eingeschaltet hat) > Gravatar (Admin-Schalter,
-je Person abschaltbar, nur mit E-Mail-Adresse) > Initialen."""
+Reihenfolge: eigenes Bild > Bild aus dem Anmeldedienst (wenn der Admin es eingeschaltet hat) > Gravatar (Admin-Schalter
+erlaubt es, die Person schaltet es selbst ein - 2.4: ab Werk aus, weil dabei ein Hash der E-Mail-Adresse an Gravatar geht;
+nur mit E-Mail-Adresse) > Initialen."""
 import base64
 import hashlib
 import hmac
@@ -181,7 +182,7 @@ def _plan(row, email, cf, remote=False, fed=False):
             elif row.get("sso_found"):
                 out.append(("sso", "have"))
     h = gravatar_hash(email)
-    if cf["gravatar"] and h and row.get("gravatar", 1):
+    if cf["gravatar"] and h and row.get("gravatar", 0):
         if row.get("g_hash") != h or not _fresh(row.get("g_checked"), now):
             out.append(("gravatar", "fetch"))
         elif row.get("g_found"):
@@ -622,7 +623,7 @@ def state(uid, resolve_now=False):
         link = url_of(c, uid)
     kind = row.get("sso_kind")
     return {"url": link if src else None, "source": src, "upload": bool(row.get("upload")),
-            "gravatar": bool(row.get("gravatar", 1)), "gravatar_enabled": cf["gravatar"], "has_email": bool(gravatar_hash(email)),
+            "gravatar": bool(row.get("gravatar", 0)), "gravatar_enabled": cf["gravatar"], "has_email": bool(gravatar_hash(email)),
             "public": bool(row.get("public")), "sso": kind if kind and cf.get(kind) else None, "max_mb": UPLOAD_MAX // 1048576}
 
 

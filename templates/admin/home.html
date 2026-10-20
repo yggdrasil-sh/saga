@@ -3,6 +3,13 @@
 {% block pagetitle %}{{ _('Übersicht') }}{% endblock %}
 {% block content %}
 <h2>{{ _("Übersicht") }}</h2>
+{% if locks %}
+<section class="adm-card adm-warn">
+  <h3>{{ _("Gesperrte Anmeldungen") }}</h3>
+  <p>{{ _("Nach sehr vielen falschen Anmeldeversuchen von vielen Adressen ist die Anmeldung mit Passwort für diese Konten vorübergehend gesperrt:") }}</p>
+  <ul class="adm-list">{% for l in locks %}<li>{% if l.id %}<a href="/users/{{ l.id }}#lock">{{ l.username }}</a>{% else %}{{ l.username }} <small>{{ _("(kein Konto)") }}</small>{% endif %} <small>{{ _("{n} Versuche von {ips} Adressen, bis {until}", n=l.fails, ips=l.ips, until=ts(l.until))|safe }}</small></li>{% endfor %}</ul>
+</section>
+{% endif %}
 <div class="adm-stats">
   <a href="/users"><b>{{ stats.active }}</b><span>{{ _("aktiver Benutzer") if stats.active == 1 else _("aktive Benutzer") }}{% if stats.users != stats.active %} ({{ _("{n} gesamt", n=stats.users) }}){% endif %}</span></a>
   <a href="/users"><b>{{ stats.admins }}</b><span>{{ _("Admin") if stats.admins == 1 else _("Admins") }}</span></a>

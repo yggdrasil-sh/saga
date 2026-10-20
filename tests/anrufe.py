@@ -593,6 +593,13 @@ def run():
     s, html = admin("/settings")
     ok(f"Admin: Karte 'Anrufe' mit STUN/TURN, Geheimnis nicht im Formular ({s})", s == 200 and 'name="calls_enabled"' in html
        and 'name="calls_turn_urls"' in html and "pw-statisch" not in html)
+    m = re.search(r'<input[^>]*name="calls_turn_secret"[^>]*>', html) if isinstance(html, str) else None
+    m2 = re.search(r'<input[^>]*name="calls_turn_password"[^>]*>', html) if isinstance(html, str) else None
+    ok("Admin (2.4): TURN-Geheimnis/-Passwort als Passwortfelder, leer (nie im HTML)", m and m2 and 'type="password"' in m.group(0)
+       and 'type="password"' in m2.group(0) and 'value=""' in m.group(0) and 'value=""' in m2.group(0) and (sec or "x") not in html)
+    stun = auth.settings(fresh=True)["calls"]["stun"]
+    ok(f"Admin (2.4): Datenschutz-Hinweis zum STUN-Server mit Anleitung ({stun})", (not stun) or ("adm-stun-note" in html
+       and "IP-Adresse der Anrufenden" in html and "TURN über Port 443" in html))
     import admin as AD
     before = json.dumps(auth.settings(fresh=True)["calls"], sort_keys=True)
     err = AD._calls_save({"calls_enabled": "1", "calls_stun": "stun:ok.example.org javascript:x", "calls_ring_s": "45"})

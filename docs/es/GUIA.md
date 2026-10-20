@@ -948,7 +948,10 @@ adicional: Saga coordina la llamada por el puerto web normal (canal en vivo + pe
 
 **Accesibilidad:** en la misma red y entre conexiones domésticas habituales, la conexión directa casi siempre funciona;
 para ello los dispositivos preguntan a un **servidor STUN** por su dirección pública (por defecto:
-`stun:stun.nextcloud.com:443`). Detrás de cortafuegos corporativos estrictos, en algunas redes móviles (CGNAT) o si un
+`stun:stun.nextcloud.com:443`). **Privacidad:** el servidor STUN ve la dirección IP de quienes llaman en cada llamada. De
+fábrica es un servidor ajeno (Nextcloud), para que las llamadas funcionen detrás de routers desde el principio; el área
+de administración lo indica en «Llamadas». Recomendación: usar un servidor TURN/STUN propio (coturn, ver «TURN por el
+puerto 443» abajo) e indicarlo como servidor STUN y TURN. Detrás de cortafuegos corporativos estrictos, en algunas redes móviles (CGNAT) o si un
 lado solo puede usar el puerto 443 hacia fuera, hace falta un **servidor TURN** que reenvíe los medios (siguen
 cifrados: el servidor TURN no puede escuchar). Sin él se ve «No es posible una conexión directa … El administrador
 puede configurar un servidor TURN».
@@ -1279,11 +1282,12 @@ presencia de una página, en las notificaciones, en el diálogo de compartir y l
   cuadrado (mover, ampliar). Se permiten PNG, JPEG, GIF, WebP y HEIC hasta `AVATAR_MAX_MB` (por defecto 5 MB). El
   servidor vuelve a codificar cada imagen (64/128/256 píxeles, WebP y PNG/JPEG) y elimina todos los metadatos
   (EXIF con cámara, lugar, fecha). «Quitar mi imagen» la borra de nuevo.
-- **Gravatar por defecto:** sin imagen propia –y con una dirección de correo en la cuenta– se usa tu
-  [Gravatar](https://gravatar.com). Privacidad: **solo el servidor** consulta Gravatar (con el hash SHA-256 de la
-  dirección) y guarda el resultado un día, también «sin imagen». Los navegadores y las apps nunca consultan
-  Gravatar directamente, así que Gravatar no sabe quién mira una imagen. Cada persona puede desactivarlo para sí
-  («Usar Gravatar si no tengo imagen propia»), el admin para todos (General → Fotos de perfil).
+- **Gravatar solo con consentimiento (desde 2.4):** sin imagen propia y tras activarlo en los ajustes («Usar Gravatar
+  si no tengo imagen propia», **desactivado** de fábrica) se usa tu [Gravatar](https://gravatar.com), si la cuenta
+  tiene dirección de correo. Privacidad: se envía a Gravatar un hash (SHA-256) de la dirección; **solo el servidor**
+  consulta Gravatar y guarda el resultado un día, también «sin imagen». Los navegadores y las apps nunca consultan
+  Gravatar directamente, así que Gravatar no sabe quién mira una imagen. El admin puede prohibir Gravatar para todos
+  (General → Fotos de perfil). Las cuentas que ya existían antes de 2.4 conservan su ajuste.
 - **Imagen del proveedor de identidad (opcional, admin):** «Usar la imagen del SSO» toma la dirección del claim
   OIDC `picture` (la obtiene el servidor, no el navegador); «Usar la imagen de LDAP» lee `jpegPhoto` o
   `thumbnailPhoto` al iniciar sesión. Saga solo obtiene direcciones internas incluidas en «Hosts internos
@@ -1708,8 +1712,17 @@ servidor, te pide que la actualices. En los ajustes de la app aparecen la versi�
 Saga solo envía cookies por HTTPS.
 
 **"Demasiados intentos fallidos".**
-Tras 8 contraseñas incorrectas por cuenta (30 por dirección) en 15 minutos, Saga te hace esperar. Detrás de un
-proxy inverso, configura `TRUSTED_PROXIES`; si no, todos los visitantes comparten la dirección del proxy.
+Saga frena las contraseñas incorrectas en lugar de bloquear cuentas (desde 2.4): tras 8 intentos fallidos para una
+cuenta desde la misma dirección, *esa dirección* debe esperar 2, 4, 8 … segundos (como máximo 15 minutos); lo mismo
+tras 30 intentos fallidos desde una dirección (sean cuales sean las cuentas). Desde otras direcciones la persona entra
+con normalidad: un extraño ya no puede bloquear una cuenta con unas pocas contraseñas incorrectas. Solo con muchísimos
+intentos (100 en una hora) desde muchas direcciones (al menos 10) Saga bloquea el inicio de sesión con contraseña
+durante una hora: la persona recibe una notificación, el administrador ve el bloqueo en el resumen y en la lista de
+usuarios («Inicio de sesión bloqueado») y lo levanta en la cuenta con **Levantar bloqueo**; **Establecer contraseña**
+también lo levanta. Las llaves de acceso y las sesiones abiertas siguen funcionando durante el bloqueo. Las cuentas
+LDAP se frenan igual (menos binds, así el bloqueo del directorio ocurre con menos frecuencia); SSO no se ve afectado.
+Detrás de un proxy inverso, configura `TRUSTED_PROXIES`; si no, todos los visitantes comparten la dirección del proxy y
+se frenan juntos.
 
 **Llave de acceso: «El navegador indica la dirección …, pero Saga está configurado para …».**
 Saga se abrió con otra dirección que `BASE_URL` (p. ej. una IP o un nombre antiguo). Las llaves de acceso están

@@ -932,6 +932,10 @@ zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-
 
 **Erreichbarkeit:** Im selben Netz und zwischen üblichen Heimanschlüssen klappt die Direktverbindung fast immer – dafür
 fragen die Geräte einen **STUN-Server** nach ihrer öffentlichen Adresse (Standard: `stun:stun.nextcloud.com:443`).
+**Datenschutz:** Der STUN-Server sieht bei jedem Anruf die IP-Adresse der Anrufenden. Ab Werk ist das ein fremder
+Server (Nextcloud), damit Anrufe hinter Routern sofort klappen; der Admin-Bereich weist unter „Anrufe“ darauf hin.
+Empfehlung: einen eigenen TURN/STUN-Server betreiben (coturn, siehe „TURN über Port 443“ unten) und ihn als STUN- und
+TURN-Server eintragen.
 Hinter strengen Firmen-Firewalls, in manchen Mobilfunknetzen (CGNAT) oder wenn eine Seite nur Port 443 nach außen darf,
 braucht es einen **TURN-Server**, der die Medien weiterreicht (weiterhin verschlüsselt – der TURN-Server kann nicht
 mithören). Ohne ihn sehen die Personen „Direktverbindung nicht möglich … Der Admin kann einen TURN-Server eintragen.“
@@ -1256,11 +1260,13 @@ Mitglieder) und beim Versionsverlauf („von …“). Ohne Bild bleiben die Init
   quadratischen Ausschnitt (verschieben, zoomen). Erlaubt sind PNG, JPEG, GIF, WebP und HEIC bis `AVATAR_MAX_MB`
   (Standard 5 MB). Der Server kodiert jedes Bild neu (64/128/256 Pixel, WebP und PNG/JPEG) und entfernt dabei alle
   Metadaten (EXIF mit Kamera, Ort, Datum). „Eigenes Bild entfernen“ löscht es wieder.
-- **Gravatar ist Standard:** Wer kein eigenes Bild hat, bekommt – wenn das Konto eine E-Mail-Adresse hat – sein
-  [Gravatar](https://gravatar.com). Datenschutz: **Nur der Server** fragt bei Gravatar (mit dem SHA-256-Hash der
-  E-Mail-Adresse) und speichert das Ergebnis einen Tag – auch „kein Bild“. Browser und Apps fragen nie selbst bei
-  Gravatar; Gravatar erfährt also nicht, wer sich ein Bild ansieht. Jede Person kann Gravatar für sich abschalten
-  („Gravatar verwenden, wenn ich kein eigenes Bild habe“), der Admin für alle (Allgemein → Profilbilder).
+- **Gravatar nur mit Einwilligung (ab 2.4):** Wer kein eigenes Bild hat und es in den Einstellungen einschaltet
+  („Gravatar verwenden, wenn ich kein eigenes Bild habe“, ab Werk **aus**), bekommt – wenn das Konto eine
+  E-Mail-Adresse hat – sein [Gravatar](https://gravatar.com). Datenschutz: Dabei geht ein Hash der E-Mail-Adresse
+  (SHA-256) an Gravatar; **nur der Server** fragt dort und speichert das Ergebnis einen Tag – auch „kein Bild“.
+  Browser und Apps fragen nie selbst bei Gravatar; Gravatar erfährt also nicht, wer sich ein Bild ansieht. Der Admin
+  kann Gravatar für alle verbieten (Allgemein → Profilbilder). Konten, die vor 2.4 schon bestanden, behalten ihre
+  bisherige Einstellung.
 - **Bild vom Anmeldedienst (optional, Admin):** „Bild aus dem SSO übernehmen“ nimmt die Adresse aus dem
   OIDC-Claim `picture` (abgeholt vom Server, nicht vom Browser), „Bild aus LDAP übernehmen“ liest `jpegPhoto`
   bzw. `thumbnailPhoto` bei der Anmeldung. Interne Adressen holt Saga nur, wenn sie unter „Freigegebene interne
@@ -1676,8 +1682,16 @@ die neuere Version nur zum Zurückspielen nehmen, z. B. `docker compose run --rm
 Cookies nur über HTTPS.
 
 **„Zu viele Fehlversuche“.**
-Nach 8 falschen Passwörtern pro Konto (30 pro Adresse) in 15 Minuten wartet Saga. Hinter einem Reverse Proxy
-`TRUSTED_PROXIES` setzen, sonst teilen sich alle Besucher die Adresse des Proxys.
+Saga bremst falsche Passwörter, statt Konten zu sperren (ab 2.4): Nach 8 Fehlversuchen für ein Konto von derselben
+Adresse muss *diese Adresse* 2, 4, 8 … Sekunden warten (höchstens 15 Minuten); nach 30 Fehlversuchen einer Adresse
+(gleich welche Konten) ebenso. Von anderen Adressen meldet sich die Person ganz normal an – ein Fremder kann ein Konto
+also nicht mehr mit ein paar falschen Passwörtern aussperren. Nur bei sehr vielen Versuchen (100 in einer Stunde) von
+vielen Adressen (mindestens 10) sperrt Saga die Anmeldung mit Passwort für eine Stunde: Die Person bekommt eine
+Benachrichtigung, der Admin sieht die Sperre auf der Übersicht und in der Benutzerliste („Anmeldung gesperrt“) und hebt
+sie beim Konto mit **Sperre aufheben** auf; **Passwort setzen** hebt sie ebenfalls auf. Passkeys und bestehende
+Sitzungen gehen auch während der Sperre. LDAP-Konten werden genauso gebremst (weniger Binds, die Sperre im Verzeichnis
+greift eher seltener), SSO ist nicht betroffen. Hinter einem Reverse Proxy `TRUSTED_PROXIES` setzen, sonst teilen sich
+alle Besucher die Adresse des Proxys und werden gemeinsam gebremst.
 
 **Passkey: „Der Browser meldet die Adresse …, Saga ist aber für … eingerichtet“.**
 Saga wurde über eine andere Adresse aufgerufen als `BASE_URL` (z. B. per IP-Adresse oder altem Namen). Passkeys

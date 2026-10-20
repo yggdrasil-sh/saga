@@ -228,11 +228,21 @@ def _burn(pw):
     verify_password(pw, _DUMMY)
 
 
-# --- Sperre bei Fehlversuchen -------------------------------------------------------------------
-# Zaehler (15 Minuten): Benutzer+Adresse (8), Benutzer insgesamt (40, gegen verteiltes Raten), Adresse (30).
-# So kann ein Fremder ein Konto nicht mit 8 Fehlversuchen fuer alle sperren. area="admin": eigene Zaehler fuer
-# den Admin-Port - Fehlversuche auf der oeffentlichen Seite sperren den Admin-Bereich nicht.
-FAIL_WINDOW, FAIL_MAX_USER_IP, FAIL_MAX_USER, FAIL_MAX_IP = 900, 8, 40, 30
+# --- Fehlversuche: Bremse statt Sperre (2.4) -----------------------------------------------------------
+# Bis 2.3 sperrten 8 Fehlversuche (Benutzer+Adresse) bzw. 40 (Benutzer, alle Adressen) das Konto 15 Minuten - ein Fremder
+# konnte so ein Konto gezielt aussperren (Testrunde 2.4). Jetzt:
+#  - Bremse je Benutzer+Adresse: nach FREE_USER_IP Fehlversuchen muss diese Adresse fuer dieses Konto 2, 4, 8 ... s
+#    (hoechstens DELAY_MAX) nach dem letzten Fehlversuch warten. Andere Adressen merken davon nichts.
+#  - Bremse je Adresse (alle Konten): ab FREE_IP Fehlversuchen ebenso (gegen Durchprobieren vieler Konten).
+#  - Harte Sperre des Kontos nur bei sehr vielen Fehlversuchen (LOCK_FAILS) von vielen Adressen (LOCK_IPS) binnen
+#    LOCK_WINDOW - verteiltes Raten. Sie gilt LOCK_TTL, die Person wird benachrichtigt, der Admin sieht sie in der
+#    Benutzerliste und hebt sie auf ("Sperre aufheben", "Passwort setzen" oder Notfall-Reset).
+# Abgewiesene Versuche waehrend einer Wartezeit zaehlen nicht (die Wartezeit waechst nicht endlos) und pruefen kein
+# Passwort (auch kein LDAP-Bind - Verzeichnis-Sperren im AD werden so eher seltener). area="admin": eigene Zaehler fuer
+# den Admin-Port. Zweiter Faktor (mfa, admin-mfa): das Passwort ist dort schon richtig - weiter feste Grenzen.
+FAIL_WINDOW = 900
+FREE_USER_IP, FREE_IP, DELAY_MAX = 8, 30, 900
+LOCK_FAILS, LOCK_IPS, LOCK_WINDOW, LOCK_TTL = 100, 10, 3600, 3600
 # Eigene Zaehler je Bereich: Admin-Port, zweiter Faktor (Hauptseite / Admin-Port). Beim zweiten Faktor ist das Passwort
 # schon richtig - dort strengere Grenzen (6-stellige Codes: wenige Versuche je Viertelstunde).
 AREA_PREFIX = {"admin": "adm:", "mfa": "mfa:", "admin-mfa": "amfa:"}
@@ -244,27 +254,135 @@ def _fail_keys(username, ip, area=""):
     return p + "ui:" + username + "|" + ip, p + "u:" + username, p + "ip:" + ip
 
 
-def too_many(username, ip, area=""):
-    t = time.time() - FAIL_WINDOW
-    kui, ku, ki = _fail_keys(username, ip, area)
-    lui, lu, li = AREA_LIMITS.get(area, (FAIL_MAX_USER_IP, FAIL_MAX_USER, FAIL_MAX_IP))
+def _delay(n, free):
+    return 0 if n < free else min(DELAY_MAX, 2 ** (n - free + 1))
+
+
+def lock_of(username):
+    """Harte Sperre -> {since, until, fails, ips} oder None (abgelaufene werden entfernt)."""
+    with _db() as c:
+        r = c.execute("SELECT since, until, fails, ips FROM login_lock WHERE username=?", ((username or "").lower(),)).fetchone()
+    if not r:
+        return None
+    if r[1] <= time.time():
+        with _db() as c, c:
+            c.execute("DELETE FROM login_lock WHERE username=? AND until<=?", ((username or "").lower(), time.time()))
+        return None
+    return {"since": r[0], "until": r[1], "fails": r[2], "ips": r[3]}
+
+
+def locks():
+    """Alle aktiven harten Sperren (Admin-Bereich): [{username, since, until, fails, ips}]"""
+    with _db() as c:
+        return [{"username": r[0], "since": r[1], "until": r[2], "fails": r[3], "ips": r[4]} for r in
+                c.execute("SELECT username, since, until, fails, ips FROM login_lock WHERE until>? ORDER BY since DESC", (time.time(),))]
+
+
+def fail_stats(username):
+    """(Fehlversuche, Adressen) der letzten LOCK_WINDOW Sekunden (Admin-Hinweis) oder None."""
+    now = time.time()
+    with _db() as c:
+        n = c.execute("SELECT COUNT(*) FROM login_fail WHERE key=? AND ts>?", ("u:" + username, now - LOCK_WINDOW)).fetchone()[0]
+        if not n:
+            return None
+        ips = c.execute("SELECT COUNT(DISTINCT key) FROM login_fail WHERE instr(key, ?) = 1 AND ts>?", ("ui:" + username + "|", now - LOCK_WINDOW)).fetchone()[0]
+    return n, ips
+
+
+def unlock(username):
+    """Harte Sperre aufheben (Admin) - auch die Zaehler des Kontos leeren."""
+    clear_fails(username)
+    return True
+
+
+def fail_wait(username, ip, area="", lock=True):
+    """Sekunden, die (Konto, Adresse) noch warten muss; 0 = Anmeldung pruefen. Bei harter Sperre: Restzeit.
+    lock=False: nur die Bremse (z. B. Passwort aendern in der eigenen Sitzung - die Sperre gilt der Anmeldung)."""
+    now = time.time()
+    if area in AREA_LIMITS:
+        return FAIL_WINDOW if _too_many_fixed(username, ip, area) else 0
+    lk = lock_of(username) if area == "" and lock else None
+    if lk:
+        return max(1, int(lk["until"] - now))
+    kui, _, ki = _fail_keys(username, ip, area)
     with _db() as c, c:
-        c.execute("DELETE FROM login_fail WHERE ts < ?", (t - 3600,))
-        n = [c.execute("SELECT COUNT(*) FROM login_fail WHERE key=? AND ts>?", (k, t)).fetchone()[0] for k in (kui, ku, ki)]
+        c.execute("DELETE FROM login_fail WHERE ts < ?", (now - FAIL_WINDOW - LOCK_WINDOW,))
+        out = 0
+        for k, free in ((kui, FREE_USER_IP), (ki, FREE_IP)):
+            n, last = c.execute("SELECT COUNT(*), MAX(ts) FROM login_fail WHERE key=? AND ts>?", (k, now - FAIL_WINDOW)).fetchone()
+            d = _delay(n, free)
+            if d and last:
+                out = max(out, int(last + d - now + 0.999))
+    return max(0, out)
+
+
+def is_locked_msg(username, area=""):
+    return area == "" and lock_of(username) is not None
+
+
+def fail_text(wait, locked=False):
+    if locked:
+        return t("Für dieses Konto gab es sehr viele falsche Anmeldeversuche – es ist vorübergehend gesperrt. Die Person und die Verwaltung sind informiert; ein Admin kann die Sperre aufheben.")
+    if wait < 90:
+        return t("Zu viele Fehlversuche – bitte in {n} Sekunden erneut versuchen.", n=max(1, int(wait)))
+    return t("Zu viele Fehlversuche – bitte in {n} Minuten erneut versuchen.", n=max(2, int(round(wait / 60))))
+
+
+def _too_many_fixed(username, ip, area):
+    t0 = time.time() - FAIL_WINDOW
+    kui, ku, ki = _fail_keys(username, ip, area)
+    lui, lu, li = AREA_LIMITS[area]
+    with _db() as c, c:
+        n = [c.execute("SELECT COUNT(*) FROM login_fail WHERE key=? AND ts>?", (k, t0)).fetchone()[0] for k in (kui, ku, ki)]
     return n[0] >= lui or n[1] >= lu or n[2] >= li
 
 
+def too_many(username, ip, area=""):
+    """Gerade keine Pruefung erlaubt? (Wartezeit, harte Sperre bzw. feste Grenze beim zweiten Faktor) -> Sekunden (0 = nein)."""
+    return fail_wait(username, ip, area)
+
+
 def note_fail(username, ip, area=""):
+    now = time.time()
     with _db() as c, c:
         for k in _fail_keys(username, ip, area):
-            c.execute("INSERT INTO login_fail (key, ts) VALUES (?,?)", (k, time.time()))
+            c.execute("INSERT INTO login_fail (key, ts) VALUES (?,?)", (k, now))
+        if area != "":
+            return
+        p = AREA_PREFIX.get(area, "")
+        n = c.execute("SELECT COUNT(*) FROM login_fail WHERE key=? AND ts>?", (p + "u:" + username, now - LOCK_WINDOW)).fetchone()[0]
+        if n < LOCK_FAILS:
+            return
+        ips = c.execute("SELECT COUNT(DISTINCT key) FROM login_fail WHERE instr(key, ?) = 1 AND ts>?",
+                        (p + "ui:" + username + "|", now - LOCK_WINDOW)).fetchone()[0]
+        if ips < LOCK_IPS:
+            return
+        had = c.execute("SELECT 1 FROM login_lock WHERE username=? AND until>?", (username, now)).fetchone()
+        c.execute("INSERT INTO login_lock (username, since, until, fails, ips) VALUES (?,?,?,?,?) ON CONFLICT (username) DO UPDATE "
+                  "SET until=excluded.until, fails=excluded.fails, ips=excluded.ips" + ("" if had else ", since=excluded.since"),
+                  (username, now, now + LOCK_TTL, n, ips))
+        if not had and c.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+            print(f"saga: Konto „{username}“ nach {n} Fehlversuchen von {ips} Adressen fuer {LOCK_TTL // 60} min gesperrt "
+                  "(Admin: Benutzer -> Sperre aufheben)", flush=True)
+            try:
+                from saga import notify             # spaet: saga.notify haengt von auth ab
+                notify.create(c, username, "login.locked", data={"fails": n, "ips": ips, "until": now + LOCK_TTL})
+            except Exception as ex:  # noqa: BLE001 - Benachrichtigung darf die Anmeldung nicht stoeren
+                print(f"saga: Benachrichtigung zur Kontosperre fehlgeschlagen: {type(ex).__name__}", flush=True)
 
 
-def clear_fails(username, area=None):
-    """Nach erfolgreicher Anmeldung (bzw. Notfall-Reset, area=None: alle Bereiche) die Benutzer-Zaehler leeren."""
+def clear_fails(username, area=None, ip=None):
+    """Nach erfolgreicher Anmeldung (bzw. Notfall-Reset/Passwort setzen/Sperre aufheben, area=None: alle Bereiche und die
+    harte Sperre) die Benutzer-Zaehler leeren. ip: nur die Bremse dieser Adresse (2.4 - meldet sich die Person von
+    zuhause an, bleibt eine fremde, ratende Adresse gebremst)."""
     with _db() as c, c:
         for p in (("", *AREA_PREFIX.values()) if area is None else (AREA_PREFIX.get(area, ""),)):
-            c.execute("DELETE FROM login_fail WHERE key=? OR instr(key, ?) = 1", (p + "u:" + username, p + "ui:" + username + "|"))
+            if ip is None:
+                c.execute("DELETE FROM login_fail WHERE key=? OR instr(key, ?) = 1", (p + "u:" + username, p + "ui:" + username + "|"))
+            else:
+                c.execute("DELETE FROM login_fail WHERE key=? OR key=?", (p + "u:" + username, p + "ui:" + username + "|" + ip))
+        if area is None:
+            c.execute("DELETE FROM login_lock WHERE username=?", (username,))
 
 
 # --- Benutzer und Gruppen --------------------------------------------------------------------------
@@ -336,6 +454,7 @@ def set_password(username, pw):
         c.execute("UPDATE users SET password_hash=?, pw_changed=? WHERE username=?", (hash_password(pw), time.time(), username))
     _ui_cache.pop(username, None)
     drop_pw_file(username)                 # erzeugtes Start-Passwort gilt nicht mehr
+    clear_fails(username)                  # 2.4: neues Passwort hebt Wartezeiten und eine harte Sperre auf
 
 
 def _all_groups(c, user_id):
@@ -453,8 +572,9 @@ def _authenticate(username, password, ip, allow_local, area):
     u = norm_username(username)
     if not u or not password or len(password) > 200:
         return None, bad
-    if too_many(u, ip, area):
-        return None, t("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen.")
+    wait = too_many(u, ip, area)
+    if wait:
+        return None, fail_text(wait, is_locked_msg(u, area))
     st = settings()
     user = get_user(u)
     if user and user["disabled"]:
@@ -467,7 +587,7 @@ def _authenticate(username, password, ip, allow_local, area):
             note_fail(u, ip, area)
             return None, bad
         if user["password_hash"] and verify_password(password, user["password_hash"]):
-            clear_fails(u, area)
+            clear_fails(u, area, ip)
             touch_login(u)
             return user, None
         note_fail(u, ip, area)
@@ -481,7 +601,7 @@ def _authenticate(username, password, ip, allow_local, area):
             print(f"ldap-login {u}: {type(ex).__name__}: {ex}", flush=True)
             return None, t("Verzeichnisdienst (LDAP) gerade nicht erreichbar.")
         if res:
-            clear_fails(u, area)
+            clear_fails(u, area, ip)
             touch_login(res["username"])
             return res, None
         note_fail(u, ip, area)

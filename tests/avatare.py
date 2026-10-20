@@ -340,7 +340,17 @@ def main():
     ghash = hashlib.sha256(GMAIL.strip().lower().encode()).hexdigest()
     gpath = "/avatar/" + ghash
 
-    # --- Gravatar als Standard (ueber den Server, Attrappe) ------------------------------------------------------
+    # --- 2.4: Gravatar ab Werk aus (Einwilligung je Person) -------------------------------------------------------
+    s, a = api("av-anna", "GET", "/api/account/avatar")
+    ok("Neues Konto: Gravatar aus, keine Anfrage bei Gravatar ohne Einwilligung",
+       s == 200 and a["gravatar"] is False and a["source"] is None and a["gravatar_enabled"] and not HITS.get(gpath), (a, HITS))
+    with connect() as c:
+        ok("Spalte avatar.gravatar: Standard 0", c.execute("SELECT column_default FROM information_schema.columns "
+           "WHERE table_name='avatar' AND column_name='gravatar'").fetchone()[0] in ("0", 0))
+    for u in ("av-anna", "av-bert"):                  # Einwilligung (Schalter in den Einstellungen)
+        api(u, "PATCH", "/api/account/avatar", {"gravatar": True})
+
+    # --- Gravatar nach Einwilligung (ueber den Server, Attrappe) ---------------------------------------------------
     s, a = api("av-anna", "GET", "/api/account/avatar")
     ok(f"Anna: Gravatar gefunden ({s}, {a.get('source') if isinstance(a, dict) else a})", s == 200 and a["source"] == "gravatar" and a["url"])
     url = a.get("url") or ""

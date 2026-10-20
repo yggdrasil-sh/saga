@@ -1273,6 +1273,8 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 .adm-main h2{font-size:1.15rem;text-transform:none;letter-spacing:0;color:var(--fg);margin:.6rem 0 .8rem}
 .adm-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1rem 1.2rem;margin:1rem 0}
 .adm-card h3{margin:.1rem 0 .7rem;font-size:1rem}
+.adm-card.adm-warn{border-color:var(--down);border-left-width:4px}
+.adm-note{margin:.2rem 0 .8rem;padding:.55rem .75rem;border:1px solid var(--warn,#c98a1b);border-left-width:4px;border-radius:8px;font-size:.9rem;line-height:1.45}
 .adm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:0 1rem}
 .adm-form{display:flex;flex-direction:column;gap:.7rem}
 .adm-field{display:grid;grid-template-columns:13rem minmax(0,1fr);gap:.2rem 1rem;align-items:center}

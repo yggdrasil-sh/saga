@@ -96,12 +96,13 @@
   var fFull = new Intl.DateTimeFormat(HK.locale, { dateStyle: 'medium', timeStyle: 'short' });
   function itemNode(it) {
     var li = el('li', 'lv-li'), b = el('button', 'lv-item' + (it.read ? '' : ' unread')); b.type = 'button';
-    if (it.kind === 'publish.withdrawn' || it.kind === 'backup.failed') { var sh = el('span', 'lv-av lv-av-sys', '🛡'); sh.setAttribute('aria-hidden', 'true'); b.appendChild(sh); }
+    if (it.kind === 'publish.withdrawn' || it.kind === 'backup.failed' || it.system) { var sh = el('span', 'lv-av lv-av-sys', '🛡'); sh.setAttribute('aria-hidden', 'true'); b.appendChild(sh); }
     else b.appendChild(avatar(it.actor ? it.actor.name : '?', it.actor ? it.actor.username : '', it.actor ? '' : 'lv-av-gone', it.actor && it.actor.avatar));
     var body = el('span', 'lv-body');
     var tx = el('span', 'lv-text'); tx.appendChild(sentence(it)); body.appendChild(tx);
     var ic = it.note && it.note.icon && it.note.icon.charAt(0) !== '/' ? it.note.icon : '📄';
     if (it.kind === 'backup.failed') body.appendChild(el('span', 'lv-page', '🗄 ' + (it.title || T('Backups'))));
+    else if (it.system || !it.note && it.access && !it.chat) body.appendChild(el('span', 'lv-page', (it.kind === 'login.locked' ? '🔒 ' : '🗄 ') + (it.title || '')));   // Systemhinweise ohne Seite (Mein Backup, Kontosperre)
     else if (it.chat) body.appendChild(el('span', 'lv-page' + (it.access ? '' : ' gone'), it.access ? '💬 ' + (it.title || T('Chat')) : '🔒 ' + T('Kein Zugriff mehr')));
     else body.appendChild(el('span', 'lv-page' + (it.access ? '' : ' gone'), it.access ? ic + ' ' + (it.note.title || T('Unbenannt')) : '🔒 ' + T('Kein Zugriff mehr')));
     if (it.excerpt) body.appendChild(el('span', 'lv-ex', it.excerpt));

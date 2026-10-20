@@ -565,8 +565,9 @@
       var l = el('label', 'hk-avset-row'), i = el('input', 'hk-switch'); i.type = 'checkbox'; i.setAttribute('role', 'switch'); i.checked = !!on;
       l.appendChild(el('span', null, label)); l.appendChild(i); wrap.appendChild(l); return i;
     }
-    var gsw = sw(T('Gravatar verwenden, wenn ich kein eigenes Bild habe'), true), psw = sw(T('Auch auf meinen veröffentlichten Seiten zeigen'), false);
-    wrap.appendChild(el('p', 'hk-hint', T('Gravatar-Bilder holt der Server ab und speichert sie zwischen – dein Browser und die Apps fragen nie direkt bei Gravatar.')));
+    var gsw = sw(T('Gravatar verwenden, wenn ich kein eigenes Bild habe'), false), psw = sw(T('Auch auf meinen veröffentlichten Seiten zeigen'), false);
+    var GHINT = T('Ab Werk aus. Eingeschaltet schickt der Server einen Hash (SHA-256) deiner E-Mail-Adresse an Gravatar (Automattic, USA), um dort nach einem Bild zu fragen. Er speichert das Ergebnis zwischen – dein Browser und die Apps fragen nie direkt bei Gravatar.');
+    wrap.appendChild(el('p', 'hk-hint', GHINT));
     var SRC = { upload: T('Eigenes Bild'), sso: T('Bild vom Anmeldedienst'), gravatar: 'Gravatar' };
     function draw(s) {
       var old = pic.querySelector('.hk-av-img'); if (old) old.remove(); pic.classList.remove('hk-av-on');
@@ -598,7 +599,18 @@
     });
     [[gsw, 'gravatar'], [psw, 'public']].forEach(function (p) {
       p[0].addEventListener('change', function () {
-        var b = {}; b[p[1]] = p[0].checked; p[0].disabled = true;
+        var b = {}; b[p[1]] = p[0].checked;
+        if (p[1] === 'gravatar' && p[0].checked) {          // 2.4: Einwilligung - E-Mail-Hash geht an Gravatar
+          p[0].checked = false;
+          HK.ask({ title: T('Gravatar einschalten?'), text: GHINT, ok: T('Einschalten') }).then(function (yes) {
+            if (!yes) return;
+            p[0].checked = true; p[0].disabled = true;
+            api('PATCH', '/api/account/avatar', b).then(function (d) { draw(d); status(st, T('✓ Gespeichert'), 'ok'); })
+              .catch(function (err) { p[0].checked = false; fail(err); }).then(function () { p[0].disabled = false; });
+          });
+          return;
+        }
+        p[0].disabled = true;
         api('PATCH', '/api/account/avatar', b).then(function (d) { draw(d); status(st, T('✓ Gespeichert'), 'ok'); })
           .catch(function (err) { p[0].checked = !p[0].checked; fail(err); }).then(function () { p[0].disabled = false; });
       });

@@ -313,6 +313,9 @@ CREATE TABLE IF NOT EXISTS user_ext_group (      -- aus LDAP/OIDC bei der Anmeld
 CREATE TABLE IF NOT EXISTS setting (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS login_fail (key TEXT NOT NULL, ts DOUBLE PRECISION NOT NULL);
 CREATE INDEX IF NOT EXISTS login_fail_key ON login_fail (key, ts);
+CREATE TABLE IF NOT EXISTS login_lock (              -- 2.4: harte Sperre nach sehr vielen Fehlversuchen ueber viele Adressen (auth.py)
+    username TEXT PRIMARY KEY, since DOUBLE PRECISION NOT NULL, until DOUBLE PRECISION NOT NULL,
+    fails INTEGER NOT NULL DEFAULT 0, ips INTEGER NOT NULL DEFAULT 0);
 
 -- Dienste (Admin) und Lesezeichen (je Benutzer) --------------------------------------------
 CREATE TABLE IF NOT EXISTS service (
@@ -670,7 +673,7 @@ CREATE TABLE IF NOT EXISTS avatar (
     uid TEXT PRIMARY KEY,
     ver BIGINT NOT NULL DEFAULT 0,                    -- zaehlt bei jeder Aenderung hoch (?v= in der Adresse)
     upload INTEGER NOT NULL DEFAULT 0,                -- eigenes Bild vorhanden
-    gravatar INTEGER NOT NULL DEFAULT 1,              -- Person: Gravatar verwenden (der Admin-Schalter gilt zusaetzlich)
+    gravatar INTEGER NOT NULL DEFAULT 0,              -- Person: Gravatar verwenden (2.4: ab Werk aus; Admin-Schalter gilt zusaetzlich)
     public INTEGER NOT NULL DEFAULT 0,                -- auch ohne Anmeldung (veroeffentlichte Seiten)
     g_hash TEXT, g_checked DOUBLE PRECISION, g_found INTEGER NOT NULL DEFAULT 0,      -- Gravatar (bzw. fremde Instanz) zuletzt gefragt
     sso_kind TEXT, sso_ref TEXT,                      -- 'oidc' + Adresse aus "picture" | 'ldap' + SHA-256 der Bilddaten
@@ -915,6 +918,13 @@ INSERT INTO chat_call_leg (call_id, device, who, peer_id, role, state, caps, joi
     # (E4/E5) auf 13 umnummeriert (diese prueft nur, beliebig oft ausfuehrbar).
     13: """
 SELECT 1 FROM chat_receipt, chat_seen LIMIT 0;
+""",
+    # 2.4.0 (Testrunde): Gravatar nur mit Einwilligung - neue Konten (ohne Zeile in avatar) beginnen mit "aus".
+    # Bestehende Zeilen (die Wahl der Person bzw. ihr bisheriger Stand) bleiben unveraendert. Dazu die harte Kontosperre
+    # nach sehr vielen Fehlversuchen ueber viele Adressen (Tabelle login_lock legt SCHEMA an). Beliebig oft ausfuehrbar.
+    14: """
+ALTER TABLE avatar ALTER COLUMN gravatar SET DEFAULT 0;
+SELECT 1 FROM login_lock LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

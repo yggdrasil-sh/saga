@@ -437,6 +437,8 @@ def _anon(kind):
         return t("Verpasster Anruf")
     if kind == "backup.failed":
         return t("Backup fehlgeschlagen")
+    if kind == "login.locked":
+        return t("Anmeldung gesperrt")
     return t("Neue Benachrichtigung")
 
 

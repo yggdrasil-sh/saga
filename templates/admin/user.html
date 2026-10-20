@@ -3,9 +3,22 @@
 {% block pagetitle %}{{ u.username }}{% endblock %}
 {% block content %}
 <p><a href="/users">← {{ _("Alle Benutzer") }}</a></p>
-<h2>{{ u.username }}{% if u.is_admin %} <span class="adm-tag">{{ _("Admin") }}</span>{% endif %}{% if u.disabled %} <span class="adm-tag bad">{{ _("gesperrt") }}</span>{% endif %}</h2>
+<h2>{{ u.username }}{% if u.is_admin %} <span class="adm-tag">{{ _("Admin") }}</span>{% endif %}{% if u.disabled %} <span class="adm-tag bad">{{ _("gesperrt") }}</span>{% endif %}{% if lock %} <span class="adm-tag bad">{{ _("Anmeldung gesperrt") }}</span>{% endif %}</h2>
 <p class="hk-hint">{{ {'local': _('Lokales Konto'), 'ldap': _('LDAP/AD-Konto'), 'oidc': _('SSO-Konto')}.get(u.source, u.source) }}{% if u.ext_id %} · {{ u.ext_id }}{% endif %}
   · {{ _("angelegt {date}", date=ts(u.created))|safe }} · {{ _("letzte Anmeldung {date}", date=ts(u.last_login))|safe }}{% if u.pw_changed %} · {{ _("Passwort geändert {date}", date=ts(u.pw_changed))|safe }}{% endif %}</p>
+{% if lock %}
+<section class="adm-card adm-warn" id="lock">
+  <h3>{{ _("Anmeldung vorübergehend gesperrt") }}</h3>
+  <p>{{ _("{n} falsche Anmeldeversuche von {ips} verschiedenen Adressen in der letzten Stunde – Saga hat die Anmeldung mit Passwort bis {until} gesperrt (Anmeldung mit Passkey geht weiter). Die Person wurde benachrichtigt.", n=lock.fails, ips=lock.ips, until=ts(lock.until))|safe }}</p>
+  <form method="post" class="adm-form">
+    {{ csrf_field() }}<input type="hidden" name="action" value="unlock">
+    <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Sperre aufheben") }}</button></div>
+  </form>
+  <p class="hk-hint">{{ _("„Passwort setzen“ hebt die Sperre ebenfalls auf.") }}</p>
+</section>
+{% elif fails %}
+<p class="hk-hint">{{ _("Falsche Anmeldeversuche in der letzten Stunde: {n} (von {ips} Adressen). Einzelne Adressen werden dabei nur gebremst, das Konto bleibt für alle anderen nutzbar.", n=fails[0], ips=fails[1]) }}</p>
+{% endif %}
 
 <div class="adm-grid">
 <section class="adm-card">

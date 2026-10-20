@@ -907,6 +907,9 @@ up the call over the regular web port (live channel + normal requests).
 
 **Reachability:** within the same network and between typical home connections, the direct connection almost always
 works – for that the devices ask a **STUN server** for their public address (default: `stun:stun.nextcloud.com:443`).
+**Privacy:** the STUN server sees the callers' IP address on every call. Out of the box this is a third-party server
+(Nextcloud) so calls work behind routers right away; the admin area points this out under "Calls". Recommendation: run
+your own TURN/STUN server (coturn, see "TURN over port 443" below) and enter it as STUN and TURN server.
 Behind strict corporate firewalls, in some mobile networks (CGNAT) or when one side may only use port 443 outbound, you
 need a **TURN server** that relays the media (still encrypted – the TURN server cannot listen in). Without it people see
 "Direct connection not possible … The admin can configure a TURN server."
@@ -1225,11 +1228,12 @@ members) and in the version history (“by …”). Without a picture, the initi
   square crop (drag, zoom). PNG, JPEG, GIF, WebP and HEIC up to `AVATAR_MAX_MB` (default 5 MB) are allowed. The server
   re-encodes every picture (64/128/256 pixels, WebP and PNG/JPEG) and removes all metadata (EXIF with camera,
   location, date). “Remove my picture” deletes it again.
-- **Gravatar is the default:** without a picture of your own – and with an email address on the account – you get
-  your [Gravatar](https://gravatar.com). Privacy: **only the server** asks Gravatar (using the SHA-256 hash of the
-  email address) and keeps the result for a day – including “no picture”. Browsers and apps never contact Gravatar
-  themselves, so Gravatar does not learn who looks at a picture. Everyone can turn Gravatar off for themselves
-  (“Use Gravatar if I have no picture of my own”), the admin for everyone (General → Profile pictures).
+- **Gravatar only with consent (2.4+):** without a picture of your own, and after switching it on in the settings
+  (“Use Gravatar if I have no picture of my own”, **off** by default), you get your [Gravatar](https://gravatar.com) –
+  if the account has an email address. Privacy: a hash of the email address (SHA-256) goes to Gravatar; **only the
+  server** asks there and keeps the result for a day – including “no picture”. Browsers and apps never contact
+  Gravatar themselves, so Gravatar does not learn who looks at a picture. The admin can forbid Gravatar for everyone
+  (General → Profile pictures). Accounts that existed before 2.4 keep their previous setting.
 - **Picture from the identity provider (optional, admin):** “Use the picture from SSO” takes the address from the
   OIDC claim `picture` (fetched by the server, not the browser); “Use the picture from LDAP” reads `jpegPhoto` or
   `thumbnailPhoto` at sign-in. Saga only fetches internal addresses listed under “Allowed internal hosts”
@@ -1636,8 +1640,15 @@ update it. The app's settings show both the app and the server version.
 sets cookies over HTTPS.
 
 **"Too many failed attempts".**
-After 8 wrong passwords per account (30 per address) within 15 minutes, Saga makes you wait. Behind a reverse
-proxy, set `TRUSTED_PROXIES` – otherwise all visitors share the proxy's address.
+Saga slows down wrong passwords instead of locking accounts (2.4+): after 8 failed attempts for an account from the same
+address, *that address* has to wait 2, 4, 8 … seconds (at most 15 minutes); likewise after 30 failed attempts from one
+address (whatever the accounts). From other addresses the person signs in as usual – a stranger can no longer lock an
+account with a few wrong passwords. Only after very many attempts (100 within an hour) from many addresses (at least
+10) does Saga lock password sign-in for one hour: the person gets a notification, the admin sees the lock on the
+overview and in the user list ("Sign-in locked") and lifts it on the account with **Lift lock**; **Set password** lifts
+it too. Passkeys and existing sessions keep working during the lock. LDAP accounts are slowed down the same way (fewer
+binds, so directory lockouts happen less often), SSO is not affected. Behind a reverse proxy, set `TRUSTED_PROXIES` –
+otherwise all visitors share the proxy's address and are slowed down together.
 
 **Passkey: "The browser reports the address …, but Saga is set up for …".**
 Saga was opened via an address other than `BASE_URL` (e.g. an IP address or an old name). Passkeys are bound to

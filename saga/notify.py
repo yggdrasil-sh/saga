@@ -234,6 +234,19 @@ def _render(c, uid, rows, acc=None):
     return out
 
 
+def _locked(c, uid, item, d):
+    """2.4: harte Anmelde-Sperre nach sehr vielen Fehlversuchen von vielen Adressen (auth.note_fail)."""
+    item["access"] = True
+    item["system"] = True
+    item["text"] = t("Jemand hat sehr oft versucht, sich mit falschem Passwort bei deinem Konto anzumelden ({n} Versuche von {ips} Adressen). Die Anmeldung mit Passwort ist für eine Stunde gesperrt; Passkeys und bestehende Sitzungen gehen weiter. Wähle ein sicheres Passwort – ein Admin kann die Sperre aufheben.",
+                     n=d.get("fails", 0), ips=d.get("ips", 0))
+    item["title"] = t("Anmeldung gesperrt")
+    item["url"] = "/security"
+
+
+RENDER["login.locked"] = _locked
+
+
 def item(c, uid, rid):
     """Eine Benachrichtigung fuer den Live-Kanal (oder None, wenn es sie nicht mehr gibt)."""
     r = c.execute(f"SELECT {N_COLS} FROM notification WHERE id=? AND uid=?", (rid, uid)).fetchone()

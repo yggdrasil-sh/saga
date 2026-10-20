@@ -425,8 +425,9 @@ async def api_account_password(request: Request):
     u = auth.get_user(uid)
     if u["source"] != "local":
         return _bad(t("Dein Passwort verwaltet dein Anmeldedienst."), 403)
-    if auth.too_many(uid, _ip(request)):
-        return _bad(t("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen."), 429)
+    wait = auth.fail_wait(uid, _ip(request), lock=False)
+    if wait:
+        return _bad(auth.fail_text(wait), 429)
     try:
         ok = bool(u["password_hash"]) and await run_in_threadpool(auth.verify_password, old, u["password_hash"])
     except auth.Busy:

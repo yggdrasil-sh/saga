@@ -393,7 +393,12 @@ def home(request: Request):
                  "pages": n("SELECT COUNT(*) FROM note WHERE deleted_at IS NULL")}
         recent = c.execute("SELECT username, display_name, source, last_login FROM users WHERE last_login IS NOT NULL "
                            "ORDER BY last_login DESC LIMIT 8").fetchall()
-    return _page(request, "home.html", me, stats=stats, st=auth.settings(fresh=True), recent=recent, media=chat.media_mode())
+        locks = auth.locks()
+        ids = {r[0]: r[1] for r in c.execute("SELECT username, id FROM users WHERE username IN (" + ",".join("?" * len(locks)) + ")",
+                                             tuple(lk["username"] for lk in locks)).fetchall()} if locks else {}
+    for lk in locks:
+        lk["id"] = ids.get(lk["username"])
+    return _page(request, "home.html", me, stats=stats, st=auth.settings(fresh=True), recent=recent, media=chat.media_mode(), locks=locks)
 
 
 # --- Benutzer -------------------------------------------------------------------------------------
@@ -413,7 +418,7 @@ def users(request: Request, q: str = ""):
         for uid_, g in c.execute("SELECT user_id, name FROM user_ext_group").fetchall():
             gm.setdefault(uid_, []).append(g + " ⇣")
         allg = [r[0] for r in c.execute("SELECT name FROM groups ORDER BY name").fetchall()]
-    return _page(request, "users.html", me, rows=rows, gm=gm, q=q, allg=allg)
+    return _page(request, "users.html", me, rows=rows, gm=gm, q=q, allg=allg, locked={lk["username"] for lk in auth.locks()})
 
 
 @admin.post("/users/new")
@@ -465,7 +470,8 @@ def user_edit(uid_: int, request: Request):
     mf = dict(mfa.factors(u["username"]), supported=mfa.supported(u), required=mfa.required(dict(u, is_admin=bool(u["is_admin"]))),
               last_reset=last_reset)
     return _page(request, "user.html", me, u=u, loc=sorted(loc), ext=sorted(ext), allg=allg, usage=hk.user_usage(u["username"]),
-                 devs=devs, tiles=sorted(tiles.values(), key=lambda s: s["name"].lower()), is_self=u["username"] == me["username"], mf=mf)
+                 devs=devs, tiles=sorted(tiles.values(), key=lambda s: s["name"].lower()), is_self=u["username"] == me["username"], mf=mf,
+                 lock=auth.lock_of(u["username"]), fails=auth.fail_stats(u["username"]))
 
 
 @admin.post("/users/{uid_}")
@@ -526,6 +532,10 @@ async def user_post(uid_: int, request: Request):
         if self_:
             return _go("/login")
         _flash(request, t("Überall abgemeldet ({n} App-Anmeldungen/Schlüssel widerrufen).", n=n))
+    elif act == "unlock":
+        auth.unlock(u["username"])
+        print(f"{who} Anmelde-Sperre aufgehoben", flush=True)
+        _flash(request, t("Sperre aufgehoben – die Person kann sich wieder mit ihrem Passwort anmelden."))
     elif act == "mfa_reset":
         # Person hat Passkey/Handy und Wiederherstellungscodes verloren: alle Faktoren entfernen (Protokoll: Log + Konto)
         n = await run_in_threadpool(auth.clear_mfa, u["username"], me["username"])
