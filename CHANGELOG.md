@@ -24,6 +24,23 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `gjallarhorn bench` misst die Knotenlast mit lokalen Bots, `gjallarhorn report` erstellt die Go/No-Go-Tabelle.
   Zertifikat aus Dateien (mit Neuladen), selbst signiert für Tests oder per TLS-ALPN-01; PROXY-Protokoll v2 (`0`, `1`,
   `auto`). Anleitung: `gjallarhorn/PROBE.md`. Saga selbst ist davon noch nicht berührt.
+- **Gjallarhorn-Knoten, Weichen (P1):**
+  - PROXY-Protokoll zusätzlich in v1 (Modi `0`, `1`, `auto` bleiben).
+  - Begrenzung offener Handshakes und kurze Fristen.
+  - 443/UDP beantwortet einfache STUN-Bindings selbst (Erreichbarkeitsprüfung); dazu ein UDP-Selbsttest beim Start.
+  - Eigener ICE-TCP-Mux ohne Allokation je Paket.
+  - „Nachläufer“ gegen lange TCP-Staus auf verlustbehafteten Wegen.
+  - Das Zertifikat wird nur noch bei geänderten Dateien neu geladen und gemeldet (vorher alle 30 s).
+- **Gjallarhorn-Knoten, Weiterleiter (P2):** `gjallarhorn node` mit echtem SFU (`internal/sfu`).
+  - Räume, Beine mit Rollen: Ton- und Bild-Leitung auf TCP, BUNDLE auf UDP.
+  - Top-3-Ton per audio-level, Hauptsprecher mit Hysterese, Last-N (Desktop 9, Handy 4).
+  - Schichtwahl je Empfänger: UDP 3 Schichten, TCP 2. Kacheln auf TCP mit 180p und höchstens 10 Bildern/s.
+  - Vorrang-Warteschlange mit Verwerfen ab 150 ms.
+  - NACK/RTX und GCC nur auf UDP.
+  - Interne Go-API für die Saga-Steuerung (P3) mit Token-Prüfschnittstelle.
+  - `bench --sfu` misst den echten Weiterleiter. Dazu kommen ein Browser-Test (4 Chromium über ICE-TCP und TURN-TLS)
+    und ein Einfrier-Regressionstest (80 ms RTT, 1,5 % Verlust).
+  - Beschreibung: `gjallarhorn/NODE.md`. Saga selbst ist davon noch nicht berührt.
 
 ## [2.4.0] – 2026-10-20
 
