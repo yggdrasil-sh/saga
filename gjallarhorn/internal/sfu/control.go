@@ -195,8 +195,14 @@ func byRecent(ps []*Peer) {
 }
 
 // assignSticky verteilt die gewuenschten Teilnehmenden auf die Plaetze;
-// wer schon einen Platz hat, behaelt ihn.
+// wer schon einen Platz hat, behaelt ihn. Gewuenscht sind nur die ersten
+// len(slots) (keepActive haengt die Wartenden hinten an): sonst behielte
+// ein Platzhalter, der nur noch wartet, seinen Platz, und eine neue laute
+// Person kaeme bei vollen Plaetzen nie dran (P3-Browser-Test, 5 Personen).
 func assignSticky(slots []*slot, want []*Peer) {
+	if len(want) > len(slots) {
+		want = want[:len(slots)]
+	}
 	keep := map[*Peer]bool{}
 	for _, p := range want {
 		keep[p] = true

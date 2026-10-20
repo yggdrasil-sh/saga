@@ -473,3 +473,26 @@ func TestEstimator(t *testing.T) {
 		t.Fatalf("gcc deckelt %v <= %v", v, b0)
 	}
 }
+
+// Volle Plaetze: eine neue laute Person verdraengt einen stillen Platzhalter
+// (keepActive haengt Wartende an; assignSticky darf nur die ersten n behalten).
+func TestAssignStickyNewSpeaker(t *testing.T) {
+	a, b, c, d := &Peer{ID: "a"}, &Peer{ID: "b"}, &Peer{ID: "c"}, &Peer{ID: "d", score: 1}
+	a.lastSpoke, b.lastSpoke, c.lastSpoke = 3, 2, 1
+	slots := []*slot{{owner: a}, {owner: b}, {owner: c}}
+	cand := []*Peer{d, a, b, c}
+	cand = keepActive(slots, cand)
+	assignSticky(slots, cand)
+	got := map[string]bool{}
+	for _, s := range slots {
+		if s.owner != nil {
+			got[s.owner.ID] = true
+		}
+	}
+	if !got["d"] || len(got) != 3 || !got["a"] || !got["b"] {
+		t.Fatalf("plaetze %v: d (spricht) soll c (am laengsten still) verdraengen", got)
+	}
+	if slots[0].owner != a || slots[1].owner != b {
+		t.Fatalf("a und b sollen ihre Plaetze behalten")
+	}
+}
