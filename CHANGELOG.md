@@ -33,7 +33,9 @@ automatisch; Backups von 2.3 bleiben einspielbar.
   gewählt, und eine Umstellung bräche alle Links auf veröffentlichte Seiten. Die Einstellungen weisen darauf hin; neue
   öffentliche Namen dürfen nicht der Anmeldename sein.
 - **Zweiten Faktor entfernen** braucht jetzt eine Bestätigung (Passwort, Code oder Passkey). Web und Apps fragen bei
-  `403 {reauth: true}` schon heute nach und wiederholen.
+  `403 {reauth: true}` schon heute nach und wiederholen. Ebenso **einen weiteren Faktor hinzufügen** und **neue
+  Wiederherstellungscodes erzeugen**, sobald schon ein zweiter Faktor eingerichtet ist (Web fragt nach; Apps siehe
+  `docs/APP-API.md`).
 
 #### Anrufe: Fundament saga-call v3 (Etappe E0)
 
@@ -263,6 +265,11 @@ automatisch; Backups von 2.3 bleiben einspielbar.
   Einstellungen einen Hinweis mit der Möglichkeit, ihn zu ändern.
 - **Zweiter Faktor entfernen** (Authenticator-App, Passkey) verlangt jetzt immer eine ausdrückliche Bestätigung mit
   Passwort, Code oder Passkey (höchstens 5 Minuten alt) – eine frische Anmeldung allein reicht nicht mehr.
+- **Zweiter Faktor hinzufügen und neue Wiederherstellungscodes** verlangen dieselbe Bestätigung, sobald das Konto schon
+  einen Passkey oder eine Authenticator-App hat; nur die Ersteinrichtung geht weiter mit frischer Anmeldung. Ein Faktor,
+  der erst nach der Anmeldung dieser Sitzung hinzukam, bestätigt nichts und wird im Bestätigungsdialog nicht angeboten.
+  Bisher konnte eine frisch gekaperte Sitzung einen eigenen Passkey anlegen, sich damit bestätigen und danach
+  Authenticator-App und Passkeys des Kontos entfernen. Sitzungen merken sich dafür ihren Beginn (`since`).
 - **Anrufe:** Nach „Hierher übernehmen“ hat die Kamera den Zustand des abgebenden Geräts; die Angerufene sieht ihr
   Eigenbild sofort; ein neuer Tab zum Annehmen fragt den Schlüsselzustand einmal nach, bevor er „Chats einrichten“
   zeigt (dort angelegte Schlüssel überschrieben nie eine bestehende Identität, der Server lehnt das ab).
@@ -271,7 +278,9 @@ automatisch; Backups von 2.3 bleiben einspielbar.
   Datumswähler einer Aufgabe in der Seitenleiste öffnet an der Aufgabe.
 - **Bekannte Grenze:** Wer mit einem Konto chatten darf, erfährt beim Anlegen eines Direkt-Chats technisch dessen
   Anmeldenamen, auch bevor es antwortet – Chats v1 binden Geräte-Zertifikate, Nachrichten-Signaturen und die
-  Sicherheitsnummer daran (Einzelheiten in `docs/APP-API.md`). Die Oberfläche zeigt ihn nicht.
+  Sicherheitsnummer daran (Einzelheiten in `docs/APP-API.md`). Die Oberfläche zeigt ihn nicht. Der Hilfetext zum
+  Admin-Schalter „Suche nach Anmeldename“ weist darauf hin; begrenzen lässt es sich nur mit „Nur innerhalb gemeinsamer
+  Gruppen“.
 - **Versionen beim Bearbeiten:** Saga sichert beim Speichern höchstens alle 5 (statt 10) Minuten, dazu den aktuellen
   Stand nach 2 Minuten Pause und beim Verlassen der Seite (`POST /api/notes/{id}/versions/checkpoint`, gedrosselt, keine
   doppelten Fassungen). „Diese Version wiederherstellen“ fragt nach und sichert den aktuellen Stand immer vorher – steht

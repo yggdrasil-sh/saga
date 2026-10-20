@@ -698,7 +698,9 @@ def _api_guard(request):
 def _set_session(request, uid, name, keep=None):
     info = user_info(uid) or {}
     request.session.clear()
-    request.session.update(uid=uid, name=name or uid, pwc=info.get("epoch") or 0, lo=secrets.token_hex(6), **(keep or {}))
+    # since: Beginn der Sitzung (2.4, M3b: danach angelegte Faktoren bestaetigen in dieser Sitzung nichts)
+    request.session.update(uid=uid, name=name or uid, pwc=info.get("epoch") or 0, lo=secrets.token_hex(6),
+                           since=round(time.time(), 3), **(keep or {}))
 
 
 def _no_const(name):

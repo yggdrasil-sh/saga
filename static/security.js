@@ -27,7 +27,8 @@
         .catch(function (e) { body.textContent = T('Nicht geladen: {err}', { err: e.message }); });
     }
 
-    // Aenderungen nur mit frischer Anmeldung: bei 403 {reauth} erst bestaetigen (Passwort, Code oder Passkey), dann wiederholen
+    // Aenderungen nur mit frischer Anmeldung bzw. Bestaetigung (2.4: Faktor hinzufuegen, sobald einer da ist, Entfernen,
+    // neue Codes): bei 403 {reauth} erst bestaetigen (Passwort, Code oder Passkey), dann wiederholen
     function guarded(fn) {
       return fn().catch(function (e) {
         if (e.status === 403 && e.data && e.data.reauth) return confirmIdentity().then(fn);
@@ -150,7 +151,7 @@
         add.disabled = true; status(st, T('Warte auf den Passkey …'));
         guarded(function () { return api('POST', '/api/account/passkeys/options'); })
           .then(function (d) { return PK.create(d.options); })
-          .then(function (cred) { return api('POST', '/api/account/passkeys', { credential: cred, name: nm.value.trim() }); })
+          .then(function (cred) { return guarded(function () { return api('POST', '/api/account/passkeys', { credential: cred, name: nm.value.trim() }); }); })
           .then(function (d) { HK.toast(T('Passkey gespeichert')); return load().then(function () { showCodes(d.recovery); }); })
           .catch(function (e) {
             add.disabled = false;

@@ -469,7 +469,7 @@ def _reauth_need(request, uid):
                     int(request.session.get("sec_at") or 0))
         if 0 <= now - fresh <= REAUTH_SEC:
             return None
-    m = mfa.methods(uid)
+    m = mfa.methods(uid, request)
     return "password" if m else "login"
 
 
@@ -489,7 +489,8 @@ def api_reauth_options(request: Request):
     if err:
         return err
     try:
-        return _no_store({"options": mfa.auth_options(request, uid, kind="chat", key="wa_chat"), "origin": mfa.ORIGIN})
+        return _no_store({"options": mfa.auth_options(request, uid, kind="chat", key="wa_chat", before=mfa.sess_start(request)),
+                          "origin": mfa.ORIGIN})
     except mfa.MfaError as ex:
         return _bad(str(ex), 409)
 
@@ -529,7 +530,7 @@ def api_me(request: Request, device: str = ""):
         "devices": [{"id": d["id"], "name": d["name"], "created": d["created"], "last_seen": d["last_seen"],
                      "revoked": bool(d["revoked_at"]), "current": d["id"] == device, "enc_pub": d["enc_pub"],
                      "sign_pub": d["sign_pub"], "sig": d["sig"]} for d in devs],
-        "links": n_link, "reauth": _reauth_need(request, uid), "reauth_methods": mfa.methods(uid),
+        "links": n_link, "reauth": _reauth_need(request, uid), "reauth_methods": mfa.methods(uid, request),
         "limits": {"msg_max": MSG_MAX, "file_max": FILE_MAX, "members_max": MEMBERS_MAX, "devices_max": DEVICES_MAX,
                    "files_per_msg": FILES_PER_MSG, "file_ids_per_msg": FILE_IDS_PER_MSG, "retention_max": retention_max(), "retentions": list(RETENTIONS),
                    # 2.4 (Videos im Chat): saga-file/v2 mit fortsetzbarem Upload; video_max = groesste Datei (Klartext-Bytes),
@@ -573,7 +574,7 @@ async def api_identity(request: Request):
                t("Zum Neubeginnen bitte neu anmelden – danach hast du 5 Minuten Zeit.")) if need else None
         if bad:
             print(f"chat: {uid} Neu beginnen ohne frische Anmeldung abgewiesen", flush=True)
-            return JSONResponse({"error": bad, "reauth": need, "reauth_methods": mfa.methods(uid)}, status_code=403,
+            return JSONResponse({"error": bad, "reauth": need, "reauth_methods": mfa.methods(uid, request)}, status_code=403,
                                 headers={"Cache-Control": "no-store"})
     ident_pub, backup_pub, backup_sig = b.get("ident_pub"), b.get("backup_pub"), b.get("backup_sig")
     bundle = _valid_bundle(b.get("bundle"))

@@ -352,16 +352,21 @@ def reg_verify(request, uid, cred, name=""):
     return pid
 
 
-def auth_options(request, uid=None, kind="auth", key="wa"):
-    """Optionen fuer navigator.credentials.get: uid=None -> auffindbare Passkeys (Anmeldung ohne Passwort)."""
+def auth_options(request, uid=None, kind="auth", key="wa", before=0):
+    """Optionen fuer navigator.credentials.get: uid=None -> auffindbare Passkeys (Anmeldung ohne Passwort).
+    before: nur Passkeys, die vor diesem Zeitpunkt angelegt wurden (Bestaetigen, siehe sess_start)."""
     from webauthn import generate_authentication_options
     from webauthn.helpers.structs import PublicKeyCredentialDescriptor, UserVerificationRequirement
     allow = None
     if uid:
         with _db() as c:
-            rows = c.execute("SELECT cred_id, transports FROM mfa_passkey WHERE uid=?", (uid,)).fetchall()
+            rows = c.execute("SELECT cred_id, transports, created FROM mfa_passkey WHERE uid=?", (uid,)).fetchall()
         if not rows:
             raise MfaError(t("Für dieses Konto ist kein Passkey eingerichtet."))
+        if before:
+            rows = [r for r in rows if (r[2] or 0) < before]
+            if not rows:
+                raise MfaError(t("Ein Passkey, der erst nach dieser Anmeldung hinzukam, bestätigt nichts – bitte Passwort oder Code verwenden."))
         allow = [PublicKeyCredentialDescriptor(id=b64d(r[0]), transports=_transports(r[1])) for r in rows]
     opts = generate_authentication_options(rp_id=RP_ID, allow_credentials=allow, timeout=CHAL_TTL * 1000,
                                            user_verification=UserVerificationRequirement.REQUIRED if uid is None
@@ -489,10 +494,47 @@ def confirmed(request):
     return 0 <= time.time() - int(request.session.get("sec_at") or 0) <= FRESH_SEC
 
 
+def sess_start(request):
+    """2.4 (M3b): Beginn dieser Sitzung (Anmeldung) bzw. erster in ihr angelegter Faktor - 0, wenn unbekannt (aeltere
+    Sitzung, App-Schluessel). Ein Faktor, der ab diesem Zeitpunkt angelegt wurde, bestaetigt in dieser Sitzung nichts:
+    sonst koennte eine gekaperte Sitzung einen eigenen Passkey anlegen und damit die Faktoren des Opfers entfernen."""
+    ses = request.session
+    try:
+        # since: genau (Bruchteile); login_at nur bei Sitzungen ohne since (ganze Sekunden)
+        vals = [float(ses.get("since") or ses.get("login_at") or 0), float(ses.get("fa_at") or 0)]
+    except (TypeError, ValueError):
+        return 0
+    vals = [v for v in vals if v > 0]
+    return min(vals) if vals else 0
+
+
+def _note_added(request):
+    """In dieser Sitzung wird ein Faktor angelegt (fuer Sitzungen ohne 'since') - vor dem Anlegen aufrufen."""
+    if not request.session.get("fa_at"):
+        request.session["fa_at"] = round(time.time(), 3)
+
+
+def _usable(uid, start):
+    """-> (passkey, totp): Faktoren, die vor 'start' angelegt wurden (start=0: alle)."""
+    with _db() as c:
+        pk = c.execute("SELECT COUNT(*) FROM mfa_passkey WHERE uid=? AND created < ?", (uid, start or 1e12)).fetchone()[0]
+        tp = c.execute("SELECT confirmed FROM mfa_totp WHERE uid=? AND confirmed IS NOT NULL", (uid,)).fetchone()
+    return bool(pk), bool(tp and (not start or (tp[0] or 0) < start))
+
+
 def confirm(request, uid, b, area="", kind="confirm", key="wa_c"):
-    """Identitaet bestaetigen: {password} | {code} (Authenticator-App) | {passkey: Antwort}. -> Fehlertext oder None."""
+    """Identitaet bestaetigen: {password} | {code} (Authenticator-App) | {passkey: Antwort}. -> Fehlertext oder None.
+    Passkey und Code nur von Faktoren, die vor dieser Sitzung angelegt wurden (sess_start)."""
     ip = ip_of(request)
+    start = sess_start(request)
     if isinstance(b.get("passkey"), dict):
+        if start:
+            with _db() as c:
+                r = c.execute("SELECT created FROM mfa_passkey WHERE uid=? AND cred_id=?",
+                              (uid, str(b["passkey"].get("id") or "")[:400])).fetchone()
+            if r and (r[0] or 0) >= start:
+                print(f"mfa: {uid} Bestaetigung mit neuem Passkey abgewiesen", flush=True)
+                return t("Ein Passkey, der erst nach dieser Anmeldung hinzukam, bestätigt nichts – bitte Passwort oder Code verwenden.")
         try:
             got = auth_verify(request, b["passkey"], uid=uid, kind=kind, key=key)
         except MfaError as ex:
@@ -501,6 +543,9 @@ def confirm(request, uid, b, area="", kind="confirm", key="wa_c"):
     if b.get("code"):
         if auth.too_many(uid, ip, "mfa"):
             return t("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen.")
+        if start and factors(uid)["totp"] and not _usable(uid, start)[1]:
+            print(f"mfa: {uid} Bestaetigung mit neuer Authenticator-App abgewiesen", flush=True)
+            return t("Eine Authenticator-App, die erst nach dieser Anmeldung hinzukam, bestätigt nichts – bitte das Passwort verwenden.")
         if totp_use(uid, b.get("code")):
             auth.clear_fails(uid, "mfa")
             return None
@@ -513,17 +558,18 @@ def confirm(request, uid, b, area="", kind="confirm", key="wa_c"):
     return None if user and user["username"] == uid else t("Passwort falsch.")
 
 
-def methods(uid):
-    """Womit sich das Konto bestaetigen kann (Chat "Neu beginnen", Aenderungen an den Faktoren)."""
+def methods(uid, request=None):
+    """Womit sich das Konto bestaetigen kann (Chat "Neu beginnen", Aenderungen an den Faktoren). Mit request nur
+    Faktoren, die vor dieser Sitzung angelegt wurden (sess_start)."""
     u = auth.get_user(uid)
     out = []
     if u and (u["password_hash"] or u["source"] == "ldap"):
         out.append("password")
     if u and supported(u):
-        f = factors(uid)
-        if f["passkeys"] and not rp_problem():
+        pk, tp = _usable(uid, sess_start(request) if request is not None else 0)
+        if pk and not rp_problem():
             out.append("passkey")
-        if f["totp"]:
+        if tp:
             out.append("totp")
     return out
 
@@ -553,7 +599,7 @@ def _state(request, uid):
     return {"supported": supported(info), "source": info["source"], "enabled": has_mfa(uid, f), "required": required(info),
             "passkeys": passkey_list(uid), "totp": f["totp"], "totp_since": tp[0] if tp else None, "recovery_left": f["recovery"],
             "recovery_total": REC_N, "passkey_problem": rp_problem(), "origin": ORIGIN, "rp_id": RP_ID, "fresh": fresh(request),
-            "methods": methods(uid), "user": uid}
+            "methods": methods(uid, request), "user": uid}
 
 
 @router.get("/api/account/security")
@@ -571,7 +617,8 @@ def api_security_options(request: Request):
     if err:
         return err
     try:
-        return _no_store({"options": auth_options(request, uid, kind="confirm", key="wa_c"), "origin": ORIGIN})
+        return _no_store({"options": auth_options(request, uid, kind="confirm", key="wa_c", before=sess_start(request)),
+                          "origin": ORIGIN})
     except MfaError as ex:
         return _bad(str(ex), 409)
 
@@ -589,14 +636,18 @@ async def api_security_confirm(request: Request):
     return _no_store({"ok": True, "valid": FRESH_SEC})
 
 
-def _guard(request, need_fresh=True, strict=False):
-    """-> (uid, info, fehlerantwort). strict: Faktor entfernen - nur nach ausdruecklicher Bestaetigung (confirmed)."""
+def _guard(request, need_fresh=True, strict=False, add=False):
+    """-> (uid, info, fehlerantwort). strict: Faktor entfernen - nur nach ausdruecklicher Bestaetigung (confirmed).
+    add: Faktor hinzufuegen bzw. neue Wiederherstellungscodes (2.4, M3b) - wie strict, sobald das Konto schon einen
+    zweiten Faktor hat; bei der Ersteinrichtung reicht wie bisher eine frische Anmeldung."""
     uid, err = _me(request)
     if err:
         return None, None, err
     info = user_info(uid)
     if not supported(info):
         return None, None, _bad(t("Zwei-Faktor-Anmeldung regelt dein Anmeldedienst (SSO)."), 403)
+    if add:
+        strict = has_mfa(uid)
     if need_fresh and not (confirmed(request) if strict else fresh(request)):
         return None, None, _need_fresh()
     return uid, info, None
@@ -625,7 +676,7 @@ def _maybe_off(uid):
 
 @router.post("/api/account/passkeys/options")
 def api_passkey_options(request: Request):
-    uid, info, err = _guard(request)
+    uid, info, err = _guard(request, add=True)
     if err:
         return err
     p = rp_problem()
@@ -639,10 +690,11 @@ def api_passkey_options(request: Request):
 
 @router.post("/api/account/passkeys")
 async def api_passkey_add(request: Request):
-    uid, info, err = _guard(request)
+    uid, info, err = _guard(request, add=True)
     if err:
         return err
     b = await _body(request) or {}
+    _note_added(request)
     try:
         pid = await run_in_threadpool(reg_verify, request, uid, b.get("credential"), b.get("name"))
     except MfaError as ex:
@@ -724,7 +776,7 @@ def totp_finish(uid, code):
 @router.post("/api/account/totp/setup")
 def api_totp_setup(request: Request):
     """Neues Geheimnis (noch nicht aktiv) -> QR-Code (SVG, im Server erzeugt) + Schluessel zum Abtippen."""
-    uid, info, err = _guard(request)
+    uid, info, err = _guard(request, add=True)
     if err:
         return err
     try:
@@ -735,13 +787,14 @@ def api_totp_setup(request: Request):
 
 @router.post("/api/account/totp/confirm")
 async def api_totp_confirm(request: Request):
-    uid, info, err = _guard(request)
+    uid, info, err = _guard(request, add=True)
     if err:
         return err
     b = await _body(request) or {}
     ip = ip_of(request)
     if auth.too_many(uid, ip, "mfa"):
         return _bad(t("Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen."), 429)
+    _note_added(request)
     try:
         rec = await run_in_threadpool(totp_finish, uid, b.get("code"))
     except MfaError as ex:
@@ -767,7 +820,7 @@ def api_totp_delete(request: Request):
 
 @router.post("/api/account/recovery")
 def api_recovery_new(request: Request):
-    uid, info, err = _guard(request)
+    uid, info, err = _guard(request, add=True)
     if err:
         return err
     if not has_mfa(uid):

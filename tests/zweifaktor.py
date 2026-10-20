@@ -197,6 +197,9 @@ def flows():
         raw = json.dumps(c.execute("SELECT * FROM mfa_recovery WHERE uid='zf-user'").fetchall(), default=str)
     ok("Codes nur als Hash gespeichert", len(hs) == 10 and not any(x in raw or x.replace("-", "") in raw for x in codes))
     s, d = w.api("POST", "/api/account/passkeys/options")
+    ok(f"M3b: zweiter Passkey trotz frischer Anmeldung erst nach Bestaetigung ({s})", s == 403 and d.get("reauth") is True, d)
+    ok("M3b: ... Bestaetigung mit Passwort", w.api("POST", "/api/account/security/confirm", {"password": PW})[0] == 200)
+    s, d = w.api("POST", "/api/account/passkeys/options")
     s, d = w.api("POST", "/api/account/passkeys", {"credential": pk.create(d["options"], "http://127.0.0.1:%d" % P), "name": "falsch"})
     ok(f"Falsche Adresse beim Anlegen -> klare Meldung mit BASE_URL ({d.get('error', '')[:70]}…)", s == 400 and "BASE_URL" in d.get("error", "")
        and ORIGIN in d.get("error", ""))
@@ -250,6 +253,11 @@ def flows():
     ok("Unbekannter Passkey -> 401 (unknown, Browser kann ihn vergessen)", s == 401 and d.get("unknown") is True)
 
     # --- Authenticator-App (TOTP) -----------------------------------------------------------------------------
+    s, d = w3.api("POST", "/api/account/totp/setup")
+    ok(f"M3b: weiterer Faktor trotz frischer Anmeldung erst nach Bestaetigung (403 reauth) ({s})", s == 403 and d.get("reauth") is True, d)
+    s, d = w3.api("POST", "/api/account/security/options")
+    s, d = w3.api("POST", "/api/account/security/confirm", {"passkey": pk.get(d.get("options") or {}, ORIGIN)})
+    ok(f"M3b: Bestaetigung mit dem Passkey von vor dieser Anmeldung ({s})", s == 200, d)
     s, d = w3.api("POST", "/api/account/totp/setup")
     key = (d.get("secret") or "").replace(" ", "")
     ok("TOTP einrichten: QR-Code als SVG (im Server erzeugt) + Schluessel + otpauth-Adresse",
@@ -331,7 +339,11 @@ def flows():
     ok("Chat: Code der Authenticator-App -> 200", s == 200)
 
     # --- Neue Codes, Faktoren entfernen ---------------------------------------------------------------------------
-    s, d = w5.api("POST", "/api/account/recovery")
+    wr = client(); wr.post("/login", {"username": "zf-user", "password": PW}); wr.post("/login/2fa", {"code": next_code(sec, used)[0]})
+    s, d = wr.api("POST", "/api/account/recovery")
+    ok(f"M3b: neue Wiederherstellungscodes trotz frischer Anmeldung erst nach Bestaetigung ({s})", s == 403 and d.get("reauth") is True, d)
+    ok("M3b: ... Bestaetigung mit Passwort", wr.api("POST", "/api/account/security/confirm", {"password": PW})[0] == 200)
+    s, d = wr.api("POST", "/api/account/recovery")
     new = d.get("recovery") or []
     ok("Neue Wiederherstellungscodes (10), alte ungueltig", s == 200 and len(new) == 10 and set(new).isdisjoint(codes))
     wd = client(); wd.post("/login", {"username": "zf-user", "password": PW})
@@ -384,9 +396,20 @@ def flows():
     ok("Admin richtet Authenticator ein -> Codes", s == 200 and len(d.get("recovery") or []) == 10)
     s, loc, _ = wn.req("GET", "/")
     ok("Danach: Dashboard ohne Umweg", s == 200)
+    s, d = wn.api("GET", "/api/account/security")
+    ok(f"M3b: in dieser Sitzung angelegte Authenticator-App wird nicht zum Bestaetigen angeboten ({d.get('methods')})",
+       s == 200 and d.get("totp") and d.get("methods") == ["password"])
     apk = SoftAuthenticator()
     s, d = wn.api("POST", "/api/account/passkeys/options")
+    ok(f"M3b: zweiter Faktor (Passkey nach TOTP) -> 403 reauth ({s})", s == 403 and d.get("reauth") is True, d)
+    s, d = wn.api("POST", "/api/account/security/confirm", {"code": totp(asec, ast + 1)})
+    ok(f"M3b: Code der eben eingerichteten Authenticator-App bestaetigt nichts ({s}: {str(d.get('error'))[:50]}…)",
+       s == 403 and "nach dieser Anmeldung" in d.get("error", ""), d)
+    ok("M3b: ... Passwort bestaetigt", wn.api("POST", "/api/account/security/confirm", {"password": PW})[0] == 200)
+    s, d = wn.api("POST", "/api/account/passkeys/options")
     ok("Admin legt Passkey an", wn.api("POST", "/api/account/passkeys", {"credential": apk.create(d["options"], ORIGIN), "name": "Admin-Key"})[0] == 200)
+    s, d = wn.api("POST", "/api/account/security/options")
+    ok(f"M3b: Passkey-Optionen zum Bestaetigen ohne den eben angelegten Passkey -> 409 ({s})", s == 409, d)
     auth.save_setting("mfa", {"require": "none", "oidc_mfa": False, "oidc_acr": ""}); settings_wait()
 
     # --- Admin-Bereich: Anmeldung mit 2FA, Zuruecksetzen ---------------------------------------------------------------
@@ -429,12 +452,105 @@ def flows():
         restore_settings(snap)
     auth.save_setting("mfa", {"require": "none", "oidc_mfa": False, "oidc_acr": ""})
 
+    m3b()
+
     # --- SSO-Konten: kein Saga-2FA ---------------------------------------------------------------------------------
     so = client("zf-sso", login_at=int(time.time()))
     s, d = so.api("GET", "/api/account/security")
     ok("SSO-Konto: nicht unterstuetzt (macht der Anbieter)", s == 200 and d["supported"] is False)
     ok("SSO-Konto: TOTP einrichten -> 403", so.api("POST", "/api/account/totp/setup")[0] == 403)
     policy_everywhere()
+
+
+def forged_confirm(user, auth_, since):
+    """Bestaetigung mit einem Passkey ohne die Optionen-Abfrage (die neue Passkeys ausfiltert): Challenge direkt in
+    der Datenbank, Sitzung seit 'since' - so wie ein Angreifer die Antwort selbst bauen koennte."""
+    cid, chal = secrets.token_urlsafe(18), secrets.token_bytes(32)
+    with connect() as c, c:
+        c.execute("INSERT INTO mfa_challenge (id, uid, kind, challenge, expires) VALUES (?,?,?,?,?)",
+                  (cid, user, "confirm", b64e(chal), time.time() + 120))
+    h = client(user, since=since, login_at=since, wa_c=cid)
+    return h, h.api("POST", "/api/account/security/confirm", {"passkey": auth_.get({"challenge": b64e(chal), "rpId": "localhost"}, ORIGIN)})
+
+
+def m3b():
+    """2.4 (M3b): Eine frisch angemeldete, gekaperte Sitzung legt einen eigenen Passkey an, bestaetigt sich damit und
+    entfernt die Faktoren des Opfers. Jetzt: weiterer Faktor/neue Codes nur nach strenger Bestaetigung; Faktoren, die
+    nach dem Beginn der Sitzung angelegt wurden, bestaetigen nichts. Ersteinrichtung weiter mit frischer Anmeldung."""
+    auth.create_user("zf-m3b", PW, "M3b Opfer")
+    t0 = int(time.time()) - 5
+    v = client(); s, loc, _ = v.post("/login", {"username": "zf-m3b", "password": PW})
+    victim = SoftAuthenticator()
+    s, d = v.api("POST", "/api/account/passkeys/options")
+    s, d = v.api("POST", "/api/account/passkeys", {"credential": victim.create(d.get("options") or {}, ORIGIN), "name": "Opfer"})
+    ok(f"M3b: Ersteinrichtung (noch kein Faktor) mit frischer Anmeldung allein ({s})", s == 200 and len(d.get("recovery") or []) == 10, d)
+    vpid = (v.api("GET", "/api/account/security")[1].get("passkeys") or [{}])[0].get("id")
+    s, d = v.api("GET", "/api/account/security")
+    ok(f"M3b: Methoden ohne den in dieser Sitzung angelegten Passkey ({d.get('methods')})", d.get("methods") == ["password"])
+    ok("M3b: Passkey-Optionen zum Bestaetigen -> 409 (kein aelterer Passkey)", v.api("POST", "/api/account/security/options")[0] == 409)
+    _, (s, d) = forged_confirm("zf-m3b", victim, t0)
+    ok(f"M3b: Bestaetigung mit Passkey von nach dem Sitzungsbeginn -> 403 ({s})", s == 403 and "nach dieser Anmeldung" in d.get("error", ""), d)
+    s, d = v.api("POST", "/api/account/totp/setup")
+    ok(f"M3b: Authenticator-App als zweiter Faktor -> 403 reauth ({s})", s == 403 and d.get("reauth") is True, d)
+    ok("M3b: ... nach Bestaetigung mit Passwort", v.api("POST", "/api/account/security/confirm", {"password": PW})[0] == 200)
+    s, d = v.api("POST", "/api/account/totp/setup")
+    tsec = base64.b32decode((d.get("secret") or "").replace(" ", ""))
+    tst = step_now()
+    s, d = v.api("POST", "/api/account/totp/confirm", {"code": totp(tsec, tst)})
+    ok(f"M3b: ... eingerichtet, keine neuen Codes ({s})", s == 200 and d.get("recovery") is None, d)
+    tused = {"last": tst}
+
+    # Angriff wie in der Probe: gekaperte, frisch angemeldete Sitzung (ohne Bestaetigung)
+    time.sleep(0.2)
+    now = round(time.time(), 3)
+    h = client("zf-m3b", login_at=now, since=now)
+    att = SoftAuthenticator()
+    s1, d1 = h.api("POST", "/api/account/passkeys/options")
+    s2, d2 = h.api("POST", "/api/account/passkeys", {"credential": att.create({"rp": {"id": "localhost"}, "user": {"id": "eA"}, "challenge": "eA"}, ORIGIN)})
+    s3, d3 = h.api("POST", "/api/account/totp/setup")
+    s4, d4 = h.api("POST", "/api/account/recovery")
+    ok(f"M3b: gekaperte frische Sitzung: Passkey-Optionen/Anlegen, TOTP, neue Codes -> 403 reauth ({s1}, {s2}, {s3}, {s4})",
+       [s1, s2, s3, s4] == [403] * 4 and all(x.get("reauth") is True for x in (d1, d2, d3, d4)))
+    s, d = h.api("POST", "/api/account/security/options")
+    s, d = h.api("POST", "/api/account/security/confirm", {"passkey": att.get({"challenge": d.get("options", {}).get("challenge", "eA"), "rpId": "localhost"}, ORIGIN)})
+    ok(f"M3b: ... Bestaetigung mit fremdem Passkey -> 403 ({s})", s == 403)
+    s5, _ = h.api("DELETE", "/api/account/totp")
+    s6, _ = h.api("DELETE", f"/api/account/passkeys/{vpid}")
+    st = client("zf-m3b").api("GET", "/api/account/security")[1]
+    ok(f"M3b: ... Faktoren des Opfers bleiben ({s5}, {s6}, {[p['name'] for p in st.get('passkeys', [])]}, totp {st.get('totp')})",
+       s5 == 403 and s6 == 403 and [p["name"] for p in st.get("passkeys", [])] == ["Opfer"] and st.get("totp") is True)
+    with connect() as c:
+        n_att = c.execute("SELECT COUNT(*) FROM mfa_passkey WHERE uid='zf-m3b'").fetchone()[0]
+    ok("M3b: kein Passkey des Angreifers gespeichert", n_att == 1)
+
+    # Rechtmaessig: Sitzung, die nach dem Einrichten der Faktoren begann, bestaetigt mit Passkey bzw. Code und legt
+    # einen weiteren Passkey an
+    old, (s, d) = forged_confirm("zf-m3b", victim, now)
+    ok(f"M3b: spaetere Sitzung: Bestaetigung mit dem Passkey -> 200 ({s})", s == 200, d)
+    s, d = old.api("GET", "/api/account/security")
+    ok(f"M3b: ... Methoden mit Passkey und Authenticator-App ({d.get('methods')})", set(d.get("methods") or []) == {"password", "passkey", "totp"})
+    s, d = old.api("POST", "/api/account/passkeys/options")
+    s, d = old.api("POST", "/api/account/passkeys", {"credential": SoftAuthenticator().create(d.get("options") or {}, ORIGIN), "name": "Zweit"})
+    ok(f"M3b: ... danach weiteren Passkey anlegen ({s})", s == 200 and d.get("recovery") is None, d)
+    oc = client("zf-m3b", since=now, login_at=now)
+    ok("M3b: spaetere Sitzung bestaetigt mit Code der Authenticator-App",
+       oc.api("POST", "/api/account/security/confirm", {"code": next_code(tsec, tused)[0]})[0] == 200)
+    nc = client("zf-m3b", since=t0, login_at=t0)
+    s, d = nc.api("POST", "/api/account/security/confirm", {"code": next_code(tsec, tused)[0]})
+    ok(f"M3b: ... Sitzung von vor der Authenticator-App nicht ({s})", s == 403 and "nach dieser Anmeldung" in d.get("error", ""), d)
+    # Sitzung von vor dem Update (ohne since/login_at): ein darin angelegter Passkey bestaetigt in ihr nichts
+    pre = client("zf-m3b")
+    ok("M3b: alte Sitzung bestaetigt mit Passwort", pre.api("POST", "/api/account/security/confirm", {"password": PW})[0] == 200)
+    na = SoftAuthenticator()
+    s, d = pre.api("POST", "/api/account/passkeys/options")
+    ok("M3b: ... legt einen Passkey an", pre.api("POST", "/api/account/passkeys", {"credential": na.create(d.get("options") or {}, ORIGIN), "name": "Alt"})[0] == 200)
+    s, d = pre.api("POST", "/api/account/security/options")
+    ok("M3b: ... Optionen zum Bestaetigen ohne diesen Passkey", s == 200 and b64e(next(iter(na.creds))) not in
+       [x["id"] for x in d["options"].get("allowCredentials", [])])
+    s, d = pre.api("POST", "/api/account/security/confirm", {"passkey": na.get(d["options"], ORIGIN, cred=b64e(next(iter(na.creds))))})
+    ok(f"M3b: ... und bestaetigt damit nichts ({s})", s == 403 and "nach dieser Anmeldung" in d.get("error", ""), d)
+    with connect() as c, c:
+        c.execute("DELETE FROM login_fail WHERE key LIKE '%zf-m3b%'")
 
 
 def admin_key(html):

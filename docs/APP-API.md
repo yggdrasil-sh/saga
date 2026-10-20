@@ -935,6 +935,16 @@ PUT /api/chat/privacy
 - **Zweiter Faktor entfernen:** `DELETE /api/account/totp` und `DELETE /api/account/passkeys/{id}` verlangen eine
   Bestätigung über `POST /api/account/security/confirm` (höchstens 5 Minuten alt); eine frische Anmeldung allein reicht
   nicht mehr. Sonst `403 {reauth: true}` – wie bisher bestätigen und wiederholen.
+- **Zweiter Faktor hinzufügen, neue Wiederherstellungscodes (2.4, M3b):** `POST /api/account/passkeys/options`,
+  `POST /api/account/passkeys`, `POST /api/account/totp/setup`, `POST /api/account/totp/confirm` und
+  `POST /api/account/recovery` verlangen dieselbe Bestätigung, sobald das Konto schon einen Passkey oder eine
+  Authenticator-App hat. Nur die Ersteinrichtung (noch kein zweiter Faktor) geht weiter mit frischer Anmeldung bzw.
+  Passwort. Apps müssen deshalb auch beim **Hinzufügen** mit `403 {reauth: true}` rechnen: Bestätigungsdialog zeigen
+  (`methods` aus `GET /api/account/security`), `POST /api/account/security/confirm`, dann den abgewiesenen Schritt
+  wiederholen (auch den zweiten Schritt `POST /api/account/passkeys` mit derselben `credential` – die Challenge bleibt
+  gültig). Ein Passkey oder eine Authenticator-App, die erst in dieser Sitzung bzw. nach dieser Anmeldung angelegt
+  wurde, bestätigt nichts (`403` mit Text); `methods` und `POST /api/account/security/options` bzw.
+  `/api/chat/reauth/options` bieten solche Faktoren gar nicht erst an. Ältere Server: kein `403` beim Hinzufügen.
 - **Nextcloud-Blöcke:** Im Seiteninhalt (`GET /api/notes/{id}`) und im Status (`GET /api/notes/{id}/nc`) steht als
   `author` fremder Blöcke der Handle; `?a=` beim Abruf und das Zurückspeichern nehmen ihn an. Eigene Blöcke behalten den
   eigenen Namen (Vergleich mit dem eigenen Konto wie bisher).

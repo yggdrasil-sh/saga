@@ -492,6 +492,16 @@ async function passkeys(browser) {
   await Promise.all([p.waitForURL(u => !/\/login/.test(String(u)), { timeout: 15000 }).catch(() => {}), p.click('#pk-go')]);
   ok('2.1 Passkey: als zweiter Faktor bestaetigt -> angemeldet', !/\/login/.test(p.url()) && !!(await acct()), p.url());
   await p.goto(BASE + '/security'); await p.waitForSelector('#hk-security .hk-tok');
+  // 2.4 (M3b): weiterer Faktor trotz frischer Anmeldung erst nach Bestaetigung -> Dialog, danach geht es weiter
+  await p.click('#hk-security .mfa-block button:has-text("Einrichten")');
+  const cf = await p.waitForSelector('#hk-security .mfa-confirm:not([hidden])', { timeout: 5000 }).then(() => true, () => false);
+  ok('M3b: Authenticator-App einrichten -> Bestaetigungsdialog (mit Passkey-Knopf)', cf
+    && !!(await p.$('#hk-security .mfa-confirm button:has-text("Mit Passkey bestätigen")')));
+  await p.fill('#hk-security .mfa-confirm input[type=password]', PW);
+  await p.click('#hk-security .mfa-confirm button:has-text("Bestätigen")');
+  const qr = await p.waitForSelector('#hk-security .mfa-qr img', { timeout: 8000 }).then(() => true, () => false);
+  ok('M3b: nach Bestaetigung mit Passwort -> QR-Code der Einrichtung', qr && await p.$eval('#hk-security .mfa-confirm', e => e.hidden));
+  await p.click('#hk-security .mfa-qr ~ .hk-actions button:has-text("Abbrechen")').catch(() => {});
   await p.click('#hk-security .hk-tok button:has-text("Löschen")');
   await p.waitForSelector('.hk-ask', { timeout: 5000 }).catch(() => {});
   ok('Bughunt 2: letzter Passkey -> Rueckfrage nennt "letzter zweiter Faktor"', /letzter zweiter Faktor/.test(await p.textContent('.hk-ask').catch(() => '')));
