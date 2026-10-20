@@ -322,3 +322,11 @@ func TestKeyRequestParse(t *testing.T) {
 		t.Fatal("pli-erkennung")
 	}
 }
+
+func TestAddPtime(t *testing.T) {
+	in := "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=rtpmap:111 opus/48000/2\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=rtpmap:96 VP8/90000\r\n"
+	out := addPtime(in, 40)
+	if strings.Count(out, "a=ptime:40") != 1 || !strings.Contains(out, "m=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=ptime:40\r\n") {
+		t.Fatalf("ptime: %q", out)
+	}
+}

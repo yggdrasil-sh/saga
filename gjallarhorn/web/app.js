@@ -249,6 +249,8 @@ async function snapshot(pc) {
       }
     } else if (x.type === 'outbound-rtp') {
       s.outBytes += x.bytesSent || 0;
+      if (x.kind === 'audio') s.outAudioPkts = (s.outAudioPkts || 0) + (x.packetsSent || 0);
+      if (x.kind === 'video') s.outVideoPkts = (s.outVideoPkts || 0) + (x.packetsSent || 0);
       if (x.qualityLimitationReason && x.qualityLimitationReason !== 'none') s.ql = x.qualityLimitationReason;
       if (x.kind === 'video' && x.frameHeight) s.outRes.push((x.rid || '-') + ':' + x.frameHeight);
     }
@@ -321,6 +323,9 @@ function evaluate(snaps, legs, tStart, tEnd) {
     up_kbps: { stable: Math.round(pct(stableUp, 0.5) || 0) },
     quality_limit: last.map((s) => s.ql).find(Boolean) || null,
     send_layers: last.flatMap((s) => s.outRes),
+    // Diagnose je Bein: gesendete Pakete (Ton/Bild) und empfangene Spuren
+    legs_diag: last.map((s) => ({ out_a: s.outAudioPkts || 0, out_v: s.outVideoPkts || 0, in_a: s.a.n, in_v: s.v.n })),
+    src_audio: srcAudio ? { muted: srcAudio.muted, state: srcAudio.readyState, ctx: audioCtx && audioCtx.state } : null,
   };
 }
 

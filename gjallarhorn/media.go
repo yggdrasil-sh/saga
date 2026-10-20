@@ -230,6 +230,9 @@ func (s *server) newLeg(req legReq, ipKey string) (*leg, string, error) {
 			kind = fwd.Video
 		}
 		src := &fwd.Source{Owner: req.SID, Layer: layerOf(tr), Kind: kind, SSRC: uint32(tr.SSRC())}
+		if debug {
+			log.Printf("debug %s %s: spur %s/%s ssrc %d", l.id, req.Path, tr.Kind(), src.Layer, src.SSRC)
+		}
 		src.PLI = func(ssrc uint32) {
 			_ = pc.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: ssrc}})
 		}
@@ -295,6 +298,9 @@ func (s *server) newLeg(req legReq, ipKey string) (*leg, string, error) {
 	case <-time.After(3 * time.Second):
 	}
 	sdp := pc.LocalDescription().SDP
+	if req.Path != "udp" {
+		sdp = addPtime(sdp, 40) // H5: Opus mit 40 ms auf TCP-Beinen
+	}
 	for _, ln := range strings.Split(sdp, "\n") {
 		if u, ok := strings.CutPrefix(strings.TrimSpace(ln), "a=ice-ufrag:"); ok {
 			l.ufrag = u
@@ -407,4 +413,25 @@ func (l *leg) stats() legStats {
 		st.ConnectMs = con.Sub(l.created).Milliseconds()
 	}
 	return st
+}
+
+// addPtime setzt a=ptime in jedem Audio-Abschnitt der Antwort. Browser lesen
+// die Rahmendauer aus a=ptime, nicht aus dem fmtp-Parameter.
+func addPtime(sdp string, ms int) string {
+	lines := strings.Split(sdp, "\r\n")
+	out := make([]string, 0, len(lines)+4)
+	audio := false
+	for _, ln := range lines {
+		if strings.HasPrefix(ln, "m=") {
+			audio = strings.HasPrefix(ln, "m=audio")
+		}
+		if audio && strings.HasPrefix(ln, "a=ptime:") {
+			continue
+		}
+		out = append(out, ln)
+		if audio && strings.HasPrefix(ln, "m=audio") {
+			out = append(out, fmt.Sprintf("a=ptime:%d", ms))
+		}
+	}
+	return strings.Join(out, "\r\n")
 }
