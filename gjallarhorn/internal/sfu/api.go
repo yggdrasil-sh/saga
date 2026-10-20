@@ -246,6 +246,12 @@ type Config struct {
 	// OnLegClosed meldet ein vom Knoten beendetes Bein (ersetzt, entfernt,
 	// Raum geschlossen), damit der Aufrufer die PeerConnection schliesst.
 	OnLegClosed func(l *Leg, why string)
+	// OnPeers meldet, dass sich die Teilnehmenden eines Raums geaendert haben
+	// (Room.Peers: Kennung -> CSRC). Beim Beitritt sofort (bevor Medien
+	// fliessen), beim Gehen im naechsten Takt. Damit kennen die Geraete die
+	// CSRC eines neuen Absenders vor seinem ersten Rahmen (P5). Wird
+	// ausserhalb aller Sperren aufgerufen.
+	OnPeers func(room string)
 }
 
 func (c Config) withDefaults() Config {

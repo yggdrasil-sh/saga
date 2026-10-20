@@ -136,7 +136,9 @@ type server struct {
 	graves                  map[string]time.Time   // geschlossene Raeume (gesperrt bis)
 	kicked                  map[string]time.Time   // entfernte Teilnehmende "raum|peer" (gesperrt bis)
 	closing                 atomic.Bool
-	capture                 *capture // nur Tests: Mitschnitt der eingehenden Rahmen (HORN_CAPTURE)
+	capture                 *capture    // nur Tests: Mitschnitt der eingehenden Rahmen (HORN_CAPTURE)
+	ev                      evHub       // P5: Ereigniskanal je Bein (events.go)
+	draining                atomic.Bool // P5: Leeren (keine neuen Beine, Geraete wechseln den Knoten)
 
 	pubIPs   []string                      // oeffentliche Adressen (Kandidaten)
 	udpCheck atomic.Pointer[netx.UDPCheck] // Ergebnis des UDP-Selbsttests
@@ -191,8 +193,14 @@ func runNode(args []string, bench bool, mode string) error {
 		fmt.Printf("LISTEN %d\n", s.mux.Addr().Port)
 	}
 	sig := make(chan os.Signal, 2)
-	signal.Notify(sig, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sig, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGUSR2)
 	for x := range sig {
+		if x == syscall.SIGUSR1 || x == syscall.SIGUSR2 { // P5: Leeren an/aus (Betrieb, Tests)
+			if s.node != nil {
+				s.setDraining(x == syscall.SIGUSR1)
+			}
+			continue
+		}
 		if x == syscall.SIGHUP {
 			if changed, err := s.certs.ReloadIfChanged(); err != nil {
 				log.Printf("zertifikat: %v", err)
@@ -212,7 +220,7 @@ func newServer(cfg *config) (*server, error) {
 	s := &server{cfg: cfg, legs: map[string]*leg{}, ufrags: map[string]*leg{}, perIP: map[string]int{}, start: time.Now(), turnSecret: randHex(32),
 		bySFU: map[*sfu.Leg]*leg{}, devSecret: randHex(32), verifier: &sagaVerifier{}, graves: map[string]time.Time{}, kicked: map[string]time.Time{}}
 	if cfg.Mode == "node" {
-		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed}
+		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed, OnLayout: s.onLayout, OnPeers: s.onPeers}
 		if cfg.Dev {
 			nc.Verifier = sfu.VerifierFunc(s.verifyDev)
 			log.Printf("WARNUNG: HORN_DEV=1 - Entwicklungs-Token ohne Saga, nur fuer Tests")

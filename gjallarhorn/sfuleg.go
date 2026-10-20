@@ -137,6 +137,9 @@ func (s *server) sfuAPI(p sfu.Path) *webrtc.API {
 // errAuth: Token ungueltig.
 var errAuth = errors.New("token ungueltig")
 
+// errDraining: Knoten wird geleert (P5), keine neuen Beine - das Geraet nimmt den naechsten Kandidaten.
+var errDraining = errors.New("knoten wird geleert")
+
 func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 	path, err := sfu.ParsePath(req.Path)
 	if err != nil {
@@ -148,6 +151,9 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 	}
 	if req.Audio < 0 || req.Audio > 8 || req.Tiles < 0 || req.Tiles > 30 || len(req.Offer) > 200<<10 {
 		return nil, "", errors.New("ungueltige anfrage")
+	}
+	if s.draining.Load() {
+		return nil, "", errDraining
 	}
 	g, room, err := s.admit(req.Token, path)
 	if err != nil {
@@ -342,6 +348,7 @@ func (s *server) onSFULegClosed(sl *sfu.Leg, why string) {
 	s.mu.Lock()
 	l := s.bySFU[sl]
 	s.mu.Unlock()
+	s.evLegClosed(sl, why)
 	if l != nil {
 		if debug {
 			log.Printf("debug %s: bein beendet (%s)", l.id, why)
@@ -404,6 +411,7 @@ func (s *server) sfuRoutes(m *http.ServeMux) {
 	m.HandleFunc("POST /api/sfu/leg", s.apiSFULeg)
 	m.HandleFunc("POST /api/sfu/turn", s.apiSFUTurn)
 	m.HandleFunc("GET /api/sfu/leg/{id}", s.apiSFULayout)
+	m.HandleFunc("GET /api/sfu/leg/{id}/events", s.apiSFUEvents) // P5: Ereigniskanal (events.go)
 	m.HandleFunc("DELETE /api/sfu/leg/{id}", s.apiLegDelete)
 	if !s.cfg.Dev {
 		return
@@ -481,7 +489,7 @@ func (s *server) apiSFULeg(w http.ResponseWriter, r *http.Request) {
 	l, answer, err := s.newSFULeg(req, ipKey(r))
 	switch {
 	case err == nil:
-	case errors.Is(err, errLimit), errors.Is(err, sfu.ErrFull):
+	case errors.Is(err, errLimit), errors.Is(err, sfu.ErrFull), errors.Is(err, errDraining):
 		writeJSON(w, 429, map[string]string{"error": err.Error()})
 		return
 	case errors.Is(err, errAuth), errors.Is(err, sfu.ErrNoVerifier):
@@ -494,7 +502,13 @@ func (s *server) apiSFULeg(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"id": l.id, "answer": answer, "csrc": l.sl.Peer.CSRC, "slots": l.sl.Layout()})
+	// P5: peers = alle Teilnehmenden des Raums mit CSRC - das Geraet kennt damit jeden Absender vor dem ersten Rahmen
+	peers := map[string]uint32{}
+	if rm := s.node.Room(l.sl.Grant.Room); rm != nil {
+		peers = rm.Peers()
+	}
+	writeJSON(w, 200, map[string]any{"id": l.id, "answer": answer, "csrc": l.sl.Peer.CSRC, "slots": l.sl.Layout(), "peers": peers,
+		"state": s.nodeState()})
 }
 
 // apiSFUTurn gibt TURN-Zugangsdaten nur gegen ein gueltiges Medien-Token

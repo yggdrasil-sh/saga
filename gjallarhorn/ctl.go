@@ -262,6 +262,9 @@ func (c *ctlClient) sendLoad() {
 	if c.s.cfg.MaxLegs > 0 && ld.Legs*10 >= c.s.cfg.MaxLegs*9 {
 		state = "voll"
 	}
+	if c.s.draining.Load() {
+		state = "draining"
+	}
 	c.send(map[string]any{"t": "load", "load": map[string]any{
 		"cpu": round3(cpu), "mem": readRSS(), "legs": ld.Legs, "calls": ld.Rooms, "peers": ld.Peers, "udp_share": round3(ld.UDPShare),
 		"fwd_p95_us": round3(ld.FwdP95us), "drops": round3(drops), "down_kbit": ld.DownKbit, "max_legs": c.s.cfg.MaxLegs, "state": state}})
@@ -317,7 +320,8 @@ func (s *server) syncRooms(keep []string) {
 // mit alten Token nicht zurueck.
 func (s *server) admit(tok string, p sfu.Path) (sfu.Grant, *sfu.Room, error) {
 	g, r, err := s.node.Admit(tok, p)
-	if errors.Is(err, sfu.ErrNoRoom) && s.ctl != nil {
+	// P5: auch ohne Steuerkanal, wenn der Saga-Schluessel fest gesetzt ist (HORN_SAGA_PUB): das Token ist von Saga signiert
+	if errors.Is(err, sfu.ErrNoRoom) && (s.ctl != nil || s.verifier.HasKey()) {
 		s.mu.Lock()
 		dead := time.Now().Before(s.graves[g.Room])
 		s.mu.Unlock()

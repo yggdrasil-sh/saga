@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -207,6 +208,7 @@ type Room struct {
 	stop      chan struct{}
 	seq       uint64
 	lastTick  int64
+	peersSig  string // Teilnehmende bei der letzten OnPeers-Meldung
 }
 
 // Ref liefert die Raumkennung.
@@ -306,6 +308,7 @@ func (r *Room) AddLeg(g Grant, path Path, want Want) (*Leg, error) {
 		return nil, ErrFull
 	}
 	var replaced *Leg
+	newPeer := false
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
@@ -330,6 +333,7 @@ func (r *Room) AddLeg(g Grant, path Path, want Want) (*Leg, error) {
 		p = &Peer{ID: g.Peer, CSRC: r.newCSRC(), Device: g.Device, joined: r.seq, legs: map[*Leg]struct{}{},
 			srcs: map[*fwd.Source]*source{}, cam: map[string]*source{}, scr: map[string]*source{}}
 		r.peers[g.Peer] = p
+		newPeer = true
 	}
 	l := &Leg{Ref: g.Leg, Peer: p, Path: path, Role: g.Role, Grant: g, room: r, fl: fwd.NewLeg()}
 	cfg := r.cfg
@@ -360,9 +364,13 @@ func (r *Room) AddLeg(g Grant, path Path, want Want) (*Leg, error) {
 	}
 	p.legs[l] = struct{}{}
 	r.legs[g.Leg] = l
+	notify := newPeer && r.peersChangedLocked()
 	r.mu.Unlock()
 	if replaced != nil {
 		r.finishLeg(replaced, "ersetzt")
+	}
+	if notify && cfg.OnPeers != nil {
+		cfg.OnPeers(r.ref)
 	}
 	return l, nil
 }
@@ -577,6 +585,22 @@ func (r *Room) close(why string) {
 	for _, l := range ls {
 		r.finishLeg(l, why)
 	}
+}
+
+// peersChangedLocked: hat sich die Menge der Teilnehmenden seit der letzten
+// OnPeers-Meldung geaendert? (merkt sich den neuen Stand)
+func (r *Room) peersChangedLocked() bool {
+	ids := make([]string, 0, len(r.peers))
+	for id := range r.peers {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	sig := strings.Join(ids, ",")
+	if sig == r.peersSig {
+		return false
+	}
+	r.peersSig = sig
+	return true
 }
 
 // Peers liefert die Kennungen und CSRCs der Teilnehmenden (Beitrittsfolge).
