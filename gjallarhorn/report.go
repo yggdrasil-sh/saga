@@ -29,6 +29,7 @@ type pPhase struct {
 	WSRTT     pRTT    `json:"ws_rtt_ms"`
 	Secs      float64 `json:"secs"`
 	Audio     *struct {
+		Tracks  *int     `json:"tracks"`
 		Conceal *float64 `json:"conceal_pct"`
 		JB      *float64 `json:"jb_ms"`
 		Loss    *float64 `json:"loss_pct"`
@@ -57,8 +58,28 @@ type pPhase struct {
 	TileProfile  string   `json:"tile_profile"`
 }
 
+// invalidReason: warum eine verbundene Phase nicht zaehlt ("" = gueltig).
+// Rueckwirkend: 0 empfangene Tonspuren (z. B. AudioContext in Safari
+// angehalten, Tab im Hintergrund) machen die Phase ungueltig.
+func (p pPhase) invalidReason() string {
+	if p.Invalid != "" {
+		return p.Invalid
+	}
+	if p.OK && p.Audio != nil && p.Audio.Tracks != nil && *p.Audio.Tracks == 0 {
+		return "keine Tonspuren empfangen"
+	}
+	return ""
+}
+
 // valid: verbunden und gueltig gemessen.
-func (p pPhase) valid() bool { return p.OK && p.Invalid == "" }
+func (p pPhase) valid() bool { return p.OK && p.invalidReason() == "" }
+
+// MinMV ist die Messversion ab dem Fix der Bildrate (Commit 7857779).
+const MinMV = 2
+
+// oldVersion: Lauf vor dem Fix (Kacheln mit ~2,5 statt 10 fps); zaehlt
+// fuer G4/G5 nicht.
+func (r pResult) oldVersion() bool { return r.MV < MinMV }
 
 // expectedDown: erwartete Downlink-Rate in kbit/s laut Profil. Aeltere
 // Ergebnisse ohne Messwert: aus den Raten der Messseite (Ton 40 kbit/s,
@@ -70,20 +91,24 @@ func (p pPhase) expectedDown() float64 {
 	if p.Profile == "a25" {
 		return 3 * 40
 	}
-	return 3*40 + 1500 + 10*250
+	// Obergrenzen der Messseite: Sprecher 1,5 Mbit/s, 10 Kacheln je
+	// 150 kbit/s (TCP, 180p/10 fps), 3 x Ton 40 kbit/s
+	return 3*40 + 1500 + 10*150
 }
 
 type pResult struct {
-	File    string   `json:"-"`
-	Net     string   `json:"net"`
-	Device  string   `json:"device"`
-	Browser string   `json:"browser"`
-	Version string   `json:"version"`
-	OS      string   `json:"os"`
-	Saved   string   `json:"saved"`
-	Mic     string   `json:"mic_permission"`
-	Phases  []pPhase `json:"phases"`
-	Base    *struct {
+	File      string   `json:"-"`
+	Net       string   `json:"net"`
+	Device    string   `json:"device"`
+	Browser   string   `json:"browser"`
+	Version   string   `json:"version"`
+	OS        string   `json:"os"`
+	Saved     string   `json:"saved"`
+	Mic       string   `json:"mic_permission"`
+	Phases    []pPhase `json:"phases"`
+	MV        int      `json:"mv"`
+	NodeBuild string   `json:"node_build"`
+	Base      *struct {
 		WS pRTT `json:"ws_rtt_ms"`
 	} `json:"base"`
 }
@@ -198,8 +223,8 @@ func writeReport(w io.Writer, rs []pResult, bs []benchResult, now time.Time) {
 		fmt.Fprintf(w, "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 		for _, r := range rs {
 			for _, p := range r.Phases {
-				if p.OK && p.Invalid != "" {
-					fmt.Fprintf(w, "| %s | %s | %s | %s | %s | ⚠ ungültig: %s | | | | | | | | | | | | |\n", r.Device, esc(r.Net), platform(r), pathName[p.Path], profName[p.Profile], esc(p.Invalid))
+				if p.OK && p.invalidReason() != "" {
+					fmt.Fprintf(w, "| %s | %s | %s | %s | %s | ⚠ ungültig: %s | | | | | | | | | | | | |\n", r.Device, esc(r.Net), platform(r), pathName[p.Path], profName[p.Profile], esc(p.invalidReason()))
 					continue
 				}
 				if !p.OK {
@@ -221,8 +246,12 @@ func writeReport(w io.Writer, rs []pResult, bs []benchResult, now time.Time) {
 				if p.Video != nil {
 					frz, frzs, vloss = fv(p.Video.Frz5, 2), fv(p.Video.FrzS5, 2), fv(p.Video.LossPct, 2)
 				}
-				fmt.Fprintf(w, "| %s | %s | %s | %s | %s | ✔ | %s | %s / %s | %s | %s | %s | %s | %s | %s | %s | %s | %d | %s |\n",
-					r.Device, esc(r.Net), platform(r), pathName[p.Path], profName[p.Profile], maxConnect(p.ConnectMs),
+				okCell := "✔"
+				if r.oldVersion() {
+					okCell = "✔ (alte Messversion)"
+				}
+				fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s | %s | %s / %s | %s | %s | %s | %s | %s | %s | %s | %s | %d | %s |\n",
+					r.Device, esc(r.Net), platform(r), pathName[p.Path], profName[p.Profile], okCell, maxConnect(p.ConnectMs),
 					fv(p.RTT.P50, 0), fv(p.RTT.P95, 0), fv(p.WSRTT.P95, 0), conceal, jb, frz, frzs,
 					fmtNum(p.Down.Stable/1000, 2), fmtNum(p.Up.Stable/1000, 2), vloss, drop, fmtNum(maxQ, 0))
 			}
@@ -248,7 +277,7 @@ func writeReport(w io.Writer, rs []pResult, bs []benchResult, now time.Time) {
 	}
 
 	fmt.Fprintf(w, "## Go/No-Go (Konzept §5.4)\n\n")
-	fmt.Fprintf(w, "Bewertet wird der schlechteste gültige Wert über alle Läufe und beide TCP-Wege (ICE-TCP und TURN-TLS, Profil 12 Video). Ungültige Phasen (Seite im Hintergrund, kein Ton) und lokale Testläufe (Netz „e2e-lokal“) zählen nicht.\n\n")
+	fmt.Fprintf(w, "Bewertet wird der schlechteste gültige Wert über alle Läufe und beide TCP-Wege (ICE-TCP und TURN-TLS, Profil 12 Video). Ungültige Phasen (Seite im Hintergrund, kein Ton bzw. 0 Tonspuren) und lokale Testläufe (Netz „e2e-lokal“) zählen nicht. Läufe einer alten Messversion (vor dem Bildrate-Fix, Kacheln mit ~2,5 statt 10 fps) stehen in der Tabelle, zählen aber nicht für G4 und G5.\n\n")
 	fmt.Fprintf(w, "| # | Kriterium | Messwert | Ergebnis |\n|---|---|---|---|\n")
 	gs := evaluateGo(rs, bs)
 	for _, g := range gs {
@@ -329,9 +358,16 @@ func evaluateGo(rs []pResult, bs []benchResult) []goRow {
 		}
 		out = append(out, row)
 	}
-	worst := func(f func(pPhase) *float64) (float64, bool) {
+	// G4/G5 nur mit Laeufen ab der aktuellen Messversion (Bildrate-Fix)
+	var cur []tcpRun
+	for _, t := range tcp {
+		if !t.r.oldVersion() {
+			cur = append(cur, t)
+		}
+	}
+	worstIn := func(set []tcpRun, f func(pPhase) *float64) (float64, bool) {
 		m, have := 0.0, false
-		for _, t := range tcp {
+		for _, t := range set {
 			if x := f(t.p); x != nil {
 				if !have || *x > m {
 					m = *x
@@ -341,6 +377,8 @@ func evaluateGo(rs []pResult, bs []benchResult) []goRow {
 		}
 		return m, have
 	}
+	worst := func(f func(pPhase) *float64) (float64, bool) { return worstIn(tcp, f) }
+	worstCur := func(f func(pPhase) *float64) (float64, bool) { return worstIn(cur, f) }
 	thr := func(id, what string, f func(pPhase) *float64, unit string, goMax, noGoMin float64) goRow {
 		row := goRow{id: id, what: what}
 		x, ok := worst(f)
@@ -368,13 +406,13 @@ func evaluateGo(rs []pResult, bs []benchResult) []goRow {
 	}, " %", 3, 6))
 	{
 		row := goRow{id: "G4", what: "Bild-Einfrieren je Kachel (≤ 1 je 5 min, Summe ≤ 2 s)"}
-		f, ok1 := worst(func(p pPhase) *float64 {
+		f, ok1 := worstCur(func(p pPhase) *float64 {
 			if p.Video == nil {
 				return nil
 			}
 			return p.Video.Frz5
 		})
-		d, _ := worst(func(p pPhase) *float64 {
+		d, _ := worstCur(func(p pPhase) *float64 {
 			if p.Video == nil {
 				return nil
 			}
@@ -399,7 +437,7 @@ func evaluateGo(rs []pResult, bs []benchResult) []goRow {
 		row := goRow{id: "G5", what: "stabile Downlink-Rate je Gerät (≥ 80 % der laut Profil erwarteten Rate)"}
 		worstR, have := 0.0, false
 		var wd, we float64
-		for _, t := range tcp {
+		for _, t := range cur {
 			e := t.p.expectedDown()
 			if e <= 0 {
 				continue

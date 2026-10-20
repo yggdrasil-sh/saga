@@ -5,9 +5,42 @@ package main
 import (
 	"fmt"
 	"os"
+	rdebug "runtime/debug"
 )
 
 var version = "2.5.0-probe"
+
+// build ist der Commit des Builds (build.sh setzt ihn, sonst aus den
+// Go-Build-Informationen).
+var build = ""
+
+// buildID liefert den Build-Hash (kurz, "-dirty" bei geaenderten Dateien).
+func buildID() string {
+	if build != "" {
+		return build
+	}
+	if bi, ok := rdebug.ReadBuildInfo(); ok {
+		rev, dirty := "", false
+		for _, s := range bi.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				rev = s.Value
+			case "vcs.modified":
+				dirty = s.Value == "true"
+			}
+		}
+		if len(rev) > 12 {
+			rev = rev[:12]
+		}
+		if rev != "" && dirty {
+			rev += "-dirty"
+		}
+		if rev != "" {
+			return rev
+		}
+	}
+	return "unbekannt"
+}
 
 const usage = `gjallarhorn %s – Horn-Probe
 
@@ -44,7 +77,7 @@ func main() {
 	case "report":
 		err = runReport(os.Args[2:], os.Stdout)
 	case "version", "--version", "-v":
-		fmt.Println(version)
+		fmt.Println(version, buildID())
 	default:
 		fmt.Fprintf(os.Stderr, usage, version)
 		os.Exit(2)

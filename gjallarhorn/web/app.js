@@ -14,6 +14,9 @@ const PROFILES = {
   a25: { label: '25 Ton', n: 25, audio: 3, video: 0 },    // Top-3-Ton
 };
 const PATHS = { udp: 'UDP', tcp: 'ICE-TCP', turn: 'TURN-TLS' };
+// Messversion: 2 = nach dem Fix der Bildrate (alle zeitlichen Schichten),
+// Ton-Pruefung und Sichtbarkeit. Aeltere Laeufe wertet der Report nicht fuer G4/G5.
+const MV = 2;
 
 const $ = (id) => document.getElementById(id);
 let session = null;
@@ -167,7 +170,7 @@ function setJbt(receiver) {
 function encodings(path) {
   // TCP-Wege: 2 Schichten (Kacheln 180p/10 fps wie der SFU auf TCP, Sprecher
   // 540p), UDP: 3 Schichten (H4), Kacheln dort 15 fps
-  const l = { rid: 'l', scaleResolutionDownBy: 3, maxBitrate: 250000, maxFramerate: path === 'udp' ? 15 : 10 };
+  const l = { rid: 'l', scaleResolutionDownBy: 3, maxBitrate: path === 'udp' ? 250000 : 150000, maxFramerate: path === 'udp' ? 15 : 10 };
   const m = { rid: 'm', scaleResolutionDownBy: 1.5, maxBitrate: 600000, maxFramerate: 30 };
   const h = { rid: 'h', scaleResolutionDownBy: 1, maxBitrate: 1500000, maxFramerate: 30 };
   return path === 'udp' ? [l, m, h] : [l, h];
@@ -487,7 +490,7 @@ async function run(net, dev) {
   const mic = await unlockCandidates();
   startSources();
   startPing();
-  const result = { v: 1, net, device: dev, ...browserInfo(), mic_permission: mic, e2e: useScript ? 'RTCRtpScriptTransform' : 'createEncodedStreams',
+  const result = { v: 1, mv: MV, probe_version: session.version, probe_build: session.build, net, device: dev, ...browserInfo(), mic_permission: mic, e2e: useScript ? 'RTCRtpScriptTransform' : 'createEncodedStreams',
     jbt: jbtSupported ? JBT : 'nicht unterstützt',
     profile_secs: { base: BASE, path: DUR, ton: TON }, phases: [] };
   if (!session.udp) result.phases.push({ path: 'udp', profile: 'v12', ok: false, reason: 'am Knoten aus' });

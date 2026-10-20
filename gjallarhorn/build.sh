@@ -4,9 +4,11 @@
 set -eu
 cd "$(dirname "$0")"
 v="${1:-2.5.0-probe}"
+b="$(git rev-parse --short=12 HEAD 2>/dev/null || echo unbekannt)"
+git diff --quiet HEAD -- . 2>/dev/null || b="$b-dirty"
 mkdir -p dist
 for a in amd64 arm64; do
-  CGO_ENABLED=0 GOOS=linux GOARCH="$a" go build -trimpath -ldflags="-s -w -X main.version=$v" -o "dist/gjallarhorn-linux-$a" .
+  CGO_ENABLED=0 GOOS=linux GOARCH="$a" go build -trimpath -ldflags="-s -w -X main.version=$v -X main.build=$b" -o "dist/gjallarhorn-linux-$a" .
 done
 ( cd dist && sha256sum gjallarhorn-linux-* > SHA256SUMS )
 ls -l dist

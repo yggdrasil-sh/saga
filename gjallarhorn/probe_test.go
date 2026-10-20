@@ -294,14 +294,15 @@ func TestReportVerdicts(t *testing.T) {
 	ok.RTT.P95 = f(120)
 	ok.Down.Stable = 3500
 	ok.Audio = &struct {
+		Tracks  *int     `json:"tracks"`
 		Conceal *float64 `json:"conceal_pct"`
 		JB      *float64 `json:"jb_ms"`
 		Loss    *float64 `json:"loss_pct"`
 	}{Conceal: f(1.2)}
-	rs := []pResult{{Net: "LTE", Device: "Handy", Browser: "Chrome", OS: "Android", Phases: []pPhase{ok}}}
+	rs := []pResult{{MV: 2, Net: "LTE", Device: "Handy", Browser: "Chrome", OS: "Android", Phases: []pPhase{ok}}}
 	bad := ok
 	bad.RTT.P95 = f(400)
-	rs = append(rs, pResult{Net: "Firma", Device: "Laptop", Browser: "Firefox", OS: "Linux", Phases: []pPhase{bad}})
+	rs = append(rs, pResult{MV: 2, Net: "Firma", Device: "Laptop", Browser: "Firefox", OS: "Linux", Phases: []pPhase{bad}})
 	gs := evaluateGo(rs, []benchResult{{N: 25, Video: 12, CPUusPkt: 8, RAMPartMB: 3}})
 	got := map[string]verdict{}
 	for _, g := range gs {
@@ -375,7 +376,16 @@ func TestReportWorstValid(t *testing.T) {
 	tcp, turn := ph("tcp", 0, 2000, 2200), ph("turn", 21.34, 1900, 2200)
 	hidden := ph("tcp", 99, 100, 2200)
 	hidden.Invalid = "Seite war im Hintergrund"
-	rs := []pResult{{Net: "WLAN", Device: "Laptop", Browser: "Safari", OS: "macOS", Phases: []pPhase{tcp, turn, hidden}}}
+	zero := 0
+	noAudio := ph("tcp", 50, 100, 2200) // alter Hintergrund-Lauf: 0 Tonspuren
+	noAudio.Audio = &struct {
+		Tracks  *int     `json:"tracks"`
+		Conceal *float64 `json:"conceal_pct"`
+		JB      *float64 `json:"jb_ms"`
+		Loss    *float64 `json:"loss_pct"`
+	}{Tracks: &zero}
+	old := pResult{Net: "LTE", Device: "Handy", Browser: "Safari", OS: "iOS", Phases: []pPhase{ph("turn", 30, 100, 4120)}} // vor dem Fix
+	rs := []pResult{{MV: 2, Net: "WLAN", Device: "Laptop", Browser: "Safari", OS: "macOS", Phases: []pPhase{tcp, turn, hidden, noAudio}}, old}
 	got := map[string]goRow{}
 	for _, g := range evaluateGo(rs, nil) {
 		got[g.id] = g
@@ -386,8 +396,13 @@ func TestReportWorstValid(t *testing.T) {
 	if got["G5"].v != vGo || !strings.Contains(got["G5"].value, "86 %") {
 		t.Fatalf("G5 %+v", got["G5"])
 	}
+	var ob strings.Builder
+	writeReport(&ob, rs, nil, time.Now())
+	if !strings.Contains(ob.String(), "alte Messversion") || !strings.Contains(ob.String(), "keine Tonspuren") {
+		t.Fatal("alte messversion bzw. 0 tonspuren nicht ausgewiesen")
+	}
 	// nur ungueltig: keine Wertung
-	rs = []pResult{{Net: "WLAN", Device: "Laptop", Browser: "Safari", OS: "macOS", Phases: []pPhase{hidden}}}
+	rs = []pResult{{MV: 2, Net: "WLAN", Device: "Laptop", Browser: "Safari", OS: "macOS", Phases: []pPhase{hidden}}}
 	for _, g := range evaluateGo(rs, nil) {
 		if (g.id == "G4" || g.id == "G5") && g.v != vNone {
 			t.Fatalf("ungueltig gewertet: %+v", g)
