@@ -955,3 +955,50 @@ PUT /api/chat/privacy
   einer Bearbeitungspause und beim Verlassen einer Seite rufen (optional; ältere Server: 404 ignorieren).
 - **Anmeldung:** Fehlversuche bremsen statt sperren; die Meldung (429/401 mit `error`) nennt die Wartezeit. Eine harte
   Sperre gibt es nur nach sehr vielen Versuchen von vielen Adressen (Benachrichtigung `login.locked`, `system: true`).
+
+## Eigene Push-Verbindung ohne Verteiler (2.5)
+
+UnifiedPush bleibt der Hauptweg. Hat ein Android-Gerät **keinen** Verteiler, hält die App selbst **eine** WebSocket-
+Verbindung zum eigenen Server. Für den Server ist das ein weiteres Push-Ziel; Inhalt, Verschlüsselung und Regeln sind
+dieselben wie bei Web Push/UnifiedPush mit Schlüsseln.
+
+### Erkennen und anmelden
+
+- `GET /api/push` -> `server.stream: true` und `server.stream_path: "/api/push/stream"` (ältere Server: Feld fehlt –
+  dann gibt es den Weg nicht). Der Admin kann ihn abschalten (`stream: false`).
+- Anmelden **mit dem Geräte-Schlüssel** (`Authorization: Bearer hkd_…`, nur Apps mit Geräte-Anmeldung):
+  `POST /api/push/subscriptions {type: "stream", keys: {p256dh, auth}, name}` -> `201 {id, device, active, stream_path}`
+  (erneut: `200`, dasselbe Abo; je Geräte-Anmeldung genau eines, Endpunkt vergibt der Server). Schlüssel wie bei
+  UnifiedPush (P-256, 16 Byte auth). Ohne Geräte-Anmeldung `400`, Weg abgeschaltet `403`.
+- In der Geräteliste: `type: "stream"`, `where: "Saga (eigene Verbindung)"`, `encrypted: true`, `connected: bool`.
+- Mit Namen wie bei Web Push (Ende-zu-Ende verschlüsselt, nur der eigene Server ist beteiligt).
+- **Umstieg:** Hat dasselbe Gerät zusätzlich ein `unifiedpush`-Abo, bekommt das `stream`-Abo nichts mehr. Die App
+  entfernt ihr `stream`-Abo (`DELETE /api/push/subscriptions/{id}`), sobald UnifiedPush läuft.
+
+### Verbindung `GET /api/push/stream` (WebSocket)
+
+Kopf `Authorization: Bearer hkd_…`. Danach nur Binär-Rahmen, das erste Byte ist die Art:
+
+| Richtung | Rahmen | Bedeutung |
+|---|---|---|
+| Server -> App | `0x01` + Kennung (8 Byte, big endian) + Körper | Mitteilung; Körper = aes128gcm nach RFC 8291 wie bei Web Push (gleiche Entschlüsselung wie UnifiedPush) |
+| App -> Server | `0x02` + Kennung (8 Byte), auch mehrere Kennungen hintereinander | erhalten – der Server löscht sie |
+| App -> Server | `0x03` | Lebenszeichen |
+| Server -> App | `0x04` | Antwort auf `0x03` |
+
+- Beim Aufbau schickt der Server alles Abgelegte, das noch nicht abgelaufen ist (Kennungen aufsteigend). Unbestätigtes
+  kommt beim nächsten Aufbau noch einmal – Doppelte an der Kennung erkennen. Ablage je Abo höchstens 100, Ablauf wie die
+  TTL der Mitteilung (normal 4 h, Anruf: solange es klingelt), gleiche `tag` ersetzt eine noch nicht bestätigte.
+- **Der Server sendet von sich aus nie etwas** außer Mitteilungen (kein Ping, auch kein WebSocket-Ping). Die App wählt
+  den Abstand ihrer Lebenszeichen: so groß, wie NAT und Proxy die ruhende Verbindung überleben lassen. Empfehlung
+  (Android-App): Stufen 45 s, 2, 4, 7, 9, 14, 20, 28 min (die unteren nur für Netze/Proxys, die früh trennen),
+  Start bei 9 min; nach drei erfolgreichen Lebenszeichen eine Stufe höher, stirbt die ruhende Verbindung (keine Antwort
+  auf `0x03` oder Abbruch ohne Netzwechsel), eine Stufe zurück und die höhere für dieses Netz 24 h sperren.
+- Echte WebSocket-Pings beantwortet der Server ebenfalls (Protokoll), sie sind aber nicht nötig.
+- **Schließen (Code nach dem Aufbau):** `4401` Anmeldung ungültig (Gerät abgemeldet, Konto gesperrt) – nicht neu
+  verbinden; `4404` kein `stream`-Abo bzw. Weg abgeschaltet – `GET /api/push` prüfen, ggf. neu anmelden; `4409` eine
+  neuere Verbindung desselben Geräts hat übernommen – nicht zurückdrängen; `4429` zu viele Aufbauten (mehr als 12 je
+  Minute) – mit Wartezeit; `1012` Server startet neu – nach kurzer, zufälliger Wartezeit neu verbinden.
+- Hinter `saga-media` (Container) wird die Verbindung als schlanker Tunnel durchgereicht; ein Reverse Proxy davor muss
+  ruhende WebSocket-Verbindungen mindestens 30 min offen lassen (Anleitung, Abschnitt Reverse Proxy).
+

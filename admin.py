@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import clean_line, connect as _db
-from saga import ai, avatars, backups, calls, chat, federation, i18n, live, mfa, publish, push, sharing, userbackup
+from saga import ai, avatars, backups, calls, chat, federation, i18n, live, mfa, publish, push, push_stream, sharing, userbackup
 from saga.core import RESTORE_TEST, TZ, BodyLimit, LangMiddleware, install_lang_ui, lang_switch_response
 from saga.i18n import t
 from version import REPO, VERSION, VERSION_LABEL, channel, newer
@@ -1023,7 +1023,7 @@ def _push_stats():
     with _db() as c:
         by = c.execute("SELECT kind, COUNT(*) FROM push_sub GROUP BY kind ORDER BY kind").fetchall()
         q = c.execute("SELECT COUNT(*) FROM push_queue").fetchone()[0]
-    return {"subs": sum(r[1] for r in by), "queue": q, "by": [(r[0], r[1]) for r in by]}
+    return {"subs": sum(r[1] for r in by), "queue": q, "by": [(r[0], r[1]) for r in by], "streams": push_stream.count()}
 
 
 @admin.get("/settings/push")
@@ -1050,7 +1050,7 @@ async def push_post(request: Request):
     f = await _form(request)
     if f is None:
         return _go("/settings/push")
-    auth.save_setting("push", {k: _on(f, k) for k in ("enabled", "webpush", "ntfy", "unifiedpush")})
+    auth.save_setting("push", {k: _on(f, k) for k in ("enabled", "webpush", "ntfy", "unifiedpush", "stream")})
     cur = auth.settings(fresh=True).get("apns") or {}
     a = {"enabled": _on(f, "apns_enabled"), "team_id": _s(f, "team_id", 20).upper(), "key_id": _s(f, "key_id", 20).upper(),
          "bundle_id": _s(f, "bundle_id", 200), "p8": "", "url": cur.get("url", "")}

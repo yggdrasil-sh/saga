@@ -32,7 +32,7 @@ _pool_lock = threading.Lock()
 # Tabellen mit Ganzzahl-Schluessel "id" -> INSERT liefert die neue id (cur.lastrowid)
 ID_TABLES = {"task", "note", "note_version", "device_login", "cal_account", "app_token", "users", "groups",
              "service", "bookmark", "note_share", "note_comment", "notification", "chat",
-             "push_sub", "push_queue", "ai_history", "fed_invite", "fed_log", "fed_outbox", "backup_run",
+             "push_sub", "push_queue", "push_stream_msg", "ai_history", "fed_invite", "fed_log", "fed_outbox", "backup_run",
              "user_backup_run"}
 # INSERT OR REPLACE: Konfliktspalten je Tabelle
 UPSERT_KEYS = {"immich_key": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",),
@@ -549,6 +549,14 @@ CREATE TABLE IF NOT EXISTS push_queue (
 CREATE INDEX IF NOT EXISTS push_queue_due ON push_queue (next_at);
 CREATE INDEX IF NOT EXISTS push_queue_uid ON push_queue (uid);
 CREATE INDEX IF NOT EXISTS push_queue_sub ON push_queue (sub_id);
+-- 2.5: eigene Push-Verbindung der Apps (saga.push_stream) - abgelegte, bereits verschluesselte Mitteilungen (RFC 8291) bis
+-- zur Bestaetigung durch die App oder bis zum Ablauf (TTL wie Web Push); Topic ersetzt eine gleiche
+CREATE TABLE IF NOT EXISTS push_stream_msg (
+    id BIGSERIAL PRIMARY KEY, sub_id BIGINT NOT NULL REFERENCES push_sub(id) ON DELETE CASCADE,
+    topic TEXT NOT NULL DEFAULT '', body BYTEA NOT NULL,
+    created DOUBLE PRECISION NOT NULL, expires DOUBLE PRECISION NOT NULL);
+CREATE INDEX IF NOT EXISTS push_stream_msg_sub ON push_stream_msg (sub_id, id);
+CREATE INDEX IF NOT EXISTS push_stream_msg_exp ON push_stream_msg (expires);
 
 -- KI-Assistent (1.6): Anfragen je Person und Tag (Kontingent) und der optionale Verlauf (nur wenn die Person ihn einschaltet;
 -- sources = JSON {ids: [Seiten], opts}, Titel werden beim Lesen mit der aktuellen Berechtigung ermittelt)

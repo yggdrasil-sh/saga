@@ -25,7 +25,7 @@ import db
 from version import API_LEVEL, BUILD, MIN_APP, VERSION, channel
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
-from saga import ai, ai_chat, avatars, calls, chat, chat_files, federation, i18n, live, mfa, notify, push
+from saga import ai, ai_chat, avatars, calls, chat, chat_files, federation, i18n, live, mfa, notify, push, push_stream
 from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
 from saga import chat_status                     # 2.4: Gelesen-Bestaetigungen und Online-Status (haengt sich in chat, live, fed_chat ein)
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, MEDIA_FRONT, MediaAuthHint, title
@@ -57,6 +57,7 @@ async def lifespan(_app):
     task = asyncio.create_task(_status_loop())
     live.start()                                             # Live-Kanal (/api/events) und Anwesenheit
     push.start()                                             # Mitteilungen aufs Handy/Desktop (Warteschlange)
+    push_stream.start()                                      # 2.5: eigene Push-Verbindung der Apps (/api/push/stream)
     federation.start()                                       # Foederation: Ausgangskorb (Ereignisse an andere Instanzen)
     calls.start()                                            # Anrufe: Klingeldauer, verlorene Verbindungen (2.1)
     pageindex.start()                                        # Suchtext/Verweise/Vorschaubilder abgleichen (2.2)
@@ -94,6 +95,7 @@ async def lifespan(_app):
     userbackup.stop()
     pageindex.stop()
     calls.stop()
+    push_stream.stop()
     push.stop()
     live.stop()
     federation.stop()
@@ -155,6 +157,9 @@ app.add_middleware(BodyLimit, default=REQUEST_MAX,
                           ("POST", re.compile(r"/fed/v2/notes/[0-9]+/files"), max(REQUEST_MAX, FILE_MAX + 64 * 1024)),
                           ("PUT", re.compile(r"/api/account/avatar"), max(REQUEST_MAX, avatars.UPLOAD_MAX + 64 * 1024)),
                           ("POST", re.compile(r"/api/account/backup/restore/upload"), userbackup.HARD_MAX_MB * 1024 * 1024 + 1024 * 1024)])
+# 2.5: eigene Push-Verbindung der Apps (WebSocket /api/push/stream) - als letzte registriert = ganz aussen, ohne die
+# Middlewares und das Routing darunter (spart Speicher je ruhender Verbindung, saga.push_stream.Front)
+app.add_middleware(push_stream.Front)
 
 
 # --- Routes -----------------------------------------------------------------

@@ -682,10 +682,24 @@ def origin_of(request, tab=None):
     return f"{o}#{tab}" if tab and _TAB_RE.fullmatch(tab) else o
 
 
+_forget_hooks = []
+
+
+def on_forget_device(fn):
+    """fn(uid, did) beim Abmelden eines Geraets (2.5: eigene Push-Verbindung sofort schliessen)."""
+    if fn not in _forget_hooks:
+        _forget_hooks.append(fn)
+
+
 def forget_device(uid, did=None):
     """Zwischenspeicher fuer abgemeldete Geraete leeren (did=None: alle Geraete des Kontos)."""
     for k in [k for k in _dev_seen if k[0] == uid and (did is None or k[1] == str(did))]:
         _dev_seen.pop(k, None)
+    for fn in _forget_hooks:
+        try:
+            fn(uid, did)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _api_guard(request):

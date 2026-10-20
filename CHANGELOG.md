@@ -16,6 +16,26 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Mitteilungen
+
+- **Android ohne Verteiler-App (eigene Push-Verbindung).** UnifiedPush (ntfy, NextPush …) bleibt der Hauptweg. Ist auf
+  dem Handy kein Verteiler installiert, hält die Android-App selbst eine stromsparende Verbindung zu Saga
+  (WebSocket `GET /api/push/stream`, kein Google FCM). Für den Server ist das nur ein weiteres Push-Ziel (Abo-Art
+  `stream`): dieselbe nach RFC 8291 verschlüsselte Nutzlast wie für Web Push/UnifiedPush, dieselbe Lebensdauer (TTL) und
+  Ersetzung (Topic); was ankommt, während das Handy nicht verbunden ist, wird abgelegt und beim nächsten Verbinden
+  zugestellt (bis zur Bestätigung durch die App). Der Server pingt nie selbst – die App wählt den größten Abstand, den
+  Netz und Proxy zulassen (lernend, Start bei 9 Minuten, bis 28 Minuten; für früh trennende Netze/Proxys
+  auch kürzer). Hat ein Gerät später ein UnifiedPush-Abo, bekommt seine
+  eigene Verbindung nichts mehr (Umstieg ohne doppelte Mitteilungen).
+- **Sparsam auf dem Server:** reines ASGI vor allen Middlewares, keine Zeitschleifen, keine Warteschlangen im Speicher.
+  Gemessen (`tools/perf/push_stream.py`, Zuwachs zwischen 500 und 2500 ruhenden Verbindungen): Python ≈ 23 KB je
+  Verbindung; `saga-media` reicht die Verbindung über einen schlanken Tunnel durch (≈ 8 KB je Verbindung statt ≈ 84 KB
+  mit dem allgemeinen Proxy). Leerlauf-CPU unverändert (keine Arbeit je ruhender Verbindung), ≈ 0,1 s CPU je 1000
+  Lebenszeichen.
+- **Admin:** neuer Schalter „Eigene Verbindung der Android-App (ohne Verteiler)“ unter Mitteilungen (Standard an), mit
+  Zahl der verbundenen Geräte. Hinter nginx braucht `/api/push/stream` die WebSocket-Köpfe und ein langes
+  `proxy_read_timeout` (Anleitung, Abschnitt Reverse Proxy).
+
 ## [2.4.0] – 2026-10-20
 
 Saga 2.4 bringt Videos in den Chat und macht Anrufe erwachsen: Gruppenanrufe, Bildschirm teilen mit Kamera daneben,
