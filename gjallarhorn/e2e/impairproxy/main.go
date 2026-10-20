@@ -1,6 +1,7 @@
 // impairproxy: TCP-Durchreicher mit nachgebildeter RTT und Verlust (fuer
 // Browser-Laeufe ohne netem). Aufruf:
-//   impairproxy <lauschen> <ziel> [rtt-ms] [verlust-anteil]
+//
+//	impairproxy <lauschen> <ziel> [rtt-ms] [verlust-anteil]
 package main
 
 import (
