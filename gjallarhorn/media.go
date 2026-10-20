@@ -204,7 +204,7 @@ func (s *server) newLeg(req legReq, ipKey string) (*leg, string, error) {
 		return nil, "", errors.New("abos nur im bench-modus")
 	}
 	s.mu.Lock()
-	if len(s.legs) >= s.cfg.MaxLegs || (!s.cfg.Bench && ipKey != "" && s.perIP[ipKey] >= 12) {
+	if len(s.legs) >= s.cfg.MaxLegs || (!s.cfg.Bench && ipKey != "" && s.perIP[ipKey] >= s.cfg.maxPerIP()) {
 		s.mu.Unlock()
 		return nil, "", errLimit
 	}

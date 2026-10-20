@@ -44,6 +44,7 @@ type config struct {
 	ICEIPs    []string // nur diese lokalen Adressen als Kandidaten (leer = alle)
 	RelayIP   net.IP
 	MaxLegs   int
+	MaxPerIP  int // Beine je Quell-Adresse (HORN_MAX_PER_IP, Standard 12)
 	Bench     bool
 	Mode      string // "probe" (Spiegel) oder "node" (Weiterleiter)
 	Dev       bool   // HORN_DEV=1: Entwicklungs-Token und Testseite (nur Tests!)
@@ -93,6 +94,10 @@ func loadConfig(bench bool) (*config, error) {
 		return nil, errors.New("HORN_RELAY_IP ungueltig")
 	}
 	c.MaxLegs, _ = strconv.Atoi(env("HORN_MAX_LEGS", "48"))
+	c.MaxPerIP, _ = strconv.Atoi(env("HORN_MAX_PER_IP", "12"))
+	if c.MaxPerIP < 1 {
+		c.MaxPerIP = 12
+	}
 	certFile := env("HORN_TLS_CERT", filepath.Join(c.Data, "tls", "fullchain.pem"))
 	keyFile := env("HORN_TLS_KEY", filepath.Join(c.Data, "tls", "privkey.pem"))
 	c.Certs = netx.CertOptions{
@@ -635,4 +640,12 @@ func (s *server) onICEConn(ufrag string, c *netx.CoalesceConn) {
 	if l != nil {
 		l.fl.SetFlusher(c)
 	}
+}
+
+// maxPerIP: Grenze je Quell-Adresse (0 in Tests, die Config direkt bauen -> 12)
+func (c *config) maxPerIP() int {
+	if c.MaxPerIP < 1 {
+		return 12
+	}
+	return c.MaxPerIP
 }

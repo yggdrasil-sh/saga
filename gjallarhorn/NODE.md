@@ -146,6 +146,8 @@ n.Load()                                                    // Lastmeldung §2.6
   Admin-Bereich folgt mit P6 (`server.setDraining`).
 - **Bildschirm:** Eine Spur gilt als Bildschirm, wenn ihre Stream-ID mit `screen` beginnt **oder** ihre mid im
   `screen_mid` der Bein-Anfrage steht (Browser können die Stream-ID nicht wählen).
+- **Grenze je Adresse:** höchstens `HORN_MAX_PER_IP` Beine (Standard 12) je Quell-Adresse, insgesamt `HORN_MAX_LEGS`
+  (Standard 48). Hinter einem gemeinsamen NAT (Büro, Schule) mit vielen Geräten höher setzen.
 
 ## Testen
 

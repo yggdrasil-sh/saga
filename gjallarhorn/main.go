@@ -57,7 +57,7 @@ Umgebung (probe): HORN_NAME, HORN_LISTEN (:443), HORN_UDP (1), HORN_DATA (/data)
   HORN_TLS_CERT/HORN_TLS_KEY, HORN_TLS_SELF=1, HORN_PROXY_PROTOCOL (0|1|auto),
   HORN_PUBLIC_IP, HORN_ACME_URL, HORN_ACME_EMAIL, HORN_MODE (probe|node), HORN_DEV.
 Umgebung (node, P3): HORN_SAGA_CTL (ws[s]://saga/api/horn/ctl), HORN_CTL_KEY (eingebauter Knoten, setzt saga-media),
-  HORN_SAGA_PUB (Base64, ohne Steuerkanal), HORN_SAGA_ORIGIN, HORN_PUBLIC_URL.
+  HORN_SAGA_PUB (Base64, ohne Steuerkanal), HORN_SAGA_ORIGIN, HORN_PUBLIC_URL, HORN_MAX_LEGS (48), HORN_MAX_PER_IP (12).
   Details: PROBE.md, NODE.md
 `
 

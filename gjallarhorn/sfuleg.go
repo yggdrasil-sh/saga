@@ -172,7 +172,7 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 		g.Device = sfu.Mobile
 	}
 	s.mu.Lock()
-	if len(s.legs) >= s.cfg.MaxLegs || (!s.cfg.Bench && !s.cfg.Dev && ipKey != "" && s.perIP[ipKey] >= 12) {
+	if len(s.legs) >= s.cfg.MaxLegs || (!s.cfg.Bench && !s.cfg.Dev && ipKey != "" && s.perIP[ipKey] >= s.cfg.maxPerIP()) {
 		s.mu.Unlock()
 		return nil, "", errLimit
 	}
