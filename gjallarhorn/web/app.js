@@ -154,10 +154,19 @@ async function api(method, url, body) {
   return j;
 }
 
+// Jitter-Puffer-Ziel auf TCP-Wegen (wie der SFU-Client): 150 ms an allen
+// Bild-Empfaengern. Ton bleibt beim Standard (NetEQ), wie im SFU-Client.
+const JBT = 150;
+const jbtSupported = typeof RTCRtpReceiver !== 'undefined' && 'jitterBufferTarget' in RTCRtpReceiver.prototype;
+function setJbt(receiver) {
+  if (!jbtSupported) return false;
+  try { receiver.jitterBufferTarget = JBT; return true; } catch (e) { return false; }
+}
+
 function encodings(path) {
-  // TCP-Wege: 2 Schichten (180p + Sprecher 540p), UDP: 3 Schichten (H4)
-  // Raten so, dass 1 Sprecher + 10 Kacheln die 3 Mbit/s aus G5 tragen
-  const l = { rid: 'l', scaleResolutionDownBy: 3, maxBitrate: 250000, maxFramerate: 15 };
+  // TCP-Wege: 2 Schichten (Kacheln 180p/10 fps wie der SFU auf TCP, Sprecher
+  // 540p), UDP: 3 Schichten (H4), Kacheln dort 15 fps
+  const l = { rid: 'l', scaleResolutionDownBy: 3, maxBitrate: 250000, maxFramerate: path === 'udp' ? 15 : 10 };
   const m = { rid: 'm', scaleResolutionDownBy: 1.5, maxBitrate: 600000, maxFramerate: 30 };
   const h = { rid: 'h', scaleResolutionDownBy: 1, maxBitrate: 1500000, maxFramerate: 30 };
   return path === 'udp' ? [l, m, h] : [l, h];
@@ -172,12 +181,15 @@ async function openLeg(path, sid, spec) {
   }
   if (!useScript) cfg.encodedInsertableStreams = true;
   const pc = new RTCPeerConnection(cfg);
-  const leg = { pc, spec, id: null, t0: performance.now(), connectMs: null, videos: [] };
+  const leg = { pc, spec, id: null, t0: performance.now(), connectMs: null, videos: [], jbtSet: 0, jbtFail: 0 };
   if (spec.sendAudio) e2e(pc.addTransceiver(srcAudio, { direction: 'sendonly' }).sender, 'send');
   if (spec.sendVideo) e2e(pc.addTransceiver(srcVideo, { direction: 'sendonly', sendEncodings: encodings(path) }).sender, 'send');
   for (let i = 0; i < spec.audio; i++) e2e(pc.addTransceiver('audio', { direction: 'recvonly' }).receiver, 'recv');
   for (let i = 0; i < spec.video; i++) e2e(pc.addTransceiver('video', { direction: 'recvonly' }).receiver, 'recv');
   pc.ontrack = (ev) => {
+    if (path !== 'udp' && ev.track.kind === 'video') {
+      if (setJbt(ev.receiver)) leg.jbtSet++; else leg.jbtFail++;
+    }
     const ms = new MediaStream([ev.track]);
     if (ev.track.kind === 'audio') {
       const a = new Audio();
@@ -341,6 +353,11 @@ async function runMedia(path, profKey, secs, prog) {
   try {
     for (const sp of specs) legs.push(await openLeg(path, sid, sp));
     res.connect_ms = legs.map((l) => l.connectMs);
+    if (path !== 'udp') {
+      // Jitter-Puffer-Ziel und Kachelprofil im Ergebnis (Safari: sehen, ob es greift)
+      res.jbt = jbtSupported && legs.every((l) => !l.jbtFail) ? JBT : 'nicht unterstützt';
+      if (prof.video) res.tile_profile = '180p/10fps';
+    } else if (prof.video) res.tile_profile = '180p/15fps';
     if (!legs.every((l) => l.ok)) {
       res.reason = 'nicht erreichbar';
       return res;
@@ -406,6 +423,7 @@ async function run(net, dev) {
   startSources();
   startPing();
   const result = { v: 1, net, device: dev, ...browserInfo(), mic_permission: mic, e2e: useScript ? 'RTCRtpScriptTransform' : 'createEncodedStreams',
+    jbt: jbtSupported ? JBT : 'nicht unterstützt',
     profile_secs: { base: BASE, path: DUR, ton: TON }, phases: [] };
   if (!session.udp) result.phases.push({ path: 'udp', profile: 'v12', ok: false, reason: 'am Knoten aus' });
   try {
@@ -477,6 +495,8 @@ function showTable(r) {
     if (!p.ok) row.className = 'fehl';
     t.appendChild(row);
   }
+  $('jbt').textContent = `Jitter-Puffer-Ziel auf TCP-Wegen (Bild): ${typeof r.jbt === 'number' ? r.jbt + ' ms' : r.jbt}` +
+    ` · Kacheln auf TCP 180p/10 fps, auf UDP 180p/15 fps`;
   $('erg').hidden = false;
 }
 
