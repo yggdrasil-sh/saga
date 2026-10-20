@@ -90,7 +90,10 @@ async function privacy(p, which, on, shotName) {
     const tg = await until(async () => { const t = await lastTick(a); return t && t.read ? t : null; }, 15000);
     ok('Gruppe: ✓✓ "Von allen gelesen"', tg && /allen/.test(tg.title), tg || await lastTick(a));
     await a.click('#ct-msgs .ct-msg.mine button.ct-tick'); await a.waitForSelector('.ct-readby');
-    ok('Gruppe: "Gelesen von" listet B', (await a.textContent('.ct-readby')).indexOf(U2) >= 0, await a.textContent('.ct-readby'));
+    // 2.4 (W4): angezeigt wird der Name (Anzeigename bzw. Handle), nie der Anmeldename
+    const nB = await a.evaluate(([g, u]) => fetch('/api/chats/' + g, { headers: { 'X-Saga': '1' } }).then(r => r.json())
+      .then(d => ((d.chat || d).members || []).filter(m => m.username === u).map(m => m.name)[0] || ''), [gid, U2]);
+    ok('Gruppe: "Gelesen von" listet B', nB && (await a.textContent('.ct-readby')).indexOf(nB) >= 0, [nB, await a.textContent('.ct-readby')]);
     await shot(a, 'gelesen-5-gruppe');
     await a.keyboard.press('Escape');
     await a.goto(BASE + '/chats#u' + encodeURIComponent(U2)); await a.waitForSelector('#ct-chat:not([hidden])');

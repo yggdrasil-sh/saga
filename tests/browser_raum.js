@@ -179,7 +179,9 @@ async function api(p, m, url, body) { return p.evaluate(([m, url, body]) => wind
     const gid = mk.r.chat.id;
     for (const p of [a, b, c, a2]) { await p.goto(BASE + '/chats#c' + gid); }
     await a.waitForSelector('#ct-chat:not([hidden])'); await liveOk(a, b, c, a2);
-    const hd = await a.evaluate(() => { const v = document.getElementById('ct-call-v'); return { hidden: v.hidden, title: v.title }; });
+    // Hash-Wechsel im offenen Chat-Tab: der Gruppen-Chat laedt asynchron - warten, bis der Kopf zu ihm gehoert
+    const hd = await until(async () => { const x = await a.evaluate(() => { const v = document.getElementById('ct-call-v'); return { hidden: v.hidden, title: v.title }; });
+      return x.title === 'Gruppen-Videoanruf' ? x : null; }, 10000) || await a.evaluate(() => { const v = document.getElementById('ct-call-v'); return { hidden: v.hidden, title: v.title }; });
     ok('Kopf der Gruppe: Knopf "Gruppen-Videoanruf"', !hd.hidden && hd.title === 'Gruppen-Videoanruf', hd);
     const cpu = cpuWatch();
     await a.click('#ct-call-v');

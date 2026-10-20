@@ -17,6 +17,7 @@ from saga.databases import _first_image
 from saga.notes import NOTE_META_COLS, _note_meta, _note_text
 from saga.pages import _note_search, _search_hit
 from saga.sharing import Access, _best, mask_links, names, viewer
+from saga.core import ref_of  # 2.4 (W4): andere Konten als Handle
 
 B_ = urllib.parse.urlparse(os.environ.get("HK_TEST_BASE", "http://127.0.0.1:8099"))
 HOST = urllib.parse.urlparse(os.environ["BASE_URL"]).netloc
@@ -110,7 +111,7 @@ def old_search(uid, q, tag):
                     r = tuple(r[:9]) + (mask_links(r[9], r[10], vis), r[10])
                     d = _search_hit(r, q, tag)
                     if d:
-                        d.update(role=roles[r[0]], pinned=False, owner={"name": nm.get(o) or o, "username": o, "me": False,
+                        d.update(role=roles[r[0]], pinned=False, owner={"name": nm.get(o) or o, "username": ref_of(None, o, uid), "me": False,
                                                                              "avatar": nm.avatar(o)})
                         if d["parent_id"] not in roles:
                             d["parent_id"] = None
