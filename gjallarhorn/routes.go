@@ -141,6 +141,12 @@ func (s *server) apiLegDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	st := l.stats()
+	if l.path == "turn" {
+		l.mu.Lock()
+		pc, created, iceAt, con := l.pc, l.created, l.iceAt, l.connected
+		l.mu.Unlock()
+		st.TURN = s.ttrace.setup(pc, created, iceAt, con)
+	}
 	s.closeLeg(l)
 	writeJSON(w, 200, st)
 }

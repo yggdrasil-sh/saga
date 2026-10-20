@@ -391,7 +391,11 @@ async function runMedia(path, profKey, secs, prog) {
   const legs = [];
   const hid0 = hiddenEvents, blur0 = blurEvents;
   try {
-    for (const sp of specs) legs.push(await openLeg(path, sid, sp));
+    // Ton- und Bild-Leitung gleichzeitig aufbauen: der Kaltstart des ersten
+    // Beins (DNS, Zertifikatspruefung, TLS) faellt nur einmal ins Gewicht
+    const t0 = performance.now();
+    legs.push(...await Promise.all(specs.map((sp) => openLeg(path, sid, sp))));
+    res.connect_total_ms = Math.round(performance.now() - t0);
     res.connect_ms = legs.map((l) => l.connectMs);
     if (path !== 'udp') {
       // Jitter-Puffer-Ziel und Kachelprofil im Ergebnis (Safari: sehen, ob es greift)

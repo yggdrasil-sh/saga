@@ -129,6 +129,7 @@ type leg struct {
 
 	mu        sync.Mutex
 	connected time.Time
+	iceAt     time.Time
 	srcs      []*fwd.Source
 	closed    bool
 }
@@ -217,6 +218,15 @@ func (s *server) newLeg(req legReq, ipKey string) (*leg, string, error) {
 		return nil, "", err
 	}
 	l.setPC(pc)
+	pc.OnICEConnectionStateChange(func(st webrtc.ICEConnectionState) {
+		if st == webrtc.ICEConnectionStateConnected {
+			l.mu.Lock()
+			if l.iceAt.IsZero() {
+				l.iceAt = time.Now()
+			}
+			l.mu.Unlock()
+		}
+	})
 	pc.OnConnectionStateChange(func(st webrtc.PeerConnectionState) {
 		if st == webrtc.PeerConnectionStateConnected {
 			l.mu.Lock()
@@ -398,20 +408,21 @@ func (s *server) closeLeg(l *leg) {
 
 // legStats ist die Knotensicht eines Beins (fuer die Messseite).
 type legStats struct {
-	ID        string  `json:"id"`
-	Path      string  `json:"path"`
-	Role      string  `json:"role"`
-	State     string  `json:"state"`
-	ConnectMs int64   `json:"connect_ms"`
-	PktsOut   uint64  `json:"pkts_out"`
-	BytesOut  uint64  `json:"bytes_out"`
-	Dropped   uint64  `json:"frames_dropped"`
-	Stalls    uint64  `json:"stalls"`
-	MaxQMs    float64 `json:"max_queue_ms"`
-	FwdP95us  float64 `json:"fwd_p95_us"`
-	Overflow  uint64  `json:"overflow"`
-	WriteErrs uint64  `json:"write_errs"`
-	Secs      float64 `json:"secs"`
+	ID        string     `json:"id"`
+	Path      string     `json:"path"`
+	Role      string     `json:"role"`
+	State     string     `json:"state"`
+	ConnectMs int64      `json:"connect_ms"`
+	PktsOut   uint64     `json:"pkts_out"`
+	BytesOut  uint64     `json:"bytes_out"`
+	Dropped   uint64     `json:"frames_dropped"`
+	Stalls    uint64     `json:"stalls"`
+	MaxQMs    float64    `json:"max_queue_ms"`
+	FwdP95us  float64    `json:"fwd_p95_us"`
+	Overflow  uint64     `json:"overflow"`
+	TURN      *TURNSetup `json:"turn_setup,omitempty"`
+	WriteErrs uint64     `json:"write_errs"`
+	Secs      float64    `json:"secs"`
 }
 
 func (l *leg) setPC(pc *webrtc.PeerConnection) {

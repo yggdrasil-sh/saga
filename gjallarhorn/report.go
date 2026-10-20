@@ -52,6 +52,7 @@ type pPhase struct {
 	// ungueltig (Seite im Hintergrund, kein Ton): zaehlt im Go/No-Go nicht
 	Invalid      string   `json:"invalid"`
 	ExpectedDown *float64 `json:"expected_down_kbps"`
+	ConnectTotal *float64 `json:"connect_total_ms"`
 	JBT          any      `json:"jbt"`
 	TileProfile  string   `json:"tile_profile"`
 }
@@ -228,6 +229,8 @@ func writeReport(w io.Writer, rs []pResult, bs []benchResult, now time.Time) {
 		}
 		fmt.Fprintln(w)
 	}
+
+	writeTURNSetup(w, rs)
 
 	fmt.Fprintf(w, "## Bench (Knoten-Last mit lokalen Bots)\n\n")
 	if len(bs) == 0 {
@@ -605,4 +608,51 @@ func overall(gs []goRow) string {
 		return "Go unter Vorbehalt (Grenzbereich: " + strings.Join(grey, ", ") + ")."
 	}
 	return "Go (G1–G6 erfüllt)."
+}
+
+// writeTURNSetup zerlegt den Aufbau der TURN-TLS-Beine (ms ab TCP-Annahme am
+// Knoten): Wo steckt die Zeit (TLS, 401-Runde, Permission, ICE, DTLS)?
+func writeTURNSetup(w io.Writer, rs []pResult) {
+	type row struct {
+		r    pResult
+		p    pPhase
+		role string
+		t    *TURNSetup
+		con  int64
+	}
+	var rows []row
+	for _, r := range rs {
+		for _, p := range r.Phases {
+			if p.Path != "turn" {
+				continue
+			}
+			for _, n := range p.Node {
+				if n.TURN != nil {
+					rows = append(rows, row{r, p, n.Role, n.TURN, n.ConnectMs})
+				}
+			}
+		}
+	}
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "## TURN-TLS-Aufbau je Bein (ms ab TCP-Annahme am Knoten)\n\n")
+	fmt.Fprintf(w, "„TCP nach Bein“: so lange nach dem Anlegen des Beins kam die TCP-Verbindung an (Client: DNS, Kandidatensuche). TLS endet mit dem Finished des Clients, enthält also dessen Zertifikatsprüfung.\n\n")
+	fmt.Fprintf(w, "| Gerät | Netz | Browser | Profil | Leitung | TCP nach Bein | TLS | TLS fortgesetzt | Allocate (nach 401) | Permission | ChannelBind | ICE | DTLS = verbunden | Aufbau am Knoten |\n")
+	fmt.Fprintf(w, "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+	f := func(x float64) string {
+		if x < 0 {
+			return "–"
+		}
+		return fmtNum(x, 0)
+	}
+	for _, x := range rows {
+		res := "nein"
+		if x.t.Resumed {
+			res = "ja"
+		}
+		fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d |\n", x.r.Device, esc(x.r.Net), platform(x.r),
+			profName[x.p.Profile], x.role, f(x.t.LegBeforeTCP), f(x.t.TLS), res, f(x.t.Auth), f(x.t.Perm), f(x.t.Channel), f(x.t.ICE), f(x.t.DTLS), x.con)
+	}
+	fmt.Fprintln(w)
 }
