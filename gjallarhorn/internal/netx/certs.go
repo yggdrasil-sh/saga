@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -30,7 +31,8 @@ type Certs struct {
 	certFile, keyFile string
 	mu                sync.RWMutex
 	cur               *tls.Certificate
-	mtime             time.Time
+	sig               fileSig  // Stand der Dateien beim letzten Laden
+	sum               [32]byte // SHA-256 ueber Zertifikat und Schluessel
 	acme              *autocert.Manager
 }
 
@@ -83,27 +85,85 @@ func fileExists(p string) bool {
 	return err == nil && !st.IsDir()
 }
 
+// fileSig ist der Stand beider Dateien (Aenderungszeit und Groesse).
+type fileSig struct {
+	m1, m2 time.Time
+	s1, s2 int64
+}
+
+func (c *Certs) stat() (fileSig, error) {
+	st1, err := os.Stat(c.certFile)
+	if err != nil {
+		return fileSig{}, err
+	}
+	st2, err := os.Stat(c.keyFile)
+	if err != nil {
+		return fileSig{}, err
+	}
+	return fileSig{st1.ModTime(), st2.ModTime(), st1.Size(), st2.Size()}, nil
+}
+
 // Reload liest die Zertifikatsdateien neu (SIGHUP oder Aenderung).
 func (c *Certs) Reload() error {
+	_, err := c.reload(true)
+	return err
+}
+
+// ReloadIfChanged laedt nur, wenn sich Aenderungszeit, Groesse oder Inhalt
+// geaendert haben. changed=true nur bei neuem Inhalt.
+func (c *Certs) ReloadIfChanged() (changed bool, err error) { return c.reload(false) }
+
+func (c *Certs) reload(force bool) (bool, error) {
 	if c.Mode != "file" {
-		return nil
+		return false, nil
 	}
-	st, err := os.Stat(c.certFile)
+	sig, err := c.stat()
 	if err != nil {
-		return err
+		return false, err
 	}
-	crt, err := tls.LoadX509KeyPair(c.certFile, c.keyFile)
+	c.mu.RLock()
+	same := sig == c.sig && c.cur != nil
+	c.mu.RUnlock()
+	if same && !force {
+		return false, nil
+	}
+	cb, err := os.ReadFile(c.certFile)
 	if err != nil {
-		return fmt.Errorf("zertifikat laden: %w", err)
+		return false, err
+	}
+	kb, err := os.ReadFile(c.keyFile)
+	if err != nil {
+		return false, err
+	}
+	h := sha256.New()
+	h.Write(cb)
+	h.Write([]byte{0})
+	h.Write(kb)
+	var sum [32]byte
+	h.Sum(sum[:0])
+	c.mu.RLock()
+	sameSum := sum == c.sum && c.cur != nil
+	c.mu.RUnlock()
+	if sameSum { // nur angefasst (touch, Kopie): nichts tun
+		c.mu.Lock()
+		c.sig = sig
+		c.mu.Unlock()
+		return false, nil
+	}
+	crt, err := tls.X509KeyPair(cb, kb)
+	if err != nil {
+		return false, fmt.Errorf("zertifikat laden: %w", err)
 	}
 	c.mu.Lock()
 	c.cur = &crt
-	c.mtime = st.ModTime()
+	c.sig = sig
+	c.sum = sum
 	c.mu.Unlock()
-	return nil
+	return true, nil
 }
 
-// Watch prueft alle interval, ob sich die Dateien geaendert haben.
+// Watch prueft alle interval, ob sich die Dateien geaendert haben, und
+// meldet nur echte Wechsel.
 func (c *Certs) Watch(interval time.Duration, stop <-chan struct{}) {
 	if c.Mode != "file" {
 		return
@@ -115,24 +175,11 @@ func (c *Certs) Watch(interval time.Duration, stop <-chan struct{}) {
 		case <-stop:
 			return
 		case <-t.C:
-			st1, e1 := os.Stat(c.certFile)
-			st2, e2 := os.Stat(c.keyFile)
-			if e1 != nil || e2 != nil {
-				continue
-			}
-			c.mu.RLock()
-			old := c.mtime
-			c.mu.RUnlock()
-			mt := st1.ModTime()
-			if st2.ModTime().After(mt) {
-				mt = st2.ModTime()
-			}
-			if mt.After(old) {
-				if err := c.Reload(); err != nil {
-					log.Printf("zertifikat: neu laden fehlgeschlagen: %v", err)
-				} else {
-					log.Printf("zertifikat: neu geladen")
-				}
+			changed, err := c.ReloadIfChanged()
+			if err != nil {
+				log.Printf("zertifikat: neu laden fehlgeschlagen: %v", err)
+			} else if changed {
+				log.Printf("zertifikat: neu geladen")
 			}
 		}
 	}

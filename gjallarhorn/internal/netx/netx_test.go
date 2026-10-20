@@ -192,6 +192,18 @@ func TestCertFilesReload(t *testing.T) {
 	if !bytes.Equal(get(), second) {
 		t.Fatal("datei-aenderung nicht neu geladen")
 	}
+	// unveraenderte bzw. nur angefasste Dateien: kein neues Laden
+	if ch, err := c.ReloadIfChanged(); err != nil || ch {
+		t.Fatalf("unveraendert neu geladen: %v %v", ch, err)
+	}
+	later := time.Now().Add(4 * time.Second)
+	_ = os.Chtimes(filepath.Join(dir, "privkey.pem"), later, later)
+	if ch, err := c.ReloadIfChanged(); err != nil || ch {
+		t.Fatalf("touch ohne inhalt neu geladen: %v %v", ch, err)
+	}
+	if ch, _ := c.ReloadIfChanged(); ch {
+		t.Fatal("zweimal")
+	}
 	// SIGHUP-Pfad: Reload direkt
 	third := writePair(t, dir, "probe.example.org")
 	if err := c.Reload(); err != nil || !bytes.Equal(get(), third) {

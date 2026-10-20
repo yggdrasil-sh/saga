@@ -146,9 +146,9 @@ func runProbe(args []string, bench bool) error {
 	signal.Notify(sig, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
 	for x := range sig {
 		if x == syscall.SIGHUP {
-			if err := s.certs.Reload(); err != nil {
+			if changed, err := s.certs.ReloadIfChanged(); err != nil {
 				log.Printf("zertifikat: %v", err)
-			} else if s.certs.Mode == "file" {
+			} else if changed {
 				log.Printf("zertifikat: neu geladen (SIGHUP)")
 			}
 			continue
