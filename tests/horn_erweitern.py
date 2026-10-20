@@ -807,7 +807,13 @@ def browser(n):
                PLAYWRIGHT_BROWSERS_PATH=os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers"), PW_CHANNEL="chromium")
     for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
         env.pop(k, None)
-    r = subprocess.run(["node", js], env=env, capture_output=True, text=True, timeout=900)
+    try:
+        r = subprocess.run(["node", js], env=env, capture_output=True, text=True, timeout=900)
+    except subprocess.TimeoutExpired as ex:
+        print((ex.stdout or b"")[-8000:].decode("utf-8", "replace") if isinstance(ex.stdout, bytes) else (ex.stdout or "")[-8000:], flush=True)
+        print("--- horn2.log ---\n" + text(os.path.join(STATE, "horn2.log"))[-4000:], flush=True)
+        ok("Browser: Gruppenanruf ueber horn-2 innerhalb von 15 min", False)
+        return
     print(r.stdout[-8000:], flush=True)
     if r.returncode:
         print(r.stderr[-3000:], flush=True)
