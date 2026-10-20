@@ -190,6 +190,19 @@ automatisch; Backups von 2.3 bleiben einspielbar.
 - **Tests:** `chat_gelesen`, `foederation_gelesen` (auch gegen 2.3 als Gegenstelle), `browser_gelesen.js`,
   `browser_fed_chat.js` erweitert, Vektoren in `chat_v2_vektoren`; Messung `bench.py` Phase `receipts`.
 
+#### Nach der Testrunde (Sicherheit, Datenschutz, Bedienung)
+
+- **saga-media: Grenze je Client-Adresse.** Höchstens `MEDIA_MAX_CONNS_IP` (Standard 256) offene Verbindungen je Adresse
+  (vertraute Proxys ausgenommen); Keep-Alive-Leerlauf ohne Anmeldedaten endet nach `MEDIA_IDLE_UNAUTH` (10 s). Ist die
+  Grenze erreicht, schließt saga-media die am längsten ruhende Verbindung, statt neue warten zu lassen – eine einzelne
+  Adresse kann mit ruhenden Verbindungen niemanden mehr aussperren.
+- **Medien-Token undurchsichtig:** `POST /api/chat/files/{fid}/token` liefert `m2.…` (AES-GCM), aus dem sich weder
+  Benutzername noch Datei-Kennung lesen lassen. Apps behandeln das Token schon als beliebige Zeichenkette; `m1`-Token
+  laufen nach höchstens 15 Minuten aus.
+- **Bekannt (so gewollt):** Wird ein Mitglied aus einem Chat entfernt, kann es einen eigenen, schon begonnenen Upload über
+  saga-media noch bis zu 60 s fortsetzen (gemerkte Erlaubnis, `MEDIA_AUTHZ_TTL`). Die Datei lässt sich ohne
+  Mitgliedschaft keiner Nachricht zuordnen und wird nach einer Stunde entfernt.
+
 #### Behoben
 
 - **Chats über Servergrenzen: eigene Nachricht blieb auf „⏳ wird zugestellt“.** Liegt der Direkt-Chat auf dem anderen

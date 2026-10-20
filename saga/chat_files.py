@@ -21,6 +21,8 @@ import re
 import secrets
 import time
 
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
@@ -35,6 +37,7 @@ router = APIRouter()
 
 TOKEN_TTL = 15 * 60                    # Medien-Token: so lange gueltig (die App holt rechtzeitig ein neues)
 _TOKEN_KEY = hashlib.sha256(b"saga-media-token/v1\0" + SECRET.encode()).digest()
+_ENC_KEY = hashlib.sha256(b"saga-media-token/m2\0" + SECRET.encode()).digest()
 _CRANGE = re.compile(r"bytes (\d{1,15})-(\d{1,15})/(\d{1,15})")
 _locks = {}                            # Upload-Kennung -> asyncio.Lock (nur Python-Weg)
 
@@ -49,22 +52,41 @@ def _unb64u(s):
 
 # --- Medien-Token ---------------------------------------------------------------------------------------------------
 def make_token(request, uid, fid, now=None):
-    """Token fuer (Datei, Sitzung): Konto, Passwort-Stand, Anmeldung (lo) und Geraete-Anmeldung (did) gehen ein."""
+    """Token fuer (Datei, Sitzung): Konto, Passwort-Stand, Anmeldung (lo) und Geraete-Anmeldung (did) gehen ein.
+    2.4 (Pruefteam S2): "m2." + AES-256-GCM(Nutzlast) - undurchsichtig, wer es abfaengt (Proxy-/Player-Log), liest weder
+    Benutzernamen noch fid. Fuer Apps bleibt es eine beliebige Zeichenkette (Kopf X-Saga-Media-Token)."""
     exp = int((now or time.time()) + TOKEN_TTL)
     s = request.session
     payload = json.dumps([fid, uid, float(s.get("pwc") or 0), str(s.get("lo") or ""), s.get("did"), exp], separators=(",", ":")).encode()
-    mac = hmac.new(_TOKEN_KEY, payload, hashlib.sha256).digest()[:24]
-    return "m1." + _b64u(payload) + "." + _b64u(mac), exp
+    nonce = secrets.token_bytes(12)
+    return "m2." + _b64u(nonce + AESGCM(_ENC_KEY).encrypt(nonce, payload, b"saga-media-token/m2")), exp
+
+
+def _token_payload(tok):
+    v, _, rest = str(tok).partition(".")
+    if len(tok) > 600:
+        return None
+    if v == "m2":
+        raw = _unb64u(rest)
+        if len(raw) < 12 + 16:
+            return None
+        try:
+            return AESGCM(_ENC_KEY).decrypt(raw[:12], raw[12:], b"saga-media-token/m2")
+        except InvalidTag:
+            return None
+    if v == "m1":                     # bis 2.4-Vorabstand (lesbar, signiert): laeuft binnen 15 Minuten aus
+        p, _, m = rest.partition(".")
+        payload, mac = _unb64u(p), _unb64u(m)
+        if hmac.compare_digest(hmac.new(_TOKEN_KEY, payload, hashlib.sha256).digest()[:24], mac):
+            return payload
+    return None
 
 
 def token_user(tok, fid):
-    """Token pruefen -> Benutzername oder None. Prueft Signatur, Datei, Ablauf und den aktuellen Stand des Kontos."""
+    """Token pruefen -> Benutzername oder None. Prueft Echtheit, Datei, Ablauf und den aktuellen Stand des Kontos."""
     try:
-        v, p, m = str(tok).split(".")
-        if v != "m1" or len(tok) > 600:
-            return None
-        payload, mac = _unb64u(p), _unb64u(m)
-        if not hmac.compare_digest(hmac.new(_TOKEN_KEY, payload, hashlib.sha256).digest()[:24], mac):
+        payload = _token_payload(tok)
+        if payload is None:
             return None
         f, uid, pwc, _lo, did, exp = json.loads(payload)
     except (ValueError, TypeError):

@@ -293,7 +293,13 @@ def path_upload(k, cid, A, B, Cc):
     # --- Medien-Token ---------------------------------------------------------------------------------------------------
     s, b, _ = req(k, "POST", f"/api/chat/files/{fid}/token", B)
     tk = jd(b)
-    ok(f"{k}: Medien-Token (15 min)", s == 200 and tk.get("token", "").startswith("m1.") and tk.get("ttl") == 900)
+    ok(f"{k}: Medien-Token (15 min)", s == 200 and tk.get("token", "").startswith("m2.") and tk.get("ttl") == 900)
+    try:   # 2.4 (Pruefteam S2): undurchsichtig - weder Benutzername noch fid lesbar
+        raw = base64.urlsafe_b64decode(tk["token"][3:] + "=" * (-len(tk["token"][3:]) % 4))
+    except Exception:  # noqa: BLE001
+        raw = b""
+    ok(f"{k}: Medien-Token undurchsichtig (kein Benutzername/keine fid lesbar)", len(raw) > 28 and b"vd-b" not in raw
+       and fid.encode() not in raw and "vd-b" not in tk["token"])
     T = {"X-Saga-Media-Token": tk.get("token", "")}
     s, body, _ = req(k, "GET", f"/api/chat/files/{fid}", None, dict(T, Range="bytes=0-47"))
     ok(f"{k}: Abruf nur mit Token (ohne Cookie, ohne X-Saga) -> 206", s == 206 and body == blob[:48])

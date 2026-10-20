@@ -27,7 +27,6 @@ import (
 	"path"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -61,6 +60,7 @@ func (m *media) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Header.Del(keyHeader)
+	markAuth(r)
 	// Was saga-media selbst bedient (alles andere geht an Saga): Dateien lesen (Range), 2.4 Uploads schreiben
 	// (PUT/HEAD /api/chat/uploads/{id}) und Teile eigener Anhaenge fuer andere Server (/fed/v2/chat/files/{id}?range=).
 	switch r.Method {
@@ -93,41 +93,6 @@ func (m *media) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		r.Body = &stallBody{rc: r.Body, ctl: http.NewResponseController(w), d: m.c.stall}
 	}
 	m.proxy.ServeHTTP(w, r)
-}
-
-// limitListener: hoechstens n offene Verbindungen (weitere warten im Backlog).
-type limitListener struct {
-	net.Listener
-	sem chan struct{}
-}
-
-func (l *limitListener) Accept() (net.Conn, error) {
-	l.sem <- struct{}{}
-	c, err := l.Listener.Accept()
-	if err != nil {
-		<-l.sem
-		return nil, err
-	}
-	return &limitConn{Conn: c, release: sync.OnceFunc(func() { <-l.sem })}, nil
-}
-
-type limitConn struct {
-	net.Conn
-	release func()
-}
-
-func (c *limitConn) Close() error {
-	err := c.Conn.Close()
-	c.release()
-	return err
-}
-
-// ReadFrom: sendfile der TCP-Verbindung erhalten (net/http prueft auf io.ReaderFrom).
-func (c *limitConn) ReadFrom(r io.Reader) (int64, error) {
-	if rf, ok := c.Conn.(io.ReaderFrom); ok {
-		return rf.ReadFrom(r)
-	}
-	return io.Copy(struct{ io.Writer }{c.Conn}, r)
 }
 
 func randomKey() string {
@@ -185,9 +150,12 @@ func main() {
 		IdleTimeout:       75 * time.Second,
 		MaxHeaderBytes:    64 << 10,
 		ErrorLog:          log.New(io.Discard, "", 0),
+		ConnContext:       connContext,
 	}
+	lim := newLimitListener(ln, c)
+	srv.ConnState = lim.connState
 	srvDone := make(chan error, 1)
-	go func() { srvDone <- srv.Serve(&limitListener{Listener: ln, sem: make(chan struct{}, c.maxConns)}) }()
+	go func() { srvDone <- srv.Serve(lim) }()
 	logf("%s lauscht auf %s, Saga intern auf %s, Dateien aus %s (Berechtigung %d s gemerkt)", version, c.listen, c.upstream,
 		c.blobDir, int(c.ttl/time.Second))
 

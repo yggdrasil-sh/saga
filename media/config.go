@@ -22,6 +22,8 @@ type config struct {
 	maxConns     int           // gleichzeitige Verbindungen insgesamt
 	maxStreams   int           // gleichzeitige Datei-Stroeme insgesamt
 	maxStreamsIP int           // gleichzeitige Datei-Stroeme je Client-Adresse
+	maxConnsIP   int           // offene Verbindungen je Client-Adresse (2.4, vertraute Proxys ausgenommen)
+	idleUnauth   time.Duration // Leerlauf einer Verbindung ohne Anmeldedaten (Keep-Alive)
 	stall        time.Duration // kein Fortschritt beim Lesen/Schreiben so lange -> Verbindung zu (Slowloris)
 	accessLog    bool          // Zugriffszeilen wie uvicorn (LOG_LEVEL info/debug)
 	key          string        // gemeinsames Geheimnis fuer /internal/media/authz
@@ -84,6 +86,17 @@ func loadConfig() (*config, error) {
 	if c.maxStreamsIP, err = envInt("MEDIA_MAX_STREAMS_IP", 128, 1, 1<<20); err != nil {
 		return nil, err
 	}
+	if c.maxConnsIP, err = envInt("MEDIA_MAX_CONNS_IP", 256, 2, 1<<20); err != nil {
+		return nil, err
+	}
+	if c.maxConnsIP > c.maxConns {
+		c.maxConnsIP = c.maxConns
+	}
+	idle, err := envInt("MEDIA_IDLE_UNAUTH", 10, 1, 75)
+	if err != nil {
+		return nil, err
+	}
+	c.idleUnauth = time.Duration(idle) * time.Second
 	stall, err := envInt("MEDIA_STALL_TIMEOUT", 60, 5, 3600)
 	if err != nil {
 		return nil, err

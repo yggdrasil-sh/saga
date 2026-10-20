@@ -1796,6 +1796,7 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `MEDIA_INTERNAL_PORT` | `8079` | Con saga-media: puerto interno de Saga (solo `127.0.0.1`) |
 | `MEDIA_AUTHZ_TTL` | `60` | saga-media: segundos que como máximo vale un permiso de lectura de un adjunto (0–60) |
 | `MEDIA_MAX_CONNS` / `MEDIA_MAX_STREAMS` / `MEDIA_MAX_STREAMS_IP` | `4096` / `1024` / `128` | saga-media: conexiones abiertas / descargas simultáneas en total / por dirección de cliente |
+| `MEDIA_MAX_CONNS_IP` / `MEDIA_IDLE_UNAUTH` | `256` / `10` | saga-media (desde 2.4): conexiones abiertas por dirección de cliente (los proxys de confianza de `TRUSTED_PROXIES` quedan exentos; por encima se cierra primero la conexión inactiva más antigua de esa dirección) / segundos de inactividad keep-alive sin credenciales. Al alcanzar `MEDIA_MAX_CONNS`, saga-media cierra conexiones inactivas en lugar de hacer esperar a las nuevas |
 | `MEDIA_STALL_TIMEOUT` | `60` | saga-media: segundos sin avance al subir o descargar antes de cerrar la conexión |
 | `MEDIA_ACCEL` / `MEDIA_ACCEL_PREFIX` | `off` / `/_saga_media/` (Caddy `/`) | Sin saga-media: `nginx` o `caddy` = el proxy inverso entrega los adjuntos del chat mediante `X-Accel-Redirect` |
 | `MEDIA_PY_STREAMS` | `4` | Sin saga-media ni `MEDIA_ACCEL`: Python entrega como máximo tantos adjuntos a la vez |

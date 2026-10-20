@@ -1724,6 +1724,7 @@ with the same account also switch the oldest ones to polling.
 | `MEDIA_INTERNAL_PORT` | `8079` | With saga-media: Saga's internal port (`127.0.0.1` only) |
 | `MEDIA_AUTHZ_TTL` | `60` | saga-media: a read permission for an attachment is remembered for at most this many seconds (0–60) |
 | `MEDIA_MAX_CONNS` / `MEDIA_MAX_STREAMS` / `MEDIA_MAX_STREAMS_IP` | `4096` / `1024` / `128` | saga-media: open connections / parallel file downloads in total / per client address |
+| `MEDIA_MAX_CONNS_IP` / `MEDIA_IDLE_UNAUTH` | `256` / `10` | saga-media (2.4+): open connections per client address (trusted proxies from `TRUSTED_PROXIES` exempt; above it the longest idle connection of that address is closed first) / seconds of idle keep-alive without credentials. When `MEDIA_MAX_CONNS` is reached, saga-media closes idle connections instead of letting new ones wait |
 | `MEDIA_STALL_TIMEOUT` | `60` | saga-media: seconds without progress on an upload or download before the connection is closed |
 | `MEDIA_ACCEL` / `MEDIA_ACCEL_PREFIX` | `off` / `/_saga_media/` (Caddy `/`) | Without saga-media: `nginx` or `caddy` = the reverse proxy serves chat attachments via `X-Accel-Redirect` |
 | `MEDIA_PY_STREAMS` | `4` | Without saga-media and `MEDIA_ACCEL`: Python serves at most this many attachments at a time |
