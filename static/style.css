@@ -1406,6 +1406,10 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
    klebenden Leiste abdecken (Inhalt schien beim Scrollen durch) */
 @media (min-width:561px){.hk-dialog-set .hk-tabs{flex-wrap:wrap;overflow:visible;-webkit-mask-image:none;mask-image:none}}
 .hk-tabs{box-shadow:0 -.8rem 0 var(--card)}
+/* Web-Runde 2 (247/270): klebt an der Kante des Scrollbereichs, nicht an der Innenkante (Polster 1rem) - sonst schien im
+   Polster darueber Inhalt durch */
+.hk-dlg-body>.hk-tabs{top:-1rem}
+@media (max-width:560px){.hk-dlg-body>.hk-tabs{top:-.9rem}}
 /* Scrollbare Reiterleisten (HK.scrollFade): Verlauf am Rand zeigt, dass es dort weitergeht */
 .hk-tabs.fade-r,.adm-nav.fade-r{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 2.2rem),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 2.2rem),transparent)}
 .hk-tabs.fade-l,.adm-nav.fade-l{-webkit-mask-image:linear-gradient(90deg,transparent,#000 2.2rem);mask-image:linear-gradient(90deg,transparent,#000 2.2rem)}

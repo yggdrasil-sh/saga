@@ -71,14 +71,17 @@
   }
 
   var rowDue = $('row-due'), rowDueTask = null;
+  // Web-Runde 2 (028): direkt unter <body> - in der Seitenleiste (transform) bezog sich position:fixed auf die Leiste,
+  // der Datumswaehler oeffnete am Fensterrand statt an der Aufgabe
+  if (rowDue.parentNode !== document.body) document.body.appendChild(rowDue);
   rowDue.addEventListener('change', function () {
     if (rowDueTask && rowDue.value) patchTask(rowDueTask.id, { due: rowDue.value }).then(loadTasks);
     rowDueTask = null;
   });
   function pickDate(task, anchor) {
     rowDueTask = task; rowDue.value = task.due || '';
-    var r = anchor.getBoundingClientRect();
-    rowDue.style.left = r.left + 'px'; rowDue.style.top = r.bottom + 'px';
+    var row = (anchor.closest && anchor.closest('li')) || anchor, r = row.getBoundingClientRect();
+    rowDue.style.left = Math.max(8, r.left) + 'px'; rowDue.style.top = r.bottom + 'px'; rowDue.style.right = 'auto'; rowDue.style.bottom = 'auto';
     try { if (rowDue.showPicker) { rowDue.showPicker(); return; } } catch (e) { /* aeltere Browser */ }
     rowDue.focus(); rowDue.click();
   }
