@@ -7,6 +7,8 @@
 # aus dem Postgres-Log (> 25 ms), Grenzwerte aus tools/perf/limits.json pruefen. Ergebnis: perf-out/<stufe>.json/.txt.
 # Exit 1, wenn ein Grenzwert ueberschritten ist. SAGA_PERF_KEEP=1: Testkonten danach behalten. SAGA_PERF_N: Wiederholungen.
 # Stufe MEDIA (2.4): 20 parallele Chat-Anhaenge, CPU/RAM von Python und saga-media getrennt (tools/perf/media.py).
+# Stufe VIDEO (2.4 E2): Upload 1 GB saga-file/v2 und Range-TTFB (tools/perf/video.py; VIDEO_MAX_MB >= 1100 im Stack).
+# Stufe V (2.4 E2): wie S mit einem Chat aus 1.000 Video-Nachrichten (gen.py), Grenzwerte "V".
 # SAGA_PERF_WEB=1: zusaetzlich Weboberflaeche (Playwright-Image, headless; SAGA_PERF_WEB_ARGS z. B. "--db-timeout 180"). SAGA_PERF_ZIEL=1: gegen die 2.2-Ziele (ziel_*) pruefen.
 # NUR auf Test-Stacks: legt NOTE_MAX_COUNT=200000 in die .env (sonst scheitert schon Stufe M am Seiten-Limit).
 set -e
@@ -34,6 +36,15 @@ for S in $STUFEN; do
       --py-pid "${PYP:-0}" --media-pid "${MDP:-0}" ${MDP:+--limits} | tee perf-out/MEDIA.txt || FAIL=1
     [ -n "$MDP" ] || echo "Hinweis: kein saga-media im Container - Grenzwerte MEDIA nicht geprueft (Messung vorher)"
     docker exec -i -w /app "$C" python - --cleanup < tools/perf/media.py
+    continue
+  fi
+  if [ "$S" = "VIDEO" ]; then                       # 2.4 E2: Upload 1 GB saga-file/v2, Range-TTFB (tools/perf/video.py)
+    docker exec -i -w /app "$C" python - --setup < tools/perf/video.py | grep '^PERF ' | cut -c6- > perf-out/VIDEO.info.json
+    PYP=$(docker top "$C" -eo pid,args | awk '/run\.py/ && !/saga-media/ {print $1; exit}')
+    MDP=$(docker top "$C" -eo pid,args | awk '/saga-media/ {print $1; exit}')
+    python3 tools/perf/video.py --base "http://127.0.0.1:$PORT" --info perf-out/VIDEO.info.json --out perf-out/VIDEO.json \
+      --py-pid "${PYP:-0}" --media-pid "${MDP:-0}" ${MDP:+--limits} | tee perf-out/VIDEO.txt || FAIL=1
+    docker exec -i -w /app "$C" python - --cleanup < tools/perf/video.py
     continue
   fi
   docker exec -i -w /app "$C" python - --stufe "$S" < tools/perf/gen.py | grep '^PERF ' | cut -c6- > "perf-out/$S.info.json"

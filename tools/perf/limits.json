@@ -26,6 +26,15 @@
   "_info": "tools/perf/media.py (2.4, Konzept 8 Medien parallel): 20 Stroeme je 2 Mbit/s mit saga-media. CPU in % eines Kerns (Python abzueglich Ruhewert), RAM in MB. Stand E1 (nativ, 2 Kerne, Median aus 3): vorher 2.3.0 Python 2.9 % / +14 MB, Range-p95 8.8 ms; nachher Python 0.1 % / +0 MB, saga-media 0.1 % / 8 MB, Range-p95 1.6 ms.",
   "py_cpu_pct": 5, "py_rss_plus_mb": 10, "media_cpu_pct": 10, "media_rss_mb": 50, "range_ttfb_p95_ms": 30
  },
+ "V": {
+  "_info": "gen.py Stufe V (2.4 E2, Konzept 8): wie S, Chat mit 1.000 Video-Nachrichten. Stand E2 (nativ, 2 Kerne, Median aus 3): messages neueste 50 p95 15.8 ms, 30.5 KB; vorher (2.3.0, 1.000 Bild-Nachrichten) p95 19.2 ms, 29.0 KB (+5 % Antwortgroesse durch die laengeren Video-Metadaten im Ciphertext).",
+  "GET /api/chats": 80, "GET /api/chats/{id}/messages": 80
+ },
+ "VIDEO": {
+  "_info": "tools/perf/video.py (2.4 E2): Upload 1 GB saga-file/v2 in 8-MiB-Teilen bei 400 Mbit/s mit saga-media, Range-TTFB 1 MiB (Sitzung und Medien-Token). CPU in % eines Kerns, RAM in MB. Stand E2 (nativ, 2 Kerne, Median aus 3): Python 0.06 % / +0 MB (0.01 CPU-s je GB), saga-media 4.5 % / 14 MB (0.97 CPU-s je GB), Range-p95 0.8 ms; vorher 2.3.0 (10-MB-Anhaenge durch Python, video.py --v1): Python 19.8 % / +20 MB (4.25 CPU-s je GB). Foederierte Range (tests/foederation_videos.py, PERF-Zeilen): kalt 1 MiB 21-57 ms, warm 4-16 ms.",
+  "upload_py_cpu_pct": 2, "upload_py_rss_plus_mb": 10, "upload_media_cpu_pct": 15, "upload_media_rss_mb": 16, "range_ttfb_p95_ms": 30,
+  "fed_range_cold_ms": 400, "fed_range_warm_ms": 30
+ },
  "ziel_L": {
   "GET /api/notes (Seitenbaum": 250, "GET /api/shared": 250, "GET /rows groesste DB (": 250, "POST /api/notes/search": 300,
   "GET / Dashboard": 100, "GET /api/notes/{id}/backlinks": 50, "GET /api/trash": 50, "Seite oeffnen waehrend": 300,

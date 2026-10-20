@@ -16,6 +16,42 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### 2.4 E2 – Videos im Chat (Server und Web)
+
+- **Videos mit Poster, Dauer und Streaming.** Im Verlauf erscheint ein Poster mit Dauer (erzeugt das sendende Gerät,
+  ≤ 30 KB); Antippen spielt sofort ab, Spulen lädt nur die nötigen Bereiche. Im Web entschlüsselt der Service Worker
+  (`static/sw.js`) die Range-Anfragen des Players blockweise – kein Komplett-Download, Schlüssel nur im Speicher.
+  Herunterladen als entschlüsselte Datei, als Strom. „Optimiert 720p“ im Web, wo der Browser MP4 aufnehmen kann (vom
+  Handy Standard), sonst Original mit Hinweis. In der Chatliste nur Poster, kein Player.
+- **Neues Format `saga-file/v2`** für Videos über `ATTACH_MAX_MB`: 256-KiB-Blöcke XChaCha20-Poly1305 mit Blocknummer,
+  Blockzahl, Größe und Endmarke im AD (gegen Vertauschen und Abschneiden). Testvektoren für alle Plattformen:
+  `tests/vectors/file_v2.json`. Kleinere Videos und alle bisherigen Anhänge bleiben unverändert (v1); ältere Apps zeigen
+  große Videos als Anhang („Mit Saga 2.4 öffnen“).
+- **Fortsetzbarer Upload** (`POST /api/chats/{id}/uploads`, `PUT`/`HEAD`/`DELETE /api/chat/uploads/{id}`): saga-media
+  schreibt die Teile direkt auf die Platte, Python legt nur Metadaten und Kontingent an. Abbruch → weiter ab
+  `Upload-Offset`. Höchstens 2 Uploads gleichzeitig, offene verfallen nach 24 h.
+- **Grenzen im Admin:** „Größtes Video im Chat“ (`VIDEO_MAX_MB`, Standard 500) und „Speicher für Chat-Anhänge je Konto“
+  (`CHAT_QUOTA_MB`, Standard jetzt 4096 statt 1024); laufende Uploads zählen mit. `/api/chat/me` meldet `limits.file2`,
+  `video_max`, `upload_part`, `quota`, `used`.
+- **Medien-Token** für lange Wiedergaben (`POST /api/chat/files/{id}/token`, Kopf `X-Saga-Media-Token`): an Datei und
+  Anmeldung gebunden, 15 min; Entzug wirkt spätestens nach 60 s.
+- **Über Servergrenzen** (Fähigkeit `chatfile2`): Der eigene Server holt große Videos nur bereichsweise beim Server des
+  Absenders – signiert je Teil (höchstens 4 MiB, Bereich in der signierten Anfrage), lückenhafte Zwischenkopie mit
+  1-MiB-Bitmap, Anfang und Ende vorab. saga-media liefert und holt die Bytes selbst, Python prüft und signiert nur. Mit
+  Servern auf Saga 2.3 gehen nur Anhänge bis `ATTACH_MAX_MB` (Hinweis statt verlorener Nachricht; Chat-Objekt `big_files`).
+- **Migration 11:** `chat_file.fmt`, `chat_file_fed.have`, Index `chat_file(uid)`; neue Tabelle `chat_upload`.
+- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Videos im Chat“ (mit Beispielen für AVAssetResourceLoader, Media3
+  DataSource, GTK/GStreamer), Föderation `docs/APP-API-FED.md` §6.5a.
+- **Gemessen** (nativ, 2 Kerne; `tools/perf/video.py`, `gen.py` Stufe V, `tests/foederation_videos.py`):
+  Upload 1 GB bei 400 Mbit/s: Python 0,06 % eines Kerns, +0 MB (vorher 2.3.0 mit 10-MB-Anhängen: 19,8 %, +20 MB,
+  4,25 CPU-s je GB), saga-media 4,5 % und 14 MB. Range-TTFB 1 MiB p95 0,8 ms (mit Medien-Token ebenso). Chat mit 1.000
+  Video-Nachrichten: Seite (50) p95 15,8 ms (vorher 1.000 Bild-Nachrichten 19,2 ms), Antwort 30,5 statt 29,0 KB (die
+  Video-Metadaten im Ciphertext). Über Servergrenzen 1 MiB kalt 21–57 ms, danach 4–16 ms. Image +3,4 MB
+  (unkomprimiert 107,7 → 111,1 MB), Start bis `/healthz` 3,0 statt 2,9 s, RAM nach dem Start 83 statt 78 MiB.
+- Tests: `tests/datei_v2_vektoren.py`, `tests/videos.py` (mit und ohne saga-media), `tests/foederation_videos.py`
+  (gemischt, nur Python, gegen 2.3.0), `tests/browser_videos.js` (Upload mit Abbruch, Abspielen, Spulen, Herunterladen),
+  Go-Tests in `media/`.
+
 ### 2.4 E1 – Medienpfad „saga-media“ (Server)
 
 - **Chat-Anhänge ohne Python.** Im Container steht vor Saga der kleine Dienst `saga-media` (Go, nur Standardbibliothek,

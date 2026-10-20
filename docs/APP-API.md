@@ -357,7 +357,8 @@ LP      = je Feld u32_be(Länge) || Bytes (wie saga-chat/v1)
    200 {"id": "Q1w2…", "size": 187700000, "fmt": 2, "offset": 187700000, "done": true}     (letzter Teil)
    ```
 
-   `409 {"error": "offset", "offset": n}` falsche Stelle (dann ab `n` weiter) bzw. `"busy"` (ein anderer PUT läuft) ·
+   `409 {"error": …, "offset": n}` falsche Stelle oder ein anderer PUT läuft gerade (dann ab `n` weiter; `error` ist nur
+   Text, maßgeblich ist `offset`) ·
    `400` Content-Range/Content-Length passen nicht, unvollständiger Teil, beim Abschluss falscher Kopf (der Upload ist
    dann verworfen) · `413` Teil zu groß · `404` Upload unbekannt, abgelaufen (24 h) oder abgebrochen.
 3. **Fortsetzen** nach Netzabbruch oder App-Neustart: `HEAD /api/chat/uploads/{id}` → `204` mit `Upload-Offset` und
