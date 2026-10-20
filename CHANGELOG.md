@@ -16,74 +16,88 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
-### 2.4 – Server und Web
+## [2.4.0] – 2026-10-20
 
-Neue Funktionen für Anrufe, Videos und Chats. Die Schnittstelle wurde nur erweitert: Apps und Server mit 2.1/2.3 laufen
-weiter (`MIN_APP` unverändert), neue Funktionen werden per Fähigkeit ausgehandelt und sonst ausgeblendet.
-Datenbank: Migrationen 10 (Anrufe), 11 (Videos/Dateien), 12 (Anruf als Raum), 13 (Gelesen/Online) und 14 (Testrunde) laufen beim Start
-automatisch; Backups von 2.3 bleiben einspielbar.
+Saga 2.4 bringt Videos in den Chat und macht Anrufe erwachsen: Gruppenanrufe, Bildschirm teilen mit Kamera daneben,
+Bild-im-Bild und einen laufenden Anruf auf ein anderes Gerät übergeben. Chat-Anhänge und Videos liefert der neue
+Medienpfad **saga-media** aus, ohne Python zu belasten; Gelesen-Haken und Online-Status kommen dazu. Nach einer
+Testrunde ist Saga außerdem strenger beim Schutz: Fehlversuche bremsen statt Konten zu sperren, Anmeldenamen bleiben
+privat, zweite Faktoren ändern sich nur mit Bestätigung, Gravatar gibt es nur mit Einwilligung.
+Gleichzeitig erscheinen die [Saga-Apps 2.4](https://github.com/yggdrasil-sh/saga-apps/releases) mit Videos,
+Gruppenanrufen, weiterem Gerät im Anruf und Gelesen-Haken. Die Schnittstelle wurde nur erweitert: Apps und Server mit
+2.1/2.3 laufen weiter (`MIN_APP` unverändert), neue Funktionen werden per Fähigkeit ausgehandelt und sonst ausgeblendet.
+Datenbank: Migrationen 10 (Anrufe), 11 (Videos/Dateien), 12 (Anruf als Raum), 13 (Gelesen/Online) und 14 (Testrunde)
+laufen beim Start automatisch; Backups von 2.3 bleiben einspielbar.
 
-#### Update von 2.3
+### Höhepunkte
 
-- **Gravatar ist danach für alle Konten aus.** Bis 2.3 war „Gravatar verwenden“ ab Werk an; eine bewusste Wahl lässt
-  sich davon nicht unterscheiden. Migration 14 schaltet es deshalb für alle Konten ab und löscht zwischengespeicherte
-  Gravatar-Bilder – bis zur Einwilligung geht keine Anfrage an gravatar.com. Wer Gravatar will, schaltet es unter
-  Einstellungen → Konto → Profilbild einmal neu ein. Eigene Profilbilder und SSO-Bilder bleiben.
-- **Öffentlicher Name gleich Anmeldename:** wird nicht umgestellt – Saga hat ihn nie so vorbelegt, er ist also selbst
-  gewählt, und eine Umstellung bräche alle Links auf veröffentlichte Seiten. Die Einstellungen weisen darauf hin; neue
-  öffentliche Namen dürfen nicht der Anmeldename sein.
-- **Zweiten Faktor entfernen** braucht jetzt eine Bestätigung (Passwort, Code oder Passkey). Web und Apps fragen bei
-  `403 {reauth: true}` schon heute nach und wiederholen. Ebenso **einen weiteren Faktor hinzufügen** und **neue
-  Wiederherstellungscodes erzeugen**, sobald schon ein zweiter Faktor eingerichtet ist (Web fragt nach; Apps siehe
-  `docs/APP-API.md`).
+- **Videos im Chat.** Poster mit Dauer, sofort abspielen, spulen ohne Komplett-Download, fortsetzbarer Upload bis
+  `VIDEO_MAX_MB` (Standard 500 MB) – Ende-zu-Ende-verschlüsselt in Blöcken, auch über Servergrenzen. Gemessen: 1 GB
+  hochladen kostet Python 0,06 % eines Kerns und +0 MB (2.3.0 mit 10-MB-Anhängen: 19,8 %, +20 MB), Range-TTFB 1 MiB
+  p95 0,8 ms, ein Chat mit 1.000 Video-Nachrichten lädt eine Seite in p95 15,8 ms.
+- **Gruppenanrufe und weiteres Gerät.** Gruppenanrufe in Gruppen-, freien und Seiten-Chats (Mesh mit bis zu 4 Geräten
+  mit Video bzw. 6 nur mit Ton), lokal und über Servergrenzen; ein laufender Anruf lässt sich ohne Abbruch auf ein
+  anderes eigenes Gerät übernehmen oder um ein Begleitgerät ergänzen. 4er-Mesh lokal aufgebaut in 1,1–1,8 s,
+  Python-CPU-Spitze ≤ 19 %; über drei Server 3,1 s.
+- **Bildschirm, Bild-im-Bild, stabile Verbindung.** Bildschirm als eigene Videospur mit Kamera daneben, Bild-im-Bild im
+  Web, Neuverbindung bei Netzwechsel statt Auflegen, Bitrate je Verbindungsweg. Zeigt das Gegenüber das Bild nur klein,
+  sinkt die gesendete Bitrate von 1,5 auf 0,29 Mbit/s.
+- **Medienpfad saga-media.** Ein kleiner Go-Dienst im Container liefert Chat-Anhänge direkt von der Platte. Gemessen
+  (2 Kerne, Median aus drei Läufen): 20 × 10 MB parallel 0,22 statt 0,67 s, Python-CPU dabei 0 statt 0,64 s;
+  Range-TTFB 1 MiB p95 1,6 statt 8,8 ms.
+- **Gelesen und online.** Haken „wie WhatsApp“, „Gelesen von“ in Gruppen und Online-Status – Ende-zu-Ende-signiert,
+  getrennt abschaltbar. 50er-Gruppe mit 49 Lesenden alle 2 s: `/read` mit Bestätigung p95 21–33 ms.
+- **Mehr Schutz.** Fehlversuche bremsen nur die angreifende Adresse, Anmeldenamen bleiben privat (Handles), zweiter
+  Faktor nur mit Bestätigung, Gravatar nur mit Einwilligung.
 
-#### Anrufe: Fundament saga-call v3 (Etappe E0)
+### Für alle
 
-- **saga-call v3:** Anrufe können während des Gesprächs neu ausgehandelt werden („Perfect Negotiation“). Bricht die
+#### Videos im Chat
+
+- **Videos mit Poster, Dauer und Streaming.** Im Verlauf erscheint ein Poster mit Dauer (erzeugt das sendende Gerät,
+  ≤ 30 KB); Antippen spielt sofort ab, Spulen lädt nur die nötigen Bereiche. Im Web entschlüsselt der Service Worker
+  (`static/sw.js`) die Range-Anfragen des Players blockweise – kein Komplett-Download, Schlüssel nur im Speicher.
+  Herunterladen als entschlüsselte Datei, als Strom. „Optimiert 720p“ im Web, wo der Browser MP4 aufnehmen kann (vom
+  Handy Standard), sonst Original mit Hinweis. In der Chatliste nur Poster, kein Player.
+- **Fortsetzbarer Upload:** Bricht ein Upload ab, geht er ab der Abbruchstelle weiter. Höchstens 2 Uploads gleichzeitig,
+  offene verfallen nach 24 h; laufende Uploads zählen beim Speicher mit.
+- **Über Servergrenzen:** Große Videos holt der eigene Server nur bereichsweise beim Server des Absenders. Mit Servern auf
+  Saga 2.3 gehen nur Anhänge bis `ATTACH_MAX_MB` (Hinweis statt verlorener Nachricht). Ältere Apps zeigen große Videos
+  als Anhang („Mit Saga 2.4 öffnen“).
+- **Videos, die der Browser nicht kann:** Statt eines stummen Players bei 0:00 erscheint „Kann im Browser nicht abgespielt
+  werden – herunterladen“, im Verlauf ein Platzhalter mit Dateiname statt einer leeren Fläche (das Vorschaubild fehlt, weil
+  das sendende Gerät das Video nicht dekodieren konnte). „Auf 720p verkleinern“ bietet Saga nur an, wenn dieser Browser
+  das Video dekodieren und als MP4 aufnehmen kann, sonst steht ehrlich „Original“ da.
+
+#### Anrufe
+
+- **Stabile Verbindung:** Anrufe können während des Gesprächs neu ausgehandelt werden („Perfect Negotiation“). Bricht die
   Verbindung ab oder wechselt das Netz (WLAN ↔ Mobilfunk), baut Saga sie per ICE-Restart neu auf, statt aufzulegen
-  (bis zu 3 Versuche, 20 s Frist). Signatur und Verschlüsselung bleiben unverändert, nur der signierte Inhalt hat neue
-  Felder (`pc`, `caps`, `n`, `state.pip/want/path`, `bye`). Mit Gegenstellen auf 2.1/2.3 läuft alles wie bisher.
+  (bis zu 3 Versuche, 20 s Frist). Mit Gegenstellen auf 2.1/2.3 läuft alles wie bisher.
 - **Bitrate je Verbindungsweg:** Kamera, Bildschirm und Ton passen sich an, je nachdem ob die Verbindung direkt, über
   TURN per UDP oder über TURN per TCP/TLS (Port 443) läuft. Zeigt das Gegenüber das Bild nur klein (Bild-im-Bild, Tab im
   Hintergrund), sendet Saga nur noch ≤ 300 kbit/s (gemessen 1,5 Mbit/s → 0,29 Mbit/s).
 - **Bild-im-Bild im Web:** Knopf im Anruffenster (Chrome/Edge: eigenes kleines Fenster mit Stumm, Zurück und Auflegen;
   sonst Video-Bild-im-Bild). Ohne Browser-Unterstützung (z. B. Firefox) erscheint der Knopf nicht.
-- **Server:** `GET /api/calls/config` meldet `body_v`, `features` und `limits`; mehrere offer/answer je Anruf in beide
-  Richtungen, lokal und föderiert, mit einem Signal-Budget, das mit der Gesprächsdauer wächst (statt fester 600).
-  Migration 10 (Grundgerüst für Räume): `chat_call.v`, `topo`, `kind`, `caps_a`, `caps_b`.
-- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Anrufe: saga-call v3“ (Föderation: `APP-API-FED.md` §7.1).
-- **Messung:** `tools/perf/bench.py` misst die Anruf-Signalisierung, `tests/browser_calls.js` den Anrufaufbau.
-
-#### Anrufe: Bildschirm v2 (Etappe E3)
-
 - **Bildschirm als eigene Videospur:** Zwischen 2.4-Geräten läuft der geteilte Bildschirm über eine zweite Videospur
-  (Neuverhandlung aus E0), die Kamera läuft daneben gedrosselt weiter. Das Gegenüber sieht den Bildschirm groß und die
-  Kamera klein und kann die Ansicht tauschen. Gegenstellen auf 2.1/2.3 (und ohne `screen2`) bekommen wie bisher den
-  Bildschirm statt der Kamera.
+  (Neuverhandlung), die Kamera läuft daneben gedrosselt weiter. Das Gegenüber sieht den Bildschirm groß und die Kamera
+  klein und kann die Ansicht tauschen. Gegenstellen auf 2.1/2.3 (und ohne `screen2`) bekommen wie bisher den Bildschirm
+  statt der Kamera.
 - **Systemton:** Wo der Browser ihn liefert (Chrome/Edge: Ton des Tabs, unter Windows/ChromeOS auch der ganze Systemton),
   wird er in die Tonspur gemischt.
-- **Datenschutz:** Vor dem ersten Teilen ein Hinweis, dass auch Benachrichtigungen und andere Fenster sichtbar sind
-  (abschaltbar je Gerät). Während des Teilens eine rote Leiste „Du teilst deinen Bildschirm“ mit „Beenden“, beim
-  Gegenüber „… teilt den Bildschirm“.
-- **Bitrate:** Bildschirm je Verbindungsweg 2,5 / 1,8 / 1,2 Mbit/s, höchstens 15 fps (über TURN per TCP 8 fps), Auflösung
-  bleibt erhalten („maintain-resolution“, Text bleibt lesbar). Die Kamera daneben sendet ≤ 300 kbit/s, über TURN per TCP
-  pausiert sie.
-- **Server:** `GET /api/calls/config` meldet `features: screen2`; sonst keine Änderung (keine Medien durch den Server,
-  3 Signale je Start bzw. Stopp).
-- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Anrufe: Bildschirm v2“ (mid-Zuordnung über `tracks`, `msid`, `screen_mid`).
-- **Tests und Messung:** `tests/browser_screen2.js` (Bildschirm-Attrappe im headless Chromium, gegen E0- und 2.3-Client).
-
-#### Anrufe: weiteres Gerät und Gruppenanrufe (Etappen E4/E5)
-
-- **Anruf als Raum:** Jeder Anruf hat Endpunkte je Gerät (neue Tabellen `chat_call_leg`, `chat_call_invite`, Migration
-  12). Ein 1:1-Anruf ist der Raum mit zwei Geräten und läuft wie bisher; mit 2.1/2.3-Gegenstellen bleibt er 1:1.
-- **Weiteres Gerät (E4):** Läuft ein Anruf auf einem Gerät, zeigen die anderen eigenen Geräte „Anruf läuft auf …“ mit
+- **Datenschutz beim Teilen:** Vor dem ersten Teilen ein Hinweis, dass auch Benachrichtigungen und andere Fenster
+  sichtbar sind (abschaltbar je Gerät). Während des Teilens eine rote Leiste „Du teilst deinen Bildschirm“ mit „Beenden“,
+  beim Gegenüber „… teilt den Bildschirm“.
+- **Bitrate beim Teilen:** Bildschirm je Verbindungsweg 2,5 / 1,8 / 1,2 Mbit/s, höchstens 15 fps (über TURN per TCP
+  8 fps), Auflösung bleibt erhalten („maintain-resolution“, Text bleibt lesbar). Die Kamera daneben sendet ≤ 300 kbit/s,
+  über TURN per TCP pausiert sie.
+- **Weiteres Gerät:** Läuft ein Anruf auf einem Gerät, zeigen die anderen eigenen Geräte „Anruf läuft auf …“ mit
   **Hinzufügen** (Begleitgerät: ohne Mikrofon und Ton, z. B. zum Bildschirmteilen vom Laptop) und **Hierher übernehmen**
   (eigener Knopf, ohne Abbruch: das neue Gerät verbindet sich, übernimmt Ton und Mikrofon, das alte geht; klappt es nicht
   in 15 s, bleibt das alte). Auch über Servergrenzen.
-- **Gruppenanrufe (E5):** In Gruppen-, freien und Seiten-Chats, lokal und über Servergrenzen. Klingelt bei allen
-  Mitgliedern mit Saga 2.4 (in Chats mit mehr als 8 Mitgliedern nur still), jederzeit beitreten und verlassen; der Anruf
-  läuft, solange mindestens zwei dabei sind. Mesh mit höchstens **4 Geräten mit Video bzw. 6 nur mit Ton** (eigene
+- **Gruppenanrufe:** In Gruppen-, freien und Seiten-Chats, lokal und über Servergrenzen. Klingelt bei allen Mitgliedern
+  mit Saga 2.4 (in Chats mit mehr als 8 Mitgliedern nur still), jederzeit beitreten und verlassen; der Anruf läuft,
+  solange mindestens zwei dabei sind. Mesh mit höchstens **4 Geräten mit Video bzw. 6 nur mit Ton** (eigene
   Zusatzgeräte zählen mit, der Admin kann nur senken). Kachelansicht, Sprecher hervorgehoben, Bitrate je Strom ab drei
   Geräten (600/500/350 kbit/s je Weg), Bildschirm teilen in der Gruppe, Chat-Eintrag mit Teilnehmerzahl, verpasst für
   Eingeladene.
@@ -93,82 +107,15 @@ automatisch; Backups von 2.3 bleiben einspielbar.
 - **Kompatibilität:** Der Gruppenanruf-Knopf erscheint nur, wenn alle beteiligten Server die neue Fähigkeit `calls3`
   melden; Geräte ohne `multi` (2.1/2.3, E0) werden nicht eingeladen und sehen „braucht Saga 2.4“. 2.3-Apps und -Server
   bleiben bei 1:1.
-- **Server:** neue Endpunkte `POST /api/calls/{id}/join`, `/leave`, `/invite`, `PUT /api/calls/caps`; `POST /api/calls`
-  startet in Gruppen-Chats einen Gruppenanruf; Anruf-Objekte mit `kind`, `legs`, `joinable`, `rv` (Stand der Liste, auch in `call.roster`) und bei Gruppen `silent`/`members` (auch in `/api/calls/active`); Live `call.roster` und
-  `call.invite`; Push-Art `call.group`; `features` `multi` und `group`. Föderation: Cap `calls3`, Aufträge `join`,
-  `leave`, `roster`, `invite`; den Anruf führt der Server der anrufenden Person bzw. das Heim des Chats, Signale laufen
-  sternförmig über ihn (auch zwischen Servern, die nicht direkt verbunden sind). Sicherung: ältere Backups ohne die neuen
-  Tabellen bleiben einspielbar.
-- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Anrufe: Mehrgeräte und Gruppen“ (mit Beispielen), `docs/APP-API-FED.md`
-  Abschnitt 7.2. Bewertung Frame-E2E für die SFU in 2.5 (Spike, `tools/perf/spike_frame_e2e.js`): im Web machbar.
-- **Tests und Messung:** `tests/anrufe_raum.py`, `tests/browser_raum.js` (4 Geräte, Übernahme, 4er-Mesh, 2.3-Client),
-  `tests/foederation_anrufe_raum.py` (drei Server, auch mit 2.3-Server; mit `BJS=1` im Browser). 4er-Mesh lokal: Aufbau
-  1,1–1,8 s, Python-CPU-Spitze ≤ 19 % (nie über 20 %); über drei Server 3,1 s; Signal B → Heim → C 69 ms.
-
-#### Medienpfad „saga-media“ (Etappe E1)
-
-- **Chat-Anhänge ohne Python.** Im Container steht vor Saga der kleine Dienst `saga-media` (Go, nur Standardbibliothek,
-  statisch gelinkt, Quelltext in `media/`). Er lauscht auf dem bisherigen Port, leitet alles an Saga weiter (Streaming,
-  Live-Kanal ungepuffert) und liefert `GET/HEAD /api/chat/files/{fid}` selbst von der Platte: Range (206/416), `sendfile`,
-  `ETag` = Kennung, If-None-Match (304), If-Range, dieselben Sicherheitsköpfe wie bisher. Gemessen (`tools/perf/media.py`,
-  Median aus drei Läufen, 2 Kerne): 20 × 10 MB parallel 0,22 statt 0,67 s, Python-CPU dabei 0 statt 0,64 s; 20 Ströme
-  je 2 Mbit/s Python 0,3 % (Ruhewert) statt 2,9 % eines Kerns und kein RAM-Zuwachs statt +14 MB, saga-media 0,1 % und
-  8 MB; Range-TTFB 1 MiB p95 1,6 statt 8,8 ms. Image etwa +7,5 MB.
-- **Berechtigung bleibt in Saga:** `saga-media` fragt je Datei und Sitzung einmal `/internal/media/authz` (nur mit
-  einem beim Start erzeugten Geheimnis, von außen gesperrt) und merkt sich die Erlaubnis höchstens 60 s
-  (`MEDIA_AUTHZ_TTL`). Entzug wirkt also spätestens nach einer Minute, eine gelöschte Datei sofort. Ablehnungen beantwortet
-  wie bisher Saga selbst (401/404, föderierte Anhänge werden dort nachgeholt).
-- **Sicher davor:** Client-Adresse nach denselben Regeln wie bisher (`TRUSTED_PROXIES`; eingeschleuste
-  X-Forwarded-For/-Proto zählen nicht), nur echte Dateien direkt im Blob-Verzeichnis (kein Traversal, keine Symlinks –
-  das prüft jetzt auch Python), Grenzen für Verbindungen und gleichzeitige Downloads, Zeitlimits gegen Slowloris
-  (Kopfzeilen 15 s, stockende Uploads/Downloads `MEDIA_STALL_TIMEOUT`). Upload-Grenzen unverändert.
-- **Container:** mehrstufiger Build (Go auf der Build-Plattform für amd64/arm64), `tini` als Init; `saga-media` startet
-  und überwacht Saga (intern `127.0.0.1:8079`, `MEDIA_INTERNAL_PORT`) und endet mit ihm. Kein neuer Port, Healthcheck
-  unverändert. `SAGA_MEDIA=off` startet wie bis 2.3.
-- **Ohne Container:** `MEDIA_ACCEL=nginx|caddy` – der Reverse Proxy liefert per `X-Accel-Redirect` (Beispiele in der
-  Anleitung, „Medienpfad“, mit nginx 1.24 und Caddy 2.8 geprüft). Sonst liefert Python wie bisher, aber höchstens
-  `MEDIA_PY_STREAMS` (Standard 4) gleichzeitig; der Admin-Bereich zeigt unter „Medien“, welcher Weg aktiv ist.
-- Föderation (`/fed/v2/chat/files`) unverändert; Teilbereiche mit Signatur folgen mit den Videos (E2).
-- Tests: neue Reihe `tests/medienpfad.py` (Range-Varianten, 304/ETag, Rechteentzug, gelöschte Dateien, Traversal,
-  `/internal` gesperrt, SSE durch den Proxy, X-Forwarded-For, Upload-Grenzen, Slowloris, Python-Grenze, nginx/Caddy),
-  Go-Tests in `media/`. Die Testinstanz von `tools/stack-remote.sh` läuft hinter `saga-media`. Messstufe `MEDIA` in
-  `tools/perf/run.sh`, Grenzwerte in `tools/perf/limits.json`.
-
-#### Videos im Chat (Etappe E2)
-
-- **Videos mit Poster, Dauer und Streaming.** Im Verlauf erscheint ein Poster mit Dauer (erzeugt das sendende Gerät,
-  ≤ 30 KB); Antippen spielt sofort ab, Spulen lädt nur die nötigen Bereiche. Im Web entschlüsselt der Service Worker
-  (`static/sw.js`) die Range-Anfragen des Players blockweise – kein Komplett-Download, Schlüssel nur im Speicher.
-  Herunterladen als entschlüsselte Datei, als Strom. „Optimiert 720p“ im Web, wo der Browser MP4 aufnehmen kann (vom
-  Handy Standard), sonst Original mit Hinweis. In der Chatliste nur Poster, kein Player.
-- **Neues Format `saga-file/v2`** für Videos über `ATTACH_MAX_MB`: 256-KiB-Blöcke XChaCha20-Poly1305 mit Blocknummer,
-  Blockzahl, Größe und Endmarke im AD (gegen Vertauschen und Abschneiden). Testvektoren für alle Plattformen:
-  `tests/vectors/file_v2.json`. Kleinere Videos und alle bisherigen Anhänge bleiben unverändert (v1); ältere Apps zeigen
-  große Videos als Anhang („Mit Saga 2.4 öffnen“).
-- **Fortsetzbarer Upload** (`POST /api/chats/{id}/uploads`, `PUT`/`HEAD`/`DELETE /api/chat/uploads/{id}`): saga-media
-  schreibt die Teile direkt auf die Platte, Python legt nur Metadaten und Kontingent an. Abbruch → weiter ab
-  `Upload-Offset`. Höchstens 2 Uploads gleichzeitig, offene verfallen nach 24 h.
-- **Grenzen im Admin:** „Größtes Video im Chat“ (`VIDEO_MAX_MB`, Standard 500) und „Speicher für Chat-Anhänge je Konto“
-  (`CHAT_QUOTA_MB`, Standard jetzt 4096 statt 1024); laufende Uploads zählen mit. `/api/chat/me` meldet `limits.file2`,
-  `video_max`, `upload_part`, `quota`, `used`.
-- **Medien-Token** für lange Wiedergaben (`POST /api/chat/files/{id}/token`, Kopf `X-Saga-Media-Token`): an Datei und
-  Anmeldung gebunden, 15 min; Entzug wirkt spätestens nach 60 s.
-- **Über Servergrenzen** (Fähigkeit `chatfile2`): Der eigene Server holt große Videos nur bereichsweise beim Server des
-  Absenders – signiert je Teil (höchstens 4 MiB, Bereich in der signierten Anfrage), lückenhafte Zwischenkopie mit
-  1-MiB-Bitmap, Anfang und Ende vorab. saga-media liefert und holt die Bytes selbst, Python prüft und signiert nur. Mit
-  Servern auf Saga 2.3 gehen nur Anhänge bis `ATTACH_MAX_MB` (Hinweis statt verlorener Nachricht; Chat-Objekt `big_files`).
-- **Migration 11:** `chat_file.fmt`, `chat_file_fed.have`, Index `chat_file(uid)`; neue Tabelle `chat_upload`.
-- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Videos im Chat“ (mit Beispielen für AVAssetResourceLoader, Media3
-  DataSource, GTK/GStreamer), Föderation `docs/APP-API-FED.md` §6.5a.
-- **Gemessen** (nativ, 2 Kerne; `tools/perf/video.py`, `gen.py` Stufe V, `tests/foederation_videos.py`):
-  Upload 1 GB bei 400 Mbit/s: Python 0,06 % eines Kerns, +0 MB (vorher 2.3.0 mit 10-MB-Anhängen: 19,8 %, +20 MB,
-  4,25 CPU-s je GB), saga-media 4,5 % und 14 MB. Range-TTFB 1 MiB p95 0,8 ms (mit Medien-Token ebenso). Chat mit 1.000
-  Video-Nachrichten: Seite (50) p95 15,8 ms (vorher 1.000 Bild-Nachrichten 19,2 ms), Antwort 30,5 statt 29,0 KB (die
-  Video-Metadaten im Ciphertext). Über Servergrenzen 1 MiB kalt 21–57 ms, danach 4–16 ms. Image +3,4 MB
-  (unkomprimiert 107,7 → 111,1 MB), Start bis `/healthz` 3,0 statt 2,9 s, RAM nach dem Start 83 statt 78 MiB.
-- Tests: `tests/datei_v2_vektoren.py`, `tests/videos.py` (mit und ohne saga-media), `tests/foederation_videos.py`
-  (gemischt, nur Python, gegen 2.3.0), `tests/browser_videos.js` (Upload mit Abbruch, Abspielen, Spulen, Herunterladen),
-  Go-Tests in `media/`.
+- **Nach der Testrunde:** Nach „Hierher übernehmen“ hat die Kamera den Zustand des abgebenden Geräts; die Angerufene sieht
+  ihr Eigenbild sofort; ein neuer Tab zum Annehmen fragt den Schlüsselzustand einmal nach, bevor er „Chats einrichten“
+  zeigt (dort angelegte Schlüssel überschrieben nie eine bestehende Identität, der Server lehnt das ab).
+- **Mehrere Geräte im Anruf:** Die Kopplungsanfrage eines neuen Geräts erscheint über dem Vollbild-Anruf und schließt
+  sich, wenn ein anderes Gerät sie erledigt hat. Behoben: „Hinzufügen“ hing bei „Verbinde …“ und „Hierher übernehmen“
+  scheiterte, wenn das Gerät erst während des Anrufs gekoppelt wurde – die Gegenstelle kannte seine Schlüssel noch nicht
+  und holt sie jetzt einmal frisch (neue Reihe `browser_geraete.js`: alle Geräte in einem Browser wie bei der Testrunde).
+- **Gruppenanruf:** „Klingelt bei den anderen …“ bzw. „Verbinde …“ verschwinden, sobald Medien fließen; den Zustand je
+  Verbindung zeigen die Kacheln.
 
 #### Gelesen-Bestätigungen und Online-Status
 
@@ -187,41 +134,120 @@ automatisch; Backups von 2.3 bleiben einspielbar.
 - **Über Servergrenzen:** neue Fähigkeiten `receipts` und `online` (Protokoll 2). Bestätigungen gehen versiegelt über
   das Heim des Chats (in der Reihenfolge der Nachrichten), der Online-Status als kurzes Abo (90 s) beim Server der
   Person. Mit 2.3-Servern wird nichts davon gesendet. Ersetzt die frühere Regel „Gelesen bleibt lokal“.
-- **Last:** Bestätigungen werden je Chat gebündelt (höchstens ein Live-Ereignis je 2 s; mehr als 8 auf einmal nur als
-  Hinweis, den offene Chats abrufen), Clients senden höchstens eine je Chat und 2 s; der Online-Status geht nur an Konten,
-  die die Person gerade sichtbar haben (Abo). Messung gegen E0 (Stufe S, 2-Kern-Container, Median aus 3 Läufen):
-  bestehende Endpunkte unverändert im Rauschen, alle Grenzwerte eingehalten. 50er-Gruppe, 49 Lesende alle 2 s (490
-  Bestätigungen mit je 49 Siegeln in 25 s): `/read` mit Bestätigung p95 21–33 ms (E0 ohne Wirkung 14 ms), Python-CPU
-  14 % statt 9 %, je Konto ≤ 12 Live-Ereignisse, Live-Kanal aller 50 zusammen ~210 KB, Speicher unverändert;
-  Online-Abo für 49 Personen p95 24–36 ms. Neue Grenzwerte in `tools/perf/limits.json`.
-- **Server:** `GET/PUT /api/chat/privacy`, `POST /api/chats/{id}/read` mit `receipt`, `GET /api/chats/{id}/receipts`,
-  `POST /api/chat/presence`, Live-Ereignisse `chat.receipt`, `chat.presence`, `chat.privacy`; `chat.message` meldet bei
-  der Zustellbestätigung des Heims auch `fseq`. **Migration 13**: Tabellen
-  `chat_receipt` und `chat_seen`; beim Zurückspielen älterer Backups werden sie neu angelegt. Kontolöschung und
-  persönliches Backup berücksichtigen sie.
-- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Gelesen-Bestätigungen und Online-Status“ (Föderation:
-  `APP-API-FED.md` §11). `MIN_APP` unverändert – ältere Apps sehen einfach keine Haken.
-- **Tests:** `chat_gelesen`, `foederation_gelesen` (auch gegen 2.3 als Gegenstelle), `browser_gelesen.js`,
-  `browser_fed_chat.js` erweitert, Vektoren in `chat_v2_vektoren`; Messung `bench.py` Phase `receipts`.
 
-#### Nach der Testrunde (Sicherheit, Datenschutz, Bedienung)
+#### Privatsphäre und Anmeldung
 
-- **saga-media: Grenze je Client-Adresse.** Höchstens `MEDIA_MAX_CONNS_IP` (Standard 256) offene Verbindungen je Adresse
+- **Anmeldenamen bleiben privat:** Andere Konten sehen nie den Anmeldenamen – Personensuche (Teilen, Chats), Freigaben,
+  „Mit mir geteilt“, Kommentare, Benachrichtigungen, Anwesenheit, Versionen und Seitensuche liefern Anzeigename,
+  öffentlichen Namen oder einen pseudonymen Handle (`~` + 16 Zeichen). Freigeben, Chat beginnen und Mitglied hinzufügen
+  nehmen den Handle oder den Benutzernamen. Mitglieder eines gemeinsamen Chats/Anrufs bekommen den
+  Anmeldenamen technisch weiter (Schlüssel und Signaturen von Chats v1 hängen daran), die Weboberfläche zeigt ihn nicht.
+- **Gleichnamige Personen unterscheidbar:** Personensuche (Teilen, Chats) und Chat-Mitglieder liefern `sub` – den
+  öffentlichen Namen bzw. den Handle `~…`, nie den Anmeldenamen; das Web zeigt ihn in der Unterzeile. Der
+  Mitglieder-Dialog einer Gruppe zeigt keine Anmeldenamen mehr; Personen anderer Server erklärt er in lokalen Gruppen
+  („nur in neuen Gruppen“).
+- **Nextcloud-Dateien in Seiten:** Mitlesende Konten sehen als Autor eines eingefügten Nextcloud-Blocks den Handle
+  statt des Anmeldenamens (auch in `GET /api/notes/{id}/nc`); Speichern, Vorschau (`?a=`) und Download nehmen den Handle
+  an, gespeichert bleibt der echte Autor mit seiner Signatur.
+- **Gruppen mit Personen anderer Server:** Anlegen ging mit Handles aus der Personensuche nicht mehr (400 „Mit diesem
+  Konto ist kein Chat möglich“) – lokale Mitglieder als Handle und `handles` anderer Server lassen sich wieder gemischt
+  angeben.
+- **Personensuche `name@server`:** Hat die Person keinen öffentlichen Namen, sucht Saga zusätzlich im Adressbuch genau
+  dieses Servers nach Anzeigenamen bzw. Handle (lokal, kein Anmeldename geht nach außen).
+- **Öffentlicher Name:** Der eigene Anmeldename ist als öffentlicher Name nicht mehr wählbar (er stünde in
+  `/@name`-Adressen und bei anderen Saga-Servern). Saga hat den öffentlichen Namen nie mit dem Anmeldenamen vorbelegt;
+  wer ihn früher selbst so gewählt hat, behält ihn (keine Zwangsumstellung, alte Links gehen weiter) und sieht in den
+  Einstellungen einen Hinweis mit der Möglichkeit, ihn zu ändern.
+- **Gravatar nur mit Einwilligung:** Neue Konten beginnen mit „Gravatar verwenden“ **aus**; beim Einschalten erklärt Saga,
+  dass ein Hash der E-Mail-Adresse an Gravatar geht. Auch bestehende Konten starten nach dem Update mit „aus“ (siehe
+  „Update von 2.3“).
+- **Zweiter Faktor entfernen** (Authenticator-App, Passkey) verlangt jetzt immer eine ausdrückliche Bestätigung mit
+  Passwort, Code oder Passkey (höchstens 5 Minuten alt) – eine frische Anmeldung allein reicht nicht mehr.
+- **Zweiter Faktor hinzufügen und neue Wiederherstellungscodes** verlangen dieselbe Bestätigung, sobald das Konto schon
+  einen Passkey oder eine Authenticator-App hat; nur die Ersteinrichtung geht weiter mit frischer Anmeldung. Ein Faktor,
+  der erst nach der Anmeldung dieser Sitzung hinzukam, bestätigt nichts und wird im Bestätigungsdialog nicht angeboten.
+  Bisher konnte eine frisch gekaperte Sitzung einen eigenen Passkey anlegen, sich damit bestätigen und danach
+  Authenticator-App und Passkeys des Kontos entfernen. Sitzungen merken sich dafür ihren Beginn (`since`).
+
+#### Seiten, Editor und Oberfläche
+
+- **Versionen beim Bearbeiten:** Saga sichert beim Speichern höchstens alle 5 (statt 10) Minuten, dazu den aktuellen
+  Stand nach 2 Minuten Pause und beim Verlassen der Seite (`POST /api/notes/{id}/versions/checkpoint`, gedrosselt, keine
+  doppelten Fassungen). „Diese Version wiederherstellen“ fragt nach und sichert den aktuellen Stand immer vorher – steht
+  er schon im Verlauf, ohne Kopie; für Nicht-Eigentümer gilt dabei dieselbe Drossel wie beim Speichern (ein eigener
+  Sicherungspunkt je Seite und Minute, ein weiterer ersetzt ihn). So kann niemand mit „Bearbeiten“ durch wiederholtes
+  Wiederherstellen ältere Fassungen des Eigentümers oder Dritter aus dem Verlauf verdrängen.
+- **Export, Versionsvorschau, Suche:** Markdown-Export behält die Adresse von Einbettungen (YouTube), zeigt eingebettete
+  Datenbanken mit Titel und Kalender/Aufgaben als Hinweis; Vorschau und Suchausschnitt zeigen keine internen Werte
+  („month“, „task“, Ansichtsnamen) und Dateinamen nur einmal. Migration 14 leitet den Suchtext betroffener Seiten neu ab.
+- **Editor:** Ein Klick unter den letzten Block setzt den Cursor in den leeren letzten Absatz bzw. legt einen neuen an
+  (Getipptes ging verloren). Schnell getipptes „/Hinweis⏎“ wählt den Block, auch wenn das Menü noch nicht gefiltert hat.
+  Aus einem Zitat kommt man per Enter in leerer Zeile, Enter in „Quelle“ oder Pfeil nach unten heraus.
+- **Oberfläche:** Die klebende Reiterleiste der Einstellungen schließt oben bündig ab; der Datumswähler einer Aufgabe in
+  der Seitenleiste öffnet an der Aufgabe.
+- **Kleinigkeiten:** Einstellungs-Reiter brechen auf breiten Bildschirmen um (keine versteckten Reiter mehr), Thai-Titel
+  ohne Sperrschrift, klebende Reiterleiste deckt den Inhalt ab; „Kalender verbinden …“ öffnet den Reiter „Kalender“;
+  „1 Termin“ in der Einzahl, „… sind jetzt dabei“ bei mehreren; Dateien unter 1 KiB in Byte; Anmeldeseite setzt nach einem
+  Fehler den Fokus ins Passwortfeld und erklärt „Passwort vergessen?“; Sprachwahl mit fester Breite; einheitlicher
+  Platzhalter in Spalten; Nextcloud: Tippfehler in der Adresse heißen „Adresse ungültig“ statt „Ziel nicht erreichbar“.
+
+#### Behoben
+
+- **Chats über Servergrenzen: eigene Nachricht blieb auf „⏳ wird zugestellt“.** Liegt der Direkt-Chat auf dem anderen
+  Server (Heim), legt der eigene Server die Nachricht zuerst als ausstehend an und meldet sie sofort an die Geräte. Bestätigte
+  das Heim gleich, kam dafür kein Live-Ereignis mehr – Web und Apps zeigten die längst zugestellte Nachricht bis zum
+  Neuladen als ausstehend. Der Server meldet die Bestätigung jetzt (ebenso „nicht zugestellt“ und eine wegen geänderter
+  Empfänger verworfene Kopie); die Weboberfläche übernimmt zusätzlich die Bestätigung aus der Antwort beim Senden.
+
+### Für Admins
+
+#### Medienpfad „saga-media“
+
+- **Chat-Anhänge ohne Python.** Im Container steht vor Saga der kleine Dienst `saga-media` (Go, nur Standardbibliothek,
+  statisch gelinkt, Quelltext in `media/`). Er lauscht auf dem bisherigen Port, leitet alles an Saga weiter (Streaming,
+  Live-Kanal ungepuffert) und liefert `GET/HEAD /api/chat/files/{fid}` selbst von der Platte: Range (206/416), `sendfile`,
+  `ETag` = Kennung, If-None-Match (304), If-Range, dieselben Sicherheitsköpfe wie bisher. Gemessen (`tools/perf/media.py`,
+  Median aus drei Läufen, 2 Kerne): 20 × 10 MB parallel 0,22 statt 0,67 s, Python-CPU dabei 0 statt 0,64 s; 20 Ströme
+  je 2 Mbit/s Python 0,3 % (Ruhewert) statt 2,9 % eines Kerns und kein RAM-Zuwachs statt +14 MB, saga-media 0,1 % und
+  8 MB; Range-TTFB 1 MiB p95 1,6 statt 8,8 ms. Image etwa +7,5 MB.
+- **Berechtigung bleibt in Saga:** `saga-media` fragt je Datei und Sitzung einmal `/internal/media/authz` (nur mit
+  einem beim Start erzeugten Geheimnis, von außen gesperrt) und merkt sich die Erlaubnis höchstens 60 s
+  (`MEDIA_AUTHZ_TTL`). Entzug wirkt also spätestens nach einer Minute, eine gelöschte Datei sofort. Ablehnungen beantwortet
+  wie bisher Saga selbst (401/404, föderierte Anhänge werden dort nachgeholt).
+- **Sicher davor:** Client-Adresse nach denselben Regeln wie bisher (`TRUSTED_PROXIES`; eingeschleuste
+  X-Forwarded-For/-Proto zählen nicht), nur echte Dateien direkt im Blob-Verzeichnis (kein Traversal, keine Symlinks –
+  das prüft jetzt auch Python), Grenzen für Verbindungen und gleichzeitige Downloads, Zeitlimits gegen Slowloris
+  (Kopfzeilen 15 s, stockende Uploads/Downloads `MEDIA_STALL_TIMEOUT`). Upload-Grenzen unverändert.
+- **Grenze je Client-Adresse.** Höchstens `MEDIA_MAX_CONNS_IP` (Standard 256) offene Verbindungen je Adresse
   (vertraute Proxys ausgenommen); Keep-Alive-Leerlauf ohne Anmeldedaten endet nach `MEDIA_IDLE_UNAUTH` (10 s). Ist die
   Grenze erreicht, schließt saga-media die am längsten ruhende Verbindung, statt neue warten zu lassen – eine einzelne
   Adresse kann mit ruhenden Verbindungen niemanden mehr aussperren. Als angemeldet (75 s Leerlauf) gilt eine
   Verbindung erst, wenn Saga die Anmeldung bestätigt hat (Berechtigung für Datei/Upload bzw. interner Antwortkopf
   `X-Saga-Media-Auth`, den saga-media entfernt) – ein beliebiger Cookie- oder Authorization-Kopf reicht nicht.
-- **Medien-Token undurchsichtig:** `POST /api/chat/files/{fid}/token` liefert `m2.…` (AES-GCM), aus dem sich weder
-  Benutzername noch Datei-Kennung lesen lassen. Apps behandeln das Token schon als beliebige Zeichenkette; `m1`-Token
-  laufen nach höchstens 15 Minuten aus.
-- **Gravatar nur mit Einwilligung:** Neue Konten beginnen mit „Gravatar verwenden“ **aus**; beim Einschalten erklärt Saga,
-  dass ein Hash der E-Mail-Adresse an Gravatar geht. Auch bestehende Konten starten nach dem Update mit „aus“ (siehe
-  „Update von 2.3“).
-- **Anrufe – fremder STUN-Server:** Admin → Allgemein → Anrufe weist darauf hin, dass der eingetragene STUN-Server (ab Werk
+- **Container:** mehrstufiger Build (Go auf der Build-Plattform für amd64/arm64), `tini` als Init; `saga-media` startet
+  und überwacht Saga (intern `127.0.0.1:8079`, `MEDIA_INTERNAL_PORT`) und endet mit ihm. Kein neuer Port, Healthcheck
+  unverändert. `SAGA_MEDIA=off` startet wie bis 2.3.
+- **Ohne Container:** `MEDIA_ACCEL=nginx|caddy` – der Reverse Proxy liefert per `X-Accel-Redirect` (Beispiele in der
+  Anleitung, „Medienpfad“, mit nginx 1.24 und Caddy 2.8 geprüft). Sonst liefert Python wie bisher, aber höchstens
+  `MEDIA_PY_STREAMS` (Standard 4) gleichzeitig; der Admin-Bereich zeigt unter „Medien“, welcher Weg aktiv ist.
+- Föderation (`/fed/v2/chat/files`) unverändert; Teilbereiche mit Signatur folgen mit den Videos (siehe „Technisch“).
+
+#### Chats und Videos
+
+- **Grenzen im Admin:** „Größtes Video im Chat“ (`VIDEO_MAX_MB`, Standard 500) und „Speicher für Chat-Anhänge je Konto“
+  (`CHAT_QUOTA_MB`, Standard jetzt 4096 statt 1024); laufende Uploads zählen mit.
+
+#### Anrufe
+
+- **Geräte je Anruf:** Admin → Allgemein → Anrufe „Höchstens Geräte je Anruf mit Video“ bzw. „… nur mit Ton“ – die
+  Mesh-Grenzen 4 bzw. 6 lassen sich nur senken (mindestens 2 = 1:1).
+- **Fremder STUN-Server:** Admin → Allgemein → Anrufe weist darauf hin, dass der eingetragene STUN-Server (ab Werk
   `stun.nextcloud.com:443`, bleibt der Standard) die IP-Adressen der Anrufenden sieht, mit Link zur Anleitung „TURN über
   Port 443“ (eigener coturn). Alle Geheimnis-Felder im Admin-Bereich sind Passwortfelder, leer = unverändert, der Wert
   steht nie im HTML.
+
+#### Anmeldung und Personensuche
+
 - **Fehlversuche bremsen statt Konten sperren:** Nach 8 falschen Passwörtern für ein Konto von derselben Adresse wartet
   *diese Adresse* 2, 4, 8 … s (höchstens 15 min), ebenso nach 30 Fehlversuchen einer Adresse. Andere Adressen sind
   nicht betroffen – ein Fremder kann niemanden mehr aussperren. Erst nach 100 Fehlversuchen von mindestens 10 Adressen in
@@ -237,11 +263,6 @@ automatisch; Backups von 2.3 bleiben einspielbar.
   Schwelle, während sie verteiltes Raten länger erlauben würde; Passkeys und offene Sitzungen gehen während der Sperre
   weiter, Person und Admin werden informiert. Ein Restore spielt keine laufenden Sperren der aktuellen Datenbank mit
   zurück (`login_lock` gehört zur alten Datenbank).
-- **Anmeldenamen bleiben privat:** Andere Konten sehen nie den Anmeldenamen – Personensuche (Teilen, Chats), Freigaben,
-  „Mit mir geteilt“, Kommentare, Benachrichtigungen, Anwesenheit, Versionen und Seitensuche liefern Anzeigename,
-  öffentlichen Namen oder einen pseudonymen Handle (`~` + 16 Zeichen). Freigeben, Chat beginnen und Mitglied hinzufügen
-  nehmen den Handle oder den Benutzernamen. Mitglieder eines gemeinsamen Chats/Anrufs bekommen den
-  Anmeldenamen technisch weiter (Schlüssel und Signaturen von Chats v1 hängen daran), die Weboberfläche zeigt ihn nicht.
 - **Kein Orakel für Anmeldenamen:** Die Personensuche findet andere Konten nicht mehr über Teile des Anmeldenamens,
   sondern über Anzeigenamen, öffentlichen Namen und den genauen Handle; den **genauen** Anmeldenamen nur, solange der
   neue Admin-Schalter „Suche nach Anmeldename“ (Allgemein → Teilen) an ist – Standard an, weil Konten ohne eigenen
@@ -249,78 +270,161 @@ automatisch; Backups von 2.3 bleiben einspielbar.
   Anmeldenamen nur noch für Personen, mit denen man schon chattet bzw. an die man schon geteilt hat, und antworten
   sonst wie für ein unbekanntes Konto. `GET /api/chat/keys` liefert nur noch Schlüssel des eigenen Kontos und von
   Chat-Partnern (auch per Handle), unbekannte und fremde Konten fehlen gleichermaßen.
-- **Nextcloud-Dateien in Seiten:** Mitlesende Konten sehen als Autor eines eingefügten Nextcloud-Blocks den Handle
-  statt des Anmeldenamens (auch in `GET /api/notes/{id}/nc`); Speichern, Vorschau (`?a=`) und Download nehmen den Handle
-  an, gespeichert bleibt der echte Autor mit seiner Signatur.
-- **Gleichnamige Personen unterscheidbar:** Personensuche (Teilen, Chats) und Chat-Mitglieder liefern `sub` – den
-  öffentlichen Namen bzw. den Handle `~…`, nie den Anmeldenamen; das Web zeigt ihn in der Unterzeile. Der
-  Mitglieder-Dialog einer Gruppe zeigt keine Anmeldenamen mehr; Personen anderer Server erklärt er in lokalen Gruppen
-  („nur in neuen Gruppen“).
-- **Gruppen mit Personen anderer Server:** Anlegen ging mit Handles aus der Personensuche nicht mehr (400 „Mit diesem
-  Konto ist kein Chat möglich“) – lokale Mitglieder als Handle und `handles` anderer Server lassen sich wieder gemischt
-  angeben.
-- **Öffentlicher Name:** Der eigene Anmeldename ist als öffentlicher Name nicht mehr wählbar (er stünde in
-  `/@name`-Adressen und bei anderen Saga-Servern). Saga hat den öffentlichen Namen nie mit dem Anmeldenamen vorbelegt;
-  wer ihn früher selbst so gewählt hat, behält ihn (keine Zwangsumstellung, alte Links gehen weiter) und sieht in den
-  Einstellungen einen Hinweis mit der Möglichkeit, ihn zu ändern.
-- **Zweiter Faktor entfernen** (Authenticator-App, Passkey) verlangt jetzt immer eine ausdrückliche Bestätigung mit
-  Passwort, Code oder Passkey (höchstens 5 Minuten alt) – eine frische Anmeldung allein reicht nicht mehr.
-- **Zweiter Faktor hinzufügen und neue Wiederherstellungscodes** verlangen dieselbe Bestätigung, sobald das Konto schon
-  einen Passkey oder eine Authenticator-App hat; nur die Ersteinrichtung geht weiter mit frischer Anmeldung. Ein Faktor,
-  der erst nach der Anmeldung dieser Sitzung hinzukam, bestätigt nichts und wird im Bestätigungsdialog nicht angeboten.
-  Bisher konnte eine frisch gekaperte Sitzung einen eigenen Passkey anlegen, sich damit bestätigen und danach
-  Authenticator-App und Passkeys des Kontos entfernen. Sitzungen merken sich dafür ihren Beginn (`since`).
-- **Anrufe:** Nach „Hierher übernehmen“ hat die Kamera den Zustand des abgebenden Geräts; die Angerufene sieht ihr
-  Eigenbild sofort; ein neuer Tab zum Annehmen fragt den Schlüsselzustand einmal nach, bevor er „Chats einrichten“
-  zeigt (dort angelegte Schlüssel überschrieben nie eine bestehende Identität, der Server lehnt das ab).
-- **Editor und Oberfläche:** Ein Klick unter den letzten Block setzt den Cursor in den leeren letzten Absatz bzw. legt
-  einen neuen an (Getipptes ging verloren); die klebende Reiterleiste der Einstellungen schließt oben bündig ab; der
-  Datumswähler einer Aufgabe in der Seitenleiste öffnet an der Aufgabe.
-- **Bekannte Grenze:** Wer mit einem Konto chatten darf, erfährt beim Anlegen eines Direkt-Chats technisch dessen
-  Anmeldenamen, auch bevor es antwortet – Chats v1 binden Geräte-Zertifikate, Nachrichten-Signaturen und die
+
+### Technisch (für App-Teams und Betreiber)
+
+#### Anrufe: saga-call v3, Bildschirm v2, Mehrgeräte und Gruppen (Etappen E0, E3, E4/E5)
+
+- **saga-call v3 (E0):** Neuverhandlung während des Anrufs („Perfect Negotiation“) und ICE-Restart. Signatur und
+  Verschlüsselung bleiben unverändert, nur der signierte Inhalt hat neue Felder (`pc`, `caps`, `n`, `state.pip/want/path`,
+  `bye`). Mit Gegenstellen auf 2.1/2.3 läuft alles wie bisher.
+- **Server (E0):** `GET /api/calls/config` meldet `body_v`, `features` und `limits`; mehrere offer/answer je Anruf in beide
+  Richtungen, lokal und föderiert, mit einem Signal-Budget, das mit der Gesprächsdauer wächst (statt fester 600).
+  Migration 10 (Grundgerüst für Räume): `chat_call.v`, `topo`, `kind`, `caps_a`, `caps_b`.
+- **Server (E3):** `GET /api/calls/config` meldet `features: screen2`; sonst keine Änderung (keine Medien durch den Server,
+  3 Signale je Start bzw. Stopp).
+- **Anruf als Raum (E4/E5):** Jeder Anruf hat Endpunkte je Gerät (neue Tabellen `chat_call_leg`, `chat_call_invite`,
+  Migration 12). Ein 1:1-Anruf ist der Raum mit zwei Geräten und läuft wie bisher; mit 2.1/2.3-Gegenstellen bleibt er 1:1.
+- **Server (E4/E5):** neue Endpunkte `POST /api/calls/{id}/join`, `/leave`, `/invite`, `PUT /api/calls/caps`; `POST /api/calls`
+  startet in Gruppen-Chats einen Gruppenanruf; Anruf-Objekte mit `kind`, `legs`, `joinable`, `rv` (Stand der Liste, auch in `call.roster`) und bei Gruppen `silent`/`members` (auch in `/api/calls/active`); Live `call.roster` und
+  `call.invite`; Push-Art `call.group`; `features` `multi` und `group`. Föderation: Cap `calls3`, Aufträge `join`,
+  `leave`, `roster`, `invite`; den Anruf führt der Server der anrufenden Person bzw. das Heim des Chats, Signale laufen
+  sternförmig über ihn (auch zwischen Servern, die nicht direkt verbunden sind). Sicherung: ältere Backups ohne die neuen
+  Tabellen bleiben einspielbar.
+- **App-Vertrag:** `docs/APP-API.md`, Abschnitte „Anrufe: saga-call v3“ (Föderation: `APP-API-FED.md` §7.1), „Anrufe:
+  Bildschirm v2“ (mid-Zuordnung über `tracks`, `msid`, `screen_mid`) und „Anrufe: Mehrgeräte und Gruppen“ (mit
+  Beispielen), `docs/APP-API-FED.md` Abschnitt 7.2. Bewertung Frame-E2E für die SFU in 2.5 (Spike,
+  `tools/perf/spike_frame_e2e.js`): im Web machbar.
+
+#### Videos: Format `saga-file/v2`, Upload und Föderation (Etappe E2)
+
+- **Neues Format `saga-file/v2`** für Videos über `ATTACH_MAX_MB`: 256-KiB-Blöcke XChaCha20-Poly1305 mit Blocknummer,
+  Blockzahl, Größe und Endmarke im AD (gegen Vertauschen und Abschneiden). Testvektoren für alle Plattformen:
+  `tests/vectors/file_v2.json`. Kleinere Videos und alle bisherigen Anhänge bleiben unverändert (v1); ältere Apps zeigen
+  große Videos als Anhang („Mit Saga 2.4 öffnen“).
+- **Fortsetzbarer Upload** (`POST /api/chats/{id}/uploads`, `PUT`/`HEAD`/`DELETE /api/chat/uploads/{id}`): saga-media
+  schreibt die Teile direkt auf die Platte, Python legt nur Metadaten und Kontingent an. Abbruch → weiter ab
+  `Upload-Offset`. Höchstens 2 Uploads gleichzeitig, offene verfallen nach 24 h.
+- **Grenzen:** `/api/chat/me` meldet `limits.file2`, `video_max`, `upload_part`, `quota`, `used`.
+- **Medien-Token** für lange Wiedergaben (`POST /api/chat/files/{id}/token`, Kopf `X-Saga-Media-Token`): an Datei und
+  Anmeldung gebunden, 15 min; Entzug wirkt spätestens nach 60 s.
+- **Medien-Token undurchsichtig (Testrunde):** `POST /api/chat/files/{fid}/token` liefert `m2.…` (AES-GCM), aus dem sich
+  weder Benutzername noch Datei-Kennung lesen lassen. Apps behandeln das Token schon als beliebige Zeichenkette;
+  `m1`-Token laufen nach höchstens 15 Minuten aus.
+- **Über Servergrenzen** (Fähigkeit `chatfile2`): Der eigene Server holt große Videos nur bereichsweise beim Server des
+  Absenders – signiert je Teil (höchstens 4 MiB, Bereich in der signierten Anfrage), lückenhafte Zwischenkopie mit
+  1-MiB-Bitmap, Anfang und Ende vorab. saga-media liefert und holt die Bytes selbst, Python prüft und signiert nur. Mit
+  Servern auf Saga 2.3 gehen nur Anhänge bis `ATTACH_MAX_MB` (Hinweis statt verlorener Nachricht; Chat-Objekt `big_files`).
+- **Migration 11:** `chat_file.fmt`, `chat_file_fed.have`, Index `chat_file(uid)`; neue Tabelle `chat_upload`.
+- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Videos im Chat“ (mit Beispielen für AVAssetResourceLoader, Media3
+  DataSource, GTK/GStreamer), Föderation `docs/APP-API-FED.md` §6.5a.
+- **Gemessen** (nativ, 2 Kerne; `tools/perf/video.py`, `gen.py` Stufe V, `tests/foederation_videos.py`):
+  Upload 1 GB bei 400 Mbit/s: Python 0,06 % eines Kerns, +0 MB (vorher 2.3.0 mit 10-MB-Anhängen: 19,8 %, +20 MB,
+  4,25 CPU-s je GB), saga-media 4,5 % und 14 MB. Range-TTFB 1 MiB p95 0,8 ms (mit Medien-Token ebenso). Chat mit 1.000
+  Video-Nachrichten: Seite (50) p95 15,8 ms (vorher 1.000 Bild-Nachrichten 19,2 ms), Antwort 30,5 statt 29,0 KB (die
+  Video-Metadaten im Ciphertext). Über Servergrenzen 1 MiB kalt 21–57 ms, danach 4–16 ms. Image +3,4 MB
+  (unkomprimiert 107,7 → 111,1 MB), Start bis `/healthz` 3,0 statt 2,9 s, RAM nach dem Start 83 statt 78 MiB.
+
+#### Gelesen-Bestätigungen und Online-Status
+
+- **Last:** Bestätigungen werden je Chat gebündelt (höchstens ein Live-Ereignis je 2 s; mehr als 8 auf einmal nur als
+  Hinweis, den offene Chats abrufen), Clients senden höchstens eine je Chat und 2 s; der Online-Status geht nur an Konten,
+  die die Person gerade sichtbar haben (Abo). Messung gegen E0 (Stufe S, 2-Kern-Container, Median aus 3 Läufen):
+  bestehende Endpunkte unverändert im Rauschen, alle Grenzwerte eingehalten. 50er-Gruppe, 49 Lesende alle 2 s (490
+  Bestätigungen mit je 49 Siegeln in 25 s): `/read` mit Bestätigung p95 21–33 ms (E0 ohne Wirkung 14 ms), Python-CPU
+  14 % statt 9 %, je Konto ≤ 12 Live-Ereignisse, Live-Kanal aller 50 zusammen ~210 KB, Speicher unverändert;
+  Online-Abo für 49 Personen p95 24–36 ms. Neue Grenzwerte in `tools/perf/limits.json`.
+- **Server:** `GET/PUT /api/chat/privacy`, `POST /api/chats/{id}/read` mit `receipt`, `GET /api/chats/{id}/receipts`,
+  `POST /api/chat/presence`, Live-Ereignisse `chat.receipt`, `chat.presence`, `chat.privacy`; `chat.message` meldet bei
+  der Zustellbestätigung des Heims auch `fseq`. **Migration 13**: Tabellen
+  `chat_receipt` und `chat_seen`; beim Zurückspielen älterer Backups werden sie neu angelegt. Kontolöschung und
+  persönliches Backup berücksichtigen sie.
+- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Gelesen-Bestätigungen und Online-Status“ (Föderation:
+  `APP-API-FED.md` §11). `MIN_APP` unverändert – ältere Apps sehen einfach keine Haken.
+
+#### Datenbank
+
+- **Migrationen 10–14:** 10 Anrufe (`chat_call.v`, `topo`, `kind`, `caps_a`, `caps_b`), 11 Videos/Dateien
+  (`chat_file.fmt`, `chat_file_fed.have`, Index `chat_file(uid)`, `chat_upload`), 12 Anruf als Raum (`chat_call.lead`, `chat_device.caps`,
+  Tabellen `chat_call_leg`, `chat_call_invite`),
+  13 Gelesen/Online (`chat_receipt`, `chat_seen`), 14 Testrunde (Gravatar für alle Konten aus, Suchtext betroffener
+  Seiten neu; dazu `login_lock`). Vor der Migration legt Saga wie immer ein Backup an (`…-vor-schema-14.dump`); 2.3
+  startet danach nicht mehr auf dieser Datenbank. Beim Zurückspielen älterer Backups entfernt Saga die neuen Tabellen
+  vorher und legt sie neu an.
+- **Server meldet 2.4.0** (`VERSION`).
+
+#### Tests und Messung
+
+- **Anrufe:** `tools/perf/bench.py` misst die Anruf-Signalisierung, `tests/browser_calls.js` den Anrufaufbau;
+  `tests/browser_screen2.js` (Bildschirm-Attrappe im headless Chromium, gegen E0- und 2.3-Client); `tests/anrufe_raum.py`,
+  `tests/browser_raum.js` (4 Geräte, Übernahme, 4er-Mesh, 2.3-Client), `tests/foederation_anrufe_raum.py` (drei Server,
+  auch mit 2.3-Server; mit `BJS=1` im Browser). 4er-Mesh lokal: Aufbau 1,1–1,8 s, Python-CPU-Spitze ≤ 19 % (nie über
+  20 %); über drei Server 3,1 s; Signal B → Heim → C 69 ms.
+- **Medienpfad:** neue Reihe `tests/medienpfad.py` (Range-Varianten, 304/ETag, Rechteentzug, gelöschte Dateien, Traversal,
+  `/internal` gesperrt, SSE durch den Proxy, X-Forwarded-For, Upload-Grenzen, Slowloris, Python-Grenze, nginx/Caddy),
+  Go-Tests in `media/`. Die Testinstanz von `tools/stack-remote.sh` läuft hinter `saga-media`. Messstufe `MEDIA` in
+  `tools/perf/run.sh`, Grenzwerte in `tools/perf/limits.json`.
+- **Videos:** `tests/datei_v2_vektoren.py`, `tests/videos.py` (mit und ohne saga-media), `tests/foederation_videos.py`
+  (gemischt, nur Python, gegen 2.3.0), `tests/browser_videos.js` (Upload mit Abbruch, Abspielen, Spulen, Herunterladen),
+  Go-Tests in `media/`.
+- **Gelesen/Online:** `chat_gelesen`, `foederation_gelesen` (auch gegen 2.3 als Gegenstelle), `browser_gelesen.js`,
+  `browser_fed_chat.js` erweitert, Vektoren in `chat_v2_vektoren`; Messung `bench.py` Phase `receipts`.
+- **Mehrere Geräte:** neue Reihe `browser_geraete.js` (alle Geräte in einem Browser wie bei der Testrunde).
+
+### Update von 2.3
+
+- **Update:** Mit `SAGA_VERSION=2` in der `.env` reicht `docker compose pull && docker compose up -d`.
+- **Backup:** 2.4 hebt die Datenbank von Schema-Stand 9 auf 14 (Migrationen 10–14) und legt vorher automatisch ein
+  Backup an (`/data/backups/saga-…-vor-schema-14.dump`). Wer ganz sicher gehen will, sichert vorher zusätzlich selbst
+  (`docker compose exec saga python run.py backup --dateien`). Zurück auf 2.3 nur über dieses Backup – mit 2.4
+  zurückspielen, dann `SAGA_VERSION=2.3` (Anleitung, Abschnitt 11 „Von 2.3 auf 2.4“).
+- **Gravatar ist danach für alle Konten aus.** Bis 2.3 war „Gravatar verwenden“ ab Werk an; eine bewusste Wahl lässt
+  sich davon nicht unterscheiden. Migration 14 schaltet es deshalb für alle Konten ab und löscht zwischengespeicherte
+  Gravatar-Bilder – bis zur Einwilligung geht keine Anfrage an gravatar.com. Wer Gravatar will, schaltet es unter
+  Einstellungen → Konto → Profilbild einmal neu ein. Eigene Profilbilder und SSO-Bilder bleiben.
+- **Neu im Container: saga-media** auf dem bisherigen Port 8080 (Saga intern auf `127.0.0.1:8079`). Kein neuer Port,
+  nichts am Reverse Proxy zu ändern; `TRUSTED_PROXIES` muss wie bisher stimmen (sonst teilen sich alle Besucher die
+  Grenze `MEDIA_MAX_CONNS_IP`). `SAGA_MEDIA=off` startet wie bis 2.3.
+- **Ohne Container:** saga-media selbst bauen und davor starten oder `MEDIA_ACCEL=nginx|caddy` (Beispiele in der
+  Anleitung, „Medienpfad“); sonst liefert Python Anhänge wie bisher, aber höchstens `MEDIA_PY_STREAMS` gleichzeitig.
+- **Admin-Schalter prüfen:** Allgemein → Chats „Größtes Video im Chat“ (500 MB) und „Speicher für Chat-Anhänge je
+  Konto“ (neu 4096 statt 1024 MB – Platz auf dem Volume prüfen); Allgemein → Teilen „Suche nach Anmeldename“ (Standard
+  an); Allgemein → Anrufe Geräte je Anruf (nur senken).
+- **TURN/STUN:** Der ab Werk eingetragene STUN-Server (`stun.nextcloud.com:443`) sieht die IP-Adressen der Anrufenden;
+  der Admin-Bereich weist darauf hin. Für Gruppenanrufe und Begleitgeräte (mehr Verbindungen je Anruf) empfiehlt sich ein
+  eigener TURN-Server über Port 443 (Anleitung, „TURN über Port 443“).
+- **Öffentlicher Name gleich Anmeldename:** wird nicht umgestellt – Saga hat ihn nie so vorbelegt, er ist also selbst
+  gewählt, und eine Umstellung bräche alle Links auf veröffentlichte Seiten. Die Einstellungen weisen darauf hin; neue
+  öffentliche Namen dürfen nicht der Anmeldename sein.
+- **Zweiten Faktor entfernen** braucht jetzt eine Bestätigung (Passwort, Code oder Passkey). Web und Apps fragen bei
+  `403 {reauth: true}` schon heute nach und wiederholen. Ebenso **einen weiteren Faktor hinzufügen** und **neue
+  Wiederherstellungscodes erzeugen**, sobald schon ein zweiter Faktor eingerichtet ist (Web fragt nach; Apps siehe
+  `docs/APP-API.md`).
+- **Neue Einstellungen der `.env`** (alle optional, Anleitung Abschnitt 13): `SAGA_MEDIA`, `MEDIA_INTERNAL_PORT`,
+  `MEDIA_AUTHZ_TTL`, `MEDIA_MAX_CONNS`, `MEDIA_MAX_STREAMS`, `MEDIA_MAX_STREAMS_IP`, `MEDIA_MAX_CONNS_IP`,
+  `MEDIA_IDLE_UNAUTH`, `MEDIA_STALL_TIMEOUT`, `MEDIA_ACCEL`/`MEDIA_ACCEL_PREFIX`, `MEDIA_PY_STREAMS`, `VIDEO_MAX_MB`,
+  `CHAT_QUOTA_MB` (neuer Standard 4096), `CHAT_OFFLINE_GRACE`.
+- **Apps 2.4 empfohlen** (Videos, Gruppenanrufe, weiteres Gerät, Gelesen-Haken):
+  [Saga-Apps](https://github.com/yggdrasil-sh/saga-apps/releases). Apps 2.3 und 2.1 laufen weiter, nur ohne diese
+  Funktionen.
+
+### Bekannte Grenzen
+
+- **Gruppenanrufe als Mesh:** höchstens 4 Geräte mit Video bzw. 6 nur mit Ton (eigene Zusatzgeräte zählen mit). Größere
+  Runden bräuchten einen Weiterleitungs-Server (SFU); Frame-E2E dafür ist für 2.5 bewertet. Gruppenanrufe, Gelesen/Online
+  und große Videos über Servergrenzen nur, wenn alle beteiligten Server 2.4 haben.
+- **Anmeldename (Restgrenze H1):** Wer mit einem Konto chatten darf, erfährt beim Anlegen eines Direkt-Chats technisch
+  dessen Anmeldenamen, auch bevor es antwortet – Chats v1 binden Geräte-Zertifikate, Nachrichten-Signaturen und die
   Sicherheitsnummer daran (Einzelheiten in `docs/APP-API.md`). Die Oberfläche zeigt ihn nicht. Der Hilfetext zum
   Admin-Schalter „Suche nach Anmeldename“ weist darauf hin; begrenzen lässt es sich nur mit „Nur innerhalb gemeinsamer
   Gruppen“.
-- **Versionen beim Bearbeiten:** Saga sichert beim Speichern höchstens alle 5 (statt 10) Minuten, dazu den aktuellen
-  Stand nach 2 Minuten Pause und beim Verlassen der Seite (`POST /api/notes/{id}/versions/checkpoint`, gedrosselt, keine
-  doppelten Fassungen). „Diese Version wiederherstellen“ fragt nach und sichert den aktuellen Stand immer vorher – steht
-  er schon im Verlauf, ohne Kopie; für Nicht-Eigentümer gilt dabei dieselbe Drossel wie beim Speichern (ein eigener
-  Sicherungspunkt je Seite und Minute, ein weiterer ersetzt ihn). So kann niemand mit „Bearbeiten“ durch wiederholtes
-  Wiederherstellen ältere Fassungen des Eigentümers oder Dritter aus dem Verlauf verdrängen.
-- **Export, Versionsvorschau, Suche:** Markdown-Export behält die Adresse von Einbettungen (YouTube), zeigt eingebettete
-  Datenbanken mit Titel und Kalender/Aufgaben als Hinweis; Vorschau und Suchausschnitt zeigen keine internen Werte
-  („month“, „task“, Ansichtsnamen) und Dateinamen nur einmal. Migration 14 leitet den Suchtext betroffener Seiten neu ab.
-- **Editor:** Schnell getipptes „/Hinweis⏎“ wählt den Block, auch wenn das Menü noch nicht gefiltert hat. Aus einem Zitat
-  kommt man per Enter in leerer Zeile, Enter in „Quelle“ oder Pfeil nach unten heraus.
-- **Videos, die der Browser nicht kann:** Statt eines stummen Players bei 0:00 erscheint „Kann im Browser nicht abgespielt
-  werden – herunterladen“, im Verlauf ein Platzhalter mit Dateiname statt einer leeren Fläche (das Vorschaubild fehlt, weil
-  das sendende Gerät das Video nicht dekodieren konnte). „Auf 720p verkleinern“ bietet Saga nur an, wenn dieser Browser
-  das Video dekodieren und als MP4 aufnehmen kann, sonst steht ehrlich „Original“ da.
-- **Mehrere Geräte im Anruf:** Die Kopplungsanfrage eines neuen Geräts erscheint über dem Vollbild-Anruf und schließt
-  sich, wenn ein anderes Gerät sie erledigt hat. Behoben: „Hinzufügen“ hing bei „Verbinde …“ und „Hierher übernehmen“
-  scheiterte, wenn das Gerät erst während des Anrufs gekoppelt wurde – die Gegenstelle kannte seine Schlüssel noch nicht
-  und holt sie jetzt einmal frisch (neue Reihe `browser_geraete.js`: alle Geräte in einem Browser wie bei der Testrunde).
-- **Gruppenanruf:** „Klingelt bei den anderen …“ bzw. „Verbinde …“ verschwinden, sobald Medien fließen; den Zustand je
-  Verbindung zeigen die Kacheln.
-- **Personensuche `name@server`:** Hat die Person keinen öffentlichen Namen, sucht Saga zusätzlich im Adressbuch genau
-  dieses Servers nach Anzeigenamen bzw. Handle (lokal, kein Anmeldename geht nach außen).
-- **Kleinigkeiten:** Einstellungs-Reiter brechen auf breiten Bildschirmen um (keine versteckten Reiter mehr), Thai-Titel
-  ohne Sperrschrift, klebende Reiterleiste deckt den Inhalt ab; „Kalender verbinden …“ öffnet den Reiter „Kalender“;
-  „1 Termin“ in der Einzahl, „… sind jetzt dabei“ bei mehreren; Dateien unter 1 KiB in Byte; Anmeldeseite setzt nach einem
-  Fehler den Fokus ins Passwortfeld und erklärt „Passwort vergessen?“; Sprachwahl mit fester Breite; einheitlicher
-  Platzhalter in Spalten; Nextcloud: Tippfehler in der Adresse heißen „Adresse ungültig“ statt „Ziel nicht erreichbar“.
-- **Server meldet 2.4.0** (`VERSION`).
+- **Systemton beim Bildschirmteilen** fehlt auf iPhone, iPad und Mac (Apps); im Web liefern ihn nur Chrome/Edge (Ton des
+  Tabs, unter Windows/ChromeOS auch der ganze Systemton).
+- **Linux:** Anrufe laufen in der Linux-App weiterhin im Browser (die App klingelt und öffnet das Gespräch dort).
+- **Bild-im-Bild** im Web nur, wo der Browser es kann (nicht in Firefox).
 - **Bekannt (so gewollt):** Wird ein Mitglied aus einem Chat entfernt, kann es einen eigenen, schon begonnenen Upload über
   saga-media noch bis zu 60 s fortsetzen (gemerkte Erlaubnis, `MEDIA_AUTHZ_TTL`). Die Datei lässt sich ohne
   Mitgliedschaft keiner Nachricht zuordnen und wird nach einer Stunde entfernt.
-
-#### Behoben
-
-- **Chats über Servergrenzen: eigene Nachricht blieb auf „⏳ wird zugestellt“.** Liegt der Direkt-Chat auf dem anderen
-  Server (Heim), legt der eigene Server die Nachricht zuerst als ausstehend an und meldet sie sofort an die Geräte. Bestätigte
-  das Heim gleich, kam dafür kein Live-Ereignis mehr – Web und Apps zeigten die längst zugestellte Nachricht bis zum
-  Neuladen als ausstehend. Der Server meldet die Bestätigung jetzt (ebenso „nicht zugestellt“ und eine wegen geänderter
-  Empfänger verworfene Kopie); die Weboberfläche übernimmt zusätzlich die Bestätigung aus der Antwort beim Senden.
 
 ## [2.3.0] – 2026-10-19
 
