@@ -1932,14 +1932,31 @@
                node: null, path: '', acks: {}, ackT: null, rekeyT: null, pollT: null, waitT: null, started: false };
     return R.horn;
   }
+  // 2.5 P6 (Robustheit): jede Anfrage an den Knoten mit Zeitlimit - ein Bein haengt nie stumm in "new"
+  var HORN_FETCH_MS = 15000, HORN_FRESH_MS = 30000;
   function hornFetch(url, body, method) {
-    return fetch(url, { method: method || (body ? 'POST' : 'GET'), mode: 'cors', credentials: 'omit', cache: 'no-store',
+    var ac = window.AbortController ? new AbortController() : null, tm = ac ? setTimeout(function () { ac.abort(); }, HORN_FETCH_MS) : 0;
+    return fetch(url, { method: method || (body ? 'POST' : 'GET'), mode: 'cors', credentials: 'omit', cache: 'no-store', signal: ac ? ac.signal : undefined,
                         headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined })
       .then(function (r) {
+        clearTimeout(tm);
         return r.json().catch(function () { return {}; }).then(function (j) {
           if (!r.ok) { var e = new Error(j.error || ('HTTP ' + r.status)); e.status = r.status; throw e; }
           return j;
         });
+      }, function (e) {
+        clearTimeout(tm);
+        throw new Error(T('Verbindung nicht aufgebaut: {err}', { err: e && e.name === 'AbortError' ? 'timeout' : ((e && e.message) || '?') }));
+      });
+  }
+  // 2.5 P6 (Robustheit): Medien-Token gelten 60 s - juenger als 30 s behalten, sonst (oder nach 401) frisch holen
+  function hornFresh(R, cand, force) {
+    if (!force && cand.exp && cand.exp * 1000 - Date.now() > HORN_FRESH_MS) return Promise.resolve(cand);
+    return api('POST', '/api/calls/' + R.id + '/horn', { device: myDev().id, node: cand.node, dev_class: mobile ? 'mobile' : 'desktop' })
+      .then(function (r) {
+        var c2 = ((r.horn && r.horn.candidates) || []).filter(function (x) { return x.node === cand.node; })[0];
+        if (!c2) throw new Error(T('Gerade ist kein Knoten für große Gruppenanrufe erreichbar – bitte gleich noch einmal.'));
+        return c2;
       });
   }
   // Gegenueber eines anderen Geraets fuer Versiegeln/Oeffnen (Schluessel je Person, im Raum zwischengespeichert)
@@ -2054,6 +2071,8 @@
           .then(function (r) { return (r.horn.candidates || []).filter(function (x) { return x.node === cand.node; })[0] || cand; });
       return cand;
     }).then(function (cand) {
+      return hornFresh(R, cand);
+    }).then(function (cand) {
       return hornConnect(R, cand, 'tcp');
     }).catch(function (e) {
       if (!live(R) || e === null) return;
@@ -2108,9 +2127,15 @@
       }
     }
     pc.onconnectionstatechange = function () { hornState(R); };
+    var post = function (c) {
+      return hornFetch(c.url + '/api/sfu/leg', { token: c.tokens[role], path: path, offer: pc.localDescription.sdp, audio: role === 'audio' ? 3 : 0,
+                                                speaker: role === 'video', tiles: role === 'video' ? HORN_TILES : 0, device: mobile ? 'mobile' : 'desktop' });
+    };
     return pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }).then(function () {
-      return hornFetch(cand.url + '/api/sfu/leg', { token: cand.tokens[role], path: path, offer: pc.localDescription.sdp, audio: role === 'audio' ? 3 : 0,
-                                                   speaker: role === 'video', tiles: role === 'video' ? HORN_TILES : 0, device: mobile ? 'mobile' : 'desktop' });
+      return post(cand).catch(function (e) {             // 401 (Token abgelaufen/benutzt): einmal mit frischem Token
+        if (!e || e.status !== 401 || !live(R)) throw e;
+        return hornFresh(R, cand, true).then(post);
+      });
     }).then(function (res) {
       if (!live(R) || H.legs[role] !== L) { try { pc.close(); } catch (e) { /* zu */ } throw null; }
       L.id = res.id; H.mine = res.csrc; L.slots = res.slots || [];
