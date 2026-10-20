@@ -14,7 +14,7 @@ from fastapi import APIRouter
 from saga import i18n, nextcloud
 from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, origin_of, t
 from saga.sharing import Access, access, mask_links, names, person, viewer
-from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _snapshot, announce_tree, blocks_text, share_targets, tree_changed
+from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _insert_version, _latest, announce_tree, checkpoint, blocks_text, share_targets, tree_changed
 
 router = APIRouter()
 
@@ -142,10 +142,32 @@ def version_get(uid, nid, vid):
         r = c.execute("SELECT v.title, v.body, v.format, v.created FROM note_version v JOIN note n ON n.id=v.note_id AND n.uid=v.uid "
                       "WHERE v.id=? AND v.note_id=? AND v.uid=? AND n.deleted_at IS NULL", (vid, nid, owner)).fetchone() if 0 < vid < 2 ** 63 else None
         body = (mask_links(r[1], r[2], viewer(acc)) if role != "owner" else r[1]) if r else None
+
+        def dbtitle(x):                          # eingebettete Datenbank: Titel nur mit eigenem Zugriff
+            if not acc.role(x):
+                return None
+            row = c.execute("SELECT title FROM note WHERE id=? AND deleted_at IS NULL", (x,)).fetchone()
+            return (row[0] or t("Unbenannt")) if row else None
+        text = _note_text(r[2], body, True, dbtitle)[:5000] if r else ""
     if not r:
         return _bad("not found", 404)
-    return JSONResponse({"title": r[0] or "", "created": r[3], "text": _note_text(r[2], body, True)[:5000]},
+    return JSONResponse({"title": r[0] or "", "created": r[3], "text": text},
                         headers={"Cache-Control": "no-store"})
+
+
+@router.post("/api/notes/{nid}/versions/checkpoint")
+def api_version_checkpoint(nid: int, request: Request):
+    """2.4: aktuellen Stand als Version sichern (der Editor ruft das nach einer Bearbeitungspause und beim Verlassen der
+    Seite). Gedrosselt (hoechstens einmal je Minute, nur bei Aenderung) -> {created: bool}."""
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    with _db() as c, c:
+        owner, role, err = access(c, uid, nid, VERSION_ROLE)
+        if err is not None:
+            return err
+        made = checkpoint(c, owner, nid, uid)
+    return JSONResponse({"created": made}, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/api/notes/{nid}/versions/{vid}/restore")
@@ -169,7 +191,9 @@ def version_restore(uid, nid, vid, origin=None):
         if cur[4] and role != "owner":                  # gesperrte Seite: nur der Eigentuemer
             return JSONResponse({"error": t("Seite ist gesperrt – erst entsperren")}, status_code=423)
         now = time.time()
-        _snapshot(c, owner, nid, cur[:4], now, force=True, author=cur[3], by=uid)       # aktueller Stand bleibt als Version erhalten
+        lv = _latest(c, owner, nid)
+        if not lv or tuple(lv[:3]) != tuple(cur[:3]):    # aktueller Stand bleibt IMMER als Version erhalten (2.4: ohne Drossel)
+            _insert_version(c, owner, nid, cur[:3], now, cur[3])
         body = nextcloud.limit_restore(uid, nid, cur[1], cur[2], v[1], v[2])     # Nextcloud: fremde Schalter nicht wieder oeffnen
         c.execute("UPDATE note SET title=?, body=?, format=?, updated=?, rev=rev+1, updated_by=? WHERE id=? AND uid=?",
                   (v[0], body, v[2], now, uid, nid, owner))
@@ -192,7 +216,8 @@ def _md_inline(s, link):
     return html_unescape(s)
 
 
-def blocks_to_md(blocks, link=lambda h: h):
+def blocks_to_md(blocks, link=lambda h: h, title=lambda nid: None):
+    """title(nid): Titel einer verknuepften Seite/Datenbank (eingebettete Datenbank) oder None."""
     out = []
 
     def items(lst, style, depth):
@@ -237,15 +262,29 @@ def blocks_to_md(blocks, link=lambda h: h):
             out += [nextcloud.block_md(d), ""]
         elif typ == "columns":
             for col in d.get("cols") if isinstance(d.get("cols"), list) else []:
-                sub = blocks_to_md(col.get("blocks") or [], link).strip() if isinstance(col, dict) else ""
+                sub = blocks_to_md(col.get("blocks") or [], link, title).strip() if isinstance(col, dict) else ""
                 if sub:
                     out += [sub, ""]
         elif typ == "toggle":
-            inner = (blocks_to_md(d["blocks"], link).strip() if isinstance(d.get("blocks"), list)
+            inner = (blocks_to_md(d["blocks"], link, title).strip() if isinstance(d.get("blocks"), list)
                      else _md_inline(d.get("text", ""), link))
             out += [f"<details><summary>{_md_inline(d.get('title', ''), link)}</summary>", "", inner, "", "</details>", ""]
         elif typ == "callout":
             out += ["> " + (d.get("emoji") or "💡") + " " + _md_inline(d.get("text", ""), link).replace("\n", "\n> "), ""]
+        elif typ == "embed":                           # 2.4: Adresse behalten (YouTube & Co.)
+            u = str(d.get("url") or "")
+            if u.startswith(("https://", "http://")):
+                out += [f"[{_md_inline(str(d.get('title') or ''), link) or u}]({u})", ""]
+        elif typ == "database":                        # eingebettete Datenbank: Titel mit Verweis statt Ansichtsnamen
+            db = d.get("db")
+            name = title(db) if isinstance(db, int) else None
+            out += [f"▦ [{name or t('Datenbank')}]({link('/notes#' + str(db))})" if isinstance(db, int) else "▦ " + t("Datenbank"), ""]
+        elif typ == "calendar":
+            out += ["*🗓 " + t("Kalender (in Saga)") + "*", ""]
+        elif typ == "tasks":
+            out += ["*☑ " + t("Aufgaben-Liste (in Saga)") + "*", ""]
+        elif typ in ("buttons", "immich", "verweis"):  # Schaltflaechen und Live-Inhalte: nichts Exportierbares
+            pass
         else:
             txt = _md_inline(d.get("text", ""), link) if "text" in d else blocks_text([b])
             if txt.strip():
@@ -303,7 +342,7 @@ def md_page(rows, r, link):
             head += "\n".join(lst) + "\n\n"
     if r[5] == "blocks":
         try:
-            return head + blocks_to_md(json.loads(r[4]).get("blocks", []), link)
+            return head + blocks_to_md(json.loads(r[4]).get("blocks", []), link, lambda x: (rows[x][1] or t("Unbenannt")) if x in rows else None)
         except ValueError:
             return head
     return head + (r[4] or "") + "\n"

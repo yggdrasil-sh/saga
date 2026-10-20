@@ -70,10 +70,36 @@ def _strip_tags(s):
     return html_unescape(re.sub(r"<[^>]*>", " ", s))
 
 
-def blocks_text(blocks, lines=False):
+# 2.4 (Testrunde W6): Bloecke, deren Daten nur technische Werte enthalten (Ansicht "month", Aktion "task", Art "youtube",
+# Ansichtsnamen einer eingebetteten Datenbank) - fuer Suche, Vorschau und Export nur das, was man auf der Seite sieht.
+SPECIAL_BLOCKS = ("embed", "buttons", "calendar", "tasks", "database", "immich", "verweis")
+
+
+def special_text(typ, d, lines=False, title=None):
+    """Klartext eines besonderen Blocks (siehe SPECIAL_BLOCKS). lines=True (Versionsvorschau): kurze Platzhalter fuer
+    Bloecke ohne eigenen Text; title(nid) liefert dort den Titel einer eingebetteten Datenbank (nur mit Zugriff)."""
+    d = d if isinstance(d, dict) else {}
+    if typ == "embed":
+        return _strip_tags(str(d.get("title") or "")) or str(d.get("url") or "")
+    if typ == "buttons":
+        bs = d.get("buttons") if isinstance(d.get("buttons"), list) else []
+        return " ".join(" ".join(x for x in (str(b.get("icon") or ""), _strip_tags(str(b.get("label") or ""))) if x)
+                        for b in bs if isinstance(b, dict)).strip()
+    if not lines:
+        return ""
+    if typ == "database" and title is not None and isinstance(d.get("db"), int):
+        name = title(d["db"])
+        if name:
+            return "▦ " + name
+    return {"calendar": "🗓 " + t("Kalender"), "tasks": "☑ " + t("Aufgaben"), "database": "▦ " + t("Datenbank"),
+            "immich": "🖼 Immich"}.get(typ, "")
+
+
+def blocks_text(blocks, lines=False, title=None):
     """Klartext aus Bloecken (fuer Suche und Vorschau). lines=True: ein Block je Zeile (Vorschau, BUG-092)."""
     if lines:
-        return "\n".join(t for t in (blocks_text([b]) for b in blocks if isinstance(b, dict)) if t)
+        return "\n".join(t for t in (blocks_text([b]) if b.get("type") not in SPECIAL_BLOCKS else special_text(b.get("type"), b.get("data"), True, title)
+                                      for b in blocks if isinstance(b, dict)) if t)
     parts = []
 
     def walk(v, key=None):
@@ -90,6 +116,9 @@ def blocks_text(blocks, lines=False):
             if v.get("type") == "nextcloud" and isinstance(v.get("data"), dict):     # verschachtelt: nur der Name
                 walk(v["data"].get("name"))
                 return
+            if v.get("type") in SPECIAL_BLOCKS and isinstance(v.get("data"), dict):  # verschachtelt (Spalten, Ausklappbar)
+                parts.append(special_text(v["type"], v["data"]))
+                return
             for k, x in v.items():
                 if k not in ("type", "id", "tunes"):     # technische Felder verschachtelter Bloecke
                     walk(x, k)
@@ -98,14 +127,26 @@ def blocks_text(blocks, lines=False):
         if b.get("type") == "nextcloud":                 # Nextcloud-Datei: nur der Name (keine Adressen, Kennungen)
             walk((b.get("data") or {}).get("name") if isinstance(b.get("data"), dict) else None)
             continue
+        if b.get("type") in SPECIAL_BLOCKS:
+            parts.append(special_text(b.get("type"), b.get("data")))
+            continue
+        n0 = len(parts)
         walk(b.get("data", {}))
+        if b.get("type") in ("attaches", "image"):      # Dateiname steht in file.name, title, caption - nur einmal
+            seen, uniq = set(), []
+            for x in parts[n0:]:
+                k = x.strip()
+                if k and k not in seen:
+                    seen.add(k)
+                    uniq.append(x)
+            parts[n0:] = uniq
     return re.sub(r"\s+", " ", " ".join(parts)).strip()
 
 
-def _note_text(fmt, body, lines=False):
+def _note_text(fmt, body, lines=False, title=None):
     if fmt == "blocks":
         try:
-            return blocks_text(json.loads(body).get("blocks", []), lines)
+            return blocks_text(json.loads(body).get("blocks", []), lines, title)
         except (ValueError, AttributeError):
             return ""
     return body or ""
@@ -157,7 +198,7 @@ def _note_meta(r):
 
 # --- Papierkorb ----------------------------------------------------------------
 TRASH_DAYS = 30
-VERSION_EVERY, VERSION_MAX = 600, 50     # hoechstens alle 10 Minuten eine Sicherung, max. 50 pro Seite
+VERSION_EVERY, VERSION_MAX = 300, 50     # 2.4: hoechstens alle 5 Minuten eine Sicherung beim Speichern, max. 50 pro Seite
 
 
 def _purge_ids(c, uid, ids):
@@ -271,25 +312,61 @@ FORCED_EVERY = 60          # erzwungene Sicherungen durch Nicht-Eigentuemer: hoe
 VERSION_KEEP_OWN = 10      # beim Kuerzen nie loeschen: die neuesten 10 Fassungen des Eigentuemers (bzw. ohne Autor = alt)
 
 
+CHECKPOINT_MIN = 60        # 2.4: Sicherung bei Pause/Verlassen hoechstens einmal je Minute und Seite
+
+
+def _latest(c, uid, nid):
+    return c.execute("SELECT title, body, format, created FROM note_version WHERE uid=? AND note_id=? ORDER BY created DESC LIMIT 1",
+                     (uid, nid)).fetchone()
+
+
+def _forced_throttled(c, uid, nid, author, by, now):
+    """Drossel fuer Nicht-Eigentuemer: eine eigene Sicherung je Seite und Person je FORCED_EVERY."""
+    return bool(by and by != uid and author == by and c.execute(
+        "SELECT 1 FROM note_version WHERE uid=? AND note_id=? AND author=? AND created>? LIMIT 1", (uid, nid, by, now - FORCED_EVERY)).fetchone())
+
+
+def _insert_version(c, uid, nid, st, now, author):
+    c.execute("INSERT INTO note_version (note_id, uid, title, body, format, created, author) VALUES (?,?,?,?,?,?,?)",
+              (nid, uid, st[0], st[1], st[2], now, author))
+    c.execute("DELETE FROM note_version WHERE uid=? AND note_id=? AND id NOT IN "
+              "(SELECT id FROM note_version WHERE uid=? AND note_id=? ORDER BY created DESC LIMIT ?) AND id NOT IN "
+              "(SELECT id FROM note_version WHERE uid=? AND note_id=? AND (author IS NULL OR author=?) ORDER BY created DESC LIMIT ?)",
+              (uid, nid, uid, nid, VERSION_MAX, uid, nid, uid, VERSION_KEEP_OWN))
+
+
 def _snapshot(c, uid, nid, old, now, force=False, author=None, by=None):
     """Alten Stand (title, body, format) sichern - hoechstens alle VERSION_EVERY Sekunden. author: wer diesen Stand
     geschrieben hat (note.updated_by; None = unbekannt bzw. der Eigentuemer). by: wer gerade speichert.
     Erzwingt ein Nicht-Eigentuemer die Sicherung (Konflikt, leeren/kuerzen, Speichern ohne rev), gilt eine Drossel: eine
     je Seite und Person je FORCED_EVERY - ausser der bisherige Stand stammt von jemand anderem (dann immer). So kann
-    niemand mit "Bearbeiten" den Verlauf des Eigentuemers mit eigenen Sicherungen ueberschwemmen."""
-    last = c.execute("SELECT MAX(created) FROM note_version WHERE uid=? AND note_id=?", (uid, nid)).fetchone()[0]
-    if force and by and by != uid and author == by:
-        if c.execute("SELECT 1 FROM note_version WHERE uid=? AND note_id=? AND author=? AND created>? LIMIT 1",
-                     (uid, nid, by, now - FORCED_EVERY)).fetchone():
-            force = False
-    if not force and last and now - last < VERSION_EVERY:
+    niemand mit "Bearbeiten" den Verlauf des Eigentuemers mit eigenen Sicherungen ueberschwemmen.
+    2.4: ist der Stand schon die neueste Version (z. B. nach einer Sicherung beim Verlassen), keine zweite."""
+    lv = _latest(c, uid, nid)
+    if lv and tuple(lv[:3]) == tuple(old[:3]):
         return
-    c.execute("INSERT INTO note_version (note_id, uid, title, body, format, created, author) VALUES (?,?,?,?,?,?,?)",
-              (nid, uid, old[0], old[1], old[2], now, author))
-    c.execute("DELETE FROM note_version WHERE uid=? AND note_id=? AND id NOT IN "
-              "(SELECT id FROM note_version WHERE uid=? AND note_id=? ORDER BY created DESC LIMIT ?) AND id NOT IN "
-              "(SELECT id FROM note_version WHERE uid=? AND note_id=? AND (author IS NULL OR author=?) ORDER BY created DESC LIMIT ?)",
-              (uid, nid, uid, nid, VERSION_MAX, uid, nid, uid, VERSION_KEEP_OWN))
+    if force and _forced_throttled(c, uid, nid, author, by, now):
+        force = False
+    if not force and lv and now - lv[3] < VERSION_EVERY:
+        return
+    _insert_version(c, uid, nid, old, now, author)
+
+
+def checkpoint(c, uid, nid, by, now=None):
+    """2.4: AKTUELLEN Stand als Version sichern (Pause beim Bearbeiten, Seite verlassen) - nur, wenn er sich von der
+    neuesten Version unterscheidet und die letzte Sicherung mindestens CHECKPOINT_MIN alt ist (Drossel fuer
+    Nicht-Eigentuemer wie bei _snapshot). -> True, wenn eine Version angelegt wurde."""
+    now = now or time.time()
+    cur = c.execute("SELECT title, body, format, updated_by FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, uid)).fetchone()
+    if not cur:
+        return False
+    lv = _latest(c, uid, nid)
+    if lv and (tuple(lv[:3]) == tuple(cur[:3]) or now - lv[3] < CHECKPOINT_MIN):
+        return False
+    if _forced_throttled(c, uid, nid, cur[3], by, now):
+        return False
+    _insert_version(c, uid, nid, cur, now, cur[3])
+    return True
 
 
 def _disposition(name):

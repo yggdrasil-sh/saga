@@ -921,10 +921,14 @@ SELECT 1 FROM chat_receipt, chat_seen LIMIT 0;
 """,
     # 2.4.0 (Testrunde): Gravatar nur mit Einwilligung - neue Konten (ohne Zeile in avatar) beginnen mit "aus".
     # Bestehende Zeilen (die Wahl der Person bzw. ihr bisheriger Stand) bleiben unveraendert. Dazu die harte Kontosperre
-    # nach sehr vielen Fehlversuchen ueber viele Adressen (Tabelle login_lock legt SCHEMA an). Beliebig oft ausfuehrbar.
+    # nach sehr vielen Fehlversuchen ueber viele Adressen (Tabelle login_lock legt SCHEMA an) und Suchtext neu ableiten
+    # fuer Seiten mit Bloecken, die bisher technische Werte lieferten (notes.SPECIAL_BLOCKS). Beliebig oft ausfuehrbar.
     14: """
 ALTER TABLE avatar ALTER COLUMN gravatar SET DEFAULT 0;
 SELECT 1 FROM login_lock LIMIT 0;
+INSERT INTO note_stale (note_id, uid) SELECT id, uid FROM note WHERE format='blocks' AND (strpos(body, '"embed"') > 0
+  OR strpos(body, '"buttons"') > 0 OR strpos(body, '"calendar"') > 0 OR strpos(body, '"database"') > 0
+  OR strpos(body, '"attaches"') > 0 OR strpos(body, '"tasks"') > 0) ON CONFLICT (note_id) DO NOTHING;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

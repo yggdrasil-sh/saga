@@ -644,6 +644,7 @@
         if (S.cur && S.cur.id === id && S.cur.updated_by && !S.cur.updated_by.me) { S.cur.updated_by = { me: true }; applyMeta(); }
         var p = byId(id); if (p) { p.updated = d.updated; if ('title' in body) p.title = body.title.trim(); }
         if (!S.dirtyBody && !S.dirtyTitle) state(T('Gespeichert ✓ {time}', { time: HK.fUpd.format(new Date(d.updated * 1000)) }), 'ok');
+        if (!remoteId(id)) { S.ckId = id; clearTimeout(S.ckTimer); S.ckTimer = setTimeout(function () { checkpoint('pause'); }, CK_PAUSE); }
         if ('title' in body) { if (S.cur && S.cur.id === id) S.cur.title = body.title.trim(); renderTree(); renderCrumbs(); setLocation(); }
       });
     }).catch(function (err) {
@@ -653,6 +654,17 @@
       if ((err.status === 404 || err.status === 403) && S.cur && S.cur.id === id && foreign()) { lostAccess(err.status); return; }
       state(T('Nicht gespeichert: {err}', { err: err.message }), 'err');
     });
+  }
+  // 2.4: Versionen beim Bearbeiten - der Server sichert beim Speichern hoechstens alle 5 Minuten den vorigen Stand. Damit
+  // auch der zuletzt bearbeitete Stand im Verlauf landet: nach einer Pause (2 Minuten ohne Speichern) und beim Verlassen
+  // der Seite (andere Seite, Tab im Hintergrund, Schliessen) den aktuellen Stand sichern lassen (Server drosselt).
+  var CK_PAUSE = 120000;
+  function checkpoint(why) {
+    var id = S.ckId;
+    clearTimeout(S.ckTimer);
+    if (!id) return Promise.resolve();
+    S.ckId = null;
+    return save().then(function () { return api('POST', '/api/notes/' + id + '/versions/checkpoint', { why: why }); }).catch(function () {});
   }
   // Konflikt: jemand (anderer Tab, Peek, spaeter andere Person) hat Titel/Inhalt inzwischen geaendert
   function showConflict(by) {
@@ -822,6 +834,7 @@
 
   function openPage(id) {
     drawer(false);                                  // Handy: Seitenleiste (Schublade) schliessen, Inhalt zeigen
+    if (S.ckId && S.ckId !== id) checkpoint('leave');   // 2.4: andere Seite -> zuletzt bearbeiteten Stand sichern
     return save().then(function () { return api('GET', '/api/notes/' + id); }).then(function (n) {
       S.cur = n; S.loading = true; uploadNote();
       var na = $('pg-noaccess'); if (na) na.hidden = true;
@@ -1094,8 +1107,8 @@
 
   $('pg-new').addEventListener('click', function () { newPageMenu(this, null); });
   $('pg-empty-new').addEventListener('click', function () { newPageMenu(this, null); });
-  window.addEventListener('pagehide', function () { save(); });
-  document.addEventListener('visibilitychange', function () { if (document.hidden) save(); });
+  window.addEventListener('pagehide', function () { save(); checkpoint('leave'); });
+  document.addEventListener('visibilitychange', function () { if (document.hidden) { save(); checkpoint('leave'); } });
   // Neu laden / andere Adresse kurz nach dem Tippen (BUG-012): schon bei beforeunload speichern - HK.api schickt es dann mit
   // keepalive, die Anfrage ueberlebt das Entladen. Laeuft gerade noch ein Speichern (die naechste Anfrage muss darauf warten)
   // oder ist der Inhalt zu gross fuer keepalive, fragt der Browser vor dem Verlassen nach.
@@ -1642,7 +1655,7 @@
     var id = S.cur.id;
     save().then(function () { return api('GET', '/api/notes/' + id + '/versions'); }).then(function (list) {
       openModal(T('Versionsverlauf'), function (body) {
-        if (!list.length) { body.appendChild(el('p', 'nt-empty', T('Noch keine früheren Versionen. Beim Bearbeiten wird höchstens alle 10 Minuten ein Stand gesichert (bis zu 50 pro Seite).'))); return; }
+        if (!list.length) { body.appendChild(el('p', 'nt-empty', T('Noch keine früheren Versionen. Beim Bearbeiten sichert Saga höchstens alle 5 Minuten, nach einer Pause und beim Verlassen der Seite einen Stand (bis zu 50 pro Seite).'))); return; }
         var wrap = el('div', 'ver'), ul = el('ul', 'ver-list'), prev = el('div', 'ver-prev');
         prev.appendChild(el('p', 'nt-empty', T('Version auswählen, um sie anzusehen.')));
         list.forEach(function (v) {
@@ -1663,12 +1676,17 @@
               prev.appendChild(el('div', 'ver-prev-text', d.text || T('(leer)')));
               var r = el('button', 'btn', T('Diese Version wiederherstellen')); r.type = 'button';
               r.addEventListener('click', function () {
+                HK.ask({ title: T('Diese Version wiederherstellen?'),
+                         text: T('Der Inhalt der Seite wird durch die Version vom {date} ersetzt. Der jetzige Stand wird vorher als Version gesichert – du kannst ihn jederzeit zurückholen.', { date: fVer.format(new Date(v.created * 1000)) }),
+                         ok: T('Wiederherstellen') }).then(function (yes) { if (yes) restore(); });
+              });
+              function restore() {
                 api('POST', '/api/notes/' + id + '/versions/' + v.id + '/restore').then(function () {
                   closeModal(); clearTimeout(S.timer); S.dirtyBody = S.dirtyTitle = false;
                   return loadList().then(function () { return openPage(id); });
                 }).then(function () { HK.toast(T('Version wiederhergestellt – der bisherige Stand ist als Version gesichert.')); })
                   .catch(function (err) { HK.toast(T('Nicht wiederhergestellt: {err}', { err: err.message })); });
-              });
+              }
               prev.appendChild(r);
             });
           });
