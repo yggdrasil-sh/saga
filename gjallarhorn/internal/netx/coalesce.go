@@ -110,6 +110,10 @@ func (c *CoalesceConn) flushLocked() {
 	c.buf = c.spare[:0]
 	c.flushing = true
 	c.Flushes++
+	if c.armed { // Frist nicht mehr noetig: kein Wecker-Lauf je Paket
+		c.armed = false
+		c.timer.Stop()
+	}
 	c.mu.Unlock()
 	_, err := c.Conn.Write(data)
 	c.mu.Lock()

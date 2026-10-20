@@ -400,3 +400,70 @@ func TestUDPStunAndSelfTest(t *testing.T) {
 	}
 	dead.Close()
 }
+
+func TestICEMux(t *testing.T) {
+	m := testMux(t, ProxyOff)
+	im := NewICEMux(m.Addr())
+	m.ICEMux = im
+	pc1, err := im.GetConnByUfrag("abcd", false, net.ParseIP("127.0.0.1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc2, _ := im.GetConnByUfrag("abcd", false, net.ParseIP("127.0.0.1"))
+	c, err := net.Dial("tcp", m.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	// STUN-Binding mit USERNAME "abcd:xyz"
+	msg := []byte{0, 1, 0, 12, 0x21, 0x12, 0xa4, 0x42, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0, 6, 0, 8, 'a', 'b', 'c', 'd', ':', 'x', 'y', 'z'}
+	c.Write(append([]byte{0, byte(len(msg))}, msg...))
+	buf := make([]byte, 1500)
+	n, from, err := pc1.ReadFrom(buf)
+	if err != nil || !bytes.Equal(buf[:n], msg) {
+		t.Fatalf("lesen %v %v", err, buf[:n])
+	}
+	if from.String() != c.LocalAddr().String() {
+		t.Fatalf("adresse %v %v", from, c.LocalAddr())
+	}
+	if _, err := pc1.WriteTo([]byte("hallo"), from); err != nil {
+		t.Fatal(err)
+	}
+	got := make([]byte, 7)
+	if _, err := io.ReadFull(c, got); err != nil || got[1] != 5 || string(got[2:]) != "hallo" {
+		t.Fatalf("rahmen %v %v", got, err)
+	}
+	// gleiche Adresse als neuer Wert (nicht derselbe Zeiger)
+	cp := *from.(*net.TCPAddr)
+	if _, err := pc1.WriteTo([]byte("x"), &cp); err != nil {
+		t.Fatal("suche nach wert")
+	}
+	y := []byte("y")
+	na := testing.AllocsPerRun(200, func() {
+		if _, err := pc1.WriteTo(y, from); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if na != 0 {
+		t.Fatalf("allokationen beim schreiben %v", na)
+	}
+	// Referenzen: erst das zweite Close schliesst
+	pc1.Close()
+	if _, err := pc2.WriteTo([]byte("z"), from); err != nil {
+		t.Fatal("nach erstem close geschlossen")
+	}
+	pc2.Close()
+	if _, _, err := pc2.ReadFrom(buf); err == nil {
+		t.Fatal("nach letztem close offen")
+	}
+	// unbekannter ufrag: Verbindung wird nach Frist geschlossen
+	im.Unclaimed = 50 * time.Millisecond
+	c2, _ := net.Dial("tcp", m.Addr().String())
+	defer c2.Close()
+	msg[24] = 'q'
+	c2.Write(append([]byte{0, byte(len(msg))}, msg...))
+	_ = c2.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := c2.Read(buf); err == nil {
+		t.Fatal("unbekannte verbindung offen")
+	}
+}

@@ -125,6 +125,10 @@ type Mux struct {
 	// Bein seine Verbindung nach jedem Schub leeren kann.
 	OnICE func(ufrag string, c *CoalesceConn)
 
+	// ICEMux nimmt ICE-TCP-Verbindungen direkt an (sonst ueber ICE an pions
+	// TCPMuxDefault).
+	ICEMux *ICEMux
+
 	ln              net.Listener
 	ICE, HTTP, TURN *ChanListener
 }
@@ -243,13 +247,16 @@ func (m *Mux) handle(c net.Conn) {
 		if !m.NoCoalesce {
 			cc.Enable()
 		}
-		if m.OnICE != nil {
-			if u := peekUfrag(br); u != "" {
-				m.OnICE(u, cc)
-			}
+		u := peekUfrag(br)
+		if m.OnICE != nil && u != "" {
+			m.OnICE(u, cc)
 		}
 		_ = c.SetReadDeadline(time.Time{})
 		done()
+		if m.ICEMux != nil {
+			m.ICEMux.Add(u, &bufConn{Conn: cc, r: br, remote: remote})
+			return
+		}
 		m.ICE.push(&bufConn{Conn: cc, r: br, remote: remote})
 	case RouteTLS:
 		m.handleTLS(&bufConn{Conn: cc, r: br, remote: remote}, cc, done)
