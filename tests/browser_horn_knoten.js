@@ -96,7 +96,7 @@ const BROWSERS = [];
 async function session(i) {
   const origin = new URL(BASE).origin;
   const br = await chromium.launch({ channel: E.PW_CHANNEL || 'chromium', headless: true,
-    args: ['--use-fake-ui-for-media-stream', '--unsafely-treat-insecure-origin-as-secure=' + origin, '--ignore-certificate-errors',
+    args: [...(E.SAGA_HOST_RULES ? ['--host-resolver-rules=' + E.SAGA_HOST_RULES] : []), '--use-fake-ui-for-media-stream', '--unsafely-treat-insecure-origin-as-secure=' + origin, '--ignore-certificate-errors',
            '--autoplay-policy=no-user-gesture-required', '--no-proxy-server', '--disable-features=WebRtcHideLocalIpsWithMdns'] });
   BROWSERS.push(br);
   const ctx = await br.newContext({ viewport: { width: 1100, height: 720 }, locale: 'de-DE', ignoreHTTPSErrors: true });
@@ -149,7 +149,7 @@ async function liveOk(ps) { for (const p of ps) await until(() => p.evaluate(() 
     await ps[0].click('#ct-call-v');
     const ha = await until(async () => { const h = await horn(ps[0]); return h && h.up && h; }, 20000);
     PERF.start_klick_bis_verbunden_ms = Date.now() - t0;
-    ok('A: Anruf ueber den Knoten, Ton- und Bild-Leitung verbunden (ICE-TCP)', ha && ha.node === 'localhost' && ha.path === 'tcp'
+    ok('A: Anruf ueber den Knoten, Ton- und Bild-Leitung verbunden (ICE-TCP)', ha && ha.node === (E.SAGA_NODE || 'localhost') && ha.path === 'tcp'
        && ha.legs.audio.state === 'connected' && ha.legs.video.state === 'connected', ha || await horn(ps[0]));
     ok('A: Frame-E2E-Worker mit Encoded Transform (' + (ha && ha.mode) + ')', ha && (ha.mode === 'script' || ha.mode === 'streams'));
     const joinMs = [];
