@@ -69,6 +69,19 @@ const statusLine = p => p.evaluate(() => { const s = document.querySelector('.cl
     await chatKeys(a2, U1);
     const extra = [];
     for (let i = 0; i < EXTRA; i++) { const x = await session(i % 2 ? U2 : U1, i % 2 ? E.SAGA_PASS2 : E.SAGA_PASS, 'X' + i); await x.goto(BASE + '/'); extra.push(x); }
+    // Web-Runde 2, H4: meldet der Server beim Laden einmal (noch) keine Identitaet, bleibt der Tab bei den vorhandenen
+    // Schluesseln (kein "Chats einrichten", nichts vergessen)
+    let once = true;
+    await a2.route('**/api/chat/me?*', async route => {
+      if (!once) return route.continue();
+      once = false;
+      const r = await route.fetch(); const j = await r.json(); j.identity = null;
+      return route.fulfill({ response: r, body: JSON.stringify(j) });
+    });
+    await a2.goto(BASE + '/chats'); 
+    const h4 = await until(() => a2.evaluate(() => (window.HKChat && window.HKChat.state().ready) ? 'ready' : (document.querySelector('.ct-setup-go') ? 'setup' : null)), 15000, 200);
+    ok('H4: kurzzeitig ohne Identitaet beim Laden -> kein "Chats einrichten", Schluessel bleiben', h4 === 'ready', h4);
+    await a2.unroute('**/api/chat/me?*');
     const dA = await dev(a), dA2 = await dev(a2), dB = await dev(b);
     ok(`drei Geraete (A, A2, B) ${SEP ? 'je in eigenem Browser' : 'in EINEM Browser'} + ${EXTRA} weitere Saga-Tabs`, dA && dA2 && dB && dA !== dA2);
 
