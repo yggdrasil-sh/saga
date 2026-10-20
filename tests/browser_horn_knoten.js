@@ -105,6 +105,8 @@ async function session(i) {
   p.__user = USERS[i]; p.__i = i;
   p.on('pageerror', e => console.log('  [pageerror ' + USERS[i] + '] ' + e.message));
   if (E.DEBUG) p.on('console', m => console.log('  [console ' + USERS[i] + '] ' + m.text()));
+  if (E.DEBUG) p.on('requestfailed', q => console.log('  [requestfailed ' + USERS[i] + '] ' + q.method() + ' ' + q.url() + ' ' + (q.failure() || {}).errorText));
+  if (E.DEBUG) p.on('response', q => { if (/api\/sfu|healthz|\/horn/.test(q.url())) console.log('  [resp ' + USERS[i] + '] ' + q.status() + ' ' + q.request().method() + ' ' + q.url()); });
   await p.addInitScript(FAKE, [HUES[i], FREQ[i]]);
   await p.goto(BASE + '/login');
   await p.fill('input[name=username], input#username, input[type=text]', USERS[i]);

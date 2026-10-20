@@ -74,7 +74,7 @@ func (s *server) alpnWarm() {
 			}
 			return
 		}
-		msg := "tls-alpn-01: " + err.Error()
+		msg := "alpn: " + err.Error()
 		s.certErr.Store(&msg)
 		log.Printf("zertifikat: %s", msg)
 		s.reportCert()
@@ -102,7 +102,7 @@ func (s *server) dns01Loop() {
 			s.reportCert()
 			continue
 		}
-		msg := "dns-01: " + err.Error()
+		msg := "dns01: " + err.Error()
 		s.certErr.Store(&msg)
 		log.Printf("zertifikat: %s - neuer versuch in %v", msg, back)
 		s.reportCert()

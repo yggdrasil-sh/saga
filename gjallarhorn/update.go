@@ -41,6 +41,7 @@ type updater struct {
 	solo    bool
 	staged  string
 	state   string // "" | aus | manuell | laden | fehler | bereit | leeren | wartet
+	code    string // fuer Saga (uebersetzter Text): nokey | nowatch | sig | download | wait24
 	err     string
 	since   time.Time
 	nextTry time.Time
@@ -90,16 +91,21 @@ func (u *updater) status() map[string]any {
 	if u.err != "" {
 		m["err"] = u.err
 	}
+	if u.code != "" {
+		m["code"] = u.code
+	}
 	return m
 }
 
-func (u *updater) set(state, err string) {
+func (u *updater) set(state, err string) { u.setc(state, "", err) }
+
+func (u *updater) setc(state, code, err string) {
 	u.mu.Lock()
 	if state != u.state {
 		u.since = time.Now()
 	}
-	u.state, u.err = state, err
-	key := state + "|" + err + "|" + u.want
+	u.state, u.code, u.err = state, code, err
+	key := state + "|" + code + "|" + err + "|" + u.want
 	changed := key != u.sent
 	u.sent = key
 	u.mu.Unlock()
@@ -133,10 +139,10 @@ func (u *updater) step(now time.Time) {
 		}
 		return
 	case releaseKey() == nil:
-		u.set("aus", errNoReleaseKey.Error())
+		u.setc("aus", "nokey", errNoReleaseKey.Error())
 		return
 	case os.Getenv("HORN_WATCHED") != "1":
-		u.set("manuell", "ohne Waechter (gjallarhorn watch) kein Selbst-Update")
+		u.setc("manuell", "nowatch", "ohne Waechter (gjallarhorn watch) kein Selbst-Update")
 		return
 	}
 	if staged != want {
@@ -156,7 +162,11 @@ func (u *updater) step(now time.Time) {
 			}
 			u.mu.Unlock()
 			log.Printf("update: %s: %v", want, err)
-			u.set("fehler", err.Error())
+			code := "download"
+			if errors.Is(err, errSigMismatch) {
+				code = "sig"
+			}
+			u.setc("fehler", code, err.Error())
 			return
 		}
 		u.mu.Lock()
@@ -176,7 +186,7 @@ func (u *updater) step(now time.Time) {
 		if legs == 0 {
 			u.restart()
 		} else if now.Sub(since) > soloWarnTime && u.state == "wartet" {
-			u.set("wartet", "seit 24 h keine anruffreie Zeit - Update wartet weiter")
+			u.setc("wartet", "wait24", "seit 24 h keine anruffreie Zeit - Update wartet weiter")
 		}
 		return
 	}

@@ -404,6 +404,8 @@ def _clean_cert(d):
 
 def _clean_upd(d):
     out = {"state": str(d.get("state") or "")[:16], "want": str(d.get("want") or "")[:40], "have": str(d.get("have") or "")[:40]}
+    if str(d.get("code") or "") in ("nokey", "nowatch", "sig", "download", "wait24"):
+        out["code"] = d["code"]
     if d.get("err"):
         out["err"] = str(d["err"])[:300]
     return out
@@ -654,7 +656,7 @@ async def ctl(ws: WebSocket):
                 acme_n[:] = [x for x in acme_n if now - x < 3600] + [now]
                 rid = str(m.get("rid") or "")[:20]
                 if len(acme_n) > 20 or not HOOKS.get("acme_txt"):
-                    ok, err = False, "rate" if len(acme_n) > 20 else "nicht verfuegbar"
+                    ok, err = False, "rate" if len(acme_n) > 20 else "nicht verfügbar"
                 else:
                     ok, err = await asyncio.to_thread(HOOKS["acme_txt"], nid, str(m.get("op") or ""), str(m.get("name") or "")[:300],
                                                       str(m.get("value") or "")[:100])

@@ -145,7 +145,7 @@ func TestUpdateMaschine(t *testing.T) {
 	u.target("9.9.9", false)
 	now := time.Now()
 	u.step(now)
-	if u.state != "fehler" || !strings.Contains(u.err, "signatur") || s.draining.Load() || *code != -1 {
+	if u.state != "fehler" || u.code != "sig" || !strings.Contains(u.err, "signatur") || s.draining.Load() || *code != -1 {
 		t.Fatalf("falsche Signatur: state=%s err=%s drain=%v", u.state, u.err, s.draining.Load())
 	}
 	n := hits

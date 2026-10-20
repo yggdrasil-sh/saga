@@ -698,10 +698,13 @@ def e2e(node0, alt, acme_bin):
     ok("Kopplungs-Code nicht im Knotenverzeichnis gespeichert", not any(p["token"] in text(f) for f in glob.glob(data + "/**", recursive=True)
                                                                         if os.path.isfile(f)))
     upd = wait(lambda: (lambda x: x if x.get("state") == "fehler" else None)((node2() or {}).get("upd") or {}), 20)
-    ok(f"Update: falsche Signatur abgelehnt, Knoten meldet den Fehler ({upd})", upd and "signatur" in (upd.get("err") or ""))
+    ok(f"Update: falsche Signatur abgelehnt, Knoten meldet den Fehler ({upd})", upd and upd.get("code") == "sig")
     ok("... kein Leeren wegen eines abgelehnten Updates", not (node2() or {}).get("drain") and not os.path.exists(os.path.join(data, "bin/next")))
     s, html = adm("GET", "/calls")
     ok("Admin: horn-2 in der Tabelle (Bereit, TCP ✓ · UDP ✓, Version)", s == 200 and NAME in html and "TCP ✓ · UDP ✓" in html and f"{VERSION}-alt" in html)
+    vis = re.sub(r'title="[^"]*"', "", html)
+    ok("Admin: Update-Fehler als Text mit Umlauten (Rohmeldung des Knotens nur im Tooltip)",
+       "Signatur passt nicht zum Release-Schlüssel" in vis and "Release-Schluessel" not in vis)
 
     # --- Anruf ueber horn-2 (nur externe Knoten) --------------------------------------------------------------------
     people = {u: A_.Person(u) for u, _ in USERS}

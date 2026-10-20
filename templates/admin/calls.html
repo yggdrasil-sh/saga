@@ -29,8 +29,11 @@
     <tr id="row-{{ n.id }}" class="horn-st-{{ n.status }}">
       <td><b>{{ n.name }}</b>{% if n.builtin %} <span class="adm-tag">{{ _("eingebaut") }}</span>{% endif %}</td>
       <td data-l="{{ _('Status') }}"><span class="horn-dot"></span>{% if n.status == 'down' %}{{ _("Nicht erreichbar seit") }} {{ ts(n.since) }}{% else %}{{ ST[n.status] }}{% endif %}
-        {% if n.cert.err and n.status == 'nocert' %}<br><small>{{ n.cert.err }}</small>{% endif %}
-        {% if n.upd.err %}<br><small>{{ _("Update:") }} {{ n.upd.err }}</small>{% endif %}</td>
+        {% if n.cert.err and n.status == 'nocert' %}<br><small title="{{ n.cert.err }}">{{ _("Zertifikat per DNS-01 noch nicht erhalten – Saga versucht es weiter.") if n.cert.err.startswith('dns01') else _("Zertifikat per TLS-ALPN-01 noch nicht erhalten – ist 443/TCP direkt erreichbar?") }}</small>{% endif %}
+        {% set UPD = {'nokey': _('Selbst-Update aus: Saga hat noch keinen Release-Schlüssel.'), 'nowatch': _('Selbst-Update aus: Knoten läuft ohne Wächter (gjallarhorn watch).'),
+                      'sig': _('Signatur passt nicht zum Release-Schlüssel – Update abgelehnt.'), 'download': _('Update konnte nicht geladen werden – neuer Versuch später.'),
+                      'wait24': _('Seit 24 Stunden keine Zeit ohne Anrufe – das Update wartet weiter.')} %}
+        {% if n.upd.code in UPD and n.upd.state in ('aus', 'manuell', 'fehler', 'wartet') %}<br><small title="{{ n.upd.err or '' }}">{{ _("Update:") }} {{ UPD[n.upd.code] }}</small>{% endif %}</td>
       <td data-l="{{ _('Weg') }}"><span title="{{ UDP_TIP }}">TCP {{ '✓' if n.tcp else '✗' }} · UDP {{ '✓' if n.udp else '–' }}</span></td>
       <td data-l="{{ _('Auslastung') }}"><meter class="horn-bar" min="0" max="100" low="70" high="90" optimum="10" value="{{ n.util }}">{{ n.util }} %</meter><br>
         <small>{{ _("CPU {cpu} %", cpu=n.cpu) }} · {% if n.link %}{{ _("Upload {up}/{link} Mbit/s", up=n.up, link=n.link) }}{% else %}{{ _("Upload {up} Mbit/s", up=n.up) }}{% endif %}</small></td>

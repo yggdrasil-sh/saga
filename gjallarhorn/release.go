@@ -68,6 +68,9 @@ func releaseMsg(ver, arch string, bin []byte) []byte {
 
 var errNoReleaseKey = errors.New("kein Release-Schluessel (gjallarhorn/release.pub)")
 
+// errSigMismatch: Signatur passt nicht (Saga zeigt dafuer einen uebersetzten Text, Code "sig").
+var errSigMismatch = errors.New("signatur passt nicht zum Release-Schluessel")
+
 // verifyRelease prueft ein Binaer gegen den Release-Schluessel.
 func verifyRelease(key ed25519.PublicKey, bin []byte, sig, ver, arch string) error {
 	if len(key) != ed25519.PublicKeySize {
@@ -75,13 +78,13 @@ func verifyRelease(key ed25519.PublicKey, bin []byte, sig, ver, arch string) err
 	}
 	sb, err := base64.StdEncoding.DecodeString(strings.TrimSpace(sig))
 	if err != nil || len(sb) != ed25519.SignatureSize {
-		return errors.New("signatur unlesbar")
+		return fmt.Errorf("%w (unlesbar)", errSigMismatch)
 	}
 	if !validVersion(ver) {
 		return fmt.Errorf("version %q ungueltig", ver)
 	}
 	if !ed25519.Verify(key, releaseMsg(ver, arch, bin), sb) {
-		return errors.New("signatur passt nicht zum Release-Schluessel")
+		return errSigMismatch
 	}
 	return nil
 }

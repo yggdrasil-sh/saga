@@ -202,8 +202,8 @@ def pair_create(name, share=False, udp=True, by="admin"):
 def deploy(name, tok, udp=True):
     """Deploy-Skripte (Docker Compose und systemd/Debian). Beide enthalten den einmaligen Code, keinen Cloudflare-Token."""
     saga = saga_origin()
-    env = (f"# Gjallarhorn-Knoten {name} fuer {saga} (Saga {VERSION})\n"
-           f"# Einmaliger Kopplungs-Code, 30 min gueltig - danach wertlos.\n"
+    env = (f"# Gjallarhorn-Knoten {name} für {saga} (Saga {VERSION})\n"
+           f"# Einmaliger Kopplungs-Code, 30 min gültig – danach wertlos.\n"
            f"HORN_SAGA={saga}\nHORN_PAIR={tok}\nHORN_NAME={name}\nHORN_UDP={'1' if udp else '0'}\n")
     ports = '      - "443:443/tcp"\n' + ('      - "443:443/udp"\n' if udp else "")
     compose = ("services:\n  gjallarhorn:\n"
@@ -215,7 +215,7 @@ def deploy(name, tok, udp=True):
                "    volumes:\n      - gjallarhorn:/data\n"
                "    stop_grace_period: 30s\n"
                "volumes:\n  gjallarhorn: {}\n")
-    docker = ("#!/bin/sh\n# Gjallarhorn-Knoten " + name + " (Docker). Auf dem neuen Server ausfuehren.\nset -eu\n"
+    docker = ("#!/bin/sh\n# Gjallarhorn-Knoten " + name + " (Docker). Auf dem neuen Server ausführen.\nset -eu\n"
               "mkdir -p gjallarhorn && cd gjallarhorn\n"
               "umask 077\ncat > .env <<'EOF'\n" + env + "EOF\n"
               "cat > docker-compose.yml <<'EOF'\n" + compose + "EOF\n"
@@ -225,20 +225,20 @@ def deploy(name, tok, udp=True):
 
 def systemd_script(name, tok, udp=True):
     """Debian/systemd ohne Docker (wie auf einem kleinen vServer oder LXC): Binaer aus dem GitHub-Release, Signatur mit
-    dem Release-Schluessel geprueft (openssl), eigener Benutzer, Unit mit Waechter. HORN_ROOT/HORN_RELEASE_BASE/
+    dem Release-Schlüssel geprüft (openssl), eigener Benutzer, Unit mit Waechter. HORN_ROOT/HORN_RELEASE_BASE/
     SYSTEMCTL nur fuer Tests (Simulation ohne systemd)."""
     pub = release_pub()
     saga = saga_origin()
-    head = ("#!/bin/sh\n# Gjallarhorn-Knoten " + name + " ohne Docker (Debian 12+, systemd). Als root ausfuehren.\n"
-            "# Braucht curl und openssl. Das Binaer kommt aus dem GitHub-Release und wird gegen den Release-Schluessel geprueft.\n"
+    head = ("#!/bin/sh\n# Gjallarhorn-Knoten " + name + " ohne Docker (Debian 12+, systemd). Als root ausführen.\n"
+            "# Braucht curl und openssl. Das Binär kommt aus dem GitHub-Release und wird gegen den Release-Schlüssel geprüft.\n"
             "set -eu\n")
     if not pub:
-        return head + ("echo 'Saga kennt noch keinen Release-Schluessel (gjallarhorn/release.pub) - die systemd-Variante ist "
-                       "erst mit signierten Releases moeglich. Bitte die Docker-Variante nutzen.' >&2\nexit 1\n")
+        return head + ("echo 'Saga kennt noch keinen Release-Schlüssel (gjallarhorn/release.pub) – die systemd-Variante ist "
+                       "erst mit signierten Releases möglich. Bitte die Docker-Variante nutzen.' >&2\nexit 1\n")
     return head + f"""VER={VERSION}
 ROOT=${{HORN_ROOT:-}}
 BASE=${{HORN_RELEASE_BASE:-{RELEASE_BASE}/v$VER}}
-case "$(uname -m)" in x86_64|amd64) ARCH=linux-amd64 ;; aarch64|arm64) ARCH=linux-arm64 ;; *) echo "Architektur $(uname -m) nicht unterstuetzt" >&2; exit 1 ;; esac
+case "$(uname -m)" in x86_64|amd64) ARCH=linux-amd64 ;; aarch64|arm64) ARCH=linux-arm64 ;; *) echo "Architektur $(uname -m) nicht unterstützt" >&2; exit 1 ;; esac
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 curl -fsSL -o "$T/gjallarhorn" "$BASE/gjallarhorn-$ARCH"
 curl -fsSL -o "$T/gjallarhorn.sig" "$BASE/gjallarhorn-$ARCH.sig"
@@ -247,13 +247,13 @@ cat > "$T/release.pem" <<'EOF'
 EOF
 printf 'gjallarhorn-release/1\\n%s\\n%s\\n%s\\n' "$VER" "$ARCH" "$(sha256sum "$T/gjallarhorn" | cut -c1-64)" > "$T/msg"
 base64 -d "$T/gjallarhorn.sig" > "$T/sig.bin"
-openssl pkeyutl -verify -pubin -inkey "$T/release.pem" -rawin -in "$T/msg" -sigfile "$T/sig.bin" >/dev/null || {{ echo "Signatur passt nicht - Abbruch" >&2; exit 1; }}
+openssl pkeyutl -verify -pubin -inkey "$T/release.pem" -rawin -in "$T/msg" -sigfile "$T/sig.bin" >/dev/null || {{ echo "Signatur passt nicht – Abbruch" >&2; exit 1; }}
 install -d -m 755 "$ROOT/opt/gjallarhorn" "$ROOT/etc/systemd/system"
 install -d -m 700 "$ROOT/var/lib/gjallarhorn" "$ROOT/etc/gjallarhorn"
 install -m 755 "$T/gjallarhorn" "$ROOT/opt/gjallarhorn/gjallarhorn"
 umask 077
 cat > "$ROOT/etc/gjallarhorn/gjallarhorn.env" <<'EOF'
-# Gjallarhorn-Knoten {name} fuer {saga} (Saga {VERSION}). Einmaliger Kopplungs-Code, 30 min gueltig - danach wertlos.
+# Gjallarhorn-Knoten {name} für {saga} (Saga {VERSION}). Einmaliger Kopplungs-Code, 30 min gültig – danach wertlos.
 HORN_SAGA={saga}
 HORN_PAIR={tok}
 HORN_NAME={name}
@@ -265,7 +265,7 @@ if [ -z "$ROOT" ]; then id gjallarhorn >/dev/null 2>&1 || useradd --system --hom
   chown -R gjallarhorn: /var/lib/gjallarhorn; fi
 cat > "$ROOT/etc/systemd/system/gjallarhorn.service" <<'EOF'
 [Unit]
-Description=Gjallarhorn-Knoten fuer Saga ({name})
+Description=Gjallarhorn-Knoten für Saga ({name})
 After=network-online.target
 Wants=network-online.target
 
@@ -427,7 +427,7 @@ async def api_pair(request: Request):
     except ValueError:
         b = None
     if not isinstance(b, dict):
-        return _bad("bad", 400, "ungueltig")
+        return _bad("bad", 400, "ungültig")
     return await run_in_threadpool(pair_finish, b, ip)
 
 
@@ -443,7 +443,7 @@ def pair_finish(b, src=""):
         Ed25519PublicKey.from_public_bytes(raw).verify(base64.b64decode(str(b.get("sig") or ""), validate=True),
                                                        f"horn-pair/1\n{tok}\n{name}".encode())
     except (ValueError, InvalidSignature):
-        return _bad("sig", 400, "Signatur ungueltig")
+        return _bad("sig", 400, "Signatur ungültig")
     h = hashlib.sha256(tok.encode()).hexdigest()
     now = time.time()
     with _db() as c, c:
@@ -458,10 +458,10 @@ def pair_finish(b, src=""):
             log(c, "pair.bad_name", None, r[0], name)
             return _bad("name", 403, "Name passt nicht zum Kopplungs-Code")
         if r[5] and r[5] != saga_origin():
-            return _bad("saga", 403, "Kopplungs-Code fuer eine andere Saga-Adresse")
+            return _bad("saga", 403, "Kopplungs-Code für eine andere Saga-Adresse")
         if c.execute("SELECT 1 FROM horn_ban WHERE pub=?", (pub,)).fetchone() or \
            c.execute("SELECT 1 FROM horn_node WHERE pub=? AND removed IS NULL", (pub,)).fetchone():
-            return _bad("pub", 403, "Knotenschluessel gesperrt oder schon gekoppelt")
+            return _bad("pub", 403, "Knotenschlüssel gesperrt oder schon gekoppelt")
         c.execute("UPDATE horn_pair SET pub=? WHERE token_hash=?", (pub, h))
         _progress(c, r[4], node=now)
         pid, share, want_udp = r[4], bool(r[1]), bool(r[6])
@@ -478,7 +478,7 @@ def pair_finish(b, src=""):
         _progress(c, pid, tcp=rc)
         if not (rc["v4"] or rc["v6"]):
             log(c, "pair.unreachable", None, name, json.dumps(rc["err"]))
-            return _bad("reach", 424, f"Knoten ueber 443/TCP nicht erreichbar ({', '.join(f'{k}: {v}' for k, v in rc['err'].items()) or 'keine Adresse'})")
+            return _bad("reach", 424, f"Knoten über 443/TCP nicht erreichbar ({', '.join(f'{k}: {v}' for k, v in rc['err'].items()) or 'keine Adresse'})")
         r = c.execute("SELECT used FROM horn_pair WHERE token_hash=? FOR UPDATE", (h,)).fetchone()
         if not r or r[0]:
             return _bad("used", 403, "Kopplungs-Code schon benutzt")
