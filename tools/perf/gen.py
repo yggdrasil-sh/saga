@@ -38,6 +38,8 @@ STUFEN = {
 }
 ART = {"art": "video"}
 A, B = "perf-a", "perf-b"
+GROUP_N = 50                       # (2.4) Gruppen-Chat fuer Gelesen-Bestaetigungen/Online-Status: A, B + 48 weitere Konten
+GU = [f"perf-g{i:02d}" for i in range(1, GROUP_N - 1)]
 PW = "Perf-Pass-1234"
 WORDS = ("Projekt Angebot Rechnung Kunde Server Netzwerk Firewall Backup Wartung Planung Termin Besprechung Notiz Idee Entwurf "
          "Konzept Anleitung Checkliste Protokoll Zusammenfassung Ergebnis Aufgabe Fehler Loesung Update Migration Lizenz Vertrag "
@@ -168,6 +170,10 @@ def reset_users():
         user, err = auth.create_user(u, PW, "Perf " + u[-1].upper())
         if not user:
             raise SystemExit(f"Konto {u}: {err}")
+    for u in GU:                                   # (2.4) Gruppenmitglieder: ohne Passwort, nur Sitzungs-Cookie
+        if auth.get_user(u):
+            delete_user_data(u, drop_user=True)
+        auth.create_user(u, None, "Perf " + u[-2:])
 
 
 def gen(stufe):
@@ -378,6 +384,32 @@ def gen(stufe):
         c.execute("UPDATE chat_member SET last_read=%s WHERE chat_id=%s AND uid=%s", (seqs[-30], cid, A))
         out.update(chat=cid, msgs=n_msgs, dev_a=devs[A], dev_b=devs[B])
 
+        # --- (2.4) freie Gruppe mit GROUP_N Mitgliedern (Gelesen-Bestaetigungen, Online-Status), 200 Nachrichten ---------
+        for u in GU:
+            c.execute("INSERT INTO chat_identity (uid, ident_pub, backup_pub, backup_sig, bundle, created, updated) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                      (u, b64(32), b64(32), b64(64), "{}", now, now))
+            devs[u] = os.urandom(16).hex()
+            c.execute("INSERT INTO chat_device (id, uid, name, enc_pub, sign_pub, sig, created, last_seen) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                      (devs[u], u, "perf", b64(32), b64(32), b64(64), now, now))
+        gid = c.execute("INSERT INTO chat (kind, created_by, created) VALUES ('free', %s, %s) RETURNING id", (A, now - 1e6)).fetchone()[0]
+        gm = [A, B] + GU
+        for u in gm:
+            c.execute("INSERT INTO chat_member (chat_id, uid, joined, role) VALUES (%s,%s,%s,%s)", (gid, u, now - 1e6, "admin" if u == A else "member"))
+        gseq = nextids(c, "chat_msg_seq_seq", 200)
+        mrows, krows = [], []
+        for j, sq in enumerate(gseq):
+            u = R.choice(gm)
+            ts = now - 1e6 + 1e6 * j / 200
+            ct = b64(R.randint(60, 300))
+            mrows.append((sq, os.urandom(16).hex(), gid, "msg", u, devs[u], int(ts * 1000), ts, ct, b64(64), len(ct)))
+            for v in gm:
+                krows.append((sq, devs[v], b64(80)))
+                krows.append((sq, "backup:" + v, b64(80)))
+        copy(c, "chat_msg", ("seq", "id", "chat_id", "kind", "sender_uid", "sender_device", "ts", "created", "body_ct", "sig", "size"), mrows)
+        copy(c, "chat_msg_key", ("msg_seq", "recipient", "sealed"), krows)
+        c.execute("UPDATE chat SET last_seq=%s, last_at=%s WHERE id=%s", (gseq[-1], now, gid))
+        out.update(group=gid, group_last=gseq[-1], group_last_id=mrows[-1][1], group_members=gm)
+
         # --- ein paar eigene Seiten fuer perf-b ------------------------------------------------------------
         copy(c, "note", ("uid", "title", "body", "created", "updated", "format", "sort", "updated_by", "created_by"),
              [(B, title(), body(None, None), now, now, "blocks", now + i, B, B) for i in range(50)])
@@ -388,6 +420,7 @@ def gen(stufe):
     out["db_size"], out["notes_total"] = tot
     out["seconds"] = round(time.time() - t0, 1)
     out["cookie_a"], out["cookie_b"] = cookie(A), cookie(B)
+    out["cookies_g"] = {u: cookie(u) for u in GU}
     print("PERF " + json.dumps(out), flush=True)
 
 

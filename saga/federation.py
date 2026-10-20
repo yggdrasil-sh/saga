@@ -74,14 +74,16 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # als Mesh ueber Servergrenzen (Auftraege join/leave/roster/invite).
 # chatfile2 (2.4): grosse Chat-Anhaenge (saga-file/v2, Videos) bereichsweise abrufen (GET /fed/v2/chat/files/{id}?range=a-b,
 # signiert je Teil) - ohne chatfile2 gehen nur Anhaenge bis FILE_MAX (wie 2.3).
+# 2.4 (saga.chat_status): receipts = Gelesen-Bestaetigungen in Chats (versiegelt, ueber das Heim des Chats), online =
+# Online-Status von Chat-Partnern (Abo beim Server der Person). Mit 2.3-Servern: nichts davon, nichts wird gesendet.
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
-         "export", "chatgroups", "nc_files", "calls3", "chatfile2"]
+         "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online"]
 # Admin-Schalter je verbundener Instanz (fed_peer.opts) - Standard: alles an, Ausnahme "Teilen nur in gemeinsamen
 # Gruppen" aus. directory_groups: nur Personen dieser Gruppen erscheinen im Adressbuch der Instanz (leer = alle).
 OPT_DEFAULTS = {"chat": True, "calls": True, "directory": True, "scope_exception": False, "directory_groups": []}
 # Faehigkeit -> Admin-Schalter, der sie zusaetzlich braucht
 CAP_OPT = {"directory": "directory", "keys": "chat", "chat2": "chat", "calls2": "calls", "chatgroups": "chat", "calls3": "calls",
-           "chatfile2": "chat"}
+           "chatfile2": "chat", "receipts": "chat", "online": "chat"}
 EXPRESS_TIMEOUT = float(E.get("FED_EXPRESS_TIMEOUT", "5"))      # synchrone Zustellung: harte Frist in Sekunden
 HELLO_EVERY = 6 * 3600                       # Faehigkeiten der Gegenstelle so oft neu abfragen
 SEEN_KEEP = 7 * 86400                        # Ereignis-Kennungen so lange merken (idempotent)

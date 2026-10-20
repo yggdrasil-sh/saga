@@ -10,7 +10,7 @@ KI standardmaessig aus, Sperren je Person/Instanz, aeltere Apps (Hinweis statt k
 (saga-call/v2: Klingeln, Annehmen, Signale, Auflegen, Anfrage klingelt nicht, Besetzt), Kontoloeschung, Trennen (schreibgeschuetzt,
 Anrufe enden). Kompatibilitaet: FED_B_APP=<Saga 2.1/2.2> -> keine Chats ueber Servergrenzen, sinnvolle Fehlermeldung, keine
 Serverfehler. Raeumt auf (Datenbanken geloescht)."""
-import json, os, sys, time
+import http.client, json, os, sys, threading, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import foederation as T  # noqa: E402
@@ -39,6 +39,77 @@ def api(k, uid, m, p, body=None, v2=True):
 def raw(k, uid, m, p, data, ctype="application/octet-stream"):
     s, h, d = hreq(k, m, p, raw=data, hdr={"X-Saga": "1", "X-Saga-Chat": "2", "Content-Type": ctype}, cookie=T.ck(k, uid))
     return s, h, d
+
+
+class Events:
+    """Live-Ereignisse (/api/events) eines Kontos im Hintergrund mitschreiben (wie eine App)."""
+
+    def __init__(self, k, uid):
+        i = T.I[k]
+        self.c = http.client.HTTPConnection("127.0.0.1", i["port"], timeout=60)
+        self.c.request("GET", "/api/events", headers={"Host": i["host"], "Accept": "text/event-stream", "Cookie": T.ck(k, uid)})
+        self.r, self.ev = self.c.getresponse(), []
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        cur = {}
+        try:
+            while True:
+                line = self.r.readline()
+                if not line:
+                    break
+                line = line.decode("utf-8").rstrip("\r\n")
+                if line == "":
+                    if "event" in cur:
+                        self.ev.append((cur["event"], json.loads(cur.get("data") or "null")))
+                    cur = {}
+                elif not line.startswith(":"):
+                    k, _, v = line.partition(":")
+                    cur[k] = v[1:] if v.startswith(" ") else v
+        except Exception:  # noqa: BLE001
+            pass
+
+    def of(self, typ, mid):
+        return [d for t, d in list(self.ev) if t == typ and isinstance(d, dict) and d.get("id") == mid]
+
+    def close(self):
+        try:
+            self.c.sock.shutdown(2); self.c.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+class App:
+    """Nachrichtenliste einer App: laedt bei jedem chat.message-Ereignis nur NEUERE Nachrichten (after=) und uebernimmt den
+    Zustellstand bekannter Nachrichten nur aus dem Ereignis (failed bzw. bestaetigt) - so arbeiten Web, Android, iOS, Linux."""
+
+    def __init__(self, user, cid, ev):
+        self.u, self.cid, self.ev, self.msgs, self.seen, self.stop = user, cid, ev, {}, 0, False
+        s, r = api(user.k, user.uid, "GET", f"/api/chats/{cid}/messages?device={user.dev['id']}")
+        for x in r.get("messages") or []:
+            self.msgs[x["id"]] = {"seq": x["seq"], "fstate": x.get("fstate")}
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def _loop(self):                     # wie die App: sofort auf jedes Ereignis reagieren
+        while not self.stop:
+            try:
+                self.pump()
+            except Exception:  # noqa: BLE001
+                pass
+            time.sleep(0.01)
+
+    def pump(self):
+        evs = [d for t, d in list(self.ev.ev) if t == "chat.message" and isinstance(d, dict) and d.get("chat_id") == self.cid]
+        for d in evs[self.seen:]:
+            m = self.msgs.get(d.get("id"))
+            if m is not None and m.get("fstate"):
+                m["fstate"] = "failed" if d.get("failed") else None
+            last = max([x["seq"] for x in self.msgs.values()] or [0])
+            s, r = api(self.u.k, self.u.uid, "GET", f"/api/chats/{self.cid}/messages?device={self.u.dev['id']}&after={last}")
+            for x in r.get("messages") or []:
+                self.msgs.setdefault(x["id"], {"seq": x["seq"], "fstate": x.get("fstate")})
+        self.seen = len(evs)
+        return self.msgs
 
 
 class User:
@@ -171,11 +242,20 @@ def part_chat(A, B, pa, pb):
     s, d, m2 = anna.send(ch, "Schoen, dass du da bist")
     ok("B: jetzt mit Benachrichtigung", wait(lambda: len(notifs("b", "fb-bert")) == 1, 15))
     bc = bert.chat(ch["ref"])
+    ev = Events("b", "fb-bert")
+    time.sleep(0.5)
+    app = App(bert, bc["id"], ev)
     s, d, m3 = bert.send(bc, "Hallo Anna, Gruesse von B", reply_to=m2["id"])
     ok(f"B: Antwort ueber das Heim ({s}, fseq {d.get('fseq')})", s == 200 and d.get("fseq") == 3 and not d.get("pending"))
     ok("A: Antwort angekommen", wait(lambda: anna.texts(ch)[-1:] == ["Hallo Anna, Gruesse von B"], 15))
     ok("B: eigene Nachricht bestaetigt (fseq, nicht ausstehend)",
        wait(lambda: [(x["fseq"], x.get("fstate")) for x in bert.msgs(bc["id"]) if x["id"] == m3["id"]] == [(3, None)], 15))
+    # Fehler 2.3.0: der Server von B legte die Nachricht als 'pending' an und meldete sie sofort (chat.message) - die App
+    # lud sie mit ⏳; die synchrone Bestaetigung des Heims kam ohne Ereignis -> die App blieb auf "wird zugestellt"
+    ok(f"B: Live-Ereignis meldet die Bestaetigung ({[sorted(x) for x in ev.of('chat.message', m3['id'])]})",
+       wait(lambda: app.msgs.get(m3["id"], {}).get("fstate", "x") is None, 10))
+    app.stop = True
+    ev.close()
     ok("B: Verlauf in fseq-Reihenfolge", [x["fseq"] for x in bert.msgs(bc["id"]) if x["kind"] == "msg"] == [1, 2, 3])
     # --- Tippen, Gelesen lokal ------------------------------------------------------------------------------------------
     ok("B: Tippen (verwerfbar) ok", api("b", "fb-bert", "POST", f"/api/chats/{bc['id']}/typing")[0] == 200)

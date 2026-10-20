@@ -32,6 +32,9 @@ Ereignisse (event: ..., data: JSON) - die Rechte werden beim VERSAND geprueft (s
   call.state       {call_id, chat_id, state: active|ended, device?, reason?, status?}   an beide
   call.roster      {call_id, chat_id, kind, media, state, legs, joinable, join_block, limit}   2.4: Teilnehmerliste (alle Konten des Anrufs)
   call.invite      {call_id, chat_id, kind, media, from, from_device, ring_s, silent, members}   2.4: Gruppenanruf klingelt
+  chat.receipt     {chat_id, receipts:[{from, handle?, sealed}], more?}   (2.4, saga.chat_status) Gelesen-Bestaetigungen (more: GET holen)
+  chat.presence    {username, online, last}            (2.4) Online-Status - nur an Konten, die die Person gerade abonniert haben
+  chat.privacy     {receipts, online}                  (2.4) eigene Einstellung geaendert (andere Tabs/Geraete)
   ai.persona.changed {name, custom_name, avatar, avatar_etag}   (2.1) Name/Bild/Schalter der KI geaendert - an Konten, die die KI nutzen duerfen (bzw. bisher durften)
 Jedes Ereignis ausser hello/reset/bye hat eine id (<boot>-<nummer>); mit Last-Event-ID holt ein neuer Aufbau verpasste
 Ereignisse der letzten 10 Minuten nach. Heartbeat: Kommentarzeile alle ~25 s (haelt Proxys offen).
@@ -78,6 +81,11 @@ _presence = {}           # note_id -> {uid: [zeit, bearbeitet]}
 FED_PRESENCE = None      # fn(uid, negative_id, editing, leave, name) -> Antwort fuer POST /api/presence
 FED_WATCHERS = None      # fn(c, nid, me) -> [{username, name, editing, avatar, remote}] - fremde Personen auf der Seite (Abo)
 FED_FANOUT = None        # fn(kind, payload, anwesenheit) - im Thread nach jedem Seiten-Ereignis: an die Abos anderer Instanzen weitergeben
+# 2.4 (saga.chat_status): Online-Status. Online = mindestens eine Live-Verbindung; offline erst OFF_GRACE Sekunden nach der
+# letzten (Neuaufbau nach MAX_AGE, kurze Funkloecher flackern nicht). ONLINE(payload) im Thread -> [(uid, ereignis, daten)]
+ONLINE = None
+OFF_GRACE = max(5, int(E.get("CHAT_OFFLINE_GRACE", "30")))
+_on = {}                 # uid -> seit wann online (gemeldet)          (nur in der Event-Schleife veraendert)
 _pres_hits = {}          # uid -> letzte Anwesenheitsmeldung (Bremse)
 
 
@@ -136,6 +144,17 @@ def stop():
 def count():
     """Aktive Live-Verbindungen (Admin-Bereich, nur die Zahl)."""
     return sum(len(v) for v in list(_clients.values()))
+
+
+def is_online(uid):
+    """(2.4) Konto gerade online (Live-Verbindung bzw. noch in der Karenz nach der letzten)? Aus jedem Thread lesbar."""
+    return uid in _on
+
+
+def _online(uid, on, at=None):
+    """(2.4) Wechsel online/offline an saga.chat_status melden (ueber die Verteiler-Warteschlange, Arbeit im Thread)."""
+    if ONLINE is not None and _S["q"] is not None:
+        _put(_S["q"], ("chat.online", {"uid": uid, "online": on, "at": at or time.time()}))
 
 
 def _sink(kind, payload):
@@ -215,7 +234,19 @@ async def _dispatch():
             if kind == "account.deleted":
                 _drop_user(payload.get("uid"))
                 continue
+            if kind == "chat.online":                         # (2.4) Online-Status: speichern, Abos benachrichtigen
+                if ONLINE is not None:
+                    aud = _audience()
+                    for uid, typ, data in await asyncio.to_thread(ONLINE, payload):
+                        if uid in aud:
+                            _deliver(uid, typ, data)
+                continue
             aud = _audience()
+            if kind == "direct_each":                         # (2.4) je Konto eigene Daten, ohne Rechtepruefung (Empfaenger
+                for uid, typ, data in payload.get("items") or ():    # stehen fest, z. B. gebuendelte Gelesen-Bestaetigungen)
+                    if uid in aud:
+                        _deliver(uid, typ, data)
+                continue
             if not aud and not (FED_FANOUT is not None and kind in ("note.changed", "presence", "comments.changed", "notes.tree")):
                 continue
             pres = {k: {u: bool(e[1]) for u, e in v.items()} for k, v in _presence.items()}     # Kopie fuer den Thread
@@ -433,6 +464,7 @@ def _drop_user(uid):
         cl.close("account")
     _buf.pop(uid, None)
     _left.pop(uid, None)
+    _on.pop(uid, None)
     _lost[uid] = _S["seq"]
     for nid in [n for n, v in _presence.items() if uid in v]:
         _presence[nid].pop(uid, None)
@@ -459,6 +491,9 @@ async def _housekeeping():
             for uid, buf in list(_buf.items()):
                 while buf and now - buf[0][1] > REPLAY_SEC:
                     _lost[uid] = max(_lost.get(uid, 0), buf.popleft()[0])
+            for uid in [u for u in _on if not _clients.get(u) and now - _left.get(u, 0) >= OFF_GRACE]:
+                _on.pop(uid, None)                             # (2.4) offline: letzte Verbindung seit OFF_GRACE weg
+                _online(uid, False, _left.get(uid) or now)
             for uid, ts in list(_left.items()):
                 if now - ts >= LINGER and not _clients.get(uid):
                     _left.pop(uid, None)
@@ -489,6 +524,9 @@ def _register(uid, kind, origin=None):
     cl = _Client(uid, kind, origin)
     lst.append(cl)
     _left.pop(uid, None)
+    if uid not in _on:                                       # (2.4) jetzt online
+        _on[uid] = time.time()
+        _online(uid, True)
     return cl
 
 

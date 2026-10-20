@@ -771,6 +771,16 @@ CREATE INDEX IF NOT EXISTS user_backup_run_uid ON user_backup_run (uid, id);
 CREATE TABLE IF NOT EXISTS nc_account (
     uid TEXT PRIMARY KEY, server TEXT NOT NULL, login TEXT NOT NULL, dav_user TEXT NOT NULL, secret TEXT NOT NULL,
     created DOUBLE PRECISION, used DOUBLE PRECISION);
+-- Gelesen-Bestaetigungen und Online-Status (2.4, saga/chat_status.py, Migration 13). chat_receipt: je Chat, lesender Person
+-- (reader: Benutzername oder Prinzipal '@~x@host') und Konto DIESES Servers (viewer) nur die NEUESTE Bestaetigung, versiegelt
+-- fuer den Backup-Schluessel des viewer-Kontos (crypto_box_seal) und vom Geraet der lesenden Person signiert - der Server
+-- sieht nur, DASS es eine gibt (und wann). chat_seen: "zuletzt online" je Konto, nur im 5-Minuten-Raster (kein Verlauf).
+CREATE TABLE IF NOT EXISTS chat_receipt (
+    chat_id BIGINT NOT NULL REFERENCES chat(id) ON DELETE CASCADE, reader TEXT NOT NULL, viewer TEXT NOT NULL,
+    sealed TEXT NOT NULL, at DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (chat_id, viewer, reader));
+CREATE INDEX IF NOT EXISTS chat_receipt_reader ON chat_receipt (reader);
+CREATE TABLE IF NOT EXISTS chat_seen (uid TEXT PRIMARY KEY, at DOUBLE PRECISION NOT NULL);
 -- Bestand (erster Start, Backup von vor 2.2 zurueckgespielt): alles ohne abgeleitete Daten zum Abgleich vormerken
 INSERT INTO note_stale (note_id, uid) SELECT n.id, n.uid FROM note n
  WHERE NOT EXISTS (SELECT 1 FROM note_derived d WHERE d.note_id = n.id) ON CONFLICT (note_id) DO NOTHING;
@@ -899,6 +909,13 @@ INSERT INTO chat_call_leg (call_id, device, who, peer_id, role, state, caps, joi
   SELECT id, callee_device, callee, CASE WHEN callee LIKE '@%' THEN peer_id END, 'member', 'active', caps_b, answered, seen_b
     FROM chat_call WHERE state='active' AND callee_device IS NOT NULL ON CONFLICT DO NOTHING;
 """,
+    # 2.4.0 (Gelesen-Bestaetigungen und Online-Status, saga/chat_status.py): die Tabellen chat_receipt und chat_seen legt
+    # SCHEMA oben an (CREATE TABLE IF NOT EXISTS). Diese Migration hebt nur den Schema-Stand (wie 6) und prueft, dass sie da
+    # sind - aeltere Versionen starten danach nicht mehr auf dieser Datenbank. Beim Zusammenfuehren von 11 (E2) und 12
+    # (E4/E5) auf 13 umnummeriert (diese prueft nur, beliebig oft ausfuehrbar).
+    13: """
+SELECT 1 FROM chat_receipt, chat_seen LIMIT 0;
+""",
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
 BACKUP_DIR = os.path.join(os.environ.get("STATE_DIR", "/data"), "backups")
@@ -971,11 +988,14 @@ def backup(label="manuell"):
 # Start sie leer an (laufende Anrufe sind nach dem Zurueckspielen ohnehin vorbei).
 # chat_upload (2.4 E2, Fremdschluessel auf chat): laufende Uploads gehoeren zur alten Datenbank - weg (die Teil-Dateien unter
 # STATE_DIR/chat/up raeumt der naechste purge() ab, ein Neustart des Uploads legt einen neuen an).
+# 2.4 (Migration 13): chat_receipt (Fremdschluessel auf chat) und chat_seen - ein aelteres Backup kennt sie nicht; danach
+# legt der naechste Start sie leer an (Bestaetigungen kommen mit dem naechsten Lesen neu, "zuletzt online" fehlt bis dahin).
 _RESTORE_DROP = (b"DROP TABLE IF EXISTS public.note_link, public.note_stale, public.note_derived;\n"
                  b"DROP TABLE IF EXISTS public.note_tseq, public.note_tseq_meta;\n"
                  b"DROP TABLE IF EXISTS public.chat_invite;\n"
                  b"DROP TABLE IF EXISTS public.chat_call_leg, public.chat_call_invite;\n"
-                 b"DROP TABLE IF EXISTS public.chat_upload;\n")
+                 b"DROP TABLE IF EXISTS public.chat_upload;\n"
+                 b"DROP TABLE IF EXISTS public.chat_receipt, public.chat_seen;\n")
 _RESTORE_SET = re.compile(rb"^SET ([a-z_]+) = .*;\r?\n?$")
 
 

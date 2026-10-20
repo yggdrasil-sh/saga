@@ -148,6 +148,48 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Anrufe: saga-call v3“ (Föderation: `APP-API-FED.md` §7.1).
 - **Messung:** `tools/perf/bench.py` misst die Anruf-Signalisierung, `tests/browser_calls.js` den Anrufaufbau.
 
+### 2.4 Gelesen-Bestätigungen und Online-Status (Server und Web)
+
+- **Gelesen-Haken „wie WhatsApp“:** Eigene Nachrichten zeigen ⏳ wird zugestellt → ✓ zugestellt (beim Server bzw. Heim)
+  → ✓✓ gelesen. In Gruppen zählt der Haken mit, ein Klick zeigt **„Gelesen von“** mit Namen und Zeit.
+- **Online-Status:** Im Kopf eines Direkt-Chats „online“ bzw. „zuletzt online vor …“ (auf 5 Minuten gerundet), in der
+  Chatliste ein grüner Ring. Nur für Personen, mit denen man einen angenommenen Chat hat; abgeleitet aus der
+  Live-Verbindung (offline 30 s nach der letzten, `CHAT_OFFLINE_GRACE`). Kein Verlauf, nichts davon im Admin-Bereich.
+- **Datenschutz:** Beides ist standardmäßig an und unter „Chats & Geräte“ → Datenschutz getrennt abschaltbar
+  („Gelesen-Bestätigungen senden“, „Online-Status zeigen“) – gegenseitig: Wer etwas abschaltet, sieht es bei anderen
+  auch nicht. Abschalten zieht schon gesendete Bestätigungen zurück, auch auf anderen Servern.
+- **Ende-zu-Ende:** Eine Bestätigung („gelesen bis Nachricht X“) wird vom Gerät signiert und je Mitglied für dessen
+  Backup-Schlüssel versiegelt (`saga-chat/v1|v2 receipt`, Testvektoren `tests/vectors/receipts.json`). Der Server
+  speichert nur die neueste je Person, sieht nur, *dass* es eine gibt, und kann kein „gelesen“ erfinden. Der Lese-Zeiger
+  für den Ungelesen-Zähler bleibt wie bisher auf dem eigenen Server.
+- **Über Servergrenzen:** neue Fähigkeiten `receipts` und `online` (Protokoll 2). Bestätigungen gehen versiegelt über
+  das Heim des Chats (in der Reihenfolge der Nachrichten), der Online-Status als kurzes Abo (90 s) beim Server der
+  Person. Mit 2.3-Servern wird nichts davon gesendet. Ersetzt die frühere Regel „Gelesen bleibt lokal“.
+- **Last:** Bestätigungen werden je Chat gebündelt (höchstens ein Live-Ereignis je 2 s; mehr als 8 auf einmal nur als
+  Hinweis, den offene Chats abrufen), Clients senden höchstens eine je Chat und 2 s; der Online-Status geht nur an Konten,
+  die die Person gerade sichtbar haben (Abo). Messung gegen E0 (Stufe S, 2-Kern-Container, Median aus 3 Läufen):
+  bestehende Endpunkte unverändert im Rauschen, alle Grenzwerte eingehalten. 50er-Gruppe, 49 Lesende alle 2 s (490
+  Bestätigungen mit je 49 Siegeln in 25 s): `/read` mit Bestätigung p95 21–33 ms (E0 ohne Wirkung 14 ms), Python-CPU
+  14 % statt 9 %, je Konto ≤ 12 Live-Ereignisse, Live-Kanal aller 50 zusammen ~210 KB, Speicher unverändert;
+  Online-Abo für 49 Personen p95 24–36 ms. Neue Grenzwerte in `tools/perf/limits.json`.
+- **Server:** `GET/PUT /api/chat/privacy`, `POST /api/chats/{id}/read` mit `receipt`, `GET /api/chats/{id}/receipts`,
+  `POST /api/chat/presence`, Live-Ereignisse `chat.receipt`, `chat.presence`, `chat.privacy`; `chat.message` meldet bei
+  der Zustellbestätigung des Heims auch `fseq`. **Migration 11** (vorläufige Nummer, siehe `db.py`): Tabellen
+  `chat_receipt` und `chat_seen`; beim Zurückspielen älterer Backups werden sie neu angelegt. Kontolöschung und
+  persönliches Backup berücksichtigen sie.
+- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Gelesen-Bestätigungen und Online-Status“ (Föderation:
+  `APP-API-FED.md` §11). `MIN_APP` unverändert – ältere Apps sehen einfach keine Haken.
+- **Tests:** `chat_gelesen`, `foederation_gelesen` (auch gegen 2.3 als Gegenstelle), `browser_gelesen.js`,
+  `browser_fed_chat.js` erweitert, Vektoren in `chat_v2_vektoren`; Messung `bench.py` Phase `receipts`.
+
+### Behoben
+
+- **Chats über Servergrenzen: eigene Nachricht blieb auf „⏳ wird zugestellt“.** Liegt der Direkt-Chat auf dem anderen
+  Server (Heim), legt der eigene Server die Nachricht zuerst als ausstehend an und meldet sie sofort an die Geräte. Bestätigte
+  das Heim gleich, kam dafür kein Live-Ereignis mehr – Web und Apps zeigten die längst zugestellte Nachricht bis zum
+  Neuladen als ausstehend. Der Server meldet die Bestätigung jetzt (ebenso „nicht zugestellt“ und eine wegen geänderter
+  Empfänger verworfene Kopie); die Weboberfläche übernimmt zusätzlich die Bestätigung aus der Antwort beim Senden.
+
 ## [2.3.0] – 2026-10-19
 
 Saga 2.3 ist das große Herbst-Update: spürbar schneller bei vielen Seiten und großen Datenbanken, Föderation mit

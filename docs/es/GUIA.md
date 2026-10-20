@@ -866,6 +866,13 @@ servidor solo guarda datos cifrados. Tampoco el administrador puede leer el cont
   `docs/APP-API-CHAT.md`.
 - **⚙ Chats y dispositivos:** dispositivos con acceso, quitar dispositivos (dejan de recibir al instante), crear una
   nueva clave de recuperación (la anterior deja de funcionar).
+- **Leído y en línea (2.4):** tus mensajes muestran **✓** (llegó al servidor) y **✓✓** en cuanto la otra persona los
+  ha leído; en los grupos el visto cuenta, y con un clic aparece **«Leído por»** con la hora. En la cabecera de un chat
+  directo pone **«en línea»** o **«en línea por última vez hace …»** (redondeado a 5 minutos); en la lista, un anillo
+  verde. Ambas cosas están activadas por defecto y se pueden desactivar por separado en **«⚙ Chats y dispositivos» →
+  Privacidad**, de forma recíproca: si desactivas las confirmaciones de lectura o el estado en línea, tampoco los ves en
+  los demás. La confirmación de lectura está cifrada de extremo a extremo (el servidor solo ve que existe); el estado en
+  línea solo lo ven las personas con las que tienes un chat. Entre servidores funciona si ambos tienen la versión 2.4.
 - Notificación «Nuevo mensaje de Nombre», sin contenido; se puede desactivar en Ajustes → Cuenta → Notificaciones.
 
 **Administración:** General → «Chats»: **Permitir chats** (activado por defecto) y **Conservar mensajes como máximo
@@ -1792,6 +1799,7 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `MEDIA_STALL_TIMEOUT` | `60` | saga-media: segundos sin avance al subir o descargar antes de cerrar la conexión |
 | `MEDIA_ACCEL` / `MEDIA_ACCEL_PREFIX` | `off` / `/_saga_media/` (Caddy `/`) | Sin saga-media: `nginx` o `caddy` = el proxy inverso entrega los adjuntos del chat mediante `X-Accel-Redirect` |
 | `MEDIA_PY_STREAMS` | `4` | Sin saga-media ni `MEDIA_ACCEL`: Python entrega como máximo tantos adjuntos a la vez |
+| `CHAT_OFFLINE_GRACE` | `30` | Segundos sin conexión en vivo hasta que una persona cuenta como desconectada (estado en línea en chats, 2.4) |
 | `REQUEST_MAX_MB` | `2` | Petición más grande salvo subidas de archivos (p. ej. páginas muy largas); las mayores reciben 413 |
 | `KDF_PARALLEL` | `4` | Comprobaciones de contraseña a la vez (unos 32 MB de memoria cada una); las demás esperan hasta 2 s |
 | `NOTE_MAX_COUNT` | `5000` | Páginas por usuario (sin entradas de bases de datos ni papelera) |

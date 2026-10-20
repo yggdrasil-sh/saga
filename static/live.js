@@ -277,7 +277,8 @@
     // Anrufe (2.1, static/calls.js): call.ring / call.signal / call.state ebenso ueber 'hk-live'
     // 2.4 (E4/E5): call.roster (Teilnehmerliste) und call.invite (Gruppenanruf klingelt)
     ['chat.message', 'chat.deleted', 'chat.read', 'chat.typing', 'chat.changed', 'chat.link', 'chat.device', 'call.ring', 'call.signal',
-     'call.state', 'call.roster', 'call.invite', 'avatar.changed', 'ai.persona.changed', 'chat.cleared', 'chat.removed'].forEach(function (n) {   // (2.1) Loeschen
+     'call.state', 'call.roster', 'call.invite', 'avatar.changed', 'ai.persona.changed', 'chat.cleared', 'chat.removed',   // (2.1) Loeschen
+     'chat.receipt', 'chat.presence', 'chat.privacy'].forEach(function (n) {               // (2.4) Gelesen, Online-Status
       on(es, n, function (d) { chatEvent(n, d); });
     });
     on(es, 'avatar.changed', swapAvatar);

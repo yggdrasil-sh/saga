@@ -397,6 +397,19 @@
     if (stored.verified) return { result: 'block', store: null };
     return { result: 'warn', store: { ident: ident, verified: false, changed: true, old: stored.ident, dver: ver } };
   }
+  // Gelesen-Bestaetigung (2.4): body = JSON-Text {id, n, ts}, signiert vom Geraet, versiegelt fuer den Backup-Schluessel des
+  // Gegenuebers. v1: chat = String(chat_id), reader = Benutzername; v2: chat = chat_ref, reader = Handle.
+  function receiptMsg(chat, reader, dev, body, v2) { return lp((v2 ? V2 : V) + 'receipt', String(chat), reader, dev, body); }
+  function sealReceipt(o) {
+    var body = JSON.stringify(o.body), sig = S.crypto_sign_detached(receiptMsg(o.chat, o.reader, o.device, body, o.v2), o.sign_sk);
+    return b64(S.crypto_box_seal(enc.encode(JSON.stringify({ v: 1, dev: o.device, body: body, sig: b64(sig) })), o.to_pk));
+  }
+  function openReceipt(sealed, pk, sk) {
+    var d = JSON.parse(dec.decode(S.crypto_box_seal_open(unb64(sealed), pk, sk)));
+    if (d.v !== 1 || typeof d.body !== 'string' || typeof d.dev !== 'string') throw new Error('receipt version');
+    return { dev: d.dev, body: d.body, sig: unb64(d.sig, 64) };
+  }
+  function verifyReceipt(chat, reader, r, sign_pk, v2) { return verify(r.sig, receiptMsg(chat, reader, r.dev, r.body, v2), sign_pk); }
   function recipientsV2(entries) {
     var out = [];
     (entries || []).forEach(function (e) {
@@ -414,6 +427,7 @@
     tofuV2: tofuV2, recipientsV2: recipientsV2, deviceSetMsg: deviceSetMsg, deviceSetSig: deviceSetSig, verifyDeviceSet: verifyDeviceSet,
     signalMsg: signalMsg, signalSig: signalSig, signalInner: signalInner, sealSignal: sealSignal, openSignal: openSignal,
     verifySignal: verifySignal, sdpFingerprints: sdpFingerprints,
+    receiptMsg: receiptMsg, sealReceipt: sealReceipt, openReceipt: openReceipt, verifyReceipt: verifyReceipt,
     signalMsgV2: signalMsgV2, sealSignalV2: sealSignalV2, openSignalV2: openSignalV2, verifySignalV2: verifySignalV2,
     VERSION: 1, OPS: OPS, MEM: MEM, b64: b64, unb64: unb64, lp: lp, hex: hex,
     newIdentity: newIdentity, newDevice: newDevice, backupSig: backupSig, deviceSig: deviceSig, deviceMsg: deviceMsg,

@@ -855,6 +855,13 @@ speichert nur verschlüsselte Daten. Auch der Admin kann keine Inhalte lesen.
   haben. Schnittstelle für Apps: `docs/APP-API-CHAT.md`.
 - **⚙ Chats & Geräte:** Liste der Geräte mit Zugriff, Geräte entfernen (bekommen sofort nichts mehr), neuen
   Wiederherstellungsschlüssel erzeugen (der alte gilt dann nicht mehr).
+- **Gelesen und online (ab 2.4):** Eigene Nachrichten zeigen **✓** (beim Server angekommen) und **✓✓**, sobald das
+  Gegenüber sie gelesen hat; in Gruppen zählt der Haken mit, ein Klick zeigt **„Gelesen von“** mit Zeit. Im Kopf eines
+  Direkt-Chats steht **„online“** bzw. **„zuletzt online vor …“** (auf 5 Minuten gerundet), in der Liste ein grüner Ring.
+  Beides ist standardmäßig an und unter **„⚙ Chats & Geräte“ → Datenschutz** getrennt abschaltbar – gegenseitig: Wer
+  Gelesen-Bestätigungen bzw. den Online-Status abschaltet, sieht sie bei anderen auch nicht. Die Bestätigung ist
+  Ende-zu-Ende-verschlüsselt (der Server sieht nur, dass es eine gibt), der Online-Status gilt nur für Personen, mit
+  denen du einen Chat hast. Über Servergrenzen geht beides, wenn beide Server 2.4 haben.
 - Benachrichtigung „Neue Nachricht von Name“ – ohne Inhalt; abschaltbar unter Einstellungen → Konto → Benachrichtigungen.
 
 **Admin:** Allgemein → „Chats“: **Chats erlauben** (Standard an) und **Nachrichten höchstens aufbewahren (Tage)** – ältere
@@ -1760,6 +1767,7 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `MEDIA_STALL_TIMEOUT` | `60` | saga-media: Sekunden ohne Fortschritt beim Hoch- oder Herunterladen, bis die Verbindung schließt |
 | `MEDIA_ACCEL` / `MEDIA_ACCEL_PREFIX` | `off` / `/_saga_media/` (Caddy `/`) | Ohne saga-media: `nginx` oder `caddy` = der Reverse Proxy liefert Chat-Anhänge per `X-Accel-Redirect` |
 | `MEDIA_PY_STREAMS` | `4` | Ohne saga-media und `MEDIA_ACCEL`: höchstens so viele Anhänge liefert Python gleichzeitig aus |
+| `CHAT_OFFLINE_GRACE` | `30` | Sekunden ohne Live-Verbindung, bis eine Person als offline gilt (Online-Status in Chats, 2.4) |
 | `REQUEST_MAX_MB` | `2` | Größte Anfrage außer Datei-Uploads (z. B. sehr lange Seiten); größere bekommen 413 |
 | `KDF_PARALLEL` | `4` | So viele Passwortprüfungen gleichzeitig (je ca. 32 MB Speicher); weitere warten bis 2 s |
 | `NOTE_MAX_COUNT` | `5000` | Seiten je Benutzer (ohne Datenbank-Einträge und Papierkorb) |

@@ -831,6 +831,13 @@ only stores encrypted data. The admin can't read any content either.
   may have copies. API for apps: `docs/APP-API-CHAT.md`.
 - **⚙ Chats & devices:** devices with access, remove devices (they get nothing more, immediately), create a new
   recovery key (the old one stops working).
+- **Read and online (2.4):** your messages show **✓** (arrived at the server) and **✓✓** once the other person has
+  read them; in groups the tick counts, a click shows **“Read by”** with the time. A direct chat's header shows
+  **“online”** or **“last online … ago”** (rounded to 5 minutes), the list shows a green ring. Both are on by default
+  and can be turned off separately under **“⚙ Chats & devices” → Privacy** – mutually: if you turn read receipts or the
+  online status off, you don't see them for others either. Read receipts are end-to-end encrypted (the server only sees
+  that one exists); the online status is only shown to people you have a chat with. Across servers both work when both
+  servers run 2.4.
 - Notification “New message from Name” – without content; can be turned off under Settings → Account → Notifications.
 
 **Admin:** General → “Chats”: **Allow chats** (on by default) and **Keep messages at most (days)** – the server deletes
@@ -1720,6 +1727,7 @@ with the same account also switch the oldest ones to polling.
 | `MEDIA_STALL_TIMEOUT` | `60` | saga-media: seconds without progress on an upload or download before the connection is closed |
 | `MEDIA_ACCEL` / `MEDIA_ACCEL_PREFIX` | `off` / `/_saga_media/` (Caddy `/`) | Without saga-media: `nginx` or `caddy` = the reverse proxy serves chat attachments via `X-Accel-Redirect` |
 | `MEDIA_PY_STREAMS` | `4` | Without saga-media and `MEDIA_ACCEL`: Python serves at most this many attachments at a time |
+| `CHAT_OFFLINE_GRACE` | `30` | Seconds without a live connection until a person counts as offline (online status in chats, 2.4) |
 | `REQUEST_MAX_MB` | `2` | Largest request apart from file uploads (e.g. very long pages); larger ones get 413 |
 | `KDF_PARALLEL` | `4` | Password checks at the same time (about 32 MB of memory each); others wait up to 2 s |
 | `NOTE_MAX_COUNT` | `5000` | Pages per user (not counting database entries and trash) |

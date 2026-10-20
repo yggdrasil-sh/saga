@@ -7,7 +7,8 @@ dazu **Direkt-Chats über Servergrenzen** mit Nachrichtenanfragen (E2, Abschnitt
 `saga-call/v2` (E3, Abschnitt 7), **Seiten anderer Server vollständig** – Datenbanken, Unterseiten, Hochladen,
 Versionen, Export, Anwesenheit und Live (E4/E6, Abschnitt 8) – sowie **freie Gruppen und Seiten-Chats** mit Mitgliedern
 mehrerer Server (E5, Abschnitt 9). Abschnitt 10 fasst zusammen, wie sich die Server gegen protokollwidrige Gegenstellen
-schützen (E8) und was Apps davon sehen.
+schützen (E8) und was Apps davon sehen. **2.4:** Gelesen-Bestätigungen (versiegelt, über das Heim) und Online-Status
+über Servergrenzen – Abschnitt 11 (ersetzt die frühere Regel „Gelesen bleibt lokal“).
 
 Alle Endpunkte wie gewohnt mit Sitzung oder Geräte-Schlüssel (`Authorization: Bearer hkd_…`) und `X-Saga: 1`. Alles
 ist rückwärtskompatibel: neue Felder und Ereignisse ignorieren ältere Apps; lokale Chats bleiben **`saga-chat/v1`**,
@@ -160,13 +161,15 @@ Live-Ereignisse an Apps (wie alle über `/api/events`, Art `direct`):
 | `chat.request` | `{chat_id}` | neue Nachrichtenanfrage (still – keine Benachrichtigung) |
 | `chat.message` | wie bisher, zusätzlich `kind: 'sys'` bzw. `failed: true` | neue Nachricht, Systemzeile; bei `id` einer eigenen wartenden Nachricht: jetzt zugestellt bzw. abgewiesen |
 | `chat.typing` | `{chat_id, user:{username, handle, name}}` | tippt (auch Personen anderer Server) |
+| `chat.receipt` | `{chat_id, receipts:[{from, handle, sealed}], more?}` | (2.4) Gelesen-Bestätigungen, auch von Personen anderer Server (Abschnitt 11) |
+| `chat.presence` | `{username, online, last}` | (2.4) Online-Status einer abonnierten Person, auch anderer Server |
 | `chat.removed` / `chat.deleted` / `chat.changed` | wie bisher | auch für Chats über Servergrenzen |
 
 ## 5. Server-zu-Server (zur Einordnung)
 
 `/.well-known/saga` meldet `protocol: 2`, `protocols: [1, 2]` und `capabilities` (v1: `share read edit comment files
 notify`; neu: `v2 express handles directory keys chat2 calls2 live presence db subpages upload versions export
-chatgroups`). Funktionen gelten nur, wenn **beide** Server sie melden (Austausch
+chatgroups`; 2.4: `receipts online`). Funktionen gelten nur, wenn **beide** Server sie melden (Austausch
 über `POST /fed/v2/hello`, signiert) **und** der Admin-Schalter je Instanz an ist (Chat, Anrufe, Adressbuch; Ausnahme
 von „Teilen nur innerhalb gemeinsamer Gruppen“ – Standard aus). Neue signierte Endpunkte: `POST /fed/v2/hello`,
 `POST /fed/v2/events` (Ereignisse mit Kennung `id`, optional Kette `chain` + `cseq`: idempotent, streng aufsteigend je
@@ -233,8 +236,9 @@ beginnt, nimmt an. `GET /api/chat/blocks` → `{blocks:[{target, kind: person|in
    Systemzeile (Klartext-Metadaten in `body_ct`, z. B. `{"type":"ai","on":true,"by":handle,"name":…}`).
 5. Nachricht mit `fstate: 'failed'`: „nicht zugestellt“, anbieten „erneut senden“ (neu verschlüsseln, alte löschen).
 
-Gelesen (`…/read`) bleibt auf dem eigenen Server, Tippen (`…/typing`) geht direkt an den anderen Server (verwerfbar).
-Push und Benachrichtigungen kommen nur vom eigenen Server.
+Der Lese-Zeiger (`…/read` mit `seq`, Ungelesen-Zähler) bleibt auf dem eigenen Server. **Gelesen-Bestätigungen** (2.4)
+gehen versiegelt über das Heim an die anderen (Abschnitt 11) – nur mit Servern, die `receipts` melden. Tippen
+(`…/typing`) geht direkt an den anderen Server (verwerfbar). Push und Benachrichtigungen kommen nur vom eigenen Server.
 
 ### 6.5 Anhänge, Löschen, Frist, KI
 
@@ -280,10 +284,10 @@ Server nur Anhänge bis `FILE_MAX` (sonst `413`), ungültige Bereiche `416`. Ank
 
 Heim = Server der Person, die den Chat beginnt; maßgeblich für Mitglieder, Empfängerliste (prüft sie exakt), Reihenfolge
 (`fseq`), Frist, Löschen, KI-Schalter. Signierte Endpunkte: `POST /fed/v2/chat` (Aufträge `request accept decline send
-del drop meta typing`, synchron, harte Frist `FED_EXPRESS_TIMEOUT`; sonst Warteschlange beim Absender-Server als
+del drop meta typing`, 2.4 dazu `receipt online online.ev` – Abschnitt 11, synchron, harte Frist `FED_EXPRESS_TIMEOUT`; sonst Warteschlange beim Absender-Server als
 Ereignis `chat.op`, Kette `chatup:<id>`), `GET /fed/v2/chat/msgs?ref=&after=` (Lücken nachholen),
 `GET /fed/v2/chat/files/{fid}` (Anhang beim Absender-Server). Ereignisse vom Heim (Kette `chat:<id>`, mit Epoche):
-`chat.msg`, `chat.msg.del`, `chat.removed`, `chat.meta`, `chat.reject`. Absender müssen zum anfragenden Server
+`chat.msg`, `chat.msg.del`, `chat.removed`, `chat.meta`, `chat.reject`, 2.4 `chat.receipt`. Absender müssen zum anfragenden Server
 gehören und richtig signiert sein; Wiederholungen (`msg_id`), Umsortieren und Fälschungen werden abgewiesen und im
 Prüfprotokoll vermerkt. Trennen → Chats mit Personen bzw. Heim dort schreibgeschützt.
 
@@ -454,3 +458,30 @@ Für Apps sichtbar: `429` aus `/api/fed/people` (60/min), Nachrichten mit `pendi
 erneuter (langsamerer) erster Abruf eines Anhangs nach Ablauf der Zwischenkopie, `invited_by.remote`. Verlässt eine
 Person das Adressbuch ihres Servers (Opt-out) oder trennt der Admin die Verbindung, löscht der eigene Server ihren
 Anzeigenamen, sofern sie hier nirgends mehr vorkommt (Kommentare, Versionen und Chat-Verläufe behalten ihn).
+
+## 11. Gelesen-Bestätigungen und Online-Status über Servergrenzen (2.4)
+
+Für Apps gilt derselbe Vertrag wie lokal (`APP-API.md`, Abschnitt „Gelesen-Bestätigungen und Online-Status“) mit
+Format **v2**: signiert wird `LP("saga-chat/v2/receipt", chat_ref, eigener Handle, Gerät, body)`, versiegelt je
+anderem Mitglied für dessen `backup_pub` aus den geprüften v2-Schlüsseln, Schlüssel `"backup:<handle>"`; `n` ist `fseq`.
+Beim Empfang `handle` nutzen (Geräteschlüssel aus `GET /api/chat/v2/keys`, TOFU wie bei Nachrichten). Die Chat-Felder
+`receipts_ok` / `online_ok` sagen, ob der andere Server mitmacht (Saga 2.3: `false` → nichts versiegeln, nichts zeigen).
+Die frühere Regel „Gelesen bleibt lokal“ gilt nur noch für den Lese-Zeiger (`last_read`, Ungelesen-Zähler).
+
+**Zwischen den Servern (zur Einordnung):** Fähigkeiten `receipts` und `online` in `CAPS2` (beide Server, Admin-Schalter
+„Chat“ an). Mit 2.3-Servern wird nichts davon gesendet.
+
+- Bestätigungen laufen **über das Heim**, in der Kette des Chats (also nach den Nachrichten, auf die sie sich beziehen):
+  Teilnehmer-Server → Heim: Auftrag `{"op": "receipt", "ref", "actor": <handle>, "keys": {"backup:<handle>": sealed}}`
+  (Kette `chatup:<id>`); Heim → Teilnehmer-Server: Ereignis `{"type": "chat.receipt", "ref", "by": <handle>, "keys"}`
+  (Kette `chat:<id>`, je Server nur die Schlüssel seiner Konten). Zurücknehmen (Einstellung aus): dieselben Wege mit
+  `"off": true` statt `keys`. Geprüft wird wie bei Nachrichten: `actor` gehört zum anfragenden Server, `by` kommt vom
+  Heim, beide sind angenommene Mitglieder; der Server der lesenden Person schickt je Leser und Chat höchstens alle 2 s
+  eine, jeder Server begrenzt je Instanz (1200 je Minute). Gespeichert wird nur das Versiegelte (neueste je Leser und
+  Konto) – kein Lese-Zeiger im Klartext, keine Nachrichten-Kennung.
+- Online-Status: Der eigene Server abonniert beim **Server der Person** (Muster wie die Seiten-Anwesenheit, 90 s,
+  erneuert mit den Abfragen der Apps): `{"op": "online", "actor": <handle>, "items": [{"h": <handle>, "ref": <chat_ref>}]}`
+  → `{"users": {<handle>: {"online", "last"}}, "ttl": 90}` – nur für Personen dort, die mit `actor` einen angenommenen
+  Chat `ref` haben und den Status zeigen. Wechsel meldet der Server der Person verwerfbar mit
+  `{"op": "online.ev", "items": [{"h", "online", "last"} | {"h", "hidden": true}]}`; angenommen werden nur Handles des
+  meldenden Servers. „Zuletzt online“ geht nur gerundet (5 Minuten) über die Leitung.
