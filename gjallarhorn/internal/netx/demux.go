@@ -142,6 +142,7 @@ type Mux struct {
 	NoCoalesce  bool          // Schreibvorgaenge nicht buendeln (HORN_COALESCE=0)
 	NoTailProbe bool          // keine Nachlaeufer (HORN_TAILPROBE_MS=0)
 	TailProbe   time.Duration // Abstand der Nachlaeufer (0 = TailProbeDelay)
+	TailMode    TailMode      // auto (Standard) oder always
 
 	FirstByte, Handshake time.Duration // 0 = Standard
 	Stats                Stats
@@ -272,7 +273,7 @@ func (m *Mux) handle(c net.Conn) {
 		if !m.NoCoalesce {
 			cc.Enable()
 			if !m.NoTailProbe {
-				cc.EnableTailProbe(TailFrameICE, m.tailProbe())
+				cc.EnableTailProbe(TailFrameICE, m.tailProbe(), m.TailMode)
 			}
 		}
 		u := peekUfrag(br)
@@ -327,7 +328,8 @@ func (m *Mux) handleTLS(raw *bufConn, cc *CoalesceConn, done func()) {
 		}
 		m.Stats.TURN.Add(1)
 		if !m.NoTailProbe && m.tailProbe() > 0 {
-			m.TURN.push(&probeBufConn{bufConn: c, p: NewProbeConn(c, TailFrameTURN, m.tailProbe())})
+			tcp, _ := cc.Conn.(*net.TCPConn)
+			m.TURN.push(&probeBufConn{bufConn: c, p: NewProbeConn(c, TailFrameTURN, m.tailProbe(), m.TailMode, tcp)})
 			return
 		}
 		m.TURN.push(c)

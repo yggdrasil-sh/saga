@@ -10,7 +10,7 @@ go build -o "$tmp/gjallarhorn" .
 pid=""
 cleanup() { [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; rm -rf "$tmp"; }
 trap cleanup EXIT INT TERM
-HORN_TAILPROBE_MS="${HORN_TAILPROBE_MS:-10}" HORN_DEV=1 HORN_UDP=0 HORN_TLS_SELF=1 HORN_LISTEN=":$port" HORN_DATA="$tmp" HORN_ICE_IPS=127.0.0.1 \
+HORN_TAILPROBE="${HORN_TAILPROBE:-always}" HORN_TAILPROBE_MS="${HORN_TAILPROBE_MS:-10}" HORN_DEV=1 HORN_UDP=0 HORN_TLS_SELF=1 HORN_LISTEN=":$port" HORN_DATA="$tmp" HORN_ICE_IPS=127.0.0.1 \
   "$tmp/gjallarhorn" node >"$tmp/node.log" 2>&1 &
 pid="$!"
 sleep 1

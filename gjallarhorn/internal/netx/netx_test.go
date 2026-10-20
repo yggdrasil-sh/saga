@@ -264,6 +264,14 @@ func TestCoalesce(t *testing.T) {
 		t.Fatalf("frist: %v", err)
 	}
 	cc.Close()
+	// auto ohne TCP-Verbindung bzw. ohne Verlust: kein Nachlaeufer
+	r2 := &wrec{}
+	p2 := NewProbeConn(r2, TailFrameTURN, 5*time.Millisecond, TailAuto, nil)
+	p2.Write([]byte{0x40, 0x00, 0, 0})
+	time.Sleep(30 * time.Millisecond)
+	if r2.n() != 1 {
+		t.Fatalf("auto ohne verlust: %d", r2.n())
+	}
 }
 
 func TestProxyV1(t *testing.T) {
@@ -487,7 +495,7 @@ func (r *wrec) n() int { r.mu.Lock(); defer r.mu.Unlock(); return len(r.w) }
 func TestTailProbe(t *testing.T) {
 	// TURN: kein Nachlaeufer waehrend der Allokation (STUN), danach ja
 	r := &wrec{}
-	p := NewProbeConn(r, TailFrameTURN, 5*time.Millisecond)
+	p := NewProbeConn(r, TailFrameTURN, 5*time.Millisecond, TailAlways, nil)
 	p.Write([]byte{0x01, 0x03, 0, 0}) // Allocate-Antwort
 	time.Sleep(30 * time.Millisecond)
 	if r.n() != 1 {
@@ -516,7 +524,7 @@ func TestTailProbe(t *testing.T) {
 	defer a.Close()
 	cc := NewCoalesceConn(a)
 	cc.Enable()
-	cc.EnableTailProbe(TailFrameICE, 5*time.Millisecond)
+	cc.EnableTailProbe(TailFrameICE, 5*time.Millisecond, TailAlways)
 	got := make(chan []byte, 4)
 	go func() {
 		buf := make([]byte, 64)
@@ -542,4 +550,12 @@ func TestTailProbe(t *testing.T) {
 		t.Fatal("kein nachlaeufer auf ice-tcp")
 	}
 	cc.Close()
+	// auto ohne TCP-Verbindung bzw. ohne Verlust: kein Nachlaeufer
+	r2 := &wrec{}
+	p2 := NewProbeConn(r2, TailFrameTURN, 5*time.Millisecond, TailAuto, nil)
+	p2.Write([]byte{0x40, 0x00, 0, 0})
+	time.Sleep(30 * time.Millisecond)
+	if r2.n() != 1 {
+		t.Fatalf("auto ohne verlust: %d", r2.n())
+	}
 }

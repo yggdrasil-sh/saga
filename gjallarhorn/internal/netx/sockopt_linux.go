@@ -4,6 +4,7 @@ package netx
 
 import (
 	"net"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -31,4 +32,20 @@ func Tune(c *net.TCPConn) (bbr bool) {
 		}
 	})
 	return bbr
+}
+
+// TCPLoss meldet Rundlaufzeit und Zahl der Wiederholungen einer
+// Verbindung (TCP_INFO). ok=false, wenn nicht lesbar.
+func TCPLoss(c *net.TCPConn) (rtt time.Duration, retrans uint32, ok bool) {
+	rc, err := c.SyscallConn()
+	if err != nil {
+		return 0, 0, false
+	}
+	_ = rc.Control(func(fd uintptr) {
+		ti, err := unix.GetsockoptTCPInfo(int(fd), unix.IPPROTO_TCP, unix.TCP_INFO)
+		if err == nil {
+			rtt, retrans, ok = time.Duration(ti.Rtt)*time.Microsecond, ti.Total_retrans, true
+		}
+	})
+	return
 }

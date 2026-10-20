@@ -33,6 +33,7 @@ type CoalesceConn struct {
 	probeDelay time.Duration
 	ptimer     *time.Timer
 	pArmed     bool
+	gate       lossGate
 
 	Flushes, Writes uint64 // nur unter mu
 }
@@ -132,7 +133,7 @@ func (c *CoalesceConn) flushLocked() {
 	if err != nil && c.err == nil {
 		c.err = err
 	}
-	if c.probe != nil && err == nil && len(c.buf) == 0 {
+	if c.probe != nil && err == nil && len(c.buf) == 0 && c.gate.on(time.Now()) {
 		c.pArmed = true
 		c.ptimer.Reset(c.probeDelay)
 	}

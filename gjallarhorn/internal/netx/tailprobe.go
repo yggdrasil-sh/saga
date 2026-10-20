@@ -21,6 +21,47 @@ import (
 // (0 = aus). HORN_TAILPROBE_MS.
 var TailProbeDelay = 10 * time.Millisecond
 
+// TailMode: wann Nachlaeufer gesendet werden.
+type TailMode uint8
+
+const (
+	TailAuto   TailMode = iota // nur auf Verbindungen mit Wiederholungen und RTT >= TailMinRTT
+	TailAlways                 // immer (Tests mit nachgebildetem Verlust)
+)
+
+// TailMinRTT: darunter lohnt der Nachlaeufer nicht (Stau < 1,25 x RTT).
+var TailMinRTT = 20 * time.Millisecond
+
+// lossGate entscheidet je Verbindung, ob der Nachlaeufer laeuft (TCP_INFO
+// hoechstens alle 2 s). Nur unter dem Mutex des Besitzers.
+type lossGate struct {
+	tc     *net.TCPConn
+	mode   TailMode
+	next   time.Time
+	lossy  bool
+	lastRe uint32
+	lossAt time.Time
+}
+
+func (g *lossGate) on(now time.Time) bool {
+	if g.mode == TailAlways {
+		return true
+	}
+	if g.tc == nil {
+		return false
+	}
+	if now.After(g.next) {
+		g.next = now.Add(2 * time.Second)
+		rtt, re, ok := TCPLoss(g.tc)
+		if ok && re > g.lastRe {
+			g.lastRe, g.lossAt = re, now
+		}
+		// an, solange in den letzten 30 s wiederholt wurde
+		g.lossy = ok && !g.lossAt.IsZero() && now.Sub(g.lossAt) < 30*time.Second && rtt >= TailMinRTT
+	}
+	return g.lossy
+}
+
 // TailProbes zaehlt gesendete Nachlaeufer.
 var TailProbes atomic.Uint64
 
@@ -46,12 +87,14 @@ var TailFrameTURN = stunIndication
 
 // EnableTailProbe schaltet den Nachlaeufer fuer eine gebuendelte
 // Verbindung ein (nur im gebuendelten Modus).
-func (c *CoalesceConn) EnableTailProbe(frame []byte, delay time.Duration) {
+func (c *CoalesceConn) EnableTailProbe(frame []byte, delay time.Duration, mode TailMode) {
 	if delay <= 0 {
 		return
 	}
 	c.mu.Lock()
 	c.probe, c.probeDelay = frame, delay
+	tc, _ := c.Conn.(*net.TCPConn)
+	c.gate = lossGate{tc: tc, mode: mode}
 	if c.ptimer == nil {
 		c.ptimer = time.AfterFunc(time.Hour, c.onProbe)
 		c.ptimer.Stop()
@@ -92,14 +135,16 @@ type ProbeConn struct {
 	t     *time.Timer
 	armed bool
 	media bool
+	gate  lossGate
 }
 
 // isChannelData: TURN-ChannelData beginnt mit 0x40..0x7f (RFC 8656).
 func isChannelData(b []byte) bool { return len(b) >= 4 && b[0] >= 0x40 && b[0] <= 0x7f }
 
-// NewProbeConn umhuellt c.
-func NewProbeConn(c net.Conn, frame []byte, delay time.Duration) *ProbeConn {
-	p := &ProbeConn{Conn: c, Frame: frame, Delay: delay}
+// NewProbeConn umhuellt c; tcp ist die darunterliegende TCP-Verbindung
+// (fuer TailAuto).
+func NewProbeConn(c net.Conn, frame []byte, delay time.Duration, mode TailMode, tcp *net.TCPConn) *ProbeConn {
+	p := &ProbeConn{Conn: c, Frame: frame, Delay: delay, gate: lossGate{tc: tcp, mode: mode}}
 	p.t = time.AfterFunc(time.Hour, p.fire)
 	p.t.Stop()
 	return p
@@ -113,7 +158,7 @@ func (p *ProbeConn) Write(b []byte) (int, error) {
 	if !p.media && isChannelData(b) {
 		p.media = true
 	}
-	if err == nil && p.media {
+	if err == nil && p.media && p.gate.on(time.Now()) {
 		p.armed = true
 		p.t.Reset(p.Delay)
 	}

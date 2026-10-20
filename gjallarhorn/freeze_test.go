@@ -18,6 +18,10 @@ import (
 // (Chrome-Definition auf Ankunftszeiten, also strenger als im Browser).
 func freezeRun(t *testing.T, rtt time.Duration, loss float64, secs int, tileFPS, speakerFPS float64) (per5, per5jb float64, info string) {
 	t.Helper()
+	// Verlust entsteht im Durchreicher, nicht im Kernel: Nachlaeufer immer
+	if os.Getenv("HORN_TAILPROBE") == "" {
+		t.Setenv("HORN_TAILPROBE", "always")
+	}
 	cfg := &config{Name: "localhost", Listen: "127.0.0.1:0", Data: t.TempDir(), ICEIPs: []string{"127.0.0.1"},
 		PublicIPs: []string{"127.0.0.2"}, RelayIP: net.ParseIP("127.0.0.1"), MaxLegs: 32, Mode: "node", Dev: true,
 		Certs: netx.CertOptions{Name: "localhost", Self: true}}

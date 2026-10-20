@@ -261,6 +261,9 @@ func newServer(cfg *config) (*server, error) {
 	} else {
 		s.mux.NoTailProbe = true
 	}
+	if env("HORN_TAILPROBE", "auto") == "always" { // Tests mit nachgebildetem Verlust
+		s.mux.TailMode = netx.TailAlways
+	}
 	s.mux.Start()
 	s.room = fwd.NewRoom(250 * time.Millisecond)
 	if err := s.buildAPIs(); err != nil {
