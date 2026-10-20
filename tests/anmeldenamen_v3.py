@@ -16,6 +16,9 @@ import auth  # noqa: E402
 from db import connect  # noqa: E402
 import chatlib as C  # noqa: E402
 import chat as CT  # noqa: E402  (tests/chat.py: req, ck, Stream)
+import push as PT  # noqa: E402  (tests/push.py: Fake-Empfaenger, Web-Push-Schluessel)
+
+PUSH_PORT = 18297
 
 res = []
 SEEN = []                     # (konto, quelle, text) - alle Antworten und Ereignisse
@@ -41,6 +44,10 @@ class U:
         self.me = self.certs()
         self.handle = self.me["handle"]
         self.ev = CT.Stream(self.k)
+        self.ua = PT.UA()                       # Web Push (Ende-zu-Ende) - Nutzlast mit Namen, wird mitgeschnitten
+        s, _ = self.api("POST", "/api/push/subscriptions", {"type": "webpush", "endpoint": f"http://127.0.0.1:{PUSH_PORT}/wp/{uid}",
+                                                            "keys": self.ua.keys(), "name": "Test"})
+        assert s == 201, s
 
     def api(self, m, p, b=None, lv=None):
         s, d = CT.req(m, p, self.k, b, hdr={"X-Saga-Chat": str(self.lv if lv is None else lv)})
@@ -116,9 +123,16 @@ def decoded(text):
     return "\n".join(out)
 
 
+def pushes(u):
+    """Entschluesselte Web-Push-Nutzlasten an u (Fake-Empfaenger)."""
+    with PT.LOCK:
+        got = [b for port, path, _, b in PT.GOT if port == PUSH_PORT and path == f"/wp/{u.uid}"]
+    return [json.dumps(u.ua.decrypt(b), ensure_ascii=False) for b in got]
+
+
 def hits_of(u, others):
     rx = re.compile("|".join(re.escape(o.uid) for o in others))
-    items = [(src, txt) for who, src, txt in SEEN if who == u.uid]
+    items = [(src, txt) for who, src, txt in SEEN if who == u.uid] + [("push", x) for x in pushes(u)]
     items += [("event " + t, json.dumps(d, ensure_ascii=False)) for t, d in list(u.ev.ev)]
     return items, [(src, (rx.search(txt) or rx.search(decoded(txt))).group(0), txt[:300]) for src, txt in items
                    if rx.search(txt) or rx.search(decoded(txt))]
@@ -135,7 +149,12 @@ def main():
     cleanup()
     prev = auth.settings(fresh=True)
     keep = {k: prev.get(k) for k in ("chat_enabled", "share_enabled", "share_group_scope", "chat_v3", "search_username")}
-    for k, v in (("chat_enabled", True), ("share_enabled", True), ("share_group_scope", False), ("chat_v3", True), ("search_username", True)):
+    keep["allowed_hosts"] = prev.get("allowed_hosts")
+    keep["push"] = prev.get("push")
+    PT.serve(PUSH_PORT)
+    for k, v in (("chat_enabled", True), ("share_enabled", True), ("share_group_scope", False), ("chat_v3", True), ("search_username", True),
+                 ("allowed_hosts", ", ".join(x for x in (prev.get("allowed_hosts"), f"127.0.0.1:{PUSH_PORT}") if x)),
+                 ("push", {"enabled": True, "webpush": True, "ntfy": True, "unifiedpush": True})):
         auth.save_setting(k, v)
     time.sleep(WAIT)
     try:
@@ -359,6 +378,11 @@ def run():
         u.api("GET", "/api/chats?device=" + u.dev["id"])
         u.api("GET", "/api/notifications")
     time.sleep(1.0)
+    end = time.time() + 20
+    while time.time() < end and not all(pushes(u) for u in (A, B, D)):
+        time.sleep(0.5)
+    pa = pushes(B)
+    ok(f"Push: Nutzlasten mitgeschnitten (B: {len(pa)}), mit Namen statt Anmeldenamen", pa and any("Anna Dreier" in x for x in pa), pa[:3])
     scan(people)
 
     # --- Gegenprobe: der Scan findet den Marker, wo er erwartet ist (Chat v1, Einstellung aus) -----------------------------
