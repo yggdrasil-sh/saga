@@ -26,6 +26,15 @@
 </section>
 
 <section class="adm-card">
+  <h3>{{ _("Medien") }}</h3>
+  <dl>
+    <dt>{{ _("Chat-Anhänge ausliefern") }}</dt>
+    <dd>{% if media[0] == "saga-media" %}{{ _("saga-media (direkt von der Platte, mit Range)") }}{% elif media[0] in ("nginx", "caddy") %}{{ _("Reverse Proxy ({name}, X-Accel-Redirect)", name=media[0]) }}{% else %}{{ _("Python (höchstens {n} gleichzeitig)", n=media[1]) }}{% endif %}</dd>
+  </dl>
+  {% if media[0] == "python" %}<p class="hk-hint">{{ _("Ohne saga-media laufen Anhänge durch Python: langsamer, große Dateien und viele gleichzeitige Abrufe bremsen den Server. Das Container-Image bringt saga-media mit; ohne Container MEDIA_ACCEL=nginx oder caddy setzen (siehe Anleitung „Medienpfad“).") }}</p>{% endif %}
+</section>
+
+<section class="adm-card">
   <h3>{{ _("Zuletzt angemeldet") }}</h3>
   {% if recent %}
   <table class="adm-table">

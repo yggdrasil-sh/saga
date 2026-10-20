@@ -1,4 +1,16 @@
 # Saga - Dashboard, Seiten, Aufgaben, Kalender, Lesezeichen (PostgreSQL)
+
+# saga-media (2.4, media/): Go nur mit Standardbibliothek, statisch gelinkt. Auf der Build-Plattform fuer die
+# Zielarchitektur uebersetzt (amd64/arm64 ohne Emulation).
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS media
+ARG TARGETOS TARGETARCH
+ENV CGO_ENABLED=0 GOFLAGS=-trimpath
+WORKDIR /src
+COPY media/ ./
+COPY VERSION /VERSION
+RUN go vet ./... && go test ./... \
+ && GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X main.version=$(cat /VERSION)" -o /out/saga-media .
+
 FROM python:3.13-slim
 
 LABEL org.opencontainers.image.title="Saga" \
@@ -19,8 +31,9 @@ WORKDIR /app
 # pg_dump/pg_restore/psql fuer Backups (automatisch vor jedem Datenbank-Update, "python run.py backup") und
 # "python run.py restore". Debian liefert Version 17; Postgres 16 als Server geht trotzdem (siehe db.restore).
 # age: Verschluesselung der Backups auf WebDAV/Nextcloud (saga/backups.py, nur oeffentliche Schluessel).
+# tini: kleiner Init-Prozess (PID 1) - reicht Signale weiter und raeumt verwaiste Prozesse ab.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends postgresql-client age \
+ && apt-get install -y --no-install-recommends postgresql-client age tini \
  && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -34,6 +47,7 @@ COPY saga ./saga
 COPY templates ./templates
 COPY static ./static
 COPY docker/entrypoint.sh /entrypoint.sh
+COPY --from=media /out/saga-media /usr/local/bin/saga-media
 
 # Erst nach pip install setzen (Datei entsteht beim Start im Entrypoint).
 ENV CA_FILE=/tmp/ca-bundle.pem \
@@ -46,4 +60,5 @@ VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('PORT','8080'), timeout=3)" || exit 1
 
-ENTRYPOINT ["/bin/sh", "/entrypoint.sh"]
+# tini -> entrypoint.sh -> saga-media (PORT, Dateien) -> python run.py (intern 127.0.0.1:MEDIA_INTERNAL_PORT, Standard 8079)
+ENTRYPOINT ["/usr/bin/tini", "--", "/bin/sh", "/entrypoint.sh"]

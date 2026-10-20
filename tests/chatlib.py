@@ -373,3 +373,83 @@ def open_signal_v2(sealed, pk, sk):
 
 def verify_signal_v2(call_id, from_handle, from_device, to_handle, to_device, body, sig, sign_pk):
     return verify(sig, signal_msg_v2(call_id, from_handle, from_device, to_handle, to_device, body), sign_pk)
+
+
+# --- saga-file/v2 (2.4, Videos im Chat): blockweise, wahlfreier Zugriff - Format siehe saga/file_v2.py -----------------
+F2_MAGIC, F2_HEADER, F2_TAG, F2_CS = b"SGF2", 48, 16, 256 * 1024
+
+
+def f2_blocks(size, cs=F2_CS):
+    return max(1, -(-size // cs))
+
+
+def f2_header(size, prefix, cs=F2_CS):
+    return F2_MAGIC + bytes([2, 0]) + struct.pack(">HIIQ", 0, cs, 0, size) + prefix + b"\0" * 8
+
+
+def f2_parse(hdr):
+    """Kopf -> (cs, size, n, prefix); ValueError bei falschem Kopf."""
+    if len(hdr) < F2_HEADER or hdr[:4] != F2_MAGIC or hdr[4] != 2 or hdr[5] != 0 or hdr[40:48] != b"\0" * 8:
+        raise ValueError("header")
+    r16, cs, r32, size = struct.unpack(">HIIQ", hdr[6:24])
+    if r16 or r32 or cs < 65536 or cs > 1048576 or cs & (cs - 1):
+        raise ValueError("header")
+    return cs, size, f2_blocks(size, cs), hdr[24:40]
+
+
+def f2_nonce(prefix, i):
+    return prefix + struct.pack(">Q", i)
+
+
+def f2_ad(i, n, cs, size):
+    return lp(b"saga-file/v2", struct.pack(">Q", i), struct.pack(">Q", n), struct.pack(">I", cs), struct.pack(">Q", size),
+              bytes([1 if i == n - 1 else 0]))
+
+
+def f2_block_off(i, cs=F2_CS):
+    """Beginn des Ciphertexts von Block i im Blob."""
+    return F2_HEADER + i * (cs + F2_TAG)
+
+
+def f2_size(size, cs=F2_CS):
+    return F2_HEADER + size + F2_TAG * f2_blocks(size, cs)
+
+
+def encrypt_file_f2(data, key=None, prefix=None, cs=F2_CS):
+    """Ganze Datei -> (blob, key). Fuer grosse Dateien Block fuer Block (f2_seal) - hier fuer Tests und Vektoren."""
+    key, prefix = key or rnd(32), prefix or rnd(16)
+    size, n = len(data), f2_blocks(len(data), cs)
+    out = [f2_header(size, prefix, cs)]
+    for i in range(n):
+        out.append(nb.crypto_aead_xchacha20poly1305_ietf_encrypt(data[i * cs:(i + 1) * cs], f2_ad(i, n, cs, size), f2_nonce(prefix, i), key))
+    return b"".join(out), key
+
+
+def f2_open(hdr, i, block, key):
+    """Einen Block entschluesseln (hdr: die 48 Kopf-Bytes). nacl.exceptions.CryptoError bei Fehler."""
+    cs, size, n, prefix = f2_parse(hdr)
+    if not 0 <= i < n:
+        raise ValueError("block")
+    return nb.crypto_aead_xchacha20poly1305_ietf_decrypt(bytes(block), f2_ad(i, n, cs, size), f2_nonce(prefix, i), key)
+
+
+def decrypt_file_f2(blob, key):
+    """Ganzer Blob -> Klartext; prueft Groesse, jeden Block und das Ende."""
+    cs, size, n, prefix = f2_parse(blob[:F2_HEADER])
+    if len(blob) != f2_size(size, cs):
+        raise ValueError("size")
+    out = []
+    for i in range(n):
+        a = f2_block_off(i, cs)
+        out.append(f2_open(blob[:F2_HEADER], i, blob[a:min(a + cs + F2_TAG, len(blob))], key))
+    data = b"".join(out)
+    if len(data) != size:
+        raise ValueError("size")
+    return data
+
+
+def f2_range(size, a, b, cs=F2_CS):
+    """Klartext-Bereich a..b (einschliesslich) -> (erster Block, letzter Block, Ciphertext von, bis einschliesslich)."""
+    i, j = a // cs, b // cs
+    end = min(f2_block_off(j, cs) + cs + F2_TAG, f2_size(size, cs)) - 1
+    return i, j, f2_block_off(i, cs), end

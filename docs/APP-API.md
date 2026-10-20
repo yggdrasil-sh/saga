@@ -544,3 +544,222 @@ Bewertung für 2.5:
 - Ein striktes RFC-9605-SFrame bieten die nativen Bibliotheken nicht – Empfehlung bleibt das LiveKit-kompatible Format.
 - Schlüssel: je sendendem Gerät, als `fkey`-Signal versiegelt verteilt (Abschnitt „saga-call v3“: Typ reserviert); neuer
   Schlüssel bei jedem Verlassen, HKDF-Ratsche bei jedem Beitritt.
+## Videos im Chat: saga-file/v2 (2.4, Etappe E2)
+
+Verbindlicher Vertrag für iOS/iPadOS/macOS, Android, Linux und Web (Referenz: `static/chat-video.js`, `static/sw.js`,
+Server `saga/chat_files.py`, Format `saga/file_v2.py`). Videos bis `limits.file_max` (`ATTACH_MAX_MB`, Standard 10 MB)
+bleiben im bisherigen Format v1 (ein AEAD-Block, `POST /api/chats/{id}/files`) und funktionieren in allen Apps wie bisher.
+Größere Videos gehen **nur** im neuen Format `saga-file/v2` (blockweise, wahlfreier Zugriff, fortsetzbarer Upload).
+Ältere Apps zeigen sie als Anhang mit Namen; Öffnen schlägt dort fehl („Mit Saga 2.4 öffnen“). `MIN_APP` ändert sich
+nicht – alles Neue wird über `limits.file2` ausgehandelt.
+
+### Fähigkeiten (`GET /api/chat/me`)
+
+```json
+"limits": {"file_max": 10485760, "file2": true, "video_max": 524288000, "upload_part": 8388608, "file2_cs": 262144,
+           "uploads_max": 2, "quota": 4294967296, "used": 123456789, "…": "…"}
+```
+
+- `file2: true` = der Server kann saga-file/v2 (Upload in Teilen, Range, Medien-Token). Fehlt das Feld (Server 2.3):
+  nur v1 bis `file_max` anbieten.
+- `video_max` = größte **Klartext**-Größe eines v2-Videos (Admin: Einstellungen → Chats, sonst `VIDEO_MAX_MB`, Standard 500).
+- `upload_part` = höchstens so viele Bytes je `PUT`. `file2_cs` = Blockgröße (in 2.4 immer 262144).
+- `quota`/`used` = Chat-Speicher des Kontos in Bytes (Standard 4096 MB, Admin änderbar); laufende Uploads zählen mit
+  ihrer vollen Größe. Anzeigen als „Chat-Speicher: 1,2 von 4 GB“.
+- Chats über Servergrenzen: Chat-Objekt `big_files` (`true`, wenn alle beteiligten Server `chatfile2` können). Bei
+  `false` (Gegenüber hat Saga 2.3) nur Videos bis `file_max` anbieten, sonst Hinweis „Der Server des Gegenübers kann
+  große Videos noch nicht“. Der Server prüft es ohnehin (`409` beim Anlegen des Uploads und beim Senden).
+
+### Absender: Poster, Metadaten, „optimiert 720p“
+
+- **Poster** erzeugt das Absender-Gerät: Bild bei 1 s (bzw. 10 % der Dauer), längste Seite 320 px, JPEG, **≤ 30 KB**.
+  Es geht wie ein Vorschaubild als **v1-Anhang** mit eigenem Schlüssel hoch (`th`, wie bei Bildern seit 2.1) – auch
+  ältere Apps können es so zeigen.
+- **Standard auf dem Handy: „optimiert 720p“** (H.264/HEVC, lange Seite 1280, kurze 720, ~2,5 Mbit/s, AAC 128 kbit/s,
+  `moov` vorn/faststart), „Original“ wählbar. iOS `AVAssetExportSession` (`shouldOptimizeForNetworkUse = true`), Android
+  Media3 `Transformer`. Web: nur wo der Browser MP4 aufnehmen kann (MediaRecorder), sonst Original mit Hinweis. Höchstens
+  ein Export gleichzeitig, bei `thermalState >= .serious` pausieren.
+- Ist das (optimierte) Video größer als `file_max`: saga-file/v2. Größer als `video_max`: nicht senden (Hinweis).
+
+Nachrichteninhalt (verschlüsselt, `body.files[]`; neue Felder, ältere Apps ignorieren sie):
+
+```json
+{"id": "Q1w2E3r4T5y6U7i8O9p0AsDf", "k": "<B64 32 Bytes K>", "n": "Urlaub.mp4", "m": "video/mp4", "s": 187654321,
+ "x": 2, "cs": 262144, "dur": 83.4, "w": 1280, "h": 720, "rot": 0, "fs": true,
+ "th": {"id": "Zx9…", "k": "<B64>", "m": "image/jpeg", "w": 320, "h": 180, "s": 21877}}
+```
+
+| Feld | Bedeutung |
+|---|---|
+| `x` | Format: fehlt oder `1` = v1 (ein Block, wie bisher); `2` = saga-file/v2. Größere Werte: „Mit einer neueren Saga-Version öffnen“ |
+| `s` | Größe des **Klartexts** (Bytes). Blob-Größe = `48 + s + 16 · N`, `N = max(1, ⌈s / cs⌉)` |
+| `cs` | Blockgröße (nur bei `x: 2`; 262144) |
+| `dur`, `w`, `h`, `rot` | Dauer in Sekunden (eine Nachkommastelle), Abmessungen des Videos, Drehung (0/90/180/270) |
+| `fs` | Hinweis: `moov` liegt vorn (faststart). Nur fürs Vorladen; `false` ist kein Fehler (ein Roundtrip mehr) |
+| `th` | Poster wie Vorschaubilder (v1-Anhang, eigener Schlüssel) |
+
+In der Chatliste **nur das Poster** (lazy, in Anzeigegröße dekodiert) mit Dauer und Abspiel-Symbol – **nie** ein Player
+je Zelle. Der Player entsteht erst beim Antippen (ein gemeinsamer Player).
+
+### Format saga-file/v2
+
+```
+Blob    = Kopf(48 B) || Block_0 || … || Block_{N-1}
+Kopf    = "SGF2" || u8 2 || u8 0 || u16 0 || u32 cs || u32 0 || u64 s || prefix(16 B, zufällig) || 8 × 0x00   (big-endian)
+Block_i = crypto_aead_xchacha20poly1305_ietf_encrypt(plain[i·cs .. (i+1)·cs), AD_i, nonce_i, K)        (Länge ≤ cs + 16)
+nonce_i = prefix(16 B) || u64_be(i)
+AD_i    = LP("saga-file/v2", u64_be(i), u64_be(N), u32_be(cs), u64_be(s), u8(i == N-1 ? 1 : 0))
+LP      = je Feld u32_be(Länge) || Bytes (wie saga-chat/v1)
+```
+
+- `K` (32 B) neu je Datei, nur in `files[].k`. Eine leere Datei hat einen Block (nur das Tag, 16 B).
+- Klartext-Bereich `a..b` → Blöcke `i = a / cs` bis `j = b / cs` → Ciphertext-Bytes `48 + i·(cs+16)` bis
+  `min(48 + (j+1)·(cs+16), Blob-Größe) − 1`. Entschlüsseln je Block, dann zuschneiden.
+- Jeder Block prüft `i`, `N`, `cs`, `s` und die Endmarke: vertauschte, fehlende oder angehängte Blöcke und ein falscher
+  Kopf schlagen fehl. **Nie** Klartext eines Blocks ausgeben, dessen Tag nicht stimmt.
+- Testvektoren (CI-Pflicht in jeder App): `tests/vectors/file_v2.json`. Klartext je Fall `plain[k] = k mod 251`; geprüft
+  werden Kopf, AD/Nonce des ersten und letzten Blocks, Blockanfänge/-enden und SHA-256 des ganzen Blobs, dazu
+  `reject` (muss scheitern) und `ranges` (Bereich → Blöcke). Gegenproben: `tools/file_vectors_v2.py`, `.mjs`.
+
+### Upload (fortsetzbar)
+
+1. Anlegen – liefert die Upload-Kennung (= spätere Datei-Kennung):
+
+   ```
+   POST /api/chats/{cid}/uploads        {"size": <Blob-Größe>, "fmt": 2}
+   200 {"upload": "Q1w2…", "offset": 0, "size": 187700000, "part_max": 8388608, "expires": 1760999999.0,
+        "url": "/api/chat/uploads/Q1w2…"}
+   ```
+
+   `400` Größe passt zu keinem v2-Blob · `409` Server des Gegenübers ohne chatfile2 · `413` größer als `video_max` oder
+   Chat-Speicher voll (Text in `error`) · `429` mehr als `uploads_max` gleichzeitig bzw. zu schnell.
+2. Teile senden, **nur fortlaufend** (Kopf und Blöcke wie oben, Teilgrenzen beliebig, höchstens `part_max`):
+
+   ```
+   PUT /api/chat/uploads/{id}
+   Content-Range: bytes 0-8388607/187700000
+   Content-Type: application/octet-stream          (+ Anmeldung wie immer, X-Saga: 1)
+   200 {"offset": 8388608, "done": false}          Upload-Offset: 8388608
+   …
+   200 {"id": "Q1w2…", "size": 187700000, "fmt": 2, "offset": 187700000, "done": true}     (letzter Teil)
+   ```
+
+   `409 {"error": …, "offset": n}` falsche Stelle oder ein anderer PUT läuft gerade (dann ab `n` weiter; `error` ist nur
+   Text, maßgeblich ist `offset`) ·
+   `400` Content-Range/Content-Length passen nicht, unvollständiger Teil, beim Abschluss falscher Kopf (der Upload ist
+   dann verworfen) · `413` Teil zu groß · `404` Upload unbekannt, abgelaufen (24 h) oder abgebrochen.
+3. **Fortsetzen** nach Netzabbruch oder App-Neustart: `HEAD /api/chat/uploads/{id}` → `204` mit `Upload-Offset` und
+   `Upload-Length`; ab `Upload-Offset` weiter (auch mitten im Block – die Verschlüsselung ist deterministisch, die App
+   erzeugt die Bytes ab jeder Stelle neu). Ist der Upload schon fertig (Antwort verpasst): `204` mit
+   `Upload-Done: 1` und `Upload-Offset = Upload-Length` – Datei-Kennung = Upload-Kennung.
+   Dafür merkt sich die App **K, prefix, Datei-Pfad und Upload-Kennung** im geschützten Speicher (Schlüsselbund,
+   EncryptedSharedPreferences, libsecret) bis zum Senden der Nachricht; danach löschen.
+4. Abbrechen: `DELETE /api/chat/uploads/{id}`. Danach wie bisher `POST /api/chats/{cid}/messages` mit
+   `files: [id, th.id]`.
+
+Im Container nimmt saga-media die Teile an und schreibt sie direkt auf die Platte (keine Bytes durch Python); ohne
+saga-media antwortet Python mit genau denselben Codes.
+
+### Abruf mit Range und Medien-Token
+
+- `GET /api/chat/files/{fid}` mit `Range: bytes=a-b` → `206` mit `Content-Range`, `Accept-Ranges: bytes`, `ETag: "<fid>"`
+  (unveränderlich), `If-Range` wird beachtet; `bytes=-n` (Ende) geht, mehrere Bereiche nicht (dann nur der erste bzw.
+  `multipart/byteranges` ohne saga-media – nicht verwenden). Hinter dem Ende → `416`. Die App fordert nur die Blöcke an,
+  die der Player braucht (Kopf einmal: `bytes=0-47`).
+- **Kürzere Antwort möglich**: Liegt der Anhang bei einem anderen Server und fehlt der Bereich noch, holt der eigene
+  Server ihn erst; ohne saga-media liefert er dann höchstens 8 MiB je Antwort (`Content-Range` beachten, Rest neu anfordern).
+- **Medien-Token** für lange Wiedergaben (die Berechtigung hängt so nicht an einem wechselnden Cookie):
+
+  ```
+  POST /api/chat/files/{fid}/token          (Anmeldung wie immer, X-Saga: 1)
+  200 {"token": "m1.eyJ…", "expires": 1761000900, "ttl": 900}
+
+  GET /api/chat/files/{fid}
+  Range: bytes=48-1310847
+  X-Saga-Media-Token: m1.eyJ…                (kein Cookie, kein X-Saga nötig)
+  ```
+
+  Gilt nur für diese Datei und diese Anmeldung (Konto, Passwort-Stand, Gerät). Bei `401` ein neues Token holen. Jede
+  Abfrage prüft Konto und Mitgliedschaft neu; saga-media merkt sich eine Erlaubnis höchstens 60 s – Entzug (Nachricht
+  gelöscht, Mitglied entfernt, Passwort geändert, Gerät abgemeldet) wirkt also spätestens nach 60 s.
+
+### Wiedergabe je Plattform
+
+Gemeinsam: Ciphertext blockweise holen (Range, mit Token), Block entschlüsseln, Klartext an den Player – **kein**
+Komplett-Download, Klartext nie auf die Platte (außer beim ausdrücklichen Speichern). Ciphertext-Cache je App
+(LRU, Standard 512 MB, getrennt vom Bildcache). Mobilfunk: kein Autoplay, nur Poster vorab.
+
+**iOS/macOS** – `AVURLAsset` mit eigenem Schema und `AVAssetResourceLoaderDelegate`:
+
+```swift
+let asset = AVURLAsset(url: URL(string: "saga-media://\(file.id)")!)
+asset.resourceLoader.setDelegate(loader, queue: loaderQueue)          // ein gemeinsamer AVPlayer
+// loader: resourceLoader(_:shouldWaitForLoadingOfRequestedResource:) -> true
+if let info = req.contentInformationRequest {
+    info.contentType = UTType(mimeType: file.m)?.identifier ?? UTType.mpeg4Movie.identifier
+    info.contentLength = Int64(file.s)                                 // Klartext-Größe
+    info.isByteRangeAccessSupported = true
+}
+if let d = req.dataRequest {
+    let a = d.currentOffset, b = d.requestsAllDataToEndOfResource ? file.s - 1 : d.requestedOffset + Int64(d.requestedLength) - 1
+    // Blöcke a/cs ... min(b, a + 4 MiB)/cs: Ciphertext-Range holen (URLSession, X-Saga-Media-Token), je Block
+    // crypto_aead_xchacha20poly1305_ietf_decrypt(AD_i, nonce_i), zuschneiden -> d.respond(with:), dann req.finishLoading()
+}
+```
+
+`preferredForwardBufferDuration` 20 s (Mobilfunk 10 s). Speichern: blockweise in eine Temp-Datei
+(`NSFileProtectionComplete`), dann `PHAssetCreationRequest` (nur `addOnly`) bzw. „In Dateien sichern“, Temp-Datei sofort
+löschen. macOS: `NSSavePanel` als Strom.
+
+**Android** – Media3 ExoPlayer mit eigenem `DataSource` über einem Ciphertext-`CacheDataSource`:
+
+```kotlin
+class SagaFileDataSource(private val f: FileMeta, private val ct: DataSource /* CacheDataSource -> OkHttp mit Token */) : BaseDataSource(true) {
+    override fun open(spec: DataSpec): Long {            // spec.position/length = Klartext
+        pos = spec.position; end = if (spec.length == C.LENGTH_UNSET.toLong()) f.s - 1 else pos + spec.length - 1
+        head = readCipher(0, 47); return end - pos + 1   // Kopf einmal, pruefen (SGF2, cs, s)
+    }
+    override fun read(buf: ByteArray, off: Int, len: Int): Int {
+        if (pos > end) return C.RESULT_END_OF_INPUT
+        val i = pos / f.cs; val block = blockCache.getOrPut(i) { decryptBlock(i, readCipher(48 + i * (f.cs + 16), …)) }
+        val n = minOf(len.toLong(), block.size - (pos - i * f.cs), end - pos + 1).toInt()
+        System.arraycopy(block, (pos - i * f.cs).toInt(), buf, off, n); pos += n; bytesTransferred(n); return n
+    }
+}
+```
+
+`DefaultLoadControl` 15–30 s, eine Player-Instanz. Speichern: `MediaStore.Video` mit `IS_PENDING = 1`, entschlüsselt als
+Strom schreiben, danach `IS_PENDING = 0` (ab Android 10 ohne Berechtigung).
+
+**Linux (GTK 4)** – `Gtk.MediaFile.new_for_input_stream()` mit eigenem `Gio.InputStream` + `Gio.Seekable` (PyNaCl je
+Block):
+
+```python
+class SagaStream(Gio.InputStream, Gio.Seekable):
+    def do_read_fn(self, buf, cancellable):             # buf: Puffer, liest ab self.pos
+        i = self.pos // cs; blk = self.block(i)          # Ciphertext 48 + i*(cs+16) .. holen (httpx, Token), entschluesseln
+        n = min(len(buf), len(blk) - (self.pos - i * cs)); buf[:n] = blk[self.pos - i * cs:][:n]; self.pos += n; return n
+    def do_seek(self, offset, type_, cancellable): …  # SEEK_SET/CUR/END auf Klartext-Positionen
+    def do_can_seek(self): return True
+```
+
+Fallback ohne GL (siehe Klingelton in `calls.py`): GStreamer `appsrc` mit `stream-type=random-access` (Signal
+`seek-data`), sonst „Im Standard-Player öffnen“ über eine private Temp-Datei (0600, beim Beenden gelöscht, mit Hinweis).
+Speichern: `Gtk.FileDialog` und Entschlüsselung als Strom.
+
+**Web** – Service Worker (`static/sw.js`): Seite meldet die Wiedergabe mit `postMessage({op:'media', id, fid, key, size,
+cs, m, token})` an, `<video src="/_m/<id>">`; der Service Worker beantwortet Range-Anfragen mit 206 und entschlüsselt
+blockweise (Strom). Ohne Service Worker: bis 100 MB als Blob, sonst nur „Herunterladen“. Speichern: `showSaveFilePicker`
+als Strom, sonst Download-Strom über den Service Worker (`/_m/<id>?dl=1`), zuletzt Blob (≤ 500 MB).
+
+### Grenzen und Antworten (Übersicht)
+
+| Was | Grenze | Antwort |
+|---|---|---|
+| Video (Klartext) | `video_max` (Standard 500 MB) | `413` beim Anlegen |
+| Chat-Speicher je Konto | `quota` (Standard 4096 MB, inkl. laufender Uploads) | `413` |
+| gleichzeitige Uploads | `uploads_max` (2) | `429` |
+| Teil je PUT | `upload_part` (8 MiB) | `413` |
+| Upload offen | 24 h, danach entfernt | `404` |
+| Föderation mit Saga 2.3 | nur bis `file_max` | `409` (Chat-Objekt `big_files: false`) |
+| Medien-Token | 15 min, Entzug ≤ 60 s | `401` → neues Token |

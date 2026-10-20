@@ -220,17 +220,19 @@ def verify_request(pub_lookup, method, own_authority, path, query, headers, body
 
 
 # --- Antworten ---------------------------------------------------------------------------------------------
-def sign_response(priv_raw, keyid, status, body, nonce, now=None):
+def sign_response(priv_raw, keyid, status, body, nonce, now=None, dig=None):
+    """dig (2.4): Content-Digest schon berechnet (saga-media hat den Teil gelesen) - body wird dann nicht gebraucht."""
     now = int(now or time.time())
-    dig = digest(body)
+    dig = dig or digest(body)
     params = _params(RESP_COMPONENTS, created=now, keyid=keyid, alg="ed25519", tag=RESP_TAG)
     base = _base([("@status", int(status)), ("content-digest", dig), ("saga-nonce", nonce)], params)
     sig = Ed25519PrivateKey.from_private_bytes(priv_raw).sign(base)
     return {"Content-Digest": dig, "Saga-Nonce": nonce, "Signature-Input": f"{LABEL}={params}", "Signature": f"{LABEL}=:{b64(sig)}:"}
 
 
-def verify_response(pub_raw, keyid, status, headers, body, nonce, now=None):
-    """Antwort des Gegenuebers pruefen (gepinnter Schluessel, gleiche keyid, unsere Nonce). Fehler: SigError."""
+def verify_response(pub_raw, keyid, status, headers, body, nonce, now=None, dig=None):
+    """Antwort des Gegenuebers pruefen (gepinnter Schluessel, gleiche keyid, unsere Nonce). Fehler: SigError.
+    dig (2.4): Content-Digest des Koerpers schon berechnet (saga-media hat ihn empfangen) - body wird dann nicht gebraucht."""
     now = int(now or time.time())
     params, p = parse_input(headers.get("signature-input"), RESP_COMPONENTS, RESP_TAG)
     if p["keyid"] != keyid:
@@ -240,8 +242,9 @@ def verify_response(pub_raw, keyid, status, headers, body, nonce, now=None):
     if (headers.get("saga-nonce") or "") != nonce:
         raise SigError("nonce")
     m = _SIG.fullmatch((headers.get("signature") or "").strip())
+    want = dig
     dig = (headers.get("content-digest") or "").strip()
-    if not m or not digest_ok(dig, body):
+    if not m or not (digest_ok(dig, body) if want is None else (bool(_DIGEST.fullmatch(dig)) and secrets.compare_digest(dig, want))):
         raise SigError("digest")
     base = _base([("@status", int(status)), ("content-digest", dig), ("saga-nonce", nonce)], params)
     try:

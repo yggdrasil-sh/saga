@@ -8,6 +8,7 @@
   var HK = window.HK, root = document.getElementById('ct');
   if (!HK || !root) return;
   var $ = HK.$, el = HK.el, api = HK.api, T = window.T;
+  var VID = window.SagaChatVideo || null;             // Videos im Chat (2.4, static/chat-video.js)
   var ME = document.body.dataset.uid, MYNAME = document.body.dataset.name || ME;
   var X = null;                                        // SagaChatCrypto, nach sodium.ready
   var K = null;                                        // lokale Schluessel {device:{...}, ident_sk, ident_pk, backup_sk, backup_pk}
@@ -78,7 +79,11 @@
     document.body.appendChild(ov);
     return body;
   }
-  function closeOverlay() { if (ov) { ov.remove(); ov = null; } }
+  var ovClean = null;                                 // Aufraeumen beim Schliessen (z. B. Video-Player)
+  function closeOverlay() {
+    if (ovClean) { var fn = ovClean; ovClean = null; try { fn(); } catch (e) { /* egal */ } }
+    if (ov) { ov.remove(); ov = null; }
+  }
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && ov && ov.querySelector('.icon-btn') && !HK.menuOpen()) closeOverlay();
   });
@@ -91,6 +96,7 @@
     if (!window.sodium || !window.SagaChatCrypto) { fatal(T('Die Verschlüsselungs-Bibliothek konnte nicht geladen werden.')); return; }
     window.sodium.ready.then(function () {
       X = window.SagaChatCrypto(window.sodium);
+      if (VID) VID.init({ X: X, api: api, T: T, el: el, run: run, me: function () { return S.me; } });
       return kvGet(KEYS).catch(function () { throw new Error('idb'); });
     }).then(function (keys) {
       K = keys || null;
@@ -133,7 +139,7 @@
   function fatal(msg) {
     root.textContent = ''; var p = el('p', 'ct-off', msg); p.setAttribute('role', 'alert'); root.appendChild(p);
   }
-  function forget() { K = null; S.ready = false; bClear(); return kvDel(KEYS).catch(function () {}); }
+  function forget() { K = null; S.ready = false; bClear(); if (VID) VID.clear(); return kvDel(KEYS).catch(function () {}); }
   function saveKeys(k) { K = k; return kvSet(KEYS, k); }
 
   // --- Einrichtung (erstes Geraet) -------------------------------------------------------------------------------
@@ -1232,6 +1238,7 @@
       var v2 = typeof d.cid === 'string', dec = v2 ? X.decryptFileV2 : X.decryptFile, enc = v2 ? X.encryptFileV2 : X.encryptFile;   // v2: chat_ref
       if (d.op === 'dec') return { plain: dec(d.cid, new Uint8Array(d.blob), d.key).buffer };
       if (d.op === 'enc') { var r = enc(d.cid, new Uint8Array(d.bytes)); return { blob: r.blob.buffer, key: r.key }; }
+      if (d.op === 'f2enc' || d.op === 'f2dec') return window.SagaF2Job(X, d);           // Videos (saga-file/v2)
       var bytes = d.op === 'thumb' ? dec(d.cid, new Uint8Array(d.blob), d.key) : new Uint8Array(d.bytes);
       return mainThumb(bytes, d.mime).then(function (t) {
         if (d.op === 'thumb' && d.enc) t.ct = enc(d.cid, new Uint8Array(t.jpeg), { key: ub(d.key, 32) }).blob.buffer;
@@ -1413,14 +1420,54 @@
       fig.addEventListener('click', function () { viewImage(cid, f, name); });
       return fig;
     }
+    if (VID && VID.isVideo(f) && (!f.x || f.x === 2)) return videoEl(cid, f, name);
     var b = el('button', 'ct-file'); b.type = 'button';
     b.appendChild(el('span', 'ct-file-ic', '📎')); b.appendChild(el('span', 'ct-file-n', name)); b.appendChild(el('span', 'ct-file-s', size(f.s)));
+    if (f.x && f.x !== 1 && f.x !== 2) {                // neueres Format: nicht still scheitern
+      b.disabled = true; b.appendChild(el('span', 'ct-file-s', T('Mit einer neueren Saga-Version öffnen'))); return b;
+    }
     b.addEventListener('click', function () {
       plainUrl(cid, f).then(function (url) { save(url, name); setTimeout(function () { URL.revokeObjectURL(url); }, 60000); },
         function (e) { HK.toast(T('Anhang nicht geladen: {err}', { err: e.message })); });
     });
     return b;
   }
+  // Video (2.4): nur Poster (lazy wie Bilder, f.th), Dauer, Abspielen erst im Player. Nie ein <video> in der Liste.
+  function videoEl(cid, f, name) {
+    var fig = el('button', 'ct-img ct-vid'); fig.type = 'button'; fig.setAttribute('aria-label', T('Video abspielen: {name}', { name: name }));
+    fig.dataset.fid = f.id;
+    var box = fitBox(f.w, f.h) || { w: THUMB_BOX, h: Math.round(THUMB_BOX * 9 / 16) };
+    fig.style.width = box.w + 'px'; fig.style.aspectRatio = box.w + ' / ' + box.h;
+    var im = el('img'); im.alt = ''; im.decoding = 'async'; fig.appendChild(im);
+    fig.appendChild(el('span', 'ct-vid-play', '▶'));
+    if (f.dur) fig.appendChild(el('span', 'ct-vid-dur', VID.dur(f.dur)));
+    if (f.th && f.th.id && f.th.k) {
+      var u = memGet('t:' + f.id);
+      if (u) im.src = u;
+      else lazy(fig, function (signal) { return thumbUrl(cid, f, signal).then(function (x) { im.src = x; }); }, function () { fig.classList.add('ct-vid-noposter'); });
+    } else fig.classList.add('ct-vid-noposter');
+    fig.addEventListener('click', function () { viewVideo(cid, f, name); });
+    return fig;
+  }
+  function viewVideo(cid, f, name) {
+    var body = overlay(name, { wide: true }), wrap = el('div', 'ct-view ct-view-video');
+    body.appendChild(wrap);
+    var mime = /^video\/[\w.+-]{1,60}$/.test(f.m || '') ? f.m : 'video/mp4';
+    ovClean = VID.play(wrap, f, function () {               // v1 (bis 10 MB): ganz laden, entschluesseln, Blob
+      return getBlob(f).then(function (buf) { return run('dec', { cid: cid, blob: buf, key: f.k }, [buf]); })
+        .then(function (r) { return URL.createObjectURL(new Blob([r.plain], { type: mime })); });
+    });
+    var bar = el('div', 'hk-actions'), st = el('span', 'hk-hint ct-view-prog'), sv = btn(T('Speichern'), 'ct-view-save');
+    bar.appendChild(st); bar.appendChild(sv); body.appendChild(bar);
+    sv.addEventListener('click', function () {
+      sv.disabled = true;
+      var p = f.x === 2 ? VID.save(f, function (x) { st.textContent = Math.round(x * 100) + ' %'; })
+        : plainUrl(cid, f).then(function (url) { save(url, name); setTimeout(function () { URL.revokeObjectURL(url); }, 60000); });
+      p.then(function () { st.textContent = ''; }, function (e) { if (e && e.name !== 'AbortError') HK.toast(T('Anhang nicht geladen: {err}', { err: e.message })); st.textContent = ''; })
+        .then(function () { sv.disabled = false; });
+    });
+  }
+
   // Original in groß (erst hier geladen); Speichern ueber den Knopf
   var viewUrl = null;
   function viewImage(cid, f, name) {
@@ -1441,8 +1488,18 @@
   function drawFiles() {
     var box = $('ct-files'); box.textContent = ''; box.hidden = !S.files.length;
     S.files.forEach(function (f, i) {
-      var c = el('span', 'ct-chip', '📎 ' + f.name + ' (' + size(f.size) + ')'), x = el('button', 'linkbtn', '×'); x.type = 'button'; x.setAttribute('aria-label', T('Entfernen'));
-      x.addEventListener('click', function () { S.files.splice(i, 1); drawFiles(); }); c.appendChild(x); box.appendChild(c);
+      var vid = VID && VID.isVideo(f);
+      var c = el('span', 'ct-chip', (vid ? '🎬 ' : '📎 ') + f.name + ' (' + size(f.size) + ')'), x = el('button', 'linkbtn', '×'); x.type = 'button'; x.setAttribute('aria-label', T('Entfernen'));
+      if (vid && VID.canOptimize() && !sending) {         // Video: "optimiert 720p" oder Original
+        var lb = el('label', 'ct-chip-opt'), cb = el('input'); cb.type = 'checkbox'; cb.checked = !!f._opt; cb.disabled = !!f._force;
+        cb.addEventListener('change', function () { f._opt = cb.checked; });
+        lb.appendChild(cb); lb.appendChild(document.createTextNode(' ' + T('optimiert 720p'))); c.appendChild(lb);
+      } else if (vid && !VID.canOptimize() && f.size > 100 * 1048576 && !sending) {
+        c.appendChild(el('span', 'ct-chip-hint', T('Original (dieser Browser kann Videos nicht verkleinern)')));
+      }
+      if (f._prog) c.appendChild(el('span', 'ct-chip-prog', f._prog));
+      if (!sending) { x.addEventListener('click', function () { S.files.splice(i, 1); drawFiles(); }); c.appendChild(x); }
+      box.appendChild(c);
     });
   }
   // „Aus Immich“: nur wenn Immich fuer diese Person eingerichtet ist (wie beim Bild-Einfuegen auf Seiten). Das Bild
@@ -1499,9 +1556,14 @@
     });
   });
   $('ct-file').addEventListener('change', function () {
-    var max = (S.me && S.me.limits && S.me.limits.file_max) || 10485760;
+    var lm = (S.me && S.me.limits) || {}, max = lm.file_max || 10485760;
+    var vmax = lm.file2 && VID ? Math.max(max, lm.video_max || 0) : max, opt = VID ? VID.canOptimize() : '';
+    var mobile = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     Array.prototype.forEach.call(this.files, function (f) {
-      if (f.size > max) { HK.toast(T('„{name}“ ist zu groß (höchstens {n} MB).', { name: f.name, n: Math.round(max / 1048576) })); return; }
+      var vid = VID && VID.isVideo(f);
+      if (vid && f.size > vmax && opt) f._force = true;    // zu gross: nur verkleinert (720p) moeglich
+      else if (f.size > (vid ? vmax : max)) { HK.toast(T('„{name}“ ist zu groß (höchstens {n} MB).', { name: f.name, n: Math.round((vid ? vmax : max) / 1048576) })); return; }
+      if (vid) f._opt = !!opt && (mobile || !!f._force);   // 2.4: vom Handy standardmaessig "optimiert 720p"
       if (S.files.length < 10) S.files.push(f);
     });
     this.value = ''; drawFiles();
@@ -1614,6 +1676,7 @@
     var ids = (S.me && S.me.limits && S.me.limits.file_ids_per_msg) || 10, slots = ids - S.files.length;
     var fc = S.cur && S.cur.id === cid ? fileCid(S.cur) : cid;          // Verschluesselung: v1 chat_id, v2 chat_ref
     return Promise.all(S.files.map(function (f) {
+      if (VID && VID.isVideo(f)) return uploadVideo(cid, fc, f, slots-- > 0);
       var mime = f.type || 'application/octet-stream', withThumb = IMG.test(mime) && slots-- > 0;
       return f.arrayBuffer().then(function (buf) {
         var tp = withThumb ? run('make', { bytes: buf, mime: mime }).catch(function () { return null; }) : Promise.resolve(null);
@@ -1640,6 +1703,48 @@
         });
       });
     }));
+  }
+  // Video (2.4): Poster/Dauer/Abmessungen hier erzeugen; optional verkleinern; bis file_max wie bisher (v1), darueber
+  // saga-file/v2 mit fortsetzbarem Upload (static/chat-video.js). files[]: {id,k,n,m,s,dur,w,h, x:2,cs bei v2, th:{...}}
+  function uploadVideo(cid, fc, f, withPoster) {
+    var lm = S.me.limits || {}, max = lm.file_max || 10485760, meta = {};
+    function prog(label) { return function (x) { f._prog = label + ' ' + Math.round(x * 100) + ' %'; drawFiles(); }; }
+    return VID.probe(f).catch(function () { return {}; }).then(function (m) {
+      meta = m || {};
+      if (f._opt && VID.canOptimize()) return VID.optimize(f, meta, prog(T('Verkleinern'))).catch(function (e) {
+        if (f._force) throw e;
+        HK.toast(T('Verkleinern nicht möglich – das Original wird gesendet.')); return f;
+      });
+      return f;
+    }).then(function (file) {
+      var ch = S.cur && S.cur.id === cid ? S.cur : null;
+      if (file.size > max && ch && ch.fed && ch.big_files === false) {   // Server des Gegenuebers ist 2.3 (ohne chatfile2)
+        throw new Error(T('Der Server des Gegenübers kann große Videos noch nicht (höchstens {n} MB).', { n: Math.round(max / 1048576) }));
+      }
+      if (file.size > (lm.file2 ? Math.max(max, lm.video_max || 0) : max)) throw new Error(T('„{name}“ ist zu groß (höchstens {n} MB).', { name: f.name, n: Math.round(Math.max(max, lm.video_max || 0) / 1048576) }));
+      var e = { id: null, k: null, n: (file.name || f.name).slice(0, 200), m: file.type || f.type || 'video/mp4', s: file.size };
+      if (meta.dur) e.dur = meta.dur;
+      if (meta.w && meta.h) { e.w = meta.w; e.h = meta.h; }
+      var th = Promise.resolve(null);
+      if (withPoster && meta.jpeg) {                       // Poster wie Vorschaubilder: v1, eigener Schluessel, <= 30 KB
+        var poster = new Blob([meta.jpeg], { type: 'image/jpeg' }), psz = meta.jpeg.byteLength;
+        th = run('enc', { cid: fc, bytes: meta.jpeg }, [meta.jpeg]).then(function (et) {
+          var ct = new Blob([et.blob]);
+          return upload(cid, ct).then(function (id) {
+            memPut('t:' + id, URL.createObjectURL(poster)); bPut(id, ct);
+            return { id: id, k: et.key, m: 'image/jpeg', w: meta.tw, h: meta.th, s: psz };
+          });
+        }).catch(function () { return null; });
+      }
+      var orig = file.size <= max
+        ? file.arrayBuffer().then(function (buf) { return run('enc', { cid: fc, bytes: buf }, [buf]); }).then(function (eo) { e.k = eo.key; return upload(cid, eo.blob); })
+        : VID.upload(cid, file, prog(T('Hochladen'))).then(function (r) { e.k = r.key; e.x = 2; e.cs = r.cs; return r.id; });
+      return Promise.all([orig, th]).then(function (r) {
+        e.id = r[0]; f._prog = '';
+        if (r[1]) { e.th = r[1]; var u = mem.get('t:' + r[1].id); if (u) memPut('t:' + e.id, u); }
+        return e;
+      });
+    });
   }
   var sending = false;
   $('ct-compose').addEventListener('submit', function (e) {

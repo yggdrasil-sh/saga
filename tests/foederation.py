@@ -353,7 +353,7 @@ def main():
        signed("a", privb, kid, "GET", "/fed/v1/shared", actor={"name": "Fa Anna!", "display": "x", "groups": []})[0] == 400)
     ok("Inhalte ohne Akteur -> 400", signed("a", privb, kid, "GET", "/fed/v1/notes/1")[0] == 400)
     big = http.client.HTTPConnection("127.0.0.1", I["a"]["port"], timeout=20)
-    big.putrequest("POST", "/fed/v1/events"); big.putheader("Host", I["a"]["host"]); big.putheader("Content-Length", str(3 * 1024 * 1024))
+    big.putrequest("POST", "/fed/v1/events", skip_host=True); big.putheader("Host", I["a"]["host"]); big.putheader("Content-Length", str(3 * 1024 * 1024))
     big.putheader("Content-Type", "application/json"); big.endheaders()
     s = big.getresponse().status
     ok(f"zu grosse Anfrage -> 413 ({s})", s == 413)

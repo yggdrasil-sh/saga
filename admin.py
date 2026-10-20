@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import clean_line, connect as _db
-from saga import ai, avatars, backups, calls, federation, i18n, live, mfa, publish, push, sharing, userbackup
+from saga import ai, avatars, backups, calls, chat, federation, i18n, live, mfa, publish, push, sharing, userbackup
 from saga.core import RESTORE_TEST, TZ, BodyLimit, LangMiddleware, install_lang_ui, lang_switch_response
 from saga.i18n import t
 from version import REPO, VERSION, VERSION_LABEL, channel, newer
@@ -393,7 +393,7 @@ def home(request: Request):
                  "pages": n("SELECT COUNT(*) FROM note WHERE deleted_at IS NULL")}
         recent = c.execute("SELECT username, display_name, source, last_login FROM users WHERE last_login IS NOT NULL "
                            "ORDER BY last_login DESC LIMIT 8").fetchall()
-    return _page(request, "home.html", me, stats=stats, st=auth.settings(fresh=True), recent=recent)
+    return _page(request, "home.html", me, stats=stats, st=auth.settings(fresh=True), recent=recent, media=chat.media_mode())
 
 
 # --- Benutzer -------------------------------------------------------------------------------------
@@ -738,7 +738,7 @@ def settings_page(request: Request):
     if not me:
         return _go("/login")
     return _page(request, "settings.html", me, st=auth.settings(fresh=True), langs=i18n.NAMES, published=publish.all_published(),
-                 live_n=live.count())
+                 live_n=live.count(), chat_quota_default=chat.QUOTA_MB_DEFAULT, chat_video_default=chat.VIDEO_MAX_MB_DEFAULT)
 
 
 @admin.post("/settings")
@@ -766,6 +766,7 @@ async def settings_post(request: Request):
                  ("publish_enabled", _on(f, "publish_enabled")), ("public_home", home),
                  ("share_enabled", _on(f, "share_enabled")), ("share_group_scope", _on(f, "share_group_scope")),
                  ("chat_enabled", _on(f, "chat_enabled")), ("chat_retention_max_days", _days(f.get("chat_retention_max_days"))),
+                 ("chat_quota_mb", _mb(f.get("chat_quota_mb"), 1 << 20)), ("chat_video_max_mb", _mb(f.get("chat_video_max_mb"), 1 << 16)),
                  ("local_login", _on(f, "local_login")), ("group_prefix", prefix),
                  ("default_groups", _groups_list(_s(f, "default_groups", 1000))),
                  ("allow_private_hosts", _on(f, "allow_private_hosts")), ("allowed_hosts", ", ".join(hosts)),
@@ -825,6 +826,14 @@ def _calls_save(f):
             c.execute("UPDATE setting SET v=? WHERE k='calls'", (json.dumps(d),))
         auth._settings_cache["v"] = None
     return None
+
+
+def _mb(v, hi):
+    """Chat (2.4): Grenze in MB (0 = Standard aus der Umgebung)."""
+    try:
+        return max(0, min(hi, int(str(v or "0").strip() or 0)))
+    except ValueError:
+        return 0
 
 
 def _days(v):

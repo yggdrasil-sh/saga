@@ -1,0 +1,318 @@
+{
+ "format": "saga-file/v2",
+ "note": "Erzeugt mit tools/file_vectors_v2.py (PyNaCl 1.6.2). Format: saga/file_v2.py, docs/APP-API.md (Videos im Chat). Klartext: plain[k] = k mod 251. B64 = Standard-Base64 mit Padding; *_hex = Hex.",
+ "cs": 262144,
+ "header_len": 48,
+ "tag_len": 16,
+ "lp_example": {
+  "fields_hex": [
+   "736167612d66696c652f7632",
+   "0000000000000000"
+  ],
+  "hex": "0000000c736167612d66696c652f7632000000080000000000000000"
+ },
+ "cases": {
+  "empty": {
+   "size": 0,
+   "key": "GJS3LcdEwu4qjVqNaphaVGPLOqkbi3Ex6edyo5Ecgd8=",
+   "prefix_hex": "44693273807376b2465ca922e0ae1aa3",
+   "cs": 262144,
+   "blocks": 1,
+   "blob_size": 64,
+   "header_hex": "53474632020000000004000000000000000000000000000044693273807376b2465ca922e0ae1aa30000000000000000",
+   "ad0_hex": "0000000c736167612d66696c652f763200000008000000000000000000000008000000000000000100000004000400000000000800000000000000000000000101",
+   "nonce0_hex": "44693273807376b2465ca922e0ae1aa30000000000000000",
+   "ad_last_hex": "0000000c736167612d66696c652f763200000008000000000000000000000008000000000000000100000004000400000000000800000000000000000000000101",
+   "nonce_last_hex": "44693273807376b2465ca922e0ae1aa30000000000000000",
+   "block0_len": 16,
+   "block0_head_hex": "f81d2d43e8df3f50e23f25168806d1b2",
+   "block0_tail_hex": "f81d2d43e8df3f50e23f25168806d1b2",
+   "block_last_len": 16,
+   "block_last_head_hex": "f81d2d43e8df3f50e23f25168806d1b2",
+   "block_last_tail_hex": "f81d2d43e8df3f50e23f25168806d1b2",
+   "blob_sha256": "032f37c2d39aef73df540ee5d7cfeaf21befbb07d63560ef745b9252a4691326"
+  },
+  "one_byte": {
+   "size": 1,
+   "key": "ClUmRjxP2hlKWpLqG6gZSpAeFeMLojglw0FdQ0hQEqM=",
+   "prefix_hex": "0c4fb8b703434bbaca84b6047135bb5f",
+   "cs": 262144,
+   "blocks": 1,
+   "blob_size": 65,
+   "header_hex": "5347463202000000000400000000000000000000000000010c4fb8b703434bbaca84b6047135bb5f0000000000000000",
+   "ad0_hex": "0000000c736167612d66696c652f763200000008000000000000000000000008000000000000000100000004000400000000000800000000000000010000000101",
+   "nonce0_hex": "0c4fb8b703434bbaca84b6047135bb5f0000000000000000",
+   "ad_last_hex": "0000000c736167612d66696c652f763200000008000000000000000000000008000000000000000100000004000400000000000800000000000000010000000101",
+   "nonce_last_hex": "0c4fb8b703434bbaca84b6047135bb5f0000000000000000",
+   "block0_len": 17,
+   "block0_head_hex": "910bf7b12073a35622d8171ea6f1c36407",
+   "block0_tail_hex": "910bf7b12073a35622d8171ea6f1c36407",
+   "block_last_len": 17,
+   "block_last_head_hex": "910bf7b12073a35622d8171ea6f1c36407",
+   "block_last_tail_hex": "910bf7b12073a35622d8171ea6f1c36407",
+   "blob_sha256": "ebe4a16cfe7a9e1395495c6ff4c918878dc7f4401821334d4128ddba5dfa2736"
+  },
+  "small": {
+   "size": 100,
+   "key": "U29t2+pV73kYSNazY+pz7qSx8lKQ8b/szYYavzNwzLY=",
+   "prefix_hex": "50711036f1553bf711f7226fc96074d7",
+   "cs": 262144,
+   "blocks": 1,
+   "blob_size": 164,
+   "header_hex": "53474632020000000004000000000000000000000000006450711036f1553bf711f7226fc96074d70000000000000000",
+   "ad0_hex": "0000000c736167612d66696c652f763200000008000000000000000000000008000000000000000100000004000400000000000800000000000000640000000101",
+   "nonce0_hex": "50711036f1553bf711f7226fc96074d70000000000000000",
+   "ad_last_hex": "0000000c736167612d66696c652f763200000008000000000000000000000008000000000000000100000004000400000000000800000000000000640000000101",
+   "nonce_last_hex": "50711036f1553bf711f7226fc96074d70000000000000000",
+   "block0_len": 116,
+   "block0_head_hex": "9512852a74588acc8ab95ed1b00bac50b58b66602802ccaa027e1ddff5d12787fd9d10d1fff4bdd3ace109dd8326d0921b670bd27b922789201e6eabc1b52847",
+   "block0_tail_hex": "7b922789201e6eabc1b52847ce539620bf7467d1932a30c150054b4258946f557bb36791db6528882553032f46952fc7705f7d6e2dbf316ff7cbd8b7709d5fe3",
+   "block_last_len": 116,
+   "block_last_head_hex": "9512852a74588acc8ab95ed1b00bac50b58b66602802ccaa027e1ddff5d12787fd9d10d1fff4bdd3ace109dd8326d0921b670bd27b922789201e6eabc1b52847",
+   "block_last_tail_hex": "7b922789201e6eabc1b52847ce539620bf7467d1932a30c150054b4258946f557bb36791db6528882553032f46952fc7705f7d6e2dbf316ff7cbd8b7709d5fe3",
+   "blob_sha256": "99865337ad9c8cbea89c02f2b97ddec88c6b3a2688f1caefd00cb951fe4839ca"
+  },
+  "cs_minus_1": {
+   "size": 262143,
+   "key": "bGm9E9Tb9ikdK3IM2ZT0aqmO9RRURVfZwO4wWg859Hs=",
+   "prefix_hex": "2d9d68ddf21922d5d4e52849593ae44e",
+   "cs": 262144,
+   "blocks": 1,
+   "blob_size": 262207,
+   "header_hex": "53474632020000000004000000000000000000000003ffff2d9d68ddf21922d5d4e52849593ae44e0000000000000000",
+   "ad0_hex": "0000000c736167612d66696c652f7632000000080000000000000000000000080000000000000001000000040004000000000008000000000003ffff0000000101",
+   "nonce0_hex": "2d9d68ddf21922d5d4e52849593ae44e0000000000000000",
+   "ad_last_hex": "0000000c736167612d66696c652f7632000000080000000000000000000000080000000000000001000000040004000000000008000000000003ffff0000000101",
+   "nonce_last_hex": "2d9d68ddf21922d5d4e52849593ae44e0000000000000000",
+   "block0_len": 262159,
+   "block0_head_hex": "cfef91e794ddab6487d5d354afbb2a1b9f3980816fc1a55273f334e5eeaaad6850fa02db987507e344006c95422412c633b01dfaf41d5283fb27cede4c9377c1",
+   "block0_tail_hex": "14cc4b1613526b5ba0f844890acf94543e512a808f865279baa589adeb04ed7998c81a1293a413ae702fc5809b0c01805635e55870f9df2a9ba8fb416414c19c",
+   "block_last_len": 262159,
+   "block_last_head_hex": "cfef91e794ddab6487d5d354afbb2a1b9f3980816fc1a55273f334e5eeaaad6850fa02db987507e344006c95422412c633b01dfaf41d5283fb27cede4c9377c1",
+   "block_last_tail_hex": "14cc4b1613526b5ba0f844890acf94543e512a808f865279baa589adeb04ed7998c81a1293a413ae702fc5809b0c01805635e55870f9df2a9ba8fb416414c19c",
+   "blob_sha256": "467d363c37a0da95a98139179c2939108f9a10455a372f1cf1dd1ee89a47504b"
+  },
+  "exact_1cs": {
+   "size": 262144,
+   "key": "KadBrq0cFLZqaa/Qv7XUpurHo+u61VfTnXXjtokdR7s=",
+   "prefix_hex": "8ffdc23ff0871a25159808481a4ef13e",
+   "cs": 262144,
+   "blocks": 1,
+   "blob_size": 262208,
+   "header_hex": "5347463202000000000400000000000000000000000400008ffdc23ff0871a25159808481a4ef13e0000000000000000",
+   "ad0_hex": "0000000c736167612d66696c652f763200000008000000000000000000000008000000000000000100000004000400000000000800000000000400000000000101",
+   "nonce0_hex": "8ffdc23ff0871a25159808481a4ef13e0000000000000000",
+   "ad_last_hex": "0000000c736167612d66696c652f763200000008000000000000000000000008000000000000000100000004000400000000000800000000000400000000000101",
+   "nonce_last_hex": "8ffdc23ff0871a25159808481a4ef13e0000000000000000",
+   "block0_len": 262160,
+   "block0_head_hex": "dc701b5c384ecac7b66cfe97f15e9a199f242959bed670cdc46a519024704ea26cd06d78a75b4a36a51421eebb70b204a7a01b2511a8269b82ecab15e80a363a",
+   "block0_tail_hex": "4d0556abf4c6ecec26a3d0f5e448a1610b1bfb1c0ae66f13b53249e4732e5b6122485ef1703a2a0a15ab463507348dcd94b8794a1e4fa77b297b96aa34eb7a4b",
+   "block_last_len": 262160,
+   "block_last_head_hex": "dc701b5c384ecac7b66cfe97f15e9a199f242959bed670cdc46a519024704ea26cd06d78a75b4a36a51421eebb70b204a7a01b2511a8269b82ecab15e80a363a",
+   "block_last_tail_hex": "4d0556abf4c6ecec26a3d0f5e448a1610b1bfb1c0ae66f13b53249e4732e5b6122485ef1703a2a0a15ab463507348dcd94b8794a1e4fa77b297b96aa34eb7a4b",
+   "blob_sha256": "3c3fe421965d7911f23566a2d022547b026b3f2c32b676d513e7239c6a3a6aae"
+  },
+  "cs_plus_1": {
+   "size": 262145,
+   "key": "QrkTbhteJ7651oxx0SarxGZ3BGypK7PG+6ICZryzap8=",
+   "prefix_hex": "9152b0ecc0bd4611c8e91bce493c898a",
+   "cs": 262144,
+   "blocks": 2,
+   "blob_size": 262225,
+   "header_hex": "5347463202000000000400000000000000000000000400019152b0ecc0bd4611c8e91bce493c898a0000000000000000",
+   "ad0_hex": "0000000c736167612d66696c652f763200000008000000000000000000000008000000000000000200000004000400000000000800000000000400010000000100",
+   "nonce0_hex": "9152b0ecc0bd4611c8e91bce493c898a0000000000000000",
+   "ad_last_hex": "0000000c736167612d66696c652f763200000008000000000000000100000008000000000000000200000004000400000000000800000000000400010000000101",
+   "nonce_last_hex": "9152b0ecc0bd4611c8e91bce493c898a0000000000000001",
+   "block0_len": 262160,
+   "block0_head_hex": "7635780b9d53b7becb5fdb533d12a5fadebcde8f6ff3a9a49011569335ffce15861fb9b7e328d687230774faf5c89b58bda38d037196bfd953534998babc4cd4",
+   "block0_tail_hex": "5d2d7c15582eae9665528e8f18987c54429e7f54c737e9f7436d5133e931983920d12fd2963260a6e3905b0a33aa3846b5fa3aeb9b3fd03521c4725c9d77beee",
+   "block_last_len": 17,
+   "block_last_head_hex": "7f25b4049bb11608cc61554c4d3b51609c",
+   "block_last_tail_hex": "7f25b4049bb11608cc61554c4d3b51609c",
+   "blob_sha256": "ba34d9b50770649bd606a85a3b6696eabfd56da99e875a9b577a8919ef1ec08b"
+  },
+  "exact_2cs": {
+   "size": 524288,
+   "key": "UW4dTR/ZmQBWnLM3LWNM3KoES5ZL4BYAAqcJuzpKQr0=",
+   "prefix_hex": "1db22e7354293ef8bda15d34f718153e",
+   "cs": 262144,
+   "blocks": 2,
+   "blob_size": 524368,
+   "header_hex": "5347463202000000000400000000000000000000000800001db22e7354293ef8bda15d34f718153e0000000000000000",
+   "ad0_hex": "0000000c736167612d66696c652f763200000008000000000000000000000008000000000000000200000004000400000000000800000000000800000000000100",
+   "nonce0_hex": "1db22e7354293ef8bda15d34f718153e0000000000000000",
+   "ad_last_hex": "0000000c736167612d66696c652f763200000008000000000000000100000008000000000000000200000004000400000000000800000000000800000000000101",
+   "nonce_last_hex": "1db22e7354293ef8bda15d34f718153e0000000000000001",
+   "block0_len": 262160,
+   "block0_head_hex": "7d1d5c1908d789429dfa0404aca7f5018d28d97d243b3ed622ea1e53707374cff64a26451c7fbcf7f501c55afeac59abf284b8ded6635c08a717fda657b220ad",
+   "block0_tail_hex": "51273f08dfb121c943269c80a1923628a785d0472d83c84fd2dbc917885dc6b427c57aa839249113274e8e4e86f588f684d14a7f886c57607bc8725063ef6e1b",
+   "block_last_len": 262160,
+   "block_last_head_hex": "71d0aa8293d9b1c5656fc258cbc58774953364f47a2fe32297ea855a3b64d788d35ad7daacbe98720e273a12bfdef7498af4ab73dc18a4a53b5f1adf93787983",
+   "block_last_tail_hex": "822f7287538e727426be480377cd4954f8840d7d9124a2c687e2332ec134a4722f70f81cb880005a8617b4390204ed34386137dc7211075d7498b6778c1b7392",
+   "blob_sha256": "e605a237f68d03b555c8644e02cca99deef27eb4e56bde1245e8f828b6dcb02a"
+  },
+  "rest_block": {
+   "size": 524293,
+   "key": "xdeCHzSdsT8xFnH21AtQvAQJZW6Q8KEb7vyy+BMFlfg=",
+   "prefix_hex": "e40da6986adbf413b528d873683c0a4e",
+   "cs": 262144,
+   "blocks": 3,
+   "blob_size": 524389,
+   "header_hex": "534746320200000000040000000000000000000000080005e40da6986adbf413b528d873683c0a4e0000000000000000",
+   "ad0_hex": "0000000c736167612d66696c652f763200000008000000000000000000000008000000000000000300000004000400000000000800000000000800050000000100",
+   "nonce0_hex": "e40da6986adbf413b528d873683c0a4e0000000000000000",
+   "ad_last_hex": "0000000c736167612d66696c652f763200000008000000000000000200000008000000000000000300000004000400000000000800000000000800050000000101",
+   "nonce_last_hex": "e40da6986adbf413b528d873683c0a4e0000000000000002",
+   "block0_len": 262160,
+   "block0_head_hex": "fb9f9b6e446f80f76336370cb793f9522dfc7ff7dfb1cfd99dc68b63e14ace89d05e39b11a545b635060f73d0d48d256e931cac78b186e7b6ae41465e714284d",
+   "block0_tail_hex": "767a5eea6f9d4b75147dad5e3cb6623a3800d351d802e4ff9f6b605afcadd971a6dad833371d105d639df99e4171956baf242a70043ae6a34e6c2b0b6e30e335",
+   "block_last_len": 21,
+   "block_last_head_hex": "6671f3b575fc7c7374e73679f78985a7ee161a7c43",
+   "block_last_tail_hex": "6671f3b575fc7c7374e73679f78985a7ee161a7c43",
+   "blob_sha256": "9eabaf241b95d5e3942ee6a6fb219f2f54b4d6850e83cdce1d20367b886f1058"
+  }
+ },
+ "reject": [
+  {
+   "name": "Bloecke vertauscht",
+   "case": "rest_block",
+   "op": "swap_blocks",
+   "i": 0,
+   "j": 1
+  },
+  {
+   "name": "letzter Block fehlt",
+   "case": "rest_block",
+   "op": "drop_last_block",
+   "size": 524293
+  },
+  {
+   "name": "letzter Block fehlt, Kopf angepasst",
+   "case": "rest_block",
+   "op": "drop_last_block_fix_size",
+   "size": 524293
+  },
+  {
+   "name": "abgeschnitten mitten im Block",
+   "case": "exact_2cs",
+   "op": "truncate",
+   "length": 263208
+  },
+  {
+   "name": "Groesse im Kopf falsch",
+   "case": "small",
+   "op": "set_size",
+   "value": 99
+  },
+  {
+   "name": "Blockgroesse im Kopf falsch",
+   "case": "cs_plus_1",
+   "op": "set_cs",
+   "value": 131072
+  },
+  {
+   "name": "falsche Kennung",
+   "case": "small",
+   "op": "set_byte",
+   "offset": 0,
+   "value": 88
+  },
+  {
+   "name": "falsche Version",
+   "case": "small",
+   "op": "set_byte",
+   "offset": 4,
+   "value": 3
+  },
+  {
+   "name": "Praefix veraendert",
+   "case": "small",
+   "op": "flip",
+   "offset": 30
+  },
+  {
+   "name": "Ciphertext veraendert",
+   "case": "cs_plus_1",
+   "op": "flip",
+   "offset": 148
+  },
+  {
+   "name": "Tag des letzten Blocks veraendert",
+   "case": "rest_block",
+   "op": "flip",
+   "offset": 524388
+  },
+  {
+   "name": "leere Datei ohne Block",
+   "case": "empty",
+   "op": "truncate",
+   "length": 48
+  }
+ ],
+ "ranges": [
+  {
+   "size": 524293,
+   "a": 0,
+   "b": 0,
+   "first_block": 0,
+   "last_block": 0,
+   "cipher_from": 48,
+   "cipher_to": 262207
+  },
+  {
+   "size": 524293,
+   "a": 0,
+   "b": 262143,
+   "first_block": 0,
+   "last_block": 0,
+   "cipher_from": 48,
+   "cipher_to": 262207
+  },
+  {
+   "size": 524293,
+   "a": 262143,
+   "b": 262144,
+   "first_block": 0,
+   "last_block": 1,
+   "cipher_from": 48,
+   "cipher_to": 524367
+  },
+  {
+   "size": 524293,
+   "a": 262144,
+   "b": 524287,
+   "first_block": 1,
+   "last_block": 1,
+   "cipher_from": 262208,
+   "cipher_to": 524367
+  },
+  {
+   "size": 524293,
+   "a": 100,
+   "b": 524292,
+   "first_block": 0,
+   "last_block": 2,
+   "cipher_from": 48,
+   "cipher_to": 524388
+  },
+  {
+   "size": 524293,
+   "a": 524288,
+   "b": 524292,
+   "first_block": 2,
+   "last_block": 2,
+   "cipher_from": 524368,
+   "cipher_to": 524388
+  },
+  {
+   "size": 524293,
+   "a": 524292,
+   "b": 524292,
+   "first_block": 2,
+   "last_block": 2,
+   "cipher_from": 524368,
+   "cipher_to": 524388
+  }
+ ]
+}

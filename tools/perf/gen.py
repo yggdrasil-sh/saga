@@ -7,7 +7,8 @@ Spalten wie die API, Eltern/Kinder, Dateien auf der Platte, Freigaben, Kommentar
 
 Stufen: S (500 Seiten), M (5.000 Seiten + 20.000 DB-Zeilen in 50 Datenbanken), L (10.000 Seiten + 50.000 DB-Zeilen,
 eine Datenbank mit 10.000 Zeilen, Baum bis Tiefe 6, lange Inhalte, Bilder, Kommentare, Freigaben an ein zweites Konto,
-Chat mit 5.000 Nachrichten). Konten: perf-a (Daten), perf-b (Freigaben, Kommentare, Chat-Gegenueber). Vorhandene
+Chat mit 5.000 Nachrichten), V (wie S, Chat mit 1.000 Video-Nachrichten samt lueckenhafter Blobs 50-500 MB und Poster;
+--art bild = Bild-Nachrichten zum Vergleich). Konten: perf-a (Daten), perf-b (Freigaben, Kommentare, Chat-Gegenueber). Vorhandene
 Daten beider Konten werden vorher geloescht. Am Ende: Zeile "PERF {json}" mit IDs und Sitzungs-Cookies fuer run.sh.
 NUR auf Test-Stacks verwenden (loescht die Konten perf-a/perf-b samt Daten)."""
 import argparse
@@ -31,7 +32,11 @@ STUFEN = {
     "S": (500,    10,  1000,   300,      60,         500,   100,      40,     3),
     "M": (5000,   50,  20000,  2000,     500,        2000,  300,      200,    5),
     "L": (10000,  100, 50000,  10000,    1000,       5000,  500,      400,    8),
+    # 2.4 (Konzept §8): wie S, Chat mit 1.000 Video-Nachrichten (saga-file/v2, lueckenhafte Blobs 50-500 MB + Poster);
+    # --art bild: dieselbe Menge Bild-Nachrichten (Vergleich "vorher", laeuft auch gegen 2.3)
+    "V": (500,    10,  1000,   300,      60,         1000,  100,      40,     3),
 }
+ART = {"art": "video"}
 A, B = "perf-a", "perf-b"
 PW = "Perf-Pass-1234"
 WORDS = ("Projekt Angebot Rechnung Kunde Server Netzwerk Firewall Backup Wartung Planung Termin Besprechung Notiz Idee Entwurf "
@@ -327,17 +332,48 @@ def gen(stufe):
         for u in (A, B):
             c.execute("INSERT INTO chat_member (chat_id, uid, joined) VALUES (%s,%s,%s)", (cid, u, now - 3e7))
         seqs = nextids(c, "chat_msg_seq_seq", n_msgs)
-        mrows, krows = [], []
+        mrows, krows, frows = [], [], []
+        media = stufe == "V"
+        if media:
+            from saga.chat import CHAT_DIR
+            os.makedirs(CHAT_DIR, mode=0o700, exist_ok=True)
+            has_fmt = c.execute("SELECT 1 FROM information_schema.columns WHERE table_name='chat_file' AND column_name='fmt'").fetchone()
+            poster = os.urandom(20 * 1024)
         for j, sq in enumerate(seqs):
             u = A if R.random() < 0.5 else B
             ts = now - 3e7 + 3e7 * j / n_msgs
-            ct = b64(R.randint(60, 400))
+            if media:                                # Ciphertext so lang wie eine echte Video- bzw. Bild-Nachricht
+                fid, tid = b64(18).replace("+", "-").replace("/", "_"), b64(18).replace("+", "-").replace("/", "_")
+                if ART["art"] == "video":
+                    plain = 50 * 1048576 + R.randrange(450 * 1048576)
+                    size = 48 + plain + 16 * -(-plain // 262144)
+                    f = {"id": fid, "k": b64(32), "n": f"VID_{j:04d}.mp4", "m": "video/mp4", "s": plain, "x": 2, "cs": 262144,
+                         "dur": round(R.uniform(10, 600), 1), "w": 1280, "h": 720, "th": {"id": tid, "k": b64(32), "m": "image/jpeg", "w": 320, "h": 180, "s": 21000}}
+                else:
+                    plain = 1048576 + R.randrange(4 * 1048576)
+                    size = 40 + plain
+                    f = {"id": fid, "k": b64(32), "n": f"IMG_{j:04d}.jpg", "m": "image/jpeg", "s": plain, "w": 4032, "h": 3024,
+                         "th": {"id": tid, "k": b64(32), "m": "image/jpeg", "w": 320, "h": 240, "s": 21000}}
+                mbody = json.dumps({"v": 1, "type": "text", "text": "", "files": [f]}, separators=(",", ":"))
+                ct = b64(len(mbody.encode()) + 40)
+                with open(os.path.join(CHAT_DIR, fid), "wb") as fh:
+                    fh.truncate(size)                # lueckenhaft: belegt keinen Platz
+                with open(os.path.join(CHAT_DIR, tid), "wb") as fh:
+                    fh.write(poster)
+                for x, sz in ((fid, size), (tid, len(poster))):
+                    frows.append((x, cid, u, sz, ts, sq) + ((2 if x == fid and ART["art"] == "video" else 1,) if has_fmt else ()))
+            else:
+                ct = b64(R.randint(60, 400))
             mrows.append((sq, os.urandom(16).hex(), cid, "msg", u, devs[u], int(ts * 1000), ts, ct, b64(64), len(ct)))
             for v in (A, B):
                 krows.append((sq, devs[v], b64(80)))
                 krows.append((sq, "backup:" + v, b64(80)))
         copy(c, "chat_msg", ("seq", "id", "chat_id", "kind", "sender_uid", "sender_device", "ts", "created", "body_ct", "sig", "size"), mrows)
         copy(c, "chat_msg_key", ("msg_seq", "recipient", "sealed"), krows)
+        if frows:
+            copy(c, "chat_file", ("id", "chat_id", "uid", "size", "created", "msg_seq") + (("fmt",) if has_fmt else ()), frows)
+            out["chat_files"] = len(frows)
+            out["art"] = ART["art"]
         c.execute("UPDATE chat SET last_seq=%s, last_at=%s WHERE id=%s", (seqs[-1], now, cid))
         c.execute("UPDATE chat_member SET last_read=%s WHERE chat_id=%s AND uid=%s", (seqs[-30], cid, A))
         out.update(chat=cid, msgs=n_msgs, dev_a=devs[A], dev_b=devs[B])
@@ -359,6 +395,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stufe", choices=sorted(STUFEN), default="S")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--art", choices=("video", "bild"), default="video")
     a = ap.parse_args()
+    ART["art"] = a.art
     R.seed(a.seed)
     gen(a.stufe)

@@ -44,7 +44,7 @@ from fastapi.responses import JSONResponse, Response
 import auth
 from db import connect as _db
 from saga import bus, i18n, notify
-from saga.core import BASE_URL, HERE, RESTORE_TEST, TZ, _api_guard, _bad, _body, _json_load, _tok_hash, account_lang, t, title
+from saga.core import ASSET_V, BASE_URL, HERE, RESTORE_TEST, TZ, _api_guard, _bad, _body, _json_load, _tok_hash, account_lang, t, title
 from saga.netguard import Blocked, guarded_client, is_public
 
 router = APIRouter()
@@ -985,7 +985,8 @@ async def api_push_test(request: Request, sid: int):
 def service_worker():
     """Service Worker fuer Web Push (Geltungsbereich "/": Klick auf eine Mitteilung oeffnet/fokussiert Saga)."""
     with open(os.path.join(HERE, "static", "sw.js"), "rb") as fh:
-        body = fh.read()
+        body = fh.read().replace(b"__SAGA_V__", ASSET_V.encode())      # 2.4: Version fuer importScripts (Videos im Chat)
+    # wasm-unsafe-eval: libsodium.js (WebAssembly) zum Entschluesseln von Videos im Service Worker (2.4)
     return Response(body, media_type="text/javascript; charset=utf-8",
                     headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/", "X-Content-Type-Options": "nosniff",
-                             "Content-Security-Policy": "default-src 'self'"})
+                             "Content-Security-Policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'"})

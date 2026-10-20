@@ -6,7 +6,7 @@
 #      + Radicale (CalDAV-Testserver), dann alle Tests (alte Tests ueber tests/pgshim auf Postgres)
 set -e
 cd "$(dirname "$0")/.."
-TESTS=${SAGA_TESTS:-"isolation funktion schneller kalender_modul kalender_api kalender_schreiben app_token app_login spalten vorlagen immich widgets inline archiv bilder dienste standalone sso_ldap app_pair versionen sicherung sprachen haertung veroeffentlichen teilen live chat push ki ki_persona ki_chat chat_loeschen ki_web foederation foederation2 foederation_chat foederation_teilen foederation_gruppen chat_v2_vektoren fehlerrunde zweifaktor avatare anrufe anrufe_v3 anrufe_raum foederation_anrufe_raum schnell_server baum_abgleich datenbank_abfrage baum_cache zeilen_suche backup_extern backup_persoenlich nextcloud_dateien"}   # SAGA_TESTS="chat avatare": nur diese Reihen
+TESTS=${SAGA_TESTS:-"isolation funktion schneller kalender_modul kalender_api kalender_schreiben app_token app_login spalten vorlagen immich widgets inline archiv bilder dienste standalone sso_ldap app_pair versionen sicherung sprachen haertung veroeffentlichen teilen live chat push ki ki_persona ki_chat chat_loeschen ki_web foederation foederation2 foederation_chat foederation_teilen foederation_gruppen chat_v2_vektoren fehlerrunde zweifaktor avatare anrufe anrufe_v3 anrufe_raum foederation_anrufe_raum schnell_server baum_abgleich datenbank_abfrage baum_cache zeilen_suche backup_extern backup_persoenlich nextcloud_dateien medienpfad"}   # SAGA_TESTS="chat avatare": nur diese Reihen
 rnd() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 # Zweiter Stack auf demselben Host (z. B. SAGA_DIR=/root/saga-live SAGA_PORT=18086): eigener Port (Admin = Port+1, nur
 # 127.0.0.1), eigenes Image-Tag und eigene Namen der Test-Container - der Compose-Projektname kommt vom Verzeichnis.
@@ -66,8 +66,9 @@ for u in ("hk-test-a", "hk-test-b"):
 open("/tmp/hkstage/prev_hosts", "w").write(auth.settings(fresh=True)["allowed_hosts"])
 auth.save_setting("allowed_hosts", "127.0.0.1:5232, 127.0.0.1:18283, 127.0.0.1:18284")
 PY'
-X 'cd /tmp/hkapp && STATE_DIR=/tmp/hkstage CALDAV_ALLOW_HTTP=1 IMMICH_URL=http://127.0.0.1:18283 GRAVATAR_URL=http://127.0.0.1:18284/avatar/ SEARXNG_URL=http://127.0.0.1:18292 SEARXNG_SECRET=test-fake-searxng PORT=8099 ADMIN_PORT=8098 HOST=127.0.0.1 ADMIN_HOST=127.0.0.1 \
-   nohup python run.py > /tmp/hkstage/server.log 2>&1 & echo $! > /tmp/hkstage/pid; sleep 6'
+# Testinstanz wie im Betrieb hinter saga-media (2.4, falls im Image; intern auf 8089 - 8079 hat die Hauptinstanz)
+X 'cd /tmp/hkapp && M=$(command -v saga-media >/dev/null && echo "saga-media --"); STATE_DIR=/tmp/hkstage CALDAV_ALLOW_HTTP=1 IMMICH_URL=http://127.0.0.1:18283 GRAVATAR_URL=http://127.0.0.1:18284/avatar/ SEARXNG_URL=http://127.0.0.1:18292 SEARXNG_SECRET=test-fake-searxng PORT=8099 ADMIN_PORT=8098 HOST=127.0.0.1 ADMIN_HOST=127.0.0.1 MEDIA_INTERNAL_PORT=8089 \
+   nohup $M python run.py > /tmp/hkstage/server.log 2>&1 & echo $! > /tmp/hkstage/pid; sleep 6'
 X "cd /tmp/hkapp/tests && export SESSION_SECRET=\$SECRET_KEY HK_RAD_PW=geheim-app-pw-123 STATE_DIR=/tmp/hkstage CALDAV_ALLOW_HTTP=1 \
      PYTHONPATH=/tmp/hkapp/tests/pgshim:/tmp/hkapp:/tmp/kal/py:/data/.saga-test-py HK_TEST_BASE=http://127.0.0.1:8099 HK_TEST_ADMIN=http://127.0.0.1:8098 \
      HK_TEST_DB=/tmp/hkstage/test.db IMMICH_URL=http://127.0.0.1:18283 HK_LDAP_ADMIN_PW=$LDAP_PW

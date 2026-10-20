@@ -19,13 +19,17 @@ Grundsaetze (Vertrag fuer Apps: docs/APP-API-FED.md, Abschnitt 6):
 - Gelesen bleibt lokal, Tippen geht direkt und verwerfbar, Push loest nur der eigene Server aus. KI im Chat ist in
   foederierten Chats aus, bis jemand sie einschaltet (Systemzeile fuer alle). Trennen: Chats mit Personen bzw. Heim der
   getrennten Instanz werden schreibgeschuetzt (Verlauf bleibt lesbar)."""
+import base64
 import json
 import os
 import re
 import secrets
+import socket
 import sys
+import threading
 import time
-from urllib.parse import quote
+from urllib import parse as urllib_parse
+from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, Request
 from starlette.concurrency import run_in_threadpool
@@ -33,12 +37,19 @@ from starlette.concurrency import run_in_threadpool
 import auth
 from db import connect as _db
 from saga import bus, chat, chat_v2 as V, fed_keys as FK, federation as F, fedsig, notify, sharing
-from saga.core import _bad, _body, t
+from saga.core import MEDIA_FRONT, MEDIA_KEY, _bad, _body, t
 from saga.notes import FILE_MAX
 
 router = APIRouter()
 
 PREFETCH_MAX = 256 * 1024          # kleinere Anhaenge (Vorschaubilder) holt der Server des Empfaengers gleich vorab
+# 2.4 (Videos, chatfile2): grosse Anhaenge nur bereichsweise holen. Zwischenkopie lueckenhaft in STATE_DIR/chat/fed/<id>,
+# Bitmap der geholten 1-MiB-Einheiten in chat_file_fed.have. Je Abruf hoechstens PART_MAX (4 MiB), signiert je Teil.
+UNIT = 1024 * 1024
+PART_MAX = 4 * UNIT
+RANGE_MIN = FILE_MAX + 64           # darueber: Range-Abruf statt ganzer Datei (Gegenstelle mit chatfile2)
+BIG_MAX = 8 << 30                   # hoechstens so grosse Anhaenge anderer Server nimmt dieser Server an (Ankuendigung)
+SERVE_MAX = 8 * UNIT                # Python-Ersatzweg (ohne saga-media): je Antwort hoechstens so viel holen und liefern
 # Zwischenkopien fremder Anhaenge: Speicher je Instanz begrenzt (zuletzt benutzte bleiben), unbenutzte verfallen - danach
 # holt der Server sie bei Bedarf erneut beim Absender-Server (nichts geht verloren, solange die Nachricht dort besteht)
 CACHE_PEER_MAX = max(2 * (FILE_MAX + 64), int(F.E.get("FED_CHAT_CACHE_MB", "1024")) * 1024 * 1024)
@@ -323,21 +334,47 @@ def msg_in(d):
     return out
 
 
-def files_in(v):
-    """[{id, size}] einer anderen Instanz pruefen -> Liste oder None."""
+def files_in(v, peer=None):
+    """[{id, size}] einer anderen Instanz pruefen -> Liste oder None. 2.4: mit chatfile2 (Range-Abruf) auch grosse
+    Anhaenge (saga-file/v2, Videos) bis BIG_MAX - Zwischenkopien bleiben ueber FED_CHAT_CACHE_MB begrenzt."""
     if v is None:
         return []
     if not isinstance(v, list) or len(v) > chat.FILE_IDS_PER_MSG:
         return None
+    mx = BIG_MAX if peer is not None and F.feature(peer, "chatfile2") else FILE_MAX + 64
     out = []
     for f in v:
         if not isinstance(f, dict) or not isinstance(f.get("id"), str) or not chat._FID.fullmatch(f["id"]):
             return None
         s = f.get("size")
-        if not isinstance(s, int) or isinstance(s, bool) or not 0 < s <= FILE_MAX + 64:
+        if not isinstance(s, int) or isinstance(s, bool) or not 0 < s <= mx:
             return None
         out.append({"id": f["id"], "size": s})
     return out
+
+
+def files_for(p, files):
+    """Anhaenge fuer Instanz p: ohne chatfile2 (Saga 2.3) nur bis FILE_MAX - groessere koennte sie nicht annehmen (die
+    ganze Nachricht ginge sonst verloren); ihre Apps zeigen ohnehin "Mit Saga 2.4 oeffnen"."""
+    if not files or F.feature(p, "chatfile2"):
+        return files
+    return [f for f in files if f["size"] <= FILE_MAX + 64]
+
+
+def big_files_ok(c, ch):
+    """Koennen alle beteiligten Server (Heim und Server aller Mitglieder) grosse Anhaenge (chatfile2)?"""
+    hosts = _hosts_of([u for u, _ in members(c, ch["id"])])
+    if ch["home_peer"] is not None:
+        hp = F.peer_by(c, "id", ch["home_peer"])
+        if not hp or not F.feature(hp, "chatfile2"):
+            return False
+    for host in hosts:
+        if host == F.SELF_HOST:
+            continue
+        p = F.peer_by(c, "host", host)
+        if not p or not F.feature(p, "chatfile2"):
+            return False
+    return True
 
 
 # =====================================================================================================
@@ -425,6 +462,8 @@ def fanout(c, ch, ev, keys=None, declined=True, skip=None):
         e = dict(ev, ref=ch["ref"])
         if keys is not None:
             e["keys"] = keys_for_host(keys, p["host"])
+        if e.get("files"):
+            e["files"] = files_for(p, e["files"])
         F._enqueue(c, p["id"], e, chain=chain_down(ch["ref"]))
 
 
@@ -526,7 +565,7 @@ def op_send(c, peer, d):
     if ch["fstate"]:
         return 409, {"error": "readonly"}
     m = msg_in(d.get("msg"))
-    files = files_in(d.get("files"))
+    files = files_in(d.get("files"), peer)
     keys = d.get("keys")
     if not m or files is None or not _keys_ok(keys) or (m.get("kind") == "title" and ch["kind"] != "free"):
         return 400, {"error": "bad message"}
@@ -795,7 +834,7 @@ def apply_msg(c, peer, ch, ev, jump=False):
     des Heims: von dort mitgeschickt; andere: Zwischenspeicher)."""
     fseq = ev.get("fseq")
     m = msg_in(ev.get("msg"))
-    files = files_in(ev.get("files"))
+    files = files_in(ev.get("files"), peer)
     keys = ev.get("keys")
     if not isinstance(fseq, int) or isinstance(fseq, bool) or not 0 < fseq < 2 ** 62 or not m or files is None or not _keys_ok(keys):
         return "ignored"
@@ -1008,7 +1047,7 @@ def gap_items(c, ch, peer, after, limit=GAP_PAGE):
     for seq, mid, sh, dev, ts, body, sig, reply, ai, fseq, kind in rows:
         keys = {r: v for r, v in c.execute("SELECT recipient, sealed FROM chat_msg_key WHERE msg_seq=?", (seq,)).fetchall()
                 if r.rpartition("@")[2] == peer["host"]}
-        files = [{"id": f, "size": s} for f, s in c.execute("SELECT id, size FROM chat_file WHERE msg_seq=?", (seq,)).fetchall()]
+        files = files_for(peer, [{"id": f, "size": s} for f, s in c.execute("SELECT id, size FROM chat_file WHERE msg_seq=?", (seq,)).fetchall()])
         it = {"fseq": fseq, "msg": {"id": mid, "ts": ts, "sender_handle": sh, "sender_device": dev, "body_ct": body, "sig": sig,
                                     "reply_to": reply, "ai": ai, **({"kind": "title"} if kind == "title" else {})}, "keys": keys, "files": files}
         if split_handle(sh)[1] == F.SELF_HOST:
@@ -1086,32 +1125,82 @@ def fill_gap(peer_id, ref, upto=None):
 
 
 # --- Anhaenge: beim Absender-Server, Abruf bei Bedarf (Zwischenkopie) ----------------------------------------------------
+def origin_check(c, peer, fid):
+    """Darf Instanz peer den Anhang fid hier abrufen? -> (None, None) oder (Groesse, Herkunft-peer_id|None). Nur Anhaenge
+    aus geteilten v2-Chats, an denen peer beteiligt ist; fremde Anhaenge reicht nur das Heim weiter (an andere als den
+    Absender-Server)."""
+    r = c.execute("SELECT f.chat_id, f.msg_seq, (SELECT x.peer_id FROM chat_file_fed x WHERE x.id=f.id), f.size FROM chat_file f WHERE f.id=?",
+                  (fid,)).fetchone()
+    ch = chat._load(c, r[0]) if r and r[1] else None
+    if ch and r[2] is not None and (ch["home_peer"] is not None or r[2] == peer["id"]):
+        return None, None
+    if not ch or ch["v"] != 2:
+        return None, None
+    x = c.execute("SELECT 1 FROM chat_msg WHERE seq=? AND (expires_at IS NULL OR expires_at>?)", (r[1], time.time())).fetchone()
+    host = peer["host"]
+    part = ch["home_peer"] == peer["id"] or any(sharing.is_remote(u) and split_handle(handle_of(u))[1] == host and st != "declined"
+                                                for u, st in members(c, ch["id"]))
+    if not x or not part:
+        return None, None
+    return r[3], r[2]
+
+
+def parse_range(v, size):
+    """'a-b' (Query range, mitsigniert) -> (a, b) oder None. Hoechstens PART_MAX, b wird aufs Dateiende gekuerzt."""
+    m = re.fullmatch(r"(\d{1,15})-(\d{1,15})", v or "")
+    if not m:
+        return None
+    a, b = int(m.group(1)), int(m.group(2))
+    if b < a or b - a + 1 > PART_MAX or a >= size:
+        return None
+    return a, min(b, size - 1)
+
+
+def _read_part(fid, a, b):
+    for d in (chat.CHAT_DIR, chat.FED_DIR):
+        try:
+            with open(os.path.join(d, fid), "rb") as f:
+                f.seek(a)
+                data = f.read(b - a + 1)
+            if len(data) == b - a + 1:
+                return data
+        except OSError:
+            pass
+    return None
+
+
 @router.get("/fed/v2/chat/files/{fid}")
 async def fed_chat_file(fid: str, request: Request):
+    """Anhang fuer eine beteiligte Instanz (signiert). 2.4 (chatfile2): ?range=a-b (Teil der signierten Anfrage) -> 206 mit
+    Content-Digest ueber genau diesen Teil, Saga-Size und Content-Range. Ohne range nur Anhaenge bis FILE_MAX (wie 2.3).
+    Im Container beantwortet saga-media Range-Abrufe eigener Anhaenge selbst (Python prueft und signiert nur)."""
     inp, err = await F._verify(request)
     if err is not None:
         return err
     if not peer_ok(inp.peer) or not chat._FID.fullmatch(fid):
         return F._signed(inp, 404, {"error": "not found"})
+    rq = request.query_params.get("range")
 
     def run():
         with _db() as c:
-            r = c.execute("SELECT f.chat_id, f.msg_seq, (SELECT x.peer_id FROM chat_file_fed x WHERE x.id=f.id) FROM chat_file f WHERE f.id=?",
-                          (fid,)).fetchone()
-            ch = chat._load(c, r[0]) if r and r[1] else None
-            if ch and r[2] is not None and (ch["home_peer"] is not None or r[2] == inp.peer["id"]):
-                return None                  # fremder Anhang: nur das Heim reicht ihn weiter (an andere als den Absender-Server)
-            if not ch or ch["v"] != 2:
-                return None
-            x = c.execute("SELECT 1 FROM chat_msg WHERE seq=? AND (expires_at IS NULL OR expires_at>?)", (r[1], time.time())).fetchone()
-            host = inp.peer["host"]
-            part = ch["home_peer"] == inp.peer["id"] or any(sharing.is_remote(u) and split_handle(handle_of(u))[1] == host and st != "declined"
-                                                            for u, st in members(c, ch["id"]))
-            if not x or not part:
-                return None
-        if r[2] is not None and not fetch_file(fid):      # Heim: Anhang eines dritten Servers erst selbst holen (E5)
+            size, remote = origin_check(c, inp.peer, fid)
+        if size is None:
             return None
-        if r[2] is not None:
+        if rq is not None:
+            rg = parse_range(rq, size)
+            if rg is None:
+                return 416
+            if remote is not None:                       # Heim: Anhang eines dritten Servers (E5) - Teil selbst holen
+                if not (fetch_range(fid, *rg) if size > RANGE_MIN else fetch_file(fid)):
+                    return None
+                touch(fid)
+            data = _read_part(fid, *rg)
+            return None if data is None else (data, rg, size)
+        if size > FILE_MAX + 64:
+            return 413                                    # grosse Anhaenge nur bereichsweise (chatfile2)
+        if remote is not None and not fetch_file(fid):    # Heim: Anhang eines dritten Servers erst selbst holen (E5)
+            return None
+        if remote is not None:
             touch(fid)
         try:
             with open(os.path.join(chat.CHAT_DIR, fid), "rb") as f:
@@ -1121,6 +1210,12 @@ async def fed_chat_file(fid: str, request: Request):
     data = await run_in_threadpool(run)
     if data is None:
         return F._signed(inp, 404, {"error": "not found"})
+    if data in (413, 416):
+        return F._signed(inp, data, {"error": "range required" if data == 413 else "bad range"})
+    if isinstance(data, tuple):
+        body, (a, b), size = data
+        return F._signed(inp, 206, body, media="application/octet-stream",
+                         extra={"Saga-Size": str(size), "Content-Range": f"bytes {a}-{b}/{size}"})
     return F._signed(inp, 200, data, media="application/octet-stream")
 
 
@@ -1160,36 +1255,50 @@ def fetch_file(fid):
 
 def touch(fid):
     """Zwischenkopie wurde gelesen (zuletzt benutzt - bleibt beim Begrenzen am laengsten)."""
-    try:
-        os.utime(os.path.join(chat.CHAT_DIR, fid))
-    except OSError:
-        pass
+    for d in (chat.CHAT_DIR, chat.FED_DIR):
+        try:
+            os.utime(os.path.join(d, fid))
+            return
+        except OSError:
+            pass
 
 
 def _evict(c, fid):
-    try:
-        os.remove(os.path.join(chat.CHAT_DIR, fid))
-    except FileNotFoundError:
-        pass
-    c.execute("UPDATE chat_file_fed SET cached=0 WHERE id=?", (fid,))
+    for d in (chat.CHAT_DIR, chat.FED_DIR):
+        try:
+            os.remove(os.path.join(d, fid))
+        except FileNotFoundError:
+            pass
+    c.execute("UPDATE chat_file_fed SET cached=0, have=NULL WHERE id=?", (fid,))
+
+
+def _units(size):
+    return max(1, -(-int(size) // UNIT))
+
+
+def _popcount(have):
+    return sum(bin(x).count("1") for x in bytes(have or b""))
 
 
 def cache_trim(peer_id, keep=None):
-    """Zwischenkopien der Anhaenge einer Instanz auf CACHE_PEER_MAX begrenzen (am laengsten unbenutzte zuerst).
-    -> Anzahl entfernter."""
+    """Zwischenkopien der Anhaenge einer Instanz auf CACHE_PEER_MAX begrenzen (am laengsten unbenutzte zuerst). Lueckenhafte
+    Kopien (2.4) zaehlen mit ihren geholten 1-MiB-Einheiten. -> Anzahl entfernter."""
     with _db() as c:
         if not peer_ok(F.peer_by(c, "id", peer_id)):    # getrennt/abgeschaltet: nicht neu zu holen - Kopien bleiben
             return 0
-        rows = c.execute("SELECT x.id, f.size FROM chat_file_fed x JOIN chat_file f ON f.id=x.id WHERE x.peer_id=? AND x.cached=1",
-                         (peer_id,)).fetchall()
+        rows = c.execute("SELECT x.id, CASE WHEN x.cached=1 THEN f.size ELSE 0 END, x.have FROM chat_file_fed x JOIN chat_file f ON f.id=x.id "
+                         "WHERE x.peer_id=? AND (x.cached=1 OR x.have IS NOT NULL)", (peer_id,)).fetchall()
+    rows = [(fid, size or min(_popcount(have) * UNIT, 1 << 62)) for fid, size, have in rows]
     total = sum(r[1] for r in rows)
     if total <= CACHE_PEER_MAX:
         return 0
     def used(fid):
-        try:
-            return os.stat(os.path.join(chat.CHAT_DIR, fid)).st_mtime
-        except OSError:
-            return 0.0
+        for d in (chat.CHAT_DIR, chat.FED_DIR):
+            try:
+                return os.stat(os.path.join(d, fid)).st_mtime
+            except OSError:
+                pass
+        return 0.0
     n = 0
     with _db() as c, c:
         for fid, size in sorted(rows, key=lambda r: used(r[0])):
@@ -1208,16 +1317,350 @@ def cache_trim(peer_id, keep=None):
 
 def _prefetch_after(c, files, origin):
     small = [f["id"] for f in files if f["size"] <= PREFETCH_MAX]
-    if small:                            # (je Instanz begrenzt: eine langsame Gegenstelle belegt nicht den ganzen Pool)
-        c.after_commit(lambda: F.peer_submit(origin["id"], _prefetch, small))
+    big = [f["id"] for f in files if f["size"] > RANGE_MIN] if F.feature(origin, "chatfile2") else []
+    if small or big:                     # (je Instanz begrenzt: eine langsame Gegenstelle belegt nicht den ganzen Pool)
+        c.after_commit(lambda: F.peer_submit(origin["id"], _prefetch, small, big))
 
 
-def _prefetch(fids):
+def _prefetch(fids, big=()):
     for f in fids:
         try:
             fetch_file(f)
         except OSError as ex:
             print(f"fed_chat: Anhang vorab: {type(ex).__name__}", flush=True)
+    for f in big:                        # 2.4: Videos - Anfang und Ende (moov vorn oder hinten) vorab: schnellerer Start
+        try:
+            warm(f)
+        except OSError as ex:
+            print(f"fed_chat: Video vorab: {type(ex).__name__}", flush=True)
+
+
+# --- 2.4: grosse Anhaenge bereichsweise (chatfile2) --------------------------------------------------------------------
+# Lueckenhafte Zwischenkopie STATE_DIR/chat/fed/<id> (sparse, volle Laenge), Bitmap chat_file_fed.have: Bit u (Byte u>>3,
+# Bit u&7, niedrigstes zuerst) = 1-MiB-Einheit u liegt geprueft vor. Im Container holt saga-media die Bytes selbst:
+# /internal/media/fed-need liefert den Plan (signierte Anfragen je Teil, erlaubte Adressen), saga-media laedt, schreibt,
+# rechnet den Digest und meldet ihn an /internal/media/fed-got (Python prueft nur die Signatur der Antwort). Ohne
+# saga-media laedt Python (fetch_range) - gleiche Regeln.
+_plans = {}                              # Nonce -> (fid, von, bis, peer_id, Ablauf)
+_plans_lock = threading.Lock()
+PLAN_TTL = 120
+
+
+def ranged(fid):
+    """Grosser Anhang einer Instanz mit chatfile2, noch nicht ganz hier? -> {"size": n} oder None."""
+    with _db() as c:
+        r = c.execute("SELECT x.peer_id, f.size FROM chat_file_fed x JOIN chat_file f ON f.id=x.id WHERE x.id=? AND f.msg_seq IS NOT NULL",
+                      (fid,)).fetchone()
+        p = F.peer_by(c, "id", r[0]) if r else None
+    if not r or r[1] <= RANGE_MIN or not p or not F.feature(p, "chatfile2"):
+        return None
+    return {"size": r[1]}
+
+
+def _have(c, fid, lock=False):
+    r = c.execute("SELECT have FROM chat_file_fed WHERE id=?" + (" FOR UPDATE" if lock else ""), (fid,)).fetchone()
+    return bytearray(r[0] or b"") if r else None
+
+
+def _missing(have, size, a, b):
+    """Fehlende 1-MiB-Einheiten fuer den Byte-Bereich a..b des Blobs."""
+    return [u for u in range(a // UNIT, b // UNIT + 1) if not (u >> 3 < len(have) and have[u >> 3] >> (u & 7) & 1)]
+
+
+def _dial(base):
+    """Erlaubte Adressen der Gegenstelle (wie netguard: oeffentlich oder im Admin freigegeben) -> ['ip:port', ...]."""
+    u = urlparse(base)
+    host, port = u.hostname, u.port or (443 if u.scheme == "https" else 80)
+    out = []
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError:
+        return []
+    for ai in infos:
+        ip = ai[4][0]
+        if F._ip_ok(ip, host, port):
+            a = f"[{ip}]:{port}" if ":" in ip else f"{ip}:{port}"
+            if a not in out:
+                out.append(a)
+    return out
+
+
+def plan(fid, a, b, limit=2 * PART_MAX):
+    """Was fehlt fuer a..b? -> {size, have(b64), path, fetch:[{from,to,url,headers,nonce,dial}]} oder None.
+    Geplant wird ab der ersten fehlenden Einheit hoechstens limit Bytes (zusammenhaengende Teile bis PART_MAX)."""
+    rg = ranged(fid)
+    if not rg or os.path.isfile(os.path.join(chat.CHAT_DIR, fid)):    # inzwischen ganz hier: normaler Weg
+        return None
+    size = rg["size"]
+    a, b = max(0, a), min(b, size - 1)
+    with _db() as c:
+        have = _have(c, fid)
+        r = c.execute("SELECT peer_id FROM chat_file_fed WHERE id=?", (fid,)).fetchone()
+        p = F.peer_by(c, "id", r[0]) if r else None
+    if have is None or not peer_ok(p):
+        return None
+    out = {"size": size, "have": base64.b64encode(bytes(have)).decode(), "path": "fed/" + fid, "unit": UNIT, "fetch": []}
+    miss = _missing(have, size, a, b) if a <= b else []
+    if not miss:
+        return out
+    if F.RESTORE_TEST:
+        return None
+    priv, _ = F.own_key()
+    netloc = urlparse(p["base_url"]).netloc
+    dial = _dial(p["base_url"])
+    path = f"/fed/v2/chat/files/{fid}"
+    budget, i = limit, 0
+    while i < len(miss) and budget > 0:
+        j = i
+        while j + 1 < len(miss) and miss[j + 1] == miss[j] + 1 and (miss[j + 1] - miss[i] + 1) * UNIT <= PART_MAX:
+            j += 1
+        fr, to = miss[i] * UNIT, min((miss[j] + 1) * UNIT, size) - 1
+        q = f"range={fr}-{to}"
+        hdr, nonce = fedsig.sign_request(priv, F.SELF_URL, "GET", netloc, path, q, b"")
+        hdr.update({"Accept": "application/octet-stream", "User-Agent": f"Saga/{F.VERSION}"})
+        out["fetch"].append({"from": fr, "to": to, "url": p["base_url"] + path + "?" + q, "headers": hdr, "nonce": nonce, "dial": dial})
+        with _plans_lock:
+            now = time.time()
+            if len(_plans) > 5000:
+                for k in [k for k, v in _plans.items() if v[4] < now]:
+                    _plans.pop(k, None)
+            _plans[nonce] = (fid, fr, to, p["id"], now + PLAN_TTL)
+        budget -= to - fr + 1
+        i = j + 1
+    return out
+
+
+def _mark(fid, fr, to, size):
+    """Einheiten fr..to als geprueft eintragen -> (have, komplett). Komplett: Datei ins Blob-Verzeichnis (wie bis 2.3)."""
+    done = False
+    with _db() as c, c:
+        have = _have(c, fid, lock=True)
+        if have is None:
+            return None, False
+        n = _units(size)
+        if len(have) < (n + 7) // 8:
+            have.extend(b"\0" * ((n + 7) // 8 - len(have)))
+        for u in range(fr // UNIT, to // UNIT + 1):
+            have[u >> 3] |= 1 << (u & 7)
+        done = all(have[u >> 3] >> (u & 7) & 1 for u in range(n))
+        if done:
+            try:
+                os.replace(os.path.join(chat.FED_DIR, fid), os.path.join(chat.CHAT_DIR, fid))
+                c.execute("UPDATE chat_file_fed SET cached=1, have=NULL WHERE id=?", (fid,))
+            except OSError:
+                done = False
+        if not done:
+            c.execute("UPDATE chat_file_fed SET have=? WHERE id=?", (bytes(have), fid))
+    return have, done
+
+
+def got(nonce, status, headers, dig, length):
+    """saga-media hat einen geplanten Teil geladen und geschrieben -> {ok, have, complete} bzw. {ok: False, error}."""
+    with _plans_lock:
+        pl = _plans.pop(str(nonce or ""), None)
+    if not pl or pl[4] < time.time():
+        return {"ok": False, "error": "unknown"}
+    fid, fr, to, peer_id = pl[:4]
+    with _db() as c:
+        p = F.peer_by(c, "id", peer_id)
+        r = c.execute("SELECT size FROM chat_file WHERE id=?", (fid,)).fetchone()
+    if not p or not r:
+        return {"ok": False, "error": "gone"}
+    try:
+        fedsig.verify_response(fedsig.unb64u(p["public_key"]), p["base_url"], status, {k.lower(): v for k, v in (headers or {}).items()},
+                               None, nonce, dig=str(dig or ""))
+    except fedsig.SigError as ex:
+        with _db() as c, c:
+            F.log(c, "chat.filesig", p, str(ex), throttle=(p["id"], "filesig"))
+        return {"ok": False, "error": "signature"}
+    if status != 206 or length != to - fr + 1:
+        return {"ok": False, "error": f"HTTP {status}"}
+    have, done = _mark(fid, fr, to, r[0])
+    if have is None:
+        return {"ok": False, "error": "gone"}
+    if done or fr == 0:
+        F.peer_submit(peer_id, cache_trim, peer_id, fid)
+    return {"ok": True, "have": base64.b64encode(bytes(have)).decode(), "complete": done}
+
+
+def fetch_range(fid, a, b):
+    """Python-Ersatzweg (ohne saga-media, Heim fuer dritte Server, Vorababruf): fehlende Teile von a..b holen. -> True,
+    wenn a..b jetzt hier liegt."""
+    rg = ranged(fid)
+    if not rg:
+        return os.path.isfile(os.path.join(chat.CHAT_DIR, fid))
+    for _ in range(64):
+        pl = plan(fid, a, b, limit=PART_MAX)
+        if pl is None:
+            return os.path.isfile(os.path.join(chat.CHAT_DIR, fid))
+        if not pl["fetch"]:
+            return True
+        ch_ = pl["fetch"][0]
+        with _db() as c:
+            r = c.execute("SELECT peer_id FROM chat_file_fed WHERE id=?", (fid,)).fetchone()
+            p = F.peer_by(c, "id", r[0]) if r else None
+        if not p:
+            return False
+        try:
+            status, rh, data = F._send("GET", ch_["url"], dict(ch_["headers"]), b"", ch_["to"] - ch_["from"] + 1 + 1024, F.TIMEOUT)
+        except F.FedError as ex:
+            with _db() as c, c:
+                F._touch(c, p, ex)
+            with _plans_lock:
+                _plans.pop(ch_["nonce"], None)
+            return False
+        if status != 206 or len(data) != ch_["to"] - ch_["from"] + 1:
+            with _plans_lock:
+                _plans.pop(ch_["nonce"], None)
+            return False
+        os.makedirs(chat.FED_DIR, mode=0o700, exist_ok=True)
+        fd = os.open(os.path.join(chat.FED_DIR, fid), os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        try:
+            if os.fstat(fd).st_size != pl["size"]:
+                os.ftruncate(fd, pl["size"])
+            os.pwrite(fd, data, ch_["from"])
+        finally:
+            os.close(fd)
+        res = got(ch_["nonce"], status, rh, fedsig.digest(data), len(data))
+        if not res.get("ok"):
+            return False
+    return False
+
+
+def warm(fid):
+    """Vorababruf eines grossen Anhangs: erste und letzte 1-MiB-Einheit (moov vorn oder hinten). Im Container ueber
+    saga-media (die Bytes laufen nicht durch Python), sonst fetch_range."""
+    rg = ranged(fid)
+    if not rg:
+        return False
+    size = rg["size"]
+    spans = [(0, min(UNIT, size) - 1)] + ([((_units(size) - 1) * UNIT, size - 1)] if size > UNIT else [])
+    if MEDIA_FRONT:
+        try:
+            import httpx
+            host = F.E.get("HOST") or "127.0.0.1"
+            host = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
+            port = F.E.get("PORT") or "8080"
+            for a, b in spans:
+                httpx.post(f"http://{host if ':' not in host else '[' + host + ']'}:{port}/internal/media/warm",
+                           params={"fid": fid, "from": a, "to": b, "size": size}, headers={"X-Saga-Media-Key": MEDIA_KEY}, timeout=30, trust_env=False)
+            return True
+        except Exception as ex:  # noqa: BLE001  (Vorabruf ist nur Beschleunigung)
+            print(f"fed_chat: Vorababruf ueber saga-media: {type(ex).__name__}", flush=True)
+    return all(fetch_range(fid, a, b) for a, b in spans)
+
+
+def serve_range(fid, part, request, headers):
+    """Python-Ersatzweg fuer GET/HEAD /api/chat/files/{fid} einer lueckenhaften Zwischenkopie: Range auswerten, Fehlendes
+    holen (hoechstens SERVE_MAX je Antwort - der Client fordert den Rest an), 206 liefern."""
+    from fastapi.responses import Response
+    size = part["size"]
+    h = dict(headers, **{"Accept-Ranges": "bytes"})
+    h.pop("ETag", None)
+    h["ETag"] = f'"{fid}"'
+    rh = (request.headers.get("range") or "").strip()
+    a, b, status = 0, size - 1, 200
+    m = re.fullmatch(r"bytes=(\d*)-(\d*)(,.*)?", rh)
+    if m and (m.group(1) or m.group(2)):
+        if not m.group(1):
+            n = int(m.group(2))
+            if n == 0:
+                return Response(status_code=416, headers={"Content-Range": f"bytes */{size}", "Cache-Control": "no-store"})
+            a, b = max(0, size - n), size - 1
+        else:
+            a = int(m.group(1))
+            b = min(int(m.group(2)), size - 1) if m.group(2) else size - 1
+            if a >= size or b < a:
+                return Response(status_code=416, headers={"Content-Range": f"bytes */{size}", "Cache-Control": "no-store"})
+        status = 206
+    if request.method == "HEAD":
+        h["Content-Length"] = str(b - a + 1)
+        if status == 206:
+            h["Content-Range"] = f"bytes {a}-{b}/{size}"
+        return Response(status_code=status, headers=h, media_type="application/octet-stream")
+    b = min(b, a + SERVE_MAX - 1)
+    if not fetch_range(fid, a, b):
+        return Response(status_code=502, headers={"Cache-Control": "no-store", "Retry-After": "5"})
+    data = _read_part(fid, a, b)
+    if data is None:
+        return Response(status_code=502, headers={"Cache-Control": "no-store", "Retry-After": "5"})
+    touch(fid)
+    h["Content-Range"] = f"bytes {a}-{b}/{size}"
+    return Response(data, status_code=206, headers=h, media_type="application/octet-stream")
+
+
+# --- Fuer saga-media (gleicher Container, Geheimnis im Kopf) -----------------------------------------------------------
+def _internal_ok(request):
+    return bool(MEDIA_KEY) and secrets.compare_digest(request.headers.get("x-saga-media-key", ""), MEDIA_KEY)
+
+
+@router.post("/internal/media/fed-need")
+async def api_fed_need(request: Request):
+    """{fid, from, to} -> Plan (siehe plan). saga-media hat die Berechtigung des Clients schon (authz, fed)."""
+    if not _internal_ok(request):
+        return _bad("not found", 404)
+    b = await _body(request) or {}
+    fid, a, z = b.get("fid"), b.get("from"), b.get("to")
+    if not isinstance(fid, str) or not chat._FID.fullmatch(fid) or not isinstance(a, int) or not isinstance(z, int) or a < 0 or z < a:
+        return _bad("bad request", 400)
+    pl = await run_in_threadpool(plan, fid, a, z)
+    if pl is None:
+        return _bad("not found", 404)
+    return chat._no_store(pl)
+
+
+@router.post("/internal/media/fed-got")
+async def api_fed_got(request: Request):
+    """{nonce, status, headers, digest, length} -> {ok, have, complete}."""
+    if not _internal_ok(request):
+        return _bad("not found", 404)
+    b = await _body(request) or {}
+    st, ln, hd = b.get("status"), b.get("length"), b.get("headers")
+    if not isinstance(st, int) or not isinstance(ln, int) or not isinstance(hd, dict):
+        return _bad("bad request", 400)
+    return chat._no_store(await run_in_threadpool(got, b.get("nonce"), st, {str(k): str(v) for k, v in hd.items()}, b.get("digest"), ln))
+
+
+@router.post("/internal/media/fed-serve")
+async def api_fed_serve(request: Request):
+    """saga-media beantwortet GET /fed/v2/chat/files/{fid}?range=a-b eines eigenen Anhangs selbst: Python prueft hier die
+    Signatur der Anfrage und die Berechtigung und signiert die Antwort ueber den von saga-media berechneten Digest.
+    {method, path, query, headers, fid, digest, from, to, size} -> {ok, headers} | {pass: true} | {ok: false, status, headers, body}."""
+    if not _internal_ok(request):
+        return _bad("not found", 404)
+    b = await _body(request) or {}
+    fid, hd = b.get("fid"), b.get("headers")
+    if not isinstance(fid, str) or not chat._FID.fullmatch(fid) or not isinstance(hd, dict):
+        return _bad("bad request", 400)
+
+    def run():
+        with _db() as c:
+            if c.execute("SELECT 1 FROM chat_file_fed WHERE id=?", (fid,)).fetchone():
+                return {"pass": True}                   # Zwischenkopie eines fremden Anhangs: Python wie bisher (Heim, E5)
+        heads = {str(k).lower(): str(v) for k, v in hd.items()}
+        inp, err = F._verify_sync("GET", str(b.get("path") or ""), str(b.get("query") or ""), heads, b"", ("active",))
+        if err is not None:
+            return {"ok": False, "status": err.status_code, "headers": dict(err.headers), "body": base64.b64encode(err.body).decode()}
+
+        def fail(code, msg):
+            r = F._signed(inp, code, {"error": msg})
+            return {"ok": False, "status": code, "headers": {k: v for k, v in r.headers.items() if k.lower() != "content-length"},
+                    "body": base64.b64encode(r.body).decode()}
+        if not peer_ok(inp.peer):
+            return fail(404, "not found")
+        with _db() as c:
+            size, remote = origin_check(c, inp.peer, fid)
+        if size is None or remote is not None:
+            return fail(404, "not found")
+        rg = parse_range(urllib_parse.parse_qs(str(b.get("query") or "")).get("range", [""])[0], size)
+        if rg is None or rg != (b.get("from"), b.get("to")) or b.get("size") != size:
+            return fail(416, "bad range")
+        priv, _ = F.own_key()
+        h = fedsig.sign_response(priv, F.SELF_URL, 206, None, inp.nonce, dig=str(b.get("digest") or ""))
+        h.update({"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Saga-Size": str(size),
+                  "Content-Range": f"bytes {rg[0]}-{rg[1]}/{size}", "Content-Type": "application/octet-stream"})
+        return {"ok": True, "headers": h}
+    return chat._no_store(await run_in_threadpool(run))
 
 
 # =====================================================================================================
@@ -1386,6 +1829,8 @@ def send(uid, cid, b):
                 (ch["id"], uid, *fids)).fetchall()]
             if len(files) != len(set(fids)):
                 return _bad(t("Anhang nicht gefunden."), 400)
+            if any(f["size"] > FILE_MAX + 64 for f in files) and not big_files_ok(c, ch):     # 2.4: 2.3-Server dabei
+                return _bad(t("Der Server des Gegenübers kann große Videos noch nicht (höchstens {n} MB).", n=FILE_MAX // 1048576), 409)
     ents = entries(handles, uid=uid)                 # Netzwerk: Schluessel der anderen (Zwischenspeicher)
     if set(keys) != want_of(ents):
         return chat._no_store({"error": t("Die Mitglieder oder ihre Geräte haben sich geändert – bitte erneut senden."), "handles": handles}, 409)
@@ -1611,7 +2056,8 @@ def chat_extra(c, uid, ch, d, mem, m):
     hh = home_host(c, ch)
     ro = _ro_error(c, ch)
     d.update(v=2, ref=ch["ref"], fed=True, home=hh, home_self=ch["home_peer"] is None, my_handle=my_handle(c, uid),
-             state=(m or {}).get("state") or "ok", request=(m or {}).get("state") == "request", readonly=bool(ro), readonly_reason=ro)
+             state=(m or {}).get("state") or "ok", request=(m or {}).get("state") == "request", readonly=bool(ro), readonly_reason=ro,
+             big_files=big_files_ok(c, ch))      # 2.4: grosse Anhaenge (saga-file/v2 ueber ATTACH_MAX_MB) moeglich (alle mit chatfile2)
     out = []
     av = sharing.names(c, mem)
     for x in d["members"]:
