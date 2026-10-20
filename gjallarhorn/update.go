@@ -50,11 +50,16 @@ type updater struct {
 	client  *http.Client
 	exit    func(int)
 	shut    func()
+	first   time.Duration
 }
 
 func newUpdater(s *server) *updater {
-	return &updater{s: s, base: strings.TrimRight(env("HORN_UPDATE_BASE", "https://github.com/yggdrasil-sh/saga/releases/download"), "/"),
-		client: &http.Client{Timeout: 10 * time.Minute}, backoff: 5 * time.Minute, exit: os.Exit, shut: s.shutdown}
+	retry := 5 * time.Minute
+	if v, err := time.ParseDuration(env("HORN_UPDATE_RETRY", "5m")); err == nil && v >= time.Second {
+		retry = v // nur Tests: kuerzerer erster Neuversuch
+	}
+	return &updater{s: s, first: retry, base: strings.TrimRight(env("HORN_UPDATE_BASE", "https://github.com/yggdrasil-sh/saga/releases/download"), "/"),
+		client: &http.Client{Timeout: 10 * time.Minute}, backoff: retry, exit: os.Exit, shut: s.shutdown}
 }
 
 func (u *updater) target(want string, solo bool) {
@@ -63,7 +68,7 @@ func (u *updater) target(want string, solo bool) {
 	}
 	u.mu.Lock()
 	if want != "" && validVersion(want) && want != u.want {
-		u.want, u.nextTry, u.backoff = want, time.Time{}, 5*time.Minute
+		u.want, u.nextTry, u.backoff = want, time.Time{}, u.first
 	}
 	u.solo = solo
 	u.mu.Unlock()
@@ -142,8 +147,12 @@ func (u *updater) step(now time.Time) {
 		if err := u.fetch(want); err != nil {
 			u.mu.Lock()
 			u.nextTry = now.Add(u.backoff)
-			if u.backoff *= 2; u.backoff > 6*time.Hour {
-				u.backoff = 6 * time.Hour
+			lim := 6 * time.Hour
+			if u.first < 5*time.Minute { // Tests (HORN_UPDATE_RETRY): Obergrenze mitverkuerzt
+				lim = 30 * u.first
+			}
+			if u.backoff *= 2; u.backoff > lim {
+				u.backoff = lim
 			}
 			u.mu.Unlock()
 			log.Printf("update: %s: %v", want, err)

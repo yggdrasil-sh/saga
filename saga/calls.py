@@ -1215,9 +1215,11 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
     if hn:                                             # 2.5: Knoten des Anrufs (ohne Kaskade nur dieser), sonst der beste
         if signals:
             return _bad(t("ungültige Angabe"))         # ueber Knoten keine Mesh-Angebote
-        cur = horn.call_node(c, call["id"])
-        node = next((n for n in horn.ready_nodes(c) if not cur or n["id"] == cur), None)
+        ns = horn.ready_nodes(c)
+        cur = horn.call_node_ready(c, call["id"], ns)  # Knoten im Leeren/entfernt: der beste andere (Umzug)
+        node = next((n for n in ns if not cur or n["id"] == cur), None)
         if node is None:
+            horn.note_full(c)
             return chat._no_store({"error": t("Gerade ist kein Knoten für große Gruppenanrufe erreichbar – bitte gleich noch einmal."),
                                    "join_block": "node"}, 409)
     mine = [x for x in others if x["who"] == who]
@@ -1276,7 +1278,7 @@ async def api_horn(cid: str, request: Request):
             return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
         if isinstance(b.get("node"), str):
             n = horn.node_named(c, b["node"][:253])
-            cur = horn.call_node(c, cid)
+            cur = horn.call_node_ready(c, cid)
             if not n or not horn.ready(n) or (cur and cur != n["id"] and not horn.CASCADE):
                 return _bad(t("ungültige Angabe"), 409)
             horn.set_leg_node(c, cid, dev, n["id"])

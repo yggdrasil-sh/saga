@@ -104,11 +104,14 @@ DEFAULTS = {
     "user_backup": {"enabled": True, "max_mb": 1024, "min_h": 1, "max_schedule": "daily", "hosts": ""},
     # Gjallarhorn (2.5, saga/horn.py): Saga-Signaturschluessel fuer Medien-Token (Ed25519; sign_sk = Seed, verschluesselt,
     # erzeugt beim ersten Gebrauch; sign_pk = oeffentlicher Schluessel fuer die Knoten)
-    "horn": {"sign_sk": "", "sign_pk": ""}
+    "horn": {"sign_sk": "", "sign_pk": ""},
+    # Cloudflare-DNS fuer Gjallarhorn-Knoten (2.5 P7, saga/cloudflare.py): API-Token nur "Zone -> DNS -> Bearbeiten" fuer
+    # EINE Zone (verschluesselt), zone_id/zone = gepruefte Zone, check = letztes Pruefergebnis (ohne Token)
+    "horn_cf": {"token": "", "zone_id": "", "zone": "", "check": {}}
 }
 SECRET_FIELDS = {("oidc", "client_secret"), ("ldap", "bind_password"), ("apns", "p8"), ("ai", "api_key"), ("calls", "turn_secret"),
                  ("calls", "turn_password"), ("backup", "password"), ("backup", "webhook"), ("backup", "s3_key"),
-                 ("backup", "s3_secret"), ("horn", "sign_sk")}
+                 ("backup", "s3_secret"), ("horn", "sign_sk"), ("horn_cf", "token")}
 LDAP_PRESETS = {
     "freeipa": {"user_filter": "(&(objectClass=person)(uid={username})(!(nsAccountLock=TRUE)))", "attr_username": "uid", "attr_name": "cn",
                 "attr_mail": "mail", "group_mode": "memberof", "group_filter": "(member={dn})", "group_name_attr": "cn"},
