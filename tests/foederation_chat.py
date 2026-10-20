@@ -207,6 +207,8 @@ def part_chat(A, B, pa, pb):
     anna, bert = User("a", "fa-anna"), User("b", "fb-bert")
     ok("Handles ~x@host", anna.handle.endswith("@" + HA) and bert.handle.endswith("@" + HB))
     # --- Suche + Beginnen ---------------------------------------------------------------------------------------
+    # Das Adressbuch von B kommt asynchron (Abgleich nach der Verbindung; gegen 2.3.0 gelegentlich erst nach Sekunden)
+    wait(lambda: any(x.get("handle") == bert.handle for x in api("a", "fa-anna", "GET", "/api/chat/people?q=bert")[1].get("remote") or []), 15, step=1.5)
     s, d = api("a", "fa-anna", "GET", "/api/chat/people?q=bert")
     hit = next((x for x in d.get("remote") or [] if x["handle"] == bert.handle), None)
     ok(f"A: Chat-Suche findet Bert (Adressbuch) mit Handle ({[x.get('label') for x in d.get('remote') or []]})", bool(hit) and hit["host"] == HB)

@@ -103,7 +103,10 @@ async function chatByRef(p, ref) {
     await api(pc, 'POST', '/api/chats/' + gc.id + '/request', { action: 'accept' });
     await pa.goto(A + '/chats#c' + g.r.chat.id); await pb.goto(B + '/chats#c' + gb.id); await pc.goto(CC + '/chats#c' + gc.id); await pa2.goto(A + '/chats#c' + g.r.chat.id);
     await pb.waitForSelector('#ct-chat:not([hidden])'); await liveOk(pa, pb, pc, pa2);
-    const hd = await until(() => pb.evaluate(() => { const v = document.getElementById('ct-call-v'); return !v.hidden && v.title; }), 10000);
+    // der Kopf kann kurz mit dem Stand vor dem Laden der Chat-Daten bzw. der Geraete-Faehigkeiten gezeichnet sein: auf den
+    // endgueltigen Knopf warten, sonst den letzten Stand melden
+    const hd = await until(() => pb.evaluate(() => { const v = document.getElementById('ct-call-v'); return !v.hidden && v.title === 'Gruppen-Videoanruf' && v.title; }), 10000)
+      || await pb.evaluate(() => { const v = document.getElementById('ct-call-v'); return v.hidden ? '(verborgen)' : v.title; });
     ok('B: Knopf "Gruppen-Videoanruf" (alle Server melden calls3)', hd === 'Gruppen-Videoanruf', hd);
     await pb.click('#ct-call-v');
     await pa.waitForSelector('.cl-ring', { timeout: 20000 }); await pc.waitForSelector('.cl-ring', { timeout: 20000 });
