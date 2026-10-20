@@ -161,6 +161,12 @@ func (c *ctlClient) session() error {
 	}
 	defer conn.Close()
 	conn.SetReadLimit(256 << 10)
+	// Ping von Saga (uvicorn) beantworten: gorilla setzt sonst 1 s Frist - auf einem ausgelasteten Rechner reisst das die
+	// Steuerung ab ("write ... i/o timeout"), der Knoten gilt kurz als weg und Beitritte scheitern. 10 s, Fehler egal.
+	conn.SetPingHandler(func(a string) error {
+		_ = conn.WriteControl(websocket.PongMessage, []byte(a), time.Now().Add(10*time.Second))
+		return nil
+	})
 	_ = conn.SetReadDeadline(time.Now().Add(15 * time.Second))
 	var ch ctlMsg
 	if err := conn.ReadJSON(&ch); err != nil || ch.T != "challenge" || ch.Proto != ctlProto || len(ch.Nonce) < 16 {

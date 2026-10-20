@@ -670,6 +670,7 @@ def remove(nid, by="admin"):
         _notify_admins(c, "removed", n["name"])
     horn.send(nid, {"t": "remove", "sig": horn.sign_remove(nid, n["name"])})
     horn.close_conn(nid, 4410)
+    horn._LIVE.pop(nid, None)
     res = {"moved": moved}
     if cloudflare.configured():
         try:

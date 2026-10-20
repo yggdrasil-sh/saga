@@ -45,6 +45,7 @@ HORN_KEY = E.pop("SAGA_HORN_KEY", "")   # von saga-media (eingebauter Knoten); n
 PROTO = "horn-ctl/1"
 TOKEN_TTL = 60                          # Medien-Token gelten 60 s
 READY_S = 30                            # Knoten gilt als bereit, solange seine letzte Lastmeldung juenger ist
+GRACE_S = 15                            # ... bei getrennter Steuerung (Neuverbindung laeuft) nur so lange
 SEEN_EVERY = 10                         # Lastmeldung hoechstens so oft in die Datenbank (Bereitschaft fuer alle Prozesse)
 CANDIDATES = 3                          # Kandidaten im Beitritt (§2.6)
 CASCADE = False                         # P9: ohne Kaskade bleibt ein Anruf auf EINEM Knoten (nur dieser ist Kandidat)
@@ -204,7 +205,8 @@ def ready(n, now=None):
     seen = max(n.get("seen") or 0, (live or {}).get("at") or 0)
     if n.get("builtin") and not builtin_on():
         return False
-    return (n["state"] == "ok" and now - seen < READY_S and util(n) < FULL and bool(n.get("url")) and not n.get("drain")
+    win = READY_S if n["state"] == "ok" else GRACE_S       # Steuerung kurz weg: hoechstens GRACE_S seit der letzten Meldung
+    return (n["state"] in ("ok", "getrennt") and now - seen < win and util(n) < FULL and bool(n.get("url")) and not n.get("drain")
             and version_ok(n.get("version")) and cert_ok(n))
 
 
@@ -668,7 +670,8 @@ async def ctl(ws: WebSocket):
         pt.cancel()
         if _CONNS.get(nid) is k:
             _CONNS.pop(nid, None)
-            _LIVE.pop(nid, None)
+            # _LIVE bleibt: ein kurzer Abriss der Steuerung (Neuverbindung nach 1 s) macht den Knoten nicht sofort
+            # unbereit - Medien laufen ohne Steuerung weiter, Token prueft er selbst. ready() laesst READY_S Kulanz.
             await asyncio.to_thread(_gone, nid)
             print(f"horn: Knoten {hh['name']} getrennt", flush=True)
             if not builtin:
