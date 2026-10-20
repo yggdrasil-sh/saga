@@ -16,7 +16,50 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
-### 2.4 Etappen E4/E5 – Gerät hinzufügen/übergeben und Gruppenanrufe (Server und Web)
+### 2.4 – Server und Web
+
+Neue Funktionen für Anrufe, Videos und Chats. Die Schnittstelle wurde nur erweitert: Apps und Server mit 2.1/2.3 laufen
+weiter (`MIN_APP` unverändert), neue Funktionen werden per Fähigkeit ausgehandelt und sonst ausgeblendet.
+Datenbank: Migrationen 10 (Anrufe), 11 (Videos/Dateien), 12 (Anruf als Raum) und 13 (Gelesen/Online) laufen beim Start
+automatisch; Backups von 2.3 bleiben einspielbar.
+
+#### Anrufe: Fundament saga-call v3 (Etappe E0)
+
+- **saga-call v3:** Anrufe können während des Gesprächs neu ausgehandelt werden („Perfect Negotiation“). Bricht die
+  Verbindung ab oder wechselt das Netz (WLAN ↔ Mobilfunk), baut Saga sie per ICE-Restart neu auf, statt aufzulegen
+  (bis zu 3 Versuche, 20 s Frist). Signatur und Verschlüsselung bleiben unverändert, nur der signierte Inhalt hat neue
+  Felder (`pc`, `caps`, `n`, `state.pip/want/path`, `bye`). Mit Gegenstellen auf 2.1/2.3 läuft alles wie bisher.
+- **Bitrate je Verbindungsweg:** Kamera, Bildschirm und Ton passen sich an, je nachdem ob die Verbindung direkt, über
+  TURN per UDP oder über TURN per TCP/TLS (Port 443) läuft. Zeigt das Gegenüber das Bild nur klein (Bild-im-Bild, Tab im
+  Hintergrund), sendet Saga nur noch ≤ 300 kbit/s (gemessen 1,5 Mbit/s → 0,29 Mbit/s).
+- **Bild-im-Bild im Web:** Knopf im Anruffenster (Chrome/Edge: eigenes kleines Fenster mit Stumm, Zurück und Auflegen;
+  sonst Video-Bild-im-Bild). Ohne Browser-Unterstützung (z. B. Firefox) erscheint der Knopf nicht.
+- **Server:** `GET /api/calls/config` meldet `body_v`, `features` und `limits`; mehrere offer/answer je Anruf in beide
+  Richtungen, lokal und föderiert, mit einem Signal-Budget, das mit der Gesprächsdauer wächst (statt fester 600).
+  Migration 10 (Grundgerüst für Räume): `chat_call.v`, `topo`, `kind`, `caps_a`, `caps_b`.
+- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Anrufe: saga-call v3“ (Föderation: `APP-API-FED.md` §7.1).
+- **Messung:** `tools/perf/bench.py` misst die Anruf-Signalisierung, `tests/browser_calls.js` den Anrufaufbau.
+
+#### Anrufe: Bildschirm v2 (Etappe E3)
+
+- **Bildschirm als eigene Videospur:** Zwischen 2.4-Geräten läuft der geteilte Bildschirm über eine zweite Videospur
+  (Neuverhandlung aus E0), die Kamera läuft daneben gedrosselt weiter. Das Gegenüber sieht den Bildschirm groß und die
+  Kamera klein und kann die Ansicht tauschen. Gegenstellen auf 2.1/2.3 (und ohne `screen2`) bekommen wie bisher den
+  Bildschirm statt der Kamera.
+- **Systemton:** Wo der Browser ihn liefert (Chrome/Edge: Ton des Tabs, unter Windows/ChromeOS auch der ganze Systemton),
+  wird er in die Tonspur gemischt.
+- **Datenschutz:** Vor dem ersten Teilen ein Hinweis, dass auch Benachrichtigungen und andere Fenster sichtbar sind
+  (abschaltbar je Gerät). Während des Teilens eine rote Leiste „Du teilst deinen Bildschirm“ mit „Beenden“, beim
+  Gegenüber „… teilt den Bildschirm“.
+- **Bitrate:** Bildschirm je Verbindungsweg 2,5 / 1,8 / 1,2 Mbit/s, höchstens 15 fps (über TURN per TCP 8 fps), Auflösung
+  bleibt erhalten („maintain-resolution“, Text bleibt lesbar). Die Kamera daneben sendet ≤ 300 kbit/s, über TURN per TCP
+  pausiert sie.
+- **Server:** `GET /api/calls/config` meldet `features: screen2`; sonst keine Änderung (keine Medien durch den Server,
+  3 Signale je Start bzw. Stopp).
+- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Anrufe: Bildschirm v2“ (mid-Zuordnung über `tracks`, `msid`, `screen_mid`).
+- **Tests und Messung:** `tests/browser_screen2.js` (Bildschirm-Attrappe im headless Chromium, gegen E0- und 2.3-Client).
+
+#### Anrufe: weiteres Gerät und Gruppenanrufe (Etappen E4/E5)
 
 - **Anruf als Raum:** Jeder Anruf hat Endpunkte je Gerät (neue Tabellen `chat_call_leg`, `chat_call_invite`, Migration
   12). Ein 1:1-Anruf ist der Raum mit zwei Geräten und läuft wie bisher; mit 2.1/2.3-Gegenstellen bleibt er 1:1.
@@ -48,25 +91,36 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `tests/foederation_anrufe_raum.py` (drei Server, auch mit 2.3-Server; mit `BJS=1` im Browser). 4er-Mesh lokal: Aufbau
   1,1–1,8 s, Python-CPU-Spitze ≤ 19 % (nie über 20 %); über drei Server 3,1 s; Signal B → Heim → C 69 ms.
 
-### 2.4 Etappe E3 – Bildschirm v2 (Server und Web)
+#### Medienpfad „saga-media“ (Etappe E1)
 
-- **Bildschirm als eigene Videospur:** Zwischen 2.4-Geräten läuft der geteilte Bildschirm über eine zweite Videospur
-  (Neuverhandlung aus E0), die Kamera läuft daneben gedrosselt weiter. Das Gegenüber sieht den Bildschirm groß und die
-  Kamera klein und kann die Ansicht tauschen. Gegenstellen auf 2.1/2.3 (und ohne `screen2`) bekommen wie bisher den
-  Bildschirm statt der Kamera.
-- **Systemton:** Wo der Browser ihn liefert (Chrome/Edge: Ton des Tabs, unter Windows/ChromeOS auch der ganze Systemton),
-  wird er in die Tonspur gemischt.
-- **Datenschutz:** Vor dem ersten Teilen ein Hinweis, dass auch Benachrichtigungen und andere Fenster sichtbar sind
-  (abschaltbar je Gerät). Während des Teilens eine rote Leiste „Du teilst deinen Bildschirm“ mit „Beenden“, beim
-  Gegenüber „… teilt den Bildschirm“.
-- **Bitrate:** Bildschirm je Verbindungsweg 2,5 / 1,8 / 1,2 Mbit/s, höchstens 15 fps (über TURN per TCP 8 fps), Auflösung
-  bleibt erhalten („maintain-resolution“, Text bleibt lesbar). Die Kamera daneben sendet ≤ 300 kbit/s, über TURN per TCP
-  pausiert sie.
-- **Server:** `GET /api/calls/config` meldet `features: screen2`; sonst keine Änderung (keine Medien durch den Server,
-  3 Signale je Start bzw. Stopp).
-- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Anrufe: Bildschirm v2“ (mid-Zuordnung über `tracks`, `msid`, `screen_mid`).
-- **Tests und Messung:** `tests/browser_screen2.js` (Bildschirm-Attrappe im headless Chromium, gegen E0- und 2.3-Client).
-### 2.4 E2 – Videos im Chat (Server und Web)
+- **Chat-Anhänge ohne Python.** Im Container steht vor Saga der kleine Dienst `saga-media` (Go, nur Standardbibliothek,
+  statisch gelinkt, Quelltext in `media/`). Er lauscht auf dem bisherigen Port, leitet alles an Saga weiter (Streaming,
+  Live-Kanal ungepuffert) und liefert `GET/HEAD /api/chat/files/{fid}` selbst von der Platte: Range (206/416), `sendfile`,
+  `ETag` = Kennung, If-None-Match (304), If-Range, dieselben Sicherheitsköpfe wie bisher. Gemessen (`tools/perf/media.py`,
+  Median aus drei Läufen, 2 Kerne): 20 × 10 MB parallel 0,22 statt 0,67 s, Python-CPU dabei 0 statt 0,64 s; 20 Ströme
+  je 2 Mbit/s Python 0,3 % (Ruhewert) statt 2,9 % eines Kerns und kein RAM-Zuwachs statt +14 MB, saga-media 0,1 % und
+  8 MB; Range-TTFB 1 MiB p95 1,6 statt 8,8 ms. Image etwa +7,5 MB.
+- **Berechtigung bleibt in Saga:** `saga-media` fragt je Datei und Sitzung einmal `/internal/media/authz` (nur mit
+  einem beim Start erzeugten Geheimnis, von außen gesperrt) und merkt sich die Erlaubnis höchstens 60 s
+  (`MEDIA_AUTHZ_TTL`). Entzug wirkt also spätestens nach einer Minute, eine gelöschte Datei sofort. Ablehnungen beantwortet
+  wie bisher Saga selbst (401/404, föderierte Anhänge werden dort nachgeholt).
+- **Sicher davor:** Client-Adresse nach denselben Regeln wie bisher (`TRUSTED_PROXIES`; eingeschleuste
+  X-Forwarded-For/-Proto zählen nicht), nur echte Dateien direkt im Blob-Verzeichnis (kein Traversal, keine Symlinks –
+  das prüft jetzt auch Python), Grenzen für Verbindungen und gleichzeitige Downloads, Zeitlimits gegen Slowloris
+  (Kopfzeilen 15 s, stockende Uploads/Downloads `MEDIA_STALL_TIMEOUT`). Upload-Grenzen unverändert.
+- **Container:** mehrstufiger Build (Go auf der Build-Plattform für amd64/arm64), `tini` als Init; `saga-media` startet
+  und überwacht Saga (intern `127.0.0.1:8079`, `MEDIA_INTERNAL_PORT`) und endet mit ihm. Kein neuer Port, Healthcheck
+  unverändert. `SAGA_MEDIA=off` startet wie bis 2.3.
+- **Ohne Container:** `MEDIA_ACCEL=nginx|caddy` – der Reverse Proxy liefert per `X-Accel-Redirect` (Beispiele in der
+  Anleitung, „Medienpfad“, mit nginx 1.24 und Caddy 2.8 geprüft). Sonst liefert Python wie bisher, aber höchstens
+  `MEDIA_PY_STREAMS` (Standard 4) gleichzeitig; der Admin-Bereich zeigt unter „Medien“, welcher Weg aktiv ist.
+- Föderation (`/fed/v2/chat/files`) unverändert; Teilbereiche mit Signatur folgen mit den Videos (E2).
+- Tests: neue Reihe `tests/medienpfad.py` (Range-Varianten, 304/ETag, Rechteentzug, gelöschte Dateien, Traversal,
+  `/internal` gesperrt, SSE durch den Proxy, X-Forwarded-For, Upload-Grenzen, Slowloris, Python-Grenze, nginx/Caddy),
+  Go-Tests in `media/`. Die Testinstanz von `tools/stack-remote.sh` läuft hinter `saga-media`. Messstufe `MEDIA` in
+  `tools/perf/run.sh`, Grenzwerte in `tools/perf/limits.json`.
+
+#### Videos im Chat (Etappe E2)
 
 - **Videos mit Poster, Dauer und Streaming.** Im Verlauf erscheint ein Poster mit Dauer (erzeugt das sendende Gerät,
   ≤ 30 KB); Antippen spielt sofort ab, Spulen lädt nur die nötigen Bereiche. Im Web entschlüsselt der Service Worker
@@ -102,53 +156,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   (gemischt, nur Python, gegen 2.3.0), `tests/browser_videos.js` (Upload mit Abbruch, Abspielen, Spulen, Herunterladen),
   Go-Tests in `media/`.
 
-### 2.4 E1 – Medienpfad „saga-media“ (Server)
-
-- **Chat-Anhänge ohne Python.** Im Container steht vor Saga der kleine Dienst `saga-media` (Go, nur Standardbibliothek,
-  statisch gelinkt, Quelltext in `media/`). Er lauscht auf dem bisherigen Port, leitet alles an Saga weiter (Streaming,
-  Live-Kanal ungepuffert) und liefert `GET/HEAD /api/chat/files/{fid}` selbst von der Platte: Range (206/416), `sendfile`,
-  `ETag` = Kennung, If-None-Match (304), If-Range, dieselben Sicherheitsköpfe wie bisher. Gemessen (`tools/perf/media.py`,
-  Median aus drei Läufen, 2 Kerne): 20 × 10 MB parallel 0,22 statt 0,67 s, Python-CPU dabei 0 statt 0,64 s; 20 Ströme
-  je 2 Mbit/s Python 0,3 % (Ruhewert) statt 2,9 % eines Kerns und kein RAM-Zuwachs statt +14 MB, saga-media 0,1 % und
-  8 MB; Range-TTFB 1 MiB p95 1,6 statt 8,8 ms. Image etwa +7,5 MB.
-- **Berechtigung bleibt in Saga:** `saga-media` fragt je Datei und Sitzung einmal `/internal/media/authz` (nur mit
-  einem beim Start erzeugten Geheimnis, von außen gesperrt) und merkt sich die Erlaubnis höchstens 60 s
-  (`MEDIA_AUTHZ_TTL`). Entzug wirkt also spätestens nach einer Minute, eine gelöschte Datei sofort. Ablehnungen beantwortet
-  wie bisher Saga selbst (401/404, föderierte Anhänge werden dort nachgeholt).
-- **Sicher davor:** Client-Adresse nach denselben Regeln wie bisher (`TRUSTED_PROXIES`; eingeschleuste
-  X-Forwarded-For/-Proto zählen nicht), nur echte Dateien direkt im Blob-Verzeichnis (kein Traversal, keine Symlinks –
-  das prüft jetzt auch Python), Grenzen für Verbindungen und gleichzeitige Downloads, Zeitlimits gegen Slowloris
-  (Kopfzeilen 15 s, stockende Uploads/Downloads `MEDIA_STALL_TIMEOUT`). Upload-Grenzen unverändert.
-- **Container:** mehrstufiger Build (Go auf der Build-Plattform für amd64/arm64), `tini` als Init; `saga-media` startet
-  und überwacht Saga (intern `127.0.0.1:8079`, `MEDIA_INTERNAL_PORT`) und endet mit ihm. Kein neuer Port, Healthcheck
-  unverändert. `SAGA_MEDIA=off` startet wie bis 2.3.
-- **Ohne Container:** `MEDIA_ACCEL=nginx|caddy` – der Reverse Proxy liefert per `X-Accel-Redirect` (Beispiele in der
-  Anleitung, „Medienpfad“, mit nginx 1.24 und Caddy 2.8 geprüft). Sonst liefert Python wie bisher, aber höchstens
-  `MEDIA_PY_STREAMS` (Standard 4) gleichzeitig; der Admin-Bereich zeigt unter „Medien“, welcher Weg aktiv ist.
-- Föderation (`/fed/v2/chat/files`) unverändert; Teilbereiche mit Signatur folgen mit den Videos (E2).
-- Tests: neue Reihe `tests/medienpfad.py` (Range-Varianten, 304/ETag, Rechteentzug, gelöschte Dateien, Traversal,
-  `/internal` gesperrt, SSE durch den Proxy, X-Forwarded-For, Upload-Grenzen, Slowloris, Python-Grenze, nginx/Caddy),
-  Go-Tests in `media/`. Die Testinstanz von `tools/stack-remote.sh` läuft hinter `saga-media`. Messstufe `MEDIA` in
-  `tools/perf/run.sh`, Grenzwerte in `tools/perf/limits.json`.
-
-### 2.4 Etappe E0 – Anruf-Fundament (Server und Web)
-
-- **saga-call v3:** Anrufe können während des Gesprächs neu ausgehandelt werden („Perfect Negotiation“). Bricht die
-  Verbindung ab oder wechselt das Netz (WLAN ↔ Mobilfunk), baut Saga sie per ICE-Restart neu auf, statt aufzulegen
-  (bis zu 3 Versuche, 20 s Frist). Signatur und Verschlüsselung bleiben unverändert, nur der signierte Inhalt hat neue
-  Felder (`pc`, `caps`, `n`, `state.pip/want/path`, `bye`). Mit Gegenstellen auf 2.1/2.3 läuft alles wie bisher.
-- **Bitrate je Verbindungsweg:** Kamera, Bildschirm und Ton passen sich an, je nachdem ob die Verbindung direkt, über
-  TURN per UDP oder über TURN per TCP/TLS (Port 443) läuft. Zeigt das Gegenüber das Bild nur klein (Bild-im-Bild, Tab im
-  Hintergrund), sendet Saga nur noch ≤ 300 kbit/s (gemessen 1,5 Mbit/s → 0,29 Mbit/s).
-- **Bild-im-Bild im Web:** Knopf im Anruffenster (Chrome/Edge: eigenes kleines Fenster mit Stumm, Zurück und Auflegen;
-  sonst Video-Bild-im-Bild). Ohne Browser-Unterstützung (z. B. Firefox) erscheint der Knopf nicht.
-- **Server:** `GET /api/calls/config` meldet `body_v`, `features` und `limits`; mehrere offer/answer je Anruf in beide
-  Richtungen, lokal und föderiert, mit einem Signal-Budget, das mit der Gesprächsdauer wächst (statt fester 600).
-  Migration 10 (Grundgerüst für Räume): `chat_call.v`, `topo`, `kind`, `caps_a`, `caps_b`.
-- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Anrufe: saga-call v3“ (Föderation: `APP-API-FED.md` §7.1).
-- **Messung:** `tools/perf/bench.py` misst die Anruf-Signalisierung, `tests/browser_calls.js` den Anrufaufbau.
-
-### 2.4 Gelesen-Bestätigungen und Online-Status (Server und Web)
+#### Gelesen-Bestätigungen und Online-Status
 
 - **Gelesen-Haken „wie WhatsApp“:** Eigene Nachrichten zeigen ⏳ wird zugestellt → ✓ zugestellt (beim Server bzw. Heim)
   → ✓✓ gelesen. In Gruppen zählt der Haken mit, ein Klick zeigt **„Gelesen von“** mit Namen und Zeit.
@@ -174,7 +182,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Online-Abo für 49 Personen p95 24–36 ms. Neue Grenzwerte in `tools/perf/limits.json`.
 - **Server:** `GET/PUT /api/chat/privacy`, `POST /api/chats/{id}/read` mit `receipt`, `GET /api/chats/{id}/receipts`,
   `POST /api/chat/presence`, Live-Ereignisse `chat.receipt`, `chat.presence`, `chat.privacy`; `chat.message` meldet bei
-  der Zustellbestätigung des Heims auch `fseq`. **Migration 11** (vorläufige Nummer, siehe `db.py`): Tabellen
+  der Zustellbestätigung des Heims auch `fseq`. **Migration 13**: Tabellen
   `chat_receipt` und `chat_seen`; beim Zurückspielen älterer Backups werden sie neu angelegt. Kontolöschung und
   persönliches Backup berücksichtigen sie.
 - **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Gelesen-Bestätigungen und Online-Status“ (Föderation:
@@ -182,7 +190,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Tests:** `chat_gelesen`, `foederation_gelesen` (auch gegen 2.3 als Gegenstelle), `browser_gelesen.js`,
   `browser_fed_chat.js` erweitert, Vektoren in `chat_v2_vektoren`; Messung `bench.py` Phase `receipts`.
 
-### Behoben
+#### Behoben
 
 - **Chats über Servergrenzen: eigene Nachricht blieb auf „⏳ wird zugestellt“.** Liegt der Direkt-Chat auf dem anderen
   Server (Heim), legt der eigene Server die Nachricht zuerst als ausstehend an und meldet sie sofort an die Geräte. Bestätigte
