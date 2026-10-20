@@ -16,6 +16,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (Vorbereitung 2.5, Gjallarhorn)
+- **Horn-Probe** (`gjallarhorn/`, Paket P0): Prototyp des Gjallarhorn-Knotens als eigenes Go-Programm (Pion, nur
+  MIT/BSD/Apache-Abhängigkeiten). `gjallarhorn probe` öffnet einen Port für HTTPS-Messseite, TURN-TLS (nur zum Knoten
+  selbst) und ICE-TCP, optional UDP mit Weiche nach RFC 9443. Die Messseite simuliert ohne Kamera einen Anruf mit
+  12 Kameras bzw. 25 Personen nur mit Ton und misst je Weg RTT, Ton-Verdeckung, Einfrieren und Datenraten.
+  `gjallarhorn bench` misst die Knotenlast mit lokalen Bots, `gjallarhorn report` erstellt die Go/No-Go-Tabelle.
+  Zertifikat aus Dateien (mit Neuladen), selbst signiert für Tests oder per TLS-ALPN-01; PROXY-Protokoll v2 (`0`, `1`,
+  `auto`). Anleitung: `gjallarhorn/PROBE.md`. Saga selbst ist davon noch nicht berührt.
+
 ## [2.4.0] – 2026-10-20
 
 Saga 2.4 bringt Videos in den Chat und macht Anrufe erwachsen: Gruppenanrufe, Bildschirm teilen mit Kamera daneben,
