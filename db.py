@@ -945,8 +945,9 @@ INSERT INTO note_stale (note_id, uid) SELECT id, uid FROM note WHERE format='blo
 """,
     # 2.5.0 (Chat-Stufe 3, Konzept "Krypto v3 ueber Handles"): Umstellpunkt je Chat (v3_seq = letzte Nachricht im alten
     # Format v1; NULL = nie umgestellt bzw. von Anfang an Stufe 3), Bearbeitungen am Original (edit_seq = neueste
-    # Bearbeitung, kein Verlauf; edited_at, edit_n) bzw. an der Bearbeitung (edit_of = msg_id des Originals). Die Tabelle
-    # chat_reaction legt SCHEMA oben an. Beliebig oft ausfuehrbar.
+    # Bearbeitung, kein Verlauf; edited_at, edit_n) bzw. an der Bearbeitung (edit_of = msg_id des Originals). Seiten-Chats,
+    # die 2.3 auf v2 umgestellt hat, bekommen v3_seq = letzte Nachricht v1 (Altbestand). Die Tabelle chat_reaction legt
+    # SCHEMA oben an. Beliebig oft ausfuehrbar.
     15: """
 ALTER TABLE chat ADD COLUMN IF NOT EXISTS v3_seq BIGINT;
 ALTER TABLE chat_msg ADD COLUMN IF NOT EXISTS edit_of TEXT;
@@ -954,6 +955,8 @@ ALTER TABLE chat_msg ADD COLUMN IF NOT EXISTS edit_seq BIGINT;
 ALTER TABLE chat_msg ADD COLUMN IF NOT EXISTS edited_at DOUBLE PRECISION;
 ALTER TABLE chat_msg ADD COLUMN IF NOT EXISTS edit_n INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS chat_msg_edit_of ON chat_msg (edit_of) WHERE edit_of IS NOT NULL;
+UPDATE chat SET v3_seq=(SELECT MAX(m.seq) FROM chat_msg m WHERE m.chat_id=chat.id AND m.sender_handle IS NULL AND m.kind IN ('msg','title'))
+  WHERE v=2 AND v3_seq IS NULL AND EXISTS (SELECT 1 FROM chat_msg m WHERE m.chat_id=chat.id AND m.sender_handle IS NULL AND m.kind IN ('msg','title'));
 SELECT 1 FROM chat_reaction LIMIT 0;
 """,
 }

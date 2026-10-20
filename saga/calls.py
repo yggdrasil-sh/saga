@@ -322,7 +322,7 @@ def roster(c, call, uid=None, legs=None):
         d.update(_who_label(c, x["who"], nm))
         if (fed or v3) and not sharing.is_remote(x["who"]):
             d["handle"] = FED.FC.my_handle(c, x["who"])
-        if v3 and x["who"] != uid:                     # Stufe 3: andere als Handle (Schluessel nur ueber v2)
+        if v3 and x["who"] != uid and not sharing.is_remote(x["who"]):   # 2.5: andere als Handle (Schluessel nur ueber v2)
             d.update(who=d["handle"], host=FED.F.SELF_HOST)
         if x.get("replaces"):
             d["replaces"] = x["replaces"]
@@ -335,7 +335,7 @@ def _v3(c, call):
     Server. Clients sehen v: 2 und andere Personen nur als Handle (Krypto an den Handle gebunden)."""
     if "_v3" not in call:
         r = c.execute("SELECT v FROM chat WHERE id=?", (call["chat_id"],)).fetchone()
-        call["_v3"] = bool(r) and r[0] == 3 and FED is not None
+        call["_v3"] = bool(r) and r[0] in (2, 3) and FED is not None   # 2.5: auch foederiert - lokale Mitmitglieder als Handle
     return call["_v3"]
 
 
@@ -408,7 +408,7 @@ def _dict(c, call, uid, nm=None, legs=None):
         pd.update(handle=FED.FC.handle_of(peer), name=FED.FC.label_of(c, peer)["name"])
     elif (fed and group) or (v3 and peer):
         pd["handle"] = FED.FC.my_handle(c, peer)
-    if v3 and peer and peer != uid:                      # 2.5: Stufe 3 - Gegenueber nur als Handle
+    if v3 and peer and peer != uid and not sharing.is_remote(peer):    # 2.5: Format v2 - Gegenueber nur als Handle
         pd.update(username=pd["handle"], host=FED.F.SELF_HOST)
     rv = _rv()                                           # vor dem Lesen der Endpunkte (siehe _rv)
     legs = _legs(c, call["id"]) if legs is None else legs
@@ -511,7 +511,7 @@ def _finish(c, call, reason, now, by=None, remote=False):
             FED.ended(c, call, reason)                 # 2.3: der anderen Instanz melden (verwerfbar)
     data = {"call_id": call["id"], "chat_id": call["chat_id"], "state": "ended", "reason": reason, "status": status, "by": by,
             **({"kind": "group"} if group else {})}
-    if _v3(c, call) and by:                            # 2.5: wer aufgelegt hat - in Stufe 3 je Empfaenger als Handle
+    if _v3(c, call) and by and not sharing.is_remote(by):                            # 2.5: wer aufgelegt hat - in Stufe 3 je Empfaenger als Handle
         bus.emit_after(c, "direct_each", {"items": [(u, "call.state", dict(data, by=_pp(c, call, by, u))) for u in sorted(set(_audience(c, call)))]})
     else:
         _emit(c, _audience(c, call), "call.state", data)
@@ -776,7 +776,7 @@ def ring_group(c, call, uids):
     frm = {"username": st, "name": nm.get(st) or st, "avatar": nm.avatar(st)}
     if sharing.is_remote(st) and FED is not None:
         frm.update(handle=FED.FC.handle_of(st), name=FED.FC.label_of(c, st)["name"])
-    elif _v3(c, call):                                 # 2.5: Stufe 3 - als Handle
+    elif _v3(c, call):                                 # 2.5: Format v2 - als Handle
         frm.update(username=FED.FC.my_handle(c, st), handle=FED.FC.my_handle(c, st), host=FED.F.SELF_HOST)
     ch = chat._load(c, call["chat_id"])
     frm["chat"] = chat._name(c, uids[0], ch, chat.members(c, ch["id"]), names(c, chat.members(c, ch["id"]))) if ch else None

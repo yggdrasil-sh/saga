@@ -325,9 +325,9 @@ def v3_hint():
 
 
 def person(c, u, viewer, ch):
-    """Kennung eines Mitglieds fuer viewer: in Chats der Stufe 3 andere Konten als Handle '~x@host' (nie der Anmeldename),
-    das eigene Konto und sonst unveraendert."""
-    if not is_v3(ch) or not u or u == viewer or sharing.is_remote(u):
+    """Kennung eines Mitglieds fuer viewer: in Chats im Format v2 (Stufe 3 und foederiert) andere Konten als Handle '~x@host'
+    (nie der Anmeldename), das eigene Konto und sonst unveraendert."""
+    if not hfmt(ch) or not u or u == viewer or sharing.is_remote(u):
         return u
     return FED.my_handle(c, u)
 
@@ -365,7 +365,7 @@ def direct_person(c, ch, uids, typ, data, who, key):
     """Live-Ereignis, das eine Person nennt (data[key] = {...username} bzw. Kennung): in Stufe 3 je Empfaenger eigene Daten
     (andere als Handle, sich selbst mit Benutzernamen); sonst wie _direct."""
     uids = sorted({u for u in uids if u})
-    if not is_v3(ch):
+    if not hfmt(ch):
         _direct(c, uids, typ, data)
         return
     items = []
@@ -854,7 +854,7 @@ def _known(c, uid):
     """Konten, mit denen uid einen Chat hat oder hatte (2.5: ohne Chats der Stufe 3 - dort gibt es Schluessel nur per Handle
     ueber /api/chat/v2/keys; umgestellte Chats mit Altbestand v1 zaehlen weiter)."""
     return {r[0] for r in c.execute("SELECT DISTINCT m2.uid FROM chat_member m1 JOIN chat_member m2 ON m2.chat_id=m1.chat_id "
-                                    "JOIN chat ch ON ch.id=m1.chat_id WHERE m1.uid=? AND (ch.v<>3 OR ch.v3_seq IS NOT NULL)", (uid,))}
+                                    "JOIN chat ch ON ch.id=m1.chat_id WHERE m1.uid=? AND (ch.v=1 OR ch.v3_seq IS NOT NULL)", (uid,))}
 
 
 @router.get("/api/chat/keys")
@@ -1404,7 +1404,7 @@ def api_member_remove(cid: int, who: str, request: Request):
     if FED is not None:
         with _db() as c:
             fch = _load(c, cid)
-            if is_v3(fch) and _FULL_H.fullmatch(who):    # 2.5: Stufe 3 nennt andere Mitglieder per Handle
+            if hfmt(fch) and _FULL_H.fullmatch(who):     # 2.5: Format v2 nennt andere Mitglieder per Handle
                 who = who_in(c, uid, who) or "~"
         if is_fed(fch):                                   # 2.3: Gruppe ueber Servergrenzen (Aenderung ueber das Heim)
             return FED.group_remove(uid, cid, who)
@@ -1593,14 +1593,15 @@ def api_messages(cid: int, request: Request, device: str = "", before: int = 0, 
         if desc:
             rows.reverse()
         nm = names(c, [r[3] for r in rows])
-        v3 = is_v3(ch)
-        # Stufe 3 (2.5): Geraete-/Identitaetsdaten v1 (mit Benutzername) nur fuer Altbestand ohne sender_handle - den hat
-        # der Betrachter mit seinem Schluessel ohnehin schon gesehen (_msgs liefert nur Nachrichten mit Schluessel)
+        v3 = hfmt(ch)
+        # Format v2 (2.5, Stufe 3 und foederiert): Geraete-/Identitaetsdaten v1 (mit Benutzername) nur fuer Altbestand ohne
+        # sender_handle - den hat der Betrachter mit seinem Schluessel ohnehin schon gesehen (_msgs liefert nur Nachrichten
+        # mit Schluessel)
         devs, ids = _senders(c, [r for r in rows if not r[14]] if v3 else rows)
         msgs = [_msg_dict(r, nm) for r in rows]
         if v3:
             for x in msgs:
-                if x.get("sender_handle") and x.get("sender") and x["sender"]["username"] != uid:
+                if x.get("sender_handle") and x.get("sender") and x["sender"]["username"] != uid and not sharing.is_remote(x["sender"]["username"]):
                     x["sender"] = dict(x["sender"], username=x["sender_handle"])
         if not hfmt(ch):                                # v2: KI-Hash ist mitsigniert (Feld ai), kein Server-Beleg
             ai_marks(c, ch["id"], msgs)

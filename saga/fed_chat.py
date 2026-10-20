@@ -2081,10 +2081,11 @@ def chat_extra(c, uid, ch, d, mem, m):
             x.update(name=lab["name"], label=lab["label"], host=lab["host"], handle=handle_of(u), remote=True)
         else:
             x.update(handle=my_handle(c, u), host=F.SELF_HOST)
-            if v3 and u != uid:                     # Stufe 3: andere Konten nur als Handle (Endpunkte nehmen ihn an)
+            if u != uid:                            # 2.5: andere Konten nur als Handle (Endpunkte nehmen ihn an)
                 x["username"] = x["handle"]
         out.append(x)
     d["members"] = out
+    _title_v2(d, uid)
     if v3:
         _extra_v3(c, uid, ch, d, out)
         for fn in EXTRA_HOOKS:
@@ -2120,6 +2121,10 @@ def _extra_v3(c, uid, ch, d, members_):
         o = next((x for x in members_ if not x.get("me")), None) or {}
         d["peer"] = {"username": o.get("username"), "handle": o.get("handle"), "name": o.get("name") or d.get("name") or "?",
                      "label": o.get("name") or d.get("name") or "?", "host": F.SELF_HOST, "avatar": o.get("avatar")}
+
+
+def _title_v2(d, uid):
+    """Name einer freien Gruppe im Format v2 (2.5): Absender als Handle, ohne v1-Geraetedaten (enthielten den Anmeldenamen)."""
     tm = d.get("title_msg")
     if tm and tm.get("sender_handle"):
         if tm.get("sender") and tm["sender"].get("username") != uid:
@@ -2215,7 +2220,8 @@ def upgrade_page_chat(c, ch):
         return
     ref = ch.get("ref") if ch.get("v") == 3 else None    # 2.5: Stufe 3 hat schon das Format v2 und eine chat_ref
     ref = ref or secrets.token_hex(16) + "@" + F.SELF_HOST
-    c.execute("UPDATE chat SET v=2, ref=? WHERE id=?", (ref, ch["id"]))
+    # 2.5: Umstellpunkt merken - Nachrichten bis dahin sind v1 (Altbestand mit Anmeldenamen, siehe core.knows)
+    c.execute("UPDATE chat SET v=2, ref=?, v3_seq=CASE WHEN v=1 AND last_seq>0 THEN last_seq ELSE v3_seq END WHERE id=?", (ref, ch["id"]))
     ch.update(v=2, ref=ref)
     had = c.execute("DELETE FROM chat_ai WHERE chat_id=?", (ch["id"],)).rowcount
     sysline(c, ch, None, {"type": "fed", "on": True, **({"ai_off": True} if had else {})})

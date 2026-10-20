@@ -97,6 +97,9 @@ def part_group(adm, pab, pba, pac, pca):
     ch = d.get("chat") or {}
     ok(f"A: Gruppe ueber drei Server angelegt ({s}, v{ch.get('v')}, {len(ch.get('members', []))} Mitglieder)", s == 200 and ch.get("v") == 2
        and ch.get("home_self") and ch.get("kind") == "free" and len(ch["members"]) == 4 and ch.get("role") == "admin")
+    cm = next((m for m in ch.get("members", []) if m.get("host") == HA and not m.get("me")), {})
+    ok("A: lokales Mitmitglied Carl als Handle, nie mit Anmeldenamen (2.5)", cm.get("username") == cm.get("handle") == carl.handle
+       and "fa-carl" not in json.dumps(ch))
     hosts = sorted({m.get("host") for m in ch.get("members", [])})
     ok(f"A: Mitglieder mit Herkunft ({hosts})", hosts == sorted([HA, HB, HC]))
     bc = wait(lambda: bert.chat(ch["ref"]), 15)
