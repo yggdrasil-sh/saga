@@ -14,6 +14,13 @@
 // das Gegenueber zeigt Bildschirm gross, Kamera klein (umschaltbar). Sonst wie 2.3 replaceTrack auf dem Kamera-Sender
 // (Betriebsart A). Systemton (wo der Browser ihn liefert) wird in die Tonspur gemischt. Vor dem ersten Teilen ein
 // Datenschutzhinweis, waehrend des Teilens eine rote Leiste "Du teilst deinen Bildschirm".
+// 2.4 (E4/E5, Raum, Vertrag docs/APP-API.md "Anrufe: Mehrgeraete und Gruppen"): ein Anruf kann mehrere PeerConnections
+// haben (Mesh: je Geraete-Paar eine, pc = sortiertes Paar, wer hinzukommt bietet allen an). C ist der Raum und zugleich die
+// erste Verbindung; jede weitere Verbindung ("Link") ist ein eigenes Objekt mit eigener PeerConnection, das die Felder des
+// Raums (eigene Spuren, Bildschirm, Stumm, Fenster) beim Raum liest und schreibt (SHARED). Weiteres eigenes Geraet:
+// "Hinzufuegen" (Begleitgeraet ohne Mikrofon und Ton) bzw. "Hierher uebernehmen" (das alte Geraet verlaesst den Anruf, ohne
+// Abbruch). Gruppenanrufe in Gruppen-, freien und Seiten-Chats mit Kachelansicht, Sprecher-Hervorhebung ueber den
+// Audio-Pegel und Mesh-Bitraten (§1.3). Jedes neue Geraet wird gegen die signierte Geraeteliste seiner Person geprueft.
 (function () {
   'use strict';
   var HK = window.HK, T = window.T;
@@ -29,9 +36,14 @@
   // (auch ICE-Restart), want = beachtet state.want des Gegenuebers, bye = meldet das Verlassen
   // reneg nur, wenn auch der eigene Server sie meldet (GET /api/calls/config -> features)
   // screen2 (E3) = zweite Videospur fuer den Bildschirm; braucht reneg und die Server-Faehigkeit screen2
-  var CAPS_ALL = ['reneg', 'want', 'bye', 'screen2'];
+  // multi (E4/E5) = Raum: weitere Geraete/Personen (join/leave, mehrere PeerConnections) - braucht reneg und multi am Server
+  var CAPS_ALL = ['reneg', 'want', 'bye', 'screen2', 'multi'];
   function feat(x) { return !!(cfg && (cfg.features || []).indexOf(x) >= 0); }
-  function myCaps() { return CAPS_ALL.filter(function (x) { return x === 'reneg' ? feat('reneg') : x === 'screen2' ? feat('reneg') && feat('screen2') : true; }); }
+  function myCaps() {
+    return CAPS_ALL.filter(function (x) {
+      return x === 'reneg' ? feat('reneg') : x === 'screen2' ? feat('reneg') && feat('screen2') : x === 'multi' ? feat('reneg') && feat('multi') : true;
+    });
+  }
   var RESTART_MAX = 3, DISC_S = 2.5, FAIL_S = 20;    // ICE-Restart: Versuche je Abbruch, Wartezeit bei disconnected, Frist bei failed
   // Bitrate-Regeln je Weg (Konzept 2.4 §1.3), kbit/s. cam/screen/mesh je Strom, H = hoechste Bildhoehe, fps = Bildrate
   var RATES = {
@@ -84,7 +96,9 @@
     x: ['M6 6l12 12', 'M18 6L6 18'],
     pip: ['M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z', 'M13 12h6v5h-6z'],
     back: ['M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z', 'M14 10l-4 4', 'M10 10v4h4'],
-    swap: ['M7 4L3 8l4 4', 'M3 8h14', 'M17 20l4-4-4-4', 'M21 16H7']
+    swap: ['M7 4L3 8l4 4', 'M3 8h14', 'M17 20l4-4-4-4', 'M21 16H7'],
+    spk: ['M11 5L6 9H2v6h4l5 4V5z', 'M15.5 8.5a5 5 0 0 1 0 7', 'M19 5a10 10 0 0 1 0 14'],
+    spkOff: ['M11 5L6 9H2v6h4l5 4V5z', 'M23 9l-6 6', 'M17 9l6 6']
   };
   function icon(name) {
     var NS = 'http://www.w3.org/2000/svg', s = document.createElementNS(NS, 'svg');
@@ -149,6 +163,7 @@
   }
   function ring(d) {
     if (!d || !d.call_id || RINGS[d.call_id] || GONE[d.call_id]) return;
+    if (d.group && (C || d.silent)) { runCheck(); return; }        // 2.4 Gruppe: im Gespraech bzw. grosse Gruppe nur die Leiste
     if (C && C.id !== d.call_id && CHATS && bridge()) {           // telefoniere schon: besetzt
       api('POST', '/api/calls/' + d.call_id + '/decline', { reason: 'busy' }).catch(function () {});
       return;
@@ -160,7 +175,8 @@
     box.appendChild(av);
     var tx = el('div', 'cl-ring-t');
     tx.appendChild(el('b', null, from.name || from.username || '?'));
-    tx.appendChild(el('span', null, video ? T('Videoanruf …') : T('Anruf …')));
+    if (d.group) tx.appendChild(el('span', null, (video ? T('Gruppen-Videoanruf …') : T('Gruppenanruf …')) + (from.chat ? ' · ' + from.chat : '')));
+    else tx.appendChild(el('span', null, video ? T('Videoanruf …') : T('Anruf …')));
     box.appendChild(tx);
     var bar = el('div', 'cl-ring-b');
     var snd = btn(ringOn() ? '🔔' : '🔕', 'cl-mini', function () {
@@ -193,6 +209,7 @@
   }
   function accept(d, video) {
     unring(d.call_id);
+    if (d.group) { joinHere(d.call_id, 'member', video); return; }   // 2.4: Gruppenanruf = beitreten
     if (CHATS && bridge()) { answer(d.call_id, video); return; }
     if (CHATS) { HK.toast(T('Zum Annehmen erst Chats auf diesem Gerät einrichten bzw. entsperren.')); return; }
     // Andere Seite: der Anruf laeuft im Chat-Tab (dort liegen die Schluessel dieses Browsers)
@@ -226,7 +243,7 @@
   // getMedia mit Hinweis, wenn die Freigabe-Abfrage des Browsers offen bleibt (Safari fragt oft erst nach dem Klick)
   function mediaHint(c, video) {
     var t = setTimeout(function () {
-      if (C === c && !c.local) status(c, video ? T('Bitte Kamera und Mikrofon im Browser erlauben – die Abfrage steht oben bzw. neben der Adresse.')
+      if (live(c) && !c.local) status(c, video ? T('Bitte Kamera und Mikrofon im Browser erlauben – die Abfrage steht oben bzw. neben der Adresse.')
         : T('Bitte das Mikrofon im Browser erlauben – die Abfrage steht oben bzw. neben der Adresse.'));
     }, 2500);
     return getMedia(video).then(function (s) { clearTimeout(t); return s; }, function (e) { clearTimeout(t); throw e; });
@@ -244,16 +261,68 @@
       // 2.4 E3: eigene Transceiver (Ton, Kamera, Bildschirm), Betriebsart des Teilens ('track' = B, 'replace' = A),
       // Rollen der m-Zeilen beim Gegenueber (mid -> mic|cam|screen), Fernspuren je mid, Ansicht getauscht
       micTr: null, camTr: null, scrTr: null, scrStream: null, scrMode: '', mix: null, peerTracks: {}, rmid: {}, swap: false,
-      shareStarts: 0 }, o);
+      shareStarts: 0,
+      // 2.4 E4/E5: Raum - weitere Verbindungen (Geraet -> Link), Endpunkte laut Server, Art, Begleitgeraet, Uebernahme,
+      // Signale unbekannter Geraete (bis ihr Link steht), Schluessel je Person, Mitglieder (Gruppe)
+      room: null, links: {}, legs: [], kind: 'dm', companion: false, ho: null, pend: {}, keysBy: {}, members: null, tile: null, gone: false,
+      spkOut: true, level: 0 }, o);
   }
+  // Felder des Raums, die ein Link beim Raum liest und schreibt (alles andere hat jeder Link selbst)
+  var SHARED = ['id', 'chat_id', 'media', 'v2', 'local', 'cam', 'screen', 'scrStream', 'mix', 'mic', 'pip', 'pipWin', 'pipUi', 'ui', 'done',
+    'ending', 'ready', 'alive', 'statsT', 'wantSent', 'shareStarts', 'seen', 'early', 'call', 'kind', 'companion', 'legs', 'links',
+    'ho', 'pend', 'keysBy', 'members', 'spkOut', 'camPaused'];
+  function newLink(R, dev, peer) {
+    var L = newCall({ room: R, peerDevice: dev, role: 'caller', peer: peer || {} });
+    SHARED.forEach(function (k) {
+      delete L[k];
+      Object.defineProperty(L, k, { get: function () { return R[k]; }, set: function (v) { R[k] = v; }, enumerable: true });
+    });
+    R.links[dev] = L;
+    return L;
+  }
+  function roomOf(c) { return c && c.room ? c.room : c; }
+  // Gehoert c (Raum oder Link) zum laufenden Anruf?
+  function live(c) { return !!C && !!c && (c === C || c.room === C) && !c.gone; }
+  // Verbindungen des Raums: der Raum selbst (wenn er eine hat) und alle Links
+  function links(R) {
+    R = roomOf(R); if (!R) return [];
+    var o = R.pc && !R.gone ? [R] : [];
+    Object.keys(R.links || {}).forEach(function (k) { var L = R.links[k]; if (L && !L.gone) o.push(L); });
+    return o;
+  }
+  function linkOf(R, dev) { R = roomOf(R); return R.peerDevice === dev && !R.gone ? R : (R.links || {})[dev] || null; }
+  function each(c, fn) { links(c).forEach(fn); }
+  // Endpunkte im Raum (fuer Mesh-Bitraten): eigene Verbindungen + ich
+  function endpoints(c) { var R = roomOf(c); return Math.max(2, links(R).length + 1); }
+  // "Stille" Verbindung: eigenes Geraet bzw. Begleitgeraet ohne Ton, Kamera und Bildschirm - braucht keine eigene Kachel
+  function quiet(L) {
+    var x = legOf(roomOf(L), L.peerDevice), rs = L.remoteState || {};
+    if (rs.cam || rs.screen) return false;
+    return !!(L.peer && L.peer.me) || (!!x && x.role === 'companion' && (!L.gotState || rs.mic === false));
+  }
+  function shown(R) { return links(R).filter(function (L) { return !quiet(L); }); }
+  // Kachelansicht: Gruppenanruf oder mehr als eine sichtbare Verbindung (1:1 mit Begleitgeraet bleibt Einzelansicht)
+  function meshView(R) { R = roomOf(R); return !!R && (R.kind === 'group' || shown(R).length >= 2); }
   function myDev() { return bridge().device(); }
   function X() { return bridge().crypto(); }
   // 2.3: Gegenueber auf einem anderen Server (c.v2): saga-call/v2 mit foederierten Handles statt Benutzernamen
   function me(c) { return c.v2 ? bridge().myHandle() : bridge().me(); }
   function them(c) { return c.v2 ? c.peer.handle : c.peer.username; }
+  // Schluessel einer Person (geprueft: Geraete-Zertifikate vom Identitaetsschluessel, TOFU wie im Chat), je Raum
+  // zwischengespeichert - mehrere Geraete derselben Person (Begleitgeraet, Uebernahme) brauchen sie nur einmal
+  // Foederiert (v2): Personen anderer Server ueber die geprueften Fremd-Schluessel, eigene und lokale wie im Chat
+  function keysOf(c, p, fresh) {
+    var v2 = !!(c.v2 && p.handle && !p.local && !p.me);
+    var R = roomOf(c), k = (v2 ? 'h:' + p.handle : 'u:' + p.username);
+    if (!R.keysBy) R.keysBy = {};
+    if (!fresh && R.keysBy[k]) return R.keysBy[k];
+    var pr = v2 ? bridge().peerKeysV2(p.handle, p.name) : bridge().peerKeys(p.username, p.name);
+    R.keysBy[k] = pr.catch(function (e) { delete R.keysBy[k]; throw e; });
+    return R.keysBy[k];
+  }
   function peerKeys(c, fresh) {
     if (!fresh && c._keys) return c._keys;
-    c._keys = (c.v2 ? bridge().peerKeysV2(c.peer.handle, c.peer.name) : bridge().peerKeys(c.peer.username, c.peer.name)).then(function (k) {
+    c._keys = keysOf(c, c.peer, fresh).then(function (k) {
       c.peerDevs = {}; k.devices.forEach(function (d) { c.peerDevs[d.id] = d; }); return k;
     }, function (e) { c._keys = null; throw e; });
     return c._keys;
@@ -337,7 +406,7 @@
       onConn(c);              // auch neuere Browser: nach einem ICE-Restart bleibt connectionState oft "connected"
     };
     // 2.4: Neuverhandlung (Perfect Negotiation) erst nach dem ersten Angebot/Antwort und nur mit einer 2.4-Gegenstelle
-    pc.onnegotiationneeded = function () { if (C === c && c.established && canReneg(c) && !c.done) offerNow(c); };
+    pc.onnegotiationneeded = function () { if (live(c) && c.established && canReneg(c) && !c.done) offerNow(c); };
     return pc;
   }
   function addLocal(c, pc, fromOffer) {
@@ -439,6 +508,7 @@
   // Unbekannte Typen ("t") werden ignoriert - so koennen spaetere Fassungen neue Nachrichten schicken (Vertrag v3)
   function handle(c, b) {
     if (!b) { securityFail(c); return; }
+    if (b.t === 'state' && b.ready && b.replaces === myDev().id && c.peer && c.peer.me) { handoverOut(roomOf(c), b._from); return; }
     if (b.pc && c.peerDevice && b.pc !== pcId(c)) return;            // andere PeerConnection (Mehrgeraete/Mesh ab E4)
     if (b.t === 'ice') { (Array.isArray(b.c) ? b.c : []).slice(0, 60).forEach(function (x) { if (x && x.candidate) c.remoteIce.push(x); }); applyRemoteIce(c); }
     else if (b.t === 'answer' && c.role === 'caller' && !c.pc.remoteDescription) {
@@ -449,6 +519,7 @@
       c.peerCaps = capsOf(b); peerTracksIn(c, b);
       c.pc.setRemoteDescription({ type: 'answer', sdp: b.sdp }).then(function () { c.established = true; applyRemoteIce(c); }).catch(function (e) { fail(c, T('Verbindung nicht aufgebaut: {err}', { err: e.message })); });
     } else if (b.t === 'offer' && c.established && b._from === c.peerDevice) reOffer(c, b);
+    else if (b.t === 'offer' && !c.established && !c.pc && b._from === c.peerDevice) acceptOffer(c, b);
     else if (b.t === 'answer' && c.established && b._from === c.peerDevice) reAnswer(c, b);
     else if (b.t === 'state') {
       var w = b.want && typeof b.want === 'object' && ['off', 'small', 'large'].indexOf(b.want.video) >= 0 ? b.want.video : 'large';
@@ -458,8 +529,13 @@
                         path: PATHS.indexOf(b.path) >= 0 ? b.path : '', screenMid: b.screen ? sm : null, audio: !!b.screen_audio };
       peerTracksIn(c, b);
       if (c.remoteState.screen && !was) c.swap = false;               // neues Teilen: Bildschirm gross
-      c.gotState = true; bindRemote(c); drawMedia(c); drawInfo(c); applyRates(c);
-    } else if (b.t === 'bye' && c.established && b._from === c.peerDevice) remoteEnded(c, { reason: 'hangup' });
+      c.gotState = true;
+      if (c.room || links(c).length > 1) drawTiles(roomOf(c));        // 2.4: Begleitgeraet zeigt etwas -> ggf. Kacheln
+      bindRemote(c); drawMedia(c); drawInfo(c); applyRates(c);
+    } else if (b.t === 'bye' && c.established && b._from === c.peerDevice) {
+      if (links(c).length > 1 || roomOf(c).kind === 'group') dropLink(c, '');          // 2.4: nur dieses Geraet geht
+      else remoteEnded(c, { reason: 'hangup' });
+    }
   }
   function peerTracksIn(c, b) {
     var t = tracksOf(b && b.tracks);
@@ -478,7 +554,7 @@
     c.makingOffer = true;
     var p = restart && !pc.restartIce ? pc.createOffer({ iceRestart: true }).then(function (o) { return pc.setLocalDescription(o); }) : pc.setLocalDescription();
     return p.then(function () {
-      if (C !== c || pc.signalingState !== 'have-local-offer') return;
+      if (!live(c) || pc.signalingState !== 'have-local-offer') return;
       c.n += 1;
       return sendSignal(c, Object.assign(sdpBody(c, 'offer', pc.localDescription.sdp, c.n), c.restarting ? { restart: true } : {})).then(function () {
         if (c.stateDue) { c.stateDue = false; stateOut(c); }            // E3: Zustand (screen_mid) erst, wenn die mid feststeht
@@ -501,7 +577,7 @@
       applyRemoteIce(c);
       return pc.setLocalDescription();
     }).then(function () {
-      if (C !== c) return;
+      if (!live(c)) return;
       return sendSignal(c, sdpBody(c, 'answer', pc.localDescription.sdp, b.n)).then(function () { settled(c); });
     }).catch(function () { /* Gegenueber versucht es erneut (ICE-Restart) */ });
   }
@@ -515,18 +591,18 @@
   // Neuverhandlung abgeschlossen: steht ICE schon (Restart ohne Unterbrechung), gilt der Neuaufbau als fertig
   function settled(c) {
     var x = c.pc && c.pc.iceConnectionState;
-    if (C === c && c.pc.signalingState === 'stable' && (x === 'connected' || x === 'completed')) onConn(c);
+    if (live(c) && c.pc.signalingState === 'stable' && (x === 'connected' || x === 'completed')) onConn(c);
   }
   // ICE neu aushandeln (Netzwechsel WLAN <-> LTE, Verbindung weg). Nur mit einer 2.4-Gegenstelle; sonst wie bisher.
   // Hoechstens RESTART_MAX Versuche je Abbruch (zurueckgesetzt, sobald die Verbindung wieder steht); kommt sie nach
   // FAIL_S Sekunden nicht wieder, endet der Anruf wie bisher
   function restartIce(c) {
-    if (!c || C !== c || !c.pc || c.done || !c.established || !canReneg(c)) return false;
+    if (!c || !live(c) || !c.pc || c.done || !c.established || !canReneg(c)) return false;
     if (c.restarting && Date.now() - c.restartAt < 6000) return true;
     if (c.tries >= RESTART_MAX) return false;
     c.restarting = true; c.restartAt = Date.now(); c.restarts += 1; c.tries = (c.tries || 0) + 1;
     status(c, T('Verbindung wird neu aufgebaut …'));
-    if (!c.failT) c.failT = setTimeout(function () { c.failT = null; if (C === c && c.restarting) iceFailed(c); }, FAIL_S * 1000);
+    if (!c.failT) c.failT = setTimeout(function () { c.failT = null; if (live(c) && c.restarting) iceFailed(c); }, FAIL_S * 1000);
     if (c.pc.restartIce) c.pc.restartIce();                       // -> negotiationneeded -> offerNow
     else offerNow(c, true);
     return true;
@@ -534,7 +610,7 @@
   var netT = null;
   function netChanged() {
     clearTimeout(netT);
-    netT = setTimeout(function () { var c = C; if (c && c.connected && !c.done) restartIce(c); }, 800);
+    netT = setTimeout(function () { var c = C; if (c && !c.done) each(c, function (L) { if (L.connected) restartIce(L); }); }, 800);
   }
   window.addEventListener('online', netChanged);
   if (navigator.connection && navigator.connection.addEventListener) navigator.connection.addEventListener('change', netChanged);
@@ -547,7 +623,18 @@
     if (!c || d.call_id !== c.id || !bridge() || d.to_device !== myDev().id || c.seen[d.seq]) return;
     c.seen[d.seq] = true;
     if (!c.ready) { c.early.push(d); return; }
-    openSig(c, d).then(function (b) { if (C === c) handle(c, b); });
+    sigRoute(c, d);
+  }
+  // 2.4: Signal an die passende Verbindung. 1:1 waehrend es klingelt: Antworten/Kandidaten aller Geraete des Gegenuebers
+  // gehen an den Raum (wie bisher). Unbekanntes Geraet (Raum): merken und pruefen, ein Angebot legt eine Verbindung an.
+  function sigRoute(R, d) {
+    var L = linkOf(R, d.from_device);
+    if (!L && R.kind === 'dm' && R.role === 'caller' && R.pc && !R.peerDevice && !R.established && R.peerDevs[d.from_device]) L = R;
+    if (L) { openSig(L, d).then(function (b) { if (live(L)) handle(L, b); }); return; }
+    if (myCaps().indexOf('multi') < 0) return;
+    var q = R.pend[d.from_device] = R.pend[d.from_device] || [];
+    q.push(d); if (q.length > 80) q.shift();
+    incoming(R, d.from_device);
   }
 
   // --- Anrufen -----------------------------------------------------------------------------------------------------
@@ -555,7 +642,13 @@
     var b = bridge();
     if (!b) { HK.toast(T('Chats sind auf diesem Gerät noch nicht bereit.')); return; }
     if (C) { HK.toast(T('Du telefonierst gerade schon.')); return; }
-    if (!chat || chat.kind !== 'dm' || !chat.peer) return;
+    if (chat && chat.kind !== 'dm') {                  // 2.4 E5: Gruppen-, freie und Seiten-Chats
+      var run = chat.call && chat.call.running;
+      if (run && run.kind === 'group' && run.state !== 'ended') join(run.id, 'member', video);
+      else startGroup(chat, video);
+      return;
+    }
+    if (!chat || !chat.peer) return;
     if (chat.v === 2 && (chat.request || chat.readonly)) { HK.toast(T('Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben.')); return; }
     if (!window.RTCPeerConnection) { HK.toast(T('Dieser Browser kann keine Anrufe (WebRTC fehlt).')); return; }
     var c = C = newCall({ chat_id: chat.id, role: 'caller', media: video ? 'video' : 'audio', peer: chat.peer, v2: chat.v === 2 });
@@ -568,11 +661,11 @@
       if (!k.devices.length) throw new Error(T('{name} hat Chats noch auf keinem Gerät eingerichtet – Anrufe gehen erst danach.', { name: c.peer.name }));
       return mediaHint(c, video);
     }).then(function (s) {
-      if (C !== c) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
+      if (!live(c)) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
       c.local = s; c.media = s.getVideoTracks().length ? 'video' : 'audio'; drawMedia(c); sinkPick(c);
       c.pc = makePC(c); addLocal(c, c.pc, false);
       return c.pc.createOffer().then(function (o) { return c.pc.setLocalDescription(o); }).then(function () { return dial(c, false); });
-    }).catch(function (e) { if (C === c) fail(c, e.message); });
+    }).catch(function (e) { if (live(c)) fail(c, e.message); });
   }
   function dial(c, again) {
     status(c, T('Verbinde …'));
@@ -582,7 +675,7 @@
     var body = function (id) { return JSON.stringify(Object.assign(sdpBody(c, 'offer', sdp, 1), { pc: pair(me_, id) })); };
     return api('POST', '/api/calls', { id: c.id, chat_id: c.chat_id, media: c.media, device: me_, signals: sealAll(c, Object.keys(c.peerDevs), body), caps: myCaps() })
       .then(function (r) {
-        if (C !== c) { api('POST', '/api/calls/' + c.id + '/end', { reason: 'hangup' }).catch(function () {}); return; }
+        if (!live(c)) { api('POST', '/api/calls/' + c.id + '/end', { reason: 'hangup' }).catch(function () {}); return; }
         c.ready = true; c.call = r.call;
         status(c, T('Klingelt …')); playTone('back');
         flushIce(c); aliveOn(c);
@@ -623,7 +716,7 @@
       if (typeof offer.pc === 'string' && /^[0-9a-f:]{1,200}$/.test(offer.pc)) c.pcFixed = offer.pc;
       return mediaHint(c, video);
     }).then(function (s) {
-      if (C !== c) { s.getTracks().forEach(function (t) { t.stop(); }); throw null; }
+      if (!live(c)) { s.getTracks().forEach(function (t) { t.stop(); }); throw null; }
       c.local = s; drawMedia(c); sinkPick(c);
       c.pc = makePC(c);
       return c.pc.setRemoteDescription({ type: 'offer', sdp: offer.sdp });
@@ -636,32 +729,402 @@
       var sig = {}; sig[c.peerDevice] = seal(c, c.peerDevice, body);
       return api('POST', '/api/calls/' + id + '/answer', { device: dev, signals: sig, caps: myCaps() });
     }).then(function () {
-      if (C !== c) return;
+      if (!live(c)) return;
       c.ready = true; c.t0 = 0; c.established = true;
       status(c, T('Verbinde …'));
       applyRemoteIce(c); flushIce(c); aliveOn(c); stateOut(c);
       var early = c.early.splice(0);
-      early.forEach(function (d) { openSig(c, d).then(function (b) { if (C === c) handle(c, b); }); });
-      c.connT = setTimeout(function () { if (C === c && !c.connected) iceFailed(c); }, 30000);
+      early.forEach(function (d) { openSig(c, d).then(function (b) { if (live(c)) handle(c, b); }); });
+      c.connT = setTimeout(function () { if (live(c) && !c.connected) iceFailed(c); }, 30000);
     }).catch(function (e) {
-      if (C !== c || e === null) return;
+      if (!live(c) || e === null) return;
       fail(c, e.status === 409 ? T('Der Anruf ist schon beendet oder wurde auf einem anderen Gerät angenommen.') : e.message);
     });
   }
 
+  // --- 2.4 E4/E5: Raum - beitreten, Mesh, Begleitgeraet, Uebernahme, Gruppen ---------------------------------------------
+  // Vertrag: docs/APP-API.md "Anrufe: Mehrgeraete und Gruppen". Wer hinzukommt, bietet allen an (je Paar eine
+  // PeerConnection); die anderen nehmen ohne Klingeln an, nachdem sie das Geraet gegen die signierte Geraeteliste seiner
+  // Person geprueft haben. Der Server sieht keine SDP.
+  var HO_S = 15;                                      // Uebernahme: so lange darf das neue Geraet brauchen (Konzept §5.3 c)
+  function meName() { return bridge() ? bridge().me() : ''; }
+  // Person eines Endpunkts (Teilnehmerliste des Servers) fuer Schluessel, Signatur und Anzeige
+  function personOf(x) {
+    var mine = !!x && x.who === meName();
+    return { username: x.who, name: x.name || '', handle: mine ? (x.handle || (bridge() && bridge().myHandle()) || null) : x.handle || null,
+             me: mine, local: mine || !x.host, host: x.host || '', avatar: x.avatar || null };
+  }
+  function legOf(R, dev) { var o = null; ((R && R.legs) || []).forEach(function (x) { if (x.device === dev) o = x; }); return o; }
+  function myLeg(R) { return bridge() ? legOf(R, myDev().id) : null; }
+  function titleOf(cid) { var c = bridge() && bridge().cur(); return c && c.id === cid ? (c.title || c.name || '') : ''; }
+  function blockText(b, n) {
+    return b === 'old' ? T('Dafür braucht jemand im Anruf Saga 2.4.') : b === 'full' ? T('Der Anruf ist voll (höchstens {n} Geräte).', { n: n || '?' })
+      : b === 'ended' ? T('Der Anruf ist schon beendet.') : b === 'none' ? T('Der Anruf ist noch nicht angenommen.') : T('Beitreten geht gerade nicht.');
+  }
+  // Teilnehmerliste uebernehmen (GET /api/calls/{id}, call.roster): Begleitgeraet ja/nein, Hinweise "ist hinzugekommen" /
+  // "hat verlassen", Verbindungen zu Geraeten trennen, die nicht mehr dabei sind
+  function rosterIn(R, legs, extra) {
+    if (!Array.isArray(legs) || R.done) return;
+    var old = {}; (R.legs || []).forEach(function (x) { old[x.device] = x; });
+    var first = !R.legs, here = bridge() ? myDev().id : '';
+    R.legs = legs;
+    if (extra && extra.limit) R.limit = extra.limit;
+    var mine = myLeg(R);
+    if (mine) { R.inRoom = true; if (!R.ho && !R.took) R.companion = mine.role === 'companion'; if (mine.role !== 'companion') R.took = false; }
+    var now = {};
+    legs.forEach(function (x) {
+      now[x.device] = true;
+      if (!first && R.inRoom && !old[x.device] && x.device !== here)
+        HK.toast(T('{name} ({dev}) ist hinzugekommen', { name: x.name || '?', dev: x.dev_name || T('Gerät') }));
+    });
+    Object.keys(old).forEach(function (d) {
+      if (!now[d] && d !== here && R.inRoom) HK.toast(T('{name} ({dev}) hat den Anruf verlassen', { name: old[d].name || '?', dev: old[d].dev_name || T('Gerät') }));
+    });
+    links(R).forEach(function (L) { if (L.peerDevice && !now[L.peerDevice] && L.established) dropLink(L, ''); });
+    drawTiles(R); drawCtl(R); drawInfo(R);
+  }
+  // Verbindung zu einem Geraet trennen (hat den Anruf verlassen bzw. Fehler nur auf dieser Verbindung)
+  function dropLink(L, msg) {
+    var R = roomOf(L);
+    clearTimeout(L.outT); clearTimeout(L.connT); clearTimeout(L.failT); clearTimeout(L.discT);
+    try { if (L.pc) L.pc.close(); } catch (e) { /* schon zu */ }
+    if (L.tile) { L.tile.box.remove(); L.tile = null; }
+    if (L === R) {                                    // erste Verbindung des Raums (1:1): der Raum selbst bleibt bestehen
+      Object.assign(R, { pc: null, peerDevice: null, established: false, connected: false, remote: new MediaStream(), micTr: null, camTr: null,
+        scrTr: null, scrMode: '', rates: {}, peerTracks: {}, rmid: {}, pcFixed: null, remoteIce: [], outIce: [], gotState: false,
+        remoteState: { mic: true, cam: false, screen: false, pip: false, want: 'large', path: '' } });
+    } else { L.gone = true; if (R.links[L.peerDevice] === L) delete R.links[L.peerDevice]; }
+    if (msg) HK.toast(msg);
+    if (!live(R)) return;
+    if (R.ui) { R.ui.ra.srcObject = null; R.ui.rv.srcObject = null; R.ui.rv2.srcObject = null; }
+    drawTiles(R); drawMedia(primary(R)); drawInfo(R); drawCtl(R);
+    if (!links(R).length) status(R, R.kind === 'group' ? T('Warte auf die anderen …') : T('Verbinde …'));
+  }
+  // Signal eines Geraets ohne Verbindung: gehoert es zum Anruf (Liste des Servers) und zur Person (signierte Geraeteliste,
+  // TOFU)? Dann Verbindung anlegen; das Angebot beantwortet handle() -> acceptOffer()
+  function incoming(R, dev) {
+    R.inc = R.inc || {}; R.bad = R.bad || {};
+    if (R.inc[dev] || R.bad[dev] || !R.ready || R.done) return;
+    R.inc[dev] = true;
+    var x0 = legOf(R, dev);
+    (x0 ? Promise.resolve(x0) : api('GET', '/api/calls/' + R.id + '?device=' + q(myDev().id)).then(function (r) {
+      rosterIn(R, r.call.legs); return legOf(R, dev);
+    })).then(function (x) {
+      if (!x || !live(R) || linkOf(R, dev)) return;
+      var L = newLink(R, dev, personOf(x));
+      L.role = 'callee';
+      return peerKeys(L).then(function () {
+        if (!L.peerDevs[dev]) {                        // Geister-Geraet: nicht in der signierten Liste der Person
+          R.bad[dev] = true; dropLink(L, T('Unbekanntes Gerät von {name} abgelehnt.', { name: x.name || '?' })); return;
+        }
+        var list = (R.pend[dev] || []).splice(0); delete R.pend[dev];
+        return list.reduce(function (p, d) { return p.then(function () { return openSig(L, d).then(function (b) { if (live(L)) handle(L, b); }); }); }, Promise.resolve());
+      });
+    }).catch(function (e) { if (e && e.message) HK.toast(e.message); }).then(function () { delete R.inc[dev]; });
+  }
+  // Angebot eines hinzukommenden Geraets beantworten (ohne Klingeln: die Person ist schon im Anruf bzw. tritt bei)
+  function acceptOffer(L, b) {
+    if (!fpOk(b)) { securityFail(L); return; }
+    L.fps = X().sdpFingerprints(b.sdp); L.peerCaps = capsOf(b); L.remoteN = typeof b.n === 'number' ? b.n : 1; peerTracksIn(L, b);
+    if (typeof b.pc === 'string' && /^[0-9a-f:]{1,200}$/.test(b.pc)) L.pcFixed = b.pc;
+    var pc = L.pc = makePC(L);
+    pc.setRemoteDescription({ type: 'offer', sdp: b.sdp }).then(function () { return addLocal(L, pc, true); })
+      .then(function () { return pc.createAnswer(); }).then(function (a) { return pc.setLocalDescription(a); }).then(function () {
+        if (!live(L)) return;
+        return sendSignal(L, sdpBody(L, 'answer', pc.localDescription.sdp, L.remoteN)).then(function () {
+          L.established = true; applyRemoteIce(L); flushIce(L); stateOut(L);
+          L.connT = setTimeout(function () { if (live(L) && !L.connected) iceFailed(L); }, 30000);
+        });
+      }).catch(function (e) { if (live(L)) dropLink(L, T('Verbindung nicht aufgebaut: {err}', { err: (e && e.message) || '?' })); });
+    drawTiles(roomOf(L));
+  }
+  // Mit diesem Geraet einem laufenden Anruf beitreten. role: 'member' (Gruppe), 'companion' (Begleitgeraet: ohne Mikrofon
+  // und Ton), 'handover' (Hierher uebernehmen; rep = bisheriges eigenes Geraet, sonst das eigene Hauptgeraet laut Liste)
+  function join(id, role, video, rep) {
+    if (!bridge()) { HK.toast(T('Chats sind auf diesem Gerät noch nicht bereit.')); return; }
+    if (C) { if (C.id !== id) HK.toast(T('Du telefonierst gerade schon.')); return; }
+    if (!window.RTCPeerConnection) { HK.toast(T('Dieser Browser kann keine Anrufe (WebRTC fehlt).')); return; }
+    unring(id); hideRun(id);
+    var R = C = newCall({ id: id, role: 'caller' });
+    R.companion = role === 'companion';
+    if (role !== 'member') { R.mic = false; R.spkOut = false; }   // Begleitgeraet/Uebernahme: erst still (Echo-Schutz)
+    audioCtx(); win(R); status(R, T('Verbinde …'));
+    var dev = myDev().id;
+    config(true).then(function () {
+      if (myCaps().indexOf('multi') < 0) throw new Error(T('Dafür braucht dieser Server Saga 2.4.'));
+      return api('GET', '/api/calls/' + id + '?device=' + q(dev));
+    }).then(function (r) {
+      var k = r.call;
+      R.call = k; R.chat_id = k.chat_id; R.media = k.media; R.kind = k.kind; R.v2 = k.v === 2; R.peer = k.peer; R.title = titleOf(k.chat_id);
+      (r.signals || []).forEach(function (s) { R.seen[s.seq] = true; });
+      if (k.state === 'ended') throw new Error(T('Der Anruf ist schon beendet.'));
+      if (!k.joinable) throw new Error(blockText(k.join_block, k.limit));
+      R.legs = k.legs || [];
+      if (role === 'handover') {
+        var mine = R.legs.filter(function (x) { return x.who === meName() && x.device !== dev; });
+        var main = mine.filter(function (x) { return x.role !== 'companion'; })[0] || mine[0];
+        rep = rep || (main && main.device);
+        if (!rep) role = 'member';
+        else R.ho = { rep: rep };
+      }
+      drawPeer(R);
+      return R.companion ? new MediaStream() : mediaHint(R, video);
+    }).then(function (s) {
+      if (!live(R)) { s.getTracks().forEach(function (t) { t.stop(); }); throw null; }
+      R.local = s;
+      s.getAudioTracks().forEach(function (t) { t.enabled = R.mic; });
+      drawMedia(R); sinkPick(R);
+      return offerAll(R, role, rep, false);
+    }).catch(function (e) {
+      if (!live(R) || e === null) return;
+      if (R.inRoom) api('POST', '/api/calls/' + id + '/leave', { device: dev }).catch(function () {});
+      finish(R, (e && e.message) || T('Beitreten ging nicht.'), 'error');
+    });
+  }
+  // Je anderem Endpunkt eine PeerConnection mit Angebot, alles in einem POST /join. 409 mit neuer Liste: einmal neu.
+  function offerAll(R, role, rep, again) {
+    var me_ = myDev().id, sig = {};
+    Object.keys(R.links).forEach(function (k) { var L = R.links[k]; try { if (L.pc) L.pc.close(); } catch (e) { /* zu */ } L.gone = true; if (L.tile) L.tile.box.remove(); });
+    R.links = {};
+    var others = (R.legs || []).filter(function (x) { return x.device !== me_; });
+    return Promise.all(others.map(function (x) {
+      var L = newLink(R, x.device, personOf(x));
+      return peerKeys(L).then(function () {
+        if (!L.peerDevs[x.device]) throw new Error(T('Unbekanntes Gerät von {name} im Anruf – Beitritt abgebrochen.', { name: x.name || '?' }));
+        L.pc = makePC(L); addLocal(L, L.pc, false);
+        return L.pc.createOffer().then(function (o) { return L.pc.setLocalDescription(o); }).then(function () {
+          L.n = 1;
+          sig[x.device] = seal(L, x.device, JSON.stringify(Object.assign(sdpBody(L, 'offer', L.pc.localDescription.sdp, 1), { pc: pair(me_, x.device) })));
+        });
+      });
+    })).then(function () {
+      var body = { device: me_, role: role, caps: myCaps(), signals: sig };
+      if (rep && role === 'handover') body.replaces = rep;
+      return api('POST', '/api/calls/' + R.id + '/join', body);
+    }).then(function (r) {
+      if (!live(R)) { api('POST', '/api/calls/' + R.id + '/leave', { device: me_ }).catch(function () {}); return; }
+      R.ready = true; R.inRoom = true; R.call = r.call;
+      rosterIn(R, r.call.legs);
+      status(R, links(R).length ? T('Verbinde …') : T('Warte auf die anderen …'));
+      aliveOn(R);
+      each(R, function (L) { flushIce(L); L.connT = setTimeout(function () { if (live(L) && !L.connected) iceFailed(L); }, 30000); });
+      if (R.ho) R.hoT = setTimeout(function () { hoFail(R); }, HO_S * 1000);
+      R.early.splice(0).forEach(function (d) { sigRoute(R, d); });
+      drawTiles(R); drawCtl(R); drawInfo(R);
+    }, function (e) {
+      if (e.status === 409 && e.data && Array.isArray(e.data.legs) && !e.data.join_block && !again) { R.legs = e.data.legs; return offerAll(R, role, rep, true); }
+      throw new Error(e.data && e.data.join_block ? (e.data.error || blockText(e.data.join_block, e.data.limit)) : e.message);
+    });
+  }
+  // Uebernahme: sobald alle Verbindungen zu anderen Personen stehen, uebernimmt dieses Geraet Ton und Mikrofon und sagt
+  // dem bisherigen Geraet Bescheid (state.ready + replaces) - das schaltet im selben Moment ab und verlaesst den Anruf
+  function hoCheck(R) {
+    R = roomOf(R);
+    if (!R.ho || R.ho.done || !R.ready || R.done) return;
+    var need = links(R).filter(function (L) { return !(L.peer && L.peer.me); });
+    if (!need.length || need.some(function (L) { return !L.connected; })) return;
+    var rep = R.ho.rep, A = linkOf(R, rep);
+    R.ho.done = true; clearTimeout(R.hoT);
+    R.companion = false; R.took = true;
+    setMic(R, true); setSpk(R, true);
+    if (A && A.established) sendSignal(A, { t: 'state', ready: true, replaces: rep, mic: true, cam: !!R.cam, screen: !!R.screen });
+    else api('POST', '/api/calls/' + R.id + '/leave', { device: rep, reason: 'handover' }).catch(function () {});   // eigenes Geraet ohne Verbindung
+    R.ho = null;
+    drawCtl(R); drawInfo(R);
+  }
+  function hoFail(R) {
+    if (!R.ho || R.ho.done || !live(R)) return;
+    R.ho = null;
+    api('POST', '/api/calls/' + R.id + '/leave', { device: myDev().id }).catch(function () {});
+    R.ending = true;
+    finish(R, T('Übernahme hat nicht geklappt – der Anruf läuft auf dem anderen Gerät weiter.'), 'error');
+  }
+  // Begleitgeraet -> Hauptgeraet ("Hierher übernehmen" im Anruffenster)
+  function takeOver(R) {
+    R = roomOf(R);
+    if (!live(R) || R.ho) return;
+    var mine = (R.legs || []).filter(function (x) { return x.who === meName() && x.device !== myDev().id; });
+    var main = mine.filter(function (x) { return x.role !== 'companion'; })[0] || mine[0];
+    if (!main) { R.companion = false; R.took = true; setMic(R, true); setSpk(R, true); drawCtl(R); drawInfo(R); return; }
+    R.ho = { rep: main.device };
+    hoCheck(R);
+    if (R.ho) R.hoT = setTimeout(function () { if (R.ho && !R.ho.done) { R.ho = null; HK.toast(T('Übernahme hat nicht geklappt – der Anruf läuft auf dem anderen Gerät weiter.')); } }, HO_S * 1000);
+  }
+  // Dieses Geraet wurde von einem anderen eigenen Geraet uebernommen: still schalten, Bescheid geben, verlassen
+  function handoverOut(R, from) {
+    if (!live(R) || R.done) return;
+    (R.local ? R.local.getAudioTracks() : []).forEach(function (t) { t.enabled = false; });
+    R.spkOut = false; each(R, function (L) { var E = els(L); if (E && E.ra) E.ra.muted = true; });
+    // erst "bye" an die anderen (danach nimmt der Server keine Signale dieses Geraets mehr an), dann verlassen
+    var byes = [];
+    each(R, function (L) { if (L.established && peerCan(L, 'bye') && L.peerDevice !== from) byes.push(sendSignal(L, { t: 'bye', reason: 'handover' })); });
+    var x = legOf(R, from), id = R.id, me_ = myDev().id;
+    Promise.race([Promise.all(byes), new Promise(function (r) { setTimeout(r, 1500); })]).then(function () {
+      api('POST', '/api/calls/' + id + '/leave', { device: me_, reason: 'handover' }).catch(function () {});
+    });
+    R.ending = true;
+    finish(R, T('Anruf auf {dev} übernommen.', { dev: (x && x.dev_name) || T('anderes Gerät') }), 'info');
+  }
+  // Gruppenanruf beginnen (Gruppen-, freie und Seiten-Chats): erst allein, alle anderen klingeln (call.invite)
+  function startGroup(chat, video) {
+    if (!window.RTCPeerConnection) { HK.toast(T('Dieser Browser kann keine Anrufe (WebRTC fehlt).')); return; }
+    if (chat.call && chat.call.group === false) { HK.toast(chat.call.group_block || T('Gruppenanrufe gehen in diesem Chat nicht.')); return; }
+    var R = C = newCall({ chat_id: chat.id, role: 'caller', kind: 'group', media: video ? 'video' : 'audio', v2: chat.v === 2 });
+    R.title = chat.title || chat.name || '';
+    audioCtx(); win(R); status(R, T('Kamera und Mikrofon …'));
+    config(true).then(function () {
+      if (!cfg.enabled) throw new Error(T('Anrufe sind auf diesem Server abgeschaltet.'));
+      if (myCaps().indexOf('multi') < 0) throw new Error(T('Gruppenanrufe brauchen Saga 2.4 auf diesem Server.'));
+      return mediaHint(R, video);
+    }).then(function (s) {
+      if (!live(R)) { s.getTracks().forEach(function (t) { t.stop(); }); throw null; }
+      R.local = s; R.media = s.getVideoTracks().length ? 'video' : 'audio'; drawMedia(R); sinkPick(R);
+      R.id = X().hex(16);
+      return api('POST', '/api/calls', { id: R.id, chat_id: R.chat_id, media: R.media, device: myDev().id, caps: myCaps() });
+    }).then(function (r) {
+      if (!live(R)) { api('POST', '/api/calls/' + r.call.id + '/end', { reason: 'hangup', device: myDev().id }).catch(function () {}); return; }
+      R.ready = true; R.inRoom = true; R.call = r.call; R.v2 = r.call.v === 2;
+      rosterIn(R, r.call.legs);
+      status(R, T('Klingelt bei den anderen …')); playTone('back');
+      aliveOn(R);
+      R.early.splice(0).forEach(function (d) { sigRoute(R, d); });
+    }).catch(function (e) {
+      if (!live(R) || e === null) return;
+      var run = e && e.status === 409 && e.data && e.data.running;
+      R.id = null;
+      if (run) { finish(R, '', 'error'); closeWin(R); join(run, 'member', video); return; }
+      finish(R, (e && e.message) || T('Anruf beendet'), 'error');
+    });
+  }
+  // Kachelansicht: je sichtbarer Verbindung eine Kachel (Bild bzw. Name, Geraet, stumm), Sprecher hervorgehoben
+  function drawTiles(R) {
+    R = roomOf(R);
+    if (!R || !R.ui || R.done) return;
+    var mesh = meshView(R), ls = links(R);
+    R.ui.w.classList.toggle('mesh', mesh);
+    if (!mesh) {
+      ls.forEach(function (L) { if (L.tile) { L.tile.box.remove(); L.tile = null; } });
+      if (R.meshOn) { R.meshOn = false; R.ui.grid.textContent = ''; }
+      var P = primary(R); if (P.pc) { bindRemote(P); drawMedia(P); }
+      R.ui.w.classList.remove('tiles');
+      return;
+    }
+    if (!R.meshOn) {                                   // Einzel- -> Kachelansicht: grosse Elemente frei machen
+      R.meshOn = true;
+      [R.ui.ra, R.ui.rv, R.ui.rv2].forEach(function (m) { m.srcObject = null; });
+      R.ui.w.classList.remove('has-video', 'has-small', 'peer-screen', 'peer-muted');
+      speakers(R);
+    }
+    ls.forEach(function (L) { if (!L.tile) makeTile(R, L); else drawTile(L); });
+    R.ui.grid.dataset.n = String(Math.min(ls.length, 6));
+    R.ui.w.classList.toggle('tiles', ls.length > 0);
+    drawPeer(R);
+  }
+  function makeTile(R, L) {
+    var vid = function (cls) { var v = el('video', cls); v.autoplay = true; v.muted = true; v.playsInline = true; v.setAttribute('playsinline', ''); return v; };
+    var box = el('div', 'cl-tile'); box.setAttribute('role', 'listitem');
+    var rv = vid('cl-tv'), rv2 = vid('cl-tv2'), ra = el('audio', 'cl-raudio'); ra.autoplay = true;
+    rv2.title = T('Ansicht tauschen'); rv2.addEventListener('click', function () { L.swap = !L.swap; bindRemote(L); drawTile(L); });
+    if (R.sinkId && ra.setSinkId) ra.setSinkId(R.sinkId).catch(function () {});
+    var p = L.peer || {};
+    var av = HK.avatarImg(el('span', 'cl-av', (p.name || '?').charAt(0).toUpperCase()), p.avatar, 56); av.setAttribute('aria-hidden', 'true');
+    var lab = el('div', 'cl-tl'), nm = el('b', null, p.me ? T('du') : (p.name || p.username || '?')), dv = el('span', 'cl-td');
+    lab.appendChild(nm); lab.appendChild(dv);
+    var st = el('div', 'cl-tst'); st.hidden = true;
+    [rv, rv2, ra, av, lab, st].forEach(function (x) { box.appendChild(x); });
+    R.ui.grid.appendChild(box);
+    L.tile = { box: box, rv: rv, rv2: rv2, ra: ra, av: av, nm: nm, dv: dv, st: st };
+    bindRemote(L); drawTile(L);
+  }
+  function drawTile(L) {
+    var t = L.tile; if (!t) return;
+    var R = roomOf(L), x = legOf(R, L.peerDevice) || {}, rs = L.remoteState;
+    var bigT = t.rv.srcObject && t.rv.srcObject.getVideoTracks()[0], smT = t.rv2.srcObject && t.rv2.srcObject.getVideoTracks()[0];
+    var vid = !!(bigT && bigT.readyState === 'live' && !bigT.muted) && (L.gotState ? rs.cam || rs.screen : true);
+    var small = !!(vid && smT && smT.readyState === 'live' && !smT.muted);
+    t.box.classList.toggle('has-video', vid); t.box.classList.toggle('has-small', small);
+    t.box.classList.toggle('peer-screen', vid && !!rs.screen);
+    t.box.classList.toggle('muted', rs.mic === false);
+    t.box.classList.toggle('wait', !L.connected);
+    t.dv.textContent = [x.dev_name || '', x.role === 'companion' ? T('Begleitgerät') : ''].filter(Boolean).join(' · ');
+    t.box.setAttribute('aria-label', (L.peer && L.peer.name || '?') + (x.dev_name ? ' (' + x.dev_name + ')' : '') + (rs.mic === false ? ' – ' + T('stumm') : ''));
+    if (vid && t.rv.paused) t.rv.play().catch(function () {});
+    if (small && t.rv2.paused) t.rv2.play().catch(function () {});
+  }
+  // Sprecher hervorheben: Pegel der empfangenen Tonspur (RTP-Quelle, ohne getStats) - 3x je Sekunde
+  function speakers(R) {
+    clearInterval(R.spkT);
+    R.spkT = setInterval(function () {
+      if (!live(R)) { clearInterval(R.spkT); return; }
+      if (!meshView(R)) return;
+      var best = null, top = 0.03, now = Date.now();
+      links(R).forEach(function (L) {
+        var rc = L.pc && L.pc.getReceivers ? L.pc.getReceivers().filter(function (r) { return r.track && r.track.kind === 'audio'; })[0] : null;
+        var src = rc && rc.getSynchronizationSources ? rc.getSynchronizationSources()[0] : null;
+        L.level = src && typeof src.audioLevel === 'number' && L.remoteState.mic !== false ? src.audioLevel : 0;
+        if (L.level > top) { top = L.level; best = L; }
+      });
+      if (best) { R.spk = best.peerDevice; R.spkAt = now; } else if (now - (R.spkAt || 0) > 1500) R.spk = null;
+      links(R).forEach(function (L) { if (L.tile) L.tile.box.classList.toggle('speaking', !!R.spk && R.spk === L.peerDevice); });
+    }, 330);
+  }
+
+  // --- 2.4: Leiste "Anruf laeuft" (anderes eigenes Geraet im Anruf, Gruppenanruf im Chat) ---------------------------------
+  var RUN = {}, runT = null;
+  function runCheck() { clearTimeout(runT); runT = setTimeout(pending, 400); }
+  function hideRun(id) { var b = RUN[id]; if (b) { b.remove(); delete RUN[id]; } }
+  function joinHere(id, role, video) {
+    if (CHATS && bridge()) { join(id, role, video); return; }
+    if (CHATS) { HK.toast(T('Zum Annehmen erst Chats auf diesem Gerät einrichten bzw. entsperren.')); return; }
+    var h = '/chats#join-' + id + '-' + role + (video ? '-video' : '');
+    var w = window.open(h, 'hk-chats'); if (w) w.focus(); else location.href = h;
+  }
+  function runBar(x) {
+    var here = bridge() ? myDev().id : null, mine = x.mine || [];
+    var group = x.kind === 'group';
+    var show = !(C && C.id === x.id) && x.state !== 'ended' && !RINGS[x.id] && (here === null || mine.indexOf(here) < 0)
+      && (group ? true : x.state === 'active' && mine.length > 0);
+    if (!show) { hideRun(x.id); return; }
+    var b = RUN[x.id];
+    if (!b) { b = RUN[x.id] = el('div', 'cl-run'); b.setAttribute('role', 'status'); document.body.appendChild(b); }
+    b.textContent = '';
+    var other = (x.legs || []).filter(function (l) { return mine.indexOf(l.device) >= 0; });
+    var main = other.filter(function (l) { return l.role !== 'companion'; })[0] || other[0];
+    var video = x.media === 'video';
+    b.appendChild(el('span', 'cl-run-ic', video ? '🎥' : '📞'));
+    var txt = el('span', 'cl-run-t');
+    if (mine.length) txt.textContent = T('Anruf läuft auf {dev}', { dev: (main && main.dev_name) || T('anderem Gerät') }) + (group ? '' : ' · ' + ((x.peer && x.peer.name) || ''));
+    else txt.textContent = T('Gruppenanruf läuft') + ' · ' + T('{n} Geräte', { n: (x.legs || []).length });
+    b.appendChild(txt);
+    if (!x.joinable) { b.appendChild(el('span', 'cl-run-s', blockText(x.join_block, x.limit))); return; }
+    if (mine.length) {
+      b.appendChild(btn(T('Hinzufügen'), 'cl-pill', function () { joinHere(x.id, 'companion', false); }, T('Dieses Gerät als Begleitgerät hinzufügen (ohne Mikrofon und Ton)')));
+      b.appendChild(btn(T('Hierher übernehmen'), 'cl-pill cl-run-go', function () { joinHere(x.id, 'handover', video); }, T('Anruf ohne Unterbrechung auf dieses Gerät holen')));
+    } else {
+      if (video) b.appendChild(btn(T('Nur mit Ton'), 'cl-pill', function () { joinHere(x.id, 'member', false); }));
+      b.appendChild(btn(T('Beitreten'), 'cl-pill cl-run-go', function () { joinHere(x.id, 'member', video); }, T('Dem Gruppenanruf beitreten')));
+    }
+  }
+
   // --- Verbindung, Pruefung, Qualitaet ---------------------------------------------------------------------------------
   function onConn(c) {
-    if (C !== c || !c.pc) return;
+    if (!live(c) || !c.pc) return;
     var st = c.pc.connectionState || c.pc.iceConnectionState, ice = c.pc.iceConnectionState;
     if ((st === 'connected' || st === 'completed') && ice !== 'failed' && ice !== 'disconnected') {
       clearTimeout(c.failT); clearTimeout(c.discT); c.discT = null; c.failT = null; c.tries = 0;
       if (c.restarting) { c.restarting = false; c.path = ''; c.net = ''; }
-      if (!c.connected) { c.connected = true; c.t0 = Date.now(); stopTone(); clearTimeout(c.connT); stateOut(c); }
+      if (!c.connected) {
+        c.connected = true; c.t0 = Date.now(); stopTone(); clearTimeout(c.connT); stateOut(c);
+        var R = roomOf(c);
+        if (!R.since) R.since = c.t0;
+        screenOn(c);                                   // 2.4: teile ich schon, bekommt eine neue Verbindung den Bildschirm
+        hoCheck(R); drawInfo(R);
+      }
       status(c, ''); tick(c); poll(c);
     } else if (st === 'disconnected' || ice === 'disconnected') {
       status(c, T('Verbindung unterbrochen – versuche es weiter …'));
       // 2.4: kommt die Verbindung nicht von selbst wieder (Netzwechsel), ICE neu aushandeln
-      if (!c.discT) c.discT = setTimeout(function () { c.discT = null; var x = c.pc && c.pc.iceConnectionState; if (C === c && (x === 'disconnected' || x === 'failed')) restartIce(c); }, DISC_S * 1000);
+      if (!c.discT) c.discT = setTimeout(function () { c.discT = null; var x = c.pc && c.pc.iceConnectionState; if (live(c) && (x === 'disconnected' || x === 'failed')) restartIce(c); }, DISC_S * 1000);
     } else if (st === 'failed' || ice === 'failed') {
       if (!restartIce(c) && !c.failT) iceFailed(c);     // laufende Frist (failT) abwarten, sonst wie bisher beenden
     }
@@ -675,7 +1138,7 @@
   function poll(c) {
     if (!c.pc) return;
     c.pc.getStats().then(function (rep) {
-      if (C !== c) return;
+      if (!live(c)) return;
       checkPath(c, rep); quality(c, rep); applyRates(c);
     }).catch(function () {});
   }
@@ -711,7 +1174,7 @@
   }
   // Sende-Parameter nach §1.3 setzen (nur bei Aenderung; setParameters ist billig, aber nicht kostenlos)
   function applyRates(c) {
-    if (!c.pc || !c.pc.getSenders || C !== c) return;
+    if (!c.pc || !c.pc.getSenders || !live(c)) return;
     var path = pathOf(c), want = c.remoteState.want || 'large', share = !!(c.screen && c.scrMode === 'track');
     c.pc.getSenders().forEach(function (snd) {
       var tr = snd.track; if (!tr || !snd.getParameters || !snd.setParameters) return;
@@ -719,7 +1182,7 @@
       // Platz je Sender: audio, video (Kamera-m-Zeile, in Betriebsart A auch der Bildschirm), screen (eigene m-Zeile, E3)
       var slot = tr.kind === 'audio' ? 'audio' : c.scrTr && snd === c.scrTr.sender ? 'screen' : 'video';
       var h = 0; try { h = (tr.getSettings && tr.getSettings().height) || 0; } catch (e) { h = 0; }
-      var want_ = rules(kind, path, want, 2, h, share), key = kind + ':' + JSON.stringify(want_);
+      var want_ = rules(kind, path, want, endpoints(c), h, share), key = kind + ':' + JSON.stringify(want_);    // 2.4: ab 3 Endpunkten Mesh-Werte
       if (c.rates[slot] === key) return;
       var p = snd.getParameters();
       if (!p.encodings || !p.encodings.length) return;                 // noch nicht ausgehandelt
@@ -773,8 +1236,15 @@
   // Aenderung der Spuren ein frischer MediaStream - einem schon gesetzten Stream spaeter hinzugefuegte Spuren spielt
   // Safari nicht zuverlaessig ab (Ton kommt oft nach dem Bild an).
   // E3: zwei Videospuren (Kamera und Bildschirm) - gross der Bildschirm, klein die Kamera; c.swap tauscht
+  // Wiedergabe-Elemente einer Verbindung: eigene Kachel (Kachelansicht) bzw. die grossen Elemente des Anruffensters
+  function els(c) {
+    if (c.tile) return c.tile;
+    var R = roomOf(c);
+    return R.ui && !meshView(R) && primary(R) === c ? R.ui : null;     // Einzelansicht: nur die Hauptverbindung
+  }
   function bindRemote(c) {
-    if (!c.ui) return;
+    var E = els(c);
+    if (!E) return;
     var live = function (t) { return t.readyState === 'live'; };
     var rvt = remoteVideo(c), big = [], small = [];
     if (rvt.screen) {
@@ -782,7 +1252,7 @@
       if (c.swap && cm) { big = [cm]; small = [sc]; } else { big = [sc]; small = cm ? [cm] : []; }
     } else if (rvt.camAny) big = [rvt.camAny];
     else big = c.remote.getVideoTracks().filter(live).slice(0, 1);
-    [[c.ui.ra, c.remote.getAudioTracks().filter(live)], [c.ui.rv, big.filter(live)], [c.ui.rv2, small.filter(live)]].forEach(function (x) {
+    [[E.ra, c.remote.getAudioTracks().filter(live)], [E.rv, big.filter(live)], [E.rv2, small.filter(live)]].forEach(function (x) {
       var m = x[0], want = x[1], have = m.srcObject ? m.srcObject.getTracks() : [];
       if (want.length === have.length && want.every(function (t) { return have.indexOf(t) >= 0; })) return;
       m.srcObject = want.length ? new MediaStream(want) : null;
@@ -792,7 +1262,9 @@
   // play() kann an der Autoplay-Regel scheitern (Anruf im neu geoeffneten Tab, Safari ohne Bedienung): dann Knopf
   // "Ton einschalten" - jede Bedienung im Fenster versucht es erneut
   function playAudio(c) {
-    var ra = c.ui && c.ui.ra;
+    var E = els(c), ra = E && E.ra;
+    // Begleitgeraet: Wiedergabe stumm (Echo-Schutz); Ton eigener Geraete nie abspielen
+    if (ra) ra.muted = !roomOf(c).spkOut || !!(c.peer && c.peer.me);
     if (ra && !ra.paused && c.audioBlocked) { c.audioBlocked = false; c.snd = ''; drawInfo(c); }
     if (!ra || !ra.srcObject || !ra.paused || c.done) return;
     var p; try { p = ra.play(); } catch (e) { p = null; }
@@ -808,8 +1280,8 @@
     var ra = c.ui && c.ui.ra; if (!ra) return;
     try { var p = ra.play(); if (p && p.catch) p.catch(function () {}); } catch (e) { /* egal */ }
   }
-  document.addEventListener('pointerdown', function () { if (C && C.audioBlocked) playAudio(C); }, true);
-  document.addEventListener('keydown', function () { if (C && C.audioBlocked) playAudio(C); }, true);
+  document.addEventListener('pointerdown', function () { if (C) each(C, function (L) { if (L.audioBlocked) playAudio(L); }); }, true);
+  document.addEventListener('keydown', function () { if (C) each(C, function (L) { if (L.audioBlocked) playAudio(L); }); }, true);
   // Ausgabegeraet (nur wo der Browser es kann und es mehrere gibt): Auswahl merken
   function sinkPick(c) {
     var ra = c.ui && c.ui.ra;
@@ -822,7 +1294,9 @@
       outs.forEach(function (d, i) { var o = el('option', null, d.label || T('Ausgabe {n}', { n: i + 1 })); o.value = d.deviceId; sel.appendChild(o); });
       sel.value = outs.some(function (d) { return d.deviceId === want; }) ? want : outs[0].deviceId;
       var apply = function () {
-        ra.setSinkId(sel.value === 'default' ? '' : sel.value).catch(function (e) { HK.toast(T('Tonausgabe nicht umschaltbar: {err}', { err: e.message })); });
+        c.sinkId = sel.value === 'default' ? '' : sel.value;           // auch fuer die Kacheln (Kachelansicht)
+        ra.setSinkId(c.sinkId).catch(function (e) { HK.toast(T('Tonausgabe nicht umschaltbar: {err}', { err: e.message })); });
+        each(c, function (L) { if (L.tile && L.tile.ra.setSinkId) L.tile.ra.setSinkId(c.sinkId).catch(function () {}); });
       };
       sel.addEventListener('change', function () { try { localStorage.setItem('saga-call-sink', sel.value); } catch (e) { /* privat */ } apply(); });
       if (want && sel.value === want && want !== 'default') apply();
@@ -830,14 +1304,20 @@
     }).catch(function () {});
   }
   function tick(c) {
-    clearInterval(c.statsT);
-    c.statsT = setInterval(function () { if (C !== c) return clearInterval(c.statsT); poll(c); }, 2000);
+    var R = roomOf(c);
+    clearInterval(R.statsT);
+    R.statsT = setInterval(function () { if (!live(R)) return clearInterval(R.statsT); each(R, poll); }, 2000);
   }
+  // 2.4: Lebenszeichen mit dem eigenen Geraet - "left": dieses Geraet ist nicht mehr im Anruf (z. B. uebernommen)
   function aliveOn(c) {
+    c = roomOf(c);
     clearInterval(c.alive);
     c.alive = setInterval(function () {
-      if (C !== c || !c.id) return clearInterval(c.alive);
-      api('POST', '/api/calls/' + c.id + '/alive', {}).then(function (r) { if (r.state === 'ended') remoteEnded(c, { reason: r.reason }); }).catch(function () {});
+      if (!live(c) || !c.id) return clearInterval(c.alive);
+      api('POST', '/api/calls/' + c.id + '/alive', { device: myDev().id }).then(function (r) {
+        if (r.state === 'ended') remoteEnded(c, { reason: r.reason });
+        else if (r.leg === 'left' && !c.done) finish(c, T('Dieses Gerät ist nicht mehr im Anruf.'), 'info');
+      }).catch(function () {});
     }, ((cfg && cfg.alive_s) || 15) * 1000);
   }
 
@@ -845,8 +1325,9 @@
   // Zustand ans Gegenueber. 2.4: dazu pip, want (wie gross es uns zeigen soll) und path - immer, auch ohne reneg
   // (aeltere Gegenstellen ignorieren die Felder)
   function wantNow(c) { return c.pip || document.visibilityState === 'hidden' ? 'small' : 'large'; }
+  function stateAll(c) { each(c, stateOut); }
   function stateOut(c) {
-    if (!c.ready) return;
+    if (!c.ready || !c.pc && !c.peerDevice) return;
     c.wantSent = wantNow(c);
     var o = { t: 'state', mic: c.mic, cam: !!(c.cam && c.cam.readyState === 'live' && c.cam.enabled), screen: !!c.screen,
               pip: !!c.pip, want: { video: c.wantSent }, path: c.net || undefined };
@@ -862,26 +1343,51 @@
   var visT = null;
   document.addEventListener('visibilitychange', function () {
     clearTimeout(visT);
-    visT = setTimeout(function () { var c = C; if (c && c.connected && !c.done && wantNow(c) !== c.wantSent) stateOut(c); }, 600);
+    visT = setTimeout(function () { var c = C; if (c && !c.done && links(c).some(function (L) { return L.connected; }) && wantNow(c) !== c.wantSent) stateAll(c); }, 600);
   });
-  function toggleMic(c) {
-    c.mic = !c.mic;
+  function toggleMic(c) { setMic(roomOf(c), !roomOf(c).mic); }
+  // Mikrofon an/aus fuer alle Verbindungen. Begleitgeraet ohne Mikrofon-Spur: erst jetzt freigeben und einsetzen
+  function setMic(c, on) {
+    c = roomOf(c);
+    var a = c.local ? c.local.getAudioTracks()[0] : null;
+    if (on && !a && c.local && navigator.mediaDevices) {
+      navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then(function (s) {
+        if (!live(c)) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
+        var t = s.getAudioTracks()[0]; c.local.addTrack(t);
+        each(c, function (L) { var snd = L.pc && audioSender(L); if (snd && !c.mix) snd.replaceTrack(t).then(function () { delete L.rates.audio; applyRates(L); }); });
+        setMic(c, true);
+      }).catch(function (e) { HK.toast(mediaError(e, false)); });
+      return;
+    }
+    c.mic = !!on;
     (c.local ? c.local.getAudioTracks() : []).forEach(function (t) { t.enabled = c.mic; });
     try { if (navigator.mediaSession && navigator.mediaSession.setMicrophoneActive) navigator.mediaSession.setMicrophoneActive(c.mic); } catch (e) { /* egal */ }
-    drawCtl(c); stateOut(c);
+    drawCtl(c); stateAll(c);
+  }
+  // Wiedergabe an/aus (Begleitgeraet: aus, damit es im selben Raum nicht rueckkoppelt)
+  function setSpk(c, on) {
+    c = roomOf(c); c.spkOut = !!on;
+    each(c, function (L) { var E = els(L); if (E && E.ra) E.ra.muted = !c.spkOut; playAudio(L); });
+    if (c.ui) c.ui.ra.muted = !c.spkOut;
+    drawCtl(c);
   }
   function toggleCam(c) {
-    var snd = c.pc && videoSender(c);
+    c = roomOf(c);
     if (c.cam) {
       c.cam.stop(); if (c.local) c.local.removeTrack(c.cam); c.cam = null;
-      if (snd && (!c.screen || c.scrMode === 'track')) snd.replaceTrack(null);
-      drawMedia(c); drawCtl(c); stateOut(c); return;
+      each(c, function (L) { var snd = L.pc && videoSender(L); if (snd && (!c.screen || L.scrMode === 'track')) snd.replaceTrack(null); });
+      drawMedia(c); drawCtl(c); stateAll(c); return;
     }
     navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } }).then(function (s) {
-      if (C !== c) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
-      c.cam = s.getVideoTracks()[0]; c.local.addTrack(c.cam);
-      if (snd && (!c.screen || c.scrMode === 'track')) snd.replaceTrack(c.cam).then(function () { delete c.rates.video; applyRates(c); });
-      drawMedia(c); drawCtl(c); stateOut(c);
+      if (!live(c)) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
+      c.cam = s.getVideoTracks()[0];
+      if (!c.local) c.local = new MediaStream();
+      c.local.addTrack(c.cam);
+      each(c, function (L) {
+        var snd = L.pc && videoSender(L);
+        if (snd && (!c.screen || L.scrMode === 'track')) snd.replaceTrack(c.cam).then(function () { delete L.rates.video; applyRates(L); });
+      });
+      drawMedia(c); drawCtl(c); stateAll(c);
     }).catch(function (e) { HK.toast(mediaError(e, true)); });
   }
   // --- 2.4 E3: Bildschirm teilen ------------------------------------------------------------------------------------
@@ -889,7 +1395,8 @@
   // und E0-Gegenstellen ohne screen2): replaceTrack auf dem Kamera-Sender wie bisher.
   function hintOff() { try { return localStorage.getItem('saga-screen-hint') === '0'; } catch (e) { return false; } }
   function toggleScreen(c) {
-    if (!c.pc || !videoSender(c)) return;
+    c = roomOf(c);
+    if (!links(c).some(function (L) { return L.pc && videoSender(L); })) return;
     if (c.screen) { stopScreen(c); return; }
     if (hintOff()) { pickScreen(c); return; }
     screenHint(c);
@@ -910,7 +1417,7 @@
     row.appendChild(btn(T('Abbrechen'), 'cl-pill cl-hint-no', close));
     row.appendChild(btn(T('Bildschirm wählen'), 'cl-pill cl-hint-go', function () {
       if (cb.checked) { try { localStorage.setItem('saga-screen-hint', '0'); } catch (e) { /* privat */ } }
-      close(); if (C === c && !c.done) pickScreen(c);
+      close(); if (live(c) && !c.done) pickScreen(c);
     }));
     box.appendChild(row);
     c.ui.w.appendChild(box); c.ui.hint = box;
@@ -929,19 +1436,24 @@
   }
   function pickScreen(c) {
     displayMedia().then(function (s) {
-      if (C !== c || c.done || c.screen) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
+      if (!live(c) || c.done || c.screen) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
       var v = s.getVideoTracks()[0]; if (!v) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
       c.screen = v; c.scrStream = s; c.shareStarts += 1;
-      c.screen.onended = function () { if (C === c && c.screen === v) stopScreen(c); };
+      c.screen.onended = function () { if (live(c) && c.screen === v) stopScreen(c); };
       try { c.screen.contentHint = 'detail'; } catch (e) { /* aeltere Browser */ }
       var at = s.getAudioTracks()[0];
       if (at) mixOn(c, at);
-      c.scrMode = canScreen2(c) && c.established ? 'track' : 'replace';
-      if (c.scrMode === 'track') screenTrackOn(c);
-      else videoSender(c).replaceTrack(c.screen).then(function () { delete c.rates.video; applyRates(c); });
+      each(c, function (L) { screenOn(L); });            // 2.4: je Verbindung die Betriebsart nach ihren Faehigkeiten
       drawMedia(c); drawCtl(c); drawShare(c);
-      if (c.scrMode === 'track') stateLater(c); else stateOut(c);
     }).catch(function (e) { if (e && e.name !== 'NotAllowedError' && e.name !== 'AbortError') HK.toast(T('Bildschirm teilen nicht möglich: {err}', { err: e.message })); });
+  }
+  // Bildschirm auf einer Verbindung einsetzen (auch fuer eine spaeter hinzukommende): B (eigene Spur) bzw. A (replaceTrack)
+  function screenOn(L) {
+    var R = roomOf(L);
+    if (!R.screen || !L.pc || !videoSender(L) || L.scrMode) return;
+    L.scrMode = canScreen2(L) && L.established ? 'track' : 'replace';
+    if (L.scrMode === 'track') { screenTrackOn(L); stateLater(L); }
+    else { videoSender(L).replaceTrack(R.screen).then(function () { delete L.rates.video; applyRates(L); }); stateOut(L); }
   }
   // Betriebsart B: vorhandene Bildschirm-m-Zeile wiederverwenden (eigene oder vom Gegenueber angelegte, Rolle "screen") -
   // so waechst das SDP nicht bei jedem Teilen; sonst neuen Transceiver anlegen. Beides loest negotiationneeded aus.
@@ -966,12 +1478,18 @@
     applyRates(c);
   }
   function stopScreen(c) {
+    c = roomOf(c);
     var v = c.screen;
     if (v) { v.onended = null; v.stop(); }
     if (c.scrStream) c.scrStream.getTracks().forEach(function (t) { t.stop(); });
     mixOff(c);
+    c.screen = null; c.scrStream = null; c.camPaused = false;
+    each(c, screenOff);
+    drawMedia(c); drawCtl(c); drawShare(c);
+  }
+  function screenOff(c) {
     var mode = c.scrMode;
-    c.screen = null; c.scrStream = null; c.scrMode = ''; c.camPaused = false;
+    c.scrMode = '';
     if (c.pc && mode === 'track' && c.scrTr) {
       // Spur weg, Richtung "nur empfangen": teilt das Gegenueber nicht, ist die m-Zeile danach inaktiv (bleibt fuer das
       // naechste Teilen bestehen). Die Richtungsaenderung loest die Neuverhandlung aus.
@@ -985,52 +1503,66 @@
       var snd = c.pc && videoSender(c);
       if (snd) snd.replaceTrack(c.cam || null).then(function () { delete c.rates.video; applyRates(c); });
     }
-    drawMedia(c); drawCtl(c); drawShare(c);
     if (!c.stateDue) stateOut(c);
   }
   // Zustand nach der Neuverhandlung senden (screen_mid steht erst nach setLocalDescription fest); offerNow schickt ihn
   // direkt nach dem Angebot, sonst spaetestens nach 3 s
   function stateLater(c) {
     c.stateDue = true;
-    setTimeout(function () { if (C === c && c.stateDue) { c.stateDue = false; stateOut(c); } }, 3000);
+    setTimeout(function () { if (live(c) && c.stateDue) { c.stateDue = false; stateOut(c); } }, 3000);
   }
   // Systemton in die Tonspur mischen (Mikrofon + Ton der Quelle). Stumm schaltet weiter nur das Mikrofon.
   function mixOn(c, at) {
-    var ctx = audioCtx(), snd = c.pc && audioSender(c), mic = c.local && c.local.getAudioTracks()[0];
-    if (!ctx || !snd || !ctx.createMediaStreamDestination) return;
+    c = roomOf(c);
+    var ctx = audioCtx(), mic = c.local && c.local.getAudioTracks()[0];
+    if (!ctx || !ctx.createMediaStreamDestination) return;
     try {
       var dst = ctx.createMediaStreamDestination(), nodes = [];
       if (mic) { var a = ctx.createMediaStreamSource(new MediaStream([mic])); a.connect(dst); nodes.push(a); }
       var b = ctx.createMediaStreamSource(new MediaStream([at])); b.connect(dst); nodes.push(b);
       var out = dst.stream.getAudioTracks()[0];
       c.mix = { dst: dst, nodes: nodes, out: out, src: at };
-      snd.replaceTrack(out).then(function () { delete c.rates.audio; applyRates(c); });
+      each(c, function (L) { var snd = L.pc && audioSender(L); if (snd) snd.replaceTrack(out).then(function () { delete L.rates.audio; applyRates(L); }); });
     } catch (e) { c.mix = null; }
   }
   function mixOff(c) {
+    c = roomOf(c);
     var m = c.mix; if (!m) return;
     c.mix = null;
-    var snd = c.pc && audioSender(c), mic = c.local && c.local.getAudioTracks()[0];
-    if (snd) snd.replaceTrack(mic || null).then(function () { delete c.rates.audio; applyRates(c); }).catch(function () {});
+    var mic = c.local && c.local.getAudioTracks()[0];
+    each(c, function (L) {
+      var snd = L.pc && audioSender(L);
+      if (snd) snd.replaceTrack(mic || null).then(function () { delete L.rates.audio; applyRates(L); }).catch(function () {});
+    });
     m.nodes.forEach(function (n) { try { n.disconnect(); } catch (e) { /* egal */ } });
     try { m.out.stop(); } catch (e) { /* egal */ }
   }
   function hangup(c) {
-    if (C !== c) return;
-    if (c.established && peerCan(c, 'bye') && !c.ending) sendSignal(c, { t: 'bye', reason: 'hangup' });
-    if (c.id && !c.ending) api('POST', '/api/calls/' + c.id + '/end', { reason: 'hangup', connected: c.connected }).catch(function () {});
-    finish(c, c.connected ? T('Anruf beendet · {d}', { d: dur((Date.now() - c.t0) / 1000) }) : T('Anruf beendet'));
+    c = roomOf(c);
+    if (!live(c)) return;
+    if (!c.ending) each(c, function (L) { if (L.established && peerCan(L, 'bye')) sendSignal(L, { t: 'bye', reason: 'hangup' }); });
+    // 2.4: mit device - Begleitgeraet bzw. Gruppe: nur dieses Geraet verlaesst den Anruf; Hauptgeraet (1:1): Ende fuer alle
+    if (c.id && !c.ending) api('POST', '/api/calls/' + c.id + '/end', { reason: 'hangup', connected: anyConn(c), device: myDev().id }).catch(function () {});
+    finish(c, anyConn(c) ? T('Anruf beendet · {d}', { d: dur((Date.now() - c.since) / 1000) }) : T('Anruf beendet'));
   }
+  function anyConn(c) { return !!roomOf(c).since; }
   function fail(c, msg, reason) {
-    if (C !== c) return;
-    if (c.id && !c.ending) api('POST', '/api/calls/' + c.id + '/end', { reason: reason === 'failed' ? 'failed' : 'hangup', connected: c.connected }).catch(function () {});
+    if (!live(c)) return;
+    if (c.room || c.established && !c.ending && (roomOf(c).kind === 'group' || links(c).length > 1)) {   // 2.4: nur diese Verbindung
+      dropLink(c, msg || '');
+      return;
+    }
+    if (c.id && !c.ending) api('POST', '/api/calls/' + c.id + '/end', { reason: reason === 'failed' ? 'failed' : 'hangup', connected: anyConn(c),
+                                                                    device: bridge() ? myDev().id : undefined }).catch(function () {});
     finish(c, msg || T('Anruf beendet'), 'error');
   }
   function securityFail(c) {
+    if (c && c.peer && c.peer.name && (c.room || links(c).length > 1)) HK.toast(T('{name}: Sicherheitsprüfung fehlgeschlagen – Verbindung getrennt.', { name: c.peer.name }));
     fail(c, T('Sicherheitsprüfung fehlgeschlagen: Die Signatur bzw. der Schlüssel der Gegenseite passt nicht. Der Anruf wurde abgebrochen – möglicherweise versucht jemand mitzuhören. Prüfe die Sicherheitsnummer im Chat.'), 'failed');
   }
   function remoteEnded(c, d) {
-    if (C !== c) return;
+    c = roomOf(c);
+    if (!live(c)) return;
     var r = d.reason, name = c.peer.name || '';
     var msg = r === 'declined' ? (c.role === 'caller' ? T('{name} hat abgelehnt.', { name: name }) : T('Abgelehnt.'))
       : r === 'busy' ? T('Besetzt – {name} telefoniert gerade.', { name: name })
@@ -1039,14 +1571,19 @@
       : r === 'cancelled' ? T('{name} hat aufgelegt.', { name: name })
       : r === 'lost' ? T('Verbindung verloren.')
       : r === 'failed' ? T('Die Verbindung kam nicht zustande.')
-      : c.connected ? T('Anruf beendet · {d}', { d: dur((Date.now() - c.t0) / 1000) }) : T('Anruf beendet');
+      : anyConn(c) ? T('Anruf beendet · {d}', { d: dur((Date.now() - c.since) / 1000) }) : T('Anruf beendet');
     c.ending = true;
     finish(c, msg, r === 'hangup' || !r ? '' : 'info');
   }
   function finish(c, msg, kind) {
+    c = roomOf(c);
     if (c.done) return;
     c.done = true; c.ending = true;
-    clearInterval(c.alive); clearInterval(c.statsT); clearTimeout(c.outT); clearTimeout(c.connT); clearTimeout(c.failT); clearTimeout(c.discT);
+    clearInterval(c.alive); clearInterval(c.statsT); clearInterval(c.spkT); clearTimeout(c.hoT);
+    links(c).concat([c]).forEach(function (L) {
+      clearTimeout(L.outT); clearTimeout(L.connT); clearTimeout(L.failT); clearTimeout(L.discT);
+      if (L !== c) { try { if (L.pc) L.pc.close(); } catch (e) { /* schon zu */ } L.gone = true; if (L.tile) { L.tile.box.remove(); L.tile = null; } }
+    });
     pipClose(c); mediaSession(null);
     stopTone(); if (kind !== 'error' && c.ready) playTone('end');
     mixOff(c);
@@ -1060,12 +1597,14 @@
       c.ui.info.textContent = ''; c.ui.un.hidden = true; if (c.ui.sink) c.ui.sink.remove();
       c.ui.lv.srcObject = null; c.ui.lv.hidden = true; c.ui.w.classList.remove('has-video', 'screen', 'peer-muted', 'peer-screen', 'has-small');
       c.ui.rv2.srcObject = null; c.ui.share.hidden = true; if (c.ui.hint) { c.ui.hint.remove(); c.ui.hint = null; }
+      c.ui.w.classList.remove('mesh'); c.ui.grid.textContent = '';
       c.ui.ctl.textContent = '';
       c.ui.ctl.appendChild(btn(T('Schließen'), 'cl-pill', function () { closeWin(c); }));
       if (kind !== 'error') setTimeout(function () { closeWin(c); }, 3500);
     } else if (msg) HK.toast(msg);
     if (location.hash.indexOf('#call-') === 0) history.replaceState(null, '', location.pathname);
     if (window.HKChat && window.HKChat.callApi && c.chat_id) window.HKChat.callApi.refresh(c.chat_id);
+    runCheck();                                        // 2.4: laeuft der Anruf auf anderen Geraeten weiter -> Leiste
   }
 
   // --- Anruffenster --------------------------------------------------------------------------------------------------
@@ -1079,7 +1618,9 @@
     // E3: zweites Fernbild (klein: Kamera neben dem Bildschirm, nach dem Tauschen der Bildschirm) - Klick tauscht
     var rv2 = el('video', 'cl-remote2'); rv2.autoplay = true; rv2.muted = true; rv2.playsInline = true; rv2.setAttribute('playsinline', '');
     rv2.title = T('Ansicht tauschen'); rv2.addEventListener('click', function () { swapView(c); });
-    stage.appendChild(rv); stage.appendChild(ra); stage.appendChild(who); stage.appendChild(rv2); stage.appendChild(lv);
+    // 2.4 E4/E5: Kachelansicht (Gruppe bzw. mehrere Verbindungen) - je Verbindung eine Kachel (layout)
+    var grid = el('div', 'cl-grid'); grid.setAttribute('role', 'list'); grid.setAttribute('aria-label', T('Teilnehmende'));
+    stage.appendChild(rv); stage.appendChild(ra); stage.appendChild(who); stage.appendChild(rv2); stage.appendChild(grid); stage.appendChild(lv);
     var top = el('div', 'cl-top'), info = el('div', 'cl-info'), st = el('div', 'cl-status'); st.setAttribute('role', 'status');
     var mini = btn('▭', 'cl-mini cl-shrink', function () { w.classList.toggle('small'); }, T('Kleiner/größer'));
     // 2.4: Bild-im-Bild - nur, wo der Browser es kann (Document-PiP mit eigenen Knoepfen, sonst Video-PiP)
@@ -1095,7 +1636,7 @@
     var share = el('div', 'cl-share'); share.setAttribute('role', 'status'); share.hidden = true;
     w.appendChild(stage); w.appendChild(top); w.appendChild(share); w.appendChild(un); w.appendChild(st); w.appendChild(ctl);
     document.body.appendChild(w);
-    c.ui = { w: w, rv: rv, rv2: rv2, ra: ra, lv: lv, who: who, info: info, st: st, ctl: ctl, un: un, pipB: pipB, share: share, hint: null };
+    c.ui = { w: w, rv: rv, rv2: rv2, ra: ra, lv: lv, who: who, info: info, st: st, ctl: ctl, un: un, pipB: pipB, share: share, hint: null, grid: grid };
     mediaSession(c);
     unlockAudio(c);                                    // laeuft im Klick "Anrufen"/"Annehmen"
     bindRemote(c);
@@ -1103,20 +1644,32 @@
   }
   function closeWin(c) { if (c.ui) { c.ui.w.remove(); c.ui = null; } }
   function drawPeer(c) {
+    c = roomOf(c);
     if (!c.ui) return;
-    var p = c.peer || {}, who = c.ui.who; who.textContent = '';
+    var p = c.kind === 'group' ? { name: c.title || T('Gruppenanruf'), avatar: null } : c.peer || {}, who = c.ui.who; who.textContent = '';
     var av = HK.avatarImg(el('span', 'cl-av cl-av-big', (p.name || '?').charAt(0).toUpperCase()), p.avatar, 96); av.setAttribute('aria-hidden', 'true');
     who.appendChild(av); who.appendChild(el('div', 'cl-name', p.name || p.username || ''));
   }
-  function status(c, s, err) { if (c.ui) { c.ui.st.textContent = s || ''; c.ui.st.classList.toggle('err', !!err); c.ui.st.hidden = !s; } }
+  function status(c, s, err) {
+    if (c && c.tile) { c.tile.st.textContent = s || ''; c.tile.st.hidden = !s; return; }   // Kachel: Zustand dieser Verbindung
+    var R = roomOf(c);
+    if (c !== R && meshView(R)) return;
+    if (R.ui) { R.ui.st.textContent = s || ''; R.ui.st.classList.toggle('err', !!err); R.ui.st.hidden = !s; }
+  }
+  // Hauptverbindung (Einzelansicht: deren Zustand zeigt das Anruffenster) - die erste sichtbare
+  function primary(R) { R = roomOf(R); return shown(R)[0] || links(R)[0] || R; }
   function drawInfo(c) {
-    if (!c.ui || c.done) return;
+    var R = roomOf(c);
+    if (!R.ui || R.done) return;
+    if (meshView(R)) { drawInfoMesh(R); return; }
+    c = primary(R);
     var i = c.ui.info; i.textContent = '';
+    if (R.companion) i.appendChild(el('span', 'cl-chip', T('Begleitgerät')));
     if (!c.ready && !c.connected) return;
     i.appendChild(el('span', 'cl-lock', '🔒 ' + (c.verified ? T('Ende-zu-Ende verschlüsselt') : T('verschlüsselt'))));
     if (c.verified) i.lastChild.title = T('Medien mit DTLS-SRTP verschlüsselt; der Schlüssel-Fingerabdruck ist mit dem Chat-Schlüssel der Gegenseite signiert und geprüft.');
     if (c.connected) {
-      i.appendChild(el('span', null, dur((Date.now() - c.t0) / 1000)));
+      i.appendChild(el('span', null, dur((Date.now() - (R.since || c.t0)) / 1000)));
       if (c.path) i.appendChild(el('span', 'cl-path', c.path === 'relay' ? T('über Relais (TURN)') : T('direkt')));
       if (c.q) { var qq = el('span', 'cl-q cl-q-' + c.q, c.q === 'good' ? T('gute Verbindung') : c.q === 'mid' ? T('mittlere Verbindung') : T('schwache Verbindung')); i.appendChild(qq); }
       // stumm beim Gegenueber: auch bei laufendem Video sichtbar (der Name mit 🔇 ist dann ausgeblendet)
@@ -1130,8 +1683,28 @@
     }
     if (c.ui.un) c.ui.un.hidden = !c.audioBlocked;
   }
+  // Kachelansicht: Verschluesselung (alle Verbindungen geprueft), Dauer, Zahl der Teilnehmenden
+  function drawInfoMesh(R) {
+    var i = R.ui.info; i.textContent = '';
+    if (R.companion) i.appendChild(el('span', 'cl-chip', T('Begleitgerät')));
+    var ls = links(R), ver = ls.length && ls.every(function (L) { return L.verified; });
+    i.appendChild(el('span', 'cl-lock', '🔒 ' + (ver ? T('Ende-zu-Ende verschlüsselt') : T('verschlüsselt'))));
+    if (ver) i.lastChild.title = T('Jede Verbindung ist mit DTLS-SRTP verschlüsselt; die Fingerabdrücke sind mit den Chat-Schlüsseln der Geräte signiert und geprüft.');
+    if (R.since) i.appendChild(el('span', null, dur((Date.now() - R.since) / 1000)));
+    i.appendChild(el('span', 'cl-count', T('{n} Geräte', { n: ls.length + 1 })));
+    var blocked = ls.some(function (L) { return L.audioBlocked; });
+    if (R.ui.un) R.ui.un.hidden = !blocked;
+  }
   function drawMedia(c) {
-    if (!c.ui || c.done) return;
+    var R = roomOf(c);
+    if (!R.ui || R.done) return;
+    var mine0 = R.screen || R.cam;
+    if (mine0) { if (!R.ui.lv.srcObject || R.ui.lv.srcObject.getTracks()[0] !== mine0) R.ui.lv.srcObject = new MediaStream([mine0]); }
+    else R.ui.lv.srcObject = null;
+    R.ui.lv.hidden = !mine0;
+    R.ui.w.classList.toggle('screen', !!R.screen);
+    if (c.tile) { drawTile(c); drawShare(R); playAudio(c); return; }
+    if (meshView(R)) { drawShare(R); pipBtn(R, false); return; }
     var bigT = c.ui.rv.srcObject && c.ui.rv.srcObject.getVideoTracks()[0];
     var rvid = !!(bigT && bigT.readyState === 'live' && !bigT.muted);
     var show = rvid && (c.gotState ? c.remoteState.cam || c.remoteState.screen : true);
@@ -1142,37 +1715,36 @@
     if (small && c.ui.rv2.paused) c.ui.rv2.play().catch(function () {});
     c.ui.w.classList.toggle('has-video', show);
     c.ui.w.classList.toggle('peer-muted', c.remoteState.mic === false);
-    var mine = c.screen || c.cam;
-    if (mine) { var s = new MediaStream([mine]); if (!c.ui.lv.srcObject || c.ui.lv.srcObject.getTracks()[0] !== mine) c.ui.lv.srcObject = s; }
-    else c.ui.lv.srcObject = null;
-    c.ui.lv.hidden = !mine;
-    c.ui.w.classList.toggle('screen', !!c.screen);
     if (show && c.ui.rv.srcObject && c.ui.rv.paused) c.ui.rv.play().catch(function () {});
     pipBtn(c, show);
     pipDraw(c);
     drawShare(c);
     playAudio(c);
   }
-  function swapView(c) { if (C !== c || !c.remoteState.screen) return; c.swap = !c.swap; bindRemote(c); drawMedia(c); }
+  function swapView(c) { if (!live(c) || !c.remoteState.screen) return; c.swap = !c.swap; bindRemote(c); drawMedia(c); }
   // Leiste beim Teilen: eigene (rot, mit "Beenden") hat Vorrang; beim Empfaenger Name und - mit Kamera daneben - Tauschen
   function drawShare(c) {
-    var b = c.ui && c.ui.share; if (!b || c.done) return;
+    var R = roomOf(c);
+    var b = R.ui && R.ui.share; if (!b || R.done) return;
+    c = links(R).filter(function (L) { return L.remoteState.screen && L.connected; })[0] || primary(R);   // wer teilt (2.4: Mesh)
+    var mesh = meshView(R);
     b.textContent = '';
     b.classList.toggle('me', !!c.screen);
     if (c.screen) {
       b.appendChild(el('span', 'cl-share-dot'));
       b.appendChild(el('span', 'cl-share-t', c.mix ? T('Du teilst deinen Bildschirm und den Ton') : T('Du teilst deinen Bildschirm')));
       if (c.camPaused) b.appendChild(el('span', 'cl-share-s', T('Kamera pausiert (langsame Verbindung)')));
-      b.appendChild(btn(T('Teilen beenden'), 'cl-pill cl-share-stop', function () { if (C === c && c.screen) stopScreen(c); }, T('Teilen beenden')));
+      b.appendChild(btn(T('Teilen beenden'), 'cl-pill cl-share-stop', function () { if (live(c) && c.screen) stopScreen(c); }, T('Teilen beenden')));
       b.hidden = false;
     } else if (c.remoteState.screen && c.connected) {
       var name = (c.peer && (c.peer.name || c.peer.username)) || '';
       b.appendChild(el('span', 'cl-share-t', T('{name} teilt den Bildschirm', { name: name })));
-      if (c.ui.w.classList.contains('has-small')) b.appendChild(btn(icon('swap'), 'cl-mini cl-swap', function () { swapView(c); }, T('Ansicht tauschen')));
+      if (!mesh && c.ui.w.classList.contains('has-small')) b.appendChild(btn(icon('swap'), 'cl-mini cl-swap', function () { swapView(c); }, T('Ansicht tauschen')));
       b.hidden = false;
     } else b.hidden = true;
   }
   function drawCtl(c) {
+    c = roomOf(c);
     if (!c.ui || c.done) return;
     var x = c.ui.ctl; x.textContent = '';
     var m = btn(icon(c.mic ? 'mic' : 'micOff'), 'cl-round' + (c.mic ? '' : ' off'), function () { toggleMic(c); }, c.mic ? T('Stummschalten') : T('Mikrofon einschalten'));
@@ -1180,9 +1752,16 @@
     var v = btn(icon(c.cam ? 'cam' : 'camOff'), 'cl-round' + (c.cam ? '' : ' off'), function () { if (c.local) toggleCam(c); }, c.cam ? T('Kamera aus') : T('Kamera an'));
     v.setAttribute('aria-pressed', String(!c.cam)); x.appendChild(v);
     if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia && !mobile) {
-      var s = btn(icon('screen'), 'cl-round' + (c.screen ? ' on' : ''), function () { if (c.pc) toggleScreen(c); }, c.screen ? T('Teilen beenden') : T('Bildschirm teilen'));
+      var s = btn(icon('screen'), 'cl-round' + (c.screen ? ' on' : ''), function () { if (links(c).length) toggleScreen(c); }, c.screen ? T('Teilen beenden') : T('Bildschirm teilen'));
       s.setAttribute('aria-pressed', String(!!c.screen)); x.appendChild(s);
     }
+    // 2.4: Wiedergabe an/aus (Begleitgeraet startet stumm) und "Hierher uebernehmen" fuer ein Begleitgeraet
+    if (c.companion || !c.spkOut || meshView(c)) {
+      var k = btn(icon(c.spkOut ? 'spk' : 'spkOff'), 'cl-round cl-spk' + (c.spkOut ? '' : ' off'), function () { setSpk(c, !c.spkOut); },
+                  c.spkOut ? T('Ton aus') : T('Ton an'));
+      k.setAttribute('aria-pressed', String(!c.spkOut)); x.appendChild(k);
+    }
+    if (c.companion && c.ready) x.appendChild(btn(T('Hierher übernehmen'), 'cl-pill cl-take', function () { takeOver(c); }, T('Anruf auf dieses Gerät übernehmen')));
     x.appendChild(btn(icon('phone'), 'cl-round cl-red', function () { hangup(c); }, T('Auflegen')));
     pipBtn(c, c.ui.w.classList.contains('has-video'));
     pipDraw(c);
@@ -1199,8 +1778,9 @@
   }
   // Knopf nur, wo der Browser Bild-im-Bild kann (Video-PiP braucht ein Fernbild)
   function pipBtn(c, show) {
+    c = roomOf(c);
     var pk = pipKind(), b = c.ui && c.ui.pipB; if (!b) return;
-    b.hidden = !pk || (pk === 'video' && !show && !c.pip);
+    b.hidden = !pk || (pk === 'video' && !show && !c.pip) || meshView(c);    // Kachelansicht: kein Bild-im-Bild
     b.classList.toggle('on', !!c.pip); b.setAttribute('aria-pressed', String(!!c.pip));
     b.title = c.pip ? T('Bild-im-Bild beenden') : T('Bild-im-Bild'); b.setAttribute('aria-label', b.title);
   }
@@ -1225,7 +1805,7 @@
     return v.requestPictureInPicture().then(function () { pipSet(c, true); return true; }, function () { return false; });
   }
   function pipDoc(c, w) {
-    if (C !== c || c.done) { w.close(); return; }
+    if (!live(c) || c.done) { w.close(); return; }
     c.pipWin = w;
     var d = w.document;
     [].forEach.call(document.querySelectorAll('link[rel="stylesheet"]'), function (l) {
@@ -1269,9 +1849,9 @@
   function mediaSession(c) {
     var ms = navigator.mediaSession; if (!ms || !ms.setActionHandler) return;
     var set = function (a, fn) { try { ms.setActionHandler(a, fn); } catch (e) { /* Browser kennt die Aktion nicht */ } };
-    set('togglemicrophone', c ? function () { if (C === c) toggleMic(c); } : null);
-    set('hangup', c ? function () { if (C === c) hangup(c); } : null);
-    set('enterpictureinpicture', c ? function () { if (C === c && !c.pip) pipOpen(c); } : null);
+    set('togglemicrophone', c ? function () { if (live(c)) toggleMic(c); } : null);
+    set('hangup', c ? function () { if (live(c)) hangup(c); } : null);
+    set('enterpictureinpicture', c ? function () { if (live(c) && !c.pip) pipOpen(c); } : null);
     try { if (c && ms.setMicrophoneActive) ms.setMicrophoneActive(c.mic); } catch (e) { /* egal */ }
   }
 
@@ -1284,14 +1864,24 @@
         if (r.call.state === 'ringing' && r.call.role === 'callee') ring(Object.assign({}, d, { expires_in: r.call.expires_in }));
       }).catch(function () {});
     } else if (t === 'call.signal') signalIn(d);
-    else if (t === 'call.state') {
-      if (d.state === 'active' || d.state === 'ended') unring(d.call_id);
+    else if (t === 'call.invite') {                   // 2.4: Gruppenanruf klingelt (grosse Gruppen: still, nur die Leiste)
+      if (!(C && C.id === d.call_id)) ring(Object.assign({}, d, { group: true }));
+      runCheck();
+    } else if (t === 'call.roster') {                 // 2.4: Teilnehmerliste (laufender Anruf, Leiste auf anderen Geraeten)
+      if (C && C.id === d.call_id && C.ready) rosterIn(C, d.legs, d);
+      runCheck();
+    } else if (t === 'call.state') {
+      // Gruppenanruf "aktiv" heisst nur: zwei sind dabei - die anderen klingeln weiter; "declined": eigene Einladung
+      if (d.state === 'ended' || d.state === 'declined' || (d.state === 'active' && d.kind !== 'group')) unring(d.call_id);
+      if (d.state === 'ended') hideRun(d.call_id);
+      runCheck();
       var c = C;
       if (c && c.id === d.call_id) {
         if (d.state === 'ended') remoteEnded(c, d);
+        else if (c.kind === 'group' || d.moved || (c.established && d.device && d.device !== c.peerDevice)) { /* 2.4: Raum - regelt die Teilnehmerliste */ }
         else if (d.state === 'active' && c.role === 'caller') {
           c.peerDevice = d.device; stopTone(); status(c, T('Verbinde …'));
-          c.connT = setTimeout(function () { if (C === c && !c.connected) iceFailed(c); }, 30000);
+          c.connT = setTimeout(function () { if (live(c) && !c.connected) iceFailed(c); }, 30000);
         } else if (d.state === 'active' && c.role === 'callee' && !c.ready && d.device !== myDev().id) {
           finish(c, T('Der Anruf wurde auf einem anderen Gerät angenommen.'), 'info');
         }
@@ -1299,12 +1889,22 @@
     } else if (t === 'resync') pending();
   });
   // Seite neu geladen/geoeffnet, waehrend es klingelt
+  // 2.4: dazu Gruppenanrufe (Einladung klingelt) und die Leiste "Anruf laeuft" (anderes eigenes Geraet, Gruppe im Chat)
   function pending() {
     api('GET', '/api/calls/active').then(function (r) {
+      var seen = {};
       (r.calls || []).forEach(function (x) {
+        seen[x.id] = true;
         if (x.role === 'callee' && x.state === 'ringing' && !RINGS[x.id] && !(C && C.id === x.id))
           ring({ call_id: x.id, chat_id: x.chat_id, media: x.media, from: x.peer, ring_s: x.ring_s, expires_in: x.expires_in });
+        else if (x.kind === 'group' && (x.mine || []).length && RINGS[x.id] && !(C && C.id === x.id)) unring(x.id);   // eigenes Geraet ist dabei
+        else if (x.kind === 'group' && x.invite === 'ringing' && !(x.mine || []).length && !RINGS[x.id] && !(C && C.id === x.id)
+                 && Date.now() / 1000 - x.created < (x.ring_s || 45))
+          ring({ call_id: x.id, chat_id: x.chat_id, media: x.media, from: x.from, group: true, ring_s: x.ring_s,
+                 expires_in: Math.max(5, x.created + (x.ring_s || 45) - Date.now() / 1000) });
+        runBar(x);
       });
+      Object.keys(RUN).forEach(function (id) { if (!seen[id]) hideRun(id); });
     }).catch(function () {});
   }
   // Ohne Live-Kanal (Proxy puffert SSE o. Ae.): Klingeln und Signale abfragen
@@ -1322,10 +1922,22 @@
     } else if (!document.hidden && Date.now() % 10000 < 3000) pending();
   }, 3000);
   window.addEventListener('beforeunload', function (e) { if (C && C.ready && !C.done) { e.preventDefault(); e.returnValue = ''; } });
-  window.addEventListener('pagehide', function () { if (C && C.id && !C.done) api('POST', '/api/calls/' + C.id + '/end', { reason: 'hangup', connected: C.connected }).catch(function () {}); });
+  window.addEventListener('pagehide', function () {
+    if (C && C.id && !C.done) api('POST', '/api/calls/' + C.id + '/end', { reason: 'hangup', connected: anyConn(C), device: bridge() ? myDev().id : undefined }).catch(function () {});
+  });
 
   // Chat-Seite: #call-<id>[-audio|-video] (aus einer Mitteilung oder einem anderen Tab) -> annehmen bzw. klingeln lassen
   function route() {
+    var j = /^#join-([0-9a-f]{32})-(member|companion|handover)(-video)?$/.exec(location.hash);   // 2.4: beitreten (Leiste, Mitteilung)
+    if (j) {
+      var k = 0, go2 = function () {
+        if (!bridge()) { if (++k < 80) return setTimeout(go2, 250); HK.toast(T('Zum Annehmen erst Chats auf diesem Gerät einrichten bzw. entsperren.')); return; }
+        history.replaceState(null, '', location.pathname);
+        join(j[1], j[2], !!j[3]);
+      };
+      go2();
+      return;
+    }
     var m = /^#call-([0-9a-f]{32})(?:-(audio|video))?$/.exec(location.hash);
     if (!m) return;
     var n = 0, go = function () {
@@ -1345,15 +1957,30 @@
   function head(chat) {
     var a = document.getElementById('ct-call-a'), v = document.getElementById('ct-call-v');
     if (!a || !v) return;
-    var on = !!(chat && chat.kind === 'dm' && cfg && cfg.enabled && window.RTCPeerConnection && !(chat.v === 2 && (chat.request || chat.readonly)));
+    // 2.4 E5: in Gruppen-, freien und Seiten-Chats nur, wenn der Server es meldet (chat.call.group: alle beteiligten Server
+    // koennen calls3) und dieser Client "multi" kann
+    var grp = !!(chat && chat.kind !== 'dm' && chat.call && chat.call.group && myCaps().indexOf('multi') >= 0);
+    var on = !!(chat && cfg && cfg.enabled && window.RTCPeerConnection && (chat.kind === 'dm' ? !(chat.v === 2 && (chat.request || chat.readonly)) : grp));
     a.hidden = v.hidden = !on;
+    var ta = grp ? T('Gruppenanruf') : T('Anrufen'), tv = grp ? T('Gruppen-Videoanruf') : T('Videoanruf');
+    a.title = ta; a.setAttribute('aria-label', ta); v.title = tv; v.setAttribute('aria-label', tv);
   }
   if (CHATS) {
     var a0 = document.getElementById('ct-call-a'), v0 = document.getElementById('ct-call-v');
     var cur = function () { return window.HKChat && window.HKChat.callApi && window.HKChat.callApi.cur(); };
     if (a0) a0.addEventListener('click', function () { start(cur(), false); });
     if (v0) v0.addEventListener('click', function () { start(cur(), true); });
-    config().then(function () { head(cur()); }).catch(function () {});
+    config().then(function () { head(cur()); capsReport(); }).catch(function () {});
+  }
+  // 2.4: Faehigkeiten dieses Geraets dem Server melden (PUT /api/calls/caps) - zu Gruppenanrufen eingeladen wird nur, wer
+  // ein Geraet mit "multi" hat. Einmal je Seite, sobald die Chat-Schluessel bereit sind.
+  var capsSent = '', capsTry = 0;
+  function capsReport() {
+    if (!bridge() || !cfg) { if (CHATS && !capsSent && ++capsTry < 120) setTimeout(capsReport, 1500); return; }
+    var dv = myDev().id, cs = myCaps().join(',');
+    if (capsSent === dv + '|' + cs) return;
+    capsSent = dv + '|' + cs;
+    api('PUT', '/api/calls/caps', { device: dv, caps: myCaps() }).catch(function () { capsSent = ''; });
   }
   setTimeout(pending, CHATS ? 1500 : 800);
 
@@ -1381,6 +2008,20 @@
              bar: c.ui && !c.ui.share.hidden ? c.ui.share.textContent : '', hintOpen: !!(c.ui && c.ui.hint),
              audioTrack: c.pc && audioSender(c) && audioSender(c).track ? (c.mix && audioSender(c).track === c.mix.out ? 'mix' : 'mic') : '' };
   },
+  // 2.4 E4/E5: Raum - Verbindungen je Geraet, Liste, Ansicht, Begleitgeraet, Sprecher (Tests, Diagnose)
+  room: function () {
+    var R = C; if (!R) return null;
+    return { id: R.id, kind: R.kind, companion: !!R.companion, ho: !!R.ho, inRoom: !!R.inRoom, mic: R.mic, spkOut: R.spkOut, mesh: meshView(R),
+             tiles: R.ui ? R.ui.grid.children.length : 0, speaker: R.spk || null, since: R.since || 0, legs: (R.legs || []).map(function (x) { return x.device; }),
+             links: links(R).map(function (L) {
+               var E = els(L);
+               return { device: L.peerDevice, me: !!(L.peer && L.peer.me), name: (L.peer && L.peer.name) || '', connected: L.connected, established: L.established,
+                        verified: L.verified, pc: L.peerDevice ? pcId(L) : '', role: L.role, path: L.path, rates: L.applied || {}, bytesIn: L.bytesIn || 0,
+                        audio: L.audio || {}, playing: !!(E && E.ra && E.ra.srcObject && !E.ra.paused), muted: !!(E && E.ra && E.ra.muted), quiet: quiet(L),
+                        remote: L.remoteState, level: L.level || 0, screen: L.scrMode };
+             }) };
+  },
+  join: join, running: function () { return Object.keys(RUN); },
   // 2.4: fuer Tests und die Diagnose - ICE neu aushandeln (wie bei einem Netzwechsel), Bild-im-Bild, Regeltabelle
   restartIce: function () { return restartIce(C); }, pip: function (on) { if (!C) return Promise.resolve(false); return on === false ? (pipClose(C), Promise.resolve(true)) : pipOpen(C); },
   rules: rules, limits: { restartMax: RESTART_MAX, discS: DISC_S, failS: FAIL_S } };

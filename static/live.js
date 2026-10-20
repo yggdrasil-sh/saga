@@ -275,8 +275,9 @@
     on(es, 'presence', function (d) { if (d.note_id === P.id) drawPresence(d.users || []); });
     // Chat (1.5): an die Chat-Seite weiterreichen (Ereignis 'hk-live'), Zahl am Knopf "Chats" aktualisieren
     // Anrufe (2.1, static/calls.js): call.ring / call.signal / call.state ebenso ueber 'hk-live'
+    // 2.4 (E4/E5): call.roster (Teilnehmerliste) und call.invite (Gruppenanruf klingelt)
     ['chat.message', 'chat.deleted', 'chat.read', 'chat.typing', 'chat.changed', 'chat.link', 'chat.device', 'call.ring', 'call.signal',
-     'call.state', 'avatar.changed', 'ai.persona.changed', 'chat.cleared', 'chat.removed'].forEach(function (n) {   // (2.1) Loeschen
+     'call.state', 'call.roster', 'call.invite', 'avatar.changed', 'ai.persona.changed', 'chat.cleared', 'chat.removed'].forEach(function (n) {   // (2.1) Loeschen
       on(es, n, function (d) { chatEvent(n, d); });
     });
     on(es, 'avatar.changed', swapAvatar);

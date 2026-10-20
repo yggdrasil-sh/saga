@@ -129,8 +129,53 @@
 .cl-win.small .cl-av-big{width:56px;height:56px;font-size:1.4rem}
 .cl-win.small .cl-name{font-size:1rem}
 
+/* 2.4 E4/E5: Kachelansicht (Gruppenanruf, mehrere Geraete) - je Verbindung eine Kachel, Sprecher mit Rahmen */
+.cl-grid{display:none}
+.cl-win.mesh.tiles .cl-who{display:none}
+.cl-win.mesh .cl-remote,.cl-win.mesh .cl-remote2{display:none}
+.cl-win.mesh.tiles .cl-grid{position:absolute;inset:3.6rem .8rem 6.4rem;display:grid;gap:.6rem;grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-auto-rows:minmax(0,1fr);z-index:1}
+.cl-grid[data-n="1"]{grid-template-columns:minmax(0,1fr)}
+.cl-grid[data-n="5"],.cl-grid[data-n="6"]{grid-template-columns:repeat(3,minmax(0,1fr))}
+.cl-tile{position:relative;overflow:hidden;border-radius:12px;background:#151c27;border:2px solid #263242;display:grid;place-items:center;
+  min-height:0;transition:border-color .15s}
+.cl-tile.speaking{border-color:#56d364;box-shadow:0 0 0 2px color-mix(in srgb,#56d364 35%,transparent)}
+@media (prefers-reduced-motion: reduce){.cl-tile{transition:none}}
+.cl-tile.wait{opacity:.7}
+.cl-tv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;display:none}
+.cl-tile.has-video .cl-tv{display:block}
+.cl-tile.peer-screen .cl-tv{object-fit:contain}
+.cl-tile.has-video .cl-av{display:none}
+.cl-tv2{position:absolute;right:.4rem;bottom:2.2rem;width:32%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:#000;
+  border:1px solid #3a475b;z-index:2;cursor:pointer;display:none}
+.cl-tile.has-small .cl-tv2{display:block}
+.cl-tl{position:absolute;left:.4rem;right:.4rem;bottom:.35rem;z-index:3;display:flex;gap:.4rem;align-items:baseline;min-width:0;
+  font-size:.86rem;text-shadow:0 1px 3px #000}
+.cl-tl b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.cl-td{color:var(--muted);font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cl-tile.muted .cl-tl b::after{content:" 🔇"}
+.cl-tst{position:absolute;top:.4rem;left:.4rem;right:.4rem;z-index:3;font-size:.8rem;color:#e3b341;text-shadow:0 1px 3px #000}
+.cl-tst[hidden]{display:none}
+.cl-count{color:var(--muted)}
+.cl-chip{border:1px solid #3a475b;border-radius:999px;padding:0 .5rem;font-size:.78rem}
+.cl-btn.cl-take{background:var(--accent);border-color:var(--accent);color:#111;font-weight:600}
+.cl-win.small .cl-grid{inset:2.6rem .4rem 3.6rem;gap:.3rem}
+.cl-win.small .cl-tl{font-size:.72rem}
+.cl-win.small .cl-td,.cl-win.small .cl-take{display:none}
+/* Leiste "Anruf laeuft" (anderes eigenes Geraet im Anruf, Gruppenanruf im Chat) */
+.cl-run{position:fixed;top:4.6rem;left:50%;transform:translateX(-50%);z-index:205;display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .7rem;
+  max-width:min(640px,calc(100vw - 2rem));padding:.45rem .55rem .45rem .9rem;border-radius:16px;background:var(--card);color:var(--fg);
+  border:1px solid var(--border);box-shadow:0 10px 32px rgba(0,0,0,.28);font-size:.92rem}
+.cl-run-t{flex:1;min-width:10rem}
+.cl-run-s{color:var(--muted);font-size:.85rem}
+.cl-run .cl-pill{height:34px;font-size:.88rem;background:var(--card-h);border-color:var(--border);color:var(--fg)}
+.cl-run .cl-run-go{background:var(--cl-green);border-color:var(--cl-green);color:#fff;font-weight:600}
+
 /* Handy */
 @media (max-width: 640px){
+  .cl-run{top:auto;bottom:calc(.6rem + env(safe-area-inset-bottom));left:.6rem;right:.6rem;transform:none;max-width:none}
+  .cl-win.mesh.tiles .cl-grid{inset:5.2rem .4rem 6rem;gap:.35rem}
+  .cl-grid[data-n="3"],.cl-grid[data-n="4"],.cl-grid[data-n="5"],.cl-grid[data-n="6"]{grid-template-columns:repeat(2,minmax(0,1fr))}
   .cl-ring{left:.6rem;right:.6rem;top:auto;bottom:calc(.6rem + env(safe-area-inset-bottom));max-width:none;flex-wrap:wrap}
   .cl-ring-b{width:100%;justify-content:flex-end}
   .cl-local{width:32vw;bottom:6rem;right:.6rem}

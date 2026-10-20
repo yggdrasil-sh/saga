@@ -899,7 +899,7 @@
       var a = el('a', 'ct-chip ct-pagelink', T('Seite öffnen')); a.href = '/notes#' + c.note_id; a.target = 'hk-notes'; sub.appendChild(a);
     }
     document.title = chatName(c) + ' · ' + T('Chats');
-    if (window.HKCalls) window.HKCalls.head(c);           // Anruf-Knoepfe (static/calls.js) nur im Direkt-Chat
+    if (window.HKCalls) window.HKCalls.head(c);           // Anruf-Knoepfe (static/calls.js); 2.4: auch Gruppenanruf
     drawAI();
     drawState(c);
   }
@@ -1019,11 +1019,12 @@
   }
   function callText(m) {
     var k = m.call || {}, out = k.from === ME, v = k.media === 'video';
-    var what = v ? T('Videoanruf') : T('Anruf');
+    var what = k.group ? (v ? T('Gruppen-Videoanruf') : T('Gruppenanruf')) : v ? T('Videoanruf') : T('Anruf');   // 2.4: Gruppe
     if (k.status === 'ended') {
       var sec = Math.max(0, k.dur | 0), h = Math.floor(sec / 3600), mi = Math.floor(sec % 3600 / 60), p2 = function (x) { return (x < 10 ? '0' : '') + x; };
-      return what + ' · ' + (h ? h + ':' + p2(mi) : mi) + ':' + p2(sec % 60);
+      return what + ' · ' + (h ? h + ':' + p2(mi) : mi) + ':' + p2(sec % 60) + (k.group && k.n ? ' · ' + T('{n} Personen', { n: k.n }) : '');
     }
+    if (k.group) return out ? T('{what} – niemand ist beigetreten', { what: what }) : (v ? T('Verpasster Gruppen-Videoanruf') : T('Verpasster Gruppenanruf'));
     if (k.status === 'declined') return T('{what} abgelehnt', { what: what });
     if (k.status === 'busy') return out ? T('Besetzt') : T('Verpasster Anruf (du hast telefoniert)');
     if (k.status === 'failed') return T('{what} – keine Verbindung', { what: what });
