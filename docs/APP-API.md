@@ -893,3 +893,23 @@ PUT /api/chat/privacy
 {"online": false}
 → 200 {"receipts": true, "online": false}
 ```
+
+## Anmeldenamen, Medien-Token, Versionen (2.4, Testrunde)
+
+- **Anmeldenamen anderer Konten:** Personensuche (`GET /api/share/targets`, `GET /api/chat/people`), Freigaben
+  (`GET/PUT/DELETE /api/notes/{id}/shares`, Feld `target` bei `type: user`), `GET /api/shared` (`owner.username`),
+  Kommentare, Benachrichtigungen (`actor.username`), Anwesenheit und Versionen liefern für andere lokale Konten einen
+  pseudonymen Handle (`~` + 16 Zeichen `[a-z2-7]`) statt des Anmeldenamens; `name` ist Anzeigename, öffentlicher Name
+  oder derselbe Handle. Das eigene Konto (`me: true`) kommt unverändert. Apps behandeln das Feld wie bisher als
+  undurchsichtige Kennung: `PUT/DELETE …/shares`, `POST /api/chats` (`user`, `members`) und
+  `POST /api/chats/{id}/members` (`user`) nehmen den Handle oder – wie bisher – den Benutzernamen. Chat-Mitglieder
+  (`members[].username`, `sender.username`) und Anruf-Teilnehmer bleiben Anmeldenamen (Chats v1 und saga-call v1 binden
+  Schlüssel und Signaturen daran); neu ist `members[].ref` (derselbe Handle wie in der Personensuche) zum Abgleich.
+  Apps sollten den Anmeldenamen anderer nicht anzeigen.
+- **Medien-Token:** `POST /api/chat/files/{fid}/token` liefert `m2.…` (verschlüsselt, nicht lesbar). Weiter nur als
+  Kopf `X-Saga-Media-Token` verwenden.
+- **Versionen:** `POST /api/notes/{id}/versions/checkpoint` (Rolle Bearbeiten) sichert den aktuellen Stand als Version,
+  wenn er sich von der neuesten unterscheidet und diese mindestens 60 s alt ist -> `{created: bool}`. Apps können es nach
+  einer Bearbeitungspause und beim Verlassen einer Seite rufen (optional; ältere Server: 404 ignorieren).
+- **Anmeldung:** Fehlversuche bremsen statt sperren; die Meldung (429/401 mit `error`) nennt die Wartezeit. Eine harte
+  Sperre gibt es nur nach sehr vielen Versuchen von vielen Adressen (Benachrichtigung `login.locked`, `system: true`).
