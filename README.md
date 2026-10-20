@@ -32,13 +32,14 @@ Saga is a self-hosted start page and personal knowledge base for families, teams
 all your services, Notion-style pages and databases, tasks, calendars and bookmarks. Everyone gets their own
 private space – no cloud, no subscription, on your own server.
 
-> **New in Saga 2.3:** much faster with many pages and large databases (e.g. the page tree reloads in 0.05 instead
-> of 1 s with 60,000 entries, a 2,000-row database is usable after 0.6 instead of 12 s, 80–90 % less data thanks to
-> compression), **federation complete** – find people on connected servers by name, end-to-end encrypted chats and
-> calls across servers, edit shared pages together including databases, subpages and uploads –, **encrypted backups**
-> to S3, a folder or Nextcloud/WebDAV plus **personal backups** for everyone, and **Nextcloud files in pages**.
-> Since 2.1: passkeys and two-factor sign-in, profile pictures, audio and video calls, an AI assistant with its own
-> name and web search, five languages. Details in the [changelog](CHANGELOG.md) (in German).
+> **New in Saga 2.4:** **videos in chats** with poster, streaming and resumable upload (up to 500 MB by default, end-to-end
+> encrypted), **group calls** (up to 4 devices with video or 6 audio only), **screen sharing with the camera alongside**,
+> **picture-in-picture** and **handing a call over to another device** or adding one, **read receipts and online
+> status** (can be turned off) and the new media path **saga-media**: chat attachments no longer pass through Python
+> (20 × 10 MB in parallel in 0.22 instead of 0.67 s; uploading a 1 GB video costs Python 0.06 % of a core). Plus more
+> protection: failed sign-ins slow down instead of locking accounts, login names stay private, Gravatar only with consent.
+> Since 2.3: much faster with large databases, federation with chats and calls across servers, encrypted backups,
+> Nextcloud files in pages. Details in the [changelog](CHANGELOG.md) (in German).
 
 ## Features
 
@@ -53,10 +54,12 @@ private space – no cloud, no subscription, on your own server.
   JavaScript, optional public home page for visitors
 - **Sharing and comments:** share pages and databases with people or groups (local, LDAP, SSO) – roles View,
   Comment, Edit, subpages inherit the share; unobtrusive comments on blocks with “Resolved”
-- **End-to-end encrypted chats:** direct, group and page chats with attachments, replies and @ page links; the
+- **End-to-end encrypted chats:** direct, group and page chats with attachments, videos (streaming, resumable
+  upload), read receipts, online status, replies and @ page links; the
   server (and the admin) only sees encrypted data – libsodium, recovery key, safety numbers, multiple devices;
   archive or delete chats (just for me or for everyone)
-- **Audio and video calls:** from the direct chat, with screen sharing – WebRTC between the devices, end-to-end encrypted
+- **Audio and video calls:** in direct chats and as group calls, with screen sharing, picture-in-picture and handover
+  to another of your devices – WebRTC between the devices, end-to-end encrypted
   and verified with the chat keys, no extra port (optional TURN over 443)
 - **Notifications and push:** bell with live updates; optionally to phone/desktop via Web Push (end-to-end encrypted,
   also iPhone as a home screen app), ntfy/UnifiedPush or Apple Push – without content
@@ -110,8 +113,9 @@ docker compose pull && docker compose up -d
 ```
 
 **Update:** `git pull && docker compose pull && docker compose up -d` – Saga automatically creates a backup
-before any database change. From 1.x to 2.x: set `SAGA_VERSION=2` in `.env` first. 2.3 upgrades the database (schema 9; no way back to 2.1
-except via the automatic backup – see the guide, section 11). What's new is listed in the **[changelog](CHANGELOG.md)** (in German) and in the
+before any database change. From 1.x to 2.x: set `SAGA_VERSION=2` in `.env` first. 2.4 upgrades the database (schema 14; no way back to 2.3
+except via the automatic backup) and turns Gravatar off for all accounts – what to watch out for when updating from 2.3
+is in the guide, section 11 “From 2.3 to 2.4”. What's new is listed in the **[changelog](CHANGELOG.md)** (in German) and in the
 [releases](https://github.com/yggdrasil-sh/saga/releases). Curious about the latest? `SAGA_VERSION=testing` in
 `.env` pulls the testing version from the `testing` branch. Images and files of pages are not part of the
 database backup: back up the `saga-data` volume, or run `docker compose exec saga python run.py backup --dateien`.
@@ -140,7 +144,10 @@ Everything else – reverse proxy, users, services, LDAP, SSO, calendars, backup
 ## Architecture
 
 ```
-Browser / apps ──► Saga (Python, FastAPI)  :8080  dashboard, pages, API
+Browser / apps ──► saga-media (Go)        :8080  serves chat attachments and videos straight from disk
+                        │
+                        ▼
+                   Saga (Python, FastAPI)         dashboard, pages, API (inside the container on 127.0.0.1:8079)
                    Admin area              :8081  separate sign-in, admins only
                         │
                         ├── PostgreSQL     accounts, pages, tasks, settings
@@ -150,8 +157,9 @@ Browser / apps ──► Saga (Python, FastAPI)  :8080  dashboard, pages, API
 
 ## Security at a glance
 
-- Passwords hashed with scrypt, lockout after repeated failed attempts, CSRF protection, strict
-  Content Security Policy
+- Passwords hashed with scrypt, failed attempts only slow down the attacking address (nobody can lock others out),
+  CSRF protection, strict Content Security Policy
+- Login names stay private: others see the display name, public name or a handle
 - Calendar, Immich, LDAP and SSO credentials encrypted in the database (key: `SECRET_KEY`)
 - Backups encrypted with public keys (age) – the server never holds the private key
 - User data strictly separated – tested automatically (`tests/isolation.py`)

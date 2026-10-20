@@ -180,12 +180,22 @@ chat (`GET /api/chat/files/…`) directamente desde el disco, con rangos (Range)
 de los archivos ya no pasan por Python, así que muchas descargas simultáneas no frenan el servidor. Quién puede ver qué
 lo sigue decidiendo Saga: saga-media pregunta una vez por archivo y sesión y recuerda la respuesta como máximo
 60 segundos. Si alguien sale de un chat o se borra un mensaje, el cambio surte efecto como muy tarde al cabo de un minuto
-(un archivo borrado, al instante).
+(un archivo borrado, al instante). Las partes de las subidas de vídeos grandes (sección 9, «Vídeos») también las escribe
+saga-media directamente en el disco; Python solo registra los metadatos.
 
 - **Nada que configurar:** ningún puerto nuevo, ningún cambio en el proxy inverso, `TRUSTED_PROXIES` funciona como antes.
   Dentro del contenedor, Saga solo escucha ahora en `127.0.0.1:8079` (`MEDIA_INTERNAL_PORT`).
 - **Desactivarlo:** `SAGA_MEDIA=off` en el `.env`; Saga funciona entonces directamente en el puerto 8080, como hasta la 2.3.
 - El área de administración muestra en Resumen → «Medios» cómo se entregan los adjuntos del chat.
+- **Límites (normalmente no hay que cambiar nada):** como máximo `MEDIA_MAX_CONNS_IP` (por defecto 256) conexiones
+  abiertas por dirección de cliente; IPv6 cuenta por red /64 y los proxies de confianza de `TRUSTED_PROXIES` quedan
+  exentos. Al alcanzar el límite, saga-media cierra primero la conexión inactiva más antigua de esa dirección en lugar de
+  hacer esperar a las nuevas, así nadie puede bloquear a otros con conexiones inactivas. Las conexiones sin inicio de
+  sesión confirmado terminan tras `MEDIA_IDLE_UNAUTH` (10 s) de inactividad, las subidas y descargas atascadas tras
+  `MEDIA_STALL_TIMEOUT` (60 s), y las cabeceras deben llegar en 15 s. Además hay topes para todas las conexiones y las
+  descargas simultáneas (`MEDIA_MAX_CONNS`, `MEDIA_MAX_STREAMS`, `MEDIA_MAX_STREAMS_IP`). Importante: si hay un proxy
+  inverso delante, debe figurar en `TRUSTED_PROXIES`; si no, todos los visitantes cuentan como una sola dirección. Todos
+  los valores en la sección 13.
 
 **Sin contenedor** (Saga con `python run.py`): o bien compilar saga-media y arrancarlo delante
 (`cd media && CGO_ENABLED=0 go build -o saga-media .`, luego `saga-media -- python run.py` con las mismas variables de
@@ -273,6 +283,11 @@ En **Usuarios** creas cuentas, pones contraseñas y asignas grupos y permisos de
 - **Bloquear** cierra al instante todas las sesiones, los inicios de sesión de apps y las claves de app de la
   cuenta.
 - **Cerrar sesión en todas partes** ayuda si se ha perdido un dispositivo.
+- **Levantar bloqueo** (desde 2.4): Saga solo frena las contraseñas erróneas para la dirección de la que vienen. Solo
+  tras muchísimos intentos fallidos desde muchas direcciones bloquea el inicio de sesión con contraseña de una cuenta
+  durante una hora; entonces aparece «Inicio de sesión bloqueado» en el resumen, en la lista de usuarios y en la cuenta,
+  y ahí levantas el bloqueo (**Establecer contraseña** también lo levanta). Detalles en la sección 12, «Demasiados
+  intentos fallidos».
 - **Restablecer 2FA** (tarjeta «Segundo factor»): elimina las llaves de acceso, la app de autenticación y los
   códigos de recuperación de una cuenta; solo si la persona lo ha perdido todo y estás seguro de que es ella.
   Quién lo restableció y cuándo aparece en el log y en la página del usuario.
@@ -494,7 +509,8 @@ debajo del campo.
 
 - **Nombre público:** La primera vez eliges un nombre público (sugerido a partir de tu nombre visible, 2–32
   caracteres `a–z 0–9 - _`). Aparece en todas las direcciones y es visible para todos; **nunca** es tu nombre de
-  usuario. Se cambia en Ajustes → Cuenta, en su propio bloque «Nombre público» (con su propio botón «Guardar nombre»; Saga
+  usuario (desde la 2.4 tu nombre de inicio de sesión ya no se puede elegir como nombre público; quien lo eligió así
+  antes, lo conserva y ve un aviso en los ajustes). Se cambia en Ajustes → Cuenta, en su propio bloque «Nombre público» (con su propio botón «Guardar nombre»; Saga
   comprueba mientras escribes si el nombre es válido y está libre, y muestra «Nueva dirección: … (antes …)»);
   después, los enlaces antiguos dejan de funcionar.
   Nombres como `admin`, `api` o `login` están reservados.
@@ -565,8 +581,12 @@ blog.example.org {
 
 Las páginas y bases de datos se pueden compartir con **otras cuentas** y **grupos** de la misma instancia de Saga.
 Usa el botón **«Compartir»** arriba a la derecha de tu propia página (o el menú de la página **⋯** → «Compartir …»):
-busca una persona o un grupo (a partir de 3 caracteres; verás el nombre visible y el nombre de usuario, nunca una
-lista de todas las cuentas), elige un rol y pulsa el resultado. El diálogo solo ofrece grupos a los que perteneces,
+busca una persona o un grupo (a partir de 3 caracteres; nunca una lista de todas las cuentas), elige un rol y pulsa el
+resultado. Verás el nombre visible y debajo el nombre público o un **handle** (`~` y 16 caracteres), para distinguir a
+personas con el mismo nombre. Desde la 2.4 Saga no muestra en ningún sitio el **nombre de inicio de sesión** de otras
+cuentas: ni en la búsqueda, ni en usos compartidos, «Compartido conmigo», comentarios, notificaciones, presencia,
+versiones o listas de miembros de chats. Las personas se encuentran por nombre visible, nombre público, el handle exacto
+y, mientras el administrador lo permita, por el nombre de inicio de sesión escrito exactamente (ver abajo). El diálogo solo ofrece grupos a los que perteneces,
 tanto locales como de LDAP o SSO; con el campo de búsqueda vacío aparecen como chips («Tus grupos:»), y una línea bajo
 el campo explica qué puede hacer el rol elegido. En la lista de abajo cambias el rol o quitas el acceso (con
 confirmación; el acceso termina al instante). La lista muestra el rol real: si alguien tiene más permisos a través de
@@ -633,8 +653,11 @@ de grupos en común** (desactivado por defecto; búsqueda de personas y comparti
 en común contigo; solo afecta a los nuevos usos compartidos: los existentes se mantienen si lo activas más tarde).
 **Buscar por nombre de inicio de sesión** (activado por defecto): la búsqueda de personas, compartir y los chats
 también encuentran una cuenta por su nombre de inicio de sesión escrito exactamente, nunca por partes. Desactivado:
-solo por nombre visible, nombre público o identificador; así nadie puede probar qué nombres existen, pero las cuentas
-sin nombre visible propio solo se encuentran por su nombre público.
+solo por nombre visible, nombre público o handle; así nadie puede probar qué nombres existen, pero las cuentas
+sin nombre visible propio solo se encuentran por su nombre público. Compartir e iniciar un chat solo aceptan entonces un
+nombre de inicio de sesión para personas con las que ya chateas o con las que ya compartes. Límite: quien puede chatear
+con una cuenta conoce técnicamente su nombre de inicio de sesión al crear un chat directo (las claves del chat dependen
+de él), aunque la interfaz no lo muestre; solo se puede restringir con «Solo dentro de grupos en común».
 Saga toma los grupos de LDAP o SSO al iniciar sesión: si allí cambia la pertenencia, los usos compartidos con grupos
 lo reflejan a partir del siguiente inicio de sesión de la cuenta. El detalle del usuario solo muestra el número de
 usos compartidos, nunca contenidos. Al eliminar
@@ -909,7 +932,8 @@ no funcionan.
 
 ### Llamadas (audio, vídeo, pantalla)
 
-En un **chat directo** hay dos botones arriba: **📞 Llamar** y **🎥 Videollamada**. Saga conecta los dos dispositivos
+En un **chat directo** hay dos botones arriba: **📞 Llamar** y **🎥 Videollamada** (en chats de grupo, libres y de
+página inician una llamada en grupo desde la 2.4, ver abajo). Saga conecta los dos dispositivos
 directamente (WebRTC): los medios no pasan por el servidor de Saga y están **cifrados de extremo a extremo**. Sin puerto
 adicional: Saga coordina la llamada por el puerto web normal (canal en vivo + peticiones normales).
 
@@ -922,7 +946,14 @@ adicional: Saga coordina la llamada por el puerto web normal (canal en vivo + pe
 - **Durante la llamada:** imagen grande de la otra persona, imagen propia pequeña, **silenciar**, **cámara sí/no**
   (también después en una llamada de audio), **compartir pantalla** (en el ordenador), **colgar**; «▭» reduce la
   ventana a una esquina (para seguir escribiendo). Arriba: duración, calidad de la conexión y el camino – **directo** o
-  **por relé (TURN)** – y «🔒 Cifrado de extremo a extremo» en cuanto la comprobación (abajo) ha funcionado.
+  **por relé (TURN)** – y «🔒 Cifrado de extremo a extremo» en cuanto la comprobación (abajo) ha funcionado. Desde la
+  2.4 Saga ya no cuelga si la conexión se corta o cambia la red (wifi ↔ datos móviles), sino que vuelve a conectar (hasta
+  tres intentos en 20 segundos), y adapta la tasa de bits al camino (directo, relé por UDP o por TCP por el puerto 443).
+- **Imagen en imagen (desde 2.4, web):** el botón **Imagen en imagen** de la ventana de llamada lleva la llamada a una
+  ventana pequeña que queda encima de otros programas. En Chrome y Edge es una ventana propia con silenciar, volver y
+  colgar; en otros navegadores, la imagen en imagen de vídeo del navegador. Si el navegador no admite ninguna de las dos
+  (p. ej. Firefox), el botón no aparece. Mientras la otra persona solo te ve en pequeño (imagen en imagen, pestaña en
+  segundo plano), tu dispositivo envía con menos tasa de bits (como máximo 300 kbit/s), lo que ahorra conexión y batería.
 - **Compartir pantalla (desde 2.4):** antes de compartir por primera vez, Saga recuerda que todo lo que hay en la
   selección es visible, también notificaciones y otras ventanas (consejo: comparte solo una ventana o pestaña). Mientras
   compartes, arriba aparece una barra roja «Estás compartiendo tu pantalla» con **Dejar de compartir**. Si ambos usan Saga 2.4, la
@@ -937,7 +968,8 @@ adicional: Saga coordina la llamada por el puerto web normal (canal en vivo + pe
 - **Llamadas en grupo (desde 2.4):** en chats de grupo, libres y de página, 📞/🎥 inician una **llamada en grupo**.
   Suena para todos los miembros con Saga 2.4 (en chats de más de 8 miembros solo un aviso silencioso «Llamada en grupo en
   curso – Unirse»); se puede entrar y salir en cualquier momento y la llamada sigue mientras haya al menos dos personas.
-  Como máximo **4 dispositivos con vídeo** o **6 solo con audio** (cuentan tus dispositivos adicionales). Cada persona
+  Como máximo **4 dispositivos con vídeo** o **6 solo con audio** (cuentan tus dispositivos adicionales; el administrador solo puede reducir estos límites en General → «Llamadas»).
+  Cada persona
   aparece como mosaico y quien habla tiene un marco verde; compartir pantalla funciona como en los chats directos. Cifrado
   de extremo a extremo como siempre (cada conexión por separado, el servidor no ve nada). Quien aún tenga una app antigua
   ve «necesita Saga 2.4»; entre servidores solo funciona si todos los servidores Saga implicados tienen 2.4.
@@ -945,7 +977,8 @@ adicional: Saga coordina la llamada por el puerto web normal (canal en vivo + pe
   aparece «Llamada perdida» (con «Devolver llamada») y una notificación «Llamada perdida de Nombre» (desactivable en
   notificaciones o push → «Llamadas»). Las llamadas finalizadas, rechazadas y ocupadas también aparecen en el chat.
 - **Ocupado:** quien ya está en una llamada no recibe una segunda; quien llama ve «Ocupado».
-- **¿Quién puede llamar?** Solo las dos personas de un chat directo, ambas con los chats configurados. Los chats
+- **¿Quién puede llamar?** En un chat directo solo las dos personas; en una llamada en grupo, los miembros del chat;
+  siempre con los chats configurados. Los chats
   silenciados no hacen sonar el móvil. Contra el spam: como máximo 3 llamadas por minuto a la misma persona.
 - **Cámara/micrófono:** el navegador pregunta en la primera llamada. Si se denegó, Saga explica dónde volver a
   permitirlo (icono de candado junto a la dirección). Las llamadas necesitan `https`.
@@ -954,8 +987,11 @@ adicional: Saga coordina la llamada por el puerto web normal (canal en vivo + pe
 para ello los dispositivos preguntan a un **servidor STUN** por su dirección pública (por defecto:
 `stun:stun.nextcloud.com:443`). **Privacidad:** el servidor STUN ve la dirección IP de quienes llaman en cada llamada. De
 fábrica es un servidor ajeno (Nextcloud), para que las llamadas funcionen detrás de routers desde el principio; el área
-de administración lo indica en «Llamadas». Recomendación: usar un servidor TURN/STUN propio (coturn, ver «TURN por el
-puerto 443» abajo) e indicarlo como servidor STUN y TURN. Detrás de cortafuegos corporativos estrictos, en algunas redes móviles (CGNAT) o si un
+de administración lo indica en «Llamadas». **Recomendación: usar un servidor TURN/STUN propio por el
+puerto 443** (coturn, ver «TURN por el puerto 443» abajo) e indicarlo como servidor STUN y TURN. Desde la 2.4 compensa
+aún más: en una llamada en grupo cada dispositivo se conecta con todos los demás, y los dispositivos acompañantes añaden
+más conexiones; cuantas más conexiones, más probable es que alguna falle sin TURN. Por TURN sobre TCP en el puerto 443
+Saga envía con una tasa de bits adaptada (al compartir pantalla, la cámara se pausa). Detrás de cortafuegos corporativos estrictos, en algunas redes móviles (CGNAT) o si un
 lado solo puede usar el puerto 443 hacia fuera, hace falta un **servidor TURN** que reenvíe los medios (siguen
 cifrados: el servidor TURN no puede escuchar). Sin él se ve «No es posible una conexión directa … El administrador
 puede configurar un servidor TURN».
@@ -1079,10 +1115,17 @@ metadatos (tipo, resultado, duración: solo lo que el servidor ya sabe); las app
 tipo de suscripción `apns-voip`, topic `<bundle-id>.voip`). El registro de accesos no contiene direcciones IP para
 `/api/calls…`.
 
-**Más adelante (llamadas de grupo):** previstas como malla de hasta unas 4 personas en un chat de grupo (cada persona
-crea su propia conexión, igual de verificada, con cada una de las demás; señalización como arriba por pareja). Más allá
-haría falta un servidor de reenvío (SFU) con cifrado adicional del contenido (Insertable Streams/SFrame); a propósito,
-todavía no forma parte de Saga.
+**Técnica desde la 2.4 (`saga-call` v3, grupos):** las llamadas se pueden renegociar durante la conversación (segunda
+pista de vídeo para compartir pantalla, un dispositivo nuevo, reconexión tras un cambio de red); firma y cifrado siguen
+como arriba. Cada llamada es una sala con puntos finales por dispositivo; una llamada 1:1 es la sala con dos
+dispositivos. Las llamadas en grupo funcionan como **malla**: cada par de dispositivos crea su propia conexión cifrada
+con DTLS-SRTP, las señales se sellan y firman para cada dispositivo de destino, y cada dispositivo nuevo se comprueba
+contra la lista de dispositivos firmada de su persona (los desconocidos se rechazan). El servidor solo reenvía las
+señales (en estrella a través del servidor que dirige la llamada, también entre servidores que no están conectados
+directamente) y no ve ni SDP ni medios. De ahí el límite de 4 dispositivos con vídeo o 6 solo con audio; para grupos más
+grandes haría falta un servidor de reenvío (SFU) con cifrado adicional del contenido, que todavía no forma parte de Saga.
+Interfaz para apps: `docs/APP-API.md`, secciones «Anrufe: saga-call v3», «Anrufe: Bildschirm v2» y «Anrufe: Mehrgeräte
+und Gruppen».
 
 ### Notificaciones push al móvil y al ordenador
 
@@ -1245,10 +1288,14 @@ En **Ajustes → Cuenta → Inicio de sesión y seguridad** proteges una cuenta 
 recuperación). Este paso vale 5 minutos y solo en este navegador; tras 5 códigos erróneos hay una pausa de 15
 minutos. A propósito no existe la opción «confiar en este navegador».
 
-**Confirmar antes de cambios:** añadir o eliminar llaves de acceso, cambiar la app de autenticación o generar
-códigos nuevos es posible durante 5 minutos tras iniciar sesión; si no, Saga pide antes la contraseña, un código o
-una llave de acceso. Lo mismo vale para «Empezar de nuevo» en los chats: ahora también sirven una llave de acceso
-o un código en lugar de la contraseña.
+**Confirmar antes de cambios (más estricto desde la 2.4):** **eliminar** un segundo factor (llave de acceso, app de
+autenticación) exige siempre una confirmación expresa con contraseña, código o llave de acceso de como máximo 5 minutos
+de antigüedad; un inicio de sesión reciente no basta. La misma confirmación hace falta para **añadir otro factor** o
+generar **códigos de recuperación nuevos** en cuanto la cuenta ya tiene una llave de acceso o una app de autenticación;
+solo la primera configuración sigue funcionando durante 5 minutos tras iniciar sesión. Un factor añadido después del
+inicio de sesión de esta sesión no cuenta y no se ofrece en el diálogo. Así, quien se haya apoderado de una sesión no
+puede crear su propia llave de acceso y eliminar con ella los factores reales. En la web Saga lo pide por sí sola y
+luego continúa. «Empezar de nuevo» en los chats también se confirma con contraseña, llave de acceso o código.
 
 **Apps:** las apps inician sesión a través de la página de inicio de sesión de Saga en la ventana del navegador
 del sistema; allí aparece también el segundo paso, y las llaves de acceso funcionan en iPhone, iPad, Mac y Android.
@@ -1591,8 +1638,8 @@ Qué versión se ejecuta lo decide `SAGA_VERSION` en el `.env`:
 | Valor | Significado |
 |---|---|
 | `2` (por defecto) | siempre la 2.x más reciente: funciones nuevas y correcciones, nada que requiera trabajo manual |
-| `2.3` | solo correcciones de la 2.3 |
-| `2.3.0` | exactamente esta versión |
+| `2.4` | solo correcciones de la 2.4 |
+| `2.4.0` | exactamente esta versión |
 | `1` | se queda en la 1.x más reciente (1.2); las instalaciones antiguas aún tienen este valor en el `.env` |
 | `testing` (o `rc`) | **Versión candidata:** lo último de la rama `testing`, antes de publicarse. Puede tener errores; solo para probar |
 
@@ -1622,10 +1669,10 @@ Las imágenes y archivos de las páginas (`/data/files`) **no** están en la cop
 
 **Versiones candidatas (canal `testing`):** con `SAGA_VERSION=testing` (equivalente: `rc`) recibes las funciones
 nuevas en cuanto están listas, antes de publicarse. Cada compilación es una versión candidata (release candidate) de
-la siguiente versión, por ejemplo `2.4.0-rc.7` (7 cambios desde la última versión; abajo en el área de
-administración como «2.4.0-rc.7 (1cc210f)» con 🧪 Versión candidata, seguido del commit). Una versión candidata
-siempre es más nueva que la versión estable anterior (2.3.0 < 2.4.0-rc.7 < 2.4.0): el aviso de nuevas versiones solo
-aparece cuando se publica la 2.4.0. Las versiones de pruebas anteriores se llamaban `x.y.z-testing.<commit>`. Para volver a la versión estable: `SAGA_VERSION=2` y después
+la siguiente versión, por ejemplo `2.5.0-rc.7` (7 cambios desde la última versión; abajo en el área de
+administración como «2.5.0-rc.7 (1cc210f)» con 🧪 Versión candidata, seguido del commit). Una versión candidata
+siempre es más nueva que la versión estable anterior (2.4.0 < 2.5.0-rc.7 < 2.5.0): el aviso de nuevas versiones solo
+aparece cuando se publica la 2.5.0. Las versiones de pruebas anteriores se llamaban `x.y.z-testing.<commit>`. Para volver a la versión estable: `SAGA_VERSION=2` y después
 `docker compose pull && docker compose up -d`. Si la versión de pruebas ya ha modificado la base de datos, la
 versión estable solo arrancará cuando incluya también ese cambio (como muy tarde con la siguiente versión), o
 bien restauras la copia de seguridad de antes del cambio.
@@ -1677,11 +1724,54 @@ actualización normal. Qué ocurre y qué conviene tener en cuenta:
    chats y llamadas federados, compartir entre servidores y «Mi copia de seguridad». Las apps 2.1 siguen funcionando,
    solo que sin estas funciones; muestran los chats con personas de otros servidores con el aviso «actualiza la app».
 
+**De 2.3 a 2.4:** con `SAGA_VERSION=2`, la 2.4 llega con la actualización normal. Qué ocurre y a qué prestar
+atención:
+
+1. **Hacer copia antes (recomendado):** Saga crea una copia por sí misma antes de modificar la base de datos; una
+   adicional con los archivos no sobra: `docker compose exec saga python run.py backup --dateien` (o «Hacer copia ahora»
+   en las copias cifradas).
+2. **Actualizar** como arriba (`git pull`, `docker compose pull`, `docker compose up -d`). La base de datos pasa de la
+   versión de esquema 9 a la **14** (migraciones 10–14: llamadas, vídeos, llamada como sala, leído/en línea, ajustes
+   posteriores; antes, copia `…-vor-schema-14.dump` en `/data/backups`). Las copias de la 2.3 se pueden seguir
+   restaurando con la 2.4.
+3. **Gravatar queda desactivado para todas las cuentas.** Hasta la 2.3 «Usar Gravatar» venía activado de fábrica, y eso
+   no era un consentimiento. Por eso la actualización lo desactiva para todos y borra las imágenes de Gravatar en caché;
+   quien quiera Gravatar lo vuelve a activar en Ajustes → Cuenta → Foto de perfil. Las imágenes propias y las del
+   servicio de inicio de sesión se mantienen. Conviene avisar a las personas.
+4. **Nuevo en el contenedor: saga-media.** Los adjuntos del chat y los vídeos los entrega ahora el pequeño servicio
+   saga-media (sección 3, «Ruta de medios»): ningún puerto nuevo, nada que cambiar en el proxy inverso; solo
+   `TRUSTED_PROXIES` debe estar bien, como antes. Para volver al camino anterior, `SAGA_MEDIA=off`. **Sin contenedor**
+   (Saga directamente con Python) hay dos alternativas: compilar saga-media y arrancarlo delante, o dejar que el proxy
+   inverso entregue los archivos (`MEDIA_ACCEL=nginx` o `caddy`); si no, Python los entrega como antes, pero como máximo
+   `MEDIA_PY_STREAMS` a la vez.
+5. **Revisar el área de administración:** en General → «Chats» los nuevos límites **Vídeo más grande en el chat** (por
+   defecto 500 MB) y **Almacenamiento para adjuntos de chat por cuenta** (ahora 4096 en lugar de 1024 MB: ¿hay espacio
+   suficiente en el volumen?); en «Compartir» el nuevo interruptor **Buscar por nombre de inicio de sesión** (activado
+   por defecto, ver «Compartir y comentar»); en «Llamadas» los dispositivos por llamada en grupo (4 con vídeo, 6 solo
+   con audio, solo se pueden reducir) y el **aviso sobre el servidor STUN**: el servidor STUN ajeno que viene de fábrica
+   ve las direcciones IP de quienes llaman. Para llamadas en grupo y dispositivos acompañantes se recomienda un servidor
+   TURN propio por el puerto 443 (sección 9, «TURN por el puerto 443»).
+6. **Inicio de sesión:** las contraseñas erróneas ahora solo frenan la dirección de la que vienen; un bloqueo duro solo
+   llega tras muchísimos intentos desde muchas direcciones, y lo levantas en la cuenta con «Levantar bloqueo»
+   (sección 12). Eliminar o añadir un segundo factor y generar códigos de recuperación nuevos exigen una confirmación
+   reciente (sección 9).
+7. **Nuevos ajustes del `.env`**, todos opcionales (sección 13): `SAGA_MEDIA`, `MEDIA_*` (p. ej. `MEDIA_MAX_CONNS_IP`,
+   `MEDIA_IDLE_UNAUTH`, `MEDIA_STALL_TIMEOUT`, `MEDIA_AUTHZ_TTL`, `MEDIA_ACCEL`, `MEDIA_PY_STREAMS`), `VIDEO_MAX_MB`,
+   `CHAT_QUOTA_MB` (nuevo valor por defecto 4096), `CHAT_OFFLINE_GRACE`.
+8. **Apps:** se recomiendan las apps 2.4 ([apps de Saga](https://github.com/yggdrasil-sh/saga-apps/releases)), con
+   vídeos, llamadas en grupo, otro dispositivo en la llamada y confirmaciones de lectura. Las apps 2.3 y 2.1 siguen
+   funcionando, solo que sin estas funciones; las llamadas en grupo muestran ahí «necesita Saga 2.4» y los vídeos grandes
+   aparecen como adjunto «Abrir con Saga 2.4». Los servidores conectados con 2.3 siguen conectados; llamadas en grupo,
+   leído/en línea y vídeos grandes solo funcionan entre servidores con 2.4.
+
+**Volver de 2.4 a 2.3:** solo con la copia de antes de la actualización (`…-vor-schema-14.dump`), restaurada **con la
+2.4**, y después `SAGA_VERSION=2.3`; ver abajo. La 2.3 no arranca sobre la versión de esquema 14.
+
 **Volver de 2.3 a 2.1:** solo con la copia de antes de la actualización (`…-vor-schema-9.dump`), ver abajo. Sobre la
 base de datos modificada, la 2.1 indica «Die Datenbank hat Schema-Stand 9, diese Saga-Version kennt nur 6» y no arranca.
 
 **Volver a la versión anterior:** una versión antigua de Saga no arranca sobre una base de datos que una versión
-más nueva ya ha modificado (lo indica en el log en lugar de dañar datos). Esto vale para **2.3 → 2.1** (copia
+más nueva ya ha modificado (lo indica en el log en lugar de dañar datos). Esto vale para **2.4 → 2.3** (copia `…-vor-schema-14.dump`), **2.3 → 2.1** (copia
 `…-vor-schema-9.dump`) y también para **2.1 → 2.0.x**:
 2.1 sube el esquema a la versión 6 (copia `…-vor-schema-6.dump`) y 2.0.x se detiene con «Die Datenbank hat
 Schema-Stand 6, diese Saga-Version kennt nur 5»; si no, 2.0 seguiría funcionando y dejaría entrar a cuentas con

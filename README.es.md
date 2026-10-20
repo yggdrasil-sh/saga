@@ -32,14 +32,15 @@ Saga es una página de inicio y una base de conocimiento autoalojada para famili
 con todos tus servicios, páginas y bases de datos al estilo Notion, tareas, calendarios y marcadores. Cada
 persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio servidor.
 
-> **Novedades de Saga 2.3:** mucho más rápido con muchas páginas y bases de datos grandes (p. ej. el árbol de páginas
-> se recarga en 0,05 s en lugar de 1 s con 60.000 entradas, una base de datos de 2.000 filas se puede usar tras 0,6 s
-> en lugar de 12 s, 80–90 % menos datos gracias a la compresión), **federación completa** – encontrar por nombre a
-> personas de servidores conectados, chats y llamadas cifrados de extremo a extremo entre servidores, editar juntos
-> páginas compartidas con bases de datos, subpáginas y subidas –, **copias de seguridad cifradas** en S3, una carpeta o
-> Nextcloud/WebDAV, además de **copias personales** para cada persona, y **archivos de Nextcloud en las páginas**.
-> Desde la 2.1: llaves de acceso e inicio de sesión en dos pasos, fotos de perfil, llamadas de audio y vídeo, asistente
-> de IA con nombre propio y búsqueda web, cinco idiomas. Todos los detalles en el
+> **Novedades de Saga 2.4:** **vídeos en el chat** con portada, streaming y subida reanudable (hasta 500 MB por defecto,
+> cifrados de extremo a extremo), **llamadas en grupo** (hasta 4 dispositivos con vídeo o 6 solo con audio), **compartir
+> pantalla con la cámara al lado**, **imagen en imagen** y **pasar la llamada a otro dispositivo** o añadir uno,
+> **confirmaciones de lectura y estado en línea** (desactivables) y la nueva ruta de medios **saga-media**: los adjuntos
+> del chat ya no pasan por Python (20 × 10 MB en paralelo en 0,22 s en lugar de 0,67 s; subir un vídeo de 1 GB le cuesta
+> a Python el 0,06 % de un núcleo). Además, más protección: los intentos fallidos frenan en lugar de bloquear cuentas,
+> los nombres de inicio de sesión quedan privados y Gravatar solo con consentimiento.
+> Desde la 2.3: mucho más rápido con bases de datos grandes, federación con chats y llamadas entre servidores, copias
+> de seguridad cifradas, archivos de Nextcloud en las páginas. Todos los detalles en el
 > [registro de cambios](CHANGELOG.md) (en alemán).
 
 ## Funciones
@@ -55,10 +56,11 @@ persona tiene su propio espacio privado, sin nube ni suscripciones, en tu propio
   sin JavaScript y, opcionalmente, como página de inicio para visitantes
 - **Compartir y comentar:** comparte páginas y bases de datos con personas o grupos (locales, LDAP, SSO): roles Ver,
   Comentar, Editar, las subpáginas heredan el acceso; comentarios discretos en los bloques con «Resuelto»
-- **Chats cifrados de extremo a extremo:** chats directos, de grupo y de página con adjuntos, respuestas y enlaces @ a
-  páginas; el servidor (y el administrador) solo ve datos cifrados: libsodium, clave de recuperación, números de
+- **Chats cifrados de extremo a extremo:** chats directos, de grupo y de página con adjuntos, vídeos (streaming,
+  subida reanudable), confirmaciones de lectura, estado en línea, respuestas y enlaces @ a páginas; el servidor (y el administrador) solo ve datos cifrados: libsodium, clave de recuperación, números de
   seguridad, varios dispositivos; archivar o eliminar chats (solo para mí o para todos)
-- **Llamadas de audio y vídeo:** desde el chat directo, con pantalla compartida – WebRTC entre los dispositivos, cifradas
+- **Llamadas de audio y vídeo:** en el chat directo y como llamada en grupo, con pantalla compartida, imagen en imagen
+  y traspaso a otro dispositivo propio – WebRTC entre los dispositivos, cifradas
   de extremo a extremo y verificadas con las claves del chat, sin puerto adicional (TURN opcional por el 443)
 - **Notificaciones y push:** campana con actualización en directo; si quieres, al móvil/escritorio por Web Push (cifrado
   de extremo a extremo, también iPhone como app en la pantalla de inicio), ntfy/UnifiedPush o Apple Push, sin contenido
@@ -114,8 +116,9 @@ docker compose pull && docker compose up -d
 ```
 
 **Actualizar:** `git pull && docker compose pull && docker compose up -d`. Antes de cualquier cambio en la base
-de datos, Saga crea automáticamente una copia de seguridad. De 1.x a 2.x: antes pon `SAGA_VERSION=2` en el `.env`. La 2.3 actualiza la base de datos (esquema 9; volver a 2.1
-solo con la copia automática, ver la guía, sección 11). Las novedades están en el
+de datos, Saga crea automáticamente una copia de seguridad. De 1.x a 2.x: antes pon `SAGA_VERSION=2` en el `.env`. La 2.4 actualiza la base de datos (esquema 14; volver a 2.3
+solo con la copia automática) y desactiva Gravatar para todas las cuentas; qué tener en cuenta al actualizar desde la 2.3
+está en la guía, sección 11 «De 2.3 a 2.4». Las novedades están en el
 **[registro de cambios](CHANGELOG.md)** (en alemán) y en las
 [versiones publicadas](https://github.com/yggdrasil-sh/saga/releases). ¿Quieres lo último?
 `SAGA_VERSION=testing` en el `.env` descarga la versión de pruebas de la rama `testing`. Las imágenes y archivos
@@ -146,7 +149,10 @@ actualizaciones) está en la **[guía](docs/es/GUIA.md)**.
 ## Arquitectura
 
 ```
-Navegador / apps ──► Saga (Python, FastAPI)  :8080  panel, páginas, API
+Navegador / apps ──► saga-media (Go)        :8080  entrega adjuntos del chat y vídeos directamente del disco
+                          │
+                          ▼
+                     Saga (Python, FastAPI)         panel, páginas, API (dentro del contenedor en 127.0.0.1:8079)
                      Área de administración  :8081  inicio de sesión propio, solo admins
                           │
                           ├── PostgreSQL     cuentas, páginas, tareas, ajustes
@@ -156,8 +162,9 @@ Navegador / apps ──► Saga (Python, FastAPI)  :8080  panel, páginas, API
 
 ## Seguridad en resumen
 
-- Contraseñas con scrypt, bloqueo tras varios intentos fallidos, protección CSRF, Content Security Policy
-  estricta
+- Contraseñas con scrypt, los intentos fallidos solo frenan la dirección atacante (nadie puede bloquear a otros),
+  protección CSRF, Content Security Policy estricta
+- Los nombres de inicio de sesión quedan privados: los demás ven el nombre visible, el nombre público o un handle
 - Credenciales de calendarios, Immich, LDAP y SSO cifradas en la base de datos (clave: `SECRET_KEY`)
 - Copias de seguridad cifradas con claves públicas (age): el servidor nunca tiene la clave privada
 - Datos de usuarios estrictamente separados, con pruebas automáticas (`tests/isolation.py`)

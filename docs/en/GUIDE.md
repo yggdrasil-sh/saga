@@ -176,12 +176,21 @@ It listens on the usual port 8080 and forwards everything to Saga – with one e
 (`GET /api/chat/files/…`) itself, straight from disk, with range requests, `sendfile` and timeouts. File bytes no longer
 pass through Python, so many parallel downloads don't slow the server down. Saga still decides who may see what:
 saga-media asks once per file and session and remembers the answer for at most 60 seconds. Removing someone from a chat
-or deleting a message therefore takes effect within a minute at the latest (a deleted file immediately).
+or deleting a message therefore takes effect within a minute at the latest (a deleted file immediately). saga-media
+also writes the parts of large video uploads (section 9, "Videos") straight to disk; Python only records the metadata.
 
 - **Nothing to set up:** no new port, no change to the reverse proxy, `TRUSTED_PROXIES` works as before. Inside the
   container Saga itself now only listens on `127.0.0.1:8079` (`MEDIA_INTERNAL_PORT`).
 - **Turn it off:** `SAGA_MEDIA=off` in `.env` – Saga then runs directly on port 8080 as up to 2.3.
 - The admin area shows under Overview → “Media” how chat attachments are served.
+- **Limits (usually nothing to change):** at most `MEDIA_MAX_CONNS_IP` (default 256) open connections per client
+  address – IPv6 counts per /64 network, trusted proxies from `TRUSTED_PROXIES` are exempt. When the limit is reached,
+  saga-media first closes the longest-idle connection of that address instead of making new ones wait, so nobody can
+  lock others out with idle connections. Connections without a confirmed sign-in end after `MEDIA_IDLE_UNAUTH` (10 s)
+  idle, stalled uploads and downloads after `MEDIA_STALL_TIMEOUT` (60 s), headers must arrive within 15 s. On top of
+  that there are caps for all connections and parallel downloads (`MEDIA_MAX_CONNS`, `MEDIA_MAX_STREAMS`,
+  `MEDIA_MAX_STREAMS_IP`). Important: if a reverse proxy sits in front, it must be listed in `TRUSTED_PROXIES` –
+  otherwise all visitors count as one address. All values in section 13.
 
 **Without a container** (Saga started with `python run.py`): either build saga-media and start it in front
 (`cd media && CGO_ENABLED=0 go build -o saga-media .`, then `saga-media -- python run.py` with the same environment), or
@@ -268,6 +277,10 @@ Under **Users** you create accounts, set passwords, and assign groups and admin 
   off, create them here in advance with the account type LDAP or SSO.
 - **Lock** immediately ends all sessions, app sign-ins and app keys of the account.
 - **Sign out everywhere** helps when a device has been lost.
+- **Lift lock** (2.4+): Saga only slows down wrong passwords for the address they come from. Only after very many
+  failed attempts from many addresses does Saga lock password sign-in for an account for one hour – then "Sign-in
+  locked" shows on the overview, in the user list and on the account, and you lift the lock there (**Set password**
+  lifts it too). Details in section 12, "Too many failed attempts".
 - **Reset 2FA** (card "Second factor"): removes an account's passkeys, authenticator app and recovery codes – only
   if the person has lost everything and you are sure it is them. Who reset it and when is shown in the log and on
   the user page.
@@ -480,7 +493,8 @@ options apply immediately; only a new address is applied explicitly with “Chan
 that is already in use) appear right below the field.
 
 - **Public name:** The first time, you choose a public name (suggested from your display name, 2–32 characters
-  `a–z 0–9 - _`). It appears in every address and is visible to everyone – it is **never** your username. Change it
+  `a–z 0–9 - _`). It appears in every address and is visible to everyone – it is **never** your username (from 2.4 your login name can
+no longer be chosen as public name; if you picked it that way earlier, you keep it and the settings show a hint). Change it
   in Settings → Account in its own “Public name” block (with its own “Save name” button; Saga checks while you type
   whether the name is valid and available, and shows “New address: … (was …)”); old links stop working
   afterwards. Names such as `admin`, `api` or `login`
@@ -549,9 +563,13 @@ blog.example.org {
 
 Pages and databases can be shared with **other accounts** and **groups** on the same Saga instance. Use the
 **“Share”** button at the top right of your own page (or the page menu **⋯** → “Share …”): search for a person or a
-group (from 3 characters also parts of names, with 1–2 characters exact matches only, e.g. “hd”; you see display
-name and username, never a list of all accounts), pick a role and click
-the match. The dialog only offers groups you belong to – local groups as well as groups from LDAP or SSO. In the list
+group (from 3 characters also parts of names, with 1–2 characters exact matches only, e.g. “hd”; never a list of
+all accounts), pick a role and click
+the match. You see the display name and below it the public name or a **handle** (`~` plus 16 characters), so people
+with the same name can be told apart. From 2.4 on Saga never shows other accounts' **login names**: not in search,
+shares, "Shared with me", comments, notifications, presence, versions or chat member lists. People are found by display
+name, public name, the exact handle and – as long as the admin allows it – the exactly entered login name (see below).
+The dialog only offers groups you belong to – local groups as well as groups from LDAP or SSO. In the list
 below you change the role or remove access (with a confirmation; access ends immediately). With an empty search field
 your groups appear as chips (“Your groups:”), and a line under the field explains what the chosen role may do. The
 list shows each person’s actual role: if someone has more rights through a group, it says so (“Can comment (via team:
@@ -611,8 +629,12 @@ thread (after confirming).
 immediately but stay saved) and **Only within shared groups** (off by default; people search and sharing only with
 accounts that have a group in common with you; it only affects new shares – existing ones remain if you turn it on
 later). **Search by login name** (on by default): people search, sharing and chats also find an account by its exactly
-entered login name – never by parts of it. Off: only by display name, public name or identifier; then nobody can try
+entered login name – never by parts of it. Off: only by display name, public name or handle; then nobody can try
 out which login names exist, but accounts without their own display name can only be found by their public name.
+Sharing and "Start chat" then also accept a login name only for people you already chat with or already share with.
+Limit: whoever may chat with an account technically learns its login name when creating a direct chat (the chat keys
+are bound to it), even though the interface doesn't show it; this can only be restricted with "Only within shared
+groups".
 Saga takes over groups from LDAP or SSO at sign-in: if a membership changes there, shares with groups reflect
 it from the account’s next sign-in. The user detail page only shows the number of shares, never content.
 When an account is deleted, its shares and the shares given to it disappear; its comments on other people’s pages
@@ -870,7 +892,8 @@ IndexedDB; chats don't work in a private window.
 
 ### Calls (audio, video, screen)
 
-In a **direct chat** there are two buttons at the top: **📞 Call** and **🎥 Video call**. Saga connects the two devices
+In a **direct chat** there are two buttons at the top: **📞 Call** and **🎥 Video call** (in group, free and page chats
+they start a group call from 2.4 on, see below). Saga connects the two devices
 directly (WebRTC) – media does not go through the Saga server and is **end-to-end encrypted**. No extra port: Saga sets
 up the call over the regular web port (live channel + normal requests).
 
@@ -882,7 +905,14 @@ up the call over the regular web port (live channel + normal requests).
 - **During the call:** large picture of the other person, small own picture, **mute**, **camera on/off** (also later in
   an audio call), **share screen** (on a computer), **hang up**; "▭" shrinks the window to a corner (keep chatting).
   At the top: duration, connection quality and the path – **direct** or **via relay (TURN)** – and "🔒 End-to-end
-  encrypted" once the check (below) has passed.
+  encrypted" once the check (below) has passed. From 2.4 on Saga no longer hangs up when the connection drops or the
+  network changes (Wi-Fi ↔ mobile) but reconnects (up to three attempts within 20 seconds), and adapts the bitrate to
+  the path (direct, relay via UDP or via TCP over port 443).
+- **Picture-in-picture (2.4+, web):** the **Picture-in-picture** button in the call window moves the call into a small
+  window that stays on top of other programs. In Chrome and Edge this is a separate window with mute, back and hang up,
+  in other browsers the browser's video picture-in-picture. If the browser supports neither (e.g. Firefox), the button
+  is missing. While the other person only sees you small (picture-in-picture, tab in the background), your device sends
+  at a lower bitrate (at most 300 kbit/s) – saving bandwidth and battery.
 - **Sharing your screen (2.4 and later):** before the first share, Saga reminds you that everything in the selection is
   visible – including notifications and other windows (tip: share a single window or tab). While sharing, a red bar
   "You are sharing your screen" with **Stop sharing** stays on top. If both sides run Saga 2.4, the camera keeps running: the
@@ -896,14 +926,15 @@ up the call over the regular web port (live channel + normal requests).
 - **Group calls (2.4 and later):** in group, free and page chats 📞/🎥 start a **group call**. All members with Saga 2.4
   ring (in chats with more than 8 members only a silent "Group call in progress – Join"); you can join and leave at any
   time, the call runs as long as at least two people are in it. At most **4 devices with video** or **6 audio only**
-  (your extra devices count). Everyone appears as a tile, the current speaker gets a green frame; screen sharing works as
+  (your extra devices count; the admin can only lower these limits under General → "Calls"). Everyone appears as a tile, the current speaker gets a green frame; screen sharing works as
   in direct chats. End-to-end encrypted as before (each connection separately, the server sees nothing). People with an
   older app see "needs Saga 2.4"; across servers it only works when all involved Saga servers run 2.4.
 - **Not answered:** after the ring duration (default 45 s) the call counts as **missed**. The chat then shows "Missed
   call" (with "Call back") and there is a notification "Missed call from Name" (can be turned off under notifications or
   push → "Calls"). Ended, declined and busy calls also appear in the chat.
 - **Busy:** someone already on a call doesn't get a second one – the caller sees "Busy".
-- **Who may call?** Only the two people of a direct chat, both with chats set up. Muted chats don't ring the phone.
+- **Who may call?** In a direct chat only the two people, in a group call the members of the chat – each with chats
+  set up. Muted chats don't ring the phone.
   Against ring spam: at most 3 calls per minute to the same person.
 - **Camera/microphone:** the browser asks on the first call. If it was denied, Saga explains where to allow it again
   (lock icon next to the address). Calls need `https`.
@@ -911,8 +942,11 @@ up the call over the regular web port (live channel + normal requests).
 **Reachability:** within the same network and between typical home connections, the direct connection almost always
 works – for that the devices ask a **STUN server** for their public address (default: `stun:stun.nextcloud.com:443`).
 **Privacy:** the STUN server sees the callers' IP address on every call. Out of the box this is a third-party server
-(Nextcloud) so calls work behind routers right away; the admin area points this out under "Calls". Recommendation: run
-your own TURN/STUN server (coturn, see "TURN over port 443" below) and enter it as STUN and TURN server.
+(Nextcloud) so calls work behind routers right away; the admin area points this out under "Calls". **Recommendation: run
+your own TURN/STUN server over port 443** (coturn, see "TURN over port 443" below) and enter it as STUN and TURN
+server. Since 2.4 this pays off even more: in a group call every device connects to every other, and companion devices
+add more connections – the more connections, the more likely one fails without TURN. Via TURN over TCP on port 443
+Saga sends at an adapted bitrate (while sharing the screen the camera next to it pauses).
 Behind strict corporate firewalls, in some mobile networks (CGNAT) or when one side may only use port 443 outbound, you
 need a **TURN server** that relays the media (still encrypted – the TURN server cannot listen in). Without it people see
 "Direct connection not possible … The admin can configure a TURN server."
@@ -1034,9 +1068,15 @@ metadata (kind, result, duration – only what the server knows anyway); apps ge
 (PushKit, subscription type `apns-voip`, topic `<bundle-id>.voip`). The access log contains no IP addresses for
 `/api/calls…`.
 
-**Later (group calls):** planned as a mesh of up to about 4 people in a group chat (each person builds its own,
-equally verified connection to every other; signalling as above per pair). Beyond that a forwarding server (SFU) with
-additional content encryption (Insertable Streams/SFrame) would be needed – deliberately not part of Saga yet.
+**Technology from 2.4 (`saga-call` v3, groups):** calls can be renegotiated during the conversation (second video
+track for screen sharing, a new device, reconnecting after a network change); signature and encryption stay as above.
+Every call is a room with endpoints per device; a 1:1 call is the room with two devices. Group calls run as a **mesh**:
+each pair of devices builds its own DTLS-SRTP-encrypted connection, signals are sealed and signed per target device, and
+every new device is checked against its person's signed device list (unknown ones are rejected). The server only relays
+the signals (star-shaped via the server that leads the call – also between servers that are not directly connected) and
+sees neither SDP nor media. Hence the limit of 4 devices with video or 6 audio only; bigger rounds would need a
+forwarding server (SFU) with additional content encryption – not part of Saga yet. API for apps: `docs/APP-API.md`,
+sections "Anrufe: saga-call v3", "Anrufe: Bildschirm v2" and "Anrufe: Mehrgeräte und Gruppen".
 
 ### Push notifications to phone and computer
 
@@ -1192,9 +1232,13 @@ accounts do this at their sign-in service, see below):
 valid for 5 minutes and only in this browser; after 5 wrong codes there is a 15-minute pause. There is deliberately
 no "trust this browser" option.
 
-**Confirm before changes:** adding/removing passkeys, changing the authenticator app or generating new codes is
-possible within 5 minutes of signing in – otherwise Saga first asks for your password, a code or a passkey. The
-same applies to "Start chats over": a passkey or code now works instead of the password.
+**Confirm before changes (stricter from 2.4):** **removing** a second factor (passkey, authenticator app) always
+requires an explicit confirmation with password, code or passkey that is at most 5 minutes old – a fresh sign-in alone
+is not enough. The same confirmation is needed to **add another factor** or generate **new recovery codes** once the
+account already has a passkey or an authenticator app; only the first setup still works within 5 minutes of signing
+in. A factor added after this session signed in doesn't count and isn't offered in the dialog. This way someone who has
+taken over a session can't add their own passkey and use it to remove the real factors. On the web Saga asks
+automatically and then continues. "Start chats over" can likewise be confirmed with password, passkey or code.
 
 **Apps:** the apps sign in through Saga's sign-in page in the system browser window – the second step appears
 there as well, and passkeys work in it on iPhone, iPad, Mac and Android. Apps that are already signed in stay
@@ -1524,8 +1568,8 @@ the admin area; a notice also appears there when a new version is available (can
 | Value | Meaning |
 |---|---|
 | `2` (default) | always the latest 2.x – new features and fixes, nothing that needs manual work |
-| `2.3` | only bug fixes for 2.3 |
-| `2.3.0` | exactly this version |
+| `2.4` | only bug fixes for 2.4 |
+| `2.4.0` | exactly this version |
 | `1` | stays on the latest 1.x (1.2) – older installations still have this value in `.env` |
 | `testing` (or `rc`) | **Release candidate:** the latest from the `testing` branch, before the release. May contain bugs – only for trying things out |
 
@@ -1554,9 +1598,9 @@ also creates `saga-dateien-<time>.tar.gz` (without thumbnails, they are recreate
 
 **Release candidates (channel `testing`):** With `SAGA_VERSION=testing` (equivalent: `rc`) you get new features as
 soon as they are ready – before the release. Every build is a release candidate of the next version, e.g.
-`2.4.0-rc.7` (7 changes since the last release; shown at the bottom of the admin area as "2.4.0-rc.7 (1cc210f)" with
+`2.5.0-rc.7` (7 changes since the last release; shown at the bottom of the admin area as "2.5.0-rc.7 (1cc210f)" with
 🧪 Release candidate, followed by the commit). A release candidate is always newer than the stable version before it
-(2.3.0 < 2.4.0-rc.7 < 2.4.0): the new-version notice only appears once 2.4.0 is out. Older testing builds were called
+(2.4.0 < 2.5.0-rc.7 < 2.5.0): the new-version notice only appears once 2.5.0 is out. Older testing builds were called
 `x.y.z-testing.<commit>`. Back to the stable version: `SAGA_VERSION=2`, then `docker compose pull && docker compose up -d`.
 If the testing version has already changed the database, the stable version only starts once it contains that
 change too (with the next release at the latest) – or you restore the backup from before the switch.
@@ -1604,11 +1648,50 @@ update. What happens and what to watch out for:
    federated chats and calls, sharing across servers and “My backup”. Apps 2.1 keep working, just without these
    features; they show chats with people on other servers with “please update the app”.
 
+**From 2.3 to 2.4:** with `SAGA_VERSION=2`, 2.4 arrives with the normal update. What happens and what to watch out
+for:
+
+1. **Back up first (recommended):** Saga creates a backup itself before changing the database; an extra one including
+   the files doesn't hurt: `docker compose exec saga python run.py backup --dateien` (or “Back up now” for encrypted
+   backups).
+2. **Update** as above (`git pull`, `docker compose pull`, `docker compose up -d`). The database moves from schema
+   version 9 to **14** (migrations 10–14: calls, videos, call as a room, read/online, follow-up fixes; backup
+   `…-vor-schema-14.dump` in `/data/backups` first). Backups from 2.3 can still be restored with 2.4.
+3. **Gravatar is then off for all accounts.** Up to 2.3 “Use Gravatar” was on by default, which was no consent. The
+   update therefore turns it off for everyone and deletes cached Gravatar pictures; whoever wants Gravatar turns it on
+   again under Settings → Account → Profile picture. Own pictures and pictures from the sign-in provider stay. Best let
+   your people know.
+4. **New in the container: saga-media.** Chat attachments and videos are now served by the small saga-media service
+   (section 3, “Media path”) – no new port, nothing to change in the reverse proxy; only `TRUSTED_PROXIES` must be
+   right as before. Back to the old path with `SAGA_MEDIA=off`. **Without a container** (Saga run directly with
+   Python) there are two alternatives: build saga-media yourself and start it in front, or let the reverse proxy serve
+   the files (`MEDIA_ACCEL=nginx` or `caddy`); otherwise Python serves them as before, but at most `MEDIA_PY_STREAMS`
+   files at a time.
+5. **Review the admin area:** under General → “Chats” the new limits **Largest video in chats** (default 500 MB) and
+   **Storage for chat attachments per account** (now 4096 instead of 1024 MB – enough space on the volume?); under
+   “Sharing” the new switch **Search by login name** (on by default, see “Sharing and comments”); under “Calls” the
+   devices per group call (4 with video, 6 audio only, can only be lowered) and the **note on the STUN server**: the
+   third-party STUN server entered out of the box sees the callers' IP addresses. For group calls and companion devices
+   your own TURN server over port 443 is recommended (section 9, “TURN over port 443”).
+6. **Sign-in:** wrong passwords now only slow down the address they come from; a hard lock only happens after very many
+   attempts from many addresses, and you lift it on the account with “Lift lock” (section 12). Removing or adding a
+   second factor and new recovery codes need a fresh confirmation (section 9, “Passkeys and two-factor sign-in”).
+7. **New `.env` settings** – all optional (section 13): `SAGA_MEDIA`, `MEDIA_*` (e.g. `MEDIA_MAX_CONNS_IP`,
+   `MEDIA_IDLE_UNAUTH`, `MEDIA_STALL_TIMEOUT`, `MEDIA_AUTHZ_TTL`, `MEDIA_ACCEL`, `MEDIA_PY_STREAMS`), `VIDEO_MAX_MB`,
+   `CHAT_QUOTA_MB` (new default 4096), `CHAT_OFFLINE_GRACE`.
+8. **Apps:** apps 2.4 are recommended ([Saga apps](https://github.com/yggdrasil-sh/saga-apps/releases)) – with videos,
+   group calls, another device in the call and read receipts. Apps 2.3 and 2.1 keep working, just without these
+   features; group calls show “needs Saga 2.4” there, large videos appear as an attachment “Open with Saga 2.4”.
+   Connected servers on 2.3 stay connected; group calls, read/online and large videos only work between servers on 2.4.
+
+**Way back 2.4 → 2.3:** only via the backup from before the update (`…-vor-schema-14.dump`), restored **with 2.4**,
+then `SAGA_VERSION=2.3` – see below. 2.3 doesn't start on schema version 14.
+
 **Way back 2.3 → 2.1:** only via the backup from before the update (`…-vor-schema-9.dump`) – see below. On the changed
 database 2.1 reports “Die Datenbank hat Schema-Stand 9, diese Saga-Version kennt nur 6” and doesn't start.
 
 **Going back to the previous version:** An older Saga will not start on a database that a newer version has
-already changed (it reports this in the log instead of damaging data). This applies to **2.3 → 2.1** (backup
+already changed (it reports this in the log instead of damaging data). This applies to **2.4 → 2.3** (backup `…-vor-schema-14.dump`), **2.3 → 2.1** (backup
 `…-vor-schema-9.dump`) and to **2.1 → 2.0.x**: 2.1
 raises the schema version to 6 (backup `…-vor-schema-6.dump`), and 2.0.x then stops with "Die Datenbank hat
 Schema-Stand 6, diese Saga-Version kennt nur 5" – otherwise 2.0 would keep running and let accounts with a second

@@ -28,14 +28,15 @@
 
 ![Saga Dashboard](docs/screenshots/dashboard.png)
 
-> **Neu in Saga 2.3:** deutlich schneller bei vielen Seiten und großen Datenbanken (z. B. Seitenbaum neu laden bei
-> 60.000 Einträgen 0,05 statt 1 s, Datenbank mit 2.000 Zeilen bedienbar nach 0,6 statt 12 s, 80–90 % weniger Daten
-> durch Kompression), **Föderation komplett** – Personen verbundener Server über ihren Namen finden,
-> Ende-zu-Ende-verschlüsselte Chats und Anrufe über Servergrenzen, geteilte Seiten samt Datenbanken, Unterseiten und
-> Uploads gemeinsam bearbeiten –, **verschlüsselte Backups** nach S3, in einen Ordner oder auf Nextcloud/WebDAV plus
-> **persönliche Backups** für jede Person und **Nextcloud-Dateien in Seiten**.
-> Seit 2.1: Passkeys und Zwei-Faktor-Anmeldung, Profilbilder, Audio- und Videoanrufe, KI-Assistent mit eigenem Namen
-> und Websuche, fünf Sprachen. Alles Weitere im [Changelog](CHANGELOG.md).
+> **Neu in Saga 2.4:** **Videos im Chat** mit Vorschaubild, Streaming und fortsetzbarem Upload (standardmäßig bis 500 MB,
+> Ende-zu-Ende-verschlüsselt), **Gruppenanrufe** (bis 4 Geräte mit Video bzw. 6 nur mit Ton), **Bildschirm teilen mit
+> Kamera daneben**, **Bild-im-Bild** und **Anruf aufs andere Gerät übergeben** oder ein Gerät dazuholen,
+> **Gelesen-Haken und Online-Status** (abschaltbar) und der neue Medienpfad **saga-media**: Chat-Anhänge laufen nicht
+> mehr durch Python (20 × 10 MB parallel 0,22 statt 0,67 s; 1 GB Video hochladen kostet Python 0,06 % eines Kerns).
+> Dazu mehr Schutz: Fehlversuche bremsen statt Konten zu sperren, Anmeldenamen bleiben privat, Gravatar nur mit
+> Einwilligung.
+> Seit 2.3: deutlich schneller bei großen Datenbanken, Föderation mit Chats und Anrufen über Servergrenzen,
+> verschlüsselte Backups, Nextcloud-Dateien in Seiten. Alles Weitere im [Changelog](CHANGELOG.md).
 
 ## Funktionen
 
@@ -50,10 +51,12 @@
   lesbar, ohne JavaScript, optional als Startseite für Besucher
 - **Teilen und Kommentieren:** Seiten und Datenbanken mit Personen oder Gruppen (lokal, LDAP, SSO) teilen – Rollen
   Lesen, Kommentieren, Bearbeiten, Unterseiten erben die Freigabe; dezente Kommentare am Block mit „Erledigt“
-- **Chats mit Ende-zu-Ende-Verschlüsselung:** Direkt-, Gruppen- und Seiten-Chats mit Anhängen, Antworten und
+- **Chats mit Ende-zu-Ende-Verschlüsselung:** Direkt-, Gruppen- und Seiten-Chats mit Anhängen, Videos (Streaming,
+  fortsetzbarer Upload), Gelesen-Haken, Online-Status, Antworten und
   @-Seitenverweisen; der Server (und der Admin) sieht nur verschlüsselte Daten – libsodium, Wiederherstellungsschlüssel,
   Sicherheitsnummern, mehrere Geräte; Chats archivieren oder löschen (nur für mich oder für alle)
-- **Audio- und Videoanrufe:** aus dem Direkt-Chat, mit Bildschirm teilen – WebRTC zwischen den Geräten,
+- **Audio- und Videoanrufe:** im Direkt-Chat und als Gruppenanruf, mit Bildschirm teilen, Bild-im-Bild und Übergabe
+  an ein anderes eigenes Gerät – WebRTC zwischen den Geräten,
   Ende-zu-Ende verschlüsselt und mit den Chat-Schlüsseln geprüft, kein zusätzlicher Port (optional TURN über 443)
 - **Benachrichtigungen und Mitteilungen:** Glocke mit Live-Aktualisierung; auf Wunsch aufs Handy/Desktop per Web Push
   (Ende-zu-Ende verschlüsselt, auch iPhone als Home-Bildschirm-App), ntfy/UnifiedPush oder Apple Push – ohne Inhalte
@@ -108,8 +111,9 @@ docker compose pull && docker compose up -d
 ```
 
 **Update:** `git pull && docker compose pull && docker compose up -d` – vor Datenbank-Änderungen legt Saga
-automatisch ein Backup an. Von 1.x auf 2.x: vorher `SAGA_VERSION=2` in der `.env` setzen. 2.3 baut die Datenbank um (Schema-Stand 9; zurück auf
-2.1 nur über das automatische Backup – Anleitung, Abschnitt 11). Was neu ist, steht im **[Changelog](CHANGELOG.md)**. Neugierig auf das Neueste?
+automatisch ein Backup an. Von 1.x auf 2.x: vorher `SAGA_VERSION=2` in der `.env` setzen. 2.4 baut die Datenbank um (Schema-Stand 14; zurück auf
+2.3 nur über das automatische Backup) und schaltet Gravatar für alle Konten aus – was beim Update von 2.3 zu beachten
+ist, steht in der Anleitung, Abschnitt 11 „Von 2.3 auf 2.4“. Was neu ist, steht im **[Changelog](CHANGELOG.md)**. Neugierig auf das Neueste?
 `SAGA_VERSION=testing` in der `.env` holt die Testversion aus dem Branch `testing`. Bilder und Dateien der Seiten
 stecken nicht im Datenbank-Backup: das Volume `saga-data` sichern oder
 `docker compose exec saga python run.py backup --dateien`.
@@ -138,7 +142,10 @@ Alles Weitere – Reverse Proxy, Benutzer, Dienste, LDAP, SSO, Kalender, Sicheru
 ## Aufbau
 
 ```
-Browser / Apps ──► Saga (Python, FastAPI)  :8080  Dashboard, Seiten, API
+Browser / Apps ──► saga-media (Go)        :8080  liefert Chat-Anhänge und Videos direkt von der Platte
+                        │
+                        ▼
+                   Saga (Python, FastAPI)         Dashboard, Seiten, API (im Container intern auf 127.0.0.1:8079)
                    Admin-Bereich           :8081  eigene Anmeldung, nur Admins
                         │
                         ├── PostgreSQL     Konten, Seiten, Aufgaben, Einstellungen
@@ -148,7 +155,9 @@ Browser / Apps ──► Saga (Python, FastAPI)  :8080  Dashboard, Seiten, API
 
 ## Sicherheit in Kürze
 
-- Passwörter mit scrypt, Sperre nach wiederholten Fehlversuchen, CSRF-Schutz, strenge Content-Security-Policy
+- Passwörter mit scrypt, Fehlversuche bremsen nur die angreifende Adresse (niemand kann Fremde aussperren), CSRF-Schutz,
+  strenge Content-Security-Policy
+- Anmeldenamen bleiben privat: andere sehen Anzeigename, öffentlichen Namen oder einen Handle
 - Kalender-, Immich-, LDAP- und SSO-Zugangsdaten verschlüsselt in der Datenbank (Schlüssel: `SECRET_KEY`)
 - Backups mit öffentlichen Schlüsseln verschlüsselt (age) – der Server hat nie den privaten Schlüssel
 - Benutzerdaten strikt getrennt – automatisch getestet (`tests/isolation.py`)

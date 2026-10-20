@@ -178,12 +178,21 @@ Er lauscht auf dem bisherigen Port 8080 und leitet alles an Saga weiter – mit 
 So laufen keine Dateibytes mehr durch Python, und viele gleichzeitige Downloads bremsen den Server nicht. Wer was sehen
 darf, entscheidet weiterhin Saga: saga-media fragt je Datei und Sitzung einmal nach und merkt sich die Antwort höchstens
 60 Sekunden. Wird jemand aus einem Chat entfernt oder eine Nachricht gelöscht, wirkt das also spätestens nach einer Minute
-(eine gelöschte Datei sofort).
+(eine gelöschte Datei sofort). Auch die Teile großer Video-Uploads (Abschnitt 9, „Videos“) schreibt saga-media direkt
+auf die Platte; Python legt nur die Metadaten an.
 
 - **Nichts einzurichten:** kein neuer Port, keine Änderung am Reverse Proxy, `TRUSTED_PROXIES` gilt wie bisher.
   Saga selbst lauscht im Container nur noch intern auf `127.0.0.1:8079` (`MEDIA_INTERNAL_PORT`).
 - **Abschalten:** `SAGA_MEDIA=off` in der `.env` – dann läuft Saga wie bis 2.3 direkt auf Port 8080.
 - Der Admin-Bereich zeigt auf der Übersicht unter „Medien“, wie Chat-Anhänge ausgeliefert werden.
+- **Grenzen (meist nichts zu ändern):** Je Client-Adresse höchstens `MEDIA_MAX_CONNS_IP` (Standard 256) offene
+  Verbindungen – IPv6 zählt je /64-Netz, vertraute Proxys aus `TRUSTED_PROXIES` sind ausgenommen. Ist die Grenze
+  erreicht, schließt saga-media zuerst die am längsten ruhende Verbindung dieser Adresse, statt neue warten zu lassen;
+  so kann niemand mit ruhenden Verbindungen andere aussperren. Verbindungen ohne bestätigte Anmeldung enden nach
+  `MEDIA_IDLE_UNAUTH` (10 s) Leerlauf, stockende Up- und Downloads nach `MEDIA_STALL_TIMEOUT` (60 s), Kopfzeilen
+  müssen nach 15 s da sein. Dazu kommen Obergrenzen für alle Verbindungen und gleichzeitige Downloads
+  (`MEDIA_MAX_CONNS`, `MEDIA_MAX_STREAMS`, `MEDIA_MAX_STREAMS_IP`). Wichtig: Läuft ein Reverse Proxy davor, muss er in
+  `TRUSTED_PROXIES` stehen – sonst zählen alle Besucher als eine Adresse. Alle Werte in Abschnitt 13.
 
 **Ohne Container** (Saga direkt mit `python run.py`): Entweder saga-media selbst bauen und davor starten
 (`cd media && CGO_ENABLED=0 go build -o saga-media .`, dann `saga-media -- python run.py` mit denselben Umgebungsvariablen),
@@ -270,6 +279,10 @@ Unter **Benutzer** legst du Konten an, setzt Passwörter, vergibst Gruppen und A
   anlegen“ aus, legst du sie hier vorab mit der Kontoart LDAP bzw. SSO an.
 - **Sperren** beendet sofort alle Sitzungen, App-Anmeldungen und App-Schlüssel des Kontos.
 - **Überall abmelden** hilft bei einem verlorenen Gerät.
+- **Sperre aufheben** (ab 2.4): Falsche Passwörter bremst Saga nur für die Adresse, von der sie kommen. Erst bei sehr
+  vielen Fehlversuchen von vielen Adressen sperrt Saga die Passwort-Anmeldung eines Kontos für eine Stunde – dann steht
+  „Anmeldung gesperrt“ auf der Übersicht, in der Benutzerliste und beim Konto, und du hebst die Sperre dort auf
+  (**Passwort setzen** hebt sie ebenfalls auf). Einzelheiten in Abschnitt 12, „Zu viele Fehlversuche“.
 - **2FA zurücksetzen** (Karte „Zweiter Faktor“): entfernt Passkeys, Authenticator-App und Wiederherstellungscodes
   eines Kontos – nur, wenn die Person alles verloren hat und du sicher bist, dass sie es ist. Wer wann
   zurückgesetzt hat, steht im Log und auf der Benutzerseite.
@@ -488,7 +501,8 @@ Adresse blass und noch ohne Link, und die Optionen stehen unter „Gilt, sobald 
 
 - **Öffentlicher Name:** Beim ersten Mal wählst du einen öffentlichen Namen (vorgeschlagen aus deinem
   Anzeigenamen, 2–32 Zeichen `a–z 0–9 - _`). Er steht in jeder Adresse und ist für alle sichtbar – er ist **nie**
-  dein Anmeldename. Ändern unter Einstellungen → Konto im eigenen Block „Öffentlicher Name“ (mit eigenem Knopf
+  dein Anmeldename (ab 2.4 lässt sich der Anmeldename auch nicht mehr als öffentlicher Name wählen; wer ihn früher
+selbst so gewählt hat, behält ihn und sieht in den Einstellungen einen Hinweis). Ändern unter Einstellungen → Konto im eigenen Block „Öffentlicher Name“ (mit eigenem Knopf
   „Namen speichern“; Saga prüft schon beim Tippen, ob der Name gültig und frei ist, und zeigt „Neue Adresse: …
   (bisher …)“); alte Links funktionieren danach nicht mehr. Namen wie `admin`, `api` oder `login` sind gesperrt.
 - **Adresse:** `https://saga.example.org/@name/seiten-adresse`. Die Seiten-Adresse wird aus dem Titel
@@ -558,9 +572,12 @@ blog.example.org {
 
 Seiten und Datenbanken lassen sich mit **anderen Konten** und **Gruppen** derselben Saga-Instanz teilen. Knopf
 **„Teilen“** oben rechts über der eigenen Seite (oder Seitenmenü **⋯** → „Teilen …“): Person oder Gruppe suchen
-(ab 3 Zeichen auch Teile von Namen, bei 1–2 Zeichen nur genaue Treffer wie „hd“; angezeigt werden Anzeigename und
-Benutzername, nie eine Liste aller Konten), Rolle wählen und den
-Treffer anklicken. Gruppen bietet der Dialog nur an, wenn du selbst darin bist – lokale Gruppen ebenso wie Gruppen aus
+(ab 3 Zeichen auch Teile von Namen, bei 1–2 Zeichen nur genaue Treffer wie „hd“; nie eine Liste aller Konten), Rolle
+wählen und den Treffer anklicken. Angezeigt werden Anzeigename und darunter der öffentliche Name oder ein **Handle**
+(`~` und 16 Zeichen) – so lassen sich gleichnamige Personen unterscheiden. Den **Anmeldenamen** anderer Konten zeigt
+Saga ab 2.4 nirgends mehr: weder in der Suche noch bei Freigaben, „Mit mir geteilt“, Kommentaren, Benachrichtigungen,
+Anwesenheit, Versionen oder in Chat-Mitgliederlisten. Gefunden wird eine Person über Anzeigenamen, öffentlichen Namen,
+den genauen Handle und – solange der Admin es erlaubt – den genau eingegebenen Anmeldenamen (siehe unten). Gruppen bietet der Dialog nur an, wenn du selbst darin bist – lokale Gruppen ebenso wie Gruppen aus
 LDAP oder SSO; bei leerem Suchfeld stehen sie als Chips „Deine Gruppen:“ bereit. Unter dem Feld steht, was die
 gewählte Rolle darf. In der Liste darunter änderst du die Rolle oder entfernst eine Freigabe (mit Rückfrage; der
 Zugriff endet sofort). Die Liste zeigt die tatsächliche Rolle: Hat jemand über eine Gruppe mehr Rechte, steht das
@@ -627,8 +644,12 @@ wirken sofort nicht mehr, bleiben aber gespeichert) und **Nur innerhalb gemeinsa
 Personensuche und Teilen nur mit Konten, die mit einem eine Gruppe gemeinsam haben; wirkt nur auf neue Freigaben –
 bestehende bleiben, wenn du es später einschaltest). **Suche nach Anmeldename** (Standard an): Personensuche, Teilen
 und Chats finden ein Konto auch über den genau eingegebenen Anmeldenamen – nie über Teile davon. Aus: nur über
-Anzeigenamen, öffentlichen Namen oder Kennung; dann lässt sich nicht ausprobieren, welche Anmeldenamen es gibt, aber
-Konten ohne eigenen Anzeigenamen findet man nur noch über ihren öffentlichen Namen. Gruppen aus LDAP oder SSO übernimmt Saga bei der Anmeldung:
+Anzeigenamen, öffentlichen Namen oder Handle; dann lässt sich nicht ausprobieren, welche Anmeldenamen es gibt, aber
+Konten ohne eigenen Anzeigenamen findet man nur noch über ihren öffentlichen Namen. Auch Teilen und „Chat beginnen“
+nehmen einen Anmeldenamen dann nur noch für Personen, mit denen man schon chattet bzw. an die man schon geteilt hat.
+Grenze: Wer mit einem Konto chatten darf, erfährt beim Anlegen eines Direkt-Chats technisch dessen Anmeldenamen (die
+Chat-Schlüssel hängen daran), auch wenn die Oberfläche ihn nicht zeigt; einschränken lässt sich das nur mit „Nur
+innerhalb gemeinsamer Gruppen“. Gruppen aus LDAP oder SSO übernimmt Saga bei der Anmeldung:
 Ändert sich die Mitgliedschaft dort, gilt das für Freigaben an Gruppen erst ab der nächsten Anmeldung des Kontos.
 Das Benutzer-Detail zeigt nur
 die Anzahl der Freigaben, keine Inhalte. Wird ein Konto gelöscht, verschwinden seine Freigaben und die an das Konto;
@@ -894,7 +915,8 @@ für eigene Clients: `tests/chat_vectors.json` (prüfen mit `python3 tools/chat_
 
 ### Anrufe (Audio, Video, Bildschirm)
 
-Im **Direkt-Chat** stehen oben zwei Knöpfe: **📞 Anrufen** und **🎥 Videoanruf**. Saga verbindet die beiden Geräte
+Im **Direkt-Chat** stehen oben zwei Knöpfe: **📞 Anrufen** und **🎥 Videoanruf** (in Gruppen-, freien und Seiten-Chats
+starten sie ab 2.4 einen Gruppenanruf, siehe unten). Saga verbindet die beiden Geräte
 direkt (WebRTC) – die Medien laufen nicht über den Saga-Server und sind **Ende-zu-Ende verschlüsselt**. Kein
 zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-Kanal + normale Anfragen).
 
@@ -906,7 +928,14 @@ zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-
 - **Im Anruf:** großes Bild des Gegenübers, kleines eigenes Bild, **Stummschalten**, **Kamera an/aus** (auch in
   einem Audioanruf nachträglich), **Bildschirm teilen** (am Computer), **Auflegen**, „▭“ verkleinert das Fenster in
   eine Ecke (weiter im Chat schreiben). Oben stehen Dauer, Verbindungsqualität und der Weg: **direkt** oder **über
-  Relais (TURN)**, und „🔒 Ende-zu-Ende verschlüsselt“, sobald die Prüfung (unten) geklappt hat.
+  Relais (TURN)**, und „🔒 Ende-zu-Ende verschlüsselt“, sobald die Prüfung (unten) geklappt hat. Ab 2.4 legt Saga bei
+  einem Verbindungsabbruch oder Netzwechsel (WLAN ↔ Mobilfunk) nicht mehr auf, sondern verbindet neu (bis zu drei
+  Versuche in 20 Sekunden), und passt die Bitrate dem Weg an (direkt, Relais per UDP oder per TCP über Port 443).
+- **Bild-im-Bild (ab 2.4, Web):** Der Knopf **Bild-im-Bild** im Anruffenster holt das Gespräch in ein kleines Fenster,
+  das über anderen Programmen liegt. In Chrome und Edge ist das ein eigenes Fenster mit Stummschalten, Zurück und
+  Auflegen, in anderen Browsern das Video-Bild-im-Bild des Browsers. Kann der Browser beides nicht (z. B. Firefox),
+  fehlt der Knopf. Solange das Gegenüber dich nur klein sieht (Bild-im-Bild, Tab im Hintergrund), sendet dein Gerät
+  mit weniger Bitrate (höchstens 300 kbit/s) – das spart Leitung und Akku.
 - **Bildschirm teilen (ab 2.4):** Vor dem ersten Teilen erinnert Saga daran, dass alles in der Auswahl sichtbar ist –
   auch Benachrichtigungen und andere Fenster (Tipp: nur ein Fenster oder einen Tab teilen). Solange geteilt wird, steht
   oben eine rote Leiste „Du teilst deinen Bildschirm“ mit **Teilen beenden**. Haben beide Saga 2.4, läuft die Kamera weiter: das
@@ -920,7 +949,8 @@ zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-
 - **Gruppenanrufe (ab 2.4):** In Gruppen-, freien und Seiten-Chats beginnen 📞/🎥 einen **Gruppenanruf**. Alle Mitglieder
   mit Saga 2.4 klingeln (in Chats mit mehr als 8 Mitgliedern nur still „Gruppenanruf läuft – Beitreten“), man kann
   jederzeit beitreten und gehen; der Anruf läuft, solange mindestens zwei dabei sind. Höchstens **4 Geräte mit Video**
-  bzw. **6 nur mit Ton** (eigene Zusatzgeräte zählen mit). Jede Person erscheint als Kachel, wer spricht, ist grün
+  bzw. **6 nur mit Ton** (eigene Zusatzgeräte zählen mit; der Admin kann die Grenzen unter Allgemein → „Anrufe“ nur
+  senken). Jede Person erscheint als Kachel, wer spricht, ist grün
   umrandet; Bildschirm teilen geht wie im Direkt-Chat. Ende-zu-Ende verschlüsselt wie bisher (jede Verbindung einzeln,
   der Server sieht nichts). Wer noch eine ältere App hat, sieht „braucht Saga 2.4“; über Servergrenzen geht es nur, wenn
   alle beteiligten Saga-Server 2.4 haben.
@@ -928,7 +958,8 @@ zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-
   Eintrag „Verpasster Anruf“ (mit „Zurückrufen“), dazu eine Benachrichtigung „Verpasster Anruf von Name“ (abschaltbar
   unter Benachrichtigungen bzw. Mitteilungen → „Anrufe“). Auch beendete, abgelehnte und besetzte Anrufe stehen im Chat.
 - **Besetzt:** Wer gerade telefoniert, bekommt keinen zweiten Anruf – der Anrufende sieht „Besetzt“.
-- **Wer darf anrufen?** Nur die beiden Personen eines Direkt-Chats, beide mit eingerichteten Chats. Stummgeschaltete
+- **Wer darf anrufen?** Im Direkt-Chat nur die beiden Personen, im Gruppenanruf die Mitglieder des Chats – jeweils mit
+  eingerichteten Chats. Stummgeschaltete
   Chats klingeln nicht aufs Handy. Gegen Klingel-Spam: höchstens 3 Anrufe je Minute an dieselbe Person.
 - **Kamera/Mikrofon:** Der Browser fragt beim ersten Anruf. Wurde es verweigert, erklärt Saga, wo man es wieder
   erlaubt (Schloss-Symbol neben der Adresse). Anrufe brauchen `https`.
@@ -937,8 +968,11 @@ zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-
 fragen die Geräte einen **STUN-Server** nach ihrer öffentlichen Adresse (Standard: `stun:stun.nextcloud.com:443`).
 **Datenschutz:** Der STUN-Server sieht bei jedem Anruf die IP-Adresse der Anrufenden. Ab Werk ist das ein fremder
 Server (Nextcloud), damit Anrufe hinter Routern sofort klappen; der Admin-Bereich weist unter „Anrufe“ darauf hin.
-Empfehlung: einen eigenen TURN/STUN-Server betreiben (coturn, siehe „TURN über Port 443“ unten) und ihn als STUN- und
-TURN-Server eintragen.
+**Empfehlung: einen eigenen TURN/STUN-Server über Port 443 betreiben** (coturn, siehe „TURN über Port 443“ unten) und
+ihn als STUN- und TURN-Server eintragen. Seit 2.4 lohnt sich das noch mehr: Im Gruppenanruf verbindet sich jedes Gerät
+mit jedem, mit Begleitgeräten kommen weitere Verbindungen dazu – je mehr Verbindungen, desto eher scheitert eine ohne
+TURN. Über TURN per TCP auf Port 443 sendet Saga mit angepasster Bitrate (beim Bildschirmteilen pausiert die Kamera
+daneben).
 Hinter strengen Firmen-Firewalls, in manchen Mobilfunknetzen (CGNAT) oder wenn eine Seite nur Port 443 nach außen darf,
 braucht es einen **TURN-Server**, der die Medien weiterreicht (weiterhin verschlüsselt – der TURN-Server kann nicht
 mithören). Ohne ihn sehen die Personen „Direktverbindung nicht möglich … Der Admin kann einen TURN-Server eintragen.“
@@ -1060,10 +1094,16 @@ bekommen sie mit `?calls=1`. Push: Art `call` mit hoher Priorität und kurzer Le
 iOS-/macOS-App zusätzlich Apple-VoIP-Push (PushKit, Abo-Typ `apns-voip`, Topic `<Bundle-ID>.voip`). Das Zugriffs-Log
 enthält für `/api/calls…` keine IP-Adressen.
 
-**Später (Gruppenanrufe):** geplant als Mesh bis etwa 4 Personen im Gruppen-Chat (jede Person baut zu jeder anderen
-eine eigene, ebenso geprüfte Verbindung auf; Signalisierung wie oben je Paar). Darüber bräuchte es einen
-Weiterleitungs-Server (SFU) mit zusätzlicher Inhaltsverschlüsselung (Insertable Streams/SFrame) – das ist bewusst noch
-nicht Teil von Saga.
+**Technik ab 2.4 (`saga-call` v3, Gruppen):** Anrufe lassen sich während des Gesprächs neu aushandeln (zweite Videospur
+fürs Teilen, neues Gerät, Neuverbindung nach Netzwechsel); Signatur und Verschlüsselung bleiben wie oben. Jeder Anruf ist
+ein Raum mit Endpunkten je Gerät; ein 1:1-Anruf ist der Raum mit zwei Geräten. Gruppenanrufe laufen als **Mesh**: Jedes
+Gerätepaar baut eine eigene, DTLS-SRTP-verschlüsselte Verbindung auf, Signale werden je Zielgerät versiegelt und
+signiert, jedes neue Gerät wird gegen die signierte Geräteliste seiner Person geprüft (unbekannte lehnt Saga ab). Der
+Server leitet nur die Signale weiter (sternförmig über den Server, der den Anruf führt – auch zwischen Servern, die nicht
+direkt verbunden sind) und sieht weder SDP noch Medien. Deshalb die Grenze von 4 Geräten mit Video bzw. 6 nur mit Ton;
+für größere Runden bräuchte es einen Weiterleitungs-Server (SFU) mit zusätzlicher Inhaltsverschlüsselung – das ist noch
+nicht Teil von Saga. Schnittstelle für Apps: `docs/APP-API.md`, Abschnitte „Anrufe: saga-call v3“, „Anrufe: Bildschirm
+v2“ und „Anrufe: Mehrgeräte und Gruppen“.
 
 ### Mitteilungen aufs Handy und den Computer
 
@@ -1224,9 +1264,14 @@ Passwort (SSO-Konten machen das beim Anmeldedienst, siehe unten):
 Dieser Zwischenschritt gilt 5 Minuten und nur in diesem Browser; nach 5 falschen Codes ist für 15 Minuten Pause.
 Einen „Diesem Browser vertrauen“-Haken gibt es bewusst nicht.
 
-**Bestätigen vor Änderungen:** Passkeys hinzufügen/löschen, die Authenticator-App ändern oder neue Codes erzeugen
-geht nur innerhalb von 5 Minuten nach der Anmeldung – sonst fragt Saga vorher nach Passwort, Code oder Passkey.
-Dasselbe gilt für „Chats neu beginnen“: dort reichen jetzt auch Passkey oder Code statt des Passworts.
+**Bestätigen vor Änderungen (ab 2.4 strenger):** Einen zweiten Faktor **entfernen** (Passkey, Authenticator-App)
+verlangt immer eine ausdrückliche Bestätigung mit Passwort, Code oder Passkey, die höchstens 5 Minuten alt ist – eine
+frische Anmeldung allein reicht nicht. Dieselbe Bestätigung braucht es, um **einen weiteren Faktor hinzuzufügen** oder
+**neue Wiederherstellungscodes** zu erzeugen, sobald das Konto schon einen Passkey oder eine Authenticator-App hat; nur
+die Ersteinrichtung geht weiter innerhalb von 5 Minuten nach der Anmeldung. Ein Faktor, der erst nach der Anmeldung
+dieser Sitzung dazukam, zählt dabei nicht und wird im Dialog nicht angeboten. So kann jemand, der eine fremde Sitzung
+übernommen hat, keinen eigenen Passkey anlegen und damit die echten Faktoren entfernen. Saga fragt im Web von selbst
+nach und macht danach weiter. „Chats neu beginnen“ lässt sich ebenso mit Passwort, Passkey oder Code bestätigen.
 
 **Apps:** Die Anmeldung in den Apps läuft über die Anmeldeseite von Saga im System-Browserfenster – dort erscheint
 der zweite Schritt genauso, Passkeys funktionieren darin auf iPhone, iPad, Mac und Android. Bereits angemeldete
@@ -1562,8 +1607,8 @@ Welche Version läuft, bestimmt `SAGA_VERSION` in der `.env`:
 | Wert | Bedeutung |
 |---|---|
 | `2` (Standard) | immer die neueste 2.x – neue Funktionen und Fehlerbehebungen, nichts, was Handarbeit braucht |
-| `2.3` | nur Fehlerbehebungen von 2.3 |
-| `2.3.0` | genau diese Version |
+| `2.4` | nur Fehlerbehebungen von 2.4 |
+| `2.4.0` | genau diese Version |
 | `1` | bleibt bei der neuesten 1.x (1.2) – ältere Installationen haben diesen Wert noch in der `.env` |
 | `testing` (oder `rc`) | **Release Candidate:** das Neueste aus dem Branch `testing`, noch vor dem Release. Kann Fehler haben – nur zum Ausprobieren |
 
@@ -1592,10 +1637,10 @@ sichert (siehe oben), braucht den Schalter nicht.
 
 **Release Candidates (Kanal `testing`):** Mit `SAGA_VERSION=testing` (gleichwertig: `rc`) bekommst du neue
 Funktionen, sobald sie fertig sind – noch vor dem Release. Jeder Stand ist ein Release Candidate der nächsten
-Version, z. B. `2.4.0-rc.7` (7 Änderungen seit dem letzten Release; unten im Admin-Bereich als
-„2.4.0-rc.7 (1cc210f)“ mit 🧪 Release Candidate, dahinter der Commit). Ein Release Candidate ist immer neuer als
-die stabile Version davor (2.3.0 < 2.4.0-rc.7 < 2.4.0): Der Hinweis auf neue Versionen meldet sich erst, wenn
-2.4.0 erschienen ist. Ältere Testversionen hießen `x.y.z-testing.<commit>`. Zurück zur
+Version, z. B. `2.5.0-rc.7` (7 Änderungen seit dem letzten Release; unten im Admin-Bereich als
+„2.5.0-rc.7 (1cc210f)“ mit 🧪 Release Candidate, dahinter der Commit). Ein Release Candidate ist immer neuer als
+die stabile Version davor (2.4.0 < 2.5.0-rc.7 < 2.5.0): Der Hinweis auf neue Versionen meldet sich erst, wenn
+2.5.0 erschienen ist. Ältere Testversionen hießen `x.y.z-testing.<commit>`. Zurück zur
 stabilen Version: `SAGA_VERSION=2`, `docker compose pull && docker compose up -d`. Hat die Testversion die
 Datenbank schon umgebaut, startet die stabile Version erst, wenn sie diesen Umbau ebenfalls enthält (spätestens
 mit dem nächsten Release) – oder du spielst das Backup von vor dem Wechsel zurück.
@@ -1644,11 +1689,51 @@ Reverse Proxy für den Live-Kanal prüfen (Abschnitt 3). Alles Weitere steht im 
    Föderations-Chats und -Anrufen, Teilen über Servergrenzen und „Mein Backup“. Apps 2.1 laufen weiter, nur ohne diese
    Funktionen; Chats mit Personen anderer Server zeigen sie mit „bitte App aktualisieren“.
 
+**Von 2.3 auf 2.4:** Mit `SAGA_VERSION=2` kommt 2.4 beim normalen Update. Was dabei passiert und worauf du achten
+solltest:
+
+1. **Vorher sichern (empfohlen):** Saga legt vor dem Umbau selbst ein Backup an; ein zusätzliches mit Dateien schadet
+   nicht: `docker compose exec saga python run.py backup --dateien` (oder „Jetzt sichern“ bei den verschlüsselten
+   Backups).
+2. **Aktualisieren** wie oben (`git pull`, `docker compose pull`, `docker compose up -d`). Die Datenbank geht von
+   Schema-Stand 9 auf **14** (Migrationen 10–14: Anrufe, Videos, Anruf als Raum, Gelesen/Online, Nachbesserungen; vorher
+   Backup `…-vor-schema-14.dump` in `/data/backups`). Backups von 2.3 lassen sich mit 2.4 weiter einspielen.
+3. **Gravatar ist danach für alle Konten aus.** Bis 2.3 war „Gravatar verwenden“ ab Werk an, das war keine
+   Einwilligung. Das Update schaltet es deshalb für alle ab und löscht zwischengespeicherte Gravatar-Bilder; wer Gravatar
+   möchte, schaltet es unter Einstellungen → Konto → Profilbild neu ein. Eigene Bilder und Bilder vom Anmeldedienst bleiben.
+   Am besten die Personen kurz informieren.
+4. **Neu im Container: saga-media.** Chat-Anhänge und Videos liefert ab jetzt der kleine Dienst saga-media aus
+   (Abschnitt 3, „Medienpfad“) – kein neuer Port, nichts am Reverse Proxy zu ändern; nur `TRUSTED_PROXIES` muss wie
+   bisher stimmen. Zurück zum alten Weg mit `SAGA_MEDIA=off`. **Ohne Container** (Saga direkt mit Python) gibt es zwei
+   Ersatzwege: saga-media selbst bauen und davor starten oder den Reverse Proxy ausliefern lassen (`MEDIA_ACCEL=nginx`
+   bzw. `caddy`); sonst liefert Python wie bisher, aber höchstens `MEDIA_PY_STREAMS` Dateien gleichzeitig.
+5. **Admin-Bereich durchsehen:** unter Allgemein → „Chats“ die neuen Grenzen **Größtes Video im Chat** (Standard
+   500 MB) und **Speicher für Chat-Anhänge je Konto** (jetzt 4096 statt 1024 MB – genug Platz auf dem Volume?); unter
+   „Teilen“ den neuen Schalter **Suche nach Anmeldename** (Standard an, siehe „Teilen und Kommentieren“); unter
+   „Anrufe“ die Geräte je Gruppenanruf (4 mit Video, 6 nur mit Ton, nur zu senken) und den **Hinweis zum STUN-Server**:
+   Der ab Werk eingetragene fremde STUN-Server sieht die IP-Adressen der Anrufenden. Für Gruppenanrufe und Begleitgeräte
+   empfiehlt sich ein eigener TURN-Server über Port 443 (Abschnitt 9, „TURN über Port 443“).
+6. **Anmeldung:** Falsche Passwörter bremsen jetzt nur die Adresse, von der sie kommen; eine harte Sperre gibt es erst
+   bei sehr vielen Versuchen von vielen Adressen, und du hebst sie beim Konto mit „Sperre aufheben“ auf (Abschnitt 12).
+   Einen zweiten Faktor entfernen oder hinzufügen und neue Wiederherstellungscodes brauchen eine frische Bestätigung
+   (Abschnitt 9, „Passkeys und Zwei-Faktor-Anmeldung“).
+7. **Neue Einstellungen der `.env`** – alle optional (Abschnitt 13): `SAGA_MEDIA`, `MEDIA_*` (u. a.
+   `MEDIA_MAX_CONNS_IP`, `MEDIA_IDLE_UNAUTH`, `MEDIA_STALL_TIMEOUT`, `MEDIA_AUTHZ_TTL`, `MEDIA_ACCEL`,
+   `MEDIA_PY_STREAMS`), `VIDEO_MAX_MB`, `CHAT_QUOTA_MB` (neuer Standard 4096), `CHAT_OFFLINE_GRACE`.
+8. **Apps:** Apps 2.4 empfohlen ([Saga-Apps](https://github.com/yggdrasil-sh/saga-apps/releases)) – mit Videos,
+   Gruppenanrufen, weiterem Gerät im Anruf und Gelesen-Haken. Apps 2.3 und 2.1 laufen weiter, nur ohne diese
+   Funktionen; Gruppenanrufe zeigen dort „braucht Saga 2.4“, große Videos erscheinen als Anhang „Mit Saga 2.4 öffnen“.
+   Verbundene Server mit 2.3 bleiben verbunden; Gruppenanrufe, Gelesen/Online und große Videos gehen nur zwischen
+   Servern mit 2.4.
+
+**Rückweg 2.4 → 2.3:** nur über das Backup von vor dem Update (`…-vor-schema-14.dump`), zurückgespielt **mit 2.4**,
+danach `SAGA_VERSION=2.3` – siehe unten. 2.3 startet auf Schema-Stand 14 nicht.
+
 **Rückweg 2.3 → 2.1:** nur über das Backup von vor dem Update (`…-vor-schema-9.dump`) – siehe unten. 2.1 meldet auf
 der umgebauten Datenbank „Die Datenbank hat Schema-Stand 9, diese Saga-Version kennt nur 6“ und startet nicht.
 
 **Zurück zur vorigen Version:** Eine ältere Saga startet nicht auf einer Datenbank, die schon eine neuere
-Version umgebaut hat (sie meldet das im Log, statt Daten zu beschädigen). So auch bei **2.3 → 2.1** (Backup
+Version umgebaut hat (sie meldet das im Log, statt Daten zu beschädigen). So auch bei **2.4 → 2.3** (Backup `…-vor-schema-14.dump`), bei **2.3 → 2.1** (Backup
 `…-vor-schema-9.dump`) und bei **2.1 → 2.0.x**: 2.1
 hebt den Schema-Stand auf 6 (Backup `…-vor-schema-6.dump`), 2.0.x bricht dann mit „Die Datenbank hat Schema-Stand 6,
 diese Saga-Version kennt nur 5“ ab – sonst liefe 2.0 weiter und ließe Konten mit zweitem Faktor nur mit dem
