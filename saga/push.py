@@ -52,7 +52,7 @@ router = APIRouter()
 E = os.environ
 TYPES = ("webpush", "ntfy", "unifiedpush", "apns", "apns-voip")
 CATS = {"share": ("share.added", "share.role"), "comment": ("comment.new", "comment.reply", "comment.mention"),
-        "chat": ("chat.message",), "publish": ("publish.withdrawn",), "call": ("call", "call.missed"),
+        "chat": ("chat.message",), "publish": ("publish.withdrawn",), "call": ("call", "call.missed", "call.group"),
         "admin": ("backup.failed",)}                 # nur Admin-Konten (Backups, saga/backups.py)
 CALL_TTL = 60                        # klingelnder Anruf: Mitteilung nach einer Minute verwerfen (statt 4 h vorhalten)
 
@@ -475,6 +475,21 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
             return {"title": title(), "body": body, "url": f"/chats#call-{cid}", "tag": "call-" + cid, "kind": kind,
                     "ts": int(created or time.time()), "call": cid, "chat": r[2], "media": r[1], "caller": nm,
                     "ttl": max(5, int(r[3] + _call_ttl() - time.time()))}
+        elif kind == "call.group":
+            # 2.4: Gruppenanruf (saga.calls) - nur solange die Einladung klingelt; aeltere Apps zeigen es als normale
+            # Mitteilung (url oeffnet den Chat), 2.4-Apps lassen es klingeln (call, chat, media, group)
+            cid = re.sub(r"[^0-9a-f]", "", str((data or {}).get("call") or ""))[:32]
+            r = c.execute("SELECT k.state, k.media, k.chat_id, k.created FROM chat_call k JOIN chat_call_invite i ON i.call_id=k.id "
+                          "WHERE k.id=? AND i.who=? AND i.state='ringing'", (cid, uid)).fetchone()
+            if not r or r[0] == "ended":
+                return None
+            nm = notify.names(c, [actor]).get(actor) if actor and names else None
+            video = r[1] == "video"
+            body = (t("Gruppen-Videoanruf von {name}", name=nm) if video else t("Gruppenanruf von {name}", name=nm)) if nm else \
+                (t("Gruppen-Videoanruf – beitreten") if video else t("Gruppenanruf – beitreten"))
+            return {"title": title(), "body": body, "url": f"/chats#call-{cid}", "tag": "call-" + cid, "kind": kind,
+                    "ts": int(created or time.time()), "call": cid, "chat": r[2], "media": r[1], "caller": nm, "group": True,
+                    "ttl": max(5, int(r[3] + _call_ttl() - time.time()))}
         else:
             it = notify.item(c, uid, ref) if ref else None
             if not it or (kind != "publish.withdrawn" and not it["access"]):
@@ -524,7 +539,7 @@ def send(sub, msg):
     try:
         if kind == "webpush" or (kind == "unifiedpush" and p256dh and auth_s):
             h = {"TTL": str(msg.get("ttl") or TTL), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
-                 "Urgency": "high" if msg["kind"] in ("chat.message", "call") else "normal", "Authorization": vapid_header(endpoint)}
+                 "Urgency": "high" if msg["kind"] in ("chat.message", "call", "call.group") else "normal", "Authorization": vapid_header(endpoint)}
             topic = re.sub(r"[^A-Za-z0-9_-]", "", msg.get("tag") or "")[:32]
             if topic:
                 h["Topic"] = topic                                   # neuere ersetzt eine noch nicht abgeholte gleiche
@@ -537,7 +552,7 @@ def send(sub, msg):
             tok = auth._dec(secret) if secret else ""
             if tok:
                 h["Authorization"] = "Bearer " + tok
-            call = msg["kind"] == "call"                              # Anruf: hoechste Prioritaet (ntfy 5), kurze Lebensdauer
+            call = msg["kind"] in ("call", "call.group")              # Anruf: hoechste Prioritaet (ntfy 5), kurze Lebensdauer
             r = _client().post(base + "/", headers=h, content=json.dumps(
                 {"topic": topic, "title": msg["title"], "message": msg["body"], "click": BASE_URL + msg["url"],
                  "tags": ["telephone_receiver" if call else "bell"], "priority": 5 if call else 3},
@@ -564,13 +579,13 @@ def _send_apns(endpoint, msg, voip=False):
         return "fail", "APNs nicht eingerichtet"
     _, env, tok = (endpoint.split(":", 2) + ["", ""])[:3]
     base = (cfg.get("url") or APNS_HOSTS.get(env) or APNS_HOSTS["production"]).rstrip("/")
-    ids = {k: msg[k] for k in ("call", "chat", "media", "caller") if msg.get(k) is not None}
+    ids = {k: msg[k] for k in ("call", "chat", "media", "caller", "group") if msg.get(k) is not None}
     if voip:
         body = dict({"aps": {}, "url": msg["url"], "kind": msg["kind"], "title": msg["title"], "body": msg["body"]}, **ids)
     else:
         body = dict({"aps": {"alert": {"title": msg["title"], "body": msg["body"]}, "sound": "default", "thread-id": msg["tag"]},
                      "url": msg["url"], "kind": msg["kind"]}, **ids)
-        if msg["kind"] == "call":
+        if msg["kind"] in ("call", "call.group"):
             body["aps"]["interruption-level"] = "time-sensitive"
     ttl = int(msg.get("ttl") or TTL)
     for attempt in (0, 1):

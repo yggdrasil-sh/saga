@@ -68,6 +68,8 @@ _FID = re.compile(r"[A-Za-z0-9_-]{22,40}")
 _hits = {}                             # (art, uid) -> [zeiten] fuer Tipp-/Upload-/Such-Bremsen
 # 2.3: Chats ueber Servergrenzen (saga.fed_chat setzt sich hier ein - kein zyklischer Import). Chats mit v=2 laufen dort.
 FED = None
+# 2.4: Anrufe (saga.calls setzt sich hier ein): Zusatzfeld "call" im Chat (Gruppenanruf moeglich, laufender Anruf)
+CALLS = None
 # Kann der anfragende Client saga-chat/v2 (Kopfzeile X-Saga-Chat: 2)? Aeltere Apps sehen foederierte Chats nur mit Hinweis.
 V2_CLIENT = contextvars.ContextVar("saga_chat_v2", default=False)
 
@@ -926,6 +928,8 @@ def _chat_dict(c, uid, ch, mem, m, device, full=False):
             d["title_msg"] = dict(_msg_dict(rows[0], nmt), device=devs.get(rows[0][4]), ident_pub=ids.get(rows[0][3]))
     if full:
         d["max_members"] = MEMBERS_MAX
+        if CALLS is not None:                         # 2.4: Gruppenanruf moeglich? laufender Anruf in diesem Chat?
+            CALLS.chat_extra(c, uid, ch, d)
     if is_fed(ch):                                    # 2.3: Chat ueber Servergrenzen (saga.fed_chat)
         FED.chat_extra(c, uid, ch, d, mem, m)
         if not V2_CLIENT.get():                       # aeltere App: Hinweis statt kaputter Nachrichten
@@ -1750,6 +1754,8 @@ def delete_account(c, uid):
             _changed(c, cid)
     c.execute("UPDATE chat SET created_by=NULL WHERE created_by=?", (uid,))
     c.execute("DELETE FROM chat_call WHERE caller=? OR callee=?", (uid, uid))      # Anrufe (2.1)
+    c.execute("DELETE FROM chat_call_leg WHERE who=?", (uid,))                     # 2.4: Endpunkte/Einladungen in Gruppenanrufen
+    c.execute("DELETE FROM chat_call_invite WHERE who=?", (uid,))
     for tbl in ("chat_identity", "chat_device", "chat_link"):
         c.execute(f"DELETE FROM {tbl} WHERE uid=?", (uid,))
     _rm_blobs(c, fids)

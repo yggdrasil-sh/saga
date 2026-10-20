@@ -30,6 +30,8 @@ Ereignisse (event: ..., data: JSON) - die Rechte werden beim VERSAND geprueft (s
   call.ring        {call_id, chat_id, from, from_device, media, ring_s}   Anruf (2.1, saga.calls) - an das Gegenueber
   call.signal      {call_id, seq, from_device, to_device, sealed}   versiegelt fuer das Zielgeraet (SDP/ICE, der Server liest nichts)
   call.state       {call_id, chat_id, state: active|ended, device?, reason?, status?}   an beide
+  call.roster      {call_id, chat_id, kind, media, state, legs, joinable, join_block, limit}   2.4: Teilnehmerliste (alle Konten des Anrufs)
+  call.invite      {call_id, chat_id, kind, media, from, from_device, ring_s, silent, members}   2.4: Gruppenanruf klingelt
   ai.persona.changed {name, custom_name, avatar, avatar_etag}   (2.1) Name/Bild/Schalter der KI geaendert - an Konten, die die KI nutzen duerfen (bzw. bisher durften)
 Jedes Ereignis ausser hello/reset/bye hat eine id (<boot>-<nummer>); mit Last-Event-ID holt ein neuer Aufbau verpasste
 Ereignisse der letzten 10 Minuten nach. Heartbeat: Kommentarzeile alle ~25 s (haelt Proxys offen).

@@ -141,6 +141,28 @@ try:
     ok("Backup ohne chat_invite einspielbar, naechster Start legt sie an",
        okr and q("SELECT to_regclass('public.chat_invite')")[0][0] is not None)
 
+    # Backup von vor 2.4 E4: ohne chat_call_leg/chat_call_invite (Fremdschluessel auf chat_call) - einspielbar auf einer
+    # Datenbank, die sie (mit Zeilen) hat; der naechste Start legt sie wieder an
+    q("DROP TABLE chat_call_leg, chat_call_invite")
+    old24 = db.backup("sicherung-vor-2-4-e4")
+    made.append(old24)
+    db.init_schema()
+    q("INSERT INTO chat (kind, created) VALUES ('dm', 0)")
+    q("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created) "
+      "SELECT 'f' || repeat('0', 31), max(id), 'a', 'b', 'd', 'audio', 'active', 0 FROM chat")
+    q("INSERT INTO chat_call_leg (call_id, device, who) VALUES ('f' || repeat('0', 31), 'd', 'a')")
+    q("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES ('f' || repeat('0', 31), 'b', 'ringing', 0)")
+    try:
+        db.restore(old24)
+        okr = True
+    except RuntimeError as ex:
+        okr, _ = False, print(str(ex)[:300])
+    gone = q("SELECT to_regclass('public.chat_call_leg'), to_regclass('public.chat_call_invite')")[0]
+    db.init_schema()
+    ok(f"Backup ohne chat_call_leg/chat_call_invite einspielbar (vorher weg {gone}), naechster Start legt sie an",
+       okr and gone == (None, None) and q("SELECT to_regclass('public.chat_call_leg')")[0][0] is not None
+       and q("SELECT count(*) FROM chat_call_leg")[0][0] == 0)
+
     # Kommandozeile wie in der Anleitung (python run.py restore <datei>)
     import subprocess
     q("UPDATE note SET title = 'per run.py weg' WHERE id = 1")

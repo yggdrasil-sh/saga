@@ -1,7 +1,7 @@
 """Anrufe 2.4, Etappe E0 (saga-call v3 im Body, saga/calls.py) - Server-Seite mit PyNaCl als Client (tests/chatlib.py).
 
-Geprueft: GET /api/calls/config meldet body_v 3, features (reneg, pip_hint) und limits; die Foederations-Faehigkeit calls3
-ist noch NICHT gesetzt (kommt mit E4). Faehigkeiten-Hinweis caps beim Anrufen/Annehmen (gefiltert, begrenzt, in GET
+Geprueft: GET /api/calls/config meldet body_v 3, features (reneg, pip_hint, ab E4/E5 multi und group) und limits; die
+Foederations-Faehigkeit calls3 ist ab E4 gesetzt (Raum: tests/anrufe_raum.py). Faehigkeiten-Hinweis caps beim Anrufen/Annehmen (gefiltert, begrenzt, in GET
 sichtbar, nicht bei Unbeteiligten). Neuverhandlung: mehrere offer/answer waehrend des Gespraechs in beide Richtungen,
 gleichzeitige Angebote (Glare - der Server reicht beide weiter, die Clients loesen es per Perfect Negotiation), Reihenfolge
 (seq) bleibt. ICE-Restart-Signalfluss: Angebot mit neuem ice-ufrag, Kandidaten mit usernameFragment vor der Antwort,
@@ -123,14 +123,15 @@ def run():
     ok(f"SCHEMA_VERSION >= 10, Datenbank auf dem Stand ({db.SCHEMA_VERSION}, Datenbank {ver})", db.SCHEMA_VERSION >= 10 and 10 in db.MIGRATIONS
        and ver == db.SCHEMA_VERSION)
     s, cf = req("GET", "/api/calls/config", A.k)
-    ok(f"Konfiguration: body_v 3, features reneg + pip_hint + screen2 ({cf.get('body_v')}, {cf.get('features')})",
-       s == 200 and cf.get("body_v") == 3 and set(cf.get("features") or []) >= {"reneg", "pip_hint", "screen2"} and cf.get("format") == "saga-call/v1")
+    ok(f"Konfiguration: body_v 3, features reneg + pip_hint + screen2 + multi + group ({cf.get('body_v')}, {cf.get('features')})",
+       s == 200 and cf.get("body_v") == 3 and set(cf.get("features") or []) >= {"reneg", "pip_hint", "screen2", "multi", "group"}
+       and cf.get("format") == "saga-call/v1")
     lim = cf.get("limits") or {}
-    ok(f"... limits: Endpunkte 2/2 (E0), Signal-Budget, Rate, Groesse ({lim})",
-       lim.get("endpoints_video") == 2 and lim.get("endpoints_audio") == 2 and lim.get("signals_max") == CL.SIGNALS_MAX
+    ok(f"... limits: Endpunkte 4/6 (Mesh, E4/E5), Signal-Budget, Rate, Groesse ({lim})",
+       lim.get("endpoints_video") == 4 and lim.get("endpoints_audio") == 6 and lim.get("signals_max") == CL.SIGNALS_MAX
        and lim.get("signals_per_min") == CL.SIG_PER_MIN and lim.get("signals_hard") == CL.SIGNALS_HARD and lim.get("sig_rate") == CL.SIG_RATE
        and lim.get("sealed_max") == CL.SEALED_MAX)
-    ok("Foederation: Faehigkeit calls3 noch NICHT angeboten (kommt mit E4), calls2 bleibt", "calls3" not in F.CAPS2 and "calls2" in F.CAPS2)
+    ok("Foederation: Faehigkeit calls3 angeboten (E4/E5), calls2 bleibt", "calls3" in F.CAPS2 and "calls2" in F.CAPS2)
 
     # --- Faehigkeiten-Hinweis ---------------------------------------------------------------------------------------
     sA = A_.Stream(A.k)

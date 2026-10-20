@@ -91,6 +91,12 @@
     <label class="adm-field"><span>{{ _("Klingeldauer (Sekunden)") }}</span>
       <input class="hk-in" type="number" name="calls_ring_s" min="15" max="120" value="{{ st.calls.ring_s or 45 }}">
       <small>{{ _("Danach gilt der Anruf als verpasst (Eintrag im Chat und Benachrichtigung).") }}</small></label>
+    <label class="adm-field"><span>{{ _("Höchstens Geräte je Anruf mit Video") }}</span>
+      <input class="hk-in" type="number" name="calls_endpoints_video" min="2" max="4" value="{{ st.calls.endpoints_video or 4 }}">
+      <small>{{ _("Gruppenanrufe und weitere eigene Geräte (2.4): jedes Gerät sendet an jedes andere (Mesh). 2 bis 4; eigene Zusatzgeräte zählen mit.") }}</small></label>
+    <label class="adm-field"><span>{{ _("Höchstens Geräte je Anruf nur mit Ton") }}</span>
+      <input class="hk-in" type="number" name="calls_endpoints_audio" min="2" max="6" value="{{ st.calls.endpoints_audio or 6 }}">
+      <small>{{ _("2 bis 6. Mit 2 gibt es nur 1:1-Anrufe ohne weitere Geräte.") }}</small></label>
     <p class="hk-hint">{{ _("Erreichbarkeit: Im selben Netz und hinter üblichen Heimroutern klappen Anrufe meist direkt (mit STUN). Hinter strengen Firewalls, in manchen Mobilfunknetzen oder Firmennetzen braucht es einen TURN-Server – sonst sehen die Personen „Direktverbindung nicht möglich“.") }}</p>
   </section>
   <section class="adm-card">

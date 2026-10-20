@@ -507,6 +507,23 @@ CREATE TABLE IF NOT EXISTS chat_call_signal (
     seq BIGSERIAL PRIMARY KEY, call_id TEXT NOT NULL REFERENCES chat_call(id) ON DELETE CASCADE,
     from_device TEXT NOT NULL, to_device TEXT NOT NULL, sealed TEXT NOT NULL, created DOUBLE PRECISION NOT NULL);
 CREATE INDEX IF NOT EXISTS chat_call_signal_to ON chat_call_signal (call_id, to_device, seq);
+-- Raum-Modell (2.4 E4/E5, saga/calls.py): ein Endpunkt je Geraet (1:1 = zwei Endpunkte, dazu Begleit-/Uebernahme-Geraete,
+-- Gruppenanrufe als Mesh) und die Einladungen eines Gruppenanrufs. Nur Metadaten (wer, welches Geraet, wann); beendete
+-- Anrufe verschwinden samt Endpunkten nach KEEP_S. Spalten von chat_call (lead) kommen mit Migration 12.
+CREATE TABLE IF NOT EXISTS chat_call_leg (
+    call_id TEXT NOT NULL REFERENCES chat_call(id) ON DELETE CASCADE,
+    device TEXT NOT NULL, who TEXT NOT NULL,      -- Konto bzw. Prinzipal '@~x@host'
+    peer_id INTEGER,                              -- ueber diesen Server erreichbar (NULL = Geraet hier)
+    role TEXT NOT NULL DEFAULT 'member',          -- member | companion | handover
+    state TEXT NOT NULL DEFAULT 'active',         -- active | left
+    replaces TEXT, caps TEXT NOT NULL DEFAULT '[]', name TEXT NOT NULL DEFAULT '',
+    joined DOUBLE PRECISION, left_at DOUBLE PRECISION, seen DOUBLE PRECISION, reason TEXT,
+    PRIMARY KEY (call_id, device));
+CREATE INDEX IF NOT EXISTS chat_call_leg_who ON chat_call_leg (who, state);
+CREATE TABLE IF NOT EXISTS chat_call_invite (
+    call_id TEXT NOT NULL REFERENCES chat_call(id) ON DELETE CASCADE, who TEXT NOT NULL,
+    state TEXT NOT NULL,                          -- ringing | declined | joined | old (braucht Saga 2.4) | missed
+    created DOUBLE PRECISION NOT NULL, PRIMARY KEY (call_id, who));
 
 -- Mitteilungen aufs Handy/Desktop (1.7): Abos je Geraet/Browser und Warteschlange (saga.push). Gespeichert werden nur
 -- Kennungen; Text entsteht erst beim Zustellen (ohne Seitentitel/Inhalte). Auftraege hoechstens 24 h.
@@ -849,6 +866,22 @@ ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'dm';
 ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS caps_a TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS caps_b TEXT NOT NULL DEFAULT '[]';
 """,
+    # 2.4.0 (Etappen E4/E5, Anrufe als Raum): Endpunkte je Geraet (chat_call_leg) und Einladungen eines Gruppenanrufs
+    # (chat_call_invite) legt SCHEMA oben an. Hier: lead = Server, der den Anruf fuehrt (NULL = dieser; Direkt-Anruf: der
+    # Server der anrufenden Person wie 2.3, Gruppenanruf: das Heim des Chats), Geraete-Faehigkeiten als Hinweis
+    # (chat_device.caps, z. B. "multi" - wer keines hat, wird zu Gruppenanrufen nicht eingeladen) und die Endpunkte
+    # laufender Anrufe aus caller_device/callee_device. Beliebig oft ausfuehrbar.
+    12: """
+ALTER TABLE chat_call ADD COLUMN IF NOT EXISTS lead INTEGER;
+ALTER TABLE chat_device ADD COLUMN IF NOT EXISTS caps TEXT NOT NULL DEFAULT '[]';
+UPDATE chat_call SET lead=peer_id WHERE lead IS NULL AND peer_id IS NOT NULL AND caller LIKE '@%' AND kind='dm';
+INSERT INTO chat_call_leg (call_id, device, who, peer_id, role, state, caps, joined, seen)
+  SELECT id, caller_device, caller, CASE WHEN caller LIKE '@%' THEN peer_id END, 'member', 'active', caps_a, created, seen_a
+    FROM chat_call WHERE state<>'ended' ON CONFLICT DO NOTHING;
+INSERT INTO chat_call_leg (call_id, device, who, peer_id, role, state, caps, joined, seen)
+  SELECT id, callee_device, callee, CASE WHEN callee LIKE '@%' THEN peer_id END, 'member', 'active', caps_b, answered, seen_b
+    FROM chat_call WHERE state='active' AND callee_device IS NOT NULL ON CONFLICT DO NOTHING;
+""",
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
 BACKUP_DIR = os.path.join(os.environ.get("STATE_DIR", "/data"), "backups")
@@ -916,10 +949,13 @@ def backup(label="manuell"):
 # chat_invite (2.3, Fremdschluessel auf chat): ein Backup von davor kennt sie nicht (sonst bricht DROP chat ab); ein
 # neueres bringt sie mit, sonst legt der naechste Start sie leer an (Sperren trifft dann wie bisher die Erstellerin).
 # 2.4: Migration 10 aendert nur Spalten von chat_call (ein aelteres Backup legt chat_call ohne sie an, der naechste Start
-# ergaenzt sie). Tabellen mit Fremdschluessel auf chat_call (E4: chat_call_leg, chat_call_invite) gehoeren dann hierher.
+# ergaenzt sie). Tabellen mit Fremdschluessel auf chat_call (E4/E5: chat_call_leg, chat_call_invite) gehoeren hierher: ein
+# Backup von davor kennt sie nicht (sonst bricht DROP chat_call ab); ein neueres bringt sie mit, sonst legt der naechste
+# Start sie leer an (laufende Anrufe sind nach dem Zurueckspielen ohnehin vorbei).
 _RESTORE_DROP = (b"DROP TABLE IF EXISTS public.note_link, public.note_stale, public.note_derived;\n"
                  b"DROP TABLE IF EXISTS public.note_tseq, public.note_tseq_meta;\n"
-                 b"DROP TABLE IF EXISTS public.chat_invite;\n")
+                 b"DROP TABLE IF EXISTS public.chat_invite;\n"
+                 b"DROP TABLE IF EXISTS public.chat_call_leg, public.chat_call_invite;\n")
 _RESTORE_SET = re.compile(rb"^SET ([a-z_]+) = .*;\r?\n?$")
 
 
@@ -1158,6 +1194,8 @@ def init_schema():
             c.execute("INSERT INTO schema_version (v) VALUES (1)")
             cur = 1
         for v in range(cur + 1, SCHEMA_VERSION + 1):
+            if v not in MIGRATIONS:          # Nummer einer parallel entwickelten Etappe (beim Zusammenfuehren belegt)
+                continue
             print(f"saga: Datenbank-Migration {v} ...", flush=True)
             c.execute(MIGRATIONS[v])
             c.execute("INSERT INTO schema_version (v) VALUES (%s)", (v,))

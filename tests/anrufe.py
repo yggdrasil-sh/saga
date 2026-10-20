@@ -337,7 +337,9 @@ def run():
     s, d = req("POST", "/api/chats", A.k, {"kind": "free", "members": ["ca-b", "ca-c"]})
     free = d["chat"]["id"]
     _, s, d = call(A, B, free)
-    ok(f"Gruppen-Chat -> 400 (nur Direkt-Chat) ({s})", s == 400 and "Direkt-Chat" in d.get("error", ""))
+    # 2.4: in Gruppen-Chats startet POST /api/calls einen Gruppenanruf - nur fuer Geraete mit "multi" (2.4); ein
+    # 2.1/2.3-Client (ohne caps) bekommt eine verstaendliche Meldung statt eines halben Anrufs
+    ok(f"Gruppen-Chat mit 2.3-Client (ohne caps multi) -> 409 'braucht Saga 2.4' ({s})", s == 409 and "2.4" in d.get("error", ""))
     _, s, d = call(A, B, ab, dev=B.dev)
     ok(f"Fremdes Geraet als eigenes -> 403 ({s})", s == 403)
     _, s, d = call(A, B, ab, devs=[B.dev])

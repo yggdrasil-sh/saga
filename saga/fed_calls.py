@@ -11,8 +11,15 @@
 - Jede Seite nutzt ihren eigenen STUN/TURN-Server (GET /api/calls/config des eigenen Servers).
 - Nur aus angenommenen Chats: Nachrichtenanfragen klingeln nie. Trennen beendet laufende Anrufe.
 - 2.4 (E0, saga-call v3 im Body): ring/answer tragen optional "caps" (Hinweis, 2.3-Server ignorieren es); weitere
-  offer/answer laufen als "signal" in beide Richtungen, begrenzt wie lokal (calls.sig_budget, Rate je Geraet). Die Cap
-  "calls3" (Raum, Mehrgeraete) kommt erst mit E4."""
+  offer/answer laufen als "signal" in beide Richtungen, begrenzt wie lokal (calls.sig_budget, Rate je Geraet).
+- 2.4 (E4/E5, Cap "calls3", Vertrag docs/APP-API-FED.md Abschnitt 7.2): Raum-Modell ueber Servergrenzen. Den Anruf fuehrt
+  ein Server (lead): 1:1 der Server der anrufenden Person (wie 2.3), Gruppe das Heim des Chats. Er haelt die massgebliche
+  Liste der Endpunkte (je Geraet), die anderen Server spiegeln sie (Auftrag 'roster') fuer ihre Konten. Neue Auftraege:
+  'join' (Geraet tritt bei, beim Gruppen-Start mit start:true), 'leave', 'roster', 'invite'; 'signal' traegt im Raum den
+  Endpunkt des Absenders mit (leg) und laeuft sternfoermig: Geraet -> eigener Server -> fuehrender Server -> Server des
+  Zielgeraets, synchron und ohne Ausgangskorb, versiegelt je Zielgeraet (kein Server liest etwas). Mit 2.3-Servern (nur
+  calls2) bleibt alles 1:1 mit einem Geraet je Seite; Gruppenanrufe gibt es dann in dem Chat nicht."""
+import json
 import time
 
 from fastapi import Request
@@ -23,11 +30,16 @@ from saga import bus, calls, chat, fed_chat as FC, federation as F, sharing
 from saga.core import _bad, t
 
 router = FC.router                      # gleiche Router-Einbindung wie die Chats (app.py)
-OPS = ("ring", "answer", "signal", "end", "decline", "alive")
+OPS = ("ring", "answer", "signal", "end", "decline", "alive", "join", "leave", "roster", "invite")
 
 
 def peer_ok(p):
     return FC.peer_ok(p) and F.feature(p, "calls2")
+
+
+def peer3(p):
+    """2.4: Raum-Funktionen (Mehrgeraete, Gruppen) mit Instanz p - beide melden 'calls3'."""
+    return peer_ok(p) and F.feature(p, "calls3")
 
 
 def _remote_of(call):
@@ -63,8 +75,9 @@ def start(uid, ch, cid, media, dev, sig, caps="[]"):
                 or not calls._rate("pair", uid + "|" + other, calls.PAIR_RATE):
             return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
         mh = FC.my_handle(c, uid)
+        dname = calls._dev_name(c, dev)
     st, d = FC.sync_call(p, {"op": "ring", "id": cid, "ref": ch["ref"], "from": mh, "from_device": dev, "media": media, "signals": sig,
-                                "caps": calls.caps_out(caps)},
+                                "caps": calls.caps_out(caps), "name": dname},
                          path="/fed/v2/call")
     name = None
     with _db() as c:
@@ -85,8 +98,10 @@ def start(uid, ch, cid, media, dev, sig, caps="[]"):
     if st != 200:
         return _bad(t("{name} ist gerade nicht erreichbar.", name=name), 404 if st == 404 else 409)
     with _db() as c, c:
-        c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, peer_id, nsig, caps_a) "
-                  "VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,?,?)", (cid, ch["id"], uid, other, dev, media, now, now, now, p["id"], len(sig), caps))
+        v = 3 if calls._has(caps, "multi") and peer3(p) else 1      # 2.4: Raum nur, wenn beide Server calls3 melden
+        c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, peer_id, nsig, caps_a, v) "
+                  "VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,?,?,?)", (cid, ch["id"], uid, other, dev, media, now, now, now, p["id"], len(sig), caps, v))
+        calls._leg_put(c, cid, dev, uid, "member", None, caps, name=calls._dev_name(c, dev), now=now)
         calls._OWN.add(cid)
         call = calls._load(c, cid)
         print(f"call: {cid[:8]} klingelt bei {p['host']} ({media}, Chat {ch['id']}, {len(sig)} Geraet(e))", flush=True)
@@ -109,7 +124,9 @@ def actor(uid):
 
 def answer(uid, call, dev, sig, caps="[]"):
     """Annehmen auf dem Server des Gegenuebers: erst beim Server des Anrufers (er fuehrt den Zustand), dann hier."""
-    st, d = _send(call, {"op": "answer", "actor": actor(uid), "device": dev, "signals": sig, "caps": calls.caps_out(caps)})
+    with _db() as c:
+        dname = calls._dev_name(c, dev)
+    st, d = _send(call, {"op": "answer", "actor": actor(uid), "device": dev, "signals": sig, "caps": calls.caps_out(caps), "name": dname})
     now = time.time()
     with _db() as c, c:
         cur = calls._load(c, call["id"], lock=True)
@@ -120,7 +137,10 @@ def answer(uid, call, dev, sig, caps="[]"):
                                    "call": calls._dict(c, cur or call, uid)}, 409)
         c.execute("UPDATE chat_call SET state='active', callee_device=?, answered=?, seen_a=?, seen_b=?, nsig=nsig+1, caps_b=? WHERE id=?",
                   (dev, now, now, now, caps, call["id"]))
+        calls._leg_put(c, call["id"], dev, uid, "member", None, caps, name=calls._dev_name(c, dev), now=now)
         calls._emit(c, [uid], "call.state", {"call_id": call["id"], "chat_id": call["chat_id"], "state": "active", "device": dev})
+        if call["v"] == 3:
+            calls.emit_roster(c, calls._load(c, call["id"]), fed=False)
         print(f"call: {call['id'][:8]} angenommen (foederiert)", flush=True)
         return chat._no_store({"ok": True, "call": calls._dict(c, calls._load(c, call["id"]), uid)})
 
@@ -139,10 +159,13 @@ def signal(uid, call, dev, sig):
     return chat._no_store({"ok": True, "n": len(sig)})
 
 
-def alive(uid, call):
+def alive(uid, call, dev=""):
     with _db() as c:
         mh = FC.my_handle(c, uid)
-    FC._volatile(call["peer_id"], {"op": "alive", "id": call["id"], "actor": mh}, path="/fed/v2/call")
+    body = {"op": "alive", "id": call["id"], "actor": mh}
+    if dev:
+        body["device"] = dev                       # 2.4: Lebenszeichen je Endpunkt (2.3-Server ignorieren es)
+    FC._volatile(call.get("lead") or call["peer_id"], body, path="/fed/v2/call")
 
 
 def ended(c, call, reason):
@@ -156,6 +179,285 @@ def ended(c, call, reason):
             "reason": reason}
     pid = call["peer_id"]
     c.after_commit(lambda: FC._volatile(pid, body, path="/fed/v2/call"))
+
+
+# =====================================================================================================
+# 2.4 (calls3): Raum ueber Servergrenzen - eigene Konten
+# =====================================================================================================
+OPS3 = ("join", "leave", "roster", "invite")
+
+
+def _name(d):
+    n = d.get("name")
+    return n[:80] if isinstance(n, str) else ""
+
+
+def _h(c, who):
+    """Konto hier bzw. Prinzipal -> Handle."""
+    return FC.handle_of(who) if sharing.is_remote(who) else FC.my_handle(c, who)
+
+
+def _who(c, h):
+    """Handle -> Konto hier (wenn es auf diesem Server liegt) bzw. Prinzipal; None bei Unsinn."""
+    n, host = FC.split_handle(h)
+    if not n:
+        return None
+    if host == F.SELF_HOST:
+        return F.uid_by_handle(c, n)
+    return FC.principal(h)
+
+
+def _leg_out(c, x):
+    return {"device": x["device"], "who": _h(c, x["who"]), "role": x["role"], "state": x["state"], "caps": calls.caps_out(x["caps"]),
+            "name": x["name"] or "", **({"replaces": x["replaces"]} if x.get("replaces") else {})}
+
+
+def _peers_of(c, call):
+    """Andere Server eines Anrufs, den wir fuehren (nur calls3): 1:1 die Gegenstelle, Gruppe alle Teilnehmer-Server."""
+    if call["kind"] != "group":
+        p = F.peer_by(c, "id", call["peer_id"]) if call["peer_id"] else None
+        return [p] if peer3(p) else []
+    ch = chat._load(c, call["chat_id"])
+    return [p for p in FC.participants(c, ch) if peer3(p)] if ch else []
+
+
+def can3(c, call):
+    """Koennen alle beteiligten Server Raum-Funktionen (calls3)?"""
+    if call.get("lead") is not None:
+        return peer3(F.peer_by(c, "id", call["lead"]))
+    if call["kind"] != "group":
+        return peer3(F.peer_by(c, "id", call["peer_id"])) if call["peer_id"] else True
+    ch = chat._load(c, call["chat_id"])
+    return not group_block(c, ch) if ch else False
+
+
+def group_block(c, ch):
+    """Gruppenanruf in einem foederierten Chat moeglich? -> None oder Hinweis (Server ohne calls3: "kann noch nicht")."""
+    if ch["home_peer"] is not None:
+        p = F.peer_by(c, "id", ch["home_peer"])
+        return None if peer3(p) else t("Der Server {host} kann noch keine Gruppenanrufe (braucht Saga 2.4).", host=(p or {}).get("host") or "?")
+    bad = [p["host"] for p in FC.participants(c, ch) if not peer3(p)]
+    return t("Der Server {host} kann noch keine Gruppenanrufe (braucht Saga 2.4).", host=", ".join(bad)) if bad else None
+
+
+def chat_flags(c, ch):
+    """Fuer /api/chats/{cid}: kann in diesem foederierten Chat ein Gruppenanruf beginnen? -> (ja, hinweis)."""
+    why = group_block(c, ch)
+    return why is None, why
+
+
+def _err(st, d, host):
+    if st is None:
+        return _bad(t("Der Server {host} ist gerade nicht erreichbar.", host=host), 502)
+    if isinstance(d, dict) and d.get("join_block") == "full":
+        return chat._no_store({"error": t("Der Anruf ist voll (höchstens {n} Geräte).", n=d.get("limit") or "?"), "join_block": "full",
+                               "limit": d.get("limit")}, 409)
+    if isinstance(d, dict) and d.get("join_block") == "old":
+        return chat._no_store({"error": t("Beitreten geht nicht: Ein Gerät im Anruf braucht Saga 2.4."), "join_block": "old"}, 409)
+    if isinstance(d, dict) and d.get("join_block") == "ended" or st == 404:
+        return chat._no_store({"error": t("Der Anruf ist schon beendet."), "join_block": "ended"}, 409)
+    if isinstance(d, dict) and d.get("running"):
+        return chat._no_store({"error": t("In diesem Chat läuft schon ein Anruf – tritt ihm bei."), "running": d["running"]}, 409)
+    if st == 409 and isinstance(d, dict) and d.get("legs") is not None:
+        return chat._no_store({"error": t("Die Teilnehmenden haben sich geändert – bitte erneut beitreten.")}, 409)
+    return _bad(t("Beitreten ging nicht ({code}).", code=st), 409 if st in (400, 403, 409) else 502)
+
+
+def group_start(uid, ch, cid, media, dev, caps):
+    """Gruppenanruf in einem foederierten Chat, dessen Heim ein anderer Server ist: dort anlegen (synchron), hier spiegeln."""
+    with _db() as c:
+        p = F.peer_by(c, "id", ch["home_peer"])
+        mh = FC.my_handle(c, uid)
+        name = calls._dev_name(c, dev)
+    if not peer3(p):
+        return _bad(t("Der Server {host} kann noch keine Gruppenanrufe (braucht Saga 2.4).", host=(p or {}).get("host") or "?"), 409)
+    st, d = FC.sync_call(p, {"op": "join", "start": True, "id": cid, "ref": ch["ref"], "actor": mh, "device": dev, "role": "member", "media": media,
+                             "caps": calls.caps_out(caps), "name": name, "signals": {}}, path="/fed/v2/call")
+    if st != 200:
+        return _err(st, d, p["host"])
+    now = time.time()
+    with _db() as c, c:
+        c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, caps_a, kind, v, topo, "
+                  "lead, peer_id) VALUES (?,?,?,'',?,?,'ringing',?,?,?,?,'group',3,'mesh',?,?) ON CONFLICT (id) DO NOTHING",
+                  (cid, ch["id"], uid, dev, media, now, now, now, caps, p["id"], p["id"]))
+        calls._leg_put(c, cid, dev, uid, "member", None, caps, name=name, now=now)
+        call = calls._load(c, cid)
+        _apply_legs(c, call, p, (d or {}).get("legs"))
+        calls.emit_roster(c, call, fed=False)
+        print(f"call: {cid[:8]} Gruppenanruf beim Heim {p['host']}", flush=True)
+        return chat._no_store({"ok": True, "call": calls._dict(c, calls._load(c, cid), uid)})
+
+
+def join(uid, call, dev, role, rep, caps, sig):
+    """POST /join auf einem Server, der den Anruf NICHT fuehrt: beim fuehrenden Server eintragen (synchron), hier spiegeln."""
+    with _db() as c:
+        p = F.peer_by(c, "id", call["lead"])
+        mh = FC.my_handle(c, uid)
+        name = calls._dev_name(c, dev)
+    if not peer3(p):
+        return chat._no_store({"error": t("Beitreten geht nicht: Ein Gerät im Anruf braucht Saga 2.4."), "join_block": "old"}, 409)
+    body = {"op": "join", "id": call["id"], "actor": mh, "device": dev, "role": role, "caps": calls.caps_out(caps), "name": name, "signals": sig}
+    if rep:
+        body["replaces"] = rep
+    st, d = FC.sync_call(p, body, path="/fed/v2/call")
+    if st != 200:
+        return _err(st, d, p["host"])
+    now = time.time()
+    with _db() as c, c:
+        cur = calls._load(c, call["id"], lock=True)
+        if not cur or cur["state"] == "ended":
+            return chat._no_store({"error": t("Der Anruf ist schon beendet."), "join_block": "ended"}, 409)
+        calls._leg_put(c, cur["id"], dev, uid, (d or {}).get("role") if (d or {}).get("role") in calls.ROLES else role, None, caps, rep, name=name, now=now)
+        _apply_legs(c, cur, p, (d or {}).get("legs"), keep=dev)
+        cur = calls._load(c, cur["id"])
+        calls.emit_roster(c, cur, fed=False)
+        return chat._no_store({"ok": True, "call": calls._dict(c, cur, uid)})
+
+
+def leave(uid, call, dev):
+    """Eigenes Geraet verlaesst einen Anruf, den ein anderer Server fuehrt: dort melden, hier sofort austragen."""
+    with _db() as c:
+        p = F.peer_by(c, "id", call["lead"])
+        mh = FC.my_handle(c, uid)
+    st, d = FC.sync_call(p, {"op": "leave", "id": call["id"], "actor": mh, "device": dev}, path="/fed/v2/call") if peer3(p) else (None, "")
+    now = time.time()
+    with _db() as c, c:
+        cur = calls._load(c, call["id"], lock=True)
+        if cur and cur["state"] != "ended":
+            c.execute("UPDATE chat_call_leg SET state='left', left_at=?, reason='hangup' WHERE call_id=? AND device=?", (now, cur["id"], dev))
+            if st is None and not any(x["who"] == uid for x in calls._legs(c, cur["id"])) and cur["kind"] == "dm":
+                calls._finish(c, cur, "hangup", now, by=uid, remote=True)      # fuehrender Server weg: hier beenden
+            else:
+                calls.emit_roster(c, cur, fed=False)
+    return chat._no_store({"ok": True})
+
+
+def invite(uid, call, whos):
+    """Fremde Mitglieder klingeln lassen: fuehren wir den Anruf, an ihre Server; sonst an den fuehrenden Server."""
+    with _db() as c:
+        hs = [FC.handle_of(u) for u in whos if FC.handle_of(u)]
+        mh = FC.my_handle(c, uid)
+        if call.get("lead") is not None:
+            targets = {call["lead"]: hs}
+        else:
+            targets = {}
+            for h in hs:
+                p = F.peer_by(c, "host", FC.split_handle(h)[1])
+                if peer3(p):
+                    targets.setdefault(p["id"], []).append(h)
+    for pid, lst in targets.items():
+        FC._volatile(pid, {"op": "invite", "id": call["id"], "actor": mh, "who": lst}, path="/fed/v2/call", drop=False)
+
+
+def forward(call, who, dev, fwd, leg):
+    """Signale eines Endpunkts an andere Server weiterreichen (synchron, ohne Ausgangskorb). -> alle angekommen?"""
+    with _db() as c:
+        body = {"op": "signal", "id": call["id"], "actor": _h(c, who if leg is None else leg["who"]), "device": dev}
+        if leg is not None:
+            body["leg"] = _leg_out(c, leg)
+        peers = {pid: F.peer_by(c, "id", pid) for pid in fwd}
+    good = True
+    for pid, sig in fwd.items():
+        p = peers.get(pid)
+        if not peer_ok(p):
+            good = False
+            continue
+        st, d = FC.sync_call(p, dict(body, signals=sig), path="/fed/v2/call")
+        good = good and st == 200
+    return good
+
+
+def roster_out(c, call, legs, ring=None):
+    """Fuehrender Server: Teilnehmerliste an die anderen Server (nach dem Commit, verwerfbar). ring: Prinzipale, deren
+    Server sie klingeln lassen soll (Gruppenstart, invite) - die Antwort meldet, wer Saga 2.4 braucht."""
+    peers = _peers_of(c, call)
+    if not peers:
+        return
+    ch = chat._load(c, call["chat_id"])
+    inv = dict(c.execute("SELECT who, state FROM chat_call_invite WHERE call_id=?", (call["id"],)).fetchall()) if call["kind"] == "group" else {}
+    if ring is None and call["kind"] == "group":       # erste Liste nach dem Start: alle eingeladenen fremden Mitglieder
+        ring = [u for u, st in inv.items() if st == "ringing" and sharing.is_remote(u) and call["id"] not in _RUNG]
+        _RUNG.add(call["id"])
+        if len(_RUNG) > 5000:
+            _RUNG.clear()
+    # rv: Stand der Liste - Auftraege an eine Instanz laufen parallel (PEER_SLOTS), eine aeltere Liste darf eine neuere
+    # nicht ueberschreiben
+    base = {"op": "roster", "id": call["id"], "ref": (ch or {}).get("ref"), "kind": call["kind"], "media": call["media"], "state": call["state"],
+            "rv": time.time(),
+            "created": call["created"], "from": _h(c, call["caller"]), "from_device": call["caller_device"], "legs": [_leg_out(c, x) for x in legs]}
+    for p in peers:
+        mine = [FC.handle_of(u) for u in (ring or []) if FC.split_handle(FC.handle_of(u) or "")[1] == p["host"]]
+        body = dict(base, ring=mine, invites={FC.handle_of(u): st for u, st in inv.items()
+                                              if sharing.is_remote(u) and FC.split_handle(FC.handle_of(u) or "")[1] == p["host"]})
+        c.after_commit(lambda p=p, body=body: F.peer_submit(p["id"], _roster_send, p["id"], body))
+
+
+_RUNG = set()
+_RV = {}                                # Anruf -> Stand der zuletzt uebernommenen Teilnehmerliste (op_roster)
+
+
+def _roster_send(pid, body):
+    with _db() as c:
+        p = F.peer_by(c, "id", pid)
+    if not peer3(p):
+        return
+    try:
+        st, d = F.call_json(p, "POST", "/fed/v2/call", body=body, timeout=max(1.0, F.EXPRESS_TIMEOUT / 3))
+    except F.FedError:
+        return
+    old = [h for h in (d or {}).get("old") or [] if isinstance(h, str)][:chat.MEMBERS_MAX] if st == 200 and isinstance(d, dict) else []
+    if old:                                            # Personen dort ohne Geraet mit "multi": "braucht Saga 2.4"
+        with _db() as c, c:
+            for h in old:
+                n, host = FC.split_handle(h)
+                if n and host == p["host"]:
+                    c.execute("UPDATE chat_call_invite SET state='old' WHERE call_id=? AND who=? AND state='ringing'", (body["id"], FC.principal(h)))
+            call = calls._load(c, body["id"])
+            if call and call["state"] != "ended":
+                calls.emit_roster(c, call, fed=False)
+
+
+def group_ended(c, call, reason):
+    """Gruppenanruf beendet (wir fuehren ihn): allen anderen Servern melden (nach dem Commit, verwerfbar)."""
+    try:
+        mh = _h(c, call["caller"])
+    except F.FedError:
+        return
+    for p in _peers_of(c, call):
+        body = {"op": "end", "id": call["id"], "actor": mh, "reason": reason}
+        c.after_commit(lambda pid=p["id"], body=body: FC._volatile(pid, body, path="/fed/v2/call", drop=False))
+
+
+def _apply_legs(c, call, peer, legs, keep=None):
+    """Teilnehmerliste des fuehrenden Servers hier uebernehmen: Endpunkte anlegen/aktualisieren, fehlende austragen.
+    Eigene Geraete nur, wenn sie wirklich zum genannten Konto gehoeren."""
+    if not isinstance(legs, list):
+        return
+    now = time.time()
+    seen = set()
+    for x in legs[:chat.MEMBERS_MAX]:
+        if not isinstance(x, dict):
+            continue
+        dev, who = x.get("device"), _who(c, x.get("who"))
+        if not (isinstance(dev, str) and FC._HEX32.fullmatch(dev)) or not who or x.get("state", "active") != "active":
+            continue
+        local = not sharing.is_remote(who)
+        if local and not c.execute("SELECT 1 FROM chat_device WHERE id=? AND uid=?", (dev, who)).fetchone():
+            continue
+        if not local and FC.split_handle(x.get("who"))[1] == F.SELF_HOST:
+            continue
+        seen.add(dev)
+        cur = c.execute("SELECT who, state, role FROM chat_call_leg WHERE call_id=? AND device=?", (call["id"], dev)).fetchone()
+        role = x.get("role") if x.get("role") in calls.ROLES else "member"
+        rep = x.get("replaces") if isinstance(x.get("replaces"), str) and FC._HEX32.fullmatch(x["replaces"]) else None
+        if cur and cur[0] == who and cur[1] == "active":
+            c.execute("UPDATE chat_call_leg SET role=?, replaces=?, caps=? WHERE call_id=? AND device=?",
+                      (role, rep, calls.caps_in(x.get("caps")), call["id"], dev))
+            continue
+        calls._leg_put(c, call["id"], dev, who, role, None if local else peer["id"], calls.caps_in(x.get("caps")), rep, name=_name(x), now=now)
+    for x in calls._legs(c, call["id"]):
+        if x["device"] not in seen and x["device"] != keep:
+            c.execute("UPDATE chat_call_leg SET state='left', left_at=?, reason='roster' WHERE call_id=? AND device=?", (now, call["id"], x["device"]))
 
 
 # =====================================================================================================
@@ -196,8 +498,11 @@ def op_ring(c, peer, d):
     if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
         return 409, {"error": "duplicate id"}
     now = time.time()
-    c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, peer_id, caps_a) "
-              "VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,?)", (cid, ch["id"], p_, callee, dev, media, now, now, now, peer["id"], calls.caps_in(d.get("caps"))))
+    caps = calls.caps_in(d.get("caps"))
+    c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, peer_id, caps_a, v, lead) "
+              "VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,?,?,?)", (cid, ch["id"], p_, callee, dev, media, now, now, now, peer["id"], caps,
+                                                           3 if calls._has(caps, "multi") and peer3(peer) else 1, peer["id"]))
+    calls._leg_put(c, cid, dev, p_, "member", peer["id"], caps, name=_name(d), now=now)
     calls._OWN.add(cid)
     call = calls._load(c, cid)
     if calls._busy_other(c, callee, cid):
@@ -244,16 +549,22 @@ def op_answer(c, peer, d):
         return 400, {"error": "bad signals"}
     c.execute("UPDATE chat_call SET state='active', callee_device=?, answered=?, seen_a=?, seen_b=?, caps_b=? WHERE id=?",
               (dev, now, now, now, calls.caps_in(d.get("caps")), call["id"]))
+    calls._leg_put(c, call["id"], dev, rem, "member", peer["id"], calls.caps_in(d.get("caps")), name=_name(d), now=now)
     seq = c.execute("INSERT INTO chat_call_signal (call_id, from_device, to_device, sealed, created) VALUES (?,?,?,?,?) RETURNING seq",
                     (call["id"], dev, call["caller_device"], sig[call["caller_device"]], now)).fetchone()[0]
     c.execute("UPDATE chat_call SET nsig=nsig+1 WHERE id=?", (call["id"],))
     calls._emit(c, [call["caller"]], "call.signal", {"call_id": call["id"], "seq": seq, "from_device": dev, "to_device": call["caller_device"],
                                                      "sealed": sig[call["caller_device"]]})
     calls._emit(c, [call["caller"]], "call.state", {"call_id": call["id"], "chat_id": call["chat_id"], "state": "active", "device": dev})
+    if call["v"] == 3:
+        calls.emit_roster(c, calls._load(c, call["id"]))
     return 200, {"ok": True}
 
 
 def op_signal(c, peer, d):
+    cur = calls._load(c, d.get("id"), lock=True) if isinstance(d.get("id"), str) else None
+    if cur and (cur["v"] == 3 or cur["kind"] == "group"):
+        return _room_signal_in(c, peer, d, cur)
     call, rem, is_caller = _call_of(c, peer, d)
     dev = d.get("device")
     if not call:
@@ -284,6 +595,15 @@ def op_signal(c, peer, d):
 
 
 def op_end(c, peer, d):
+    cur = calls._load(c, d.get("id"), lock=True) if isinstance(d.get("id"), str) else None
+    if cur and cur["kind"] == "group":                 # 2.4: nur der fuehrende Server beendet einen Gruppenanruf
+        if cur["lead"] != peer["id"]:
+            return 403, {"error": "not lead"}
+        if cur["state"] != "ended":
+            cur["_connected"] = cur["state"] == "active"
+            calls._finish(c, cur, d.get("reason") if d.get("reason") in ("ended", "timeout", "cancelled", "gone") else "ended",
+                          time.time(), remote=True)
+        return 200, {"ok": True}
     call, rem, is_caller = _call_of(c, peer, d)
     if not call:
         return 200, {"ok": True}
@@ -298,14 +618,272 @@ def op_end(c, peer, d):
 
 
 def op_alive(c, peer, d):
+    cur = calls._load(c, d.get("id")) if isinstance(d.get("id"), str) else None
+    if cur and cur["kind"] == "group":                 # 2.4: Endpunkt eines anderen Servers im Gruppenanruf, den wir fuehren
+        h = d.get("actor")
+        n, host = FC.split_handle(h)
+        if cur["lead"] is not None or not n or host != peer["host"] or cur["state"] == "ended":
+            return 200, {"state": "ended" if not cur or cur["state"] == "ended" else cur["state"]}
+        dev = d.get("device") if isinstance(d.get("device"), str) else ""
+        c.execute("UPDATE chat_call_leg SET seen=? WHERE call_id=? AND device=? AND who=? AND peer_id=? AND state='active'",
+                  (time.time(), cur["id"], dev, FC.principal(h), peer["id"]))
+        return 200, {"state": cur["state"]}
     call, rem, is_caller = _call_of(c, peer, d, lock=False)
     if call and call["state"] != "ended":
-        c.execute("UPDATE chat_call SET " + ("seen_a" if is_caller else "seen_b") + "=? WHERE id=?", (time.time(), call["id"]))
+        now = time.time()
+        c.execute("UPDATE chat_call SET " + ("seen_a" if is_caller else "seen_b") + "=? WHERE id=?", (now, call["id"]))
+        dev = d.get("device") if isinstance(d.get("device"), str) else ""
+        q = "UPDATE chat_call_leg SET seen=? WHERE call_id=? AND who=? AND state='active'" + (" AND device=?" if dev else "")
+        c.execute(q, (now, call["id"], rem) + ((dev,) if dev else ()))
         return 200, {"state": call["state"]}
     return 200, {"state": "ended"}
 
 
-HANDLERS = {"ring": op_ring, "answer": op_answer, "signal": op_signal, "end": op_end, "decline": op_end, "alive": op_alive}
+HANDLERS = {"ring": op_ring, "answer": op_answer, "signal": op_signal, "end": op_end, "decline": op_end, "alive": op_alive,
+            "join": None, "leave": None, "roster": None, "invite": None}       # 2.4 (calls3), unten eingetragen
+
+
+# =====================================================================================================
+# 2.4 (calls3): Server-zu-Server - Raum
+# =====================================================================================================
+def _resp(r):
+    """JSONResponse aus saga.calls -> (status, daten)."""
+    try:
+        return r.status_code, json.loads(r.body)
+    except (ValueError, AttributeError):
+        return 400, {"error": "bad request"}
+
+
+def _actor3(c, peer, d):
+    h = d.get("actor")
+    n, host = FC.split_handle(h)
+    if not n or host != peer["host"]:
+        F.log(c, "call.forged", peer, d.get("op") or "?", throttle=(peer["id"], "cforged3"))
+        return None, None
+    return h, FC.principal(h)
+
+
+def _post_forward(call, who, dev, fwd, leg, skip=None):
+    fwd = {pid: v for pid, v in fwd.items() if pid != skip}
+    if not fwd:
+        return None
+    return lambda: forward(call, who, dev, fwd, leg)
+
+
+def op_join(c, peer, d):
+    """Geraet einer Person der anfragenden Instanz tritt einem Anruf bei, den WIR fuehren (start: Gruppenanruf anlegen)."""
+    h, p_ = _actor3(c, peer, d)
+    cid, dev = d.get("id"), d.get("device")
+    if not h or not (isinstance(cid, str) and FC._HEX32.fullmatch(cid) and isinstance(dev, str) and FC._HEX32.fullmatch(dev)):
+        return 400, {"error": "bad request"}
+    if not calls.enabled():
+        return 403, {"error": "calls disabled"}
+    caps = calls.caps_in(d.get("caps"))
+    now = time.time()
+    call = calls._load(c, cid, lock=True)
+    if call is None:
+        if not d.get("start"):
+            return 404, {"error": "not found"}
+        ch = FC._home_chat(c, d)
+        media = d.get("media")
+        if not ch or ch["kind"] == "dm" or media not in calls.MEDIA:
+            return 404, {"error": "unknown chat"}
+        mem = dict(FC.members(c, ch["id"]))
+        if mem.get(p_) != "ok":
+            return 403, {"error": "not a member"}
+        if not calls._has(caps, "multi"):
+            return 409, {"join_block": "old"}
+        run = c.execute("SELECT id FROM chat_call WHERE chat_id=? AND kind='group' AND state<>'ended' LIMIT 1", (ch["id"],)).fetchone()
+        if run:
+            return 409, {"running": run[0]}
+        if not F._rate.allow("cring:" + h, calls.CALL_RATE):
+            return 429, {"error": "too many calls"}
+        call = calls.group_create(c, ch, cid, media, p_, dev, caps, now, peer_id=peer["id"], name=_name(d))
+        return 200, {"ok": True, "role": "member", "legs": [_leg_out(c, x) for x in calls._legs(c, cid)]}
+    if call["lead"] is not None:
+        return 404, {"error": "not lead"}
+    if call["kind"] == "group":
+        if dict(FC.members(c, call["chat_id"])).get(p_) != "ok":
+            return 403, {"error": "not a member"}
+    elif p_ not in (call["caller"], call["callee"]):
+        return 404, {"error": "not found"}
+    role = d.get("role") if d.get("role") in calls.ROLES else "member"
+    rep = d.get("replaces") if isinstance(d.get("replaces"), str) and FC._HEX32.fullmatch(d["replaces"]) else None
+    r = calls.join_local(c, call, p_, dev, role, rep, caps, d.get("signals"), now, peer_id=peer["id"], name=_name(d))
+    if not isinstance(r, dict):
+        st, out = _resp(r)
+        return st, out
+    legs = calls._legs(c, cid)
+    return 200, {"ok": True, "role": r["leg"]["role"], "legs": [_leg_out(c, x) for x in legs]}, _post_forward(call, p_, dev, r["fwd"], r["leg"], skip=peer["id"])
+
+
+def op_leave(c, peer, d):
+    h, p_ = _actor3(c, peer, d)
+    call = calls._load(c, d.get("id"), lock=True) if isinstance(d.get("id"), str) else None
+    if not h or not call or call["lead"] is not None:
+        return 404, {"error": "not found"}
+    leg = c.execute("SELECT who, peer_id, state FROM chat_call_leg WHERE call_id=? AND device=?", (call["id"], d.get("device"))).fetchone()
+    if not leg or leg[0] != p_ or leg[1] != peer["id"]:
+        return 404, {"error": "not found"}
+    if leg[2] == "active" and call["state"] != "ended":
+        calls._leave(c, call, d["device"], time.time(), "hangup", by=p_)
+    return 200, {"ok": True}
+
+
+def op_roster(c, peer, d):
+    """Teilnehmerliste vom fuehrenden Server (wir spiegeln den Anruf fuer unsere Konten). Gruppenanruf noch unbekannt:
+    nur, wenn die Instanz das Heim des Chats ist. Klingelt bei den genannten eigenen Mitgliedern; Antwort: wer davon
+    Saga 2.4 braucht."""
+    cid = d.get("id")
+    if not (isinstance(cid, str) and FC._HEX32.fullmatch(cid)):
+        return 400, {"error": "bad request"}
+    now = time.time()
+    call = calls._load(c, cid, lock=True)
+    if call is None:
+        ch = FC.by_ref(c, d.get("ref")) if isinstance(d.get("ref"), str) else None
+        if d.get("kind") != "group" or not ch or ch["home_peer"] != peer["id"] or d.get("media") not in calls.MEDIA:
+            return 404, {"error": "unknown"}
+        if d.get("state") == "ended":
+            return 200, {"ok": True}
+        st_ = _who(c, d.get("from"))
+        fd = d.get("from_device") if isinstance(d.get("from_device"), str) and FC._HEX32.fullmatch(d.get("from_device") or "") else None
+        if not st_ or not fd:
+            return 400, {"error": "bad request"}
+        c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, kind, v, topo, lead, peer_id) "
+                  "VALUES (?,?,?,'',?,?,?,?,?,?,'group',3,'mesh',?,?) ON CONFLICT (id) DO NOTHING",
+                  (cid, ch["id"], st_, fd, d["media"], "active" if d.get("state") == "active" else "ringing", now, now, now, peer["id"], peer["id"]))
+        calls._OWN.add(cid)
+        call = calls._load(c, cid, lock=True)
+    if call["lead"] != peer["id"]:
+        F.log(c, "call.forged", peer, "roster", throttle=(peer["id"], "croster"))
+        return 403, {"error": "not lead"}
+    if call["state"] == "ended":
+        return 200, {"ok": True, "state": "ended"}
+    rv = d.get("rv") if isinstance(d.get("rv"), (int, float)) else None
+    if rv is not None and rv < _RV.get(cid, 0):
+        return 200, {"ok": True, "stale": True}            # aeltere Liste (kam nach einer neueren an)
+    if rv is not None:
+        _RV[cid] = rv
+        if len(_RV) > 5000:
+            _RV.clear()
+    _apply_legs(c, call, peer, d.get("legs"))
+    if call["kind"] == "group":
+        upd = {"seen_b": now}
+        if d.get("state") == "active" and call["state"] == "ringing":
+            upd.update(state="active", answered=now)
+        c.execute("UPDATE chat_call SET " + ", ".join(f"{k}=?" for k in upd) + " WHERE id=?", tuple(upd.values()) + (cid,))
+        for h, st in (d.get("invites") or {}).items() if isinstance(d.get("invites"), dict) else ():
+            u = _who(c, h)
+            if u and not sharing.is_remote(u) and st in ("ringing", "declined", "joined", "old", "missed"):
+                c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,?,?) ON CONFLICT (call_id, who) DO NOTHING",
+                          (cid, u, st, now))
+    call = calls._load(c, cid)
+    old = []
+    ring = [u for u in (_who(c, h) for h in (d.get("ring") or [])[:chat.MEMBERS_MAX] if isinstance(h, str)) if u and not sharing.is_remote(u)]
+    if ring and call["kind"] == "group":
+        mem = dict(FC.members(c, call["chat_id"]))
+        go = []
+        for u in ring:
+            if mem.get(u) != "ok":
+                continue
+            st = "ringing" if calls._can_multi(c, u) else "old"
+            c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,?,?) ON CONFLICT (call_id, who) DO UPDATE "
+                      "SET state=EXCLUDED.state", (cid, u, st, now))
+            (go if st == "ringing" else old).append(u)
+        calls.ring_group(c, call, go)
+    calls.emit_roster(c, call, fed=False)
+    return 200, {"ok": True, "old": [FC.my_handle(c, u) for u in old]}
+
+
+def op_invite(c, peer, d):
+    """Mitglieder (erneut) klingeln lassen: vom fuehrenden Server an uns (eigene Konten) bzw. von einem anderen Server an
+    den fuehrenden Server (der verteilt)."""
+    h, p_ = _actor3(c, peer, d)
+    call = calls._load(c, d.get("id"), lock=True) if isinstance(d.get("id"), str) else None
+    if not h or not call or call["kind"] != "group" or call["state"] == "ended":
+        return 404, {"error": "not found"}
+    whos = [x for x in (_who(c, x) for x in (d.get("who") or [])[:chat.MEMBERS_MAX] if isinstance(x, str)) if x]
+    if call["lead"] == peer["id"]:
+        n, _ = calls.invite_local(c, call, [u for u in whos if not sharing.is_remote(u)])
+        return 200, {"ok": True, "n": n}
+    if call["lead"] is not None or dict(FC.members(c, call["chat_id"])).get(p_) != "ok":
+        return 403, {"error": "not allowed"}
+    n, remote = calls.invite_local(c, call, whos)
+    if remote:
+        return 200, {"ok": True, "n": n}, (lambda: _invite_on(call, remote))
+    return 200, {"ok": True, "n": n}
+
+
+def _invite_on(call, remote):
+    with _db() as c:
+        targets = {}
+        for u in remote:
+            h = FC.handle_of(u)
+            p = F.peer_by(c, "host", FC.split_handle(h or "")[1]) if h else None
+            if peer3(p):
+                targets.setdefault(p["id"], []).append(h)
+        mh = _h(c, call["caller"])
+    for pid, lst in targets.items():
+        FC._volatile(pid, {"op": "invite", "id": call["id"], "actor": mh, "who": lst}, path="/fed/v2/call", drop=False)
+
+
+def _room_signal_in(c, peer, d, call):
+    """op 'signal' im Raum. Vom fuehrenden Server: Absender-Endpunkt (leg) uebernehmen, an eigene Geraete zustellen. An uns
+    als fuehrenden Server: Absender muss ein Endpunkt dieser Instanz sein; eigene Ziele zustellen, andere weiterreichen.
+    Vom fuehrenden Server kommen auch Signale von Personen dritter Server (actor = deren Handle) - der hat sie geprueft."""
+    dev = d.get("device")
+    if not (isinstance(dev, str) and FC._HEX32.fullmatch(dev)):
+        return 400, {"error": "bad request"}
+    if call["state"] == "ended":
+        return 409, {"error": "ended"}
+    now = time.time()
+    legs = {x["device"]: x for x in calls._legs(c, call["id"])}
+    if call["lead"] == peer["id"]:                     # vom fuehrenden Server: er hat den Absender geprueft
+        lg = d.get("leg") if isinstance(d.get("leg"), dict) else None
+        if dev not in legs and lg and lg.get("device") == dev:
+            _apply_one(c, call, peer, lg, now)
+            legs = {x["device"]: x for x in calls._legs(c, call["id"])}
+        x = legs.get(dev)
+        ringing_dm = call["kind"] == "dm" and call["state"] == "ringing" and dev == call["caller_device"]
+        if not x and not ringing_dm:
+            return 403, {"error": "device"}
+        local = {k for k, v in legs.items() if v["peer_id"] is None} | (calls._active_devices(c, call["callee"]) if ringing_dm else set())
+        sig = _sealed(d.get("signals"), local)
+        if sig is None:
+            return 400, {"error": "bad signals"}
+        if call["nsig"] + len(sig) > calls.pairs_budget(call, len(legs) + 1, now) * 2 or not F._rate.allow("csig:" + dev, calls.SIG_RATE):
+            return 429, {"error": "too many signals"}
+        fwd, n = calls._route(c, call, dev, sig, legs, now)
+        c.execute("UPDATE chat_call SET nsig=nsig+?" + (", seen_b=?" if call["kind"] == "group" else "") + " WHERE id=?",
+                  (len(sig),) + ((now,) if call["kind"] == "group" else ()) + (call["id"],))
+        return 200, {"ok": True, "n": n}
+    if call["lead"] is not None:
+        return 403, {"error": "not lead"}
+    h, p_ = _actor3(c, peer, d)
+    if not h:
+        return 403, {"error": "forged"}
+    x = legs.get(dev)
+    if not x or x["peer_id"] != peer["id"] or x["who"] != p_:
+        F.log(c, "call.forged", peer, "signal", throttle=(peer["id"], "csig3"))
+        return 403, {"error": "device"}
+    if not F._rate.allow("csig:" + dev, calls.SIG_RATE):
+        return 429, {"error": "too many signals"}
+    r = calls._room_signal(c, call, p_, dev, d.get("signals"), legs, now, peer_id=peer["id"])
+    if not isinstance(r, dict):
+        return _resp(r)
+    c.execute("UPDATE chat_call_leg SET seen=? WHERE call_id=? AND device=?", (now, call["id"], dev))
+    return 200, {"ok": True, "n": r["n"]}, _post_forward(call, p_, dev, r["fwd"], r["leg"], skip=peer["id"])
+
+
+def _apply_one(c, call, peer, x, now):
+    who = _who(c, x.get("who"))
+    if not who or not sharing.is_remote(who):
+        return
+    calls._leg_put(c, call["id"], x["device"], who, x.get("role") if x.get("role") in calls.ROLES else "member", peer["id"],
+                   calls.caps_in(x.get("caps")), None, name=_name(x), now=now)
+
+
+HANDLERS.update(join=op_join, leave=op_leave, roster=op_roster, invite=op_invite)
 
 
 @router.post("/fed/v2/call")
@@ -318,21 +896,32 @@ async def fed_call(request: Request):
     d = inp.data if isinstance(inp.data, dict) else {}
     if d.get("op") not in HANDLERS:
         return F._signed(inp, 400, {"error": "bad op"})
+    if d["op"] in OPS3 and not peer3(inp.peer):
+        return F._signed(inp, 403, {"error": "calls3 disabled"})
 
     def run():
         with _db() as c, c:
             return HANDLERS[d["op"]](c, inp.peer, d)
-    status, out = await run_in_threadpool(run)
+    r = await run_in_threadpool(run)
+    status, out = r[0], r[1]
+    if len(r) > 2 and r[2] is not None:            # 2.4: Weiterleiten an andere Server (nach dem Commit, synchron)
+        await run_in_threadpool(r[2])
     return F._signed(inp, status, out)
 
 
 def _peer_gone(c, p):
-    """Verbindung getrennt: laufende Anrufe mit der Instanz enden sofort."""
+    """Verbindung getrennt: laufende Anrufe mit der Instanz enden sofort; in Gruppenanrufen, die wir fuehren, verlassen
+    deren Endpunkte den Anruf."""
     now = time.time()
-    for r in c.execute(f"SELECT {calls.C_COLS} FROM chat_call WHERE peer_id=? AND state<>'ended' FOR UPDATE", (p["id"],)).fetchall():
+    for r in c.execute(f"SELECT {calls.C_COLS} FROM chat_call WHERE (peer_id=? OR lead=?) AND state<>'ended' FOR UPDATE", (p["id"], p["id"])).fetchall():
         call = calls._row(r)
         call["_connected"] = call["state"] == "active"
         calls._finish(c, call, "gone", now, remote=True)
+    for cid, dev in c.execute("SELECT l.call_id, l.device FROM chat_call_leg l JOIN chat_call k ON k.id=l.call_id WHERE l.peer_id=? "
+                              "AND l.state='active' AND k.state<>'ended' AND k.lead IS NULL", (p["id"],)).fetchall():
+        call = calls._load(c, cid, lock=True)
+        if call and call["state"] != "ended":
+            calls._leave(c, call, dev, now, "gone")
 
 
 F.PEER_GONE_HOOKS.append(_peer_gone)

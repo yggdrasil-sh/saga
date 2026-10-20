@@ -804,12 +804,18 @@ def _calls_save(f):
         ring = max(15, min(120, int(_s(f, "calls_ring_s", 4) or 45)))
     except ValueError:
         ring = 45
+    lim = {}                                               # 2.4: Geraete je Anruf (Mesh) - nur senken, mindestens 2
+    for k, top in (("endpoints_video", calls.ENDPOINTS_VIDEO), ("endpoints_audio", calls.ENDPOINTS_AUDIO)):
+        try:
+            lim[k] = max(2, min(top, int(_s(f, "calls_" + k, 2) or top)))
+        except ValueError:
+            lim[k] = top
     cur = auth.settings(fresh=True).get("calls") or {}
     clear = _on(f, "calls_turn_clear")
     v = {"enabled": _on(f, "calls_enabled"), "stun": " ".join(stun), "turn_urls": " ".join(turn),
          "turn_mode": "static" if f.get("calls_turn_mode") == "static" else "rest", "turn_user": "" if clear else _s(f, "calls_turn_user", 200),
          "turn_secret": _s(f, "calls_turn_secret", 300), "turn_password": _s(f, "calls_turn_password", 300),
-         "turn_ttl": cur.get("turn_ttl") or 43200, "relay_only": _on(f, "calls_relay_only"), "ring_s": ring}
+         "turn_ttl": cur.get("turn_ttl") or 43200, "relay_only": _on(f, "calls_relay_only"), "ring_s": ring, **lim}
     auth.save_setting("calls", v)
     if clear:                                              # leere Geheimnisse wuerden sonst die alten behalten
         with _db() as c, c:
