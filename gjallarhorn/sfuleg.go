@@ -149,12 +149,15 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 	if req.Audio < 0 || req.Audio > 8 || req.Tiles < 0 || req.Tiles > 30 || len(req.Offer) > 200<<10 {
 		return nil, "", errors.New("ungueltige anfrage")
 	}
-	g, room, err := s.node.Admit(req.Token, path)
+	g, room, err := s.admit(req.Token, path)
 	if err != nil {
-		if errors.Is(err, sfu.ErrNoRoom) || errors.Is(err, sfu.ErrNoUDP) {
+		if errors.Is(err, sfu.ErrNoRoom) || errors.Is(err, sfu.ErrNoUDP) || errors.Is(err, sfu.ErrNoVerifier) {
 			return nil, "", err
 		}
 		return nil, "", fmt.Errorf("%w: %v", errAuth, err)
+	}
+	if !s.used.use(g.ID, "leg", g.Exp) {
+		return nil, "", fmt.Errorf("%w: schon benutzt", errAuth)
 	}
 	if sfu.ParseDevice(req.Device) == sfu.Mobile {
 		g.Device = sfu.Mobile
@@ -288,6 +291,13 @@ func (s *server) sfuTrack(l *leg, sl *sfu.Leg, pc *webrtc.PeerConnection, tr *we
 		}
 	}
 	screen := strings.HasPrefix(tr.StreamID(), "screen")
+	read := func(b []byte) (int, error) {
+		n, _, err := tr.Read(b)
+		return n, err
+	}
+	if s.capture != nil { // nur Tests (HORN_CAPTURE): eingehende Rahmen mitschneiden
+		read = s.capture.tap(kind == fwd.Video, uint32(tr.SSRC()), read)
+	}
 	src, err := sl.AddSource(kind, layerOf(tr), screen, uint32(tr.SSRC()), ext, func(ssrc uint32) {
 		_ = pc.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: ssrc}})
 	})
@@ -321,10 +331,7 @@ func (s *server) sfuTrack(l *leg, sl *sfu.Leg, pc *webrtc.PeerConnection, tr *we
 	if debug {
 		log.Printf("debug %s %s: quelle %s/%s ssrc %d ext %d", l.id, l.path, tr.Kind(), src.Layer, src.SSRC, ext)
 	}
-	src.ReadLoop(func(b []byte) (int, error) {
-		n, _, err := tr.Read(b)
-		return n, err
-	})
+	src.ReadLoop(read)
 	if r := s.node.Room(sl.Grant.Room); r != nil {
 		r.RemoveSource(src)
 	}
@@ -498,7 +505,11 @@ func (s *server) apiSFUTurn(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]string{"error": "json"})
 		return
 	}
-	if _, _, err := s.node.Admit(req.Token, sfu.PathTURN); err != nil {
+	g, _, err := s.admit(req.Token, sfu.PathTURN)
+	if err == nil && !s.used.use(g.ID, "turn", g.Exp) {
+		err = errors.New("token schon benutzt")
+	}
+	if err != nil {
 		writeJSON(w, 401, map[string]string{"error": err.Error()})
 		return
 	}

@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -126,6 +128,14 @@ type server struct {
 	iceMux                  *netx.ICEMux
 	bySFU                   map[*sfu.Leg]*leg
 	devSecret               string
+	verifier                *sagaVerifier          // P3: Medien-Token von Saga (Ed25519)
+	used                    usedTokens             // jedes Token einmal je Zweck
+	ctl                     *ctlClient             // Steuerkanal zu Saga (HORN_SAGA_CTL)
+	origin                  atomic.Pointer[string] // Herkunft der Saga-Seiten (CORS, /probe)
+	graves                  map[string]time.Time   // geschlossene Raeume (gesperrt bis)
+	kicked                  map[string]time.Time   // entfernte Teilnehmende "raum|peer" (gesperrt bis)
+	closing                 atomic.Bool
+	capture                 *capture // nur Tests: Mitschnitt der eingehenden Rahmen (HORN_CAPTURE)
 
 	pubIPs   []string                      // oeffentliche Adressen (Kandidaten)
 	udpCheck atomic.Pointer[netx.UDPCheck] // Ergebnis des UDP-Selbsttests
@@ -199,14 +209,31 @@ func runNode(args []string, bench bool, mode string) error {
 
 func newServer(cfg *config) (*server, error) {
 	s := &server{cfg: cfg, legs: map[string]*leg{}, ufrags: map[string]*leg{}, perIP: map[string]int{}, start: time.Now(), turnSecret: randHex(32),
-		bySFU: map[*sfu.Leg]*leg{}, devSecret: randHex(32)}
+		bySFU: map[*sfu.Leg]*leg{}, devSecret: randHex(32), verifier: &sagaVerifier{}, graves: map[string]time.Time{}, kicked: map[string]time.Time{}}
 	if cfg.Mode == "node" {
 		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed}
 		if cfg.Dev {
 			nc.Verifier = sfu.VerifierFunc(s.verifyDev)
 			log.Printf("WARNUNG: HORN_DEV=1 - Entwicklungs-Token ohne Saga, nur fuer Tests")
+		} else {
+			// P3: Ed25519-Token von Saga; Schluessel aus der Steuerverbindung bzw. HORN_SAGA_PUB
+			if k := strings.TrimSpace(os.Getenv("HORN_SAGA_PUB")); k != "" {
+				b, err := base64.StdEncoding.DecodeString(k)
+				if err != nil || len(b) != ed25519.PublicKeySize {
+					return nil, errors.New("HORN_SAGA_PUB: 32 Byte Base64 erwartet")
+				}
+				s.verifier.SetKey(b)
+			}
+			nc.Verifier = s.verifier
 		}
 		s.node = sfu.NewNode(nc)
+		if o := os.Getenv("HORN_SAGA_ORIGIN"); o != "" {
+			s.setOrigin(o)
+		}
+		if d := os.Getenv("HORN_CAPTURE"); d != "" {
+			s.capture = newCapture(d)
+			log.Printf("WARNUNG: HORN_CAPTURE - Mitschnitt eingehender Rahmen nach %s, nur fuer Tests", d)
+		}
 	}
 	if !cfg.Bench {
 		if err := os.MkdirAll(filepath.Join(cfg.Data, "results"), 0o750); err != nil {
@@ -276,6 +303,21 @@ func newServer(cfg *config) (*server, error) {
 	go func() { _ = srv.Serve(s.mux.HTTP) }()
 	go s.reaper()
 	go s.udpSelfTest()
+	if s.node != nil && !cfg.Dev {
+		go s.roomReaper()
+		if u := os.Getenv("HORN_SAGA_CTL"); u != "" {
+			key := os.Getenv("HORN_CTL_KEY")
+			_ = os.Unsetenv("HORN_CTL_KEY")
+			c, err := newCtl(s, u, key)
+			if err != nil {
+				return nil, err
+			}
+			s.ctl = c
+			go c.run()
+		} else if !s.verifier.HasKey() {
+			log.Printf("WARNUNG: weder HORN_SAGA_CTL noch HORN_SAGA_PUB - der Knoten nimmt keine Beine an")
+		}
+	}
 	udpInfo := "aus"
 	if s.udp != nil {
 		udpInfo = s.udp.LocalAddr().String()
@@ -297,6 +339,7 @@ func hostOf(addr string) string {
 }
 
 func (s *server) shutdown() {
+	s.closing.Store(true)
 	s.mu.Lock()
 	ls := make([]*leg, 0, len(s.legs))
 	for _, l := range s.legs {

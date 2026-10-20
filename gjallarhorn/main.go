@@ -1,5 +1,5 @@
 // Gjallarhorn: Weiterleiter-Knoten fuer grosse Saga-Gruppenanrufe.
-// Dieser Stand ist der Prototyp "Horn-Probe" (Saga 2.5, Paket P0).
+// Betriebsarten: Horn-Probe (Saga 2.5, P0) und Knoten mit Weiterleiter (P1/P2) unter Saga-Steuerung (P3).
 package main
 
 import (
@@ -9,12 +9,12 @@ import (
 
 var version = "2.5.0-probe"
 
-const usage = `gjallarhorn %s – Horn-Probe
+const usage = `gjallarhorn %s
 
 Aufruf:
   gjallarhorn probe                         Messknoten starten (HTTPS, ICE-TCP, TURN-TLS, opt. UDP)
-  gjallarhorn node                          Knoten mit Weiterleiter (SFU); Beine nur mit Medien-Token
-                                            (Saga-Steuerung folgt; HORN_DEV=1 nur fuer Tests)
+  gjallarhorn node                          Knoten mit Weiterleiter (SFU); Beine nur mit Medien-Token von Saga
+                                            (Steuerung HORN_SAGA_CTL bzw. HORN_SAGA_PUB; HORN_DEV=1 nur fuer Tests)
   gjallarhorn bench [-n 25] [--video 12] [--secs 60] [--path tcp|udp] [--sfu]
                                             Last mit lokalen Pion-Bots messen
   gjallarhorn report [--data DIR]           Markdown-Bericht mit Go/No-Go (stdout)
@@ -23,7 +23,9 @@ Aufruf:
 Umgebung (probe): HORN_NAME, HORN_LISTEN (:443), HORN_UDP (1), HORN_DATA (/data),
   HORN_TLS_CERT/HORN_TLS_KEY, HORN_TLS_SELF=1, HORN_PROXY_PROTOCOL (0|1|auto),
   HORN_PUBLIC_IP, HORN_ACME_URL, HORN_ACME_EMAIL, HORN_MODE (probe|node), HORN_DEV.
-  Details: PROBE.md
+Umgebung (node, P3): HORN_SAGA_CTL (ws[s]://saga/api/horn/ctl), HORN_CTL_KEY (eingebauter Knoten, setzt saga-media),
+  HORN_SAGA_PUB (Base64, ohne Steuerkanal), HORN_SAGA_ORIGIN, HORN_PUBLIC_URL.
+  Details: PROBE.md, NODE.md
 `
 
 func main() {

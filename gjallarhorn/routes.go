@@ -36,12 +36,13 @@ func (s *server) routes() http.Handler {
 	m.HandleFunc("GET /api/stats", s.apiStats)
 	if s.node != nil {
 		s.sfuRoutes(m)
+		m.HandleFunc("OPTIONS /api/sfu/", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
 		if s.cfg.Dev {
 			m.HandleFunc("GET /dev/{$}", page)
 			m.HandleFunc("GET /dev/sfu.js", page)
 			m.HandleFunc("GET /style.css", page)
 		}
-		return m
+		return s.cors(m)
 	}
 	m.HandleFunc("GET /{$}", page)
 	m.HandleFunc("GET /app.js", page)
@@ -145,17 +146,13 @@ func (s *server) apiLegDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, st)
 }
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize: 1024, WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		o := r.Header.Get("Origin")
-		return o == "" || strings.TrimPrefix(o, "https://") == r.Host
-	},
-}
-
-// apiWS: Echo fuer den WSS-Ping (RTT ueber TLS/TCP 443).
+// apiWS: Echo fuer den WSS-Ping (RTT ueber TLS/TCP 443). Erlaubt: eigene Herkunft und die Saga-Seiten (P3).
 func (s *server) apiWS(w http.ResponseWriter, r *http.Request) {
-	c, err := upgrader.Upgrade(w, r, nil)
+	up := websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024, CheckOrigin: func(r *http.Request) bool {
+		o := r.Header.Get("Origin")
+		return o == "" || strings.TrimPrefix(o, "https://") == r.Host || s.originOK(o)
+	}}
+	c, err := up.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}

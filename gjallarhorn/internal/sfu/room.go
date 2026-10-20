@@ -617,3 +617,24 @@ func (r *Room) sortedPeers() []*Peer {
 	sort.Slice(ps, func(i, j int) bool { return ps[i].joined < ps[j].joined })
 	return ps
 }
+
+// RoomRefs liefert die Kennungen aller Raeume (Steuerung: Abgleich, Aufraeumen).
+func (n *Node) RoomRefs() []string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	out := make([]string, 0, len(n.rooms))
+	for ref := range n.rooms {
+		out = append(out, ref)
+	}
+	return out
+}
+
+// LegCount liefert die Zahl der Beine im Raum.
+func (r *Room) LegCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.legs)
+}
+
+// Created liefert den Zeitpunkt der Anlage.
+func (r *Room) Created() time.Time { return r.created }

@@ -155,10 +155,11 @@ type Grant struct {
 	UDPOK   bool      // UDP-Weg erlaubt
 	Device  Device    // Geraeteklasse (Last-N)
 	Exp     time.Time // Ablauf (Token +60 s)
+	ID      string    // Kennung des Tokens (jti): jedes Token gilt fuer genau ein Bein
 }
 
-// Verifier prueft ein Medien-Token. Die Ed25519-Pruefung kommt mit P3; bis
-// dahin gibt es nur den Entwicklungs-Pruefer im Knoten (HORN_DEV=1).
+// Verifier prueft ein Medien-Token: Ed25519 mit dem oeffentlichen Saga-Schluessel
+// (P3, horntoken.go im Knoten) bzw. der Entwicklungs-Pruefer (HORN_DEV=1).
 type Verifier interface {
 	Verify(token string) (Grant, error)
 }
