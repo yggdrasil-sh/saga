@@ -22,6 +22,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   andere `chat_ref`, fremder Schlüssel, falscher Inhalt) und den Regeln für die Übernahme des Vertrauens von v1 auf Handles.
   Server-Referenz `saga/chat_v3.py`, Gegenproben `tools/chat_vectors_v3.py` (PyNaCl) und `tools/chat_vectors_v3.mjs`
   (libsodium.js mit `static/chat-crypto.js`); die Testreihe `chat_v2_vektoren` prüft sie mit.
+- **Datenbank: Migration 15** – Umstellpunkt je Chat (`chat.v3_seq`), Bearbeitungen am Original (`chat_msg.edit_of`,
+  `edit_seq`, `edited_at`, `edit_n`) und die Tabelle `chat_reaction`. Läuft beim Start automatisch (vorher Backup);
+  2.4-Backups bleiben einspielbar, umgekehrt nicht.
+- **Lokale Chats der Stufe 3 (Server-Kern, vorerst abschaltbar):** Ist die Einstellung `chat_v3` an (Standard noch aus,
+  bis Apps und Web nachziehen), legt Saga neue Direkt-, Gruppen-, freie und Seiten-Chats im Format `saga-chat/v2` an,
+  sobald alle Mitglieder ein Handle-Zertifikat haben – über den Weg der Chats über Servergrenzen, mit dem eigenen
+  Server als Heim, auch bei abgeschalteter Föderation. In solchen Chats steht für andere Konten überall der Handle statt
+  des Anmeldenamens: Mitglieder, Gegenüber, Absender, Empfänger, Gelesen, Tippen, Löschen-Hinweise. Apps 2.3/2.4
+  (`X-Saga-Chat: 2`) sehen sie als `v: 2`, ältere einen Hinweis. Schlüsselwechsel melden Chat-Partnern lokal
+  `chat.keys.changed`; Schlüssel eigener Konten gibt es per Handle nur für Chat-Partner; ein Stufe-3-Chat macht den
+  Anmeldenamen nicht mehr als Eingabe nutzbar. Neue Testreihe `anmeldenamen_v3` (Marker-Scan über alle Antworten und
+  Ereignisse). Noch offen: Anrufe in Stufe 3, Umstellung bestehender Chats, Chats über Servergrenzen mit lokalen
+  Mitmitgliedern als Handle, Reaktionen, Bearbeiten, Sprachnachrichten.
 
 ## [2.4.0] – 2026-10-20
 

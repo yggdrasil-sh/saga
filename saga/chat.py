@@ -96,6 +96,10 @@ MEDIA_AUTHZ_TTL = 60                   # saga-media merkt sich eine Erlaubnis ho
 _py_streams = {"sem": None}
 # Kann der anfragende Client saga-chat/v2 (Kopfzeile X-Saga-Chat: 2)? Aeltere Apps sehen foederierte Chats nur mit Hinweis.
 V2_CLIENT = contextvars.ContextVar("saga_chat_v2", default=False)
+# 2.5: hoechste Chat-Stufe des Clients (X-Saga-Chat: 2 = Apps/Web 2.3-2.4, 3 = 2.5). Chats der Stufe 3 sehen Clients der
+# Stufe 2 als v: 2 (gleiches Krypto-Format, Kompat-Sicht), aeltere nur mit Hinweis.
+CHAT_LEVEL = contextvars.ContextVar("saga_chat_level", default=0)
+_FULL_H = re.compile(r"(~[a-z2-7]{16})@([a-z0-9.:-]{1,260})")
 # 2.4: Gelesen-Bestaetigungen und Online-Status (saga.chat_status setzt sich hier ein): RECEIPT(uid, chat, mitglied, beleg)
 # -> Zustand fuer POST /api/chats/{cid}/read mit receipt; STATUS_ME(c, uid) -> Zusatzfelder fuer /api/chat/me
 RECEIPT = None
@@ -202,7 +206,10 @@ def _rate(kind, uid, n, per=60.0):
 
 def _me(request):
     """-> (uid, fehler)"""
-    V2_CLIENT.set(request.headers.get("x-saga-chat", "") == "2")
+    lv = request.headers.get("x-saga-chat", "")
+    lv = int(lv) if lv.isdigit() and len(lv) < 3 else 0
+    CHAT_LEVEL.set(lv)
+    V2_CLIENT.set(lv >= 2)
     uid = _api_guard(request)
     if not uid:
         return None, _bad("unauthorized", 401)
@@ -296,6 +303,79 @@ def fed_hint():
 
 def is_fed(ch):
     return bool(ch) and ch.get("v") == 2 and FED is not None
+
+
+def is_v3(ch):
+    """2.5 (Chat-Stufe 3): lokaler Chat im Format saga-chat/v2, gebunden an die Handles - Partner sehen keine Anmeldenamen."""
+    return bool(ch) and ch.get("v") == 3 and FED is not None
+
+
+def hfmt(ch):
+    """Format saga-chat/v2 (foederiert oder Stufe 3): Senden, Empfaenger und Schluessel ueber saga.fed_chat."""
+    return bool(ch) and ch.get("v") in (2, 3) and FED is not None
+
+
+def v3_new():
+    """Neue lokale Chats in Stufe 3 anlegen? (2.5, in Arbeit: Einstellung chat_v3, Standard aus)"""
+    return FED is not None and bool(auth.settings().get("chat_v3"))
+
+
+def v3_hint():
+    return t("Diesen Chat bitte mit Saga 2.5 oder neuer öffnen – diese App-Version kann ihn nicht lesen.")
+
+
+def person(c, u, viewer, ch):
+    """Kennung eines Mitglieds fuer viewer: in Chats der Stufe 3 andere Konten als Handle '~x@host' (nie der Anmeldename),
+    das eigene Konto und sonst unveraendert."""
+    if not is_v3(ch) or not u or u == viewer or sharing.is_remote(u):
+        return u
+    return FED.my_handle(c, u)
+
+
+def who_in(c, uid, x):
+    """Eingabe einer Person an Endpunkten von Chats (Mitglied entfernen, hinzufuegen): Handle '~x@<dieser Server>' (2.5,
+    members[].username in Stufe 3) -> Benutzername; sonst wie resolve_input."""
+    m = _FULL_H.fullmatch(str(x or "").strip().lower())
+    if m and FED is not None and FED.fedsig.authority(m.group(2)) == FED.F.SELF_HOST:
+        return FED.F.uid_by_handle(c, m.group(1)) or ""
+    return resolve_input(c, uid, x)
+
+
+def handle_ready(c, uids):
+    """Haben alle diese Konten ein Handle-Zertifikat zur aktuellen Identitaet (jedes Konto mit einem Geraet ab 2.3)?"""
+    uids = sorted({u for u in uids if u and not sharing.is_remote(u)})
+    if not uids:
+        return False
+    n = c.execute(f"SELECT COUNT(*) FROM chat_fed_cert f JOIN chat_identity i ON i.uid=f.uid AND i.ident_pub=f.ident_pub "
+                  f"WHERE f.uid IN ({','.join('?' * len(uids))})", tuple(uids)).fetchone()[0]
+    return n == len(uids)
+
+
+def make_v3(c, ch, uids):
+    """Neuer lokaler Chat (noch ohne Nachrichten): Stufe 3, wenn eingeschaltet und alle Mitglieder bereit sind (Frage 1 des
+    Konzepts: sonst bleibt er v1 und wird spaeter umgestellt). -> Chat (ggf. aktualisiert)"""
+    if not ch or ch.get("v") != 1 or ch.get("ref") or ch.get("last_seq") or not v3_new() or not handle_ready(c, uids):
+        return ch
+    ref = secrets.token_hex(16) + "@" + FED.F.SELF_HOST
+    c.execute("UPDATE chat SET v=3, ref=? WHERE id=? AND v=1 AND ref IS NULL", (ref, ch["id"]))
+    return _load(c, ch["id"])
+
+
+def direct_person(c, ch, uids, typ, data, who, key):
+    """Live-Ereignis, das eine Person nennt (data[key] = {...username} bzw. Kennung): in Stufe 3 je Empfaenger eigene Daten
+    (andere als Handle, sich selbst mit Benutzernamen); sonst wie _direct."""
+    uids = sorted({u for u in uids if u})
+    if not is_v3(ch):
+        _direct(c, uids, typ, data)
+        return
+    items = []
+    for v in uids:
+        p = person(c, who, v, ch)
+        d = dict(data)
+        d[key] = dict(d[key], username=p) if isinstance(d.get(key), dict) else p
+        items.append((v, typ, d))
+    if items:
+        bus.emit_after(c, "direct_each", {"items": items})
 
 
 def _load(c, cid):
@@ -771,9 +851,10 @@ def api_link_delete(lid: str, request: Request):
 
 # --- Schluessel, Personen, Seiten -----------------------------------------------------------------------------
 def _known(c, uid):
-    """Konten, mit denen uid einen Chat hat oder hatte."""
+    """Konten, mit denen uid einen Chat hat oder hatte (2.5: ohne Chats der Stufe 3 - dort gibt es Schluessel nur per Handle
+    ueber /api/chat/v2/keys; umgestellte Chats mit Altbestand v1 zaehlen weiter)."""
     return {r[0] for r in c.execute("SELECT DISTINCT m2.uid FROM chat_member m1 JOIN chat_member m2 ON m2.chat_id=m1.chat_id "
-                                    "WHERE m1.uid=?", (uid,))}
+                                    "JOIN chat ch ON ch.id=m1.chat_id WHERE m1.uid=? AND (ch.v<>3 OR ch.v3_seq IS NOT NULL)", (uid,))}
 
 
 @router.get("/api/chat/keys")
@@ -1011,11 +1092,11 @@ def _chat_dict(c, uid, ch, mem, m, device, full=False):
         d["max_members"] = MEMBERS_MAX
         if CALLS is not None:                         # 2.4: Gruppenanruf moeglich? laufender Anruf in diesem Chat?
             CALLS.chat_extra(c, uid, ch, d)
-    if is_fed(ch):                                    # 2.3: Chat ueber Servergrenzen (saga.fed_chat)
+    if hfmt(ch):                                      # 2.3: Chat ueber Servergrenzen (saga.fed_chat); 2.5: Stufe 3 ebenso
         FED.chat_extra(c, uid, ch, d, mem, m)
         if not V2_CLIENT.get():                       # aeltere App: Hinweis statt kaputter Nachrichten
             d["name"] = (d.get("name") or "") + " · " + t("bitte App aktualisieren")
-            d["fed_hint"] = fed_hint()
+            d["fed_hint"] = v3_hint() if is_v3(ch) else fed_hint()
     return d
 
 
@@ -1126,7 +1207,7 @@ async def api_chat_new(request: Request):
                 cid = c.execute("INSERT INTO chat (kind, dm_key, created_by, created) VALUES ('dm',?,?,?)", (key, uid, now)).lastrowid
                 for u in (uid, other):
                     c.execute("INSERT INTO chat_member (chat_id, uid, joined) VALUES (?,?,?)", (cid, u, now))
-                ch = _load(c, cid)
+                ch = make_v3(c, _load(c, cid), [uid, other])     # 2.5: Stufe 3, wenn eingeschaltet und beide bereit
                 _changed(c, cid)
         elif kind == "group":
             g = auth.norm_group(str(b.get("group") or "")) or ""
@@ -1137,7 +1218,7 @@ async def api_chat_new(request: Request):
                 if len(notify.group_members(c, g, MEMBERS_MAX + 1)) > MEMBERS_MAX:
                     return _bad(t("Höchstens {n} Mitglieder je Chat.", n=MEMBERS_MAX), 409)
                 cid = c.execute("INSERT INTO chat (kind, group_name, created_by, created) VALUES ('group',?,?,?)", (g, uid, now)).lastrowid
-                ch = _load(c, cid)
+                ch = make_v3(c, _load(c, cid), notify.group_members(c, g))
         elif kind == "page":
             try:
                 nid = int(b.get("note_id") or 0)
@@ -1151,7 +1232,7 @@ async def api_chat_new(request: Request):
                 if len(page_members(c, nid)) > MEMBERS_MAX:
                     return _bad(t("Höchstens {n} Mitglieder je Chat.", n=MEMBERS_MAX), 409)
                 cid = c.execute("INSERT INTO chat (kind, note_id, created_by, created) VALUES ('page',?,?,?)", (nid, uid, now)).lastrowid
-                ch = _load(c, cid)
+                ch = make_v3(c, _load(c, cid), page_members(c, nid))
         elif kind == "free":
             want = b.get("members")
             if not isinstance(want, list) or len(want) > MEMBERS_MAX:
@@ -1166,7 +1247,7 @@ async def api_chat_new(request: Request):
             c.execute("INSERT INTO chat_member (chat_id, uid, role, joined) VALUES (?,?,'admin',?)", (cid, uid, now))
             for u in want:
                 c.execute("INSERT INTO chat_member (chat_id, uid, joined) VALUES (?,?,?)", (cid, u, now))
-            ch = _load(c, cid)
+            ch = make_v3(c, _load(c, cid), [uid, *want])
             _changed(c, cid)
         else:
             return _bad(t("ungültige Angabe"))
@@ -1250,7 +1331,7 @@ async def api_member_add(cid: int, request: Request):
     who = str(b.get("user") or "").strip().lower()[:100]
     if who and not b.get("handle"):                       # 2.4: Handle aus der Personensuche; Benutzername nur bekannt/erlaubt
         with _db() as c:
-            who = resolve_input(c, uid, who)
+            who = who_in(c, uid, who)                     # 2.5: auch der Handle '~x@host' aus members[] (Stufe 3)
     if FED is not None:
         with _db() as c:
             fch = _load(c, cid)
@@ -1320,6 +1401,8 @@ def api_member_remove(cid: int, who: str, request: Request):
     if FED is not None:
         with _db() as c:
             fch = _load(c, cid)
+            if is_v3(fch) and _FULL_H.fullmatch(who):    # 2.5: Stufe 3 nennt andere Mitglieder per Handle
+                who = who_in(c, uid, who) or "~"
         if is_fed(fch):                                   # 2.3: Gruppe ueber Servergrenzen (Aenderung ueber das Heim)
             return FED.group_remove(uid, cid, who)
     with _db() as c, c:
@@ -1434,12 +1517,12 @@ def api_chat_delete(cid: int, request: Request, scope: str = "me"):
         _drop_notifs(c, everyone, ch["id"])
         if mode == "chat":
             _rm_blobs(c, _drop_chat(c, ch["id"]))       # Mitglieder, Nachrichten, Schluessel, Anrufe, KI, chat_pref: CASCADE
-            _direct(c, everyone, "chat.removed", {"chat_id": ch["id"], "kind": ch["kind"], "by": by})
+            direct_person(c, ch, everyone, "chat.removed", {"chat_id": ch["id"], "kind": ch["kind"], "by": by}, uid, "by")
             print(f"chat: Chat {ch['id']} ({ch['kind']}) von {uid} fuer alle geloescht", flush=True)
             return _no_store({"ok": True, "scope": "all", "removed": True})
         fids, n = _wipe_history(c, ch)
         _rm_blobs(c, fids)
-        _direct(c, everyone, "chat.cleared", {"chat_id": ch["id"], "scope": "all", "by": by})
+        direct_person(c, ch, everyone, "chat.cleared", {"chat_id": ch["id"], "scope": "all", "by": by}, uid, "by")
         print(f"chat: Verlauf von Chat {ch['id']} ({ch['kind']}) von {uid} fuer alle geloescht ({n} Nachrichten)", flush=True)
         return _no_store({"ok": True, "scope": "all", "removed": False, "deleted": n})
 
@@ -1471,9 +1554,9 @@ def api_recipients(cid: int, request: Request):
         ch, m, mem, err = _chat_for(c, uid, cid)
         if err:
             return err
-        if is_fed(ch):
+        if hfmt(ch):
             if not V2_CLIENT.get():
-                return _bad(fed_hint(), 400)
+                return _bad(v3_hint() if is_v3(ch) else fed_hint(), 400)
             return FED.recipients(c, uid, ch, mem)
         out, _ = recipients(c, mem)
     return _no_store({"chat_id": ch["id"], "recipients": out})
@@ -1492,10 +1575,10 @@ def api_messages(cid: int, request: Request, device: str = "", before: int = 0, 
         if err:
             return err
         dev = _my_device(c, uid, device)
-        if is_fed(ch) and not V2_CLIENT.get():          # aeltere App: keine v2-Nachrichten, nur der Hinweis
+        if hfmt(ch) and not V2_CLIENT.get():            # aeltere App: keine v2-Nachrichten, nur der Hinweis
             return _no_store({"chat_id": ch["id"], "messages": [], "more": False, "devices": {}, "idents": {}, "last_read": m["last_read"],
-                              "last_seq": ch["last_seq"], "fed_hint": fed_hint()})
-        where, args, desc = ("AND m.kind IN ('msg','call','sys')" if calls and is_fed(ch) else "AND m.kind IN ('msg','call')" if calls
+                              "last_seq": ch["last_seq"], "fed_hint": v3_hint() if is_v3(ch) else fed_hint()})
+        where, args, desc = ("AND m.kind IN ('msg','call','sys')" if calls and hfmt(ch) else "AND m.kind IN ('msg','call')" if calls
                              else "AND m.kind='msg'"), (), True
         if after > 0:
             where, args, desc = where + " AND m.seq>?", (min(after, 2 ** 63 - 1),), False
@@ -1507,9 +1590,16 @@ def api_messages(cid: int, request: Request, device: str = "", before: int = 0, 
         if desc:
             rows.reverse()
         nm = names(c, [r[3] for r in rows])
-        devs, ids = _senders(c, rows)
+        v3 = is_v3(ch)
+        # Stufe 3 (2.5): Geraete-/Identitaetsdaten v1 (mit Benutzername) nur fuer Altbestand ohne sender_handle - den hat
+        # der Betrachter mit seinem Schluessel ohnehin schon gesehen (_msgs liefert nur Nachrichten mit Schluessel)
+        devs, ids = _senders(c, [r for r in rows if not r[14]] if v3 else rows)
         msgs = [_msg_dict(r, nm) for r in rows]
-        if not is_fed(ch):                              # v2: KI-Hash ist mitsigniert (Feld ai), kein Server-Beleg
+        if v3:
+            for x in msgs:
+                if x.get("sender_handle") and x.get("sender") and x["sender"]["username"] != uid:
+                    x["sender"] = dict(x["sender"], username=x["sender_handle"])
+        if not hfmt(ch):                                # v2: KI-Hash ist mitsigniert (Feld ai), kein Server-Beleg
             ai_marks(c, ch["id"], msgs)
         return _no_store({"chat_id": ch["id"], "messages": msgs, "more": more,
                           "devices": devs, "idents": ids, "last_read": m["last_read"], "last_seq": ch["last_seq"]})
@@ -1529,9 +1619,9 @@ async def api_send(cid: int, request: Request):
     if FED is not None:
         with _db() as c:
             fch = _load(c, cid)
-        if is_fed(fch):                                   # 2.3: Chat ueber Servergrenzen (saga-chat/v2)
+        if hfmt(fch):                                     # 2.3: Chat ueber Servergrenzen (saga-chat/v2); 2.5: Stufe 3
             if not V2_CLIENT.get() and b.get("v") != 2:
-                return _bad(fed_hint(), 400)
+                return _bad(v3_hint() if is_v3(fch) else fed_hint(), 400)
             from starlette.concurrency import run_in_threadpool
             return await run_in_threadpool(FED.send, uid, cid, b)
     mid, dev, body_ct, sig = str(b.get("id") or ""), str(b.get("sender_device") or ""), b.get("body_ct"), b.get("sig")
@@ -1635,7 +1725,7 @@ def api_msg_delete(cid: int, mid: str, request: Request):
         ch, m, mem, err = _chat_for(c, uid, cid, do_sync=False)
         if err:
             return err
-        if is_fed(ch):
+        if hfmt(ch):
             c.rollback()
             return FED.delete_msg(uid, ch, mid)
         mem = _fresh(c, ch, mem)                 # Seiten-/Gruppen-Chat: gerade Entzogene bekommen nichts mehr (BUG-088)
@@ -1704,7 +1794,8 @@ def api_typing(cid: int, request: Request):
         if is_fed(ch) and not ch["fstate"] and m.get("state") == "ok":
             FED.typing(uid, ch)                  # an die anderen Server: direkt, verwerfbar
         nm = names(c, [uid])
-        _direct(c, [u for u in mem if u != uid], "chat.typing", {"chat_id": ch["id"], "user": {"username": uid, "name": nm.get(uid, uid)}})
+        direct_person(c, ch, [u for u in mem if u != uid], "chat.typing", {"chat_id": ch["id"], "user": {"username": uid, "name": nm.get(uid, uid)}},
+                      uid, "user")
     return _no_store({"ok": True})
 
 

@@ -73,7 +73,7 @@ def prefs(c, uid):
 
 def me_extra(c, uid):
     """chat.STATUS_ME: Zusatzfelder fuer GET /api/chat/me."""
-    return {"privacy": prefs(c, uid), "features": ["receipts", "online"],
+    return {"privacy": prefs(c, uid), "features": ["receipts", "online"] + (["chat3"] if chat.v3_new() else []),   # 2.5: Stufe 3
             "status_limits": {"receipt_gap": GAP, "presence_ttl": WATCH_TTL, "presence_users": USERS_MAX, "last_round": ROUND}}
 
 
@@ -165,7 +165,7 @@ def take(uid, ch, m, rc):
         if uid not in mem:
             return "none"
         loc, rem = {}, {}
-        if chat.is_fed(ch):
+        if chat.hfmt(ch):                         # v2-Format (2.3 foederiert, 2.5 Stufe 3): Empfaenger 'backup:<handle>'
             if ch["fstate"]:
                 return "none"
             states = dict(FC.members(c, cid))
@@ -230,14 +230,14 @@ def _flush(cid):
                 return
             loc = [u for u in mem if not sharing.is_remote(u)]
             off = _off(c, KV_RCPT, loc)
-            fed = chat.is_fed(ch)
+            fed = chat.hfmt(ch)
             hs = {r: FC.member_handle(c, r) for r in rd} if fed else {}
             per = {}
             for reader, viewer, sealed in c.execute(f"SELECT reader, viewer, sealed FROM chat_receipt WHERE chat_id=? AND reader IN "
                                                     f"({','.join('?' * len(rd))})", (cid, *rd)).fetchall():
                 if viewer in off or viewer not in mem or reader == viewer or reader in off:
                     continue
-                it = {"from": reader, "sealed": sealed}
+                it = {"from": chat.person(c, reader, viewer, ch), "sealed": sealed}
                 if fed:
                     it["handle"] = hs.get(reader)
                 per.setdefault(viewer, []).append(it)
@@ -246,7 +246,7 @@ def _flush(cid):
                 bus.emit_after(c, "direct_each", {"items": [(v, "chat.receipt", {"chat_id": cid, "receipts": its} if len(its) <= INLINE
                                                              else {"chat_id": cid, "receipts": [], "more": True}) for v, its in sorted(per.items())]})
             for reader, rem in fedp.items():
-                if fed and reader in rd and not sharing.is_remote(reader) and reader not in off:
+                if chat.is_fed(ch) and reader in rd and not sharing.is_remote(reader) and reader not in off:
                     _fed_send(c, ch, hs.get(reader), rem)
     except Exception as ex:  # noqa: BLE001 - Datenbank gerade weg: diese Buendelung entfaellt (die Zeilen liegen, GET liefert sie)
         print(f"chat_status: Versand Chat {cid}: {type(ex).__name__}: {ex}", flush=True)
@@ -312,11 +312,11 @@ def api_receipts(cid: int, request: Request):
         if gone:                                   # ausgetreten/entfernt: deren Bestaetigungen hier aufraeumen
             c.execute(f"DELETE FROM chat_receipt WHERE chat_id=? AND reader IN ({','.join('?' * len(gone))})", (ch["id"], *gone))
         off = _off(c, KV_RCPT, [r[0] for r in rows])
-        fed = chat.is_fed(ch)
+        fed = chat.hfmt(ch)
         out = []
         for reader, sealed in rows:
             if reader in mem and reader != uid and reader not in off:
-                it = {"from": reader, "sealed": sealed}
+                it = {"from": chat.person(c, reader, uid, ch), "sealed": sealed}
                 if fed:
                     it["handle"] = FC.member_handle(c, reader)
                 out.append(it)
@@ -695,7 +695,10 @@ def _peer_gone(c, p):
 
 def chat_flags(c, ch, d):
     """fed_chat.EXTRA_HOOKS: koennen die anderen Server dieses Chats Bestaetigungen bzw. Online-Status (2.4)? Teilnehmer:
-    das Heim; Heim: mindestens ein Teilnehmer-Server. Fehlt das Feld (lokaler Chat), gilt true."""
+    das Heim; Heim: mindestens ein Teilnehmer-Server. Fehlt das Feld (lokaler Chat), gilt true. 2.5: Stufe 3 (lokal) true."""
+    if ch["v"] == 3:
+        d["receipts_ok"] = d["online_ok"] = True
+        return
     if ch["home_peer"] is not None:
         ps = [F.peer_by(c, "id", ch["home_peer"])]
     else:

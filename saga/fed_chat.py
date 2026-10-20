@@ -435,7 +435,8 @@ def deliver(c, ch, seq, mid, sender, kind="msg"):
             continue
         notify.create(c, u, "chat.message", sender, data={"chat": ch["id"]}, bundle=ch["id"])
         bus.fire("push.send", c, uid=u, kind="chat.message", actor=sender, data={"chat": ch["id"]})
-    chat._direct(c, [r[0] for r in loc], "chat.message", {"chat_id": ch["id"], "seq": seq, "id": mid, "sender": sender, **({"kind": kind} if kind != "msg" else {})})
+    chat.direct_person(c, ch, [r[0] for r in loc], "chat.message", {"chat_id": ch["id"], "seq": seq, "id": mid, "sender": sender,
+                                                                   **({"kind": kind} if kind != "msg" else {})}, sender, "sender")
 
 
 def local_members(c, cid):
@@ -1794,7 +1795,7 @@ def send(uid, cid, b):
         return _bad(t("Die Uhrzeit dieses Geräts weicht zu stark ab."), 400)
     with _db() as c, c:                                  # Seiten-Chat mit Heim hier: Freigaben jetzt pruefen (Entzug wirkt sofort)
         ch0 = chat._load(c, cid)
-        if ch0 and ch0["kind"] == "page" and ch0["home_peer"] is None and chat.is_fed(ch0):
+        if ch0 and ch0["kind"] == "page" and ch0["home_peer"] is None and chat.hfmt(ch0):
             chat.sync(c, ch0)
     with _db() as c:
         ch, mm, mem, err = chat._chat_for(c, uid, cid, do_sync=False)
@@ -2058,7 +2059,7 @@ def recipients(c, uid, ch, mem):
     for u in mem:
         h = member_handle(c, u)
         lab = label_of(c, u) if sharing.is_remote(u) else {"name": sharing.names(c, [u]).get(u, u), "host": F.SELF_HOST}
-        out.append({"username": u, "handle": h, "name": lab["name"], "host": lab["host"], "me": u == uid})
+        out.append({"username": chat.person(c, u, uid, ch), "handle": h, "name": lab["name"], "host": lab["host"], "me": u == uid})
     return chat._no_store({"chat_id": ch["id"], "v": 2, "ref": ch["ref"], "handles": [x["handle"] for x in out], "recipients_v2": out})
 
 
@@ -2066,8 +2067,10 @@ def chat_extra(c, uid, ch, d, mem, m):
     """Zusatzfelder fuer foederierte Chats in /api/chats und /api/chats/{cid}."""
     hh = home_host(c, ch)
     ro = _ro_error(c, ch)
-    d.update(v=2, ref=ch["ref"], fed=True, home=hh, home_self=ch["home_peer"] is None, my_handle=my_handle(c, uid),
-             state=(m or {}).get("state") or "ok", request=(m or {}).get("state") == "request", readonly=bool(ro), readonly_reason=ro,
+    v3 = ch["v"] == 3            # 2.5: lokaler Chat der Stufe 3 - Clients der Stufe 2 sehen ihn als v: 2 (gleiches Format)
+    d.update(v=3 if v3 and chat.CHAT_LEVEL.get() >= 3 else 2, ref=ch["ref"], fed=not v3, home=hh, home_self=ch["home_peer"] is None,
+             my_handle=my_handle(c, uid), state=(m or {}).get("state") or "ok", request=(m or {}).get("state") == "request",
+             readonly=bool(ro), readonly_reason=ro,
              big_files=big_files_ok(c, ch))      # 2.4: grosse Anhaenge (saga-file/v2 ueber ATTACH_MAX_MB) moeglich (alle mit chatfile2)
     out = []
     av = sharing.names(c, mem)
@@ -2078,8 +2081,15 @@ def chat_extra(c, uid, ch, d, mem, m):
             x.update(name=lab["name"], label=lab["label"], host=lab["host"], handle=handle_of(u), remote=True)
         else:
             x.update(handle=my_handle(c, u), host=F.SELF_HOST)
+            if v3 and u != uid:                     # Stufe 3: andere Konten nur als Handle (Endpunkte nehmen ihn an)
+                x["username"] = x["handle"]
         out.append(x)
     d["members"] = out
+    if v3:
+        _extra_v3(c, uid, ch, d, out)
+        for fn in EXTRA_HOOKS:
+            fn(c, ch, d)
+        return d
     if ch["kind"] == "page" and ch["home_peer"] is not None:     # Kopie eines Seiten-Chats einer fremden Seite (E5)
         d.update(name=ch["group_name"] or t("Seite"), group=None)
     if ch["kind"] in ("free", "page"):
@@ -2101,6 +2111,21 @@ def chat_extra(c, uid, ch, d, mem, m):
 
 
 EXTRA_HOOKS = []
+
+
+def _extra_v3(c, uid, ch, d, members_):
+    """Stufe 3 (2.5): lokaler Chat ohne Personen anderer Server - Direkt-Chat mit dem Gegenueber als Handle, Name der freien
+    Gruppe ohne v1-Absenderdaten. Loeschen "fuer alle" wie bei lokalen Chats (d bleibt aus chat._chat_dict)."""
+    if ch["kind"] == "dm":
+        o = next((x for x in members_ if not x.get("me")), None) or {}
+        d["peer"] = {"username": o.get("username"), "handle": o.get("handle"), "name": o.get("name") or d.get("name") or "?",
+                     "label": o.get("name") or d.get("name") or "?", "host": F.SELF_HOST, "avatar": o.get("avatar")}
+    tm = d.get("title_msg")
+    if tm and tm.get("sender_handle"):
+        if tm.get("sender") and tm["sender"].get("username") != uid:
+            tm["sender"] = dict(tm["sender"], username=tm["sender_handle"])
+        tm.pop("device", None)
+        tm.pop("ident_pub", None)
 
 
 # =====================================================================================================
@@ -2188,7 +2213,8 @@ def upgrade_page_chat(c, ch):
     v1 - ohne sender_handle - und fuer die Mitglieder hier lesbar). KI in Chats ueber Servergrenzen standardmaessig aus."""
     if ch["kind"] != "page" or ch.get("v") == 2 or ch.get("home_peer") is not None:
         return
-    ref = secrets.token_hex(16) + "@" + F.SELF_HOST
+    ref = ch.get("ref") if ch.get("v") == 3 else None    # 2.5: Stufe 3 hat schon das Format v2 und eine chat_ref
+    ref = ref or secrets.token_hex(16) + "@" + F.SELF_HOST
     c.execute("UPDATE chat SET v=2, ref=? WHERE id=?", (ref, ch["id"]))
     ch.update(v=2, ref=ref)
     had = c.execute("DELETE FROM chat_ai WHERE chat_id=?", (ch["id"],)).rowcount
