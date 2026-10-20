@@ -438,13 +438,13 @@ def passkey_login_allowed(u):
 
 def note_ip_fail(ip, area="pk"):
     with _db() as c, c:
-        c.execute("INSERT INTO login_fail (key, ts) VALUES (?,?)", (f"{area}:ip:{ip}", time.time()))
+        c.execute("INSERT INTO login_fail (key, ts) VALUES (?,?)", (f"{area}:ip:{auth.ip_bucket(ip)}", time.time()))
 
 
 def ip_blocked(ip, area="pk", limit=30):
     with _db() as c:
         return c.execute("SELECT COUNT(*) FROM login_fail WHERE key=? AND ts>?",
-                         (f"{area}:ip:{ip}", time.time() - auth.FAIL_WINDOW)).fetchone()[0] >= limit
+                         (f"{area}:ip:{auth.ip_bucket(ip)}", time.time() - auth.FAIL_WINDOW)).fetchone()[0] >= limit
 
 
 # --- Einrichtung verlangt (Richtlinie) -----------------------------------------------------------------

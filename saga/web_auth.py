@@ -324,7 +324,7 @@ async def register_post(request: Request):
         return fail(t("Die Passwörter stimmen nicht überein."))
     if f["email"] and not EMAIL_RE.fullmatch(f["email"]):
         return fail(t("Die E-Mail-Adresse sieht nicht richtig aus."))
-    ip = _ip(request)
+    ip = auth.ip_bucket(_ip(request))                   # IPv6: je /64
     with _db() as c:
         n = c.execute("SELECT COUNT(*) FROM login_fail WHERE key=? AND ts>?", ("reg:" + ip, time.time() - 3600)).fetchone()[0]
     if n >= REG_MAX_PER_IP:

@@ -110,6 +110,13 @@ func newProxy(c *config, tr http.RoundTripper) *httputil.ReverseProxy {
 			pr.Out.Host = pr.In.Host
 			setForwarded(pr.Out.Header, pr.In, c.trusted)
 		},
+		ModifyResponse: func(resp *http.Response) error {
+			if resp.Header.Get(authHint) == "1" && resp.Request != nil {
+				markAuth(resp.Request) // Saga: Anfrage war angemeldet (S1b)
+			}
+			resp.Header.Del(authHint)
+			return nil
+		},
 		Transport:  tr,
 		BufferPool: newBufPool(),
 		ErrorLog:   log.New(io.Discard, "", 0),

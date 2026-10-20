@@ -28,7 +28,7 @@ from saga import app_api, app_login, calendars, comments, dashboard, databases, 
 from saga import ai, ai_chat, avatars, calls, chat, chat_files, federation, i18n, live, mfa, notify, push
 from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
 from saga import chat_status                     # 2.4: Gelesen-Bestaetigungen und Online-Status (haengt sich in chat, live, fed_chat ein)
-from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, title
+from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, MEDIA_FRONT, MediaAuthHint, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
 from saga.notes import FILE_MAX
@@ -114,6 +114,8 @@ app.add_middleware(
 # gzip fuer JSON/Text/JS/CSS ab 1 KB (saga.core.Compress) - nicht fuer den Live-Kanal/KI-Stream (text/event-stream),
 # Bilder, Dateien, Zip, Teilantworten. Hier registriert = laeuft innerhalb von canonical_host/BodyLimit.
 app.add_middleware(Compress)
+if MEDIA_FRONT:                                            # 2.4: saga-media davor - angemeldete Anfragen kennzeichnen (S1b)
+    app.add_middleware(MediaAuthHint)
 app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
 
 # Aufrufe ueber andere Hostnamen (interne IP/DNS, alter Name) auf BASE_URL umleiten.

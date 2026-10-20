@@ -16,7 +16,12 @@ func startLimited(t *testing.T, max, maxIP int, idle time.Duration) (string, fun
 	}
 	c := &config{maxConns: max, maxConnsIP: maxIP, idleUnauth: idle, trusted: parseTrust("10.9.9.9")}
 	lim := newLimitListener(ln, c)
-	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { markAuth(r); _, _ = w.Write([]byte("ok")) }),
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Cookie") == "s=gueltig" { // steht fuer: Saga hat die Anmeldung bestaetigt (authz bzw. X-Saga-Media-Auth)
+			markAuth(r)
+		}
+		_, _ = w.Write([]byte("ok"))
+	}),
 		ConnContext: connContext, ConnState: lim.connState}
 	go func() { _ = srv.Serve(lim) }()
 	return ln.Addr().String(), func() { _ = srv.Close() }
@@ -111,13 +116,27 @@ func TestConnIdleUnauthShorter(t *testing.T) {
 	addr, stop := startLimited(t, 16, 8, 300*time.Millisecond)
 	defer stop()
 	anon := idleConn(t, addr, "")
-	authd := idleConn(t, addr, "Cookie: s=1\r\n")
+	fake := idleConn(t, addr, "Cookie: x=1\r\nAuthorization: Bearer x\r\nX-Saga-Media-Token: x\r\n")
+	authd := idleConn(t, addr, "Cookie: s=gueltig\r\n")
 	if !closed(anon, 1500*time.Millisecond) {
 		t.Errorf("Leerlauf ohne Anmeldedaten nicht beendet")
 	}
+	if !closed(fake, 500*time.Millisecond) {
+		t.Errorf("Leerlauf mit ungeprueften Anmeldekoepfen verlaengert (S1b)")
+	}
+	fake.Close()
 	if closed(authd, 200*time.Millisecond) {
 		t.Errorf("Leerlauf mit Anmeldedaten zu frueh beendet")
 	}
 	anon.Close()
 	authd.Close()
+}
+
+func TestIPBucket(t *testing.T) {
+	for in, want := range map[string]string{"203.0.113.7": "203.0.113.7", "::ffff:203.0.113.7": "203.0.113.7",
+		"2001:db8:1:2:3:4:5:6": "2001:db8:1:2::/64", "2001:db8:1:2:ffff::1": "2001:db8:1:2::/64", "2001:db8:1:3::1": "2001:db8:1:3::/64"} {
+		if got := ipBucket(hostOf(in)); got != want {
+			t.Errorf("ipBucket(%s) = %s, erwartet %s", in, got, want)
+		}
+	}
 }

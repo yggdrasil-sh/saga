@@ -11,6 +11,7 @@ import base64
 import copy
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -250,8 +251,29 @@ AREA_PREFIX = {"admin": "adm:", "mfa": "mfa:", "admin-mfa": "amfa:"}
 AREA_LIMITS = {"mfa": (5, 10, 30), "admin-mfa": (5, 10, 30)}
 
 
+# Admin-Port: zusaetzlich eine feste Grenze je Konto ueber alle Adressen (wie bis 2.3): ab ADMIN_MAX_USER Fehlversuchen
+# binnen FAIL_WINDOW wartet jede Adresse, bis die aeltesten aus dem Fenster fallen - gegen verteiltes Raten (viele
+# Adressen, IPv6). Auf der Hauptseite uebernimmt das die harte Sperre (LOCK_FAILS/LOCK_IPS) mit Benachrichtigung.
+ADMIN_MAX_USER = 40
+
+
+def ip_bucket(ip):
+    """Adresse fuer Zaehler und Bremsen: IPv6 auf das /64-Netz gekuerzt (ein Anschluss bekommt meist ein ganzes /64 -
+    jede Adresse darin einzeln zu zaehlen hiesse praktisch keine Grenze), IPv4-mapped als IPv4; sonst unveraendert."""
+    s = str(ip or "")
+    if ":" not in s:
+        return s
+    try:
+        a = ipaddress.ip_address(s.split("%")[0])
+    except ValueError:
+        return s
+    if a.version == 6 and a.ipv4_mapped:
+        return str(a.ipv4_mapped)
+    return str(ipaddress.ip_network(f"{a}/64", strict=False)) if a.version == 6 else str(a)
+
+
 def _fail_keys(username, ip, area=""):
-    p = AREA_PREFIX.get(area, "")
+    p, ip = AREA_PREFIX.get(area, ""), ip_bucket(ip)
     return p + "ui:" + username + "|" + ip, p + "u:" + username, p + "ip:" + ip
 
 
@@ -305,7 +327,7 @@ def fail_wait(username, ip, area="", lock=True):
     lk = lock_of(username) if area == "" and lock else None
     if lk:
         return max(1, int(lk["until"] - now))
-    kui, _, ki = _fail_keys(username, ip, area)
+    kui, ku, ki = _fail_keys(username, ip, area)
     with _db() as c, c:
         c.execute("DELETE FROM login_fail WHERE ts < ?", (now - FAIL_WINDOW - LOCK_WINDOW,))
         out = 0
@@ -314,6 +336,11 @@ def fail_wait(username, ip, area="", lock=True):
             d = _delay(n, free)
             if d and last:
                 out = max(out, int(last + d - now + 0.999))
+        if area == "admin":                               # feste Kontogrenze am Admin-Port (alle Adressen)
+            r = c.execute("SELECT ts FROM login_fail WHERE key=? AND ts>? ORDER BY ts DESC LIMIT 1 OFFSET ?",
+                          (ku, now - FAIL_WINDOW, ADMIN_MAX_USER - 1)).fetchone()
+            if r:                                         # erst wenn der ADMIN_MAX_USER-juengste Versuch aus dem Fenster faellt
+                out = max(out, int(r[0] + FAIL_WINDOW - now + 0.999))
     return max(0, out)
 
 
@@ -381,7 +408,7 @@ def clear_fails(username, area=None, ip=None):
             if ip is None:
                 c.execute("DELETE FROM login_fail WHERE key=? OR instr(key, ?) = 1", (p + "u:" + username, p + "ui:" + username + "|"))
             else:
-                c.execute("DELETE FROM login_fail WHERE key=? OR key=?", (p + "u:" + username, p + "ui:" + username + "|" + ip))
+                c.execute("DELETE FROM login_fail WHERE key=? OR key=?", (p + "u:" + username, p + "ui:" + username + "|" + ip_bucket(ip)))
         if area is None:
             c.execute("DELETE FROM login_lock WHERE username=?", (username,))
 

@@ -60,7 +60,6 @@ func (m *media) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Header.Del(keyHeader)
-	markAuth(r)
 	// Was saga-media selbst bedient (alles andere geht an Saga): Dateien lesen (Range), 2.4 Uploads schreiben
 	// (PUT/HEAD /api/chat/uploads/{id}) und Teile eigener Anhaenge fuer andere Server (/fed/v2/chat/files/{id}?range=).
 	switch r.Method {

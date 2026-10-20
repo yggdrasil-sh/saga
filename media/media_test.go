@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -245,5 +246,35 @@ func TestBitsHave(t *testing.T) {
 	}
 	if bitsHave(nil, u, 0, 0) || bitsHave(have, 0, 0, 0) {
 		t.Errorf("bitsHave leer")
+	}
+}
+
+// S1b: nur eine von Saga bestaetigte Anmeldung verlaengert den Leerlauf; der interne Kopf geht nie an den Client.
+func TestAuthHintFromUpstream(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/an" {
+			w.Header().Set(authHint, "1")
+		}
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer up.Close()
+	c := &config{upstream: strings.TrimPrefix(up.URL, "http://"), blobDir: t.TempDir(), trusted: parseTrust("127.0.0.1"), ttl: time.Minute,
+		stall: 5 * time.Second, key: "k"}
+	tr := newTransport()
+	m := &media{c: c, az: newAuthz(c, tr), proxy: newProxy(c, tr), lim: &limits{perIP: map[string]int{}, max: 10, maxIP: 10}}
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{{"/api/an", true}, {"/api/aus", false}} {
+		conn := &trackedConn{l: &limitListener{}}
+		r := httptest.NewRequest("GET", tc.path, nil)
+		r.Header.Set("Cookie", "saga=irgendwas")
+		r.Header.Set(authHint, "1") // vom Client eingeschleust: zaehlt nicht
+		r = r.WithContext(context.WithValue(r.Context(), connKey{}, conn))
+		w := httptest.NewRecorder()
+		m.ServeHTTP(w, r)
+		if conn.auth != tc.want || w.Header().Get(authHint) != "" {
+			t.Errorf("%s: auth=%v (erwartet %v), Kopf an den Client %q", tc.path, conn.auth, tc.want, w.Header().Get(authHint))
+		}
 	}
 }

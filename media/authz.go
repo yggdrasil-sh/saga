@@ -81,7 +81,16 @@ func cacheKey(kind, fid string, r *http.Request) [32]byte {
 
 func (a *authz) check(r *http.Request, fid string) *grant { return a.checkKind(r, kindFile, fid) }
 
+// checkKind: erteilte Berechtigung -> die Verbindung gilt als angemeldet (laengerer Leerlauf, markAuth).
 func (a *authz) checkKind(r *http.Request, kind, fid string) *grant {
+	g := a.checkKind0(r, kind, fid)
+	if g != nil {
+		markAuth(r)
+	}
+	return g
+}
+
+func (a *authz) checkKind0(r *http.Request, kind, fid string) *grant {
 	if a.c.ttl <= 0 {
 		return a.ask(r, kind, fid)
 	}

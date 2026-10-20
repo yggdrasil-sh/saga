@@ -606,7 +606,35 @@ def _session_user(request):
     if did is not None and not device_alive(uid, did):      # Geraet abgemeldet: dessen Sitzung endet sofort (BUG-002)
         request.session.clear()
         return None
+    mark_authed(request)
     return uid
+
+
+def mark_authed(request):
+    """Anfrage ist angemeldet (gueltige Sitzung bzw. App-Schluessel): MediaAuthHint meldet es saga-media."""
+    try:
+        request.scope.setdefault("state", {})["saga_auth"] = True
+    except Exception:  # noqa: BLE001 - nur ein Hinweis fuer den Leerlauf
+        pass
+
+
+class MediaAuthHint:
+    """2.4 (Sicherheitsrunde 2, S1b): hinter saga-media den internen Antwortkopf X-Saga-Media-Auth: 1 setzen, wenn die
+    Anfrage angemeldet war. saga-media laesst die Verbindung dann laenger ruhen und entfernt den Kopf; ein beliebiger
+    Cookie-/Authorization-Kopf des Clients reicht dafuer nicht mehr."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def send2(msg):
+            if msg["type"] == "http.response.start" and (scope.get("state") or {}).get("saga_auth"):
+                msg = dict(msg, headers=[*msg.get("headers", []), (b"x-saga-media-auth", b"1")])
+            await send(msg)
+        return await self.app(scope, receive, send2)
 
 
 DEVICE_CHECK_TTL = 5.0

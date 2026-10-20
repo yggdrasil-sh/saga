@@ -11,7 +11,7 @@ from db import connect as _db
 from fastapi import APIRouter
 from saga import dbquery
 from saga.calendars import _cal_collect
-from saga.core import APP_CAPTURE_MAX, APP_TOKEN_MAX, TZ, _api_guard, _bad, _body, _json_load, _tok_db, _tok_hash, t, t_account, user_info
+from saga.core import APP_CAPTURE_MAX, APP_TOKEN_MAX, TZ, _api_guard, _bad, _body, _json_load, _tok_db, _tok_hash, mark_authed, t, t_account, user_info
 from saga.databases import _first_image
 from saga.files import _thumb, _thumb_mime, _thumb_w
 from saga.notes import FILES_DIR, _FILE_URL, _clean_props, tree_changed
@@ -34,7 +34,10 @@ def _app_uid(request):
             return None
         if not r[2] or time.time() - r[2] > 300:          # "zuletzt benutzt" grob mitfuehren
             c.execute("UPDATE app_token SET last_used=? WHERE id=?", (time.time(), r[0]))
-    return r[1] if user_info(r[1]) is not None else None
+    if user_info(r[1]) is None:
+        return None
+    mark_authed(request)
+    return r[1]
 
 
 @router.get("/api/settings/tokens")

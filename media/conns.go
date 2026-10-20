@@ -8,8 +8,11 @@ package main
 //     Verbindung dieser Adresse geschlossen, ruht keine, wird die neue sofort geschlossen.
 //   - ist die Grenze insgesamt erreicht, wird die am laengsten ruhende Verbindung (gleich welcher Adresse) geschlossen,
 //     statt neue Verbindungen im Backlog warten zu lassen. Nur wenn keine ruht, wartet Accept wie bisher.
-//   - Leerlauf ohne Anmeldedaten (kein Cookie, kein Authorization-, kein Medien-Token-Kopf) endet nach
-//     MEDIA_IDLE_UNAUTH Sekunden (Standard 10), mit Anmeldedaten nach IdleTimeout (75 s) wie bisher.
+//   - Leerlauf ohne gueltige Anmeldung endet nach MEDIA_IDLE_UNAUTH Sekunden (Standard 10), angemeldet nach
+//     IdleTimeout (75 s) wie bisher. "Angemeldet" heisst (Sicherheitsrunde 2, S1b): Saga hat die Anfrage als angemeldet
+//     erkannt - Berechtigung fuer eine Datei bzw. einen Upload erteilt (authz) oder bei weitergeleiteten Anfragen den
+//     internen Kopf X-Saga-Media-Auth gesetzt. Ein beliebiger Cookie- oder Authorization-Kopf reicht nicht mehr.
+//   - Adressen fuer die Grenze je Adresse: IPv6 je /64-Netz (ein Anschluss hat meist ein ganzes /64).
 // Eine ruhende Keep-Alive-Verbindung zu schliessen ist folgenlos: Browser und Apps oeffnen beim naechsten Abruf eine neue.
 
 import (
@@ -17,6 +20,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"sync"
 	"time"
 )
@@ -79,7 +83,7 @@ func (l *limitListener) Accept() (net.Conn, error) {
 			return nil, err
 		}
 		a := hostOf(raw.RemoteAddr().String())
-		c := &trackedConn{Conn: raw, l: l, ip: a.String(), limited: !l.trusted.has(a)}
+		c := &trackedConn{Conn: raw, l: l, ip: ipBucket(a), limited: !l.trusted.has(a)}
 		if c.limited && !l.roomForIP(c.ip) {
 			_ = raw.Close() // Adresse hat schon zu viele aktive Verbindungen
 			continue
@@ -200,13 +204,27 @@ func connContext(ctx context.Context, nc net.Conn) context.Context {
 	return ctx
 }
 
-// markAuth: Anfrage mit Anmeldedaten -> diese Verbindung darf laenger ruhen.
+// authHint: interner Antwortkopf von Saga - die weitergeleitete Anfrage war angemeldet (gueltige Sitzung bzw. Schluessel).
+const authHint = "X-Saga-Media-Auth"
+
+// markAuth: Saga hat die Anfrage als angemeldet erkannt -> diese Verbindung darf laenger ruhen.
 func markAuth(r *http.Request) {
 	c, ok := r.Context().Value(connKey{}).(*trackedConn)
-	if !ok || (r.Header.Get("Cookie") == "" && r.Header.Get("Authorization") == "" && r.Header.Get(tokenHeader) == "") {
+	if !ok {
 		return
 	}
 	c.l.mu.Lock()
 	c.auth = true
 	c.l.mu.Unlock()
+}
+
+// ipBucket: Schluessel fuer die Grenze je Adresse - IPv4 unveraendert, IPv6 als /64-Netz.
+func ipBucket(a netip.Addr) string {
+	a = a.Unmap()
+	if a.Is6() {
+		if p, err := a.Prefix(64); err == nil {
+			return p.String()
+		}
+	}
+	return a.String()
 }

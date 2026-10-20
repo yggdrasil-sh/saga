@@ -64,7 +64,7 @@ def cleanup():
         for t in ("notification", "user_kv", "device_login", "app_token"):
             c.execute(f"DELETE FROM {t} WHERE uid LIKE 'as-%'")
         c.execute("DELETE FROM users WHERE username LIKE 'as-%'")
-        c.execute("DELETE FROM login_fail WHERE key LIKE '%as-%' OR key LIKE '%203.0.113.%' OR key LIKE '%198.51.100.%'")
+        c.execute("DELETE FROM login_fail WHERE key LIKE '%as-%' OR key LIKE '%203.0.113.%' OR key LIKE '%198.51.100.%' OR key LIKE '%2001:db8:5:%'")
         c.execute("DELETE FROM login_lock WHERE username LIKE 'as-%'")
 
 
@@ -123,9 +123,33 @@ def main():
     ok("Weitere Versuche: keine zweite Benachrichtigung", n == 1)
     auth.note_fail("as-gibtsnicht", "203.0.113.5")
     ok("Unbekannter Benutzer: keine Benachrichtigung, keine Antwort-Unterschiede", True)
-    for i in range(auth.LOCK_FAILS + 5):
-        auth.note_fail("as-lena", f"203.0.113.{100 + i % 20}", "admin")
-    ok("Admin-Port zaehlt getrennt (dort keine harte Sperre)", auth.fail_wait("as-lena", "203.0.113.250", "admin") == 0)
+    # Admin-Port: eigene Zaehler, keine harte Sperre - aber wie bis 2.3 eine feste Kontogrenze ueber alle Adressen
+    # (Sicherheitsrunde 2, A1: sonst unbegrenzt verteilt ratbar)
+    for i in range(auth.ADMIN_MAX_USER - 1):
+        auth.note_fail("as-admin", f"203.0.113.{100 + i % 20}", "admin")
+    ok(f"Admin-Port: {auth.ADMIN_MAX_USER - 1} Fehlversuche von 20 Adressen -> neue Adresse noch frei",
+       auth.fail_wait("as-admin", "203.0.113.250", "admin") == 0)
+    auth.note_fail("as-admin", "203.0.113.120", "admin")
+    w = auth.fail_wait("as-admin", "203.0.113.251", "admin")
+    ok(f"A1: {auth.ADMIN_MAX_USER}. Fehlversuch -> auch jede neue Adresse wartet (Kontogrenze wie 2.3, {w} s)",
+       auth.FAIL_WINDOW - 60 < w <= auth.FAIL_WINDOW, w)
+    adm0 = Client(AD, ip="203.0.113.252")
+    s, _, html = adm0.post("/login", {"username": "as-admin", "password": PW})
+    ok("A1: ... auch mit richtigem Passwort am Admin-Port (HTTP, Wartezeit in Minuten)", s in (401, 429) and "Minuten" in html, (s, err(html)))
+    ok("A1: Hauptseite und harte Sperre davon unberuehrt", auth.fail_wait("as-admin", "203.0.113.252") == 0 and auth.lock_of("as-admin") is None)
+    auth.clear_fails("as-admin", "admin")
+    ok("Admin-Port zaehlt getrennt (keine harte Sperre der Hauptseite)", auth.fail_wait("as-admin", "203.0.113.250", "admin") == 0)
+
+    # IPv6: alle Adressen eines /64 zaehlen als eine (Anmeldung, Admin-Port, Passkeys, Registrierung)
+    auth.create_user("as-sechs", PW, "Sechs Sperre")
+    for i in range(auth.FREE_USER_IP + 1):
+        login("as-sechs", BAD, f"2001:db8:5:5::{i + 1:x}")
+    s, _, html = login("as-sechs", PW, "2001:db8:5:5:ffff::99")
+    ok("IPv6: Fehlversuche verschiedener Adressen eines /64 bremsen das ganze /64", s in (401, 429) and "Sekunden" in html, (s, err(html)))
+    ok("IPv6: anderes /64 nicht betroffen", login("as-sechs", PW, "2001:db8:5:6::1")[0] == 303)
+    ok("ip_bucket: IPv6 -> /64, IPv4-mapped -> IPv4, IPv4 unveraendert",
+       auth.ip_bucket("2001:db8:1:2:3:4:5:6") == "2001:db8:1:2::/64" and auth.ip_bucket("::ffff:203.0.113.9") == "203.0.113.9"
+       and auth.ip_bucket("203.0.113.9") == "203.0.113.9")
 
     # --- Admin: sieht Sperre, hebt sie auf --------------------------------------------------------------------------
     adm = Client(AD)
