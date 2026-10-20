@@ -316,10 +316,23 @@
     return { ok: fails.length === 0, n: n, fails: fails };
   }
 
+  // Messung (Diagnose): je Rahmen nacheinander (Wartezeit inkl. WebCrypto-Thread) und 32 gleichzeitig (Durchsatz)
+  async function bench(size, n) {
+    var fk = await frameKey(rand(32)), data = rand(size), t0 = performance.now(), i, out;
+    for (i = 0; i < n; i++) out = await encryptFrame(fk.ck, data, 3, 0, 1, i, i);
+    var t1 = performance.now(), p = parseFrame(out, 3);
+    for (i = 0; i < n; i++) await decryptFrame(fk.ck, out, 3, p);
+    var t2 = performance.now(), jobs = [];
+    for (i = 0; i < n; i++) jobs.push(encryptFrame(fk.ck, data, 3, 0, 2, i, i));
+    await Promise.all(jobs);
+    var t3 = performance.now();
+    return { size: size, n: n, enc_ms: (t1 - t0) / n, dec_ms: (t2 - t1) / n, enc_parallel_ms: (t3 - t2) / n };
+  }
+
   var core = { C: C, headerLen: headerLen, codecOk: codecOk, frameKey: frameKey, frameKeyRaw: frameKeyRaw, ratchet: ratchet,
                encryptFrame: encryptFrame, parseFrame: parseFrame, decryptFrame: decryptFrame, ReplayWindow: ReplayWindow, runes: runes,
                RUNES: RUNES, RUNE_NAMES: RUNE_NAMES, fkeyBody: fkeyBody, fkeyAckBody: fkeyAckBody, parseFkey: parseFkey,
-               parseFkeyAck: parseFkeyAck, Horn: Horn, selftest: selftest, hex: hex, unhex: unhex, b64: b64, unb64: unb64 };
+               parseFkeyAck: parseFkeyAck, Horn: Horn, selftest: selftest, bench: bench, hex: hex, unhex: unhex, b64: b64, unb64: unb64 };
 
   // --- Rolle 1: Node -------------------------------------------------------------------------------------------------
   if (typeof module === 'object' && module.exports) { module.exports = core; return; }
@@ -328,11 +341,11 @@
   var inWorker = typeof WorkerGlobalScope !== 'undefined' && root instanceof WorkerGlobalScope;
   if (inWorker) {
     var H = new Horn({ onNeed: function (from, n, s) { root.postMessage({ ev: 'need', from: from, n: n, s: s }); } });
-    var S = { enc: {}, dec: {}, drop: {} };
+    var fresh = function () { return { enc: {}, dec: {}, drop: {}, kid: { send: -1, recv: {} } }; }, S = fresh();
     var clock = function () { return performance.now(); };
-    var tally = function (bag, k, ms) {
-      var x = bag[k] || (bag[k] = { n: 0, ms: 0, max: 0 });
-      x.n++; x.ms += ms; if (ms > x.max) x.max = ms;
+    var tally = function (bag, k, ms, bytes) {
+      var x = bag[k] || (bag[k] = { n: 0, ms: 0, max: 0, bytes: 0 });
+      x.n++; x.ms += ms; x.bytes += bytes; if (ms > x.max) x.max = ms;
     };
     var drop = function (why) { S.drop[why] = (S.drop[why] || 0) + 1; };
     var pipe = function (readable, writable, o) {
@@ -351,7 +364,8 @@
           if (typeof r === 'string') { drop(r); return; }  // keine Ausgabe
           f.data = r.buffer;
           c.enqueue(f);
-          tally(send ? S.enc : S.dec, kind + (kind === 'video' ? ':' + type : ''), clock() - t0);
+          tally(send ? S.enc : S.dec, kind + (kind === 'video' ? ':' + type : ''), clock() - t0, data.length);
+          if (send) S.kid.send = r[r.length - 1]; else S.kid.recv[o.from] = data[data.length - 1];
         }
       })).pipeTo(writable).catch(function () {});
     };
@@ -365,9 +379,10 @@
         else if (d.op === 'switch') H.switchNow();
         else if (d.op === 'peer') out.ok = await H.peerKey(d.from, d.n, new Uint8Array(d.key), d.s, Date.now());
         else if (d.op === 'gone') H.peerGone(d.from);
-        else if (d.op === 'stats') { out.stats = S; if (d.reset) S = { enc: {}, dec: {}, drop: {} }; }
+        else if (d.op === 'stats') { out.stats = S; if (d.reset) S = fresh(); }
         else if (d.op === 'selftest') out.result = await selftest(d.vectors);
         else if (d.op === 'runes') out.runes = await runes(d.call_id, d.devices);
+        else if (d.op === 'bench') out.bench = await bench(d.size || 6000, d.n || 500);
       } catch (e) { out.error = String(e && e.message || e); }
       if (d.id) root.postMessage(out);
     };
