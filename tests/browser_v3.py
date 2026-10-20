@@ -1,7 +1,7 @@
 """Chat-Stufe 3 im Browser (2.5): das Web (Stufe 2, Kompat-Sicht v: 2) telefoniert und schreibt in lokalen Chats der Stufe 3.
 Schaltet chat_v3 ein, entfernt bestehende Chats der beiden Browser-Konten (damit neue in Stufe 3 entstehen) und laesst
 tests/browser_calls.js (1:1-Anruf), tests/browser_calls3.js (Raum, weiteres Geraet), tests/browser_gelesen.js und
-tests/browser_x3.js (Reaktionen, Bearbeiten), tests/browser_voice.js (Sprachnachrichten) laufen (BV3_JS=a.js,b.js waehlt aus).
+tests/browser_x3.js (Reaktionen, Bearbeiten), tests/browser_voice.js (Sprachnachrichten) laufen, vorher tests/browser_trust3.js (Vertrauens-Uebernahme bei der Umstellung) (BV3_JS=a.js,b.js waehlt aus).
 Danach: die Chats der beiden sind Stufe 3, Anrufe liefen darin, Nachrichten im v2-Format (sender_handle), und der Server
 hat keinem der beiden den Anmeldenamen des anderen in einem Anruf-Eintrag gezeigt.
 Umgebung wie die Browser-Tests (SAGA_BASE, SAGA_USER/PASS, SAGA_USER2/PASS2, PLAYWRIGHT, PLAYWRIGHT_BROWSERS_PATH) plus
@@ -26,6 +26,34 @@ def wipe(a, b):
         c.execute("DELETE FROM chat WHERE id IN (SELECT chat_id FROM chat_member WHERE uid IN (?,?))", (a, b))
 
 
+def trust3(a, b):
+    """Vertrauens-Uebernahme im Browser: Phase 1 mit chat_v3 aus (Chat v1), umstellen (saga.chat.convert_v3), Phase 2."""
+    import shutil, tempfile
+    from saga import chat as CH, fed_chat     # fed_chat setzt chat.FED - wie im Server
+    assert fed_chat
+    prof = tempfile.mkdtemp(prefix="saga-trust3-")
+    try:
+        wipe(a, b)
+        auth.save_setting("chat_v3", False)
+        time.sleep(5.6)
+        for ph in ("1", "2"):
+            if ph == "2":
+                auth.save_setting("chat_v3", True)
+                time.sleep(5.6)
+                n = CH.convert_v3(limit=100000)
+                ok(f"browser_trust3.js: umgestellt ({n})", n >= 1, n)
+            r = subprocess.run(["node", os.path.join(HERE, "browser_trust3.js")], capture_output=True, text=True, timeout=900,
+                               env=dict(E, PHASE=ph, PROFILES=prof))
+            last = (r.stdout.strip().splitlines() or ["?"])[-1]
+            fails = [x for x in r.stdout.splitlines() if x.startswith("FAIL")]
+            ok(f"browser_trust3.js Phase {ph}: {last}", r.returncode == 0 and not fails, fails[:5] or r.stderr[-500:])
+            if r.returncode != 0 or fails:
+                print(r.stdout[-4000:], flush=True)
+                break
+    finally:
+        shutil.rmtree(prof, ignore_errors=True)
+
+
 def main():
     a, b = E.get("SAGA_USER"), E.get("SAGA_USER2")
     if not (E.get("SAGA_BASE") and a and b and E.get("SAGA_PASS") and E.get("SAGA_PASS2")):
@@ -36,6 +64,10 @@ def main():
     time.sleep(5.6)
     try:
         all_js = ("browser_calls.js", "browser_calls3.js", "browser_gelesen.js", "browser_x3.js", "browser_voice.js")
+        if not E.get("BV3_JS") or "browser_trust3.js" in E["BV3_JS"].split(","):
+            trust3(a, b)
+            auth.save_setting("chat_v3", True)
+            time.sleep(5.6)
         for js in [x for x in all_js if not E.get("BV3_JS") or x in E["BV3_JS"].split(",")]:
             wipe(a, b)
             r = subprocess.run(["node", os.path.join(HERE, js)], capture_output=True, text=True, timeout=900, env=dict(E))
