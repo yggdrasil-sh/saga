@@ -223,6 +223,26 @@ def payload(tok):
     return json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4)))
 
 
+def ctl_foreign(key=None):
+    """Steuerkanal ueber saga-media mit einem unbekannten Knotenschluessel -> Schliesscode."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+    from websockets.sync.client import connect as wsc
+    sk = Ed25519PrivateKey.generate()
+    h = {"X-Saga": "1", **({"X-Saga-Horn-Key": key} if key else {})}
+    try:
+        with wsc(f"ws://127.0.0.1:{PORT}/api/horn/ctl", additional_headers=h, open_timeout=5, proxy=None) as ws:
+            ch = json.loads(ws.recv(5))
+            ws.send(json.dumps({"t": "hello", "proto": "horn-ctl/1", "name": "localhost", "url": f"https://localhost:{HORN_PORT}",
+                                "pub": base64.b64encode(sk.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)).decode(),
+                                "sig": base64.b64encode(sk.sign(("horn-ctl/1 hello\n" + ch["nonce"]).encode())).decode()}))
+            while True:
+                ws.recv(5)
+    except Exception as ex:  # noqa: BLE001
+        rc = getattr(ex, "rcvd", None)
+        return rc.code if rc else type(ex).__name__
+
+
 def ws_status(path, key=None):
     """Statuszeile eines WebSocket-Handshakes ueber saga-media (101 = angenommen)."""
     s = socket.create_connection(("127.0.0.1", PORT), timeout=5)
@@ -401,8 +421,10 @@ def run(media, node):
     ok(f"Register: eingebauter Knoten {n['name']} ({n['url']}), ohne UDP", n["builtin"] and n["url"] == f"https://localhost:{HORN_PORT}" and not n["udp"], n)
     ps = pids()
     ok(f"Knoten ist Kindprozess von saga-media ({ps})", "node" in ps and "python" in ps)
-    ok(f"/api/horn/ctl von aussen ohne Schluessel abgewiesen ({ws_status('/api/horn/ctl')})", ws_status("/api/horn/ctl") not in (101, 0))
-    ok("... mit falschem Schluessel ebenso", ws_status("/api/horn/ctl", "f" * 64) not in (101, 0))
+    # 2.5 P6: ohne Geheimnis nimmt /api/horn/ctl gekoppelte Knoten an - aber nur mit registriertem Knotenschluessel
+    c1, c2 = ctl_foreign(), ctl_foreign("f" * 64)
+    ok(f"/api/horn/ctl von aussen ohne Schluessel: fremder Knoten abgewiesen ({c1})", c1 == 4401)
+    ok(f"... mit falschem Schluessel ebenso ({c2})", c2 == 4401)
     s, h = node_req("GET", "/api/session")
     ok(f"Knoten antwortet auf HTTPS (mode node, {s})", s == 200 and h.get("mode") == "node" and h.get("dev") is False)
     PERF["leerlauf_cpu_pct"] = cpu_pct(ps, 5)

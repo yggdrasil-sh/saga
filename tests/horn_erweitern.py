@@ -803,7 +803,7 @@ def browser(n):
         ok("Browser-Test: node und Playwright vorhanden", False)
         return
     env = dict(os.environ, SAGA_BASE=f"http://127.0.0.1:{PORT}", SAGA_USERS=",".join(u for u, _ in BUSERS), SAGA_PASS=PW,
-               SAGA_NODE=NAME, SAGA_HOST_RULES=f"MAP {NAME} 127.0.0.1", PLAYWRIGHT=pw,
+               SAGA_NODE=NAME, SAGA_HOST_RULES=f"MAP {NAME} 127.0.0.1", PLAYWRIGHT=pw, DEBUG=os.environ.get("HORN_DEBUG_BROWSER", ""),
                PLAYWRIGHT_BROWSERS_PATH=os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers"), PW_CHANNEL="chromium")
     for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
         env.pop(k, None)
