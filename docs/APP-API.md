@@ -143,15 +143,16 @@ im signierten JSON-Text `body`. Endpunkte wie 2.1/2.3 (`POST /api/calls`, `/answ
 Zusätzliche Felder (ältere Server liefern sie nicht – dann gilt: keine v3-Funktionen):
 
 ```json
-{"enabled": true, "format": "saga-call/v1", "body_v": 3, "features": ["reneg", "pip_hint", "screen2"],
- "limits": {"endpoints_video": 2, "endpoints_audio": 2, "signals_max": 600, "signals_per_min": 60,
-            "signals_hard": 6000, "sig_rate": 240, "sealed_max": 24576, "caps_max": 16}, "…": "…"}
+{"enabled": true, "format": "saga-call/v1", "body_v": 3, "features": ["reneg", "pip_hint", "screen2", "multi", "group"],
+ "limits": {"endpoints_video": 4, "endpoints_audio": 6, "signals_max": 600, "signals_per_min": 60,
+            "signals_hard": 6000, "sig_rate": 240, "sealed_max": 24576, "caps_max": 16, "ring_silent": 8, "handover_s": 15}, "…": "…"}
 ```
 
 - `features`: `reneg` = der Server reicht offer/answer während des Gesprächs weiter (Budget unten), `pip_hint` = `want`
-  wird unterstützt, `screen2` = Bildschirm als zweite Videospur (E3, Abschnitt „Bildschirm v2“). Später: `multi` (E4),
-  `group` (E5).
-- `limits.endpoints_*`: Endpunkte je Anruf (E0: 2; E4/E5 heben sie an, der Admin kann nur senken).
+  wird unterstützt, `screen2` = Bildschirm als zweite Videospur (E3, Abschnitt „Bildschirm v2“), `multi` = weitere Geräte
+  im Anruf (E4), `group` = Gruppenanrufe (E5) – beides im Abschnitt „Anrufe: Mehrgeräte und Gruppen“.
+- `limits.endpoints_*`: Geräte je Anruf (Mesh: 4 mit Video, 6 nur Ton; eigene Zusatzgeräte zählen mit; der Admin kann
+  nur senken). E0-Server meldeten 2.
 - Signal-Budget je Anruf: `signals_max` + `signals_per_min` je **angefangener** Minute seit der Annahme, höchstens
   `signals_hard`; darüber und über `sig_rate` je Gerät und Minute → `429`. Ein versiegeltes Signal darf `sealed_max`
   Zeichen (B64) haben.
@@ -169,6 +170,7 @@ Zusätzliche Felder (ältere Server liefern sie nicht – dann gilt: keine v3-Fu
 | `want` | beachtet `state.want` des Gegenübers (Bitrate senken) | immer (2.4-Client) |
 | `bye` | versteht `bye` | immer (2.4-Client) |
 | `screen2` | sendet und empfängt den Bildschirm als eigene Videospur (Betriebsart B) | der eigene Server `features` mit `reneg` **und** `screen2` liefert und der Client B kann |
+| `multi` | Raum: mehrere PeerConnections je Anruf, `join`/`leave`, Teilnehmerliste (E4/E5) | der eigene Server `features` mit `reneg` **und** `multi` liefert und der Client den Raum kann |
 
 - `caps` steht im Body von **jedem** `offer` und `answer` (auch im ersten). Fehlt es (2.1/2.3), gilt `[]`.
 - Neuverhandlung und ICE-Restart nur, wenn **beide** Seiten `reneg` melden (eigene caps und die des Gegenübers).
@@ -364,3 +366,181 @@ Betriebsart A (Gegenüber ohne `screen2`) – kein Angebot, nur der Zustand:
 
 Tests: `tests/browser_screen2.js` (Web: B zwischen 2.4-Clients, A gegen E0- und 2.3-Client, Messung),
 `tests/anrufe_v3.py` (Server reicht großes Angebot und die neuen Felder unverändert weiter).
+
+## Anrufe: Mehrgeräte und Gruppen (2.4, Etappen E4/E5)
+
+Verbindlicher Vertrag für iOS/iPadOS/macOS, Android und Web (`static/calls.js`). Ein Anruf ist ein **Raum** mit
+Endpunkten je **Gerät**; ein 1:1-Anruf ist der Raum mit zwei Endpunkten und läuft genau wie bisher. Dazu kommen weitere
+eigene Geräte (Begleitgerät, Übernahme) und Gruppenanrufe in Gruppen-, freien und Seiten-Chats. Medien laufen als
+**Mesh**: je Gerätepaar eine PeerConnection (`pc` = sortiertes Paar der device_ids), DTLS-SRTP je Paar, Fingerabdrücke in
+der signierten SDP – E2E wie bisher, der Server sieht keine SDP. Signatur und Versiegelung bleiben `saga-call/v1` bzw.
+`saga-call/v2` (föderiert). Bestehende Endpunkte brechen nicht; `MIN_APP` ändert sich nicht.
+
+### Voraussetzungen und Fähigkeiten
+
+- Server: `GET /api/calls/config` → `features` enthält `multi` und `group`; `limits.endpoints_video` (4),
+  `limits.endpoints_audio` (6), `ring_silent` (8), `handover_s` (15). Fehlt `multi`, gibt es keine Raumfunktionen.
+- Gerät: `multi` in den signierten `caps` (offer/answer) und als Hinweis in den JSON-Anfragen. Nur melden, wenn der eigene
+  Server `reneg` **und** `multi` liefert.
+- **Fähigkeiten melden:** `PUT /api/calls/caps` `{"device": "<id>", "caps": ["reneg","want","bye","screen2","multi"]}` →
+  `{"ok": true}` – beim Start bzw. sobald die Chat-Schlüssel bereit sind (und nach einem Update). Zu Gruppenanrufen
+  eingeladen wird nur, wer ein Gerät mit `multi` hat; die anderen sehen nur den Chat-Eintrag („braucht Saga 2.4“).
+- Beitreten geht nur, wenn **alle** Endpunkte `multi` melden (eine 2.1/2.3/E0-Gegenstelle bleibt 1:1) und – föderiert –
+  alle beteiligten Server `calls3` melden. Sonst `409` mit `join_block: "old"`.
+- Grenze: Endpunkte = Geräte, eigene Zusatzgeräte zählen mit. Video 4, nur Ton 6 → `409` mit `join_block: "full"`.
+
+### Anruf-Objekt (neu)
+
+`POST /api/calls`, `GET /api/calls/{id}`, `GET /api/calls/active`, `POST …/join` liefern zusätzlich:
+
+```json
+{"id":"…","kind":"dm","media":"video","state":"active","limit":4,"joinable":true,"join_block":null,
+ "mine":["5cbb…"],
+ "legs":[{"who":"anna","name":"Anna","device":"0e32…","dev_name":"iPhone","role":"member","state":"active",
+          "caps":["reneg","want","bye","screen2","multi"],"joined":1792458574.1,"me":false},
+         {"who":"bert","name":"Bert","device":"5cbb…","dev_name":"MacBook","role":"companion","state":"active",
+          "caps":["…"],"joined":1792458590.7,"me":true}]}
+```
+
+- `kind`: `dm` | `group`. `legs`: aktive Endpunkte in Beitrittsreihenfolge; föderiert zusätzlich `handle` (bei fremden
+  Personen auch `host`). `role`: `member` · `companion` (Begleitgerät) · `handover` (übernimmt, mit `replaces`).
+- `mine`: eigene Geräte im Anruf. `joinable`/`join_block`: kann ein (weiteres) Gerät beitreten – `old` (jemand braucht
+  Saga 2.4), `full`, `ended`, `none` (1:1 noch nicht angenommen).
+- Gruppe: `role: "member"`, `from` (wer begonnen hat), `invite` (eigene Einladung: `ringing` · `declined` · `joined` ·
+  `old` · `missed`), `old` (Personen ohne 2.4-Gerät, `[{who, name}]`).
+- `GET /api/chats/{id}` → `chat.call`: `{"group": true|false, "group_block": "<Hinweis>"|null, "running": {id, media, kind,
+  state, n, joinable, join_block, mine}|null}`. Den Gruppenanruf-Knopf nur zeigen, wenn `group` true ist (föderiert: alle
+  Server melden `calls3`).
+
+### Endpunkte (neu bzw. erweitert)
+
+| Endpunkt | Body | Antwort / Fehler |
+|---|---|---|
+| `POST /api/calls` (Gruppen-, freier, Seiten-Chat) | `{id, chat_id, media, device, caps}` – **ohne** `signals` | `{ok, call}` (`kind: group`, `state: ringing`, nur der eigene Endpunkt). `409 {running}` = läuft schon → beitreten; `409` ohne `multi` bzw. Server ohne `calls3` |
+| `POST /api/calls/{id}/join` | `{device, role, replaces?, caps, signals: {geraet: versiegeltes offer}}` | `{ok, call}`. `409 {join_block, error, legs?, limit?}`; `409 {legs}` ohne `join_block` = Liste veraltet → neu anbieten; `403` fremdes Gerät; `429` |
+| `POST /api/calls/{id}/leave` | `{device, reason?: "hangup"\|"handover"}` | `{ok}`; nur eigene Geräte (auch ein anderes eigenes) |
+| `POST /api/calls/{id}/invite` | `{uids: [benutzername \| Prinzipal]}` | `{ok, n}` – Gruppe: Mitglieder erneut klingeln lassen |
+| `POST /api/calls/{id}/end` | wie bisher, **mit `device`** | Gruppe bzw. Begleitgerät: nur dieses Gerät verlässt (`{ok, left: [...]}`); Hauptgerät im 1:1: Ende für alle |
+| `POST /api/calls/{id}/decline` | wie bisher | Gruppe: nur die eigene Einladung (alle eigenen Geräte hören auf zu klingeln) |
+| `POST /api/calls/{id}/alive` | `{device}` | zusätzlich `leg: "left"` = dieses Gerät ist nicht mehr im Anruf (z. B. übernommen) → Anruf hier beenden |
+| `POST /api/calls/{id}/signal` | wie bisher | Ziele = alle anderen aktiven Endpunkte (`legs`); föderiert sternförmig über den führenden Server |
+
+`join`: `signals` muss je ein Angebot an **jedes Gerät anderer Personen** enthalten (eigene Geräte optional, empfohlen).
+Ein zweites eigenes Gerät mit `role: "member"` wird zum `companion`. `handover` braucht `replaces` = eigenes Gerät im
+Anruf. Ein Gruppenanruf wird `active`, sobald zwei Personen dabei sind, und läuft, solange mindestens zwei Personen dabei
+sind; dem niemand beitritt, endet er nach `ring_s` (verpasst).
+
+### Live-Ereignisse und Mitteilungen
+
+- `call.roster` `{call_id, chat_id, kind, media, state, limit, legs, joinable, join_block}` an alle Konten des Anrufs
+  (1:1 beide Personen mit **allen** Geräten, Gruppe alle Mitglieder). `legs[].me` ist hier immer `false` – eigene
+  Endpunkte über `who` erkennen.
+- `call.invite` `{call_id, chat_id, kind: "group", media, from: {username, name, avatar, handle?, chat}, from_device,
+  ring_s, silent, members}` – Gruppenanruf klingelt. `silent: true` (mehr als `ring_silent` Mitglieder): nicht klingeln,
+  nur „Anruf läuft – beitreten“ anzeigen.
+- `call.state` zusätzlich: `kind: "group"`; `state: "declined"` (eigene Einladung auf einem anderen Gerät abgelehnt);
+  `moved: "caller"|"callee"` mit `device` (Übernahme im 1:1). Gruppe `active` heißt nur „zwei sind dabei“ – nicht
+  aufhören zu klingeln. Aufhören, wenn `call.roster` ein **eigenes** Gerät zeigt.
+- Push: Art `call.group` (`call`, `chat`, `media`, `caller`, `group: true`, kurze Lebensdauer); iOS VoIP/CallKit wie
+  `call`. Ältere Apps zeigen sie als normale Mitteilung.
+- Chat-Eintrag `kind: "call"`: Gruppe mit `group: true` und `n` (Zahl der Personen, die dabei waren); `status`
+  `ended` bzw. `missed`.
+
+### Body (E2E, ergänzt saga-call v3)
+
+| Feld | in | Bedeutung |
+|---|---|---|
+| `pc` | alle | `min(dev_a, dev_b) + ":" + max(dev_a, dev_b)`; der **Hinzukommende** legt sie in seinem Angebot fest |
+| `state.ready` + `replaces` | state | Übernahme fertig: das neue Gerät schickt `{"t":"state","ready":true,"replaces":"<altes Gerät>",…}` an das alte |
+| `bye.reason` | bye | `hangup` · `handover` |
+
+### Abläufe
+
+**Beitreten (alle Fälle):** `GET /api/calls/{id}?device=` (Liste) → je anderem Endpunkt eine PeerConnection, `offer` mit
+`n: 1`, `pc`, `caps` → alle in **einem** `POST …/join`. Antworten und ICE kommen über `call.signal` (bzw. `GET …?after=`).
+Ein `409` mit `legs` (ohne `join_block`) heißt: Liste neu, einmal neu anbieten.
+
+**Angebot eines unbekannten Geräts (die anderen):** gehört das Gerät laut `legs` zum Anruf und steht es in der **signierten
+Geräteliste** seiner Person (Geräte-Zertifikat vom Identitätsschlüssel, TOFU wie im Chat; föderiert über die geprüften
+v2-Schlüssel)? Dann **ohne Klingeln** annehmen und „<Name> (<Gerät>) ist hinzugekommen“ zeigen; sonst ablehnen (Hinweis
+„Unbekanntes Gerät von <Name> abgelehnt“). Jeden Endpunkt mit Personen- und Gerätenamen anzeigen.
+
+**Begleitgerät („Hinzufügen“, E4):** `join` mit `role: "companion"`. Standard: Mikrofon **aus**, Wiedergabe **stumm**
+(Echo-Schutz), Kamera aus – nicht nach Mikrofon fragen, solange es aus ist. Typisch: Bildschirm vom Laptop teilen, Ton
+bleibt am Handy. Knöpfe: Mikrofon, Kamera, Ton an/aus, Bildschirm, **„Hierher übernehmen“** (eigener Knopf).
+
+**Übernahme („Hierher übernehmen“):** aus der Leiste ohne Beitritt: `join` mit `role: "handover"`, `replaces` = eigenes
+Hauptgerät (`legs`: eigenes Gerät mit `role != companion`); als Begleitgerät: kein neuer `join`.
+1. Mikrofon und Wiedergabe zunächst aus. Sobald alle Verbindungen zu **anderen Personen** `connected` sind: Mikrofon und
+   Ton an, dann `state` mit `ready: true, replaces: <altes Gerät>` an das alte Gerät.
+2. Das alte Gerät schaltet sofort Mikrofon und Ton aus (Überlappung ≤ 300 ms), schickt `bye` (`reason: "handover"`) an
+   die anderen, dann `POST …/leave {device, reason: "handover"}`, und zeigt „Anruf auf <Gerät> übernommen“. CallKit/
+   ConnectionService: „anderswo angenommen“; auf dem neuen Gerät als laufend melden.
+3. Klappt es nicht innerhalb von `handover_s` (15 s): das neue Gerät verlässt den Anruf mit Hinweis; das alte bleibt.
+4. Der Server macht das neue Gerät zum Hauptgerät (`caller_device`/`callee_device` bzw. `role: member`).
+
+**Leiste „Anruf läuft“ auf anderen eigenen Geräten:** aus `GET /api/calls/active` (nach `call.roster`/`call.state` neu
+holen): eigenes Gerät im Anruf, dieses nicht → „Anruf läuft auf <dev_name>“ mit **Hinzufügen** und **Hierher
+übernehmen**; Gruppenanruf im Chat ohne eigenes Gerät → „Gruppenanruf läuft · n Geräte“ mit **Beitreten**. Bei
+`joinable: false` stattdessen der Hinweis (`old` → „braucht Saga 2.4“, `full` → „Der Anruf ist voll“).
+
+**Gruppenanruf (E5):** `POST /api/calls` ohne `signals` → allein im Anruf („Klingelt bei den anderen …“). Die anderen
+bekommen `call.invite` (+ Push) und treten mit `join` (`role: "member"`) bei; ablehnen mit `decline`. Verlassen mit
+`end {device}` bzw. `leave`. Ein Gerät, das `bye` bekommt bzw. in `call.roster` fehlt, wird getrennt; der Anruf endet für
+mich erst mit `call.state ended` bzw. `alive` → `ended`/`leg: "left"`.
+
+**Ansicht und Bitrate:** ab drei Endpunkten Mesh-Werte je Strom (Tabelle „Bitrate je Weg“: 600/500/350 kbit/s, ≤ 540p bzw.
+360p15). Kacheln je Verbindung, Sprecher hervorheben (Pegel der empfangenen Tonspur, z. B. `getSynchronizationSources()`
+bzw. `audioLevel`). Ein 1:1 mit stillem Begleitgerät (ohne Ton, Kamera, Bildschirm) bleibt Einzelansicht. Ton eigener
+Geräte nie abspielen. Bildschirm teilen gilt für alle Verbindungen (je Verbindung Betriebsart A/B nach deren `caps`;
+eine später hinzukommende Verbindung bekommt den laufenden Bildschirm).
+
+### Beispiele
+
+```json
+PUT /api/calls/caps        {"device":"5cbb…","caps":["reneg","want","bye","screen2","multi"]}
+POST /api/calls            {"id":"7927…","chat_id":12,"media":"video","device":"0e32…","caps":["reneg","want","bye","screen2","multi"]}
+POST /api/calls/7927…/join {"device":"a130…","role":"companion","caps":["reneg","want","bye","screen2","multi"],
+                            "signals":{"0e32…":"<versiegelt>","5cbb…":"<versiegelt>"}}
+→ 409 {"error":"Der Anruf ist voll (höchstens 4 Geräte).","join_block":"full","limit":4,"legs":[…]}
+{"t":"offer","pc":"5cbb…:a130…","n":1,"caps":["reneg","want","bye","screen2","multi"],"media":"video","sdp":"…","fp":["sha-256 4A:…"]}
+{"t":"state","pc":"0e32…:a130…","ready":true,"replaces":"0e32…","mic":true,"cam":false,"screen":false}
+{"t":"bye","pc":"0e32…:5cbb…","reason":"handover"}
+```
+
+### Sicherheit
+
+Ein Server könnte ein fremdes Gerät einschleusen (Geister-Gerät): Clients nehmen nur Geräte an, die in der signierten
+Geräteliste der Person stehen, und zeigen jeden Endpunkt mit Namen. Lässt der Server jemanden weg, ist das nur DoS.
+Ein Begleitgerät ist für alle sichtbar. Dauerhafte Schlüssel gibt es im Mesh nicht (DTLS je Sitzung).
+
+Tests: `tests/anrufe_raum.py` (Server), `tests/browser_raum.js` (Web: 1:1 + Begleitgerät + Übernahme, 4er-Mesh,
+Bildschirm in der Gruppe, 2.3-Client), föderiert `tests/foederation_anrufe_raum.py` (drei Server, auch `FED_B_23=1`) und
+`BJS=1 python3 tests/foederation_anrufe_raum.py` (Browser über drei Server, `tests/browser_fed_raum.js`).
+
+### Ausblick 2.5: SFU mit Frame-E2E (Spike D3, nur Bewertung)
+
+Zeitlich begrenzter Spike (20.10.2026), **in 2.4 wird nichts umgestellt**. Geprüft im Web (headless Chromium 141, Loopback
+zweier PeerConnections, Kamera-/Mikrofon-Attrappe 720p, 8 s): `RTCRtpScriptTransform` mit einem Worker, AES-GCM-128 je
+Frame (WebCrypto), Kopf unverschlüsselt (VP8: 10 Byte Schlüsselbild / 3 Byte sonst, Opus: 1 Byte, als AAD), Trailer
+`IV (12) + Schlüssel-ID (1)` wie bei LiveKit/Jitsi.
+
+| Messung | ohne Frame-E2E | mit Frame-E2E |
+|---|---|---|
+| Video-Frames dekodiert | 156 | 156 (0 Entschlüsselungsfehler) |
+| Zeit je Frame im Worker | – | 0,07 ms verschlüsseln, 0,05 ms entschlüsseln |
+| Zusatz je Frame | – | 29 Byte (12 IV + 1 ID + 16 Tag) |
+
+Bewertung für 2.5:
+- **Web: machbar** (`RTCRtpScriptTransform` in Chromium, Safari ≥ 15.4, Firefox ≥ 117; Rückfall
+  `createEncodedStreams` für ältere Chromium). CPU ist vernachlässigbar.
+- **CSP:** Saga erlaubt `worker-src 'self'` – der Transform-Worker muss eine **statische Datei** sein (z. B.
+  `static/frame-e2e.js`), Blob-Worker werden abgewiesen. Keine CSP-Lockerung nötig.
+- **Ton:** 29 Byte je Opus-Paket (50/s) sind ≈ 11,6 kbit/s – bei 24–32 kbit/s Ton zu viel. Für 2.5 kürzerer Trailer
+  (Zähler mit variabler Länge wie SFrame RFC 9605, IV aus Schlüssel-Salz + Zähler) oder 40/60 ms Opus-Rahmen. Video
+  (+≈ 7 kbit/s bei 30 fps) ist unkritisch.
+- **Apps:** brauchen den Bibliothekswechsel auf `webrtc-sdk` (`RTCFrameCryptor`/`FrameCryptor`, AES-GCM, gleiches
+  Trailer-Format); im Spike nicht gemessen (D3: erst in 2.5, eigener Interop-Test Web ↔ iOS ↔ Android vor dem Umstieg).
+- Ein striktes RFC-9605-SFrame bieten die nativen Bibliotheken nicht – Empfehlung bleibt das LiveKit-kompatible Format.
+- Schlüssel: je sendendem Gerät, als `fkey`-Signal versiegelt verteilt (Abschnitt „saga-call v3“: Typ reserviert); neuer
+  Schlüssel bei jedem Verlassen, HKDF-Ratsche bei jedem Beitritt.

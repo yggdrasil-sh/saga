@@ -810,6 +810,17 @@ up the call over the regular web port (live channel + normal requests).
   "You are sharing your screen" with **Stop sharing** stays on top. If both sides run Saga 2.4, the camera keeps running: the
   other person sees the screen large and the camera small (tap it or ⇆ to swap). In Chrome/Edge the tab audio (on
   Windows also system audio) can be shared. Nothing is recorded or stored on the server.
+- **Another device (2.4 and later):** while a call runs on your phone, your other devices show "Call in progress on
+  <device>". **Add** brings the laptop in as a **companion device** – without microphone and sound (no echo in the same
+  room), e.g. to share the screen from there. **Move here** moves the call to this device without interruption: the new
+  device connects, takes over sound and microphone, the old one goes quiet. The companion device has the same button.
+  Companion devices are visible to everyone in the call.
+- **Group calls (2.4 and later):** in group, free and page chats 📞/🎥 start a **group call**. All members with Saga 2.4
+  ring (in chats with more than 8 members only a silent "Group call in progress – Join"); you can join and leave at any
+  time, the call runs as long as at least two people are in it. At most **4 devices with video** or **6 audio only**
+  (your extra devices count). Everyone appears as a tile, the current speaker gets a green frame; screen sharing works as
+  in direct chats. End-to-end encrypted as before (each connection separately, the server sees nothing). People with an
+  older app see "needs Saga 2.4"; across servers it only works when all involved Saga servers run 2.4.
 - **Not answered:** after the ring duration (default 45 s) the call counts as **missed**. The chat then shows "Missed
   call" (with "Call back") and there is a notification "Missed call from Name" (can be turned off under notifications or
   push → "Calls"). Ended, declined and busy calls also appear in the chat.

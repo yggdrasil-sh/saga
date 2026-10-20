@@ -424,6 +424,32 @@ def bench_calls():
     stats("Anruf: annehmen", ta or [0], [0], [200], "Anrufe")
     stats("Anruf: Signal weiterreichen", tsig or [0], [0], sorted(set(cs)), "Anrufe")
     stats("Anruf: Ablauf anrufen+annehmen+20 Signale", tall or [0], [0], [200], "Ablauf")
+    # 2.4 (E4/E5): derselbe Ablauf als Raum (beide Geraete melden "multi": Endpunkte je Geraet, Teilnehmerliste an alle
+    # Geraete beider Personen) und die Abfrage laufender Anrufe (Leiste "Anruf laeuft auf …", jede Seite beim Laden)
+    if "PAIR_WAIT" not in os.environ:
+        time.sleep(61)                                  # PAIR_RATE: hoechstens 3 Anrufe je Paar und Minute
+    caps = ["reneg", "want", "bye", "screen2", "multi"]
+    tc3, tsig3, tact, cs3 = [], [], [], []
+    for _ in range(3):
+        cid = secrets.token_hex(16)
+        s, _, dt, d = req("POST", "/api/calls", a, {"id": cid, "chat_id": I["chat"], "media": "video", "device": I["dev_a"],
+                                                     "signals": {I["dev_b"]: fake(4200)}, "caps": caps})
+        tc3.append(dt); cs3.append(s)
+        if s != 200:
+            print("  Anruf (Raum) nicht moeglich:", s, d, flush=True)
+            break
+        req("POST", f"/api/calls/{cid}/answer", b, {"device": I["dev_b"], "signals": {I["dev_a"]: fake(4000)}, "caps": caps})
+        for i in range(20):
+            who, dev, to = (a, I["dev_a"], I["dev_b"]) if i % 2 == 0 else (b, I["dev_b"], I["dev_a"])
+            s, _, dt, _ = req("POST", f"/api/calls/{cid}/signal", who, {"device": dev, "signals": {to: fake(600 if i % 5 else 4200)}})
+            tsig3.append(dt); cs3.append(s)
+        for _ in range(5):
+            s, _, dt, _ = req("GET", "/api/calls/active", b)
+            tact.append(dt); cs3.append(s)
+        req("POST", f"/api/calls/{cid}/end", a, {"reason": "hangup", "connected": True, "device": I["dev_a"]})
+    stats("Anruf: anrufen als Raum (multi)", tc3 or [0], [0], cs3[:1] if tc3 else [0], "Anrufe")
+    stats("Anruf: Signal im Raum", tsig3 or [0], [0], sorted(set(cs3)), "Anrufe")
+    stats("Anruf: GET /api/calls/active (laufender Anruf)", tact or [0], [0], [200], "Anrufe")
 
 
 def main():

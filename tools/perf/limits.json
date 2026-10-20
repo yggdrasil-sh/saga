@@ -1,18 +1,20 @@
 {
- "_info": "p95-Grenzwerte in ms je Stufe (Praefix des Messungsnamens aus bench.py). S/M/L = Regressionsschutz (Stand testing 18.10.2026 x ~1.5-2, auf 4-Kern-CT mit Nachbarlast; Suche/Freigaben/Rueckverweise/rows nach 2.2-Server-Umbau). ziel_S/ziel_M/ziel_L = Ziele fuer 2.2 (heute teils verfehlt): mit SAGA_PERF_ZIEL=1 pruefen. 2.4 E0: Anruf-Signalisierung (bench.py calls; 2.3.0 und E0 auf 2-Kern-Container p95 ~15-50 ms, Grenzen mit Abstand).",
+ "_info": "p95-Grenzwerte in ms je Stufe (Praefix des Messungsnamens aus bench.py). S/M/L = Regressionsschutz (Stand testing 18.10.2026 x ~1.5-2, auf 4-Kern-CT mit Nachbarlast; Suche/Freigaben/Rueckverweise/rows nach 2.2-Server-Umbau). ziel_S/ziel_M/ziel_L = Ziele fuer 2.2 (heute teils verfehlt): mit SAGA_PERF_ZIEL=1 pruefen. 2.4 E0: Anruf-Signalisierung (bench.py calls; 2.3.0 und E0 auf 2-Kern-Container p95 ~15-50 ms, Grenzen mit Abstand). 2.4 E4/E5: Anruf als Raum, Signal im Raum, laufende Anrufe; Browser-Messung 4er-Mesh unter mesh (tests/browser_raum.js: Aufbau ms, Python-CPU-Spitze % je 0,5 s, Sekunden ueber 20 %).",
  "S": {
   "GET /api/notes (Seitenbaum": 150, "GET /api/shared": 150, "GET /api/notes/{id}": 60, "GET /rows": 120,
   "POST /api/notes/search Treffer": 200, "POST /api/notes/search ohne Treffer": 150, "GET / Dashboard": 100,
   "GET /api/notes/{id}/backlinks": 80, "GET /api/trash": 80, "GET /api/chats": 80, "POST /api/notes neuer": 80,
   "PATCH": 80, "Seite oeffnen waehrend": 800, "Live: Speichern": 250, "iOS/macOS: Start": 400,
-  "Anruf: anrufen": 150, "Anruf: annehmen": 100, "Anruf: Signal weiterreichen": 80, "Anruf: Ablauf anrufen+annehmen+20 Signale": 1000
+  "Anruf: anrufen": 150, "Anruf: annehmen": 100, "Anruf: Signal weiterreichen": 80, "Anruf: Ablauf anrufen+annehmen+20 Signale": 1000,
+  "Anruf: anrufen als Raum": 150, "Anruf: Signal im Raum": 80, "Anruf: GET /api/calls/active": 60
  },
  "M": {
   "GET /api/notes (Seitenbaum": 1000, "GET /api/shared": 350, "GET /api/notes/{id}": 60, "GET /rows groesste DB (": 150,
   "POST /api/notes/search ohne Treffer": 5000, "GET / Dashboard (HTML, B)": 500, "GET /api/notes/{id}/backlinks": 350,
   "GET /api/trash": 100, "POST /api/notes neuer": 80, "PATCH": 80, "Seite oeffnen waehrend": 4000, "Live: Speichern": 250,
   "iOS/macOS: Start": 1000,
-  "Anruf: anrufen": 150, "Anruf: annehmen": 100, "Anruf: Signal weiterreichen": 80, "Anruf: Ablauf anrufen+annehmen+20 Signale": 1000
+  "Anruf: anrufen": 150, "Anruf: annehmen": 100, "Anruf: Signal weiterreichen": 80, "Anruf: Ablauf anrufen+annehmen+20 Signale": 1000,
+  "Anruf: anrufen als Raum": 150, "Anruf: Signal im Raum": 80, "Anruf: GET /api/calls/active": 60
  },
  "L": {
   "GET /api/notes (Seitenbaum": 2200, "GET /api/shared": 1000, "GET /api/notes/{id}": 60, "GET /rows groesste DB (": 500,
@@ -20,11 +22,13 @@
   "GET /api/notes/{id}/backlinks": 50,
   "GET /api/trash": 250, "POST /api/notes neuer": 80, "PATCH": 80, "Seite oeffnen waehrend": 8000, "Live: Speichern": 250,
   "iOS/macOS: Start": 2500,
-  "Anruf: anrufen": 150, "Anruf: annehmen": 100, "Anruf: Signal weiterreichen": 80, "Anruf: Ablauf anrufen+annehmen+20 Signale": 1000
+  "Anruf: anrufen": 150, "Anruf: annehmen": 100, "Anruf: Signal weiterreichen": 80, "Anruf: Ablauf anrufen+annehmen+20 Signale": 1000,
+  "Anruf: anrufen als Raum": 150, "Anruf: Signal im Raum": 80, "Anruf: GET /api/calls/active": 60
  },
  "ziel_L": {
   "GET /api/notes (Seitenbaum": 250, "GET /api/shared": 250, "GET /rows groesste DB (": 250, "POST /api/notes/search": 300,
   "GET / Dashboard": 100, "GET /api/notes/{id}/backlinks": 50, "GET /api/trash": 50, "Seite oeffnen waehrend": 300,
   "iOS/macOS: Start": 400, "Neuer Eintrag + Nachladen": 200
- }
+ },
+ "mesh": {"mesh4_aufbau_ms": 2000, "mesh4_python_cpu_spitze_pct_max_s_ueber_20": 2, "fed_mesh4_aufbau_ms": 5000, "fed_signal_ueber_heim_ms": 300}
 }

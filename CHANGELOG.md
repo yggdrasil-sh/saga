@@ -16,6 +16,38 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### 2.4 Etappen E4/E5 – Gerät hinzufügen/übergeben und Gruppenanrufe (Server und Web)
+
+- **Anruf als Raum:** Jeder Anruf hat Endpunkte je Gerät (neue Tabellen `chat_call_leg`, `chat_call_invite`, Migration
+  12). Ein 1:1-Anruf ist der Raum mit zwei Geräten und läuft wie bisher; mit 2.1/2.3-Gegenstellen bleibt er 1:1.
+- **Weiteres Gerät (E4):** Läuft ein Anruf auf einem Gerät, zeigen die anderen eigenen Geräte „Anruf läuft auf …“ mit
+  **Hinzufügen** (Begleitgerät: ohne Mikrofon und Ton, z. B. zum Bildschirmteilen vom Laptop) und **Hierher übernehmen**
+  (eigener Knopf, ohne Abbruch: das neue Gerät verbindet sich, übernimmt Ton und Mikrofon, das alte geht; klappt es nicht
+  in 15 s, bleibt das alte). Auch über Servergrenzen.
+- **Gruppenanrufe (E5):** In Gruppen-, freien und Seiten-Chats, lokal und über Servergrenzen. Klingelt bei allen
+  Mitgliedern mit Saga 2.4 (in Chats mit mehr als 8 Mitgliedern nur still), jederzeit beitreten und verlassen; der Anruf
+  läuft, solange mindestens zwei dabei sind. Mesh mit höchstens **4 Geräten mit Video bzw. 6 nur mit Ton** (eigene
+  Zusatzgeräte zählen mit, der Admin kann nur senken). Kachelansicht, Sprecher hervorgehoben, Bitrate je Strom ab drei
+  Geräten (600/500/350 kbit/s je Weg), Bildschirm teilen in der Gruppe, Chat-Eintrag mit Teilnehmerzahl, verpasst für
+  Eingeladene.
+- **Ende-zu-Ende:** je Gerätepaar eine eigene, DTLS-SRTP-verschlüsselte Verbindung; Signale je Zielgerät versiegelt und
+  signiert. Jedes neue Gerät wird gegen die signierte Geräteliste seiner Person geprüft (unbekannte werden abgelehnt) und
+  mit Namen angezeigt. Der Server sieht keine SDP, Medien laufen nie durch Saga.
+- **Kompatibilität:** Der Gruppenanruf-Knopf erscheint nur, wenn alle beteiligten Server die neue Fähigkeit `calls3`
+  melden; Geräte ohne `multi` (2.1/2.3, E0) werden nicht eingeladen und sehen „braucht Saga 2.4“. 2.3-Apps und -Server
+  bleiben bei 1:1.
+- **Server:** neue Endpunkte `POST /api/calls/{id}/join`, `/leave`, `/invite`, `PUT /api/calls/caps`; `POST /api/calls`
+  startet in Gruppen-Chats einen Gruppenanruf; Anruf-Objekte mit `kind`, `legs`, `joinable`; Live `call.roster` und
+  `call.invite`; Push-Art `call.group`; `features` `multi` und `group`. Föderation: Cap `calls3`, Aufträge `join`,
+  `leave`, `roster`, `invite`; den Anruf führt der Server der anrufenden Person bzw. das Heim des Chats, Signale laufen
+  sternförmig über ihn (auch zwischen Servern, die nicht direkt verbunden sind). Sicherung: ältere Backups ohne die neuen
+  Tabellen bleiben einspielbar.
+- **App-Vertrag:** `docs/APP-API.md`, Abschnitt „Anrufe: Mehrgeräte und Gruppen“ (mit Beispielen), `docs/APP-API-FED.md`
+  Abschnitt 7.2. Bewertung Frame-E2E für die SFU in 2.5 (Spike, `tools/perf/spike_frame_e2e.js`): im Web machbar.
+- **Tests und Messung:** `tests/anrufe_raum.py`, `tests/browser_raum.js` (4 Geräte, Übernahme, 4er-Mesh, 2.3-Client),
+  `tests/foederation_anrufe_raum.py` (drei Server, auch mit 2.3-Server; mit `BJS=1` im Browser). 4er-Mesh lokal: Aufbau
+  1,1–1,8 s, Python-CPU-Spitze ≤ 19 % (nie über 20 %); über drei Server 3,1 s; Signal B → Heim → C 69 ms.
+
 ### 2.4 Etappe E3 – Bildschirm v2 (Server und Web)
 
 - **Bildschirm als eigene Videospur:** Zwischen 2.4-Geräten läuft der geteilte Bildschirm über eine zweite Videospur

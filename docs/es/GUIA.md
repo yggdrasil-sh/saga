@@ -848,6 +848,18 @@ adicional: Saga coordina la llamada por el puerto web normal (canal en vivo + pe
   cámara sigue activa: la otra persona ve la pantalla grande y la cámara pequeña (tócala o ⇆ para intercambiar). En
   Chrome/Edge se puede enviar el sonido de la pestaña (en Windows también el del sistema). No se graba ni se guarda nada
   en el servidor.
+- **Otro dispositivo (desde 2.4):** mientras hay una llamada en el móvil, tus otros dispositivos muestran «Llamada en
+  curso en <dispositivo>». **Añadir** suma el portátil como **dispositivo acompañante**, sin micrófono ni sonido (sin eco
+  en la misma sala), p. ej. para compartir la pantalla desde ahí. **Pasar aquí** lleva la llamada a este dispositivo sin
+  interrupción: el nuevo se conecta, asume sonido y micrófono y el anterior se silencia. El acompañante tiene el mismo
+  botón. Los dispositivos acompañantes son visibles para todos en la llamada.
+- **Llamadas en grupo (desde 2.4):** en chats de grupo, libres y de página, 📞/🎥 inician una **llamada en grupo**.
+  Suena para todos los miembros con Saga 2.4 (en chats de más de 8 miembros solo un aviso silencioso «Llamada en grupo en
+  curso – Unirse»); se puede entrar y salir en cualquier momento y la llamada sigue mientras haya al menos dos personas.
+  Como máximo **4 dispositivos con vídeo** o **6 solo con audio** (cuentan tus dispositivos adicionales). Cada persona
+  aparece como mosaico y quien habla tiene un marco verde; compartir pantalla funciona como en los chats directos. Cifrado
+  de extremo a extremo como siempre (cada conexión por separado, el servidor no ve nada). Quien aún tenga una app antigua
+  ve «necesita Saga 2.4»; entre servidores solo funciona si todos los servidores Saga implicados tienen 2.4.
 - **Sin respuesta:** tras la duración del tono (por defecto 45 s) la llamada cuenta como **perdida**. En el chat
   aparece «Llamada perdida» (con «Devolver llamada») y una notificación «Llamada perdida de Nombre» (desactivable en
   notificaciones o push → «Llamadas»). Las llamadas finalizadas, rechazadas y ocupadas también aparecen en el chat.

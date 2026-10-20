@@ -833,6 +833,18 @@ zusätzlicher Port: Saga vermittelt den Anruf über den normalen Web-Port (Live-
   oben eine rote Leiste „Du teilst deinen Bildschirm“ mit **Teilen beenden**. Haben beide Saga 2.4, läuft die Kamera weiter: das
   Gegenüber sieht den Bildschirm groß und die Kamera klein (antippen bzw. ⇆ tauscht). In Chrome/Edge kann der Ton des
   Tabs (unter Windows auch der Systemton) mitgeschickt werden. Nichts wird aufgezeichnet oder auf dem Server gespeichert.
+- **Weiteres Gerät (ab 2.4):** Läuft ein Anruf auf dem Handy, zeigen deine anderen Geräte oben „Anruf läuft auf
+  <Gerät>“. **Hinzufügen** holt den Laptop als **Begleitgerät** dazu – ohne Mikrofon und Ton (kein Echo im selben Raum),
+  z. B. um von dort den Bildschirm zu teilen. **Hierher übernehmen** holt das Gespräch ohne Unterbrechung auf dieses Gerät:
+  das neue Gerät verbindet sich, übernimmt Ton und Mikrofon, das alte legt sich still. Im Begleitgerät gibt es denselben
+  Knopf. Begleitgeräte sind für alle im Anruf sichtbar.
+- **Gruppenanrufe (ab 2.4):** In Gruppen-, freien und Seiten-Chats beginnen 📞/🎥 einen **Gruppenanruf**. Alle Mitglieder
+  mit Saga 2.4 klingeln (in Chats mit mehr als 8 Mitgliedern nur still „Gruppenanruf läuft – Beitreten“), man kann
+  jederzeit beitreten und gehen; der Anruf läuft, solange mindestens zwei dabei sind. Höchstens **4 Geräte mit Video**
+  bzw. **6 nur mit Ton** (eigene Zusatzgeräte zählen mit). Jede Person erscheint als Kachel, wer spricht, ist grün
+  umrandet; Bildschirm teilen geht wie im Direkt-Chat. Ende-zu-Ende verschlüsselt wie bisher (jede Verbindung einzeln,
+  der Server sieht nichts). Wer noch eine ältere App hat, sieht „braucht Saga 2.4“; über Servergrenzen geht es nur, wenn
+  alle beteiligten Saga-Server 2.4 haben.
 - **Nicht angenommen:** Nach der Klingeldauer (Standard 45 s) gilt der Anruf als **verpasst**. Im Chat steht dann ein
   Eintrag „Verpasster Anruf“ (mit „Zurückrufen“), dazu eine Benachrichtigung „Verpasster Anruf von Name“ (abschaltbar
   unter Benachrichtigungen bzw. Mitteilungen → „Anrufe“). Auch beendete, abgelehnte und besetzte Anrufe stehen im Chat.

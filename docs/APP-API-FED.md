@@ -287,10 +287,50 @@ Abschnitt „Anrufe: saga-call v3“) gilt unverändert auch für föderierte An
 `/fed/v2/call` (synchron, in beide Richtungen, Budget wie lokal). Der `caps`-Hinweis aus `POST /api/calls` bzw.
 `/answer` geht in `ring`/`answer` mit; ein 2.3-Server ignoriert ihn (dann ist `caps` beim Gegenüber leer – maßgeblich
 bleiben die signierten `caps` im Body). Jede Seite prüft `reneg` beim **eigenen** Server (`GET /api/calls/config`).
-Die Server-Fähigkeit `calls3` (Raum, mehrere Geräte, Gruppen) kommt erst mit E4.
+Die Server-Fähigkeit `calls3` (Raum, mehrere Geräte, Gruppen) regelt Abschnitt 7.2.
 Bildschirm v2 (E3, `screen2`: zweite Videospur, `tracks`/`msid`/`screen_mid`) gilt ebenso föderiert und braucht keine
 neue Server-Fähigkeit: Jede Seite meldet `screen2` nur, wenn ihr **eigener** Server `reneg` und `screen2` liefert; fehlt
 es auf einer Seite, teilt der Client wie bisher per `replaceTrack` (Betriebsart A).
+
+### 7.2 Mehrgeräte und Gruppenanrufe über Servergrenzen (2.4, E4/E5, Cap `calls3`)
+
+Client-Vertrag: `APP-API.md`, Abschnitt „Anrufe: Mehrgeräte und Gruppen“ – föderiert gilt er unverändert (Body im
+versiegelten `saga-call/v2`-Text, Handles statt Benutzernamen, Schlüssel fremder Personen über die geprüften
+v2-Schlüssel). Für Server-Entwickler:
+
+- **Fähigkeit** `calls3` in `CAPS2` (braucht den Admin-Schalter „Anrufe“). Raumfunktionen nur, wenn **alle** beteiligten
+  Server `calls3` melden; mit einem 2.3-Server (nur `calls2`) bleibt ein 1:1-Anruf `v=1` mit einem Gerät je Seite, und in
+  Chats mit Personen dieses Servers gibt es keinen Gruppenanruf (`chat.call.group: false`, `group_block`: „Der Server
+  <host> kann noch keine Gruppenanrufe (braucht Saga 2.4)“).
+- **Führender Server** (`chat_call.lead` = NULL): 1:1 der Server der anrufenden Person (wie 2.3), Gruppe das **Heim** des
+  Chats. Er hält die maßgebliche Liste der Endpunkte (`chat_call_leg`, je Gerät, mit `peer_id` des Servers des Geräts);
+  die anderen Server spiegeln den Anruf (`lead` = Instanz) für ihre Konten.
+- **Signale sternförmig:** Gerät → eigener Server → führender Server → Server des Zielgeräts, **synchron**, ohne
+  Ausgangskorb, versiegelt je Zielgerät (kein Server liest etwas). Zwei Server, die nicht direkt verbunden sind (B und C
+  einer Gruppe mit Heim A), signalisieren über A.
+- Auftrag `POST /fed/v2/call` (signiert, wie 2.3) – neue `op`:
+
+| op | von → an | Felder | Antwort |
+|---|---|---|---|
+| `join` | Server des Geräts → führender | `id, actor, device, role, replaces?, caps, name, signals`; Gruppenstart zusätzlich `start: true, ref, media` | `200 {ok, role, legs}`; `409 {join_block}` bzw. `{running}`; `403` Nicht-Mitglied |
+| `leave` | Server des Geräts → führender | `id, actor, device` | `200 {ok}` |
+| `roster` | führender → alle anderen (nach dem Commit, verwerfbar, alle 60 s erneut) | `id, ref, kind, media, state, created, from, from_device, legs: [{device, who: handle, role, state, caps, name, replaces?}], ring: [handles], invites: {handle: state}, rv` | `200 {ok, old: [handles ohne Gerät mit multi]}`; nur vom führenden Server (sonst `403`); `rv` = Stand – eine ältere Liste überschreibt keine neuere |
+| `invite` | beliebig → führender bzw. führender → Server der Person | `id, actor, who: [handles]` | `200 {ok, n}` |
+| `signal` | wie 2.3, im Raum zusätzlich `leg` (Endpunkt des Absenders) | vom führenden Server auch für Personen dritter Server (`actor` = deren Handle) | |
+| `alive` | zusätzlich `device` (Lebenszeichen je Endpunkt an den führenden Server) | | |
+| `end` | Gruppe: **nur** vom führenden Server | | |
+
+- **Gruppenanruf, gestartet auf einem Server, der nicht das Heim ist:** `join` mit `start: true` beim Heim → das Heim legt
+  den Anruf an, lädt ein und schickt `roster` mit `ring` an die anderen Server; diese klingeln bei ihren Mitgliedern
+  (`call.invite`) und melden in der Antwort, wer kein 2.4-Gerät hat (`old`).
+- **Kopien** ohne `roster` vom führenden Server enden nach 150 s; Trennen der Server beendet laufende Anrufe bzw. nimmt die
+  Endpunkte der getrennten Instanz aus Gruppenanrufen, die wir führen.
+- **Prüfung:** `actor` muss zum anfragenden Server gehören (außer bei Signalen vom führenden Server), Endpunkte nur für
+  Mitglieder des Chats bzw. die beiden Personen des 1:1, Geräte eigener Konten nur, wenn sie wirklich zu ihnen gehören.
+  Grenzen wie lokal (`SIGNALS_MAX` je Endpunkt-Paar, `SIG_RATE` je Gerät, `CALL_RATE` auch für `join`).
+
+Tests: `tests/foederation_anrufe_raum.py` (drei Server, B und C nur mit A verbunden; Laufzeit eines Signals B → A → C;
+`FED_B_23=1` mit 2.3-Server B), Browser über drei Server mit `BJS=1`.
 
 ## 8. Seiten anderer Server vollständig (E4/E6)
 
