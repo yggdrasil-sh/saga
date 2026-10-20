@@ -240,7 +240,7 @@ def run():
         ok(f"Chat-Personensuche 'hd': nur genau 'hD' ({sorted(pu('hd'))})", pu("hd") == {"ch-hd"} and pu("Hd") == {"ch-hd"})
         ok("... Benutzername genau ('zq'), Teile davon nicht ('z', 'q')", pu("zq") == {"zq"} and pu("z") == set() and pu("q") == set())
         ok("... 1-2 Zeichen ohne Teiltreffer ('h', 'ch', 'an')", pu("h") == set() and pu("ch") == set() and pu("an") == set())
-        ok(f"... ab 3 Zeichen Teilwort ({sorted(pu('hdm'))})", pu("hdm") == {"ch-hdx"} and pu("ch-") >= {"ch-b", "ch-hd"})
+        ok(f"... ab 3 Zeichen Teilwort im Anzeigenamen, Anmeldename nur genau ({sorted(pu('hdm'))})", pu("hdm") == {"ch-hdx"} and pu("ch-") == set() and pu("ch-hd") == {"ch-hd"})
     finally:
         with connect() as c, c:
             c.execute("DELETE FROM users WHERE username IN ('zq', 'ch-hd', 'ch-hdx')")

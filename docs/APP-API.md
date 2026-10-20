@@ -902,10 +902,31 @@ PUT /api/chat/privacy
   pseudonymen Handle (`~` + 16 Zeichen `[a-z2-7]`) statt des Anmeldenamens; `name` ist Anzeigename, öffentlicher Name
   oder derselbe Handle. Das eigene Konto (`me: true`) kommt unverändert. Apps behandeln das Feld wie bisher als
   undurchsichtige Kennung: `PUT/DELETE …/shares`, `POST /api/chats` (`user`, `members`) und
-  `POST /api/chats/{id}/members` (`user`) nehmen den Handle oder – wie bisher – den Benutzernamen. Chat-Mitglieder
+  `POST /api/chats/{id}/members` (`user`) nehmen den Handle oder den Benutzernamen. Chat-Mitglieder
   (`members[].username`, `sender.username`) und Anruf-Teilnehmer bleiben Anmeldenamen (Chats v1 und saga-call v1 binden
   Schlüssel und Signaturen daran); neu ist `members[].ref` (derselbe Handle wie in der Personensuche) zum Abgleich.
   Apps sollten den Anmeldenamen anderer nicht anzeigen.
+- **Sicherheitsrunde 2 (Orakel geschlossen):**
+  - Personensuche trifft andere Konten nur noch über Anzeigenamen (nicht, wenn er gleich Anmeldename/E-Mail ist),
+    öffentlichen Namen, den genauen Handle und – solange der Admin-Schalter „Suche nach Anmeldename“ an ist (Standard) –
+    den **genauen** Anmeldenamen. Kein Präfix des Anmeldenamens mehr; die Reihenfolge hängt nicht mehr vom Anmeldenamen ab.
+  - Ist der Schalter aus, nehmen `PUT …/shares`, `POST /api/chats` (`user`, `members`) und `POST /api/chats/{id}/members`
+    einen Benutzernamen nur noch für Personen, mit denen man schon einen Chat hat bzw. an die man schon geteilt hat;
+    sonst dieselbe Antwort wie für ein unbekanntes Konto (404 bzw. 400). Der Handle geht immer. Apps senden ohnehin die
+    Kennung aus der Personensuche – keine Änderung nötig.
+  - `GET /api/chat/keys?users=` nimmt Benutzernamen **oder Handles** (`~…`) und liefert nur noch das eigene Konto und
+    Personen mit einem gemeinsamen Chat (auch früher). Die Antwort steht unter der angefragten Kennung (Handle bleibt
+    Handle); `null` = noch keine Chats eingerichtet. Unbekannte, gesperrte und noch fremde Konten fehlen gleichermaßen
+    (bis 2.3 auch Konten, mit denen man einen Chat beginnen darf). Apps holen Schlüssel erst für Chat-Mitglieder bzw.
+    Anruf-Gegenüber – das bleibt so; Schlüssel vor dem Anlegen eines Chats gibt es nicht mehr.
+  - **Bekannte Grenze (Chats v1):** Wer mit einem Konto einen Chat beginnen darf, bekommt beim Anlegen des
+    Direkt-Chats bzw. der Gruppe dessen Anmeldenamen in `members[].username` – auch bevor das Gegenüber geantwortet hat.
+    Das ist nötig: Geräte-Zertifikate (`saga-chat/v1/device`), Zusatzdaten und Signatur jeder Nachricht
+    (`saga-chat/v1/msg`, `…/sig`), die Sicherheitsnummer und saga-call v1 enthalten den Anmeldenamen, und schon die
+    erste Nachricht lässt sich nur mit den so geprüften Geräteschlüsseln des Gegenübers verschlüsseln. Lokale
+    Direkt-Chats kennen keine Annahme (anders als Chats über Servergrenzen mit Handles, v2). Eine Bindung an den Handle
+    für neue lokale Chats bräuchte neue Zertifikate von allen Geräten (2.3-Apps erzeugen sie nicht) und ist für eine
+    spätere Version vorgemerkt.
 - **Medien-Token:** `POST /api/chat/files/{fid}/token` liefert `m2.…` (verschlüsselt, nicht lesbar). Weiter nur als
   Kopf `X-Saga-Media-Token` verwenden.
 - **Versionen:** `POST /api/notes/{id}/versions/checkpoint` (Rolle Bearbeiten) sichert den aktuellen Stand als Version,

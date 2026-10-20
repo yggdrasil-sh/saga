@@ -39,7 +39,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 import auth
 from db import connect as _db
 from saga import avatars, bus, file_v2, mfa, notify, sharing
-from saga.core import (labels, local_ref, resolve_ref, ADMIN_URL, ASSET_V, E, MEDIA_FRONT, MEDIA_KEY, SEC_HEADERS, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
+from saga.core import (HANDLE_RE, labels, local_ref, resolve_input, resolve_ref, ADMIN_URL, ASSET_V, E, MEDIA_FRONT, MEDIA_KEY, SEC_HEADERS, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
                        tmpl, user_info)
 from saga.notes import FILE_MAX, note_chain
 from saga.sharing import REMOTE_TYPES, Access, enabled as share_enabled, group_scope, groups_of, names
@@ -777,16 +777,25 @@ def _known(c, uid):
 
 @router.get("/api/chat/keys")
 def api_keys(request: Request, users: str = ""):
-    """Oeffentliche Schluessel: ?users=a,b (hoechstens 60) - nur eigene, von Chat-Partnern oder Konten, mit denen man einen
-    Chat beginnen darf. Enthaelt entfernte Geraete (revoked) - fuer die Pruefung alter Signaturen."""
+    """Oeffentliche Schluessel: ?users=a,b (hoechstens 60; Benutzername oder 2.4 Handle '~…') - nur eigene und von
+    Personen mit einem gemeinsamen Chat (auch frueher). Antwort je angefragter Kennung (Handle bleibt Handle); null =
+    noch keine Chats eingerichtet. Unbekannte, nicht erlaubte und noch fremde Konten fehlen gleichermassen (2.4,
+    Sicherheitsrunde 2: kein Orakel fuer Anmeldenamen - bis 2.3 auch Konten, mit denen man einen Chat beginnen darf;
+    Clients holen Schluessel ohnehin erst fuer Mitglieder). Enthaelt entfernte Geraete (revoked) - fuer die Pruefung
+    alter Signaturen."""
     uid, err = _me(request)
     if err:
         return err
-    want = [u.strip().lower() for u in users.split(",") if u.strip()][:60]
+    want = list(dict.fromkeys(u.strip() for u in users.split(",") if u.strip()))[:60]
     with _db() as c:
         known = _known(c, uid) | {uid}
-        ok = [u for u in want if u in known or may_contact(c, uid, u)]
-        return _no_store({"users": _keys(c, ok)})
+        ask = {}
+        for w in want:
+            u = resolve_ref(c, w)                         # Handle -> Benutzername; sonst klein
+            if u and u in known:
+                ask[w if HANDLE_RE.fullmatch(w) else u] = u
+        keys = _keys(c, list(ask.values()))
+        return _no_store({"users": {w: keys.get(u) for w, u in ask.items()}})
 
 
 def _like(q):
@@ -796,7 +805,8 @@ def _like(q):
 @router.get("/api/chat/people")
 def api_people(request: Request, q: str = ""):
     """Personensuche fuer neue Unterhaltungen (wie beim Teilen, hoechstens 10) + passende eigene Gruppen. Ab 3 Zeichen
-    Teilwort-Suche, bei 1-2 Zeichen nur genaue Treffer (Benutzername bzw. Anzeigename, z. B. "hd") - nie eine Liste aller Konten."""
+    Teilwort-Suche im Anzeige-/oeffentlichen Namen, bei 1-2 Zeichen nur genaue Treffer (z. B. "hd"); Anmeldename nur genau
+    (sharing.name_match) - nie eine Liste aller Konten."""
     uid, err = _me(request)
     if err:
         return err
@@ -809,7 +819,7 @@ def api_people(request: Request, q: str = ""):
         mine = sorted(groups_of(c, uid))
         sql = ("SELECT u.username, u.display_name, (i.uid IS NOT NULL) FROM users u LEFT JOIN chat_identity i ON i.uid=u.username "
                "WHERE u.disabled=0 AND u.username<>? AND " + sharing.name_match())
-        args = [uid] + sharing.name_args(q)
+        args = [uid] + sharing.name_args(c, q)
         rows = []
         if group_scope():
             if mine:
@@ -820,7 +830,7 @@ def api_people(request: Request, q: str = ""):
             else:
                 sql = None
         if sql:
-            rows = c.execute(sql + " ORDER BY (u.username=?) DESC, u.username LIMIT 10", (*args, q)).fetchall()
+            rows = c.execute(sql + sharing.name_order() + " LIMIT 10", (*args, args[3])).fetchall()
         av = avatars.urls(c, [r[0] for r in rows]) if rows else {}
         lb = labels(c, [r[0] for r in rows]) if rows else {}
     # 2.3: Personen anderer Instanzen aus dem Adressbuch (saga.fed_dir) - Chats ueber Servergrenzen folgen mit Protokoll 2
@@ -1104,7 +1114,7 @@ async def api_chat_new(request: Request):
             return _bad(t("Zu viele neue Chats in kurzer Zeit – bitte kurz warten."), 429)
         ch = None
         if kind == "dm":
-            other = resolve_ref(c, str(b.get("user") or "")[:100])     # 2.4: Handle ('~…') oder Benutzername
+            other = resolve_input(c, uid, str(b.get("user") or "")[:100])  # 2.4: Handle ('~…'); Benutzername nur bekannt/erlaubt
             if not may_contact(c, uid, other):
                 return _bad(t("Mit diesem Konto ist kein Chat möglich."), 404)
             key = "|".join(sorted([uid, other]))
@@ -1143,7 +1153,7 @@ async def api_chat_new(request: Request):
             want = b.get("members")
             if not isinstance(want, list) or len(want) > MEMBERS_MAX:
                 return _bad(t("ungültige Angabe"))
-            want = sorted({resolve_ref(c, str(x)[:100]) for x in want} - {uid, ""})
+            want = sorted({resolve_input(c, uid, str(x)[:100]) or "~" for x in want} - {uid})
             if len(want) + 1 > MEMBERS_MAX:
                 return _bad(t("Höchstens {n} Mitglieder je Chat.", n=MEMBERS_MAX), 409)
             bad = [u for u in want if not may_contact(c, uid, u)]
@@ -1235,9 +1245,9 @@ async def api_member_add(cid: int, request: Request):
         return err
     b = await _body(request) or {}
     who = str(b.get("user") or "").strip().lower()[:100]
-    if who.startswith("~"):                               # 2.4: Handle aus der Personensuche
+    if who and not b.get("handle"):                       # 2.4: Handle aus der Personensuche; Benutzername nur bekannt/erlaubt
         with _db() as c:
-            who = resolve_ref(c, who)
+            who = resolve_input(c, uid, who)
     if FED is not None:
         with _db() as c:
             fch = _load(c, cid)

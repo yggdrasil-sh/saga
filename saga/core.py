@@ -814,6 +814,34 @@ def resolve_ref(c, x):
     return u
 
 
+def username_lookup():
+    """Admin-Schalter "Suche nach Anmeldename" (2.4, Sicherheitsrunde 2; Standard an): Personensuche und Eingaben
+    (Chat beginnen, Mitglied hinzufuegen, Teilen) nehmen dann auch den GENAUEN Anmeldenamen eines beliebigen Kontos an.
+    Aus: nur Handle, Anzeigename und oeffentlicher Name - der Anmeldename anderer laesst sich nicht erraten/pruefen."""
+    return bool(auth.settings().get("search_username", True))
+
+
+def knows(c, viewer, other):
+    """Kennt viewer den Anmeldenamen von other ohnehin? Gemeinsamer Chat (v1: Mitglieder bekommen ihn fuer die
+    Schluessel) oder eine eigene Freigabe an other (aus der Zeit vor 2.4 bzw. per Anmeldename angelegt)."""
+    return bool(c.execute("SELECT 1 FROM chat_member m1 JOIN chat_member m2 ON m2.chat_id=m1.chat_id WHERE m1.uid=? AND m2.uid=? "
+                          "LIMIT 1", (viewer, other)).fetchone() or
+                c.execute("SELECT 1 FROM note_share WHERE owner_uid=? AND target_type='user' AND target=? LIMIT 1",
+                          (viewer, other)).fetchone())
+
+
+def resolve_input(c, viewer, x):
+    """Eingabe einer Person durch viewer -> Benutzername ('' = unbekannt bzw. nicht erlaubt; beides gleich behandeln).
+    Handle ('~…') und '@name@host' wie resolve_ref; ein Anmeldename nur, wenn es der eigene ist, viewer die Person schon
+    kennt (knows) oder der Admin die Suche nach Anmeldenamen erlaubt - sonst waere jede Eingabe ein Orakel dafuer, ob es
+    ein Konto gibt (Sicherheitsrunde 2, H1/H2)."""
+    raw = str(x or "").strip()
+    u = resolve_ref(c, raw)
+    if not u or u.startswith("@") or HANDLE_RE.fullmatch(raw) or u == viewer:
+        return u
+    return u if (username_lookup() or knows(c, viewer, u)) else ""
+
+
 def labels(c, uids):
     """Benutzername -> Name zum Zeigen: Anzeigename (nicht Anmeldename/E-Mail), sonst oeffentlicher Name, sonst Handle.
     Unbekannte (geloeschte) Konten fehlen."""

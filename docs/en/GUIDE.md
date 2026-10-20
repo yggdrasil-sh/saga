@@ -610,7 +610,10 @@ thread (after confirming).
 **For the admin** (admin area → General → “Share”): **Allow sharing** (on by default; off = all shares stop working
 immediately but stay saved) and **Only within shared groups** (off by default; people search and sharing only with
 accounts that have a group in common with you; it only affects new shares – existing ones remain if you turn it on
-later). Saga takes over groups from LDAP or SSO at sign-in: if a membership changes there, shares with groups reflect
+later). **Search by login name** (on by default): people search, sharing and chats also find an account by its exactly
+entered login name – never by parts of it. Off: only by display name, public name or identifier; then nobody can try
+out which login names exist, but accounts without their own display name can only be found by their public name.
+Saga takes over groups from LDAP or SSO at sign-in: if a membership changes there, shares with groups reflect
 it from the account’s next sign-in. The user detail page only shows the number of shares, never content.
 When an account is deleted, its shares and the shares given to it disappear; its comments on other people’s pages
 remain as “Deleted account”. When a group is deleted, shares with it end.

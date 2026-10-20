@@ -25,7 +25,7 @@ from starlette.concurrency import run_in_threadpool
 import auth
 from db import connect as _db
 from saga import avatars, bus, i18n
-from saga.core import RESTORE_TEST, _api_guard, _bad, _body, labels, ref_of, resolve_ref, t
+from saga.core import HANDLE_RE, RESTORE_TEST, _api_guard, _bad, _body, labels, ref_of, resolve_input, resolve_ref, t, username_lookup
 from saga.notes import NOTE_META_COLS, _note_meta, note_chain
 
 router = APIRouter()
@@ -674,7 +674,7 @@ async def api_shares_put(nid: int, request: Request):
     typ, tg = _target(b)
     if typ == "user" and tg:
         with _db() as c0:
-            tg = resolve_ref(c0, tg)                 # 2.4: Handle ('~…') oder Benutzername
+            tg = resolve_input(c0, uid, tg)          # 2.4: Handle ('~…'); Benutzername nur, wenn bekannt bzw. erlaubt
     role = b.get("role")
     if typ in REMOTE_TYPES:
         # andere Instanz: erst Eigentum pruefen, dann Verbindung und Person/Gruppe dort nachfragen (Netzwerk -
@@ -766,23 +766,35 @@ SHORT_Q = 3          # Personensuche: ab so vielen Zeichen Teilwort-Suche, darun
 
 
 def name_match():
-    """SQL-Bedingung der lokalen Personensuche (Tabelle users u) - passend zu name_args(q)."""
-    return "(u.username LIKE ? OR lower(u.display_name) LIKE ?)"
+    """SQL-Bedingung der lokalen Personensuche (Tabelle users u) - passend zu name_args(c, q). 2.4 (Sicherheitsrunde 2,
+    H2): Anzeigename (nur wenn er nicht der Anmeldename bzw. die E-Mail ist) oder oeffentlicher Name; ein Konto per
+    Anmeldename nur ueber den GENAUEN Handle bzw. - mit Admin-Schalter "Suche nach Anmeldename" - den genauen Namen.
+    Kein Praefix des Anmeldenamens mehr (das war ein Orakel: Zeichen fuer Zeichen erratbar)."""
+    return ("((lower(coalesce(u.display_name, '')) LIKE ? AND lower(trim(u.display_name)) <> lower(u.username)"
+            " AND lower(trim(u.display_name)) <> lower(trim(coalesce(u.email, ''))))"
+            " OR EXISTS (SELECT 1 FROM public_name pn WHERE pn.uid=u.username AND lower(pn.name) LIKE ?) OR u.username=?)")
 
 
-def name_args(q):
-    """Ab SHORT_Q Zeichen: Benutzername beginnt mit q oder Anzeigename enthaelt q; bei 1-2 Zeichen nur genaue Treffer
-    (Gross/Klein egal) - so laesst sich mit kurzen Anfragen keine Liste aller Konten abrufen."""
-    if len(q) < SHORT_Q:
-        return [_like(q), _like(q)]
+def name_args(c, q):
+    """Ab SHORT_Q Zeichen Teilwort-Suche in Anzeige-/oeffentlichem Namen; bei 1-2 Zeichen nur genaue Treffer (Gross/Klein
+    egal) - so laesst sich mit kurzen Anfragen keine Liste aller Konten abrufen. Dritter Wert: genauer Benutzername
+    (aus Handle bzw. mit Admin-Schalter), sonst '' (trifft nie)."""
+    exact = resolve_ref(c, q) if HANDLE_RE.fullmatch(q) else (q if username_lookup() else "")
     pat = _like(q)
-    return [pat + "%", "%" + pat + "%"]
+    if len(q) < SHORT_Q:
+        return [pat, pat, exact]
+    return ["%" + pat + "%", "%" + pat + "%", exact]
+
+
+def name_order():
+    """Reihenfolge ohne Anmeldenamen (sonst verriete die Sortierung etwas): genauer Treffer, dann Anzeigename."""
+    return " ORDER BY (u.username=?) DESC, lower(coalesce(u.display_name, '')), u.id"
 
 
 @router.get("/api/share/targets")
 def api_share_targets(request: Request, q: str = ""):
-    """Personensuche fuer den Teilen-Dialog: hoechstens 10 Konten (Anzeigename + Benutzername; ab 3 Zeichen Teilwort-Suche,
-    bei 1-2 Zeichen nur genaue Treffer), nie die ganze Liste; mit "nur gemeinsame Gruppen" nur Konten aus eigenen Gruppen. Dazu die eigenen Gruppen, die passen."""
+    """Personensuche fuer den Teilen-Dialog: hoechstens 10 Konten (Anzeige-/oeffentlicher Name, ab 3 Zeichen Teilwort-Suche,
+    bei 1-2 Zeichen nur genaue Treffer; Anmeldename nur genau, siehe name_match), nie die ganze Liste; mit "nur gemeinsame Gruppen" nur Konten aus eigenen Gruppen. Dazu die eigenen Gruppen, die passen."""
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
@@ -798,9 +810,8 @@ def api_share_targets(request: Request, q: str = ""):
         return JSONResponse({"users": [], "groups": []}, headers={"Cache-Control": "no-store"})
     with _db() as c:
         mine = sorted(groups_of(c, uid))
-        pat = _like(q)
         sql = "SELECT u.username, u.display_name FROM users u WHERE u.disabled=0 AND u.username<>? AND " + name_match()
-        args = [uid] + name_args(q)
+        args = [uid] + name_args(c, q)
         if group_scope():
             if not mine:
                 rows = []
@@ -811,8 +822,7 @@ def api_share_targets(request: Request, q: str = ""):
                         f" OR EXISTS (SELECT 1 FROM user_ext_group e WHERE e.user_id=u.id AND e.name IN ({ph})))")
                 args += mine + mine
         if sql:
-            rows = c.execute(sql + " ORDER BY (u.username=?) DESC, (u.username LIKE ?) DESC, u.username LIMIT ?",
-                             (*args, q, pat + "%", TARGETS_MAX)).fetchall()
+            rows = c.execute(sql + name_order() + " LIMIT ?", (*args, args[3], TARGETS_MAX)).fetchall()
         av = avatars.urls(c, [r[0] for r in rows]) if rows else {}
         lb = labels(c, [r[0] for r in rows]) if rows else {}
     # 2.4 (W4): Kennung = pseudonymer Handle, Name ohne Anmeldename (PUT /shares nimmt den Handle an)

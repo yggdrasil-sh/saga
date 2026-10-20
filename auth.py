@@ -46,6 +46,7 @@ DEFAULTS = {
     "share_enabled": True,                 # Seiten mit anderen Konten und Gruppen teilen (1.3)
     "fed_enabled": False,                  # Foederation: mit verbundenen Saga-Instanzen teilen (2.0, saga/federation.py)
     "share_group_scope": False,            # nur mit Konten teilen, mit denen man eine Gruppe gemeinsam hat
+    "search_username": True,               # 2.4: Personensuche/Eingaben auch per genauem Anmeldenamen (nie Praefix)
     "chat_enabled": True,                  # Chats mit Ende-zu-Ende-Verschluesselung (1.5)
     "chat_retention_max_days": 0,          # Chat-Nachrichten spaetestens nach so vielen Tagen loeschen (0 = unbegrenzt)
     "chat_quota_mb": 0,                    # 2.4: Speicher fuer Chat-Anhaenge je Konto in MB (0 = CHAT_QUOTA_MB, Standard 4096)

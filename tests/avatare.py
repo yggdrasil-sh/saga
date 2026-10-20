@@ -454,9 +454,9 @@ def main():
     base = url.split("?")[0]
     same = lambda u: (u or "").split("?")[0] == base  # noqa: E731
     ok("Seite fuer Dora: Eigentuemerin mit Profilbild-Adresse", s == 200 and same(d.get("owner", {}).get("avatar")))
-    s, d = api("av-dora", "GET", "/api/share/targets?q=av-an")
+    s, d = api("av-dora", "GET", "/api/share/targets?q=avatar")
     ok("Personensuche (Teilen): Treffer mit avatar", any(u["username"] == local_ref("av-anna") and same(u.get("avatar")) for u in d.get("users", [])))
-    s, d = api("av-dora", "GET", "/api/chat/people?q=av-an")
+    s, d = api("av-dora", "GET", "/api/chat/people?q=avatar")
     ok(f"Personensuche (Chat): Treffer mit avatar ({s})", s == 200 and any(u["username"] == local_ref("av-anna") and same(u.get("avatar")) for u in d.get("users", [])))
     s, cm = api("av-anna", "POST", f"/api/notes/{nid}/comments", {"body": "Hallo mit Bild", "block_id": ""})
     ok("Kommentar: Verfasserin mit avatar", s == 200 and same(cm["comment"]["author"].get("avatar")))

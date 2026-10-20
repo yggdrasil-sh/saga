@@ -775,6 +775,7 @@ async def settings_post(request: Request):
     for k, v in (("title", _s(f, "title", 60) or "Saga"), ("registration", _on(f, "registration")),
                  ("publish_enabled", _on(f, "publish_enabled")), ("public_home", home),
                  ("share_enabled", _on(f, "share_enabled")), ("share_group_scope", _on(f, "share_group_scope")),
+                 ("search_username", _on(f, "search_username")),
                  ("chat_enabled", _on(f, "chat_enabled")), ("chat_retention_max_days", _days(f.get("chat_retention_max_days"))),
                  ("chat_quota_mb", _mb(f.get("chat_quota_mb"), 1 << 20)), ("chat_video_max_mb", _mb(f.get("chat_video_max_mb"), 1 << 16)),
                  ("local_login", _on(f, "local_login")), ("group_prefix", prefix),

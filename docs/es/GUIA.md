@@ -631,6 +631,10 @@ propietario de la página puede eliminar toda la conversación (tras confirmarlo
 defecto; desactivado = todos los usos compartidos dejan de funcionar al instante, pero se conservan) y **Solo dentro
 de grupos en común** (desactivado por defecto; búsqueda de personas y compartir solo con cuentas que tienen un grupo
 en común contigo; solo afecta a los nuevos usos compartidos: los existentes se mantienen si lo activas más tarde).
+**Buscar por nombre de inicio de sesión** (activado por defecto): la búsqueda de personas, compartir y los chats
+también encuentran una cuenta por su nombre de inicio de sesión escrito exactamente, nunca por partes. Desactivado:
+solo por nombre visible, nombre público o identificador; así nadie puede probar qué nombres existen, pero las cuentas
+sin nombre visible propio solo se encuentran por su nombre público.
 Saga toma los grupos de LDAP o SSO al iniciar sesión: si allí cambia la pertenencia, los usos compartidos con grupos
 lo reflejan a partir del siguiente inicio de sesión de la cuenta. El detalle del usuario solo muestra el número de
 usos compartidos, nunca contenidos. Al eliminar

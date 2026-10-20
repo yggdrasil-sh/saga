@@ -38,7 +38,7 @@ from starlette.concurrency import run_in_threadpool
 import auth
 from db import connect as _db
 from saga import bus, chat, chat_v2 as V, fed_keys as FK, federation as F, fedsig, notify, sharing
-from saga.core import MEDIA_FRONT, MEDIA_KEY, _bad, _body, t
+from saga.core import MEDIA_FRONT, MEDIA_KEY, _bad, _body, resolve_input, t
 from saga.notes import FILE_MAX
 
 router = APIRouter()
@@ -2725,9 +2725,10 @@ def create_group(uid, b):
     raw_l, raw_h = b.get("members") or [], b.get("handles") or []
     if not isinstance(raw_l, list) or not isinstance(raw_h, list) or len(raw_l) + len(raw_h) > chat.MEMBERS_MAX:
         return _bad(t("Höchstens {n} Mitglieder je Chat.", n=chat.MEMBERS_MAX), 409)
-    loc = sorted({str(x).strip().lower()[:100] for x in raw_l} - {uid})
     now = time.time()
     with _db() as c, c:
+        # 2.4: Handle ('~…') aus der Personensuche; Benutzername nur, wenn bekannt bzw. erlaubt (sonst wie unbekannt)
+        loc = sorted({resolve_input(c, uid, str(x)[:100]) or "~" for x in raw_l} - {uid})
         rem = []
         for h in dict.fromkeys(str(x).strip().lower() for x in raw_h):
             n, host = split_handle(h)

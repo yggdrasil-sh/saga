@@ -57,6 +57,7 @@
     {{ check(_('Teilen erlauben'), 'share_enabled', st.share_enabled, _('Benutzer dürfen eigene Seiten und Datenbanken mit anderen Konten und Gruppen teilen (Lesen, Kommentieren, Bearbeiten). Aus = alle Freigaben wirken sofort nicht mehr; sie bleiben gespeichert und gelten beim Einschalten wieder.')) }}
     {{ check(_('Nur innerhalb gemeinsamer Gruppen'), 'share_group_scope', st.share_group_scope, _('Personensuche und Teilen nur mit Konten, die mit einem eine Gruppe gemeinsam haben (lokal oder aus LDAP/SSO). An Gruppen kann man ohnehin nur teilen, wenn man selbst darin ist. Wirkt auf neue Freigaben.')) }}
     <p class="hk-hint adm-share-off">{{ _("Erst „Teilen erlauben“ einschalten, dann lässt sich das einstellen.") }}</p>
+    {{ check(_('Suche nach Anmeldename'), 'search_username', st.search_username, _('Personensuche, Teilen und Chats finden ein Konto auch über den genau eingegebenen Anmeldenamen (nie über Teile davon). Aus: nur über Anzeigenamen, öffentlichen Namen oder Kennung – dann lässt sich nicht ausprobieren, welche Anmeldenamen es gibt, aber Konten ohne eigenen Anzeigenamen findet man nur noch über ihren öffentlichen Namen.')) }}
   </section>
   <section class="adm-card">
     <h3>{{ _("Profilbilder") }}</h3>

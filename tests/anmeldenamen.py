@@ -44,6 +44,7 @@ def call(u, m, p, b=None, keep=True):
 
 
 def cleanup():
+    auth.save_setting("search_username", True)
     with connect() as c, c:
         for t in ("note_comment", "notification", "note_share", "note_version", "user_kv"):
             col = "owner_uid" if t == "note_share" else "uid"
@@ -133,6 +134,45 @@ def main():
     ok("Direkt-Chat mit dem Handle angelegt; Mitglied mit ref = Handle und Namen ohne Anmeldename", s == 200 and other
        and other[0].get("ref") == ref and other[0].get("name") == ref, c)
     ok("Fremder Handle wird nicht als Konto aufgeloest", call("an-anna", "POST", "/api/chats", {"kind": "dm", "user": "~" + "a" * 16}, keep=False)[0] in (400, 404))
+
+    # --- Sicherheitsrunde 2, H2: Personensuche nicht mehr ueber den Anmeldenamen (Praefix) --------------------------------
+    from saga.core import local_ref
+    auth.create_user("an-xberg", None, "Xaver Berg")
+    xr = local_ref("an-xberg")
+    hits = lambda u, q: [x.get("username") for x in (call(u, "GET", "/api/share/targets?q=" + urllib.parse.quote(q), keep=False)[1] or {}).get("users", [])] \
+        + [x.get("username") for x in (call(u, "GET", "/api/chat/people?q=" + urllib.parse.quote(q), keep=False)[1] or {}).get("users", [])]
+    ok("H2: Praefix des Anmeldenamens trifft nicht (Zeichen fuer Zeichen nicht erratbar)",
+       all(xr not in hits("an-anna", q) for q in ("an-x", "an-xb", "an-xber")), [hits("an-anna", q) for q in ("an-x", "an-xber")])
+    ok("H2: Anzeigename (Teilwort) und genauer Handle treffen", hits("an-anna", "xaver") == [xr, xr] and hits("an-anna", "berg").count(xr) == 2
+       and hits("an-anna", xr) == [xr, xr], (hits("an-anna", "xaver"), hits("an-anna", xr)))
+    ok("H2: genauer Anmeldename trifft mit Admin-Schalter 'Suche nach Anmeldename' (Standard an)",
+       auth.settings(fresh=True).get("search_username") is True and hits("an-anna", "an-xberg") == [xr, xr])
+    auth.save_setting("search_username", False)
+    time.sleep(5.6)                                                       # Einstellungen 5 s zwischengespeichert
+    ok("H2: Schalter aus -> auch der genaue Anmeldename trifft nicht, Handle weiter",
+       hits("an-anna", "an-xberg") == [] and hits("an-anna", xr) == [xr, xr])
+
+    # --- Sicherheitsrunde 2, H1: kein Orakel fuer Anmeldenamen (Schluessel, Chat beginnen, Teilen) ------------------------
+    nid2 = call("an-anna", "POST", "/api/notes", {"title": "Orakel"}, keep=False)[1]["id"]
+    s1, b1 = call("an-anna", "POST", "/api/chats", {"kind": "dm", "user": "an-xberg"}, keep=False)
+    s2, b2 = call("an-anna", "POST", "/api/chats", {"kind": "dm", "user": "an-niemand"}, keep=False)
+    ok("H1: Chat per Anmeldename (Schalter aus): bestehendes Konto antwortet wie unbekanntes", s1 == s2 == 404 and b1 == b2, (s1, b1, s2, b2))
+    s1, b1 = call("an-anna", "PUT", f"/api/notes/{nid2}/shares", {"type": "user", "target": "an-xberg", "role": "view"}, keep=False)
+    s2, b2 = call("an-anna", "PUT", f"/api/notes/{nid2}/shares", {"type": "user", "target": "an-niemand", "role": "view"}, keep=False)
+    ok("H1: Teilen per Anmeldename (Schalter aus): bestehendes Konto antwortet wie unbekanntes", s1 == s2 == 400 and b1 == b2, (s1, b1, s2, b2))
+    s, _ = call("an-anna", "PUT", f"/api/notes/{nid2}/shares", {"type": "user", "target": "an-bert", "role": "view"}, keep=False)
+    ok("H1: bekannte Person (gemeinsamer Chat) per Anmeldename weiter moeglich (aeltere Apps)", s == 200)
+    s, kk = call("an-anna", "GET", "/api/chat/keys?users=" + ",".join(["an-xberg", "an-niemand", xr, "~" + "b" * 16]), keep=False)
+    ok("H1: /api/chat/keys - fremdes, unbekanntes Konto und fremder Handle gleichermassen ohne Eintrag", s == 200 and kk == {"users": {}}, kk)
+    s, kk = call("an-anna", "GET", "/api/chat/keys?users=" + ref + ",an-bert", keep=False)
+    ok("H1: /api/chat/keys per Handle fuer Chat-Partner (Antwort unter dem Handle; null = noch keine Chats eingerichtet)",
+       s == 200 and set(kk.get("users", {})) == {ref, "an-bert"} and kk["users"][ref] is None, kk)
+    s, d = call("an-anna", "POST", "/api/chats", {"kind": "dm", "user": xr}, keep=False)
+    ok("H1: Chat per Handle geht auch mit Schalter aus", s == 200, d)
+    auth.save_setting("search_username", True)
+    time.sleep(5.6)
+    s, _ = call("an-anna", "PUT", f"/api/notes/{nid2}/shares", {"type": "user", "target": "an-cora", "role": "view"}, keep=False)
+    ok("H1: Schalter an -> Teilen per genauem Anmeldenamen wie bisher", s == 200)
 
     cleanup()
     n = sum(res)

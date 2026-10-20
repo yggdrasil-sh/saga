@@ -625,7 +625,10 @@ einer Unterhaltung, auf den andere geantwortet haben, bleiben die Antworten steh
 **Für den Admin** (Admin-Bereich → Allgemein → „Teilen“): **Teilen erlauben** (Standard an; aus = alle Freigaben
 wirken sofort nicht mehr, bleiben aber gespeichert) und **Nur innerhalb gemeinsamer Gruppen** (Standard aus;
 Personensuche und Teilen nur mit Konten, die mit einem eine Gruppe gemeinsam haben; wirkt nur auf neue Freigaben –
-bestehende bleiben, wenn du es später einschaltest). Gruppen aus LDAP oder SSO übernimmt Saga bei der Anmeldung:
+bestehende bleiben, wenn du es später einschaltest). **Suche nach Anmeldename** (Standard an): Personensuche, Teilen
+und Chats finden ein Konto auch über den genau eingegebenen Anmeldenamen – nie über Teile davon. Aus: nur über
+Anzeigenamen, öffentlichen Namen oder Kennung; dann lässt sich nicht ausprobieren, welche Anmeldenamen es gibt, aber
+Konten ohne eigenen Anzeigenamen findet man nur noch über ihren öffentlichen Namen. Gruppen aus LDAP oder SSO übernimmt Saga bei der Anmeldung:
 Ändert sich die Mitgliedschaft dort, gilt das für Freigaben an Gruppen erst ab der nächsten Anmeldung des Kontos.
 Das Benutzer-Detail zeigt nur
 die Anzahl der Freigaben, keine Inhalte. Wird ein Konto gelöscht, verschwinden seine Freigaben und die an das Konto;

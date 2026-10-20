@@ -223,8 +223,18 @@ automatisch; Backups von 2.3 bleiben einspielbar.
 - **Anmeldenamen bleiben privat:** Andere Konten sehen nie den Anmeldenamen – Personensuche (Teilen, Chats), Freigaben,
   „Mit mir geteilt“, Kommentare, Benachrichtigungen, Anwesenheit, Versionen und Seitensuche liefern Anzeigename,
   öffentlichen Namen oder einen pseudonymen Handle (`~` + 16 Zeichen). Freigeben, Chat beginnen und Mitglied hinzufügen
-  nehmen den Handle oder wie bisher den Benutzernamen. Mitglieder eines gemeinsamen Chats/Anrufs bekommen den
+  nehmen den Handle oder den Benutzernamen. Mitglieder eines gemeinsamen Chats/Anrufs bekommen den
   Anmeldenamen technisch weiter (Schlüssel und Signaturen von Chats v1 hängen daran), die Weboberfläche zeigt ihn nicht.
+- **Kein Orakel für Anmeldenamen:** Die Personensuche findet andere Konten nicht mehr über Teile des Anmeldenamens,
+  sondern über Anzeigenamen, öffentlichen Namen und den genauen Handle; den **genauen** Anmeldenamen nur, solange der
+  neue Admin-Schalter „Suche nach Anmeldename“ (Allgemein → Teilen) an ist – Standard an, weil Konten ohne eigenen
+  Anzeigenamen sonst nicht mehr auffindbar wären. Ist er aus, nehmen auch Teilen und „Chat beginnen“ einen
+  Anmeldenamen nur noch für Personen, mit denen man schon chattet bzw. an die man schon geteilt hat, und antworten
+  sonst wie für ein unbekanntes Konto. `GET /api/chat/keys` liefert nur noch Schlüssel des eigenen Kontos und von
+  Chat-Partnern (auch per Handle), unbekannte und fremde Konten fehlen gleichermaßen.
+- **Bekannte Grenze:** Wer mit einem Konto chatten darf, erfährt beim Anlegen eines Direkt-Chats technisch dessen
+  Anmeldenamen, auch bevor es antwortet – Chats v1 binden Geräte-Zertifikate, Nachrichten-Signaturen und die
+  Sicherheitsnummer daran (Einzelheiten in `docs/APP-API.md`). Die Oberfläche zeigt ihn nicht.
 - **Versionen beim Bearbeiten:** Saga sichert beim Speichern höchstens alle 5 (statt 10) Minuten, dazu den aktuellen
   Stand nach 2 Minuten Pause und beim Verlassen der Seite (`POST /api/notes/{id}/versions/checkpoint`, gedrosselt, keine
   doppelten Fassungen). „Diese Version wiederherstellen“ fragt nach und sichert den aktuellen Stand immer vorher – steht
