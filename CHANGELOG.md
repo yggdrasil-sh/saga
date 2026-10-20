@@ -40,7 +40,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   - Interne Go-API für die Saga-Steuerung (P3) mit Token-Prüfschnittstelle.
   - `bench --sfu` misst den echten Weiterleiter. Dazu kommen ein Browser-Test (4 Chromium über ICE-TCP und TURN-TLS)
     und ein Einfrier-Regressionstest (80 ms RTT, 1,5 % Verlust).
-  - Beschreibung: `gjallarhorn/NODE.md`. Saga selbst ist davon noch nicht berührt.
+  - Bei vollen Ton- bzw. Kachelplätzen verdrängt eine neue Sprecherin den stillsten Platzhalter (vorher kam sie nie dran).
+  - Beschreibung: `gjallarhorn/NODE.md`. Saga-Steuerung: P3 (unten).
 - **Gjallarhorn P4 – Frame-E2E** (Grundlage für große Gruppenanrufe über Knoten, Feature-Flag `calls.horn`, Standard
   aus): Format `saga-horn/v1` (`docs/HORN-E2E.md`) – AES-128-GCM je codiertem Rahmen im FrameCryptor-Format, ein
   Schlüssel je sendendem Gerät, Ratsche beim Beitritt, neuer Schlüssel beim Verlassen, Wiederholungsschutz,
@@ -48,6 +49,20 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   CSP-Lockerung). Die Schlüssel laufen als `fkey`/`fkey-ack` versiegelt im vorhandenen Signalweg, auch über
   Servergrenzen (Fähigkeit `horn` in `features` und `CAPS2`); der Server sieht sie nicht. Testvektoren
   `tests/vectors/horn_e2e.json` mit Gegenproben in Python, Node und im Browser für die Apps.
+- **Gjallarhorn P3 – Saga-Steuerung** (Feature-Flag `calls.horn`, Standard aus; Vertrag `docs/APP-API.md`, Abschnitt
+  „Anrufe über Gjallarhorn-Knoten“):
+  - **Eingebauter Knoten:** saga-media startet `gjallarhorn node` als zweiten Kindprozess auf `HORN_PORT` (Standard
+    8443), nur solange das Flag an ist. Steuerung über localhost (`/api/horn/ctl`, Protokoll `horn-ctl/1` mit Challenge,
+    Folgenummern und Lastmeldung alle 5 s). Das Image enthält das statische Binär (amd64/arm64, +13 MB).
+  - **Medien-Token:** Saga signiert mit einem eigenen Ed25519-Schlüssel (`horn_sign`, verschlüsselt in den
+    Einstellungen). Token gelten 60 s, je Knoten und Bein, einmal, mit zufälligen Kennungen statt Konto- oder
+    Gerätenamen. Der Knoten prüft lokal.
+  - **Gruppenanrufe über den Knoten:** `topo=horn` für Gruppen über der Mesh-Grenze, wenn ein Knoten bereit ist; sonst
+    Mesh wie 2.4. Beitritt ohne Mesh-Angebote, Kandidaten mit Token im `join`, frische Token über
+    `POST /api/calls/{id}/horn`. Grenzen 12 Video / 50 Ton über TCP, 25 / 100 mit UDP.
+  - **Web (Minimum für den Nachweis):** `static/calls.js` baut Ton- und Bild-Leitung zum Knoten auf (ICE-TCP, sonst
+    TURN-TLS), verschlüsselt jeden Rahmen mit `saga-horn/v1` und zeigt Kacheln. Die volle Oberfläche folgt mit P5.
+  - Datenbank: Tabellen `horn_node`, `horn_pair`, Migration 16 (`chat_call_leg.node`).
 
 ## [2.4.0] – 2026-10-20
 

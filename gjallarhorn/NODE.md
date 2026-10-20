@@ -1,9 +1,8 @@
-# Gjallarhorn-Knoten (Betriebsart `node`) – Stand P1 + P2
+# Gjallarhorn-Knoten (Betriebsart `node`) – Stand P1 + P2 + P3
 
 Der Knoten ist der Weiterleiter (SFU) für große Saga-Gruppenanrufe (Konzept v2, §1, §2.1). `gjallarhorn node` nutzt
 dieselben Weichen wie die Horn-Probe. Statt des Spiegels arbeitet der echte Weiterleiter aus `internal/sfu`. Beine
-gibt es nur mit einem Medien-Token. Die Saga-Steuerung (P3) fehlt noch, deshalb ist der Knoten allein noch nicht
-nutzbar. Zum Testen gibt es `HORN_DEV=1`.
+gibt es nur mit einem Medien-Token von Saga (P3, unten). Zum Testen ohne Saga gibt es `HORN_DEV=1`.
 
 Platzhalter: `horn-1.example.org`.
 
@@ -100,14 +99,36 @@ r.RemoveLeg(legRef); r.RemovePeer(peer); n.CloseRoom(callRef)
 n.Load()                                                    // Lastmeldung §2.6
 ```
 
-- `sfu.Verifier` ist eine Schnittstelle. Der Ed25519-Prüfer kommt mit P3; bis dahin gibt es nur den HMAC-Prüfer im
+- `sfu.Verifier` ist eine Schnittstelle: Ed25519-Prüfer für Saga-Token (`horntoken.go`), HMAC-Prüfer nur im
   Entwicklungsmodus.
-- `Grant` enthält `Node`, `Room` (call_ref), `Peer`, `Leg` (leg_ref), `Role`, `Pub` (a/v/s), `MaxKbit`, `UDPOK`,
-  `Device` und `Exp`.
+- `Grant` enthält `Node`, `Room` (call_ref), `Peer` (peer_ref), `Leg` (leg_ref), `Role`, `Pub` (a/v/s), `MaxKbit`,
+  `UDPOK`, `Device`, `Exp` und `ID` (jti).
 - HTTP im Knoten:
   - `POST /api/sfu/leg {token, path, offer, audio, speaker, screen, tiles, device}` → `{id, answer, csrc, slots}`
   - `POST /api/sfu/turn {token}` → TURN-Zugang (10 min)
   - `GET /api/sfu/leg/{id}` → Belegung und Schätzung
+
+## Saga-Steuerung (P3)
+
+- **Eingebauter Knoten:** saga-media startet `gjallarhorn node`, solange das Feature-Flag `calls.horn` an ist
+  (`media/horn.go`). Umgebung: `HORN_MODE=node`, `HORN_LISTEN=:HORN_PORT` (Standard 8443), `HORN_DATA=STATE_DIR/horn`,
+  `HORN_SAGA_CTL=ws://127.0.0.1:<intern>/api/horn/ctl` und das Geheimnis `HORN_CTL_KEY`. Weitere `HORN_*` (Name,
+  `HORN_PUBLIC_URL`, `HORN_TLS_*`, `HORN_UDP` …) reicht saga-media durch. Saga selbst bekommt nie UDP.
+- **Steuerkanal `horn-ctl/1`** (`ctl.go`, Gegenstück `saga/horn.py`): ausgehende WebSocket-Verbindung. `challenge` →
+  `hello` (signiert mit dem Knotenschlüssel `HORN_DATA/node.key`) → `welcome {node_id, saga_pub, origin, rooms}`, danach
+  Folgenummern je Richtung. Saga → Knoten: `open`, `close`, `kick`, `ping`. Knoten → Saga: `load` (alle 5 s: cpu, mem,
+  legs, calls, udp_share, fwd_p95_us, drops, state), `closed`, `pong`. Neuverbindung mit Backoff 1–30 s; beim
+  Verbinden schließt der Knoten Räume, die Saga nicht mehr kennt. Gekoppelte Knoten (Erweitern) folgen mit P6.
+- **Medien-Token** (`horntoken.go`): `h1.<payload>.<sig>`, Ed25519 über `"saga-horn-token/1." + payload`, Schlüssel
+  aus `welcome` (oder `HORN_SAGA_PUB`). Geprüft: Signatur, Form der Kennungen, Lebensdauer ≤ 120 s, Knotenname,
+  Ablauf, UDP nur mit `udp_ok`. Jedes Token gilt **einmal** je Zweck (Bein bzw. TURN-Zugang, `jti`).
+- **Räume:** Ein gültiges Token legt einen unbekannten Raum selbst an (die Anlage über `open` darf später kommen).
+  Geschlossene Räume und entfernte Teilnehmende (`kick`) bleiben 3 min gesperrt, damit noch gültige Token nicht
+  wieder hereinkommen. Leere Räume schließt der Knoten nach 2 min.
+- **CORS:** `/api/sfu/*` und `/probe` nehmen die Herkunft der eigenen Saga an (`welcome.origin`, `HORN_SAGA_ORIGIN`).
+  Saga ergänzt dafür `connect-src` der Seiten um die Knotenadressen.
+- **Mitschnitt nur für Tests:** `HORN_CAPTURE=<ordner>` schreibt die ersten 3000 Pakete jeder eingehenden Spur roh
+  heraus (`tests/anrufe_horn_knoten.py` prüft damit, dass nur verschlüsselte Rahmen ankommen).
 
 ## Testen
 
