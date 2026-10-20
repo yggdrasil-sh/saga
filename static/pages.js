@@ -125,12 +125,46 @@
     if (!t || !t.classList || !t.classList.contains('cdx-search-field__input')) return;
     var pop = t.closest('.ce-popover');
     if (!pop || !pop.classList.contains('ce-popover--opened') || pop.querySelector('.ce-popover-item--focused')) return;
-    var first = [].filter.call(pop.querySelectorAll('.ce-popover-item'), function (x) {
+    // 2.4 (Testrunde W7): Editor.js filtert verzoegert - bei schnellem "/Hinweis⏎" ist noch nichts ausgeblendet. Daher
+    // selbst nach dem Suchtext abgleichen (Titel beginnt mit / enthaelt ihn), erst sonst der erste sichtbare Eintrag.
+    var first = slashMatch(pop, t.value) || [].filter.call(pop.querySelectorAll('.ce-popover-item'), function (x) {
       return !x.classList.contains('ce-popover-item--hidden') && !x.classList.contains('ce-popover-item--disabled') && x.getClientRects().length;
     })[0];
     if (!first) return;
     e.preventDefault(); e.stopPropagation();
     first.click();
+  }, true);
+  // Eintrag des Block-Menues zum Suchtext q: Titel beginnt mit q, sonst enthaelt ihn, sonst Werkzeugname; null = keiner
+  function slashMatch(pop, q) {
+    q = String(q || '').replace(/\u00a0/g, ' ').trim().toLowerCase();
+    if (!q || !pop) return null;
+    var all = [].filter.call(pop.querySelectorAll('.ce-popover-item'), function (x) { return !x.classList.contains('ce-popover-item--disabled'); });
+    function ti(x) { var e = x.querySelector('.ce-popover-item__title'); return e ? e.textContent.trim().toLowerCase() : ''; }
+    return all.filter(function (x) { return ti(x).indexOf(q) === 0; })[0] || all.filter(function (x) { return ti(x).indexOf(q) >= 0; })[0]
+      || all.filter(function (x) { return String(x.getAttribute('data-item-name') || '').toLowerCase().indexOf(q) === 0; })[0] || null;
+  }
+  // Schnell getipptes "/Hinweis⏎" auf dem Desktop: der Text landete noch im Absatz (Menue war noch nicht offen bzw. hatte
+  // das Suchfeld noch nicht) -> Enter waehlt den passenden Block, statt "/Hinweis" als Text stehen zu lassen.
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || e.isComposing || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey || mobilePop()) return;
+    var t = e.target, p = t && t.closest ? t.closest('.ce-paragraph') : null;
+    if (!p || !S.editor || !$('pg-editor').contains(p)) return;
+    var m = /^\/([^\s\/]{1,40})$/.exec(slashText(p).trim()), pop = slashPopOpen();
+    if (!m || (!pop && p !== slashSrc)) return;              // nur wenn das Menue offen ist bzw. "/" in einem leeren Absatz begann
+    var it = pop ? slashMatch(pop, m[1]) : null;
+    if (pop && !it) return;                                  // kein passender Block: normales Enter (Text bleibt Text)
+    e.preventDefault(); e.stopPropagation();
+    if (it) { p.innerHTML = ''; slashReset(); slashSrc = null; it.click(); return; }
+    var best = null;
+    (S.eds || []).forEach(function (x) { if (x.ed && x.holder.isConnected && x.holder.contains(p) && (!best || best.holder.contains(x.holder))) best = x; });
+    var ed = best ? best.ed : S.editor, q = m[1];
+    try { ed.toolbar.toggleToolbox(true); } catch (err) { return; }
+    (function pick(n) {                                      // Menue geht gleich auf: dann den passenden Block waehlen
+      var pp = slashPopOpen(), x = slashMatch(pp, q);
+      if (x) { p.innerHTML = ''; slashReset(); slashSrc = null; x.click(); return; }
+      if (n > 0) { setTimeout(function () { pick(n - 1); }, 40); return; }
+      try { ed.toolbar.close(); } catch (err) { /* egal */ }
+    })(8);
   }, true);
   // Handy-Tastaturen melden beim Tastendruck oft key "Unidentified" -> Editor.js erkennt "/" nicht.
   // Ersatz: "/" allein in einem leeren Absatz (input-Ereignis) oeffnet das Block-Menue dieses Editors.
@@ -261,6 +295,60 @@
     ed.blocks.insert('paragraph', { text: rest }, undefined, idx + 1, true);
     ed.caret.setToBlock(idx + 1, 'start');
   });
+
+  // 2.4 (Testrunde W7): Aus einem Zitat (Editor.js-Quote: Enter = Zeilenumbruch) per Tastatur herauskommen: Enter in
+  // einer leeren letzten Zeile oder in "Quelle", bzw. Pfeil nach unten am Ende -> neuer Absatz darunter (wie Notion).
+  function blockEd(blk) {
+    var best = null;
+    (S.eds || []).forEach(function (x) { if (x.ed && x.holder.isConnected && x.holder.contains(blk) && (!best || best.holder.contains(x.holder))) best = x; });
+    return best ? best.ed : S.editor;
+  }
+  function caretAtEnd(node) {
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount || !sel.isCollapsed) return false;
+    var r = sel.getRangeAt(0), tail = document.createRange();
+    tail.setStart(r.endContainer, r.endOffset); tail.setEnd(node, node.childNodes.length);
+    return !tail.toString().replace(/[\u00a0\n\s]/g, '').length;
+  }
+  function leaveBlock(blk, trim) {
+    var ed = blockEd(blk), idx = [].filter.call(blk.parentNode.children, function (x) { return x.classList.contains('ce-block'); }).indexOf(blk);
+    if (!ed || idx < 0) return false;
+    if (trim) {                                          // leere letzte Zeile(n) entfernen
+      var last;
+      while ((last = trim.lastChild) && ((last.nodeName === 'BR') || (last.nodeType === 3 && !last.textContent.replace(/[\u00a0\s]/g, '').length)
+             || (last.nodeName === 'DIV' && !last.textContent.replace(/[\u00a0\s]/g, '').length))) trim.removeChild(last);
+    }
+    var next = ed.blocks.getBlockByIndex(idx + 1);
+    if (next && next.name === 'paragraph' && next.holder && !next.holder.textContent.trim()) { ed.caret.setToBlock(idx + 1, 'start'); return true; }
+    try { ed.toolbar.close(); } catch (err) { /* Komfort */ }
+    ed.blocks.insert('paragraph', {}, undefined, idx + 1, true);
+    ed.caret.setToBlock(idx + 1, 'start');
+    S.dirtyBody = true; schedule();
+    return true;
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.isComposing || e.altKey || e.ctrlKey || e.metaKey || (e.key !== 'Enter' && e.key !== 'ArrowDown')) return;
+    var t = e.target, q = t && t.closest ? t.closest('.cdx-quote') : null;
+    if (!q || !$('pg-editor') || !$('pg-editor').contains(q) || readOnly()) return;
+    var blk = q.closest('.ce-block'), txt = q.querySelector('.cdx-quote__text'), cap = q.querySelector('.cdx-quote__caption');
+    if (!blk) return;
+    var inCap = cap && cap.contains(t), field = inCap ? cap : txt;
+    if (!field || !caretAtEnd(field)) return;
+    if (e.key === 'Enter') {
+      if (e.shiftKey) return;
+      if (inCap) { e.preventDefault(); e.stopPropagation(); leaveBlock(blk); return; }
+      var html = txt.innerHTML, plain = txt.innerText || '';
+      // zweites Enter: letzte Zeile ist leer (Editor.js-Quote fuegt <br> bzw. <div><br></div> ein)
+      if (/(<br\s*\/?>\s*|<div>(<br\s*\/?>)?<\/div>\s*)$/i.test(html) && /\n\s*$/.test(plain)) {
+        e.preventDefault(); e.stopPropagation(); leaveBlock(blk, txt);
+      }
+      return;
+    }
+    if (inCap || !cap || !cap.textContent.trim()) {        // Pfeil nach unten am Ende: unter das Zitat
+      var b = blockEd(blk), idx = [].filter.call(blk.parentNode.children, function (x) { return x.classList.contains('ce-block'); }).indexOf(blk);
+      if (b && idx === b.blocks.getBlocksCount() - 1) { e.preventDefault(); e.stopPropagation(); leaveBlock(blk); }
+    }
+  }, true);
 
   // --- Zustand ---------------------------------------------------------------
   var S = { pages: [], shared: [], cur: null, editor: null, loading: false, dirtyBody: false, dirtyTitle: false, timer: null,

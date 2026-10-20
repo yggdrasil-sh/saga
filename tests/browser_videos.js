@@ -85,10 +85,12 @@ function servedBytes(fid) {
     await a.setInputFiles('#ct-file', E.VIDEO_BIG);
     const chip = await a.textContent('#ct-files');
     ok('Anhang-Chip als Video (🎬)', chip.indexOf('🎬') >= 0, chip);
+    // 2.4 (Testrunde W8): erst nach der Probe (Video in diesem Browser dekodierbar?) "Original" bzw. der Schalter
+    const probed = await until(() => a.evaluate(() => { const c = document.querySelector('#ct-files'); return c && c.querySelector('.ct-chip-opt, .ct-chip-hint') ? c.textContent : null; }), 15000);
     if (opt) {
-      ok('Schalter "optimiert 720p" vorhanden (Desktop: aus)', await a.$eval('.ct-chip-opt input', i => !i.checked).catch(() => false));
+      ok('Schalter "auf 720p verkleinern" vorhanden (Desktop: aus = Original)', await a.$eval('.ct-chip-opt input', i => !i.checked).catch(() => false) && /Original/.test(probed || ''), probed);
       await a.uncheck('.ct-chip-opt input').catch(() => {});
-    }
+    } else ok('Ohne MP4-Aufnahme: ehrlich "Original", kein Schalter', /Original/.test(probed || '') && !(await a.$('.ct-chip-opt')), probed);
     await a.fill('#ct-input', 'Mein Film');
     await a.click('#ct-send');
     const sentFid = await until(() => a.evaluate(() => {
@@ -168,6 +170,21 @@ function servedBytes(fid) {
     await b.locator('#ct-msgs .ct-vid').last().click();
     const p2 = await until(() => b.evaluate(() => { const v = document.querySelector('.ct-video-player'); return v && v.readyState >= 3 && v.currentTime > 0.2 ? v.getAttribute('src') : null; }), 30000);
     ok('B: kleines Video (v1) spielt als Blob', p2 && p2.indexOf('blob:') === 0, p2);
+    await b.keyboard.press('Escape');
+
+    // --- 5b. nicht abspielbares Video (2.4, Testrunde W8): Platzhalter statt leerer Flaeche, Meldung statt stummem Player
+    await a.setInputFiles('#ct-file', { name: 'kaputt.mp4', mimeType: 'video/mp4', buffer: Buffer.concat([Buffer.from('000000186674797069736f6d', 'hex'), crypto.randomBytes(40000)]) });
+    const hint = await until(() => a.evaluate(() => { const h = document.querySelector('#ct-files .ct-chip-hint'); return h && h.textContent; }), 15000);
+    ok('A: nicht dekodierbares Video -> "Original – … nicht abspielen", kein Verkleinern angeboten', hint && /Original/.test(hint) && !(await a.$('.ct-chip-opt')), hint);
+    await a.fill('#ct-input', 'Kaputt');
+    await a.click('#ct-send');
+    const three = await until(() => b.evaluate(() => document.querySelectorAll('#ct-msgs .ct-vid').length >= 3), 40000);
+    const ph = await until(() => b.evaluate(() => { const v = [...document.querySelectorAll('#ct-msgs .ct-vid')].pop(); const p = v && v.querySelector('.ct-vid-ph'); return p && p.textContent; }), 15000);
+    ok('B: Video ohne Poster zeigt Platzhalter mit Dateiname', three && ph && /kaputt\.mp4/.test(ph), ph);
+    await b.locator('#ct-msgs .ct-vid').last().click();
+    const cannot = await until(() => b.evaluate(() => { const m = document.querySelector('.ct-vid-cannot'); return m && m.textContent; }), 15000);
+    ok('B: Player meldet "Kann im Browser nicht abgespielt werden – herunterladen" mit Knopf', cannot && /nicht abgespielt/.test(cannot) && /Herunterladen/.test(cannot), cannot);
+    await shot(b, 'b-nicht-abspielbar');
     await b.keyboard.press('Escape');
 
     // --- 6. Abmelden leert die Schluessel im Service Worker ------------------------------------------------------------

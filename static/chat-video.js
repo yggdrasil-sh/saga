@@ -234,15 +234,40 @@
   }
   var MIMEOK = /^(video|audio)\/[\w.+-]{1,60}$/;
   // Player im Overlay-Koerper box. -> Funktion zum Aufraeumen
-  function play(box, f, legacyUrl) {
+  // 2.4 (Testrunde W8): Format, das dieser Browser nicht abspielen kann (z. B. H.264 in Chromium ohne Lizenz-Codecs, HEVC):
+  // klare Meldung mit "Herunterladen" statt eines stummen Players bei 0:00
+  function cannot(box, st, v, onSave) {
+    if (!box.isConnected || box.querySelector('.ct-vid-cannot')) return;
+    try { v.pause(); } catch (e) { /* egal */ }
+    v.remove(); st.remove();
+    var m = D.el('div', 'ct-vid-cannot'); m.setAttribute('role', 'alert');
+    m.appendChild(D.el('span', 'ct-vid-cannot-ic', '🎬'));
+    m.appendChild(D.el('p', null, T('Kann im Browser nicht abgespielt werden – herunterladen und mit einem Videoprogramm öffnen.')));
+    if (onSave) { var b = D.el('button', 'btn btn-primary', T('Herunterladen')); b.type = 'button'; b.addEventListener('click', onSave); m.appendChild(b); }
+    box.appendChild(m);
+  }
+  function play(box, f, legacyUrl, onSave) {
     var v = document.createElement('video'), st = D.el('p', 'hk-status', T('Lädt …')), cleanup = [];
     v.controls = true; v.playsInline = true; v.preload = 'metadata'; v.className = 'ct-video-player';
     st.setAttribute('role', 'status'); box.appendChild(st);
     if (f.w && f.h) v.style.aspectRatio = f.w + ' / ' + f.h;
-    function show(url) { v.src = url; box.appendChild(v); st.remove(); v.play().catch(function () {}); }
+    var mt = MIMEOK.test(f.m || '') ? f.m : 'video/mp4';
+    if (v.canPlayType && v.canPlayType(mt) === '') { cannot(box, st, v, onSave); return function () {}; }
+    var shown = false;
+    function show(url) {
+      v.src = url; box.appendChild(v); st.remove(); shown = true; v.play().catch(function () {});
+      // Container bekannt, Codec nicht: Metadaten ohne Bild bzw. nach 10 s noch nichts abspielbar
+      var tm = setTimeout(function () { if (box.isConnected && v.readyState < 2 && !v.error) cannot(box, st, v, onSave); }, 10000);
+      cleanup.push(function () { clearTimeout(tm); });
+    }
+    v.addEventListener('loadedmetadata', function () {
+      if (f.w && f.h && !v.videoWidth && !/^audio\//.test(mt)) cannot(box, st, v, onSave);
+    });
     var fellBack = false;
     v.addEventListener('error', function () {          // Strom ging nicht (z. B. Safari-Sonderfall): kleinere Videos ganz laden
-      if (fellBack || f.x !== 2 || !box.isConnected) return;
+      var code = v.error && v.error.code;
+      if (shown && (code === 3 || code === 4) && (fellBack || f.x !== 2)) { cannot(box, st, v, onSave); return; }
+      if (fellBack || f.x !== 2 || !box.isConnected) { if (shown) cannot(box, st, v, onSave); return; }
       fellBack = true;
       if (f.s > BLOB_PLAY_MAX) { box.appendChild(st); st.textContent = T('Video nicht geladen – bitte herunterladen.'); return; }
       box.appendChild(st); st.textContent = T('Lädt …');

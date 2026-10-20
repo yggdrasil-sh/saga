@@ -333,6 +333,8 @@
       if (!l || ov) return;
       linkShown[l.id] = true;
       var box = overlay(T('Neues Gerät bestätigen'));
+      ov.classList.add('ct-ov-top');                   // 2.4 (Testrunde W9): auch ueber einem laufenden Vollbild-Anruf
+      ov.dataset.link = l.id;                          // auf einem anderen Geraet erledigt -> hier schliessen (chat.link)
       box.appendChild(HK.fmtNodes(T('„{name}“ möchte auf deine Chats zugreifen.'), { name: el('b', null, l.name || T('Unbekanntes Gerät')) }));
       box.appendChild(el('p', null, T('Bestätige nur, wenn auf dem neuen Gerät genau dieser Code steht:')));
       var code = el('div', 'ct-code', X.linkCode(ME, l.device_id, ub(l.enc_pub, 32), ub(l.sign_pub, 32))); code.id = 'ct-approve-code'; box.appendChild(code);
@@ -1632,20 +1634,26 @@
     if (f.th && f.th.id && f.th.k) {
       var u = memGet('t:' + f.id);
       if (u) im.src = u;
-      else lazy(fig, function (signal) { return thumbUrl(cid, f, signal).then(function (x) { im.src = x; }); }, function () { fig.classList.add('ct-vid-noposter'); });
-    } else fig.classList.add('ct-vid-noposter');
+      else lazy(fig, function (signal) { return thumbUrl(cid, f, signal).then(function (x) { im.src = x; }); }, function () { noPoster(fig, name); });
+    } else noPoster(fig, name);
     fig.addEventListener('click', function () { viewVideo(cid, f, name); });
     return fig;
+  }
+  // Ohne Vorschaubild (das sendende Geraet konnte das Video nicht dekodieren, z. B. H.264 im Browser ohne diesen Codec):
+  // Platzhalter mit Dateiname statt einer leeren dunklen Flaeche (2.4, Testrunde W8)
+  function noPoster(fig, name) {
+    fig.classList.add('ct-vid-noposter');
+    if (!fig.querySelector('.ct-vid-ph')) { var ph = el('span', 'ct-vid-ph'); ph.appendChild(el('span', 'ct-vid-ph-ic', '🎬')); ph.appendChild(el('span', 'ct-vid-ph-n', name)); fig.appendChild(ph); }
   }
   function viewVideo(cid, f, name) {
     var body = overlay(name, { wide: true }), wrap = el('div', 'ct-view ct-view-video');
     body.appendChild(wrap);
     var mime = /^video\/[\w.+-]{1,60}$/.test(f.m || '') ? f.m : 'video/mp4';
+    var bar = el('div', 'hk-actions'), st = el('span', 'hk-hint ct-view-prog'), sv = btn(T('Speichern'), 'ct-view-save');
     ovClean = VID.play(wrap, f, function () {               // v1 (bis 10 MB): ganz laden, entschluesseln, Blob
       return getBlob(f).then(function (buf) { return run('dec', { cid: cid, blob: buf, key: f.k }, [buf]); })
         .then(function (r) { return URL.createObjectURL(new Blob([r.plain], { type: mime })); });
-    });
-    var bar = el('div', 'hk-actions'), st = el('span', 'hk-hint ct-view-prog'), sv = btn(T('Speichern'), 'ct-view-save');
+    }, function () { sv.click(); });
     bar.appendChild(st); bar.appendChild(sv); body.appendChild(bar);
     sv.addEventListener('click', function () {
       sv.disabled = true;
@@ -1678,12 +1686,16 @@
     S.files.forEach(function (f, i) {
       var vid = VID && VID.isVideo(f);
       var c = el('span', 'ct-chip', (vid ? '🎬 ' : '📎 ') + f.name + ' (' + size(f.size) + ')'), x = el('button', 'linkbtn', '×'); x.type = 'button'; x.setAttribute('aria-label', T('Entfernen'));
-      if (vid && VID.canOptimize() && !sending) {         // Video: "optimiert 720p" oder Original
+      // 2.4 (Testrunde W8): "auf 720p verkleinern" nur, wenn dieser Browser das Video wirklich dekodieren UND als MP4
+      // aufnehmen kann (Probe beim Auswaehlen, f._ok); sonst ehrlich "Original"
+      if (vid && f._ok === true && VID.canOptimize() && !sending) {
         var lb = el('label', 'ct-chip-opt'), cb = el('input'); cb.type = 'checkbox'; cb.checked = !!f._opt; cb.disabled = !!f._force;
-        cb.addEventListener('change', function () { f._opt = cb.checked; });
-        lb.appendChild(cb); lb.appendChild(document.createTextNode(' ' + T('optimiert 720p'))); c.appendChild(lb);
-      } else if (vid && !VID.canOptimize() && f.size > 100 * 1048576 && !sending) {
-        c.appendChild(el('span', 'ct-chip-hint', T('Original (dieser Browser kann Videos nicht verkleinern)')));
+        cb.addEventListener('change', function () { f._opt = cb.checked; drawFiles(); });
+        lb.appendChild(cb); lb.appendChild(document.createTextNode(' ' + (f._opt ? T('wird auf 720p verkleinert') : T('Original · auf 720p verkleinern')))); c.appendChild(lb);
+      } else if (vid && f._ok === false && !sending) {
+        c.appendChild(el('span', 'ct-chip-hint', T('Original – dieser Browser kann das Video nicht abspielen (ohne Vorschaubild)')));
+      } else if (vid && f._ok === true && !sending) {
+        c.appendChild(el('span', 'ct-chip-hint', T('Original')));
       }
       if (f._prog) c.appendChild(el('span', 'ct-chip-prog', f._prog));
       if (!sending) { x.addEventListener('click', function () { S.files.splice(i, 1); drawFiles(); }); c.appendChild(x); }
@@ -1752,6 +1764,11 @@
       if (vid && f.size > vmax && opt) f._force = true;    // zu gross: nur verkleinert (720p) moeglich
       else if (f.size > (vid ? vmax : max)) { HK.toast(T('„{name}“ ist zu groß (höchstens {n} MB).', { name: f.name, n: Math.round((vid ? vmax : max) / 1048576) })); return; }
       if (vid) f._opt = !!opt && (mobile || !!f._force);   // 2.4: vom Handy standardmaessig "optimiert 720p"
+      if (vid) VID.probe(f).then(function (m) { f._ok = !!(m && m.w); f._meta = m; }, function () { f._ok = false; })
+        .then(function () {
+          if (!f._ok) { f._opt = false; if (f._force) { HK.toast(T('„{name}“ ist zu groß und lässt sich in diesem Browser nicht verkleinern.', { name: f.name })); S.files.splice(S.files.indexOf(f), 1); } }
+          drawFiles();
+        });
       if (S.files.length < 10) S.files.push(f);
     });
     this.value = ''; drawFiles();
@@ -1906,9 +1923,9 @@
   function uploadVideo(cid, fc, f, withPoster) {
     var lm = S.me.limits || {}, max = lm.file_max || 10485760, meta = {};
     function prog(label) { return function (x) { f._prog = label + ' ' + Math.round(x * 100) + ' %'; drawFiles(); }; }
-    return VID.probe(f).catch(function () { return {}; }).then(function (m) {
+    return (f._meta ? Promise.resolve(f._meta) : VID.probe(f)).catch(function () { return {}; }).then(function (m) {
       meta = m || {};
-      if (f._opt && VID.canOptimize()) return VID.optimize(f, meta, prog(T('Verkleinern'))).catch(function (e) {
+      if (f._opt && f._ok !== false && VID.canOptimize()) return VID.optimize(f, meta, prog(T('Verkleinern'))).catch(function (e) {
         if (f._force) throw e;
         HK.toast(T('Verkleinern nicht möglich – das Original wird gesendet.')); return f;
       });
@@ -2369,7 +2386,12 @@
   function listSoon() { clearTimeout(listT); listT = setTimeout(loadList, 300); }
   document.addEventListener('hk-live', function (e) {
     var t = e.detail.type, d = e.detail.data || {};
-    if (t === 'chat.link') { if (S.linkWait) linkPoll(); else if (!d.approved && !d.gone) checkLinks(); return; }
+    if (t === 'chat.link') {
+      if (S.linkWait) linkPoll();
+      else if (!d.approved && !d.gone) checkLinks();
+      else if (ov && ov.dataset.link && ov.dataset.link === d.id) closeOverlay();   // auf einem anderen Geraet bestaetigt/abgelehnt
+      return;
+    }
     if (t === 'chat.device' && K && d.id === K.device.id) { forget().then(function () { closeChat(); newDevice(); }); return; }
     if (!S.ready) return;
     if (t === 'resync') { loadList(); if (S.cur) loadMsgs(false); return; }

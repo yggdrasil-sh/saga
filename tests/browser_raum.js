@@ -207,6 +207,11 @@ async function api(p, m, url, body) { return p.evaluate(([m, url, body]) => wind
     PERF.mesh4_python_cpu_spitze_pct = cp4.peak; PERF.mesh4_python_cpu_ueber20_s = cp4.over20_s;
     ok('4er-Mesh: jedes Geraet mit drei Verbindungen, alle verbunden und geprueft', r4c.every(Boolean) && r4.every(r => r && r.links.every(l => l.verified)), r4c.map(r => r && r.links.length));
     ok(`4er-Mesh: Aufbau <= 2 s (${PERF.mesh4_aufbau_ms} ms)`, PERF.mesh4_aufbau_ms <= 2000);
+    // 2.4 (Testrunde W10): keine stehengebliebene Zeile "Klingelt bei den anderen …" / "Verbinde …", sobald Medien fliessen
+    const lines = await Promise.all([a, b, c, a2].map(p => until(() => p.evaluate(() => {
+      const s = document.querySelector('.cl-win .cl-status'); return !s || s.hidden || !s.textContent ? 'leer' : null; }), 5000)));
+    const left = await Promise.all([a, b, c, a2].map(p => p.evaluate(() => { const s = document.querySelector('.cl-win .cl-status'); return s && !s.hidden ? s.textContent : ''; })));
+    ok('Gruppenanruf: Statuszeile bei allen vier leer, sobald verbunden (W10)', lines.every(Boolean), left);
     ok(`Python-CPU des Servers: Spitze ${cp4.peak} % (Grenze 20 % fuer hoechstens 2 s: ${cp4.over20_s} s)`, !E.SAGA_PID || cp4.over20_s <= 2, cp4);
     const pcs = {};
     r4.forEach((r, i) => r.links.forEach(l => { (pcs[l.pc] = pcs[l.pc] || []).push(i); }));

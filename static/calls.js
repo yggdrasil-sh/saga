@@ -816,7 +816,9 @@
       if (!x || !live(R) || linkOf(R, dev)) return;
       var L = newLink(R, dev, personOf(x));
       L.role = 'callee';
-      return peerKeys(L).then(function () {
+      // 2.4 (Testrunde W9): Schluessel der Person sind je Raum zwischengespeichert - ein Geraet, das sie WAEHREND des Anrufs
+      // gekoppelt hat (Hinzufuegen/Hierher uebernehmen), steht dort noch nicht: dann die Liste einmal neu holen
+      return peerKeys(L).then(function () { return L.peerDevs[dev] ? null : peerKeys(L, true); }).then(function () {
         if (!L.peerDevs[dev]) {                        // Geister-Geraet: nicht in der signierten Liste der Person
           R.bad[dev] = true; dropLink(L, T('Unbekanntes Gerät von {name} abgelehnt.', { name: x.name || '?' })); return;
         }
@@ -1123,7 +1125,7 @@
         screenOn(c);                                   // 2.4: teile ich schon, bekommt eine neue Verbindung den Bildschirm
         hoCheck(R); drawInfo(R);
       }
-      status(c, ''); tick(c); poll(c);
+      status(c, ''); roomSettled(c); tick(c); poll(c);
     } else if (st === 'disconnected' || ice === 'disconnected') {
       status(c, T('Verbindung unterbrochen – versuche es weiter …'));
       // 2.4: kommt die Verbindung nicht von selbst wieder (Netzwechsel), ICE neu aushandeln
@@ -1657,7 +1659,15 @@
     if (c && c.tile) { c.tile.st.textContent = s || ''; c.tile.st.hidden = !s; return; }   // Kachel: Zustand dieser Verbindung
     var R = roomOf(c);
     if (c !== R && meshView(R)) return;
+    if (s && !err && c === R && meshView(R) && links(R).some(function (L) { return L.connected; })) return;   // W10: nicht wieder "Verbinde …"
     if (R.ui) { R.ui.st.textContent = s || ''; R.ui.st.classList.toggle('err', !!err); R.ui.st.hidden = !s; }
+  }
+  // 2.4 (Testrunde W10): Zeile des Anruffensters ("Klingelt bei den anderen …", "Verbinde …") weg, sobald zu irgendeinem
+  // Geraet Medien fliessen - den Zustand je Verbindung zeigen dann die Kacheln (Gruppen-/Mehrgeraete-Ansicht).
+  function roomSettled(c) {
+    var R = roomOf(c);
+    if (!R || !R.ui || R.done || !links(R).some(function (L) { return L.connected; })) return;
+    R.ui.st.textContent = ''; R.ui.st.classList.remove('err'); R.ui.st.hidden = true;
   }
   // Hauptverbindung (Einzelansicht: deren Zustand zeigt das Anruffenster) - die erste sichtbare
   function primary(R) { R = roomOf(R); return shown(R)[0] || links(R)[0] || R; }
