@@ -48,6 +48,7 @@ Aufruf:
   gjallarhorn probe                         Messknoten starten (HTTPS, ICE-TCP, TURN-TLS, opt. UDP)
   gjallarhorn node                          Knoten mit Weiterleiter (SFU); Beine nur mit Medien-Token von Saga
                                             (Steuerung HORN_SAGA_CTL bzw. HORN_SAGA_PUB; HORN_DEV=1 nur fuer Tests)
+  gjallarhorn watch                         Waechter: startet "node" und uebernimmt signierte Updates (Knoten-Image)
   gjallarhorn bench [-n 25] [--video 12] [--secs 60] [--path tcp|udp] [--sfu]
                                             Last mit lokalen Pion-Bots messen
   gjallarhorn report [--data DIR]           Markdown-Bericht mit Go/No-Go (stdout)
@@ -58,6 +59,8 @@ Umgebung (probe): HORN_NAME, HORN_LISTEN (:443), HORN_UDP (1), HORN_DATA (/data)
   HORN_PUBLIC_IP, HORN_ACME_URL, HORN_ACME_EMAIL, HORN_MODE (probe|node), HORN_DEV.
 Umgebung (node, P3): HORN_SAGA_CTL (ws[s]://saga/api/horn/ctl), HORN_CTL_KEY (eingebauter Knoten, setzt saga-media),
   HORN_SAGA_PUB (Base64, ohne Steuerkanal), HORN_SAGA_ORIGIN, HORN_PUBLIC_URL.
+Umgebung (weiterer Knoten, P6/P7): HORN_SAGA (https://saga), HORN_PAIR (einmaliger Kopplungs-Code), HORN_NAME,
+  HORN_LINK_MBIT, HORN_PUBLIC_PORT, HORN_UPDATE_BASE, HORN_ACME_URL, HORN_ACME_DNS_WAIT.
   Details: PROBE.md, NODE.md
 `
 
@@ -72,6 +75,8 @@ func main() {
 		err = runProbe(os.Args[2:], false)
 	case "node":
 		err = runNode(os.Args[2:], false, "node")
+	case "watch": // P6: Waechter (PID 1 im Knoten-Image, Selbst-Update ohne Docker-Socket)
+		err = runWatch(os.Args[2:])
 	case "bench-node": // intern: Knoten fuer bench als eigener Prozess
 		err = runProbe(os.Args[2:], true)
 	case "bench":

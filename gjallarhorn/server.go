@@ -93,6 +93,7 @@ func loadConfig(bench bool) (*config, error) {
 		return nil, errors.New("HORN_RELAY_IP ungueltig")
 	}
 	c.MaxLegs, _ = strconv.Atoi(env("HORN_MAX_LEGS", "48"))
+	external := c.Mode == "node" && os.Getenv("HORN_SAGA") != "" && os.Getenv("HORN_SAGA_CTL") == ""
 	certFile := env("HORN_TLS_CERT", filepath.Join(c.Data, "tls", "fullchain.pem"))
 	keyFile := env("HORN_TLS_KEY", filepath.Join(c.Data, "tls", "privkey.pem"))
 	c.Certs = netx.CertOptions{
@@ -101,6 +102,7 @@ func loadConfig(bench bool) (*config, error) {
 		ACMEDir:   filepath.Join(c.Data, "tls", "acme"),
 		ACMEURL:   os.Getenv("HORN_ACME_URL"),
 		ACMEEmail: os.Getenv("HORN_ACME_EMAIL"),
+		Defer:     external, // P7: gekoppelter Knoten - Saga legt DNS-01 oder TLS-ALPN-01 fest
 	}
 	if bench {
 		c.Certs.Self = true
@@ -131,7 +133,19 @@ type server struct {
 	devSecret               string
 	verifier                *sagaVerifier          // P3: Medien-Token von Saga (Ed25519)
 	used                    usedTokens             // jedes Token einmal je Zweck
-	ctl                     *ctlClient             // Steuerkanal zu Saga (HORN_SAGA_CTL)
+	ctl                     *ctlClient             // Steuerkanal zu Saga (HORN_SAGA_CTL bzw. Kopplung), unter ctlMu
+	ctlMu                   sync.Mutex             //
+	nodeKey                 ed25519.PrivateKey     // Knotenschluessel (HORN_DATA/node.key)
+	echoRate                rateGate               // Rueckpruefung /api/horn/echo
+	pairErr                 atomic.Pointer[string] // Kopplung endgueltig abgelehnt
+	draining                atomic.Bool            // Leeren (Admin oder Update): keine neuen Beine
+	upd                     *updater               // Selbst-Update (P6)
+	acmeRun                 atomic.Bool            // DNS-01 laeuft
+	certErr                 atomic.Pointer[string] // letzter Zertifikatsfehler
+	certModeV               atomic.Pointer[string] // dns01 | alpn (von Saga)
+	addrMu                  sync.Mutex             //
+	v4, v6                  string                 // oeffentliche Adressen laut Saga (whoami)
+	sagaBase                string                 // gekoppelter Knoten: HORN_SAGA
 	origin                  atomic.Pointer[string] // Herkunft der Saga-Seiten (CORS, /probe)
 	graves                  map[string]time.Time   // geschlossene Raeume (gesperrt bis)
 	kicked                  map[string]time.Time   // entfernte Teilnehmende "raum|peer" (gesperrt bis)
@@ -228,6 +242,15 @@ func newServer(cfg *config) (*server, error) {
 			nc.Verifier = s.verifier
 		}
 		s.node = sfu.NewNode(nc)
+		s.echoRate.max = 20
+		if !cfg.Dev && !cfg.Bench {
+			k, err := loadNodeKey(cfg.Data)
+			if err != nil {
+				return nil, fmt.Errorf("knotenschluessel: %w", err)
+			}
+			s.nodeKey = k
+		}
+		s.upd = newUpdater(s)
 		if o := os.Getenv("HORN_SAGA_ORIGIN"); o != "" {
 			s.setOrigin(o)
 		}
@@ -311,14 +334,17 @@ func newServer(cfg *config) (*server, error) {
 		if u := os.Getenv("HORN_SAGA_CTL"); u != "" {
 			key := os.Getenv("HORN_CTL_KEY")
 			_ = os.Unsetenv("HORN_CTL_KEY")
-			c, err := newCtl(s, u, key)
+			s.startCtl(u, key, nil)
+		} else if b := os.Getenv("HORN_SAGA"); b != "" { // P6: weiterer Knoten (Erweitern)
+			base, err := sagaBase(b)
 			if err != nil {
 				return nil, err
 			}
-			s.ctl = c
-			go c.run()
+			s.sagaBase = base
+			go s.upd.loop()
+			s.startExternal(base)
 		} else if !s.verifier.HasKey() {
-			log.Printf("WARNUNG: weder HORN_SAGA_CTL noch HORN_SAGA_PUB - der Knoten nimmt keine Beine an")
+			log.Printf("WARNUNG: weder HORN_SAGA_CTL, HORN_SAGA noch HORN_SAGA_PUB - der Knoten nimmt keine Beine an")
 		}
 	}
 	udpInfo := "aus"

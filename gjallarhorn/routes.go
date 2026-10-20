@@ -36,6 +36,9 @@ func (s *server) routes() http.Handler {
 	m.HandleFunc("GET /api/stats", s.apiStats)
 	if s.node != nil {
 		s.sfuRoutes(m)
+		if s.nodeKey != nil {
+			m.HandleFunc("GET /api/horn/echo", s.apiEcho) // P6: Rueckpruefung durch Saga
+		}
 		m.HandleFunc("OPTIONS /api/sfu/", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
 		if s.cfg.Dev {
 			m.HandleFunc("GET /dev/{$}", page)

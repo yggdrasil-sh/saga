@@ -13,27 +13,34 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/sfu"
 )
 
-// Steuerkanal horn-ctl/1 (Konzept v2 §2.4, Paket P3): Der Knoten haelt AUSGEHEND eine WebSocket-Verbindung zu Saga
-// (HORN_SAGA_CTL, eingebauter Knoten: ws://127.0.0.1:<intern>/api/horn/ctl). Ablauf:
+// Steuerkanal horn-ctl/1 (Konzept v2 §2.4, Pakete P3/P6/P7): Der Knoten haelt AUSGEHEND eine WebSocket-Verbindung zu
+// Saga (eingebauter Knoten: ws://127.0.0.1:<intern>/api/horn/ctl mit HORN_CTL_KEY; gekoppelter Knoten: ctl_url aus der
+// Kopplung, wss://saga.example.org/api/horn/ctl). Ablauf:
 //
 //	Saga -> {"t":"challenge","nonce","proto":"horn-ctl/1"}
-//	Knoten -> {"t":"hello","proto","name","url","pub","sig","version","udp","udp_check","cores","builtin"}
+//	Knoten -> {"t":"hello","proto","name","url","pub","sig","version","udp","udp_check","cores","builtin","max_legs",
+//	           "v4","v6","cert":{mode,state,not_after},"upd":{state,want,err}}
 //	          sig = Ed25519(knoten_sk, "horn-ctl/1 hello\n" + nonce)
-//	Saga -> {"t":"welcome","n":0,"node_id","saga_pub","origin","rooms":[call_ref...]}
+//	Saga -> {"t":"welcome","n":0,"node_id","saga_pub","origin","rooms":[call_ref...],"want","solo","drain","cert"}
 //
+// Gekoppelte Knoten heften saga_pub aus der Kopplung an: ein welcome mit anderem Schluessel wird abgelehnt.
 // Danach traegt jede Nachricht eine Folgenummer n (je Richtung ab 1, lueckenlos; sonst Verbindung zu und neu).
-// Saga -> Knoten: open {call_ref, max_peers}, close {call_ref}, kick {call_ref, peer_ref}, ping.
-// Knoten -> Saga: load (alle 5 s, Lastmeldung §2.6), closed {call_ref, why}, pong.
-// Eingebauter Knoten: zusaetzlich das gemeinsame Geheimnis HORN_CTL_KEY (setzt saga-media) im Kopf X-Saga-Horn-Key.
+// Saga -> Knoten: open {call_ref, max_peers}, close {call_ref}, kick {call_ref, peer_ref}, ping, drain {on},
+//   peers {solo}, version {want}, cert {cert: dns01|alpn}, acme_txt {rid, ok, err} (Antwort), remove {sig}.
+// Knoten -> Saga: load (alle 5 s, §2.6), closed {call_ref, why}, pong, addr {v4, v6}, cert {mode, state, not_after,
+//   err}, update {state, want, err}, acme_txt {rid, op: set|del, name, value} (DNS-01, nur fuer den eigenen Namen).
 
 const ctlProto = "horn-ctl/1"
 
@@ -50,23 +57,38 @@ type ctlMsg struct {
 	PeerRef  string          `json:"peer_ref,omitempty"`
 	MaxPeers int             `json:"max_peers,omitempty"`
 	Load     json.RawMessage `json:"load,omitempty"`
+	Want     string          `json:"want,omitempty"`
+	Solo     *bool           `json:"solo,omitempty"`
+	Drain    *bool           `json:"drain,omitempty"`
+	On       *bool           `json:"on,omitempty"`
+	Cert     string          `json:"cert,omitempty"`
+	RID      string          `json:"rid,omitempty"`
+	OK       bool            `json:"ok,omitempty"`
+	Err      string          `json:"err,omitempty"`
+	Sig      string          `json:"sig,omitempty"`
 }
 
 // ctlClient haelt die Verbindung zu Saga.
 type ctlClient struct {
 	s      *server
 	url    string
-	key    string
-	sk     ed25519.PrivateKey
+	key    string             // eingebauter Knoten: gemeinsames Geheimnis
+	pinned ed25519.PublicKey  // gekoppelter Knoten: saga_pub aus der Kopplung
+	sk     ed25519.PrivateKey //
 	mu     sync.Mutex
 	conn   *websocket.Conn
 	out    int64 // letzte gesendete Folgenummer
 	nodeID string
 	up     bool
+	rid    int64
+	wait   map[string]chan ctlMsg // offene Anfragen (acme_txt)
+	stop   atomic.Bool
 
 	lastCPU  int64
 	lastAt   time.Time
 	lastDrop uint64
+	lastIn   uint64
+	lastOut  uint64
 }
 
 // loadNodeKey liest bzw. erzeugt den Ed25519-Knotenschluessel (HORN_DATA/node.key, nur der Seed, 0600).
@@ -92,12 +114,13 @@ func loadNodeKey(dir string) (ed25519.PrivateKey, error) {
 	return sk, nil
 }
 
-func newCtl(s *server, url, key string) (*ctlClient, error) {
-	sk, err := loadNodeKey(s.cfg.Data)
-	if err != nil {
-		return nil, fmt.Errorf("knotenschluessel: %w", err)
-	}
-	return &ctlClient{s: s, url: url, key: key, sk: sk}, nil
+// startCtl startet die Steuerung (eingebaut: key, gekoppelt: pinned).
+func (s *server) startCtl(url, key string, pinned ed25519.PublicKey) {
+	c := &ctlClient{s: s, url: url, key: key, sk: s.nodeKey, pinned: pinned, wait: map[string]chan ctlMsg{}}
+	s.ctlMu.Lock()
+	s.ctl = c
+	s.ctlMu.Unlock()
+	go c.run()
 }
 
 // run verbindet und haelt die Verbindung (Neuversuch mit Backoff 1 ... 30 s).
@@ -106,7 +129,7 @@ func (c *ctlClient) run() {
 	for {
 		t0 := time.Now()
 		err := c.session()
-		if c.s.closing.Load() {
+		if c.s.closing.Load() || c.stop.Load() {
 			return
 		}
 		if time.Since(t0) > time.Minute {
@@ -143,26 +166,37 @@ func (c *ctlClient) session() error {
 	if err := conn.ReadJSON(&ch); err != nil || ch.T != "challenge" || ch.Proto != ctlProto || len(ch.Nonce) < 16 {
 		return errors.New("keine gueltige challenge")
 	}
-	uc := c.s.UDPCheck()
-	hello := map[string]any{"t": "hello", "proto": ctlProto, "name": c.s.cfg.Name, "url": c.s.publicURL(), "version": version,
+	s := c.s
+	uc := s.UDPCheck()
+	hello := map[string]any{"t": "hello", "proto": ctlProto, "name": s.cfg.Name, "url": s.publicURL(), "version": version,
 		"pub": base64.StdEncoding.EncodeToString(c.sk.Public().(ed25519.PublicKey)),
 		"sig": base64.StdEncoding.EncodeToString(ed25519.Sign(c.sk, []byte(ctlProto+" hello\n"+ch.Nonce))),
-		"udp": c.s.sfuUDP != nil && uc.State == "ok", "udp_check": uc.State, "cores": runtime.GOMAXPROCS(0),
-		"builtin": c.key != "", "max_legs": c.s.cfg.MaxLegs}
+		"udp": s.sfuUDP != nil && uc.State == "ok", "udp_check": uc.State, "cores": runtime.GOMAXPROCS(0),
+		"builtin": c.key != "", "max_legs": s.cfg.MaxLegs, "cert": s.certStatus(), "upd": s.upd.status()}
+	if c.key == "" {
+		v4, v6 := s.addrs()
+		hello["v4"], hello["v6"] = v4, v6
+	}
 	if err := conn.WriteJSON(hello); err != nil {
 		return err
 	}
 	var w ctlMsg
 	if err := conn.ReadJSON(&w); err != nil || w.T != "welcome" {
+		if ce, ok := err.(*websocket.CloseError); ok && ce.Code == 4410 {
+			return errors.New("von saga entfernt bzw. gesperrt")
+		}
 		return errors.New("kein welcome")
 	}
 	pub, err := base64.StdEncoding.DecodeString(w.SagaPub)
 	if err != nil || len(pub) != ed25519.PublicKeySize {
 		return errors.New("saga_pub ungueltig")
 	}
-	c.s.verifier.SetKey(pub)
+	if c.pinned != nil && !c.pinned.Equal(ed25519.PublicKey(pub)) {
+		return errors.New("saga_pub passt nicht zur Kopplung - abgelehnt")
+	}
+	s.verifier.SetKey(pub)
 	if w.Origin != "" {
-		c.s.setOrigin(w.Origin)
+		s.setOrigin(w.Origin)
 	}
 	c.mu.Lock()
 	c.conn, c.out, c.nodeID, c.up = conn, 0, w.NodeID, true
@@ -170,13 +204,27 @@ func (c *ctlClient) session() error {
 	defer func() {
 		c.mu.Lock()
 		c.conn, c.up = nil, false
+		for k, ch := range c.wait {
+			close(ch)
+			delete(c.wait, k)
+		}
 		c.mu.Unlock()
 	}()
 	log.Printf("steuerung: verbunden (knoten %s, %d laufende anrufe)", w.NodeID, len(w.Rooms))
-	c.s.syncRooms(w.Rooms)
+	s.syncRooms(w.Rooms)
+	if w.Drain != nil {
+		s.setDrain(*w.Drain)
+	}
+	if c.key == "" { // gekoppelter Knoten: Zertifikat und Updates steuert Saga
+		s.certMode(w.Cert)
+		s.upd.target(w.Want, w.Solo != nil && *w.Solo)
+	}
 	stop := make(chan struct{})
 	defer close(stop)
 	go c.loadLoop(stop)
+	if c.key == "" {
+		go c.addrLoop(stop)
+	}
 	in := int64(0)
 	for {
 		_ = conn.SetReadDeadline(time.Now().Add(45 * time.Second))
@@ -195,20 +243,57 @@ func (c *ctlClient) session() error {
 				if m.MaxPeers > 0 {
 					lim = &sfu.Limits{MaxPeers: m.MaxPeers}
 				}
-				c.s.openRoom(m.CallRef, lim)
+				s.openRoom(m.CallRef, lim)
 			}
 		case "close":
 			if validRef(m.CallRef) {
-				c.s.closeRoom(m.CallRef, "saga")
+				s.closeRoom(m.CallRef, "saga")
 			}
 		case "kick":
 			if validRef(m.CallRef) && validRef(m.PeerRef) {
-				c.s.kick(m.CallRef, m.PeerRef)
+				s.kick(m.CallRef, m.PeerRef)
 			}
 		case "ping":
 			c.send(map[string]any{"t": "pong"})
+		case "drain":
+			if m.On != nil {
+				s.setDrain(*m.On)
+				c.sendLoad()
+			}
+		case "peers":
+			if c.key == "" && m.Solo != nil {
+				s.upd.target("", *m.Solo)
+			}
+		case "version":
+			if c.key == "" {
+				s.upd.target(m.Want, s.upd.isSolo())
+			}
+		case "cert":
+			if c.key == "" {
+				s.certMode(m.Cert)
+			}
+		case "acme_txt":
+			c.mu.Lock()
+			ch := c.wait[m.RID]
+			delete(c.wait, m.RID)
+			c.mu.Unlock()
+			if ch != nil {
+				ch <- m
+				close(ch)
+			}
+		case "remove":
+			if c.key == "" && s.removeSigned(w.NodeID, m.Sig, pub) {
+				c.stop.Store(true)
+				return errors.New("entfernt")
+			}
 		}
 	}
+}
+
+func (s *server) ctlc() *ctlClient {
+	s.ctlMu.Lock()
+	defer s.ctlMu.Unlock()
+	return s.ctl
 }
 
 // send schickt eine Nachricht mit Folgenummer (ohne Verbindung: verworfen).
@@ -228,6 +313,41 @@ func (c *ctlClient) send(m map[string]any) bool {
 	return true
 }
 
+// request: Anfrage mit Kennung rid, wartet auf die Antwort gleicher Art (hoechstens d).
+func (c *ctlClient) request(m map[string]any, d time.Duration) (ctlMsg, error) {
+	ch := make(chan ctlMsg, 1)
+	c.mu.Lock()
+	c.rid++
+	rid := "r" + strconv.FormatInt(c.rid, 10)
+	c.wait[rid] = ch
+	c.mu.Unlock()
+	m["rid"] = rid
+	if !c.send(m) {
+		c.mu.Lock()
+		delete(c.wait, rid)
+		c.mu.Unlock()
+		return ctlMsg{}, errors.New("steuerung nicht verbunden")
+	}
+	select {
+	case r, ok := <-ch:
+		if !ok {
+			return ctlMsg{}, errors.New("steuerung getrennt")
+		}
+		return r, nil
+	case <-time.After(d):
+		c.mu.Lock()
+		delete(c.wait, rid)
+		c.mu.Unlock()
+		return ctlMsg{}, errors.New("keine antwort von saga")
+	}
+}
+
+func (c *ctlClient) connected() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.conn != nil
+}
+
 func (c *ctlClient) loadLoop(stop chan struct{}) {
 	c.sendLoad()
 	t := time.NewTicker(5 * time.Second)
@@ -242,29 +362,54 @@ func (c *ctlClient) loadLoop(stop chan struct{}) {
 	}
 }
 
-// sendLoad: Lastmeldung (§2.6, etwa 200 Byte).
+// addrLoop: oeffentliche Adressen alle 10 min neu ermitteln; bei Aenderung (dynamische IP) an Saga melden.
+func (c *ctlClient) addrLoop(stop chan struct{}) {
+	t := time.NewTicker(10 * time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+			if c.s.refreshAddrs() {
+				v4, v6 := c.s.addrs()
+				c.send(map[string]any{"t": "addr", "v4": v4, "v6": v6})
+			}
+		}
+	}
+}
+
+// sendLoad: Lastmeldung (§2.6, etwa 200 Byte): cpu, mem, up/down (Mbit/s), legs, calls, udp_share, fwd_p95_us, drops, state.
 func (c *ctlClient) sendLoad() {
 	ld := c.s.node.Load()
 	var ru syscall.Rusage
 	_ = syscall.Getrusage(syscall.RUSAGE_SELF, &ru)
 	cpuNs := ru.Utime.Nano() + ru.Stime.Nano()
 	now := time.Now()
-	cpu := 0.0
+	bin, bout := fwd.Totals.BytesIn.Load(), fwd.Totals.BytesOut.Load()
+	cpu, drops, up, down := 0.0, 0.0, 0.0, 0.0
 	if !c.lastAt.IsZero() {
+		dt := now.Sub(c.lastAt).Seconds()
 		cpu = float64(cpuNs-c.lastCPU) / float64(now.Sub(c.lastAt).Nanoseconds()) / float64(runtime.GOMAXPROCS(0))
+		if ld.Drops >= c.lastDrop {
+			drops = float64(ld.Drops-c.lastDrop) / dt
+		}
+		if bout >= c.lastOut && bin >= c.lastIn {
+			up, down = float64(bout-c.lastOut)*8/dt/1e6, float64(bin-c.lastIn)*8/dt/1e6
+		}
 	}
-	drops := 0.0
-	if !c.lastAt.IsZero() && ld.Drops >= c.lastDrop {
-		drops = float64(ld.Drops-c.lastDrop) / now.Sub(c.lastAt).Seconds()
-	}
-	c.lastCPU, c.lastAt, c.lastDrop = cpuNs, now, ld.Drops
+	c.lastCPU, c.lastAt, c.lastDrop, c.lastIn, c.lastOut = cpuNs, now, ld.Drops, bin, bout
 	state := "ok"
-	if c.s.cfg.MaxLegs > 0 && ld.Legs*10 >= c.s.cfg.MaxLegs*9 {
+	switch {
+	case c.s.draining.Load():
+		state = "draining"
+	case c.s.cfg.MaxLegs > 0 && ld.Legs*10 >= c.s.cfg.MaxLegs*9:
 		state = "voll"
 	}
 	c.send(map[string]any{"t": "load", "load": map[string]any{
-		"cpu": round3(cpu), "mem": readRSS(), "legs": ld.Legs, "calls": ld.Rooms, "peers": ld.Peers, "udp_share": round3(ld.UDPShare),
-		"fwd_p95_us": round3(ld.FwdP95us), "drops": round3(drops), "down_kbit": ld.DownKbit, "max_legs": c.s.cfg.MaxLegs, "state": state}})
+		"cpu": round3(cpu), "mem": readRSS(), "up": round3(up), "down": round3(down), "legs": ld.Legs, "calls": ld.Rooms,
+		"peers": ld.Peers, "udp_share": round3(ld.UDPShare), "fwd_p95_us": round3(ld.FwdP95us), "drops": round3(drops),
+		"max_legs": c.s.cfg.MaxLegs, "state": state}})
 }
 
 func round3(x float64) float64 { return float64(int64(x*1000+0.5)) / 1000 }
@@ -285,8 +430,8 @@ func (s *server) closeRoom(ref, why string) {
 	s.mu.Lock()
 	s.graves[ref] = time.Now().Add(graveFor)
 	s.mu.Unlock()
-	if s.node.CloseRoom(ref) == nil && why != "saga" && s.ctl != nil {
-		s.ctl.send(map[string]any{"t": "closed", "call_ref": ref, "why": why})
+	if c := s.ctlc(); s.node.CloseRoom(ref) == nil && why != "saga" && c != nil {
+		c.send(map[string]any{"t": "closed", "call_ref": ref, "why": why})
 	}
 }
 
@@ -316,8 +461,11 @@ func (s *server) syncRooms(keep []string) {
 // Steuerung kann knapp nach dem ersten Bein kommen), ausser er wurde gerade geschlossen. Entfernte Teilnehmende kommen
 // mit alten Token nicht zurueck.
 func (s *server) admit(tok string, p sfu.Path) (sfu.Grant, *sfu.Room, error) {
+	if err := s.drainGate(); err != nil {
+		return sfu.Grant{}, nil, err
+	}
 	g, r, err := s.node.Admit(tok, p)
-	if errors.Is(err, sfu.ErrNoRoom) && s.ctl != nil {
+	if errors.Is(err, sfu.ErrNoRoom) && s.ctlc() != nil {
 		s.mu.Lock()
 		dead := time.Now().Before(s.graves[g.Room])
 		s.mu.Unlock()

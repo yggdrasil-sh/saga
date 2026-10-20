@@ -14,6 +14,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,7 +26,7 @@ import (
 // Dateien (HORN_TLS_CERT/HORN_TLS_KEY oder /data/tls/fullchain.pem +
 // privkey.pem) > selbst signiert (HORN_TLS_SELF=1) > ACME TLS-ALPN-01.
 type Certs struct {
-	Mode string // "file", "self", "acme"
+	Mode string // Start: "file", "self", "acme"; gekoppelte Knoten "wait" (Saga entscheidet: DNS-01 oder TLS-ALPN-01)
 	Name string
 
 	certFile, keyFile string
@@ -34,6 +35,9 @@ type Certs struct {
 	sig               fileSig  // Stand der Dateien beim letzten Laden
 	sum               [32]byte // SHA-256 ueber Zertifikat und Schluessel
 	acme              *autocert.Manager
+	alpn              bool             // P7: regulaere Handshakes mit SNI=Name ueber autocert (TLS-ALPN-01)
+	fallback          *tls.Certificate // selbst signiert: fremde/fehlende SNI (Rueckpruefung), bis ein echtes da ist
+	mode              string           // aktueller Modus (unter mu)
 }
 
 // CertOptions steuert die Zertifikatsquelle.
@@ -44,6 +48,9 @@ type CertOptions struct {
 	ACMEDir           string // Cache-Verzeichnis
 	ACMEURL           string // leer = Let's Encrypt
 	ACMEEmail         string
+	// Defer (P7, gekoppelte Knoten): ohne Dateien erst nur das Rueckfall-Zertifikat; Saga legt im Steuerkanal fest,
+	// ob DNS-01 ueber Saga (UseFiles nach Ausstellung) oder TLS-ALPN-01 (UseALPN) gilt.
+	Defer bool
 }
 
 // NewCerts waehlt die Quelle nach den Optionen.
@@ -51,7 +58,7 @@ func NewCerts(o CertOptions) (*Certs, error) {
 	c := &Certs{Name: o.Name}
 	switch {
 	case o.CertFile != "" && fileExists(o.CertFile) && fileExists(o.KeyFile):
-		c.Mode, c.certFile, c.keyFile = "file", o.CertFile, o.KeyFile
+		c.Mode, c.mode, c.certFile, c.keyFile = "file", "file", o.CertFile, o.KeyFile
 		if err := c.Reload(); err != nil {
 			return nil, err
 		}
@@ -64,6 +71,11 @@ func NewCerts(o CertOptions) (*Certs, error) {
 		c.cur = crt
 	case o.Name != "" && o.Name != "localhost":
 		c.Mode = "acme"
+		c.alpn = !o.Defer
+		if o.Defer {
+			c.Mode = "wait"
+		}
+		c.certFile, c.keyFile = o.CertFile, o.KeyFile
 		m := &autocert.Manager{
 			Prompt:     autocert.AcceptTOS,
 			HostPolicy: autocert.HostWhitelist(o.Name),
@@ -74,10 +86,60 @@ func NewCerts(o CertOptions) (*Certs, error) {
 			m.Client = &acme.Client{DirectoryURL: o.ACMEURL}
 		}
 		c.acme = m
+		fb, err := SelfSigned(o.Name)
+		if err != nil {
+			return nil, err
+		}
+		c.fallback = fb
 	default:
 		return nil, errors.New("kein Zertifikat: HORN_TLS_CERT/HORN_TLS_KEY, /data/tls/fullchain.pem, HORN_TLS_SELF=1 oder HORN_NAME fuer ACME setzen")
 	}
+	c.mode = c.Mode
 	return c, nil
+}
+
+// ModeNow: aktueller Modus ("file", "self", "acme", "wait").
+func (c *Certs) ModeNow() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.mode
+}
+
+// UseALPN: Zertifikat per TLS-ALPN-01 (autocert) fuer regulaere Handshakes mit SNI=Name.
+func (c *Certs) UseALPN() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.acme != nil && c.mode == "wait" {
+		c.alpn, c.mode = true, "acme"
+	}
+}
+
+// ACME liefert den autocert-Manager (nil ausser im ACME-Modus).
+func (c *Certs) ACME() *autocert.Manager { return c.acme }
+
+// UseFiles: nach einer Ausstellung per DNS-01 die Dateien laden und ab jetzt nutzen (auch nach Neustart).
+func (c *Certs) UseFiles(certFile, keyFile string) error {
+	c.mu.Lock()
+	c.certFile, c.keyFile, c.mode, c.alpn = certFile, keyFile, "file", false
+	c.sig = fileSig{}
+	c.mu.Unlock()
+	_, err := c.reload(true)
+	return err
+}
+
+// NotAfter: Ablauf des aktuellen Zertifikats (Null-Zeit ohne Zertifikat).
+func (c *Certs) NotAfter() time.Time {
+	c.mu.RLock()
+	cur := c.cur
+	c.mu.RUnlock()
+	if cur == nil || len(cur.Certificate) == 0 {
+		return time.Time{}
+	}
+	x, err := x509.ParseCertificate(cur.Certificate[0])
+	if err != nil {
+		return time.Time{}
+	}
+	return x.NotAfter
 }
 
 func fileExists(p string) bool {
@@ -114,7 +176,10 @@ func (c *Certs) Reload() error {
 func (c *Certs) ReloadIfChanged() (changed bool, err error) { return c.reload(false) }
 
 func (c *Certs) reload(force bool) (bool, error) {
-	if c.Mode != "file" {
+	c.mu.RLock()
+	m := c.mode
+	c.mu.RUnlock()
+	if m != "file" {
 		return false, nil
 	}
 	sig, err := c.stat()
@@ -165,7 +230,7 @@ func (c *Certs) reload(force bool) (bool, error) {
 // Watch prueft alle interval, ob sich die Dateien geaendert haben, und
 // meldet nur echte Wechsel.
 func (c *Certs) Watch(interval time.Duration, stop <-chan struct{}) {
-	if c.Mode != "file" {
+	if c.Mode != "file" && c.Mode != "wait" && c.Mode != "acme" {
 		return
 	}
 	t := time.NewTicker(interval)
@@ -193,20 +258,39 @@ func (c *Certs) TLSConfig() *tls.Config {
 	}
 	if c.acme != nil {
 		cfg.NextProtos = append(cfg.NextProtos, acme.ALPNProto)
-		cfg.GetCertificate = func(h *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			if h.ServerName == "" {
-				h.ServerName = c.Name
+	}
+	cfg.GetCertificate = func(h *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		c.mu.RLock()
+		mode, cur, alpn, fb := c.mode, c.cur, c.alpn, c.fallback
+		c.mu.RUnlock()
+		if c.acme != nil && (alpn || mode == "wait") && isALPNChallenge(h) && strings.EqualFold(h.ServerName, c.Name) {
+			if !alpn {
+				return nil, errors.New("tls-alpn-01 aus")
 			}
 			return c.acme.GetCertificate(h)
 		}
-		return cfg
-	}
-	cfg.GetCertificate = func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-		c.mu.RLock()
-		defer c.mu.RUnlock()
-		return c.cur, nil
+		if mode == "file" || mode == "self" {
+			if cur != nil || fb == nil {
+				return cur, nil
+			}
+		}
+		// fremde oder fehlende SNI (Rueckpruefung von Saga ueber die IP-Adresse): nie ACME ausloesen
+		if fb != nil && !strings.EqualFold(h.ServerName, c.Name) {
+			return fb, nil
+		}
+		if mode == "acme" && alpn {
+			return c.acme.GetCertificate(h)
+		}
+		if cur != nil {
+			return cur, nil
+		}
+		return fb, nil
 	}
 	return cfg
+}
+
+func isALPNChallenge(h *tls.ClientHelloInfo) bool {
+	return len(h.SupportedProtos) == 1 && h.SupportedProtos[0] == acme.ALPNProto
 }
 
 // SelfSigned erzeugt ein kurzlebiges, selbst signiertes Zertifikat (lokale Tests).
