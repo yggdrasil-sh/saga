@@ -2807,6 +2807,30 @@ def create_group(uid, b):
                                                        full=True)})
 
 
+def open_v3(uid, cid, handle):
+    """2.5: freie Gruppe der Stufe 3 bekommt eine Person eines anderen Servers - die Krypto bleibt (schon saga-chat/v2 mit
+    chat_ref), der Chat wird ab jetzt foederiert (v=2, Heim = dieser Server, KI aus, Systemzeile wie bei Seiten-Chats).
+    Nur, wenn das Hinzufuegen dort moeglich ist (Admin, verbundene Instanz mit Gruppen); dann wie group_add."""
+    n, host = split_handle(str(handle or "").strip().lower())
+    with _db() as c, c:
+        ch, m, mem, err = chat._chat_for(c, uid, cid, do_sync=False)
+        if err:
+            return err
+        if not n or host == F.SELF_HOST or ch["v"] != 3 or ch["kind"] != "free":
+            return _bad(t("ungültige Angabe"))
+        if m["role"] != "admin":
+            return _bad(t("Dafür fehlt dir die Berechtigung."), 403)
+        if not groups_ok(F.peer_by(c, "host", host)):
+            return _bad(t("Mit Personen auf {host} sind Gruppen-Chats nicht möglich.", host=host), 403)
+        if not c.execute("UPDATE chat SET v=2 WHERE id=? AND v=3", (ch["id"],)).rowcount:
+            return _bad(t("ungültige Angabe"))
+        had = c.execute("DELETE FROM chat_ai WHERE chat_id=?", (ch["id"],)).rowcount
+        sysline(c, dict(ch, v=2), None, {"type": "fed", "on": True, **({"ai_off": True} if had else {})})
+        F.log(c, "chat.upgraded", None, f"chat={ch['id']} (Stufe 3)", host=F.SELF_HOST)
+        chat._changed(c, ch["id"], local_members(c, ch["id"]))
+    return group_add(uid, cid, "", handle)
+
+
 def group_add(uid, cid, who_, handle):
     """POST /api/chats/{cid}/members bei Gruppen ueber Servergrenzen: {user} (Konto hier) oder {handle} ('~x@host')."""
     with _db() as c:

@@ -1336,6 +1336,10 @@ async def api_member_add(cid: int, request: Request):
         with _db() as c:
             fch = _load(c, cid)
             if is_v3(fch) and b.get("handle"):            # 2.5: Stufe 3 - Handle eines Kontos dieses Servers wie {user}
+                m_ = _FULL_H.fullmatch(str(b.get("handle")).strip().lower())
+                if m_ and FED.fedsig.authority(m_.group(2)) != FED.F.SELF_HOST:
+                    from starlette.concurrency import run_in_threadpool   # Person eines anderen Servers: Gruppe wird foederiert
+                    return await run_in_threadpool(FED.open_v3, uid, cid, str(b.get("handle")))
                 who = who_in(c, uid, str(b.get("handle"))) or "~"
                 b = dict(b, handle=None) if who != "~" else b
         if is_fed(fch) or b.get("handle"):                # 2.3: Gruppe ueber Servergrenzen (Aenderung ueber das Heim)

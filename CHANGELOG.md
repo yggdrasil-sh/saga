@@ -37,6 +37,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Klingeln, Anruf-Eintrag im Chat ohne Anmeldenamen); `tests/browser_v3.py` lässt die Browser-Tests für Anrufe und Gelesen
   in Stufe 3 laufen. **Chats über Servergrenzen** zeigen lokale Mitmitglieder ebenso nur als Handle (Mitglieder, Absender,
   Gelesen, Tippen, Anrufe); 2.3 umgestellte Seiten-Chats merken sich den Umstellpunkt (`v3_seq`, Altbestand v1).
+  Eine **freie Gruppe der Stufe 3** nimmt Personen anderer Server auf (`POST …/members {handle}`): sie wird ohne neue Krypto
+  zu einer Gruppe über Servergrenzen (gleiche `chat_ref`, KI aus, Systemzeile).
   Noch offen: Umstellung bestehender Chats, Reaktionen, Bearbeiten, Sprachnachrichten.
 
 ## [2.4.0] – 2026-10-20
