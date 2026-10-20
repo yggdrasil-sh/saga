@@ -784,6 +784,14 @@ CREATE TABLE IF NOT EXISTS chat_receipt (
     PRIMARY KEY (chat_id, viewer, reader));
 CREATE INDEX IF NOT EXISTS chat_receipt_reader ON chat_receipt (reader);
 CREATE TABLE IF NOT EXISTS chat_seen (uid TEXT PRIMARY KEY, at DOUBLE PRECISION NOT NULL);
+-- Reaktionen (2.5, Chat-Stufe 3, saga/chat_v3.py, Migration 15): je Nachricht und Person (reactor: Handle '~x@host') nur die
+-- NEUESTE, als Ciphertext mit dem aus dem Nachrichtenschluessel abgeleiteten Schluessel - der Server sieht wer/wann/worauf,
+-- nicht womit; sig = Signatur des Geraets (dev).
+CREATE TABLE IF NOT EXISTS chat_reaction (
+    msg_seq BIGINT NOT NULL REFERENCES chat_msg(seq) ON DELETE CASCADE, reactor TEXT NOT NULL, dev TEXT NOT NULL,
+    ts BIGINT NOT NULL, ct TEXT NOT NULL, sig TEXT NOT NULL, at DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (msg_seq, reactor));
+CREATE INDEX IF NOT EXISTS chat_reaction_reactor ON chat_reaction (reactor);
 -- Bestand (erster Start, Backup von vor 2.2 zurueckgespielt): alles ohne abgeleitete Daten zum Abgleich vormerken
 INSERT INTO note_stale (note_id, uid) SELECT n.id, n.uid FROM note n
  WHERE NOT EXISTS (SELECT 1 FROM note_derived d WHERE d.note_id = n.id) ON CONFLICT (note_id) DO NOTHING;
@@ -934,6 +942,19 @@ SELECT 1 FROM login_lock LIMIT 0;
 INSERT INTO note_stale (note_id, uid) SELECT id, uid FROM note WHERE format='blocks' AND (strpos(body, '"embed"') > 0
   OR strpos(body, '"buttons"') > 0 OR strpos(body, '"calendar"') > 0 OR strpos(body, '"database"') > 0
   OR strpos(body, '"attaches"') > 0 OR strpos(body, '"tasks"') > 0) ON CONFLICT (note_id) DO NOTHING;
+""",
+    # 2.5.0 (Chat-Stufe 3, Konzept "Krypto v3 ueber Handles"): Umstellpunkt je Chat (v3_seq = letzte Nachricht im alten
+    # Format v1; NULL = nie umgestellt bzw. von Anfang an Stufe 3), Bearbeitungen am Original (edit_seq = neueste
+    # Bearbeitung, kein Verlauf; edited_at, edit_n) bzw. an der Bearbeitung (edit_of = msg_id des Originals). Die Tabelle
+    # chat_reaction legt SCHEMA oben an. Beliebig oft ausfuehrbar.
+    15: """
+ALTER TABLE chat ADD COLUMN IF NOT EXISTS v3_seq BIGINT;
+ALTER TABLE chat_msg ADD COLUMN IF NOT EXISTS edit_of TEXT;
+ALTER TABLE chat_msg ADD COLUMN IF NOT EXISTS edit_seq BIGINT;
+ALTER TABLE chat_msg ADD COLUMN IF NOT EXISTS edited_at DOUBLE PRECISION;
+ALTER TABLE chat_msg ADD COLUMN IF NOT EXISTS edit_n INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS chat_msg_edit_of ON chat_msg (edit_of) WHERE edit_of IS NOT NULL;
+SELECT 1 FROM chat_reaction LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
