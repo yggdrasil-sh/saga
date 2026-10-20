@@ -29,6 +29,8 @@ async function session(browser, user, pass, opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'de-DE', colorScheme: 'dark' });
   await ctx.grantPermissions(['camera', 'microphone'], { origin: BASE });
   if (opts.js23) await ctx.route('**/static/calls.js*', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: opts.js23 }));
+  // wie ein Web 2.3/2.4: Chat-Stufe 2 (in Chats der Stufe 3 die Kompat-Sicht v: 2, zu der der 2.3-Anrufcode passt)
+  if (opts.js23) await ctx.route('**/api/**', r => { const h = r.request().headers(); if (h['x-saga-chat']) h['x-saga-chat'] = '2'; return r.continue({ headers: h }); });
   const p = await ctx.newPage();
   p.on('pageerror', e => console.log('  [pageerror ' + user + '] ' + e.message));
   if (E.DEBUG) p.on('console', m => console.log('  [console ' + user + '] ' + m.text()));

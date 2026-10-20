@@ -46,5 +46,9 @@
   "GET / Dashboard": 100, "GET /api/notes/{id}/backlinks": 50, "GET /api/trash": 50, "Seite oeffnen waehrend": 300,
   "iOS/macOS: Start": 400, "Neuer Eintrag + Nachladen": 200
  },
+ "X3": {
+  "_info": "2.5 Reaktionen/Bearbeiten (saga/chat_x3.py, static/chat-crypto.js openReactions*). Server: tools/perf/x3_server.py (GET .../messages neueste 50, Stufe 3) - p95 mit 3 bzw. 5 Reaktionen je Nachricht hoechstens Faktor get_messages_p95_factor gegenueber ohne (+1 ms Rauschen). Browser: tools/perf/x3_browser.js (Chat-Worker, WebCrypto Ed25519, kalt). Stand 20.10.2026 (2 Kerne, Nachbarlast): Server ohne 12.0 / 3 je 12.9 / 5 je 8.3 / 50 je 22.5 ms p95; Worker typische Seite 10-14 ms, sichtbarer Teil 7 ms, 50 x 50 mit zwei Workern 165-310 ms (Median ~225).",
+  "get_messages_p95_factor": 1.15, "worker_typical_page_ms": 20, "worker_visible_first_ms": 20, "worker_worst_50x50_ms": 250
+ },
  "mesh": {"mesh4_aufbau_ms": 2000, "mesh4_python_cpu_spitze_pct_max_s_ueber_20": 2, "fed_mesh4_aufbau_ms": 5000, "fed_signal_ueber_heim_ms": 300}
 }

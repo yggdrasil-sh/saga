@@ -63,6 +63,24 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Reaktionen und Bearbeitungen laufen wie Gelesen-Bestätigungen über das Heim. Server 2.4 merken nichts davon.
   Neue Testreihen `chat_x3` und `foederation_x3` (auch gegen einen 2.4-Server).
 
+### Chat im Web: Stufe 3, Reaktionen, Bearbeiten, Sprachnachrichten
+- **Stufe 3:** Das Web meldet `X-Saga-Chat: 3` und nimmt in lokalen Chats der Stufe 3 die Wege von saga-chat/v2, ohne
+  Server-Herkunft anzuzeigen. Vertrauen aus alten Chats (`trust:<benutzer>`) wird bei gleichem Identitätsschlüssel zu
+  `trust2:<handle>` übernommen („Überprüft“ bleibt); die Sicherheitsnummer zeigt dann „Neue Darstellung, gleicher
+  Schlüssel“. Systemzeile zur Umstellung, gerade umgestellte Chats beim Senden neu laden. Anrufe in Stufe 3 wie saga-call/v2.
+- **Reaktionen:** Schnellleiste mit 👍 ❤️ 😂 😮 😢 🙏 und „+“ (lokale Emoji-Auswahl ohne CDN, zuletzt benutzte), Chips mit
+  Anzahl unter der Nachricht (eigene hervorgehoben, Tippen = mitmachen bzw. zurücknehmen), live; schnelles Wechseln
+  sendet nur die letzte Wahl. Prüfen und Öffnen im Chat-Worker, Signaturen über WebCrypto Ed25519 (sonst libsodium.js),
+  neueste Nachrichten zuerst, sehr viele Reaktionen auf zwei Worker verteilt.
+- **Bearbeiten:** im Nachrichtenmenü oder mit Pfeil hoch im leeren Feld; Leiste „Bearbeiten · Abbrechen“ (Esc), danach
+  „bearbeitet“ mit Zeitpunkt, auch in Antworten und Vorschauen der neueste Text.
+- **Sprachnachrichten:** Mikrofon-Knopf bei leerem Feld; Aufnahme Opus mono 24 kbit/s als Ogg (Chromium: WebCodecs und
+  eigener Ogg-Muxer, Firefox: MediaRecorder Ogg, Safari: WebM in Ogg umgepackt), höchstens 15 Minuten (Hinweis ab 14:00),
+  unter 1 Sekunde verworfen; Vorschau zum Anhören, Verwerfen oder Senden. Abspielen über den Service Worker wie Videos,
+  Wellenform mit 64 Balken zum Springen, Tempo 1×/1,5×/2×, danach die nächste Sprachnachricht.
+- Neue Browser-Reihen `browser_x3.js` und `browser_voice.js` (über `browser_v3`), Messungen `tools/perf/x3_server.py`,
+  `tools/perf/x3_browser.js`, `tools/perf/x3_worker.mjs`.
+
 ## [2.4.0] – 2026-10-20
 
 Saga 2.4 bringt Videos in den Chat und macht Anrufe erwachsen: Gruppenanrufe, Bildschirm teilen mit Kamera daneben,

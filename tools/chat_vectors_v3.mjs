@@ -68,6 +68,31 @@ for (const r of v.reject) {
   }
   ok('reject: ' + r.case, !good);
 }
+// Seiten-Funktion des Chat-Workers (openReactions / openReactionsAsync mit WebCrypto): gueltige oeffnen, abgewiesene nicht
+{
+  const jobs = [], bad = [], pks = {};
+  for (const [name, r] of Object.entries(v.reactions)) {
+    pks[r.by + '|' + r.dev] = C.b64(devs[devOf[r.dev]].sign_pk);
+    jobs.push({ K: u(r.msg_key), ref: r.chat_ref, mid: r.msg_id, items: [r], want: r.emoji, name });
+  }
+  for (const r of v.reject.filter((x) => x.what === 'reaction')) {
+    const x = Object.assign({}, v.reactions[r.reaction]);
+    ['by', 'dev', 'ts'].forEach((k) => { if (k in r) x[k] = r[k]; });
+    const pk = r.sign_pk ? devs[r.sign_pk].sign_pk : devs[devOf[x.dev]] && devs[devOf[x.dev]].sign_pk;
+    if (!pk) continue;
+    const pm = { [x.by + '|' + x.dev]: C.b64(pk) };
+    bad.push({ job: { K: u(v.reactions[r.reaction].msg_key), ref: r.chat_ref || x.chat_ref, mid: r.msg_id || x.msg_id, items: [x], pks: pm }, name: r.case });
+  }
+  const good = (o, j) => j.want === '' ? !(o[j.mid] || []).length : (o[j.mid] || []).some((x) => x.e === j.want);
+  const none = (o, b) => !(o[b.job.mid] || []).length;
+  ok('openReactions: gueltige geoeffnet (' + jobs.length + ')', jobs.every((j) => good(C.openReactions([j], pks), j)));
+  ok('openReactions: abgewiesene nicht (' + bad.length + ')', bad.length > 0 && bad.every((b) => none(C.openReactions([b.job]), b)));
+  let ga = true, na = true;
+  for (const j of jobs) ga = ga && good(await C.openReactionsAsync([j], pks), j);
+  for (const b of bad) na = na && none(await C.openReactionsAsync([b.job]), b);
+  ok('openReactionsAsync (WebCrypto): gueltige geoeffnet', ga);
+  ok('openReactionsAsync (WebCrypto): abgewiesene nicht', na);
+}
 for (const r of v.tofu_migrate.rules) {
   const t = C.tofuMigrate(r.v1, r.seen, r.ver);
   ok('tofu_migrate: ' + r.step, t.result === r.result && JSON.stringify(t.store || null) === JSON.stringify(r.store || null));

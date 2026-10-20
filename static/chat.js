@@ -9,6 +9,7 @@
   if (!HK || !root) return;
   var $ = HK.$, el = HK.el, api = HK.api, T = window.T;
   var VID = window.SagaChatVideo || null;             // Videos im Chat (2.4, static/chat-video.js)
+  var VOICE = window.SagaVoice || null;               // Sprachnachrichten (2.5, static/chat-voice.js)
   var ME = document.body.dataset.uid, MYNAME = document.body.dataset.name || ME;
   var X = null;                                        // SagaChatCrypto, nach sodium.ready
   var K = null;                                        // lokale Schluessel {device:{...}, ident_sk, ident_pk, backup_sk, backup_pk}
@@ -98,6 +99,10 @@
     window.sodium.ready.then(function () {
       X = window.SagaChatCrypto(window.sodium);
       if (VID) VID.init({ X: X, api: api, T: T, el: el, run: run, me: function () { return S.me; } });
+      if (VOICE && VID) {
+        VOICE.init({ el: el, media: VID.media, plain: VID.plain, drop: VID.drop, b64dec: function (x) { return ub(x); } });
+        VOICE.mode().then(function (md) { S.vmode = md; micDraw(); });
+      }
       return kvGet(KEYS).catch(function () { throw new Error('idb'); });
     }).then(function (keys) {
       K = keys || null;
@@ -496,11 +501,36 @@
           return null;
         }
         return kvGet(trust2Key(h)).catch(function () { return null; }).then(function (st) {
-          var t = X.tofuV2(st || null, k.ident_pub, k.ver);
-          out[h] = { keys: k, trust: t.result, stale: !!e.stale, stored: t.store || st || null };
+          if (st) return { st: st };
+          return h2uGet(h).then(function (u) {            // 2.5: noch kein Handle-Vertrauen - aus dem v1-Stand uebernehmen
+            return u ? kvGet(trustKey(u)).catch(function () { return null; }).then(function (v1) { return { v1: v1 }; }) : {};
+          });
+        }).then(function (x) {
+          var t;
+          if (x.v1) { t = X.tofuMigrate(x.v1, k.ident_pub, k.ver); if (t.store) t.store.migrated = true; }   // nur bei gleichem Schluessel
+          else t = X.tofuV2(x.st || null, k.ident_pub, k.ver);
+          out[h] = { keys: k, trust: t.result, stale: !!e.stale, stored: t.store || x.st || null };
           if (t.store) return kvSet(trust2Key(h), t.store).catch(function () {});
         });
       })).then(function () { return out; });
+    });
+  }
+  // 2.5: Handle -> Benutzername aus Chats v1 (members[].handle, nur fuer Clients der Stufe 3) - damit das Vertrauen
+  // trust:<benutzer> bei gleichem Identitaetsschluessel zu trust2:<handle> wird (tests/vectors/chat_v3.json, tofu_migrate)
+  var H2U = 'h2u:' + ME, h2u = null;
+  function h2uLoad() { if (!h2u) h2u = kvGet(H2U).catch(function () { return null; }).then(function (x) { return x || {}; }); return h2u; }
+  function h2uGet(h) { return h2uLoad().then(function (m) { return m[h] || null; }); }
+  function h2uNote(chats) {
+    var add = [];
+    (chats || []).forEach(function (c) {
+      if (isFed(c)) return;
+      (c.members || []).forEach(function (m) { if (!m.me && m.handle && m.username && m.username !== m.handle) add.push([m.handle, m.username]); });
+    });
+    if (!add.length) return;
+    h2uLoad().then(function (m) {
+      var ch = false;
+      add.forEach(function (x) { if (m[x[0]] !== x[1]) { m[x[0]] = x[1]; ch = true; } });
+      if (ch) kvSet(H2U, m).catch(function () {});
     });
   }
   // "Ueberprueft" (Sicherheitsnummer verglichen) bzw. Warnung bestaetigen ("Verstanden": verified false, Warnung weg)
@@ -521,8 +551,12 @@
   }
   window.addEventListener('hashchange', function () { if (S.ready) route(); });
 
-  function isFed(c) { return !!(c && c.v === 2); }          // 2.3: Chat ueber Servergrenzen (saga-chat/v2, saga/fed_chat.py)
-  function fileCid(c) { return isFed(c) ? c.ref : c.id; }   // AD fuer Anhaenge: v1 chat_id, v2 chat_ref
+  // isFed: Krypto saga-chat/v2 (an Handles gebunden) - 2.3 Chats ueber Servergrenzen (v 2), 2.5 Stufe 3 auch lokal (v 3).
+  // isRemote: wirklich ueber Servergrenzen (Herkunft zeigen, Anfragen, Heim-Server) - nur v 2.
+  function isFed(c) { return !!(c && (c.v === 2 || c.v === 3)); }
+  function isRemote(c) { return !!(c && c.v === 2); }
+  // AD fuer Anhaenge: v1 chat_id, v2 chat_ref; umgestellte Chats (2.5): Nachrichten von vor der Umstellung weiter v1
+  function fileCid(c, m) { return isFed(c) && !(m && !m.sender_handle && c.v3) ? c.ref : c.id; }
   function chatName(c) {
     if (c.kind === 'free') return c._title || c.members.filter(function (m) { return !m.me; }).map(function (m) { return m.name; }).join(', ') || T('Gruppen-Chat');
     return c.name || '';
@@ -558,6 +592,7 @@
     return api('GET', '/api/chats?device=' + q(dev())).then(function (r) {
       S.chats = r.chats || [];
       S.chats.forEach(freeTitle);
+      h2uNote(S.chats);
       drawList();
       presenceSoon();
       if (S.cur) {
@@ -603,9 +638,9 @@
       b.appendChild(lav);
       var t = el('span', 'ct-item-t');
       t.appendChild(el('span', 'ct-item-n', nm));
-      t.appendChild(el('span', 'ct-item-s', isFed(c) && c.kind === 'dm'
+      t.appendChild(el('span', 'ct-item-s', isRemote(c) && c.kind === 'dm'
         ? (c.request ? T('Anfrage') : T('Direkt')) + ' · ' + ((c.peer || {}).host || '') + (c.readonly ? ' · ' + T('schreibgeschützt') : '') + (c.muted ? ' · 🔕' : '')
-        : isFed(c)                                         // Gruppe/Seiten-Chat ueber Servergrenzen (2.3)
+        : isRemote(c)                                      // Gruppe/Seiten-Chat ueber Servergrenzen (2.3)
         ? (c.request ? T('Anfrage') : c.kind === 'page' ? T('Seite') : T('Gruppe')) + ' · ' + T('{n} Personen', { n: c.member_count })
           + (c.home_self ? '' : ' · ' + (c.home || '')) + (c.readonly ? ' · ' + T('schreibgeschützt') : '') + (c.muted ? ' · 🔕' : '')
         : (c.kind === 'dm' ? T('Direkt') : c.kind === 'group' ? T('Gruppe') : c.kind === 'page' ? T('Seite') : T('Gruppe')) +
@@ -647,7 +682,7 @@
   function create(body) {
     return api('POST', '/api/chats', Object.assign({ device: dev() }, body)).then(function (r) {
       closeOverlay();
-      var c = r.chat; freeTitle(c);
+      var c = r.chat; freeTitle(c); h2uNote([c]);
       if (!S.chats.some(function (x) { return x.id === c.id; })) S.chats.unshift(c);
       history.replaceState(null, '', '#c' + c.id);
       return openChat(c.id).then(function () { return c; });
@@ -755,7 +790,7 @@
       var d = f.keys.devices.filter(function (x) { return x.id === m.sender_device; })[0];
       ok = !!d && X.verifyMessageV2(c.ref, m, ub(d.sign_pub, 32));
     }
-    return { body: body, verified: ok };
+    return { body: body, verified: ok, key: key };                // key: fuer Reaktionen (2.5)
   }
   // Schluessel der Mitglieder eines foederierten Chats laden (ueber den eigenen Server, selbst gepruefte Zertifikate + TOFU)
   function fedLoad(c, fresh) {
@@ -848,7 +883,8 @@
       X.safetyNumberV2(c.my_handle, K.ident_pk, m.handle, f.keys.ident_pk).split(' ').forEach(function (x) { g.appendChild(el('span', null, x)); });
       box.appendChild(g);
       box.appendChild(el('p', null, T('Vergleiche diese Nummer mit {name} – persönlich, per Anruf oder auf deren Gerät. Stimmt sie überein, liest niemand mit. Sie ist auf beiden Seiten gleich.', { name: m.name })));
-      box.appendChild(el('p', 'hk-hint', T('{name} ist auf {host} – die Nummer gehört zu diesem Server-übergreifenden Chat.', { name: m.name, host: m.host || '' })));
+      if (isRemote(c)) box.appendChild(el('p', 'hk-hint', T('{name} ist auf {host} – die Nummer gehört zu diesem Server-übergreifenden Chat.', { name: m.name, host: m.host || '' })));
+      if (f.stored && f.stored.migrated) box.appendChild(el('p', 'hk-hint ct-migrated', T('Neue Darstellung, gleicher Schlüssel: Die Nummer sieht anders aus als früher, gehört aber zum selben Schlüssel, den du schon kanntest.')));
       if (f.stored && f.stored.verified && f.stored.ident === f.keys.ident_pub && f.trust === 'trust') box.appendChild(el('p', 'ct-ok', '✓ ' + T('Als überprüft markiert.')));
       else box.appendChild(btn(T('Als überprüft markieren'), 'btn-primary ct-verify', function () {
         fedVerify(m.handle, f.keys.ident_pub, true).then(function () { closeOverlay(); HK.toast(T('Als überprüft markiert.')); return fedLoad(c); });
@@ -879,6 +915,7 @@
 
   // --- Unterhaltung -----------------------------------------------------------------------------------------------
   function closeChat() {
+    vplDrop(); recCancel();
     S.cur = null; S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; S.rcpts = {};
     $('ct-chat').hidden = true; $('ct-none').hidden = false; root.classList.remove('ct-open');
     drawList();
@@ -887,8 +924,8 @@
     if (!S.ready) return Promise.resolve();
     var same = S.cur && S.cur.id === cid;
     return api('GET', '/api/chats/' + cid + '?device=' + q(dev())).then(function (r) {
-      var c = r.chat; freeTitle(c);
-      if (!same) { S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; S.fk = null; S.rcpts = {}; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; }
+      var c = r.chat; freeTitle(c); h2uNote([c]);
+      if (!same) { vplDrop(); recCancel(); S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; S.fk = null; S.rcpts = {}; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; }
       S.cur = c;
       $('ct-none').hidden = true; $('ct-chat').hidden = false; root.classList.add('ct-open');
       drawHead(); drawList(); drawWarn();
@@ -912,7 +949,7 @@
       hav = avatar((chatName(c) || '?').charAt(0).toUpperCase(), pp.username, 'ct-av-h', pp.avatar || (c.peer || {}).avatar);
       hav.id = 'ct-head-av'; if (ht) ht.parentNode.insertBefore(hav, ht);
     }
-    if (c.kind === 'dm' && isFed(c)) {                    // 2.3: Person eines anderen Servers - Herkunft, TOFU-Stand
+    if (c.kind === 'dm' && isRemote(c)) {                 // 2.3: Person eines anderen Servers - Herkunft, TOFU-Stand
       var fp = c.peer || {}, ff = (S.fk || {})[fp.handle];
       sub.appendChild(document.createTextNode(T('auf {host}', { host: fp.host || '' })));
       if (ff && ff.trust === 'trust' && ff.stored && ff.stored.verified && ff.stored.ident === ff.keys.ident_pub)
@@ -923,12 +960,15 @@
       presenceChip(sub, fp.username);
     } else if (c.kind === 'dm') {
       var p = others[0] || c.peer || {}, t = trust[p.username];   // 2.4 (W4): Anmeldename nicht im Kopf zeigen
-      if (t && t.verified && !t.changed) sub.appendChild(el('span', 'ct-chip ct-verified', '✓ ' + T('überprüft')));
+      var f3 = isFed(c) && (S.fk || {})[p.handle || (c.peer || {}).handle];     // 2.5 Stufe 3: Vertrauen ueber den Handle
+      if (f3 ? f3.trust === 'trust' && f3.stored && f3.stored.verified && f3.stored.ident === f3.keys.ident_pub : t && t.verified && !t.changed)
+        sub.appendChild(el('span', 'ct-chip ct-verified', '✓ ' + T('überprüft')));
+      else if (f3 && (f3.trust === 'block' || f3.trust === 'reject')) sub.appendChild(el('span', 'ct-chip ct-blocked', '⛔ ' + T('gesperrt')));
       presenceChip(sub, p.username);
     } else {
       var mine = String(c.my_handle || '').split('@').slice(1).join('@');
       sub.appendChild(document.createTextNode(c.members.map(function (m) {
-        return m.me ? T('du') : m.name + (isFed(c) && m.host && m.host !== mine ? ' (' + m.host + ')' : '');
+        return m.me ? T('du') : m.name + (isRemote(c) && m.host && m.host !== mine ? ' (' + m.host + ')' : '');
       }).join(', ')));
       if (isFed(c) && c.request) sub.appendChild(el('span', 'ct-chip', T('Anfrage')));
       if (isFed(c) && c.readonly) sub.appendChild(el('span', 'ct-chip', '🔒 ' + T('schreibgeschützt')));
@@ -941,6 +981,7 @@
     }
     document.title = chatName(c) + ' · ' + T('Chats');
     if (window.HKCalls) window.HKCalls.head(c);           // Anruf-Knoepfe (static/calls.js); 2.4: auch Gruppenanruf
+    micDraw();
     drawAI();
     drawState(c);
   }
@@ -980,14 +1021,15 @@
     bar.appendChild(blk); box.appendChild(bar);
   }
   function loadMsgs(older) {
-    var c = S.cur; if (!c || S.loading) return Promise.resolve();
+    var c = S.cur; if (!c) return Promise.resolve();
+    if (S.loading) { if (!older) S.loadAgain = true; return Promise.resolve(); }   // 2.5: Ereignis waehrend des Ladens nicht verlieren
     S.loading = true;
     var first = S.msgs.length ? S.msgs[0].seq : 0, last = S.msgs.length ? S.msgs[S.msgs.length - 1].seq : 0;
     var url = '/api/chats/' + c.id + '/messages?calls=1&device=' + q(dev()) + (older && first ? '&before=' + first : (!older && last ? '&after=' + last : ''));
     // v2: Schluessel der Absender (selbst geprueft) vor dem Entschluesseln - sonst stuende kurz "Echtheit nicht bestaetigt"
     return (isFed(c) && !S.fk ? fedLoad(c).catch(function () { return null; }) : Promise.resolve()).then(function () { return api('GET', url); }).then(function (r) {
       S.loading = false;
-      if (!S.cur || S.cur.id !== c.id) return;
+      if (!S.cur || S.cur.id !== c.id) { if (S.loadAgain && S.cur) { S.loadAgain = false; return loadMsgs(false); } return; }
       var add = r.messages.filter(function (m) { return !S.byId[m.id]; }).map(function (m) {
         var d;
         if (m.fstate === 'pending' && S.okIds && S.okIds[m.id]) { m.fstate = null; if (!m.fseq && S.okIds[m.id] !== true) m.fseq = S.okIds[m.id]; }
@@ -1003,15 +1045,19 @@
         // v2-Chat: Nachrichten ohne sender_handle stammen aus der Zeit vor der Umstellung (Seiten-Chat, 2.3) - v1 mit chat_id
         try { d = isFed(c) && m.sender_handle ? decryptV2(c, m) : decrypt(c.id, m, r.devices || {}, r.idents || {}); } catch (e) { d = { body: null, verified: false, error: true }; }
         m.body = d.body; m.verified = d.verified; m.error = !!d.error; m._ai = aiCheck(m);
+        if (d.key && m.sender_handle) m._k = d.key;
+        if (m.edit && m.body) edApply(c, m);              // 2.5: bearbeitet - neuester Text
         S.byId[m.id] = m; return m;
       });
       if (older) { S.msgs = add.concat(S.msgs); S.more = r.more; }
       else { S.msgs = S.msgs.concat(add); if (!last) S.more = r.more; if (!last || !r.more) S.seenSeq = Math.max(S.seenSeq || 0, r.last_seq || 0); }
       drawMsgs(older ? 'keep' : 'bottom');
+      rxOpen(c, add);
       resolveNotes();
       markRead();
       if (!older && r.more && last) return loadMsgs(false);
-    }).catch(function (e) { S.loading = false; HK.toast(T('Nachrichten nicht geladen: {err}', { err: e.message })); });
+      if (S.loadAgain) { S.loadAgain = false; return loadMsgs(false); }
+    }).catch(function (e) { S.loading = false; S.loadAgain = false; HK.toast(T('Nachrichten nicht geladen: {err}', { err: e.message })); });
   }
   // Gelesen bis zur neuesten geladenen Nachricht - oder bis zum Stand der Unterhaltung beim Laden (S.seenSeq): auch
   // Nachrichten, die dieses Geraet nie lesen kann (vor der Einrichtung geschickt), zaehlen sonst ewig als ungelesen (BUG-050)
@@ -1238,6 +1284,8 @@
     if (m.kind === 'call') return '📞 ' + callText(m);
     if (m.error || !m.body) return T('Nicht entschlüsselbar');
     var t = String(m.body.text || '').replace(/\[\[note:\d+\]\]/g, '📄').replace(/\s+/g, ' ').trim();
+    var vf = (m.body.files || []).filter(function (f) { return f && f.voice; })[0];
+    if (!t && vf) t = '🎤 ' + (VOICE ? VOICE.fmt(vf.dur) : '');           // 2.5: Sprachnachricht
     if (!t && (m.body.files || []).length) t = '📎 ' + m.body.files.map(function (f) { return f.n; }).join(', ');
     return t.length > 90 ? t.slice(0, 90) + '…' : t;
   }
@@ -1291,9 +1339,11 @@
       if (m.error || !m.body) b.appendChild(el('div', 'ct-text ct-err', '🔒 ' + T('Diese Nachricht lässt sich auf diesem Gerät nicht entschlüsseln.')));
       else {
         if (m.body.text) { var tx = el('div', 'ct-text'); renderText(tx, m.body.text); b.appendChild(tx); }
-        (Array.isArray(m.body.files) ? m.body.files : []).slice(0, 10).forEach(function (f) { b.appendChild(fileEl(fileCid(c), f)); });
+        (Array.isArray(m.body.files) ? m.body.files : []).slice(0, 10).forEach(function (f) { b.appendChild(fileEl(fileCid(c, m), f)); });
       }
+      if (m._rx && m._rx.length) b.appendChild(rxChips(c, m));
       var meta = el('div', 'ct-meta');
+      if (m._ed) { var ed = el('span', 'ct-edited', T('bearbeitet')); var dd = new Date(m._ed * 1000); ed.title = T('Bearbeitet: {time}', { time: fDay.format(dd) + ' ' + fTime.format(dd) }); meta.appendChild(ed); }
       if (m.fstate === 'pending') { var pe = el('span', 'ct-pend', '⏳'); pe.title = T('Wird zugestellt, sobald der andere Server erreichbar ist.'); meta.appendChild(pe); }
       if (m.fstate === 'failed') { row.classList.add('ct-failed'); meta.appendChild(el('span', 'ct-fail', '⚠ ' + T('nicht zugestellt'))); }
       if (m.expires_at) meta.appendChild(el('span', 'ct-exp', '⏱'));
@@ -1303,6 +1353,12 @@
       row.appendChild(b);
       var act = el('button', 'icon-btn ct-act', '⋯'); act.type = 'button'; act.setAttribute('aria-label', T('Nachricht …')); act.setAttribute('aria-haspopup', 'menu');
       act.addEventListener('click', function () { msgMenu(act, m); });
+      if (canReact(c, m)) {                               // 2.5: Reaktion (Schnellleiste)
+        var rb = el('button', 'icon-btn ct-act ct-react-b', '☺'); rb.type = 'button'; rb.setAttribute('aria-label', T('Reagieren')); rb.title = T('Reagieren');
+        rb.setAttribute('aria-haspopup', 'menu');
+        rb.addEventListener('click', function () { rxBar(rb, m); });
+        row.appendChild(rb);
+      }
       row.appendChild(act);
       box.appendChild(row);
     });
@@ -1324,6 +1380,8 @@
       var who = k.by === (S.cur || {}).my_handle ? T('Du') : (k.name || '?');
       return k.on ? T('{name} hat die KI in diesem Chat eingeschaltet.', { name: who }) : T('{name} hat die KI in diesem Chat ausgeschaltet.', { name: who });
     }
+    if (k.type === 'crypto') return T('Dieser Chat ist jetzt an die stabilen Saga-Adressen gebunden (neue Verschlüsselungsstufe).') +
+      (k.verify ? ' ' + T('Bitte die Sicherheitsnummern neu vergleichen – sie werden jetzt anders angezeigt.') : '');     // 2.5
     if (k.type === 'fed') return T('Ab jetzt mit Personen anderer Saga-Server (Ende-zu-Ende verschlüsselt).') + (k.ai_off ? ' ' + T('Die KI ist hier jetzt aus.') : '');
     if (k.type === 'members') {
       var acc = function (x) { return sysWho(x, true); }, nom = function (x) { return sysWho(x, false); };
@@ -1364,7 +1422,9 @@
   function msgMenu(anchor, m) {
     HK.openMenu(anchor, function (menu) {
       menu.textContent = '';
+      if (canReact(S.cur, m)) menu.appendChild(rxQuick(anchor, m));                 // 2.5: Reaktionen oben im Menue
       if (m.body) menu.appendChild(HK.menuItem(T('Antworten'), function () { HK.closeMenu(); S.reply = m; drawReply(); $('ct-input').focus(); }, { icon: '↩' }));
+      if (canEdit(S.cur, m)) menu.appendChild(HK.menuItem(T('Bearbeiten'), function () { HK.closeMenu(); editStart(m); }, { icon: '✎' }));
       if (m.body && m.body.text) menu.appendChild(HK.menuItem(T('Text kopieren'), function () {
         HK.closeMenu(); if (navigator.clipboard) navigator.clipboard.writeText(m.body.text).then(function () { HK.toast(T('Kopiert.')); });
       }, { icon: '⧉' }));
@@ -1388,12 +1448,319 @@
     drawMsgs();
   }
   function drawReply() {
-    var r = $('ct-reply'); r.textContent = ''; r.hidden = !S.reply; if (!S.reply) return;
+    var r = $('ct-reply'); r.textContent = ''; r.hidden = !S.reply && !S.edit;
+    r.classList.toggle('ct-editing', !!S.edit);
+    if (S.edit) {                                         // 2.5: Leiste "Bearbeiten · Abbrechen"
+      var et = el('div', 'ct-reply-t'); et.appendChild(el('b', null, '✎ ' + T('Bearbeiten'))); et.appendChild(el('span', null, preview(S.edit))); r.appendChild(et);
+      var ex = el('button', 'btn small ct-edit-cancel', T('Abbrechen')); ex.type = 'button';
+      ex.addEventListener('click', editCancel); r.appendChild(ex);
+      return;
+    }
+    if (!S.reply) return;
     var t = el('div', 'ct-reply-t'); t.appendChild(el('b', null, T('Antwort an {name}', { name: S.reply.sender ? S.reply.sender.name : '' })));
     t.appendChild(el('span', null, preview(S.reply))); r.appendChild(t);
     var x = el('button', 'icon-btn', '✕'); x.type = 'button'; x.setAttribute('aria-label', T('Antwort abbrechen'));
     x.addEventListener('click', function () { S.reply = null; drawReply(); }); r.appendChild(x);
   }
+
+  // --- Reaktionen und Bearbeiten (2.5, saga/chat_x3.py; Formate tests/vectors/chat_v3.json) -------------------------
+  // Nur in Chats mit x3_ok (Format v2, angenommen, alle Server koennen chat3). Reaktionen: je Person eine, signiert vom
+  // Geraet, verschluesselt mit einem aus dem Nachrichtenschluessel abgeleiteten Schluessel; pruefen + oeffnen im Worker
+  // (X.openReactions). Senden gebuendelt (500 ms: nur die letzte Wahl geht raus). Bearbeiten: v2-Nachricht kind 'edit'
+  // ({edit, t}), hoechstens 24 h und 20-mal, kein Verlauf - angezeigt wird der neueste Text mit "bearbeitet".
+  function x3(c) { return !!(c && c.x3_ok === true && isFed(c)); }
+  function x3lim() { return (S.me && S.me.x3_limits) || { edit_window: 86400, edit_max: 20 }; }
+  function canReact(c, m) { return x3(c) && !!m && !!m._k && !!m.body && m.verified && !m.fstate && m.kind !== 'call' && m.kind !== 'sys'; }
+  function canEdit(c, m) {
+    var l = x3lim();
+    return x3(c) && !!m && !!m.body && typeof m.body.text === 'string' && !!m.body.text && m.sender_handle === c.my_handle && !m.ai && m._ai !== 'ok' &&
+           !m.fstate && m.kind !== 'call' && m.kind !== 'sys' && Date.now() / 1000 - (m.created || 0) < l.edit_window && (m.edit_n || 0) < l.edit_max;
+  }
+  function rxPks() {
+    var o = {};
+    Object.keys(S.fk || {}).forEach(function (h) {
+      var f = S.fk[h]; if (!f || !f.keys || f.trust === 'reject') return;
+      f.keys.devices.forEach(function (d) { if (!d.revoked) o[h + '|' + d.id] = d.sign_pub; });
+    });
+    return o;
+  }
+  var rxDrawT = null;
+  function rxDraw() { clearTimeout(rxDrawT); rxDrawT = setTimeout(function () { if (S.cur) drawMsgs(); }, 30); }
+  // Neueste (sichtbare) Nachrichten zuerst; viele Reaktionen (ueber RX_SPLIT) auf zwei Worker verteilt
+  // (tools/perf/x3_browser.js: 50 x 50 kalt ~250 ms mit einem, ~180 ms mit zwei Workern)
+  var RX_FIRST = 250, RX_SPLIT = 500;
+  function rxOpen(c, msgs) {
+    var jobs = (msgs || []).filter(function (m) { return m._k && (m.rx || []).length; }).reverse()
+      .map(function (m) { return { K: m._k, ref: c.ref, mid: m.id, items: m.rx }; });
+    if (!jobs.length) return Promise.resolve();
+    var pks = rxPks(), t0 = performance.now(), parts = [], cur = [], n = 0, total = 0;
+    jobs.forEach(function (j) { total += j.items.length; });
+    jobs.forEach(function (j) {                           // Teil 1: bis RX_FIRST Reaktionen der neuesten Nachrichten
+      cur.push(j); n += j.items.length;
+      if (parts.length === 0 && n >= RX_FIRST && total > RX_SPLIT) { parts.push(cur); cur = []; n = 0; }
+    });
+    if (cur.length) parts.push(cur);
+    if (parts.length === 2 && parts[1].length > 1) {        // Rest halbieren: zweiter Worker parallel
+      var h = Math.ceil(parts[1].length / 2); parts = [parts[0], parts[1].slice(0, h), parts[1].slice(h)];
+    }
+    function apply(part, r) {
+      if (!S.cur || S.cur.id !== c.id) return;
+      part.forEach(function (j) { var m = S.byId[j.mid]; if (m && !rxT[m.id]) m._rx = (r.rx || {})[j.mid] || []; });
+      rxDraw();
+    }
+    return Promise.all(parts.map(function (part, i) {
+      return (i === 1 ? run2 : run)('rx', { jobs: part, pks: pks }).then(function (r) { apply(part, r); });
+    })).then(function () { S.rxMs = performance.now() - t0; })  // (Messung, tools/perf)
+      .catch(function () { /* Reaktionen bleiben unsichtbar */ });
+  }
+  function rxName(c, h) {
+    if (h === c.my_handle) return T('du');
+    var mm = c.members.filter(function (x) { return x.handle === h; })[0];
+    return mm ? mm.name : T('Ehemaliges Mitglied');
+  }
+  function rxChips(c, m) {
+    var box = el('div', 'ct-rx'), groups = {}, order = [];
+    m._rx.slice().sort(function (a, b) { return a.ts - b.ts; }).forEach(function (x) {
+      if (!groups[x.e]) { groups[x.e] = []; order.push(x.e); }
+      groups[x.e].push(x.by);
+    });
+    order.forEach(function (e) {
+      var who = groups[e], mine = who.indexOf(c.my_handle) >= 0;
+      var b = el('button', 'ct-rx-chip' + (mine ? ' mine' : '')); b.type = 'button';
+      b.appendChild(el('span', 'ct-rx-e', e)); b.appendChild(el('span', 'ct-rx-n', String(who.length)));
+      var names = who.map(function (h) { return rxName(c, h); }).join(', ');
+      b.title = names; b.setAttribute('aria-label', T('{emoji} von {names}', { emoji: e, names: names }));
+      b.setAttribute('aria-pressed', mine ? 'true' : 'false');
+      if (canReact(c, m)) b.addEventListener('click', function () { react(c, m, mine ? '' : e); });
+      else b.disabled = true;
+      b.addEventListener('contextmenu', function (ev) { ev.preventDefault(); rxWho(b, c, m, e, who); });
+      box.appendChild(b);
+    });
+    return box;
+  }
+  function rxWho(anchor, c, m, e, who) {
+    HK.openMenu(anchor, function (menu) {
+      menu.textContent = '';
+      menu.appendChild(el('div', 'menu-label', e));
+      who.forEach(function (h) { menu.appendChild(HK.menuItem(rxName(c, h), function () { HK.closeMenu(); }, { icon: ' ' })); });
+    });
+  }
+  function myRx(c, m) { var x = (m._rx || []).filter(function (r) { return r.by === c.my_handle; })[0]; return x ? x.e : ''; }
+  function rxQuick(anchor, m) {
+    var c = S.cur, row = el('div', 'ct-rq'), cur = myRx(c, m);
+    row.setAttribute('role', 'group'); row.setAttribute('aria-label', T('Reagieren'));
+    (window.SagaEmoji ? window.SagaEmoji.QUICK : ['👍', '❤️', '😂', '😮', '😢', '🙏']).forEach(function (e) {
+      var b = el('button', 'ct-rq-b' + (cur === e ? ' on' : ''), e); b.type = 'button'; b.setAttribute('aria-label', e);
+      b.addEventListener('click', function () { HK.closeMenu(); if (window.SagaEmoji) window.SagaEmoji.remember(e); react(c, m, cur === e ? '' : e); });
+      row.appendChild(b);
+    });
+    var more = el('button', 'ct-rq-b ct-rq-more', '+'); more.type = 'button'; more.setAttribute('aria-label', T('Weitere Emojis')); more.title = T('Weitere Emojis');
+    more.addEventListener('click', function () {
+      HK.closeMenu();
+      if (!window.SagaEmoji) return;
+      HK.openMenu(anchor, function (menu) {
+        menu.textContent = '';
+        window.SagaEmoji.picker(menu, function (e) { HK.closeMenu(); react(c, m, cur === e ? '' : e); });
+      });
+    });
+    row.appendChild(more);
+    row.addEventListener('keydown', function (ev) {         // Pfeile links/rechts in der Leiste, runter ins Menue
+      var bs = Array.prototype.slice.call(row.querySelectorAll('button')), i = bs.indexOf(document.activeElement);
+      if (i < 0) return;
+      if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') { ev.preventDefault(); bs[(i + (ev.key === 'ArrowRight' ? 1 : bs.length - 1)) % bs.length].focus(); }
+      else if (ev.key === 'ArrowDown') { var mi = row.parentNode && row.parentNode.querySelector('.menu-item'); if (mi) { ev.preventDefault(); mi.focus(); } }
+    });
+    return row;
+  }
+  function rxBar(anchor, m) { HK.openMenu(anchor, function (menu) { menu.textContent = ''; menu.appendChild(rxQuick(anchor, m)); }); }
+  var rxT = {};
+  function react(c, m, e) {
+    if (!canReact(c, m)) return;
+    var me = c.my_handle;
+    m._rx = (m._rx || []).filter(function (x) { return x.by !== me; });
+    if (e) m._rx.push({ by: me, e: e, ts: Date.now() });
+    drawMsgs();
+    clearTimeout(rxT[m.id]);
+    rxT[m.id] = setTimeout(function () {                    // gebuendelt: nur die letzte Wahl
+      var r;
+      try { r = X.encryptReaction({ K: m._k, chat_ref: c.ref, msg_id: m.id, handle: me, device: K.device.id, sign_sk: K.device.sign_sk, emoji: e }); }
+      catch (x) { delete rxT[m.id]; return; }
+      api('PUT', '/api/chats/' + c.id + '/messages/' + q(m.id) + '/reaction', { dev: r.dev, ts: r.ts, ct: r.ct, sig: r.sig }).then(function () {
+        m.rx = (m.rx || []).filter(function (x) { return x.by !== me; }).concat([r]);
+      }).catch(function (err) {
+        HK.toast(T('Reaktion nicht gesendet: {err}', { err: err.message }));
+        m._rx = null; return rxOpen(c, [m]).then(rxDraw);
+      }).finally(function () { delete rxT[m.id]; });
+    }, 500);
+  }
+  function rxMerge(m, items) {
+    var by = {};
+    (m.rx || []).forEach(function (x) { by[x.by] = x; });
+    items.forEach(function (x) { if (!by[x.by] || by[x.by].ts < x.ts) by[x.by] = x; });
+    m.rx = Object.keys(by).map(function (k) { return by[k]; });
+  }
+  function rxLive(c, d) {
+    if (d.more) {                                         // viele auf einmal: nur Hinweis -> abrufen
+      var mids = (d.mids || []).filter(function (x) { return S.byId[x]; }).slice(0, 100);
+      if (!mids.length) return;
+      api('GET', '/api/chats/' + c.id + '/reactions?mids=' + mids.map(q).join(',')).then(function (r) {
+        var ms = [];
+        Object.keys(r.reactions || {}).forEach(function (id) { var m = S.byId[id]; if (m) { m.rx = r.reactions[id]; ms.push(m); } });
+        return rxOpen(c, ms);
+      }).catch(function () {});
+      return;
+    }
+    var per = {};
+    (d.items || []).forEach(function (x) { if (S.byId[x.id]) (per[x.id] = per[x.id] || []).push(x); });
+    var ms = Object.keys(per).map(function (id) { var m = S.byId[id]; rxMerge(m, per[id]); return m; });
+    if (ms.length) rxOpen(c, ms);
+  }
+  function edApply(c, m) {
+    var e = m.edit; if (!e) return;
+    try {
+      var d = decryptV2(c, e);
+      if (!d.verified || X.editCheck(m, e, d.body)) return;          // nicht bestaetigt: Original bleibt
+      if (!m._orig) m._orig = m.body;
+      m.body = Object.assign({}, m._orig, { text: d.body.t });
+      m._ed = m.edited_at || e.created || 0;
+    } catch (x) { /* Bearbeitung nicht lesbar: Original bleibt */ }
+  }
+  function edLive(c, d) {
+    var m = S.byId[d.id]; if (!m || !m.seq) return;
+    api('GET', '/api/chats/' + c.id + '/messages?calls=1&limit=1&device=' + q(dev()) + '&after=' + (m.seq - 1)).then(function (r) {
+      var x = (r.messages || []).filter(function (y) { return y.id === m.id; })[0];
+      if (!x || !S.cur || S.cur.id !== c.id) return;
+      m.edit = x.edit; m.edited_at = x.edited_at; m.edit_n = x.edit_n;
+      if (m.edit) { edApply(c, m); drawMsgs(); }
+    }).catch(function () {});
+  }
+  function editStart(m) {
+    if (!canEdit(S.cur, m)) return;
+    S.reply = null; S.edit = m;
+    var inp = $('ct-input'); inp.value = m.body.text; autosize(); drawReply(); micDraw();
+    inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
+  }
+  function editCancel() { S.edit = null; $('ct-input').value = ''; autosize(); drawReply(); micDraw(); $('ct-input').focus(); }
+  function editSend(c, m, text) {
+    if (!text.trim() || text === (m.body || {}).text) { editCancel(); return; }
+    Object.keys(S.mentions).forEach(function (label) { if (text.indexOf(label) >= 0) text = text.split(label).join('[[note:' + S.mentions[label] + ']]'); });
+    sending = true; $('ct-send').disabled = true;
+    sendV2(c, { edit: m.id, t: text }, null, null, 'edit').then(function () {
+      if (!m._orig) m._orig = m.body;
+      m.body = Object.assign({}, m._orig, { text: text }); m._ed = Date.now() / 1000; m.edit_n = (m.edit_n || 0) + 1;
+      S.edit = null; S.mentions = {}; $('ct-input').value = ''; autosize(); drawReply(); drawMsgs(); micDraw();
+    }).catch(function (err) { HK.toast(T('Nicht bearbeitet: {err}', { err: err.message })); })
+      .finally(function () { sending = false; $('ct-send').disabled = false; $('ct-input').focus(); });
+  }
+
+  // --- Sprachnachrichten (2.5, static/chat-voice.js; Grenzen x3_limits: 15 min, 24 kbit/s) ------------------------------
+  // Aufnehmen -> Vorschau (anhoeren, verwerfen, senden) -> als saga-file/v2 hochladen (wie Videos) und als Anhang mit
+  // voice/dur/wf senden. Unter 1 s wird verworfen; ab 14:00 Hinweis, bei 15:00 endet die Aufnahme von selbst.
+  // Spieler je Anhang bleiben ueber das Neuzeichnen erhalten (VPL), damit eine laufende Wiedergabe nicht abbricht.
+  var VPL = {}, REC = null;
+  function voiceEl(f) { if (!VPL[f.id]) VPL[f.id] = VOICE.player(f); return VPL[f.id]; }
+  function vplDrop() { Object.keys(VPL).forEach(function (k) { try { VPL[k].vmDrop(); } catch (e) { /* egal */ } }); VPL = {}; }
+  function micDraw() {
+    var b = $('ct-mic'); if (!b) return;
+    var c = S.cur;
+    b.hidden = !(c && VOICE && VID && S.vmode && x3(c) && hasFeat('voice')) || !!$('ct-input').value.trim() || S.files.length > 0 || !!S.edit;
+  }
+  function micErr(e) {
+    var n = e && e.name;
+    if (n === 'NotAllowedError' || n === 'SecurityError') return T('Kein Zugriff auf das Mikrofon – bitte im Browser erlauben.');
+    if (n === 'NotFoundError' || n === 'OverconstrainedError' || n === 'NotReadableError') return T('Kein Mikrofon gefunden oder es wird gerade anderweitig benutzt.');
+    if (e && e.code === 'unsupported') return e.message;
+    return T('Aufnahme nicht möglich: {err}', { err: (e && e.message) || '?' });
+  }
+  function recStart() {
+    var c = S.cur; if (!c || REC || !VOICE) return;
+    var l = x3lim(), maxS = l.voice_max_s || 900;
+    REC = { c: c, st: 'wait', s: 0, lv: 0, warned: false, maxS: maxS };
+    recDraw();
+    VOICE.record({ kbps: l.voice_kbps || 24, maxS: maxS,
+      onTick: function (sec, lv) {
+        if (!REC || REC.st !== 'rec') return;
+        REC.s = sec; REC.lv = lv;
+        if (!REC.warned && sec >= maxS - 60) { REC.warned = true; HK.toast(T('Noch eine Minute – dann endet die Aufnahme.')); }
+        recTick();
+      },
+      onLimit: function () { if (REC && REC.st === 'rec') { HK.toast(T('Höchstens {n} Minuten – Aufnahme beendet.', { n: Math.round(maxS / 60) })); recStop(); } }
+    }).then(function (r) {
+      if (!REC || REC.st !== 'wait') { r.cancel(); return; }
+      REC.r = r; REC.st = 'rec'; recDraw();
+    }).catch(function (e) { REC = null; recDraw(); HK.toast(micErr(e)); });
+  }
+  function recStop() {
+    if (!REC || REC.st !== 'rec') return;
+    REC.st = 'stop'; recDraw();
+    REC.r.stop().then(function (res) {
+      if (!REC) return;
+      if (res.dur < 1) { HK.toast(T('Zu kurz – nicht gesendet.')); REC = null; recDraw(); return; }
+      REC.res = res; REC.url = URL.createObjectURL(res.blob); REC.st = 'prev'; recDraw();
+    }).catch(function (e) { REC = null; recDraw(); HK.toast(micErr(e)); });
+  }
+  function recCancel() {
+    if (!REC) return;
+    if (REC.r && REC.st === 'rec') REC.r.cancel();
+    if (REC.pl) REC.pl.vmDrop();
+    if (REC.url) URL.revokeObjectURL(REC.url);
+    REC = null; recDraw();
+  }
+  function recSend() {
+    if (!REC || REC.st !== 'prev') return;
+    var R = REC, c = R.c, res = R.res, l = x3lim(), reply = S.reply ? S.reply.id : null;
+    if (l.voice_max_bytes && res.blob.size > l.voice_max_bytes) { HK.toast(T('Sprachnachricht zu groß.')); return; }
+    R.st = 'send'; recDraw();
+    VID.upload(c.id, res.blob, function (p) { R.prog = p; recTick(); }).then(function (u) {
+      var f = { id: u.id, k: u.key, n: 'voice.ogg', m: 'audio/ogg; codecs=opus', s: u.size, x: 2, cs: u.cs, voice: true,
+                dur: Math.round(res.dur * 10) / 10, wf: b64(res.wf) };
+      return sendBody(c.id, { v: 1, type: 'text', text: '', files: [f] }, 'msg', reply);
+    }).then(function () {
+      if (R.pl) R.pl.vmDrop();
+      URL.revokeObjectURL(R.url);
+      if (REC === R) { REC = null; recDraw(); }
+      S.reply = null; drawReply();
+      return loadMsgs(false);
+    }).catch(function (e) {
+      HK.toast(T('Nicht gesendet: {err}', { err: e.message }));
+      if (REC === R) { R.st = 'prev'; recDraw(); }
+    });
+  }
+  function recTick() {
+    var t = $('ct-rec-t'), lv = $('ct-rec-lv');
+    if (!REC || !t) return;
+    if (REC.st === 'send') { t.textContent = Math.round((REC.prog || 0) * 100) + ' %'; return; }
+    t.textContent = VOICE.fmt(REC.s) + ' / ' + VOICE.fmt(REC.maxS);
+    t.classList.toggle('warn', REC.warned);
+    if (lv) lv.style.transform = 'scaleX(' + Math.max(0.04, REC.lv).toFixed(3) + ')';
+  }
+  function recDraw() {
+    var bar = $('ct-rec'), form = $('ct-compose');
+    if (!bar) return;
+    bar.textContent = '';
+    if (!REC) { bar.hidden = true; form.hidden = false; drawState(S.cur || {}); micDraw(); return; }
+    bar.hidden = false; form.hidden = true;
+    if (REC.st === 'prev' || REC.st === 'send') {
+      var f = { id: 'prev', _url: REC.url, dur: REC.res.dur, wf: b64(REC.res.wf) };
+      if (!REC.pl) REC.pl = VOICE.player(f);
+      bar.appendChild(REC.pl);
+      var t2 = el('span', 'ct-rec-t'); t2.id = 'ct-rec-t'; if (REC.st === 'send') bar.appendChild(t2);
+      var del = btn('🗑 ' + T('Verwerfen'), 'ct-rec-del', recCancel), go = btn(T('Senden'), 'btn-primary ct-rec-send', recSend);
+      del.disabled = go.disabled = REC.st === 'send';
+      bar.appendChild(del); bar.appendChild(go);
+      if (REC.st === 'prev') go.focus();
+      return;
+    }
+    var dot = el('span', 'ct-rec-dot'); dot.setAttribute('aria-hidden', 'true'); bar.appendChild(dot);
+    var t = el('span', 'ct-rec-t', REC.st === 'wait' ? T('Mikrofon …') : VOICE.fmt(REC.s)); t.id = 'ct-rec-t'; t.setAttribute('role', 'timer'); bar.appendChild(t);
+    var lvw = el('span', 'ct-rec-lvw'), lv = el('span', 'ct-rec-lv'); lv.id = 'ct-rec-lv'; lvw.appendChild(lv); bar.appendChild(lvw);
+    var x = btn('✕ ' + T('Abbrechen'), 'ct-rec-cancel', recCancel), st = btn('■ ' + T('Stopp'), 'btn-primary ct-rec-stop', recStop);
+    st.disabled = REC.st !== 'rec';
+    bar.appendChild(x); bar.appendChild(st);
+    if (REC.st === 'rec') { st.focus(); recTick(); }
+  }
+  if ($('ct-mic')) $('ct-mic').addEventListener('click', function () { if (S.ready) recStart(); });
+  if ($('ct-rec')) $('ct-rec').addEventListener('keydown', function (e) { if (e.key === 'Escape' && REC && REC.st !== 'send') { e.preventDefault(); recCancel(); } });
 
   // --- Anhaenge (clientseitig verschluesselt) --------------------------------------------------------------------
   // 2.1 (Chat-Bilder schnell): Im Verlauf nur Vorschaubilder (files[].th, 320 px JPEG, eigener Schluessel), Platzhalter
@@ -1422,6 +1789,20 @@
     }
     return W;
   }
+  // 2.5: zweiter Worker nur fuer viele Reaktionen auf einmal (Signaturen parallel); ohne ihn wie run()
+  var W2 = null, w2Cb = {};
+  function run2(op, d) {
+    if (W2 === null && typeof Worker !== 'undefined' && W) {
+      try {
+        W2 = new Worker('/static/chat-worker.js?v=' + encodeURIComponent(document.body.dataset.v || ''));
+        W2.onmessage = function (e) { var x = e.data || {}, cb = w2Cb[x.n]; if (!cb) return; delete w2Cb[x.n]; if (x.ok) cb[0](x); else cb[1](new Error(x.err)); };
+        W2.onerror = function (e) { if (e && e.preventDefault) e.preventDefault(); var all = w2Cb; w2Cb = {}; W2 = false; Object.keys(all).forEach(function (k) { all[k][1](new Error('worker')); }); };
+      } catch (e) { W2 = false; }
+    }
+    if (!W2) return run(op, d);
+    return new Promise(function (res, rej) { var n = ++wN; w2Cb[n] = [res, rej]; d.op = op; d.n = n; W2.postMessage(d); })
+      .catch(function (e) { if (e.message !== 'worker') throw e; return run(op, d); });
+  }
   function run(op, d, tr) {
     var w = worker();
     var p = w ? new Promise(function (res, rej) { var n = ++wN; wCb[n] = [res, rej]; d.op = op; d.n = n; w.postMessage(d, tr || []); })
@@ -1437,6 +1818,7 @@
       if (d.op === 'dec') return { plain: dec(d.cid, new Uint8Array(d.blob), d.key).buffer };
       if (d.op === 'enc') { var r = enc(d.cid, new Uint8Array(d.bytes)); return { blob: r.blob.buffer, key: r.key }; }
       if (d.op === 'f2enc' || d.op === 'f2dec') return window.SagaF2Job(X, d);           // Videos (saga-file/v2)
+      if (d.op === 'rx') return X.openReactionsAsync(d.jobs, d.pks).then(function (rx) { return { rx: rx }; });                  // Reaktionen (2.5)
       var bytes = d.op === 'thumb' ? dec(d.cid, new Uint8Array(d.blob), d.key) : new Uint8Array(d.bytes);
       return mainThumb(bytes, d.mime).then(function (t) {
         if (d.op === 'thumb' && d.enc) t.ct = enc(d.cid, new Uint8Array(t.jpeg), { key: ub(d.key, 32) }).blob.buffer;
@@ -1618,6 +2000,7 @@
       fig.addEventListener('click', function () { viewImage(cid, f, name); });
       return fig;
     }
+    if (f.voice && VOICE && f.x === 2) return voiceEl(f);
     if (VID && VID.isVideo(f) && (!f.x || f.x === 2)) return videoEl(cid, f, name);
     var b = el('button', 'ct-file'); b.type = 'button';
     b.appendChild(el('span', 'ct-file-ic', '📎')); b.appendChild(el('span', 'ct-file-n', name)); b.appendChild(el('span', 'ct-file-s', size(f.s)));
@@ -1843,6 +2226,7 @@
                                      reply_to: reply || null, ai: (extra && extra.ai) || null, recipients: X.recipientsV2(ents) });
         m.v = 2;
         if (kind === 'title') m.kind = 'title';
+        if (kind === 'edit') { m.kind = 'edit'; m.edit_of = body.edit; m.files = []; }     // 2.5: Bearbeitung (saga/chat_x3.py)
         if (extra && extra.ai_reply) m.ai_reply = extra.ai_reply;
         if (body.files) m.files = body.files.reduce(function (a, f) { a.push(f.id); if (f.th && f.th.id) a.push(f.th.id); return a; }, []);
         return api('POST', '/api/chats/' + c.id + '/messages', m).then(function (r) {
@@ -1876,6 +2260,14 @@
       if (extra) Object.keys(extra).forEach(function (k) { m[k] = extra[k]; });   // z. B. ai_reply (nicht signiert, nur Verweis)
       if (body.files) m.files = body.files.reduce(function (a, f) { a.push(f.id); if (f.th && f.th.id) a.push(f.th.id); return a; }, []);
       return api('POST', '/api/chats/' + cid + '/messages', m).then(function (r) { return { m: m, r: r }; }, function (e) {
+        if (e.status === 409 && e.data && e.data.chat_changed && !again) {        // 2.5: gerade auf Stufe 3 umgestellt
+          return api('GET', '/api/chats/' + cid + '?device=' + q(dev())).then(function (r2) {
+            var nc = r2.chat; S.chats = S.chats.map(function (x) { return x.id === cid ? nc : x; });
+            if (S.cur && S.cur.id === cid) { S.cur = nc; S.fk = null; drawHead(); }
+            if (!isFed(nc)) throw e;
+            return sendV2(nc, body, reply, extra, kind);
+          });
+        }
         if (e.status === 409 && e.data && e.data.recipients && !again) {
           var rc2 = useRecipients(cid, e.data.recipients);
           return trustCheck(rc2.raw).then(function () { return attempt(rc2, true); });
@@ -1972,6 +2364,7 @@
   $('ct-compose').addEventListener('submit', function (e) {
     e.preventDefault();
     var c = S.cur, inp = $('ct-input'), text = inp.value.replace(/\s+$/, '');
+    if (c && S.edit && !sending) { editSend(c, S.edit, text); return; }       // 2.5: Bearbeitung senden
     if (!c || sending || (!text.trim() && !S.files.length)) return;
     var notes = [];
     Object.keys(S.mentions).forEach(function (label) {
@@ -1985,7 +2378,7 @@
       if (notes.length) body.notes = notes;
       return sendBody(c.id, body, 'msg', reply);
     }).then(function (x) {
-      inp.value = ''; autosize(); S.reply = null; S.files = []; S.mentions = {}; drawReply(); drawFiles();
+      inp.value = ''; autosize(); S.reply = null; S.files = []; S.mentions = {}; drawReply(); drawFiles(); micDraw();
       if (S.rc && S.rc.missing.length) HK.toast(T('{names} hat Chats noch nicht eingerichtet und kann diese Nachricht nicht lesen.', { names: S.rc.missing.join(', ') }), null, null, 6000);
       aiHint();
       return loadMsgs(false).then(function () { if (askAi && x && x.m) askAI(c, text, x.m.id); return x; });
@@ -1996,10 +2389,15 @@
   var typT = 0;
   $('ct-input').addEventListener('keydown', function (e) {
     if (pickerOpen() && pickKey(e)) return;
+    if (e.key === 'Escape' && S.edit) { e.preventDefault(); editCancel(); return; }
+    if (e.key === 'ArrowUp' && !this.value && !S.edit && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {     // 2.5: letzte eigene bearbeiten
+      var last = S.msgs.slice().reverse().filter(function (x) { return canEdit(S.cur, x); })[0];
+      if (last) { e.preventDefault(); editStart(last); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('ct-compose').requestSubmit(); }
   });
   $('ct-input').addEventListener('input', function () {
-    autosize(); picker(); aiHint();
+    autosize(); picker(); aiHint(); micDraw();
     if (S.cur && Date.now() - typT > 3000 && this.value) { typT = Date.now(); api('POST', '/api/chats/' + S.cur.id + '/typing').catch(function () {}); }
   });
 
@@ -2212,14 +2610,14 @@
     var c = S.cur, box = overlay(T('Mitglieder'));
     if (c.kind === 'group') box.appendChild(el('p', 'hk-hint', T('Alle Mitglieder der Gruppe „{g}“ – ändert sich mit der Gruppe.', { g: c.group })));
     if (c.kind === 'page') box.appendChild(el('p', 'hk-hint', T('Alle, die die Seite sehen dürfen – ändert sich mit den Freigaben.')));
-    if (isFed(c) && c.kind !== 'dm') box.appendChild(el('p', 'hk-hint', c.home_self ? T('Dieser Chat liegt auf diesem Server; Personen anderer Saga-Server sind über ihren Server dabei.')
+    if (isRemote(c) && c.kind !== 'dm') box.appendChild(el('p', 'hk-hint', c.home_self ? T('Dieser Chat liegt auf diesem Server; Personen anderer Saga-Server sind über ihren Server dabei.')
       : T('Dieser Chat liegt auf {host}. Mitglieder ändert man dort (über diesen Server).', { host: c.home || '?' })));
     var ul = el('ul', 'ct-devs'); box.appendChild(ul);
     c.members.forEach(function (m) {
       var li = el('li', 'ct-dev'); li.appendChild(avatar((m.name || '?').charAt(0).toUpperCase(), m.username, '', m.avatar));
       var t = el('div', 'ct-dev-t'); t.appendChild(el('b', null, m.me ? m.name + ' (' + T('du') + ')' : m.name));
       // 2.4: Anmeldenamen anderer nie zeigen (nur der eigene; Personen anderer Server mit ihrem Server)
-      var sub = m.handle && m.host ? T('auf {host}', { host: m.host }) : (m.me ? m.username : (m.sub || ''));
+      var sub = m.handle && m.host && isRemote(c) && !m.me ? T('auf {host}', { host: m.host }) : (m.me ? m.username : (m.sub || ''));
       if (sub) t.appendChild(el('span', 'hk-hint', sub));
       li.appendChild(t);
       if (!m.me) li.appendChild(btn(T('Sicherheitsnummer'), 'small', function () { safety(m); }));
@@ -2416,6 +2814,8 @@
       }
       listSoon();
     }
+    else if (t === 'chat.react' && S.cur && S.cur.id === d.chat_id) rxLive(S.cur, d);       // 2.5: Reaktionen (gebuendelt)
+    else if (t === 'chat.edited' && S.cur && S.cur.id === d.chat_id) edLive(S.cur, d);      // 2.5: Nachricht bearbeitet
     else if (t === 'chat.request') listSoon();                     // (2.3) neue Nachrichtenanfrage
     else if (t === 'chat.keys.changed') {                           // (2.3) Schluessel einer Person (bzw. die eigenen) geaendert
       if (d.own) fedCerts().catch(function () {});
