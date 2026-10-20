@@ -49,6 +49,27 @@ type pPhase struct {
 		Stable float64 `json:"stable"`
 	} `json:"up_kbps"`
 	Node []legStats `json:"node"`
+	// ungueltig (Seite im Hintergrund, kein Ton): zaehlt im Go/No-Go nicht
+	Invalid      string   `json:"invalid"`
+	ExpectedDown *float64 `json:"expected_down_kbps"`
+	JBT          any      `json:"jbt"`
+	TileProfile  string   `json:"tile_profile"`
+}
+
+// valid: verbunden und gueltig gemessen.
+func (p pPhase) valid() bool { return p.OK && p.Invalid == "" }
+
+// expectedDown: erwartete Downlink-Rate in kbit/s laut Profil. Aeltere
+// Ergebnisse ohne Messwert: aus den Raten der Messseite (Ton 40 kbit/s,
+// Sprecher 1,5 Mbit/s, Kacheln 250 kbit/s).
+func (p pPhase) expectedDown() float64 {
+	if p.ExpectedDown != nil && *p.ExpectedDown > 0 {
+		return *p.ExpectedDown
+	}
+	if p.Profile == "a25" {
+		return 3 * 40
+	}
+	return 3*40 + 1500 + 10*250
 }
 
 type pResult struct {
@@ -176,6 +197,10 @@ func writeReport(w io.Writer, rs []pResult, bs []benchResult, now time.Time) {
 		fmt.Fprintf(w, "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 		for _, r := range rs {
 			for _, p := range r.Phases {
+				if p.OK && p.Invalid != "" {
+					fmt.Fprintf(w, "| %s | %s | %s | %s | %s | ⚠ ungültig: %s | | | | | | | | | | | | |\n", r.Device, esc(r.Net), platform(r), pathName[p.Path], profName[p.Profile], esc(p.Invalid))
+					continue
+				}
 				if !p.OK {
 					fmt.Fprintf(w, "| %s | %s | %s | %s | %s | ✘ %s | | | | | | | | | | | | |\n", r.Device, esc(r.Net), platform(r), pathName[p.Path], profName[p.Profile], esc(p.Reason))
 					continue
@@ -220,7 +245,7 @@ func writeReport(w io.Writer, rs []pResult, bs []benchResult, now time.Time) {
 	}
 
 	fmt.Fprintf(w, "## Go/No-Go (Konzept §5.4)\n\n")
-	fmt.Fprintf(w, "Bewertet wird der schlechteste Wert über alle Läufe des TCP-Wegs (ICE-TCP oder TURN-TLS, Profil 12 Video). Lokale Testläufe (Netz „e2e-lokal“) zählen nicht.\n\n")
+	fmt.Fprintf(w, "Bewertet wird der schlechteste gültige Wert über alle Läufe und beide TCP-Wege (ICE-TCP und TURN-TLS, Profil 12 Video). Ungültige Phasen (Seite im Hintergrund, kein Ton) und lokale Testläufe (Netz „e2e-lokal“) zählen nicht.\n\n")
 	fmt.Fprintf(w, "| # | Kriterium | Messwert | Ergebnis |\n|---|---|---|---|\n")
 	gs := evaluateGo(rs, bs)
 	for _, g := range gs {
@@ -246,7 +271,8 @@ func evaluateGo(rs []pResult, bs []benchResult) []goRow {
 			real = append(real, r)
 		}
 	}
-	// TCP-Weg: je Lauf bester TCP-Weg (ICE-TCP, sonst TURN-TLS) mit Profil v12
+	// TCP-Wege: alle gueltigen Phasen (ICE-TCP und TURN-TLS) mit Profil v12;
+	// gewertet wird jeweils die schlechteste
 	type tcpRun struct {
 		r pResult
 		p pPhase
@@ -256,19 +282,15 @@ func evaluateGo(rs []pResult, bs []benchResult) []goRow {
 	for _, r := range real {
 		k := platform(r)
 		ok := false
-		var best *pPhase
-		for i, p := range r.Phases {
+		for _, p := range r.Phases {
 			if p.Profile == "v12" && (p.Path == "tcp" || p.Path == "turn") && p.OK {
 				ok = true
-				if best == nil || p.Path == "tcp" {
-					best = &r.Phases[i]
+				if p.valid() {
+					tcp = append(tcp, tcpRun{r, p})
 				}
 			}
 		}
 		plat[k] = plat[k] || ok
-		if best != nil {
-			tcp = append(tcp, tcpRun{r, *best})
-		}
 	}
 	var out []goRow
 	// G1
@@ -371,19 +393,25 @@ func evaluateGo(rs []pResult, bs []benchResult) []goRow {
 		out = append(out, row)
 	}
 	{
-		row := goRow{id: "G5", what: "stabile Downlink-Rate je Gerät (≥ 3 Mbit/s)"}
-		m, have := 0.0, false
+		row := goRow{id: "G5", what: "stabile Downlink-Rate je Gerät (≥ 80 % der laut Profil erwarteten Rate)"}
+		worstR, have := 0.0, false
+		var wd, we float64
 		for _, t := range tcp {
-			if !have || t.p.Down.Stable < m {
-				m = t.p.Down.Stable
+			e := t.p.expectedDown()
+			if e <= 0 {
+				continue
+			}
+			q := t.p.Down.Stable / e
+			if !have || q < worstR {
+				worstR, wd, we = q, t.p.Down.Stable, e
 			}
 			have = true
 		}
 		if !have {
 			row.value, row.v = "–", vNone
 		} else {
-			row.value = fmtNum(m/1000, 2) + " Mbit/s (kleinster Wert)"
-			if m >= 3000 {
+			row.value = fmt.Sprintf("%s %% (%s von %s Mbit/s, schlechtester Lauf)", fmtNum(100*worstR, 0), fmtNum(wd/1000, 2), fmtNum(we/1000, 2))
+			if worstR >= 0.8 {
 				row.v = vGo
 			} else {
 				row.v = vNoGo

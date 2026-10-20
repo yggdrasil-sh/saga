@@ -341,3 +341,61 @@ func TestUDPSelfTest(t *testing.T) {
 		t.Fatal("nicht gespeichert")
 	}
 }
+
+// TestReportWorstValid: G4 wertet den schlechtesten gueltigen Weg aller Laeufe
+// (Mac: ICE-TCP 0, TURN-TLS 21,34), ungueltige Phasen zaehlen nicht, G5
+// misst gegen die erwartete Rate des Profils.
+func TestReportWorstValid(t *testing.T) {
+	f := func(x float64) *float64 { return &x }
+	vid := func(frz float64) *struct {
+		Tracks  int      `json:"tracks"`
+		Frz5    *float64 `json:"freezes_per5min_track"`
+		FrzS5   *float64 `json:"freeze_s_per5min_track"`
+		FPS     *float64 `json:"fps"`
+		LossPct *float64 `json:"loss_pct"`
+		Freezes *float64 `json:"freezes"`
+		FreezeS *float64 `json:"freeze_s"`
+	} {
+		v := &struct {
+			Tracks  int      `json:"tracks"`
+			Frz5    *float64 `json:"freezes_per5min_track"`
+			FrzS5   *float64 `json:"freeze_s_per5min_track"`
+			FPS     *float64 `json:"fps"`
+			LossPct *float64 `json:"loss_pct"`
+			Freezes *float64 `json:"freezes"`
+			FreezeS *float64 `json:"freeze_s"`
+		}{Frz5: f(frz), FrzS5: f(0)}
+		return v
+	}
+	ph := func(path string, frz, down, exp float64) pPhase {
+		p := pPhase{Path: path, Profile: "v12", OK: true, Video: vid(frz), ExpectedDown: f(exp)}
+		p.Down.Stable = down
+		return p
+	}
+	tcp, turn := ph("tcp", 0, 2000, 2200), ph("turn", 21.34, 1900, 2200)
+	hidden := ph("tcp", 99, 100, 2200)
+	hidden.Invalid = "Seite war im Hintergrund"
+	rs := []pResult{{Net: "WLAN", Device: "Laptop", Browser: "Safari", OS: "macOS", Phases: []pPhase{tcp, turn, hidden}}}
+	got := map[string]goRow{}
+	for _, g := range evaluateGo(rs, nil) {
+		got[g.id] = g
+	}
+	if got["G4"].v != vNoGo || !strings.Contains(got["G4"].value, "21,34") {
+		t.Fatalf("G4 %+v", got["G4"])
+	}
+	if got["G5"].v != vGo || !strings.Contains(got["G5"].value, "86 %") {
+		t.Fatalf("G5 %+v", got["G5"])
+	}
+	// nur ungueltig: keine Wertung
+	rs = []pResult{{Net: "WLAN", Device: "Laptop", Browser: "Safari", OS: "macOS", Phases: []pPhase{hidden}}}
+	for _, g := range evaluateGo(rs, nil) {
+		if (g.id == "G4" || g.id == "G5") && g.v != vNone {
+			t.Fatalf("ungueltig gewertet: %+v", g)
+		}
+	}
+	var b strings.Builder
+	writeReport(&b, rs, nil, time.Now())
+	if !strings.Contains(b.String(), "ungültig: Seite war im Hintergrund") {
+		t.Fatal("ungueltig nicht im bericht")
+	}
+}

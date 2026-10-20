@@ -427,3 +427,28 @@ func TestHotPathRewriteNoAlloc(t *testing.T) {
 		t.Fatalf("allokationen je paket: %v", n)
 	}
 }
+
+// TestMirrorKeepsAllTemporalLayers: ohne Begrenzung gehen alle zeitlichen
+// Schichten durch (Regression: neue Ausgaenge standen auf TID 0, der
+// Spiegel der Probe lieferte bei L1T3 nur ein Viertel der Bilder).
+func TestMirrorKeepsAllTemporalLayers(t *testing.T) {
+	room := NewRoom(time.Hour)
+	defer room.Close()
+	leg := NewLeg()
+	defer leg.Close()
+	w := &hrec{}
+	o := leg.NewOut("v", "p", Video, ClassTile, "l")
+	o.Bind(w, 1, 96)
+	room.AddOut(o)
+	s := &Source{Owner: "p", Layer: "l", Kind: Video}
+	room.AddSource(s)
+	pat := []uint8{0, 2, 1, 2}
+	for i := 0; i < 40; i++ {
+		tid := pat[i%4]
+		s.Inject(vp8tid(uint16(i), uint32(i)*3000, uint16(i), uint8(i/4), tid, tid > 0, i == 0))
+	}
+	waitFor(t, func() bool { return w.count() == 40 })
+	if o.MaxTID() != 3 || leg.Stats.TIDSkipped.Load() != 0 {
+		t.Fatalf("tid %d ausgelassen %d", o.MaxTID(), leg.Stats.TIDSkipped.Load())
+	}
+}
