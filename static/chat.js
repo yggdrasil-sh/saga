@@ -103,6 +103,13 @@
       K = keys || null;
       return api('GET', '/api/chat/me?device=' + q(K ? K.device.id : ''));
     }).then(function (me) {
+      // 2.4 (Web-Runde 2, H4): Schluessel auf diesem Geraet, aber der Server meldet (noch) keine Identitaet - nicht sofort
+      // vergessen und "Chats einrichten" zeigen (neuer Tab beim Annehmen eines Anrufs), sondern einmal nachfragen
+      if (!me.identity && K) return new Promise(function (r) { setTimeout(r, 1500); }).then(function () {
+        return api('GET', '/api/chat/me?device=' + q(K.device.id));
+      });
+      return me;
+    }).then(function (me) {
       S.me = me;
       if (!me.identity) { if (K) return forget().then(setupIntro); return setupIntro(); }
       var mine = K && (me.devices || []).filter(function (d) { return d.id === K.device.id && !d.revoked; })[0];
@@ -693,7 +700,8 @@
             var li = el('li'), b = el('button', 'ct-person'); b.type = 'button';
             b.appendChild(avatar((u.name || '?').charAt(0).toUpperCase(), u.username, '', u.avatar));
             var t = el('span', 'ct-item-t'); t.appendChild(el('span', 'ct-item-n', u.name));          // 2.4 (W4): nie den Anmeldenamen zeigen
-            if (!u.ready) t.appendChild(el('span', 'ct-item-s', T('hat Chats noch nicht eingerichtet')));
+            var sub = [u.sub || '', u.ready ? '' : T('hat Chats noch nicht eingerichtet')].filter(Boolean).join(' · ');   // sub: fuer Gleichnamige
+            if (sub) t.appendChild(el('span', 'ct-item-s', sub));
             b.appendChild(t);
             b.addEventListener('click', function () {
               if (!grp.hidden) { if (!pick.some(function (p) { return p.username === u.username; })) pick.push(u); drawChips(); inp.value = ''; res.textContent = ''; inp.focus(); }
@@ -2210,7 +2218,10 @@
     c.members.forEach(function (m) {
       var li = el('li', 'ct-dev'); li.appendChild(avatar((m.name || '?').charAt(0).toUpperCase(), m.username, '', m.avatar));
       var t = el('div', 'ct-dev-t'); t.appendChild(el('b', null, m.me ? m.name + ' (' + T('du') + ')' : m.name));
-      t.appendChild(el('span', 'hk-hint', m.handle && m.host ? T('auf {host}', { host: m.host }) : m.username)); li.appendChild(t);
+      // 2.4: Anmeldenamen anderer nie zeigen (nur der eigene; Personen anderer Server mit ihrem Server)
+      var sub = m.handle && m.host ? T('auf {host}', { host: m.host }) : (m.me ? m.username : (m.sub || ''));
+      if (sub) t.appendChild(el('span', 'hk-hint', sub));
+      li.appendChild(t);
       if (!m.me) li.appendChild(btn(T('Sicherheitsnummer'), 'small', function () { safety(m); }));
       if (c.kind === 'free' && c.role === 'admin' && !m.me) li.appendChild(btn(T('Entfernen'), 'btn-danger small', function () {
         api('DELETE', '/api/chats/' + c.id + '/members/' + q(m.username)).then(function () { closeOverlay(); openChat(c.id); loadList(); }).catch(function (e) { HK.toast(e.message); });
@@ -2228,6 +2239,7 @@
           api('GET', '/api/chat/people?q=' + q(v)).then(function (r) {
             res.textContent = '';
             if (!r.users.length && !(r.remote || []).length && fedAddr(v)) res.appendChild(fedHint());
+            if (!isFed(c) && (r.remote || []).length) res.appendChild(el('li', 'hk-hint', T('Personen anderer Saga-Server lassen sich nur zu neuen Gruppen hinzufügen – bitte eine neue Gruppe anlegen.')));
             if (isFed(c)) (r.remote || []).filter(function (u) { return !c.members.some(function (m) { return m.handle === u.handle; }); }).forEach(function (u) {
               var li = el('li'), b = el('button', 'ct-person ct-remote', (u.label || u.name)); b.type = 'button';
               b.addEventListener('click', function () {
@@ -2239,7 +2251,7 @@
               li.appendChild(b); res.appendChild(li);
             });
             r.users.filter(function (u) { return !c.members.some(function (m) { return (m.ref || m.username) === u.username || m.username === u.username; }); }).forEach(function (u) {
-              var li = el('li'), b = el('button', 'ct-person', u.name); b.type = 'button';
+              var li = el('li'), b = el('button', 'ct-person', u.name + (u.sub ? ' · ' + u.sub : '')); b.type = 'button';
               b.addEventListener('click', function () {
                 api('POST', '/api/chats/' + c.id + '/members', { user: u.username }).then(function () {
                   closeOverlay(); openChat(c.id); loadList();

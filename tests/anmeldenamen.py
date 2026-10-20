@@ -53,6 +53,7 @@ def cleanup():
         for t in ("chat_member",):
             c.execute(f"DELETE FROM {t} WHERE uid LIKE 'an-%'")
         c.execute("DELETE FROM chat WHERE dm_key LIKE 'an-%'")
+        c.execute("DELETE FROM public_name WHERE uid LIKE 'an-%'")
         c.execute("DELETE FROM users WHERE username LIKE 'an-%'")
 
 
@@ -134,6 +135,18 @@ def main():
     ok("Direkt-Chat mit dem Handle angelegt; Mitglied mit ref = Handle und Namen ohne Anmeldename", s == 200 and other
        and other[0].get("ref") == ref and other[0].get("name") == ref, c)
     ok("Fremder Handle wird nicht als Konto aufgeloest", call("an-anna", "POST", "/api/chats", {"kind": "dm", "user": "~" + "a" * 16}, keep=False)[0] in (400, 404))
+
+    # --- Linux-Runde 2, N2: gleichnamige Personen unterscheidbar (Unterzeile: oeffentlicher Name bzw. Handle) ------------
+    auth.create_user("an-z1", None, "Zora Gleich"); auth.create_user("an-z2", None, "Zora Gleich")
+    from saga import publish
+    publish.set_name("an-z2", "zora-zwei")
+    for path in ("/api/share/targets?q=zora", "/api/chat/people?q=zora"):
+        s, d = call("an-anna", "GET", path, keep=False)
+        us = (d or {}).get("users") or []
+        subs = sorted(u.get("sub", "") for u in us)
+        ok(f"N2: {path.split('?')[0]}: zwei gleichnamige Treffer mit unterscheidbarer Unterzeile (Handle bzw. oeffentlicher Name)",
+           len(us) == 2 and all(u["name"] == "Zora Gleich" for u in us) and len(set(subs)) == 2 and "zora-zwei" in subs
+           and any(x.startswith("~") for x in subs) and not any("an-z" in x for x in subs), us)
 
     # --- Sicherheitsrunde 2, H2: Personensuche nicht mehr ueber den Anmeldenamen (Praefix) --------------------------------
     from saga.core import local_ref

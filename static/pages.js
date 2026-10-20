@@ -1328,6 +1328,26 @@
   }
   $('pg-editor').addEventListener('click', linkClick, true);
 
+  // Klick in die Flaeche unter dem letzten Block (Web-Runde 2, M2): Cursor in den letzten Block, wenn er ein leerer Absatz
+  // ist, sonst neuen Absatz darunter - Getipptes geht sonst ins Leere
+  $('pg-editor').closest('article').addEventListener('mouseup', function (e) {
+    var ed = S.editor;
+    if (!ed || !ed.blocks || e.button !== 0 || document.body.classList.contains('pg-locked') || $('pg-editor').hidden) return;
+    if (e.target.closest('.ce-block, .ce-toolbar, .ce-popover, .ce-inline-toolbar, input, textarea, button, a, select, .backlinks, .db, .props, .page-head')) return;
+    var sel = window.getSelection();
+    if (sel && sel.rangeCount && !sel.isCollapsed) return;
+    var blocks = $('pg-editor').querySelectorAll('.codex-editor__redactor > .ce-block');
+    var last = blocks[blocks.length - 1];
+    if (!last || e.clientY < last.getBoundingClientRect().bottom) return;
+    var ae = document.activeElement;
+    if (ae && ae.isContentEditable && $('pg-editor').contains(ae)) return;     // Editor.js hat den Cursor schon gesetzt
+    var n = ed.blocks.getBlocksCount(), b = ed.blocks.getBlockByIndex(n - 1);
+    try {
+      if (b && b.name === 'paragraph' && b.isEmpty) ed.caret.setToBlock(n - 1, 'end');
+      else { ed.blocks.insert('paragraph', {}, {}, n, true); ed.caret.setToBlock(n, 'start'); }
+    } catch (err) { /* Editor gerade im Umbau */ }
+  });
+
   // "[[" oeffnet die Auswahl
   var pick = { range: null, items: [], idx: 0 };
   // a) "/"-Menue -> "Verweis": Editor.js-Blockwerkzeug, das sich sofort in einen Absatz
@@ -4986,7 +5006,7 @@
         });
         hits.appendChild(b);
       }
-      (d.users || []).forEach(function (u) { add('user', u.username, u.name, T('Person auf diesem Server'), u.avatar); });
+      (d.users || []).forEach(function (u) { add('user', u.username, u.name, T('Person auf diesem Server') + (u.sub ? ' · ' + u.sub : ''), u.avatar); });   // sub: Merkmal fuer Gleichnamige (2.4)
       (d.groups || []).forEach(function (g) { add('group', g.name, g.name, T('Gruppe')); });
       (d.remote || []).forEach(function (h) {             // andere Saga-Instanz: Adressbuch (2.3) bzw. genaue Adresse name@server
         if (h.label) add(h.type, h.target, h.label, h.pub ? T('Person auf {host} · {addr}', { host: h.host, addr: h.target.replace(/^@/, '') })

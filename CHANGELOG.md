@@ -29,6 +29,11 @@ automatisch; Backups von 2.3 bleiben einspielbar.
   sich davon nicht unterscheiden. Migration 14 schaltet es deshalb für alle Konten ab und löscht zwischengespeicherte
   Gravatar-Bilder – bis zur Einwilligung geht keine Anfrage an gravatar.com. Wer Gravatar will, schaltet es unter
   Einstellungen → Konto → Profilbild einmal neu ein. Eigene Profilbilder und SSO-Bilder bleiben.
+- **Öffentlicher Name gleich Anmeldename:** wird nicht umgestellt – Saga hat ihn nie so vorbelegt, er ist also selbst
+  gewählt, und eine Umstellung bräche alle Links auf veröffentlichte Seiten. Die Einstellungen weisen darauf hin; neue
+  öffentliche Namen dürfen nicht der Anmeldename sein.
+- **Zweiten Faktor entfernen** braucht jetzt eine Bestätigung (Passwort, Code oder Passkey). Web und Apps fragen bei
+  `403 {reauth: true}` schon heute nach und wiederholen.
 
 #### Anrufe: Fundament saga-call v3 (Etappe E0)
 
@@ -245,6 +250,25 @@ automatisch; Backups von 2.3 bleiben einspielbar.
 - **Nextcloud-Dateien in Seiten:** Mitlesende Konten sehen als Autor eines eingefügten Nextcloud-Blocks den Handle
   statt des Anmeldenamens (auch in `GET /api/notes/{id}/nc`); Speichern, Vorschau (`?a=`) und Download nehmen den Handle
   an, gespeichert bleibt der echte Autor mit seiner Signatur.
+- **Gleichnamige Personen unterscheidbar:** Personensuche (Teilen, Chats) und Chat-Mitglieder liefern `sub` – den
+  öffentlichen Namen bzw. den Handle `~…`, nie den Anmeldenamen; das Web zeigt ihn in der Unterzeile. Der
+  Mitglieder-Dialog einer Gruppe zeigt keine Anmeldenamen mehr; Personen anderer Server erklärt er in lokalen Gruppen
+  („nur in neuen Gruppen“).
+- **Gruppen mit Personen anderer Server:** Anlegen ging mit Handles aus der Personensuche nicht mehr (400 „Mit diesem
+  Konto ist kein Chat möglich“) – lokale Mitglieder als Handle und `handles` anderer Server lassen sich wieder gemischt
+  angeben.
+- **Öffentlicher Name:** Der eigene Anmeldename ist als öffentlicher Name nicht mehr wählbar (er stünde in
+  `/@name`-Adressen und bei anderen Saga-Servern). Saga hat den öffentlichen Namen nie mit dem Anmeldenamen vorbelegt;
+  wer ihn früher selbst so gewählt hat, behält ihn (keine Zwangsumstellung, alte Links gehen weiter) und sieht in den
+  Einstellungen einen Hinweis mit der Möglichkeit, ihn zu ändern.
+- **Zweiter Faktor entfernen** (Authenticator-App, Passkey) verlangt jetzt immer eine ausdrückliche Bestätigung mit
+  Passwort, Code oder Passkey (höchstens 5 Minuten alt) – eine frische Anmeldung allein reicht nicht mehr.
+- **Anrufe:** Nach „Hierher übernehmen“ hat die Kamera den Zustand des abgebenden Geräts; die Angerufene sieht ihr
+  Eigenbild sofort; ein neuer Tab zum Annehmen fragt den Schlüsselzustand einmal nach, bevor er „Chats einrichten“
+  zeigt (dort angelegte Schlüssel überschrieben nie eine bestehende Identität, der Server lehnt das ab).
+- **Editor und Oberfläche:** Ein Klick unter den letzten Block setzt den Cursor in den leeren letzten Absatz bzw. legt
+  einen neuen an (Getipptes ging verloren); die klebende Reiterleiste der Einstellungen schließt oben bündig ab; der
+  Datumswähler einer Aufgabe in der Seitenleiste öffnet an der Aufgabe.
 - **Bekannte Grenze:** Wer mit einem Konto chatten darf, erfährt beim Anlegen eines Direkt-Chats technisch dessen
   Anmeldenamen, auch bevor es antwortet – Chats v1 binden Geräte-Zertifikate, Nachrichten-Signaturen und die
   Sicherheitsnummer daran (Einzelheiten in `docs/APP-API.md`). Die Oberfläche zeigt ihn nicht.

@@ -415,6 +415,10 @@
       function urlFor(n) { return (p.url ? p.url.replace(/\/@[^\/]*$/, '') : location.origin) + '/@' + n; }
       function showHint() {
         hint.textContent = '';
+        if (p.name && p.is_login && p.name === inp.value.trim().toLowerCase()) {   // 2.4: frueher gewaehlter Name = Anmeldename
+          var w = el('p', 'pub-warn', T('Dein öffentlicher Name ist dein Anmeldename – er steht in öffentlichen Adressen und ist für andere Saga-Server sichtbar. Wähle besser einen anderen; alte Links auf veröffentlichte Seiten funktionieren danach nicht mehr.'));
+          hint.appendChild(w);
+        }
         if (p.name) hint.appendChild(HK.fmtNodes(T('Steht in den Adressen deiner öffentlichen Seiten ({url}). Beim Ändern funktionieren alte Links nicht mehr.'), { url: HK.urlNode(p.url) }));
         else hint.textContent = T('Steht in den Adressen deiner öffentlichen Seiten (…/@name/…) und ist für alle sichtbar – nicht dein Anmeldename. Wird beim ersten Veröffentlichen festgelegt.');
       }

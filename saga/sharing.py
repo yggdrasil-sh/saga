@@ -25,7 +25,7 @@ from starlette.concurrency import run_in_threadpool
 import auth
 from db import connect as _db
 from saga import avatars, bus, i18n
-from saga.core import HANDLE_RE, RESTORE_TEST, _api_guard, _bad, _body, labels, ref_of, resolve_input, resolve_ref, t, username_lookup
+from saga.core import HANDLE_RE, RESTORE_TEST, _api_guard, _bad, _body, labels, ref_of, resolve_input, resolve_ref, subtitles, t, username_lookup
 from saga.notes import NOTE_META_COLS, _note_meta, note_chain
 
 router = APIRouter()
@@ -825,8 +825,10 @@ def api_share_targets(request: Request, q: str = ""):
             rows = c.execute(sql + name_order() + " LIMIT ?", (*args, args[3], TARGETS_MAX)).fetchall()
         av = avatars.urls(c, [r[0] for r in rows]) if rows else {}
         lb = labels(c, [r[0] for r in rows]) if rows else {}
+        sb = subtitles(c, [r[0] for r in rows], lb) if rows else {}      # 2.4 (N2): Unterzeile fuer Gleichnamige
     # 2.4 (W4): Kennung = pseudonymer Handle, Name ohne Anmeldename (PUT /shares nimmt den Handle an)
-    users = [{"username": ref_of(None, r[0], uid), "name": lb.get(r[0]) or ref_of(None, r[0], uid), "avatar": av.get(r[0])} for r in rows]
+    users = [{"username": ref_of(None, r[0], uid), "name": lb.get(r[0]) or ref_of(None, r[0], uid), "sub": sb.get(r[0], ""),
+              "avatar": av.get(r[0])} for r in rows]
     groups = [{"name": g} for g in mine if (q in g if len(q) >= SHORT_Q else q == g)][:TARGETS_MAX]
     out = {"users": users, "groups": groups}
     # name@host einer verbundenen Instanz: dort nachfragen (signiert) - nur genaue Adressen, keine Suche ueber Instanzen

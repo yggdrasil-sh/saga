@@ -71,6 +71,20 @@ async function session(browser, user, pass) {
     b = await a.blocks(id);
     ok('W7: Pfeil nach unten am Ende des letzten Zitats -> Absatz darunter', b.length === 2 && b[1] === 'paragraph:Unten', b);
 
+    // --- Web-Runde 2, M2: Klick unter einen leeren letzten Absatz -> Cursor dort, Getipptes bleibt -----------------------
+    for (const [title, blocks, want] of [['Klick unten leer', [{ type: 'paragraph', data: { text: 'Oben' } }, { type: 'paragraph', data: { text: '' } }], 2],
+                                          ['Klick unten voll', [{ type: 'paragraph', data: { text: 'Oben' } }], 2]]) {
+      id = (await a.api('POST', '/api/notes', { title })).id;
+      await a.api('PATCH', '/api/notes/' + id, { body: JSON.stringify({ blocks }), format: 'blocks' });
+      await a.open(id);
+      await a.evaluate(() => document.activeElement && document.activeElement.blur());
+      const r = await a.evaluate(() => { const bl = [...document.querySelectorAll('#pg-editor .ce-block')]; const x = bl[bl.length - 1].getBoundingClientRect(); return { x: x.left + 40, y: Math.min(x.bottom + 60, innerHeight - 10) }; });
+      await a.mouse.click(r.x, r.y); await a.waitForTimeout(200);
+      await a.keyboard.type('Unten getippt', { delay: 10 }); await a.waitForTimeout(2200);
+      b = await a.blocks(id);
+      ok(`M2: Klick unter den letzten Absatz (${title}) -> Getipptes landet in einem Absatz am Ende`, b.length === want && b[0] === 'paragraph:Oben' && b[want - 1] === 'paragraph:Unten getippt', b);
+    }
+
     // --- W5: Wiederherstellen mit Rueckfrage -------------------------------------------------------------------------
     id = (await a.api('POST', '/api/notes', { title: 'Versionen' })).id;
     await a.api('PATCH', '/api/notes/' + id, { body: JSON.stringify({ blocks: [{ type: 'paragraph', data: { text: 'Alt' } }] }), format: 'blocks' });
@@ -88,6 +102,33 @@ async function session(browser, user, pass) {
     await a.keyboard.press('Escape');
     await a.waitForTimeout(600);
     ok('W5: Abbrechen laesst den Inhalt unveraendert', (await a.blocks(id)).join() === 'paragraph:Neu und wichtig');
+
+    // --- Web-Runde 2 (247/270): klebende Reiterleiste der Einstellungen schliesst oben buendig ab ------------------------
+    await a.goto(BASE + '/'); await a.waitForTimeout(800);
+    await a.evaluate(() => window.HKSettings && window.HKSettings.open());
+    await a.waitForSelector('.hk-tabs'); await a.waitForTimeout(800);
+    const gap = await a.evaluate(() => {
+      const t = document.querySelector('.hk-tabs'), b = t.parentElement; b.scrollTop = 600;
+      return new Promise(r => setTimeout(() => r(Math.round(t.getBoundingClientRect().top - b.getBoundingClientRect().top)), 200));
+    });
+    ok(`Reiterleiste klebt buendig am oberen Rand des Scrollbereichs (Abstand ${gap} px)`, gap !== null && Math.abs(gap) <= 1, gap);
+    await shot(a, 'reiter-klebend');
+    await a.keyboard.press('Escape');
+
+    // --- Web-Runde 2 (028): Datumswaehler einer Aufgabe oeffnet an der Aufgabe, nicht am Fensterrand -------------------
+    await a.api('POST', '/api/tasks', { text: 'Datum hier waehlen' });
+    await a.goto(BASE + '/'); await a.waitForTimeout(1200);
+    const tli = await a.$$('li:has(.task-more)');
+    if (tli.length) {
+      const li = tli[tli.length - 1];
+      await (await li.$('.task-more')).click(); await a.waitForTimeout(300);
+      await a.evaluate(() => { const it = [...document.querySelectorAll('.menu button, [role=menuitem]')].find(x => /Datum wählen/.test(x.textContent)); if (it) it.click(); });
+      await a.waitForTimeout(300);
+      const pos = await a.evaluate(() => { const i = document.getElementById('row-due').getBoundingClientRect(); return { x: i.left, y: i.top }; });
+      const lr = await li.boundingBox();
+      ok('Datumswaehler sitzt an der Aufgabe (verstecktes Feld direkt unter der Zeile)', lr && Math.abs(pos.y - (lr.y + lr.height)) <= 4 && Math.abs(pos.x - Math.max(8, lr.x)) <= 4, { pos, lr });
+      await a.keyboard.press('Escape');
+    } else ok('Aufgabe auf dem Dashboard sichtbar', false);
 
     // --- W1: Gravatar ab Werk aus, Einschalten mit Hinweis -----------------------------------------------------------
     const av = await a.api('GET', '/api/account/avatar');

@@ -91,12 +91,15 @@ def slugify(s, maxlen=SLUG_MAX):
     return s[:maxlen].strip("-")
 
 
-def name_problem(name):
-    """None = gueltig, sonst Fehlertext (Pruefung auf frei: Aufrufer)."""
+def name_problem(name, uid=None):
+    """None = gueltig, sonst Fehlertext (Pruefung auf frei: Aufrufer). uid: der eigene Anmeldename ist als oeffentlicher
+    Name nicht erlaubt (2.4, Web-Runde 2 H3) - er stuende sonst in oeffentlichen Adressen und bei anderen Saga-Servern."""
     if not NAME_RE.fullmatch(name or ""):
         return t("2–32 Zeichen: a–z, 0–9, - und _ (klein, am Anfang ein Buchstabe oder eine Ziffer).")
     if name in RESERVED:
         return t("Dieser Name ist reserviert.")
+    if uid and name == str(uid).strip().lower():
+        return t("Bitte nicht den Anmeldenamen verwenden – der öffentliche Name ist für alle sichtbar, auch für andere Saga-Server.")
     return None
 
 
@@ -135,8 +138,8 @@ def _retired(c, name, uid):
 def set_name(uid, name):
     """-> (name, None) oder (None, fehlertext). Eindeutig ueber alle Konten."""
     name = str(name or "").strip().lower()
-    p = name_problem(name)
-    if p:
+    p = name_problem(name, uid)
+    if p and not (name_problem(name) is None and _same_as_before(uid, name)):
         return None, p
     with _db() as c, c:
         if c.execute("SELECT 1 FROM public_name WHERE name=? AND uid<>?", (name, uid)).fetchone() or _retired(c, name, uid):
@@ -150,6 +153,12 @@ def set_name(uid, name):
         else:
             c.execute("INSERT INTO public_name (uid, name, created) VALUES (?,?,?)", (uid, name, time.time()))
     return name, None
+
+
+def _same_as_before(uid, name):
+    """Bisheriger (frueher selbst gewaehlter) Name bleibt speicherbar, auch wenn er der Anmeldename ist."""
+    with _db() as c:
+        return get_name(c, uid) == name
 
 
 def _url(name, slug, nid=None):
@@ -1341,7 +1350,8 @@ def api_public_name_get(request: Request):
         name = get_name(c, uid)
         n = c.execute("SELECT COUNT(*) FROM note_publish WHERE uid=? AND active=1", (uid,)).fetchone()[0]
         out = {"name": name, "url": BASE_URL + f"/@{name}" if name else None, "enabled": enabled(), "published": n,
-               "suggested": suggest_name(c, uid) if not name else name}
+               "suggested": suggest_name(c, uid) if not name else name,
+               "is_login": bool(name) and name == str(uid).lower()}      # 2.4: frueher selbst gewaehlt -> Hinweis
     return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 
@@ -1356,7 +1366,7 @@ async def api_public_name_put(request: Request):
     b = await _body(request) or {}
     name = str(b.get("name") or "").strip().lower()
     if b.get("check"):
-        p = name_problem(name)
+        p = name_problem(name, uid)
         if not p:
             with _db() as c:
                 if c.execute("SELECT 1 FROM public_name WHERE name=? AND uid<>?", (name, uid)).fetchone() or _retired(c, name, uid):

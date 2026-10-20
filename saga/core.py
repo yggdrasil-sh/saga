@@ -845,6 +845,22 @@ def resolve_ref(c, x):
     return u
 
 
+def subtitles(c, uids, lb=None):
+    """2.4 (Linux-Runde 2, N2): unterscheidbares Merkmal fuer die Unterzeile (gleichnamige Personen): oeffentlicher Name,
+    wenn er nicht schon der Name ist, sonst der Handle - nie der Anmeldename. lb: labels(c, uids), falls schon da."""
+    uids = sorted({u for u in uids if isinstance(u, str) and u and not u.startswith("@")})
+    if not uids:
+        return {}
+    lb = lb if lb is not None else labels(c, uids)
+    ph = ",".join("?" * len(uids))
+    pub = {r[0]: r[1] for r in c.execute(f"SELECT uid, name FROM public_name WHERE uid IN ({ph})", tuple(uids))}
+    out = {}
+    for u in uids:
+        name, ref = lb.get(u) or local_ref(u), local_ref(u)
+        out[u] = pub[u] if pub.get(u) and pub[u] != name else ("" if name == ref else ref)
+    return out
+
+
 def username_lookup():
     """Admin-Schalter "Suche nach Anmeldename" (2.4, Sicherheitsrunde 2; Standard an): Personensuche und Eingaben
     (Chat beginnen, Mitglied hinzufuegen, Teilen) nehmen dann auch den GENAUEN Anmeldenamen eines beliebigen Kontos an.

@@ -927,6 +927,14 @@ PUT /api/chat/privacy
     Direkt-Chats kennen keine Annahme (anders als Chats über Servergrenzen mit Handles, v2). Eine Bindung an den Handle
     für neue lokale Chats bräuchte neue Zertifikate von allen Geräten (2.3-Apps erzeugen sie nicht) und ist für eine
     spätere Version vorgemerkt.
+- **Unterzeile `sub` (Linux-Runde 2):** `GET /api/share/targets` und `GET /api/chat/people` liefern je Person `sub`
+  (öffentlicher Name, sonst Handle `~…`, leer, wenn `name` schon der Handle ist), `members[]` in Gruppen-, freien und
+  Seiten-Chats ebenso. Nie der Anmeldename. Apps zeigen `sub` unter dem Namen, damit sich Gleichnamige unterscheiden.
+- **Öffentlicher Name:** `PUT /api/account/public-name` lehnt den eigenen Anmeldenamen ab (400 bzw. `ok: false` bei
+  `check`); `GET` meldet `is_login: true`, wenn ein früher gewählter Name dem Anmeldenamen entspricht (Hinweis zeigen).
+- **Zweiter Faktor entfernen:** `DELETE /api/account/totp` und `DELETE /api/account/passkeys/{id}` verlangen eine
+  Bestätigung über `POST /api/account/security/confirm` (höchstens 5 Minuten alt); eine frische Anmeldung allein reicht
+  nicht mehr. Sonst `403 {reauth: true}` – wie bisher bestätigen und wiederholen.
 - **Nextcloud-Blöcke:** Im Seiteninhalt (`GET /api/notes/{id}`) und im Status (`GET /api/notes/{id}/nc`) steht als
   `author` fremder Blöcke der Handle; `?a=` beim Abruf und das Zurückspeichern nehmen ihn an. Eigene Blöcke behalten den
   eigenen Namen (Vergleich mit dem eigenen Konto wie bisher).

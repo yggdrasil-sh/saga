@@ -183,6 +183,12 @@ async function api(p, m, url, body) { return p.evaluate(([m, url, body]) => wind
     const hd = await until(async () => { const x = await a.evaluate(() => { const v = document.getElementById('ct-call-v'); return { hidden: v.hidden, title: v.title }; });
       return x.title === 'Gruppen-Videoanruf' ? x : null; }, 10000) || await a.evaluate(() => { const v = document.getElementById('ct-call-v'); return { hidden: v.hidden, title: v.title }; });
     ok('Kopf der Gruppe: Knopf "Gruppen-Videoanruf"', !hd.hidden && hd.title === 'Gruppen-Videoanruf', hd);
+    // Web-Runde 2, H2: Mitglieder-Dialog zeigt keine Anmeldenamen anderer
+    await a.click('#ct-more'); await a.waitForTimeout(300);
+    await a.evaluate(() => { const it = [...document.querySelectorAll('[role=menuitem], .hk-menu button')].find(x => /Mitglieder/.test(x.textContent)); if (it) it.click(); });
+    const memTxt = await until(() => a.evaluate(() => { const d = document.querySelector('.ct-ov .ct-devs'); return d && d.textContent; }), 5000);
+    ok('H2: Mitglieder-Dialog ohne Anmeldenamen der anderen', memTxt && memTxt.indexOf(U2) < 0 && memTxt.indexOf(U3) < 0, memTxt);
+    await a.keyboard.press('Escape');
     const cpu = cpuWatch();
     await a.click('#ct-call-v');
     await b.waitForSelector('.cl-ring', { timeout: 15000 }); await c.waitForSelector('.cl-ring', { timeout: 15000 });

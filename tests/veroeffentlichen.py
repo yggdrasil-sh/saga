@@ -97,6 +97,20 @@ def main():
         ok(f"Name '{bad[:12]}' abgelehnt", s == 200 and d["ok"] is False and d.get("error"))
         s, _, d = req("PUT", "/api/account/public-name", A, {"name": bad})
         ok(f"Speichern von '{bad[:12]}' -> {s}", s in (400, 409))
+    # Web-Runde 2, H3: der eigene Anmeldename ist kein oeffentlicher Name (stuende in /@name und bei anderen Servern)
+    s, _, d = req("PUT", "/api/account/public-name", A, {"name": "pv-a", "check": True})
+    ok("H3: eigener Anmeldename als oeffentlicher Name abgelehnt (Pruefen)", s == 200 and d["ok"] is False and "Anmeldenamen" in d.get("error", ""))
+    s, _, d = req("PUT", "/api/account/public-name", A, {"name": "pv-a"})
+    ok(f"H3: ... und beim Speichern ({s})", s == 400)
+    from saga import publish
+    with connect() as c, c:                                  # frueher (vor 2.4) selbst gewaehlt: bleibt, mit Hinweis
+        c.execute("INSERT INTO public_name (uid, name, created) VALUES ('pv-a', 'pv-a', 0)")
+    s, _, d = req("GET", "/api/account/public-name", A)
+    ok("H3: frueher gewaehlter Name = Anmeldename bleibt, GET meldet is_login (Hinweis in den Einstellungen)",
+       s == 200 and d["name"] == "pv-a" and d.get("is_login") is True)
+    ok("H3: ... erneut speichern geht (keine Zwangsumstellung)", publish.set_name("pv-a", "pv-a")[1] is None)
+    with connect() as c, c:
+        c.execute("DELETE FROM public_name WHERE uid='pv-a'")
     s, _, d = req("PUT", "/api/account/public-name", A, {"name": "pv-anne", "check": True})
     ok("Pruefen: gueltig und frei", s == 200 and d["ok"] is True)
     s, _, d = req("PUT", "/api/account/public-name", A, {"name": "PV-Anne"})

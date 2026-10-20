@@ -520,8 +520,8 @@ def main():
     with connect() as c, c:
         c.execute("UPDATE users SET email='cora-geheim@example.org' WHERE username='sh-c'")
     s, raw = req("GET", "/api/share/targets?q=cora", A)
-    ok("Personensuche: nur Benutzername + Anzeigename (+ Profilbild-Adresse), keine E-Mail, kein E-Mail-Hash",
-       s == 200 and all(set(u) == {"username", "name", "avatar"} for u in raw["users"]) and "example.org" not in json.dumps(raw)
+    ok("Personensuche: nur Kennung + Anzeigename (+ Unterzeile, Profilbild-Adresse), keine E-Mail, kein E-Mail-Hash",
+       s == 200 and all(set(u) == {"username", "name", "sub", "avatar"} for u in raw["users"]) and "example.org" not in json.dumps(raw)
        and hashlib.sha256(b"cora-geheim@example.org").hexdigest() not in json.dumps(raw))
     codes = [st("GET", "/api/share/targets?q=sh", Ck) for _ in range(62)]
     ok(f"Personensuche: Rate-Limit ({codes.count(429)}x 429)", 429 in codes and 429 not in codes[:59])

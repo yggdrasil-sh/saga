@@ -89,7 +89,11 @@ def part_group(adm, pab, pba, pac, pca):
     ok("Faehigkeit chatgroups ausgehandelt (A-B, A-C)", wait(lambda: caps_ok("a", HB) and caps_ok("a", HC) and caps_ok("b", HA) and caps_ok("c", HA), 25))
     anna, carl = User("a", "fa-anna"), User("a", "fa-carl")
     bert, cleo, dora = User("b", "fb-bert"), User("b", "fb-cleo"), User("c", "fc-dora")
-    s, d = api("a", "fa-anna", "POST", "/api/chats", {"kind": "free", "members": ["fa-carl"], "handles": [bert.handle, dora.handle], "device": anna.dev["id"]})
+    # wie die Weboberflaeche: lokale Mitglieder als Handle aus der Personensuche (Web-Runde 2, H1: war 400)
+    pu = (api("a", "fa-anna", "GET", "/api/chat/people?q=fa-carl")[1] or {}).get("users") or [{}]
+    carl_ref = pu[0].get("username", "")
+    ok(f"A: Personensuche liefert Carl als Handle ({carl_ref})", carl_ref.startswith("~") and len(carl_ref) == 17)
+    s, d = api("a", "fa-anna", "POST", "/api/chats", {"kind": "free", "members": [carl_ref], "handles": [bert.handle, dora.handle], "device": anna.dev["id"]})
     ch = d.get("chat") or {}
     ok(f"A: Gruppe ueber drei Server angelegt ({s}, v{ch.get('v')}, {len(ch.get('members', []))} Mitglieder)", s == 200 and ch.get("v") == 2
        and ch.get("home_self") and ch.get("kind") == "free" and len(ch["members"]) == 4 and ch.get("role") == "admin")

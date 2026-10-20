@@ -39,7 +39,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 import auth
 from db import connect as _db
 from saga import avatars, bus, file_v2, mfa, notify, sharing
-from saga.core import (HANDLE_RE, labels, local_ref, resolve_input, resolve_ref, ADMIN_URL, ASSET_V, E, MEDIA_FRONT, MEDIA_KEY, SEC_HEADERS, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
+from saga.core import (HANDLE_RE, labels, local_ref, resolve_input, resolve_ref, subtitles, ADMIN_URL, ASSET_V, E, MEDIA_FRONT, MEDIA_KEY, SEC_HEADERS, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
                        tmpl, user_info)
 from saga.notes import FILE_MAX, note_chain
 from saga.sharing import REMOTE_TYPES, Access, enabled as share_enabled, group_scope, groups_of, names
@@ -833,10 +833,11 @@ def api_people(request: Request, q: str = ""):
             rows = c.execute(sql + sharing.name_order() + " LIMIT 10", (*args, args[3])).fetchall()
         av = avatars.urls(c, [r[0] for r in rows]) if rows else {}
         lb = labels(c, [r[0] for r in rows]) if rows else {}
+        sb = subtitles(c, [r[0] for r in rows], lb) if rows else {}
     # 2.3: Personen anderer Instanzen aus dem Adressbuch (saga.fed_dir) - Chats ueber Servergrenzen folgen mit Protokoll 2
     remote = sharing.DIR_SEARCH(uid, q, "chat") if sharing.DIR_SEARCH is not None else []
     # 2.4 (W4): Kennung = pseudonymer Handle (POST /api/chats nimmt ihn an), Name ohne Anmeldename
-    return _no_store({"users": [{"username": local_ref(r[0]), "name": lb.get(r[0]) or local_ref(r[0]), "ready": bool(r[2]),
+    return _no_store({"users": [{"username": local_ref(r[0]), "name": lb.get(r[0]) or local_ref(r[0]), "sub": sb.get(r[0], ""), "ready": bool(r[2]),
                                  "avatar": av.get(r[0])} for r in rows],
                       "groups": [{"name": g} for g in mine if (q in g if len(q) >= sharing.SHORT_Q else q == g)][:10],
                       "remote": remote})
@@ -982,13 +983,14 @@ def _unread(c, uid, cid, last_read):
 
 def _chat_dict(c, uid, ch, mem, m, device, full=False):
     nm = names(c, list(mem) + ([ch["dm_key"].split("|")[0], ch["dm_key"].split("|")[-1]] if ch["dm_key"] else []))
+    sb = subtitles(c, [u for u in mem if u != uid]) if ch["kind"] != "dm" else {}    # 2.4 (N2): Unterzeile fuer Gleichnamige
     d = {"id": ch["id"], "kind": ch["kind"], "name": _name(c, uid, ch, mem, nm), "group": ch["group_name"], "note_id": ch["note_id"],
          "created": ch["created"], "last_at": ch["last_at"] or ch["created"], "last_seq": ch["last_seq"], "retention_s": ch["retention_s"],
          "muted": bool(m["muted"]), "role": m["role"], "last_read": m["last_read"], "unread": _unread(c, uid, ch["id"], m["last_read"]),
          # username: Chats v1 binden Schluessel an den Anmeldenamen (nur Mitglieder sehen ihn, die Oberflaeche zeigt ihn nicht);
          # ref (2.4): dieselbe Kennung wie in der Personensuche (pseudonymer Handle)
          "members": [{"username": u, "ref": u if (u == uid or u.startswith("@")) else local_ref(u), "name": nm.get(u, u), "me": u == uid,
-                      "avatar": nm.avatar(u)} for u in mem], "member_count": len(mem),
+                      "avatar": nm.avatar(u), "sub": sb.get(u, "")} for u in mem], "member_count": len(mem),
          # KI im Chat (2.1, saga/ai_chat.py): in diesem Chat erlaubt? (ob der Server sie anbietet: /api/ai/status "chat")
          "ai": bool(c.execute("SELECT 1 FROM chat_ai WHERE chat_id=?", (ch["id"],)).fetchone())}
     # Archiv und Loeschen (2.1): nur fuer mich; delete_for_all = 'chat' | 'history' | None (was "Fuer alle loeschen" darf)
