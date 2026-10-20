@@ -78,6 +78,7 @@ async def lifespan(_app):
                 n = await asyncio.to_thread(chat.purge)        # abgelaufene Chat-Nachrichten, Anhaenge ohne Nachricht: stuendlich
                 if n:
                     print(f"chat: {n} abgelaufene Nachricht(en) entfernt", flush=True)
+                await asyncio.to_thread(chat.convert_v3)       # 2.5: bestehende Chats auf Stufe 3 umstellen (wenn bereit)
             except Exception as ex:
                 print(f"chat-purge: {type(ex).__name__}: {ex}", flush=True)
             await asyncio.sleep(3600)

@@ -985,5 +985,13 @@ einem Gerät ab App 2.3). Bestehende Chats bleiben vorerst v1.
   `legs[].who` für andere als Handle (mit `handle`, `host`; Schlüssel über `/api/chat/v2/keys`), `call.ring`/`call.invite`
   mit `from` als Handle, `call.state.by` als Handle, Anruf-Eintrag im Chat (`kind: call`) mit `from`/`to` als Handles.
   `POST /api/calls/{id}/invite` nimmt Handles.
-- **Noch nicht in Stufe 3:** Umstellung bestehender Chats (`v3_seq`), Reaktionen,
+- **Umstellung bestehender Chats:** Der Server stellt Chats v1 auf Stufe 3 um, sobald alle aktiven Geräte `chat3` melden
+  (Clients der Stufe 3 tun das automatisch bei jeder Anfrage mit `device`), spätestens nach `chat_v3_days`. Danach:
+  Chat-Objekt mit `v3: {seq, at, forced}`; Nachrichten mit `seq ≤ v3.seq` bzw. ohne `sender_handle` mit v1 prüfen
+  (Absender-Benutzername und `devices`/`idents` gibt es dafür weiter), alles danach im Format v2; Systemzeile
+  `{"type": "crypto", "level": 3, "verify"?: true}`. In Chats v1 liefert der Server Clients der Stufe 3
+  `members[].handle`: daraus übernimmt die App ihr Vertrauen `trust:<benutzer>` → `trust2:<handle>`, aber nur bei gleichem
+  Identitätsschlüssel (`tests/vectors/chat_v3.json`, `tofu_migrate`). Senden v1 in einen gerade umgestellten Chat: 409
+  mit `chat_changed: true` – Chat neu laden.
+- **Noch nicht in Stufe 3:** Reaktionen,
   Bearbeiten, Sprachnachrichten. Testvektoren für Reaktionen und Bearbeiten: `tests/vectors/chat_v3.json`.

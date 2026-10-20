@@ -78,6 +78,9 @@
     <label class="adm-field"><span>{{ _("Größtes Video im Chat (MB)") }}</span>
       <input class="hk-in" type="number" name="chat_video_max_mb" min="0" max="65536" value="{{ st.chat_video_max_mb or 0 }}">
       <small>{{ _("0 = Standard ({n} MB, Umgebungsvariable VIDEO_MAX_MB). Videos über der Grenze für Anhänge (ATTACH_MAX_MB, Standard 10 MB) gehen im Blockformat von Saga 2.4 und werden gestreamt; ältere Apps zeigen dann „Mit Saga 2.4 öffnen“.", n=chat_video_default) }}</small></label>
+    <label class="adm-field"><span>{{ _("Bestehende Chats spätestens umstellen nach (Tagen)") }}</span>
+      <input class="hk-in" type="number" name="chat_v3_days" min="0" max="3650" value="{{ st.chat_v3_days if st.chat_v3_days is not none else 90 }}">
+      <small>{{ _("Neue Verschlüsselung über Handles (Saga 2.5): bestehende Chats stellt der Server um, sobald alle aktiven Geräte der Mitglieder Saga 2.5 haben – spätestens nach dieser Frist. Ältere Apps sehen danach den Hinweis, die Sicherheitsnummer neu zu prüfen.") }}</small></label>
   </section>
   <section class="adm-card" id="anrufe">
     <h3>{{ _("Anrufe") }}</h3>

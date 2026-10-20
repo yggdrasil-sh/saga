@@ -2221,7 +2221,8 @@ def upgrade_page_chat(c, ch):
     ref = ch.get("ref") if ch.get("v") == 3 else None    # 2.5: Stufe 3 hat schon das Format v2 und eine chat_ref
     ref = ref or secrets.token_hex(16) + "@" + F.SELF_HOST
     # 2.5: Umstellpunkt merken - Nachrichten bis dahin sind v1 (Altbestand mit Anmeldenamen, siehe core.knows)
-    c.execute("UPDATE chat SET v=2, ref=?, v3_seq=CASE WHEN v=1 AND last_seq>0 THEN last_seq ELSE v3_seq END WHERE id=?", (ref, ch["id"]))
+    c.execute("UPDATE chat SET v=2, ref=?, v3_seq=CASE WHEN v=1 AND last_seq>0 THEN last_seq ELSE v3_seq END, "
+              "v3_at=CASE WHEN v=1 AND last_seq>0 THEN ? ELSE v3_at END WHERE id=?", (ref, time.time(), ch["id"]))
     ch.update(v=2, ref=ref)
     had = c.execute("DELETE FROM chat_ai WHERE chat_id=?", (ch["id"],)).rowcount
     sysline(c, ch, None, {"type": "fed", "on": True, **({"ai_off": True} if had else {})})

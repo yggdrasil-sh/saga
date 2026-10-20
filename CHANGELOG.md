@@ -39,7 +39,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Gelesen, Tippen, Anrufe); 2.3 umgestellte Seiten-Chats merken sich den Umstellpunkt (`v3_seq`, Altbestand v1).
   Eine **freie Gruppe der Stufe 3** nimmt Personen anderer Server auf (`POST …/members {handle}`): sie wird ohne neue Krypto
   zu einer Gruppe über Servergrenzen (gleiche `chat_ref`, KI aus, Systemzeile).
-  Noch offen: Umstellung bestehender Chats, Reaktionen, Bearbeiten, Sprachnachrichten.
+- **Umstellung bestehender Chats auf Stufe 3 (Auftrag, stündlich):** Ist Stufe 3 an, stellt Saga lokale Chats v1 um, sobald
+  alle Mitglieder ein Handle-Zertifikat haben und **alle aktiven Geräte** (letzte 30 Tage) Saga 2.5 melden – Apps 2.3/2.4
+  übernehmen „Überprüft“ nicht, deshalb wartet der Auftrag auf sie. Spätestens nach einer Frist (Admin-Bereich →
+  Einstellungen → Chats, Standard 90 Tage) wird trotzdem umgestellt; ältere Apps sehen dann im Chat-Namen „Sicherheitsnummer
+  bitte neu prüfen“, die Systemzeile trägt `verify`. Nichts wird neu verschlüsselt: Nachrichten bis zum Umstellpunkt
+  (`v3_seq`) bleiben v1 und lesbar, danach gilt das Format v2. Wer nach der Umstellung dazukommt, sieht keinen
+  Anmeldenamen; `knows()` zählt nur Mitglieder von vor der Umstellung. Clients der Stufe 3 bekommen in Chats v1
+  `members[].handle` (für die Vertrauens-Übernahme) und melden ihre Stufe am Gerät (`chat3`). Kontolöschung räumt
+  Reaktionen und Verweise auf Bearbeitungen auf. Neue Testreihe `chat_v3_umstellung`.
+  Noch offen: Reaktionen, Bearbeiten, Sprachnachrichten.
 
 ## [2.4.0] – 2026-10-20
 

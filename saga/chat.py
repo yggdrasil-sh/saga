@@ -39,7 +39,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 import auth
 from db import connect as _db
 from saga import avatars, bus, file_v2, mfa, notify, sharing
-from saga.core import (HANDLE_RE, labels, local_ref, resolve_input, resolve_ref, subtitles, ADMIN_URL, ASSET_V, E, MEDIA_FRONT, MEDIA_KEY, SEC_HEADERS, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
+from saga.core import (HANDLE_RE, labels, legacy_sql, local_ref, resolve_input, resolve_ref, subtitles, ADMIN_URL, ASSET_V, E, MEDIA_FRONT, MEDIA_KEY, SEC_HEADERS, STATE_DIR, _api_guard, _bad, _body, _session_user, remember_ui_lang, t, title,
                        tmpl, user_info)
 from saga.notes import FILE_MAX, note_chain
 from saga.sharing import REMOTE_TYPES, Access, enabled as share_enabled, group_scope, groups_of, names
@@ -289,12 +289,13 @@ def _keys(c, uids):
 
 
 # --- Mitglieder ----------------------------------------------------------------------------------------------
-C_COLS = "id, kind, dm_key, group_name, note_id, created_by, created, retention_s, title_seq, last_seq, last_at, v, ref, home_peer, fseq, fstate"
+C_COLS = ("id, kind, dm_key, group_name, note_id, created_by, created, retention_s, title_seq, last_seq, last_at, v, ref, home_peer, fseq, fstate, "
+          "v3_seq, v3_at, v3_forced")
 
 
 def _row(r):
     return dict(zip(("id", "kind", "dm_key", "group_name", "note_id", "created_by", "created", "retention_s", "title_seq",
-                     "last_seq", "last_at", "v", "ref", "home_peer", "fseq", "fstate"), r)) if r else None
+                     "last_seq", "last_at", "v", "ref", "home_peer", "fseq", "fstate", "v3_seq", "v3_at", "v3_forced"), r)) if r else None
 
 
 def fed_hint():
@@ -359,6 +360,77 @@ def make_v3(c, ch, uids):
     ref = secrets.token_hex(16) + "@" + FED.F.SELF_HOST
     c.execute("UPDATE chat SET v=3, ref=? WHERE id=? AND v=1 AND ref IS NULL", (ref, ch["id"]))
     return _load(c, ch["id"])
+
+
+# --- Umstellauftrag v1 -> Stufe 3 (2.5, Konzept A4.3) ------------------------------------------------------------
+CONVERT_BATCH = 200                    # hoechstens so viele Chats je Lauf (je Chat eine Transaktion)
+ACTIVE_S = 30 * 86400                  # Geraete, die so lange nicht da waren, halten die Umstellung nicht auf
+V3_DAYS_DEFAULT = 90                   # Stichtag: spaetestens so viele Tage nach dem Einschalten (Admin aenderbar)
+VERIFY_HINT_S = 30 * 86400             # so lange zeigen aeltere Apps nach einer Stichtag-Umstellung den Hinweis im Namen
+_conv = {"after": 0}
+
+
+def v3_deadline():
+    """-> (seit, stichtag) in Sekunden; seit = erster Lauf mit eingeschalteter Stufe 3 (Einstellung chat_v3_since)."""
+    st = auth.settings()
+    since = st.get("chat_v3_since")
+    if not isinstance(since, (int, float)) or since <= 0:
+        since = time.time()
+        auth.save_setting("chat_v3_since", since)
+    try:
+        days = max(0, int(st.get("chat_v3_days", V3_DAYS_DEFAULT)))
+    except (TypeError, ValueError):
+        days = V3_DAYS_DEFAULT
+    return since, since + days * 86400
+
+
+def convert_check(c, uids, now, deadline):
+    """Darf ein Chat mit diesen Mitgliedern umgestellt werden? -> (ja, per_stichtag). Alle brauchen ein Handle-Zertifikat;
+    ohne Stichtag muessen ALLE aktiven Geraete chat3 melden (aeltere Apps uebernehmen "ueberprueft" nicht)."""
+    if not handle_ready(c, uids):
+        return False, False
+    ph = ",".join("?" * len(uids))
+    old = c.execute(f"SELECT COUNT(*) FROM chat_device WHERE uid IN ({ph}) AND revoked_at IS NULL AND COALESCE(last_seen, created)>? "
+                    "AND caps NOT LIKE '%\"chat3\"%'", (*uids, now - ACTIVE_S)).fetchone()[0]
+    if not old:
+        return True, False
+    return (True, True) if now >= deadline else (False, False)
+
+
+def convert_v3(limit=CONVERT_BATCH, now=None):
+    """Bestehende lokale Chats v1 auf Stufe 3 umstellen (stuendlich; beliebig oft ausfuehrbar). Nichts wird neu
+    verschluesselt: v3_seq = letzte Nachricht v1, danach gilt das Format v2. Systemzeile {"type":"crypto","level":3} ohne Namen
+    (v ist dort die Version der Systemzeile; verify: true nach Stichtag),
+    chat.changed. -> Anzahl umgestellter Chats."""
+    if not v3_new():
+        return 0
+    now = now or time.time()
+    _, deadline = v3_deadline()
+    with _db() as c:
+        ids = [r[0] for r in c.execute("SELECT id FROM chat WHERE v=1 AND ref IS NULL AND home_peer IS NULL AND id>? ORDER BY id LIMIT ?",
+                                       (_conv["after"], limit)).fetchall()]
+    _conv["after"] = ids[-1] if len(ids) == limit else 0      # naechster Lauf macht weiter (bzw. von vorn)
+    n = 0
+    for cid in ids:
+        with _db() as c, c:
+            ch = _row(c.execute(f"SELECT {C_COLS} FROM chat WHERE id=? FOR UPDATE", (cid,)).fetchone())
+            if not ch or ch["v"] != 1 or ch["ref"] or ch["home_peer"] is not None:
+                continue
+            mem = [u for u in members(c, cid) if not sharing.is_remote(u)]
+            if not mem:
+                continue
+            go, forced = convert_check(c, mem, now, deadline)
+            if not go:
+                continue
+            ref = secrets.token_hex(16) + "@" + FED.F.SELF_HOST
+            c.execute("UPDATE chat SET v=3, ref=?, v3_seq=?, v3_at=?, v3_forced=? WHERE id=?", (ref, ch["last_seq"] or 0, now, 1 if forced else 0, cid))
+            ch = _load(c, cid)
+            FED.sysline(c, ch, None, {"type": "crypto", "level": 3, **({"verify": True} if forced else {})})
+            _changed(c, cid, mem)
+            n += 1
+    if n:
+        print(f"chat: {n} Chat(s) auf Stufe 3 umgestellt", flush=True)
+    return n
 
 
 def direct_person(c, ch, uids, typ, data, who, key):
@@ -854,7 +926,7 @@ def _known(c, uid):
     """Konten, mit denen uid einen Chat hat oder hatte (2.5: ohne Chats der Stufe 3 - dort gibt es Schluessel nur per Handle
     ueber /api/chat/v2/keys; umgestellte Chats mit Altbestand v1 zaehlen weiter)."""
     return {r[0] for r in c.execute("SELECT DISTINCT m2.uid FROM chat_member m1 JOIN chat_member m2 ON m2.chat_id=m1.chat_id "
-                                    "JOIN chat ch ON ch.id=m1.chat_id WHERE m1.uid=? AND (ch.v=1 OR ch.v3_seq IS NOT NULL)", (uid,))}
+                                    "JOIN chat ch ON ch.id=m1.chat_id WHERE m1.uid=? AND " + legacy_sql(), (uid,))}
 
 
 @router.get("/api/chat/keys")
@@ -973,11 +1045,17 @@ def _my_device(c, uid, device):
     """Eigenes aktives Geraet (Anfrage-Parameter device) oder None; merkt 'zuletzt gesehen' (hoechstens jede Minute)."""
     if not device or not _HEX32.fullmatch(device):
         return None
-    r = c.execute("SELECT last_seen FROM chat_device WHERE id=? AND uid=? AND revoked_at IS NULL", (device, uid)).fetchone()
+    r = c.execute("SELECT last_seen, caps FROM chat_device WHERE id=? AND uid=? AND revoked_at IS NULL", (device, uid)).fetchone()
     if not r:
         return None
     if (r[0] or 0) < time.time() - 60:
         c.execute("UPDATE chat_device SET last_seen=? WHERE id=?", (time.time(), device))
+    if CHAT_LEVEL.get() >= 3 and '"chat3"' not in (r[1] or ""):    # 2.5: Geraet kann Stufe 3 (fuer den Umstellauftrag)
+        try:
+            caps = [x for x in json.loads(r[1] or "[]") if isinstance(x, str)][:15]
+        except ValueError:
+            caps = []
+        c.execute("UPDATE chat_device SET caps=? WHERE id=?", (json.dumps(caps + ["chat3"], separators=(",", ":")), device))
     return device
 
 
@@ -1092,8 +1170,16 @@ def _chat_dict(c, uid, ch, mem, m, device, full=False):
         d["max_members"] = MEMBERS_MAX
         if CALLS is not None:                         # 2.4: Gruppenanruf moeglich? laufender Anruf in diesem Chat?
             CALLS.chat_extra(c, uid, ch, d)
+    if not hfmt(ch) and FED is not None and CHAT_LEVEL.get() >= 3:
+        for x in d["members"]:                        # 2.5: Handles im Chat v1 - fuer die Vertrauens-Uebernahme der Apps
+            if not sharing.is_remote(x["username"]):
+                x["handle"] = FED.my_handle(c, x["username"])
+    if ch.get("v3_seq") is not None:                  # 2.5: umgestellt - Nachrichten bis v3_seq im Format v1
+        d["v3"] = {"seq": ch["v3_seq"], "at": ch["v3_at"], "forced": bool(ch["v3_forced"])}
     if hfmt(ch):                                      # 2.3: Chat ueber Servergrenzen (saga.fed_chat); 2.5: Stufe 3 ebenso
         FED.chat_extra(c, uid, ch, d, mem, m)
+        if ch.get("v3_forced") and CHAT_LEVEL.get() < 3 and time.time() - (ch.get("v3_at") or 0) < VERIFY_HINT_S:
+            d["name"] = (d.get("name") or "") + " · " + t("Sicherheitsnummer bitte neu prüfen")     # aeltere Apps: deutlich im Namen
         if not V2_CLIENT.get():                       # aeltere App: Hinweis statt kaputter Nachrichten
             d["name"] = (d.get("name") or "") + " · " + t("bitte App aktualisieren")
             d["fed_hint"] = v3_hint() if is_v3(ch) else fed_hint()
@@ -1662,6 +1748,9 @@ async def api_send(cid: int, request: Request):
         ch, m, mem, err = _chat_for(c, uid, cid)
         if err:
             return err
+        if c.execute("SELECT v FROM chat WHERE id=? FOR SHARE", (ch["id"],)).fetchone()[0] != 1:     # 2.5: gerade umgestellt
+            return _no_store({"error": t("Die Mitglieder oder ihre Geräte haben sich geändert – bitte erneut senden."), "recipients": [],
+                              "chat_changed": True}, 409)
         if len(mem) > MEMBERS_MAX:
             return _bad(t("Höchstens {n} Mitglieder je Chat.", n=MEMBERS_MAX), 409)
         if kind == "title" and ch["kind"] != "free":
@@ -2033,6 +2122,11 @@ def delete_account(c, uid):
         c.execute(f"DELETE FROM chat_file WHERE id IN ({','.join('?' * len(fids))})", tuple(fids))
     c.execute("UPDATE chat SET title_seq=NULL WHERE title_seq IN (SELECT seq FROM chat_msg WHERE sender_uid=?)", (uid,))
     c.execute("DELETE FROM chat_ai_reply WHERE msg_id IN (SELECT id FROM chat_msg WHERE sender_uid=?)", (uid,))
+    # 2.5 (Stufe 3): Reaktionen des Kontos (je Handle) weg; Verweise anderer Nachrichten auf seine Bearbeitungen loesen
+    h = c.execute("SELECT handle FROM fed_handle WHERE uid=?", (uid,)).fetchone()
+    if h and FED is not None:
+        c.execute("DELETE FROM chat_reaction WHERE reactor=?", (FED.FK.full_handle(h[0]),))
+    c.execute("UPDATE chat_msg SET edit_seq=NULL, edited_at=NULL, edit_n=0 WHERE edit_seq IN (SELECT seq FROM chat_msg WHERE sender_uid=?)", (uid,))
     n = c.execute("DELETE FROM chat_msg WHERE sender_uid=?", (uid,)).rowcount
     # KI im Chat (2.1): nie gesendete Belege weg; Belege, deren Nachricht bleibt, ohne Personenbezug behalten (die
     # Kennzeichnung als KI-Antwort bleibt gueltig). Wer die KI in einem Chat erlaubt hat, wird vergessen.

@@ -274,6 +274,9 @@ def _has(caps, cap):
 def note_caps(c, uid, dev, caps):
     """Vom Geraet gemeldete Faehigkeiten merken (Hinweis: wer "multi" kann, wird zu Gruppenanrufen eingeladen)."""
     if isinstance(dev, str) and _HEX32.fullmatch(dev) and isinstance(caps, str):
+        r = c.execute("SELECT caps FROM chat_device WHERE id=? AND uid=?", (dev, uid)).fetchone()
+        if r and "chat3" in caps_out(r[0]) and "chat3" not in caps_out(caps):    # 2.5: Chat-Stufe meldet saga.chat (bleibt)
+            caps = json.dumps(caps_out(caps) + ["chat3"], separators=(",", ":"))
         c.execute("UPDATE chat_device SET caps=? WHERE id=? AND uid=? AND caps<>?", (caps, dev, uid, caps))
 
 

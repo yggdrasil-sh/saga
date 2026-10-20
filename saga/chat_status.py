@@ -31,7 +31,7 @@ from starlette.concurrency import run_in_threadpool
 
 from db import connect as _db
 from saga import bus, chat, fed_chat as FC, federation as F, live, sharing
-from saga.core import _bad, _body, t
+from saga.core import _bad, _body, legacy_sql, t
 
 router = APIRouter()
 
@@ -419,7 +419,7 @@ def _shared(c, uid, targets, v1=False):
     return {r[0] for r in c.execute(
         "SELECT DISTINCT b.uid FROM chat_member a JOIN chat_member b ON b.chat_id=a.chat_id" + (" JOIN chat ch ON ch.id=a.chat_id" if v1 else "") +
         " WHERE a.uid=? AND a.left_at IS NULL AND a.state='ok' AND b.left_at IS NULL AND b.state='ok' AND b.uid IN "
-        f"({','.join('?' * len(targets))})" + (" AND (ch.v=1 OR ch.v3_seq IS NOT NULL)" if v1 else ""), (uid, *targets))}
+        f"({','.join('?' * len(targets))})" + (" AND " + legacy_sql("a", "b") if v1 else ""), (uid, *targets))}
 
 
 def _asked(c, users):
