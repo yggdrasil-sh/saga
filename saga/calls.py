@@ -297,6 +297,18 @@ def _who_label(c, u, nm):
     return {"name": nm.get(u) or t("Gelöschtes Konto")}
 
 
+_RV_LAST = [0.0]
+
+
+def _rv():
+    """2.4: Stand einer Teilnehmerliste (call.roster und Anruf-Objekte) - streng steigend in diesem Prozess. Apps verwerfen
+    eine Liste mit kleinerem rv als die zuletzt uebernommene. Ereignisse bekommen ihn erst nach dem Commit, Antworten vor
+    dem Lesen der Endpunkte: eine Liste mit groesserem rv ist nie aelter."""
+    v = max(time.time(), _RV_LAST[0] + 0.001)
+    _RV_LAST[0] = v
+    return round(v, 3)
+
+
 def roster(c, call, uid=None, legs=None):
     """Endpunkte fuer Clients: [{who, name, device, dev_name, role, state, caps, me, joined, handle?, host?}] (nur aktive)."""
     legs = _legs(c, call["id"]) if legs is None else legs
@@ -376,6 +388,7 @@ def _dict(c, call, uid, nm=None, legs=None):
         pd.update(handle=FED.FC.handle_of(peer), name=FED.FC.label_of(c, peer)["name"])
     elif fed and group:
         pd["handle"] = FED.FC.my_handle(c, peer)
+    rv = _rv()                                           # vor dem Lesen der Endpunkte (siehe _rv)
     legs = _legs(c, call["id"]) if legs is None else legs
     can, why = _joinable(c, call, uid, legs)
     d = {"id": call["id"], "chat_id": call["chat_id"], "media": call["media"], "state": call["state"], "reason": call["reason"],
@@ -387,9 +400,11 @@ def _dict(c, call, uid, nm=None, legs=None):
          "expires_in": max(0, round(call["created"] + ring_s() - now, 1)) if call["state"] == "ringing" else None,
          # 2.4 E4/E5: Raum - Art, Endpunkte je Geraet, ob (ein weiteres Geraet von) uid beitreten kann, Grenze
          "kind": call["kind"], "legs": roster(c, call, uid, legs), "joinable": can, "join_block": why, "limit": limit(call["media"]),
-         "mine": [x["device"] for x in legs if x["who"] == uid]}
+         "mine": [x["device"] for x in legs if x["who"] == uid], "rv": rv}
     if group:
         d["from"] = dict(pd)
+        n = len(chat.members(c, call["chat_id"]))         # wie ring_group: grosse Gruppen klingeln nur still
+        d["members"], d["silent"] = n, n > RING_SILENT
         inv = c.execute("SELECT state FROM chat_call_invite WHERE call_id=? AND who=?", (call["id"], uid)).fetchone()
         d["invite"] = inv[0] if inv else None
         d["old"] = [r[0] for r in c.execute("SELECT who FROM chat_call_invite WHERE call_id=? AND state='old'", (call["id"],)).fetchall()]
@@ -483,7 +498,10 @@ def emit_roster(c, call, legs=None, fed=True):
     base = {"call_id": call["id"], "chat_id": call["chat_id"], "kind": call["kind"], "media": call["media"], "state": call["state"],
             "limit": limit(call["media"])}
     can, why = _joinable(c, call, None, legs)
-    _emit(c, _audience(c, call), "call.roster", dict(base, legs=roster(c, call, None, legs), joinable=can, join_block=why))
+    data = dict(base, legs=roster(c, call, None, legs), joinable=can, join_block=why)
+    after = getattr(c, "after_commit", None)                  # rv erst nach dem Commit (vor dem Versand, siehe _rv)
+    after(lambda: data.__setitem__("rv", _rv())) if after is not None else data.__setitem__("rv", _rv())
+    _emit(c, _audience(c, call), "call.roster", data)
     if fed and FED is not None and call.get("lead") is None and _fedcall(c, call):
         FED.roster_out(c, call, legs)
 

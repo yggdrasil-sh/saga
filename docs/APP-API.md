@@ -395,7 +395,7 @@ der signierten SDP – E2E wie bisher, der Server sieht keine SDP. Signatur und 
 
 ```json
 {"id":"…","kind":"dm","media":"video","state":"active","limit":4,"joinable":true,"join_block":null,
- "mine":["5cbb…"],
+ "mine":["5cbb…"],"rv":1792458591.204,
  "legs":[{"who":"anna","name":"Anna","device":"0e32…","dev_name":"iPhone","role":"member","state":"active",
           "caps":["reneg","want","bye","screen2","multi"],"joined":1792458574.1,"me":false},
          {"who":"bert","name":"Bert","device":"5cbb…","dev_name":"MacBook","role":"companion","state":"active",
@@ -406,8 +406,13 @@ der signierten SDP – E2E wie bisher, der Server sieht keine SDP. Signatur und 
   Personen auch `host`). `role`: `member` · `companion` (Begleitgerät) · `handover` (übernimmt, mit `replaces`).
 - `mine`: eigene Geräte im Anruf. `joinable`/`join_block`: kann ein (weiteres) Gerät beitreten – `old` (jemand braucht
   Saga 2.4), `full`, `ended`, `none` (1:1 noch nicht angenommen).
+- `rv`: Stand der Teilnehmerliste (Zahl, streng steigend; auch in `call.roster`). Eine Liste (`legs`) aus Antwort oder
+  Ereignis nur übernehmen, wenn ihr `rv` nicht kleiner ist als das der zuletzt übernommenen – Antworten und Ereignisse
+  können sich überholen. Fehlt `rv` (ältere 2.4-Testserver), wie bisher immer übernehmen.
 - Gruppe: `role: "member"`, `from` (wer begonnen hat), `invite` (eigene Einladung: `ringing` · `declined` · `joined` ·
-  `old` · `missed`), `old` (Personen ohne 2.4-Gerät, `[{who, name}]`).
+  `old` · `missed`), `old` (Personen ohne 2.4-Gerät, `[{who, name}]`), `members` (Mitglieder des Chats) und `silent`
+  (mehr als `ring_silent` Mitglieder) wie in `call.invite` – auch ein aus `GET /api/calls/active` nachgeholtes Klingeln
+  ist bei `silent: true` still (nur „Anruf läuft – beitreten“).
 - `GET /api/chats/{id}` → `chat.call`: `{"group": true|false, "group_block": "<Hinweis>"|null, "running": {id, media, kind,
   state, n, joinable, join_block, mine}|null}`. Den Gruppenanruf-Knopf nur zeigen, wenn `group` true ist (föderiert: alle
   Server melden `calls3`).
@@ -432,7 +437,7 @@ sind; dem niemand beitritt, endet er nach `ring_s` (verpasst).
 
 ### Live-Ereignisse und Mitteilungen
 
-- `call.roster` `{call_id, chat_id, kind, media, state, limit, legs, joinable, join_block}` an alle Konten des Anrufs
+- `call.roster` `{call_id, chat_id, kind, media, state, limit, legs, joinable, join_block, rv}` an alle Konten des Anrufs
   (1:1 beide Personen mit **allen** Geräten, Gruppe alle Mitglieder). `legs[].me` ist hier immer `false` – eigene
   Endpunkte über `who` erkennen.
 - `call.invite` `{call_id, chat_id, kind: "group", media, from: {username, name, avatar, handle?, chat}, from_device,

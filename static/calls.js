@@ -765,6 +765,9 @@
   // "hat verlassen", Verbindungen zu Geraeten trennen, die nicht mehr dabei sind
   function rosterIn(R, legs, extra) {
     if (!Array.isArray(legs) || R.done) return;
+    // 2.4: rv = Stand der Liste - eine aeltere (kam nach einer neueren an) verwerfen
+    var rv = extra && typeof extra.rv === 'number' ? extra.rv : null;
+    if (rv !== null) { if (R.rv && rv < R.rv) return; R.rv = rv; }
     var old = {}; (R.legs || []).forEach(function (x) { old[x.device] = x; });
     var first = !R.legs, here = bridge() ? myDev().id : '';
     R.legs = legs;
@@ -808,7 +811,7 @@
     R.inc[dev] = true;
     var x0 = legOf(R, dev);
     (x0 ? Promise.resolve(x0) : api('GET', '/api/calls/' + R.id + '?device=' + q(myDev().id)).then(function (r) {
-      rosterIn(R, r.call.legs); return legOf(R, dev);
+      rosterIn(R, r.call.legs, r.call); return legOf(R, dev);
     })).then(function (x) {
       if (!x || !live(R) || linkOf(R, dev)) return;
       var L = newLink(R, dev, personOf(x));
@@ -904,7 +907,7 @@
     }).then(function (r) {
       if (!live(R)) { api('POST', '/api/calls/' + R.id + '/leave', { device: me_ }).catch(function () {}); return; }
       R.ready = true; R.inRoom = true; R.call = r.call;
-      rosterIn(R, r.call.legs);
+      rosterIn(R, r.call.legs, r.call);
       status(R, links(R).length ? T('Verbinde …') : T('Warte auf die anderen …'));
       aliveOn(R);
       each(R, function (L) { flushIce(L); L.connT = setTimeout(function () { if (live(L) && !L.connected) iceFailed(L); }, 30000); });
@@ -984,7 +987,7 @@
     }).then(function (r) {
       if (!live(R)) { api('POST', '/api/calls/' + r.call.id + '/end', { reason: 'hangup', device: myDev().id }).catch(function () {}); return; }
       R.ready = true; R.inRoom = true; R.call = r.call; R.v2 = r.call.v === 2;
-      rosterIn(R, r.call.legs);
+      rosterIn(R, r.call.legs, r.call);
       status(R, T('Klingelt bei den anderen …')); playTone('back');
       aliveOn(R);
       R.early.splice(0).forEach(function (d) { sigRoute(R, d); });
@@ -1900,7 +1903,7 @@
         else if (x.kind === 'group' && (x.mine || []).length && RINGS[x.id] && !(C && C.id === x.id)) unring(x.id);   // eigenes Geraet ist dabei
         else if (x.kind === 'group' && x.invite === 'ringing' && !(x.mine || []).length && !RINGS[x.id] && !(C && C.id === x.id)
                  && Date.now() / 1000 - x.created < (x.ring_s || 45))
-          ring({ call_id: x.id, chat_id: x.chat_id, media: x.media, from: x.from, group: true, ring_s: x.ring_s,
+          ring({ call_id: x.id, chat_id: x.chat_id, media: x.media, from: x.from, group: true, silent: !!x.silent, ring_s: x.ring_s,
                  expires_in: Math.max(5, x.created + (x.ring_s || 45) - Date.now() / 1000) });
         runBar(x);
       });

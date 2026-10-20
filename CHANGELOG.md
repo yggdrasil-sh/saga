@@ -80,7 +80,7 @@ automatisch; Backups von 2.3 bleiben einspielbar.
   melden; Geräte ohne `multi` (2.1/2.3, E0) werden nicht eingeladen und sehen „braucht Saga 2.4“. 2.3-Apps und -Server
   bleiben bei 1:1.
 - **Server:** neue Endpunkte `POST /api/calls/{id}/join`, `/leave`, `/invite`, `PUT /api/calls/caps`; `POST /api/calls`
-  startet in Gruppen-Chats einen Gruppenanruf; Anruf-Objekte mit `kind`, `legs`, `joinable`; Live `call.roster` und
+  startet in Gruppen-Chats einen Gruppenanruf; Anruf-Objekte mit `kind`, `legs`, `joinable`, `rv` (Stand der Liste, auch in `call.roster`) und bei Gruppen `silent`/`members` (auch in `/api/calls/active`); Live `call.roster` und
   `call.invite`; Push-Art `call.group`; `features` `multi` und `group`. Föderation: Cap `calls3`, Aufträge `join`,
   `leave`, `roster`, `invite`; den Anruf führt der Server der anrufenden Person bzw. das Heim des Chats, Signale laufen
   sternförmig über ihn (auch zwischen Servern, die nicht direkt verbunden sind). Sicherung: ältere Backups ohne die neuen

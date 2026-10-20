@@ -184,6 +184,7 @@ def run():
     ok(f"B nimmt an: zwei Endpunkte, joinable fuer weitere eigene Geraete ({s}, {len(d['call']['legs'])}, {d['call']['joinable']})",
        s == 200 and len(d["call"]["legs"]) == 2 and d["call"]["joinable"] is True)
     ev = sB.wait("call.roster", lambda x: x["call_id"] == cid, mB)
+    rv1 = (ev or {}).get("rv")
     ok("call.roster an B (auch an seine anderen Geraete: 'Anruf laeuft auf …') mit Geraetenamen",
        ev and {x["device"] for x in ev["legs"]} == {A.dev["id"], B.dev["id"]} and all(x.get("dev_name") for x in ev["legs"]) and ev["joinable"])
     s, act = req("GET", "/api/calls/active", B.k)
@@ -202,6 +203,11 @@ def run():
     ok("B bekommt das Angebot von A2 (versiegelt, signiert von A2, pc = Paar A2/B)", gb and gb[-1][1]["t"] == "offer" and gb[-1][1]["pc"] == pc(A2, B.dev))
     ev = sB.wait("call.roster", lambda x: x["call_id"] == cid and len(x["legs"]) == 3, mB)
     ok("call.roster an B: drei Endpunkte, A2 companion", ev and any(x["device"] == A2["id"] and x["role"] == "companion" for x in ev["legs"]))
+    rv2 = (ev or {}).get("rv")
+    s, gd = req("GET", f"/api/calls/{cid}", B.k)
+    rv3 = (gd.get("call") or {}).get("rv")
+    ok(f"rv: call.roster und GET tragen den Stand der Liste, streng steigend ({rv1} < {rv2} < {rv3})",
+       all(isinstance(x, (int, float)) for x in (rv1, rv2, rv3)) and rv1 < rv2 < rv3)
     ok("... und an A (eigene Geraete)", sA.wait("call.roster", lambda x: x["call_id"] == cid and len(x["legs"]) == 3, mA) is not None)
     s1 = sig(B, B.dev, cid, A, A2, body("answer", 1, pc(A2, B.dev)))[0]
     s2 = sig(A, A2, cid, B, B.dev, json.dumps({"t": "ice", "pc": pc(A2, B.dev), "c": []}))[0]
@@ -439,6 +445,20 @@ def run():
     ok(f"4er-Mesh: {nsig} Signale ueber den Server in {dt * 1000:.0f} ms (Ziel Aufbau <= 2 s)", dt <= 2.0 and len(legs(A, g5)) == 4)
     for p, _ in ppl:
         req("POST", f"/api/calls/{g5}/end", p.k, {})
+
+    # --- grosse Gruppe (mehr als RING_SILENT Mitglieder): still, auch in /api/calls/active (nachgeholtes Klingeln) ----
+    s, d = req("POST", "/api/chats", G.k, {"kind": "free", "members": ["ca-rh", "ca-ri", "ca-rj", "ca-ra", "ca-rb", "ca-rc", "ca-rd",
+                                                                       "ca-re", "ca-rf"]})
+    gid3, g6 = d["chat"]["id"], secrets.token_hex(16)
+    req("POST", "/api/calls", G.k, {"id": g6, "chat_id": gid3, "media": "audio", "device": G.dev["id"], "caps": CAPS})
+    s, act = req("GET", "/api/calls/active", H.k)
+    a6 = next((x for x in act.get("calls", []) if x["id"] == g6), {})
+    ok(f"/api/calls/active: grosse Gruppe still (silent, members) wie call.invite ({a6.get('silent')}, {a6.get('members')})",
+       a6.get("silent") is True and a6.get("members") == 10 and a6.get("invite") == "ringing")
+    s, act = req("GET", "/api/calls/active", Cc.k)
+    a1 = next((x for x in act.get("calls", []) if x["id"] == g1), None)
+    ok("... kleine Gruppe nicht still", a1 is None or (a1.get("silent") is False and a1.get("members") == 6))
+    req("POST", f"/api/calls/{g6}/end", G.k, {})
 
     # --- Datenschutz --------------------------------------------------------------------------------------------------
     ok("Server sieht keine SDP (Datenbank)", not A_.plaintext_hits(SDP_MARK))
