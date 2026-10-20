@@ -18,6 +18,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/pion/turn/v5"
 	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/fwd"
+	"github.com/yggdrasil-sh/saga/gjallarhorn/internal/netx"
 )
 
 //go:embed web
@@ -201,6 +202,7 @@ type nodeStats struct {
 	Pauses        uint64  `json:"pauses"`
 	WriteStalls   uint64  `json:"write_stalls"`
 	PLIp95ms      float64 `json:"pli_p95_ms"`
+	TailProbes    uint64  `json:"tail_probes"`
 }
 
 func (s *server) nodeStats() nodeStats {
@@ -218,7 +220,7 @@ func (s *server) nodeStats() nodeStats {
 		TCPConns: s.mux.Stats.Accepted.Load(), BBRConns: s.mux.Stats.BBR.Load(),
 		Uptime:     time.Since(s.start).Seconds(),
 		TIDSkipped: fwd.Totals.TIDSkipped.Load(), Switches: fwd.Totals.Switches.Load(), Pauses: fwd.Totals.Pauses.Load(),
-		WriteStalls: fwd.Totals.WriteStalls.Load(), PLIp95ms: fwd.PLIRespP(0.95),
+		WriteStalls: fwd.Totals.WriteStalls.Load(), PLIp95ms: fwd.PLIRespP(0.95), TailProbes: netx.TailProbes.Load(),
 	}
 	if s.udp != nil {
 		ns.UDPDropped = s.udp.Dropped.Load()

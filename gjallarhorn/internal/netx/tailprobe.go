@@ -80,7 +80,9 @@ func (c *CoalesceConn) onProbe() {
 }
 
 // ProbeConn ergaenzt eine Verbindung (TURN ueber TLS) um den Nachlaeufer:
-// nach jedem Schreiben ohne Folgedaten innerhalb von Delay ein Frame.
+// nach jedem Schreiben ohne Folgedaten innerhalb von Delay ein Frame. Erst
+// nach dem ersten ChannelData-Schreiben (Medien laufen, Allokation fertig):
+// Waehrend der Allokation stoert eine fremde STUN-Nachricht Chromium.
 type ProbeConn struct {
 	net.Conn
 	Frame []byte
@@ -89,7 +91,11 @@ type ProbeConn struct {
 	mu    sync.Mutex
 	t     *time.Timer
 	armed bool
+	media bool
 }
+
+// isChannelData: TURN-ChannelData beginnt mit 0x40..0x7f (RFC 8656).
+func isChannelData(b []byte) bool { return len(b) >= 4 && b[0] >= 0x40 && b[0] <= 0x7f }
 
 // NewProbeConn umhuellt c.
 func NewProbeConn(c net.Conn, frame []byte, delay time.Duration) *ProbeConn {
@@ -104,7 +110,10 @@ func (p *ProbeConn) Write(b []byte) (int, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	n, err := p.Conn.Write(b)
-	if err == nil {
+	if !p.media && isChannelData(b) {
+		p.media = true
+	}
+	if err == nil && p.media {
 		p.armed = true
 		p.t.Reset(p.Delay)
 	}

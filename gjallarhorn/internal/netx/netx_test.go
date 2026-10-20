@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -466,4 +467,79 @@ func TestICEMux(t *testing.T) {
 	if _, err := c2.Read(buf); err == nil {
 		t.Fatal("unbekannte verbindung offen")
 	}
+}
+
+type wrec struct {
+	mu sync.Mutex
+	w  [][]byte
+	net.Conn
+}
+
+func (r *wrec) Write(b []byte) (int, error) {
+	r.mu.Lock()
+	r.w = append(r.w, append([]byte(nil), b...))
+	r.mu.Unlock()
+	return len(b), nil
+}
+
+func (r *wrec) n() int { r.mu.Lock(); defer r.mu.Unlock(); return len(r.w) }
+
+func TestTailProbe(t *testing.T) {
+	// TURN: kein Nachlaeufer waehrend der Allokation (STUN), danach ja
+	r := &wrec{}
+	p := NewProbeConn(r, TailFrameTURN, 5*time.Millisecond)
+	p.Write([]byte{0x01, 0x03, 0, 0}) // Allocate-Antwort
+	time.Sleep(30 * time.Millisecond)
+	if r.n() != 1 {
+		t.Fatalf("nachlaeufer vor medien: %d", r.n())
+	}
+	p.Write([]byte{0x40, 0x00, 0, 4, 1, 2, 3, 4}) // ChannelData
+	time.Sleep(30 * time.Millisecond)
+	if r.n() != 3 || !bytes.Equal(r.w[2], TailFrameTURN) {
+		t.Fatalf("kein nachlaeufer nach channeldata: %d", r.n())
+	}
+	// Folgedaten innerhalb der Frist: kein Nachlaeufer
+	for i := 0; i < 5; i++ {
+		p.Write([]byte{0x40, 0x00, 0, 0})
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(30 * time.Millisecond)
+	if r.n() != 3+5+1 {
+		t.Fatalf("schreibvorgaenge %d", r.n())
+	}
+	// STUN-Nachlaeufer ist gueltig (FINGERPRINT, Indication)
+	if !IsSTUN(stunIndication) || stunIndication[0] != 0 || stunIndication[1] != 0x11 || len(TailFrameICE) != 30 {
+		t.Fatal("nachlaeufer-format")
+	}
+	// ICE-TCP: gebuendelte Verbindung schickt nach dem Leeren den Rahmen
+	a, b := net.Pipe()
+	defer a.Close()
+	cc := NewCoalesceConn(a)
+	cc.Enable()
+	cc.EnableTailProbe(TailFrameICE, 5*time.Millisecond)
+	got := make(chan []byte, 4)
+	go func() {
+		buf := make([]byte, 64)
+		for {
+			n, err := b.Read(buf)
+			if err != nil {
+				return
+			}
+			got <- append([]byte(nil), buf[:n]...)
+		}
+	}()
+	cc.Write([]byte{0, 2, 9, 9})
+	cc.Flush()
+	if x := <-got; !bytes.Equal(x, []byte{0, 2, 9, 9}) {
+		t.Fatalf("daten %v", x)
+	}
+	select {
+	case x := <-got:
+		if !bytes.Equal(x, TailFrameICE) {
+			t.Fatalf("rahmen %v", x)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("kein nachlaeufer auf ice-tcp")
+	}
+	cc.Close()
 }
