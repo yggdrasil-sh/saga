@@ -180,6 +180,10 @@ def run(media, node):
     # alle Browser kommen von 127.0.0.1: mit 10 Personen (HORN_PERF) mehr als 12 Beine je Adresse
     t = K.start(media, node, {"HORN_MAX_PER_IP": "40"} if os.environ.get("HORN_PERF") == "1" else None)
     ok(f"Instanz laeuft ({t and round(t, 2)} s)", t is not None)
+    # Flag calls.horn aus (frisch gestartete Instanz): Gastgeber-Funktionen gibt es nicht
+    s, d = req("POST", f"/api/calls/{'0' * 32}/moderate", A_.ck(USERS[0][0]),
+               {"device": "1" * 32, "target": "2" * 32, "action": "mute"})
+    ok(f"moderate ohne Flag calls.horn -> 404 not available ({s}, {d})", s == 404 and isinstance(d, dict) and d.get("error") == "not available")
     K.flag(True)
     n = K.wait(K.node_ready, 25)
     ok("eingebauter Knoten bereit", n is not None)
@@ -280,6 +284,8 @@ def server_tests():
     # --- Gastgeber: stummschalten, entfernen --------------------------------------------------------------------------
     s, d = req("POST", f"/api/calls/{cid}/moderate", B.k, {"device": B.dev["id"], "target": Cc.dev["id"], "action": "mute"})
     ok(f"stummschalten durch Nicht-Gastgeber -> 403 ({s})", s == 403)
+    s, d = req("POST", f"/api/calls/{'0' * 32}/moderate", A.k, {"device": A.dev["id"], "target": D.dev["id"], "action": "mute"})
+    ok(f"mit Flag: unbekannter Anruf -> 404 not found ({s})", s == 404 and isinstance(d, dict) and d.get("error") == "not found")
     s, d = req("POST", f"/api/calls/{cid}/moderate", A.k, {"device": A.dev["id"], "target": A.dev["id"], "action": "mute"})
     ok(f"sich selbst -> 400 ({s})", s == 400)
     s, d = req("POST", f"/api/calls/{cid}/moderate", A.k, {"device": A.dev["id"], "target": D.dev["id"], "action": "kick"})

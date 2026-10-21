@@ -194,13 +194,30 @@ def run():
     ok("Original loeschen nimmt die Bearbeitung mit", s == 200 and left == 0, left)
 
     # --- Chat v1: nichts davon --------------------------------------------------------------------------------------------
+    s, r4, m4 = A.send_v2(dm, "vor dem Ausschalten")
     auth.save_setting("chat_v3", False)
     time.sleep(WAIT)
+    # 2.5-RC: Einstellung chat_v3 aus -> auch in Stufe-3-Chats keine Reaktionen/Bearbeitungen, keine Faehigkeiten
+    s, me = A.api("GET", "/api/chat/me")
+    feats = set(me.get("features") or [])
+    ok(f"chat_v3 aus: /api/chat/me ohne react/edit/voice/chat3 und ohne x3_limits ({sorted(feats)})",
+       s == 200 and not feats & {"react", "edit", "voice", "chat3"} and "x3_limits" not in me)
+    ok("chat_v3 aus: Stufe-3-Chat mit x3_ok false", A.chat(dm["id"]).get("x3_ok") is False)
+    fresh = C.encrypt_reaction(key_of(B, bdm, bm1), dm["ref"], m1["id"], B.handle, B.dev, "👍")
+    s, d = B.api("PUT", f"/api/chats/{dm['id']}/messages/{m1['id']}/reaction", {k: fresh[k] for k in ("dev", "ts", "ct", "sig")})
+    ok(f"chat_v3 aus: Reaktion -> 409 ({s})", s == 409, d)
+    s, d, _ = edit(A, dm, m4["id"], "nachher")
+    ok(f"chat_v3 aus: Bearbeiten -> 409 ({s})", s == 409, d)
     v1 = A.api("POST", "/api/chats", {"kind": "free", "members": ["cx-cora"]})[1]["chat"]
     s, d0, mv = A.send(v1["id"], "v1")
     s, d = A.api("PUT", f"/api/chats/{v1['id']}/messages/{mv['id']}/reaction", {"dev": A.dev["id"], "ts": int(time.time() * 1000), "ct": good["ct"], "sig": good["sig"]})
     ok(f"Chat v1: keine Reaktionen (409) und x3_ok false ({s})", s == 409 and A.chat(v1["id"]).get("x3_ok") is not True, d)
     auth.save_setting("chat_v3", True)
+    time.sleep(WAIT)
+    ok("chat_v3 wieder an: Stufe-3-Chat mit x3_ok, Faehigkeiten wieder da", A.chat(dm["id"]).get("x3_ok") is True
+       and {"react", "edit", "voice"} <= set(A.api("GET", "/api/chat/me")[1].get("features") or []))
+    s, d, _ = edit(A, dm, m4["id"], "nachher")
+    ok(f"chat_v3 wieder an: Bearbeiten geht ({s})", s == 200, d)
 
     # --- Kontoloeschung --------------------------------------------------------------------------------------------------
     from saga.userdata import delete_user_data

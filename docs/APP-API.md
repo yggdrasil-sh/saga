@@ -637,7 +637,8 @@ Apps (P11/P12) übernehmen dieselben Regeln. Alles Neue ist rückwärtsverträgl
   409). Läuft dort nichts mehr (Knoten getrennt, `draining`, voll oder gemieden), kommen die besten bereiten Knoten; der
   erste, auf den jemand wechselt, ist danach der Knoten des Anrufs (`here: true`). Ein Beitritt landet ebenso dort.
 
-**Gastgeber:** `POST /api/calls/{id}/moderate {device, target, action: mute|remove}` – nur wer den Gruppenanruf begonnen
+**Gastgeber:** `POST /api/calls/{id}/moderate {device, target, action: mute|remove}` – nur mit Flag `calls.horn` (sonst
+404 `not available`; `by` ist der Anzeigename, nie der Anmeldename), nur wer den Gruppenanruf begonnen
 hat (sonst 403), nicht für eigene Geräte (400). `mute`: Ereignis `call.mod {call_id, chat_id, action, device, by}` an die
 Person; ihr Gerät `device` schaltet das Mikrofon aus und zeigt „{by} hat dich stummgeschaltet“ (sie kann es selbst wieder
 einschalten – Ton bleibt Ende-zu-Ende verschlüsselt, der Server kann nicht selbst stummschalten). `remove`: alle Geräte
@@ -1135,7 +1136,9 @@ einem Gerät ab App 2.3). Bestehende Chats bleiben vorerst v1.
   `members[].handle`: daraus übernimmt die App ihr Vertrauen `trust:<benutzer>` → `trust2:<handle>`, aber nur bei gleichem
   Identitätsschlüssel (`tests/vectors/chat_v3.json`, `tofu_migrate`). Senden v1 in einen gerade umgestellten Chat: 409
   mit `chat_changed: true` – Chat neu laden.
-- **Reaktionen, Bearbeiten, Sprachnachrichten (`x3_ok`):** nur, wenn das Chat-Objekt `x3_ok: true` meldet (Format v2,
+- **Reaktionen, Bearbeiten, Sprachnachrichten (`x3_ok`):** nur mit der Einstellung `chat_v3` (wie Stufe 3, Standard aus;
+  aus: keine Fähigkeit `chat3` in der Föderation, `x3_ok: false`, Endpunkte 409, keine `react`/`edit`/`voice` in
+  `features`) und nur, wenn das Chat-Objekt `x3_ok: true` meldet (Format v2,
   angenommen, nicht schreibgeschützt, alle Server mit `chat3`); `GET /api/chat/me` meldet `features` mit `react`, `edit`,
   `voice` und `x3_limits` (`edit_window` 86400, `edit_max` 20, `emoji_max` 32, `react_ct_max`, `react_rate`,
   `voice_max_s` 900, `voice_kbps` 24, `voice_max_bytes`). Formate: `saga/chat_v3.py`, Vektoren `tests/vectors/chat_v3.json`.

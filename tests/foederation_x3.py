@@ -4,8 +4,11 @@
 Geprueft: Faehigkeit chat3 (CAPS2) und x3_ok auf beiden Seiten; Reaktion vom Teilnehmer (Auftrag 'react' an das Heim) und
 vom Heim (Ereignis 'chat.react'), je Person eine, Signatur von der anderen Seite pruefbar; Bearbeitung durch das Heim
 (Ereignis 'chat.msg.edit') und durch den Teilnehmer (Auftrag 'edit'), kein Verlauf, fremde Nachricht wird abgewiesen.
-Kompatibilitaet: FED_B_APP = Saga 2.4 (ohne chat3) -> x3_ok false, Reaktion/Bearbeiten 409, keine Serverfehler. Raeumt auf."""
-import json, os, sys
+Kompatibilitaet: FED_B_APP = Saga 2.4 (ohne chat3) -> x3_ok false, Reaktion/Bearbeiten 409, keine Serverfehler.
+2.5-RC: chat3 haengt an der Einstellung chat_v3 (beide Instanzen schalten sie hier ein). Schaltet B sie ab: B meldet chat3
+nicht mehr, x3_ok false, eigene Reaktionen 409, eingehende Reaktionen von A werden ignoriert (ohne Serverfehler), nach dem
+Abgleich der Faehigkeiten (hello) auch bei A x3_ok false. Raeumt auf."""
+import json, os, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import foederation_chat as FT  # noqa: E402
@@ -51,7 +54,14 @@ def caps(k):
     return set(json.loads(sql(k, "SELECT caps FROM fed_peer")[0][0] or "[]"))
 
 
-def part_main():
+V3_ON = 'auth.save_setting("chat_v3", True)\nprint(json.dumps(True))'
+for _mod in (T, F2):                                # chat3 nur mit der Einstellung chat_v3 (2.5-RC)
+    for _n in ("SETUP", "SETUP_B"):
+        if isinstance(getattr(_mod, _n, None), str) and "chat_v3" not in getattr(_mod, _n):
+            setattr(_mod, _n, getattr(_mod, _n).replace("print(json.dumps(True))", V3_ON))
+
+
+def part_main(adm=None):
     anna, bert = FT.User("a", "fa-anna"), FT.User("b", "fb-bert")
     ok("A und B: Faehigkeit chat3 ausgehandelt", wait(lambda: "chat3" in caps("a") and "chat3" in caps("b"), 20))
     s, d = api("a", "fa-anna", "POST", "/api/chats", {"kind": "dm", "handle": bert.handle, "device": anna.dev["id"]})
@@ -94,6 +104,28 @@ def part_main():
     (s, d), _ = edit(bert, bc, m1["id"], "fremd")
     ok(f"B: fremde Nachricht bearbeiten -> 403 ({s})", s == 403, d)
 
+    # --- B schaltet chat_v3 ab -------------------------------------------------------------------------------------------
+    sql("b", "INSERT INTO setting (k, v) VALUES ('chat_v3', 'false') ON CONFLICT (k) DO UPDATE SET v=EXCLUDED.v")
+    time.sleep(6)                                       # Einstellungen 5 s zwischengespeichert
+    bc = bert.chat(ch["ref"])
+    ok("B: chat_v3 aus -> x3_ok false", bc.get("x3_ok") is False, bc.get("x3_ok"))
+    bm = find(bert, bc, m1["id"])
+    (s, d), _ = react(bert, bc, bm, "🙏")
+    ok(f"B: Reaktion bei chat_v3 aus -> 409 ({s})", s == 409, d)
+    nb = sql("b", "SELECT COUNT(*) FROM chat_reaction")[0][0]
+    am = find(anna, ch, m1["id"])
+    (s, d), _ = react(anna, ch, am, "🎉")                 # A kennt den neuen Stand von B noch nicht (bis zum naechsten hello)
+    ok(f"A (Heim) reagiert weiter ({s}) - B ignoriert das Ereignis", s == 200
+       and not wait(lambda: sql("b", "SELECT COUNT(*) FROM chat_reaction")[0][0] != nb, 6), d)
+    if adm:
+        A, pa = adm
+        A.post({"action": "hello", "id": str(pa)})
+        ok("A: nach dem Abgleich meldet B kein chat3 mehr, x3_ok false",
+           wait(lambda: "chat3" not in caps("a"), 15)
+           and api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"].get("x3_ok") is False)
+        (s, d), _ = react(anna, ch, am, "🎈")
+        ok(f"A: Reaktion danach -> 409 ({s})", s == 409, d)
+
 
 def part_old():
     anna, bert = FT.User("a", "fa-anna"), FT.User("b", "fb-bert")
@@ -110,8 +142,8 @@ def part_old():
 
 def run():
     try:
-        F2.main()
-        part_old() if OLD else part_main()
+        A, B, pa, pb = F2.main()
+        part_old() if OLD else part_main((A, pa))
     except Exception:
         import traceback
         traceback.print_exc()

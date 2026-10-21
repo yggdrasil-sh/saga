@@ -68,7 +68,7 @@ from fastapi import APIRouter, Request
 import auth
 from db import connect as _db
 from saga import bus, chat, horn, horn_web, notify
-from saga.core import SECRET, _bad, _body, t
+from saga.core import SECRET, _bad, _body, local_ref, t
 from saga import sharing
 from saga.sharing import names
 
@@ -1436,6 +1436,8 @@ async def api_moderate(cid: str, request: Request):
     uid, err = _me(request)
     if err:
         return err
+    if not horn_on():                                  # nur mit Feature-Flag calls.horn (Gastgeber-Funktionen des Web-Clients P5)
+        return _bad("not available", 404)
     b = await _body(request) or {}
     dev, tgt, act = str(b.get("device") or ""), str(b.get("target") or ""), b.get("action")
     if act not in ("mute", "remove") or not _HEX32.fullmatch(dev) or not _HEX32.fullmatch(tgt) or dev == tgt:
@@ -1457,7 +1459,7 @@ async def api_moderate(cid: str, request: Request):
         if not _rate("moderate", uid, 30):
             return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
         nm = names(c, [uid])
-        ev = {"call_id": cid, "chat_id": call["chat_id"], "action": act, "device": tgt, "by": nm.get(uid) or uid}
+        ev = {"call_id": cid, "chat_id": call["chat_id"], "action": act, "device": tgt, "by": nm.get(uid) or local_ref(uid)}   # nie der Anmeldename
         if act == "remove":
             c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,'removed',?) ON CONFLICT (call_id, who) "
                       "DO UPDATE SET state='removed'", (cid, x["who"], time.time()))

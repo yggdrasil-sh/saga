@@ -21,6 +21,7 @@ import time
 from fastapi import APIRouter, Request
 from starlette.concurrency import run_in_threadpool
 
+import auth
 from db import connect as _db
 from saga import bus, chat, chat_v3 as V3, fed_chat as FC, fed_keys as FK, federation as F, sharing
 from saga.core import _bad, _body, t
@@ -45,7 +46,10 @@ _last = {}                         # chat_id -> letzte Sendung (monotonic)
 # Wann gibt es die Funktionen?
 # =====================================================================================================
 def x3_ok(c, ch, state="ok"):
-    """Reaktionen/Bearbeiten/Sprachnachrichten moeglich? Format v2, angenommen, nicht schreibgeschuetzt, alle Server chat3."""
+    """Reaktionen/Bearbeiten/Sprachnachrichten moeglich? Einstellung chat_v3 an (Standard aus), Format v2, angenommen,
+    nicht schreibgeschuetzt, alle Server chat3."""
+    if not x3_on():
+        return False
     if not chat.hfmt(ch) or (state or "ok") != "ok" or ch.get("fstate"):
         return False
     if ch["v"] == 3:
@@ -59,9 +63,16 @@ def chat_flags(c, ch, d):
     d["x3_ok"] = x3_ok(c, ch, d.get("state")) and not d.get("readonly")
 
 
+def x3_on():
+    """Reaktionen/Bearbeiten/Sprachnachrichten haengen an der Einstellung chat_v3 (2.5, Standard aus)."""
+    return bool(auth.settings().get("chat_v3"))
+
+
 def me_extra(orig):
     def fn(c, uid):
         out = dict(orig(c, uid)) if orig else {}
+        if not x3_on():
+            return out
         out["features"] = list(out.get("features") or []) + ["react", "edit", "voice"]
         out["x3_limits"] = {"edit_window": V3.EDIT_WINDOW, "edit_max": V3.EDIT_MAX, "emoji_max": V3.EMOJI_MAX, "react_ct_max": V3.REACT_CT_MAX,
                             "react_rate": REACT_RATE, "voice_max_s": VOICE_MAX_S, "voice_kbps": VOICE_KBPS, "voice_max_bytes": VOICE_MAX_BYTES}

@@ -79,10 +79,13 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # 2.4 (saga.chat_status): receipts = Gelesen-Bestaetigungen in Chats (versiegelt, ueber das Heim des Chats), online =
 # Online-Status von Chat-Partnern (Abo beim Server der Person). Mit 2.3-Servern: nichts davon, nichts wird gesendet.
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
-         "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "chat3"]
+         "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online"]
 # horn (2.5, Gjallarhorn, docs/HORN-E2E.md) = Gruppenanrufe ueber Knoten mit Frame-E2E: Signale fkey/fkey-ack laufen
 # versiegelt wie alle Anruf-Signale (Auftrag signal). Nur gemeldet, solange das Feature-Flag calls.horn an ist (caps2()).
-CAPS2_FLAG = {"horn": lambda: bool((auth.settings().get("calls") or {}).get("horn"))}   # wie saga.calls.horn_on()
+# chat3 (2.5, saga/chat_x3.py) = Reaktionen/Bearbeiten ueber Servergrenzen - nur mit der Einstellung chat_v3 (Standard aus);
+# aus: nicht gemeldet, eingehende x3-Auftraege 403 bzw. Ereignisse "ignored" (F.feature ist dann fuer alle Instanzen falsch).
+CAPS2_FLAG = {"horn": lambda: bool((auth.settings().get("calls") or {}).get("horn")),   # wie saga.calls.horn_on()
+              "chat3": lambda: bool(auth.settings().get("chat_v3"))}                    # wie saga.chat.v3_new()
 
 
 def caps2():

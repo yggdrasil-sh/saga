@@ -50,6 +50,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Reaktionen und Verweise auf Bearbeitungen auf. Neue Testreihe `chat_v3_umstellung`.
 
 ### Chat-Grundlagen: Reaktionen, Bearbeiten, Sprachnachrichten (Server)
+- **Vorerst abschaltbar:** hängt wie Stufe 3 an der Einstellung `chat_v3` (Standard aus). Aus: keine Fähigkeit `chat3`
+  gegenüber anderen Servern, `x3_ok: false`, Reaktion/Bearbeiten 409, eingehende Reaktionen/Bearbeitungen werden ignoriert.
 - **Reaktionen:** eine je Person und Nachricht, Ende-zu-Ende verschlüsselt mit einem aus dem Nachrichtenschlüssel
   abgeleiteten Schlüssel (`PUT /api/chats/{id}/messages/{mid}/reaction`, `rx` in `GET …/messages`,
   `GET /api/chats/{id}/reactions`, Live `chat.react` gebündelt). Der Server sieht wer, wann und worauf, nicht womit, und
@@ -191,7 +193,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
     Sprechring), Sprecheransicht, Bildschirm teilen über den Knoten, Weg „UDP/TCP/TLS“ mit Qualitätspunkt,
     Runensiegel mit Erklärung, Teilnehmerliste, Bild-im-Bild wie in 2.4. Vor dem Start ohne bereiten Knoten ein Hinweis
     auf die Mesh-Grenze.
-  - **Gastgeber:** `POST /api/calls/{id}/moderate` (stummschalten, entfernen). Entfernte Personen kommen erst nach
+  - **Gastgeber:** `POST /api/calls/{id}/moderate` (stummschalten, entfernen; nur mit Flag `calls.horn`). Entfernte Personen kommen erst nach
     einer neuen Einladung wieder hinein.
   - **Server:** Knotenwahl in `saga/horn_web.py` (fällt der Knoten des Anrufs aus, gehen alle auf den besten
     bereiten); `avoid` in `POST /api/calls/{id}/horn`; Teilnehmerliste mit `hpn` (Kennung je Knoten);
