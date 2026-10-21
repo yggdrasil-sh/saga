@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -73,6 +74,21 @@ func newAPI(se webrtc.SettingEngine, nack bool) (*webrtc.API, error) {
 	return webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(ir), webrtc.WithSettingEngine(se)), nil
 }
 
+// playout-delay (P9): auf TCP-/TLS-Beinen fuer Bild min/max in ms (HORN_PLAYOUT_DELAY="150,400", "0" = aus). Ersetzt fuer
+// Apps ohne jitterBufferTarget die Gegenmassnahme gegen Einfrieren auf TCP (Messung G4).
+const playoutDelayURI = "http://www.webrtc.org/experiments/rtp-hdrext/playout-delay"
+
+var playoutMin, playoutMax = func() (int, int) {
+	v := strings.TrimSpace(env("HORN_PLAYOUT_DELAY", "150,400"))
+	a, b, ok := strings.Cut(v, ",")
+	x, e1 := strconv.Atoi(strings.TrimSpace(a))
+	y, e2 := strconv.Atoi(strings.TrimSpace(b))
+	if v == "0" || !ok || e1 != nil || e2 != nil || x < 0 || y < x || y > 10000 {
+		return 0, 0
+	}
+	return x, y
+}()
+
 // trackOut verbindet einen fwd.Out mit pion (eigene TrackLocal ohne Puffer).
 type trackOut struct {
 	o      *fwd.Out
@@ -85,6 +101,13 @@ type trackOut struct {
 func (t *trackOut) Bind(ctx webrtc.TrackLocalContext) (webrtc.RTPCodecParameters, error) {
 	for _, c := range ctx.CodecParameters() {
 		if strings.EqualFold(c.MimeType, t.mime) {
+			if t.kind == webrtc.RTPCodecTypeVideo && playoutMax > 0 {
+				for _, h := range ctx.HeaderExtensions() {
+					if h.URI == playoutDelayURI {
+						t.o.SetPlayoutDelay(uint8(h.ID), playoutMin, playoutMax)
+					}
+				}
+			}
 			t.o.Bind(ctx.WriteStream(), uint32(ctx.SSRC()), uint8(c.PayloadType))
 			return c, nil
 		}

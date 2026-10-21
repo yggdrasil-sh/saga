@@ -136,27 +136,30 @@ type server struct {
 	iceMux                  *netx.ICEMux
 	bySFU                   map[*sfu.Leg]*leg
 	devSecret               string
-	verifier                *sagaVerifier          // P3: Medien-Token von Saga (Ed25519)
-	used                    usedTokens             // jedes Token einmal je Zweck
-	ctl                     *ctlClient             // Steuerkanal zu Saga (HORN_SAGA_CTL bzw. Kopplung), unter ctlMu
-	ctlMu                   sync.Mutex             //
-	nodeKey                 ed25519.PrivateKey     // Knotenschluessel (HORN_DATA/node.key)
-	echoRate                rateGate               // Rueckpruefung /api/horn/echo
-	pairErr                 atomic.Pointer[string] // Kopplung endgueltig abgelehnt
-	draining                atomic.Bool            // Leeren (Admin, Update oder SIGUSR1): keine neuen Beine, Geraete wechseln (P5/P6)
-	upd                     *updater               // Selbst-Update (P6)
-	acmeRun                 atomic.Bool            // DNS-01 laeuft
-	certErr                 atomic.Pointer[string] // letzter Zertifikatsfehler
-	certModeV               atomic.Pointer[string] // dns01 | alpn (von Saga)
-	addrMu                  sync.Mutex             //
-	v4, v6                  string                 // oeffentliche Adressen laut Saga (whoami)
-	sagaBase                string                 // gekoppelter Knoten: HORN_SAGA
-	origin                  atomic.Pointer[string] // Herkunft der Saga-Seiten (CORS, /probe)
-	graves                  map[string]time.Time   // geschlossene Raeume (gesperrt bis)
-	kicked                  map[string]time.Time   // entfernte Teilnehmende "raum|peer" (gesperrt bis)
+	verifier                *sagaVerifier                   // P3: Medien-Token von Saga (Ed25519)
+	used                    usedTokens                      // jedes Token einmal je Zweck
+	ctl                     *ctlClient                      // Steuerkanal zu Saga (HORN_SAGA_CTL bzw. Kopplung), unter ctlMu
+	ctlMu                   sync.Mutex                      //
+	nodeKey                 ed25519.PrivateKey              // Knotenschluessel (HORN_DATA/node.key)
+	echoRate                rateGate                        // Rueckpruefung /api/horn/echo
+	pairErr                 atomic.Pointer[string]          // Kopplung endgueltig abgelehnt
+	draining                atomic.Bool                     // Leeren (Admin, Update oder SIGUSR1): keine neuen Beine, Geraete wechseln (P5/P6)
+	upd                     *updater                        // Selbst-Update (P6)
+	acmeRun                 atomic.Bool                     // DNS-01 laeuft
+	certErr                 atomic.Pointer[string]          // letzter Zertifikatsfehler
+	certModeV               atomic.Pointer[string]          // dns01 | alpn (von Saga)
+	addrMu                  sync.Mutex                      //
+	v4, v6                  string                          // oeffentliche Adressen laut Saga (whoami)
+	sagaBase                string                          // gekoppelter Knoten: HORN_SAGA
+	origin                  atomic.Pointer[string]          // Herkunft der Saga-Seiten (CORS, /probe)
+	origins                 atomic.Pointer[map[string]bool] // P10: Herkunft verbundener Server (Teilen an)
+	graves                  map[string]time.Time            // geschlossene Raeume (gesperrt bis)
+	kicked                  map[string]time.Time            // entfernte Teilnehmende "raum|peer" (gesperrt bis)
 	closing                 atomic.Bool
 	capture                 *capture // nur Tests: Mitschnitt der eingehenden Rahmen (HORN_CAPTURE)
 	ev                      evHub    // P5: Ereigniskanal je Bein (events.go)
+	brOnce                  sync.Once
+	brs                     *bridgeSet // P9: Bruecken zu anderen Knoten (bifrost.go)
 
 	pubIPs   []string                      // oeffentliche Adressen (Kandidaten)
 	udpCheck atomic.Pointer[netx.UDPCheck] // Ergebnis des UDP-Selbsttests

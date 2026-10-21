@@ -278,20 +278,25 @@ def group_start(uid, ch, cid, media, dev, caps):
     if not peer3(p):
         return _bad(t("Der Server {host} kann noch keine Gruppenanrufe (braucht Saga 2.4).", host=(p or {}).get("host") or "?"), 409)
     st, d = FC.sync_call(p, {"op": "join", "start": True, "id": cid, "ref": ch["ref"], "actor": mh, "device": dev, "role": "member", "media": media,
-                             "caps": calls.caps_out(caps), "name": name, "signals": {}}, path="/fed/v2/call")
+                             "caps": calls.caps_out(caps), "name": name, "signals": {}, **_horn_hint(caps)}, path="/fed/v2/call")
     if st != 200:
         return _err(st, d, p["host"])
     now = time.time()
+    topo = "horn" if (d or {}).get("topo") == "horn" and peer_horn(p) else "mesh"
+    _mesh_in(cid, d)
     with _db() as c, c:
         c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, caps_a, kind, v, topo, "
-                  "lead, peer_id) VALUES (?,?,?,'',?,?,'ringing',?,?,?,?,'group',3,'mesh',?,?) ON CONFLICT (id) DO NOTHING",
-                  (cid, ch["id"], uid, dev, media, now, now, now, caps, p["id"], p["id"]))
+                  "lead, peer_id) VALUES (?,?,?,'',?,?,'ringing',?,?,?,?,'group',3,?,?,?) ON CONFLICT (id) DO NOTHING",
+                  (cid, ch["id"], uid, dev, media, now, now, now, caps, topo, p["id"], p["id"]))
         calls._leg_put(c, cid, dev, uid, "member", None, caps, name=name, now=now)
         call = calls._load(c, cid)
         _apply_legs(c, call, p, (d or {}).get("legs"))
         calls.emit_roster(c, call, fed=False)
-        print(f"call: {cid[:8]} Gruppenanruf beim Heim {p['host']}", flush=True)
-        return chat._no_store({"ok": True, "call": calls._dict(c, calls._load(c, cid), uid)})
+        print(f"call: {cid[:8]} Gruppenanruf beim Heim {p['host']}{' (ueber Knoten)' if topo == 'horn' else ''}", flush=True)
+        out = calls._dict(c, calls._load(c, cid), uid)
+    if topo == "horn":                                 # 2.5 P10: Kandidaten (geteilte Knoten des Heims und eigene)
+        out["horn"], _ = FH.block(uid, call, dev, "member")
+    return chat._no_store({"ok": True, "call": out})
 
 
 def join(uid, call, dev, role, rep, caps, sig):
@@ -302,7 +307,8 @@ def join(uid, call, dev, role, rep, caps, sig):
         name = calls._dev_name(c, dev)
     if not peer3(p):
         return chat._no_store({"error": t("Beitreten geht nicht: Ein Gerät im Anruf braucht Saga 2.4."), "join_block": "old"}, 409)
-    body = {"op": "join", "id": call["id"], "actor": mh, "device": dev, "role": role, "caps": calls.caps_out(caps), "name": name, "signals": sig}
+    body = {"op": "join", "id": call["id"], "actor": mh, "device": dev, "role": role, "caps": calls.caps_out(caps), "name": name, "signals": sig,
+            **_horn_hint(caps)}
     if rep:
         body["replaces"] = rep
     st, d = FC.sync_call(p, body, path="/fed/v2/call")
@@ -313,11 +319,15 @@ def join(uid, call, dev, role, rep, caps, sig):
         cur = calls._load(c, call["id"], lock=True)
         if not cur or cur["state"] == "ended":
             return chat._no_store({"error": t("Der Anruf ist schon beendet."), "join_block": "ended"}, 409)
-        calls._leg_put(c, cur["id"], dev, uid, (d or {}).get("role") if (d or {}).get("role") in calls.ROLES else role, None, caps, rep, name=name, now=now)
+        role = (d or {}).get("role") if (d or {}).get("role") in calls.ROLES else role
+        calls._leg_put(c, cur["id"], dev, uid, role, None, caps, rep, name=name, now=now)
         _apply_legs(c, cur, p, (d or {}).get("legs"), keep=dev)
         cur = calls._load(c, cur["id"])
         calls.emit_roster(c, cur, fed=False)
-        return chat._no_store({"ok": True, "call": calls._dict(c, cur, uid)})
+        out = calls._dict(c, cur, uid)
+    if calls.is_horn(cur):                             # 2.5 P10: Kandidaten (geteilte Knoten des Heims und eigene)
+        out["horn"], _ = FH.block(uid, cur, dev, role)
+    return chat._no_store({"ok": True, "call": out})
 
 
 def leave(uid, call, dev):
@@ -330,6 +340,8 @@ def leave(uid, call, dev):
     with _db() as c, c:
         cur = calls._load(c, call["id"], lock=True)
         if cur and cur["state"] != "ended":
+            if calls.is_horn(cur):
+                FH.left(c, cur, dev)                   # 2.5 P10: Beine an unserem Knoten beenden
             c.execute("UPDATE chat_call_leg SET state='left', left_at=?, reason='hangup' WHERE call_id=? AND device=?", (now, cur["id"], dev))
             if st is None and not any(x["who"] == uid for x in calls._legs(c, cur["id"])) and cur["kind"] == "dm":
                 calls._finish(c, cur, "hangup", now, by=uid, remote=True)      # fuehrender Server weg: hier beenden
@@ -390,7 +402,8 @@ def roster_out(c, call, legs, ring=None):
     # nicht ueberschreiben
     base = {"op": "roster", "id": call["id"], "ref": (ch or {}).get("ref"), "kind": call["kind"], "media": call["media"], "state": call["state"],
             "rv": time.time(),
-            "created": call["created"], "from": _h(c, call["caller"]), "from_device": call["caller_device"], "legs": [_leg_out(c, x) for x in legs]}
+            "created": call["created"], "from": _h(c, call["caller"]), "from_device": call["caller_device"], "legs": [_leg_out(c, x) for x in legs],
+            "topo": call.get("topo") or "mesh", **({"horn_mesh": HORN_MESH[call["id"]]} if HORN_MESH.get(call["id"]) else {})}
     for p in peers:
         mine = [FC.handle_of(u) for u in (ring or []) if FC.split_handle(FC.handle_of(u) or "")[1] == p["host"]]
         body = dict(base, ring=mine, invites={FC.handle_of(u): st for u, st in inv.items()
@@ -704,8 +717,10 @@ def op_join(c, peer, d):
             return 409, {"running": run[0]}
         if not F._rate.allow("cring:" + h, calls.CALL_RATE):
             return 429, {"error": "too many calls"}
+        FH.note_nodes(peer["id"], d)                   # 2.5 P10: hat der Server des Startenden eigene Knoten?
         call = calls.group_create(c, ch, cid, media, p_, dev, caps, now, peer_id=peer["id"], name=_name(d))
-        return 200, {"ok": True, "role": "member", "legs": [_leg_out(c, x) for x in calls._legs(c, cid)]}
+        return 200, {"ok": True, "role": "member", "legs": [_leg_out(c, x) for x in calls._legs(c, cid)], "topo": call.get("topo") or "mesh",
+                     **({"horn_mesh": HORN_MESH[cid]} if HORN_MESH.get(cid) else {})}
     if call["lead"] is not None:
         return 404, {"error": "not lead"}
     if call["kind"] == "group":
@@ -715,6 +730,7 @@ def op_join(c, peer, d):
         return 404, {"error": "not found"}
     role = d.get("role") if d.get("role") in calls.ROLES else "member"
     rep = d.get("replaces") if isinstance(d.get("replaces"), str) and FC._HEX32.fullmatch(d["replaces"]) else None
+    FH.note_nodes(peer["id"], d)
     r = calls.join_local(c, call, p_, dev, role, rep, caps, d.get("signals"), now, peer_id=peer["id"], name=_name(d))
     if not isinstance(r, dict):
         st, out = _resp(r)
@@ -755,9 +771,10 @@ def op_roster(c, peer, d):
         fd = d.get("from_device") if isinstance(d.get("from_device"), str) and FC._HEX32.fullmatch(d.get("from_device") or "") else None
         if not st_ or not fd:
             return 400, {"error": "bad request"}
+        topo = "horn" if d.get("topo") == "horn" and peer_horn(peer) else "mesh"      # 2.5 P10: ueber Knoten
         c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, kind, v, topo, lead, peer_id) "
-                  "VALUES (?,?,?,'',?,?,?,?,?,?,'group',3,'mesh',?,?) ON CONFLICT (id) DO NOTHING",
-                  (cid, ch["id"], st_, fd, d["media"], "active" if d.get("state") == "active" else "ringing", now, now, now, peer["id"], peer["id"]))
+                  "VALUES (?,?,?,'',?,?,?,?,?,?,'group',3,?,?,?) ON CONFLICT (id) DO NOTHING",
+                  (cid, ch["id"], st_, fd, d["media"], "active" if d.get("state") == "active" else "ringing", now, now, now, topo, peer["id"], peer["id"]))
         calls._OWN.add(cid)
         call = calls._load(c, cid, lock=True)
     if call["lead"] != peer["id"]:
@@ -765,6 +782,7 @@ def op_roster(c, peer, d):
         return 403, {"error": "not lead"}
     if call["state"] == "ended":
         return 200, {"ok": True, "state": "ended"}
+    _mesh_in(cid, d)
     rv = d.get("rv") if isinstance(d.get("rv"), (int, float)) else None
     if rv is not None and rv < _RV.get(cid, 0):
         return 200, {"ok": True, "stale": True}            # aeltere Liste (kam nach einer neueren an)
@@ -904,6 +922,10 @@ async def fed_call(request: Request):
         return F._signed(inp, 400, {"error": "bad op"})
     if d["op"] in OPS3 and not peer3(inp.peer):
         return F._signed(inp, 403, {"error": "calls3 disabled"})
+    if d["op"] in OPS_HORN and not peer_horn(inp.peer):
+        return F._signed(inp, 403, {"error": "horn disabled"})
+    if d["op"] == "join" and d.get("start") and isinstance(d.get("ref"), str):
+        await run_in_threadpool(FH.prefetch_ref, d["ref"])       # 2.5 P10: Knoten der anderen Server (vor der Transaktion)
 
     def run():
         with _db() as c, c:
@@ -931,4 +953,40 @@ def _peer_gone(c, p):
 
 
 F.PEER_GONE_HOOKS.append(_peer_gone)
+
+
+# =====================================================================================================
+# 2.5 P10: Gjallarhorn ueber Servergrenzen (saga/fed_horn.py)
+# =====================================================================================================
+OPS_HORN = ()                           # von saga.fed_horn gesetzt
+HORN_MESH = {}                          # call_id -> Hinweis "ohne Knoten" (Fall c), auch in Kopien
+
+
+def _horn_hint(caps):
+    """Beim Start/Beitritt an das Heim: wie viele eigene Knoten bereit sind (Topologie-Entscheidung dort)."""
+    if not calls.horn_on() or not calls._has(caps, "horn"):
+        return {}
+    return {"horn_nodes": FH.own_ready()}
+
+
+def _mesh_in(cid, d):
+    if isinstance(d, dict) and isinstance(d.get("horn_mesh"), str):
+        HORN_MESH[cid] = d["horn_mesh"][:500]
+        if len(HORN_MESH) > 5000:
+            HORN_MESH.clear()
+
+
+def horn_fed_ok(c, ch):
+    return FH.fed_ok(c, ch)
+
+
+def horn_prefetch(chat_id):
+    return FH.prefetch(chat_id)
+
+
+def horn_block(uid, call, dev, role, dev_class="desktop", avoid=(), node=None):
+    return FH.block(uid, call, dev, role, dev_class, avoid, node)
+
+
 calls.FED = __import__("sys").modules[__name__]
+from saga import fed_horn as FH  # noqa: E402  (registriert seine Auftraege in HANDLERS)

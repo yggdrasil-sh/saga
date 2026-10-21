@@ -1070,6 +1070,10 @@ def _fed_events():
 
 def _fed_page(request, me, **kw):
     st = federation.admin_state()
+    if calls.horn_on():                              # 2.5 P10: Teilen der Knoten je Server (saga/fed_horn.py)
+        from saga import fed_horn
+        with _db() as c:
+            st["horn"] = fed_horn.admin_state(c)
     return _page(request, "federation.html", me, fed=st, events=_fed_events(),
                  code=request.session.pop("fed_code", None), **kw)
 
@@ -1131,6 +1135,14 @@ async def federation_post(request: Request):
             if new is not None:
                 print(f"admin: {who} aendert Schalter der Foederation {pid}", flush=True)
                 _flash(request, t("Gespeichert."))
+        elif act == "horn_share":            # 2.5 P10: Gjallarhorn-Knoten teilen, Kontingent, Notaus
+            from saga import fed_horn
+
+            def num(k, hi):
+                v = str(f.get(k) or "").strip()
+                return int(v) if v.isdigit() and 0 < int(v) <= hi else 0
+            await run_in_threadpool(fed_horn.set_share, pid, _on(f, "allowed"), _on(f, "off"), num("legs", 1000), num("mbit", 10000), who)
+            _flash(request, t("Gespeichert."))
         elif act == "hello":
             caps = await run_in_threadpool(federation.hello, pid)
             _flash(request, t("Fähigkeiten abgefragt.") if caps is not None else t("Die andere Saga-Instanz ist gerade nicht erreichbar."),

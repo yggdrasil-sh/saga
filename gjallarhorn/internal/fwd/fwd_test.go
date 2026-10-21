@@ -452,3 +452,45 @@ func TestMirrorKeepsAllTemporalLayers(t *testing.T) {
 		t.Fatalf("tid %d ausgelassen %d", o.MaxTID(), leg.Stats.TIDSkipped.Load())
 	}
 }
+
+type pdW struct{ ext [][]byte }
+
+func (w *pdW) WriteRTP(h *rtp.Header, p []byte) (int, error) {
+	w.ext = append(w.ext, append([]byte(nil), h.GetExtension(5)...))
+	return len(p), nil
+}
+
+// TestPlayoutDelay (P9): playout-delay nur auf Pakete von Schluesselbildern, 150/400 ms = 15/40 (12 + 12 Bit), ohne
+// Allokation im heissen Pfad.
+func TestPlayoutDelay(t *testing.T) {
+	leg := &Leg{wake: make(chan struct{}, 1), done: make(chan struct{})}
+	o := leg.NewOut("v", "p", Video, ClassTile, "l")
+	o.SetPlayoutDelay(5, 150, 400)
+	w := &pdW{}
+	o.Bind(w, 1, 96)
+	s := &Source{Owner: "p", Layer: "l", Kind: Video}
+	o.cur.Store(s)
+	s.subscribe(o)
+	for i, b := range [][]byte{vp8pkt(1, 0, true, true, false), vp8pkt(2, 0, false, false, true), vp8pkt(3, 3000, true, false, true)} {
+		s.Inject(b)
+		e, _ := leg.pop()
+		leg.process(e.p, e.o)
+		e.p.release()
+		_ = i
+	}
+	want := []byte{0x00, 0xf0, 0x28}
+	if len(w.ext) != 3 || string(w.ext[0]) != string(want) || string(w.ext[1]) != string(want) || len(w.ext[2]) != 0 {
+		t.Fatalf("erweiterung %x", w.ext)
+	}
+	key := vp8pkt(4, 6000, true, true, true)
+	o.Bind(nopW{}, 1, 96)
+	n := testing.AllocsPerRun(1000, func() {
+		s.Inject(key)
+		e, _ := leg.pop()
+		leg.process(e.p, e.o)
+		e.p.release()
+	})
+	if n != 0 {
+		t.Fatalf("allokationen je paket: %v", n)
+	}
+}

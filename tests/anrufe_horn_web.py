@@ -6,7 +6,8 @@ Umschalten zwischen beiden Knoten, Abgang mit neuem Schluessel, Gastgeber, Scree
 Personen mit 9 Kacheln, CPU und Speicher ueber 10 min).
 
 Geprueft (ohne Browser): config.horn_ready; Teilnehmerliste mit hpn (Kennung je Knoten, hpn[Knoten des Anrufs] = hp);
-ohne Kaskade nur der Knoten des Anrufs; Wechsel auf einen anderen Knoten nur, wenn der des Anrufs ausfaellt (Leeren per
+P9 (Kaskade): der Knoten des Anrufs zuerst ("hier", Bonus bei der Wahl), dazu andere bereite Knoten; Wechsel bei Ausfall
+des Knotens des Anrufs (Leeren per
 SIGUSR1 -> Lastmeldung draining) oder das Geraet ihn meidet (avoid); danach ist der neue Knoten der des Anrufs (Mehrheit
 unter den bereiten); Beitritt waehrend des Leerens landet auf dem anderen Knoten; Knoten B prueft Saga-Token ohne
 Steuerkanal; Ereigniskanal ueber den Knoten (hello mit peers). Gastgeber: nur wer begonnen hat (403 sonst), mute -> call.mod
@@ -226,20 +227,21 @@ def server_tests():
     sd = A_.Stream(D.k)
     s, d = req("POST", "/api/calls", A.k, {"id": cid, "chat_id": gid, "media": "video", "device": A.dev["id"], "caps": CAPS})
     k = d.get("call") or {}
-    ok(f"Start: topo horn, nur der Knoten des Anrufs ({cands_of(d)}), Gastgeberin host", s == 200 and k.get("topo") == "horn"
-       and cands_of(d) == ["localhost"] and k.get("host") is True and k["horn"]["candidates"][0]["here"] is True)
+    # Knoten B hat hier keinen Steuerkanal (fester Saga-Schluessel) - keine Kaskade moeglich, also nur der Knoten des Anrufs
+    ok(f"Start: topo horn, nur der Knoten des Anrufs (Knoten B ohne Steuerkanal: keine Kaskade) ({cands_of(d)}), Gastgeberin host",
+       s == 200 and k.get("topo") == "horn" and cands_of(d) == ["localhost"] and k.get("host") is True and k["horn"]["candidates"][0]["here"] is True)
     for p in (B, Cc):
         s, d = req("POST", f"/api/calls/{cid}/join", p.k, {"device": p.dev["id"], "role": "member", "caps": CAPS})
-        ok(f"{p.uid}: Beitritt auf dem Knoten des Anrufs ({cands_of(d)}), nicht Gastgeber", s == 200 and cands_of(d) == ["localhost"]
+        ok(f"{p.uid}: Beitritt, Knoten des Anrufs zuerst ({cands_of(d)}), nicht Gastgeber", s == 200 and cands_of(d)[:1] == ["localhost"]
            and d["call"].get("host") is False)
     legs = d["call"]["legs"]
     hpn_ok = all(set(x.get("hpn") or {}) == {"localhost", B_NAME} and x["hpn"]["localhost"] == x["hp"] and x["hpn"][B_NAME] != x["hp"] for x in legs)
     ok("Teilnehmerliste: hpn je Knoten (eingebauter = hp, Knoten B eigene Kennung)", hpn_ok, legs[0])
     tok = d["call"]["horn"]["candidates"][0]["peer"]
     ok("eigene Kennung im Kandidaten = hpn des eigenen Endpunkts", tok == next(x for x in legs if x["device"] == Cc.dev["id"])["hpn"]["localhost"])
-    # Wechsel: ohne Ausfall nur der Knoten des Anrufs
+    # P9: ein anderer Knoten nur, wenn eine Kaskade moeglich ist (beide mit Steuerkanal) - Knoten B hat hier keinen
     s, d = req("POST", f"/api/calls/{cid}/horn", B.k, {"device": B.dev["id"], "node": B_NAME})
-    ok(f"Wechsel auf Knoten B, solange der des Anrufs bereit ist -> 409 ({s})", s == 409)
+    ok(f"Wechsel auf Knoten B (ohne Steuerkanal, keine Kaskade), solange der des Anrufs bereit ist -> 409 ({s})", s == 409)
     s, d = req("POST", f"/api/calls/{cid}/horn", B.k, {"device": B.dev["id"], "avoid": ["localhost"]})
     c0 = (d.get("horn") or {}).get("candidates") or []
     ok(f"avoid=[localhost]: Kandidat Knoten B, noch nicht 'hier' ({[(c['node'], c['here']) for c in c0]})",
@@ -257,7 +259,7 @@ def server_tests():
         nodes = dict(c.execute("SELECT device, node FROM chat_call_leg WHERE call_id=? AND state='active'", (cid,)).fetchall())
     ok("Register: B auf Knoten B, die anderen auf dem eingebauten", nodes[B.dev["id"]] == NB["id"] and nodes[A.dev["id"]] != NB["id"])
     s, d = req("POST", f"/api/calls/{cid}/horn", Cc.k, {"device": Cc.dev["id"]})
-    ok(f"ein Geraet gewechselt: Knoten des Anrufs bleibt der mit den meisten ({cands_of(d)})", cands_of(d) == ["localhost"])
+    ok(f"ein Geraet gewechselt: Knoten des Anrufs bleibt der mit den meisten ({cands_of(d)})", cands_of(d)[:1] == ["localhost"])
     # Leeren des eingebauten Knotens: Saga bietet Knoten B an (dort ist schon jemand -> 'hier')
     t0 = time.time()
     a = drain_a(True)
@@ -277,7 +279,7 @@ def server_tests():
     ok("SIGUSR2: eingebauter Knoten wieder bereit", a and a["ready"], a)
     s, d = req("POST", f"/api/calls/{cid}/horn", A.k, {"device": A.dev["id"]})
     ok(f"nach dem Leeren: Knoten des Anrufs ist jetzt der mit den meisten bereiten Endpunkten (B: 3 von 4) -> {cands_of(d)}",
-       cands_of(d) == [B_NAME])
+       cands_of(d)[:1] == [B_NAME])
     # Ereigniskanal am Knoten B (Saga-Token): Bein anlegen geht hier nicht ohne Browser - hello eines unbekannten Beins 404
     s, _ = b_req("GET", "/api/sfu/leg/0000000000000000/events")
     ok(f"Ereigniskanal: unbekanntes Bein -> 404 ({s})", s == 404)

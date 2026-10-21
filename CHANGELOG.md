@@ -176,6 +176,36 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   - Datenbank: Migration 17 (Kopplung, Port-Prüfung, Zertifikats-/Update-Status), Tabellen `horn_ban`, `horn_log`,
     `horn_share`.
 
+- **Gjallarhorn P9 – Kaskade „Bifröst“ zwischen Knoten** (Flag `calls.horn`, Standard aus; `gjallarhorn/NODE.md`,
+  „Kaskade“):
+  - Sind Teilnehmende eines Anrufs auf mehreren Knoten, verbindet Saga die Knoten sternförmig (Mittelpunkt = Knoten mit
+    den meisten Endpunkten) über **TLS auf 443/TCP**. Beide Knoten prüfen ein von Saga signiertes Kaskaden-Token
+    (Anruf, beide Knoten, 60 s, einmalig); die Knotenschlüssel unterschreiben die TLS-Kanalbindung.
+  - Ton: je Richtung die lautesten drei; Bild nur auf Nachfrage (Last-N, Sprecher, Schichtwahl der Gegenseite),
+    Schlüsselbild-Anforderungen über die Brücke. Pakete bleiben unverändert – Frame-E2E durchgehend, die Brücke sieht
+    nur Chiffrat. Über 150 ms Stau verwirft die Brücke Bild bis zum nächsten Schlüsselbild, Ton nie.
+  - Kandidaten nennen jetzt auch andere bereite Knoten; der Bonus „Anruf schon hier“ hält die meisten Anrufe auf einem
+    Knoten, „anderer Knoten besser“ (Hysterese) wechselt nur bei deutlichem Vorteil.
+  - Admin → Anrufe zeigt „Kaskaden: n“ je Knoten. `gjallarhorn bench --sfu --cascade` misst zwei Knoten mit Brücke.
+  - **playout-delay auf TCP/TLS:** Der Knoten setzt für Bild die RTP-Kopferweiterung playout-delay (150–400 ms) auf
+    Schlüsselbildern – Gegenmaßnahme gegen Einfrieren auch für Apps, die `jitterBufferTarget` nicht setzen können
+    (in Chromium nachgewiesen: Jitter-Puffer-Ziel 11 → 138 ms). Nicht auf UDP. `HORN_PLAYOUT_DELAY` (`0` = aus).
+- **Gjallarhorn P10 – Gruppenanrufe über Knoten mit anderen Saga-Servern** (Cap `horn`; Vertrag
+  `docs/APP-API-FED.md` §7.4; Anleitung `docs/FELDTEST-GJALLARHORN.md`):
+  - Das Heim des Anrufs koordiniert. **Teilen an** (je Knoten, Standard aus): Personen verbundener Server verbinden sich
+    direkt mit dem Knoten, mit Token des Heims und **Kontingent je Server** (Standard 10 Teilnehmende / 20 Mbit/s je
+    Richtung, vom Knoten durchgesetzt). **Teilen aus:** sie kommen über ihren eigenen Knoten (Kaskade). Ohne beides:
+    Mesh wie 2.4 mit klarer Meldung.
+  - Admin → Föderation je Server: Teilen erlaubt (Erlaubt-Liste), Teilnehmende, Mbit/s, **Notaus** (trennt sofort alle
+    Teilnehmenden und Kaskaden des Servers), Hinweis Auftragsverarbeitung. Geteilte Knoten nehmen die Seiten des
+    anderen Servers an (CORS); seine Seiten erlauben die Knotenadresse (per `hello`).
+  - Server ohne `horn` (2.3/2.4) bleiben still im Mesh. Der Knopf „Fähigkeiten jetzt abgleichen“ macht `horn` sofort
+    bekannt.
+  - Web-Client: Geräte melden ihre Kennungen an den Knoten im versiegelten Zustand (`state.hp`) – Teilnehmende anderer
+    Knoten und Server werden so ohne Serverhilfe zugeordnet.
+  - Tests: `tests/foederation_horn.py` (zwei Server mit Knoten: Kaskade, Teilen, Kontingent, Erlaubt-Liste, Notaus,
+    Mesh-Rückfall, Server B auf 2.4), Browser `tests/browser_fed_horn.py` (3 + 3 Personen, Kaskade und Teilen).
+
 - **Gjallarhorn P5 – Web-Client für Gruppenanrufe über Knoten** (Flag `calls.horn`, Standard aus; Vertrag
   `docs/APP-API.md`, Abschnitt „Anrufe über Gjallarhorn-Knoten“):
   - **Knotenwahl beim Beitritt:** Das Gerät misst alle Kandidaten parallel (TLS-Aufbau, 5 WSS-Pings, bei `udp_ok` ein

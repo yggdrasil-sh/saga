@@ -134,6 +134,19 @@
   </form>
   <form method="post" class="fed-acts">{{ csrf_field() }}<input type="hidden" name="action" value="hello"><input type="hidden" name="id" value="{{ p.id }}">
     <button class="btn" type="submit">{{ _("Fähigkeiten neu abfragen") }}</button></form>
+  {% set hs = (fed.horn or {}).get(p.id) %}
+  {% if hs %}
+  <form method="post" class="adm-form fed-opts fed-horn" id="fed-horn-{{ p.id }}">{{ csrf_field() }}<input type="hidden" name="action" value="horn_share"><input type="hidden" name="id" value="{{ p.id }}">
+    <h4>{{ _("Gjallarhorn-Knoten für {host}", host=p.name or p.host) }}{% if hs.off %} <span class="horn-st-down"><span class="horn-dot"></span> {{ _("Notaus") }}</span>{% endif %}</h4>
+    <p class="hk-hint">{{ _("Gilt für Knoten mit „Teilen an“ (Seite Anrufe) in Gruppenanrufen, die dieser Server führt. Teilnehmende von dort verbinden sich dann direkt mit deinem Knoten; sonst kommen sie über ihren eigenen Knoten (Kaskade). Gerade auf deinen Knoten: {n}.", n=hs.used) }}</p>
+    {{ check(_('Knoten mit diesem Server teilen erlaubt'), 'allowed', hs.allowed, _('Standard: alle verbundenen Server mit Anrufen.')) }}
+    <span class="horn-quota">{{ field(_('Teilnehmende (leer = Standard)'), 'legs', hs.legs, type='number', max=5) }}
+      {{ field(_('Mbit/s je Richtung (leer = Standard)'), 'mbit', hs.mbit, type='number', max=6) }}</span>
+    {{ check(_('Notaus: alle Teilnehmenden und Kaskaden dieses Servers sofort von deinen Knoten trennen'), 'off', hs.off) }}
+    <p class="hk-hint">{{ _("Läuft ein geteilter Knoten bei einem Anbieter, verarbeitet dieser auch IP-Adressen der Teilnehmenden dieses Servers (Auftragsverarbeitung).") }}</p>
+    <div class="fed-acts"><button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button></div>
+  </form>
+  {% endif %}
   {% endfor %}
   {% if fed.groups %}<datalist id="fed-groups">{% for g in fed.groups %}<option value="{{ g }}">{% endfor %}</datalist>{% endif %}
 </section>

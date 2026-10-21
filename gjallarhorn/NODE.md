@@ -1,4 +1,4 @@
-# Gjallarhorn-Knoten (Betriebsart `node`) – Stand P1 + P2 + P3 + P5 + P6/P7
+# Gjallarhorn-Knoten (Betriebsart `node`) – Stand P1 + P2 + P3 + P5 + P6/P7 + P9/P10
 
 Der Knoten ist der Weiterleiter (SFU) für große Saga-Gruppenanrufe (Konzept v2, §1, §2.1). `gjallarhorn node` nutzt
 dieselben Weichen wie die Horn-Probe. Statt des Spiegels arbeitet der echte Weiterleiter aus `internal/sfu`. Beine
@@ -67,7 +67,8 @@ Platzhalter: `horn-1.example.org`.
   nimmt davon 10 fps für Kacheln) sowie `m` mit 30 fps `L1T3`. Auf UDP zusätzlich `h`.
 - Bildschirm: Die Stream-ID beginnt mit `screen`.
 - **Jitter-Puffer:** Auf TCP-Wegen für empfangene Bilder `receiver.jitterBufferTarget = 150` (ms) setzen, siehe
-  Messung unten.
+  Messung unten. Geräte, die das nicht können (Apps mit webrtc-sdk M150), bekommt der Knoten dasselbe über die
+  Kopferweiterung **playout-delay** (unten).
 - Ton und Bild auf getrennten PeerConnections über TCP (H1).
 
 ## Einfrieren auf TCP (5G-Messung, G4)
@@ -87,6 +88,22 @@ Head-of-Line-Blocking auf dem TCP-Weg, nicht fehlende Schlüsselbilder:
 | `jitterBufferTarget` 150 ms im Client | 0 Einfrieren bei 1,5 % und 2 % Verlust (Ziel ≤ 1 je 5 min) |
 | vorbeugende Schlüsselbilder | keine (auf TCP geht nichts verloren), daher aus (`KeyframeEvery`) |
 | kleinere Sprecher-Bildrate | kaum (Schwelle ist Mittel + 150 ms), daher optional (`TCPSpeakerFPS`) |
+
+### playout-delay auf TCP-/TLS-Beinen (P9)
+
+Die Apps (webrtc-sdk M150) können `jitterBufferTarget` nicht setzen – das war die Gegenmaßnahme gegen das Einfrieren
+über TCP (5G-Messung: 5,45 → 0 Einfrieren je 5 min). Deshalb setzt der Knoten auf TCP- und TLS-Beinen für Bild die
+RTP-Kopferweiterung `http://www.webrtc.org/experiments/rtp-hdrext/playout-delay` mit **min 150 ms, max 400 ms**
+(`HORN_PLAYOUT_DELAY="150,400"`, `0` = aus):
+
+- Ausgehandelt im Knotenangebot nur für Video und nur auf den TCP-/TURN-APIs (nicht UDP). Bietet das Gerät die
+  Erweiterung nicht an, bleibt sie aus (`TrackLocalContext.HeaderExtensions`).
+- Geschrieben auf allen Paketen von **Schlüsselbildern** je Ausgang (der Empfänger behält den Wert bis zum nächsten; nach
+  jedem Schicht- oder Quellwechsel kommt ohnehin ein Schlüsselbild), ohne Allokation (Kopf und Nutzlast im Ausgang
+  wiederverwendet; `TestPlayoutDelay`). Die Brücke reicht Pakete unverändert weiter und setzt nichts.
+- Nachweis in Chromium (`e2e/playout.sh`, 2 Geräte über ICE-TCP, Empfänger ohne `jitterBufferTarget`, 10 s
+  `getStats`): ohne Erweiterung `jitterBufferTargetDelay` je Rahmen 11 ms / `jitterBufferDelay` 8 ms, mit
+  138 ms / 130 ms. libwebrtc übernimmt den Wert vom SFU.
 
 ## Interne Go-API für die Steuerung (P3)
 
@@ -195,12 +212,83 @@ Umgebung: `HORN_SAGA`, `HORN_PAIR`, `HORN_NAME`, `HORN_LINK_MBIT` (Upload für d
 - **Grenze je Adresse:** höchstens `HORN_MAX_PER_IP` Beine (Standard 12) je Quell-Adresse, insgesamt `HORN_MAX_LEGS`
   (Standard 48). Hinter einem gemeinsamen NAT (Büro, Schule) mit vielen Geräten höher setzen.
 
+
+## Kaskade „Bifröst“ (P9) und Kontingente (P10)
+
+Sind Teilnehmende eines Anrufs auf mehreren Knoten, verbindet Saga die Knoten sternförmig (Mittelpunkt = Knoten mit den
+meisten Endpunkten, `saga/horn_bridge.py`). Die meisten Anrufe bleiben dank Bonus „Anruf schon hier“ auf einem Knoten;
+eine Brücke entsteht nur, wenn wirklich zwei Knoten beteiligt sind (anderer Knoten deutlich besser, Umzug, Föderation).
+
+**Aufbau** (`bifrost.go`): Saga schickt dem wählenden Knoten über den Steuerkanal
+`cascade {bridge, url, peer, peer_pub, token, mine}`. Beide Seiten prüfen ein von Saga signiertes **Kaskaden-Token**:
+
+```
+c1.<payload>.<sig>   sig = Ed25519(saga_sk, "saga-horn-cascade/1." + payload)
+payload {v:1, bridge, node, room, role: accept|dial, peer_node, peer_pub, q?, q_legs?, q_kbit?, exp (+60 s), jti}
+```
+
+`mine` (Rolle dial) prüft der wählende Knoten selbst, `token` (Rolle accept, von der Saga des anderen Knotens) der
+annehmende (Signatur, eigener Name, Gegenstelle, Ablauf, einmalig je `jti`). Die Verbindung ist TLS auf 443/TCP (ALPN
+`http/1.1`) zum anderen Knoten:
+
+```
+GET /api/sfu/bridge   Upgrade: saga-bifrost/1   X-Bifrost-Bridge, X-Bifrost-From, X-Bifrost-Token
+X-Bifrost-Sig: B64(Ed25519(knoten_sk, "saga-bifrost/1 dial\n" + bridge + "\n" + HEX(EKM)))
+→ 101, X-Bifrost-Sig: B64(Ed25519(knoten_sk, "saga-bifrost/1 accept\n" + bridge + "\n" + HEX(EKM)))
+```
+
+EKM = `ExportKeyingMaterial("saga-bifrost/1", 32)` der TLS-Verbindung: Die Knotenschlüssel (`peer_pub`, von Saga) binden die
+Unterschrift an genau diese Verbindung. Ein Mittelsmann kann sie nicht weiterreichen; das Web-PKI-Zertifikat spielt
+für die Brücke keine Rolle.
+
+**Rahmen** in beide Richtungen: `[typ u8][länge u16][nutzlast]`, Typ 1 = RTP (`[sid u16][paket]`), Typ 2 = Steuerung
+(JSON). Gepuffert und je Schub geleert (wie die Beine), Schreibfrist 5 s, Lesefrist 20 s.
+
+| Steuerung | Inhalt |
+|---|---|
+| `peers` | Teilnehmende dieses Knotens und anderer Brücken (nie die der Gegenseite): `{p:[{id, d, sp, s:[[sid, art, schicht, bildschirm, ext, aktiv]]}]}` – bei Änderung, sonst alle 2 s (letzte Sprache `sp` in ms) |
+| `want` | `{s:[sid]}` – Bild-Quellen, die die Gegenseite gerade braucht |
+| `pli` | `{s: sid}` – Schlüsselbild anfordern (weiter bis zum Gerät, begrenzt wie lokal) |
+| `bye` | Brücke zu (`why`) |
+
+- **Ton:** jede Seite schickt von sich aus ihre drei lautesten (Top-3, wer spricht, bleibt). Der Empfänger wählt daraus
+  wie lokal seine Top-3 und den Hauptsprecher.
+- **Bild nur auf Nachfrage:** Teilnehmende der Gegenseite stehen als `Peer.Via` im Raum (`internal/sfu/remote.go`), ihre
+  Quellen gelten als nutzbar, wenn der andere Knoten sie als aktiv meldet. Last-N, Sprecher und Schichtwahl planen sie wie
+  eigene; was ein Ausgang wählt (`Source.Subscribed`), geht als `want` hinüber – also nur die Schichten, die wirklich
+  jemand sieht. Umschalten wie lokal am nächsten Schlüsselbild.
+- **Pakete bleiben unverändert** (Kopferweiterungen inklusive, Frame-E2E: die Brücke sieht nur Chiffrat). Nur die
+  Folgenummer hält der Ausgang lückenlos, wenn er nach H3 verwirft (Warteschlange älter als 150 ms → Bild bis zum
+  nächsten Schlüsselbild verwerfen, Ton nie).
+- **Kennungen:** Teilnehmende behalten ihre Kennung (`peer_ref`) ihres Knotens; die CSRC vergibt jeder Knoten selbst. Gibt
+  es eine Kennung schon (Gerät beim Wechsel auf beiden Knoten), gewinnt der erste Weg.
+- **Ende:** `uncascade`, Raum zu, Lesefehler, oder 30 s ohne eigene Teilnehmende und ohne weitere Brücke. Die
+  Lastmeldung trägt `bridges {id: {st: up|dial|err|zu, peer, why}}`; Saga baut nicht stehende Brücken nach 8 s neu auf.
+
+**Kontingente (P10, geteilte Knoten):** Medien-Token für Teilnehmende verbundener Server und accept-Token ihrer
+Brücken tragen `q` (zufällige Kennung je Server), `q_legs` und `q_kbit`. Der Knoten zählt je `q` die Teilnehmenden (direkt
+und über Brücken): mehr als `q_legs` → 429 `kontingent erschoepft`. Eingehend ein gemeinsamer Eimer mit `q_kbit` (0,5 s
+tief): darüber verwirft er Bild ab dem nächsten Rahmenanfang bis zum nächsten Schlüsselbild (Ton nie, Folgenummern
+lückenlos); ausgehend begrenzt er die Schätzung jedes Beins auf `q_kbit / Teilnehmende`. Notaus:
+`quota_off {q, secs}` entfernt sofort alle Teilnehmenden und Brücken mit `q` und weist neue 3 min ab. Die Lastmeldung
+trägt `quotas {q: {peers, legs, kbit, dropped, off}}`.
+
+**Herkunft:** `welcome.origins` bzw. `origins {list}` nennt die Seiten verbundener Server, mit denen Saga teilt; CORS für
+`/api/sfu/*`, `/probe` und den Ereigniskanal nimmt sie zusätzlich zur eigenen Saga an.
+
+**Messung** (`gjallarhorn bench --sfu --cascade -n 12 --video 12`): zwei Knoten im selben Container, Bots je zur Hälfte,
+Brücke dazwischen (Loopback). 2 Kerne, TCP, 20 s: je Knoten 5,3 % eines Kerns (einzelner Knoten mit allen 12: 7,9 %),
+Brücke 1,6 Mbit/s je Richtung, Bots empfangen 4312 Pakete/s (erwartet ~4325), 0 verworfene Rahmen.
+20 Bots / 12 Video / 60 s: je Knoten 7,5 % (einzelner Knoten: 11,4 %), Brücke 1,6–1,7 Mbit/s, Bots 7114 statt 7117
+Pakete/s, 4 Einfrieren auf 145 000 Rahmen (einzeln 0), 0 verworfene Rahmen.
+
 ## Testen
 
 ```sh
 go test -race ./...                                   # inkl. Fuzz-Startwerte, SFU mit pion-Bots, Einfrieren
 go test ./internal/netx -run x -fuzz FuzzWeiche       # weitere: FuzzSTUN, FuzzProxyHeader, rtpx: FuzzParse, FuzzVP8
 gjallarhorn bench -n 25 --video 12 --sfu              # Last mit dem echten Weiterleiter (ohne --sfu: Spiegel wie bisher)
+gjallarhorn bench -n 12 --video 12 --sfu --cascade    # zwei Knoten mit Bruecke (Kaskade, P9)
 PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers e2e/sfu.sh  # 4 Chromium, ICE-TCP + TURN-TLS, Schichtwechsel bei Drossel
 ```
 

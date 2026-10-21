@@ -776,6 +776,8 @@
     // 2.4: rv = Stand der Liste - eine aeltere (kam nach einer neueren an) verwerfen
     var rv = extra && typeof extra.rv === 'number' ? extra.rv : null;
     if (rv !== null) { if (R.rv && rv < R.rv) return; R.rv = rv; }
+    // 2.5 P10: Gruppenanruf ueber Servergrenzen ohne Knoten (ein Server kann keinen nutzen) - einmal klar sagen
+    if (extra && extra.horn_mesh && !R.meshNote) { R.meshNote = true; HK.toast(extra.horn_mesh, null, null, 12000); }
     var old = {}; (R.legs || []).forEach(function (x) { old[x.device] = x; });
     var first = !R.legs, here = bridge() ? myDev().id : '';
     R.legs = legs;
@@ -2069,6 +2071,11 @@
         if (a && !a.ok) H.X.ownKeys().then(function (ks) { if (ks[0]) { var o = {}; o[d.from_device] = hornFkey(H, ks[0]); hornSend(R, o); } });
       } else if (b.t === 'state') {
         H.st[d.from_device] = { mic: b.mic !== false, cam: !!b.cam, screen: !!b.screen };
+        if (Array.isArray(b.hp)) {                     // P9/P10: Kennungen des Absenders an seinen Knoten
+          if (!H.hpx) H.hpx = {};
+          H.hpx[d.from_device] = b.hp.filter(function (x) { return typeof x === 'string' && x.length <= 64; }).slice(0, 4);
+          hornMap(R);
+        }
         hornDraw(R); hornList(R);
       }
     });
@@ -2082,7 +2089,8 @@
   function hornStateOut(R, only) {
     var H = R.horn; if (!H || !H.X || !live(R)) return;
     var send = function (devs) {
-      var body = JSON.stringify({ t: 'state', mic: !!R.mic && !R.companion, cam: !!(R.cam && R.cam.readyState === 'live'), screen: !!R.screen }), b = {};
+      var body = JSON.stringify({ t: 'state', mic: !!R.mic && !R.companion, cam: !!(R.cam && R.cam.readyState === 'live'), screen: !!R.screen,
+                                  hp: hornMyRefs(R) }), b = {};
       devs.forEach(function (d) { if (H.known[d]) b[d] = body; });
       return hornSend(R, b);
     };
@@ -2159,7 +2167,10 @@
   function hornCands(R, node, avoid) {
     var b = { device: myDev().id, dev_class: mobile ? 'mobile' : 'desktop', avoid: avoid || [] };
     if (node) b.node = node;
-    return api('POST', '/api/calls/' + R.id + '/horn', b).then(function (r) { return (r.horn && r.horn.candidates) || []; });
+    return api('POST', '/api/calls/' + R.id + '/horn', b).then(function (r) {
+      if (R.horn) R.horn.fedErr = (r.horn && r.horn.error) || '';   // P10: warum kein Knoten (anderer Server)
+      return (r.horn && r.horn.candidates) || [];
+    });
   }
   function hornFresh(R, cand, avoid) {
     return hornCands(R, cand.node, avoid).then(function (l) {
@@ -2172,7 +2183,7 @@
   // --- Verbindung zu einem Knoten: Beine, Ereigniskanal ------------------------------------------------------------------
   function hornGo(R, blk) {
     var H = R.horn || hornNew(R, blk);
-    if (blk) H.blk = blk;
+    if (blk) { H.blk = blk; H.fedErr = blk.error || ''; }   // P10: kein Knoten fuer Geraete dieses Servers (Grund)
     if (!R.cam && R.local) { R.cam = R.local.getVideoTracks()[0] || null; drawCtl(R); drawMedia(R); }   // eigene Kamera (wie addLocal)
     (R.local ? R.local.getAudioTracks() : []).forEach(function (t) { t.enabled = R.mic; });
     status(R, T('Verbinde …'));
@@ -2387,11 +2398,24 @@
   }
   function hornRef(x, conn) { return x.hpn ? x.hpn[conn.node] : x.hp; }
   function hornMyRef(R, conn) { var x = myLeg(R); return (x && hornRef(x, conn)) || (conn.cand && conn.cand.peer) || ''; }
+  // Kennung am Knoten -> Geraet: aus der Teilnehmerliste (Kennung je Knoten, hpn), P9/P10 auch Teilnehmende anderer Knoten
+  // (Kaskade: sie behalten die Kennung ihres Knotens) - eigene Knoten ueber hpn, Knoten anderer Server ueber die Kennungen,
+  // die jedes Geraet im versiegelten Zustand (state.hp) selbst meldet
   function hornDevOf(R, conn, ref) {
-    var o = null;
+    var o = null, H = R.horn;
     if (!ref) return null;
-    (R.legs || []).forEach(function (x) { if (hornRef(x, conn) === ref) o = x.device; });
+    (R.legs || []).forEach(function (x) {
+      if (hornRef(x, conn) === ref) o = x.device;
+      else if (!o && x.hpn) Object.keys(x.hpn).forEach(function (k) { if (x.hpn[k] === ref) o = x.device; });
+    });
+    if (!o && H && H.hpx) Object.keys(H.hpx).forEach(function (d) { if (H.hpx[d].indexOf(ref) >= 0 && legOf(R, d)) o = d; });
     return o;
+  }
+  // Eigene Kennungen an den Knoten, mit denen das Geraet gerade verbunden ist (state.hp, hoechstens 4)
+  function hornMyRefs(R) {
+    var out = [];
+    hornConns(R).forEach(function (c) { var r = hornMyRef(R, c); if (r && out.indexOf(r) < 0) out.push(r); });
+    return out.slice(0, 4);
   }
   function hornConns(R) { var H = R.horn; return [H.cur].concat(H.olds, [H.next]).filter(function (c) { return c && !c.dead; }); }
   // CSRC -> Geraet je Knoten-Verbindung (CSRCs vergibt jeder Knoten selbst): aus peers (Ereigniskanal, POST /leg) und
@@ -2443,6 +2467,7 @@
     if (R.ui) { R.ui.st.textContent = ''; R.ui.st.hidden = true; }
     H.note = '';
     hornAudioEls(R, conn); hornMap(R); hornDraw(R); hornRunes(R);
+    hornStateOut(R);                                   // P9/P10: neue Kennung am Knoten an alle (Zuordnung ueber Kaskade)
     if (!H.monT) H.monT = setInterval(function () { hornMon(R); }, HORN_MON);
     if (!H.spkT) hornSpeakers(R);
     drawInfo(R); drawCtl(R);
@@ -2482,7 +2507,7 @@
     if (!H.retry0) H.retry0 = Date.now();
     if (Date.now() - H.retry0 > HORN_RETRY_MAX) { fail(R, T('Verbindung zum Knoten verloren.')); return; }
     var n = (H.retryN = (H.retryN || 0) + 1), s = Math.min(15, 2 * n);
-    hornNote(R, T('Kein Knoten erreichbar – neuer Versuch in {s} s …', { s: s }));
+    hornNote(R, (H.fedErr ? H.fedErr + ' ' : '') + T('Kein Knoten erreichbar – neuer Versuch in {s} s …', { s: s }));
     clearTimeout(H.retryT);
     H.retryT = setTimeout(function () {
       if (!live(R)) return;
@@ -2653,8 +2678,10 @@
     var H = R.horn, cur = H.cur, onCur = {};
     if (cur) cur.audios.forEach(function (a) { var d = hornAudioOwner(cur, a._i); if (d && hornAudioLive(a, d)) onCur[d] = true; });
     hornConns(R).forEach(function (c) {
+      var seen = {};                                   // P9: derselbe Absender zweimal am Knoten (direkt und ueber eine Bruecke)
       c.audios.forEach(function (a) {
-        var ow = hornAudioOwner(c, a._i), dup = c !== cur && onCur[ow];
+        var ow = hornAudioOwner(c, a._i), dup = (c !== cur && onCur[ow]) || (ow && seen[ow]);
+        if (ow) seen[ow] = true;
         var m = !R.spkOut || !!dup;
         a.dataset.owner = ow ? ow.slice(0, 8) : '';      // Diagnose (Tests)
         if (a.muted !== m) a.muted = m;
@@ -3012,6 +3039,16 @@
       var go = box.querySelector('.cl-hint-go'); if (go) go.focus({ preventScroll: true });
     });
   }
+
+  // 2.5 P10: Knoten eines anderen Servers (Teilen an), den die Seite noch nicht kennt (CSP connect-src stammt vom Laden
+  // der Seite) - klar sagen, dass ein Neuladen hilft
+  document.addEventListener('securitypolicyviolation', function (e) {
+    var R = C, u = String(e.blockedURI || '');
+    if (!R || !R.horn || !/^(https|wss):/.test(u) || !/connect-src/.test(e.effectiveDirective || e.violatedDirective || '')) return;
+    var host = u.replace(/^[a-z]+:\/\//, '').split('/')[0];
+    R.horn.fedErr = T('Der Knoten {node} ist für diese Seite noch nicht freigegeben – bitte die Seite neu laden.', { node: host });
+    hornNote(R, R.horn.fedErr);
+  });
 
   // --- Live-Ereignisse ---------------------------------------------------------------------------------------------
   document.addEventListener('hk-live', function (e) {

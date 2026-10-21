@@ -6,8 +6,9 @@ Wechsel zwischen Knoten brauchen (Aufruf aus saga/calls.py):
 - home(): Knoten, auf dem der Anruf laeuft - unter den BEREITEN Knoten der mit den meisten aktiven Endpunkten. Faellt
   der bisherige Knoten aus (getrennt, Leeren, voll), ist das der Knoten, auf den die ersten Geraete gewechselt sind;
   ohne solchen gibt es keinen (dann der beste bereite).
-- candidates(): bis zu horn.CANDIDATES Knoten mit eigenen Medien-Token. Ohne Kaskade (horn.CASCADE, P9) nur der Knoten
-  des Anrufs; laeuft dort nichts mehr, die besten bereiten. avoid = Knoten, die das Geraet gerade nicht erreicht oder die
+- candidates(): bis zu horn.CANDIDATES Knoten mit eigenen Medien-Token, der Knoten des Anrufs zuerst ("here", Bonus bei
+  der Wahl im Geraet). Mit Kaskade (horn.CASCADE, P9) auch andere Knoten - das Geraet nimmt sie nur, wenn sie deutlich
+  besser sind; dann verbindet saga/horn_bridge.py die Knoten. Ohne Kaskade nur der Knoten des Anrufs. avoid = Knoten, die das Geraet gerade nicht erreicht oder die
   es verlassen will (Leeren, Abbruch) - fuer dieses Geraet sofort, ohne auf die naechste Lastmeldung zu warten.
 - may_use(): darf das Geraet seinen Endpunkt auf diesen Knoten legen (POST /api/calls/{id}/horn mit node)?
 - peer_refs(): Kennung eines Geraets je in Frage kommendem Knoten (Teilnehmerliste "hpn"). Waehrend eines Wechsels
@@ -41,23 +42,31 @@ def _clean_avoid(v):
     return tuple(str(x)[:253].strip().lower() for x in v[:horn.CANDIDATES + 2] if isinstance(x, str) and x.strip())
 
 
-def candidates(c, call, dev, role="member", dev_class="desktop", avoid=(), now=None):
-    """Kandidaten fuer dieses Geraet: [{node, url, udp, here, load, peer, tokens, exp}], beste zuerst."""
+def candidates(c, call, dev, role="member", dev_class="desktop", avoid=(), now=None, only=None, quota=None):
+    """Kandidaten fuer dieses Geraet: [{node, url, udp, here, load, peer, tokens, exp}], beste zuerst. P10: only = nur
+    diese Knoten (geteilte), quota = Kontingent des verbundenen Servers (im Token)."""
     now = now or time.time()
-    ns = [n for n in horn.ready_nodes(c, now) if n["name"] not in avoid]
+    ns = [n for n in horn.ready_nodes(c, now) if n["name"] not in avoid and (only is None or n["id"] in only)]
     h = home(c, call["id"], ns)
     if h:
-        ns = [n for n in ns if n["id"] == h] if not horn.CASCADE else sorted(ns, key=lambda n: n["id"] != h)
+        ns = [n for n in ns if n["id"] == h or (horn.CASCADE and cascadable(h, n["id"]))]
+        ns.sort(key=lambda n: n["id"] != h)
     out = []
     for n in ns[:horn.CANDIDATES]:
         udp = bool(n["udp"])
         toks = {}
         for r in ("audio", "video") + (("both",) if udp else ()):
             pub = [x for x in horn.PUB[r] if not (role == "companion" and x == "a")]
-            toks[r] = horn.token(n, call["id"], dev, r, udp, dev_class, pub, now=now)
+            toks[r] = horn.token(n, call["id"], dev, r, udp, dev_class, pub, now=now, quota=quota)
         out.append({"node": n["name"], "url": n["url"], "udp": udp, "here": n["id"] == h, "load": round(horn.util(n), 3),
                     "peer": horn.peer_ref(call["id"], n["id"], dev), "tokens": toks, "exp": int(now) + horn.TOKEN_TTL})
     return out
+
+
+def cascadable(a, b):
+    """Koennen zwei eigene Knoten eine Bruecke bilden? Beide mit Steuerkanal in diesem Prozess (Befehl cascade) -
+    sonst wuerde ein Geraet dort vom Rest des Anrufs abgeschnitten."""
+    return a in horn._CONNS and b in horn._CONNS
 
 
 def pick(c, cid):
@@ -74,10 +83,8 @@ def may_use(c, cid, n, avoid=()):
     (laeuft dort nichts mehr) irgendein bereiter."""
     if not n or not horn.ready(n) or n["name"] in avoid:
         return False
-    if horn.CASCADE:
-        return True
     h = home(c, cid, avoid=avoid)
-    return h is None or h == n["id"]
+    return h is None or h == n["id"] or (horn.CASCADE and cascadable(h, n["id"]))
 
 
 def nodes_for(c, cid):

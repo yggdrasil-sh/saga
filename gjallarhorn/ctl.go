@@ -66,6 +66,18 @@ type ctlMsg struct {
 	OK       bool            `json:"ok,omitempty"`
 	Err      string          `json:"err,omitempty"`
 	Sig      string          `json:"sig,omitempty"`
+	// P9/P10: Kaskade und Kontingente
+	Bridge  string `json:"bridge,omitempty"`
+	URL     string `json:"url,omitempty"`
+	Peer    string `json:"peer,omitempty"`
+	PeerPub string `json:"peer_pub,omitempty"`
+	Token   string `json:"token,omitempty"`
+	Mine    string `json:"mine,omitempty"`
+	Q       string `json:"q,omitempty"`
+	Secs    int    `json:"secs,omitempty"`
+	// P10: Herkunft der Seiten verbundener Server, mit denen Saga diesen Knoten teilt (CORS, WSS)
+	Origins []string `json:"origins,omitempty"`
+	List    []string `json:"list,omitempty"`
 }
 
 // ctlClient haelt die Verbindung zu Saga.
@@ -204,6 +216,7 @@ func (c *ctlClient) session() error {
 	if w.Origin != "" {
 		s.setOrigin(w.Origin)
 	}
+	s.setOrigins(w.Origins)
 	c.mu.Lock()
 	c.conn, c.out, c.nodeID, c.up = conn, 0, w.NodeID, true
 	c.mu.Unlock()
@@ -261,6 +274,27 @@ func (c *ctlClient) session() error {
 			}
 		case "ping":
 			c.send(map[string]any{"t": "pong"})
+		case "cascade": // P9: Bruecke zu einem anderen Knoten aufbauen
+			if err := s.cascade(cascadeCmd{Bridge: m.Bridge, URL: m.URL, Peer: m.Peer, PeerPub: m.PeerPub, Token: m.Token, Mine: m.Mine}); err != nil {
+				log.Printf("bifroest %s: abgelehnt: %v", short(m.Bridge), err)
+				c.send(map[string]any{"t": "bridge", "bridge": m.Bridge, "st": "err", "why": err.Error()})
+			}
+		case "origins":
+			s.setOrigins(m.List)
+		case "uncascade":
+			if validRef(m.Bridge) {
+				s.uncascade(m.Bridge)
+			}
+		case "quota_off": // P10: Notaus fuer einen verbundenen Server
+			if validRef(m.Q) {
+				d := time.Duration(m.Secs) * time.Second
+				if d <= 0 || d > graveFor {
+					d = graveFor
+				}
+				n := s.node.QuotaOff(m.Q, d)
+				s.closeBridges("", m.Q, "notaus")
+				log.Printf("kontingent %s: notaus (%d teilnehmende entfernt)", short(m.Q), n)
+			}
 		case "drain":
 			if m.On != nil {
 				s.setDrain(*m.On)
@@ -415,7 +449,7 @@ func (c *ctlClient) sendLoad() {
 	c.send(map[string]any{"t": "load", "load": map[string]any{
 		"cpu": round3(cpu), "mem": readRSS(), "up": round3(up), "down": round3(down), "legs": ld.Legs, "calls": ld.Rooms,
 		"peers": ld.Peers, "udp_share": round3(ld.UDPShare), "fwd_p95_us": round3(ld.FwdP95us), "drops": round3(drops),
-		"max_legs": c.s.cfg.MaxLegs, "state": state}})
+		"max_legs": c.s.cfg.MaxLegs, "state": state, "bridges": c.s.bridgeStates(), "quotas": c.s.node.QuotaStats()}})
 }
 
 func round3(x float64) float64 { return float64(int64(x*1000+0.5)) / 1000 }
@@ -436,6 +470,7 @@ func (s *server) closeRoom(ref, why string) {
 	s.mu.Lock()
 	s.graves[ref] = time.Now().Add(graveFor)
 	s.mu.Unlock()
+	s.closeBridges(ref, "", "raum geschlossen")
 	if c := s.ctlc(); s.node.CloseRoom(ref) == nil && why != "saga" && c != nil {
 		c.send(map[string]any{"t": "closed", "call_ref": ref, "why": why})
 	}
@@ -550,7 +585,23 @@ func (s *server) originOK(o string) bool {
 	if p := s.origin.Load(); p != nil && *p != "" && o == *p {
 		return true
 	}
+	if m := s.origins.Load(); m != nil && (*m)[o] {
+		return true
+	}
 	return false
+}
+
+// setOrigins (P10): weitere erlaubte Herkuenfte - Seiten verbundener Server, deren Teilnehmende diesen Knoten nutzen
+// duerfen (Teilen an). Die Berechtigung bleibt das Medien-Token.
+func (s *server) setOrigins(list []string) {
+	m := map[string]bool{}
+	for _, o := range list {
+		o = strings.TrimRight(strings.TrimSpace(o), "/")
+		if (strings.HasPrefix(o, "https://") || strings.HasPrefix(o, "http://")) && len(o) < 300 && len(m) < 64 {
+			m[o] = true
+		}
+	}
+	s.origins.Store(&m)
 }
 
 // cors: Saga-Seiten (andere Herkunft) sprechen den Knoten direkt an (/api/sfu/..., /probe). Erlaubt ist nur die

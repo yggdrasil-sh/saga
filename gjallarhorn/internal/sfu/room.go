@@ -19,11 +19,12 @@ type Node struct {
 	rooms  map[string]*Room
 	legs   int
 	closed bool
+	quotas map[string]*Quota // P10: Kontingente je verbundenem Server (Schluessel aus dem Token)
 }
 
 // NewNode legt einen Knoten an.
 func NewNode(cfg Config) *Node {
-	return &Node{cfg: cfg.withDefaults(), rooms: map[string]*Room{}}
+	return &Node{cfg: cfg.withDefaults(), rooms: map[string]*Room{}, quotas: map[string]*Quota{}}
 }
 
 // Config liefert die wirksame Konfiguration.
@@ -219,7 +220,10 @@ type Peer struct {
 	ID     string
 	CSRC   uint32
 	Device Device
+	Via    string // P9: Kennung der Bruecke, ueber die der Teilnehmende kommt ("" = Geraet an diesem Knoten)
 	joined uint64 // Reihenfolge des Beitritts
+	quota  *Quota // P10: Kontingent des verbundenen Servers (nil = eigene Konten)
+	spoke  int64  // P9: letzte Sprache laut anderem Knoten (fwd.Now)
 
 	legs  map[*Leg]struct{}
 	srcs  map[*fwd.Source]*source
@@ -243,7 +247,13 @@ type source struct {
 	lastTID   [4]uint32
 	fps       [4]float64
 	lastKeyRq int64
+	remote    bool // P9: kommt ueber eine Bruecke (fliesst nur auf Nachfrage)
+	on        bool // P9: laut anderem Knoten aktiv
 }
+
+// live: Quelle nutzbar - eigene, wenn sie in der letzten Sekunde Pakete hatte; Quellen ueber eine Bruecke, wenn der
+// andere Knoten sie als aktiv meldet (Pakete fliessen erst, wenn ein Ausgang sie waehlt).
+func (st *source) live(now int64) bool { return st.Active(now) || (st.remote && st.on) }
 
 func (r *Room) newCSRC() uint32 {
 	var b [4]byte
@@ -321,17 +331,24 @@ func (r *Room) AddLeg(g Grant, path Path, want Want) (*Leg, error) {
 	}
 	p := r.peers[g.Peer]
 	if p == nil {
-		if len(r.peers) >= r.lim.MaxPeers {
+		q, qerr := r.node.quotaFor(g)
+		if len(r.peers) >= r.lim.MaxPeers || qerr != nil {
 			r.mu.Unlock()
 			r.node.releaseLeg()
 			if replaced != nil {
 				r.finishLeg(replaced, "ersetzt")
 			}
+			if qerr != nil {
+				return nil, qerr
+			}
 			return nil, ErrFull
 		}
 		r.seq++
 		p = &Peer{ID: g.Peer, CSRC: r.newCSRC(), Device: g.Device, joined: r.seq, legs: map[*Leg]struct{}{},
-			srcs: map[*fwd.Source]*source{}, cam: map[string]*source{}, scr: map[string]*source{}}
+			srcs: map[*fwd.Source]*source{}, cam: map[string]*source{}, scr: map[string]*source{}, quota: q}
+		if q != nil {
+			q.peers.Add(1)
+		}
 		r.peers[g.Peer] = p
 		newPeer = true
 	}
@@ -404,6 +421,9 @@ func (l *Leg) AddSource(kind fwd.Kind, layer string, screen bool, ssrc uint32, l
 	}
 	p := l.Peer
 	s := &fwd.Source{Owner: p.ID, Layer: layer, Kind: kind, SSRC: ssrc, CSRC: p.CSRC, PLI: pli, LevelExt: levelExt}
+	if p.quota != nil {
+		s.Gate = p.quota.allowIn
+	}
 	if kind == fwd.Audio {
 		s.Clock = 48000
 	} else {
@@ -543,17 +563,32 @@ func (r *Room) removeLegLocked(l *Leg) {
 	p := l.Peer
 	delete(p.legs, l)
 	if len(p.legs) == 0 {
-		delete(r.peers, p.ID)
-		delete(r.csrcs, p.CSRC)
-		if r.dominant == p {
-			r.dominant = nil
-		}
-		if r.prevDom == p {
-			r.prevDom = nil
-		}
-		if r.cand == p {
-			r.cand = nil
-		}
+		r.dropPeerLocked(p)
+	}
+}
+
+// dropPeerLocked entfernt einen Teilnehmenden (letztes Bein weg bzw. Bruecke meldet ihn nicht mehr).
+func (r *Room) dropPeerLocked(p *Peer) {
+	if r.peers[p.ID] != p {
+		return
+	}
+	for _, st := range p.srcs {
+		r.dropSourceLocked(st)
+	}
+	delete(r.peers, p.ID)
+	delete(r.csrcs, p.CSRC)
+	if p.quota != nil {
+		p.quota.peers.Add(-1)
+		p.quota = nil
+	}
+	if r.dominant == p {
+		r.dominant = nil
+	}
+	if r.prevDom == p {
+		r.prevDom = nil
+	}
+	if r.cand == p {
+		r.cand = nil
 	}
 }
 
@@ -580,6 +615,9 @@ func (r *Room) close(why string) {
 	}
 	for _, l := range ls {
 		r.removeLegLocked(l)
+	}
+	for _, p := range r.peers { // P9: Teilnehmende ueber Bruecken
+		r.dropPeerLocked(p)
 	}
 	r.mu.Unlock()
 	for _, l := range ls {
