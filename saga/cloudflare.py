@@ -1,4 +1,4 @@
-"""Cloudflare-DNS fuer Gjallarhorn-Knoten (Saga 2.5, Paket P7; Konzept v2 §2.8, Entscheidungen Sven).
+"""Cloudflare-DNS fuer Gjallarhorn-Knoten (Saga 2.5, Paket P7; Konzept v2 §2.8).
 
 Nur so viel API wie noetig: Token pruefen (GET /user/tokens/verify), Zonen lesen (GET /zones), DNS-Eintraege lesen,
 anlegen, aendern und loeschen (/zones/{id}/dns_records). Jeder Eintrag, den Saga anlegt, traegt den Kommentar

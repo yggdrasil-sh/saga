@@ -72,7 +72,7 @@ Platzhalter: `horn-1.example.org`.
 
 ## Einfrieren auf TCP (5G-Messung, G4)
 
-Svens Messung über TURN-TLS/5G mit dem Spiegel ergab 5,45 Einfrieren je Bildplatz und 5 min. Ursache ist
+Eine Messung über TURN-TLS/5G mit dem Spiegel ergab 5,45 Einfrieren je Bildplatz und 5 min. Ursache ist
 Head-of-Line-Blocking auf dem TCP-Weg, nicht fehlende Schlüsselbilder:
 
 - Im Regressionstest `TestFreezeLossyTCP` (80 ms RTT, 1,5 % Verlust, Nachbildung `internal/impair`, denn netem fehlt
@@ -160,7 +160,7 @@ als einziger Knoten erst ohne Beine (Hinweis nach 24 h). Exit 75 → der Wächte
 stürzt es dreimal binnen 30 s ab, fällt er auf das Image-Binär zurück (`bin/bad`). Nach `remove` startet er nicht mehr
 (`HORN_DATA/removed`).
 
-**Release-Schlüssel (muss Sven einmal einrichten):**
+**Release-Schlüssel (einmalig von den Maintainern einzurichten):**
 1. `python3 tools/horn-release.py keygen` (offline) → `secret: …` als GitHub-Secret `HORN_RELEASE_KEY`, `pub: …` in
    `gjallarhorn/release.pub` eintragen und committen.
 2. In der Release-Action je Architektur `gjallarhorn/build.sh <version>` und

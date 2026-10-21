@@ -994,8 +994,8 @@ UPDATE chat SET v3_at=COALESCE((SELECT m.created FROM chat_msg m WHERE m.seq=cha
 SELECT 1 FROM chat_reaction LIMIT 0;
 """,
     # 2.5.0 (Gjallarhorn P3, saga/horn.py): aktueller Knoten eines Endpunkts (Hinweis fuer Kandidaten und Steuerung; NULL =
-    # Mesh bzw. noch keiner). Die Tabellen horn_node und horn_pair legt SCHEMA oben an. (15 ist fuer Chat-Stufe 3 auf einem
-    # anderen Zweig belegt.) Beliebig oft ausfuehrbar.
+    # Mesh bzw. noch keiner). Die Tabellen horn_node und horn_pair legt SCHEMA oben an. (15 = Chat-Stufe 3.)
+    # Beliebig oft ausfuehrbar.
     16: """
 ALTER TABLE chat_call_leg ADD COLUMN IF NOT EXISTS node TEXT;
 CREATE INDEX IF NOT EXISTS chat_call_leg_node ON chat_call_leg (node) WHERE node IS NOT NULL AND state='active';

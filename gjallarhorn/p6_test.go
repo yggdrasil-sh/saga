@@ -61,7 +61,7 @@ func TestReleaseSignatur(t *testing.T) {
 	}
 	releaseKeyOverride = ""
 	if releaseKey() != nil {
-		t.Errorf("release.pub im Repo muss leer sein, solange Sven keinen Schluessel eingetragen hat")
+		t.Errorf("release.pub im Repo muss leer sein, solange kein Schluessel eingetragen ist")
 	}
 }
 

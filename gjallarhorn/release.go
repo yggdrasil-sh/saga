@@ -15,9 +15,9 @@ import (
 // Release-Schluessel fuer Selbst-Updates (Konzept v2 §2.5, Paket P6). Der Waechter und der Knoten laden ein neues
 // gjallarhorn-Binaer nur, wenn seine Ed25519-Signatur zu diesem festen Schluessel passt.
 //
-// Konfigurationsstelle: gjallarhorn/release.pub (eine Zeile Base64, 32 Byte; Kommentare mit #). Sven erzeugt das
-// Schluesselpaar einmal mit tools/horn-release.py keygen, legt den GEHEIMEN Teil als CI-Secret HORN_RELEASE_KEY ab und
-// traegt den oeffentlichen Teil in release.pub ein. Saga liest dieselbe Datei (saga/horn_ops.py) fuer das Deploy-Skript.
+// Konfigurationsstelle: gjallarhorn/release.pub (eine Zeile Base64, 32 Byte; Kommentare mit #). Die Maintainer erzeugen das
+// Schluesselpaar einmal mit tools/horn-release.py keygen, legen den GEHEIMEN Teil als CI-Secret HORN_RELEASE_KEY ab und
+// tragen den oeffentlichen Teil in release.pub ein. Saga liest dieselbe Datei (saga/horn_ops.py) fuer das Deploy-Skript.
 // Ohne Schluessel sind Selbst-Updates aus (der Knoten meldet "aus", Saga zeigt den Hinweis).
 // Tests bauen mit -ldflags "-X main.releaseKeyOverride=<Base64>" (Testschluessel, nie im Repo).
 //

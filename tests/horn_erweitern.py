@@ -4,7 +4,7 @@ Waechter-Update (signiertes Binaer), Leeren, Entfernen, Cloudflare-DNS, ACME DNS
 Eigene Instanz auf derselben Datenbank: saga-media auf 8071 (uvicorn intern 8072), Admin 8073. Nur lokale Attrappen, keine
 echten Netzaufrufe: Fake-Cloudflare (18310, SAGA_CF_API), Fake-ACME (gjallarhorn/tools/fakeacme, dns-01 gegen den
 Fake-Cloudflare), Release-Server (18311) mit einem TESTSCHLUESSEL (wird hier erzeugt, nie gespeichert; die Binaere sind
-mit -X main.releaseKeyOverride gebaut). Der weitere Knoten horn-2.example.org entsteht wie bei Sven auf CT150: das
+mit -X main.releaseKeyOverride gebaut). Der weitere Knoten horn-2.example.org entsteht wie auf einem echten Host: das
 systemd-Deploy-Skript aus dem Admin-Bereich laeuft mit HORN_ROOT (Simulation ohne systemd, SYSTEMCTL=true), danach
 startet der Test die ExecStart-Zeile der erzeugten Unit (gjallarhorn watch) mit der erzeugten Umgebung.
 

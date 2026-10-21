@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Selbst-Update gekoppelter Knoten (Konzept v2 §2.5, Paket P6, Entscheidung Sven: signiertes Binaer, ohne Docker-Socket).
+// Selbst-Update gekoppelter Knoten (Konzept v2 §2.5, Paket P6, Entscheidung: signiertes Binaer, ohne Docker-Socket).
 //
 // Zielversion = Saga-Version (welcome.want bzw. "version"). Weicht sie ab, laedt der Knoten
 //
