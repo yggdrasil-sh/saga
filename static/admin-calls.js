@@ -68,11 +68,11 @@
   var f = document.querySelector('.horn-pair-f'), out = document.querySelector('.horn-pair-out');
   if (!f || !out) return;
   var timer = null, started = 0;
-  function step(li, s) {
+  function step(li, s, port) {
     li.hidden = false;
     li.className = 'hp-' + s;
     var t = li.dataset[s === 'run' && li.dataset.run ? 'run' : s];
-    if (t) li.textContent = t;
+    if (t) li.textContent = t.replace('{port}', String(port || 443));   // tatsaechlicher Port des Knotens
   }
   function render(st) {
     var seen = {};
@@ -80,7 +80,7 @@
       var li = out.querySelector('.horn-prog li[data-k="' + x.k + '"]');
       if (!li) return;
       seen[x.k] = 1;
-      step(li, x.s);
+      step(li, x.s, x.port || st.port);
     });
     if (st.expired) step(out.querySelector('.horn-prog li[data-k="done"]'), 'expired');
     return st.done || st.expired;

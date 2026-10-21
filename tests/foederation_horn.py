@@ -225,8 +225,10 @@ def main():
             part_old(anna, bert, ch, bc)
         else:
             part_a(adm, anna, bert, ch, bc, ada)
+            part_staffel(anna, ada, bert, ben, ch, bc, nc)
             part_b(adm, anna, bert, ben, ch, bc, nc)
             part_c(adm, anna, bert, ch, bc)
+            part_reasons(adm, anna, bert, ch, bc)
             part_sec()
         rc = 0
     except Exception as ex:  # noqa: BLE001
@@ -366,6 +368,56 @@ def part_a(adm, anna, bert, ch, bc, ada=None):
     ok("a: Anruf endet auf A und B", end_call(cid, anna, bert, ada) if ada is not None else end_call(cid, anna, bert))
 
 
+B108_CODE = r"""
+from db import connect
+from saga import fed_horn as FH, fed_calls as FCL, fed_chat as FC, federation as F, horn as H, calls
+with connect() as c:
+    pid = [p["id"] for p in F.peers(c) if p["host"] == "127.0.0.1:8695"][0]
+call = {"id": "f" * 32, "lead": pid, "state": "active"}
+out = {}
+FC.sync_call = lambda p, body, path=None: (None, "Zeitueberschreitung")          # Heim antwortet mit Text statt JSON
+H.ready_nodes = lambda c: []
+b, err = FH.block("fb-bert", call, "d" * 32, "member")
+out["timeout"] = [b.get("candidates"), b.get("error"), (b.get("fed") or {}).get("why")]
+FC.sync_call = lambda p, body, path=None: (502, "Bad Gateway")
+b, err = FH.block("fb-bert", call, "d" * 32, "member")
+out["text502"] = [b.get("candidates"), bool(b.get("error"))]
+gone = []
+FH.block = lambda *a, **k: 1 / 0
+FCL.leave = lambda uid, call, dev: gone.append(dev)
+blk, resp = FCL._horn_block("fb-bert", call, "d" * 32, "member")
+out["teardown"] = [blk, getattr(resp, "status_code", None), gone]
+print(json.dumps(out))
+"""
+
+
+def part_staffel(anna, ada, bert, ben, ch, bc, nc):
+    """Nr. 108 (Web-Test 2.5): A und B mit Knoten, Anna startet, Ada, Bert und Ben treten im Abstand von etwa 3 s bei
+    (Ablauf aus dem Bericht) - jeder Beitritt 200, kein Bein ohne Person. Dazu: Antwort des Heims als Text (Zeitueberschreitung,
+    Fehlerseite) fuehrt nicht zu HTTP 500, ein unerwarteter Fehler traegt das Geraet wieder aus."""
+    cid, s, d = start_call(anna, ch)
+    ok(f"108: Anna startet ueber Knoten ({s})", s == 200 and d["call"]["topo"] == "horn")
+    pick(anna, cid, "horn-a.test")
+    res = []
+    for u, k, cc in ((ada, "a", ch), (bert, "b", bc), (ben, "b", nc)):
+        time.sleep(3)
+        s, d = api(k, u.uid, "POST", f"/api/calls/{cid}/join", {"device": u.dev["id"], "role": "member", "caps": CAPS})
+        cs = cands(d) if s == 200 else []
+        if cs:
+            pick(u, cid, cs[0]["node"])
+        res.append((u.uid, s, len(cs)))
+    ok(f"108: gestaffelte Beitritte alle 200 mit Kandidaten ({res})", all(x[1] == 200 and x[2] > 0 for x in res))
+    devs = {u.dev["id"] for u in (anna, ada, bert, ben)}
+    legs = lambda: {r[0] for r in sql("a", "SELECT device FROM chat_call_leg WHERE call_id=? AND state='active'", (cid,))}  # noqa: E731
+    ok(f"108: beim Heim genau die vier Geraete, kein Bein ohne Person ({len(legs())})", wait(lambda: legs() == devs, 10))
+    r = T.py("b", B108_CODE)
+    ok(f"108: Heim antwortet mit Text (Zeitueberschreitung) -> klare Meldung, keine Ausnahme ({r['timeout']})",
+       r["timeout"][0] == [] and bool(r["timeout"][1]) and r["timeout"][2] == "gone")
+    ok(f"108: Fehlerseite (502, Text) -> keine Ausnahme ({r['text502']})", r["text502"] == [[], True])
+    ok(f"108: unerwarteter Fehler -> 502 und Geraet ausgetragen ({r['teardown']})", r["teardown"] == [None, 502, ["d" * 32]])
+    ok("108: Anruf endet", end_call(cid, anna, ada, bert, ben))
+
+
 def part_b(adm, anna, bert, ben, ch, bc, nc):
     """Fall b: B ohne bereiten Knoten, A teilt -> Bert direkt am Knoten von A; Kontingent, Erlaubt-Liste, Notaus."""
     nb = node_of(adm["b"], "horn-b.test")
@@ -446,6 +498,47 @@ def part_c(adm, anna, bert, ch, bc):
     bcall = wait(lambda: (api("b", "fb-bert", "GET", f"/api/calls/{cid}")[1] or {}).get("call"), 10) or {}
     ok("c: B sieht dieselbe Meldung (Kopie des Anrufs)", bcall.get("topo") == "mesh" and bcall.get("horn_mesh") == hm)
     ok("c: Anruf endet", end_call(cid, anna))
+
+
+def part_reasons(adm, anna, bert, ch, bc):
+    """Nr. 123/126 (Web-Test 2.5): Mesh-Rueckfall nennt den richtigen Grund; Erlaubt-Liste aus verhindert die Kaskade
+    ueber den eigenen Knoten von B nicht (Konzept §2.7), Notaus schon."""
+    pb = sql("a", "SELECT id FROM fed_peer WHERE host=?", (T.I["b"]["host"],))[0][0]
+    na = node_of(adm["a"], "horn-a.test")
+    calls_post(adm["a"], {"action": "share", "id": na["id"]})
+    wait(lambda: node_of(adm["a"], "horn-a.test").get("share") is True, 5)
+    # Notaus fuer B (B ohne Knoten): Grund Notaus
+    adm["a"].post({"action": "horn_share", "id": str(pb), "allowed": "1", "off": "1", "legs": "", "mbit": ""})
+    cid, s, d = start_call(anna, ch)
+    hm = (d.get("call") or {}).get("horn_mesh") or ""
+    ok(f"123: Notaus -> Mesh, Grund Notaus ({hm[:110]})", s == 200 and d["call"]["topo"] == "mesh" and "Notaus" in hm
+       and "keiner eingerichtet" not in hm)
+    end_call(cid, anna)
+    # Erlaubt-Liste aus, B ohne bereiten Knoten: Grund Erlaubt-Liste
+    adm["a"].post({"action": "horn_share", "id": str(pb), "legs": "", "mbit": ""})
+    cid, s, d = start_call(anna, ch)
+    hm = (d.get("call") or {}).get("horn_mesh") or ""
+    ok(f"126: Erlaubt aus, B ohne Knoten -> Mesh, Grund Erlaubt-Liste ({hm[:110]})", s == 200 and d["call"]["topo"] == "mesh"
+       and "Erlaubt-Liste" in hm)
+    end_call(cid, anna)
+    # Erlaubt-Liste aus, B mit bereitem Knoten: ueber Knoten (Kaskade ueber den eigenen Knoten von B)
+    nb = node_of(adm["b"], "horn-b.test")
+    calls_post(adm["b"], {"action": "undrain", "id": nb["id"]})
+    ok("126: Knoten B wieder bereit", wait(lambda: node_of(adm["b"], "horn-b.test").get("status") == "ready", 20))
+    cid, s, d = start_call(anna, ch)
+    ok(f"126: Erlaubt aus, B mit Knoten -> ueber Knoten ({s}, {d.get('call', {}).get('topo')}, {(d.get('call') or {}).get('horn_mesh', '')[:60]})",
+       s == 200 and d["call"]["topo"] == "horn")
+    if d.get("call", {}).get("topo") == "horn":
+        pick(anna, cid, "horn-a.test")
+        wait(lambda: (sql("b", "SELECT topo FROM chat_call WHERE id=?", (cid,)) or [[None]])[0][0] == "horn", 10)
+        s, d = api("b", "fb-bert", "POST", f"/api/calls/{cid}/join", {"device": bert.dev["id"], "role": "member", "caps": CAPS})
+        cs = [c["node"] for c in cands(d)]
+        ok(f"126: Bert bekommt den eigenen Knoten (Kaskade erlaubt) ({s}, {cs})", s == 200 and cs == ["horn-b.test"])
+        end_call(cid, anna, bert)
+    else:
+        end_call(cid, anna)
+    adm["a"].post({"action": "horn_share", "id": str(pb), "allowed": "1", "legs": "", "mbit": ""})
+    calls_post(adm["a"], {"action": "unshare", "id": na["id"]})
 
 
 def part_old(anna, bert, ch, bc):

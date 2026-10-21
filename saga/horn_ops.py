@@ -36,7 +36,7 @@ from fastapi.responses import JSONResponse
 
 from db import connect as _db
 from saga import cloudflare, horn, notify
-from saga.core import BASE_URL, HERE
+from saga.core import BASE_URL, HERE, t
 from version import VERSION
 
 router = APIRouter()
@@ -127,16 +127,46 @@ def _pub_pem(b64):
     return "-----BEGIN PUBLIC KEY-----\n" + base64.b64encode(der).decode() + "\n-----END PUBLIC KEY-----"
 
 
-def image_ref():
-    """Image fuer Knoten: gepinnt per Digest, falls bekannt (SAGA_HORN_IMAGE_DIGEST=sha256:...), sonst Tag = Saga-Version."""
+def image_digest():
+    """Digest des Knoten-Images, falls bekannt: SAGA_HORN_IMAGE_DIGEST=sha256:... bzw. Datei gjallarhorn/image.digest
+    (vom Release-Bau, eine Zeile). Sonst ""."""
     dg = os.environ.get("SAGA_HORN_IMAGE_DIGEST", "").strip()
+    if not dg:
+        try:
+            with open(os.path.join(HERE, "gjallarhorn", "image.digest"), encoding="utf-8") as f:
+                dg = f.read(200).strip()
+        except OSError:
+            dg = ""
+    return dg if re.fullmatch(r"sha256:[0-9a-f]{64}", dg) else ""
+
+
+def image_ref():
+    """Image fuer Knoten: gepinnt per Digest, falls bekannt (image_digest), sonst Tag = Saga-Version."""
+    dg = image_digest()
     ref = f"{IMAGE}:{VERSION}"
-    return (ref + "@" + dg) if re.fullmatch(r"sha256:[0-9a-f]{64}", dg) else ref
+    return (ref + "@" + dg) if dg else ref
 
 
 def saga_origin():
     u = urlparse(BASE_URL)
     return f"{u.scheme}://{u.netloc}"
+
+
+def saga_warn():
+    """Nr. 009: Saga-Adresse, die ein Knoten auf einem anderen Server nicht erreichen kann (http, localhost, interne/
+    Loopback-Adresse, Name ohne Punkt) - Warnung im Dialog Erweitern und im Skript. "" = in Ordnung."""
+    u = urlparse(BASE_URL)
+    host = (u.hostname or "").lower()
+    local = not host or host == "localhost" or host.endswith((".localhost", ".local", ".internal", ".lan")) or "." not in host.strip("[]")
+    try:
+        a = ipaddress.ip_address(host.strip("[]"))
+        local = local or not a.is_global
+    except ValueError:
+        pass
+    if u.scheme != "https" or local:
+        return t("Achtung: Die Saga-Adresse {saga} ist für einen Knoten auf einem anderen Server vermutlich nicht erreichbar (nur https mit öffentlichem Namen). BASE_URL prüfen – sonst koppelt der Knoten nicht.",  # noqa: E501
+                 saga=saga_origin())
+    return ""
 
 
 def suffix():
@@ -206,12 +236,14 @@ def pair_create(name, share=False, udp=True, by="admin"):
 def deploy(name, tok, udp=True):
     """Deploy-Skripte (Docker Compose und systemd/Debian). Beide enthalten den einmaligen Code, keinen Cloudflare-Token."""
     saga = saga_origin()
+    warn = saga_warn()
     env = (f"# Gjallarhorn-Knoten {name} für {saga} (Saga {VERSION})\n"
-           f"# Einmaliger Kopplungs-Code, 30 min gültig – danach wertlos.\n"
+           f"# Einmaliger Kopplungs-Code, 30 min gültig – danach wertlos.\n" + (f"# {warn}\n" if warn else "") +
            f"HORN_SAGA={saga}\nHORN_PAIR={tok}\nHORN_NAME={name}\nHORN_UDP={'1' if udp else '0'}\n")
+    pin = "" if image_digest() else ("    # Image nur per Tag (Digest unbekannt) – zum Festschreiben SAGA_HORN_IMAGE_DIGEST in Saga setzen\n")
     ports = '      - "443:443/tcp"\n' + ('      - "443:443/udp"\n' if udp else "")
     compose = ("services:\n  gjallarhorn:\n"
-               f"    image: {image_ref()}\n"
+               f"    image: {image_ref()}\n" + pin +
                "    command: [\"watch\"]\n"
                "    restart: unless-stopped\n"
                "    env_file: .env\n"
@@ -219,12 +251,17 @@ def deploy(name, tok, udp=True):
                "    volumes:\n      - gjallarhorn:/data\n"
                "    stop_grace_period: 30s\n"
                "volumes:\n  gjallarhorn: {}\n")
-    docker = ("#!/bin/sh\n# Gjallarhorn-Knoten " + name + " (Docker). Auf dem neuen Server ausführen.\nset -eu\n"
+    docker = ("#!/bin/sh\n# Gjallarhorn-Knoten " + name + " (Docker). Auf dem neuen Server ausführen.\nset -eu\n" + _warn_sh(warn) +
               "mkdir -p gjallarhorn && cd gjallarhorn\n"
               "umask 077\ncat > .env <<'EOF'\n" + env + "EOF\n"
               "cat > docker-compose.yml <<'EOF'\n" + compose + "EOF\n"
               "docker compose up -d\ndocker compose logs --tail 20\n")
-    return {"env": env, "compose": compose, "script_docker": docker, "script_systemd": systemd_script(name, tok, udp)}
+    return {"env": env, "compose": compose, "script_docker": docker, "script_systemd": systemd_script(name, tok, udp), "warn": warn}
+
+
+def _warn_sh(warn):
+    """Warnung im Skript (stderr, mit einfachen Anfuehrungszeichen sicher gequotet)."""
+    return ("echo '" + warn.replace("'", "'\\''") + "' >&2\n") if warn else ""
 
 
 def systemd_script(name, tok, udp=True):
@@ -235,7 +272,7 @@ def systemd_script(name, tok, udp=True):
     saga = saga_origin()
     head = ("#!/bin/sh\n# Gjallarhorn-Knoten " + name + " ohne Docker (Debian 12+, systemd). Als root ausführen.\n"
             "# Braucht curl und openssl. Das Binär kommt aus dem GitHub-Release und wird gegen den Release-Schlüssel geprüft.\n"
-            "set -eu\n")
+            "set -eu\n" + _warn_sh(saga_warn()))
     if not pub:
         return head + ("echo 'Saga kennt noch keinen Release-Schlüssel (gjallarhorn/release.pub) – die systemd-Variante ist "
                        "erst mit signierten Releases möglich. Bitte die Docker-Variante nutzen.' >&2\nexit 1\n")
@@ -492,7 +529,7 @@ def pair_finish(b, src=""):
     udp_has = bool(b.get("udp")) and want_udp
     rc = reach(name, pub, v4, v6, port, udp_has, src)
     with _db() as c, c:
-        _progress(c, pid, tcp=rc)
+        _progress(c, pid, tcp=rc, port=port)
         if not (rc["v4"] or rc["v6"]):
             log(c, "pair.unreachable", None, name, json.dumps({**rc["err"], **({"detail": rc["detail"]} if rc.get("detail") else {})}))
             # nur Fehlercodes an den Knoten (Netzdetails der geprueften Adresse stehen im Pruefprotokoll des Admin-Bereichs)
@@ -721,7 +758,7 @@ def pair_status(pid):
         n = _node(c, r[3]) if r[3] else None
     p = r[4] if isinstance(r[4], dict) else {}
     now = time.time()
-    out = {"name": r[0], "expires": r[1], "expired": not r[2] and r[1] < now, "steps": []}
+    out = {"name": r[0], "expires": r[1], "expired": not r[2] and r[1] < now, "steps": [], "port": int(p.get("port") or 443)}
     st = out["steps"]
     st.append({"k": "wait", "s": "ok" if p.get("node") else "run"})
     if p.get("node"):
@@ -824,4 +861,5 @@ def admin_state():
     return {"nodes": out, "pending": pend, "log": logs, "hint": busy_hint(out, now), "release_key": bool(release_pub()), "rekey": rekey,
             "cf": {"set": bool(cf.get("token")), "mask": cloudflare.mask(cf.get("token") or ""), "zone": cf.get("zone") or "",
                    "check": cf.get("check") or {}},
-            "suffix": suffix(), "image": image_ref(), "saga": saga_origin(), "builtin_on": horn.builtin_on(), "horn_on": horn.horn_on()}
+            "suffix": suffix(), "image": image_ref(), "saga": saga_origin(), "saga_warn": saga_warn(), "builtin_on": horn.builtin_on(),
+            "horn_on": horn.horn_on()}

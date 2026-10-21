@@ -167,6 +167,18 @@ def notaus(pid):
     q = horn.quota_key(pid)
     for nid in list(horn._CONNS):
         horn.send(nid, {"t": "quota_off", "q": q, "secs": 180})
+    # Nr. 121/122: die Geraete dieses Servers haben in unseren Knoten-Anrufen keine Medien mehr (Beine und Bruecken weg) -
+    # austragen, damit alle es sehen (Teilnehmerliste mit Grund "notaus"; der andere Server beendet den Anruf auf dem Geraet)
+    now = time.time()
+    with _db() as c, c:
+        rows = c.execute("SELECT l.call_id, l.device FROM chat_call_leg l JOIN chat_call k ON k.id=l.call_id WHERE l.peer_id=? "
+                         "AND l.state='active' AND k.state<>'ended' AND k.lead IS NULL AND k.topo='horn'", (pid,)).fetchall()
+        for cid, dev in rows:
+            call = calls._load(c, cid, lock=True)
+            if call and call["state"] != "ended":
+                calls._leave(c, call, dev, now, "notaus")
+    if rows:
+        print(f"horn: Notaus fuer Server {pid}: {len(rows)} Geraete aus Anrufen ueber Knoten ausgetragen", flush=True)
 
 
 def admin_state(c):
@@ -196,8 +208,10 @@ def prefetch(chat_id):
         ch = chat._load(c, chat_id)
         if not ch or not chat.is_fed(ch) or ch["home_peer"] is not None:
             return
-        ps = [p for p in FC.participants(c, ch) if FCL.peer_horn(p) and now - (_RN.get(p["id"]) or (0, 0))[1] > NODES_TTL
-              and not may_share(c, p["id"])]
+        # neu fragen: Stand aelter als NODES_TTL oder "keine Knoten" (sonst haelt eine alte 0 - etwa ein geleerter Knoten -
+        # den naechsten Anruf eine Minute lang im Mesh, Nr. 126); bei Notaus ist es egal (keine Kaskade)
+        ps = [p for p in FC.participants(c, ch) if FCL.peer_horn(p) and not share_cfg(c, p["id"])["off"] and not may_share(c, p["id"])
+              and (now - (_RN.get(p["id"]) or (0, 0))[1] > NODES_TTL or (_RN.get(p["id"]) or (0,))[0] <= 0)]
     ths = [threading.Thread(target=_probe, args=(p,), daemon=True) for p in ps[:20]]
     for th in ths:
         th.start()
@@ -227,15 +241,31 @@ def note_nodes(pid, d):
 
 def fed_ok(c, ch, starter_pid=None):
     """Gruppenanruf in einem foederierten Chat ueber Knoten? -> (ja, hinweis). Hinweis nur, wenn Knoten moeglich
-    waeren, aber ein beteiligter Server keinen nutzen kann (Fall c: kein eigener Knoten und wir teilen nicht)."""
+    waeren, aber ein beteiligter Server keinen nutzen kann - mit dem richtigen Grund (Nr. 123/126):
+    Notaus (weder geteilte Knoten noch Kaskade), Erlaubt-Liste aus und dort kein bereiter Knoten (Kaskade ginge, Konzept
+    §2.7), bzw. dort kein Knoten und wir teilen keinen."""
     ps = FC.participants(c, ch)
     if any(not FCL.peer_horn(p) for p in ps):
         return False, None                              # Server ohne horn (2.3/2.4): still Mesh
-    none = [p["host"] for p in ps if not may_share(c, p["id"]) and _nodes_of(p["id"]) <= 0]
+    off, deny, none = [], [], []
+    have = bool(shared_nodes(c))
+    for p in ps:
+        s = share_cfg(c, p["id"])
+        if s["off"]:
+            off.append(p["host"])
+        elif not may_share(c, p["id"]) and _nodes_of(p["id"]) <= 0:
+            (deny if not s["allowed"] and have else none).append(p["host"])
+    if not (off or deny or none):
+        return True, None
+    why = []
+    if off:
+        why.append(t("Für {hosts} ist hier der Notaus für Gjallarhorn-Knoten an.", hosts=", ".join(off)))
+    if deny:
+        why.append(t("{hosts} hat keinen bereiten Knoten und darf die Knoten dieses Servers nicht nutzen (Erlaubt-Liste).", hosts=", ".join(deny)))
     if none:
-        return False, t("Teilnehmende von {hosts} können keinen Gjallarhorn-Knoten nutzen (dort ist keiner eingerichtet und dieser Server teilt seine Knoten nicht). Der Anruf läuft deshalb direkt zwischen den Geräten (höchstens {v} mit Video bzw. {a} nur mit Ton).",  # noqa: E501
-                        hosts=", ".join(none), v=calls.limit("video"), a=calls.limit("audio"))
-    return True, None
+        why.append(t("Bei {hosts} ist kein Knoten bereit und dieser Server teilt keinen.", hosts=", ".join(none)))
+    return False, t("Teilnehmende anderer Server können keinen Gjallarhorn-Knoten nutzen: {why} Der Anruf läuft deshalb direkt zwischen den Geräten (höchstens {v} mit Video bzw. {a} nur mit Ton).",  # noqa: E501
+                    why=" ".join(why), v=calls.limit("video"), a=calls.limit("audio"))
 
 
 # --- Heim: Auftraege von anderen Servern ---------------------------------------------------------------------------------
@@ -440,9 +470,11 @@ def block(uid, call, dev, role, dev_class="desktop", avoid=(), node=None):
             nd = {"name": node[:253], "own": False}
         body["node"] = nd
     st, d = FC.sync_call(p, body, path="/fed/v2/call") if not off else (403, {"error": "off"})
+    if not isinstance(d, dict):                        # Netzfehler/Zeitueberschreitung: Fehlertext statt Antwort (Nr. 108)
+        d = {"why": "gone"} if st is None else {}
     if node and st != 200:
         return None, t("ungültige Angabe")
-    asg = (d or {}).get("assigned") if st == 200 and isinstance(d, dict) and isinstance((d or {}).get("assigned"), dict) else None
+    asg = d.get("assigned") if st == 200 and isinstance(d.get("assigned"), dict) else None
     with _db() as c, c:
         if node:
             v = mine["id"] if mine is not None else f"f:{call['lead']}:{node[:253]}"
@@ -452,22 +484,24 @@ def block(uid, call, dev, role, dev_class="desktop", avoid=(), node=None):
             v = n["id"] if n else (None if asg.get("own") else f"f:{call['lead']}:{asg['name'][:253]}")
             if v:
                 c.execute("UPDATE chat_call_leg SET node=? WHERE call_id=? AND device=? AND state='active'", (v, call["id"], dev))
-        theirs = (d or {}).get("candidates") if st == 200 and isinstance(d, dict) else []
-        theirs = [x for x in theirs or [] if isinstance(x, dict) and x.get("node") and _https(x.get("url")) and isinstance(x.get("tokens"), dict)][:horn.CANDIDATES]
+        theirs = d.get("candidates") if st == 200 and isinstance(d.get("candidates"), list) else []
+        theirs = [x for x in theirs if isinstance(x, dict) and x.get("node") and _https(x.get("url")) and isinstance(x.get("tokens"), dict)][:horn.CANDIDATES]
         for x in theirs:
             x["home"] = True
         cur = horn_web.home(c, call["id"])
-        ours = horn_web.candidates(c, call, dev, role, dev_class, avoid) if own and (d or {}).get("cascade", True) is not False else []
+        ours = horn_web.candidates(c, call, dev, role, dev_class, avoid) if own and d.get("cascade", True) is not False else []
         share = bool(theirs)
         for x in ours:
             x["here"] = bool(cur) and not share and x["node"] == (horn.node_by_id(c, cur) or {}).get("name")
         cands = (theirs + ours)[:horn.CANDIDATES + 1]
-        info = {"share": share, "why": (d or {}).get("why") if isinstance(d, dict) else "gone"}
+        info = {"share": share, "why": "local_off" if off else d.get("why") if st == 200 or st is None else "gone"}
     if not cands:
         why = info["why"]
-        msg = t("Der Server {host} teilt gerade keinen Knoten mit diesem Server und hier ist keiner bereit.", host=p["host"]) \
-            if why in ("noshare", "off", None) else t("Das Kontingent für Teilnehmende dieses Servers auf den Knoten von {host} ist erschöpft.", host=p["host"]) \
-            if why == "quota" else t("Der Server {host} ist gerade nicht erreichbar.", host=p["host"])
+        msg = {"off": t("Der Server {host} hat für diesen Server den Notaus für seine Knoten an – auch eine Kaskade über einen eigenen Knoten geht nicht.", host=p["host"]),  # noqa: E501
+               "local_off": t("Für den Server {host} ist hier der Notaus für Gjallarhorn-Knoten an.", host=p["host"]),
+               "quota": t("Das Kontingent für Teilnehmende dieses Servers auf den Knoten von {host} ist erschöpft.", host=p["host"]),
+               "gone": t("Der Server {host} ist gerade nicht erreichbar.", host=p["host"])}.get(
+            why, t("Der Server {host} teilt gerade keinen Knoten mit diesem Server und hier ist keiner bereit.", host=p["host"]))
         return {"e2e": "saga-horn/v1", "ttl": horn.TOKEN_TTL, "candidates": [], "fed": info, "error": msg}, None
     return {"e2e": "saga-horn/v1", "ttl": horn.TOKEN_TTL, "candidates": cands, "fed": info}, None
 

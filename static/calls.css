@@ -149,8 +149,8 @@
 .cl-tv2{position:absolute;right:.4rem;bottom:2.2rem;width:32%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:#000;
   border:1px solid #3a475b;z-index:2;cursor:pointer;display:none}
 .cl-tile.has-small .cl-tv2{display:block}
-.cl-tl{position:absolute;left:.4rem;right:.4rem;bottom:.35rem;z-index:3;display:flex;gap:.4rem;align-items:baseline;min-width:0;
-  font-size:.86rem;text-shadow:0 1px 3px #000}
+.cl-tl{position:absolute;left:.4rem;right:auto;max-width:calc(100% - .8rem);bottom:.35rem;z-index:3;display:flex;gap:.4rem;align-items:baseline;min-width:0;
+  font-size:.86rem;color:#fff;text-shadow:0 1px 3px #000;background:#0b0f15b3;border-radius:6px;padding:.05rem .4rem}
 .cl-tl b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .cl-td{color:var(--muted);font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cl-tile.muted .cl-tl b::after{content:" 🔇"}

@@ -481,6 +481,19 @@ def pairing_api():
        "openssl pkeyutl -verify" in sd and "BEGIN PUBLIC KEY" in sd and "ExecStart=/opt/gjallarhorn/gjallarhorn watch" in sd
        and "useradd --system" in sd and "CAP_NET_BIND_SERVICE" in sd and f"HORN_PAIR={tok}" in sd)
     ok("kein Cloudflare-Token im Skript", not any(x in dk + sd for x in TOK.values()))
+    # Nr. 009 (Web-Test 2.5): http/lokale Saga-Adresse -> Warnung im Skript und im Dialog; Image per Digest, wenn bekannt
+    ok(f"009: Warnung bei http/lokaler Saga-Adresse im Skript (Docker und systemd) ({p.get('warn', '')[:60]})",
+       "Achtung" in (p.get("warn") or "") and ">&2" in dk and (p.get("warn") or "x")[:20] in dk and (p.get("warn") or "x")[:20] in sd)
+    ok("009: Image nur per Tag -> Hinweis im Compose", "Digest unbekannt" in dk)
+    from saga import horn_ops as HO
+    os.environ["SAGA_HORN_IMAGE_DIGEST"] = "sha256:" + "ab" * 32
+    try:
+        ok(f"009: Digest bekannt -> Image gepinnt ({HO.image_ref()})", HO.image_ref().endswith("@sha256:" + "ab" * 32)
+           and "Digest unbekannt" not in HO.deploy("horn-x.example.org", "hkh_x")["script_docker"])
+    finally:
+        os.environ.pop("SAGA_HORN_IMAGE_DIGEST", None)
+    s, html = adm("GET", "/calls")
+    ok("009: Warnung auch im Dialog Erweitern", s == 200 and "Achtung: Die Saga-Adresse" in html)
     s, d = pair_post(pair_body("hkh_" + "A" * 43, "horn-7.example.org")[0])
     ok(f"unbekannter Code -> 403 ({s}, {d.get('code') if isinstance(d, dict) else d})", s == 403 and d.get("code") == "token")
     b, _ = pair_body(tok, "horn-7.example.org")
@@ -504,6 +517,7 @@ def pairing_api():
     ok(f"... anderer Knotenschluessel mit demselben Code -> 403 ({s})", s == 403 and d.get("code") == "token")
     s, d = adm("GET", f"/api/calls/pair/{p['id']}")
     ok(f"Fortschritt: Knoten gemeldet, 443/TCP nicht erreichbar ({s})", s == 200 and any(x["k"] == "tcp" and x["s"] == "err" for x in d["steps"]))
+    ok(f"Fortschritt nennt den tatsaechlichen Port ({d.get('port')})", d.get("port") == 1)
     s, p2 = adm("POST", "/api/calls/pair", {"name": "horn-6.example.org"})
     with connect() as c, c:
         c.execute("UPDATE horn_pair SET expires=? WHERE id=?", (time.time() - 1, p2["id"]))
@@ -702,6 +716,7 @@ def e2e(node0, alt, acme_bin):
     steps = {x["k"]: x["s"] for x in last.get("steps", [])}
     ok(f"Live-Fortschritt bis Fertig: {steps} ({PERF['kopplung_bis_fertig_s']} s)", st and steps.get("paired") == "ok" and steps.get("dns") == "ok"
        and steps.get("cert") == "ok" and steps.get("tcp") == "ok" and steps.get("udp") == "ok")
+    ok(f"Fortschritt mit dem Port des Knotens ({last.get('port')}, {HORN2})", last.get("port") == HORN2)
     if not st:
         print(text(os.path.join(STATE, "horn2.log"))[-5000:])
         return

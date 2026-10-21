@@ -614,6 +614,16 @@ def _finish(c, call, reason, now, by=None, remote=False):
     return True
 
 
+GONE_REASONS = ("notaus",)                     # Abgaenge mit eigenem Hinweis im Client (call.roster "gone")
+
+
+def gone(c, cid, secs=120):
+    """{geraet: grund} fuer Endpunkte, die in den letzten secs Sekunden aus einem Grund in GONE_REASONS gegangen sind."""
+    rows = c.execute(f"SELECT device, reason FROM chat_call_leg WHERE call_id=? AND state='left' AND left_at>? AND reason IN "
+                     f"({','.join('?' * len(GONE_REASONS))}) LIMIT 64", (cid, time.time() - secs, *GONE_REASONS)).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
 def emit_roster(c, call, legs=None, fed=True):
     """Teilnehmerliste an alle Konten dieses Servers, die zum Anruf gehoeren (call.roster), und - fuehrt dieser Server den
     Anruf - an die anderen Server (Auftrag 'roster')."""
@@ -622,6 +632,9 @@ def emit_roster(c, call, legs=None, fed=True):
             "limit": climit(c, call), "topo": call.get("topo") or "p2p"}
     can, why = _joinable(c, call, None, legs)
     data = dict(base, legs=roster(c, call, None, legs), joinable=can, join_block=why)
+    g = gone(c, call["id"])
+    if g:
+        data["gone"] = g                                      # 2.5: warum Geraete gerade weg sind (Notaus) - Clients zeigen es
     after = getattr(c, "after_commit", None)                  # rv erst nach dem Commit (vor dem Versand, siehe _rv)
     if _v3(c, call):                                          # 2.5: Stufe 3 - je Konto eigene Liste (andere als Handle)
         items = [(u, "call.roster", dict(data, legs=roster(c, call, u, legs))) for u in sorted(set(_audience(c, call)))]
