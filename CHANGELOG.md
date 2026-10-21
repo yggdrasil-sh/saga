@@ -118,6 +118,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **✓✓ bleibt nach der Umstellung auf Stufe 3** (Nr. 054): Alte, schon gelesene Nachrichten (vor `v3_seq`, ohne `fseq`)
   zeigen wieder „gelesen“ – aus der noch gespeicherten Bestätigung im alten Format (geprüft mit dem gemerkten Benutzernamen
   zum Handle) oder, sobald die Person nach der Umstellung etwas bestätigt hat. Test in `browser_trust3.js`.
+- **Anrufdauer** (Nr. 075/089): Die Anzeige läuft im Sekundentakt aus Zeitstempeln (bisher nur im Takt der Statistik,
+  unter Last seltener) und zählt für alle ab dem Beginn des Gesprächs laut Server (`answered`, umgerechnet über die neue
+  Server-Uhr `now` im Anruf-Objekt) – wer später beitritt, sieht dieselbe Dauer wie der Chat-Eintrag. Der Chat-Eintrag
+  selbst rechnet weiter ab dem Gesprächsbeginn (zweite Person), nicht ab dem Klingeln: im Testfall 4:42 bei 16 s Klingeln
+  und Ende um 09:21:41 – korrekt.
 
 ### Neu (Vorbereitung 2.5, Gjallarhorn)
 - **Horn-Probe** (`gjallarhorn/`, Paket P0): Prototyp des Gjallarhorn-Knotens als eigenes Go-Programm (Pion, nur

@@ -435,6 +435,8 @@ def run():
     ans = json.dumps({"t": "answer", "sdp": "v=0\r\na=fingerprint:sha-256 AA:BB\r\n", "fp": ["sha-256 AA:BB"]})
     s, d = req("POST", f"/api/calls/{cid}/answer", B.k, {"device": B.dev["id"], "signals": seal_for(B, B.dev, cid, A, [A.dev], ans)})
     ok(f"B nimmt auf Geraet 1 an ({s})", s == 200 and d["call"]["state"] == "active" and d["call"]["callee_device"] == B.dev["id"])
+    ok("... Anruf-Objekt mit Server-Uhr now (2.5, Dauer ab answered fuer alle gleich)", abs(d["call"].get("now", 0) - time.time()) < 5
+       and 0 <= d["call"]["now"] - d["call"]["answered"] < 5)
     ev = sA.wait("call.signal", lambda x: x["call_id"] == cid, mA)
     ok("A bekommt die Antwort live (versiegelt fuer A, von B signiert)", ev and ev["from_device"] == B.dev["id"]
        and (open_ok(A, A.dev, cid, B, B.dev, ev) or {}).get("t") == "answer")

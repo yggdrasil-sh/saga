@@ -55,7 +55,7 @@ async function chatKeys(q, user) {
     // Live-Kanal von B beim Aufbau kuenstlich verzoegern: so kommt der Anruf sicher in der Luecke zwischen dem Laden der
     // Seite und dem ersten hello an (Testrunde: Jonas laedt /chats, Lena ruft gleich danach an)
     await b.route('**/api/events*', async r => { await sleep(2500); r.continue().catch(() => {}); });
-    const miss = [], times = [], gap = [];
+    const miss = [], times = [], gap = [], durs = [];
     // Ablauf je Runde: B laedt /chats (jede zweite Runde unmittelbar vor dem Anruf - der Anruf kommt, bevor der Live-Kanal
     // steht), A ruft an, B muss klingeln; dann abwechselnd: B lehnt ab / A legt auf / B nimmt an und A legt auf
     for (let i = 0; i < N; i++) {
@@ -77,6 +77,11 @@ async function chatKeys(q, user) {
       else if (rang && how === 2) {
         await b.click('.cl-ring .cl-big');
         await until(() => b.evaluate(() => { const s = window.HKCalls && window.HKCalls.state(); return s && s.connected; }), 20000);
+        // 2.5 (Nr. 075): Dauer laeuft im Sekundentakt aus Zeitstempeln, bei beiden gleich
+        const dsec = p => p.evaluate(() => { const x = [...document.querySelectorAll('.cl-win .cl-info span')].map(e => e.textContent).find(t => /^\d+:\d\d$/.test(t));
+          return x ? +x.split(':')[0] * 60 + +x.split(':')[1] : -1; });
+        await sleep(1500); const d1 = [await dsec(a), await dsec(b)]; await sleep(3000); const d2 = [await dsec(a), await dsec(b)];
+        durs.push({ d1, d2 });
         await a.click('.cl-ctl .cl-red').catch(() => {});
       } else await a.click('.cl-ctl .cl-red').catch(() => {});
       await until(() => a.evaluate(() => !window.HKCalls.state()), 10000);
@@ -86,6 +91,8 @@ async function chatKeys(q, user) {
     }
     console.log('  Klingeln nach ms: ' + JSON.stringify(times));
     ok('Anrufe kamen in der Luecke vor dem Live-Kanal an (Testaufbau)', gap.length && gap.every(Boolean), gap);
+    ok('Anrufdauer laeuft im Sekundentakt (3 s -> +2..4 s) und ist bei beiden gleich (Nr. 075)', durs.length && durs.every(x =>
+      x.d1[0] >= 0 && x.d2[0] - x.d1[0] >= 2 && x.d2[0] - x.d1[0] <= 4 && Math.abs(x.d2[0] - x.d2[1]) <= 1), durs);
     ok(`Jeder 1:1-Anruf klingelt beim Gegenueber (${N - miss.length}/${N}, auch direkt nach dem Laden der Seite)`, !miss.length, miss);
     // Seite geladen, waehrend es schon klingelt: sofort sichtbar
     await a.click('#ct-call-a'); await until(() => b.isVisible('.cl-ring'), 15000);
