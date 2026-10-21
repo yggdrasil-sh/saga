@@ -226,7 +226,7 @@ def main():
         else:
             part_a(adm, anna, bert, ch, bc, ada)
             part_staffel(anna, ada, bert, ben, ch, bc, nc)
-            part_b(adm, anna, bert, ben, ch, bc, nc)
+            part_b(adm, anna, bert, ben, ch, bc, nc, ada)
             part_c(adm, anna, bert, ch, bc)
             part_reasons(adm, anna, bert, ch, bc)
             part_sec()
@@ -265,7 +265,9 @@ with connect() as c:
 evil = ["https://*", "https://a.example\t*", "https://*.example", "https://b.example/pfad", "https://c.example:99999",
         "https://u:p@d.example", "https://e.example?x=1", "https://f.example\r\nX: y", "http://g.example", "https://h.example ",
         "https://i.example;", "https://j.example'", "https://k.example,l.example", "https://[::1]x"]
-FH.hello_in(pid, {"horn_shared": evil + ["https://127.0.0.1:8481", "https://ok.example:8443", "https://[2001:db8::1]:443"]})
+FH.hello_in(pid, {"horn_shared": evil[5:]})                    # hoechstens 8 Eintraege je hello
+only_bad = (auth.settings(fresh=True).get("horn_remote") or {}).get(str(pid))
+FH.hello_in(pid, {"horn_shared": ["https://127.0.0.1:8481", "https://ok.example:8443", "https://[2001:db8::1]:443"] + evil[:5]})
 stored = (auth.settings(fresh=True).get("horn_remote") or {}).get(str(pid))
 H._CSP.update(t=0.0)
 csp = H._csp_extra()
@@ -275,7 +277,7 @@ tok = [FH.ctok_ok(x) for x in ("c1.aaaa.bbbb\r\nX-Eingeschleust: ja", "c1.aa aa.
                                 "c2.aaaa.bbbb", "c1.aa+a.bbbb", "c1.aaaa-_09.bbbb_-")]
 dial = [FH._dial_ok("https://127.0.0.1:8481"), FH._dial_ok("https://10.0.0.1:443"), FH._dial_ok("https://[::ffff:10.0.0.1]:443"),
         FH._dial_ok("https://[::ffff:127.0.0.1]:8482")]
-print(json.dumps({"stored": stored, "csp": csp, "hello": hello, "tok": tok, "dial": dial}))
+print(json.dumps({"only_bad": only_bad, "stored": stored, "csp": csp, "hello": hello, "tok": tok, "dial": dial}))
 """
 
 
@@ -284,7 +286,7 @@ def part_sec():
     gepruefte Adresse fuer den Knoten). Im Kontext von B (freigegeben: 127.0.0.1:8695 und :8481)."""
     r = T.py("b", SEC_CODE)
     st = r["stored"] or []
-    ok(f"F3: hello_in nimmt nur https://host[:port] ({st})", st == sorted(["https://127.0.0.1:8481", "https://ok.example:8443",
+    ok(f"F3: hello_in nimmt nur https://host[:port] ({r['only_bad']}, {st})", not r["only_bad"] and st == sorted(["https://127.0.0.1:8481", "https://ok.example:8443",
                                                                             "https://[2001:db8::1]:443"]))
     ok(f"F3: CSP-Zusatz ohne Wildcard/Leerraum/Pfad ({r['csp'][:200]!r})", "*" not in r["csp"] and "\t" not in r["csp"]
        and "/pfad" not in r["csp"] and "https://ok.example:8443 wss://ok.example:8443" in r["csp"])
@@ -418,7 +420,7 @@ def part_staffel(anna, ada, bert, ben, ch, bc, nc):
     ok("108: Anruf endet", end_call(cid, anna, ada, bert, ben))
 
 
-def part_b(adm, anna, bert, ben, ch, bc, nc):
+def part_b(adm, anna, bert, ben, ch, bc, nc, ada=None):
     """Fall b: B ohne bereiten Knoten, A teilt -> Bert direkt am Knoten von A; Kontingent, Erlaubt-Liste, Notaus."""
     nb = node_of(adm["b"], "horn-b.test")
     calls_post(adm["b"], {"action": "drain", "id": nb["id"]})
@@ -473,18 +475,28 @@ def part_b(adm, anna, bert, ben, ch, bc, nc):
     html = adm["a"].req("GET", "/federation")[2]
     ok("b: Foederationsseite zeigt Teilen je Server (Auftragsverarbeitung, Notaus)", "Gjallarhorn-Knoten für" in html and "Auftragsverarbeitung" in html
        and 'name="off"' in html)
-    # Notaus
+    # Notaus (Ada tritt vorher bei und bleibt mit Anna im Anruf, damit er nicht endet, wenn B ausgetragen wird)
+    if ada is not None:
+        s, d = api("a", "fa-ada", "POST", f"/api/calls/{cid}/join", {"device": ada.dev["id"], "role": "member", "caps": CAPS})
+        ok(f"121: Ada tritt vor dem Notaus bei ({s}, {str(d)[:120] if s != 200 else ''})", s == 200)
     adm["a"].post({"action": "horn_share", "id": str(pb), "allowed": "1", "off": "1", "legs": "", "mbit": ""})
     q = tok.get("q")
 
     def off():
         return ((node_of(adm["a"], "horn-a.test").get("quotas") or {}).get(q) or {}).get("off") is True
     ok("b: Notaus -> Knoten A meldet das Kontingent von B als aus", bool(wait(off, 15)))
+    # Nr. 121/122: die Geraete von B sind ohne Medien - A traegt sie mit Grund "notaus" aus, B uebernimmt den Grund
+    devs = (bert.dev["id"], ben.dev["id"])
+
+    def gone(k):
+        return sorted(r[0] for r in sql(k, "SELECT reason FROM chat_call_leg WHERE call_id=? AND device IN (?,?) AND state='left'", (cid, *devs)))
+    ok(f"121: Notaus -> Geraete von B beim Heim ausgetragen (Grund notaus) ({gone('a')})", wait(lambda: gone("a") == ["notaus", "notaus"], 10))
+    ok(f"121: ... und in der Kopie auf B mit demselben Grund ({gone('b')})", wait(lambda: gone("b") == ["notaus", "notaus"], 15))
     s, d = api("b", "fb-ben", "POST", f"/api/calls/{cid}/horn", {"device": ben.dev["id"]})
-    ok(f"b: nach Notaus keine Token mehr ({((d.get('horn') or {}).get('fed') or {}).get('why')})",
-       s == 200 and not (d.get("horn") or {}).get("candidates") and ((d.get("horn") or {}).get("fed") or {}).get("why") == "off")
+    ok(f"b: nach Notaus keine Token mehr ({s}, {((d.get('horn') or {}).get('fed') or {}).get('why')})",
+       not (d.get("horn") or {}).get("candidates"))
     adm["a"].post({"action": "horn_share", "id": str(pb), "allowed": "1", "legs": "", "mbit": ""})
-    ok("b: Anruf endet", end_call(cid, anna, bert, ben))
+    ok("b: Anruf endet", end_call(cid, anna, bert, ben, *((ada,) if ada is not None else ())))
     calls_post(adm["a"], {"action": "unshare", "id": na_id})
 
 
@@ -524,10 +536,14 @@ def part_reasons(adm, anna, bert, ch, bc):
     # Erlaubt-Liste aus, B mit bereitem Knoten: ueber Knoten (Kaskade ueber den eigenen Knoten von B)
     nb = node_of(adm["b"], "horn-b.test")
     calls_post(adm["b"], {"action": "undrain", "id": nb["id"]})
-    ok("126: Knoten B wieder bereit", wait(lambda: node_of(adm["b"], "horn-b.test").get("status") == "ready", 20))
+    ok("126: Knoten B wieder bereit (auch fuer Anrufe auf B)", wait(lambda: node_of(adm["b"], "horn-b.test").get("status") == "ready"
+                                                                    and api("b", "fb-bert", "GET", "/api/calls/config")[1].get("horn_ready") is True, 30))
     cid, s, d = start_call(anna, ch)
-    ok(f"126: Erlaubt aus, B mit Knoten -> ueber Knoten ({s}, {d.get('call', {}).get('topo')}, {(d.get('call') or {}).get('horn_mesh', '')[:60]})",
+    ok(f"126: Erlaubt aus, B mit Knoten -> ueber Knoten ({s}, {d.get('call', {}).get('topo')}, {(d.get('call') or {}).get('horn_mesh', '')})",
        s == 200 and d["call"]["topo"] == "horn")
+    if d.get("call", {}).get("topo") != "horn":
+        lg = open(os.path.join(T.I["a"]["state"], "server.log")).read()
+        print("\n".join(x for x in lg.splitlines() if "ohne Knoten" in x)[-1500:], flush=True)
     if d.get("call", {}).get("topo") == "horn":
         pick(anna, cid, "horn-a.test")
         wait(lambda: (sql("b", "SELECT topo FROM chat_call WHERE id=?", (cid,)) or [[None]])[0][0] == "horn", 10)

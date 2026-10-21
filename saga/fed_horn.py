@@ -257,6 +257,8 @@ def fed_ok(c, ch, starter_pid=None):
             (deny if not s["allowed"] and have else none).append(p["host"])
     if not (off or deny or none):
         return True, None
+    print(f"horn: Gruppenanruf ohne Knoten (Notaus {off}, Erlaubt-Liste {deny}, kein Knoten {none}; "
+          f"bereite Knoten dort: {[(p['host'], _RN.get(p['id'], (None,))[0]) for p in ps]})", flush=True)
     why = []
     if off:
         why.append(t("Für {hosts} ist hier der Notaus für Gjallarhorn-Knoten an.", hosts=", ".join(off)))
