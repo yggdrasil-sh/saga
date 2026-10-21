@@ -51,7 +51,9 @@ def _check_proxy(ip, xff):
     except ValueError:
         return
     first = xff.split(",")[0].strip()
-    if not (a.is_private and not a.is_loopback) or not first or first == ip:
+    # privat oder CGNAT 100.64/10 (z. B. NetBird-/Tailscale-Proxy; ipaddress zaehlt das nicht zu is_private)
+    internal = a.is_private or (a.version == 4 and a in ipaddress.ip_network("100.64.0.0/10"))
+    if not (internal and not a.is_loopback) or not first or first == ip:
         return
     now = time.time()
     if now - PROXY_WARN["at"] > 3600:
