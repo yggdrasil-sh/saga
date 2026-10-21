@@ -16,9 +16,7 @@ import (
 // setDrain: Leeren an/aus (Admin "Leeren" oder Update). Waehrend des Leerens nimmt der Knoten keine neuen Beine an;
 // laufende bleiben, bis die Geraete umgezogen sind (Saga schlaegt ihnen andere Knoten vor).
 func (s *server) setDrain(on bool) {
-	if s.draining.Swap(on) != on {
-		log.Printf("leeren: %v", on)
-	}
+	s.setDraining(on) // P5: meldet den Zustand auch ueber den Ereigniskanal an alle Geraete
 }
 
 // drainGate: neue Beine waehrend des Leerens ablehnen (429 wie "voll").

@@ -122,6 +122,9 @@ type sfuLegReq struct {
 	Screen  bool   `json:"screen"`  // Bildschirmplatz
 	Tiles   int    `json:"tiles"`   // Kachelplaetze (Last-N kappt)
 	Device  string `json:"device"`  // Hinweis "mobile" (kann nur senken)
+	// ScreenMid: mid des Senders fuer den Bildschirm (P5). Browser koennen die Stream-ID nicht waehlen; der Knoten
+	// nimmt eine Spur als Bildschirm, wenn ihre Stream-ID mit "screen" beginnt ODER ihre mid ScreenMid ist.
+	ScreenMid string `json:"screen_mid"`
 }
 
 func (s *server) sfuAPI(p sfu.Path) *webrtc.API {
@@ -137,6 +140,9 @@ func (s *server) sfuAPI(p sfu.Path) *webrtc.API {
 // errAuth: Token ungueltig.
 var errAuth = errors.New("token ungueltig")
 
+// errDraining: Knoten wird geleert (P5), keine neuen Beine - das Geraet nimmt den naechsten Kandidaten.
+var errDraining = errors.New("knoten wird geleert")
+
 func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 	path, err := sfu.ParsePath(req.Path)
 	if err != nil {
@@ -148,6 +154,9 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 	}
 	if req.Audio < 0 || req.Audio > 8 || req.Tiles < 0 || req.Tiles > 30 || len(req.Offer) > 200<<10 {
 		return nil, "", errors.New("ungueltige anfrage")
+	}
+	if s.draining.Load() {
+		return nil, "", errDraining
 	}
 	g, room, err := s.admit(req.Token, path)
 	if err != nil {
@@ -163,11 +172,14 @@ func (s *server) newSFULeg(req sfuLegReq, ipKey string) (*leg, string, error) {
 		g.Device = sfu.Mobile
 	}
 	s.mu.Lock()
-	if len(s.legs) >= s.cfg.MaxLegs || (!s.cfg.Bench && !s.cfg.Dev && ipKey != "" && s.perIP[ipKey] >= 12) {
+	if len(s.legs) >= s.cfg.MaxLegs || (!s.cfg.Bench && !s.cfg.Dev && ipKey != "" && s.perIP[ipKey] >= s.cfg.maxPerIP()) {
 		s.mu.Unlock()
 		return nil, "", errLimit
 	}
 	l := &leg{id: randHex(8), sid: g.Peer, path: req.Path, role: g.Role.String(), ipKey: ipKey, created: time.Now()}
+	if len(req.ScreenMid) <= 16 {
+		l.screenMid = req.ScreenMid
+	}
 	s.legs[l.id] = l
 	s.perIP[ipKey]++
 	s.mu.Unlock()
@@ -291,6 +303,14 @@ func (s *server) sfuTrack(l *leg, sl *sfu.Leg, pc *webrtc.PeerConnection, tr *we
 		}
 	}
 	screen := strings.HasPrefix(tr.StreamID(), "screen")
+	if !screen && l.screenMid != "" && kind == fwd.Video {
+		for _, t := range pc.GetTransceivers() {
+			if t.Receiver() == rc {
+				screen = t.Mid() == l.screenMid
+				break
+			}
+		}
+	}
 	read := func(b []byte) (int, error) {
 		n, _, err := tr.Read(b)
 		return n, err
@@ -342,6 +362,7 @@ func (s *server) onSFULegClosed(sl *sfu.Leg, why string) {
 	s.mu.Lock()
 	l := s.bySFU[sl]
 	s.mu.Unlock()
+	s.evLegClosed(sl, why)
 	if l != nil {
 		if debug {
 			log.Printf("debug %s: bein beendet (%s)", l.id, why)
@@ -404,6 +425,7 @@ func (s *server) sfuRoutes(m *http.ServeMux) {
 	m.HandleFunc("POST /api/sfu/leg", s.apiSFULeg)
 	m.HandleFunc("POST /api/sfu/turn", s.apiSFUTurn)
 	m.HandleFunc("GET /api/sfu/leg/{id}", s.apiSFULayout)
+	m.HandleFunc("GET /api/sfu/leg/{id}/events", s.apiSFUEvents) // P5: Ereigniskanal (events.go)
 	m.HandleFunc("DELETE /api/sfu/leg/{id}", s.apiLegDelete)
 	if !s.cfg.Dev {
 		return
@@ -481,7 +503,7 @@ func (s *server) apiSFULeg(w http.ResponseWriter, r *http.Request) {
 	l, answer, err := s.newSFULeg(req, ipKey(r))
 	switch {
 	case err == nil:
-	case errors.Is(err, errLimit), errors.Is(err, sfu.ErrFull):
+	case errors.Is(err, errLimit), errors.Is(err, sfu.ErrFull), errors.Is(err, errDraining):
 		writeJSON(w, 429, map[string]string{"error": err.Error()})
 		return
 	case errors.Is(err, errAuth), errors.Is(err, sfu.ErrNoVerifier):
@@ -494,7 +516,13 @@ func (s *server) apiSFULeg(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"id": l.id, "answer": answer, "csrc": l.sl.Peer.CSRC, "slots": l.sl.Layout()})
+	// P5: peers = alle Teilnehmenden des Raums mit CSRC - das Geraet kennt damit jeden Absender vor dem ersten Rahmen
+	peers := map[string]uint32{}
+	if rm := s.node.Room(l.sl.Grant.Room); rm != nil {
+		peers = rm.Peers()
+	}
+	writeJSON(w, 200, map[string]any{"id": l.id, "answer": answer, "csrc": l.sl.Peer.CSRC, "slots": l.sl.Layout(), "peers": peers,
+		"state": s.nodeState()})
 }
 
 // apiSFUTurn gibt TURN-Zugangsdaten nur gegen ein gueltiges Medien-Token

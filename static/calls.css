@@ -196,3 +196,77 @@
 .ct-call time{font-size:.8rem;opacity:.8}
 .ct-call-ic{font-size:.95rem}
 .ct-call .ct-call-back{margin-left:.2rem}
+
+/* 2.5 Gjallarhorn (P5): Kachelansicht bis 25 (Last-N: bewegt bzw. Standbild mit Sprechring), Sprecheransicht und
+   Bildschirm (oben gross, unten ein Streifen), Weg mit Qualitaetspunkt, Runensiegel, Teilnehmerliste. Das Anruffenster
+   bleibt wie in 2.4 dunkel; der Hinweis vor dem Start folgt hell/dunkel der Seite. */
+.cl-win.horn.tiles .cl-grid{grid-template-columns:repeat(var(--cols,2),minmax(0,1fr));grid-auto-rows:minmax(0,1fr);gap:.5rem}
+.cl-win.horn .cl-grid[data-scroll="1"]{grid-auto-rows:minmax(110px,1fr);overflow-y:auto;align-content:start}
+.cl-win.horn .cl-grid[data-scroll="1"] .cl-tile{min-height:110px}
+.cl-still{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none;filter:saturate(.6) brightness(.8)}
+.cl-tile.still .cl-still{display:block}
+.cl-tile.still .cl-av{display:none}
+.cl-tile.still::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 55%,#0b0f15aa);pointer-events:none}
+.cl-more{color:var(--muted);font-size:1.6rem;font-weight:600}
+.cl-hbig,.cl-hscreen{display:none}
+.cl-win.horn-strip .cl-hbig{display:block;position:absolute;inset:3.6rem .8rem calc(6.4rem + 112px);z-index:1}
+.cl-win.horn-strip .cl-hbig .cl-tile{position:absolute;inset:0}
+.cl-win.horn-strip .cl-hbig .cl-tile .cl-tv{object-fit:contain}
+.cl-win.horn-scr .cl-hscreen{display:block;position:absolute;inset:3.6rem .8rem calc(6.4rem + 112px);width:calc(100% - 1.6rem);
+  height:calc(100% - 3.6rem - 6.4rem - 112px);object-fit:contain;background:#000;border-radius:12px;z-index:1}
+.cl-win.horn-scr .cl-hbig{display:none}
+.cl-win.horn.horn-strip.tiles .cl-grid{inset:auto .8rem 6.4rem;height:104px;display:flex;gap:.5rem;overflow-x:auto;overflow-y:hidden;
+  justify-content:safe center}
+.cl-win.horn.horn-strip .cl-grid .cl-tile{flex:0 0 156px;height:100%}
+.cl-win.horn.horn-strip .cl-grid .cl-av{width:40px;height:40px;font-size:1.05rem}
+.cl-win.horn.horn-strip .cl-grid .cl-td{display:none}
+.cl-win.horn-strip .cl-local{bottom:calc(6.4rem + 120px);width:min(20vw,180px)}
+.cl-hpath.cl-q{color:#e6ebf2;border:1px solid #3a475b;border-radius:999px;padding:0 .5rem;font-weight:600;font-size:.8rem}
+.cl-hpath.cl-q-good::before{background:#56d364}.cl-hpath.cl-q-mid::before{background:#e3b341}.cl-hpath.cl-q-bad::before{background:#f85149}
+.cl-hmove{color:#e3b341}
+.cl-btn.cl-runes{min-width:0;height:28px;padding:0 .55rem;font-size:1rem;letter-spacing:.14em;background:#1a2230;border-color:#3a475b;color:#e6ebf2}
+.cl-rpop,.cl-plist{position:absolute;z-index:6;background:#151c27;border:1px solid #3a475b;border-radius:14px;box-shadow:0 14px 44px rgba(0,0,0,.55);color:#e6ebf2}
+.cl-rpop{top:3.6rem;left:50%;transform:translateX(-50%);width:min(26rem,calc(100% - 2rem));padding:.8rem 1rem 1rem}
+.cl-rpop-h,.cl-plist-h{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.cl-rpop-h .cl-mini,.cl-plist-h .cl-mini{color:#e6ebf2}
+.cl-rpop-h svg,.cl-plist-h svg{width:18px;height:18px}
+.cl-rpop-r{font-size:2.4rem;letter-spacing:.3em;text-align:center;margin:.4rem 0 .1rem;line-height:1.2}
+.cl-rpop-n{text-align:center;color:var(--muted);font-size:.85rem;margin-bottom:.4rem}
+.cl-rpop p{margin:.5rem 0;line-height:1.45;font-size:.92rem}
+.cl-rpop-s{color:var(--muted)}
+.cl-rpop-w,.cl-pl-w{color:#e3b341}
+.cl-plist{top:3.6rem;right:.8rem;bottom:6.4rem;width:min(22rem,calc(100% - 1.6rem));padding:.7rem .8rem;display:flex;flex-direction:column;min-height:0}
+.cl-plist-l{list-style:none;margin:.5rem 0 0;padding:0;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:.35rem}
+.cl-pl{display:flex;align-items:center;gap:.55rem;padding:.35rem .4rem;border-radius:10px;border:1px solid transparent;flex-wrap:wrap}
+.cl-pl.speaking{border-color:#56d364}
+.cl-av-s{width:32px;height:32px;font-size:.9rem}
+.cl-pl-t{display:flex;flex-direction:column;min-width:8.5rem;flex:1 1 8.5rem}
+.cl-pl-t b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.92rem}
+.cl-pl-w{font-size:.78rem}
+.cl-pl-m{font-size:.9rem;min-width:1.2rem}
+.cl-pl-b{display:flex;gap:.35rem;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+.cl-pl-b .cl-pill{height:30px;font-size:.8rem;padding:0 .7rem}
+.cl-btn.cl-pl-rm.sure{background:var(--cl-red);border-color:var(--cl-red);color:#fff}
+.cl-hint-back{position:fixed;inset:0;z-index:229;background:rgba(0,0,0,.45)}
+.cl-hint.cl-hint-page{position:fixed;z-index:230;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--card);color:var(--fg);
+  border-color:var(--border);box-shadow:0 18px 60px rgba(0,0,0,.35)}
+.cl-hint.cl-hint-page .cl-hint-s{color:var(--muted)}
+.cl-hint.cl-hint-page .cl-pill{background:var(--card-h);border-color:var(--border);color:var(--fg)}
+.cl-hint.cl-hint-page .cl-hint-go{background:var(--accent);border-color:var(--accent);color:#fff}
+.cl-win.small .cl-plist,.cl-win.small .cl-rpop,.cl-win.small .cl-runes{display:none}
+.cl-win.small.horn-strip .cl-grid{display:none}
+.cl-win.small.horn-strip .cl-hbig,.cl-win.small.horn-scr .cl-hscreen{inset:2.6rem .4rem 3.6rem;height:auto}
+@media (max-width: 640px){
+  .cl-win.horn .cl-ctl{gap:.4rem;flex-wrap:wrap}
+  .cl-win.horn .cl-top{flex-wrap:nowrap;padding:.6rem .6rem}
+  .cl-win.horn .cl-info{flex:1 1 auto;font-size:.8rem;gap:.25rem .6rem}
+  .cl-win.horn.mesh.tiles .cl-grid{inset:5.4rem .4rem 6rem}
+  .cl-win.horn-strip .cl-local{bottom:calc(6rem + 100px);width:26vw}
+  .cl-win.horn .cl-round{width:48px;height:48px;min-width:48px}
+  .cl-win.horn.horn-strip.tiles .cl-grid{inset:auto .4rem 6rem;height:84px}
+  .cl-win.horn.horn-strip .cl-grid .cl-tile{flex-basis:112px}
+  .cl-win.horn-strip .cl-hbig,.cl-win.horn-scr .cl-hscreen{inset:5.4rem .4rem calc(6rem + 92px)}
+  .cl-win.horn-scr .cl-hscreen{width:calc(100% - .8rem);height:calc(100% - 5.4rem - 6rem - 92px)}
+  .cl-plist{left:.4rem;right:.4rem;width:auto;top:auto;bottom:5.8rem;max-height:62vh}
+  .cl-rpop{top:5.2rem}
+}

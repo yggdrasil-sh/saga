@@ -471,7 +471,8 @@ func (s *server) admit(tok string, p sfu.Path) (sfu.Grant, *sfu.Room, error) {
 		return sfu.Grant{}, nil, err
 	}
 	g, r, err := s.node.Admit(tok, p)
-	if errors.Is(err, sfu.ErrNoRoom) && s.ctlc() != nil {
+	// P5: auch ohne Steuerkanal, wenn der Saga-Schluessel fest gesetzt ist (HORN_SAGA_PUB): das Token ist von Saga signiert
+	if errors.Is(err, sfu.ErrNoRoom) && (s.ctlc() != nil || s.verifier.HasKey()) {
 		s.mu.Lock()
 		dead := time.Now().Before(s.graves[g.Room])
 		s.mu.Unlock()

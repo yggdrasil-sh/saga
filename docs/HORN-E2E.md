@@ -169,6 +169,14 @@ versiegelte Signale (Tests `tests/anrufe_horn.py`, `tests/foederation_anrufe_rau
   Ohne beides: `create()` wirft, das Gerät darf dann nicht in einen Knoten-Anruf (Mesh wie 2.4).
 - `own('start' | 'ratchet' | 'rekey')` → `{n, kid, key, s}` zum Versiegeln, `peer(from, n, key, s)`, `gone(from)`,
   `ownKeys()` (für die Nachforderung), `switchNow()`, Ereignis `need {from, n, s}`, `runes(call_id, sign_pks)`.
+- P5: Empfänger am Knoten mit `receiver(rtpReceiver, kind, '*', map)` – je Knoten-Verbindung eine eigene Zuordnung
+  CSRC → Gerät (`csrcMap(map, key)`, `csrcDrop(key)`), denn jeder Knoten vergibt seine CSRCs selbst und beim Wechsel
+  laufen zwei Verbindungen nebeneinander. Unbekannte CSRC: bis zu 150 ms auf die Zuordnung warten, dann verwerfen.
+  Nach verworfenen Bildrahmen fordert der Worker ein Schlüsselbild an (`RTCRtpScriptTransformer.sendKeyFrameRequest`,
+  höchstens 1× je s), sobald wieder Zwischenbilder aufgehen – sonst bliebe das Bild schwarz, bis der Sender von sich
+  aus eins schickt. Mit `rid` (`receiver(r, 'video', '*', map, rid)`) meldet der Worker den tatsächlichen Absender je
+  Bild-Empfänger (Ereignis `vown {rid, from}`): Der Knoten wechselt die Quelle eines Platzes erst am nächsten
+  Schlüsselbild, die Belegung nennt aber schon die neue – das Fenster ordnet die Kachel nach den echten Rahmen zu.
 - Messung (headless Chromium 141, 2 Kerne, `tests/browser_horn_e2e.js`): reine Ver-/Entschlüsselung im Worker
   0,03–0,05 ms je 6-KB-Rahmen (720p bei 1,5 Mbit/s), 0,01–0,02 ms je Opus-Rahmen, 0,12–0,3 ms je 30 KB. Im laufenden
   Loopback-Anruf 720p, wenn Kodierer, Dekodierer und Canvas dieselben 2 Kerne belegen: 0,13–0,2 ms Wartezeit je

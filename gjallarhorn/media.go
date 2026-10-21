@@ -124,6 +124,7 @@ type leg struct {
 	pc                  *webrtc.PeerConnection
 	fl                  *fwd.Leg
 	sl                  *sfu.Leg // nur Betriebsart node
+	screenMid           string   // P5: mid der Bildschirm-Spur (sfuLegReq.ScreenMid)
 	outs                []*fwd.Out
 	created             time.Time
 
@@ -203,7 +204,7 @@ func (s *server) newLeg(req legReq, ipKey string) (*leg, string, error) {
 		return nil, "", errors.New("abos nur im bench-modus")
 	}
 	s.mu.Lock()
-	if len(s.legs) >= s.cfg.MaxLegs || (!s.cfg.Bench && ipKey != "" && s.perIP[ipKey] >= 12) {
+	if len(s.legs) >= s.cfg.MaxLegs || (!s.cfg.Bench && ipKey != "" && s.perIP[ipKey] >= s.cfg.maxPerIP()) {
 		s.mu.Unlock()
 		return nil, "", errLimit
 	}

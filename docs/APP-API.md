@@ -553,7 +553,7 @@ Bewertung für 2.5:
   Schlüssel bei jedem Verlassen, HKDF-Ratsche bei jedem Beitritt.
 - **Umgesetzt in 2.5 (P4):** `docs/HORN-E2E.md` (`saga-horn/v1`). Abweichend vom Spike ist der Trailer 14 Byte
   (IV ‖ IV-Länge `0x0C` ‖ kid, wie FrameCryptor), Zusatz also 30 Byte je Rahmen; die Ratsche ist Saga-eigen.
-## Anrufe über Gjallarhorn-Knoten (2.5, Paket P3)
+## Anrufe über Gjallarhorn-Knoten (2.5, Pakete P3 und P5)
 
 Nur mit Feature-Flag `calls.horn` (Standard aus) und nur für Geräte, die `horn` in `caps` melden. Konzept:
 `claude/saga-gjallarhorn-konzept-v2.md` §2; Frame-E2E: `docs/HORN-E2E.md`; Knoten: `gjallarhorn/NODE.md`.
@@ -615,6 +615,81 @@ Anrufs. Ist kein Knoten bereit: 409 `join_block: "node"` (dann Mesh-Rückfall be
 
 **Knotenbetrieb (nur Server ↔ Knoten, nicht für Apps):** `GET /api/horn/whoami` → `{ip}`, `POST /api/horn/pair`
 (Kopplung), WebSocket `/api/horn/ctl` (Steuerung). Beschreibung: `gjallarhorn/NODE.md`.
+
+### Web-Client und Live-Umschalten (P5)
+
+Referenz: `static/calls.js` (Ablauf) und `static/horn.js` (Entscheidungen, in Node getestet: `tests/horn_logik.js`). Die
+Apps (P11/P12) übernehmen dieselben Regeln. Alles Neue ist rückwärtsverträglich (neue Felder, ein neuer Endpunkt);
+`MIN_APP` ändert sich nicht.
+
+**Neue Felder am Server:**
+- `GET /api/calls/config` → `horn_ready` (bool, nur mit Flag): ist gerade ein Knoten bereit? Bei `false` und einer
+  Gruppe über `limits.endpoints_video/_audio` vor dem Start den Hinweis zeigen, dass die Mesh-Grenze gilt
+  („Kein Knoten für große Gruppenanrufe bereit … höchstens 4 Geräte mit Video bzw. 6 nur mit Ton“).
+- Teilnehmerliste (`legs[]`, auch in `call.roster`): `hpn: {knotenname: peer_ref}` – Kennung des Geräts auf **jedem**
+  Knoten, auf dem der Anruf laufen kann (`hpn[Knoten des Anrufs] = hp`). Während eines Wechsels sind Geräte kurz auf zwei
+  Knoten; je Verbindung gilt die Kennung dieses Knotens. Taucht am Knoten eine unbekannte Kennung auf, die Liste neu holen
+  (`GET /api/calls/{id}`).
+- Anruf-Objekt (Gruppe): `host` (bool) – dieses Konto hat den Anruf begonnen (Gastgeber).
+- `POST /api/calls/{id}/horn {device, node?, dev_class?, avoid?: [knotenname]}`: `avoid` = Knoten, die das Gerät nicht
+  erreicht oder verlässt; sie fehlen in den Kandidaten. **Knoten des Anrufs** = unter den bereiten, nicht gemiedenen
+  Knoten der mit den meisten aktiven Endpunkten. Ohne Kaskade (bis P9) kommt nur er, `node` darf nur er sein (sonst
+  409). Läuft dort nichts mehr (Knoten getrennt, `draining`, voll oder gemieden), kommen die besten bereiten Knoten; der
+  erste, auf den jemand wechselt, ist danach der Knoten des Anrufs (`here: true`). Ein Beitritt landet ebenso dort.
+
+**Gastgeber:** `POST /api/calls/{id}/moderate {device, target, action: mute|remove}` – nur wer den Gruppenanruf begonnen
+hat (sonst 403), nicht für eigene Geräte (400). `mute`: Ereignis `call.mod {call_id, chat_id, action, device, by}` an die
+Person; ihr Gerät `device` schaltet das Mikrofon aus und zeigt „{by} hat dich stummgeschaltet“ (sie kann es selbst wieder
+einschalten – Ton bleibt Ende-zu-Ende verschlüsselt, der Server kann nicht selbst stummschalten). `remove`: alle Geräte
+der Person verlassen den Anruf (Grund `removed`, am Knoten sofort beendet), `call.mod` mit `action: remove` an die
+Person; Beitritt danach 409 `join_block: "removed"`, bis sie erneut eingeladen wird (`POST /invite`). Die anderen wechseln
+den Frame-Schlüssel wie bei jedem Abgang.
+
+**Am Knoten (neu):**
+- `POST /api/sfu/leg` nimmt zusätzlich `screen_mid` (mid des Bildschirm-Senders; Browser können die Stream-ID nicht
+  wählen) und antwortet zusätzlich mit `peers: {peer_ref: csrc}` (alle Teilnehmenden des Raums) und `state` (`ok` |
+  `draining`). Mit `peers` kennt das Gerät jeden Absender vor dessen erstem Rahmen.
+- **Ereigniskanal** `GET wss://{knoten}/api/sfu/leg/{id}/events` (WebSocket, Herkunft der Saga-Seiten, die Bein-Kennung
+  ist die Berechtigung): `hello {leg, peers, slots, est_kbit, state}`, `peers {peers}` (Beitritt sofort, Abgang im
+  nächsten Takt), `layout {slots, est_kbit}`, `state {state}`, `closed {why}` (z. B. `entfernt`, `ersetzt`, `raum
+  geschlossen`), `pong {n}` auf `{t: "ping", n}` (höchstens alle 150 ms). Ersetzt das Abfragen von `GET /api/sfu/leg/{id}`.
+- Während des Leerens (`state: draining`) antwortet `POST /api/sfu/leg` mit 429.
+
+**Bild-Leitung (Angebot):** eigene Kamera (Simulcast `l`/`m`, UDP zusätzlich `h`), eigener Bildschirm-Sender (ohne Spur,
+bis geteilt wird), dann die Empfangsplätze Sprecher, Bildschirm, Kacheln. **Last-N zählt den Sprecherplatz mit:**
+Desktop 1 + 8 Kacheln = 9 bewegte Bilder, Handy 1 + 3 = 4; alle weiteren als Standbild (letztes Bild) mit Sprechring.
+TCP/TLS-Wege: `jitterBufferTarget = 150` ms an den Bildempfängern.
+
+**Zustand:** Body-Typ `state {mic, cam, screen}` über den versiegelten Signalweg an alle Endpunkte (nach jeder Änderung,
+gebündelt, und an jedes neue Gerät). Ältere Clients ignorieren ihn.
+
+**Knotenwahl beim Beitritt** (Konzept §2.6): alle Kandidaten parallel messen, zusammen höchstens 800 ms – TLS-Aufbau und
+5 Pings über `wss://{knoten}/probe` (Echo), bei `udp_ok` ein STUN-Binding an `{knoten}:{port}` (UDP).
+Punktzahl (kleiner = besser): `rtt_p50 + 2·jitter + Lastabzug + (UDP fehlt ? 15 : 0) − (here ? 25 : 0)`, Lastabzug
+`(load − 0,7) · 200 ms` ab 70 %, ab 90 % +1000 ms. Bei nur einem Kandidaten sofort verbinden (Messung nebenher für die
+Anzeige; mit `udp` wird vorher gemessen). Weg: UDP (`tokens.both`, eine Leitung), wenn der Knoten `udp_ok` meldet und
+das STUN-Binding antwortet (srflx-Kandidat bzw. Kandidatensuche ohne Fehler beendet; Versuch 2 s) – ist das Ergebnis
+unklar (ohne NAT verwirft der Browser den srflx-Kandidaten), UDP kurz probieren (1,5 s); sonst ICE-TCP (4 s), sonst
+TURN-TLS mit frischen Token. Auf TCP/TLS zu einem Knoten mit UDP alle 10 s erneut messen. Scheitert ein Knoten: 60 s meiden, Meldung „Knoten … ist nicht
+erreichbar – versuche …“, nächster Kandidat; gar keiner: „Kein Knoten erreichbar – neuer Versuch in … s“ (2 … 15 s, nach
+2 min aufgeben).
+
+**Live-Umschalten (make-before-break):**
+
+| Auslöser | Reaktion |
+|---|---|
+| ICE `disconnected` > 2 s, `failed`/`closed`, Ereignis `closed` | sofort: `avoid` = aktueller Knoten, bester Kandidat (gibt es nur ihn: dorthin neu) |
+| Ereignis `state: draining` | sofort wie oben |
+| UDP-Verlust > 20 % für 3 s | TCP-Weg am selben Knoten |
+| UDP-Probe ok für 30 s (auf TCP) | zurück auf UDP, höchstens 1× je 5 min |
+| anderer Kandidat besser (alle 30 s neu gemessen) | nur wenn ≥ 25 % **und** ≥ 30 ms besser, 20 s am Stück; Verweildauer 60 s; höchstens 3 solche Wechsel je 10 min |
+
+Ablauf: neue Leitungen aufbauen (frische Token mit `node`), dort senden – derselbe Frame-Schlüssel, neue SSRC (eigener
+Zähler und Wiederholungsschutz je SSRC). Ton je Absender aus der neuen Verbindung, sobald sie Rahmen liefert und der
+Absender dort einen Tonplatz hat, bis dahin aus der alten (keine Lücke, kein Doppel). Bild: Kachel wechselt auf den
+neuen Platz (ein Schlüsselbild). Die alte Verbindung schließt 2 s nachdem die neue liefert; solange dort noch Geräte
+sind, die nicht gewechselt haben, höchstens 15 s. CSRCs vergibt jeder Knoten selbst: Zuordnung CSRC → Gerät je
+Verbindung.
 
 ## Videos im Chat: saga-file/v2 (2.4, Etappe E2)
 

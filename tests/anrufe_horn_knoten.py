@@ -79,13 +79,14 @@ def build(name, d, env_bin):
     return out
 
 
-def start(media, node):
+def start(media, node, extra=None):
     env = {k: v for k, v in os.environ.items() if k not in ("PORT", "ADMIN_PORT", "PYTHONPATH", "SAGA_MEDIA_KEY", "SAGA_INTERNAL_PORT",
                                                              "SAGA_HORN_KEY", "HOST", "MEDIA_ACCEL") and not k.startswith("HORN_")}
     env.update(PORT=str(PORT), MEDIA_INTERNAL_PORT=str(INTERNAL), ADMIN_PORT="0", HOST="127.0.0.1", STATE_DIR=STATE,
                BASE_URL=f"http://127.0.0.1:{PORT}", CANONICAL_REDIRECT="false", SAGA_SKIP_BACKUP="1", SAGA_UPDATE_CHECK="0",
                PYTHONPATH=APP, SECRET_KEY=SECRET, SESSION_SECRET=SECRET, GJALLARHORN_BIN=node, HORN_PORT=str(HORN_PORT),
                HORN_NAME="localhost", HORN_TLS_SELF="1", HORN_UDP="0", HORN_ICE_IPS="127.0.0.1", HORN_CAPTURE=CAP, HORN_MAX_LEGS="48")
+    env.update(extra or {})
     P["log"] = open(os.path.join(STATE, "server.log"), "a")
     P["proc"] = subprocess.Popen([media, "--", sys.executable, "run.py"], env=env, cwd=APP, stdout=P["log"], stderr=subprocess.STDOUT)
     t0 = time.time()

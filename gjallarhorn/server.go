@@ -44,6 +44,7 @@ type config struct {
 	ICEIPs    []string // nur diese lokalen Adressen als Kandidaten (leer = alle)
 	RelayIP   net.IP
 	MaxLegs   int
+	MaxPerIP  int // Beine je Quell-Adresse (HORN_MAX_PER_IP, Standard 12)
 	Bench     bool
 	Mode      string // "probe" (Spiegel) oder "node" (Weiterleiter)
 	Dev       bool   // HORN_DEV=1: Entwicklungs-Token und Testseite (nur Tests!)
@@ -93,6 +94,10 @@ func loadConfig(bench bool) (*config, error) {
 		return nil, errors.New("HORN_RELAY_IP ungueltig")
 	}
 	c.MaxLegs, _ = strconv.Atoi(env("HORN_MAX_LEGS", "48"))
+	c.MaxPerIP, _ = strconv.Atoi(env("HORN_MAX_PER_IP", "12"))
+	if c.MaxPerIP < 1 {
+		c.MaxPerIP = 12
+	}
 	external := c.Mode == "node" && os.Getenv("HORN_SAGA") != "" && os.Getenv("HORN_SAGA_CTL") == ""
 	certFile := env("HORN_TLS_CERT", filepath.Join(c.Data, "tls", "fullchain.pem"))
 	keyFile := env("HORN_TLS_KEY", filepath.Join(c.Data, "tls", "privkey.pem"))
@@ -138,7 +143,7 @@ type server struct {
 	nodeKey                 ed25519.PrivateKey     // Knotenschluessel (HORN_DATA/node.key)
 	echoRate                rateGate               // Rueckpruefung /api/horn/echo
 	pairErr                 atomic.Pointer[string] // Kopplung endgueltig abgelehnt
-	draining                atomic.Bool            // Leeren (Admin oder Update): keine neuen Beine
+	draining                atomic.Bool            // Leeren (Admin, Update oder SIGUSR1): keine neuen Beine, Geraete wechseln (P5/P6)
 	upd                     *updater               // Selbst-Update (P6)
 	acmeRun                 atomic.Bool            // DNS-01 laeuft
 	certErr                 atomic.Pointer[string] // letzter Zertifikatsfehler
@@ -150,7 +155,8 @@ type server struct {
 	graves                  map[string]time.Time   // geschlossene Raeume (gesperrt bis)
 	kicked                  map[string]time.Time   // entfernte Teilnehmende "raum|peer" (gesperrt bis)
 	closing                 atomic.Bool
-	capture                 *capture // nur Tests: Mitschnitt der eingehenden Rahmen (HORN_CAPTURE)
+	capture                 *capture    // nur Tests: Mitschnitt der eingehenden Rahmen (HORN_CAPTURE)
+	ev                      evHub       // P5: Ereigniskanal je Bein (events.go)
 
 	pubIPs   []string                      // oeffentliche Adressen (Kandidaten)
 	udpCheck atomic.Pointer[netx.UDPCheck] // Ergebnis des UDP-Selbsttests
@@ -205,8 +211,14 @@ func runNode(args []string, bench bool, mode string) error {
 		fmt.Printf("LISTEN %d\n", s.mux.Addr().Port)
 	}
 	sig := make(chan os.Signal, 2)
-	signal.Notify(sig, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sig, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGUSR2)
 	for x := range sig {
+		if x == syscall.SIGUSR1 || x == syscall.SIGUSR2 { // P5: Leeren an/aus (Betrieb, Tests)
+			if s.node != nil {
+				s.setDraining(x == syscall.SIGUSR1)
+			}
+			continue
+		}
 		if x == syscall.SIGHUP {
 			if changed, err := s.certs.ReloadIfChanged(); err != nil {
 				log.Printf("zertifikat: %v", err)
@@ -226,7 +238,7 @@ func newServer(cfg *config) (*server, error) {
 	s := &server{cfg: cfg, legs: map[string]*leg{}, ufrags: map[string]*leg{}, perIP: map[string]int{}, start: time.Now(), turnSecret: randHex(32),
 		bySFU: map[*sfu.Leg]*leg{}, devSecret: randHex(32), verifier: &sagaVerifier{}, graves: map[string]time.Time{}, kicked: map[string]time.Time{}}
 	if cfg.Mode == "node" {
-		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed}
+		nc := sfu.Config{Name: cfg.Name, MaxLegs: cfg.MaxLegs, OnLegClosed: s.onSFULegClosed, OnLayout: s.onLayout, OnPeers: s.onPeers}
 		if cfg.Dev {
 			nc.Verifier = sfu.VerifierFunc(s.verifyDev)
 			log.Printf("WARNUNG: HORN_DEV=1 - Entwicklungs-Token ohne Saga, nur fuer Tests")
@@ -653,4 +665,12 @@ func (s *server) onICEConn(ufrag string, c *netx.CoalesceConn) {
 	if l != nil {
 		l.fl.SetFlusher(c)
 	}
+}
+
+// maxPerIP: Grenze je Quell-Adresse (0 in Tests, die Config direkt bauen -> 12)
+func (c *config) maxPerIP() int {
+	if c.MaxPerIP < 1 {
+		return 12
+	}
+	return c.MaxPerIP
 }

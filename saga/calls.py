@@ -67,7 +67,7 @@ from fastapi import APIRouter, Request
 
 import auth
 from db import connect as _db
-from saga import bus, chat, horn, notify
+from saga import bus, chat, horn, horn_web, notify
 from saga.core import SECRET, _bad, _body, t
 from saga import sharing
 from saga.sharing import names
@@ -209,9 +209,10 @@ def horn_wanted(c, ch, media, caps):
     return len(chat.members(c, ch["id"])) >= need and horn.any_ready(c)
 
 
-def horn_block(c, call, dev, role="member", dev_class="desktop"):
-    """Kandidaten fuer dieses Geraet (Antwort von POST /api/calls, /join, /horn)."""
-    return {"e2e": "saga-horn/v1", "ttl": horn.TOKEN_TTL, "candidates": horn.candidates(c, call, dev, role, dev_class)}
+def horn_block(c, call, dev, role="member", dev_class="desktop", avoid=()):
+    """Kandidaten fuer dieses Geraet (Antwort von POST /api/calls, /join, /horn). 2.5 P5: saga/horn_web.py - faellt der
+    Knoten des Anrufs aus, die besten bereiten (Live-Umschalten); avoid = vom Geraet gemiedene Knoten."""
+    return {"e2e": "saga-horn/v1", "ttl": horn.TOKEN_TTL, "candidates": horn_web.candidates(c, call, dev, role, dev_class, avoid)}
 
 
 def _dev_class(b):
@@ -382,6 +383,7 @@ def roster(c, call, uid=None, legs=None):
     fed = _fedcall(c, call)
     v3 = _v3(c, call)
     cn = horn.call_node(c, call["id"]) if is_horn(call) else None
+    hn = horn_web.nodes_for(c, call["id"]) if is_horn(call) else []
     out = []
     for x in legs:
         d = {"who": x["who"], "device": x["device"], "dev_name": x["name"] or "", "role": x["role"], "state": x["state"],
@@ -395,6 +397,8 @@ def roster(c, call, uid=None, legs=None):
             d["replaces"] = x["replaces"]
         if cn or x.get("node"):                        # 2.5: Kennung des Geraets am Knoten (Zuordnung Spur -> Geraet)
             d["hp"] = horn.peer_ref(call["id"], x.get("node") or cn, x["device"])
+        if hn:                                         # 2.5 P5: Kennung je Knoten (Wechsel zwischen Knoten, horn_web)
+            d["hpn"] = horn_web.peer_refs(call["id"], x["device"], hn)
         out.append(d)
     return out
 
@@ -439,6 +443,8 @@ def _joinable(c, call, uid, legs):
         return False, "old"
     if is_horn(call) and uid and not _can_horn(c, uid):
         return False, "old"
+    if uid and _removed(c, call["id"], uid):
+        return False, "removed"
     if len(legs) >= climit(c, call):
         return False, "full"
     return True, None
@@ -496,6 +502,7 @@ def _dict(c, call, uid, nm=None, legs=None):
          "mine": [x["device"] for x in legs if x["who"] == uid], "rv": rv, "topo": call.get("topo") or "p2p"}
     if group:
         d["from"] = dict(pd)
+        d["host"] = me_caller                            # 2.5 P5: Gastgeber (darf stummschalten und entfernen)
         n = len(chat.members(c, call["chat_id"]))         # wie ring_group: grosse Gruppen klingeln nur still
         d["members"], d["silent"] = n, n > RING_SILENT
         inv = c.execute("SELECT state FROM chat_call_invite WHERE call_id=? AND who=?", (call["id"], uid)).fetchone()
@@ -631,11 +638,17 @@ def api_config(request: Request):
                            "turn": has_turn(), "stun": bool(urls(c.get("stun"), ("stun", "stuns"))[0]), "ring_s": ring_s(),
                            "alive_s": 15, "max_s": MAX_S, "format": "saga-call/v1",
                            # 2.4: Body-Fassung, Server-Faehigkeiten und Grenzen (E4/E5: Endpunkte je Anruf im Mesh)
-                           "body_v": 3, "features": features(), **({"e2e": "saga-horn/v1"} if horn_on() else {}),
+                           "body_v": 3, "features": features(), **({"e2e": "saga-horn/v1", "horn_ready": _horn_ready()} if horn_on() else {}),
                            "limits": {"endpoints_video": limit("video"), "endpoints_audio": limit("audio"), "signals_max": SIGNALS_MAX,
                                       "signals_per_min": SIG_PER_MIN, "signals_hard": SIGNALS_HARD, "sig_rate": SIG_RATE,
                                       "sealed_max": SEALED_MAX, "caps_max": CAPS_MAX, "ring_silent": RING_SILENT, "handover_s": 15,
                                       **(_horn_limits() if horn_on() else {})}})
+
+
+def _horn_ready():
+    """2.5 P5: ist gerade ein Knoten bereit? Sonst gilt fuer neue Gruppenanrufe die Mesh-Grenze (Hinweis vor dem Start)."""
+    with _db() as c:
+        return horn.any_ready(c)
 
 
 def _horn_limits():
@@ -1246,6 +1259,8 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
         return chat._no_store({"error": t("Der Anruf ist noch nicht angenommen."), "join_block": "none"}, 409)
     if not _has(caps, "multi"):
         return chat._no_store({"error": t("Dafür braucht dieses Gerät Saga 2.4."), "join_block": "old"}, 409)
+    if _removed(c, call["id"], who):
+        return chat._no_store({"error": t("Du wurdest aus diesem Anruf entfernt."), "join_block": "removed"}, 409)
     hn = is_horn(call)
     if hn and not _has(caps, "horn"):
         return chat._no_store({"error": t("Dafür braucht dieses Gerät Saga 2.5."), "join_block": "old"}, 409)
@@ -1263,9 +1278,7 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
     if hn:                                             # 2.5: Knoten des Anrufs (ohne Kaskade nur dieser), sonst der beste
         if signals:
             return _bad(t("ungültige Angabe"))         # ueber Knoten keine Mesh-Angebote
-        ns = horn.ready_nodes(c)
-        cur = horn.call_node_ready(c, call["id"], ns)  # Knoten im Leeren/entfernt: der beste andere (Umzug)
-        node = next((n for n in ns if not cur or n["id"] == cur), None)
+        node = horn_web.pick(c, call["id"])           # 2.5 P5: Knoten des Anrufs; ist er weg, der beste bereite
         if node is None:
             horn.note_full(c)
             return chat._no_store({"error": t("Gerade ist kein Knoten für große Gruppenanrufe erreichbar – bitte gleich noch einmal."),
@@ -1307,9 +1320,11 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
 
 @router.post("/api/calls/{cid}/horn")
 async def api_horn(cid: str, request: Request):
-    """2.5 (Gjallarhorn): frische Kandidaten mit Medien-Token fuer MEIN Endpunkt {device, node?, dev_class?} - vor dem
-    Ablauf (60 s), beim Neuverbinden und nach dem Messen. node = gewaehlter Knoten (Name aus den Kandidaten): Saga merkt
-    ihn am Endpunkt (ohne Kaskade nur der Knoten des Anrufs)."""
+    """2.5 (Gjallarhorn): frische Kandidaten mit Medien-Token fuer MEIN Endpunkt {device, node?, dev_class?, avoid?} - vor
+    dem Ablauf (60 s), beim Neuverbinden und nach dem Messen. node = gewaehlter Knoten (Name aus den Kandidaten): Saga
+    merkt ihn am Endpunkt (ohne Kaskade nur der Knoten des Anrufs - laeuft dort nichts mehr, ein anderer bereiter).
+    P5: avoid = [knotenname] - Knoten, die das Geraet nicht erreicht bzw. verlaesst (Leeren); sie fehlen in den
+    Kandidaten, und der Anruf zaehlt dort fuer dieses Geraet nicht."""
     uid, err = _me(request)
     if err:
         return err
@@ -1324,13 +1339,13 @@ async def api_horn(cid: str, request: Request):
             return _bad(t("ungültige Angabe"), 409)
         if not _rate("horn", dev, 30):
             return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
+        avoid = horn_web._clean_avoid(b.get("avoid"))
         if isinstance(b.get("node"), str):
             n = horn.node_named(c, b["node"][:253])
-            cur = horn.call_node_ready(c, cid)
-            if not n or not horn.ready(n) or (cur and cur != n["id"] and not horn.CASCADE):
+            if not horn_web.may_use(c, cid, n, avoid):
                 return _bad(t("ungültige Angabe"), 409)
             horn.set_leg_node(c, cid, dev, n["id"])
-        return chat._no_store({"ok": True, "horn": horn_block(c, call, dev, leg[2], _dev_class(b))})
+        return chat._no_store({"ok": True, "horn": horn_block(c, call, dev, leg[2], _dev_class(b), avoid)})
 
 
 @router.post("/api/calls/{cid}/leave")
@@ -1401,6 +1416,58 @@ def _leave(c, call, dev, now, reason="hangup", by=None):
     emit_roster(c, call, legs)
     print(f"call: {call['id'][:8]} Endpunkt weg ({reason}, {len(legs)} uebrig)", flush=True)
     return True
+
+
+def _removed(c, cid, uid):
+    """2.5 P5: hat die Gastgeberin diese Person aus dem Anruf entfernt? (bis sie erneut eingeladen wird)"""
+    r = c.execute("SELECT state FROM chat_call_invite WHERE call_id=? AND who=?", (cid, uid)).fetchone()
+    return bool(r) and r[0] == "removed"
+
+
+@router.post("/api/calls/{cid}/moderate")
+async def api_moderate(cid: str, request: Request):
+    """2.5 P5: Gastgeber (wer den Gruppenanruf begonnen hat) schaltet ein anderes Geraet stumm oder entfernt es:
+    {device (eigenes, aktives), target (Geraet im Anruf), action: mute | remove}.
+    mute: Ereignis call.mod an die Person des Geraets - ihr Client schaltet das Mikrofon aus (sie kann es wieder
+    einschalten; Ton bleibt Ende-zu-Ende verschluesselt, der Server kann nicht selbst stummschalten).
+    remove: Endpunkt verlaesst den Anruf (Grund removed, am Knoten sofort beendet), call.mod an die Person; sie kann
+    nicht wieder beitreten, bis sie erneut eingeladen wird (POST /invite). Die anderen wechseln wie bei jedem Abgang
+    den Frame-Schluessel."""
+    uid, err = _me(request)
+    if err:
+        return err
+    b = await _body(request) or {}
+    dev, tgt, act = str(b.get("device") or ""), str(b.get("target") or ""), b.get("action")
+    if act not in ("mute", "remove") or not _HEX32.fullmatch(dev) or not _HEX32.fullmatch(tgt) or dev == tgt:
+        return _bad(t("ungültige Angabe"))
+    with _db() as c, c:
+        call, err = _mine(c, uid, cid, lock=True)
+        if err:
+            return err
+        if call["kind"] != "group" or call["state"] == "ended" or call.get("lead") is not None:
+            return _bad(t("ungültige Angabe"), 409)
+        legs = {x["device"]: x for x in _legs(c, cid)}
+        if (legs.get(dev) or {}).get("who") != uid:
+            return _bad(t("ungültige Angabe"), 409)
+        if call["caller"] != uid:
+            return _bad(t("Nur wer den Anruf begonnen hat, kann andere stummschalten oder entfernen."), 403)
+        x = legs.get(tgt)
+        if not x or x["who"] == uid:
+            return _bad(t("ungültige Angabe"), 409)
+        if not _rate("moderate", uid, 30):
+            return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
+        nm = names(c, [uid])
+        ev = {"call_id": cid, "chat_id": call["chat_id"], "action": act, "device": tgt, "by": nm.get(uid) or uid}
+        if act == "remove":
+            c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,'removed',?) ON CONFLICT (call_id, who) "
+                      "DO UPDATE SET state='removed'", (cid, x["who"], time.time()))
+            for d, y in legs.items():                   # alle Geraete der Person (auch Begleitgeraete)
+                if y["who"] == x["who"]:
+                    _leave(c, _load(c, cid), d, time.time(), "removed", by=uid)
+        if not sharing.is_remote(x["who"]):
+            _emit(c, [x["who"]], "call.mod", ev)
+        print(f"call: {cid[:8]} Gastgeber: {act}", flush=True)
+    return chat._no_store({"ok": True})
 
 
 @router.post("/api/calls/{cid}/invite")

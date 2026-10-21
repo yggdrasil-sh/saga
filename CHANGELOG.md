@@ -174,6 +174,31 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   - Datenbank: Migration 17 (Kopplung, Port-Prüfung, Zertifikats-/Update-Status), Tabellen `horn_ban`, `horn_log`,
     `horn_share`.
 
+- **Gjallarhorn P5 – Web-Client für Gruppenanrufe über Knoten** (Flag `calls.horn`, Standard aus; Vertrag
+  `docs/APP-API.md`, Abschnitt „Anrufe über Gjallarhorn-Knoten“):
+  - **Knotenwahl beim Beitritt:** Das Gerät misst alle Kandidaten parallel (TLS-Aufbau, 5 WSS-Pings, bei `udp_ok` ein
+    STUN-Binding; zusammen höchstens 800 ms) und wählt nach Punktzahl mit Bonus „Anruf schon hier“
+    (`static/horn.js`). Ist ein Knoten nicht erreichbar, erscheint eine klare Meldung und der nächste Kandidat folgt;
+    ohne Knoten neue Versuche mit Backoff.
+  - **Live-Umschalten (make-before-break):** Verbindung weg oder Knoten wird geleert → sofort auf den nächsten
+    Kandidaten; ein besserer Knoten nur mit Hysterese (≥ 25 % und ≥ 30 ms für 20 s, 60 s Verweildauer, höchstens
+    3 Wechsel in 10 min). Frame-Schlüssel bleiben gleich, der Ton spielt über das alte Bein weiter, bis das neue liefert.
+    UDP-Weg, wenn der Knoten UDP meldet; bei Verlust über 20 % zurück auf TCP am selben Knoten.
+  - **Ereigniskanal am Knoten** (`/api/sfu/leg/{id}/events`): Teilnehmende mit CSRC sofort beim Beitritt (vor dem
+    ersten Rahmen, statt Abfrage alle 1,5 s), Belegung der Plätze, Leeren, beendete Beine, Ping. Leeren per
+    SIGUSR1/SIGUSR2 oder per Steuerbefehl aus dem Admin-Bereich (P6). Bildschirm-Spur über `screen_mid`.
+  - **Oberfläche:** Kachelansicht bis 25 mit Last-N (Desktop 9 bewegt, Handy 4, die übrigen als Standbild mit
+    Sprechring), Sprecheransicht, Bildschirm teilen über den Knoten, Weg „UDP/TCP/TLS“ mit Qualitätspunkt,
+    Runensiegel mit Erklärung, Teilnehmerliste, Bild-im-Bild wie in 2.4. Vor dem Start ohne bereiten Knoten ein Hinweis
+    auf die Mesh-Grenze.
+  - **Gastgeber:** `POST /api/calls/{id}/moderate` (stummschalten, entfernen). Entfernte Personen kommen erst nach
+    einer neuen Einladung wieder hinein.
+  - **Server:** Knotenwahl in `saga/horn_web.py` (fällt der Knoten des Anrufs aus, gehen alle auf den besten
+    bereiten); `avoid` in `POST /api/calls/{id}/horn`; Teilnehmerliste mit `hpn` (Kennung je Knoten);
+    `config.horn_ready`; Anruf-Objekt `host`.
+  - Behoben: Ein Knoten, der sich geleert hatte, kam im Register nicht mehr auf „bereit“ zurück; ein Knoten legte den
+    Raum für ein gültiges Token nicht selbst an.
+
 ## [2.4.0] – 2026-10-20
 
 Saga 2.4 bringt Videos in den Chat und macht Anrufe erwachsen: Gruppenanrufe, Bildschirm teilen mit Kamera daneben,

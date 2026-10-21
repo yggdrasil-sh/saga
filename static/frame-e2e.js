@@ -347,20 +347,45 @@
       var x = bag[k] || (bag[k] = { n: 0, ms: 0, max: 0, bytes: 0 });
       x.n++; x.ms += ms; x.bytes += bytes; if (ms > x.max) x.max = ms;
     };
-    var drop = function (why) { S.drop[why] = (S.drop[why] || 0) + 1; };
+    var drop = function (why, kind) { S.drop[why] = (S.drop[why] || 0) + 1; if (kind) S.drop[kind + ':' + why] = (S.drop[kind + ':' + why] || 0) + 1; };
     // 2.5 P3: Empfaenger am Knoten (from '*'): Absender je Rahmen aus der CSRC (getMetadata().contributingSources) ueber die
     // Zuordnung CSRC -> Geraet, die das Fenster aus der Belegung der Plaetze meldet (op "csrc"). Unbekannt: verwerfen.
-    var CSRC = {};
-    var pipe = function (readable, writable, o) {
-      var send = o.side === 'send';
+    // 2.5 P5: eine Zuordnung je Knoten-Verbindung (o.map; CSRCs vergibt jeder Knoten selbst - beim Wechsel zwischen Knoten
+    // laufen kurz zwei Verbindungen nebeneinander)
+    var MAPS = { '': {} }, mapWait = [];
+    // Absender unbekannt: kurz (hoechstens 150 ms) auf die naechste Zuordnung warten - beim Wechsel zwischen Knoten kann
+    // der erste Rahmen eines Geraets knapp vor dessen Meldung im Ereigniskanal ankommen
+    var waitMap = function (key, csrc) {
+      return new Promise(function (ok) {
+        var w = { key: key, csrc: csrc, ok: ok };
+        mapWait.push(w);
+        setTimeout(function () { var i = mapWait.indexOf(w); if (i >= 0) mapWait.splice(i, 1); ok((MAPS[key] || {})[csrc]); }, 150);
+      });
+    };
+    // 2.5 P5: Bild-Empfaenger ohne gueltiges Schluesselbild (erste Rahmen ohne Schluessel bzw. Absender verworfen):
+    // Schluesselbild anfordern, sobald wieder Rahmen aufgehen (sonst bleibt das Bild schwarz, bis der Sender von sich aus
+    // eines schickt - der Dekodierer sieht die verworfenen Rahmen nicht und fordert selbst nichts an). Hoechstens 1x je s.
+    var pipe = function (readable, writable, o, tr) {
+      var send = o.side === 'send', needKey = true, keyAt = 0, lastFrom = null;
+      var wantKey = function () {
+        var now = Date.now();
+        if (!tr || typeof tr.sendKeyFrameRequest !== 'function' || now - keyAt < 1000) return;
+        keyAt = now; S.keyreq = (S.keyreq || 0) + 1;
+        try { var p = tr.sendKeyFrameRequest(); if (p && p.catch) p.catch(function () {}); } catch (e) { /* aelterer Browser */ }
+      };
       readable.pipeThrough(new TransformStream({
         transform: async function (f, c) {
           var t0 = clock(), md = f.getMetadata ? f.getMetadata() : {};
           var kind = o.kind || (f.type === undefined ? 'audio' : 'video'), type = f.type;
           var data = new Uint8Array(f.data), r, from = o.from;
           if (!send && from === '*') {
-            from = CSRC[((md.contributingSources || [])[0]) >>> 0];
-            if (!from) { drop('nofrom'); return; }
+            var csrc = ((md.contributingSources || [])[0]) >>> 0;
+            from = (MAPS[o.map || ''] || {})[csrc];
+            if (!from && csrc && mapWait.length < 64) { from = await waitMap(o.map || '', csrc); if (from) S.late = (S.late || 0) + 1; }
+            if (!from) { drop('nofrom', kind); if (kind === 'video') needKey = true; return; }
+            // 2.5 P5: tatsaechlicher Absender je Bild-Empfaenger melden - der Knoten wechselt die Quelle eines Platzes erst am
+            // naechsten Schluesselbild, die Belegung nennt aber schon die neue; das Fenster ordnet die Kachel danach zu
+            if (kind === 'video' && o.rid && from !== lastFrom) { lastFrom = from; root.postMessage({ ev: 'vown', rid: o.rid, from: from }); }
           }
           try {
             if (send) {
@@ -368,7 +393,8 @@
               r = await H.encrypt(data, kind, type, md.synchronizationSource >>> 0, ts >>> 0, Date.now(), md.mimeType);
             } else r = await H.decrypt(from, data, kind, type, Date.now(), md.mimeType);
           } catch (e) { r = 'error'; }
-          if (typeof r === 'string') { drop(r); return; }  // keine Ausgabe
+          if (typeof r === 'string') { drop(r, kind); if (!send && kind === 'video') needKey = true; return; }  // keine Ausgabe
+          if (!send && kind === 'video') { if (type === 'key') needKey = false; else if (needKey) wantKey(); }
           f.data = r.buffer;
           c.enqueue(f);
           tally(send ? S.enc : S.dec, kind + (kind === 'video' ? ':' + type : ''), clock() - t0, data.length);
@@ -376,7 +402,7 @@
         }
       })).pipeTo(writable).catch(function () {});
     };
-    root.onrtctransform = function (ev) { var t = ev.transformer; pipe(t.readable, t.writable, t.options || {}); };
+    root.onrtctransform = function (ev) { var t = ev.transformer; pipe(t.readable, t.writable, t.options || {}, t); };
     root.onmessage = async function (m) {
       var d = m.data || {}, out = { id: d.id };
       try {
@@ -386,7 +412,11 @@
         else if (d.op === 'switch') H.switchNow();
         else if (d.op === 'peer') out.ok = await H.peerKey(d.from, d.n, new Uint8Array(d.key), d.s, Date.now());
         else if (d.op === 'gone') H.peerGone(d.from);
-        else if (d.op === 'csrc') { CSRC = {}; Object.keys(d.map || {}).forEach(function (k) { CSRC[k >>> 0] = String(d.map[k]); }); }
+        else if (d.op === 'csrc') {
+          var mm = MAPS[d.key || ''] = {}; Object.keys(d.map || {}).forEach(function (k) { mm[k >>> 0] = String(d.map[k]); });
+          mapWait = mapWait.filter(function (w) { if (w.key === (d.key || '') && mm[w.csrc]) { w.ok(mm[w.csrc]); return false; } return true; });
+        }
+        else if (d.op === 'csrc-drop') { if (d.key) delete MAPS[d.key]; }
         else if (d.op === 'stats') { out.stats = S; if (d.reset) S = fresh(); }
         else if (d.op === 'selftest') out.result = await selftest(d.vectors);
         else if (d.op === 'runes') out.runes = await runes(d.call_id, d.devices);
@@ -424,13 +454,14 @@
     return {
       mode: mode, worker: w,
       sender: function (snd, kind) { attach(snd, { side: 'send', kind: kind }); },
-      receiver: function (rcv, kind, from) { attach(rcv, { side: 'recv', kind: kind, from: from }); },
+      receiver: function (rcv, kind, from, map, rid) { attach(rcv, { side: 'recv', kind: kind, from: from, map: map || '', rid: rid || 0 }); },
       own: function (m, key) { return call('own', { mode: m, key: key }).then(function (d) { return d.key; }); },
       ownKeys: function () { return call('own-keys').then(function (d) { return d.keys; }); },
       switchNow: function () { return call('switch'); },
       peer: function (from, n, key, s) { return call('peer', { from: from, n: n, key: key, s: s }).then(function (d) { return d.ok; }); },
       gone: function (from) { return call('gone', { from: from }); },
-      csrcMap: function (map) { return call('csrc', { map: map }); },
+      csrcMap: function (map, key) { return call('csrc', { map: map, key: key || '' }); },
+      csrcDrop: function (key) { return call('csrc-drop', { key: key }); },
       stats: function (reset) { return call('stats', { reset: !!reset }).then(function (d) { return d.stats; }); },
       selftest: function (v) { return call('selftest', { vectors: v }).then(function (d) { return d.result; }); },
       runes: function (callId, devices) { return call('runes', { call_id: callId, devices: devices }).then(function (d) { return d.runes; }); },

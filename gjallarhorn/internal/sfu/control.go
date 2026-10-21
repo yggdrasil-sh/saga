@@ -77,7 +77,11 @@ func (r *Room) Tick() {
 			}
 		}
 	}
+	peersEv := cfg.OnPeers != nil && r.peersChangedLocked()
 	r.mu.Unlock()
+	if peersEv {
+		cfg.OnPeers(r.ref)
+	}
 	if cfg.OnLayout != nil {
 		for _, ev := range events {
 			cfg.OnLayout(ev)
