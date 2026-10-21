@@ -31,7 +31,8 @@ docker compose version >/dev/null 2>&1 || die "'docker compose' (v2) nicht gefun
 command -v systemctl >/dev/null || die "systemd nicht gefunden"
 DIR=$(cd "$DIR" && pwd) || die "Ordner $1 nicht gefunden"
 [ -f "$DIR/.env" ] || die "$DIR/.env fehlt - ist das der Saga-Ordner?"
-ls "$DIR"/docker-compose.y*ml "$DIR"/compose.y*ml >/dev/null 2>&1 || die "keine docker-compose.yml in $DIR"
+found=; for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do [ -f "$DIR/$f" ] && found=1; done
+[ -n "$found" ] || die "keine docker-compose.yml in $DIR"
 case "$CH" in testing|rc|[0-9]*) ;; *) die "unbekannter Kanal '$CH' (testing, 2, 2.5.0 ...)" ;; esac
 cd "$DIR"
 docker compose config --services 2>/dev/null | grep -qx saga || die "kein Dienst 'saga' in der Compose-Datei"
