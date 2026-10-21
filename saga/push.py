@@ -18,6 +18,9 @@ Nur AUSGEHEND vom Server - kein eigener Port, kein eingehender Dienst.
 - Verschluesselung Web Push: RFC 8291 (aes128gcm) und VAPID RFC 8292 mit der Bibliothek cryptography (ECDH P-256,
   HKDF-SHA256, AES-128-GCM, ECDSA) - keine eigene Kryptografie. VAPID-Schluessel wird beim ersten Bedarf erzeugt und
   (privater Teil verschluesselt) in setting 'push_vapid' gespeichert.
+- 2.5: Abo-Art "stream" - eigene Verbindung der App zum Server (saga.push_stream), wenn auf dem Geraet kein
+  UnifiedPush-Verteiler installiert ist. Zustellung wie Web Push (gleiche verschluesselte Nutzlast, TTL, Topic), nur
+  dass der "Push-Dienst" Saga selbst ist: Ablage in push_stream_msg, sofort hinaus, wenn die App verbunden ist.
 - Ziele: Web Push / ntfy / UnifiedPush ueber saga.netguard (SSRF-Schutz: interne Ziele nur mit Admin-Freigabe,
   http nur fuer freigegebene Hosts). APNs: feste Apple-Adressen, HTTP/2 (httpx + h2), Token-Anmeldung (ES256 mit .p8)."""
 import base64
@@ -43,14 +46,14 @@ from fastapi.responses import JSONResponse, Response
 
 import auth
 from db import connect as _db
-from saga import bus, i18n, notify
+from saga import bus, i18n, notify, push_stream
 from saga.core import ASSET_V, BASE_URL, HERE, RESTORE_TEST, TZ, _api_guard, _bad, _body, _json_load, _tok_hash, account_lang, t, title
 from saga.netguard import Blocked, guarded_client, is_public
 
 router = APIRouter()
 
 E = os.environ
-TYPES = ("webpush", "ntfy", "unifiedpush", "apns", "apns-voip")
+TYPES = ("webpush", "ntfy", "unifiedpush", "apns", "apns-voip", "stream")
 CATS = {"share": ("share.added", "share.role"), "comment": ("comment.new", "comment.reply", "comment.mention"),
         "chat": ("chat.message",), "publish": ("publish.withdrawn",), "call": ("call", "call.missed", "call.group"),
         "admin": ("backup.failed",)}                 # nur Admin-Konten (Backups, saga/backups.py)
@@ -227,7 +230,7 @@ def server():
     on = bool(p.get("enabled", True))
     return {"enabled": on, "webpush": on and bool(p.get("webpush", True)), "ntfy": on and bool(p.get("ntfy", True)),
             "unifiedpush": on and bool(p.get("unifiedpush", True)), "apns": on and apns_cfg()["ready"],
-            "apns-voip": on and apns_cfg()["ready"]}
+            "apns-voip": on and apns_cfg()["ready"], "stream": on and bool(p.get("stream", True))}
 
 
 def prefs(c, uid):
@@ -353,11 +356,14 @@ def _subs(c, uid, epoch, srv):
 
 
 def _route(c, sids, kind):
-    """VoIP-Abos (iOS/macOS-App, PushKit) bekommen NUR klingelnde Anrufe - Apple verlangt zu jeder VoIP-Mitteilung einen
+    """Hat ein Geraet ein UnifiedPush-Abo, bekommt sein Abo "stream" (eigene Verbindung, 2.5) nichts (Umstieg ohne Doppelte).
+    VoIP-Abos (iOS/macOS-App, PushKit) bekommen NUR klingelnde Anrufe - Apple verlangt zu jeder VoIP-Mitteilung einen
     Anruf in CallKit. Hat dasselbe Geraet ein VoIP-Abo, geht der Anruf nicht zusaetzlich ueber das normale APNs-Abo."""
     if not sids:
         return sids
     rows = c.execute(f"SELECT id, kind, device_id FROM push_sub WHERE id IN ({','.join('?' * len(sids))})", tuple(sids)).fetchall()
+    up_dev = {r[2] for r in rows if r[1] == "unifiedpush" and r[2] is not None}      # 2.5: Verteiler geht vor
+    rows = [r for r in rows if not (r[1] == "stream" and r[2] in up_dev)]
     if kind != "call":
         return [r[0] for r in rows if r[1] != "apns-voip"]
     voip_dev = {r[2] for r in rows if r[1] == "apns-voip" and r[2] is not None}
@@ -445,7 +451,7 @@ def _anon(kind):
 def with_names(p, sub_kind, has_keys):
     """Namen nur, wenn die Person es will UND der Weg Ende-zu-Ende verschluesselt ist (Web Push, UnifiedPush mit
     Schluesseln) bzw. Apple (APNs). ntfy und UnifiedPush ohne Schluessel: nie."""
-    return bool(p.get("names")) and (sub_kind in ("webpush", "apns", "apns-voip") or (sub_kind == "unifiedpush" and has_keys))
+    return bool(p.get("names")) and (sub_kind in ("webpush", "apns", "apns-voip", "stream") or (sub_kind == "unifiedpush" and has_keys))
 
 
 def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", has_keys=True, created=None):
@@ -538,6 +544,13 @@ def send(sub, msg):
     raw = json.dumps(msg, ensure_ascii=False, separators=(",", ":")).encode()
     if len(raw) > PAYLOAD_MAX:
         return "fail", "zu gross"
+    if kind == "stream":                                              # 2.5: eigene Verbindung der App (wie ein Push-Dienst)
+        try:
+            body = encrypt(raw, p256dh, auth_s)
+        except ValueError as ex:
+            return "gone", str(ex)[:80]
+        push_stream.deposit(sid, body, int(msg.get("ttl") or TTL), re.sub(r"[^A-Za-z0-9_-]", "", msg.get("tag") or "")[:32])
+        return "ok", ""
     try:
         if kind == "webpush" or (kind == "unifiedpush" and p256dh and auth_s):
             h = {"TTL": str(msg.get("ttl") or TTL), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
@@ -622,6 +635,7 @@ def _record(c, sid, verdict, detail, now):
     elif verdict == "gone":
         c.execute("DELETE FROM push_queue WHERE sub_id=?", (sid,))
         c.execute("DELETE FROM push_sub WHERE id=?", (sid,))
+        push_stream.drop_sub(sid)
         print(f"push: Abo {sid} entfernt ({detail})", flush=True)
     else:
         c.execute("UPDATE push_sub SET last_err=?, fails=fails+1 WHERE id=?", (f"{detail} @{int(now)}"[:120], sid))
@@ -666,7 +680,7 @@ def cleanup():
         a = c.execute("DELETE FROM push_queue WHERE created < ?", (time.time() - MAX_AGE,)).rowcount
         b = c.execute("DELETE FROM push_sub WHERE device_id IS NOT NULL AND NOT EXISTS "
                       "(SELECT 1 FROM device_login d WHERE d.id=push_sub.device_id AND d.uid=push_sub.uid)").rowcount
-    return a + b
+    return a + b + push_stream.cleanup()
 
 
 _thread = {"t": None, "stop": False}
@@ -732,6 +746,8 @@ def _where(kind, endpoint):
     """Kurzer Hinweis fuer die Geraeteliste (Dienst, ohne geheime Teile der Adresse)."""
     if kind in ("apns", "apns-voip"):
         return ("Apple VoIP (" if kind == "apns-voip" else "Apple (") + (endpoint.split(":")[1] if endpoint.count(":") >= 2 else "") + ")"
+    if kind == "stream":
+        return t("Saga (eigene Verbindung)")
     host = (urlparse(endpoint).hostname or "").lower()
     for part, name in (("googleapis.com", "Google (Chrome/Android)"), ("mozilla", "Mozilla (Firefox)"),
                        ("push.apple.com", "Apple (Safari)"), ("notify.windows.com", "Microsoft (Edge)")):
@@ -746,7 +762,8 @@ def _devices(c, uid, did=None):
     return [{"id": r[0], "type": r[1], "name": r[3] or "", "where": _where(r[1], r[2]), "app": r[4] is not None,
              "this_device": bool(did and r[4] == did), "created": r[5], "last_ok": r[6],
              "last_error": (r[7] or "").split(" @")[0] or None, "fails": r[8],
-             "encrypted": r[1] in ("webpush", "apns", "apns-voip") or (r[1] == "unifiedpush" and bool(r[9]))} for r in rows]
+             "encrypted": r[1] in ("webpush", "apns", "apns-voip", "stream") or (r[1] == "unifiedpush" and bool(r[9])),
+             **({"connected": push_stream.connected(r[0])} if r[1] == "stream" else {})} for r in rows]
 
 
 def _state(c, uid, did=None):
@@ -759,6 +776,7 @@ def _state(c, uid, did=None):
     a = apns_cfg()
     return {"server": {"enabled": srv["enabled"], "webpush": srv["webpush"] and bool(pub), "vapid_public": pub,
                        "ntfy": srv["ntfy"], "unifiedpush": srv["unifiedpush"], "apns": srv["apns"],
+                       "stream": srv["stream"], "stream_path": push_stream.PATH if srv["stream"] else None,
                        "apns_bundle": a.get("bundle_id") if srv["apns"] else None},
             "settings": prefs(c, uid), "categories": [k for k in CATS if k != "admin" or (auth.user_info(uid) or {}).get("is_admin")],
             "kinds": CATS,
@@ -852,6 +870,11 @@ def _parse_sub(b, srv):
             return None, (t("ungültige Angabe"), 400)
         f["endpoint"] = f"{kind}:{env}:{tok.lower()}"
         return f, None
+    if kind == "stream":                               # 2.5: Endpunkt vergibt der Server (einer je Geraete-Anmeldung)
+        if not _keys_ok(p256dh, auth_s):
+            return None, (t("ungültige Angabe"), 400)
+        f["p256dh"], f["auth"], f["endpoint"] = str(p256dh).strip(), str(auth_s).strip(), ""
+        return f, None
     url, err = check_url(b.get("endpoint") or b.get("url"))
     if err:
         return None, (err, 400)
@@ -892,7 +915,11 @@ async def api_push_subscribe(request: Request):
     f, err = _parse_sub(b, srv)
     if err:
         return _bad(*err)
-    if f["kind"] not in ("apns", "apns-voip") and not await run_in_threadpool(_resolves_ok, f["endpoint"]):
+    if f["kind"] == "stream":
+        if not did:                                                   # nur Apps mit Geraete-Anmeldung
+            return _bad(t("Nur für Apps mit Geräte-Anmeldung."), 400)
+        f["endpoint"] = f"stream:{did}"
+    elif f["kind"] not in ("apns", "apns-voip") and not await run_in_threadpool(_resolves_ok, f["endpoint"]):
         return _bad(t("Ziel nicht erreichbar oder nicht freigegeben (interne Server gibt der Admin frei)."))
     if not _rate_ok(_reg, uid, REG_MIN):
         return _bad(t("Zu viele Versuche – bitte kurz warten."), 429)
@@ -920,7 +947,10 @@ async def api_push_subscribe(request: Request):
     if web and f["kind"] == "webpush":
         request.session["push_sub"] = sid                           # Abmelden in diesem Browser beendet das Abo
     d = next((x for x in devs if x["id"] == sid), None)
-    return JSONResponse({"id": sid, "device": d, "active": bool(srv.get(f["kind"]))}, status_code=200 if old else 201)
+    out = {"id": sid, "device": d, "active": bool(srv.get(f["kind"]))}
+    if f["kind"] == "stream":
+        out["stream_path"] = push_stream.PATH
+    return JSONResponse(out, status_code=200 if old else 201)
 
 
 @router.delete("/api/push/subscriptions/{sid}")
@@ -932,6 +962,8 @@ def api_push_unsubscribe(request: Request, sid: int):
         n = c.execute("DELETE FROM push_sub WHERE id=? AND uid=?", (sid, uid)).rowcount
         if n:
             c.execute("DELETE FROM push_queue WHERE sub_id=?", (sid,))
+    if n:
+        push_stream.drop_sub(sid)
     return JSONResponse({"ok": True}) if n else _bad(t("Nicht gefunden"), 404)
 
 

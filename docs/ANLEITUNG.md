@@ -165,6 +165,32 @@ Heartbeat-Zeile, damit Leerlauf-Timeouts nicht greifen.
   Puffert ein Proxy oder bricht er die Verbindung ab, schaltet Saga von selbst auf Abfrage alle 60 Sekunden um: Alles
   kommt an, nur später.
 
+**Push ohne Verteiler (Android-App, 2.5):** Ist auf einem Android-Handy kein UnifiedPush-Verteiler (ntfy, NextPush …)
+installiert, hält die Saga-App selbst eine Verbindung zu `GET /api/push/stream` (WebSocket, derselbe Port). Die App
+schickt nur alle paar Minuten ein winziges Lebenszeichen – je seltener, desto besser für den Akku. Der Proxy muss
+deshalb ruhende WebSocket-Verbindungen **mindestens 30 Minuten** offen lassen:
+
+- **Caddy, Traefik:** nichts zu tun (WebSocket wird durchgereicht, keine Leerlauf-Grenze für laufende Verbindungen).
+- **nginx:** eigener Block im `server { … }`:
+
+```nginx
+    location /api/push/stream {            # eigene Push-Verbindung der Android-App (WebSocket)
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+    }
+```
+
+Ohne diesen Block trennt nginx ruhende Verbindungen nach 60 Sekunden; die App merkt das und schickt dann häufiger
+Lebenszeichen (in den Push-Einstellungen der App steht dann ein Hinweis) – es funktioniert, kostet aber mehr Akku.
+Abschalten lässt sich der Weg im Admin-Bereich unter Mitteilungen; die App zeigt dann wieder „Verteiler installieren“.
+
 **Größe von Anfragen:** Saga lehnt zu große Anfragen selbst mit 413 ab – allgemein ab 2 MB (`REQUEST_MAX_MB`),
 Datei-Uploads ab `ATTACH_MAX_MB` (+ etwas Formular-Rahmen), im Admin-Bereich ab 1 MB. Eine Grenze im Reverse
 Proxy (wie oben, etwas über `ATTACH_MAX_MB`) ist trotzdem empfehlenswert: Dann kommen riesige Anfragen gar nicht

@@ -88,6 +88,10 @@ func (m *media) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			m.az.forgetKind(r, kindUpload, id)
 		}
 	}
+	if isStreamUpgrade(r) { // 2.5: eigene Push-Verbindung der Apps - schlanker Tunnel statt ReverseProxy
+		m.serveStream(w, r)
+		return
+	}
 	if r.Body != nil && r.Body != http.NoBody && r.ContentLength != 0 {
 		r.Body = &stallBody{rc: r.Body, ctl: http.NewResponseController(w), d: m.c.stall}
 	}

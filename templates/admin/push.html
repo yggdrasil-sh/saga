@@ -13,6 +13,7 @@
     {{ check(_('Web Push (Browser, auch iPhone/iPad als Home-Bildschirm-App)'), 'webpush', p.webpush, _('Ende-zu-Ende verschlüsselt über den Push-Dienst des Browsers (Google, Mozilla, Apple, Microsoft). Braucht https.')) }}
     {{ check(_('ntfy (eigene Topic-Adresse)'), 'ntfy', p.ntfy, _('Die Person trägt ihre ntfy-Topic-Adresse ein. Der ntfy-Server sieht den Text – deshalb nie mit Namen.')) }}
     {{ check(_('UnifiedPush (Android- und Linux-App)'), 'unifiedpush', p.unifiedpush, _('Die App meldet die Adresse ihres Verteilers (z. B. ntfy) selbst an.')) }}
+    {{ check(_('Eigene Verbindung der Android-App (ohne Verteiler)'), 'stream', p.stream if p.stream is defined else true, _('Ist auf dem Handy kein UnifiedPush-Verteiler installiert, hält die App selbst eine stromsparende Verbindung zu Saga (WebSocket /api/push/stream, Ende-zu-Ende verschlüsselt wie Web Push). Verbunden: {n}.', n=stats.streams)) }}
     <p class="hk-hint">{{ _("Interne ntfy-Server (z. B. im Heimnetz) brauchen eine Freigabe unter Allgemein → Freigegebene interne Hosts.") }}</p>
     <p class="hk-hint">{{ _("Öffentlicher VAPID-Schlüssel (Web Push):") }} <code class="adm-key">{{ vapid or "–" }}</code></p>
   </section>

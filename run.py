@@ -38,7 +38,10 @@ def _config(app, host, port, lifespan, behind_media=False):
         trusted = (trusted + ",127.0.0.1") if trusted.strip() != "*" else trusted
         extra["timeout_keep_alive"] = 75
     return uvicorn.Config(app, host=host, port=port, proxy_headers=True, lifespan=lifespan, forwarded_allow_ips=trusted,
-                          server_header=False, log_level=os.environ.get("LOG_LEVEL", "info"), timeout_graceful_shutdown=5, **extra)
+                          server_header=False, log_level=os.environ.get("LOG_LEVEL", "info"), timeout_graceful_shutdown=5,
+                          # WebSocket nur fuer die eigene Push-Verbindung der Apps (2.5, saga.push_stream): der Server pingt
+                          # NIE selbst (jeder Ping weckt das Handy - die App waehlt den Abstand), kleine Rahmen
+                          ws_ping_interval=None, ws_ping_timeout=None, ws_max_size=16384, ws_max_queue=8, **extra)
 
 
 async def main():
@@ -62,6 +65,8 @@ async def main():
         while not any(s.should_exit for s in servers):
             await asyncio.sleep(0.5)
         live.stop()
+        from saga import push_stream
+        push_stream.stop()         # eigene Push-Verbindungen der Apps: 1012 (die App verbindet gleich neu)
     watcher = asyncio.create_task(_end_live())
     await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
     for s in servers:              # Signal kommt nur bei einem Server an -> beide beenden
