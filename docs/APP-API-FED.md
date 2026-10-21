@@ -404,12 +404,19 @@ und werten es beim Empfang aus (unbekannte Kennungen sonst wie bisher: Teilnehme
 | Auftrag | Richtung | Inhalt → Antwort |
 |---|---|---|
 | `horn_nodes` | Heim → Server | `{}` → `{nodes}` (bereite Knoten dort; 0 bei Notaus) |
-| `horn` | Server → Heim | `{id, actor, device, dev_class, avoid, horn_nodes, node?: {name, own, url?, pub?}}` → `{candidates, share, why, cascade, here}`. Mit `node`: Wahl eintragen – eigener Knoten des Servers (`own`, mit Adresse und Knotenschlüssel für die Kaskade) bzw. geteilter Knoten des Heims (409 bei Kontingent) |
+| `horn` | Server → Heim | `{id, actor, device, dev_class, avoid, horn_nodes, node?: {name, own, url?, pub?}, own_first?: {name, url, pub}}` → `{candidates, share, why, cascade, here, assigned?}`. Mit `node`: Wahl eintragen – eigener Knoten des Servers (`own`, mit Adresse und Knotenschlüssel für die Kaskade) bzw. geteilter Knoten des Heims (409 bei Kontingent). Ohne `node` beim Beitritt merkt das Heim den Knoten vor wie lokal (`assigned {name, own}`): den ersten geteilten Kandidaten, sonst `own_first` |
 | `horn_cascade` | Heim → Server | `{id, bridge, node, url, peer, peer_pub, token}`: der Knoten `node` des Servers soll den Mittelpunkt `peer` (Adresse `url`, Knotenschlüssel `peer_pub`) anwählen; `token` ist das accept-Token des Heims. Der Server prüft (Anruf mit diesem Heim, eigener Endpunkt auf dem Knoten, kein Notaus) und gibt seinem Knoten das eigene dial-Token. Alle 20 s erneut, solange gewünscht |
 | `horn_uncascade` | Heim → Server | `{id, bridge}` – Brücke abbauen |
 
 Die Teilnehmerliste (`roster`) und die Antwort auf `join` mit `start` tragen `topo` (`horn`/`mesh`) und ggf.
 `horn_mesh`; die Kopie übernimmt `topo` beim Anlegen.
+
+**Adressen geteilter Knoten:** `hello` (beide Richtungen) trägt `horn_shared: [url]` – die Knoten mit „Teilen an“, nur
+wenn der andere Server sie nutzen darf (sonst `[]`). Der andere Server nimmt sie in `connect-src` seiner Seiten auf
+(Geräte sprechen den Knoten direkt an); Änderungen am Teilen lösen sofort ein `hello` aus. Seiten, die vorher geladen
+wurden, brauchen ein Neuladen (der Web-Client sagt das). Die Knoten selbst erlauben die Herkunft der Seiten dieser
+Server (Steuerkanal `origins`). `horn_cascade` wählt nur öffentliche bzw. unter „Freigegebene interne Hosts“
+eingetragene Adressen an (sonst 403).
 
 **Teilen und Kontingente (Heim, Admin-Bereich → Föderation, je Server):** erlaubt (Standard ja), Teilnehmende und
 Mbit/s je Richtung (leer = Standard aus Admin → Anrufe, 10 / 20), Notaus. Das Kontingent steht in jedem Medien-Token
