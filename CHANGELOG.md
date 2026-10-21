@@ -115,6 +115,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   aus dem Backup-Schlüssel – der Server kann nichts lesen und kein „überprüft“ unterschieben). Ein neuer Browser holt ihn
   nach Wiederherstellungsschlüssel oder Kopplung vor dem ersten Laden; eigene Geräte gleichen ihn nebenher ab. Neu
   beginnen verwirft ihn. `docs/APP-API.md` (Chat-Stufe 3), Tests in `chat` und `browser_trust3.js`.
+- **✓✓ bleibt nach der Umstellung auf Stufe 3** (Nr. 054): Alte, schon gelesene Nachrichten (vor `v3_seq`, ohne `fseq`)
+  zeigen wieder „gelesen“ – aus der noch gespeicherten Bestätigung im alten Format (geprüft mit dem gemerkten Benutzernamen
+  zum Handle) oder, sobald die Person nach der Umstellung etwas bestätigt hat. Test in `browser_trust3.js`.
 
 ### Neu (Vorbereitung 2.5, Gjallarhorn)
 - **Horn-Probe** (`gjallarhorn/`, Paket P0): Prototyp des Gjallarhorn-Knotens als eigenes Go-Programm (Pion, nur

@@ -59,6 +59,7 @@ const texts = p => p.evaluate(() => [...document.querySelectorAll('#ct-msgs .ct-
       ok('Phase 1: Chat v1, Mitglieder mit Handle (fuer die Uebernahme)', v.length === 1 && !(v[0].v >= 2) && v[0].h.every(Boolean), v);
       await a.fill('#ct-input', 'Alte Nachricht (v1)'); await a.press('#ct-input', 'Enter'); await a.waitForTimeout(800);
       await b.goto(BASE + '/chats'); await b.waitForTimeout(1200); await b.click('#ct-list .ct-item-b'); await b.waitForTimeout(1200);
+      ok('Phase 1: B hat gelesen - A sieht ✓✓', await until(() => a.evaluate(() => !!document.querySelector('#ct-msgs .ct-tick.ct-read')), 10000));
       await a.click('#ct-more'); await a.waitForSelector('.menu .menu-item');
       await a.click('.menu .menu-item:has-text("Mitglieder")');
       await a.waitForSelector('.ct-dev button:has-text("Sicherheitsnummer")'); await a.click('.ct-dev button:has-text("Sicherheitsnummer")');
@@ -81,6 +82,10 @@ const texts = p => p.evaluate(() => [...document.querySelectorAll('#ct-msgs .ct-
       await a.fill('#ct-input', 'Neue Nachricht (v2)'); await a.press('#ct-input', 'Enter'); await a.waitForTimeout(1200);
       const ta = await texts(a);
       ok('Phase 2: alte Nachricht (v1) und neue (v2) lesbar und bestaetigt', ta.some(x => x.t === 'Alte Nachricht (v1)' && !x.unv) && ta.some(x => x.t === 'Neue Nachricht (v2)' && !x.unv), ta);
+      // 2.5 (Testrunde Web Nr. 054): B hatte die alte Nachricht vor der Umstellung gelesen - sie behaelt ihr ✓✓
+      const tick = () => a.evaluate(() => [...document.querySelectorAll('#ct-msgs .ct-msg')].filter(r => /Alte Nachricht \(v1\)/.test(r.textContent))
+        .map(r => { const t = r.querySelector('.ct-tick'); return t ? t.className + ' ' + t.textContent : '-'; })[0]);
+      ok('Phase 2: alte, gelesene Nachricht behaelt ✓✓ nach der Umstellung (Nr. 054)', await until(async () => /ct-read/.test(await tick() || ''), 8000), await tick());
       await shot(a, 'trust3-1-umgestellt');
       await a.click('#ct-more'); await a.waitForSelector('.menu .menu-item');
       await a.click('.menu .menu-item:has-text("Mitglieder")');

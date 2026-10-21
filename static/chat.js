@@ -1207,36 +1207,49 @@
     var dv = p ? p.devices.filter(function (x) { return x.id === dev; })[0] : null;
     return dv ? ub(dv.sign_pub, 32) : null;
   }
-  function takeReceipts(c, list) {
+  // h2u (optional): Handle -> Benutzername aus Chats v1 - fuer Bestaetigungen, die noch vor der Umstellung auf Stufe 3
+  // gesendet wurden (Format v1, signiert mit Chat-Nummer und Benutzername; Nr. 054)
+  function takeReceipts(c, list, h2uMap) {
     var changed = false;
     (list || []).forEach(function (x) {
       try {
-        var r = X.openReceipt(x.sealed, K.backup_pk, K.backup_sk), pk = readerKey(c, x.from, x.handle, r.dev);
-        if (!pk || !X.verifyReceipt(isFed(c) ? c.ref : String(c.id), isFed(c) ? x.handle : x.from, r, pk, isFed(c))) return;
+        var r = X.openReceipt(x.sealed, K.backup_pk, K.backup_sk), pk = readerKey(c, x.from, x.handle, r.dev), v1 = false;
+        if (!pk) return;
+        if (!X.verifyReceipt(isFed(c) ? c.ref : String(c.id), isFed(c) ? x.handle : x.from, r, pk, isFed(c))) {
+          var u = isFed(c) && v3Seq(c) && h2uMap && h2uMap[x.handle];
+          if (!u || !X.verifyReceipt(String(c.id), u, r, pk, false)) return;
+          v1 = true;
+        }
         var b = JSON.parse(r.body), old = S.rcpts[x.from];
-        if (typeof b.n !== 'number' || (old && old.n > b.n)) return;
-        S.rcpts[x.from] = { n: b.n, id: b.id, ts: b.ts };
+        if (typeof b.n !== 'number') return;
+        if (v1) { if (!old) { S.rcpts[x.from] = { n: 0, n1: b.n, id: b.id, ts: b.ts }; changed = true; } return; }
+        if (old && old.n > b.n) return;
+        S.rcpts[x.from] = { n: b.n, n1: old && old.n1, id: b.id, ts: b.ts };
         changed = true;
       } catch (e) { /* nicht lesbar/ungueltig: ignorieren */ }
     });
     return changed;
   }
+  // Umstellpunkt eines auf Stufe 3 umgestellten Chats (letzte Nachricht v1) oder 0
+  function v3Seq(c) { return (c && c.v3 && +c.v3.seq) || 0; }
   function loadReceipts(c) {
     if (!hasFeat('receipts') || !K || !priv().receipts) return;
     var keysP = isFed(c) ? (S.fk ? Promise.resolve() : fedLoad(c)) : recipients(c.id);
-    Promise.all([api('GET', '/api/chats/' + c.id + '/receipts'), keysP]).then(function (a) {
+    Promise.all([api('GET', '/api/chats/' + c.id + '/receipts'), keysP, v3Seq(c) ? h2uLoad() : null]).then(function (a) {
       if (!S.cur || S.cur.id !== c.id) return;
       S.rcpts = {};
-      if (takeReceipts(c, a[0].receipts)) drawMsgs();
+      if (takeReceipts(c, a[0].receipts, a[2])) drawMsgs();
     }).catch(function () {});
   }
   // Wer hat Nachricht m gelesen? -> [{name, ts}] (ohne mich)
   function readersOf(c, m) {
-    var n = ordOf(c, m), out = [];
+    // 2.5 (Nr. 054): Nachricht von vor der Umstellung auf Stufe 3 (ohne fseq): gelesen, wenn die Person danach schon
+    // etwas bestaetigt hat (Stufe 3 kommt nach allem davor) oder ihre Bestaetigung v1 so weit reicht
+    var old = isFed(c) && !m.fseq && m.seq && v3Seq(c) && m.seq <= v3Seq(c), n = old ? m.seq : ordOf(c, m), out = [];
     if (!n) return out;
     c.members.forEach(function (x) {
       var r = !x.me && S.rcpts[x.username];
-      if (r && r.n >= n) out.push({ name: x.name || x.username, ts: r.ts });
+      if (r && (old ? r.n > 0 || (r.n1 || 0) >= n : r.n >= n)) out.push({ name: x.name || x.username, ts: r.ts });
     });
     return out;
   }
