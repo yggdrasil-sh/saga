@@ -3201,5 +3201,12 @@
  "🔗 Link zur Datenbank kopieren": "🔗 Copy link to database",
  "🖼 Bild hochladen …": "🖼 Upload image …",
  "🖼 Eigenes Bild hochladen …": "🖼 Upload your own image …",
- "🗃️ Datenbank einbetten:": "🗃️ Embed database:"
+ "🗃️ Datenbank einbetten:": "🗃️ Embed database:",
+ "Bindestriche, Leerzeichen und Kleinbuchstaben sind egal.": "Hyphens, spaces and lower case do not matter.",
+ "Chat-Stufe 3: Handles, Reaktionen, Bearbeiten, Sprachnachrichten": "Chat level 3: handles, reactions, editing, voice messages",
+ "Eine Nachricht kann nicht leer sein – zum Entfernen „Für alle löschen“ im Menü der Nachricht wählen.": "A message cannot be empty – to remove it, choose “Delete for everyone” in the message menu.",
+ "Neue Chats entstehen über Handles statt Anmeldenamen (niemand sieht mehr den Anmeldenamen des anderen), dazu kommen Reaktionen, Bearbeiten und Sprachnachrichten. Bestehende Chats stellt der Server um, sobald alle aktiven Geräte der Mitglieder Saga 2.5 haben – spätestens nach der Frist darunter. Apps ab 2.3 lesen solche Chats, ältere zeigen einen Hinweis. Ausschalten stellt umgestellte Chats nicht zurück; Reaktionen, Bearbeiten und Sprachnachrichten sind dann aus.": "New chats are built on handles instead of usernames (nobody sees the other person’s username any more), plus reactions, editing and voice messages. The server converts existing chats as soon as all active devices of their members run Saga 2.5 – at the latest after the period below. Apps from 2.3 can read such chats, older ones show a notice. Switching this off does not convert chats back; reactions, editing and voice messages are then off.",
+ "{label}: 0 geht nicht – es gilt der Standard {n}.": "{label}: 0 is not possible – the default {n} applies.",
+ "{label}: auf {n} begrenzt (erlaubt {lo}–{hi}).": "{label}: limited to {n} (allowed {lo}–{hi}).",
+ "{label}: „{raw}“ ist keine Zahl – es gilt der Standard.": "{label}: “{raw}” is not a number – the default applies."
 }

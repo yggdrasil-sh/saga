@@ -511,7 +511,8 @@ def _dict(c, call, uid, nm=None, legs=None):
          "expires_in": max(0, round(call["created"] + ring_s() - now, 1)) if call["state"] == "ringing" else None,
          # 2.4 E4/E5: Raum - Art, Endpunkte je Geraet, ob (ein weiteres Geraet von) uid beitreten kann, Grenze
          "kind": call["kind"], "legs": roster(c, call, uid, legs), "joinable": can, "join_block": why, "limit": climit(c, call),
-         "mine": [x["device"] for x in legs if x["who"] == uid], "rv": rv, "topo": call.get("topo") or "p2p"}
+         "mine": [x["device"] for x in legs if x["who"] == uid], "rv": rv, "topo": call.get("topo") or "p2p",
+         "now": round(now, 3)}                           # 2.5: Server-Uhr (Dauer ab answered, gleich fuer alle)
     if group and FED is not None and FED.HORN_MESH.get(call["id"]):
         d["horn_mesh"] = FED.HORN_MESH[call["id"]]      # 2.5 P10: warum ohne Knoten (anderer Server kann keinen nutzen)
     if group:

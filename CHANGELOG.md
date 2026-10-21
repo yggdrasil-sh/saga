@@ -141,6 +141,37 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Zahl der verbundenen Geräte. Hinter nginx braucht `/api/push/stream` die WebSocket-Köpfe und ein langes
   `proxy_read_timeout` (Anleitung, Abschnitt Reverse Proxy).
 
+### Behoben (Testrunde Web 2.5)
+- **1:1-Anruf klingelte manchmal nicht** (Nr. 173, schon in 2.4): Kam ein Anruf in der Lücke zwischen dem Laden der Seite
+  und dem Aufbau des Live-Kanals (der startet erst ≈2 s nach dem Laden), ging das Ereignis verloren – der Anrufer sah
+  „Klingelt …“, beim Gegenüber blieb es still. Der Browser gleicht laufende Anrufe jetzt bei jedem `hello` des Live-Kanals ab
+  (neues internes Ereignis `live.hello`) und nimmt dabei auch ein Klingeln weg, dessen Ende in dieser Lücke lag.
+  Regressionstest `tests/browser_klingeln.js` (verzögert den Live-Kanal gezielt, läuft in `browser_v3` in Stufe 3).
+- **„✓ überprüft“ bleibt nach der Wiederherstellung** (Nr. 063): Der Browser sichert seinen Vertrauens-Stand (wer als
+  überprüft markiert ist, gemerkte Identitätsschlüssel) verschlüsselt auf dem Server (`GET`/`PUT /api/chat/trust`, Schlüssel
+  aus dem Backup-Schlüssel – der Server kann nichts lesen und kein „überprüft“ unterschieben). Ein neuer Browser holt ihn
+  nach Wiederherstellungsschlüssel oder Kopplung vor dem ersten Laden; eigene Geräte gleichen ihn nebenher ab. Neu
+  beginnen verwirft ihn. `docs/APP-API.md` (Chat-Stufe 3), Tests in `chat` und `browser_trust3.js`.
+- **✓✓ bleibt nach der Umstellung auf Stufe 3** (Nr. 054): Alte, schon gelesene Nachrichten (vor `v3_seq`, ohne `fseq`)
+  zeigen wieder „gelesen“ – aus der noch gespeicherten Bestätigung im alten Format (geprüft mit dem gemerkten Benutzernamen
+  zum Handle) oder, sobald die Person nach der Umstellung etwas bestätigt hat. Test in `browser_trust3.js`.
+- **Anrufdauer** (Nr. 075/089): Die Anzeige läuft im Sekundentakt aus Zeitstempeln (bisher nur im Takt der Statistik,
+  unter Last seltener) und zählt für alle ab dem Beginn des Gesprächs laut Server (`answered`, umgerechnet über die neue
+  Server-Uhr `now` im Anruf-Objekt) – wer später beitritt, sieht dieselbe Dauer wie der Chat-Eintrag. Der Chat-Eintrag
+  selbst rechnet weiter ab dem Gesprächsbeginn (zweite Person), nicht ab dem Klingeln: im Testfall 4:42 bei 16 s Klingeln
+  und Ende um 09:21:41 – korrekt.
+- **Admin → Allgemein → Chats: Schalter „Chat-Stufe 3“** (Nr. 007) mit Erklärung (5 Sprachen) direkt über der Frist
+  `chat_v3_days` – bisher nur über die Datenbank einzuschalten.
+- **Admin → Anrufe → Grenzen** (Nr. 020): Werte, die der Server korrigiert, meldet er jetzt („Video je Anruf: auf 25
+  begrenzt (erlaubt 2–25)“, „Teilnehmende: 0 geht nicht – es gilt der Standard 10“) statt nur „Gespeichert.“.
+- **Admin-Kopfleiste** bei mittleren Breiten (721–1600 px): Titel und Knöpfe in einer Zeile, die Reiter darunter in einer
+  waagrecht scrollbaren Zeile (wie am Handy) statt in zwei bis drei umgebrochenen Zeilen; der aktive Reiter steht mittig.
+- **Emoji-Leiste** (Nr. 034): keine leere Trennlinie mehr unter der Schnellleiste.
+- **Kleinigkeiten im Chat:** Bearbeiten mit leerem Text sagt jetzt, dass das nicht geht (und wie man löscht), statt still
+  abzubrechen (Nr. 044); Tempo der Sprachnachricht in der Schreibweise der Sprache („1,5×“, Nr. 049); im Kopf von Gruppen
+  steht „du“ zuerst (Nr. 058); die Eingabe des Wiederherstellungsschlüssels nennt das Format (Nr. 061); die Zeit in der
+  Chatliste („vor 12 Sekunden“) läuft mit (Nr. 032).
+
 ### Neu (Vorbereitung 2.5, Gjallarhorn)
 - **Horn-Probe** (`gjallarhorn/`, Paket P0): Prototyp des Gjallarhorn-Knotens als eigenes Go-Programm (Pion, nur
   MIT/BSD/Apache-Abhängigkeiten). `gjallarhorn probe` öffnet einen Port für HTTPS-Messseite, TURN-TLS (nur zum Knoten

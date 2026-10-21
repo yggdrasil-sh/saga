@@ -121,6 +121,20 @@
     var pt = S.crypto_aead_xchacha20poly1305_ietf_decrypt(null, unb64(d.ct), lp(V + 'bundle', uid), unb64(d.nonce, 24), key);
     return parsePlain(pt);
   }
+  // 2.5 (Nr. 063): Vertrauens-Stand (trust:/trust2:) verschluesselt auf dem Server - Schluessel aus dem Backup-Schluessel
+  // (alle eigenen Geraete, auch nach der Wiederherstellung), AD bindet ihn an das Konto
+  function trustBoxKey(uid, backup_sk) { return S.crypto_generichash(32, lp(V + 'trust-key', uid), backup_sk); }
+  function sealTrust(uid, backup_sk, obj) {
+    var nonce = S.randombytes_buf(24);
+    var ct = S.crypto_aead_xchacha20poly1305_ietf_encrypt(enc.encode(JSON.stringify(obj)), lp(V + 'trust', uid), null, nonce, trustBoxKey(uid, backup_sk));
+    return JSON.stringify({ v: 1, nonce: b64(nonce), ct: b64(ct) });
+  }
+  function openTrust(uid, backup_sk, blob) {
+    var d = typeof blob === 'string' ? JSON.parse(blob) : blob;
+    if (!d || d.v !== 1) throw new Error('trust version');
+    var pt = S.crypto_aead_xchacha20poly1305_ietf_decrypt(null, unb64(d.ct), lp(V + 'trust', uid), unb64(d.nonce, 24), trustBoxKey(uid, backup_sk));
+    return JSON.parse(dec.decode(pt));
+  }
   function bundleUpdateSig(uid, bundle, ident_sk) { return S.crypto_sign_detached(lp(V + 'bundle-update', uid, bundle), ident_sk); }
 
   // --- Nachrichten ---------------------------------------------------------------------------------------
@@ -595,6 +609,7 @@
     verifyDevice: verifyDevice, verifyBackup: verifyBackup, verify: verify,
     base32: base32, recoveryKey: recoveryKey, normRecovery: normRecovery, formatRecovery: formatRecovery, recoveryKdf: recoveryKdf,
     bundlePlain: bundlePlain, parsePlain: parsePlain, sealBundle: sealBundle, openBundle: openBundle, bundleUpdateSig: bundleUpdateSig,
+    sealTrust: sealTrust, openTrust: openTrust,
     msgAd: msgAd, sigMsg: sigMsg, encryptMessage: encryptMessage, openKey: openKey, decryptMessage: decryptMessage,
     verifyMessage: verifyMessage, encryptFile: encryptFile, decryptFile: decryptFile, linkCode: linkCode, safetyNumber: safetyNumber,
     F2: F2, f2Blocks: f2Blocks, f2Size: f2Size, f2Off: f2Off, f2Header: f2Header, f2Parse: f2Parse, f2Nonce: f2Nonce, f2Ad: f2Ad,

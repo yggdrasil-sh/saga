@@ -1167,6 +1167,13 @@ einem Gerät ab App 2.3). Bestehende Chats bleiben vorerst v1.
     `GET …/messages` liefert sie am Original als `edit` (vollständige Nachricht mit `key`, `edit_of`), dazu `edited_at`
     und `edit_n`; Live `chat.edited {chat_id, id, seq, edit_seq}`. Löschen des Originals nimmt die Bearbeitung mit.
   - Sprachnachricht: Anhang in `files[]` mit `voice: true, dur, wf` (64 Werte 0–255, B64) und `m: "audio/ogg; codecs=opus"`.
+- **Vertrauen sichern (optional, Web ab 2.5):** `GET /api/chat/trust` → `{blob}` (`null`, wenn nichts gesichert),
+  `PUT /api/chat/trust {blob}` (höchstens 256 KiB, 404 ohne eingerichtete Chats). `blob` = JSON-Text `{v: 1, nonce, ct}`:
+  XChaCha20-Poly1305 mit Schlüssel `generichash(32, LP("saga-chat/v1/trust-key", uid), backup_sk)` und AD
+  `LP("saga-chat/v1/trust", uid)`, Klartext `{v: 1, at, items: {"t1:<benutzer>" | "t2:<handle>": {ident, verified, …}}}`
+  (TOFU-Stand). Nach einer Wiederherstellung bzw. Kopplung holt der Client ihn vor dem ersten Laden und führt zusammen:
+  fehlt ein Eintrag, kommt er dazu; gleicher `ident` → `verified` bleibt erhalten; anderer `ident` → der eigene Stand gilt.
+  Neu beginnen verwirft den gesicherten Stand. Referenz: `static/chat-crypto.js` (`sealTrust`/`openTrust`), `static/chat.js`.
 
 ## Eigene Push-Verbindung ohne Verteiler (2.5)
 

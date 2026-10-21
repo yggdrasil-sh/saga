@@ -1,6 +1,6 @@
 """Chat-Stufe 3 im Browser (2.5): das Web (Stufe 2, Kompat-Sicht v: 2) telefoniert und schreibt in lokalen Chats der Stufe 3.
 Schaltet chat_v3 ein, entfernt bestehende Chats der beiden Browser-Konten (damit neue in Stufe 3 entstehen) und laesst
-tests/browser_calls.js (1:1-Anruf), tests/browser_calls3.js (Raum, weiteres Geraet), tests/browser_gelesen.js und
+tests/browser_calls.js (1:1-Anruf), tests/browser_klingeln.js (Klingeln bei Anrufen kurz hintereinander), tests/browser_calls3.js (Raum, weiteres Geraet), tests/browser_gelesen.js und
 tests/browser_x3.js (Reaktionen, Bearbeiten), tests/browser_voice.js (Sprachnachrichten) laufen, vorher tests/browser_trust3.js (Vertrauens-Uebernahme bei der Umstellung) (BV3_JS=a.js,b.js waehlt aus).
 Danach: die Chats der beiden sind Stufe 3, Anrufe liefen darin, Nachrichten im v2-Format (sender_handle), und der Server
 hat keinem der beiden den Anmeldenamen des anderen in einem Anruf-Eintrag gezeigt.
@@ -63,7 +63,7 @@ def main():
     auth.save_setting("chat_v3", True)
     time.sleep(5.6)
     try:
-        all_js = ("browser_calls.js", "browser_calls3.js", "browser_gelesen.js", "browser_x3.js", "browser_voice.js")
+        all_js = ("browser_calls.js", "browser_klingeln.js", "browser_calls3.js", "browser_gelesen.js", "browser_x3.js", "browser_voice.js")
         if not E.get("BV3_JS") or "browser_trust3.js" in E["BV3_JS"].split(","):
             trust3(a, b)
             auth.save_setting("chat_v3", True)

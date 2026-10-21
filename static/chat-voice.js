@@ -207,6 +207,8 @@
   // --- Wiedergabe in der Nachricht --------------------------------------------------------------------------------------
   // deps: {el, media(f) -> Promise<url|null>, plain(f) -> Promise<ArrayBuffer>, drop(url), b64dec(s) -> Uint8Array}
   var D = null, CUR = null, SPEEDS = [1, 1.5, 2];
+  // Tempo in der Schreibweise der Sprache (1,5× statt 1.5×; Testrunde Web Nr. 049)
+  function spx(v) { try { return new Intl.NumberFormat(HK.locale).format(v) + '×'; } catch (e) { return v + '×'; } }
   function fmt(s) { s = Math.max(0, Math.round(+s || 0)); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
   function speed() { try { var v = +localStorage.getItem('saga-voice-speed'); return SPEEDS.indexOf(v) >= 0 ? v : 1; } catch (e) { return 1; } }
   function setSpeed(v) { try { localStorage.setItem('saga-voice-speed', String(v)); } catch (e) { /* egal */ } }
@@ -222,7 +224,7 @@
     wave.setAttribute('role', 'slider'); wave.setAttribute('aria-label', T('Position')); wave.tabIndex = 0;
     wave.setAttribute('aria-valuemin', '0'); wave.setAttribute('aria-valuemax', String(Math.round(dur))); wave.setAttribute('aria-valuenow', '0');
     for (var i = 0; i < WF_N; i++) { var s = el('span'); s.style.height = Math.max(8, Math.round((wf[i] || 0) / 255 * 100)) + '%'; bars.push(s); wave.appendChild(s); }
-    var tm = el('span', 'vm-time', fmt(dur)), sp = el('button', 'vm-speed', speed() + '×'); sp.type = 'button';
+    var tm = el('span', 'vm-time', fmt(dur)), sp = el('button', 'vm-speed', spx(speed())); sp.type = 'button';
     sp.setAttribute('aria-label', T('Tempo')); sp.title = T('Tempo');
     box.appendChild(pb); box.appendChild(wave); box.appendChild(tm); box.appendChild(sp);
     var a = null, url = null, loading = null, raf = 0, lastOn = -1;
@@ -271,7 +273,7 @@
     });
     sp.addEventListener('click', function () {
       var v = SPEEDS[(SPEEDS.indexOf(speed()) + 1) % SPEEDS.length]; setSpeed(v);
-      Array.prototype.forEach.call(document.querySelectorAll('.vm-speed'), function (b) { b.textContent = v + '×'; });
+      Array.prototype.forEach.call(document.querySelectorAll('.vm-speed'), function (b) { b.textContent = spx(v); });
       if (a) a.playbackRate = v;
     });
     box.vmDrop = function () { cancelAnimationFrame(raf); if (a) { a.pause(); a.removeAttribute('src'); } if (url && !f._url) { if (url.indexOf('blob:') === 0) URL.revokeObjectURL(url); else D.drop(url); } };

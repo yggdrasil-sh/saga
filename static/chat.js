@@ -44,6 +44,14 @@
   function kvGet(k) { return kv('readonly', function (st) { return st.get(k); }); }
   function kvSet(k, v) { return kv('readwrite', function (st) { st.put(v, k); }); }
   function kvDel(k) { return kv('readwrite', function (st) { st.delete(k); }); }
+  // alle Eintraege mit diesem Praefix -> {schluessel: wert}
+  function kvAll(prefix) {
+    return kv('readonly', function (st) {
+      var out = { result: {} }, r = st.openCursor(IDBKeyRange.bound(prefix, prefix + '\uffff'));
+      r.onsuccess = function () { var cur = r.result; if (cur) { out.result[cur.key] = cur.value; cur.continue(); } };
+      return out;
+    });
+  }
   var KEYS = 'keys:' + ME;
   function trustKey(u) { return 'trust:' + ME + ':' + u; }
 
@@ -282,6 +290,8 @@
     var box = overlay(T('Wiederherstellungsschlüssel eingeben'), { close: false });
     var inp = el('input', 'hk-in ct-rk-in'); inp.autocomplete = 'off'; inp.spellcheck = false; inp.placeholder = 'XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX';
     inp.setAttribute('aria-label', T('Wiederherstellungsschlüssel'));
+    // Testrunde Web Nr. 061: Format nennen (Gross-/Kleinschreibung, Bindestriche und Leerzeichen sind egal)
+    box.appendChild(el('p', 'hk-hint', T('Ein Wiederherstellungsschlüssel hat 32 Zeichen (A–Z, 2–7).') + ' ' + T('Bindestriche, Leerzeichen und Kleinbuchstaben sind egal.')));
     box.appendChild(inp);
     var st = status(box), bar = el('div', 'hk-actions'); box.appendChild(bar);
     bar.appendChild(btn(T('Zurück'), '', newDevice));
@@ -298,7 +308,7 @@
         var d = X.newDevice(); d.name = deviceName();
         api('POST', '/api/chat/devices', { id: d.id, name: d.name, enc_pub: b64(d.enc_pk), sign_pub: b64(d.sign_pk), sig: b64(X.deviceSig(ME, b.ident_sk, d)) })
           .then(function () { return saveKeys({ v: 1, device: d, ident_sk: b.ident_sk, ident_pk: b.ident_pk, backup_sk: b.backup_sk, backup_pk: b.backup_pk }); })
-          .then(function () { closeOverlay(); HK.toast(T('Dieses Gerät ist jetzt für Chats eingerichtet.')); ready(); })
+          .then(function () { closeOverlay(); HK.toast(T('Dieses Gerät ist jetzt für Chats eingerichtet.')); ready(true); })
           .catch(function (e) { st.className = 'hk-status err'; st.textContent = e.message; busy(go, false, T('Entsperren')); });
       }, 30);
     }
@@ -333,7 +343,7 @@
       var b = X.parsePlain(X.sealOpen(ub(r.sealed), w.d.enc_pk, w.d.enc_sk));
       if (!eqB(b.ident_pk, ub(S.me.identity.ident_pub, 32))) throw new Error(T('Die übertragenen Schlüssel passen nicht zu deinem Konto.'));
       return saveKeys({ v: 1, device: w.d, ident_sk: b.ident_sk, ident_pk: b.ident_pk, backup_sk: b.backup_sk, backup_pk: b.backup_pk })
-        .then(function () { closeOverlay(); HK.toast(T('Dieses Gerät ist jetzt für Chats eingerichtet.')); ready(); });
+        .then(function () { closeOverlay(); HK.toast(T('Dieses Gerät ist jetzt für Chats eingerichtet.')); ready(true); });
     }).catch(function (e) { if (w) w.busy = false; stopLink(); HK.toast(e.message); newDevice(); });
   }
   // Auf eingerichteten Geraeten: offene Kopplungsanfragen anzeigen
@@ -446,12 +456,23 @@
   }
 
   // --- Bereit: Liste, Hash-Ziel, Live ----------------------------------------------------------------------------
-  function ready() {
+  // Testrunde Web Nr. 032: "vor 12 Sekunden" in der Liste mitlaufen lassen
+  setInterval(function () {
+    if (document.hidden) return;
+    [].forEach.call(document.querySelectorAll('#ct-list .ct-item-time[data-ts]'), function (x) {
+      var v = HK.relTime(+x.dataset.ts - Date.now() / 1000); if (x.textContent !== v) x.textContent = v;
+    });
+  }, 30000);
+  function ready(fresh) {
+    // 2.5 (Nr. 063): gesichertes Vertrauen holen - auf einem gerade eingerichteten Geraet VOR dem ersten Laden (TOFU),
+    // sonst nebenher (anderes eigenes Geraet hat etwas als ueberprueft markiert)
+    if (fresh) { trustPull().then(function () { ready(false); trustSoon(); }); return; }
     loadAI();
     fedCerts().catch(function () {});                      // 2.3: Zertifikate v2 fuer Chats ueber Servergrenzen (still)
     S.ready = true;
     loadList().then(function () { route(); });
     checkLinks();
+    if (fresh === undefined) trustPull().then(trustRefresh);
   }
   // --- Foederation 2.3 (saga-chat/v2): Handle-Zertifikat und Geraete-Zertifikate v2 signieren, fremde Schluessel mit TOFU ----
   // Nur dieses Geraet kennt ident_sk. Geraete-Zertifikate v2 bekommt jedes aktive Geraet, dessen v1-Zertifikat zum eigenen
@@ -510,7 +531,7 @@
           if (x.v1) { t = X.tofuMigrate(x.v1, k.ident_pub, k.ver); if (t.store) t.store.migrated = true; }   // nur bei gleichem Schluessel
           else t = X.tofuV2(x.st || null, k.ident_pub, k.ver);
           out[h] = { keys: k, trust: t.result, stale: !!e.stale, stored: t.store || x.st || null };
-          if (t.store) return kvSet(trust2Key(h), t.store).catch(function () {});
+          if (t.store) return kvSetT(trust2Key(h), t.store).catch(function () {});
         });
       })).then(function () { return out; });
     });
@@ -536,9 +557,70 @@
   // "Ueberprueft" (Sicherheitsnummer verglichen) bzw. Warnung bestaetigen ("Verstanden": verified false, Warnung weg)
   function fedVerify(h, ident_pub, verified) {
     return kvGet(trust2Key(h)).catch(function () { return null; }).then(function (st) {
-      return kvSet(trust2Key(h), { ident: ident_pub, verified: !!verified, dver: (st && st.ident === ident_pub && st.dver) || 0 });
+      return kvSetT(trust2Key(h), { ident: ident_pub, verified: !!verified, dver: (st && st.ident === ident_pub && st.dver) || 0 });
     });
   }
+  // --- 2.5 (Testrunde Web Nr. 063): Vertrauen (trust:/trust2:) verschluesselt auf dem Server sichern -------------------
+  // Sonst ist "überprüft" nach der Wiederherstellung auf einem neuen Geraet weg. Verschluesselt mit einem Schluessel aus dem
+  // Backup-Schluessel (X.sealTrust) - der Server kann weder lesen noch "überprüft" unterschieben. Zusammenfuehren: was hier
+  // fehlt, kommt dazu; gleicher Identitaetsschluessel -> "überprüft" bleibt erhalten; anderer -> der Stand hier gilt (TOFU).
+  function trustPrefixes() { return ['trust:' + ME + ':', 'trust2:' + ME + ':']; }
+  function trustMerge(loc, rem) {
+    if (!rem || typeof rem !== 'object' || typeof rem.ident !== 'string') return null;
+    if (!loc) return rem;
+    if (loc.ident !== rem.ident) return null;
+    var out = null;
+    if (rem.verified === true && !loc.verified && !loc.changed) out = Object.assign({}, loc, { verified: true });
+    if ((+rem.dver || 0) > (+loc.dver || 0)) out = Object.assign({}, out || loc, { dver: +rem.dver });
+    return out;
+  }
+  function trustLocal() {
+    var all = {};
+    return Promise.all(trustPrefixes().map(function (p, i) {
+      return kvAll(p).then(function (m) { Object.keys(m).forEach(function (k) { all[(i ? 't2:' : 't1:') + k.slice(p.length)] = m[k]; }); });
+    })).then(function () { return all; });
+  }
+  function trustKeyOf(n) { return n.indexOf('t2:') === 0 ? trust2Key(n.slice(3)) : n.indexOf('t1:') === 0 ? trustKey(n.slice(3)) : null; }
+  // Stand vom Server holen und hier einfuegen -> {remote: {...} | null, changed: n}
+  function trustPull() {
+    if (!K || !K.backup_sk) return Promise.resolve({ remote: null, changed: 0 });
+    return api('GET', '/api/chat/trust').then(function (r) {
+      if (!r || !r.blob) return { remote: null, changed: 0 };
+      var rem;
+      try { rem = X.openTrust(ME, K.backup_sk, r.blob); } catch (e) { return { remote: null, changed: 0 }; }   // alter Schluessel o. Ae.
+      var items = (rem && rem.items) || {}, n = 0;
+      return trustLocal().then(function (loc) {
+        return Promise.all(Object.keys(items).map(function (name) {
+          var k = trustKeyOf(name), m = k && trustMerge(loc[name], items[name]);
+          if (!m) return null;
+          n++;
+          if (name.indexOf('t1:') === 0) { var u = name.slice(3); trust[u] = m; trustP[u] = Promise.resolve(m); }
+          else { var f = (S.fk || {})[name.slice(3)]; if (f && f.keys && f.keys.ident_pub === m.ident) f.stored = m; }
+          return kvSet(k, m).catch(function () {});
+        }));
+      }).then(function () { return { remote: items, changed: n }; });
+    }).catch(function () { return { remote: null, changed: 0 }; });
+  }
+  var trustT = null, trustRun = null;
+  function trustSoon() { clearTimeout(trustT); trustT = setTimeout(trustPush, 1500); }
+  function trustPush() {
+    if (trustRun) { trustSoon(); return; }
+    trustRun = trustPull().then(function (p) {
+      return trustLocal().then(function (loc) {
+        if (p.remote && canon(p.remote) === canon(loc)) return null;
+        if (!Object.keys(loc).length) return null;
+        return api('PUT', '/api/chat/trust', { blob: X.sealTrust(ME, K.backup_sk, { v: 1, at: Date.now(), items: loc }) });
+      });
+    }).catch(function () {}).then(function () { trustRun = null; });
+  }
+  function canon(x) {                                 // JSON mit sortierten Schluesseln (Vergleich)
+    if (!x || typeof x !== 'object') return JSON.stringify(x);
+    if (Array.isArray(x)) return '[' + x.map(canon).join(',') + ']';
+    return '{' + Object.keys(x).sort().map(function (k) { return JSON.stringify(k) + ':' + canon(x[k]); }).join(',') + '}';
+  }
+  function kvSetT(k, v) { return kvSet(k, v).then(function (x) { trustSoon(); return x; }); }
+  function trustRefresh(p) { if (p && p.changed) { drawWarn(); drawHead(); } return p; }
+
   window.SagaChatFed = { certs: fedCerts, keys: fedKeys, verify: fedVerify,
                          safety: function (myHandle, theirHandle, theirIdentPk) { return X.safetyNumberV2(myHandle, K.ident_pk, theirHandle, theirIdentPk); } };
 
@@ -647,7 +729,8 @@
           ' · ' + T('{n} Personen', { n: c.member_count }) + (c.muted ? ' · 🔕' : '')));
       b.appendChild(t);
       var side = el('span', 'ct-item-r');
-      side.appendChild(el('span', 'ct-item-time', HK.relTime((c.last_at || c.created) - Date.now() / 1000)));
+      var tm = el('span', 'ct-item-time', HK.relTime((c.last_at || c.created) - Date.now() / 1000)); tm.dataset.ts = String(c.last_at || c.created);
+      side.appendChild(tm);
       if (c.unread) { var n = el('span', 'ct-badge', String(c.unread)); n.setAttribute('aria-label', T('{n} ungelesen', { n: c.unread })); side.appendChild(n); }
       b.appendChild(side);
       // Rechtsklick, Kontextmenue-Taste (Shift+F10) und Langdruck: Archivieren, Stummschalten, Loeschen (2.1)
@@ -817,8 +900,8 @@
     if (trust[u] && trust[u].ident === ident) return;
     if (!trustP[u]) trustP[u] = kvGet(trustKey(u)).catch(function () { return null; });
     trustP[u].then(function (t) {
-      if (!t) { t = { ident: ident, verified: false, changed: false }; kvSet(trustKey(u), t).catch(function () {}); }
-      else if (t.ident !== ident) { t = { ident: ident, verified: false, changed: true, old: t.ident }; kvSet(trustKey(u), t).catch(function () {}); }
+      if (!t) { t = { ident: ident, verified: false, changed: false }; kvSetT(trustKey(u), t).catch(function () {}); }
+      else if (t.ident !== ident) { t = { ident: ident, verified: false, changed: true, old: t.ident }; kvSetT(trustKey(u), t).catch(function () {}); }
       trust[u] = t; trustP[u] = Promise.resolve(t);
       if (t.changed) drawWarn();
     });
@@ -845,7 +928,7 @@
       p.appendChild(document.createTextNode('⚠ ' + T('Die Sicherheitsnummer von {name} hat sich geändert – z. B. nach „Neu beginnen“ oder bei einem neuen Konto. Prüfe sie, bevor du Vertrauliches schreibst.', { name: m.name }) + ' '));
       p.appendChild(btn(T('Sicherheitsnummer'), 'small', function () { safety(m); }));
       p.appendChild(btn(T('Verstanden'), 'small', function () {
-        var t = trust[m.username]; t.changed = false; kvSet(trustKey(m.username), t).catch(function () {}); drawWarn();
+        var t = trust[m.username]; t.changed = false; kvSetT(trustKey(m.username), t).catch(function () {}); drawWarn();
       }));
       w.appendChild(p);
     });
@@ -908,7 +991,7 @@
       else box.appendChild(btn(T('Als überprüft markieren'), 'btn-primary', function () {
         var nt = { ident: k.ident_pub, verified: true, changed: false };
         trust[m.username] = nt; trustP[m.username] = Promise.resolve(nt);
-        kvSet(trustKey(m.username), nt).then(function () { closeOverlay(); drawWarn(); drawHead(); HK.toast(T('Als überprüft markiert.')); });
+        kvSetT(trustKey(m.username), nt).then(function () { closeOverlay(); drawWarn(); drawHead(); HK.toast(T('Als überprüft markiert.')); });
       }));
     }).catch(function (e) { HK.toast(e.message); });
   }
@@ -967,7 +1050,8 @@
       presenceChip(sub, p.username);
     } else {
       var mine = String(c.my_handle || '').split('@').slice(1).join('@');
-      sub.appendChild(document.createTextNode(c.members.map(function (m) {
+      // Testrunde Web Nr. 058: "du" zuerst statt alphabetisch dazwischen
+      sub.appendChild(document.createTextNode(c.members.filter(function (m) { return m.me; }).concat(c.members.filter(function (m) { return !m.me; })).map(function (m) {
         return m.me ? T('du') : m.name + (isRemote(c) && m.host && m.host !== mine ? ' (' + m.host + ')' : '');
       }).join(', ')));
       if (isFed(c) && c.request) sub.appendChild(el('span', 'ct-chip', T('Anfrage')));
@@ -1134,36 +1218,49 @@
     var dv = p ? p.devices.filter(function (x) { return x.id === dev; })[0] : null;
     return dv ? ub(dv.sign_pub, 32) : null;
   }
-  function takeReceipts(c, list) {
+  // h2u (optional): Handle -> Benutzername aus Chats v1 - fuer Bestaetigungen, die noch vor der Umstellung auf Stufe 3
+  // gesendet wurden (Format v1, signiert mit Chat-Nummer und Benutzername; Nr. 054)
+  function takeReceipts(c, list, h2uMap) {
     var changed = false;
     (list || []).forEach(function (x) {
       try {
-        var r = X.openReceipt(x.sealed, K.backup_pk, K.backup_sk), pk = readerKey(c, x.from, x.handle, r.dev);
-        if (!pk || !X.verifyReceipt(isFed(c) ? c.ref : String(c.id), isFed(c) ? x.handle : x.from, r, pk, isFed(c))) return;
+        var r = X.openReceipt(x.sealed, K.backup_pk, K.backup_sk), pk = readerKey(c, x.from, x.handle, r.dev), v1 = false;
+        if (!pk) return;
+        if (!X.verifyReceipt(isFed(c) ? c.ref : String(c.id), isFed(c) ? x.handle : x.from, r, pk, isFed(c))) {
+          var u = isFed(c) && v3Seq(c) && h2uMap && h2uMap[x.handle];
+          if (!u || !X.verifyReceipt(String(c.id), u, r, pk, false)) return;
+          v1 = true;
+        }
         var b = JSON.parse(r.body), old = S.rcpts[x.from];
-        if (typeof b.n !== 'number' || (old && old.n > b.n)) return;
-        S.rcpts[x.from] = { n: b.n, id: b.id, ts: b.ts };
+        if (typeof b.n !== 'number') return;
+        if (v1) { if (!old) { S.rcpts[x.from] = { n: 0, n1: b.n, id: b.id, ts: b.ts }; changed = true; } return; }
+        if (old && old.n > b.n) return;
+        S.rcpts[x.from] = { n: b.n, n1: old && old.n1, id: b.id, ts: b.ts };
         changed = true;
       } catch (e) { /* nicht lesbar/ungueltig: ignorieren */ }
     });
     return changed;
   }
+  // Umstellpunkt eines auf Stufe 3 umgestellten Chats (letzte Nachricht v1) oder 0
+  function v3Seq(c) { return (c && c.v3 && +c.v3.seq) || 0; }
   function loadReceipts(c) {
     if (!hasFeat('receipts') || !K || !priv().receipts) return;
     var keysP = isFed(c) ? (S.fk ? Promise.resolve() : fedLoad(c)) : recipients(c.id);
-    Promise.all([api('GET', '/api/chats/' + c.id + '/receipts'), keysP]).then(function (a) {
+    Promise.all([api('GET', '/api/chats/' + c.id + '/receipts'), keysP, v3Seq(c) ? h2uLoad() : null]).then(function (a) {
       if (!S.cur || S.cur.id !== c.id) return;
       S.rcpts = {};
-      if (takeReceipts(c, a[0].receipts)) drawMsgs();
+      if (takeReceipts(c, a[0].receipts, a[2])) drawMsgs();
     }).catch(function () {});
   }
   // Wer hat Nachricht m gelesen? -> [{name, ts}] (ohne mich)
   function readersOf(c, m) {
-    var n = ordOf(c, m), out = [];
+    // 2.5 (Nr. 054): Nachricht von vor der Umstellung auf Stufe 3 (ohne fseq): gelesen, wenn die Person danach schon
+    // etwas bestaetigt hat (Stufe 3 kommt nach allem davor) oder ihre Bestaetigung v1 so weit reicht
+    var old = isFed(c) && !m.fseq && m.seq && v3Seq(c) && m.seq <= v3Seq(c), n = old ? m.seq : ordOf(c, m), out = [];
     if (!n) return out;
     c.members.forEach(function (x) {
       var r = !x.me && S.rcpts[x.username];
-      if (r && r.n >= n) out.push({ name: x.name || x.username, ts: r.ts });
+      if (r && (old ? r.n > 0 || (r.n1 || 0) >= n : r.n >= n)) out.push({ name: x.name || x.username, ts: r.ts });
     });
     return out;
   }
@@ -1642,7 +1739,10 @@
   }
   function editCancel() { S.edit = null; $('ct-input').value = ''; autosize(); drawReply(); micDraw(); $('ct-input').focus(); }
   function editSend(c, m, text) {
-    if (!text.trim() || text === (m.body || {}).text) { editCancel(); return; }
+    if (!text.trim()) {                                   // Testrunde Web Nr. 044: nicht still abbrechen
+      HK.toast(T('Eine Nachricht kann nicht leer sein – zum Entfernen „Für alle löschen“ im Menü der Nachricht wählen.')); $('ct-input').focus(); return;
+    }
+    if (text === (m.body || {}).text) { editCancel(); return; }
     Object.keys(S.mentions).forEach(function (label) { if (text.indexOf(label) >= 0) text = text.split(label).join('[[note:' + S.mentions[label] + ']]'); });
     sending = true; $('ct-send').disabled = true;
     sendV2(c, { edit: m.id, t: text }, null, null, 'edit').then(function () {

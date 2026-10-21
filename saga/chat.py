@@ -748,6 +748,7 @@ async def api_identity(request: Request):
             if olds:     # alte versiegelte Schluessel sind ohne die alten privaten Schluessel nutzlos
                 c.execute(f"DELETE FROM chat_msg_key WHERE recipient IN ({','.join('?' * (len(olds) + 1))})", (*olds, "backup:" + uid))
             c.execute("DELETE FROM chat_link WHERE uid=?", (uid,))
+            c.execute("DELETE FROM user_kv WHERE uid=? AND k='chat_trust'", (uid,))    # 2.5: alter Backup-Schluessel - unlesbar
             c.execute("UPDATE chat_identity SET ident_pub=?, backup_pub=?, backup_sig=?, bundle=?, updated=? WHERE uid=?",
                       (ident_pub, backup_pub, backup_sig, bundle, now, uid))
         else:
@@ -781,6 +782,55 @@ async def api_bundle(request: Request):
         if not verify(ident["ident_pub"], b.get("sig"), lp("saga-chat/v1/bundle-update", uid, bundle)):
             return _bad(t("Ungültige Signatur."), 403)
         c.execute("UPDATE chat_identity SET bundle=?, updated=? WHERE uid=?", (bundle, time.time(), uid))
+    return _no_store({"ok": True})
+
+
+# --- Vertrauen sichern (2.5, Testrunde Web Nr. 063) ------------------------------------------------------------
+# "Ueberprueft" und der TOFU-Stand (trust:/trust2: im Browser) gehen sonst bei der Wiederherstellung auf einem neuen
+# Geraet verloren. Der Browser legt sie verschluesselt hier ab: AEAD (XChaCha20-Poly1305) mit einem Schluessel aus dem
+# Backup-Schluessel (nur eigene Geraete kennen ihn, auch nach der Wiederherstellung) - der Server kann nichts lesen und
+# kein "ueberprueft" unterschieben. user_kv 'chat_trust' (mit dem Konto geloescht, beim Neubeginnen verworfen).
+TRUST_MAX = 256 * 1024
+
+
+def _valid_trust(s):
+    if not isinstance(s, str) or len(s) > TRUST_MAX:
+        return None
+    try:
+        d = json.loads(s)
+    except ValueError:
+        return None
+    if not isinstance(d, dict) or d.get("v") != 1 or b64d(d.get("nonce"), 24) is None or not isinstance(d.get("ct"), str) \
+            or len(d["ct"]) < 24 or b64d(d["ct"]) is None:
+        return None
+    return s
+
+
+@router.get("/api/chat/trust")
+async def api_trust_get(request: Request):
+    """-> {blob: JSON-Text {v:1, nonce, ct} | null} - verschluesselter Vertrauens-Stand (static/chat-crypto.js sealTrust)."""
+    uid, err = _me(request)
+    if err:
+        return err
+    with _db() as c:
+        r = c.execute("SELECT v FROM user_kv WHERE uid=? AND k='chat_trust'", (uid,)).fetchone()
+    return _no_store({"blob": r[0] if r else None})
+
+
+@router.put("/api/chat/trust")
+async def api_trust_put(request: Request):
+    """{blob} - ersetzt den verschluesselten Vertrauens-Stand (der Browser fuehrt vorher mit dem gespeicherten zusammen)."""
+    uid, err = _me(request)
+    if err:
+        return err
+    b = await _body(request)
+    blob = _valid_trust((b or {}).get("blob"))
+    if not blob:
+        return _bad(t("ungültige Angabe"))
+    with _db() as c, c:
+        if not _identity(c, uid):
+            return _bad("not found", 404)
+        c.execute("INSERT OR REPLACE INTO user_kv (uid, k, v) VALUES (?, 'chat_trust', ?)", (uid, blob))
     return _no_store({"ok": True})
 
 

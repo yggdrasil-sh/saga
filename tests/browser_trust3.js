@@ -59,6 +59,7 @@ const texts = p => p.evaluate(() => [...document.querySelectorAll('#ct-msgs .ct-
       ok('Phase 1: Chat v1, Mitglieder mit Handle (fuer die Uebernahme)', v.length === 1 && !(v[0].v >= 2) && v[0].h.every(Boolean), v);
       await a.fill('#ct-input', 'Alte Nachricht (v1)'); await a.press('#ct-input', 'Enter'); await a.waitForTimeout(800);
       await b.goto(BASE + '/chats'); await b.waitForTimeout(1200); await b.click('#ct-list .ct-item-b'); await b.waitForTimeout(1200);
+      ok('Phase 1: B hat gelesen - A sieht ✓✓', await until(() => a.evaluate(() => !!document.querySelector('#ct-msgs .ct-tick.ct-read')), 10000));
       await a.click('#ct-more'); await a.waitForSelector('.menu .menu-item');
       await a.click('.menu .menu-item:has-text("Mitglieder")');
       await a.waitForSelector('.ct-dev button:has-text("Sicherheitsnummer")'); await a.click('.ct-dev button:has-text("Sicherheitsnummer")');
@@ -68,6 +69,9 @@ const texts = p => p.evaluate(() => [...document.querySelectorAll('#ct-msgs .ct-
         try { const st = r.result.transaction('kv').objectStore('kv'), g = st.getAllKeys(); g.onsuccess = () => res(g.result.filter(k => /^h2u:|^trust/.test(k))); } catch (e) { res(String(e)); } };
         r.onerror = () => res('idb'); }));
       ok('Phase 1: Handle -> Konto gemerkt (h2u) und Vertrauen v1', Array.isArray(h2u) && h2u.some(k => /^h2u:/.test(k)) && h2u.some(k => /^trust:/.test(k)), h2u);
+      // 2.5 (Testrunde Web Nr. 063): Vertrauen verschluesselt auf dem Server gesichert (fuer die Wiederherstellung)
+      ok('Phase 1: Vertrauen verschluesselt gesichert (GET /api/chat/trust)', await until(() => a.evaluate(() => fetch('/api/chat/trust', { headers: { 'X-Saga': '1' } })
+        .then(r => r.json()).then(d => !!d.blob && !/verified|ident/.test(d.blob))), 10000));
     } else {
       await a.goto(BASE + '/chats'); await a.waitForTimeout(1500); await a.click('#ct-list .ct-item-b'); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(1500);
       const v = await a.evaluate(() => fetch('/api/chats', { headers: { 'X-Saga': '1', 'X-Saga-Chat': '3' } }).then(r => r.json()).then(d => d.chats.map(c => ({ v: c.v, v3: c.v3 }))));
@@ -78,6 +82,10 @@ const texts = p => p.evaluate(() => [...document.querySelectorAll('#ct-msgs .ct-
       await a.fill('#ct-input', 'Neue Nachricht (v2)'); await a.press('#ct-input', 'Enter'); await a.waitForTimeout(1200);
       const ta = await texts(a);
       ok('Phase 2: alte Nachricht (v1) und neue (v2) lesbar und bestaetigt', ta.some(x => x.t === 'Alte Nachricht (v1)' && !x.unv) && ta.some(x => x.t === 'Neue Nachricht (v2)' && !x.unv), ta);
+      // 2.5 (Testrunde Web Nr. 054): B hatte die alte Nachricht vor der Umstellung gelesen - sie behaelt ihr ✓✓
+      const tick = () => a.evaluate(() => [...document.querySelectorAll('#ct-msgs .ct-msg')].filter(r => /Alte Nachricht \(v1\)/.test(r.textContent))
+        .map(r => { const t = r.querySelector('.ct-tick'); return t ? t.className + ' ' + t.textContent : '-'; })[0]);
+      ok('Phase 2: alte, gelesene Nachricht behaelt ✓✓ nach der Umstellung (Nr. 054)', await until(async () => /ct-read/.test(await tick() || ''), 8000), await tick());
       await shot(a, 'trust3-1-umgestellt');
       await a.click('#ct-more'); await a.waitForSelector('.menu .menu-item');
       await a.click('.menu .menu-item:has-text("Mitglieder")');
@@ -89,6 +97,24 @@ const texts = p => p.evaluate(() => [...document.querySelectorAll('#ct-msgs .ct-
       await b.goto(BASE + '/chats'); await b.waitForTimeout(1500); await b.click('#ct-list .ct-item-b'); await b.waitForTimeout(1500);
       const tb = await texts(b);
       ok('Phase 2: B liest beide (v1 und v2)', tb.some(x => x.t === 'Alte Nachricht (v1)' && !x.unv) && tb.some(x => x.t === 'Neue Nachricht (v2)' && !x.unv), tb);
+      // 2.5 (Testrunde Web Nr. 063): neuer Browser, Wiederherstellungsschluessel -> "ueberprueft" ist wieder da
+      const nb = await chromium.launch({ channel: E.PW_CHANNEL || 'chrome', headless: true });
+      try {
+        const nc = await nb.newContext({ viewport: { width: 1280, height: 800 }, locale: 'de-DE' }), n = await nc.newPage();
+        n.on('pageerror', e => { errs.push(U1 + ' (neu): ' + e.message); });
+        await n.goto(BASE + '/login');
+        await n.fill('input[name=username], input#username, input[type=text]', U1); await n.fill('input[type=password]', E.SAGA_PASS);
+        await Promise.all([n.waitForLoadState('networkidle').catch(() => {}), n.press('input[type=password]', 'Enter')]); await n.waitForTimeout(800);
+        await chatKeys(n, U1);
+        await n.goto(BASE + '/chats'); await n.waitForTimeout(1500); await n.click('#ct-list .ct-item-b'); await n.waitForSelector('#ct-chat:not([hidden])');
+        ok('Wiederherstellung auf neuem Browser: "ueberprueft" bleibt (Nr. 063)', await until(() => n.evaluate(() => !!document.querySelector('#ct-sub .ct-verified')), 10000),
+          await n.evaluate(() => document.querySelector('#ct-sub').textContent));
+        await shot(n, 'trust3-3-wiederhergestellt');
+        // Geraet wieder abmelden (sonst klingeln spaetere Anruf-Tests auch dort)
+        const did = await n.evaluate(() => new Promise(res => { const r = indexedDB.open('saga-chat'); r.onsuccess = () => {
+          const g = r.result.transaction('kv').objectStore('kv').getAll(); g.onsuccess = () => res((g.result.find(x => x && x.device) || {}).device.id); }; }));
+        if (did) await n.evaluate(id => fetch('/api/chat/devices/' + id, { method: 'DELETE', headers: { 'X-Saga': '1' } }), did);
+      } finally { await nb.close(); }
     }
     ok('keine Seitenfehler', errs.length === 0, errs);
   } catch (e) { console.log('FAIL Ausnahme: ' + (e && e.stack || e)); res.push(false); }

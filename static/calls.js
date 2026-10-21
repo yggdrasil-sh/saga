@@ -195,7 +195,7 @@
     bar.appendChild(btn(icon(video ? 'cam' : 'phone'), 'cl-green cl-big', function () { accept(d, video); }, video ? T('Mit Video annehmen') : T('Annehmen')));
     box.appendChild(bar);
     document.body.appendChild(box);
-    RINGS[d.call_id] = { box: box, d: d, loud: false };
+    RINGS[d.call_id] = { box: box, d: d, loud: false, at: Date.now() };
     ringLoud(d.call_id);
     flashTitle(true, from.name || '?');
     var left = Math.max(5, (d.expires_in != null ? d.expires_in : d.ring_s || 45)) * 1000 + 3000;
@@ -773,6 +773,7 @@
   // "hat verlassen", Verbindungen zu Geraeten trennen, die nicht mehr dabei sind
   function rosterIn(R, legs, extra) {
     if (!Array.isArray(legs) || R.done) return;
+    callT0(R, extra);
     // 2.4: rv = Stand der Liste - eine aeltere (kam nach einer neueren an) verwerfen
     var rv = extra && typeof extra.rv === 'number' ? extra.rv : null;
     if (rv !== null) { if (R.rv && rv < R.rv) return; R.rv = rv; }
@@ -1614,9 +1615,31 @@
     if (!c.ending) each(c, function (L) { if (L.established && peerCan(L, 'bye')) sendSignal(L, { t: 'bye', reason: 'hangup' }); });
     // 2.4: mit device - Begleitgeraet bzw. Gruppe: nur dieses Geraet verlaesst den Anruf; Hauptgeraet (1:1): Ende fuer alle
     if (c.id && !c.ending) api('POST', '/api/calls/' + c.id + '/end', { reason: 'hangup', connected: anyConn(c), device: myDev().id }).catch(function () {});
-    finish(c, anyConn(c) ? T('Anruf beendet · {d}', { d: dur((Date.now() - c.since) / 1000) }) : T('Anruf beendet'));
+    finish(c, anyConn(c) ? T('Anruf beendet · {d}', { d: durNow(c) }) : T('Anruf beendet'));
   }
   function anyConn(c) { return !!roomOf(c).since; }
+  // 2.5 (Testrunde Web Nr. 075/089): Dauer fuer alle gleich und passend zum Chat-Eintrag - ab dem Beginn des Gespraechs
+  // laut Server (answered, umgerechnet mit seiner Uhr "now"), nicht ab dem eigenen Verbinden; immer aus Zeitstempeln
+  function callT0(R, k) {
+    if (!k || typeof k.answered !== 'number' || typeof k.now !== 'number') return;
+    var t = k.answered * 1000 + (Date.now() - k.now * 1000);
+    if (t <= Date.now()) R.t0s = t;
+  }
+  function sinceOf(R) {
+    R = roomOf(R);
+    if (R.since && R.t0s && R.t0s < R.since) R.since = R.t0s;   // erst ab dem eigenen Verbinden (since ist auch "verbunden")
+    return R.since;
+  }
+  function durNow(R) { return dur((Date.now() - (sinceOf(R) || Date.now())) / 1000); }
+  // Laufende Dauer jede Sekunde nachfuehren (die Zeile selbst zeichnet sonst nur der Statistik-Takt, unter Last seltener)
+  setInterval(function () {
+    var R = C; if (!R || R.done || !R.ui || !sinceOf(R)) return;
+    var t = durNow(R), P = primary(R);
+    [R.ui.info, P && P.ui && P.ui.info].forEach(function (i) {
+      if (!i) return;
+      [].forEach.call(i.children, function (x) { if (x.tagName === 'SPAN' && !x.children.length && /^(\d+:)?\d+:\d\d$/.test(x.textContent)) x.textContent = t; });
+    });
+  }, 1000);
   function fail(c, msg, reason) {
     if (!live(c)) return;
     if (c.room || c.established && !c.ending && (roomOf(c).kind === 'group' || links(c).length > 1)) {   // 2.4: nur diese Verbindung
@@ -1642,7 +1665,7 @@
       : r === 'cancelled' ? T('{name} hat aufgelegt.', { name: name })
       : r === 'lost' ? T('Verbindung verloren.')
       : r === 'failed' ? T('Die Verbindung kam nicht zustande.')
-      : anyConn(c) ? T('Anruf beendet · {d}', { d: dur((Date.now() - c.since) / 1000) }) : T('Anruf beendet');
+      : anyConn(c) ? T('Anruf beendet · {d}', { d: durNow(c) }) : T('Anruf beendet');
     c.ending = true;
     finish(c, msg, r === 'hangup' || !r ? '' : 'info');
   }
@@ -1750,7 +1773,7 @@
     i.appendChild(el('span', 'cl-lock', '🔒 ' + (c.verified ? T('Ende-zu-Ende verschlüsselt') : T('verschlüsselt'))));
     if (c.verified) i.lastChild.title = T('Medien mit DTLS-SRTP verschlüsselt; der Schlüssel-Fingerabdruck ist mit dem Chat-Schlüssel der Gegenseite signiert und geprüft.');
     if (c.connected) {
-      i.appendChild(el('span', null, dur((Date.now() - (R.since || c.t0)) / 1000)));
+      i.appendChild(el('span', null, R.since ? durNow(R) : dur((Date.now() - c.t0) / 1000)));
       if (c.path) i.appendChild(el('span', 'cl-path', c.path === 'relay' ? T('über Relais (TURN)') : T('direkt')));
       if (c.q) { var qq = el('span', 'cl-q cl-q-' + c.q, c.q === 'good' ? T('gute Verbindung') : c.q === 'mid' ? T('mittlere Verbindung') : T('schwache Verbindung')); i.appendChild(qq); }
       // stumm beim Gegenueber: auch bei laufendem Video sichtbar (der Name mit 🔇 ist dann ausgeblendet)
@@ -1771,7 +1794,7 @@
     var ls = links(R), ver = ls.length && ls.every(function (L) { return L.verified; });
     i.appendChild(el('span', 'cl-lock', '🔒 ' + (ver ? T('Ende-zu-Ende verschlüsselt') : T('verschlüsselt'))));
     if (ver) i.lastChild.title = T('Jede Verbindung ist mit DTLS-SRTP verschlüsselt; die Fingerabdrücke sind mit den Chat-Schlüsseln der Geräte signiert und geprüft.');
-    if (R.since) i.appendChild(el('span', null, dur((Date.now() - R.since) / 1000)));
+    if (R.since) i.appendChild(el('span', null, durNow(R)));
     i.appendChild(el('span', 'cl-count', T('{n} Geräte', { n: ls.length + 1 })));
     var blocked = ls.some(function (L) { return L.audioBlocked; });
     if (R.ui.un) R.ui.un.hidden = !blocked;
@@ -3102,11 +3125,12 @@
         }
       }
     } else if (t === 'call.mod') hornModIn(d);       // 2.5: Gastgeber hat stummgeschaltet bzw. entfernt
-    else if (t === 'resync') pending();
+    else if (t === 'resync' || t === 'live.hello') pending();   // 2.5 (Nr. 173): auch beim ersten hello (Luecke nach dem Laden)
   });
   // Seite neu geladen/geoeffnet, waehrend es klingelt
   // 2.4: dazu Gruppenanrufe (Einladung klingelt) und die Leiste "Anruf laeuft" (anderes eigenes Geraet, Gruppe im Chat)
   function pending() {
+    var t0 = Date.now();
     api('GET', '/api/calls/active').then(function (r) {
       var seen = {};
       (r.calls || []).forEach(function (x) {
@@ -3121,6 +3145,9 @@
         runBar(x);
       });
       Object.keys(RUN).forEach(function (id) { if (!seen[id]) hideRun(id); });
+      // 2.5 (Nr. 173): 1:1-Anruf klingelt hier noch, ist aber vorbei (Ende-Ereignis kam, bevor der Live-Kanal stand) -
+      // nur Klingeln, die schon vor dieser Abfrage da waren
+      Object.keys(RINGS).forEach(function (id) { var g = RINGS[id]; if (!seen[id] && !g.d.group && g.at < t0) unring(id); });
     }).catch(function () {});
   }
   // Ohne Live-Kanal (Proxy puffert SSE o. Ae.): Klingeln und Signale abfragen

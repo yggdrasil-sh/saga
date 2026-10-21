@@ -3201,5 +3201,12 @@
  "🔗 Link zur Datenbank kopieren": "🔗 Link zur Datenbank kopieren",
  "🖼 Bild hochladen …": "🖼 Bild hochladen …",
  "🖼 Eigenes Bild hochladen …": "🖼 Eigenes Bild hochladen …",
- "🗃️ Datenbank einbetten:": "🗃️ Datenbank einbetten:"
+ "🗃️ Datenbank einbetten:": "🗃️ Datenbank einbetten:",
+ "Bindestriche, Leerzeichen und Kleinbuchstaben sind egal.": "Bindestriche, Leerzeichen und Kleinbuchstaben sind egal.",
+ "Chat-Stufe 3: Handles, Reaktionen, Bearbeiten, Sprachnachrichten": "Chat-Stufe 3: Handles, Reaktionen, Bearbeiten, Sprachnachrichten",
+ "Eine Nachricht kann nicht leer sein – zum Entfernen „Für alle löschen“ im Menü der Nachricht wählen.": "Eine Nachricht kann nicht leer sein – zum Entfernen „Für alle löschen“ im Menü der Nachricht wählen.",
+ "Neue Chats entstehen über Handles statt Anmeldenamen (niemand sieht mehr den Anmeldenamen des anderen), dazu kommen Reaktionen, Bearbeiten und Sprachnachrichten. Bestehende Chats stellt der Server um, sobald alle aktiven Geräte der Mitglieder Saga 2.5 haben – spätestens nach der Frist darunter. Apps ab 2.3 lesen solche Chats, ältere zeigen einen Hinweis. Ausschalten stellt umgestellte Chats nicht zurück; Reaktionen, Bearbeiten und Sprachnachrichten sind dann aus.": "Neue Chats entstehen über Handles statt Anmeldenamen (niemand sieht mehr den Anmeldenamen des anderen), dazu kommen Reaktionen, Bearbeiten und Sprachnachrichten. Bestehende Chats stellt der Server um, sobald alle aktiven Geräte der Mitglieder Saga 2.5 haben – spätestens nach der Frist darunter. Apps ab 2.3 lesen solche Chats, ältere zeigen einen Hinweis. Ausschalten stellt umgestellte Chats nicht zurück; Reaktionen, Bearbeiten und Sprachnachrichten sind dann aus.",
+ "{label}: 0 geht nicht – es gilt der Standard {n}.": "{label}: 0 geht nicht – es gilt der Standard {n}.",
+ "{label}: auf {n} begrenzt (erlaubt {lo}–{hi}).": "{label}: auf {n} begrenzt (erlaubt {lo}–{hi}).",
+ "{label}: „{raw}“ ist keine Zahl – es gilt der Standard.": "{label}: „{raw}“ ist keine Zahl – es gilt der Standard."
 }

@@ -112,7 +112,7 @@ async function recordFor(p, ms) {
     ok('Ogg-Dauer nach RFC 7845: (letzte Granule - pre-skip) / 48000 = dur des Anhangs (auf 0,1 s gerundet)', Math.abs(info.gdur - info.fdur) <= 0.051, info);
     await b.click('#ct-msgs .vm-speed');
     const sp = await vstate(b, 0);
-    ok('Tempo 1,5×', sp.rate === 1.5 && (await b.textContent('#ct-msgs .vm-speed')) === '1.5×', sp);
+    ok('Tempo 1,5×', sp.rate === 1.5 && (await b.textContent('#ct-msgs .vm-speed')) === '1,5×', sp);
     await b.click('#ct-msgs .vm-play');                    // Pause
     const box = await b.$eval('#ct-msgs .vm-wave', w => { const r = w.getBoundingClientRect(); return { x: r.left, y: r.top + r.height / 2, w: r.width }; });
     await b.mouse.click(box.x + box.w * 0.5, box.y);

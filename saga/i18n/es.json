@@ -3201,5 +3201,12 @@
  "🔗 Link zur Datenbank kopieren": "🔗 Copiar enlace a la base de datos",
  "🖼 Bild hochladen …": "🖼 Subir imagen …",
  "🖼 Eigenes Bild hochladen …": "🖼 Subir una imagen propia …",
- "🗃️ Datenbank einbetten:": "🗃️ Insertar base de datos:"
+ "🗃️ Datenbank einbetten:": "🗃️ Insertar base de datos:",
+ "Bindestriche, Leerzeichen und Kleinbuchstaben sind egal.": "Los guiones, los espacios y las minúsculas dan igual.",
+ "Chat-Stufe 3: Handles, Reaktionen, Bearbeiten, Sprachnachrichten": "Nivel de chat 3: identificadores, reacciones, edición, mensajes de voz",
+ "Eine Nachricht kann nicht leer sein – zum Entfernen „Für alle löschen“ im Menü der Nachricht wählen.": "Un mensaje no puede estar vacío; para quitarlo, elige «Eliminar para todos» en el menú del mensaje.",
+ "Neue Chats entstehen über Handles statt Anmeldenamen (niemand sieht mehr den Anmeldenamen des anderen), dazu kommen Reaktionen, Bearbeiten und Sprachnachrichten. Bestehende Chats stellt der Server um, sobald alle aktiven Geräte der Mitglieder Saga 2.5 haben – spätestens nach der Frist darunter. Apps ab 2.3 lesen solche Chats, ältere zeigen einen Hinweis. Ausschalten stellt umgestellte Chats nicht zurück; Reaktionen, Bearbeiten und Sprachnachrichten sind dann aus.": "Los chats nuevos usan identificadores en lugar de nombres de usuario (nadie vuelve a ver el nombre de usuario del otro), y además reacciones, edición y mensajes de voz. El servidor convierte los chats existentes en cuanto todos los dispositivos activos de sus miembros tienen Saga 2.5, como muy tarde tras el plazo de abajo. Las apps desde la 2.3 leen estos chats; las anteriores muestran un aviso. Desactivarlo no revierte los chats convertidos; las reacciones, la edición y los mensajes de voz quedan desactivados.",
+ "{label}: 0 geht nicht – es gilt der Standard {n}.": "{label}: 0 no es posible; se aplica el valor predeterminado {n}.",
+ "{label}: auf {n} begrenzt (erlaubt {lo}–{hi}).": "{label}: limitado a {n} (permitido {lo}–{hi}).",
+ "{label}: „{raw}“ ist keine Zahl – es gilt der Standard.": "{label}: «{raw}» no es un número; se aplica el valor predeterminado."
 }

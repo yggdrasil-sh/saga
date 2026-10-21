@@ -778,6 +778,7 @@ async def settings_post(request: Request):
                  ("search_username", _on(f, "search_username")),
                  ("chat_enabled", _on(f, "chat_enabled")), ("chat_retention_max_days", _days(f.get("chat_retention_max_days"))),
                  ("chat_quota_mb", _mb(f.get("chat_quota_mb"), 1 << 20)), ("chat_video_max_mb", _mb(f.get("chat_video_max_mb"), 1 << 16)),
+                 ("chat_v3", _on(f, "chat_v3")),                  # 2.5 (Testrunde Web Nr. 007): Schalter fuer Stufe 3
                  ("chat_v3_days", _days(f.get("chat_v3_days") if f.get("chat_v3_days") not in (None, "") else 90)),
                  ("local_login", _on(f, "local_login")), ("group_prefix", prefix),
                  ("default_groups", _groups_list(_s(f, "default_groups", 1000))),
@@ -853,6 +854,22 @@ def _int(f, k, lo, hi):
     return max(lo, min(hi, v)) if v else 0
 
 
+def _int_noted(f, k, lo, hi, label, notes, zero=None):
+    """Wie _int, sagt aber, wenn ein Wert korrigiert wurde (Testrunde Web Nr. 020): notes bekommt den Hinweis.
+    zero: Standardwert, auf den eine 0 faellt (sonst bedeutet 0 wie leer "Standard")."""
+    raw, v = _s(f, k, 8), _int(f, k, lo, hi)
+    try:
+        n = int(raw) if raw else None
+    except ValueError:
+        notes.append(t("{label}: „{raw}“ ist keine Zahl – es gilt der Standard.", label=label, raw=raw))
+        return v
+    if n == 0 and zero is not None:
+        notes.append(t("{label}: 0 geht nicht – es gilt der Standard {n}.", label=label, n=zero))
+    elif n and v != n:
+        notes.append(t("{label}: auf {n} begrenzt (erlaubt {lo}–{hi}).", label=label, n=v, lo=lo, hi=hi))
+    return v
+
+
 def _calls_ctx(request, me, **kw):
     st = auth.settings(fresh=True)
     with _db() as c:
@@ -884,10 +901,12 @@ async def calls_post(request: Request):
         print(f"admin: {who} Gjallarhorn {'an' if _on(f, 'horn') else 'aus'}, eingebauter Knoten {'an' if _on(f, 'horn_builtin') else 'aus'}", flush=True)
         _flash(request, t("Gespeichert."))
     elif act == "limits":
-        auth.save_setting("calls", {**cur, "horn_video": _int(f, "horn_video", 2, horn.LIMITS["udp"][0]),
-                                    "horn_audio": _int(f, "horn_audio", 2, horn.LIMITS["udp"][1]),
-                                    "share_legs": _int(f, "share_legs", 1, 1000) or 10, "share_mbit": _int(f, "share_mbit", 1, 10000) or 20})
-        _flash(request, t("Gespeichert."))
+        notes = []
+        auth.save_setting("calls", {**cur, "horn_video": _int_noted(f, "horn_video", 2, horn.LIMITS["udp"][0], t("Video je Anruf"), notes),
+                                    "horn_audio": _int_noted(f, "horn_audio", 2, horn.LIMITS["udp"][1], t("Nur Ton je Anruf"), notes),
+                                    "share_legs": _int_noted(f, "share_legs", 1, 1000, t("Teilnehmende"), notes, 10) or 10,
+                                    "share_mbit": _int_noted(f, "share_mbit", 1, 10000, "Mbit/s", notes, 20) or 20})
+        _flash(request, t("Gespeichert.") + (" " + " ".join(notes) if notes else ""), "warn" if notes else "ok")
     elif act == "turn":
         err = _calls_save(f)
         _flash(request, err or t("Gespeichert."), "err" if err else "ok")
