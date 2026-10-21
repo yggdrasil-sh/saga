@@ -24,6 +24,9 @@ def ok(n, c, info=""):
 def wipe(a, b):
     with connect() as c, c:
         c.execute("DELETE FROM chat WHERE id IN (SELECT chat_id FROM chat_member WHERE uid IN (?,?))", (a, b))
+        # Geraete frueherer Reihen abmelden (jede Reihe startet mit frischen Browsern): sonst ist in all.sh das Geraete-Limit
+        # je Konto erreicht (Wiederherstellung 409), und Geraete ohne chat3 halten die Umstellung auf Stufe 3 bis zum Stichtag auf
+        c.execute("UPDATE chat_device SET revoked_at=? WHERE uid IN (?,?) AND revoked_at IS NULL", (time.time(), a, b))
 
 
 def trust3(a, b):
