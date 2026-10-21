@@ -279,6 +279,8 @@ trägt `quotas {q: {peers, legs, kbit, dropped, off}}`.
 **Messung** (`gjallarhorn bench --sfu --cascade -n 12 --video 12`): zwei Knoten im selben Container, Bots je zur Hälfte,
 Brücke dazwischen (Loopback). 2 Kerne, TCP, 20 s: je Knoten 5,3 % eines Kerns (einzelner Knoten mit allen 12: 7,9 %),
 Brücke 1,6 Mbit/s je Richtung, Bots empfangen 4312 Pakete/s (erwartet ~4325), 0 verworfene Rahmen.
+20 Bots / 12 Video / 60 s: je Knoten 7,5 % (einzelner Knoten: 11,4 %), Brücke 1,6–1,7 Mbit/s, Bots 7114 statt 7117
+Pakete/s, 4 Einfrieren auf 145 000 Rahmen (einzeln 0), 0 verworfene Rahmen.
 
 ## Testen
 
