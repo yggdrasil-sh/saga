@@ -227,9 +227,9 @@ def server_tests():
     sd = A_.Stream(D.k)
     s, d = req("POST", "/api/calls", A.k, {"id": cid, "chat_id": gid, "media": "video", "device": A.dev["id"], "caps": CAPS})
     k = d.get("call") or {}
-    ok(f"Start: topo horn, Knoten des Anrufs zuerst ('hier'), mit Kaskade auch Knoten B ({cands_of(d)}), Gastgeberin host",
-       s == 200 and k.get("topo") == "horn" and cands_of(d) == ["localhost", B_NAME] and k.get("host") is True
-       and k["horn"]["candidates"][0]["here"] is True and k["horn"]["candidates"][1]["here"] is False)
+    # Knoten B hat hier keinen Steuerkanal (fester Saga-Schluessel) - keine Kaskade moeglich, also nur der Knoten des Anrufs
+    ok(f"Start: topo horn, nur der Knoten des Anrufs (Knoten B ohne Steuerkanal: keine Kaskade) ({cands_of(d)}), Gastgeberin host",
+       s == 200 and k.get("topo") == "horn" and cands_of(d) == ["localhost"] and k.get("host") is True and k["horn"]["candidates"][0]["here"] is True)
     for p in (B, Cc):
         s, d = req("POST", f"/api/calls/{cid}/join", p.k, {"device": p.dev["id"], "role": "member", "caps": CAPS})
         ok(f"{p.uid}: Beitritt, Knoten des Anrufs zuerst ({cands_of(d)}), nicht Gastgeber", s == 200 and cands_of(d)[:1] == ["localhost"]
@@ -239,12 +239,9 @@ def server_tests():
     ok("Teilnehmerliste: hpn je Knoten (eingebauter = hp, Knoten B eigene Kennung)", hpn_ok, legs[0])
     tok = d["call"]["horn"]["candidates"][0]["peer"]
     ok("eigene Kennung im Kandidaten = hpn des eigenen Endpunkts", tok == next(x for x in legs if x["device"] == Cc.dev["id"])["hpn"]["localhost"])
-    # P9: mit Kaskade darf ein Geraet auch einen anderen bereiten Knoten waehlen (das Geraet tut es nur, wenn er deutlich
-    # besser ist - Hysterese in static/horn.js); Saga verbindet die Knoten dann (saga/horn_bridge.py)
-    s, d = req("POST", f"/api/calls/{cid}/horn", B.k, {"device": B.dev["id"]})
-    c0 = (d.get("horn") or {}).get("candidates") or []
-    ok(f"frische Kandidaten: Knoten des Anrufs 'hier', Knoten B dahinter ({[(c['node'], c['here']) for c in c0]})",
-       s == 200 and [(c["node"], c["here"]) for c in c0] == [("localhost", True), (B_NAME, False)])
+    # P9: ein anderer Knoten nur, wenn eine Kaskade moeglich ist (beide mit Steuerkanal) - Knoten B hat hier keinen
+    s, d = req("POST", f"/api/calls/{cid}/horn", B.k, {"device": B.dev["id"], "node": B_NAME})
+    ok(f"Wechsel auf Knoten B (ohne Steuerkanal, keine Kaskade), solange der des Anrufs bereit ist -> 409 ({s})", s == 409)
     s, d = req("POST", f"/api/calls/{cid}/horn", B.k, {"device": B.dev["id"], "avoid": ["localhost"]})
     c0 = (d.get("horn") or {}).get("candidates") or []
     ok(f"avoid=[localhost]: Kandidat Knoten B, noch nicht 'hier' ({[(c['node'], c['here']) for c in c0]})",

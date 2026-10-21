@@ -203,7 +203,9 @@ def main():
         node_start("a", "horn-a.test", 8481, share=False)
         if not OLD:
             node_start("b", "horn-b.test", 8482)
-        ok("Knoten A bereit (Steuerkanal, Zertifikat, Version)", wait(lambda: node_of(adm["a"], "horn-a.test").get("status") == "ready", 30))
+            node_start("a", "horn-a2.test", 8483, share=False)     # zweiter eigener Knoten von A (Kaskade A <-> A)
+        ok("Knoten A bereit (Steuerkanal, Zertifikat, Version)", wait(lambda: node_of(adm["a"], "horn-a.test").get("status") == "ready"
+                                                                       and (OLD or node_of(adm["a"], "horn-a2.test").get("status") == "ready"), 30))
         if not OLD:
             ok("Knoten B bereit", wait(lambda: node_of(adm["b"], "horn-b.test").get("status") == "ready", 30))
         # --- Personen und Gruppe (Heim A) ---------------------------------------------------------------------------
@@ -222,7 +224,7 @@ def main():
         if OLD:
             part_old(anna, bert, ch, bc)
         else:
-            part_a(adm, anna, bert, ch, bc)
+            part_a(adm, anna, bert, ch, bc, ada)
             part_b(adm, anna, bert, ben, ch, bc, nc)
             part_c(adm, anna, bert, ch, bc)
         rc = 0
@@ -269,11 +271,11 @@ def pick(u, cid, node):
     return api(u.k, u.uid, "POST", f"/api/calls/{cid}/horn", {"device": u.dev["id"], "node": node})
 
 
-def part_a(adm, anna, bert, ch, bc):
+def part_a(adm, anna, bert, ch, bc, ada=None):
     """Fall a: B hat einen eigenen Knoten, A teilt nicht -> Kaskade Knoten B -> Knoten A."""
     cid, s, d = start_call(anna, ch)
     ok(f"a: Anna startet ueber Knoten (A fragt B nach bereiten Knoten) ({s}, {d.get('call', {}).get('topo')})",
-       s == 200 and d["call"]["topo"] == "horn" and [c["node"] for c in cands(d)] == ["horn-a.test"])
+       s == 200 and d["call"]["topo"] == "horn" and [c["node"] for c in cands(d)][:1] == ["horn-a.test"])
     s, d2 = pick(anna, cid, "horn-a.test")
     ok(f"a: Anna waehlt Knoten A ({s})", s == 200)
     ok("a: Kopie auf B ueber Knoten (Teilnehmerliste mit topo)", wait(lambda: (sql("b", "SELECT topo FROM chat_call WHERE id=?", (cid,)) or [[None]])[0][0] == "horn", 10))
@@ -309,7 +311,19 @@ def part_a(adm, anna, bert, ch, bc):
            "peer_pub": NODES["horn-a.test"]["pub"], "token": "c1.x.y-" + "z" * 20}
     s, d = FC.signed_post("b", FC.own_priv("a"), "a", "/fed/v2/call", bad)
     ok(f"a: Kaskade an eine interne Adresse -> 403 ({s})", s == 403)
-    ok("a: Anruf endet auf A und B", end_call(cid, anna, bert))
+    # Kaskade zwischen zwei eigenen Knoten: Ada waehlt den zweiten Knoten von A (beide mit Steuerkanal)
+    if ada is not None:
+        s, d = api("a", "fa-ada", "POST", f"/api/calls/{cid}/join", {"device": ada.dev["id"], "role": "member", "caps": CAPS})
+        cs = [c["node"] for c in cands(d)]
+        ok(f"a: Ada bekommt den Knoten des Anrufs zuerst, dazu den zweiten eigenen ({cs})", s == 200 and cs[:1] == ["horn-a.test"] and "horn-a2.test" in cs)
+        s, d = pick(ada, cid, "horn-a2.test")
+        ok(f"a: Ada waehlt den zweiten Knoten ({s})", s == 200)
+
+        def up2():
+            n2 = node_of(adm["a"], "horn-a2.test")
+            return any(v.get("st") == "up" and v.get("peer") == "horn-a.test" for v in (n2.get("bridges") or {}).values())
+        ok("a: Kaskade zwischen den eigenen Knoten (horn-a2 waehlt horn-a)", bool(wait(up2, 25, 0.5)))
+    ok("a: Anruf endet auf A und B", end_call(cid, anna, bert, ada) if ada is not None else end_call(cid, anna, bert))
 
 
 def part_b(adm, anna, bert, ben, ch, bc, nc):

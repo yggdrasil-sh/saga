@@ -49,7 +49,8 @@ def candidates(c, call, dev, role="member", dev_class="desktop", avoid=(), now=N
     ns = [n for n in horn.ready_nodes(c, now) if n["name"] not in avoid and (only is None or n["id"] in only)]
     h = home(c, call["id"], ns)
     if h:
-        ns = [n for n in ns if n["id"] == h] if not horn.CASCADE else sorted(ns, key=lambda n: n["id"] != h)
+        ns = [n for n in ns if n["id"] == h or (horn.CASCADE and cascadable(h, n["id"]))]
+        ns.sort(key=lambda n: n["id"] != h)
     out = []
     for n in ns[:horn.CANDIDATES]:
         udp = bool(n["udp"])
@@ -60,6 +61,12 @@ def candidates(c, call, dev, role="member", dev_class="desktop", avoid=(), now=N
         out.append({"node": n["name"], "url": n["url"], "udp": udp, "here": n["id"] == h, "load": round(horn.util(n), 3),
                     "peer": horn.peer_ref(call["id"], n["id"], dev), "tokens": toks, "exp": int(now) + horn.TOKEN_TTL})
     return out
+
+
+def cascadable(a, b):
+    """Koennen zwei eigene Knoten eine Bruecke bilden? Beide mit Steuerkanal in diesem Prozess (Befehl cascade) -
+    sonst wuerde ein Geraet dort vom Rest des Anrufs abgeschnitten."""
+    return a in horn._CONNS and b in horn._CONNS
 
 
 def pick(c, cid):
@@ -76,10 +83,8 @@ def may_use(c, cid, n, avoid=()):
     (laeuft dort nichts mehr) irgendein bereiter."""
     if not n or not horn.ready(n) or n["name"] in avoid:
         return False
-    if horn.CASCADE:
-        return True
     h = home(c, cid, avoid=avoid)
-    return h is None or h == n["id"]
+    return h is None or h == n["id"] or (horn.CASCADE and cascadable(h, n["id"]))
 
 
 def nodes_for(c, cid):
