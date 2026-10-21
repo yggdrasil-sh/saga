@@ -661,8 +661,9 @@ bis geteilt wird), dann die Empfangsplätze Sprecher, Bildschirm, Kacheln. **Las
 Desktop 1 + 8 Kacheln = 9 bewegte Bilder, Handy 1 + 3 = 4; alle weiteren als Standbild (letztes Bild) mit Sprechring.
 TCP/TLS-Wege: `jitterBufferTarget = 150` ms an den Bildempfängern.
 
-**Zustand:** Body-Typ `state {mic, cam, screen}` über den versiegelten Signalweg an alle Endpunkte (nach jeder Änderung,
-gebündelt, und an jedes neue Gerät). Ältere Clients ignorieren ihn.
+**Zustand:** Body-Typ `state {mic, cam, screen, hp}` über den versiegelten Signalweg an alle Endpunkte (nach jeder Änderung,
+gebündelt, an jedes neue Gerät und – P9/P10 – nach jeder neuen Verbindung zu einem Knoten). `hp` = die eigenen Kennungen
+(`peer_ref`) an den Knoten, mit denen das Gerät gerade verbunden ist (höchstens 4). Ältere Clients ignorieren ihn.
 
 **Knotenwahl beim Beitritt** (Konzept §2.6): alle Kandidaten parallel messen, zusammen höchstens 800 ms – TLS-Aufbau und
 5 Pings über `wss://{knoten}/probe` (Echo), bei `udp_ok` ein STUN-Binding an `{knoten}:{port}` (UDP).
@@ -691,6 +692,20 @@ Absender dort einen Tonplatz hat, bis dahin aus der alten (keine Lücke, kein Do
 neuen Platz (ein Schlüsselbild). Die alte Verbindung schließt 2 s nachdem die neue liefert; solange dort noch Geräte
 sind, die nicht gewechselt haben, höchstens 15 s. CSRCs vergibt jeder Knoten selbst: Zuordnung CSRC → Gerät je
 Verbindung.
+
+### Kaskade und Knoten anderer Server (P9/P10)
+
+- **Kandidaten:** neben dem Knoten des Anrufs (`here: true`, zuerst) auch andere bereite Knoten. Der Bonus „here“ hält
+  die meisten Geräte auf einem Knoten; wählt ein Gerät einen anderen (deutlich besser, Umzug), verbindet Saga die
+  Knoten (Kaskade). Für Apps ändert sich am Ablauf nichts: frische Token mit `node` holen, verbinden.
+- **Teilnehmende anderer Knoten** erscheinen am eigenen Knoten wie alle anderen in `peers` (Kennung → CSRC), mit der
+  Kennung **ihres** Knotens. Zuordnung Kennung → Gerät: zuerst `hp`/`hpn` der Teilnehmerliste (alle Knoten dieses
+  Servers, nicht nur der eigenen Verbindung), dann `state.hp` der Geräte (Knoten anderer Server). Unbekannte Kennung:
+  Teilnehmerliste neu holen, Rahmen bis zur Zuordnung verwerfen.
+- **Anrufe, die ein anderer Server führt** (Föderation, `docs/APP-API-FED.md` §7.4): `horn.candidates[].home: true` =
+  geteilter Knoten des Heims (direkt verbinden), `horn.fed {share, why}`, ohne Kandidaten `horn.error` (Meldung anzeigen,
+  wie „kein Knoten“ erneut versuchen). Ein Gruppenanruf ohne Knoten mit einem anderen Server trägt `horn_mesh` (Hinweis
+  einmal anzeigen).
 
 ## Videos im Chat: saga-file/v2 (2.4, Etappe E2)
 
