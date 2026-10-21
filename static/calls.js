@@ -2626,10 +2626,12 @@
   // Je (Platz, Absender): ein Platz, der eben noch eine andere Person trug, zaehlt fuer die neue erst nach 400 ms.
   function hornAudioLive(a, owner) {
     var src = a._tr.receiver.getSynchronizationSources ? a._tr.receiver.getSynchronizationSources()[0] : null, pnow = performance.now();
-    if (!(src && (!src.timestamp || pnow - src.timestamp < 500))) { a._since = 0; return false; }
+    // neuer Weg zaehlt erst nach 1 s ohne Aussetzer (Ton alle 20 ms; 250 ms ohne Paket = Aussetzer, dann spielt das
+    // alte Bein wieder) - so bleibt die Luecke beim Wechsel auch auf langsamen Geraeten klein
+    if (!(src && (!src.timestamp || pnow - src.timestamp < 250))) { a._since = 0; return false; }
     if (a._owner !== owner) { a._owner = owner; a._since = pnow; }
     if (!a._since) a._since = pnow;
-    return pnow - a._since >= 400;
+    return pnow - a._since >= 1000;
   }
   function hornAudioRoute(R) {
     var H = R.horn, cur = H.cur, onCur = {};

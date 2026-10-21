@@ -175,7 +175,8 @@ def main():
 
 
 def run(media, node):
-    t = K.start(media, node)
+    # alle Browser kommen von 127.0.0.1: mit 10 Personen (HORN_PERF) mehr als 12 Beine je Adresse
+    t = K.start(media, node, {"HORN_MAX_PER_IP": "40"} if os.environ.get("HORN_PERF") == "1" else None)
     ok(f"Instanz laeuft ({t and round(t, 2)} s)", t is not None)
     K.flag(True)
     n = K.wait(K.node_ready, 25)
