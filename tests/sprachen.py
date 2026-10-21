@@ -313,6 +313,31 @@ def main():
         out = {p: adm.req("GET", p) for p in pages}
         bad = [p for p, r in out.items() if r[0] != 200 or html_lang(r[2]) != lang]
         ok(f"Admin-Seiten in {lang} ({len(pages)})", not bad or print("      ", bad))
+    # 2.5 (Testrunde Web Nr. 007): Schalter fuer Chat-Stufe 3 mit Erklaerung in allen Sprachen, speichert chat_v3
+    lbl = {"de": "Chat-Stufe 3", "en": "Chat level 3", "es": "Nivel de chat 3", "ru": "Уровень чатов 3", "th": "แชทระดับ 3"}
+    for lg, w in lbl.items():
+        adm.lang = lg
+        h = adm.req("GET", "/settings")[2]
+        ok(f"Admin Allgemein ({lg}): Schalter Chat-Stufe 3 mit Erklaerung", 'name="chat_v3"' in h and w in h and 'name="chat_v3_days"' in h)
+    adm.lang = "de"
+    v3_prev = auth.settings(fresh=True).get("chat_v3")
+    base_f = {"title": auth.settings(fresh=True).get("title") or "Saga", "local_login": "1", "default_lang": "",
+              "group_prefix": auth.settings(fresh=True).get("group_prefix") or ""}
+    adm.post("/settings", dict(base_f, chat_v3="1"))
+    on = auth.settings(fresh=True).get("chat_v3")
+    adm.post("/settings", base_f)
+    ok("Admin Allgemein: chat_v3 an/aus speichern", on is True and auth.settings(fresh=True).get("chat_v3") is False)
+    auth.save_setting("chat_v3", bool(v3_prev))
+    # 2.5 (Nr. 020): korrigierte Grenzen werden gemeldet, nicht still uebernommen
+    calls_prev = dict(auth.settings(fresh=True).get("calls") or {})
+    s, _, _ = adm.post("/calls", {"action": "limits", "horn_video": "30", "horn_audio": "-5", "share_legs": "0", "share_mbit": "15"})
+    h = adm.req("GET", "/calls")[2]
+    cc = auth.settings(fresh=True).get("calls") or {}
+    ok("Anrufe: Grenzen korrigiert und gemeldet (auf 25/2 begrenzt, 0 -> Standard 10)", s == 303 and "adm-flash warn" in h
+       and "auf 25 begrenzt" in h and "auf 2 begrenzt" in h and "Standard 10" in h and cc.get("horn_video") == 25 and cc.get("share_legs") == 10)
+    adm.post("/calls", {"action": "limits", "horn_video": "8", "horn_audio": "", "share_legs": "5", "share_mbit": "15"})
+    ok("Anrufe: gueltige Grenzen ohne Hinweis", "adm-flash warn" not in adm.req("GET", "/calls")[2])
+    auth.save_setting("calls", calls_prev)
     adm.lang = "en"
     ok("Admin Allgemein: Feld Standardsprache", 'name="default_lang"' in adm.req("GET", "/settings")[2] and "Default language" in adm.req("GET", "/settings")[2])
     adm.lang = "es"

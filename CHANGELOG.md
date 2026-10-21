@@ -123,6 +123,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Server-Uhr `now` im Anruf-Objekt) – wer später beitritt, sieht dieselbe Dauer wie der Chat-Eintrag. Der Chat-Eintrag
   selbst rechnet weiter ab dem Gesprächsbeginn (zweite Person), nicht ab dem Klingeln: im Testfall 4:42 bei 16 s Klingeln
   und Ende um 09:21:41 – korrekt.
+- **Admin → Allgemein → Chats: Schalter „Chat-Stufe 3“** (Nr. 007) mit Erklärung (5 Sprachen) direkt über der Frist
+  `chat_v3_days` – bisher nur über die Datenbank einzuschalten.
+- **Admin → Anrufe → Grenzen** (Nr. 020): Werte, die der Server korrigiert, meldet er jetzt („Video je Anruf: auf 25
+  begrenzt (erlaubt 2–25)“, „Teilnehmende: 0 geht nicht – es gilt der Standard 10“) statt nur „Gespeichert.“.
+- **Admin-Kopfleiste** bei mittleren Breiten (721–1600 px): Titel und Knöpfe in einer Zeile, die Reiter darunter in einer
+  waagrecht scrollbaren Zeile (wie am Handy) statt in zwei bis drei umgebrochenen Zeilen; der aktive Reiter steht mittig.
+- **Emoji-Leiste** (Nr. 034): keine leere Trennlinie mehr unter der Schnellleiste.
 
 ### Neu (Vorbereitung 2.5, Gjallarhorn)
 - **Horn-Probe** (`gjallarhorn/`, Paket P0): Prototyp des Gjallarhorn-Knotens als eigenes Go-Programm (Pion, nur

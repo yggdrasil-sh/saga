@@ -28,7 +28,7 @@
     t.dateTime = d.toISOString();
     if (zone) t.title = zone;
   });
-  // Handy: Reiterleiste scrollt waagrecht - aktiven Reiter zeigen, Verlauf am Rand, solange dort noch etwas steht
+  // Handy und mittlere Breiten: Reiterleiste scrollt waagrecht - aktiven Reiter zeigen, Verlauf am Rand, solange dort noch etwas steht
   var nav = document.querySelector('.adm-nav');
   if (nav) {
     var upd = function () {
@@ -39,7 +39,7 @@
     var on = nav.querySelector('a.on');
     if (on && nav.scrollWidth > nav.clientWidth) {
       var l = on.getBoundingClientRect().left - nav.getBoundingClientRect().left + nav.scrollLeft;
-      if (l + on.offsetWidth > nav.clientWidth - 24) nav.scrollLeft = l + on.offsetWidth - nav.clientWidth + 40;
+      if (l + on.offsetWidth > nav.clientWidth - 24) nav.scrollLeft = Math.max(0, l - (nav.clientWidth - on.offsetWidth) / 2);   // mittig, kein halber Reiter am Rand
     }
     nav.addEventListener('scroll', upd, { passive: true });
     window.addEventListener('resize', upd);
