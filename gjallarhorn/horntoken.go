@@ -41,6 +41,9 @@ type tokenBody struct {
 	Dev     string   `json:"dev_class"`
 	Exp     int64    `json:"exp"`
 	JTI     string   `json:"jti"`
+	Q       string   `json:"q,omitempty"`      // P10: Kontingent des verbundenen Servers (geteilter Knoten)
+	QLegs   int      `json:"q_legs,omitempty"` // hoechstens so viele Teilnehmende dieses Servers am Knoten
+	QKbit   int      `json:"q_kbit,omitempty"` // und so viele kbit/s je Richtung
 }
 
 var errToken = errors.New("token ungueltig")
@@ -121,8 +124,11 @@ func (v *sagaVerifier) Verify(tok string) (sfu.Grant, error) {
 	default:
 		return sfu.Grant{}, errToken
 	}
+	if b.Q != "" && !validRef(b.Q) {
+		return sfu.Grant{}, errToken
+	}
 	return sfu.Grant{Node: b.Node, Room: b.CallRef, Peer: b.PeerRef, Leg: b.LegRef, Role: role, Pub: sfu.ParsePub(b.Pub),
-		MaxKbit: b.MaxKbit, UDPOK: b.UDPOK, Device: dev, Exp: exp, ID: b.JTI}, nil
+		MaxKbit: b.MaxKbit, UDPOK: b.UDPOK, Device: dev, Exp: exp, ID: b.JTI, Quota: b.Q, QuotaLegs: b.QLegs, QuotaKbit: b.QKbit}, nil
 }
 
 // usedTokens: jedes Token gilt einmal je Zweck (Bein, TURN-Zugang). Eintraege

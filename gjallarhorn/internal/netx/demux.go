@@ -90,6 +90,14 @@ type bufConn struct {
 
 func (c *bufConn) Read(b []byte) (int, error) { return c.r.Read(b) }
 
+// TLSState liefert den TLS-Zustand der Verbindung (Kaskade: Kanalbindung ueber ExportKeyingMaterial).
+func (c *bufConn) TLSState() (tls.ConnectionState, bool) {
+	if t, ok := c.Conn.(*tls.Conn); ok {
+		return t.ConnectionState(), true
+	}
+	return tls.ConnectionState{}, false
+}
+
 func (c *bufConn) RemoteAddr() net.Addr {
 	if c.remote != nil {
 		return c.remote

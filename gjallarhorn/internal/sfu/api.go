@@ -156,6 +156,12 @@ type Grant struct {
 	Device  Device    // Geraeteklasse (Last-N)
 	Exp     time.Time // Ablauf (Token +60 s)
 	ID      string    // Kennung des Tokens (jti): jedes Token gilt fuer genau ein Bein
+
+	// P10: Teilnehmende eines verbundenen Servers auf einem geteilten Knoten - Kontingent (zufaellige Kennung je
+	// Server), hoechstens QuotaLegs Teilnehmende und QuotaKbit je Richtung. "" = eigene Konten (ohne Kontingent).
+	Quota     string
+	QuotaLegs int
+	QuotaKbit int
 }
 
 // Verifier prueft ein Medien-Token: Ed25519 mit dem oeffentlichen Saga-Schluessel

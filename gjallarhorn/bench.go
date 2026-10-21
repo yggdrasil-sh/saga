@@ -83,6 +83,7 @@ func runBench(args []string) error {
 	lastN := fs.Int("lastn", 9, "hoechstens so viele bewegte Kacheln je Bot (H6)")
 	data := fs.String("data", env("HORN_DATA", "/data"), "Datenordner (Ergebnis unter results/)")
 	useSFU := fs.Bool("sfu", false, "echter Weiterleiter (Raum, Top-3, Last-N, Schichtwahl) statt Spiegel")
+	cascade := fs.Bool("cascade", false, "mit --sfu: zwei Knoten mit Bruecke (Kaskade, P9), Bots je zur Haelfte")
 	if err := fs.Parse(normFlags(args)); err != nil {
 		return err
 	}
@@ -95,6 +96,12 @@ func runBench(args []string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
+	}
+	if *cascade {
+		if !*useSFU {
+			return errors.New("--cascade nur mit --sfu")
+		}
+		return benchCascade(exe, *n, *video, *secs, *lastN, *path, *data)
 	}
 	tmp, err := os.MkdirTemp("", "horn-bench-")
 	if err != nil {

@@ -157,6 +157,8 @@ type server struct {
 	closing                 atomic.Bool
 	capture                 *capture // nur Tests: Mitschnitt der eingehenden Rahmen (HORN_CAPTURE)
 	ev                      evHub    // P5: Ereigniskanal je Bein (events.go)
+	brOnce                  sync.Once
+	brs                     *bridgeSet // P9: Bruecken zu anderen Knoten (bifrost.go)
 
 	pubIPs   []string                      // oeffentliche Adressen (Kandidaten)
 	udpCheck atomic.Pointer[netx.UDPCheck] // Ergebnis des UDP-Selbsttests

@@ -8,6 +8,7 @@
 package fwd
 
 import (
+	"encoding/binary"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -133,6 +134,20 @@ type Source struct {
 	HasTID    atomic.Bool
 	Keys      atomic.Uint32
 	LastKey   atomic.Int64
+
+	// Gate (P10, Kontingent je verbundenem Server): zaehlt eingehende Bytes und meldet false ueber dem Kontingent. Bild
+	// wird dann ab dem naechsten Rahmenanfang bis zum naechsten Schluesselbild verworfen (Folgenummern bleiben fuer die
+	// Ausgaenge lueckenlos, wie bei Fuellpaketen), Ton nie. nil = ohne Kontingent. Nur vor dem ersten Paket setzen.
+	Gate  func(n int) bool
+	gdrop bool // nur Lese-Goroutine
+	Gated atomic.Uint64
+}
+
+// Subscribed meldet, ob ein Ausgang diese Quelle gerade weiterleitet oder auf
+// sie wechselt (Kaskade: Nachfrage an den Knoten, von dem sie kommt).
+func (s *Source) Subscribed() bool {
+	l := s.subs.Load()
+	return l != nil && len(*l) > 0
 }
 
 // VoiceLevel: Pegel (-dBov) bis zu dem ein Paket als Sprache zaehlt.
@@ -253,8 +268,16 @@ func (s *Source) handle(p *Packet, n int) {
 				}
 			}
 		}
+		if s.Gate != nil && !s.gate(p, n) {
+			s.skip++ // verworfen: fuer die Ausgaenge lueckenlos
+			pool.Put(p)
+			return
+		}
 	} else {
 		p.vp8 = rtpx.VP8{}
+		if s.Gate != nil {
+			s.Gate(n) // Ton zaehlt mit, wird aber nie verworfen
+		}
 		if s.LevelExt != 0 {
 			if lv, _, ok := rtpx.AudioLevel(p.buf[:n], &p.h, s.LevelExt); ok && lv <= VoiceLevel {
 				s.VoicePkts.Add(1)
@@ -275,6 +298,37 @@ func (s *Source) handle(p *Packet, n int) {
 	}
 }
 
+// gate: Kontingent (nur Bild). Ueber dem Kontingent ab dem naechsten Rahmenanfang verwerfen, weiter erst an einem
+// Schluesselbild (dann sauber dekodierbar); ist wieder Platz, wird eines angefordert.
+func (s *Source) gate(p *Packet, n int) bool {
+	if !p.vp8.FrameStart {
+		if s.gdrop {
+			s.Gated.Add(1)
+			return false
+		}
+		s.Gate(n)
+		return true
+	}
+	if !s.Gate(n) {
+		s.gdrop = true
+		s.Gated.Add(1)
+		return false
+	}
+	if s.gdrop && !p.vp8.Key {
+		s.Gated.Add(1)
+		s.RequestPLI()
+		return false
+	}
+	s.gdrop = false
+	return true
+}
+
+// RawWriter schreibt ein fertiges RTP-Paket unveraendert (Kaskade: Bruecke zu einem anderen Knoten, die Kopf-
+// erweiterungen wie audio-level bleiben erhalten). Nur die Folgenummer setzt der Ausgang lueckenlos.
+type RawWriter interface {
+	WriteRaw(b []byte) error
+}
+
 // Writer ist die Schreibseite einer abgehenden Spur (pion TrackLocalWriter).
 type Writer interface {
 	WriteRTP(h *rtp.Header, payload []byte) (int, error)
@@ -282,6 +336,7 @@ type Writer interface {
 
 type binding struct {
 	w    Writer
+	raw  RawWriter
 	ssrc uint32
 	pt   uint8
 }
@@ -332,6 +387,12 @@ type Out struct {
 // Bind setzt das Schreibziel (aus pion TrackLocal.Bind).
 func (o *Out) Bind(w Writer, ssrc uint32, pt uint8) {
 	o.bound.Store(&binding{w: w, ssrc: ssrc, pt: pt})
+	o.want.Store(true)
+}
+
+// BindRaw setzt ein Schreibziel fuer unveraenderte Pakete (Kaskade, P9).
+func (o *Out) BindRaw(w RawWriter) {
+	o.bound.Store(&binding{raw: w})
 	o.want.Store(true)
 }
 
@@ -761,6 +822,10 @@ func (l *Leg) process(p *Packet, o *Out) {
 		Totals.Switches.Add(1)
 	}
 	seq := p.h.Seq - p.skip + o.seqDelta
+	if b.raw != nil {
+		l.writeRaw(p, o, b.raw, seq, now)
+		return
+	}
 	ts := p.h.TS + o.tsDelta
 	h := &o.hdr
 	h.Version = 2
@@ -820,6 +885,35 @@ func (l *Leg) process(p *Packet, o *Out) {
 		k++
 	}
 	l.Stats.Hist[k].Add(1)
+}
+
+// writeRaw: Kaskade - Paket unveraendert bis auf die Folgenummer (Kopie, das Paket ist geteilt).
+func (l *Leg) writeRaw(p *Packet, o *Out, w RawWriter, seq uint16, now int64) {
+	c := l.scratch[:p.n]
+	copy(c, p.buf[:p.n])
+	binary.BigEndian.PutUint16(c[2:4], seq)
+	t0 := Now()
+	err := w.WriteRaw(c)
+	t1 := Now()
+	if d := t1 - t0; d > WriteStallMin {
+		l.Stats.WriteStalls.Add(1)
+		l.Stats.WriteStallNs.Add(uint64(d))
+		Totals.WriteStalls.Add(1)
+		Totals.WriteStallNs.Add(uint64(d))
+	}
+	if err != nil {
+		l.Stats.WriteErrs.Add(1)
+		Totals.WriteErrs.Add(1)
+		return
+	}
+	o.lastSeq, o.lastTS, o.lastT = seq, p.h.TS, now
+	n := uint64(p.n)
+	o.Pkts.Add(1)
+	o.Bytes.Add(n)
+	l.Stats.PktsOut.Add(1)
+	l.Stats.BytesOut.Add(n)
+	Totals.PktsOut.Add(1)
+	Totals.BytesOut.Add(n)
 }
 
 // QueueLen liefert die aktuelle Laenge der Warteschlange.

@@ -126,6 +126,9 @@ func (r *Room) measurePeer(p *Peer, dt float64, now int64) {
 			p.lastSpoke = lv
 		}
 	}
+	if p.spoke > p.lastSpoke { // P9: laut anderem Knoten
+		p.lastSpoke = p.spoke
+	}
 	p.score = 0.8*p.score + 0.2*act
 }
 
@@ -257,7 +260,7 @@ func layers(m map[string]*source, stream bool, now int64) []*source {
 		if stream && k == "h" && len(out) >= 2 {
 			break // TCP: hoechstens 2 Schichten (H4)
 		}
-		if s := m[k]; s != nil && s.Active(now) {
+		if s := m[k]; s != nil && s.live(now) {
 			out = append(out, s)
 		}
 	}
@@ -406,6 +409,11 @@ func (r *Room) planLeg(l *Leg, peers []*Peer, dt float64, now int64, cfg Config)
 	}
 	// Schaetzung und Verteilung
 	budget := l.est.update(l, dt, now)
+	if q := me.quota; q != nil { // P10: Kontingent des verbundenen Servers, gleich verteilt auf seine Teilnehmenden
+		if c := q.downShare(); budget > c {
+			budget = c
+		}
+	}
 	if l.Role == RoleBoth {
 		budget -= audioRateUDP * float64(len(aslots))
 	}

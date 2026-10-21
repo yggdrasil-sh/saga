@@ -427,9 +427,25 @@ func (s *server) sfuRoutes(m *http.ServeMux) {
 	m.HandleFunc("GET /api/sfu/leg/{id}", s.apiSFULayout)
 	m.HandleFunc("GET /api/sfu/leg/{id}/events", s.apiSFUEvents) // P5: Ereigniskanal (events.go)
 	m.HandleFunc("DELETE /api/sfu/leg/{id}", s.apiLegDelete)
+	m.HandleFunc("GET /api/sfu/bridge", s.apiBridge) // P9: Kaskade (bifrost.go)
 	if !s.cfg.Dev {
 		return
 	}
+	m.HandleFunc("POST /api/dev/cascade", func(w http.ResponseWriter, r *http.Request) {
+		var req struct{ Bridge, URL, Room, PeerRoom string }
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&req); err != nil {
+			writeJSON(w, 400, map[string]string{"error": "json"})
+			return
+		}
+		if err := s.cascade(cascadeCmd{Bridge: req.Bridge, URL: req.URL, Peer: "dev", Token: req.PeerRoom, Room: req.Room}); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+	})
+	m.HandleFunc("GET /api/dev/bridges", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{"bridges": s.bridgeStats()})
+	})
 	m.HandleFunc("POST /api/dev/room", func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ Room string }
 		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&req); err != nil || req.Room == "" {
