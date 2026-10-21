@@ -115,8 +115,16 @@ def part_main(adm=None):
     nb = sql("b", "SELECT COUNT(*) FROM chat_reaction")[0][0]
     am = find(anna, ch, m1["id"])
     (s, d), _ = react(anna, ch, am, "🎉")                 # A kennt den neuen Stand von B noch nicht (bis zum naechsten hello)
-    ok(f"A (Heim) reagiert weiter ({s}) - B ignoriert das Ereignis", s == 200
-       and not wait(lambda: sql("b", "SELECT COUNT(*) FROM chat_reaction")[0][0] != nb, 6), d)
+    eb = sql("b", "SELECT edit_n FROM chat_msg WHERE id=?", (m1["id"],))
+    (s2, d2), _ = edit(anna, ch, m1["id"], "Bearbeitet, B hat chat_v3 aus")
+    ok(f"A (Heim) reagiert und bearbeitet weiter ({s}, {s2}) - B ignoriert beide Ereignisse", s == 200 and s2 == 200
+       and not wait(lambda: sql("b", "SELECT COUNT(*) FROM chat_reaction")[0][0] != nb
+                    or sql("b", "SELECT edit_n FROM chat_msg WHERE id=?", (m1["id"],)) != eb, 6), (d, d2))
+    bm = find(bert, bc, m1["id"]) or {}
+    ra = [x for x in bm.get("rx") or [] if x.get("by") == anna.handle]
+    ok("B liefert nichts davon aus (Nachrichtenliste: alte Reaktion und alter Text von A)",
+       len(ra) == 1 and json.loads(C.decrypt_reaction(key_of(bert, bm), bc["ref"], m1["id"], ra[0]))["e"] == "❤️"
+       and bool(bm.get("edit")) and opened(bert, bc, bm["edit"])["t"] == "Hallo Bert!", (ra, bm.get("edit_n")))
     if adm:
         A, pa = adm
         A.post({"action": "hello", "id": str(pa)})

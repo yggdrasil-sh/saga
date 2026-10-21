@@ -144,7 +144,7 @@ def _local_cmd(c, bid, w, now):
     if not d or not h or not d.get("pub") or not h.get("pub"):
         return None
     cid = w["call"]
-    return {"t": "cascade", "bridge": bid, "url": h["url"], "peer": h["name"], "peer_pub": h["pub"],
+    return {"t": "cascade", "bridge": bid, "url": h["url"], "own": True, "peer": h["name"], "peer_pub": h["pub"],  # own: eigener Knoten
             "token": horn.ctoken("accept", bid, h["name"], horn.call_ref(cid, h["id"]), d["name"], d["pub"], now=now),
             "mine": horn.ctoken("dial", bid, d["name"], horn.call_ref(cid, d["id"]), h["name"], h["pub"], now=now)}
 

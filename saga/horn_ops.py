@@ -28,6 +28,7 @@ import ssl
 import struct
 import threading
 import time
+from collections import OrderedDict
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Request
@@ -35,7 +36,7 @@ from fastapi.responses import JSONResponse
 
 from db import connect as _db
 from saga import cloudflare, horn, notify
-from saga.core import BASE_URL, HERE
+from saga.core import BASE_URL, HERE, t
 from version import VERSION
 
 router = APIRouter()
@@ -47,21 +48,24 @@ RELEASE_BASE = "https://github.com/yggdrasil-sh/saga/releases/download"
 NAME_RE = re.compile(r"(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}")
 LABEL_RE = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?")
 CHECK_TIMEOUT = 4.0
-_rl = {}
+RL_MAX = 5000                            # Schluessel im Rate-Limit-Speicher (danach die am laengsten unbenutzten verdraengen)
+_rl = OrderedDict()
 _rl_lock = threading.Lock()
 
 
 def _rate(kind, key, n, per=60.0):
+    """Hoechstens n Ereignisse je (kind, key) in per Sekunden. Voll: die am laengsten unbenutzten Schluessel fallen weg,
+    nie der ganze Speicher (viele Quelladressen duerfen die Kopplungs-Bremse nicht zuruecksetzen)."""
     now = time.time()
+    k = (kind, key)
     with _rl_lock:
-        h = [x for x in _rl.get((kind, key), []) if now - x < per]
-        if len(h) >= n:
-            _rl[(kind, key)] = h
-            return False
-        _rl[(kind, key)] = h + [now]
-        if len(_rl) > 5000:
-            _rl.clear()
-    return True
+        h = [x for x in _rl.get(k, ()) if now - x < per]
+        ok = len(h) < n
+        _rl[k] = h + [now] if ok else h
+        _rl.move_to_end(k)
+        while len(_rl) > RL_MAX:
+            _rl.popitem(last=False)
+    return ok
 
 
 def _json(d, status=200):
@@ -123,16 +127,46 @@ def _pub_pem(b64):
     return "-----BEGIN PUBLIC KEY-----\n" + base64.b64encode(der).decode() + "\n-----END PUBLIC KEY-----"
 
 
-def image_ref():
-    """Image fuer Knoten: gepinnt per Digest, falls bekannt (SAGA_HORN_IMAGE_DIGEST=sha256:...), sonst Tag = Saga-Version."""
+def image_digest():
+    """Digest des Knoten-Images, falls bekannt: SAGA_HORN_IMAGE_DIGEST=sha256:... bzw. Datei gjallarhorn/image.digest
+    (vom Release-Bau, eine Zeile). Sonst ""."""
     dg = os.environ.get("SAGA_HORN_IMAGE_DIGEST", "").strip()
+    if not dg:
+        try:
+            with open(os.path.join(HERE, "gjallarhorn", "image.digest"), encoding="utf-8") as f:
+                dg = f.read(200).strip()
+        except OSError:
+            dg = ""
+    return dg if re.fullmatch(r"sha256:[0-9a-f]{64}", dg) else ""
+
+
+def image_ref():
+    """Image fuer Knoten: gepinnt per Digest, falls bekannt (image_digest), sonst Tag = Saga-Version."""
+    dg = image_digest()
     ref = f"{IMAGE}:{VERSION}"
-    return (ref + "@" + dg) if re.fullmatch(r"sha256:[0-9a-f]{64}", dg) else ref
+    return (ref + "@" + dg) if dg else ref
 
 
 def saga_origin():
     u = urlparse(BASE_URL)
     return f"{u.scheme}://{u.netloc}"
+
+
+def saga_warn():
+    """Nr. 009: Saga-Adresse, die ein Knoten auf einem anderen Server nicht erreichen kann (http, localhost, interne/
+    Loopback-Adresse, Name ohne Punkt) - Warnung im Dialog Erweitern und im Skript. "" = in Ordnung."""
+    u = urlparse(BASE_URL)
+    host = (u.hostname or "").lower()
+    local = not host or host == "localhost" or host.endswith((".localhost", ".local", ".internal", ".lan")) or "." not in host.strip("[]")
+    try:
+        a = ipaddress.ip_address(host.strip("[]"))
+        local = local or not a.is_global
+    except ValueError:
+        pass
+    if u.scheme != "https" or local:
+        return t("Achtung: Die Saga-Adresse {saga} ist für einen Knoten auf einem anderen Server vermutlich nicht erreichbar (nur https mit öffentlichem Namen). BASE_URL prüfen – sonst koppelt der Knoten nicht.",  # noqa: E501
+                 saga=saga_origin())
+    return ""
 
 
 def suffix():
@@ -202,12 +236,14 @@ def pair_create(name, share=False, udp=True, by="admin"):
 def deploy(name, tok, udp=True):
     """Deploy-Skripte (Docker Compose und systemd/Debian). Beide enthalten den einmaligen Code, keinen Cloudflare-Token."""
     saga = saga_origin()
+    warn = saga_warn()
     env = (f"# Gjallarhorn-Knoten {name} für {saga} (Saga {VERSION})\n"
-           f"# Einmaliger Kopplungs-Code, 30 min gültig – danach wertlos.\n"
+           f"# Einmaliger Kopplungs-Code, 30 min gültig – danach wertlos.\n" + (f"# {warn}\n" if warn else "") +
            f"HORN_SAGA={saga}\nHORN_PAIR={tok}\nHORN_NAME={name}\nHORN_UDP={'1' if udp else '0'}\n")
+    pin = "" if image_digest() else ("    # Image nur per Tag (Digest unbekannt) – zum Festschreiben SAGA_HORN_IMAGE_DIGEST in Saga setzen\n")
     ports = '      - "443:443/tcp"\n' + ('      - "443:443/udp"\n' if udp else "")
     compose = ("services:\n  gjallarhorn:\n"
-               f"    image: {image_ref()}\n"
+               f"    image: {image_ref()}\n" + pin +
                "    command: [\"watch\"]\n"
                "    restart: unless-stopped\n"
                "    env_file: .env\n"
@@ -215,12 +251,17 @@ def deploy(name, tok, udp=True):
                "    volumes:\n      - gjallarhorn:/data\n"
                "    stop_grace_period: 30s\n"
                "volumes:\n  gjallarhorn: {}\n")
-    docker = ("#!/bin/sh\n# Gjallarhorn-Knoten " + name + " (Docker). Auf dem neuen Server ausführen.\nset -eu\n"
+    docker = ("#!/bin/sh\n# Gjallarhorn-Knoten " + name + " (Docker). Auf dem neuen Server ausführen.\nset -eu\n" + _warn_sh(warn) +
               "mkdir -p gjallarhorn && cd gjallarhorn\n"
               "umask 077\ncat > .env <<'EOF'\n" + env + "EOF\n"
               "cat > docker-compose.yml <<'EOF'\n" + compose + "EOF\n"
               "docker compose up -d\ndocker compose logs --tail 20\n")
-    return {"env": env, "compose": compose, "script_docker": docker, "script_systemd": systemd_script(name, tok, udp)}
+    return {"env": env, "compose": compose, "script_docker": docker, "script_systemd": systemd_script(name, tok, udp), "warn": warn}
+
+
+def _warn_sh(warn):
+    """Warnung im Skript (stderr, mit einfachen Anfuehrungszeichen sicher gequotet)."""
+    return ("echo '" + warn.replace("'", "'\\''") + "' >&2\n") if warn else ""
 
 
 def systemd_script(name, tok, udp=True):
@@ -231,7 +272,7 @@ def systemd_script(name, tok, udp=True):
     saga = saga_origin()
     head = ("#!/bin/sh\n# Gjallarhorn-Knoten " + name + " ohne Docker (Debian 12+, systemd). Als root ausführen.\n"
             "# Braucht curl und openssl. Das Binär kommt aus dem GitHub-Release und wird gegen den Release-Schlüssel geprüft.\n"
-            "set -eu\n")
+            "set -eu\n" + _warn_sh(saga_warn()))
     if not pub:
         return head + ("echo 'Saga kennt noch keinen Release-Schlüssel (gjallarhorn/release.pub) – die systemd-Variante ist "
                        "erst mit signierten Releases möglich. Bitte die Docker-Variante nutzen.' >&2\nexit 1\n")
@@ -310,9 +351,11 @@ def _addr_ok(ip, fam, src):
     return True
 
 
-def echo_check(name, pub_b64, ip, port, timeout=CHECK_TIMEOUT):
+def echo_check(name, pub_b64, ip, port, timeout=CHECK_TIMEOUT, detail=None):
     """443/TCP pruefen: TLS (ohne SNI, Zertifikat egal) + GET /api/horn/echo; die Antwort muss mit dem Knotenschluessel
-    signiert sein. -> (ok, Fehler)"""
+    signiert sein. -> (ok, Fehlercode): timeout | unreachable_tcp | tls | http | signatur. Netzdetails (Fehlerart,
+    Antwortanfang) nur in detail (Liste, fuer das Admin-Pruefprotokoll), nie an den Aufrufer der Kopplung."""
+    note = detail.append if isinstance(detail, list) else (lambda x: None)
     from cryptography.exceptions import InvalidSignature
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
     nonce = _b64u(secrets.token_bytes(18))
@@ -331,11 +374,19 @@ def echo_check(name, pub_b64, ip, port, timeout=CHECK_TIMEOUT):
                     if not x:
                         break
                     buf += x
-    except (OSError, ssl.SSLError) as ex:
-        return False, type(ex).__name__
+    except (socket.timeout, TimeoutError) as ex:
+        note(f"{ip}: {type(ex).__name__}")
+        return False, "timeout"
+    except ssl.SSLError as ex:
+        note(f"{ip}: {type(ex).__name__} {str(ex)[:80]}")
+        return False, "tls"
+    except OSError as ex:
+        note(f"{ip}: {type(ex).__name__}")
+        return False, "unreachable_tcp"
     head, _, body = buf.partition(b"\r\n\r\n")
     if not head.startswith(b"HTTP/1.1 200"):
-        return False, head[:40].decode("latin-1", "replace")
+        note(f"{ip}: {head[:40].decode('latin-1', 'replace')}")
+        return False, "http"
     try:
         d = json.loads(body.decode())
         Ed25519PublicKey.from_public_bytes(base64.b64decode(pub_b64)).verify(
@@ -371,6 +422,7 @@ def reach(name, pub, v4, v6, port, udp, src="", timeout=CHECK_TIMEOUT):
     """Erreichbarkeit je Adresse -> {v4: bool|None, v6: bool|None, udp: bool|None, err: {...}, at}. None = keine Adresse."""
     out = {"v4": None, "v6": None, "udp": None, "err": {}, "at": time.time()}
     res = {}
+    det = []
 
     def one(fam, ip):
         if not ip:
@@ -378,7 +430,7 @@ def reach(name, pub, v4, v6, port, udp, src="", timeout=CHECK_TIMEOUT):
         if not _addr_ok(ip, fam, src or ip):
             res[fam] = (False, "adresse")
             return
-        res[fam] = echo_check(name, pub, ip, port, timeout)
+        res[fam] = echo_check(name, pub, ip, port, timeout, det)
 
     th = [threading.Thread(target=one, args=(4, v4)), threading.Thread(target=one, args=(6, v6))]
     for x in th:
@@ -393,6 +445,8 @@ def reach(name, pub, v4, v6, port, udp, src="", timeout=CHECK_TIMEOUT):
     if udp:
         ips = [ip for fam, ip in ((4, v4), (6, v6)) if ip and out[f"v{fam}"]]
         out["udp"] = any(udp_check(ip, port) for ip in ips) if ips else False
+    if det:
+        out["detail"] = "; ".join(det)[:300]
     return out
 
 
@@ -475,10 +529,13 @@ def pair_finish(b, src=""):
     udp_has = bool(b.get("udp")) and want_udp
     rc = reach(name, pub, v4, v6, port, udp_has, src)
     with _db() as c, c:
-        _progress(c, pid, tcp=rc)
+        _progress(c, pid, tcp=rc, port=port)
         if not (rc["v4"] or rc["v6"]):
-            log(c, "pair.unreachable", None, name, json.dumps(rc["err"]))
-            return _bad("reach", 424, f"Knoten über 443/TCP nicht erreichbar ({', '.join(f'{k}: {v}' for k, v in rc['err'].items()) or 'keine Adresse'})")
+            log(c, "pair.unreachable", None, name, json.dumps({**rc["err"], **({"detail": rc["detail"]} if rc.get("detail") else {})}))
+            # nur Fehlercodes an den Knoten (Netzdetails der geprueften Adresse stehen im Pruefprotokoll des Admin-Bereichs)
+            why = {k: v for k, v in rc["err"].items() if k in ("v4", "v6")}
+            return _json({"error": f"Knoten über 443/TCP nicht erreichbar ({', '.join(f'{k}: {v}' for k, v in why.items()) or 'keine Adresse'})",
+                          "code": "reach", "reach": why}, 424)
         r = c.execute("SELECT used FROM horn_pair WHERE token_hash=? FOR UPDATE", (h,)).fetchone()
         if not r or r[0]:
             return _bad("used", 403, "Kopplungs-Code schon benutzt")
@@ -701,7 +758,7 @@ def pair_status(pid):
         n = _node(c, r[3]) if r[3] else None
     p = r[4] if isinstance(r[4], dict) else {}
     now = time.time()
-    out = {"name": r[0], "expires": r[1], "expired": not r[2] and r[1] < now, "steps": []}
+    out = {"name": r[0], "expires": r[1], "expired": not r[2] and r[1] < now, "steps": [], "port": int(p.get("port") or 443)}
     st = out["steps"]
     st.append({"k": "wait", "s": "ok" if p.get("node") else "run"})
     if p.get("node"):
@@ -782,6 +839,7 @@ def admin_state():
                 c.execute("SELECT id, name, expires FROM horn_pair WHERE used IS NULL AND expires > ? ORDER BY created", (now,)).fetchall()]
         logs = [{"ts": r[0], "name": r[1], "event": r[2], "detail": r[3]} for r in
                 c.execute("SELECT ts, name, event, detail FROM horn_log ORDER BY id DESC LIMIT 20").fetchall()]
+        rekey = horn.rekey_nodes(c)
     out = []
     for n in ns:
         ld = (horn._LIVE.get(n["id"]) or {}).get("load") or n.get("load") or {}
@@ -800,7 +858,8 @@ def admin_state():
                     # P9/P10: Bruecken (Kaskade) und Kontingente verbundener Server laut letzter Lastmeldung
                     "bridges": (horn._LIVE.get(n["id"]) or {}).get("bridges") or {}, "quotas": (horn._LIVE.get(n["id"]) or {}).get("quotas") or {}})
     cf = cloudflare.conf()
-    return {"nodes": out, "pending": pend, "log": logs, "hint": busy_hint(out, now), "release_key": bool(release_pub()),
+    return {"nodes": out, "pending": pend, "log": logs, "hint": busy_hint(out, now), "release_key": bool(release_pub()), "rekey": rekey,
             "cf": {"set": bool(cf.get("token")), "mask": cloudflare.mask(cf.get("token") or ""), "zone": cf.get("zone") or "",
                    "check": cf.get("check") or {}},
-            "suffix": suffix(), "image": image_ref(), "saga": saga_origin(), "builtin_on": horn.builtin_on(), "horn_on": horn.horn_on()}
+            "suffix": suffix(), "image": image_ref(), "saga": saga_origin(), "saga_warn": saga_warn(), "builtin_on": horn.builtin_on(),
+            "horn_on": horn.horn_on()}

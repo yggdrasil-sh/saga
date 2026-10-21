@@ -15,6 +15,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"sort"
 	"strconv"
@@ -724,7 +725,111 @@ type bridgeInfo struct {
 
 type cascadeCmd struct {
 	Bridge, URL, Peer, PeerPub, Token, Mine string
-	Room                                    string // Entwicklungsmodus
+	Room                                    string   // Entwicklungsmodus
+	IPs                                     []string // von Saga gepruefte Zieladressen (genau diese waehlen, kein DNS)
+	Own                                     bool     // Ziel ist ein eigener Knoten derselben Saga (Name frei aufloesen)
+}
+
+// ctokMaxLen: Hoechstlaenge eines Kaskaden-Tokens (wie Saga, fed_horn.CTOK_MAX).
+const ctokMaxLen = 4096
+
+// peerTokenOK: das fremde Token geht unveraendert in eine Kopfzeile der Waehlanfrage - nur Base64url und Punkte
+// (c1.<nutzlast>.<signatur>), im Entwicklungsmodus eine Raumkennung. Kein CR/LF, keine Leerzeichen, nichts anderes.
+func peerTokenOK(dev bool, tok string) bool {
+	if dev {
+		return validRef(tok)
+	}
+	if len(tok) > ctokMaxLen || !strings.HasPrefix(tok, ctokPrefix) {
+		return false
+	}
+	parts := strings.Split(tok[len(ctokPrefix):], ".")
+	if len(parts) != 2 {
+		return false
+	}
+	for _, p := range parts {
+		if p == "" {
+			return false
+		}
+		for i := 0; i < len(p); i++ {
+			if c := p[i]; !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// publicAddr: oeffentliche Unicast-Adresse (IPv4-gemappte IPv6 wie IPv4; NAT64/6to4 mit internem Ziel nicht).
+func publicAddr(a netip.Addr) bool {
+	a = a.Unmap()
+	if !a.IsValid() || a.Zone() != "" || !a.IsGlobalUnicast() || a.IsPrivate() || a.IsLoopback() || a.IsLinkLocalUnicast() {
+		return false
+	}
+	for _, p := range nonPublic {
+		if p.Contains(a) {
+			return false
+		}
+	}
+	if a.Is6() {
+		b := a.As16()
+		if netip.MustParsePrefix("64:ff9b::/96").Contains(a) {
+			return publicAddr(netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]}))
+		}
+		if netip.MustParsePrefix("2002::/16").Contains(a) {
+			return publicAddr(netip.AddrFrom4([4]byte{b[2], b[3], b[4], b[5]}))
+		}
+	}
+	return true
+}
+
+var nonPublic = func() []netip.Prefix {
+	var out []netip.Prefix
+	for _, p := range []string{"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "192.0.2.0/24", "198.18.0.0/15", "198.51.100.0/24",
+		"203.0.113.0/24", "240.0.0.0/4", "::/128", "100::/64", "2001:db8::/32", "2001::/23"} {
+		out = append(out, netip.MustParsePrefix(p))
+	}
+	return out
+}()
+
+// bridgeTargets: Waehlziele der Kaskade (host:port). Fremder Knoten: Saga gibt die geprueften Adressen mit - genau diese,
+// kein erneutes DNS (Rebinding zwischen Pruefung und Waehlen). Eigener Knoten (own, auch im LAN): Name aufloesen.
+// Sonst (aeltere Saga) selbst aufloesen, dann nur oeffentliche Adressen.
+func (s *server) bridgeTargets(ctx context.Context, c cascadeCmd, u *url.URL) ([]string, error) {
+	port := u.Port()
+	if port == "" {
+		port = "443"
+	}
+	if len(c.IPs) > 0 {
+		if len(c.IPs) > 8 {
+			return nil, errors.New("adresse")
+		}
+		var out []string
+		for _, ip := range c.IPs {
+			a, err := netip.ParseAddr(ip)
+			if err != nil || a.Zone() != "" || a.IsUnspecified() || a.IsMulticast() {
+				return nil, errors.New("adresse")
+			}
+			out = append(out, net.JoinHostPort(a.Unmap().String(), port))
+		}
+		return out, nil
+	}
+	if s.cfg.Dev || c.Own {
+		return []string{net.JoinHostPort(u.Hostname(), port)}, nil
+	}
+	lctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupNetIP(lctx, "ip", u.Hostname())
+	if err != nil || len(ips) == 0 {
+		return nil, errors.New("adresse nicht aufloesbar")
+	}
+	var out []string
+	for _, a := range ips {
+		if !publicAddr(a) {
+			return nil, errors.New("interne adresse")
+		}
+		out = append(out, net.JoinHostPort(a.Unmap().String(), port))
+	}
+	return out, nil
 }
 
 // bridgeSet haelt die Bruecken des Knotens.
@@ -848,8 +953,11 @@ func (s *server) cascade(c cascadeCmd) error {
 	if !validRef(c.Bridge) || !validRef(c.Room) {
 		return errors.New("kennung")
 	}
+	if !peerTokenOK(s.cfg.Dev, c.Token) {
+		return errors.New("token der gegenseite")
+	}
 	u, err := url.Parse(c.URL)
-	if err != nil || u.Scheme != "https" || u.Host == "" {
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" {
 		return errors.New("adresse")
 	}
 	bs := s.bridges()
@@ -922,6 +1030,17 @@ func (s *server) dialLoop(ctx context.Context, d *dialState) {
 
 // dialBridge baut die Verbindung zum annehmenden Knoten auf.
 func (s *server) dialBridge(ctx context.Context, c cascadeCmd) (*bridge, error) {
+	if !peerTokenOK(s.cfg.Dev, c.Token) || !validRef(c.Bridge) { // geht in Kopfzeilen: vor jedem Waehlen pruefen
+		return nil, errors.New("token der gegenseite")
+	}
+	u, err := url.Parse(c.URL)
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return nil, errors.New("adresse")
+	}
+	targets, err := s.bridgeTargets(ctx, c, u)
+	if err != nil {
+		return nil, err
+	}
 	room := s.node.Room(c.Room)
 	if room == nil {
 		s.mu.Lock()
@@ -935,15 +1054,15 @@ func (s *server) dialBridge(ctx context.Context, c cascadeCmd) (*bridge, error) 
 			return nil, err
 		}
 	}
-	u, _ := url.Parse(c.URL)
-	host := u.Host
-	if u.Port() == "" {
-		host = net.JoinHostPort(u.Hostname(), "443")
-	}
 	dctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	nd := &net.Dialer{Timeout: 5 * time.Second}
-	raw, err := nd.DialContext(dctx, "tcp", host)
+	var raw net.Conn
+	for _, t := range targets { // genau die gepruefte Adresse; Name nur fuer SNI und Host
+		if raw, err = nd.DialContext(dctx, "tcp", t); err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return nil, err
 	}

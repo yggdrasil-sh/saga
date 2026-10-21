@@ -20,6 +20,7 @@
   </form>
   {% set ready_n = hs.nodes|selectattr('status', 'equalto', 'ready')|list|length %}
   {% if hs.horn_on and not ready_n %}<p class="adm-note" role="note">{{ _("Gerade ist kein Knoten bereit – Gruppenanrufe laufen im Mesh (bis 4 mit Video / 6 nur Ton).") }}</p>{% endif %}
+  {% if hs.rekey %}<p class="adm-note" role="alert">{{ _("Knoten müssen neu gekoppelt werden: Der Signaturschlüssel von Saga hat sich geändert (SECRET_KEY gewechselt oder Wiederherstellung ohne Gjallarhorn-Einstellungen). Diese Knoten lehnen Saga deshalb ab: {names}. Knoten entfernen, auf dem Knoten HORN_DATA leeren und mit „Erweitern“ neu koppeln.", names=hs.rekey|join(', ')) }}</p>{% endif %}
   {% if hs.hint %}<p class="adm-note horn-hint" role="note">{{ _("Deine Knoten waren zuletzt oft ausgelastet. Mit <b>Erweitern</b> kommt ein weiterer dazu.")|safe }}</p>{% endif %}
 
   <h4 class="horn-h">{{ _("Knoten") }}</h4>
@@ -99,6 +100,7 @@ ports:
       <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Skript erzeugen") }}</button></div>
     </form>
     <div class="horn-pair-out" {% if not pair %}hidden{% endif %} data-pid="{{ pair.id if pair else '' }}">
+      {% if hs.saga_warn %}<p class="adm-note" role="alert">{{ hs.saga_warn }}</p>{% endif %}
       <p>{{ _("Führe dies auf dem neuen Server aus (Docker nötig). Das Skript enthält einen <b>einmaligen Kopplungs-Code</b>, gültig bis {time}. Danach ist er wertlos.", time='<time class="horn-exp">' ~ ((pair.expires|dt) if pair else '') ~ '</time>')|safe }}</p>
       <pre class="bk-pre horn-script" data-file="gjallarhorn-{{ pair.name if pair else 'knoten' }}.sh">{{ pair.script_docker if pair else '' }}</pre>
       <p><button class="btn" type="button" data-copy=".horn-script">{{ _("Kopieren") }}</button>
@@ -114,8 +116,8 @@ ports:
         <li data-k="paired" hidden>{{ _("Gekoppelt") }}</li>
         <li data-k="dns" hidden data-ok="{{ _('DNS eingetragen') }}" data-skip="{{ _('DNS: Einträge selbst anlegen (siehe unten)') }}" data-warn="{{ _('DNS: Name liegt nicht in der Cloudflare-Zone') }}" data-err="{{ _('DNS: Eintrag fehlgeschlagen') }}">{{ _("DNS eingetragen") }}</li>
         <li data-k="cert" hidden data-run="{{ _('Zertifikat wird geholt …') }}" data-ok="{{ _('Zertifikat erhalten') }}" data-err="{{ _('Zertifikat fehlt') }}">{{ _("Zertifikat erhalten") }}</li>
-        <li data-k="tcp" hidden data-ok="{{ _('Port 443/TCP erreichbar ✓') }}" data-err="{{ _('Port 443/TCP nicht erreichbar – Firewall prüfen, der Knoten versucht es weiter') }}">{{ _("Port 443/TCP erreichbar ✓") }}</li>
-        <li data-k="udp" hidden data-ok="{{ _('UDP 443 erreichbar ✓') }}" data-no="{{ _('UDP 443: nicht erreichbar (optional)') }}" data-off="{{ _('UDP 443: aus') }}">{{ _("UDP 443: nicht erreichbar (optional)") }}</li>
+        <li data-k="tcp" hidden data-ok="{{ _('Port {port}/TCP erreichbar ✓', port='{port}') }}" data-err="{{ _('Port {port}/TCP nicht erreichbar – Firewall prüfen, der Knoten versucht es weiter', port='{port}') }}">{{ _("Port {port}/TCP erreichbar ✓", port='443') }}</li>
+        <li data-k="udp" hidden data-ok="{{ _('UDP {port} erreichbar ✓', port='{port}') }}" data-no="{{ _('UDP {port}: nicht erreichbar (optional)', port='{port}') }}" data-off="{{ _('UDP {port}: aus', port='{port}') }}">{{ _("UDP {port}: nicht erreichbar (optional)", port='443') }}</li>
         <li data-k="done" hidden data-expired="{{ _('Code abgelaufen – bitte neu erzeugen.') }}">{{ _("Fertig.") }}</li>
       </ol>
       <noscript><p class="hk-hint">{{ _("Seite neu laden, um den Fortschritt zu sehen.") }}</p></noscript>

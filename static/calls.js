@@ -779,7 +779,15 @@
     // 2.5 P10: Gruppenanruf ueber Servergrenzen ohne Knoten (ein Server kann keinen nutzen) - einmal klar sagen
     if (extra && extra.horn_mesh && !R.meshNote) { R.meshNote = true; HK.toast(extra.horn_mesh, null, null, 12000); }
     var old = {}; (R.legs || []).forEach(function (x) { old[x.device] = x; });
-    var first = !R.legs, here = bridge() ? myDev().id : '';
+    var first = !R.legs, here = bridge() ? myDev().id : '', gone = (extra && extra.gone) || {};
+    // 2.5 (Nr. 121): der fuehrende Server hat dieses Geraet ausgetragen (Notaus fuer Gjallarhorn-Knoten) - Medien sind weg,
+    // also klar beenden statt mit eingefrorenem Bild und "guter Verbindung" weiterzulaufen
+    if (here && gone[here] && !R.ending) {
+      R.ending = true;
+      finish(R, gone[here] === 'notaus' ? T('Du wurdest getrennt: Der Server des Anrufs hat den Notaus für Gjallarhorn-Knoten für deinen Server eingeschaltet.')
+        : T('Du bist nicht mehr im Anruf.'), 'info');
+      return;
+    }
     R.legs = legs;
     if (extra && extra.limit) R.limit = extra.limit;
     var mine = myLeg(R);
@@ -791,7 +799,9 @@
         HK.toast(T('{name} ({dev}) ist hinzugekommen', { name: x.name || '?', dev: x.dev_name || T('Gerät') }));
     });
     Object.keys(old).forEach(function (d) {
-      if (!now[d] && d !== here && R.inRoom) HK.toast(T('{name} ({dev}) hat den Anruf verlassen', { name: old[d].name || '?', dev: old[d].dev_name || T('Gerät') }));
+      if (!now[d] && d !== here && R.inRoom) HK.toast(gone[d] === 'notaus'
+        ? T('{name} ({dev}) wurde getrennt (Notaus für Gjallarhorn-Knoten)', { name: old[d].name || '?', dev: old[d].dev_name || T('Gerät') })
+        : T('{name} ({dev}) hat den Anruf verlassen', { name: old[d].name || '?', dev: old[d].dev_name || T('Gerät') }));
     });
     links(R).forEach(function (L) { if (L.peerDevice && !now[L.peerDevice] && L.established) dropLink(L, ''); });
     if (R.horn) { hornKeys(R); hornMap(R); var q0 = R.horn.X ? R.horn.q.splice(0) : []; q0.forEach(function (d) { hornSig(R, d); }); hornRunes(R); hornList(R); }
@@ -893,7 +903,9 @@
       return R.call.topo === 'horn' ? hornJoin(R, role) : offerAll(R, role, rep, false);
     }).catch(function (e) {
       if (!live(R) || e === null) return;
-      if (R.inRoom) api('POST', '/api/calls/' + id + '/leave', { device: dev }).catch(function () {});
+      // Nr. 108/109: auch nach einem Fehler der Beitrittsanfrage selbst (z. B. 5xx) austragen - sonst bleibt ein Bein ohne
+      // Person, und die Leiste "Gruppenanruf laeuft · Beitreten" fehlt, weil das Geraet als "dabei" gilt
+      if (R.inRoom || R.joinSent) api('POST', '/api/calls/' + id + '/leave', { device: dev }).catch(function () {});
       finish(R, (e && e.message) || T('Beitreten ging nicht.'), 'error');
     });
   }
@@ -901,6 +913,7 @@
   function hornJoin(R, role) {
     if (myCaps().indexOf('horn') < 0) return Promise.reject(new Error(T('Dafür braucht dieses Gerät Saga 2.5.')));
     hornNew(R, null);
+    R.joinSent = true;
     return api('POST', '/api/calls/' + R.id + '/join', { device: myDev().id, role: role === 'handover' ? 'member' : role, caps: myCaps(),
                                                          dev_class: mobile ? 'mobile' : 'desktop' }).then(function (r) {
       if (!live(R)) { api('POST', '/api/calls/' + R.id + '/leave', { device: myDev().id }).catch(function () {}); return; }
@@ -932,6 +945,7 @@
     })).then(function () {
       var body = { device: me_, role: role, caps: myCaps(), signals: sig };
       if (rep && role === 'handover') body.replaces = rep;
+      R.joinSent = true;
       return api('POST', '/api/calls/' + R.id + '/join', body);
     }).then(function (r) {
       if (!live(R)) { api('POST', '/api/calls/' + R.id + '/leave', { device: me_ }).catch(function () {}); return; }
@@ -2783,7 +2797,9 @@
         T_.track = tr; T_.v.srcObject = tr ? new MediaStream([tr]) : null; if (tr) T_.v.play().catch(function () {});
       }
       if (s.cam === false) T_.hasStill = false;
-      var frames = !!tr && T_.v.readyState >= 2;      // Rahmen da (sonst bis zum ersten Bild Standbild bzw. Bild der Person)
+      // Rahmen da (sonst bis zum ersten Bild Standbild bzw. Bild der Person). Nr. 067: erst mit echtem Bild (Breite > 0) -
+      // vorher bleibt die Kachel dunkel mit Avatar wie im Mesh statt einer leeren hellen Flaeche
+      var frames = !!tr && T_.v.readyState >= 2 && T_.v.videoWidth > 0;
       T_.box.classList.toggle('has-video', frames && s.cam !== false);
       T_.box.classList.toggle('still', !frames && T_.hasStill);
       T_.box.classList.toggle('big', !!t.big);
@@ -2882,7 +2898,8 @@
       var pn = H.L.pathName(cur.path), q_ = cur.q || 'good', net = cur.net || {};
       var pth = el('span', 'cl-path cl-hpath cl-q cl-q-' + q_, pn);
       var qt = q_ === 'good' ? T('gute Verbindung') : q_ === 'mid' ? T('mittlere Verbindung') : T('schwache Verbindung');
-      pth.title = T('Weg zum Knoten {node}: {path}', { node: cur.node, path: cur.path === 'udp' ? T('UDP (schnellster Weg)') : cur.path === 'turn' ? T('TLS über Port 443 (Rückfall)') : T('TCP über Port 443') })
+      var port = '443'; try { port = new URL(cur.url).port || '443'; } catch (e) { /* ohne Adresse: Standard */ }   // tatsaechlicher Port des Knotens
+      pth.title = T('Weg zum Knoten {node}: {path}', { node: cur.node, path: cur.path === 'udp' ? T('UDP (schnellster Weg)') : cur.path === 'turn' ? T('TLS über Port {port} (Rückfall)', { port: port }) : T('TCP über Port {port}', { port: port }) })
         + ' · ' + qt + (net.rtt != null ? ' · RTT ' + net.rtt + ' ms' : '') + (net.loss ? ' · ' + T('Verlust {p} %', { p: Math.round(net.loss * 1000) / 10 }) : '');
       pth.setAttribute('aria-label', pth.title);
       i.appendChild(pth);
@@ -3017,6 +3034,9 @@
   }
   // Vor dem Start eines Gruppenanrufs: kein Knoten bereit und die Gruppe ist groesser als die Mesh-Grenze -> Hinweis
   function hornHintNeeded(chat, video) {
+    // Foederierter Chat (Nr. 118): ob ein Knoten bereitsteht, entscheidet das Heim (geteilte Knoten anderer Server, Kaskade);
+    // der Server nennt beim Mesh-Rueckfall selbst den Grund (call.horn_mesh) - hier nicht nur die eigenen Knoten befragen
+    if (chat && chat.fed) return false;
     var n = chat && chat.members ? chat.members.length : 0, lim = cfg && cfg.limits ? (video ? cfg.limits.endpoints_video : cfg.limits.endpoints_audio) : 0;
     return !!(cfg && feat('horn') && cfg.horn_ready === false && lim && n > lim);
   }

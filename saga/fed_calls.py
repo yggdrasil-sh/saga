@@ -295,7 +295,9 @@ def group_start(uid, ch, cid, media, dev, caps):
         print(f"call: {cid[:8]} Gruppenanruf beim Heim {p['host']}{' (ueber Knoten)' if topo == 'horn' else ''}", flush=True)
         out = calls._dict(c, calls._load(c, cid), uid)
     if topo == "horn":                                 # 2.5 P10: Kandidaten (geteilte Knoten des Heims und eigene)
-        out["horn"], _ = FH.block(uid, call, dev, "member")
+        out["horn"], err = _horn_block(uid, call, dev, "member")
+        if err:
+            return err
     return chat._no_store({"ok": True, "call": out})
 
 
@@ -326,8 +328,24 @@ def join(uid, call, dev, role, rep, caps, sig):
         calls.emit_roster(c, cur, fed=False)
         out = calls._dict(c, cur, uid)
     if calls.is_horn(cur):                             # 2.5 P10: Kandidaten (geteilte Knoten des Heims und eigene)
-        out["horn"], _ = FH.block(uid, cur, dev, role)
+        out["horn"], err = _horn_block(uid, cur, dev, role)
+        if err:
+            return err
     return chat._no_store({"ok": True, "call": out})
+
+
+def _horn_block(uid, call, dev, role):
+    """Kandidaten nach dem Eintragen beim Heim. Unerwarteter Fehler: das Geraet sofort wieder austragen (hier und beim Heim),
+    sonst bleibt ein Bein ohne Person im Anruf (Nr. 108). -> (block, fehlerantwort)"""
+    try:
+        return FH.block(uid, call, dev, role)[0], None
+    except Exception as ex:  # noqa: BLE001
+        print(f"call: {call['id'][:8]} Knoten-Kandidaten fehlgeschlagen ({type(ex).__name__}: {ex}) - Geraet ausgetragen", flush=True)
+        try:
+            leave(uid, call, dev)
+        except Exception as ex2:  # noqa: BLE001
+            print(f"call: {call['id'][:8]} austragen fehlgeschlagen ({type(ex2).__name__})", flush=True)
+        return None, _bad(t("Beitreten ging nicht – bitte noch einmal versuchen."), 502)
 
 
 def leave(uid, call, dev):
@@ -404,6 +422,9 @@ def roster_out(c, call, legs, ring=None):
             "rv": time.time(),
             "created": call["created"], "from": _h(c, call["caller"]), "from_device": call["caller_device"], "legs": [_leg_out(c, x) for x in legs],
             "topo": call.get("topo") or "mesh", **({"horn_mesh": HORN_MESH[call["id"]]} if HORN_MESH.get(call["id"]) else {})}
+    g = calls.gone(c, call["id"])
+    if g:
+        base["gone"] = g                               # 2.5: Grund fuer Abgaenge (Notaus) - der andere Server reicht ihn weiter
     for p in peers:
         mine = [FC.handle_of(u) for u in (ring or []) if FC.split_handle(FC.handle_of(u) or "")[1] == p["host"]]
         body = dict(base, ring=mine, invites={FC.handle_of(u): st for u, st in inv.items()
@@ -447,7 +468,7 @@ def group_ended(c, call, reason):
         c.after_commit(lambda pid=p["id"], body=body: FC._volatile(pid, body, path="/fed/v2/call", drop=False))
 
 
-def _apply_legs(c, call, peer, legs, keep=None):
+def _apply_legs(c, call, peer, legs, keep=None, gone=None):
     """Teilnehmerliste des fuehrenden Servers hier uebernehmen: Endpunkte anlegen/aktualisieren, fehlende austragen.
     Eigene Geraete nur, wenn sie wirklich zum genannten Konto gehoeren."""
     if not isinstance(legs, list):
@@ -476,7 +497,9 @@ def _apply_legs(c, call, peer, legs, keep=None):
         calls._leg_put(c, call["id"], dev, who, role, None if local else peer["id"], calls.caps_in(x.get("caps")), rep, name=_name(x), now=now)
     for x in calls._legs(c, call["id"]):
         if x["device"] not in seen and x["device"] != keep:
-            c.execute("UPDATE chat_call_leg SET state='left', left_at=?, reason='roster' WHERE call_id=? AND device=?", (now, call["id"], x["device"]))
+            why = (gone or {}).get(x["device"]) if isinstance(gone, dict) else None
+            why = why if why in calls.GONE_REASONS else "roster"     # 2.5: Grund des fuehrenden Servers (Notaus) uebernehmen
+            c.execute("UPDATE chat_call_leg SET state='left', left_at=?, reason=? WHERE call_id=? AND device=?", (now, why, call["id"], x["device"]))
 
 
 # =====================================================================================================
@@ -790,7 +813,7 @@ def op_roster(c, peer, d):
         _RV[cid] = rv
         if len(_RV) > 5000:
             _RV.clear()
-    _apply_legs(c, call, peer, d.get("legs"))
+    _apply_legs(c, call, peer, d.get("legs"), gone=d.get("gone"))
     if call["kind"] == "group":
         upd = {"seen_b": now}
         if d.get("state") == "active" and call["state"] == "ringing":

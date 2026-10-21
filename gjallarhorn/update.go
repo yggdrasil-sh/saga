@@ -40,6 +40,7 @@ type updater struct {
 	want    string
 	solo    bool
 	staged  string
+	refused string // zuletzt abgelehnte aeltere Zielversion (nur einmal melden)
 	state   string // "" | aus | manuell | laden | fehler | bereit | leeren | wartet
 	code    string // fuer Saga (uebersetzter Text): nokey | nowatch | sig | download | wait24
 	err     string
@@ -68,7 +69,14 @@ func (u *updater) target(want string, solo bool) {
 		return
 	}
 	u.mu.Lock()
-	if want != "" && validVersion(want) && want != u.want {
+	switch {
+	case want == "" || !validVersion(want) || want == u.want || want == version:
+	case !newerThan(want, version): // Downgrade-Schutz: nie auf eine aeltere (signierte) Version mit bekannter Luecke
+		if want != u.refused {
+			u.refused = want
+			log.Printf("update: %s ist nicht neuer als %s - nicht geladen", want, version)
+		}
+	default:
 		u.want, u.nextTry, u.backoff = want, time.Time{}, u.first
 	}
 	u.solo = solo
