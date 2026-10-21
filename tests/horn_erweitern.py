@@ -616,7 +616,7 @@ def builtin_switch():
 
 
 def e2e(node0, alt, acme_bin):
-    root = os.path.join(STATE, "ct150")
+    root = os.path.join(STATE, "host2")
     os.makedirs(root)
     # Release-Server: Deploy-Skript bekommt das "alte" Binaer (als Saga-Version signiert), das Update kommt spaeter
     ab = open(alt, "rb").read()
