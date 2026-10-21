@@ -195,7 +195,7 @@
     bar.appendChild(btn(icon(video ? 'cam' : 'phone'), 'cl-green cl-big', function () { accept(d, video); }, video ? T('Mit Video annehmen') : T('Annehmen')));
     box.appendChild(bar);
     document.body.appendChild(box);
-    RINGS[d.call_id] = { box: box, d: d, loud: false };
+    RINGS[d.call_id] = { box: box, d: d, loud: false, at: Date.now() };
     ringLoud(d.call_id);
     flashTitle(true, from.name || '?');
     var left = Math.max(5, (d.expires_in != null ? d.expires_in : d.ring_s || 45)) * 1000 + 3000;
@@ -3082,11 +3082,12 @@
         }
       }
     } else if (t === 'call.mod') hornModIn(d);       // 2.5: Gastgeber hat stummgeschaltet bzw. entfernt
-    else if (t === 'resync') pending();
+    else if (t === 'resync' || t === 'live.hello') pending();   // 2.5 (Nr. 173): auch beim ersten hello (Luecke nach dem Laden)
   });
   // Seite neu geladen/geoeffnet, waehrend es klingelt
   // 2.4: dazu Gruppenanrufe (Einladung klingelt) und die Leiste "Anruf laeuft" (anderes eigenes Geraet, Gruppe im Chat)
   function pending() {
+    var t0 = Date.now();
     api('GET', '/api/calls/active').then(function (r) {
       var seen = {};
       (r.calls || []).forEach(function (x) {
@@ -3101,6 +3102,9 @@
         runBar(x);
       });
       Object.keys(RUN).forEach(function (id) { if (!seen[id]) hideRun(id); });
+      // 2.5 (Nr. 173): 1:1-Anruf klingelt hier noch, ist aber vorbei (Ende-Ereignis kam, bevor der Live-Kanal stand) -
+      // nur Klingeln, die schon vor dieser Abfrage da waren
+      Object.keys(RINGS).forEach(function (id) { var g = RINGS[id]; if (!seen[id] && !g.d.group && g.at < t0) unring(id); });
     }).catch(function () {});
   }
   // Ohne Live-Kanal (Proxy puffert SSE o. Ae.): Klingeln und Signale abfragen

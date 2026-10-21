@@ -104,6 +104,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Zahl der verbundenen Geräte. Hinter nginx braucht `/api/push/stream` die WebSocket-Köpfe und ein langes
   `proxy_read_timeout` (Anleitung, Abschnitt Reverse Proxy).
 
+### Behoben (Testrunde Web 2.5)
+- **1:1-Anruf klingelte manchmal nicht** (Nr. 173, schon in 2.4): Kam ein Anruf in der Lücke zwischen dem Laden der Seite
+  und dem Aufbau des Live-Kanals (der startet erst ≈2 s nach dem Laden), ging das Ereignis verloren – der Anrufer sah
+  „Klingelt …“, beim Gegenüber blieb es still. Der Browser gleicht laufende Anrufe jetzt bei jedem `hello` des Live-Kanals ab
+  (neues internes Ereignis `live.hello`) und nimmt dabei auch ein Klingeln weg, dessen Ende in dieser Lücke lag.
+  Regressionstest `tests/browser_klingeln.js` (verzögert den Live-Kanal gezielt, läuft in `browser_v3` in Stufe 3).
+
 ### Neu (Vorbereitung 2.5, Gjallarhorn)
 - **Horn-Probe** (`gjallarhorn/`, Paket P0): Prototyp des Gjallarhorn-Knotens als eigenes Go-Programm (Pion, nur
   MIT/BSD/Apache-Abhängigkeiten). `gjallarhorn probe` öffnet einen Port für HTTPS-Messseite, TURN-TLS (nur zum Knoten

@@ -258,8 +258,12 @@
     var helloT = setTimeout(function () { if (!L.hello && L.es === es) fallback('timeout'); }, 15000);   // Proxy puffert?
     on(es, 'hello', function () {
       clearTimeout(helloT); L.hello = true; L.fails = 0; stopPoll();
+      var first = !!L.first;
       if (L.first) { L.first = false; L.down = false; count().catch(function () {}); }
       else if (L.down) { L.down = false; resync(); }
+      // 2.5 (Nr. 173): Kanal steht - was zwischen dem Laden der Seite und jetzt geschah, kam nicht live (z. B. ein Anruf,
+      // der klingelt, oder sein Ende); Anrufe gleichen deshalb bei jedem hello ab
+      document.dispatchEvent(new CustomEvent('hk-live', { detail: { type: 'live.hello', data: { first: first } } }));
       // Anwesenheit neu melden: wer kam, waehrend der Kanal noch aufgebaut wurde, erscheint sonst erst beim naechsten Ping
       if (NOTES && P.id) ping();
     });
