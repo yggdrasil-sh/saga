@@ -130,6 +130,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Admin-Kopfleiste** bei mittleren Breiten (721–1600 px): Titel und Knöpfe in einer Zeile, die Reiter darunter in einer
   waagrecht scrollbaren Zeile (wie am Handy) statt in zwei bis drei umgebrochenen Zeilen; der aktive Reiter steht mittig.
 - **Emoji-Leiste** (Nr. 034): keine leere Trennlinie mehr unter der Schnellleiste.
+- **Kleinigkeiten im Chat:** Bearbeiten mit leerem Text sagt jetzt, dass das nicht geht (und wie man löscht), statt still
+  abzubrechen (Nr. 044); Tempo der Sprachnachricht in der Schreibweise der Sprache („1,5×“, Nr. 049); im Kopf von Gruppen
+  steht „du“ zuerst (Nr. 058); die Eingabe des Wiederherstellungsschlüssels nennt das Format (Nr. 061); die Zeit in der
+  Chatliste („vor 12 Sekunden“) läuft mit (Nr. 032).
 
 ### Neu (Vorbereitung 2.5, Gjallarhorn)
 - **Horn-Probe** (`gjallarhorn/`, Paket P0): Prototyp des Gjallarhorn-Knotens als eigenes Go-Programm (Pion, nur

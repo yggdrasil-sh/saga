@@ -290,6 +290,8 @@
     var box = overlay(T('Wiederherstellungsschlüssel eingeben'), { close: false });
     var inp = el('input', 'hk-in ct-rk-in'); inp.autocomplete = 'off'; inp.spellcheck = false; inp.placeholder = 'XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX';
     inp.setAttribute('aria-label', T('Wiederherstellungsschlüssel'));
+    // Testrunde Web Nr. 061: Format nennen (Gross-/Kleinschreibung, Bindestriche und Leerzeichen sind egal)
+    box.appendChild(el('p', 'hk-hint', T('Ein Wiederherstellungsschlüssel hat 32 Zeichen (A–Z, 2–7).') + ' ' + T('Bindestriche, Leerzeichen und Kleinbuchstaben sind egal.')));
     box.appendChild(inp);
     var st = status(box), bar = el('div', 'hk-actions'); box.appendChild(bar);
     bar.appendChild(btn(T('Zurück'), '', newDevice));
@@ -454,6 +456,13 @@
   }
 
   // --- Bereit: Liste, Hash-Ziel, Live ----------------------------------------------------------------------------
+  // Testrunde Web Nr. 032: "vor 12 Sekunden" in der Liste mitlaufen lassen
+  setInterval(function () {
+    if (document.hidden) return;
+    [].forEach.call(document.querySelectorAll('#ct-list .ct-item-time[data-ts]'), function (x) {
+      var v = HK.relTime(+x.dataset.ts - Date.now() / 1000); if (x.textContent !== v) x.textContent = v;
+    });
+  }, 30000);
   function ready(fresh) {
     // 2.5 (Nr. 063): gesichertes Vertrauen holen - auf einem gerade eingerichteten Geraet VOR dem ersten Laden (TOFU),
     // sonst nebenher (anderes eigenes Geraet hat etwas als ueberprueft markiert)
@@ -720,7 +729,8 @@
           ' · ' + T('{n} Personen', { n: c.member_count }) + (c.muted ? ' · 🔕' : '')));
       b.appendChild(t);
       var side = el('span', 'ct-item-r');
-      side.appendChild(el('span', 'ct-item-time', HK.relTime((c.last_at || c.created) - Date.now() / 1000)));
+      var tm = el('span', 'ct-item-time', HK.relTime((c.last_at || c.created) - Date.now() / 1000)); tm.dataset.ts = String(c.last_at || c.created);
+      side.appendChild(tm);
       if (c.unread) { var n = el('span', 'ct-badge', String(c.unread)); n.setAttribute('aria-label', T('{n} ungelesen', { n: c.unread })); side.appendChild(n); }
       b.appendChild(side);
       // Rechtsklick, Kontextmenue-Taste (Shift+F10) und Langdruck: Archivieren, Stummschalten, Loeschen (2.1)
@@ -1040,7 +1050,8 @@
       presenceChip(sub, p.username);
     } else {
       var mine = String(c.my_handle || '').split('@').slice(1).join('@');
-      sub.appendChild(document.createTextNode(c.members.map(function (m) {
+      // Testrunde Web Nr. 058: "du" zuerst statt alphabetisch dazwischen
+      sub.appendChild(document.createTextNode(c.members.filter(function (m) { return m.me; }).concat(c.members.filter(function (m) { return !m.me; })).map(function (m) {
         return m.me ? T('du') : m.name + (isRemote(c) && m.host && m.host !== mine ? ' (' + m.host + ')' : '');
       }).join(', ')));
       if (isFed(c) && c.request) sub.appendChild(el('span', 'ct-chip', T('Anfrage')));
@@ -1728,7 +1739,10 @@
   }
   function editCancel() { S.edit = null; $('ct-input').value = ''; autosize(); drawReply(); micDraw(); $('ct-input').focus(); }
   function editSend(c, m, text) {
-    if (!text.trim() || text === (m.body || {}).text) { editCancel(); return; }
+    if (!text.trim()) {                                   // Testrunde Web Nr. 044: nicht still abbrechen
+      HK.toast(T('Eine Nachricht kann nicht leer sein – zum Entfernen „Für alle löschen“ im Menü der Nachricht wählen.')); $('ct-input').focus(); return;
+    }
+    if (text === (m.body || {}).text) { editCancel(); return; }
     Object.keys(S.mentions).forEach(function (label) { if (text.indexOf(label) >= 0) text = text.split(label).join('[[note:' + S.mentions[label] + ']]'); });
     sending = true; $('ct-send').disabled = true;
     sendV2(c, { edit: m.id, t: text }, null, null, 'edit').then(function () {
