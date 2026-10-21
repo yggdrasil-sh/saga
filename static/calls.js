@@ -2678,8 +2678,10 @@
     var H = R.horn, cur = H.cur, onCur = {};
     if (cur) cur.audios.forEach(function (a) { var d = hornAudioOwner(cur, a._i); if (d && hornAudioLive(a, d)) onCur[d] = true; });
     hornConns(R).forEach(function (c) {
+      var seen = {};                                   // P9: derselbe Absender zweimal am Knoten (direkt und ueber eine Bruecke)
       c.audios.forEach(function (a) {
-        var ow = hornAudioOwner(c, a._i), dup = c !== cur && onCur[ow];
+        var ow = hornAudioOwner(c, a._i), dup = (c !== cur && onCur[ow]) || (ow && seen[ow]);
+        if (ow) seen[ow] = true;
         var m = !R.spkOut || !!dup;
         a.dataset.owner = ow ? ow.slice(0, 8) : '';      // Diagnose (Tests)
         if (a.muted !== m) a.muted = m;

@@ -72,8 +72,12 @@ def reconcile(now=None):
                          "WHERE k.topo='horn' AND k.state<>'ended' AND k.lead IS NULL AND l.state='active' AND l.node IS NOT NULL "
                          "GROUP BY l.call_id, l.node").fetchall()
         by = {}
+        ok = {n["id"] for n in horn.ready_nodes(c)} if rows else set()
         for cid, node, n in rows:
-            by.setdefault(cid, []).append((node, n))
+            # nur bereite eigene Knoten: beim Leeren/Ausfall ziehen die Geraete ohnehin um (make-before-break) - eine
+            # Bruecke zum alten Knoten wuerde sie doppelt in den neuen Raum bringen
+            if node.startswith("f:") or node in ok:
+                by.setdefault(cid, []).append((node, n))
         want = {}
         for cid, lst in by.items():
             hub, spokes = plan(lst, _HUB.get(cid))
