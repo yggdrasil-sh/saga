@@ -955,3 +955,55 @@ PUT /api/chat/privacy
   einer Bearbeitungspause und beim Verlassen einer Seite rufen (optional; ältere Server: 404 ignorieren).
 - **Anmeldung:** Fehlversuche bremsen statt sperren; die Meldung (429/401 mit `error`) nennt die Wartezeit. Eine harte
   Sperre gibt es nur nach sehr vielen Versuchen von vielen Adressen (Benachrichtigung `login.locked`, `system: true`).
+
+## Chat-Stufe 3: Krypto über Handles (2.5, in Arbeit)
+
+Stand der ersten Stufe; Konzept „Krypto v3 über Handles“. **Kein neues Krypto-Format:** Chats der Stufe 3 sind
+`saga-chat/v2` (`docs/APP-API-FED.md`, Abschnitt 6) – gebunden an den stabilen Handle `~x@host` und `chat_ref` –, auch
+wenn alle Mitglieder auf diesem Server sind. Der Server legt neue lokale Chats nur dann in Stufe 3 an, wenn die
+Einstellung `chat_v3` an ist (vorerst Standard aus) und alle Mitglieder ein Handle-Zertifikat haben (jedes Konto mit
+einem Gerät ab App 2.3). Bestehende Chats bleiben vorerst v1.
+
+- **Kopfzeile `X-Saga-Chat`:** höchste Chat-Stufe des Clients. `3` (Apps/Web 2.5): Chat mit `v: 3`, `fed: false`.
+  `2` (Apps/Web 2.3/2.4): **Kompat-Sicht** – derselbe Chat als `v: 2` mit `ref`, `home_self: true`, `my_handle`; die
+  Krypto passt, die Apps nehmen ihre v2-Wege. Ohne Kopfzeile (2.1/2.2): `fed_hint` „mit Saga 2.5 öffnen“, keine
+  Nachrichten, Senden 400. `GET /api/chat/me` meldet `features` mit `chat3`, solange die Einstellung an ist.
+- **Keine Anmeldenamen anderer Konten:** `members[].username` ist für andere Konten der Handle (= `handle`), das eigene
+  Konto bleibt unverändert (`me: true`). Ebenso `peer.username`, `sender.username` (Nachrichten mit `sender_handle`),
+  `recipients_v2[].username`, `receipts[].from`, `title_msg.sender`, Live-Ereignisse `chat.message` (`sender`),
+  `chat.typing` (`user.username`), `chat.receipt` (`from`), `chat.removed`/`chat.cleared` (`by.username`) – das eigene
+  Konto bekommt in Ereignissen weiter den eigenen Benutzernamen. `devices`/`idents` in `GET …/messages` gibt es nur
+  noch für Nachrichten im alten Format (ohne `sender_handle`).
+- **Endpunkte nehmen den Handle:** `DELETE /api/chats/{id}/members/{handle}`, `POST /api/chats/{id}/members`
+  (`user` = Such-Handle oder Handle `~x@host`), `POST /api/chat/presence` (`users`; Antwort und `chat.presence` unter
+  der angefragten Kennung).
+- **Schlüssel:** `GET /api/chat/v2/keys` liefert Schlüssel von Konten dieses Servers nur für sich selbst und Personen
+  mit einem (früheren) gemeinsamen Chat. `GET /api/chat/keys` (v1) zählt Chats der Stufe 3 nicht. Ändern sich Schlüssel
+  (neues Gerät, Zertifikate, neue Geräte-Liste), bekommen Chat-Partner mit einem gemeinsamen v2-/Stufe-3-Chat das
+  Live-Ereignis `chat.keys.changed {handle}` – auch ohne Föderation.
+- **Anrufe:** saga-call/v2 wie über Servergrenzen – Anruf-Objekt mit `v: 2`, `peer.username` = `peer.handle` (+ `host`),
+  `legs[].who` für andere als Handle (mit `handle`, `host`; Schlüssel über `/api/chat/v2/keys`), `call.ring`/`call.invite`
+  mit `from` als Handle, `call.state.by` als Handle, Anruf-Eintrag im Chat (`kind: call`) mit `from`/`to` als Handles.
+  `POST /api/calls/{id}/invite` nimmt Handles.
+- **Umstellung bestehender Chats:** Der Server stellt Chats v1 auf Stufe 3 um, sobald alle aktiven Geräte `chat3` melden
+  (Clients der Stufe 3 tun das automatisch bei jeder Anfrage mit `device`), spätestens nach `chat_v3_days`. Danach:
+  Chat-Objekt mit `v3: {seq, at, forced}`; Nachrichten mit `seq ≤ v3.seq` bzw. ohne `sender_handle` mit v1 prüfen
+  (Absender-Benutzername und `devices`/`idents` gibt es dafür weiter), alles danach im Format v2; Systemzeile
+  `{"type": "crypto", "level": 3, "verify"?: true}`. In Chats v1 liefert der Server Clients der Stufe 3
+  `members[].handle`: daraus übernimmt die App ihr Vertrauen `trust:<benutzer>` → `trust2:<handle>`, aber nur bei gleichem
+  Identitätsschlüssel (`tests/vectors/chat_v3.json`, `tofu_migrate`). Senden v1 in einen gerade umgestellten Chat: 409
+  mit `chat_changed: true` – Chat neu laden.
+- **Reaktionen, Bearbeiten, Sprachnachrichten (`x3_ok`):** nur, wenn das Chat-Objekt `x3_ok: true` meldet (Format v2,
+  angenommen, nicht schreibgeschützt, alle Server mit `chat3`); `GET /api/chat/me` meldet `features` mit `react`, `edit`,
+  `voice` und `x3_limits` (`edit_window` 86400, `edit_max` 20, `emoji_max` 32, `react_ct_max`, `react_rate`,
+  `voice_max_s` 900, `voice_kbps` 24, `voice_max_bytes`). Formate: `saga/chat_v3.py`, Vektoren `tests/vectors/chat_v3.json`.
+  - Reaktion: `PUT /api/chats/{id}/messages/{mid}/reaction {dev, ts, ct, sig}` (eine je Person; neuere `ts` ersetzt,
+    `""` = zurücknehmen). `GET …/messages` liefert je Nachricht `rx: [{by, dev, ts, ct, sig}]` (höchstens 50, `by` =
+    Handle); `GET /api/chats/{id}/reactions?mids=a,b` → `{reactions: {mid: [...]}}`. Live `chat.react {chat_id, items:
+    [{id, by, dev, ts, ct, sig}]}` bzw. `{more: true, mids}` – je Chat höchstens einmal je Sekunde. Fehler: 409 ohne
+    `x3_ok`, 404 unbekannte Nachricht (nur `kind: msg`), 400 Signatur/Form, 403 fremdes Gerät, 429 (120 je Minute).
+  - Bearbeiten: `POST …/messages` wie eine v2-Nachricht mit `kind: "edit"`, `edit_of` und Inhalt `{"edit": <mid>, "t":
+    <text>}` (keine `files`, kein `reply_to`, kein `ai`). 403: fremde Nachricht, älter als 24 h, schon 20-mal, KI-Antwort.
+    `GET …/messages` liefert sie am Original als `edit` (vollständige Nachricht mit `key`, `edit_of`), dazu `edited_at`
+    und `edit_n`; Live `chat.edited {chat_id, id, seq, edit_seq}`. Löschen des Originals nimmt die Bearbeitung mit.
+  - Sprachnachricht: Anhang in `files[]` mit `voice: true, dur, wf` (64 Werte 0–255, B64) und `m: "audio/ogg; codecs=opus"`.

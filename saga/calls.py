@@ -274,6 +274,9 @@ def _has(caps, cap):
 def note_caps(c, uid, dev, caps):
     """Vom Geraet gemeldete Faehigkeiten merken (Hinweis: wer "multi" kann, wird zu Gruppenanrufen eingeladen)."""
     if isinstance(dev, str) and _HEX32.fullmatch(dev) and isinstance(caps, str):
+        r = c.execute("SELECT caps FROM chat_device WHERE id=? AND uid=?", (dev, uid)).fetchone()
+        if r and "chat3" in caps_out(r[0]) and "chat3" not in caps_out(caps):    # 2.5: Chat-Stufe meldet saga.chat (bleibt)
+            caps = json.dumps(caps_out(caps) + ["chat3"], separators=(",", ":"))
         c.execute("UPDATE chat_device SET caps=? WHERE id=? AND uid=? AND caps<>?", (caps, dev, uid, caps))
 
 
@@ -314,17 +317,36 @@ def roster(c, call, uid=None, legs=None):
     legs = _legs(c, call["id"]) if legs is None else legs
     nm = names(c, [x["who"] for x in legs])
     fed = _fedcall(c, call)
+    v3 = _v3(c, call)
     out = []
     for x in legs:
         d = {"who": x["who"], "device": x["device"], "dev_name": x["name"] or "", "role": x["role"], "state": x["state"],
              "caps": caps_out(x["caps"]), "joined": x["joined"], "me": x["who"] == uid}
         d.update(_who_label(c, x["who"], nm))
-        if fed and not sharing.is_remote(x["who"]):
+        if (fed or v3) and not sharing.is_remote(x["who"]):
             d["handle"] = FED.FC.my_handle(c, x["who"])
+        if v3 and x["who"] != uid and not sharing.is_remote(x["who"]):   # 2.5: andere als Handle (Schluessel nur ueber v2)
+            d.update(who=d["handle"], host=FED.F.SELF_HOST)
         if x.get("replaces"):
             d["replaces"] = x["replaces"]
         out.append(d)
     return out
+
+
+def _v3(c, call):
+    """2.5: Anruf in einem lokalen Chat der Stufe 3 - saga-call/v2 mit Handles (wie ueber Servergrenzen), aber ohne andere
+    Server. Clients sehen v: 2 und andere Personen nur als Handle (Krypto an den Handle gebunden)."""
+    if "_v3" not in call:
+        r = c.execute("SELECT v FROM chat WHERE id=?", (call["chat_id"],)).fetchone()
+        call["_v3"] = bool(r) and r[0] in (2, 3) and FED is not None   # 2.5: auch foederiert - lokale Mitmitglieder als Handle
+    return call["_v3"]
+
+
+def _pp(c, call, u, viewer):
+    """Kennung einer Person fuer viewer: in Stufe 3 andere Konten als Handle, sonst unveraendert."""
+    if not u or u == viewer or sharing.is_remote(u) or not _v3(c, call):
+        return u
+    return FED.FC.my_handle(c, u)
 
 
 def _fedcall(c, call):
@@ -384,15 +406,18 @@ def _dict(c, call, uid, nm=None, legs=None):
     now = time.time()
     pd = {"username": peer, "name": nm.get(peer) or t("Gelöschtes Konto"), "avatar": nm.avatar(peer)}
     fed = _fedcall(c, call)
+    v3 = _v3(c, call)
     if fed and sharing.is_remote(peer):                  # 2.3: Gegenueber auf einem anderen Server (saga-call/v2, Handles)
         pd.update(handle=FED.FC.handle_of(peer), name=FED.FC.label_of(c, peer)["name"])
-    elif fed and group:
+    elif (fed and group) or (v3 and peer):
         pd["handle"] = FED.FC.my_handle(c, peer)
+    if v3 and peer and peer != uid and not sharing.is_remote(peer):    # 2.5: Format v2 - Gegenueber nur als Handle
+        pd.update(username=pd["handle"], host=FED.F.SELF_HOST)
     rv = _rv()                                           # vor dem Lesen der Endpunkte (siehe _rv)
     legs = _legs(c, call["id"]) if legs is None else legs
     can, why = _joinable(c, call, uid, legs)
     d = {"id": call["id"], "chat_id": call["chat_id"], "media": call["media"], "state": call["state"], "reason": call["reason"],
-         "role": "member" if group else ("caller" if me_caller else "callee"), "peer": pd, **({"v": 2} if fed else {}),
+         "role": "member" if group else ("caller" if me_caller else "callee"), "peer": pd, **({"v": 2} if fed or v3 else {}),
          "caller_device": call["caller_device"], "callee_device": call["callee_device"], "created": call["created"],
          "answered": call["answered"], "ended": call["ended"], "ring_s": ring_s(),
          # 2.4: Faehigkeiten, die die Geraete beim Anrufen/Annehmen gemeldet haben (Hinweis fuer die Oberflaeche)
@@ -409,7 +434,7 @@ def _dict(c, call, uid, nm=None, legs=None):
         d["invite"] = inv[0] if inv else None
         d["old"] = [r[0] for r in c.execute("SELECT who FROM chat_call_invite WHERE call_id=? AND state='old'", (call["id"],)).fetchall()]
         nmo = names(c, d["old"])
-        d["old"] = [dict(_who_label(c, u, nmo), who=u) for u in d["old"]]
+        d["old"] = [dict(_who_label(c, u, nmo), who=_pp(c, call, u, uid)) for u in d["old"]]
     return d
 
 
@@ -439,6 +464,8 @@ def _log(c, call, status, now, end=None):
     dur = max(0, int((end or now) - call["answered"])) if call["answered"] and status == "ended" else None
     d = {"v": 1, "type": "call", "call": call["id"], "media": call["media"], "status": status, "dur": dur,
          "from": call["caller"], "to": call["callee"]}
+    if _v3(c, call):                                   # 2.5: Stufe 3 - Klartext-Metadaten nur mit Handles
+        d.update({k: FED.FC.my_handle(c, d[k]) if d[k] and not sharing.is_remote(d[k]) else d[k] for k in ("from", "to")})
     if call["kind"] == "group":
         d.update(group=True, n=c.execute("SELECT COUNT(DISTINCT who) FROM chat_call_leg WHERE call_id=?", (call["id"],)).fetchone()[0])
     body = json.dumps(d, separators=(",", ":"))
@@ -451,7 +478,8 @@ def _log(c, call, status, now, end=None):
                      body)).fetchone()[0]
     c.execute("UPDATE chat SET last_seq=?, last_at=? WHERE id=?", (seq, now, ch["id"]))
     chat.revive(c, ch["id"], call["caller"])        # Anruf holt den Chat aus dem Archiv (wie eine neue Nachricht)
-    _emit(c, chat.members(c, ch["id"]), "chat.message", {"chat_id": ch["id"], "seq": seq, "id": mid, "sender": call["caller"], "kind": "call"})
+    chat.direct_person(c, ch, chat.members(c, ch["id"]), "chat.message", {"chat_id": ch["id"], "seq": seq, "id": mid, "sender": call["caller"],
+                                                                         "kind": "call"}, call["caller"], "sender")
     return seq
 
 
@@ -484,8 +512,12 @@ def _finish(c, call, reason, now, by=None, remote=False):
                 FED.group_ended(c, call, reason)       # alle anderen Server des Chats (verwerfbar)
         elif call.get("peer_id"):
             FED.ended(c, call, reason)                 # 2.3: der anderen Instanz melden (verwerfbar)
-    _emit(c, _audience(c, call), "call.state", {"call_id": call["id"], "chat_id": call["chat_id"], "state": "ended",
-                                                 "reason": reason, "status": status, "by": by, **({"kind": "group"} if group else {})})
+    data = {"call_id": call["id"], "chat_id": call["chat_id"], "state": "ended", "reason": reason, "status": status, "by": by,
+            **({"kind": "group"} if group else {})}
+    if _v3(c, call) and by and not sharing.is_remote(by):                            # 2.5: wer aufgelegt hat - in Stufe 3 je Empfaenger als Handle
+        bus.emit_after(c, "direct_each", {"items": [(u, "call.state", dict(data, by=_pp(c, call, by, u))) for u in sorted(set(_audience(c, call)))]})
+    else:
+        _emit(c, _audience(c, call), "call.state", data)
     _OWN.discard(call["id"])
     print(f"call: {call['id'][:8]} beendet ({was} -> {reason}/{status})", flush=True)
     return True
@@ -500,8 +532,18 @@ def emit_roster(c, call, legs=None, fed=True):
     can, why = _joinable(c, call, None, legs)
     data = dict(base, legs=roster(c, call, None, legs), joinable=can, join_block=why)
     after = getattr(c, "after_commit", None)                  # rv erst nach dem Commit (vor dem Versand, siehe _rv)
-    after(lambda: data.__setitem__("rv", _rv())) if after is not None else data.__setitem__("rv", _rv())
-    _emit(c, _audience(c, call), "call.roster", data)
+    if _v3(c, call):                                          # 2.5: Stufe 3 - je Konto eigene Liste (andere als Handle)
+        items = [(u, "call.roster", dict(data, legs=roster(c, call, u, legs))) for u in sorted(set(_audience(c, call)))]
+
+        def stamp():
+            rv = _rv()
+            for it in items:
+                it[2]["rv"] = rv
+        after(stamp) if after is not None else stamp()
+        bus.emit_after(c, "direct_each", {"items": items})
+    else:
+        after(lambda: data.__setitem__("rv", _rv())) if after is not None else data.__setitem__("rv", _rv())
+        _emit(c, _audience(c, call), "call.roster", data)
     if fed and FED is not None and call.get("lead") is None and _fedcall(c, call):
         FED.roster_out(c, call, legs)
 
@@ -624,7 +666,8 @@ async def api_call(request: Request):
         if sig is None:
             return _bad(t("ungültige Angabe"))
         if set(sig) != devs:
-            keys = chat._keys(c, [peer]).get(peer)
+            v3c = chat.is_v3(ch)                           # 2.5: Stufe 3 - Geraete aus den Schluesseln v2 (ohne Anmeldenamen)
+            keys = FED.FC.local_entry(c, FED.FC.my_handle(c, peer)) if v3c else chat._keys(c, [peer]).get(peer)
             return chat._no_store({"error": t("Die Geräte des Gegenübers haben sich geändert – bitte erneut anrufen."),
                                    "devices": [d for d in (keys or {}).get("devices", []) if not d["revoked"]]}, 409)
         if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
@@ -652,8 +695,11 @@ async def api_call(request: Request):
                       [(cid, dev, k, v, now) for k, v in sorted(sig.items())])
         c.execute("UPDATE chat_call SET nsig=? WHERE id=?", (len(sig), cid))
         nm = names(c, [uid])
+        frm = {"username": uid, "name": nm.get(uid) or uid, "avatar": nm.avatar(uid)}
+        if _v3(c, call):                               # 2.5: Stufe 3 - anrufende Person als Handle (saga-call/v2)
+            frm.update(username=FED.FC.my_handle(c, uid), handle=FED.FC.my_handle(c, uid), host=FED.F.SELF_HOST)
         _emit(c, [peer], "call.ring", {"call_id": cid, "chat_id": ch["id"], "media": media, "from_device": dev, "ring_s": ring_s(),
-                                       "from": {"username": uid, "name": nm.get(uid) or uid, "avatar": nm.avatar(uid)}})
+                                       "from": frm, **({"v": 2} if _v3(c, call) else {})})
         # Handy/Desktop: Art "call" (hohe Prioritaet, kurze Lebensdauer) - nie Inhalt; ohne Namen, wenn so eingestellt
         muted = c.execute("SELECT muted FROM chat_member WHERE chat_id=? AND uid=?", (ch["id"], peer)).fetchone()
         if not (muted and muted[0]):
@@ -733,6 +779,8 @@ def ring_group(c, call, uids):
     frm = {"username": st, "name": nm.get(st) or st, "avatar": nm.avatar(st)}
     if sharing.is_remote(st) and FED is not None:
         frm.update(handle=FED.FC.handle_of(st), name=FED.FC.label_of(c, st)["name"])
+    elif _v3(c, call):                                 # 2.5: Format v2 - als Handle
+        frm.update(username=FED.FC.my_handle(c, st), handle=FED.FC.my_handle(c, st), host=FED.F.SELF_HOST)
     ch = chat._load(c, call["chat_id"])
     frm["chat"] = chat._name(c, uids[0], ch, chat.members(c, ch["id"]), names(c, chat.members(c, ch["id"]))) if ch else None
     for u in uids:
@@ -1244,6 +1292,8 @@ def invite_local(c, call, who):
     inside = {x["who"] for x in _legs(c, call["id"])}
     ring, remote = [], []
     now = time.time()
+    if _v3(c, call):                                   # 2.5: Stufe 3 nennt Mitglieder per Handle
+        who = [chat.who_in(c, call["caller"], u) if chat._FULL_H.fullmatch(u) else u for u in who]
     for u in who:
         if u not in mem or u in inside:
             continue

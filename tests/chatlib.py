@@ -479,3 +479,39 @@ def open_receipt(sealed, pk, sk):
 
 def verify_receipt(chat, reader, dev_id, body, sig, sign_pk, v2=False):
     return verify(sig, receipt_msg(chat, reader, dev_id, body, v2), sign_pk)
+
+
+# --- Stufe 3 (2.5, saga/chat_v3.py): Reaktionen und Bearbeiten in Chats saga-chat/v2 -----------------------------------------
+V3 = "saga-chat/v3/"
+
+
+def react_key(K, chat_ref, mid):
+    return nacl.hash.blake2b(lp(V3 + "react-key", chat_ref, mid), digest_size=32, key=bytes(K), encoder=RawEncoder)
+
+
+def react_ad(chat_ref, mid, handle, dev_id):
+    return lp(V3 + "react", chat_ref, mid, handle, dev_id)
+
+
+def react_sig_msg(chat_ref, mid, handle, dev_id, ts, ct):
+    return lp(V3 + "react-sig", chat_ref, mid, handle, dev_id, str(ts), gh(unb64(ct)))
+
+
+def encrypt_reaction(K, chat_ref, mid, handle, dev, emoji, ts=None, nonce=None):
+    """Reaktion (emoji, '' = zuruecknehmen) auf die Nachricht mit Schluessel K -> {by, dev, ts, ct, sig}"""
+    ts = int(time.time() * 1000) if ts is None else ts
+    nonce = nonce or rnd(24)
+    body = json.dumps({"e": emoji, "ts": ts}, ensure_ascii=False, separators=(",", ":")).encode()
+    ct = b64(nonce + nb.crypto_aead_xchacha20poly1305_ietf_encrypt(body, react_ad(chat_ref, mid, handle, dev["id"]), nonce,
+                                                                   react_key(K, chat_ref, mid)))
+    return {"by": handle, "dev": dev["id"], "ts": ts, "ct": ct, "sig": b64(sign(react_sig_msg(chat_ref, mid, handle, dev["id"], ts, ct), dev["sign_sk"]))}
+
+
+def decrypt_reaction(K, chat_ref, mid, r):
+    raw = unb64(r["ct"])
+    return nb.crypto_aead_xchacha20poly1305_ietf_decrypt(raw[24:], react_ad(chat_ref, mid, r["by"], r["dev"]), raw[:24],
+                                                         react_key(K, chat_ref, mid)).decode()
+
+
+def verify_reaction(chat_ref, mid, r, sign_pk):
+    return verify(unb64(r["sig"], 64), react_sig_msg(chat_ref, mid, r["by"], r["dev"], r["ts"], r["ct"]), sign_pk)

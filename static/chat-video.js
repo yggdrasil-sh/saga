@@ -341,6 +341,7 @@
 
   window.SagaChatVideo = {
     init: function (deps) { D = deps; }, isVideo: isVideo, probe: probe, canOptimize: canOptimize, optimize: optimize, upload: upload,
-    play: play, save: saveStream, clear: clear, dur: dur, sw: sw
+    play: play, save: saveStream, clear: clear, dur: dur, sw: sw,
+    media: mediaUrl, plain: wholePlain, drop: drop          // 2.5: Sprachnachrichten (static/chat-voice.js)
   };
 })();

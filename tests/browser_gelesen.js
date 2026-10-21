@@ -92,7 +92,7 @@ async function privacy(p, which, on, shotName) {
     await a.click('#ct-msgs .ct-msg.mine button.ct-tick'); await a.waitForSelector('.ct-readby');
     // 2.4 (W4): angezeigt wird der Name (Anzeigename bzw. Handle), nie der Anmeldename
     const nB = await a.evaluate(([g, u]) => fetch('/api/chats/' + g, { headers: { 'X-Saga': '1' } }).then(r => r.json())
-      .then(d => ((d.chat || d).members || []).filter(m => m.username === u).map(m => m.name)[0] || ''), [gid, U2]);
+      .then(d => ((d.chat || d).members || []).filter(m => m.username === u || (!m.me && m.handle)).map(m => m.name)[0] || ''), [gid, U2]);   // 2.5: Stufe 3 nennt B per Handle
     ok('Gruppe: "Gelesen von" listet B', nB && (await a.textContent('.ct-readby')).indexOf(nB) >= 0, [nB, await a.textContent('.ct-readby')]);
     await shot(a, 'gelesen-5-gruppe');
     await a.keyboard.press('Escape');

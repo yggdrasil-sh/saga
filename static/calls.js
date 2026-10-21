@@ -650,9 +650,9 @@
       return;
     }
     if (!chat || !chat.peer) return;
-    if (chat.v === 2 && (chat.request || chat.readonly)) { HK.toast(T('Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben.')); return; }
+    if ((chat.v === 2 || chat.v === 3) && (chat.request || chat.readonly)) { HK.toast(T('Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben.')); return; }
     if (!window.RTCPeerConnection) { HK.toast(T('Dieser Browser kann keine Anrufe (WebRTC fehlt).')); return; }
-    var c = C = newCall({ chat_id: chat.id, role: 'caller', media: video ? 'video' : 'audio', peer: chat.peer, v2: chat.v === 2 });
+    var c = C = newCall({ chat_id: chat.id, role: 'caller', media: video ? 'video' : 'audio', peer: chat.peer, v2: (chat.v === 2 || chat.v === 3) });
     audioCtx();
     win(c); status(c, T('Kamera und Mikrofon …'));
     config(true).then(function () {
@@ -980,7 +980,7 @@
   function startGroup(chat, video) {
     if (!window.RTCPeerConnection) { HK.toast(T('Dieser Browser kann keine Anrufe (WebRTC fehlt).')); return; }
     if (chat.call && chat.call.group === false) { HK.toast(chat.call.group_block || T('Gruppenanrufe gehen in diesem Chat nicht.')); return; }
-    var R = C = newCall({ chat_id: chat.id, role: 'caller', kind: 'group', media: video ? 'video' : 'audio', v2: chat.v === 2 });
+    var R = C = newCall({ chat_id: chat.id, role: 'caller', kind: 'group', media: video ? 'video' : 'audio', v2: (chat.v === 2 || chat.v === 3) });
     R.title = chat.title || chat.name || '';
     audioCtx(); win(R); status(R, T('Kamera und Mikrofon …'));
     config(true).then(function () {
@@ -1979,7 +1979,7 @@
     // 2.4 E5: in Gruppen-, freien und Seiten-Chats nur, wenn der Server es meldet (chat.call.group: alle beteiligten Server
     // koennen calls3) und dieser Client "multi" kann
     var grp = !!(chat && chat.kind !== 'dm' && chat.call && chat.call.group && myCaps().indexOf('multi') >= 0);
-    var on = !!(chat && cfg && cfg.enabled && window.RTCPeerConnection && (chat.kind === 'dm' ? !(chat.v === 2 && (chat.request || chat.readonly)) : grp));
+    var on = !!(chat && cfg && cfg.enabled && window.RTCPeerConnection && (chat.kind === 'dm' ? !((chat.v === 2 || chat.v === 3) && (chat.request || chat.readonly)) : grp));
     a.hidden = v.hidden = !on;
     var ta = grp ? T('Gruppenanruf') : T('Anrufen'), tv = grp ? T('Gruppen-Videoanruf') : T('Videoanruf');
     a.title = ta; a.setAttribute('aria-label', ta); v.title = tv; v.setAttribute('aria-label', tv);

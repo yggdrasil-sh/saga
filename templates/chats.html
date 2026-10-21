@@ -77,11 +77,15 @@
         <div class="ct-reply" id="ct-reply" hidden></div>
         <div class="ct-files" id="ct-files" hidden></div>
         <div class="ct-ai-hint" id="ct-ai-hint" hidden aria-live="polite"></div>
+        <div class="ct-rec" id="ct-rec" hidden role="region" aria-label="{{ _("Sprachnachricht") }}"></div>
         <form class="ct-compose" id="ct-compose" autocomplete="off">
           <button type="button" class="icon-btn ct-attach" id="ct-attach" title="{{ _("Bild oder Datei anhängen") }}" aria-label="{{ _("Bild oder Datei anhängen") }}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5l-8.5 8.5a5 5 0 0 1-7-7L14 4.5a3.5 3.5 0 0 1 5 5L10.5 18a2 2 0 0 1-3-3L15 7.5"/></svg>
           </button>
           <textarea class="ct-input" id="ct-input" rows="1" placeholder="{{ _("Nachricht … (@ verlinkt eine Seite)") }}" aria-label="{{ _("Nachricht") }}"></textarea>
+          <button type="button" class="icon-btn ct-mic" id="ct-mic" hidden title="{{ _("Sprachnachricht aufnehmen") }}" aria-label="{{ _("Sprachnachricht aufnehmen") }}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg>
+          </button>
           <button type="submit" class="btn btn-primary ct-send" id="ct-send">{{ _("Senden") }}</button>
           <input type="file" id="ct-file" multiple hidden>
         </form>
@@ -106,6 +110,8 @@
 <script src="/static/chat-crypto.js?v={{ v }}"></script>
 <script src="/static/chat-video.js?v={{ v }}"></script>
 <script src="/static/immich.js?v={{ v }}"></script>
+<script src="/static/chat-emoji.js?v={{ v }}"></script>
+<script src="/static/chat-voice.js?v={{ v }}"></script>
 <script src="/static/chat.js?v={{ v }}"></script>
 <script src="/static/calls.js?v={{ v }}"></script>
 {% endif %}

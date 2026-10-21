@@ -161,9 +161,19 @@ def keys_local(c, names):
 
 
 def _announce(c, uid):
-    """Schluessel eines Kontos geaendert: verbundenen Instanzen 'chat.keys.changed' (Kette 'keys')."""
+    """Schluessel eines Kontos geaendert: verbundenen Instanzen 'chat.keys.changed' (Kette 'keys'); 2.5 auch den Konten
+    DIESES Servers mit einem gemeinsamen Chat im Format v2 (Stufe 3 bzw. foederiert) als Live-Ereignis {handle} - deren
+    Apps holen die Schluessel frisch und pruefen TOFU neu (auch ohne Foederation)."""
     r = c.execute("SELECT handle FROM fed_handle WHERE uid=?", (uid,)).fetchone()
-    if not r or not F.enabled():
+    if not r:
+        return
+    others = [u for (u,) in c.execute(
+        "SELECT DISTINCT o.uid FROM chat_member m JOIN chat_member o ON o.chat_id=m.chat_id JOIN chat ch ON ch.id=m.chat_id "
+        "WHERE m.uid=? AND m.left_at IS NULL AND o.left_at IS NULL AND o.uid<>m.uid AND o.uid NOT LIKE '@%' AND ch.v IN (2,3)",
+        (uid,)).fetchall()]
+    if others:
+        bus.emit_after(c, "direct", {"uids": sorted(others), "typ": "chat.keys.changed", "data": {"handle": full_handle(r[0])}})
+    if not F.enabled():
         return
     for p in F.peers(c):
         if F.feature(p, "keys"):
@@ -299,7 +309,17 @@ def api_keys(request: Request, handles: str = "", fresh: int = 0):
     for host, hs in by.items():
         if host == F.SELF_HOST:
             with _db() as c, c:
-                loc = keys_local(c, [h.split("@")[0] for h in hs])
+                # 2.5: Schluessel eigener Konten nur fuer sich selbst und Personen mit einem (frueheren) gemeinsamen Chat -
+                # wie /api/chat/keys seit 2.4; das Ziel einer Chat-Anlage ist danach Mitglied
+                known = {r[0] for r in c.execute("SELECT DISTINCT f.handle FROM chat_member m1 JOIN chat_member m2 ON m2.chat_id=m1.chat_id "
+                                                 "JOIN fed_handle f ON f.uid=m2.uid WHERE m1.uid=?", (uid,)).fetchall()}
+                mine = c.execute("SELECT handle FROM fed_handle WHERE uid=?", (uid,)).fetchone()
+                if mine:
+                    known.add(mine[0])
+                hs_ok = [h for h in hs if h.split("@")[0] in known]
+                loc = keys_local(c, [h.split("@")[0] for h in hs_ok])
+            out.update({h: None for h in hs})
+            hs = hs_ok
             out.update({h: (dict(loc[h.split("@")[0]], source="local") if loc[h.split("@")[0]] else None) for h in hs})
             continue
         with _db() as c:

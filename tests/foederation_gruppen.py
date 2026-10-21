@@ -97,6 +97,9 @@ def part_group(adm, pab, pba, pac, pca):
     ch = d.get("chat") or {}
     ok(f"A: Gruppe ueber drei Server angelegt ({s}, v{ch.get('v')}, {len(ch.get('members', []))} Mitglieder)", s == 200 and ch.get("v") == 2
        and ch.get("home_self") and ch.get("kind") == "free" and len(ch["members"]) == 4 and ch.get("role") == "admin")
+    cm = next((m for m in ch.get("members", []) if m.get("host") == HA and not m.get("me")), {})
+    ok("A: lokales Mitmitglied Carl als Handle, nie mit Anmeldenamen (2.5)", cm.get("username") == cm.get("handle") == carl.handle
+       and "fa-carl" not in json.dumps(ch))
     hosts = sorted({m.get("host") for m in ch.get("members", [])})
     ok(f"A: Mitglieder mit Herkunft ({hosts})", hosts == sorted([HA, HB, HC]))
     bc = wait(lambda: bert.chat(ch["ref"]), 15)
@@ -175,6 +178,33 @@ def part_group(adm, pab, pba, pac, pca):
     ok(f"A: Senden an neue Mitgliederliste ({s})", s == 200)
     ok("C: kommt an", wait(lambda: "ohne Bert" in dora.texts(dora.chat(ch["ref"])), 20))
     return anna, carl, bert, cleo, dora, ch
+
+
+def part_v3open(anna, carl, bert):
+    """2.5: freie Gruppe der Stufe 3 (lokal) nimmt eine Person eines anderen Servers auf - wird foederiert, gleiche Krypto."""
+    F2.py("a", "import auth\nauth.save_setting('chat_v3', True)\nprint(1)")
+    time.sleep(5.6)
+    try:
+        pu = (api("a", "fa-anna", "GET", "/api/chat/people?q=fa-carl")[1] or {}).get("users") or [{}]
+        s, d = api("a", "fa-anna", "POST", "/api/chats", {"kind": "free", "members": [pu[0].get("username", "")], "device": anna.dev["id"]})
+        ch = d.get("chat") or {}
+        ok(f"A: lokale Gruppe in Stufe 3 ({s}, v{ch.get('v')})", s == 200 and ch.get("v") == 2 and ch.get("fed") is False and ch.get("ref"))
+        s, _, _ = anna.send(ch, "Vor Bert")
+        s, d = api("a", "fa-anna", "POST", f"/api/chats/{ch['id']}/members", {"handle": bert.handle})
+        c2 = d.get("chat") or {}
+        ok(f"A: Bert (anderer Server) hinzugefuegt - Gruppe jetzt foederiert, gleiche chat_ref ({s})", s == 200 and c2.get("fed") is True
+           and c2.get("ref") == ch["ref"] and any(m.get("handle") == bert.handle for m in c2.get("members", [])))
+        bc = wait(lambda: bert.chat(ch["ref"]), 15)
+        ok("B: Gruppe als Anfrage angekommen", bool(bc) and bc.get("request"))
+        if bc:
+            api("b", "fb-bert", "POST", f"/api/chats/{bc['id']}/request", {"action": "accept"})
+        anna.send(api("a", "fa-anna", "GET", f"/api/chats/{ch['id']}")[1]["chat"], "Nach Bert")
+        ok("B: liest die neue Nachricht (alte nicht - versiegelt nur fuer Mitglieder von damals)",
+           wait(lambda: "Nach Bert" in bert.texts(bert.chat(ch["ref"])), 20) and "Vor Bert" not in bert.texts(bert.chat(ch["ref"])))
+        ok("Carl liest beide", wait(lambda: {"Vor Bert", "Nach Bert"} <= set(carl.texts(carl.chat(ch["ref"]))), 10))
+    finally:
+        F2.py("a", "import auth\nauth.save_setting('chat_v3', False)\nprint(1)")
+        time.sleep(5.6)
 
 
 def part_page(adm, pab, pba, pac, pca, anna, carl, bert, cleo, dora):
@@ -300,6 +330,7 @@ def run():
             part_compat(adm, pab, pba, pac, pca)
         else:
             anna, carl, bert, cleo, dora, gch = part_group(adm, pab, pba, pac, pca)
+            part_v3open(anna, carl, bert)
             pch = part_page(adm, pab, pba, pac, pca, anna, carl, bert, cleo, dora)
             part_disconnect(adm, pab, pba, pac, pca, anna, bert, cleo, dora, gch, pch)
     except Exception:

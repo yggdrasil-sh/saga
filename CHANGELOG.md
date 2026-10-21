@@ -16,6 +16,72 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Chat-Stufe 3 (in Arbeit, Konzept „Krypto v3 über Handles“)
+- **Testvektoren für Reaktionen und Bearbeiten:** `tests/vectors/chat_v3.json` mit Schlüsselableitung, AD und Signatur einer
+  Reaktion, dem Inhalt einer Bearbeitung, Fällen, die jede Umsetzung ablehnen muss (fremder Absender, falsches `edit_of`,
+  andere `chat_ref`, fremder Schlüssel, falscher Inhalt) und den Regeln für die Übernahme des Vertrauens von v1 auf Handles.
+  Server-Referenz `saga/chat_v3.py`, Gegenproben `tools/chat_vectors_v3.py` (PyNaCl) und `tools/chat_vectors_v3.mjs`
+  (libsodium.js mit `static/chat-crypto.js`); die Testreihe `chat_v2_vektoren` prüft sie mit.
+- **Datenbank: Migration 15** – Umstellpunkt je Chat (`chat.v3_seq`), Bearbeitungen am Original (`chat_msg.edit_of`,
+  `edit_seq`, `edited_at`, `edit_n`) und die Tabelle `chat_reaction`. Läuft beim Start automatisch (vorher Backup);
+  2.4-Backups bleiben einspielbar, umgekehrt nicht.
+- **Lokale Chats der Stufe 3 (Server-Kern, vorerst abschaltbar):** Ist die Einstellung `chat_v3` an (Standard noch aus,
+  bis Apps und Web nachziehen), legt Saga neue Direkt-, Gruppen-, freie und Seiten-Chats im Format `saga-chat/v2` an,
+  sobald alle Mitglieder ein Handle-Zertifikat haben – über den Weg der Chats über Servergrenzen, mit dem eigenen
+  Server als Heim, auch bei abgeschalteter Föderation. In solchen Chats steht für andere Konten überall der Handle statt
+  des Anmeldenamens: Mitglieder, Gegenüber, Absender, Empfänger, Gelesen, Tippen, Löschen-Hinweise. Apps 2.3/2.4
+  (`X-Saga-Chat: 2`) sehen sie als `v: 2`, ältere einen Hinweis. Schlüsselwechsel melden Chat-Partnern lokal
+  `chat.keys.changed`; Schlüssel eigener Konten gibt es per Handle nur für Chat-Partner; ein Stufe-3-Chat macht den
+  Anmeldenamen nicht mehr als Eingabe nutzbar. Neue Testreihe `anmeldenamen_v3` (Marker-Scan über alle Antworten und
+  Ereignisse). **Anrufe** in Stufe-3-Chats laufen als saga-call/v2 mit Handles (1:1 und Gruppe, `v: 2`, Gegenüber, Teilnehmerliste,
+  Klingeln, Anruf-Eintrag im Chat ohne Anmeldenamen); `tests/browser_v3.py` lässt die Browser-Tests für Anrufe und Gelesen
+  in Stufe 3 laufen. **Chats über Servergrenzen** zeigen lokale Mitmitglieder ebenso nur als Handle (Mitglieder, Absender,
+  Gelesen, Tippen, Anrufe); 2.3 umgestellte Seiten-Chats merken sich den Umstellpunkt (`v3_seq`, Altbestand v1).
+  Eine **freie Gruppe der Stufe 3** nimmt Personen anderer Server auf (`POST …/members {handle}`): sie wird ohne neue Krypto
+  zu einer Gruppe über Servergrenzen (gleiche `chat_ref`, KI aus, Systemzeile).
+- **Umstellung bestehender Chats auf Stufe 3 (Auftrag, stündlich):** Ist Stufe 3 an, stellt Saga lokale Chats v1 um, sobald
+  alle Mitglieder ein Handle-Zertifikat haben und **alle aktiven Geräte** (letzte 30 Tage) Saga 2.5 melden – Apps 2.3/2.4
+  übernehmen „Überprüft“ nicht, deshalb wartet der Auftrag auf sie. Spätestens nach einer Frist (Admin-Bereich →
+  Einstellungen → Chats, Standard 90 Tage) wird trotzdem umgestellt; ältere Apps sehen dann im Chat-Namen „Sicherheitsnummer
+  bitte neu prüfen“, die Systemzeile trägt `verify`. Nichts wird neu verschlüsselt: Nachrichten bis zum Umstellpunkt
+  (`v3_seq`) bleiben v1 und lesbar, danach gilt das Format v2. Wer nach der Umstellung dazukommt, sieht keinen
+  Anmeldenamen; `knows()` zählt nur Mitglieder von vor der Umstellung. Clients der Stufe 3 bekommen in Chats v1
+  `members[].handle` (für die Vertrauens-Übernahme) und melden ihre Stufe am Gerät (`chat3`). Kontolöschung räumt
+  Reaktionen und Verweise auf Bearbeitungen auf. Neue Testreihe `chat_v3_umstellung`.
+
+### Chat-Grundlagen: Reaktionen, Bearbeiten, Sprachnachrichten (Server)
+- **Reaktionen:** eine je Person und Nachricht, Ende-zu-Ende verschlüsselt mit einem aus dem Nachrichtenschlüssel
+  abgeleiteten Schlüssel (`PUT /api/chats/{id}/messages/{mid}/reaction`, `rx` in `GET …/messages`,
+  `GET /api/chats/{id}/reactions`, Live `chat.react` gebündelt). Der Server sieht wer, wann und worauf, nicht womit, und
+  prüft die Signatur. Kein Push.
+- **Nachricht bearbeiten:** nur eigene, bis 24 Stunden nach dem Senden, höchstens 20-mal, nicht für KI-Antworten. Kein
+  Verlauf – der Server behält nur die neueste Bearbeitung und löscht ältere samt Schlüsseln; `GET …/messages` liefert sie am
+  Original (`edit`, `edited_at`, `edit_n`), Live `chat.edited`, kein Push, kein Ungelesen.
+- **Sprachnachrichten:** ein verschlüsselter Anhang (Ogg/Opus); der Server meldet nur die Grenzen (höchstens 15 Minuten,
+  24 kbit/s) in `GET /api/chat/me` (`x3_limits`).
+- **Über Servergrenzen** nur, wenn alle beteiligten Server die neue Fähigkeit `chat3` melden (Chat-Feld `x3_ok`):
+  Reaktionen und Bearbeitungen laufen wie Gelesen-Bestätigungen über das Heim. Server 2.4 merken nichts davon.
+  Neue Testreihen `chat_x3` und `foederation_x3` (auch gegen einen 2.4-Server).
+
+### Chat im Web: Stufe 3, Reaktionen, Bearbeiten, Sprachnachrichten
+- **Stufe 3:** Das Web meldet `X-Saga-Chat: 3` und nimmt in lokalen Chats der Stufe 3 die Wege von saga-chat/v2, ohne
+  Server-Herkunft anzuzeigen. Vertrauen aus alten Chats (`trust:<benutzer>`) wird bei gleichem Identitätsschlüssel zu
+  `trust2:<handle>` übernommen („Überprüft“ bleibt); die Sicherheitsnummer zeigt dann „Neue Darstellung, gleicher
+  Schlüssel“. Systemzeile zur Umstellung, gerade umgestellte Chats beim Senden neu laden. Anrufe in Stufe 3 wie saga-call/v2.
+- **Reaktionen:** Schnellleiste mit 👍 ❤️ 😂 😮 😢 🙏 und „+“ (lokale Emoji-Auswahl ohne CDN, zuletzt benutzte), Chips mit
+  Anzahl unter der Nachricht (eigene hervorgehoben, Tippen = mitmachen bzw. zurücknehmen), live; schnelles Wechseln
+  sendet nur die letzte Wahl. Prüfen und Öffnen im Chat-Worker, Signaturen über WebCrypto Ed25519 (sonst libsodium.js),
+  neueste Nachrichten zuerst, sehr viele Reaktionen auf zwei Worker verteilt.
+- **Bearbeiten:** im Nachrichtenmenü oder mit Pfeil hoch im leeren Feld; Leiste „Bearbeiten · Abbrechen“ (Esc), danach
+  „bearbeitet“ mit Zeitpunkt, auch in Antworten und Vorschauen der neueste Text.
+- **Sprachnachrichten:** Mikrofon-Knopf bei leerem Feld; Aufnahme Opus mono 24 kbit/s als Ogg (Chromium: WebCodecs und
+  eigener Ogg-Muxer, Firefox: MediaRecorder Ogg, Safari: WebM in Ogg umgepackt), höchstens 15 Minuten (Hinweis ab 14:00),
+  unter 1 Sekunde verworfen; Vorschau zum Anhören, Verwerfen oder Senden. Abspielen über den Service Worker wie Videos,
+  Wellenform mit 64 Balken zum Springen, Tempo 1×/1,5×/2×, danach die nächste Sprachnachricht.
+  Ogg-Granule nach RFC 7845 (zählt ab 0 inklusive pre-skip, Ende auf die Aufnahme abgeschnitten).
+- Neue Browser-Reihen `browser_x3.js`, `browser_voice.js` und `browser_trust3.js` (Vertrauen über die Umstellung, über `browser_v3`), Messungen `tools/perf/x3_server.py`,
+  `tools/perf/x3_browser.js`, `tools/perf/x3_worker.mjs`.
+
 ## [2.4.0] – 2026-10-20
 
 Saga 2.4 bringt Videos in den Chat und macht Anrufe erwachsen: Gruppenanrufe, Bildschirm teilen mit Kamera daneben,

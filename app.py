@@ -28,6 +28,7 @@ from saga import app_api, app_login, calendars, comments, dashboard, databases, 
 from saga import ai, ai_chat, avatars, calls, chat, chat_files, federation, i18n, live, mfa, notify, push
 from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
 from saga import chat_status                     # 2.4: Gelesen-Bestaetigungen und Online-Status (haengt sich in chat, live, fed_chat ein)
+from saga import chat_x3                         # 2.5: Reaktionen, Bearbeiten, Sprachnachrichten (haengt sich in chat, fed_chat ein)
 from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, MEDIA_FRONT, MediaAuthHint, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
@@ -78,6 +79,7 @@ async def lifespan(_app):
                 n = await asyncio.to_thread(chat.purge)        # abgelaufene Chat-Nachrichten, Anhaenge ohne Nachricht: stuendlich
                 if n:
                     print(f"chat: {n} abgelaufene Nachricht(en) entfernt", flush=True)
+                await asyncio.to_thread(chat.convert_v3)       # 2.5: bestehende Chats auf Stufe 3 umstellen (wenn bereit)
             except Exception as ex:
                 print(f"chat-purge: {type(ex).__name__}: {ex}", flush=True)
             await asyncio.sleep(3600)
@@ -230,6 +232,7 @@ app.include_router(fed_dir.router)          # Adressbuch (2.3): /fed/v2/director
 app.include_router(fed_keys.router)         # Schluesselverzeichnis + Krypto v2 (2.3): /fed/v2/keys, /api/chat/v2/...
 app.include_router(fed_chat.router)         # Chats + Anrufe ueber Servergrenzen (2.3): /fed/v2/chat..., /fed/v2/call, /api/chat/blocks
 app.include_router(chat_status.router)      # Gelesen/Online (2.4): /api/chat/privacy, /api/chat/presence, /api/chats/{cid}/receipts
+app.include_router(chat_x3.router)          # 2.5: PUT /api/chats/{cid}/messages/{mid}/reaction, GET /api/chats/{cid}/reactions
 assert fed_calls.router is fed_chat.router
 app.include_router(nextcloud.router)         # Nextcloud-Dateien in Seiten (2.3): /api/settings/nextcloud, /api/nextcloud/..., /api/notes/{nid}/nc
 app.include_router(userbackup.router)        # Persoenliche Backups (2.3): /api/account/backup...

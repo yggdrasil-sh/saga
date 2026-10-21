@@ -420,6 +420,165 @@
     return out;
   }
 
+  // --- Stufe 3 (2.5, saga/chat_v3.py, Vektoren tests/vectors/chat_v3.json): Reaktionen, Bearbeiten, Vertrauens-Uebernahme ---
+  // Reaktion: K_r = generichash(32, LP(V3+'react-key', chat_ref, msg_id), key = K der Nachricht); body = {"e", "ts"};
+  // ct = B64(nonce24 || xchacha20poly1305(body, LP(V3+'react', ref, mid, handle, geraet), nonce, K_r));
+  // sig = sign_detached(LP(V3+'react-sig', ref, mid, handle, geraet, ts, generichash32(raw(ct))), device_sign_sk)
+  var V3 = 'saga-chat/v3/', EMOJI_MAX = 32, EDIT_WINDOW = 86400;
+  function reactKey(K, ref, mid) { return S.crypto_generichash(32, lp(V3 + 'react-key', ref, mid), K); }
+  function reactAd(ref, mid, handle, device) { return lp(V3 + 'react', ref, mid, handle, device); }
+  function reactSigMsg(ref, mid, handle, device, ts, ct) {
+    return lp(V3 + 'react-sig', ref, mid, handle, device, String(ts), S.crypto_generichash(32, unb64(ct)));
+  }
+  // o = {K, chat_ref, msg_id, handle, device, sign_sk, emoji ('' = zuruecknehmen), ts?, nonce?} -> {by, dev, ts, ct, sig}
+  function encryptReaction(o) {
+    var ts = o.ts != null ? o.ts : Date.now(), nonce = o.nonce || S.randombytes_buf(24);
+    var body = enc.encode(JSON.stringify({ e: o.emoji, ts: ts }));
+    var c = S.crypto_aead_xchacha20poly1305_ietf_encrypt(body, reactAd(o.chat_ref, o.msg_id, o.handle, o.device), null, nonce,
+                                                         reactKey(o.K, o.chat_ref, o.msg_id));
+    var all = new Uint8Array(24 + c.length); all.set(nonce, 0); all.set(c, 24);
+    var ct = b64(all);
+    return { by: o.handle, dev: o.device, ts: ts, ct: ct, sig: b64(S.crypto_sign_detached(reactSigMsg(o.chat_ref, o.msg_id, o.handle, o.device, ts, ct), o.sign_sk)) };
+  }
+  function verifyReaction(ref, mid, r, sign_pk) {
+    try { return verify(unb64(r.sig, 64), reactSigMsg(ref, mid, r.by, r.dev, r.ts, r.ct), sign_pk); } catch (e) { return false; }
+  }
+  // -> Emoji ('' = zurueckgenommen); Fehler, wenn Schluessel, Bindung oder Inhalt nicht passen
+  function decryptReaction(K, ref, mid, r) {
+    var raw = unb64(r.ct);
+    var pt = dec.decode(S.crypto_aead_xchacha20poly1305_ietf_decrypt(null, raw.subarray(24), reactAd(ref, mid, r.by, r.dev), raw.subarray(0, 24),
+                                                                      reactKey(K, ref, mid)));
+    var e = reactBody(pt, r.ts);
+    if (e === null) throw new Error('reaction body');
+    return e;
+  }
+  function reactBody(pt, ts) {
+    var d;
+    try { d = JSON.parse(pt); } catch (e) { return null; }
+    if (!d || typeof d !== 'object' || Object.keys(d).sort().join() !== 'e,ts' || d.ts !== ts || typeof d.e !== 'string') return null;
+    if (enc.encode(d.e).length > EMOJI_MAX || /[\u0000-\u001f\u007f-\u009f]/.test(d.e)) return null;
+    return d.e;
+  }
+  // Bearbeitung (normale v2-Nachricht kind 'edit' mit edit_of, Inhalt {edit, t}) gegen das Original pruefen -> null | Grund
+  function editCheck(orig, edit, body) {
+    if (!body || typeof body.t !== 'string' || body.edit !== edit.edit_of || edit.edit_of !== orig.id) return 'edit_of_mismatch';
+    if (!edit.sender_handle || edit.sender_handle !== orig.sender_handle) return 'other_sender';
+    if (orig.ai) return 'ai_original';
+    if ((edit.created || 0) - (orig.created || 0) > EDIT_WINDOW) return 'window';
+    return null;
+  }
+  // Reaktionen einer Seite pruefen und oeffnen (Worker oder Fenster): jobs = [{K, ref, mid, items: [{by, dev, ts, ct, sig}],
+  // pks?}], pks = {'<handle>|<geraet>': sign_pk} (je Auftrag oder gemeinsam) -> {mid: [{by, e, ts}]}; ungueltige fallen weg, je Person die neueste (ts)
+  // Ergebnis-Zwischenspeicher (je Worker/Fenster): gleiche Reaktion (Chat, Nachricht, Nachrichtenschluessel, Person, Geraet,
+  // ts, sig, ct, Signaturschluessel)
+  // nicht zweimal pruefen - beim Neuzeichnen und bei Live-Ereignissen kommen meist dieselben wieder.
+  // Je Person zaehlt nur ihre neueste Reaktion (der Server haelt ohnehin nur eine); ist die ungueltig, faellt die Person weg.
+  var RXC = new Map(), PKC = new Map();
+  function lpCat(pre, parts) {                    // = lp(<Felder von pre>, ...parts), pre schon als lp-Bytes
+    var ps = parts.map(u8), len = pre.length;
+    ps.forEach(function (x) { len += 4 + x.length; });
+    var out = new Uint8Array(len), dv = new DataView(out.buffer), off = pre.length;
+    out.set(pre, 0);
+    ps.forEach(function (x) { dv.setUint32(off, x.length, false); out.set(x, off + 4); off += 4 + x.length; });
+    return out;
+  }
+  function rxPlan(jobs, pks) {
+    if (RXC.size > 20000) RXC.clear();
+    if (PKC.size > 2000) PKC.clear();
+    var plan = [];
+    (jobs || []).forEach(function (j) {
+      var newest = {}, pm = j.pks || pks || {}, jk = j.K ? j.ref + '|' + j.mid + '|' + b64(j.K) : '';   // Bindung wie beim Pruefen
+      (j.items || []).forEach(function (r) { if (!newest[r.by] || newest[r.by].ts < r.ts) newest[r.by] = r; });
+      var p = { j: j, kr: null, out: [], todo: [], sp: lp(V3 + 'react-sig', j.ref, j.mid), ap: lp(V3 + 'react', j.ref, j.mid) };
+      Object.keys(newest).forEach(function (by) {
+        var r = newest[by], k64 = pm[r.by + '|' + r.dev];
+        if (!k64 || !j.K) return;
+        if (typeof k64 !== 'string') k64 = b64(k64);
+        var ck = jk + '|' + r.by + '|' + r.dev + '|' + r.ts + '|' + r.sig + '|' + r.ct + '|' + k64, e = RXC.get(ck);
+        if (e !== undefined) { p.out.push({ by: r.by, e: e, ts: r.ts }); return; }
+        var pk = PKC.get(k64);
+        if (!pk) { try { pk = unb64(k64, 32); } catch (x) { return; } PKC.set(k64, pk); }
+        var raw; try { raw = unb64(r.ct); } catch (x) { return; }
+        if (raw.length < 40) return;
+        p.todo.push({ r: r, ck: ck, pk: pk, k64: k64, raw: raw });
+      });
+      plan.push(p);
+    });
+    return plan;
+  }
+  function rxOpen1(p, t) {                       // nach gueltiger Signatur: oeffnen und merken
+    var j = p.j, r = t.r, e, raw = t.raw;
+    try {
+      if (!p.kr) p.kr = reactKey(j.K, j.ref, j.mid);     // einmal je Nachricht
+      e = reactBody(dec.decode(S.crypto_aead_xchacha20poly1305_ietf_decrypt(null, raw.subarray(24), lpCat(p.ap, [r.by, r.dev]),
+                                                                             raw.subarray(0, 24), p.kr)), r.ts);
+    } catch (x) { return; }
+    if (e === null) return;
+    RXC.set(t.ck, e); p.out.push({ by: r.by, e: e, ts: r.ts });
+  }
+  function rxSig(p, t) { return lpCat(p.sp, [t.r.by, t.r.dev, String(t.r.ts), S.crypto_generichash(32, t.raw)]); }
+  function rxDone(plan) {
+    var out = {};
+    plan.forEach(function (p) { out[p.j.mid] = p.out.filter(function (x) { return x.e; }); });
+    return out;
+  }
+  function openReactions(jobs, pks) {             // synchron (libsodium.js)
+    var plan = rxPlan(jobs, pks);
+    plan.forEach(function (p) { p.todo.forEach(function (t) { if (rxVerify(p, t)) rxOpen1(p, t); }); });
+    return rxDone(plan);
+  }
+  function rxVerify(p, t) { try { return verify(unb64(t.r.sig, 64), rxSig(p, t), t.pk); } catch (e) { return false; } }
+  // Wie openReactions, Signaturen aber ueber WebCrypto Ed25519 (nativ, deutlich schneller), wenn der Browser es kann -> Promise
+  var WCK = new Map(), wcOk = null;
+  function wcEd() {
+    if (wcOk) return wcOk;
+    var sub = typeof crypto !== 'undefined' && crypto.subtle;
+    if (!sub) return (wcOk = Promise.resolve(false));
+    var kp = S.crypto_sign_keypair(), m = new Uint8Array([1, 2, 3]), sg = S.crypto_sign_detached(m, kp.privateKey);
+    wcOk = sub.importKey('raw', kp.publicKey, { name: 'Ed25519' }, false, ['verify'])
+      .then(function (k) { return sub.verify({ name: 'Ed25519' }, k, sg, m); }).then(function (x) { return x === true; }, function () { return false; });
+    return wcOk;
+  }
+  function openReactionsAsync(jobs, pks) {
+    var plan = rxPlan(jobs, pks), n = 0;
+    plan.forEach(function (p) { n += p.todo.length; });
+    if (!n) return Promise.resolve(rxDone(plan));
+    return wcEd().then(function (ok) {
+      if (!ok) { plan.forEach(function (p) { p.todo.forEach(function (t) { if (rxVerify(p, t)) rxOpen1(p, t); }); }); return rxDone(plan); }
+      if (WCK.size > 2000) WCK.clear();
+      var need = {};                                   // erst die Schluessel (je Geraet einmal), dann alle Pruefungen auf einmal
+      plan.forEach(function (p) { p.todo.forEach(function (t) {
+        if (!WCK.has(t.k64)) WCK.set(t.k64, crypto.subtle.importKey('raw', t.pk, { name: 'Ed25519' }, false, ['verify']));
+        need[t.k64] = WCK.get(t.k64);
+      }); });
+      var keys = {};
+      return Promise.all(Object.keys(need).map(function (k) { return need[k].then(function (x) { keys[k] = x; }, function () { /* ungueltig */ }); })).then(function () {
+        var all = [];
+        plan.forEach(function (p) {
+          p.todo.forEach(function (t) {
+            var key = keys[t.k64], msg, sig;
+            if (!key) return;
+            try { msg = rxSig(p, t); sig = unb64(t.r.sig, 64); } catch (x) { return; }
+            all.push(crypto.subtle.verify({ name: 'Ed25519' }, key, sig, msg).then(function (v) { if (v === true) rxOpen1(p, t); }, function () { /* ungueltig */ }));
+          });
+        });
+        return Promise.all(all);
+      }).then(function () { return rxDone(plan); });
+    });
+  }
+  // Vertrauens-Uebernahme trust:<benutzer> (v1) -> trust2:<handle>, nur ohne trust2-Eintrag; gleiche Regeln wie tofuV2
+  function tofuMigrate(v1, ident, ver) {
+    ver = ver || 0;
+    if (!v1) return { result: 'trust', store: { ident: ident, verified: false, dver: ver } };
+    if (v1.ident === ident) {
+      var st = { ident: ident, verified: !!v1.verified, dver: ver };
+      if (v1.changed) { st.changed = true; st.old = v1.old; return { result: 'warn', store: st }; }
+      return { result: 'trust', store: st };
+    }
+    if (v1.verified) return { result: 'block', store: null };
+    return { result: 'warn', store: { ident: ident, verified: false, changed: true, old: v1.ident, dver: ver } };
+  }
+
   return {
     V2: V2, handleMsg: handleMsg, handleSig: handleSig, deviceMsgV2: deviceMsgV2, deviceSigV2: deviceSigV2, checkKeysV2: checkKeysV2,
     msgAdV2: msgAdV2, sigMsgV2: sigMsgV2, encryptMessageV2: encryptMessageV2, decryptMessageV2: decryptMessageV2,
@@ -429,6 +588,8 @@
     verifySignal: verifySignal, sdpFingerprints: sdpFingerprints,
     receiptMsg: receiptMsg, sealReceipt: sealReceipt, openReceipt: openReceipt, verifyReceipt: verifyReceipt,
     signalMsgV2: signalMsgV2, sealSignalV2: sealSignalV2, openSignalV2: openSignalV2, verifySignalV2: verifySignalV2,
+    V3: V3, reactKey: reactKey, reactAd: reactAd, reactSigMsg: reactSigMsg, encryptReaction: encryptReaction, verifyReaction: verifyReaction,
+    decryptReaction: decryptReaction, openReactions: openReactions, openReactionsAsync: openReactionsAsync, reactBody: reactBody, editCheck: editCheck, tofuMigrate: tofuMigrate,
     VERSION: 1, OPS: OPS, MEM: MEM, b64: b64, unb64: unb64, lp: lp, hex: hex,
     newIdentity: newIdentity, newDevice: newDevice, backupSig: backupSig, deviceSig: deviceSig, deviceMsg: deviceMsg,
     verifyDevice: verifyDevice, verifyBackup: verifyBackup, verify: verify,

@@ -435,7 +435,8 @@ def deliver(c, ch, seq, mid, sender, kind="msg"):
             continue
         notify.create(c, u, "chat.message", sender, data={"chat": ch["id"]}, bundle=ch["id"])
         bus.fire("push.send", c, uid=u, kind="chat.message", actor=sender, data={"chat": ch["id"]})
-    chat._direct(c, [r[0] for r in loc], "chat.message", {"chat_id": ch["id"], "seq": seq, "id": mid, "sender": sender, **({"kind": kind} if kind != "msg" else {})})
+    chat.direct_person(c, ch, [r[0] for r in loc], "chat.message", {"chat_id": ch["id"], "seq": seq, "id": mid, "sender": sender,
+                                                                   **({"kind": kind} if kind != "msg" else {})}, sender, "sender")
 
 
 def local_members(c, cid):
@@ -630,6 +631,8 @@ def drop_msg(c, ch, mid):
     c.execute("DELETE FROM chat_file WHERE msg_seq=?", (r[0],))
     c.execute("DELETE FROM chat_ai_reply WHERE msg_id=?", (mid,))
     c.execute("DELETE FROM chat_msg WHERE seq=?", (r[0],))
+    for fn in DROP_HOOKS:                        # 2.5 (saga.chat_x3): Bearbeitungen gehen mit
+        fn(c, ch, mid)
     chat._rm_blobs(c, fids)
     chat._direct(c, local_members(c, ch["id"]), "chat.deleted", {"chat_id": ch["id"], "id": mid, "seq": r[0]})
     return r[0]
@@ -1794,7 +1797,7 @@ def send(uid, cid, b):
         return _bad(t("Die Uhrzeit dieses Geräts weicht zu stark ab."), 400)
     with _db() as c, c:                                  # Seiten-Chat mit Heim hier: Freigaben jetzt pruefen (Entzug wirkt sofort)
         ch0 = chat._load(c, cid)
-        if ch0 and ch0["kind"] == "page" and ch0["home_peer"] is None and chat.is_fed(ch0):
+        if ch0 and ch0["kind"] == "page" and ch0["home_peer"] is None and chat.hfmt(ch0):
             chat.sync(c, ch0)
     with _db() as c:
         ch, mm, mem, err = chat._chat_for(c, uid, cid, do_sync=False)
@@ -2058,7 +2061,7 @@ def recipients(c, uid, ch, mem):
     for u in mem:
         h = member_handle(c, u)
         lab = label_of(c, u) if sharing.is_remote(u) else {"name": sharing.names(c, [u]).get(u, u), "host": F.SELF_HOST}
-        out.append({"username": u, "handle": h, "name": lab["name"], "host": lab["host"], "me": u == uid})
+        out.append({"username": chat.person(c, u, uid, ch), "handle": h, "name": lab["name"], "host": lab["host"], "me": u == uid})
     return chat._no_store({"chat_id": ch["id"], "v": 2, "ref": ch["ref"], "handles": [x["handle"] for x in out], "recipients_v2": out})
 
 
@@ -2066,8 +2069,10 @@ def chat_extra(c, uid, ch, d, mem, m):
     """Zusatzfelder fuer foederierte Chats in /api/chats und /api/chats/{cid}."""
     hh = home_host(c, ch)
     ro = _ro_error(c, ch)
-    d.update(v=2, ref=ch["ref"], fed=True, home=hh, home_self=ch["home_peer"] is None, my_handle=my_handle(c, uid),
-             state=(m or {}).get("state") or "ok", request=(m or {}).get("state") == "request", readonly=bool(ro), readonly_reason=ro,
+    v3 = ch["v"] == 3            # 2.5: lokaler Chat der Stufe 3 - Clients der Stufe 2 sehen ihn als v: 2 (gleiches Format)
+    d.update(v=3 if v3 and chat.CHAT_LEVEL.get() >= 3 else 2, ref=ch["ref"], fed=not v3, home=hh, home_self=ch["home_peer"] is None,
+             my_handle=my_handle(c, uid), state=(m or {}).get("state") or "ok", request=(m or {}).get("state") == "request",
+             readonly=bool(ro), readonly_reason=ro,
              big_files=big_files_ok(c, ch))      # 2.4: grosse Anhaenge (saga-file/v2 ueber ATTACH_MAX_MB) moeglich (alle mit chatfile2)
     out = []
     av = sharing.names(c, mem)
@@ -2078,8 +2083,16 @@ def chat_extra(c, uid, ch, d, mem, m):
             x.update(name=lab["name"], label=lab["label"], host=lab["host"], handle=handle_of(u), remote=True)
         else:
             x.update(handle=my_handle(c, u), host=F.SELF_HOST)
+            if u != uid:                            # 2.5: andere Konten nur als Handle (Endpunkte nehmen ihn an)
+                x["username"] = x["handle"]
         out.append(x)
     d["members"] = out
+    _title_v2(d, uid)
+    if v3:
+        _extra_v3(c, uid, ch, d, out)
+        for fn in EXTRA_HOOKS:
+            fn(c, ch, d)
+        return d
     if ch["kind"] == "page" and ch["home_peer"] is not None:     # Kopie eines Seiten-Chats einer fremden Seite (E5)
         d.update(name=ch["group_name"] or t("Seite"), group=None)
     if ch["kind"] in ("free", "page"):
@@ -2101,6 +2114,26 @@ def chat_extra(c, uid, ch, d, mem, m):
 
 
 EXTRA_HOOKS = []
+DROP_HOOKS = []                    # 2.5: (c, ch, msg_id) nach dem Loeschen einer Nachricht (saga.chat_x3)
+
+
+def _extra_v3(c, uid, ch, d, members_):
+    """Stufe 3 (2.5): lokaler Chat ohne Personen anderer Server - Direkt-Chat mit dem Gegenueber als Handle, Name der freien
+    Gruppe ohne v1-Absenderdaten. Loeschen "fuer alle" wie bei lokalen Chats (d bleibt aus chat._chat_dict)."""
+    if ch["kind"] == "dm":
+        o = next((x for x in members_ if not x.get("me")), None) or {}
+        d["peer"] = {"username": o.get("username"), "handle": o.get("handle"), "name": o.get("name") or d.get("name") or "?",
+                     "label": o.get("name") or d.get("name") or "?", "host": F.SELF_HOST, "avatar": o.get("avatar")}
+
+
+def _title_v2(d, uid):
+    """Name einer freien Gruppe im Format v2 (2.5): Absender als Handle, ohne v1-Geraetedaten (enthielten den Anmeldenamen)."""
+    tm = d.get("title_msg")
+    if tm and tm.get("sender_handle"):
+        if tm.get("sender") and tm["sender"].get("username") != uid:
+            tm["sender"] = dict(tm["sender"], username=tm["sender_handle"])
+        tm.pop("device", None)
+        tm.pop("ident_pub", None)
 
 
 # =====================================================================================================
@@ -2188,8 +2221,11 @@ def upgrade_page_chat(c, ch):
     v1 - ohne sender_handle - und fuer die Mitglieder hier lesbar). KI in Chats ueber Servergrenzen standardmaessig aus."""
     if ch["kind"] != "page" or ch.get("v") == 2 or ch.get("home_peer") is not None:
         return
-    ref = secrets.token_hex(16) + "@" + F.SELF_HOST
-    c.execute("UPDATE chat SET v=2, ref=? WHERE id=?", (ref, ch["id"]))
+    ref = ch.get("ref") if ch.get("v") == 3 else None    # 2.5: Stufe 3 hat schon das Format v2 und eine chat_ref
+    ref = ref or secrets.token_hex(16) + "@" + F.SELF_HOST
+    # 2.5: Umstellpunkt merken - Nachrichten bis dahin sind v1 (Altbestand mit Anmeldenamen, siehe core.knows)
+    c.execute("UPDATE chat SET v=2, ref=?, v3_seq=CASE WHEN v=1 AND last_seq>0 THEN last_seq ELSE v3_seq END, "
+              "v3_at=CASE WHEN v=1 AND last_seq>0 THEN ? ELSE v3_at END WHERE id=?", (ref, time.time(), ch["id"]))
     ch.update(v=2, ref=ref)
     had = c.execute("DELETE FROM chat_ai WHERE chat_id=?", (ch["id"],)).rowcount
     sysline(c, ch, None, {"type": "fed", "on": True, **({"ai_off": True} if had else {})})
@@ -2773,6 +2809,30 @@ def create_group(uid, b):
         mem = chat.members(c, cid)
         return chat._no_store({"chat": chat._chat_dict(c, uid, ch, mem, chat._member(c, cid, uid), chat._my_device(c, uid, str(b.get("device") or "")),
                                                        full=True)})
+
+
+def open_v3(uid, cid, handle):
+    """2.5: freie Gruppe der Stufe 3 bekommt eine Person eines anderen Servers - die Krypto bleibt (schon saga-chat/v2 mit
+    chat_ref), der Chat wird ab jetzt foederiert (v=2, Heim = dieser Server, KI aus, Systemzeile wie bei Seiten-Chats).
+    Nur, wenn das Hinzufuegen dort moeglich ist (Admin, verbundene Instanz mit Gruppen); dann wie group_add."""
+    n, host = split_handle(str(handle or "").strip().lower())
+    with _db() as c, c:
+        ch, m, mem, err = chat._chat_for(c, uid, cid, do_sync=False)
+        if err:
+            return err
+        if not n or host == F.SELF_HOST or ch["v"] != 3 or ch["kind"] != "free":
+            return _bad(t("ungültige Angabe"))
+        if m["role"] != "admin":
+            return _bad(t("Dafür fehlt dir die Berechtigung."), 403)
+        if not groups_ok(F.peer_by(c, "host", host)):
+            return _bad(t("Mit Personen auf {host} sind Gruppen-Chats nicht möglich.", host=host), 403)
+        if not c.execute("UPDATE chat SET v=2 WHERE id=? AND v=3", (ch["id"],)).rowcount:
+            return _bad(t("ungültige Angabe"))
+        had = c.execute("DELETE FROM chat_ai WHERE chat_id=?", (ch["id"],)).rowcount
+        sysline(c, dict(ch, v=2), None, {"type": "fed", "on": True, **({"ai_off": True} if had else {})})
+        F.log(c, "chat.upgraded", None, f"chat={ch['id']} (Stufe 3)", host=F.SELF_HOST)
+        chat._changed(c, ch["id"], local_members(c, ch["id"]))
+    return group_add(uid, cid, "", handle)
 
 
 def group_add(uid, cid, who_, handle):

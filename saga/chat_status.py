@@ -31,7 +31,7 @@ from starlette.concurrency import run_in_threadpool
 
 from db import connect as _db
 from saga import bus, chat, fed_chat as FC, federation as F, live, sharing
-from saga.core import _bad, _body, t
+from saga.core import _bad, _body, legacy_sql, t
 
 router = APIRouter()
 
@@ -73,7 +73,7 @@ def prefs(c, uid):
 
 def me_extra(c, uid):
     """chat.STATUS_ME: Zusatzfelder fuer GET /api/chat/me."""
-    return {"privacy": prefs(c, uid), "features": ["receipts", "online"],
+    return {"privacy": prefs(c, uid), "features": ["receipts", "online"] + (["chat3"] if chat.v3_new() else []),   # 2.5: Stufe 3
             "status_limits": {"receipt_gap": GAP, "presence_ttl": WATCH_TTL, "presence_users": USERS_MAX, "last_round": ROUND}}
 
 
@@ -165,7 +165,7 @@ def take(uid, ch, m, rc):
         if uid not in mem:
             return "none"
         loc, rem = {}, {}
-        if chat.is_fed(ch):
+        if chat.hfmt(ch):                         # v2-Format (2.3 foederiert, 2.5 Stufe 3): Empfaenger 'backup:<handle>'
             if ch["fstate"]:
                 return "none"
             states = dict(FC.members(c, cid))
@@ -230,14 +230,14 @@ def _flush(cid):
                 return
             loc = [u for u in mem if not sharing.is_remote(u)]
             off = _off(c, KV_RCPT, loc)
-            fed = chat.is_fed(ch)
+            fed = chat.hfmt(ch)
             hs = {r: FC.member_handle(c, r) for r in rd} if fed else {}
             per = {}
             for reader, viewer, sealed in c.execute(f"SELECT reader, viewer, sealed FROM chat_receipt WHERE chat_id=? AND reader IN "
                                                     f"({','.join('?' * len(rd))})", (cid, *rd)).fetchall():
                 if viewer in off or viewer not in mem or reader == viewer or reader in off:
                     continue
-                it = {"from": reader, "sealed": sealed}
+                it = {"from": chat.person(c, reader, viewer, ch), "sealed": sealed}
                 if fed:
                     it["handle"] = hs.get(reader)
                 per.setdefault(viewer, []).append(it)
@@ -246,7 +246,7 @@ def _flush(cid):
                 bus.emit_after(c, "direct_each", {"items": [(v, "chat.receipt", {"chat_id": cid, "receipts": its} if len(its) <= INLINE
                                                              else {"chat_id": cid, "receipts": [], "more": True}) for v, its in sorted(per.items())]})
             for reader, rem in fedp.items():
-                if fed and reader in rd and not sharing.is_remote(reader) and reader not in off:
+                if chat.is_fed(ch) and reader in rd and not sharing.is_remote(reader) and reader not in off:
                     _fed_send(c, ch, hs.get(reader), rem)
     except Exception as ex:  # noqa: BLE001 - Datenbank gerade weg: diese Buendelung entfaellt (die Zeilen liegen, GET liefert sie)
         print(f"chat_status: Versand Chat {cid}: {type(ex).__name__}: {ex}", flush=True)
@@ -312,11 +312,11 @@ def api_receipts(cid: int, request: Request):
         if gone:                                   # ausgetreten/entfernt: deren Bestaetigungen hier aufraeumen
             c.execute(f"DELETE FROM chat_receipt WHERE chat_id=? AND reader IN ({','.join('?' * len(gone))})", (ch["id"], *gone))
         off = _off(c, KV_RCPT, [r[0] for r in rows])
-        fed = chat.is_fed(ch)
+        fed = chat.hfmt(ch)
         out = []
         for reader, sealed in rows:
             if reader in mem and reader != uid and reader not in off:
-                it = {"from": reader, "sealed": sealed}
+                it = {"from": chat.person(c, reader, uid, ch), "sealed": sealed}
                 if fed:
                     it["handle"] = FC.member_handle(c, reader)
                 out.append(it)
@@ -403,20 +403,42 @@ _watch = {}            # Person (Konto hier oder Prinzipal) -> {abonnierendes Ko
 _rstate = {}           # Prinzipal -> {"online", "last", "exp"} (vom Server der Person gemeldet)
 _rsub = {}             # Prinzipal -> letzte Abo-Erneuerung beim Server der Person
 _fsub = {}             # Konto hier -> {peer_id: ablauf} (Abos anderer Server)
+_alias = {}            # (Person, abonnierendes Konto) -> Kennung der Anfrage (2.5: Handle '~x@host' aus Chats der Stufe 3)
 
 
 def _round(ts):
     return float(math.floor(ts / ROUND) * ROUND) if ts else None
 
 
-def _shared(c, uid, targets):
-    """Mit welchen dieser Personen hat uid einen angenommenen Chat (beide aktiv, beide 'ok')?"""
+def _shared(c, uid, targets, v1=False):
+    """Mit welchen dieser Personen hat uid einen angenommenen Chat (beide aktiv, beide 'ok')? v1 (2.5): nur Chats, in denen
+    Mitglieder den Anmeldenamen ohnehin kennen (nicht Stufe 3) - fuer Anfragen per Benutzername (kein Orakel)."""
     targets = sorted({x for x in targets if x and x != uid})
     if not targets:
         return set()
     return {r[0] for r in c.execute(
-        "SELECT DISTINCT b.uid FROM chat_member a JOIN chat_member b ON b.chat_id=a.chat_id WHERE a.uid=? AND a.left_at IS NULL "
-        f"AND a.state='ok' AND b.left_at IS NULL AND b.state='ok' AND b.uid IN ({','.join('?' * len(targets))})", (uid, *targets))}
+        "SELECT DISTINCT b.uid FROM chat_member a JOIN chat_member b ON b.chat_id=a.chat_id" + (" JOIN chat ch ON ch.id=a.chat_id" if v1 else "") +
+        " WHERE a.uid=? AND a.left_at IS NULL AND a.state='ok' AND b.left_at IS NULL AND b.state='ok' AND b.uid IN "
+        f"({','.join('?' * len(targets))})" + (" AND " + legacy_sql("a", "b") if v1 else ""), (uid, *targets))}
+
+
+def _asked(c, users):
+    """Anfrage-Kennungen -> {konto|prinzipal: kennung}: Handle eines Kontos hier ('~x@<dieser Server>', 2.5) wird zum Konto."""
+    out = {}
+    for x in users:
+        m = chat._FULL_H.fullmatch(x)
+        if m and F.fedsig.authority(m.group(2)) == F.SELF_HOST:
+            u = F.uid_by_handle(c, m.group(1))
+            if u:
+                out[u] = x
+        else:
+            out[x] = x
+    return out
+
+
+def _as(u, viewer):
+    """Kennung, unter der viewer die Person u abonniert hat (Ereignis chat.presence)."""
+    return _alias.get((u, viewer), u)
 
 
 def _local_state(c, uids):
@@ -446,8 +468,11 @@ async def api_presence(request: Request):
 def presence(uid, users, leave=False):
     now = time.time()
     if leave:
+        with _db() as c:
+            users = list(_asked(c, users))
         with _wl:
             for u in users:
+                _alias.pop((u, uid), None)
                 w = _watch.get(u)
                 if w:
                     w.pop(uid, None)
@@ -458,7 +483,10 @@ def presence(uid, users, leave=False):
         if not is_on(c, uid, KV_ONLINE):
             _unwatch(uid)
             return {"enabled": False, "ttl": WATCH_TTL, "users": {}}
-        ok = _shared(c, uid, users)
+        asked = _asked(c, users)
+        by_h = [u for u, x in asked.items() if x != u]
+        ok = _shared(c, uid, by_h) | _shared(c, uid, [u for u in asked if u not in by_h and not sharing.is_remote(u)], v1=True) \
+            | _shared(c, uid, [u for u in asked if sharing.is_remote(u)])
         loc = [u for u in ok if not sharing.is_remote(u)]
         loc = [u for u in loc if u not in _off(c, KV_ONLINE, loc)]
         rem = [u for u in ok if sharing.is_remote(u)]
@@ -487,13 +515,21 @@ def presence(uid, users, leave=False):
     with _wl:
         for u in list(out) + rem:
             _watch.setdefault(u, {})[uid] = now + WATCH_TTL
+            if asked.get(u, u) != u:
+                _alias[(u, uid)] = asked[u]
+            else:
+                _alias.pop((u, uid), None)
         mine = [(w[uid], u) for u, w in _watch.items() if uid in w]
         if len(mine) > WATCH_MAX:                  # zu viele: die am laengsten nicht erneuerten vergessen
             for _, u in sorted(mine)[:len(mine) - WATCH_MAX]:
                 _watch[u].pop(uid, None)
+                _alias.pop((u, uid), None)
+        if len(_alias) > 50000:
+            for k in [k for k in _alias if k[1] not in _watch.get(k[0], {})]:
+                _alias.pop(k, None)
     for pid, body in renew.items():
         F.peer_submit(pid, _subscribe, pid, body)      # nicht verwerfen: sonst erst nach WATCH_RENEW erneut
-    return {"enabled": True, "ttl": WATCH_TTL, "users": out}
+    return {"enabled": True, "ttl": WATCH_TTL, "users": {asked.get(u, u): st for u, st in out.items()}}
 
 
 def _unwatch(uid):
@@ -540,7 +576,7 @@ def _changed(uid, on, at, push_only=False):
         if not is_on(c, uid, KV_ONLINE):
             return []
         data = {"username": uid, "online": on, "last": None if on else _round(at)}
-        out = [(v, "chat.presence", data) for v in _viewers(c, uid)]
+        out = [(v, "chat.presence", dict(data, username=_as(uid, v))) for v in _viewers(c, uid)]
         subs = _fed_subs(uid)
         h = FC.my_handle(c, uid) if subs else None
     if push_only:
@@ -562,7 +598,7 @@ def _hide(uid):
         _watch.pop(uid, None)
         _fsub.pop(uid, None)
     for v in vs:
-        bus.emit("direct", {"uids": [v], "typ": "chat.presence", "data": {"username": uid, "online": False, "last": None}})
+        bus.emit("direct", {"uids": [v], "typ": "chat.presence", "data": {"username": _as(uid, v), "online": False, "last": None}})
     for pid in subs:
         _push(pid, [{"h": h, "hidden": True}])
 
@@ -695,7 +731,10 @@ def _peer_gone(c, p):
 
 def chat_flags(c, ch, d):
     """fed_chat.EXTRA_HOOKS: koennen die anderen Server dieses Chats Bestaetigungen bzw. Online-Status (2.4)? Teilnehmer:
-    das Heim; Heim: mindestens ein Teilnehmer-Server. Fehlt das Feld (lokaler Chat), gilt true."""
+    das Heim; Heim: mindestens ein Teilnehmer-Server. Fehlt das Feld (lokaler Chat), gilt true. 2.5: Stufe 3 (lokal) true."""
+    if ch["v"] == 3:
+        d["receipts_ok"] = d["online_ok"] = True
+        return
     if ch["home_peer"] is not None:
         ps = [F.peer_by(c, "id", ch["home_peer"])]
     else:

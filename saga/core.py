@@ -870,11 +870,19 @@ def username_lookup():
     return bool(auth.settings().get("search_username", True))
 
 
+def legacy_sql(a="m1", b="m2"):
+    """SQL-Bedingung (2.5): gemeinsamer Chat, in dem sich die Mitglieder a und b mit Anmeldenamen kennen - Chat v1 oder
+    Altbestand eines umgestellten Chats (beide waren schon vor dem Umstellpunkt v3_at Mitglied). Alias ch = chat."""
+    return (f"(ch.v=1 OR (ch.v3_seq IS NOT NULL AND {a}.joined<=COALESCE(ch.v3_at, 0) AND {b}.joined<=COALESCE(ch.v3_at, 0)))")
+
+
 def knows(c, viewer, other):
     """Kennt viewer den Anmeldenamen von other ohnehin? Gemeinsamer Chat (v1: Mitglieder bekommen ihn fuer die
-    Schluessel) oder eine eigene Freigabe an other (aus der Zeit vor 2.4 bzw. per Anmeldename angelegt)."""
-    return bool(c.execute("SELECT 1 FROM chat_member m1 JOIN chat_member m2 ON m2.chat_id=m1.chat_id WHERE m1.uid=? AND m2.uid=? "
-                          "LIMIT 1", (viewer, other)).fetchone() or
+    Schluessel) oder eine eigene Freigabe an other (aus der Zeit vor 2.4 bzw. per Anmeldename angelegt). 2.5: Chats im
+    Format v2 (Stufe 3, foederiert) zaehlen nicht (dort nur Handles) - ausser fuer Mitglieder des Altbestands v1
+    (legacy_sql)."""
+    return bool(c.execute("SELECT 1 FROM chat_member m1 JOIN chat_member m2 ON m2.chat_id=m1.chat_id JOIN chat ch ON ch.id=m1.chat_id "
+                          "WHERE m1.uid=? AND m2.uid=? AND " + legacy_sql() + " LIMIT 1", (viewer, other)).fetchone() or
                 c.execute("SELECT 1 FROM note_share WHERE owner_uid=? AND target_type='user' AND target=? LIMIT 1",
                           (viewer, other)).fetchone())
 

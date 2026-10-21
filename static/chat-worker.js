@@ -10,6 +10,7 @@
 //   f2enc {key, prefix, cs, size, i, bytes} -> {ct}                       saga-file/v2 (2.4): Bloecke ab Nummer i verschluesseln
 //                                                                       (bytes = Klartext ab i*cs, ganze Bloecke, der letzte ggf. kuerzer)
 //   f2dec {key, head, i, ct}               -> {plain}                    saga-file/v2: Bloecke ab i entschluesseln (ct ab Blockanfang)
+//   rx    {jobs, pks}                     -> {rx: {mid: [{by, e, ts}]}}  Reaktionen pruefen + oeffnen (2.5, X.openReactions)
 'use strict';
 var V = (self.location.search.match(/v=([^&]+)/) || [])[1] || '';
 importScripts('/static/vendor/libsodium/libsodium-sumo.js?v=' + V, '/static/vendor/libsodium/libsodium-wrappers.js?v=' + V,
@@ -48,6 +49,7 @@ self.onmessage = function (e) {
         done(t, [t.jpeg].concat(t.ct ? [t.ct] : []));
       });
     }
+    if (d.op === 'rx') return X.openReactionsAsync(d.jobs, d.pks).then(function (rx) { done({ rx: rx }); });
     if (d.op === 'make') return thumbOf(new Uint8Array(d.bytes), d.mime).then(function (t) { done(t, [t.jpeg]); });
     if (d.op === 'f2enc' || d.op === 'f2dec') { var r2 = self.SagaF2Job(X, d); return done(r2, [r2.ct || r2.plain]); }
     if (d.op === 'enc') {
