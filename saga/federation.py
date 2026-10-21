@@ -80,12 +80,22 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # Online-Status von Chat-Partnern (Abo beim Server der Person). Mit 2.3-Servern: nichts davon, nichts wird gesendet.
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
          "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "chat3"]
+# horn (2.5, Gjallarhorn, docs/HORN-E2E.md) = Gruppenanrufe ueber Knoten mit Frame-E2E: Signale fkey/fkey-ack laufen
+# versiegelt wie alle Anruf-Signale (Auftrag signal). Nur gemeldet, solange das Feature-Flag calls.horn an ist (caps2()).
+CAPS2_FLAG = {"horn": lambda: bool((auth.settings().get("calls") or {}).get("horn"))}   # wie saga.calls.horn_on()
+
+
+def caps2():
+    """Eigene Faehigkeiten (Protokoll 2) - die festen und die, deren Feature-Flag gerade an ist."""
+    return CAPS2 + [k for k, on in CAPS2_FLAG.items() if on()]
+
+
 # Admin-Schalter je verbundener Instanz (fed_peer.opts) - Standard: alles an, Ausnahme "Teilen nur in gemeinsamen
 # Gruppen" aus. directory_groups: nur Personen dieser Gruppen erscheinen im Adressbuch der Instanz (leer = alle).
 OPT_DEFAULTS = {"chat": True, "calls": True, "directory": True, "scope_exception": False, "directory_groups": []}
 # Faehigkeit -> Admin-Schalter, der sie zusaetzlich braucht
 CAP_OPT = {"directory": "directory", "keys": "chat", "chat2": "chat", "calls2": "calls", "chatgroups": "chat", "calls3": "calls",
-           "chatfile2": "chat", "receipts": "chat", "online": "chat", "chat3": "chat"}
+           "chatfile2": "chat", "receipts": "chat", "online": "chat", "chat3": "chat", "horn": "calls"}
 EXPRESS_TIMEOUT = float(E.get("FED_EXPRESS_TIMEOUT", "5"))      # synchrone Zustellung: harte Frist in Sekunden
 HELLO_EVERY = 6 * 3600                       # Faehigkeiten der Gegenstelle so oft neu abfragen
 SEEN_KEEP = 7 * 86400                        # Ereignis-Kennungen so lange merken (idempotent)
@@ -290,7 +300,7 @@ def peer_opts(raw):
 
 def caps_of(p):
     """Gemeinsame Faehigkeiten (beide Seiten melden sie) - ohne Admin-Schalter."""
-    return set(CAPS2) & set(p.get("caps") or []) if p else set()
+    return set(caps2()) & set(p.get("caps") or []) if p else set()
 
 
 def feature(p, name):
@@ -716,7 +726,7 @@ def well_known():
         return _not_found()
     return JSONResponse({"software": "saga", "protocol": PROTOCOL, "protocols": PROTOCOLS, "version": VERSION, "base_url": SELF_URL,
                          "host": SELF_HOST, "name": title(), "key": {"id": SELF_URL, "alg": "ed25519", "public": fedsig.b64u(pub)},
-                         "fingerprint": fedsig.fingerprint(pub), "capabilities": CAPS + CAPS2},
+                         "fingerprint": fedsig.fingerprint(pub), "capabilities": CAPS + caps2()},
                         headers={"Cache-Control": "public, max-age=300", "X-Content-Type-Options": "nosniff"})
 
 
@@ -1032,7 +1042,7 @@ def _store_caps(pid, protocol, caps):
         c.execute("UPDATE fed_peer SET protocol=?, caps=?, caps_at=? WHERE id=?", (protocol, json.dumps(caps), time.time(), pid))
         changed = old["protocol"] != protocol or sorted(old["caps"]) != caps
         if changed:
-            log(c, "peer.capabilities", old, f"protocol={protocol} " + " ".join(x for x in caps if x in CAPS2))
+            log(c, "peer.capabilities", old, f"protocol={protocol} " + " ".join(x for x in caps if x in caps2()))
             if old["protocol"] >= 2 and (protocol < 2 or "v2" not in caps) and "v2" in old["caps"]:
                 # Rueckfall auf Protokoll 1 (aeltere Version zurueckgespielt - oder ein Versuch, Schutz abzuschalten): sichtbar im
                 # Pruefprotokoll; Ereignisse, die Protokoll 2 brauchen, warten im Ausgangskorb statt still verloren zu gehen
@@ -1059,7 +1069,7 @@ def hello(pid):
     if not p or p["status"] != "active" or not enabled():
         return None
     try:
-        status, d = call_json(p, "POST", "/fed/v2/hello", body={"protocol": PROTOCOL, "protocols": PROTOCOLS, "capabilities": CAPS + CAPS2},
+        status, d = call_json(p, "POST", "/fed/v2/hello", body={"protocol": PROTOCOL, "protocols": PROTOCOLS, "capabilities": CAPS + caps2()},
                               timeout=6)
     except FedError as ex:
         if ex.code == 404:                   # 2.1/2.2: unsignierte 404 - Protokoll 1
@@ -1087,7 +1097,7 @@ async def fed_hello(request: Request):
     d = inp.data if isinstance(inp.data, dict) else {}
     if inp.peer.get("id") and inp.peer.get("status") == "active":
         await run_in_threadpool(_store_caps, inp.peer["id"], d.get("protocol"), _clean_caps(d.get("capabilities")))
-    return _signed(inp, 200, {"protocol": PROTOCOL, "protocols": PROTOCOLS, "capabilities": CAPS + CAPS2})
+    return _signed(inp, 200, {"protocol": PROTOCOL, "protocols": PROTOCOLS, "capabilities": CAPS + caps2()})
 
 
 class _RetryEv(Exception):
@@ -2673,11 +2683,11 @@ def admin_state():
         dirn = {r[0]: r[1] for r in c.execute("SELECT peer_id, COUNT(*) FROM fed_directory GROUP BY peer_id")}
     for p in ps:
         p.update(shares=counts.get(p["id"], 0), inbound=inbound.get(p["id"], 0), queued=queued.get(p["id"], 0), directory=dirn.get(p["id"], 0),
-                 common=sorted(caps_of(p)), features={k: feature(p, k) for k in CAPS2})
+                 common=sorted(caps_of(p)), features={k: feature(p, k) for k in caps2()})
     return {"enabled": enabled(), "base_url": SELF_URL, "host": SELF_HOST, "fingerprint": fp, "key_error": err, "peers": ps,
             "log": [{"ts": r[0], "host": r[1], "event": r[2], "detail": r[3]} for r in logs],
             "invites": [{"id": r[0], "created": r[1], "expires": r[2]} for r in invites],
-            "https": SELF_URL.startswith("https://") or ALLOW_HTTP, "protocol": PROTOCOL, "capabilities": CAPS + CAPS2,
+            "https": SELF_URL.startswith("https://") or ALLOW_HTTP, "protocol": PROTOCOL, "capabilities": CAPS + caps2(),
             "scope": sharing.group_scope(), "groups": _all_groups()}
 
 

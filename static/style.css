@@ -1325,6 +1325,43 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 .hk-more{margin-top:1rem}
 .hk-more>summary{cursor:pointer;color:var(--muted);font-size:.9rem;padding:.3rem 0}
 .hk-more[open]>summary{margin-bottom:.3rem}
+/* Admin "Anrufe" (2.5, Gjallarhorn): Knoten, Erweitern, Port-Hinweis */
+.horn-h{margin:1rem 0 .4rem;font-size:.92rem;color:var(--muted);font-weight:500}
+.horn-nodes td b{overflow-wrap:anywhere}
+@media (min-width:721px){.horn-nodes td:nth-child(3),.horn-nodes td:nth-child(1) b{white-space:nowrap}}
+.horn-cf-edit>summary.btn,.adm-actions form .btn{font-size:.9rem}
+.horn-dot{display:inline-block;width:.55rem;height:.55rem;border-radius:50%;background:var(--unk);margin-right:.35rem;vertical-align:middle}
+.horn-st-ready .horn-dot{background:var(--up)}
+.horn-st-full .horn-dot,.horn-st-draining .horn-dot,.horn-st-draining_upd .horn-dot,.horn-st-updating .horn-dot,.horn-st-nocert .horn-dot{background:var(--warn)}
+.horn-st-down .horn-dot{background:var(--down)}
+.horn-bar{width:7rem;height:.6rem;vertical-align:middle}
+.horn-acts .adm-inline{flex-wrap:wrap}
+.horn-acts .btn{font-size:.8rem;padding:.3rem .55rem}
+.horn-ports{margin:.4rem 0;border:1px solid var(--border);border-radius:9px;padding:.4rem .8rem}
+.horn-ports>summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+.horn-ports[open]>summary{margin-bottom:.4rem}
+.horn-ext{margin:1rem 0}
+.horn-ext>summary{list-style:none;display:inline-block}
+.horn-ext>summary::-webkit-details-marker{display:none}
+.horn-ext[open]>summary{margin-bottom:.8rem}
+.horn-name{display:flex;align-items:center;gap:.3rem;min-width:0}
+.horn-name .hk-in{flex:0 1 10rem;min-width:5rem}
+.horn-name>span{color:var(--muted);overflow-wrap:anywhere}
+.horn-pair-out{border-top:1px solid var(--border);margin-top:.8rem;padding-top:.6rem}
+.horn-script,.horn-script-sd{max-height:22rem;overflow:auto}
+.horn-prog{margin:.6rem 0;padding-left:1.3rem;line-height:1.7}
+.horn-prog li.hp-run{color:var(--muted)}
+.horn-prog li.hp-ok{color:var(--ok)}
+.horn-prog li.hp-err,.horn-prog li.hp-expired{color:var(--down)}
+.horn-prog li.hp-warn,.horn-prog li.hp-skip,.horn-prog li.hp-no,.horn-prog li.hp-off{color:var(--warn)}
+.horn-caps{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin:.8rem 0}
+.horn-caps small{color:var(--muted)}
+.horn-quota{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
+.horn-quota .hk-in{width:6rem}
+.horn-mask{font-size:.95rem}
+.horn-cf-ok{color:var(--ok)}
+.horn-cf-edit>summary{list-style:none}
+.horn-cf-edit>summary::-webkit-details-marker{display:none}
 .adm-foot{max-width:1100px;margin:1.5rem auto 2rem;padding:0 1rem;color:var(--muted);font-size:.8rem}
 .adm-foot a{color:inherit}
 

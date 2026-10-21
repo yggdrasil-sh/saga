@@ -150,7 +150,9 @@ Zusätzliche Felder (ältere Server liefern sie nicht – dann gilt: keine v3-Fu
 
 - `features`: `reneg` = der Server reicht offer/answer während des Gesprächs weiter (Budget unten), `pip_hint` = `want`
   wird unterstützt, `screen2` = Bildschirm als zweite Videospur (E3, Abschnitt „Bildschirm v2“), `multi` = weitere Geräte
-  im Anruf (E4), `group` = Gruppenanrufe (E5) – beides im Abschnitt „Anrufe: Mehrgeräte und Gruppen“.
+  im Anruf (E4), `group` = Gruppenanrufe (E5) – beides im Abschnitt „Anrufe: Mehrgeräte und Gruppen“. 2.5: `horn`
+  (nur bei eingeschaltetem Feature-Flag `calls.horn`, dazu `"e2e": "saga-horn/v1"`) = Gjallarhorn mit Frame-E2E,
+  Vertrag `docs/HORN-E2E.md`; Geräte melden dann `horn` in `caps`.
 - `limits.endpoints_*`: Geräte je Anruf (Mesh: 4 mit Video, 6 nur Ton; eigene Zusatzgeräte zählen mit; der Admin kann
   nur senken). E0-Server meldeten 2.
 - Signal-Budget je Anruf: `signals_max` + `signals_per_min` je **angefangener** Minute seit der Annahme, höchstens
@@ -181,7 +183,7 @@ Zusätzliche Felder (ältere Server liefern sie nicht – dann gilt: keine v3-Fu
 
 | Feld | Typ | in | Bedeutung |
 |---|---|---|---|
-| `t` | Text | alle | `offer` · `answer` · `ice` · `state` · `bye` (später `fkey`) |
+| `t` | Text | alle | `offer` · `answer` · `ice` · `state` · `bye`; 2.5: `fkey` · `fkey-ack` (nur mit `horn`, `docs/HORN-E2E.md` §4) |
 | `pc` | Text | alle | Kennung der PeerConnection. **Der Anrufer legt sie fest** (je Zielgerät `min(dev_a, dev_b) + ":" + max(dev_a, dev_b)`, device_ids als Hex), der Angerufene **übernimmt** sie aus dem ersten Angebot. Signale mit fremdem `pc` ignorieren; fehlt `pc` (2.3), gilt die einzige Verbindung |
 | `n` | Zahl | offer, answer | laufende Nummer **je Absender** (erstes Angebot des Anrufers `1`, das erste eigene Angebot des Angerufenen ebenfalls `1`). Die Antwort trägt das `n` des Angebots, das sie beantwortet |
 | `caps` | Liste | offer, answer | siehe oben |
@@ -549,6 +551,71 @@ Bewertung für 2.5:
 - Ein striktes RFC-9605-SFrame bieten die nativen Bibliotheken nicht – Empfehlung bleibt das LiveKit-kompatible Format.
 - Schlüssel: je sendendem Gerät, als `fkey`-Signal versiegelt verteilt (Abschnitt „saga-call v3“: Typ reserviert); neuer
   Schlüssel bei jedem Verlassen, HKDF-Ratsche bei jedem Beitritt.
+- **Umgesetzt in 2.5 (P4):** `docs/HORN-E2E.md` (`saga-horn/v1`). Abweichend vom Spike ist der Trailer 14 Byte
+  (IV ‖ IV-Länge `0x0C` ‖ kid, wie FrameCryptor), Zusatz also 30 Byte je Rahmen; die Ratsche ist Saga-eigen.
+## Anrufe über Gjallarhorn-Knoten (2.5, Paket P3)
+
+Nur mit Feature-Flag `calls.horn` (Standard aus) und nur für Geräte, die `horn` in `caps` melden. Konzept:
+`claude/saga-gjallarhorn-konzept-v2.md` §2; Frame-E2E: `docs/HORN-E2E.md`; Knoten: `gjallarhorn/NODE.md`.
+
+**Wann:** Ein Gruppenanruf läuft über einen Knoten (`topo: "horn"` im Anruf-Objekt, in `call.roster` und in
+`/api/chats/{id}` → `call.running`), wenn der Chat mehr Mitglieder hat als die Mesh-Grenze (`limits.endpoints_video`
+bzw. `_audio`; Admin: `calls.horn_from`), das anrufende Gerät `horn` meldet, ein Knoten bereit ist und der Chat nicht
+föderiert ist (Föderation: P10). Sonst Mesh wie 2.4 (`topo: "mesh"`). Einladungen gehen nur an Personen mit einem
+Gerät mit `horn`; die anderen sehen `old` („braucht Saga 2.5“).
+
+**Grenzen** (`GET /api/calls/config` → `limits.horn`): `video_tcp` 12, `audio_tcp` 50, `video_udp` 25, `audio_udp` 100
+(UDP gilt, wenn der Knoten des Anrufs UDP meldet). `limits.endpoints_video/_audio` bleiben die Mesh-Grenzen. Das
+Anruf-Objekt meldet in `limit` die Grenze dieses Anrufs.
+
+**Beitreten:** `POST /api/calls/{id}/join {device, role, caps, dev_class?}` **ohne** `signals` (mit Angeboten: 400).
+Ohne `horn` in `caps`: 409 `join_block: "old"`; kein Knoten erreichbar: 409 `join_block: "node"`. Die Antwort (wie auch
+`POST /api/calls` beim Start) trägt im Anruf-Objekt:
+
+```json
+"horn": {"e2e": "saga-horn/v1", "ttl": 60, "candidates": [
+  {"node": "horn-0.example.org", "url": "https://horn-0.example.org", "udp": false, "here": true, "load": 0.12,
+   "peer": "<peer_ref>", "exp": 1760000000,
+   "tokens": {"audio": "h1.…", "video": "h1.…", "both": "h1.… (nur mit udp)"}}]}
+```
+
+- Bis zu 3 Kandidaten, beste zuerst. Ohne Kaskade (bis P9) ist es nur der Knoten, auf dem der Anruf schon läuft.
+- `dev_class`: `desktop` (Standard) oder `mobile` (Last-N: 9 bzw. 4 bewegte Kacheln).
+- Jede Teilnehmerliste (`legs`) trägt je Endpunkt `hp` = Kennung des Geräts am Knoten (gleich `peer` im eigenen
+  Kandidaten). Damit ordnet das Gerät die Plätze des Knotens (`slots[].peer`) und die CSRC der Rahmen einem Gerät zu.
+
+**Frische Token:** `POST /api/calls/{id}/horn {device, node?, dev_class?}` → `{horn: {…}}` wie oben. Für das eigene,
+aktive Gerät im Anruf (sonst 409, höchstens 30/min). `node` = gewählter Kandidat; Saga merkt ihn am Endpunkt.
+
+**Medien-Token** (`h1.<payload>.<sig>`, Ed25519 von Saga, je Bein, 60 s, einmal verwendbar): Der Knoten prüft lokal,
+das Gerät reicht es nur weiter. Inhalt `{v, node, call_ref, peer_ref, leg_ref, role, pub, max_kbit, udp_ok, dev_class,
+exp, jti}` – zufällige Kennungen je Knoten, keine Konto- oder Gerätenamen. Rollen: `audio` (Ton-Leitung), `video`
+(Bild-Leitung), `both` (UDP-Weg). Begleitgeräte bekommen keine Ton-Senderechte.
+
+**Am Knoten** (HTTPS, CORS für die Saga-Herkunft):
+- `POST {url}/api/sfu/leg {token, path: tcp|turn|udp, offer, audio, speaker, screen, tiles, device}` →
+  `{id, answer, csrc, slots}`. Angebot: zuerst die eigene Sendespur (Ton bzw. Kamera mit Simulcast `l`/`m`), dann die
+  Empfangsplätze in fester Reihenfolge (Ton: 3; Bild: Sprecher, Bildschirm falls angefragt, Kacheln).
+- `POST {url}/api/sfu/turn {token}` → `{username, credential}` für TURN-TLS auf demselben Port (TLS-Weg).
+- `GET {url}/api/sfu/leg/{id}` → Belegung `slots[] {i, class, peer, csrc, layer, paused}` und Schätzung;
+  `DELETE` beendet das Bein.
+- Fehler: 401 Token ungültig, abgelaufen, schon benutzt, für einen anderen Knoten oder Person entfernt; 404 Raum
+  unbekannt (Anruf beendet); 429 voll.
+
+**Schlüssel:** Jedes Gerät verteilt seinen Frame-Schlüssel als `fkey` über `POST /api/calls/{id}/signal` an alle
+anderen Endpunkte (`docs/HORN-E2E.md` §4); im Knoten-Anruf gibt es keine Mesh-Signale (offer/answer/ice).
+Verlassen (`/leave`, `/end` mit `device`) beendet die Beine des Geräts am Knoten sofort; das Ende des Anrufs schließt
+den Raum.
+
+**Umzug (2.5, P6):** Wird ein Knoten geleert, aktualisiert oder entfernt, bekommen alle Personen mit Endpunkt dort das
+Live-Ereignis `call.horn_move {call_id, chat_id, node, why: drain|update|removed}`. Das Gerät holt dann mit
+`POST /api/calls/{id}/horn` (ohne `node`) neue Kandidaten – ein Knoten im Leeren erscheint nicht mehr – und schaltet
+make-before-break um (Web: P5, Apps). Beitritt und `/horn` folgen dem bereiten Knoten mit den meisten Endpunkten des
+Anrufs. Ist kein Knoten bereit: 409 `join_block: "node"` (dann Mesh-Rückfall beim nächsten Anruf).
+
+**Knotenbetrieb (nur Server ↔ Knoten, nicht für Apps):** `GET /api/horn/whoami` → `{ip}`, `POST /api/horn/pair`
+(Kopplung), WebSocket `/api/horn/ctl` (Steuerung). Beschreibung: `gjallarhorn/NODE.md`.
+
 ## Videos im Chat: saga-file/v2 (2.4, Etappe E2)
 
 Verbindlicher Vertrag für iOS/iPadOS/macOS, Android, Linux und Web (Referenz: `static/chat-video.js`, `static/sw.js`,

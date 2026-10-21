@@ -169,7 +169,8 @@ Live-Ereignisse an Apps (wie alle über `/api/events`, Art `direct`):
 
 `/.well-known/saga` meldet `protocol: 2`, `protocols: [1, 2]` und `capabilities` (v1: `share read edit comment files
 notify`; neu: `v2 express handles directory keys chat2 calls2 live presence db subpages upload versions export
-chatgroups`; 2.4: `receipts online`). Funktionen gelten nur, wenn **beide** Server sie melden (Austausch
+chatgroups`; 2.4: `receipts online`; 2.5: `horn` nur bei eingeschaltetem Feature-Flag `calls.horn`, Gjallarhorn
+mit Frame-E2E, `docs/HORN-E2E.md`). Funktionen gelten nur, wenn **beide** Server sie melden (Austausch
 über `POST /fed/v2/hello`, signiert) **und** der Admin-Schalter je Instanz an ist (Chat, Anrufe, Adressbuch; Ausnahme
 von „Teilen nur innerhalb gemeinsamer Gruppen“ – Standard aus). Neue signierte Endpunkte: `POST /fed/v2/hello`,
 `POST /fed/v2/events` (Ereignisse mit Kennung `id`, optional Kette `chain` + `cseq`: idempotent, streng aufsteigend je
@@ -360,6 +361,13 @@ v2-Schlüssel). Für Server-Entwickler:
 
 Tests: `tests/foederation_anrufe_raum.py` (drei Server, B und C nur mit A verbunden; Laufzeit eines Signals B → A → C;
 `FED_B_23=1` mit 2.3-Server B), Browser über drei Server mit `BJS=1`.
+
+### 7.3 Frame-Schlüssel über Servergrenzen (2.5, Gjallarhorn P4, Cap `horn`)
+
+`horn` in `CAPS2` (Admin-Schalter „Anrufe“, nur solange `calls.horn` an ist). Die Frame-Schlüssel der Geräte (`fkey`,
+`fkey-ack`, Vertrag `docs/HORN-E2E.md` §4) sind Body-Typen von `saga-call/v2` und laufen im Auftrag `signal` wie jedes
+Raum-Signal: sternförmig über den führenden Server, versiegelt je Zielgerät, an Handles gebunden. Kein Server und kein
+Knoten liest sie. Am Protokoll ändert sich sonst nichts (Test `tests/foederation_anrufe_raum.py`).
 
 ## 8. Seiten anderer Server vollständig (E4/E6)
 

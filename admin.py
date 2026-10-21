@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import clean_line, connect as _db
-from saga import ai, avatars, backups, calls, chat, federation, i18n, live, mfa, publish, push, push_stream, sharing, userbackup
+from saga import ai, avatars, backups, calls, chat, cloudflare, federation, horn, horn_ops, i18n, live, mfa, publish, push, push_stream, sharing, userbackup
 from saga.core import RESTORE_TEST, TZ, BodyLimit, LangMiddleware, install_lang_ui, lang_switch_response
 from saga.i18n import t
 from version import REPO, VERSION, VERSION_LABEL, channel, newer
@@ -795,10 +795,6 @@ async def settings_post(request: Request):
         # Quelle kann wechseln (z. B. SSO-Bild aus -> Gravatar): neue Version, sonst behalten Clients das alte Bild bis 24 h
         with _db() as c, c:
             c.execute("UPDATE avatar SET ver=ver+1 WHERE uid NOT LIKE '@%'")
-    err = _calls_save(f)
-    if err:
-        _flash(request, err, "err")
-        return _go("/settings")
     hk.services_changed()
     print(f"admin: {me['username']} speichert Allgemein (2FA verlangt: {req})", flush=True)
     _flash(request, t("Gespeichert.") + (" " + t("Hinweis: Mit der neuen Gruppen-Kennung gelten neue Zugangsgruppen – Favoriten der Dienste müssen neu gesetzt werden.")
@@ -825,7 +821,7 @@ def _calls_save(f):
             lim[k] = top
     cur = auth.settings(fresh=True).get("calls") or {}
     clear = _on(f, "calls_turn_clear")
-    v = {"enabled": _on(f, "calls_enabled"), "stun": " ".join(stun), "turn_urls": " ".join(turn),
+    v = {**cur, "enabled": _on(f, "calls_enabled"), "stun": " ".join(stun), "turn_urls": " ".join(turn),
          "turn_mode": "static" if f.get("calls_turn_mode") == "static" else "rest", "turn_user": "" if clear else _s(f, "calls_turn_user", 200),
          "turn_secret": _s(f, "calls_turn_secret", 300), "turn_password": _s(f, "calls_turn_password", 300),
          "turn_ttl": cur.get("turn_ttl") or 43200, "relay_only": _on(f, "calls_relay_only"), "ring_s": ring, **lim}
@@ -838,6 +834,170 @@ def _calls_save(f):
             c.execute("UPDATE setting SET v=? WHERE k='calls'", (json.dumps(d),))
         auth._settings_cache["v"] = None
     return None
+
+
+# --- Anrufe (2.5): Gjallarhorn-Knoten, DNS, Grenzen, 1:1-Anrufe (TURN) -------------------------------------------------
+def _pair_err(code):
+    return {"name": t("Ungültiger Name – z. B. horn-2 oder horn-2.example.org."),
+            "name_saga": t("Der Knoten braucht einen eigenen Namen (nicht den von Saga)."),
+            "name_used": t("Diesen Namen hat schon ein Knoten oder ein offener Kopplungs-Code."),
+            "too_many": t("Zu viele offene Kopplungs-Codes – erst einen abbrechen oder ablaufen lassen.")}.get(code, t("ungültige Angabe"))
+
+
+def _int(f, k, lo, hi):
+    """Zahl aus dem Formular in [lo, hi]; leer/ungueltig -> 0 (= Standard)."""
+    try:
+        v = int(_s(f, k, 8) or 0)
+    except ValueError:
+        return 0
+    return max(lo, min(hi, v)) if v else 0
+
+
+def _calls_ctx(request, me, **kw):
+    st = auth.settings(fresh=True)
+    with _db() as c:
+        sug = horn_ops.suggest(c)
+    return _page(request, "calls.html", me, st=st, hs=horn_ops.admin_state(), limits=horn.LIMITS, suggest=sug, **kw)
+
+
+@admin.get("/calls")
+def calls_page(request: Request):
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    return _calls_ctx(request, me)
+
+
+@admin.post("/calls")
+async def calls_post(request: Request):
+    me = _me(request)
+    if not me:
+        return _go("/login")
+    f = await _form(request)
+    if f is None:
+        return _go("/calls")
+    act, who = f.get("action"), me["username"]
+    nid = _s(f, "id", 40)
+    cur = auth.settings(fresh=True).get("calls") or {}
+    if act == "horn":
+        auth.save_setting("calls", {**cur, "horn": _on(f, "horn"), "horn_builtin": _on(f, "horn_builtin")})
+        print(f"admin: {who} Gjallarhorn {'an' if _on(f, 'horn') else 'aus'}, eingebauter Knoten {'an' if _on(f, 'horn_builtin') else 'aus'}", flush=True)
+        _flash(request, t("Gespeichert."))
+    elif act == "limits":
+        auth.save_setting("calls", {**cur, "horn_video": _int(f, "horn_video", 2, horn.LIMITS["udp"][0]),
+                                    "horn_audio": _int(f, "horn_audio", 2, horn.LIMITS["udp"][1]),
+                                    "share_legs": _int(f, "share_legs", 1, 1000) or 10, "share_mbit": _int(f, "share_mbit", 1, 10000) or 20})
+        _flash(request, t("Gespeichert."))
+    elif act == "turn":
+        err = _calls_save(f)
+        _flash(request, err or t("Gespeichert."), "err" if err else "ok")
+    elif act == "cf_save":
+        tok = _s(f, "cf_token", 200)
+        tok = tok or (cloudflare.conf().get("token") or "")
+        if not tok:
+            _flash(request, t("Bitte einen Cloudflare-API-Token eingeben."), "err")
+            return _go("/calls#dns")
+        r = await run_in_threadpool(cloudflare.save, tok, _s(f, "cf_zone", 64))
+        if r["ok"]:
+            print(f"admin: {who} speichert Cloudflare-Token (Zone {r['zone']})", flush=True)
+            _flash(request, t("Token gültig · Zone {zone} · Rechte: DNS bearbeiten ✓", zone=r["zone"]) +
+                   (" " + t("Token hat zu viele Rechte – bitte auf eine Zone beschränken.") if r["warn"] else ""))
+            for n in horn_ops.admin_state()["nodes"]:
+                if not n["builtin"]:
+                    await run_in_threadpool(horn_ops.dns_sync, n["id"])
+                    horn.send(n["id"], {"t": "cert", "cert": "dns01"})
+        elif r["err"] == "zone_waehlen":
+            return _calls_ctx(request, me, cf_zones=r["zones"], cf_token=tok)
+        else:
+            _flash(request, t("Cloudflare-Token nicht gespeichert: {err}", err=r["err"] or "–"), "err")
+        return _go("/calls#dns")
+    elif act == "cf_clear":
+        cloudflare.clear()
+        print(f"admin: {who} entfernt den Cloudflare-Token", flush=True)
+        for n in horn_ops.admin_state()["nodes"]:
+            if not n["builtin"]:
+                horn.send(n["id"], {"t": "cert", "cert": "alpn"})
+        _flash(request, t("Cloudflare-Token entfernt. Vorhandene DNS-Einträge bleiben bestehen."))
+        return _go("/calls#dns")
+    elif act == "pair":
+        try:
+            p = await run_in_threadpool(horn_ops.pair_create, _s(f, "name", 253), _on(f, "share"), _on(f, "udp"), who)
+        except horn_ops.PairError as ex:
+            _flash(request, _pair_err(str(ex)), "err")
+            return _go("/calls")
+        return _calls_ctx(request, me, pair=p)
+    elif act == "pair_cancel":
+        horn_ops.pair_cancel(nid)
+    elif act in ("drain", "undrain"):
+        if await run_in_threadpool(horn_ops.set_drain, nid, act == "drain", who):
+            _flash(request, t("Knoten wird geleert – laufende Anrufe ziehen auf andere Knoten um.") if act == "drain" else t("Gespeichert."))
+    elif act in ("share", "unshare"):
+        if await run_in_threadpool(horn_ops.set_share, nid, act == "share", who):
+            _flash(request, t("Gespeichert."))
+    elif act == "remove":
+        r = await run_in_threadpool(horn_ops.remove, nid, who)
+        if r is not None:
+            _flash(request, t("Knoten entfernt. Sein Schlüssel ist gesperrt, laufende Anrufe ziehen um.") +
+                   (" " + t("DNS: {n} Einträge gelöscht.", n=r["dns"]) if "dns" in r else "") +
+                   (" " + t("DNS-Einträge konnten nicht gelöscht werden: {err}", err=r["dns_err"]) if "dns_err" in r else ""),
+                   "err" if "dns_err" in r else "ok")
+    elif act == "check":
+        await run_in_threadpool(horn_ops.check, nid)
+        return _go(f"/calls#n-{nid}")
+    elif act == "caps":
+        n = await run_in_threadpool(horn_ops.caps_sync)
+        _flash(request, t("Fähigkeiten werden mit {n} verbundenen Servern abgeglichen.", n=n))
+    return _go("/calls")
+
+
+@admin.get("/api/calls/state")
+def api_calls_state(request: Request):
+    me, err = _api_admin(request)
+    if err:
+        return err
+    return JSONResponse(horn_ops.admin_state(), headers={"Cache-Control": "no-store"})
+
+
+@admin.post("/api/calls/pair")
+async def api_calls_pair(request: Request):
+    """{name, share, udp} -> Kopplungs-Code + Deploy-Skripte (Dialog "Erweitern")."""
+    me, err = _api_admin(request)
+    if err:
+        return err
+    try:
+        b = await request.json()
+    except ValueError:
+        b = None
+    if not isinstance(b, dict):
+        return JSONResponse({"error": "bad request"}, status_code=400)
+    try:
+        p = await run_in_threadpool(horn_ops.pair_create, str(b.get("name") or "")[:253], bool(b.get("share")), b.get("udp") is not False,
+                                    me["username"])
+    except horn_ops.PairError as ex:
+        return JSONResponse({"error": _pair_err(str(ex)), "code": str(ex)}, status_code=400)
+    return JSONResponse(p, headers={"Cache-Control": "no-store"})
+
+
+@admin.get("/api/calls/pair/{pid}")
+def api_calls_pair_status(pid: str, request: Request):
+    me, err = _api_admin(request)
+    if err:
+        return err
+    st = horn_ops.pair_status(pid[:20])
+    if st is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(st, headers={"Cache-Control": "no-store"})
+
+
+@admin.post("/api/calls/nodes/{nid}/check")
+async def api_calls_check(nid: str, request: Request):
+    me, err = _api_admin(request)
+    if err:
+        return err
+    r = await run_in_threadpool(horn_ops.check, nid[:40])
+    if r is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(r, headers={"Cache-Control": "no-store"})
 
 
 def _mb(v, hi):

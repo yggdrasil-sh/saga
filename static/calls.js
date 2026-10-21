@@ -37,11 +37,13 @@
   // reneg nur, wenn auch der eigene Server sie meldet (GET /api/calls/config -> features)
   // screen2 (E3) = zweite Videospur fuer den Bildschirm; braucht reneg und die Server-Faehigkeit screen2
   // multi (E4/E5) = Raum: weitere Geraete/Personen (join/leave, mehrere PeerConnections) - braucht reneg und multi am Server
-  var CAPS_ALL = ['reneg', 'want', 'bye', 'screen2', 'multi'];
+  // horn (2.5) = Gruppenanrufe ueber einen Gjallarhorn-Knoten mit Frame-E2E - nur mit Server-Faehigkeit horn und Encoded Transform
+  var CAPS_ALL = ['reneg', 'want', 'bye', 'screen2', 'multi', 'horn'];
   function feat(x) { return !!(cfg && (cfg.features || []).indexOf(x) >= 0); }
   function myCaps() {
     return CAPS_ALL.filter(function (x) {
-      return x === 'reneg' ? feat('reneg') : x === 'screen2' ? feat('reneg') && feat('screen2') : x === 'multi' ? feat('reneg') && feat('multi') : true;
+      return x === 'reneg' ? feat('reneg') : x === 'screen2' ? feat('reneg') && feat('screen2') : x === 'multi' ? feat('reneg') && feat('multi')
+        : x === 'horn' ? feat('reneg') && feat('multi') && feat('horn') && hornCan() : true;
     });
   }
   var RESTART_MAX = 3, DISC_S = 2.5, FAIL_S = 20;    // ICE-Restart: Versuche je Abbruch, Wartezeit bei disconnected, Frist bei failed
@@ -629,6 +631,7 @@
   // 2.4: Signal an die passende Verbindung. 1:1 waehrend es klingelt: Antworten/Kandidaten aller Geraete des Gegenuebers
   // gehen an den Raum (wie bisher). Unbekanntes Geraet (Raum): merken und pruefen, ein Angebot legt eine Verbindung an.
   function sigRoute(R, d) {
+    if (R.horn) { hornSig(R, d); return; }             // 2.5: Knoten-Anruf - nur fkey/fkey-ack
     var L = linkOf(R, d.from_device);
     if (!L && R.kind === 'dm' && R.role === 'caller' && R.pc && !R.peerDevice && !R.established && R.peerDevs[d.from_device]) L = R;
     if (L) { openSig(L, d).then(function (b) { if (live(L)) handle(L, b); }); return; }
@@ -785,6 +788,7 @@
       if (!now[d] && d !== here && R.inRoom) HK.toast(T('{name} ({dev}) hat den Anruf verlassen', { name: old[d].name || '?', dev: old[d].dev_name || T('Gerät') }));
     });
     links(R).forEach(function (L) { if (L.peerDevice && !now[L.peerDevice] && L.established) dropLink(L, ''); });
+    if (R.horn) { hornKeys(R); hornMap(R); var q0 = R.horn.X ? R.horn.q.splice(0) : []; q0.forEach(function (d) { hornSig(R, d); }); }
     drawTiles(R); drawCtl(R); drawInfo(R);
   }
   // Verbindung zu einem Geraet trennen (hat den Anruf verlassen bzw. Fehler nur auf dieser Verbindung)
@@ -880,11 +884,27 @@
       R.local = s;
       s.getAudioTracks().forEach(function (t) { t.enabled = R.mic; });
       drawMedia(R); sinkPick(R);
-      return offerAll(R, role, rep, false);
+      return R.call.topo === 'horn' ? hornJoin(R, role) : offerAll(R, role, rep, false);
     }).catch(function (e) {
       if (!live(R) || e === null) return;
       if (R.inRoom) api('POST', '/api/calls/' + id + '/leave', { device: dev }).catch(function () {});
       finish(R, (e && e.message) || T('Beitreten ging nicht.'), 'error');
+    });
+  }
+  // 2.5: Beitritt zu einem Anruf ueber einen Knoten - ohne Mesh-Angebote, die Antwort traegt die Kandidaten
+  function hornJoin(R, role) {
+    if (myCaps().indexOf('horn') < 0) return Promise.reject(new Error(T('Dafür braucht dieses Gerät Saga 2.5.')));
+    hornNew(R, null);
+    return api('POST', '/api/calls/' + R.id + '/join', { device: myDev().id, role: role === 'handover' ? 'member' : role, caps: myCaps(),
+                                                         dev_class: mobile ? 'mobile' : 'desktop' }).then(function (r) {
+      if (!live(R)) { api('POST', '/api/calls/' + R.id + '/leave', { device: myDev().id }).catch(function () {}); return; }
+      R.ready = true; R.inRoom = true; R.call = r.call;
+      rosterIn(R, r.call.legs, r.call);
+      aliveOn(R);
+      R.early.splice(0).forEach(function (d) { sigRoute(R, d); });
+      return hornGo(R, r.call.horn);
+    }, function (e) {
+      throw new Error(e.data && e.data.join_block ? (e.data.error || blockText(e.data.join_block, e.data.limit)) : e.message);
     });
   }
   // Je anderem Endpunkt eine PeerConnection mit Angebot, alles in einem POST /join. 409 mit neuer Liste: einmal neu.
@@ -994,11 +1014,13 @@
       return api('POST', '/api/calls', { id: R.id, chat_id: R.chat_id, media: R.media, device: myDev().id, caps: myCaps() });
     }).then(function (r) {
       if (!live(R)) { api('POST', '/api/calls/' + r.call.id + '/end', { reason: 'hangup', device: myDev().id }).catch(function () {}); return; }
+      if (r.call.topo === 'horn') hornNew(R, r.call.horn);   // 2.5: ueber einen Knoten
       R.ready = true; R.inRoom = true; R.call = r.call; R.v2 = r.call.v === 2;
       rosterIn(R, r.call.legs, r.call);
       status(R, T('Klingelt bei den anderen …')); playTone('back');
       aliveOn(R);
       R.early.splice(0).forEach(function (d) { sigRoute(R, d); });
+      if (R.horn) hornGo(R, r.call.horn);
     }).catch(function (e) {
       if (!live(R) || e === null) return;
       var run = e && e.status === 409 && e.data && e.data.running;
@@ -1011,6 +1033,7 @@
   function drawTiles(R) {
     R = roomOf(R);
     if (!R || !R.ui || R.done) return;
+    if (R.horn) { hornTiles(R); return; }
     var mesh = meshView(R), ls = links(R);
     R.ui.w.classList.toggle('mesh', mesh);
     if (!mesh) {
@@ -1380,6 +1403,7 @@
     c = roomOf(c); c.spkOut = !!on;
     each(c, function (L) { var E = els(L); if (E && E.ra) E.ra.muted = !c.spkOut; playAudio(L); });
     if (c.ui) c.ui.ra.muted = !c.spkOut;
+    hornSpk(c);
     drawCtl(c);
   }
   function toggleCam(c) {
@@ -1387,6 +1411,7 @@
     if (c.cam) {
       c.cam.stop(); if (c.local) c.local.removeTrack(c.cam); c.cam = null;
       each(c, function (L) { var snd = L.pc && videoSender(L); if (snd && (!c.screen || L.scrMode === 'track')) snd.replaceTrack(null); });
+      hornCam(c);
       drawMedia(c); drawCtl(c); stateAll(c); return;
     }
     navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } }).then(function (s) {
@@ -1398,6 +1423,7 @@
         var snd = L.pc && videoSender(L);
         if (snd && (!c.screen || L.scrMode === 'track')) snd.replaceTrack(c.cam).then(function () { delete L.rates.video; applyRates(L); });
       });
+      hornCam(c);
       drawMedia(c); drawCtl(c); stateAll(c);
     }).catch(function (e) { HK.toast(mediaError(e, true)); });
   }
@@ -1591,6 +1617,7 @@
     if (c.done) return;
     c.done = true; c.ending = true;
     clearInterval(c.alive); clearInterval(c.statsT); clearInterval(c.spkT); clearTimeout(c.hoT);
+    if (c.horn) hornStop(c);
     links(c).concat([c]).forEach(function (L) {
       clearTimeout(L.outT); clearTimeout(L.connT); clearTimeout(L.failT); clearTimeout(L.discT);
       if (L !== c) { try { if (L.pc) L.pc.close(); } catch (e) { /* schon zu */ } L.gone = true; if (L.tile) { L.tile.box.remove(); L.tile = null; } }
@@ -1680,6 +1707,7 @@
   function drawInfo(c) {
     var R = roomOf(c);
     if (!R.ui || R.done) return;
+    if (R.horn) { hornInfo(R); return; }
     if (meshView(R)) { drawInfoMesh(R); return; }
     c = primary(R);
     var i = c.ui.info; i.textContent = '';
@@ -1874,6 +1902,367 @@
     try { if (c && ms.setMicrophoneActive) ms.setMicrophoneActive(c.mic); } catch (e) { /* egal */ }
   }
 
+  // --- 2.5 Gjallarhorn (Paket P3, Web-Minimum): Gruppenanruf ueber einen Knoten -------------------------------------
+  // Der Server liefert Kandidaten (horn.candidates: Knoten mit je eigenen, 60 s gueltigen Medien-Token). Das Geraet nimmt
+  // den ersten erreichbaren (/healthz, hoechstens 800 ms; ein einziger Kandidat: ohne Messung), baut zum Knoten eine Ton-
+  // und eine Bild-Leitung auf (H1; ICE-TCP, ohne Verbindung nach 4 s TURN-TLS), haengt an jeden Sender und Empfaenger den
+  // Frame-E2E-Worker (static/frame-e2e.js, saga-horn/v1) und verteilt seinen Frame-Schluessel als fkey ueber den
+  // versiegelten Signalweg (nie ueber den Knoten). Der Knoten sieht nur verschluesselte Rahmen. Empfangene Rahmen tragen
+  // die CSRC des Absenders; die Zuordnung CSRC -> Geraet kommt aus der Belegung der Plaetze am Knoten (GET /api/sfu/leg/{id})
+  // und der Teilnehmerliste (hp). Kandidatenmessung mit RTT, Live-Wechsel, UDP-Weg, Bildschirm und Last-N-Ansicht: P5.
+  var HORN_WAIT_TCP = 4000, HORN_POLL = 1500, HORN_TILES = mobile ? 4 : 9;
+  function hornCan() { return typeof RTCRtpScriptTransform === 'function' || !!(window.RTCRtpSender && RTCRtpSender.prototype.createEncodedStreams); }
+  var HORN_SRC = (function () {
+    var s = (document.currentScript && document.currentScript.src) || '', m = /[?&]v=([^&#]+)/.exec(s);
+    return '/static/frame-e2e.js' + (m ? '?v=' + m[1] : '');
+  })();
+  var hornLibP = null;
+  function hornLib() {
+    if (window.SagaFrameE2E) return Promise.resolve(window.SagaFrameE2E);
+    if (!hornLibP) hornLibP = new Promise(function (ok, bad) {
+      var s = document.createElement('script'); s.src = HORN_SRC;
+      s.onload = function () { if (window.SagaFrameE2E) ok(window.SagaFrameE2E); else bad(new Error('frame-e2e')); };
+      s.onerror = function () { hornLibP = null; bad(new Error(T('Verschlüsselung für große Anrufe nicht ladbar.'))); };
+      document.head.appendChild(s);
+    });
+    return hornLibP;
+  }
+  function hornNew(R, blk) {
+    R.horn = { blk: blk || {}, X: null, key: null, q: [], peers: {}, legs: {}, known: {}, csrc: {}, csrcKey: '', tiles: {}, audios: [],
+               node: null, path: '', acks: {}, ackT: null, rekeyT: null, pollT: null, waitT: null, started: false };
+    return R.horn;
+  }
+  // 2.5 P6 (Robustheit): jede Anfrage an den Knoten mit Zeitlimit - ein Bein haengt nie stumm in "new"
+  var HORN_FETCH_MS = 15000, HORN_FRESH_MS = 30000;
+  function hornFetch(url, body, method) {
+    var ac = window.AbortController ? new AbortController() : null, tm = ac ? setTimeout(function () { ac.abort(); }, HORN_FETCH_MS) : 0;
+    return fetch(url, { method: method || (body ? 'POST' : 'GET'), mode: 'cors', credentials: 'omit', cache: 'no-store', signal: ac ? ac.signal : undefined,
+                        headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined })
+      .then(function (r) {
+        clearTimeout(tm);
+        return r.json().catch(function () { return {}; }).then(function (j) {
+          if (!r.ok) { var e = new Error(j.error || ('HTTP ' + r.status)); e.status = r.status; throw e; }
+          return j;
+        });
+      }, function (e) {
+        clearTimeout(tm);
+        throw new Error(T('Verbindung nicht aufgebaut: {err}', { err: e && e.name === 'AbortError' ? 'timeout' : ((e && e.message) || '?') }));
+      });
+  }
+  // 2.5 P6 (Robustheit): Medien-Token gelten 60 s - juenger als 30 s behalten, sonst (oder nach 401) frisch holen
+  function hornFresh(R, cand, force) {
+    if (!force && cand.exp && cand.exp * 1000 - Date.now() > HORN_FRESH_MS) return Promise.resolve(cand);
+    return api('POST', '/api/calls/' + R.id + '/horn', { device: myDev().id, node: cand.node, dev_class: mobile ? 'mobile' : 'desktop' })
+      .then(function (r) {
+        var c2 = ((r.horn && r.horn.candidates) || []).filter(function (x) { return x.node === cand.node; })[0];
+        if (!c2) throw new Error(T('Gerade ist kein Knoten für große Gruppenanrufe erreichbar – bitte gleich noch einmal.'));
+        return c2;
+      });
+  }
+  // Gegenueber eines anderen Geraets fuer Versiegeln/Oeffnen (Schluessel je Person, im Raum zwischengespeichert)
+  function hornPeer(R, x) {
+    var H = R.horn, P = H.peers[x.device];
+    if (!P) P = H.peers[x.device] = { id: R.id, v2: R.v2, room: R, peer: personOf(x), peerDevs: {}, sent: {} };
+    return P;
+  }
+  // Ein POST /signal an mehrere Geraete: {geraet: body}
+  function hornSend(R, bodies) {
+    var devs = Object.keys(bodies), H = R.horn;
+    if (!devs.length || !R.id || R.ending) return Promise.resolve();
+    return Promise.all(devs.map(function (d) {
+      var x = legOf(R, d); if (!x) return null;
+      var P = hornPeer(R, x);
+      return peerKeys(P).then(function () { return P.peerDevs[d] ? null : peerKeys(P, true); }).then(function () {
+        return P.peerDevs[d] ? [d, seal(P, d, bodies[d])] : null;      // Geister-Geraet (nicht signiert): bekommt nichts
+      }).catch(function () { return null; });
+    })).then(function (list) {
+      var sig = {}; list.forEach(function (x) { if (x) sig[x[0]] = x[1]; });
+      if (!Object.keys(sig).length || !live(R)) return;
+      return api('POST', '/api/calls/' + R.id + '/signal', { device: myDev().id, signals: sig }).catch(function (e) {
+        if (e.status === 409) remoteEnded(R, { reason: 'gone' });
+      });
+    }).then(function () { if (H) H.sent = (H.sent || 0) + devs.length; });
+  }
+  function hornFkey(H, k) { return window.SagaFrameE2E.fkeyBody({ n: k.n, key: k.key, s: k.s }); }
+  // Schluesselplan nach der Teilnehmerliste: Neue bekommen den (geratschten) neuesten Schluessel, nach einem Abgang ein
+  // neuer Zufallsschluessel an alle Verbliebenen (Umschalten nach 1,5 s im Worker; Abgaenge binnen 0,5 s gebuendelt)
+  function hornKeys(R) {
+    var H = R.horn; if (!H || !H.key || !live(R)) return;
+    var me_ = myDev().id, now = {}, add = [], gone = [];
+    (R.legs || []).forEach(function (x) { if (x.device !== me_) now[x.device] = true; });
+    Object.keys(now).forEach(function (d) { if (!H.known[d]) add.push(d); });
+    Object.keys(H.known).forEach(function (d) { if (!now[d]) gone.push(d); });
+    gone.forEach(function (d) { delete H.known[d]; H.X.gone(d); });
+    if (gone.length) {
+      clearTimeout(H.rekeyT);
+      H.rekeyT = setTimeout(function () {
+        if (!live(R)) return;
+        H.X.own('rekey').then(function (k) {
+          H.key = k; var b = {}; Object.keys(H.known).forEach(function (d) { b[d] = hornFkey(H, k); });
+          return hornSend(R, b);
+        });
+      }, 500);
+    }
+    if (!add.length) return;
+    add.forEach(function (d) { H.known[d] = true; });
+    var go = H.started ? H.X.own('ratchet') : Promise.resolve(H.key);   // erste Runde: Startschluessel an alle
+    H.started = true;
+    go.then(function (k) {
+      H.key = k; var b = {};
+      add.forEach(function (d) { b[d] = hornFkey(H, k); });
+      return hornSend(R, b);
+    });
+  }
+  // Signale im Knoten-Anruf: fkey (Schluessel eines Senders), fkey-ack (ok:false = Nachforderung)
+  function hornSig(R, d) {
+    var H = R.horn;
+    if (!H.X) { H.q.push(d); return; }
+    var x = legOf(R, d.from_device);
+    if (!x) { H.q.push(d); if (H.q.length > 200) H.q.shift(); return; }
+    openSig(hornPeer(R, x), d).then(function (b) {
+      if (!b || !live(R)) return;
+      var F = window.SagaFrameE2E;
+      if (b.t === 'fkey') {
+        var k = F.parseFkey(b); if (!k) return;
+        H.X.peer(d.from_device, k.n, k.key, k.s).then(function (okk) { if (okk) hornAck(R, d.from_device, k.n, k.s, true); });
+      } else if (b.t === 'fkey-ack') {
+        var a = F.parseFkeyAck(b);
+        if (a && !a.ok) H.X.ownKeys().then(function (ks) { if (ks[0]) { var o = {}; o[d.from_device] = hornFkey(H, ks[0]); hornSend(R, o); } });
+      }
+    });
+  }
+  function hornAck(R, to, n, s, okk) {
+    var H = R.horn; if (!H) return;
+    H.acks[to] = window.SagaFrameE2E.fkeyAckBody(n, s, okk);
+    if (!H.ackT) H.ackT = setTimeout(function () { H.ackT = null; var b = H.acks; H.acks = {}; hornSend(R, b); }, 100);   // gebuendelt
+  }
+  // Ersten erreichbaren Kandidaten waehlen (parallel, je hoechstens 800 ms)
+  function hornPick(cands) {
+    if (!cands.length) return Promise.reject(new Error(T('Gerade ist kein Knoten für große Gruppenanrufe erreichbar – bitte gleich noch einmal.')));
+    if (cands.length === 1) return Promise.resolve(cands[0]);
+    return new Promise(function (ok, bad) {
+      var left = cands.length, done = false;
+      cands.forEach(function (c) {
+        var ac = window.AbortController ? new AbortController() : null, t = setTimeout(function () { if (ac) ac.abort(); }, 800);
+        fetch(c.url + '/healthz', { mode: 'no-cors', cache: 'no-store', credentials: 'omit', signal: ac ? ac.signal : undefined }).then(function () {
+          clearTimeout(t); if (!done) { done = true; ok(c); }
+        }, function () { clearTimeout(t); if (--left === 0 && !done) bad(new Error(T('Gerade ist kein Knoten für große Gruppenanrufe erreichbar – bitte gleich noch einmal.'))); });
+      });
+    });
+  }
+  function hornGo(R, blk) {
+    var H = R.horn || hornNew(R, blk);
+    if (blk) H.blk = blk;
+    status(R, T('Verbinde …'));
+    return hornLib().then(function (F) {
+      if (!live(R)) throw null;
+      H.X = F.create({ url: HORN_SRC });
+      H.X.on('need', function (d) { hornAck(R, d.from, d.n, d.s, false); });
+      return H.X.own('start');
+    }).then(function (k) {
+      H.key = k;
+      hornKeys(R);                                     // Schluessel an alle (parallel zum Verbindungsaufbau)
+      H.q.splice(0).forEach(function (d) { hornSig(R, d); });
+      return hornPick((H.blk && H.blk.candidates) || []);
+    }).then(function (cand) {
+      var first = ((H.blk && H.blk.candidates) || [])[0];
+      if (first && cand.node !== first.node)            // anderer als der vom Server vorgemerkte: melden, frische Token
+        return api('POST', '/api/calls/' + R.id + '/horn', { device: myDev().id, node: cand.node, dev_class: mobile ? 'mobile' : 'desktop' })
+          .then(function (r) { return (r.horn.candidates || []).filter(function (x) { return x.node === cand.node; })[0] || cand; });
+      return cand;
+    }).then(function (cand) {
+      return hornFresh(R, cand);
+    }).then(function (cand) {
+      return hornConnect(R, cand, 'tcp');
+    }).catch(function (e) {
+      if (!live(R) || e === null) return;
+      fail(R, (e && e.message) || T('Verbindung nicht aufgebaut: {err}', { err: '?' }));
+    });
+  }
+  function hornConnect(R, cand, path) {
+    var H = R.horn; H.node = cand; H.path = path;
+    var turnP = path === 'turn' ? hornFetch(cand.url + '/api/sfu/turn', { token: cand.tokens.audio }) : Promise.resolve(null);
+    return turnP.then(function (turn) {
+      return Promise.all(['audio', 'video'].map(function (role) { return hornLeg(R, cand, role, path, turn); }));
+    }).then(function () {
+      clearInterval(H.pollT);
+      H.pollT = setInterval(function () { hornPoll(R); }, HORN_POLL);
+      clearTimeout(H.waitT);
+      if (path === 'tcp') H.waitT = setTimeout(function () {         // ICE-TCP kommt nicht durch: TLS-Weg (TURN-TLS)
+        if (!live(R) || hornUp(R)) return;
+        hornClose(R);
+        api('POST', '/api/calls/' + R.id + '/horn', { device: myDev().id, dev_class: mobile ? 'mobile' : 'desktop' }).then(function (r) {
+          var c2 = (r.horn.candidates || []).filter(function (x) { return x.node === cand.node; })[0];
+          if (!c2) throw new Error(T('Gerade ist kein Knoten für große Gruppenanrufe erreichbar – bitte gleich noch einmal.'));
+          return hornConnect(R, c2, 'turn');
+        }).catch(function (e) { if (live(R)) fail(R, (e && e.message) || T('Verbindung nicht aufgebaut: {err}', { err: '?' })); });
+      }, HORN_WAIT_TCP);
+    });
+  }
+  function hornUp(R) { var H = R.horn, a = H.legs.audio, v = H.legs.video; return !!(a && v && a.pc.connectionState === 'connected' && v.pc.connectionState === 'connected'); }
+  function hornLeg(R, cand, role, path, turn) {
+    var H = R.horn, cf = { bundlePolicy: 'max-bundle', rtcpMuxPolicy: 'require' };
+    if (H.X.mode === 'streams') cf.encodedInsertableStreams = true;
+    if (turn) {
+      var u = new URL(cand.url);
+      cf.iceServers = [{ urls: 'turns:' + u.hostname + ':' + (u.port || 443) + '?transport=tcp', username: turn.username, credential: turn.credential }];
+      cf.iceTransportPolicy = 'relay';
+    }
+    var pc = new RTCPeerConnection(cf), st = R.local || new MediaStream(), L = { role: role, pc: pc, id: null, recv: [], slots: [] }, i, t;
+    H.legs[role] = L;
+    if (role === 'audio') {
+      L.tr = pc.addTransceiver(st.getAudioTracks()[0] || 'audio', { direction: 'sendonly', streams: [st] });
+      H.X.sender(L.tr.sender, 'audio');                // vor der Verhandlung: kein Rahmen geht unverschluesselt raus
+      for (i = 0; i < 3; i++) { t = pc.addTransceiver('audio', { direction: 'recvonly' }); H.X.receiver(t.receiver, 'audio', '*'); L.recv.push(t); }
+    } else {
+      // TCP-Wege: zwei Schichten (NODE.md): l = 1/4, 20 fps L1T2 (Kacheln, der Knoten nimmt 10 fps), m = voll, 30 fps L1T3
+      L.tr = pc.addTransceiver(R.cam || st.getVideoTracks()[0] || 'video', { direction: 'sendonly', streams: [st], sendEncodings: [
+        { rid: 'l', scaleResolutionDownBy: 4, maxBitrate: 150000, maxFramerate: 20, scalabilityMode: 'L1T2' },
+        { rid: 'm', scaleResolutionDownBy: 1, maxBitrate: 700000, maxFramerate: 30, scalabilityMode: 'L1T3' }] });
+      H.X.sender(L.tr.sender, 'video');
+      for (i = 0; i < 1 + HORN_TILES; i++) {
+        t = pc.addTransceiver('video', { direction: 'recvonly' }); H.X.receiver(t.receiver, 'video', '*');
+        try { if ('jitterBufferTarget' in t.receiver) t.receiver.jitterBufferTarget = 150; } catch (e) { /* aelterer Browser */ }
+        L.recv.push(t);
+      }
+    }
+    pc.onconnectionstatechange = function () { hornState(R); };
+    var post = function (c) {
+      return hornFetch(c.url + '/api/sfu/leg', { token: c.tokens[role], path: path, offer: pc.localDescription.sdp, audio: role === 'audio' ? 3 : 0,
+                                                speaker: role === 'video', tiles: role === 'video' ? HORN_TILES : 0, device: mobile ? 'mobile' : 'desktop' });
+    };
+    return pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }).then(function () {
+      return post(cand).catch(function (e) {             // 401 (Token abgelaufen/benutzt): einmal mit frischem Token
+        if (!e || e.status !== 401 || !live(R)) throw e;
+        return hornFresh(R, cand, true).then(post);
+      });
+    }).then(function (res) {
+      if (!live(R) || H.legs[role] !== L) { try { pc.close(); } catch (e) { /* zu */ } throw null; }
+      L.id = res.id; H.mine = res.csrc; L.slots = res.slots || [];
+      return pc.setRemoteDescription({ type: 'answer', sdp: res.answer });
+    }).then(function () {
+      if (role === 'audio') hornAudio(R, L);
+      hornMap(R); hornTiles(R);
+    });
+  }
+  function hornState(R) {
+    var H = R.horn; if (!H || !live(R)) return;
+    if (hornUp(R)) {
+      clearTimeout(H.waitT);
+      if (!R.since) { R.since = Date.now(); stopTone(); }
+      R.connected = true;
+      if (R.ui) { R.ui.st.textContent = ''; R.ui.st.hidden = true; }
+    } else if (['failed', 'closed'].indexOf((H.legs.audio || {}).pc && H.legs.audio.pc.connectionState) >= 0 && R.since) {
+      fail(R, T('Verbindung zum Knoten verloren.'));    // P5: Live-Wechsel auf einen anderen Kandidaten
+    }
+    drawInfo(R);
+  }
+  // Belegung der Plaetze abfragen (wer ist wo, CSRC); daraus Zuordnung fuer den Worker und die Kacheln
+  function hornPoll(R) {
+    var H = R.horn; if (!H || !live(R) || !H.node) return;
+    ['audio', 'video'].forEach(function (role) {
+      var L = H.legs[role]; if (!L || !L.id) return;
+      hornFetch(H.node.url + '/api/sfu/leg/' + encodeURIComponent(L.id)).then(function (r) {
+        if (H.legs[role] !== L) return;
+        L.slots = r.slots || []; L.est = r.est_kbit;
+        hornMap(R); hornTiles(R);
+      }).catch(function () {});
+    });
+  }
+  function hornDevOf(R, hp) { var o = null; (R.legs || []).forEach(function (x) { if (x.hp && x.hp === hp) o = x.device; }); return o; }
+  // CSRC -> Geraet: alle je gesehenen Paare (CSRC je Teilnehmendem fest, solange er im Raum ist), solange das Geraet in der
+  // Teilnehmerliste steht - auch Rahmen, die nach einem Platzwechsel noch unterwegs sind, haben so ihren Absender
+  function hornMap(R) {
+    var H = R.horn, m = {};
+    H.cp = H.cp || {};
+    ['audio', 'video'].forEach(function (role) {
+      ((H.legs[role] || {}).slots || []).forEach(function (s) { if (s.peer && s.csrc) H.cp[s.csrc >>> 0] = s.peer; });
+    });
+    Object.keys(H.cp).forEach(function (k) { var d = hornDevOf(R, H.cp[k]); if (d) m[k] = d; else delete H.cp[k]; });
+    var key = JSON.stringify(m);
+    if (key !== H.csrcKey) { H.csrcKey = key; H.csrc = m; if (H.X) H.X.csrcMap(m); }
+  }
+  function hornAudio(R, L) {
+    var H = R.horn;
+    L.recv.forEach(function (tr, i) {
+      var a = H.audios[i];
+      if (!a) {
+        a = H.audios[i] = el('audio', 'cl-raudio'); a.autoplay = true; a.dataset.slot = String(i);
+        if (R.ui) R.ui.w.appendChild(a);
+        if (R.sinkId && a.setSinkId) a.setSinkId(R.sinkId).catch(function () {});
+      }
+      a.srcObject = new MediaStream([tr.receiver.track]); a.muted = !R.spkOut;
+      var p = a.play(); if (p && p.catch) p.catch(function () { R.audioBlocked = true; drawInfo(R); });
+    });
+  }
+  function hornSpk(R) { if (R.horn) R.horn.audios.forEach(function (a) { a.muted = !R.spkOut; if (!a.muted && a.paused) a.play().catch(function () {}); }); }
+  function hornCam(R) {
+    var L = R.horn && R.horn.legs.video;
+    if (L && L.tr) L.tr.sender.replaceTrack(R.cam || null).catch(function () {});
+  }
+  // Kacheln: je anderem Geraet eine; Bild aus dem Platz, den der Knoten ihm gerade gibt (Sprecher vor Kachel)
+  function hornTiles(R) {
+    var H = R.horn; if (!H || !R.ui || R.done) return;
+    var me_ = myDev().id, L = H.legs.video, want = {}, track = {};
+    ((L && L.slots) || []).forEach(function (s) {
+      var d = s.peer ? hornDevOf(R, s.peer) : null, tr = L.recv[s.i];
+      if (d && tr && !s.paused && (s.class === 'speaker' || s.class === 'tile') && !track[d]) track[d] = tr.receiver.track;
+    });
+    (R.legs || []).forEach(function (x) {
+      if (x.device === me_) return;
+      want[x.device] = true;
+      var T_ = H.tiles[x.device];
+      if (!T_) {
+        var box = el('div', 'cl-tile'); box.setAttribute('role', 'listitem'); box.dataset.dev = x.device;
+        var v = el('video', 'cl-tv'); v.autoplay = true; v.muted = true; v.playsInline = true; v.setAttribute('playsinline', '');
+        var p = personOf(x);
+        var av = HK.avatarImg(el('span', 'cl-av', (p.name || '?').charAt(0).toUpperCase()), x.avatar || null, 56); av.setAttribute('aria-hidden', 'true');
+        var lab = el('div', 'cl-tl'); lab.appendChild(el('b', null, p.me ? T('du') : (p.name || '?'))); lab.appendChild(el('span', 'cl-td', x.dev_name || ''));
+        [v, av, lab].forEach(function (y) { box.appendChild(y); });
+        R.ui.grid.appendChild(box);
+        T_ = H.tiles[x.device] = { box: box, v: v, track: null };
+      }
+      var t = track[x.device] || null;
+      if (t !== T_.track) { T_.track = t; T_.v.srcObject = t ? new MediaStream([t]) : null; if (t) T_.v.play().catch(function () {}); }
+      T_.box.classList.toggle('has-video', !!t);
+      T_.box.classList.toggle('wait', !hornUp(R));
+    });
+    Object.keys(H.tiles).forEach(function (d) { if (!want[d]) { H.tiles[d].box.remove(); delete H.tiles[d]; } });
+    R.ui.w.classList.add('mesh');
+    R.ui.w.classList.toggle('tiles', Object.keys(H.tiles).length > 0);
+    R.ui.grid.dataset.n = String(Math.min(Object.keys(H.tiles).length, 6));
+    drawPeer(R);
+  }
+  function hornInfo(R) {
+    var i = R.ui.info, H = R.horn; i.textContent = '';
+    if (R.companion) i.appendChild(el('span', 'cl-chip', T('Begleitgerät')));
+    i.appendChild(el('span', 'cl-lock', '🔒 ' + T('Ende-zu-Ende verschlüsselt')));
+    i.lastChild.title = T('Ton und Bild sind je Rahmen mit dem Schlüssel des sendenden Geräts verschlüsselt (saga-horn/v1). Der Knoten leitet nur weiter und kann nichts entschlüsseln.');
+    if (R.since) i.appendChild(el('span', null, dur((Date.now() - R.since) / 1000)));
+    i.appendChild(el('span', 'cl-count', T('{n} Geräte', { n: (R.legs || []).length || 1 })));
+    if (H.node && hornUp(R)) i.appendChild(el('span', 'cl-path', H.path === 'turn' ? T('über Knoten (TLS)') : T('über Knoten (TCP)')));
+    if (R.ui.un) R.ui.un.hidden = !R.audioBlocked;
+  }
+  function hornClose(R) {
+    var H = R.horn; if (!H) return;
+    clearInterval(H.pollT); clearTimeout(H.waitT);
+    ['audio', 'video'].forEach(function (role) {
+      var L = H.legs[role]; if (!L) return;
+      if (L.id && H.node) hornFetch(H.node.url + '/api/sfu/leg/' + encodeURIComponent(L.id), null, 'DELETE').catch(function () {});
+      try { L.pc.close(); } catch (e) { /* zu */ }
+      delete H.legs[role];
+    });
+  }
+  function hornStop(R) {
+    var H = R.horn; if (!H) return;
+    hornClose(R);
+    clearTimeout(H.ackT); clearTimeout(H.rekeyT);
+    H.audios.forEach(function (a) { a.srcObject = null; a.remove(); });
+    Object.keys(H.tiles).forEach(function (d) { H.tiles[d].box.remove(); });
+    H.tiles = {};
+    if (H.X) H.X.close();
+  }
+
   // --- Live-Ereignisse ---------------------------------------------------------------------------------------------
   document.addEventListener('hk-live', function (e) {
     var t = e.detail.type, d = e.detail.data || {};
@@ -2042,6 +2431,18 @@
              }) };
   },
   join: join, running: function () { return Object.keys(RUN); },
+  // 2.5 Gjallarhorn: Knoten, Weg, Beine, Zuordnung, Kacheln (Tests, Diagnose) und Zaehler des Frame-E2E-Workers
+  horn: function () {
+    var R = C; if (!R || !R.horn) return null;
+    var H = R.horn, legs = {};
+    Object.keys(H.legs).forEach(function (k) { var L = H.legs[k]; legs[k] = { id: L.id, state: L.pc.connectionState, est: L.est || 0, slots: L.slots }; });
+    return { id: R.id, node: H.node && H.node.node, url: H.node && H.node.url, path: H.path, mode: H.X && H.X.mode, up: hornUp(R), since: R.since || 0,
+             csrc: H.csrc, mine: H.mine, key_n: H.key ? H.key.n : null, known: Object.keys(H.known), legs: legs, sent: H.sent || 0,
+             hp: (R.legs || []).reduce(function (o, x) { if (x.hp) o[x.device] = x.hp; return o; }, {}),
+             tiles: Object.keys(H.tiles).map(function (d) { var x = H.tiles[d]; return { dev: d, video: !!x.track, live: !!(x.track && x.track.readyState === 'live') }; }) };
+  },
+  caps: function () { return config().then(function () { return myCaps(); }); },
+  hornStats: function (reset) { return C && C.horn && C.horn.X ? C.horn.X.stats(reset) : Promise.resolve(null); },
   // 2.4: fuer Tests und die Diagnose - ICE neu aushandeln (wie bei einem Netzwechsel), Bild-im-Bild, Regeltabelle
   restartIce: function () { return restartIce(C); }, pip: function (on) { if (!C) return Promise.resolve(false); return on === false ? (pipClose(C), Promise.resolve(true)) : pipOpen(C); },
   rules: rules, limits: { restartMax: RESTART_MAX, discS: DISC_S, failS: FAIL_S } };

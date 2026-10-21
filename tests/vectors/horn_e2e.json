@@ -1,0 +1,2167 @@
+{
+ "format": "saga-horn/v1",
+ "note": "Erzeugt mit tools/horn_e2e_vectors.py (cryptography + PyNaCl). Bytes als Hex. Rahmen = Kopf(h) || AES-128-GCM(FK, IV, AAD=Kopf, Rest) || Tag(16) || IV(12) || 0x0C || kid. FK = HKDF-SHA256(K, salt frame_salt, info 128 x 00, 16). Ratsche K' = HKDF-SHA256(K, salt ratchet_salt, info leer, 32). cases: Empfaenger-Faelle fuer EINEN Sender (Sitzung aaaaaaaaaaaaaaaa), have = vorab per fkey eingesetzte Schluessel (n aus keys), at = Uhr in ms, expect = ok | nokey | auth | replay | short | format. window.steps: nur Zeitstempel, ok = annehmen. Siehe docs/HORN-E2E.md.",
+ "params": {
+  "frame_salt": "saga-horn/v1/frame",
+  "frame_info": "128 x 0x00",
+  "ratchet_salt": "saga-horn-ratchet",
+  "ratchet_info": "",
+  "iv_len": 12,
+  "tag_len": 16,
+  "trailer_len": 14,
+  "kid_ring": 16,
+  "window": 128,
+  "ratchet_ahead": 4,
+  "switch_ms": 1500,
+  "grace_ms": 3000,
+  "keep": 3,
+  "header": {
+   "opus": 1,
+   "vp8_key": 10,
+   "vp8_delta": 3
+  }
+ },
+ "keys": [
+  {
+   "n": 0,
+   "kid": 0,
+   "K": "d198a4b5452fa45291b4799ad5d79b521e207523d4a9421792210b6c87dfb487",
+   "fk": "7cb05ba78dc0a087820faaa3fa862004"
+  },
+  {
+   "n": 1,
+   "kid": 1,
+   "K": "d576177d001cc1f880811f3f239c43cc220e82202cab9f50ce3534b267c4e1de",
+   "fk": "82455a7fe9eb7de0079dd5536dcd8f4f"
+  },
+  {
+   "n": 2,
+   "kid": 2,
+   "K": "02bf19afba685d558368168608dcfcfef1dbc8160d45f2b61ee304a758f3470b",
+   "fk": "726f804635b5af0bfedf41bfab49127a"
+  }
+ ],
+ "frames": [
+  {
+   "name": "vp8-schluesselbild",
+   "kind": "video",
+   "type": "key",
+   "h": 10,
+   "key_n": 0,
+   "ssrc": 439041101,
+   "ts": 3000000,
+   "ctr": 0,
+   "plain": "502c009d012a0005d002dce28f8a5102009051c3da2bddd33bf9030704e4f02c94855b218446e99892885fea399848ffa7d23bc29e4767f7629923c6fbbfa6c3056cfcb7ea3eea05d955d16e5385ecd121eaf979cb0b3afbfc0d3120516f7893b56181de213be510c65d327ce680ee706d4eb01c793155c60eb89878902670a128f6770c32499931271f4dfbd3828dc40c3357217d811e992dc6516217cab5ab39c28ef9167b52318884b7def9091ac80624e1a8c378742e83b5967d8aaf6a3501470c4ca7fc0620c157885276ae8c04b69a199b89a6c2ba3c871451b5a0489a1db9a3eaab6c5acfbf25c1890f129cd78bc04e3f2d8011a413b53a95d513314746c249191ed42b2eaa2ed1b21ff118da864ca7ea556629a87b98cfaccf065f019f8e515b5361e83c088fe31e7fc39c8ec8d2bb2c76184f38f971c541238bd0d89f5231f50d0903ed71c50e82b61f138e7339afc04fd061bdba8a3ea55ace2d2c56bd6063ae319f27047076d35ad9cbe61cc919a2e1fd5c63eb112447f828f3bec4d36765b152ba7225a08edabc6ed81e0a881f9571a1c9fe6e134a6cd12314e1fc03a13d5c323b4d7ae7294c58c6c137464bae9caf34023b7dcf6763a882e223e98c07c1ae75cb002c1682a50c34c94411fc1636dca124630cb9441abe5c050b3630cb70cbb5a6f00a7ac8c3ca934afcf3125aab46c1a60272914b694029958ee0cfd70784a2b77e4e782ae05fb8304f8ae4c299c121bd5f27a6accd61d97bd40cbef24ce4068b206849951c7a15dc2be724ec742bf6b67144be6db007b73e0390067a4259091f04e5c8275758a3d7f7442d0da8986d09cdb2f4550bf13bc171584f",
+   "iv": "1a2b3c4d002dc6c000000000",
+   "out": "502c009d012a0005d0023c21e0b0982e25798b110bbe3593764e926891cc6e8ef67826559fb801cd49762d4f51d02932e0cbf066d649a393c1dc9b894b4bf76cc4da856e2a8132f65c9d865b1579bc5b5e6b4242e9271e9d5d2f237fede188d61a6856c6fe26b72670ac7cf1ff1bdad0c62085ba40496c81b17edadc471ec700ead1988d37ebddbca039eb5176a6cb466c3c02a887617f067af2506cfd3718c3d7aaffa771e7c2d69f1355dbcb63563acd3096ed9492f1fc43c1c1499740e0d570f8179b87c80752bd085596921853005b62a3b9a972f34982e91a1d89eb9380beba5dfc9dfaab0b0d3c3fd9c84fb69971b2c0e8b4cb4735f1d7e29d5cb63a2094b41754bbcb21bcae622b6e340d69b1db110a9a9c4b70f11f26269428cb7ec2cb7416e848b50015604f5d2f45073afb04a7d4d8fcab6be3d20ec13b4e52b59c854c49ec0ffc14a5d4f3d7ca6145a2c6fc8c0b7c165ffd46a2edfa8462acd9a290ed77be2cc397aaebe941c93ad3e4471420a2408e0c2a97465ea5ca659ab120219164b0106b41a0f933c5ff69adb91daf56c86797c8012e3c5914bf9505a775a7dd2ca2bc67997b35cdcebd346d434c9f78080e7b308eff9e11288749ad02667f15104ac075e17c65344ce7097c43b828115239a80475b86f9db71172b33eabba1afaa056b0472407f4a66640bd6de50fd9a6d255f65ed45a13f8f4bcf4449aa576d63355fb5d8c7cd0ad53cc64f64ed16cc7b01583803263ddfd8a78a5963dbb90dcd3b7e89d22664a57050cac41f1d7ebc6ea1cfd64e5ab092f7c494c472d1a981f4e4931617ad78b6a33c508247f23fd5e3a415c94363185372314f9aa5ce23ed8bdfe6a2c89031cec7ea1f7368af0841a2b3c4d002dc6c0000000000c00"
+  },
+  {
+   "name": "vp8-zwischenbild",
+   "kind": "video",
+   "type": "delta",
+   "h": 3,
+   "key_n": 0,
+   "ssrc": 439041101,
+   "ts": 3003000,
+   "ctr": 1,
+   "plain": "310c0019c625080601c295953ae63256c2a98e4f13f8811a9d69f7a47a35691bb4f3d1582ff0249c771d8cc47ae080a683d6dbd817dba33fdadc7ce41c70068dcbca5375c3e369df25acb1e55538b7b6aa66d3c028f7570209c92d26eb4a3c62fc6f0d76437da3eb44399660acdc72d8393f8fe6bb8a6477ed9df59b847d771522b245830f55468f74394f1e43a320088a359a2deb8a458c1ed0c6bd84ea4b583d5f6d3778b9c50e667bc6aa3f7b98d4700e5ef6a5ba00",
+   "iv": "1a2b3c4d002dd27800000001",
+   "out": "310c00e3b200cb8b2eba9d1322b8958c7140df7f793886c484377737877ac9907e325bfed74c1777348413d655e4b1b943c5e43f0b13fbfb7f37ee66ede469a7c71b7966e237ddfab4c56c89e777307664318c75c1c2764a7e39e0d9317fd240f8ce04e2ab742f9cb0a33621dd29337e6b70fb6d7e642e47f6f73257c00c01b1d99d24a28ff8184776d516103ef8cc62aadaac0c0112d921a0c6fd9e87cd464ca2918d009e7fad7c646e3aa995f2f9965a5b2f24f200ad1975341844a88dfbc4fad1b199189c2c1a2b3c4d002dd278000000010c00"
+  },
+  {
+   "name": "opus",
+   "kind": "audio",
+   "type": null,
+   "h": 1,
+   "key_n": 0,
+   "ssrc": 1584361601,
+   "ts": 480000,
+   "ctr": 0,
+   "plain": "fc5e949563d74e050ad25fe717178de6b1d9bfc0855e8604109619cf2669b50588196d05025a7e840d1fdd95cda15f8bdb6259c805a478bfc30ab3b8c3",
+   "iv": "5e6f70810007530000000000",
+   "out": "fce80c4ebd8cfbd612072833368435d8e66bf37f4d2aa138835bcd04723fad5631d82c186960d7a28f7f37130b5747477fa41d805b79f3417b479e1581fdd9f77920f29327bf8abea06fd02e765e6f708100075300000000000c00"
+  },
+  {
+   "name": "vp8-zwischenbild-n1",
+   "kind": "video",
+   "type": "delta",
+   "h": 3,
+   "key_n": 1,
+   "ssrc": 439041101,
+   "ts": 3006000,
+   "ctr": 0,
+   "plain": "310c009506f273ed30d73011e74fe03ddae8df501e216d1bc348b34a90cbc96c5385bfee3ef63db0cbb5fc7ed5e6d28c36a8ce6f36f3e12eb42c0ed0b3f459d3ab3ab3fabc2f47a386a2f99146259274de4bb6a9276ddbba6ab3501a47",
+   "iv": "1a2b3c4d002dde3000000000",
+   "out": "310c001c8f90e52a50439fdca360c8c53260f05064903d10d2e3e5d454555654aec908d5b81860b7142dea35bf5b11829ead8c5243ed6bfc6b89f542d6aa67f868ab08503b990e5ddb1096d3bafc3035d60fe012481c933eb0c0fbccaecde33785bef0529c29292937a312b3d91a2b3c4d002dde30000000000c01"
+  },
+  {
+   "name": "opus-framecryptor-iv",
+   "kind": "audio",
+   "type": null,
+   "h": 1,
+   "key_n": 0,
+   "ssrc": 1584361601,
+   "ts": 480960,
+   "ctr": 7,
+   "plain": "fcf2db5ed63451c4889c7a8ec69703862f6dbb01c29dcb1a2e18a2862b04e9b4f6a6d62f85f429aab5",
+   "iv": "5e6f7081000756c0000756b9",
+   "out": "fcfc42b4a799eb7e92b9b400986cc86ab11977bf4e9c70ca3e7a63a023f446b52097b28ac8e5614e98daa68749f55c1a78cb2db57906bebd8d5e6f7081000756c0000756b90c00",
+   "iv_mode": "fc"
+  }
+ ],
+ "cases": [
+  {
+   "name": "annehmen-dann-wiederholung",
+   "have": [
+    0
+   ],
+   "steps": [
+    {
+     "data": "310c00e3b200cb8b2eba9d1322b8958c7140df7f793886c484377737877ac9907e325bfed74c1777348413d655e4b1b943c5e43f0b13fbfb7f37ee66ede469a7c71b7966e237ddfab4c56c89e777307664318c75c1c2764a7e39e0d9317fd240f8ce04e2ab742f9cb0a33621dd29337e6b70fb6d7e642e47f6f73257c00c01b1d99d24a28ff8184776d516103ef8cc62aadaac0c0112d921a0c6fd9e87cd464ca2918d009e7fad7c646e3aa995f2f9965a5b2f24f200ad1975341844a88dfbc4fad1b199189c2c1a2b3c4d002dd278000000010c00",
+     "kind": "video",
+     "type": "delta",
+     "at": 0,
+     "expect": "ok",
+     "plain": "310c0019c625080601c295953ae63256c2a98e4f13f8811a9d69f7a47a35691bb4f3d1582ff0249c771d8cc47ae080a683d6dbd817dba33fdadc7ce41c70068dcbca5375c3e369df25acb1e55538b7b6aa66d3c028f7570209c92d26eb4a3c62fc6f0d76437da3eb44399660acdc72d8393f8fe6bb8a6477ed9df59b847d771522b245830f55468f74394f1e43a320088a359a2deb8a458c1ed0c6bd84ea4b583d5f6d3778b9c50e667bc6aa3f7b98d4700e5ef6a5ba00"
+    },
+    {
+     "data": "310c0053cda6f4a829f37985e299c975c19c6be6481907c3f2a6ca894090569741217b3280863fe9fe570c3be386c9db45f417bf8642c746a0ad0fb67a3d3942d91f0bdd361a2b3c4d002dde30000000020c00",
+     "kind": "video",
+     "type": "delta",
+     "at": 0,
+     "expect": "ok",
+     "plain": "310c00195c9acb63ec14aabc5189f1f9674342ebc0f772ae3c9fbf0f6245bf55c6fad1529d224bca4047b01bbf98968cc309552fc8"
+    },
+    {
+     "data": "310c00e3b200cb8b2eba9d1322b8958c7140df7f793886c484377737877ac9907e325bfed74c1777348413d655e4b1b943c5e43f0b13fbfb7f37ee66ede469a7c71b7966e237ddfab4c56c89e777307664318c75c1c2764a7e39e0d9317fd240f8ce04e2ab742f9cb0a33621dd29337e6b70fb6d7e642e47f6f73257c00c01b1d99d24a28ff8184776d516103ef8cc62aadaac0c0112d921a0c6fd9e87cd464ca2918d009e7fad7c646e3aa995f2f9965a5b2f24f200ad1975341844a88dfbc4fad1b199189c2c1a2b3c4d002dd278000000010c00",
+     "kind": "video",
+     "type": "delta",
+     "at": 0,
+     "expect": "replay",
+     "plain": "310c0019c625080601c295953ae63256c2a98e4f13f8811a9d69f7a47a35691bb4f3d1582ff0249c771d8cc47ae080a683d6dbd817dba33fdadc7ce41c70068dcbca5375c3e369df25acb1e55538b7b6aa66d3c028f7570209c92d26eb4a3c62fc6f0d76437da3eb44399660acdc72d8393f8fe6bb8a6477ed9df59b847d771522b245830f55468f74394f1e43a320088a359a2deb8a458c1ed0c6bd84ea4b583d5f6d3778b9c50e667bc6aa3f7b98d4700e5ef6a5ba00"
+    }
+   ]
+  },
+  {
+   "name": "ohne-schluessel",
+   "have": [],
+   "steps": [
+    {
+     "data": "310c00e3b200cb8b2eba9d1322b8958c7140df7f793886c484377737877ac9907e325bfed74c1777348413d655e4b1b943c5e43f0b13fbfb7f37ee66ede469a7c71b7966e237ddfab4c56c89e777307664318c75c1c2764a7e39e0d9317fd240f8ce04e2ab742f9cb0a33621dd29337e6b70fb6d7e642e47f6f73257c00c01b1d99d24a28ff8184776d516103ef8cc62aadaac0c0112d921a0c6fd9e87cd464ca2918d009e7fad7c646e3aa995f2f9965a5b2f24f200ad1975341844a88dfbc4fad1b199189c2c1a2b3c4d002dd278000000010c00",
+     "kind": "video",
+     "type": "delta",
+     "at": 0,
+     "expect": "nokey",
+     "plain": "310c0019c625080601c295953ae63256c2a98e4f13f8811a9d69f7a47a35691bb4f3d1582ff0249c771d8cc47ae080a683d6dbd817dba33fdadc7ce41c70068dcbca5375c3e369df25acb1e55538b7b6aa66d3c028f7570209c92d26eb4a3c62fc6f0d76437da3eb44399660acdc72d8393f8fe6bb8a6477ed9df59b847d771522b245830f55468f74394f1e43a320088a359a2deb8a458c1ed0c6bd84ea4b583d5f6d3778b9c50e667bc6aa3f7b98d4700e5ef6a5ba00"
+    },
+    {
+     "data": "fce80c4ebd8cfbd612072833368435d8e66bf37f4d2aa138835bcd04723fad5631d82c186960d7a28f7f37130b5747477fa41d805b79f3417b479e1581fdd9f77920f29327bf8abea06fd02e765e6f708100075300000000000c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "nokey",
+     "plain": "fc5e949563d74e050ad25fe717178de6b1d9bfc0855e8604109619cf2669b50588196d05025a7e840d1fdd95cda15f8bdb6259c805a478bfc30ab3b8c3"
+    }
+   ]
+  },
+  {
+   "name": "falscher-kid",
+   "have": [
+    0
+   ],
+   "steps": [
+    {
+     "data": "310c00e3b200cb8b2eba9d1322b8958c7140df7f793886c484377737877ac9907e325bfed74c1777348413d655e4b1b943c5e43f0b13fbfb7f37ee66ede469a7c71b7966e237ddfab4c56c89e777307664318c75c1c2764a7e39e0d9317fd240f8ce04e2ab742f9cb0a33621dd29337e6b70fb6d7e642e47f6f73257c00c01b1d99d24a28ff8184776d516103ef8cc62aadaac0c0112d921a0c6fd9e87cd464ca2918d009e7fad7c646e3aa995f2f9965a5b2f24f200ad1975341844a88dfbc4fad1b199189c2c1a2b3c4d002dd278000000010c09",
+     "kind": "video",
+     "type": "delta",
+     "at": 0,
+     "expect": "nokey",
+     "plain": "310c0019c625080601c295953ae63256c2a98e4f13f8811a9d69f7a47a35691bb4f3d1582ff0249c771d8cc47ae080a683d6dbd817dba33fdadc7ce41c70068dcbca5375c3e369df25acb1e55538b7b6aa66d3c028f7570209c92d26eb4a3c62fc6f0d76437da3eb44399660acdc72d8393f8fe6bb8a6477ed9df59b847d771522b245830f55468f74394f1e43a320088a359a2deb8a458c1ed0c6bd84ea4b583d5f6d3778b9c50e667bc6aa3f7b98d4700e5ef6a5ba00"
+    }
+   ]
+  },
+  {
+   "name": "kid-zeigt-auf-anderen-schluessel",
+   "have": [
+    0,
+    1
+   ],
+   "steps": [
+    {
+     "data": "310c00e3b200cb8b2eba9d1322b8958c7140df7f793886c484377737877ac9907e325bfed74c1777348413d655e4b1b943c5e43f0b13fbfb7f37ee66ede469a7c71b7966e237ddfab4c56c89e777307664318c75c1c2764a7e39e0d9317fd240f8ce04e2ab742f9cb0a33621dd29337e6b70fb6d7e642e47f6f73257c00c01b1d99d24a28ff8184776d516103ef8cc62aadaac0c0112d921a0c6fd9e87cd464ca2918d009e7fad7c646e3aa995f2f9965a5b2f24f200ad1975341844a88dfbc4fad1b199189c2c1a2b3c4d002dd278000000010c01",
+     "kind": "video",
+     "type": "delta",
+     "at": 0,
+     "expect": "auth",
+     "plain": "310c0019c625080601c295953ae63256c2a98e4f13f8811a9d69f7a47a35691bb4f3d1582ff0249c771d8cc47ae080a683d6dbd817dba33fdadc7ce41c70068dcbca5375c3e369df25acb1e55538b7b6aa66d3c028f7570209c92d26eb4a3c62fc6f0d76437da3eb44399660acdc72d8393f8fe6bb8a6477ed9df59b847d771522b245830f55468f74394f1e43a320088a359a2deb8a458c1ed0c6bd84ea4b583d5f6d3778b9c50e667bc6aa3f7b98d4700e5ef6a5ba00"
+    }
+   ]
+  },
+  {
+   "name": "aad-manipuliert",
+   "have": [
+    0
+   ],
+   "steps": [
+    {
+     "data": "502c009d002a0005d0023c21e0b0982e25798b110bbe3593764e926891cc6e8ef67826559fb801cd49762d4f51d02932e0cbf066d649a393c1dc9b894b4bf76cc4da856e2a8132f65c9d865b1579bc5b5e6b4242e9271e9d5d2f237fede188d61a6856c6fe26b72670ac7cf1ff1bdad0c62085ba40496c81b17edadc471ec700ead1988d37ebddbca039eb5176a6cb466c3c02a887617f067af2506cfd3718c3d7aaffa771e7c2d69f1355dbcb63563acd3096ed9492f1fc43c1c1499740e0d570f8179b87c80752bd085596921853005b62a3b9a972f34982e91a1d89eb9380beba5dfc9dfaab0b0d3c3fd9c84fb69971b2c0e8b4cb4735f1d7e29d5cb63a2094b41754bbcb21bcae622b6e340d69b1db110a9a9c4b70f11f26269428cb7ec2cb7416e848b50015604f5d2f45073afb04a7d4d8fcab6be3d20ec13b4e52b59c854c49ec0ffc14a5d4f3d7ca6145a2c6fc8c0b7c165ffd46a2edfa8462acd9a290ed77be2cc397aaebe941c93ad3e4471420a2408e0c2a97465ea5ca659ab120219164b0106b41a0f933c5ff69adb91daf56c86797c8012e3c5914bf9505a775a7dd2ca2bc67997b35cdcebd346d434c9f78080e7b308eff9e11288749ad02667f15104ac075e17c65344ce7097c43b828115239a80475b86f9db71172b33eabba1afaa056b0472407f4a66640bd6de50fd9a6d255f65ed45a13f8f4bcf4449aa576d63355fb5d8c7cd0ad53cc64f64ed16cc7b01583803263ddfd8a78a5963dbb90dcd3b7e89d22664a57050cac41f1d7ebc6ea1cfd64e5ab092f7c494c472d1a981f4e4931617ad78b6a33c508247f23fd5e3a415c94363185372314f9aa5ce23ed8bdfe6a2c89031cec7ea1f7368af0841a2b3c4d002dc6c0000000000c00",
+     "kind": "video",
+     "type": "key",
+     "at": 0,
+     "expect": "auth",
+     "plain": "502c009d012a0005d002dce28f8a5102009051c3da2bddd33bf9030704e4f02c94855b218446e99892885fea399848ffa7d23bc29e4767f7629923c6fbbfa6c3056cfcb7ea3eea05d955d16e5385ecd121eaf979cb0b3afbfc0d3120516f7893b56181de213be510c65d327ce680ee706d4eb01c793155c60eb89878902670a128f6770c32499931271f4dfbd3828dc40c3357217d811e992dc6516217cab5ab39c28ef9167b52318884b7def9091ac80624e1a8c378742e83b5967d8aaf6a3501470c4ca7fc0620c157885276ae8c04b69a199b89a6c2ba3c871451b5a0489a1db9a3eaab6c5acfbf25c1890f129cd78bc04e3f2d8011a413b53a95d513314746c249191ed42b2eaa2ed1b21ff118da864ca7ea556629a87b98cfaccf065f019f8e515b5361e83c088fe31e7fc39c8ec8d2bb2c76184f38f971c541238bd0d89f5231f50d0903ed71c50e82b61f138e7339afc04fd061bdba8a3ea55ace2d2c56bd6063ae319f27047076d35ad9cbe61cc919a2e1fd5c63eb112447f828f3bec4d36765b152ba7225a08edabc6ed81e0a881f9571a1c9fe6e134a6cd12314e1fc03a13d5c323b4d7ae7294c58c6c137464bae9caf34023b7dcf6763a882e223e98c07c1ae75cb002c1682a50c34c94411fc1636dca124630cb9441abe5c050b3630cb70cbb5a6f00a7ac8c3ca934afcf3125aab46c1a60272914b694029958ee0cfd70784a2b77e4e782ae05fb8304f8ae4c299c121bd5f27a6accd61d97bd40cbef24ce4068b206849951c7a15dc2be724ec742bf6b67144be6db007b73e0390067a4259091f04e5c8275758a3d7f7442d0da8986d09cdb2f4550bf13bc171584f"
+    },
+    {
+     "data": "7ce80c4ebd8cfbd612072833368435d8e66bf37f4d2aa138835bcd04723fad5631d82c186960d7a28f7f37130b5747477fa41d805b79f3417b479e1581fdd9f77920f29327bf8abea06fd02e765e6f708100075300000000000c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "auth",
+     "plain": "fc5e949563d74e050ad25fe717178de6b1d9bfc0855e8604109619cf2669b50588196d05025a7e840d1fdd95cda15f8bdb6259c805a478bfc30ab3b8c3"
+    }
+   ]
+  },
+  {
+   "name": "kopfart-vertauscht",
+   "have": [
+    0
+   ],
+   "steps": [
+    {
+     "data": "310c00e3b200cb8b2eba9d1322b8958c7140df7f793886c484377737877ac9907e325bfed74c1777348413d655e4b1b943c5e43f0b13fbfb7f37ee66ede469a7c71b7966e237ddfab4c56c89e777307664318c75c1c2764a7e39e0d9317fd240f8ce04e2ab742f9cb0a33621dd29337e6b70fb6d7e642e47f6f73257c00c01b1d99d24a28ff8184776d516103ef8cc62aadaac0c0112d921a0c6fd9e87cd464ca2918d009e7fad7c646e3aa995f2f9965a5b2f24f200ad1975341844a88dfbc4fad1b199189c2c1a2b3c4d002dd278000000010c00",
+     "kind": "video",
+     "type": "key",
+     "at": 0,
+     "expect": "auth",
+     "plain": "310c0019c625080601c295953ae63256c2a98e4f13f8811a9d69f7a47a35691bb4f3d1582ff0249c771d8cc47ae080a683d6dbd817dba33fdadc7ce41c70068dcbca5375c3e369df25acb1e55538b7b6aa66d3c028f7570209c92d26eb4a3c62fc6f0d76437da3eb44399660acdc72d8393f8fe6bb8a6477ed9df59b847d771522b245830f55468f74394f1e43a320088a359a2deb8a458c1ed0c6bd84ea4b583d5f6d3778b9c50e667bc6aa3f7b98d4700e5ef6a5ba00"
+    }
+   ]
+  },
+  {
+   "name": "chiffrat-manipuliert",
+   "have": [
+    0
+   ],
+   "steps": [
+    {
+     "data": "310c00e3b200cb8b2eba9d1322b8958c7140df7f783886c484377737877ac9907e325bfed74c1777348413d655e4b1b943c5e43f0b13fbfb7f37ee66ede469a7c71b7966e237ddfab4c56c89e777307664318c75c1c2764a7e39e0d9317fd240f8ce04e2ab742f9cb0a33621dd29337e6b70fb6d7e642e47f6f73257c00c01b1d99d24a28ff8184776d516103ef8cc62aadaac0c0112d921a0c6fd9e87cd464ca2918d009e7fad7c646e3aa995f2f9965a5b2f24f200ad1975341844a88dfbc4fad1b199189c2c1a2b3c4d002dd278000000010c00",
+     "kind": "video",
+     "type": "delta",
+     "at": 0,
+     "expect": "auth",
+     "plain": "310c0019c625080601c295953ae63256c2a98e4f13f8811a9d69f7a47a35691bb4f3d1582ff0249c771d8cc47ae080a683d6dbd817dba33fdadc7ce41c70068dcbca5375c3e369df25acb1e55538b7b6aa66d3c028f7570209c92d26eb4a3c62fc6f0d76437da3eb44399660acdc72d8393f8fe6bb8a6477ed9df59b847d771522b245830f55468f74394f1e43a320088a359a2deb8a458c1ed0c6bd84ea4b583d5f6d3778b9c50e667bc6aa3f7b98d4700e5ef6a5ba00"
+    }
+   ]
+  },
+  {
+   "name": "tag-manipuliert",
+   "have": [
+    0
+   ],
+   "steps": [
+    {
+     "data": "310c00e3b200cb8b2eba9d1322b8958c7140df7f793886c484377737877ac9907e325bfed74c1777348413d655e4b1b943c5e43f0b13fbfb7f37ee66ede469a7c71b7966e237ddfab4c56c89e777307664318c75c1c2764a7e39e0d9317fd240f8ce04e2ab742f9cb0a33621dd29337e6b70fb6d7e642e47f6f73257c00c01b1d99d24a28ff8184776d516103ef8cc62aadaac0c0112d921a0c6fd9e87cd464ca2918d009e7fad7c646e3aa995f2f9965a5b2f24f200ad1975341844a88dfbc4fad1b199189c2d1a2b3c4d002dd278000000010c00",
+     "kind": "video",
+     "type": "delta",
+     "at": 0,
+     "expect": "auth",
+     "plain": "310c0019c625080601c295953ae63256c2a98e4f13f8811a9d69f7a47a35691bb4f3d1582ff0249c771d8cc47ae080a683d6dbd817dba33fdadc7ce41c70068dcbca5375c3e369df25acb1e55538b7b6aa66d3c028f7570209c92d26eb4a3c62fc6f0d76437da3eb44399660acdc72d8393f8fe6bb8a6477ed9df59b847d771522b245830f55468f74394f1e43a320088a359a2deb8a458c1ed0c6bd84ea4b583d5f6d3778b9c50e667bc6aa3f7b98d4700e5ef6a5ba00"
+    }
+   ]
+  },
+  {
+   "name": "iv-manipuliert",
+   "have": [
+    0
+   ],
+   "steps": [
+    {
+     "data": "310c00e3b200cb8b2eba9d1322b8958c7140df7f793886c484377737877ac9907e325bfed74c1777348413d655e4b1b943c5e43f0b13fbfb7f37ee66ede469a7c71b7966e237ddfab4c56c89e777307664318c75c1c2764a7e39e0d9317fd240f8ce04e2ab742f9cb0a33621dd29337e6b70fb6d7e642e47f6f73257c00c01b1d99d24a28ff8184776d516103ef8cc62aadaac0c0112d921a0c6fd9e87cd464ca2918d009e7fad7c646e3aa995f2f9965a5b2f24f200ad1975341844a88dfbc4fad1b199189c2c1a2b3c4d002dd278000000000c00",
+     "kind": "video",
+     "type": "delta",
+     "at": 0,
+     "expect": "auth",
+     "plain": "310c0019c625080601c295953ae63256c2a98e4f13f8811a9d69f7a47a35691bb4f3d1582ff0249c771d8cc47ae080a683d6dbd817dba33fdadc7ce41c70068dcbca5375c3e369df25acb1e55538b7b6aa66d3c028f7570209c92d26eb4a3c62fc6f0d76437da3eb44399660acdc72d8393f8fe6bb8a6477ed9df59b847d771522b245830f55468f74394f1e43a320088a359a2deb8a458c1ed0c6bd84ea4b583d5f6d3778b9c50e667bc6aa3f7b98d4700e5ef6a5ba00"
+    }
+   ]
+  },
+  {
+   "name": "iv-laenge-falsch",
+   "have": [
+    0
+   ],
+   "steps": [
+    {
+     "data": "310c00e3b200cb8b2eba9d1322b8958c7140df7f793886c484377737877ac9907e325bfed74c1777348413d655e4b1b943c5e43f0b13fbfb7f37ee66ede469a7c71b7966e237ddfab4c56c89e777307664318c75c1c2764a7e39e0d9317fd240f8ce04e2ab742f9cb0a33621dd29337e6b70fb6d7e642e47f6f73257c00c01b1d99d24a28ff8184776d516103ef8cc62aadaac0c0112d921a0c6fd9e87cd464ca2918d009e7fad7c646e3aa995f2f9965a5b2f24f200ad1975341844a88dfbc4fad1b199189c2c1a2b3c4d002dd278000000011000",
+     "kind": "video",
+     "type": "delta",
+     "at": 0,
+     "expect": "format",
+     "plain": "310c0019c625080601c295953ae63256c2a98e4f13f8811a9d69f7a47a35691bb4f3d1582ff0249c771d8cc47ae080a683d6dbd817dba33fdadc7ce41c70068dcbca5375c3e369df25acb1e55538b7b6aa66d3c028f7570209c92d26eb4a3c62fc6f0d76437da3eb44399660acdc72d8393f8fe6bb8a6477ed9df59b847d771522b245830f55468f74394f1e43a320088a359a2deb8a458c1ed0c6bd84ea4b583d5f6d3778b9c50e667bc6aa3f7b98d4700e5ef6a5ba00"
+    }
+   ]
+  },
+  {
+   "name": "kid-ausserhalb-ring",
+   "have": [
+    0
+   ],
+   "steps": [
+    {
+     "data": "310c00e3b200cb8b2eba9d1322b8958c7140df7f793886c484377737877ac9907e325bfed74c1777348413d655e4b1b943c5e43f0b13fbfb7f37ee66ede469a7c71b7966e237ddfab4c56c89e777307664318c75c1c2764a7e39e0d9317fd240f8ce04e2ab742f9cb0a33621dd29337e6b70fb6d7e642e47f6f73257c00c01b1d99d24a28ff8184776d516103ef8cc62aadaac0c0112d921a0c6fd9e87cd464ca2918d009e7fad7c646e3aa995f2f9965a5b2f24f200ad1975341844a88dfbc4fad1b199189c2c1a2b3c4d002dd278000000010cc8",
+     "kind": "video",
+     "type": "delta",
+     "at": 0,
+     "expect": "format",
+     "plain": "310c0019c625080601c295953ae63256c2a98e4f13f8811a9d69f7a47a35691bb4f3d1582ff0249c771d8cc47ae080a683d6dbd817dba33fdadc7ce41c70068dcbca5375c3e369df25acb1e55538b7b6aa66d3c028f7570209c92d26eb4a3c62fc6f0d76437da3eb44399660acdc72d8393f8fe6bb8a6477ed9df59b847d771522b245830f55468f74394f1e43a320088a359a2deb8a458c1ed0c6bd84ea4b583d5f6d3778b9c50e667bc6aa3f7b98d4700e5ef6a5ba00"
+    }
+   ]
+  },
+  {
+   "name": "zu-kurz",
+   "have": [
+    0
+   ],
+   "steps": [
+    {
+     "data": "fce80c4ebd8cfbd612072833368435d8e66bf37f4d2aa138835bcd04723f",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "short",
+     "plain": "fc5e949563d74e050ad25fe717178de6b1d9bfc0855e8604109619cf2669b50588196d05025a7e840d1fdd95cda15f8bdb6259c805a478bfc30ab3b8c3"
+    }
+   ]
+  },
+  {
+   "name": "ratsche-beim-ersten-rahmen",
+   "have": [
+    0
+   ],
+   "steps": [
+    {
+     "data": "310c0059c0b331e1aafe7f1851965949028775cc7eca2bbe714275a7d86ca055167fbbdfc75bd0fd6ff001213fc1e5f3429322a8f352fcce2a525e0b405ab7284c4901d46d1a2b3c4d002de9e8000000000c01",
+     "kind": "video",
+     "type": "delta",
+     "at": 1000,
+     "expect": "ok",
+     "plain": "310c00ef00cd542cbbde5b3486f22592f265165000ea2e2d77ef34fff9fa7ea5a8b02c69b2c0eced73130d32368279858a6731765d"
+    },
+    {
+     "data": "310c00af9b0c1920640d4a3b497a893f535d6622cfef126f27c6b0bdb01471fdea66ba25b0659ade388aee1669d0fd0ffc88928a8a41fdebd1772e82406a0a968bf397da791a2b3c4d002defc4000000030c00",
+     "kind": "video",
+     "type": "delta",
+     "at": 3500,
+     "expect": "ok",
+     "plain": "310c00a2138a1b8e760545228f94345eb42b122a5ab8fab74dbb0fdee5a46fc2fc811a7dda17c17b9c894576f660d16e288dcb4110"
+    },
+    {
+     "data": "310c0053cda6f4a829f37985e299c975c19c6be6481907c3f2a6ca894090569741217b3280863fe9fe570c3be386c9db45f417bf8642c746a0ad0fb67a3d3942d91f0bdd361a2b3c4d002dde30000000020c00",
+     "kind": "video",
+     "type": "delta",
+     "at": 4001,
+     "expect": "nokey",
+     "plain": "310c00195c9acb63ec14aabc5189f1f9674342ebc0f772ae3c9fbf0f6245bf55c6fad1529d224bca4047b01bbf98968cc309552fc8"
+    }
+   ]
+  },
+  {
+   "name": "ratsche-zwei-schritte",
+   "have": [
+    0
+   ],
+   "steps": [
+    {
+     "data": "310c00b971d11225fbca8a34757019baad6699a754d93b6ef89a02b56bfa504ff80f500e410793bc3152828e62f64732706013db667b4aeed0f34bf016b967ee22c3ee78571a2b3c4d002df5a0000000000c02",
+     "kind": "video",
+     "type": "delta",
+     "at": 0,
+     "expect": "ok",
+     "plain": "310c0026f3b037b3dd8008e80c9315b63c233b017421758006ecba31556f2686fec5e14a6caf01ab8738f617d5f76ceea1ada88eef"
+    }
+   ]
+  },
+  {
+   "name": "framecryptor-iv",
+   "have": [
+    0
+   ],
+   "steps": [
+    {
+     "data": "fcfc42b4a799eb7e92b9b400986cc86ab11977bf4e9c70ca3e7a63a023f446b52097b28ac8e5614e98daa68749f55c1a78cb2db57906bebd8d5e6f7081000756c0000756b90c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcf2db5ed63451c4889c7a8ec69703862f6dbb01c29dcb1a2e18a2862b04e9b4f6a6d62f85f429aab5"
+    }
+   ]
+  },
+  {
+   "name": "fenster-128-ueber-zeitstempel-ueberlauf",
+   "have": [
+    0
+   ],
+   "steps": [
+    {
+     "data": "fc67fda8da0fd15446433c65446b76ab166bd541e69966168a5e6f7081fffff000000000000c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcdef518100671a1f0"
+    },
+    {
+     "data": "fc2c82e7fefca90db851f277eb3324ead3cae42e319bfffc115e6f7081fffff3c0000000010c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc990247334e529ff4"
+    },
+    {
+     "data": "fca96c17bb814c65cfcde4615c70cbc21679b19a6f1e10fc975e6f7081fffff780000000020c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc7646636517b49770"
+    },
+    {
+     "data": "fcb11336c3dc4c236f324e0c97c0a4871762fe6df53e15fa0f5e6f7081fffffb40000000030c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc3f9c596f48fb5056"
+    },
+    {
+     "data": "fcdcd3e995851989963275cf82d6bbc0acc8a3b0b27f04be705e6f7081ffffff00000000040c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc68427e047c80fe1e"
+    },
+    {
+     "data": "fc73c2154de1b9c2fd14f3bd12a2e0e332f05e1459f8f397065e6f7081000002c0000000050c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc202854c97e782b65"
+    },
+    {
+     "data": "fc2856ad90379b71cf3fd55d8193d4a3a3f8f83c612129de985e6f708100000680000000060c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc41b946f9954452c2"
+    },
+    {
+     "data": "fc46d3e3d5a440378590b2fadaa2ad25dee742fef3485e40ec5e6f708100000a40000000070c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fce5bbf68da94db49a"
+    },
+    {
+     "data": "fc778c0c75d684fedf5fcb706006da832e9619149e9458465a5e6f708100000e00000000080c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc6566812754e41f49"
+    },
+    {
+     "data": "fc097c76a1497b6f224435ff29216743d1efbce34c600c13225e6f7081000011c0000000090c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc24f48524eb8172a6"
+    },
+    {
+     "data": "fc8d62446122e4bb73940de3abd3ac182894352b7be73509305e6f7081000015800000000a0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcdd9050e0bc3f1c89"
+    },
+    {
+     "data": "fc779566c186a6d3d751015aa1f88adb838f2c030b470779ff5e6f7081000019400000000b0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcf8250c125ab4cef5"
+    },
+    {
+     "data": "fcca62bbdad66fb131fbec76ca826456705102b132b0dbbba75e6f708100001d000000000c0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc9ebe041c0b799794"
+    },
+    {
+     "data": "fcb66b1f3c59cd7310eb78e5b2ca0cc77a67e0bb2d403ceea25e6f7081000020c00000000d0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcc0a16b1afe410039"
+    },
+    {
+     "data": "fc63cd31f1956b446d7099df95a76e2d2ff2eee58a1df1a5d15e6f7081000024800000000e0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc57504b81a2aaf833"
+    },
+    {
+     "data": "fc0af77c3880fe5a198f790920ab5a32bc9211fe92ba2f31175e6f7081000028400000000f0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc97c6e20dace40c94"
+    },
+    {
+     "data": "fcb87ca2a39640e742e5dc1c2f533efe6fe2f55ffab1435f6f5e6f708100002c00000000100c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc3cc4bc8cefd8beff"
+    },
+    {
+     "data": "fcd8a31fa760b077eeb17d88c1805540b7dd2d629782a172355e6f708100002fc0000000110c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcc966901bb83b32bc"
+    },
+    {
+     "data": "fcf1bcf49f36c5ed61ba362567d3201a05f761b80b15717b465e6f708100003380000000120c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcdf1f3075034010e7"
+    },
+    {
+     "data": "fcb0760f342e148d54b52406f94887ae36457cc9e92ff127645e6f708100003740000000130c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc3479085ced1bbc93"
+    },
+    {
+     "data": "fc47ddb0eed20fcab6a1bd9b38e987fc5f32fb46b8a6ec2cbb5e6f708100003b00000000140c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc1dcf38935ae24ad7"
+    },
+    {
+     "data": "fc9a27b6928ca8db0748c4ed4396584f9724003ef949b7f3b65e6f708100003ec0000000150c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcfa764ad2b3621f5d"
+    },
+    {
+     "data": "fcdf263448a4807c0673cfdea3677f3c7762a13dc5ee63e0b45e6f708100004280000000160c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc1b30db217f14e982"
+    },
+    {
+     "data": "fc8c86b40f20aa2e5ab0c5905990db0912711a11fb399e19315e6f708100004640000000170c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc9e15ef316819a0c2"
+    },
+    {
+     "data": "fc4218518f7f344bf2d4fb0c9852aa0decae1ecb5a3c79f8455e6f708100004a00000000180c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc912773c495af3c9b"
+    },
+    {
+     "data": "fceda92965036cd5dcafd6e07dad46be16ddb911fa9a37e47d5e6f708100004dc0000000190c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcfbec8ccb06e02ab2"
+    },
+    {
+     "data": "fcc44c28c41cf304307a9c5131a4e8e1bf8a234a76df6d7f1d5e6f7081000051800000001a0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcb2033576cb4daa6a"
+    },
+    {
+     "data": "fcbb2571022510a4f7950dac167c67e4d7ff39a64ee8ca4b635e6f7081000055400000001b0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc55207d00181c6192"
+    },
+    {
+     "data": "fcab7f1c659556be6e7de09f139ebe0e5ca3be0da2f53c8a0a5e6f7081000059000000001c0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcf3431a8184e858b5"
+    },
+    {
+     "data": "fc2b9143e30333f9e151167a97f7899032c2a7e3c0957e0a985e6f708100005cc00000001d0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc5fee7af421c2d62c"
+    },
+    {
+     "data": "fcf5201b9e145ea8e15c9e1351558ff7dc968098dee669f1a75e6f7081000060800000001e0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc190d8e66a4189d2b"
+    },
+    {
+     "data": "fc984a2fa5cbe67e0f077c44a063941dbe87dead17ec5b65825e6f7081000064400000001f0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcbf33d95d784343e2"
+    },
+    {
+     "data": "fc4dc121be2bca204e89628fca943da83339c9e312dea5ee315e6f708100006800000000200c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc8634e58b093359e9"
+    },
+    {
+     "data": "fc67b03448bd881e3b54cf9f5445582b9322708be0c25fa93d5e6f708100006bc0000000210c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcceeb18a122d6e85c"
+    },
+    {
+     "data": "fc53103eeac682108cddd8e70f16cd3dc2306ce984746a6da65e6f708100006f80000000220c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc9d725b9eed7b7f9e"
+    },
+    {
+     "data": "fcedca0a308e72ac7f733c9692f05c92651bf25c38d9d0676a5e6f708100007340000000230c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc9a1af87b6b6e6be5"
+    },
+    {
+     "data": "fc5d85b27bd14a061c1b285cf394bfe6c2cc8c1552320988ea5e6f708100007700000000240c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc0c06112ec1d2af47"
+    },
+    {
+     "data": "fcd118d91207669e24bafbcaf7c36d20ad641778dab62542255e6f708100007ac0000000250c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc1909f5bdbf21b47a"
+    },
+    {
+     "data": "fc8bf9051a9dcbab2881982736e4bb5df92f39a01a97543a315e6f708100007e80000000260c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc0cb1d6c452f25998"
+    },
+    {
+     "data": "fc79a27d9fd462beca2a935ab455f784f9f15247942a7025a85e6f708100008240000000270c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc4f5765be342a8f76"
+    },
+    {
+     "data": "fc26075a6fd00ada67f4ea45e17eeb8bdcad201b52b0805e8f5e6f708100008600000000280c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc8e17c3d3637151c3"
+    },
+    {
+     "data": "fcdac8171401a0cfde9e4a87a7fecf6a2ceb5ac2c817e0df605e6f7081000089c0000000290c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc0c86884f2ddf66e2"
+    },
+    {
+     "data": "fc2b08d2562ab48f25c883b6f099ff98076a994f4619ccb5e55e6f708100008d800000002a0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc959d0982675798ce"
+    },
+    {
+     "data": "fc6e5a5cd7f1d603ac77a474de8f48b137e78c876e229ed5b95e6f7081000091400000002b0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc1ea9ff5d01ee02f2"
+    },
+    {
+     "data": "fcb3de9749bd2c98e4f1cd33f0aa9b396b198e4c09edb92f595e6f7081000095000000002c0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc2cb6e968ddffdacd"
+    },
+    {
+     "data": "fc94d33fc84c5b7a262db7403bc0de1dbe63337def0b8282ba5e6f7081000098c00000002d0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcfb69a25b3066e27c"
+    },
+    {
+     "data": "fc127135ef5a4712260dba6efa4494c25fabe833911d88701e5e6f708100009c800000002e0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc410c179d861ae021"
+    },
+    {
+     "data": "fcc8fe7f81a7b1e9f8807c0b9b401a742bfe49538d5159ff6f5e6f70810000a0400000002f0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc1bff861b54411004"
+    },
+    {
+     "data": "fca04a1ba7fcfd6c163fae1e1b51c4b84d3f43deb130c370885e6f70810000a400000000300c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc64525cfa446bc9ca"
+    },
+    {
+     "data": "fc7be66bfdc4fd3eea8e97b52165efef9d3ff1f1f8e88060c15e6f70810000a7c0000000310c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcd175159ba4fa5b83"
+    },
+    {
+     "data": "fc2c53f4940def1f91759158d4616443cef8876cb4b6b8c85b5e6f70810000ab80000000320c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc4d5e084695b46881"
+    },
+    {
+     "data": "fcb144b84cdd1580e855d9ee669a74c170a1dc322424ca77b25e6f70810000af40000000330c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc55f3e42e0a2ee631"
+    },
+    {
+     "data": "fccdcf0a578b435290e02e3315ab1d33b95a3ae71295c374bf5e6f70810000b300000000340c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcf64c3054391211f7"
+    },
+    {
+     "data": "fc94e6a3bee4af229c7ccef9103ae4dca50ed970c400342dfb5e6f70810000b6c0000000350c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcb8dd605051aef436"
+    },
+    {
+     "data": "fc4092a003d252199548d68863489b9b5930bd3fe5121f17425e6f70810000ba80000000360c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcf4dc365346b2550a"
+    },
+    {
+     "data": "fc4116692264464315337e862b93e3450640e757be94e4fa825e6f70810000be40000000370c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc617bb616bfbb9dd4"
+    },
+    {
+     "data": "fc4131f1c82b4a85cd54d255de192588fcf81aad63e4e0cd855e6f70810000c200000000380c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc580b02ea8c45e54d"
+    },
+    {
+     "data": "fce4f20bb2c36e496f46712c82c6da9c4e51d2d57c5696b18f5e6f70810000c5c0000000390c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fce95ab513b256b224"
+    },
+    {
+     "data": "fc63a7f4af8280fdb4e1c4d771d1bd14e0a1f2894742210cc45e6f70810000c9800000003a0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc4b7341c07e07f23b"
+    },
+    {
+     "data": "fce0fdfe11075b59e0778af76801d51bbbe772978cbaa12b6f5e6f70810000cd400000003b0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc8319a845965986f3"
+    },
+    {
+     "data": "fc0ab6a4e3be436e92927d8b63648feec5338e765e13825ed05e6f70810000d1000000003c0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fca01c0d4ed01bc54d"
+    },
+    {
+     "data": "fc3e9d96c32bf2ee1bd447c81f2177882f18088d8aa1e3d0205e6f70810000d4c00000003d0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcff8516694dd9682f"
+    },
+    {
+     "data": "fcea1e64724ed280c5072933bd3c57e3e1a8dd2bc7b9973c015e6f70810000d8800000003e0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc5734ebc3a7fb11d7"
+    },
+    {
+     "data": "fc9eada19100df9e22ddbee82e6ebdbb4052e8ae35fe57a0495e6f70810000dc400000003f0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc0508f4da1d3981f0"
+    },
+    {
+     "data": "fcd8c834f6ce2f2c44ae77261925e6c17f3225d6910583343a5e6f70810000e000000000400c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc612db29a1137d67f"
+    },
+    {
+     "data": "fcd5df950cf713e6f24e556c145d489fa67dd66b21b5bc98035e6f70810000e3c0000000410c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc64fcd5550beae9d2"
+    },
+    {
+     "data": "fcba8335d9d22ca24f3f9374dc171d5d4b8389aaeea0a5d2ec5e6f70810000e780000000420c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc4754dae8eaf39b4c"
+    },
+    {
+     "data": "fce468dea730e1630c2121797414f906242ffe20859e4c89045e6f70810000eb40000000430c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc04b22c133211d7f6"
+    },
+    {
+     "data": "fcf995818f9dced82f651acdb483c69f45c271725230a21c065e6f70810000ef00000000440c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc5474e5018127248d"
+    },
+    {
+     "data": "fcfa47ce9597e3323481d59544137cf776adad999d8551ef375e6f70810000f2c0000000450c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcc692c240103f1f44"
+    },
+    {
+     "data": "fc641053c8841f0c4eb807316eda93be9ad76ef165f10ce76a5e6f70810000f680000000460c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcd54ef154399ea442"
+    },
+    {
+     "data": "fc9fdda2fac16a3fe34d45804ce6181bca322ec465120926c95e6f70810000fa40000000470c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcdb8c06f3bbc6ffea"
+    },
+    {
+     "data": "fcf9a6440620f295847b043805bade5b1e5f5b9c48ed44c5d25e6f70810000fe00000000480c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcd2012442440ab9f1"
+    },
+    {
+     "data": "fce98c244b05cde1f569093a4ef0d377bc64765d876ead5fec5e6f7081000101c0000000490c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcb5175c82caadfca2"
+    },
+    {
+     "data": "fc5c347f669ab5267b5ac42e01751ea9f5448593cd608703c55e6f7081000105800000004a0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcb1aa79f7f203d4cc"
+    },
+    {
+     "data": "fcd41562b141deaa905af6982b3b3a7042998c1d11403119315e6f7081000109400000004b0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc5159d79e895e46c0"
+    },
+    {
+     "data": "fc950ea43569b41b28c17bffde7dae559c1e91a7cfc80394555e6f708100010d000000004c0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc9971aa3bb4b056fb"
+    },
+    {
+     "data": "fc737ed9d48a7d6b10c20e0bcd1db24434a24299b8830674275e6f7081000110c00000004d0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc0c77e9f599f59b43"
+    },
+    {
+     "data": "fcfcd77d4db961f0ddfe1c1c5885fc1912956b809648559b8b5e6f7081000114800000004e0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc243cf0fef9eb960c"
+    },
+    {
+     "data": "fc17bcbd0e73a588e0cf7844b4dbea9bb484305a9c272b8cf75e6f7081000118400000004f0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcae045c1d714ea37e"
+    },
+    {
+     "data": "fc883bb2addead23d80ed712c1765fee577c366486ce9c23cd5e6f708100011c00000000500c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc436a1deb8f955a4e"
+    },
+    {
+     "data": "fc14c88fa371be343d789aa686c60b37fba8327a4d484128085e6f708100011fc0000000510c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcfbd45e54e6ddddd9"
+    },
+    {
+     "data": "fcd715ceddbd950d1a846e0984a6c9cd07d4da3afaf6e370fd5e6f708100012380000000520c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc5f345c91c42dd618"
+    },
+    {
+     "data": "fcf0f83155a9982d81a8c22008d788d8849a08ecd50f6c4a3a5e6f708100012740000000530c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc0e3f2202402e36cf"
+    },
+    {
+     "data": "fc2b093f87a3730cc8ddc55c22aa08638f547be7d10aeb9ea15e6f708100012b00000000540c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fca4638ae0d1cca17a"
+    },
+    {
+     "data": "fc55ff23a9f9ece49439d00e34a7388da462fce2150067cf785e6f708100012ec0000000550c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc700088065b9d6f95"
+    },
+    {
+     "data": "fcc2d849a4150629005804c40e2f1a98d6efaab1f443b5c6d35e6f708100013280000000560c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcff4353c68b6fd3bb"
+    },
+    {
+     "data": "fcbc6f4070520a9063d88f8392771c8765cf04bde5676b65c75e6f708100013640000000570c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc8a3bcd87aabd4504"
+    },
+    {
+     "data": "fc619a59d1aa04bb7ff8db7685c972db9e43b32636fb17417b5e6f708100013a00000000580c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc3bc47dc6a762ad79"
+    },
+    {
+     "data": "fc3819002f2170f1127b1f4d8ea3ed9184375171f33701a6c15e6f708100013dc0000000590c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc80b433d97548f43c"
+    },
+    {
+     "data": "fc8850ffc80c98d6f74f5a19d54249704a0157ef69329130295e6f7081000141800000005a0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc0ee509022a5ce0cb"
+    },
+    {
+     "data": "fc636533c9bbcf7e61fee7b9ee2a0f00a91c5e174d516474525e6f7081000145400000005b0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc5ca320abac02e2a3"
+    },
+    {
+     "data": "fc3846237d2a4a814567a12e1de34021588c1a1aa9b03546525e6f7081000149000000005c0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcbee3832afbbdd7da"
+    },
+    {
+     "data": "fc5dab731827a1a3249e1a9a0ca377148806ccb4da53fbee0e5e6f708100014cc00000005d0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcee95a085f88e0f7a"
+    },
+    {
+     "data": "fc0434a9b1550bb271fcac55d8ae990249e0be66f49f35ffe95e6f7081000150800000005e0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc5ba227e74340fff7"
+    },
+    {
+     "data": "fc650060c14092cef52e097f9512fcb990864b9cbde0a6810a5e6f7081000154400000005f0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc812adb0c12caa48c"
+    },
+    {
+     "data": "fcc96566bd3b65deadd8c5032e3d782b32a3123f81ce6495085e6f708100015800000000600c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc5d9d3cd1004027a8"
+    },
+    {
+     "data": "fc8a6fafba0070dfb5355ca9e734746df379eea29b09a35bad5e6f708100015bc0000000610c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc53a3148c9cd7e963"
+    },
+    {
+     "data": "fce0a39895e4b57e24a5be3c3ef4b6acb2334d3a998a8550205e6f708100015f80000000620c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcbcb91284bec2893f"
+    },
+    {
+     "data": "fc153ec0a0b27f5c294383a0edc34d7f356d5a790f20b3c5f95e6f708100016340000000630c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc209d762ce31d152a"
+    },
+    {
+     "data": "fcbc1a486a12973df8d7ece3c0a18524e3acb72036186ddcd55e6f708100016ac0000000650c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc3a7d6b2d3f272925"
+    },
+    {
+     "data": "fc9efa81d86d7d681e1e737c9502241916cfa91eed8747ea8e5e6f708100016e80000000660c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcea43232530fa060f"
+    },
+    {
+     "data": "fc07e213847a17c373193537d810dd1ffac1da3a00e73c2ecc5e6f708100017240000000670c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc91ca1b41f3bd2c4a"
+    },
+    {
+     "data": "fcc053950bb06ae8a0fdeac105ff7000897b7e4cbc4cc6a7675e6f708100017600000000680c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fca39691fa952f8b91"
+    },
+    {
+     "data": "fc7983bcb6c8d1603bfbb3f5b8d6378f2d0abcf7835f8d524d5e6f7081000179c0000000690c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcee9a91468accd59f"
+    },
+    {
+     "data": "fc5d055738ba0ab7557d3952a41c8c293156748d8f6be78ed85e6f708100017d800000006a0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc9ab52ff57f8cbe55"
+    },
+    {
+     "data": "fcf20ff882ff808471de35f0d47d9bb649a139dc39067fb9005e6f7081000181400000006b0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fce04c2a0c1f518f07"
+    },
+    {
+     "data": "fc49e00f5b4bd8761db3a250542d3bab9697ef3235bb883d815e6f7081000185000000006c0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc3499c0d1b8797de0"
+    },
+    {
+     "data": "fccb43830f6e6085e733b6f1e699de1b8ccaec846f4c52852c5e6f7081000188c00000006d0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcf823a0fd2fbb1854"
+    },
+    {
+     "data": "fc2f722f47922897b1df9fe76a230cbc4b7f1ae6a7d86f27e35e6f708100018c800000006e0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcb9a62a85e52ead8d"
+    },
+    {
+     "data": "fc57f01ea93d9f4550c2a49ce282dff794c561c599634390ae5e6f7081000190400000006f0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc4653a4137abeb3d1"
+    },
+    {
+     "data": "fc60d860025521854886bc6c6ba9e3fa38d4dcfffaf70e6c565e6f708100019400000000700c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc1589782647fe618f"
+    },
+    {
+     "data": "fc2e5d93f337126dcd9920908a275e476d1a86af11c51210625e6f7081000197c0000000710c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc04cba6cc94998ac4"
+    },
+    {
+     "data": "fc23a6f12816777f92098be47349d0b180dbd6812849abc12f5e6f708100019b80000000720c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc24f9b31486b96879"
+    },
+    {
+     "data": "fc4048baa7f4bb39e65344f991a611ba14ce2c323dd724f6865e6f708100019f40000000730c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc00911a6b7774e514"
+    },
+    {
+     "data": "fcad303777668d8c08108b6b044b61dac8421e05602610c2325e6f70810001a300000000740c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc39c446abdbb94179"
+    },
+    {
+     "data": "fc8e888e2b3b9f0aaf357fa1c5accc3cda7f3b57be3009320b5e6f70810001a6c0000000750c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcbd94bb55d1c73fa2"
+    },
+    {
+     "data": "fccb521a531ffaf97d32f665bd1c80afbf84fa228007b025db5e6f70810001aa80000000760c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc385951923e9c32e7"
+    },
+    {
+     "data": "fcd383ce189ee73a394d5234d6a556d2b111904bd5cb977dbc5e6f70810001ae40000000770c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc7826a01613acfdaf"
+    },
+    {
+     "data": "fc149f105a65f24dffef25b26ce4b71070280f5c34d6365e365e6f70810001b200000000780c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcd3f36397a9e35d5e"
+    },
+    {
+     "data": "fc6e88cc3155148e9dae799a469d3412fa2bd4fc2f74c23f865e6f70810001b5c0000000790c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcc0ad85c5c2d2dfbc"
+    },
+    {
+     "data": "fc2dfdb63d5652815b9b9bca84167f415081f142affb8e0b885e6f70810001b9800000007a0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcd1999730dab041fb"
+    },
+    {
+     "data": "fc4de0651407d777c9ab386143495b1a6a0b80259d2c6b711e5e6f70810001bd400000007b0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc3dad3f6709e9e2f8"
+    },
+    {
+     "data": "fceef81ad7baaa55e886e47236264c7b664bb112e2d94fde9f5e6f70810001c1000000007c0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc241476fdb99c800a"
+    },
+    {
+     "data": "fc77416f804ed37e3d98951b56f1258cc36d91d1034c1f0b905e6f70810001c4c00000007d0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcef7047a438a9277d"
+    },
+    {
+     "data": "fc6a0c736d1544489d90a43749b06ac0751814f9c4d711186e5e6f70810001c8800000007e0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc7e0ea1e1d61bdc79"
+    },
+    {
+     "data": "fce0c8527580552716c25b509892619ed05b9fb79b305f77d45e6f70810001cc400000007f0c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fcf6b8231dbb9226f3"
+    },
+    {
+     "data": "fcf4f70aac94cfae9c68adcb975eb09ad7d18fac3051b47b095e6f70810001d000000000800c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc2fdd92254a61dc1f"
+    },
+    {
+     "data": "fc0229a4d04371ffe385d138aebad13cf8b797fed31686e2045e6f70810001d3c0000000810c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc2a0723ce67e42352"
+    },
+    {
+     "data": "fc3a6506c17238c1c1bc4b3a84160feb3df2091d984611793c5e6f70810001d780000000820c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc9b594e1ec0c38151"
+    },
+    {
+     "data": "fc2f9da7255ecff742473c84bf116e31a63c705dccf3aaf5d45e6f708100016700000000640c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "ok",
+     "plain": "fc1629175134d4f8ab"
+    },
+    {
+     "data": "fc2f9da7255ecff742473c84bf116e31a63c705dccf3aaf5d45e6f708100016700000000640c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "replay",
+     "plain": "fc1629175134d4f8ab"
+    },
+    {
+     "data": "fc67fda8da0fd15446433c65446b76ab166bd541e69966168a5e6f7081fffff000000000000c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "replay",
+     "plain": "fcdef518100671a1f0"
+    },
+    {
+     "data": "fca96c17bb814c65cfcde4615c70cbc21679b19a6f1e10fc975e6f7081fffff780000000020c00",
+     "kind": "audio",
+     "type": null,
+     "at": 0,
+     "expect": "replay",
+     "plain": "fc7646636517b49770"
+    }
+   ]
+  }
+ ],
+ "window": {
+  "size": 128,
+  "steps": [
+   {
+    "ts": 4294963200,
+    "ok": true
+   },
+   {
+    "ts": 4294966200,
+    "ok": true
+   },
+   {
+    "ts": 1904,
+    "ok": true
+   },
+   {
+    "ts": 4294966200,
+    "ok": false
+   },
+   {
+    "ts": 4294963200,
+    "ok": false
+   },
+   {
+    "ts": 404,
+    "ok": true
+   },
+   {
+    "ts": 4904,
+    "ok": true
+   },
+   {
+    "ts": 7904,
+    "ok": true
+   },
+   {
+    "ts": 10904,
+    "ok": true
+   },
+   {
+    "ts": 13904,
+    "ok": true
+   },
+   {
+    "ts": 16904,
+    "ok": true
+   },
+   {
+    "ts": 19904,
+    "ok": true
+   },
+   {
+    "ts": 22904,
+    "ok": true
+   },
+   {
+    "ts": 25904,
+    "ok": true
+   },
+   {
+    "ts": 28904,
+    "ok": true
+   },
+   {
+    "ts": 31904,
+    "ok": true
+   },
+   {
+    "ts": 34904,
+    "ok": true
+   },
+   {
+    "ts": 37904,
+    "ok": true
+   },
+   {
+    "ts": 40904,
+    "ok": true
+   },
+   {
+    "ts": 43904,
+    "ok": true
+   },
+   {
+    "ts": 46904,
+    "ok": true
+   },
+   {
+    "ts": 49904,
+    "ok": true
+   },
+   {
+    "ts": 52904,
+    "ok": true
+   },
+   {
+    "ts": 55904,
+    "ok": true
+   },
+   {
+    "ts": 58904,
+    "ok": true
+   },
+   {
+    "ts": 61904,
+    "ok": true
+   },
+   {
+    "ts": 64904,
+    "ok": true
+   },
+   {
+    "ts": 67904,
+    "ok": true
+   },
+   {
+    "ts": 70904,
+    "ok": true
+   },
+   {
+    "ts": 73904,
+    "ok": true
+   },
+   {
+    "ts": 76904,
+    "ok": true
+   },
+   {
+    "ts": 79904,
+    "ok": true
+   },
+   {
+    "ts": 82904,
+    "ok": true
+   },
+   {
+    "ts": 85904,
+    "ok": true
+   },
+   {
+    "ts": 88904,
+    "ok": true
+   },
+   {
+    "ts": 91904,
+    "ok": true
+   },
+   {
+    "ts": 94904,
+    "ok": true
+   },
+   {
+    "ts": 97904,
+    "ok": true
+   },
+   {
+    "ts": 100904,
+    "ok": true
+   },
+   {
+    "ts": 103904,
+    "ok": true
+   },
+   {
+    "ts": 106904,
+    "ok": true
+   },
+   {
+    "ts": 109904,
+    "ok": true
+   },
+   {
+    "ts": 112904,
+    "ok": true
+   },
+   {
+    "ts": 115904,
+    "ok": true
+   },
+   {
+    "ts": 118904,
+    "ok": true
+   },
+   {
+    "ts": 121904,
+    "ok": true
+   },
+   {
+    "ts": 124904,
+    "ok": true
+   },
+   {
+    "ts": 127904,
+    "ok": true
+   },
+   {
+    "ts": 130904,
+    "ok": true
+   },
+   {
+    "ts": 133904,
+    "ok": true
+   },
+   {
+    "ts": 136904,
+    "ok": true
+   },
+   {
+    "ts": 139904,
+    "ok": true
+   },
+   {
+    "ts": 142904,
+    "ok": true
+   },
+   {
+    "ts": 145904,
+    "ok": true
+   },
+   {
+    "ts": 148904,
+    "ok": true
+   },
+   {
+    "ts": 151904,
+    "ok": true
+   },
+   {
+    "ts": 154904,
+    "ok": true
+   },
+   {
+    "ts": 157904,
+    "ok": true
+   },
+   {
+    "ts": 160904,
+    "ok": true
+   },
+   {
+    "ts": 163904,
+    "ok": true
+   },
+   {
+    "ts": 166904,
+    "ok": true
+   },
+   {
+    "ts": 169904,
+    "ok": true
+   },
+   {
+    "ts": 172904,
+    "ok": true
+   },
+   {
+    "ts": 175904,
+    "ok": true
+   },
+   {
+    "ts": 178904,
+    "ok": true
+   },
+   {
+    "ts": 181904,
+    "ok": true
+   },
+   {
+    "ts": 184904,
+    "ok": true
+   },
+   {
+    "ts": 187904,
+    "ok": true
+   },
+   {
+    "ts": 190904,
+    "ok": true
+   },
+   {
+    "ts": 193904,
+    "ok": true
+   },
+   {
+    "ts": 196904,
+    "ok": true
+   },
+   {
+    "ts": 199904,
+    "ok": true
+   },
+   {
+    "ts": 202904,
+    "ok": true
+   },
+   {
+    "ts": 205904,
+    "ok": true
+   },
+   {
+    "ts": 208904,
+    "ok": true
+   },
+   {
+    "ts": 211904,
+    "ok": true
+   },
+   {
+    "ts": 214904,
+    "ok": true
+   },
+   {
+    "ts": 217904,
+    "ok": true
+   },
+   {
+    "ts": 220904,
+    "ok": true
+   },
+   {
+    "ts": 223904,
+    "ok": true
+   },
+   {
+    "ts": 226904,
+    "ok": true
+   },
+   {
+    "ts": 229904,
+    "ok": true
+   },
+   {
+    "ts": 232904,
+    "ok": true
+   },
+   {
+    "ts": 235904,
+    "ok": true
+   },
+   {
+    "ts": 238904,
+    "ok": true
+   },
+   {
+    "ts": 241904,
+    "ok": true
+   },
+   {
+    "ts": 244904,
+    "ok": true
+   },
+   {
+    "ts": 247904,
+    "ok": true
+   },
+   {
+    "ts": 250904,
+    "ok": true
+   },
+   {
+    "ts": 253904,
+    "ok": true
+   },
+   {
+    "ts": 256904,
+    "ok": true
+   },
+   {
+    "ts": 259904,
+    "ok": true
+   },
+   {
+    "ts": 262904,
+    "ok": true
+   },
+   {
+    "ts": 265904,
+    "ok": true
+   },
+   {
+    "ts": 268904,
+    "ok": true
+   },
+   {
+    "ts": 271904,
+    "ok": true
+   },
+   {
+    "ts": 274904,
+    "ok": true
+   },
+   {
+    "ts": 277904,
+    "ok": true
+   },
+   {
+    "ts": 280904,
+    "ok": true
+   },
+   {
+    "ts": 283904,
+    "ok": true
+   },
+   {
+    "ts": 286904,
+    "ok": true
+   },
+   {
+    "ts": 289904,
+    "ok": true
+   },
+   {
+    "ts": 292904,
+    "ok": true
+   },
+   {
+    "ts": 295904,
+    "ok": true
+   },
+   {
+    "ts": 298904,
+    "ok": true
+   },
+   {
+    "ts": 301904,
+    "ok": true
+   },
+   {
+    "ts": 304904,
+    "ok": true
+   },
+   {
+    "ts": 307904,
+    "ok": true
+   },
+   {
+    "ts": 310904,
+    "ok": true
+   },
+   {
+    "ts": 313904,
+    "ok": true
+   },
+   {
+    "ts": 316904,
+    "ok": true
+   },
+   {
+    "ts": 319904,
+    "ok": true
+   },
+   {
+    "ts": 322904,
+    "ok": true
+   },
+   {
+    "ts": 325904,
+    "ok": true
+   },
+   {
+    "ts": 328904,
+    "ok": true
+   },
+   {
+    "ts": 331904,
+    "ok": true
+   },
+   {
+    "ts": 334904,
+    "ok": true
+   },
+   {
+    "ts": 337904,
+    "ok": true
+   },
+   {
+    "ts": 340904,
+    "ok": true
+   },
+   {
+    "ts": 343904,
+    "ok": true
+   },
+   {
+    "ts": 346904,
+    "ok": true
+   },
+   {
+    "ts": 349904,
+    "ok": true
+   },
+   {
+    "ts": 352904,
+    "ok": true
+   },
+   {
+    "ts": 355904,
+    "ok": true
+   },
+   {
+    "ts": 358904,
+    "ok": true
+   },
+   {
+    "ts": 361904,
+    "ok": true
+   },
+   {
+    "ts": 364904,
+    "ok": true
+   },
+   {
+    "ts": 367904,
+    "ok": true
+   },
+   {
+    "ts": 370904,
+    "ok": true
+   },
+   {
+    "ts": 373904,
+    "ok": true
+   },
+   {
+    "ts": 376904,
+    "ok": true
+   },
+   {
+    "ts": 379904,
+    "ok": true
+   },
+   {
+    "ts": 382904,
+    "ok": true
+   },
+   {
+    "ts": 404,
+    "ok": false
+   },
+   {
+    "ts": 4294964700,
+    "ok": false
+   },
+   {
+    "ts": 381404,
+    "ok": true
+   },
+   {
+    "ts": 381404,
+    "ok": false
+   },
+   {
+    "ts": 2147866552,
+    "ok": false
+   },
+   {
+    "ts": 2147866551,
+    "ok": true
+   }
+  ]
+ },
+ "runes": [
+  {
+   "name": "drei-geraete",
+   "call_id": "c0ffee00c0ffee00c0ffee00c0ffee00",
+   "devices": [
+    "4ab4fcca8144af2d06c9a9cad245246fd04df7fb491a7c407e65497a65002ffb",
+    "5dbda7ace852d5c0bed2e4276426656fd444857e4901d1dcc10347740886eb71",
+    "40ed93a96cfef94585f703b8864bb721d24947138d40b44ba8277657c6f222e6"
+   ],
+   "hash": "8b25465f387833a38cf3c7e13eab0c0cd52b6cf0c81d29362e5f8f6a61985f16",
+   "idx": [
+    16,
+    15,
+    15,
+    2,
+    21,
+    5
+   ],
+   "runes": "ᛏᛊᛊᚦᛜᚲ"
+  },
+  {
+   "name": "vier-geraete",
+   "call_id": "c0ffee00c0ffee00c0ffee00c0ffee00",
+   "devices": [
+    "4ab4fcca8144af2d06c9a9cad245246fd04df7fb491a7c407e65497a65002ffb",
+    "5dbda7ace852d5c0bed2e4276426656fd444857e4901d1dcc10347740886eb71",
+    "40ed93a96cfef94585f703b8864bb721d24947138d40b44ba8277657c6f222e6",
+    "1c423a278d156119559b9042ad0f81ed038400d69a8df258851943fc2bde8514"
+   ],
+   "hash": "8734d750f22df610c130b59c87f53e09f709f2e1c06153d7cc3b89dca84ba324",
+   "idx": [
+    10,
+    23,
+    11,
+    17,
+    2,
+    17
+   ],
+   "runes": "ᛁᛟᛃᛒᚦᛒ"
+  },
+  {
+   "name": "andere-reihenfolge-doppelt",
+   "call_id": "c0ffee00c0ffee00c0ffee00c0ffee00",
+   "devices": [
+    "40ed93a96cfef94585f703b8864bb721d24947138d40b44ba8277657c6f222e6",
+    "4ab4fcca8144af2d06c9a9cad245246fd04df7fb491a7c407e65497a65002ffb",
+    "5dbda7ace852d5c0bed2e4276426656fd444857e4901d1dcc10347740886eb71",
+    "4ab4fcca8144af2d06c9a9cad245246fd04df7fb491a7c407e65497a65002ffb"
+   ],
+   "hash": "8b25465f387833a38cf3c7e13eab0c0cd52b6cf0c81d29362e5f8f6a61985f16",
+   "idx": [
+    16,
+    15,
+    15,
+    2,
+    21,
+    5
+   ],
+   "runes": "ᛏᛊᛊᚦᛜᚲ"
+  }
+ ],
+ "rune_alphabet": "ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛇᛈᛉᛊᛏᛒᛖᛗᛚᛜᛞᛟ",
+ "fkey": {
+  "body": "{\"t\":\"fkey\",\"n\":1,\"kid\":1,\"key\":\"1XYXfQAcwfiAgR8/I5xDzCIOgiAsq59QzjU0smfE4d4=\",\"s\":\"0123456789abcdef\"}",
+  "n": 1,
+  "key_hex": "d576177d001cc1f880811f3f239c43cc220e82202cab9f50ce3534b267c4e1de",
+  "invalid": [
+   {
+    "t": "fkey",
+    "n": 1,
+    "kid": 2,
+    "key": "1XYXfQAcwfiAgR8/I5xDzCIOgiAsq59QzjU0smfE4d4=",
+    "s": "0123456789abcdef"
+   },
+   {
+    "t": "fkey",
+    "n": 1,
+    "kid": 1,
+    "key": "1XYXfQAcwfiAgR8/I5xDzCIOgiAsq59QzjU0smfE4Q==",
+    "s": "0123456789abcdef"
+   },
+   {
+    "t": "fkey",
+    "n": 1,
+    "kid": 1,
+    "key": "1XYXfQAcwfiAgR8/I5xDzCIOgiAsq59QzjU0smfE4d4=",
+    "s": "0123456789ABCDEF"
+   },
+   {
+    "t": "fkey",
+    "n": -1,
+    "kid": 1,
+    "key": "1XYXfQAcwfiAgR8/I5xDzCIOgiAsq59QzjU0smfE4d4=",
+    "s": "0123456789abcdef"
+   },
+   {
+    "t": "fkeys",
+    "n": 1,
+    "kid": 1,
+    "key": "1XYXfQAcwfiAgR8/I5xDzCIOgiAsq59QzjU0smfE4d4=",
+    "s": "0123456789abcdef"
+   },
+   {
+    "t": "fkey",
+    "n": 1.5,
+    "kid": 1,
+    "key": "1XYXfQAcwfiAgR8/I5xDzCIOgiAsq59QzjU0smfE4d4=",
+    "s": "0123456789abcdef"
+   },
+   {
+    "t": "fkey",
+    "n": 1,
+    "kid": 1,
+    "key": "kein base64!",
+    "s": "0123456789abcdef"
+   },
+   {
+    "t": "fkey",
+    "n": 1,
+    "kid": 1,
+    "key": "1XYXfQAcwfiAgR8/I5xDzCIOgiAsq59QzjU0smfE4d4",
+    "s": "0123456789abcdef"
+   }
+  ]
+ }
+}

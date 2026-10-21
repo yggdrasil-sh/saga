@@ -230,8 +230,8 @@ def slow_reader(k, fid, A, got, hold):
 
 
 def main():
-    A, B, Cc = ck("md-a"), ck("md-b"), ck("md-c")
     cid, files = setup()
+    A, B, Cc = ck("md-a"), ck("md-b"), ck("md-c")   # nach dem Anlegen: pwc = jetzt + 5 s muss nach dem Konto-Zeitstempel liegen
     binp = media_bin()
     if binp:
         start("M", [binp, "--", sys.executable, "run.py"],

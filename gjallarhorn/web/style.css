@@ -1,0 +1,64 @@
+:root {
+  --bg: #f6f5f2; --card: #ffffff; --fg: #1d1f22; --mut: #5d6470; --line: #dedbd3;
+  --acc: #8a5a12; --ok: #2f7d4f; --bad: #b3362d; --warn: #9a6a00;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #15171a; --card: #1e2125; --fg: #e8e6e1; --mut: #9aa1ab; --line: #30343a;
+    --acc: #e0a84a; --ok: #6cc28f; --bad: #ef7a70; --warn: #e2b54a; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { margin: 0; font-size: 1.7rem; letter-spacing: .01em; }
+h2 { margin: 0 0 12px; font-size: 1.2rem; }
+.sub { margin: 4px 0 20px; color: var(--mut); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+form { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: end; margin-top: 8px; }
+label { display: grid; gap: 4px; font-size: .9rem; color: var(--mut); }
+input, select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+button { font: inherit; font-weight: 600; color: #fff; background: var(--acc); border: 0; border-radius: 8px; padding: 9px 20px; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+.hint { color: var(--mut); font-size: .85rem; margin: 10px 0 0; }
+.bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+#fill { height: 100%; width: 0; background: var(--acc); transition: width .5s linear; }
+#phasen { list-style: none; padding: 0; margin: 14px 0; display: grid; gap: 6px; }
+#phasen li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+#phasen li:last-child { border-bottom: 0; }
+.st { color: var(--mut); text-align: right; }
+.st.ok { color: var(--ok); } .st.bad { color: var(--bad); } .st.run { color: var(--acc); }
+#tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 4px; }
+#tiles video { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 4px; }
+#tiles video.speaker { grid-column: span 2; grid-row: span 2; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .88rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--mut); font-weight: 600; white-space: normal; vertical-align: bottom; line-height: 1.25; }
+td.ok { color: var(--ok); } td.bad { color: var(--bad); }
+.st span { white-space: nowrap; }
+@media (max-width: 600px) {
+  form { grid-template-columns: 1fr; } button { width: 100%; }
+  main { padding: 16px 12px 40px; }
+  .card { padding: 14px; }
+  /* Phasen: Bezeichnung oben, Werte darunter */
+  #phasen li { flex-direction: column; gap: 2px; }
+  .st { text-align: left; font-size: .9rem; }
+  /* Ergebnis: jede Zeile als Karte mit Label und Wert */
+  .scroll { overflow: visible; }
+  table, tbody, tr, td { display: block; width: 100%; }
+  table { font-size: .92rem; }
+  tr.kopf { display: none; }
+  tr { display: grid; grid-template-columns: auto 1fr; column-gap: 0; border: 1px solid var(--line);
+    border-radius: 10px; padding: 4px 12px 6px; margin-bottom: 10px; background: var(--bg); }
+  td { white-space: normal; padding: 5px 0; display: flex; justify-content: space-between; gap: 12px; grid-column: 1 / -1; }
+  td::before { content: attr(data-label); color: var(--mut); }
+  td:last-child { border-bottom: 0; }
+  td.kw, td.kp { grid-column: auto; font-weight: 600; font-size: 1rem; padding: 6px 0 8px; }
+  td.kw::before, td.kp::before { content: none; }
+  td.kp::before { content: '\00a0·\00a0'; color: var(--mut); font-weight: 400; }
+  td.kp { justify-content: flex-start; gap: 0; }
+  td.grund { border-bottom: 0; }
+  td.grund::before { content: none; }
+  td.leer { display: none; }
+}
+
+.warn { background: #b3261e; color: #fff; padding: 12px 16px; border-radius: 8px; font-weight: 600; margin: 12px 0; }

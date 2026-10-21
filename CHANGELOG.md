@@ -102,6 +102,78 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Zahl der verbundenen Geräte. Hinter nginx braucht `/api/push/stream` die WebSocket-Köpfe und ein langes
   `proxy_read_timeout` (Anleitung, Abschnitt Reverse Proxy).
 
+### Neu (Vorbereitung 2.5, Gjallarhorn)
+- **Horn-Probe** (`gjallarhorn/`, Paket P0): Prototyp des Gjallarhorn-Knotens als eigenes Go-Programm (Pion, nur
+  MIT/BSD/Apache-Abhängigkeiten). `gjallarhorn probe` öffnet einen Port für HTTPS-Messseite, TURN-TLS (nur zum Knoten
+  selbst) und ICE-TCP, optional UDP mit Weiche nach RFC 9443. Die Messseite simuliert ohne Kamera einen Anruf mit
+  12 Kameras bzw. 25 Personen nur mit Ton und misst je Weg RTT, Ton-Verdeckung, Einfrieren und Datenraten.
+  `gjallarhorn bench` misst die Knotenlast mit lokalen Bots, `gjallarhorn report` erstellt die Go/No-Go-Tabelle.
+  Zertifikat aus Dateien (mit Neuladen), selbst signiert für Tests oder per TLS-ALPN-01; PROXY-Protokoll v2 (`0`, `1`,
+  `auto`). Anleitung: `gjallarhorn/PROBE.md`. Saga selbst ist davon noch nicht berührt.
+- **Gjallarhorn-Knoten, Weichen (P1):**
+  - PROXY-Protokoll zusätzlich in v1 (Modi `0`, `1`, `auto` bleiben).
+  - Begrenzung offener Handshakes und kurze Fristen.
+  - 443/UDP beantwortet einfache STUN-Bindings selbst (Erreichbarkeitsprüfung); dazu ein UDP-Selbsttest beim Start.
+  - Eigener ICE-TCP-Mux ohne Allokation je Paket.
+  - „Nachläufer“ gegen lange TCP-Staus auf verlustbehafteten Wegen.
+  - Das Zertifikat wird nur noch bei geänderten Dateien neu geladen und gemeldet (vorher alle 30 s).
+- **Gjallarhorn-Knoten, Weiterleiter (P2):** `gjallarhorn node` mit echtem SFU (`internal/sfu`).
+  - Räume, Beine mit Rollen: Ton- und Bild-Leitung auf TCP, BUNDLE auf UDP.
+  - Top-3-Ton per audio-level, Hauptsprecher mit Hysterese, Last-N (Desktop 9, Handy 4).
+  - Schichtwahl je Empfänger: UDP 3 Schichten, TCP 2. Kacheln auf TCP mit 180p und höchstens 10 Bildern/s.
+  - Vorrang-Warteschlange mit Verwerfen ab 150 ms.
+  - NACK/RTX und GCC nur auf UDP.
+  - Interne Go-API für die Saga-Steuerung (P3) mit Token-Prüfschnittstelle.
+  - `bench --sfu` misst den echten Weiterleiter. Dazu kommen ein Browser-Test (4 Chromium über ICE-TCP und TURN-TLS)
+    und ein Einfrier-Regressionstest (80 ms RTT, 1,5 % Verlust).
+  - Bei vollen Ton- bzw. Kachelplätzen verdrängt eine neue Sprecherin den stillsten Platzhalter (vorher kam sie nie dran).
+  - Beschreibung: `gjallarhorn/NODE.md`. Saga-Steuerung: P3 (unten).
+- **Gjallarhorn P4 – Frame-E2E** (Grundlage für große Gruppenanrufe über Knoten, Feature-Flag `calls.horn`, Standard
+  aus): Format `saga-horn/v1` (`docs/HORN-E2E.md`) – AES-128-GCM je codiertem Rahmen im FrameCryptor-Format, ein
+  Schlüssel je sendendem Gerät, Ratsche beim Beitritt, neuer Schlüssel beim Verlassen, Wiederholungsschutz,
+  Runensiegel. Web-Worker `static/frame-e2e.js` (`RTCRtpScriptTransform`, Rückfall `createEncodedStreams`, keine
+  CSP-Lockerung). Die Schlüssel laufen als `fkey`/`fkey-ack` versiegelt im vorhandenen Signalweg, auch über
+  Servergrenzen (Fähigkeit `horn` in `features` und `CAPS2`); der Server sieht sie nicht. Testvektoren
+  `tests/vectors/horn_e2e.json` mit Gegenproben in Python, Node und im Browser für die Apps.
+- **Gjallarhorn P3 – Saga-Steuerung** (Feature-Flag `calls.horn`, Standard aus; Vertrag `docs/APP-API.md`, Abschnitt
+  „Anrufe über Gjallarhorn-Knoten“):
+  - **Eingebauter Knoten:** saga-media startet `gjallarhorn node` als zweiten Kindprozess auf `HORN_PORT` (Standard
+    8443), nur solange das Flag an ist. Steuerung über localhost (`/api/horn/ctl`, Protokoll `horn-ctl/1` mit Challenge,
+    Folgenummern und Lastmeldung alle 5 s). Das Image enthält das statische Binär (amd64/arm64, +13 MB).
+  - **Medien-Token:** Saga signiert mit einem eigenen Ed25519-Schlüssel (`horn_sign`, verschlüsselt in den
+    Einstellungen). Token gelten 60 s, je Knoten und Bein, einmal, mit zufälligen Kennungen statt Konto- oder
+    Gerätenamen. Der Knoten prüft lokal.
+  - **Gruppenanrufe über den Knoten:** `topo=horn` für Gruppen über der Mesh-Grenze, wenn ein Knoten bereit ist; sonst
+    Mesh wie 2.4. Beitritt ohne Mesh-Angebote, Kandidaten mit Token im `join`, frische Token über
+    `POST /api/calls/{id}/horn`. Grenzen 12 Video / 50 Ton über TCP, 25 / 100 mit UDP.
+  - **Web (Minimum für den Nachweis):** `static/calls.js` baut Ton- und Bild-Leitung zum Knoten auf (ICE-TCP, sonst
+    TURN-TLS), verschlüsselt jeden Rahmen mit `saga-horn/v1` und zeigt Kacheln. Die volle Oberfläche folgt mit P5.
+  - Datenbank: Tabellen `horn_node`, `horn_pair`, Migration 16 (`chat_call_leg.node`).
+- **Gjallarhorn P6–P8 – weitere Knoten, DNS, Admin-Seite „Anrufe“** (Konzept v2 §2.2–2.9, §4.1):
+  - **Erweitern:** Admin → Anrufe → „Erweitern“ erzeugt einen einmaligen Kopplungs-Code (32 Byte, 30 min, nur als
+    SHA-256 gespeichert, an Name und Saga-Adresse gebunden) und ein vollständig sichtbares Deploy-Skript: Docker Compose
+    (Image `ghcr.io/yggdrasil-sh/gjallarhorn:<Version>`, per Digest gepinnt mit `SAGA_HORN_IMAGE_DIGEST`) oder systemd
+    unter Debian ohne Docker (Binär aus dem Release, Signatur per openssl geprüft). Der Knoten koppelt sich über
+    `GET /api/horn/whoami` und `POST /api/horn/pair`; Saga prüft die Erreichbarkeit zurück (443/TCP je IPv4/IPv6 mit
+    signiertem Echo, 443/UDP per STUN). Live-Fortschritt im Dialog bis „Fertig“.
+  - **Steuerkanal für gekoppelte Knoten:** nur mit dem registrierten Knotenschlüssel, gesperrte Schlüssel 4410, saga_pub
+    beim Knoten angeheftet. Lastmeldung mit Upload/Download, Leeren (Umzugsereignis `call.horn_move` an die Geräte),
+    Zielversion = Saga-Version.
+  - **Selbst-Update ohne Docker-Socket:** Wächter `gjallarhorn watch` (PID 1 im Knoten-Image bzw. systemd-Dienst) lädt
+    das signierte Binär (Ed25519, fester Release-Schlüssel `gjallarhorn/release.pub`), leert den Knoten und startet um
+    (allein: erst in einer Zeit ohne Anrufe). **Noch ohne Release-Schlüssel – Updates sind aus, bis er gesetzt ist.**
+  - **Entfernen:** Schlüssel sperren, signiertes `remove`, Anrufe ziehen um, DNS-Einträge aufräumen.
+  - **Cloudflare-DNS (P7):** Token nur „DNS bearbeiten“ für eine Zone, beim Speichern geprüft (verify, Zone, Probe-Eintrag),
+    verschlüsselt gespeichert, maskiert angezeigt. A/AAAA mit grauer Wolke, TTL 120, Kommentar `saga-horn:<id>`,
+    nachgeführt bei neuer Adresse. Zertifikate per ACME DNS-01 über Saga (TXT nur für den eigenen Namen, der Token
+    verlässt Saga nie), ohne Token per TLS-ALPN-01.
+  - **Admin-Seite „Anrufe“ (P8):** Knotentabelle (Status, Weg, Auslastung, Teilnehmende, Version, Teilen, Aktionen),
+    Port-Hinweis je Knoten mit Live-Prüfung und Firewall-Beispielen, DNS, Grenzen und Kontingent je verbundenem Server,
+    Schalter „Eingebauten Knoten für Anrufe nutzen“ (aus: nur externe Knoten, sonst Mesh), Knopf „Fähigkeiten jetzt
+    abgleichen“. Die STUN/TURN-Felder sind von „Allgemein“ in den Abschnitt „1:1-Anrufe (TURN, optional)“ umgezogen.
+  - Datenbank: Migration 17 (Kopplung, Port-Prüfung, Zertifikats-/Update-Status), Tabellen `horn_ban`, `horn_log`,
+    `horn_share`.
+
 ## [2.4.0] – 2026-10-20
 
 Saga 2.4 bringt Videos in den Chat und macht Anrufe erwachsen: Gruppenanrufe, Bildschirm teilen mit Kamera daneben,

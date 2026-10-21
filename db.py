@@ -800,6 +800,28 @@ CREATE TABLE IF NOT EXISTS chat_reaction (
     ts BIGINT NOT NULL, ct TEXT NOT NULL, sig TEXT NOT NULL, at DOUBLE PRECISION NOT NULL,
     PRIMARY KEY (msg_seq, reactor));
 CREATE INDEX IF NOT EXISTS chat_reaction_reactor ON chat_reaction (reactor);
+-- Gjallarhorn (2.5, saga/horn.py, Konzept v2 §2.10, Migration 16): Knotenregister (eingebauter Knoten + gekoppelte) und
+-- Kopplungs-Token (nur als SHA-256, einmalig, 30 min). pub = Ed25519-Knotenschluessel (Base64), load = letzte Lastmeldung,
+-- dns_ids = Cloudflare-Eintraege (P7), removed = entfernt (pub gesperrt). Wahrheitswerte als SMALLINT wie ueberall (db._arg).
+-- Keine Konto- oder Geraetedaten.
+CREATE TABLE IF NOT EXISTS horn_node (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, pub TEXT NOT NULL, builtin SMALLINT NOT NULL DEFAULT 0,
+    url TEXT, v4 TEXT, v6 TEXT, udp SMALLINT NOT NULL DEFAULT 0, share SMALLINT NOT NULL DEFAULT 0,
+    version TEXT, state TEXT NOT NULL DEFAULT 'neu', load JSONB, link_mbit INTEGER,
+    dns_ids JSONB, created DOUBLE PRECISION NOT NULL, seen DOUBLE PRECISION, removed DOUBLE PRECISION);
+CREATE TABLE IF NOT EXISTS horn_pair (
+    token_hash TEXT PRIMARY KEY, name TEXT NOT NULL, share SMALLINT NOT NULL DEFAULT 0,
+    expires DOUBLE PRECISION NOT NULL, used DOUBLE PRECISION);
+-- Gjallarhorn P6 (saga/horn_ops.py): gesperrte Knotenschluessel (Entfernen), Pruefprotokoll der Knoten (nur Kennungen,
+-- keine Konto-/Geraetedaten) und Kontingente je verbundenem Server fuer geteilte Knoten (P10 nutzt sie; NULL = Standard
+-- aus calls.share_legs / calls.share_mbit, off = Notaus).
+CREATE TABLE IF NOT EXISTS horn_ban (pub TEXT PRIMARY KEY, node_id TEXT, at DOUBLE PRECISION NOT NULL);
+CREATE TABLE IF NOT EXISTS horn_log (
+    id BIGSERIAL PRIMARY KEY, ts DOUBLE PRECISION NOT NULL, node_id TEXT, name TEXT, event TEXT NOT NULL, detail TEXT);
+CREATE INDEX IF NOT EXISTS horn_log_ts ON horn_log (ts);
+CREATE TABLE IF NOT EXISTS horn_share (
+    peer_id INTEGER PRIMARY KEY, allowed SMALLINT NOT NULL DEFAULT 1, legs INTEGER, mbit INTEGER,
+    off SMALLINT NOT NULL DEFAULT 0, updated DOUBLE PRECISION);
 -- Bestand (erster Start, Backup von vor 2.2 zurueckgespielt): alles ohne abgeleitete Daten zum Abgleich vormerken
 INSERT INTO note_stale (note_id, uid) SELECT n.id, n.uid FROM note n
  WHERE NOT EXISTS (SELECT 1 FROM note_derived d WHERE d.note_id = n.id) ON CONFLICT (note_id) DO NOTHING;
@@ -970,6 +992,35 @@ UPDATE chat SET v3_seq=(SELECT MAX(m.seq) FROM chat_msg m WHERE m.chat_id=chat.i
   WHERE v=2 AND v3_seq IS NULL AND EXISTS (SELECT 1 FROM chat_msg m WHERE m.chat_id=chat.id AND m.sender_handle IS NULL AND m.kind IN ('msg','title'));
 UPDATE chat SET v3_at=COALESCE((SELECT m.created FROM chat_msg m WHERE m.seq=chat.v3_seq), chat.created) WHERE v3_seq IS NOT NULL AND v3_at IS NULL;
 SELECT 1 FROM chat_reaction LIMIT 0;
+""",
+    # 2.5.0 (Gjallarhorn P3, saga/horn.py): aktueller Knoten eines Endpunkts (Hinweis fuer Kandidaten und Steuerung; NULL =
+    # Mesh bzw. noch keiner). Die Tabellen horn_node und horn_pair legt SCHEMA oben an. (15 ist fuer Chat-Stufe 3 auf einem
+    # anderen Zweig belegt.) Beliebig oft ausfuehrbar.
+    16: """
+ALTER TABLE chat_call_leg ADD COLUMN IF NOT EXISTS node TEXT;
+CREATE INDEX IF NOT EXISTS chat_call_leg_node ON chat_call_leg (node) WHERE node IS NOT NULL AND state='active';
+SELECT 1 FROM horn_node, horn_pair LIMIT 0;
+""",
+    # 2.5.0 (Gjallarhorn P6-P8, saga/horn_ops.py): Kopplung "Erweitern" - oeffentliche Kennung fuer den Live-Fortschritt
+    # (nie der Code selbst), gebundene Saga-Adresse, UDP-Wunsch, erster Knotenschluessel (Neuversuch nach Firewall-Fix
+    # nur mit demselben Schluessel), Fortschritt. Knoten: Port, letzte Port-Pruefung, Zertifikats- und Update-Status,
+    # Leeren seit, Auslastung je Tag (Erweitern-Hinweis). Beliebig oft ausfuehrbar.
+    17: """
+ALTER TABLE horn_pair ADD COLUMN IF NOT EXISTS id TEXT;
+ALTER TABLE horn_pair ADD COLUMN IF NOT EXISTS saga TEXT;
+ALTER TABLE horn_pair ADD COLUMN IF NOT EXISTS udp SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE horn_pair ADD COLUMN IF NOT EXISTS pub TEXT;
+ALTER TABLE horn_pair ADD COLUMN IF NOT EXISTS node_id TEXT;
+ALTER TABLE horn_pair ADD COLUMN IF NOT EXISTS progress JSONB;
+ALTER TABLE horn_pair ADD COLUMN IF NOT EXISTS created DOUBLE PRECISION;
+CREATE UNIQUE INDEX IF NOT EXISTS horn_pair_id ON horn_pair (id) WHERE id IS NOT NULL;
+ALTER TABLE horn_node ADD COLUMN IF NOT EXISTS port INTEGER;
+ALTER TABLE horn_node ADD COLUMN IF NOT EXISTS checks JSONB;
+ALTER TABLE horn_node ADD COLUMN IF NOT EXISTS cert JSONB;
+ALTER TABLE horn_node ADD COLUMN IF NOT EXISTS upd JSONB;
+ALTER TABLE horn_node ADD COLUMN IF NOT EXISTS drain DOUBLE PRECISION;
+ALTER TABLE horn_node ADD COLUMN IF NOT EXISTS stats JSONB;
+SELECT 1 FROM horn_ban, horn_log, horn_share LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

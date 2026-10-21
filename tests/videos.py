@@ -394,8 +394,8 @@ def limits_part(cid, A):
 
 
 def main():
-    A, B, Cc = ck("vd-a"), ck("vd-b"), ck("vd-c")
     cid = setup()
+    A, B, Cc = ck("vd-a"), ck("vd-b"), ck("vd-c")   # nach dem Anlegen: pwc = jetzt + 5 s muss nach dem Konto-Zeitstempel liegen
     # je Weg eine weitere Datei (fuer "Token fuer andere Datei")
     for k in PORTS:
         fid = secrets.token_urlsafe(18)

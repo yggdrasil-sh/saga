@@ -60,6 +60,7 @@ func (m *media) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Header.Del(keyHeader)
+	r.Header.Del("X-Saga-Horn-Key") // 2.5: Geheimnis des eingebauten Knotens kommt nur ueber localhost
 	// Was saga-media selbst bedient (alles andere geht an Saga): Dateien lesen (Range), 2.4 Uploads schreiben
 	// (PUT/HEAD /api/chat/uploads/{id}) und Teile eigener Anhaenge fuer andere Server (/fed/v2/chat/files/{id}?range=).
 	switch r.Method {
@@ -122,11 +123,13 @@ func main() {
 		os.Exit(2)
 	}
 	var child *exec.Cmd
+	hornKey := ""
 	if len(args) > 0 {
 		c.key = randomKey()
+		hornKey = randomKey() // 2.5: Steuerkanal des eingebauten Knotens (Python: SAGA_HORN_KEY, Knoten: HORN_CTL_KEY)
 		child = exec.Command(args[0], args[1:]...)
 		child.Stdin, child.Stdout, child.Stderr = os.Stdin, os.Stdout, os.Stderr
-		child.Env = append(os.Environ(), "SAGA_MEDIA_KEY="+c.key, "SAGA_INTERNAL_PORT="+strconv.Itoa(c.internalPort))
+		child.Env = append(os.Environ(), "SAGA_MEDIA_KEY="+c.key, "SAGA_INTERNAL_PORT="+strconv.Itoa(c.internalPort), "SAGA_HORN_KEY="+hornKey)
 		child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // Signale nur ueber uns (kein doppeltes Strg+C)
 	} else {
 		c.key = os.Getenv("SAGA_MEDIA_KEY")
@@ -172,11 +175,26 @@ func main() {
 		}
 		go func() { childDone <- child.Wait() }()
 	}
+	// 2.5: eingebauter Gjallarhorn-Knoten als zweiter Kindprozess (nur mit Feature-Flag calls.horn, siehe horn.go)
+	var hn *horn
+	hctx, hcancel := context.WithCancel(context.Background())
+	if child != nil {
+		if hn = newHorn(m, hornKey); hn != nil {
+			go hn.loop(hctx)
+		}
+	}
+	stopHorn := func() {
+		hcancel()
+		if hn != nil {
+			hn.stop(8 * time.Second)
+		}
+	}
 
 	code := 0
 	select {
 	case s := <-sig:
 		logf("%v - beende", s)
+		go stopHorn()
 		if child != nil {
 			_ = child.Process.Signal(s)
 		}
@@ -195,18 +213,21 @@ func main() {
 			<-ctx.Done()
 		}
 		cancel()
+		stopHorn()
 	case err := <-childDone:
 		code = exitCode(err)
 		if code == 0 {
 			code = 1 // Saga darf nicht einfach wegfallen: Container neu starten lassen
 		}
 		logf("Saga (Python) hat sich beendet (%v) - beende ebenfalls", err)
+		stopHorn()
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		_ = srv.Shutdown(ctx)
 		cancel()
 	case err := <-srvDone:
 		logf("Server beendet: %v", err)
 		code = 1
+		stopHorn()
 		if child != nil {
 			_ = child.Process.Signal(syscall.SIGTERM)
 			select {

@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check, ts, csrf_field with context %}
+{% block pagetitle %}{{ _('Anrufe') }}{% endblock %}
+{% block content %}
+{# Saga 2.5 (Gjallarhorn P8, Konzept v2 §4.1): Knoten, Erweitern, Port-Hinweis, DNS (Cloudflare), Grenzen, 1:1-Anrufe.
+   Funktioniert ohne JavaScript (Formulare); static/admin-calls.js ergaenzt Live-Fortschritt, Live-Pruefung, Kopieren. #}
+{% set ST = {'ready': _('Bereit'), 'full': _('Voll'), 'draining_upd': _('Wird geleert (Update)'), 'draining': _('Wird geleert'),
+             'updating': _('Aktualisiert sich'), 'nocert': _('Zertifikat fehlt'), 'waiting': _('Wartet auf Kopplung'), 'off': _('Abgeschaltet')} %}
+{% set UDP_TIP = _('UDP ist optional. Mit UDP sind bis zu 25 statt 12 Videoteilnehmende möglich und die Qualität bei Paketverlust ist besser.') %}
+{% set saga_host = hs.saga.split('://')[-1] %}
+<h2>{{ _("Anrufe") }}</h2>
+
+<section class="adm-card" id="horn">
+  <h3>{{ _("Gjallarhorn – große Gruppenanrufe") }}</h3>
+  <p class="hk-hint">{{ _("Gruppenanrufe mit mehr als 4 Personen laufen über Gjallarhorn-Knoten. Ein Knoten ist eingebaut. Reicht die Leistung nicht, fügst du mit <b>Erweitern</b> weitere hinzu, z. B. auf einem kleinen Server mit guter Anbindung. Inhalte bleiben Ende-zu-Ende-verschlüsselt, Knoten leiten nur weiter.")|safe }}</p>
+  <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="horn">
+    {{ check(_('Große Gruppenanrufe über Gjallarhorn'), 'horn', hs.horn_on, _('Aus = Gruppenanrufe laufen wie in Saga 2.4 direkt zwischen den Geräten (Mesh, bis 4 mit Video / 6 nur Ton).')) }}
+    {{ check(_('Eingebauten Knoten für Anrufe nutzen'), 'horn_builtin', hs.builtin_on, _('Aus = nur weitere Knoten (Erweitern) tragen Anrufe. Ist keiner bereit, laufen Gruppenanrufe im Mesh (bis 4 mit Video / 6 nur Ton). Der eingebaute Knoten braucht einen eigenen Namen per TLS-Durchreiche (SNI) am Reverse Proxy.')) }}
+    <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button></div>
+  </form>
+  {% set ready_n = hs.nodes|selectattr('status', 'equalto', 'ready')|list|length %}
+  {% if hs.horn_on and not ready_n %}<p class="adm-note" role="note">{{ _("Gerade ist kein Knoten bereit – Gruppenanrufe laufen im Mesh (bis 4 mit Video / 6 nur Ton).") }}</p>{% endif %}
+  {% if hs.hint %}<p class="adm-note horn-hint" role="note">{{ _("Deine Knoten waren zuletzt oft ausgelastet. Mit <b>Erweitern</b> kommt ein weiterer dazu.")|safe }}</p>{% endif %}
+
+  <h4 class="horn-h">{{ _("Knoten") }}</h4>
+  <table class="adm-table horn-nodes">
+    <tr><th>{{ _("Name") }}</th><th>{{ _("Status") }}</th><th>{{ _("Weg") }}</th><th>{{ _("Auslastung") }}</th><th>{{ _("Teilnehmende") }}</th><th>{{ _("Version") }}</th><th>{{ _("Teilen") }}</th><th>{{ _("Aktionen") }}</th></tr>
+    {% for n in hs.nodes %}
+    <tr id="row-{{ n.id }}" class="horn-st-{{ n.status }}">
+      <td><b>{{ n.name }}</b>{% if n.builtin %} <span class="adm-tag">{{ _("eingebaut") }}</span>{% endif %}</td>
+      <td data-l="{{ _('Status') }}"><span class="horn-dot"></span>{% if n.status == 'down' %}{{ _("Nicht erreichbar seit") }} {{ ts(n.since) }}{% else %}{{ ST[n.status] }}{% endif %}
+        {% if n.cert.err and n.status == 'nocert' %}<br><small title="{{ n.cert.err }}">{{ _("Zertifikat per DNS-01 noch nicht erhalten – Saga versucht es weiter.") if n.cert.err.startswith('dns01') else _("Zertifikat per TLS-ALPN-01 noch nicht erhalten – ist 443/TCP direkt erreichbar?") }}</small>{% endif %}
+        {% set UPD = {'nokey': _('Selbst-Update aus: Saga hat noch keinen Release-Schlüssel.'), 'nowatch': _('Selbst-Update aus: Knoten läuft ohne Wächter (gjallarhorn watch).'),
+                      'sig': _('Signatur passt nicht zum Release-Schlüssel – Update abgelehnt.'), 'download': _('Update konnte nicht geladen werden – neuer Versuch später.'),
+                      'wait24': _('Seit 24 Stunden keine Zeit ohne Anrufe – das Update wartet weiter.')} %}
+        {% if n.upd.code in UPD and n.upd.state in ('aus', 'manuell', 'fehler', 'wartet') %}<br><small title="{{ n.upd.err or '' }}">{{ _("Update:") }} {{ UPD[n.upd.code] }}</small>{% endif %}</td>
+      <td data-l="{{ _('Weg') }}"><span title="{{ UDP_TIP }}">TCP {{ '✓' if n.tcp else '✗' }} · UDP {{ '✓' if n.udp else '–' }}</span></td>
+      <td data-l="{{ _('Auslastung') }}"><meter class="horn-bar" min="0" max="100" low="70" high="90" optimum="10" value="{{ n.util }}">{{ n.util }} %</meter><br>
+        <small>{{ _("CPU {cpu} %", cpu=n.cpu) }} · {% if n.link %}{{ _("Upload {up}/{link} Mbit/s", up=n.up, link=n.link) }}{% else %}{{ _("Upload {up} Mbit/s", up=n.up) }}{% endif %}</small></td>
+      <td data-l="{{ _('Teilnehmende') }}">{{ n.peers }}</td>
+      <td data-l="{{ _('Version') }}">{{ n.version or '–' }}</td>
+      <td data-l="{{ _('Teilen') }}">{{ _("an") if n.share else _("aus") }}</td>
+      <td class="horn-acts">
+        <form method="post" class="adm-inline">{{ csrf_field() }}<input type="hidden" name="id" value="{{ n.id }}">
+          <button class="btn" type="submit" name="action" value="check" data-check="{{ n.id }}">{{ _("Port prüfen") }}</button>
+          <button class="btn" type="submit" name="action" value="{{ 'unshare' if n.share else 'share' }}">{{ _("Teilen aus") if n.share else _("Teilen an") }}</button>
+          <button class="btn" type="submit" name="action" value="{{ 'undrain' if n.drain else 'drain' }}">{{ _("Leeren beenden") if n.drain else _("Leeren") }}</button>
+          {% if not n.builtin %}<button class="btn btn-danger" type="submit" name="action" value="remove" data-confirm="{{ _('Knoten {name} entfernen? Sein Schlüssel wird gesperrt, laufende Anrufe ziehen auf andere Knoten um und die DNS-Einträge werden gelöscht.', name=n.name) }}">{{ _("Entfernen") }}</button>{% endif %}
+        </form></td>
+    </tr>
+    {% endfor %}
+    {% for p in hs.pending %}
+    <tr class="horn-st-waiting"><td><b>{{ p.name }}</b></td><td data-l="{{ _('Status') }}"><span class="horn-dot"></span>{{ ST.waiting }}<br><small>{{ _("Code gültig bis") }} {{ ts(p.expires) }}</small></td>
+      <td></td><td></td><td></td><td></td><td></td>
+      <td><form method="post">{{ csrf_field() }}<input type="hidden" name="action" value="pair_cancel"><input type="hidden" name="id" value="{{ p.id }}">
+        <button class="btn" type="submit">{{ _("Abbrechen") }}</button></form></td></tr>
+    {% endfor %}
+    {% if not hs.nodes and not hs.pending %}<tr><td colspan="8"><small>{{ _("Noch kein Knoten verbunden. Der eingebaute Knoten erscheint, sobald Gjallarhorn an ist.") }}</small></td></tr>{% endif %}
+  </table>
+
+  {% for n in hs.nodes %}
+  {% set port = n.port if not n.builtin else ((n.url.split(':')[2]|int) if n.url.count(':') == 2 else 443) %}
+  <details class="horn-ports" id="n-{{ n.id }}"{% if request_open == n.id %} open{% endif %}>
+    <summary>{{ _("Ports von {name}", name=n.name) }}</summary>
+    <table class="adm-table horn-port-t" data-node="{{ n.id }}">
+      <tr><th>{{ _("Richtung") }}</th><th>{{ _("Port") }}</th><th>{{ _("Pflicht") }}</th><th>{{ _("Prüfung") }}</th></tr>
+      {% set ck = n.checks %}
+      <tr><td>{{ _("eingehend") }}</td><td data-l="{{ _('Port') }}">{{ port }}/TCP (IPv4 + IPv6)</td><td data-l="{{ _('Pflicht') }}">{{ _("ja") }}</td>
+        <td data-l="{{ _('Prüfung') }}" class="pc-tcp">{% if not ck %}{{ _("Noch nicht geprüft") }}{% elif ck.v4 != false and ck.v6 != false and (ck.v4 or ck.v6) %}{{ _("Erreichbar ✓ (IPv4 {a}, IPv6 {b})", a='✓' if ck.v4 else '–', b='✓' if ck.v6 else '–') }}{% elif ck.v4 or ck.v6 %}{{ _("Nicht erreichbar über IPv6") if ck.v4 else _("Nicht erreichbar über IPv4") }}{% else %}{{ _("Nicht erreichbar ✗") }}{% endif %}</td></tr>
+      <tr><td>{{ _("eingehend") }}</td><td data-l="{{ _('Port') }}">{{ port }}/UDP</td><td data-l="{{ _('Pflicht') }}">{{ _("empfohlen") }}</td>
+        <td data-l="{{ _('Prüfung') }}" class="pc-udp">{% if ck.udp %}UDP ✓{% else %}{{ _("UDP – (optional, Anrufe laufen über TCP)") }}{% endif %}</td></tr>
+      <tr><td>{{ _("ausgehend") }}</td><td data-l="{{ _('Port') }}">{{ _("443/TCP zu {host} und anderen Knoten", host=saga_host) }}</td><td data-l="{{ _('Pflicht') }}">{{ _("ja") }}</td>
+        <td data-l="{{ _('Prüfung') }}" class="pc-ctl">{{ _("Steuerkanal verbunden ✓") if n.ctl else _("Steuerkanal nicht verbunden ✗") }}</td></tr>
+    </table>
+    {% if ck.at %}<p class="hk-hint">{{ _("Zuletzt geprüft:") }} <span class="pc-at">{{ ts(ck.at) }}</span></p>{% endif %}
+    {% if n.builtin %}<p class="hk-hint">{{ _("Eingebauter Knoten: {name} zeigt per TLS-Durchreiche (SNI) am Reverse Proxy oder per Portfreigabe auf Port {port} des Saga-Containers. Ohne Durchreiche taugt er nur intern.", name=n.name, port=port) }}</p>{% endif %}
+    <p class="hk-hint">{{ _("Beispiele für die Firewall des Knotens:") }}</p>
+    <pre class="bk-pre horn-fw">ufw allow {{ port }}/tcp
+ufw allow {{ port }}/udp
+nft add rule inet filter input tcp dport {{ port }} accept
+nft add rule inet filter input udp dport {{ port }} accept
+# Docker (docker-compose.yml)
+ports:
+  - "{{ port }}:{{ port }}/tcp"
+  - "{{ port }}:{{ port }}/udp"</pre>
+    <form method="post" class="adm-inline">{{ csrf_field() }}<input type="hidden" name="id" value="{{ n.id }}"><input type="hidden" name="action" value="check">
+      <button class="btn" type="button" data-copy=".horn-fw">{{ _("Kopieren") }}</button>
+      <button class="btn" type="submit" data-check="{{ n.id }}">{{ _("Erneut prüfen") }}</button></form>
+  </details>
+  {% endfor %}
+
+  <details class="horn-ext"{% if pair %} open{% endif %}>
+    <summary class="btn btn-primary">{{ _("Erweitern") }}</summary>
+    <form method="post" class="adm-form horn-pair-f" data-api="/api/calls/pair">{{ csrf_field() }}<input type="hidden" name="action" value="pair">
+      <label class="adm-field"><span>{{ _("Name des neuen Knotens") }}</span>
+        <span class="horn-name"><input class="hk-in" name="name" maxlength="63" value="{{ suggest or 'horn-2' }}" required autocomplete="off" spellcheck="false"><span>.{{ hs.suffix }}</span></span></label>
+      {{ check(_('Für verbundene Server teilen'), 'share', false, _('Teilnehmende anderer Saga-Server dürfen diesen Knoten in Anrufen nutzen, die dein Server führt. Sie sind an Kontingente gebunden.')) }}
+      {{ check(_('UDP 443 versuchen (empfohlen)'), 'udp', true) }}
+      <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Skript erzeugen") }}</button></div>
+    </form>
+    <div class="horn-pair-out" {% if not pair %}hidden{% endif %} data-pid="{{ pair.id if pair else '' }}">
+      <p>{{ _("Führe dies auf dem neuen Server aus (Docker nötig). Das Skript enthält einen <b>einmaligen Kopplungs-Code</b>, gültig bis {time}. Danach ist er wertlos.", time='<time class="horn-exp">' ~ ((pair.expires|dt) if pair else '') ~ '</time>')|safe }}</p>
+      <pre class="bk-pre horn-script" data-file="gjallarhorn-{{ pair.name if pair else 'knoten' }}.sh">{{ pair.script_docker if pair else '' }}</pre>
+      <p><button class="btn" type="button" data-copy=".horn-script">{{ _("Kopieren") }}</button>
+        <button class="btn" type="button" data-download=".horn-script">{{ _("Herunterladen") }}</button></p>
+      <details class="hk-more"><summary>{{ _("Ohne Docker: systemd unter Debian") }}</summary>
+        <pre class="bk-pre horn-script-sd" data-file="gjallarhorn-{{ pair.name if pair else 'knoten' }}-systemd.sh">{{ pair.script_systemd if pair else '' }}</pre>
+        <p><button class="btn" type="button" data-copy=".horn-script-sd">{{ _("Kopieren") }}</button>
+          <button class="btn" type="button" data-download=".horn-script-sd">{{ _("Herunterladen") }}</button></p>
+        {% if not hs.release_key %}<p class="adm-note" role="note">{{ _("Für die systemd-Variante und Selbst-Updates braucht Saga einen Release-Schlüssel (gjallarhorn/release.pub). Bis dahin die Docker-Variante nutzen.") }}</p>{% endif %}
+      </details>
+      <ol class="horn-prog" aria-live="polite">
+        <li data-k="wait">{{ _("Warte auf Knoten …") }}</li>
+        <li data-k="paired" hidden>{{ _("Gekoppelt") }}</li>
+        <li data-k="dns" hidden data-ok="{{ _('DNS eingetragen') }}" data-skip="{{ _('DNS: Einträge selbst anlegen (siehe unten)') }}" data-warn="{{ _('DNS: Name liegt nicht in der Cloudflare-Zone') }}" data-err="{{ _('DNS: Eintrag fehlgeschlagen') }}">{{ _("DNS eingetragen") }}</li>
+        <li data-k="cert" hidden data-run="{{ _('Zertifikat wird geholt …') }}" data-ok="{{ _('Zertifikat erhalten') }}" data-err="{{ _('Zertifikat fehlt') }}">{{ _("Zertifikat erhalten") }}</li>
+        <li data-k="tcp" hidden data-ok="{{ _('Port 443/TCP erreichbar ✓') }}" data-err="{{ _('Port 443/TCP nicht erreichbar – Firewall prüfen, der Knoten versucht es weiter') }}">{{ _("Port 443/TCP erreichbar ✓") }}</li>
+        <li data-k="udp" hidden data-ok="{{ _('UDP 443 erreichbar ✓') }}" data-no="{{ _('UDP 443: nicht erreichbar (optional)') }}" data-off="{{ _('UDP 443: aus') }}">{{ _("UDP 443: nicht erreichbar (optional)") }}</li>
+        <li data-k="done" hidden data-expired="{{ _('Code abgelaufen – bitte neu erzeugen.') }}">{{ _("Fertig.") }}</li>
+      </ol>
+      <noscript><p class="hk-hint">{{ _("Seite neu laden, um den Fortschritt zu sehen.") }}</p></noscript>
+      <p class="hk-hint">{{ _("Läuft der Knoten bei einem Anbieter, verarbeitet dieser IP-Adressen deiner Nutzer (Auftragsverarbeitung).") }}</p>
+    </div>
+  </details>
+
+  <form method="post" class="horn-caps">{{ csrf_field() }}<input type="hidden" name="action" value="caps">
+    <button class="btn" type="submit">{{ _("Fähigkeiten jetzt abgleichen") }}</button>
+    <small>{{ _("Fragt alle verbundenen Server sofort nach ihren Fähigkeiten (sonst bis zu 6 Stunden), z. B. nach einem Update auf 2.5.") }}</small></form>
+
+  {% if hs.log %}
+  <details class="hk-more"><summary>{{ _("Prüfprotokoll") }}</summary>
+    <table class="adm-table">{% for e in hs.log %}<tr><td>{{ ts(e.ts) }}</td><td data-l="{{ _('Knoten') }}">{{ e.name or '–' }}</td><td data-l="{{ _('Ereignis') }}"><code>{{ e.event }}</code></td><td><small>{{ e.detail }}</small></td></tr>{% endfor %}</table>
+  </details>
+  {% endif %}
+</section>
+
+<section class="adm-card" id="dns">
+  <h3>{{ _("DNS (Cloudflare)") }}</h3>
+  <p class="hk-hint">{{ _("Nur Berechtigung ‚DNS bearbeiten‘ für eine Zone. Saga legt für neue Knoten A- und AAAA-Einträge an (ohne Cloudflare-Proxy) und räumt sie beim Entfernen auf.") }}</p>
+  {% if hs.cf.set %}
+  <div class="adm-field"><span>{{ _("Cloudflare-API-Token") }}</span><span><code class="horn-mask">{{ hs.cf.mask }}</code></span></div>
+  {% set ck = hs.cf.check %}
+  {% if ck.ok %}<p class="horn-cf-ok">{{ _("Token gültig · Zone {zone} · Rechte: DNS bearbeiten ✓", zone=hs.cf.zone) }}</p>{% endif %}
+  {% if ck.warn %}<p class="adm-note" role="note">{{ _("Token hat zu viele Rechte – bitte auf eine Zone beschränken.") }}</p>{% endif %}
+  <div class="adm-actions">
+    <details class="horn-cf-edit"><summary class="btn">{{ _("Ändern") }}</summary>
+      <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="cf_save">
+        {{ field(_('Neuer Token'), 'cf_token', '', max=200, secret=true) }}
+        <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Prüfen und speichern") }}</button></div></form></details>
+    <form method="post">{{ csrf_field() }}<input type="hidden" name="action" value="cf_clear">
+      <button class="btn btn-danger" type="submit" data-confirm="{{ _('Cloudflare-Token entfernen? Vorhandene DNS-Einträge bleiben bestehen.') }}">{{ _("Entfernen") }}</button></form>
+  </div>
+  {% else %}
+  <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="cf_save">
+    {{ field(_('Cloudflare-API-Token'), 'cf_token', cf_token or '', max=200, secret=true, hint=_('Cloudflare → Mein Profil → API-Token → „Zone-DNS bearbeiten“, als Zone nur die Domain der Knoten. Saga speichert den Token verschlüsselt und gibt ihn nie an Knoten weiter.')) }}
+    {% if cf_zones %}<label class="adm-field"><span>{{ _("Zone") }}</span><select class="hk-in" name="cf_zone">{% for z in cf_zones %}<option value="{{ z.id }}">{{ z.name }}</option>{% endfor %}</select>
+      <small>{{ _("Token hat zu viele Rechte – bitte auf eine Zone beschränken.") }}</small></label>{% endif %}
+    <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Prüfen und speichern") }}</button></div>
+  </form>
+  {% set need = hs.nodes|selectattr('dns')|list %}
+  {% if need %}
+  <p class="hk-hint">{{ _("Ohne Token: diese Einträge selbst anlegen (ohne Cloudflare-Proxy, graue Wolke). Saga prüft sie per DNS-Abfrage:") }}</p>
+  <table class="adm-table horn-dns">
+    <tr><th>{{ _("Typ") }}</th><th>{{ _("Name") }}</th><th>{{ _("Inhalt") }}</th><th>{{ _("Prüfung") }}</th></tr>
+    {% for n in need %}{% for r in n.dns %}<tr><td>{{ r.type }}</td><td data-l="{{ _('Name') }}"><code>{{ r.name }}</code></td><td data-l="{{ _('Inhalt') }}"><code>{{ r.content }}</code></td>
+      <td data-l="{{ _('Prüfung') }}">{{ _("gefunden ✓") if r.ok else _("fehlt") }}</td></tr>{% endfor %}{% endfor %}
+  </table>
+  <p><a class="btn" href="/calls#dns">{{ _("Erneut prüfen") }}</a></p>
+  {% endif %}
+  {% endif %}
+</section>
+
+<section class="adm-card" id="grenzen">
+  <h3>{{ _("Grenzen") }}</h3>
+  <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="limits">
+    <label class="adm-field"><span>{{ _("Video je Anruf") }}</span>
+      <input class="hk-in" type="number" name="horn_video" min="2" max="{{ limits.udp[0] }}" value="{{ st.calls.horn_video or '' }}" placeholder="{{ limits.tcp[0] }}">
+      <small>{{ _("Standard {n} über TCP, höchstens {m} mit UDP. Ein Wert hier kann nur senken.", n=limits.tcp[0], m=limits.udp[0]) }}</small></label>
+    <label class="adm-field"><span>{{ _("Nur Ton je Anruf") }}</span>
+      <input class="hk-in" type="number" name="horn_audio" min="2" max="{{ limits.udp[1] }}" value="{{ st.calls.horn_audio or '' }}" placeholder="{{ limits.tcp[1] }}">
+      <small>{{ _("Standard {n} über TCP, höchstens {m} mit UDP.", n=limits.tcp[1], m=limits.udp[1]) }}</small></label>
+    <label class="adm-field"><span>{{ _("Kontingent je verbundenem Server") }}</span>
+      <span class="horn-quota"><input class="hk-in" type="number" name="share_legs" min="1" max="1000" value="{{ st.calls.share_legs or 10 }}"> {{ _("Teilnehmende") }} /
+        <input class="hk-in" type="number" name="share_mbit" min="1" max="10000" value="{{ st.calls.share_mbit or 20 }}"> Mbit/s</span>
+      <small>{{ _("Gilt für geteilte Knoten (Teilen an). Liste und Notaus je Server folgen auf der Seite Föderation.") }}</small></label>
+    <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button></div>
+  </form>
+</section>
+
+<section class="adm-card" id="anrufe">
+  <h3>{{ _("1:1-Anrufe (TURN, optional)") }}</h3>
+  <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="turn">
+    {{ check(_('Anrufe erlauben'), 'calls_enabled', st.calls.enabled, _('Audio- und Videoanrufe (auch Bildschirm teilen) aus dem Direkt-Chat. Die Medien laufen direkt zwischen den Geräten und sind Ende-zu-Ende verschlüsselt; Saga vermittelt nur über den normalen Web-Port. Braucht Chats.')) }}
+    {{ field(_('STUN-Server'), 'calls_stun', st.calls.stun, max=600, ph='stun:stun.example.org:3478', hint=_('Hilft Geräten hinter einem Router, ihre öffentliche Adresse zu finden (mehrere mit Leerzeichen trennen). Datenschutz: Der STUN-Server sieht die IP-Adresse der Anrufenden. Leer = nur Verbindungen im selben Netz bzw. über TURN.')) }}
+    {% if st.calls.stun %}{% set doc = {'en': 'en/GUIDE.md#turn-over-port-443-coturn-behind-the-reverse-proxy-via-sni', 'es': 'es/GUIA.md#turn-por-el-puerto-443-coturn-detrás-del-proxy-inverso-mediante-sni'}.get(lang(), 'ANLEITUNG.md#turn-über-port-443-coturn-hinter-dem-reverse-proxy-per-sni') %}
+    <p class="adm-note adm-stun-note" role="note">⚠ {{ _("Datenschutz: Der STUN-Server {host} sieht bei jedem Anruf die IP-Adresse der Anrufenden.", host=st.calls.stun.split()[0]) }}{% if 'stun.nextcloud.com' in st.calls.stun %} {{ _("Ab Werk ist das der öffentliche STUN-Server von Nextcloud – ohne ihn klappen Anrufe hinter Routern oft nicht.") }}{% endif %}
+      {{ _("Empfehlung: einen eigenen TURN/STUN-Server betreiben (coturn, auch über Port 443) und hier eintragen.") }}
+      <a href="https://github.com/yggdrasil-sh/saga/blob/main/docs/{{ doc }}" target="_blank" rel="noopener">{{ _("Anleitung: TURN über Port 443") }}</a></p>{% endif %}
+    {{ field(_('TURN-Server (Adressen)'), 'calls_turn_urls', st.calls.turn_urls, max=600, ph='turns:turn.example.org:443?transport=tcp', hint=_('Optional, für strenge Firmen- und Mobilfunknetze: eigener TURN-Server (z. B. coturn). Ohne neuen Port: per SNI im Reverse Proxy auf 443 – siehe Anleitung „Anrufe“.')) }}
+    <label class="adm-field"><span>{{ _("TURN-Zugang") }}</span>
+      <select class="hk-in" name="calls_turn_mode">
+        <option value="rest"{% if st.calls.turn_mode != 'static' %} selected{% endif %}>{{ _("Gemeinsames Geheimnis (zeitlich begrenzte Zugangsdaten, empfohlen)") }}</option>
+        <option value="static"{% if st.calls.turn_mode == 'static' %} selected{% endif %}>{{ _("Fester Benutzer und Passwort") }}</option>
+      </select>
+      <small>{{ _("Gemeinsames Geheimnis = coturn „use-auth-secret“ mit „static-auth-secret“: Saga erzeugt je Anruf Zugangsdaten, die nach 12 Stunden ablaufen.") }}</small></label>
+    {{ field(_('TURN-Geheimnis'), 'calls_turn_secret', '', max=300, secret=true, hint=(_('gespeichert ✓ – leer lassen = behalten') if st.calls.turn_secret else _('static-auth-secret aus der coturn-Konfiguration'))) }}
+    {{ field(_('TURN-Benutzer'), 'calls_turn_user', st.calls.turn_user, max=200) }}
+    {{ field(_('TURN-Passwort'), 'calls_turn_password', '', max=300, secret=true, hint=(_('gespeichert ✓ – leer lassen = behalten') if st.calls.turn_password else '')) }}
+    {{ check(_('TURN-Zugangsdaten löschen'), 'calls_turn_clear', false) }}
+    {{ check(_('Nur über TURN verbinden'), 'calls_relay_only', st.calls.relay_only, _('Die Geräte sehen dann die IP-Adresse des Gegenübers nicht – kostet etwas Latenz und Bandbreite am TURN-Server. Wirkt nur mit eingetragenem TURN-Server.')) }}
+    <label class="adm-field"><span>{{ _("Klingeldauer (Sekunden)") }}</span>
+      <input class="hk-in" type="number" name="calls_ring_s" min="15" max="120" value="{{ st.calls.ring_s or 45 }}">
+      <small>{{ _("Danach gilt der Anruf als verpasst (Eintrag im Chat und Benachrichtigung).") }}</small></label>
+    <label class="adm-field"><span>{{ _("Höchstens Geräte je Anruf mit Video") }}</span>
+      <input class="hk-in" type="number" name="calls_endpoints_video" min="2" max="4" value="{{ st.calls.endpoints_video or 4 }}">
+      <small>{{ _("Gruppenanrufe und weitere eigene Geräte (2.4): jedes Gerät sendet an jedes andere (Mesh). 2 bis 4; eigene Zusatzgeräte zählen mit.") }}</small></label>
+    <label class="adm-field"><span>{{ _("Höchstens Geräte je Anruf nur mit Ton") }}</span>
+      <input class="hk-in" type="number" name="calls_endpoints_audio" min="2" max="6" value="{{ st.calls.endpoints_audio or 6 }}">
+      <small>{{ _("2 bis 6. Mit 2 gibt es nur 1:1-Anrufe ohne weitere Geräte.") }}</small></label>
+    <p class="hk-hint">{{ _("Erreichbarkeit: Im selben Netz und hinter üblichen Heimroutern klappen Anrufe meist direkt (mit STUN). Hinter strengen Firewalls, in manchen Mobilfunknetzen oder Firmennetzen braucht es einen TURN-Server – sonst sehen die Personen „Direktverbindung nicht möglich“.") }}</p>
+    <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button></div>
+  </form>
+</section>
+<script type="application/json" id="horn-i18n">{{ {'copied': _('Kopiert'), 'checking': _('Prüfe …'), 'err': _('Fehler'),
+  'reach_ok': _('Erreichbar ✓ (IPv4 {a}, IPv6 {b})'), 'reach_v6': _('Nicht erreichbar über IPv6'), 'reach_v4': _('Nicht erreichbar über IPv4'),
+  'reach_no': _('Nicht erreichbar ✗'), 'udp_ok': 'UDP ✓', 'udp_no': _('UDP – (optional, Anrufe laufen über TCP)'),
+  'ctl_ok': _('Steuerkanal verbunden ✓'), 'ctl_no': _('Steuerkanal nicht verbunden ✗')}|tojson }}</script>
+<script src="/static/admin-calls.js?v={{ v }}"></script>
+{% endblock %}

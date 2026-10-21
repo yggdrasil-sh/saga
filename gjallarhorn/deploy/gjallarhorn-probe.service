@@ -1,0 +1,40 @@
+# systemd-Unit fuer die Horn-Probe (z. B. Debian 13 im LXC).
+# Installation siehe gjallarhorn/PROBE.md, Abschnitt "Ohne Docker".
+[Unit]
+Description=Gjallarhorn Horn-Probe (Saga 2.5)
+Documentation=https://github.com/yggdrasil-sh/saga/blob/main/gjallarhorn/PROBE.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gjallarhorn
+Group=gjallarhorn
+EnvironmentFile=/etc/gjallarhorn/probe.env
+Environment=HORN_DATA=/var/lib/gjallarhorn
+StateDirectory=gjallarhorn
+StateDirectoryMode=0750
+ExecStart=/usr/local/bin/gjallarhorn probe
+# Zertifikat neu laden (zusaetzlich prueft die Probe die Dateien alle 30 s)
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=3
+# Nur noetig, wenn HORN_LISTEN einen Port unter 1024 nutzt (z. B. :443)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+LimitNOFILE=65536
+
+# Haertung. Bricht der Start im LXC mit "226/NAMESPACE" ab, im Container
+# "nesting" aktivieren oder die folgenden Zeilen auskommentieren.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target
