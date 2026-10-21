@@ -73,6 +73,9 @@ type fakePeer struct {
 }
 
 func testNode(t *testing.T, cfg Config) *Node {
+	if testing.Short() {
+		t.Skip("echte WebRTC-Verbindungen und Zeitfenster - nur im vollen Lauf (nicht im Image-Build)")
+	}
 	if cfg.Verifier == nil {
 		cfg.Verifier = VerifierFunc(func(tok string) (Grant, error) { return Grant{}, errors.New("nein") })
 	}
