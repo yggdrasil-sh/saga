@@ -110,6 +110,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   „Klingelt …“, beim Gegenüber blieb es still. Der Browser gleicht laufende Anrufe jetzt bei jedem `hello` des Live-Kanals ab
   (neues internes Ereignis `live.hello`) und nimmt dabei auch ein Klingeln weg, dessen Ende in dieser Lücke lag.
   Regressionstest `tests/browser_klingeln.js` (verzögert den Live-Kanal gezielt, läuft in `browser_v3` in Stufe 3).
+- **„✓ überprüft“ bleibt nach der Wiederherstellung** (Nr. 063): Der Browser sichert seinen Vertrauens-Stand (wer als
+  überprüft markiert ist, gemerkte Identitätsschlüssel) verschlüsselt auf dem Server (`GET`/`PUT /api/chat/trust`, Schlüssel
+  aus dem Backup-Schlüssel – der Server kann nichts lesen und kein „überprüft“ unterschieben). Ein neuer Browser holt ihn
+  nach Wiederherstellungsschlüssel oder Kopplung vor dem ersten Laden; eigene Geräte gleichen ihn nebenher ab. Neu
+  beginnen verwirft ihn. `docs/APP-API.md` (Chat-Stufe 3), Tests in `chat` und `browser_trust3.js`.
 
 ### Neu (Vorbereitung 2.5, Gjallarhorn)
 - **Horn-Probe** (`gjallarhorn/`, Paket P0): Prototyp des Gjallarhorn-Knotens als eigenes Go-Programm (Pion, nur

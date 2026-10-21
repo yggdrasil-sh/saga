@@ -435,6 +435,14 @@ def run():
     nb_ = C.seal_bundle("ch-a", A.rk, A.ident, **KDF)
     s, d = req("PUT", "/api/chat/bundle", A.k, {"bundle": nb_, "sig": C.b64(C.sign(C.lp(C.V + "bundle-update", "ch-a", nb_), A.ident["ident_sk"]))})
     ok("... mit Signatur des Identitaetsschluessels -> 200", s == 200)
+    # 2.5 (Testrunde Web Nr. 063): Vertrauen verschluesselt sichern (der Server prueft nur die Form)
+    tb = json.dumps({"v": 1, "nonce": C.b64(b"\1" * 24), "ct": C.b64(b"\2" * 64)})
+    ok("Vertrauen sichern: ungueltige Form -> 400, zu gross -> 400",
+       req("PUT", "/api/chat/trust", A.k, {"blob": json.dumps({"v": 1, "nonce": "x", "ct": "y"})})[0] == 400
+       and req("PUT", "/api/chat/trust", A.k, {"blob": json.dumps({"v": 1, "nonce": C.b64(b"\1" * 24), "ct": "A" * 270000})})[0] in (400, 413))
+    ok("... gueltig -> 200, GET liefert es zurueck, ohne Konto-Fremde", req("PUT", "/api/chat/trust", A.k, {"blob": tb})[0] == 200
+       and req("PUT", "/api/chat/trust", B.k, {"blob": tb})[0] == 200
+       and req("GET", "/api/chat/trust", A.k)[1].get("blob") == tb and req("GET", "/api/chat/trust")[0] == 401)
 
     # --- Gruppen-Chat (Saga-Gruppe): Mitglieder folgen der Gruppe ----------------------------------------------------
     ok("D (nicht in der Gruppe) kann keinen Gruppen-Chat anlegen -> 403", req("POST", "/api/chats", Dk, {"kind": "group", "group": "ch-team"})[0] == 403)
@@ -622,6 +630,8 @@ def run():
     k = req("GET", "/api/chat/keys?users=ch-b", A.k)[1]["users"]["ch-b"]
     ok("B beginnt neu: neuer Identitaetsschluessel, alte Geraete entfernt", s == 200 and C.unb64(k["ident_pub"]) != old_ident
        and [d["id"] for d in k["devices"] if not d["revoked"]] == [B2.dev["id"]])
+    ok("... gesicherter Vertrauens-Stand von B verworfen (alter Backup-Schluessel), der von A bleibt",
+       req("GET", "/api/chat/trust", B2.k)[1].get("blob") is None and req("GET", "/api/chat/trust", A.k)[1].get("blob"))
     ok("... Sicherheitsnummer A<->B aendert sich", C.safety_number("ch-a", A.ident["ident_pk"], "ch-b", old_ident)
        != C.safety_number("ch-a", A.ident["ident_pk"], "ch-b", C.unb64(k["ident_pub"])))
     # SSO-Konto (kein Passwort): nur frische Anmeldung (login_at in der Sitzung, hoechstens 5 Minuten alt)

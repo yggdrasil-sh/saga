@@ -44,6 +44,14 @@
   function kvGet(k) { return kv('readonly', function (st) { return st.get(k); }); }
   function kvSet(k, v) { return kv('readwrite', function (st) { st.put(v, k); }); }
   function kvDel(k) { return kv('readwrite', function (st) { st.delete(k); }); }
+  // alle Eintraege mit diesem Praefix -> {schluessel: wert}
+  function kvAll(prefix) {
+    return kv('readonly', function (st) {
+      var out = { result: {} }, r = st.openCursor(IDBKeyRange.bound(prefix, prefix + '\uffff'));
+      r.onsuccess = function () { var cur = r.result; if (cur) { out.result[cur.key] = cur.value; cur.continue(); } };
+      return out;
+    });
+  }
   var KEYS = 'keys:' + ME;
   function trustKey(u) { return 'trust:' + ME + ':' + u; }
 
@@ -298,7 +306,7 @@
         var d = X.newDevice(); d.name = deviceName();
         api('POST', '/api/chat/devices', { id: d.id, name: d.name, enc_pub: b64(d.enc_pk), sign_pub: b64(d.sign_pk), sig: b64(X.deviceSig(ME, b.ident_sk, d)) })
           .then(function () { return saveKeys({ v: 1, device: d, ident_sk: b.ident_sk, ident_pk: b.ident_pk, backup_sk: b.backup_sk, backup_pk: b.backup_pk }); })
-          .then(function () { closeOverlay(); HK.toast(T('Dieses Gerät ist jetzt für Chats eingerichtet.')); ready(); })
+          .then(function () { closeOverlay(); HK.toast(T('Dieses Gerät ist jetzt für Chats eingerichtet.')); ready(true); })
           .catch(function (e) { st.className = 'hk-status err'; st.textContent = e.message; busy(go, false, T('Entsperren')); });
       }, 30);
     }
@@ -333,7 +341,7 @@
       var b = X.parsePlain(X.sealOpen(ub(r.sealed), w.d.enc_pk, w.d.enc_sk));
       if (!eqB(b.ident_pk, ub(S.me.identity.ident_pub, 32))) throw new Error(T('Die übertragenen Schlüssel passen nicht zu deinem Konto.'));
       return saveKeys({ v: 1, device: w.d, ident_sk: b.ident_sk, ident_pk: b.ident_pk, backup_sk: b.backup_sk, backup_pk: b.backup_pk })
-        .then(function () { closeOverlay(); HK.toast(T('Dieses Gerät ist jetzt für Chats eingerichtet.')); ready(); });
+        .then(function () { closeOverlay(); HK.toast(T('Dieses Gerät ist jetzt für Chats eingerichtet.')); ready(true); });
     }).catch(function (e) { if (w) w.busy = false; stopLink(); HK.toast(e.message); newDevice(); });
   }
   // Auf eingerichteten Geraeten: offene Kopplungsanfragen anzeigen
@@ -446,12 +454,16 @@
   }
 
   // --- Bereit: Liste, Hash-Ziel, Live ----------------------------------------------------------------------------
-  function ready() {
+  function ready(fresh) {
+    // 2.5 (Nr. 063): gesichertes Vertrauen holen - auf einem gerade eingerichteten Geraet VOR dem ersten Laden (TOFU),
+    // sonst nebenher (anderes eigenes Geraet hat etwas als ueberprueft markiert)
+    if (fresh) { trustPull().then(function () { ready(false); trustSoon(); }); return; }
     loadAI();
     fedCerts().catch(function () {});                      // 2.3: Zertifikate v2 fuer Chats ueber Servergrenzen (still)
     S.ready = true;
     loadList().then(function () { route(); });
     checkLinks();
+    if (fresh === undefined) trustPull().then(trustRefresh);
   }
   // --- Foederation 2.3 (saga-chat/v2): Handle-Zertifikat und Geraete-Zertifikate v2 signieren, fremde Schluessel mit TOFU ----
   // Nur dieses Geraet kennt ident_sk. Geraete-Zertifikate v2 bekommt jedes aktive Geraet, dessen v1-Zertifikat zum eigenen
@@ -510,7 +522,7 @@
           if (x.v1) { t = X.tofuMigrate(x.v1, k.ident_pub, k.ver); if (t.store) t.store.migrated = true; }   // nur bei gleichem Schluessel
           else t = X.tofuV2(x.st || null, k.ident_pub, k.ver);
           out[h] = { keys: k, trust: t.result, stale: !!e.stale, stored: t.store || x.st || null };
-          if (t.store) return kvSet(trust2Key(h), t.store).catch(function () {});
+          if (t.store) return kvSetT(trust2Key(h), t.store).catch(function () {});
         });
       })).then(function () { return out; });
     });
@@ -536,9 +548,70 @@
   // "Ueberprueft" (Sicherheitsnummer verglichen) bzw. Warnung bestaetigen ("Verstanden": verified false, Warnung weg)
   function fedVerify(h, ident_pub, verified) {
     return kvGet(trust2Key(h)).catch(function () { return null; }).then(function (st) {
-      return kvSet(trust2Key(h), { ident: ident_pub, verified: !!verified, dver: (st && st.ident === ident_pub && st.dver) || 0 });
+      return kvSetT(trust2Key(h), { ident: ident_pub, verified: !!verified, dver: (st && st.ident === ident_pub && st.dver) || 0 });
     });
   }
+  // --- 2.5 (Testrunde Web Nr. 063): Vertrauen (trust:/trust2:) verschluesselt auf dem Server sichern -------------------
+  // Sonst ist "überprüft" nach der Wiederherstellung auf einem neuen Geraet weg. Verschluesselt mit einem Schluessel aus dem
+  // Backup-Schluessel (X.sealTrust) - der Server kann weder lesen noch "überprüft" unterschieben. Zusammenfuehren: was hier
+  // fehlt, kommt dazu; gleicher Identitaetsschluessel -> "überprüft" bleibt erhalten; anderer -> der Stand hier gilt (TOFU).
+  function trustPrefixes() { return ['trust:' + ME + ':', 'trust2:' + ME + ':']; }
+  function trustMerge(loc, rem) {
+    if (!rem || typeof rem !== 'object' || typeof rem.ident !== 'string') return null;
+    if (!loc) return rem;
+    if (loc.ident !== rem.ident) return null;
+    var out = null;
+    if (rem.verified === true && !loc.verified && !loc.changed) out = Object.assign({}, loc, { verified: true });
+    if ((+rem.dver || 0) > (+loc.dver || 0)) out = Object.assign({}, out || loc, { dver: +rem.dver });
+    return out;
+  }
+  function trustLocal() {
+    var all = {};
+    return Promise.all(trustPrefixes().map(function (p, i) {
+      return kvAll(p).then(function (m) { Object.keys(m).forEach(function (k) { all[(i ? 't2:' : 't1:') + k.slice(p.length)] = m[k]; }); });
+    })).then(function () { return all; });
+  }
+  function trustKeyOf(n) { return n.indexOf('t2:') === 0 ? trust2Key(n.slice(3)) : n.indexOf('t1:') === 0 ? trustKey(n.slice(3)) : null; }
+  // Stand vom Server holen und hier einfuegen -> {remote: {...} | null, changed: n}
+  function trustPull() {
+    if (!K || !K.backup_sk) return Promise.resolve({ remote: null, changed: 0 });
+    return api('GET', '/api/chat/trust').then(function (r) {
+      if (!r || !r.blob) return { remote: null, changed: 0 };
+      var rem;
+      try { rem = X.openTrust(ME, K.backup_sk, r.blob); } catch (e) { return { remote: null, changed: 0 }; }   // alter Schluessel o. Ae.
+      var items = (rem && rem.items) || {}, n = 0;
+      return trustLocal().then(function (loc) {
+        return Promise.all(Object.keys(items).map(function (name) {
+          var k = trustKeyOf(name), m = k && trustMerge(loc[name], items[name]);
+          if (!m) return null;
+          n++;
+          if (name.indexOf('t1:') === 0) { var u = name.slice(3); trust[u] = m; trustP[u] = Promise.resolve(m); }
+          else { var f = (S.fk || {})[name.slice(3)]; if (f && f.keys && f.keys.ident_pub === m.ident) f.stored = m; }
+          return kvSet(k, m).catch(function () {});
+        }));
+      }).then(function () { return { remote: items, changed: n }; });
+    }).catch(function () { return { remote: null, changed: 0 }; });
+  }
+  var trustT = null, trustRun = null;
+  function trustSoon() { clearTimeout(trustT); trustT = setTimeout(trustPush, 1500); }
+  function trustPush() {
+    if (trustRun) { trustSoon(); return; }
+    trustRun = trustPull().then(function (p) {
+      return trustLocal().then(function (loc) {
+        if (p.remote && canon(p.remote) === canon(loc)) return null;
+        if (!Object.keys(loc).length) return null;
+        return api('PUT', '/api/chat/trust', { blob: X.sealTrust(ME, K.backup_sk, { v: 1, at: Date.now(), items: loc }) });
+      });
+    }).catch(function () {}).then(function () { trustRun = null; });
+  }
+  function canon(x) {                                 // JSON mit sortierten Schluesseln (Vergleich)
+    if (!x || typeof x !== 'object') return JSON.stringify(x);
+    if (Array.isArray(x)) return '[' + x.map(canon).join(',') + ']';
+    return '{' + Object.keys(x).sort().map(function (k) { return JSON.stringify(k) + ':' + canon(x[k]); }).join(',') + '}';
+  }
+  function kvSetT(k, v) { return kvSet(k, v).then(function (x) { trustSoon(); return x; }); }
+  function trustRefresh(p) { if (p && p.changed) { drawWarn(); drawHead(); } return p; }
+
   window.SagaChatFed = { certs: fedCerts, keys: fedKeys, verify: fedVerify,
                          safety: function (myHandle, theirHandle, theirIdentPk) { return X.safetyNumberV2(myHandle, K.ident_pk, theirHandle, theirIdentPk); } };
 
@@ -817,8 +890,8 @@
     if (trust[u] && trust[u].ident === ident) return;
     if (!trustP[u]) trustP[u] = kvGet(trustKey(u)).catch(function () { return null; });
     trustP[u].then(function (t) {
-      if (!t) { t = { ident: ident, verified: false, changed: false }; kvSet(trustKey(u), t).catch(function () {}); }
-      else if (t.ident !== ident) { t = { ident: ident, verified: false, changed: true, old: t.ident }; kvSet(trustKey(u), t).catch(function () {}); }
+      if (!t) { t = { ident: ident, verified: false, changed: false }; kvSetT(trustKey(u), t).catch(function () {}); }
+      else if (t.ident !== ident) { t = { ident: ident, verified: false, changed: true, old: t.ident }; kvSetT(trustKey(u), t).catch(function () {}); }
       trust[u] = t; trustP[u] = Promise.resolve(t);
       if (t.changed) drawWarn();
     });
@@ -845,7 +918,7 @@
       p.appendChild(document.createTextNode('⚠ ' + T('Die Sicherheitsnummer von {name} hat sich geändert – z. B. nach „Neu beginnen“ oder bei einem neuen Konto. Prüfe sie, bevor du Vertrauliches schreibst.', { name: m.name }) + ' '));
       p.appendChild(btn(T('Sicherheitsnummer'), 'small', function () { safety(m); }));
       p.appendChild(btn(T('Verstanden'), 'small', function () {
-        var t = trust[m.username]; t.changed = false; kvSet(trustKey(m.username), t).catch(function () {}); drawWarn();
+        var t = trust[m.username]; t.changed = false; kvSetT(trustKey(m.username), t).catch(function () {}); drawWarn();
       }));
       w.appendChild(p);
     });
@@ -908,7 +981,7 @@
       else box.appendChild(btn(T('Als überprüft markieren'), 'btn-primary', function () {
         var nt = { ident: k.ident_pub, verified: true, changed: false };
         trust[m.username] = nt; trustP[m.username] = Promise.resolve(nt);
-        kvSet(trustKey(m.username), nt).then(function () { closeOverlay(); drawWarn(); drawHead(); HK.toast(T('Als überprüft markiert.')); });
+        kvSetT(trustKey(m.username), nt).then(function () { closeOverlay(); drawWarn(); drawHead(); HK.toast(T('Als überprüft markiert.')); });
       }));
     }).catch(function (e) { HK.toast(e.message); });
   }

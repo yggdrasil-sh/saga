@@ -68,6 +68,9 @@ const texts = p => p.evaluate(() => [...document.querySelectorAll('#ct-msgs .ct-
         try { const st = r.result.transaction('kv').objectStore('kv'), g = st.getAllKeys(); g.onsuccess = () => res(g.result.filter(k => /^h2u:|^trust/.test(k))); } catch (e) { res(String(e)); } };
         r.onerror = () => res('idb'); }));
       ok('Phase 1: Handle -> Konto gemerkt (h2u) und Vertrauen v1', Array.isArray(h2u) && h2u.some(k => /^h2u:/.test(k)) && h2u.some(k => /^trust:/.test(k)), h2u);
+      // 2.5 (Testrunde Web Nr. 063): Vertrauen verschluesselt auf dem Server gesichert (fuer die Wiederherstellung)
+      ok('Phase 1: Vertrauen verschluesselt gesichert (GET /api/chat/trust)', await until(() => a.evaluate(() => fetch('/api/chat/trust', { headers: { 'X-Saga': '1' } })
+        .then(r => r.json()).then(d => !!d.blob && !/verified|ident/.test(d.blob))), 10000));
     } else {
       await a.goto(BASE + '/chats'); await a.waitForTimeout(1500); await a.click('#ct-list .ct-item-b'); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(1500);
       const v = await a.evaluate(() => fetch('/api/chats', { headers: { 'X-Saga': '1', 'X-Saga-Chat': '3' } }).then(r => r.json()).then(d => d.chats.map(c => ({ v: c.v, v3: c.v3 }))));
@@ -89,6 +92,24 @@ const texts = p => p.evaluate(() => [...document.querySelectorAll('#ct-msgs .ct-
       await b.goto(BASE + '/chats'); await b.waitForTimeout(1500); await b.click('#ct-list .ct-item-b'); await b.waitForTimeout(1500);
       const tb = await texts(b);
       ok('Phase 2: B liest beide (v1 und v2)', tb.some(x => x.t === 'Alte Nachricht (v1)' && !x.unv) && tb.some(x => x.t === 'Neue Nachricht (v2)' && !x.unv), tb);
+      // 2.5 (Testrunde Web Nr. 063): neuer Browser, Wiederherstellungsschluessel -> "ueberprueft" ist wieder da
+      const nb = await chromium.launch({ channel: E.PW_CHANNEL || 'chrome', headless: true });
+      try {
+        const nc = await nb.newContext({ viewport: { width: 1280, height: 800 }, locale: 'de-DE' }), n = await nc.newPage();
+        n.on('pageerror', e => { errs.push(U1 + ' (neu): ' + e.message); });
+        await n.goto(BASE + '/login');
+        await n.fill('input[name=username], input#username, input[type=text]', U1); await n.fill('input[type=password]', E.SAGA_PASS);
+        await Promise.all([n.waitForLoadState('networkidle').catch(() => {}), n.press('input[type=password]', 'Enter')]); await n.waitForTimeout(800);
+        await chatKeys(n, U1);
+        await n.goto(BASE + '/chats'); await n.waitForTimeout(1500); await n.click('#ct-list .ct-item-b'); await n.waitForSelector('#ct-chat:not([hidden])');
+        ok('Wiederherstellung auf neuem Browser: "ueberprueft" bleibt (Nr. 063)', await until(() => n.evaluate(() => !!document.querySelector('#ct-sub .ct-verified')), 10000),
+          await n.evaluate(() => document.querySelector('#ct-sub').textContent));
+        await shot(n, 'trust3-3-wiederhergestellt');
+        // Geraet wieder abmelden (sonst klingeln spaetere Anruf-Tests auch dort)
+        const did = await n.evaluate(() => new Promise(res => { const r = indexedDB.open('saga-chat'); r.onsuccess = () => {
+          const g = r.result.transaction('kv').objectStore('kv').getAll(); g.onsuccess = () => res((g.result.find(x => x && x.device) || {}).device.id); }; }));
+        if (did) await n.evaluate(id => fetch('/api/chat/devices/' + id, { method: 'DELETE', headers: { 'X-Saga': '1' } }), did);
+      } finally { await nb.close(); }
     }
     ok('keine Seitenfehler', errs.length === 0, errs);
   } catch (e) { console.log('FAIL Ausnahme: ' + (e && e.stack || e)); res.push(false); }
