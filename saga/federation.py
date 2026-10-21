@@ -1064,6 +1064,28 @@ def _run_hooks(pid):
     peer_submit(pid, run)
 
 
+HELLO_EXTRA = []                         # 2.5 P10: fn(peer_id) -> dict, zusaetzliche Angaben im hello (saga/fed_horn.py)
+HELLO_IN = []                            # 2.5 P10: fn(peer_id, daten) - Angaben der Gegenseite aus dem hello
+
+
+def _hello_extra(pid):
+    out = {}
+    for fn in HELLO_EXTRA:
+        try:
+            out.update(fn(pid) or {})
+        except Exception as ex:  # noqa: BLE001 - nur Zusatzangaben
+            print(f"federation: hello-Zusatz: {type(ex).__name__}", flush=True)
+    return out
+
+
+def _hello_in(pid, d):
+    for fn in HELLO_IN:
+        try:
+            fn(pid, d)
+        except Exception as ex:  # noqa: BLE001
+            print(f"federation: hello-Zusatz: {type(ex).__name__}", flush=True)
+
+
 def hello(pid):
     """Faehigkeiten mit einer verbundenen Instanz austauschen (signiert, POST /fed/v2/hello). Aeltere Instanzen kennen
     den Endpunkt nicht (404) -> Protokoll 1 ohne Zusatzfaehigkeiten. -> Faehigkeiten der Gegenstelle oder None."""
@@ -1072,8 +1094,8 @@ def hello(pid):
     if not p or p["status"] != "active" or not enabled():
         return None
     try:
-        status, d = call_json(p, "POST", "/fed/v2/hello", body={"protocol": PROTOCOL, "protocols": PROTOCOLS, "capabilities": CAPS + caps2()},
-                              timeout=6)
+        status, d = call_json(p, "POST", "/fed/v2/hello", body={"protocol": PROTOCOL, "protocols": PROTOCOLS, "capabilities": CAPS + caps2(),
+                                                                 **_hello_extra(pid)}, timeout=6)
     except FedError as ex:
         if ex.code == 404:                   # 2.1/2.2: unsignierte 404 - Protokoll 1
             _store_caps(pid, 1, [])
@@ -1088,6 +1110,7 @@ def hello(pid):
         return None
     caps = _clean_caps(d.get("capabilities"))
     _store_caps(pid, d.get("protocol"), caps)
+    _hello_in(pid, d)
     return caps
 
 
@@ -1098,9 +1121,12 @@ async def fed_hello(request: Request):
     if err is not None:
         return err
     d = inp.data if isinstance(inp.data, dict) else {}
+    extra = {}
     if inp.peer.get("id") and inp.peer.get("status") == "active":
         await run_in_threadpool(_store_caps, inp.peer["id"], d.get("protocol"), _clean_caps(d.get("capabilities")))
-    return _signed(inp, 200, {"protocol": PROTOCOL, "protocols": PROTOCOLS, "capabilities": CAPS + caps2()})
+        await run_in_threadpool(_hello_in, inp.peer["id"], d)
+        extra = await run_in_threadpool(_hello_extra, inp.peer["id"])
+    return _signed(inp, 200, {"protocol": PROTOCOL, "protocols": PROTOCOLS, "capabilities": CAPS + caps2(), **extra})
 
 
 class _RetryEv(Exception):

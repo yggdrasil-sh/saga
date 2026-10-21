@@ -87,9 +87,77 @@ def set_share(pid, allowed=None, off=None, legs=None, mbit=None, by="admin"):
         was_off = bool(cur[3]) if cur else False
     if o and not was_off:
         notaus(pid)
+    threading.Thread(target=push_origins, daemon=True).start()
     print(f"horn: Teilen fuer Server {pid}: {'erlaubt' if a else 'nicht erlaubt'}, {'NOTAUS' if o else 'an'}, "
           f"{lg or 'Standard'} Teilnehmende / {mb or 'Standard'} Mbit/s (von {by})", flush=True)
     return {"allowed": a, "off": o, "legs": lg, "mbit": mb}
+
+
+def _peer_origin(base):
+    from urllib.parse import urlparse
+    u = urlparse(base or "")
+    return f"{u.scheme}://{u.netloc}" if u.scheme in ("http", "https") and u.netloc else ""
+
+
+def origins():
+    """Herkunft der Seiten verbundener Server, mit denen wir teilen (CORS an unseren Knoten, Steuerkanal 'origins')."""
+    if not calls.horn_on():
+        return []
+    with _db() as c:
+        out = []
+        for p in F.peers(c):
+            if p["status"] == "active" and FCL.peer_horn(p) and share_cfg(c, p["id"])["allowed"] and not share_cfg(c, p["id"])["off"]:
+                o = _peer_origin(p["base_url"])
+                if o:
+                    out.append(o)
+    return sorted(set(out))[:64]
+
+
+def push_origins():
+    """Nach einer Aenderung (Teilen, Erlaubt-Liste, Notaus): allen Knoten die erlaubten Herkuenfte schicken und den
+    verbundenen Servern die Adressen unserer geteilten Knoten (hello, fuer deren CSP)."""
+    lst = origins()
+    for nid in list(horn._CONNS):
+        horn.send(nid, {"t": "origins", "list": lst})
+    if not F.enabled():
+        return
+    with _db() as c:
+        ids = [p["id"] for p in F.peers(c) if p["status"] == "active" and FCL.peer_horn(p)]
+    for pid in ids:
+        F.peer_submit(pid, F.hello, pid)
+
+
+def hello_extra(pid):
+    """hello an Server pid: Adressen unserer Knoten mit "Teilen an" (nur wenn er sie nutzen darf) - dessen Seiten brauchen
+    sie in connect-src, die Geraete sprechen sie direkt an."""
+    if not calls.horn_on():
+        return {}
+    with _db() as c:
+        s = share_cfg(c, pid)
+        urls = [] if not s["allowed"] or s["off"] else sorted({n["url"] for n in horn.nodes(c) if n["share"] and n.get("url")})
+    return {"horn_shared": urls[:8]}
+
+
+def hello_in(pid, d):
+    """Adressen der geteilten Knoten des Servers pid merken (fuer unsere CSP)."""
+    if not isinstance(d, dict) or not isinstance(d.get("horn_shared"), list):
+        return
+    urls = sorted({u for u in d["horn_shared"][:8] if _https(u) and "'" not in u and ";" not in u and "," not in u})
+    cur = auth.settings(fresh=True).get("horn_remote") or {}
+    cur = dict(cur) if isinstance(cur, dict) else {}
+    if cur.get(str(pid)) == urls:
+        return
+    if urls:
+        cur[str(pid)] = urls
+    else:
+        cur.pop(str(pid), None)
+    auth.save_setting("horn_remote", cur)
+
+
+def remote_urls():
+    """Adressen geteilter Knoten verbundener Server (CSP connect-src unserer Seiten)."""
+    cur = auth.settings().get("horn_remote") or {}
+    return sorted({u for v in (cur.values() if isinstance(cur, dict) else []) for u in (v if isinstance(v, list) else []) if _https(u)})
 
 
 def notaus(pid):
@@ -226,9 +294,23 @@ def op_horn(c, peer, d):
         avoid = horn_web._clean_avoid(d.get("avoid"))
         dcl = "mobile" if d.get("dev_class") == "mobile" else "desktop"
         cands = horn_web.candidates(c, call, leg["device"], leg["role"], dcl, avoid, only={n["id"] for n in shared_nodes(c)}, quota=q)
+    assigned = None
+    if nd is None and not leg["node"]:                 # Beitritt: Knoten vormerken wie lokal (das Geraet nimmt meist den ersten)
+        of = d.get("own_first") if isinstance(d.get("own_first"), dict) else None
+        if cands:
+            n = horn.node_named(c, cands[0]["node"])
+            if n:
+                horn.set_leg_node(c, call["id"], leg["device"], n["id"])
+                assigned = {"name": n["name"], "own": False}
+        elif q is not None and of and _https(of.get("url")) and len(str(of.get("pub") or "")) == 44 and of.get("name"):
+            name = str(of["name"])[:253].strip().lower()
+            horn_bridge.FN[(call["id"], peer["id"], name)] = {"url": of["url"], "pub": str(of["pub"]), "at": time.time()}
+            c.execute("UPDATE chat_call_leg SET node=? WHERE call_id=? AND device=?", (f"f:{peer['id']}:{name}", call["id"], leg["device"]))
+            assigned = {"name": name, "own": True}
     hub = horn.call_node(c, call["id"])
     hn = horn.node_by_id(c, hub) if hub else None
-    return 200, {"ok": True, "candidates": cands, "share": share, "why": why, "cascade": q is not None, "here": hn["name"] if hn else None}
+    return 200, {"ok": True, "candidates": cands, "share": share, "why": why, "cascade": q is not None, "here": hn["name"] if hn else None,
+                 **({"assigned": assigned} if assigned else {})}
 
 
 def op_horn_nodes(c, peer, d):
@@ -236,6 +318,20 @@ def op_horn_nodes(c, peer, d):
     if share_cfg(c, peer["id"])["off"] or not calls.horn_on():
         return 200, {"nodes": 0}
     return 200, {"nodes": len(horn.ready_nodes(c))}
+
+
+def _dial_ok(u):
+    """Darf unser Knoten diese Adresse anwaehlen? Oeffentliche Adressen immer, interne nur wie bei der Foederation
+    (Admin: "Freigegebene interne Hosts") - das Heim soll unseren Knoten nicht ins eigene Netz schicken koennen."""
+    import socket
+    from urllib.parse import urlparse
+    try:
+        p = urlparse(u)
+        host, port = p.hostname, p.port or 443
+        ips = {i[4][0] for i in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)}
+    except (OSError, ValueError, UnicodeError):
+        return False
+    return bool(ips) and all(F._ip_ok(ip, host, port) for ip in ips)
 
 
 def op_horn_cascade(c, peer, d):
@@ -252,6 +348,9 @@ def op_horn_cascade(c, peer, d):
     n = horn.node_named(c, name[:253])
     if not n or n["id"] not in horn._CONNS:
         return 409, {"error": "node"}
+    if not _dial_ok(d["url"]):
+        F.log(c, "call.forged", peer, "horn_cascade", throttle=(peer["id"], "chorncasc"))
+        return 403, {"error": "address"}
     if not c.execute("SELECT 1 FROM chat_call_leg WHERE call_id=? AND node=? AND state='active' AND peer_id IS NULL LIMIT 1",
                      (call["id"], n["id"])).fetchone():
         return 409, {"error": "no legs"}
@@ -312,6 +411,11 @@ def block(uid, call, dev, role, dev_class="desktop", avoid=(), node=None):
     if not FCL.peer_horn(p):
         return None, t("Der Server {host} kann keine Anrufe über Knoten (braucht Saga 2.5).", host=(p or {}).get("host") or "?")
     body = {"op": "horn", "id": call["id"], "actor": mh, "device": dev, "dev_class": dev_class, "avoid": list(avoid), "horn_nodes": len(own)}
+    if not node and own:                               # Vorschlag fuer die Vormerkung beim Heim: unser Knoten des Anrufs, sonst der beste
+        with _db() as c:
+            h = horn_web.home(c, call["id"])
+        f = next((n for n in own if n["id"] == h), own[0])
+        body["own_first"] = {"name": f["name"], "url": f["url"], "pub": f["pub"]}
     nd = None
     if node:
         if mine is not None:
@@ -324,10 +428,16 @@ def block(uid, call, dev, role, dev_class="desktop", avoid=(), node=None):
     st, d = FC.sync_call(p, body, path="/fed/v2/call") if not off else (403, {"error": "off"})
     if node and st != 200:
         return None, t("ungültige Angabe")
+    asg = (d or {}).get("assigned") if st == 200 and isinstance(d, dict) and isinstance((d or {}).get("assigned"), dict) else None
     with _db() as c, c:
         if node:
             v = mine["id"] if mine is not None else f"f:{call['lead']}:{node[:253]}"
             c.execute("UPDATE chat_call_leg SET node=? WHERE call_id=? AND device=? AND state='active'", (v, call["id"], dev))
+        elif asg and isinstance(asg.get("name"), str):  # vom Heim vorgemerkt (Beitritt)
+            n = horn.node_named(c, asg["name"][:253]) if asg.get("own") else None
+            v = n["id"] if n else (None if asg.get("own") else f"f:{call['lead']}:{asg['name'][:253]}")
+            if v:
+                c.execute("UPDATE chat_call_leg SET node=? WHERE call_id=? AND device=? AND state='active'", (v, call["id"], dev))
         theirs = (d or {}).get("candidates") if st == 200 and isinstance(d, dict) else []
         theirs = [x for x in theirs or [] if isinstance(x, dict) and x.get("node") and _https(x.get("url")) and isinstance(x.get("tokens"), dict)][:horn.CANDIDATES]
         for x in theirs:
@@ -361,4 +471,9 @@ def _ended(cid):
 
 
 horn_bridge.FED["ended"] = _ended
+horn.HOOKS["origins"] = origins
+horn.HOOKS["csp"] = remote_urls
+horn.HOOKS["share_changed"] = push_origins
+F.HELLO_EXTRA.append(hello_extra)
+F.HELLO_IN.append(hello_in)
 

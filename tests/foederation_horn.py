@@ -31,7 +31,8 @@ from version import VERSION  # noqa: E402
 
 T.I["a"].update(port=8695, admin=8694, db="saga_fha", url="http://127.0.0.1:8695", host="127.0.0.1:8695", state="/tmp/fedhorn-a",
                 allow="localhost:8697")
-T.I["b"].update(port=8697, admin=8696, db="saga_fhb", url="http://localhost:8697", host="localhost:8697", state="/tmp/fedhorn-b", allow="127.0.0.1:8695")
+T.I["b"].update(port=8697, admin=8696, db="saga_fhb", url="http://localhost:8697", host="localhost:8697", state="/tmp/fedhorn-b",
+                allow="127.0.0.1:8695, 127.0.0.1:8481")   # 8481: Knoten von A (Kaskade - interne Adresse nur mit Freigabe)
 ok, hreq, wait, jd, sql = T.ok, T.hreq, T.wait, T.jd, T.sql
 api, User = FC.api, FC.User
 OLD = bool(os.environ.get("FED_B_APP"))
@@ -150,7 +151,11 @@ def cands(d):
     return ((d.get("call") or {}).get("horn") or d.get("horn") or {}).get("candidates") or []
 
 
-def setup():
+USERS_A = [("fa-anna", "Anna Berg", "anna"), ("fa-ada", "Ada Heim", "ada")]
+USERS_B = [("fb-bert", "Bert Gast", "bert"), ("fb-ben", "Ben Gast", "ben")]
+
+
+def setup(horn_b=False):
     for k in T.I:
         T.pg_admin(f"DROP DATABASE IF EXISTS {T.I[k]['db']} WITH (FORCE)")
         T.pg_admin(f"CREATE DATABASE {T.I[k]['db']}")
@@ -158,10 +163,10 @@ def setup():
             os.remove(os.path.join(T.I[k]["state"], "server.log"))
         except OSError:
             pass
-    F2.py("a", T.SETUP.format(allow=T.I["a"]["allow"], users=[("fa-anna", "Anna Berg", "anna"), ("fa-ada", "Ada Heim", "ada")], groups=[]))
-    F2.py("b", T.SETUP.format(allow=T.I["b"]["allow"], users=[("fb-bert", "Bert Gast", "bert"), ("fb-ben", "Ben Gast", "ben")], groups=[]))
+    F2.py("a", T.SETUP.format(allow=T.I["a"]["allow"], users=USERS_A, groups=[]))
+    F2.py("b", T.SETUP.format(allow=T.I["b"]["allow"], users=USERS_B, groups=[]))
     calls_cfg("a")
-    calls_cfg("b", horn=False)                         # B schaltet horn erst nach dem Verbinden ein (Abgleich)
+    calls_cfg("b", horn=horn_b)                        # B schaltet horn erst nach dem Verbinden ein (Abgleich)
     for k in T.I:
         F2.start(k)
     adm = {k: T.Admin(k) for k in T.I}
@@ -299,6 +304,11 @@ def part_a(adm, anna, bert, ch, bc):
         print(node_log("horn-a.test")[-1500:], node_log("horn-b.test")[-1500:], flush=True)
     ok("a: Kaskaden-Anzeige im Admin-Bereich (Kaskaden: 1)", "Kaskaden: 1" in adm["a"].req("GET", "/calls")[2])
     ok("a: Knoten pruefen beide Seiten (Log: annehmend/waehlend)", "annehmend" in node_log("horn-a.test") and "waehlend" in node_log("horn-b.test"))
+    # Boese: das Heim will den Knoten von B an eine interne Adresse schicken (nicht freigegeben) -> 403
+    bad = {"op": "horn_cascade", "id": cid, "bridge": "bruecke-boese-1", "node": "horn-b.test", "url": "https://10.11.12.13:443", "peer": "horn-a.test",
+           "peer_pub": NODES["horn-a.test"]["pub"], "token": "c1.x.y-" + "z" * 20}
+    s, d = FC.signed_post("b", FC.own_priv("a"), "a", "/fed/v2/call", bad)
+    ok(f"a: Kaskade an eine interne Adresse -> 403 ({s})", s == 403)
     ok("a: Anruf endet auf A und B", end_call(cid, anna, bert))
 
 
@@ -310,6 +320,21 @@ def part_b(adm, anna, bert, ben, ch, bc, nc):
     na = node_of(adm["a"], "horn-a.test")
     calls_post(adm["a"], {"action": "share", "id": na["id"]})
     ok("b: Knoten A teilt", wait(lambda: node_of(adm["a"], "horn-a.test").get("share") is True, 5))
+
+    def csp_b():
+        st, h, _ = hreq("b", "GET", "/chats", cookie=T.ck("b", "fb-bert"))
+        return "https://127.0.0.1:8481" in (h.get("content-security-policy") or "")
+    ok("b: A schickt B die Adresse des geteilten Knotens (hello), B erlaubt sie in connect-src", wait(csp_b, 25, 1))
+
+    def cors():
+        import http.client as hc
+        import ssl
+        cn = hc.HTTPSConnection("127.0.0.1", 8481, timeout=5, context=ssl._create_unverified_context())
+        cn.request("OPTIONS", "/api/sfu/leg", headers={"Origin": T.I["b"]["url"], "Access-Control-Request-Method": "POST"})
+        r = cn.getresponse()
+        r.read()
+        return r.getheader("Access-Control-Allow-Origin") == T.I["b"]["url"]
+    ok("b: Knoten A nimmt Seiten von B an (CORS, origins ueber den Steuerkanal)", wait(cors, 10, 1))
     cid, s, d = start_call(anna, ch)
     ok(f"b: Anruf ueber Knoten ({s}, {d.get('call', {}).get('topo')})", s == 200 and d["call"]["topo"] == "horn")
     pick(anna, cid, "horn-a.test")
@@ -373,6 +398,7 @@ def part_old(anna, bert, ch, bc):
     cid, s, d = start_call(anna, ch)
     ok(f"2.4: Gruppenanruf mit B (2.4) bleibt still im Mesh ({s}, {d.get('call', {}).get('topo')}, ohne Hinweis)",
        s == 200 and d["call"]["topo"] == "mesh" and not d["call"].get("horn_mesh"))
+    wait(lambda: sql("b", "SELECT 1 FROM chat_call WHERE id=?", (cid,)), 10)   # Kopie auf B angelegt (sonst kaeme das Ende vor ihr an)
     lg = open(os.path.join(T.I["b"]["state"], "server.log")).read()
     ok("2.4: B bekommt keine horn-Auftraege (kein 'bad op' im Protokoll)", "bad op" not in lg)
     ok("2.4: Anruf endet", end_call(cid, anna))

@@ -407,8 +407,8 @@ def roster(c, call, uid=None, legs=None):
             d.update(who=d["handle"], host=FED.F.SELF_HOST)
         if x.get("replaces"):
             d["replaces"] = x["replaces"]
-        if cn or x.get("node"):                        # 2.5: Kennung des Geraets am Knoten (Zuordnung Spur -> Geraet)
-            d["hp"] = horn.peer_ref(call["id"], x.get("node") or cn, x["device"])
+        if (cn or x.get("node")) and not (x.get("node") or "").startswith("f:"):   # 2.5: Kennung am Knoten (Spur -> Geraet);
+            d["hp"] = horn.peer_ref(call["id"], x.get("node") or cn, x["device"])   # Knoten anderer Server: state.hp der Geraete
         if hn:                                         # 2.5 P5: Kennung je Knoten (Wechsel zwischen Knoten, horn_web)
             d["hpn"] = horn_web.peer_refs(call["id"], x["device"], hn)
         out.append(d)

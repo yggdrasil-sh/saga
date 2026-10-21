@@ -628,6 +628,8 @@ async def ctl(ws: WebSocket):
     _LIVE[nid] = {"load": {"max_legs": hh["max_legs"], "legs": 0, "state": "ok"}, "at": time.time(), "db": time.time(), "stats": stats,
                   "drain_ev": False}
     welcome = {"t": "welcome", "n": 0, "node_id": nid, "saga_pub": pub, "origin": _origin(), "rooms": rooms, "proto": PROTO}
+    if HOOKS.get("origins"):                           # P10: Herkunft verbundener Server, mit denen wir teilen (CORS)
+        welcome["origins"] = await asyncio.to_thread(HOOKS["origins"])
     if not builtin:
         drain = await asyncio.to_thread(_node_drain, nid)
         welcome.update(want=VERSION, solo=await asyncio.to_thread(solo), drain=drain, cert=await asyncio.to_thread(_acme_mode))
@@ -781,6 +783,8 @@ def _csp_extra():
         if horn_on():
             with _db() as c:
                 us = sorted({n["url"] for n in nodes(c) if n.get("url")})
+            if HOOKS.get("csp"):                        # P10: geteilte Knoten verbundener Server (Teilen an)
+                us = sorted(set(us) | set(HOOKS["csp"]()))
             v = "".join(f" {u} {'wss' + u[5:]}" for u in us if u.startswith("https://"))
     except Exception:  # noqa: BLE001 - Datenbank kurz weg: ohne Zusatz
         v = _CSP["v"]

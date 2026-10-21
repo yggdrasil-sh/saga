@@ -698,6 +698,7 @@
  "Der Inhalt der Seite wird durch die Version vom {date} ersetzt. Der jetzige Stand wird vorher als Version gesichert – du kannst ihn jederzeit zurückholen.": "The page content will be replaced by the version from {date}. The current state is saved as a version first – you can bring it back at any time.",
  "Der KI-Assistent ist für dich nicht eingeschaltet.": "The AI assistant isn't turned on for you.",
  "Der Knoten braucht einen eigenen Namen (nicht den von Saga).": "The node needs its own name (not Saga's).",
+ "Der Knoten {node} ist für diese Seite noch nicht freigegeben – bitte die Seite neu laden.": "The node {node} is not yet allowed for this page – please reload the page.",
  "Der Kommentar ist leer.": "The comment is empty.",
  "Der Kommentar wird gelöscht, die Antworten bleiben stehen.": "The comment will be deleted; the replies remain.",
  "Der Kommentar wird gelöscht.": "The comment will be deleted.",

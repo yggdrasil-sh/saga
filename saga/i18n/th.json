@@ -698,6 +698,7 @@
  "Der Inhalt der Seite wird durch die Version vom {date} ersetzt. Der jetzige Stand wird vorher als Version gesichert – du kannst ihn jederzeit zurückholen.": "เนื้อหาของหน้าจะถูกแทนที่ด้วยเวอร์ชันวันที่ {date} สถานะปัจจุบันจะถูกบันทึกเป็นเวอร์ชันก่อน – กู้คืนได้ทุกเมื่อ",
  "Der KI-Assistent ist für dich nicht eingeschaltet.": "ยังไม่ได้เปิดผู้ช่วย AI ให้บัญชีนี้",
  "Der Knoten braucht einen eigenen Namen (nicht den von Saga).": "โหนดต้องมีชื่อของตัวเอง (ไม่ใช่ชื่อของ Saga)",
+ "Der Knoten {node} ist für diese Seite noch nicht freigegeben – bitte die Seite neu laden.": "โหนด {node} ยังไม่ได้รับอนุญาตสำหรับหน้านี้ – โปรดโหลดหน้านี้ใหม่",
  "Der Kommentar ist leer.": "ความคิดเห็นว่างเปล่า",
  "Der Kommentar wird gelöscht, die Antworten bleiben stehen.": "ความคิดเห็นจะถูกลบ แต่การตอบกลับยังคงอยู่",
  "Der Kommentar wird gelöscht.": "ความคิดเห็นจะถูกลบ",

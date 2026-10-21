@@ -622,6 +622,8 @@ def set_share(nid, on, by="admin"):
             return False
         c.execute("UPDATE horn_node SET share=? WHERE id=?", (bool(on), nid))
         log(c, "node.share", nid, n["name"], f"{'an' if on else 'aus'} von {by}")
+    if horn.HOOKS.get("share_changed"):                # P10: verbundene Server erfahren die Adressen (hello, CSP)
+        threading.Thread(target=horn.HOOKS["share_changed"], daemon=True).start()
     return True
 
 

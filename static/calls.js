@@ -3038,6 +3038,16 @@
     });
   }
 
+  // 2.5 P10: Knoten eines anderen Servers (Teilen an), den die Seite noch nicht kennt (CSP connect-src stammt vom Laden
+  // der Seite) - klar sagen, dass ein Neuladen hilft
+  document.addEventListener('securitypolicyviolation', function (e) {
+    var R = C, u = String(e.blockedURI || '');
+    if (!R || !R.horn || !/^(https|wss):/.test(u) || !/connect-src/.test(e.effectiveDirective || e.violatedDirective || '')) return;
+    var host = u.replace(/^[a-z]+:\/\//, '').split('/')[0];
+    R.horn.fedErr = T('Der Knoten {node} ist für diese Seite noch nicht freigegeben – bitte die Seite neu laden.', { node: host });
+    hornNote(R, R.horn.fedErr);
+  });
+
   // --- Live-Ereignisse ---------------------------------------------------------------------------------------------
   document.addEventListener('hk-live', function (e) {
     var t = e.detail.type, d = e.detail.data || {};

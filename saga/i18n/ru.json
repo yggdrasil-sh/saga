@@ -698,6 +698,7 @@
  "Der Inhalt der Seite wird durch die Version vom {date} ersetzt. Der jetzige Stand wird vorher als Version gesichert – du kannst ihn jederzeit zurückholen.": "Содержимое страницы будет заменено версией от {date}. Текущее состояние сначала сохраняется как версия – его можно вернуть в любой момент.",
  "Der KI-Assistent ist für dich nicht eingeschaltet.": "ИИ-ассистент для тебя не включён.",
  "Der Knoten braucht einen eigenen Namen (nicht den von Saga).": "Узлу нужно собственное имя (не имя Saga).",
+ "Der Knoten {node} ist für diese Seite noch nicht freigegeben – bitte die Seite neu laden.": "Узел {node} ещё не разрешён для этой страницы — пожалуйста, перезагрузите страницу.",
  "Der Kommentar ist leer.": "Комментарий пуст.",
  "Der Kommentar wird gelöscht, die Antworten bleiben stehen.": "Комментарий будет удалён, ответы останутся.",
  "Der Kommentar wird gelöscht.": "Комментарий будет удалён.",

@@ -698,6 +698,7 @@
  "Der Inhalt der Seite wird durch die Version vom {date} ersetzt. Der jetzige Stand wird vorher als Version gesichert – du kannst ihn jederzeit zurückholen.": "El contenido de la página se sustituirá por la versión del {date}. Antes se guarda el estado actual como versión: puedes recuperarlo cuando quieras.",
  "Der KI-Assistent ist für dich nicht eingeschaltet.": "El asistente de IA no está activado para ti.",
  "Der Knoten braucht einen eigenen Namen (nicht den von Saga).": "El nodo necesita un nombre propio (no el de Saga).",
+ "Der Knoten {node} ist für diese Seite noch nicht freigegeben – bitte die Seite neu laden.": "El nodo {node} aún no está permitido para esta página: vuelve a cargar la página.",
  "Der Kommentar ist leer.": "El comentario está vacío.",
  "Der Kommentar wird gelöscht, die Antworten bleiben stehen.": "Se eliminará el comentario; las respuestas se mantienen.",
  "Der Kommentar wird gelöscht.": "Se eliminará el comentario.",
