@@ -438,9 +438,29 @@ def run():
     builtin_switch()
     e2e(node0, alt, acme)
     admin_pages()
+    rekey_hint()
+
+
+def rate_lru():
+    """Hinweis Pruefung 2.5: der Rate-Limit-Speicher wird bei mehr als RL_MAX Schluesseln nicht mehr ganz geleert (viele
+    Quelladressen setzten sonst auch die Kopplungs-Bremse zurueck), sondern verdraengt die am laengsten unbenutzten."""
+    from saga import horn_ops as HO
+    for _ in range(3):
+        HO._rate("t-lru", "angreifer", 3, 600)
+    blocked = []
+    for i in range(HO.RL_MAX + 1500):
+        HO._rate("t-lru", f"2001:db8::{i:x}", 3, 600)
+        if i % 500 == 0:
+            blocked.append(not HO._rate("t-lru", "angreifer", 3, 600))
+    ok(f"Rate-Limit: {HO.RL_MAX + 1500} fremde Schluessel setzen die Bremse eines aktiven Absenders nicht zurueck ({len(HO._rl)})",
+       all(blocked) and len(HO._rl) <= HO.RL_MAX and ("t-lru", "2001:db8::0") not in HO._rl)
+    with HO._rl_lock:
+        for k in [k for k in HO._rl if k[0] == "t-lru"]:
+            del HO._rl[k]
 
 
 def pairing_api():
+    rate_lru()
     s, d = req("GET", "/api/horn/whoami", None, None, {"X-Saga": "1"})
     ok(f"whoami: eigene Adresse ({s}, {d})", s == 200 and d.get("ip") == "127.0.0.1")
     s, p = adm("POST", "/api/calls/pair", {"name": "horn-7", "share": False, "udp": True})
@@ -472,6 +492,14 @@ def pairing_api():
     sk1 = Ed25519PrivateKey.generate()
     s, d = pair_post(pair_body(tok, "horn-7.example.org", sk1, port=1)[0])
     ok(f"Knoten nicht erreichbar -> 424, der Code bleibt fuer diesen Knotenschluessel ({s}, {d.get('code')})", s == 424 and d.get("code") == "reach")
+    codes = {"timeout", "unreachable_tcp", "tls", "http", "signatur", "adresse"}
+    ok(f"424 nur mit Fehlercodes, ohne Netzdetails ({d.get('reach')}, {d.get('error')!r})",
+       isinstance(d.get("reach"), dict) and d["reach"] and set(d["reach"].values()) <= codes
+       and not any(x in str(d) for x in ("Error", "Refused", "HTTP/", "errno")))
+    with connect() as c:
+        lg = c.execute("SELECT detail FROM horn_log WHERE event='pair.unreachable' AND name=? ORDER BY ts DESC LIMIT 1",
+                       ("horn-7.example.org",)).fetchone()
+    ok(f"... Netzdetails nur im Pruefprotokoll ({(lg or [''])[0][:80]})", bool(lg) and "Refused" in lg[0])
     s, d = pair_post(pair_body(tok, "horn-7.example.org")[0])
     ok(f"... anderer Knotenschluessel mit demselben Code -> 403 ({s})", s == 403 and d.get("code") == "token")
     s, d = adm("GET", f"/api/calls/pair/{p['id']}")
@@ -855,6 +883,38 @@ def admin_pages():
     auth.save_setting("calls", dict(CALLS))
     if not PERF.get("admin_browser"):
         admin_browser()
+
+
+def rekey_hint():
+    """F7 (Pruefung 2.5): neuer Saga-Signaturschluessel (SECRET_KEY gewechselt, Wiederherstellung ohne Einstellung horn),
+    obwohl Knoten gekoppelt sind: die Knoten lehnen Saga ab -> Hinweis "neu koppeln" auf der Seite Anrufe."""
+    name = "horn-rk.example.org"
+    nid, _ = node_entry(name, Ed25519PrivateKey.generate())
+    with connect() as c, c:
+        c.execute("UPDATE horn_node SET created=? WHERE id=?", (time.time() - 60, nid))
+        old = c.execute("SELECT v FROM setting WHERE k='horn'").fetchone()
+        c.execute("UPDATE setting SET v=? WHERE k='horn'", (json.dumps({"sign_sk": "kaputt", "sign_pk": "x"}),))
+    HN._SK.update(k=None, pub="")
+    try:
+        s, html = adm("GET", "/calls")
+        ok("vorher kein Hinweis 'neu koppeln'", s == 200 and "neu gekoppelt werden" not in html)
+        HN._signer()
+        rk = auth.settings(fresh=True).get("horn_rekey")
+        ok(f"neuer Schluessel trotz gekoppelter Knoten -> horn_rekey gemerkt ({rk})", isinstance(rk, dict) and bool(rk.get("at")))
+        time.sleep(5.5)                                   # Einstellungen im Server 5 s zwischengespeichert
+        s, html = adm("GET", "/calls")
+        ok(f"Admin 'Anrufe': Hinweis 'Knoten müssen neu gekoppelt werden' mit dem Knoten ({s})",
+           s == 200 and "Knoten müssen neu gekoppelt werden" in html and name in html)
+        s, html = adm("GET", "/calls", lang="en")
+        ok("... auch uebersetzt (en)", s == 200 and "Nodes must be paired again" in html)
+    finally:
+        with connect() as c, c:
+            if old:
+                c.execute("UPDATE setting SET v=? WHERE k='horn'", (old[0],))
+            c.execute("DELETE FROM setting WHERE k='horn_rekey'")
+            c.execute("DELETE FROM horn_node WHERE id=?", (nid,))
+        HN._SK.update(k=None, pub="")
+        auth._settings_cache["v"] = None
 
 
 def admin_browser():

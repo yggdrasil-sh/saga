@@ -133,6 +133,7 @@ type server struct {
 	sfuUDP, sfuTCP, sfuTURN *webrtc.API
 	gcc                     gccHook
 	ttrace                  *turnTracer
+	turnPorts               *turnPorts // ICE-Ports des TURN-Wegs (einzige erlaubte Relay-Ziele)
 	iceMux                  *netx.ICEMux
 	bySFU                   map[*sfu.Leg]*leg
 	devSecret               string
@@ -310,6 +311,7 @@ func newServer(cfg *config) (*server, error) {
 	}
 	s.mux.OnICE = s.onICEConn
 	s.ttrace = newTurnTracer()
+	s.turnPorts = newTurnPorts()
 	s.mux.OnTURN = s.ttrace.conn
 	// eigener ICE-TCP-Mux (ohne Allokation je Paket): Standard im Knoten,
 	// die Probe misst weiter mit pions Mux (HORN_ICEMUX=own|pion)
@@ -544,6 +546,11 @@ func (s *server) buildAPIs() error {
 		relay := s.cfg.RelayIP
 		se.SetIncludeLoopbackCandidate(relay.IsLoopback())
 		se.SetIPFilter(func(ip net.IP) bool { return ip.Equal(relay) })
+		gn, err := newGuardNet(s.turnPorts)
+		if err != nil {
+			return err
+		}
+		se.SetNet(gn)
 		api, err := newAPI(se, false)
 		if err != nil {
 			return err
@@ -568,10 +575,11 @@ func (s *server) startTURN() error {
 		AuthHandler:   turn.NewLongTermAuthHandler(s.turnSecret, lf.NewLogger("turn")),
 		EventHandler:  s.ttrace.handlers(),
 		ListenerConfigs: []turn.ListenerConfig{{
-			Listener:              s.mux.TURN,
-			RelayAddressGenerator: &turn.RelayAddressGeneratorStatic{RelayAddress: relay, Address: relay.String()},
-			// Kein offenes Relay: nur der Knoten selbst ist als Gegenstelle erlaubt (§3.4)
-			PermissionHandler: func(_ net.Addr, peer net.IP) bool { return peer.Equal(relay) },
+			Listener: s.mux.TURN,
+			// Kein offenes Relay: nur der Knoten selbst (Relay-Adresse, ICE-Ports des TURN-Wegs), kein TCP (§3.4, turnguard.go)
+			RelayAddressGenerator: &relayGen{RelayAddressGeneratorStatic: turn.RelayAddressGeneratorStatic{RelayAddress: relay, Address: relay.String()},
+				ok: s.relayTargetOK, p: s.turnPorts},
+			PermissionHandler: func(_ net.Addr, peer net.IP) bool { return relayPeerOK(relay, peer) },
 		}},
 	})
 	if err != nil {

@@ -33,6 +33,7 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import threading
 import time
@@ -116,8 +117,29 @@ def _signer():
                     c.execute("INSERT INTO setting (k, v) VALUES ('horn', ?) ON CONFLICT (k) DO NOTHING", (v,))
                 elif not _seed(_dec_horn(row[0])):          # unlesbar (SECRET_KEY gewechselt): neu
                     c.execute("UPDATE setting SET v=? WHERE k='horn' AND v=?", (v, row[0]))
+                _rekey_note(c)
             auth._settings_cache["v"] = None
         raise RuntimeError("horn_sign nicht lesbar")
+
+
+def _rekey_note(c):
+    """Neuer Signaturschluessel, obwohl schon Knoten gekoppelt sind (SECRET_KEY gewechselt, Wiederherstellung ohne die
+    Einstellung horn): die Knoten haben den alten Schluessel angeheftet und lehnen Saga ab (sicher, aber still). Fuer den
+    Hinweis im Admin-Bereich (Anrufe) merken, ab wann - aeltere gekoppelte Knoten muessen neu gekoppelt werden."""
+    if c.execute("SELECT 1 FROM horn_node WHERE builtin=0 AND removed IS NULL LIMIT 1").fetchone():
+        c.execute("INSERT INTO setting (k, v) VALUES ('horn_rekey', ?) ON CONFLICT (k) DO UPDATE SET v=EXCLUDED.v",
+                  (json.dumps({"at": time.time()}),))
+        print("horn: neuer Saga-Signaturschluessel - gekoppelte Knoten muessen neu gekoppelt werden", flush=True)
+
+
+def rekey_nodes(c):
+    """Gekoppelte Knoten von vor dem letzten Schluesselwechsel, die nicht verbunden sind (Admin-Hinweis)."""
+    rk = auth.settings().get("horn_rekey")
+    at = rk.get("at") if isinstance(rk, dict) else None
+    if not isinstance(at, (int, float)):
+        return []
+    return sorted(r[1] for r in c.execute("SELECT id, name FROM horn_node WHERE builtin=0 AND removed IS NULL AND created < ?",
+                                           (at,)).fetchall() if r[0] not in _CONNS)
 
 
 def _dec_horn(raw):
@@ -412,11 +434,25 @@ def _ip(v, fam):
     return str(a) if a.version == fam and not (a.is_multicast or a.is_unspecified) else ""
 
 
+_ORIGIN = re.compile(r"https://(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*"
+                     r"|\[[0-9a-f:.]{2,45}\])(?::([0-9]{1,5}))?", re.I | re.A)
+
+
+def https_origin(u):
+    """u, wenn es genau ein Ursprung https://host[:port] ist (Hostzeichen, IPv6 in Klammern), sonst None: keine Wildcards,
+    kein Leer-/Steuerzeichen, kein Pfad, keine Anfrage, keine Zugangsdaten. Landet in der CSP (connect-src) und in Kopfzeilen."""
+    if not isinstance(u, str) or len(u) > 300:
+        return None
+    m = _ORIGIN.fullmatch(u)
+    if not m or (m.group(1) and not 0 < int(m.group(1)) < 65536):
+        return None
+    return u
+
+
 def _clean_hello(h):
     name = str(h.get("name") or "").strip().lower()[:253]
     url = str(h.get("url") or "").strip().rstrip("/")[:300]
-    pu = urlparse(url)
-    if not name or pu.scheme != "https" or not pu.netloc:
+    if not name or not https_origin(url):
         return None
     cert = h.get("cert") if isinstance(h.get("cert"), dict) else {}
     upd = h.get("upd") if isinstance(h.get("upd"), dict) else {}
@@ -785,7 +821,7 @@ def _csp_extra():
                 us = sorted({n["url"] for n in nodes(c) if n.get("url")})
             if HOOKS.get("csp"):                        # P10: geteilte Knoten verbundener Server (Teilen an)
                 us = sorted(set(us) | set(HOOKS["csp"]()))
-            v = "".join(f" {u} {'wss' + u[5:]}" for u in us if u.startswith("https://"))
+            v = "".join(f" {u} {'wss' + u[5:]}" for u in sorted({o for o in map(https_origin, us) if o}))
     except Exception:  # noqa: BLE001 - Datenbank kurz weg: ohne Zusatz
         v = _CSP["v"]
     _CSP.update(t=now, v=v)

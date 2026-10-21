@@ -214,7 +214,7 @@ func TestKaskadeEcht(t *testing.T) {
 		return ctokPrefix + p + "." + base64.RawURLEncoding.EncodeToString(ed25519.Sign(sk, []byte(ctokDomain+p)))
 	}
 	cmd := func(bridge, peerPub string) cascadeCmd {
-		return cascadeCmd{Bridge: bridge, URL: "https://" + b.mux.Addr().String(), Peer: b.cfg.Name, PeerPub: peerPub,
+		return cascadeCmd{Bridge: bridge, URL: "https://" + b.mux.Addr().String(), Peer: b.cfg.Name, PeerPub: peerPub, IPs: []string{"127.0.0.1"},
 			Token: mk(ctokBody{Bridge: bridge, Node: b.cfg.Name, Room: "raum-bbbb", Role: "accept", PeerNode: a.cfg.Name, PeerPub: pa}),
 			Mine:  mk(ctokBody{Bridge: bridge, Node: a.cfg.Name, Room: "raum-aaaa", Role: "dial", PeerNode: b.cfg.Name, PeerPub: peerPub})}
 	}

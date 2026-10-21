@@ -24,8 +24,8 @@ require (
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/sctp v1.12.0 // indirect
 	github.com/pion/srtp/v3 v3.1.3 // indirect
-	github.com/pion/stun/v4 v4.0.1 // indirect
-	github.com/pion/transport/v5 v5.1.1 // indirect
+	github.com/pion/stun/v4 v4.0.1
+	github.com/pion/transport/v5 v5.1.1
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/text v0.34.0 // indirect

@@ -18,6 +18,7 @@ Das Heim des Anrufs (fuehrender Server, lead) koordiniert. Ablauf fuer ein Gerae
 Grenzen je verbundenem Server (horn_share, Admin-Bereich "Foederation"): Standard 10 Teilnehmende und 20 Mbit/s je
 Richtung (calls.share_legs / calls.share_mbit), Erlaubt-Liste (allowed), Notaus (off: Knoten entfernen sofort alle
 Teilnehmenden und Bruecken dieses Servers, keine neuen Token). Das Kontingent gilt fuer direkte Beine und Bruecken."""
+import re
 import threading
 import time
 
@@ -142,7 +143,7 @@ def hello_in(pid, d):
     """Adressen der geteilten Knoten des Servers pid merken (fuer unsere CSP)."""
     if not isinstance(d, dict) or not isinstance(d.get("horn_shared"), list):
         return
-    urls = sorted({u for u in d["horn_shared"][:8] if _https(u) and "'" not in u and ";" not in u and "," not in u})
+    urls = sorted({u for u in d["horn_shared"][:8] if _https(u)})
     cur = auth.settings(fresh=True).get("horn_remote") or {}
     cur = dict(cur) if isinstance(cur, dict) else {}
     if cur.get(str(pid)) == urls:
@@ -254,7 +255,18 @@ def _leg_of(c, peer, d):
 
 
 def _https(u):
-    return isinstance(u, str) and u.startswith("https://") and len(u) < 300 and "\n" not in u and " " not in u
+    """Knotenadresse: genau ein Ursprung https://host[:port] (horn.https_origin)."""
+    return bool(horn.https_origin(u))
+
+
+CTOK_MAX = 4096                         # Hoechstlaenge eines Kaskaden-Tokens (wie der Knoten, bifrost.go ctokMaxLen)
+_CTOK = re.compile(r"c1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", re.A)
+
+
+def ctok_ok(tok):
+    """Fremdes Kaskaden-Token: geht unveraendert in eine Kopfzeile der Waehlanfrage unseres Knotens - nur Base64url und
+    Punkte, feste Hoechstlaenge (kein CR/LF)."""
+    return isinstance(tok, str) and 8 <= len(tok) <= CTOK_MAX and bool(_CTOK.fullmatch(tok))
 
 
 def op_horn(c, peer, d):
@@ -322,16 +334,17 @@ def op_horn_nodes(c, peer, d):
 
 def _dial_ok(u):
     """Darf unser Knoten diese Adresse anwaehlen? Oeffentliche Adressen immer, interne nur wie bei der Foederation
-    (Admin: "Freigegebene interne Hosts") - das Heim soll unseren Knoten nicht ins eigene Netz schicken koennen."""
+    (Admin: "Freigegebene interne Hosts") - das Heim soll unseren Knoten nicht ins eigene Netz schicken koennen.
+    -> gepruefte IP-Adressen (der Knoten waehlt genau diese, kein erneutes DNS: Rebinding) oder [] (abgelehnt)."""
     import socket
     from urllib.parse import urlparse
     try:
         p = urlparse(u)
         host, port = p.hostname, p.port or 443
-        ips = {i[4][0] for i in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)}
+        ips = sorted({i[4][0].split("%")[0] for i in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)})
     except (OSError, ValueError, UnicodeError):
-        return False
-    return bool(ips) and all(F._ip_ok(ip, host, port) for ip in ips)
+        return []
+    return ips[:8] if ips and all(F._ip_ok(ip, host, port) for ip in ips) else []
 
 
 def op_horn_cascade(c, peer, d):
@@ -343,12 +356,13 @@ def op_horn_cascade(c, peer, d):
         return 403, {"error": "off"}
     bid, name, peer_name, ppub, tok = (d.get(k) for k in ("bridge", "node", "peer", "peer_pub", "token"))
     if not all(isinstance(x, str) and 8 <= len(x) <= 4096 for x in (bid, name, peer_name, ppub, tok)) or not _https(d.get("url")) \
-            or len(ppub) != 44 or len(bid) > 64 or not tok.startswith("c1."):
+            or len(ppub) != 44 or len(bid) > 64 or not ctok_ok(tok):
         return 400, {"error": "bad request"}
     n = horn.node_named(c, name[:253])
     if not n or n["id"] not in horn._CONNS:
         return 409, {"error": "node"}
-    if not _dial_ok(d["url"]):
+    ips = _dial_ok(d["url"])
+    if not ips:
         F.log(c, "call.forged", peer, "horn_cascade", throttle=(peer["id"], "chorncasc"))
         return 403, {"error": "address"}
     if not c.execute("SELECT 1 FROM chat_call_leg WHERE call_id=? AND node=? AND state='active' AND peer_id IS NULL LIMIT 1",
@@ -358,7 +372,7 @@ def op_horn_cascade(c, peer, d):
     if st == "up":
         return 200, {"ok": True, "st": st}
     mine = horn.ctoken("dial", bid, n["name"], horn.call_ref(call["id"], n["id"]), peer_name, ppub)
-    msg = {"t": "cascade", "bridge": bid, "url": d["url"], "peer": peer_name, "peer_pub": ppub, "token": tok, "mine": mine}
+    msg = {"t": "cascade", "bridge": bid, "url": d["url"], "ips": ips, "peer": peer_name, "peer_pub": ppub, "token": tok, "mine": mine}
     c.after_commit(lambda: horn.send(n["id"], msg))
     _MINE.setdefault(call["id"], set()).add((n["id"], bid))
     print(f"horn: Kaskade {bid[:8]} fuer {peer['host']}: Knoten {n['name']} -> {peer_name}", flush=True)

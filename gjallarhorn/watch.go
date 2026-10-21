@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -55,6 +56,9 @@ func (b binDir) promote() {
 		return
 	}
 	ver, err := b.check("next")
+	if err == nil && !newerThan(ver, version) {
+		err = fmt.Errorf("version %s nicht neuer als das Image (%s)", ver, version)
+	}
 	if err != nil {
 		log.Printf("waechter: bin/next abgelehnt (%v) - verworfen", err)
 		for _, n := range []string{"next", "next.sig", "next.ver"} {
@@ -82,6 +86,10 @@ func (b binDir) pick(self string) (string, string) {
 		return self, ""
 	}
 	if ver == readTrim(b.p("bad")) {
+		return self, ""
+	}
+	if !newerThan(ver, version) { // nach einem Image-Update: nie ein aelteres (oder gleiches) bin/current statt des Images
+		log.Printf("waechter: bin/current (%s) nicht neuer als das Image (%s) - Image-Binaer", ver, version)
 		return self, ""
 	}
 	return b.p("current"), ver

@@ -102,3 +102,110 @@ func validVersion(v string) bool {
 	}
 	return v[0] >= '0' && v[0] <= '9'
 }
+
+// cmpVersion: SemVer-Rangfolge (-1: a aelter, 0: gleich, 1: a neuer), Vorabversionen vor der Freigabe
+// (2.5.0-rc.2 < 2.5.0-rc.10 < 2.5.0). ok=false, wenn eine Seite keine Version X.Y.Z[-vorab] ist.
+func cmpVersion(a, b string) (int, bool) {
+	pa, oka := parseVersion(a)
+	pb, okb := parseVersion(b)
+	if !oka || !okb {
+		return 0, false
+	}
+	for i := 0; i < 3; i++ {
+		if pa.core[i] != pb.core[i] {
+			return cmpInt(pa.core[i], pb.core[i]), true
+		}
+	}
+	switch {
+	case len(pa.pre) == 0 && len(pb.pre) == 0:
+		return 0, true
+	case len(pa.pre) == 0:
+		return 1, true
+	case len(pb.pre) == 0:
+		return -1, true
+	}
+	for i := 0; i < len(pa.pre) && i < len(pb.pre); i++ {
+		if c := cmpIdent(pa.pre[i], pb.pre[i]); c != 0 {
+			return c, true
+		}
+	}
+	return cmpInt(len(pa.pre), len(pb.pre)), true
+}
+
+type semver struct {
+	core [3]int
+	pre  []string
+}
+
+func parseVersion(v string) (semver, bool) {
+	var out semver
+	if !validVersion(v) {
+		return out, false
+	}
+	core, pre, hasPre := strings.Cut(v, "-")
+	parts := strings.Split(core, ".")
+	if len(parts) != 3 {
+		return out, false
+	}
+	for i, p := range parts {
+		n, ok := numIdent(p)
+		if !ok {
+			return out, false
+		}
+		out.core[i] = n
+	}
+	if hasPre {
+		for _, id := range strings.Split(pre, ".") {
+			if id == "" {
+				return out, false
+			}
+			out.pre = append(out.pre, id)
+		}
+	}
+	return out, true
+}
+
+func numIdent(s string) (int, bool) {
+	if s == "" || len(s) > 9 {
+		return 0, false
+	}
+	n := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return 0, false
+		}
+		n = n*10 + int(s[i]-'0')
+	}
+	return n, true
+}
+
+// cmpIdent: Vorab-Kennung; Zahlen numerisch und vor Text, Text in ASCII-Folge.
+func cmpIdent(a, b string) int {
+	na, oka := numIdent(a)
+	nb, okb := numIdent(b)
+	switch {
+	case oka && okb:
+		return cmpInt(na, nb)
+	case oka:
+		return -1
+	case okb:
+		return 1
+	}
+	return strings.Compare(a, b)
+}
+
+func cmpInt(a, b int) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	}
+	return 0
+}
+
+// newerThan: v ist eine gueltige Version und neuer als ref (Downgrade-Schutz fuer Update und Waechter).
+func newerThan(v, ref string) bool {
+	c, ok := cmpVersion(v, ref)
+	return ok && c > 0
+}

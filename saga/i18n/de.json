@@ -1513,6 +1513,7 @@
  "Knoten": "Knoten",
  "Knoten entfernt. Sein Schlüssel ist gesperrt, laufende Anrufe ziehen um.": "Knoten entfernt. Sein Schlüssel ist gesperrt, laufende Anrufe ziehen um.",
  "Knoten mit diesem Server teilen erlaubt": "Knoten mit diesem Server teilen erlaubt",
+ "Knoten müssen neu gekoppelt werden: Der Signaturschlüssel von Saga hat sich geändert (SECRET_KEY gewechselt oder Wiederherstellung ohne Gjallarhorn-Einstellungen). Diese Knoten lehnen Saga deshalb ab: {names}. Knoten entfernen, auf dem Knoten HORN_DATA leeren und mit „Erweitern“ neu koppeln.": "Knoten müssen neu gekoppelt werden: Der Signaturschlüssel von Saga hat sich geändert (SECRET_KEY gewechselt oder Wiederherstellung ohne Gjallarhorn-Einstellungen). Diese Knoten lehnen Saga deshalb ab: {names}. Knoten entfernen, auf dem Knoten HORN_DATA leeren und mit „Erweitern“ neu koppeln.",
  "Knoten wird geleert – laufende Anrufe ziehen auf andere Knoten um.": "Knoten wird geleert – laufende Anrufe ziehen auf andere Knoten um.",
  "Knoten {name} entfernen? Sein Schlüssel wird gesperrt, laufende Anrufe ziehen auf andere Knoten um und die DNS-Einträge werden gelöscht.": "Knoten {name} entfernen? Sein Schlüssel wird gesperrt, laufende Anrufe ziehen auf andere Knoten um und die DNS-Einträge werden gelöscht.",
  "Knoten {name} entfernt": "Knoten {name} entfernt",

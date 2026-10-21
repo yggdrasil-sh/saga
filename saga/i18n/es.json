@@ -1513,6 +1513,7 @@
  "Knoten": "Nodos",
  "Knoten entfernt. Sein Schlüssel ist gesperrt, laufende Anrufe ziehen um.": "Nodo eliminado. Su clave está bloqueada y las llamadas en curso se trasladan.",
  "Knoten mit diesem Server teilen erlaubt": "Compartir nodos con este servidor permitido",
+ "Knoten müssen neu gekoppelt werden: Der Signaturschlüssel von Saga hat sich geändert (SECRET_KEY gewechselt oder Wiederherstellung ohne Gjallarhorn-Einstellungen). Diese Knoten lehnen Saga deshalb ab: {names}. Knoten entfernen, auf dem Knoten HORN_DATA leeren und mit „Erweitern“ neu koppeln.": "Hay que volver a vincular nodos: la clave de firma de Saga ha cambiado (SECRET_KEY cambiada o restauración sin los ajustes de Gjallarhorn). Por eso estos nodos rechazan Saga: {names}. Elimina los nodos, vacía HORN_DATA en cada nodo y vincúlalos de nuevo con «Ampliar».",
  "Knoten wird geleert – laufende Anrufe ziehen auf andere Knoten um.": "Vaciando el nodo: las llamadas en curso pasan a otros nodos.",
  "Knoten {name} entfernen? Sein Schlüssel wird gesperrt, laufende Anrufe ziehen auf andere Knoten um und die DNS-Einträge werden gelöscht.": "¿Eliminar el nodo {name}? Su clave se bloquea, las llamadas en curso pasan a otros nodos y se borran los registros DNS.",
  "Knoten {name} entfernt": "Nodo {name} eliminado",

@@ -279,7 +279,7 @@ def _ev_react(c, peer, ev):
     if not FC._rate_ok("creact", peer["host"], FED_REACT_RATE):
         return "retry"
     ch = FC._from_home(c, peer, ev)
-    if not ch:
+    if not ch or not x3_ok(c, ch):                     # Einstellung chat_v3 aus (o. a.): weder speichern noch ausliefern
         return "ignored"
     got = _r_check(c, peer, ch, ev)
     if not got:
@@ -483,7 +483,7 @@ def _ev_edit(c, peer, ev):
     if not FC.peer_ok(peer) or not F.feature(peer, "chat3"):
         return "ignored"
     ch = FC._from_home(c, peer, ev, lock=True)
-    if not ch:
+    if not ch or not x3_ok(c, ch):                     # Einstellung chat_v3 aus (o. a.): weder speichern noch ausliefern
         return "ignored"
     st, _ = _edit_fed(c, peer, ch, ev, home=False)
     return "ok" if st == 200 else "ignored"

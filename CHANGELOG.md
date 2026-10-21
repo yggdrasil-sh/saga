@@ -16,6 +16,28 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Sicherheit (Prüfung 2.5)
+- **Kaskade: fremdes Token streng geprüft.** Das Kaskaden-Token eines verbundenen Servers geht unverändert in eine
+  Kopfzeile der Wählanfrage des eigenen Knotens. Saga (`fed_horn.ctok_ok`) und der Knoten (`bifrost.go peerTokenOK`, vor
+  jedem Wählen) nehmen nur noch `c1.<Base64url>.<Base64url>` bis 4096 Zeichen – CR/LF konnten vorher Kopfzeilen einschleusen.
+- **Kaskade: kein DNS-Rebinding.** Saga gibt dem Knoten die geprüften Adressen des Wählziels mit (`ips`), der Knoten wählt
+  genau diese (Name nur für SNI/Host). Ohne Adressen löst der Knoten selbst auf und nimmt nur öffentliche (auch `::ffff:`,
+  NAT64, 6to4 geprüft); Kaskaden zu eigenen Knoten (`own`) bleiben im LAN möglich.
+- **CSP nur aus geprüften Ursprüngen.** Adressen geteilter Knoten (hello `horn_shared`) und Knoten-URLs (`_clean_hello`)
+  müssen genau `https://host[:port]` sein (keine Wildcards, kein Leerraum, kein Pfad); der CSP-Zusatz nimmt nur solche.
+- **Kopplung: 424 ohne Netzdetails.** Die Antwort nennt je Adressfamilie nur einen Fehlercode (`timeout`, `unreachable_tcp`,
+  `tls`, `http`, `signatur`, `adresse`); Details stehen nur im Prüfprotokoll des Admin-Bereichs.
+- **chat_v3 aus wirkt auch auf föderierte Ereignisse:** eingehende `chat.react`/`chat.msg.edit` werden dann ignoriert
+  (nicht gespeichert, nicht ausgeliefert).
+- **Wächter/Selbst-Update ohne Downgrade:** nur Versionen neuer als die laufende (SemVer, rc-Ordnung); der Wächter startet nie
+  ein älteres oder gleiches `bin/current` als das Image-Binär und verwirft ein älteres `bin/next`.
+- **TURN-Relay des Knotens enger:** keine TCP-Allocations (RFC 6062) mehr; UDP-Relay nur an die Relay-Adresse und dort nur an
+  Ports der ICE-Agenten des TURN-Wegs. Vorher erreichte ein Gerät mit gültigem Medien-Token jeden TCP-/UDP-Dienst auf der
+  Relay-Adresse (Standard 127.0.0.1). CreatePermission/ChannelBind auf andere Adressen (auch `::ffff:`, intern) abgelehnt.
+- **Hinweis „Knoten müssen neu gekoppelt werden“** (Admin, Anrufe), wenn Saga einen neuen Signaturschlüssel erzeugt hat,
+  obwohl schon Knoten gekoppelt waren (SECRET_KEY gewechselt, Wiederherstellung ohne Gjallarhorn-Einstellungen).
+- **Rate-Limit beim Koppeln:** volle Speicher verdrängen die am längsten unbenutzten Einträge statt alles zu leeren.
+
 ### Chat-Stufe 3 (in Arbeit, Konzept „Krypto v3 über Handles“)
 - **Testvektoren für Reaktionen und Bearbeiten:** `tests/vectors/chat_v3.json` mit Schlüsselableitung, AD und Signatur einer
   Reaktion, dem Inhalt einer Bearbeitung, Fällen, die jede Umsetzung ablehnen muss (fremder Absender, falsches `edit_of`,

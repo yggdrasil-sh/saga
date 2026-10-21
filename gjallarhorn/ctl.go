@@ -67,14 +67,16 @@ type ctlMsg struct {
 	Err      string          `json:"err,omitempty"`
 	Sig      string          `json:"sig,omitempty"`
 	// P9/P10: Kaskade und Kontingente
-	Bridge  string `json:"bridge,omitempty"`
-	URL     string `json:"url,omitempty"`
-	Peer    string `json:"peer,omitempty"`
-	PeerPub string `json:"peer_pub,omitempty"`
-	Token   string `json:"token,omitempty"`
-	Mine    string `json:"mine,omitempty"`
-	Q       string `json:"q,omitempty"`
-	Secs    int    `json:"secs,omitempty"`
+	Bridge  string   `json:"bridge,omitempty"`
+	URL     string   `json:"url,omitempty"`
+	Peer    string   `json:"peer,omitempty"`
+	PeerPub string   `json:"peer_pub,omitempty"`
+	Token   string   `json:"token,omitempty"`
+	Mine    string   `json:"mine,omitempty"`
+	IPs     []string `json:"ips,omitempty"` // P9: von Saga gepruefte Zieladressen der Kaskade (fremder Knoten)
+	Own     bool     `json:"own,omitempty"` // P9: Kaskade zu einem eigenen Knoten derselben Saga
+	Q       string   `json:"q,omitempty"`
+	Secs    int      `json:"secs,omitempty"`
 	// P10: Herkunft der Seiten verbundener Server, mit denen Saga diesen Knoten teilt (CORS, WSS)
 	Origins []string `json:"origins,omitempty"`
 	List    []string `json:"list,omitempty"`
@@ -275,7 +277,7 @@ func (c *ctlClient) session() error {
 		case "ping":
 			c.send(map[string]any{"t": "pong"})
 		case "cascade": // P9: Bruecke zu einem anderen Knoten aufbauen
-			if err := s.cascade(cascadeCmd{Bridge: m.Bridge, URL: m.URL, Peer: m.Peer, PeerPub: m.PeerPub, Token: m.Token, Mine: m.Mine}); err != nil {
+			if err := s.cascade(cascadeCmd{Bridge: m.Bridge, URL: m.URL, Peer: m.Peer, PeerPub: m.PeerPub, Token: m.Token, Mine: m.Mine, IPs: m.IPs, Own: m.Own}); err != nil {
 				log.Printf("bifroest %s: abgelehnt: %v", short(m.Bridge), err)
 				c.send(map[string]any{"t": "bridge", "bridge": m.Bridge, "st": "err", "why": err.Error()})
 			}

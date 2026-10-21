@@ -28,6 +28,7 @@ import ssl
 import struct
 import threading
 import time
+from collections import OrderedDict
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Request
@@ -47,21 +48,24 @@ RELEASE_BASE = "https://github.com/yggdrasil-sh/saga/releases/download"
 NAME_RE = re.compile(r"(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}")
 LABEL_RE = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?")
 CHECK_TIMEOUT = 4.0
-_rl = {}
+RL_MAX = 5000                            # Schluessel im Rate-Limit-Speicher (danach die am laengsten unbenutzten verdraengen)
+_rl = OrderedDict()
 _rl_lock = threading.Lock()
 
 
 def _rate(kind, key, n, per=60.0):
+    """Hoechstens n Ereignisse je (kind, key) in per Sekunden. Voll: die am laengsten unbenutzten Schluessel fallen weg,
+    nie der ganze Speicher (viele Quelladressen duerfen die Kopplungs-Bremse nicht zuruecksetzen)."""
     now = time.time()
+    k = (kind, key)
     with _rl_lock:
-        h = [x for x in _rl.get((kind, key), []) if now - x < per]
-        if len(h) >= n:
-            _rl[(kind, key)] = h
-            return False
-        _rl[(kind, key)] = h + [now]
-        if len(_rl) > 5000:
-            _rl.clear()
-    return True
+        h = [x for x in _rl.get(k, ()) if now - x < per]
+        ok = len(h) < n
+        _rl[k] = h + [now] if ok else h
+        _rl.move_to_end(k)
+        while len(_rl) > RL_MAX:
+            _rl.popitem(last=False)
+    return ok
 
 
 def _json(d, status=200):
@@ -310,9 +314,11 @@ def _addr_ok(ip, fam, src):
     return True
 
 
-def echo_check(name, pub_b64, ip, port, timeout=CHECK_TIMEOUT):
+def echo_check(name, pub_b64, ip, port, timeout=CHECK_TIMEOUT, detail=None):
     """443/TCP pruefen: TLS (ohne SNI, Zertifikat egal) + GET /api/horn/echo; die Antwort muss mit dem Knotenschluessel
-    signiert sein. -> (ok, Fehler)"""
+    signiert sein. -> (ok, Fehlercode): timeout | unreachable_tcp | tls | http | signatur. Netzdetails (Fehlerart,
+    Antwortanfang) nur in detail (Liste, fuer das Admin-Pruefprotokoll), nie an den Aufrufer der Kopplung."""
+    note = detail.append if isinstance(detail, list) else (lambda x: None)
     from cryptography.exceptions import InvalidSignature
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
     nonce = _b64u(secrets.token_bytes(18))
@@ -331,11 +337,19 @@ def echo_check(name, pub_b64, ip, port, timeout=CHECK_TIMEOUT):
                     if not x:
                         break
                     buf += x
-    except (OSError, ssl.SSLError) as ex:
-        return False, type(ex).__name__
+    except (socket.timeout, TimeoutError) as ex:
+        note(f"{ip}: {type(ex).__name__}")
+        return False, "timeout"
+    except ssl.SSLError as ex:
+        note(f"{ip}: {type(ex).__name__} {str(ex)[:80]}")
+        return False, "tls"
+    except OSError as ex:
+        note(f"{ip}: {type(ex).__name__}")
+        return False, "unreachable_tcp"
     head, _, body = buf.partition(b"\r\n\r\n")
     if not head.startswith(b"HTTP/1.1 200"):
-        return False, head[:40].decode("latin-1", "replace")
+        note(f"{ip}: {head[:40].decode('latin-1', 'replace')}")
+        return False, "http"
     try:
         d = json.loads(body.decode())
         Ed25519PublicKey.from_public_bytes(base64.b64decode(pub_b64)).verify(
@@ -371,6 +385,7 @@ def reach(name, pub, v4, v6, port, udp, src="", timeout=CHECK_TIMEOUT):
     """Erreichbarkeit je Adresse -> {v4: bool|None, v6: bool|None, udp: bool|None, err: {...}, at}. None = keine Adresse."""
     out = {"v4": None, "v6": None, "udp": None, "err": {}, "at": time.time()}
     res = {}
+    det = []
 
     def one(fam, ip):
         if not ip:
@@ -378,7 +393,7 @@ def reach(name, pub, v4, v6, port, udp, src="", timeout=CHECK_TIMEOUT):
         if not _addr_ok(ip, fam, src or ip):
             res[fam] = (False, "adresse")
             return
-        res[fam] = echo_check(name, pub, ip, port, timeout)
+        res[fam] = echo_check(name, pub, ip, port, timeout, det)
 
     th = [threading.Thread(target=one, args=(4, v4)), threading.Thread(target=one, args=(6, v6))]
     for x in th:
@@ -393,6 +408,8 @@ def reach(name, pub, v4, v6, port, udp, src="", timeout=CHECK_TIMEOUT):
     if udp:
         ips = [ip for fam, ip in ((4, v4), (6, v6)) if ip and out[f"v{fam}"]]
         out["udp"] = any(udp_check(ip, port) for ip in ips) if ips else False
+    if det:
+        out["detail"] = "; ".join(det)[:300]
     return out
 
 
@@ -477,8 +494,11 @@ def pair_finish(b, src=""):
     with _db() as c, c:
         _progress(c, pid, tcp=rc)
         if not (rc["v4"] or rc["v6"]):
-            log(c, "pair.unreachable", None, name, json.dumps(rc["err"]))
-            return _bad("reach", 424, f"Knoten über 443/TCP nicht erreichbar ({', '.join(f'{k}: {v}' for k, v in rc['err'].items()) or 'keine Adresse'})")
+            log(c, "pair.unreachable", None, name, json.dumps({**rc["err"], **({"detail": rc["detail"]} if rc.get("detail") else {})}))
+            # nur Fehlercodes an den Knoten (Netzdetails der geprueften Adresse stehen im Pruefprotokoll des Admin-Bereichs)
+            why = {k: v for k, v in rc["err"].items() if k in ("v4", "v6")}
+            return _json({"error": f"Knoten über 443/TCP nicht erreichbar ({', '.join(f'{k}: {v}' for k, v in why.items()) or 'keine Adresse'})",
+                          "code": "reach", "reach": why}, 424)
         r = c.execute("SELECT used FROM horn_pair WHERE token_hash=? FOR UPDATE", (h,)).fetchone()
         if not r or r[0]:
             return _bad("used", 403, "Kopplungs-Code schon benutzt")
@@ -782,6 +802,7 @@ def admin_state():
                 c.execute("SELECT id, name, expires FROM horn_pair WHERE used IS NULL AND expires > ? ORDER BY created", (now,)).fetchall()]
         logs = [{"ts": r[0], "name": r[1], "event": r[2], "detail": r[3]} for r in
                 c.execute("SELECT ts, name, event, detail FROM horn_log ORDER BY id DESC LIMIT 20").fetchall()]
+        rekey = horn.rekey_nodes(c)
     out = []
     for n in ns:
         ld = (horn._LIVE.get(n["id"]) or {}).get("load") or n.get("load") or {}
@@ -800,7 +821,7 @@ def admin_state():
                     # P9/P10: Bruecken (Kaskade) und Kontingente verbundener Server laut letzter Lastmeldung
                     "bridges": (horn._LIVE.get(n["id"]) or {}).get("bridges") or {}, "quotas": (horn._LIVE.get(n["id"]) or {}).get("quotas") or {}})
     cf = cloudflare.conf()
-    return {"nodes": out, "pending": pend, "log": logs, "hint": busy_hint(out, now), "release_key": bool(release_pub()),
+    return {"nodes": out, "pending": pend, "log": logs, "hint": busy_hint(out, now), "release_key": bool(release_pub()), "rekey": rekey,
             "cf": {"set": bool(cf.get("token")), "mask": cloudflare.mask(cf.get("token") or ""), "zone": cf.get("zone") or "",
                    "check": cf.get("check") or {}},
             "suffix": suffix(), "image": image_ref(), "saga": saga_origin(), "builtin_on": horn.builtin_on(), "horn_on": horn.horn_on()}

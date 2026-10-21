@@ -227,6 +227,7 @@ def main():
             part_a(adm, anna, bert, ch, bc, ada)
             part_b(adm, anna, bert, ben, ch, bc, nc)
             part_c(adm, anna, bert, ch, bc)
+            part_sec()
         rc = 0
     except Exception as ex:  # noqa: BLE001
         import traceback
@@ -251,6 +252,45 @@ def main():
     print("PERF " + json.dumps(PERF))
     print(f"\nFOEDERATION-HORN {sum(T.res)}/{len(T.res)}", "- ALLES GRUEN" if all(T.res) and rc == 0 else "- FEHLER")
     sys.exit(0 if all(T.res) and rc == 0 else 1)
+
+
+SEC_CODE = r"""
+import auth
+from db import connect
+from saga import fed_horn as FH, horn as H, federation as F
+with connect() as c:
+    pid = [p["id"] for p in F.peers(c) if p["host"] == "127.0.0.1:8695"][0]
+evil = ["https://*", "https://a.example\t*", "https://*.example", "https://b.example/pfad", "https://c.example:99999",
+        "https://u:p@d.example", "https://e.example?x=1", "https://f.example\r\nX: y", "http://g.example", "https://h.example ",
+        "https://i.example;", "https://j.example'", "https://k.example,l.example", "https://[::1]x"]
+FH.hello_in(pid, {"horn_shared": evil + ["https://127.0.0.1:8481", "https://ok.example:8443", "https://[2001:db8::1]:443"]})
+stored = (auth.settings(fresh=True).get("horn_remote") or {}).get(str(pid))
+H._CSP.update(t=0.0)
+csp = H._csp_extra()
+hello = [bool(H._clean_hello({"name": "n.example", "url": u, "pub": "x"})) for u in evil if u.strip() == u] + \
+        [bool(H._clean_hello({"name": "n.example", "url": "https://n.example:8443/", "pub": "x"}))]
+tok = [FH.ctok_ok(x) for x in ("c1.aaaa.bbbb\r\nX-Eingeschleust: ja", "c1.aa aa.bb", "c1.aaaa.bbbb.cc", "c1." + "a" * 4100 + ".b",
+                                "c2.aaaa.bbbb", "c1.aa+a.bbbb", "c1.aaaa-_09.bbbb_-")]
+dial = [FH._dial_ok("https://127.0.0.1:8481"), FH._dial_ok("https://10.0.0.1:443"), FH._dial_ok("https://[::ffff:10.0.0.1]:443"),
+        FH._dial_ok("https://[::ffff:127.0.0.1]:8482")]
+print(json.dumps({"stored": stored, "csp": csp, "hello": hello, "tok": tok, "dial": dial}))
+"""
+
+
+def part_sec():
+    """Pruefung 2.5: F3 (CSP nur aus geprueften Urspruengen), F1 (Kaskaden-Token streng), F2 (_dial_ok liefert die
+    gepruefte Adresse fuer den Knoten). Im Kontext von B (freigegeben: 127.0.0.1:8695 und :8481)."""
+    r = T.py("b", SEC_CODE)
+    st = r["stored"] or []
+    ok(f"F3: hello_in nimmt nur https://host[:port] ({st})", st == sorted(["https://127.0.0.1:8481", "https://ok.example:8443",
+                                                                            "https://[2001:db8::1]:443"]))
+    ok(f"F3: CSP-Zusatz ohne Wildcard/Leerraum/Pfad ({r['csp'][:200]!r})", "*" not in r["csp"] and "\t" not in r["csp"]
+       and "/pfad" not in r["csp"] and "https://ok.example:8443 wss://ok.example:8443" in r["csp"])
+    ok(f"F3: Knoten-hello mit ungueltiger Adresse abgewiesen ({r['hello']})", not any(r["hello"][:-1]) and r["hello"][-1])
+    ok(f"F1: Kaskaden-Token nur Base64url und Punkte, Hoechstlaenge ({r['tok']})", r["tok"] == [False] * 6 + [True])
+    d = r["dial"]
+    ok(f"F2: _dial_ok -> gepruefte Adresse (freigegeben), intern/gemappt ohne Freigabe abgelehnt ({d})",
+       d[0] == ["127.0.0.1"] and d[1] == [] and d[2] == [] and d[3] == [])
 
 
 def start_call(u, ch):
