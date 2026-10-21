@@ -139,7 +139,9 @@ def _public_path(path):
 
 @app.middleware("http")
 async def canonical_host(request: Request, call_next):
-    if CANONICAL and request.url.path != "/healthz":
+    # /internal/...: nur saga-media ueber 127.0.0.1 (mit internem Schluessel) - nie umleiten, sonst bekommt z. B. die
+    # Abfrage /internal/horn/conf nur 308 und der eingebaute Knoten startet nie
+    if CANONICAL and request.url.path != "/healthz" and not request.url.path.startswith("/internal/"):
         # Reverse Proxys, die den Host umschreiben, liefern den oeffentlichen Namen in X-Forwarded-Host.
         # Unkritisch: der Header entscheidet nur OB umgeleitet wird - das Ziel ist immer die feste BASE_URL.
         fwd = (request.headers.get("x-forwarded-host") or "").split(",")[0].strip().lower()
