@@ -862,6 +862,8 @@ def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name=
               (cid, ch["id"], starter, dev, media, now, now, now, caps, "horn" if hn else "mesh", lead, lead))
     _leg_put(c, cid, dev, starter, "member", peer_id, caps, name=name, now=now)
     if why and FED is not None:
+        if len(FED.HORN_MESH) > 5000:
+            FED.HORN_MESH.clear()
         FED.HORN_MESH[cid] = why[0]                    # P10: Fall c - Hinweis an alle (call.horn_mesh)
     if node:
         horn.set_leg_node(c, cid, dev, node["id"])
