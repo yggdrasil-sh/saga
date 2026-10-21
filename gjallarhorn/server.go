@@ -155,8 +155,8 @@ type server struct {
 	graves                  map[string]time.Time   // geschlossene Raeume (gesperrt bis)
 	kicked                  map[string]time.Time   // entfernte Teilnehmende "raum|peer" (gesperrt bis)
 	closing                 atomic.Bool
-	capture                 *capture    // nur Tests: Mitschnitt der eingehenden Rahmen (HORN_CAPTURE)
-	ev                      evHub       // P5: Ereigniskanal je Bein (events.go)
+	capture                 *capture // nur Tests: Mitschnitt der eingehenden Rahmen (HORN_CAPTURE)
+	ev                      evHub    // P5: Ereigniskanal je Bein (events.go)
 
 	pubIPs   []string                      // oeffentliche Adressen (Kandidaten)
 	udpCheck atomic.Pointer[netx.UDPCheck] // Ergebnis des UDP-Selbsttests

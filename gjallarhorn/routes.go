@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"embed"
 	"encoding/json"
 	"io"
@@ -361,6 +362,17 @@ type statusWriter struct {
 }
 
 func (w *statusWriter) WriteHeader(c int) { w.code = c; w.ResponseWriter.WriteHeader(c) }
+
+// Unwrap/Hijack: WebSocket-Wege (/probe, P5-Ereigniskanal /api/sfu/leg/{id}/events) brauchen den Hijacker auch mit
+// Zugriffsprotokoll - sonst scheitert das Upgrade mit 500 und der Web-Client bekommt keine Teilnehmenden/Belegung.
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if w.code == 200 {
+		w.code = http.StatusSwitchingProtocols
+	}
+	return http.NewResponseController(w.ResponseWriter).Hijack()
+}
 
 // accessLog: Methode, Pfad, Status und Dauer (HORN_ACCESSLOG=1).
 func accessLog(h http.Handler) http.Handler {
