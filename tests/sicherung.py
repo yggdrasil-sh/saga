@@ -180,6 +180,30 @@ try:
     ok(f"Backup ohne login_lock: laufende Sperre danach weg (vorher {gone}), naechster Start legt die Tabelle leer an",
        okr and gone is None and q("SELECT count(*) FROM login_lock")[0][0] == 0)
 
+    # Backup von 2.4 (vor Migration 15): ohne chat_reaction (Fremdschluessel auf chat_msg) und push_stream_msg
+    # (Fremdschluessel auf push_sub) - einspielbar auf einer 2.5-Datenbank mit Zeilen darin (sonst bricht DROP chat_msg
+    # bzw. push_sub ab); Reaktionen und abgelegte Mitteilungen der aktuellen Datenbank sind danach weg
+    q("DROP TABLE chat_reaction, push_stream_msg")
+    old25 = db.backup("sicherung-vor-2-5")
+    made.append(old25)
+    db.init_schema()
+    q("INSERT INTO chat (kind, created) VALUES ('dm', 0)")
+    q("INSERT INTO chat_msg (id, chat_id, sender_device, ts, created, body_ct, sig) "
+      "SELECT 'm-rx-' || max(id), max(id), 'd', 0, 0, 'x', 'x' FROM chat")
+    q("INSERT INTO chat_reaction (msg_seq, reactor, dev, ts, ct, sig, at) SELECT max(seq), '~a@x', 'd', 0, 'x', 'x', 0 FROM chat_msg")
+    q("INSERT INTO push_sub (uid, kind, endpoint, created) VALUES ('a', 'stream', 'stream:rx-test', 0)")
+    q("INSERT INTO push_stream_msg (sub_id, body, created, expires) SELECT max(id), '\\x00'::bytea, 0, 1 FROM push_sub")
+    try:
+        db.restore(old25)
+        okr = True
+    except RuntimeError as ex:
+        okr, _ = False, print(str(ex)[:300])
+    gone = q("SELECT to_regclass('public.chat_reaction'), to_regclass('public.push_stream_msg')")[0]
+    db.init_schema()
+    ok(f"Backup von 2.4 ohne chat_reaction/push_stream_msg einspielbar (vorher weg {gone}), naechster Start legt sie leer an",
+       okr and gone == (None, None) and q("SELECT count(*) FROM chat_reaction")[0][0] == 0
+       and q("SELECT count(*) FROM push_stream_msg")[0][0] == 0)
+
     # Kommandozeile wie in der Anleitung (python run.py restore <datei>)
     import subprocess
     q("UPDATE note SET title = 'per run.py weg' WHERE id = 1")

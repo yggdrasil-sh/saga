@@ -52,10 +52,12 @@ def b_row(state="ok", load=0.2):
     NB["id"] = nid
     with connect() as c, c:
         c.execute("DELETE FROM horn_node WHERE name=?", (B_NAME,))
-        c.execute("INSERT INTO horn_node (id, name, pub, builtin, url, udp, version, state, load, created, seen) "
-                  "VALUES (?,?,?,0,?,?,?,?,CAST(? AS JSONB),?,?)",
-                  (nid, B_NAME, "dGVzdC1rbm90ZW4tYi0wMDAwMDAwMDAwMDAwMDAwMDA=", f"https://{B_NAME}:{B_PORT}", True, "test", state,
-                   json.dumps({"cpu": load, "legs": 0, "max_legs": 48, "state": state}), time.time(), time.time()))
+        # P6: bereit nur mit passender Version und Zertifikat ("self" = Test-Zertifikat, wie in horn_erweitern)
+        c.execute("INSERT INTO horn_node (id, name, pub, builtin, url, udp, version, state, load, created, seen, cert) "
+                  "VALUES (?,?,?,0,?,?,?,?,CAST(? AS JSONB),?,?,CAST(? AS JSONB))",
+                  (nid, B_NAME, "dGVzdC1rbm90ZW4tYi0wMDAwMDAwMDAwMDAwMDAwMDA=", f"https://{B_NAME}:{B_PORT}", True, HN.VERSION, state,
+                   json.dumps({"cpu": load, "legs": 0, "max_legs": 48, "state": state}), time.time(), time.time(),
+                   json.dumps({"mode": "alpn", "state": "self"})))
     return nid
 
 

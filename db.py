@@ -1098,13 +1098,18 @@ def backup(label="manuell"):
 # legt der naechste Start sie leer an (Bestaetigungen kommen mit dem naechsten Lesen neu, "zuletzt online" fehlt bis dahin).
 # 2.4 (Migration 14, Sicherheitsrunde 2 R1): login_lock - laufende harte Anmelde-Sperren gehoeren zur alten Datenbank; ein
 # aelteres Backup kennt die Tabelle nicht (sonst bliebe eine Sperre bis zu 1 h stehen), ein neueres bringt sie mit.
+# 2.5 (Migration 15, schon im SCHEMA): chat_reaction (Fremdschluessel auf chat_msg) und push_stream_msg (Fremdschluessel
+# auf push_sub) - ein Backup von 2.4 kennt sie nicht (sonst bricht DROP chat_msg bzw. push_sub ab); Reaktionen und
+# abgelegte Mitteilungen gehoeren zu den Nachrichten bzw. Abos der alten Datenbank. Die Gjallarhorn-Tabellen (horn_*) haben
+# keine Fremdschluessel und bleiben bei einem 2.4-Backup stehen (Knotenregister, gesperrte Schluessel).
 _RESTORE_DROP = (b"DROP TABLE IF EXISTS public.note_link, public.note_stale, public.note_derived;\n"
                  b"DROP TABLE IF EXISTS public.note_tseq, public.note_tseq_meta;\n"
                  b"DROP TABLE IF EXISTS public.chat_invite;\n"
                  b"DROP TABLE IF EXISTS public.chat_call_leg, public.chat_call_invite;\n"
                  b"DROP TABLE IF EXISTS public.chat_upload;\n"
                  b"DROP TABLE IF EXISTS public.chat_receipt, public.chat_seen;\n"
-                 b"DROP TABLE IF EXISTS public.login_lock;\n")
+                 b"DROP TABLE IF EXISTS public.login_lock;\n"
+                 b"DROP TABLE IF EXISTS public.chat_reaction, public.push_stream_msg;\n")
 _RESTORE_SET = re.compile(rb"^SET ([a-z_]+) = .*;\r?\n?$")
 
 
