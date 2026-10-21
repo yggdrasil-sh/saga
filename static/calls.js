@@ -169,7 +169,7 @@
   }
   function ring(d) {
     if (!d || !d.call_id || RINGS[d.call_id] || GONE[d.call_id]) return;
-    if (d.group && (C || d.silent)) { runCheck(); return; }        // 2.4 Gruppe: im Gespraech bzw. grosse Gruppe nur die Leiste
+    if (d.group && !d.dm && (C || d.silent)) { runCheck(); return; }   // 2.5 1:1 ueber Knoten (dm): besetzt wie 1:1        // 2.4 Gruppe: im Gespraech bzw. grosse Gruppe nur die Leiste
     if (C && C.id !== d.call_id && CHATS && bridge()) {           // telefoniere schon: besetzt
       api('POST', '/api/calls/' + d.call_id + '/decline', { reason: 'busy' }).catch(function () {});
       return;
@@ -181,7 +181,7 @@
     box.appendChild(av);
     var tx = el('div', 'cl-ring-t');
     tx.appendChild(el('b', null, from.name || from.username || '?'));
-    if (d.group) tx.appendChild(el('span', null, (video ? T('Gruppen-Videoanruf …') : T('Gruppenanruf …')) + (from.chat ? ' · ' + from.chat : '')));
+    if (d.group && !d.dm) tx.appendChild(el('span', null, (video ? T('Gruppen-Videoanruf …') : T('Gruppenanruf …')) + (from.chat ? ' · ' + from.chat : '')));
     else tx.appendChild(el('span', null, video ? T('Videoanruf …') : T('Anruf …')));
     box.appendChild(tx);
     var bar = el('div', 'cl-ring-b');
@@ -646,7 +646,8 @@
   }
 
   // --- Anrufen -----------------------------------------------------------------------------------------------------
-  function start(chat, video) {
+  // direct: 2.5 - nicht ueber den Knoten (Rueckfall nach 409 fallback)
+  function start(chat, video, direct) {
     var b = bridge();
     if (!b) { HK.toast(T('Chats sind auf diesem Gerät noch nicht bereit.')); return; }
     if (C) { HK.toast(T('Du telefonierst gerade schon.')); return; }
@@ -659,6 +660,8 @@
     if (!chat || !chat.peer) return;
     if ((chat.v === 2 || chat.v === 3) && (chat.request || chat.readonly)) { HK.toast(T('Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben.')); return; }
     if (!window.RTCPeerConnection) { HK.toast(T('Dieser Browser kann keine Anrufe (WebRTC fehlt).')); return; }
+    // 2.5: "Alle Anrufe ueber Knoten" (horn_dm) - 1:1 als Raum-Anruf ueber einen Knoten; geht es nicht: direkt wie bisher
+    if (!direct && cfg && cfg.horn_dm && chat.v !== 2 && myCaps().indexOf('horn') >= 0 && myCaps().indexOf('multi') >= 0) { startGroup(chat, video, true, true); return; }
     var c = C = newCall({ chat_id: chat.id, role: 'caller', media: video ? 'video' : 'audio', peer: chat.peer, v2: (chat.v === 2 || chat.v === 3) });
     audioCtx();
     win(c); status(c, T('Kamera und Mikrofon …'));
@@ -883,6 +886,7 @@
     }).then(function (r) {
       var k = r.call;
       R.call = k; R.chat_id = k.chat_id; R.media = k.media; R.kind = k.kind; R.v2 = k.v === 2; R.peer = k.peer; R.title = titleOf(k.chat_id);
+      if (k.dm) { R.dm = true; R.title = (k.peer && k.peer.name) || R.title; }   // 2.5: 1:1 ueber Knoten
       (r.signals || []).forEach(function (s) { R.seen[s.seq] = true; });
       if (k.state === 'ended') throw new Error(T('Der Anruf ist schon beendet.'));
       if (!k.joinable) throw new Error(blockText(k.join_block, k.limit));
@@ -1018,9 +1022,10 @@
     finish(R, T('Anruf auf {dev} übernommen.', { dev: (x && x.dev_name) || T('anderes Gerät') }), 'info');
   }
   // Gruppenanruf beginnen (Gruppen-, freie und Seiten-Chats): erst allein, alle anderen klingeln (call.invite)
-  function startGroup(chat, video, hinted) {
+  // dm (2.5): 1:1 im Direkt-Chat ueber einen Knoten - Anzeige wie 1:1 (Name des Gegenuebers), Rueckfall direkt
+  function startGroup(chat, video, hinted, dm) {
     if (!window.RTCPeerConnection) { HK.toast(T('Dieser Browser kann keine Anrufe (WebRTC fehlt).')); return; }
-    if (chat.call && chat.call.group === false) { HK.toast(chat.call.group_block || T('Gruppenanrufe gehen in diesem Chat nicht.')); return; }
+    if (!dm && chat.call && chat.call.group === false) { HK.toast(chat.call.group_block || T('Gruppenanrufe gehen in diesem Chat nicht.')); return; }
     // 2.5: ohne bereiten Knoten erst der Hinweis auf die Mesh-Grenze (bekannte Einstellungen: vor dem Anruffenster; "Trotzdem
     // anrufen" ist wieder eine Bedienung, Ton und Kamera lassen sich danach freigeben)
     var big = cfg && cfg.limits && chat.members && chat.members.length > (video ? cfg.limits.endpoints_video : cfg.limits.endpoints_audio);
@@ -1031,6 +1036,7 @@
     }
     var R = C = newCall({ chat_id: chat.id, role: 'caller', kind: 'group', media: video ? 'video' : 'audio', v2: (chat.v === 2 || chat.v === 3) });
     R.title = chat.title || chat.name || '';
+    if (dm) { R.dm = true; R.peer = chat.peer || {}; R.title = R.peer.name || R.title; }
     audioCtx(); win(R); status(R, T('Kamera und Mikrofon …'));
     config(true).then(function () {
       if (!cfg.enabled) throw new Error(T('Anrufe sind auf diesem Server abgeschaltet.'));
@@ -1043,7 +1049,8 @@
       if (!live(R)) { s.getTracks().forEach(function (t) { t.stop(); }); throw null; }
       R.local = s; R.media = s.getVideoTracks().length ? 'video' : 'audio'; drawMedia(R); sinkPick(R);
       R.id = X().hex(16);
-      return api('POST', '/api/calls', { id: R.id, chat_id: R.chat_id, media: R.media, device: myDev().id, caps: myCaps() });
+      return api('POST', '/api/calls', Object.assign({ id: R.id, chat_id: R.chat_id, media: R.media, device: myDev().id, caps: myCaps() },
+                                                     dm ? { via: 'horn', dev_class: mobile ? 'mobile' : 'desktop' } : {}));
     }).then(function (r) {
       if (!live(R)) { api('POST', '/api/calls/' + r.call.id + '/end', { reason: 'hangup', device: myDev().id }).catch(function () {}); return; }
       if (r.call.topo === 'horn') hornNew(R, r.call.horn);   // 2.5: ueber einen Knoten
@@ -1057,6 +1064,10 @@
       if (!live(R) || e === null) return;
       var run = e && e.status === 409 && e.data && e.data.running;
       R.id = null;
+      if (dm && e && e.status === 409 && e.data && e.data.fallback === 'direct') {   // 2.5: wie bisher direkt anrufen
+        R.ending = true; finish(R, '', 'info'); closeWin(R); start(chat, video, true); return;
+      }
+      if (dm && e && e.status === 409 && e.data && e.data.busy) { finish(R, T('Besetzt – {name} telefoniert gerade.', { name: R.peer.name || '?' }), 'busy'); return; }
       if (run) { finish(R, '', 'error'); closeWin(R); join(run, 'member', video); return; }
       finish(R, (e && e.message) || T('Anruf beendet'), 'error');
     });
@@ -1147,7 +1158,7 @@
   }
   function runBar(x) {
     var here = bridge() ? myDev().id : null, mine = x.mine || [];
-    var group = x.kind === 'group';
+    var group = x.kind === 'group' && !x.dm;               // 2.5: 1:1 ueber Knoten wie 1:1
     var show = !(C && C.id === x.id) && x.state !== 'ended' && !RINGS[x.id] && (here === null || mine.indexOf(here) < 0)
       && (group ? true : x.state === 'active' && mine.length > 0);
     if (!show) { hideRun(x.id); return; }
@@ -1741,7 +1752,7 @@
   function drawPeer(c) {
     c = roomOf(c);
     if (!c.ui) return;
-    var p = c.kind === 'group' ? { name: c.title || T('Gruppenanruf'), avatar: null } : c.peer || {}, who = c.ui.who; who.textContent = '';
+    var p = c.kind === 'group' && !c.dm ? { name: c.title || T('Gruppenanruf'), avatar: null } : c.peer || {}, who = c.ui.who; who.textContent = '';
     var av = HK.avatarImg(el('span', 'cl-av cl-av-big', (p.name || '?').charAt(0).toUpperCase()), p.avatar, 96); av.setAttribute('aria-hidden', 'true');
     who.appendChild(av); who.appendChild(el('div', 'cl-name', p.name || p.username || ''));
   }
@@ -2014,7 +2025,7 @@
   function hornNew(R, blk) {
     R.horn = { blk: blk || {}, vown: {}, rseq: 0, X: null, L: null, key: null, q: [], peers: {}, known: {}, acks: {}, ackT: null, rekeyT: null, started: false,
                cur: null, next: null, olds: [], seq: 0, bad: {}, sw: null, meas: {}, switches: [], switching: false, retryT: null, retry0: 0,
-               tiles: {}, more: null, view: hornView(), st: {}, stT: null, monT: null, spkT: null, candT: 0, statT: 0, q5: null, net: null,
+               tiles: {}, more: null, view: R.dm ? 'speaker' : hornView(), st: {}, stT: null, monT: null, spkT: null, candT: 0, statT: 0, q5: null, net: null,
                runes: null, runesKey: '', plist: false, rpop: false, spk: null, speaking: {}, rosterT: 0, note: '', sent: 0 };
     return R.horn;
   }
@@ -3110,7 +3121,7 @@
       runCheck();
     } else if (t === 'call.state') {
       // Gruppenanruf "aktiv" heisst nur: zwei sind dabei - die anderen klingeln weiter; "declined": eigene Einladung
-      if (d.state === 'ended' || d.state === 'declined' || (d.state === 'active' && d.kind !== 'group')) unring(d.call_id);
+      if (d.state === 'ended' || d.state === 'declined' || (d.state === 'active' && (d.kind !== 'group' || d.dm))) unring(d.call_id);
       if (d.state === 'ended') hideRun(d.call_id);
       runCheck();
       var c = C;
@@ -3140,7 +3151,7 @@
         else if (x.kind === 'group' && (x.mine || []).length && RINGS[x.id] && !(C && C.id === x.id)) unring(x.id);   // eigenes Geraet ist dabei
         else if (x.kind === 'group' && x.invite === 'ringing' && !(x.mine || []).length && !RINGS[x.id] && !(C && C.id === x.id)
                  && Date.now() / 1000 - x.created < (x.ring_s || 45))
-          ring({ call_id: x.id, chat_id: x.chat_id, media: x.media, from: x.from, group: true, silent: !!x.silent, ring_s: x.ring_s,
+          ring({ call_id: x.id, chat_id: x.chat_id, media: x.media, from: x.from, group: true, dm: !!x.dm, silent: !!x.silent, ring_s: x.ring_s,
                  expires_in: Math.max(5, x.created + (x.ring_s || 45) - Date.now() / 1000) });
         runBar(x);
       });
@@ -3186,9 +3197,12 @@
     var n = 0, go = function () {
       if (!bridge()) { if (++n < 80) return setTimeout(go, 250); HK.toast(T('Zum Annehmen erst Chats auf diesem Gerät einrichten bzw. entsperren.')); return; }
       if (C && C.id === m[1]) return;
-      if (m[2]) answer(m[1], m[2] === 'video');
-      else api('GET', '/api/calls/' + m[1]).then(function (r) {
+      api('GET', '/api/calls/' + m[1]).then(function (r) {
+        var g = r.call.kind === 'group';                // 2.5: Raum-Anruf (auch 1:1 ueber Knoten) = beitreten
+        if (m[2]) { if (g) { history.replaceState(null, '', location.pathname); join(m[1], 'member', m[2] === 'video'); } else answer(m[1], m[2] === 'video'); return; }
         if (r.call.state === 'ringing' && r.call.role === 'callee') ring({ call_id: r.call.id, chat_id: r.call.chat_id, media: r.call.media, from: r.call.peer, expires_in: r.call.expires_in });
+        else if (g && r.call.state !== 'ended' && r.call.invite === 'ringing') ring({ call_id: r.call.id, chat_id: r.call.chat_id, media: r.call.media, from: r.call.from,
+                                                                                      group: true, dm: !!r.call.dm, ring_s: r.call.ring_s, expires_in: r.call.expires_in || r.call.ring_s });
         else { HK.toast(T('Der Anruf ist schon beendet.')); history.replaceState(null, '', location.pathname); }
       }).catch(function () {});
     };

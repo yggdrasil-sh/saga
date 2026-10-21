@@ -707,6 +707,31 @@ Verbindung.
   wie „kein Knoten“ erneut versuchen). Ein Gruppenanruf ohne Knoten mit einem anderen Server trägt `horn_mesh` (Hinweis
   einmal anzeigen).
 
+### 1:1 über Knoten (2.5, „Alle Anrufe über Knoten“)
+
+Admin-Einstellung `calls.horn_all` (Standard aus, Anrufe → Gjallarhorn). Ist sie an (und `calls.horn`), meldet
+`GET /api/calls/config` `horn_dm: true`. Die Geräte sehen sich dann gegenseitig keine IP-Adressen.
+
+- **Anrufen:** Gerät mit `horn` + `multi` schickt im Direkt-Chat `POST /api/calls {id, chat_id, media, device, caps,
+  via: "horn", dev_class?}` **ohne** `signals`. Erfolg: 200 `{call}` wie ein Gruppenanruf über Knoten (`kind: "group"`,
+  `topo: "horn"`, `dm: true`, `horn.candidates`); weiter wie in diesem Abschnitt (Knoten verbinden, `fkey`).
+- **Rückfall:** 409 `{fallback: "direct", horn_block, error}` – es ist nichts angelegt. `horn_block`: `off` (Einstellung
+  aus), `caps` (Gerät ohne horn/multi), `node` (kein Knoten bereit), `peer` (Gegenüber ohne Gerät mit `horn`), `fed`
+  (föderierter Direkt-Chat: vorerst immer direkt). Der Client ruft sofort mit **derselben id** wie bisher direkt an
+  (Angebote je Gerät). Andere 409 wie beim direkten Anruf: `busy` (der Anruf ist angelegt und als „besetzt“ beendet),
+  `incoming` (Gegenüber ruft gerade an).
+- **Ankommend:** `call.invite {…, kind: "group", dm: true}`, Push `call.group` mit `dm: true` (Text wie 1:1, `caller` =
+  Name der anrufenden Person). Anzeige wie 1:1: Name/Avatar aus `from` (Anrufobjekt: `peer` = Gegenüber, `from` =
+  anrufende Person). Annehmen = `POST /api/calls/{id}/join {device, role: "member", caps, dev_class}` ohne `signals`.
+  Ablehnen = `POST /decline {reason: "declined"|"busy"}` beendet den Anruf (beim Anrufer `call.state ended`, Grund
+  `declined`/`busy`). Telefoniert das Gerät gerade: `decline` mit `busy` (wie 1:1).
+- **Zustände:** `call.state active {kind: "group", dm: true}` (andere eigene Geräte hören auf zu klingeln), Ende wie
+  Gruppe (`leave`/`end`; unter zwei Personen endet der Anruf). Chat-Eintrag wie 1:1 (`from`/`to`, ohne `group`/`n`).
+  Besetzt-Prüfung, Klingeldauer und „verpasst“ wie 1:1.
+- **Ältere Clients:** rufen weiter direkt an. 2.4-Geräte des Gegenübers sehen den Anruf als Gruppenanruf; Beitreten
+  scheitert mit `join_block: "old"` („braucht Saga 2.5“). Klingeln wird nur, wenn das Gegenüber mindestens ein Gerät
+  mit `horn` hat.
+
 ## Videos im Chat: saga-file/v2 (2.4, Etappe E2)
 
 Verbindlicher Vertrag für iOS/iPadOS/macOS, Android, Linux und Web (Referenz: `static/chat-video.js`, `static/sw.js`,

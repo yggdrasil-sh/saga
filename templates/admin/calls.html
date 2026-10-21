@@ -16,6 +16,7 @@
   <form method="post" class="adm-form">{{ csrf_field() }}<input type="hidden" name="action" value="horn">
     {{ check(_('Große Gruppenanrufe über Gjallarhorn'), 'horn', hs.horn_on, _('Aus = Gruppenanrufe laufen wie in Saga 2.4 direkt zwischen den Geräten (Mesh, bis 4 mit Video / 6 nur Ton).')) }}
     {{ check(_('Eingebauten Knoten für Anrufe nutzen'), 'horn_builtin', hs.builtin_on, _('Aus = nur weitere Knoten (Erweitern) tragen Anrufe. Ist keiner bereit, laufen Gruppenanrufe im Mesh (bis 4 mit Video / 6 nur Ton). Der eingebaute Knoten braucht einen eigenen Namen per TLS-Durchreiche (SNI) am Reverse Proxy.')) }}
+    {{ check(_('Alle Anrufe über Knoten (auch 1:1)'), 'horn_all', hs.horn_all, _('An = auch Anrufe zu zweit laufen über einen Knoten: Die Geräte sehen gegenseitig keine IP-Adressen, und es gibt weniger NAT-Probleme. Ohne bereiten Knoten bzw. wenn das Gegenüber es nicht kann, läuft der Anruf wie bisher direkt.')) }}
     <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button></div>
   </form>
   {% set ready_n = hs.nodes|selectattr('status', 'equalto', 'ready')|list|length %}

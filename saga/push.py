@@ -487,17 +487,22 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
             # 2.4: Gruppenanruf (saga.calls) - nur solange die Einladung klingelt; aeltere Apps zeigen es als normale
             # Mitteilung (url oeffnet den Chat), 2.4-Apps lassen es klingeln (call, chat, media, group)
             cid = re.sub(r"[^0-9a-f]", "", str((data or {}).get("call") or ""))[:32]
-            r = c.execute("SELECT k.state, k.media, k.chat_id, k.created FROM chat_call k JOIN chat_call_invite i ON i.call_id=k.id "
+            # 2.5: 1:1 ueber einen Knoten (callee gesetzt): Texte wie 1:1, dm: true (Apps zeigen den Namen der anrufenden Person)
+            r = c.execute("SELECT k.state, k.media, k.chat_id, k.created, k.callee FROM chat_call k JOIN chat_call_invite i ON i.call_id=k.id "
                           "WHERE k.id=? AND i.who=? AND i.state='ringing'", (cid, uid)).fetchone()
             if not r or r[0] == "ended":
                 return None
             nm = notify.names(c, [actor]).get(actor) if actor and names else None
-            video = r[1] == "video"
-            body = (t("Gruppen-Videoanruf von {name}", name=nm) if video else t("Gruppenanruf von {name}", name=nm)) if nm else \
-                (t("Gruppen-Videoanruf – beitreten") if video else t("Gruppenanruf – beitreten"))
+            video, dm = r[1] == "video", r[4] == uid
+            if dm:
+                body = (t("Videoanruf von {name}", name=nm) if video else t("Anruf von {name}", name=nm)) if nm else \
+                    (t("Eingehender Videoanruf") if video else t("Eingehender Anruf"))
+            else:
+                body = (t("Gruppen-Videoanruf von {name}", name=nm) if video else t("Gruppenanruf von {name}", name=nm)) if nm else \
+                    (t("Gruppen-Videoanruf – beitreten") if video else t("Gruppenanruf – beitreten"))
             return {"title": title(), "body": body, "url": f"/chats#call-{cid}", "tag": "call-" + cid, "kind": kind,
                     "ts": int(created or time.time()), "call": cid, "chat": r[2], "media": r[1], "caller": nm, "group": True,
-                    "ttl": max(5, int(r[3] + _call_ttl() - time.time()))}
+                    **({"dm": True} if dm else {}), "ttl": max(5, int(r[3] + _call_ttl() - time.time()))}
         else:
             it = notify.item(c, uid, ref) if ref else None
             if not it or (kind != "publish.withdrawn" and not it["access"]):
@@ -594,7 +599,7 @@ def _send_apns(endpoint, msg, voip=False):
         return "fail", "APNs nicht eingerichtet"
     _, env, tok = (endpoint.split(":", 2) + ["", ""])[:3]
     base = (cfg.get("url") or APNS_HOSTS.get(env) or APNS_HOSTS["production"]).rstrip("/")
-    ids = {k: msg[k] for k in ("call", "chat", "media", "caller", "group") if msg.get(k) is not None}
+    ids = {k: msg[k] for k in ("call", "chat", "media", "caller", "group", "dm") if msg.get(k) is not None}
     if voip:
         body = dict({"aps": {}, "url": msg["url"], "kind": msg["kind"], "title": msg["title"], "body": msg["body"]}, **ids)
     else:

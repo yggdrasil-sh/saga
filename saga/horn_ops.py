@@ -35,6 +35,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from db import connect as _db
+import auth
 from saga import cloudflare, horn, notify
 from saga.core import BASE_URL, HERE, t
 from version import VERSION
@@ -862,4 +863,4 @@ def admin_state():
             "cf": {"set": bool(cf.get("token")), "mask": cloudflare.mask(cf.get("token") or ""), "zone": cf.get("zone") or "",
                    "check": cf.get("check") or {}},
             "suffix": suffix(), "image": image_ref(), "saga": saga_origin(), "saga_warn": saga_warn(), "builtin_on": horn.builtin_on(),
-            "horn_on": horn.horn_on()}
+            "horn_on": horn.horn_on(), "horn_all": bool((auth.settings().get("calls") or {}).get("horn_all"))}

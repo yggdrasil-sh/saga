@@ -16,6 +16,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5)
+- **Alle Anrufe über Knoten (auch 1:1).** Neue Admin-Einstellung unter Anrufe → Gjallarhorn (Standard aus): 1:1-Anrufe
+  laufen dann über einen Knoten – die Geräte sehen gegenseitig keine IP-Adressen, weniger NAT-Probleme.
+  `GET /api/calls/config` meldet `horn_dm`; Clients rufen mit `via: "horn"` an und bekommen ohne bereiten Knoten, ohne
+  passendes Gerät beim Gegenüber oder im föderierten Chat 409 `fallback: "direct"` (dann wie bisher direkt). Klingeln,
+  Besetzt, Ablehnen, Push (`dm: true`, Name der anrufenden Person) und Chat-Eintrag wie 1:1. Web-Client nutzt den Weg
+  mit Rückfall; ältere Clients rufen weiter direkt an. Föderierte 1:1-Anrufe bleiben vorerst direkt.
+
 ### Sicherheit (Prüfung 2.5)
 - **Kaskade: fremdes Token streng geprüft.** Das Kaskaden-Token eines verbundenen Servers geht unverändert in eine
   Kopfzeile der Wählanfrage des eigenen Knotens. Saga (`fed_horn.ctok_ok`) und der Knoten (`bifrost.go peerTokenOK`, vor

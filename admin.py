@@ -897,8 +897,10 @@ async def calls_post(request: Request):
     nid = _s(f, "id", 40)
     cur = auth.settings(fresh=True).get("calls") or {}
     if act == "horn":
-        auth.save_setting("calls", {**cur, "horn": _on(f, "horn"), "horn_builtin": _on(f, "horn_builtin")})
-        print(f"admin: {who} Gjallarhorn {'an' if _on(f, 'horn') else 'aus'}, eingebauter Knoten {'an' if _on(f, 'horn_builtin') else 'aus'}", flush=True)
+        auth.save_setting("calls", {**cur, "horn": _on(f, "horn"), "horn_builtin": _on(f, "horn_builtin"),
+                                      "horn_all": _on(f, "horn_all")})
+        print(f"admin: {who} Gjallarhorn {'an' if _on(f, 'horn') else 'aus'}, eingebauter Knoten {'an' if _on(f, 'horn_builtin') else 'aus'}, "
+              f"alle Anrufe ueber Knoten {'an' if _on(f, 'horn_all') else 'aus'}", flush=True)
         _flash(request, t("Gespeichert."))
     elif act == "limits":
         notes = []
