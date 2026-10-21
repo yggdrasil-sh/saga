@@ -1,4 +1,3 @@
 # Oeffentlicher Ed25519-Release-Schluessel fuer Gjallarhorn-Selbst-Updates (Base64, 32 Byte, eine Zeile).
-# Noch nicht gesetzt: die Maintainer erzeugen das Paar mit "python3 tools/horn-release.py keygen", legen den geheimen Teil als
-# GitHub-Secret HORN_RELEASE_KEY ab und tragen die ausgegebene Zeile "pub: ..." hier ein. Ohne Schluessel sind
-# Selbst-Updates der Knoten aus (Docker-Knoten: "docker compose pull && docker compose up -d").
+# Der geheime Teil liegt nur als GitHub-Secret HORN_RELEASE_KEY vor (Signatur in release.yml).
+zPW431AklY/zEzod2tf2T3JkQP7MiYh4jgLbtreXZLE=

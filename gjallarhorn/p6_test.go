@@ -60,8 +60,8 @@ func TestReleaseSignatur(t *testing.T) {
 		}
 	}
 	releaseKeyOverride = ""
-	if releaseKey() != nil {
-		t.Errorf("release.pub im Repo muss leer sein, solange kein Schluessel eingetragen ist")
+	if k := releaseKey(); len(k) != 32 {
+		t.Errorf("release.pub im Repo: gueltiger Ed25519-Schluessel erwartet, Laenge %d", len(k))
 	}
 }
 
@@ -186,9 +186,9 @@ func TestUpdateMaschine(t *testing.T) {
 	if u.state != "manuell" {
 		t.Fatalf("ohne Waechter: %s", u.state)
 	}
-	// ohne Release-Schluessel aus
+	// ohne Release-Schluessel aus ("#" = nur Kommentar, also kein Schluessel)
 	t.Setenv("HORN_WATCHED", "1")
-	releaseKeyOverride = ""
+	releaseKeyOverride = "#"
 	u, _, _ = newTestUpdater(t, srv.URL)
 	u.target("9.9.9", false)
 	u.step(time.Now())

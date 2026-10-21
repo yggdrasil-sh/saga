@@ -11,7 +11,8 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go vet ./... && go test ./internal/... \
+# -short: zeitkritische Tests mit echten WebRTC-Verbindungen nur im vollen Testlauf
+RUN go vet ./... && go test -short ./internal/... \
  && GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X main.version=${VERSION}" -o /out/gjallarhorn . \
  && mkdir -p /out/data/results /out/data/tls
 
