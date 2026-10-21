@@ -241,6 +241,9 @@ func (b *bridge) writeFrame(typ byte, sid int, p []byte) error {
 		binary.BigEndian.PutUint16(h[3:5], uint16(sid))
 		hl = 5
 	}
+	if b.bw.Available() < hl+len(p) { // der Puffer geht gleich an die Verbindung: Frist erneuern (sonst gilt die vom letzten Leeren)
+		_ = b.conn.SetWriteDeadline(time.Now().Add(bridgeWriteLimit))
+	}
 	if _, err := b.bw.Write(h[:hl]); err != nil {
 		b.werr = err
 		return err

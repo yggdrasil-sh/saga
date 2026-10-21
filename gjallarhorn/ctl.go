@@ -75,6 +75,9 @@ type ctlMsg struct {
 	Mine    string `json:"mine,omitempty"`
 	Q       string `json:"q,omitempty"`
 	Secs    int    `json:"secs,omitempty"`
+	// P10: Herkunft der Seiten verbundener Server, mit denen Saga diesen Knoten teilt (CORS, WSS)
+	Origins []string `json:"origins,omitempty"`
+	List    []string `json:"list,omitempty"`
 }
 
 // ctlClient haelt die Verbindung zu Saga.
@@ -213,6 +216,7 @@ func (c *ctlClient) session() error {
 	if w.Origin != "" {
 		s.setOrigin(w.Origin)
 	}
+	s.setOrigins(w.Origins)
 	c.mu.Lock()
 	c.conn, c.out, c.nodeID, c.up = conn, 0, w.NodeID, true
 	c.mu.Unlock()
@@ -275,6 +279,8 @@ func (c *ctlClient) session() error {
 				log.Printf("bifroest %s: abgelehnt: %v", short(m.Bridge), err)
 				c.send(map[string]any{"t": "bridge", "bridge": m.Bridge, "st": "err", "why": err.Error()})
 			}
+		case "origins":
+			s.setOrigins(m.List)
 		case "uncascade":
 			if validRef(m.Bridge) {
 				s.uncascade(m.Bridge)
@@ -579,7 +585,23 @@ func (s *server) originOK(o string) bool {
 	if p := s.origin.Load(); p != nil && *p != "" && o == *p {
 		return true
 	}
+	if m := s.origins.Load(); m != nil && (*m)[o] {
+		return true
+	}
 	return false
+}
+
+// setOrigins (P10): weitere erlaubte Herkuenfte - Seiten verbundener Server, deren Teilnehmende diesen Knoten nutzen
+// duerfen (Teilen an). Die Berechtigung bleibt das Medien-Token.
+func (s *server) setOrigins(list []string) {
+	m := map[string]bool{}
+	for _, o := range list {
+		o = strings.TrimRight(strings.TrimSpace(o), "/")
+		if (strings.HasPrefix(o, "https://") || strings.HasPrefix(o, "http://")) && len(o) < 300 && len(m) < 64 {
+			m[o] = true
+		}
+	}
+	s.origins.Store(&m)
 }
 
 // cors: Saga-Seiten (andere Herkunft) sprechen den Knoten direkt an (/api/sfu/..., /probe). Erlaubt ist nur die
