@@ -1,4 +1,4 @@
-"""Gjallarhorn ueber Servergrenzen (Saga 2.5, Paket P10; Konzept v2 §2.7, §3.4; Entscheidung Sven 3): Knoten in
+"""Gjallarhorn ueber Servergrenzen (Saga 2.5, Paket P10; Konzept v2 §2.7, §3.4; Entscheidung 3): Knoten in
 foederierten Gruppenanrufen, Teilen je Knoten, Kontingente je verbundenem Server.
 
 Das Heim des Anrufs (fuehrender Server, lead) koordiniert. Ablauf fuer ein Geraet eines anderen Servers B:

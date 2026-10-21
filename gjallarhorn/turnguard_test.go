@@ -139,7 +139,7 @@ func TestTURNRelayGuard(t *testing.T) {
 	}
 	bad := []peerAttr{
 		{ip: net.ParseIP("127.0.0.2"), port: 9}, {ip: net.ParseIP("127.1.2.3"), port: 9}, {ip: net.ParseIP("0.0.0.0"), port: 9},
-		{ip: net.ParseIP("10.0.0.1"), port: 53}, {ip: net.ParseIP("172.16.0.1"), port: 53}, {ip: net.ParseIP("192.168.1.1"), port: 53},
+		{ip: net.ParseIP("10.0.0.1"), port: 53}, {ip: net.ParseIP("172.16.0.1"), port: 53}, {ip: net.ParseIP("192.168.0.1"), port: 53},
 		{ip: net.ParseIP("169.254.169.254"), port: 80}, {ip: net.ParseIP("100.64.0.1"), port: 9}, {ip: net.ParseIP("192.0.2.1"), port: 9},
 		{ip: net.ParseIP("::ffff:10.0.0.1"), port: 53, v6: true}, {ip: net.ParseIP("::ffff:127.0.0.2"), port: 9, v6: true},
 		{ip: net.ParseIP("::1"), port: 9, v6: true}, {ip: net.ParseIP("fd00::1"), port: 9, v6: true}, {ip: net.ParseIP("224.0.0.1"), port: 9},
