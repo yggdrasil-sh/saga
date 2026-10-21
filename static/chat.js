@@ -599,13 +599,16 @@
           return kvSet(k, m).catch(function () {});
         }));
       }).then(function () { return { remote: items, changed: n }; });
-    }).catch(function () { return { remote: null, changed: 0 }; });
+    }).catch(function () { return { remote: null, changed: 0, err: true }; });   // Ladefehler: nicht ueberschreiben
   }
   var trustT = null, trustRun = null;
   function trustSoon() { clearTimeout(trustT); trustT = setTimeout(trustPush, 1500); }
   function trustPush() {
     if (trustRun) { trustSoon(); return; }
     trustRun = trustPull().then(function (p) {
+      // Server-Stand nicht geladen (Netz/5xx): nicht mit dem lokalen Stand ueberschreiben - sonst gehen Eintraege
+      // anderer eigener Geraete verloren; beim naechsten Anlass erneut
+      if (p.err) return null;
       return trustLocal().then(function (loc) {
         if (p.remote && canon(p.remote) === canon(loc)) return null;
         if (!Object.keys(loc).length) return null;
