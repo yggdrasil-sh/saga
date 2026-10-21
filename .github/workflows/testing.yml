@@ -36,6 +36,22 @@ jobs:
           echo "full=$FULL" >> "$GITHUB_OUTPUT"
           echo "short=$SHORT" >> "$GITHUB_OUTPUT"
 
+      # Gjallarhorn vorab pruefen: Fehler erscheinen als Annotationen (lesbar ohne Log-Zugriff)
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: gjallarhorn/go.sum
+      - name: Gjallarhorn pruefen (vet, Kurztests)
+        working-directory: gjallarhorn
+        run: |
+          set +e
+          { go vet ./... && go test -short ./internal/...; } > "$RUNNER_TEMP/go.out" 2>&1; rc=$?
+          if [ $rc -ne 0 ]; then
+            { grep -E 'FAIL|panic|\.go:[0-9]+|error' "$RUNNER_TEMP/go.out" | head -25; tail -5 "$RUNNER_TEMP/go.out"; } \
+              | while IFS= read -r l; do echo "::error::$l"; done
+          fi
+          exit $rc
+
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 

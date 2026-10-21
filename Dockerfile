@@ -21,7 +21,8 @@ COPY gjallarhorn/go.mod gjallarhorn/go.sum ./
 RUN go mod download
 COPY gjallarhorn/ ./
 COPY VERSION /VERSION
-RUN go vet ./... && go test ./internal/... \
+# -short: zeitkritische Tests mit echten WebRTC-Verbindungen laufen nur im vollen Testlauf, nicht im Image-Build
+RUN go vet ./... && go test -short ./internal/... \
  && GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X main.version=$(cat /VERSION)" -o /out/gjallarhorn .
 
 FROM python:3.13-slim

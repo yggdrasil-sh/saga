@@ -229,7 +229,8 @@ func ProbeUDP(ctx context.Context, targets []netip.AddrPort) (netip.AddrPort, ti
 			}
 			m := buf[:n]
 			if n >= 20 && binary.BigEndian.Uint16(m) == stunBindingSuccess && string(m[8:20]) == string(req[8:20]) {
-				got <- res{from, time.Since(start)}
+				// Dual-Stack-Sockets melden IPv4 als ::ffff:a.b.c.d - fuer Vergleiche normalisieren
+				got <- res{netip.AddrPortFrom(from.Addr().Unmap(), from.Port()), time.Since(start)}
 				return
 			}
 		}
