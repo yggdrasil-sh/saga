@@ -398,13 +398,14 @@ def roster(c, call, uid=None, legs=None):
     hn = horn_web.nodes_for(c, call["id"]) if is_horn(call) else []
     out = []
     for x in legs:
-        d = {"who": x["who"], "device": x["device"], "dev_name": x["name"] or "", "role": x["role"], "state": x["state"],
+        who = _pp(c, call, x["who"], uid)                 # 2.5: andere in Stufe 3 von Anfang an als Handle
+        d = {"who": who, "device": x["device"], "dev_name": x["name"] or "", "role": x["role"], "state": x["state"],
              "caps": caps_out(x["caps"]), "joined": x["joined"], "me": x["who"] == uid}
         d.update(_who_label(c, x["who"], nm))
         if (fed or v3) and not sharing.is_remote(x["who"]):
-            d["handle"] = FED.FC.my_handle(c, x["who"])
-        if v3 and x["who"] != uid and not sharing.is_remote(x["who"]):   # 2.5: andere als Handle (Schluessel nur ueber v2)
-            d.update(who=d["handle"], host=FED.F.SELF_HOST)
+            d["handle"] = who if who != x["who"] else FED.FC.my_handle(c, x["who"])
+        if who != x["who"]:                            # 2.5: andere als Handle (Schluessel nur ueber v2)
+            d["host"] = FED.F.SELF_HOST
         if x.get("replaces"):
             d["replaces"] = x["replaces"]
         if (cn or x.get("node")) and not (x.get("node") or "").startswith("f:"):   # 2.5: Kennung am Knoten (Spur -> Geraet);
@@ -490,15 +491,16 @@ def _dict(c, call, uid, nm=None, legs=None):
     peer = call["caller"] if group else (call["callee"] if me_caller else call["caller"])
     nm = nm or names(c, [peer])
     now = time.time()
-    pd = {"username": peer, "name": nm.get(peer) or t("Gelöschtes Konto"), "avatar": nm.avatar(peer)}
+    pu = _pp(c, call, peer, uid)                         # 2.5: Format v2 - Gegenueber von Anfang an nur als Handle
+    pd = {"username": pu, "name": nm.get(peer) or t("Gelöschtes Konto"), "avatar": nm.avatar(peer)}
     fed = _fedcall(c, call)
     v3 = _v3(c, call)
     if fed and sharing.is_remote(peer):                  # 2.3: Gegenueber auf einem anderen Server (saga-call/v2, Handles)
         pd.update(handle=FED.FC.handle_of(peer), name=FED.FC.label_of(c, peer)["name"])
     elif (fed and group) or (v3 and peer):
-        pd["handle"] = FED.FC.my_handle(c, peer)
-    if v3 and peer and peer != uid and not sharing.is_remote(peer):    # 2.5: Format v2 - Gegenueber nur als Handle
-        pd.update(username=pd["handle"], host=FED.F.SELF_HOST)
+        pd["handle"] = pu if pu != peer else FED.FC.my_handle(c, peer)
+    if pu != peer:
+        pd["host"] = FED.F.SELF_HOST
     rv = _rv()                                           # vor dem Lesen der Endpunkte (siehe _rv)
     legs = _legs(c, call["id"]) if legs is None else legs
     can, why = _joinable(c, call, uid, legs)
@@ -783,7 +785,7 @@ async def api_call(request: Request):
         devs = _active_devices(c, peer)
         if not devs:
             return _bad(t("{name} hat Chats noch auf keinem Gerät eingerichtet – Anrufe gehen erst danach.",
-                          name=names(c, [peer]).get(peer) or peer), 409)
+                          name=names(c, [peer]).get(peer) or _pp(c, {"chat_id": ch["id"]}, peer, uid)), 409)
         sig = _sealed_map(b.get("signals"))
         if sig is None:
             return _bad(t("ungültige Angabe"))
@@ -796,7 +798,8 @@ async def api_call(request: Request):
             return _bad(t("Diesen Anruf gibt es schon."), 409)
         inc = c.execute("SELECT id FROM chat_call WHERE state='ringing' AND caller=? AND callee=? LIMIT 1", (peer, uid)).fetchone()
         if inc:                                            # Rueckruf, waehrend der Anruf des Gegenuebers noch klingelt
-            return chat._no_store({"error": t("{name} ruft dich gerade an – nimm den Anruf an.", name=names(c, [peer]).get(peer) or peer),
+            return chat._no_store({"error": t("{name} ruft dich gerade an – nimm den Anruf an.",
+                                                     name=names(c, [peer]).get(peer) or _pp(c, {"chat_id": ch["id"]}, peer, uid)),
                                    "incoming": inc[0]}, 409)
         if _busy(c, uid):
             return _bad(t("Du telefonierst gerade schon."), 409)
@@ -812,7 +815,7 @@ async def api_call(request: Request):
         if _busy_other(c, peer, cid):
             _finish(c, call, "busy", now)
             return chat._no_store({"ok": False, "busy": True, "error": t("Besetzt – {name} telefoniert gerade.",
-                                                                         name=names(c, [peer]).get(peer) or peer)}, 409)
+                                                                         name=names(c, [peer]).get(peer) or _pp(c, call, peer, uid))}, 409)
         c.executemany("INSERT INTO chat_call_signal (call_id, from_device, to_device, sealed, created) VALUES (?,?,?,?,?)",
                       [(cid, dev, k, v, now) for k, v in sorted(sig.items())])
         c.execute("UPDATE chat_call SET nsig=? WHERE id=?", (len(sig), cid))

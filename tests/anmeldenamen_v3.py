@@ -348,6 +348,20 @@ def run():
     log = next((x for x in A.msgs(dm["id"]).get("messages", []) if x["kind"] == "call"), {})
     lb = json.loads(log.get("body_ct") or "{}")
     ok("Anruf-Eintrag im Chat nur mit Handles", lb.get("from") == A.handle and lb.get("to") == B.handle, lb)
+    # Besetzt: B telefoniert (Anruf von C klingelt), A ruft B an -> Text mit Namen bzw. Handle, nie mit dem Anmeldenamen
+    s, d = Cc.api("POST", "/api/chats", {"kind": "dm", "user": Cc.ref(B), "device": Cc.dev["id"]})
+    dmc = d.get("chat") or {}
+    cidc, cidb = C.hexid(), C.hexid()
+    sigc = {x["id"]: C.seal_signal_v2(cidc, Cc.handle, Cc.dev, B.handle, x["id"], x["enc_pk"], json.dumps({"t": "offer", "sdp": "x"}))
+            for x in (B.dev, d2v)}
+    s1, d1 = Cc.api("POST", "/api/calls", {"id": cidc, "chat_id": dmc.get("id"), "media": "audio", "device": Cc.dev["id"], "signals": sigc,
+                                           "caps": ["multi"]})
+    sigb = {x["id"]: C.seal_signal_v2(cidb, A.handle, A.dev, B.handle, x["id"], x["enc_pk"], json.dumps({"t": "offer", "sdp": "x"}))
+            for x in (B.dev, d2v)}
+    s2, d2 = A.api("POST", "/api/calls", {"id": cidb, "chat_id": dm["id"], "media": "audio", "device": A.dev["id"], "signals": sigb, "caps": ["multi"]})
+    ok("Besetzt in Stufe 3: Text mit Namen, ohne Anmeldenamen", s1 == 200 and s2 == 409 and d2.get("busy") is True
+       and "Bert Dreier" in (d2.get("error") or "") and B.uid not in json.dumps(d2), (s1, d1, s2, d2))
+    Cc.api("POST", f"/api/calls/{cidc}/end", {"reason": "hangup", "device": Cc.dev["id"]})
     cid2 = C.hexid()
     B.api("PUT", "/api/calls/caps", {"device": B.dev["id"], "caps": ["multi"]})      # Geraet kann Gruppenanrufe (2.4)
     mkB = B.ev.mark()
