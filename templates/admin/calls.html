@@ -37,7 +37,7 @@
       <td data-l="{{ _('Weg') }}"><span title="{{ UDP_TIP }}">TCP {{ '✓' if n.tcp else '✗' }} · UDP {{ '✓' if n.udp else '–' }}</span></td>
       <td data-l="{{ _('Auslastung') }}"><meter class="horn-bar" min="0" max="100" low="70" high="90" optimum="10" value="{{ n.util }}">{{ n.util }} %</meter><br>
         <small>{{ _("CPU {cpu} %", cpu=n.cpu) }} · {% if n.link %}{{ _("Upload {up}/{link} Mbit/s", up=n.up, link=n.link) }}{% else %}{{ _("Upload {up} Mbit/s", up=n.up) }}{% endif %}</small></td>
-      <td data-l="{{ _('Teilnehmende') }}">{{ n.peers }}</td>
+      <td data-l="{{ _('Teilnehmende') }}">{{ n.peers }}{% set br = n.bridges.values()|selectattr('st', 'equalto', 'up')|list %}{% if br %}<br><small>{{ _("Kaskaden: {n}", n=br|length) }}</small>{% endif %}</td>
       <td data-l="{{ _('Version') }}">{{ n.version or '–' }}</td>
       <td data-l="{{ _('Teilen') }}">{{ _("an") if n.share else _("aus") }}</td>
       <td class="horn-acts">

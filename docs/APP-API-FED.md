@@ -369,6 +369,59 @@ Tests: `tests/foederation_anrufe_raum.py` (drei Server, B und C nur mit A verbun
 Raum-Signal: sternförmig über den führenden Server, versiegelt je Zielgerät, an Handles gebunden. Kein Server und kein
 Knoten liest sie. Am Protokoll ändert sich sonst nichts (Test `tests/foederation_anrufe_raum.py`).
 
+### 7.4 Gruppenanrufe über Knoten über Servergrenzen (2.5, Gjallarhorn P9/P10, Cap `horn`)
+
+Das Heim des Anrufs (der führende Server) koordiniert; jeder Server stellt Token nur für **seine** Knoten aus.
+Konzept: `claude/saga-gjallarhorn-konzept-v2.md` §2.4, §2.6, §2.7, §3.4; Knoten: `gjallarhorn/NODE.md` („Kaskade“).
+
+**Wann über Knoten (Heim beim Start):** Feature-Flag `calls.horn`, das startende Gerät meldet `horn`, das Heim hat einen
+bereiten Knoten, **alle** beteiligten Server melden `horn` und jeder kann einen Knoten nutzen: entweder teilt das Heim
+mit ihm (Knoten mit „Teilen an“, Server erlaubt, kein Notaus) oder er hat selbst einen bereiten Knoten (Auftrag
+`horn_nodes`, 60 s zwischengespeichert; beim Start/Beitritt schickt der Server des Geräts `horn_nodes: n` mit).
+Sonst bleibt der Anruf im Mesh (2.4-Grenzen): mit Servern ohne `horn` (2.3/2.4) still, sonst mit Hinweis
+`call.horn_mesh` (Text in der Sprache der Anfrage, auch in der Kopie beim anderen Server; Apps zeigen ihn einmal an).
+
+**Für Apps (eigener Server führt den Anruf nicht):** nichts Neues an den Endpunkten. `POST /join` und
+`POST /api/calls/{id}/horn` antworten wie lokal mit `horn.candidates`; der eigene Server holt die Kandidaten auf
+geteilten Knoten beim Heim (Token des Heims, mit Kontingent) und hängt seine eigenen bereiten Knoten an. Neu im Block:
+
+| Feld | Bedeutung |
+|---|---|
+| `candidates[].home` | `true` = Knoten des Heims (geteilt; das Gerät verbindet sich direkt dorthin) |
+| `fed.share` | das Heim teilt gerade einen Knoten mit diesem Server |
+| `fed.why` | ohne geteilten Knoten: `noshare` (Teilen aus bzw. Server nicht erlaubt), `quota` (Kontingent erschöpft), `off` (Notaus), `gone` (Heim nicht erreichbar) |
+| `error` | nur ohne Kandidaten: klare Meldung für die Oberfläche (z. B. „Das Kontingent … ist erschöpft.“) |
+
+Die Wahl des Knotens (`node` in `POST …/horn`) meldet der Server dem Heim im selben Schritt. Die Kennung eines Geräts an
+einem Knoten (`peer_ref`) leitet jeder Server selbst ab; Teilnehmende über eine Kaskade behalten die Kennung ihres
+Knotens. **Zuordnung CSRC → Gerät:** zusätzlich zu `hpn` (Knoten des eigenen Servers) schickt jedes Gerät im
+versiegelten Zustand (Body-Typ `state` von `saga-call/v2`) seine aktuellen Kennungen mit: `{"t":"state", …, "hp":
+["<peer_ref>", …]}` (höchstens 4, alle Verbindungen während eines Wechsels). Apps senden `hp` nach jedem neuen Bein
+und werten es beim Empfang aus (unbekannte Kennungen sonst wie bisher: Teilnehmerliste neu holen).
+
+**Aufträge zwischen den Servern** (`POST /fed/v2/call`, signiert; nur wenn beide `horn` melden, sonst 403):
+
+| Auftrag | Richtung | Inhalt → Antwort |
+|---|---|---|
+| `horn_nodes` | Heim → Server | `{}` → `{nodes}` (bereite Knoten dort; 0 bei Notaus) |
+| `horn` | Server → Heim | `{id, actor, device, dev_class, avoid, horn_nodes, node?: {name, own, url?, pub?}}` → `{candidates, share, why, cascade, here}`. Mit `node`: Wahl eintragen – eigener Knoten des Servers (`own`, mit Adresse und Knotenschlüssel für die Kaskade) bzw. geteilter Knoten des Heims (409 bei Kontingent) |
+| `horn_cascade` | Heim → Server | `{id, bridge, node, url, peer, peer_pub, token}`: der Knoten `node` des Servers soll den Mittelpunkt `peer` (Adresse `url`, Knotenschlüssel `peer_pub`) anwählen; `token` ist das accept-Token des Heims. Der Server prüft (Anruf mit diesem Heim, eigener Endpunkt auf dem Knoten, kein Notaus) und gibt seinem Knoten das eigene dial-Token. Alle 20 s erneut, solange gewünscht |
+| `horn_uncascade` | Heim → Server | `{id, bridge}` – Brücke abbauen |
+
+Die Teilnehmerliste (`roster`) und die Antwort auf `join` mit `start` tragen `topo` (`horn`/`mesh`) und ggf.
+`horn_mesh`; die Kopie übernimmt `topo` beim Anlegen.
+
+**Teilen und Kontingente (Heim, Admin-Bereich → Föderation, je Server):** erlaubt (Standard ja), Teilnehmende und
+Mbit/s je Richtung (leer = Standard aus Admin → Anrufe, 10 / 20), Notaus. Das Kontingent steht in jedem Medien-Token
+für Geräte dieses Servers (`q` = zufällige Kennung je Server, `q_legs`, `q_kbit`) und im accept-Token seiner Kaskaden;
+der Knoten setzt es durch (mehr Teilnehmende → 429, über der Rate verwirft er Bild bis zum nächsten Schlüsselbild, Ton
+nie; Downlink je Teilnehmendem höchstens Kontingent / Teilnehmende). Notaus schickt `quota_off` an alle Knoten: sie
+entfernen sofort alle Teilnehmenden und Brücken des Servers; danach gibt es keine Token mehr.
+
+Tests: `tests/foederation_horn.py` (zwei Server mit je einem Knoten: Kaskade, Teilen, Kontingent, Erlaubt-Liste,
+Notaus, Mesh-Rückfall; `FED_B_APP=<Saga 2.4>`), Browser `tests/browser_fed_horn.js` (3 + 3 Personen, einmal Kaskade,
+einmal Teilen).
+
 ## 8. Seiten anderer Server vollständig (E4/E6)
 
 Seiten anderer Server haben wie bisher **negative IDs** (`-(id_dort * 1024 + peer_id)`) und laufen über die gewohnten

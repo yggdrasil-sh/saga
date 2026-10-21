@@ -794,7 +794,9 @@ def admin_state():
                     "drain": bool(n.get("drain")), "checks": ck, "cert": n.get("cert") or {}, "upd": n.get("upd") or {},
                     "ctl": n["id"] in horn._CONNS, "v4": n.get("v4") or "", "v6": n.get("v6") or "", "port": n.get("port") or 443,
                     "url": n.get("url") or "", "dns": [] if cloudflare.configured() or n["builtin"] else dns_needed(n),
-                    "stats": n2["stats"]})
+                    "stats": n2["stats"],
+                    # P9/P10: Bruecken (Kaskade) und Kontingente verbundener Server laut letzter Lastmeldung
+                    "bridges": (horn._LIVE.get(n["id"]) or {}).get("bridges") or {}, "quotas": (horn._LIVE.get(n["id"]) or {}).get("quotas") or {}})
     cf = cloudflare.conf()
     return {"nodes": out, "pending": pend, "log": logs, "hint": busy_hint(out, now), "release_key": bool(release_pub()),
             "cf": {"set": bool(cf.get("token")), "mask": cloudflare.mask(cf.get("token") or ""), "zone": cf.get("zone") or "",

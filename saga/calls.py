@@ -67,7 +67,7 @@ from fastapi import APIRouter, Request
 
 import auth
 from db import connect as _db
-from saga import bus, chat, horn, horn_web, notify
+from saga import bus, chat, horn, horn_bridge, horn_web, notify
 from saga.core import SECRET, _bad, _body, local_ref, t
 from saga import sharing
 from saga.sharing import names
@@ -103,6 +103,7 @@ _S = {"task": None}
 _OWN = set()                           # Anrufe, die DIESER Prozess vermittelt (Live-Ereignisse gehen an seine Verbindungen)
 ORPHAN = 30                            # fremde/verwaiste Anrufe erst so viel spaeter beenden (Neustart, zweiter Prozess)
 FED = None                             # 2.3: saga.fed_calls (Anrufe ueber Servergrenzen) setzt sich hier ein
+KASKADE = horn_bridge                  # 2.5 P9: Bruecken zwischen Knoten (Abgleich startet mit dem ersten verbundenen Knoten)
 
 
 # --- Einstellungen --------------------------------------------------------------------------------------------------
@@ -196,17 +197,28 @@ def climit(c, call):
     return limit(call["media"])
 
 
-def horn_wanted(c, ch, media, caps):
+def horn_wanted(c, ch, media, caps, why=None):
     """2.5: neuen Gruppenanruf ueber einen Knoten fuehren? Flag an, Geraet meldet "horn", Chat hat mehr Mitglieder als die
-    Mesh-Grenze (bzw. calls.horn_from, mindestens 3), nicht foederiert (P10) und ein Knoten ist bereit."""
-    if not horn_on() or not _has(caps, "horn") or chat.is_fed(ch):
+    Mesh-Grenze (bzw. calls.horn_from, mindestens 3) und ein Knoten ist bereit. P10: im foederierten Chat (wir sind das
+    Heim) zusaetzlich alle beteiligten Server mit "horn" und je Server ein nutzbarer Knoten (geteilt oder eigener) -
+    sonst Mesh; why (Liste) bekommt dann den Hinweis fuer die Clients."""
+    if not horn_on() or not _has(caps, "horn"):
         return False
     try:
         frm = int(cfg().get("horn_from") or 0)
     except (TypeError, ValueError):
         frm = 0
     need = max(3, frm) if frm else limit(media) + 1
-    return len(chat.members(c, ch["id"])) >= need and horn.any_ready(c)
+    if len(chat.members(c, ch["id"])) < need or not horn.any_ready(c):
+        return False
+    if chat.is_fed(ch):
+        if FED is None or ch["home_peer"] is not None:
+            return False
+        ok, msg = FED.horn_fed_ok(c, ch)
+        if not ok and msg and why is not None:
+            why.append(msg)
+        return ok
+    return True
 
 
 def horn_block(c, call, dev, role="member", dev_class="desktop", avoid=()):
@@ -500,6 +512,8 @@ def _dict(c, call, uid, nm=None, legs=None):
          # 2.4 E4/E5: Raum - Art, Endpunkte je Geraet, ob (ein weiteres Geraet von) uid beitreten kann, Grenze
          "kind": call["kind"], "legs": roster(c, call, uid, legs), "joinable": can, "join_block": why, "limit": climit(c, call),
          "mine": [x["device"] for x in legs if x["who"] == uid], "rv": rv, "topo": call.get("topo") or "p2p"}
+    if group and FED is not None and FED.HORN_MESH.get(call["id"]):
+        d["horn_mesh"] = FED.HORN_MESH[call["id"]]      # 2.5 P10: warum ohne Knoten (anderer Server kann keinen nutzen)
     if group:
         d["from"] = dict(pd)
         d["host"] = me_caller                            # 2.5 P5: Gastgeber (darf stummschalten und entfernen)
@@ -713,6 +727,9 @@ async def api_call(request: Request):
         return _bad(t("ungültige Angabe"))
     now = time.time()
     caps = caps_in(b.get("caps"))
+    if FED is not None and horn_on() and _has(caps, "horn"):
+        from starlette.concurrency import run_in_threadpool
+        await run_in_threadpool(FED.horn_prefetch, chat_id)   # 2.5 P10: Knoten der anderen Server (vor der Transaktion)
     with _db() as c, c:
         ch, m, mem, err = chat._chat_for(c, uid, chat_id, do_sync=False)
         if err:
@@ -836,13 +853,16 @@ def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name=
     anrufenden Person, Einladungen (wer kein Geraet mit "multi" hat: 'old', "braucht Saga 2.4"), Klingeln hier, Liste an
     alle. -> Anruf. 2.5: ueber einen Knoten (topo 'horn'), wenn horn_wanted - der Endpunkt der anrufenden Person kommt auf
     den besten bereiten Knoten, Einladungen nur an Personen mit einem Geraet, das "horn" kann (sonst 'old')."""
-    node = None
-    if lead is None and peer_id is None and horn_wanted(c, ch, media, caps):
+    node, why = None, []
+    hn = lead is None and horn_wanted(c, ch, media, caps, why)
+    if hn and peer_id is None:
         node = horn.ready_nodes(c)[0]
     c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, caps_a, kind, v, topo, "
               "lead, peer_id) VALUES (?,?,?,'',?,?,'ringing',?,?,?,?,'group',3,?,?,?) ON CONFLICT (id) DO NOTHING",
-              (cid, ch["id"], starter, dev, media, now, now, now, caps, "horn" if node else "mesh", lead, lead))
+              (cid, ch["id"], starter, dev, media, now, now, now, caps, "horn" if hn else "mesh", lead, lead))
     _leg_put(c, cid, dev, starter, "member", peer_id, caps, name=name, now=now)
+    if why and FED is not None:
+        FED.HORN_MESH[cid] = why[0]                    # P10: Fall c - Hinweis an alle (call.horn_mesh)
     if node:
         horn.set_leg_node(c, cid, dev, node["id"])
         horn.room_open(c, cid, node["id"], climit(c, {"id": cid, "media": media, "topo": "horn"}))
@@ -858,14 +878,15 @@ def group_create(c, ch, cid, media, starter, dev, caps, now, peer_id=None, name=
             mm = chat._member(c, ch["id"], u)
             if (mm or {}).get("state", "ok") != "ok":
                 continue                               # Nachrichtenanfrage: klingelt nie
-            st = "ringing" if (_can_horn(c, u) if node else _can_multi(c, u)) else "old"
+            st = "ringing" if (_can_horn(c, u) if hn else _can_multi(c, u)) else "old"
             if st == "ringing":
                 ring.append(u)
         c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,?,?) ON CONFLICT (call_id, who) DO NOTHING",
                   (cid, u, st, now))
     ring_group(c, call, ring)
     emit_roster(c, call)
-    print(f"call: {cid[:8]} Gruppenanruf ({media}, Chat {ch['id']}, {len(ring)} klingeln hier{', Knoten ' + node['name'] if node else ''})", flush=True)
+    print(f"call: {cid[:8]} Gruppenanruf ({media}, Chat {ch['id']}, {len(ring)} klingeln hier{', Knoten ' + node['name'] if node else ''}"
+          f"{', ueber Knoten' if hn and not node else ''})", flush=True)
     return call
 
 
@@ -1275,10 +1296,10 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
         return chat._no_store({"error": t("Der Anruf ist voll (höchstens {n} Geräte).", n=lim), "join_block": "full",
                                "limit": lim, "legs": roster(c, call, who, legs)}, 409)
     node = None
-    if hn:                                             # 2.5: Knoten des Anrufs (ohne Kaskade nur dieser), sonst der beste
-        if signals:
-            return _bad(t("ungültige Angabe"))         # ueber Knoten keine Mesh-Angebote
-        node = horn_web.pick(c, call["id"])           # 2.5 P5: Knoten des Anrufs; ist er weg, der beste bereite
+    if hn and signals:
+        return _bad(t("ungültige Angabe"))             # ueber Knoten keine Mesh-Angebote
+    if hn and peer_id is None:                         # 2.5: Knoten des Anrufs, sonst der beste (Geraete anderer Server
+        node = horn_web.pick(c, call["id"])           # waehlen ueber ihren Server, saga/fed_horn.py)
         if node is None:
             horn.note_full(c)
             return chat._no_store({"error": t("Gerade ist kein Knoten für große Gruppenanrufe erreichbar – bitte gleich noch einmal."),
@@ -1340,12 +1361,20 @@ async def api_horn(cid: str, request: Request):
         if not _rate("horn", dev, 30):
             return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
         avoid = horn_web._clean_avoid(b.get("avoid"))
-        if isinstance(b.get("node"), str):
-            n = horn.node_named(c, b["node"][:253])
-            if not horn_web.may_use(c, cid, n, avoid):
-                return _bad(t("ungültige Angabe"), 409)
-            horn.set_leg_node(c, cid, dev, n["id"])
-        return chat._no_store({"ok": True, "horn": horn_block(c, call, dev, leg[2], _dev_class(b), avoid)})
+        if call.get("lead") is None or FED is None:
+            if isinstance(b.get("node"), str):
+                n = horn.node_named(c, b["node"][:253])
+                if not horn_web.may_use(c, cid, n, avoid):
+                    return _bad(t("ungültige Angabe"), 409)
+                horn.set_leg_node(c, cid, dev, n["id"])
+            return chat._no_store({"ok": True, "horn": horn_block(c, call, dev, leg[2], _dev_class(b), avoid)})
+    # 2.5 P10: Anruf, den ein anderer Server fuehrt - Kandidaten von dort (geteilte Knoten) und eigene (Kaskade)
+    from starlette.concurrency import run_in_threadpool
+    node = b["node"][:253] if isinstance(b.get("node"), str) else None
+    blk, err = await run_in_threadpool(FED.horn_block, uid, call, dev, leg[2], _dev_class(b), avoid, node)
+    if err:
+        return _bad(err, 409)
+    return chat._no_store({"ok": True, "horn": blk})
 
 
 @router.post("/api/calls/{cid}/leave")

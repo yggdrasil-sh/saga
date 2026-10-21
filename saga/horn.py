@@ -19,8 +19,15 @@ Saga -> Knoten: open, close, kick, ping, drain, peers, version, cert, acme_txt (
 Knoten -> Saga: load (alle 5 s), closed, pong, addr, cert, update, acme_txt (DNS-01, nur der eigene Name).
 Zugang: eingebauter Knoten mit dem gemeinsamen Geheimnis SAGA_HORN_KEY von saga-media; gekoppelte Knoten (P6,
 "Erweitern", saga/horn_ops.py) nur mit dem beim Koppeln registrierten Knotenschluessel (hello-Signatur ueber die
-Challenge) - gesperrte Schluessel (Entfernen) bekommen 4410. Kaskade folgt mit P9, Foederation mit P10 (CASCADE, share
-wirken bis dahin nicht)."""
+Challenge) - gesperrte Schluessel (Entfernen) bekommen 4410.
+
+P9 (Kaskade, saga/horn_bridge.py): Saga -> Knoten zusaetzlich cascade {bridge, url, peer, peer_pub, token, mine},
+uncascade {bridge}, quota_off {q, secs}; Knoten -> Saga in der Lastmeldung bridges {id: {st, peer, why}} und quotas.
+Kaskaden-Token (Gegenstueck gjallarhorn/bifrost.go):
+    c1.<payload>.<sig>   sig = B64URL(Ed25519(horn_sign, "saga-horn-cascade/1." + payload))
+    JSON {v:1, bridge, node, room, role: accept|dial, peer_node, peer_pub, q?, q_legs?, q_kbit?, exp: jetzt + 60 s, jti}
+P10 (Teilen, saga/fed_horn.py): Medien-Token fuer Teilnehmende verbundener Server tragen q (zufaellige Kennung je
+Server), q_legs und q_kbit - der Knoten setzt das Kontingent durch."""
 import asyncio
 import base64
 import hashlib
@@ -48,7 +55,7 @@ READY_S = 30                            # Knoten gilt als bereit, solange seine 
 GRACE_S = 15                            # ... bei getrennter Steuerung (Neuverbindung laeuft) nur so lange
 SEEN_EVERY = 10                         # Lastmeldung hoechstens so oft in die Datenbank (Bereitschaft fuer alle Prozesse)
 CANDIDATES = 3                          # Kandidaten im Beitritt (§2.6)
-CASCADE = False                         # P9: ohne Kaskade bleibt ein Anruf auf EINEM Knoten (nur dieser ist Kandidat)
+CASCADE = True                          # P9: Kaskade zwischen Knoten - Kandidaten auch auf anderen Knoten (Bonus "schon hier")
 MAX_KBIT = 4000                         # Eingang je Bein (§3.4)
 FULL, PENALTY = 0.9, 0.7                # Auslastung: ab 90 % voll, ab 70 % Abzug bei der Wahl
 LIMITS = {"tcp": (12, 50), "udp": (25, 100)}   # Endpunkte je Anruf (Video, nur Ton) nach Weg (§1.4, Entscheidung 4)
@@ -154,14 +161,37 @@ def leg_ref(cid, node_id, dev, role):
     return _ref("leg", cid, node_id, dev, role)
 
 
-def token(node, cid, dev, role, udp_ok=False, dev_class="desktop", pub=None, max_kbit=MAX_KBIT, now=None):
-    """Medien-Token fuer ein Bein (role audio | video | both) dieses Geraets auf dem Knoten."""
+def token(node, cid, dev, role, udp_ok=False, dev_class="desktop", pub=None, max_kbit=MAX_KBIT, now=None, quota=None):
+    """Medien-Token fuer ein Bein (role audio | video | both) dieses Geraets auf dem Knoten. quota (P10, geteilter Knoten):
+    {q, legs, kbit} des verbundenen Servers."""
     body = {"v": 1, "node": node["name"], "call_ref": call_ref(cid, node["id"]), "peer_ref": peer_ref(cid, node["id"], dev),
             "leg_ref": leg_ref(cid, node["id"], dev, role), "role": role, "pub": PUB[role] if pub is None else pub,
             "max_kbit": int(max_kbit), "udp_ok": bool(udp_ok), "dev_class": "mobile" if dev_class == "mobile" else "desktop",
             "exp": int(now or time.time()) + TOKEN_TTL, "jti": _b64u(secrets.token_bytes(12))}
+    if quota:
+        body.update(q=quota["q"], q_legs=int(quota["legs"]), q_kbit=int(quota["kbit"]))
     p = _b64u(json.dumps(body, separators=(",", ":")).encode())
     return "h1." + p + "." + _b64u(_signer().sign(("saga-horn-token/1." + p).encode()))
+
+
+def bridge_id(cid, a, b):
+    """Kennung der Bruecke zwischen zwei Knoten-Schluesseln eines Anrufs (a waehlt, b nimmt an)."""
+    return _ref("bridge", cid, a, b)
+
+
+def quota_key(pid):
+    """Kontingent-Kennung eines verbundenen Servers an unseren Knoten (zufaellig aussehend, je Saga anders)."""
+    return _ref("quota", str(pid))
+
+
+def ctoken(role, bridge, node, room, peer_node, peer_pub, quota=None, now=None):
+    """Kaskaden-Token (P9) fuer den Knoten node (Name): role accept (die Gegenseite waehlt) bzw. dial (er selbst)."""
+    body = {"v": 1, "bridge": bridge, "node": node, "room": room, "role": role, "peer_node": peer_node, "peer_pub": peer_pub,
+            "exp": int(now or time.time()) + TOKEN_TTL, "jti": _b64u(secrets.token_bytes(12))}
+    if quota:
+        body.update(q=quota["q"], q_legs=int(quota["legs"]), q_kbit=int(quota["kbit"]))
+    p = _b64u(json.dumps(body, separators=(",", ":")).encode())
+    return "c1." + p + "." + _b64u(_signer().sign(("saga-horn-cascade/1." + p).encode()))
 
 
 # --- Knotenregister -------------------------------------------------------------------------------------------------
@@ -222,17 +252,18 @@ def any_ready(c):
 
 
 def call_node(c, cid):
-    """Knoten, auf dem der Anruf laeuft (die meisten aktiven Endpunkte), oder None."""
-    r = c.execute("SELECT node FROM chat_call_leg WHERE call_id=? AND state='active' AND node IS NOT NULL GROUP BY node "
-                  "ORDER BY COUNT(*) DESC, node LIMIT 1", (cid,)).fetchone()
+    """Eigener Knoten, auf dem der Anruf laeuft (die meisten aktiven Endpunkte), oder None. Knoten anderer Server (P10:
+    node = 'f:<server>:<name>') zaehlen nicht."""
+    r = c.execute("SELECT node FROM chat_call_leg WHERE call_id=? AND state='active' AND node IS NOT NULL AND node NOT LIKE 'f:%' "
+                  "GROUP BY node ORDER BY COUNT(*) DESC, node LIMIT 1", (cid,)).fetchone()
     return r[0] if r else None
 
 
 def call_node_ready(c, cid, ns=None):
     """Bereiter Knoten des Anrufs mit den meisten Endpunkten - None, wenn keiner bereit ist (Leeren, Entfernen, weg).
     Beim Umzug folgen so alle dem ersten, der schon auf dem neuen Knoten ist."""
-    rows = c.execute("SELECT node FROM chat_call_leg WHERE call_id=? AND state='active' AND node IS NOT NULL GROUP BY node "
-                     "ORDER BY COUNT(*) DESC, node", (cid,)).fetchall()
+    rows = c.execute("SELECT node FROM chat_call_leg WHERE call_id=? AND state='active' AND node IS NOT NULL AND node NOT LIKE 'f:%' "
+                     "GROUP BY node ORDER BY COUNT(*) DESC, node", (cid,)).fetchall()
     if not rows:
         return None
     ok = {n["id"] for n in (ready_nodes(c) if ns is None else ns)}
@@ -324,14 +355,17 @@ def room_open(c, cid, node_id, max_peers=None):
 
 def room_close(c, cid):
     """Anruf vorbei: Raum auf allen Knoten des Anrufs schliessen."""
-    ids = [r[0] for r in c.execute("SELECT DISTINCT node FROM chat_call_leg WHERE call_id=? AND node IS NOT NULL", (cid,)).fetchall()]
+    ids = [r[0] for r in c.execute("SELECT DISTINCT node FROM chat_call_leg WHERE call_id=? AND node IS NOT NULL AND node NOT LIKE 'f:%'",
+                                   (cid,)).fetchall()]
     for nid in ids:
         _later(c, lambda nid=nid: send(nid, {"t": "close", "call_ref": call_ref(cid, nid)}))
+    if HOOKS.get("ended"):
+        _later(c, lambda: HOOKS["ended"](cid))
 
 
 def kick(c, cid, dev, node_id):
     """Endpunkt hat den Anruf verlassen bzw. wurde entfernt: Beine am Knoten sofort beenden (keine neuen mit alten Token)."""
-    if node_id:
+    if node_id and not node_id.startswith("f:"):
         _later(c, lambda: send(node_id, {"t": "kick", "call_ref": call_ref(cid, node_id), "peer_ref": peer_ref(cid, node_id, dev)}))
 
 
@@ -519,7 +553,7 @@ def emit_move(c, node_id, why):
     """Anrufe auf diesem Knoten: allen Personen mit Endpunkt dort sagen, dass sie umziehen sollen (Leeren, Entfernen,
     Update). Die Geraete holen mit POST /api/calls/{id}/horn neue Kandidaten (Umschalten: Web-Client P5, Apps)."""
     rows = c.execute("SELECT l.call_id, k.chat_id, l.who FROM chat_call_leg l JOIN chat_call k ON k.id=l.call_id "
-                     "WHERE l.node=? AND l.state='active' AND k.state<>'ended'", (node_id,)).fetchall()
+                     "WHERE l.node=? AND l.state='active' AND k.state<>'ended' AND l.peer_id IS NULL", (node_id,)).fetchall()
     by = {}
     for cid, chat_id, who in rows:
         by.setdefault((cid, chat_id), set()).add(who)
@@ -600,6 +634,8 @@ async def ctl(ws: WebSocket):
     await ws.send_json(welcome)
     if not builtin:
         await asyncio.to_thread(broadcast_peers)
+    if HOOKS.get("connected"):
+        HOOKS["connected"]()                           # P9: Abgleich der Bruecken starten (saga/horn_bridge.py)
 
     async def writer():
         while True:
@@ -630,6 +666,10 @@ async def ctl(ws: WebSocket):
                 now = time.time()
                 live = _LIVE.setdefault(nid, {"db": 0})
                 live.update(load=ld, at=now)
+                if isinstance(m["load"].get("bridges"), dict):       # P9: Stand der Bruecken (nur im Speicher)
+                    live["bridges"] = {str(k)[:64]: v for k, v in list(m["load"]["bridges"].items())[:200] if isinstance(v, dict)}
+                if isinstance(m["load"].get("quotas"), dict):
+                    live["quotas"] = {str(k)[:64]: v for k, v in list(m["load"]["quotas"].items())[:200] if isinstance(v, dict)}
                 if ld.get("state") == "draining" and not live.get("drain_ev"):
                     live["drain_ev"] = True
                     asyncio.get_running_loop().run_in_executor(None, _move_later, nid, "update" if not builtin else "drain")
@@ -643,6 +683,9 @@ async def ctl(ws: WebSocket):
                     await asyncio.to_thread(_store_load, nid, ld, now, st)
             elif t == "closed":
                 pass                                   # Knoten hat einen leeren Raum selbst geschlossen
+            elif t == "bridge" and isinstance(m.get("bridge"), str):   # P9: Kaskade abgelehnt (Grund)
+                live = _LIVE.setdefault(nid, {"db": 0})
+                live.setdefault("bridges", {})[m["bridge"][:64]] = {"st": "err", "why": str(m.get("why") or "")[:200]}
             elif builtin:
                 continue
             elif t == "cert":
