@@ -183,9 +183,16 @@ func (s *server) publicPort() int {
 }
 
 func (s *server) pair(base, tok string) (*pairState, error) {
-	v4, v6 := whoami(base, "tcp4"), whoami(base, "tcp6")
+	v4, v6, dropped := s.publicAddrs(base)
 	if v4 == "" && v6 == "" {
+		if len(dropped) > 0 {
+			return nil, fmt.Errorf("Saga sieht nur interne Adressen %v (Knoten erreicht Saga ueber ein VPN?) - "+
+				"oeffentliche Adresse in der .env als HORN_PUBLIC_IP=... eintragen und neu starten", dropped)
+		}
 		return nil, errors.New("saga nicht erreichbar (whoami)")
+	}
+	if len(dropped) > 0 {
+		log.Printf("kopplung: interne Adresse %v verworfen (VPN?)", dropped)
 	}
 	link, _ := strconv.Atoi(os.Getenv("HORN_LINK_MBIT"))
 	pub := s.nodeKey.Public().(ed25519.PublicKey)

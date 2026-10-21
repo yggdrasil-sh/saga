@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"time"
@@ -38,9 +39,12 @@ func (s *server) refreshAddrs() bool {
 	if s.sagaBase == "" {
 		return false
 	}
-	v4, v6 := whoami(s.sagaBase, "tcp4"), whoami(s.sagaBase, "tcp6")
+	v4, v6, dropped := s.publicAddrs(s.sagaBase)
 	if v4 == "" && v6 == "" {
-		return false // Saga gerade weg: nichts aendern
+		if len(dropped) > 0 {
+			log.Printf("adressen: Saga sieht nur interne Adressen %v (VPN?) - HORN_PUBLIC_IP setzen; bisherige bleiben", dropped)
+		}
+		return false // Saga gerade weg oder nur interne Adressen: nichts aendern
 	}
 	s.addrMu.Lock()
 	defer s.addrMu.Unlock()
@@ -109,4 +113,43 @@ func (s *server) reportCert() {
 func fileExists(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && !st.IsDir()
+}
+
+// publicAddrs: oeffentliche Adressen des Knotens fuer Saga (DNS-Eintraege, Port-Pruefung).
+// HORN_PUBLIC_IP gewinnt; sonst fragt der Knoten Saga (whoami). Adressen, die nicht im Internet erreichbar sind
+// (privat, CGNAT 100.64/10 z. B. NetBird/Tailscale, Loopback, Link-local, ULA), verwirft er: Saga sieht sie, wenn der
+// Knoten Saga ueber ein VPN erreicht - als DNS-Eintrag waeren sie fuer Geraete wertlos. HORN_DEV behaelt sie (Tests).
+func (s *server) publicAddrs(base string) (v4, v6 string, dropped []string) {
+	if len(s.cfg.PublicIPs) > 0 {
+		for _, a := range s.cfg.PublicIPs {
+			ip := net.ParseIP(a)
+			if ip == nil {
+				continue
+			}
+			if ip.To4() != nil && v4 == "" {
+				v4 = ip.String()
+			} else if ip.To4() == nil && v6 == "" {
+				v6 = ip.String()
+			}
+		}
+		return v4, v6, nil
+	}
+	v4, v6 = whoami(base, "tcp4"), whoami(base, "tcp6")
+	if s.cfg.Dev {
+		return v4, v6, nil
+	}
+	if v4 != "" && !globalIP(v4) {
+		dropped, v4 = append(dropped, v4), ""
+	}
+	if v6 != "" && !globalIP(v6) {
+		dropped, v6 = append(dropped, v6), ""
+	}
+	return v4, v6, dropped
+}
+
+var cgnat = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+
+func globalIP(a string) bool {
+	ip := net.ParseIP(a)
+	return ip != nil && ip.IsGlobalUnicast() && !ip.IsPrivate() && !cgnat.Contains(ip)
 }
