@@ -76,7 +76,7 @@ async function openLeg(role, turn) {
   }
   pc.ontrack = (ev) => {
     const r = { kind: ev.track.kind, mid: ev.transceiver.mid, receiver: ev.receiver, el: null };
-    try { if ('jitterBufferTarget' in ev.receiver && ev.track.kind === 'video') ev.receiver.jitterBufferTarget = jbTarget; } catch (e) { /* alt */ }
+    try { if (jbTarget >= 0 && 'jitterBufferTarget' in ev.receiver && ev.track.kind === 'video') ev.receiver.jitterBufferTarget = jbTarget; } catch (e) { /* alt */ }   // jb=-1: wie Apps ohne jitterBufferTarget
     const ms = new MediaStream([ev.track]);
     if (ev.track.kind === 'audio') {
       const a = new Audio(); a.srcObject = ms; a.volume = 0; a.play().catch(() => {}); r.el = a;
@@ -137,6 +137,7 @@ window.__sfuReport = async function () {
       if (s.type !== 'inbound-rtp') return;
       if (r.kind === 'video') {
         x.framesDecoded = s.framesDecoded || 0; x.height = s.frameHeight || 0; x.freezes = s.freezeCount || 0; x.fps = s.framesPerSecond || 0;
+        x.jbt = s.jitterBufferTargetDelay || 0; x.jbd = s.jitterBufferDelay || 0; x.jbe = s.jitterBufferEmittedCount || 0; x.jbm = s.jitterBufferMinimumDelay || 0;
       } else {
         x.samples = s.totalSamplesReceived || 0; x.level = s.audioLevel || 0; x.energy = s.totalAudioEnergy || 0;
         x.concealed = s.concealedSamples || 0;

@@ -78,6 +78,11 @@ func newSFUAPI(se webrtc.SettingEngine, udp bool, hook *gccHook) (*webrtc.API, e
 	if err := webrtc.ConfigureSimulcastExtensionHeaders(m); err != nil {
 		return nil, err
 	}
+	if !udp && playoutMax > 0 { // P9: playout-delay fuer Bild auf TCP-/TLS-Wegen (Apps koennen jitterBufferTarget nicht setzen)
+		if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: playoutDelayURI}, webrtc.RTPCodecTypeVideo); err != nil {
+			return nil, err
+		}
+	}
 	ir := &interceptor.Registry{}
 	if udp {
 		if err := webrtc.ConfigureNack(m, ir); err != nil {

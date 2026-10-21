@@ -67,7 +67,8 @@ Platzhalter: `horn-1.example.org`.
   nimmt davon 10 fps für Kacheln) sowie `m` mit 30 fps `L1T3`. Auf UDP zusätzlich `h`.
 - Bildschirm: Die Stream-ID beginnt mit `screen`.
 - **Jitter-Puffer:** Auf TCP-Wegen für empfangene Bilder `receiver.jitterBufferTarget = 150` (ms) setzen, siehe
-  Messung unten.
+  Messung unten. Geräte, die das nicht können (Apps mit webrtc-sdk M150), bekommt der Knoten dasselbe über die
+  Kopferweiterung **playout-delay** (unten).
 - Ton und Bild auf getrennten PeerConnections über TCP (H1).
 
 ## Einfrieren auf TCP (5G-Messung, G4)
@@ -87,6 +88,22 @@ Head-of-Line-Blocking auf dem TCP-Weg, nicht fehlende Schlüsselbilder:
 | `jitterBufferTarget` 150 ms im Client | 0 Einfrieren bei 1,5 % und 2 % Verlust (Ziel ≤ 1 je 5 min) |
 | vorbeugende Schlüsselbilder | keine (auf TCP geht nichts verloren), daher aus (`KeyframeEvery`) |
 | kleinere Sprecher-Bildrate | kaum (Schwelle ist Mittel + 150 ms), daher optional (`TCPSpeakerFPS`) |
+
+### playout-delay auf TCP-/TLS-Beinen (P9)
+
+Die Apps (webrtc-sdk M150) können `jitterBufferTarget` nicht setzen – das war die Gegenmaßnahme gegen das Einfrieren
+über TCP (5G-Messung: 5,45 → 0 Einfrieren je 5 min). Deshalb setzt der Knoten auf TCP- und TLS-Beinen für Bild die
+RTP-Kopferweiterung `http://www.webrtc.org/experiments/rtp-hdrext/playout-delay` mit **min 150 ms, max 400 ms**
+(`HORN_PLAYOUT_DELAY="150,400"`, `0` = aus):
+
+- Ausgehandelt im Knotenangebot nur für Video und nur auf den TCP-/TURN-APIs (nicht UDP). Bietet das Gerät die
+  Erweiterung nicht an, bleibt sie aus (`TrackLocalContext.HeaderExtensions`).
+- Geschrieben auf allen Paketen von **Schlüsselbildern** je Ausgang (der Empfänger behält den Wert bis zum nächsten; nach
+  jedem Schicht- oder Quellwechsel kommt ohnehin ein Schlüsselbild), ohne Allokation (Kopf und Nutzlast im Ausgang
+  wiederverwendet; `TestPlayoutDelay`). Die Brücke reicht Pakete unverändert weiter und setzt nichts.
+- Nachweis in Chromium (`e2e/playout.sh`, 2 Geräte über ICE-TCP, Empfänger ohne `jitterBufferTarget`, 10 s
+  `getStats`): ohne Erweiterung `jitterBufferTargetDelay` je Rahmen 11 ms / `jitterBufferDelay` 8 ms, mit
+  138 ms / 130 ms. libwebrtc übernimmt den Wert vom SFU.
 
 ## Interne Go-API für die Steuerung (P3)
 

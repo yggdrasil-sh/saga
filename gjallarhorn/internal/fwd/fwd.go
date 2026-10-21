@@ -367,6 +367,9 @@ type Out struct {
 	started    bool
 	dropping   bool
 	skipFrame  bool
+	pdFrame    bool    // P9: aktueller Rahmen ist ein Schluesselbild (playout-delay setzen)
+	pdID       uint8   // Kopferweiterung playout-delay (0 = aus; nur TCP-/TLS-Beine)
+	pd         [3]byte // min/max in 10 ms (12 + 12 Bit)
 	tidCur     uint8
 	seqDelta   uint16
 	tsDelta    uint32
@@ -394,6 +397,20 @@ func (o *Out) Bind(w Writer, ssrc uint32, pt uint8) {
 func (o *Out) BindRaw(w RawWriter) {
 	o.bound.Store(&binding{raw: w})
 	o.want.Store(true)
+}
+
+// SetPlayoutDelay (P9, Apps ohne jitterBufferTarget): Kopferweiterung playout-delay mit der ausgehandelten id auf
+// Schluesselbildern dieses Ausgangs setzen (min/max in ms, auf 10 ms gerundet). id 0 schaltet ab. Vor Bind aufrufen.
+func (o *Out) SetPlayoutDelay(id uint8, minMs, maxMs int) {
+	a, b := minMs/10, maxMs/10
+	if a < 0 {
+		a = 0
+	}
+	if b > 0xfff {
+		b = 0xfff
+	}
+	o.pd = [3]byte{byte(a >> 4), byte(a<<4) | byte(b>>8), byte(b)}
+	o.pdID = id
 }
 
 // Unbind loest das Schreibziel.
@@ -773,6 +790,7 @@ func (l *Leg) process(p *Packet, o *Out) {
 			Totals.Switches.Add(1)
 		}
 		if v.FrameStart {
+			o.pdFrame = v.Key
 			want := uint8(o.maxTID.Load())
 			if want < o.tidCur || v.Key || (v.Sync && v.TID <= want) {
 				o.tidCur = want
@@ -832,6 +850,11 @@ func (l *Leg) process(p *Packet, o *Out) {
 	h.Padding = false
 	h.Extension = false
 	h.Extensions = h.Extensions[:0]
+	if o.pdID != 0 && o.pdFrame && o.Kind == Video {
+		// playout-delay nur auf Schluesselbildern (der Empfaenger behaelt den Wert bis zum naechsten); ohne Allokation:
+		// Extensions wird je Paket wiederverwendet, die Nutzlast liegt im Ausgang
+		_ = h.SetExtension(o.pdID, o.pd[:])
+	}
 	h.Marker = p.h.Marker
 	h.PayloadType = b.pt
 	h.SequenceNumber = seq

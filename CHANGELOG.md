@@ -187,6 +187,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   - Kandidaten nennen jetzt auch andere bereite Knoten; der Bonus „Anruf schon hier“ hält die meisten Anrufe auf einem
     Knoten, „anderer Knoten besser“ (Hysterese) wechselt nur bei deutlichem Vorteil.
   - Admin → Anrufe zeigt „Kaskaden: n“ je Knoten. `gjallarhorn bench --sfu --cascade` misst zwei Knoten mit Brücke.
+  - **playout-delay auf TCP/TLS:** Der Knoten setzt für Bild die RTP-Kopferweiterung playout-delay (150–400 ms) auf
+    Schlüsselbildern – Gegenmaßnahme gegen Einfrieren auch für Apps, die `jitterBufferTarget` nicht setzen können
+    (in Chromium nachgewiesen: Jitter-Puffer-Ziel 11 → 138 ms). Nicht auf UDP. `HORN_PLAYOUT_DELAY` (`0` = aus).
 - **Gjallarhorn P10 – Gruppenanrufe über Knoten mit anderen Saga-Servern** (Cap `horn`; Vertrag
   `docs/APP-API-FED.md` §7.4; Anleitung `docs/FELDTEST-GJALLARHORN.md`):
   - Das Heim des Anrufs koordiniert. **Teilen an** (je Knoten, Standard aus): Personen verbundener Server verbinden sich
