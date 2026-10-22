@@ -13,7 +13,7 @@ Umgebung (nichts davon steht im Repo):
     CF_API_TOKEN       Cloudflare-Token, nur DNS-Bearbeitung der Test-Zone
     TESTLAB_DOMAIN     Test-Zone, z. B. example-test.org -> a., b., horn-a., horn-b.
     TESTLAB_SSH_KEY    oeffentlicher Test-Schluessel (Standard ~/.ssh/saga-test.pub, privat ohne .pub)
-    TESTLAB_LOCATION   Standard nbg1    TESTLAB_CHANNEL  Standard testing
+    TESTLAB_LOCATION   Standard fsn1    TESTLAB_CHANNEL  Standard testing
     TESTLAB_TYPES      Standard a=cax11,b=cax11,c=cax31
 Alles, was das Skript anlegt, traegt das Label saga-test (DNS: Kommentar saga-test).
 """
@@ -94,7 +94,7 @@ def ssh(role, *cmd, inp=None, check=True):
 
 
 def cmd_plan():
-    loc = os.environ.get("TESTLAB_LOCATION", "nbg1")
+    loc = os.environ.get("TESTLAB_LOCATION", "fsn1")
     st = {t["name"]: t for t in hz("GET", "/server_types?per_page=50")["server_types"]}
     total = 0.0
     for role, name in types().items():
@@ -103,14 +103,16 @@ def cmd_plan():
         if p is None:
             sys.exit(f"{name} gibt es in {loc} nicht")
         total += p
-        print(f"  {role}: {name:7} {t['cores']} vCPU, {t['memory']:g} GB, {t['architecture']}  {p:.4f} EUR/h")
+        lo = next((x for x in t.get("locations") or [] if x.get("name") == loc), None)
+        ok = "nicht in " + loc if lo is None else "verfuegbar" if lo.get("available", True) else "AKTUELL NICHT VERFUEGBAR"
+        print(f"  {role}: {name:7} {t['cores']} vCPU, {t['memory']:g} GB, {t['architecture']}  {p:.4f} EUR/h  {ok}")
     print(f"  zusammen etwa {total:.3f} EUR/h brutto in {loc} (zzgl. IPv4 je Server)")
 
 
 def cmd_up():
     if servers():
         sys.exit("Es gibt schon Server mit dem Label - erst 'down' oder 'status'")
-    dom, ch, loc = env("TESTLAB_DOMAIN"), os.environ.get("TESTLAB_CHANNEL", "testing"), os.environ.get("TESTLAB_LOCATION", "nbg1")
+    dom, ch, loc = env("TESTLAB_DOMAIN"), os.environ.get("TESTLAB_CHANNEL", "testing"), os.environ.get("TESTLAB_LOCATION", "fsn1")
     pub, _, kh = key_paths()
     kh.unlink(missing_ok=True)
     key = hz("POST", "/ssh_keys", {"name": f"{LABEL}-{int(time.time())}", "public_key": pub.read_text().strip(),
