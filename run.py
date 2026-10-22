@@ -161,6 +161,30 @@ def set_settings(args):
         print("(gespeichert, gilt im laufenden Saga nach spätestens 5 Sekunden)")
 
 
+def create_users(args):
+    """python run.py benutzer-anlegen <name> [<name> ...]  - lokale Konten anlegen (Testlabor, Automatisierung).
+    Das Passwort kommt von stdin (eine Zeile, gilt fuer alle genannten Konten), nie als Argument. Vorhandene Konten
+    werden uebersprungen."""
+    import auth
+    import db
+    if not args or any(a.startswith("-") for a in args):
+        sys.exit("Aufruf: echo <passwort> | python run.py benutzer-anlegen <name> [<name> ...]")
+    pw = sys.stdin.readline().rstrip("\r\n")
+    if not pw:
+        sys.exit("Passwort auf stdin fehlt")
+    db.wait_ready(30)
+    db.init_schema()
+    bad = 0
+    for name in args:
+        if auth.get_user(auth.norm_username(name) or name):
+            print(f"{name}: gibt es schon")
+            continue
+        u, err = auth.create_user(name, pw, display_name=name)
+        print(f"{name}: angelegt" if u else f"{name}: FEHLER {err}")
+        bad += 0 if u else 1
+    sys.exit(1 if bad else 0)
+
+
 def horn_pair(args):
     """python run.py horn-koppeln <name> [--teilen] [--ohne-udp]  - Kopplungs-Code fuer einen weiteren Knoten wie
     Admin -> Anrufe -> Erweitern; gibt das Docker-Deploy-Skript (mit dem einmaligen Code, 30 min gueltig) auf stdout aus."""
@@ -315,6 +339,8 @@ if __name__ == "__main__":
         do_backup_check(sys.argv[2:])
     elif cmd == "einstellen":
         set_settings(sys.argv[2:])
+    elif cmd == "benutzer-anlegen":
+        create_users(sys.argv[2:])
     elif cmd == "horn-koppeln":
         horn_pair(sys.argv[2:])
     elif cmd in ("version", "--version"):
@@ -322,6 +348,6 @@ if __name__ == "__main__":
         import db
         print(f"Saga {VERSION_LABEL} (Datenbank-Schema {db.SCHEMA_VERSION})")
     elif cmd:
-        sys.exit(f"Unbekannter Befehl: {cmd} (moeglich: admin-passwort, 2fa-zuruecksetzen, 2fa-richtlinie, backup, restore, backup-extern, backup-holen, backup-pruefen, einstellen, horn-koppeln, version)")
+        sys.exit(f"Unbekannter Befehl: {cmd} (moeglich: admin-passwort, 2fa-zuruecksetzen, 2fa-richtlinie, backup, restore, backup-extern, backup-holen, backup-pruefen, einstellen, benutzer-anlegen, horn-koppeln, version)")
     else:
         asyncio.run(main())

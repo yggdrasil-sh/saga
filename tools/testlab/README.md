@@ -35,6 +35,7 @@ Föderation A ↔ B (Einladungscode) und „Teilen an“ richtet man dort ein, s
 `koppeln` nutzt zwei Befehle von Saga (ab 2.5.0-rc.123):
 
 - `python run.py einstellen calls.horn=1 calls.horn_all=1 calls.horn_from=3 chat_v3=1 …` – Schalter ohne Oberfläche
+- `echo <passwort> | python run.py benutzer-anlegen c1 c2 …` – Testkonten für die Clients (Passwort nur über stdin)
 - `python run.py horn-koppeln <name> [--teilen] [--ohne-udp]` – wie Admin → Anrufe → Erweitern, gibt das Docker-Skript aus
 
 ## Testclients auf C
