@@ -1,0 +1,60 @@
+#cloud-config
+# Saga-Testlabor, Rolle B: Saga direkt auf 443 (Caddy terminiert TLS, keine SNI-Weiche), kein eingebauter Knoten.
+#   b.@@DOMAIN@@       -> Caddy (TLS, Let's Encrypt) -> saga:8080
+#   horn-b.@@DOMAIN@@  -> externer Knoten auf Server C (Kopplung danach: testlab.py koppeln)
+# Keine Geheimnisse hier: Passwoerter und Schluessel entstehen auf dem Server (/root/saga-test/zugang.txt).
+# tools/testlab/testlab.py ersetzt @@DOMAIN@@ und @@CHANNEL@@ vor dem Anlegen.
+package_update: true
+packages: [ca-certificates, curl, jq, openssl]
+write_files:
+  - path: /opt/saga-test/saga/compose.testlab.yml
+    permissions: "0644"
+    content: |
+      # Ergaenzung zur docker-compose.yml aus dem Saga-Repo (Testlabor Rolle B)
+      services:
+        caddy:
+          image: docker.io/library/caddy:2
+          restart: unless-stopped
+          command: ["caddy", "reverse-proxy", "--from", "b.@@DOMAIN@@", "--to", "saga:8080"]
+          ports: ["80:80", "443:443"]
+          volumes: [caddy-data:/data]
+          networks: {default: {ipv4_address: 172.30.0.2}}
+      volumes:
+        caddy-data:
+      networks:
+        default:
+          ipam: {config: [{subnet: 172.30.0.0/24}]}
+  - path: /usr/local/sbin/saga-test-start
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      # Saga (Kanal @@CHANNEL@@) mit Caddy starten; .env nur beim ersten Lauf erzeugen.
+      set -eu
+      D=/opt/saga-test/saga; cd "$D"
+      curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/yggdrasil-sh/saga/@@CHANNEL@@/docker-compose.yml
+      if [ ! -f .env ]; then
+        umask 077
+        PW=$(openssl rand -base64 18 | tr -d '/+=')
+        cat > .env <<EOF
+      BASE_URL=https://b.@@DOMAIN@@
+      SECRET_KEY=$(openssl rand -hex 32)
+      POSTGRES_PASSWORD=$(openssl rand -hex 24)
+      ADMIN_USERNAME=admin
+      ADMIN_PASSWORD=$PW
+      HOST_BIND=127.0.0.1
+      ADMIN_BIND=127.0.0.1
+      TRUSTED_PROXIES=172.30.0.2
+      SAGA_VERSION=@@CHANNEL@@
+      TIMEZONE=Europe/Berlin
+      COMPOSE_FILE=docker-compose.yml:compose.testlab.yml
+      SAGA_HORN=off
+      EOF
+        mkdir -p /root/saga-test
+        printf 'Saga B: https://b.@@DOMAIN@@\nAdmin (SSH-Tunnel: ssh -L 8081:127.0.0.1:8081 root@b.@@DOMAIN@@): admin / %s\n' "$PW" > /root/saga-test/zugang.txt
+        chmod 600 /root/saga-test/zugang.txt
+      fi
+      docker compose pull -q
+      docker compose up -d
+runcmd:
+  - [sh, -c, "curl -fsSL https://get.docker.com | sh"]
+  - [sh, -c, "/usr/local/sbin/saga-test-start > /var/log/saga-test-start.log 2>&1 && mkdir -p /var/lib/saga-test && date -Is > /var/lib/saga-test/ready || touch /var/lib/saga-test-failed"]

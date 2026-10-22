@@ -1,0 +1,63 @@
+#cloud-config
+# Saga-Testlabor, Rolle C: externer Knoten fuer B (horn-b.@@DOMAIN@@) und Testclients.
+#   - Docker fuer den Knoten. Gekoppelt wird erst danach mit "testlab.py koppeln" (Code von B, 30 min gueltig).
+#   - Headless-Chromium (Fake-Kamera/-Mikrofon per Flag) mit Node und playwright-core unter /opt/saga-test/clients
+#   - saga-test-ns: Clients in eigenen Netz-Namespaces hinter NAT, je Namespace netem (Verzoegerung, Verlust) und UDP aus
+# Keine Geheimnisse hier. tools/testlab/testlab.py ersetzt @@DOMAIN@@ und @@CHANNEL@@ vor dem Anlegen.
+package_update: true
+packages: [ca-certificates, curl, jq, openssl, iproute2, iptables, chromium, nodejs, npm, fonts-dejavu-core]
+write_files:
+  - path: /usr/local/sbin/saga-test-ns
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      # Testclients in Netz-Namespaces hinter NAT (SSH und Knoten auf dem Host bleiben unberuehrt).
+      #   saga-test-ns add <n>              Namespace c<n> anlegen (10.99.<n>.2, NAT ueber die Hauptschnittstelle)
+      #   saga-test-ns netem <n> <args...>  z. B. "delay 80ms 20ms loss 2%" (beide Richtungen); "aus" = entfernen
+      #   saga-test-ns udp <n> aus|an       ausgehendes UDP sperren (ausser DNS) bzw. wieder erlauben
+      #   saga-test-ns run <n> <befehl...>  Befehl im Namespace ausfuehren
+      #   saga-test-ns del <n> | liste | alle-weg
+      set -eu
+      up=$(ip -o route get 1.1.1.1 | sed -n 's/.* dev \([^ ]*\).*/\1/p')
+      cmd=${1:-liste}; n=${2:-}
+      need() { [ -n "$n" ] && [ "$n" -ge 1 ] && [ "$n" -le 250 ] || { echo "Nummer 1-250 fehlt" >&2; exit 1; }; }
+      case "$cmd" in
+        add) need
+          sysctl -qw net.ipv4.ip_forward=1
+          ip netns add "c$n"
+          ip link add "vc$n" type veth peer name eth0 netns "c$n"
+          ip addr add "10.99.$n.1/30" dev "vc$n"; ip link set "vc$n" up
+          ip netns exec "c$n" sh -c "ip addr add 10.99.$n.2/30 dev eth0 && ip link set eth0 up && ip link set lo up && ip route add default via 10.99.$n.1"
+          mkdir -p "/etc/netns/c$n"; echo "nameserver 1.1.1.1" > "/etc/netns/c$n/resolv.conf"
+          iptables -t nat -C POSTROUTING -s 10.99.0.0/16 -o "$up" -j MASQUERADE 2>/dev/null ||
+            iptables -t nat -A POSTROUTING -s 10.99.0.0/16 -o "$up" -j MASQUERADE ;;
+        netem) need; shift 2
+          if [ "${1:-aus}" = aus ]; then
+            tc qdisc del dev "vc$n" root 2>/dev/null || true; ip netns exec "c$n" tc qdisc del dev eth0 root 2>/dev/null || true
+          else
+            tc qdisc replace dev "vc$n" root netem "$@"; ip netns exec "c$n" tc qdisc replace dev eth0 root netem "$@"
+          fi ;;
+        udp) need
+          r="OUTPUT -p udp ! --dport 53 -j DROP"
+          if [ "${3:-}" = aus ]; then ip netns exec "c$n" iptables -C $r 2>/dev/null || ip netns exec "c$n" iptables -A $r
+          else ip netns exec "c$n" iptables -D $r 2>/dev/null || true; fi ;;
+        run) need; shift 2; exec ip netns exec "c$n" "$@" ;;
+        del) need; ip netns del "c$n" 2>/dev/null || true; ip link del "vc$n" 2>/dev/null || true; rm -rf "/etc/netns/c$n" ;;
+        alle-weg) for x in $(ip netns list | sed -n 's/^c\([0-9]*\).*/\1/p'); do "$0" del "$x"; done ;;
+        liste) ip netns list ;;
+        *) sed -n '2,8p' "$0" >&2; exit 1 ;;
+      esac
+  - path: /opt/saga-test/clients/package.json
+    permissions: "0644"
+    content: |
+      {"name": "saga-test-clients", "private": true, "type": "module", "dependencies": {"playwright-core": "^1"}}
+  - path: /etc/profile.d/saga-test.sh
+    permissions: "0644"
+    content: |
+      # Headless-Chromium fuer die Testclients (Fake-Kamera/-Mikrofon: --use-fake-device-for-media-stream
+      # --use-fake-ui-for-media-stream; eigene Videodatei: --use-file-for-fake-video-capture=<datei.y4m>)
+      export SAGA_TEST_CHROMIUM=/usr/bin/chromium
+runcmd:
+  - [sh, -c, "curl -fsSL https://get.docker.com | sh"]
+  - [sh, -c, "cd /opt/saga-test/clients && npm install --no-audit --no-fund --loglevel=error"]
+  - [sh, -c, "mkdir -p /opt/saga-test/knoten /var/lib/saga-test && chromium --headless=new --no-sandbox --dump-dom about:blank >/dev/null 2>&1 && docker info >/dev/null && date -Is > /var/lib/saga-test/ready || touch /var/lib/saga-test-failed"]

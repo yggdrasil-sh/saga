@@ -119,6 +119,67 @@ def mfa_policy(value):
     print(f"2FA verlangen: {cur.get('require') or 'none'}" + (" (gespeichert, gilt im laufenden Saga nach spätestens 5 Sekunden)" if value else ""))
 
 
+_SETTABLE = {"calls.horn": bool, "calls.horn_all": bool, "calls.horn_builtin": bool, "calls.horn_from": int,
+             "chat_v3": bool}
+
+
+def set_settings(args):
+    """python run.py einstellen [schluessel=wert ...]  - ausgewaehlte Schalter ohne Admin-Oberflaeche setzen
+    (Testlabor, Automatisierung). Ohne Argumente: aktuelle Werte anzeigen."""
+    import auth
+    import db
+    db.wait_ready(30)
+    db.init_schema()
+    want = {}
+    for a in args:
+        k, sep, v = a.partition("=")
+        if not sep or k not in _SETTABLE:
+            sys.exit("Aufruf: python run.py einstellen " + " ".join(f"{k}=..." for k in _SETTABLE))
+        if _SETTABLE[k] is bool:
+            if v.lower() not in ("1", "0", "true", "false", "an", "aus", "on", "off"):
+                sys.exit(f"{k}: 1 oder 0 erwartet")
+            want[k] = v.lower() in ("1", "true", "an", "on")
+        else:
+            try:
+                want[k] = int(v)
+            except ValueError:
+                sys.exit(f"{k}: Zahl erwartet")
+    s = auth.settings(fresh=True)
+    calls = dict(s.get("calls") or {})
+    for k, v in want.items():
+        if k.startswith("calls."):
+            calls[k[6:]] = v
+        else:
+            auth.save_setting(k, v)
+    if any(k.startswith("calls.") for k in want):
+        auth.save_setting("calls", calls)
+    s = auth.settings(fresh=True)
+    for k in _SETTABLE:
+        v = (s.get("calls") or {}).get(k[6:]) if k.startswith("calls.") else s.get(k)
+        print(f"{k}={'' if v is None else int(v) if isinstance(v, bool) else v}")
+    if want:
+        print("(gespeichert, gilt im laufenden Saga nach spätestens 5 Sekunden)")
+
+
+def horn_pair(args):
+    """python run.py horn-koppeln <name> [--teilen] [--ohne-udp]  - Kopplungs-Code fuer einen weiteren Knoten wie
+    Admin -> Anrufe -> Erweitern; gibt das Docker-Deploy-Skript (mit dem einmaligen Code, 30 min gueltig) auf stdout aus."""
+    import db
+    names = [a for a in args if not a.startswith("--")]
+    if len(names) != 1 or any(a not in ("--teilen", "--ohne-udp") for a in args if a.startswith("--")):
+        sys.exit("Aufruf: python run.py horn-koppeln <name> [--teilen] [--ohne-udp]")
+    db.wait_ready(30)
+    db.init_schema()
+    from saga import horn_ops
+    import contextlib
+    try:
+        with contextlib.redirect_stdout(sys.stderr):        # Protokollzeilen nicht ins Skript
+            r = horn_ops.pair_create(names[0], share="--teilen" in args, udp="--ohne-udp" not in args, by="cli")
+    except horn_ops.PairError as e:
+        sys.exit(f"Kopplung nicht möglich: {e}")
+    sys.stdout.write(r["script_docker"])
+
+
 def do_backup(with_files=False):
     """python run.py backup [--dateien]  - Datenbank-Backup nach /data/backups (laeuft auch neben dem Server).
     Die hochgeladenen Bilder/Dateien (/data/files) stecken NICHT im Datenbank-Backup - mit --dateien kommt ein
@@ -252,11 +313,15 @@ if __name__ == "__main__":
         do_backup_fetch(sys.argv[2:])
     elif cmd == "backup-pruefen":
         do_backup_check(sys.argv[2:])
+    elif cmd == "einstellen":
+        set_settings(sys.argv[2:])
+    elif cmd == "horn-koppeln":
+        horn_pair(sys.argv[2:])
     elif cmd in ("version", "--version"):
         from version import VERSION_LABEL
         import db
         print(f"Saga {VERSION_LABEL} (Datenbank-Schema {db.SCHEMA_VERSION})")
     elif cmd:
-        sys.exit(f"Unbekannter Befehl: {cmd} (moeglich: admin-passwort, 2fa-zuruecksetzen, 2fa-richtlinie, backup, restore, backup-extern, backup-holen, backup-pruefen, version)")
+        sys.exit(f"Unbekannter Befehl: {cmd} (moeglich: admin-passwort, 2fa-zuruecksetzen, 2fa-richtlinie, backup, restore, backup-extern, backup-holen, backup-pruefen, einstellen, horn-koppeln, version)")
     else:
         asyncio.run(main())
