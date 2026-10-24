@@ -12,3 +12,7 @@
 editorjs-drag-drop@1.1.16 (MIT)
 
 image.umd.js: Hliðskjálf-Patch in fillImage(): decoding=async (kein lazy: Werkzeug blendet das Bild bis zum load-Ereignis aus), eigene Bilder (/files/<id>) als ?w=2000
+editorjs.umd.js: Saga-Patch (Bughunt P01, Speicherleck): BlockManager.unbindBlockEvents() loest die Block-Listener
+  (keydown/keyup/dragover/dragleave am Block) beim Entfernen, Ersetzen (insert replace, update) - vorher blieben sie samt
+  abgehaengtem Block in listeners.allListeners; verspaetetes bindBlockEvents (requestIdleCallback) entfaellt fuer schon
+  entfernte Bloecke; Listeners.offById entfernt den Eintrag auch aus allListeners.

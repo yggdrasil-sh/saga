@@ -2044,6 +2044,9 @@
     return w;
   };
   ToggleTool.prototype.ensure = function () { if (!this.ed) this.ed = nestedEditor(this.b, this.blocks, T("Inhalt – '/' für Blöcke")); return this.ed; };
+  // Seitenwechsel/Block entfernt: den inneren Editor abbauen (sonst bleiben seine document-Listener und damit der ganze
+  // alte Inhalt im Speicher, Bughunt P01)
+  ToggleTool.prototype.destroy = function () { if (this.ed) killEditor(this.ed); this.ed = null; };
   ToggleTool.prototype.save = function () {
     var self = this, res = { title: this.t.innerHTML, open: this.w.classList.contains('open') };
     if (!this.ed) { res.blocks = this.blocks; return res; }
@@ -4422,6 +4425,11 @@
 
   // --- Spalten: jede Spalte ist ein eigener Editor (Editor-in-Editor) ----------------
   function nestedTools() { var t = {}; Object.keys(S.tools || {}).forEach(function (k) { if (k !== 'columns') t[k] = S.tools[k]; }); return t; }
+  // Editor.js kennt destroy() erst, wenn der Editor fertig ist - sonst danach abbauen (schneller Seitenwechsel)
+  function killEditor(ed) {
+    var k = function () { try { if (typeof ed.destroy === 'function') ed.destroy(); } catch (x) { /* schon weg */ } };
+    if (typeof ed.destroy === 'function') k(); else if (ed.isReady) ed.isReady.then(k, function () {});
+  }
   function nestedEditor(holder, blocks, placeholder) {
     var tools = nestedTools();
     var ed = new window.EditorJS({
@@ -4535,7 +4543,7 @@
       self.rebuild(cols);
     });
   };
-  ColumnsTool.prototype.destroy = function () { this.editors.forEach(function (ed) { try { ed.destroy(); } catch (x) { /* schon weg */ } }); };
+  ColumnsTool.prototype.destroy = function () { this.editors.forEach(killEditor); this.editors = []; };
   ColumnsTool.prototype.setCount = function (n) {
     var self = this;
     if (n === this.editors.length) return;
