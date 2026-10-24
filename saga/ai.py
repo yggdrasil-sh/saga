@@ -557,7 +557,9 @@ def page_databases(conn, acc, uid, nid, kind, fmt, body):
     -> [{id, owner, role, title, schema}] (ohne Zugriff: weggelassen, wie ueberall)."""
     ids = ([nid] if kind == "database" else []) + [i for i in _db_blocks(fmt, body) if i != nid]
     out = []
-    for i in ids[:PAGE_DBS]:
+    for i in ids[:PAGE_DBS * 4]:                        # R07: erst Zugriff pruefen, dann begrenzen (Pruefungen gedeckelt)
+        if len(out) >= PAGE_DBS:
+            break
         owner, role, err = access(conn, uid, i, "view", acc)
         if err is not None:
             continue
@@ -624,7 +626,11 @@ def assign_value(prop, raw):
     Auswahl nur aus vorhandenen Optionen (der Assistent legt keine neuen an)."""
     typ = prop.get("type")
     s = re.sub(r"[*_`\"„“”]+", "", str(raw or "")).strip().rstrip(".").strip()
-    if not s or s in ("?", "-", "–", "—") or _NONE.match(s) or s.lower() in ("unknown", "unbekannt", "unsicher", "n/a"):
+    if not s or s in ("?", "-", "–", "—"):
+        return None
+    # R06: "Keine"/"None" kann eine echte Option sein - bei Auswahl erst die Optionen pruefen, dann als "unsicher" werten
+    unsure = bool(_NONE.match(s)) or s.lower() in ("unknown", "unbekannt", "unsicher", "n/a")
+    if unsure and typ not in ("select", "multi_select"):
         return None
     if typ in ("select", "multi_select"):
         opts = {}
@@ -638,7 +644,7 @@ def assign_value(prop, raw):
         if typ == "select":
             return one(s)
         ids = [i for i in (one(x) for x in re.split(r"\s*[,;/|]\s*", s)) if i]
-        return list(dict.fromkeys(ids))[:20] or None
+        return list(dict.fromkeys(ids))[:20] or None   # "keine" ohne passende Option: one() -> None
     if typ == "checkbox":
         if _YES.match(s):
             return True
@@ -2161,7 +2167,7 @@ async def _assign(uid, nid, b):
                 return None, _bad(t("Dieser Eigenschaft kann der Assistent keine Werte zuordnen."))
             if prop["type"] in ("select", "multi_select") and not prop.get("options"):
                 return None, _bad(t("Die Eigenschaft hat noch keine Optionen."))
-            rows = db_rows(conn, d["owner"], dbid, 2000, 240)
+            rows = db_rows(conn, d["owner"], dbid, 5000, 240)        # R08: auch spaete leere Eintraege (bis 5000)
             page_text = "" if r[3] == "database" else "\n".join(_block_texts(r[2] or "text", body))[:2000]
             return (_plain(r[0]) or t("Unbenannt"), d, prop, rows, page_text), None
     data, err = await asyncio.to_thread(load)

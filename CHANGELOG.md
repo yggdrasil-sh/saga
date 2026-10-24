@@ -17,6 +17,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu (2.5)
+- **Sicherheit (Bughunt S01/R01): Schaltfläche „Neuer Eintrag“ mit Vorlage über `via`.** Wer eine geteilte Datenbank
+  bearbeiten durfte, konnte sich eine eigene Seite mit gefälschter Schaltfläche bauen und so jede Vorlage des Eigentümers
+  kopieren und lesen (auch aus nicht geteilten Datenbanken). Jetzt signiert der Server Schaltflächen mit Vorlage, wenn der
+  Eigentümer die Seite speichert; die via-Seite muss dem Eigentümer gehören und genau diese signierte Schaltfläche
+  enthalten. Andere Bearbeiter behalten vorhandene Schaltflächen, führen aber keine neuen Vorlagen ein. `template: true`
+  wirkt per via nicht mehr (R03), Nextcloud-Blöcke der Vorlage bleiben signiert (R05). **Bestehende Seiten:** Der
+  Eigentümer speichert die Seite mit der Schaltfläche einmal (z. B. Schaltfläche öffnen und schließen), dann geht sie für
+  Geteilte wieder. Test `vorlagen_teilen` 18/18.
+- KI „Datenbank zuordnen“: Option „Keine“ wird zugeordnet (R06), sichtbare Datenbanken hinter gesperrten fehlen nicht
+  mehr (R07), leere Einträge auch jenseits von 2000 Zeilen (R08). Web: Standardvorlage + Enter in der letzten Zeile
+  verschluckte danach Eingaben (R02). Anrufe: ein Begleitgerät, das kurz aus der Liste fällt, gilt nicht mehr als
+  „übernommen“ (R09).
 - **Anrufe: eigenes Bild verschiebbar und verkleinerbar (Web).** Ziehen rastet in der nächsten Ecke ein, Klick
   (oder Enter) verkleinert es zu einer kleinen Blase und wieder zurück, Pfeiltasten verschieben. Der Browser merkt sich
   beides (`saga-call-self`); ohne Wahl bleibt alles wie bisher.

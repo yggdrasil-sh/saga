@@ -80,6 +80,39 @@ def main():
                 r = c.execute("SELECT uid, created_by FROM note WHERE id=?", (d["id"],)).fetchone()
             ok(f"Gezaehlt bei A, angelegt von B ({r})", r and r[0] == "vt-a" and r[1] == "vt-b")
             ok("B sieht den neuen Eintrag in der geteilten Datenbank", d["id"] in [x["id"] for x in req("GET", f"/api/notes/{ziel}/rows", Bk)[1].get("rows", [])])
+        s, d = req("POST", f"/api/notes/{tpl}/duplicate", Bk, {"parent_id": ziel, "via": seite, "template": True})
+        with connect() as c:
+            istpl = c.execute("SELECT is_template FROM note WHERE id=?", (d.get("id"),)).fetchone() if s == 200 else None
+        ok(f"template: true per via wirkt nicht (Bearbeiter legen keine Vorlagen an, R03) ({s}, {istpl})", s == 200 and istpl and istpl[0] == 0)
+        # --- Bughunt S01/R01: gefaelschte Schaltflaechen ---------------------------------------------------------------
+        fremd = {"type": "buttons", "data": {"buttons": [{"label": "x", "action": "db", "target": ziel, "tpl": andere, "title": ""}]}}
+        eigen = req("POST", "/api/notes", Bk, {"title": "Eigene Seite von B"})[1]["id"]
+        req("PATCH", f"/api/notes/{eigen}", Bk, {"format": "blocks", "body": json.dumps({"blocks": [fremd]})})
+        s, _ = req("POST", f"/api/notes/{andere}/duplicate", Bk, {"parent_id": ziel, "via": eigen})
+        ok(f"Eigene Seite mit gefaelschter Schaltflaeche -> verweigert ({s})", s == 404)
+        # B (Bearbeiter von A's Seite) baut die Schaltflaeche auf A's Seite ein -> verliert die Vorlage, auch nachdem A speichert
+        body = json.loads(req("GET", f"/api/notes/{seite}", Bk)[1]["body"])
+        body["blocks"].append(fremd)
+        s1, _ = req("PATCH", f"/api/notes/{seite}", Bk, {"format": "blocks", "body": json.dumps(body)})
+        nb = json.loads(req("GET", f"/api/notes/{seite}", A)[1]["body"])
+        btns = [x for blk in nb["blocks"] if blk.get("type") == "buttons" for x in blk["data"]["buttons"]]
+        ok(f"Bearbeiter fuegt Schaltflaeche mit neuer Vorlage ein -> Vorlage entfernt ({s1}, {[x.get('tpl') for x in btns]})",
+           s1 == 200 and andere not in [x.get("tpl") for x in btns] and any(x.get("tpl") == tpl and x.get("sig") for x in
+           [y for blk in nb["blocks"] if blk.get("type") == "columns" for col in blk["data"]["cols"] for b2 in col["blocks"] for y in b2["data"]["buttons"]]))
+        req("PATCH", f"/api/notes/{seite}", A, {"format": "blocks", "body": json.dumps(nb)})          # A speichert danach
+        s, _ = req("POST", f"/api/notes/{andere}/duplicate", Bk, {"parent_id": ziel, "via": seite})
+        ok(f"... auch nach dem Speichern durch A kein Weg zur fremden Vorlage ({s})", s == 404)
+        s, _ = req("POST", f"/api/notes/{tpl}/duplicate", Bk, {"parent_id": ziel, "via": seite})
+        ok(f"... die echte Schaltflaeche geht weiter ({s})", s == 200)
+        # Signatur von Hand gesetzt (oder aus einer anderen Seite kopiert) zaehlt nicht
+        with connect() as c, c:
+            raw = c.execute("SELECT body FROM note WHERE id=?", (seite,)).fetchone()[0]
+            c.execute("UPDATE note SET body=? WHERE id=?", (raw.replace('"sig": "', '"sig": "0'), seite))
+        s, _ = req("POST", f"/api/notes/{tpl}/duplicate", Bk, {"parent_id": ziel, "via": seite})
+        ok(f"Kaputte Signatur -> verweigert ({s})", s == 404)
+        req("PATCH", f"/api/notes/{seite}", A, {"format": "blocks", "body": raw})
+        s, _ = req("POST", f"/api/notes/{tpl}/duplicate", Bk, {"parent_id": ziel, "via": seite})
+        ok(f"Nach dem Speichern durch den Eigentuemer wieder signiert ({s})", s == 200)
         s, _ = req("POST", f"/api/notes/{andere}/duplicate", Bk, {"parent_id": ziel, "via": seite})
         ok(f"Andere Vorlage (nicht auf der Schaltflaeche) -> verweigert ({s})", s == 404)
         s, _ = req("POST", f"/api/notes/{tpl}/duplicate", Bk, {"parent_id": ziel, "via": leer})

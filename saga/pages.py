@@ -608,6 +608,9 @@ def _note_update(uid, nid, b, origin=None):
                     else:
                         body, _ = clean_blocks(raw)
                     _check_file_refs(owner, json.loads(body)["blocks"])
+                    if '"buttons"' in body or '"sig"' in body:   # Schaltflaechen mit Vorlage: Signatur setzt nur der Server
+                        from saga.databases import sign_buttons
+                        body = sign_buttons(body, nid, owner, uid, old[1] if old[2] == "blocks" else None)
                     if '"nextcloud"' in body:          # Nextcloud-Bloecke: author/sig setzt nur der Server (saga/nextcloud.py)
                         try:
                             body = nextcloud.check_body(uid, nid, old[1], old[2], body)

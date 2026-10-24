@@ -802,7 +802,11 @@
     }
     // Dieses Geraet fehlt in der Liste, ein anderes eigenes ist dabei: es hat uebernommen und dieses abgemeldet
     if (here && R.inRoom && !R.ho && !R.ending && old[here] && !legs.some(function (x) { return x.device === here; })) {
-      var other = legs.filter(function (x) { return x.me && x.device !== here; })[0];
+      // R09: nur wenn das andere Geraet gerade die Fuehrung uebernommen hat (neu dabei bzw. vorher Begleitgeraet) - ein
+      // Begleitgeraet, das Begleitgeraet bleibt, heisst nur: dieses Geraet ist kurz aus der Liste gefallen (Aussetzer)
+      var other = legs.filter(function (x) {
+        return x.me && x.device !== here && x.role !== 'companion' && (!old[x.device] || old[x.device].role === 'companion');
+      })[0];
       if (other) {
         R.ending = true;
         finish(R, T('Anruf auf {dev} übernommen.', { dev: other.dev_name || T('anderes Gerät') }), 'info');

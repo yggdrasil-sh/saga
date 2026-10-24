@@ -2787,7 +2787,7 @@
     function newRow(props, blankOnly) {
       if (ro()) return Promise.resolve();
       if (props instanceof Event) props = null;
-      if (!props && !blankOnly && defaultTpl()) return newFromTemplate(defaultTpl());   // Standardvorlage fuer "+ Neu"
+      if (!props && !blankOnly && defaultTpl()) { typeAhead = null; return newFromTemplate(defaultTpl()); }   // Standardvorlage fuer "+ Neu" (R02: Tippsammler nicht haengen lassen)
       // Nr. 148: noch eine leere, gerade angelegte Zeile da ("+ Neu" mehrmals, Enter auf dem Knopf) -> dorthin statt noch einer
       var blank = !props && curView().type !== 'board' && DB.rows.filter(function (x) { return FRESH[x.id] && isBlankRow(x); })[0];
       var bi = blank && BOX.querySelector('tr[data-id="' + blank.id + '"] .db-title-in');
