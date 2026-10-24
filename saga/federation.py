@@ -1795,6 +1795,8 @@ def _on_name_released(c, uid, pub=None, deleted=False, **_):
             for p in peers(c):
                 if p["status"] == "active" and "handles" in caps_of(p):
                     _enqueue(c, p["id"], {"type": "person.gone", "name": h[0], "deleted": True})
+    if deleted:                          # fruehere Namen (Umbenennen) gehoeren niemandem mehr - auch nicht einem neuen Konto mit gleichem Anmeldenamen
+        c.execute("UPDATE fed_name_retired SET uid=NULL WHERE uid=?", (uid,))
     if not pub or not has_key(c):
         return
     c.execute("INSERT OR REPLACE INTO fed_name_retired (name, uid, retired) VALUES (?,?,?)", (pub, None if deleted else uid, time.time()))
@@ -1820,6 +1822,8 @@ def _on_name_renamed(c, uid, old=None, new=None, **_):
             prev = old or (c.execute("SELECT handle FROM fed_handle WHERE uid=?", (uid,)).fetchone() or [None])[0]
             if prev and "handles" not in caps and not old:
                 prev = None
+            if prev and not _knows_person(c, uid, p):
+                prev = None                  # kennt die Person nicht: Handle und Namen nicht verraten (wie op_resolve, Adressbuch)
             if prev:
                 h = h or own_handle(c, uid)
                 _enqueue(c, p["id"], {"type": "person.renamed", "old": prev, "new": new, "handle": h}, chain="person:" + h[1:])
@@ -1828,6 +1832,20 @@ def _on_name_renamed(c, uid, old=None, new=None, **_):
             c.execute("DELETE FROM fed_inbound WHERE peer_id=? AND target_type='user' AND target=?", (p["id"], uid))
             if p["status"] == "active":
                 _enqueue(c, p["id"], {"type": "person.gone", "name": old, "deleted": False})
+
+
+def _knows_person(c, uid, p):
+    """Kennt Instanz p das Konto uid schon - steht es in ihrem Adressbuch, hat p mit ihm (bzw. einer seiner Gruppen)
+    geteilt oder es mit Personen/Gruppen von p? Nur dann bekommt p beim Umbenennen person.renamed (mit Handle)."""
+    if DIR_VISIBLE is not None and DIR_VISIBLE(c, uid, p):
+        return True
+    gs = sorted(sharing.groups_of(c, uid))
+    q = "SELECT 1 FROM fed_inbound WHERE peer_id=? AND ((target_type='user' AND target=?)" + \
+        (f" OR (target_type='group' AND target IN ({','.join('?' * len(gs))}))" if gs else "") + ") LIMIT 1"
+    if c.execute(q, (p["id"], uid, *gs)).fetchone():
+        return True
+    return bool(c.execute("SELECT 1 FROM note_share WHERE owner_uid=? AND target_type IN ('remote','remote_group') AND target LIKE ? LIMIT 1",
+                          (uid, "%" + _host_tail(p["host"]))).fetchone())
 
 
 def rename_loss(c, uid):

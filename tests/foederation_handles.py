@@ -193,6 +193,35 @@ def part_old(pa, pb):
     ok("A: Berts Freigaben (andere Person) unberuehrt", bool(sql("a", "SELECT 1 FROM note_share WHERE target=?", (f"@bertneu@{HB}",))))
 
 
+def part_privat(pa, pb):
+    """Review: person.renamed (mit Handle) nur an Instanzen, die die Person kennen (Adressbuch, Freigaben) - Anna-B2 steht
+    in keinem Adressbuch und hat mit A nichts zu tun: A erfaehrt weder Handle noch neuen Namen."""
+    s, d = api("b", "fb-anna2", "PUT", "/api/account/federation", {"directory": False})
+    ok(f"B: Anna-B2 nicht im Adressbuch ({s})", s == 200 and d.get("directory") is False)
+    F2.py("b", "from saga import fed_dir\nprint(json.dumps(fed_dir.refresh_local(force=True)))")
+    h2 = handle_of("b", "fb-anna2").split("@")[0]
+    s, d = api("b", "fb-anna2", "PUT", "/api/account/public-name", {"name": "annabz"})
+    ok(f"B: Anna-B2 benennt sich um ({s})", s == 200)
+    s, d = api("b", "fb-bert", "PUT", "/api/account/public-name", {"name": "bertprivat"})       # Vergleich: Bert kennt A
+    ok(f"A: Berts Umbenennen kommt an ({s})", s == 200 and wait(lambda: any("-> bertprivat" in r[0] for r in
+                                                                           sql("a", "SELECT detail FROM fed_log WHERE event='person.renamed'")), 15))
+    time.sleep(2)
+    ok("A: kein person.renamed fuer Anna-B2", not any("annabz" in r[0] for r in sql("a", "SELECT detail FROM fed_log WHERE event='person.renamed'")))
+    ok("A: Handle von Anna-B2 unbekannt", not sql("a", "SELECT 1 FROM fed_alias WHERE handle=?", (h2,))
+       and not sql("a", "SELECT 1 FROM fed_name_handle WHERE handle=?", (h2,)))
+    s, d = api("b", "fb-bert", "PUT", "/api/account/public-name", {"name": "bertneu"})
+    ok("A: Bert wieder bertneu", s == 200 and wait(lambda: bool(sql("a", "SELECT 1 FROM note_share WHERE target=?", (f"@bertneu@{HB}",))), 15))
+
+
+def part_geloescht(pa, pb):
+    """Review: Konto geloescht -> auch fruehere (umbenannte) Namen gehoeren niemandem mehr (kein neues Konto mit gleichem
+    Anmeldenamen bekommt Ereignisse an sie oder darf sie nehmen)."""
+    ok("B: Olgas frueherer Name gesperrt (fuer sie)", sql("b", "SELECT uid FROM fed_name_retired WHERE name='olga'") == [("fb-olga",)])
+    F2.py("b", "from saga import userdata\nuserdata.delete_user_data('fb-olga', drop_user=True)\nprint('1')")
+    ok("B: nach dem Loeschen gehoeren olga und olgax niemandem",
+       sorted(sql("b", "SELECT name, uid FROM fed_name_retired WHERE name IN ('olga','olgax')")) == [("olga", None), ("olgax", None)])
+
+
 def pb_peer():
     return sql("b", "SELECT id FROM fed_peer")[0][0]
 
@@ -202,7 +231,9 @@ def run():
         A, B, pa, pb = F2.main()
         part_w02(pa, pb)
         part_w03(pa, pb)
+        part_privat(pa, pb)
         part_old(pa, pb)
+        part_geloescht(pa, pb)
     except Exception:
         import traceback
         traceback.print_exc()

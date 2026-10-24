@@ -27,7 +27,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Benachrichtigungen, Anzeigenamen und Adressbuch werden umgeschrieben. Ebenso, wenn jemand erstmals einen Namen setzt.
   Server ohne `rename` (ältere Versionen) bekommen wie bisher `person.gone`; der Umbenennen-Dialog nennt dann vorher die
   betroffenen Seiten und Server. Nur der Server der Person kann sie umbenennen; ein Name, der dort schon einer anderen
-  Person gehört, wird nicht übernommen. Neue Tabelle `fed_alias`. Tests `foederation_handles` (neu), `foederation_boese`.
+  Person gehört, wird nicht übernommen. `person.renamed` (mit Handle) geht nur an Server, die die Person schon kennen (Adressbuch oder Freigaben in einer der Richtungen); beim Löschen eines Kontos werden auch frühere Namen frei von jeder Zuordnung. Neue Tabelle `fed_alias`. Tests `foederation_handles` (neu), `foederation_boese`.
 - **Sicherheit (Bughunt S01/R01): Schaltfläche „Neuer Eintrag“ mit Vorlage über `via`.** Wer eine geteilte Datenbank
   bearbeiten durfte, konnte sich eine eigene Seite mit gefälschter Schaltfläche bauen und so jede Vorlage des Eigentümers
   kopieren und lesen (auch aus nicht geteilten Datenbanken). Jetzt signiert der Server Schaltflächen mit Vorlage, wenn der
