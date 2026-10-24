@@ -101,6 +101,14 @@ async function chatKeys(q, user) {
     await a.click('.cl-ctl .cl-red').catch(e => console.log('  Auflegen: ' + e));
     if (E.DEBUG) console.log('  A nach Auflegen: ' + JSON.stringify(await a.evaluate(() => window.HKCalls.state())));
     ok('Nach dem Auflegen klingelt nichts mehr', await until(async () => !(await b.isVisible('.cl-ring')), 8000));
+    // Bughunt W04: B laedt neu, waehrend es klingelt, A legt gleich danach auf (Live-Kanal von B steht noch nicht) -
+    // vorher klingelte es ~45 s weiter
+    await until(() => a.evaluate(() => !window.HKCalls.state()), 10000); await sleep(21000);   // Bremse: 3 Anrufe/min
+    await a.click('#ct-call-a'); await until(() => b.isVisible('.cl-ring'), 15000);
+    await b.goto(BASE + '/chats'); await until(() => b.isVisible('.cl-ring'), 6000);
+    await a.click('.cl-ctl .cl-red').catch(e => console.log('  Auflegen: ' + e));
+    const t2 = Date.now();
+    ok('W04: Neu geladen + aufgelegt -> Klingeln endet bald (< 10 s)', await until(async () => !(await b.isVisible('.cl-ring')), 10000), Date.now() - t2);
   } catch (e) { ok('Ablauf ohne Ausnahme', false, String(e && e.stack || e).slice(0, 600)); }
   finally { await browser.close(); }
   const n = res.filter(Boolean).length;

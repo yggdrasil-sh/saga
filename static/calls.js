@@ -203,12 +203,21 @@
     flashTitle(true, from.name || '?');
     var left = Math.max(5, (d.expires_in != null ? d.expires_in : d.ring_s || 45)) * 1000 + 3000;
     RINGS[d.call_id].t = setTimeout(function () { unring(d.call_id); }, left);    // falls das Ende-Ereignis fehlt
+    // Bughunt W04: nach dem Neuladen kam das Ende-Ereignis teils nicht an (klingelte ~45 s weiter) - waehrenddessen alle
+    // 5 s nachsehen; Einladung zum Gruppenanruf: nur, solange sie klingelt
+    RINGS[d.call_id].poll = setInterval(function () {
+      if (!RINGS[d.call_id]) return;
+      api('GET', '/api/calls/' + d.call_id).then(function (r) {
+        var k = r && r.call; if (!k || !RINGS[d.call_id]) return;
+        if (k.state === 'ended' || k.state === 'declined' || (k.state === 'active' && !(d.group && !d.dm))) unring(d.call_id);
+      }).catch(function (e) { if (e && e.status === 404) unring(d.call_id); });
+    }, 5000);
     var f = box.querySelector('.cl-big'); if (f && document.visibilityState === 'visible') f.focus({ preventScroll: true });
   }
   function unring(id) {
     GONE[id] = true;
     var r = RINGS[id]; if (!r) return;
-    clearTimeout(r.t); r.box.remove(); delete RINGS[id];
+    clearTimeout(r.t); clearInterval(r.poll); r.box.remove(); delete RINGS[id];
     if (r.loud) stopTone();
     if (!Object.keys(RINGS).length) flashTitle(false);
   }
