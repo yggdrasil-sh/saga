@@ -8,7 +8,8 @@ from fastapi import APIRouter
 from saga import nextcloud
 from saga.core import _api_guard, _bad, _body, _json_load, origin_of
 from saga.sharing import access
-from saga.notes import NOTE_TITLE_MAX, note_limit_error, _FILE_URL, _check_parent, _iter_blocks, tree_changed
+from saga.notes import NOTE_TITLE_MAX, note_limit_error, _FILE_URL, _check_parent, _iter_blocks, announce_row, tree_changed
+
 
 router = APIRouter()
 
@@ -53,13 +54,17 @@ async def api_note_duplicate(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid                              # Duplizieren: v1 nur der Eigentuemer (Vorlagen sieht ohnehin nur er)
+    owner = uid                              # Duplizieren: der Eigentuemer - oder per Schaltflaeche (via, siehe unten)
     b = await _body(request) or {}
     now = time.time()
     with _db() as c, c:
         _, _, err = access(c, uid, nid, "owner")
         if err is not None:
-            return err
+            if b.get("via") is None:
+                return err
+            owner, err = _via_button(c, uid, nid, b)
+            if err is not None:
+                return err
         r = c.execute("SELECT title, icon, tags, body, format, kind, schema, props, cover, cover_pos, wide, parent_id "
                       "FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
         if not r:
@@ -83,8 +88,51 @@ async def api_note_duplicate(nid: int, request: Request):
         new_body = nextcloud.adopt(r[3], r[4], uid, cur.lastrowid)       # Nextcloud-Bloecke: Signatur gilt je Seite
         if new_body != r[3]:
             c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (new_body, cur.lastrowid, owner))
+        if owner != uid:                        # per Schaltflaeche auf einer geteilten Seite: wer hat angelegt, Live-Hinweis
+            c.execute("UPDATE note SET created_by=?, updated_by=? WHERE id=? AND uid=?", (uid, uid, cur.lastrowid, owner))
+            if parent:
+                announce_row(c, owner, cur.lastrowid, uid, now, origin_of(request))
         tree_changed(c, owner, [cur.lastrowid], "created", origin_of(request))
         return JSONResponse({"id": cur.lastrowid, "updated": now})
+
+
+def _via_button(c, uid, nid, b):
+    """Schaltflaeche "Neuer Eintrag" mit Vorlage auf einer geteilten Seite (2.5): Die Vorlage gehoert dem Eigentuemer
+    und liegt oft in einer Datenbank, die nicht geteilt ist. Erlaubt nur, wenn die Seite b["via"] (Lesen genuegt)
+    GENAU diese Schaltflaeche enthaelt (Vorlage nid -> Ziel b["parent_id"]), die Person das Ziel bearbeiten darf und
+    Vorlage und Ziel demselben Konto gehoeren. -> (owner, None) | (None, Fehler)"""
+    nf = _bad("not found", 404)
+    try:
+        via, target = int(b.get("via")), int(b.get("parent_id"))
+    except (TypeError, ValueError, OverflowError):
+        return None, nf
+    owner, _, err = access(c, uid, target, "edit")
+    if err is not None:
+        return None, err
+    vowner, _, err = access(c, uid, via, "view")
+    if err is not None:
+        return None, nf
+    if not c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND is_template=1 AND deleted_at IS NULL", (nid, owner)).fetchone():
+        return None, nf
+    r = c.execute("SELECT body, format FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (via, vowner)).fetchone()
+    if not r or r[1] != "blocks":
+        return None, nf
+
+    def num(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError, OverflowError):
+            return None
+    try:
+        for blk in _iter_blocks((_json_load(r[0], {}) or {}).get("blocks", [])):
+            if blk.get("type") != "buttons":
+                continue
+            for bt in (blk.get("data") or {}).get("buttons") or []:
+                if isinstance(bt, dict) and bt.get("action") == "db" and num(bt.get("tpl")) == nid and num(bt.get("target")) == target:
+                    return owner, None
+    except (ValueError, AttributeError, RecursionError):
+        pass
+    return None, nf
 
 
 def _first_image(body, fmt):

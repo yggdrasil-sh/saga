@@ -17,6 +17,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu (2.5)
+- **Behoben: Schaltfläche „Neuer Eintrag“ mit Vorlage auf geteilten Seiten.** Für Personen, mit denen die Seite geteilt
+  ist, schlug sie fehl, wenn die Vorlage in einer (nicht geteilten) Datenbank des Eigentümers liegt – Duplizieren durfte
+  nur der Eigentümer. Jetzt schicken Clients `via` (die Seite mit der Schaltfläche) mit; der Server erlaubt die Kopie nur,
+  wenn diese Seite (Lesen genügt) genau diese Schaltfläche (Vorlage → Ziel) enthält, die Person das Ziel bearbeiten darf
+  und Vorlage und Ziel demselben Konto gehören. Der Eintrag gehört dem Eigentümer („angelegt von“ = die Person).
 - **Eingebettete Datenbank: Titel und Ansichts-Reiter ausblendbar.** Unter „⚙ Ansicht“ → „Dieser Block“ je Block
   „Datenbanktitel anzeigen“ und „Ansichts-Reiter anzeigen“ (wie Notion). Gespeichert im Block (`hide_title`,
   `hide_tabs`); veröffentlichte Seiten lassen den Titel dann ebenfalls weg. Die Datenbank-Seite selbst bleibt unverändert.

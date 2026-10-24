@@ -3891,7 +3891,9 @@
   function runButton(b, configure) {
     if (b.action === 'db' && b.target) {
       var title = (b.title || '').replace(/\{(datum|date|fecha)\}/g, today.format(new Date()));
-      var req = b.tpl ? api('POST', '/api/notes/' + b.tpl + '/duplicate', title ? { parent_id: b.target, title: title } : { parent_id: b.target })
+      var dup = { parent_id: b.target }; if (title) dup.title = title;
+      if (S.cur && S.cur.id > 0) dup.via = S.cur.id;              // geteilte Seite: Server prueft die Schaltflaeche auf dieser Seite (2.5)
+      var req = b.tpl ? api('POST', '/api/notes/' + b.tpl + '/duplicate', dup)
                       : api('POST', '/api/notes', { parent_id: b.target, title: title });
       return save().then(function () { return req; }).then(function (d) {
         return loadList().then(function () {
