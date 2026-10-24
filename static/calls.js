@@ -2550,6 +2550,7 @@
   function hornPeersIn(R, conn, peers) {
     conn.peers = peers || {};
     hornMap(R);
+    hornTuneCam(R, conn);
     // unbekannte Kennung (Geraet gerade beigetreten bzw. Knoten neu bereit): Teilnehmerliste einmal neu holen
     var H = R.horn, me_ = myDev().id, unknown = Object.keys(conn.peers).some(function (ref) {
       var d = hornDevOf(R, conn, ref); return !d && ref !== hornMyRef(R, conn);
@@ -2558,6 +2559,25 @@
       H.rosterT = Date.now();
       api('GET', '/api/calls/' + R.id + '?device=' + q(me_)).then(function (r) { if (live(R)) rosterIn(R, r.call.legs, r.call); }).catch(function () {});
     }
+  }
+  // Bughunt P03 (wie die Apps seit 2.5, HornLogic.camActive): allein keine Kamera-Schicht senden, zu zweit ohne die kleine
+  // Kachel-Schicht l (nur der Sprecher wird gezeigt) - spart Uplink und Akku; nur bei Aenderung neu setzen
+  function hornTuneCam(R, conn) {
+    var mine = hornMyRefs(R).concat([hornMyRef(R, conn)]);
+    var others = Object.keys(conn.peers || {}).filter(function (r) { return mine.indexOf(r) < 0; }).length;
+    Object.keys(conn.legs || {}).forEach(function (k) {
+      var s = conn.legs[k].cam && conn.legs[k].cam.sender;
+      if (!s || !s.getParameters) return;
+      try {
+        var p = s.getParameters(), diff = false, rids = (p.encodings || []).map(function (e) { return e.rid; });
+        if (!rids.length) return;
+        p.encodings.forEach(function (e) {
+          var a = others > 0 && !(others === 1 && rids.length > 1 && e.rid === 'l');
+          if (e.active !== a) { e.active = a; diff = true; }
+        });
+        if (diff) s.setParameters(p).catch(function () { /* naechster Versuch beim naechsten peers */ });
+      } catch (e) { /* aelterer Browser */ }
+    });
   }
   function hornRef(x, conn) { return x.hpn ? x.hpn[conn.node] : x.hp; }
   function hornMyRef(R, conn) { var x = myLeg(R); return (x && hornRef(x, conn)) || (conn.cand && conn.cand.peer) || ''; }
