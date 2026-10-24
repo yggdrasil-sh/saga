@@ -59,9 +59,11 @@
   var VENDOR = ['editorjs.umd.js', 'header.umd.js', 'editorjs-list.umd.js', 'quote.umd.js',
                 'code.umd.js', 'delimiter.umd.js', 'inline-code.umd.js', 'marker.umd.js',
                 'table.umd.js', 'image.umd.js', 'attaches.umd.js', 'drag-drop.js'];
+  // async=false: alle Skripte laden parallel, ausgefuehrt werden sie trotzdem in dieser Reihenfolge (Bughunt P04 -
+  // vorher wurde jedes erst nach dem onload des vorigen eingefuegt: 12 Rundreisen nacheinander)
   function loadScript(src) {
     return new Promise(function (ok, fail) {
-      var s = document.createElement('script'); s.src = src; s.onload = ok;
+      var s = document.createElement('script'); s.async = false; s.src = src; s.onload = ok;
       s.onerror = function () { fail(new Error(T('Laden fehlgeschlagen: {src}', { src: src }))); };
       document.body.appendChild(s);
     });
@@ -73,9 +75,7 @@
     var l = document.createElement('link'); l.rel = 'stylesheet'; l.id = 'editor-js-styles';
     l.href = '/static/vendor/editorjs/editorjs.css?v=' + V; document.head.appendChild(l);
     var m = document.createElement('meta'); m.id = 'codex-tooltips-style'; document.head.appendChild(m);
-    vendorReady = VENDOR.reduce(function (p, f) {
-      return p.then(function () { return loadScript('/static/vendor/editorjs/' + f + '?v=' + V); });
-    }, Promise.resolve());
+    vendorReady = Promise.all(VENDOR.map(function (f) { return loadScript('/static/vendor/editorjs/' + f + '?v=' + V); }));
     return vendorReady;
   }
 
@@ -5423,6 +5423,8 @@
     flush: function () { return S.conflict ? Promise.reject(new Error('conflict')) : save(); },   // Peek: vor dem Schliessen speichern
     init: function (onCount) {
       S.onCount = onCount || S.onCount;
+      // Editor.js schon jetzt laden (parallel zu Baum, Diensten und Seite) - geoeffnet wird fast immer eine Seite (P04)
+      loadVendor().catch(function () { /* openPage meldet den Fehler */ });
       var svc = api('GET', '/api/services').then(function (s) { S.services = s; }).catch(function () {});
       return Promise.all([loadList(), svc]).then(function () {
         var fromHash = parseInt(location.hash.slice(1), 10), last = +HK.store('hk-pg-last');
