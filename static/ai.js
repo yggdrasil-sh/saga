@@ -423,7 +423,7 @@
     }
     tr.appendChild(act(T('Übersetzen nach'), '⇄', function () { runPage('translate'); }, true)); tr.appendChild(target);
     g.appendChild(tr);
-    g.appendChild(act(T('Datenbank zuordnen'), '⇢', assignForm));
+    g.appendChild(act(T('Werte vorschlagen …'), '⇢', assignForm));
     w.appendChild(g); w.appendChild(selLine); w.appendChild(resBox);
     body.appendChild(w);
     selInfo();
