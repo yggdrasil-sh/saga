@@ -170,6 +170,23 @@ async function others(p, D, st) {
   ok('Galerie: "+ Neu" am Ende', await p.evaluate(() => document.querySelector('.dbg').lastElementChild.classList.contains('dbg-new')));
   await view(p, D, 'brd'); await p.goto(BASE + '/notes?t=2#' + D);
   await until(p, () => { const l = document.querySelectorAll('.board-cards'); return l.length > 0 && [...l].every((x) => x.dataset.done === '1'); });
+  // Bughunt P07: je Spalte zuerst 50 Karten, Rest per "Mehr laden" (Zahl im Knopf); danach alle Karten in ihren Spalten
+  const bc = await p.evaluate(() => [...document.querySelectorAll('.board-col')].map((c) => ({ n: c.querySelectorAll('.board-card').length,
+    all: +c.querySelector('.board-head .board-n').textContent, more: (c.querySelector('.board-more .board-n') || {}).textContent || '' })));
+  ok('Board: je Spalte hoechstens 50 Karten, "Mehr laden" mit Restzahl', bc.every((c) => c.n === Math.min(50, c.all) && (c.all > 50 ? c.more.includes(String(c.all - 50)) : !c.more))
+    && bc.reduce((a, c) => a + c.all, 0) === N + 1, bc);
+  await p.locator('.board-col').first().locator('.board-more').click();
+  ok('Board: "Mehr laden" setzt 50 weitere ein', (await p.locator('.board-col').first().locator('.board-card').count()) === Math.min(100, bc[0].all));
+  // Ziehen einer Karte in eine Spalte, in der sie hinter "Mehr laden" laege: sie bleibt dort sichtbar
+  {
+    const card = p.locator('.board-col').first().locator('.board-card').last(), title = (await card.locator('.board-title').innerText()).trim();
+    await drag(p, card, p.locator('.board-col').nth(1));
+    await until(p, (t) => [...document.querySelectorAll('.board-col')[1].querySelectorAll('.board-title')].some((x) => x.textContent.trim() === t), title, 10000);
+    ok('Board: gezogene Karte in der Zielspalte sichtbar (auch hinter "Mehr laden")', await p.evaluate((t) =>
+      [...document.querySelectorAll('.board-col')[1].querySelectorAll('.board-title')].some((x) => x.textContent.trim() === t), title), title);
+    ok('Board: aufgeklappte Spalte bleibt nach dem Ziehen aufgeklappt', (await p.locator('.board-col').first().locator('.board-card').count()) >= Math.min(99, bc[0].all - 1));
+  }
+  for (let i = 0; i < 40 && await p.locator('.board-more').count(); i++) { await p.locator('.board-more').first().click(); await p.waitForTimeout(30); }
   ok('Board: alle Karten in ihren Spalten', (await p.evaluate(() => document.querySelectorAll('.board-card').length)) === N + 1);
   // Ziehen: erste Karte (sofort eingesetzt) und letzte Karte (spaetes Haeppchen) der ersten Spalte in die zweite Spalte
   for (const [name, pick] of [['erste', (l) => l.first()], ['aus spaetem Haeppchen', (l) => l.last()]]) {

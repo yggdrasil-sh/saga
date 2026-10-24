@@ -2324,7 +2324,9 @@
   // laufen ueber den Vorlauf weiter. Drucken: vorher alle Eintraege einsetzen, danach wieder nur den Ausschnitt.
   // box: Eltern der Eintraege (tbody bzw. Liste), make(i) -> Knoten, key(i) -> Schluessel fuer hcache, pad(px) ->
   // Platzhalter, end: fester letzter Knoten in box (oder null), after(nodes): nach dem Einsetzen neuer Knoten.
-  var VLIST_MIN = 150, VLIST_OVER = 900;
+  var VLIST_MIN = 150, VLIST_OVER = 900, BOARD_PAGE = 50;
+  // Drucken: im Board alle Karten einsetzen (sonst nur die ersten je Spalte)
+  window.addEventListener('beforeprint', function () { [].forEach.call(document.querySelectorAll('.board-more'), function (b) { if (b.hkAll) b.hkAll(); }); });
   function vlist(box, n, make, key, pad, end, hcache, after) {
     var H = new Array(n), nodes = new Map(), pads = [], raf = 0, all = false, clips = null, pin = -1, est = hcache.est || 38;
     var idxOf = new Map(), rowRO = window.ResizeObserver ? new ResizeObserver(function (es) { rowsResized(es); }) : null;
@@ -3455,7 +3457,22 @@
       return bar;
     }
 
-    var dragId = null;
+    var dragId = null, boardLim = {}, boardKeep = null;
+    // "Mehr laden" unter einer Spalte: haengt die naechsten BOARD_PAGE Karten an; hkAll (Drucken) setzt alle ein
+    function boardMore(rows, list, g, ck, lim) {
+      var b = el('button', 'btn board-more'); b.type = 'button'; b.style.margin = '.25rem .4rem';   // auch fuer Leser (board-add ist dort aus)
+      function txt() { b.textContent = T('Mehr laden') + ' '; b.appendChild(el('span', 'board-n', T('(+{n} weitere)', { n: rows.length - lim }))); }
+      function grow(to) {
+        if (list.dataset.done !== '1') { setTimeout(function () { grow(to); }, 30); return; }   // erste Haeppchen laufen noch
+        var f = document.createDocumentFragment();
+        rows.slice(lim, to).forEach(function (r) { f.appendChild(boardCard(r, g)); });
+        list.appendChild(f); lim = boardLim[ck] = to;
+        if (lim >= rows.length) b.remove(); else txt();
+      }
+      b.addEventListener('click', function () { grow(Math.min(rows.length, lim + BOARD_PAGE)); });
+      b.hkAll = function () { grow(rows.length); };
+      txt(); return b;
+    }
     function boardCard(r, g) {
       var c = tint(el('div', 'board-card'), r); c.draggable = true; c.tabIndex = 0; c.setAttribute('role', 'button');
       c.appendChild(el('div', 'board-title', (ti(r.icon) ? ti(r.icon) + ' ' : '') + (r.title || T('Unbenannt'))));
@@ -3502,7 +3519,13 @@
         var c = el('div', 'board-col'), h = el('div', 'board-head');
         h.appendChild(col.o ? optChip(col.o) : el('span', 'board-none', T('Ohne {name}', { name: g.name }))); h.appendChild(el('span', 'board-n', String(col.rows.length)));
         c.appendChild(h);
-        var list = el('div', 'board-cards'); chunked(col.rows, function (r) { return boardCard(r, g); }, list, null, 60); c.appendChild(list);
+        // Bughunt P07: je Spalte zuerst BOARD_PAGE Karten, der Rest per "Mehr laden" (1500 Karten = ~50 000 Knoten).
+        // Aufgeklappt bleibt aufgeklappt (auch nach renderDb); eine gerade gezogene oder neue Karte ist immer zu sehen.
+        var ck = curView().id + ':' + (col.o ? col.o.id : ''), lim = Math.max(BOARD_PAGE, boardLim[ck] || 0);
+        col.rows.forEach(function (r, i) { if ((r.id === boardKeep || FRESH[r.id]) && i >= lim) lim = i + 1; });
+        lim = boardLim[ck] = Math.min(lim, col.rows.length);
+        var list = el('div', 'board-cards'); chunked(col.rows.slice(0, lim), function (r) { return boardCard(r, g); }, list, null, 60); c.appendChild(list);
+        if (lim < col.rows.length) c.appendChild(boardMore(col.rows, list, g, ck, lim));
         var add = el('button', 'board-add', T('+ Neu')); add.type = 'button';
         add.addEventListener('click', function () { var pr = {}; if (col.o) pr[g.id] = col.o.id; newRow(pr); });
         c.appendChild(add);
@@ -3512,6 +3535,7 @@
           e.preventDefault(); c.classList.remove('over');
           var r = DB.rows.find(function (x) { return x.id === dragId; }); dragId = null; if (!r) return;
           var nv = col.o ? col.o.id : null; if ((r.props[g.id] || null) === nv) return;
+          boardKeep = r.id;                            // in der Zielspalte sichtbar, auch hinter "Mehr laden"
           setProp(r, g.id, nv).then(renderDb);
         });
         wrap.appendChild(c);
