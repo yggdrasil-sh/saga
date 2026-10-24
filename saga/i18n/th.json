@@ -3231,10 +3231,5 @@
  "🔗 Link zur Datenbank kopieren": "🔗 คัดลอกลิงก์ไปยังฐานข้อมูล",
  "🖼 Bild hochladen …": "🖼 อัปโหลดรูปภาพ …",
  "🖼 Eigenes Bild hochladen …": "🖼 อัปโหลดรูปภาพของตัวเอง …",
- "🗃️ Datenbank einbetten:": "🗃️ ฝังฐานข้อมูล:",
- "443/TCP zu {host} und anderen Knoten": "443/TCP ไปยัง {host} และโหนดอื่น",
- "Fähigkeiten neu abfragen": "สอบถามความสามารถอีกครั้ง",
- "Fähigkeiten werden mit {n} verbundenen Servern abgeglichen.": "กำลังซิงค์ความสามารถกับเซิร์ฟเวอร์ที่เชื่อมต่อ {n} เครื่อง",
- "UDP 443 versuchen (empfohlen)": "ลอง UDP 443 (แนะนำ)",
- "Zertifikat per TLS-ALPN-01 noch nicht erhalten – ist 443/TCP direkt erreichbar?": "ยังไม่ได้ใบรับรองผ่าน TLS-ALPN-01 – เข้าถึง 443/TCP ได้โดยตรงหรือไม่?"
+ "🗃️ Datenbank einbetten:": "🗃️ ฝังฐานข้อมูล:"
 }

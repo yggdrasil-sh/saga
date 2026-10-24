@@ -3231,10 +3231,5 @@
  "🔗 Link zur Datenbank kopieren": "🔗 Копировать ссылку на базу данных",
  "🖼 Bild hochladen …": "🖼 Загрузить изображение …",
  "🖼 Eigenes Bild hochladen …": "🖼 Загрузить своё изображение …",
- "🗃️ Datenbank einbetten:": "🗃️ Встроить базу данных:",
- "443/TCP zu {host} und anderen Knoten": "443/TCP к {host} и другим узлам",
- "Fähigkeiten neu abfragen": "Запросить возможности заново",
- "Fähigkeiten werden mit {n} verbundenen Servern abgeglichen.": "Возможности синхронизируются с подключёнными серверами: {n}.",
- "UDP 443 versuchen (empfohlen)": "Пробовать UDP 443 (рекомендуется)",
- "Zertifikat per TLS-ALPN-01 noch nicht erhalten – ist 443/TCP direkt erreichbar?": "Сертификат через TLS-ALPN-01 ещё не получен – доступен ли 443/TCP напрямую?"
+ "🗃️ Datenbank einbetten:": "🗃️ Встроить базу данных:"
 }

@@ -3231,10 +3231,5 @@
  "🔗 Link zur Datenbank kopieren": "🔗 Copy link to database",
  "🖼 Bild hochladen …": "🖼 Upload image …",
  "🖼 Eigenes Bild hochladen …": "🖼 Upload your own image …",
- "🗃️ Datenbank einbetten:": "🗃️ Embed database:",
- "443/TCP zu {host} und anderen Knoten": "443/TCP to {host} and other nodes",
- "Fähigkeiten neu abfragen": "Query capabilities again",
- "Fähigkeiten werden mit {n} verbundenen Servern abgeglichen.": "Syncing capabilities with {n} connected servers.",
- "UDP 443 versuchen (empfohlen)": "Try UDP 443 (recommended)",
- "Zertifikat per TLS-ALPN-01 noch nicht erhalten – ist 443/TCP direkt erreichbar?": "Certificate via TLS-ALPN-01 not obtained yet – is 443/TCP directly reachable?"
+ "🗃️ Datenbank einbetten:": "🗃️ Embed database:"
 }

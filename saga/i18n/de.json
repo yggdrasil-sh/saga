@@ -3231,10 +3231,5 @@
  "🔗 Link zur Datenbank kopieren": "🔗 Link zur Datenbank kopieren",
  "🖼 Bild hochladen …": "🖼 Bild hochladen …",
  "🖼 Eigenes Bild hochladen …": "🖼 Eigenes Bild hochladen …",
- "🗃️ Datenbank einbetten:": "🗃️ Datenbank einbetten:",
- "443/TCP zu {host} und anderen Knoten": "443/TCP zu {host} und anderen Knoten",
- "Fähigkeiten neu abfragen": "Fähigkeiten neu abfragen",
- "Fähigkeiten werden mit {n} verbundenen Servern abgeglichen.": "Fähigkeiten werden mit {n} verbundenen Servern abgeglichen.",
- "UDP 443 versuchen (empfohlen)": "UDP 443 versuchen (empfohlen)",
- "Zertifikat per TLS-ALPN-01 noch nicht erhalten – ist 443/TCP direkt erreichbar?": "Zertifikat per TLS-ALPN-01 noch nicht erhalten – ist 443/TCP direkt erreichbar?"
+ "🗃️ Datenbank einbetten:": "🗃️ Datenbank einbetten:"
 }

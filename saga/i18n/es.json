@@ -3231,10 +3231,5 @@
  "🔗 Link zur Datenbank kopieren": "🔗 Copiar enlace a la base de datos",
  "🖼 Bild hochladen …": "🖼 Subir imagen …",
  "🖼 Eigenes Bild hochladen …": "🖼 Subir una imagen propia …",
- "🗃️ Datenbank einbetten:": "🗃️ Insertar base de datos:",
- "443/TCP zu {host} und anderen Knoten": "443/TCP hacia {host} y otros nodos",
- "Fähigkeiten neu abfragen": "Volver a consultar capacidades",
- "Fähigkeiten werden mit {n} verbundenen Servern abgeglichen.": "Sincronizando capacidades con {n} servidores conectados.",
- "UDP 443 versuchen (empfohlen)": "Probar UDP 443 (recomendado)",
- "Zertifikat per TLS-ALPN-01 noch nicht erhalten – ist 443/TCP direkt erreichbar?": "Certificado por TLS-ALPN-01 aún no obtenido: ¿es accesible 443/TCP directamente?"
+ "🗃️ Datenbank einbetten:": "🗃️ Insertar base de datos:"
 }
