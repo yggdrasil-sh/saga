@@ -109,3 +109,17 @@ def guarded_client(ip_ok, transport_kw=None, restore_ok=False, restore_hosts=(),
     if RESTORE_TEST and hosts:
         tr = _ReadOnlyTransport(tr, hosts)
     return httpx.Client(transport=tr, **kw)
+
+
+def net_why(ex):
+    """Netzfehler in Worten statt des Ausnahmenamens (Testbericht 2.5 Nr. 018: "ConnectError" in der Meldung)."""
+    s = str(ex)
+    if "CERTIFICATE_VERIFY_FAILED" in s or "SSL" in s or "TLS" in s:
+        return "TLS-Zertifikat oder -Verbindung fehlerhaft"
+    if isinstance(ex, httpx.ConnectError):
+        return "Verbindung fehlgeschlagen – Name, Adresse und Port prüfen"
+    if isinstance(ex, (httpx.RemoteProtocolError, httpx.ReadError, httpx.WriteError)):
+        return "Verbindung abgebrochen"
+    if isinstance(ex, httpx.TooManyRedirects):
+        return "zu viele Weiterleitungen"
+    return "Netzwerkfehler"

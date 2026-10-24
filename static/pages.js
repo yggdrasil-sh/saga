@@ -2062,7 +2062,10 @@
       .then(function (d) {
         return api('PATCH', '/api/notes/' + d.id, { body: JSON.stringify({ blocks: t.blocks }), format: 'blocks' })
           .then(function () { if (parentId) { S.open[parentId] = true; saveOpen(); } return loadList(); }).then(function () { return openPage(d.id); });
-      }).catch(function (err) { HK.toast(T('Seite nicht angelegt: {err}', { err: err.message })); });
+      })
+      // Nr. 134/139: Fokus in den Titel (markiert) wie bei eigenen Vorlagen - sonst lag er auf <body>
+      .then(function () { if (S.cur && !readOnly()) { $('pg-title').focus(); $('pg-title').select(); } })
+      .catch(function (err) { HK.toast(T('Seite nicht angelegt: {err}', { err: err.message })); });
   }
   function fromTemplate(p, parentId) {
     return save().then(function () { return api('POST', '/api/notes/' + p.id + '/duplicate', { parent_id: parentId || null }); })
@@ -2479,6 +2482,17 @@
         nb.addEventListener('click', function () { wrap.textContent = ''; buildInput(); var i = wrap.querySelector('input'); if (i) { i.focus(); i.select(); } });
         wrap.appendChild(nb); return wrap;
       }
+      // Datum in der Sprache der Oberflaeche anzeigen (Nr. 150: <input type=date> zeigt das Format des Browsers, z. B.
+      // mm/dd/yyyy in einer deutschen Oberflaeche); Klick = bearbeiten wie bei Zahlen
+      if (t === 'date' && typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+        var dbt = el('button', 'val-btn val-datebtn', fDate2.format(new Date(v + 'T00:00:00'))); dbt.type = 'button';
+        dbt.setAttribute('aria-label', T('{name} bearbeiten', { name: prop.name }));
+        dbt.addEventListener('click', function () {
+          wrap.textContent = ''; buildInput(); var i = wrap.querySelector('input');
+          if (i) { i.focus(); try { if (i.showPicker) i.showPicker(); } catch (e) { /* aeltere Browser */ } }
+        });
+        wrap.appendChild(dbt); return wrap;
+      }
       buildInput(); return wrap;
       function buildInput() {
       var inp = el('input', 'val-in'); inp.setAttribute('aria-label', prop.name);
@@ -2490,7 +2504,7 @@
       markEmpty(); inp.addEventListener('input', markEmpty);
       var start = inp.value;
       function commit() {
-        if (inp.value === start) { if (t === 'number' && start !== '' && (prop.fmt || prop.show)) onDone(); return; }   // zurueck zur Anzeige
+        if (inp.value === start) { if (start !== '' && (t === 'date' || (t === 'number' && (prop.fmt || prop.show)))) onDone(); return; }   // zurueck zur Anzeige
         var nv = inp.value.trim(), num = t === 'number' && nv !== '' ? HK.parseNum(nv) : null;
         if (t === 'number' && nv !== '' && isNaN(num)) {                     // keine Zahl: Hinweis, alten Wert zeigen
           HK.toast(T('„{v}“ ist keine Zahl', { v: nv })); inp.value = start; markEmpty(); return;
@@ -2667,12 +2681,32 @@
 
     // Enter im Namen der letzten Zeile legt die naechste an. Was bis dahin weitergetippt wird, sammelt typeAhead
     // und landet danach im neuen Namen (sonst ging es verloren bzw. haengte sich an die alte Zeile).
-    var typeAhead = null, tableV = null;
+    var typeAhead = null, tableV = null, FRESH = {};
+    // Nr. 148: Esc im leeren Namen einer gerade angelegten, noch leeren Zeile nimmt sie wieder weg (Papierkorb)
+    function dropFresh(r) {
+      delete FRESH[r.id];
+      return api('DELETE', '/api/notes/' + r.id).then(function () {
+        DB.rows = DB.rows.filter(function (x) { return x.id !== r.id; });
+        renderDb();
+        var nb = BOX.querySelector('.db-new-row'); if (nb && !nb.hidden) nb.focus();
+        return loadList();
+      }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
+    }
+    function isBlankRow(r) {
+      return !String(r.title || '').trim() && !Object.keys(r.props || {}).some(function (k) {
+        var v = r.props[k]; return v != null && v !== '' && v !== false && !(Array.isArray(v) && !v.length);
+      });
+    }
     function newRow(props) {
       if (ro()) return Promise.resolve();
       if (props instanceof Event) props = null;
+      // Nr. 148: noch eine leere, gerade angelegte Zeile da ("+ Neu" mehrmals, Enter auf dem Knopf) -> dorthin statt noch einer
+      var blank = !props && curView().type !== 'board' && DB.rows.filter(function (x) { return FRESH[x.id] && isBlankRow(x); })[0];
+      var bi = blank && BOX.querySelector('tr[data-id="' + blank.id + '"] .db-title-in');
+      if (bi) { typeAhead = null; bi.focus(); return Promise.resolve(); }
       return api('POST', '/api/notes', { parent_id: DB.id, title: '', props: props || undefined }).then(function (d) {
         DB.rows.push({ id: d.id, title: '', icon: '', props: props || {}, updated: d.updated, created: d.updated });
+        FRESH[d.id] = true;
         renderDb();
         var inp = BOX.querySelector('tr[data-id="' + d.id + '"] .db-title-in');
         if (!inp && tableV) {                // lange Tabelle: neue Zeile ausserhalb des Ausschnitts -> einsetzen und hinscrollen
@@ -2807,6 +2841,9 @@
         // Enter: speichern und weiter in die naechste Zeile; in der letzten Zeile (mit Namen) eine neue anlegen.
         // Der Fokus bleibt immer in einem Namensfeld - frueher landete er auf <body> und Weitergetipptes ging verloren.
         ti.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape' && !e.isComposing && FRESH[r.id] && !ti.value.trim() && isBlankRow(r) && typeAhead === null && !ro()) {
+            e.preventDefault(); e.stopPropagation(); dropFresh(r); return;
+          }
           if (e.key !== 'Enter' || e.isComposing) return;
           e.preventDefault();
           if (typeAhead !== null) return;                       // naechste Zeile entsteht gerade

@@ -872,7 +872,7 @@ def browser(n):
 
 def admin_pages():
     texts = ["Gjallarhorn – große Gruppenanrufe", "Knoten", "Erweitern", "Name des neuen Knotens", "Für verbundene Server teilen",
-             "UDP 443 versuchen (empfohlen)", "Skript erzeugen", "DNS (Cloudflare)", "Grenzen", "Video je Anruf", "Nur Ton je Anruf",
+             "UDP versuchen (empfohlen)", "Skript erzeugen", "DNS (Cloudflare)", "Grenzen", "Video je Anruf", "Nur Ton je Anruf",
              "Kontingent je verbundenem Server", "Eingebauten Knoten für Anrufe nutzen", "Fähigkeiten jetzt abgleichen",
              "1:1-Anrufe (TURN, optional)", 'name="calls_turn_urls"', "Läuft der Knoten bei einem Anbieter"]
     s, html = adm("GET", "/calls")

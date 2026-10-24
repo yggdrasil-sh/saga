@@ -2909,6 +2909,12 @@
     if (!S.ready) return;
     if (t === 'resync') { loadList(); if (S.cur) loadMsgs(false); return; }
     if (t === 'chat.message') {
+      // Nr. 103: "… tippt" verschwindet, sobald die Nachricht da ist (nicht erst nach 4,5 s)
+      // (Stufe 3 nennt Tippende per Kennung statt Benutzername: dann alle - wer weitertippt, meldet sich nach 3 s wieder)
+      if (d.sender && d.sender !== ME && S.cur && S.cur.id === d.chat_id && Object.keys(S.typing).length) {
+        if (S.typing[d.sender]) delete S.typing[d.sender]; else S.typing = {};
+        drawTyping();
+      }
       if (S.cur && S.cur.id === d.chat_id) {
         var known = S.byId[d.id];                       // (2.3) ausstehende Nachricht bestaetigt bzw. abgewiesen
         if (known && d.fseq && !known.fseq) known.fseq = d.fseq;      // (2.4) Position des Heims fuer die Gelesen-Haken
@@ -2984,6 +2990,8 @@
                                                    aiMsgs: S.msgs.filter(function (m) { return m._ai === 'ok'; }).length }; },
     callApi: { ready: function () { return !!(S.ready && K && X); }, me: function () { return ME; }, crypto: function () { return X; },
                device: function () { return K.device; }, peerKeys: callPeer, cur: function () { return S.cur; },
+               // Name eines Chats aus der Liste (Kopf des Anruffensters, wenn ein anderer Chat offen ist)
+               chatName: function (id) { var c = (S.chats || []).filter(function (x) { return x.id === id; })[0]; return c ? chatName(c) : ''; },
                peerKeysV2: callPeerV2, myHandle: function () { return S.myHandle || (S.cur && S.cur.my_handle) || null; },
                // Anruf vorbei: offenen Chat auffrischen - ist keiner offen (angenommen von einer anderen Seite), den des Anrufs oeffnen
                refresh: function (cid) { if (S.cur && S.cur.id === cid) loadMsgs(false); else if (!S.cur && S.ready && cid) openChat(cid); } } };

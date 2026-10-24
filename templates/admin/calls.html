@@ -7,7 +7,8 @@
 {% set ST = {'ready': _('Bereit'), 'full': _('Voll'), 'draining_upd': _('Wird geleert (Update)'), 'draining': _('Wird geleert'),
              'updating': _('Aktualisiert sich'), 'nocert': _('Zertifikat fehlt'), 'waiting': _('Wartet auf Kopplung'), 'off': _('Abgeschaltet')} %}
 {% set UDP_TIP = _('UDP ist optional. Mit UDP sind bis zu 25 statt 12 Videoteilnehmende möglich und die Qualität bei Paketverlust ist besser.') %}
-{% set saga_host = hs.saga.split('://')[-1] %}
+{% set saga_host = hs.saga.split('://')[-1].split('/')[0] %}
+{% set saga_port = (saga_host.rsplit(':', 1)[1]|int) if (':' in saga_host and not saga_host.endswith(']')) else (80 if hs.saga.startswith('http://') else 443) %}
 <h2>{{ _("Anrufe") }}</h2>
 
 <section class="adm-card" id="horn">
@@ -30,8 +31,9 @@
     {% for n in hs.nodes %}
     <tr id="row-{{ n.id }}" class="horn-st-{{ n.status }}">
       <td><b>{{ n.name }}</b>{% if n.builtin %} <span class="adm-tag">{{ _("eingebaut") }}</span>{% endif %}</td>
+      {% set nport = n.port if not n.builtin else ((n.url.split(':')[2]|int) if n.url.count(':') == 2 else 443) %}
       <td data-l="{{ _('Status') }}"><span class="horn-dot"></span>{% if n.status == 'down' %}{{ _("Nicht erreichbar seit") }} {{ ts(n.since) }}{% else %}{{ ST[n.status] }}{% endif %}
-        {% if n.cert.err and n.status == 'nocert' %}<br><small title="{{ n.cert.err }}">{{ _("Zertifikat per DNS-01 noch nicht erhalten – Saga versucht es weiter.") if n.cert.err.startswith('dns01') else _("Zertifikat per TLS-ALPN-01 noch nicht erhalten – ist 443/TCP direkt erreichbar?") }}</small>{% endif %}
+        {% if n.cert.err and n.status == 'nocert' %}<br><small title="{{ n.cert.err }}">{{ _("Zertifikat per DNS-01 noch nicht erhalten – Saga versucht es weiter.") if n.cert.err.startswith('dns01') else _("Zertifikat per TLS-ALPN-01 noch nicht erhalten – ist {port}/TCP direkt erreichbar?", port=nport) }}</small>{% endif %}
         {% set UPD = {'nokey': _('Selbst-Update aus: Saga hat noch keinen Release-Schlüssel.'), 'nowatch': _('Selbst-Update aus: Knoten läuft ohne Wächter (gjallarhorn watch).'),
                       'sig': _('Signatur passt nicht zum Release-Schlüssel – Update abgelehnt.'), 'download': _('Update konnte nicht geladen werden – neuer Versuch später.'),
                       'wait24': _('Seit 24 Stunden keine Zeit ohne Anrufe – das Update wartet weiter.')} %}
@@ -57,7 +59,7 @@
       <td><form method="post">{{ csrf_field() }}<input type="hidden" name="action" value="pair_cancel"><input type="hidden" name="id" value="{{ p.id }}">
         <button class="btn" type="submit">{{ _("Abbrechen") }}</button></form></td></tr>
     {% endfor %}
-    {% if not hs.nodes and not hs.pending %}<tr><td colspan="8"><small>{{ _("Noch kein Knoten verbunden. Der eingebaute Knoten erscheint, sobald Gjallarhorn an ist.") }}</small></td></tr>{% endif %}
+    {% if not hs.nodes and not hs.pending %}<tr class="horn-none"{% if hs.horn_on and hs.builtin_on %} data-wait="1"{% endif %}><td colspan="8"><small>{% if not hs.horn_on %}{{ _("Noch kein Knoten verbunden. Der eingebaute Knoten erscheint, sobald Gjallarhorn an ist.") }}{% elif hs.builtin_on %}{{ _("Der eingebaute Knoten startet – die Liste aktualisiert sich gleich von selbst.") }}{% else %}{{ _("Noch kein Knoten verbunden. Weitere Knoten fügst du mit „Erweitern“ hinzu.") }}{% endif %}</small></td></tr>{% endif %}
   </table>
   {% if hs.horn_on %}
   <h4 class="horn-h">{{ _("Geteilte Knoten anderer Server") }}</h4>
@@ -78,7 +80,7 @@
         <td data-l="{{ _('Prüfung') }}" class="pc-tcp">{% if not ck %}{{ _("Noch nicht geprüft") }}{% elif ck.v4 != false and ck.v6 != false and (ck.v4 or ck.v6) %}{{ _("Erreichbar ✓ (IPv4 {a}, IPv6 {b})", a='✓' if ck.v4 else '–', b=(_('ungeprüft') if ck.v6_unchecked else '✓') if ck.v6 else '–') }}{% if ck.v6_unchecked %}<br><small>{{ _("Saga selbst hat kein IPv6 und kann die IPv6-Adresse des Knotens nicht prüfen. Der Knoten ist über IPv4 bestätigt; seine IPv6 wurde ungeprüft übernommen.") }}</small>{% endif %}{% elif ck.v4 or ck.v6 %}{{ _("Nicht erreichbar über IPv6") if ck.v4 else _("Nicht erreichbar über IPv4") }}{% else %}{{ _("Nicht erreichbar ✗") }}{% endif %}</td></tr>
       <tr><td>{{ _("eingehend") }}</td><td data-l="{{ _('Port') }}">{{ port }}/UDP</td><td data-l="{{ _('Pflicht') }}">{{ _("empfohlen") }}</td>
         <td data-l="{{ _('Prüfung') }}" class="pc-udp">{% if ck.udp %}UDP ✓{% else %}{{ _("UDP – (optional, Anrufe laufen über TCP)") }}{% endif %}</td></tr>
-      <tr><td>{{ _("ausgehend") }}</td><td data-l="{{ _('Port') }}">{{ _("443/TCP zu {host} und anderen Knoten", host=saga_host) }}</td><td data-l="{{ _('Pflicht') }}">{{ _("ja") }}</td>
+      <tr><td>{{ _("ausgehend") }}</td><td data-l="{{ _('Port') }}">{{ _("{port}/TCP zu {host} und anderen Knoten", port=saga_port, host=saga_host) }}</td><td data-l="{{ _('Pflicht') }}">{{ _("ja") }}</td>
         <td data-l="{{ _('Prüfung') }}" class="pc-ctl">{{ _("Steuerkanal verbunden ✓") if n.ctl else _("Steuerkanal nicht verbunden ✗") }}</td></tr>
     </table>
     {% if ck.at %}<p class="hk-hint">{{ _("Zuletzt geprüft:") }} <span class="pc-at">{{ ts(ck.at) }}</span></p>{% endif %}
@@ -98,13 +100,15 @@ ports:
   </details>
   {% endfor %}
 
+  {% if hs.horn_on or pair %}
   <details class="horn-ext"{% if pair %} open{% endif %}>
     <summary class="btn btn-primary">{{ _("Erweitern") }}</summary>
     <form method="post" class="adm-form horn-pair-f" data-api="/api/calls/pair">{{ csrf_field() }}<input type="hidden" name="action" value="pair">
       <label class="adm-field"><span>{{ _("Name des neuen Knotens") }}</span>
-        <span class="horn-name"><input class="hk-in" name="name" maxlength="63" value="{{ suggest or 'horn-2' }}" required autocomplete="off" spellcheck="false"><span>.{{ hs.suffix }}</span></span></label>
+        <span class="horn-name"><input class="hk-in" name="name" maxlength="63" value="{{ suggest or 'horn-2' }}" required autocomplete="off" spellcheck="false">{% if hs.suffix %}<span>.{{ hs.suffix }}</span>{% endif %}</span>
+        {% if not hs.suffix %}<small>{{ _("Vollständiger Name, z. B. horn-2.example.org – ohne Cloudflare-Token legst du die DNS-Einträge selbst an.") }}</small>{% endif %}</label>
       {{ check(_('Für verbundene Server teilen'), 'share', false, _('Teilnehmende anderer Saga-Server dürfen diesen Knoten in Anrufen nutzen, die dein Server führt. Sie sind an Kontingente gebunden.')) }}
-      {{ check(_('UDP 443 versuchen (empfohlen)'), 'udp', true) }}
+      {{ check(_('UDP versuchen (empfohlen)'), 'udp', true, _('Gleicher Port wie TCP (Standard 443).')) }}
       <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Skript erzeugen") }}</button></div>
     </form>
     <div class="horn-pair-out" {% if not pair %}hidden{% endif %} data-pid="{{ pair.id if pair else '' }}">
@@ -132,6 +136,10 @@ ports:
       <p class="hk-hint">{{ _("Läuft der Knoten bei einem Anbieter, verarbeitet dieser IP-Adressen deiner Nutzer (Auftragsverarbeitung).") }}</p>
     </div>
   </details>
+  {% else %}
+  <p class="horn-ext-off"><button class="btn btn-primary" type="button" disabled>{{ _("Erweitern") }}</button>
+    <small>{{ _("Erst „Große Gruppenanrufe über Gjallarhorn“ einschalten und speichern.") }}</small></p>
+  {% endif %}
 
   <form method="post" class="horn-caps">{{ csrf_field() }}<input type="hidden" name="action" value="caps">
     <button class="btn" type="submit">{{ _("Fähigkeiten jetzt abgleichen") }}</button>
@@ -224,17 +232,18 @@ ports:
     <label class="adm-field"><span>{{ _("Klingeldauer (Sekunden)") }}</span>
       <input class="hk-in" type="number" name="calls_ring_s" min="15" max="120" value="{{ st.calls.ring_s or 45 }}">
       <small>{{ _("Danach gilt der Anruf als verpasst (Eintrag im Chat und Benachrichtigung).") }}</small></label>
+    <p class="hk-hint">{{ _("Erreichbarkeit: Im selben Netz und hinter üblichen Heimroutern klappen Anrufe meist direkt (mit STUN). Hinter strengen Firewalls, in manchen Mobilfunknetzen oder Firmennetzen braucht es einen TURN-Server – sonst sehen die Personen „Direktverbindung nicht möglich“.") }}</p>
+    <h4 class="horn-h">{{ _("Gruppenanrufe ohne Knoten (Mesh)") }}</h4>
     <label class="adm-field"><span>{{ _("Höchstens Geräte je Anruf mit Video") }}</span>
       <input class="hk-in" type="number" name="calls_endpoints_video" min="2" max="4" value="{{ st.calls.endpoints_video or 4 }}">
       <small>{{ _("Gruppenanrufe und weitere eigene Geräte (2.4): jedes Gerät sendet an jedes andere (Mesh). 2 bis 4; eigene Zusatzgeräte zählen mit.") }}</small></label>
     <label class="adm-field"><span>{{ _("Höchstens Geräte je Anruf nur mit Ton") }}</span>
       <input class="hk-in" type="number" name="calls_endpoints_audio" min="2" max="6" value="{{ st.calls.endpoints_audio or 6 }}">
       <small>{{ _("2 bis 6. Mit 2 gibt es nur 1:1-Anrufe ohne weitere Geräte.") }}</small></label>
-    <p class="hk-hint">{{ _("Erreichbarkeit: Im selben Netz und hinter üblichen Heimroutern klappen Anrufe meist direkt (mit STUN). Hinter strengen Firewalls, in manchen Mobilfunknetzen oder Firmennetzen braucht es einen TURN-Server – sonst sehen die Personen „Direktverbindung nicht möglich“.") }}</p>
     <div class="adm-actions"><button class="btn btn-primary" type="submit">{{ _("Speichern") }}</button></div>
   </form>
 </section>
-<script type="application/json" id="horn-i18n">{{ {'copied': _('Kopiert'), 'checking': _('Prüfe …'), 'err': _('Fehler'),
+<script type="application/json" id="horn-i18n">{{ {'copied': _('Kopiert'), 'checking': _('Prüfe …'), 'err': _('Fehler'), 'checked': _('Geprüft ✓'), 'last': _('Zuletzt geprüft:'),
   'reach_ok': _('Erreichbar ✓ (IPv4 {a}, IPv6 {b})'), 'reach_v6': _('Nicht erreichbar über IPv6'), 'reach_v4': _('Nicht erreichbar über IPv4'),
   'reach_no': _('Nicht erreichbar ✗'), 'udp_ok': 'UDP ✓', 'udp_no': _('UDP – (optional, Anrufe laufen über TCP)'),
   'ctl_ok': _('Steuerkanal verbunden ✓'), 'ctl_no': _('Steuerkanal nicht verbunden ✗')}|tojson }}</script>

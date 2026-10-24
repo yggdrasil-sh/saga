@@ -770,7 +770,12 @@
   }
   function legOf(R, dev) { var o = null; ((R && R.legs) || []).forEach(function (x) { if (x.device === dev) o = x; }); return o; }
   function myLeg(R) { return bridge() ? legOf(R, myDev().id) : null; }
-  function titleOf(cid) { var c = bridge() && bridge().cur(); return c && c.id === cid ? (c.title || c.name || '') : ''; }
+  // Name des Chats zum Anruf - auch wenn gerade ein anderer Chat offen ist (Nr. 106: Kopf zeigte sonst "Gruppenanruf")
+  function titleOf(cid) {
+    var b = bridge(), c = b && b.cur();
+    if (c && c.id === cid) return c.title || c.name || '';
+    return (b && b.chatName && b.chatName(cid)) || '';
+  }
   function blockText(b, n) {
     return b === 'old' ? T('Dafür braucht jemand im Anruf Saga 2.4.') : b === 'full' ? T('Der Anruf ist voll (höchstens {n} Geräte).', { n: n || '?' })
       : b === 'ended' ? T('Der Anruf ist schon beendet.') : b === 'none' ? T('Der Anruf ist noch nicht angenommen.') : T('Beitreten geht gerade nicht.');
@@ -1386,6 +1391,12 @@
   }
   document.addEventListener('pointerdown', function () { if (C) each(C, function (L) { if (L.audioBlocked) playAudio(L); }); }, true);
   document.addEventListener('keydown', function () { if (C) each(C, function (L) { if (L.audioBlocked) playAudio(L); }); }, true);
+  // Esc schliesst Runensiegel bzw. Teilnehmerliste im Anruf (Nr. 071)
+  document.addEventListener('keydown', function (e) {
+    var H = C && C.horn; if (e.key !== 'Escape' || !H || !(H.rpop || H.plist)) return;
+    e.preventDefault(); e.stopPropagation();
+    if (H.rpop) { H.rpop = false; hornRunePop(C); drawInfo(C); } else { H.plist = false; hornList(C); drawCtl(C); }
+  });
   // Ausgabegeraet (nur wo der Browser es kann und es mehrere gibt): Auswahl merken
   function sinkPick(c) {
     var ra = c.ui && c.ui.ra;
@@ -1912,7 +1923,11 @@
       var H = c.horn, sv = H.view === 'speaker';
       var vb = btn(icon(sv ? 'grid' : 'spkView'), 'cl-round cl-view', function () { hornSetView(c, sv ? 'grid' : 'speaker'); }, sv ? T('Kachelansicht') : T('Sprecheransicht'));
       vb.setAttribute('aria-pressed', String(sv)); x.appendChild(vb);
-      var pb = btn(icon('users'), 'cl-round cl-people' + (H.plist ? ' on' : ''), function () { H.plist = !H.plist; hornList(c); drawCtl(c); }, T('Teilnehmende'));
+      var pb = btn(icon('users'), 'cl-round cl-people' + (H.plist ? ' on' : ''), function () {
+        H.plist = !H.plist;
+        if (H.plist && H.rpop) { H.rpop = false; hornRunePop(c); drawInfo(c); }   // nie zwei Fenster uebereinander (Nr. 071)
+        hornList(c); drawCtl(c);
+      }, T('Teilnehmende'));
       pb.setAttribute('aria-pressed', String(!!H.plist)); x.appendChild(pb);
     }
     x.appendChild(btn(icon('phone'), 'cl-round cl-red', function () { hangup(c); }, T('Auflegen')));
@@ -2248,6 +2263,7 @@
     if (node) b.node = node;
     return api('POST', '/api/calls/' + R.id + '/horn', b).then(function (r) {
       if (R.horn) R.horn.fedErr = (r.horn && r.horn.error) || '';   // P10: warum kein Knoten (anderer Server)
+      if (R.horn) R.horn.fedWhy = (r.horn && r.horn.error && r.horn.fed && r.horn.fed.why) || '';   // Nr. 119: Grund fuer hornRetry
       return (r.horn && r.horn.candidates) || [];
     });
   }
@@ -2586,6 +2602,9 @@
     if (!H.retry0) H.retry0 = Date.now();
     if (Date.now() - H.retry0 > HORN_RETRY_MAX) { fail(R, T('Verbindung zum Knoten verloren.')); return; }
     var n = (H.retryN = (H.retryN || 0) + 1), s = Math.min(15, 2 * n);
+    // Nr. 119: Notaus bzw. erschoepftes Kontingent beim anderen Server - Wiederholen hilft nicht (Notaus) bzw. selten
+    // (Kontingent: hoechstens drei Versuche), statt bis zu 2 min "neuer Versuch" zu zeigen
+    if (H.fedErr && (H.fedWhy === 'off' || H.fedWhy === 'local_off' || (H.fedWhy === 'quota' && n > 3))) { fail(R, H.fedErr); return; }
     hornNote(R, (H.fedErr ? H.fedErr + ' ' : '') + T('Kein Knoten erreichbar – neuer Versuch in {s} s …', { s: s }));
     clearTimeout(H.retryT);
     H.retryT = setTimeout(function () {
@@ -3004,7 +3023,11 @@
       if (H.next || H.olds.length) i.appendChild(el('span', 'cl-path cl-hmove', T('wechselt den Knoten …')));
     }
     if (H.runes) {
-      var rb = btn(H.runes.runes, 'cl-runes', function () { H.rpop = !H.rpop; hornRunePop(R); }, T('Runensiegel – zum Vergleichen'));
+      var rb = btn(H.runes.runes, 'cl-runes', function () {
+        H.rpop = !H.rpop; rb.setAttribute('aria-expanded', String(H.rpop));
+        if (H.rpop && H.plist) { H.plist = false; hornList(R); drawCtl(R); }    // nie zwei Fenster uebereinander (Nr. 071)
+        hornRunePop(R);
+      }, T('Runensiegel – zum Vergleichen'));
       rb.setAttribute('aria-expanded', String(!!H.rpop)); rb.lang = 'und';
       i.appendChild(rb);
     }
@@ -3071,12 +3094,13 @@
       if (host && !mine && x.who !== meName()) {
         var b = el('div', 'cl-pl-b');
         if (s.mic !== false) b.appendChild(btn(T('Stummschalten'), 'cl-pill cl-pl-mute', function () { hornMod(R, x, 'mute'); }, T('{name} stummschalten', { name: x.name || '?' })));
-        // Entfernen in zwei Schritten ("Wirklich entfernen?", 4 s) - der Zustand ueberlebt das Neuzeichnen der Liste
+        // Entfernen in zwei Schritten ("Wirklich entfernen?", 8 s - 3 bis 4 s waren zum Lesen zu kurz, Nr. 076) - der Zustand
+        // ueberlebt das Neuzeichnen der Liste
         var sure = H.rmSure && H.rmSure.dev === x.device && H.rmSure.until > Date.now();
         var rm = btn(sure ? T('Wirklich entfernen?') : T('Entfernen'), 'cl-pill cl-pl-rm' + (sure ? ' sure' : ''), function () {
           if (!(H.rmSure && H.rmSure.dev === x.device && H.rmSure.until > Date.now())) {
-            H.rmSure = { dev: x.device, until: Date.now() + 4000 }; hornList(R);
-            setTimeout(function () { if (H.rmSure && H.rmSure.dev === x.device && H.rmSure.until <= Date.now()) { H.rmSure = null; hornList(R); } }, 4100);
+            H.rmSure = { dev: x.device, until: Date.now() + 8000 }; hornList(R);
+            setTimeout(function () { if (H.rmSure && H.rmSure.dev === x.device && H.rmSure.until <= Date.now()) { H.rmSure = null; hornList(R); } }, 8100);
             return;
           }
           H.rmSure = null;
@@ -3099,7 +3123,8 @@
     var me_ = myDev().id;
     if (d.action === 'mute' && d.device === me_) {
       if (R.mic) setMic(R, false);
-      HK.toast(T('{name} hat dich stummgeschaltet. Du kannst das Mikrofon selbst wieder einschalten.', { name: d.by || '?' }));
+      // Nr. 074: laenger sichtbar (der Hinweis lag frueher unter dem Anruffenster)
+      HK.toast(T('{name} hat dich stummgeschaltet. Du kannst das Mikrofon selbst wieder einschalten.', { name: d.by || '?' }), null, null, 8000);
     } else if (d.action === 'remove') {
       api('GET', '/api/calls/' + R.id + '?device=' + q(me_)).then(function (r) {
         if (live(R) && (r.call.mine || []).indexOf(me_) < 0) hornRemoved(R, d.by);

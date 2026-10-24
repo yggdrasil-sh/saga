@@ -898,7 +898,7 @@ body.notes-page .page.wide .backlinks{max-width:none}
 .peek-ic.ic-img{width:3rem;height:3rem}
 @media (max-width:760px){.peek-panel{width:100vw}.peek-body{padding:1rem}}
 /* Ebenen: Menues, Auswahlfenster und Dialoge muessen ueber dem Peek liegen */
-.menu{z-index:80}.menu-sub{z-index:81}.picker{z-index:85}.modal,.qs{z-index:90}.toast{z-index:95}
+.menu{z-index:80}.menu-sub{z-index:81}.picker{z-index:85}.modal,.qs{z-index:90}.toast{z-index:240}   /* 240: auch ueber dem Anruffenster (200) und seinen Hinweisen (230) */
 
 /* Peek zeigt die echte Seite (iframe); eingebettete Seite ohne Seitenleiste/Kopfzeile */
 .peek-frame{flex:1;width:100%;border:0;background:var(--bg);display:block}
@@ -1282,7 +1282,7 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 .adm-field>span{color:var(--muted);font-size:.9rem}
 .adm-field small{grid-column:2;color:var(--muted);font-size:.78rem}
 .adm-check{display:flex;gap:.6rem;align-items:flex-start;cursor:pointer;padding-left:14rem}
-.adm-check input{accent-color:var(--accent);width:1.05rem;height:1.05rem;margin-top:.15rem}
+.adm-check input{accent-color:var(--accent);width:1.05rem;height:1.05rem;margin-top:.15rem;flex:none}   /* flex:none: lange Hinweise quetschten das Kaestchen */
 .adm-check small{display:block;color:var(--muted);font-size:.78rem}
 .adm-check-inline{display:inline-flex;gap:.3rem;align-items:center;margin:.15rem .9rem .15rem 0;font-size:.9rem}
 .adm-check-inline input{accent-color:var(--accent)}
@@ -1359,6 +1359,8 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 .horn-caps small{color:var(--muted)}
 .horn-quota{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
 .horn-quota .hk-in{width:6rem}
+.horn-ext-off{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+.horn-ext-off small{color:var(--muted)}
 .horn-mask{font-size:.95rem}
 .horn-cf-ok{color:var(--ok)}
 .horn-cf-edit>summary{list-style:none}

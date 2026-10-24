@@ -227,8 +227,18 @@
     e.preventDefault();
     var txt = $('task-text'), v = txt.value.trim();
     if (!v) return;
+    // Nr. 160: "… morgen" im Text setzt kein Datum - einmal je Browser zeigen, wo die Faelligkeit hingehoert
+    var dayWord = !$('task-due').value && /(^|\s)(heute|morgen|übermorgen|today|tomorrow|hoy|mañana|сегодня|завтра|послезавтра|วันนี้|พรุ่งนี้)\s*$/i.test(v);
     addTask(v, { due: $('task-due').value || null, prio: add.prio, repeat: add.repeat })
-      .then(function () { txt.value = ''; resetAdd(); txt.focus(); return loadTasks(); })
+      .then(function () {
+        txt.value = ''; resetAdd(); txt.focus();
+        var seen = false; try { seen = localStorage.getItem('saga-task-due-tip') === '1'; } catch (e) { /* privat */ }
+        if (dayWord && !seen) {
+          toast(T('Tipp: Ein Tag im Text setzt kein Fälligkeitsdatum – dafür das Kalender-Symbol neben dem Eingabefeld nutzen.'), null, null, 8000);
+          try { localStorage.setItem('saga-task-due-tip', '1'); } catch (e) { /* privat */ }
+        }
+        return loadTasks();
+      })
       .catch(function (err) { toast(T('Aufgabe nicht gespeichert: {err}', { err: err.message })); });
   });
   // Formular mit mehreren Feldern und ohne Submit-Button sendet bei Enter laut HTML-Standard

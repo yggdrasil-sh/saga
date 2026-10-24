@@ -503,7 +503,7 @@ def _send(method, url, headers, body, limit, timeout=TIMEOUT):
     except (httpx.HTTPError, netguard.Blocked) as ex:
         if isinstance(ex, netguard.Blocked) or isinstance(ex.__cause__, netguard.Blocked) or "nicht freigegeben" in str(ex):
             raise FedError("Adresse nicht erlaubt (interne Adresse – im Admin unter „Freigegebene interne Hosts“ eintragen)")
-        raise FedError(f"nicht erreichbar ({type(ex).__name__})")
+        raise FedError(f"nicht erreichbar ({netguard.net_why(ex)})")
 
 
 def fetch_info(base):

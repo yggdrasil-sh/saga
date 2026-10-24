@@ -20,6 +20,7 @@ import httpx
 
 import auth
 from db import connect as _db
+from saga import netguard
 
 API = os.environ.get("SAGA_CF_API", "https://api.cloudflare.com/client/v4").rstrip("/")
 TTL = 120
@@ -55,7 +56,7 @@ def _req(tok, method, path, **kw):
         r = httpx.request(method, API + path, headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json",
                                                        "User-Agent": "Saga-Gjallarhorn"}, timeout=TIMEOUT, **kw)
     except httpx.HTTPError as ex:
-        raise CFError("Cloudflare nicht erreichbar: " + type(ex).__name__) from None
+        raise CFError("Cloudflare nicht erreichbar: " + netguard.net_why(ex)) from None   # Worte statt Ausnahmename (Nr. 018)
     try:
         d = r.json()
     except ValueError:

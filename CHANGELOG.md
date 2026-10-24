@@ -183,6 +183,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `proxy_read_timeout` (Anleitung, Abschnitt Reverse Proxy).
 
 ### Behoben (Testrunde Web 2.5)
+- **Kleinigkeiten aus der Testrunde Web (niedrig):** Admin „Anrufe“: „Erweitern“ erst mit Gjallarhorn an (Nr. 002),
+  Mesh-Grenzen unter eigener Überschrift „Gruppenanrufe ohne Knoten (Mesh)“ (Nr. 002), nach dem Einschalten lädt die
+  Knotentabelle nach, sobald der eingebaute Knoten da ist, Kontrollkästchen gleich groß (Nr. 003), „mit 1 verbundenen
+  Server“ und einheitlich „Fähigkeiten jetzt abgleichen“ (Nr. 005), Föderation: Kontingent-Felder mit dem Standard als
+  Platzhalter und ohne gequetschte Beschriftung (Nr. 006), Knotenname ohne einsamen Punkt ohne DNS-Zone (Nr. 008),
+  Texte mit dem tatsächlichen Port statt fest 443 (Nr. 013/069), „Port prüfen“ springt nicht und meldet „Geprüft ✓“
+  samt Zeitpunkt (Nr. 014), Netzfehler in Worten statt „ConnectError“ (Nr. 018). Anrufe: Hinweise (z. B. „… hat dich
+  stummgeschaltet“) liegen jetzt über dem Anruffenster (Nr. 074), „Wirklich entfernen?“ 8 s (Nr. 076), Runensiegel und
+  Teilnehmerliste schließen mit Esc und nie übereinander (Nr. 071), Kopf zeigt den Chatnamen auch bei anderem offenem
+  Chat (Nr. 106), kein minutenlanges „neuer Versuch“ bei Notaus/erschöpftem Kontingent des anderen Servers (Nr. 119).
+  Chat: „… tippt“ verschwindet mit der Nachricht (Nr. 103). Seiten: Datumszellen im Format der Oberfläche (Nr. 150),
+  Esc nimmt eine gerade angelegte leere Zeile wieder weg, „+ Neu“ legt keine zweite leere an (Nr. 148), Fokus im Titel
+  nach eingebauter Vorlage (Nr. 134/139). Aufgaben: Tipp zum Fälligkeitsdatum bei „… morgen“ (Nr. 160).
 - **1:1-Anruf klingelte manchmal nicht** (Nr. 173, schon in 2.4): Kam ein Anruf in der Lücke zwischen dem Laden der Seite
   und dem Aufbau des Live-Kanals (der startet erst ≈2 s nach dem Laden), ging das Ereignis verloren – der Anrufer sah
   „Klingelt …“, beim Gegenüber blieb es still. Der Browser gleicht laufende Anrufe jetzt bei jedem `hello` des Live-Kanals ab

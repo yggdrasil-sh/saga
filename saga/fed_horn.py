@@ -200,12 +200,13 @@ def notaus(pid):
 
 def admin_state(c):
     """Fuer die Seite "Foederation": je Server {allowed, off, legs, mbit, used}."""
-    out = {}
+    out, cf = {}, auth.settings().get("calls") or {}
+    dl, dm = int(cf.get("share_legs") or SHARE_LEGS), int(cf.get("share_mbit") or SHARE_MBIT)   # Standard (Seite Anrufe) als Platzhalter
     for r in c.execute("SELECT id FROM fed_peer").fetchall():
         s = share_cfg(c, r[0])
         row = c.execute("SELECT legs, mbit FROM horn_share WHERE peer_id=?", (r[0],)).fetchone()
         out[r[0]] = {"allowed": s["allowed"], "off": s["off"], "legs": row[0] if row else None, "mbit": row[1] if row else None,
-                     "used": _used(c, r[0])}
+                     "used": _used(c, r[0]), "def_legs": dl, "def_mbit": dm}
     return out
 
 

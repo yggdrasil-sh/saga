@@ -563,7 +563,7 @@ def pair_finish(b, src=""):
             log(c, "pair.unreachable", None, name, json.dumps({**rc["err"], **({"detail": rc["detail"]} if rc.get("detail") else {})}))
             # nur Fehlercodes an den Knoten (Netzdetails der geprueften Adresse stehen im Pruefprotokoll des Admin-Bereichs)
             why = {k: v for k, v in rc["err"].items() if k in ("v4", "v6")}
-            return _json({"error": f"Knoten über 443/TCP nicht erreichbar ({', '.join(f'{k}: {v}' for k, v in why.items()) or 'keine Adresse'})",
+            return _json({"error": f"Knoten über {port}/TCP nicht erreichbar ({', '.join(f'{k}: {v}' for k, v in why.items()) or 'keine Adresse'})",
                           "code": "reach", "reach": why}, 424)
         r = c.execute("SELECT used FROM horn_pair WHERE token_hash=? FOR UPDATE", (h,)).fetchone()
         if not r or r[0]:

@@ -51,18 +51,43 @@
     }
     if (udp) udp.textContent = r.udp ? L.udp_ok : L.udp_no;
     if (ctl) ctl.textContent = r.ctl ? L.ctl_ok : L.ctl_no;
+    // "Zuletzt geprueft" auf jetzt (die Zeile fehlt, solange noch nie geprueft wurde)
+    var at = t.parentNode.querySelector('.pc-at');
+    if (!at && L.last) {
+      var pp = document.createElement('p'); pp.className = 'hk-hint'; pp.textContent = L.last + ' ';
+      at = document.createElement('span'); at.className = 'pc-at'; pp.appendChild(at); t.insertAdjacentElement('afterend', pp);
+    }
+    if (at) at.textContent = new Date().toLocaleString(document.documentElement.lang || undefined, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
   document.querySelectorAll('[data-check]').forEach(function (b) {
     b.addEventListener('click', function (e) {
       e.preventDefault();
       var nid = b.dataset.check, d = document.getElementById('n-' + nid);
       if (d) d.open = true;
-      var o = b.textContent; b.disabled = true; b.textContent = L.checking || '…';
-      api('POST', '/api/calls/nodes/' + encodeURIComponent(nid) + '/check').then(function (r) { showCheck(nid, r); })
+      // feste Breite waehrend der Pruefung: der Knopf springt nicht, wenn "Pruefe …" kuerzer/laenger ist
+      var o = b.textContent, ok = false; b.style.minWidth = b.offsetWidth + 'px'; b.disabled = true; b.textContent = L.checking || '…';
+      api('POST', '/api/calls/nodes/' + encodeURIComponent(nid) + '/check').then(function (r) { showCheck(nid, r); ok = true; })
         .catch(function (x) { alert((L.err || 'Fehler') + ': ' + x.message); })
-        .then(function () { b.disabled = false; b.textContent = o; });
+        .then(function () {
+          b.disabled = false; b.textContent = ok && L.checked ? L.checked : o;
+          setTimeout(function () { b.textContent = o; b.style.minWidth = ''; }, ok ? 2000 : 0);
+        });
     });
   });
+
+  // Gjallarhorn gerade eingeschaltet: der eingebaute Knoten meldet sich erst nach ein paar Sekunden - bis dahin alle 3 s
+  // nachsehen (hoechstens 2 min, nur bei sichtbarer Seite) und die Seite neu laden, sobald er da ist
+  var none = document.querySelector('.horn-none[data-wait]');
+  if (none) {
+    var t0 = Date.now();
+    (function wait() {
+      if (Date.now() - t0 > 120000) return;
+      if (document.hidden) { setTimeout(wait, 3000); return; }
+      api('GET', '/api/calls/state').then(function (st) {
+        if ((st.nodes || []).length) location.reload(); else setTimeout(wait, 3000);
+      }).catch(function () { setTimeout(wait, 10000); });
+    })();
+  }
 
   // Erweitern: Skript erzeugen + Live-Fortschritt
   var f = document.querySelector('.horn-pair-f'), out = document.querySelector('.horn-pair-out');

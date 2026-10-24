@@ -975,7 +975,7 @@ async def calls_post(request: Request):
         return _go(f"/calls#n-{nid}")
     elif act == "caps":
         n = await run_in_threadpool(horn_ops.caps_sync)
-        _flash(request, t("Fähigkeiten werden mit {n} verbundenen Servern abgeglichen.", n=n))
+        _flash(request, t("Fähigkeiten werden mit {n} verbundenen {n:Server|Servern} abgeglichen.", n=n))
     return _go("/calls")
 
 
