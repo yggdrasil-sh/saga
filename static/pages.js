@@ -5416,8 +5416,15 @@
          recheck: function () { return recheck(true); },        // static/comments.js: Rolle/Zugriff nach 403/404 neu pruefen
          // Live-Kanal (static/live.js): Seitenliste neu laden, fremde Aenderung der offenen Seite, ungelesen-Punkt im Baum
          reloadList: function () { return loadList(); }, remote: remoteChange,
-         // Live notes.tree (2.2): Baum anderswo geaendert -> kurz sammeln, dann einmal nachladen
-         treeChanged: function () { clearTimeout(S.treeT); S.treeT = setTimeout(function () { loadList().catch(function () {}); }, 300); }, busy: busy, foreign: function () { return foreign(); },
+         // Live notes.tree (2.2): Baum anderswo geaendert -> nachladen. Das erste Ereignis nach einer Pause sofort (Bughunt
+         // P13; der Server buendelt Folgeereignisse ohnehin je 2 s), nur Serien kurz sammeln. loadList legt gleichzeitige
+         // Aufrufe zusammen.
+         treeChanged: function () {
+           var now = Date.now(), quiet = now - (S.treeEvAt || 0) > 2500;
+           S.treeEvAt = now; clearTimeout(S.treeT);
+           if (quiet) loadList().catch(function () {});
+           else S.treeT = setTimeout(function () { loadList().catch(function () {}); }, 300);
+         }, busy: busy, foreign: function () { return foreign(); },
          setUnread: function (id, on) { var p = byId(id); if (p && !!p.unread !== !!on) { p.unread = !!on; renderTree(); } } },
     editor: function () { return S.editor; },   // fuer Tests/Diagnose
     flush: function () { return S.conflict ? Promise.reject(new Error('conflict')) : save(); },   // Peek: vor dem Schliessen speichern
