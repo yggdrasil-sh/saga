@@ -245,6 +245,10 @@ def main():
     s, h, _ = req("GET", P, A)
     ok(f"Angemeldet (Set-Cookie moeglich): nur private Zwischenspeicherung ({h.get('cache-control')})",
        s == 200 and "private" in h.get("cache-control", "") and "public" not in h.get("cache-control", ""))
+    ok(f"Bughunt WV09: Eigentuemer angemeldet -> no-cache ({h.get('cache-control')})", "no-cache" in h.get("cache-control", ""))
+    s, h, _ = req("GET", P, Bk)
+    ok(f"... andere Angemeldete weiter private, max-age=60 ({h.get('cache-control')})",
+       s == 200 and h.get("cache-control") == "private, max-age=60")
     s, h, data = req("HEAD", P)
     ok(f"HEAD wie GET -> {s} {h.get('content-type')}", s == 200 and h.get("content-type", "").startswith("text/html")
        and not data and "script-src 'none'" in h.get("content-security-policy", ""))

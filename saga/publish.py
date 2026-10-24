@@ -954,7 +954,19 @@ def _page_response(request, ctx, row, home=False):
         h = _headers(idx, _cache(request, "no-cache"))
         h["Vary"] = "Accept-Language, Cookie"
         return HTMLResponse(html, headers=h)
-    return HTMLResponse(html, headers=_headers(idx, _cache(request, "public, max-age=60")))
+    # Bughunt WV09: der angemeldete Eigentuemer (Vorschau aus der App) sieht Aenderungen sofort - sonst bis zu 60 s alt
+    own = _session_uid(request) == ctx.uid
+    h = _headers(idx, "private, no-cache" if own else _cache(request, "public, max-age=60"))
+    if own:
+        h["Vary"] = "Accept-Language, Cookie"
+    return HTMLResponse(html, headers=h)
+
+
+def _session_uid(request):
+    try:
+        return request.session.get("uid")
+    except (AssertionError, AttributeError):       # ohne SessionMiddleware (eigene Domain ohne Sitzung)
+        return None
 
 
 class _Lang:
