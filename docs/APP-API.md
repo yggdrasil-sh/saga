@@ -439,9 +439,10 @@ sind; dem niemand beitritt, endet er nach `ring_s` (verpasst).
 
 ### Live-Ereignisse und Mitteilungen
 
-- `call.roster` `{call_id, chat_id, kind, media, state, limit, legs, joinable, join_block, rv}` an alle Konten des Anrufs
+- `call.roster` `{call_id, chat_id, kind, media, state, limit, legs, joinable, join_block, rv, answered, now}` an alle Konten des Anrufs
   (1:1 beide Personen mit **allen** Geräten, Gruppe alle Mitglieder). `legs[].me` ist hier immer `false` – eigene
-  Endpunkte über `who` erkennen.
+  Endpunkte über `who` erkennen. `answered` (Beginn des Gesprächs, `null` solange es klingelt) und `now` (Server-Uhr):
+  die Anrufdauer läuft bei allen ab `answered`, umgerechnet mit `now` – nicht ab dem eigenen Verbinden.
 - `call.invite` `{call_id, chat_id, kind: "group", media, from: {username, name, avatar, handle?, chat}, from_device,
   ring_s, silent, members}` – Gruppenanruf klingelt. `silent: true` (mehr als `ring_silent` Mitglieder): nicht klingeln,
   nur „Anruf läuft – beitreten“ anzeigen.

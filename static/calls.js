@@ -1689,10 +1689,12 @@
     var t = k.answered * 1000 + (Date.now() - k.now * 1000);
     if (t <= Date.now()) R.t0s = t;
   }
+  // Bughunt W09: angezeigt wird ab answered laut Server, sobald bekannt - auch wenn das eigene Verbinden frueher lag (Anrufer
+  // ueber einen Knoten ist schon waehrend des Klingelns verbunden und zaehlte sonst die Klingelzeit mit); R.since bleibt
+  // das eigene "verbunden" (anyConn)
   function sinceOf(R) {
     R = roomOf(R);
-    if (R.since && R.t0s && R.t0s < R.since) R.since = R.t0s;   // erst ab dem eigenen Verbinden (since ist auch "verbunden")
-    return R.since;
+    return R.since && R.t0s ? R.t0s : R.since;
   }
   function durNow(R) { return dur((Date.now() - (sinceOf(R) || Date.now())) / 1000); }
   // Laufende Dauer jede Sekunde nachfuehren (die Zeile selbst zeichnet sonst nur der Statistik-Takt, unter Last seltener)
@@ -1701,7 +1703,8 @@
     var t = durNow(R), P = primary(R);
     [R.ui.info, P && P.ui && P.ui.info].forEach(function (i) {
       if (!i) return;
-      [].forEach.call(i.children, function (x) { if (x.tagName === 'SPAN' && !x.children.length && /^(\d+:)?\d+:\d\d$/.test(x.textContent)) x.textContent = t; });
+      // auch die Dauer im Kopf des Knoten-Anrufs (.cl-head .cl-dur)
+      [].forEach.call(i.querySelectorAll('span'), function (x) { if (!x.children.length && /^(\d+:)?\d+:\d\d$/.test(x.textContent)) x.textContent = t; });
     });
   }, 1000);
   function fail(c, msg, reason) {
@@ -3093,7 +3096,7 @@
     // 2.5 (ANRUF-UI): Titel, darunter die Dauer, dann eine Sicherheitszeile
     var hd = el('span', 'cl-head');
     hd.appendChild(el('b', 'cl-title', shortName(R.dm ? ((R.peer && (R.peer.name || R.peer.username)) || R.title) : (R.title || T('Gruppenanruf')), 32)));
-    if (R.since) hd.appendChild(el('span', 'cl-dur', dur((Date.now() - R.since) / 1000)));
+    if (R.since) hd.appendChild(el('span', 'cl-dur', durNow(R)));     // Bughunt W09: ab answered (Server), wie im 1:1
     i.appendChild(hd);
     if (!R.dm) {
       var nd = (R.legs || []).length || 1, lim = R.limit || 0, cnt = el('span', 'cl-count cl-chip');

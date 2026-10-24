@@ -673,7 +673,10 @@ def emit_roster(c, call, legs=None, fed=True):
     Anruf - an die anderen Server (Auftrag 'roster')."""
     legs = _legs(c, call["id"]) if legs is None else legs
     base = {"call_id": call["id"], "chat_id": call["chat_id"], "kind": call["kind"], "media": call["media"], "state": call["state"],
-            "limit": climit(c, call), "topo": call.get("topo") or "p2p", **_dmf(call)}
+            "limit": climit(c, call), "topo": call.get("topo") or "p2p", **_dmf(call),
+            # Bughunt W09: Beginn des Gespraechs + Server-Uhr - die Dauer laeuft bei allen ab answered (auch beim Anrufer,
+            # der ueber einen Knoten schon waehrend des Klingelns verbunden ist)
+            "answered": call.get("answered"), "now": round(time.time(), 3)}
     can, why = _joinable(c, call, None, legs)
     data = dict(base, legs=roster(c, call, None, legs), joinable=can, join_block=why)
     g = gone(c, call["id"])
