@@ -433,8 +433,9 @@ einmal Kaskade, einmal Teilen).
 
 Für die Apps ändert sich nichts gegenüber dem lokalen Fall (`APP-API.md`, „1:1 über Knoten“): `POST /api/calls` mit
 `via: "horn"` geht jetzt auch in föderierten Direkt-Chats. Rückfall `horn_block: "fed"` nur noch, wenn der andere
-Server `horn_dm` nicht meldet (älter, Gjallarhorn aus) oder nicht antwortet; `peer`/`off`/`node` meldet der andere
-Server selbst (Gegenüber ohne Gerät mit `horn`, Gjallarhorn dort aus), `busy` wie 1:1.
+Server `horn_dm` nicht meldet (älter, Gjallarhorn aus) oder den Auftrag ablehnt; `peer`/`off`/`node` meldet der andere
+Server selbst (Gegenüber ohne Gerät mit `horn`, Gjallarhorn dort aus), `busy` wie 1:1. Antwortet er nicht rechtzeitig,
+kommt 502 (kein Rückfall – dort könnte es schon klingeln; der Server schickt ein verwerfbares `end` hinterher).
 
 Zwischen den Servern: Den Anruf führt wie in 2.3 der Server der anrufenden Person (A). Er prüft (`horn_dm` bei beiden,
 eigener bereiter Knoten, je Server ein nutzbarer Knoten wie bei Gruppen) und schickt synchron:

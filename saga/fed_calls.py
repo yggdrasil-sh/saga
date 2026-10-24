@@ -342,7 +342,8 @@ def dm_horn_start(uid, ch, cid, media, dev, caps, dev_class="desktop"):
     st, d = FC.sync_call(p, {"op": "dmhorn", "id": cid, "ref": ch["ref"], "from": mh, "from_device": dev, "media": media,
                              "caps": calls.caps_out(caps), "name": dname, **_horn_hint(caps)}, path="/fed/v2/call")
     d = d if isinstance(d, dict) else {}
-    if st is None:
+    if st is None:                                     # Zeitablauf: dort kann die Kopie schon klingeln - verwerfbar beenden
+        FC._volatile(p["id"], {"op": "end", "id": cid, "actor": mh, "reason": "cancelled"}, path="/fed/v2/call", drop=False)
         return _bad(t("Der Server {host} ist gerade nicht erreichbar.", host=p["host"]), 502)
     if st == 409 and d.get("busy"):
         return chat._no_store({"ok": False, "busy": True, "error": t("Besetzt – {name} telefoniert gerade.", name=name)}, 409)

@@ -717,7 +717,7 @@ Admin-Einstellung `calls.horn_all` (Standard aus, Anrufe → Gjallarhorn). Ist s
   `topo: "horn"`, `dm: true`, `horn.candidates`); weiter wie in diesem Abschnitt (Knoten verbinden, `fkey`).
 - **Rückfall:** 409 `{fallback: "direct", horn_block, error}` – es ist nichts angelegt. `horn_block`: `off` (Einstellung
   aus), `caps` (Gerät ohne horn/multi), `node` (kein Knoten bereit), `peer` (Gegenüber ohne Gerät mit `horn`), `fed`
-  (föderierter Direkt-Chat, dessen Server kein `horn_dm` kann bzw. nicht antwortet – sonst gehen föderierte
+  (föderierter Direkt-Chat, dessen Server kein `horn_dm` kann bzw. den Auftrag ablehnt – sonst gehen föderierte
   Direkt-Chats sonst auch über Knoten, siehe `APP-API-FED.md` 7.5). Der Client ruft sofort mit **derselben id** wie bisher direkt an
   (Angebote je Gerät). Andere 409 wie beim direkten Anruf: `busy` (der Anruf ist angelegt und als „besetzt“ beendet),
   `incoming` (Gegenüber ruft gerade an).
