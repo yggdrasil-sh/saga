@@ -59,7 +59,7 @@ const EYES = () => {
 const hueOk = (a, b) => a != null && a >= 0 && Math.min(Math.abs(a - b), 360 - Math.abs(a - b)) < 25;
 
 async function session(i, base, user) {
-  const br = await PW.chromium.launch({ channel: E.PW_CHANNEL || 'chromium', headless: true, executablePath: E.CHROMIUM || undefined,
+  const br = await PW.chromium.launch({ ...(E.CHROMIUM ? { executablePath: E.CHROMIUM } : { channel: E.PW_CHANNEL || 'chromium' }), headless: true,
     args: ['--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--no-sandbox', '--disable-features=WebRtcHideLocalIpsWithMdns'] });
   BROWSERS.push(br);
   const ctx = await br.newContext({ viewport: { width: 1000, height: 640 }, locale: 'de-DE' });

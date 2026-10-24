@@ -4,6 +4,8 @@
     python3 testlab.py plan        Servertypen und Preise je Stunde anzeigen (legt nichts an)
     python3 testlab.py up          Server A, B, C anlegen, DNS setzen, auf cloud-init warten
     python3 testlab.py koppeln     Schalter auf A und B setzen, externen Knoten C an B koppeln (geteilt)
+    python3 testlab.py foederieren Foederation A <-> B ohne Admin-Oberflaeche (Code nur von Prozess zu Prozess)
+    python3 testlab.py dm-test     Browser-Test 1:1 ueber Knoten A <-> B auf C (Wegwerf-Konten c1/c2)
     python3 testlab.py status      Server mit dem Label und ihren Zustand zeigen
     python3 testlab.py ssh <a|b|c> [befehl]
     python3 testlab.py down        ALLES mit dem Label loeschen (Server, SSH-Schluessel, DNS) und den Rest auflisten
@@ -19,6 +21,8 @@ Alles, was das Skript anlegt, traegt das Label saga-test (DNS: Kommentar saga-te
 """
 import json
 import os
+import secrets
+import shlex
 import subprocess
 import sys
 import time
@@ -161,6 +165,50 @@ def cmd_koppeln():
     print("Im Admin von B (SSH-Tunnel, Zugang: /root/saga-test/zugang.txt) muss horn-b gleich 'Bereit' zeigen.")
 
 
+_PY_INIT = "import db; db.wait_ready(30); db.init_schema(); from saga import federation as F; F.set_enabled(True); "
+
+
+def _saga_py(role, code, inp=None):
+    """Python im Saga-Container von role (stdin = inp) -> (rc, stdout, stderr). Ausgaben bleiben im Prozess."""
+    r = ssh(role, "cd /opt/saga-test/saga && docker compose exec -T saga python -c " + shlex.quote(_PY_INIT + code),
+            inp=inp if inp is not None else b"", check=False)
+    return r.returncode, (r.stdout or b"").decode().strip(), (r.stderr or b"").decode().strip()
+
+
+def cmd_foederieren():
+    """Foederation A <-> B ohne Admin-Oberflaeche: Einladungscode auf A, Verbindungsanfrage von B (Fingerprint aus der
+    Vorschau), Bestaetigung auf A. Der Code geht nur von Prozess zu Prozess (nicht ausgegeben)."""
+    dom = env("TESTLAB_DOMAIN")
+    rc, code, err = _saga_py("a", "print(F.make_invite('testlabor'))")
+    if rc or not code:
+        sys.exit("Einladung auf A fehlgeschlagen: " + err[-400:])
+    rc, out, err = _saga_py("b", f"import sys; u='https://a.{dom}'; c=sys.stdin.readline().strip(); i=F.preview(u); "
+                                 "F.connect(u, c, i['fingerprint']); print('ok', i['fingerprint'][:8])", inp=(code + "\n").encode())
+    print(f"  b: Anfrage an A {out or 'FEHLER ' + err[-400:]}")
+    if rc:
+        sys.exit(1)
+    rc, out, err = _saga_py("a", f"from db import connect; c=connect(); r=c.execute('SELECT id FROM fed_peer WHERE host=?', ('b.{dom}',)).fetchone(); "
+                                 "print(F.confirm(r[0], 'testlabor'))")
+    print(f"  a: bestaetigt {out or 'FEHLER ' + err[-400:]}")
+
+
+def cmd_dm_test():
+    """Browser-Test 1:1 ueber Knoten ueber Servergrenzen (tests/browser_fed_horn_dm.js) auf C: Wegwerf-Konten c1 (A) und
+    c2 (B) mit zufaelligem Passwort (nur ueber stdin), Test vom Branch TESTLAB_CHANNEL (Standard testing)."""
+    dom, ch = env("TESTLAB_DOMAIN"), os.environ.get("TESTLAB_CHANNEL", "testing")
+    pw = secrets.token_urlsafe(18)
+    for role, user in (("a", "c1"), ("b", "c2")):
+        r = ssh(role, f"cd /opt/saga-test/saga && docker compose exec -T saga python run.py benutzer-anlegen {user}", inp=(pw + "\n").encode(),
+                check=False)
+        print(f"  {role}: Konto {user} " + ("ok" if r.returncode == 0 else "FEHLER " + (r.stderr or b"").decode()[-300:]))
+    script = (f"set -e; cd /opt/saga-test; curl -fsSL https://raw.githubusercontent.com/yggdrasil-sh/saga/{ch}/tests/browser_fed_horn_dm.js -o fed-dm.cjs; "
+              f"read -r P; SAGA_PASS=\"$P\" SAGA_A=https://a.{dom} SAGA_B=https://b.{dom} SAGA_USER_A=c1 SAGA_USER_B=c2 "
+              "CHROMIUM=/usr/bin/chromium PLAYWRIGHT=/opt/saga-test/clients/node_modules/playwright-core SHOTS=/opt/saga-test/shots "
+              "node fed-dm.cjs 2>&1 | tail -40")
+    r = ssh("c", "sh -c " + shlex.quote(script), inp=(pw + "\n").encode(), check=False)
+    sys.stdout.write((r.stdout or b"").decode()); sys.stderr.write((r.stderr or b"").decode()[-1500:])
+
+
 def cmd_status():
     for role, s in sorted(servers().items()):
         print(f"  {role}: {s['name']} {s['server_type']['name']} {s['status']} {s['public_net']['ipv4']['ip']}")
@@ -202,6 +250,10 @@ if __name__ == "__main__":
         cmd_up()
     elif c == "koppeln":
         cmd_koppeln()
+    elif c == "foederieren":
+        cmd_foederieren()
+    elif c == "dm-test":
+        cmd_dm_test()
     elif c == "status":
         cmd_status()
     elif c == "down":
