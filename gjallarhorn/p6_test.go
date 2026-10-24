@@ -260,3 +260,13 @@ func TestZertifikatRueckfallUndALPN(t *testing.T) {
 		t.Fatal("fremde SNI hat ein Zertifikat ausgeloest")
 	}
 }
+
+func TestReleaseURLVorab(t *testing.T) {
+	b := "https://example.org/dl"
+	if u := releaseURL(b, "2.5.0", "linux-arm64"); u != b+"/v2.5.0/gjallarhorn-linux-arm64" {
+		t.Fatalf("Freigabe: %s", u)
+	}
+	if u := releaseURL(b, "2.5.0-rc.131", "linux-amd64"); u != b+"/horn-testing/gjallarhorn-2.5.0-rc.131-linux-amd64" {
+		t.Fatalf("Vorabversion: %s", u)
+	}
+}

@@ -874,7 +874,13 @@ def _calls_ctx(request, me, **kw):
     st = auth.settings(fresh=True)
     with _db() as c:
         sug = horn_ops.suggest(c)
-    return _page(request, "calls.html", me, st=st, hs=horn_ops.admin_state(), limits=horn.LIMITS, suggest=sug, **kw)
+    remote = []
+    if calls.horn_on():                              # Knoten, die verbundene Server mit uns teilen (Nr. 6 der 2.5-Liste)
+        from saga import fed_horn
+        with _db() as c:
+            remote = fed_horn.remote_shared(c)
+    return _page(request, "calls.html", me, st=st, hs=horn_ops.admin_state(), limits=horn.LIMITS, suggest=sug, remote=remote,
+                 mesh_from=calls.limit("video") + 1, mesh_from_a=calls.limit("audio") + 1, **kw)
 
 
 @admin.get("/calls")
@@ -907,7 +913,9 @@ async def calls_post(request: Request):
         auth.save_setting("calls", {**cur, "horn_video": _int_noted(f, "horn_video", 2, horn.LIMITS["udp"][0], t("Video je Anruf"), notes),
                                     "horn_audio": _int_noted(f, "horn_audio", 2, horn.LIMITS["udp"][1], t("Nur Ton je Anruf"), notes),
                                     "share_legs": _int_noted(f, "share_legs", 1, 1000, t("Teilnehmende"), notes, 10) or 10,
-                                    "share_mbit": _int_noted(f, "share_mbit", 1, 10000, "Mbit/s", notes, 20) or 20})
+                                    "share_mbit": _int_noted(f, "share_mbit", 1, 10000, "Mbit/s", notes, 20) or 20,
+                                    # ab wie vielen Chat-Mitgliedern ein Gruppenanruf ueber einen Knoten laeuft (leer = Mesh-Grenze + 1)
+                                    "horn_from": _int_noted(f, "horn_from", 3, 1000, t("Über Knoten ab"), notes)})
         _flash(request, t("Gespeichert.") + (" " + " ".join(notes) if notes else ""), "warn" if notes else "ok")
     elif act == "turn":
         err = _calls_save(f)

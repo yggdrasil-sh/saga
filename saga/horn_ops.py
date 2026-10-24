@@ -419,8 +419,28 @@ def udp_check(ip, port, timeout=1.5, tries=3):
     return False
 
 
+_V6_HERE = [None, 0.0]                                    # (hat Saga selbst IPv6?, Zeitpunkt der Pruefung)
+
+
+def have_v6(now=None):
+    """Kann Saga selbst ueber IPv6 ins Internet? (UDP-connect sendet nichts, prueft nur die Route; 10 min gemerkt)"""
+    now = now or time.time()
+    if _V6_HERE[0] is None or now - _V6_HERE[1] > 600:
+        try:
+            with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as s:
+                s.connect(("2001:4860:4860::8888", 53))
+            _V6_HERE[0] = True
+        except OSError:
+            _V6_HERE[0] = False
+        _V6_HERE[1] = now
+    return _V6_HERE[0]
+
+
 def reach(name, pub, v4, v6, port, udp, src="", timeout=CHECK_TIMEOUT):
-    """Erreichbarkeit je Adresse -> {v4: bool|None, v6: bool|None, udp: bool|None, err: {...}, at}. None = keine Adresse."""
+    """Erreichbarkeit je Adresse -> {v4: bool|None, v6: bool|None, udp: bool|None, err: {...}, at}. None = keine Adresse.
+    Hat Saga selbst kein IPv6 (haeufig hinter Heimroutern/Proxys), laesst sich die IPv6 des Knotens nicht pruefen: Ist
+    der Knoten ueber IPv4 mit seinem Schluessel bestaetigt und die IPv6 eine oeffentliche Adresse, gilt sie als
+    ungeprueft uebernommen (v6_unchecked) - sonst bekaeme so ein Knoten nie einen AAAA-Eintrag."""
     out = {"v4": None, "v6": None, "udp": None, "err": {}, "at": time.time()}
     res = {}
     det = []
@@ -443,8 +463,16 @@ def reach(name, pub, v4, v6, port, udp, src="", timeout=CHECK_TIMEOUT):
             out[f"v{fam}"] = res[fam][0]
             if res[fam][1]:
                 out["err"][f"v{fam}"] = res[fam][1]
+    if out["v6"] is False and out["v4"] and out["err"].get("v6") in ("unreachable_tcp", "timeout") and not have_v6():
+        try:
+            glob = ipaddress.ip_address(v6).is_global
+        except ValueError:
+            glob = False
+        if glob:
+            out["v6"], out["v6_unchecked"] = True, True
+            out["err"].pop("v6", None)
     if udp:
-        ips = [ip for fam, ip in ((4, v4), (6, v6)) if ip and out[f"v{fam}"]]
+        ips = [ip for fam, ip in ((4, v4), (6, v6)) if ip and out[f"v{fam}"] and not (fam == 6 and out.get("v6_unchecked"))]
         out["udp"] = any(udp_check(ip, port) for ip in ips) if ips else False
     if det:
         out["detail"] = "; ".join(det)[:300]

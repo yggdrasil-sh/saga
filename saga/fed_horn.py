@@ -161,6 +161,23 @@ def remote_urls():
     return sorted({u for v in (cur.values() if isinstance(cur, dict) else []) for u in (v if isinstance(v, list) else []) if _https(u)})
 
 
+def remote_shared(c):
+    """Fuer die Admin-Seite "Anrufe": Knoten, die verbundene Server mit uns teilen -> [{host, name, urls}] (aktive Server)."""
+    cur = auth.settings().get("horn_remote") or {}
+    if not isinstance(cur, dict) or not cur:
+        return []
+    out = []
+    for pid, urls in cur.items():
+        try:
+            r = c.execute("SELECT host, name FROM fed_peer WHERE id=? AND status='active'", (int(pid),)).fetchone()
+        except (TypeError, ValueError):
+            continue
+        u = [x for x in (urls if isinstance(urls, list) else []) if _https(x)]
+        if r and u:
+            out.append({"host": r[0], "name": r[1] or r[0], "urls": [x.split("://", 1)[-1] for x in u]})
+    return sorted(out, key=lambda x: x["host"])
+
+
 def notaus(pid):
     """Alle Knoten: Teilnehmende und Bruecken dieses Servers sofort entfernen (3 min gesperrt, danach gibt Saga ohnehin
     keine Token mehr)."""

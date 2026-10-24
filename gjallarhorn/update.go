@@ -18,6 +18,7 @@ import (
 // Zielversion = Saga-Version (welcome.want bzw. "version"). Weicht sie ab, laedt der Knoten
 //
 //	<HORN_UPDATE_BASE>/v<want>/gjallarhorn-linux-<arch>  und  ...-<arch>.sig
+//	(Vorabversionen: <HORN_UPDATE_BASE>/horn-testing/gjallarhorn-<want>-linux-<arch>, siehe releaseURL)
 //
 // (Standard https://github.com/yggdrasil-sh/saga/releases/download), prueft die Ed25519-Signatur gegen den festen
 // Release-Schluessel (release.go) und legt das Binaer als HORN_DATA/bin/next ab. Dann:
@@ -235,9 +236,19 @@ func (u *updater) get(url string, max int64) ([]byte, error) {
 }
 
 // fetch laedt und prueft das Binaer und legt es als bin/next ab (next.ver, next.sig).
+// releaseURL: Freigaben liegen im Release v<version>; Vorabversionen (testing, z. B. 2.5.0-rc.131) im rollenden
+// Vorab-Release "horn-testing", das die CI bei jedem testing-Push ersetzt - mit der Version im Dateinamen, damit ein
+// Knoten nie ein Binaer einer anderen Version laedt (die Signatur bindet die Version ohnehin).
+func releaseURL(base, want, arch string) string {
+	if strings.Contains(want, "-") {
+		return base + "/horn-testing/gjallarhorn-" + want + "-" + arch
+	}
+	return base + "/v" + want + "/gjallarhorn-" + arch
+}
+
 func (u *updater) fetch(want string) error {
 	arch := releaseArch()
-	url := u.base + "/v" + want + "/gjallarhorn-" + arch
+	url := releaseURL(u.base, want, arch)
 	sig, err := u.get(url+".sig", 4096)
 	if err != nil {
 		return err

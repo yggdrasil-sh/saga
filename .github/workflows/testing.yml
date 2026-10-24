@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write         # rollendes Vorab-Release "horn-testing" (Knoten-Binaerdateien fuer Selbst-Updates)
   packages: write
 
 concurrency:
@@ -92,6 +92,39 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=horn-testing
           cache-to: type=gha,mode=max,scope=horn-testing
+
+      # Knoten auf testing aktualisieren sich selbst (update.go releaseURL): signierte Binaerdateien dieser Version im
+      # rollenden Vorab-Release "horn-testing" - erst die neuen hochladen, dann die alten entfernen (keine Luecke).
+      - name: Gjallarhorn-Binaerdateien bauen und signieren (Selbst-Update)
+        id: horn
+        env:
+          HORN_RELEASE_KEY: ${{ secrets.HORN_RELEASE_KEY }}
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          if [ -z "$HORN_RELEASE_KEY" ]; then echo "::warning::Secret HORN_RELEASE_KEY fehlt - kein Selbst-Update fuer testing"; exit 0; fi
+          sh gjallarhorn/build.sh "$V"
+          python3 -m pip install --quiet cryptography
+          PUB="$(grep -v '^#' gjallarhorn/release.pub | tr -d ' \n')"
+          mkdir -p horn-up
+          for a in amd64 arm64; do
+            python3 tools/horn-release.py sign "$V" "gjallarhorn/dist/gjallarhorn-linux-$a" >/dev/null
+            python3 tools/horn-release.py verify "$PUB" "$V" "gjallarhorn/dist/gjallarhorn-linux-$a"
+            cp "gjallarhorn/dist/gjallarhorn-linux-$a" "horn-up/gjallarhorn-$V-linux-$a"
+            cp "gjallarhorn/dist/gjallarhorn-linux-$a.sig" "horn-up/gjallarhorn-$V-linux-$a.sig"
+          done
+          echo "ok=1" >> "$GITHUB_OUTPUT"
+      - name: Vorab-Release horn-testing aktualisieren
+        if: steps.horn.outputs.ok == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          R=horn-testing
+          gh release view "$R" >/dev/null 2>&1 || gh release create "$R" --prerelease --target "$GITHUB_SHA" --title "Gjallarhorn testing" \
+            --notes "Signierte Knoten-Binaerdateien des Branches testing fuer das Selbst-Update gekoppelter Knoten. Wird bei jedem testing-Push ersetzt - nicht fuer den Betrieb."
+          gh release upload "$R" horn-up/* --clobber
+          gh release view "$R" --json assets -q '.assets[].name' | grep -v -- "-$V-linux-" | while read -r n; do gh release delete-asset "$R" "$n" -y; done
+          echo "Knoten-Update: \`$R\` enthaelt jetzt $V" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Zusammenfassung
         run: echo "Release Candidate **${{ steps.v.outputs.version }}** (${{ steps.v.outputs.short }}) → \`ghcr.io/${{ github.repository }}:testing\` / \`:rc\`" >> "$GITHUB_STEP_SUMMARY"

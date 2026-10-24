@@ -138,6 +138,13 @@ func (s *server) publicAddrs(base string) (v4, v6 string, dropped []string) {
 	if s.cfg.Dev {
 		return v4, v6, nil
 	}
+	if v6 == "" {
+		// Saga ohne IPv6 (Heimnetz, Proxy ohne AAAA) kann die IPv6 des Knotens nicht sehen: dann die oeffentliche IPv6
+		// der eigenen Schnittstelle melden (z. B. vServer). Saga uebernimmt sie, wenn sie selbst nicht pruefen kann.
+		if addrs, err := net.InterfaceAddrs(); err == nil {
+			v6 = localGlobalV6(addrs)
+		}
+	}
 	if v4 != "" && !globalIP(v4) {
 		dropped, v4 = append(dropped, v4), ""
 	}
@@ -145,6 +152,20 @@ func (s *server) publicAddrs(base string) (v4, v6 string, dropped []string) {
 		dropped, v6 = append(dropped, v6), ""
 	}
 	return v4, v6, dropped
+}
+
+// localGlobalV6: erste oeffentliche IPv6 (global unicast, keine ULA/Link-local) unter den Schnittstellen-Adressen
+func localGlobalV6(addrs []net.Addr) string {
+	for _, a := range addrs {
+		n, ok := a.(*net.IPNet)
+		if !ok || n.IP.To4() != nil {
+			continue
+		}
+		if globalIP(n.IP.String()) {
+			return n.IP.String()
+		}
+	}
+	return ""
 }
 
 var cgnat = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
