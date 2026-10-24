@@ -17,6 +17,10 @@ Umgebung (nichts davon steht im Repo):
     TESTLAB_SSH_KEY    oeffentlicher Test-Schluessel (Standard ~/.ssh/saga-test.pub, privat ohne .pub)
     TESTLAB_LOCATION   Standard fsn1    TESTLAB_CHANNEL  Standard testing
     TESTLAB_TYPES      Standard a=cax11,b=cax11,c=cax31
+    TESTLAB_ROLLEN     nur diese Rollen anlegen, z. B. "a" (Standard alle)
+    TESTLAB_A_NAME     Name von Server A (Standard a), z. B. a2 bei erschoepftem Let's-Encrypt-Limit
+    TESTLAB_ZERT       Zwischenspeicher der TLS-Zertifikate (Standard ~/saga-testlab/zertifikate, nur fuer dich lesbar);
+                       "aus" = immer neu beantragen
 Alles, was das Skript anlegt, traegt das Label saga-test (DNS: Kommentar saga-test).
 """
 import json
@@ -33,7 +37,8 @@ from pathlib import Path
 LABEL = "saga-test"
 HERE = Path(__file__).resolve().parent
 ROLES = ("a", "b", "c")
-DNS = {"a": ("a", "horn-a"), "b": ("b",), "c": ("horn-b",)}
+A_NAME = os.environ.get("TESTLAB_A_NAME", "a")   # anderer Name fuer A, z. B. bei Let's-Encrypt-Limit
+DNS = {"a": (A_NAME, "horn-" + A_NAME), "b": ("b",), "c": ("horn-b",)}
 
 
 def env(k, default=None):
@@ -71,6 +76,9 @@ def zone_id():
 
 def types():
     out = dict(a="cax11", b="cax11", c="cax31")
+    nur = [r.strip() for r in os.environ.get("TESTLAB_ROLLEN", "").split(",") if r.strip()]   # z. B. "a" = nur Server A
+    if nur:
+        out = {k: v for k, v in out.items() if k in nur}
     for part in os.environ.get("TESTLAB_TYPES", "").split(","):
         if "=" in part:
             k, v = part.split("=", 1)
@@ -113,6 +121,79 @@ def cmd_plan():
     print(f"  zusammen etwa {total:.3f} EUR/h brutto in {loc} (zzgl. IPv4 je Server)")
 
 
+# --- Zwischenspeicher fuer TLS-Zertifikate ---------------------------------------------------------------------------
+# Let's Encrypt stellt je Namensliste hoechstens 5 Zertifikate pro Woche aus. Nach einem Labor werden die Zertifikate
+# von A (Traefik acme.json) und B (Caddy-Daten) auf diesen Rechner geholt und beim naechsten "up" vor dem Start des
+# Proxys wieder hochgeladen. Die Startskripte warten darauf (Marke /opt/saga-test/zert-ok, hoechstens 5 min).
+# Wiederverwendet wird hoechstens ZERT_TAGE nach dem Holen (gueltig sind sie 90 Tage, der Proxy erneuert ab 30 Tagen Rest).
+ZERT_TAGE = 60
+ZERT = {"a": ("/opt/saga-test/le", "acme.json"), "b": ("/opt/saga-test/caddy", "caddy.tgz")}
+
+
+def zert_dir():
+    v = os.environ.get("TESTLAB_ZERT", "~/saga-testlab/zertifikate")
+    if v == "aus":
+        return None
+    p = Path(os.path.expanduser(v))
+    p.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(p, 0o700)
+    return p
+
+
+def zert_host(role):
+    return f"{DNS['a'][0] if role == 'a' else 'b'}.{env('TESTLAB_DOMAIN')}"
+
+
+def zert_file(role):
+    d = zert_dir()
+    return d / f"{zert_host(role)}-{ZERT[role][1]}" if d else None
+
+
+def zert_push(role):
+    """Gespeicherte Zertifikate hochladen (wenn frisch genug) und den Start freigeben. -> True, wenn hochgeladen."""
+    f, (rdir, _) = zert_file(role), ZERT[role]
+    sent = False
+    if f and f.exists() and time.time() - f.stat().st_mtime < ZERT_TAGE * 86400:
+        data = f.read_bytes()
+        if role == "a":
+            r = ssh(role, f"mkdir -p {rdir} && umask 077 && cat > {rdir}/acme.json && chmod 600 {rdir}/acme.json", inp=data, check=False)
+        else:
+            r = ssh(role, f"mkdir -p {rdir} && tar xzf - -C {rdir}", inp=data, check=False)
+        sent = r.returncode == 0
+    ssh(role, "touch /opt/saga-test/zert-ok", check=False)
+    return sent
+
+
+def zert_pull(role):
+    """Nach dem Start: Zertifikate holen, sobald der Proxy eins hat (hoechstens 2 min warten)."""
+    f, (rdir, _) = zert_file(role), ZERT[role]
+    if not f:
+        return
+    host = zert_host(role)
+    for _ in range(12):
+        if role == "a":
+            r = ssh(role, f"cat {rdir}/acme.json", check=False)
+            raw = r.stdout or b""
+            try:
+                certs = [c for v in json.loads(raw or b"{}").values() for c in (v or {}).get("Certificates") or []]
+            except ValueError:
+                certs = []
+            ok = any((c.get("domain") or {}).get("main") == host for c in certs)
+        else:
+            ok = ssh(role, f"ls {rdir}/caddy/certificates/*/{host}/{host}.crt", check=False).returncode == 0
+            raw = ssh(role, f"tar czf - -C {rdir} .", check=False).stdout if ok else b""
+        if ok and raw:
+            old = f.read_bytes() if f.exists() else None
+            if raw != old:
+                fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "wb") as out:
+                    out.write(raw)
+                print(f"  {role}: Zertifikat fuer {host} zwischengespeichert")
+            return
+        time.sleep(10)
+    print(f"  {role}: noch kein Zertifikat fuer {host} - nicht zwischengespeichert")
+
+
 def cmd_up():
     if servers():
         sys.exit("Es gibt schon Server mit dem Label - erst 'down' oder 'status'")
@@ -123,7 +204,7 @@ def cmd_up():
                                    "labels": {LABEL: ""}})["ssh_key"]["id"]
     zid = zone_id()
     for role, typ in types().items():
-        ud = (HERE / f"cloud-init-{role}.yaml").read_text().replace("@@DOMAIN@@", dom).replace("@@CHANNEL@@", ch)
+        ud = (HERE / f"cloud-init-{role}.yaml").read_text().replace("a.@@DOMAIN@@", f"{A_NAME}.@@DOMAIN@@").replace("@@DOMAIN@@", dom).replace("@@CHANNEL@@", ch)
         s = hz("POST", "/servers", {"name": f"{LABEL}-{role}", "server_type": typ, "image": "debian-12", "location": loc,
                                     "ssh_keys": [key], "user_data": ud, "labels": {LABEL: "", "rolle": role},
                                     "public_net": {"enable_ipv4": True, "enable_ipv6": True}})["server"]
@@ -133,8 +214,17 @@ def cmd_up():
                 cf("POST", f"/zones/{zid}/dns_records", {"type": typ_, "name": f"{host}.{dom}", "content": ip, "ttl": 60,
                                                           "proxied": False, "comment": LABEL})
         print(f"  {role}: {s['name']} {typ} {v4} {v6} -> {', '.join(h + '.' + dom for h in DNS[role])}")
+    # Zertifikate hochladen, sobald SSH geht (die Startskripte warten darauf, hoechstens 5 min)
+    zert = [r for r in types() if r in ZERT]
+    t0 = time.time()
+    while zert and time.time() - t0 < 280:
+        time.sleep(10)
+        for role in list(zert):
+            if ssh(role, "true", check=False).returncode == 0:
+                print(f"  {role}: " + ("Zertifikat aus dem Zwischenspeicher hochgeladen" if zert_push(role) else "kein Zertifikat im Zwischenspeicher - wird neu beantragt"))
+                zert.remove(role)
     print("Warte auf cloud-init (Fertig-Signal /var/lib/saga-test/ready) ...")
-    todo, t0 = set(ROLES), time.time()
+    todo, t0 = set(types()), time.time()
     while todo and time.time() - t0 < 1200:
         time.sleep(20)
         for role in sorted(todo):
@@ -146,6 +236,9 @@ def cmd_up():
                 todo.discard(role)
     if todo:
         sys.exit(f"Nach 20 min nicht fertig: {', '.join(sorted(todo))}")
+    for role in types():
+        if role in ZERT:
+            zert_pull(role)
 
 
 def cmd_koppeln():
@@ -183,7 +276,7 @@ def cmd_foederieren():
     if rc or not code:
         sys.exit("Einladung auf A fehlgeschlagen: " + err[-400:])
     time.sleep(6)                                      # Einstellung "Foederation an" gilt im laufenden Saga nach 5 s
-    rc, out, err = _saga_py("b", f"import sys; u='https://a.{dom}'; c=sys.stdin.readline().strip(); i=F.preview(u); "
+    rc, out, err = _saga_py("b", f"import sys; u='https://{A_NAME}.{dom}'; c=sys.stdin.readline().strip(); i=F.preview(u); "
                                  "F.connect(u, c, i['fingerprint']); print('ok', i['fingerprint'][:8])", inp=(code + "\n").encode())
     print(f"  b: Anfrage an A {out or 'FEHLER ' + err[-400:]}")
     if rc:
@@ -204,7 +297,7 @@ def cmd_dm_test():
                 check=False)
         print(f"  {role}: Konto {user} " + ("ok" if r.returncode == 0 else "FEHLER " + (r.stderr or b"").decode()[-300:]))
     script = (f"set -e; cd /opt/saga-test; curl -fsSL https://raw.githubusercontent.com/yggdrasil-sh/saga/{ch}/tests/browser_fed_horn_dm.js -o fed-dm.cjs; "
-              f"read -r P; SAGA_PASS=\"$P\" SAGA_A=https://a.{dom} SAGA_B=https://b.{dom} SAGA_USER_A={ua} SAGA_USER_B={ub} "
+              f"read -r P; SAGA_PASS=\"$P\" SAGA_A=https://{A_NAME}.{dom} SAGA_B=https://b.{dom} SAGA_USER_A={ua} SAGA_USER_B={ub} "
               "CHROMIUM=/usr/bin/chromium PLAYWRIGHT=/opt/saga-test/clients/node_modules/playwright-core SHOTS=/opt/saga-test/shots "
               "node fed-dm.cjs 2>&1 | tail -40")
     r = ssh("c", "sh -c " + shlex.quote(script), inp=(pw + "\n").encode(), check=False)

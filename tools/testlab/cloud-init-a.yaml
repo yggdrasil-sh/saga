@@ -28,7 +28,7 @@ write_files:
           ports: ["80:80", "443:443"]
           volumes:
             - /var/run/docker.sock:/var/run/docker.sock:ro
-            - traefik-le:/le
+            - /opt/saga-test/le:/le
           networks: {default: {ipv4_address: 172.30.0.2}}
         saga:
           labels:
@@ -44,8 +44,6 @@ write_files:
             - traefik.tcp.routers.horn.service=horn
             - traefik.tcp.services.horn.loadbalancer.server.port=8443
             - traefik.tcp.services.horn.loadbalancer.proxyProtocol.version=2
-      volumes:
-        traefik-le:
       networks:
         default:
           # feste Adresse fuer Traefik (TRUSTED_PROXIES), die anderen Container bekommen Adressen ab .128 - sonst kann
@@ -86,6 +84,10 @@ write_files:
         chmod 600 /root/saga-test/zugang.txt
       fi
       docker compose pull -q
+      # Zertifikate aus dem Zwischenspeicher des Testlabors abwarten (testlab.py up laedt sie hoch oder meldet "keine"),
+      # sonst holt der Proxy bei jedem Labor neue - Let's Encrypt erlaubt nur 5 je Name und Woche
+      i=0; while [ ! -e /opt/saga-test/zert-ok ] && [ $i -lt 150 ]; do sleep 2; i=$((i+1)); done
+      mkdir -p /opt/saga-test/le; touch /opt/saga-test/le/acme.json; chmod 600 /opt/saga-test/le/acme.json
       docker compose up -d
 runcmd:
   - [sh, -c, "curl -fsSL https://get.docker.com | sh"]

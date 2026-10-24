@@ -9,7 +9,7 @@ Alles trägt das Label `saga-test` (DNS-Einträge den Kommentar `saga-test`) und
 | **B** | Saga direkt auf 443 (Caddy terminiert TLS, keine SNI-Weiche), kein eingebauter Knoten | `b.` |
 | **C** | externer Knoten für B (geteilt) und Testclients: Headless-Chromium mit Fake-Kamera, Node + playwright-core, `saga-test-ns` (NAT-Namespaces, netem, UDP aus) | `horn-b.` |
 
-ARM (CAX) und amd64 dürfen gemischt werden (`TESTLAB_TYPES`).
+ARM (CAX) und amd64 dürfen gemischt werden (`TESTLAB_TYPES`). Nur einzelne Rollen: `TESTLAB_ROLLEN=a` (z. B. ein Server für App-Tests, ≈ 0,01 €/h).
 
 ## Voraussetzungen
 
@@ -37,6 +37,20 @@ Föderation A ↔ B (Einladungscode) und „Teilen an“ richtet man dort ein, s
 - `python run.py einstellen calls.horn=1 calls.horn_all=1 calls.horn_from=3 chat_v3=1 …` – Schalter ohne Oberfläche
 - `echo <passwort> | python run.py benutzer-anlegen c1 c2 …` – Testkonten für die Clients (Passwort nur über stdin)
 - `python run.py horn-koppeln <name> [--teilen] [--ohne-udp]` – wie Admin → Anrufe → Erweitern, gibt das Docker-Skript aus
+
+## Zertifikate wiederverwenden
+
+Let's Encrypt stellt je Namensliste höchstens **5 Zertifikate pro Woche** aus – bei mehreren Läufen am Tag ist das
+schnell erreicht (Traefik/Caddy zeigen dann ihr Standardzertifikat, Apps verweigern die Verbindung). Darum:
+
+- Nach `up` holt das Skript die Zertifikate von A (Traefik `acme.json`) und B (Caddy-Daten) in den Ordner
+  `~/saga-testlab/zertifikate/` (`TESTLAB_ZERT`, Ordner 0700, Dateien 0600 – enthalten die privaten Schlüssel der Test-Zone,
+  gehören nie ins Repo).
+- Beim nächsten `up` werden sie hochgeladen, **bevor** der Proxy startet (die Startskripte warten auf
+  `/opt/saga-test/zert-ok`, höchstens 5 min). Wiederverwendet wird bis 60 Tage nach dem Holen; der Proxy erneuert selbst,
+  wenn weniger als 30 Tage übrig sind. `TESTLAB_ZERT=aus` beantragt immer neu.
+- Ist das Limit doch erschöpft: `TESTLAB_A_NAME=a2` gibt Server A einen anderen Namen (neue Namensliste).
+- Noch nicht zwischengespeichert: die Knoten-Zertifikate (`horn-a.`, `horn-b.`).
 
 ## Testclients auf C
 

@@ -17,10 +17,8 @@ write_files:
           restart: unless-stopped
           command: ["caddy", "reverse-proxy", "--from", "b.@@DOMAIN@@", "--to", "saga:8080"]
           ports: ["80:80", "443:443"]
-          volumes: [caddy-data:/data]
+          volumes: [/opt/saga-test/caddy:/data]
           networks: {default: {ipv4_address: 172.30.0.2}}
-      volumes:
-        caddy-data:
       networks:
         default:
           ipam: {config: [{subnet: 172.30.0.0/24}]}
@@ -54,6 +52,10 @@ write_files:
         chmod 600 /root/saga-test/zugang.txt
       fi
       docker compose pull -q
+      # Zertifikate aus dem Zwischenspeicher des Testlabors abwarten (testlab.py up laedt sie hoch oder meldet "keine"),
+      # sonst holt der Proxy bei jedem Labor neue - Let's Encrypt erlaubt nur 5 je Name und Woche
+      i=0; while [ ! -e /opt/saga-test/zert-ok ] && [ $i -lt 150 ]; do sleep 2; i=$((i+1)); done
+      mkdir -p /opt/saga-test/caddy
       docker compose up -d
 runcmd:
   - [sh, -c, "curl -fsSL https://get.docker.com | sh"]
