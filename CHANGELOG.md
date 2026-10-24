@@ -17,6 +17,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu (2.5)
+- **Anrufe: eigenes Bild verschiebbar und verkleinerbar (Web).** Ziehen rastet in der nächsten Ecke ein, Klick
+  (oder Enter) verkleinert es zu einer kleinen Blase und wieder zurück, Pfeiltasten verschieben. Der Browser merkt sich
+  beides (`saga-call-self`); ohne Wahl bleibt alles wie bisher.
 - **Behoben: Schaltfläche „Neuer Eintrag“ mit Vorlage auf geteilten Seiten.** Für Personen, mit denen die Seite geteilt
   ist, schlug sie fehl, wenn die Vorlage in einer (nicht geteilten) Datenbank des Eigentümers liegt – Duplizieren durfte
   nur der Eigentümer. Jetzt schicken Clients `via` (die Seite mit der Schaltfläche) mit; der Server erlaubt die Kopie nur,

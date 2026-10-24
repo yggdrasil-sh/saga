@@ -1753,6 +1753,60 @@
     runCheck();                                        // 2.4: laeuft der Anruf auf anderen Geraeten weiter -> Leiste
   }
 
+  // 2.5: eigenes Bild - in eine Ecke ziehen (rastet ein; Klassen self-c0..3 am Fenster) und per Klick/Enter zur kleinen
+  // Blase verkleinern bzw. wieder vergroessern. Beides merkt sich der Browser fuer alle Anrufe (ohne Wahl: wie bisher).
+  function selfPrefs() { try { return JSON.parse(localStorage.getItem('saga-call-self') || '{}') || {}; } catch (e) { return {}; } }
+  function selfSave(p) { try { localStorage.setItem('saga-call-self', JSON.stringify(p)); } catch (e) { /* privat */ } }
+  function selfApply(w) {
+    var p = selfPrefs();
+    [0, 1, 2, 3].forEach(function (i) { w.classList.toggle('self-c' + i, p.corner === i); });
+    w.classList.toggle('self-min', !!p.hidden);
+    var lv = w.querySelector('.cl-local');
+    if (lv) {
+      lv.title = p.hidden ? T('Eigenes Bild zeigen') : T('Klicken: eigenes Bild verkleinern · Ziehen: verschieben');
+      lv.setAttribute('aria-label', p.hidden ? T('Eigenes Bild zeigen') : T('Eigenes Bild ausblenden'));
+    }
+  }
+  function selfPip(w, lv) {
+    lv.tabIndex = 0; lv.setAttribute('role', 'button');
+    var start = null, moved = false;
+    lv.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return;
+      start = { x: e.clientX, y: e.clientY }; moved = false;
+      try { lv.setPointerCapture(e.pointerId); } catch (x) { /* egal */ }
+    });
+    lv.addEventListener('pointermove', function (e) {
+      if (!start) return;
+      var dx = e.clientX - start.x, dy = e.clientY - start.y;
+      if (!moved && Math.abs(dx) + Math.abs(dy) < 6) return;
+      moved = true; lv.classList.add('dragging'); lv.style.translate = dx + 'px ' + dy + 'px';
+    });
+    function end(e) {
+      if (!start) return;
+      var was = moved; start = null; lv.classList.remove('dragging'); lv.style.translate = '';
+      var p = selfPrefs();
+      if (was) {
+        var wr = w.getBoundingClientRect(), cx = e.clientX, cy = e.clientY;     // der Zeiger zaehlt
+        p.corner = (cx < wr.left + wr.width / 2 ? 0 : 1) + (cy < wr.top + wr.height / 2 ? 0 : 2);
+      } else p.hidden = !p.hidden;
+      selfSave(p); selfApply(w);
+    }
+    lv.addEventListener('pointerup', end);
+    lv.addEventListener('pointercancel', function () { start = null; lv.classList.remove('dragging'); lv.style.translate = ''; });
+    lv.addEventListener('keydown', function (e) {
+      var p = selfPrefs();
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); p.hidden = !p.hidden; }
+      else if (/^Arrow/.test(e.key)) {                     // Tastatur: Pfeile verschieben in die Ecke
+        e.preventDefault(); var c = p.corner == null ? 3 : p.corner;
+        if (e.key === 'ArrowLeft') c = c & 2; else if (e.key === 'ArrowRight') c = (c & 2) | 1;
+        else if (e.key === 'ArrowUp') c = c & 1; else c = (c & 1) | 2;
+        p.corner = c;
+      } else return;
+      selfSave(p); selfApply(w);
+    });
+    selfApply(w);
+  }
+
   // --- Anruffenster --------------------------------------------------------------------------------------------------
   function win(c) {
     var w = el('div', 'cl-win'); w.setAttribute('role', 'dialog'); w.setAttribute('aria-modal', 'false'); w.setAttribute('aria-label', T('Anruf'));
@@ -1767,6 +1821,7 @@
     // 2.4 E4/E5: Kachelansicht (Gruppe bzw. mehrere Verbindungen) - je Verbindung eine Kachel (layout)
     var grid = el('div', 'cl-grid'); grid.setAttribute('role', 'list'); grid.setAttribute('aria-label', T('Teilnehmende'));
     stage.appendChild(rv); stage.appendChild(ra); stage.appendChild(who); stage.appendChild(rv2); stage.appendChild(grid); stage.appendChild(lv);
+    selfPip(w, lv);
     var top = el('div', 'cl-top'), info = el('div', 'cl-info'), st = el('div', 'cl-status'); st.setAttribute('role', 'status');
     var mini = btn(icon('shrink'), 'cl-mini cl-shrink', function () { w.classList.toggle('small'); }, T('Kleiner/größer'));
     // 2.4: Bild-im-Bild - nur, wo der Browser es kann (Document-PiP mit eigenen Knoepfen, sonst Video-PiP)

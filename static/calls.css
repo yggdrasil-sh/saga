@@ -308,3 +308,18 @@
 @media (max-width:640px){.cl-win.horn-scr .cl-share.cap{bottom:calc(6rem + 92px + .5rem)}}
 /* Filmleiste bleibt unten (die obere Kante oben gilt nur fuer das Raster) */
 .cl-win.horn.horn-strip.mesh.tiles .cl-grid{top:auto}
+
+/* 2.5: eigenes Bild verschiebbar (Ecke self-c0..3) und zur Blase verkleinerbar (self-min) - am Ende: gewinnt gegen die Modi */
+.cl-local{cursor:grab;touch-action:none}
+.cl-local.dragging{cursor:grabbing;transition:none;opacity:.9}
+.cl-local:focus-visible{outline:2px solid var(--accent,#c9a227);outline-offset:2px}
+.cl-win.self-c0 .cl-local{left:1rem;right:auto;top:5.5rem;bottom:auto}
+.cl-win.self-c1 .cl-local{right:1rem;left:auto;top:5.5rem;bottom:auto}
+.cl-win.self-c2 .cl-local{left:1rem;right:auto;bottom:6.2rem;top:auto}
+.cl-win.self-c3 .cl-local{right:1rem;left:auto;bottom:6.2rem;top:auto}
+.cl-win.horn.self-c0 .cl-local,.cl-win.horn.self-c1 .cl-local{top:7rem}
+.cl-win.horn-strip.self-c2 .cl-local,.cl-win.horn-strip.self-c3 .cl-local{bottom:calc(6.4rem + 120px)}
+.cl-win.small.self-c0 .cl-local,.cl-win.small.self-c1 .cl-local{top:3.2rem}
+.cl-win.small.self-c2 .cl-local,.cl-win.small.self-c3 .cl-local{bottom:4.4rem}
+.cl-win.self-min .cl-local{width:44px;height:44px;aspect-ratio:1;border-radius:50%;opacity:.85}
+.cl-win.self-min .cl-local:hover{opacity:1}
