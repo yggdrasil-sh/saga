@@ -192,6 +192,7 @@
   function openMenu(anchor, build, opts) {
     if (menuOwner === anchor) { closeMenu(); return; }
     closeMenu(); build(menuEl);
+    menuEl.classList.toggle('menu-top', !!(anchor.closest && anchor.closest('.modal, .hk-modal')));   // aus einem Dialog: darueber
     var search = opts && opts.search ? addSearch(menuEl, opts.search) : null;
     menuEl.hidden = false; menuOwner = anchor; anchor.setAttribute('aria-expanded', 'true');
     place(menuEl, anchor.getBoundingClientRect(), false);

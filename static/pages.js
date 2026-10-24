@@ -2094,6 +2094,8 @@
       S.pages.filter(function (p) { return p.template; }).forEach(function (p) {
         m.appendChild(HK.menuItem(label(p), function () { fromTemplate(p, parentId); }, { icon: ti(p.icon) || '📄', hint: T('eigene') }));
       });
+      m.appendChild(el('div', 'menu-sep'));
+      m.appendChild(HK.menuItem(T('Vorlagen verwalten …'), function () { manageTemplates({ db: null, list: pageTemplates }); }, { icon: '📐' }));
       m.appendChild(el('div', 'menu-hint', T('Eigene Vorlage: Seite öffnen → ⋯ → „Als Vorlage markieren“')));
     });
   }
@@ -2105,6 +2107,80 @@
     }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
   }
 
+
+  // 2.5 Vorlagen verwalten (vorher liessen sie sich nur anlegen): Liste mit Umbenennen (direkt im Feld), Bearbeiten, Duplizieren,
+  // Standard fuer "+ Neu" (nur Datenbank), "Keine Vorlage mehr" und Papierkorb. o: { db: id|null, list: fn -> Promise<[{id,title,icon}]>,
+  // dflt: fn -> id|null, setDflt: fn(id|null) -> Promise, changed: fn }
+  function manageTemplates(o) {
+    var items = [], body = null;
+    function reload() { return o.list().then(function (l) { items = l || []; if (body) draw(); }); }
+    function act(p) {
+      return p.then(function () { if (o.changed) o.changed(); return reload(); })
+        .catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
+    }
+    function draw() {
+      body.textContent = '';
+      if (!items.length) body.appendChild(el('p', 'nt-empty', o.db ? T('Diese Datenbank hat noch keine Vorlagen.') : T('Noch keine eigenen Vorlagen.')));
+      var ul = el('ul', 'tpl-list');
+      items.forEach(function (t) {
+        var li = el('li', 'tpl-item'), isD = !!(o.dflt && o.dflt() === t.id);
+        li.appendChild(icoNode(t.icon, '📐', 'tpl-ic'));
+        var name = el('input', 'tpl-name'); name.type = 'text'; name.maxLength = 200; name.value = t.title || ''; name.placeholder = T('Unbenannt');
+        name.setAttribute('aria-label', T('Name der Vorlage'));
+        name.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); name.blur(); } });
+        name.addEventListener('change', function () {
+          var v = name.value.trim(); if (v === (t.title || '')) return;
+          act(api('PATCH', '/api/notes/' + t.id, { title: v }).then(function () { return loadList(); }));
+        });
+        li.appendChild(name);
+        if (isD) li.appendChild(el('span', 'pg-badge', T('Standard')));
+        var ed = el('button', 'btn tpl-edit', T('Bearbeiten')); ed.type = 'button';
+        ed.addEventListener('click', function () { closeModal(); openPage(t.id); });
+        li.appendChild(ed);
+        var more = el('button', 'btn tpl-more', '⋯'); more.type = 'button'; more.title = T('Weitere Aktionen'); more.setAttribute('aria-label', T('Weitere Aktionen'));
+        more.addEventListener('click', function () {
+          HK.openMenu(more, function (m) {
+            m.appendChild(HK.menuItem(T('Duplizieren'), function () {
+              act(api('POST', '/api/notes/' + t.id + '/duplicate', { parent_id: o.db || t.parent_id || null, template: true,
+                title: T('{name} (Kopie)', { name: t.title || T('Vorlage') }) }).then(function () { return loadList(); }));
+            }, { icon: '⧉' }));
+            if (o.setDflt) m.appendChild(HK.menuItem(isD ? T('Nicht mehr Standard') : T('Als Standard für „+ Neu“'), function () { act(o.setDflt(isD ? null : t.id)); }, { icon: '★', on: isD }));
+            m.appendChild(HK.menuItem(T('Keine Vorlage mehr'), function () {
+              act(api('PATCH', '/api/notes/' + t.id, { template: false }).then(function () { return isD && o.setDflt ? o.setDflt(null) : null; })
+                .then(function () { return loadList(); }));
+            }, { icon: '📐', hint: o.db ? T('wird ein normaler Eintrag') : T('wird eine normale Seite') }));
+            m.appendChild(el('div', 'menu-sep'));
+            m.appendChild(HK.menuItem(T('In den Papierkorb'), function () {
+              HK.ask({ title: T('Vorlage „{name}“ in den Papierkorb?', { name: t.title || T('Unbenannt') }),
+                       text: T('Du kannst sie dort jederzeit wiederherstellen.'), ok: T('In den Papierkorb'), danger: true })
+                .then(function (y) {
+                  if (y) act(api('DELETE', '/api/notes/' + t.id).then(function () { return isD && o.setDflt ? o.setDflt(null) : null; }).then(function () { return loadList(); }));
+                });
+            }, { icon: '🗑' }));
+          });
+        });
+        li.appendChild(more); ul.appendChild(li);
+      });
+      body.appendChild(ul);
+      var add = el('button', 'btn btn-primary tpl-add', T('+ Neue Vorlage')); add.type = 'button';
+      add.addEventListener('click', function () {
+        save().then(function () { return api('POST', '/api/notes', { parent_id: o.db || null, title: T('Neue Vorlage') }); })
+          .then(function (d) { return api('PATCH', '/api/notes/' + d.id, { template: true }).then(function () { return d; }); })
+          .then(function (d) { if (o.changed) o.changed(); closeModal(); return loadList().then(function () { return openPage(d.id); }); })
+          .then(function () { if (S.cur && !readOnly()) { $('pg-title').focus(); $('pg-title').select(); } })
+          .catch(function (err) { HK.toast(T('Vorlage nicht angelegt: {err}', { err: err.message })); });
+      });
+      body.appendChild(add);
+    }
+    openModal(o.db ? T('Vorlagen dieser Datenbank') : T('Eigene Vorlagen'), function (b) { body = b; body.appendChild(el('p', 'nt-empty', T('Lädt …'))); });
+    reload().catch(function (err) { if (body) { body.textContent = ''; body.appendChild(el('p', 'nt-empty', err.message)); } });
+  }
+  function pageTemplates() {
+    return loadList().then(function () {
+      return S.pages.filter(function (p) { return p.template && (byId(p.parent_id) || {}).kind !== 'database'; })
+        .map(function (p) { return { id: p.id, title: p.title, icon: p.icon, parent_id: p.parent_id }; });
+    });
+  }
 
   // --- Datenbanken: Tabellenansicht (Notion-Stil) ----------------------------------
   var TYPES = { text: [T('Text'), '≡'], number: [T('Zahl'), '#'], select: [T('Auswahl'), '◉'], multi_select: [T('Mehrfachauswahl'), '☰'],
@@ -2697,9 +2773,21 @@
         var v = r.props[k]; return v != null && v !== '' && v !== false && !(Array.isArray(v) && !v.length);
       });
     }
-    function newRow(props) {
+    function defaultTpl() {                          // Standardvorlage (2.5), nur wenn es sie noch gibt
+      var id = DB.schema && DB.schema.default_tpl;
+      return id && (DB.templates || []).some(function (t) { return t.id === id; }) ? id : null;
+    }
+    function templatesUI() {
+      manageTemplates({ db: DB.id,
+        list: function () { return loadDb().then(function () { renderDb(); return DB.templates.slice(); }); },
+        dflt: defaultTpl,
+        setDflt: function (id) { if (id) DB.schema.default_tpl = id; else DB.schema.default_tpl = null; return saveSchema(); },
+        changed: function () { refreshDbViews(DB.id); } });
+    }
+    function newRow(props, blankOnly) {
       if (ro()) return Promise.resolve();
       if (props instanceof Event) props = null;
+      if (!props && !blankOnly && defaultTpl()) return newFromTemplate(defaultTpl());   // Standardvorlage fuer "+ Neu"
       // Nr. 148: noch eine leere, gerade angelegte Zeile da ("+ Neu" mehrmals, Enter auf dem Knopf) -> dorthin statt noch einer
       var blank = !props && curView().type !== 'board' && DB.rows.filter(function (x) { return FRESH[x.id] && isBlankRow(x); })[0];
       var bi = blank && BOX.querySelector('tr[data-id="' + blank.id + '"] .db-title-in');
@@ -2750,7 +2838,7 @@
 
     function renderDb() {
       var box = BOX; box.textContent = ''; box.classList.toggle('db-ro', ro()); tableV = null; renderGen++;
-      if (OPTS.embedded) box.appendChild(embedHead());
+      if (OPTS.embedded && headOn('title')) box.appendChild(embedHead());
       box.appendChild(viewBar());
       var vt = curView().type;
       if (vt === 'board') { box.appendChild(renderBoard()); return; }
@@ -3005,6 +3093,19 @@
         function propOpts(withTitle) { return (withTitle ? [['title', titleName()]] : []).concat(DB.schema.props.map(function (p) { return [p.id, p.name]; })); }
         function draw() {
           box.textContent = '';
+          if (OPTS.embedded && OPTS.setHead) {           // eingebetteter Block: Kopf ein-/ausblenden (gilt nur fuer diesen Block)
+            sec(T('Dieser Block'));
+            [['title', T('Datenbanktitel anzeigen')], ['tabs', T('Ansichts-Reiter anzeigen')]].forEach(function (h) {
+              var l = el('label', 'vs-row vs-check'), cb = el('input'); cb.type = 'checkbox'; cb.checked = headOn(h[0]);
+              cb.addEventListener('change', function () { OPTS.setHead(h[0], cb.checked); renderDb(); draw(); });
+              l.appendChild(cb); l.appendChild(el('span', 'vs-lbl', h[1])); box.appendChild(l);
+            });
+            if (!viewsLocked()) sec(T('Ansicht'));
+          }
+          if (DB.role === 'owner') {    // Vorlagen der Datenbank (2.5): auch erreichbar, wenn es noch keine gibt
+            var tb = el('button', 'menu-item vs-tpl', '📐 ' + T('Vorlagen verwalten …') + ((DB.templates || []).length ? ' (' + DB.templates.length + ')' : ''));
+            tb.type = 'button'; tb.addEventListener('click', function () { HK.closeMenu(); templatesUI(); }); box.appendChild(tb);
+          }
           if (viewsLocked()) {
             box.appendChild(el('div', 'menu-hint vs-locked', T('🔒 Diese Datenbank ist gesperrt: Spalten, Ansichten, Filter und Sortierung sind geschützt. Einträge kannst du weiter bearbeiten.')));
             var ul = el('button', 'menu-item', T('🔓 Entsperren')); ul.type = 'button';
@@ -3249,7 +3350,7 @@
       });
       var pl = el('button', 'db-tab db-tab-add', '+'); pl.type = 'button'; pl.title = T('Ansicht hinzufügen'); pl.setAttribute('aria-label', T('Ansicht hinzufügen'));
       pl.addEventListener('click', function () { addView(pl); }); if (!viewsLocked() && !ro()) tabs.appendChild(pl);   // Lesen/Kommentieren: wuerde nicht gespeichert (BUG-093)
-      bar.appendChild(tabs);
+      if (headOn('tabs')) bar.appendChild(tabs);
       var shown = filterRows(DB.rows).length;
       bar.appendChild(el('span', 'db-count', shown !== DB.rows.length ? T('{n} von {total} Einträgen', { n: shown, total: DB.rows.length }) : DB.rows.length === 1 ? T('1 Eintrag') : T('{n} Einträge', { n: shown })));
       var nf = (cur.filters || []).length;
@@ -3279,12 +3380,16 @@
       nb.addEventListener('click', function () {
         if (!(DB.templates || []).length) return newRow();
         HK.openMenu(nb, function (m) {                // Notion: "Neu ▾" mit den Vorlagen dieser Datenbank
-          m.appendChild(HK.menuItem(T('Leerer Eintrag'), function () { newRow(); }, { icon: '📄' }));
+          var dt = defaultTpl();
+          m.appendChild(HK.menuItem(T('Leerer Eintrag'), function () { newRow(null, true); }, { icon: '📄' }));
           m.appendChild(HK.menuLabel(T('Vorlagen')));
           DB.templates.forEach(function (t) {
-            m.appendChild(HK.menuItem(t.title || T('Vorlage'), function () { newFromTemplate(t.id); }, { icon: ti(t.icon) || '📐' }));
+            m.appendChild(HK.menuItem(t.title || T('Vorlage'), function () { newFromTemplate(t.id); }, { icon: ti(t.icon) || '📐', hint: t.id === dt ? T('Standard') : '' }));
           });
-          m.appendChild(el('div', 'menu-hint', T('Vorlage bearbeiten: im Seitenbaum unter der Datenbank öffnen')));
+          if (DB.role === 'owner') {
+            m.appendChild(el('div', 'menu-sep'));
+            m.appendChild(HK.menuItem(T('Vorlagen verwalten …'), templatesUI, { icon: '⚙' }));
+          }
         });
       });
       if ((DB.templates || []).length) nb.textContent = T('+ Neu') + ' ▾';
@@ -3542,6 +3647,7 @@
       return wrap;
     }
 
+    function headOn(k) { var h = OPTS.getHead && OPTS.getHead(); return !h || h[k] !== false; }
     function embedHead() {
       var meta = byId(DB.id) || {}, h = el('div', 'embed-head');
       var b = el('button', 'embed-title'); b.type = 'button'; b.title = T('Als ganze Seite öffnen');
@@ -3825,7 +3931,11 @@
     ['keydown', 'keyup', 'keypress', 'input', 'paste', 'cut', 'copy', 'dragstart', 'dragover', 'dragenter', 'dragleave', 'drop', 'dragend']
       .forEach(function (ev) { w.addEventListener(ev, function (e) { e.stopPropagation(); }); });
   }
-  function DatabaseTool(o) { var d = o.data || {}; this.data = { db: d.db || null, view: d.view || null, views: Array.isArray(d.views) ? d.views : null }; }
+  // hide_title / hide_tabs (2.5): Kopf des Blocks ausblendbar (wie Notion "Datenbanktitel / Ansichts-Reiter anzeigen")
+  function DatabaseTool(o) {
+    var d = o.data || {};
+    this.data = { db: d.db || null, view: d.view || null, views: Array.isArray(d.views) ? d.views : null, hide_title: !!d.hide_title, hide_tabs: !!d.hide_tabs };
+  }
   DatabaseTool.toolbox = { title: T('Datenbank'),
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>' };
   DatabaseTool.prototype.render = function () { this.w = el('div', 'embed-db'); isolate(this.w); this.draw(); return this.w; };
@@ -3859,10 +3969,17 @@
       getView: function () { return self.data.view; },
       setView: function (v) { self.data.view = v; self.mark(); },
       getViews: function () { return self.data.views; },
-      saveViews: function (vs) { self.data.views = JSON.parse(JSON.stringify(vs)); self.mark(); } });
+      saveViews: function (vs) { self.data.views = JSON.parse(JSON.stringify(vs)); self.mark(); },
+      getHead: function () { return { title: !self.data.hide_title, tabs: !self.data.hide_tabs }; },
+      setHead: canEdit() ? function (k, on) { self.data[k === 'title' ? 'hide_title' : 'hide_tabs'] = !on; self.mark(); } : null });
     this.inst.load(this.data.db);
   };
-  DatabaseTool.prototype.save = function () { return { db: this.data.db, view: this.data.view, views: this.data.views }; };
+  DatabaseTool.prototype.save = function () {
+    var o = { db: this.data.db, view: this.data.view, views: this.data.views };
+    if (this.data.hide_title) o.hide_title = true;
+    if (this.data.hide_tabs) o.hide_tabs = true;
+    return o;
+  };
 
   // Block "Kalender": Termine der verbundenen externen Kalender - Monat oder Liste (naechste 14 Tage, wie in der App)
   function CalendarTool(o) {

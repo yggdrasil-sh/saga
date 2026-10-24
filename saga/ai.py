@@ -56,7 +56,7 @@ from saga import ai_web, avatars, bus, i18n
 from saga.core import CA_FILE, E, TZ, _api_guard, _bad, _body, t
 from saga.netguard import Blocked, guarded_client, is_public
 from saga.notes import _calc_value, _iter_blocks, blocks_text
-from saga.sharing import Access, access, groups_of, mask_links, names, viewer
+from saga.sharing import RANK, Access, access, groups_of, mask_links, names, viewer
 
 router = APIRouter()
 
@@ -78,6 +78,11 @@ TARGETS = {"de": "German", "en": "English", "es": "Spanish", "ru": "Russian", "t
            "pl": "Polish", "sv": "Swedish", "da": "Danish", "nb": "Norwegian", "fi": "Finnish", "cs": "Czech", "tr": "Turkish",
            "uk": "Ukrainian", "ja": "Japanese", "zh": "Chinese (simplified)"}
 ACTIONS = ("summarize", "tasks", "improve", "translate")
+# 2.5 Datenbanken auf einer Seite: lesen (Zusammenfassen/Aufgaben/Fragen) und Werte einer Eigenschaft zuordnen ("assign")
+ASSIGN_TYPES = ("select", "multi_select", "checkbox", "text", "number", "date", "url")
+ASSIGN_ROWS = 80                 # so viele Eintraege je Zuordnung (Antwort: eine kurze Zeile je Eintrag)
+PAGE_DBS = 5                     # hoechstens so viele Datenbanken je Seite
+PAGE_DB_ROWS = 300               # Zeilen aller Datenbanken einer Seite zusammen (Lesen)
 TEXT_TYPES = ("paragraph", "header", "quote")                 # Bloecke, deren Text der Client ersetzen kann
 
 _busy = {}                                                    # uid -> Beginn der laufenden Anfrage (nur in der Event-Schleife veraendert)
@@ -524,6 +529,189 @@ def _row_list(rows, schema, titles):
         out.append(f"- {title or t('Unbenannt')}" + (f" ({pt})" if pt else ""))
     return out
 
+
+# --- Datenbanken auf einer Seite (2.5) ---------------------------------------------------------------
+def _db_blocks(fmt, body):
+    """IDs eingebetteter Datenbanken (Block 'database', auch in Spalten/Toggles) in Seitenreihenfolge, ohne Doppelte."""
+    if fmt != "blocks":
+        return []
+    out = []
+    try:
+        blocks = json.loads(body or "").get("blocks", [])
+        for b in _iter_blocks(blocks):
+            if b.get("type") != "database":
+                continue
+            try:
+                i = int((b.get("data") or {}).get("db"))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if 0 < i < 2 ** 62 and i not in out:          # negative IDs = Datenbank eines verbundenen Servers: nicht hier
+                out.append(i)
+    except (ValueError, AttributeError, RecursionError):
+        pass
+    return out
+
+
+def page_databases(conn, acc, uid, nid, kind, fmt, body):
+    """Datenbanken einer Seite, die uid sehen darf: die Seite selbst (wenn sie eine ist) und die eingebetteten.
+    -> [{id, owner, role, title, schema}] (ohne Zugriff: weggelassen, wie ueberall)."""
+    ids = ([nid] if kind == "database" else []) + [i for i in _db_blocks(fmt, body) if i != nid]
+    out = []
+    for i in ids[:PAGE_DBS]:
+        owner, role, err = access(conn, uid, i, "view", acc)
+        if err is not None:
+            continue
+        r = conn.execute("SELECT title, schema FROM note WHERE id=? AND uid=? AND kind='database' AND deleted_at IS NULL "
+                         "AND archived IS NULL", (i, owner)).fetchone()
+        if not r:
+            continue
+        try:
+            schema = json.loads(r[1] or "{}")
+        except ValueError:
+            schema = {}
+        out.append({"id": i, "owner": owner, "role": role, "title": _plain(r[0]) or t("Unbenannt"),
+                    "schema": schema if isinstance(schema, dict) else {}})
+    return out
+
+
+def db_rows(conn, owner, dbid, limit=PAGE_DB_ROWS, text=0):
+    """Eintraege einer Datenbank (ohne Vorlagen/Archiv) -> [{id, title, props, text}] (text: Anfang des Inhalts)."""
+    out = []
+    for x in conn.execute("SELECT id, title, props, body, format FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL "
+                          "AND archived IS NULL AND is_template=0 ORDER BY sort NULLS FIRST, created LIMIT ?",
+                          (owner, dbid, limit)).fetchall():
+        try:
+            props = json.loads(x[2]) if x[2] else {}
+        except ValueError:
+            props = {}
+        snip = ""
+        if text:
+            snip = _plain(" ".join(_block_texts(x[4] or "text", x[3])))[:text]
+        out.append({"id": x[0], "title": _plain(x[1]), "props": props if isinstance(props, dict) else {}, "text": snip})
+    return out
+
+
+def assign_props(schema):
+    """Eigenschaften, denen der Assistent Werte vorschlagen kann."""
+    return [p for p in (schema.get("props") or []) if isinstance(p, dict) and p.get("type") in ASSIGN_TYPES and p.get("id")]
+
+
+def _empty(prop, v):
+    return v in (None, "", [], False) or (prop.get("type") == "select" and v not in {o.get("id") for o in prop.get("options") or []})
+
+
+def value_label(prop, v):
+    """Wert einer Eigenschaft als kurzer Text (Anzeige der Vorschlaege: alt -> neu)."""
+    typ = prop.get("type")
+    if v in (None, "", []):
+        return ""
+    if typ in ("select", "multi_select"):
+        opts = {o.get("id"): o.get("name") for o in prop.get("options") or [] if isinstance(o, dict)}
+        return ", ".join(str(opts[x]) for x in (v if isinstance(v, list) else [v]) if opts.get(x))
+    if typ == "checkbox":
+        return "✓" if v else "✗"
+    if typ == "number":
+        return _num(v)
+    return _plain(v)[:200]
+
+
+_YES = re.compile(r"^(yes|ja|j|true|wahr|sí|si|да|ใช่|✓|✔|x|1)$", re.I)
+_NO = re.compile(r"^(no|nein|n|false|falsch|нет|ไม่|✗|✘|0)$", re.I)
+
+
+def assign_value(prop, raw):
+    """Antwort des Modells fuer einen Eintrag -> gueltiger Wert der Eigenschaft oder None (unsicher/ungueltig).
+    Auswahl nur aus vorhandenen Optionen (der Assistent legt keine neuen an)."""
+    typ = prop.get("type")
+    s = re.sub(r"[*_`\"„“”]+", "", str(raw or "")).strip().rstrip(".").strip()
+    if not s or s in ("?", "-", "–", "—") or _NONE.match(s) or s.lower() in ("unknown", "unbekannt", "unsicher", "n/a"):
+        return None
+    if typ in ("select", "multi_select"):
+        opts = {}
+        for o in prop.get("options") or []:
+            if isinstance(o, dict) and o.get("id") and o.get("name"):
+                opts.setdefault(_plain(o["name"]).lower(), o["id"])
+
+        def one(x):
+            x = x.strip().strip("[]()").strip().lower()
+            return opts.get(x) or opts.get(re.sub(r"\s*\(.*\)$", "", x).strip())
+        if typ == "select":
+            return one(s)
+        ids = [i for i in (one(x) for x in re.split(r"\s*[,;/|]\s*", s)) if i]
+        return list(dict.fromkeys(ids))[:20] or None
+    if typ == "checkbox":
+        if _YES.match(s):
+            return True
+        if _NO.match(s):
+            return False
+        return None
+    if typ == "number":
+        m = re.search(r"-?\d+(?:[.,]\d+)?", s)
+        if not m:
+            return None
+        f = float(m.group(0).replace(",", "."))
+        return int(f) if f.is_integer() else f
+    if typ == "date":
+        m = re.search(r"\d{4}-\d{2}-\d{2}", s)
+        try:
+            return date.fromisoformat(m.group(0)).isoformat() if m else None
+        except ValueError:
+            return None
+    if typ == "url":
+        return s[:500] if urlparse(s).scheme in ("http", "https", "mailto") else None
+    return s[:500]                                         # text
+
+
+_ASSIGN_LINE = re.compile(r"^\s*(?:[-*•]\s*)?(?:#|nr\.?\s*|no\.?\s*|entry\s*|eintrag\s*)?(\d{1,3})\s*[:.)\]=]\s*(.+?)\s*$", re.I)
+
+
+def parse_assign(text, prop, n):
+    """Zeilen '<nummer>: <wert>' -> {nummer: wert} (gueltige Werte, erste Nennung zaehlt)."""
+    out = {}
+    for ln in str(text or "").splitlines():
+        m = _ASSIGN_LINE.match(re.sub(r"[*_`]+", "", ln))
+        if not m:
+            continue
+        k = int(m.group(1))
+        if not 1 <= k <= n or k in out:
+            continue
+        v = m.group(2)
+        if "→" in v or "->" in v or "=>" in v:            # "Titel -> Wert": nur den Wert
+            v = re.split(r"→|->|=>", v)[-1]
+        val = assign_value(prop, v)
+        if val is not None:
+            out[k] = val
+    return out
+
+
+def assign_messages(title, page_text, db_title, prop, rows, schema, hint=""):
+    lang = _lang_name()
+    typ, name = prop.get("type"), _plain(prop.get("name")) or "?"
+    if typ in ("select", "multi_select"):
+        names_ = [_plain(o.get("name")) for o in prop.get("options") or [] if isinstance(o, dict) and o.get("name")]
+        allowed_ = "Allowed values (use exactly one of these names" + (", or several separated by ', '" if typ == "multi_select" else "") + \
+            "): " + " | ".join(names_[:60]) + "."
+    else:
+        allowed_ = {"checkbox": "Answer yes or no.", "date": "Answer a date as YYYY-MM-DD.", "number": "Answer a number.",
+                    "url": "Answer a URL.", "text": "Answer a short text (one line)."}[typ]
+    task = (f"You assign a value of the property \"{clean_data(name)}\" to each numbered entry of the database. {allowed_} "
+            "Base each choice only on the entry's title, its other properties and its content"
+            + (" and on the page it is shown on" if page_text else "") + ". If you are unsure, write '?'. "
+            "Output exactly one line per entry in the form '<number>: <value>' and nothing else. "
+            f"Write text values in {lang}.")
+    other = {"props": [p for p in schema.get("props") or [] if isinstance(p, dict) and p.get("id") != prop.get("id")]}
+    lines = []
+    for i, r in enumerate(rows, 1):
+        pt = props_text(other, r["props"])
+        ln = f"{i}. {r['title'] or t('Unbenannt')}" + (f" ({pt})" if pt else "") + (f" – {r['text']}" if r["text"] else "")
+        lines.append(ln[:600])
+    data = (f"Page: {clean_data(title)}\n{clean_data(page_text)}\n\n" if page_text else "") + \
+        f"Database: {clean_data(db_title)}\nEntries:\n" + clean_data("\n".join(lines))
+    again = f"One line per entry 1-{len(rows)}: '<number>: <value for {clean_data(name)}>' or '<number>: ?'. No other text."
+    if hint:
+        again += f" The person adds this instruction for the assignment: {clean_data(hint)}"
+    return [{"role": "system", "content": system_prompt(task)},
+            {"role": "user", "content": f"{MARK_A}\n{data}\n{MARK_B}\n\n({again})"}]
 
 def visible_docs(c, uid):
     """Alle Seiten, die uid sehen darf, als Liste von dicts: id, title, fmt, body, owner (Name bei fremden Seiten, sonst
@@ -1779,6 +1967,8 @@ async def api_ai_page(nid: int, request: Request):
         return _bad("unauthorized", 401)
     b = await _body(request) or {}
     action = b.get("action")
+    if action == "assign":
+        return await _assign(uid, nid, b)
     if action not in ACTIONS:
         return _bad(t("ungültige Angabe"))
     target = str(b.get("target") or "")
@@ -1828,6 +2018,15 @@ async def api_ai_page(nid: int, request: Request):
                     except ValueError:
                         data.append((x[0], {}))
                 rows = _row_list(data, schema, {})
+            else:                                          # 2.5: eingebettete Datenbanken der Seite mitlesen (nur mit Zugriff)
+                left = PAGE_DB_ROWS
+                for d in page_databases(conn, acc, uid, nid, r[3], r[2] or "text", body):
+                    if left <= 0:
+                        break
+                    data = [(x["title"], x["props"]) for x in db_rows(conn, d["owner"], d["id"], left)]
+                    left -= len(data)
+                    rows += [f"Database \"{d['title']}\" (embedded on this page, {len(data)} entries):"] + \
+                        (_row_list(data, d["schema"], {}) or ["- (no entries)"])
             return (r[0] or t("Unbenannt"), body, r[2] or "text", role, rows, pairs), None
     page, err = await asyncio.to_thread(load)
     if err is not None:
@@ -1899,6 +2098,120 @@ async def api_ai_page(nid: int, request: Request):
     return _respond(uid, c, page_messages(action, title, text, target, bool(pairs)), [_fmt("sources", {"sources": src1})],
                     finish, left, quota)
 
+
+@router.get("/api/ai/page/{nid}/dbs")
+async def api_ai_page_dbs(nid: int, request: Request):
+    """Datenbanken auf der Seite (sie selbst und eingebettete, nur mit Zugriff) mit den Eigenschaften, denen der Assistent
+    Werte vorschlagen kann: {dbs: [{id, title, editable, rows, props: [{id, name, type}]}]}."""
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    if not await asyncio.to_thread(allowed, uid):
+        return _bad(t("Der KI-Assistent ist für dich nicht eingeschaltet."), 403)
+
+    def load():
+        with _db() as conn:
+            acc = Access(conn, uid)
+            owner, role, err = access(conn, uid, nid, "view", acc)
+            if err is not None:
+                return err
+            r = conn.execute("SELECT body, format, kind FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
+            if not r:
+                return _bad("not found", 404)
+            out = []
+            for d in page_databases(conn, acc, uid, nid, r[2], r[1] or "text", r[0]):
+                n = conn.execute("SELECT count(*) FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND archived IS NULL "
+                                 "AND is_template=0", (d["owner"], d["id"])).fetchone()[0]
+                out.append({"id": d["id"], "title": d["title"], "editable": RANK.get(d["role"], 0) >= RANK["edit"], "rows": n,
+                            "props": [{"id": p["id"], "name": _plain(p.get("name")) or "?", "type": p["type"]} for p in assign_props(d["schema"])]})
+            return JSONResponse({"dbs": out})
+    return await asyncio.to_thread(load)
+
+
+async def _assign(uid, nid, b):
+    """Werte einer Eigenschaft fuer die Eintraege einer Datenbank auf der Seite vorschlagen: {db, prop, only_empty?, hint?}.
+    Nur ein Vorschlag - die Person uebernimmt ihn ueber die normalen Endpunkte (dafuer braucht sie 'Bearbeiten')."""
+    try:
+        dbid = int(b.get("db"))
+    except (TypeError, ValueError):
+        return _bad(t("ungültige Angabe"))
+    pid = str(b.get("prop") or "")[:64]
+    only_empty = b.get("only_empty") is not False
+    hint = re.sub(r"\s+", " ", str(b.get("hint") or "")).strip()[:300]
+    if not await asyncio.to_thread(allowed, uid):
+        return _bad(t("Der KI-Assistent ist für dich nicht eingeschaltet."), 403)
+
+    def load():
+        with _db() as conn:
+            acc = Access(conn, uid)
+            owner, role, err = access(conn, uid, nid, "view", acc)
+            if err is not None:
+                return None, err
+            r = conn.execute("SELECT title, body, format, kind FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
+            if not r:
+                return None, _bad("not found", 404)
+            body = r[1] if role == "owner" else mask_links(r[1], r[2], viewer(acc))
+            d = next((x for x in page_databases(conn, acc, uid, nid, r[3], r[2] or "text", body) if x["id"] == dbid), None)
+            if not d:
+                return None, _bad(t("Diese Datenbank ist nicht auf der Seite."), 404)
+            if RANK.get(d["role"], 0) < RANK["edit"]:
+                return None, _bad(t("Du darfst diese Datenbank nicht bearbeiten."), 403)
+            prop = next((p for p in assign_props(d["schema"]) if p["id"] == pid), None)
+            if not prop:
+                return None, _bad(t("Dieser Eigenschaft kann der Assistent keine Werte zuordnen."))
+            if prop["type"] in ("select", "multi_select") and not prop.get("options"):
+                return None, _bad(t("Die Eigenschaft hat noch keine Optionen."))
+            rows = db_rows(conn, d["owner"], dbid, 2000, 240)
+            page_text = "" if r[3] == "database" else "\n".join(_block_texts(r[2] or "text", body))[:2000]
+            return (_plain(r[0]) or t("Unbenannt"), d, prop, rows, page_text), None
+    data, err = await asyncio.to_thread(load)
+    if err is not None:
+        return err
+    title, d, prop, rows, page_text = data
+    if only_empty:
+        rows = [x for x in rows if _empty(prop, x["props"].get(prop["id"]))]
+    more = max(0, len(rows) - ASSIGN_ROWS)
+    rows = rows[:ASSIGN_ROWS]
+    src1 = [{"n": 1, "id": nid, "title": title}]
+    head = {"db": d["id"], "prop": {"id": prop["id"], "name": _plain(prop.get("name")) or "?", "type": prop["type"]}}
+    if not rows:
+        ql = await asyncio.to_thread(_quota_left, uid)
+        return _static("", {"truncated": False, "action": "assign", "quota_left": ql, "assign": dict(head, items=[]),
+                            "message": t("Alle Einträge haben schon einen Wert.") if only_empty else t("Die Datenbank hat keine Einträge.")}, src1)
+    c, err = await _gate(uid)
+    if err is not None:
+        return err
+    try:
+        budget = max(1000, min(50000, int(c.get("context") or 8000)))
+        msgs = assign_messages(title, page_text[:max(0, budget // 4)], d["title"], prop, rows, d["schema"], hint)
+        while len(msgs[1]["content"]) > budget and len(rows) > 5:   # kleiner Kontext: weniger Eintraege auf einmal
+            more += len(rows) - len(rows) * 3 // 4
+            rows = rows[:len(rows) * 3 // 4]
+            msgs = assign_messages(title, page_text[:max(0, budget // 4)], d["title"], prop, rows, d["schema"], hint)
+        quota = int(c.get("quota") or 0)
+        left = await asyncio.to_thread(_take_quota, uid, quota)
+    except BaseException:
+        _release(uid)
+        raise
+    if left == -1:
+        _release(uid)
+        return _bad(t("Dein Tageskontingent für den Assistenten ist aufgebraucht."), 429)
+
+    def finish(answer):
+        got = parse_assign(answer, prop, len(rows))
+        items = []
+        for k, val in sorted(got.items()):
+            r = rows[k - 1]
+            old = r["props"].get(prop["id"])
+            if val == old or (prop["type"] == "checkbox" and bool(val) == bool(old)):
+                continue                                   # keine Aenderung
+            items.append({"id": r["id"], "title": r["title"] or t("Unbenannt"), "value": val,
+                          "label": value_label(prop, val), "old": value_label(prop, old)})
+        out = {"truncated": more > 0, "more": more, "action": "assign", "assign": dict(head, items=items, unsure=len(rows) - len(got))}
+        if not items:
+            out["message"] = t("Keine Vorschläge – der Assistent war sich bei keinem Eintrag sicher.")
+        return out
+    return _respond(uid, c, msgs, [_fmt("sources", {"sources": src1})], finish, left, quota)
 
 @router.put("/api/ai/settings")
 async def api_ai_settings(request: Request):

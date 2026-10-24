@@ -50,6 +50,19 @@ def answer(messages, model=None):
             return "Gern, ich suche.\nSEARCH: Wetter Testort 2026\n- SEARCH: \"Testort Wetter morgen\"\nSEARCH: dritte Anfrage\n"
         return "NONE"
     webn = re.findall(r"(?m)^\[(\d+)\] Web: ", data)
+    if "You assign a value of the property" in sys_txt:   # 2.5 Datenbank zuordnen: je Eintrag eine Zeile "<n>: <wert>"
+        out = []
+        for m in re.finditer(r"(?m)^(\d+)\. (.+)$", data):
+            ln = m.group(2).lower()
+            if "Answer yes or no" in sys_txt:
+                out.append(f"{m.group(1)}: {'ja' if 'dringend' in ln else 'nein'}")
+            elif "egal" in ln:
+                out.append(f"{m.group(1)}: ?")
+            elif "erfunden" in ln:
+                out.append(f"{m.group(1)}: Gibtsnicht")      # keine Option der Eigenschaft -> verworfen
+            else:
+                out.append(f"**{m.group(1)}.** {'Hoch' if 'dringend' in ln else 'Niedrig'}")
+        return "Gern:\n" + "\n".join(out) + "\n99: Hoch\n"
     if "List the concrete action items" in sys_txt:
         if model == "fake-none":
             return "NONE"

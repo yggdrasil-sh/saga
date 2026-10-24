@@ -17,6 +17,22 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu (2.5)
+- **Eingebettete Datenbank: Titel und Ansichts-Reiter ausblendbar.** Unter „⚙ Ansicht“ → „Dieser Block“ je Block
+  „Datenbanktitel anzeigen“ und „Ansichts-Reiter anzeigen“ (wie Notion). Gespeichert im Block (`hide_title`,
+  `hide_tabs`); veröffentlichte Seiten lassen den Titel dann ebenfalls weg. Die Datenbank-Seite selbst bleibt unverändert.
+- **Vorlagen verwalten.** Vorlagen ließen sich bisher nur anlegen. Jetzt unter „+ Neu ▾“ bzw. „⚙ Ansicht“ einer
+  Datenbank und unter „+ Neue Seite“ (eigene Seitenvorlagen): Liste mit Umbenennen direkt im Feld, Bearbeiten,
+  Duplizieren (bleibt Vorlage), „Keine Vorlage mehr“, Papierkorb (mit Rückfrage) und „+ Neue Vorlage“. Je Datenbank
+  eine **Standardvorlage für „+ Neu“** (Schema `default_tpl`; „Leerer Eintrag“ legt weiter leer an). Ältere Apps, die das
+  Schema ohne den Schlüssel speichern, behalten den Standard; nur Vorlagen dieser Datenbank zählen.
+  `POST /api/notes/<id>/duplicate` nimmt `template: true`. Menüs aus Dialogen liegen jetzt über dem Dialog.
+- **KI-Assistent und Datenbanken.** Zusammenfassen/Aufgaben einer Seite lesen jetzt auch die **eingebetteten
+  Datenbanken** (auch in Spalten/Toggles, nur mit Zugriff, höchstens 5 Datenbanken / 300 Einträge). Neu „**Datenbank
+  zuordnen**“: der Assistent schlägt für eine Eigenschaft (Auswahl, Mehrfachauswahl, Häkchen, Text, Zahl, Datum, URL)
+  je Eintrag einen Wert vor – auf Wunsch nur für leere Felder und mit eigenem Hinweis („nach Dringlichkeit“). Auswahl
+  nur aus vorhandenen Optionen, unsichere Einträge bleiben leer. Der Assistent schreibt weiterhin nichts: die Person
+  hakt ab und übernimmt (normale Bearbeiten-Rechte). `GET /api/ai/page/<id>/dbs`, `POST /api/ai/page/<id>`
+  `{action: "assign", db, prop, only_empty?, hint?}` → `done.assign {db, prop, items[{id,title,value,label,old}], unsure}`.
 - **Alle Anrufe über Knoten (auch 1:1).** Neue Admin-Einstellung unter Anrufe → Gjallarhorn (Standard aus): 1:1-Anrufe
   laufen dann über einen Knoten – die Geräte sehen gegenseitig keine IP-Adressen, weniger NAT-Probleme.
   `GET /api/calls/config` meldet `horn_dm`; Clients rufen mit `via: "horn"` an und bekommen ohne bereiten Knoten, ohne

@@ -423,12 +423,85 @@
     }
     tr.appendChild(act(T('Übersetzen nach'), '⇄', function () { runPage('translate'); }, true)); tr.appendChild(target);
     g.appendChild(tr);
+    g.appendChild(act(T('Datenbank zuordnen'), '⇢', assignForm));
     w.appendChild(g); w.appendChild(selLine); w.appendChild(resBox);
     body.appendChild(w);
     selInfo();
   }
 
-  function runPage(action, idsOpt) {
+  // 2.5 Datenbanken auf der Seite: Werte einer Eigenschaft je Eintrag vorschlagen (Auswahl, Haken, Text, Zahl, Datum, URL).
+  // Der Server liefert nur Vorschlaege; uebernommen wird per PATCH der Eintraege (wie beim Bearbeiten von Hand).
+  function assignForm() {
+    var c = cur(); if (!c || A.run) return;
+    resBox.textContent = '';
+    if (c.id < 0) { resBox.appendChild(errNode(T('Der Assistent arbeitet nur mit Seiten dieses Servers.'))); return; }
+    var w = el('div', 'ai-asg'); w.appendChild(el('p', 'ai-hint', T('Lädt …'))); resBox.appendChild(w);
+    var saved = canEdit() && window.HKPages && HKPages.flush ? HKPages.flush() : Promise.resolve();   // neu eingebettete Datenbank: erst speichern
+    saved.catch(function () {}).then(function () { return api('GET', '/api/ai/page/' + c.id + '/dbs'); }).then(function (d) {
+      if (!cur() || cur().id !== c.id) return;
+      w.textContent = '';
+      var dbs = (d.dbs || []).filter(function (x) { return x.props.length; });
+      if (!dbs.length) {
+        w.appendChild(el('p', 'ai-hint', (d.dbs || []).length ? T('Die Datenbanken auf dieser Seite haben keine passende Eigenschaft (Auswahl, Häkchen, Text, Zahl, Datum, URL).')
+          : T('Auf dieser Seite ist keine Datenbank.')));
+        return;
+      }
+      w.appendChild(el('p', 'ai-hint', T('{name} schlägt für jeden Eintrag einen Wert vor – du entscheidest, was übernommen wird.', { name: P().name })));
+      function field(lbl, ctrl) { var l = el('label', 'ai-asg-row'); l.appendChild(el('span', null, lbl)); l.appendChild(ctrl); w.appendChild(l); return ctrl; }
+      var dbSel = field(T('Datenbank'), el('select', 'hk-in ai-asg-in'));
+      dbs.forEach(function (x) { var o = el('option', null, x.title + ' (' + x.rows + ')'); o.value = x.id; dbSel.appendChild(o); });
+      var pSel = field(T('Eigenschaft'), el('select', 'hk-in ai-asg-in'));
+      var TN = { select: T('Auswahl'), multi_select: T('Mehrfachauswahl'), checkbox: T('Häkchen'), text: T('Text'), number: T('Zahl'), date: T('Datum'), url: T('URL') };
+      function fillProps() {
+        var db = dbs.filter(function (x) { return String(x.id) === dbSel.value; })[0]; pSel.textContent = '';
+        db.props.forEach(function (p) { var o = el('option', null, p.name + ' · ' + (TN[p.type] || p.type)); o.value = p.id; pSel.appendChild(o); });
+        var pick = db.props.filter(function (p) { return p.type === 'select'; })[0];       // meist will man eine Auswahl (Status, Kategorie)
+        if (pick) pSel.value = pick.id;
+        go.disabled = !db.editable; note.hidden = db.editable;
+      }
+      var only = el('input'); only.type = 'checkbox'; only.checked = true;
+      var ol = el('label', 'ai-task'); ol.appendChild(only); ol.appendChild(el('span', null, T('Nur Einträge ohne Wert'))); w.appendChild(ol);
+      var hint = field(T('Hinweis (optional)'), el('input', 'hk-in ai-asg-in')); hint.type = 'text'; hint.maxLength = 300;
+      hint.placeholder = T('z. B. „nach Dringlichkeit“');
+      var note = el('p', 'ai-hint', T('Du darfst diese Datenbank nur lesen.')); note.hidden = true;
+      var go = el('button', 'btn btn-primary', T('Vorschläge holen')); go.type = 'button';
+      go.addEventListener('click', function () {
+        runPage('assign', null, { db: +dbSel.value, prop: pSel.value, only_empty: only.checked, hint: hint.value.trim() });
+      });
+      dbSel.addEventListener('change', fillProps);
+      w.appendChild(note); w.appendChild(go); fillProps();
+    }).catch(function (err) { w.textContent = ''; w.appendChild(errNode(err.message)); });
+  }
+  function assignSuggest(done, out) {
+    var a = done.assign || {}, items = a.items || [], prop = a.prop || {};
+    out.textContent = ''; out.classList.add('ai-tasks');
+    var again = el('button', 'btn', T('Andere Eigenschaft …')); again.type = 'button'; again.addEventListener('click', assignForm);
+    if (!items.length) { out.appendChild(el('p', 'ai-hint', done.message || T('Keine Vorschläge.'))); var b0 = el('div', 'ai-rbar'); b0.appendChild(again); resBox.appendChild(b0); return; }
+    out.appendChild(el('p', 'ai-asg-h', T('„{name}“ für {n} Einträge:', { name: prop.name || '?', n: items.length })));
+    var boxes = items.map(function (it) {
+      var l = el('label', 'ai-task ai-asg-it'), i = el('input'); i.type = 'checkbox'; i.checked = true;
+      var tx = el('span'); tx.appendChild(el('b', null, it.title));
+      tx.appendChild(document.createTextNode(': ' + (it.old ? it.old + ' → ' : '') + it.label));
+      l.appendChild(i); l.appendChild(tx); out.appendChild(l); return { i: i, it: it };
+    });
+    if (a.unsure) out.appendChild(el('p', 'ai-hint', a.unsure === 1 ? T('Bei 1 Eintrag war sich {name} unsicher.', { name: P().name }) : T('Bei {n} Einträgen war sich {name} unsicher.', { n: a.unsure, name: P().name })));
+    if (done.more) out.appendChild(el('p', 'ai-hint', T('{n} weitere Einträge – nach dem Übernehmen noch einmal starten.', { n: done.more })));
+    var take = el('button', 'btn btn-primary', T('Übernehmen')); take.type = 'button';
+    take.addEventListener('click', function () {
+      var list = boxes.filter(function (b) { return b.i.checked; }).map(function (b) { return b.it; }); if (!list.length) return;
+      take.disabled = true; var n = 0;
+      list.reduce(function (p, it) {
+        return p.then(function () { var pr = {}; pr[prop.id] = it.value; return api('PATCH', '/api/notes/' + it.id, { props: pr }).then(function () { n++; }); });
+      }, Promise.resolve()).then(function () {
+        HK.toast(n === 1 ? T('1 Eintrag geändert.') : T('{n} Einträge geändert.', { n: n }));
+        boxes.forEach(function (b) { b.i.disabled = true; });
+      }).catch(function (err) { HK.toast(T('Nicht übernommen: {err}', { err: err.message })); take.disabled = false; })
+        .then(function () { try { document.dispatchEvent(new CustomEvent('hk-note-changed', { detail: { id: a.db } })); } catch (e) { /* alt */ } });
+    });
+    var bar = el('div', 'ai-rbar'); bar.appendChild(take); bar.appendChild(again); resBox.appendChild(bar);
+  }
+
+  function runPage(action, idsOpt, extra) {
     var c = cur(); if (!c || A.run) return;
     if (c.id < 0) { resBox.textContent = ''; resBox.appendChild(errNode(T('Der Assistent arbeitet nur mit Seiten dieses Servers.'))); return; }   // BUG-052
     var ids = idsOpt || (A.sel && A.sel.page === c.id ? A.sel.ids : []);
@@ -441,7 +514,10 @@
     var saved = canEdit() && window.HKPages && HKPages.flush ? HKPages.flush() : Promise.resolve();   // markierte Bloecke muessen gespeichert sein
     saved.catch(function () { /* Konflikt: der Server nimmt den gespeicherten Stand */ }).then(function () {
       var rich = action === 'summarize' || action === 'tasks';           // Verbessern/Uebersetzen: Text genau so zeigen
-      A.run = stream('/api/ai/page/' + pid, { action: action, blocks: ids, target: target.value }, function (ev, d) {
+      var rq = { action: action, blocks: ids, target: target.value };
+      Object.keys(extra || {}).forEach(function (k) { rq[k] = extra[k]; });
+      A.run = stream('/api/ai/page/' + pid, rq, function (ev, d) {
+        if ((ev === 'delta' || ev === 'reset') && action === 'assign') return;    // Rohantwort ("3: Offen") nicht zeigen
         if (ev === 'delta' || ev === 'reset') {
           text = ev === 'reset' ? '' : text + (d.t || '');
           var n = rich ? answerNode(text, []) : el('div', 'ai-answer', text); n.classList.add('ai-live'); resBox.replaceChild(n, out); out = n;
@@ -457,10 +533,11 @@
     }).then(function () {
       out.classList.remove('ai-live', 'ai-pending');
       if (!done || !cur() || cur().id !== pid) return;
-      if (done.truncated) resBox.insertBefore(el('p', 'ai-hint', T('Die Seite ist lang – verwendet wurden Anfang und Ende.')), out);
+      if (done.truncated && action !== 'assign') resBox.insertBefore(el('p', 'ai-hint', T('Die Seite ist lang – verwendet wurden Anfang und Ende.')), out);
       if (done.cut) resBox.insertBefore(el('p', 'ai-hint', T('Die Antwort wurde abgeschnitten (Längengrenze des Modells).')), out);
       if (done.notice) resBox.insertBefore(el('p', 'ai-hint', done.notice), out);     // z. B. nur Bild markiert -> ganze Seite
-      if (action === 'tasks') taskSuggest(done.tasks || [], out, done.message);
+      if (action === 'assign') assignSuggest(done, out);
+      else if (action === 'tasks') taskSuggest(done.tasks || [], out, done.message);
       else if (action === 'improve' || action === 'translate') {
         if (typeof done.text === 'string') { text = done.text; out.textContent = text; }   // ohne Einleitung des Modells
         textSuggest(text, done, out);

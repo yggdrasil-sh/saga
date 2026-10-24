@@ -582,6 +582,9 @@ def _clean_schema(raw):
         res["title_name"] = tn
     if raw.get("locked") is True:                    # gesperrt: Spalten/Ansichten unveraenderlich, Eintraege frei
         res["locked"] = True
+    dt = raw.get("default_tpl")                      # 2.5: Standardvorlage fuer "+ Neu" (ID einer Vorlage dieser Datenbank)
+    if isinstance(dt, int) and not isinstance(dt, bool) and 0 < dt < 2 ** 62:
+        res["default_tpl"] = dt
     return res
 
 

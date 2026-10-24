@@ -46,6 +46,22 @@ try:
     ok(f"Vorlage unter templates: {rw.get('templates')}", [t["id"] for t in rw.get("templates", [])] == [tpl] and rw["templates"][0]["title"] == "Meine Vorlage")
     kopie = call("POST", f"/api/notes/{tpl}/duplicate", {"parent_id": vor})["id"]
     ok("Kopie einer Vorlage ist eine Zeile", kopie in [r["id"] for r in call("GET", f"/api/notes/{vor}/rows")["rows"]])
+    # 2.5 Vorlagen verwalten: Duplizieren bleibt Vorlage; Standardvorlage im Schema (aeltere Clients ohne Schluessel behalten sie)
+    d2 = call("POST", f"/api/notes/{tpl}/duplicate", {"parent_id": vor, "template": True, "title": "Kopie Vorlage"})["id"]
+    rw = call("GET", f"/api/notes/{vor}/rows")
+    ok("Duplizierte Vorlage bleibt Vorlage", d2 in [x["id"] for x in rw["templates"]] and d2 not in [r["id"] for r in rw["rows"]])
+    def schema_set(**kw):
+        sc = call("GET", f"/api/notes/{vor}")["schema"]
+        for k, v in kw.items():
+            if v is ...: sc.pop(k, None)
+            else: sc[k] = v
+        call("PATCH", f"/api/notes/{vor}", {"schema": sc}); return call("GET", f"/api/notes/{vor}")["schema"]
+    ok("Standardvorlage gespeichert", schema_set(default_tpl=d2).get("default_tpl") == d2)
+    ok("Schema ohne den Schluessel (aeltere App): Standard bleibt", schema_set(default_tpl=..., title_name="Titel").get("default_tpl") == d2)
+    ok("Normale Zeile ist keine Standardvorlage", "default_tpl" not in schema_set(default_tpl=kopie))
+    schema_set(default_tpl=d2)
+    ok("null hebt den Standard auf", "default_tpl" not in schema_set(default_tpl=None))
+    ok("Ungueltige Werte verworfen", "default_tpl" not in schema_set(default_tpl="x") and "default_tpl" not in schema_set(default_tpl=True))
     # relative Datumsfilter werden gespeichert, unbekannte verworfen
     sch = call("GET", f"/api/notes/{vor}")["schema"]
     sch["props"].append({"id": "dt", "name": "Datum", "type": "date"})

@@ -123,3 +123,11 @@
 @media (pointer:coarse){
   .ai-close,.ai-tab,.ai-h-del{min-height:44px;min-width:44px}
 }
+
+/* 2.5 Datenbank zuordnen */
+.ai-asg{display:flex;flex-direction:column;gap:.45rem}
+.ai-asg-row{display:flex;flex-direction:column;gap:.2rem;font-size:.82rem;color:var(--muted)}
+.ai-asg-in{width:100%;box-sizing:border-box;font-size:.84rem;padding:.3rem .4rem}
+.ai-asg .btn-primary{align-self:flex-start}
+.ai-asg-h{margin:0 0 .2rem;font-weight:600;font-size:.88rem}
+.ai-asg-it b{font-weight:600}

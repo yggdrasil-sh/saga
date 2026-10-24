@@ -76,9 +76,10 @@ async def api_note_duplicate(nid: int, request: Request):
         if parent != r[11]:                     # andere Datenbank (z. B. Vorlagen-Datenbank) -> Eigenschaften nach Name/Typ zuordnen
             props = _map_props(c, owner, r[11], parent, r[7])
         # Alles kopieren, was die Seite ausmacht: auch Titelbild (+ Position) und volle Breite
-        cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, cover, cover_pos, wide, created, updated) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        (owner, title, r[3], r[4], r[1], parent, now, r[2], r[5] or "page", r[6], props, r[8], r[9], r[10], now, now))
+        tpl = 1 if b.get("template") is True else 0      # 2.5 Vorlagen verwalten: "Duplizieren" einer Vorlage bleibt Vorlage
+        cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, cover, cover_pos, wide, "
+                        "is_template, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (owner, title, r[3], r[4], r[1], parent, now, r[2], r[5] or "page", r[6], props, r[8], r[9], r[10], tpl, now, now))
         new_body = nextcloud.adopt(r[3], r[4], uid, cur.lastrowid)       # Nextcloud-Bloecke: Signatur gilt je Seite
         if new_body != r[3]:
             c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (new_body, cur.lastrowid, owner))

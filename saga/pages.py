@@ -498,6 +498,14 @@ def _note_update(uid, nid, b, origin=None):
                 old_s = _json_load((c.execute("SELECT schema FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone() or [None])[0], {"props": []})
                 # BUG-001: Spalten/Optionen, die der Client (Stand srev) nicht kennen konnte, nicht loeschen
                 _schema_merge(old_s, new_schema, _schema_srev(b["schema"]), uid)
+                # Standardvorlage: Clients, die sie nicht kennen (aeltere Apps), schicken den Schluessel nicht mit -> behalten;
+                # nur eine Vorlage DIESER Datenbank zaehlt, null/0 hebt sie auf
+                if "default_tpl" not in b["schema"] and old_s.get("default_tpl"):
+                    new_schema["default_tpl"] = old_s["default_tpl"]
+                if new_schema.get("default_tpl") and not c.execute(
+                        "SELECT 1 FROM note WHERE id=? AND uid=? AND parent_id=? AND is_template=1 AND deleted_at IS NULL",
+                        (new_schema["default_tpl"], owner, nid)).fetchone():
+                    new_schema.pop("default_tpl")
                 if role != "owner" and bool(old_s.get("locked")) != bool(new_schema.get("locked")):
                     raise _Reply(_bad(t("Das darf nur der Eigentümer der Seite."), 403))     # Sperre der Datenbank: wie die Seiten-Sperre
                 if old_s.get("locked") and new_schema.get("locked"):     # gesperrt: nur Entsperren ist erlaubt

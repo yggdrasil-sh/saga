@@ -537,7 +537,8 @@ def _block(ctx, typ, d, depth):
             dbid = int(d.get("db"))
         except (TypeError, ValueError):
             return ""
-        return _database(ctx, dbid, d.get("views") if isinstance(d.get("views"), list) else None, d.get("view"), caption=True)
+        return _database(ctx, dbid, d.get("views") if isinstance(d.get("views"), list) else None, d.get("view"),
+                         caption=not d.get("hide_title"))
     return ""          # unbekannt, privat oder interaktiv (Aufgaben, Kalender, Immich, Schaltflaechen, Dateien): weglassen
 
 

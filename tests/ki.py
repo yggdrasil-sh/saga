@@ -595,6 +595,54 @@ def run():
     ids = [x["id"] for x in (get(ev, "sources") or {}).get("sources") or []]
     ok(f"Suche: Kartoffelsalat findet nicht die Seite mit Kartons ({ids[:3]})", up not in ids)
 
+    # --- 2.5: Datenbanken auf einer Seite lesen und Werte zuordnen --------------------------------------------------------------
+    edb = req("POST", "/api/notes", A, {"title": "Aufgabenliste Falter", "kind": "database"})[1]["id"]
+    esch = {"props": [{"id": "prio", "name": "Prio", "type": "select", "options": [{"id": "ph", "name": "Hoch", "color": "red"},
+                                                                                       {"id": "pn", "name": "Niedrig", "color": "gray"}]},
+                      {"id": "eil", "name": "Eilt", "type": "checkbox"}, {"id": "nt", "name": "Notiz", "type": "text"}]}
+    req("PATCH", f"/api/notes/{edb}", A, {"schema": esch})
+    r1 = req("POST", "/api/notes", A, {"title": "Server brennt dringend", "parent_id": edb})[1]["id"]
+    r2 = req("POST", "/api/notes", A, {"title": "Kaffee kaufen", "parent_id": edb, "props": {"nt": "Bohnen"}})[1]["id"]
+    r3 = req("POST", "/api/notes", A, {"title": "Irgendwas egal", "parent_id": edb})[1]["id"]
+    r4 = req("POST", "/api/notes", A, {"title": "Schon erledigt dringend", "parent_id": edb, "props": {"prio": "pn"}})[1]["id"]
+    r5 = req("POST", "/api/notes", A, {"title": "Erfunden", "parent_id": edb})[1]["id"]
+    hp = page(A, "Projektseite Falter", "Hier sammeln wir alles zum Umzug.")
+    req("PATCH", f"/api/notes/{hp}", A, {"format": "blocks", "body": json.dumps({"blocks": [
+        {"id": "x1", "type": "paragraph", "data": {"text": "Hier sammeln wir alles zum Umzug."}},
+        {"id": "x2", "type": "columns", "data": {"cols": [{"blocks": [{"id": "x3", "type": "database", "data": {"db": edb}}]}]}}]})})
+    s, ev, _ = sse(f"/api/ai/page/{hp}", A, {"action": "summarize"})
+    u = last()[1]
+    ok(f"Zusammenfassen: eingebettete Datenbank (auch in Spalten) wird mitgelesen ({s}, {u[-400:]!r})",
+       s == 200 and 'Database "Aufgabenliste Falter"' in u and "Kaffee kaufen (Eilt: ✗ · Notiz: Bohnen)" in u)
+    s, d = req("GET", f"/api/ai/page/{hp}/dbs", A)
+    db0 = (d.get("dbs") or [{}])[0] if isinstance(d, dict) else {}
+    ok(f"Datenbanken der Seite mit zuordenbaren Eigenschaften ({s}, {db0.get('rows')}, {[p['id'] for p in db0.get('props', [])]})",
+       s == 200 and db0.get("id") == edb and db0.get("editable") is True and db0.get("rows") == 5 and [p["id"] for p in db0["props"]] == ["prio", "eil", "nt"])
+    s, d = req("GET", f"/api/ai/page/{hp}/dbs", Bk)
+    ok(f"Fremde Seite ohne Freigabe: keine Datenbanken ({s})", s in (403, 404))
+    before = {x: req("GET", f"/api/notes/{x}", A)[1].get("props") for x in (r1, r2, r3, r4, r5)}
+    s, ev, _ = sse(f"/api/ai/page/{hp}", A, {"action": "assign", "db": edb, "prop": "prio"})
+    dn = get(ev, "done") or {}
+    asg = dn.get("assign") or {}
+    got = {it["id"]: (it["value"], it["label"], it["old"]) for it in asg.get("items") or []}
+    sy, u = last()[:2]
+    ok(f"Zuordnen (Auswahl): nur leere Eintraege, nur vorhandene Optionen, unsicher/erfunden weg ({got}, unsicher {asg.get('unsure')}, {u[:900]!r})",
+       s == 200 and got == {r1: ("ph", "Hoch", ""), r2: ("pn", "Niedrig", "")} and asg.get("unsure") == 2
+       and "Schon erledigt" not in u and "Hoch | Niedrig" in sy and "Umzug" in u)
+    ok("Zuordnen aendert selbst nichts", before == {x: req("GET", f"/api/notes/{x}", A)[1].get("props") for x in (r1, r2, r3, r4, r5)})
+    s, ev, _ = sse(f"/api/ai/page/{hp}", A, {"action": "assign", "db": edb, "prop": "prio", "only_empty": False})
+    got = {it["id"]: (it["value"], it["old"]) for it in ((get(ev, "done") or {}).get("assign") or {}).get("items") or []}
+    ok(f"Zuordnen mit gefuellten Eintraegen: alt -> neu ({got.get(r4)})", got.get(r4) == ("ph", "Niedrig"))
+    s, ev, _ = sse(f"/api/ai/page/{hp}", A, {"action": "assign", "db": edb, "prop": "eil", "hint": "nur Brandeiliges"})
+    got = {it["id"]: it["value"] for it in ((get(ev, "done") or {}).get("assign") or {}).get("items") or []}
+    ok(f"Zuordnen (Haekchen): ja/nein, unveraendertes weggelassen, Hinweis im Auftrag ({got})",
+       got == {r1: True, r4: True} and "nur Brandeiliges" in last()[1])
+    s, d = sse(f"/api/ai/page/{hp}", A, {"action": "assign", "db": edb, "prop": "gibtsnicht"})[:2]
+    s2, d2 = sse(f"/api/ai/page/{hp}", A, {"action": "assign", "db": dbid, "prop": "status"})[:2]
+    ok(f"Zuordnen: unbekannte Eigenschaft ({s}) / Datenbank nicht auf der Seite ({s2})", s == 400 and s2 == 404)
+    s, d = sse(f"/api/ai/page/{hp}", Bk, {"action": "assign", "db": edb, "prop": "prio"})[:2]
+    ok(f"Zuordnen auf fremder Seite ohne Zugriff ({s})", s in (403, 404))
+
     # --- Fehler -------------------------------------------------------------------------------------------------------------
     setai(model="fake-500")
     s, ev, _ = ask(A, "Zitronenfalter?")
