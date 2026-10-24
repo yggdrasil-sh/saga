@@ -104,7 +104,10 @@
     // 2.5: Kachel-/Sprecheransicht, Teilnehmende
     grid: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M3 14h7v7H3z', 'M14 14h7v7h-7z'],
     spkView: ['M3 3h18v12H3z', 'M3 18h4v3H3z', 'M10 18h4v3h-4z', 'M17 18h4v3h-4z'],
-    users: ['M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M23 21v-2a4 4 0 0 0-3-3.9', 'M16 3.1a4 4 0 0 1 0 7.8']
+    users: ['M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M23 21v-2a4 4 0 0 0-3-3.9', 'M16 3.1a4 4 0 0 1 0 7.8'],
+    // 2.5 (ANRUF-UI): Schloss und Verkleinern statt Emoji/Zeichen
+    lock: ['M5 11h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z', 'M8 11V7a4 4 0 0 1 8 0v4'],
+    shrink: ['M4 14h6v6', 'M20 10h-6V4', 'M14 10l7-7', 'M3 21l7-7']
   };
   function icon(name) {
     var NS = 'http://www.w3.org/2000/svg', s = document.createElementNS(NS, 'svg');
@@ -1105,7 +1108,7 @@
     if (R.sinkId && ra.setSinkId) ra.setSinkId(R.sinkId).catch(function () {});
     var p = L.peer || {};
     var av = HK.avatarImg(el('span', 'cl-av', (p.name || '?').charAt(0).toUpperCase()), p.avatar, 56); av.setAttribute('aria-hidden', 'true');
-    var lab = el('div', 'cl-tl'), nm = el('b', null, p.me ? T('du') : (p.name || p.username || '?')), dv = el('span', 'cl-td');
+    var lab = el('div', 'cl-tl'), nm = el('b', null, p.me ? T('Du') : shortName(p.name || p.username || '?')), dv = el('span', 'cl-td');
     lab.appendChild(nm); lab.appendChild(dv);
     var st = el('div', 'cl-tst'); st.hidden = true;
     [rv, rv2, ra, av, lab, st].forEach(function (x) { box.appendChild(x); });
@@ -1489,7 +1492,9 @@
     var box = el('div', 'cl-hint'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
     box.setAttribute('aria-label', T('Bildschirm teilen'));
     box.appendChild(el('b', null, T('Bildschirm teilen')));
-    box.appendChild(el('p', null, T('Alles, was in der Auswahl sichtbar ist, sieht dein Gegenüber – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.')));
+    var grpH = roomOf(c).kind === 'group' && !roomOf(c).dm;   // Gruppe: alle im Anruf sehen es
+    box.appendChild(el('p', null, grpH ? T('Alles, was in der Auswahl sichtbar ist, sehen alle im Anruf – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.')
+      : T('Alles, was in der Auswahl sichtbar ist, sieht dein Gegenüber – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.')));
     box.appendChild(el('p', 'cl-hint-s', T('Nichts wird aufgezeichnet oder auf dem Server gespeichert. Teile am besten nur ein Fenster oder einen Tab.')));
     var lab = el('label', 'cl-hint-c'), cb = el('input'); cb.type = 'checkbox'; lab.appendChild(cb); lab.appendChild(document.createTextNode(' ' + T('Nicht mehr anzeigen')));
     box.appendChild(lab);
@@ -1728,7 +1733,7 @@
     var grid = el('div', 'cl-grid'); grid.setAttribute('role', 'list'); grid.setAttribute('aria-label', T('Teilnehmende'));
     stage.appendChild(rv); stage.appendChild(ra); stage.appendChild(who); stage.appendChild(rv2); stage.appendChild(grid); stage.appendChild(lv);
     var top = el('div', 'cl-top'), info = el('div', 'cl-info'), st = el('div', 'cl-status'); st.setAttribute('role', 'status');
-    var mini = btn('▭', 'cl-mini cl-shrink', function () { w.classList.toggle('small'); }, T('Kleiner/größer'));
+    var mini = btn(icon('shrink'), 'cl-mini cl-shrink', function () { w.classList.toggle('small'); }, T('Kleiner/größer'));
     // 2.4: Bild-im-Bild - nur, wo der Browser es kann (Document-PiP mit eigenen Knoepfen, sonst Video-PiP)
     var pipB = btn(icon('pip'), 'cl-mini cl-pip', function () { togglePip(c); }, T('Bild-im-Bild'));
     pipB.hidden = true;
@@ -1781,7 +1786,7 @@
     var i = c.ui.info; i.textContent = '';
     if (R.companion) i.appendChild(el('span', 'cl-chip', T('Begleitgerät')));
     if (!c.ready && !c.connected) return;
-    i.appendChild(el('span', 'cl-lock', '🔒 ' + (c.verified ? T('Ende-zu-Ende verschlüsselt') : T('verschlüsselt'))));
+    i.appendChild(lockEl(c.verified ? T('Ende-zu-Ende verschlüsselt') : T('verschlüsselt')));
     if (c.verified) i.lastChild.title = T('Medien mit DTLS-SRTP verschlüsselt; der Schlüssel-Fingerabdruck ist mit dem Chat-Schlüssel der Gegenseite signiert und geprüft.');
     if (c.connected) {
       i.appendChild(el('span', null, R.since ? durNow(R) : dur((Date.now() - c.t0) / 1000)));
@@ -1803,7 +1808,7 @@
     var i = R.ui.info; i.textContent = '';
     if (R.companion) i.appendChild(el('span', 'cl-chip', T('Begleitgerät')));
     var ls = links(R), ver = ls.length && ls.every(function (L) { return L.verified; });
-    i.appendChild(el('span', 'cl-lock', '🔒 ' + (ver ? T('Ende-zu-Ende verschlüsselt') : T('verschlüsselt'))));
+    i.appendChild(lockEl(ver ? T('Ende-zu-Ende verschlüsselt') : T('verschlüsselt')));
     if (ver) i.lastChild.title = T('Jede Verbindung ist mit DTLS-SRTP verschlüsselt; die Fingerabdrücke sind mit den Chat-Schlüsseln der Geräte signiert und geprüft.');
     if (R.since) i.appendChild(el('span', null, durNow(R)));
     i.appendChild(el('span', 'cl-count', T('{n} Geräte', { n: ls.length + 1 })));
@@ -2799,7 +2804,7 @@
     var still = el('canvas', 'cl-still'); still.width = 320; still.height = 180; still.setAttribute('aria-hidden', 'true');
     var p = personOf(x);
     var av = HK.avatarImg(el('span', 'cl-av', (p.name || '?').charAt(0).toUpperCase()), x.avatar || null, 56); av.setAttribute('aria-hidden', 'true');
-    var lab = el('div', 'cl-tl'); lab.appendChild(el('b', null, p.me ? T('du') : (p.name || '?'))); lab.appendChild(el('span', 'cl-td', x.dev_name || ''));
+    var lab = el('div', 'cl-tl'), tm = el('span', 'cl-tm'); tm.appendChild(icon('micOff')); lab.appendChild(tm); lab.appendChild(el('b', null, shortName(p.name || '?', 15))); lab.appendChild(el('span', 'cl-td', x.dev_name || ''));
     [v, still, av, lab].forEach(function (y) { box.appendChild(y); });
     box.addEventListener('dblclick', function () { var H = R.horn; if (H) { H.pin = H.pin === x.device ? null : x.device; hornSetView(R, 'speaker'); } });
     v.addEventListener('loadeddata', function () { if (live(R) && R.horn) hornDraw(R); });   // erstes Bild da: zeigen
@@ -2807,7 +2812,7 @@
   }
   function hornDraw(R) {
     var H = R.horn; if (!H || !R.ui || R.done || !H.L) return;
-    var me_ = myDev().id, src = hornSources(R), devs = [], moving = {};
+    var me_ = myDev().id, src = hornSources(R), devs = [], moving = {}, w_;
     (R.legs || []).forEach(function (x) { if (x.device !== me_) devs.push(x.device); });
     devs.forEach(function (d) { if (src.vid[d]) moving[d] = true; });
     H.spk = src.spk || H.spk;
@@ -2846,12 +2851,32 @@
       else { if (R.ui.grid.children[pos] !== T_.box) R.ui.grid.insertBefore(T_.box, R.ui.grid.children[pos] || null); pos++; }
     });
     Object.keys(H.tiles).forEach(function (d) { if (!want[d]) { H.tiles[d].v.srcObject = null; H.tiles[d].box.remove(); delete H.tiles[d]; } });
+    // 2.5 (ANRUF-UI): ab drei Geraeten ist das eigene Bild eine normale Kachel (kein schwebendes Bild-im-Bild)
+    var selfT = (R.legs || []).length >= 3, mineV = R.cam && R.cam.readyState === 'live' ? R.cam : null;
+    if (selfT) {
+      var ST = H.self;
+      if (!ST) {
+        ST = H.self = { box: el('div', 'cl-tile cl-me'), v: el('video', 'cl-tv') };
+        ST.box.setAttribute('role', 'listitem'); ST.v.autoplay = true; ST.v.muted = true; ST.v.playsInline = true; ST.v.setAttribute('playsinline', '');
+        var sav = HK.avatarImg(el('span', 'cl-av', (meName() || '?').charAt(0).toUpperCase()), null, 56); sav.setAttribute('aria-hidden', 'true');
+        var sl = el('div', 'cl-tl'), stm = el('span', 'cl-tm'); stm.appendChild(icon('micOff')); sl.appendChild(stm); sl.appendChild(el('b', null, T('Du')));
+        [ST.v, sav, sl].forEach(function (y) { ST.box.appendChild(y); });
+      }
+      if ((ST.v.srcObject && ST.v.srcObject.getVideoTracks()[0]) !== mineV) { ST.v.srcObject = mineV ? new MediaStream([mineV]) : null; if (mineV) ST.v.play().catch(function () {}); }
+      ST.box.classList.toggle('has-video', !!mineV);
+      ST.box.classList.toggle('muted', !R.mic);
+      ST.box.classList.toggle('speaking', !!R.mic && (H.selfLevel || 0) > 0.03);
+      ST.box.setAttribute('aria-label', T('Du') + (!R.mic ? ' – ' + T('stumm') : ''));
+      if (R.ui.grid.children[pos] !== ST.box) R.ui.grid.insertBefore(ST.box, R.ui.grid.children[pos] || null);
+      pos++;
+    } else if (H.self) { H.self.v.srcObject = null; H.self.box.remove(); H.self = null; }
+    w_ = R.ui.w; w_.classList.toggle('horn-self', selfT && !R.screen);
     if (lay.more) {
       if (!H.more) H.more = el('div', 'cl-tile cl-more');
       H.more.textContent = '+' + lay.more; H.more.title = T('{n} weitere Teilnehmende', { n: lay.more });
       R.ui.grid.appendChild(H.more);
     } else if (H.more) { H.more.remove(); H.more = null; }
-    var n = lay.list.length + (lay.more ? 1 : 0), w = R.ui.w, cols = H.L.cols(n, window.innerWidth);
+    var n = lay.list.length + (selfT ? 1 : 0) + (lay.more ? 1 : 0), w = R.ui.w, cols = H.L.cols(n, window.innerWidth);
     w.classList.add('mesh', 'horn');
     w.classList.toggle('tiles', n > 0);
     w.classList.toggle('horn-strip', strip);
@@ -2873,7 +2898,7 @@
   // Leiste beim Teilen (wie 2.4): eigene (rot, Beenden) bzw. "… teilt den Bildschirm"
   function hornShare(R, scr) {
     var b = R.ui && R.ui.share; if (!b) return;
-    b.textContent = ''; b.classList.toggle('me', !!R.screen);
+    b.textContent = ''; b.classList.toggle('me', !!R.screen); b.classList.toggle('cap', !R.screen && !!scr);
     if (R.screen) {
       b.appendChild(el('span', 'cl-share-dot'));
       b.appendChild(el('span', 'cl-share-t', R.mix ? T('Du teilst deinen Bildschirm und den Ton') : T('Du teilst deinen Bildschirm')));
@@ -2920,13 +2945,26 @@
     }, 330);
   }
   // --- Kopfzeile: Verschluesselung, Dauer, Zahl, Weg mit Qualitaetspunkt, Runensiegel --------------------------------------
+  // 2.5 (ANRUF-UI): Schloss-Symbol + Text (kein Emoji)
+  function lockEl(txt) { var s_ = el('span', 'cl-lock'); s_.appendChild(icon('lock')); s_.appendChild(document.createTextNode(txt)); return s_; }
+  // Pseudonym-Handles (~abc…) in der Mitte kuerzen, normale Namen kuerzt das CSS am Ende
+  function shortName(n, max) { max = max || 18; n = n || ''; if (n.charAt(0) !== '~' || n.length <= max) return n; var k = Math.floor((max - 1) / 2); return n.slice(0, k) + '…' + n.slice(n.length - (max - 1 - k)); }
   function hornInfo(R) {
     var i = R.ui.info, H = R.horn; i.textContent = '';
     if (R.companion) i.appendChild(el('span', 'cl-chip', T('Begleitgerät')));
-    i.appendChild(el('span', 'cl-lock', '🔒 ' + T('Ende-zu-Ende verschlüsselt')));
+    // 2.5 (ANRUF-UI): Titel, darunter die Dauer, dann eine Sicherheitszeile
+    var hd = el('span', 'cl-head');
+    hd.appendChild(el('b', 'cl-title', shortName(R.dm ? ((R.peer && (R.peer.name || R.peer.username)) || R.title) : (R.title || T('Gruppenanruf')), 32)));
+    if (R.since) hd.appendChild(el('span', 'cl-dur', dur((Date.now() - R.since) / 1000)));
+    i.appendChild(hd);
+    if (!R.dm) {
+      var nd = (R.legs || []).length || 1, lim = R.limit || 0, cnt = el('span', 'cl-count cl-chip');
+      cnt.appendChild(icon('users')); cnt.appendChild(document.createTextNode(lim && nd >= lim - 2 ? nd + '/' + lim : String(nd)));
+      cnt.title = T('{n} Geräte', { n: nd }); cnt.setAttribute('aria-label', cnt.title);
+      i.appendChild(cnt);
+    }
+    i.appendChild(lockEl(T('Ende-zu-Ende verschlüsselt')));
     i.lastChild.title = T('Ton und Bild sind je Rahmen mit dem Schlüssel des sendenden Geräts verschlüsselt (saga-horn/v1). Der Knoten leitet nur weiter und kann nichts entschlüsseln.');
-    if (R.since) i.appendChild(el('span', null, dur((Date.now() - R.since) / 1000)));
-    i.appendChild(el('span', 'cl-count', T('{n} Geräte', { n: (R.legs || []).length || 1 })));
     var cur = H.cur;
     if (cur && H.L) {
       var pn = H.L.pathName(cur.path), q_ = cur.q || 'good', net = cur.net || {};
@@ -2996,13 +3034,13 @@
       var mine = x.device === me_, s = mine ? { mic: R.mic } : (H.st[x.device] || {});
       var av = HK.avatarImg(el('span', 'cl-av cl-av-s', (x.name || '?').charAt(0).toUpperCase()), x.avatar || null, 32); av.setAttribute('aria-hidden', 'true');
       var t = el('div', 'cl-pl-t');
-      t.appendChild(el('b', null, (x.name || '?') + (mine ? ' (' + T('du') + ')' : '')));
+      t.appendChild(el('b', null, shortName(x.name || '?', 15) + (mine ? ' (' + T('du') + ')' : '')));
       var sub = [x.dev_name || '', x.role === 'companion' ? T('Begleitgerät') : '', R.call && R.call.peer && x.who === R.call.peer.username ? T('Gastgeber') : '']
         .filter(Boolean).join(' · ');
       if (sub) t.appendChild(el('span', 'cl-td', sub));
       if ((H.unverified || []).indexOf(x.device) >= 0) t.appendChild(el('span', 'cl-pl-w', T('nicht geprüft')));
       li.appendChild(av); li.appendChild(t);
-      li.appendChild(el('span', 'cl-pl-m' + (s.mic === false ? ' off' : ''), s.mic === false ? '🔇' : ''));
+      li.appendChild(el('span', 'cl-pl-m' + (s.mic === false ? ' off' : ''))); if (s.mic === false) li.lastChild.appendChild(icon('micOff'));
       if (s.mic === false) li.lastChild.title = T('stumm');
       if (host && !mine && x.who !== meName()) {
         var b = el('div', 'cl-pl-b');

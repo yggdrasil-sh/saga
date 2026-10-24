@@ -270,3 +270,41 @@
   .cl-plist{left:.4rem;right:.4rem;width:auto;top:auto;bottom:5.8rem;max-height:62vh}
   .cl-rpop{top:5.2rem}
 }
+/* 2.5 (docs/ANRUF-UI.md): Kopf mit Titel/Dauer, Symbole, eigene Kachel, Bildunterschrift beim Teilen */
+.cl-head{flex-basis:100%;display:flex;flex-direction:column;align-items:center;gap:.05rem;min-width:0;white-space:normal}
+.cl-title{font-size:1.05rem;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cl-dur{font-variant-numeric:tabular-nums;color:#e6ebf2cc}
+.cl-win.horn .cl-info{justify-content:center}
+.cl-lock svg,.cl-count svg{width:14px;height:14px;vertical-align:-2px;margin-right:.3rem}
+.cl-count.cl-chip{color:#e6ebf2;display:inline-flex;align-items:center;min-height:24px}
+.cl-shrink svg{width:18px;height:18px}
+.cl-tl{background:#000000b3}
+.cl-td{color:#ffffffcc}
+.cl-tile.cl-me .cl-tv{transform:scaleX(-1)}
+.cl-win.horn-self .cl-local{display:none}
+.cl-win.horn .cl-local{top:5.5rem;bottom:auto;border-radius:14px}
+.cl-share.cap{align-self:end;margin:0 0 .6rem;border-radius:8px;background:#000000b3;border-color:transparent;font-size:.85rem}
+/* Kopf ist mit Titel und Dauer hoeher: Buehne darunter beginnen lassen */
+.cl-win.horn.mesh.tiles .cl-grid{top:6.6rem}
+.cl-win.horn-strip .cl-hbig,.cl-win.horn-scr .cl-hscreen{top:6.6rem}
+.cl-win.horn-scr .cl-hscreen{height:calc(100% - 6.6rem - 6.4rem - 112px)}
+.cl-win.horn .cl-local{top:7rem}
+/* drei Kacheln in zwei Spalten: die dritte ueber die volle Breite */
+.cl-win.horn.tiles .cl-grid[data-n="3"][data-cols="2"]>.cl-tile:nth-child(3){grid-column:1/-1}
+@media (max-width:640px){
+  .cl-win.horn.mesh.tiles .cl-grid,.cl-win.horn-strip .cl-hbig,.cl-win.horn-scr .cl-hscreen{top:7.4rem}
+  .cl-win.horn-scr .cl-hscreen{height:calc(100% - 7.4rem - 6rem - 92px)}
+}
+.cl-win.small.horn .cl-grid,.cl-win.small.horn-strip .cl-hbig,.cl-win.small.horn-scr .cl-hscreen{top:2.6rem}
+.cl-win.small .cl-head{display:none}
+/* stumm: Symbol statt Emoji (Knoten-Kacheln, Teilnehmerliste) */
+.cl-tm{display:none;color:#fff}
+.cl-tm svg{width:14px;height:14px;vertical-align:-2px}
+.cl-win.horn .cl-tile.muted .cl-tm{display:inline}
+.cl-win.horn .cl-tile.muted .cl-tl b::after{content:none}
+.cl-pl-m svg{width:16px;height:16px;color:#e3b341}
+/* Bildunterschrift am geteilten Bild (ueber der Filmleiste) */
+.cl-win.horn-scr .cl-share.cap{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(6.4rem + 112px + .5rem);margin:0;white-space:nowrap;max-width:calc(100% - 3rem);overflow:hidden;text-overflow:ellipsis}
+@media (max-width:640px){.cl-win.horn-scr .cl-share.cap{bottom:calc(6rem + 92px + .5rem)}}
+/* Filmleiste bleibt unten (die obere Kante oben gilt nur fuer das Raster) */
+.cl-win.horn.horn-strip.mesh.tiles .cl-grid{top:auto}

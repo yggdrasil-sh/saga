@@ -30,6 +30,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   intern Relay-Adressen vergibt. Ohne `horn_dm` beim anderen Server weiter direkt (`horn_block: "fed"`).
   Kopien von Gruppenanrufen melden jetzt beim Wechsel auf „aktiv“ `call.state active` an die eigenen Geräte, und wer
   über einen anderen Server beitritt, gilt dort nicht mehr als „verpasst“.
+- **Anruf-Oberfläche vereinheitlicht (Web, gleiche Regeln wie die Apps, docs/ANRUF-UI.md in saga-apps).** Kopf mit
+  Titel (Gegenüber bzw. Gruppe) und Dauer darunter, dann eine Sicherheitszeile; Teilnehmenden-Chip mit Symbol nur in
+  Gruppen (`11/12` erst nahe der Grenze); ab drei Geräten ist das eigene Bild eine normale Kachel „Du“, bei drei
+  Kacheln die dritte über die volle Breite; „… teilt den Bildschirm“ als neutrale Bildunterschrift am geteilten Bild;
+  Pseudonym-Handles in der Mitte gekürzt; Symbole statt Emoji (Schloss, stumm, Verkleinern); Namensleiste 70 % deckend.
+  Der Hinweis vor dem Teilen sagt in Gruppen „sehen alle im Anruf“.
 
 ### Sicherheit (Prüfung 2.5)
 - **Kaskade: fremdes Token streng geprüft.** Das Kaskaden-Token eines verbundenen Servers geht unverändert in eine
