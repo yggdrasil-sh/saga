@@ -48,7 +48,7 @@
   background:#000;border:1px solid #3a475b;transform:scaleX(-1);z-index:2}
 .cl-win.screen .cl-local{transform:none;object-fit:contain}
 .cl-local[hidden]{display:none}
-.cl-top{grid-row:1;grid-column:1;z-index:3;display:flex;align-items:flex-start;gap:.5rem;padding:.8rem 1rem;
+.cl-top{grid-row:1;grid-column:1;z-index:3;display:flex;align-items:flex-start;gap:.5rem;padding:.8rem 1rem;position:relative;
   background:linear-gradient(#0b0f15cc,transparent)}
 .cl-info{display:flex;flex-wrap:wrap;gap:.35rem .8rem;align-items:center;font-size:.86rem;flex:1;min-width:0}
 .cl-info>span{white-space:nowrap}
@@ -61,8 +61,17 @@
 .cl-btn.cl-unmute{grid-row:2;grid-column:1;z-index:4;align-self:end;justify-self:center;margin-bottom:.6rem;
   background:var(--accent);border-color:var(--accent);color:#111;font-weight:600}
 .cl-unmute[hidden]{display:none}
-.cl-sink{max-width:11rem;min-width:0;flex:0 1 auto;font:inherit;font-size:.8rem;color:#e6ebf2;background:#1a2230;border:1px solid #3a475b;border-radius:8px;padding:.25rem .4rem}
+/* Bughunt D14: Knoepfe oben rechts (Tonausgabe, Bild-im-Bild, Verkleinern) ausserhalb des Flusses, 44 px; der Kopf haelt
+   auf beiden Seiten ihre Breite frei (--tbw, calls.js) und steht so in der Fenstermitte */
+.cl-tb{position:absolute;top:.6rem;right:.8rem;display:flex;gap:.35rem;align-items:center}
+.cl-tb .cl-btn.cl-mini{min-width:44px;height:44px;padding:0}
+.cl-tb .cl-btn svg{width:20px;height:20px}
+.cl-sink{color:#e6ebf2}
+.cl-win:not(.horn) .cl-info{padding-right:calc(var(--tbw,0px) + .4rem);min-height:28px}
 .cl-win.small .cl-sink{display:none}
+.cl-win.small .cl-tb{top:.3rem;right:.3rem}
+.cl-win.small .cl-tb .cl-btn.cl-mini{min-width:36px;height:36px}
+.cl-win.small .cl-info{justify-content:flex-start;padding-right:calc(var(--tbw,0px) + .3rem)}
 .cl-shrink{color:#e6ebf2}
 /* 2.4: Bild-im-Bild (Knopf im Anruffenster, eigenes Document-PiP-Fenster) */
 .cl-pip{color:#e6ebf2}
@@ -182,8 +191,7 @@
   .cl-remote2{width:30vw;bottom:6rem;left:.6rem}
   .cl-ctl{gap:.6rem}
   .cl-top{flex-wrap:wrap}
-  .cl-info{flex-basis:calc(100% - 3rem)}
-  .cl-sink{max-width:calc(100vw - 2rem)}
+  .cl-tb{right:.4rem}
   /* Handy: oben ueber dem Verlauf statt ueber dem Eingabefeld */
   .cl-win.small{inset:calc(3.6rem + env(safe-area-inset-top)) .5rem auto .5rem;width:auto;height:min(220px,34vh)}
 }
@@ -224,7 +232,9 @@
 .cl-hpath.cl-q{color:#e6ebf2;border:1px solid #3a475b;border-radius:999px;padding:0 .5rem;font-weight:600;font-size:.8rem}
 .cl-hpath.cl-q-good::before{background:#56d364}.cl-hpath.cl-q-mid::before{background:#e3b341}.cl-hpath.cl-q-bad::before{background:#f85149}
 .cl-hmove{color:#e3b341}
-.cl-btn.cl-runes{min-width:0;height:28px;padding:0 .55rem;font-size:1rem;letter-spacing:.14em;background:#1a2230;border-color:#3a475b;color:#e6ebf2}
+.cl-btn.cl-runes{min-width:0;height:28px;padding:0 .55rem;font-size:1rem;letter-spacing:.14em;background:#1a2230;border-color:#3a475b;color:#e6ebf2;position:relative}
+/* Bughunt D14: Trefferflaeche 44 px hoch, ohne den Kopf hoeher zu machen */
+.cl-btn.cl-runes::before{content:"";position:absolute;inset:-8px -2px}
 .cl-rpop,.cl-plist{position:absolute;z-index:6;background:#151c27;border:1px solid #3a475b;border-radius:14px;box-shadow:0 14px 44px rgba(0,0,0,.55);color:#e6ebf2}
 .cl-rpop{top:3.6rem;left:50%;transform:translateX(-50%);width:min(26rem,calc(100% - 2rem));padding:.8rem 1rem 1rem}
 .cl-rpop-h,.cl-plist-h{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
@@ -271,7 +281,10 @@
   .cl-rpop{top:5.2rem}
 }
 /* 2.5 (docs/ANRUF-UI.md): Kopf mit Titel/Dauer, Symbole, eigene Kachel, Bildunterschrift beim Teilen */
-.cl-head{flex-basis:100%;display:flex;flex-direction:column;align-items:center;gap:.05rem;min-width:0;white-space:normal}
+.cl-head{flex-basis:100%;display:flex;flex-direction:column;align-items:center;gap:.05rem;min-width:0;white-space:normal;
+  min-height:44px;padding-inline:calc(var(--tbw,0px) + .4rem);box-sizing:border-box}
+/* Handy: links kein Freiraum - der Titel bekommt die Breite neben den Knoepfen statt "Grupp…" */
+@media (max-width:640px){.cl-head{padding-left:0;align-items:flex-start;padding-right:calc(var(--tbw,0px) + .3rem)}}
 .cl-title{font-size:1.05rem;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cl-dur{font-variant-numeric:tabular-nums;color:#e6ebf2cc}
 .cl-win.horn .cl-info{justify-content:center}

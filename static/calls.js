@@ -1432,17 +1432,32 @@
       var outs = list.filter(function (d) { return d.kind === 'audiooutput' && d.deviceId && d.deviceId !== 'communications'; });
       if (!c.ui || outs.length < 2 || c.ui.sink) return;
       var want = ''; try { want = localStorage.getItem('saga-call-sink') || ''; } catch (e) { /* privat */ }
-      var sel = el('select', 'cl-sink'); sel.title = T('Tonausgabe'); sel.setAttribute('aria-label', T('Tonausgabe'));
-      outs.forEach(function (d, i) { var o = el('option', null, d.label || T('Ausgabe {n}', { n: i + 1 })); o.value = d.deviceId; sel.appendChild(o); });
-      sel.value = outs.some(function (d) { return d.deviceId === want; }) ? want : outs[0].deviceId;
+      // Bughunt D14: runder Knopf (Lautsprecher) mit Menue statt nativem Auswahlfeld - passt zu den anderen Knoepfen und
+      // schneidet keine Geraetenamen ab
+      var cur = outs.some(function (d) { return d.deviceId === want; }) ? want : outs[0].deviceId;
+      var nameOf = function (id) { var i = 0, n = ''; outs.forEach(function (d, j) { if (d.deviceId === id) { i = j; n = d.label; } }); return n || T('Ausgabe {n}', { n: i + 1 }); };
       var apply = function () {
-        c.sinkId = sel.value === 'default' ? '' : sel.value;           // auch fuer die Kacheln (Kachelansicht)
+        c.sinkId = cur === 'default' ? '' : cur;                      // auch fuer die Kacheln (Kachelansicht)
         ra.setSinkId(c.sinkId).catch(function (e) { HK.toast(T('Tonausgabe nicht umschaltbar: {err}', { err: e.message })); });
         each(c, function (L) { if (L.tile && L.tile.ra.setSinkId) L.tile.ra.setSinkId(c.sinkId).catch(function () {}); });
       };
-      sel.addEventListener('change', function () { try { localStorage.setItem('saga-call-sink', sel.value); } catch (e) { /* privat */ } apply(); });
-      if (want && sel.value === want && want !== 'default') apply();
-      c.ui.sink = sel; c.ui.info.parentNode.insertBefore(sel, c.ui.info.nextSibling);
+      var sb = btn(icon('spk'), 'cl-mini cl-sink', function () {
+        HK.openMenu(sb, function (m) {
+          m.textContent = ''; m.appendChild(HK.menuLabel(T('Tonausgabe')));
+          outs.forEach(function (d) {
+            var it = HK.menuItem(nameOf(d.deviceId), function () {
+              cur = d.deviceId; sb.title = T('Tonausgabe') + ': ' + nameOf(cur);
+              try { localStorage.setItem('saga-call-sink', cur); } catch (e) { /* privat */ }
+              apply(); sb.focus();
+            }, { on: d.deviceId === cur });
+            it.setAttribute('role', 'menuitemradio'); it.setAttribute('aria-checked', String(d.deviceId === cur));
+            m.appendChild(it);
+          });
+        });
+      }, T('Tonausgabe'));
+      sb.title = T('Tonausgabe') + ': ' + nameOf(cur); sb.setAttribute('aria-haspopup', 'menu'); sb.setAttribute('aria-expanded', 'false');
+      if (want && cur === want && want !== 'default') apply();
+      c.ui.sink = sb; c.ui.tb.insertBefore(sb, c.ui.tb.firstChild);
     }).catch(function () {});
   }
   function tick(c) {
@@ -1859,7 +1874,12 @@
     pipB.hidden = true;
     rv.addEventListener('enterpictureinpicture', function () { pipSet(c, true); });
     rv.addEventListener('leavepictureinpicture', function () { if (!c.pipWin) pipSet(c, false); });
-    top.appendChild(info); top.appendChild(pipB); top.appendChild(mini);
+    // Bughunt D14: Knoepfe oben rechts als eigene Gruppe ausserhalb des Flusses - Titel/Dauer/Angaben stehen so in der
+    // Fenstermitte (calls.css .cl-tb, --tbw)
+    var tb = el('div', 'cl-tb');
+    tb.appendChild(pipB); tb.appendChild(mini);
+    top.appendChild(info); top.appendChild(tb);
+    if (window.ResizeObserver) new ResizeObserver(function () { top.style.setProperty('--tbw', tb.offsetWidth + 'px'); }).observe(tb);
     var ctl = el('div', 'cl-ctl');
     var un = btn(T('Ton einschalten'), 'cl-pill cl-unmute', function () { playAudio(c); }, T('Der Browser hat den Ton blockiert – tippen, um ihn einzuschalten'));
     un.hidden = true;
@@ -1867,7 +1887,7 @@
     var share = el('div', 'cl-share'); share.setAttribute('role', 'status'); share.hidden = true;
     w.appendChild(stage); w.appendChild(top); w.appendChild(share); w.appendChild(un); w.appendChild(st); w.appendChild(ctl);
     document.body.appendChild(w);
-    c.ui = { w: w, rv: rv, rv2: rv2, ra: ra, lv: lv, who: who, info: info, st: st, ctl: ctl, un: un, pipB: pipB, share: share, hint: null, grid: grid };
+    c.ui = { w: w, rv: rv, rv2: rv2, ra: ra, lv: lv, who: who, info: info, st: st, ctl: ctl, un: un, pipB: pipB, share: share, hint: null, grid: grid, tb: tb };
     mediaSession(c);
     unlockAudio(c);                                    // laeuft im Klick "Anrufen"/"Annehmen"
     bindRemote(c);

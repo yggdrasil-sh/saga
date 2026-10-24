@@ -899,7 +899,7 @@ body.notes-page .page.wide .backlinks{max-width:none}
 .peek-ic.ic-img{width:3rem;height:3rem}
 @media (max-width:760px){.peek-panel{width:100vw}.peek-body{padding:1rem}}
 /* Ebenen: Menues, Auswahlfenster und Dialoge muessen ueber dem Peek liegen */
-.menu{z-index:80}.menu-sub{z-index:81}.picker{z-index:85}.modal,.qs{z-index:90}.menu.menu-top{z-index:95}.menu-sub{z-index:96}.toast{z-index:240}   /* 240: auch ueber dem Anruffenster (200) und seinen Hinweisen (230) */
+.menu{z-index:80}.menu-sub{z-index:81}.picker{z-index:85}.modal,.qs{z-index:90}.menu.menu-top{z-index:95}.menu.menu-call{z-index:235}.menu-sub{z-index:96}.toast{z-index:240}   /* 240: auch ueber dem Anruffenster (200) und seinen Hinweisen (230) */
 
 /* Peek zeigt die echte Seite (iframe); eingebettete Seite ohne Seitenleiste/Kopfzeile */
 .peek-frame{flex:1;width:100%;border:0;background:var(--bg);display:block}
