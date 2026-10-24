@@ -647,7 +647,9 @@
       }
       var nm = input('text', a.name === a.username ? '' : a.name, T('Anzeigename')); nm.maxLength = 120;
       var em = input('email', a.email, 'name@example.org'); em.maxLength = 200;
-      box.appendChild(field(T('Anzeigename'), nm)); box.appendChild(field(T('E-Mail'), em));
+      box.appendChild(field(T('Anzeigename'), nm));
+      box.appendChild(el('p', 'hk-hint hk-name-hint', T('Optional – sehen alle, mit denen du chattest.')));   // D01
+      box.appendChild(field(T('E-Mail'), em));
       var st = el('div', 'hk-status'), bar = el('div', 'hk-actions'), sv = el('button', 'btn btn-primary', T('Speichern')); sv.type = 'button';
       bar.appendChild(sv); box.appendChild(bar); box.appendChild(st);
       sv.addEventListener('click', function () {

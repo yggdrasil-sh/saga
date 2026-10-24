@@ -414,7 +414,16 @@
     return box;
   }
 
-  window.HK = { tab: TAB, avatarImg: avatarImg, parseNum: parseNum, editNum: editNum, scrollFade: scrollFade, $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
+  // D01: rohe Kennung ('~' + 16 Zeichen, ggf. '@host') nie zeigen - lesbarer Ersatz wie auf dem Server (saga/core.unnamed).
+  // Der Server liefert Namen schon so; das hier faengt Kennungen ab, die als Name in Systemzeilen u. Ae. stehen.
+  function personName(n, host) {
+    var m = /^~([a-z2-7]{16})(?:@([^@\s]+))?$/.exec(String(n || '').trim());
+    if (!m) return n;
+    var tag = m[1].slice(-4), h = m[2] || host || '';
+    return h ? T('Person auf {host} ({tag})', { host: h, tag: tag }) : T('Unbekannte Person ({tag})', { tag: tag });
+  }
+
+  window.HK = { personName: personName, tab: TAB, avatarImg: avatarImg, parseNum: parseNum, editNum: editNum, scrollFade: scrollFade, $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
                 openMenu: openMenu, closeMenu: closeMenu, lastMenuOwner: function () { return lastOwner; }, menuItem: menuItem, menuLabel: menuLabel,
                 menuOpen: function () { return !!menuOwner; }, closeSub: closeSub, ask: ask, urlNode: urlNode, fmtNodes: fmtNodes, fieldMsg: fieldMsg };
 })();

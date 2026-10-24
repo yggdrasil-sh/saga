@@ -10,7 +10,7 @@ import auth
 from db import clean_line, connect as _db
 from fastapi import APIRouter
 from saga import avatars, i18n, mfa
-from saga.core import (ADMIN_URL, ASSET_V, BASE_URL, MEDIA_FRONT, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, lang_switch_response,
+from saga.core import (ADMIN_URL, ASSET_V, BASE_URL, HANDLE_RE, MEDIA_FRONT, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, lang_switch_response,
                        set_user_lang, t, title, tmpl, user_info, user_lang)
 from saga.dashboard import source_label
 
@@ -408,8 +408,14 @@ async def api_account_update(request: Request):
         return _bad(t("Name und E-Mail kommen von deinem Anmeldedienst und werden dort geändert."), 403)
     b = await _body(request) or {}
     name, email = clean_line(b.get("name") if isinstance(b.get("name"), str) else "").strip()[:120], str(b.get("email") or "").strip()[:200]
+    if "name" not in b:                       # D01: Felder, die fehlen, bleiben (Chat-Einrichtung schickt nur den Namen)
+        name = "" if i["name"] == i["username"] else clean_line(i["name"] or "").strip()[:120]
+    if "email" not in b:
+        email = str(i.get("mail") or "").strip()[:200]
     if email and not EMAIL_RE.fullmatch(email):
         return _bad(t("Die E-Mail-Adresse sieht nicht richtig aus."))
+    if HANDLE_RE.fullmatch(name.split("@", 1)[0]):
+        return _bad(t("Dieser Anzeigename sieht wie eine Kennung aus – bitte einen anderen wählen."))
     with _db() as c, c:
         c.execute("UPDATE users SET display_name=?, email=? WHERE username=?", (name, email, uid))
     auth._ui_cache.pop(uid, None)

@@ -25,7 +25,7 @@ from starlette.concurrency import run_in_threadpool
 import auth
 from db import connect as _db
 from saga import avatars, bus, i18n
-from saga.core import HANDLE_RE, RESTORE_TEST, _api_guard, _bad, _body, labels, ref_of, resolve_input, resolve_ref, subtitles, t, username_lookup
+from saga.core import HANDLE_RE, RESTORE_TEST, _api_guard, _bad, _body, is_raw_ref, labels, ref_of, resolve_input, resolve_ref, subtitles, t, unnamed, username_lookup
 from saga.notes import NOTE_META_COLS, _note_meta, note_chain
 
 router = APIRouter()
@@ -55,11 +55,15 @@ def is_remote(uid):
 def remote_label(principal, display=None):
     """'@bert@b.example' + 'Bert' -> 'Bert (bert@b.example)' - fremde Namen immer mit Herkunft (keine Verwechslung).
     Pseudonymer Handle (2.3, '@~x@host'): 'Bert (b.example)' - die Zufallskennung sagt Menschen nichts."""
-    h = principal[1:]
+    h, n = principal[1:], None
     if h.startswith("~") and "@" in h:
-        h = h.split("@", 1)[1]
+        n, h = h.split("@", 1)
     d = re.sub(r"[\x00-\x1f\x7f]", "", str(display or "")).strip()
-    return f"{d} ({h})" if d else principal[1:]
+    if is_raw_ref(d):                  # D01: als Name gespeicherte Kennung ('~x', aeltere Server) zaehlt nicht
+        d = ""
+    if d:
+        return f"{d} ({h})"
+    return unnamed(n, h) if n else principal[1:]      # D01: ohne Namen lesbarer Ersatz statt '~x@host'
 
 
 def enabled():

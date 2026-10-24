@@ -170,7 +170,30 @@
     box.appendChild(el('p', null, T('Dafür bekommst du gleich einen Wiederherstellungsschlüssel. Damit holst du deine Chats auf ein neues Gerät, wenn kein anderes mehr da ist. Ohne ihn sind deine Nachrichten verloren – auch der Admin kann sie nicht wiederherstellen.')));
     if (reset) box.appendChild(el('p', 'ct-danger', T('Achtung: Neu beginnen erzeugt neue Schlüssel. Bisherige Nachrichten sind dann für dich nicht mehr lesbar, deine Gesprächspartner sehen eine geänderte Sicherheitsnummer.')));
     var bar = el('div', 'hk-actions'); box.appendChild(bar);
-    if (!reset) { bar.appendChild(btn(T('Schlüssel erzeugen'), 'btn-primary ct-setup-go', function () { setupKey(false); })); return; }
+    if (!reset) {
+      // D01: Anzeigenamen gleich mit abfragen (optional) - ohne ihn sehen andere nur "Unbekannte Person (…)"
+      var acc = null, nmIn = null;
+      api('GET', '/api/account').then(function (a) {
+        if (!a || !a.can_edit || !box.isConnected) return;
+        acc = a;
+        var lab = el('label', 'hk-field ct-setup-name'), cap = el('span', null, T('Anzeigename'));
+        nmIn = el('input', 'hk-in'); nmIn.type = 'text'; nmIn.maxLength = 120; nmIn.autocomplete = 'name';
+        nmIn.value = a.name === a.username ? '' : (a.name || '');
+        lab.appendChild(cap); lab.appendChild(nmIn);
+        var hint = el('p', 'hk-hint', T('Optional – sehen alle, mit denen du chattest.')); hint.id = 'ct-setup-name-hint';
+        nmIn.setAttribute('aria-describedby', hint.id);
+        box.insertBefore(lab, bar); box.insertBefore(hint, bar);
+      }).catch(function () { /* ohne Feld weiter */ });
+      bar.appendChild(btn(T('Schlüssel erzeugen'), 'btn-primary ct-setup-go', function () {
+        var v = nmIn ? nmIn.value.trim() : null, old = acc ? (acc.name === acc.username ? '' : (acc.name || '')) : null;
+        if (nmIn && v !== old) {
+          api('PATCH', '/api/account', { name: v }).then(function (d) { HK.toast(T('✓ Gespeichert')); if (d && d.name) acc.name = d.name; })
+            .catch(function (e) { HK.toast(e.message); });
+        }
+        setupKey(false);
+      }));
+      return;
+    }
     // Neu beginnen: nur mit Passwort bzw. frischer Anmeldung (Schutz bei fremder Sitzung)
     var go = btn(T('Schlüssel erzeugen'), 'btn-primary ct-setup-go'); go.disabled = true; bar.appendChild(go);
     var st = status(box);
@@ -1473,11 +1496,13 @@
     if (!x) return '';
     if (acc && x.handle && x.handle === (S.cur || {}).my_handle) return T('dich');      // "… hat dich hinzugefuegt"
     var mine = String((S.cur || {}).my_handle || '').split('@').slice(1).join('@');     // eigener Server: ohne Zusatz
+    var raw = /^~[a-z2-7]{16}$/.test(String(x.name || ''));                         // D01: Kennung -> "Person auf …" (Herkunft steht drin)
+    if (raw) return HK.personName(x.name, x.host && x.host !== mine ? x.host : '');
     return (x.name || '?') + (x.host && x.host !== mine ? ' (' + x.host + ')' : '');
   }
   function sysText(k) {
     if (k.type === 'ai') {
-      var who = k.by === (S.cur || {}).my_handle ? T('Du') : (k.name || '?');
+      var who = k.by === (S.cur || {}).my_handle ? T('Du') : (HK.personName(k.name) || '?');
       return k.on ? T('{name} hat die KI in diesem Chat eingeschaltet.', { name: who }) : T('{name} hat die KI in diesem Chat ausgeschaltet.', { name: who });
     }
     if (k.type === 'crypto') return T('Dieser Chat ist jetzt an die stabilen Saga-Adressen gebunden (neue Verschlüsselungsstufe).') +

@@ -86,10 +86,10 @@ def _present(c, nid, pres, skip=None):
     cache, out = {}, []
     entries = (pres or {}).get(nid) or {}
     acc_ok = [u for u in sorted(entries) if sharing.Access(c, u).role(nid)]
-    nm = sharing.names(c, acc_ok)
     for u in acc_ok:
         e = _ext_user(c, u, cache)
-        e.update(name=nm.get(u) or e.get("name") or "?", editing=bool(entries[u]))
+        # D01: an andere Server nie der (uebersetzte) Ersatz oder die lokale Kennung - Anzeigename, sonst wie _ext_user
+        e.update(name=F.display_of(c, u) or e.get("name") or "?", editing=bool(entries[u]))
         out.append(e)
     for pr, w in _watchers(nid).items():
         if pr == skip or not _role_as(c, pr, w["groups"], nid):       # Freigabe inzwischen entzogen: nicht mehr anzeigen

@@ -76,10 +76,12 @@ def main():
     s, d = call("an-anna", "GET", "/api/share/targets?q=an-bert")
     hit = (d.get("users") or [{}])[0] if isinstance(d, dict) else {}
     ref = hit.get("username", "")
-    ok("Teilen-Suche: Treffer mit Handle statt Anmeldename", s == 200 and re.fullmatch(r"~[a-z2-7]{16}", ref or "") and hit.get("name") == ref, hit)
+    ok("Teilen-Suche: Treffer mit Handle statt Anmeldename, Name lesbarer Ersatz (D01)", s == 200 and re.fullmatch(r"~[a-z2-7]{16}", ref or "")
+       and hit.get("name") == f"Unbekannte Person ({ref[-4:]})", hit)
     s, d = call("an-anna", "GET", "/api/share/targets?q=an-cora")
     cora = (d.get("users") or [{}])[0]
-    ok("Anzeigename gleich Anmeldename: Name ist ebenfalls der Handle", re.fullmatch(r"~[a-z2-7]{16}", cora.get("name", "")), cora)
+    ok("Anzeigename gleich Anmeldename: Name ist ebenfalls der Ersatz", cora.get("name") == f"Unbekannte Person ({cora.get('username', '')[-4:]})"
+       and not cora.get("sub"), cora)
     s, d = call("an-anna", "GET", "/api/chat/people?q=an-bert")
     ph = (d.get("users") or [{}])[0] if isinstance(d, dict) else {}
     ok("Chat-Personensuche: derselbe Handle", ph.get("username") == ref, ph)
@@ -133,7 +135,7 @@ def main():
     c = (ch or {}).get("chat") or {}
     other = [m for m in c.get("members", []) if not m.get("me")]
     ok("Direkt-Chat mit dem Handle angelegt; Mitglied mit ref = Handle und Namen ohne Anmeldename", s == 200 and other
-       and other[0].get("ref") == ref and other[0].get("name") == ref, c)
+       and other[0].get("ref") == ref and other[0].get("name") == f"Unbekannte Person ({ref[-4:]})", c)
     ok("Fremder Handle wird nicht als Konto aufgeloest", call("an-anna", "POST", "/api/chats", {"kind": "dm", "user": "~" + "a" * 16}, keep=False)[0] in (400, 404))
 
     # --- Linux-Runde 2, N2: gleichnamige Personen unterscheidbar (Unterzeile: oeffentlicher Name bzw. Handle) ------------

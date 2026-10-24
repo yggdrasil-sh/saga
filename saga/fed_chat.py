@@ -38,7 +38,7 @@ from starlette.concurrency import run_in_threadpool
 import auth
 from db import connect as _db
 from saga import bus, chat, chat_v2 as V, fed_keys as FK, federation as F, fedsig, notify, sharing
-from saga.core import MEDIA_FRONT, MEDIA_KEY, _bad, _body, resolve_input, t
+from saga.core import MEDIA_FRONT, MEDIA_KEY, _bad, _body, is_raw_ref, resolve_input, t, unnamed
 from saga.notes import FILE_MAX
 
 router = APIRouter()
@@ -144,15 +144,25 @@ def _person(c, peer, h, name=None):
     F._person_upsert(c, principal(h), peer["id"], (r[0] if r else "") or name or n)
 
 
-def label_of(c, u):
-    """Anzeige einer fremden Person im Chat: {name, host, label} ("Anna Berg · b.example")."""
+def label_of(c, u, wire=False):
+    """Anzeige einer fremden Person im Chat: {name, host, label} ("Anna Berg · b.example"). Ohne Namen (D01): lesbarer
+    Ersatz "Person auf b.example (spqz)" (label ohne Herkunft, die steht schon drin). wire=True: fuer andere Server und
+    gespeicherte Systemzeilen - dann wie bisher der rohe Handle statt des (uebersetzten) Ersatzes."""
     h = handle_of(u) or ""
     n, host = split_handle(h)
     r = c.execute("SELECT d.name FROM fed_directory d JOIN fed_peer p ON p.id=d.peer_id WHERE p.host=? AND d.handle=?", (host, n)).fetchone()
     name = (r[0] if r else "") or ""
     if not name:
         r = c.execute("SELECT display FROM fed_person WHERE principal=?", (u,)).fetchone()
-        name = (r[0] if r else "") or (n or "?")
+        name = (r[0] if r else "") or ""
+    if name and is_raw_ref(name):
+        name = ""
+    if not name:
+        if wire or not n:
+            name = n or "?"
+        else:
+            name = unnamed(n, host)
+            return {"name": name, "host": host, "label": name}
     return {"name": name, "host": host, "label": f"{name} · {host}"}
 
 
@@ -674,7 +684,7 @@ def op_drop(c, peer, d):
         return 403, {"error": "not admin"}
     lab = label_of(c, p_)
     by = {"username": p_, "handle": h, "name": lab["label"]}
-    fanout(c, ch, {"type": "chat.removed", "by": {"handle": h, "name": lab["name"]}}, skip=peer["id"])
+    fanout(c, ch, {"type": "chat.removed", "by": {"handle": h, "name": label_of(c, p_, wire=True)["name"]}}, skip=peer["id"])
     chat._drop_notifs(c, local_members(c, ch["id"]), ch["id"])
     removed_live(c, ch, by)
     drop_chat(c, ch)
@@ -697,7 +707,7 @@ def apply_meta(c, ch, d, by):
         elif not d["ai"] and had:
             c.execute("DELETE FROM chat_ai WHERE chat_id=?", (ch["id"],))
         if d["ai"] != had:
-            nm = label_of(c, by)["name"] if sharing.is_remote(by) else (sharing.names(c, [by]).get(by) or by)
+            nm = label_of(c, by, wire=True)["name"] if sharing.is_remote(by) else (F.display_of(c, by) or member_handle(c, by).split("@")[0])
             sysline(c, ch, by, {"type": "ai", "on": d["ai"], "by": member_handle(c, by), "name": nm})
             changed = True
     if changed:
@@ -1918,8 +1928,8 @@ def delete_all(uid, ch):
     with _db() as c, c:
         mh = my_handle(c, uid)
         by = {"username": uid, "name": sharing.names(c, [uid]).get(uid, uid)}
-        if ch["home_peer"] is None:
-            fanout(c, ch, {"type": "chat.removed", "by": {"handle": mh, "name": by["name"]}})
+        if ch["home_peer"] is None:     # D01: an andere Server nie den (uebersetzten) Ersatz - Anzeigename oder Handle
+            fanout(c, ch, {"type": "chat.removed", "by": {"handle": mh, "name": F.display_of(c, uid) or mh.split("@")[0]}})
         else:
             F._enqueue(c, ch["home_peer"], {"type": "chat.op", "op_body": {"op": "drop", "ref": ch["ref"], "actor": mh}}, chain=chain_up(ch["ref"]))
         chat._drop_notifs(c, local_members(c, ch["id"]), ch["id"])
@@ -2882,7 +2892,7 @@ def group_add(uid, cid, who_, handle):
             chat._changed(c, ch["id"], local_members(c, ch["id"]))
             return chat._no_store({"chat": chat._chat_dict(c, uid, ch, chat.members(c, ch["id"]), chat._member(c, ch["id"], uid), None, full=True)})
     with _db() as c:
-        nm = label_of(c, target)["name"] if sharing.is_remote(target) else (F.display_of(c, target) or "")
+        nm = label_of(c, target, wire=True)["name"] if sharing.is_remote(target) else (F.display_of(c, target) or "")
         p = F.peer_by(c, "id", ch["home_peer"])
     status, d = sync_call(p, {"op": "members", "ref": ch["ref"], "actor": mh, "add": [{"handle": th, "name": nm}]})
     return _home_result(uid, ch, status, d)

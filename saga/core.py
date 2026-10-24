@@ -917,7 +917,7 @@ def subtitles(c, uids, lb=None):
     out = {}
     for u in uids:
         name, ref = lb.get(u) or local_ref(u), local_ref(u)
-        out[u] = pub[u] if pub.get(u) and pub[u] != name else ("" if name == ref else ref)
+        out[u] = pub[u] if pub.get(u) and pub[u] != name else ("" if name in (ref, unnamed(ref)) else ref)
     return out
 
 
@@ -957,6 +957,19 @@ def resolve_input(c, viewer, x):
     return u if (username_lookup() or knows(c, viewer, u)) else ""
 
 
+def unnamed(ref, host=None):
+    """Lesbarer Ersatz fuer eine Person ohne Namen (Bughunt D01): nie die rohe Kennung, sondern "Unbekannte Person (spqz)"
+    bzw. bei Personen anderer Server "Person auf b.example (spqz)" - die letzten 4 Zeichen der Kennung unterscheiden
+    Gleichnamige stabil. Nur fuer die Anzeige (in der Sprache der Anfrage): nie speichern, nie an andere Server schicken."""
+    tag = str(ref or "").lstrip("~")[-4:] or "?"
+    return t("Person auf {host} ({tag})", host=host, tag=tag) if host else t("Unbekannte Person ({tag})", tag=tag)
+
+
+def is_raw_ref(s):
+    """Sieht der Name wie eine rohe Kennung aus ('~' + 16 Zeichen, ggf. '@host')? Solche Anzeigenamen gelten als leer."""
+    return isinstance(s, str) and bool(HANDLE_RE.fullmatch(s.strip().split("@", 1)[0])) and s.strip().count("@") <= 1
+
+
 def labels(c, uids):
     """Benutzername -> Name zum Zeigen: Anzeigename (nicht Anmeldename/E-Mail), sonst oeffentlicher Name, sonst Handle.
     Unbekannte (geloeschte) Konten fehlen."""
@@ -969,5 +982,6 @@ def labels(c, uids):
     out = {}
     for u, disp, mail, pub in rows:
         d = (disp or "").strip()
-        out[u] = d if d and d.lower() != u.lower() and d.lower() != (mail or "").strip().lower() else (pub or local_ref(u))
+        ok = d and d.lower() != u.lower() and d.lower() != (mail or "").strip().lower() and not is_raw_ref(d)
+        out[u] = d if ok else (pub or unnamed(local_ref(u)))      # D01: ohne Namen lesbarer Ersatz statt Kennung
     return out
