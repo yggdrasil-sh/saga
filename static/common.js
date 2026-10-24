@@ -399,8 +399,15 @@
     img.setAttribute('aria-hidden', 'true'); img.draggable = false;
     box.classList.add('hk-av-box');
     img.addEventListener('load', function () { box.classList.add('hk-av-on'); });
-    img.addEventListener('error', function () { img.remove(); box.classList.remove('hk-av-on'); });
-    img.src = url + (url.indexOf('?') < 0 ? '?' : '&') + 's=' + Math.min(256, Math.round((px || 32) * Math.min(2, window.devicePixelRatio || 1)));
+    var src = url + (url.indexOf('?') < 0 ? '?' : '&') + 's=' + Math.min(256, Math.round((px || 32) * Math.min(2, window.devicePixelRatio || 1)));
+    var tries = 0;
+    // Einmal nachfassen: beim Seitenwechsel oder kurz nach dem Start scheitert ein Bild manchmal nur voruebergehend
+    // (viele gleichzeitige Anfragen, Sitzung wird gerade erneuert) - sonst blieben bis zum naechsten Neuzeichnen Initialen
+    img.addEventListener('error', function () {
+      if (tries++ === 0 && img.isConnected) { setTimeout(function () { if (img.isConnected) img.src = src + '&r=1'; }, 1500); return; }
+      img.remove(); box.classList.remove('hk-av-on');
+    });
+    img.src = src;
     box.appendChild(img);
     return box;
   }

@@ -37,6 +37,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Pseudonym-Handles in der Mitte gekürzt; Symbole statt Emoji (Schloss, stumm, Verkleinern); Namensleiste 70 % deckend.
   Der Hinweis vor dem Teilen sagt in Gruppen „sehen alle im Anruf“.
 
+### Behoben – Profilbilder fehlten manchmal (alle Plattformen)
+- Ohne gültige Sitzung antwortete `/api/avatar/…` mit 404 („kein Bild“). Die Apps merkten sich das (Android bis
+  zum Neustart, iOS 10 Minuten) und erneuerten die abgelaufene Sitzung nicht – nach dem Start oder einer Pause
+  (z. B. vom Chat in eine Seite) blieben nur Initialen. Jetzt 401 (für jeden nicht freigegebenen Schlüssel gleich,
+  verrät also nichts); die Apps erneuern die Sitzung und laden das Bild. Freigegebene Bilder für veröffentlichte
+  Seiten kommen wie bisher ohne Anmeldung. Web: ein fehlgeschlagenes Profilbild wird einmal nachgeladen.
+
 ### Sicherheit (Prüfung 2.5)
 - **Kaskade: fremdes Token streng geprüft.** Das Kaskaden-Token eines verbundenen Servers geht unverändert in eine
   Kopfzeile der Wählanfrage des eigenen Knotens. Saga (`fed_horn.ctok_ok`) und der Knoten (`bifrost.go peerTokenOK`, vor

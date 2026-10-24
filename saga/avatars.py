@@ -542,6 +542,11 @@ def _nf():
     return Response(b"not found", status_code=404, media_type="text/plain", headers={"Cache-Control": "no-store"})
 
 
+def _unauth():
+    """Nicht angemeldet (oder Sitzung abgelaufen): Apps erneuern die Sitzung und fragen noch einmal"""
+    return Response(b"unauthorized", status_code=401, media_type="text/plain", headers={"Cache-Control": "no-store"})
+
+
 def _viewer(request):
     """Angemeldet? Sitzung (Web, Apps nach /app/resume) oder Geraete-Schluessel 'Authorization: Bearer hkd_...'."""
     hdr = request.headers.get("authorization", "")
@@ -564,22 +569,28 @@ def _size(s):
 def api_avatar(key: str, request: Request):
     """Profilbild: ?s=64|128|256 (naechstgroessere Stufe), WebP fuer Clients mit 'Accept: image/webp' (oder ?fmt=webp),
     sonst PNG (mit Transparenz) bzw. JPEG. 404 = kein Bild (Initialen zeigen) - auch bei falschem Schluessel."""
+    # Ohne (gueltige) Anmeldung: 401 statt 404, ausser das Bild ist fuer veroeffentlichte Seiten freigegeben. Bei 404
+    # merkten sich die Apps "kein Bild" (Android bis zum Neustart, iOS 10 min) und erneuerten die abgelaufene Sitzung
+    # nicht - Profilbilder fehlten nach dem Start oder einer Pause. 401 verraet nichts: es kommt fuer jeden nicht
+    # freigegebenen, falschen oder unbekannten Schluessel gleich.
     subj = _parse(key)
-    if not subj:
-        return _nf()
     viewer = _viewer(request)
+    if not subj:
+        return _nf() if viewer else _unauth()
     if subj[0] == "u":
         with _db() as c:
             r = c.execute("SELECT username, email, disabled FROM users WHERE id=?", (subj[1],)).fetchone()
             if not r or r[2] or not hmac.compare_digest(key_local(subj[1], r[0]).split(".", 1)[1], subj[2]):
-                return _nf()
+                return _nf() if viewer else _unauth()
             uid, email, remote = r[0], r[1], False
             if not viewer:                                   # ohne Anmeldung nur mit Erlaubnis der Person
                 row = _row(c, uid)
                 if not (row and row["public"]):
-                    return _nf()
+                    return _unauth()
     else:
-        if not viewer or not fed_on():
+        if not viewer:
+            return _unauth()
+        if not fed_on():
             return _nf()
         uid, email, remote = subj[1], None, True
     src = resolve(uid, email, remote) if viewer else _public_src(uid, email)

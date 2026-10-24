@@ -415,13 +415,15 @@ def main():
 
     # --- Rechte, keine Aufzaehlung ---------------------------------------------------------------------------------
     s, _, _ = img(url)
-    ok(f"Ohne Anmeldung -> 404 ({s})", s == 404)
+    ok(f"Ohne Anmeldung -> 401, damit Apps die Sitzung erneuern ({s})", s == 401)
     key = url.split("/api/avatar/")[1].split("?")[0]
     mac = key.split(".")[1]
     bad = [f"u{ia}.{mac[:-1]}{'A' if mac[-1] != 'A' else 'B'}", f"u{ia + 1}.{mac}", f"u{ia}", "u1.AAAAAAAAAAAAAAAA", "av-anna", "1",
            "..%2F..%2Fetc%2Fpasswd", "r" + base64.urlsafe_b64encode(b"@x@y.z").decode().rstrip("=") + ".AAAAAAAAAAAAAAAA"]
     codes = [img("/api/avatar/" + k, "av-dora")[0] for k in bad]
     ok(f"Falsche/geratene Schluessel -> 404 ({codes})", all(c == 404 for c in codes))
+    codes = {img("/api/avatar/" + k)[0] for k in bad if "%2F" not in k}
+    ok(f"Ohne Anmeldung: falsche Schluessel gleich wie gueltige -> nur 401 ({codes})", codes == {401})
     codes = {img(f"/api/avatar/u{i}.{mac}", "av-dora")[0] for i in range(1, 60) if i != ia}
     ok(f"Durchzaehlen der Konten (andere IDs, gleicher MAC) -> nur 404 ({codes})", codes <= {404})
     s, _, d = req("GET", "/api/avatars", "av-dora")
@@ -433,12 +435,12 @@ def main():
     s, _, _ = img(url, hdr={"Authorization": "Bearer " + tok})
     ok(f"App mit Geraete-Schluessel (Bearer hkd_) -> 200 ({s})", s == 200)
     s, _, _ = img(url, hdr={"Authorization": "Bearer hkd_falsch"})
-    ok("Falscher Geraete-Schluessel -> 404", s == 404)
+    ok(f"Falscher Geraete-Schluessel -> 401 ({s})", s == 401)
     s, st = api("av-anna", "PATCH", "/api/account/avatar", {"public": True})
     s2, h2, _ = img(url)
     ok(f"Erlaubt fuer veroeffentlichte Seiten: ohne Anmeldung sichtbar ({s2}, {h2.get('cache-control')})", s == 200 and st["public"] and s2 == 200)
     api("av-anna", "PATCH", "/api/account/avatar", {"public": False})
-    ok("Erlaubnis zurueck: ohne Anmeldung wieder 404", img(url)[0] == 404)
+    ok("Erlaubnis zurueck: ohne Anmeldung wieder 401", img(url)[0] == 401)
     s, _ = api("av-anna", "PATCH", "/api/account/avatar", {"public": "ja"})
     ok("PATCH mit Unsinn -> 400", s == 400)
     ok("Ohne X-Saga kein Upload (CSRF)", req("PUT", "/api/account/avatar", "av-anna", raw=png(), ctype="image/png")[0] == 401)
@@ -702,7 +704,7 @@ def federation():
         F.hreq("b", "GET", url, hdr={"Accept": "*/*"}, cookie=F.ck("b", "fb-bert"))
         ok("B: zweiter Abruf ohne neue Anfrage bei A", F.sql("b", "SELECT g_checked FROM avatar WHERE uid=?", (f"@anna@{HA}",)) == [[row1[0][0]]]
            or F.sql("b", "SELECT g_checked FROM avatar WHERE uid=?", (f"@anna@{HA}",))[0][0] == row1[0][0])
-        ok("B: ohne Anmeldung -> 404", F.hreq("b", "GET", url)[0] == 404)
+        ok("B: ohne Anmeldung -> 401", F.hreq("b", "GET", url)[0] == 401)
         k = url.split("/api/avatar/")[1].split("?")[0]
         forged = "r" + base64.urlsafe_b64encode(f"@anna@{HB}".encode()).decode().rstrip("=") + "." + k.split(".")[1]
         ok("B: gefaelschter Schluessel (andere Person, alter MAC) -> 404", F.hreq("b", "GET", "/api/avatar/" + forged, cookie=F.ck("b", "fb-bert"))[0] == 404)
