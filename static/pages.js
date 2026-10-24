@@ -2010,7 +2010,7 @@
   // --- Eigene Werkzeuge: Toggle und Callout -------------------------------------
   var INLINE_SAN = { b: true, i: true, u: true, s: true, br: true, a: { href: true }, code: { class: true }, mark: { class: true }, time: { datetime: true, class: true } };
   function editable(cls, html, ph) {
-    var d = el('div', cls); d.contentEditable = 'true'; d.innerHTML = html || ''; d.dataset.placeholder = ph; return d;
+    var d = el('div', cls); d.contentEditable = roRole() ? 'false' : 'true'; d.innerHTML = html || ''; d.dataset.placeholder = ph; return d;
   }
   // Ausklappbar (Toggle) mit echten Bloecken im Inhalt (eigener Editor, wie Spalten)
   function ToggleTool(o) {
@@ -3873,17 +3873,19 @@
   ButtonsTool.prototype.render = function () { this.w = el('div', 'btnrow'); this.draw(); return this.w; };
   ButtonsTool.prototype.changed = function () { this.draw(); if (!S.loading) { S.dirtyBody = true; schedule(); } };
   ButtonsTool.prototype.draw = function () {
-    var self = this, w = this.w; w.textContent = '';
+    var self = this, w = this.w, ro_ = roRole(); w.textContent = '';     // W06: Lesen/Kommentieren - nur benutzen, nicht einrichten
     this.buttons.forEach(function (b, i) {
       var g = el('div', 'nbtn-wrap');
       var btn = el('button', 'nbtn'); btn.type = 'button';
       if (b.icon) btn.appendChild(el('span', 'nbtn-ic', b.icon));
       btn.appendChild(el('span', null, b.label || T('Schaltfläche')));
-      btn.addEventListener('click', function () { runButton(b, function () { btnConfig(btn, self, i); }); });
+      btn.addEventListener('click', function () { runButton(b, function () { if (!roRole()) btnConfig(btn, self, i); }); });
+      if (ro_) { g.appendChild(btn); w.appendChild(g); return; }
       var cfg = el('button', 'nbtn-cfg', '⚙'); cfg.type = 'button'; cfg.title = T('Schaltfläche einrichten'); cfg.setAttribute('aria-label', T('Schaltfläche einrichten'));
       cfg.addEventListener('click', function () { btnConfig(cfg, self, i); });
       g.appendChild(btn); g.appendChild(cfg); w.appendChild(g);
     });
+    if (ro_) return;
     var add = el('button', 'nbtn-add', '+'); add.type = 'button'; add.title = T('Schaltfläche hinzufügen'); add.setAttribute('aria-label', T('Schaltfläche hinzufügen'));
     add.addEventListener('click', function () { self.buttons.push({ label: T('Neu'), icon: '➕', action: '', target: null, tpl: null, title: '' }); self.changed(); });
     w.appendChild(add);

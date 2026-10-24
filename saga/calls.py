@@ -1424,7 +1424,7 @@ def join_local(c, call, who, dev, role, rep, caps, signals, now, peer_id=None, n
         node = horn_web.pick(c, call["id"])           # waehlen ueber ihren Server, saga/fed_horn.py)
         if node is None:
             horn.note_full(c)
-            return chat._no_store({"error": t("Gerade ist kein Knoten für große Gruppenanrufe erreichbar – bitte gleich noch einmal."),
+            return chat._no_store({"error": t("Gerade ist kein Anruf-Knoten erreichbar – bitte gleich noch einmal."),
                                    "join_block": "node"}, 409)
     mine = [x for x in others if x["who"] == who]
     if role == "handover" and not any(x["device"] == rep for x in mine):

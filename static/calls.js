@@ -2315,7 +2315,7 @@
     (H.errs = H.errs || []).push({ t: Date.now(), node: node, err: (e && (e.message || String(e))) || '?', status: e && e.status });
     if (H.errs.length > 12) H.errs.shift();
   }
-  function hornNoNode() { var e = new Error(T('Gerade ist kein Knoten für große Gruppenanrufe erreichbar – bitte gleich noch einmal.')); e.noNode = true; return e; }
+  function hornNoNode() { var e = new Error(T('Gerade ist kein Anruf-Knoten erreichbar – bitte gleich noch einmal.')); e.noNode = true; return e; }
   // Frische Kandidaten vom Server (avoid: diese Knoten nicht), node: dort den Endpunkt eintragen
   function hornCands(R, node, avoid) {
     var b = { device: myDev().id, dev_class: mobile ? 'mobile' : 'desktop', avoid: avoid || [] };
