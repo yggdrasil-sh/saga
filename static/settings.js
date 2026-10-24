@@ -448,14 +448,21 @@
       function save(v) {
         sv.disabled = true;
         api('PUT', '/api/account/public-name', { name: v }).then(function (d) {
-          p.name = d.name; p.url = d.url; inp.value = d.name; showHint(); showLive(''); status(st, T('✓ Gespeichert'), 'ok');
+          p.name = d.name; p.url = d.url; p.fed_loss = null; inp.value = d.name; showHint(); showLive(''); status(st, T('✓ Gespeichert'), 'ok');
         }).catch(function (err) { status(st, ''); setErr(err.message); sv.disabled = false; });
       }
       sv.addEventListener('click', function () {
         var v = inp.value.trim().toLowerCase();
-        if (!(p.name && v !== p.name && p.published)) { save(v); return; }
-        HK.ask({ title: T('Öffentlichen Namen ändern?'), ok: T('Ändern'),
-                 text: T('Links auf deine veröffentlichten Seiten ändern sich. Alte Links funktionieren nicht mehr.') })
+        // 2.5 (W03): Server mit aelterer Saga-Version kennen kein Umbenennen - Freigaben von dort enden mit dem alten Namen
+        var loss = (p.fed_loss && p.fed_loss.n && v !== p.name) ? p.fed_loss : null;
+        var links = p.name && v !== p.name && p.published;
+        if (!links && !loss) { save(v); return; }
+        var txt = [];
+        if (links) txt.push(T('Links auf deine veröffentlichten Seiten ändern sich. Alte Links funktionieren nicht mehr.'));
+        if (loss) txt.push(T('{n} {n:mit dir geteilte Seite|mit dir geteilte Seiten} von anderen Saga-Servern ({hosts}) {n:ist|sind} danach nicht mehr für dich freigegeben, weil diese Server eine ältere Saga-Version haben. Die Eigentümer müssen neu teilen.',
+                             { n: loss.n, hosts: loss.hosts.join(', ') }));
+        HK.ask({ title: p.name ? T('Öffentlichen Namen ändern?') : T('Öffentlichen Namen festlegen?'), ok: p.name ? T('Ändern') : T('Festlegen'),
+                 text: txt.join(' ') })
           .then(function (yes) { if (yes) save(v); else inp.focus(); });
       });
     }).catch(function () { wrap.remove(); });

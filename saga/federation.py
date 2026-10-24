@@ -79,7 +79,10 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # 2.4 (saga.chat_status): receipts = Gelesen-Bestaetigungen in Chats (versiegelt, ueber das Heim des Chats), online =
 # Online-Status von Chat-Partnern (Abo beim Server der Person). Mit 2.3-Servern: nichts davon, nichts wird gesendet.
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
-         "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online"]
+         "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename"]
+# rename (2.5, Bughunt W02/W03): Person mit stabilem Handle - beim Anfragen nennt der Server der Person zusaetzlich ihren
+# Handle (actor.handle); aendert sie ihren oeffentlichen Namen, kommt person.renamed (alt -> neu, Handle) statt person.gone.
+# Die Gegenseite schreibt Freigaben, Kommentare, Personen usw. auf den neuen Namen um. Ohne rename: wie bisher (person.gone).
 # horn (2.5, Gjallarhorn, docs/HORN-E2E.md) = Gruppenanrufe ueber Knoten mit Frame-E2E: Signale fkey/fkey-ack laufen
 # versiegelt wie alle Anruf-Signale (Auftrag signal). Nur gemeldet, solange das Feature-Flag calls.horn an ist (caps2()).
 # horn_dm (2.5) = 1:1 aus foederierten Direkt-Chats ueber Knoten (Auftrag dmhorn, saga/fed_calls.py) - gemeldet, solange
@@ -450,13 +453,96 @@ def cleanup_peer(c, p):
     c.execute("DELETE FROM fed_outbox WHERE peer_id=?", (p["id"],))
     avatars.forget_remote(c, host=p["host"])
     # Protokoll 2: Adressbuch der Instanz sofort weg, Schluessel-Zwischenspeicher, Ketten- und Ereignis-Stand
-    for tb in ("fed_directory", "fed_chat_keys", "fed_chain_in", "fed_chain_out", "fed_event_seen"):
+    for tb in ("fed_directory", "fed_chat_keys", "fed_chain_in", "fed_chain_out", "fed_event_seen", "fed_alias"):
         c.execute(f"DELETE FROM {tb} WHERE peer_id=?", (p["id"],))
     c.execute("UPDATE fed_peer SET dir_seq=0, dir_cfg='', dir_at=NULL WHERE id=?", (p["id"],))
     for fn in list(PEER_GONE_HOOKS):         # 2.3: foederierte Chats schreibgeschuetzt, Anrufe enden (saga.fed_chat, saga.fed_calls)
         fn(c, p)
     prune_persons(c, peer_id=p["id"])
     return len(rows)
+
+
+# Spalten mit Prinzipalen fremder Personen, die beim Umbenennen umgeschrieben werden (Seiten-Bereich; Chats und Anrufe
+# fuehren fremde Personen ohnehin unter dem stabilen Handle '@~x@host' - die bleiben unberuehrt)
+_REKEY_COLS = (("note_comment", "uid"), ("note_comment", "resolved_by"), ("note", "updated_by"), ("note", "created_by"),
+               ("note_version", "author"), ("notification", "actor_uid"), ("file", "fed_by"))
+
+
+def _rekey(c, peer, old, new, handle):
+    """Person der Instanz peer heisst jetzt new statt old (beides '@name@host' derselben Instanz): Freigaben, Eingangs-
+    Verweise, Kommentare, Versionen, Benachrichtigungen, Anzeigename, Adressbuch und Zwischenspeicher umschreiben.
+    Gibt es fuer new schon eine Freigabe derselben Seite, gilt die hoehere Rolle. -> Anzahl umgeschriebener Freigaben."""
+    tail = _host_tail(peer["host"])
+    if old == new or not old.endswith(tail) or not new.endswith(tail):
+        return 0
+    n = 0
+    # Kam old hier nie vor (kein Anzeigename, keine Freigabe, kein Eingangs-Verweis - _person_upsert merkt sich jede
+    # Person, die anfragt, kommentiert oder Ziel ist), bleibt es bei Adressbuch und Zwischenspeichern
+    known = c.execute("SELECT 1 FROM fed_person WHERE principal=? UNION ALL SELECT 1 FROM note_share WHERE target_type='remote' AND "
+                      "target=? UNION ALL SELECT 1 FROM fed_inbound WHERE peer_id=? AND owner=? LIMIT 1", (old, old, peer["id"], old)).fetchone()
+    for sid, nid, role in (c.execute("SELECT id, note_id, role FROM note_share WHERE target_type='remote' AND target=?", (old,)).fetchall()
+                           if known else ()):
+        r = c.execute("SELECT id, role FROM note_share WHERE note_id=? AND target_type='remote' AND target=?", (nid, new)).fetchone()
+        if r:
+            if sharing.RANK.get(role, 0) > sharing.RANK.get(r[1], 0):
+                c.execute("UPDATE note_share SET role=? WHERE id=?", (role, r[0]))
+            c.execute("DELETE FROM note_share WHERE id=?", (sid,))
+        else:
+            c.execute("UPDATE note_share SET target=? WHERE id=?", (new, sid))
+        n += 1
+    if known:
+        for tb, col in _REKEY_COLS:
+            c.execute(f"UPDATE {tb} SET {col}=? WHERE {col}=?", (new, old))
+        c.execute("UPDATE note_comment_seen SET uid=? WHERE uid=? AND NOT EXISTS (SELECT 1 FROM note_comment_seen s2 WHERE s2.uid=? "
+                  "AND s2.thread_id=note_comment_seen.thread_id)", (new, old, new))
+        c.execute("DELETE FROM note_comment_seen WHERE uid=?", (old,))
+        c.execute("UPDATE fed_inbound SET owner=? WHERE peer_id=? AND owner=?", (new, peer["id"], old))
+        r = c.execute("SELECT display FROM fed_person WHERE principal=?", (old,)).fetchone()
+        if r and not c.execute("SELECT 1 FROM fed_person WHERE principal=?", (new,)).fetchone():
+            _person_upsert(c, new, peer["id"], r[0])
+        avatars.forget_remote(c, principal=old)
+    c.execute("DELETE FROM fed_name_handle WHERE principal IN (?,?)", (old, new))
+    name = new[1:-len(tail)]
+    if NAME_RE.fullmatch(name):              # oeffentlicher Name -> Handle (Seiten-Chats, saga.fed_chat)
+        c.execute("INSERT INTO fed_name_handle (principal, peer_id, handle, name, fetched) VALUES (?,?,?,'',?)",
+                  (new, peer["id"], handle, time.time()))
+    c.execute("UPDATE fed_directory SET pub=? WHERE peer_id=? AND handle=?", (name if NAME_RE.fullmatch(name) else "", peer["id"], handle))
+    if known:
+        prune_persons(c, principals=[old])
+    if n:
+        bus.emit_after(c, "shared.changed", {"owner": None, "note_id": None, "target_type": "remote", "target": new})
+    return n
+
+
+def _alias_set(c, peer, handle, principal):
+    c.execute("INSERT INTO fed_alias (peer_id, handle, principal, updated) VALUES (?,?,?,?) ON CONFLICT (peer_id, handle) DO UPDATE "
+              "SET principal=EXCLUDED.principal, updated=EXCLUDED.updated", (peer["id"], handle, principal, time.time()))
+
+
+def _alias_seen(c, peer, handle, principal):
+    """Anfrage im Namen einer Person, deren Server ihren stabilen Handle mitnennt (Faehigkeit rename): Handle und aktueller
+    Name sind dieselbe Person. Freigaben an den Handle (W02) bzw. an einen frueheren Namen (W03, Ereignis verpasst) gehen
+    auf den aktuellen Namen ueber. Nur Personen der anfragenden Instanz selbst (principal endet auf deren Host)."""
+    r = c.execute("SELECT principal FROM fed_alias WHERE peer_id=? AND handle=?", (peer["id"], handle)).fetchone()
+    if r and r[0] == principal:
+        return
+    if c.execute("SELECT 1 FROM fed_alias WHERE peer_id=? AND principal=? AND handle<>?", (peer["id"], principal, handle)).fetchone():
+        log(c, "person.conflict", peer, f"{principal[1:]} {handle}", throttle=(peer["id"], "alias", handle))
+        return                               # Name gehoert hier schon zu einer anderen Person dieser Instanz: nichts uebernehmen
+    olds = [r[0]] if r else []
+    hp = f"@{handle}{_host_tail(peer['host'])}"
+    if hp != principal and hp not in olds:
+        olds.append(hp)
+    n = sum(_rekey(c, peer, o, principal, handle) for o in olds)
+    _alias_set(c, peer, handle, principal)
+    if n or r:
+        log(c, "person.alias", peer, f"{', '.join(o[1:] for o in olds)} -> {principal[1:]} shares={n}")
+
+
+def alias_principal(c, peer, handle):
+    """Bekannter aktueller Prinzipal der Person mit diesem Handle auf peer (oder None)."""
+    r = c.execute("SELECT principal FROM fed_alias WHERE peer_id=? AND handle=?", (peer["id"], handle)).fetchone()
+    return r[0] if r else None
 
 
 # =====================================================================================================
@@ -633,6 +719,9 @@ def _verify_sync(method, path, query, headers, body, statuses, connect_key=None,
             inp.principal = f"@{name}@{peer['host']}"
             inp.groups = {f"{g}@{peer['host']}" for g in groups}
             _person_upsert(c, inp.principal, peer["id"], actor.get("display") or name)
+            h = actor.get("handle")          # 2.5 (rename): stabiler Handle der Person - Handle und Name sind dieselbe Person
+            if isinstance(h, str) and PSEUDO_RE.fullmatch(h) and (name == h or NAME_RE.fullmatch(name)):
+                _alias_seen(c, peer, h, inp.principal)
         if peer.get("id"):
             _touch(c, peer)
     if body and not raw:
@@ -743,6 +832,15 @@ def _local_user_by_name(c, name):
     r = c.execute("SELECT p.uid FROM public_name p JOIN users u ON u.username=p.uid WHERE p.name=? AND u.disabled=0",
                   (name,)).fetchone()
     return (r[0], display_of(c, r[0]) or name) if r else (None, None)
+
+
+def _renamed_uid(c, name):
+    """Frueherer oeffentlicher Name eines (noch aktiven) Kontos - Ereignisse, die die Gegenseite vor person.renamed
+    abgeschickt hat, erreichen die Person trotzdem (nur Ereignisse; Nachschlagen/Teilen geht nur mit dem aktuellen Namen)."""
+    if not isinstance(name, str) or not NAME_RE.fullmatch(name):
+        return None
+    r = c.execute("SELECT r.uid FROM fed_name_retired r JOIN users u ON u.username=r.uid WHERE r.name=? AND u.disabled=0", (name,)).fetchone()
+    return r[0] if r else None
 
 
 def _local_group(c, name):
@@ -951,6 +1049,7 @@ def _ev(c, peer, ev):
         c.execute("DELETE FROM fed_person WHERE principal=?", (p,))
         avatars.forget_remote(c, principal=p)
         c.execute("DELETE FROM fed_directory WHERE peer_id=? AND (handle=? OR pub=?)", (peer["id"], name, name))
+        c.execute("DELETE FROM fed_alias WHERE peer_id=? AND (handle=? OR principal=?)", (peer["id"], name, p))
         if PSEUDO_RE.fullmatch(name):
             c.execute("DELETE FROM fed_chat_keys WHERE handle=?", (f"{name}@{peer['host']}",))
         for fn in list(PERSON_GONE_HOOKS):
@@ -965,7 +1064,7 @@ def _ev(c, peer, ev):
     if tt == "user":
         if not is_name(tname):
             return "ignored"
-        target = _local_user_by_name(c, tname)[0]
+        target = _local_user_by_name(c, tname)[0] or _renamed_uid(c, tname)
         if not target:
             return "ignored"
     elif tt == "group" and typ in ("share.added", "share.role", "share.removed"):
@@ -1009,6 +1108,28 @@ def _ev(c, peer, ev):
         notify.create(c, target, typ, _actor_of(c, peer, ev.get("actor")), None, data={"fed": fed})
         return "ok"
     return "ignored"
+
+
+def _ev_renamed(c, peer, ev):
+    """2.5 (Faehigkeit rename): Person der sendenden Instanz hat ihren oeffentlichen Namen geaendert (bzw. erstmals einen
+    gesetzt: alt = Handle). {old, new, handle} - nur Personen dieser Instanz (Prinzipale mit ihrem Host), alt/neu je der
+    oeffentliche Name oder genau der Handle; neu darf hier nicht schon einer anderen Person derselben Instanz gehoeren."""
+    old, new, h = ev.get("old"), ev.get("new"), ev.get("handle")
+    if not (isinstance(h, str) and PSEUDO_RE.fullmatch(h)):
+        return "ignored"
+    if not all(isinstance(x, str) and (x == h or NAME_RE.fullmatch(x)) for x in (old, new)) or old == new:
+        return "ignored"
+    tail = _host_tail(peer["host"])
+    po, pn = f"@{old}{tail}", f"@{new}{tail}"
+    if c.execute("SELECT 1 FROM fed_alias WHERE peer_id=? AND principal IN (?,?) AND handle<>?", (peer["id"], po, pn, h)).fetchone():
+        log(c, "person.conflict", peer, f"{old} -> {new} ({h})", throttle=(peer["id"], "alias", h))
+        return "ignored"
+    cur = alias_principal(c, peer, h)
+    olds = [x for x in dict.fromkeys((po, cur, f"@{h}{tail}")) if x and x != pn]
+    n = sum(_rekey(c, peer, o, pn, h) for o in olds)
+    _alias_set(c, peer, h, pn)
+    log(c, "person.renamed", peer, f"{old} -> {new} shares={n}")
+    return "ok"
 
 
 @router.post("/fed/v1/events")
@@ -1409,6 +1530,7 @@ _worker = {"thread": None, "stop": False, "house": 0.0, "hello": 0.0}
 # noch den Ausgangskorb-Arbeiter. Faellt die Zustellung aus (Frist, Fehler), bleibt das Ereignis im Ausgangskorb.
 _express = ThreadPoolExecutor(max_workers=max(2, int(E.get("FED_EXPRESS_WORKERS", "8"))), thread_name_prefix="saga-fed-express")
 EV2_HANDLERS = {}            # Ereignis-Art -> fn(c, peer, ev) -> 'ok' | 'ignored' (saga.fed_dir, saga.fed_keys)
+EV2_HANDLERS["person.renamed"] = _ev_renamed      # 2.5 (rename), oben
 EV2_PREWORK = []             # fn(peer, events) - vor der Transaktion von POST /fed/v2/events (saga.fed_chat)
 PERIODIC = []                # fn() - im Arbeiter-Thread nach jedem Durchlauf (eigene Taktung, Fehler werden protokolliert)
 HELLO_HOOKS = []             # fn(peer_id) - Faehigkeiten oder Admin-Schalter einer Instanz haben sich geaendert (im Thread)
@@ -1663,8 +1785,9 @@ def _on_notify(c, uid, kind, actor=None, note_id=None, comment_id=None, data=Non
 
 
 def _on_name_released(c, uid, pub=None, deleted=False, **_):
-    """Oeffentlicher Name geaendert oder Konto geloescht: Eingangs-Verweise weg; war die Foederation je aktiv, Name sperren
-    (nie an ein anderes Konto) und alle verbundenen Instanzen informieren (Freigaben an den alten Namen enden dort)."""
+    """Konto geloescht (bzw. Name aufgegeben): Eingangs-Verweise weg; war die Foederation je aktiv, Name sperren (nie an
+    ein anderes Konto) und alle verbundenen Instanzen informieren (Freigaben an den alten Namen enden dort).
+    Umbenennen laeuft ueber public_name.renamed (_on_name_renamed)."""
     c.execute("DELETE FROM fed_inbound WHERE target_type='user' AND target=?", (uid,))
     if deleted and has_key(c):           # Protokoll 2: auch der pseudonyme Handle verschwindet (Freigaben/Adressbuch dort)
         h = c.execute("SELECT handle FROM fed_handle WHERE uid=?", (uid,)).fetchone()
@@ -1680,10 +1803,54 @@ def _on_name_released(c, uid, pub=None, deleted=False, **_):
             _enqueue(c, p["id"], {"type": "person.gone", "name": pub, "deleted": bool(deleted)})
 
 
+def _on_name_renamed(c, uid, old=None, new=None, **_):
+    """Oeffentlichen Namen geaendert (old -> new) bzw. erstmals gesetzt (old None; bisher kannten Instanzen mit 'handles'
+    die Person unter ihrem Handle). Instanzen mit 'rename' bekommen person.renamed (Freigaben bleiben, beide Richtungen),
+    aeltere wie bisher person.gone - ihre Freigaben an den alten Namen enden (Eingangs-Verweise von dort weg)."""
+    if not new or old == new:
+        return
+    if old and has_key(c):               # alter Name nie an ein anderes Konto (Ereignisse unterwegs erreichen weiter diese Person)
+        c.execute("INSERT OR REPLACE INTO fed_name_retired (name, uid, retired) VALUES (?,?,?)", (old, uid, time.time()))
+    if not has_key(c):
+        return
+    h = None
+    for p in peers(c):
+        caps = caps_of(p)
+        if p["status"] == "active" and "rename" in caps:
+            prev = old or (c.execute("SELECT handle FROM fed_handle WHERE uid=?", (uid,)).fetchone() or [None])[0]
+            if prev and "handles" not in caps and not old:
+                prev = None
+            if prev:
+                h = h or own_handle(c, uid)
+                _enqueue(c, p["id"], {"type": "person.renamed", "old": prev, "new": new, "handle": h}, chain="person:" + h[1:])
+            continue
+        if old:
+            c.execute("DELETE FROM fed_inbound WHERE peer_id=? AND target_type='user' AND target=?", (p["id"], uid))
+            if p["status"] == "active":
+                _enqueue(c, p["id"], {"type": "person.gone", "name": old, "deleted": False})
+
+
+def rename_loss(c, uid):
+    """Was beim Umbenennen verloren ginge (Instanzen ohne 'rename'): {n: Seiten, hosts: [...]} - fuer den Hinweis im
+    Konto. Ohne oeffentlichen Namen kennen solche Instanzen die Person hoechstens unter ihrem Handle (dann ebenso)."""
+    if not enabled():
+        return {"n": 0, "hosts": []}
+    n, hosts = 0, []
+    for p in peers(c):
+        if p["status"] != "active" or "rename" in caps_of(p):
+            continue
+        k = c.execute("SELECT COUNT(*) FROM fed_inbound WHERE peer_id=? AND target_type='user' AND target=?", (p["id"], uid)).fetchone()[0]
+        if k:
+            n += k
+            hosts.append(p["host"])
+    return {"n": n, "hosts": sorted(hosts)}
+
+
 bus.on("share.set", _on_share_set)
 bus.on("share.removed", _on_share_removed)
 bus.on("fed.notify", _on_notify)
 bus.on("public_name.released", _on_name_released)
+bus.on("public_name.renamed", _on_name_renamed)
 
 
 def _pick_due(c, now, limit=60):
@@ -1988,12 +2155,22 @@ def _unavailable():
 def _home_actor(c, uid, peer_id):
     """Wer fragt: oeffentlicher Name (Protokoll 2: sonst pseudonymer Handle), Anzeigename und die Gruppen, die die andere
     Instanz als Ziel genannt hat."""
-    pub = fed_name(c, uid, peer_by(c, "id", peer_id))
+    p = peer_by(c, "id", peer_id)
+    pub = fed_name(c, uid, p)
     if not pub:
         raise _Fail(_bad(t("Für Seiten anderer Saga-Instanzen brauchst du einen öffentlichen Namen (Einstellungen)."), 403))
     named = {x[0] for x in c.execute("SELECT DISTINCT target FROM fed_inbound WHERE peer_id=? AND target_type='group'", (peer_id,))}
-    return {"name": pub, "display": _clean_text(display_of(c, uid) or pub, DISPLAY_MAX),
-            "groups": sorted(sharing.groups_of(c, uid) & named)}
+    out = {"name": pub, "display": _clean_text(display_of(c, uid) or pub, DISPLAY_MAX),
+           "groups": sorted(sharing.groups_of(c, uid) & named)}
+    if "rename" in caps_of(p):              # 2.5: stabiler Handle dazu (die andere Instanz fuehrt Handle und Namen zusammen)
+        r = c.execute("SELECT handle FROM fed_handle WHERE uid=?", (uid,)).fetchone()
+        if not r:
+            with _db() as c2, c2:            # eigene Transaktion (der Aufrufer liest nur - sonst verfiele der neue Handle)
+                own_handle(c2, uid)
+            r = c.execute("SELECT handle FROM fed_handle WHERE uid=?", (uid,)).fetchone()
+        if r:
+            out["handle"] = r[0]
+    return out
 
 
 def _home_peer(c, peer_id):
@@ -2605,6 +2782,10 @@ def remote_target(uid, typ, tg, nid):
         if PSEUDO_RE.fullmatch(name) and "handles" not in caps_of(p):
             return None, t("Diese Person gibt es auf {host} nicht (oder sie hat keinen öffentlichen Namen).", host=host), 400
         target = f"@{name}@{host}" if typ == "remote" else f"{name}@{host}"
+        if typ == "remote" and PSEUDO_RE.fullmatch(name):
+            # 2.5 (W02): Handle einer Person, die hier schon mit ihrem Namen bekannt ist -> unter diesem Namen teilen (so fragt
+            # ihr Server an). Unbekannt: unter dem Handle; die erste Anfrage der Person fuehrt beides zusammen (_alias_seen).
+            target = alias_principal(c, p, name) or target
         if c.execute("SELECT 1 FROM note_share WHERE note_id=? AND target_type=? AND target=?", (nid, typ, target)).fetchone():
             return target, None, 200                       # nur Rolle aendern: keine Nachfrage noetig
     try:
@@ -2618,8 +2799,19 @@ def remote_target(uid, typ, tg, nid):
                       else t("Diese Gruppe gibt es auf {host} nicht.", host=host)), 400
     if typ == "remote":
         with _db() as c, c:
-            _person_upsert(c, target, p["id"], disp)
+            if disp != name or not c.execute("SELECT 1 FROM fed_person WHERE principal=?", (target,)).fetchone():
+                _person_upsert(c, target, p["id"], disp)     # (Handle ohne Adressbuch-Eintrag: bekannten Namen nicht ueberschreiben)
     return target, None, 200
+
+
+def remote_canon(c, target):
+    """'@~handle@host' einer Person, die hier unter ihrem Namen gefuehrt wird -> '@name@host'; sonst unveraendert."""
+    name, host = _parse_target("remote", target)
+    if name and PSEUDO_RE.fullmatch(name):
+        p = peer_by(c, "host", host)
+        if p:
+            return alias_principal(c, p, name) or f"@{name}@{host}"
+    return target
 
 
 def remote_search(uid, q):
@@ -2681,6 +2873,7 @@ def fed_render(c, uid, fed):
 
 
 sharing.REMOTE_TARGET = remote_target
+sharing.REMOTE_CANON = remote_canon
 sharing.REMOTE_SEARCH = remote_search
 sharing.FED_SCOPE_OK = scope_ok
 notify.FED_RENDER = fed_render

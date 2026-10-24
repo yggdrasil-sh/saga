@@ -604,6 +604,11 @@ CREATE TABLE IF NOT EXISTS fed_name_retired (         -- oeffentliche Namen, die
 -- fed_outbox kommen mit Migration 7 (unten).
 CREATE TABLE IF NOT EXISTS fed_handle (               -- stabiler, pseudonymer foederierter Handle je Konto ('~' + 16 Zeichen)
     uid TEXT PRIMARY KEY, handle TEXT NOT NULL UNIQUE, created DOUBLE PRECISION NOT NULL);
+CREATE TABLE IF NOT EXISTS fed_alias (                -- 2.5 (Bughunt W02/W03): Person einer anderen Instanz -> aktueller Prinzipal
+    peer_id INTEGER NOT NULL, handle TEXT NOT NULL,   -- handle: stabiler '~x' (ohne @host), principal: '@name@host' (oeffentlicher
+    principal TEXT NOT NULL, updated DOUBLE PRECISION NOT NULL,      -- Name, ohne ihn der Handle) - so fragt sie hier an
+    PRIMARY KEY (peer_id, handle));
+CREATE INDEX IF NOT EXISTS fed_alias_principal ON fed_alias (principal);
 CREATE SEQUENCE IF NOT EXISTS fed_dir_seq;
 CREATE TABLE IF NOT EXISTS fed_dir_local (            -- eigenes Adressbuch (Abgleich-Stand je Konto; visible=0 = Grabstein)
     uid TEXT PRIMARY KEY, handle TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', pub TEXT NOT NULL DEFAULT '',

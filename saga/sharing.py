@@ -40,6 +40,7 @@ REMOTE_GROUPS = contextvars.ContextVar("saga_remote_groups", default=None)
 # Von saga.federation gesetzt: remote_target(uid, typ, ziel) -> (normalisiertes ziel, fehlertext, status) - prueft
 # Verbindung und Person/Gruppe bei der fremden Instanz (Netzwerk, ausserhalb jeder Transaktion aufrufen)
 REMOTE_TARGET = None
+REMOTE_CANON = None           # 2.5 (saga.federation): canon(c, '@name@host') -> derselbe Prinzipal, unter dem die Person hier gefuehrt wird
 REMOTE_SEARCH = None          # remote_search(uid, q) -> ([{type, target, name, host}], hinweis|None) (Personensuche, genaue Adresse name@host)
 # 2.3 (saga.federation / saga.fed_dir): Ausnahme je Instanz von "nur gemeinsame Gruppen" und Adressbuch-Suche
 FED_SCOPE_OK = None           # scope_ok(host|None) -> bool: Instanz (bzw. irgendeine) hat die Admin-Ausnahme
@@ -744,6 +745,8 @@ async def api_shares_delete(nid: int, request: Request):
     with _db() as c, c:
         if typ == "user" and tg:
             tg = resolve_ref(c, tg)
+        elif typ == "remote" and tg and REMOTE_CANON is not None:
+            tg = REMOTE_CANON(c, tg)                 # Entziehen auch ueber den Handle der Person (W02)
         err = _own(c, uid, nid)
         if err is not None:
             return err

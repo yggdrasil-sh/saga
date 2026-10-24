@@ -147,11 +147,11 @@ def set_name(uid, name):
         old = get_name(c, uid)
         if old is not None:
             c.execute("UPDATE public_name SET name=? WHERE uid=?", (name, uid))
-            if old != name:          # Foederation: Freigaben anderer Instanzen an den alten Namen enden (saga.federation)
-                importlib.import_module("saga.federation")      # Zuhoerer sicher angemeldet (auch ausserhalb der App, z. B. Werkzeuge)
-                bus.fire("public_name.released", c, uid=uid, pub=old, deleted=False)
         else:
             c.execute("INSERT INTO public_name (uid, name, created) VALUES (?,?,?)", (uid, name, time.time()))
+        if old != name:              # Foederation: andere Instanzen schreiben auf den neuen Namen um (saga.federation, rename)
+            importlib.import_module("saga.federation")          # Zuhoerer sicher angemeldet (auch ausserhalb der App, z. B. Werkzeuge)
+            bus.fire("public_name.renamed", c, uid=uid, old=old, new=name)
     return name, None
 
 
@@ -1364,7 +1364,8 @@ def api_public_name_get(request: Request):
         n = c.execute("SELECT COUNT(*) FROM note_publish WHERE uid=? AND active=1", (uid,)).fetchone()[0]
         out = {"name": name, "url": BASE_URL + f"/@{name}" if name else None, "enabled": enabled(), "published": n,
                "suggested": suggest_name(c, uid) if not name else name,
-               "is_login": bool(name) and name == str(uid).lower()}      # 2.4: frueher selbst gewaehlt -> Hinweis
+               "is_login": bool(name) and name == str(uid).lower(),      # 2.4: frueher selbst gewaehlt -> Hinweis
+               "fed_loss": importlib.import_module("saga.federation").rename_loss(c, uid)}   # 2.5: Freigaben aelterer Server
     return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 

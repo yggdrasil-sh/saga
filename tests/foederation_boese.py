@@ -337,6 +337,45 @@ def part_ids(x):
     ok(f"Heim: Datei mit unsinniger ID -> 4xx ({s})", 400 <= s < 500)
 
 
+def part_rename(x):
+    """2.5 (W02/W03): person.renamed und actor.handle - C kann nur eigene Personen umbenennen bzw. zusammenfuehren, nie
+    Personen von A oder B; ein Name, der hier schon einer anderen Person von C gehoert, wird nicht uebernommen."""
+    q = lambda *a: [tuple(r) for r in sql(*a)]  # noqa: E731
+    bh = x.bert.handle.split("@")[0] if x.bert else "~" + "b" * 16
+    dh = x.dora.handle.split("@")[0]
+    shares = lambda nid: q("a", "SELECT target, role FROM note_share WHERE note_id=? AND target_type='remote'", (nid,))  # noqa: E731
+    g0, o0 = shares(x.geheim), shares(x.offen)
+    s, d = api("c", "fc-dora", "GET", "/api/fed/shared")
+    ok(f"C: Dora fragt echt an -> A kennt Handle und Namen ({s})", s == 200 and wait(
+        lambda: q("a", "SELECT principal FROM fed_alias WHERE peer_id=? AND handle=?", (x.pc, dh)) == [(f"@dora@{HC}",)], 10))
+    s, d = events_c([ev("person.renamed", old="bert", new="mallory", handle=bh)])
+    ok(f"C benennt 'bert' um: trifft nur Personen von C ({d.get('results')})", s == 200 and shares(x.geheim) == g0
+       and not q("a", "SELECT 1 FROM note_share WHERE target LIKE '@mallory@%'") and not q("a", "SELECT 1 FROM fed_alias WHERE peer_id=? AND principal LIKE ?", (x.pb, "@mallory@%")))
+    bad = [("bert@" + HB, "x1"), ("bert", "Bad Name"), ("bert", "~short"), ("bert", "a" * 40), ("bert", "bert"), ("bert", "~" + "z" * 16),
+           ("anna@" + HA, "anna"), ("bert", "dora@" + HA)]
+    s, d = events_c([ev("person.renamed", old=o, new=n, handle=bh) for o, n in bad] + [ev("person.renamed", old="bert", new="neu", handle="bert"),
+                                                                                         ev("person.renamed", old="bert", new="neu")])
+    ok(f"ungueltige Namen/Handles -> ignoriert ({d.get('results')})", s == 200 and set(d.get("results") or []) == {"ignored"})
+    hx = "~" + "x" * 16
+    s, d = events_c([ev("person.renamed", old="otto", new="dora", handle=hx), ev("person.renamed", old="dora", new="dorax", handle=hx)])
+    ok(f"Name einer anderen Person von C uebernehmen -> ignoriert + Pruefprotokoll ({d.get('results')})",
+       d.get("results") == ["ignored", "ignored"] and shares(x.offen) == o0 and log_of("a", "person.conflict"))
+    s, h, d, _ = as_c("GET", "/fed/v1/shared", actor={"name": "dora", "display": "Dora", "groups": [], "handle": hx})
+    ok(f"actor.handle: Doras Namen mit fremdem Handle -> nicht zusammengefuehrt ({s})", s == 200 and shares(x.offen) == o0
+       and not q("a", "SELECT 1 FROM fed_alias WHERE peer_id=? AND handle=?", (x.pc, hx)))
+    s, h, d, _ = as_c("GET", "/fed/v1/shared", actor={"name": "eve", "display": "Eve", "groups": [], "handle": bh})
+    ok(f"actor.handle: Handle einer Person von B ueber C -> nur unter C ({s})", s == 200 and shares(x.geheim) == g0
+       and q("a", "SELECT principal FROM fed_alias WHERE peer_id=? AND handle=?", (x.pb, bh)) in ([], [(f"@bert@{HB}",)]))
+    s, h, d, _ = as_c("GET", "/fed/v1/shared", actor={"name": "~" + "y" * 16, "display": "Y", "groups": [], "handle": hx})
+    ok(f"actor.handle: Name ist ein anderer Handle -> nicht zusammengefuehrt ({s})",
+       not q("a", "SELECT 1 FROM fed_alias WHERE peer_id=? AND principal=?", (x.pc, "@~" + "y" * 16 + "@" + HC)))
+    # echtes Umbenennen auf C bleibt moeglich (und wieder zurueck)
+    for name in ("dorab", "dora"):
+        s, d = api("c", "fc-dora", "PUT", "/api/account/public-name", {"name": name})
+        ok(f"C: Dora heisst {name} -> Freigabe bei A folgt ({s})", s == 200 and wait(lambda: shares(x.offen) == [(f"@{name}@{HC}", o0[0][1])], 15))
+    bystander(x, "person.renamed")
+
+
 def part_flood(x):
     # --- Nachrichten vom Heim: Rate je Instanz ('retry' statt Verwerfen) --------------------------------------------------------
     res = []
@@ -671,6 +710,7 @@ def run():
         x = setup(adm)
         part_sig(x)
         part_ids(x)
+        part_rename(x)
         part_forge(x)
         part_block(x)
         part_dir(x)
