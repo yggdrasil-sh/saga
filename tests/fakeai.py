@@ -189,7 +189,7 @@ class H(BaseHTTPRequestHandler):
         parts = pieces(text)
         if model == "fake-think":
             parts = ["<thi", "nk>geheime Über", "legung</thi", "nk>\n\nAntwort nach", " dem Denken [1]."]
-        elif model == "fake-openthink":
+        elif str(model).startswith("fake-openthink"):         # auch fake-openthink-<zufall> (eigener Merker im Server je Lauf)
             parts = ["Ich denke über", " die Frage nach.", "</th", "ink>", "\n\nAntwort ohne", " Anfangsmarke [1]."]
         elif model == "fake-tagtext":
             parts = ["Der Tag <thi", "nk> wird", " von Modellen benutzt [1]."]

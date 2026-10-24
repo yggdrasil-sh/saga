@@ -505,7 +505,9 @@ def run():
     ok(f"<think>…</think> (ueber Stueckgrenzen) wird herausgefiltert, status-Ereignis ({text_of(ev)!r})",
        text_of(ev) == "Antwort nach dem Denken [1]." and "Überlegung" not in text_of(ev) and get(ev, "status") == {"thinking": True})
     # Bughunt 2 (server, S3/S4): '</think>' ohne Anfang (Vorlage setzt '<think>' in den Prompt), woertliches '<think>' im Text
-    setai(model="fake-openthink")
+    # eigener Modellname je Lauf: der Server merkt sich je Modell "beginnt in der Denkphase" (_THINK_OPEN) - gegen einen
+    # schon laufenden Server waere der erste Schritt sonst nach dem ersten Testlauf nie mehr "neu"
+    setai(model="fake-openthink-" + secrets.token_hex(3))
     s, ev, _ = ask(A, "Zitronenfalter?")
     ok(f"'</think>' ohne Anfang: Denkphase verworfen, reset-Ereignis ({text_of(ev)!r})",
        text_of(ev) == "Antwort ohne Anfangsmarke [1]." and get(ev, "reset") == {} and get(ev, "status") == {"thinking": True})
