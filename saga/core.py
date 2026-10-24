@@ -593,6 +593,50 @@ SEC_HEADERS = {
 }
 
 
+# Bughunt Sicherheit V2/V3: Kopfzeilen fuer alle Antworten (App und Admin, saga.core.SecHeaders)
+# - HSTS nur hinter https, ohne includeSubDomains/preload (Selbsthoster haben oft andere Dienste unter derselben Domain);
+#   abschaltbar mit HSTS=false (z. B. wenn TLS spaeter wieder wegfallen kann)
+# - Permissions-Policy: Kamera/Mikrofon/Bildschirm teilen/Vollbild/Bild-im-Bild/Autoplay nur fuer Saga selbst (Anrufe,
+#   Sprachnachrichten); Vollbild/Bild-im-Bild/encrypted-media zusaetzlich fuer den YouTube-Einbetten-Block
+# - X-Frame-Options passend zu frame-ancestors der CSP ('none' -> DENY, 'self' -> SAMEORIGIN fuer das Peek-Fenster)
+HSTS = BASE_URL.startswith("https://") and E.get("HSTS", "true").strip().lower() not in ("0", "false", "no", "off")
+_YT = '"https://www.youtube-nocookie.com"'
+PERMISSIONS_POLICY = ("camera=(self), microphone=(self), display-capture=(self), autoplay=(self), "
+                      f"fullscreen=(self {_YT}), picture-in-picture=(self {_YT}), encrypted-media=(self {_YT}), "
+                      "geolocation=(), payment=(), usb=(), serial=(), hid=(), midi=(), magnetometer=(), "
+                      "xr-spatial-tracking=(), browsing-topics=()")
+
+
+class SecHeaders:
+    """ASGI: HSTS, Permissions-Policy und X-Frame-Options ergaenzen (vorhandene Werte eines Endpunkts bleiben)."""
+
+    def __init__(self, app, hsts=None):
+        self.app = app
+        self.hsts = HSTS if hsts is None else hsts
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def snd(m):
+            if m["type"] == "http.response.start":
+                hs = list(m.get("headers") or [])
+                have = {k.lower() for k, _ in hs}
+                if self.hsts and b"strict-transport-security" not in have:
+                    hs.append((b"strict-transport-security", b"max-age=31536000"))
+                if b"permissions-policy" not in have:
+                    hs.append((b"permissions-policy", PERMISSIONS_POLICY.encode()))
+                if b"x-frame-options" not in have:
+                    csp = next((v for k, v in hs if k.lower() == b"content-security-policy"), b"")
+                    if b"frame-ancestors 'none'" in csp:
+                        hs.append((b"x-frame-options", b"DENY"))
+                    elif b"frame-ancestors 'self'" in csp:
+                        hs.append((b"x-frame-options", b"SAMEORIGIN"))
+                m = dict(m, headers=hs)
+            await send(m)
+        return await self.app(scope, receive, snd)
+
+
 def _session_user(request):
     """Angemeldeter Benutzer der Sitzung - None, wenn gesperrt/geloescht oder das Passwort seitdem geaendert wurde."""
     uid = request.session.get("uid")

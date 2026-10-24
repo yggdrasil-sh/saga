@@ -29,7 +29,7 @@ from saga import ai, ai_chat, avatars, calls, chat, chat_files, federation, horn
 from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
 from saga import chat_status                     # 2.4: Gelesen-Bestaetigungen und Online-Status (haengt sich in chat, live, fed_chat ein)
 from saga import chat_x3                         # 2.5: Reaktionen, Bearbeiten, Sprachnachrichten (haengt sich in chat, fed_chat ein)
-from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, MEDIA_FRONT, MediaAuthHint, title
+from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESSION_HOURS, BodyLimit, Compress, LangMiddleware, MEDIA_FRONT, MediaAuthHint, SecHeaders, title
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
 from saga.notes import FILE_MAX
@@ -168,6 +168,7 @@ async def canonical_host(request: Request, call_next):
 
 # 2.5 Gjallarhorn: connect-src der HTML-Seiten um die Adressen der Knoten ergaenzen (nur mit Feature-Flag calls.horn)
 app.add_middleware(horn.NodeCsp)
+app.add_middleware(SecHeaders)          # Bughunt Sicherheit V2/V3: HSTS, Permissions-Policy, X-Frame-Options
 
 
 # Groesse von Anfragen begrenzen - als letzte registriert = laeuft zuerst (vor Sitzung, Umleitung, Endpunkten).

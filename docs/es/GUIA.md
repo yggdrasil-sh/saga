@@ -1879,6 +1879,7 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `ADMIN_BIND` / `ADMIN_HOST_PORT` | `127.0.0.1` / `8081` | Dónde escucha el área de administración |
 | `TRUSTED_PROXIES` | `127.0.0.1` | IP del proxy inverso (`*` = todas) |
 | `CANONICAL_REDIRECT` | `true` | Redirigir otros nombres de host a `BASE_URL` |
+| `HSTS` | `true` | Con `https://` en `BASE_URL`: `Strict-Transport-Security: max-age=31536000` (sin `includeSubDomains`/`preload`); `false` lo desactiva |
 | `PUBLIC_HOSTS` | – | Dominios propios solo para páginas públicas (separados por comas, sección 9 «Publicar páginas») |
 | `PUBLIC_RATE` | `120` | Solicitudes a páginas públicas por dirección IP y minuto (imágenes: cinco veces más) |
 | `SESSION_HOURS` | `12` | Duración de una sesión del navegador (las apps siguen con la sesión iniciada) |

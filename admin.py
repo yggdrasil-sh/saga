@@ -30,7 +30,7 @@ import app as hk
 import auth
 from db import clean_line, connect as _db
 from saga import ai, avatars, backups, calls, chat, cloudflare, federation, horn, horn_ops, i18n, live, mfa, publish, push, push_stream, sharing, userbackup
-from saga.core import RESTORE_TEST, TZ, BodyLimit, LangMiddleware, install_lang_ui, lang_switch_response
+from saga.core import HSTS, RESTORE_TEST, TZ, BodyLimit, LangMiddleware, SecHeaders, install_lang_ui, lang_switch_response
 from saga.i18n import t
 from version import REPO, VERSION, VERSION_LABEL, channel, newer
 
@@ -48,6 +48,8 @@ admin.add_middleware(SessionMiddleware, secret_key=hashlib.sha256(("hk-admin|" +
                      max_age=int(E.get("ADMIN_SESSION_HOURS", "4")) * 3600)
 admin.add_middleware(BodyLimit, default=1024 * 1024,      # nur Formulare: 1 MB reicht; zuletzt registriert = laeuft zuerst
                      rules=[("POST", re.compile(r"/settings/ai/persona"), avatars.UPLOAD_MAX + 256 * 1024)])   # Profilbild der KI
+# Bughunt Sicherheit V2/V3: dieselben Kopfzeilen wie die App (HSTS nur, wenn auch der Admin-Bereich per https laeuft)
+admin.add_middleware(SecHeaders, hsts=HSTS and ADMIN_URL.startswith("https://"))
 admin.mount("/static", StaticFiles(directory=os.path.join(hk.HERE, "static")), name="static")
 tmpl = Environment(loader=FileSystemLoader(os.path.join(hk.HERE, "templates", "admin")), autoescape=select_autoescape(["html"]))
 i18n.install(tmpl)

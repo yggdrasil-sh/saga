@@ -380,10 +380,65 @@ def main():
     from saga.userdata import USER_TABLES
     ok("pair_code wird beim Loeschen eines Kontos mit entfernt", "pair_code" in USER_TABLES)
 
+    kopfzeilen()
     qa_nachbesserung()
     cleanup()
     print(f"\nHAERTUNG {sum(res)}/{len(res)}", "- ALLES GRUEN" if all(res) else "- FEHLER")
     sys.exit(0 if all(res) else 1)
+
+
+def kopfzeilen():
+    """Bughunt Sicherheit V2/V3: HSTS (nur https, ohne includeSubDomains/preload), Permissions-Policy, X-Frame-Options
+    passend zu frame-ancestors - auch im Admin-Bereich; das Peek-Fenster (/notes?embed=1) bleibt einbettbar."""
+    import asyncio
+    from saga import core
+
+    def head(path, cookie=None, base=B):
+        c = http.client.HTTPConnection(base.hostname, base.port, timeout=30)
+        h = {"Host": HOST if base is B else base.netloc, "Accept": "text/html"}
+        if cookie:
+            h["Cookie"] = "saga=" + cookie
+        c.request("GET", path, headers=h)
+        r = c.getresponse(); r.read()
+        return r.status, {k.lower(): v for k, v in r.getheaders()}
+
+    auth.create_user("hd-kopf", PW, "Kopf")
+    s, h = head("/login")
+    pp = h.get("permissions-policy", "")
+    ok(f"/login: X-Frame-Options DENY ({h.get('x-frame-options')})", s == 200 and h.get("x-frame-options") == "DENY")
+    ok("Permissions-Policy: Kamera/Mikrofon/Bildschirm/Vollbild/Bild-im-Bild nur self, Standort aus",
+       all(f in pp for f in ("camera=(self)", "microphone=(self)", "display-capture=(self)", "autoplay=(self)",
+                             "fullscreen=(self", "picture-in-picture=(self", "geolocation=()")))
+    ok("http-BASE_URL: kein HSTS", "strict-transport-security" not in h)
+    s, h = head("/notes", ck("hd-kopf"))
+    ok(f"/notes: DENY ({h.get('x-frame-options')})", s == 200 and h.get("x-frame-options") == "DENY")
+    s, h = head("/notes?embed=1", ck("hd-kopf"))
+    ok(f"/notes?embed=1 (Peek): SAMEORIGIN ({h.get('x-frame-options')})", s == 200 and h.get("x-frame-options") == "SAMEORIGIN"
+       and "frame-ancestors 'self'" in h.get("content-security-policy", ""))
+    s, h = head("/api/notes", ck("hd-kopf"))
+    ok("API: Permissions-Policy, ohne CSP kein X-Frame-Options", "permissions-policy" in h and "x-frame-options" not in h)
+    s, h = head("/login", base=AD)
+    ok(f"Admin /login: DENY + Permissions-Policy ({s}, {h.get('x-frame-options')})",
+       s == 200 and h.get("x-frame-options") == "DENY" and "permissions-policy" in h)
+
+    async def run(mw_hsts, hdrs):
+        out = {}
+
+        async def app(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": hdrs})
+            await send({"type": "http.response.body", "body": b""})
+
+        async def snd(m):
+            if m["type"] == "http.response.start":
+                out.update({k.decode(): v.decode() for k, v in m["headers"]})
+        await core.SecHeaders(app, hsts=mw_hsts)({"type": "http", "path": "/"}, None, snd)
+        return out
+    o = asyncio.run(run(True, [(b"content-security-policy", b"default-src 'self'; frame-ancestors 'none'")]))
+    ok(f"https: HSTS ohne includeSubDomains/preload ({o.get('strict-transport-security')})",
+       o.get("strict-transport-security") == "max-age=31536000" and o.get("x-frame-options") == "DENY")
+    o = asyncio.run(run(False, [(b"x-frame-options", b"SAMEORIGIN"), (b"content-security-policy", b"frame-ancestors 'none'")]))
+    ok("HSTS=false: kein HSTS; vorhandenes X-Frame-Options bleibt",
+       "strict-transport-security" not in o and o.get("x-frame-options") == "SAMEORIGIN")
 
 
 if __name__ == "__main__":

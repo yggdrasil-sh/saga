@@ -1796,6 +1796,7 @@ with the same account also switch the oldest ones to polling.
 | `ADMIN_BIND` / `ADMIN_HOST_PORT` | `127.0.0.1` / `8081` | Where the admin area listens |
 | `TRUSTED_PROXIES` | `127.0.0.1` | IPs of the reverse proxy (`*` = all) |
 | `CANONICAL_REDIRECT` | `true` | Redirect other host names to `BASE_URL` |
+| `HSTS` | `true` | With `https://` in `BASE_URL`: `Strict-Transport-Security: max-age=31536000` (no `includeSubDomains`/`preload`); `false` turns it off |
 | `PUBLIC_HOSTS` | – | Custom domains for public pages only (comma-separated, section 9 “Publishing pages”) |
 | `PUBLIC_RATE` | `120` | Requests to public pages per IP address and minute (images: five times as many) |
 | `SESSION_HOURS` | `12` | Lifetime of a browser session (apps stay signed in) |
