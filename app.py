@@ -120,7 +120,21 @@ app.add_middleware(
 app.add_middleware(Compress)
 if MEDIA_FRONT:                                            # 2.4: saga-media davor - angemeldete Anfragen kennzeichnen (S1b)
     app.add_middleware(MediaAuthHint)
-app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
+class _Static(StaticFiles):
+    """Bughunt P05: /static/...?v=<aktueller Fingerabdruck> unbegrenzt zwischenspeichern (der Fingerabdruck aendert sich
+    mit jeder Datei in static/), sonst bei jeder Nutzung nachfragen (304) - vorher galt die heuristische Cache-Zeit."""
+
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        r = super().file_response(full_path, stat_result, scope, status_code)
+        qs = scope.get("query_string") or b""
+        if r.status_code == 200 and (b"v=" + ASSET_V.encode()) in qs.split(b"&"):
+            r.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            r.headers.setdefault("Cache-Control", "no-cache")
+        return r
+
+
+app.mount("/static", _Static(directory=os.path.join(HERE, "static")), name="static")
 
 # Aufrufe ueber andere Hostnamen (interne IP/DNS, alter Name) auf BASE_URL umleiten.
 # Verhindert Login-Fehler (mismatching_state), weil Cookies an genau einen Host gebunden sind.

@@ -2854,13 +2854,8 @@
     function growTitles(root) { if (!FIELD_SIZING) [].forEach.call(root.querySelectorAll('textarea.db-title-in'), growTitle); }
     // Schatten am Rand, solange seitlich noch mehr Tabelle kommt (sonst wirkt sie abgeschnitten)
     function scrollHints(sc) {
-      function upd() {
-        sc.classList.toggle('sc-l', sc.scrollLeft > 1);
-        sc.classList.toggle('sc-r', sc.scrollLeft + sc.clientWidth < sc.scrollWidth - 1);
-      }
-      sc.addEventListener('scroll', upd, { passive: true });
-      if (window.ResizeObserver) new ResizeObserver(upd).observe(sc);
-      requestAnimationFrame(upd);
+      sc.addEventListener('scroll', function () { scrollHintQ(sc); }, { passive: true });
+      if (SH_RO) SH_RO.observe(sc); else scrollHintQ(sc);      // ResizeObserver meldet sich nach observe() von selbst
     }
 
     function renderDb() {
@@ -3688,6 +3683,23 @@
              load: function (id, schema) { DB.id = id; DB.rows = []; DB.schema = schema || { props: [] }; return loadDb(); } };
     if (BOX) LIVE_DBS.push(self);
     return self;
+  }
+  // Bughunt P02/P11: Schatten-Hinweise der waagrechten Scrollbereiche gesammelt je Frame - erst alle messen, dann alle
+  // Klassen setzen (vorher je Bereich lesen/schreiben im Wechsel = erzwungenes Layout, ~1 s bei 20 eingebetteten DBs)
+  // und ein gemeinsamer ResizeObserver, der entfernte Bereiche wieder loslaesst (vorher je Bereich einer, nie getrennt).
+  var SH_Q = [], SH_RAF = 0;
+  var SH_RO = window.ResizeObserver ? new ResizeObserver(function (es) { es.forEach(function (e) { scrollHintQ(e.target); }); }) : null;
+  function scrollHintQ(sc) {
+    if (SH_Q.indexOf(sc) < 0) SH_Q.push(sc);
+    if (!SH_RAF) SH_RAF = requestAnimationFrame(function () {
+      var q = SH_Q; SH_Q = []; SH_RAF = 0;
+      var m = q.map(function (x) {
+        if (!x.isConnected) { if (SH_RO && x._shOn) SH_RO.unobserve(x); return null; }   // erst nach dem Einhaengen loslassen
+        x._shOn = true;
+        return [x.scrollLeft > 1, x.scrollLeft + x.clientWidth < x.scrollWidth - 1];
+      });
+      q.forEach(function (x, i) { if (m[i]) { x.classList.toggle('sc-l', m[i][0]); x.classList.toggle('sc-r', m[i][1]); } });
+    });
   }
   var LIVE_DBS = [];
   function refreshDbViews(dbId) {          // alle sichtbaren Ansichten dieser Datenbank (Seite + eingebettete) neu laden
