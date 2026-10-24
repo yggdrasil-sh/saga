@@ -22,7 +22,14 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   `GET /api/calls/config` meldet `horn_dm`; Clients rufen mit `via: "horn"` an und bekommen ohne bereiten Knoten, ohne
   passendes Gerät beim Gegenüber oder im föderierten Chat 409 `fallback: "direct"` (dann wie bisher direkt). Klingeln,
   Besetzt, Ablehnen, Push (`dm: true`, Name der anrufenden Person) und Chat-Eintrag wie 1:1. Web-Client nutzt den Weg
-  mit Rückfall; ältere Clients rufen weiter direkt an. Föderierte 1:1-Anrufe bleiben vorerst direkt.
+  mit Rückfall; ältere Clients rufen weiter direkt an.
+- **1:1 über Knoten auch mit anderen Servern.** Föderierte Direkt-Chats nutzen bei „Alle Anrufe über Knoten“ ebenfalls
+  einen Knoten (neuer Föderations-Auftrag `dmhorn`, Fähigkeit `horn_dm`): Den Anruf führt der Server der anrufenden
+  Person, der andere Server legt eine Kopie an und lässt klingeln; Annehmen, Auflegen und Knotenwahl laufen wie bei
+  föderierten Gruppenanrufen über Knoten (Kaskade bzw. geteilte Knoten). Damit klappen Anrufe auch, wenn TURN nur
+  intern Relay-Adressen vergibt. Ohne `horn_dm` beim anderen Server weiter direkt (`horn_block: "fed"`).
+  Kopien von Gruppenanrufen melden jetzt beim Wechsel auf „aktiv“ `call.state active` an die eigenen Geräte, und wer
+  über einen anderen Server beitritt, gilt dort nicht mehr als „verpasst“.
 
 ### Sicherheit (Prüfung 2.5)
 - **Kaskade: fremdes Token streng geprüft.** Das Kaskaden-Token eines verbundenen Servers geht unverändert in eine

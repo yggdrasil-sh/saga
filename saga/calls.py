@@ -63,12 +63,12 @@ Server legt einen Raum-Anruf an (kind 'group', topo 'horn', callee = Gegenueber 
 _dmh) und klingelt per call.invite {dm: true} + Push "call.group" mit dm: true (1:1-Texte, Name der anrufenden Person).
 Annehmen = POST /join, Ablehnen beendet den Anruf ("declined"), Besetzt/Klingeldauer/Ende/Eintrag im Chat wie 1:1
 (Eintrag ohne group/n, from/to wie 1:1). Geht es nicht (Einstellung aus, kein Knoten bereit, Geraet ohne horn/multi,
-Gegenueber ohne Geraet mit "horn", foederierter Chat), antwortet der Server 409 {fallback: "direct", horn_block:
+Gegenueber ohne Geraet mit "horn", anderer Server ohne horn_dm), antwortet der Server 409 {fallback: "direct", horn_block:
 off|caps|node|peer|fed} - es ist nichts angelegt, der Client ruft mit derselben id wie bisher direkt an. Aeltere Clients
 schicken kein via und rufen weiter direkt an; ankommende Knoten-Anrufe sehen 2.4-Geraete als Gruppenanruf (Beitritt:
-"braucht Saga 2.5"). Foederierte Direkt-Chats bleiben vorerst direkt (2.3-Weg): das Heim kennt die Geraete der Person
-auf dem anderen Server nicht synchron, Gruppen-Start und Ablehnen ueber Servergrenzen sind fuer Direkt-Chats nicht
-vorgesehen (op_join lehnt dm ab) - das braucht einen neuen Auftrag und eine Faehigkeit je Server."""
+"braucht Saga 2.5"). Foederierte Direkt-Chats (Faehigkeit horn_dm bei beiden Servern): Auftrag dmhorn - der Server der
+anrufenden Person fuehrt den Anruf, der andere legt eine Kopie an und klingelt (saga/fed_calls.py dm_horn_start,
+op_dmhorn); Ablehnen dort -> end an den fuehrenden Server (dm_ended)."""
 import asyncio
 import base64
 import hashlib
@@ -643,6 +643,8 @@ def _finish(c, call, reason, now, by=None, remote=False):
         if group:
             if call.get("lead") is None and _fedcall(c, call):
                 FED.group_ended(c, call, reason)       # alle anderen Server des Chats (verwerfbar)
+            elif call.get("lead") is not None and _dmh(call) and was == "ringing" and reason in ("declined", "busy"):
+                FED.dm_ended(c, call, reason)          # 2.5: 1:1 ueber Knoten - Ablehnen hier beendet den Anruf dort
         elif call.get("peer_id"):
             FED.ended(c, call, reason)                 # 2.3: der anderen Instanz melden (verwerfbar)
     data = {"call_id": call["id"], "chat_id": call["chat_id"], "state": "ended", "reason": reason, "status": status, "by": by,
@@ -794,8 +796,15 @@ async def api_call(request: Request):
             if gr is not None:
                 return gr
             fed = ("group", ch)
-        elif b.get("via") == "horn" and (chat.is_fed(ch) or not horn_dm_on()):
-            return _fallback("fed" if chat.is_fed(ch) and horn_dm_on() else "off")
+        elif b.get("via") == "horn" and not horn_dm_on():
+            return _fallback("off")
+        elif b.get("via") == "horn" and chat.is_fed(ch):   # 2.5: 1:1 ueber Knoten mit einem anderen Server (Auftrag dmhorn)
+            if FED is None:
+                return _fallback("fed")
+            if not _my_device(c, uid, dev):
+                return _bad(t("Dieses Gerät ist für Chats nicht (mehr) angemeldet."), 403)
+            note_caps(c, uid, dev, caps)
+            fed = ("dmhorn", ch)
         elif chat.is_fed(ch):                              # 2.3: Gegenueber auf einem anderen Server
             if FED is None:
                 return _bad(t("Diese Person ist nicht erreichbar."), 404)
@@ -811,6 +820,8 @@ async def api_call(request: Request):
     from starlette.concurrency import run_in_threadpool
     if fed is not None and fed[0] == "group":
         return await run_in_threadpool(FED.group_start, uid, fed[1], cid, media, dev, caps)
+    if fed is not None and fed[0] == "dmhorn":
+        return await run_in_threadpool(FED.dm_horn_start, uid, fed[1], cid, media, dev, caps, _dev_class(b))
     if fed is not None:
         return await run_in_threadpool(FED.start, uid, fed[0], cid, media, dev, fed[1], caps)
     with _db() as c, c:

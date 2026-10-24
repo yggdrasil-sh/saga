@@ -426,8 +426,27 @@ nie; Downlink je Teilnehmendem höchstens Kontingent / Teilnehmende). Notaus sch
 entfernen sofort alle Teilnehmenden und Brücken des Servers; danach gibt es keine Token mehr.
 
 Tests: `tests/foederation_horn.py` (zwei Server mit je einem Knoten: Kaskade, Teilen, Kontingent, Erlaubt-Liste,
-Notaus, Mesh-Rückfall; `FED_B_APP=<Saga 2.4>`), Browser `tests/browser_fed_horn.js` (3 + 3 Personen, einmal Kaskade,
-einmal Teilen).
+Notaus, Mesh-Rückfall, 1:1 über Knoten; `FED_B_APP=<Saga 2.4>`), Browser `tests/browser_fed_horn.js` (3 + 3 Personen,
+einmal Kaskade, einmal Teilen).
+
+### 7.5 1:1 über Knoten über Servergrenzen (2.5, Cap `horn_dm`)
+
+Für die Apps ändert sich nichts gegenüber dem lokalen Fall (`APP-API.md`, „1:1 über Knoten“): `POST /api/calls` mit
+`via: "horn"` geht jetzt auch in föderierten Direkt-Chats. Rückfall `horn_block: "fed"` nur noch, wenn der andere
+Server `horn_dm` nicht meldet (älter, Gjallarhorn aus) oder nicht antwortet; `peer`/`off`/`node` meldet der andere
+Server selbst (Gegenüber ohne Gerät mit `horn`, Gjallarhorn dort aus), `busy` wie 1:1.
+
+Zwischen den Servern: Den Anruf führt wie in 2.3 der Server der anrufenden Person (A). Er prüft (`horn_dm` bei beiden,
+eigener bereiter Knoten, je Server ein nutzbarer Knoten wie bei Gruppen) und schickt synchron:
+
+| Auftrag | Richtung | Inhalt |
+|---|---|---|
+| `dmhorn` | A → B | `{id, ref, from, from_device, media, caps, name, horn_nodes?}`: B legt die Kopie an (`kind: group`, `topo: horn`, `callee` = eigenes Konto, `lead` = A) und lässt klingeln (`call.invite` mit `dm: true`). Antworten: 200; 409 `{busy}`, `{horn_block: "peer"\|"off"}`, `{error: "request"}` – dann ist bei B nichts angelegt |
+
+Erst nach 200 legt A seinen Anruf an. Danach wie 7.4: Annehmen = `join` an A, Kandidaten über `horn`, Teilnehmerliste
+`roster` (die Kopie wechselt mit `state: active` und meldet `call.state active` an die eigenen Geräte), Auflegen über
+`leave`/`end`. Ablehnen bei B beendet die Kopie und schickt `end {reason: "declined"|"busy"}` an A (nur der
+Angerufene, nur solange es klingelt); A beendet den Anruf ohne Rückmeldung.
 
 ## 8. Seiten anderer Server vollständig (E4/E6)
 

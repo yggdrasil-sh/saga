@@ -661,7 +661,7 @@
     if ((chat.v === 2 || chat.v === 3) && (chat.request || chat.readonly)) { HK.toast(T('Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben.')); return; }
     if (!window.RTCPeerConnection) { HK.toast(T('Dieser Browser kann keine Anrufe (WebRTC fehlt).')); return; }
     // 2.5: "Alle Anrufe ueber Knoten" (horn_dm) - 1:1 als Raum-Anruf ueber einen Knoten; geht es nicht: direkt wie bisher
-    if (!direct && cfg && cfg.horn_dm && chat.v !== 2 && myCaps().indexOf('horn') >= 0 && myCaps().indexOf('multi') >= 0) { startGroup(chat, video, true, true); return; }
+    if (!direct && cfg && cfg.horn_dm && myCaps().indexOf('horn') >= 0 && myCaps().indexOf('multi') >= 0) { startGroup(chat, video, true, true); return; }
     var c = C = newCall({ chat_id: chat.id, role: 'caller', media: video ? 'video' : 'audio', peer: chat.peer, v2: (chat.v === 2 || chat.v === 3) });
     audioCtx();
     win(c); status(c, T('Kamera und Mikrofon …'));

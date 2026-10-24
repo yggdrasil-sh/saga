@@ -82,6 +82,8 @@ def has_cap(k, host, cap):
 
 
 def gobuild():
+    if not shutil.which("go") and shutil.which("gjallarhorn"):
+        return shutil.which("gjallarhorn")             # Test-Stack ohne Go: Knoten aus dem Image (gleicher Stand)
     out = os.path.join(STATE, "gjallarhorn")
     r = subprocess.run(["go", "build", "-trimpath", "-ldflags", f"-X main.version={VERSION}", "-o", out, "."], cwd=os.path.join(APP, "gjallarhorn"),
                        capture_output=True, text=True, env=dict(os.environ, CGO_ENABLED="0"))
@@ -225,6 +227,7 @@ def main():
             part_old(anna, bert, ch, bc)
         else:
             part_a(adm, anna, bert, ch, bc, ada)
+            part_dm(adm, anna, bert)
             part_staffel(anna, ada, bert, ben, ch, bc, nc)
             part_b(adm, anna, bert, ben, ch, bc, nc, ada)
             part_c(adm, anna, bert, ch, bc)
@@ -391,6 +394,68 @@ blk, resp = FCL._horn_block("fb-bert", call, "d" * 32, "member")
 out["teardown"] = [blk, getattr(resp, "status_code", None), gone]
 print(json.dumps(out))
 """
+
+
+def part_dm(adm, anna, bert):
+    """2.5: 1:1 ueber Knoten aus einem foederierten Direkt-Chat (Auftrag dmhorn, Faehigkeit horn_dm): A fuehrt, B spiegelt
+    und klingelt; Annehmen (join bei A), Ablehnen (end an A), Gegenueber ohne horn -> Rueckfall, Einstellung aus -> off."""
+    HA, HB = T.I["a"]["host"], T.I["b"]["host"]
+    ok("dm: Faehigkeit horn_dm auf beiden Seiten bekannt", wait(lambda: has_cap("a", HB, "horn_dm") and has_cap("b", HA, "horn_dm"), 15))
+    s, d = api("a", "fa-anna", "POST", "/api/chats", {"kind": "dm", "handle": bert.handle, "device": anna.dev["id"]})
+    ach = d.get("chat") or {}
+    bch = wait(lambda: bert.chat(ach.get("ref")), 15) or {}
+    api("b", "fb-bert", "POST", f"/api/chats/{bch.get('id')}/request", {"action": "accept"})
+    ok(f"dm: Direkt-Chat ueber zwei Server angenommen ({s})", s == 200 and bch.get("id") and wait(
+        lambda: (sql("a", "SELECT state FROM chat_member WHERE chat_id=? AND uid LIKE '@%'", (ach["id"],)) or [[None]])[0][0] == "ok", 15))
+
+    def dial(cs=CAPS):
+        cid = C.hexid()
+        s, d = api("a", "fa-anna", "POST", "/api/calls", {"id": cid, "chat_id": ach["id"], "media": "audio", "device": anna.dev["id"], "caps": cs,
+                                                          "via": "horn", "dev_class": "desktop"})
+        return cid, s, d
+
+    def rows(k, cid):
+        return [tuple(r) for r in sql(k, "SELECT kind, topo, callee, lead, state, reason FROM chat_call WHERE id=?", (cid,)) or []]
+
+    cid, s, d = dial()
+    ok(f"dm: Einstellung aus -> fallback off ({s}, {d.get('horn_block')})", s == 409 and d.get("fallback") == "direct" and d.get("horn_block") == "off"
+       and not rows("a", cid) and not rows("b", cid))
+    calls_cfg("a", horn_all=True)
+    time.sleep(6)                                      # Einstellungen 5 s zwischengespeichert
+    # Annehmen
+    cid, s, d = dial()
+    call = d.get("call") or {}
+    ok(f"dm: Anna ruft Bert ueber Knoten an ({s}, {call.get('kind')}/{call.get('topo')}, dm {call.get('dm')}, {len(cands(d))} Kandidaten)",
+       s == 200 and call.get("topo") == "horn" and call.get("dm") is True and len(cands(d)) >= 1)
+    ra, rb = rows("a", cid), rows("b", cid)
+    ok("dm: A fuehrt (callee = Prinzipal von Bert), B spiegelt (lead = A, callee = Bert)", ra and ra[0][:2] == ("group", "horn") and ra[0][3] is None
+       and ra[0][2].startswith("@") and rb and rb[0][:3] == ("group", "horn", "fb-bert") and rb[0][3] is not None)
+    s, g = api("b", "fb-bert", "GET", f"/api/calls/{cid}")
+    gc = (g or {}).get("call") or {}
+    ok(f"dm: Bert sieht den Anruf als 1:1 von Anna ({s}, dm {gc.get('dm')}, {gc.get('state')})", s == 200 and gc.get("dm") is True
+       and gc.get("state") == "ringing" and (gc.get("from") or {}).get("handle") == anna.handle)
+    s, j = api("b", "fb-bert", "POST", f"/api/calls/{cid}/join", {"device": bert.dev["id"], "role": "member", "caps": CAPS})
+    ok(f"dm: Bert nimmt auf B an (join beim fuehrenden Server) ({s}, {len(cands(j))} Kandidaten)", s == 200 and len(cands(j)) >= 1)
+    ok("dm: aktiv auf A und B", wait(lambda: (rows("a", cid) or [[0] * 6])[0][4] == "active" and (rows("b", cid) or [[0] * 6])[0][4] == "active", 10))
+    ok("dm: Einladung von Bert auf B 'joined' (kein 'verpasst')", (sql("b", "SELECT state FROM chat_call_invite WHERE call_id=? AND who='fb-bert'", (cid,))
+                                                                    or [[None]])[0][0] == "joined")
+    ok("dm: Auflegen beendet auf beiden Seiten", end_call(cid, bert))
+    logs = sql("a", "SELECT body_ct FROM chat_msg WHERE chat_id=? AND kind='call'", (ach["id"],))
+    ok("dm: Eintrag im Chat wie 1:1 (ohne group)", bool(logs) and all('"group"' not in (r[0] or "") for r in logs))
+    # Ablehnen
+    cid, s, d = dial()
+    ok(f"dm: zweiter Anruf klingelt ({s})", s == 200 and wait(lambda: bool(rows("b", cid)), 5))
+    s, _ = api("b", "fb-bert", "POST", f"/api/calls/{cid}/decline", {"reason": "declined"})
+    ok(f"dm: Bert lehnt ab -> auf A beendet (declined) ({s})", s == 200 and wait(lambda: (rows("a", cid) or [[0] * 6])[0][4:] == ("ended", "declined"), 10)
+       and (rows("b", cid) or [[0] * 6])[0][4:] == ("ended", "declined"))
+    # Gegenueber ohne Geraet mit horn
+    api("b", "fb-bert", "PUT", "/api/calls/caps", {"device": bert.dev["id"], "caps": ["reneg", "want", "bye", "screen2", "multi"]})
+    cid, s, d = dial()
+    ok(f"dm: Bert ohne horn -> fallback peer, nichts angelegt ({s}, {d.get('horn_block')})", s == 409 and d.get("horn_block") == "peer"
+       and not rows("a", cid) and not rows("b", cid))
+    api("b", "fb-bert", "PUT", "/api/calls/caps", {"device": bert.dev["id"], "caps": CAPS})
+    calls_cfg("a", horn_all=False)
+    time.sleep(6)
 
 
 def part_staffel(anna, ada, bert, ben, ch, bc, nc):

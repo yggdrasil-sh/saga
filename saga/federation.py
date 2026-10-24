@@ -82,9 +82,12 @@ CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "li
          "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online"]
 # horn (2.5, Gjallarhorn, docs/HORN-E2E.md) = Gruppenanrufe ueber Knoten mit Frame-E2E: Signale fkey/fkey-ack laufen
 # versiegelt wie alle Anruf-Signale (Auftrag signal). Nur gemeldet, solange das Feature-Flag calls.horn an ist (caps2()).
+# horn_dm (2.5) = 1:1 aus foederierten Direkt-Chats ueber Knoten (Auftrag dmhorn, saga/fed_calls.py) - gemeldet, solange
+# horn an ist; ob ein Anruf so laeuft, entscheidet der Server der anrufenden Person (calls.horn_all).
 # chat3 (2.5, saga/chat_x3.py) = Reaktionen/Bearbeiten ueber Servergrenzen - nur mit der Einstellung chat_v3 (Standard aus);
 # aus: nicht gemeldet, eingehende x3-Auftraege 403 bzw. Ereignisse "ignored" (F.feature ist dann fuer alle Instanzen falsch).
 CAPS2_FLAG = {"horn": lambda: bool((auth.settings().get("calls") or {}).get("horn")),   # wie saga.calls.horn_on()
+              "horn_dm": lambda: bool((auth.settings().get("calls") or {}).get("horn")),
               "chat3": lambda: bool(auth.settings().get("chat_v3"))}                    # wie saga.chat.v3_new()
 
 
@@ -98,7 +101,7 @@ def caps2():
 OPT_DEFAULTS = {"chat": True, "calls": True, "directory": True, "scope_exception": False, "directory_groups": []}
 # Faehigkeit -> Admin-Schalter, der sie zusaetzlich braucht
 CAP_OPT = {"directory": "directory", "keys": "chat", "chat2": "chat", "calls2": "calls", "chatgroups": "chat", "calls3": "calls",
-           "chatfile2": "chat", "receipts": "chat", "online": "chat", "chat3": "chat", "horn": "calls"}
+           "chatfile2": "chat", "receipts": "chat", "online": "chat", "chat3": "chat", "horn": "calls", "horn_dm": "calls"}
 EXPRESS_TIMEOUT = float(E.get("FED_EXPRESS_TIMEOUT", "5"))      # synchrone Zustellung: harte Frist in Sekunden
 HELLO_EVERY = 6 * 3600                       # Faehigkeiten der Gegenstelle so oft neu abfragen
 SEEN_KEEP = 7 * 86400                        # Ereignis-Kennungen so lange merken (idempotent)

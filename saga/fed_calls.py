@@ -30,7 +30,7 @@ from saga import bus, calls, chat, fed_chat as FC, federation as F, sharing
 from saga.core import _bad, t
 
 router = FC.router                      # gleiche Router-Einbindung wie die Chats (app.py)
-OPS = ("ring", "answer", "signal", "end", "decline", "alive", "join", "leave", "roster", "invite")
+OPS = ("ring", "answer", "signal", "end", "decline", "alive", "join", "leave", "roster", "invite", "dmhorn")
 
 
 def peer_ok(p):
@@ -46,6 +46,11 @@ def peer_horn(p):
     """2.5 Gjallarhorn: beide Server melden 'horn' (Feature-Flag calls.horn) - Knoten-Anrufe mit Frame-E2E. Die Signale
     fkey/fkey-ack brauchen nichts Eigenes: sie laufen versiegelt im Auftrag 'signal' wie jedes Anruf-Signal."""
     return peer3(p) and F.feature(p, "horn")
+
+
+def peer_horn_dm(p):
+    """2.5: 1:1 aus foederierten Direkt-Chats ueber Knoten (Auftrag dmhorn) - beide Server melden 'horn_dm'."""
+    return peer_horn(p) and F.feature(p, "horn_dm")
 
 
 def _remote_of(call):
@@ -301,6 +306,74 @@ def group_start(uid, ch, cid, media, dev, caps):
     return chat._no_store({"ok": True, "call": out})
 
 
+def dm_horn_start(uid, ch, cid, media, dev, caps, dev_class="desktop"):
+    """2.5: POST /api/calls {via: "horn"} in einem foederierten Direkt-Chat (calls.horn_all an). Wie 2.3 fuehrt der Server
+    der anrufenden Person den Anruf: erst beim Server des Gegenuebers anklingeln lassen (Auftrag dmhorn, synchron - dort
+    entsteht die Kopie und es klingelt), dann hier den Raum-Anruf ueber Knoten anlegen (kind 'group', topo 'horn', callee =
+    Gegenueber). Danach laeuft alles wie ein foederierter Gruppenanruf ueber Knoten (join/leave/roster/horn, P10).
+    Geht es nicht: 409 fallback direct (nichts angelegt), der Client ruft wie bisher direkt an."""
+    if not (calls._has(caps, "horn") and calls._has(caps, "multi")):
+        return calls._fallback("caps")
+    now = time.time()
+    with _db() as c:
+        m = chat._member(c, ch["id"], uid)
+        other = next((u for u in chat.members(c, ch["id"]) if sharing.is_remote(u)), None)
+        ro = FC._ro_error(c, ch)
+        if ro:
+            return _bad(ro, 403)
+        if not other or not m or m.get("state") != "ok":
+            return _bad(t("Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben."), 409)
+        h = FC.handle_of(other)
+        p = F.peer_by(c, "host", FC.split_handle(h)[1])
+        if not peer_horn_dm(p):
+            return calls._fallback("fed")
+        if not calls.horn.any_ready(c) or not FH.fed_ok(c, ch)[0]:
+            return calls._fallback("node")
+        if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
+            return _bad(t("Diesen Anruf gibt es schon."), 409)
+        if calls._busy(c, uid):
+            return _bad(t("Du telefonierst gerade schon."), 409)
+        if not calls._rate("call", uid, calls.CALL_RATE) or not calls._rate("call-h", uid, calls.CALL_RATE_H, 3600) \
+                or not calls._rate("pair", uid + "|" + other, calls.PAIR_RATE):
+            return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
+        mh = FC.my_handle(c, uid)
+        dname = calls._dev_name(c, dev)
+        name = FC.label_of(c, other)["name"]
+    st, d = FC.sync_call(p, {"op": "dmhorn", "id": cid, "ref": ch["ref"], "from": mh, "from_device": dev, "media": media,
+                             "caps": calls.caps_out(caps), "name": dname, **_horn_hint(caps)}, path="/fed/v2/call")
+    d = d if isinstance(d, dict) else {}
+    if st is None:
+        return _bad(t("Der Server {host} ist gerade nicht erreichbar.", host=p["host"]), 502)
+    if st == 409 and d.get("busy"):
+        return chat._no_store({"ok": False, "busy": True, "error": t("Besetzt – {name} telefoniert gerade.", name=name)}, 409)
+    if st == 409 and d.get("error") == "request":
+        return _bad(t("Anrufe gehen erst, wenn beide die Unterhaltung angenommen haben."), 409)
+    if st == 409 and d.get("horn_block") in ("peer", "off", "node"):
+        return calls._fallback(d["horn_block"])
+    if st == 429:
+        return _bad(t("Zu viele Anrufe in kurzer Zeit – bitte kurz warten."), 429)
+    if st != 200:
+        return calls._fallback("fed")                  # alles andere: direkt wie bisher (der Server dort hat nichts angelegt)
+    with _db() as c, c:
+        _RUNG.add(cid)                                 # dort klingelt es schon (Auftrag dmhorn) - die erste Liste nicht nochmal
+        call = calls.group_create(c, ch, cid, media, uid, dev, caps, now, name=dname, dm_peer=other, ring=False)
+        out = calls._dict(c, call, uid)
+        out["horn"] = calls.horn_block(c, call, dev, "member", dev_class)
+        print(f"call: {cid[:8]} 1:1 ueber Knoten klingelt bei {p['host']} ({media})", flush=True)
+    return chat._no_store({"ok": True, "call": out})
+
+
+def dm_ended(c, call, reason):
+    """2.5: Kopie eines 1:1-Anrufs ueber Knoten (wir fuehren ihn nicht): das Gegenueber hier lehnt ab bzw. ist besetzt ->
+    dem fuehrenden Server melden (nach dem Commit, verwerfbar) - dort endet der Anruf fuer die anrufende Person."""
+    try:
+        mh = _h(c, call["callee"])
+    except F.FedError:
+        return
+    body = {"op": "end", "id": call["id"], "actor": mh, "reason": reason}
+    c.after_commit(lambda pid=call["lead"], body=body: FC._volatile(pid, body, path="/fed/v2/call", drop=False))
+
+
 def join(uid, call, dev, role, rep, caps, sig):
     """POST /join auf einem Server, der den Anruf NICHT fuehrt: beim fuehrenden Server eintragen (synchron), hier spiegeln."""
     with _db() as c:
@@ -323,6 +396,7 @@ def join(uid, call, dev, role, rep, caps, sig):
             return chat._no_store({"error": t("Der Anruf ist schon beendet."), "join_block": "ended"}, 409)
         role = (d or {}).get("role") if (d or {}).get("role") in calls.ROLES else role
         calls._leg_put(c, cur["id"], dev, uid, role, None, caps, rep, name=name, now=now)
+        c.execute("UPDATE chat_call_invite SET state='joined' WHERE call_id=? AND who=? AND state='ringing'", (cur["id"], uid))
         _apply_legs(c, cur, p, (d or {}).get("legs"), keep=dev)
         cur = calls._load(c, cur["id"])
         calls.emit_roster(c, cur, fed=False)
@@ -638,6 +712,15 @@ def op_signal(c, peer, d):
 
 def op_end(c, peer, d):
     cur = calls._load(c, d.get("id"), lock=True) if isinstance(d.get("id"), str) else None
+    if cur and calls._dmh(cur) and cur["lead"] is None and cur["state"] == "ringing" and sharing.is_remote(cur["callee"]):
+        h = d.get("actor")                             # 2.5: 1:1 ueber Knoten, das Gegenueber dort lehnt ab / ist besetzt
+        n, host = FC.split_handle(h)
+        if not n or host != peer["host"] or FC.principal(h) != cur["callee"]:
+            F.log(c, "call.forged", peer, "end", throttle=(peer["id"], "cforged4"))
+            return 403, {"error": "not callee"}
+        reason = d.get("reason") if d.get("reason") in ("declined", "busy") else "declined"
+        calls._finish(c, cur, reason, time.time(), by=cur["callee"], remote=True)
+        return 200, {"ok": True}
     if cur and cur["kind"] == "group":                 # 2.4: nur der fuehrende Server beendet einen Gruppenanruf
         if cur["lead"] != peer["id"]:
             return 403, {"error": "not lead"}
@@ -819,6 +902,10 @@ def op_roster(c, peer, d):
         if d.get("state") == "active" and call["state"] == "ringing":
             upd.update(state="active", answered=now)
         c.execute("UPDATE chat_call SET " + ", ".join(f"{k}=?" for k in upd) + " WHERE id=?", tuple(upd.values()) + (cid,))
+        if upd.get("state") == "active":               # wie lokal (join_local): andere eigene Geraete hoeren auf zu klingeln
+            cur = calls._load(c, cid)
+            calls._emit(c, calls._audience(c, cur), "call.state", {"call_id": cid, "chat_id": cur["chat_id"], "state": "active", "kind": "group",
+                                                                   **calls._dmf(cur)})
         for h, st in (d.get("invites") or {}).items() if isinstance(d.get("invites"), dict) else ():
             u = _who(c, h)
             if u and not sharing.is_remote(u) and st in ("ringing", "declined", "joined", "old", "missed"):
@@ -930,7 +1017,59 @@ def _apply_one(c, call, peer, x, now):
                    calls.caps_in(x.get("caps")), None, name=_name(x), now=now)
 
 
-HANDLERS.update(join=op_join, leave=op_leave, roster=op_roster, invite=op_invite)
+def op_dmhorn(c, peer, d):
+    """2.5: 1:1 ueber Knoten aus einem foederierten Direkt-Chat - die anfragende Instanz fuehrt den Anruf (wie 2.3), wir
+    legen die Kopie an (kind 'group', topo 'horn', callee = unser Konto, lead = anfragende Instanz) und lassen klingeln
+    (call.invite dm: true, Push call.group). Danach wie ein foederierter Gruppenanruf ueber Knoten: Annehmen = join beim
+    fuehrenden Server, Ablehnen = end an ihn (dm_ended). 409 horn_block peer|off: nichts angelegt, dort ruft man direkt an."""
+    cid, media, dev = d.get("id"), d.get("media"), d.get("from_device")
+    if not (isinstance(cid, str) and FC._HEX32.fullmatch(cid) and media in calls.MEDIA and isinstance(dev, str) and FC._HEX32.fullmatch(dev)):
+        return 400, {"error": "bad request"}
+    h = d.get("from")
+    n, host = FC.split_handle(h)
+    if not n or host != peer["host"]:
+        F.log(c, "call.forged", peer, "dmhorn", throttle=(peer["id"], "cforged5"))
+        return 403, {"error": "forged"}
+    if not peer_horn_dm(peer):
+        return 403, {"error": "horn disabled"}
+    ch = FC._from_home(c, peer, {"ref": d.get("ref")}) if FC.split_ref(d.get("ref"))[1] == peer["host"] else FC._home_chat(c, d)
+    p_ = FC.principal(h)
+    mem = dict(FC.members(c, ch["id"])) if ch else {}
+    if not ch or ch["kind"] != "dm" or p_ not in mem:
+        return 404, {"error": "unknown chat"}
+    callee = next((u for u in mem if not sharing.is_remote(u)), None)
+    if not callee or mem[callee] != "ok" or mem[p_] != "ok" or ch["fstate"] or FC.blocked(c, callee, h):
+        return 409, {"error": "request"}                       # Anfragen (und Gesperrte) klingeln nicht
+    if not calls.enabled():
+        return 403, {"error": "calls disabled"}
+    if not calls.horn_on():
+        return 409, {"horn_block": "off"}
+    if not calls._can_horn(c, callee):
+        return 409, {"horn_block": "peer"}
+    if not F._rate.allow("cring:" + h, calls.CALL_RATE) or not F._rate.allow("cringp:" + peer["host"], calls.CALL_RATE * 20):
+        return 429, {"error": "too many calls"}
+    if c.execute("SELECT 1 FROM chat_call WHERE id=?", (cid,)).fetchone():
+        return 409, {"error": "duplicate id"}
+    if calls._busy_other(c, callee, cid):
+        return 409, {"busy": True}
+    now = time.time()
+    caps = calls.caps_in(d.get("caps"))
+    FH.note_nodes(peer["id"], d)                       # hat der Server der anrufenden Person eigene Knoten?
+    c.execute("INSERT INTO chat_call (id, chat_id, caller, callee, caller_device, media, state, created, seen_a, seen_b, caps_a, kind, v, topo, "
+              "lead, peer_id) VALUES (?,?,?,?,?,?,'ringing',?,?,?,?,'group',3,'horn',?,?)",
+              (cid, ch["id"], p_, callee, dev, media, now, now, now, caps, peer["id"], peer["id"]))
+    calls._leg_put(c, cid, dev, p_, "member", peer["id"], caps, name=_name(d), now=now)
+    c.execute("INSERT INTO chat_call_invite (call_id, who, state, created) VALUES (?,?,'ringing',?) ON CONFLICT (call_id, who) DO NOTHING",
+              (cid, callee, now))
+    calls._OWN.add(cid)
+    call = calls._load(c, cid)
+    calls.ring_group(c, call, [callee])
+    calls.emit_roster(c, call, fed=False)
+    print(f"call: {cid[:8]} 1:1 ueber Knoten klingelt (von {peer['host']}, {media})", flush=True)
+    return 200, {"ok": True}
+
+
+HANDLERS.update(join=op_join, leave=op_leave, roster=op_roster, invite=op_invite, dmhorn=op_dmhorn)
 
 
 @router.post("/fed/v2/call")
