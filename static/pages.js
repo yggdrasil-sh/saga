@@ -714,10 +714,12 @@
     clearTimeout(S.timer);
     var id = S.cur.id, body = {};
     if (S.dirtyTitle) { body.title = $('pg-title').value; S.dirtyTitle = false; }
-    var getBody = S.dirtyBody && S.editor ? S.editor.save() : Promise.resolve(null);
+    var wantBody = !!(S.dirtyBody && S.editor), getBody = wantBody ? S.editor.save() : Promise.resolve(null);
     S.dirtyBody = false;
     state(T('Speichert …'));
     return getBody.then(function (out) {
+      // W01: Editor.js liefert bei einem Fehler im Block nichts - nicht still als "nichts zu speichern" werten
+      if (wantBody && !(out && Array.isArray(out.blocks))) { S.dirtyBody = true; throw new Error(T('Inhalt konnte nicht gelesen werden')); }
       if (out) { body.body = JSON.stringify(out); body.format = 'blocks'; }
       if (!Object.keys(body).length) return;
       if (S.cur && S.cur.id === id && !S.force && S.cur.rev != null) body.rev = S.cur.rev;   // Konflikterkennung
@@ -736,7 +738,7 @@
         if ('title' in body) { if (S.cur && S.cur.id === id) S.cur.title = body.title.trim(); renderTree(); renderCrumbs(); setLocation(); }
       });
     }).catch(function (err) {
-      S.dirtyBody = S.dirtyBody || !!body.body; S.dirtyTitle = S.dirtyTitle || 'title' in body;
+      S.dirtyBody = S.dirtyBody || !!body.body || (wantBody && !body.body); S.dirtyTitle = S.dirtyTitle || 'title' in body;
       if (err.message === 'conflict') { S.conflict = true; showConflict(err.data && err.data.by); state(T('Nicht gespeichert – Seite wurde zwischenzeitlich geändert'), 'err'); return; }
       // Freigabe entzogen, Teilen abgeschaltet (404) oder Rolle auf Lesen gefallen (403): verstaendlich melden, Text retten
       if ((err.status === 404 || err.status === 403) && S.cur && S.cur.id === id && foreign()) { lostAccess(err.status); return; }
@@ -2020,8 +2022,12 @@
   }
   ToggleTool.toolbox = { title: T('Ausklappbar'),
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>' };
-  // Bewusst KEINE sanitize-Regel: Editor.js bereinigt sonst alle nicht genannten Felder mit leerer Regel und
-  // entfernt die Formatierung im gesamten verschachtelten Inhalt. Den Titel bereinigt der Server (Positivliste).
+  // Bereinigung: nur der Titel (wie Inline-Text); der verschachtelte Inhalt bleibt unangetastet (true) - den bereinigt
+  // der eigene Editor im Toggle je Block, und eine leere Regel wuerde alle Formatierung entfernen. Ohne Regel wandte
+  // Editor.js die Inline-Regeln auf jedes Feld an: das Feld "code" eines Code-Blocks traf auf die Regel des Inline-Codes,
+  // die Bereinigung brach ab und die ganze Seite liess sich nicht mehr speichern (Bughunt W01). Der Server bereinigt
+  // den Titel zusaetzlich (Positivliste).
+  ToggleTool.sanitize = { title: INLINE_SAN, blocks: true };
   ToggleTool.prototype.render = function () {
     var self = this, w = el('div', 'tgl' + (this.open ? ' open' : '')), head = el('div', 'tgl-head');
     var btn = el('button', 'tgl-btn', '▸'); btn.type = 'button'; btn.contentEditable = 'false'; btn.setAttribute('aria-label', T('Auf- oder zuklappen'));
