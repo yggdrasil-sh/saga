@@ -37,6 +37,19 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Pseudonym-Handles in der Mitte gekürzt; Symbole statt Emoji (Schloss, stumm, Verkleinern); Namensleiste 70 % deckend.
   Der Hinweis vor dem Teilen sagt in Gruppen „sehen alle im Anruf“.
 
+### Behoben – „Hierher übernehmen“ bei Anrufen über einen Knoten (Web)
+- Über einen Knoten gibt es keine Direktverbindung zum bisherigen Gerät: Das neue Gerät meldet die Übernahme jetzt
+  über den Signalweg (state.ready + replaces) und meldet das alte danach beim Server ab; ein Gerät, das aus der
+  Teilnehmerliste fällt, während ein anderes eigenes dabei ist, beendet den Anruf („Anruf auf … übernommen“).
+
+### Admin und Knoten
+- Anrufe: „Über Knoten ab“ (ab wie vielen Mitgliedern ein Gruppenanruf über einen Knoten läuft), Liste „Geteilte
+  Knoten anderer Server“, und der Hinweis „kein Knoten bereit“ nennt Server, deren geteilte Knoten nutzbar sind.
+- Knoten auf testing aktualisieren sich selbst: die CI legt signierte Binärdateien jeder Vorabversion in das
+  rollende Vorab-Release `horn-testing`.
+- IPv6: Ohne IPv6 bei Saga (Heimnetz, Proxy ohne AAAA) meldet der Knoten die öffentliche IPv6 seiner Schnittstelle,
+  und Saga übernimmt sie ungeprüft, wenn der Knoten über IPv4 bestätigt ist (Hinweis im Admin).
+
 ### Behoben – Profilbilder fehlten manchmal (alle Plattformen)
 - Ohne gültige Sitzung antwortete `/api/avatar/…` mit 404 („kein Bild“). Die Apps merkten sich das (Android bis
   zum Neustart, iOS 10 Minuten) und erneuerten die abgelaufene Sitzung nicht – nach dem Start oder einer Pause

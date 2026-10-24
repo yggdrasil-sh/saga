@@ -3216,5 +3216,13 @@
  "🖼 Bild hochladen …": "🖼 Subir imagen …",
  "🖼 Eigenes Bild hochladen …": "🖼 Subir una imagen propia …",
  "🗃️ Datenbank einbetten:": "🗃️ Insertar base de datos:",
- "Alles, was in der Auswahl sichtbar ist, sehen alle im Anruf – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.": "Todo lo que sea visible en tu selección lo verán todas las personas de la llamada, incluidas notificaciones, contraseñas y otras ventanas o chats."
+ "Alles, was in der Auswahl sichtbar ist, sehen alle im Anruf – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.": "Todo lo que sea visible en tu selección lo verán todas las personas de la llamada, incluidas notificaciones, contraseñas y otras ventanas o chats.",
+ "Über Knoten ab": "Por nodo desde",
+ "Ab so vielen Mitgliedern im Chat läuft ein Gruppenanruf über einen Knoten (mindestens 3). Leer = ab {n} mit Video bzw. {m} nur mit Ton, darunter direkt zwischen den Geräten (Mesh).": "A partir de este número de miembros del chat, una llamada de grupo pasa por un nodo (mínimo 3). Vacío = a partir de {n} con vídeo o {m} solo audio; por debajo, directamente entre los dispositivos (mesh).",
+ "Gerade ist kein eigener Knoten bereit. Gruppenanrufe in Chats mit Personen von {hosts} können deren geteilte Knoten nutzen; alle anderen laufen im Mesh (bis 4 mit Video / 6 nur Ton).": "Ahora no hay ningún nodo propio listo. Las llamadas de grupo en chats con personas de {hosts} pueden usar sus nodos compartidos; las demás funcionan en mesh (hasta 4 con vídeo / 6 solo audio).",
+ "Geteilte Knoten anderer Server": "Nodos compartidos de otros servidores",
+ "Diese Server teilen ihre Knoten mit dir. Personen dieses Servers nutzen sie in gemeinsamen Gruppenanrufen mit Personen von dort (Kontingent legt der andere Server fest).": "Estos servidores comparten sus nodos contigo. Las personas de este servidor los usan en llamadas de grupo con personas de allí (el otro servidor fija el cupo).",
+ "Kein verbundener Server teilt gerade Knoten mit dir.": "Ningún servidor conectado comparte nodos contigo ahora mismo.",
+ "ungeprüft": "sin comprobar",
+ "Saga selbst hat kein IPv6 und kann die IPv6-Adresse des Knotens nicht prüfen. Der Knoten ist über IPv4 bestätigt; seine IPv6 wurde ungeprüft übernommen.": "Saga no tiene IPv6 y no puede comprobar la dirección IPv6 del nodo. El nodo está confirmado por IPv4; su IPv6 se ha adoptado sin comprobar."
 }

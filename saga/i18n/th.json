@@ -3216,5 +3216,13 @@
  "🖼 Bild hochladen …": "🖼 อัปโหลดรูปภาพ …",
  "🖼 Eigenes Bild hochladen …": "🖼 อัปโหลดรูปภาพของตัวเอง …",
  "🗃️ Datenbank einbetten:": "🗃️ ฝังฐานข้อมูล:",
- "Alles, was in der Auswahl sichtbar ist, sehen alle im Anruf – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.": "ทุกคนในสายจะเห็นทุกอย่างที่มองเห็นในส่วนที่เลือก รวมถึงการแจ้งเตือน รหัสผ่าน และหน้าต่างหรือแชทอื่น ๆ"
+ "Alles, was in der Auswahl sichtbar ist, sehen alle im Anruf – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.": "ทุกคนในสายจะเห็นทุกอย่างที่มองเห็นในส่วนที่เลือก รวมถึงการแจ้งเตือน รหัสผ่าน และหน้าต่างหรือแชทอื่น ๆ",
+ "Über Knoten ab": "ผ่านโหนดตั้งแต่",
+ "Ab so vielen Mitgliedern im Chat läuft ein Gruppenanruf über einen Knoten (mindestens 3). Leer = ab {n} mit Video bzw. {m} nur mit Ton, darunter direkt zwischen den Geräten (Mesh).": "เมื่อสมาชิกในแชตถึงจำนวนนี้ การโทรกลุ่มจะผ่านโหนด (อย่างน้อย 3) เว้นว่าง = ตั้งแต่ {n} เมื่อมีวิดีโอ หรือ {m} เมื่อมีแค่เสียง ต่ำกว่านั้นจะเชื่อมต่อตรงระหว่างอุปกรณ์ (mesh)",
+ "Gerade ist kein eigener Knoten bereit. Gruppenanrufe in Chats mit Personen von {hosts} können deren geteilte Knoten nutzen; alle anderen laufen im Mesh (bis 4 mit Video / 6 nur Ton).": "ตอนนี้ยังไม่มีโหนดของคุณเองที่พร้อมใช้ การโทรกลุ่มในแชตที่มีคนจาก {hosts} ใช้โหนดที่เขาแชร์ได้ ส่วนการโทรอื่นจะเป็นแบบ mesh (สูงสุด 4 คนพร้อมวิดีโอ / 6 คนแค่เสียง)",
+ "Geteilte Knoten anderer Server": "โหนดที่เซิร์ฟเวอร์อื่นแชร์",
+ "Diese Server teilen ihre Knoten mit dir. Personen dieses Servers nutzen sie in gemeinsamen Gruppenanrufen mit Personen von dort (Kontingent legt der andere Server fest).": "เซิร์ฟเวอร์เหล่านี้แชร์โหนดให้คุณ คนในเซิร์ฟเวอร์นี้ใช้โหนดเหล่านั้นในการโทรกลุ่มร่วมกับคนจากที่นั่น (โควตากำหนดโดยเซิร์ฟเวอร์อีกฝั่ง)",
+ "Kein verbundener Server teilt gerade Knoten mit dir.": "ขณะนี้ไม่มีเซิร์ฟเวอร์ที่เชื่อมต่อแชร์โหนดให้คุณ",
+ "ungeprüft": "ยังไม่ได้ตรวจ",
+ "Saga selbst hat kein IPv6 und kann die IPv6-Adresse des Knotens nicht prüfen. Der Knoten ist über IPv4 bestätigt; seine IPv6 wurde ungeprüft übernommen.": "Saga เองไม่มี IPv6 จึงตรวจที่อยู่ IPv6 ของโหนดไม่ได้ โหนดได้รับการยืนยันผ่าน IPv4 แล้ว ส่วน IPv6 ถูกนำมาใช้โดยไม่ได้ตรวจ"
 }

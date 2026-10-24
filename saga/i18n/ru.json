@@ -3216,5 +3216,13 @@
  "🖼 Bild hochladen …": "🖼 Загрузить изображение …",
  "🖼 Eigenes Bild hochladen …": "🖼 Загрузить своё изображение …",
  "🗃️ Datenbank einbetten:": "🗃️ Встроить базу данных:",
- "Alles, was in der Auswahl sichtbar ist, sehen alle im Anruf – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.": "Всё, что видно в выбранной области, увидят все участники звонка – в том числе уведомления, пароли и другие окна или чаты."
+ "Alles, was in der Auswahl sichtbar ist, sehen alle im Anruf – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.": "Всё, что видно в выбранной области, увидят все участники звонка – в том числе уведомления, пароли и другие окна или чаты.",
+ "Über Knoten ab": "Через узел от",
+ "Ab so vielen Mitgliedern im Chat läuft ein Gruppenanruf über einen Knoten (mindestens 3). Leer = ab {n} mit Video bzw. {m} nur mit Ton, darunter direkt zwischen den Geräten (Mesh).": "Начиная с этого числа участников чата групповой звонок идёт через узел (не меньше 3). Пусто = от {n} с видео или {m} только со звуком; меньше — напрямую между устройствами (mesh).",
+ "Gerade ist kein eigener Knoten bereit. Gruppenanrufe in Chats mit Personen von {hosts} können deren geteilte Knoten nutzen; alle anderen laufen im Mesh (bis 4 mit Video / 6 nur Ton).": "Сейчас нет готового собственного узла. Групповые звонки в чатах с людьми с {hosts} могут использовать их общие узлы; остальные идут в mesh (до 4 с видео / 6 только со звуком).",
+ "Geteilte Knoten anderer Server": "Общие узлы других серверов",
+ "Diese Server teilen ihre Knoten mit dir. Personen dieses Servers nutzen sie in gemeinsamen Gruppenanrufen mit Personen von dort (Kontingent legt der andere Server fest).": "Эти серверы делятся с вами своими узлами. Люди с этого сервера используют их в общих групповых звонках с людьми оттуда (квоту задаёт другой сервер).",
+ "Kein verbundener Server teilt gerade Knoten mit dir.": "Сейчас ни один подключённый сервер не делится с вами узлами.",
+ "ungeprüft": "не проверено",
+ "Saga selbst hat kein IPv6 und kann die IPv6-Adresse des Knotens nicht prüfen. Der Knoten ist über IPv4 bestätigt; seine IPv6 wurde ungeprüft übernommen.": "У самой Saga нет IPv6, и она не может проверить IPv6-адрес узла. Узел подтверждён по IPv4; его IPv6 принят без проверки."
 }

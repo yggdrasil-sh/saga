@@ -3216,5 +3216,13 @@
  "🖼 Bild hochladen …": "🖼 Upload image …",
  "🖼 Eigenes Bild hochladen …": "🖼 Upload your own image …",
  "🗃️ Datenbank einbetten:": "🗃️ Embed database:",
- "Alles, was in der Auswahl sichtbar ist, sehen alle im Anruf – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.": "Everything visible in your selection is seen by everyone in the call – including notifications, passwords and other windows or chats."
+ "Alles, was in der Auswahl sichtbar ist, sehen alle im Anruf – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.": "Everything visible in your selection is seen by everyone in the call – including notifications, passwords and other windows or chats.",
+ "Über Knoten ab": "Via node from",
+ "Ab so vielen Mitgliedern im Chat läuft ein Gruppenanruf über einen Knoten (mindestens 3). Leer = ab {n} mit Video bzw. {m} nur mit Ton, darunter direkt zwischen den Geräten (Mesh).": "From this many chat members a group call runs via a node (at least 3). Empty = from {n} with video or {m} audio only; below that, directly between the devices (mesh).",
+ "Gerade ist kein eigener Knoten bereit. Gruppenanrufe in Chats mit Personen von {hosts} können deren geteilte Knoten nutzen; alle anderen laufen im Mesh (bis 4 mit Video / 6 nur Ton).": "No node of your own is ready right now. Group calls in chats with people from {hosts} can use their shared nodes; all others run as mesh (up to 4 with video / 6 audio only).",
+ "Geteilte Knoten anderer Server": "Shared nodes of other servers",
+ "Diese Server teilen ihre Knoten mit dir. Personen dieses Servers nutzen sie in gemeinsamen Gruppenanrufen mit Personen von dort (Kontingent legt der andere Server fest).": "These servers share their nodes with you. People on this server use them in group calls together with people from there (the other server sets the quota).",
+ "Kein verbundener Server teilt gerade Knoten mit dir.": "No connected server is sharing nodes with you right now.",
+ "ungeprüft": "unchecked",
+ "Saga selbst hat kein IPv6 und kann die IPv6-Adresse des Knotens nicht prüfen. Der Knoten ist über IPv4 bestätigt; seine IPv6 wurde ungeprüft übernommen.": "Saga itself has no IPv6 and can't check the node's IPv6 address. The node is confirmed via IPv4; its IPv6 was taken over unchecked."
 }

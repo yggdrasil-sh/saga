@@ -3216,5 +3216,13 @@
  "🖼 Bild hochladen …": "🖼 Bild hochladen …",
  "🖼 Eigenes Bild hochladen …": "🖼 Eigenes Bild hochladen …",
  "🗃️ Datenbank einbetten:": "🗃️ Datenbank einbetten:",
- "Alles, was in der Auswahl sichtbar ist, sehen alle im Anruf – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.": "Alles, was in der Auswahl sichtbar ist, sehen alle im Anruf – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats."
+ "Alles, was in der Auswahl sichtbar ist, sehen alle im Anruf – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.": "Alles, was in der Auswahl sichtbar ist, sehen alle im Anruf – auch Benachrichtigungen, Passwörter und andere Fenster oder Chats.",
+ "Über Knoten ab": "Über Knoten ab",
+ "Ab so vielen Mitgliedern im Chat läuft ein Gruppenanruf über einen Knoten (mindestens 3). Leer = ab {n} mit Video bzw. {m} nur mit Ton, darunter direkt zwischen den Geräten (Mesh).": "Ab so vielen Mitgliedern im Chat läuft ein Gruppenanruf über einen Knoten (mindestens 3). Leer = ab {n} mit Video bzw. {m} nur mit Ton, darunter direkt zwischen den Geräten (Mesh).",
+ "Gerade ist kein eigener Knoten bereit. Gruppenanrufe in Chats mit Personen von {hosts} können deren geteilte Knoten nutzen; alle anderen laufen im Mesh (bis 4 mit Video / 6 nur Ton).": "Gerade ist kein eigener Knoten bereit. Gruppenanrufe in Chats mit Personen von {hosts} können deren geteilte Knoten nutzen; alle anderen laufen im Mesh (bis 4 mit Video / 6 nur Ton).",
+ "Geteilte Knoten anderer Server": "Geteilte Knoten anderer Server",
+ "Diese Server teilen ihre Knoten mit dir. Personen dieses Servers nutzen sie in gemeinsamen Gruppenanrufen mit Personen von dort (Kontingent legt der andere Server fest).": "Diese Server teilen ihre Knoten mit dir. Personen dieses Servers nutzen sie in gemeinsamen Gruppenanrufen mit Personen von dort (Kontingent legt der andere Server fest).",
+ "Kein verbundener Server teilt gerade Knoten mit dir.": "Kein verbundener Server teilt gerade Knoten mit dir.",
+ "ungeprüft": "ungeprüft",
+ "Saga selbst hat kein IPv6 und kann die IPv6-Adresse des Knotens nicht prüfen. Der Knoten ist über IPv4 bestätigt; seine IPv6 wurde ungeprüft übernommen.": "Saga selbst hat kein IPv6 und kann die IPv6-Adresse des Knotens nicht prüfen. Der Knoten ist über IPv4 bestätigt; seine IPv6 wurde ungeprüft übernommen."
 }

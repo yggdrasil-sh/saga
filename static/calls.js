@@ -795,6 +795,15 @@
         : T('Du bist nicht mehr im Anruf.'), 'info');
       return;
     }
+    // Dieses Geraet fehlt in der Liste, ein anderes eigenes ist dabei: es hat uebernommen und dieses abgemeldet
+    if (here && R.inRoom && !R.ho && !R.ending && old[here] && !legs.some(function (x) { return x.device === here; })) {
+      var other = legs.filter(function (x) { return x.me && x.device !== here; })[0];
+      if (other) {
+        R.ending = true;
+        finish(R, T('Anruf auf {dev} übernommen.', { dev: other.dev_name || T('anderes Gerät') }), 'info');
+        return;
+      }
+    }
     R.legs = legs;
     if (extra && extra.limit) R.limit = extra.limit;
     var mine = myLeg(R);
@@ -922,13 +931,18 @@
     if (myCaps().indexOf('horn') < 0) return Promise.reject(new Error(T('Dafür braucht dieses Gerät Saga 2.5.')));
     hornNew(R, null);
     R.joinSent = true;
-    return api('POST', '/api/calls/' + R.id + '/join', { device: myDev().id, role: role === 'handover' ? 'member' : role, caps: myCaps(),
-                                                         dev_class: mobile ? 'mobile' : 'desktop' }).then(function (r) {
+    var jb = { device: myDev().id, role: role === 'handover' && !R.ho ? 'member' : role, caps: myCaps(), dev_class: mobile ? 'mobile' : 'desktop' };
+    if (role === 'handover' && R.ho) jb.replaces = R.ho.rep;
+    return api('POST', '/api/calls/' + R.id + '/join', jb).then(function (r) {
       if (!live(R)) { api('POST', '/api/calls/' + R.id + '/leave', { device: myDev().id }).catch(function () {}); return; }
       R.ready = true; R.inRoom = true; R.call = r.call;
       rosterIn(R, r.call.legs, r.call);
       aliveOn(R);
       R.early.splice(0).forEach(function (d) { sigRoute(R, d); });
+      if (R.ho) {                                      // Uebernahme: warten, bis der Knoten verbunden ist (hoCheck)
+        R.hoT = setTimeout(function () { hoFail(R); }, HO_S * 1000);
+        R.hoI = setInterval(function () { if (!R.ho || !live(R)) { clearInterval(R.hoI); return; } hoCheck(R); }, 300);
+      }
       return hornGo(R, r.call.horn);
     }, function (e) {
       throw new Error(e.data && e.data.join_block ? (e.data.error || blockText(e.data.join_block, e.data.limit)) : e.message);
@@ -975,10 +989,14 @@
   function hoCheck(R) {
     R = roomOf(R);
     if (!R.ho || R.ho.done || !R.ready || R.done) return;
-    var need = links(R).filter(function (L) { return !(L.peer && L.peer.me); });
-    if (!need.length || need.some(function (L) { return !L.connected; })) return;
-    var rep = R.ho.rep, A = linkOf(R, rep);
-    R.ho.done = true; clearTimeout(R.hoT);
+    if (R.horn) {
+      if (!R.horn.cur) return;                         // 2.5: ueber einen Knoten - verbunden?
+    } else {
+      var need = links(R).filter(function (L) { return !(L.peer && L.peer.me); });
+      if (!need.length || need.some(function (L) { return !L.connected; })) return;
+    }
+    var rep = R.ho.rep, A = R.horn ? null : linkOf(R, rep);
+    R.ho.done = true; clearTimeout(R.hoT); clearInterval(R.hoI);
     R.companion = false; R.took = true;
     setMic(R, true); setSpk(R, true);
     // 2.4 (Web-Runde 2, M1): Kamera wie beim abgebenden Geraet (dessen letzter Zustand ueber die eigene Verbindung);
@@ -986,14 +1004,20 @@
     var camWas = A && A.gotState ? !!A.remoteState.cam : null;
     if (camWas === true && !R.cam) toggleCam(R);
     else if (camWas === false && R.cam) toggleCam(R);
-    if (A && A.established) sendSignal(A, { t: 'state', ready: true, replaces: rep, mic: true, cam: camWas === null ? !!R.cam : camWas, screen: !!R.screen });
+    if (R.horn) {
+      // ueber einen Knoten keine Direktverbindung zum alten Geraet: Bescheid ueber den Signalweg und zur Sicherheit
+      // (aeltere App) dessen Platz kurz danach beim Server abmelden
+      var o = {}; o[rep] = JSON.stringify({ t: 'state', ready: true, replaces: rep, mic: true, cam: !!R.cam, screen: !!R.screen });
+      var id0 = R.id;
+      hornSend(R, o).then(function () { setTimeout(function () { api('POST', '/api/calls/' + id0 + '/leave', { device: rep, reason: 'handover' }).catch(function () {}); }, 3000); });
+    } else if (A && A.established) sendSignal(A, { t: 'state', ready: true, replaces: rep, mic: true, cam: camWas === null ? !!R.cam : camWas, screen: !!R.screen });
     else api('POST', '/api/calls/' + R.id + '/leave', { device: rep, reason: 'handover' }).catch(function () {});   // eigenes Geraet ohne Verbindung
     R.ho = null;
     drawCtl(R); drawInfo(R);
   }
   function hoFail(R) {
     if (!R.ho || R.ho.done || !live(R)) return;
-    R.ho = null;
+    R.ho = null; clearInterval(R.hoI);
     api('POST', '/api/calls/' + R.id + '/leave', { device: myDev().id }).catch(function () {});
     R.ending = true;
     finish(R, T('Übernahme hat nicht geklappt – der Anruf läuft auf dem anderen Gerät weiter.'), 'error');
@@ -2123,6 +2147,8 @@
         var a = F.parseFkeyAck(b);
         if (a && !a.ok) H.X.ownKeys().then(function (ks) { if (ks[0]) { var o = {}; o[d.from_device] = hornFkey(H, ks[0]); hornSend(R, o); } });
       } else if (b.t === 'state') {
+        // "Hierher uebernehmen" im Knoten-Anruf: das neue eigene Geraet meldet ready + replaces = dieses Geraet
+        if (b.ready && b.replaces === myDev().id && x.me) { handoverOut(R, d.from_device); return; }
         H.st[d.from_device] = { mic: b.mic !== false, cam: !!b.cam, screen: !!b.screen };
         if (Array.isArray(b.hp)) {                     // P9/P10: Kennungen des Absenders an seinen Knoten
           if (!H.hpx) H.hpx = {};
