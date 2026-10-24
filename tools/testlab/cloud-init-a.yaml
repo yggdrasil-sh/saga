@@ -21,7 +21,9 @@ write_files:
             - --entrypoints.web.address=:80
             - --entrypoints.web.http.redirections.entrypoint.to=websecure
             - --entrypoints.websecure.address=:443
-            - --certificatesresolvers.le.acme.tlschallenge=true
+            # http-01: mit tlschallenge beantwortet Traefik TLS-ALPN-01 selbst - auch fuer horn-a (Durchreiche),
+            # der Knoten bekaeme dann nie ein Zertifikat
+            - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
             - --certificatesresolvers.le.acme.storage=/le/acme.json
           ports: ["80:80", "443:443"]
           volumes:
@@ -46,7 +48,9 @@ write_files:
         traefik-le:
       networks:
         default:
-          ipam: {config: [{subnet: 172.30.0.0/24}]}
+          # feste Adresse fuer Traefik (TRUSTED_PROXIES), die anderen Container bekommen Adressen ab .128 - sonst kann
+          # db/saga beim Start 172.30.0.2 belegen und Traefik startet nicht ("Address already in use")
+          ipam: {config: [{subnet: 172.30.0.0/24, ip_range: 172.30.0.128/25}]}
   - path: /usr/local/sbin/saga-test-start
     permissions: "0755"
     content: |
@@ -72,6 +76,7 @@ write_files:
       TIMEZONE=Europe/Berlin
       COMPOSE_FILE=docker-compose.yml:compose.testlab.yml
       HORN_NAME=horn-a.@@DOMAIN@@
+      HORN_PUBLIC_URL=https://horn-a.@@DOMAIN@@
       HORN_UDP=0
       HORN_PROXY_PROTOCOL=auto
       HORN_PUBLIC_IP=$IP4

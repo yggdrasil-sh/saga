@@ -50,7 +50,7 @@ write_files:
   - path: /opt/saga-test/clients/package.json
     permissions: "0644"
     content: |
-      {"name": "saga-test-clients", "private": true, "type": "module", "dependencies": {"playwright-core": "^1"}}
+      {"name": "saga-test-clients", "private": true, "type": "module", "dependencies": {"playwright-core": "~1.49"}}
   - path: /etc/profile.d/saga-test.sh
     permissions: "0644"
     content: |

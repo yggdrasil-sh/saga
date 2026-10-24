@@ -182,12 +182,13 @@ def cmd_foederieren():
     rc, code, err = _saga_py("a", "print(F.make_invite('testlabor'))")
     if rc or not code:
         sys.exit("Einladung auf A fehlgeschlagen: " + err[-400:])
+    time.sleep(6)                                      # Einstellung "Foederation an" gilt im laufenden Saga nach 5 s
     rc, out, err = _saga_py("b", f"import sys; u='https://a.{dom}'; c=sys.stdin.readline().strip(); i=F.preview(u); "
                                  "F.connect(u, c, i['fingerprint']); print('ok', i['fingerprint'][:8])", inp=(code + "\n").encode())
     print(f"  b: Anfrage an A {out or 'FEHLER ' + err[-400:]}")
     if rc:
         sys.exit(1)
-    rc, out, err = _saga_py("a", f"from db import connect; c=connect(); r=c.execute('SELECT id FROM fed_peer WHERE host=?', ('b.{dom}',)).fetchone(); "
+    rc, out, err = _saga_py("a", f"from db import connect\nwith connect() as c:\n    r = c.execute('SELECT id FROM fed_peer WHERE host=?', ('b.{dom}',)).fetchone()\n"
                                  "print(F.confirm(r[0], 'testlabor'))")
     print(f"  a: bestaetigt {out or 'FEHLER ' + err[-400:]}")
 
@@ -196,13 +197,14 @@ def cmd_dm_test():
     """Browser-Test 1:1 ueber Knoten ueber Servergrenzen (tests/browser_fed_horn_dm.js) auf C: Wegwerf-Konten c1 (A) und
     c2 (B) mit zufaelligem Passwort (nur ueber stdin), Test vom Branch TESTLAB_CHANNEL (Standard testing)."""
     dom, ch = env("TESTLAB_DOMAIN"), os.environ.get("TESTLAB_CHANNEL", "testing")
-    pw = secrets.token_urlsafe(18)
-    for role, user in (("a", "c1"), ("b", "c2")):
+    pw, sx = secrets.token_urlsafe(18), secrets.token_hex(2)     # neue Konten je Lauf (vorhandene behalten ihr Passwort)
+    ua, ub = f"c1x{sx}", f"c2x{sx}"
+    for role, user in (("a", ua), ("b", ub)):
         r = ssh(role, f"cd /opt/saga-test/saga && docker compose exec -T saga python run.py benutzer-anlegen {user}", inp=(pw + "\n").encode(),
                 check=False)
         print(f"  {role}: Konto {user} " + ("ok" if r.returncode == 0 else "FEHLER " + (r.stderr or b"").decode()[-300:]))
     script = (f"set -e; cd /opt/saga-test; curl -fsSL https://raw.githubusercontent.com/yggdrasil-sh/saga/{ch}/tests/browser_fed_horn_dm.js -o fed-dm.cjs; "
-              f"read -r P; SAGA_PASS=\"$P\" SAGA_A=https://a.{dom} SAGA_B=https://b.{dom} SAGA_USER_A=c1 SAGA_USER_B=c2 "
+              f"read -r P; SAGA_PASS=\"$P\" SAGA_A=https://a.{dom} SAGA_B=https://b.{dom} SAGA_USER_A={ua} SAGA_USER_B={ub} "
               "CHROMIUM=/usr/bin/chromium PLAYWRIGHT=/opt/saga-test/clients/node_modules/playwright-core SHOTS=/opt/saga-test/shots "
               "node fed-dm.cjs 2>&1 | tail -40")
     r = ssh("c", "sh -c " + shlex.quote(script), inp=(pw + "\n").encode(), check=False)

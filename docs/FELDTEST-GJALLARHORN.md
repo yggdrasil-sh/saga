@@ -22,7 +22,11 @@ Der Server, in dessen Chat der Anruf beginnt (das **Heim** des Chats), führt ih
 - Die Server sind verbunden (Admin-Bereich → **Föderation**, Einladungscode, beidseitig bestätigt) und dort ist für
   den jeweils anderen **Anrufe** eingeschaltet.
 - Je Server mindestens ein Knoten, der **443/TCP von außen** erreicht (für Fall a auch auf B):
-  - der **eingebaute Knoten** mit eigenem Namen und TLS-Durchreiche (SNI) am Reverse Proxy auf `HORN_PORT` (Standard 8443),
+  - der **eingebaute Knoten** mit eigenem Namen und TLS-Durchreiche (SNI) am Reverse Proxy auf `HORN_PORT` (Standard 8443).
+    Zwei Stolpersteine (Testlabor 24.10.): In der `.env` `HORN_PUBLIC_URL=https://horn-x.example.org` setzen – sonst
+    meldet der Knoten `…:8443` und die Geräte erreichen ihn nicht. Und der Proxy darf **TLS-ALPN-01 nicht selbst
+    beantworten**: Traefik mit `acme.tlschallenge` fängt die Prüfung von Let's Encrypt für den Knoten ab (Knoten ohne
+    Zertifikat, TLS-Fehler „internal error“) – dort `acme.httpchallenge` (Port 80) bzw. DNS-01 verwenden,
   - oder ein weiterer Knoten über **Erweitern** (Admin → Anrufe), z. B. auf einem kleinen vServer.
 - **Ausgehend** muss jeder Knoten 443/TCP zu Saga **und zu den anderen Knoten** öffnen dürfen (die Kaskade wählt den
   Knoten des anderen Servers an). 443/UDP ist optional.
