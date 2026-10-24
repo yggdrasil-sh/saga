@@ -2535,8 +2535,10 @@
     };
   }
   // Bein vom Knoten beendet: entfernt (Gastgeber) -> der Server meldet es; sonst wie Verbindung weg
+  // Bughunt W08: auch "raum geschlossen" (Anruf vorbei) und "zu" erst beim Server nachfragen - sonst holte das Geraet
+  // nach dem Auflegen der Gegenseite neue Kandidaten (409) und raeumte schon geschlossene Beine ab (404)
   function hornGone(R, conn) {
-    if (conn.closed === 'entfernt') {
+    if (conn.closed === 'entfernt' || conn.closed === 'raum geschlossen' || conn.closed === 'zu') {
       api('GET', '/api/calls/' + R.id + '?device=' + q(myDev().id)).then(function (r) {
         if (!live(R)) return;
         if (r.call.state === 'ended') remoteEnded(R, { reason: r.call.reason });
@@ -2711,10 +2713,13 @@
     if (!conn || conn.dead) return;
     conn.dead = true;
     var H = R.horn;
+    // Bughunt W08: kein DELETE, wenn der Knoten das Bein schon beendet hat (closed) oder der Anruf vorbei ist - dann
+    // beendet Saga die Beine selbst (kick beim Verlassen, close am Ende); das DELETE kam sonst als 404 hinterher
+    var del = !conn.closed && !R.done && !R.ending;
     Object.keys(conn.legs).forEach(function (role) {
       var L = conn.legs[role];
       if (L.ws) { try { L.ws.close(); } catch (e) { /* zu */ } L.ws = null; }
-      if (L.id) hornFetch(conn.url + '/api/sfu/leg/' + encodeURIComponent(L.id), null, 'DELETE').catch(function () {});
+      if (L.id && del) hornFetch(conn.url + '/api/sfu/leg/' + encodeURIComponent(L.id), null, 'DELETE').catch(function () {});
       try { L.pc.close(); } catch (e) { /* zu */ }
       if (H) (L.recv || []).forEach(function (x) { delete H.vown[x.rid]; });
     });
