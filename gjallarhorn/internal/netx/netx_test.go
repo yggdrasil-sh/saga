@@ -372,6 +372,10 @@ func TestUDPStunAndSelfTest(t *testing.T) {
 	if err != nil || from != target || rtt <= 0 {
 		t.Fatalf("selbsttest %v %v %v", from, rtt, err)
 	}
+	// der Zaehler steigt erst nach dem Senden der Antwort - die Probe kann sie schon vorher lesen (CI im Image-Build)
+	for i := 0; i < 100 && pc.STUN.Answer.Load() == 0; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
 	if pc.STUN.Answer.Load() == 0 {
 		t.Fatal("keine antwort gezaehlt")
 	}
