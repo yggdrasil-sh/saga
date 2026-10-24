@@ -2327,6 +2327,7 @@
   var VLIST_MIN = 150, VLIST_OVER = 900;
   function vlist(box, n, make, key, pad, end, hcache, after) {
     var H = new Array(n), nodes = new Map(), pads = [], raf = 0, all = false, clips = null, pin = -1, est = hcache.est || 38;
+    var idxOf = new Map(), rowRO = window.ResizeObserver ? new ResizeObserver(function (es) { rowsResized(es); }) : null;
     for (var i = 0; i < n; i++) H[i] = hcache.get(key(i)) || 0;
     function off() { var o = new Array(n + 1); o[0] = 0; for (var k = 0; k < n; k++) o[k + 1] = o[k] + (H[k] || est); return o; }
     function clipRange() {                       // sichtbarer Bereich (Fenster geschnitten mit scrollenden Vorfahren)
@@ -2349,8 +2350,10 @@
     function insert(k, prev) {
       var nd = make(k); nodes.set(k, nd);
       box.insertBefore(nd, prev ? prev.nextSibling : box.firstChild);
+      if (rowRO) { idxOf.set(nd, k); rowRO.observe(nd); }
       return nd;
     }
+    function drop(k, nd) { nd.remove(); nodes.delete(k); if (rowRO) { rowRO.unobserve(nd); idxOf.delete(nd); } }
     var seen = false, tries = 0;
     function update() {
       raf = 0;
@@ -2369,14 +2372,36 @@
       if (f >= 0) want[f] = 1;
       if (pin >= 0 && pin < n) want[pin] = 1;
       pads.forEach(function (p) { p.remove(); }); pads = [];
-      nodes.forEach(function (nd, k) { if (!want[k]) { nd.remove(); nodes.delete(k); } });
+      nodes.forEach(function (nd, k) { if (!want[k]) drop(k, nd); });
       Object.keys(want).forEach(function (k) { W.push(+k); }); W.sort(function (x, y) { return x - y; });
       var prev = null, fresh = [];
       W.forEach(function (k) { var nd = nodes.get(k); if (!nd) { nd = insert(k, prev); fresh.push(nd); } prev = nd; });
       if (fresh.length && after) after(fresh);
-      var changed = measure(W);
+      // Bughunt P06: Hoehen misst der ResizeObserver der Zeilen (nach dem Layout dieses Frames, kein erzwungenes Layout
+      // hier); nur ohne ResizeObserver wie frueher sofort per offsetHeight
+      var changed = rowRO ? false : measure(W);
       place(W);
       if (changed) schedule();                   // geschaetzte Hoehen korrigiert: Ausschnitt noch einmal pruefen
+    }
+    // Neue/geaenderte Zeilenhoehen (ResizeObserver): laeuft nach dem Layout, offsetHeight kostet hier nichts. Weicht eine
+    // Hoehe von der fuer die Platzhalter angenommenen ab, die Platzhalter gleich (noch vor dem Zeichnen) neu setzen und
+    // den Ausschnitt im naechsten Frame pruefen - wie frueher nach measure().
+    function rowsResized(es) {
+      if (all) return;
+      var changed = false, sum = 0, cnt = 0;
+      es.forEach(function (e) {
+        var nd = e.target, k = idxOf.get(nd);
+        if (k == null || nodes.get(k) !== nd) return;
+        var hh = nd.offsetHeight; if (!hh) return;
+        sum += hh; cnt++;
+        if (hh !== (H[k] || est)) changed = true;
+        if (hh !== H[k]) { H[k] = hh; hcache.set(key(k), hh); }
+      });
+      if (cnt && !hcache.est) { est = hcache.est = Math.round(sum / cnt); changed = true; }
+      if (!changed || !box.isConnected) return;
+      pads.forEach(function (p) { p.remove(); }); pads = [];
+      var W = []; nodes.forEach(function (nd, k) { W.push(k); }); W.sort(function (x, y) { return x - y; });
+      place(W); schedule();
     }
     function measure(W) {
       var changed = false, sum = 0, cnt = 0;
@@ -2409,6 +2434,7 @@
       document.removeEventListener('scroll', schedule, true); window.removeEventListener('resize', schedule);
       window.removeEventListener('beforeprint', renderAll); window.removeEventListener('afterprint', afterPrint);
       if (ro) ro.disconnect();
+      if (rowRO) rowRO.disconnect();
     }
     document.addEventListener('scroll', schedule, { capture: true, passive: true }); window.addEventListener('resize', schedule);
     window.addEventListener('beforeprint', renderAll); window.addEventListener('afterprint', afterPrint);
