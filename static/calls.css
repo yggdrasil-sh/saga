@@ -162,8 +162,8 @@
 .cl-win.small .cl-grid{inset:2.6rem .4rem 3.6rem;gap:.3rem}
 .cl-win.small .cl-tl{font-size:.72rem}
 .cl-win.small .cl-td,.cl-win.small .cl-take{display:none}
-/* Leiste "Anruf laeuft" (anderes eigenes Geraet im Anruf, Gruppenanruf im Chat) */
-.cl-run{position:fixed;top:4.6rem;left:50%;transform:translateX(-50%);z-index:205;display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .7rem;
+/* Leiste "Anruf laeuft" (anderes eigenes Geraet im Anruf, Gruppenanruf im Chat) - unter Menues (80)/Dialogen (90) */
+.cl-run{position:fixed;top:4.6rem;left:50%;transform:translateX(-50%);z-index:78;display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .7rem;
   max-width:min(640px,calc(100vw - 2rem));padding:.45rem .55rem .45rem .9rem;border-radius:16px;background:var(--card);color:var(--fg);
   border:1px solid var(--border);box-shadow:0 10px 32px rgba(0,0,0,.28);font-size:.92rem}
 .cl-run-t{flex:1;min-width:10rem}
@@ -323,3 +323,5 @@
 .cl-win.small.self-c2 .cl-local,.cl-win.small.self-c3 .cl-local{bottom:4.4rem}
 .cl-win.self-min .cl-local{width:44px;height:44px;aspect-ratio:1;border-radius:50%;opacity:.85}
 .cl-win.self-min .cl-local:hover{opacity:1}
+/* Hinweise (Toast) bei offenem Anruffenster ueber der Knopfleiste statt darauf (D04) */
+body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-bottom))}

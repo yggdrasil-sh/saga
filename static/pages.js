@@ -1752,9 +1752,33 @@
     $('pg-modal').classList.remove('no-x');
     $('pg-modal-title').textContent = title; var body = $('pg-modal-body'); body.textContent = '';
     S.modalClose = null;
+    if ($('pg-modal').hidden) {                     // D08: Fokus danach zurueck zum Ausloeser (aus einem Menue: dessen Knopf)
+      var a = document.activeElement;
+      if (!a || a === document.body || !a.isConnected || (a.closest && a.closest('.menu'))) a = (HK.lastMenuOwner && HK.lastMenuOwner()) || a;
+      S.modalBack = a;
+    }
     build(body); $('pg-modal').hidden = false; $('pg-modal-close').focus();
   }
-  function closeModal() { $('pg-modal').hidden = true; var f = S.modalClose; S.modalClose = null; if (f) f(); }
+  function closeModal() {
+    var b = S.modalBack; S.modalBack = null;
+    $('pg-modal').hidden = true; var f = S.modalClose; S.modalClose = null; if (f) f();
+    if (b && !b.isConnected && b.className && typeof b.className === 'string') {      // neu gezeichnet (z. B. Datenbank-Leiste): gleicher Knopf
+      var same = Array.prototype.filter.call(document.querySelectorAll('.' + b.className.trim().split(/\s+/).join('.')),
+        function (x) { return x.textContent === b.textContent; });
+      b = same[0] || null;
+    }
+    if (b && b.isConnected && $('pg-modal').hidden && typeof b.focus === 'function') try { b.focus(); } catch (e) { /* egal */ }
+  }
+  // D08: Tab bleibt im Dialog (aria-modal)
+  $('pg-modal').addEventListener('keydown', function (e) {
+    if (e.key !== 'Tab') return;
+    var f = Array.prototype.filter.call(this.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])'),
+      function (x) { return !x.disabled && x.getClientRects().length; });
+    if (!f.length) return;
+    var a = f[0], z = f[f.length - 1];
+    if (e.shiftKey && (document.activeElement === a || !this.contains(document.activeElement))) { e.preventDefault(); z.focus(); }
+    else if (!e.shiftKey && (document.activeElement === z || !this.contains(document.activeElement))) { e.preventDefault(); a.focus(); }
+  });
   $('pg-modal-close').addEventListener('click', closeModal);
   $('pg-modal').addEventListener('mousedown', function (e) { if (e.target === this) closeModal(); });
 
@@ -2120,7 +2144,10 @@
     }
     function draw() {
       body.textContent = '';
-      if (!items.length) body.appendChild(el('p', 'nt-empty', o.db ? T('Diese Datenbank hat noch keine Vorlagen.') : T('Noch keine eigenen Vorlagen.')));
+      if (!items.length) {
+        body.appendChild(el('p', 'nt-empty', o.db ? T('Diese Datenbank hat noch keine Vorlagen.') : T('Noch keine eigenen Vorlagen.')));
+        body.appendChild(el('p', 'menu-hint', T('Eine Vorlage ist ein Muster mit festem Inhalt und Werten – neue Einträge können daraus entstehen.')));   // D12
+      }
       var ul = el('ul', 'tpl-list');
       items.forEach(function (t) {
         var li = el('li', 'tpl-item'), isD = !!(o.dflt && o.dflt() === t.id);
@@ -2130,7 +2157,7 @@
         name.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); name.blur(); } });
         name.addEventListener('change', function () {
           var v = name.value.trim(); if (v === (t.title || '')) return;
-          act(api('PATCH', '/api/notes/' + t.id, { title: v }).then(function () { return loadList(); }));
+          act(api('PATCH', '/api/notes/' + t.id, { title: v }).then(function () { HK.toast(T('Gespeichert ✓')); return loadList(); }));   // D12: nicht still
         });
         li.appendChild(name);
         if (isD) li.appendChild(el('span', 'pg-badge', T('Standard')));
@@ -2839,6 +2866,7 @@
     function renderDb() {
       var box = BOX; box.textContent = ''; box.classList.toggle('db-ro', ro()); tableV = null; renderGen++;
       if (OPTS.embedded && headOn('title')) box.appendChild(embedHead());
+      if (OPTS.embedded) { box.setAttribute('role', 'region'); box.setAttribute('aria-label', label(byId(DB.id) || {})); }   // D09: Name auch ohne sichtbaren Titel
       box.appendChild(viewBar());
       var vt = curView().type;
       if (vt === 'board') { box.appendChild(renderBoard()); return; }
@@ -2865,7 +2893,7 @@
           var f = Math.min(1, over / room);
           list.forEach(function (k) { var d = Math.floor(Math.max(0, w[k] - min) * f); w[k] -= d; sum -= d; });
         }
-        if (cw) { shrink(keys.filter(function (k) { return k !== 'title'; }), 90); shrink(['title'], 150); }
+        if (cw) { shrink(keys.filter(function (k) { return k !== 'title'; }), 90); shrink(['title'], 200); }   // D02: Namen bleiben lesbar, die Tabelle scrollt waagrecht
         keys.forEach(function (k) { cols[k].style.width = w[k] + 'px'; });
         tb.style.minWidth = sum + 'px';
       }
@@ -3100,12 +3128,13 @@
               cb.addEventListener('change', function () { OPTS.setHead(h[0], cb.checked); renderDb(); draw(); });
               l.appendChild(cb); l.appendChild(el('span', 'vs-lbl', h[1])); box.appendChild(l);
             });
-            if (!viewsLocked()) sec(T('Ansicht'));
           }
-          if (DB.role === 'owner') {    // Vorlagen der Datenbank (2.5): auch erreichbar, wenn es noch keine gibt
+          if (DB.role === 'owner') {    // Vorlagen der Datenbank (2.5): auch erreichbar, wenn es noch keine gibt - eigener Abschnitt (D10)
+            if (OPTS.embedded && OPTS.setHead) sec(T('Vorlagen'));
             var tb = el('button', 'menu-item vs-tpl', '📐 ' + T('Vorlagen verwalten …') + ((DB.templates || []).length ? ' (' + DB.templates.length + ')' : ''));
             tb.type = 'button'; tb.addEventListener('click', function () { HK.closeMenu(); templatesUI(); }); box.appendChild(tb);
           }
+          if (OPTS.embedded && OPTS.setHead && !viewsLocked()) sec(T('Ansicht'));
           if (viewsLocked()) {
             box.appendChild(el('div', 'menu-hint vs-locked', T('🔒 Diese Datenbank ist gesperrt: Spalten, Ansichten, Filter und Sortierung sind geschützt. Einträge kannst du weiter bearbeiten.')));
             var ul = el('button', 'menu-item', T('🔓 Entsperren')); ul.type = 'button';

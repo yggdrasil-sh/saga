@@ -161,7 +161,8 @@
   document.body.appendChild(menuEl); document.body.appendChild(subEl);
   var menuOwner = null, subOwner = null;
   function closeSub() { subEl.hidden = true; subEl.textContent = ''; menuEl.classList.remove('menu-covered'); if (subOwner) { subOwner.classList.remove('sub-open'); subOwner.setAttribute('aria-expanded', 'false'); } subOwner = null; }
-  function closeMenu() { closeSub(); menuEl.hidden = true; menuEl.textContent = ''; if (menuOwner) menuOwner.setAttribute('aria-expanded', 'false'); menuOwner = null; }
+  var lastOwner = null;     // zuletzt geschlossenes Menue: Ausloeser (Dialoge geben den Fokus dorthin zurueck)
+  function closeMenu() { closeSub(); menuEl.hidden = true; menuEl.textContent = ''; if (menuOwner) { menuOwner.setAttribute('aria-expanded', 'false'); lastOwner = menuOwner; } menuOwner = null; }
   function place(m, r, side) {
     var mw = m.offsetWidth, mh = m.offsetHeight, W = window.innerWidth, H = window.innerHeight, left, top;
     if (side) {                                  // Untermenue: rechts neben dem Eintrag, sonst links
@@ -414,6 +415,6 @@
   }
 
   window.HK = { tab: TAB, avatarImg: avatarImg, parseNum: parseNum, editNum: editNum, scrollFade: scrollFade, $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
-                openMenu: openMenu, closeMenu: closeMenu, menuItem: menuItem, menuLabel: menuLabel,
+                openMenu: openMenu, closeMenu: closeMenu, lastMenuOwner: function () { return lastOwner; }, menuItem: menuItem, menuLabel: menuLabel,
                 menuOpen: function () { return !!menuOwner; }, closeSub: closeSub, ask: ask, urlNode: urlNode, fmtNodes: fmtNodes, fieldMsg: fieldMsg };
 })();

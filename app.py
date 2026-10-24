@@ -170,6 +170,24 @@ app.add_middleware(BodyLimit, default=REQUEST_MAX,
 app.add_middleware(push_stream.Front)
 
 
+# Bughunt D11: unbekannte Adressen im Browser bekommen die gestaltete 404 statt rohem JSON (API und Apps unveraendert)
+from starlette.exceptions import HTTPException as _StarletteHTTPException  # noqa: E402
+from fastapi.exception_handlers import http_exception_handler as _http_exc  # noqa: E402
+
+_JSON_404 = ("/api/", "/fed/", "/internal/", "/static/", "/.well-known/", "/i18n/")
+
+
+@app.exception_handler(_StarletteHTTPException)
+async def _html_404(request: Request, exc):
+    if (exc.status_code == 404 and request.method in ("GET", "HEAD") and not request.url.path.startswith(_JSON_404)
+            and "text/html" in (request.headers.get("accept") or "")):
+        try:
+            return publish.not_found()
+        except Exception:  # noqa: BLE001 - lieber die schlichte Antwort als ein 500
+            pass
+    return await _http_exc(request, exc)
+
+
 # --- Routes -----------------------------------------------------------------
 @app.get("/healthz", response_class=PlainTextResponse)
 def healthz():

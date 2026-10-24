@@ -1761,14 +1761,14 @@
   // Blase verkleinern bzw. wieder vergroessern. Beides merkt sich der Browser fuer alle Anrufe (ohne Wahl: wie bisher).
   function selfPrefs() { try { return JSON.parse(localStorage.getItem('saga-call-self') || '{}') || {}; } catch (e) { return {}; } }
   function selfSave(p) { try { localStorage.setItem('saga-call-self', JSON.stringify(p)); } catch (e) { /* privat */ } }
-  function selfApply(w) {
+  function selfApply(w, lv) {
     var p = selfPrefs();
     [0, 1, 2, 3].forEach(function (i) { w.classList.toggle('self-c' + i, p.corner === i); });
     w.classList.toggle('self-min', !!p.hidden);
-    var lv = w.querySelector('.cl-local');
+    lv = lv || w.querySelector('.cl-local');          // beim Aufbau haengt das Bild noch nicht im Fenster (D05)
     if (lv) {
-      lv.title = p.hidden ? T('Eigenes Bild zeigen') : T('Klicken: eigenes Bild verkleinern · Ziehen: verschieben');
-      lv.setAttribute('aria-label', p.hidden ? T('Eigenes Bild zeigen') : T('Eigenes Bild ausblenden'));
+      var l = p.hidden ? T('Eigenes Bild zeigen') : T('Klicken: eigenes Bild verkleinern · Ziehen: verschieben');
+      lv.title = l; lv.setAttribute('aria-label', l);        // Tooltip und Vorlesetext gleich (D06)
     }
   }
   function selfPip(w, lv) {
@@ -1793,7 +1793,7 @@
         var wr = w.getBoundingClientRect(), cx = e.clientX, cy = e.clientY;     // der Zeiger zaehlt
         p.corner = (cx < wr.left + wr.width / 2 ? 0 : 1) + (cy < wr.top + wr.height / 2 ? 0 : 2);
       } else p.hidden = !p.hidden;
-      selfSave(p); selfApply(w);
+      selfSave(p); selfApply(w, lv);
     }
     lv.addEventListener('pointerup', end);
     lv.addEventListener('pointercancel', function () { start = null; lv.classList.remove('dragging'); lv.style.translate = ''; });
@@ -1806,9 +1806,9 @@
         else if (e.key === 'ArrowUp') c = c & 1; else c = (c & 1) | 2;
         p.corner = c;
       } else return;
-      selfSave(p); selfApply(w);
+      selfSave(p); selfApply(w, lv);
     });
-    selfApply(w);
+    selfApply(w, lv);
   }
 
   // --- Anruffenster --------------------------------------------------------------------------------------------------

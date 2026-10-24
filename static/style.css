@@ -322,7 +322,7 @@ body.pg-full-open{overflow:hidden}
 /* Popup-Menue */
 .menu{position:fixed;z-index:50;min-width:200px;background:var(--card);border:1px solid var(--border);border-radius:10px;
   padding:.35rem;box-shadow:0 10px 30px rgba(0,0,0,.35);
-  max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);overflow-y:auto;overscroll-behavior:contain}
+  max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px);overflow-y:auto;overscroll-behavior:contain}   /* D22: Handy-Adressleiste */
 /* nie breiter als das Fenster (auch im schmalen Peek-Rahmen); lange Pfade werden gekuerzt statt das Menue aufzublaehen */
 .menu-sub{width:max-content;max-width:min(440px,calc(100vw - 16px))}
 .menu.menu-covered{visibility:hidden}     /* Untermenue liegt an seiner Stelle (kein Platz daneben) */
@@ -598,7 +598,7 @@ body.notes-page #pg-full{display:none}
 .db-title-wrap{display:flex;align-items:center;gap:.3rem}
 .db-row-icon{flex:none}
 .db-title-in{flex:1;min-width:0;background:transparent;border:0;color:var(--fg);font:inherit;font-weight:500;padding:.45rem .1rem;outline:none;
-  resize:none;overflow:hidden;display:block;line-height:1.35;field-sizing:content;white-space:pre-wrap;overflow-wrap:anywhere}
+  resize:none;overflow:hidden;display:block;line-height:1.35;field-sizing:content;white-space:pre-wrap;overflow-wrap:break-word;hyphens:auto}   /* D02: nur zur Not mitten im Wort, mit Trennstrich */
 .db-open{appearance:none;flex:none;background:var(--card);border:1px solid var(--border);border-radius:5px;color:var(--muted);
   font:inherit;font-size:.72rem;padding:.12rem .45rem;margin-right:.4rem;cursor:pointer;opacity:0}
 .db-row:hover .db-open,.db-open:focus-visible{opacity:1}
@@ -1924,8 +1924,8 @@ body.pg-lock-on #pg-editor .embed-db :is(.db-new-top,.db-tab-add,.db-gear,.db-ne
 .tpl-item{display:flex;align-items:center;gap:.5rem;padding:.3rem .4rem;border:1px solid var(--border);border-radius:8px}
 .tpl-ic{flex:none;width:1.4rem;text-align:center}
 img.tpl-ic{height:1.4rem;object-fit:cover;border-radius:4px}
-.tpl-name{flex:1;min-width:0;border:1px solid transparent;background:transparent;color:inherit;font:inherit;padding:.25rem .35rem;border-radius:6px}
-.tpl-name:hover{border-color:var(--border)}
+.tpl-name{flex:1;min-width:0;border:1px solid var(--border);background:transparent;color:inherit;font:inherit;padding:.25rem .35rem;border-radius:6px}
+.tpl-name:hover{border-color:var(--muted)}
 .tpl-name:focus{border-color:var(--accent);outline:none;background:var(--field)}
 .tpl-edit,.tpl-more{flex:none}
 .vs-tpl{width:100%;text-align:left;margin-bottom:.2rem}
