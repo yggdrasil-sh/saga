@@ -31,6 +31,9 @@ import (
 
 const renewBefore = 30 * 24 * time.Hour
 
+// alpnECDSAWait: so lange wartet das Vorwaermen auf das ECDSA-Zertifikat, bevor es das RSA-Zertifikat nimmt
+var alpnECDSAWait = 60 * time.Second
+
 func (s *server) certMode(mode string) {
 	if mode != "dns01" && mode != "alpn" {
 		return
@@ -61,7 +64,40 @@ func (s *server) alpnWarm() {
 		return
 	}
 	for i := 0; i < 6 && !s.closing.Load(); i++ {
-		crt, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: s.cfg.Name, SupportedProtos: []string{"http/1.1"}})
+		// ECDSA wie bei modernen Clients (Browser, Apps): vorher holte das Vorwaermen nur das RSA-Zertifikat (Hello ohne
+		// Cipher-Suites), und der erste echte Handshake loeste eine zweite Bestellung aus - an der Let's-Encrypt-Grenze
+		// hingen damit alle Handshakes. Klappt ECDSA nicht, gilt das RSA-Zertifikat fuer alle (PreferRSA).
+		// autocert wartet an einer Grenze bis zu 5 min: hoechstens alpnECDSAWait warten, dann RSA (ECDSA laeuft weiter
+		// und gilt, sobald es da ist)
+		type res struct {
+			c *tls.Certificate
+			e error
+		}
+		ch := make(chan res, 1)
+		go func() {
+			c, e := m.GetCertificate(&tls.ClientHelloInfo{ServerName: s.cfg.Name, SupportedProtos: []string{"http/1.1"},
+				CipherSuites:     []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256},
+				SignatureSchemes: []tls.SignatureScheme{tls.ECDSAWithP256AndSHA256}, SupportedCurves: []tls.CurveID{tls.CurveP256}})
+			if e == nil && c != nil {
+				s.certs.PreferRSA(false)
+			}
+			ch <- res{c, e}
+		}()
+		var crt *tls.Certificate
+		var err error
+		select {
+		case r := <-ch:
+			crt, err = r.c, r.e
+		case <-time.After(alpnECDSAWait):
+			err = errors.New("ecdsa: keine antwort")
+		}
+		if err == nil && crt != nil {
+			s.certs.PreferRSA(false)
+		} else if c2, err2 := m.GetCertificate(&tls.ClientHelloInfo{ServerName: s.cfg.Name, SupportedProtos: []string{"http/1.1"}}); err2 == nil && c2 != nil {
+			log.Printf("zertifikat: ecdsa nicht ausgestellt (%v) - nutze rsa", err)
+			s.certs.PreferRSA(true)
+			crt, err = c2, nil
+		}
 		if err == nil && crt != nil {
 			if x, err := x509.ParseCertificate(crt.Certificate[0]); err == nil {
 				log.Printf("zertifikat: tls-alpn-01 ok, gueltig bis %s", x.NotAfter.Format(time.DateOnly))

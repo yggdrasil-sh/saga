@@ -37,6 +37,7 @@ type Certs struct {
 	acme              *autocert.Manager
 	alpn              bool             // P7: regulaere Handshakes mit SNI=Name ueber autocert (TLS-ALPN-01)
 	fallback          *tls.Certificate // selbst signiert: fremde/fehlende SNI (Rueckpruefung), bis ein echtes da ist
+	rsaOnly           bool             // ACME: nur das RSA-Zertifikat ausliefern (ECDSA liess sich nicht ausstellen)
 	mode              string           // aktueller Modus (unter mu)
 }
 
@@ -112,6 +113,22 @@ func (c *Certs) UseALPN() {
 	if c.acme != nil && c.mode == "wait" {
 		c.alpn, c.mode = true, "acme"
 	}
+}
+
+// PreferRSA: regulaere Handshakes bekommen das RSA-Zertifikat aus dem autocert-Cache, auch wenn der Client ECDSA
+// kann. autocert fuehrt je Schluesseltyp ein eigenes Zertifikat; liess sich das ECDSA-Zertifikat nicht ausstellen
+// (z. B. Let's-Encrypt-Grenze je Namen), haengt sonst jeder Handshake moderner Clients in einer neuen Bestellung.
+func (c *Certs) PreferRSA(on bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.rsaOnly = on
+}
+
+// rsaHello: Kopie des Client-Hellos, fuer die autocert das RSA-Zertifikat waehlt (keine ECDSA-Angaben).
+func rsaHello(h *tls.ClientHelloInfo) *tls.ClientHelloInfo {
+	x := *h
+	x.CipherSuites, x.SignatureSchemes, x.SupportedCurves = nil, nil, nil
+	return &x
 }
 
 // ACME liefert den autocert-Manager (nil ausser im ACME-Modus).
@@ -261,7 +278,7 @@ func (c *Certs) TLSConfig() *tls.Config {
 	}
 	cfg.GetCertificate = func(h *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		c.mu.RLock()
-		mode, cur, alpn, fb := c.mode, c.cur, c.alpn, c.fallback
+		mode, cur, alpn, fb, rsaOnly := c.mode, c.cur, c.alpn, c.fallback, c.rsaOnly
 		c.mu.RUnlock()
 		if c.acme != nil && (alpn || mode == "wait") && isALPNChallenge(h) && strings.EqualFold(h.ServerName, c.Name) {
 			if !alpn {
@@ -279,6 +296,9 @@ func (c *Certs) TLSConfig() *tls.Config {
 			return fb, nil
 		}
 		if mode == "acme" && alpn {
+			if rsaOnly {
+				return c.acme.GetCertificate(rsaHello(h))
+			}
 			return c.acme.GetCertificate(h)
 		}
 		if cur != nil {

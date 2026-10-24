@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -258,6 +259,72 @@ func TestZertifikatRueckfallUndALPN(t *testing.T) {
 	}
 	if n2, _ := ca.Snapshot(); n2 != n {
 		t.Fatal("fremde SNI hat ein Zertifikat ausgeloest")
+	}
+}
+
+// Bughunt W05: autocert fuehrt je Schluesseltyp ein Zertifikat. Gibt es nur das RSA-Zertifikat (ECDSA an der
+// Let's-Encrypt-Grenze abgelehnt), liefert PreferRSA es auch an moderne Clients aus, statt jeden Handshake in eine
+// neue Bestellung laufen zu lassen.
+func TestZertifikatNurRSA(t *testing.T) {
+	name := "horn-8.example.org"
+	ca := acmefake.New()
+	hs := httptest.NewServer(ca)
+	defer hs.Close()
+	ca.Base = hs.URL
+	c, err := netx.NewCerts(netx.CertOptions{Name: name, CertFile: filepath.Join(t.TempDir(), "x.pem"), ACMEDir: t.TempDir(), ACMEURL: hs.URL + "/dir", Defer: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", c.TLSConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			cn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() { _ = cn.(*tls.Conn).Handshake(); time.Sleep(50 * time.Millisecond); cn.Close() }()
+		}
+	}()
+	ca.Dial = func(string) (net.Conn, error) { return net.Dial("tcp", ln.Addr().String()) }
+	m := c.ACME()
+	m.Client = &acme.Client{DirectoryURL: hs.URL + "/dir"}
+	c.UseALPN()
+	if _, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: name, SupportedProtos: []string{"http/1.1"}}); err != nil {
+		t.Fatalf("rsa: %v (log %v)", err, ca.Log)
+	}
+	ca.MaxOrder = 1 // keine weitere Bestellung (ECDSA) moeglich
+	// ohne PreferRSA: moderner Client (ECDSA) -> neue Bestellung, abgelehnt -> Handshake scheitert (der Fehler im Labor)
+	if cn, err := tls.DialWithDialer(&net.Dialer{Timeout: 3 * time.Second}, "tcp", ln.Addr().String(), &tls.Config{ServerName: name, InsecureSkipVerify: true}); err == nil { //nolint:gosec // Test
+		cn.Close()
+		t.Fatal("ohne PreferRSA unerwartet verbunden - Testaufbau pruefen")
+	}
+	c.PreferRSA(true)
+	done := make(chan error, 1)
+	go func() {
+		cn, err := tls.Dial("tcp", ln.Addr().String(), &tls.Config{ServerName: name, InsecureSkipVerify: true}) //nolint:gosec // Test
+		if err == nil {
+			x := cn.ConnectionState().PeerCertificates[0]
+			if x.Issuer.CommonName != "Saga Test-ACME CA" {
+				err = errors.New("aussteller " + x.Issuer.CommonName)
+			}
+			cn.Close()
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("handshake mit nur RSA: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("handshake haengt")
+	}
+	if n, _ := ca.Snapshot(); n != 1 {
+		t.Fatalf("weitere Bestellung ausgeloest: %d", n)
 	}
 }
 

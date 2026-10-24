@@ -47,6 +47,7 @@ type Server struct {
 	caCert   *x509.Certificate
 	caDER    []byte
 	Issued   int      // ausgestellte Zertifikate
+	MaxOrder int      // >0: ab so vielen ausgestellten Zertifikaten neue Bestellungen ablehnen (Grenze wie bei Let's Encrypt)
 	Log      []string // Pruefungen (Tests)
 }
 
@@ -208,6 +209,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case p == "/order":
 		if _, ok := s.accounts[kid]; !ok {
 			s.problem(w, 400, "accountDoesNotExist", "kid unbekannt")
+			return
+		}
+		if s.MaxOrder > 0 && s.Issued >= s.MaxOrder {
+			s.problem(w, 429, "rateLimited", "zu viele Zertifikate fuer diesen Namen")
 			return
 		}
 		var in struct {
