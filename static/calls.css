@@ -289,8 +289,9 @@
 .cl-win.horn-strip .cl-hbig,.cl-win.horn-scr .cl-hscreen{top:6.6rem}
 .cl-win.horn-scr .cl-hscreen{height:calc(100% - 6.6rem - 6.4rem - 112px)}
 .cl-win.horn .cl-local{top:7rem}
-/* drei Kacheln in zwei Spalten: die dritte ueber die volle Breite */
-.cl-win.horn.tiles .cl-grid[data-n="3"][data-cols="2"]>.cl-tile:nth-child(3){grid-column:1/-1}
+/* Bughunt D07: unvollstaendige letzte Reihe mittig (calls.js gridCenter) - Halbspalten, jede Kachel belegt zwei */
+.cl-win.tiles .cl-grid[data-center="1"]{grid-template-columns:repeat(var(--cols2,4),minmax(0,1fr))}
+.cl-win.tiles .cl-grid[data-center="1"]>*{grid-column:span 2}
 @media (max-width:640px){
   .cl-win.horn.mesh.tiles .cl-grid,.cl-win.horn-strip .cl-hbig,.cl-win.horn-scr .cl-hscreen{top:7.4rem}
   .cl-win.horn-scr .cl-hscreen{height:calc(100% - 7.4rem - 6rem - 92px)}

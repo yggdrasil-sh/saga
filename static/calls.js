@@ -1140,7 +1140,21 @@
     ls.forEach(function (L) { if (!L.tile) makeTile(R, L); else drawTile(L); });
     R.ui.grid.dataset.n = String(Math.min(ls.length, 6));
     R.ui.w.classList.toggle('tiles', ls.length > 0);
+    // Spalten wie in calls.css (.cl-grid[data-n]): 1 / 2 / ab 5 drei, Handy hoechstens zwei
+    var n = ls.length;
+    gridCenter(R.ui.grid, n <= 1 ? 1 : window.innerWidth <= 640 || n <= 4 ? 2 : 3);
     drawPeer(R);
+  }
+  // Bughunt D07: unvollstaendige letzte Reihe mittig, keine Kachel groesser als die anderen (vorher bekam bei drei
+  // Kacheln die dritte - meist "Du" - die ganze Reihe). Raster mit doppelt so vielen Halbspalten, jede Kachel belegt
+  // zwei; die erste Kachel der letzten Reihe beginnt um die fehlenden Halbspalten versetzt.
+  function gridCenter(g, cols) {
+    var kids = [].slice.call(g.children), n = kids.length, r = cols > 1 ? n % cols : 0;
+    kids.forEach(function (k) { k.style.gridColumn = ''; });
+    if (!r) { delete g.dataset.center; return; }
+    g.dataset.center = '1';
+    g.style.setProperty('--cols2', String(cols * 2));
+    kids[n - r].style.gridColumn = (cols - r + 1) + ' / span 2';
   }
   function makeTile(R, L) {
     var vid = function (cls) { var v = el('video', cls); v.autoplay = true; v.muted = true; v.playsInline = true; v.setAttribute('playsinline', ''); return v; };
@@ -3026,6 +3040,7 @@
     R.ui.grid.dataset.cols = String(cols);
     R.ui.grid.dataset.scroll = !strip && Math.ceil(n / cols) > (window.innerWidth <= 640 ? 4 : 5) ? '1' : '0';
     R.ui.grid.style.setProperty('--cols', String(cols));
+    gridCenter(R.ui.grid, strip ? 1 : cols);           // Streifen (flex) ohne Raster
     // Bildschirm gross (eigenes Element), sonst Sprecherbild fuer Bild-im-Bild
     var big = src.scr ? src.scr.track : (H.spk && src.vid[H.spk] ? src.vid[H.spk].track : (devs.length && src.vid[devs[0]] ? src.vid[devs[0]].track : null));
     var hs = R.ui.hs;
