@@ -218,14 +218,18 @@
     place(subEl, { left: mr.left, right: mr.right, top: mr.top - 6, bottom: mr.top - 6 }, false);
     subEl.style.top = Math.max(8, Math.min(mr.top, window.innerHeight - subEl.offsetHeight - 8)) + 'px';
   }
-  // menuItem(text, aktion, {icon, hint, on, danger, sub: function(menu){...}, subSearch: 'Platzhalter'})
+  // menuItem(text, aktion, {icon, hint, hintBelow, on, danger, sub: function(menu){...}, subSearch: 'Platzhalter'})
   function menuItem(label, onClick, opts) {
     opts = opts || {};
     var b = el('button', 'menu-item' + (opts.on ? ' on' : '') + (opts.danger ? ' danger' : '') + (opts.sub ? ' has-sub' : ''));
     b.type = 'button'; b.setAttribute('role', 'menuitem');
     if (opts.icon) b.appendChild(el('span', 'mi-ic', opts.icon));
-    b.appendChild(el('span', 'mi-t', label));
-    if (opts.hint) b.appendChild(el('span', 'mi-hint', opts.hint));
+    if (opts.hint && opts.hintBelow) {                 // Bughunt D13: langer Hinweis als zweite Zeile (sonst abgeschnitten)
+      var tx = el('span', 'mi-tx'); tx.appendChild(el('span', 'mi-t', label)); tx.appendChild(el('span', 'mi-hint', opts.hint)); b.appendChild(tx);
+    } else {
+      b.appendChild(el('span', 'mi-t', label));
+      if (opts.hint) b.appendChild(el('span', 'mi-hint', opts.hint));
+    }
     if (opts.sub) {
       b.appendChild(el('span', 'mi-arrow', '›')); b.setAttribute('aria-haspopup', 'menu'); b.setAttribute('aria-expanded', 'false');
       var openIt = function () { openSub(b, opts.sub, { search: opts.subSearch }); };

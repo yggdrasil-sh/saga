@@ -873,6 +873,9 @@ body.notes-page .page.wide .backlinks{max-width:none}
 .mi-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mi-hint{flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:.78rem}
 .mi-arrow{flex:none;color:var(--muted);font-size:1rem;line-height:1}
+.mi-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:.05rem}
+.mi-tx .mi-t{flex:none}
+.mi-tx .mi-hint{max-width:none;white-space:normal;overflow-wrap:break-word}
 .menu-item.on::after{content:"✓";flex:none;color:var(--accent);margin-left:.2rem}
 .menu-item.sub-open{background:var(--card-h)}
 .menu-item[hidden]{display:none}

@@ -2184,7 +2184,7 @@
             m.appendChild(HK.menuItem(T('Keine Vorlage mehr'), function () {
               act(api('PATCH', '/api/notes/' + t.id, { template: false }).then(function () { return isD && o.setDflt ? o.setDflt(null) : null; })
                 .then(function () { return loadList(); }));
-            }, { icon: '📐', hint: o.db ? T('wird ein normaler Eintrag') : T('wird eine normale Seite') }));
+            }, { icon: '📐', hintBelow: true, hint: o.db ? T('wird ein normaler Eintrag') : T('wird eine normale Seite') }));
             m.appendChild(el('div', 'menu-sep'));
             m.appendChild(HK.menuItem(T('In den Papierkorb'), function () {
               HK.ask({ title: T('Vorlage „{name}“ in den Papierkorb?', { name: t.title || T('Unbenannt') }),
