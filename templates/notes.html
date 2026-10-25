@@ -51,6 +51,7 @@
       </div>
       <div class="pg-side-foot">
         <button type="button" class="pg-foot-btn" id="pg-qs-btn" title="{{ _("Schnellsuche") }}">⌕ {{ _("Schnellsuche") }} <kbd id="pg-qs-kbd">{{ _("Strg") }} K</kbd></button>
+        <button type="button" class="pg-foot-btn" id="pg-graph-btn">✳ {{ _("Graph") }}</button>
         <button type="button" class="pg-foot-btn" id="pg-archive-btn">📦 {{ _("Archiv") }}</button>
         <button type="button" class="pg-foot-btn" id="pg-trash-btn">🗑 {{ _("Papierkorb") }}</button>
       </div>
@@ -157,5 +158,6 @@
 <script src="/static/nextcloud.js?v={{ v }}"></script>
 {% if chat_enabled %}<script src="/static/calls.js?v={{ v }}"></script>{% endif %}
 <script src="/static/ai.js?v={{ v }}"></script>
+<script src="/static/graph.js?v={{ v }}"></script>
 </body>
 </html>

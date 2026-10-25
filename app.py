@@ -33,7 +33,7 @@ from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESS
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
 from saga.notes import FILE_MAX
-from saga import backups, nextcloud, pageindex, userbackup
+from saga import backups, graph, nextcloud, pageindex, userbackup
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -248,6 +248,7 @@ app.include_router(mfa.router)              # Zweiter Faktor: /security, /api/ac
 app.include_router(app_login.router)
 app.include_router(dashboard.router)
 app.include_router(links.router)
+app.include_router(graph.router)                 # 2.5: Graph der Seiten (wie Obsidian)
 app.include_router(tasks.router)
 # Foederation zuerst: faengt nur NEGATIVE Seiten-/Kommentar-IDs (Seiten anderer Instanzen, Konverter "fedid") ab, dazu
 # /.well-known/saga, /fed/v1/... und /api/fed/... - alle positiven IDs laufen unveraendert zu pages/comments

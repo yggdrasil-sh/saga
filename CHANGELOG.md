@@ -17,6 +17,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu (2.5)
+- **Graph der Seiten (Web, wie Obsidian).** „✳ Graph“ in der Seitenleiste zeigt alle eigenen und für dich freigegebenen
+  Seiten als Knoten; Verbindungen sind Verweise im Text, Unterseiten, Datenbank-Relationen und – zuschaltbar – Tags als
+  eigene Knoten. Verschieben, Zoomen (auch mit zwei Fingern), Knoten ziehen, Hover hebt Nachbarn hervor, Klick öffnet
+  die Seite; Suche mit Enter öffnet den ersten Treffer. Filter (Verbindungsarten, Datenbank-Einträge, Seiten ohne
+  Verbindung), Gruppen mit Farben (`Text`, `tag:Name`, `path:Seitentitel` = Seite mit allen Unterseiten), Anzeige
+  (Pfeile, Schrift ab Zoomstufe, Knotengröße, Linienstärke) und Kräfte (Zug zur Mitte, Abstoßung, Linienkraft,
+  Linienlänge) – Einstellungen merkt sich der Browser. Unter „Verlinkt von“ steht je Seite ein lokaler Graph (Tiefe
+  1–3, „Ganzer Graph“). Eigene Kräfte-Simulation auf Canvas (Barnes-Hut), keine Fremdbibliothek; 1.500 Seiten laufen
+  flüssig (60 fps). Neuer Endpunkt `GET /api/graph` (nur sichtbare Seiten; Papierkorb, Archiv und Vorlagen fehlen).
+  Tests `tests/graph.py`, `tests/browser_graph.js`.
 - **Föderation (Bughunt W02/W03): Personen anderer Server bleiben dieselben – per Handle wie per Namen, auch nach dem
   Umbenennen.** Teilen per Handle (`~…@server`) mit einer Person, die dort einen öffentlichen Namen hat, kam nie an
   (W02): Der Server der Person fragte mit dem Namen an, die Freigabe stand aber unter dem Handle. Jetzt nennt er bei
