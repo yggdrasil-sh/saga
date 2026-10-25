@@ -36,6 +36,23 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   wirkt per via nicht mehr (R03), Nextcloud-Blöcke der Vorlage bleiben signiert (R05). **Bestehende Seiten:** Der
   Eigentümer speichert die Seite mit der Schaltfläche einmal (z. B. Schaltfläche öffnen und schließen), dann geht sie für
   Geteilte wieder. Test `vorlagen_teilen` 18/18.
+- **Sicherheit (Bughunt V2/V3): weitere Kopfzeilen für App und Admin.** `Strict-Transport-Security: max-age=31536000`,
+  wenn `BASE_URL` (bzw. `ADMIN_URL`) mit https beginnt – ohne `includeSubDomains`/`preload`, abschaltbar mit `HSTS=false`.
+  `Permissions-Policy`: Kamera, Mikrofon, Bildschirm teilen, Autoplay nur für Saga selbst, Vollbild/Bild-im-Bild auch für
+  den YouTube-Block, Standort/Zahlung/USB u. a. aus. `X-Frame-Options` passend zu `frame-ancestors` (DENY, für das
+  Peek-Fenster SAMEORIGIN).
+- **Anrufe (Bughunt W08/W09, D07, D14):** Nach dem Auflegen keine 404 (Bein schon beendet) und keine 409 (neue
+  Kandidaten für einen beendeten Anruf) mehr in der Konsole. Die Dauer läuft auf allen Geräten ab dem Beginn laut Server
+  (`call.roster` trägt `answered` und `now`) – über einen Knoten zählte der Anrufer sonst die Klingelzeit mit. Im
+  Gruppenanruf ist die eigene Kachel nie größer als die anderen, eine unvollständige letzte Reihe steht mittig. Kopf in der
+  Fenstermitte, Knöpfe oben 44 px, Tonausgabe als runder Knopf mit Menü statt Auswahlfeld.
+- **Weboberfläche (Bughunt D13, D15, D17–D21, V12, WV09, WV13, D23):** Lange Menü-Hinweise als zweite Zeile statt
+  abgeschnitten; Board mit Scroll-Schatten; auf Touch-Geräten „Titelbild“ im Seitenmenü und Nachrichten-Aktionen erst
+  nach Antippen; Einstellungen mit normalem Titel, Reitern in einer Zeile (Desktop) bzw. sichtbarem Pfeil (Handy);
+  „+ Tag“ mit ausreichendem Kontrast; unsichtbare Überschrift mit dem Seitentitel und Sprunglink „Zum Inhalt“;
+  „Nachrichten automatisch löschen nach ›“ als Untermenü; veröffentlichte Seite für den angemeldeten Eigentümer ohne
+  Zwischenspeicher; KI-Aktion heißt jetzt „Werte vorschlagen …“ (Apps folgen). Mesh-Browsertests überspringen bei
+  „Alle Anrufe über Knoten“ mit klarer Meldung.
 - KI „Datenbank zuordnen“: Option „Keine“ wird zugeordnet (R06), sichtbare Datenbanken hinter gesperrten fehlen nicht
   mehr (R07), leere Einträge auch jenseits von 2000 Zeilen (R08). Web: Standardvorlage + Enter in der letzten Zeile
   verschluckte danach Eingaben (R02). Anrufe: ein Begleitgerät, das kurz aus der Liste fällt, gilt nicht mehr als
