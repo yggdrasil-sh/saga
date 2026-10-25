@@ -3668,7 +3668,8 @@
     });
     Object.keys(H.tiles).forEach(function (d) { if (!want[d]) { H.tiles[d].v.srcObject = null; H.tiles[d].box.remove(); delete H.tiles[d]; } });
     // 2.5 (ANRUF-UI, MEETING-SPEC §7): ab drei Personen ist das eigene Bild eine normale Kachel (kein schwebendes Bild)
-    var selfT = pers.length + 1 >= 3, mineV = R.cam && R.cam.readyState === 'live' ? R.cam : null;
+    // Bildschirm gross: das eigene Bild nie ueber dem geteilten Inhalt, sondern als Kachel im Streifen (§7)
+    var selfT = pers.length + 1 >= 3 || !!src.scr, mineV = R.cam && R.cam.readyState === 'live' ? R.cam : null;
     if (selfT) {
       var ST = H.self;
       if (!ST) {

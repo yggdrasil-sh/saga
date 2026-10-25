@@ -491,3 +491,15 @@ body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-
 @media (min-width:1920px){.cl-win.plist-side .cl-plist.cl-mlist{width:360px}.cl-win.meet.mesh.plist-side .cl-meet{right:360px}.cl-win.plist-side .cl-tb{right:calc(360px + .8rem)}}
 .cl-win.small .cl-mlist{display:none}
 .cl-echo{z-index:8}
+/* 2.5 (MEETING-SPEC §2.4/§5): Bildschirm ueber den Knoten ab 900 px wie die Praesentation im Mesh - Buehne randlos und
+   schwarz bis zum Streifen rechts (160 px, ab 1440 px 200 px), Leisten ueberlagern und blenden aus; Chip unten links */
+@media (min-width:900px){
+  .cl-win.horn.horn-scr:not(.small){--hs:160px}
+  .cl-win.horn.horn-scr:not(.small) .cl-hscreen{top:0;left:0;right:auto;bottom:auto;width:calc(100% - var(--hs) - 16px);height:100%;border-radius:0}
+  .cl-win.horn.horn-strip.horn-scr.mesh.tiles:not(.small) .cl-grid{top:4.4rem;bottom:1rem;left:auto;right:8px;width:var(--hs);height:auto;flex-direction:column;
+    justify-content:flex-start;overflow-y:auto;overflow-x:hidden}
+  .cl-win.horn.horn-strip.horn-scr:not(.small) .cl-grid .cl-tile{flex:0 0 auto;width:100%;height:auto;aspect-ratio:16/9}
+  .cl-win.horn.horn-scr:not(.small) .cl-share.cap{left:12px;bottom:6.4rem;max-width:calc(50% - 90px)}
+  .cl-win.horn.horn-scr:not(.small) .cl-stage{background:#000}
+}
+@media (min-width:1440px){.cl-win.horn.horn-scr:not(.small){--hs:200px}}

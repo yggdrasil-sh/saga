@@ -111,7 +111,14 @@ async function hornFlow(a, a2, b, o) {
   await b.goto(BASE + '/chats'); await a2.goto(BASE + '/chats'); await liveOk(a, b, a2);
   await a.click('#ct-call-v');
   await b.waitForSelector('.cl-ring', { timeout: 20000 }); await b.click('.cl-ring .cl-big');
-  const h1 = await until(async () => { const x = await horn(a), y = await horn(b); return x && x.up && y && y.up && [x, y]; }, 40000);
+  const h1 = await until(async () => { const x = await horn(a), y = await horn(b), r = await room(b);
+    return (x && x.up && y && y.up && [x, y]) || (r && !y && r.links.length && r.links.every(l => l.connected) && 'mesh'); }, 40000);
+  if (h1 === 'mesh') {
+    console.log('  (Server nimmt fuer das 1:1 keinen Knoten - weiter mit dem Mesh-Ablauf)');
+    await b.click('.cl-ctl .cl-red').catch(() => {});
+    await until(async () => !(await room(a)) && !(await room(b)), 15000); await sleep(1500);
+    return false;
+  }
   ok('Knoten: 1:1 A <-> B verbunden', h1, [await horn(a), await horn(b)]);
   await until(() => a2.evaluate(() => !!document.querySelector('.cl-run')), 20000, 250);
   await a2.click('.cl-run .cl-pill:not(.cl-run-go)');
@@ -141,7 +148,8 @@ async function hornFlow(a, a2, b, o) {
   const ar = await b.evaluate(() => { const v = document.querySelector('.cl-win.horn-scr video.cl-hscreen'); if (!v || !v.videoWidth) return 0;
     const r = v.getBoundingClientRect(), s = Math.min(r.width / v.videoWidth, r.height / v.videoHeight); return Math.round(v.videoWidth * s * v.videoHeight * s / (innerWidth * innerHeight) * 1000) / 1000; });
   PERF.flaeche_bildschirm_knoten = ar;
-  console.log('  Knoten: Bildschirm nutzt ' + Math.round(ar * 100) + ' % der Fensterflaeche (Knoten-Ansicht mit festem Streifen unten)');
+  ok(`S3 (Knoten): geteilter Inhalt nutzt ${Math.round(ar * 100)} % der Fensterflaeche (1280x720, Leisten aus; Ziel >= 70 %)`, ar >= 0.70, ar);
+  ok('§7 (Knoten): eigenes Bild schwebt nicht ueber dem Bildschirm (Kachel im Streifen)', !(await selfBox(b)) && await b.evaluate(() => !!document.querySelector('.cl-grid .cl-me')));
   await shot(b, 'knoten-3-bildschirm-ausgeblendet-dunkel');
   await b.emulateMedia({ colorScheme: 'light' }); await shot(b, 'knoten-3-bildschirm-ausgeblendet-hell'); await b.emulateMedia({ colorScheme: 'dark' });
   await b.setViewportSize({ width: 390, height: 844 }); await sleep(800);
@@ -152,6 +160,7 @@ async function hornFlow(a, a2, b, o) {
   await b.mouse.move(600, 300);
   await b.click('.cl-ctl .cl-red');
   ok('Knoten: Auflegen beendet den Anruf', await until(async () => !(await room(a)) && !(await room(a2)), 15000));
+  return true;
 }
 let INFO_HORN = false;
 
@@ -165,8 +174,8 @@ let INFO_HORN = false;
     const dA = await dev(a), dA2 = await dev(a2), dB = await dev(b);
     ok('Anna mit zwei Geraeten (A, A2), Ben (B) - eigene Chat-Schluessel', dA && dA2 && dB && dA !== dA2, { dA, dA2, dB });
     if ((await a.evaluate(() => fetch('/api/calls/config', { headers: { 'X-Saga': '1' } }).then(r => r.json()).catch(() => ({})))).horn_dm) {
-      await hornFlow(a, a2, b, { dA, dA2, dB, U2 });            // calls.horn_all: derselbe Ablauf ueber den Knoten
-      return;
+      // calls.horn_all: derselbe Ablauf ueber den Knoten; nimmt der Server fuer das 1:1 doch keinen Knoten, folgt Mesh
+      if (await hornFlow(a, a2, b, { dA, dA2, dB, U2 })) return;
     }
     await b.evaluate(() => { try { localStorage.removeItem('saga-call-layout'); localStorage.removeItem('saga-call-self'); } catch (e) { /* egal */ } });
 
