@@ -89,6 +89,7 @@ async def lifespan(_app):
                 if n:
                     print(f"files-gc: {n} verwaiste Datei(en) entfernt", flush=True)
                 await asyncio.to_thread(tmp_cleanup)          # liegengebliebene Zwischendateien (> 1 h)
+                await asyncio.to_thread(siteicons.cleanup)    # Kachel-Symbole: alte .missing/.tmp, Favicons nach 30 Tagen
             except Exception as ex:
                 print(f"files-gc: {type(ex).__name__}: {ex}", flush=True)
     gc_task = asyncio.create_task(_gc_loop())

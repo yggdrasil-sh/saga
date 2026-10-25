@@ -5,9 +5,11 @@ ein boesartiger DNS-Server auf eine interne Adresse umschalten. Hier wird beim V
 jede Adresse geprueft und genau mit der gepruefften IP verbunden ("Pinning"). TLS (SNI, Zertifikat) laeuft weiter
 gegen den Namen aus der URL. Keine Abhaengigkeit von anderen Saga-Modulen (hkcal nutzt es ebenfalls).
 """
+import concurrent.futures
 import ipaddress
 import os
 import socket
+import threading
 
 import httpcore
 import httpx
@@ -40,6 +42,36 @@ class Blocked(httpcore.ConnectError):
     """Ziel-Adresse nicht erlaubt (intern ohne Freigabe)."""
 
 
+# DNS mit Zeitlimit: socket.getaddrinfo kennt keines (der Resolver wartet je nach resolv.conf 5 s x Versuche x Server) -
+# ohne Ausgang bzw. bei einem haengenden DNS-Server hielte jeder Abruf so lange einen Thread des Threadpools fest.
+# Aufgeloest wird in eigenen Threads; wer laenger als DNS_TIMEOUT wartet, bekommt httpcore.ConnectTimeout (httpx:
+# ConnectTimeout). Der haengende Aufruf laeuft im Hintergrund zu Ende; hoechstens DNS_WORKERS gleichzeitig, weitere
+# warten in der Schlange - auch dort zaehlt das Zeitlimit ab dem Einreihen.
+DNS_TIMEOUT = 3.0
+DNS_WORKERS = 8
+_dns_pool = None
+_dns_lock = threading.Lock()
+
+
+def _pool():
+    global _dns_pool
+    with _dns_lock:
+        if _dns_pool is None:
+            _dns_pool = concurrent.futures.ThreadPoolExecutor(DNS_WORKERS, thread_name_prefix="netguard-dns")
+        return _dns_pool
+
+
+def resolve(host, port, timeout=DNS_TIMEOUT):
+    """getaddrinfo(host, port, SOCK_STREAM) mit Zeitlimit -> Liste wie getaddrinfo.
+    OSError/UnicodeError wie getaddrinfo; Zeitueberschreitung: httpcore.ConnectTimeout."""
+    fut = _pool().submit(socket.getaddrinfo, host, port, type=socket.SOCK_STREAM)
+    try:
+        return fut.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        fut.cancel()                                      # noch in der Schlange: gar nicht erst aufloesen
+        raise httpcore.ConnectTimeout(f"{host}: DNS-Zeitlimit ({timeout:g} s)") from None
+
+
 # Ausnahme fuer die Testwiederherstellung: das LESEN vom eingetragenen Backup-Ziel (run.py backup-holen, restore
 # --schluessel, backup-pruefen) - nur fuer dessen Host(s) und nur mit diesen Methoden (S3: GET auch fuer Listen).
 RESTORE_READ_METHODS = frozenset(("GET", "HEAD", "PROPFIND"))
@@ -58,7 +90,8 @@ class GuardBackend(httpcore.SyncBackend):
         if RESTORE_TEST and str(host).lower() not in self.restore_hosts:
             raise Blocked(f"Ziel {host}: SAGA_RESTORE_TEST=1")
         try:
-            infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+            ct = kw.get("timeout", args[0] if args else None)       # Verbindungs-Zeitlimit des Clients, falls kuerzer
+            infos = resolve(host, port, min(DNS_TIMEOUT, ct) if ct else DNS_TIMEOUT)
         except (OSError, UnicodeError) as ex:
             raise httpcore.ConnectError(str(ex))
         ips = []

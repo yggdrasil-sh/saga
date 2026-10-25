@@ -27,6 +27,13 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   dafür das fertige Feld `icon_url` (neuer Endpunkt `/api/services/favicon/<key>`, nur für wer die Kachel sieht);
   Web und Apps nehmen es, wenn vorhanden. `netguard.is_public` sperrt jetzt auch Multicast-Adressen. Test
   `tests/favicon.py`; `tests/dienste.py` läuft im Test-Stack mit einem lokalen Fake-CDN (`tests/fakecdn.py`).
+  Wartende Anfragen halten keinen Thread fest: Sperren je Name bzw. Host und die je 4 Abruf-Plätze (Seiten, CDN)
+  werden nur 0,75 s versucht, sonst sofort `503` mit `no-store`; CDN bzw. Host nach einem Netzfehler 5 Minuten im
+  Speicher als „weg“ gemerkt (kein `.missing`); `/api/services/icon/<name>` antwortet dann `503` statt `502`. Der
+  Endpunkt ist `async` (Abruf im Threadpool). `saga/netguard.py` löst DNS mit Zeitlimit auf (3 s, eigene Threads) –
+  gilt für alle Abrufe über netguard (KI-Websuche, Kalender, Immich, Backups …). Stündliches Aufräumen: `.missing`
+  nach 7 Tagen, Zwischendateien nach 1 h, Favicons der Seiten nach 30 Tagen. Doku: beim Raten gehen Namensteile
+  (auch interner Hosts) an das Symbol-CDN, `ICON_CDN=` schaltet das ab.
 - **Chat Stufe 3: Browser-Geräte halten die Umstellung nicht mehr auf.** Ein Browser lädt beim nächsten Öffnen ohnehin den
   aktuellen Web-Client; nur App-Geräte ohne Stufe 3 (zuletzt aktiv in 30 Tagen) zählen noch, auch im Hinweis „Reaktionen und Bearbeiten“.
 - **Chat: Mehrfachauswahl und Hinweis, warum Reaktionen fehlen (Web).** „Auswählen“ im Nachrichtenmenü (bzw. Rechtsklick,

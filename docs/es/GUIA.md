@@ -1840,6 +1840,14 @@ tras redirecciones), solo http/https en los puertos estándar, con límites de t
 inicial: pon su icono a mano. Desactivar: área de administración → General → Servicios → **Cargar favicons**, o
 `FAVICONS=0` (solo selfh.st).
 
+Al **adivinar**, Saga pide al CDN de iconos partes del nombre del host, también de servicios internos: para
+`nextcloud.interno.example`, por ejemplo, solicita `nextcloud.png` (y `interno.png`) a `cdn.jsdelivr.net` como nombre
+de archivo. No se envían el nombre completo del host, la dirección ni la IP. Si tampoco quieres eso, define
+`ICON_CDN=` (vacío): Saga no descarga iconos de internet ni adivina (los favicons de sitios públicos siguen
+funcionando mientras «Cargar favicons» esté activado). Si el CDN o un sitio no responde en ese momento, el mosaico
+muestra la inicial y Saga lo reintenta pasados unos minutos. Saga elimina cada hora las marcas antiguas de «no
+encontrado» y los favicons (se descargan de nuevo a los 30 días).
+
 **LDAP: falla el inicio de sesión de la cuenta de servicio, o errores de certificado.**
 Compruébalo con "Probar conexión". Con una CA propia, pon el archivo en `certs/` (sección 7).
 

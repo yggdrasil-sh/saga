@@ -1010,6 +1010,7 @@ def api_service_icon(name: str, request: Request):
     if not _session_user(request) or not ICON_RE.fullmatch(name):
         return PlainTextResponse("not found", status_code=404)
     path, code = svc_icon_path(name)
-    if not path:
-        return PlainTextResponse("not found", status_code=code)
+    if not path:                                  # 503: belegt bzw. CDN gerade nicht erreichbar (saga/siteicons.py)
+        return PlainTextResponse("not found" if code == 404 else "busy", status_code=code,
+                                 headers={"Cache-Control": "no-store"} if code != 404 else None)
     return FileResponse(path, media_type="image/png", headers={"Cache-Control": "private, max-age=604800"})

@@ -1756,6 +1756,13 @@ only http/https on the standard ports, with time and size limits, raster images 
 `FAVICON_RATE` sites per account in 10 minutes. Internal services therefore keep the first letter – set their icon
 by hand. To turn it off: admin area → General → Services → **Load favicons**, or `FAVICONS=0` (selfh.st only).
 
+When **guessing**, Saga asks the icon CDN for parts of the host name – internal services included: for
+`nextcloud.internal.example`, for instance, `nextcloud.png` (and `internal.png`) is requested from `cdn.jsdelivr.net` as a
+file name. The full host name, the address and the IP are not sent. If you do not want that either, set `ICON_CDN=`
+(empty): Saga then fetches no icons from the internet and does not guess (favicons of public sites still work as long
+as “Load favicons” is on). If the CDN or a site is unreachable at the moment, the tile shows the first letter and Saga
+tries again after a few minutes. Saga cleans up old “not found” markers and favicons (refetched after 30 days) hourly.
+
 **LDAP: service account sign-in failed, or certificate errors.**
 Check with "Test connection". With your own CA, put the file into `certs/` (section 7).
 

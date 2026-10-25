@@ -11,7 +11,15 @@ SSRF: Abrufe der Seiten laufen ueber saga.netguard (DNS einmal aufloesen, jede A
 gepruefften IP verbinden) - nur oeffentliche Adressen (keine privaten, Loopback, Link-Local, CGNAT, Multicast ...),
 nur http/https auf den Standardports, ohne Zugangsdaten, hoechstens 3 Weiterleitungen (jede neu geprueft), Zeit- und
 Groessenlimits, nur unkomprimiert, nur Rasterbilder (SVG nie). Abrufe je Konto begrenzt (FAVICON_RATE je 10 Minuten).
-Abschaltbar: FAVICONS=0 (Umgebung) oder Admin-Einstellung "Favicons laden"; ICON_CDN= (leer) schaltet selfh.st ab.
+Abschaltbar: FAVICONS=0 (Umgebung) oder Admin-Einstellung "Favicons laden"; ICON_CDN= (leer) schaltet selfh.st ab
+(beim Raten gehen Namensteile der Hosts, auch interner wie "nextcloud", als Dateiname an das CDN).
+
+Threadpool: Wartende Anfragen halten keinen Thread fest. Jede Sperre (je Name, je Host, hoechstens 4 Seiten- bzw.
+CDN-Abrufe gleichzeitig) wird nur kurz versucht (LOCK_WAIT); ist sie belegt, kommt sofort 503 mit no-store - die
+Clients zeigen den Buchstaben und fragen spaeter erneut. Faellt das CDN bzw. ein Host mit einem Netzfehler aus
+(Zeitlimit, nicht erreichbar), merkt sich Saga das DOWN_TTL lang im Speicher (503, ohne erneuten Versuch).
+Aufraeumen (stuendlich aus app.py, cleanup()): .missing nach 7 Tagen, Zwischendateien nach 1 h, Favicons der Seiten
+nach 30 Tagen (dann neu geholt).
 
 Nur fuer Tests: SAGA_FAVICON_TEST_PUBLIC=127.0.0.2,127.0.0.3 - diese Loopback-Adressen (nur 127.x ausser 127.0.0.1,
 alles andere wird ignoriert) gelten als oeffentlich und duerfen jeden Port nutzen.
@@ -28,15 +36,59 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 from fastapi import APIRouter, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, PlainTextResponse
 
 from saga.core import E, ICON_CDN, STATE_DIR, _session_user
 from saga.dashboard import favicons_on, visible_tiles
-from saga.netguard import guarded_client, is_public, request_checker
+from saga.netguard import Blocked, guarded_client, is_public, request_checker
 
 router = APIRouter()
 
 ICON_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
+LOCK_WAIT = 0.75                                  # Sekunden: so lange auf eine Sperre warten, dann 503
+DOWN_TTL = 300.0                                  # CDN bzw. Host nach einem Netzfehler 5 Minuten lang nicht versuchen
+BUSY = 503                                        # belegt oder gerade nicht erreichbar: Cache-Control no-store
+
+_down_lock = threading.Lock()
+_down = {}                                        # "cdn" bzw. Host-Schluessel -> bis (time.monotonic())
+
+
+def is_down(key):
+    with _down_lock:
+        t = _down.get(key)
+        if t is not None and t <= time.monotonic():
+            _down.pop(key, None)
+            t = None
+        return t is not None
+
+
+def mark_down(key, ttl=None):
+    with _down_lock:
+        now = time.monotonic()
+        if len(_down) > 5000:
+            for k in [k for k, v in _down.items() if v <= now]:
+                _down.pop(k, None)
+        _down[key] = now + (DOWN_TTL if ttl is None else ttl)
+
+
+class _Try:
+    """with _Try(lock) as got: - Sperre bzw. Semaphore hoechstens LOCK_WAIT Sekunden versuchen."""
+
+    def __init__(self, lock, wait=None):
+        self.lock, self.wait, self.got = lock, LOCK_WAIT if wait is None else wait, False
+
+    def __enter__(self):
+        self.got = self.lock.acquire(timeout=self.wait)
+        return self.got
+
+    def __exit__(self, *a):
+        if self.got:
+            self.lock.release()
+
+
+def _stripe(locks, s):
+    return locks[int(hashlib.sha256(s.encode()).hexdigest()[:4], 16) % len(locks)]
 
 
 # =====================================================================================================
@@ -44,13 +96,14 @@ ICON_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 # =====================================================================================================
 SVC_ICON_DIR = os.path.join(STATE_DIR, "svc-icons")
 SVC_ICON_CDN = ICON_CDN                         # leer = keine Symbole aus dem Internet
-_svc_icon_lock = threading.Lock()
+_svc_locks = [threading.Lock() for _ in range(64)]   # je Name (gestreift), nicht eine Sperre fuer alle
+_cdn_sem = threading.BoundedSemaphore(4)          # hoechstens 4 CDN-Abrufe gleichzeitig
 
 
 def _svc_icon_fetch(name):
     if not SVC_ICON_CDN:
         return None
-    with httpx.Client(timeout=10, follow_redirects=False) as cl:
+    with httpx.Client(timeout=httpx.Timeout(6.0, connect=3.0), follow_redirects=False) as cl:
         r = cl.get(f"{SVC_ICON_CDN}/png/{name}.png")
         if r.status_code == 200 and r.content[:8] == b"\x89PNG\r\n\x1a\n" and len(r.content) < 2_000_000:
             return r.content
@@ -66,23 +119,43 @@ def _svc_icon_fetch(name):
 
 
 def svc_icon_path(name):
-    """-> (pfad, None) oder (None, http-status). Einmal vom CDN holen und als PNG ablegen."""
-    os.makedirs(SVC_ICON_DIR, exist_ok=True)
+    """-> (pfad, None) oder (None, http-status): 404 = gibt es nicht (einen Tag gemerkt), 503 = belegt oder CDN gerade
+    nicht erreichbar (DOWN_TTL im Speicher gemerkt, nicht auf der Platte). Einmal vom CDN holen und als PNG ablegen."""
     path, miss = os.path.join(SVC_ICON_DIR, name + ".png"), os.path.join(SVC_ICON_DIR, name + ".missing")
-    with _svc_icon_lock:
-        if not os.path.isfile(path):
-            if os.path.isfile(miss) and time.time() - os.path.getmtime(miss) < 86400:
-                return None, 404
+    if os.path.isfile(path):
+        return path, None
+    if os.path.isfile(miss) and time.time() - os.path.getmtime(miss) < 86400:
+        return None, 404
+    if not SVC_ICON_CDN:
+        return None, 404
+    if is_down("cdn"):
+        return None, BUSY
+    with _Try(_stripe(_svc_locks, name)) as got:
+        if not got:
+            return None, BUSY
+        if os.path.isfile(path):                        # waehrend des Wartens geholt
+            return path, None
+        if os.path.isfile(miss) and time.time() - os.path.getmtime(miss) < 86400:
+            return None, 404
+        if is_down("cdn"):
+            return None, BUSY
+        with _Try(_cdn_sem) as slot:
+            if not slot:
+                return None, BUSY
             try:
                 data = _svc_icon_fetch(name)
-            except (httpx.HTTPError, OSError, ValueError):
-                return None, 502                        # nicht merken: CDN kurz weg
-            if not data:
-                open(miss, "w").close()
-                return None, 404
-            with open(path + ".tmp", "wb") as f:
-                f.write(data)
-            os.replace(path + ".tmp", path)
+            except (httpx.HTTPError, OSError, ValueError) as ex:
+                mark_down("cdn")                        # nicht auf der Platte merken: CDN nur kurz weg
+                print(f"siteicons: CDN nicht erreichbar ({type(ex).__name__}), {DOWN_TTL:g} s Pause", flush=True)
+                return None, BUSY
+        os.makedirs(SVC_ICON_DIR, exist_ok=True)
+        if not data:
+            open(miss, "w").close()
+            return None, 404
+        tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, path)
     return path, None
 
 
@@ -307,9 +380,10 @@ def _client(ip_ok, ports):
 def _get(cl, url, limit, deadline, cut=False):
     """-> (bytes, content-type, endgueltige Adresse) oder None. Nur 200, nur unkomprimiert, hoechstens limit Bytes
     (cut=True: laengere Antworten abschneiden - fuer den HTML-Kopf; sonst verwerfen)."""
-    if time.monotonic() > deadline:
+    left = deadline - time.monotonic()
+    if left <= 0:
         return None
-    with cl.stream("GET", url) as r:
+    with cl.stream("GET", url, timeout=httpx.Timeout(min(FETCH_TIMEOUT, left), connect=min(3.0, left))) as r:
         if r.status_code != 200:
             return None
         if r.headers.get("content-encoding", "identity").strip().lower() not in ("", "identity"):
@@ -329,23 +403,43 @@ def _get(cl, url, limit, deadline, cut=False):
         return bytes(buf), r.headers.get("content-type", ""), str(r.url)
 
 
+def _net_down(ex):
+    """Netzfehler, nach dem der Host eine Weile nicht erneut versucht wird (statt einen Tag "nicht gefunden"):
+    Zeitlimit (auch DNS, saga/netguard.py) oder Netz/Host nicht erreichbar. Abgewiesene Verbindungen, unbekannte
+    Namen und gesperrte Adressen sind eine Antwort - die merkt sich .missing."""
+    if isinstance(ex, httpx.TimeoutException):
+        return True
+    if isinstance(ex, httpx.ConnectError) and not isinstance(ex.__cause__, Blocked) and "nicht freigegeben" not in str(ex):
+        s = str(ex).lower()
+        return "unreachable" in s or "no route" in s or "errno 101" in s or "errno 113" in s
+    return False
+
+
 def fetch_favicon(url, ip_ok=_ip_ok, ports=PORTS):
     """Favicon der Seite zu url -> PNG-Bytes oder None. ip_ok/ports nur fuer Tests austauschbar (Standard: nur
     oeffentliche IPs, nur Standardports). Die Pruefung gilt fuer jede Verbindung, auch nach Weiterleitungen."""
+    return _fetch(url, ip_ok, ports)[0]
+
+
+def _fetch(url, ip_ok=_ip_ok, ports=PORTS):
+    """-> (PNG-Bytes oder None, Netzfehler). Netzfehler beim Abruf der Seite selbst (_net_down): sofort aufhoeren,
+    /favicon.ico desselben Hosts kaeme genauso wenig an."""
     if not url_ok(url, ports):
-        return None
+        return None, False
     pu = urlparse(url)
     root = f"{pu.scheme}://{pu.netloc}/"
     deadline = time.monotonic() + TOTAL_TIMEOUT
     try:
         cl = _client(ip_ok, ports)
     except RuntimeError:
-        return None
+        return None, False
     try:
         cands, base = [], root
         try:
             got = _get(cl, root, HTML_MAX, deadline, cut=True)
-        except (httpx.HTTPError, OSError, ValueError):
+        except (httpx.HTTPError, OSError, ValueError) as ex:
+            if _net_down(ex):
+                return None, True
             got = None
         if got:
             data, ct, base = got
@@ -356,7 +450,11 @@ def fetch_favicon(url, ip_ok=_ip_ok, ports=PORTS):
                 except LookupError:
                     html = data.decode("utf-8", errors="replace")
                 cands = icon_candidates(html, base)
+        urls = []
         for u in cands + [urljoin(base, "/favicon.ico"), urljoin(root, "/favicon.ico")]:
+            if u not in urls:
+                urls.append(u)
+        for u in urls:
             if time.monotonic() > deadline:
                 break
             try:
@@ -366,8 +464,8 @@ def fetch_favicon(url, ip_ok=_ip_ok, ports=PORTS):
             if got and "svg" not in got[1].lower() and not got[1].lower().startswith("text/html"):
                 png = to_png(got[0])
                 if png:
-                    return png
-        return None
+                    return png, False
+        return None, False
     finally:
         cl.close()
 
@@ -402,7 +500,8 @@ def _host_key(url):
 
 
 def site_icon_path(url, uid):
-    """-> (pfad, None) oder (None, http-status) fuer eine Kachel ohne gesetztes Symbol."""
+    """-> (pfad, None) oder (None, http-status) fuer eine Kachel ohne gesetztes Symbol: 404 kein Bild, 429 Ratenlimit,
+    503 belegt bzw. CDN/Host gerade nicht erreichbar (spaeter erneut)."""
     try:
         pu = urlparse(url)
         host = (pu.hostname or "").lower()
@@ -411,50 +510,61 @@ def site_icon_path(url, uid):
         return None, 404
     if pu.scheme not in ("http", "https") or not host:
         return None, 404
-    os.makedirs(SITE_ICON_DIR, exist_ok=True)
     k = _host_key(url)
     base = os.path.join(SITE_ICON_DIR, k)
     png, ref, miss = base + ".png", base + ".ref", base + ".missing"
-    with _locks[int(k[:2], 16) % len(_locks)]:
+    with _Try(_locks[int(k[:2], 16) % len(_locks)]) as got:
+        if not got:
+            return None, BUSY                     # derselbe Host wird gerade gesucht
         if os.path.isfile(ref):                   # frueher geraten: selfh.st-Name
             try:
                 name = open(ref).read().strip()
             except OSError:
                 name = ""
             if ICON_RE.fullmatch(name):
-                p, _code = svc_icon_path(name)
-                if p:
-                    return p, None
+                p, code = svc_icon_path(name)
+                if p or code == BUSY:
+                    return p, code
         if os.path.isfile(png):
             return png, None
         if os.path.isfile(miss) and time.time() - os.path.getmtime(miss) < MISS_TTL:
             return None, 404
-        cdn_down = False
+        cdn_busy = False
         if SVC_ICON_CDN:
             for n in guess_names(host):
                 p, code = svc_icon_path(n)
                 if p:
+                    os.makedirs(SITE_ICON_DIR, exist_ok=True)
                     with open(ref + ".tmp", "w") as f:
                         f.write(n)
                     os.replace(ref + ".tmp", ref)
                     return p, None
-                cdn_down = cdn_down or code == 502
+                cdn_busy = cdn_busy or code == BUSY
         if not favicons_on():
-            return None, 404                      # nicht merken: beim Einschalten sofort suchen
+            return (None, BUSY) if cdn_busy else (None, 404)   # nicht merken: beim Einschalten sofort suchen
         if not url_ok(url):
             return None, 404                      # nicht merken: der Schluessel gilt fuer alle Konten mit diesem Host,
             #                                       eine Adresse mit Zugangsdaten (user@host) darf ihn nicht sperren
-        if not rate_ok(uid):
-            return None, 429
-        with _sem:
+        if is_down(k):
+            return None, BUSY
+        with _Try(_sem) as slot:                  # erst den Platz, dann das Ratenlimit (Wartende verbrauchen keins)
+            if not slot:
+                return None, BUSY
+            if not rate_ok(uid):
+                return None, 429
             try:
-                data = fetch_favicon(url)
+                data, neterr = _fetch(url)
             except Exception as ex:  # noqa: BLE001 - nie einen 500er fuer ein Symbol
                 print(f"siteicons: {type(ex).__name__}", flush=True)
-                data = None
+                data, neterr = None, False
+        if neterr:
+            mark_down(k)                          # Host gerade nicht erreichbar: nur im Speicher, nicht einen Tag lang
+            return None, BUSY
+        os.makedirs(SITE_ICON_DIR, exist_ok=True)
         if not data:
-            if not cdn_down:
-                open(miss, "w").close()
+            if cdn_busy:                          # selfh.st kam nicht zu Wort: spaeter erneut raten
+                return None, BUSY
+            open(miss, "w").close()
             return None, 404
         with open(png + ".tmp", "wb") as f:
             f.write(data)
@@ -462,16 +572,63 @@ def site_icon_path(url, uid):
         return png, None
 
 
-@router.get("/api/services/favicon/{key}")
-def api_service_favicon(key: str, request: Request):
-    """Automatisches Symbol einer Kachel - nur fuer angemeldete Konten, die diese Kachel sehen (eigenes Lesezeichen
-    bzw. freigegebener Dienst). ?h= in der Adresse (tile_icon_url) aendert sich mit dem Host."""
+MISS_KEEP = 7 * 86400                             # .missing: nach 7 Tagen weg (gilt ohnehin nur MISS_TTL)
+SITE_KEEP = 30 * 86400                            # Favicons der Seiten: nach 30 Tagen neu holen
+TMP_KEEP = 3600
+
+
+def cleanup(now=None):
+    """Stuendlich (app.py, _gc_loop): alte .missing, liegengebliebene .tmp und Favicons der Seiten (nach SITE_KEEP neu
+    geholt). selfh.st-Symbole (svc-icons/*.png) bleiben. -> Anzahl geloeschter Dateien."""
+    now = time.time() if now is None else now
+    n = 0
+    for d, site in ((SVC_ICON_DIR, False), (SITE_ICON_DIR, True)):
+        try:
+            names = os.listdir(d)
+        except OSError:
+            continue
+        for f in names:
+            p = os.path.join(d, f)
+            if f.endswith(".missing"):
+                keep = MISS_KEEP
+            elif f.endswith(".tmp"):
+                keep = TMP_KEEP
+            elif site and (f.endswith(".png") or f.endswith(".ref")):
+                keep = SITE_KEEP
+            else:
+                continue
+            try:
+                if now - os.path.getmtime(p) <= keep:
+                    continue
+                lock = _locks[int(f[:2], 16) % len(_locks)] if site and re.match(r"[0-9a-f]{2}", f) else None
+                if lock is not None and not lock.acquire(timeout=LOCK_WAIT):
+                    continue                      # wird gerade gesucht bzw. ausgeliefert: naechstes Mal
+                try:
+                    os.unlink(p)
+                    n += 1
+                finally:
+                    if lock is not None:
+                        lock.release()
+            except OSError:
+                pass
+    return n
+
+
+def _favicon(key, request):
     uid = _session_user(request)
     tile = visible_tiles(uid).get(key) if uid and len(key) <= 200 else None
     if not tile or tile.get("icon"):
-        return PlainTextResponse("not found", status_code=404, headers={"Cache-Control": "no-store"})
-    path, code = site_icon_path(tile.get("url") or "", uid)
+        return None, 404
+    return site_icon_path(tile.get("url") or "", uid)
+
+
+@router.get("/api/services/favicon/{key}")
+async def api_service_favicon(key: str, request: Request):
+    """Automatisches Symbol einer Kachel - nur fuer angemeldete Konten, die diese Kachel sehen (eigenes Lesezeichen
+    bzw. freigegebener Dienst). ?h= in der Adresse (tile_icon_url) aendert sich mit dem Host.
+    503 (no-store): belegt oder CDN/Host gerade nicht erreichbar - Buchstaben zeigen, spaeter erneut versuchen."""
+    path, code = await run_in_threadpool(_favicon, key, request)
     if not path:
-        return PlainTextResponse("not found" if code != 429 else "too many requests", status_code=code,
+        return PlainTextResponse({404: "not found", 429: "too many requests"}.get(code, "busy"), status_code=code,
                                  headers={"Cache-Control": "private, max-age=600" if code == 404 else "no-store"})
     return FileResponse(path, media_type="image/png", headers={"Cache-Control": "private, max-age=86400"})

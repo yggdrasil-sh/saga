@@ -11,7 +11,9 @@ Bildadresse (PNG, Sitzung bzw. Cookie wie bisher):
 - gesetztes Symbol → `/api/services/icon/<icon>` (wie bisher selbst gebaut),
 - ohne Symbol → `/api/services/favicon/<key>?h=<hash>`: der Server rät zuerst selfh.st nach dem Domainnamen und holt
   sonst das Favicon der Seite (≤ 256 px). Nur wer die Kachel sieht; `404` = kein Bild (Anfangsbuchstabe zeigen),
-  `429` = Ratenlimit je Konto (später erneut). `h` ändert sich mit dem Host der Adresse (Cache-Schlüssel).
+  `429` = Ratenlimit je Konto, `503` (`Cache-Control: no-store`) = gerade belegt bzw. CDN/Seite nicht erreichbar
+  (beides: Anfangsbuchstabe zeigen, später erneut). `h` ändert sich mit dem Host der Adresse (Cache-Schlüssel).
+  Auch `/api/services/icon/<icon>` antwortet `503` (no-store), wenn das CDN gerade nicht erreichbar ist (bisher `502`).
 - leer → kein Bild (z. B. Server ohne Internet, `ICON_CDN=` und „Favicons laden“ aus).
 
 Apps nehmen `icon_url`, wenn vorhanden, sonst wie bisher `icon`. Das Feld `icon` bleibt unverändert der gespeicherte

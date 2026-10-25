@@ -1827,6 +1827,13 @@ und höchstens `FAVICON_RATE` Seiten je Konto in 10 Minuten. Interne Dienste beh
 dort das Symbol von Hand setzen. Abschalten: Admin-Bereich → Allgemein → Dienste → **Favicons laden** oder
 `FAVICONS=0` (dann nur selfh.st).
 
+Beim **Raten** fragt Saga das Symbol-CDN nach Namensteilen des Hosts – auch bei internen Diensten: Für
+`nextcloud.intern.example` geht z. B. `nextcloud.png` (und `intern.png`) als Dateiname an `cdn.jsdelivr.net`. Der
+volle Hostname, die Adresse und die IP gehen nicht mit. Wer auch das nicht möchte, setzt `ICON_CDN=` (leer): dann
+holt Saga keine Symbole aus dem Internet und rät nicht (Favicons öffentlicher Seiten weiter, solange „Favicons laden“
+an ist). Ist das CDN oder eine Seite gerade nicht erreichbar, zeigt die Kachel den Anfangsbuchstaben; Saga versucht es
+nach einigen Minuten erneut. Alte Fehl-Merker und Favicons (nach 30 Tagen neu geholt) räumt Saga stündlich weg.
+
 **LDAP: „Dienstkonto-Anmeldung fehlgeschlagen“ oder Zertifikatsfehler.**
 Mit „Verbindung testen“ prüfen. Bei eigener CA die Datei nach `certs/` legen (Abschnitt 7).
 

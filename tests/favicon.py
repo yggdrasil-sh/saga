@@ -10,7 +10,11 @@ Bausteine ohne Server: Domain-Raten, Adress-/Port-Pruefung, gesperrte IP-Bereich
 Ueber den Server: icon_url in /api/services und /api/bookmarks, Favicon aus dem HTML-Kopf (groesstes Bild, <= 256 px),
 /favicon.ico (ICO), Zwischenspeicher, nur fuer wer die Kachel sieht, SSRF (127.0.0.1, 10.x, 169.254.x, ::1,
 Weiterleitung auf intern), nur SVG -> kein Bild, Raten von selfh.st, Admin-Schalter "Favicons laden", Ratenlimit je
-Konto. Wegwerf-Konten fav-*; raeumt auf und stellt die Einstellung wieder her."""
+Konto. Threadpool: langsame Seiten (127.0.0.2:18350-18397, antworten erst nach 7 s) belegen hoechstens die 4
+Abruf-Plaetze; weitere Anfragen bekommen nach kurzem Warten 503 (Cache-Control: no-store), der Server antwortet weiter;
+danach ist der Host einige Minuten als "weg" gemerkt (503 sofort, kein erneuter Abruf, kein .missing). CDN nicht
+erreichbar -> 503 und "weg" gemerkt. Aufraeumen alter .missing/.tmp/Favicons. DNS mit Zeitlimit (saga/netguard.py).
+Wegwerf-Konten fav-*; raeumt auf und stellt die Einstellung wieder her."""
 import base64, http.client, io, json, os, re, struct, sys, threading, time, urllib.parse, zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -29,9 +33,13 @@ HOST = urllib.parse.urlparse(os.environ["BASE_URL"]).netloc
 S = TimestampSigner(os.environ["SESSION_SECRET"])
 CDN = os.environ.get("ICON_CDN", "http://127.0.0.1:18310")
 P = {"a": 18311, "b": 18312, "int": 18313, "c": 18314, "e": 18315, "f": 18316}
+SLOW = __import__("random").SystemRandom().sample(range(18350, 18398), 6)   # der Merker "weg" haelt 5 Minuten im
+#                                                    Server: je Lauf zufaellige Ports (18350-18397) fuer die langsamen Seiten
+SLOW_S = 7.0                                         # > FETCH_TIMEOUT (5 s): der Abruf laeuft ins Zeitlimit
 WAIT = 5.6                       # Einstellungen sind im Server 5 s zwischengespeichert
 RU = "fav-r" + os.urandom(3).hex()   # Ratenlimit liegt im Speicher des Servers: je Lauf ein neues Konto
-USERS = ("fav-a", "fav-b", RU, "fav-adm")
+RS = "fav-s" + os.urandom(3).hex()   # Threadpool-Test: eigenes Konto (eigenes Ratenlimit)
+USERS = ("fav-a", "fav-b", RU, RS, "fav-adm")
 res = []
 HITS = {}                        # (server, pfad) -> Anzahl
 
@@ -105,6 +113,30 @@ def handler(name):
             self.send_response(200); self.send_header("Content-Type", v[0]); self.send_header("Content-Length", str(len(v[1])))
             self.end_headers(); self.wfile.write(v[1])
     return H
+
+
+class Slow(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        port = self.server.server_address[1]
+        HITS[("slow", port)] = HITS.get(("slow", port), 0) + 1
+        time.sleep(SLOW_S)
+        try:
+            self.send_response(200); self.send_header("Content-Type", "text/html"); self.send_header("Content-Length", "13")
+            self.end_headers(); self.wfile.write(b"<html></html>")
+        except OSError:                              # Client hat nach seinem Zeitlimit aufgelegt
+            pass
+
+
+def serve_slow(port):
+    srv = ThreadingHTTPServer(("127.0.0.2", port), Slow)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
 
 
 def serve(name, ip):
@@ -215,6 +247,160 @@ def units():
        and not os.path.exists(os.path.join(SI.SITE_ICON_DIR, SI._host_key(f"http://{h}/") + ".missing")))
 
 
+def units_busy():
+    print("--- Bausteine: CDN weg, Sperren mit Zeitlimit, Aufraeumen, DNS-Zeitlimit")
+    import socket as _so
+    from saga import netguard as NG
+    old = SI.SVC_ICON_CDN
+    nm = "favtest" + os.urandom(3).hex()
+    try:
+        SI._down.clear()
+        SI.SVC_ICON_CDN = "http://127.0.0.2:9"                     # nichts hoert: Verbindung abgewiesen
+        t0 = time.monotonic(); r1 = SI.svc_icon_path(nm)
+        ok(f"CDN nicht erreichbar -> 503, als weg gemerkt ({r1})", r1 == (None, 503) and SI.is_down("cdn")
+           and not os.path.exists(os.path.join(SI.SVC_ICON_DIR, nm + ".missing")))
+        SI.SVC_ICON_CDN = CDN                                       # CDN wieder da - der Merker greift trotzdem
+        n0 = len(fakecdn.HITS)
+        t0 = time.monotonic(); r2 = SI.svc_icon_path(nm)
+        ok(f"Merker 'weg': 503 sofort, kein Abruf ({r2}, {time.monotonic() - t0:.3f} s)",
+           r2 == (None, 503) and len(fakecdn.HITS) == n0 and time.monotonic() - t0 < 0.1)
+        SI._down.clear()
+        r3 = SI.svc_icon_path(nm)
+        ok(f"Nach Ablauf wieder gefragt: unbekannter Name 404 ({r3})", r3 == (None, 404) and len(fakecdn.HITS) > n0)
+        # Sperre je Name belegt -> 503 nach LOCK_WAIT, andere Namen gehen weiter
+        lk = SI._stripe(SI._svc_locks, nm + "x")
+        lk.acquire()
+        try:
+            t0 = time.monotonic(); r4 = SI.svc_icon_path(nm + "x"); dt = time.monotonic() - t0
+            other = next(n for n in ("github", "jellyfin", "nextcloud", "youtube") if SI._stripe(SI._svc_locks, n) is not lk)
+            r5 = SI.svc_icon_path(other)
+        finally:
+            lk.release()
+        ok(f"Sperre je Name belegt -> 503 nach {dt:.2f} s, anderer Name ({other}) geht weiter",
+           r4 == (None, 503) and dt < SI.LOCK_WAIT + 0.5 and r5[0])
+        # Seite: Host-Sperre belegt -> 503
+        u = "http://127.0.0.2:%d/" % P["f"]
+        k = SI._host_key(u)
+        lk = SI._locks[int(k[:2], 16) % len(SI._locks)]
+        lk.acquire()
+        try:
+            t0 = time.monotonic(); r6 = SI.site_icon_path(u, "fav-a"); dt = time.monotonic() - t0
+        finally:
+            lk.release()
+        ok(f"Host-Sperre belegt -> 503 nach {dt:.2f} s", r6 == (None, 503) and dt < SI.LOCK_WAIT + 0.5)
+    finally:
+        SI.SVC_ICON_CDN = old
+        SI._down.clear()
+        for f in (nm + ".missing", nm + "x.missing"):
+            try:
+                os.unlink(os.path.join(SI.SVC_ICON_DIR, f))
+            except OSError:
+                pass
+    # Aufraeumen: alte .missing/.tmp und alte Favicons weg, frische und selfh.st-Symbole bleiben
+    os.makedirs(SI.SITE_ICON_DIR, exist_ok=True); os.makedirs(SI.SVC_ICON_DIR, exist_ok=True)
+    old_t = time.time() - 40 * 86400
+    files = {"site-old.missing": (SI.SITE_ICON_DIR, "ab" + "0" * 30 + ".missing", True),
+             "site-new.missing": (SI.SITE_ICON_DIR, "ac" + "0" * 30 + ".missing", False),
+             "site-old.png": (SI.SITE_ICON_DIR, "ad" + "0" * 30 + ".png", True),
+             "site-old.tmp": (SI.SITE_ICON_DIR, "ae" + "0" * 30 + ".png.tmp", True),
+             "svc-old.missing": (SI.SVC_ICON_DIR, "favtest-alt.missing", True),
+             "svc-old.png": (SI.SVC_ICON_DIR, "favtest-alt.png", False)}
+    for _n, (d, f, _gone) in files.items():
+        open(os.path.join(d, f), "w").close()
+        if _n != "site-new.missing":
+            os.utime(os.path.join(d, f), (old_t, old_t))
+    SI.cleanup()
+    left = {n: os.path.exists(os.path.join(d, f)) for n, (d, f, _g) in files.items()}
+    ok(f"Aufraeumen: alte .missing/.tmp/Favicons weg, neue und selfh.st bleiben ({left})",
+       all(left[n] != g for n, (_d, _f, g) in files.items()))
+    for _n, (d, f, _g) in files.items():
+        try:
+            os.unlink(os.path.join(d, f))
+        except OSError:
+            pass
+    # DNS mit Zeitlimit: haengendes getaddrinfo -> ConnectTimeout nach DNS_TIMEOUT, nicht erst nach dem Resolver
+    real = _so.getaddrinfo
+    def hang(host, *a, **kw):
+        if host == "haengt.invalid":
+            time.sleep(6); raise OSError("zu spaet")
+        return real(host, *a, **kw)
+    _so.getaddrinfo = hang
+    old_to = NG.DNS_TIMEOUT
+    NG.DNS_TIMEOUT = 1.0
+    try:
+        import httpx
+        t0 = time.monotonic()
+        try:
+            with NG.guarded_client(lambda *a: True, timeout=10) as cl:
+                cl.get("http://haengt.invalid/")
+            got = "keine Ausnahme"
+        except httpx.ConnectTimeout:
+            got = "ConnectTimeout"
+        except Exception as ex:  # noqa: BLE001
+            got = type(ex).__name__
+        dt = time.monotonic() - t0
+        ok(f"DNS haengt -> {got} nach {dt:.1f} s (Zeitlimit {NG.DNS_TIMEOUT:g} s)", got == "ConnectTimeout" and dt < 2.5)
+        ok("Netzfehler 'DNS-Zeitlimit' gilt als Host weg", SI._net_down(httpx.ConnectTimeout("x")))
+        with NG.guarded_client(lambda *a: True, timeout=5) as cl:
+            st = cl.get("http://127.0.0.1:%d/" % P["int"]).status_code
+        ok(f"Normale Aufloesung weiter ({st})", st == 200)
+    finally:
+        _so.getaddrinfo = real
+        NG.DNS_TIMEOUT = old_to
+
+
+def busy():
+    print("--- Threadpool: langsame Seiten, 503 statt Warten, Merker 'weg'")
+    ids = [bm(RS, "http://127.0.0.2:%d/" % p) for p in SLOW]
+    twin = bm(RS, "http://127.0.0.2:%d/zwei" % SLOW[0])               # derselbe Host wie der erste
+    tl = tiles(RS)
+    urls = [tl[f"bm{i}"]["icon_url"] for i in ids]
+    out = {}
+
+    def get(tag, path, user=RS, delay=0.0):
+        time.sleep(delay)
+        t0 = time.monotonic()
+        try:
+            st, h, _d = req("GET", path, user)
+        except Exception as ex:  # noqa: BLE001
+            st, h = type(ex).__name__, {}
+        out[tag] = (st, h.get("cache-control", ""), time.monotonic() - t0)
+
+    th = [threading.Thread(target=get, args=(f"s{i}", u)) for i, u in enumerate(urls)]
+    th.append(threading.Thread(target=get, args=("twin", tl[f"bm{twin}"]["icon_url"], RS, 0.3)))
+    th += [threading.Thread(target=get, args=(f"api{j}", "/api/version", None, 0.4 + j * 0.4)) for j in range(4)]
+    th.append(threading.Thread(target=get, args=("svc", "/api/services", "fav-a", 0.6)))
+    t0 = time.monotonic()
+    for t in th:
+        t.start()
+    for t in th:
+        t.join(40)
+    total = time.monotonic() - t0
+    tiles_res = [out.get(f"s{i}") for i in range(len(urls))] + [out.get("twin")]
+    fast = [r for r in tiles_res if r and r[2] < 2.0]
+    slow = [r for r in tiles_res if r and r[2] >= 2.0]
+    print(f"     Kacheln: {[(r[0], round(r[2], 1)) for r in tiles_res if r]}, gesamt {total:.1f} s", flush=True)
+    ok(f"Alle Kachel-Anfragen 503 mit Cache-Control no-store ({[r and r[0] for r in tiles_res]})",
+       all(r and r[0] == 503 and r[1] == "no-store" for r in tiles_res))
+    ok(f"Hoechstens 4 warten auf den Abruf ({len(slow)}), die anderen kommen sofort ({len(fast)} in < 2 s)",
+       len(slow) <= 4 and len(fast) >= len(tiles_res) - 4 and out.get("twin", (0, 0, 9))[2] < 2.0)
+    api = [out.get(f"api{j}") for j in range(4)] + [out.get("svc")]
+    ok(f"Server antwortet waehrenddessen ({[(r[0], round(r[2], 2)) for r in api if r]})",
+       all(r and r[0] == 200 and r[2] < 1.5 for r in api))
+    ok(f"Abrufe enden mit dem Zeitlimit, nicht mit der Seite ({total:.1f} s < {SLOW_S + 3:g} s)", total < SLOW_S + 3)
+    # Merker "weg": die angefragten Hosts nicht erneut abrufen, kein .missing auf der Platte
+    hit0 = {p: HITS.get(("slow", p), 0) for p in SLOW}
+    tried = [i for i, p in enumerate(SLOW) if hit0[p]]
+    t1 = time.monotonic()
+    again = [req("GET", urls[i], RS) for i in tried]
+    dt = time.monotonic() - t1
+    ok(f"Merker 'weg': erneut 503 sofort ({[a[0] for a in again]}, {dt:.2f} s), kein neuer Abruf",
+       all(a[0] == 503 and a[1].get("cache-control") == "no-store" for a in again) and dt < 3
+       and all(HITS.get(("slow", SLOW[i]), 0) == hit0[SLOW[i]] for i in tried) and 1 <= len(tried) <= 4)
+    ok("Kein Fehl-Merker (.missing) fuer gerade nicht erreichbare Hosts",
+       not any(os.path.exists(os.path.join(SI.SITE_ICON_DIR, SI._host_key("http://127.0.0.2:%d/" % p) + ".missing")) for p in SLOW))
+
+
 def server():
     print("--- Ueber den Server")
     pa, pc = "http://127.0.0.2:%d/" % P["a"], "http://127.0.0.2:%d/" % P["c"]
@@ -286,14 +472,16 @@ def server():
 
 def main():
     srv = [serve("a", "127.0.0.2"), serve("b", "127.0.0.3"), serve("int", "127.0.0.1"), serve("c", "127.0.0.2"),
-           serve("e", "127.0.0.2"), serve("f", "127.0.0.2")]
+           serve("e", "127.0.0.2"), serve("f", "127.0.0.2")] + [serve_slow(p) for p in SLOW]
     fakecdn.start(CDN)
     cleanup()
     for u in USERS:
         auth.create_user(u, "Fav-Pass-12345", u, is_admin=u == "fav-adm")
     try:
         units()
+        units_busy()
         server()
+        busy()
     finally:
         cleanup()
         for s in srv:
