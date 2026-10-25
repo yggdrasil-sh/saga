@@ -34,6 +34,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   gilt für alle Abrufe über netguard (KI-Websuche, Kalender, Immich, Backups …). Stündliches Aufräumen: `.missing`
   nach 7 Tagen, Zwischendateien nach 1 h, Favicons der Seiten nach 30 Tagen. Doku: beim Raten gehen Namensteile
   (auch interner Hosts) an das Symbol-CDN, `ICON_CDN=` schaltet das ab.
+- **Lesezeichen aus dem Teilen-Blatt (iOS/macOS).** Die Teilen-Erweiterung legt mit ihrem App-Schlüssel `hk_…`
+  Lesezeichen unter „Dienste“ an: `POST /api/app/bookmarks` (dieselbe Prüfung wie `POST /api/bookmarks`) und
+  `GET /api/app/bookmarks/categories` (nur die Namen der eigenen Kategorien, keine Adressen). Ändern, Löschen und Lesen
+  der Lesezeichen bleiben Sitzungen vorbehalten; `/api/bookmarks` nimmt den App-Schlüssel weiter nicht an. Test
+  `tests/app_bookmark.py`.
 - **Chat Stufe 3: Browser-Geräte halten die Umstellung nicht mehr auf.** Ein Browser lädt beim nächsten Öffnen ohnehin den
   aktuellen Web-Client; nur App-Geräte ohne Stufe 3 (zuletzt aktiv in 30 Tagen) zählen noch, auch im Hinweis „Reaktionen und Bearbeiten“.
 - **Chat: Mehrfachauswahl und Hinweis, warum Reaktionen fehlen (Web).** „Auswählen“ im Nachrichtenmenü (bzw. Rechtsklick,

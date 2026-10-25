@@ -54,7 +54,12 @@ async def api_bookmark_add(request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    v, err = _bm_input(await _body(request) or {})
+    return add_bookmark(uid, await _body(request) or {})
+
+
+def add_bookmark(uid, b):
+    """Lesezeichen anlegen (Web/Apps per Sitzung, Teilen-Erweiterung per App-Schluessel: POST /api/app/bookmarks)."""
+    v, err = _bm_input(b)
     if err:
         return _bad(err)
     with _db() as c, c:

@@ -84,6 +84,17 @@ GET /api/notes/812/rows?limit=500&offset=0                              nur blä
 Antwort (gekürzt): `{"schema": {…}, "templates": [], "rows": [{…}, …], "offset": 0, "limit": 8, "total": 2000,
 "matched": 37, "groups": [{"id": null, "count": 2}, {"id": "a1b2", "count": 20}, …], "role": "owner"}`
 
+## Lesezeichen aus der Teilen-Erweiterung (2.5)
+
+Nur mit App-Schlüssel `hk_…` (`Authorization: Bearer hk_…`), nie mit Sitzung. Neue Endpunkte, `MIN_APP` ändert sich nicht.
+
+- `GET /api/app/bookmarks/categories` → `{"categories": ["Arbeit", "Lesezeichen"], "default": "Lesezeichen"}`: Namen
+  der eigenen Lesezeichen-Kategorien in Dashboard-Reihenfolge, Standard-Namen in der Sprache von `Accept-Language`.
+- `POST /api/app/bookmarks` mit `{name, url, category, icon}` → wie `POST /api/bookmarks` (`{id, key, name, url, icon,
+  category}`; leerer Name → Host, leere Kategorie → Standard, `400` bei ungültiger Adresse bzw. ungültigem Symbol).
+
+Ändern, Löschen und Auflisten bleiben bei `/api/bookmarks` (nur mit Sitzung, auch der Apps nach `/app/resume`).
+
 ## Persönliches Backup (2.3)
 
 Alle Endpunkte mit Sitzung, Geräte-Schlüssel `hkd_…` oder App-Schlüssel `hk_…` und `X-Saga: 1`; sie wirken immer nur

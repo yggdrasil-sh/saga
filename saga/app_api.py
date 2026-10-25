@@ -13,7 +13,9 @@ from saga import dbquery
 from saga.calendars import _cal_collect
 from saga.core import APP_CAPTURE_MAX, APP_TOKEN_MAX, TZ, _api_guard, _bad, _body, _json_load, _tok_db, _tok_hash, mark_authed, t, t_account, user_info
 from saga.databases import _first_image
+from saga.dashboard import bookmarks
 from saga.files import _thumb, _thumb_mime, _thumb_w
+from saga.links import add_bookmark
 from saga.notes import FILES_DIR, _FILE_URL, _clean_props, tree_changed
 from saga.pages import clean_blocks
 from saga.sharing import Access, access
@@ -135,6 +137,25 @@ async def api_app_capture(request: Request):
                         (uid, title or (url or text)[:80] or t("Geteilt"), body, "blocks", "🔗" if url else "📝", parent, now, now, now)).lastrowid
         tree_changed(c, uid, [nid], "created")
     return JSONResponse({"ok": True, "kind": "page", "id": nid, "url": f"/notes#{nid}"})
+
+
+# --- Lesezeichen aus der Teilen-Erweiterung (2.5): NUR anlegen und die Namen der eigenen Kategorien lesen - keine
+#     Adressen, kein Aendern oder Loeschen (dafuer weiter /api/bookmarks mit Sitzung) ------------------------------------
+@router.get("/api/app/bookmarks/categories")
+def api_app_bookmark_categories(request: Request):
+    uid = _app_uid(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    cats = list(dict.fromkeys(b["category"] for b in bookmarks(uid)))     # Reihenfolge wie auf dem Dashboard
+    return JSONResponse({"categories": cats, "default": t("Lesezeichen")}, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/api/app/bookmarks")
+async def api_app_bookmark_add(request: Request):
+    uid = _app_uid(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    return add_bookmark(uid, await _body(request) or {})
 
 
 @router.get("/api/app/today")
