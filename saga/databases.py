@@ -5,6 +5,7 @@ import json
 import time
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 from db import connect as _db
 from fastapi import APIRouter
 from saga import nextcloud
@@ -56,8 +57,14 @@ async def api_note_duplicate(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    owner = uid                              # Duplizieren: der Eigentuemer - oder per Schaltflaeche (via, siehe unten)
     b = await _body(request) or {}
+    return await run_in_threadpool(note_duplicate, uid, nid, b, origin_of(request))
+
+
+def note_duplicate(uid, nid, b, origin=None):
+    """Kern von POST /api/notes/{nid}/duplicate - auch fuer Personen anderer Instanzen (fed_pages, Schaltflaeche mit
+    Vorlage auf einer foederiert geteilten Seite: uid ist dann der Prinzipal '@name@host')."""
+    owner = uid                              # Duplizieren: der Eigentuemer - oder per Schaltflaeche (via, siehe unten)
     now = time.time()
     with _db() as c, c:
         _, _, err = access(c, uid, nid, "owner")
@@ -95,8 +102,8 @@ async def api_note_duplicate(nid: int, request: Request):
         if owner != uid:                        # per Schaltflaeche auf einer geteilten Seite: wer hat angelegt, Live-Hinweis
             c.execute("UPDATE note SET created_by=?, updated_by=? WHERE id=? AND uid=?", (uid, uid, cur.lastrowid, owner))
             if parent:
-                announce_row(c, owner, cur.lastrowid, uid, now, origin_of(request))
-        tree_changed(c, owner, [cur.lastrowid], "created", origin_of(request))
+                announce_row(c, owner, cur.lastrowid, uid, now, origin)
+        tree_changed(c, owner, [cur.lastrowid], "created", origin)
         return JSONResponse({"id": cur.lastrowid, "updated": now})
 
 
