@@ -3541,6 +3541,7 @@
         });
         wrap.appendChild(c);
       });
+      scrollHints(wrap);                               // Bughunt D15: Schatten am Rand, wenn es seitlich weitergeht
       return wrap;
     }
 

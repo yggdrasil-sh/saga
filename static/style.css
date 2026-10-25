@@ -669,6 +669,14 @@ body.notes-page #pg-full{display:none}
 .flt-add{display:block;margin:.4rem .4rem 0;width:calc(100% - .8rem);color:var(--muted)}
 
 .board{display:flex;gap:.9rem;align-items:flex-start;overflow-x:auto;padding:.4rem 0 1rem}
+/* Bughunt D15/V17: Scroll-Schatten wie bei Tabellen (.sc-l/.sc-r) - als klebende Randstreifen (ein inset-Schatten laege
+   unter den Spalten); immer vorhanden, damit beim Umschalten nichts springt; rechts bleibt ein Abstand nach der letzten Spalte */
+.board::before,.board::after{content:"";flex:none;align-self:stretch;width:18px;position:sticky;z-index:2;pointer-events:none;transition:background .15s}
+.board::before{left:0;margin-right:calc(-18px - .9rem)}
+.board::after{right:0;margin-left:-18px}
+.board.sc-l::before{background:linear-gradient(90deg,rgba(0,0,0,.6),transparent)}
+.board.sc-r::after{background:linear-gradient(270deg,rgba(0,0,0,.6),transparent)}
+@media (prefers-color-scheme: light){.board.sc-l::before{background:linear-gradient(90deg,rgba(0,0,0,.2),transparent)}.board.sc-r::after{background:linear-gradient(270deg,rgba(0,0,0,.2),transparent)}}
 .board-col{flex:0 0 268px;display:flex;flex-direction:column;gap:.45rem;padding:.4rem;border-radius:10px;
   background:color-mix(in srgb,var(--card-h) 45%,transparent);border:1px dashed transparent;transition:border-color .1s,background .1s}
 .board-col.over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
