@@ -147,6 +147,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Pseudonym-Handles in der Mitte gekürzt; Symbole statt Emoji (Schloss, stumm, Verkleinern); Namensleiste 70 % deckend.
   Der Hinweis vor dem Teilen sagt in Gruppen „sehen alle im Anruf“.
 
+### Behoben – Schaltflächen mit Vorlage auf Seiten eines anderen Servers (alle Plattformen)
+- Auf einer über Servergrenzen geteilten Seite meldete eine Schaltfläche „Neuer Eintrag“ (mit oder ohne Vorlage)
+  „Eintrag nicht angelegt: Nicht gefunden“: Ziel und Vorlage standen als IDs des anderen Servers im Inhalt, der eigene
+  Server suchte sie bei sich. Jetzt kommen Ziel und Vorlage von Schaltflächen als negative IDs (wie eingebettete
+  Datenbanken) und werden beim Speichern zurückgeschrieben (Signatur bleibt gültig). `POST /api/notes/{-id}/duplicate`
+  (mit `parent_id` und `via` derselben Instanz) geht über die neue Föderations-Fähigkeit `tplbtn` an
+  `POST /fed/v2/notes/{id}/duplicate`; der Server des Eigentümers prüft wie lokal (signierte Schaltfläche auf der
+  via-Seite, Ziel bearbeiten). Web und Apps schicken `via` jetzt auch bei negativer Seiten-ID. Gegenstelle ohne
+  `tplbtn`: verständlicher Hinweis. Test `tests/foederation_vorlagen.py`.
+
 ### Behoben – „Hierher übernehmen“ bei Anrufen über einen Knoten (Web)
 - Über einen Knoten gibt es keine Direktverbindung zum bisherigen Gerät: Das neue Gerät meldet die Übernahme jetzt
   über den Signalweg (state.ready + replaces) und meldet das alte danach beim Server ab; ein Gerät, das aus der

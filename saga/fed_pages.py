@@ -34,7 +34,7 @@ from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from db import connect as _db
-from saga import app_api, avatars, bus, files, live, nextcloud, notify, page_tools, pages, sharing
+from saga import app_api, avatars, bus, databases, files, live, nextcloud, notify, page_tools, pages, sharing
 from saga import federation as F
 from saga.comments import counts as comment_counts
 from saga.core import E, _bad, _body, t
@@ -146,6 +146,21 @@ async def _owner_req(request, nid, rest):
         if isinstance(b.get("icon"), str) and b["icon"].startswith("/") and not re.fullmatch(r"/files/[0-9a-f]{24}", b["icon"]):
             b.pop("icon")
         return _signed_resp(inp, await run_in_threadpool(F._as, inp, pages.note_create, dict(b, parent_id=nid)))
+    if m == "POST" and rest == "duplicate":
+        # tplbtn (2.5): Schaltflaeche "Neuer Eintrag" mit Vorlage auf einer hier liegenden, foederiert geteilten Seite -
+        # nid = Vorlage, via = Seite mit der Schaltflaeche, parent_id = Ziel-Datenbank (alles IDs hier). Pruefung wie
+        # lokal (databases._via_button: Signatur des Eigentuemers, Ziel bearbeiten); nie als Vorlage.
+        if _need(inp, "tplbtn"):
+            return _need(inp, "tplbtn")
+        out = {}
+        for k in ("parent_id", "via"):
+            v = b.get(k)
+            if not (isinstance(v, int) and not isinstance(v, bool) and 0 < v < 2 ** 63):
+                return F._signed(inp, 404, {"error": "not found"})
+            out[k] = v
+        if isinstance(b.get("title"), str):
+            out["title"] = b["title"]
+        return _signed_resp(inp, await run_in_threadpool(F._as, inp, databases.note_duplicate, nid, out))
     if m == "POST" and rest == "move":
         if _need(inp, "subpages"):
             return _need(inp, "subpages")
@@ -623,6 +638,28 @@ def create(uid, b, origin=None):
     return F._json(200, {"id": F.ref(p["id"], d["id"]), "updated": F._num(d.get("updated"))})
 
 
+def _w_duplicate(uid, nid, b):
+    """Schaltflaeche mit Vorlage auf einer Seite einer anderen Instanz (POST /api/notes/{-vorlage}/duplicate): Vorlage,
+    Ziel-Datenbank (parent_id) und Seite mit der Schaltflaeche (via) muessen auf DERSELBEN Instanz liegen - dort legt
+    deren Server den Eintrag an und prueft die Schaltflaeche (Signatur des Eigentuemers)."""
+    p, rid = _peer_for(uid, nid, "tplbtn")
+    ids = {}
+    for k in ("parent_id", "via"):
+        try:
+            v = int(b.get(k))
+        except (TypeError, ValueError, OverflowError):
+            return _bad("not found", 404)
+        if v >= 0 or F.unref(v)[0] != p["id"]:
+            return _bad("not found", 404)
+        ids[k] = F.unref(v)[1]
+    if isinstance(b.get("title"), str):
+        ids["title"] = b["title"][:2000]
+    status, _, d = _call(uid, p, "POST", f"/fed/v2/notes/{rid}/duplicate", body=ids)
+    if status != 200 or not isinstance(d, dict) or not F._ok_rid(d.get("id")):
+        return F._pass_err(p, status, d if isinstance(d, dict) else {})
+    return F._json(200, {"id": F.ref(p["id"], d["id"]), "updated": F._num(d.get("updated"))})
+
+
 def upload(uid, nid, name, data, image):
     """files.FED_UPLOAD: Bild/Datei in eine Seite einer anderen Instanz (liegt beim Eigentuemer)."""
     try:
@@ -834,6 +871,9 @@ async def home_other(nid: int, rest: str, request: Request):
     if m == "POST" and rest == "move":
         b = await _body(request) or {}
         return await run_in_threadpool(F._run, _w_move, uid, nid, b)
+    if m == "POST" and rest == "duplicate":
+        b = await _body(request) or {}
+        return await run_in_threadpool(F._run, _w_duplicate, uid, nid, b)
     if mn and m == "GET":
         return await run_in_threadpool(F._run, _w_nc, uid, nid, None, dict(request.query_params))
     return _bad(t("Für Seiten anderer Saga-Instanzen nicht verfügbar."), 404)

@@ -79,7 +79,10 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # 2.4 (saga.chat_status): receipts = Gelesen-Bestaetigungen in Chats (versiegelt, ueber das Heim des Chats), online =
 # Online-Status von Chat-Partnern (Abo beim Server der Person). Mit 2.3-Servern: nichts davon, nichts wird gesendet.
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
-         "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename"]
+         "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn"]
+# tplbtn (2.5) = Schaltflaeche "Neuer Eintrag" mit Vorlage auf einer foederiert geteilten Seite: Ziel und Vorlage der
+# Schaltflaechen kommen als negative IDs (saga.federation._db_blocks), das Heim legt den Eintrag ueber
+# POST /fed/v2/notes/{vorlage}/duplicate (parent_id, via) beim Eigentuemer an (saga.fed_pages). Ohne tplbtn: Hinweis.
 # rename (2.5, Bughunt W02/W03): Person mit stabilem Handle - beim Anfragen nennt der Server der Person zusaetzlich ihren
 # Handle (actor.handle); aendert sie ihren oeffentlichen Namen, kommt person.renamed (alt -> neu, Handle) statt person.gone.
 # Die Gegenseite schreibt Freigaben, Kommentare, Personen usw. auf den neuen Namen um. Ohne rename: wie bisher (person.gone).
@@ -2317,27 +2320,42 @@ def _clean_remote_body(s, fmt):
 
 
 def _db_blocks(body, pid, inbound):
-    """Eingebettete Datenbanken (Block 'database', data.db) einer fremden Seite: IDs der anderen Instanz <-> negative IDs.
-    Beim Speichern: nur Datenbanken derselben Instanz, alles andere wird leer (wie entschaerfte Verweise)."""
-    if not isinstance(body, str) or '"database"' not in body:
+    """Eingebettete Datenbanken (Block 'database', data.db) und Schaltflaechen (Block 'buttons': Ziel target, Vorlage tpl)
+    einer fremden Seite: IDs der anderen Instanz <-> negative IDs. Beim Speichern: nur IDs derselben Instanz, alles
+    andere wird leer (wie entschaerfte Verweise). Die Signatur der Schaltflaeche (sig) bleibt, wie sie ist - sie gilt
+    fuer die IDs dort (saga.databases.sign_buttons)."""
+    if not isinstance(body, str) or ('"database"' not in body and '"buttons"' not in body):
         return body
     try:
         doc = json.loads(body)
     except ValueError:
         return body
     changed = False
+
+    def conv(v):
+        if inbound:
+            return ref(pid, v) if _ok_rid(v) else None
+        return unref(v)[1] if isinstance(v, int) and not isinstance(v, bool) and v < 0 and unref(v)[0] == pid else None
     try:
         for b in _iter_blocks(doc.get("blocks") or []) if isinstance(doc, dict) else []:
-            if b.get("type") != "database" or not isinstance(b.get("data"), dict):
+            if not isinstance(b.get("data"), dict):
                 continue
-            v = b["data"].get("db")
-            if inbound:
-                nv = ref(pid, v) if _ok_rid(v) else None
-            else:
-                nv = unref(v)[1] if isinstance(v, int) and not isinstance(v, bool) and v < 0 and unref(v)[0] == pid else None
-            if nv != v:
-                b["data"]["db"] = nv
-                changed = True
+            if b.get("type") == "database":
+                v = b["data"].get("db")
+                nv = conv(v)
+                if nv != v:
+                    b["data"]["db"] = nv
+                    changed = True
+            elif b.get("type") == "buttons" and isinstance(b["data"].get("buttons"), list):
+                for bt in b["data"]["buttons"]:
+                    if not isinstance(bt, dict):
+                        continue
+                    for k in ("target", "tpl"):
+                        if k in bt and bt[k] is not None:
+                            nv = conv(bt[k])
+                            if nv != bt[k]:
+                                bt[k] = nv
+                                changed = True
     except ValueError:
         return body
     return json.dumps(doc, ensure_ascii=False) if changed else body
@@ -2406,7 +2424,7 @@ def _note_in(c, peer, d, uid):
     return d
 
 
-PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups")
+PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups", "tplbtn")
 
 
 def remote_info(peer):
