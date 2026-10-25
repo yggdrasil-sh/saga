@@ -733,7 +733,8 @@ body.notes-page #pg-full{display:none}
 .page-body .nbtn-add{appearance:none;background:none;border:1px dashed var(--border);border-radius:7px;color:var(--muted);font:inherit;
   padding:.38rem .7rem;cursor:pointer;opacity:0;transition:opacity .12s}
 .page-body .btnrow:hover .nbtn-add,.page-body .nbtn-add:focus-visible{opacity:1}
-@media (hover:none){.page-body .nbtn-cfg,.page-body .nbtn-add,.page-addcover,.cover-btns{opacity:.85}}
+@media (hover:none){.page-body .nbtn-cfg,.page-body .nbtn-add,.page-addcover,.cover-btns{opacity:.85}
+  .page-addcover{display:none}}   /* Bughunt D17: Touch - "Titelbild" im Seitenmenu "…" statt dauerhaft ueber dem Titel */
 .cfg-line{display:grid;grid-template-columns:7rem minmax(0,1fr);gap:.5rem;align-items:center;padding:.22rem .4rem}
 .cfg-lbl{font-size:.8rem;color:var(--muted)}
 .task-quick{display:flex;gap:.6rem}

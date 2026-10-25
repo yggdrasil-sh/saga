@@ -1075,6 +1075,8 @@
       if (foreign()) { foreignMenu(m, c); return; }        // fremde Seite: nur, was die Rolle erlaubt
       m.appendChild(HK.menuItem(c.pinned ? T('Von Favoriten lösen') : T('Zu Favoriten'), function () { setPinned(!c.pinned); }, { icon: c.pinned ? '☆' : '★' }));
       m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { icon: '↔', on: !!c.wide }));
+      // Bughunt D17: auf Touch-Geraeten steht "Titelbild" nicht mehr dauerhaft ueber dem Titel, sondern hier
+      if (!c.cover && !c.locked) m.appendChild(HK.menuItem(T('Titelbild'), function () { coverMenu(btn); }, { icon: '🖼' }));
       m.appendChild(HK.menuItem(c.locked ? T('Seite entsperren') : T('Seite sperren'), function () { setLocked(!c.locked); }, { icon: '🔒', on: !!c.locked }));
       m.appendChild(el('div', 'menu-sep'));
       m.appendChild(HK.menuItem(T('Duplizieren'), duplicatePage, { icon: '⧉' }));
