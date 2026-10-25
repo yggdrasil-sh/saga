@@ -81,6 +81,13 @@ def main():
     ok("Fremd mit Namen: 'Bert (b.example)'", sharing.remote_label("@" + h + "@b.example", "Bert") == "Bert (b.example)")
     ok("Oeffentlicher Name ohne Anzeigename: 'bert@b.example'", sharing.remote_label("@bert@b.example") == "bert@b.example")
     ok("unnamed lokal", unnamed(ref) == f"Unbekannte Person ({tag})")
+    from saga import fed_chat
+    with connect() as c:
+        w = fed_chat.who(c, "@" + h + "@b.example")
+        lab = fed_chat.label_of(c, "@" + h + "@b.example")
+    ok("Review D01: who() (andere Server, Systemzeilen) schickt den rohen Handle, nie den Ersatz",
+       w and w["name"] == h and "Person" not in w["name"], w)
+    ok("... die Anzeige (label_of) zeigt den Ersatz", lab["name"] == "Person auf b.example (mnop)", lab)
 
     # --- Anzeigename im Konto: allein speichern, E-Mail bleibt; Kennung als Name abgelehnt ------------------------------
     s, d = call("dn-anna", "PATCH", "/api/account", {"name": "Anna Neu"})

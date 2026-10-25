@@ -2175,7 +2175,7 @@ def who(c, u):
     if not u:
         return None
     if sharing.is_remote(u):
-        lab = label_of(c, u)
+        lab = label_of(c, u, wire=True)          # D01: nie der (uebersetzte) Ersatz - geht an andere Server und in Systemzeilen
         return {"handle": handle_of(u), "name": lab["name"], "host": lab["host"]}
     h = my_handle(c, u)
     return {"handle": h, "name": F.display_of(c, u) or h.split("@")[0], "host": F.SELF_HOST}
