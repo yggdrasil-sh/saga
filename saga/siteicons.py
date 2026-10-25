@@ -236,12 +236,38 @@ def icon_candidates(html, base_url):
     return out[:MAX_CANDIDATES]
 
 
+def _ico_ok(data, limit=2048):
+    """ICO: Pillow dekodiert beim Oeffnen sofort das groesste Bild (IcoImageFile._open -> load), die Groesse im
+    ICO-Kopf (<= 256) sagt nichts ueber ein eingebettetes PNG/BMP - Abmessungen aller Eintraege vorher pruefen
+    (sonst entpackt ein 400-KB-ICO ein 10000x10000-PNG, ~400 MB)."""
+    n = int.from_bytes(data[4:6], "little")
+    if not 0 < n <= 256 or len(data) < 6 + 16 * n:
+        return False
+    for i in range(n):
+        off = int.from_bytes(data[6 + 16 * i + 12:6 + 16 * i + 16], "little")
+        sub = data[off:off + 24]
+        if sub[:8] == b"\x89PNG\r\n\x1a\n":
+            if len(sub) < 24:
+                return False
+            w, h = int.from_bytes(sub[16:20], "big"), int.from_bytes(sub[20:24], "big")
+        else:                                       # BMP (DIB): Breite, Hoehe (doppelt: Bild + Maske)
+            if len(sub) < 12:
+                return False
+            w = abs(int.from_bytes(sub[4:8], "little", signed=True))
+            h = abs(int.from_bytes(sub[8:12], "little", signed=True)) // 2
+        if not (0 < w <= limit and 0 < h <= limit):
+            return False
+    return True
+
+
 def to_png(data):
     """Rasterbild (PNG, ICO, JPEG, GIF, WebP, BMP) -> PNG <= 256 px, sonst None. SVG/HTML nie."""
     if not data or len(data) > IMG_MAX:
         return None
     head = data[:512].lstrip().lower()
     if head.startswith(b"<") or b"<svg" in head:
+        return None
+    if data[:4] == b"\x00\x00\x01\x00" and not _ico_ok(data):
         return None
     from PIL import Image
     try:
@@ -415,6 +441,9 @@ def site_icon_path(url, uid):
                 cdn_down = cdn_down or code == 502
         if not favicons_on():
             return None, 404                      # nicht merken: beim Einschalten sofort suchen
+        if not url_ok(url):
+            return None, 404                      # nicht merken: der Schluessel gilt fuer alle Konten mit diesem Host,
+            #                                       eine Adresse mit Zugangsdaten (user@host) darf ihn nicht sperren
         if not rate_ok(uid):
             return None, 429
         with _sem:

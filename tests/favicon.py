@@ -11,7 +11,7 @@ Ueber den Server: icon_url in /api/services und /api/bookmarks, Favicon aus dem 
 /favicon.ico (ICO), Zwischenspeicher, nur fuer wer die Kachel sieht, SSRF (127.0.0.1, 10.x, 169.254.x, ::1,
 Weiterleitung auf intern), nur SVG -> kein Bild, Raten von selfh.st, Admin-Schalter "Favicons laden", Ratenlimit je
 Konto. Wegwerf-Konten fav-*; raeumt auf und stellt die Einstellung wieder her."""
-import base64, http.client, io, json, os, re, struct, sys, threading, time, urllib.parse
+import base64, http.client, io, json, os, re, struct, sys, threading, time, urllib.parse, zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 os.environ["SAGA_FAVICON_TEST_PUBLIC"] = "127.0.0.2,127.0.0.3,127.0.0.1,10.0.0.1"   # 127.0.0.1/10.x muessen ignoriert werden
@@ -171,7 +171,7 @@ def units():
        and not SI.url_ok("http://example.com:443/") and not SI.url_ok("ftp://example.com/") and not SI.url_ok("http://u:p@example.com/")
        and not SI.url_ok("file:///etc/passwd") and not SI.url_ok("http://127.0.0.1:8099/") and SI.url_ok("http://127.0.0.2:1234/"))
     bad = ["127.0.0.1", "10.0.0.1", "172.16.0.1", "192.168.0.1", "169.254.169.254", "100.64.0.1", "224.0.0.1", "0.0.0.0", "239.1.2.3", "ff0e::1",
-           "::1", "fe80::1", "fc00::1", "::ffff:127.0.0.1", "64:ff9b::a00:1", "2002:a00:1::1", "255.255.255.255"]
+           "::1", "fe80::1", "fc00::1", "::ffff:127.0.0.1", "::127.0.0.1", "64:ff9b::a00:1", "2002:a00:1::1", "255.255.255.255"]
     ok("Gesperrte Bereiche (privat, Loopback, Link-Local, CGNAT, Multicast, eingebettet)", not any(SI._ip_ok(i, "h", 80) for i in bad))
     ok("Oeffentlich und Test-Adresse erlaubt", SI._ip_ok("8.8.8.8", "h", 80) and SI._ip_ok("2606:4700::1111", "h", 443)
        and SI._ip_ok("127.0.0.2", "h", 1))
@@ -199,6 +199,20 @@ def units():
     # Dekompressionsbombe: kleines PNG mit riesiger Angabe
     hdr = b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">IIBBBBB", 30000, 30000, 8, 6, 0, 0, 0)
     ok("Riesige Bildmasse verworfen", SI.to_png(hdr + b"\x00" * 64) is None)
+    # ICO mit eingebettetem Riesen-PNG (Kopf sagt 256x256): Pillow wuerde beim Oeffnen alles entpacken
+    W = 4000
+    co = zlib.compressobj(9); idat = b"".join(co.compress(b"\x00" * (W * 4 + 1)) for _ in range(W)) + co.flush()
+    def chunk(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+    bigpng = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", W, W, 8, 6, 0, 0, 0)) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
+    bomb = struct.pack("<HHH", 0, 1, 1) + struct.pack("<BBBBHHII", 0, 0, 0, 0, 1, 32, len(bigpng), 22) + bigpng
+    t0 = time.monotonic(); r = SI.to_png(bomb)
+    ok(f"ICO mit eingebettetem {W}x{W}-PNG verworfen, ohne zu entpacken ({time.monotonic() - t0:.2f} s)",
+       len(bomb) < SI.IMG_MAX and r is None and time.monotonic() - t0 < 0.1)
+    # Adresse mit Zugangsdaten: kein Abruf und keine Sperre des Hosts fuer andere Konten
+    h = "fav-ui" + os.urandom(3).hex() + ".invalid"
+    r = SI.site_icon_path(f"http://user@{h}/", "fav-a")
+    ok("user@host: 404 ohne Fehl-Merker fuer den Host", r == (None, 404)
+       and not os.path.exists(os.path.join(SI.SITE_ICON_DIR, SI._host_key(f"http://{h}/") + ".missing")))
 
 
 def server():

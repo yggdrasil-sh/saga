@@ -21,6 +21,8 @@ def is_public(ip):
     if getattr(a, "ipv4_mapped", None):
         a = a.ipv4_mapped
     if a.version == 6:                                    # eingebettete IPv4 (NAT64 64:ff9b::/96, 6to4 2002::/16) mitpruefen
+        if a in ipaddress.ip_network("::/96"):            # IPv4-kompatibel (::127.0.0.1, veraltet): gilt in Python als global
+            return False
         emb = [a.sixtofour] if a.sixtofour else []
         if a in ipaddress.ip_network("64:ff9b::/96"):
             emb.append(ipaddress.IPv4Address(int(a) & 0xFFFFFFFF))
