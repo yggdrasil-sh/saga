@@ -131,6 +131,34 @@ func rsaHello(h *tls.ClientHelloInfo) *tls.ClientHelloInfo {
 	return &x
 }
 
+// ecdsaHello: autocert waehlt das ECDSA-Zertifikat nur, wenn das Hello eine ECDHE-ECDSA-Suite (TLS 1.2) und P-256
+// nennt. Ein reiner TLS-1.3-Client (Go mit MinVersion 1.3, z. B. die Kaskade bis rc.184) bietet keine solche Suite an,
+// obwohl er ECDSA-Zertifikate annimmt (TLS 1.3: Schluesseltyp nur ueber signature_algorithms). autocert wollte dann ein
+// RSA-Zertifikat bestellen: der Handshake hing in der Bestellung bzw. scheiterte mit "internal error". Bietet der
+// Client TLS 1.3 und ecdsa_secp256r1_sha256 an, bekommt autocert deshalb eine Kopie mit diesen Angaben.
+func ecdsaHello(h *tls.ClientHelloInfo) *tls.ClientHelloInfo {
+	tls13, p256 := false, false
+	for _, v := range h.SupportedVersions {
+		if v == tls.VersionTLS13 {
+			tls13 = true
+		}
+	}
+	for _, s := range h.SignatureSchemes {
+		if s == tls.ECDSAWithP256AndSHA256 {
+			p256 = true
+		}
+	}
+	if !tls13 || !p256 {
+		return h
+	}
+	x := *h
+	x.CipherSuites = append(append([]uint16(nil), h.CipherSuites...), tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256)
+	if h.SupportedCurves != nil {
+		x.SupportedCurves = append(append([]tls.CurveID(nil), h.SupportedCurves...), tls.CurveP256)
+	}
+	return &x
+}
+
 // ACME liefert den autocert-Manager (nil ausser im ACME-Modus).
 func (c *Certs) ACME() *autocert.Manager { return c.acme }
 
@@ -299,7 +327,7 @@ func (c *Certs) TLSConfig() *tls.Config {
 			if rsaOnly {
 				return c.acme.GetCertificate(rsaHello(h))
 			}
-			return c.acme.GetCertificate(h)
+			return c.acme.GetCertificate(ecdsaHello(h))
 		}
 		if cur != nil {
 			return cur, nil
