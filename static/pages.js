@@ -915,6 +915,7 @@
 
   // Browser-Tab-Titel und Direktlink (/notes#<id>) aktuell halten
   function setLocation() {
+    var h1 = $('pg-h1'); if (h1) h1.textContent = S.cur ? label(S.cur) : '';          // Bughunt D21: Ueberschrift fuer Screenreader
     if (!S.cur) { document.title = T('Seiten') + ' · Saga'; return; }
     document.title = (ti(S.cur.icon) ? ti(S.cur.icon) + ' ' : '') + label(S.cur) + ' · ' + T('Seiten');
     if (parseInt(location.hash.slice(1), 10) === S.cur.id) return;                 // auch "#12:block" = diese Seite

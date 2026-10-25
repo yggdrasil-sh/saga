@@ -243,6 +243,17 @@
   }
   function menuLabel(text) { return el('div', 'menu-label', text); }
   function visibleItems(m) { return [].filter.call(m.querySelectorAll('.menu-item'), function (b) { return !b.hidden && !b.disabled; }); }
+  // Bughunt D21: Sprunglink "Zum Inhalt" - Fokus direkt auf das erste sichtbare Ziel (ohne #-Adresse: die Seiten nutzen
+  // den Hash fuer die geoeffnete Seite)
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest && e.target.closest('.skip-link[data-skip]'); if (!a) return;
+    e.preventDefault();
+    var t = a.dataset.skip.split(' ').map(function (id) { return document.getElementById(id); })
+      .filter(function (x) { return x && x.getClientRects().length && !x.closest('[hidden]'); })[0];
+    if (!t) return;
+    if (!t.hasAttribute('tabindex') && !/^(INPUT|BUTTON|A|TEXTAREA|SELECT)$/.test(t.tagName)) t.setAttribute('tabindex', '-1');
+    t.focus(); if (t.scrollIntoView) t.scrollIntoView({ block: 'start' });
+  });
   document.addEventListener('mousedown', function (e) {
     if (menuOwner && !menuEl.contains(e.target) && !subEl.contains(e.target) && !menuOwner.contains(e.target)) closeMenu();
   });
