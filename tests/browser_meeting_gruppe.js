@@ -107,7 +107,11 @@ const st = p => p.evaluate(() => {
     const horn = !!(all && all[0].horn); INFO.weg = horn ? 'knoten' : 'mesh';
     await sleep(2500);
     let s3 = await st(ps[2]);
-    if (horn) ok('Knoten: je andere Person eine Kachel (3), eigene Kachel im Raster', s3.hornTiles === 3 && /horn-self/.test(s3.cls), s3);
+    if (horn) {
+      ok('Knoten: je andere Person eine Kachel (3), eigene Kachel im Raster', s3.hornTiles === 3 && /horn-self/.test(s3.cls), s3);
+      const left = await Promise.all(ps.map(p => p.evaluate(() => document.querySelectorAll('.cl-mtile').length + (document.querySelector('.cl-win.meet') ? 100 : 0))));
+      ok('Knoten: keine Kacheln der Mesh-Ansicht uebrig (Anruf begann ggf. als Mesh)', left.every(n => n === 0), left);
+    }
     else ok('S4: Auto = Galerie mit vier Kacheln, eigene zuletzt, nicht schwebend', s3.meet && s3.meet.layout === 'gallery' && s3.meet.grid.length === 4
          && s3.meet.grid[3] === s3.meet.els.find(x => x.me).id && !s3.selfFloat, s3.meet);
     ok('Layout-Knopf sichtbar (Gruppe)', s3.layoutBtn, s3);

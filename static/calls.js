@@ -3628,6 +3628,11 @@
   }
   function hornDraw(R) {
     var H = R.horn; if (!H || !R.ui || R.done || !H.L) return;
+    // Anruf begann als Mesh und laeuft jetzt ueber den Knoten: Kacheln und Ton-Halter der Meeting-Ansicht abraeumen
+    if (R.meshOn || R.ui.w.classList.contains('meet')) {
+      R.meshOn = false; meetClear(R); clearTimeout(R.mtT); R.mtT = null;
+      links(R).forEach(function (L) { if (L.tile && L.tile.holder) { L.tile.box.remove(); L.tile = null; } });
+    }
     var me_ = myDev().id, src = hornSources(R), devs = [], moving = {}, w_, pers = hornPersons(R);
     pers.forEach(function (p) { devs.push(p.dev); });
     devs.forEach(function (d) { if (src.vid[d]) moving[d] = true; });
