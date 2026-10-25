@@ -37,7 +37,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 
 from saga.core import E, ICON_CDN, STATE_DIR, _session_user
 from saga.dashboard import favicons_on, visible_tiles
@@ -631,4 +631,9 @@ async def api_service_favicon(key: str, request: Request):
     if not path:
         return PlainTextResponse({404: "not found", 429: "too many requests"}.get(code, "busy"), status_code=code,
                                  headers={"Cache-Control": "private, max-age=600" if code == 404 else "no-store"})
-    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "private, max-age=86400"})
+    try:                                   # klein (<= 256 px): ganz lesen - das Aufraeumen kann die Datei sonst
+        with open(path, "rb") as f:        # zwischen Pfad und Senden loeschen (500)
+            data = f.read()
+    except OSError:
+        return PlainTextResponse("busy", status_code=503, headers={"Cache-Control": "no-store"})
+    return Response(data, media_type="image/png", headers={"Cache-Control": "private, max-age=86400"})
