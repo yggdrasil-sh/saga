@@ -1028,6 +1028,14 @@ func (s *server) dialLoop(ctx context.Context, d *dialState) {
 	}
 }
 
+// bridgeClientTLS: TLS des waehlenden Knotens. Verlangt wird TLS 1.3 (Pruefung nach dem Handshake), angeboten wird
+// aber ab 1.2: Mit MinVersion 1.3 fehlen im Hello die ECDHE-ECDSA-Suiten, und autocert auf der Gegenseite (Knoten bis
+// rc.184) waehlt dann das RSA-Zertifikat - das es meist nicht gibt: der Handshake hing in einer neuen ACME-Bestellung
+// ("context deadline exceeded") oder scheiterte mit "internal error".
+func bridgeClientTLS(host string) *tls.Config {
+	return &tls.Config{ServerName: host, InsecureSkipVerify: true, NextProtos: []string{"http/1.1"}, MinVersion: tls.VersionTLS12} //nolint:gosec
+}
+
 // dialBridge baut die Verbindung zum annehmenden Knoten auf.
 func (s *server) dialBridge(ctx context.Context, c cascadeCmd) (*bridge, error) {
 	if !peerTokenOK(s.cfg.Dev, c.Token) || !validRef(c.Bridge) { // geht in Kopfzeilen: vor jedem Waehlen pruefen
@@ -1071,13 +1079,17 @@ func (s *server) dialBridge(ctx context.Context, c cascadeCmd) (*bridge, error) 
 	}
 	// Echtheit des anderen Knotens: Unterschrift mit seinem Knotenschluessel ueber die Kanalbindung (EKM), nicht das
 	// Web-PKI-Zertifikat (der Schluessel kommt signiert ueber die eigene Saga)
-	tc := tls.Client(raw, &tls.Config{ServerName: u.Hostname(), InsecureSkipVerify: true, NextProtos: []string{"http/1.1"}, MinVersion: tls.VersionTLS13}) //nolint:gosec
+	tc := tls.Client(raw, bridgeClientTLS(u.Hostname()))
 	_ = raw.SetDeadline(time.Now().Add(8 * time.Second))
 	if err := tc.HandshakeContext(dctx); err != nil {
 		raw.Close()
-		return nil, err
+		return nil, fmt.Errorf("tls: %w", err)
 	}
 	st := tc.ConnectionState()
+	if st.Version != tls.VersionTLS13 {
+		tc.Close()
+		return nil, errors.New("tls 1.3 noetig")
+	}
 	ekm, err := st.ExportKeyingMaterial(bifrostProto, nil, 32)
 	if err != nil {
 		tc.Close()
@@ -1189,7 +1201,7 @@ func (s *server) apiBridge(w http.ResponseWriter, r *http.Request) {
 	if ts, ok := conn.(interface {
 		TLSState() (tls.ConnectionState, bool)
 	}); ok {
-		if st, ok := ts.TLSState(); ok {
+		if st, ok := ts.TLSState(); ok && st.Version == tls.VersionTLS13 {
 			ekm, _ = st.ExportKeyingMaterial(bifrostProto, nil, 32)
 		}
 	}

@@ -203,6 +203,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Erweitern:** Warnung bei `http://`- bzw. lokaler Saga-Adresse (Dialog und Skript), Image per Digest gepinnt, wenn bekannt
   (`SAGA_HORN_IMAGE_DIGEST` oder `gjallarhorn/image.digest`); Fortschritt und Weg-Tooltip nennen den tatsächlichen Port.
 - **Neue Kachel im Knoten-Anruf** bleibt bis zum ersten echten Bild dunkel mit Avatar; Namen stehen auf dunklem Grund.
+- **Kaskade zu Knoten mit ACME-Zertifikat kommt zustande (kein Bild, kein Ton über Servergrenzen):** Der wählende Knoten
+  bot nur TLS 1.3 an, sein Hello nannte also keine ECDHE-ECDSA-Suite; autocert auf der Gegenseite wählte deshalb das
+  RSA-Zertifikat, das es nicht gab, und der Handshake hing in einer neuen ACME-Bestellung („context deadline exceeded“)
+  bzw. scheiterte mit „internal error“. Beidseitig behoben: der Wählende bietet ab TLS 1.2 an und verlangt nach dem
+  Handshake TLS 1.3 (klappt auch mit Knoten bis rc.184), der Annehmende gibt reinen TLS-1.3-Clients mit ECDSA-Signatur
+  das ECDSA-Zertifikat. Go-Tests `kaskade_tls_test.go`.
 
 ### Chat-Stufe 3 (in Arbeit, Konzept „Krypto v3 über Handles“)
 - **Testvektoren für Reaktionen und Bearbeiten:** `tests/vectors/chat_v3.json` mit Schlüsselableitung, AD und Signatur einer
