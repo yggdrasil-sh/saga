@@ -94,7 +94,14 @@ const st = p => p.evaluate(() => {
     const hint = await ps[0].evaluate(() => { const h = document.querySelector('.cl-hint'); return h && h.textContent; });
     if (hint) { console.log('  Hinweis vor dem Start: ' + hint.slice(0, 200)); const go = await ps[0].$('.cl-hint .cl-hint-go'); if (go) await go.click(); }
     if (E.DEBUG) await ps[0].screenshot({ path: path.join(os.tmpdir(), 'gruppe-start.png') });
-    for (let i = 1; i < 4; i++) { await ps[i].waitForSelector('.cl-ring', { timeout: 30000 }); await ps[i].click('.cl-ring .cl-big'); await sleep(500); }
+    const cid = await until(() => ps[0].evaluate(() => { const r = window.HKCalls.room(); return r && r.id; }), 20000);
+    for (let i = 1; i < 4; i++) {
+      // wie tests/browser_horn_web.js: ohne Klingeln (Knoten-Gruppe) ueber HKCalls.join beitreten
+      const rang = await ps[i].waitForSelector('.cl-ring', { timeout: 20000 }).then(() => true, () => false);
+      if (rang) await ps[i].click('.cl-ring .cl-big');
+      else { console.log('  (Person ' + (i + 1) + ': kein Klingeln - tritt ueber HKCalls.join bei)'); await ps[i].evaluate(id => window.HKCalls.join(id, 'member', true), cid); }
+      await sleep(500);
+    }
     const all = await until(async () => { const s = await Promise.all(ps.map(st)); return s.every(x => x && (x.horn || x.mesh === 3)) && s; }, 60000, 500);
     ok('alle vier verbunden (' + (all && all[0].horn ? 'Knoten' : 'Mesh') + ')', all, await Promise.all(ps.map(st)));
     const horn = !!(all && all[0].horn); INFO.weg = horn ? 'knoten' : 'mesh';

@@ -2,7 +2,7 @@
 // Playwright-Kontexte (je ein eigener Chromium) mit Kamera/Mikrofon-Attrappe: Anna mit zwei Geraeten (A = Hauptgeraet,
 // A2 = Begleitgeraet), Ben (B, 1280x720). Laeuft gegen einen Test-Stack wie tests/browser_raum.js (Mesh, ohne Knoten):
 //   SAGA_BASE=http://host:port SAGA_USER=anna SAGA_PASS=... SAGA_USER2=ben SAGA_PASS2=... [SHOTS=/pfad] [SHOT_PREFIX=meet-web-] \
-//   [PLAYWRIGHT=...] [PW_CHANNEL=chromium] node tests/browser_meeting.js
+//   [PLAYWRIGHT=...] [PW_CHANNEL=chromium | CHROME=/usr/bin/chromium] node tests/browser_meeting.js
 // WebRTC braucht eine Netz-Schnittstelle ausser lo. Geprueft (Szenarien S1-S3, S6, A1, A3, S14 aus §12):
 // - S2: A2 tritt als Begleitgeraet bei -> Ben sieht EINE Kachel Anna (Einzelansicht, kein Zaehler "3 Geraete"); Anna (A)
 //   sieht A2 nicht als Kachel, sondern als Chip "… verbunden" im Kopf
@@ -43,7 +43,7 @@ const SCREEN_HOOK = () => {
 const BROWSERS = [];
 async function session(user, pass, name, vp) {
   const origin = new URL(BASE).origin;
-  const br = await chromium.launch({ channel: E.PW_CHANNEL || 'chrome', headless: true,
+  const br = await chromium.launch({ ...(E.CHROME ? { executablePath: E.CHROME } : { channel: E.PW_CHANNEL || 'chrome' }), headless: true,
     args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--unsafely-treat-insecure-origin-as-secure=' + origin, '--autoplay-policy=no-user-gesture-required'] });
   BROWSERS.push(br);
   const ctx = await br.newContext({ viewport: vp || { width: 1280, height: 800 }, locale: 'de-DE', colorScheme: 'dark' });
@@ -146,6 +146,24 @@ const selfBox = p => p.evaluate(() => { const v = document.querySelector('.cl-lo
     const lc = await a2.evaluate(() => (document.querySelector('.cl-info') || {}).textContent || '');
     ok('§4.2: Kopf auf dem Begleitgeraet "Begleitgerät · Hauptgerät …"', /Begleitgerät · Hauptgerät/.test(lc), lc);
     await shot(a, '2-hauptgeraet-chip-dunkel');
+    // §4.3 Echo-Schutz: Mikrofon am Begleitgeraet einschalten, waehrend A Mikrofon/Ton an hat -> Blatt; "Hier einschalten,
+    // … stumm" schaltet A per state.ask_mute stumm
+    await a2.mouse.move(300, 300);
+    await a2.click('.cl-ctl .cl-round[aria-label="Mikrofon einschalten"]');
+    const sheet = await until(() => a2.evaluate(() => { const d = document.querySelector('.cl-echo'); return d && d.textContent; }), 4000);
+    ok('§4.3: Begleitgeraet - Echo-Blatt "Ist … im selben Raum?" mit "Hier einschalten, … stumm"', sheet && /im selben Raum/.test(sheet) && /Hier einschalten/.test(sheet), sheet);
+    await shot(a2, '2b-echo-blatt-dunkel');
+    if (sheet) await a2.click('.cl-echo-go');
+    const em = await until(async () => { const x = await room(a), y = await room(a2); return x && y && !x.mic && !x.spkOut && y.mic && [x.mic, y.mic]; }, 6000);
+    ok('§4.3: A ist stumm (Mikrofon und Ton aus), A2 hat das Mikrofon', em, [(await room(a)), (await room(a2))].map(r => r && { mic: r.mic, spk: r.spkOut }));
+    const toastA = await a.evaluate(() => document.body.innerText.includes('übernommen hat'));
+    ok('§4.3: A zeigt "Stumm, weil … übernommen hat"', toastA);
+    // zurueck: A2 stumm, A wieder an (A ist Hauptgeraet: kein Blatt)
+    await a2.click('.cl-ctl .cl-round[aria-label="Stummschalten"]');
+    await a.mouse.move(300, 300);
+    await a.click('.cl-ctl .cl-round[aria-label="Mikrofon einschalten"]');
+    await a.click('.cl-ctl .cl-spk');
+    ok('... A wieder mit Mikrofon und Ton (Hauptgeraet ohne Blatt)', await until(async () => { const x = await room(a); return x.mic && x.spkOut; }, 4000) && !(await a.$('.cl-echo')));
 
     // --- S3: Begleitgeraet teilt den Bildschirm -------------------------------------------------------------------
     await a2.click('.cl-ctl .cl-round[aria-label="Bildschirm teilen"]');
@@ -168,6 +186,16 @@ const selfBox = p => p.evaluate(() => { const v = document.querySelector('.cl-lo
     const sc3 = await scr(b);
     ok('HKCalls.screen(): gross = Bildschirm, klein = Kamera, Leiste = Chip', sc3 && sc3.big === 'screen' && sc3.small === 'cam' && /teilt den Bildschirm/.test(sc3.bar), sc3);
     await shot(b, '3-praesentation-leisten-dunkel');
+    // §9 Teilnehmerliste im Mesh: ab 900 px Seitenleiste, je Person eine Zeile, Anna mit beiden Geraeten
+    await b.click('.cl-ctl .cl-people');
+    const pl = await until(() => b.evaluate(() => { const p = document.querySelector('.cl-mlist'); const w = document.querySelector('.cl-win');
+      return p && { rows: [...p.querySelectorAll('.cl-pl')].map(x => x.textContent), side: w.classList.contains('plist-side'), meetW: document.querySelector('.cl-meet').clientWidth }; }), 4000);
+    ok('§9: Teilnehmerliste als Seitenleiste (Buehne schmaler), zwei Personen, Anna mit zwei Geraeten', pl && pl.side && pl.rows.length === 2 && pl.meetW <= 1280 - 320
+       && pl.rows.some(r => /Begleitgerät/.test(r)), pl);
+    await shot(b, '3b-teilnehmerliste-dunkel');
+    await b.click('.cl-ctl .cl-people');
+    await until(() => b.evaluate(() => !document.querySelector('.cl-mlist')), 3000);
+    await sleep(400);
 
     // --- A1: Leisten blenden nach 4 s aus; Flaeche >= 70 % --------------------------------------------------------------
     await b.mouse.move(640, 360); const t0 = Date.now();

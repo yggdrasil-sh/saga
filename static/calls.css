@@ -482,3 +482,12 @@ body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-
   .cl-pager{inset:2.8rem 72px .5rem 0}
   .cl-win:not(.small):not(.self-c0):not(.self-c2) .cl-local{right:84px}
 }
+/* 2.5 (§9) Teilnehmerliste im Mesh: ab 900 px Seitenleiste rechts (320 px, >= 1920: 360 px), schiebt die Buehne zusammen */
+.cl-pl-pin{height:30px;font-size:.8rem;padding:0 .7rem;margin-left:auto}
+.cl-pl-m svg{width:16px;height:16px;margin-left:.2rem}
+.cl-win.plist-side .cl-plist.cl-mlist{top:0;right:0;bottom:0;width:320px;border-radius:0;border-width:0 0 0 1px;z-index:5;padding-top:4.2rem}
+.cl-win.meet.mesh.plist-side .cl-meet{right:320px}
+.cl-win.plist-side .cl-tb{right:calc(320px + .8rem)}
+@media (min-width:1920px){.cl-win.plist-side .cl-plist.cl-mlist{width:360px}.cl-win.meet.mesh.plist-side .cl-meet{right:360px}.cl-win.plist-side .cl-tb{right:calc(360px + .8rem)}}
+.cl-win.small .cl-mlist{display:none}
+.cl-echo{z-index:8}

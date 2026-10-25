@@ -38,7 +38,8 @@
   // screen2 (E3) = zweite Videospur fuer den Bildschirm; braucht reneg und die Server-Faehigkeit screen2
   // multi (E4/E5) = Raum: weitere Geraete/Personen (join/leave, mehrere PeerConnections) - braucht reneg und multi am Server
   // horn (2.5) = Gruppenanrufe ueber einen Gjallarhorn-Knoten mit Frame-E2E - nur mit Server-Faehigkeit horn und Encoded Transform
-  var CAPS_ALL = ['reneg', 'want', 'bye', 'screen2', 'multi', 'horn'];
+  // askmute (2.5, MEETING-SPEC §4.3/§11) = beachtet state.ask_mute eines eigenen Begleitgeraets (Echo-Schutz)
+  var CAPS_ALL = ['reneg', 'want', 'bye', 'screen2', 'multi', 'horn', 'askmute'];
   function feat(x) { return !!(cfg && (cfg.features || []).indexOf(x) >= 0); }
   function myCaps() {
     return CAPS_ALL.filter(function (x) {
@@ -548,9 +549,16 @@
     else if (b.t === 'state') {
       var w = b.want && typeof b.want === 'object' && ['off', 'small', 'large'].indexOf(b.want.video) >= 0 ? b.want.video : 'large';
       var sm = typeof b.screen_mid === 'string' && /^[A-Za-z0-9_-]{1,16}$/.test(b.screen_mid) ? b.screen_mid : null;
-      var was = c.remoteState.screen;
       c.remoteState = { mic: b.mic !== false, cam: !!b.cam, screen: !!b.screen, pip: !!b.pip, want: w,
-                        path: PATHS.indexOf(b.path) >= 0 ? b.path : '', screenMid: b.screen ? sm : null, audio: !!b.screen_audio };
+                        path: PATHS.indexOf(b.path) >= 0 ? b.path : '', screenMid: b.screen ? sm : null, audio: !!b.screen_audio,
+                        spk: typeof b.spk === 'boolean' ? b.spk : null };
+      // 2.5 (§4.3): ein eigenes Begleitgeraet hat Mikrofon/Ton hier uebernommen -> stumm, Ton aus
+      if (b.ask_mute === true && c.peer && c.peer.me) {
+        var R0 = roomOf(c), x0 = legOf(R0, c.peerDevice);
+        if (R0.mic) setMic(R0, false);
+        if (R0.spkOut) setSpk(R0, false);
+        HK.toast(T('Stumm, weil {dev} übernommen hat', { dev: (x0 && x0.dev_name) || T('anderes Gerät') }), null, null, 6000);
+      }
       peerTracksIn(c, b);
       c.gotState = true;
       drawTiles(roomOf(c));                                            // 2.5: Teilen/Begleitgeraet -> ggf. Meeting-Ansicht
@@ -1336,7 +1344,7 @@
     }
     if (c.lay !== mt.lay) { if (mt.lay) meetSay(R, T('Layout: {name}', { name: layoutName(c.lay) })); mt.lay = c.lay; mt.page = 0; }
     var A = MT.arrange(tiles, c.lay, { pin: mt.pin, speaker: mt.pick.cur, spokeAt: mt.pick.spokeAt(), now: c.now });
-    var W = ui.stage.clientWidth || window.innerWidth, H = ui.stage.clientHeight || window.innerHeight;
+    var W = ui.meet.clientWidth || ui.stage.clientWidth || window.innerWidth, H = ui.meet.clientHeight || ui.stage.clientHeight || window.innerHeight;
     var side = MT.stripSide(W, H, c.lay), stripOff = c.lay === 'presentation' && mtPref('saga-call-strip', '0') === '1';
     var box = ui.meet;
     box.className = 'cl-meet lay-' + c.lay + ' strip-' + side.side + (stripOff ? ' strip-off' : '') + (A.strip.length ? ' has-strip' : '');
@@ -1394,6 +1402,7 @@
                 video: Object.keys(vids).length, hidden: hid.length, stripSide: side.side, stripSize: side.size };
     drawShare(R);
     selfFit(R);
+    if (R.plist) meetList(R);
     idleCheck(R);
   }
   // Ansage fuer Screenreader (polite, hoechstens eine je 10 s, keine bei Sprecherwechsel)
@@ -1567,6 +1576,41 @@
     H.view = v === 'gallery' ? 'grid' : v === 'speaker' || v === 'presentation' ? 'speaker' : (R.dm || n >= 5 ? 'speaker' : 'grid');
     if (H.view === 'grid') H.pin = null;
     hornDraw(R);
+  }
+
+  // Teilnehmerliste im Mesh (§9): je Person eine Zeile (Avatar, Name, Geraete grau, Mikro/Kamera/Bildschirm), Anheften;
+  // ab 900 px Fensterbreite Seitenleiste rechts (schiebt die Buehne zusammen), darunter ueberlagernd
+  function meetList(R) {
+    R = roomOf(R); var ui = R.ui; if (!ui) return;
+    var p = ui.w.querySelector('.cl-plist.cl-mlist');
+    if (!R.plist || R.horn) { if (p) p.remove(); ui.w.classList.remove('plist-side'); if (R.meshOn) meetSoon(R); return; }
+    if (!p) { p = el('div', 'cl-plist cl-mlist'); p.setAttribute('role', 'complementary'); p.setAttribute('aria-label', T('Teilnehmende')); ui.w.appendChild(p); }
+    var c = meetCalc(R), ppl = MT.people(c.d.roster, c.d.media), mt = mtOf(R);
+    p.textContent = '';
+    var hd = el('div', 'cl-plist-h'); hd.appendChild(el('b', null, T('Teilnehmende ({n})', { n: ppl.length })));
+    hd.appendChild(btn(icon('x'), 'cl-mini', function () { R.plist = false; meetList(R); drawCtl(R); }, T('Schließen')));
+    p.appendChild(hd);
+    var ul = el('ul', 'cl-plist-l');
+    ppl.forEach(function (P) {
+      var li = el('li', 'cl-pl' + (mt.pick && mt.pick.speaking[P.who] ? ' speaking' : ''));
+      var av = HK.avatarImg(el('span', 'cl-av cl-av-s', (P.name || '?').charAt(0).toUpperCase()), P.avatar || null, 32); av.setAttribute('aria-hidden', 'true');
+      var t = el('div', 'cl-pl-t');
+      t.appendChild(el('b', null, shortName(P.name || '?', 18) + (P.me ? ' (' + T('du') + ')' : '')));
+      t.appendChild(el('span', 'cl-td', P.devices.map(function (d) { return (d.dev_name || T('Gerät')) + (d.role === 'companion' ? ' (' + T('Begleitgerät') + ')' : ''); }).join(' · ')));
+      li.appendChild(av); li.appendChild(t);
+      var ic = el('span', 'cl-pl-m');
+      if (!P.mic) { ic.appendChild(icon('micOff')); ic.title = T('stumm'); }
+      if (P.devices.some(function (d) { return d.screen; })) ic.appendChild(icon('screen'));
+      li.appendChild(ic);
+      if (!P.me) {
+        var tid = P.who, on = mt.pin === tid;
+        li.appendChild(btn(on ? T('Lösen') : T('Für mich anheften'), 'cl-pill cl-pl-pin', function () { meetPin(R, tid); meetList(R); }));
+      }
+      ul.appendChild(li);
+    });
+    p.appendChild(ul);
+    var side = (ui.w.clientWidth || window.innerWidth) >= 900 && !ui.w.classList.contains('small');
+    if (ui.w.classList.contains('plist-side') !== side) { ui.w.classList.toggle('plist-side', side); if (R.meshOn) meetSoon(R); }
   }
 
   // --- Leisten ausblenden (§6.1): nach 4 s ohne Bedienung, nie bei Ton ohne Bild, offenem Menue, wichtiger Meldung,
@@ -1938,6 +1982,8 @@
     c.wantSent = wantNow(c);
     var o = { t: 'state', mic: c.mic, cam: !!(c.cam && c.cam.readyState === 'live' && c.cam.enabled), screen: !!c.screen,
               pip: !!c.pip, want: { video: c.wantSent }, path: c.net || undefined };
+    // 2.5 (§4.3): Ton an/aus fuer den Echo-Schutz der eigenen Geraete; ask_mute nur an ein eigenes Geraet und nur einmal
+    if (c.peer && c.peer.me) { o.spk = !!roomOf(c).spkOut; if (c.askMute) { o.ask_mute = true; c.askMute = false; } }
     // E3: welche m-Zeile was traegt (nur fuer 2.4-Gegenstellen mit screen2; aeltere ignorieren unbekannte Felder ohnehin)
     if (myCaps().indexOf('screen2') >= 0) {
       var m = myTracks(c), sm = myScreenMid(c);
@@ -1952,7 +1998,41 @@
     clearTimeout(visT);
     visT = setTimeout(function () { var c = C; if (c && !c.done && links(c).some(function (L) { return L.connected; }) && wantNow(c) !== c.wantSent) stateAll(c); }, 600);
   });
-  function toggleMic(c) { setMic(roomOf(c), !roomOf(c).mic); }
+  function toggleMic(c) { var R = roomOf(c); if (R.mic) setMic(R, false); else echoGuard(R, function () { setMic(R, true); }); }
+  // 2.5 Echo-Schutz (MEETING-SPEC §4.3): schaltet man auf einem Begleitgeraet Mikrofon oder Ton ein, waehrend ein anderes
+  // eigenes Geraet im Anruf Mikrofon oder Ton an hat -> Blatt "Ist das MacBook im selben Raum?". "Hier einschalten, … stumm"
+  // schickt dem anderen Geraet state.ask_mute (nur zwischen eigenen Geraeten, Ende-zu-Ende versiegelt wie jedes Signal).
+  function echoGuard(R, go) {
+    R = roomOf(R);
+    if (!R.companion || !R.ui) { go(); return; }
+    var other = null, L0 = null;
+    if (R.horn) {
+      (R.legs || []).forEach(function (x) { var st_ = R.horn.st[x.device] || {}; if (!other && mineLeg(x) && x.device !== myDev().id && st_.mic !== false) other = x; });
+    } else {
+      links(R).forEach(function (L) {
+        var rs = L.remoteState || {};
+        if (!L0 && L.peer && L.peer.me && L.connected && (rs.mic !== false || rs.spk === true)) { L0 = L; other = legOf(R, L.peerDevice) || { dev_name: '' }; }
+      });
+    }
+    if (!other) { go(); return; }
+    var dv = other.dev_name || T('anderes Gerät'), can = !!L0 && peerCan(L0, 'askmute');
+    if (R.ui.echo) R.ui.echo.remove();
+    var box = R.ui.echo = el('div', 'cl-hint cl-echo'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-label', T('Echo vermeiden'));
+    box.appendChild(el('b', null, T('Ist {dev} im selben Raum? Dann gibt es Echo.', { dev: dv })));
+    if (!can) box.appendChild(el('p', 'cl-hint-s', T('Bitte am Gerät {dev} stummschalten.', { dev: dv })));
+    var row = el('div', 'cl-hint-b'), close = function () { box.remove(); if (R.ui) R.ui.echo = null; idlePoke(R); };
+    row.appendChild(btn(T('Abbrechen'), 'cl-pill cl-echo-no', close));
+    row.appendChild(btn(T('Trotzdem einschalten'), 'cl-pill cl-echo-any', function () { close(); go(); }));
+    if (can) row.appendChild(btn(T('Hier einschalten, {dev} stumm', { dev: dv }), 'cl-pill cl-hint-go cl-echo-go', function () {
+      close(); L0.askMute = true; stateOut(L0); go();
+    }));
+    box.appendChild(row);
+    R.ui.w.appendChild(box);
+    var f = box.querySelector('.cl-echo-go') || box.querySelector('.cl-echo-any'); if (f) f.focus({ preventScroll: true });
+    box.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } });
+    idleCheck(R);
+  }
   // Mikrofon an/aus fuer alle Verbindungen. Begleitgeraet ohne Mikrofon-Spur: erst jetzt freigeben und einsetzen
   function setMic(c, on) {
     c = roomOf(c);
@@ -1977,6 +2057,7 @@
     each(c, function (L) { var E = els(L); if (E && E.ra) E.ra.muted = !c.spkOut; playAudio(L); });
     if (c.ui) c.ui.ra.muted = !c.spkOut;
     hornSpk(c);
+    if (!c.horn) each(c, function (L) { if (L.peer && L.peer.me && L.connected) stateOut(L); });   // Echo-Schutz der eigenen Geraete
     drawCtl(c);
   }
   function toggleCam(c) {
@@ -2538,7 +2619,7 @@
     }
     // 2.4: Wiedergabe an/aus (Begleitgeraet startet stumm) und "Hierher uebernehmen" fuer ein Begleitgeraet
     if (c.companion || !c.spkOut || meshView(c)) {
-      var k = btn(icon(c.spkOut ? 'spk' : 'spkOff'), 'cl-round cl-spk' + (c.spkOut ? '' : ' off'), function () { setSpk(c, !c.spkOut); },
+      var k = btn(icon(c.spkOut ? 'spk' : 'spkOff'), 'cl-round cl-spk' + (c.spkOut ? '' : ' off'), function () { if (c.spkOut) setSpk(c, false); else echoGuard(c, function () { setSpk(c, true); }); },
                   c.spkOut ? T('Ton aus') : T('Ton an'));
       k.setAttribute('aria-pressed', String(!c.spkOut)); x.appendChild(k);
     }
@@ -2551,6 +2632,10 @@
       lb.setAttribute('aria-haspopup', 'menu'); lb.setAttribute('aria-expanded', String(!!c.ui.w.querySelector('.cl-lmenu')));
       x.appendChild(lb);
     }
+    if (!c.horn && meshView(c) && MT) {              // 2.5 (§9): Teilnehmerliste auch im Mesh
+      var mb2 = btn(icon('users'), 'cl-round cl-people' + (c.plist ? ' on' : ''), function () { c.plist = !c.plist; meetList(c); drawCtl(c); }, T('Teilnehmende'));
+      mb2.setAttribute('aria-pressed', String(!!c.plist)); x.appendChild(mb2);
+    } else if (c.plist && !c.horn) { c.plist = false; meetList(c); }
     if (c.horn && c.ready) {                           // 2.5: Teilnehmerliste
       var H = c.horn;
       var pb = btn(icon('users'), 'cl-round cl-people' + (H.plist ? ' on' : ''), function () {
@@ -4061,7 +4146,7 @@
       var kk = k.toLowerCase();
       if (kk === 'm') { e.preventDefault(); toggleMic(R); return; }
       if (kk === 'v') { e.preventDefault(); if (R.local) toggleCam(R); return; }
-      if (kk === 'p' && R.horn) { e.preventDefault(); var pb = R.ui.ctl.querySelector('.cl-people'); if (pb) pb.click(); return; }
+      if (kk === 'p') { var pb = R.ui.ctl.querySelector('.cl-people'); if (pb) { e.preventDefault(); pb.click(); } return; }
     }
     if (typing || mod || e.altKey) return;
     if (k === ' ' && !e.repeat && !R.mic && !R.companion && !(tg && /^(BUTTON|A)$/.test(tg.tagName || ''))) {
