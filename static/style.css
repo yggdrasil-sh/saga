@@ -1427,6 +1427,8 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
   .np-head .btn{padding:.4rem .6rem}
   .np-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 }
+/* Handy mit allen Knoepfen (Chats, Glocke, KI, Konto, Dashboard): "Chats" nur als Symbol, damit nichts ueberlaeuft */
+@media (max-width:420px){.np-head .btn-chats .btn-t{display:none}.np-head{gap:.3rem}.np-head .btn{padding:.4rem .5rem}}
 /* Handy: Seitenleiste als Schublade (Knopf oben links), Inhalt sofort sichtbar */
 @media (max-width:760px){
   body.notes-page:not(.embed) .pages-side{position:fixed;top:0;left:0;bottom:0;z-index:66;width:min(86vw,330px);max-height:none;

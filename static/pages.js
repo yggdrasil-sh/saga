@@ -926,7 +926,11 @@
   function openPage(id) {
     drawer(false);                                  // Handy: Seitenleiste (Schublade) schliessen, Inhalt zeigen
     if (S.ckId && S.ckId !== id) checkpoint('leave');   // 2.4: andere Seite -> zuletzt bearbeiteten Stand sichern
+    // Review Runde 2: schnelles Wechseln - nur das zuletzt angeforderte Oeffnen gilt (Antworten koennen sich ueberholen),
+    // und der Editor zeichnet nacheinander (sonst konnte Inhalt einer Seite unter einer anderen landen)
+    var seq = S.openSeq = (S.openSeq || 0) + 1; S.wantId = id;
     return save().then(function () { return api('GET', '/api/notes/' + id); }).then(function (n) {
+      if (seq !== S.openSeq) return null;
       S.cur = n; S.loading = true; uploadNote();
       var na = $('pg-noaccess'); if (na) na.hidden = true;
       document.dispatchEvent(new CustomEvent('hk-page-open', { detail: { id: n.id } }));
@@ -945,9 +949,13 @@
       // nur Lesen/Kommentieren: kein "Gespeichert" (man speichert ja nichts) - die Kopfzeile nennt die Rolle
       state(n.updated && (!n.role || n.role === 'owner' || n.role === 'edit') ? T('Gespeichert ✓ {time}', { time: HK.fUpd.format(new Date(n.updated * 1000)) }) : '', 'ok');
       applyKind();      // Ansicht (Datenbank / Zeile / Seite) sofort umschalten, nicht erst nach dem Rendern
-      return ensureEditor(data);
-    }).then(function () { S.loading = false; })
+      var q = S.renderQ = (S.renderQ || Promise.resolve()).catch(function () {}).then(function () {
+        return seq === S.openSeq ? ensureEditor(data) : null;      // inzwischen andere Seite angefordert: nicht zeichnen
+      });
+      return q;
+    }).then(function () { if (seq === S.openSeq) S.loading = false; })
       .catch(function (err) {
+        if (seq !== S.openSeq) return;
         S.loading = false;
         if (err.status === 404 || err.status === 403) { noAccess(id); return; }
         HK.toast(T('Seite konnte nicht geöffnet werden: {err}', { err: err.message }));
@@ -5500,7 +5508,8 @@
   window.addEventListener('hashchange', function () {
     var id = parseInt(location.hash.slice(1), 10), bm = location.hash.match(/^#-?\d+:(.+)$/);
     if (id && S.cur && S.cur.id === id && bm) { showBlock(decodeURIComponent(bm[1])); return; }
-    if (!id || (S.cur && S.cur.id === id)) return;
+    // schon offen - es sei denn, inzwischen ist eine andere Seite angefordert (schnelles Wechseln: S.cur hinkt hinterher)
+    if (!id || (S.cur && S.cur.id === id && (S.wantId == null || S.wantId === id))) return;
     // Unbekannte ID (z.B. gerade per Schaltflaeche angelegt): erst Seitenliste neu laden, dann oeffnen
     (anyById(id) ? Promise.resolve() : loadList()).then(function () { openPage(id); });
   });
