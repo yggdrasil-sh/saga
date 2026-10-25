@@ -1099,6 +1099,7 @@
       } }));
       m.appendChild(HK.menuItem(c.template ? T('Keine Vorlage mehr') : T('Als Vorlage markieren'), function () { setTemplate(!c.template); }, { icon: '📐', on: !!c.template }));
       m.appendChild(el('div', 'menu-sep'));
+      if (window.HKGraph) HKGraph.menu(m);                           // static/graph.js: lokaler Graph dieser Seite
       m.appendChild(HK.menuItem(T('Versionsverlauf'), openVersions, { icon: '🕘' }));
       var shi = HK.menuItem(T('Teilen …'), openShare, { icon: ' ', on: !!c.shared }), shc = shi.querySelector('.mi-ic');
       if (shc) { shc.textContent = ''; shc.appendChild(grpIc()); }                    // einfarbiges Gruppen-Symbol
@@ -1153,6 +1154,7 @@
     m.appendChild(HK.menuItem(T('Kommentare'), function () { if (window.HKComments) HKComments.openAll(); },
       { icon: '💬', hint: c.comments_resolved ? T('{n} erledigt', { n: c.comments_resolved }) : '' }));
     m.appendChild(HK.menuItem(T('Link zur Seite kopieren'), function () { copyLink(); }, { icon: '🔗' }));
+    if (window.HKGraph && !rem) HKGraph.menu(m);       // Graph kennt nur Seiten dieses Servers
     if (window.HKAI && !rem) HKAI.menu(m);            // KI nur fuer Seiten dieses Servers (andere Instanz: 404, BUG-052)
     var n = descendants(c.id).length || S.shared.filter(function (p) { return p.parent_id === c.id; }).length;
     if (remCap(c, 'export')) m.appendChild(HK.menuItem(T('Exportieren'), null, { icon: '⬇', sub: function (sm) {
@@ -5392,7 +5394,9 @@
       if (remCap(c, 'export')) add(T('Als Markdown exportieren'), '⬇', function () { exportPage(false); }, { kw: 'export md download' });
       if (c.parent_id) add(T('Übergeordnete Seite'), '↑', goParent, { kw: 'eltern parent hoch', kbd: mk + '⇧U' });
       if (window.HKKeys) add(T('Inhaltsverzeichnis ein/aus'), '☰', HKKeys.toggleToc, { kw: 'toc gliederung ueberschriften' });
+      if (window.HKGraph && !remoteId(c.id)) add(T('Lokaler Graph'), '✳', HKGraph.openLocal, { kw: 'graph local nachbarn verbindungen links' });
     }
+    if (window.HKGraph && !EMBED) add(T('Graph'), '✳', function () { HKGraph.open({ mode: 'all', id: c && !remoteId(c.id) ? c.id : null }); }, { kw: 'graph netz verbindungen links obsidian' });
     if (!EMBED) {
       add(T('Zurück'), '←', function () { history.back(); }, { kw: 'back', kbd: mk + '[' });
       add(T('Vor'), '→', function () { history.forward(); }, { kw: 'forward', kbd: mk + ']' });
