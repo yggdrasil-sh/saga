@@ -59,8 +59,55 @@ def x3_ok(c, ch, state="ok"):
 
 
 def chat_flags(c, ch, d):
-    """fed_chat.EXTRA_HOOKS: x3_ok im Chat-Objekt."""
+    """fed_chat.EXTRA_HOOKS: x3_ok im Chat-Objekt; ist es false, sagt x3_why warum (fuer den Hinweis in den Clients)."""
     d["x3_ok"] = x3_ok(c, ch, d.get("state")) and not d.get("readonly")
+    if not d["x3_ok"]:
+        d.update(_why_v2(c, ch, d))
+
+
+def _why_v2(c, ch, d):
+    """Warum (noch) keine Reaktionen in einem Chat im Format v2 -> {x3_why, x3_hosts?}."""
+    if not x3_on():
+        return {"x3_why": "setting"}
+    if (d.get("state") or "ok") != "ok":
+        return {"x3_why": "pending"}                 # Nachrichtenanfrage noch nicht angenommen
+    if d.get("readonly") or ch.get("fstate"):
+        return {"x3_why": "readonly"}
+    if ch["home_peer"] is not None:
+        p = F.peer_by(c, "id", ch["home_peer"])
+        hosts = [] if p and F.feature(p, "chat3") else [(p or {}).get("host") or d.get("home") or "?"]
+    else:
+        hosts = [p["host"] for p in FC.participants(c, ch) if not F.feature(p, "chat3")]
+    return {"x3_why": "server", "x3_hosts": sorted(set(hosts))}
+
+
+def v1_flags(c, uid, ch, mem, d):
+    """Lokaler Chat v1 (saga.chat._chat_dict): keine Reaktionen. x3_why: 'setting' (Stufe 3 aus), 'devices' (Umstellung
+    wartet auf Geraete; x3_wait = {mine: [Namen EIGENER Geraete], others: Anzahl anderer Personen, until: Stichtag}; wartet
+    nichts mehr, kommt sie beim naechsten stuendlichen Lauf: mine [] und others 0). 'pending' bleibt der Nachrichtenanfrage
+    vorbehalten (so lesen es die Apps)."""
+    d["x3_ok"] = False
+    if not x3_on():
+        d["x3_why"] = "setting"
+        return
+    loc = sorted({u for u in mem if u and not sharing.is_remote(u)})
+    now = time.time()
+    _, until = chat.v3_deadline()
+    if not loc:
+        d.update(x3_why="devices", x3_wait={"mine": [], "others": 0, "until": int(until)})
+        return
+    ph = ",".join("?" * len(loc))
+    old = c.execute(f"SELECT uid, name FROM chat_device WHERE uid IN ({ph}) AND revoked_at IS NULL AND COALESCE(last_seen, created)>? "
+                    "AND caps NOT LIKE '%\"chat3\"%' ORDER BY COALESCE(last_seen, created) DESC", (*loc, now - chat.ACTIVE_S)).fetchall()
+    cert = {r[0] for r in c.execute(f"SELECT f.uid FROM chat_fed_cert f JOIN chat_identity i ON i.uid=f.uid AND i.ident_pub=f.ident_pub "
+                                    f"WHERE f.uid IN ({ph})", tuple(loc))}
+    nocert = set(loc) - cert
+    if not nocert and (not old or now >= until):         # Umstellung beim naechsten Lauf
+        old = []
+    mine = [(n or "").strip()[:80] or t("Gerät ohne Namen") for u, n in old if u == uid][:20]
+    others = len(({u for u, _ in old} | nocert) - {uid})
+    d["x3_why"] = "devices"
+    d["x3_wait"] = {"mine": mine, "others": others, "until": int(until)}
 
 
 def x3_on():

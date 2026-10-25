@@ -527,6 +527,7 @@ def sync(c, ch):
     gone = [u for u in cur if u not in want]
     for u in gone:
         c.execute("UPDATE chat_member SET left_at=? WHERE chat_id=? AND uid=?", (now, ch["id"], u))
+        unhide(c, ch["id"], u)
         changed = True
     if changed:
         _changed(c, ch["id"], set(cur) | want)
@@ -1114,7 +1115,8 @@ def _my_device(c, uid, device):
 def _msgs(c, uid, cid, device, where="", args=(), limit=PAGE, desc=True):
     """Nachrichten mit dem fuer mich versiegelten Schluessel (Geraet, sonst Backup). Nur, was fuer mich verschluesselt ist -
     dazu Anruf-Eintraege (kind='call', Metadaten ohne Schluessel; nur wenn where sie zulaesst). Nichts bis zur Grenze
-    "fuer mich geloescht" (chat_pref.cleared_seq; der Name einer freien Gruppe, kind='title', bleibt)."""
+    "fuer mich geloescht" (chat_pref.cleared_seq; der Name einer freien Gruppe, kind='title', bleibt) und ohne die fuer mich
+    ausgeblendeten (2.5, chat_hidden)."""
     bk = "backup:" + uid
     dv = device or "-"
     rows = c.execute(
@@ -1122,8 +1124,9 @@ def _msgs(c, uid, cid, device, where="", args=(), limit=PAGE, desc=True):
         "(SELECT sealed FROM chat_msg_key k WHERE k.msg_seq=m.seq AND k.recipient=?), m.fseq, m.sender_handle, m.ai, m.fstate FROM chat_msg m "
         "WHERE m.chat_id=? AND (m.expires_at IS NULL OR m.expires_at>?) AND (m.kind IN ('call','sys') OR EXISTS (SELECT 1 FROM chat_msg_key k "
         "WHERE k.msg_seq=m.seq AND k.recipient IN (?,?))) AND (m.kind='title' OR m.seq > COALESCE((SELECT p.cleared_seq FROM chat_pref p "
-        f"WHERE p.chat_id=m.chat_id AND p.uid=?), 0)) {where} ORDER BY m.seq {'DESC' if desc else 'ASC'} LIMIT ?",
-        (dv, bk, cid, time.time(), dv, bk, uid, *args, limit)).fetchall()
+        f"WHERE p.chat_id=m.chat_id AND p.uid=?), 0)) AND NOT EXISTS (SELECT 1 FROM chat_hidden h WHERE h.uid=? AND h.msg_seq=m.seq) "
+        f"{where} ORDER BY m.seq {'DESC' if desc else 'ASC'} LIMIT ?",
+        (dv, bk, cid, time.time(), dv, bk, uid, uid, *args, limit)).fetchall()
     return rows
 
 
@@ -1190,7 +1193,8 @@ def _name(c, uid, ch, mem, nm):
 
 def _unread(c, uid, cid, last_read):
     return c.execute("SELECT COUNT(*) FROM chat_msg m WHERE m.chat_id=? AND m.kind='msg' AND m.seq>? AND (m.sender_uid IS NULL OR m.sender_uid<>?) "
-                     "AND (m.expires_at IS NULL OR m.expires_at>?)", (cid, last_read, uid, time.time())).fetchone()[0]
+                     "AND (m.expires_at IS NULL OR m.expires_at>?) AND NOT EXISTS (SELECT 1 FROM chat_hidden h WHERE h.uid=? AND h.msg_seq=m.seq)",
+                     (cid, last_read, uid, time.time(), uid)).fetchone()[0]
 
 
 def _chat_dict(c, uid, ch, mem, m, device, full=False):
@@ -1228,6 +1232,8 @@ def _chat_dict(c, uid, ch, mem, m, device, full=False):
                 x["handle"] = FED.my_handle(c, x["username"])
     if ch.get("v3_seq") is not None:                  # 2.5: umgestellt - Nachrichten bis v3_seq im Format v1
         d["v3"] = {"seq": ch["v3_seq"], "at": ch["v3_at"], "forced": bool(ch["v3_forced"])}
+    if not hfmt(ch) and X3 is not None:               # 2.5: Chat v1 - keine Reaktionen; x3_why sagt warum
+        X3.v1_flags(c, uid, ch, mem, d)
     if hfmt(ch):                                      # 2.3: Chat ueber Servergrenzen (saga.fed_chat); 2.5: Stufe 3 ebenso
         FED.chat_extra(c, uid, ch, d, mem, m)
         if ch.get("v3_forced") and CHAT_LEVEL.get() < 3 and time.time() - (ch.get("v3_at") or 0) < VERIFY_HINT_S:
@@ -1561,6 +1567,7 @@ def api_member_remove(cid: int, who: str, request: Request):
         if who not in mem:
             return _bad("not found", 404)
         c.execute("UPDATE chat_member SET left_at=?, role='member' WHERE chat_id=? AND uid=?", (time.time(), ch["id"], who))
+        unhide(c, ch["id"], who)
         rest = members(c, ch["id"])
         if not rest:
             _rm_blobs(c, _drop_chat(c, ch["id"]))
@@ -1607,6 +1614,7 @@ def clear_for(c, uid, ch):
               "DO UPDATE SET archived=EXCLUDED.archived, cleared_seq=GREATEST(chat_pref.cleared_seq, EXCLUDED.cleared_seq), "
               "cleared_at=EXCLUDED.cleared_at, hidden=EXCLUDED.hidden", (ch["id"], uid, None if dm else now, floor, now, 1 if dm else 0))
     c.execute("UPDATE chat_member SET last_read=GREATEST(last_read, ?) WHERE chat_id=? AND uid=?", (ch["last_seq"], ch["id"], uid))
+    c.execute("DELETE FROM chat_hidden WHERE chat_id=? AND uid=? AND msg_seq<=?", (ch["id"], uid, floor))   # 2.5: liegt jetzt unter der Grenze
     _drop_notifs(c, [uid], ch["id"])
     return floor, n
 
@@ -1894,6 +1902,126 @@ def api_msg_delete(cid: int, mid: str, request: Request):
         _rm_blobs(c, fids)
         _direct(c, mem, "chat.deleted", {"chat_id": ch["id"], "id": mid, "seq": r[0]})
     return _no_store({"ok": True})
+
+
+# --- Mehrfachauswahl (2.5): mehrere eigene Nachrichten fuer alle loeschen, Nachrichten nur fuer mich ausblenden ------
+BULK_DELETE_MAX = 100              # POST .../messages/delete: hoechstens so viele ids
+HIDE_MAX = 500                     # POST .../hide: hoechstens so viele ids
+
+
+def _ids_in(b, most):
+    """{"ids": [mid, ...]} -> (ids ohne Doppelte, fehler)"""
+    ids = b.get("ids") if isinstance(b, dict) else None
+    if not isinstance(ids, list) or not ids:
+        return None, _bad(t("ungültige Angabe"))
+    if len(ids) > most:
+        return None, _bad(t("Höchstens {n} Nachrichten auf einmal.", n=most), 400)
+    out = []
+    for x in ids:
+        if not isinstance(x, str) or not _HEX32.fullmatch(x):
+            return None, _bad(t("ungültige Angabe"))
+        if x not in out:
+            out.append(x)
+    return out, None
+
+
+def _status_of(resp):
+    """Antwort von FED.delete_msg -> Grund fuer failed (None = geloescht)."""
+    code = getattr(resp, "status_code", 200)
+    return None if code == 200 else "not_found" if code == 404 else "not_own" if code == 403 else "error"
+
+
+@router.post("/api/chats/{cid}/messages/delete")
+async def api_msg_delete_many(cid: int, request: Request):
+    """Mehrere eigene Nachrichten fuer alle loeschen: {"ids": [mid, ...]} (hoechstens BULK_DELETE_MAX). Gleiche Regeln und
+    Live-Ereignisse (chat.deleted je Nachricht) wie DELETE .../messages/{mid}; Format v2 (Stufe 3, foederiert) ueber
+    FED.delete_msg. -> {"deleted": [mid...], "failed": {mid: "not_found" | "not_own" | "error"}}"""
+    uid, err = _me(request)
+    if err:
+        return err
+    ids, err = _ids_in(await _body(request), BULK_DELETE_MAX)
+    if err:
+        return err
+    from starlette.concurrency import run_in_threadpool
+    return await run_in_threadpool(_delete_many, uid, cid, ids)
+
+
+def _delete_many(uid, cid, ids):
+    deleted, failed = [], {}
+    with _db() as c, c:
+        ch, m, mem, err = _chat_for(c, uid, cid, do_sync=False)
+        if err:
+            return err
+        if hfmt(ch):
+            c.rollback()
+        else:
+            mem = _fresh(c, ch, mem)             # wie beim Einzel-Loeschen (BUG-088)
+            rows = {r[0]: (r[1], r[2]) for r in c.execute(
+                f"SELECT id, seq, sender_uid FROM chat_msg WHERE chat_id=? AND kind='msg' AND id IN ({','.join('?' * len(ids))})",
+                (ch["id"], *ids))}
+            seqs, fids = [], []
+            for mid in ids:
+                r = rows.get(mid)
+                if not r:
+                    failed[mid] = "not_found"
+                elif r[1] != uid:
+                    failed[mid] = "not_own"
+                else:
+                    seqs.append(r[0])
+                    deleted.append(mid)
+            if seqs:
+                ph = ",".join("?" * len(seqs))
+                fids = [x[0] for x in c.execute(f"SELECT id FROM chat_file WHERE msg_seq IN ({ph})", tuple(seqs))]
+                c.execute(f"DELETE FROM chat_file WHERE msg_seq IN ({ph})", tuple(seqs))
+                c.execute(f"DELETE FROM chat_ai_reply WHERE msg_id IN ({','.join('?' * len(deleted))})", tuple(deleted))
+                c.execute(f"DELETE FROM chat_msg WHERE seq IN ({ph})", tuple(seqs))
+                _rm_blobs(c, fids)
+                for mid in deleted:
+                    _direct(c, mem, "chat.deleted", {"chat_id": ch["id"], "id": mid, "seq": rows[mid][0]})
+            return _no_store({"deleted": deleted, "failed": failed})
+    for mid in ids:                              # Format v2: je Nachricht eigene Transaktion (Heim bzw. Warteschlange)
+        why = _status_of(FED.delete_msg(uid, ch, mid))
+        if why:
+            failed[mid] = why
+        else:
+            deleted.append(mid)
+    return _no_store({"deleted": deleted, "failed": failed})
+
+
+def unhide(c, cid, uid=None):
+    """Ausgeblendete Nachrichten (chat_hidden) eines Kontos in einem Chat vergessen - beim Austritt bzw. "fuer mich
+    loeschen". uid=None: fuer alle (Chat selbst geht per ON DELETE CASCADE)."""
+    if uid is None:
+        c.execute("DELETE FROM chat_hidden WHERE chat_id=?", (cid,))
+    else:
+        c.execute("DELETE FROM chat_hidden WHERE chat_id=? AND uid=?", (cid, uid))
+
+
+@router.post("/api/chats/{cid}/hide")
+async def api_hide(cid: int, request: Request):
+    """Nachrichten nur fuer mich ausblenden (auf allen eigenen Geraeten): {"ids": [mid, ...]} (hoechstens HIDE_MAX).
+    Nachrichten-Listen lassen sie fuer mich weg; Live chat.hidden {chat_id, ids} an meine Geraete. Unbekannte ids zaehlen
+    nicht. -> {"hidden": n} (n = davon jetzt ausgeblendet, auch schon vorher ausgeblendete)"""
+    uid, err = _me(request)
+    if err:
+        return err
+    ids, err = _ids_in(await _body(request), HIDE_MAX)
+    if err:
+        return err
+    with _db() as c, c:
+        ch, m, mem, err = _chat_for(c, uid, cid, do_sync=False)
+        if err:
+            return err
+        rows = c.execute(f"SELECT seq, id FROM chat_msg WHERE chat_id=? AND kind IN ('msg','call') AND id IN ({','.join('?' * len(ids))})",
+                         (ch["id"], *ids)).fetchall()
+        now = time.time()
+        for seq, mid in rows:
+            c.execute("INSERT INTO chat_hidden (uid, chat_id, msg_seq, msg_id, at) VALUES (?,?,?,?,?) ON CONFLICT (uid, msg_seq) DO NOTHING",
+                      (uid, ch["id"], seq, mid, now))
+        got = [r[1] for r in rows]
+        if got:
+            _direct(c, [uid], "chat.hidden", {"chat_id": ch["id"], "ids": got})
+    return _no_store({"hidden": len(got)})
 
 
 @router.post("/api/chats/{cid}/read")
@@ -2198,6 +2326,7 @@ def delete_account(c, uid):
     chats = [r[0] for r in c.execute("SELECT chat_id FROM chat_member WHERE uid=?", (uid,))]
     c.execute("DELETE FROM chat_member WHERE uid=?", (uid,))
     c.execute("DELETE FROM chat_pref WHERE uid=?", (uid,))                         # Archiv / "fuer mich geloescht" (2.1)
+    c.execute("DELETE FROM chat_hidden WHERE uid=?", (uid,))                       # "fuer mich ausgeblendet" (2.5)
     for cid in chats:
         ch = _load(c, cid)
         if not ch:

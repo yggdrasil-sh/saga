@@ -1026,6 +1026,7 @@
   function closeChat() {
     vplDrop(); recCancel();
     S.cur = null; S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; S.rcpts = {};
+    selEnd(true);
     $('ct-chat').hidden = true; $('ct-none').hidden = false; root.classList.remove('ct-open');
     drawList();
   }
@@ -1034,7 +1035,7 @@
     var same = S.cur && S.cur.id === cid;
     return api('GET', '/api/chats/' + cid + '?device=' + q(dev())).then(function (r) {
       var c = r.chat; freeTitle(c); h2uNote([c]);
-      if (!same) { vplDrop(); recCancel(); S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; S.fk = null; S.rcpts = {}; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; }
+      if (!same) { selEnd(true); vplDrop(); recCancel(); S.msgs = []; S.byId = {}; S.seenSeq = 0; S.rc = null; S.reply = null; S.files = []; S.fk = null; S.rcpts = {}; drawReply(); drawFiles(); $('ct-input').value = ''; S.mentions = {}; }
       S.cur = c;
       $('ct-none').hidden = true; $('ct-chat').hidden = false; root.classList.add('ct-open');
       drawHead(); drawList(); drawWarn();
@@ -1089,6 +1090,7 @@
     if (c.kind === 'page' && c.note_id) {
       var a = el('a', 'ct-chip ct-pagelink', T('Seite öffnen')); a.href = '/notes#' + c.note_id; a.target = 'hk-notes'; sub.appendChild(a);
     }
+    x3Info(sub, c);                                       // 2.5: warum (noch) keine Reaktionen
     document.title = chatName(c) + ' · ' + T('Chats');
     if (window.HKCalls) window.HKCalls.head(c);           // Anruf-Knoepfe (static/calls.js); 2.4: auch Gruppenanruf
     micDraw();
@@ -1140,7 +1142,8 @@
     return (isFed(c) && !S.fk ? fedLoad(c).catch(function () { return null; }) : Promise.resolve()).then(function () { return api('GET', url); }).then(function (r) {
       S.loading = false;
       if (!S.cur || S.cur.id !== c.id) { if (S.loadAgain && S.cur) { S.loadAgain = false; return loadMsgs(false); } return; }
-      var add = r.messages.filter(function (m) { return !S.byId[m.id]; }).map(function (m) {
+      var lh = locHidden(c.id);                         // 2.5: aelterer Server - nur auf diesem Geraet ausgeblendet
+      var add = r.messages.filter(function (m) { return !S.byId[m.id] && !lh[m.id]; }).map(function (m) {
         var d;
         if (m.fstate === 'pending' && S.okIds && S.okIds[m.id]) { m.fstate = null; if (!m.fseq && S.okIds[m.id] !== true) m.fseq = S.okIds[m.id]; }
         if (m.kind === 'call') {                          // Anruf-Eintrag: Metadaten vom Server (nicht verschluesselt, nur wer/wann/wie lange)
@@ -1431,8 +1434,8 @@
       var d = new Date(m.created * 1000), day = fDay.format(d);
       if (day !== lastDay) { box.appendChild(el('div', 'ct-day', day)); lastDay = day; lastWho = null; }
       var isAI = m._ai === 'ok', mine = !isAI && m.sender && m.sender.username === ME;
-      if (m.kind === 'call') { box.appendChild(callRow(m, d, mine)); lastWho = null; return; }
-      if (m.kind === 'sys') { box.appendChild(sysRow(m, d)); lastWho = null; return; }
+      if (m.kind === 'call') { var cr = callRow(m, d, mine); if (S.sel) cr.classList.add('ct-nosel'); box.appendChild(cr); lastWho = null; return; }
+      if (m.kind === 'sys') { var sr = sysRow(m, d); if (S.sel) sr.classList.add('ct-nosel'); box.appendChild(sr); lastWho = null; return; }
       var row = el('div', 'ct-msg' + (mine ? ' mine' : '') + (isAI ? ' ct-ai' : '')); row.dataset.id = m.id;
       if (isAI) {                                         // KI-Antwort (2.1): Bild + Name der KI, wer gefragt hat
         if (lastWho !== '#ai:' + (m.sender || {}).username) box.appendChild(aiWho(m));
@@ -1483,6 +1486,7 @@
         row.appendChild(rb);
       }
       row.appendChild(act);
+      selRow(row, m);                                     // 2.5: Auswahlmodus
       box.appendChild(row);
     });
     if (S.aiPending && S.aiPending.cid === c.id) box.appendChild(S.aiPending.el);   // wartende KI-Antwort bleibt unten
@@ -1561,6 +1565,7 @@
       if (canReact(S.cur, m)) menu.appendChild(rxQuick(anchor, m));                 // 2.5: Reaktionen oben im Menue
       if (m.body) menu.appendChild(HK.menuItem(T('Antworten'), function () { HK.closeMenu(); S.reply = m; drawReply(); $('ct-input').focus(); }, { icon: '↩' }));
       if (canEdit(S.cur, m)) menu.appendChild(HK.menuItem(T('Bearbeiten'), function () { HK.closeMenu(); editStart(m); }, { icon: '✎' }));
+      if (selectable(m)) menu.appendChild(HK.menuItem(T('Auswählen'), function () { HK.closeMenu(); selStart(m); }, { icon: '☑' }));     // 2.5
       if (m.body && m.body.text) menu.appendChild(HK.menuItem(T('Text kopieren'), function () {
         HK.closeMenu(); if (navigator.clipboard) navigator.clipboard.writeText(m.body.text).then(function () { HK.toast(T('Kopiert.')); });
       }, { icon: '⧉' }));
@@ -1581,8 +1586,415 @@
     if (!S.byId[id]) return;
     delete S.byId[id]; S.msgs = S.msgs.filter(function (x) { return x.id !== id; });
     if (S.reply && S.reply.id === id) { S.reply = null; drawReply(); }
-    drawMsgs();
+    if (S.sel) delete S.sel.ids[id];
+    drawMsgs(); if (S.sel) selDraw();
   }
+  // --- Mehrfachauswahl (2.5): Kopieren, Weiterleiten, In Seite uebernehmen, Loeschen (fuer mich / fuer alle) ----------
+  // Start ueber "Auswaehlen" im Nachrichtenmenue bzw. Rechtsklick (Menue) oder langen Druck (Touch); danach waehlt Klick/
+  // Antippen weitere aus oder ab, Umschalt+Klick einen Bereich, Leertaste die fokussierte Nachricht, Esc beendet.
+  // Systemzeilen, Anrufe und nicht entschluesselte Nachrichten sind nicht auswaehlbar.
+  var SEL_FWD_MAX = 50, SEL_DEL_MAX = 100, SEL_HIDE_MAX = 500;
+  var fStamp = new Intl.DateTimeFormat(HK.locale, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  var fDate = new Intl.DateTimeFormat(HK.locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
+  function selectable(m) { return !!(m && m.kind === 'msg' && !m.error && m.body); }
+  function rowOf(id) { return $('ct-msgs').querySelector('.ct-msg[data-id="' + id + '"]'); }
+  function selList() { return S.sel ? S.msgs.filter(function (m) { return S.sel.ids[m.id] && selectable(m); }) : []; }
+  function selStart(m) {
+    if (!selectable(m) || !S.cur) return;
+    if (HK.menuOpen()) HK.closeMenu();
+    S.sel = { ids: {}, anchor: m.id }; S.sel.ids[m.id] = 1;
+    root.classList.add('ct-selecting');
+    drawMsgs(); selDraw();
+    var r = rowOf(m.id); if (r) r.focus({ preventScroll: true });
+  }
+  function selEnd(quiet) {
+    if (!S.sel) return;
+    S.sel = null; root.classList.remove('ct-selecting'); selDraw();
+    if (!quiet && S.cur) drawMsgs();
+  }
+  function selToggle(m, range) {
+    if (!S.sel || !selectable(m)) return;
+    var a = S.sel.anchor && S.byId[S.sel.anchor] ? S.msgs.indexOf(S.byId[S.sel.anchor]) : -1;
+    if (range && a >= 0) {
+      var b = S.msgs.indexOf(m), lo = Math.min(a, b), hi = Math.max(a, b);
+      for (var i = lo; i <= hi; i++) if (selectable(S.msgs[i])) S.sel.ids[S.msgs[i].id] = 1;
+    } else {
+      if (S.sel.ids[m.id]) delete S.sel.ids[m.id]; else S.sel.ids[m.id] = 1;
+      S.sel.anchor = m.id;
+    }
+    selMark(); selDraw();
+  }
+  function selRow(row, m) {                             // drawMsgs: Zeile im Auswahlmodus
+    if (!S.sel) return;
+    if (!selectable(m)) { row.classList.add('ct-nosel'); return; }
+    var on = !!S.sel.ids[m.id];
+    row.setAttribute('role', 'option'); row.setAttribute('aria-selected', on ? 'true' : 'false'); row.tabIndex = 0;
+    row.classList.toggle('ct-picked', on);
+  }
+  function selMark() {
+    $('ct-msgs').querySelectorAll('.ct-msg[role="option"]').forEach(function (r) {
+      var on = !!(S.sel && S.sel.ids[r.dataset.id]);
+      r.classList.toggle('ct-picked', on); r.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+  function selDraw() {
+    var head = document.querySelector('#ct-chat .ct-head'), bar = $('ct-selbar'), act = $('ct-selact'), box = $('ct-msgs');
+    if (!S.sel) {
+      if (bar) bar.remove(); if (act) act.remove();
+      box.setAttribute('role', 'log'); box.removeAttribute('aria-multiselectable');
+      return;
+    }
+    box.setAttribute('role', 'listbox'); box.setAttribute('aria-multiselectable', 'true');
+    if (!bar) {
+      bar = el('div', 'ct-selbar'); bar.id = 'ct-selbar';
+      var x = el('button', 'icon-btn ct-sel-x', '✕'); x.type = 'button'; x.setAttribute('aria-label', T('Auswahl beenden')); x.title = T('Auswahl beenden (Esc)');
+      x.addEventListener('click', function () { selEnd(); });
+      var n = el('span', 'ct-sel-n'); n.id = 'ct-sel-n'; n.setAttribute('role', 'status');
+      bar.appendChild(x); bar.appendChild(n);
+      var all = btn(T('Alle'), 'small ct-sel-all', function () {
+        S.msgs.forEach(function (m) { if (selectable(m)) S.sel.ids[m.id] = 1; }); selMark(); selDraw();
+      });
+      bar.appendChild(all);
+      head.appendChild(bar);
+    }
+    if (!act) {
+      act = el('div', 'ct-selact'); act.id = 'ct-selact'; act.setAttribute('role', 'toolbar'); act.setAttribute('aria-label', T('Ausgewählte Nachrichten'));
+      [['copy', '⧉', T('Kopieren'), selCopy], ['fwd', '↪', T('Weiterleiten'), selForward], ['page', '📄', T('In Seite übernehmen'), selToPage],
+       ['del', '🗑', T('Löschen'), selDelete]].forEach(function (a) {
+        var b = el('button', 'btn ct-sel-' + a[0] + (a[0] === 'del' ? ' btn-danger' : '')); b.type = 'button';
+        b.appendChild(el('span', 'ct-sel-ic', a[1])); b.appendChild(el('span', 'ct-sel-t', a[2]));
+        b.setAttribute('aria-label', a[2]); b.title = a[2];
+        b.addEventListener('click', function () { a[3](); });
+        act.appendChild(b);
+      });
+      $('ct-compose').parentNode.insertBefore(act, $('ct-compose'));
+    }
+    var k = selList().length;
+    $('ct-sel-n').textContent = T('{n} ausgewählt', { n: k });
+    act.querySelectorAll('button').forEach(function (b) { b.disabled = !k; });
+  }
+  function selName(m) { return m._ai === 'ok' ? aiP().name : m.sender ? m.sender.name : T('Gelöschtes Konto'); }
+  function attText(f) {
+    if (f && f.voice) return T('[Sprachnachricht]');
+    if (f && IMG.test(f.m)) return T('[Bild]');
+    return T('[Datei: {name}]', { name: String((f && f.n) || T('Datei')).slice(0, 200) });
+  }
+  function plainText(m) {
+    var t = String((m.body && m.body.text) || '').replace(/\[\[note:([1-9][0-9]{0,17})\]\]/g, function (_, i) {
+      var n = S.notes[i]; return '📄 ' + (n ? n.title : T('Seite'));
+    });
+    var att = (Array.isArray(m.body && m.body.files) ? m.body.files : []).map(attText);
+    return [t].concat(att).filter(Boolean).join(' ');
+  }
+  function stamp(m) { return fStamp.format(new Date(m.created * 1000)); }
+  function selCopy() {
+    var list = selList(); if (!list.length) return;
+    var out = list.length === 1 ? plainText(list[0]) : list.map(function (m) { return selName(m) + ', ' + stamp(m) + ': ' + plainText(m); }).join('\n');
+    function done() { HK.toast(T('{n} {n:Nachricht|Nachrichten} kopiert.', { n: list.length })); selEnd(); }
+    function fallback() {
+      var ta = el('textarea'); ta.value = out; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      var okc = false; try { okc = document.execCommand('copy'); } catch (e) { okc = false; }
+      ta.remove();
+      if (okc) done(); else HK.toast(T('Kopieren nicht möglich.'));
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(out).then(done, fallback); else fallback();
+  }
+  // Fehlt der Endpunkt (aelterer Server): FastAPI antwortet 404 mit "detail" bzw. 405 - Saga selbst 404 mit "error"
+  function noRoute(e) { return !!e && (e.status === 405 || (e.status === 404 && !!(e.data && e.data.detail))); }
+  function chunks(ids, n) { var out = []; for (var i = 0; i < ids.length; i += n) out.push(ids.slice(i, i + n)); return out; }
+  function locKey(cid) { return 'ct-hide:' + ME + ':' + cid; }
+  function locHidden(cid) {
+    S.locHid = S.locHid || {};
+    if (!S.locHid[cid]) { var m = {}; try { (JSON.parse(localStorage.getItem(locKey(cid)) || '[]') || []).forEach(function (i) { m[i] = 1; }); } catch (e) { /* egal */ } S.locHid[cid] = m; }
+    return S.locHid[cid];
+  }
+  function locHide(cid, ids) {
+    var m = locHidden(cid); ids.forEach(function (i) { m[i] = 1; });
+    try { localStorage.setItem(locKey(cid), JSON.stringify(Object.keys(m).slice(-2000))); } catch (e) { /* egal */ }
+  }
+  function dropMany(ids) {
+    var gone = {}; ids.forEach(function (i) { gone[i] = 1; delete S.byId[i]; if (S.sel) delete S.sel.ids[i]; });
+    S.msgs = S.msgs.filter(function (x) { return !gone[x.id]; });
+    if (S.reply && gone[S.reply.id]) { S.reply = null; drawReply(); }
+    drawMsgs(); if (S.sel) selDraw();
+  }
+  function hideMsgs(c, ids) {                            // -> true (alle meine Geraete) | false (nur hier)
+    return chunks(ids, SEL_HIDE_MAX).reduce(function (p, part) {
+      return p.then(function () { return api('POST', '/api/chats/' + c.id + '/hide', { ids: part }); });
+    }, Promise.resolve()).then(function () { return true; }, function (e) {
+      if (!noRoute(e)) throw e;
+      locHide(c.id, ids); return false;
+    });
+  }
+  function deleteMsgs(c, ids) {                          // -> {deleted: [...], failed: n}
+    var out = { deleted: [], failed: 0 };
+    function single(part) {
+      return part.reduce(function (p, id) {
+        return p.then(function () {
+          return api('DELETE', '/api/chats/' + c.id + '/messages/' + id).then(function () { out.deleted.push(id); }, function () { out.failed++; });
+        });
+      }, Promise.resolve());
+    }
+    return chunks(ids, SEL_DEL_MAX).reduce(function (p, part) {
+      return p.then(function () {
+        return api('POST', '/api/chats/' + c.id + '/messages/delete', { ids: part }).then(function (r) {
+          out.deleted = out.deleted.concat(r.deleted || []); out.failed += Object.keys(r.failed || {}).length;
+        }, function (e) { if (noRoute(e)) return single(part); throw e; });
+      });
+    }, Promise.resolve()).then(function () { return out; });
+  }
+  function selDelete() {
+    var list = selList(), c = S.cur; if (!list.length || !c) return;
+    var own = list.every(function (m) { return m.sender && m.sender.username === ME; }) && !(isFed(c) && c.readonly);
+    var body = overlay(T('{n} {n:Nachricht|Nachrichten} löschen', { n: list.length }));
+    body.parentNode.classList.add('ct-del-dlg');
+    body.appendChild(el('p', null, T('„Für mich löschen“ blendet die Nachrichten auf allen deinen Geräten aus – die anderen sehen sie weiter.')));
+    var bar = el('div', 'hk-actions ct-del-acts');
+    bar.appendChild(btn(T('Für mich löschen'), 'ct-del-me', function () {
+      closeOverlay();
+      HK.ask({ title: T('Für dich löschen?'), text: T('{n} {n:Nachricht wird|Nachrichten werden} auf deinen Geräten ausgeblendet.', { n: list.length }), ok: T('Für mich löschen'), danger: true }).then(function (y) {
+        if (!y) return;
+        var ids = list.map(function (m) { return m.id; });
+        hideMsgs(c, ids).then(function (all) {
+          dropMany(ids); selEnd();
+          HK.toast(all ? T('{n} {n:Nachricht|Nachrichten} für dich gelöscht.', { n: ids.length })
+                       : T('{n} {n:Nachricht|Nachrichten} nur auf diesem Gerät ausgeblendet – der Server kann das noch nicht.', { n: ids.length }), null, null, all ? 3500 : 6000);
+        }).catch(function (e) { HK.toast(e.message); });
+      });
+    }));
+    if (own) bar.appendChild(btn(T('Für alle löschen'), 'btn-danger ct-del-all', function () {
+      closeOverlay();
+      HK.ask({ title: T('Für alle löschen?'), text: T('Die Nachrichten und ihre Anhänge werden vom Server gelöscht. Wer sie schon gelesen hat, kann eine Kopie haben.'), ok: T('Für alle löschen'), danger: true }).then(function (y) {
+        if (!y) return;
+        deleteMsgs(c, list.map(function (m) { return m.id; })).then(function (r) {
+          dropMany(r.deleted); selEnd();
+          HK.toast(r.failed ? T('{n} gelöscht, {k} nicht.', { n: r.deleted.length, k: r.failed }) : T('{n} {n:Nachricht|Nachrichten} für alle gelöscht.', { n: r.deleted.length }));
+        }).catch(function (e) { HK.toast(e.message); });
+      });
+    }));
+    body.appendChild(bar);
+    if (!own) body.appendChild(el('p', 'hk-hint ct-del-hint', T('Nur eigene Nachrichten lassen sich für alle löschen.')));
+    var f = bar.querySelector('button'); if (f) f.focus();
+  }
+  // Weiterleiten: Texte im Ziel neu verschluesselt (normaler Sendeweg), Bilder/Dateien hier entschluesselt und neu hochgeladen
+  function selForward() {
+    var list = selList(); if (!list.length) return;
+    if (list.length > SEL_FWD_MAX) { HK.toast(T('Höchstens {n} Nachrichten auf einmal weiterleiten.', { n: SEL_FWD_MAX })); return; }
+    var body = overlay(T('Weiterleiten an …'));
+    var inp = el('input', 'hk-in ct-fwd-q'); inp.type = 'search'; inp.placeholder = T('Chat suchen'); inp.setAttribute('aria-label', T('Chat suchen'));
+    var box = el('div', 'ct-fwd-list'); box.setAttribute('role', 'listbox'); box.setAttribute('aria-label', T('Chats'));
+    body.appendChild(inp); body.appendChild(box);
+    function draw() {
+      var qq = inp.value.trim().toLowerCase(); box.textContent = '';
+      var cand = S.chats.filter(function (c) {
+        return !c.request && !c.readonly && !c.fed_hint && (!qq || String(chatName(c) || '').toLowerCase().indexOf(qq) >= 0);
+      }).slice(0, 60);
+      if (!cand.length) box.appendChild(el('p', 'hk-hint', T('Kein passender Chat.')));
+      cand.forEach(function (c) {
+        var b = el('button', 'ct-fwd-item'); b.type = 'button'; b.setAttribute('role', 'option');
+        b.appendChild(el('span', 'ct-fwd-ic', kindIc(c) || '💬')); b.appendChild(el('span', 'ct-fwd-n', chatName(c) || T('Chat')));
+        b.addEventListener('click', function () { forwardTo(list, c); });
+        box.appendChild(b);
+      });
+    }
+    inp.addEventListener('input', draw); draw(); inp.focus();
+  }
+  function forwardTo(list, target) {
+    var name = chatName(target) || T('Chat');
+    HK.ask({ title: T('Weiterleiten?'), text: T('{n} {n:Nachricht|Nachrichten} an „{chat}“ weiterleiten?', { n: list.length, chat: name }), ok: T('Weiterleiten') }).then(function (y) {
+      if (!y) return;
+      closeOverlay();
+      var src = S.cur, n = 0, skipped = 0;
+      HK.toast(T('Wird weitergeleitet …'), null, null, 60000);
+      list.reduce(function (p, m) {
+        return p.then(function () { return fwdOne(src, target, m).then(function (sk) { n++; skipped += sk; }); });
+      }, Promise.resolve()).then(function () {
+        selEnd();
+        HK.toast(T('{n} {n:Nachricht|Nachrichten} weitergeleitet.', { n: n }) + (skipped ? ' ' + T('{n} {n:Anhang|Anhänge} nicht weitergeleitet.', { n: skipped }) : ''),
+          T('Öffnen'), function () { location.hash = 'c' + target.id; }, 7000);
+        if (S.cur && S.cur.id === target.id) loadMsgs(false);
+        listSoon();
+      }, function (e) { HK.toast(T('Weiterleiten abgebrochen ({n} gesendet): {err}', { n: n, err: e.message }), null, null, 7000); });
+    });
+  }
+  function fwdOne(src, target, m) {
+    var skipped = 0;
+    var files = (Array.isArray(m.body.files) ? m.body.files : []).slice(0, 10).filter(function (f) {
+      if (!f || f.voice || (f.x && f.x !== 1)) { skipped++; return false; }   // Sprachnachrichten, grosse Videos (saga-file/v2): nur Hinweis
+      return true;
+    });
+    return Promise.all(files.map(function (f) {
+      return getBlob(f).then(function (buf) { return run('dec', { cid: fileCid(src, m), blob: buf, key: f.k }, [buf]); }).then(function (r) {
+        return new File([r.plain], String(f.n || T('Datei')).slice(0, 200), { type: f.m || 'application/octet-stream' });
+      }).catch(function () { skipped++; return null; });
+    })).then(function (got) {
+      got = got.filter(Boolean);
+      return got.length ? uploadFiles(target.id, got, target) : [];
+    }).then(function (up) {
+      var text = String(m.body.text || '');
+      if (skipped) text = (text ? text + '\n' : '') + T('[Anhang nicht weitergeleitet]');
+      var body = { v: 1, type: 'text', text: text };
+      if (up.length) body.files = up;
+      if (Array.isArray(m.body.notes) && m.body.notes.length) body.notes = m.body.notes.slice(0, 20);
+      return sendBody(target.id, body, 'msg').then(function () { return skipped; });
+    });
+  }
+  // In Seite uebernehmen: Klartext auf eine (neue oder bestehende) Seite - vorher deutlich: nicht Ende-zu-Ende-verschluesselt
+  function escH(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function rid() { return Math.random().toString(36).slice(2, 12); }
+  function pageBlocks(list) {
+    return list.map(function (m) {
+      var t = plainText(m);
+      return { id: rid(), type: 'paragraph', data: { text: '<b>' + escH(selName(m)) + '</b> · ' + escH(stamp(m)) + (t ? '<br>' + escH(t).replace(/\n/g, '<br>') : '') } };
+    });
+  }
+  function pageMd(list) { return list.map(function (m) { return '**' + selName(m) + '** · ' + stamp(m) + '\n' + plainText(m); }).join('\n\n'); }
+  function appendTo(nid, list, again) {
+    return api('GET', '/api/notes/' + nid).then(function (n) {
+      var b;
+      if ((n.format || 'blocks') === 'blocks') {
+        var cur = {}; try { cur = JSON.parse(n.body || '{}') || {}; } catch (e) { cur = {}; }
+        cur.blocks = (Array.isArray(cur.blocks) ? cur.blocks : []).concat(pageBlocks(list));
+        b = { body: JSON.stringify(cur), format: 'blocks', rev: n.rev };
+      } else b = { body: (n.body ? String(n.body).replace(/\s+$/, '') + '\n\n' : '') + pageMd(list), format: 'text', rev: n.rev };
+      return api('PATCH', '/api/notes/' + nid, b);
+    }).catch(function (e) { if (e.status === 409 && !again) return appendTo(nid, list, true); throw e; });
+  }
+  function selToPage() {
+    var list = selList(), c = S.cur; if (!list.length || !c) return;
+    var body = overlay(T('In Seite übernehmen')), pick = null, t = 0;
+    body.parentNode.classList.add('ct-page-dlg');
+    var w = el('p', 'ct-e2e-warn', '⚠ ' + T('Die Seite ist nicht Ende-zu-Ende-verschlüsselt – der Server kann den Text lesen.'));
+    w.setAttribute('role', 'alert'); body.appendChild(w);
+    function radio(v, label, on) {
+      var l = el('label', 'ct-pg-opt'), r = el('input'); r.type = 'radio'; r.name = 'ct-pg-mode'; r.value = v; r.checked = !!on;
+      r.addEventListener('change', sync); l.appendChild(r); l.appendChild(document.createTextNode(' ' + label)); body.appendChild(l); return r;
+    }
+    var rNew = radio('new', T('Neue Seite'), true);
+    var title = el('input', 'hk-in ct-pg-title'); title.value = T('Chat {name} – {date}', { name: chatName(c) || T('Chat'), date: fDate.format(new Date()) });
+    title.setAttribute('aria-label', T('Titel der neuen Seite')); title.maxLength = 200; body.appendChild(title);
+    var rAdd = radio('add', T('An bestehende Seite anhängen'));
+    var sq = el('input', 'hk-in ct-pg-q'); sq.type = 'search'; sq.placeholder = T('Seite suchen'); sq.setAttribute('aria-label', T('Seite suchen'));
+    var res = el('div', 'ct-fwd-list ct-pg-list'); res.setAttribute('role', 'listbox'); res.setAttribute('aria-label', T('Seiten'));
+    body.appendChild(sq); body.appendChild(res);
+    var st = status(body), bar = el('div', 'hk-actions');
+    var go = btn(T('Übernehmen'), 'btn-primary ct-pg-go', run);
+    bar.appendChild(btn(T('Abbrechen'), null, closeOverlay)); bar.appendChild(go); body.appendChild(bar);
+    function sync() {
+      var add = rAdd.checked; title.disabled = add; sq.hidden = !add; res.hidden = !add;
+      go.disabled = add && !pick;
+      if (add && !res.childNodes.length) search();
+    }
+    function search() {
+      clearTimeout(t);
+      t = setTimeout(function () {
+        api('GET', '/api/chat/pages?q=' + q(sq.value.trim())).catch(function () { return { pages: [] }; }).then(function (r) {
+          res.textContent = '';
+          (r.pages || []).forEach(function (p) {
+            var b = el('button', 'ct-fwd-item' + (pick === p.id ? ' on' : '')); b.type = 'button'; b.setAttribute('role', 'option');
+            b.setAttribute('aria-selected', pick === p.id ? 'true' : 'false');
+            b.appendChild(el('span', 'ct-fwd-ic', p.icon || '📄')); b.appendChild(el('span', 'ct-fwd-n', p.title));
+            b.addEventListener('click', function () { pick = p.id; search(); sync(); });
+            res.appendChild(b);
+          });
+          if (!(r.pages || []).length) res.appendChild(el('p', 'hk-hint', T('Keine Seite gefunden.')));
+        });
+      }, 150);
+    }
+    sq.addEventListener('input', search);
+    sync();
+    function run() {
+      busy(go, true); st.textContent = '';
+      var p = rNew.checked
+        ? api('POST', '/api/notes', { title: title.value.trim() || T('Chat') }).then(function (r) { return appendTo(r.id, list).then(function () { return r.id; }); })
+        : appendTo(pick, list).then(function () { return pick; });
+      p.then(function (nid) {
+        closeOverlay(); selEnd();
+        HK.toast(T('{n} {n:Nachricht|Nachrichten} in die Seite übernommen.', { n: list.length }), T('Öffnen'), function () { window.open('/notes#' + nid, 'hk-notes'); }, 8000);
+      }, function (e) { busy(go, false); st.textContent = e.message; });
+    }
+  }
+  // Warum keine Reaktionen? (x3_why vom Server) - dezentes (i) im Chat-Kopf mit Erklaerung
+  function x3Why(c) {
+    var w = c.x3_wait || {}, out = [];
+    if (c.x3_why === 'setting') return [T('Reaktionen und Bearbeiten sind auf diesem Server noch ausgeschaltet. Die Verwaltung kann sie einschalten.')];
+    if (c.x3_why === 'readonly') return [T('In einem schreibgeschützten Chat gibt es keine Reaktionen und kein Bearbeiten.')];
+    if (c.x3_why === 'pending') return [T('Reaktionen und Bearbeiten gibt es, sobald die Anfrage angenommen ist.')];
+    if (c.x3_why === 'server') return [T('Reaktionen und Bearbeiten kommen, sobald {host} aktualisiert ist.', { host: (c.x3_hosts || []).join(', ') || T('der andere Server') })];
+    if (c.x3_why !== 'devices') return [];
+    if (!(w.mine || []).length && !w.others) return [T('Reaktionen und Bearbeiten kommen in Kürze – dieser Chat wird gerade umgestellt.')];
+    out.push(T('Reaktionen und Bearbeiten kommen, sobald alle Geräte Saga 2.5 nutzen.'));
+    var mine = (w.mine || []).join(', ');
+    if (mine && w.others) out.push(T('Noch nicht aktualisiert: {devices} und Geräte von {n} {n:weiteren Person|weiteren Personen}.', { devices: mine, n: w.others }));
+    else if (mine) out.push(T('Noch nicht aktualisiert: {devices}.', { devices: mine }));
+    else if (w.others) out.push(T('Noch nicht aktualisiert: Geräte von {n} {n:weiteren Person|weiteren Personen}.', { n: w.others }));
+    if (w.until) out.push(T('Spätestens am {date}.', { date: fDate.format(new Date(w.until * 1000)) }));
+    return out;
+  }
+  function x3Info(sub, c) {
+    if (!c || c.x3_ok === true || !c.x3_why) return;
+    var lines = x3Why(c); if (!lines.length) return;
+    var b = el('button', 'icon-btn ct-x3i', 'ⓘ'); b.type = 'button'; b.setAttribute('aria-haspopup', 'dialog');
+    b.setAttribute('aria-label', T('Warum gibt es hier keine Reaktionen?')); b.title = T('Warum gibt es hier keine Reaktionen?');
+    b.addEventListener('click', function () {
+      HK.openMenu(b, function (menu) {
+        menu.textContent = '';
+        var box = el('div', 'ct-x3-pop'); box.setAttribute('role', 'note');
+        box.appendChild(el('b', null, T('Reaktionen und Bearbeiten')));
+        lines.forEach(function (l) { box.appendChild(el('p', null, l)); });
+        menu.appendChild(box);
+        if (c.x3_why === 'devices' && (c.x3_wait || {}).mine && c.x3_wait.mine.length)
+          menu.appendChild(HK.menuItem(T('Geräte verwalten'), function () { HK.closeMenu(); settings(); }, { icon: '⚙' }));
+      });
+    });
+    sub.appendChild(b);
+  }
+  // Ereignisse im Nachrichtenbereich: Klick/Umschalt+Klick (Auswahl), Rechtsklick (Menue), langer Druck (Touch), Tastatur
+  var lpress = null, lpFired = false, lpAt = 0;
+  $('ct-msgs').addEventListener('click', function (e) {
+    if (Date.now() - lpAt < 400) { e.preventDefault(); e.stopPropagation(); return; }   // Klick beim Loslassen nach langem Druck
+    if (!S.sel || e.target.closest('.ct-older')) return;
+    e.preventDefault(); e.stopPropagation();
+    var row = e.target.closest('.ct-msg'), m = row && S.byId[row.dataset.id];
+    if (m) selToggle(m, e.shiftKey);
+  }, true);
+  $('ct-msgs').addEventListener('contextmenu', function (e) {
+    var row = e.target.closest('.ct-msg'), m = row && S.byId[row.dataset.id];
+    if (!m) return;
+    if (NOHOVER && NOHOVER.matches) { e.preventDefault(); return; }                   // Touch: langer Druck waehlt aus
+    if (!S.sel && (e.target.closest('a, video, audio') || String(window.getSelection ? window.getSelection() : ''))) return;
+    e.preventDefault();
+    if (S.sel) { selToggle(m, e.shiftKey); return; }
+    var act = row.querySelector('.ct-act:not(.ct-react-b)'); if (act) msgMenu(act, m);
+  });
+  function lpStop() { if (lpress) { clearTimeout(lpress.t); lpress = null; } }
+  $('ct-msgs').addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'mouse' || S.sel) return;
+    var row = e.target.closest('.ct-msg'), m = row && S.byId[row.dataset.id];
+    if (!selectable(m) || e.target.closest('video, audio, input, textarea')) return;
+    lpress = { x: e.clientX, y: e.clientY, t: setTimeout(function () {
+      lpress = null; lpFired = true; selStart(m);
+      if (navigator.vibrate) { try { navigator.vibrate(12); } catch (e2) { /* egal */ } }
+    }, 480) };
+  });
+  $('ct-msgs').addEventListener('pointermove', function (e) { if (lpress && Math.abs(e.clientX - lpress.x) + Math.abs(e.clientY - lpress.y) > 12) lpStop(); });
+  ['pointerup', 'pointercancel', 'scroll'].forEach(function (ev) {
+    $('ct-msgs').addEventListener(ev, function () { lpStop(); if (lpFired && ev !== 'scroll') { lpFired = false; lpAt = Date.now(); } }, { passive: true });
+  });
+  $('ct-msgs').addEventListener('keydown', function (e) {
+    if (!S.sel) return;
+    var row = e.target.closest && e.target.closest('.ct-msg[role="option"]');
+    if (!row) return;
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); var m = S.byId[row.dataset.id]; if (m) selToggle(m, e.shiftKey); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      var rows = Array.prototype.slice.call($('ct-msgs').querySelectorAll('.ct-msg[role="option"]')), i = rows.indexOf(row) + (e.key === 'ArrowDown' ? 1 : -1);
+      if (rows[i]) { e.preventDefault(); rows[i].focus(); }
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && S.sel && !ov && !HK.menuOpen() && !document.querySelector('.hk-ask')) { e.preventDefault(); selEnd(); }
+  });
   function drawReply() {
     var r = $('ct-reply'); r.textContent = ''; r.hidden = !S.reply && !S.edit;
     r.classList.toggle('ct-editing', !!S.edit);
@@ -2425,10 +2837,11 @@
     return fetch('/api/chats/' + cid + '/files', { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/octet-stream' }, body: blob })
       .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d.id; }); });
   }
-  function uploadFiles(cid) {
-    var ids = (S.me && S.me.limits && S.me.limits.file_ids_per_msg) || 10, slots = ids - S.files.length;
-    var fc = S.cur && S.cur.id === cid ? fileCid(S.cur) : cid;          // Verschluesselung: v1 chat_id, v2 chat_ref
-    return Promise.all(S.files.map(function (f) {
+  function uploadFiles(cid, list, chat) {                // list/chat (2.5): Weiterleiten in einen anderen Chat
+    list = list || S.files; chat = chat || (S.cur && S.cur.id === cid ? S.cur : null);
+    var ids = (S.me && S.me.limits && S.me.limits.file_ids_per_msg) || 10, slots = ids - list.length;
+    var fc = chat ? fileCid(chat) : cid;                  // Verschluesselung: v1 chat_id, v2 chat_ref
+    return Promise.all(list.map(function (f) {
       if (VID && VID.isVideo(f)) return uploadVideo(cid, fc, f, slots-- > 0);
       var mime = f.type || 'application/octet-stream', withThumb = IMG.test(mime) && slots-- > 0;
       return f.arrayBuffer().then(function (buf) {
@@ -2970,6 +3383,7 @@
       else if (S.cur && isFed(S.cur) && S.cur.members.some(function (m) { return m.handle === d.handle; })) fedLoad(S.cur, true).catch(function () {});
     }
     else if (t === 'chat.deleted') { if (S.cur && S.cur.id === d.chat_id) dropMsg(d.id); listSoon(); }
+    else if (t === 'chat.hidden') { if (S.cur && S.cur.id === d.chat_id && Array.isArray(d.ids)) dropMany(d.ids.filter(function (i) { return S.byId[i]; })); listSoon(); }   // 2.5
     else if (t === 'chat.removed') removedLive(d, true);           // (2.1) Chat fuer alle geloescht
     else if (t === 'chat.cleared') {                                // (2.1) Verlauf geleert: fuer mich (anderer Tab) oder fuer alle
       if (d.scope === 'all') removedLive(d, false);

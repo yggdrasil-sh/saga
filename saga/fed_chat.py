@@ -2472,6 +2472,7 @@ def apply_members(c, peer, ev, create=True):
     for u in cur:
         if u not in want:
             c.execute("UPDATE chat_member SET left_at=? WHERE chat_id=? AND uid=?", (now, ch["id"], u))
+            chat.unhide(c, ch["id"], u)
     if isinstance(ev.get("sys"), dict):
         sd = ev["sys"]
         clean = {"type": "members", "added": _sys_people(sd.get("added")), "removed": _sys_people(sd.get("removed")),
@@ -2528,6 +2529,7 @@ def _add_member(c, ch, u, role="member"):
 
 def _remove_member(c, ch, u):
     c.execute("UPDATE chat_member SET left_at=?, role='member' WHERE chat_id=? AND uid=?", (time.time(), ch["id"], u))
+    chat.unhide(c, ch["id"], u)
     rest = [x for x, _ in members(c, ch["id"])]
     if rest and not c.execute("SELECT 1 FROM chat_member WHERE chat_id=? AND left_at IS NULL AND role='admin'", (ch["id"],)).fetchone():
         c.execute("UPDATE chat_member SET role='admin' WHERE chat_id=? AND uid=?", (ch["id"], rest[0]))
@@ -2948,6 +2950,7 @@ def group_remove(uid, cid, who_):
     if target == uid:                                    # verlassen: hier sofort, beim Heim (synchron, sonst Warteschlange)
         with _db() as c, c:
             c.execute("UPDATE chat_member SET left_at=? WHERE chat_id=? AND uid=?", (time.time(), ch["id"], uid))
+            chat.unhide(c, ch["id"], uid)
             chat._changed(c, ch["id"], [uid])
             if not local_members(c, ch["id"]):
                 drop_chat(c, ch)

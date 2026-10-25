@@ -805,6 +805,15 @@ CREATE TABLE IF NOT EXISTS chat_reaction (
     ts BIGINT NOT NULL, ct TEXT NOT NULL, sig TEXT NOT NULL, at DOUBLE PRECISION NOT NULL,
     PRIMARY KEY (msg_seq, reactor));
 CREATE INDEX IF NOT EXISTS chat_reaction_reactor ON chat_reaction (reactor);
+-- Nur fuer mich ausgeblendete Nachrichten (2.5, Mehrfachauswahl im Chat, saga/chat.py, Migration 18): je Konto und
+-- Nachricht; Listen und Abgleich lassen sie fuer dieses Konto weg. Geht mit der Nachricht bzw. dem Chat (CASCADE), beim
+-- Austritt, "fuer mich loeschen" und mit dem Konto.
+CREATE TABLE IF NOT EXISTS chat_hidden (
+    uid TEXT NOT NULL, chat_id BIGINT NOT NULL REFERENCES chat(id) ON DELETE CASCADE,
+    msg_seq BIGINT NOT NULL REFERENCES chat_msg(seq) ON DELETE CASCADE, msg_id TEXT NOT NULL, at DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (uid, msg_seq));
+CREATE INDEX IF NOT EXISTS chat_hidden_chat ON chat_hidden (chat_id, uid);
+CREATE INDEX IF NOT EXISTS chat_hidden_seq ON chat_hidden (msg_seq);
 -- Gjallarhorn (2.5, saga/horn.py, Konzept v2 §2.10, Migration 16): Knotenregister (eingebauter Knoten + gekoppelte) und
 -- Kopplungs-Token (nur als SHA-256, einmalig, 30 min). pub = Ed25519-Knotenschluessel (Base64), load = letzte Lastmeldung,
 -- dns_ids = Cloudflare-Eintraege (P7), removed = entfernt (pub gesperrt). Wahrheitswerte als SMALLINT wie ueberall (db._arg).
@@ -1026,6 +1035,11 @@ ALTER TABLE horn_node ADD COLUMN IF NOT EXISTS upd JSONB;
 ALTER TABLE horn_node ADD COLUMN IF NOT EXISTS drain DOUBLE PRECISION;
 ALTER TABLE horn_node ADD COLUMN IF NOT EXISTS stats JSONB;
 SELECT 1 FROM horn_ban, horn_log, horn_share LIMIT 0;
+""",
+    # 2.5.0 (Chat-Mehrfachauswahl, saga/chat.py): "fuer mich ausblenden" auf allen eigenen Geraeten. Die Tabelle chat_hidden
+    # legt SCHEMA oben an. Beliebig oft ausfuehrbar.
+    18: """
+SELECT 1 FROM chat_hidden LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

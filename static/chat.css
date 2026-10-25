@@ -300,3 +300,42 @@ button.ct-tick:hover,button.ct-tick:focus-visible{color:var(--fg)}
 .ct-rec-lv{display:block;height:100%;width:100%;background:var(--accent);transform-origin:left;transform:scaleX(.04);transition:transform .1s linear}
 @media (max-width:560px){.ct-rec{gap:.4rem;padding:.5rem .6rem}.ct-rec-t{min-width:4.6rem;font-size:.85rem}.vm{min-width:min(15rem,66vw)}.vm-wave span:nth-child(2n){display:none}
   .ct-rec .vm{flex-basis:100%}.ct-rec .vm + .ct-rec-t,.ct-rec .vm ~ .ct-rec-del{margin-left:auto}}
+/* Mehrfachauswahl (2.5): Kopfzeile "n ausgewaehlt", Aktionsleiste statt Eingabefeld, Haken an der Nachricht */
+.ct-head{position:relative}
+.ct-selbar{position:absolute;inset:0;display:flex;align-items:center;gap:.5rem;padding:0 1rem;background:var(--card);border-bottom:1px solid var(--border);z-index:3}
+.ct-sel-n{flex:1;min-width:0;font-weight:600}
+.ct-selecting .ct-compose,.ct-selecting .ct-reply,.ct-selecting .ct-files,.ct-selecting .ct-rec,.ct-selecting .ct-ai-hint,.ct-selecting .ct-state,
+.ct-selecting .ct-picker,.ct-selecting .ct-act{display:none!important}
+.ct-selact{display:flex;gap:.4rem;padding:.6rem 1rem calc(.7rem + env(safe-area-inset-bottom));border-top:1px solid var(--border);background:var(--card)}
+.ct-selact .btn{flex:1 1 0;min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:.35rem;white-space:nowrap}
+.ct-sel-t{overflow:hidden;text-overflow:ellipsis}
+.ct-selecting .ct-msg[role=option]{cursor:pointer;user-select:none;-webkit-user-select:none;outline:none}
+.ct-selecting .ct-msg[role=option]::before{content:'';flex:0 0 auto;align-self:center;width:1.1rem;height:1.1rem;margin:0 .4rem;border:2px solid var(--muted);
+  border-radius:50%;box-sizing:border-box;display:grid;place-items:center;font-size:.7rem;line-height:1;color:var(--bg)}
+.ct-selecting .ct-msg.ct-picked::before{content:'✓';background:var(--accent);border-color:var(--accent)}
+.ct-msg.ct-picked .ct-bubble{outline:2px solid var(--accent);outline-offset:1px}
+.ct-selecting .ct-msg[role=option]:focus-visible .ct-bubble{outline:2px dashed var(--accent);outline-offset:2px}
+.ct-selecting .ct-msg.ct-picked:focus-visible .ct-bubble{outline-style:solid;outline-width:3px}
+.ct-nosel{opacity:.45}
+@media (max-width:560px){
+  .ct-selact{gap:.25rem;padding-left:.5rem;padding-right:.5rem}
+  .ct-selact .btn{flex-direction:column;gap:.1rem;padding:.35rem .15rem;font-size:.72rem;white-space:normal;line-height:1.15;text-align:center;overflow:hidden}
+  .ct-sel-ic{font-size:1.05rem}
+  .ct-selbar{padding:0 .6rem}
+}
+/* Loeschen-, Weiterleiten- und Seiten-Dialog */
+.ct-del-acts{flex-wrap:wrap}
+.ct-del-hint{margin-top:.6rem}
+.ct-e2e-warn{margin:0 0 .8rem;padding:.55rem .7rem;border:1px solid var(--warn);border-radius:8px;background:color-mix(in srgb,var(--warn) 12%,transparent)}
+.ct-pg-opt{display:block;margin:.6rem 0 .3rem;cursor:pointer}
+.ct-pg-title,.ct-pg-q,.ct-fwd-q{width:100%;box-sizing:border-box}
+.ct-fwd-list{display:flex;flex-direction:column;gap:2px;max-height:min(50vh,360px);overflow:auto;margin-top:.5rem}
+.ct-fwd-item{display:flex;align-items:center;gap:.6rem;padding:.5rem .6rem;border:0;border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.ct-fwd-item:hover,.ct-fwd-item:focus-visible{background:var(--card-h)}
+.ct-fwd-item.on{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+.ct-fwd-ic{flex:0 0 1.4rem;text-align:center}
+.ct-fwd-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Hinweis, warum es (noch) keine Reaktionen gibt (x3_why) */
+.ct-x3i{font-size:.9rem;line-height:1;padding:.05rem .3rem;color:var(--muted);vertical-align:middle}
+.ct-x3-pop{max-width:320px;padding:.5rem .75rem;font-size:.85rem;line-height:1.45;white-space:normal}
+.ct-x3-pop p{margin:.35rem 0 0}

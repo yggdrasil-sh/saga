@@ -17,6 +17,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu (2.5)
+- **Chat: Mehrfachauswahl und Hinweis, warum Reaktionen fehlen (Web).** „Auswählen“ im Nachrichtenmenü (bzw. Rechtsklick,
+  auf Touch langer Druck) startet die Auswahl; Klick wählt weitere an oder ab, Umschalt+Klick einen Bereich, Leertaste die
+  fokussierte Nachricht, Esc beendet. Kopfzeile „n ausgewählt“, Aktionsleiste Kopieren (je Zeile „Name, Zeit: Text“,
+  Anhänge als „[Bild]“ usw.), Weiterleiten (Zielchat mit Suche, Rückfrage; Texte im Ziel neu verschlüsselt, Bilder und
+  Dateien neu hochgeladen, höchstens 50), In Seite übernehmen (neue Seite „Chat <Name> – <Datum>“ oder an eine bestehende
+  anhängen, mit Warnung „nicht Ende-zu-Ende-verschlüsselt“) und Löschen (für mich auf allen eigenen Geräten; für alle nur,
+  wenn alle ausgewählten Nachrichten eigene sind). Systemzeilen, Anrufe und nicht entschlüsselte Nachrichten sind nicht
+  auswählbar. Ein dezentes ⓘ im Chat-Kopf erklärt, warum es (noch) keine Reaktionen und kein Bearbeiten gibt (Stufe 3 aus,
+  ältere eigene Geräte mit Namen bzw. Geräte von n weiteren Personen samt Stichtag, anderer Server noch nicht aktualisiert).
+  Server: `POST /api/chats/{id}/messages/delete` (bis 100 eigene Nachrichten für alle), `POST /api/chats/{id}/hide` (bis
+  500, nur für mich, Live `chat.hidden`), neue Tabelle `chat_hidden` (Migration 18), Chat-Feld `x3_why` (+ `x3_wait`,
+  `x3_hosts`) – siehe docs/APP-API.md. Tests `tests/chat_select.py`, `tests/browser_chat_select.js`.
 - **Graph der Seiten (Web, wie Obsidian).** „✳ Graph“ in der Seitenleiste zeigt alle eigenen und für dich freigegebenen
   Seiten als Knoten; Verbindungen sind Verweise im Text, Unterseiten, Datenbank-Relationen und – zuschaltbar – Tags als
   eigene Knoten. Verschieben, Zoomen (auch mit zwei Fingern), Knoten ziehen, Hover hebt Nachbarn hervor, Klick öffnet

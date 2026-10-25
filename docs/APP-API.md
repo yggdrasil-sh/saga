@@ -1194,6 +1194,27 @@ einem Gerät ab App 2.3). Bestehende Chats bleiben vorerst v1.
     `GET …/messages` liefert sie am Original als `edit` (vollständige Nachricht mit `key`, `edit_of`), dazu `edited_at`
     und `edit_n`; Live `chat.edited {chat_id, id, seq, edit_seq}`. Löschen des Originals nimmt die Bearbeitung mit.
   - Sprachnachricht: Anhang in `files[]` mit `voice: true, dur, wf` (64 Werte 0–255, B64) und `m: "audio/ogg; codecs=opus"`.
+- **Warum keine Reaktionen (`x3_why`, 2.5):** Ist `x3_ok` nicht `true`, sagt das Chat-Objekt (Liste und einzeln) warum;
+  Chats v1 melden jetzt auch `x3_ok: false`. Ältere Server: Feld fehlt – dann keinen Hinweis zeigen.
+  - `"setting"`: Stufe 3 ist auf dem Server aus (Admin).
+  - `"devices"`: lokaler Chat v1, die Umstellung wartet auf ältere Geräte; dazu `x3_wait: {mine: ["Gerätename", …],
+    others: n, until: <Unix-Sekunden, Stichtag>}` – Namen nur der EIGENEN Geräte, von anderen nur die Anzahl Personen.
+    `mine: []` und `others: 0`: es wartet nichts mehr, die Umstellung kommt beim nächsten stündlichen Lauf.
+  - `"server"` (über Servergrenzen): ein beteiligter Server kann `chat3` noch nicht; dazu `x3_hosts: ["host", …]`.
+  - `"pending"`: Nachrichtenanfrage noch nicht angenommen (`state` ≠ `ok`).
+  - `"readonly"`: nur lesbar (schreibgeschützt, z. B. Verbindung getrennt).
+- **Mehrfachauswahl (2.5):**
+  - Mehrere eigene Nachrichten für alle löschen: `POST /api/chats/{id}/messages/delete {ids: [mid, …]}` (1–100, sonst
+    400) → `{deleted: [mid…], failed: {mid: "not_found" | "not_own" | "error"}}`. Regeln und Live-Ereignisse wie
+    `DELETE /api/chats/{id}/messages/{mid}` (je Nachricht `chat.deleted`; Format v2 über das Heim bzw. die Warteschlange).
+    404/405 (älterer Server): auf Einzel-`DELETE` zurückfallen.
+  - Nur für mich ausblenden (auf allen eigenen Geräten): `POST /api/chats/{id}/hide {ids: [mid, …]}` (1–500) →
+    `{hidden: n}` (unbekannte ids zählen nicht, nochmals ausblenden ist harmlos). `GET …/messages` (auch `?after=`) lässt
+    sie für mich weg, Ungelesen zählt sie nicht. Live an die eigenen Geräte: `chat.hidden {chat_id, ids}`. Verschwindet
+    mit „für mich löschen“ (Chat), Austritt, Löschen der Nachricht/des Chats und dem Konto. 404/405 (älterer Server):
+    nur lokal ausblenden, Hinweis „nur auf diesem Gerät“.
+  - Weiterleiten und „In Seite übernehmen“ sind reine Client-Funktionen (normaler Sendeweg bzw. `POST /api/notes` +
+    `PATCH /api/notes/{id}`); Referenz `static/chat.js` (`selForward`, `selToPage`).
 - **Vertrauen sichern (optional, Web ab 2.5):** `GET /api/chat/trust` → `{blob}` (`null`, wenn nichts gesichert),
   `PUT /api/chat/trust {blob}` (höchstens 256 KiB, 404 ohne eingerichtete Chats). `blob` = JSON-Text `{v: 1, nonce, ct}`:
   XChaCha20-Poly1305 mit Schlüssel `generichash(32, LP("saga-chat/v1/trust-key", uid), backup_sk)` und AD
