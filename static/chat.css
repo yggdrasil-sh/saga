@@ -72,7 +72,8 @@ a.ct-chip:hover{color:var(--fg);border-color:var(--accent)}
 .ct-msg.ct-unverified .ct-text,.ct-msg.ct-unverified .ct-file,.ct-msg.ct-unverified .ct-quote{opacity:.5;filter:grayscale(1)}
 .ct-act{opacity:0;font-size:1rem;padding:.15rem .35rem}
 .ct-msg:hover .ct-act,.ct-act:focus-visible,.ct-act[aria-expanded=true]{opacity:1}
-@media (hover:none){.ct-act{opacity:.6}}
+@media (hover:none){.ct-act{display:none}.ct-msg.ct-sel .ct-act,.ct-act[aria-expanded=true]{display:grid;opacity:1}
+  .ct-msg.ct-sel .ct-bubble{outline:2px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:1px}}   /* Bughunt D18 */
 .ct-quote{display:flex;flex-direction:column;align-items:flex-start;gap:.05rem;width:100%;text-align:left;font:inherit;font-size:.8rem;color:var(--muted);
   background:color-mix(in srgb,var(--fg) 6%,transparent);border:0;border-left:3px solid var(--accent);border-radius:6px;padding:.25rem .5rem;margin:.1rem 0 .3rem;cursor:pointer}
 .ct-quote b{color:var(--fg);font-size:.76rem}

@@ -1490,6 +1490,17 @@
     if (scroll === 'keep') box.scrollTop = box.scrollHeight - prevH + prevTop;
     else if (scroll === 'bottom' || atBottom) box.scrollTop = box.scrollHeight;
   }
+  // Bughunt D18: Touch (kein Hover) - "··· ☺" nur an der angetippten Nachricht (.ct-sel), statt dauerhaft unter jeder;
+  // Tippen auf Links, Bilder, Dateien, Zitate oder Knoepfe in der Blase bleibt, was es war
+  var NOHOVER = window.matchMedia ? window.matchMedia('(hover: none)') : null;
+  $('ct-msgs').addEventListener('click', function (e) {
+    if (!NOHOVER || !NOHOVER.matches) return;
+    var row = e.target.closest('.ct-msg'); if (!row || !row.querySelector('.ct-act')) return;
+    if (e.target.closest('a, button, input, textarea, video, audio, .ct-img, .ct-file')) return;
+    var on = !row.classList.contains('ct-sel');
+    document.querySelectorAll('#ct-msgs .ct-msg.ct-sel').forEach(function (r) { r.classList.remove('ct-sel'); });
+    if (on) row.classList.add('ct-sel');
+  });
   // Systemzeile (2.3): mittig, z. B. "Anna hat die KI in diesem Chat eingeschaltet"
   // Person in Systemzeilen: Name mit Herkunft (Server), ich selbst als "du"
   function sysWho(x, acc) {
@@ -2602,15 +2613,18 @@
       menu.appendChild(HK.menuItem(c.muted ? T('Benachrichtigungen an') : T('Stummschalten'), function () {
         HK.closeMenu(); api('PATCH', '/api/chats/' + c.id, { muted: !c.muted }).then(function () { loadList(); }).catch(function (e) { HK.toast(e.message); });
       }, { icon: c.muted ? '🔔' : '🔕' }));
-      HK.menuLabel && menu.appendChild(HK.menuLabel(T('Nachrichten automatisch löschen nach')));
+      // Bughunt V12: die Laufzeiten als Untermenue (wie "Verschieben nach ›"), die aktuelle Wahl als Hinweis
       var mx = (S.me && S.me.limits && S.me.limits.retention_max) || 0;
-      RET.forEach(function (r) {
-        if (mx && (r[0] === 0 || r[0] > mx)) return;
-        menu.appendChild(HK.menuItem(r[1], function () {
-          HK.closeMenu();
-          api('PATCH', '/api/chats/' + c.id, { retention_s: r[0] }).then(function () { HK.toast(T('Gilt für neue Nachrichten.')); loadList(); }).catch(function (e) { HK.toast(e.message); });
-        }, { on: c.retention_s === r[0] }));
-      });
+      var rets = RET.filter(function (r) { return !(mx && (r[0] === 0 || r[0] > mx)); });
+      var curR = rets.filter(function (r) { return c.retention_s === r[0]; })[0];
+      menu.appendChild(HK.menuItem(T('Nachrichten automatisch löschen nach'), null, { icon: '⏱', hint: curR ? curR[1] : '', sub: function (sm) {
+        rets.forEach(function (r) {
+          sm.appendChild(HK.menuItem(r[1], function () {
+            HK.closeMenu();
+            api('PATCH', '/api/chats/' + c.id, { retention_s: r[0] }).then(function () { HK.toast(T('Gilt für neue Nachrichten.')); loadList(); }).catch(function (e) { HK.toast(e.message); });
+          }, { on: c.retention_s === r[0] }));
+        });
+      } }));
       if (c.kind === 'free') {
         menu.appendChild(HK.menuItem(T('Umbenennen …'), function () { HK.closeMenu(); rename(); }, { icon: '✎' }));
         menu.appendChild(HK.menuItem(T('Gruppe verlassen'), function () {
