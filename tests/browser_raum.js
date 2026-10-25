@@ -101,6 +101,12 @@ async function api(p, m, url, body) { return p.evaluate(([m, url, body]) => wind
   const U1 = E.SAGA_USER, U2 = E.SAGA_USER2, U3 = E.SAGA_USER3;
   try {
     const a = await session(browser, U1, E.SAGA_PASS, { name: 'A' }), b = await session(browser, U2, E.SAGA_PASS2, { name: 'B' });
+    // Bughunt WV13: mit calls.horn_all laufen 1:1- und kleine Gruppenanrufe ueber einen Knoten - dieser Test prueft den
+    // direkten Weg (Mesh) und wuerde ohne Fehler rot. Dann klar ueberspringen.
+    if ((await a.evaluate(() => fetch('/api/calls/config', { headers: { 'X-Saga': '1' } }).then(r => r.json()).catch(() => ({})))).horn_dm) {
+      console.log('SKIP browser_raum: calls.horn_all ist an (Anrufe ueber Knoten) - der Mesh-Test gilt hier nicht. Fuer den Lauf "Alle Anrufe ueber Knoten" im Admin ausschalten.');
+      process.exit(0);
+    }
     const c = await session(browser, U3, E.SAGA_PASS3, { name: 'C' });
     await chatKeys(a, U1); await chatKeys(b, U2); await chatKeys(c, U3);
     const a2 = await session(browser, U1, E.SAGA_PASS, { name: 'A2' });          // zweites Geraet von A

@@ -89,6 +89,12 @@ async function ringAccept(b, video) {
   const U1 = E.SAGA_USER, U2 = E.SAGA_USER2;
   try {
     const a = await session(browser, U1, E.SAGA_PASS), b = await session(browser, U2, E.SAGA_PASS2);
+    // Bughunt WV13: mit calls.horn_all laufen 1:1- und kleine Gruppenanrufe ueber einen Knoten - dieser Test prueft den
+    // direkten Weg (Mesh) und wuerde ohne Fehler rot. Dann klar ueberspringen.
+    if ((await a.evaluate(() => fetch('/api/calls/config', { headers: { 'X-Saga': '1' } }).then(r => r.json()).catch(() => ({})))).horn_dm) {
+      console.log('SKIP browser_calls3: calls.horn_all ist an (Anrufe ueber Knoten) - der Mesh-Test gilt hier nicht. Fuer den Lauf "Alle Anrufe ueber Knoten" im Admin ausschalten.');
+      process.exit(0);
+    }
     await a.addInitScript(PC_HOOK); await b.addInitScript(PC_HOOK);
     await chatKeys(a, U1); await chatKeys(b, U2);
     await a.goto(BASE + '/chats#u' + encodeURIComponent(U2)); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(1200);
