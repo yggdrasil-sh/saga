@@ -190,6 +190,15 @@ def run():
     d = A.chat(cid)
     ok("Eigenes altes Geraet haelt auch den Chat mit Bert auf (others 0)",
        d.get("x3_why") == "devices" and (d.get("x3_wait") or {}).get("mine") == ["Altes Tablet"] and d["x3_wait"]["others"] == 0, d.get("x3_wait"))
+    web = C.device()                                     # Browser-Geraet ohne chat3: laedt beim Oeffnen den aktuellen Client
+    A.api("POST", "/api/chat/devices", C.device_api(A.uid, A.ident, web, name="Safari · iOS"))
+    with connect() as c, c:
+        c.execute("UPDATE chat_device SET last_seen=?, caps='[]' WHERE id=?", (time.time(), web["id"]))
+    d = A.chat(cid)
+    ok("Browser-Geraet haelt die Umstellung nicht auf (nur App-Geraete)", (d.get("x3_wait") or {}).get("mine") == ["Altes Tablet"], d.get("x3_wait"))
+    with connect() as c:
+        ok("convert_check: Browser-Geraet allein blockiert nicht",
+           CH.blocking_devices(c, [A.uid], time.time()) == [(A.uid, "Altes Tablet")], CH.blocking_devices(c, [A.uid], time.time()))
     A.api("DELETE", f"/api/chat/devices/{old['id']}")
     d = A.chat(cid)
     ok("Nichts wartet mehr -> 'devices' ohne Geraete (Umstellung beim naechsten Lauf; 'pending' nur fuer Anfragen)", d.get("x3_why") == "devices"

@@ -386,15 +386,27 @@ def v3_deadline():
     return since, since + days * 86400
 
 
+# Browser-Geraete (Name aus static/chat.js deviceName) halten die Umstellung nie auf: Das Web laedt beim naechsten Oeffnen
+# ohnehin den aktuellen Client dieses Servers und kann dann Stufe 3. Nur Apps koennen veraltet sein.
+_WEB_DEV = re.compile(r"^(Safari|Chrome|Firefox|Edge|Browser|Navegador|Браузер|เบราว์เซอร์)( · \S+)?$")
+
+
+def blocking_devices(c, uids, now):
+    """Aktive App-Geraete dieser Konten ohne chat3 -> [(uid, name)], neueste zuerst (halten die Umstellung auf)."""
+    if not uids:
+        return []
+    ph = ",".join("?" * len(uids))
+    rows = c.execute(f"SELECT uid, name FROM chat_device WHERE uid IN ({ph}) AND revoked_at IS NULL AND COALESCE(last_seen, created)>? "
+                     "AND caps NOT LIKE '%\"chat3\"%' ORDER BY COALESCE(last_seen, created) DESC", (*uids, now - ACTIVE_S)).fetchall()
+    return [(u, n) for u, n in rows if not _WEB_DEV.match((n or "").strip())]
+
+
 def convert_check(c, uids, now, deadline):
     """Darf ein Chat mit diesen Mitgliedern umgestellt werden? -> (ja, per_stichtag). Alle brauchen ein Handle-Zertifikat;
     ohne Stichtag muessen ALLE aktiven Geraete chat3 melden (aeltere Apps uebernehmen "ueberprueft" nicht)."""
     if not handle_ready(c, uids):
         return False, False
-    ph = ",".join("?" * len(uids))
-    old = c.execute(f"SELECT COUNT(*) FROM chat_device WHERE uid IN ({ph}) AND revoked_at IS NULL AND COALESCE(last_seen, created)>? "
-                    "AND caps NOT LIKE '%\"chat3\"%'", (*uids, now - ACTIVE_S)).fetchone()[0]
-    if not old:
+    if not blocking_devices(c, uids, now):
         return True, False
     return (True, True) if now >= deadline else (False, False)
 

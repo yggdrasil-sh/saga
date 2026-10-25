@@ -17,6 +17,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu (2.5)
+- **Chat Stufe 3: Browser-Geräte halten die Umstellung nicht mehr auf.** Ein Browser lädt beim nächsten Öffnen ohnehin den
+  aktuellen Web-Client; nur App-Geräte ohne Stufe 3 (zuletzt aktiv in 30 Tagen) zählen noch, auch im Hinweis „Reaktionen und Bearbeiten“.
 - **Chat: Mehrfachauswahl und Hinweis, warum Reaktionen fehlen (Web).** „Auswählen“ im Nachrichtenmenü (bzw. Rechtsklick,
   auf Touch langer Druck) startet die Auswahl; Klick wählt weitere an oder ab, Umschalt+Klick einen Bereich, Leertaste die
   fokussierte Nachricht, Esc beendet. Kopfzeile „n ausgewählt“, Aktionsleiste Kopieren (je Zeile „Name, Zeit: Text“,

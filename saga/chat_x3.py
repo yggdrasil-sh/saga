@@ -97,8 +97,7 @@ def v1_flags(c, uid, ch, mem, d):
         d.update(x3_why="devices", x3_wait={"mine": [], "others": 0, "until": int(until)})
         return
     ph = ",".join("?" * len(loc))
-    old = c.execute(f"SELECT uid, name FROM chat_device WHERE uid IN ({ph}) AND revoked_at IS NULL AND COALESCE(last_seen, created)>? "
-                    "AND caps NOT LIKE '%\"chat3\"%' ORDER BY COALESCE(last_seen, created) DESC", (*loc, now - chat.ACTIVE_S)).fetchall()
+    old = chat.blocking_devices(c, loc, now)
     cert = {r[0] for r in c.execute(f"SELECT f.uid FROM chat_fed_cert f JOIN chat_identity i ON i.uid=f.uid AND i.ident_pub=f.ident_pub "
                                     f"WHERE f.uid IN ({ph})", tuple(loc))}
     nocert = set(loc) - cert
