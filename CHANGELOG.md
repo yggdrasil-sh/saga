@@ -17,6 +17,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu (2.5)
+- **Kacheln ohne Symbol bekommen automatisch eines.** Für Dienste und Lesezeichen ohne gesetztes Symbol rät Saga zuerst
+  ein selfh.st-Symbol nach dem Domainnamen (`youtube.com` → `youtube`, `jellyfin.example.org` → `jellyfin`) und holt sonst
+  das Favicon der Seite (`<link rel=icon|apple-touch-icon>` oder `/favicon.ico`, größtes Rasterbild, als PNG ≤ 256 px in
+  `/data/site-icons`, Fehl-Cache einen Tag). Schutz gegen SSRF über `saga/netguard.py`: nur öffentliche Adressen (auch
+  nach jeder der höchstens 3 Weiterleitungen), nur http/https auf den Standardports, Zeit- und Größenlimits (1 MB
+  HTML-Kopf, 512 KB Bild), nie SVG, Ratenlimit je Konto (`FAVICON_RATE`, 30 in 10 Minuten). Abschaltbar im
+  Admin-Bereich („Favicons laden“, Standard an) oder mit `FAVICONS=0`. `/api/services` und `/api/bookmarks` liefern
+  dafür das fertige Feld `icon_url` (neuer Endpunkt `/api/services/favicon/<key>`, nur für wer die Kachel sieht);
+  Web und Apps nehmen es, wenn vorhanden. `netguard.is_public` sperrt jetzt auch Multicast-Adressen. Test
+  `tests/favicon.py`; `tests/dienste.py` läuft im Test-Stack mit einem lokalen Fake-CDN (`tests/fakecdn.py`).
 - **Chat Stufe 3: Browser-Geräte halten die Umstellung nicht mehr auf.** Ein Browser lädt beim nächsten Öffnen ohnehin den
   aktuellen Web-Client; nur App-Geräte ohne Stufe 3 (zuletzt aktiv in 30 Tagen) zählen noch, auch im Hinweis „Reaktionen und Bearbeiten“.
 - **Chat: Mehrfachauswahl und Hinweis, warum Reaktionen fehlen (Web).** „Auswählen“ im Nachrichtenmenü (bzw. Rechtsklick,

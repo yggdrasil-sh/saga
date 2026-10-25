@@ -3,6 +3,20 @@
 Ergänzungen der HTTP-API für die Apps (iOS/iPadOS/macOS inkl. Widgets, Android, Linux). Live-Ereignisse stehen in
 `APP-API-LIVE.md`, Chat in `APP-API-CHAT.md`, KI in `APP-API-KI.md`.
 
+## Kachel-Symbole: `icon_url` (2.5)
+
+`GET /api/services` und `GET /api/bookmarks` liefern je Kachel zusätzlich **`icon_url`** – die fertige, relative
+Bildadresse (PNG, Sitzung bzw. Cookie wie bisher):
+
+- gesetztes Symbol → `/api/services/icon/<icon>` (wie bisher selbst gebaut),
+- ohne Symbol → `/api/services/favicon/<key>?h=<hash>`: der Server rät zuerst selfh.st nach dem Domainnamen und holt
+  sonst das Favicon der Seite (≤ 256 px). Nur wer die Kachel sieht; `404` = kein Bild (Anfangsbuchstabe zeigen),
+  `429` = Ratenlimit je Konto (später erneut). `h` ändert sich mit dem Host der Adresse (Cache-Schlüssel).
+- leer → kein Bild (z. B. Server ohne Internet, `ICON_CDN=` und „Favicons laden“ aus).
+
+Apps nehmen `icon_url`, wenn vorhanden, sonst wie bisher `icon`. Das Feld `icon` bleibt unverändert der gespeicherte
+Name (beim Bearbeiten eines Lesezeichens zurückschicken, nie `icon_url`). Rückwärtskompatibel, `MIN_APP` bleibt.
+
 ## Datenbank-Zeilen: Ansicht, Filter, Sortierung, Seiten (2.2)
 
 `GET /api/notes/{id}/rows` (Sitzung oder Geräte-Schlüssel `hkd_…`, ab Rolle *Lesen*) und

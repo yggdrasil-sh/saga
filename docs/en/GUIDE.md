@@ -420,8 +420,10 @@ your open tasks and today's and tomorrow's events. Search finds services, bookma
 
 **+ Bookmark** at the bottom of the dashboard, or in the user menu under Settings. Only you can see your
 bookmarks – in the apps too; the admin only sees how many there are. The address is enough: without a name, the
-tile is named after the host (e.g. `wiki.example.org`). Icon: a name from [selfh.st/icons](https://selfh.st/icons),
-otherwise the first letter is shown. Edit via **✎** on the tile.
+tile is named after the host (e.g. `wiki.example.org`). Icon: a name from [selfh.st/icons](https://selfh.st/icons).
+Without an icon, Saga looks for one itself: first a matching selfh.st icon by domain name (`youtube.com` → `youtube`,
+`jellyfin.example.org` → `jellyfin`), otherwise the site’s favicon; only if neither exists is the first letter
+shown. Edit via **✎** on the tile.
 
 ![Bookmarks](../screenshots/lesezeichen.png)
 
@@ -1746,6 +1748,14 @@ the address – open Saga via `BASE_URL` or correct `BASE_URL`. "Passkeys need a
 Saga downloads them once from `cdn.jsdelivr.net` (selfh.st) and stores them. Without internet access, the first
 letter is shown. With `ICON_CDN=` (empty), Saga fetches nothing from the internet at all.
 
+**Site favicons (tiles without an icon).** If no selfh.st icon matches the domain name, Saga fetches the site’s
+favicon (`<link rel="icon">`/`apple-touch-icon` from the HTML head, otherwise `/favicon.ico`), converts it to a PNG
+(at most 256 px) and stores it under `/data/site-icons`; anything not found is not looked up again for a day. Saga
+only contacts **public** addresses (no internal ones such as 192.168.x, 10.x, localhost, not even via redirects),
+only http/https on the standard ports, with time and size limits, raster images only (no SVG) and at most
+`FAVICON_RATE` sites per account in 10 minutes. Internal services therefore keep the first letter – set their icon
+by hand. To turn it off: admin area → General → Services → **Load favicons**, or `FAVICONS=0` (selfh.st only).
+
 **LDAP: service account sign-in failed, or certificate errors.**
 Check with "Test connection". With your own CA, put the file into `certs/` (section 7).
 
@@ -1840,6 +1850,8 @@ with the same account also switch the oldest ones to polling.
 | `NC_DOWNLOAD_MAX_MB` | `2048` | Nextcloud files in pages: largest download through Saga (streamed) |
 | `NC_FED_MAX_MB` | `50` | Nextcloud files in pages: largest download for people on other Saga instances |
 | `ICON_CDN` | selfh.st via jsDelivr | Source of service icons; empty = none |
+| `FAVICONS` | `1` | `0` = never load site favicons (tiles without an icon), regardless of “Load favicons” |
+| `FAVICON_RATE` | `30` | Favicon fetches per account in 10 minutes |
 | `STATUS_INTERVAL` | `60` | Seconds between status checks |
 | `CACHE_TTL` | `60` | Seconds that account and service data is cached |
 | `LIVE_PING` | `25` | Seconds until the heartbeat line in the live channel (keeps proxies open) |

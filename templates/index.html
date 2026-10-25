@@ -20,7 +20,7 @@
 {% macro tile(s, cat) -%}
 <div class="tw{% if s.own %} own{% endif %}" data-g="{{ s.key }}" data-q="{{ (s.name ~ ' ' ~ s.host ~ ' ' ~ cat)|lower }}"{% if s.own %} data-bm="{{ s.id }}"{% endif %}>
   <a class="tile" href="{{ s.url }}" target="_blank" rel="noopener">
-    <span class="ic{% if s.icon %} has-img{% endif %}">{% if s.icon %}<img src="/api/services/icon/{{ s.icon }}" alt="" loading="lazy" data-l="{{ s.name[:1]|upper }}">{% else %}{{ s.name[:1]|upper }}{% endif %}</span>
+    <span class="ic{% if s.icon_url %} has-img{% endif %}">{% if s.icon_url %}<img src="{{ s.icon_url }}" alt="" loading="lazy" data-l="{{ s.name[:1]|upper }}">{% else %}{{ s.name[:1]|upper }}{% endif %}</span>
     <span class="txt"><span class="nm">{{ s.name }}</span><span class="host">{{ s.host }}</span></span>
     {% if s.check %}<span class="dot unknown" title="{{ _("Status wird geprüft") }}"></span>{% endif %}
     <span class="num"></span>

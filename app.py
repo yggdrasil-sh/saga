@@ -33,14 +33,14 @@ from saga.core import BASE_URL, E, HERE, PUBLIC_HOSTS, REQUEST_MAX, SECRET, SESS
 from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
 from saga.notes import FILE_MAX
-from saga import backups, graph, nextcloud, pageindex, userbackup
+from saga import backups, graph, nextcloud, pageindex, siteicons, userbackup
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
 from saga.calendars import _cal_fernet  # noqa: F401
 from saga.core import ADMIN_URL, ASSET_V, CA_FILE  # noqa: F401
 from saga.dashboard import all_services, services_changed, visible_services  # noqa: F401
-from saga.pages import svc_icon_path  # noqa: F401
+from saga.siteicons import svc_icon_path  # noqa: F401
 from saga.userdata import delete_user_data, revoke_user_logins, user_usage  # noqa: F401
 from saga.web_auth import EMAIL_RE, PROXY_WARN, _ip  # noqa: F401
 __all__ = ["app", "files_gc", "ADMIN_URL", "ASSET_V", "BASE_URL", "CA_FILE", "EMAIL_RE", "HERE", "PROXY_WARN", "SECRET", "_cal_fernet", "_ip",
@@ -255,6 +255,7 @@ app.include_router(tasks.router)
 app.include_router(federation.router)
 app.include_router(fed_pages.router)         # Teilen vollstaendig (2.3): /fed/v2/notes/..., /fed/v2/live, /api/notes/{-id}/rows|versions|export|move
 app.include_router(pages.router)
+app.include_router(siteicons.router)          # automatische Kachel-Symbole: /api/services/favicon/{key}
 app.include_router(page_tools.router)
 app.include_router(files.router)
 app.include_router(databases.router)

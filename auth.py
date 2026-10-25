@@ -40,6 +40,7 @@ DEFAULTS = {
     "default_groups": [],                  # neue Konten (Registrierung, Admin, Erst-Login) bekommen diese Gruppen
     "allow_private_hosts": False,          # Kalender/Immich auf internen Adressen erlauben (fuer alle)
     "allowed_hosts": "",                   # oder nur diese internen Hosts (Komma-getrennt)
+    "favicons": True,                      # Kacheln ohne Symbol: Favicon der Seite laden (saga/siteicons.py; FAVICONS=0 = nie)
     "nc_files": True,                      # Nextcloud-Dateien in Seiten (2.3, saga/nextcloud.py): eigene Nextcloud verknuepfen
     "default_lang": "",                    # Standardsprache (de/en/es), leer = Browsersprache
     "publish_enabled": True,               # Benutzer duerfen eigene Seiten veroeffentlichen (/@name/<slug>)

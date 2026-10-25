@@ -681,9 +681,10 @@
 
   // --- Abschnitt "Lesezeichen": eigene Kacheln auf dem Dashboard (auch in den Apps) -----------------------------
   function bmIcon(b) {
-    var ic = el('span', 'ic' + (b.icon ? ' has-img' : ''));
-    if (b.icon) {
-      var img = el('img'); img.alt = ''; img.loading = 'lazy'; img.src = '/api/services/icon/' + encodeURIComponent(b.icon);
+    var src = b.icon_url || (b.icon ? '/api/services/icon/' + encodeURIComponent(b.icon) : '');   // icon_url: auch automatisch (Favicon)
+    var ic = el('span', 'ic' + (src ? ' has-img' : ''));
+    if (src) {
+      var img = el('img'); img.alt = ''; img.loading = 'lazy'; img.src = src;
       img.addEventListener('error', function () { ic.classList.remove('has-img'); ic.textContent = (b.name || '?').charAt(0).toUpperCase(); });
       ic.appendChild(img);
     } else ic.textContent = (b.name || '?').charAt(0).toUpperCase();
@@ -692,7 +693,7 @@
   function bookmarkSection(body) {
     var sec = el('section', 'hk-set hk-set-bookmarks'); body.appendChild(sec);
     sec.appendChild(el('h3', null, T('Lesezeichen')));
-    sec.appendChild(el('p', 'hk-hint', T('Eigene Kacheln auf dem Dashboard – nur für dich sichtbar, auch in den Apps. Symbole: Name von selfh.st/icons (z. B. „jellyfin“).')));
+    sec.appendChild(el('p', 'hk-hint', T('Eigene Kacheln auf dem Dashboard – nur für dich sichtbar, auch in den Apps. Symbol: Name von selfh.st/icons (z. B. „jellyfin“), leer = automatisch (passendes Symbol oder Favicon der Seite).')));
     var list = el('div'); sec.appendChild(list);
     var add = el('button', 'btn', T('+ Lesezeichen')); add.type = 'button'; sec.appendChild(add);
     var formBox = el('div'); sec.appendChild(formBox);

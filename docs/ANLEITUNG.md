@@ -450,8 +450,10 @@ und – darunter – auch deine **Seiten** (Titel und Inhalt).
 
 **+ Lesezeichen** unten auf dem Dashboard oder im Benutzermenü unter Einstellungen. Deine Lesezeichen siehst
 nur du – auch in den Apps; der Admin sieht nur ihre Anzahl. Es reicht die Adresse, ohne Namen heißt die Kachel
-wie der Rechner (z. B. `wiki.example.org`). Symbol: Name von [selfh.st/icons](https://selfh.st/icons), sonst
-erscheint der Anfangsbuchstabe. Bearbeiten über **✎** an der Kachel.
+wie der Rechner (z. B. `wiki.example.org`). Symbol: Name von [selfh.st/icons](https://selfh.st/icons). Ohne
+Symbol sucht Saga selbst eines: zuerst ein passendes von selfh.st nach dem Domainnamen (`youtube.com` → `youtube`,
+`jellyfin.example.org` → `jellyfin`), sonst das Favicon der Seite; erst wenn beides fehlt, erscheint der
+Anfangsbuchstabe. Bearbeiten über **✎** an der Kachel.
 
 ![Lesezeichen](screenshots/lesezeichen.png)
 
@@ -1816,6 +1818,15 @@ Adresse mit Rechnernamen“: `BASE_URL` enthält eine IP-Adresse oder kein `http
 Saga lädt sie einmal von `cdn.jsdelivr.net` (selfh.st) und speichert sie. Ohne Internet erscheint der
 Anfangsbuchstabe. Mit `ICON_CDN=` (leer) holt Saga gar nichts aus dem Internet.
 
+**Favicons der Seiten (Kacheln ohne Symbol).** Passt kein selfh.st-Symbol zum Domainnamen, holt Saga das Favicon der
+Seite (`<link rel="icon">`/`apple-touch-icon` aus dem HTML-Kopf, sonst `/favicon.ico`), rechnet es in ein PNG um
+(höchstens 256 px) und legt es unter `/data/site-icons` ab; nicht Gefundenes wird einen Tag lang nicht erneut
+gesucht. Saga ruft dabei nur **öffentliche** Adressen auf (keine internen wie 192.168.x, 10.x, localhost, auch nicht
+über Weiterleitungen), nur http/https auf den Standardports, mit Zeit- und Größenlimit, nur Rasterbilder (kein SVG)
+und höchstens `FAVICON_RATE` Seiten je Konto in 10 Minuten. Interne Dienste behalten so den Anfangsbuchstaben –
+dort das Symbol von Hand setzen. Abschalten: Admin-Bereich → Allgemein → Dienste → **Favicons laden** oder
+`FAVICONS=0` (dann nur selfh.st).
+
 **LDAP: „Dienstkonto-Anmeldung fehlgeschlagen“ oder Zertifikatsfehler.**
 Mit „Verbindung testen“ prüfen. Bei eigener CA die Datei nach `certs/` legen (Abschnitt 7).
 
@@ -1910,6 +1921,8 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `NC_DOWNLOAD_MAX_MB` | `2048` | Nextcloud-Dateien in Seiten: größter Download über Saga (gestreamt) |
 | `NC_FED_MAX_MB` | `50` | Nextcloud-Dateien in Seiten: größter Download für Personen anderer Saga-Instanzen |
 | `ICON_CDN` | selfh.st über jsDelivr | Quelle der Dienst-Symbole; leer = keine |
+| `FAVICONS` | `1` | `0` = nie Favicons von Seiten laden (Kacheln ohne Symbol), unabhängig von „Favicons laden“ |
+| `FAVICON_RATE` | `30` | Favicon-Abrufe je Konto in 10 Minuten |
 | `STATUS_INTERVAL` | `60` | Sekunden zwischen Status-Prüfungen |
 | `CACHE_TTL` | `60` | Sekunden, die Konto- und Dienstdaten zwischengespeichert werden |
 | `LIVE_PING` | `25` | Sekunden bis zur Heartbeat-Zeile im Live-Kanal (hält Proxys offen) |

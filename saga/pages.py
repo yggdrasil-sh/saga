@@ -1,24 +1,21 @@
 """Seiten im Notion-Stil: anlegen, lesen, speichern, verschieben, suchen."""
-import io
 import json
-import os
 import re
-import threading
 import time
 from html import escape as html_escape
 from html.parser import HTMLParser
 from itertools import islice
 from urllib.parse import urlparse
-import httpx
 from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import clean_line, connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
 from saga import bus, nextcloud, treesync
-from saga.core import BASE_URL, E, STATE_DIR, account_lang, _api_guard, _bad, _body, _json_load, _session_user, origin_of, ref_of, t, user_error
+from saga.core import BASE_URL, account_lang, _api_guard, _bad, _body, _json_load, _session_user, origin_of, ref_of, t, user_error
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
+from saga.siteicons import ICON_RE, svc_icon_path
 from saga.comments import counts as comment_counts
 from saga.sharing import RANK, Access, access, is_remote, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
 from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
@@ -1001,60 +998,16 @@ def api_services(request: Request):
     if not uid:
         return _bad("unauthorized", 401)
     out = [{"name": s["name"], "url": s["url"], "host": s["host"], "category": s["category"], "icon": s.get("icon") or "",
-            "own": bool(s.get("own")), "key": s["key"]} for s in visible_tiles(uid).values()]
+            "own": bool(s.get("own")), "key": s["key"], "icon_url": s.get("icon_url") or ""} for s in visible_tiles(uid).values()]
     out.sort(key=lambda s: (s["category"].lower(), s["name"].lower()))
     return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 
-# Dienst-Symbole (selfh.st, wie die Kacheln im Web) fuer die Apps: einmal vom CDN holen, als PNG ablegen.
-# Die Apps brauchen so kein Internet und kein SVG; ein fehlendes Symbol wird einen Tag lang nicht erneut gesucht.
-SVC_ICON_DIR = os.path.join(STATE_DIR, "svc-icons")
-SVC_ICON_CDN = (E.get("ICON_CDN", "https://cdn.jsdelivr.net/gh/selfhst/icons")).rstrip("/")   # leer = keine Symbole aus dem Internet
-_svc_icon_lock = threading.Lock()
-
-
-def _svc_icon_fetch(name):
-    if not SVC_ICON_CDN:
-        return None
-    with httpx.Client(timeout=10, follow_redirects=False) as cl:
-        r = cl.get(f"{SVC_ICON_CDN}/png/{name}.png")
-        if r.status_code == 200 and r.content[:8] == b"\x89PNG\r\n\x1a\n" and len(r.content) < 2_000_000:
-            return r.content
-        r = cl.get(f"{SVC_ICON_CDN}/webp/{name}.webp")
-        if r.status_code == 200 and r.content[8:12] == b"WEBP" and len(r.content) < 2_000_000:
-            from PIL import Image          # fehlte bisher (NameError beim WebP-Ersatz); nur hier gebraucht
-            im = Image.open(io.BytesIO(r.content))
-            im.thumbnail((256, 256))
-            out = io.BytesIO()
-            im.save(out, "PNG")
-            return out.getvalue()
-    return None
-
-
-def svc_icon_path(name):
-    """-> (pfad, None) oder (None, http-status). Einmal vom CDN holen und als PNG ablegen."""
-    os.makedirs(SVC_ICON_DIR, exist_ok=True)
-    path, miss = os.path.join(SVC_ICON_DIR, name + ".png"), os.path.join(SVC_ICON_DIR, name + ".missing")
-    with _svc_icon_lock:
-        if not os.path.isfile(path):
-            if os.path.isfile(miss) and time.time() - os.path.getmtime(miss) < 86400:
-                return None, 404
-            try:
-                data = _svc_icon_fetch(name)
-            except (httpx.HTTPError, OSError, ValueError):
-                return None, 502                        # nicht merken: CDN kurz weg
-            if not data:
-                open(miss, "w").close()
-                return None, 404
-            with open(path + ".tmp", "wb") as f:
-                f.write(data)
-            os.replace(path + ".tmp", path)
-    return path, None
-
-
+# Dienst-Symbole (selfh.st, wie die Kacheln im Web) fuer die Apps: einmal vom CDN holen, als PNG ablegen
+# (saga/siteicons.py, dort auch die automatischen Symbole /api/services/favicon/<schluessel>).
 @router.get("/api/services/icon/{name}")
 def api_service_icon(name: str, request: Request):
-    if not _session_user(request) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", name):
+    if not _session_user(request) or not ICON_RE.fullmatch(name):
         return PlainTextResponse("not found", status_code=404)
     path, code = svc_icon_path(name)
     if not path:

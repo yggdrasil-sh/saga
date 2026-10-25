@@ -1,10 +1,11 @@
 """Startseite: Dienste (Admin + LDAP), Status-Pruefung, Favoriten, Konto-Infos, Lesezeichen-Daten."""
 import asyncio
+import hashlib
 import json
 import os
 import ssl
 import time
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 import httpx
 from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -13,7 +14,7 @@ from db import connect as _db
 from fastapi import APIRouter
 from saga import avatars, chat, i18n, mfa, publish
 from saga.sharing import unread_count
-from saga.core import (ADMIN_URL, ASSET_V, CACHE_TTL, CA_FILE, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user,
+from saga.core import (ADMIN_URL, ASSET_V, CACHE_TTL, CA_FILE, FAVICONS_ENV, ICON_CDN, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user,
                        remember_ui_lang, std_name, t, title, tmpl, user_info)
 
 router = APIRouter()
@@ -66,20 +67,48 @@ def visible_services(info):
 BOOKMARK_MAX = 500
 
 
+def favicons_on():
+    """Favicons der Seiten laden (saga/siteicons.py): Umgebung FAVICONS und Admin-Einstellung "Favicons laden"."""
+    return FAVICONS_ENV and bool(auth.settings().get("favicons", True))
+
+
+def tile_icon_url(s):
+    """Fertige Bildadresse einer Kachel fuer Web und Apps: das gesetzte selfh.st-Symbol, sonst das automatische Symbol
+    (/api/services/favicon/<schluessel>: erst selfh.st nach dem Domainnamen raten, dann das Favicon der Seite).
+    h = Kurz-Hash des Hosts: aendert sich die Adresse, laden Browser und Apps das Bild neu. Leer = Anfangsbuchstabe."""
+    if s.get("icon"):
+        return "/api/services/icon/" + s["icon"]
+    try:
+        pu = urlparse(s.get("url") or "")
+        host = (pu.hostname or "").lower()
+        port = pu.port
+    except ValueError:
+        return ""
+    if pu.scheme not in ("http", "https") or not host or not (ICON_CDN or favicons_on()):
+        return ""
+    h = hashlib.sha256(f"{pu.scheme}://{host}:{port or ''}".encode()).hexdigest()[:10]
+    return f"/api/services/favicon/{quote(s['key'], safe='')}?h={h}"
+
+
 def bookmarks(uid):
     with _db() as c:
         rows = c.execute("SELECT id, name, url, icon, category FROM bookmark WHERE uid=? ORDER BY sort, id", (uid,)).fetchall()
-    return [{"key": f"bm{r[0]}", "id": r[0], "name": r[1], "url": r[2], "host": urlparse(r[2]).netloc, "icon": r[3] or "",
-             "category": std_name(r[4] or "Lesezeichen"), "own": True, "check": False} for r in rows]
+    out = [{"key": f"bm{r[0]}", "id": r[0], "name": r[1], "url": r[2], "host": urlparse(r[2]).netloc, "icon": r[3] or "",
+            "category": std_name(r[4] or "Lesezeichen"), "own": True, "check": False} for r in rows]
+    for b in out:
+        b["icon_url"] = tile_icon_url(b)
+    return out
 
 
 def visible_tiles(uid, info=None):
     """Dienste + eigene Lesezeichen (Schluessel -> Kachel). Standard-Kategorien in der Sprache der Anfrage
-    (Kopien - all_services() ist fuer alle Sprachen gemeinsam zwischengespeichert)."""
+    (Kopien - all_services() ist fuer alle Sprachen gemeinsam zwischengespeichert). icon_url: siehe tile_icon_url."""
     info = info or user_info(uid)
     if info is None:
         return {}
     out = {k: dict(s, category=std_name(s.get("category") or "Dienste")) for k, s in visible_services(info).items()}
+    for s in out.values():
+        s["icon_url"] = tile_icon_url(s)
     for b in bookmarks(uid):
         out[b["key"]] = b
     return out

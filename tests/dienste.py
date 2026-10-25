@@ -1,5 +1,6 @@
 """Dienst-Symbole fuer die Apps: /api/services liefert den Symbolnamen, /api/services/icon/<name> das PNG
-(einmal vom CDN geholt, dann aus /data); ohne Sitzung oder mit unsinnigem Namen nichts."""
+(einmal vom CDN geholt, dann aus /data); ohne Sitzung oder mit unsinnigem Namen nichts. Zeigt ICON_CDN auf
+127.0.0.1 (Test-Stack), laeuft dort tests/fakecdn.py."""
 import base64, io, json, os, sys, urllib.request, urllib.parse
 from itsdangerous import TimestampSigner
 from PIL import Image
@@ -8,6 +9,9 @@ HOST = urllib.parse.urlparse(os.environ["BASE_URL"]).netloc
 def ck(uid): return TimestampSigner(os.environ["SESSION_SECRET"]).sign(base64.b64encode(json.dumps({"uid": uid}).encode())).decode()
 H = {"Host": HOST, "Cookie": "saga=" + ck("hk-test-a"), "X-Saga": "1"}
 res = []
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import fakecdn  # noqa: E402
+fakecdn.start(os.environ.get("ICON_CDN"))     # ICON_CDN=http://127.0.0.1:18310 (wie im Test-Server): ohne Internet
 def ok(n, c): res.append(bool(c)); print(("OK  " if c else "FAIL"), n)
 def raw(p, h=None):
     try:

@@ -33,6 +33,7 @@
   <section class="adm-card">
     <h3>{{ _("Dienste") }}</h3>
     {{ field(_('Gruppen-Kennung'), 'group_prefix', st.group_prefix, max=20, hint=_('Gruppe <Kennung><Kurzname> gibt den Dienst frei. Standard s_ (wie s_nextcloud). Leer = Gruppe heißt wie der Kurzname.')) }}
+    {{ check(_('Favicons laden'), 'favicons', st.favicons, _('Dienste und Lesezeichen ohne Symbol: Saga sucht zuerst ein passendes Symbol von selfh.st (nach dem Domainnamen) und lädt sonst das Favicon der Seite – nur von öffentlichen Adressen, je Konto begrenzt. Aus: nur selfh.st, sonst der Anfangsbuchstabe.')) }}
   </section>
   <section class="adm-card">
     <h3>{{ _("Verbindungen der Benutzer (Kalender, Immich, Nextcloud)") }}</h3>

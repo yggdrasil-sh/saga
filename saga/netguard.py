@@ -26,7 +26,7 @@ def is_public(ip):
             emb.append(ipaddress.IPv4Address(int(a) & 0xFFFFFFFF))
         if any(not x.is_global for x in emb):
             return False
-    return a.is_global
+    return a.is_global and not a.is_multicast         # 224.0.0.0/4 und ff00::/8 gelten in Python teils als global
 
 
 # Testwiederherstellung auf einem zweiten Server (SAGA_RESTORE_TEST=1, saga/backups.py): ein zurueckgespieltes Backup
@@ -109,6 +109,16 @@ def guarded_client(ip_ok, transport_kw=None, restore_ok=False, restore_hosts=(),
     if RESTORE_TEST and hosts:
         tr = _ReadOnlyTransport(tr, hosts)
     return httpx.Client(transport=tr, **kw)
+
+
+def request_checker(ports=(None, 80, 443), any_port=()):
+    """event_hook fuer httpx: jede Anfrage (auch nach Weiterleitungen) nur http/https, nur diese Ports (None = Standardport
+    des Schemas) und ohne Zugangsdaten in der URL. any_port: Hosts, fuer die jeder Port gilt (nur Tests)."""
+    def check(req):
+        u = req.url
+        if u.scheme not in ("http", "https") or u.userinfo or (u.port not in ports and u.host not in any_port):
+            raise httpx.UnsupportedProtocol("nicht erlaubt")
+    return check
 
 
 def net_why(ex):

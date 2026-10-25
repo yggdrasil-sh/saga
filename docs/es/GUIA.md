@@ -430,8 +430,10 @@ marcadores y, debajo, también tus **páginas** (título y contenido).
 
 **+ Marcador** abajo en el panel, o en el menú de usuario, en Ajustes. Tus marcadores solo los ves tú, también
 en las apps; el administrador solo ve cuántos hay. Basta con la dirección: sin nombre, el mosaico se llama como
-el host (p. ej. `wiki.example.org`). Icono: un nombre de [selfh.st/icons](https://selfh.st/icons); si no,
-aparece la inicial. Se editan con **✎** en el mosaico.
+el host (p. ej. `wiki.example.org`). Icono: un nombre de [selfh.st/icons](https://selfh.st/icons). Sin icono,
+Saga busca uno por sí mismo: primero uno de selfh.st según el nombre de dominio (`youtube.com` → `youtube`,
+`jellyfin.example.org` → `jellyfin`) y, si no, el favicon del sitio; solo si no hay ninguno aparece la inicial.
+Se editan con **✎** en el mosaico.
 
 ![Marcadores](../screenshots/lesezeichen.png)
 
@@ -1829,6 +1831,15 @@ dirección con nombre de host»: `BASE_URL` contiene una IP o no empieza por `ht
 Saga los descarga una vez de `cdn.jsdelivr.net` (selfh.st) y los guarda. Sin internet aparece la inicial. Con
 `ICON_CDN=` (vacío), Saga no descarga nada de internet.
 
+**Favicons de los sitios (mosaicos sin icono).** Si ningún icono de selfh.st coincide con el nombre de dominio, Saga
+descarga el favicon del sitio (`<link rel="icon">`/`apple-touch-icon` de la cabecera HTML o `/favicon.ico`), lo
+convierte en PNG (como máximo 256 px) y lo guarda en `/data/site-icons`; lo que no encuentra no lo vuelve a buscar
+durante un día. Saga solo contacta direcciones **públicas** (ninguna interna como 192.168.x, 10.x o localhost, tampoco
+tras redirecciones), solo http/https en los puertos estándar, con límites de tiempo y tamaño, solo imágenes rasterizadas
+(sin SVG) y como máximo `FAVICON_RATE` sitios por cuenta cada 10 minutos. Los servicios internos conservan la
+inicial: pon su icono a mano. Desactivar: área de administración → General → Servicios → **Cargar favicons**, o
+`FAVICONS=0` (solo selfh.st).
+
 **LDAP: falla el inicio de sesión de la cuenta de servicio, o errores de certificado.**
 Compruébalo con "Probar conexión". Con una CA propia, pon el archivo en `certs/` (sección 7).
 
@@ -1923,6 +1934,8 @@ abiertas con la misma cuenta también pasan las más antiguas a consulta periód
 | `NC_DOWNLOAD_MAX_MB` | `2048` | Archivos de Nextcloud en las páginas: descarga más grande a través de Saga (en streaming) |
 | `NC_FED_MAX_MB` | `50` | Archivos de Nextcloud en las páginas: descarga más grande para personas de otras instancias de Saga |
 | `ICON_CDN` | selfh.st vía jsDelivr | Origen de los iconos de servicios; vacío = ninguno |
+| `FAVICONS` | `1` | `0` = no cargar nunca favicons de sitios (mosaicos sin icono), sea cual sea «Cargar favicons» |
+| `FAVICON_RATE` | `30` | Descargas de favicons por cuenta cada 10 minutos |
 | `STATUS_INTERVAL` | `60` | Segundos entre comprobaciones de estado |
 | `CACHE_TTL` | `60` | Segundos que se guardan en caché los datos de cuentas y servicios |
 | `LIVE_PING` | `25` | Segundos hasta la línea de latido del canal en directo (mantiene abiertos los proxies) |

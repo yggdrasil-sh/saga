@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 import httpx
 
 from saga.core import E, RESTORE_TEST, SEARCH_LANGUAGE, SEARCH_SAFESEARCH, SEARXNG_URL
-from saga.netguard import guarded_client, is_public
+from saga.netguard import guarded_client, is_public, request_checker
 
 RESULTS = 6                      # Treffer je Antwort (alle Suchanfragen zusammen)
 QUERIES = 2                      # Suchanfragen je Frage
@@ -230,12 +230,8 @@ PORTS = (None, 80, 443)
 
 
 def _checker(ports):
-    def check(req):
-        """Jede Anfrage (auch nach Weiterleitung): nur http/https, nur Standard-Ports, keine Zugangsdaten in der URL."""
-        u = req.url
-        if u.scheme not in ("http", "https") or u.port not in ports or u.userinfo:
-            raise httpx.UnsupportedProtocol("nicht erlaubt")
-    return check
+    """Jede Anfrage (auch nach Weiterleitung): nur http/https, nur Standard-Ports, keine Zugangsdaten in der URL."""
+    return request_checker(ports)
 
 
 def fetch_text(url, terms, ip_ok=public_only, timeout=FETCH_TIMEOUT, max_bytes=FETCH_BYTES, ports=PORTS):
