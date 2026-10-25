@@ -991,7 +991,7 @@ body.embed .pg-conflict,.pages.pg-full .pg-conflict{top:.5rem}
 .hk-modal{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.5);display:grid;grid-template-columns:minmax(0,1fr);place-items:center;padding:1rem}
 .hk-dialog{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.45);width:min(680px,100%);max-height:88vh;display:flex;flex-direction:column}
 .hk-dlg-head{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.1rem;border-bottom:1px solid var(--border)}
-.hk-dlg-head h2{margin:0;font-size:1.1rem}
+.hk-dlg-head h2{margin:0;font-size:1.1rem;text-transform:none;letter-spacing:normal;color:var(--fg);font-weight:600}   /* Bughunt D19: wie die anderen Dialoge */
 :lang(th) h2,:lang(th) .hk-tab{letter-spacing:0}            /* Thai: Sperrschrift zerreisst die Zeichen */
 .hk-dlg-body{overflow:auto;padding:1rem 1.1rem 1.4rem}
 .hk-set h3{margin:.2rem 0 .4rem;font-size:1rem}
@@ -1448,7 +1448,7 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 .hk-tabs::-webkit-scrollbar{display:none}
 /* 2.4 (Testrunde): auf breiten Bildschirmen umbrechen statt Reiter rechts ausserhalb zu verstecken; Abstand oberhalb der
    klebenden Leiste abdecken (Inhalt schien beim Scrollen durch) */
-@media (min-width:561px){.hk-dialog-set .hk-tabs{flex-wrap:wrap;overflow:visible;-webkit-mask-image:none;mask-image:none}}
+@media (min-width:561px){.hk-dialog-set .hk-tabs{flex-wrap:wrap;overflow:visible;-webkit-mask-image:none;mask-image:none}.hk-dialog-set .hk-tab{padding-inline:.55rem}}
 .hk-tabs{box-shadow:0 -.8rem 0 var(--card)}
 /* Web-Runde 2 (247/270): klebt an der Kante des Scrollbereichs, nicht an der Innenkante (Polster 1rem) - sonst schien im
    Polster darueber Inhalt durch */
@@ -1463,7 +1463,16 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
   padding:.65rem .7rem .55rem;margin-bottom:-1px;cursor:pointer;white-space:nowrap}
 .hk-tab:hover{color:var(--fg)}
 .hk-tab[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent);font-weight:600}
-.hk-dialog-set{height:min(680px,88vh);min-width:0}   /* feste Hoehe: der Dialog springt beim Reiterwechsel nicht */
+.hk-dialog-set{height:min(680px,88vh);min-width:0;width:min(880px,100%)}   /* feste Hoehe: der Dialog springt beim Reiterwechsel nicht; D19: breiter, Reiter in einer Zeile */
+/* Bughunt D19: scrollbare Reiter (Handy) - deutlicher Pfeil am Rand statt nur Ausblenden; sticky in der Leiste */
+.hk-tabs.fade-r::after,.hk-tabs.fade-l::before{position:sticky;flex:none;width:2rem;display:grid;place-items:center;z-index:1;
+  color:var(--accent);font-size:1.35rem;font-weight:600;pointer-events:none}
+.hk-tabs.fade-r::after{content:"›";right:0;margin-left:-2rem;background:linear-gradient(90deg,transparent,var(--card) 55%)}
+.hk-tabs.fade-l::before{content:"‹";left:0;margin-right:-2rem;background:linear-gradient(270deg,transparent,var(--card) 55%)}
+.hk-tabs.fade-r,.hk-tabs.fade-l,.hk-tabs.fade-l.fade-r{-webkit-mask-image:none;mask-image:none}
+/* sticky zaehlt ab der Innenkante (Polster der Leiste): um das Polster nach aussen an den sichtbaren Rand */
+.hk-tabs.fade-r::after{right:-1.1rem}.hk-tabs.fade-l::before{left:-1.1rem}
+@media (max-width:560px){.hk-tabs.fade-r::after{right:-.9rem}.hk-tabs.fade-l::before{left:-.9rem}}
 .hk-dialog-set .hk-dlg-body{flex:1}
 .hk-dlg-body.tabbed .hk-set{margin-top:0;padding-top:0;border-top:0}
 .hk-dlg-body.tabbed .hk-set>h3{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
