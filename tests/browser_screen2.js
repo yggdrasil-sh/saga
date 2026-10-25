@@ -6,7 +6,7 @@
 // Netz-Schnittstelle ausser lo (Chrome sammelt keine Loopback-Kandidaten).
 // Geprueft: 2.4 <-> 2.4 Betriebsart B - Datenschutzhinweis vor dem ersten Teilen (abschaltbar), eigene m-Zeile mit
 // contentHint "detail" ueber die Neuverhandlung, tracks/msid/screen_mid im signierten Body, Empfaenger zeigt Bildschirm gross
-// und Kamera klein (Tauschen), Leisten "Du teilst deinen Bildschirm" / "… teilt den Bildschirm", Systemton gemischt,
+// und Kamera als eigene Kachel im Streifen (2.5: Anheften statt Tauschen), Leisten "Du teilst deinen Bildschirm" / "… teilt den Bildschirm", Systemton gemischt,
 // Bitrate-Regeln (Bildschirm 2,5 Mbit/s 15 fps maintain-resolution, Kamera daneben 300 kbit/s), <= 4 Signale je Start/Stopp,
 // Wiederverwendung der m-Zeile (kein Wachstum), Teilen vom Angerufenen auf derselben m-Zeile, Ende ueber den Browser
 // ("Teilen beenden" -> ended) und beim Auflegen. Kompatibilitaet: E0-Client (reneg ohne screen2) und 2.3-Client bekommen
@@ -198,12 +198,13 @@ async function hang(a, b) { await a.click('.cl-ctl .cl-red'); await until(() => 
     ok(`Bildschirm fliesst: ${inn.kbps} kbit/s, ${inn.fps} fps, ${inn.w}x${inn.h} beim Empfaenger (<= 2,5 Mbit/s, <= 15 fps, Aufloesung bleibt)`,
       inn.kbps > 20 && inn.kbps <= 2600 && inn.fps > 0 && inn.fps <= 16 && inn.h >= 700, inn);
     ok(`Kamera daneben <= 300 kbit/s beim Empfaenger: ${cam.kbps}`, cam.kbps > 0 && cam.kbps <= 330, cam);
-    // Tauschen
-    await b.click('.cl-share .cl-swap');
-    ok('Empfaenger tauscht: Kamera gross, Bildschirm klein', await until(async () => { const x = await sc(b); return x.big === 'cam' && x.small === 'screen'; }, 3000));
-    await shot(b, '04-getauscht');
-    await b.click('.cl-remote2');
-    ok('... Klick aufs kleine Bild tauscht zurueck', await until(async () => { const x = await sc(b); return x.big === 'screen' && x.small === 'cam'; }, 3000));
+    // 2.5 (MEETING-SPEC §3, §5.2): kein Tauschen mehr - Kamera und Bildschirm sind eigene Kacheln; Antippen der Kamera im
+    // Streifen heftet sie an (Kamera gross, Bildschirm vorn im Streifen), Esc loest
+    await b.click('.cl-mstrip .cl-mtile:not(.cl-me)');
+    ok('Empfaenger heftet die Kamera an: Kamera gross, Bildschirm im Streifen', await until(async () => { const x = await sc(b); return x.big === 'cam' && x.small === 'screen'; }, 3000), await sc(b));
+    await shot(b, '04-angeheftet');
+    await b.keyboard.press('Escape');
+    ok('... Esc loest: Bildschirm wieder gross', await until(async () => { const x = await sc(b); return x.big === 'screen' && x.small === 'cam'; }, 3000), await sc(b));
     // Stopp ueber die Leiste
     const s1a = await st(a), s1b = await st(b);
     await a.click('.cl-share-stop');

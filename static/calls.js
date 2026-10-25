@@ -107,7 +107,11 @@
     users: ['M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M23 21v-2a4 4 0 0 0-3-3.9', 'M16 3.1a4 4 0 0 1 0 7.8'],
     // 2.5 (ANRUF-UI): Schloss und Verkleinern statt Emoji/Zeichen
     lock: ['M5 11h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z', 'M8 11V7a4 4 0 0 1 8 0v4'],
-    shrink: ['M4 14h6v6', 'M20 10h-6V4', 'M14 10l7-7', 'M3 21l7-7']
+    shrink: ['M4 14h6v6', 'M20 10h-6V4', 'M14 10l7-7', 'M3 21l7-7'],
+    // 2.5 Meeting-Ansicht: Vollbild, Anheften, Kachelmenue
+    full: ['M8 3H5a2 2 0 0 0-2 2v3', 'M21 8V5a2 2 0 0 0-2-2h-3', 'M3 16v3a2 2 0 0 0 2 2h3', 'M16 21h3a2 2 0 0 0 2-2v-3'],
+    pin: ['M12 17v5', 'M9 10.8V4h6v6.8l2.5 3.2h-11z'],
+    more: ['M5 12h.01', 'M12 12h.01', 'M19 12h.01']
   };
   function icon(name) {
     var NS = 'http://www.w3.org/2000/svg', s = document.createElementNS(NS, 'svg');
@@ -319,8 +323,9 @@
     return !!(L.peer && L.peer.me) || (!!x && x.role === 'companion' && (!L.gotState || rs.mic === false));
   }
   function shown(R) { return links(R).filter(function (L) { return !quiet(L); }); }
-  // Kachelansicht: Gruppenanruf oder mehr als eine sichtbare Verbindung (1:1 mit Begleitgeraet bleibt Einzelansicht)
-  function meshView(R) { R = roomOf(R); return !!R && (R.kind === 'group' || shown(R).length >= 2); }
+  // Meeting-Ansicht: Gruppenanruf oder 1:1 mit mehr als Gegenueber + eigenem Bild (2.5: Personen ueber `who`
+  // zusammengefasst - ein stilles Begleitgeraet bleibt Einzelansicht, ein teilendes macht Praesentation)
+  function meshView(R) { R = roomOf(R); return !!R && (R.kind === 'group' || (MT ? meetOn(R) : shown(R).length >= 2)); }
   function myDev() { return bridge().device(); }
   function X() { return bridge().crypto(); }
   // 2.3: Gegenueber auf einem anderen Server (c.v2): saga-call/v2 mit foederierten Handles statt Benutzernamen
@@ -547,9 +552,8 @@
       c.remoteState = { mic: b.mic !== false, cam: !!b.cam, screen: !!b.screen, pip: !!b.pip, want: w,
                         path: PATHS.indexOf(b.path) >= 0 ? b.path : '', screenMid: b.screen ? sm : null, audio: !!b.screen_audio };
       peerTracksIn(c, b);
-      if (c.remoteState.screen && !was) c.swap = false;               // neues Teilen: Bildschirm gross
       c.gotState = true;
-      if (c.room || links(c).length > 1) drawTiles(roomOf(c));        // 2.4: Begleitgeraet zeigt etwas -> ggf. Kacheln
+      drawTiles(roomOf(c));                                            // 2.5: Teilen/Begleitgeraet -> ggf. Meeting-Ansicht
       bindRemote(c); drawMedia(c); drawInfo(c); applyRates(c);
     } else if (b.t === 'bye' && c.established && b._from === c.peerDevice) {
       if (links(c).length > 1 || roomOf(c).kind === 'group') dropLink(c, '');          // 2.4: nur dieses Geraet geht
@@ -777,6 +781,8 @@
     return { username: x.who, name: x.name || '', handle: mine ? (x.handle || (bridge() && bridge().myHandle()) || null) : x.handle || null,
              me: mine, local: mine || !x.host, host: x.host || '', avatar: x.avatar || null };
   }
+  // Geraet der eigenen Person? (`me` aus der Liste des Servers bzw. derselbe Benutzername wie bisher im Code)
+  function mineLeg(x) { return !!x && (x.me === true || (!!x.who && x.who === meName())); }
   function legOf(R, dev) { var o = null; ((R && R.legs) || []).forEach(function (x) { if (x.device === dev) o = x; }); return o; }
   function myLeg(R) { return bridge() ? legOf(R, myDev().id) : null; }
   // Name des Chats zum Anruf - auch wenn gerade ein anderer Chat offen ist (Nr. 106: Kopf zeigte sonst "Gruppenanruf")
@@ -1117,7 +1123,80 @@
       finish(R, (e && e.message) || T('Anruf beendet'), 'error');
     });
   }
-  // Kachelansicht: je sichtbarer Verbindung eine Kachel (Bild bzw. Name, Geraet, stumm), Sprecher hervorgehoben
+  // --- 2.5 Meeting-Ansicht (MEETING-SPEC.md) ---------------------------------------------------------------------------
+  // Mesh (Gruppe bzw. 1:1 mit mehr als einer Kachel): eine Person = eine Kachel (alle Geraete mit gleichem `who`), je
+  // teilendem Geraet eine Bildschirmkachel (ohne Kamera-Bild-im-Bild), eigene Begleitgeraete nie als Kachel. Layouts Auto,
+  // Galerie (Seiten), Sprecher (Hysterese), Praesentation; Buehne + Streifen bzw. Raster. Die Entscheidungen trifft
+  // static/meeting.js (window.SagaMeeting, gemeinsame Testvektoren). Jede Verbindung behaelt fuer den Ton einen
+  // unsichtbaren Halter (L.tile.holder: nur <audio>); die sichtbaren Kacheln gehoeren zum Raum (R.mt.els).
+  var MT = window.SagaMeeting || null;
+  function mtPref(k, d) { try { var v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
+  function mtSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* privat */ } }
+  function layoutChoice() { return MT ? MT.layoutPref(mtPref('saga-call-layout', null), mtPref('saga-horn-view', null)) : 'auto'; }
+  function reducedMotion() { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+  function mtOf(R) {
+    R = roomOf(R);
+    if (!R.mt) R.mt = { els: {}, pick: MT ? new MT.SpeakerPick() : null, pin: null, page: 0, chipOff: {}, force: '', hidden: {}, zoom: 1, px: 0, py: 0,
+                        lay: '', sig: '', view: null, said: 0 };
+    return R.mt;
+  }
+  function layoutName(v) {
+    return v === 'gallery' ? T('Galerie') : v === 'speaker' ? T('Sprecher') : v === 'presentation' ? T('Präsentation') : v === 'one' ? T('Einzelansicht') : T('Auto');
+  }
+  // Teilnehmerliste + Medienzustand je Geraet (Mesh) -> Eingaben fuer SagaMeeting.meetingTiles und die Spuren dazu
+  function meetData(R) {
+    var here = bridge() ? myDev().id : '', roster = [], media = {}, src = {}, seen = {};
+    (R.legs || []).forEach(function (x) {
+      if (!x || !x.device || seen[x.device]) return;
+      seen[x.device] = true;
+      roster.push({ device: x.device, who: x.who || x.device, name: x.name || '', dev_name: x.dev_name || '', role: x.role, me: mineLeg(x) || x.device === here, avatar: x.avatar || null });
+    });
+    links(R).forEach(function (L) {
+      var d = L.peerDevice; if (!d) return;
+      var p = L.peer || {};
+      if (!seen[d]) { seen[d] = true; roster.push({ device: d, who: p.username || p.handle || d, name: p.name || '', dev_name: '', role: 'member', me: !!p.me, avatar: p.avatar || null }); }
+      var rs = L.remoteState || {}, rv = remoteVideo(L), x = legOf(R, d);
+      var camT = rs.screen && rs.screenMid == null ? null : rv.camAny;          // Betriebsart A: die eine Spur ist der Bildschirm
+      var cam = !!camT && (L.gotState ? !!rs.cam : !camT.muted);
+      var scrT = rs.screen && rv.screenAny ? rv.screenAny : null;
+      if (scrT && !L.scrAt) L.scrAt = Date.now(); else if (!scrT) L.scrAt = 0;
+      media[d] = { mic: L.gotState ? rs.mic !== false : !(x && x.role === 'companion'), cam: cam, screen: !!scrT, level: L.level || 0, screenAt: L.scrAt || 0 };
+      src[d] = { cam: cam ? camT : null, scr: scrT, L: L };
+    });
+    if (here) {
+      if (!seen[here]) roster.push({ device: here, who: meName() || here, name: meName(), dev_name: '', role: R.companion ? 'companion' : 'member', me: true });
+      var mc = R.cam && R.cam.readyState === 'live' && R.cam.enabled ? R.cam : null;
+      media[here] = { mic: !!R.mic, cam: !!mc, screen: false, level: 0 };
+      src[here] = { cam: mc, scr: null, L: null };
+    }
+    return { here: here, roster: roster, media: media, src: src };
+  }
+  function meetCalc(R) {
+    var mt = mtOf(R), d = meetData(R), now = Date.now();
+    var tiles = MT.meetingTiles(d.roster, d.media, { self: d.here, showNoVideo: mtPref('saga-call-novideo', '1') !== '0', spokeAt: mt.pick.spokeAt(), now: now })
+      .filter(function (t) { return !mt.hidden[t.id]; });
+    return { d: d, tiles: tiles, lay: MT.pickLayout(tiles, mt.force || layoutChoice(), { reduced: reducedMotion() }), now: now };
+  }
+  // Meeting-Ansicht an? Gruppe immer; 1:1 erst, wenn es mehr gibt als Gegenueber + eigenes Bild (Teilen, Begleitgeraet mit
+  // eigener Kamera, Layout von Hand)
+  function meetOn(R) {
+    R = roomOf(R);
+    if (!R || !MT || R.horn || !R.ui) return false;
+    if (R.kind === 'group') return true;
+    return meetCalc(R).lay !== 'one';
+  }
+  function meetSoon(R) {
+    R = roomOf(R);
+    if (!R || R.mtT || R.horn) return;
+    R.mtT = setTimeout(function () { R.mtT = null; if (live(R) && R.ui && !R.done) drawTiles(R); }, 30);
+  }
+  function meetClear(R) {
+    var mt = mtOf(R);
+    Object.keys(mt.els).forEach(function (id) { var E = mt.els[id]; E.v.srcObject = null; E.box.remove(); });
+    mt.els = {}; mt.view = null;
+    if (R.ui) { R.ui.w.classList.remove('meet', 'self-tile'); R.ui.mchip.hidden = true; R.ui.pager.hidden = true; }
+  }
+  // Ansicht: Mesh-Kacheln (bzw. Einzelansicht im 1:1)
   function drawTiles(R) {
     R = roomOf(R);
     if (!R || !R.ui || R.done) return;
@@ -1126,28 +1205,32 @@
     R.ui.w.classList.toggle('mesh', mesh);
     if (!mesh) {
       ls.forEach(function (L) { if (L.tile) { L.tile.box.remove(); L.tile = null; } });
-      if (R.meshOn) { R.meshOn = false; R.ui.grid.textContent = ''; }
+      if (R.meshOn) { R.meshOn = false; meetClear(R); drawCtl(R); }
       var P = primary(R); if (P.pc) { bindRemote(P); drawMedia(P); }
       R.ui.w.classList.remove('tiles');
       return;
     }
-    if (!R.meshOn) {                                   // Einzel- -> Kachelansicht: grosse Elemente frei machen
+    if (!R.meshOn) {                                   // Einzel- -> Meeting-Ansicht: grosse Elemente frei machen
       R.meshOn = true;
       [R.ui.ra, R.ui.rv, R.ui.rv2].forEach(function (m) { m.srcObject = null; });
       R.ui.w.classList.remove('has-video', 'has-small', 'peer-screen', 'peer-muted');
       speakers(R);
+      setTimeout(function () { if (live(R)) drawCtl(R); }, 0);
     }
-    ls.forEach(function (L) { if (!L.tile) makeTile(R, L); else drawTile(L); });
-    R.ui.grid.dataset.n = String(Math.min(ls.length, 6));
-    R.ui.w.classList.toggle('tiles', ls.length > 0);
-    // Spalten wie in calls.css (.cl-grid[data-n]): 1 / 2 / ab 5 drei, Handy hoechstens zwei
-    var n = ls.length;
-    gridCenter(R.ui.grid, n <= 1 ? 1 : window.innerWidth <= 640 || n <= 4 ? 2 : 3);
+    ls.forEach(function (L) { if (!L.tile) makeTile(R, L); });
+    meetDraw(R);
     drawPeer(R);
   }
-  // Bughunt D07: unvollstaendige letzte Reihe mittig, keine Kachel groesser als die anderen (vorher bekam bei drei
-  // Kacheln die dritte - meist "Du" - die ganze Reihe). Raster mit doppelt so vielen Halbspalten, jede Kachel belegt
-  // zwei; die erste Kachel der letzten Reihe beginnt um die fehlenden Halbspalten versetzt.
+  // Ton einer Verbindung in der Meeting-Ansicht: nur ein <audio> (Bild zeigen die Kacheln des Raums)
+  function makeTile(R, L) {
+    var ra = el('audio', 'cl-raudio'); ra.autoplay = true;
+    if (R.sinkId && ra.setSinkId) ra.setSinkId(R.sinkId).catch(function () {});
+    R.ui.stage.appendChild(ra);
+    L.tile = { holder: true, box: ra, ra: ra, rv: el('video'), rv2: el('video'), st: el('div') };
+    bindRemote(L);
+  }
+  function drawTile(L) { if (L.tile) meetSoon(roomOf(L)); }
+  // Bughunt D07: unvollstaendige letzte Reihe mittig (Knoten-Raster) - Halbspalten, jede Kachel belegt zwei
   function gridCenter(g, cols) {
     var kids = [].slice.call(g.children), n = kids.length, r = cols > 1 ? n % cols : 0;
     kids.forEach(function (k) { k.style.gridColumn = ''; });
@@ -1156,52 +1239,413 @@
     g.style.setProperty('--cols2', String(cols * 2));
     kids[n - r].style.gridColumn = (cols - r + 1) + ' / span 2';
   }
-  function makeTile(R, L) {
-    var vid = function (cls) { var v = el('video', cls); v.autoplay = true; v.muted = true; v.playsInline = true; v.setAttribute('playsinline', ''); return v; };
-    var box = el('div', 'cl-tile'); box.setAttribute('role', 'listitem');
-    var rv = vid('cl-tv'), rv2 = vid('cl-tv2'), ra = el('audio', 'cl-raudio'); ra.autoplay = true;
-    rv2.title = T('Ansicht tauschen'); rv2.addEventListener('click', function () { L.swap = !L.swap; bindRemote(L); drawTile(L); });
-    if (R.sinkId && ra.setSinkId) ra.setSinkId(R.sinkId).catch(function () {});
-    var p = L.peer || {};
-    var av = HK.avatarImg(el('span', 'cl-av', (p.name || '?').charAt(0).toUpperCase()), p.avatar, 56); av.setAttribute('aria-hidden', 'true');
-    var lab = el('div', 'cl-tl'), nm = el('b', null, p.me ? T('Du') : shortName(p.name || p.username || '?')), dv = el('span', 'cl-td');
-    lab.appendChild(nm); lab.appendChild(dv);
+  function meetLabel(t) {
+    if (t.kind === 'screen') return t.devName ? T('Bildschirm von {name} ({dev})', { name: t.name || '?', dev: t.devName }) : T('Bildschirm von {name}', { name: t.name || '?' });
+    if (t.me) return T('Du');
+    return t.kind === 'cam' && t.devName ? (t.name || '?') + ' (' + t.devName + ')' : (t.name || '?');
+  }
+  function meetEl(R, t) {
+    var mt = mtOf(R), E = mt.els[t.id];
+    if (E) return E;
+    var box = el('div', 'cl-tile cl-mtile'); box.setAttribute('role', 'listitem'); box.tabIndex = -1; box.dataset.id = t.id;
+    var v = el('video', 'cl-tv'); v.autoplay = true; v.muted = true; v.playsInline = true; v.setAttribute('playsinline', '');
+    var av = HK.avatarImg(el('span', 'cl-av', (t.name || '?').charAt(0).toUpperCase()), t.avatar || null, 56); av.setAttribute('aria-hidden', 'true');
+    var lab = el('div', 'cl-tl'), tm = el('span', 'cl-tm'), tsp = el('span', 'cl-tspk'), tp = el('span', 'cl-tpin'), ts = el('span', 'cl-tscr');
+    tm.appendChild(icon('micOff')); tsp.appendChild(icon('spk')); tp.appendChild(icon('pin')); ts.appendChild(icon('screen'));
+    var nm = el('b'), dv = el('span', 'cl-td');
+    [ts, tm, tsp, tp, nm, dv].forEach(function (x) { lab.appendChild(x); });
     var st = el('div', 'cl-tst'); st.hidden = true;
-    [rv, rv2, ra, av, lab, st].forEach(function (x) { box.appendChild(x); });
-    R.ui.grid.appendChild(box);
-    L.tile = { box: box, rv: rv, rv2: rv2, ra: ra, av: av, nm: nm, dv: dv, st: st };
-    bindRemote(L); drawTile(L);
+    var mb = btn(icon('more'), 'cl-mini cl-tmb', function (e) { e.stopPropagation(); meetMenu(R, t.id, mb); }, T('Kachelmenü'));
+    mb.tabIndex = -1;
+    [v, av, lab, st, mb].forEach(function (x) { box.appendChild(x); });
+    box.addEventListener('click', function () {      // Streifen: Antippen holt die Kachel auf die Buehne (= anheften)
+      if (box.parentNode === R.ui.mstrip && mt.pin !== t.id) { mt.pinAt = Date.now(); meetPin(R, t.id, true); }
+    });
+    box.addEventListener('dblclick', function (e) {
+      e.preventDefault();
+      if (Date.now() - (mt.pinAt || 0) < 500) return;
+      var cur = mt.els[t.id] && mt.els[t.id].t;
+      if (cur && cur.kind === 'screen' && box.parentNode === R.ui.mbig) meetFull(R, true); else meetPin(R, t.id);
+    });
+    box.addEventListener('contextmenu', function (e) { e.preventDefault(); meetMenu(R, t.id, box); });
+    box.addEventListener('keydown', function (e) {
+      if (e.target !== box) return;
+      if (e.key === 'Enter') { e.preventDefault(); meetPin(R, t.id); }
+      else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); meetMenu(R, t.id, mb); }
+    });
+    v.addEventListener('loadeddata', function () { meetSoon(R); });
+    E = mt.els[t.id] = { box: box, v: v, av: av, nm: nm, dv: dv, st: st, mb: mb, track: null, t: t };
+    return E;
   }
-  function drawTile(L) {
-    var t = L.tile; if (!t) return;
-    var R = roomOf(L), x = legOf(R, L.peerDevice) || {}, rs = L.remoteState;
-    var bigT = t.rv.srcObject && t.rv.srcObject.getVideoTracks()[0], smT = t.rv2.srcObject && t.rv2.srcObject.getVideoTracks()[0];
-    var vid = !!(bigT && bigT.readyState === 'live' && !bigT.muted) && (L.gotState ? rs.cam || rs.screen : true);
-    var small = !!(vid && smT && smT.readyState === 'live' && !smT.muted);
-    t.box.classList.toggle('has-video', vid); t.box.classList.toggle('has-small', small);
-    t.box.classList.toggle('peer-screen', vid && !!rs.screen);
-    t.box.classList.toggle('muted', rs.mic === false);
-    t.box.classList.toggle('wait', !L.connected);
-    t.dv.textContent = [x.dev_name || '', x.role === 'companion' ? T('Begleitgerät') : ''].filter(Boolean).join(' · ');
-    t.box.setAttribute('aria-label', (L.peer && L.peer.name || '?') + (x.dev_name ? ' (' + x.dev_name + ')' : '') + (rs.mic === false ? ' – ' + T('stumm') : ''));
-    if (vid && t.rv.paused) t.rv.play().catch(function () {});
-    if (small && t.rv2.paused) t.rv2.play().catch(function () {});
+  // Kachel fuellen: Spur (nur mit Videoplatz), Name, Zustand, Vorlesetext
+  function meetSet(R, E, t, vidOn, src) {
+    var mt = mtOf(R), s = src[t.dev] || {};
+    E.t = t;
+    var tr = !vidOn ? null : t.kind === 'screen' ? s.scr : t.video ? s.cam : null;
+    if (tr && tr.readyState !== 'live') tr = null;
+    if (tr !== E.track) { E.track = tr; E.v.srcObject = tr ? new MediaStream([tr]) : null; if (tr) E.v.play().catch(function () {}); }
+    var frames = !!tr && E.v.readyState >= 2 && E.v.videoWidth > 0;
+    var b = E.box, spk = t.kind !== 'screen' && !!(mt.pick && mt.pick.speaking[t.who]) && t.mic;
+    b.classList.toggle('has-video', frames);
+    b.classList.toggle('peer-screen', t.kind === 'screen');
+    b.classList.toggle('cl-me', !!t.me);
+    b.classList.toggle('muted', t.kind !== 'screen' && !t.mic);
+    b.classList.toggle('pinned', mt.pin === t.id);
+    b.classList.toggle('speaking', spk);
+    b.classList.toggle('wait', !!s.L && !s.L.connected);
+    b.dataset.dev = t.dev;
+    var name = meetLabel(t);
+    if (E.nm.textContent !== name) E.nm.textContent = name;
+    E.nm.title = name;
+    E.dv.textContent = '';
+    var stt = s.L && s.L.tile && s.L.tile.st ? s.L.tile.st.textContent : '';
+    E.st.textContent = stt; E.st.hidden = !stt;
+    var lab = [name];
+    if (t.kind !== 'screen') {
+      if (spk) lab.push(T('spricht'));
+      if (!t.mic) lab.push(T('stumm'));
+      lab.push(t.video ? T('Kamera an') : T('keine Kamera'));
+    }
+    if (mt.pin === t.id) lab.push(T('angeheftet'));
+    b.setAttribute('aria-label', lab.join(', '));
+    if (frames && E.v.paused) E.v.play().catch(function () {});
   }
-  // Sprecher hervorheben: Pegel der empfangenen Tonspur (RTP-Quelle, ohne getStats) - 3x je Sekunde
+  function meetPlace(par, kids) {
+    kids.forEach(function (k, i) { if (par.children[i] !== k) par.insertBefore(k, par.children[i] || null); });
+    // Roving-Tabindex: eine Kachel je Liste ist per Tab erreichbar, Pfeile wandern (§10)
+    var act = kids.filter(function (k) { return k.tabIndex === 0; })[0] || kids[0];
+    kids.forEach(function (k) { k.tabIndex = k === act ? 0 : -1; });
+  }
+  function meetDraw(R) {
+    var ui = R.ui, mt = mtOf(R), c = meetCalc(R), tiles = c.tiles, byId = {};
+    tiles.forEach(function (t) { byId[t.id] = t; });
+    if (mt.pin && !byId[mt.pin]) { mt.pin = null; HK.toast(T('Angeheftete Ansicht beendet'), null, null, 3000); }
+    // Teilen beginnt: Ansage; in der Galerie einmalig der Hinweis "… teilt den Bildschirm – Anzeigen" (§2.5)
+    var scrs = tiles.filter(function (t) { return t.kind === 'screen'; }), old = mt.sig || '';
+    var sig = scrs.map(function (t) { return t.id + '@' + t.screenAt; }).join(',');
+    if (sig !== old) {
+      var fresh = scrs.filter(function (t) { return old.indexOf(t.id + '@' + t.screenAt) < 0; });
+      mt.sig = sig;
+      if (fresh.length) {
+        var f = fresh[fresh.length - 1];
+        meetSay(R, T('{name} teilt den Bildschirm', { name: f.name || '?' }));
+        if (c.lay === 'gallery' && !mt.force) meetShareHint(R, f);
+        mt.zoom = 1; mt.px = mt.py = 0;
+      }
+      if (!scrs.length && ui.mhint) { ui.mhint.remove(); ui.mhint = null; }
+    }
+    if (c.lay !== mt.lay) { if (mt.lay) meetSay(R, T('Layout: {name}', { name: layoutName(c.lay) })); mt.lay = c.lay; mt.page = 0; }
+    var A = MT.arrange(tiles, c.lay, { pin: mt.pin, speaker: mt.pick.cur, spokeAt: mt.pick.spokeAt(), now: c.now });
+    var W = ui.stage.clientWidth || window.innerWidth, H = ui.stage.clientHeight || window.innerHeight;
+    var side = MT.stripSide(W, H, c.lay), stripOff = c.lay === 'presentation' && mtPref('saga-call-strip', '0') === '1';
+    var box = ui.meet;
+    box.className = 'cl-meet lay-' + c.lay + ' strip-' + side.side + (stripOff ? ' strip-off' : '') + (A.strip.length ? ' has-strip' : '');
+    box.style.setProperty('--strip', side.size + 'px');
+    ui.w.classList.add('meet');
+    ui.w.classList.toggle('self-tile', !A.float);
+    // Galerie: Seiten (Pfeile, Punkte), Spalten je Fensterklasse
+    var gridIds = A.grid, pg = null, gg = null;
+    if (c.lay === 'gallery') {
+      var per = MT.galleryGrid(gridIds.length, W, H).perPage;
+      pg = MT.pageOf(gridIds, mt.page, per); mt.page = pg.page; gridIds = pg.items;
+      gg = MT.galleryGrid(gridIds.length, W, H);
+    }
+    var order = [].concat(A.stage ? [A.stage] : [], A.strip, gridIds).map(function (id) { return byId[id]; }).filter(Boolean);
+    var budget = gg ? gg.video : MT.videoBudget(W, H);
+    if (c.lay !== 'gallery') budget = Math.min(budget, (MT.windowClass(W, H) === 'phone' ? 3 : 6) + (A.stage ? 1 : 0));   // Streifen: hoechstens 6 Videos (Handy 3)
+    var vids = MT.videoFor(order, budget, { pin: mt.pin, speaker: mt.pick.cur, spokeAt: mt.pick.spokeAt() });
+    var want = {};
+    var put = function (id) { var t = byId[id]; if (!t) return null; var E = meetEl(R, t); want[id] = true; meetSet(R, E, t, !!vids[id], c.d.src); return E.box; };
+    var st = A.stage ? put(A.stage) : null;
+    meetPlace(ui.mbig, st ? [st] : []);
+    meetPlace(ui.mstrip, A.strip.map(put).filter(Boolean));
+    meetPlace(ui.mgrid, gridIds.map(put).filter(Boolean));
+    Object.keys(mt.els).forEach(function (id) { if (!want[id]) { mt.els[id].v.srcObject = null; mt.els[id].box.remove(); delete mt.els[id]; } });
+    // Galerie: gleich grosse 16:9-Kacheln, so gross wie moeglich, letzte Reihe mittig (flex)
+    if (gg) {
+      var gw = ui.mgrid.clientWidth || W, gh = ui.mgrid.clientHeight || H, cols = gg.cols, rows = Math.max(1, Math.ceil(gridIds.length / cols)), gap = 8;
+      var tw = Math.min((gw - gap * (cols - 1)) / cols, ((gh - gap * (rows - 1)) / rows) * 16 / 9);
+      ui.mgrid.style.setProperty('--tw', Math.max(MT.K.MIN_TILE_W, Math.floor(tw)) + 'px');
+      ui.mgrid.dataset.cols = String(cols);
+    }
+    var pages = pg ? pg.pages : 1;
+    ui.pager.hidden = pages <= 1;
+    if (pages > 1) {
+      ui.pgT.textContent = T('Seite {n} von {m}', { n: pg.page + 1, m: pages });
+      ui.pgPrev.disabled = pg.page <= 0; ui.pgNext.disabled = pg.page >= pages - 1;
+    }
+    var stT = A.stage ? byId[A.stage] : null;
+    ui.mbig.setAttribute('aria-label', stT ? T('Bühne: {name}', { name: meetLabel(stT) }) : T('Bühne'));
+    ui.mstrip.setAttribute('aria-label', T('Teilnehmende, {n}', { n: A.strip.length }));
+    ui.mgrid.setAttribute('aria-label', T('Teilnehmende, {n}', { n: gridIds.length }));
+    // Hinweis-Chip "… teilt den Bildschirm" unten links in der Buehne (statt Banner oben), x blendet ihn fuer diese Freigabe aus
+    var chipKey = stT && stT.kind === 'screen' ? stT.id + '@' + stT.screenAt : '';
+    ui.mchip.hidden = !chipKey || !!mt.chipOff[chipKey];
+    if (!ui.mchip.hidden) {
+      var ct = T('{name} teilt den Bildschirm', { name: stT.name || '?' }) + (stT.devName ? ' (' + stT.devName + ')' : '');
+      ui.mchipT.textContent = ct; ui.mchipT.title = ct; ui.mchip.dataset.key = chipKey;
+    }
+    meetZoomApply(R);
+    var hid = mtPref('saga-call-novideo', '1') === '0' ? MT.hiddenNoVideo(c.d.roster, c.d.media, { self: c.d.here, showNoVideo: false, spokeAt: mt.pick.spokeAt(), now: c.now }) : [];
+    ui.mnov.hidden = !hid.length;
+    if (hid.length) ui.mnov.textContent = T('+ {n} ohne Video', { n: hid.length });
+    ui.w.classList.toggle('tiles', tiles.length > 0);
+    mt.view = { layout: c.lay, choice: mt.force || layoutChoice(), stage: A.stage, strip: A.strip, grid: gridIds, page: pg ? pg.page : 0, pages: pages, float: A.float,
+                video: Object.keys(vids).length, hidden: hid.length, stripSide: side.side, stripSize: side.size };
+    drawShare(R);
+    selfFit(R);
+    idleCheck(R);
+  }
+  // Ansage fuer Screenreader (polite, hoechstens eine je 10 s, keine bei Sprecherwechsel)
+  function meetSay(R, s) {
+    var mt = mtOf(R), now = Date.now();
+    if (!R.ui || !R.ui.say || now - mt.said < 10000) return;
+    mt.said = now; R.ui.say.textContent = s;
+  }
+  function meetShareHint(R, t) {
+    var ui = R.ui; if (!ui) return;
+    if (ui.mhint) ui.mhint.remove();
+    var h = ui.mhint = el('div', 'cl-mhint'); h.setAttribute('role', 'status');
+    h.appendChild(el('span', null, T('{name} teilt den Bildschirm', { name: t.name || '?' })));
+    h.appendChild(btn(T('Anzeigen'), 'cl-pill cl-mhint-go', function () { var mt = mtOf(R); mt.force = 'presentation'; h.remove(); ui.mhint = null; drawTiles(R); drawCtl(R); }));
+    h.appendChild(btn(icon('x'), 'cl-mini cl-mhint-x', function () { h.remove(); ui.mhint = null; }, T('Schließen')));
+    ui.w.appendChild(h);
+    setTimeout(function () { if (ui.mhint === h) { h.remove(); ui.mhint = null; } }, 12000);
+  }
+  function meetPin(R, id, quiet) {
+    var mt = mtOf(R);
+    mt.pin = mt.pin === id ? null : id;
+    mt.zoom = 1; mt.px = mt.py = 0;
+    if (!quiet) meetSay(R, mt.pin ? T('angeheftet') : T('Lösen'));
+    if (R.horn) { var H = R.horn; H.pin = mt.pin; if (mt.pin) hornSetView(R, 'speaker'); else hornDraw(R); return; }
+    drawTiles(R);
+  }
+  // Kachelmenue: Fuer mich anheften / Loesen, Vollbild (Bildschirm), Ausblenden (ohne Video, Galerie)
+  function meetMenuClose(R) { var m = R.ui && R.ui.w.querySelector('.cl-tmenu'); if (m) { m.remove(); idlePoke(R); } }
+  function meetMenu(R, id, anchor) {
+    var mt = mtOf(R), E = mt.els[id]; if (!E || !R.ui) return;
+    meetMenuClose(R); layoutMenu(R, false);
+    var t = E.t, m = el('div', 'cl-tmenu'); m.setAttribute('role', 'menu'); m.setAttribute('aria-label', meetLabel(t));
+    var item = function (txt, fn) { var b = btn(txt, 'cl-tmenu-i', function () { meetMenuClose(R); fn(); }); b.setAttribute('role', 'menuitem'); m.appendChild(b); return b; };
+    item(mt.pin === id ? T('Lösen') : T('Für mich anheften'), function () { meetPin(R, id); });
+    if (t.kind === 'screen') item(T('Vollbild'), function () { if (mt.pin !== id && mtOf(R).view && mtOf(R).view.stage !== id) meetPin(R, id, true); meetFull(R, true); });
+    if (!t.video && !t.me && mt.lay === 'gallery') item(T('Ausblenden'), function () { mt.hidden[id] = true; drawTiles(R); });
+    m.addEventListener('keydown', function (e) {
+      var its = [].slice.call(m.querySelectorAll('.cl-tmenu-i')), i = its.indexOf(document.activeElement);
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); meetMenuClose(R); E.box.focus(); }
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); its[(i + (e.key === 'ArrowDown' ? 1 : its.length - 1)) % its.length].focus(); }
+    });
+    R.ui.w.appendChild(m);
+    var r = (anchor || E.box).getBoundingClientRect(), wr = R.ui.w.getBoundingClientRect();
+    m.style.left = Math.max(8, Math.min(wr.width - m.offsetWidth - 8, r.left - wr.left)) + 'px';
+    m.style.top = Math.max(8, Math.min(wr.height - m.offsetHeight - 8, r.top - wr.top + 36)) + 'px';
+    var f = m.querySelector('.cl-tmenu-i'); if (f) f.focus({ preventScroll: true });
+    setTimeout(function () {
+      var off = function (e) { if (!m.parentNode) { document.removeEventListener('pointerdown', off, true); return; } if (!m.contains(e.target)) { meetMenuClose(R); document.removeEventListener('pointerdown', off, true); } };
+      document.addEventListener('pointerdown', off, true);
+    }, 0);
+    idleCheck(R);
+  }
+  // Vollbild: Anruffenster (Knopf, F) bzw. Buehne (Doppelklick auf den geteilten Bildschirm); ohne API: Leisten aus
+  function fsEl() { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+  function meetFull(R, stage) {
+    if (!R.ui) return;
+    if (fsEl()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+    var t = stage ? R.ui.mbig : R.ui.w, rq = t.requestFullscreen || t.webkitRequestFullscreen;
+    var fb = function () { R.ui.w.classList.toggle('pseudo-full'); if (R.ui.w.classList.contains('pseudo-full')) { R.ui.idle = true; idleCheck(R); } };
+    if (!rq) { fb(); return; }
+    try { var p = rq.call(t); if (p && p.catch) p.catch(fb); } catch (e) { fb(); }
+  }
+  // Zoom fuer Betrachtende (geteilter Bildschirm auf der Buehne): 1x-4x, verschieben per Ziehen, Chip "200 %" 2 s
+  function meetStageVid(R) {
+    var mt = mtOf(R), id = mt.view && mt.view.stage, E = id && mt.els[id];
+    return E && E.t.kind === 'screen' ? E : null;
+  }
+  function meetZoom(R, z, keep) {
+    var mt = mtOf(R), E = meetStageVid(R); if (!E) return false;
+    mt.zoom = Math.max(1, Math.min(4, Math.round(z * 100) / 100));
+    if (mt.zoom === 1 || !keep) { mt.px = mt.py = 0; }
+    meetZoomApply(R);
+    var ui = R.ui;
+    ui.zchipT.textContent = Math.round(mt.zoom * 100) + ' %';
+    clearTimeout(ui.zchipTm);
+    ui.zchip.hidden = mt.zoom === 1;                  // zurueckgesetzt: Chip sofort weg, sonst 2 s sichtbar
+    if (!ui.zchip.hidden) ui.zchipTm = setTimeout(function () { ui.zchip.hidden = true; }, 2000);
+    return true;
+  }
+  function meetZoomApply(R) {
+    var mt = mtOf(R), ui = R.ui; if (!ui) return;
+    var E = meetStageVid(R);
+    Object.keys(mt.els).forEach(function (id) { var x = mt.els[id]; if (x !== E) x.v.style.transform = ''; });
+    if (!E) { mt.zoom = 1; mt.px = mt.py = 0; return; }
+    var W = ui.mbig.clientWidth, H = ui.mbig.clientHeight, mx = (mt.zoom - 1) * W / 2, my = (mt.zoom - 1) * H / 2;
+    mt.px = Math.max(-mx, Math.min(mx, mt.px)); mt.py = Math.max(-my, Math.min(my, mt.py));
+    E.v.style.transform = mt.zoom > 1 ? 'translate(' + mt.px + 'px,' + mt.py + 'px) scale(' + mt.zoom + ')' : '';
+    ui.mbig.classList.toggle('zoomed', mt.zoom > 1);
+  }
+  function meetZoomInit(R) {
+    var ui = R.ui, big = ui.mbig, drag = null;
+    big.addEventListener('wheel', function (e) {          // Trackpad-Pinch kommt als Strg+Rad
+      if (!e.ctrlKey || !meetStageVid(R)) return;
+      e.preventDefault(); meetZoom(R, mtOf(R).zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), true);
+    }, { passive: false });
+    big.addEventListener('pointerdown', function (e) {
+      var mt = mtOf(R); if (mt.zoom <= 1 || e.button !== 0) return;
+      drag = { x: e.clientX, y: e.clientY, px: mt.px, py: mt.py };
+      try { big.setPointerCapture(e.pointerId); } catch (x) { /* egal */ }
+    });
+    big.addEventListener('pointermove', function (e) {
+      if (!drag) return; var mt = mtOf(R);
+      mt.px = drag.px + e.clientX - drag.x; mt.py = drag.py + e.clientY - drag.y; meetZoomApply(R);
+    });
+    var up = function () { drag = null; };
+    big.addEventListener('pointerup', up); big.addEventListener('pointercancel', up);
+  }
+  // Layout-Menue (Knopf in der Bedienleiste, L): Auto / Galerie / Sprecher / Praesentation, Kacheln ohne Video, eigenes Bild
+  function layoutSet(R, v) {
+    var mt = mtOf(R);
+    mtSet('saga-call-layout', v); mt.force = ''; mt.page = 0;
+    if (R.horn) hornLayout(R); else drawTiles(R);
+    drawCtl(R); meetSay(R, T('Layout: {name}', { name: layoutName(v) }));
+  }
+  function layoutMenu(R, open) {
+    var ui = R.ui; if (!ui) return;
+    var m = ui.w.querySelector('.cl-lmenu');
+    if (open === undefined) open = !m;
+    if (!open) { if (m) { m.remove(); var b = ui.ctl.querySelector('.cl-layout'); if (b) b.setAttribute('aria-expanded', 'false'); idlePoke(R); } return; }
+    meetMenuClose(R);
+    if (m) m.remove();
+    m = el('div', 'cl-lmenu'); m.setAttribute('role', 'menu'); m.setAttribute('aria-label', T('Layout'));
+    var cur = mtOf(R).force || layoutChoice(), anyScr = R.horn ? !!hornSources(R).scr : !!(mtOf(R).sig);
+    [['auto', 'A'], ['gallery', 'G'], ['speaker', 'P'], ['presentation', '']].forEach(function (x) {
+      var b = btn(layoutName(x[0]), 'cl-lmenu-i cl-lmenu-r' + (cur === x[0] ? ' on' : ''), function () { layoutMenu(R, false); layoutSet(R, x[0]); });
+      b.setAttribute('role', 'menuitemradio'); b.setAttribute('aria-checked', String(cur === x[0]));
+      if (x[1]) { b.title = layoutName(x[0]) + ' (' + x[1] + ')'; }
+      if (x[0] === 'presentation' && !anyScr) { b.disabled = true; b.title = T('Nur aktiv, wenn jemand teilt'); }
+      m.appendChild(b);
+    });
+    m.appendChild(el('hr'));
+    var chk = function (txt, key, def, fn) {
+      var on = mtPref(key, def) !== '0', b = btn(txt, 'cl-lmenu-i cl-lmenu-c' + (on ? ' on' : ''), function () { mtSet(key, on ? '0' : '1'); layoutMenu(R, false); fn(); });
+      b.setAttribute('role', 'menuitemcheckbox'); b.setAttribute('aria-checked', String(on)); m.appendChild(b);
+    };
+    if (!R.horn) chk(T('Kacheln ohne Video zeigen'), 'saga-call-novideo', '1', function () { drawTiles(R); });
+    chk(T('Eigenes Bild zeigen'), 'saga-call-selfshow', '1', function () { drawMedia(R); });
+    m.addEventListener('keydown', function (e) {
+      var its = [].slice.call(m.querySelectorAll('.cl-lmenu-i:not([disabled])')), i = its.indexOf(document.activeElement);
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); layoutMenu(R, false); var lb = ui.ctl.querySelector('.cl-layout'); if (lb) lb.focus(); }
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); its[(i + (e.key === 'ArrowDown' ? 1 : its.length - 1)) % its.length].focus(); }
+    });
+    ui.w.appendChild(m);
+    var lb = ui.ctl.querySelector('.cl-layout');
+    if (lb) {
+      lb.setAttribute('aria-expanded', 'true');
+      var r = lb.getBoundingClientRect(), wr = ui.w.getBoundingClientRect();
+      m.style.left = Math.max(8, Math.min(wr.width - m.offsetWidth - 8, r.left - wr.left + r.width / 2 - m.offsetWidth / 2)) + 'px';
+      m.style.bottom = Math.max(8, wr.bottom - r.top + 8) + 'px';
+    }
+    var f = m.querySelector('.cl-lmenu-i.on') || m.querySelector('.cl-lmenu-i'); if (f) f.focus({ preventScroll: true });
+    setTimeout(function () {
+      var off = function (e) { if (!m.parentNode) { document.removeEventListener('pointerdown', off, true); return; } if (!m.contains(e.target) && !(lb && lb.contains(e.target))) { layoutMenu(R, false); document.removeEventListener('pointerdown', off, true); } };
+      document.addEventListener('pointerdown', off, true);
+    }, 0);
+    idleCheck(R);
+  }
+  // Layout-Knopf zeigen? Nicht im 1:1 ohne Teilen und ohne zusaetzliche Kachel (§2)
+  function layoutBtnOn(R) {
+    if (!MT || !R.ui) return false;
+    if (R.horn) return !!R.horn.L && ((R.legs || []).length >= 3 || !!hornSources(R).scr);
+    if (!meshView(R)) return false;
+    var c = meetCalc(R);
+    return c.tiles.length > 2 || c.tiles.some(function (t) { return t.kind === 'screen'; }) || (mtOf(R).force || layoutChoice()) !== 'auto';
+  }
+  // Knoten: Layout-Wahl auf die Knoten-Ansicht abbilden (Galerie = Kacheln, Sprecher/Praesentation = Sprecheransicht;
+  // Auto: Sprecheransicht ab fuenf Kacheln, den Bildschirm zeigt die Knoten-Ansicht ohnehin gross)
+  function hornLayout(R) {
+    var H = R.horn; if (!H) return;
+    var v = mtOf(R).force || layoutChoice(), n = hornPersons(R).length;
+    H.view = v === 'gallery' ? 'grid' : v === 'speaker' || v === 'presentation' ? 'speaker' : (R.dm || n >= 5 ? 'speaker' : 'grid');
+    if (H.view === 'grid') H.pin = null;
+    hornDraw(R);
+  }
+
+  // --- Leisten ausblenden (§6.1): nach 4 s ohne Bedienung, nie bei Ton ohne Bild, offenem Menue, wichtiger Meldung,
+  // Maus/Fokus auf Kopf oder Leiste, ohne Verbindung. Ausgeblendet bleibt sichtbar: Sprechring, eigene Teilen-Leiste.
+  function idleInit(c) {
+    var ui = c.ui, w = ui.w;
+    var poke = function () { idlePoke(c); };
+    ['pointermove', 'keydown', 'wheel'].forEach(function (k) { w.addEventListener(k, poke, { passive: true }); });
+    w.addEventListener('focusin', poke);
+    // Touch: das erste Tippen auf die Buehne bei ausgeblendeten Leisten zeigt sie nur und loest nichts aus
+    w.addEventListener('pointerdown', function (e) {
+      var R = roomOf(c);
+      if (R.ui && R.ui.w.classList.contains('idle') && e.pointerType !== 'mouse') { R.ui.swallow = Date.now(); }
+      poke();
+    }, true);
+    w.addEventListener('click', function (e) {
+      var R = roomOf(c);
+      if (R.ui && R.ui.swallow && Date.now() - R.ui.swallow < 800) { R.ui.swallow = 0; e.stopPropagation(); e.preventDefault(); }
+    }, true);
+    [ui.top, ui.ctl].forEach(function (b) {
+      b.addEventListener('pointerenter', function (e) { if (e.pointerType === 'mouse') { roomOf(c).ui.over = true; idleCheck(roomOf(c)); } });
+      b.addEventListener('pointerleave', function () { var R = roomOf(c); if (R.ui) { R.ui.over = false; idlePoke(R); } });
+    });
+    idlePoke(c);
+  }
+  function idlePoke(c) {
+    var R = roomOf(c); if (!R || !R.ui) return;
+    var ui = R.ui;
+    if (ui.idle) { ui.idle = false; idleCheck(R); }
+    clearTimeout(ui.idleT);
+    ui.idleT = setTimeout(function () { if (R.ui === ui) { ui.idle = true; idleCheck(R); } }, MT ? MT.K.IDLE_MS : 4000);
+  }
+  function idleCheck(R) {
+    R = roomOf(R); if (!R || !R.ui || !MT) return;
+    var ui = R.ui, w = ui.w, ae = document.activeElement;
+    var phase = R.done ? 'ended' : R.horn ? (R.horn.cur ? 'connected' : 'connecting') : links(R).some(function (L) { return L.connected; }) ? 'connected' : 'connecting';
+    var video = w.classList.contains('has-video') || w.classList.contains('horn-scr') || !!w.querySelector('.cl-meet .cl-tile.has-video, .cl-grid .cl-tile.has-video');
+    var menu = !!(ui.hint || w.querySelector('.cl-plist, .cl-rpop, .cl-tmenu, .cl-lmenu, .cl-keys, .cl-mhint, .cl-hint'));
+    var notice = (!ui.st.hidden && ui.st.classList.contains('err')) || (ui.un && !ui.un.hidden);
+    var over = !!ui.over || !!(ae && ae !== document.body && (ui.top.contains(ae) || ui.ctl.contains(ae)));
+    var hide = MT.hideControls(ui.idle, phase, video, false, menu, notice, over) && !w.classList.contains('small');
+    if (w.classList.contains('idle') !== hide) w.classList.toggle('idle', hide);
+  }
+
+  // --- Eigenes Bild (§7): Seitenverhaeltnis der Kamera, Groesse S/M/L, Ecken, Minimieren -----------------------------------
+  function selfFit(R) {
+    R = roomOf(R); if (!R || !R.ui || !MT) return;
+    var lv = R.ui.lv, st = R.ui.stage, p = selfPrefs();
+    var ar = lv.videoWidth && lv.videoHeight ? lv.videoWidth / lv.videoHeight : (mobile ? 9 / 16 : 16 / 9);
+    var s = MT.selfPipSize(st.clientWidth || window.innerWidth, st.clientHeight || window.innerHeight, ar, p.size || 'M');
+    if (R.ui.w.classList.contains('small')) { lv.style.width = ''; lv.style.height = ''; return; }
+    lv.style.width = s.w + 'px'; lv.style.height = s.h + 'px';
+  }
+
+  // Sprecher: Pegel der empfangenen Tonspur (RTP-Quelle, ohne getStats) - 3x je Sekunde; Personen-Pegel = Maximum ueber
+  // ihre Geraete, Sprechring und Buehne mit Hysterese (SagaMeeting.SpeakerPick)
   function speakers(R) {
     clearInterval(R.spkT);
     R.spkT = setInterval(function () {
       if (!live(R)) { clearInterval(R.spkT); return; }
       if (!meshView(R)) return;
-      var best = null, top = 0.03, now = Date.now();
+      var best = null, top = 0.03, now = Date.now(), lv = {};
       links(R).forEach(function (L) {
         var rc = L.pc && L.pc.getReceivers ? L.pc.getReceivers().filter(function (r) { return r.track && r.track.kind === 'audio'; })[0] : null;
         var src = rc && rc.getSynchronizationSources ? rc.getSynchronizationSources()[0] : null;
         L.level = src && typeof src.audioLevel === 'number' && L.remoteState.mic !== false ? src.audioLevel : 0;
         if (L.level > top) { top = L.level; best = L; }
+        var x = legOf(R, L.peerDevice), who = (x && x.who) || (L.peer && L.peer.username) || L.peerDevice;
+        if (!(L.peer && L.peer.me)) lv[who] = Math.max(lv[who] || 0, L.level);
       });
       if (best) { R.spk = best.peerDevice; R.spkAt = now; } else if (now - (R.spkAt || 0) > 1500) R.spk = null;
-      links(R).forEach(function (L) { if (L.tile) L.tile.box.classList.toggle('speaking', !!R.spk && R.spk === L.peerDevice); });
+      if (!MT) return;
+      var mt = mtOf(R), was = mt.pick.cur;
+      mt.pick.update(now, lv, meName());
+      Object.keys(mt.els).forEach(function (id) {
+        var E = mt.els[id], t = E.t;
+        E.box.classList.toggle('speaking', t.kind !== 'screen' && !t.me && !!mt.pick.speaking[t.who] && t.mic);
+      });
+      if (mt.pick.cur !== was && mt.lay === 'speaker' && !mt.pin) meetSoon(R);
     }, 330);
   }
 
@@ -1382,6 +1826,12 @@
     var E = els(c);
     if (!E) return;
     var live = function (t) { return t.readyState === 'live'; };
+    if (E.holder) {                                    // 2.5 Meeting-Ansicht: nur Ton, das Bild zeigen die Kacheln des Raums
+      var at = c.remote.getAudioTracks().filter(live), hv = E.ra.srcObject ? E.ra.srcObject.getTracks() : [];
+      if (!(at.length === hv.length && at.every(function (t) { return hv.indexOf(t) >= 0; }))) E.ra.srcObject = at.length ? new MediaStream(at) : null;
+      playAudio(c); meetSoon(roomOf(c));
+      return;
+    }
     var rvt = remoteVideo(c), big = [], small = [];
     if (rvt.screen) {
       var sc = rvt.screen, cm = rvt.camAny && c.remoteState.cam ? rvt.camAny : null;
@@ -1860,15 +2310,42 @@
     var ra = el('audio', 'cl-raudio'); ra.autoplay = true;
     ra.addEventListener('playing', function () { if (c.audioBlocked) { c.audioBlocked = false; c.snd = ''; drawInfo(c); } });
     var who = el('div', 'cl-who'), lv = el('video', 'cl-local'); lv.hidden = true; lv.autoplay = true; lv.muted = true; lv.playsInline = true; lv.setAttribute('playsinline', '');
-    // E3: zweites Fernbild (klein: Kamera neben dem Bildschirm, nach dem Tauschen der Bildschirm) - Klick tauscht
+    // E3: zweites Fernbild (nur noch ohne Meeting-Logik; 2.5: Kamera und Bildschirm sind getrennte Kacheln, kein Tauschen)
     var rv2 = el('video', 'cl-remote2'); rv2.autoplay = true; rv2.muted = true; rv2.playsInline = true; rv2.setAttribute('playsinline', '');
-    rv2.title = T('Ansicht tauschen'); rv2.addEventListener('click', function () { swapView(c); });
-    // 2.4 E4/E5: Kachelansicht (Gruppe bzw. mehrere Verbindungen) - je Verbindung eine Kachel (layout)
+    // 2.4 E4/E5: Kachelansicht ueber den Knoten (horn) - je Geraet eine Kachel
     var grid = el('div', 'cl-grid'); grid.setAttribute('role', 'list'); grid.setAttribute('aria-label', T('Teilnehmende'));
-    stage.appendChild(rv); stage.appendChild(ra); stage.appendChild(who); stage.appendChild(rv2); stage.appendChild(grid); stage.appendChild(lv);
+    // 2.5 Meeting-Ansicht (Mesh): Buehne, Streifen, Galerie mit Seiten, Hinweis-Chip, Zoom-Chip
+    var meet = el('div', 'cl-meet'), mbig = el('div', 'cl-mbig'), mstrip = el('div', 'cl-mstrip'), mgrid = el('div', 'cl-mgrid');
+    mbig.setAttribute('role', 'region'); mstrip.setAttribute('role', 'list'); mgrid.setAttribute('role', 'list');
+    var pager = el('div', 'cl-pager'), pgT = el('span', 'cl-pg-t'); pager.hidden = true;
+    var pgPrev = btn('‹', 'cl-pg cl-pg-prev', function () { meetPage(c, -1); }, T('Vorige Seite') + ' ([)');
+    var pgNext = btn('›', 'cl-pg cl-pg-next', function () { meetPage(c, 1); }, T('Nächste Seite') + ' (])');
+    pager.appendChild(pgPrev); pager.appendChild(pgT); pager.appendChild(pgNext);
+    var mchip = el('div', 'cl-mchip'), mchipT = el('span', 'cl-mchip-t'); mchip.hidden = true;
+    mchip.appendChild(mchipT);
+    mchip.appendChild(btn(icon('x'), 'cl-mini cl-mchip-x', function () { var R = roomOf(c), k = mchip.dataset.key; if (k) mtOf(R).chipOff[k] = true; mchip.hidden = true; }, T('Hinweis schließen')));
+    var zchip = el('div', 'cl-zchip'), zchipT = el('span'); zchip.hidden = true; zchip.appendChild(zchipT);
+    zchip.appendChild(btn(T('Zurücksetzen'), 'cl-pill cl-zchip-r', function () { meetZoom(roomOf(c), 1); }));
+    var handle = btn('›', 'cl-mini cl-mhandle', function () { mtSet('saga-call-strip', mtPref('saga-call-strip', '0') === '1' ? '0' : '1'); drawTiles(roomOf(c)); }, T('Streifen ein-/ausklappen'));
+    var mnov = btn('', 'cl-pill cl-mnov', function () { mtSet('saga-call-novideo', '1'); drawTiles(roomOf(c)); }, T('Kacheln ohne Video zeigen')); mnov.hidden = true;
+    mbig.appendChild(mchip); mbig.appendChild(zchip);
+    meet.appendChild(mbig); meet.appendChild(mstrip); meet.appendChild(mgrid); meet.appendChild(handle); meet.appendChild(pager); meet.appendChild(mnov);
+    [mstrip, mgrid].forEach(function (lst) {
+      lst.addEventListener('keydown', function (e) {           // Pfeiltasten innerhalb der Liste (Roving-Tabindex)
+        if (!/^Arrow/.test(e.key) || !e.target.classList.contains('cl-tile')) return;
+        var kids = [].slice.call(lst.children), i = kids.indexOf(e.target), d = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1;
+        var n = kids[Math.max(0, Math.min(kids.length - 1, i + d))];
+        if (n && n !== e.target) { e.preventDefault(); e.target.tabIndex = -1; n.tabIndex = 0; n.focus(); }
+      });
+    });
+    stage.appendChild(rv); stage.appendChild(ra); stage.appendChild(who); stage.appendChild(rv2); stage.appendChild(grid); stage.appendChild(meet); stage.appendChild(lv);
     selfPip(w, lv);
+    lv.addEventListener('resize', function () { selfFit(c); });
+    lv.addEventListener('loadedmetadata', function () { selfFit(c); });
     var top = el('div', 'cl-top'), info = el('div', 'cl-info'), st = el('div', 'cl-status'); st.setAttribute('role', 'status');
-    var mini = btn(icon('shrink'), 'cl-mini cl-shrink', function () { w.classList.toggle('small'); }, T('Kleiner/größer'));
+    var mini = btn(icon('shrink'), 'cl-mini cl-shrink', function () { w.classList.toggle('small'); selfFit(c); idleCheck(c); }, T('Kleiner/größer'));
+    // 2.5: Vollbild (F) - links vom Verkleinern
+    var full = btn(icon('full'), 'cl-mini cl-full', function () { meetFull(roomOf(c)); }, T('Vollbild') + ' (F)');
     // 2.4: Bild-im-Bild - nur, wo der Browser es kann (Document-PiP mit eigenen Knoepfen, sonst Video-PiP)
     var pipB = btn(icon('pip'), 'cl-mini cl-pip', function () { togglePip(c); }, T('Bild-im-Bild'));
     pipB.hidden = true;
@@ -1877,7 +2354,7 @@
     // Bughunt D14: Knoepfe oben rechts als eigene Gruppe ausserhalb des Flusses - Titel/Dauer/Angaben stehen so in der
     // Fenstermitte (calls.css .cl-tb, --tbw)
     var tb = el('div', 'cl-tb');
-    tb.appendChild(pipB); tb.appendChild(mini);
+    tb.appendChild(pipB); tb.appendChild(full); tb.appendChild(mini);
     top.appendChild(info); top.appendChild(tb);
     if (window.ResizeObserver) new ResizeObserver(function () { top.style.setProperty('--tbw', tb.offsetWidth + 'px'); }).observe(tb);
     var ctl = el('div', 'cl-ctl');
@@ -1885,9 +2362,14 @@
     un.hidden = true;
     // E3: Leiste "Du teilst deinen Bildschirm" (rot) bzw. "… teilt den Bildschirm" (Empfaenger) - immer sichtbar beim Teilen
     var share = el('div', 'cl-share'); share.setAttribute('role', 'status'); share.hidden = true;
-    w.appendChild(stage); w.appendChild(top); w.appendChild(share); w.appendChild(un); w.appendChild(st); w.appendChild(ctl);
+    var say = el('div', 'cl-say'); say.setAttribute('aria-live', 'polite'); say.setAttribute('role', 'status');   // Ansagen (§10)
+    w.appendChild(stage); w.appendChild(top); w.appendChild(share); w.appendChild(un); w.appendChild(st); w.appendChild(ctl); w.appendChild(say);
     document.body.appendChild(w);
-    c.ui = { w: w, rv: rv, rv2: rv2, ra: ra, lv: lv, who: who, info: info, st: st, ctl: ctl, un: un, pipB: pipB, share: share, hint: null, grid: grid, tb: tb };
+    c.ui = { w: w, rv: rv, rv2: rv2, ra: ra, lv: lv, who: who, info: info, st: st, ctl: ctl, un: un, pipB: pipB, share: share, hint: null, grid: grid, tb: tb,
+             top: top, stage: stage, meet: meet, mbig: mbig, mstrip: mstrip, mgrid: mgrid, pager: pager, pgT: pgT, pgPrev: pgPrev, pgNext: pgNext,
+             mchip: mchip, mchipT: mchipT, zchip: zchip, zchipT: zchipT, mnov: mnov, say: say, idle: false, over: false };
+    idleInit(c); meetZoomInit(c);
+    if (window.ResizeObserver) new ResizeObserver(function () { var R = roomOf(c); if (R.ui && R.meshOn) meetSoon(R); selfFit(R); }).observe(stage);
     mediaSession(c);
     unlockAudio(c);                                    // laeuft im Klick "Anrufen"/"Annehmen"
     bindRemote(c);
@@ -1902,7 +2384,7 @@
     who.appendChild(av); who.appendChild(el('div', 'cl-name', p.name || p.username || ''));
   }
   function status(c, s, err) {
-    if (c && c.tile) { c.tile.st.textContent = s || ''; c.tile.st.hidden = !s; return; }   // Kachel: Zustand dieser Verbindung
+    if (c && c.tile) { c.tile.st.textContent = s || ''; c.tile.st.hidden = !s; meetSoon(roomOf(c)); return; }   // Kachel: Zustand dieser Verbindung
     var R = roomOf(c);
     if (c !== R && meshView(R)) return;
     if (s && !err && c === R && meshView(R) && links(R).some(function (L) { return L.connected; })) return;   // W10: nicht wieder "Verbinde …"
@@ -1916,7 +2398,32 @@
     R.ui.st.textContent = ''; R.ui.st.classList.remove('err'); R.ui.st.hidden = true;
   }
   // Hauptverbindung (Einzelansicht: deren Zustand zeigt das Anruffenster) - die erste sichtbare
-  function primary(R) { R = roomOf(R); return shown(R)[0] || links(R)[0] || R; }
+  // 2.5: die Verbindung, deren Kamera die Personenkachel zeigt (Begleitgeraet mit Kamera, Hauptgeraet ohne)
+  function primary(R) {
+    R = roomOf(R);
+    if (MT && R.ui && !R.horn && links(R).length > 1) {
+      var c = meetCalc(R), a = MT.arrange(c.tiles, c.lay, {}), t = c.tiles.filter(function (x) { return x.id === a.stage; })[0];
+      var L = t && linkOf(R, t.dev); if (L) return L;
+    }
+    return shown(R)[0] || links(R)[0] || R;
+  }
+  // 2.5 (§4.2): eigene Geraete im Kopf statt als Kachel - Hauptgeraet: Chip "iPhone, Galaxy verbunden";
+  // Begleitgeraet: "Begleitgeraet · Hauptgeraet MacBook"
+  function ownChip(R, i) {
+    var here = bridge() ? myDev().id : '', mine = (R.legs || []).filter(function (x) { return mineLeg(x) && x.device !== here; });
+    if (R.companion) {
+      var main = mine.filter(function (x) { return x.role !== 'companion'; })[0];
+      i.appendChild(el('span', 'cl-chip', main && main.dev_name ? T('Begleitgerät · Hauptgerät {dev}', { dev: main.dev_name }) : T('Begleitgerät')));
+      return;
+    }
+    if (!mine.length) return;
+    var names = mine.map(function (x) { return x.dev_name || T('Gerät'); }).join(', ');
+    var ch = el('span', 'cl-chip cl-own', T('{devs} verbunden', { devs: names }));
+    ch.title = T('Eigene Geräte im Anruf: {devs}', { devs: names });
+    i.appendChild(ch);
+  }
+  // Personen im Anruf (eine Person kann mehrere Geraete haben, §4.1)
+  function personCount(R) { var w = {}; (R.legs || []).forEach(function (x) { w[x.who || x.device] = true; }); return Math.max(1, Object.keys(w).length); }
   function drawInfo(c) {
     var R = roomOf(c);
     if (!R.ui || R.done) return;
@@ -1924,7 +2431,7 @@
     if (meshView(R)) { drawInfoMesh(R); return; }
     c = primary(R);
     var i = c.ui.info; i.textContent = '';
-    if (R.companion) i.appendChild(el('span', 'cl-chip', T('Begleitgerät')));
+    ownChip(R, i);
     if (!c.ready && !c.connected) return;
     i.appendChild(lockEl(c.verified ? T('Ende-zu-Ende verschlüsselt') : T('verschlüsselt')));
     if (c.verified) i.lastChild.title = T('Medien mit DTLS-SRTP verschlüsselt; der Schlüssel-Fingerabdruck ist mit dem Chat-Schlüssel der Gegenseite signiert und geprüft.');
@@ -1946,26 +2453,35 @@
   // Kachelansicht: Verschluesselung (alle Verbindungen geprueft), Dauer, Zahl der Teilnehmenden
   function drawInfoMesh(R) {
     var i = R.ui.info; i.textContent = '';
-    if (R.companion) i.appendChild(el('span', 'cl-chip', T('Begleitgerät')));
+    ownChip(R, i);
     var ls = links(R), ver = ls.length && ls.every(function (L) { return L.verified; });
     i.appendChild(lockEl(ver ? T('Ende-zu-Ende verschlüsselt') : T('verschlüsselt')));
     if (ver) i.lastChild.title = T('Jede Verbindung ist mit DTLS-SRTP verschlüsselt; die Fingerabdrücke sind mit den Chat-Schlüsseln der Geräte signiert und geprüft.');
     if (R.since) i.appendChild(el('span', null, durNow(R)));
-    i.appendChild(el('span', 'cl-count', T('{n} Geräte', { n: ls.length + 1 })));
+    var np = personCount(R), nd = Math.max((R.legs || []).length, ls.length + 1), lim = R.limit || 0;
+    // 1:1 ohne Zaehler (S2), nur nahe der Geraetegrenze; Gruppe: Personen, ab Grenze - 2 "11/12 Geraete"
+    var near = lim && nd >= lim - (R.kind === 'group' && !R.dm ? 2 : 1);
+    if (near || (R.kind === 'group' && !R.dm)) {
+      var cnt = el('span', 'cl-count', near ? T('{n}/{m} Geräte', { n: nd, m: lim }) : T('{n} {n:Person|Personen}', { n: np }));
+      cnt.title = T('{n} {n:Person|Personen}', { n: np }) + ' · ' + T('{n} Geräte', { n: nd }); i.appendChild(cnt);
+    }
     var blocked = ls.some(function (L) { return L.audioBlocked; });
     if (R.ui.un) R.ui.un.hidden = !blocked;
   }
   function drawMedia(c) {
     var R = roomOf(c);
     if (!R.ui || R.done) return;
-    var mine0 = R.screen || R.cam;
+    // 2.5: das eigene Bild zeigt nur die Kamera - der eigene Bildschirm wird nie gespiegelt (§1.5); abschaltbar (Layout-Menue)
+    var mine0 = R.cam && R.cam.readyState !== 'ended' ? R.cam : null;
     if (mine0) { if (!R.ui.lv.srcObject || R.ui.lv.srcObject.getTracks()[0] !== mine0) R.ui.lv.srcObject = new MediaStream([mine0]); }
     else R.ui.lv.srcObject = null;
-    R.ui.lv.hidden = !mine0;
+    R.ui.lv.hidden = !mine0 || mtPref('saga-call-selfshow', '1') === '0';
+    R.ui.w.classList.toggle('self-off', !!mine0 && mtPref('saga-call-selfshow', '1') === '0');
     R.ui.w.classList.toggle('screen', !!R.screen);
+    if (!R.horn && MT && !!R.meshOn !== meshView(R)) { drawTiles(R); return; }
     if (c.tile) { drawTile(c); drawShare(R); playAudio(c); return; }
     if (R.horn) { hornDraw(R); return; }
-    if (meshView(R)) { drawShare(R); pipBtn(R, false); return; }
+    if (meshView(R)) { meetSoon(R); drawShare(R); pipBtn(R, false); return; }
     var bigT = c.ui.rv.srcObject && c.ui.rv.srcObject.getVideoTracks()[0];
     var rvid = !!(bigT && bigT.readyState === 'live' && !bigT.muted);
     var show = rvid && (c.gotState ? c.remoteState.cam || c.remoteState.screen : true);
@@ -1981,15 +2497,16 @@
     pipDraw(c);
     drawShare(c);
     playAudio(c);
+    selfFit(R); idleCheck(R);
   }
-  function swapView(c) { if (!live(c) || !c.remoteState.screen) return; c.swap = !c.swap; bindRemote(c); drawMedia(c); }
-  // Leiste beim Teilen: eigene (rot, mit "Beenden") hat Vorrang; beim Empfaenger Name und - mit Kamera daneben - Tauschen
+  // Leiste beim Teilen: nur noch die eigene (rot, 32 px, oben links, mit "Beenden", blendet nie aus). Wer anderes teilt,
+  // steht als Hinweis-Chip unten links in der Buehne (2.5, meetDraw) - kein Banner oben mittig mehr (verdeckte Inhalt).
   function drawShare(c) {
     var R = roomOf(c);
     var b = R.ui && R.ui.share; if (!b || R.done) return;
     if (R.horn) return;                                // 2.5: hornShare (aus hornDraw)
-    c = links(R).filter(function (L) { return L.remoteState.screen && L.connected; })[0] || primary(R);   // wer teilt (2.4: Mesh)
-    var mesh = meshView(R);
+    c = R;
+    var mesh = !MT && meshView(R);
     b.textContent = '';
     b.classList.toggle('me', !!c.screen);
     if (c.screen) {
@@ -1998,23 +2515,25 @@
       if (c.camPaused) b.appendChild(el('span', 'cl-share-s', T('Kamera pausiert (langsame Verbindung)')));
       b.appendChild(btn(T('Teilen beenden'), 'cl-pill cl-share-stop', function () { if (live(c) && c.screen) stopScreen(c); }, T('Teilen beenden')));
       b.hidden = false;
-    } else if (c.remoteState.screen && c.connected) {
-      var name = (c.peer && (c.peer.name || c.peer.username)) || '';
-      b.appendChild(el('span', 'cl-share-t', T('{name} teilt den Bildschirm', { name: name })));
-      if (!mesh && c.ui.w.classList.contains('has-small')) b.appendChild(btn(icon('swap'), 'cl-mini cl-swap', function () { swapView(c); }, T('Ansicht tauschen')));
-      b.hidden = false;
+    } else if (!MT && mesh) {                          // ohne Meeting-Logik (Datei fehlt): wie 2.4
+      var sh = links(R).filter(function (L) { return L.remoteState.screen && L.connected; })[0];
+      if (sh) { b.appendChild(el('span', 'cl-share-t', T('{name} teilt den Bildschirm', { name: (sh.peer && (sh.peer.name || sh.peer.username)) || '' }))); b.hidden = false; }
+      else b.hidden = true;
     } else b.hidden = true;
   }
   function drawCtl(c) {
     c = roomOf(c);
     if (!c.ui || c.done) return;
     var x = c.ui.ctl; x.textContent = '';
-    var m = btn(icon(c.mic ? 'mic' : 'micOff'), 'cl-round' + (c.mic ? '' : ' off'), function () { toggleMic(c); }, c.mic ? T('Stummschalten') : T('Mikrofon einschalten'));
+    // 2.5: Kuerzel im Tooltip ("Mikrofon (M)"), der Vorlesetext bleibt ohne (Tests und Screenreader)
+    var kb = function (b, k) { if (!mobile) b.title = b.getAttribute('aria-label') + ' (' + k + ')'; return b; };
+    var m = kb(btn(icon(c.mic ? 'mic' : 'micOff'), 'cl-round' + (c.mic ? '' : ' off'), function () { toggleMic(c); }, c.mic ? T('Stummschalten') : T('Mikrofon einschalten')), 'M');
     m.setAttribute('aria-pressed', String(!c.mic)); x.appendChild(m);
-    var v = btn(icon(c.cam ? 'cam' : 'camOff'), 'cl-round' + (c.cam ? '' : ' off'), function () { if (c.local) toggleCam(c); }, c.cam ? T('Kamera aus') : T('Kamera an'));
+    var v = kb(btn(icon(c.cam ? 'cam' : 'camOff'), 'cl-round' + (c.cam ? '' : ' off'), function () { if (c.local) toggleCam(c); }, c.cam ? T('Kamera aus') : T('Kamera an')), 'V');
     v.setAttribute('aria-pressed', String(!c.cam)); x.appendChild(v);
+    if (c.cam && mtPref('saga-call-selfshow', '1') === '0') v.classList.add('cl-camdot');   // Kamera sendet, eigenes Bild ausgeblendet
     if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia && !mobile) {
-      var s = btn(icon('screen'), 'cl-round' + (c.screen ? ' on' : ''), function () { if (links(c).length || c.horn) toggleScreen(c); }, c.screen ? T('Teilen beenden') : T('Bildschirm teilen'));
+      var s = kb(btn(icon('screen'), 'cl-round' + (c.screen ? ' on' : ''), function () { if (links(c).length || c.horn) toggleScreen(c); }, c.screen ? T('Teilen beenden') : T('Bildschirm teilen')), 'S');
       s.setAttribute('aria-pressed', String(!!c.screen)); x.appendChild(s);
     }
     // 2.4: Wiedergabe an/aus (Begleitgeraet startet stumm) und "Hierher uebernehmen" fuer ein Begleitgeraet
@@ -2024,10 +2543,16 @@
       k.setAttribute('aria-pressed', String(!c.spkOut)); x.appendChild(k);
     }
     if (c.companion && c.ready) x.appendChild(btn(T('Hierher übernehmen'), 'cl-pill cl-take', function () { takeOver(c); }, T('Anruf auf dieses Gerät übernehmen')));
-    if (c.horn && c.ready) {                           // 2.5: Ansicht (Kacheln/Sprecher) und Teilnehmerliste
-      var H = c.horn, sv = H.view === 'speaker';
-      var vb = btn(icon(sv ? 'grid' : 'spkView'), 'cl-round cl-view', function () { hornSetView(c, sv ? 'grid' : 'speaker'); }, sv ? T('Kachelansicht') : T('Sprecheransicht'));
-      vb.setAttribute('aria-pressed', String(sv)); x.appendChild(vb);
+    // 2.5 (MEETING-SPEC §2): Layout-Knopf rechts vom Lautsprecher, vor Auflegen - Menue Auto/Galerie/Sprecher/Praesentation
+    if (layoutBtnOn(c)) {
+      var lc = mtOf(c).force || layoutChoice();
+      var lb = btn(icon('grid'), 'cl-round cl-layout', function () { layoutMenu(c); }, T('Layout') + ', ' + layoutName(lc));
+      if (!mobile) lb.title = T('Layout') + ' (L)';
+      lb.setAttribute('aria-haspopup', 'menu'); lb.setAttribute('aria-expanded', String(!!c.ui.w.querySelector('.cl-lmenu')));
+      x.appendChild(lb);
+    }
+    if (c.horn && c.ready) {                           // 2.5: Teilnehmerliste
+      var H = c.horn;
       var pb = btn(icon('users'), 'cl-round cl-people' + (H.plist ? ' on' : ''), function () {
         H.plist = !H.plist;
         if (H.plist && H.rpop) { H.rpop = false; hornRunePop(c); drawInfo(c); }   // nie zwei Fenster uebereinander (Nr. 071)
@@ -2170,7 +2695,8 @@
       .then(function () { return window.SagaFrameE2E; }, function (e) { hornLibP = null; throw e; });
     return hornLibP;
   }
-  function hornView() { try { return localStorage.getItem('saga-horn-view') === 'speaker' ? 'speaker' : 'grid'; } catch (e) { return 'grid'; } }
+  // 2.5: Ansicht aus der Layout-Wahl (saga-call-layout, uebernimmt saga-horn-view): Galerie = Kacheln, Sprecher = Sprecheransicht
+  function hornView() { var v = layoutChoice(); return v === 'speaker' || v === 'presentation' ? 'speaker' : 'grid'; }
   function hornNew(R, blk) {
     R.horn = { blk: blk || {}, vown: {}, rseq: 0, X: null, L: null, key: null, q: [], peers: {}, known: {}, acks: {}, ackT: null, rekeyT: null, started: false,
                cur: null, next: null, olds: [], seq: 0, bad: {}, sw: null, meas: {}, switches: [], switching: false, retryT: null, retry0: 0,
@@ -2985,10 +3511,27 @@
     v.addEventListener('loadeddata', function () { if (live(R) && R.horn) hornDraw(R); });   // erstes Bild da: zeigen
     return { box: box, v: v, still: still, hasStill: false, track: null };
   }
+  // 2.5 (MEETING-SPEC §1, §4): je andere Person ein Geraet fuer die Kachel - das mit Bild (Hauptgeraet zuerst), sonst das
+  // Hauptgeraet. Eigene weitere Geraete (Begleitgeraete) erscheinen nie als Kachel.
+  function hornPersons(R) {
+    var H = R.horn, me_ = bridge() ? myDev().id : '', src = H && H.L ? hornSources(R) : { vid: {} }, by = {}, order = [];
+    (R.legs || []).forEach(function (x) {
+      if (x.device === me_ || mineLeg(x)) return;
+      var w = x.who || x.device;
+      if (!by[w]) { by[w] = []; order.push(w); }
+      by[w].push(x);
+    });
+    return order.map(function (w) {
+      var L = by[w], cam = function (x) { return !!src.vid[x.device] && ((H && H.st[x.device]) || {}).cam !== false; };
+      var pick = L.filter(function (x) { return x.role !== 'companion' && cam(x); })[0] || L.filter(cam)[0]
+        || L.filter(function (x) { return x.role !== 'companion'; })[0] || L[0];
+      return { who: w, dev: pick.device, devs: L.map(function (x) { return x.device; }), mic: L.some(function (x) { return ((H && H.st[x.device]) || {}).mic !== false && x.role !== 'companion'; }) };
+    });
+  }
   function hornDraw(R) {
     var H = R.horn; if (!H || !R.ui || R.done || !H.L) return;
-    var me_ = myDev().id, src = hornSources(R), devs = [], moving = {}, w_;
-    (R.legs || []).forEach(function (x) { if (x.device !== me_) devs.push(x.device); });
+    var me_ = myDev().id, src = hornSources(R), devs = [], moving = {}, w_, pers = hornPersons(R);
+    pers.forEach(function (p) { devs.push(p.dev); });
     devs.forEach(function (d) { if (src.vid[d]) moving[d] = true; });
     H.spk = src.spk || H.spk;
     if (H.spk && devs.indexOf(H.spk) < 0) H.spk = null;
@@ -3020,14 +3563,14 @@
       T_.box.classList.toggle('muted', s.mic === false);
       T_.box.classList.toggle('peer-screen', !!(src.scr && src.scr.dev === t.dev));
       T_.box.classList.toggle('wait', !H.cur);
-      T_.box.classList.toggle('speaking', !!H.speaking[t.dev]);
+      T_.box.classList.toggle('speaking', pers.some(function (p) { return p.dev === t.dev && p.devs.some(function (d) { return !!H.speaking[d]; }); }));
       T_.box.setAttribute('aria-label', (x.name || '?') + (x.dev_name ? ' (' + x.dev_name + ')' : '') + (s.mic === false ? ' – ' + T('stumm') : ''));
       if (strip && t.big && !src.scr) { if (T_.box.parentNode !== hb) hb.appendChild(T_.box); }
       else { if (R.ui.grid.children[pos] !== T_.box) R.ui.grid.insertBefore(T_.box, R.ui.grid.children[pos] || null); pos++; }
     });
     Object.keys(H.tiles).forEach(function (d) { if (!want[d]) { H.tiles[d].v.srcObject = null; H.tiles[d].box.remove(); delete H.tiles[d]; } });
-    // 2.5 (ANRUF-UI): ab drei Geraeten ist das eigene Bild eine normale Kachel (kein schwebendes Bild-im-Bild)
-    var selfT = (R.legs || []).length >= 3, mineV = R.cam && R.cam.readyState === 'live' ? R.cam : null;
+    // 2.5 (ANRUF-UI, MEETING-SPEC §7): ab drei Personen ist das eigene Bild eine normale Kachel (kein schwebendes Bild)
+    var selfT = pers.length + 1 >= 3, mineV = R.cam && R.cam.readyState === 'live' ? R.cam : null;
     if (selfT) {
       var ST = H.self;
       if (!ST) {
@@ -3068,7 +3611,7 @@
     var st = src.scr ? src.scr.track : null;
     if ((hs.srcObject && hs.srcObject.getVideoTracks()[0]) !== st) { hs.srcObject = st ? new MediaStream([st]) : null; if (st) hs.play().catch(function () {}); }
     if ((R.ui.rv.srcObject && R.ui.rv.srcObject.getVideoTracks()[0]) !== big) R.ui.rv.srcObject = big ? new MediaStream([big]) : null;
-    hornShare(R, src.scr);
+    hornShare(R, src.scr); idleCheck(R); selfFit(R);
     drawPeer(R); pipBtn(R, !!big); pipDraw(R);
   }
   // Leiste beim Teilen (wie 2.4): eigene (rot, Beenden) bzw. "… teilt den Bildschirm"
@@ -3081,7 +3624,13 @@
       b.appendChild(btn(T('Teilen beenden'), 'cl-pill cl-share-stop', function () { if (live(R) && R.screen) stopScreen(R); }, T('Teilen beenden')));
       b.hidden = false;
     } else if (scr) {
-      b.appendChild(el('span', 'cl-share-t', T('{name} teilt den Bildschirm', { name: hornDevName(R, scr.dev) })));
+      // 2.5 (§5.5): Hinweis-Chip unten links mit x (blendet ihn fuer diese Freigabe aus), blendet mit den Leisten aus
+      var mt = mtOf(R), key = scr.dev + '@' + (scr.track ? scr.track.id : '');
+      if (mt.chipOff[key]) { b.hidden = true; return; }
+      var x_ = legOf(R, scr.dev), many = x_ && (R.legs || []).filter(function (y) { return y.who === x_.who; }).length > 1;
+      var tx = T('{name} teilt den Bildschirm', { name: hornDevName(R, scr.dev) }) + (many && x_.dev_name ? ' (' + x_.dev_name + ')' : '');
+      var sp = el('span', 'cl-share-t', tx); sp.title = tx; b.appendChild(sp);
+      b.appendChild(btn(icon('x'), 'cl-mini cl-mchip-x', function () { mt.chipOff[key] = true; b.hidden = true; }, T('Hinweis schließen')));
       b.hidden = false;
     } else b.hidden = true;
   }
@@ -3089,7 +3638,6 @@
     var H = R.horn; if (!H) return;
     H.view = v === 'speaker' ? 'speaker' : 'grid';
     if (H.view === 'grid') H.pin = null;
-    try { localStorage.setItem('saga-horn-view', H.view); } catch (e) { /* privat */ }
     hornDraw(R); drawCtl(R);
   }
   // Sprechring: Pegel der Tonplaetze (RTP-Quelle), Absender ueber die CSRC des Platzes - 3x je Sekunde
@@ -3127,16 +3675,18 @@
   function shortName(n, max) { max = max || 18; n = n || ''; if (n.charAt(0) !== '~' || n.length <= max) return n; var k = Math.floor((max - 1) / 2); return n.slice(0, k) + '…' + n.slice(n.length - (max - 1 - k)); }
   function hornInfo(R) {
     var i = R.ui.info, H = R.horn; i.textContent = '';
-    if (R.companion) i.appendChild(el('span', 'cl-chip', T('Begleitgerät')));
+    ownChip(R, i);
     // 2.5 (ANRUF-UI): Titel, darunter die Dauer, dann eine Sicherheitszeile
     var hd = el('span', 'cl-head');
     hd.appendChild(el('b', 'cl-title', shortName(R.dm ? ((R.peer && (R.peer.name || R.peer.username)) || R.title) : (R.title || T('Gruppenanruf')), 32)));
     if (R.since) hd.appendChild(el('span', 'cl-dur', durNow(R)));     // Bughunt W09: ab answered (Server), wie im 1:1
     i.appendChild(hd);
     if (!R.dm) {
-      var nd = (R.legs || []).length || 1, lim = R.limit || 0, cnt = el('span', 'cl-count cl-chip');
-      cnt.appendChild(icon('users')); cnt.appendChild(document.createTextNode(lim && nd >= lim - 2 ? nd + '/' + lim : String(nd)));
-      cnt.title = T('{n} Geräte', { n: nd }); cnt.setAttribute('aria-label', cnt.title);
+      // 2.5 (§4.1): Personen zaehlen; die Grenze bleibt geraete-basiert ("11/12 Geraete" erst ab Grenze - 2)
+      var nd = (R.legs || []).length || 1, lim = R.limit || 0, np = personCount(R), cnt = el('span', 'cl-count cl-chip');
+      cnt.appendChild(icon('users')); cnt.appendChild(document.createTextNode(lim && nd >= lim - 2 ? nd + '/' + lim : String(np)));
+      cnt.title = lim && nd >= lim - 2 ? T('{n}/{m} Geräte', { n: nd, m: lim }) : T('{n} {n:Person|Personen}', { n: np }) + ' · ' + T('{n} Geräte', { n: nd });
+      cnt.setAttribute('aria-label', cnt.title);
       i.appendChild(cnt);
     }
     i.appendChild(lockEl(T('Ende-zu-Ende verschlüsselt')));
@@ -3461,6 +4011,92 @@
   }
   setTimeout(pending, CHATS ? 1500 : 800);
 
+  // --- 2.5 Tastenkuerzel (MEETING-SPEC §6.3) - nur bei offenem, grossem Anruffenster; Buchstaben nicht in Textfeldern -------
+  function meetPage(c, d) {
+    var R = roomOf(c), mt = mtOf(R);
+    if (!R.ui || !mt.view || mt.view.layout !== 'gallery' || mt.view.pages <= 1) return false;
+    var p = Math.max(0, Math.min(mt.view.pages - 1, mt.page + d));
+    if (p === mt.page) return false;
+    mt.page = p; drawTiles(R); idlePoke(R);
+    return true;
+  }
+  function KEYS() {
+    var mac = /Mac|iPhone|iPad/.test(navigator.platform || ''), ctl = mac ? '⌘' : T('Strg');
+    return [['M', T('Mikrofon an/aus')], ['V', T('Kamera an/aus')], ['S', T('Bildschirm teilen/beenden')], ['L', T('Layout-Menü öffnen')],
+      ['G / P / A', T('Galerie / Sprecher / Auto')], ['F', T('Vollbild')], ['[ ]', T('Seite zurück/vor (Galerie)')], ['Esc', T('Lösen, Vollbild verlassen, Menü schließen')],
+      ['␣', T('Gedrückt halten: sprechen, wenn stumm')], [ctl + ' + / − / 0', T('Geteilten Bildschirm zoomen')], ['?', T('Liste der Kürzel')]];
+  }
+  function keysDialog(R) {
+    var w = R.ui.w, d = w.querySelector('.cl-keys');
+    if (d) { d.remove(); idlePoke(R); return; }
+    d = el('div', 'cl-keys'); d.setAttribute('role', 'dialog'); d.setAttribute('aria-label', T('Tastenkürzel'));
+    var hd = el('div', 'cl-plist-h'); hd.appendChild(el('b', null, T('Tastenkürzel')));
+    var cl = btn(icon('x'), 'cl-mini', function () { d.remove(); idlePoke(R); }, T('Schließen')); hd.appendChild(cl); d.appendChild(hd);
+    var tb = el('dl', 'cl-keys-l');
+    KEYS().forEach(function (k) { tb.appendChild(el('dt', null, k[0])); tb.appendChild(el('dd', null, k[1])); });
+    d.appendChild(tb);
+    d.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); d.remove(); idlePoke(R); } });
+    w.appendChild(d); cl.focus({ preventScroll: true }); idleCheck(R);
+  }
+  document.addEventListener('keydown', function (e) {
+    var R = C; if (!R || !R.ui || R.done || R.ui.w.classList.contains('small') || !MT) return;
+    var tg = e.target, typing = !!tg && (tg.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName || ''));
+    if (tg && tg.closest && tg.closest('.cl-hint')) return;
+    var mod = e.ctrlKey || e.metaKey, k = e.key;
+    if (k === 'Escape') {                              // Pin loesen, Vollbild verlassen, Menue schliessen (in dieser Reihenfolge)
+      var mt = mtOf(R);
+      if (mt.pin || (R.horn && R.horn.pin)) { e.preventDefault(); meetPin(R, mt.pin || R.horn.pin); return; }
+      if (fsEl()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+      if (R.ui.w.classList.contains('pseudo-full')) { R.ui.w.classList.remove('pseudo-full'); idlePoke(R); return; }
+      if (R.ui.w.querySelector('.cl-lmenu')) { layoutMenu(R, false); return; }
+      if (mt.zoom > 1) { meetZoom(R, 1); }
+      return;
+    }
+    if (mod && !e.altKey && (k === '+' || k === '=' || k === '-' || k === '0') && meetStageVid(R)) {
+      e.preventDefault(); var z = mtOf(R).zoom;
+      meetZoom(R, k === '0' ? 1 : k === '-' ? z / 1.25 : z * 1.25, k !== '0');
+      return;
+    }
+    if (mod && e.shiftKey && !e.altKey && !typing) {   // Mac: Cmd+Shift+M / V, Strg/Cmd+Shift+P Teilnehmerliste
+      var kk = k.toLowerCase();
+      if (kk === 'm') { e.preventDefault(); toggleMic(R); return; }
+      if (kk === 'v') { e.preventDefault(); if (R.local) toggleCam(R); return; }
+      if (kk === 'p' && R.horn) { e.preventDefault(); var pb = R.ui.ctl.querySelector('.cl-people'); if (pb) pb.click(); return; }
+    }
+    if (typing || mod || e.altKey) return;
+    if (k === ' ' && !e.repeat && !R.mic && !R.companion && !(tg && /^(BUTTON|A)$/.test(tg.tagName || ''))) {
+      e.preventDefault(); R.ptt = true; setMic(R, true); return;
+    }
+    if (e.repeat) return;
+    switch (k.length === 1 ? k.toLowerCase() : k) {
+      case 'm': toggleMic(R); break;
+      case 'v': if (R.local) toggleCam(R); break;
+      case 's': if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia && !mobile && (links(R).length || R.horn)) toggleScreen(R); break;
+      case 'l': if (layoutBtnOn(R)) layoutMenu(R); else return; break;
+      case 'g': layoutSet(R, 'gallery'); break;
+      case 'p': layoutSet(R, 'speaker'); break;
+      case 'a': layoutSet(R, 'auto'); break;
+      case 'f': meetFull(R); break;
+      case '[': case 'PageUp': if (!meetPage(R, -1)) return; break;
+      case ']': case 'PageDown': if (!meetPage(R, 1)) return; break;
+      case '?': keysDialog(R); break;
+      default: return;
+    }
+    e.preventDefault();
+  });
+  document.addEventListener('keyup', function (e) {
+    var R = C; if (!R || !R.ptt || e.key !== ' ') return;
+    R.ptt = false; if (live(R)) setMic(R, false);
+  });
+  // Swipen auf Touch: Galerie-Seiten
+  document.addEventListener('touchstart', function (e) { var R = C; if (R && R.ui && e.touches.length === 1 && R.ui.mgrid.contains(e.target)) R.ui.sw = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }, { passive: true });
+  document.addEventListener('touchend', function (e) {
+    var R = C; if (!R || !R.ui || !R.ui.sw) return;
+    var t = e.changedTouches[0], dx = t.clientX - R.ui.sw.x, dy = t.clientY - R.ui.sw.y; R.ui.sw = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) meetPage(R, dx < 0 ? 1 : -1);
+  }, { passive: true });
+  document.addEventListener('fullscreenchange', function () { var R = C; if (R && R.ui) { R.ui.w.classList.toggle('fs', !!fsEl()); if (R.meshOn) meetSoon(R); idlePoke(R); } });
+
   window.HKCalls = { head: head, start: start, state: function () {
     return C ? { id: C.id, role: C.role, connected: C.connected, verified: C.verified, path: C.path, bytesIn: C.bytesIn || 0,
                  mic: C.mic, cam: !!C.cam, screen: !!C.screen, remote: C.remoteState,
@@ -3476,13 +4112,22 @@
     var c = C; if (!c) return null;
     var big = c.ui && c.ui.rv.srcObject && c.ui.rv.srcObject.getVideoTracks()[0], sm = c.ui && c.ui.rv2.srcObject && c.ui.rv2.srcObject.getVideoTracks()[0];
     var rvt = remoteVideo(c), role = function (t) { return !t ? '' : t === rvt.screenAny ? 'screen' : t === rvt.camAny ? 'cam' : '?'; };
+    var mv = c.meshOn && c.mt && c.mt.view, chip = '';
+    if (mv) {                                          // 2.5 Meeting-Ansicht: gross = Buehne, klein = erste Kachel mit Bild im Streifen
+      var kind = function (id) { var E = id && c.mt.els[id]; return !E || !E.track ? '' : E.t.kind === 'screen' ? 'screen' : 'cam'; };
+      big = null; sm = null;
+      var bk = kind(mv.stage), sk = '';
+      mv.strip.some(function (id) { var E = c.mt.els[id]; if (E && !E.t.me && E.track) { sk = kind(id); return true; } return false; });
+      role = function (t) { return t === 'B' ? bk : t === 'S' ? sk : ''; }; big = 'B'; sm = 'S';
+      if (c.ui && !c.ui.mchip.hidden) chip = c.ui.mchipT.textContent;
+    }
     var mt = myTracks(c);
     return { mode: c.scrMode, sharing: !!c.screen, caps: canScreen2(c), mine: mt.tracks, msid: mt.msid, screenMid: myScreenMid(c),
              hint: c.screen ? c.screen.contentHint : '', audio: !!c.mix, camPaused: !!c.camPaused, starts: c.shareStarts,
              scrDir: c.scrTr ? c.scrTr.direction : '', scrCur: c.scrTr ? c.scrTr.currentDirection : '',
              mlines: c.pc && c.pc.localDescription ? (c.pc.localDescription.sdp.match(/^m=/gm) || []).length : 0,
              peerTracks: c.peerTracks, remoteMid: c.remoteState.screenMid, big: role(big), small: role(sm), swap: c.swap,
-             bar: c.ui && !c.ui.share.hidden ? c.ui.share.textContent : '', hintOpen: !!(c.ui && c.ui.hint),
+             bar: c.ui && !c.ui.share.hidden ? c.ui.share.textContent : chip, hintOpen: !!(c.ui && c.ui.hint),
              audioTrack: c.pc && audioSender(c) && audioSender(c).track ? (c.mix && audioSender(c).track === c.mix.out ? 'mix' : 'mic') : '' };
   },
   // 2.4 E4/E5: Raum - Verbindungen je Geraet, Liste, Ansicht, Begleitgeraet, Sprecher (Tests, Diagnose)
@@ -3490,7 +4135,12 @@
     var R = C; if (!R) return null;
     return { id: R.id, kind: R.kind, companion: !!R.companion, ho: !!R.ho, inRoom: !!R.inRoom, mic: R.mic, spkOut: R.spkOut, mesh: meshView(R),
              cam: !!(R.cam && R.cam.readyState === 'live'),
-             tiles: R.ui ? R.ui.grid.children.length : 0, speaker: R.spk || null, since: R.since || 0, legs: (R.legs || []).map(function (x) { return x.device; }),
+             // 2.5: Kacheln anderer (ohne die eigene) - in der Meeting-Ansicht die Kacheln je Person/Bildschirm
+             tiles: R.ui ? (R.meshOn && R.mt ? Object.keys(R.mt.els).filter(function (k) { return !R.mt.els[k].t.me; }).length : R.ui.grid.children.length) : 0,
+             meet: R.meshOn && R.mt ? Object.assign({ pin: R.mt.pin, stageWho: R.mt.pick && R.mt.pick.cur, idle: R.ui ? R.ui.w.classList.contains('idle') : false,
+               els: Object.keys(R.mt.els).map(function (k) { var E = R.mt.els[k]; return { id: k, kind: E.t.kind, me: !!E.t.me, video: E.box.classList.contains('has-video'), track: !!E.track, label: E.box.getAttribute('aria-label') }; }) }, R.mt.view) : null,
+             idle: R.ui ? R.ui.w.classList.contains('idle') : false,
+             speaker: R.spk || null, since: R.since || 0, legs: (R.legs || []).map(function (x) { return x.device; }),
              links: links(R).map(function (L) {
                var E = els(L);
                return { device: L.peerDevice, me: !!(L.peer && L.peer.me), name: (L.peer && L.peer.name) || '', connected: L.connected, established: L.established,

@@ -231,13 +231,17 @@ async function api(p, m, url, body) { return p.evaluate(([m, url, body]) => wind
     r4.forEach((r, i) => r.links.forEach(l => { (pcs[l.pc] = pcs[l.pc] || []).push(i); }));
     ok('je Geraete-Paar eine PeerConnection mit gleicher Kennung auf beiden Seiten (6 Paare)', Object.keys(pcs).length === 6 && Object.values(pcs).every(x => x.length === 2), pcs);
     const rb4 = await room(b);
-    ok('B: Kachelansicht mit drei Kacheln', rb4.mesh && rb4.tiles === 3, rb4);
+    // 2.5 (MEETING-SPEC §1): eine Person = eine Kachel - A und ihr stilles Begleitgeraet A2 sind eine Kachel (A, C; ohne "Du")
+    ok('B: Meeting-Ansicht mit zwei Kacheln anderer (A mit Begleitgeraet zusammengefasst, C)', rb4.mesh && rb4.tiles === 2, rb4);
     await b.waitForTimeout(4500);
     const rr = await room(b);
     const cams = rr.links.filter(l => l.rates && l.rates.video);
     ok('Mesh-Bitrate je Strom <= 600 kbit/s (direkt, ab 3 Endpunkten)', cams.length >= 2 && cams.every(l => l.rates.video.maxBitrate <= 600000), cams.map(l => l.rates));
     const spk = await until(async () => (await room(b)).speaker, 8000);
-    ok('Sprecher hervorgehoben (Pegel der Tonspur)', !!spk && (await b.$('.cl-tile.speaking')), spk);
+    // 2.5 (MEETING-SPEC §2.3): Sprechring erst nach >= 300 ms Pegel ueber 0,03 (geprueft mit den Vektoren in
+    // tests/meeting_logik.js) - der Piepton der Chrome-Attrappe ist dafuer zu kurz; hier zaehlt die Erkennung ueber den Pegel
+    const ring = await until(async () => !!(await b.$('.cl-tile.speaking')), 4000);
+    ok('Sprecher erkannt (Pegel der Tonspur)' + (ring ? ', Sprechring sichtbar' : ''), !!spk, spk);
     await shot(b, '5-mesh4');
     // Bildschirm teilen in der Gruppe (C)
     await c.evaluate(() => { try { localStorage.setItem('saga-screen-hint', '0'); } catch (e) { /* egal */ } });
