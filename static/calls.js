@@ -1659,6 +1659,7 @@
   function selfFit(R) {
     R = roomOf(R); if (!R || !R.ui || !MT) return;
     var lv = R.ui.lv, st = R.ui.stage, p = selfPrefs();
+    if (p.hidden) { lv.style.width = ''; lv.style.height = ''; return; }   // Blase (44 px) aus dem CSS
     var ar = lv.videoWidth && lv.videoHeight ? lv.videoWidth / lv.videoHeight : (mobile ? 9 / 16 : 16 / 9);
     var s = MT.selfPipSize(st.clientWidth || window.innerWidth, st.clientHeight || window.innerHeight, ar, p.size || 'M');
     if (R.ui.w.classList.contains('small')) { lv.style.width = ''; lv.style.height = ''; return; }
@@ -2337,9 +2338,10 @@
     var p = selfPrefs();
     [0, 1, 2, 3].forEach(function (i) { w.classList.toggle('self-c' + i, p.corner === i); });
     w.classList.toggle('self-min', !!p.hidden);
+    if (C && C.ui && C.ui.w === w) selfFit(C);
     lv = lv || w.querySelector('.cl-local');          // beim Aufbau haengt das Bild noch nicht im Fenster (D05)
     if (lv) {
-      var l = p.hidden ? T('Eigenes Bild zeigen') : T('Klicken: eigenes Bild verkleinern · Ziehen: verschieben');
+      var l = p.hidden ? T('Eigenes Bild zeigen') : T('Klicken: eigenes Bild verkleinern · Doppelklick: Größe · Ziehen: verschieben');
       lv.title = l; lv.setAttribute('aria-label', l);        // Tooltip und Vorlesetext gleich (D06)
     }
   }
@@ -2364,14 +2366,25 @@
       if (was) {
         var wr = w.getBoundingClientRect(), cx = e.clientX, cy = e.clientY;     // der Zeiger zaehlt
         p.corner = (cx < wr.left + wr.width / 2 ? 0 : 1) + (cy < wr.top + wr.height / 2 ? 0 : 2);
-      } else p.hidden = !p.hidden;
+      } else {                                         // 2.5: Klick verkleinert zur Blase - erst nach kurzer Pause (Doppelklick = Groesse)
+        clearTimeout(lv._clk);
+        lv._clk = setTimeout(function () { var q = selfPrefs(); q.hidden = !q.hidden; selfSave(q); selfApply(w, lv); }, 300);
+        return;
+      }
       selfSave(p); selfApply(w, lv);
     }
+    // 2.5 (MEETING-SPEC §7): Doppelklick/-tippen schaltet die Groesse S -> M -> L (gespeichert je Geraet)
+    lv.addEventListener('dblclick', function (e) {
+      e.preventDefault(); clearTimeout(lv._clk);
+      var p = selfPrefs(); p.size = p.size === 'S' ? 'M' : p.size === 'L' ? 'S' : 'L'; p.hidden = false;
+      selfSave(p); selfApply(w, lv); if (C && C.ui && C.ui.lv === lv) selfFit(C);
+    });
     lv.addEventListener('pointerup', end);
     lv.addEventListener('pointercancel', function () { start = null; lv.classList.remove('dragging'); lv.style.translate = ''; });
     lv.addEventListener('keydown', function (e) {
       var p = selfPrefs();
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); p.hidden = !p.hidden; }
+      else if (e.key === '+' || e.key === '-') { e.preventDefault(); var o = ['S', 'M', 'L'], i = o.indexOf(p.size || 'M'); p.size = o[Math.max(0, Math.min(2, i + (e.key === '+' ? 1 : -1)))]; }
       else if (/^Arrow/.test(e.key)) {                     // Tastatur: Pfeile verschieben in die Ecke
         e.preventDefault(); var c = p.corner == null ? 3 : p.corner;
         if (e.key === 'ArrowLeft') c = c & 2; else if (e.key === 'ArrowRight') c = (c & 2) | 1;

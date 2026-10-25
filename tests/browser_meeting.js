@@ -101,6 +101,60 @@ const look = p => p.evaluate(LOOK);
 const selfBox = p => p.evaluate(() => { const v = document.querySelector('.cl-local'); if (!v || v.hidden || getComputedStyle(v).display === 'none') return null;
   const r = v.getBoundingClientRect(); return { w: r.width, h: r.height, vw: v.videoWidth, vh: v.videoHeight }; });
 
+// Ablauf ueber einen Knoten (calls.horn_all, Testlabor): 1:1 A <-> B, A2 als Begleitgeraet, A2 teilt den Bildschirm.
+// Geprueft: Ben sieht EINE Kachel Anna (Personen ueber who), Anna sieht A2 nur als Chip, Bildschirm gross mit Hinweis-Chip
+// unten links (x) statt Banner, Leisten blenden aus, Echo-Blatt auf A2.
+const horn = p => p.evaluate(() => window.HKCalls && window.HKCalls.horn && window.HKCalls.horn());
+async function hornFlow(a, a2, b, o) {
+  INFO_HORN = true;
+  await a.goto(BASE + '/chats#u' + encodeURIComponent(o.U2)); await a.waitForSelector('#ct-chat:not([hidden])'); await a.waitForTimeout(1000);
+  await b.goto(BASE + '/chats'); await a2.goto(BASE + '/chats'); await liveOk(a, b, a2);
+  await a.click('#ct-call-v');
+  await b.waitForSelector('.cl-ring', { timeout: 20000 }); await b.click('.cl-ring .cl-big');
+  const h1 = await until(async () => { const x = await horn(a), y = await horn(b); return x && x.up && y && y.up && [x, y]; }, 40000);
+  ok('Knoten: 1:1 A <-> B verbunden', h1, [await horn(a), await horn(b)]);
+  await until(() => a2.evaluate(() => !!document.querySelector('.cl-run')), 20000, 250);
+  await a2.click('.cl-run .cl-pill:not(.cl-run-go)');
+  const h2 = await until(async () => { const x = await horn(a2), r = await room(b); return x && x.up && r && r.legs.length === 3 && x; }, 40000);
+  ok('Knoten: A2 als Begleitgeraet verbunden (drei Geraete im Anruf)', h2, [await horn(a2), await room(b)]);
+  await sleep(2500);
+  const hb = await horn(b), lb = await look(b);
+  ok('S2 (Knoten): Ben sieht EINE Kachel Anna, kein Zaehler "3 Geräte"', hb.tiles.length === 1 && hb.tiles[0].dev === o.dA && !/3 Geräte/.test(lb.info), [hb.tiles, lb.info]);
+  const ha = await horn(a), la = await look(a);
+  ok('§4.2 (Knoten): Anna sieht A2 nicht als Kachel, sondern als Chip "… verbunden"', ha.tiles.length === 1 && ha.tiles[0].dev === o.dB && /verbunden/.test(la.info), [ha.tiles, la.info]);
+  await shot(b, 'knoten-1-einzel-dunkel');
+  await a2.mouse.move(300, 300);
+  await a2.click('.cl-ctl .cl-round[aria-label="Mikrofon einschalten"]');
+  const sheet = await until(() => a2.evaluate(() => { const d = document.querySelector('.cl-echo'); return d && d.textContent; }), 4000);
+  ok('§4.3 (Knoten): Echo-Blatt auf dem Begleitgeraet', sheet && /im selben Raum/.test(sheet), sheet);
+  if (sheet) await a2.click('.cl-echo-no');
+  await a2.click('.cl-ctl .cl-round[aria-label="Bildschirm teilen"]');
+  const sh = await until(async () => { const x = await horn(b), w = await b.evaluate(() => document.querySelector('.cl-win').className); return x.shared && x.shared.dev === o.dA2 && x.shared.live && /horn-scr/.test(w) && x; }, 30000);
+  ok('S3 (Knoten): Bildschirm des Begleitgeraets gross bei Ben', sh, await horn(b));
+  const cap = await b.evaluate(() => { const s = document.querySelector('.cl-share'); return s && !s.hidden ? { t: s.textContent, cls: s.className, x: !!s.querySelector('.cl-mchip-x') } : null; });
+  ok('S3 (Knoten): Hinweis-Chip "… teilt den Bildschirm (Geraet)" mit x, keine eigene Kachel fuer A2', cap && /teilt den Bildschirm \(/.test(cap.t) && /cap/.test(cap.cls) && cap.x
+     && (await horn(b)).tiles.length === 1, [cap, (await horn(b)).tiles]);
+  await shot(b, 'knoten-2-bildschirm-leisten-dunkel');
+  await b.mouse.move(640, 360);
+  const idle = await until(async () => { const x = await look(b); return x.idle && x.top === 0 && x.ctl === 0 && x; }, 8000);
+  ok('A1 (Knoten): Leisten nach 4 s ausgeblendet', idle, await look(b));
+  const ar = await b.evaluate(() => { const v = document.querySelector('.cl-win.horn-scr video.cl-hscreen'); if (!v || !v.videoWidth) return 0;
+    const r = v.getBoundingClientRect(), s = Math.min(r.width / v.videoWidth, r.height / v.videoHeight); return Math.round(v.videoWidth * s * v.videoHeight * s / (innerWidth * innerHeight) * 1000) / 1000; });
+  PERF.flaeche_bildschirm_knoten = ar;
+  console.log('  Knoten: Bildschirm nutzt ' + Math.round(ar * 100) + ' % der Fensterflaeche (Knoten-Ansicht mit festem Streifen unten)');
+  await shot(b, 'knoten-3-bildschirm-ausgeblendet-dunkel');
+  await b.emulateMedia({ colorScheme: 'light' }); await shot(b, 'knoten-3-bildschirm-ausgeblendet-hell'); await b.emulateMedia({ colorScheme: 'dark' });
+  await b.setViewportSize({ width: 390, height: 844 }); await sleep(800);
+  ok('A3 (Knoten): Handy ohne waagrechtes Scrollen', !(await look(b)).scrollX);
+  await b.mouse.move(100, 100); await sleep(300);
+  await shot(b, 'knoten-4-handy-dunkel');
+  await b.setViewportSize({ width: 1280, height: 720 });
+  await b.mouse.move(600, 300);
+  await b.click('.cl-ctl .cl-red');
+  ok('Knoten: Auflegen beendet den Anruf', await until(async () => !(await room(a)) && !(await room(a2)), 15000));
+}
+let INFO_HORN = false;
+
 (async () => {
   const U1 = E.SAGA_USER, U2 = E.SAGA_USER2;
   try {
@@ -111,7 +165,8 @@ const selfBox = p => p.evaluate(() => { const v = document.querySelector('.cl-lo
     const dA = await dev(a), dA2 = await dev(a2), dB = await dev(b);
     ok('Anna mit zwei Geraeten (A, A2), Ben (B) - eigene Chat-Schluessel', dA && dA2 && dB && dA !== dA2, { dA, dA2, dB });
     if ((await a.evaluate(() => fetch('/api/calls/config', { headers: { 'X-Saga': '1' } }).then(r => r.json()).catch(() => ({})))).horn_dm) {
-      console.log('SKIP browser_meeting: calls.horn_all ist an (Anrufe ueber Knoten) - dieser Test prueft den Mesh-Weg.'); process.exit(0);
+      await hornFlow(a, a2, b, { dA, dA2, dB, U2 });            // calls.horn_all: derselbe Ablauf ueber den Knoten
+      return;
     }
     await b.evaluate(() => { try { localStorage.removeItem('saga-call-layout'); localStorage.removeItem('saga-call-self'); } catch (e) { /* egal */ } });
 
@@ -125,6 +180,12 @@ const selfBox = p => p.evaluate(() => { const v = document.querySelector('.cl-lo
     const sb1 = await until(async () => { const s = await selfBox(b); return s && s.vw && s; }, 8000);
     ok(`S1: eigenes Bild schwebend im Seitenverhaeltnis der Kamera (${sb1 && Math.round(sb1.w)}x${sb1 && Math.round(sb1.h)}, Kamera ${sb1 && sb1.vw}x${sb1 && sb1.vh})`,
        sb1 && Math.abs(sb1.w / sb1.h - sb1.vw / sb1.vh) < 0.04, sb1);
+    await b.dblclick('.cl-local'); await sleep(700);
+    const sbL = await selfBox(b);
+    ok('S1 (§7): Doppelklick auf das eigene Bild schaltet die Groesse (M -> L, Verhaeltnis bleibt)', sbL && sbL.w > sb1.w * 1.3 && Math.abs(sbL.w / sbL.h - sb1.w / sb1.h) < 0.04, [sb1, sbL]);
+    await b.dblclick('.cl-local'); await sleep(400); await b.dblclick('.cl-local'); await sleep(700);
+    const sbM = await selfBox(b);
+    ok('... L -> S -> M: wieder die Ausgangsgroesse', sbM && Math.abs(sbM.w - sb1.w) < 2, sbM);
     const l1 = await look(b);
     ok('S1: Layout-Knopf im 1:1 ausgeblendet, Vollbild-Knopf da', !l1.layoutBtn && l1.full, l1);
     await shot(b, '1-einzel-dunkel');
