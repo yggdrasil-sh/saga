@@ -157,6 +157,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Knoten anderer Server“, und der Hinweis „kein Knoten bereit“ nennt Server, deren geteilte Knoten nutzbar sind.
 - Knoten auf testing aktualisieren sich selbst: die CI legt signierte Binärdateien jeder Vorabversion in das
   rollende Vorab-Release `horn-testing`.
+  - Behoben: Das systemd-Deploy-Skript aus „Erweitern“ lud auf testing aus `v<rc>` (gibt es nicht, 404) – es lädt
+    Vorabversionen jetzt aus `horn-testing` (Dateiname mit Version), Freigaben weiter aus `v<version>`.
+  - Knoten vor 2.5.0-rc.125 kennen `horn-testing` noch nicht und scheitern mit 404. Die Admin-Seite sagt das jetzt
+    („zu alt, einmal von Hand aktualisieren“) statt nur „neuer Versuch später“.
 - IPv6: Ohne IPv6 bei Saga (Heimnetz, Proxy ohne AAAA) meldet der Knoten die öffentliche IPv6 seiner Schnittstelle,
   und Saga übernimmt sie ungeprüft, wenn der Knoten über IPv4 bestätigt ist (Hinweis im Admin).
 

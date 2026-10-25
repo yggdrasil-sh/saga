@@ -925,6 +925,7 @@
  "Dieser Eigenschaft kann der Assistent keine Werte zuordnen.": "Dieser Eigenschaft kann der Assistent keine Werte zuordnen.",
  "Dieser Kalender ist nur lesbar": "Dieser Kalender ist nur lesbar",
  "Dieser Kalender ist nur lesbar.": "Dieser Kalender ist nur lesbar.",
+ "Dieser Knoten ist zu alt, um Testversionen selbst zu laden. Bitte einmal von Hand auf die Saga-Version aktualisieren (Docker: Image-Tag anpassen und neu starten; systemd: Binär aus dem Vorab-Release horn-testing einspielen).": "Dieser Knoten ist zu alt, um Testversionen selbst zu laden. Bitte einmal von Hand auf die Saga-Version aktualisieren (Docker: Image-Tag anpassen und neu starten; systemd: Binär aus dem Vorab-Release horn-testing einspielen).",
  "Dieser Link ist unvollständig. Bitte im Browser unter Einstellungen → „Apps & Geräte“ einen neuen QR-Code erzeugen.": "Dieser Link ist unvollständig. Bitte im Browser unter Einstellungen → „Apps & Geräte“ einen neuen QR-Code erzeugen.",
  "Dieser Name ist reserviert.": "Dieser Name ist reserviert.",
  "Dieser Name ist schon vergeben.": "Dieser Name ist schon vergeben.",

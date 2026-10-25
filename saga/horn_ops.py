@@ -265,6 +265,31 @@ def _warn_sh(warn):
     return ("echo '" + warn.replace("'", "'\\''") + "' >&2\n") if warn else ""
 
 
+def release_path(ver):
+    """Ablage der signierten Knoten-Binaerdateien wie gjallarhorn/update.go releaseURL -> (Verzeichnis, Dateiname mit
+    $ARCH): Freigaben im Release v<ver>, Vorabversionen (testing, z. B. 2.5.0-rc.7) im rollenden Vorab-Release horn-testing
+    mit der Version im Dateinamen. Vorher lud das systemd-Skript auf testing aus v<rc> (gibt es nicht -> 404)."""
+    if "-" in ver:
+        return "horn-testing", f"gjallarhorn-{ver}-$ARCH"
+    return f"v{ver}", "gjallarhorn-$ARCH"
+
+
+# Erste Knotenversion, die Vorabversionen aus horn-testing laedt (update.go releaseURL). Aeltere Knoten fragen auf
+# testing /v<rc>/... ab (404) und muessen einmal von Hand aktualisiert werden (Admin-Hinweis, Code "old").
+HORN_TESTING_SINCE = "2.5.0-rc.125"
+
+
+def upd_view(upd, have):
+    """Update-Status eines Knotens fuer die Admin-Seite: Ladefehler eines zu alten Knotens auf testing -> Code "old"."""
+    from version import newer
+    u = dict(upd or {})
+    have = u.get("have") or have or ""
+    if (u.get("state") == "fehler" and u.get("code") == "download" and "-" in str(u.get("want") or "")
+            and have and newer(HORN_TESTING_SINCE, have)):
+        u["code"] = "old"
+    return u
+
+
 def systemd_script(name, tok, udp=True):
     """Debian/systemd ohne Docker (wie auf einem kleinen vServer oder LXC): Binaer aus dem GitHub-Release, Signatur mit
     dem Release-Schlüssel geprüft (openssl), eigener Benutzer, Unit mit Waechter. HORN_ROOT/HORN_RELEASE_BASE/
@@ -277,13 +302,14 @@ def systemd_script(name, tok, udp=True):
     if not pub:
         return head + ("echo 'Saga kennt noch keinen Release-Schlüssel (gjallarhorn/release.pub) – die systemd-Variante ist "
                        "erst mit signierten Releases möglich. Bitte die Docker-Variante nutzen.' >&2\nexit 1\n")
+    rdir, rfile = release_path(VERSION)
     return head + f"""VER={VERSION}
 ROOT=${{HORN_ROOT:-}}
-BASE=${{HORN_RELEASE_BASE:-{RELEASE_BASE}/v$VER}}
+BASE=${{HORN_RELEASE_BASE:-{RELEASE_BASE}/{rdir}}}
 case "$(uname -m)" in x86_64|amd64) ARCH=linux-amd64 ;; aarch64|arm64) ARCH=linux-arm64 ;; *) echo "Architektur $(uname -m) nicht unterstützt" >&2; exit 1 ;; esac
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-curl -fsSL -o "$T/gjallarhorn" "$BASE/gjallarhorn-$ARCH"
-curl -fsSL -o "$T/gjallarhorn.sig" "$BASE/gjallarhorn-$ARCH.sig"
+curl -fsSL -o "$T/gjallarhorn" "$BASE/{rfile}"
+curl -fsSL -o "$T/gjallarhorn.sig" "$BASE/{rfile}.sig"
 cat > "$T/release.pem" <<'EOF'
 {_pub_pem(pub)}
 EOF
@@ -880,7 +906,7 @@ def admin_state():
                     "udp": bool(n["udp"]), "cpu": round(100 * float(ld.get("cpu") or 0)), "up": round(float(ld.get("up") or 0), 1),
                     "link": n.get("link_mbit"), "util": round(100 * horn.util(n)), "peers": int(ld.get("peers") or 0),
                     "legs": int(ld.get("legs") or 0), "version": n.get("version") or "", "share": bool(n["share"]),
-                    "drain": bool(n.get("drain")), "checks": ck, "cert": n.get("cert") or {}, "upd": n.get("upd") or {},
+                    "drain": bool(n.get("drain")), "checks": ck, "cert": n.get("cert") or {}, "upd": upd_view(n.get("upd"), n.get("version")),
                     "ctl": n["id"] in horn._CONNS, "v4": n.get("v4") or "", "v6": n.get("v6") or "", "port": n.get("port") or 443,
                     "url": n.get("url") or "", "dns": [] if cloudflare.configured() or n["builtin"] else dns_needed(n),
                     "stats": n2["stats"],

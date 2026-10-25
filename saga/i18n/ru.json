@@ -925,6 +925,7 @@
  "Dieser Eigenschaft kann der Assistent keine Werte zuordnen.": "Ассистент не может назначать значения этому свойству.",
  "Dieser Kalender ist nur lesbar": "Этот календарь только для чтения",
  "Dieser Kalender ist nur lesbar.": "Этот календарь только для чтения.",
+ "Dieser Knoten ist zu alt, um Testversionen selbst zu laden. Bitte einmal von Hand auf die Saga-Version aktualisieren (Docker: Image-Tag anpassen und neu starten; systemd: Binär aus dem Vorab-Release horn-testing einspielen).": "Этот узел слишком старый, чтобы самостоятельно загружать тестовые версии. Обновите его один раз вручную до версии Saga (Docker: измените тег образа и перезапустите; systemd: установите бинарный файл из предварительного релиза horn-testing).",
  "Dieser Link ist unvollständig. Bitte im Browser unter Einstellungen → „Apps & Geräte“ einen neuen QR-Code erzeugen.": "Ссылка неполная. Создай новый QR-код в браузере в разделе «Настройки» → «Приложения и устройства».",
  "Dieser Name ist reserviert.": "Это имя зарезервировано.",
  "Dieser Name ist schon vergeben.": "Это имя уже занято.",
