@@ -129,6 +129,8 @@ async function hornFlow(a, a2, b, o) {
   ok('S2 (Knoten): Ben sieht EINE Kachel Anna, kein Zaehler "3 Geräte"', hb.tiles.length === 1 && hb.tiles[0].dev === o.dA && !/3 Geräte/.test(lb.info), [hb.tiles, lb.info]);
   const ha = await horn(a), la = await look(a);
   ok('§4.2 (Knoten): Anna sieht A2 nicht als Kachel, sondern als Chip "… verbunden"', ha.tiles.length === 1 && ha.tiles[0].dev === o.dB && /verbunden/.test(la.info), [ha.tiles, la.info]);
+  const left = await Promise.all([a, b].map(p => p.evaluate(() => document.querySelectorAll('.cl-mtile').length + (document.querySelector('.cl-win.meet') ? 100 : 0))));
+  ok('Knoten: keine Kacheln der Mesh-Ansicht ueber der Knoten-Ansicht', left.every(n => n === 0), left);
   await shot(b, 'knoten-1-einzel-dunkel');
   await a2.mouse.move(300, 300);
   await a2.click('.cl-ctl .cl-round[aria-label="Mikrofon einschalten"]');
@@ -149,6 +151,8 @@ async function hornFlow(a, a2, b, o) {
     const r = v.getBoundingClientRect(), s = Math.min(r.width / v.videoWidth, r.height / v.videoHeight); return Math.round(v.videoWidth * s * v.videoHeight * s / (innerWidth * innerHeight) * 1000) / 1000; });
   PERF.flaeche_bildschirm_knoten = ar;
   ok(`S3 (Knoten): geteilter Inhalt nutzt ${Math.round(ar * 100)} % der Fensterflaeche (1280x720, Leisten aus; Ziel >= 70 %)`, ar >= 0.70, ar);
+  ok('S3 (Knoten): Bildschirm sichtbar (nichts liegt darueber)', await b.evaluate(() => { const v = document.querySelector('.cl-win.horn-scr video.cl-hscreen'); if (!v) return false;
+    const r = v.getBoundingClientRect(), e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return e === v; }));
   ok('§7 (Knoten): eigenes Bild schwebt nicht ueber dem Bildschirm (Kachel im Streifen)', !(await selfBox(b)) && await b.evaluate(() => !!document.querySelector('.cl-grid .cl-me')));
   await shot(b, 'knoten-3-bildschirm-ausgeblendet-dunkel');
   await b.emulateMedia({ colorScheme: 'light' }); await shot(b, 'knoten-3-bildschirm-ausgeblendet-hell'); await b.emulateMedia({ colorScheme: 'dark' });
