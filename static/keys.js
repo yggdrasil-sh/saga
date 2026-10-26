@@ -28,6 +28,8 @@
     [T('Überschrift 2'), 'h2', 'H2', 'heading', 2], [T('Überschrift 3'), 'h3', 'H3', 'heading', 3], [T('Überschrift 4'), 'h4', 'H4', 'heading', null],
     [T('Checkliste'), 'checklist', '☑', 'todo aufgabe haken', 4], [T('Aufzählung'), 'unordered', '•', 'liste bullet punkte', 5],
     [T('Nummerierte Liste'), 'ordered', '1.', 'nummer liste', 6], [T('Toggle'), 'toggle', '▸', 'ausklappen aufklappen', 7],
+    [T('Toggle-Überschrift 1'), 't1', '▸1', 'toggle heading', null], [T('Toggle-Überschrift 2'), 't2', '▸2', 'toggle heading', null],
+    [T('Toggle-Überschrift 3'), 't3', '▸3', 'toggle heading', null],
     [T('Code'), 'code', '</>', 'code quelltext', 8], [T('Zitat'), 'quote', '❝', 'zitat quote', null], [T('Hinweis (Callout)'), 'callout', '💡', 'callout hinweis box', null]
   ];
   var CONVERTIBLE = { paragraph: 1, header: 1, list: 1, quote: 1, code: 1, toggle: 1, callout: 1 };
@@ -51,27 +53,32 @@
       case 'checklist': case 'unordered': case 'ordered':
         return ['list', { style: key, meta: {}, items: lines.map(function (c) { return { content: c, meta: key === 'checklist' ? { checked: false } : {}, items: [] }; }) }];
       case 'toggle': return ['toggle', { title: lines.join(' '), open: true, blocks: [] }];
+      case 't1': case 't2': case 't3': return ['toggle', { title: lines.join(' '), open: true, blocks: [], level: +key.slice(1) }];
       case 'code': var tmp = document.createElement('div'); tmp.innerHTML = String(html || '').replace(/<br\s*\/?>/gi, '\n'); return ['code', { code: tmp.textContent }];
       case 'quote': return ['quote', { text: html, caption: '', alignment: 'left' }];
       case 'callout': return ['callout', { emoji: '💡', text: html }];
     }
     return null;
   }
+  var TOGGLE_LV = { toggle: 0, t1: 1, t2: 2, t3: 3 };
   function convert(c, key) {
     if (!CONVERTIBLE[c.b.name]) { HK.toast(T('Dieser Block lässt sich nicht umwandeln')); return; }
+    // Toggle <-> Toggle-Ueberschrift (2.5, G10): nur die Ebene aendern - Inhalt, Farbe und Zustand bleiben
+    if (c.b.name === 'toggle' && key in TOGGLE_LV) {
+      var tg = K.toggleOf(c.b.holder); if (tg) { tg.setLevel(TOGGLE_LV[key]); return; }
+    }
     c.b.save().then(function (s) {
       if (s.tool === 'toggle' && s.data.blocks && s.data.blocks.length) { HK.toast(T('Der Toggle hat Inhalt – erst ausräumen, dann umwandeln')); return; }
       var r = build(key, textOf(s.tool, s.data)); if (!r) return;
-      c.ed.blocks.insert(r[0], r[1], undefined, c.i, true, true);
+      var st = s.tunes && s.tunes.hkstyle;          // Farbe bleibt beim Umwandeln (wenn der neue Typ sie kennt)
+      var nb = c.ed.blocks.insert(r[0], r[1], undefined, c.i, true, true);
+      if (st) K.styleBlock(nb, st);
       try { c.ed.caret.setToBlock(c.i, 'end'); } catch (e) { /* Block ohne Textfeld */ }
     });
   }
   function duplicate(c) {
     if (!COPYABLE[c.b.name]) { HK.toast(T('Diesen Block bitte über das Block-Menü kopieren')); return; }
-    c.b.save().then(function (s) {
-      c.ed.blocks.insert(s.tool, s.data, undefined, c.i + 1, true);
-      try { c.ed.caret.setToBlock(c.i + 1, 'end'); } catch (e) { /* ohne Textfeld */ }
-    });
+    K.dup(c.ed, c.b);                              // samt Farbe (tunes)
   }
   function move(c, d) {
     var to = c.i + d; if (to < 0 || to >= c.ed.blocks.getBlocksCount()) return;
@@ -85,12 +92,33 @@
 
   // Cmd+/ : alle Aktionen fuer den aktuellen Block, mit Suche
   function actionMenu(c) {
+    if (K.readOnly && K.readOnly()) {               // Lesen/Kommentieren bzw. gesperrt (2.5, G5): nur Link und Kommentieren
+      HK.openMenu(c.b.holder, function (m) {
+        m.appendChild(HK.menuItem(T('Link zum Block kopieren'), function () { blockLink(c); }, { icon: '🔗' }));
+        if (window.HKComments) m.appendChild(HK.menuItem(T('Kommentieren'), function () { HKComments.openBlock(c.b.id); }, { icon: '💬' }));
+      });
+      return;
+    }
     HK.openMenu(c.b.holder, function (m) {
       m.appendChild(HK.menuLabel(T('Umwandeln in')));
       TYPES.forEach(function (t) {
         m.appendChild(HK.menuItem(t[0], function () { convert(c, t[1]); }, { icon: t[2], hint: t[4] != null ? MK + ALT + t[4] : '' }));
       });
       m.appendChild(el('div', 'menu-sep'));
+      if (K.styleAt && c.b.holder.querySelector('.ce-block__content')) {          // 2.5 (G3): Farbe
+        m.appendChild(HK.menuItem(T('Farbe'), null, { icon: 'A', sub: function (sm) {
+          var box = c.b.holder.querySelector('.ce-block__content');
+          sm.appendChild(HK.menuItem(T('Standard'), function () { K.styleAt(box, null); }, { icon: 'A' }));
+          K.colors.forEach(function (col) {
+            var it = HK.menuItem(K.colorNames[col], function () { K.styleAt(box, { c: col }); }, { icon: 'A' });
+            it.querySelector('.mi-ic').classList.add('hk-c-' + col); sm.appendChild(it);
+          });
+          K.colors.forEach(function (col) {
+            var it = HK.menuItem(T('{farbe} (Hintergrund)', { farbe: K.colorNames[col] }), function () { K.styleAt(box, { c: col, bg: true }); }, { icon: 'A' });
+            it.querySelector('.mi-ic').classList.add('hk-bg-' + col); sm.appendChild(it);
+          });
+        } }));
+      }
       m.appendChild(HK.menuItem(T('Duplizieren'), function () { duplicate(c); }, { icon: '⧉', hint: MK + 'D' }));
       m.appendChild(HK.menuItem(T('Nach oben'), function () { move(c, -1); }, { icon: '↑', hint: MK + '⇧↑' }));
       m.appendChild(HK.menuItem(T('Nach unten'), function () { move(c, 1); }, { icon: '↓', hint: MK + '⇧↓' }));
@@ -116,6 +144,7 @@
       e.preventDefault(); K.copyLink(); return;
     }
     if (!inEditor()) return;
+    if (K.readOnly && K.readOnly() && !(mod(e) && !e.altKey && (e.key === '/' || e.code === 'Slash'))) return;   // Lesen: nur Cmd+/
     // Block-Kuerzel
     if (mod(e) && e.altKey && !e.shiftKey && /^(Digit|Numpad)[0-8]$/.test(e.code)) {
       var n = +e.code.slice(-1), t = TYPES.filter(function (x) { return x[4] === n; })[0];
@@ -143,12 +172,15 @@
   function drawToc() {
     if (K.embed) return;
     if (!toc) { toc = el('nav', 'hk-toc'); toc.setAttribute('aria-label', T('Inhaltsverzeichnis')); document.body.appendChild(toc); }
-    var hs = [].slice.call(document.querySelectorAll('#pg-editor .ce-header')).filter(function (h) { return h.textContent.trim(); });
+    // Ueberschriften und Toggle-Ueberschriften (2.5, G10) in Dokument-Reihenfolge
+    var hs = [].slice.call(document.querySelectorAll('#pg-editor .ce-header, #pg-editor .tgl-h > .tgl-head > .tgl-title')).filter(function (h) { return h.textContent.trim(); });
     toc.textContent = '';
     toc.hidden = !tocOn || hs.length < 3 || $('page').hidden;
     if (toc.hidden) return;
     hs.forEach(function (h) {
-      var lv = +h.tagName.slice(1) || 2, a = el('button', 'hk-toc-i l' + lv); a.type = 'button';
+      var tg = h.classList.contains('tgl-title') ? h.closest('.tgl-h') : null;
+      var lv = tg ? (tg.classList.contains('tgl-h1') ? 1 : tg.classList.contains('tgl-h2') ? 2 : 3) : (+h.tagName.slice(1) || 2);
+      var a = el('button', 'hk-toc-i l' + lv + (tg ? ' tgl' : '')); a.type = 'button';
       a.appendChild(el('span', 'hk-toc-d')); a.appendChild(el('span', 'hk-toc-t', h.textContent.trim()));
       a.addEventListener('click', function () { h.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
       toc.appendChild(a);
@@ -156,7 +188,7 @@
   }
   function schedToc() { clearTimeout(tocT); tocT = setTimeout(drawToc, 300); }
   if (!K.embed) {
-    new MutationObserver(schedToc).observe($('pg-editor'), { childList: true, subtree: true, characterData: true });
+    new MutationObserver(schedToc).observe($('pg-editor'), { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class'] });
     new MutationObserver(schedToc).observe($('page'), { attributes: true, attributeFilter: ['hidden'] });
   }
 

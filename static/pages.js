@@ -125,6 +125,7 @@
     if (!t || !t.classList || !t.classList.contains('cdx-search-field__input')) return;
     var pop = t.closest('.ce-popover');
     if (!pop || !pop.classList.contains('ce-popover--opened') || pop.querySelector('.ce-popover-item--focused')) return;
+    if (slashColorPick(slashSrc || slashP, t.value)) { e.preventDefault(); e.stopPropagation(); return; }     // 2.5 (G3)
     // 2.4 (Testrunde W7): Editor.js filtert verzoegert - bei schnellem "/Hinweis⏎" ist noch nichts ausgeblendet. Daher
     // selbst nach dem Suchtext abgleichen (Titel beginnt mit / enthaelt ihn), erst sonst der erste sichtbare Eintrag.
     var first = slashMatch(pop, t.value) || [].filter.call(pop.querySelectorAll('.ce-popover-item'), function (x) {
@@ -149,6 +150,10 @@
     if (e.key !== 'Enter' || e.isComposing || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey || mobilePop()) return;
     var t = e.target, p = t && t.closest ? t.closest('.ce-paragraph') : null;
     if (!p || !S.editor || !$('pg-editor').contains(p)) return;
+    var cm = /^\/(.{2,40})$/.exec(slashText(p).trim());
+    if (cm && (slashPopOpen() || p === slashSrc) && slashColor(cm[1])) {           // "/rot", "/rot hintergrund" (2.5, G3)
+      e.preventDefault(); e.stopPropagation(); slashColorPick(p, cm[1]); return;
+    }
     var m = /^\/([^\s\/]{1,40})$/.exec(slashText(p).trim()), pop = slashPopOpen();
     if (!m || (!pop && p !== slashSrc)) return;              // nur wenn das Menue offen ist bzw. "/" in einem leeren Absatz begann
     var it = pop ? slashMatch(pop, m[1]) : null;
@@ -216,8 +221,26 @@
       x.classList.toggle('pg-slash-hidden', !!q && !(ti && ti.textContent.toLowerCase().indexOf(q) >= 0));
     });
   }, true);
+  // Farbe per Slash-Kuerzel: "/…" entfernen, Menue schliessen, Block (den Absatz mit dem "/") einfaerben
+  function slashColorPick(p, q) {
+    var st = slashColor(q);
+    if (!st || !p || !p.isConnected) return false;
+    var best = null;
+    (S.eds || []).forEach(function (x) { if (x.ed && x.holder.isConnected && x.holder.contains(p) && (!best || best.holder.contains(x.holder))) best = x; });
+    var ed = best ? best.ed : S.editor;
+    if (slashText(p).charAt(0) === '/') p.innerHTML = '';
+    slashReset(); slashSrc = null;
+    try { ed.toolbar.close(); } catch (err) { /* schon zu */ }
+    if (!styleAt(p, st)) return true;
+    HK.toast(T('Farbe: {farbe}', { farbe: st.bg ? T('{farbe} (Hintergrund)', { farbe: COLOR_NAMES[st.c] }) : COLOR_NAMES[st.c] }));
+    setTimeout(function () { if (p.isConnected) { p.focus(); } }, 0);
+    return true;
+  }
   function slashEnter(e) {
     var pop = mobilePop();
+    if (pop && slashP && slashP.contains(e.target) && slashText(slashP).charAt(0) === '/' && slashColorPick(slashP, slashText(slashP).slice(1))) {
+      e.preventDefault(); e.stopPropagation(); return;
+    }
     if (!pop || !slashP || slashText(slashP).charAt(0) !== '/' || !slashP.contains(e.target)) return;
     if (slashPick(pop)) { e.preventDefault(); e.stopPropagation(); }
   }
@@ -641,7 +664,7 @@
           database: { class: DatabaseTool },
           tasks: { class: TasksTool },
           calendar: { class: CalendarTool },
-          image: { class: window.ImageTool, config: {
+          image: { class: hkImage(window.ImageTool), config: {                 // 2.5 (G2): Breite/Ausrichtung, fremde Felder bleiben
             endpoints: { byFile: '/api/files' }, field: 'image', additionalRequestHeaders: UPH,
             types: 'image/png,image/jpeg,image/gif,image/webp', captionPlaceholder: T('Bildunterschrift'), buttonContent: T('Bild auswählen …') } },
           attaches: { class: window.AttachesTool, config: {
@@ -654,9 +677,10 @@
           toggle: { class: ToggleTool, inlineToolbar: true },
           callout: { class: CalloutTool, inlineToolbar: true },
           hkdate: { class: DateInline },
-          hkcomment: { class: CommentTune }
+          hkcomment: { class: CommentTune },
+          hkstyle: { class: StyleTune }, hkdup: { class: DupTune }, hklink: { class: LinkTune }
         },
-        tunes: ['hkcomment'],                  // Block-Menue: "Kommentieren"
+        tunes: BLOCK_TUNES,                    // Block-Menue (⋮⋮, 2.5 G5): Farbe, Duplizieren, Link, Kommentieren
         i18n: I18N,
         onChange: edChanged
       });
@@ -936,7 +960,7 @@
       document.dispatchEvent(new CustomEvent('hk-page-open', { detail: { id: n.id } }));
       $('page').hidden = false; $('pg-empty').hidden = true;
       $('pg-title').value = n.title || '';
-      showIcon(n.icon); showCover(); $('page').classList.toggle('wide', !!n.wide);
+      showIcon(n.icon); showCover(); $('page').classList.toggle('wide', !!n.wide); applyFont(n);
       var data;
       try { data = n.format === 'blocks' ? JSON.parse(n.body || '{"blocks":[]}') : textToBlocks(n.body); }
       catch (e) { data = { blocks: [] }; }
@@ -1083,6 +1107,7 @@
       if (foreign()) { foreignMenu(m, c); return; }        // fremde Seite: nur, was die Rolle erlaubt
       m.appendChild(HK.menuItem(c.pinned ? T('Von Favoriten lösen') : T('Zu Favoriten'), function () { setPinned(!c.pinned); }, { icon: c.pinned ? '☆' : '★' }));
       m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { icon: '↔', on: !!c.wide }));
+      designMenu(m, c);
       // Bughunt D17: auf Touch-Geraeten steht "Titelbild" nicht mehr dauerhaft ueber dem Titel, sondern hier
       if (!c.cover && !c.locked) m.appendChild(HK.menuItem(T('Titelbild'), function () { coverMenu(btn); }, { icon: '🖼' }));
       m.appendChild(HK.menuItem(c.locked ? T('Seite entsperren') : T('Seite sperren'), function () { setLocked(!c.locked); }, { icon: '🔒', on: !!c.locked }));
@@ -1139,6 +1164,7 @@
     var rem = remoteId(c.id);
     if (canEdit()) {
       if (remCap(c, 'db')) m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { icon: '↔', on: !!c.wide }));
+      if (remCap(c, 'db')) designMenu(m, c);
       if (remCap(c, 'subpages')) {
         m.appendChild(HK.menuItem(T('Unterseite hinzufügen'), function () { newPage(c.id); }, { icon: '＋' }));
         var cand = sharedMoveTargets(c);
@@ -1518,7 +1544,7 @@
   // Editor.js selbst). Deshalb vorher: nur Block-Werkzeuge, die der Ziel-Editor kennt (Spalten in Spalten/Ausklappbar
   // werden aufgeloest wie beim Speichern), Inline-HTML nach derselben Positivliste wie der Server (saga/pages.py,
   // _Sanitizer), Adressen nur relativ/http(s)/mailto, verschachtelte Bloecke (Ausklappbar, Spalten) ebenso.
-  var CLIP_INLINE_ONLY = { inlineCode: 1, marker: 1, hkdate: 1, hkcomment: 1 };
+  var CLIP_INLINE_ONLY = { inlineCode: 1, marker: 1, hkdate: 1, hkcomment: 1, hkstyle: 1, hkdup: 1, hklink: 1 };
   var CLIP_TAGS = { b: 1, strong: 1, i: 1, em: 1, u: 1, s: 1, mark: 1, code: 1, a: 1, br: 1, time: 1 };
   var CLIP_CLASSES = { mark: ['cdx-marker'], code: ['inline-code'], time: ['hk-date', 'hk-remind'] };
   var CLIP_DROP = /^(script|style|template|iframe|frame|frameset|object|embed|noscript|svg|math|textarea|select|button|form|title|head|link|meta)$/;
@@ -2003,6 +2029,198 @@
              title: T('Kommentieren'), closeOnActivate: true,
              onActivate: function () { if (window.HKComments && self.block) HKComments.openBlock(self.block.id); } };
   };
+  // --- Seite gestalten (2.5): Block-Menue ⋮⋮ (G5) mit Farbe (G3), Duplizieren, Link zum Block -----------------------------
+  // Reihenfolge im Menue: Einstellungen des Blocks (Editor.js), "Umwandeln in", Farbe, Duplizieren, Link, Kommentieren, dann
+  // Nach oben / Loeschen / Nach unten. Lesen/Kommentieren (bzw. gesperrt): nur Link und Kommentieren.
+  var BLOCK_TUNES = ['hkstyle', 'hkdup', 'hklink', 'hkcomment'];
+  var STYLE_TYPES = { paragraph: 1, header: 1, list: 1, quote: 1, toggle: 1, callout: 1, checklist: 1 };   // wie saga/notes.py
+  var DUP_TYPES = { paragraph: 1, header: 1, list: 1, quote: 1, code: 1, toggle: 1, callout: 1, delimiter: 1, table: 1, image: 1 };
+  var COLOR_NAMES = { gray: T('Grau'), brown: T('Braun'), orange: T('Orange'), yellow: T('Gelb'), green: T('Grün'), blue: T('Blau'),
+                      purple: T('Lila'), pink: T('Rosa'), red: T('Rot') };
+  var STYLE_OF = new WeakMap();                      // .ce-block__content -> StyleTune (Farbe per Slash/Cmd+/ setzen)
+  function cleanStyle(st) {                         // wie der Server: nur Palette, bg nur true
+    if (!st || typeof st !== 'object' || COLORS.indexOf(st.c) < 0) return null;
+    return st.bg === true ? { c: st.c, bg: true } : { c: st.c };
+  }
+  function StyleTune(o) { this.api = o.api; this.block = o.block; this.data = cleanStyle(o.data); this.box = null; }
+  StyleTune.isTune = true;
+  StyleTune.prototype.wrap = function (content) { this.box = content; STYLE_OF.set(content, this); this.paint(); return content; };
+  StyleTune.prototype.paint = function () {
+    var b = this.box; if (!b) return;
+    COLORS.forEach(function (c) { b.classList.remove('hk-c-' + c, 'hk-bg-' + c); });
+    if (this.data) b.classList.add((this.data.bg ? 'hk-bg-' : 'hk-c-') + this.data.c);
+  };
+  StyleTune.prototype.set = function (st) {
+    this.data = cleanStyle(st); this.paint();
+    if (this.block && this.block.dispatchChange) this.block.dispatchChange();
+    if (!S.loading) { S.dirtyBody = true; schedule(); }
+  };
+  StyleTune.prototype.save = function () { return this.data || undefined; };
+  StyleTune.prototype.render = function () {
+    var self = this, name = this.block && this.block.name;
+    if (!STYLE_TYPES[name] || readOnly()) return [];
+    var cur = this.data, items = [{ title: T('Standard'), icon: '<span class="hk-sw">A</span>', isActive: !cur, closeOnActivate: true,
+      onActivate: function () { self.set(null); } }, { type: 'separator' }];
+    COLORS.forEach(function (c) {
+      items.push({ title: COLOR_NAMES[c], icon: '<span class="hk-sw hk-c-' + c + '">A</span>', isActive: !!cur && cur.c === c && !cur.bg,
+        closeOnActivate: true, onActivate: function () { self.set({ c: c }); } });
+    });
+    items.push({ type: 'separator' });
+    COLORS.forEach(function (c) {
+      items.push({ title: T('{farbe} (Hintergrund)', { farbe: COLOR_NAMES[c] }), icon: '<span class="hk-sw hk-bg-' + c + '">A</span>',
+        isActive: !!cur && cur.c === c && !!cur.bg, closeOnActivate: true, onActivate: function () { self.set({ c: c, bg: true }); } });
+    });
+    return { icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l5.5-14h3L19 19M7.4 13h9.2"/></svg>',
+             title: T('Farbe'), name: 'hk-color', children: { searchable: false, items: items } };
+  };
+  // Block an einem Element (Absatz, Titel ...) einfaerben - fuer "/rot", "/blau hintergrund" und Cmd+/
+  function styleAt(node, st) {
+    var box = node && node.closest ? node.closest('.ce-block__content') : null, tune = box && STYLE_OF.get(box);
+    if (!tune || !STYLE_TYPES[tune.block && tune.block.name]) return false;
+    tune.set(st); return true;
+  }
+  // "/rot", "/rot hintergrund", "/red bg" (Farbnamen der eingestellten Sprache und die Palette-Namen) -> {c, bg} | null
+  function slashColor(q) {
+    var n = String(q || '').replace(/ /g, ' ').trim().toLowerCase(), bg = false, words = [T('Hintergrund').toLowerCase(), 'bg', 'background'];
+    if (!n) return null;
+    for (var i = 0; i < words.length; i++) {
+      var w = ' ' + words[i];
+      if (n.length > w.length && n.slice(-w.length) === w) { bg = true; n = n.slice(0, -w.length).trim(); break; }
+    }
+    for (var k = 0; k < COLORS.length; k++) {
+      var c = COLORS[k];
+      if (n === c || n === COLOR_NAMES[c].toLowerCase()) return bg ? { c: c, bg: true } : { c: c };
+    }
+    return null;
+  }
+  function DupTune(o) { this.api = o.api; this.block = o.block; }
+  DupTune.isTune = true;
+  DupTune.prototype.render = function () {
+    var self = this, name = this.block && this.block.name;
+    if (readOnly()) return [];
+    return { icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
+             title: T('Duplizieren'), secondaryLabel: isMac ? '⌘D' : T('Strg') + '+D', isDisabled: !DUP_TYPES[name], closeOnActivate: true,
+             onActivate: function () { dupBlock(self.api, self.block); } };
+  };
+  // Block samt Farbe (tunes) direkt darunter kopieren (auch Cmd+D, static/keys.js)
+  function dupBlock(eapi, blk) {
+    if (!blk || !DUP_TYPES[blk.name]) { HK.toast(T('Diesen Block bitte über das Block-Menü kopieren')); return Promise.resolve(); }
+    var i = eapi.blocks.getBlockIndex(blk.id);
+    return blk.save().then(function (s) {
+      if (!s) return;
+      var nb = eapi.blocks.insert(s.tool, s.data, undefined, i + 1, true);
+      styleBlock(nb, s.tunes && s.tunes.hkstyle);
+      try { eapi.caret.setToBlock(i + 1, 'end'); } catch (e) { /* ohne Textfeld */ }
+    });
+  }
+  // Farbe an einen eben eingefuegten Block (blocks.insert kennt keine tunes; update wuerde den Block neu bauen)
+  function styleBlock(nb, st) {
+    st = cleanStyle(st);
+    var box = st && nb && nb.holder ? nb.holder.querySelector('.ce-block__content') : null, tune = box && STYLE_OF.get(box);
+    if (tune) tune.set(st);
+  }
+
+  function LinkTune(o) { this.block = o.block; }
+  LinkTune.isTune = true;
+  LinkTune.prototype.render = function () {
+    var self = this;
+    return { icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
+             title: T('Link zum Block kopieren'), closeOnActivate: true,
+             onActivate: function () {
+               var h = self.block && self.block.holder;
+               if (h && h.parentNode && h.parentNode.closest && h.parentNode.closest('.col, .tgl-body')) { HK.toast(T('Link zu Blöcken in Toggles/Spalten: bitte den äußeren Block verlinken')); }
+               copyLink(self.block && self.block.id);
+             } };
+  };
+
+  // Bild (2.5, G2): Editor.js-Bildwerkzeug um Breite (10-100 %) und Ausrichtung ergaenzen - als Unterklasse, damit Daten,
+  // die das Werkzeug nicht kennt (andere Clients), beim Speichern erhalten bleiben
+  var IMG_KNOWN = { file: 1, caption: 1, withBorder: 1, withBackground: 1, stretched: 1, width: 1, align: 1 };
+  var ALIGNS = { left: 1, center: 1, right: 1 };
+  function sizeW(v) { return typeof v === 'number' && isFinite(v) ? Math.min(100, Math.max(10, Math.round(v))) : null; }
+  function hkImage(Base) {
+    if (!Base || typeof Reflect === 'undefined') return Base;
+    if (Base.hkWrapped) return Base.hkWrapped;
+    function HKImage(o) {
+      var self = Reflect.construct(Base, [o], HKImage), d = (o && o.data) || {};
+      self.hkExtra = {}; Object.keys(d).forEach(function (k) { if (!IMG_KNOWN[k]) self.hkExtra[k] = d[k]; });
+      self.hkW = sizeW(d.width); self.hkA = ALIGNS[d.align] ? d.align : null; self.hkRo = !!(o && o.readOnly);
+      return self;
+    }
+    HKImage.prototype = Object.create(Base.prototype); HKImage.prototype.constructor = HKImage;
+    Object.setPrototypeOf(HKImage, Base);             // Editor.js liest toolbox, pasteConfig ... an der Klasse
+    HKImage.prototype.render = function () {
+      var w = Base.prototype.render.call(this); this.hkBox = w;
+      sizable(this, w, function () { return w.querySelector('.image-tool__image'); });
+      return w;
+    };
+    HKImage.prototype.renderSettings = function () {
+      var own = Base.prototype.renderSettings.call(this) || [];
+      return (Array.isArray(own) ? own : [own]).concat(alignItems(this));
+    };
+    HKImage.prototype.save = function () {
+      var d = Base.prototype.save.call(this), out = Object.assign({}, this.hkExtra, d);
+      if (this.hkW) out.width = this.hkW;
+      if (this.hkA) out.align = this.hkA;
+      return out;
+    };
+    Base.hkWrapped = HKImage;
+    return HKImage;
+  }
+  // Ausrichtung im Block-Menue (Bild, Player)
+  function alignItems(t) {
+    if (t.hkRo || readOnly()) return [];
+    return [['left', T('Linksbündig'), 'M4 6h16M4 10h10M4 14h16M4 18h10'], ['center', T('Zentriert'), 'M4 6h16M7 10h10M4 14h16M7 18h10'],
+            ['right', T('Rechtsbündig'), 'M4 6h16M10 10h10M4 14h16M10 18h10']].map(function (a) {
+      return { icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="' + a[2] + '"/></svg>',
+               title: a[1], toggle: 'hk-align', isActive: (t.hkA || 'center') === a[0], closeOnActivate: true,
+               onActivate: function () { t.hkA = a[0]; paintSize(t); sizeChanged(t); } };
+    });
+  }
+  function paintSize(t) {
+    var w = t.hkBox; if (!w) return;
+    w.classList.add('hk-sz');
+    w.classList.toggle('hk-iw', !!t.hkW);
+    if (t.hkW) w.style.setProperty('--iw', t.hkW + '%'); else w.style.removeProperty('--iw');
+    ['left', 'center', 'right'].forEach(function (a) { w.classList.toggle('hk-al-' + a, (t.hkA || 'center') === a); });
+  }
+  function sizeChanged(t) {
+    if (t.block && t.block.dispatchChange) t.block.dispatchChange();
+    if (!S.loading) { S.dirtyBody = true; schedule(); }
+  }
+  // Griffe links/rechts (wie Notion): Breite live, beim Loslassen speichern; Doppelklick = Standardbreite
+  function sizable(t, w, target) {
+    paintSize(t);
+    if (t.hkRo || roRole()) return;
+    ['l', 'r'].forEach(function (side) {
+      var h = el('div', 'hk-rs hk-rs-' + side); h.contentEditable = 'false'; h.dataset.mutationFree = 'true';
+      h.setAttribute('aria-hidden', 'true'); h.title = T('Ziehen ändert die Breite, Doppelklick setzt sie zurück');
+      h.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+      h.addEventListener('dblclick', function (e) { e.preventDefault(); e.stopPropagation(); if (t.hkW) { t.hkW = null; paintSize(t); sizeChanged(t); } });
+      h.addEventListener('pointerdown', function (e) {
+        if (readOnly() || e.button !== 0) return;
+        e.preventDefault(); e.stopPropagation();
+        var box = w.getBoundingClientRect(), before = t.hkW;
+        if (!box.width) return;
+        try { h.setPointerCapture(e.pointerId); } catch (x) { /* egal */ }
+        document.body.classList.add('hk-resizing');
+        function mv(ev) {
+          var al = t.hkA || 'center', px = al === 'left' ? ev.clientX - box.left : al === 'right' ? box.right - ev.clientX
+            : 2 * Math.abs(ev.clientX - (box.left + box.width / 2));
+          var pct = Math.min(100, Math.max(10, Math.round(Math.abs(px) / box.width * 100)));
+          if (pct !== t.hkW) { t.hkW = pct >= 100 ? null : pct; paintSize(t); }
+        }
+        function up() {
+          h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up);
+          document.body.classList.remove('hk-resizing');
+          if (t.hkW !== before) sizeChanged(t);
+        }
+        h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
+      });
+      var tg = target(); if (tg) tg.appendChild(h);
+    });
+  }
+
   function DateInline(o) { this.api = o.api; }
   DateInline.isInline = true;
   DateInline.title = T('Datum');
@@ -2029,12 +2247,27 @@
   function ToggleTool(o) {
     var d = o.data || {};
     this.title = d.title || ''; this.open = d.open !== false;
+    this.level = d.level === 1 || d.level === 2 || d.level === 3 ? d.level : 0;     // 2.5 (G10): Toggle-Ueberschrift H1-H3
+    var ex = this.extra = {}; Object.keys(d).forEach(function (k) { if (['title', 'open', 'blocks', 'text', 'level'].indexOf(k) < 0) ex[k] = d[k]; });
     // Alte Toggles (nur Text) werden beim Oeffnen umgewandelt: Text -> erster Absatz
     this.blocks = Array.isArray(d.blocks) ? d.blocks : (d.text ? [{ type: 'paragraph', data: { text: d.text } }] : []);
     this.ed = null;
   }
-  ToggleTool.toolbox = { title: T('Ausklappbar'),
-    icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>' };
+  var TGL_OF = new WeakMap();                       // .tgl -> ToggleTool (static/keys.js: Toggle <-> Toggle-Ueberschrift)
+  var TGL_IC = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+  ToggleTool.toolbox = [{ title: T('Ausklappbar'), icon: TGL_IC },
+    { title: T('Toggle-Überschrift 1'), icon: TGL_IC.replace('<path', '<text x="13" y="21" font-size="9" stroke="none" fill="currentColor">1</text><path'), data: { level: 1 } },
+    { title: T('Toggle-Überschrift 2'), icon: TGL_IC.replace('<path', '<text x="13" y="21" font-size="9" stroke="none" fill="currentColor">2</text><path'), data: { level: 2 } },
+    { title: T('Toggle-Überschrift 3'), icon: TGL_IC.replace('<path', '<text x="13" y="21" font-size="9" stroke="none" fill="currentColor">3</text><path'), data: { level: 3 } }];
+  // Umwandeln (Block-Menue "Umwandeln in", Editor.js): Titel <-> Text anderer Bloecke (Ueberschrift <-> Toggle-Ueberschrift)
+  var TGL_STASH = null;
+  ToggleTool.conversionConfig = {
+    export: function (d) { TGL_STASH = { blocks: d.blocks, open: d.open, at: Date.now() }; return d.title || ''; },
+    import: function (html) {
+      var st = TGL_STASH && Date.now() - TGL_STASH.at < 1500 ? TGL_STASH : null; TGL_STASH = null;     // Toggle -> Toggle: Inhalt behalten
+      return { title: html, open: st ? st.open !== false : true, blocks: st && Array.isArray(st.blocks) ? st.blocks : [] };
+    }
+  };
   // Bereinigung: nur der Titel (wie Inline-Text); der verschachtelte Inhalt bleibt unangetastet (true) - den bereinigt
   // der eigene Editor im Toggle je Block, und eine leere Regel wuerde alle Formatierung entfernen. Ohne Regel wandte
   // Editor.js die Inline-Regeln auf jedes Feld an: das Feld "code" eines Code-Blocks traf auf die Regel des Inline-Codes,
@@ -2042,7 +2275,7 @@
   // den Titel zusaetzlich (Positivliste).
   ToggleTool.sanitize = { title: INLINE_SAN, blocks: true };
   ToggleTool.prototype.render = function () {
-    var self = this, w = el('div', 'tgl' + (this.open ? ' open' : '')), head = el('div', 'tgl-head');
+    var self = this, w = el('div', 'tgl' + (this.open ? ' open' : '') + (this.level ? ' tgl-h tgl-h' + this.level : '')), head = el('div', 'tgl-head');
     var btn = el('button', 'tgl-btn', '▸'); btn.type = 'button'; btn.contentEditable = 'false'; btn.setAttribute('aria-label', T('Auf- oder zuklappen'));
     this.t = editable('tgl-title', this.title, T('Ausklappbare Überschrift'));
     this.b = el('div', 'tgl-body'); isolate(this.b);
@@ -2053,15 +2286,31 @@
       var ed = self.ensure(); ed.isReady.then(function () { ed.caret.setToFirstBlock('start'); });
     });
     head.appendChild(btn); head.appendChild(this.t); w.appendChild(head); w.appendChild(this.b);
+    TGL_OF.set(w, this);
     this.w = w; if (this.open) this.ensure();          // zugeklappt: Editor erst beim ersten Aufklappen (spart Ladezeit)
     return w;
+  };
+  ToggleTool.prototype.renderSettings = function () {
+    var self = this; if (readOnly()) return [];
+    var opts = [[0, T('Ausklappbar')], [1, T('Toggle-Überschrift 1')], [2, T('Toggle-Überschrift 2')], [3, T('Toggle-Überschrift 3')]];
+    return opts.filter(function (o) { return o[0] !== self.level; }).map(function (o) {
+      return { icon: TGL_IC, title: o[1], closeOnActivate: true, onActivate: function () { self.setLevel(o[0]); } };
+    });
+  };
+  ToggleTool.prototype.setLevel = function (lv) {
+    this.level = lv === 1 || lv === 2 || lv === 3 ? lv : 0;
+    var w = this.w; w.classList.remove('tgl-h', 'tgl-h1', 'tgl-h2', 'tgl-h3');
+    if (this.level) w.classList.add('tgl-h', 'tgl-h' + this.level);
+    if (this.block && this.block.dispatchChange) this.block.dispatchChange();
+    if (!S.loading) { S.dirtyBody = true; schedule(); }
   };
   ToggleTool.prototype.ensure = function () { if (!this.ed) this.ed = nestedEditor(this.b, this.blocks, T("Inhalt – '/' für Blöcke")); return this.ed; };
   // Seitenwechsel/Block entfernt: den inneren Editor abbauen (sonst bleiben seine document-Listener und damit der ganze
   // alte Inhalt im Speicher, Bughunt P01)
   ToggleTool.prototype.destroy = function () { if (this.ed) killEditor(this.ed); this.ed = null; };
   ToggleTool.prototype.save = function () {
-    var self = this, res = { title: this.t.innerHTML, open: this.w.classList.contains('open') };
+    var self = this, res = Object.assign({}, this.extra, { title: this.t.innerHTML, open: this.w.classList.contains('open') });
+    if (this.level) res.level = this.level;
     if (!this.ed) { res.blocks = this.blocks; return res; }
     return this.ed.isReady.then(function () { return self.ed.save(); }).then(function (o) { self.blocks = o.blocks; res.blocks = o.blocks; return res; });
   };
@@ -4322,6 +4571,9 @@
   function EmbedTool(o) {
     var d = o.data || {}; this.api = o.api; this.block = o.block; this.ro = !!o.readOnly; this.title = decodeAmp(d.title);
     this.url = /^https?:\/\/\S+$/i.test(decodeAmp(d.url)) ? decodeAmp(d.url) : '';      // nur http(s) - nie javascript: o. ae.
+    // 2.5 (G2): Breite/Ausrichtung des Players; Felder anderer Clients bleiben beim Speichern erhalten
+    this.hkW = sizeW(d.width); this.hkA = ALIGNS[d.align] ? d.align : null; this.hkRo = this.ro; this.hkExtra = {};
+    var self = this; Object.keys(d).forEach(function (k) { if (['url', 'title', 'kind', 'width', 'align'].indexOf(k) < 0) self.hkExtra[k] = d[k]; });
   }
   EmbedTool.toolbox = { title: T('Einbetten (YouTube, Link)'), icon: '<svg width="17" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3z"/></svg>' };
   EmbedTool.isReadOnlySupported = true;
@@ -4347,7 +4599,9 @@
       f.setAttribute('allow', 'accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen');
       f.setAttribute('allowfullscreen', ''); f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
       box.appendChild(f); w.appendChild(box);
+      this.hkBox = w; sizable(this, w, function () { return box; });
     } else {
+      w.classList.remove('hk-sz', 'hk-iw', 'hk-al-left', 'hk-al-center', 'hk-al-right'); w.style.removeProperty('--iw');
       var u; try { u = new URL(this.url); } catch (e) { u = null; }
       var a = el('a', 'hk-embed-card'); a.href = this.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
       a.appendChild(el('span', 'hk-embed-ic', /goodnotes/.test(this.url) ? '📒' : '🔗'));
@@ -4387,7 +4641,12 @@
       });
     }).catch(function () { /* bleibt ein normaler Link */ });
   };
-  EmbedTool.prototype.save = function () { var d = { url: this.url }; if (this.title) d.title = this.title; if (ytId(this.url)) d.kind = 'youtube'; return d; };
+  EmbedTool.prototype.save = function () {
+    var d = Object.assign({}, this.hkExtra, { url: this.url }); if (this.title) d.title = this.title;
+    if (ytId(this.url)) { d.kind = 'youtube'; if (this.hkW) d.width = this.hkW; if (this.hkA) d.align = this.hkA; }   // Link-Karten: ohne Breite
+    return d;
+  };
+  EmbedTool.prototype.renderSettings = function () { return this.url && ytId(this.url) ? alignItems(this) : []; };
   EmbedTool.prototype.validate = function (d) { return /^https?:\/\//i.test(d.url || ''); };
 
   var fTaskDue = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'short', day: 'numeric', month: 'short' });
@@ -4480,6 +4739,34 @@
     // Papierkorb/Archiv aus der Schublade: danach Inhalt zeigen
     ['pg-trash-btn', 'pg-archive-btn', 'pg-qs-btn'].forEach(function (id) { var x = $(id); if (x) x.addEventListener('click', function () { drawer(false); }); });
   }
+  // 2.5 (G9): Schrift (Standard, Serif, Mono) und kleiner Text je Seite - wie "Volle Breite" auf dem Server gespeichert
+  function applyFont(n) {
+    var pg = $('page'); if (!pg) return;
+    pg.classList.toggle('pf-serif', !!n && n.font === 'serif'); pg.classList.toggle('pf-mono', !!n && n.font === 'mono');
+    pg.classList.toggle('p-small', !!n && !!n.small);
+  }
+  function fontKnown(c) { return !!c && Object.prototype.hasOwnProperty.call(c, 'font'); }     // aeltere Server liefern font nicht
+  function setDesign(b) {
+    var id = S.cur.id;
+    api('PATCH', '/api/notes/' + id, b).then(function () {
+      if (!S.cur || S.cur.id !== id) return;
+      if ('font' in b) S.cur.font = b.font === 'default' ? null : b.font;
+      if ('small' in b) S.cur.small = !!b.small;
+      applyFont(S.cur);
+    }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
+  }
+  function designMenu(m, c) {
+    if (!fontKnown(c)) return;
+    var cur = c.font === 'serif' || c.font === 'mono' ? c.font : 'default';
+    var names = { 'default': T('Standard'), serif: T('Serif'), mono: T('Mono') };
+    m.appendChild(HK.menuItem(T('Schrift'), null, { icon: 'Aa', hint: names[cur], sub: function (sm) {
+      ['default', 'serif', 'mono'].forEach(function (f) {
+        var it = HK.menuItem(names[f], function () { setDesign({ font: f }); }, { icon: f === cur ? '✓' : ' ', on: f === cur });
+        it.classList.add('pf-item-' + f); sm.appendChild(it);
+      });
+    } }));
+    m.appendChild(HK.menuItem(T('Kleiner Text'), function () { setDesign({ small: !c.small }); }, { icon: 'a', on: !!c.small }));
+  }
   function setWide(on) {
     var id = S.cur.id;
     api('PATCH', '/api/notes/' + id, { wide: on }).then(function () {
@@ -4497,7 +4784,7 @@
   function nestedEditor(holder, blocks, placeholder) {
     var tools = nestedTools();
     var ed = new window.EditorJS({
-      holder: holder, data: { blocks: blocks || [] }, tools: tools, tunes: ['hkcomment'], i18n: I18N, minHeight: 24, placeholder: placeholder,
+      holder: holder, data: { blocks: blocks || [] }, tools: tools, tunes: BLOCK_TUNES, i18n: I18N, minHeight: 24, placeholder: placeholder,
       inlineToolbar: ['bold', 'italic', 'link', 'marker', 'inlineCode', 'hkdate'],
       onChange: edChanged
     });
@@ -4511,7 +4798,16 @@
     var d = o.data || {};
     this.cols = (d.cols && d.cols.length ? d.cols : [{ blocks: [] }, { blocks: [] }]).slice(0, 4);
     this.editors = [];
-    this.api = o.api;
+    this.api = o.api; this.block = o.block;
+    this.ws = colWeights(this.cols);                // 2.5 (G1): relative Breiten (null = alle gleich)
+  }
+  // Gewichte nur, wenn jede Spalte eines hat (wie der Server), sonst null; Summe 1
+  function colWeights(cols) {
+    if (!cols || cols.length < 2) return null;
+    var ok = cols.every(function (c) { return c && typeof c.w === 'number' && isFinite(c.w) && c.w > 0; });
+    if (!ok) return null;
+    var tot = cols.reduce(function (a, c) { return a + c.w; }, 0);
+    return cols.map(function (c) { return c.w / tot; });
   }
   ColumnsTool.toolbox = { title: T('Spalten'),
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>' };
@@ -4520,8 +4816,68 @@
     w.style.setProperty('--cols', String(this.cols.length));
     isolate(w);                    // Tastatur der Spalten-Editoren nicht an den aeusseren Editor weiterreichen
     this.cols.forEach(function (c, i) { self.editors[i] = self.column(c, i); });
-    this.ctl();
+    this.ctl(); this.grid();
     return w;
+  };
+  // Breiten als grid-template-columns (fr) und Ziehgriffe zwischen den Spalten (2.5, G1)
+  ColumnsTool.prototype.grid = function () {
+    var self = this, w = this.w, n = this.editors.length;
+    if (this.ws && this.ws.length !== n) this.ws = null;
+    if (this.ws) w.style.setProperty('--cols-t', frs(this.ws)); else w.style.removeProperty('--cols-t');
+    w.classList.toggle('cols-w', !!this.ws);
+    [].forEach.call(w.querySelectorAll(':scope > .col-rs'), function (x) { x.remove(); });
+    if (roRole()) return;
+    for (var i = 0; i < n - 1; i++) (function (i) {
+      var h = el('div', 'col-rs'); h.contentEditable = 'false'; h.dataset.mutationFree = 'true'; h.setAttribute('aria-hidden', 'true');
+      h.title = T('Ziehen ändert die Spaltenbreite, Doppelklick setzt beide gleich');
+      w.appendChild(h); self.placeRs(h, i);
+      h.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+      h.addEventListener('dblclick', function (e) {
+        e.preventDefault(); e.stopPropagation(); if (readOnly()) return;
+        var ws = self.ws ? self.ws.slice() : self.equal(), sum = ws[i] + ws[i + 1];
+        ws[i] = ws[i + 1] = sum / 2; self.setWs(ws, true);
+      });
+      h.addEventListener('pointerdown', function (e) {
+        if (readOnly() || e.button !== 0) return;
+        e.preventDefault(); e.stopPropagation();
+        var box = w.getBoundingClientRect(), start = self.ws ? self.ws.slice() : self.equal(), before = JSON.stringify(self.ws);
+        var left = start.slice(0, i).reduce(function (a, x) { return a + x; }, 0), pair = start[i] + start[i + 1];
+        var gap = parseFloat(getComputedStyle(w).columnGap) || 0, usable = box.width - gap * (n - 1);
+        if (usable <= 0) return;
+        try { h.setPointerCapture(e.pointerId); } catch (x) { /* egal */ }
+        document.body.classList.add('hk-resizing'); h.classList.add('on');
+        function mv(ev) {
+          var x = (ev.clientX - box.left - gap * (i + 0.5)) / usable - left, a = Math.round((left + x) * 20) / 20 - left;   // Einrasten: 5-%-Schritte
+          a = Math.min(pair - 0.15, Math.max(0.15, a));
+          var ws = start.slice(); ws[i] = a; ws[i + 1] = pair - a; self.setWs(ws, false);
+        }
+        function up() {
+          h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up);
+          document.body.classList.remove('hk-resizing'); h.classList.remove('on');
+          if (JSON.stringify(self.ws) !== before) self.changed();
+        }
+        h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
+      });
+    })(i);
+  };
+  function frs(ws) { return ws.map(function (x) { return 'minmax(0,' + (Math.round(x * 1000) / 1000) + 'fr)'; }).join(' '); }
+  ColumnsTool.prototype.equal = function () { var n = this.editors.length, a = []; for (var i = 0; i < n; i++) a.push(1 / n); return a; };
+  ColumnsTool.prototype.placeRs = function (h, i) {
+    var ws = this.ws || this.equal(), x = ws.slice(0, i + 1).reduce(function (a, v) { return a + v; }, 0);
+    h.style.setProperty('--rs-f', String(Math.round(x * 10000) / 10000)); h.style.setProperty('--rs-i', String(i));   // CSS: Abstand mitrechnen
+  };
+  ColumnsTool.prototype.setWs = function (ws, save) {
+    var eq = ws.every(function (x) { return Math.abs(x - 1 / ws.length) < 0.004; });
+    this.ws = eq ? null : ws.map(function (x) { return Math.round(x * 100) / 100; });
+    var self = this, w = this.w;
+    if (this.ws) w.style.setProperty('--cols-t', frs(this.ws)); else w.style.removeProperty('--cols-t');
+    w.classList.toggle('cols-w', !!this.ws);
+    [].forEach.call(w.querySelectorAll(':scope > .col-rs'), function (h, i) { self.placeRs(h, i); });
+    if (save) this.changed();
+  };
+  ColumnsTool.prototype.changed = function () {
+    if (this.block && this.block.dispatchChange) this.block.dispatchChange();
+    if (!S.loading) { S.dirtyBody = true; schedule(); }
   };
   // Sichtbare Leiste "Spalten: 2 3 4" oben rechts (das Block-Menue zeigt beim Ueberfahren die INNEREN Bloecke)
   ColumnsTool.prototype.ctl = function () {
@@ -4568,7 +4924,7 @@
     this.editors.forEach(function (ed) { try { ed.destroy(); } catch (x) { /* schon weg */ } });
     this.editors = []; this.cols = cols; this.w.textContent = ''; this.w.style.setProperty('--cols', String(cols.length));
     cols.forEach(function (c, i) { self.editors[i] = self.column(c, i); });
-    this.ctl(); S.dirtyBody = true; schedule();
+    this.ws = null; this.ctl(); this.grid(); S.dirtyBody = true; schedule();
   };
   // Eine Spalte: eigener Editor + "+ Block" darunter (in GENAU dieser Spalte weiterschreiben, wie Notion)
   ColumnsTool.prototype.column = function (c, i) {
@@ -4622,12 +4978,20 @@
       self.editors.forEach(function (ed) { try { ed.destroy(); } catch (x) { /* schon weg */ } });
       self.editors = []; self.cols = cols; self.w.textContent = ''; self.w.style.setProperty('--cols', String(n));
       cols.forEach(function (c, i) { self.editors[i] = self.column(c, i); });
-      self.ctl(); S.dirtyBody = true; schedule();
+      self.ws = null; self.ctl(); self.grid(); S.dirtyBody = true; schedule();     // andere Anzahl: wieder gleich breit
     });
   };
   ColumnsTool.prototype.save = function () {
+    var self = this;
     return Promise.all(this.editors.map(function (e) { return e.isReady.then(function () { return e.save(); }); }))
-      .then(function (outs) { return { cols: outs.map(function (o) { return { blocks: o.blocks }; }) }; });
+      .then(function (outs) {
+        var ws = self.ws && self.ws.length === outs.length ? self.ws : null;
+        return { cols: outs.map(function (o, i) {
+          var c = Object.assign({}, self.cols[i] && typeof self.cols[i] === 'object' ? self.cols[i] : {}, { blocks: o.blocks });   // fremde Felder bleiben
+          if (ws) c.w = ws[i]; else delete c.w;
+          return c;
+        }) };
+      });
   };
 
   // --- Seitenbaum: Seiten per Ziehen verschieben (wie in Notion) -----------------------
@@ -5477,6 +5841,9 @@
     k: { cur: function () { return S.cur; }, editor: function () { return S.editor; },
          eds: function () { return (S.eds || []).filter(function (x) { return x.holder.isConnected; }); },
          open: function (id) { return openPage(id); }, byId: byId, goParent: goParent, copyLink: copyLink, showBlock: showBlock,
+         readOnly: function () { return readOnly(); },
+         dup: function (ed, blk) { return dupBlock(ed, blk); }, styleAt: styleAt, styleBlock: styleBlock, colors: COLORS, colorNames: COLOR_NAMES,
+         toggleOf: function (node) { var w = node && node.closest ? node.closest('.tgl') : null; return w ? TGL_OF.get(w) || null : null; },
          embed: EMBED, isMac: isMac, cleanClip: function (list, nested) { return cleanClip(list, nested ? nestedTools() : (S.tools || {})); }, openQS: function () { openQS(); }, pages: function () { return S.pages; }, label: label, ti: ti,
          recents: recents, decorate: function () { decorateLinks(); }, ancestors: ancestors,
          recheck: function () { return recheck(true); },        // static/comments.js: Rolle/Zugriff nach 403/404 neu pruefen
