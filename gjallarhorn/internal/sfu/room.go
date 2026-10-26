@@ -247,8 +247,9 @@ type source struct {
 	lastTID   [4]uint32
 	fps       [4]float64
 	lastKeyRq int64
-	remote    bool // P9: kommt ueber eine Bruecke (fliesst nur auf Nachfrage)
-	on        bool // P9: laut anderem Knoten aktiv
+	offAt     int64 // Bildschirm: seit wann nicht nutzbar (0 = nutzbar bzw. noch nicht gesehen)
+	remote    bool  // P9: kommt ueber eine Bruecke (fliesst nur auf Nachfrage)
+	on        bool  // P9: laut anderem Knoten aktiv
 }
 
 // live: Quelle nutzbar - eigene, wenn sie in der letzten Sekunde Pakete hatte; Quellen ueber eine Bruecke, wenn der
