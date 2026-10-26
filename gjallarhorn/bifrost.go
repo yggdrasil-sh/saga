@@ -488,7 +488,10 @@ func (b *bridge) tick() {
 		}
 	}
 	for src := range need {
-		if b.outs[src] != nil {
+		if o := b.outs[src]; o != nil {
+			// wie die Beine in jedem Takt: wartet der Ausgang auf ein Schluesselbild (Anlegen, Stau nach H3), fragt
+			// Assign erneut an - sonst blieb es bei einer PLI, die in die Drossel fallen kann (BH3)
+			o.Assign(src)
 			continue
 		}
 		cl := fwd.ClassSpeaker

@@ -25,6 +25,11 @@ const (
 	tileFPSMargin = 1.25
 )
 
+// screenResume: Kommt eine Bildschirmquelle nach mindestens so langer Stille (zusaetzlich zur Sekunde bis „nicht
+// aktiv“) wieder, zaehlt das als neuer Beginn der Freigabe (Apps und Web beenden das Teilen mit replaceTrack(null),
+// die Quelle bleibt angemeldet). Variable fuer Tests.
+var screenResume = 3 * time.Second
+
 func (r *Room) run(tick time.Duration) {
 	t := time.NewTicker(tick)
 	defer t.Stop()
@@ -100,6 +105,16 @@ func (r *Room) measurePeer(p *Peer, dt float64, now int64) {
 			st.bps = rate
 		} else {
 			st.bps = 0.9*st.bps + 0.1*rate
+		}
+		if st.screen { // erneute Freigabe nach einer Pause: neuer Beginn (Bildschirmplatz, neueste Freigabe gewinnt)
+			if st.live(now) {
+				if st.offAt != 0 && now-st.offAt >= int64(screenResume) && now > p.scrAt {
+					p.scrAt = now
+				}
+				st.offAt = 0
+			} else if st.offAt == 0 {
+				st.offAt = now
+			}
 		}
 		if st.Kind == fwd.Video {
 			for i := range st.lastTID {
