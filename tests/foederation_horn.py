@@ -304,6 +304,12 @@ def start_call(u, ch):
     cid = C.hexid()
     t0 = time.time()
     s, d = api(u.k, u.uid, "POST", "/api/calls", {"id": cid, "chat_id": ch["id"], "media": "video", "device": u.dev["id"], "caps": CAPS})
+    for _ in range(8):                                 # Bughunt 3: auf schnellen Rechnern greift sonst das Anruf-Limit (6 je
+        if s != 429:                                   # Minute, Start und Beitritt zaehlen) - kurz warten statt 429 zu werten
+            break
+        time.sleep(10)
+        t0 = time.time()
+        s, d = api(u.k, u.uid, "POST", "/api/calls", {"id": cid, "chat_id": ch["id"], "media": "video", "device": u.dev["id"], "caps": CAPS})
     PERF.setdefault("start_ms", []).append(round((time.time() - t0) * 1000))
     return cid, s, d
 
