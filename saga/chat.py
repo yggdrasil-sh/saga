@@ -2363,9 +2363,35 @@ def delete_account(c, uid):
 
 
 def counts(c, uid):
-    """Admin, Benutzer-Detail: nur Anzahlen."""
+    """Admin, Benutzer-Detail: nur Anzahlen (2.5: dazu v3 = Stand der Umstellung auf Stufe 3, siehe v3_state)."""
     return {"chats": c.execute("SELECT COUNT(*) FROM chat_member WHERE uid=? AND left_at IS NULL", (uid,)).fetchone()[0],
-            "chat_devices": c.execute("SELECT COUNT(*) FROM chat_device WHERE uid=? AND revoked_at IS NULL", (uid,)).fetchone()[0]}
+            "chat_devices": c.execute("SELECT COUNT(*) FROM chat_device WHERE uid=? AND revoked_at IS NULL", (uid,)).fetchone()[0],
+            "v3": v3_state(c, uid)}
+
+
+def v3_state(c, uid, now=None):
+    """Bughunt 3 (Admin -> Benutzer -> Chats): warum Chats dieser Person noch nicht auf Stufe 3 sind - wie x3_why
+    'devices' im Chat-Objekt (saga.chat_x3.v1_flags), zusammengefasst ueber alle ihre lokalen Chats v1.
+    -> None (Stufe 3 aus) oder {v1: Anzahl, mine: [Namen eigener Geraete ohne 2.5], nocert: eigenes Handle fehlt,
+    others: Anzahl anderer Personen, die noch aufhalten, until: Stichtag, soon: Umstellung beim naechsten Lauf}."""
+    if not v3_new():
+        return None
+    ids = [r[0] for r in c.execute("SELECT ch.id FROM chat ch JOIN chat_member m ON m.chat_id=ch.id AND m.uid=? AND m.left_at IS NULL "
+                                   "WHERE ch.v=1 AND ch.ref IS NULL AND ch.home_peer IS NULL", (uid,)).fetchall()]
+    _, until = v3_deadline()
+    if not ids:
+        return {"v1": 0, "mine": [], "nocert": False, "others": 0, "until": int(until), "soon": False}
+    now = now or time.time()
+    mem = sorted({r[0] for r in c.execute(f"SELECT uid FROM chat_member WHERE chat_id IN ({','.join('?' * len(ids))}) AND left_at IS NULL",
+                                          tuple(ids)).fetchall() if not sharing.is_remote(r[0])} | {uid})
+    cert = {r[0] for r in c.execute(f"SELECT f.uid FROM chat_fed_cert f JOIN chat_identity i ON i.uid=f.uid AND i.ident_pub=f.ident_pub "
+                                    f"WHERE f.uid IN ({','.join('?' * len(mem))})", tuple(mem)).fetchall()}
+    nocert = set(mem) - cert
+    old = blocking_devices(c, mem, now) if now < until else []
+    mine = [(n or "").strip()[:80] or t("Gerät ohne Namen") for u, n in old if u == uid][:20]
+    others = len(({u for u, _ in old} | nocert) - {uid})
+    return {"v1": len(ids), "mine": mine, "nocert": uid in nocert, "others": others, "until": int(until),
+            "soon": not nocert and not old}
 
 
 # --- Benachrichtigungen (saga.notify): Titel/Link erst beim Lesen, nur fuer aktuelle Mitglieder --------------------

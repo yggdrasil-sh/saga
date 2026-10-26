@@ -50,6 +50,8 @@
     <dt>{{ _("Apps") }}</dt><dd>{{ _("{n} angemeldet", n=usage.devices) }} · {{ _("{n} Schlüssel", n=usage.tokens) }}</dd>
     <dt>{{ _("Freigaben") }}</dt><dd>{{ _("{n} erteilt", n=usage.shares) }} · {{ _("{n} erhalten", n=usage.shared_with) }}</dd>
     <dt>{{ _("Chats") }}</dt><dd>{{ usage.chats }} · {{ _("{n} Geräte", n=usage.chat_devices) }} <small class="hk-hint">{{ _("(Inhalte sind Ende-zu-Ende-verschlüsselt und für Admins nicht lesbar)") }}</small></dd>
+    {% if usage.v3 %}<dt>{{ _("Chat-Stufe 3") }}</dt><dd>{% if not usage.v3.v1 %}{{ _("alle Chats umgestellt") }}{% else %}{{ _("{n} {n:Chat|Chats} noch nicht umgestellt", n=usage.v3.v1) }}
+      <small class="hk-hint">{% if usage.v3.soon %}{{ _("Umstellung beim nächsten stündlichen Lauf.") }}{% else %}{% if usage.v3.mine %}{{ _("Wartet auf eigene Geräte ohne Saga 2.5: {list}.", list=usage.v3.mine|join(", ")) }} {% endif %}{% if usage.v3.nocert %}{{ _("Chats sind auf keinem Gerät ab Saga 2.3 eingerichtet (kein Handle).") }} {% endif %}{% if usage.v3.others %}{{ _("Wartet auf {n} {n:andere Person|andere Personen}.", n=usage.v3.others) }} {% endif %}{{ _("Stichtag: {date}", date=ts(usage.v3.until))|safe }}{% endif %}</small>{% endif %}</dd>{% endif %}
   </dl>
   {% if devs %}<ul class="adm-list">{% for d in devs %}<li>{{ d[0] }} <small>{{ _("seit {since}, zuletzt {last}", since=ts(d[1]), last=ts(d[2]))|safe }}</small></li>{% endfor %}</ul>{% endif %}
   <p class="hk-hint">{{ _("Inhalte (Seiten, Kalender, Fotos) sind privat und hier nicht einsehbar.") }}</p>

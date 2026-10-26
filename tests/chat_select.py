@@ -39,6 +39,23 @@ def cleanup():
         c.execute("DELETE FROM users WHERE username LIKE 'cs-%'")
 
 
+def admin_page(path):
+    """Admin-Bereich (eigener Port) mit Sitzung wie tests/anrufe.py admin (Konto cs-adm) -> (status, html)."""
+    import base64, hashlib, http.client, urllib.parse
+    from itsdangerous import TimestampSigner
+    if not auth.get_user("cs-adm"):
+        auth.create_user("cs-adm", "Admin-Pass-1234", "Admin Auswahl", is_admin=True)
+    adm = urllib.parse.urlparse(os.environ.get("HK_TEST_ADMIN", "http://127.0.0.1:8098"))
+    sa = TimestampSigner(hashlib.sha256(("hk-admin|" + os.environ["SESSION_SECRET"]).encode()).hexdigest())
+    cookie = sa.sign(base64.b64encode(json.dumps({"aid": "cs-adm", "ep": time.time() + 5, "csrf": "x"}).encode())).decode()
+    c = http.client.HTTPConnection(adm.hostname, adm.port, timeout=30)
+    c.request("GET", path, headers={"Cookie": "hk_admin=" + cookie, "Accept-Language": "de"})
+    r = c.getresponse()
+    data = r.read().decode("utf-8", "replace")
+    c.close()
+    return r.status, data
+
+
 def setv3(on, days=None):
     auth.save_setting("chat_v3", on)
     if days is not None:
@@ -187,6 +204,14 @@ def run():
        and "Altes Tablet" not in json.dumps(E.chat(de["id"], lv=2)), w2)
     in_list = next((x for x in A.seen()["chats"] if x["id"] == de["id"]), {})
     ok("x3_why auch in der Chat-Liste", in_list.get("x3_why") == "devices", in_list.get("x3_why"))
+    # Bughunt 3: Admin -> Benutzer -> Chats zeigt, warum Chats noch nicht auf Stufe 3 sind (chat.v3_state)
+    with connect() as c:
+        vs = CH.v3_state(c, A.uid)
+    ok("v3_state: Chats v1, eigenes Altgeraet mit Namen, andere als Anzahl, Stichtag", vs and vs["v1"] >= 2 and vs["mine"] == ["Altes Tablet"]
+       and vs["others"] >= 1 and not vs["soon"] and abs(vs["until"] - (since + 90 * 86400)) < 2, vs)
+    s, html = admin_page(f"/users/{auth.get_user(A.uid)['id']}")
+    ok("Admin-Benutzerseite: Stufe 3 mit Grund (Geraet, andere Personen)", s == 200 and "Chat-Stufe 3" in html and "noch nicht umgestellt" in html
+       and "Altes Tablet" in html and "Wartet auf 1 andere Person" in html, (s, html[html.find("Chat-Stufe 3"):][:400]))
     d = A.chat(cid)
     ok("Eigenes altes Geraet haelt auch den Chat mit Bert auf (others 0)",
        d.get("x3_why") == "devices" and (d.get("x3_wait") or {}).get("mine") == ["Altes Tablet"] and d["x3_wait"]["others"] == 0, d.get("x3_wait"))

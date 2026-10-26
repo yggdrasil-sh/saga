@@ -158,6 +158,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Gruppenanrufe zeigen den Chatnamen statt „Gruppenanruf“.** Das Anrufobjekt (`POST /api/calls`, `GET /api/calls/<id>`,
   `/api/calls/active`) trägt den Chatnamen jetzt wie `call.invite` in `from.chat` (freie Gruppen: `null`, der Name ist
   verschlüsselt). Kam ein Gruppenanruf per Abfrage oder Push an, zeigten die Apps vorher „Gruppenanruf“/„Group call“.
+- **Admin → Benutzer → Chats zeigt, warum Chats noch nicht auf Stufe 3 sind.** Neue Zeile „Chat-Stufe 3“ (nur mit
+  eingeschalteter Stufe 3): alle umgestellt bzw. wie viele noch nicht, und warum – eigene Geräte ohne Saga 2.5 (mit Namen),
+  kein Handle (Chats auf keinem Gerät ab 2.3 eingerichtet), Anzahl anderer Personen, Stichtag; wie `x3_why` im Chat-Objekt.
+  Test in `tests/chat_select.py`.
 
 ### Behoben – iOS/Mac klingeln bei geschlossener App auch für Anrufe über Knoten und Gruppenanrufe (VoIP-Push)
 - Seit „Alle Anrufe über Knoten“ klingeln auch 1:1-Anrufe per Push-Art `call.group` (mit `dm: true`). Apple-VoIP
