@@ -1,0 +1,357 @@
+{
+ "format": "saga-meeting/v1",
+ "note": "Gemeinsame Testvektoren der Meeting-Ansicht (MEETING-SPEC.md §12). Web: tests/meeting_logik.js (static/meeting.js); iOS und Android pruefen dieselben Faelle. meetingTiles: roster wie GET /api/calls/{id} (who, device, dev_name, role, me), media je Geraet (mic, cam, screen, level, screenAt), prefs.self = dieses Geraet. expect = Kacheln in Reihenfolge (id, kind, dev, video, devName); layout = pickLayout(tiles, 'auto'); arrange = arrange(tiles, layout, {pin}). speakerHysteresis: Pegel alle step ms (Ton = level zwischen from und to, sonst 0); expect = Buehne (who) zu Zeitpunkten, changes = Zahl der Buehnenwechsel (der erste Sprecher zaehlt mit).",
+ "meetingTiles": [
+  {
+   "name": "S1 1:1, beide Kamera",
+   "roster": [
+    {"device": "dA", "who": "anna", "name": "Anna", "dev_name": "MacBook", "role": "member", "me": false},
+    {"device": "dB", "who": "ben", "name": "Ben", "dev_name": "Firefox", "role": "member", "me": true}
+   ],
+   "media": {"dA": {"mic": true, "cam": true}, "dB": {"mic": true, "cam": true}},
+   "prefs": {"self": "dB"},
+   "expect": [
+    {"id": "anna", "kind": "person", "dev": "dA", "video": true, "devName": ""},
+    {"id": "ben", "kind": "person", "dev": "dB", "video": true, "devName": ""}
+   ],
+   "layout": "one",
+   "arrange": {"stage": "anna", "strip": [], "grid": [], "float": true}
+  },
+  {
+   "name": "S2 1:1 mit Begleitgeraet (Anna: Mac + iPhone ohne Bild) - Ben sieht eine Kachel Anna",
+   "roster": [
+    {"device": "dA", "who": "anna", "name": "Anna", "dev_name": "MacBook", "role": "member", "me": false},
+    {"device": "dA2", "who": "anna", "name": "Anna", "dev_name": "iPhone", "role": "companion", "me": false},
+    {"device": "dB", "who": "ben", "name": "Ben", "dev_name": "Chrome", "role": "member", "me": true}
+   ],
+   "media": {"dA": {"mic": true, "cam": true}, "dA2": {"mic": false, "cam": false}, "dB": {"mic": true, "cam": true}},
+   "prefs": {"self": "dB"},
+   "expect": [
+    {"id": "anna", "kind": "person", "dev": "dA", "video": true, "devName": ""},
+    {"id": "ben", "kind": "person", "dev": "dB", "video": true, "devName": ""}
+   ],
+   "layout": "one",
+   "arrange": {"stage": "anna", "strip": [], "grid": [], "float": true}
+  },
+  {
+   "name": "S3 1:1, Annas Android-Begleitgeraet teilt den Bildschirm, Mac mit Kamera - Praesentation ohne Kamera-PiP",
+   "roster": [
+    {"device": "dA", "who": "anna", "name": "Anna", "dev_name": "MacBook", "role": "member", "me": false},
+    {"device": "dA3", "who": "anna", "name": "Anna", "dev_name": "Android", "role": "companion", "me": false},
+    {"device": "dB", "who": "ben", "name": "Ben", "dev_name": "Chrome", "role": "member", "me": true}
+   ],
+   "media": {"dA": {"mic": true, "cam": true}, "dA3": {"mic": false, "cam": false, "screen": true, "screenAt": 5000}, "dB": {"mic": true, "cam": true}},
+   "prefs": {"self": "dB"},
+   "expect": [
+    {"id": "anna|dA3:scr", "kind": "screen", "dev": "dA3", "video": true, "devName": "Android"},
+    {"id": "anna", "kind": "person", "dev": "dA", "video": true, "devName": ""},
+    {"id": "ben", "kind": "person", "dev": "dB", "video": true, "devName": ""}
+   ],
+   "layout": "presentation",
+   "arrange": {"stage": "anna|dA3:scr", "strip": ["anna", "ben"], "grid": [], "float": false}
+  },
+  {
+   "name": "§4.1 Alex: Mac mit Kamera, iPhone still, Android teilt - iPhone unsichtbar",
+   "roster": [
+    {"device": "m", "who": "alex", "name": "Alex", "dev_name": "MacBook", "role": "member", "me": false},
+    {"device": "i", "who": "alex", "name": "Alex", "dev_name": "iPhone", "role": "companion", "me": false},
+    {"device": "g", "who": "alex", "name": "Alex", "dev_name": "Galaxy", "role": "companion", "me": false},
+    {"device": "b", "who": "ben", "name": "Ben", "dev_name": "Chrome", "role": "member", "me": true}
+   ],
+   "media": {"m": {"mic": true, "cam": true}, "i": {"mic": true}, "g": {"screen": true, "screenAt": 10}, "b": {"mic": true, "cam": false}},
+   "prefs": {"self": "b"},
+   "expect": [
+    {"id": "alex|g:scr", "kind": "screen", "dev": "g", "video": true, "devName": "Galaxy"},
+    {"id": "alex", "kind": "person", "dev": "m", "video": true, "devName": ""},
+    {"id": "ben", "kind": "person", "dev": "b", "video": false, "devName": ""}
+   ],
+   "layout": "presentation",
+   "arrange": {"stage": "alex|g:scr", "strip": ["alex", "ben"], "grid": [], "float": false}
+  },
+  {
+   "name": "Teilen vom Hauptgeraet: Bildschirmkachel ohne Geraetename (nur ein Geraet), Kamera in der Personenkachel",
+   "roster": [
+    {"device": "dA", "who": "anna", "name": "Anna", "dev_name": "MacBook", "role": "member", "me": false},
+    {"device": "dB", "who": "ben", "name": "Ben", "dev_name": "Chrome", "role": "member", "me": true}
+   ],
+   "media": {"dA": {"mic": true, "cam": true, "screen": true, "screenAt": 1}, "dB": {"mic": true, "cam": true}},
+   "prefs": {"self": "dB"},
+   "expect": [
+    {"id": "anna|dA:scr", "kind": "screen", "dev": "dA", "video": true, "devName": ""},
+    {"id": "anna", "kind": "person", "dev": "dA", "video": true, "devName": ""},
+    {"id": "ben", "kind": "person", "dev": "dB", "video": true, "devName": ""}
+   ],
+   "layout": "presentation",
+   "arrange": {"stage": "anna|dA:scr", "strip": ["anna", "ben"], "grid": [], "float": false}
+  },
+  {
+   "name": "Hauptgeraet ohne Kamera, Begleitgeraet mit Kamera: Personenkachel zeigt das Begleitgeraet (keine zweite Kachel)",
+   "roster": [
+    {"device": "dA", "who": "anna", "name": "Anna", "dev_name": "MacBook", "role": "member", "me": false},
+    {"device": "dA2", "who": "anna", "name": "Anna", "dev_name": "iPad", "role": "companion", "me": false},
+    {"device": "dB", "who": "ben", "name": "Ben", "dev_name": "Chrome", "role": "member", "me": true}
+   ],
+   "media": {"dA": {"mic": true, "cam": false}, "dA2": {"cam": true}, "dB": {"mic": true, "cam": true}},
+   "prefs": {"self": "dB"},
+   "expect": [
+    {"id": "anna", "kind": "person", "dev": "dA2", "video": true, "devName": ""},
+    {"id": "ben", "kind": "person", "dev": "dB", "video": true, "devName": ""}
+   ],
+   "layout": "one",
+   "arrange": {"stage": "anna", "strip": [], "grid": [], "float": true}
+  },
+  {
+   "name": "Begleitgeraet mit zusaetzlicher Kamera: zweite Kamera-Kachel 'Anna (iPad)'",
+   "roster": [
+    {"device": "dA", "who": "anna", "name": "Anna", "dev_name": "MacBook", "role": "member", "me": false},
+    {"device": "dA2", "who": "anna", "name": "Anna", "dev_name": "iPad", "role": "companion", "me": false},
+    {"device": "dB", "who": "ben", "name": "Ben", "dev_name": "Chrome", "role": "member", "me": true}
+   ],
+   "media": {"dA": {"mic": true, "cam": true}, "dA2": {"cam": true}, "dB": {"mic": true, "cam": true}},
+   "prefs": {"self": "dB"},
+   "expect": [
+    {"id": "anna", "kind": "person", "dev": "dA", "video": true, "devName": ""},
+    {"id": "anna|dA2:cam", "kind": "cam", "dev": "dA2", "video": true, "devName": "iPad"},
+    {"id": "ben", "kind": "person", "dev": "dB", "video": true, "devName": ""}
+   ],
+   "layout": "gallery",
+   "arrange": {"stage": null, "strip": [], "grid": ["anna", "anna|dA2:cam", "ben"], "float": false}
+  },
+  {
+   "name": "§4.2 auf dem eigenen Hauptgeraet: eigene Begleitgeraete nie als Kachel, auch nicht mit Bildschirm",
+   "roster": [
+    {"device": "dA", "who": "anna", "name": "Anna", "dev_name": "MacBook", "role": "member", "me": true},
+    {"device": "dA2", "who": "anna", "name": "Anna", "dev_name": "iPhone", "role": "companion", "me": true},
+    {"device": "dB", "who": "ben", "name": "Ben", "dev_name": "Chrome", "role": "member", "me": false}
+   ],
+   "media": {"dA": {"mic": true, "cam": true}, "dA2": {"cam": true, "screen": true, "screenAt": 3}, "dB": {"mic": true, "cam": true}},
+   "prefs": {"self": "dA"},
+   "expect": [
+    {"id": "ben", "kind": "person", "dev": "dB", "video": true, "devName": ""},
+    {"id": "anna", "kind": "person", "dev": "dA", "video": true, "devName": ""}
+   ],
+   "layout": "one",
+   "arrange": {"stage": "ben", "strip": [], "grid": [], "float": true}
+  },
+  {
+   "name": "§4.2 auf dem Begleitgeraet: das eigene Hauptgeraet erscheint nicht, eigene Kachel = dieses Geraet",
+   "roster": [
+    {"device": "dA", "who": "anna", "name": "Anna", "dev_name": "MacBook", "role": "member", "me": true},
+    {"device": "dA2", "who": "anna", "name": "Anna", "dev_name": "iPhone", "role": "companion", "me": true},
+    {"device": "dB", "who": "ben", "name": "Ben", "dev_name": "Chrome", "role": "member", "me": false}
+   ],
+   "media": {"dA": {"mic": true, "cam": true}, "dA2": {"mic": false, "cam": false}, "dB": {"mic": true, "cam": true}},
+   "prefs": {"self": "dA2"},
+   "expect": [
+    {"id": "ben", "kind": "person", "dev": "dB", "video": true, "devName": ""},
+    {"id": "anna", "kind": "person", "dev": "dA2", "video": false, "devName": ""}
+   ],
+   "layout": "one",
+   "arrange": {"stage": "ben", "strip": [], "grid": [], "float": true}
+  },
+  {
+   "name": "S9 zwei Freigaben (Anna, dann Ben): Buehne = Ben (zuletzt), Annas Bildschirm vorn im Streifen",
+   "roster": [
+    {"device": "a", "who": "anna", "name": "Anna", "dev_name": "MacBook", "role": "member", "me": false},
+    {"device": "b", "who": "ben", "name": "Ben", "dev_name": "Firefox", "role": "member", "me": false},
+    {"device": "c", "who": "cem", "name": "Cem", "dev_name": "Chrome", "role": "member", "me": true}
+   ],
+   "media": {"a": {"mic": true, "cam": true, "screen": true, "screenAt": 1000}, "b": {"mic": true, "cam": true, "screen": true, "screenAt": 2000}, "c": {"mic": true, "cam": true}},
+   "prefs": {"self": "c"},
+   "expect": [
+    {"id": "anna|a:scr", "kind": "screen", "dev": "a", "video": true, "devName": ""},
+    {"id": "ben|b:scr", "kind": "screen", "dev": "b", "video": true, "devName": ""},
+    {"id": "anna", "kind": "person", "dev": "a", "video": true, "devName": ""},
+    {"id": "ben", "kind": "person", "dev": "b", "video": true, "devName": ""},
+    {"id": "cem", "kind": "person", "dev": "c", "video": true, "devName": ""}
+   ],
+   "layout": "presentation",
+   "arrange": {"stage": "ben|b:scr", "strip": ["anna|a:scr", "anna", "ben", "cem"], "grid": [], "float": false}
+  },
+  {
+   "name": "S9 angeheftet: Annas Bildschirm auf der Buehne, Bens Bildschirm vorn im Streifen",
+   "roster": [
+    {"device": "a", "who": "anna", "name": "Anna", "dev_name": "MacBook", "role": "member", "me": false},
+    {"device": "b", "who": "ben", "name": "Ben", "dev_name": "Firefox", "role": "member", "me": false},
+    {"device": "c", "who": "cem", "name": "Cem", "dev_name": "Chrome", "role": "member", "me": true}
+   ],
+   "media": {"a": {"mic": true, "cam": true, "screen": true, "screenAt": 1000}, "b": {"mic": true, "cam": true, "screen": true, "screenAt": 2000}, "c": {"mic": true, "cam": true}},
+   "prefs": {"self": "c"},
+   "pin": "anna|a:scr",
+   "expect": [
+    {"id": "anna|a:scr", "kind": "screen", "dev": "a", "video": true, "devName": ""},
+    {"id": "ben|b:scr", "kind": "screen", "dev": "b", "video": true, "devName": ""},
+    {"id": "anna", "kind": "person", "dev": "a", "video": true, "devName": ""},
+    {"id": "ben", "kind": "person", "dev": "b", "video": true, "devName": ""},
+    {"id": "cem", "kind": "person", "dev": "c", "video": true, "devName": ""}
+   ],
+   "layout": "presentation",
+   "arrange": {"stage": "anna|a:scr", "strip": ["ben|b:scr", "anna", "ben", "cem"], "grid": [], "float": false}
+  },
+  {
+   "name": "S4 vier Personen, alle Kamera: Galerie, eigene Kachel im Raster zuletzt",
+   "roster": [
+    {"device": "a", "who": "anna", "name": "Anna", "dev_name": "", "role": "member", "me": false},
+    {"device": "b", "who": "ben", "name": "Ben", "dev_name": "", "role": "member", "me": false},
+    {"device": "c", "who": "cem", "name": "Cem", "dev_name": "", "role": "member", "me": true},
+    {"device": "d", "who": "dora", "name": "Dora", "dev_name": "", "role": "member", "me": false}
+   ],
+   "media": {"a": {"mic": true, "cam": true}, "b": {"mic": true, "cam": true}, "c": {"mic": true, "cam": true}, "d": {"mic": true, "cam": true}},
+   "prefs": {"self": "c"},
+   "expect": [
+    {"id": "anna", "kind": "person", "dev": "a", "video": true, "devName": ""},
+    {"id": "ben", "kind": "person", "dev": "b", "video": true, "devName": ""},
+    {"id": "dora", "kind": "person", "dev": "d", "video": true, "devName": ""},
+    {"id": "cem", "kind": "person", "dev": "c", "video": true, "devName": ""}
+   ],
+   "layout": "gallery",
+   "arrange": {"stage": null, "strip": [], "grid": ["anna", "ben", "dora", "cem"], "float": false}
+  },
+  {
+   "name": "S5 fuenf Personen: Sprecher; Buehne = erste andere Person ohne Sprecher, eigene Kachel zuletzt im Streifen",
+   "roster": [
+    {"device": "a", "who": "anna", "name": "Anna", "role": "member", "me": false},
+    {"device": "b", "who": "ben", "name": "Ben", "role": "member", "me": false},
+    {"device": "c", "who": "cem", "name": "Cem", "role": "member", "me": false},
+    {"device": "d", "who": "dora", "name": "Dora", "role": "member", "me": false},
+    {"device": "e", "who": "emil", "name": "Emil", "role": "member", "me": true}
+   ],
+   "media": {"a": {"cam": true}, "b": {"cam": true}, "c": {"cam": false}, "d": {"cam": true}, "e": {"cam": true}},
+   "prefs": {"self": "e"},
+   "speaker": "dora",
+   "expect": [
+    {"id": "anna", "kind": "person", "dev": "a", "video": true, "devName": ""},
+    {"id": "ben", "kind": "person", "dev": "b", "video": true, "devName": ""},
+    {"id": "cem", "kind": "person", "dev": "c", "video": false, "devName": ""},
+    {"id": "dora", "kind": "person", "dev": "d", "video": true, "devName": ""},
+    {"id": "emil", "kind": "person", "dev": "e", "video": true, "devName": ""}
+   ],
+   "layout": "speaker",
+   "arrange": {"stage": "dora", "strip": ["anna", "ben", "cem", "emil"], "grid": [], "float": false}
+  },
+  {
+   "name": "Kacheln ohne Video ausgeblendet: Cem ohne Kamera fehlt, Dora sprach vor 3 s und bleibt sichtbar",
+   "roster": [
+    {"device": "a", "who": "anna", "name": "Anna", "role": "member", "me": false},
+    {"device": "c", "who": "cem", "name": "Cem", "role": "member", "me": false},
+    {"device": "d", "who": "dora", "name": "Dora", "role": "member", "me": false},
+    {"device": "e", "who": "emil", "name": "Emil", "role": "member", "me": true}
+   ],
+   "media": {"a": {"cam": true}, "c": {"cam": false}, "d": {"cam": false}, "e": {"cam": false}},
+   "prefs": {"self": "e", "showNoVideo": false, "now": 10000, "spokeAt": {"dora": 7000, "cem": 1000}},
+   "expect": [
+    {"id": "anna", "kind": "person", "dev": "a", "video": true, "devName": ""},
+    {"id": "dora", "kind": "person", "dev": "d", "video": false, "devName": ""},
+    {"id": "emil", "kind": "person", "dev": "e", "video": false, "devName": ""}
+   ],
+   "hidden": ["cem"],
+   "layout": "gallery",
+   "arrange": {"stage": null, "strip": [], "grid": ["anna", "dora", "emil"], "float": false}
+  }
+ ],
+ "pickLayout": [
+  {"name": "Galerie gewaehlt, aber jemand teilt: bleibt Galerie", "screens": 1, "people": 3, "choice": "gallery", "expect": "gallery"},
+  {"name": "Praesentation gewaehlt, niemand teilt: wie Sprecher", "screens": 0, "people": 4, "choice": "presentation", "expect": "speaker"},
+  {"name": "Auto 8 Kacheln", "screens": 0, "people": 8, "choice": "auto", "expect": "speaker"},
+  {"name": "Auto 8 Kacheln, reduzierte Bewegung: Galerie", "screens": 0, "people": 8, "choice": "auto", "reduced": true, "expect": "gallery"},
+  {"name": "Auto 9 Kacheln, reduzierte Bewegung: Sprecher", "screens": 0, "people": 9, "choice": "auto", "reduced": true, "expect": "speaker"},
+  {"name": "Auto 3 Kacheln", "screens": 0, "people": 3, "choice": "auto", "expect": "gallery"},
+  {"name": "nur ich (Warten)", "screens": 0, "people": 1, "choice": "speaker", "expect": "one"},
+  {"name": "unbekannte Einstellung = Auto", "screens": 1, "people": 2, "choice": "grid", "expect": "presentation"}
+ ],
+ "galleryGrid": [
+  {"w": 390, "h": 844, "n": 2, "cols": 1, "perPage": 6, "video": 4},
+  {"w": 390, "h": 844, "n": 5, "cols": 2, "perPage": 6, "video": 4},
+  {"w": 844, "h": 390, "n": 2, "cols": 2, "perPage": 6, "video": 4},
+  {"w": 844, "h": 390, "n": 5, "cols": 3, "perPage": 6, "video": 4},
+  {"w": 800, "h": 1000, "n": 4, "cols": 2, "perPage": 9, "video": 6},
+  {"w": 800, "h": 1000, "n": 7, "cols": 3, "perPage": 9, "video": 6},
+  {"w": 1280, "h": 720, "n": 4, "cols": 2, "perPage": 16, "video": 9},
+  {"w": 1280, "h": 720, "n": 9, "cols": 3, "perPage": 16, "video": 9},
+  {"w": 1280, "h": 720, "n": 12, "cols": 4, "perPage": 16, "video": 9},
+  {"w": 1920, "h": 1080, "n": 16, "cols": 4, "perPage": 25, "video": 16},
+  {"w": 1920, "h": 1080, "n": 17, "cols": 5, "perPage": 25, "video": 16},
+  {"w": 1280, "h": 720, "n": 1, "cols": 1, "perPage": 16, "video": 9}
+ ],
+ "pages": [
+  {"n": 8, "perPage": 6, "page": 1, "pages": 2, "items": 2},
+  {"n": 8, "perPage": 6, "page": 5, "pages": 2, "items": 2, "clamped": 1},
+  {"n": 6, "perPage": 6, "page": 0, "pages": 1, "items": 6},
+  {"n": 0, "perPage": 6, "page": 0, "pages": 1, "items": 0}
+ ],
+ "stripSide": [
+  {"w": 1280, "h": 720, "layout": "presentation", "side": "right", "size": 160},
+  {"w": 1600, "h": 900, "layout": "presentation", "side": "right", "size": 200},
+  {"w": 1280, "h": 720, "layout": "speaker", "side": "right", "size": 200},
+  {"w": 1000, "h": 700, "layout": "speaker", "side": "right", "size": 160},
+  {"w": 1920, "h": 1080, "layout": "speaker", "side": "right", "size": 240},
+  {"w": 800, "h": 1000, "layout": "speaker", "side": "bottom", "size": 96},
+  {"w": 390, "h": 844, "layout": "presentation", "side": "bottom", "size": 84},
+  {"w": 844, "h": 390, "layout": "presentation", "side": "right", "size": 120}
+ ],
+ "speakerHysteresis": [
+  {
+   "name": "S5 zwei Testclients spielen abwechselnd 1-s-Toene: kein Buehnenwechsel",
+   "me": "emil", "step": 330, "until": 12000,
+   "tones": [
+    {"who": "anna", "from": 0, "to": 1000, "level": 0.2}, {"who": "ben", "from": 1000, "to": 2000, "level": 0.2},
+    {"who": "anna", "from": 2000, "to": 3000, "level": 0.2}, {"who": "ben", "from": 3000, "to": 4000, "level": 0.2},
+    {"who": "anna", "from": 4000, "to": 5000, "level": 0.2}, {"who": "ben", "from": 5000, "to": 6000, "level": 0.2},
+    {"who": "anna", "from": 6000, "to": 7000, "level": 0.2}, {"who": "ben", "from": 7000, "to": 8000, "level": 0.2},
+    {"who": "anna", "from": 8000, "to": 9000, "level": 0.2}, {"who": "ben", "from": 9000, "to": 10000, "level": 0.2},
+    {"who": "anna", "from": 10000, "to": 11000, "level": 0.2}, {"who": "ben", "from": 11000, "to": 12000, "level": 0.2}
+   ],
+   "expect": [{"t": 330, "stage": "anna"}, {"t": 6270, "stage": "anna"}, {"t": 11880, "stage": "anna"}],
+   "changes": 1
+  },
+  {
+   "name": "Ben spricht 3,5 s am Stueck nach Anna: Wechsel erst nach >= 1,5 s lauter und >= 3 s nach dem letzten Wechsel",
+   "me": "emil", "step": 330, "until": 6000,
+   "tones": [{"who": "anna", "from": 0, "to": 1000, "level": 0.2}, {"who": "ben", "from": 1500, "to": 5000, "level": 0.2}],
+   "expect": [{"t": 330, "stage": "anna"}, {"t": 3300, "stage": "anna"}, {"t": 3630, "stage": "ben"}, {"t": 5940, "stage": "ben"}],
+   "changes": 2
+  },
+  {
+   "name": "eigene Stimme bewegt die Buehne nie",
+   "me": "emil", "step": 330, "until": 8000,
+   "tones": [{"who": "anna", "from": 0, "to": 700, "level": 0.1}, {"who": "emil", "from": 1000, "to": 8000, "level": 0.9}],
+   "expect": [{"t": 660, "stage": "anna"}, {"t": 7920, "stage": "anna"}],
+   "changes": 1
+  },
+  {
+   "name": "Pegel unter 0,03 oder kuerzer als 300 ms: niemand auf der Buehne",
+   "me": "emil", "step": 330, "until": 3000,
+   "tones": [{"who": "anna", "from": 0, "to": 3000, "level": 0.02}, {"who": "ben", "from": 1000, "to": 1400, "level": 0.5}],
+   "expect": [{"t": 2970, "stage": null}],
+   "changes": 0
+  },
+  {
+   "name": "drei Wechsel in Folge: nie oefter als alle 3 s",
+   "me": "emil", "step": 330, "until": 12000,
+   "tones": [{"who": "anna", "from": 0, "to": 1000, "level": 0.3}, {"who": "ben", "from": 1000, "to": 4600, "level": 0.3},
+             {"who": "cem", "from": 4600, "to": 12000, "level": 0.3}],
+   "expect": [{"t": 330, "stage": "anna"}, {"t": 3630, "stage": "ben"}, {"t": 6600, "stage": "ben"}, {"t": 6930, "stage": "cem"}],
+   "changes": 3
+  }
+ ],
+ "hideControls": [
+  {"idle": true, "phase": "connected", "video": true, "sr": false, "menu": false, "notice": false, "over": false, "expect": true},
+  {"idle": false, "phase": "connected", "video": true, "sr": false, "menu": false, "notice": false, "over": false, "expect": false},
+  {"idle": true, "phase": "ringing", "video": true, "sr": false, "menu": false, "notice": false, "over": false, "expect": false},
+  {"idle": true, "phase": "connected", "video": false, "sr": false, "menu": false, "notice": false, "over": false, "expect": false},
+  {"idle": true, "phase": "connected", "video": true, "sr": true, "menu": false, "notice": false, "over": false, "expect": false},
+  {"idle": true, "phase": "connected", "video": true, "sr": false, "menu": true, "notice": false, "over": false, "expect": false},
+  {"idle": true, "phase": "connected", "video": true, "sr": false, "menu": false, "notice": true, "over": false, "expect": false},
+  {"idle": true, "phase": "connected", "video": true, "sr": false, "menu": false, "notice": false, "over": true, "expect": false}
+ ],
+ "selfPipSize": [
+  {"w": 1280, "h": 720, "ar": 1.7777778, "size": "M", "expect": [280, 157]},
+  {"w": 1280, "h": 720, "ar": 1.3333333, "size": "S", "expect": [196, 147]},
+  {"w": 1280, "h": 720, "ar": 0.5625, "size": "M", "expect": [203, 360]},
+  {"w": 390, "h": 844, "ar": 0.5625, "size": "M", "expect": [101, 180]},
+  {"w": 390, "h": 844, "ar": 0.5625, "size": "L", "expect": [142, 252]},
+  {"w": 400, "h": 300, "ar": 0.5625, "size": "M", "expect": [84, 150]},
+  {"w": 1280, "h": 720, "ar": 5, "size": "M", "expect": [280, 140]},
+  {"w": 1280, "h": 720, "ar": 0, "size": "M", "expect": [280, 158]}
+ ]
+}
