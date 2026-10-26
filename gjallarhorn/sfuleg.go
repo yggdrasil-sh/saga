@@ -92,6 +92,9 @@ func newSFUAPI(se webrtc.SettingEngine, udp bool, hook *gccHook) (*webrtc.API, e
 	if err := webrtc.ConfigureRTCPReports(ir); err != nil {
 		return nil, err
 	}
+	if twccTap != nil { // nur Tests: abgehende transport-cc-Rueckmeldung mitlesen
+		ir.Add(twccTapFactory{})
+	}
 	if err := webrtc.ConfigureTWCCSender(m, ir); err != nil {
 		return nil, err
 	}
@@ -317,8 +320,15 @@ func (s *server) sfuTrack(l *leg, sl *sfu.Leg, pc *webrtc.PeerConnection, tr *we
 		}
 	}
 	read := func(b []byte) (int, error) {
-		n, _, err := tr.Read(b)
-		return n, err
+		// Einzelne kaputte Pakete (z. B. nicht ausgehandelter Payload-Typ) liefern einen Fehler, ohne dass die Spur zu
+		// ist: weiterlesen. Sonst bliebe die SSRC ab da ungelesen - die Quelle waere weg und transport-cc meldete jedes
+		// weitere Paket nicht mehr als empfangen (GCC beim Sender: Verlust, Schaetzung faellt; BH3).
+		for bad := 0; ; bad++ {
+			n, _, err := tr.Read(b)
+			if err == nil || errors.Is(err, io.EOF) || bad >= 50 {
+				return n, err
+			}
+		}
 	}
 	if s.capture != nil { // nur Tests (HORN_CAPTURE): eingehende Rahmen mitschneiden
 		read = s.capture.tap(kind == fwd.Video, uint32(tr.SSRC()), read)
@@ -579,4 +589,26 @@ func (s *server) apiSFULayout(w http.ResponseWriter, r *http.Request) {
 	st := l.stats()
 	writeJSON(w, 200, map[string]any{"slots": l.sl.Layout(), "est_kbit": l.sl.EstimateKbit(), "stats": st,
 		"pauses": l.fl.Stats.Pauses.Load(), "tid_skipped": l.fl.Stats.TIDSkipped.Load(), "write_stalls": l.fl.Stats.WriteStalls.Load()})
+}
+
+// twccTap (nur Tests, vor newServer setzen) bekommt jede transport-cc-Rueckmeldung, die der Knoten an Geraete schickt.
+var twccTap func(*rtcp.TransportLayerCC)
+
+type twccTapFactory struct{}
+
+func (twccTapFactory) NewInterceptor(string) (interceptor.Interceptor, error) {
+	return &twccTapI{}, nil
+}
+
+type twccTapI struct{ interceptor.NoOp }
+
+func (*twccTapI) BindRTCPWriter(w interceptor.RTCPWriter) interceptor.RTCPWriter {
+	return interceptor.RTCPWriterFunc(func(ps []rtcp.Packet, a interceptor.Attributes) (int, error) {
+		for _, p := range ps {
+			if cc, ok := p.(*rtcp.TransportLayerCC); ok && twccTap != nil {
+				twccTap(cc)
+			}
+		}
+		return w.Write(ps, a)
+	})
 }
