@@ -3402,7 +3402,12 @@
       if (!live(R)) return;
       H.bad = {};
       hornCands(R, null, []).then(function (list) { return hornStart(R, list, H.cur ? 'lost' : why === 'join' ? 'join' : 'retry'); })
-        .catch(function (e) { if (live(R) && e !== null) { hornErr(H, '', e); hornRetry(R, why); } });
+        .catch(function (e) {
+          if (!live(R) || e === null) return;
+          // Bughunt 3: Anruf inzwischen beendet (404 ended) - nicht bis zu 2 min weiter versuchen
+          if (e && e.message === T('Der Anruf ist schon beendet.')) { remoteEnded(R, {}); return; }
+          hornErr(H, '', e); hornRetry(R, why);
+        });
     }, s * 1000);
   }
   // Neuzeichnen gebuendelt (Meldungen des Workers kommen je Empfaenger einzeln)
