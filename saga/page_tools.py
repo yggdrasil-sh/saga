@@ -277,6 +277,10 @@ def blocks_to_md(blocks, link=lambda h: h, title=lambda nid: None):
         elif typ == "toggle":
             inner = (blocks_to_md(d["blocks"], link, title).strip() if isinstance(d.get("blocks"), list)
                      else _md_inline(d.get("text", ""), link))
+            lv = d.get("level")
+            if isinstance(lv, int) and not isinstance(lv, bool) and 1 <= lv <= 3:     # 2.5 (G10): Toggle-Ueberschrift
+                out += ["#" * lv + " " + _md_inline(d.get("title", ""), link), ""] + ([inner, ""] if inner else [])
+                continue
             out += [f"<details><summary>{_md_inline(d.get('title', ''), link)}</summary>", "", inner, "", "</details>", ""]
         elif typ == "callout":
             out += ["> " + (d.get("emoji") or "💡") + " " + _md_inline(d.get("text", ""), link).replace("\n", "\n> "), ""]

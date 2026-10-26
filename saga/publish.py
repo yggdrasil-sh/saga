@@ -35,7 +35,7 @@ from saga import avatars, bus, i18n, nextcloud
 from saga.core import (ASSET_V, BASE_URL, E, PUBLIC_HOSTS, TZ, _api_guard, _bad, _body, _json_load, seen_lang, server_lang, t, title,
                        tmpl, user_lang)
 from saga.files import _thumb, _thumb_mime, _thumb_w
-from saga.notes import FILES_DIR, MAX_NEST, _FILE_URL, _calc_value, _clean_views, _iter_blocks, note_chain
+from saga.notes import FILES_DIR, MAX_NEST, PALETTE, STYLE_TYPES, _FILE_URL, _calc_value, _clean_views, _iter_blocks, note_chain
 from saga.sharing import access, edit_shared
 
 router = APIRouter()
@@ -407,10 +407,57 @@ def _blocks(ctx, blocks, depth=0):
     for b in blocks:
         if isinstance(b, dict) and isinstance(b.get("data"), dict):
             try:
-                out.append(_block(ctx, b.get("type"), b["data"], depth))
+                out.append(_styled(_block(ctx, b.get("type"), b["data"], depth), b))
             except (TypeError, ValueError, AttributeError, KeyError):
                 continue                            # kaputter Block: weglassen statt Fehlerseite
     return "\n".join(x for x in out if x)
+
+
+_FIRST_TAG = re.compile(r"<([a-z][a-z0-9]*)((?:\s[^<>]*)?)>")
+
+
+def _styled(html, b):
+    """Block-Farbe (2.5, G3, tunes.hkstyle): Klasse c-<farbe> bzw. bg-<farbe> am ersten Element des Blocks. Nur Werte
+    der Palette (der Server hat sie beim Speichern schon bereinigt - hier trotzdem pruefen: aeltere Daten)."""
+    st = (b.get("tunes") or {}).get("hkstyle") if isinstance(b.get("tunes"), dict) else None
+    if not html or b.get("type") not in STYLE_TYPES or not isinstance(st, dict) or st.get("c") not in PALETTE:
+        return html
+    return _add_cls(html, ("bg-" if st.get("bg") is True else "c-") + st["c"])
+
+
+def _add_cls(html, cls):
+    """Klasse(n) am ersten Element ergaenzen (cls: nur feste Klassennamen, nie Eingaben)."""
+    m = _FIRST_TAG.match(html)
+    if not m:
+        return html
+    attrs = m.group(2)
+    if ' class="' in attrs:
+        attrs = attrs.replace(' class="', f' class="{cls} ', 1)
+    else:
+        attrs += f' class="{cls}"'
+    return f"<{m.group(1)}{attrs}>" + html[m.end():]
+
+
+def _size_cls(d, stretched=False):
+    """Breite/Ausrichtung von Bild und Player (2.5, G2) als Klassen - die CSP erlaubt keine style-Attribute.
+    iw-NN = NN % der Inhaltsbreite (10-100, 5er-Schritte), al-left|al-center|al-right. Volle Breite (stretched) gewinnt."""
+    out = []
+    w = d.get("width")
+    if not stretched and isinstance(w, (int, float)) and not isinstance(w, bool) and w == w:
+        out += ["iw", "iw-%d" % (round(min(100, max(10, w)) / 5) * 5)]      # Klassen in 5-%-Schritten (static/public.css)
+    if d.get("align") in ("left", "center", "right") and not stretched:
+        out.append("al-" + d["align"])
+    return " ".join(out)
+
+
+def _col_cls(cols):
+    """Spaltenbreiten (2.5, G1): alle Spalten mit Gewicht -> Klassen pw-NN (Anteil in %, 15-85, 5er-Schritte) und fw am Rahmen.
+    Sonst gleich breit wie bisher (None)."""
+    ws = [c.get("w") for c in cols]
+    if len(cols) < 2 or not all(isinstance(w, (int, float)) and not isinstance(w, bool) and w == w and w > 0 for w in ws):
+        return None
+    tot = sum(ws)
+    return ["pw-%d" % (round(min(85, max(15, w / tot * 100)) / 5) * 5) for w in ws]
 
 
 def _items(ctx, items, style, depth):
@@ -480,6 +527,8 @@ def _block(ctx, typ, d, depth):
         fid = _FILE_URL.fullmatch(src).group(1)
         cap = inline(d.get("caption", ""), ctx.url_for)
         cls = " ".join(c for c, k in (("border", "withBorder"), ("bg", "withBackground"), ("wide", "stretched")) if d.get(k))
+        sz = _size_cls(d, bool(d.get("stretched")))
+        cls = (cls + " " + sz).strip() if sz else cls
         base = f"{ctx.base}/f/{fid}"
         # srcset mit den WIRKLICHEN Breiten (kleinere Bilder liefert ?w= unveraendert) und width/height: sonst rechnet
         # der Browser ein 900 px breites Bild mit "1280w" kleiner, als es ist (bzw. vergroessert kleine Bilder)
@@ -509,6 +558,10 @@ def _block(ctx, typ, d, depth):
         inner = [_blocks(ctx, c.get("blocks"), depth + 1) for c in cols]
         if not any(inner):
             return ""
+        pw = _col_cls(cols)
+        if pw:
+            return (f'<div class="pub-cols n{len(cols)} fw">'
+                    + "".join(f'<div class="pub-col {w}">{x}</div>' for w, x in zip(pw, inner)) + "</div>")
         return f'<div class="pub-cols n{len(cols)}">' + "".join(f'<div class="pub-col">{x}</div>' for x in inner) + "</div>"
     if typ == "callout":
         emo = str(d.get("emoji") or "💡")
@@ -520,7 +573,12 @@ def _block(ctx, typ, d, depth):
         body = _blocks(ctx, d["blocks"], depth + 1) if isinstance(d.get("blocks"), list) else (
             f"<p>{inline(d.get('text', ''), ctx.url_for)}</p>" if d.get("text") else "")
         op = " open" if d.get("open") is not False else ""
-        return f'<details class="pub-toggle"{op}><summary>{inline(d.get("title", ""), ctx.url_for) or "…"}</summary>{body}</details>'
+        summ = inline(d.get("title", ""), ctx.url_for) or "…"
+        lv = d.get("level")
+        if isinstance(lv, int) and not isinstance(lv, bool) and 1 <= lv <= 3:       # 2.5 (G10): Toggle-Ueberschrift
+            summ = f"<h{lv + 1}>{summ}</h{lv + 1}>"                                    # h1 ist der Seitentitel (wie header)
+            return f'<details class="pub-toggle th"{op}><summary>{summ}</summary>{body}</details>'
+        return f'<details class="pub-toggle"{op}><summary>{summ}</summary>{body}</details>'
     if typ == "embed":
         url = str(d.get("url") or "").replace("&amp;", "&")
         if not re.fullmatch(r"https?://\S+", url) or not ext_href(url):
@@ -528,7 +586,8 @@ def _block(ctx, typ, d, depth):
         host = urlparse(url).hostname or url
         name = _plain(d.get("title", "")) or (("YouTube" if d.get("kind") == "youtube" else host.removeprefix("www.")))
         ic = "▶" if d.get("kind") == "youtube" else "🔗"
-        return (f'<p class="pub-embed"><a href="{escape(url, quote=True)}" rel="{EXT_REL}" target="_blank">'
+        sz = _size_cls(d) if d.get("kind") == "youtube" else ""       # 2.5 (G2): nur Player, Link-Karten unveraendert
+        return (f'<p class="pub-embed{" " + sz if sz else ""}"><a href="{escape(url, quote=True)}" rel="{EXT_REL}" target="_blank">'
                 f'<span aria-hidden="true">{ic}</span> <span>{escape(name)}</span> <small>{escape(host.removeprefix("www."))}</small></a></p>')
     if typ == "nextcloud":
         return _nc_block(ctx, d)
@@ -764,7 +823,7 @@ def _database(ctx, dbid, views=None, view_id=None, caption=False):
 # =====================================================================================================
 # Seite -> Vorlage templates/public.html
 # =====================================================================================================
-NOTE_COLS = "id, title, icon, body, format, kind, schema, props, cover, cover_pos, wide, parent_id, created, updated"
+NOTE_COLS = "id, title, icon, body, format, kind, schema, props, cover, cover_pos, wide, parent_id, created, updated, font, small"
 
 
 def _note(c, uid, nid):
@@ -790,7 +849,8 @@ def _icon_html(ctx, icon, cls, default=""):
 def render_page(ctx, row):
     """-> Werte fuer die Vorlage. ctx.base = Adresse dieser (Unter-)Seite (Bilder liegen darunter)."""
     ctx.nid = row["id"]                            # Nextcloud-Bloecke: Signatur gilt fuer genau diese Seite
-    v = {"title": row["title"] or t("Unbenannt"), "wide": bool(row["wide"]), "props": [], "subpages": [], "crumbs": []}
+    v = {"title": row["title"] or t("Unbenannt"), "wide": bool(row["wide"]), "props": [], "subpages": [], "crumbs": [],
+         "font": row.get("font") if row.get("font") in ("serif", "mono") else "", "small": bool(row.get("small"))}   # 2.5 (G9)
     # Absenderzeile "@name · aktualisiert 14.10.2026" (Datum in der Sprache des Besuchers)
     upd = row["updated"] or row["created"]
     when = escape(i18n.fmt_date(upd, TZ)) if upd else ""

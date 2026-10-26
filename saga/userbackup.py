@@ -259,7 +259,7 @@ notify.RENDER[KIND] = _notif
 # =====================================================================================================
 # Inhalt zusammenstellen (nur eigene Daten)
 # =====================================================================================================
-NOTE_COLS = ("id", "parent_id", "title", "icon", "body", "format", "kind", "schema", "props", "tags", "cover", "cover_pos", "wide",
+NOTE_COLS = ("id", "parent_id", "title", "icon", "body", "format", "kind", "schema", "props", "tags", "cover", "cover_pos", "wide", "font", "small",
              "sort", "pinned", "is_template", "archived", "deleted_at", "locked", "created", "updated", "created_by", "updated_by")
 
 
@@ -1016,10 +1016,11 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
                     tags = None
                 num = lambda v, d=None: float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else d   # noqa: E731
                 c.execute("INSERT INTO note (id, uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, cover, "
-                          "cover_pos, wide, pinned, is_template, archived, locked, deleted_at, created, updated, created_by, updated_by) "
-                          "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                          "cover_pos, wide, font, small, pinned, is_template, archived, locked, deleted_at, created, updated, created_by, updated_by) "
+                          "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                           (nid, uid, _title_in(n.get("title") or ""), body, fmt, icon, par, num(n.get("sort"), now), tags, kind, schema,
-                           pv, cover, num(n.get("cover_pos")) if cover else None, 1 if n.get("wide") else 0, 1 if n.get("pinned") else 0,
+                           pv, cover, num(n.get("cover_pos")) if cover else None, 1 if n.get("wide") else 0,
+                           n.get("font") if n.get("font") in ("serif", "mono") else None, 1 if n.get("small") else 0, 1 if n.get("pinned") else 0,
                            1 if n.get("is_template") else 0, num(n.get("archived")), 1 if n.get("locked") else 0,
                            now if n.get("deleted_at") else None, num(n.get("created"), now), num(n.get("updated"), now), uid, uid))
                 made.append(nid)

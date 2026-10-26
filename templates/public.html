@@ -26,7 +26,7 @@
 <link rel="icon" href="/static/icon.svg?v={{ v }}" type="image/svg+xml">
 <link rel="stylesheet" href="/static/public.css?v={{ v }}">
 </head>
-<body class="pub{% if mode == 'page' and page.wide %} pub-wide{% endif %}">
+<body class="pub{% if mode == 'page' and page.wide %} pub-wide{% endif %}{% if mode == 'page' and page.font %} pub-f-{{ page.font }}{% endif %}{% if mode == 'page' and page.small %} pub-small{% endif %}">
 {%- if mode == "page" %}
 {#- Kopfzeile nur fuer die Startseite der Instanz (Name + Anmelden) und fuer Unterseiten (Pfad zurueck);
     der oeffentliche Name steht nicht oben, sondern nur in der Zeile unter dem Titel (verlinkt auf /@name) #}

@@ -173,3 +173,24 @@ text-decoration:none;font-weight:500}
 }
 @media print{.pub-bar,.pub-foot{display:none}body.pub{background:#fff;color:#000}}
 .pub-nc>span{display:flex;align-items:baseline;gap:.5rem;padding:.7rem .9rem;border:1px solid var(--border);border-radius:8px}
+
+/* Seite gestalten (2.5): Block-Farben aus der Palette der Auswahl-Farben (Text hell/dunkel mind. 4,5:1), Breite und
+   Ausrichtung von Bildern/Playern, Spaltenbreiten, Toggle-Ueberschriften, Schrift je Seite. Nur Klassen (CSP: keine style-Attribute). */
+:root{--tc-gray:#686763;--tc-brown:#8a5a44;--tc-orange:#a65300;--tc-yellow:#7f6200;--tc-green:#0b6e60;--tc-blue:#0b6893;--tc-purple:#6940a5;--tc-pink:#a8186e;--tc-red:#c22a2a;--bc-gray:color-mix(in srgb,#9b9a97 20%,transparent);--bc-brown:color-mix(in srgb,#9f6b53 20%,transparent);--bc-orange:color-mix(in srgb,#d9730d 20%,transparent);--bc-yellow:color-mix(in srgb,#dfab01 20%,transparent);--bc-green:color-mix(in srgb,#0f7b6c 20%,transparent);--bc-blue:color-mix(in srgb,#0b6e99 20%,transparent);--bc-purple:color-mix(in srgb,#6940a5 20%,transparent);--bc-pink:color-mix(in srgb,#ad1a72 20%,transparent);--bc-red:color-mix(in srgb,#e03e3e 20%,transparent)}
+@media (prefers-color-scheme: dark){:root{--tc-gray:#b0afab;--tc-brown:#c9a08b;--tc-orange:#f0a35e;--tc-yellow:#e6c54f;--tc-green:#4fc4a9;--tc-blue:#62b4e2;--tc-purple:#b893e6;--tc-pink:#e682bb;--tc-red:#f28585;--bc-gray:color-mix(in srgb,#9b9a97 30%,transparent);--bc-brown:color-mix(in srgb,#9f6b53 30%,transparent);--bc-orange:color-mix(in srgb,#d9730d 30%,transparent);--bc-yellow:color-mix(in srgb,#dfab01 30%,transparent);--bc-green:color-mix(in srgb,#0f7b6c 30%,transparent);--bc-blue:color-mix(in srgb,#0b6e99 30%,transparent);--bc-purple:color-mix(in srgb,#6940a5 30%,transparent);--bc-pink:color-mix(in srgb,#ad1a72 30%,transparent);--bc-red:color-mix(in srgb,#e03e3e 30%,transparent)}}
+.c-gray{color:var(--tc-gray)}.c-brown{color:var(--tc-brown)}.c-orange{color:var(--tc-orange)}.c-yellow{color:var(--tc-yellow)}.c-green{color:var(--tc-green)}.c-blue{color:var(--tc-blue)}.c-purple{color:var(--tc-purple)}.c-pink{color:var(--tc-pink)}.c-red{color:var(--tc-red)}
+.bg-gray{background:var(--bc-gray)}.bg-brown{background:var(--bc-brown)}.bg-orange{background:var(--bc-orange)}.bg-yellow{background:var(--bc-yellow)}.bg-green{background:var(--bc-green)}.bg-blue{background:var(--bc-blue)}.bg-purple{background:var(--bc-purple)}.bg-pink{background:var(--bc-pink)}.bg-red{background:var(--bc-red)}
+[class*="bg-"]:is(p,h2,h3,h4,h5,blockquote,ul,ol,aside,details){border-radius:6px;padding:.15rem .45rem}
+blockquote[class*="bg-"],ul[class*="bg-"],ol[class*="bg-"]{padding-top:.4rem;padding-bottom:.4rem}
+.pub-img.iw img,.pub-embed.iw a{width:100%}
+.iw-10{width:10%}.iw-15{width:15%}.iw-20{width:20%}.iw-25{width:25%}.iw-30{width:30%}.iw-35{width:35%}.iw-40{width:40%}.iw-45{width:45%}.iw-50{width:50%}.iw-55{width:55%}.iw-60{width:60%}.iw-65{width:65%}.iw-70{width:70%}.iw-75{width:75%}.iw-80{width:80%}.iw-85{width:85%}.iw-90{width:90%}.iw-95{width:95%}.iw-100{width:100%}
+.pub-content>.iw{margin-inline:auto}.pub-content>.iw.al-left{margin-inline:0 auto}.pub-content>.iw.al-right{margin-inline:auto 0}
+.pub-cols.fw{display:flex}.pub-cols.fw>.pub-col{flex:1 1 0;min-width:0}
+.pub-cols.fw>.pw-15{flex-grow:15}.pub-cols.fw>.pw-20{flex-grow:20}.pub-cols.fw>.pw-25{flex-grow:25}.pub-cols.fw>.pw-30{flex-grow:30}.pub-cols.fw>.pw-35{flex-grow:35}.pub-cols.fw>.pw-40{flex-grow:40}.pub-cols.fw>.pw-45{flex-grow:45}.pub-cols.fw>.pw-50{flex-grow:50}.pub-cols.fw>.pw-55{flex-grow:55}.pub-cols.fw>.pw-60{flex-grow:60}.pub-cols.fw>.pw-65{flex-grow:65}.pub-cols.fw>.pw-70{flex-grow:70}.pub-cols.fw>.pw-75{flex-grow:75}.pub-cols.fw>.pw-80{flex-grow:80}.pub-cols.fw>.pw-85{flex-grow:85}
+.pub-toggle.th>summary>h2,.pub-toggle.th>summary>h3,.pub-toggle.th>summary>h4{display:inline;margin:0}
+.pub-toggle.th{margin-block:1.2rem .4rem}
+.pub-f-serif .pub-page{font-family:ui-serif,Georgia,"Times New Roman",serif}
+.pub-f-mono .pub-page{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.pub-small .pub-page{font-size:.875em}
+/* Telefon: Spalten untereinander, Bilder/Player mindestens halb so breit wie der Inhalt */
+@media (max-width:640px){.pub-cols.fw{flex-direction:column;gap:.6rem}.iw-10,.iw-15,.iw-20,.iw-25,.iw-30,.iw-35,.iw-40,.iw-45{width:50%}}

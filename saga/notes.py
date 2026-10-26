@@ -73,6 +73,10 @@ def _strip_tags(s):
 # 2.4 (Testrunde W6): Bloecke, deren Daten nur technische Werte enthalten (Ansicht "month", Aktion "task", Art "youtube",
 # Ansichtsnamen einer eingebetteten Datenbank) - fuer Suche, Vorschau und Export nur das, was man auf der Seite sieht.
 SPECIAL_BLOCKS = ("embed", "buttons", "calendar", "tasks", "database", "immich", "verweis")
+# Seite gestalten (2.5): Farben nur aus dieser Palette (wie COLORS in static/pages.js), Block-Farbe (tunes.hkstyle) nur fuer
+# diese Typen. Gemeinsame Grundlage fuer saga.pages (Bereinigung) und saga.publish (Klassen c-<farbe>/bg-<farbe>).
+PALETTE = ("gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red")
+STYLE_TYPES = ("paragraph", "header", "list", "quote", "toggle", "callout", "checklist")
 
 
 def special_text(typ, d, lines=False, title=None):
@@ -107,7 +111,7 @@ def blocks_text(blocks, lines=False, title=None):
             if key == "code":                 # Code-Bloecke woertlich durchsuchbar lassen
                 parts.append(v)
             elif key not in ("style", "level", "alignment", "language", "checked", "url", "extension",
-                             "size", "emoji", "withBorder", "withBackground", "stretched", "withHeadings", "open"):
+                             "size", "emoji", "withBorder", "withBackground", "stretched", "withHeadings", "open", "align"):
                 parts.append(_strip_tags(v))
         elif isinstance(v, list):
             for x in v:

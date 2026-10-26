@@ -74,7 +74,7 @@ def note_duplicate(uid, nid, b, origin=None):
             owner, err = _via_button(c, uid, nid, b)
             if err is not None:
                 return err
-        r = c.execute("SELECT title, icon, tags, body, format, kind, schema, props, cover, cover_pos, wide, parent_id "
+        r = c.execute("SELECT title, icon, tags, body, format, kind, schema, props, cover, cover_pos, wide, parent_id, font, small "
                       "FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
         if not r:
             return _bad("not found", 404)
@@ -89,11 +89,12 @@ def note_duplicate(uid, nid, b, origin=None):
         props = r[7]
         if parent != r[11]:                     # andere Datenbank (z. B. Vorlagen-Datenbank) -> Eigenschaften nach Name/Typ zuordnen
             props = _map_props(c, owner, r[11], parent, r[7])
-        # Alles kopieren, was die Seite ausmacht: auch Titelbild (+ Position) und volle Breite
+        # Alles kopieren, was die Seite ausmacht: auch Titelbild (+ Position), volle Breite, Schrift und kleiner Text
         tpl = 1 if b.get("template") is True and owner == uid else 0   # 2.5 "Duplizieren" einer Vorlage bleibt Vorlage (nur Eigentuemer, R03)
         cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, cover, cover_pos, wide, "
-                        "is_template, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        (owner, title, r[3], r[4], r[1], parent, now, r[2], r[5] or "page", r[6], props, r[8], r[9], r[10], tpl, now, now))
+                        "font, small, is_template, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (owner, title, r[3], r[4], r[1], parent, now, r[2], r[5] or "page", r[6], props, r[8], r[9], r[10], r[12], r[13] or 0,
+                         tpl, now, now))
         # Nextcloud-Bloecke: Signatur gilt je Seite; die Kopie stammt aus einer Seite des Eigentuemers (auch per via, R05)
         new_body = nextcloud.adopt(r[3], r[4], owner, cur.lastrowid)
         new_body = resign_copy(new_body, r[4], nid, cur.lastrowid, owner)

@@ -1338,7 +1338,7 @@ async def fed_events2(request: Request):
 # =====================================================================================================
 EDIT_KEYS = ("title", "body", "format", "rev", "overwrite")
 # 2.3 (Faehigkeit 'db'): zusaetzlich Werte von Datenbank-Zeilen, Schema, Symbol, Titelbild, Schlagworte, Breite
-EDIT2_KEYS = EDIT_KEYS + ("props", "schema", "icon", "cover", "cover_pos", "tags", "wide")
+EDIT2_KEYS = EDIT_KEYS + ("props", "schema", "icon", "cover", "cover_pos", "tags", "wide", "font", "small")   # font/small: 2.5 (G9)
 
 
 @router.get("/fed/v1/shared")
@@ -2374,13 +2374,15 @@ def _typed(d):
     for k in ("updated", "created"):
         if k in d:
             d[k] = _num(d.get(k))
-    for k in ("template", "root", "unread", "wide", "archived"):
+    for k in ("template", "root", "unread", "wide", "archived", "small"):
         if k in d:
             d[k] = d.get(k) is True
     if "rev" in d:
         d["rev"] = d["rev"] if _ok_rid(d.get("rev")) or d.get("rev") == 0 else 0
     if "cover_pos" in d:
         d["cover_pos"] = max(0.0, min(100.0, float(_num(d.get("cover_pos"), 50.0))))
+    if "font" in d and d["font"] not in ("serif", "mono"):       # 2.5 (G9): nur bekannte Schriften, sonst Standard
+        d["font"] = None
     if "props" in d and not isinstance(d.get("props"), dict):
         d["props"] = {}
     for k in ("owner", "updated_by", "created_by"):

@@ -18,7 +18,7 @@ from saga.publish import published_via
 from saga.siteicons import ICON_RE, svc_icon_path
 from saga.comments import counts as comment_counts
 from saga.sharing import RANK, Access, access, is_remote, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
-from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
+from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, PALETTE, STYLE_TYPES, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
 
 router = APIRouter()
 
@@ -150,8 +150,11 @@ def clean_blocks(raw, limit=NOTE_BLOCKS_MAX):
     for b in d["blocks"]:
         if not isinstance(b, dict) or not isinstance(b.get("type"), str) or not isinstance(b.get("data"), dict):
             raise ValueError(t("ungültiger Block"))
-        blocks.append({k: (_sanitize_value(v) if k == "data" else v) for k, v in b.items() if k in ("id", "type", "data")})
-    blocks = _flatten_nested_columns(blocks)
+        nb = {k: (_sanitize_value(v) if k == "data" else v) for k, v in b.items() if k in ("id", "type", "data")}
+        if "tunes" in b:
+            nb["tunes"] = b["tunes"]
+        blocks.append(nb)
+    blocks = _clean_design(_flatten_nested_columns(blocks))
     doc = {"time": d.get("time"), "version": d.get("version"), "blocks": blocks}
     return json.dumps(doc, ensure_ascii=False), blocks_text(blocks)
 
@@ -176,6 +179,100 @@ def _flatten_nested_columns(blocks, nested=False):
             d["blocks"] = _flatten_nested_columns(d["blocks"], True)
         out.append(b)
     return out
+
+
+# --- Seite gestalten (2.5, G1-G3, G10): nur Zahlen in festen Grenzen, Farben nur aus der Palette ----------------------
+# Der Vertrag fuer alle Clients steht in docs/APP-API.md ("Seite gestalten"). Fehlt ein Feld, gilt das alte Verhalten.
+ALIGNS = ("left", "center", "right")
+COL_MIN, COLS_MAX = 0.15, 4
+FONTS = ("serif", "mono")                 # Schrift je Seite (note.font); NULL = Standard
+
+
+def _num_ok(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) < 1e9
+
+
+def _clean_hkstyle(typ, tunes):
+    """tunes -> {"hkstyle": {"c": <palette>, "bg": true?}} oder None. Alle anderen Tunes fallen weg."""
+    st = tunes.get("hkstyle") if isinstance(tunes, dict) else None
+    if typ not in STYLE_TYPES or not isinstance(st, dict) or st.get("c") not in PALETTE:
+        return None
+    out = {"c": st["c"]}
+    if st.get("bg") is True:
+        out["bg"] = True
+    return {"hkstyle": out}
+
+
+def _col_weights(cols):
+    """Spaltenbreiten: alle w gueltig (> 0) -> Summe 1, je Spalte mind. 0,15, auf 0,01 gerundet; sonst None."""
+    if not 2 <= len(cols) <= COLS_MAX or not all(_num_ok(c.get("w")) and c["w"] > 0 for c in cols):
+        return None
+    tot = sum(c["w"] for c in cols)
+    w = [c["w"] / tot for c in cols]
+    fixed = [False] * len(w)
+    for _ in range(len(w)):                       # Mindestbreite: zu schmale auf 0,15, den Rest anteilig verteilen
+        low = [i for i, x in enumerate(w) if not fixed[i] and x < COL_MIN]
+        if not low:
+            break
+        for i in low:
+            fixed[i] = True
+            w[i] = COL_MIN
+        free = [i for i in range(len(w)) if not fixed[i]]
+        rest = 1 - COL_MIN * sum(fixed)
+        s = sum(w[i] for i in free)
+        for i in free:
+            w[i] = w[i] / s * rest if s > 0 else rest / len(free)
+    r = [round(x, 2) for x in w]
+    big = max(range(len(r)), key=lambda i: r[i])  # Rundungsrest an die breiteste Spalte -> Summe genau 1
+    r[big] = round(r[big] + 1 - sum(r), 2)
+    return r
+
+
+def _clean_design(blocks):
+    """Gestaltungsfelder bereinigen (auch in Spalten und Toggles): tunes nur hkstyle, Spaltengewichte, Bild-/Player-Breite
+    und -Ausrichtung, Toggle-Ueberschrift. Unbekannte Felder in data bleiben unangetastet."""
+    for b in blocks:
+        if not isinstance(b, dict):
+            continue
+        typ = b.get("type")
+        if "tunes" in b:
+            tn = _clean_hkstyle(typ, b["tunes"])
+            if tn:
+                b["tunes"] = tn
+            else:
+                b.pop("tunes")
+        d = b.get("data")
+        if not isinstance(d, dict):
+            continue
+        if typ == "columns":
+            cols = [c for c in (d.get("cols") or []) if isinstance(c, dict)] if isinstance(d.get("cols"), list) else []
+            ws = _col_weights(cols)
+            for i, c in enumerate(cols):
+                if ws:
+                    c["w"] = ws[i]
+                else:
+                    c.pop("w", None)
+                if isinstance(c.get("blocks"), list):
+                    _clean_design(c["blocks"])
+        elif typ in ("image", "embed"):
+            player = typ == "image" or d.get("kind") == "youtube"      # Link-Karten (Embed ohne Player): unveraendert
+            if "width" in d:
+                if player and _num_ok(d["width"]):
+                    d["width"] = int(min(100, max(10, round(d["width"]))))
+                else:
+                    d.pop("width")
+            if "align" in d and not (player and d["align"] in ALIGNS):
+                d.pop("align")
+        elif typ == "toggle":
+            if "level" in d:
+                lv = int(min(3, max(0, round(d["level"])))) if _num_ok(d["level"]) else 0
+                if lv:
+                    d["level"] = lv
+                else:
+                    d.pop("level")
+            if isinstance(d.get("blocks"), list):
+                _clean_design(d["blocks"])
+    return blocks
 
 
 TAG_MAX_LEN, TAG_MAX_COUNT = 30, 20
@@ -279,8 +376,8 @@ def note_get(uid, nid):
         owner, role, err = access(c, uid, nid, "view", acc)
         if err is not None:
             return err
-        r = c.execute(f"SELECT {NOTE_META_COLS}, body, format, schema, props, cover, cover_pos, created, wide, rev, archived, locked, updated_by, created_by "
-                      "FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
+        r = c.execute(f"SELECT {NOTE_META_COLS}, body, format, schema, props, cover, cover_pos, created, wide, rev, archived, locked, updated_by, created_by, "
+                      "font, small FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
         if not r:
             return _bad("not found", 404)
         mine = role == "owner"
@@ -305,7 +402,8 @@ def note_get(uid, nid):
     d["public_url"] = f"{BASE_URL}/@{pub[1]}/{pub[0]}" if pub and pub[1] else None
     d["published_via"] = via or None
     d.update(body=body, format=r[10] or "text", props=_json_load(r[12], {}), cover=r[13] or "",
-             cover_pos=50.0 if r[14] is None else r[14], created=r[15], wide=bool(r[16]), rev=r[17], archived=bool(r[18]), locked=bool(r[19]))
+             cover_pos=50.0 if r[14] is None else r[14], created=r[15], wide=bool(r[16]), rev=r[17], archived=bool(r[18]), locked=bool(r[19]),
+             font=r[22] if r[22] in FONTS else None, small=bool(r[23]))       # 2.5 (G9): Schrift und kleiner Text
     if d["kind"] == "database":
         d["schema"] = _json_load(r[11], {"props": []})
     # Teilen (1.3) - nur Erweiterungen, bestehende Felder bleiben wie sie sind
@@ -485,6 +583,12 @@ def _note_update(uid, nid, b, origin=None):
                 sets.append("is_template=?"); args.append(1 if b["template"] else 0)
             if "wide" in b:
                 sets.append("wide=?"); args.append(1 if b["wide"] else 0)
+            if "font" in b:                       # 2.5 (G9): "default"/null = Standard, sonst nur serif/mono
+                if b["font"] not in FONTS + ("default", None):
+                    raise ValueError(t("unbekannte Schriftart"))
+                sets.append("font=?"); args.append(b["font"] if b["font"] in FONTS else None)
+            if "small" in b:
+                sets.append("small=?"); args.append(1 if b["small"] else 0)
             if "locked" in b:
                 sets.append("locked=?"); args.append(1 if b["locked"] else 0)
             if "schema" in b:

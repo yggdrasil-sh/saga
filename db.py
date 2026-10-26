@@ -1041,6 +1041,12 @@ SELECT 1 FROM horn_ban, horn_log, horn_share LIMIT 0;
     18: """
 SELECT 1 FROM chat_hidden LIMIT 0;
 """,
+    # 2.5.0 (Seite gestalten, G9): Schriftart je Seite ('serif' | 'mono', NULL = Standard) und kleiner Text - wie wide.
+    # Beliebig oft ausfuehrbar.
+    19: """
+ALTER TABLE note ADD COLUMN IF NOT EXISTS font TEXT;
+ALTER TABLE note ADD COLUMN IF NOT EXISTS small INTEGER NOT NULL DEFAULT 0;
+""",
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
 BACKUP_DIR = os.path.join(os.environ.get("STATE_DIR", "/data"), "backups")
