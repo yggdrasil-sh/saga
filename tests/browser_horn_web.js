@@ -384,7 +384,10 @@ function rendererPid(br) { const t = procTree(brPid(br)).filter(x => x.type === 
     await ps[1].click('.cl-ctl .cl-people');
     const notHost = await ps[1].evaluate(() => document.querySelectorAll('.cl-plist .cl-pl-rm, .cl-plist .cl-pl-mute').length);
     ok('Teilnehmerliste bei anderen: ohne Gastgeber-Knoepfe', notHost === 0);
-    await ps[5].click('.cl-ctl .cl-people');
+    // schmales Fenster (< 600 px): Nebenknoepfe liegen im Menue "Mehr" (static/calls.js moreCtl)
+    if (await ps[5].$('.cl-ctl .cl-people')) await ps[5].click('.cl-ctl .cl-people');
+    else { await ps[5].click('.cl-ctl .cl-more'); await ps[5].click('.cl-moremenu .cl-people'); }
+    ok('Handy: Teilnehmerliste ueber "Mehr" erreichbar', await ps[5].waitForSelector('.cl-plist', { timeout: 5000 }).then(() => true, () => false));
     await shot(ps[5], 'horn-teilnehmende-390-dunkel');
     await ps[5].click('.cl-plist-h .cl-mini');
     await ps[1].click('.cl-plist-h .cl-mini');
