@@ -1119,7 +1119,8 @@ deutlichen Meldung ab. Endpunkte: `/api/calls/config`, `POST /api/calls`, `/api/
 für eigene Clients: `tests/call_vectors.json` (`python3 tools/call_vectors.py check`, `node tools/call_vectors.mjs`).
 Im Chat stehen Anrufe als Eintrag mit Metadaten (Art, Ergebnis, Dauer – nur, was der Server ohnehin weiß); Apps
 bekommen sie mit `?calls=1`. Push: Art `call` mit hoher Priorität und kurzer Lebensdauer (ntfy Priorität 5), für die
-iOS-/macOS-App zusätzlich Apple-VoIP-Push (PushKit, Abo-Typ `apns-voip`, Topic `<Bundle-ID>.voip`). Das Zugriffs-Log
+iOS-/macOS-App zusätzlich Apple-VoIP-Push (PushKit, Abo-Typ `apns-voip`, Topic `<Bundle-ID>.voip`; ab 2.5 auch für
+Gruppenanrufe und Anrufe über Knoten, Art `call.group`). Das Zugriffs-Log
 enthält für `/api/calls…` keine IP-Adressen.
 
 **Technik ab 2.4 (`saga-call` v3, Gruppen):** Anrufe lassen sich während des Gesprächs neu aushandeln (zweite Videospur

@@ -1030,8 +1030,8 @@ def ring_group(c, call, uids):
             continue
         muted = c.execute("SELECT muted FROM chat_member WHERE chat_id=? AND uid=?", (call["chat_id"], u)).fetchone()
         if not (muted and muted[0]):
-            bus.fire("push.send", c, uid=u, kind="call.group", actor=st if not sharing.is_remote(st) else None,
-                     data={"chat": call["chat_id"], "call": call["id"]})
+            # actor auch bei fremden Anrufenden (wie 1:1 in fed_calls): die Mitteilung nennt den Namen (caller fuer CallKit)
+            bus.fire("push.send", c, uid=u, kind="call.group", actor=st, data={"chat": call["chat_id"], "call": call["id"]})
 
 
 def _busy_other(c, uid, cid):

@@ -147,6 +147,17 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Pseudonym-Handles in der Mitte gekürzt; Symbole statt Emoji (Schloss, stumm, Verkleinern); Namensleiste 70 % deckend.
   Der Hinweis vor dem Teilen sagt in Gruppen „sehen alle im Anruf“.
 
+### Behoben – iOS/Mac klingeln bei geschlossener App auch für Anrufe über Knoten und Gruppenanrufe (VoIP-Push)
+- Seit „Alle Anrufe über Knoten“ klingeln auch 1:1-Anrufe per Push-Art `call.group` (mit `dm: true`). Apple-VoIP
+  (PushKit, Abo `apns-voip`) bekam aber nur die Art `call` – iPhones zeigten bei beendeter App nur eine normale
+  Mitteilung statt eines CallKit-Anrufs. Jetzt gehen beide klingelnden Arten (`call`, `call.group`) über VoIP, das
+  normale APNs-Abo desselben Geräts dann nicht zusätzlich. Alle anderen Arten nie über VoIP; große Chats (still),
+  stummgeschaltete Chats, Ruhezeiten und Einladungen ohne Klingeln (`old`) bleiben ohne Push.
+- Beim Zustellen prüft Saga erneut: `call.group` nur, solange die eigene Einladung klingelt (1:1 über Knoten zusätzlich:
+  der Anruf klingelt noch), beide Arten nur innerhalb der Klingeldauer ab dem Auftrag – ein später VoIP-Push würde
+  sonst einen leeren Anruf in CallKit zeigen. Gruppenanrufe von Personen eines anderen Servers nennen im Push jetzt
+  auch den Namen (`caller`). Test `tests/anrufe_voip.py`.
+
 ### Behoben – Schaltflächen mit Vorlage auf Seiten eines anderen Servers (alle Plattformen)
 - Auf einer über Servergrenzen geteilten Seite meldete eine Schaltfläche „Neuer Eintrag“ (mit oder ohne Vorlage)
   „Eintrag nicht angelegt: Nicht gefunden“: Ziel und Vorlage standen als IDs des anderen Servers im Inhalt, der eigene

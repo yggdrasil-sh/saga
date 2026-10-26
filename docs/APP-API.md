@@ -476,8 +476,10 @@ sind; dem niemand beitritt, endet er nach `ring_s` (verpasst).
 - `call.state` zusätzlich: `kind: "group"`; `state: "declined"` (eigene Einladung auf einem anderen Gerät abgelehnt);
   `moved: "caller"|"callee"` mit `device` (Übernahme im 1:1). Gruppe `active` heißt nur „zwei sind dabei“ – nicht
   aufhören zu klingeln. Aufhören, wenn `call.roster` ein **eigenes** Gerät zeigt.
-- Push: Art `call.group` (`call`, `chat`, `media`, `caller`, `group: true`, kurze Lebensdauer); iOS VoIP/CallKit wie
-  `call`. Ältere Apps zeigen sie als normale Mitteilung.
+- Push: Art `call.group` (`call`, `chat`, `media`, `caller`, `group: true`, bei 1:1 über Knoten `dm: true`, kurze
+  Lebensdauer); iOS/macOS: wie `call` über Apple-VoIP (Abo `apns-voip`, Body `kind`, `title`, `body`, `url`, `call`,
+  `chat`, `media`, `caller`, `group`, `dm`) – jede VoIP-Mitteilung ist ein klingelnder Anruf für CallKit; das normale
+  APNs-Abo desselben Geräts bekommt ihn dann nicht. Ältere Apps zeigen sie als normale Mitteilung.
 - Chat-Eintrag `kind: "call"`: Gruppe mit `group: true` und `n` (Zahl der Personen, die dabei waren); `status`
   `ended` bzw. `missed`.
 

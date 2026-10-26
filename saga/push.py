@@ -69,6 +69,12 @@ def _call_ttl():
     return max(CALL_TTL, ring + 10)
 
 
+def _ring_late(created):
+    """Auftrag eines klingelnden Anrufs aelter als die Klingeldauer (z. B. nach Wiederholungen): nicht mehr zustellen -
+    ein spaeter VoIP-Push wuerde in CallKit einen Anruf zeigen, der nicht mehr klingelt."""
+    return bool(created) and created + _call_ttl() < time.time()
+
+
 KIND_CAT = {k: cat for cat, ks in CATS.items() for k in ks}
 SUB_MAX = 20                         # Abos je Konto
 QUEUE_MAX = 300                      # offene Auftraege je Konto (darueber: keine neuen, die Glocke hat alles)
@@ -355,16 +361,29 @@ def _subs(c, uid, epoch, srv):
     return [r[0] for r in c.execute("SELECT id, kind FROM push_sub WHERE uid=? ORDER BY id", (uid,)).fetchall() if srv.get(r[1])]
 
 
+RING_KINDS = ("call", "call.group")   # klingelnde Anrufe (1:1 direkt bzw. ueber Knoten/Gruppe) - die einzigen Arten fuer VoIP
+
+
 def _route(c, sids, kind):
     """Hat ein Geraet ein UnifiedPush-Abo, bekommt sein Abo "stream" (eigene Verbindung, 2.5) nichts (Umstieg ohne Doppelte).
-    VoIP-Abos (iOS/macOS-App, PushKit) bekommen NUR klingelnde Anrufe - Apple verlangt zu jeder VoIP-Mitteilung einen
-    Anruf in CallKit. Hat dasselbe Geraet ein VoIP-Abo, geht der Anruf nicht zusaetzlich ueber das normale APNs-Abo."""
+    VoIP-Abos (iOS/macOS-App, PushKit) bekommen NUR klingelnde Anrufe (RING_KINDS: "call" und "call.group", 1:1 ueber
+    Knoten mit dm: true ebenso wie Gruppenanrufe) - Apple verlangt zu jeder VoIP-Mitteilung einen Anruf in CallKit. Hat
+    dasselbe Geraet ein VoIP-Abo, geht der Anruf nicht zusaetzlich ueber das normale APNs-Abo.
+    Dass ein VoIP-Push nur rausgeht, wenn das Geraet wirklich klingeln soll, sichern die Ausloeser und message():
+    - calls.ring_group schickt "call.group" nur an Eingeladene mit Einladung 'ringing' (nicht 'old'/'joined'/'declined'),
+      nie an die anrufende Person, nie in grossen Chats (silent) oder stummgeschalteten Chats; Ruhezeiten und
+      abgeschaltete Bereiche filtert enqueue.
+    - message() prueft beim Zustellen erneut: "call" nur, solange der Anruf klingelt; "call.group" nur, solange die
+      eigene Einladung 'ringing' ist (eigenes anderes Geraet beigetreten -> 'joined', abgelehnt, verpasst -> nichts),
+      bei dm (1:1 ueber Knoten) zusaetzlich nur, solange der Anruf klingelt; beide nur innerhalb der Klingeldauer
+      ab dem Auftrag (_ring_late).
+      Sonst None -> der Auftrag entfaellt, es geht nichts raus (kein leerer Anruf in CallKit)."""
     if not sids:
         return sids
     rows = c.execute(f"SELECT id, kind, device_id FROM push_sub WHERE id IN ({','.join('?' * len(sids))})", tuple(sids)).fetchall()
     up_dev = {r[2] for r in rows if r[1] == "unifiedpush" and r[2] is not None}      # 2.5: Verteiler geht vor
     rows = [r for r in rows if not (r[1] == "stream" and r[2] in up_dev)]
-    if kind != "call":
+    if kind not in RING_KINDS:
         return [r[0] for r in rows if r[1] != "apns-voip"]
     voip_dev = {r[2] for r in rows if r[1] == "apns-voip" and r[2] is not None}
     return [r[0] for r in rows if not (r[1] == "apns" and r[2] in voip_dev)]
@@ -474,7 +493,7 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
             # Klingelnder Anruf (saga.calls): nur solange er klingelt; Kennungen fuer die Apps (CallKit/ConnectionService)
             cid = re.sub(r"[^0-9a-f]", "", str((data or {}).get("call") or ""))[:32]
             r = c.execute("SELECT state, media, chat_id, created FROM chat_call WHERE id=? AND callee=?", (cid, uid)).fetchone()
-            if not r or r[0] != "ringing":
+            if not r or r[0] != "ringing" or _ring_late(created):
                 return None
             nm = notify.names(c, [actor]).get(actor) if actor and names else None
             video = r[1] == "video"
@@ -490,8 +509,8 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
             # 2.5: 1:1 ueber einen Knoten (callee gesetzt): Texte wie 1:1, dm: true (Apps zeigen den Namen der anrufenden Person)
             r = c.execute("SELECT k.state, k.media, k.chat_id, k.created, k.callee FROM chat_call k JOIN chat_call_invite i ON i.call_id=k.id "
                           "WHERE k.id=? AND i.who=? AND i.state='ringing'", (cid, uid)).fetchone()
-            if not r or r[0] == "ended":
-                return None
+            if not r or r[0] == "ended" or (r[4] == uid and r[0] != "ringing") or _ring_late(created):
+                return None               # 1:1 ueber Knoten: schon angenommen (anderes eigenes Geraet) - nicht mehr klingeln
             nm = notify.names(c, [actor]).get(actor) if actor and names else None
             video, dm = r[1] == "video", r[4] == uid
             if dm:
@@ -502,7 +521,7 @@ def message(c, uid, kind, ref=None, actor=None, data=None, sub_kind="webpush", h
                     (t("Gruppen-Videoanruf – beitreten") if video else t("Gruppenanruf – beitreten"))
             return {"title": title(), "body": body, "url": f"/chats#call-{cid}", "tag": "call-" + cid, "kind": kind,
                     "ts": int(created or time.time()), "call": cid, "chat": r[2], "media": r[1], "caller": nm, "group": True,
-                    **({"dm": True} if dm else {}), "ttl": max(5, int(r[3] + _call_ttl() - time.time()))}
+                    **({"dm": True} if dm else {}), "ttl": max(5, int(max(r[3], created or 0) + _call_ttl() - time.time()))}
         else:
             it = notify.item(c, uid, ref) if ref else None
             if not it or (kind != "publish.withdrawn" and not it["access"]):
