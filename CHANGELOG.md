@@ -163,6 +163,18 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   kein Handle (Chats auf keinem Gerät ab 2.3 eingerichtet), Anzahl anderer Personen, Stichtag; wie `x3_why` im Chat-Objekt.
   Test in `tests/chat_select.py`.
 
+### Behoben – Bughunt 3 (Knoten)
+- **Erneut geteilter Bildschirm bekommt den Bildschirmplatz zurück.** Teilen endet in Apps und Web mit
+  `replaceTrack(null)`, die Quelle bleibt angemeldet. Kommt eine Bildschirmquelle nach mindestens 3 s Stille wieder,
+  zählt das jetzt als neuer Beginn (neueste Freigabe gewinnt) – vorher blieb der Platz schwarz bei der zuletzt Teilenden.
+- **Brücke (Kaskade) fragt Schlüsselbilder nach, solange ein Ausgang wartet.** Vorher ging nach Stau nur eine PLI
+  raus; fiel sie in die Drossel, blieb ein Bildschirm über die Kaskade eingefroren.
+- **Einzelne kaputte Pakete beenden die Spur nicht mehr.** Ein Lesefehler (z. B. nicht ausgehandelter Payload-Typ)
+  beendete die Leseschleife; die Quelle verschwand und transport-cc meldete weitere Pakete nicht als empfangen (GCC beim
+  Sender: Verlust). Jetzt wird weitergelesen, Ende bei EOF bzw. 50 Fehlern in Folge.
+- Tests: `TestBildschirmErneutGeteilt`, `TestBrueckeSchluesselbildNachfrage`, `TestUDPTWCCFuellpakete`,
+  `TestE2EOpakBeimUmschreiben` (E2E-Rahmen bleiben beim Umschreiben unberührt).
+
 ### Behoben – iOS/Mac klingeln bei geschlossener App auch für Anrufe über Knoten und Gruppenanrufe (VoIP-Push)
 - Seit „Alle Anrufe über Knoten“ klingeln auch 1:1-Anrufe per Push-Art `call.group` (mit `dm: true`). Apple-VoIP
   (PushKit, Abo `apns-voip`) bekam aber nur die Art `call` – iPhones zeigten bei beendeter App nur eine normale
