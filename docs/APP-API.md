@@ -615,7 +615,8 @@ Ohne `horn` in `caps`: 409 `join_block: "old"`; kein Knoten erreichbar: 409 `joi
   Kandidaten). Damit ordnet das Gerät die Plätze des Knotens (`slots[].peer`) und die CSRC der Rahmen einem Gerät zu.
 
 **Frische Token:** `POST /api/calls/{id}/horn {device, node?, dev_class?}` → `{horn: {…}}` wie oben. Für das eigene,
-aktive Gerät im Anruf (sonst 409, höchstens 30/min). `node` = gewählter Kandidat; Saga merkt ihn am Endpunkt.
+aktive Gerät im Anruf (sonst 409, höchstens 30/min). Ist der Anruf beendet oder hat das eigene Gerät ihn verlassen
+(bzw. wurde entfernt): 404 `{error, ended: true}` – das Gerät hört auf (Bughunt 3; vorher 409). `node` = gewählter Kandidat; Saga merkt ihn am Endpunkt.
 
 **Medien-Token** (`h1.<payload>.<sig>`, Ed25519 von Saga, je Bein, 60 s, einmal verwendbar): Der Knoten prüft lokal,
 das Gerät reicht es nur weiter. Inhalt `{v, node, call_ref, peer_ref, leg_ref, role, pub, max_kbit, udp_ok, dev_class,

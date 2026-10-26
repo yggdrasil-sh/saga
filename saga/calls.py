@@ -548,7 +548,7 @@ def _dict(c, call, uid, nm=None, legs=None):
         d["horn_mesh"] = FED.HORN_MESH[call["id"]]      # 2.5 P10: warum ohne Knoten (anderer Server kann keinen nutzen)
     if group:
         d["from"] = dict(pd)
-        d["host"] = me_caller                            # 2.5 P5: Gastgeber (darf stummschalten und entfernen)
+        d["host"] = me_caller                           # 2.5 P5: Gastgeber (darf stummschalten und entfernen)
         n = len(chat.members(c, call["chat_id"]))         # wie ring_group: grosse Gruppen klingeln nur still
         d["members"], d["silent"] = n, n > RING_SILENT
         inv = c.execute("SELECT state FROM chat_call_invite WHERE call_id=? AND who=?", (call["id"], uid)).fetchone()
@@ -1482,6 +1482,10 @@ async def api_horn(cid: str, request: Request):
         if err:
             return err
         leg = c.execute("SELECT who, state, role FROM chat_call_leg WHERE call_id=? AND device=?", (cid, dev)).fetchone() if _HEX32.fullmatch(dev) else None
+        if is_horn(call) and leg and leg[0] == uid and (call["state"] == "ended" or leg[1] != "active"):
+            # Bughunt 3: nach Auflegen/Verlassen bzw. Entfernen 404 wie "beendet" - Web und Apps hoeren dann auf (bei 409
+            # galt das als "kein Knoten" und sie versuchten es bis zu 2 min weiter)
+            return chat._no_store({"error": t("Der Anruf ist schon beendet."), "ended": True}, 404)
         if not is_horn(call) or call["state"] == "ended" or not leg or leg[0] != uid or leg[1] != "active":
             return _bad(t("ungültige Angabe"), 409)
         if not _rate("horn", dev, 30):
