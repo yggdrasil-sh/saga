@@ -66,6 +66,10 @@ async function chatKeys(q, user) {
   await q.waitForTimeout(800);
 }
 async function liveOk(...ps) { for (const p of ps) await until(() => p.evaluate(() => !!(window.HKLive && window.HKLive.state().sse)), 15000, 200); }
+const CTLFIT = () => { const bs = [...document.querySelectorAll('.cl-win .cl-ctl > .cl-btn')].map(b => b.getBoundingClientRect());
+  const red = document.querySelector('.cl-win .cl-ctl .cl-red'), rr = red && red.getBoundingClientRect();
+  return { n: bs.length, inside: bs.every(r => r.left >= 0 && r.right <= innerWidth + 0.5), oneRow: bs.every(r => Math.abs(r.top - bs[0].top) < 2),
+           red: !!rr && rr.left >= 0 && rr.right <= innerWidth && rr.width >= 44, more: !!document.querySelector('.cl-win .cl-ctl .cl-more') }; };
 const st = p => p.evaluate(() => {
   const r = window.HKCalls && window.HKCalls.room(), h = window.HKCalls && window.HKCalls.horn && window.HKCalls.horn();
   const w = document.querySelector('.cl-win'), op = s => { const x = w && w.querySelector(s); return x ? +getComputedStyle(x).opacity : -1; };
@@ -125,6 +129,14 @@ const st = p => p.evaluate(() => {
     await ps[2].emulateMedia({ colorScheme: 'light' }); await shot(ps[2], '2-gruppe-hell'); await ps[2].emulateMedia({ colorScheme: 'dark' });
     await shot(ps[3], '3-gruppe-handy-dunkel');
     ok('A3: Handy ohne waagrechtes Scrollen', !(await st(ps[3])).scrollX);
+    await ps[3].tap('.cl-win .cl-stage').catch(() => {}); await sleep(300);
+    const cf = await ps[3].evaluate(CTLFIT);
+    ok('Handy 390 px: Bedienleiste einzeilig im Fenster, Auflegen ganz sichtbar', cf.inside && cf.oneRow && cf.red, cf);
+    if (horn) {
+      const above = await ps[3].evaluate(() => { const g = document.querySelector('.cl-win.horn-strip .cl-grid'), c = document.querySelector('.cl-win .cl-ctl > .cl-btn');
+        return !g || !c || g.getBoundingClientRect().bottom <= c.getBoundingClientRect().top + 1; });
+      ok('Knoten Handy: Streifen endet ueber der Leiste', above);
+    }
 
     // Person 2 teilt den Bildschirm
     await ps[1].mouse.move(500, 300);
@@ -141,6 +153,8 @@ const st = p => p.evaluate(() => {
     await ps[2].mouse.move(610, 310); await sleep(400);
     await shot(ps[2], '5-bildschirm-dunkel');
     await ps[2].emulateMedia({ colorScheme: 'light' }); await shot(ps[2], '5-bildschirm-hell'); await ps[2].emulateMedia({ colorScheme: 'dark' });
+    const selfP = await ps[1].evaluate(() => { const v = document.querySelector('.cl-local'); return !!v && !v.hidden && getComputedStyle(v).display !== 'none'; });
+    ok('§7: Teilende hat ihr Bild als Kachel, kein schwebendes Eigenbild darueber', !selfP);
     await shot(ps[1], '6-teilende-dunkel');
     await sleep(800);
     await shot(ps[3], '7-bildschirm-handy-dunkel');

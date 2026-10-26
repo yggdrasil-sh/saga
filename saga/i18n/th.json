@@ -1815,6 +1815,7 @@
  "Medien": "สื่อ",
  "Medien mit DTLS-SRTP verschlüsselt; der Schlüssel-Fingerabdruck ist mit dem Chat-Schlüssel der Gegenseite signiert und geprüft.": "สื่อเข้ารหัสด้วย DTLS-SRTP ลายนิ้วมือของคีย์ลงนามด้วยคีย์แชทของอีกฝ่ายและผ่านการตรวจสอบแล้ว",
  "Meeting": "ประชุม",
+ "Mehr": "เพิ่มเติม",
  "mehr Kontext = bessere Antworten, aber langsamer (1000–50000)": "บริบทมากขึ้น = คำตอบดีขึ้นแต่ช้าลง (1000–50000)",
  "Mehr laden": "โหลดเพิ่มเติม",
  "Mehrfachauswahl": "ตัวเลือกหลายรายการ",

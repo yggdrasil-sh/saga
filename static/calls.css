@@ -503,3 +503,22 @@ body:has(> .cl-win:not(.small)) .toast{bottom:calc(7.2rem + env(safe-area-inset-
   .cl-win.horn.horn-scr:not(.small) .cl-stage{background:#000}
 }
 @media (min-width:1440px){.cl-win.horn.horn-scr:not(.small){--hs:200px}}
+/* 2.5 (Design-Check): schmale Fenster < 600 px - Leiste in einer Zeile (48 px, 6 px Abstand), Nebenknoepfe im Menue "Mehr",
+   Auflegen immer ganz sichtbar; der Knoten-Streifen endet ueber der Leiste */
+.cl-win:not(.small) .cl-ctl.narrow{flex-wrap:nowrap;gap:6px;padding-left:.5rem;padding-right:.5rem}
+.cl-win:not(.small) .cl-ctl.narrow .cl-round{width:48px;height:48px;min-width:48px;flex:none}
+.cl-win:not(.small) .cl-ctl.narrow .cl-pill{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cl-btn.cl-more svg{width:22px;height:22px}
+.cl-moremenu{position:absolute;z-index:7;left:50%;transform:translateX(-50%);bottom:calc(5.4rem + env(safe-area-inset-bottom));display:flex;flex-direction:column;
+  gap:2px;min-width:14rem;max-width:calc(100% - 1rem);padding:.35rem;background:#151c27;border:1px solid #3a475b;border-radius:12px;box-shadow:0 14px 44px rgba(0,0,0,.55)}
+.cl-moremenu .cl-btn.cl-more-i{display:flex;align-items:center;justify-content:flex-start;gap:.7rem;width:auto;min-width:0;height:48px;padding:0 .9rem;border:0;
+  border-radius:10px;background:transparent;color:#e6ebf2;font-size:.95rem;text-align:left}
+.cl-moremenu .cl-btn.cl-more-i:hover,.cl-moremenu .cl-btn.cl-more-i:focus-visible{background:#2a3444}
+.cl-moremenu .cl-btn.cl-more-i.off{background:transparent;color:#e3b341}
+.cl-moremenu .cl-btn.cl-more-i.on{background:transparent;color:#7cc4ff}
+.cl-moremenu .cl-more-i svg{width:22px;height:22px;flex:none}
+.cl-moremenu .cl-take{justify-content:center;background:var(--accent);color:#111}
+@media (max-width:640px){
+  .cl-win.horn .cl-ctl.narrow{flex-wrap:nowrap}
+  .cl-win.horn .cl-ctl.narrow .cl-round{width:48px;height:48px;min-width:48px}
+}

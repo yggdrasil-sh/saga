@@ -97,6 +97,10 @@ const LOOK = () => {
            full: !!w.querySelector('.cl-tb .cl-full'), info: (w.querySelector('.cl-info') || {}).textContent || '',
            scrollX: document.documentElement.scrollWidth > innerWidth + 1 };
 };
+const CTLFIT = () => { const bs = [...document.querySelectorAll('.cl-win .cl-ctl > .cl-btn')].map(b => b.getBoundingClientRect());
+  const red = document.querySelector('.cl-win .cl-ctl .cl-red'), rr = red && red.getBoundingClientRect();
+  return { n: bs.length, inside: bs.every(r => r.left >= 0 && r.right <= innerWidth + 0.5), oneRow: bs.every(r => Math.abs(r.top - bs[0].top) < 2),
+           red: !!rr && rr.left >= 0 && rr.right <= innerWidth && rr.width >= 44, more: !!document.querySelector('.cl-win .cl-ctl .cl-more') }; };
 const look = p => p.evaluate(LOOK);
 const selfBox = p => p.evaluate(() => { const v = document.querySelector('.cl-local'); if (!v || v.hidden || getComputedStyle(v).display === 'none') return null;
   const r = v.getBoundingClientRect(); return { w: r.width, h: r.height, vw: v.videoWidth, vh: v.videoHeight }; });
@@ -159,6 +163,10 @@ async function hornFlow(a, a2, b, o) {
   await b.setViewportSize({ width: 390, height: 844 }); await sleep(800);
   ok('A3 (Knoten): Handy ohne waagrechtes Scrollen', !(await look(b)).scrollX);
   await b.mouse.move(100, 100); await sleep(300);
+  const cfh = await b.evaluate(CTLFIT);
+  const above = await b.evaluate(() => { const g = document.querySelector('.cl-win.horn-strip .cl-grid'), c = document.querySelector('.cl-win .cl-ctl > .cl-btn');
+    return !g || !c || g.getBoundingClientRect().bottom <= c.getBoundingClientRect().top + 1; });
+  ok('Knoten Handy: Leiste einzeilig im Fenster, Auflegen ganz sichtbar, Streifen endet ueber der Leiste', cfh.inside && cfh.oneRow && cfh.red && above, [cfh, above]);
   await shot(b, 'knoten-4-handy-dunkel');
   await b.setViewportSize({ width: 1280, height: 720 });
   await b.mouse.move(600, 300);
@@ -334,7 +342,17 @@ let INFO_HORN = false;
     await b.setViewportSize({ width: 390, height: 844 }); await sleep(900);
     const lp = await look(b), rp = await room(b);
     ok('A3: Handy hochkant - kein waagrechtes Scrollen, Streifen unten', !lp.scrollX && rp.meet && rp.meet.stripSide === 'bottom' && rp.meet.layout === 'presentation', [lp, rp.meet]);
+    const cf = await b.evaluate(CTLFIT);
+    ok(`Handy 390 px: Bedienleiste in einer Zeile im Fenster, Auflegen ganz sichtbar, Nebenknoepfe unter "Mehr" (${cf.n} Knoepfe)`, cf.inside && cf.oneRow && cf.red && cf.more && cf.n <= 5, cf);
     await shot(b, '9-handy-dunkel');
+    await b.click('.cl-ctl .cl-more');
+    const mm = await b.evaluate(() => [...document.querySelectorAll('.cl-moremenu .cl-more-i')].map(x => x.getAttribute('aria-label')));
+    ok('Handy: Menue "Mehr" mit Ton, Layout und Teilnehmenden', mm.some(x => /^Ton/.test(x)) && mm.some(x => /^Layout/.test(x)) && mm.some(x => /Teilnehmende/.test(x)), mm);
+    await shot(b, '9-handy-mehr-dunkel');
+    await b.click('.cl-moremenu .cl-layout');
+    ok('Handy: Layout aus "Mehr" oeffnet das Layout-Menue', await until(() => b.evaluate(() => !!document.querySelector('.cl-lmenu')), 2000));
+    await shot(b, '9-handy-layout-dunkel');
+    await b.keyboard.press('Escape');
     await b.emulateMedia({ colorScheme: 'light' }); await sleep(300);
     await shot(b, '9-handy-hell');
     await b.emulateMedia({ colorScheme: 'dark' });
