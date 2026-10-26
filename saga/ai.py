@@ -52,7 +52,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 import auth
 from db import connect as _db
-from saga import ai_web, avatars, bus, i18n
+from saga import ai_web, avatars, bus, i18n, netguard
 from saga.core import CA_FILE, E, TZ, _api_guard, _bad, _body, t
 from saga.netguard import Blocked, guarded_client, is_public
 from saga.notes import _calc_value, _iter_blocks, blocks_text
@@ -123,7 +123,7 @@ def resolve(url):
     """IPs des Hosts (beim Speichern festgehalten) -> (liste, fehler)."""
     pu = urlparse(url)
     try:
-        infos = socket.getaddrinfo(pu.hostname, pu.port or (443 if pu.scheme == "https" else 80), type=socket.SOCK_STREAM)
+        infos = netguard.lookup(pu.hostname, pu.port or (443 if pu.scheme == "https" else 80), type=socket.SOCK_STREAM)
     except (OSError, UnicodeError):
         return [], t("Host „{host}“ nicht auflösbar", host=pu.hostname)
     ips = []

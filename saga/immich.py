@@ -13,6 +13,7 @@ from fastapi import APIRouter
 from saga.calendars import _admin_hosts, _cal_fernet
 from saga.core import E, _api_guard, _bad, _body, t
 from saga.files import _sniff_image, upload_owner
+from saga import netguard
 from saga.netguard import Blocked, guarded_client
 from saga.notes import FILES_DIR, FILE_MAX, FILE_QUOTA
 
@@ -100,7 +101,7 @@ def _immich(conn, method, path, body=None, params=None, max_bytes=2 * 1024 * 102
     import socket
     pu = urlparse(base)
     try:
-        infos = socket.getaddrinfo(pu.hostname, pu.port or (443 if pu.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
+        infos = netguard.lookup(pu.hostname, pu.port or (443 if pu.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
     except (socket.gaierror, UnicodeError):
         return 502, "", b""
     if not infos or not all(_immich_ip_ok(i[4][0], netloc) for i in infos):

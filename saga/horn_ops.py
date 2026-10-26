@@ -36,7 +36,7 @@ from fastapi.responses import JSONResponse
 
 from db import connect as _db
 import auth
-from saga import cloudflare, horn, notify
+from saga import cloudflare, horn, netguard, notify
 from saga.core import BASE_URL, HERE, t
 from version import VERSION
 
@@ -702,7 +702,7 @@ def dns_needed(n):
     """Ohne Token: Eintraege zum Abtippen und Live-Pruefung per DNS-Abfrage."""
     out = []
     try:
-        infos = socket.getaddrinfo(n["name"], None, type=socket.SOCK_STREAM)
+        infos = netguard.lookup(n["name"], None, type=socket.SOCK_STREAM)
         got = {i[4][0] for i in infos}
     except (OSError, UnicodeError):
         got = set()
@@ -750,7 +750,7 @@ def check(nid):
         u = urlparse(n.get("url") or "")
         if u.hostname:
             try:
-                ips = {i[4][0] for i in socket.getaddrinfo(u.hostname, u.port or 443, type=socket.SOCK_STREAM)}
+                ips = {i[4][0] for i in netguard.lookup(u.hostname, u.port or 443, type=socket.SOCK_STREAM)}
             except (OSError, UnicodeError):
                 ips = set()
             for ip in ips:

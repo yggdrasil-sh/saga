@@ -37,12 +37,12 @@ def _admin_hosts():
 def _cal_host_ok(host, hostport):
     """CalDAV: oeffentliche Server immer; interne nur mit Freigabe im Admin-Bereich."""
     import ipaddress
-    import socket
+    from saga import netguard
     allowed = _admin_hosts()
     if auth.settings().get("allow_private_hosts") or host in allowed or hostport in allowed:
         return True
     try:
-        infos = socket.getaddrinfo(host, None)
+        infos = netguard.lookup(host, None)
     except OSError:
         return False
     for i in infos:

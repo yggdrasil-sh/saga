@@ -37,7 +37,7 @@ from starlette.concurrency import run_in_threadpool
 
 import auth
 from db import connect as _db
-from saga import bus, chat, chat_v2 as V, fed_keys as FK, federation as F, fedsig, notify, sharing
+from saga import bus, chat, chat_v2 as V, fed_keys as FK, federation as F, fedsig, netguard, notify, sharing
 from saga.core import MEDIA_FRONT, MEDIA_KEY, _bad, _body, is_raw_ref, resolve_input, t, unnamed
 from saga.notes import FILE_MAX
 
@@ -1388,7 +1388,7 @@ def _dial(base):
     host, port = u.hostname, u.port or (443 if u.scheme == "https" else 80)
     out = []
     try:
-        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        infos = netguard.lookup(host, port, type=socket.SOCK_STREAM)
     except OSError:
         return []
     for ai in infos:

@@ -147,6 +147,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Pseudonym-Handles in der Mitte gekürzt; Symbole statt Emoji (Schloss, stumm, Verkleinern); Namensleiste 70 % deckend.
   Der Hinweis vor dem Teilen sagt in Gruppen „sehen alle im Anruf“.
 
+### Behoben – Bughunt 3 (Server)
+- **Namensauflösung mit Zeitlimit auch in den Vorab-Prüfungen.** KI, Immich, Kalender, Push, Nextcloud, Föderation
+  (Chat, Knoten anwählen) und die Knoten-Verwaltung (DNS-Einträge, eingebauter Knoten) riefen `getaddrinfo` ohne
+  Zeitlimit auf – ein hängender DNS-Server hielt je Abruf einen Thread fest. Jetzt `netguard.lookup` (3 s, danach wie
+  „nicht auflösbar“). Test `tests/dns_zeitlimit.py`.
+
 ### Behoben – iOS/Mac klingeln bei geschlossener App auch für Anrufe über Knoten und Gruppenanrufe (VoIP-Push)
 - Seit „Alle Anrufe über Knoten“ klingeln auch 1:1-Anrufe per Push-Art `call.group` (mit `dm: true`). Apple-VoIP
   (PushKit, Abo `apns-voip`) bekam aber nur die Art `call` – iPhones zeigten bei beendeter App nur eine normale

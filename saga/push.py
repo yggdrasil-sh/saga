@@ -46,7 +46,7 @@ from fastapi.responses import JSONResponse, Response
 
 import auth
 from db import connect as _db
-from saga import bus, i18n, notify, push_stream
+from saga import bus, i18n, netguard, notify, push_stream
 from saga.core import ASSET_V, BASE_URL, HERE, RESTORE_TEST, TZ, _api_guard, _bad, _body, _json_load, _tok_hash, account_lang, t, title
 from saga.netguard import Blocked, guarded_client, is_public
 
@@ -861,7 +861,7 @@ def _resolves_ok(url):
     pu = urlparse(url)
     port = pu.port or (443 if pu.scheme == "https" else 80)
     try:
-        infos = socket.getaddrinfo(pu.hostname, port, proto=socket.IPPROTO_TCP)
+        infos = netguard.lookup(pu.hostname, port, proto=socket.IPPROTO_TCP)
     except (OSError, UnicodeError):
         return False
     return bool(infos) and all(_ip_ok(i[4][0], pu.hostname.lower(), port) for i in infos)

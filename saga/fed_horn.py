@@ -24,7 +24,7 @@ import time
 
 import auth
 from db import connect as _db
-from saga import calls, chat, fed_calls as FCL, fed_chat as FC, federation as F, horn, horn_bridge, horn_web
+from saga import calls, chat, fed_calls as FCL, fed_chat as FC, federation as F, horn, horn_bridge, horn_web, netguard
 from saga.core import t
 
 SHARE_LEGS, SHARE_MBIT = 10, 20
@@ -391,7 +391,7 @@ def _dial_ok(u):
     try:
         p = urlparse(u)
         host, port = p.hostname, p.port or 443
-        ips = sorted({i[4][0].split("%")[0] for i in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)})
+        ips = sorted({i[4][0].split("%")[0] for i in netguard.lookup(host, port, type=socket.SOCK_STREAM)})
     except (OSError, ValueError, UnicodeError):
         return []
     return ips[:8] if ips and all(F._ip_ok(ip, host, port) for ip in ips) else []

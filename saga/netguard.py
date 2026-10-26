@@ -72,6 +72,19 @@ def resolve(host, port, timeout=DNS_TIMEOUT):
         raise httpcore.ConnectTimeout(f"{host}: DNS-Zeitlimit ({timeout:g} s)") from None
 
 
+def lookup(host, port=None, timeout=None, **kw):
+    """socket.getaddrinfo mit Zeitlimit fuer Vorab-Pruefungen (gleiche Argumente; Zeitueberschreitung: socket.gaierror
+    EAI_AGAIN - die Aufrufer fangen OSError bzw. gaierror wie bei "nicht aufloesbar"). Bughunt 3: ai, immich, calendars,
+    push, nextcloud, fed_chat, fed_horn und horn_ops loesten ohne Zeitlimit auf."""
+    timeout = DNS_TIMEOUT if timeout is None else timeout
+    fut = _pool().submit(socket.getaddrinfo, host, port, **kw)
+    try:
+        return fut.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        fut.cancel()
+        raise socket.gaierror(socket.EAI_AGAIN, f"{host}: DNS-Zeitlimit ({timeout:g} s)") from None
+
+
 # Ausnahme fuer die Testwiederherstellung: das LESEN vom eingetragenen Backup-Ziel (run.py backup-holen, restore
 # --schluessel, backup-pruefen) - nur fuer dessen Host(s) und nur mit diesen Methoden (S3: GET auch fuer Listen).
 RESTORE_READ_METHODS = frozenset(("GET", "HEAD", "PROPFIND"))

@@ -988,7 +988,7 @@ async def api_connect(request: Request):
     def work():
         pu = urlparse(url)
         try:                                   # interne Ziele ohne Freigabe: klare Meldung statt "keine Nextcloud"
-            infos = socket.getaddrinfo(pu.hostname, pu.port or (443 if pu.scheme == "https" else 80), type=socket.SOCK_STREAM)
+            infos = netguard.lookup(pu.hostname, pu.port or (443 if pu.scheme == "https" else 80), type=socket.SOCK_STREAM)
         except (OSError, UnicodeError):
             raise BackupError("down")
         if not all(ip_ok(i[4][0], pu.hostname, pu.port or (443 if pu.scheme == "https" else 80)) for i in infos):
