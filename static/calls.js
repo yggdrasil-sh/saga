@@ -1547,6 +1547,7 @@
     });
     ui.w.appendChild(m);
     var lb = ui.ctl.querySelector('.cl-layout');
+    if (!lb || !lb.offsetParent) lb = ui.ctl.querySelector('.cl-more') || lb;   // schmal: ueber dem Knopf "Mehr"
     if (lb) {
       lb.setAttribute('aria-expanded', 'true');
       var r = lb.getBoundingClientRect(), wr = ui.w.getBoundingClientRect();
@@ -2553,11 +2554,13 @@
     if (ver) i.lastChild.title = T('Jede Verbindung ist mit DTLS-SRTP verschlüsselt; die Fingerabdrücke sind mit den Chat-Schlüsseln der Geräte signiert und geprüft.');
     if (R.since) i.appendChild(el('span', null, durNow(R)));
     var np = personCount(R), nd = Math.max((R.legs || []).length, ls.length + 1), lim = R.limit || 0;
-    // 1:1 ohne Zaehler (S2), nur nahe der Geraetegrenze; Gruppe: Personen, ab Grenze - 2 "11/12 Geraete"
-    var near = lim && nd >= lim - (R.kind === 'group' && !R.dm ? 2 : 1);
-    if (near || (R.kind === 'group' && !R.dm)) {
-      var cnt = el('span', 'cl-count', near ? T('{n}/{m} Geräte', { n: nd, m: lim }) : T('{n} {n:Person|Personen}', { n: np }));
-      cnt.title = T('{n} {n:Person|Personen}', { n: np }) + ' · ' + T('{n} Geräte', { n: nd }); i.appendChild(cnt);
+    // 2.5 (§4.1): wie im Knoten-Pfad - Chip mit Personen (Symbol + Zahl), Geraetegrenze erst ab Grenze - 2 ("11/12");
+    // im 1:1 kein Zaehler (S2)
+    if (R.kind === 'group' && !R.dm) {
+      var near = lim && nd >= lim - (lim > 6 ? 2 : 0), cnt = el('span', 'cl-count cl-chip');   // kleine Mesh-Grenze: erst wenn voll
+      cnt.appendChild(icon('users')); cnt.appendChild(document.createTextNode(near ? nd + '/' + lim : String(np)));
+      cnt.title = near ? T('{n}/{m} Geräte', { n: nd, m: lim }) : T('{n} {n:Person|Personen}', { n: np }) + ' · ' + T('{n} Geräte', { n: nd });
+      cnt.setAttribute('aria-label', cnt.title); i.appendChild(cnt);
     }
     var blocked = ls.some(function (L) { return L.audioBlocked; });
     if (R.ui.un) R.ui.un.hidden = !blocked;
@@ -2634,20 +2637,20 @@
     if (c.companion || !c.spkOut || meshView(c)) {
       var k = btn(icon(c.spkOut ? 'spk' : 'spkOff'), 'cl-round cl-spk' + (c.spkOut ? '' : ' off'), function () { if (c.spkOut) setSpk(c, false); else echoGuard(c, function () { setSpk(c, true); }); },
                   c.spkOut ? T('Ton aus') : T('Ton an'));
-      k.setAttribute('aria-pressed', String(!c.spkOut)); x.appendChild(k);
+      k.setAttribute('aria-pressed', String(!c.spkOut)); k.classList.add('cl-sec'); x.appendChild(k);
     }
-    if (c.companion && c.ready) x.appendChild(btn(T('Hierher übernehmen'), 'cl-pill cl-take', function () { takeOver(c); }, T('Anruf auf dieses Gerät übernehmen')));
+    if (c.companion && c.ready) { var tk = btn(T('Hierher übernehmen'), 'cl-pill cl-take cl-sec', function () { takeOver(c); }, T('Anruf auf dieses Gerät übernehmen')); x.appendChild(tk); }
     // 2.5 (MEETING-SPEC §2): Layout-Knopf rechts vom Lautsprecher, vor Auflegen - Menue Auto/Galerie/Sprecher/Praesentation
     if (layoutBtnOn(c)) {
       var lc = mtOf(c).force || layoutChoice();
       var lb = btn(icon('grid'), 'cl-round cl-layout', function () { layoutMenu(c); }, T('Layout') + ', ' + layoutName(lc));
       if (!mobile) lb.title = T('Layout') + ' (L)';
       lb.setAttribute('aria-haspopup', 'menu'); lb.setAttribute('aria-expanded', String(!!c.ui.w.querySelector('.cl-lmenu')));
-      x.appendChild(lb);
+      lb.classList.add('cl-sec'); x.appendChild(lb);
     }
     if (!c.horn && meshView(c) && MT) {              // 2.5 (§9): Teilnehmerliste auch im Mesh
       var mb2 = btn(icon('users'), 'cl-round cl-people' + (c.plist ? ' on' : ''), function () { c.plist = !c.plist; meetList(c); drawCtl(c); }, T('Teilnehmende'));
-      mb2.setAttribute('aria-pressed', String(!!c.plist)); x.appendChild(mb2);
+      mb2.setAttribute('aria-pressed', String(!!c.plist)); mb2.classList.add('cl-sec'); x.appendChild(mb2);
     } else if (c.plist && !c.horn) { c.plist = false; meetList(c); }
     if (c.horn && c.ready) {                           // 2.5: Teilnehmerliste
       var H = c.horn;
@@ -2656,12 +2659,49 @@
         if (H.plist && H.rpop) { H.rpop = false; hornRunePop(c); drawInfo(c); }   // nie zwei Fenster uebereinander (Nr. 071)
         hornList(c); drawCtl(c);
       }, T('Teilnehmende'));
-      pb.setAttribute('aria-pressed', String(!!H.plist)); x.appendChild(pb);
+      pb.setAttribute('aria-pressed', String(!!H.plist)); pb.classList.add('cl-sec'); x.appendChild(pb);
     }
+    moreCtl(c, x);
     x.appendChild(btn(icon('phone'), 'cl-round cl-red', function () { hangup(c); }, T('Auflegen')));
     pipBtn(c, c.ui.w.classList.contains('has-video'));
     pipDraw(c);
   }
+
+  // 2.5 (Design-Check): schmale Fenster (< 600 px) - passen Haupt- und Nebenknoepfe nicht in eine Zeile (mehr als fuenf
+  // Knoepfe), wandern die Nebenknoepfe (Ton, Uebernehmen, Layout, Teilnehmende) in ein Menue "Mehr"; Auflegen bleibt immer
+  // ganz sichtbar, die Leiste bricht nie um
+  function ctlNarrow(c) { var w = c.ui.w; return !w.classList.contains('small') && (w.clientWidth || window.innerWidth) < 600; }
+  function moreCtl(c, x) {
+    var ui = c.ui, old = ui.w.querySelector('.cl-moremenu');
+    if (old) old.remove();
+    var sec = [].slice.call(x.querySelectorAll('.cl-sec')), n = x.children.length + 1;
+    ui.ctl.classList.toggle('narrow', ctlNarrow(c));
+    if (!ctlNarrow(c) || !sec.length || n <= 5) { ui.moreOpen = false; return; }
+    var mb = btn(icon('more'), 'cl-round cl-more' + (ui.moreOpen ? ' on' : ''), function () { ui.moreOpen = !ui.moreOpen; drawCtl(c); if (!ui.moreOpen) idlePoke(c); }, T('Mehr'));
+    mb.setAttribute('aria-haspopup', 'menu'); mb.setAttribute('aria-expanded', String(!!ui.moreOpen));
+    x.appendChild(mb);
+    if (!ui.moreOpen) { sec.forEach(function (b) { b.remove(); }); return; }
+    var m = el('div', 'cl-moremenu'); m.setAttribute('role', 'menu'); m.setAttribute('aria-label', T('Mehr'));
+    sec.forEach(function (b) {
+      b.setAttribute('role', 'menuitem'); b.classList.add('cl-more-i');
+      if (b.classList.contains('cl-round')) b.appendChild(el('span', 'cl-more-t', b.getAttribute('aria-label') || ''));
+      m.appendChild(b);
+    });
+    // nach der Aktion schliessen (das Layout-Menue oeffnet sich danach ueber dem Knopf "Mehr")
+    m.addEventListener('click', function () { setTimeout(function () { if (c.ui === ui && ui.moreOpen) { ui.moreOpen = false; drawCtl(c); } }, 0); });
+    m.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); ui.moreOpen = false; drawCtl(c); var b = ui.ctl.querySelector('.cl-more'); if (b) b.focus(); } });
+    ui.w.appendChild(m);
+    setTimeout(function () {
+      var off = function (e) { if (!m.parentNode) { document.removeEventListener('pointerdown', off, true); return; }
+        if (!m.contains(e.target) && !mb.contains(e.target)) { document.removeEventListener('pointerdown', off, true); ui.moreOpen = false; drawCtl(c); } };
+      document.addEventListener('pointerdown', off, true);
+      var f = m.querySelector('.cl-more-i'); if (f) f.focus({ preventScroll: true });
+    }, 0);
+  }
+  window.addEventListener('resize', function () {
+    var R = C; if (!R || !R.ui || R.done) return;
+    if (R.ui.ctl.classList.contains('narrow') !== ctlNarrow(R)) drawCtl(R);
+  });
 
   // --- 2.4: Bild-im-Bild -----------------------------------------------------------------------------------------------
   // Document-PiP (Chromium): eigenes kleines Fenster mit Fernbild, Stumm, Zurueck, Auflegen. Sonst Video-PiP des Fernbilds
@@ -3692,7 +3732,7 @@
       if (R.ui.grid.children[pos] !== ST.box) R.ui.grid.insertBefore(ST.box, R.ui.grid.children[pos] || null);
       pos++;
     } else if (H.self) { H.self.v.srcObject = null; H.self.box.remove(); H.self = null; }
-    w_ = R.ui.w; w_.classList.toggle('horn-self', selfT && !R.screen);
+    w_ = R.ui.w; w_.classList.toggle('horn-self', selfT);    // 2.5: eigenes Bild = Kamera; als Kachel da -> nie zusaetzlich schwebend
     if (lay.more) {
       if (!H.more) H.more = el('div', 'cl-tile cl-more');
       H.more.textContent = '+' + lay.more; H.more.title = T('{n} weitere Teilnehmende', { n: lay.more });

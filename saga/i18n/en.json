@@ -1814,6 +1814,7 @@
  "Medien": "Media",
  "Medien mit DTLS-SRTP verschlüsselt; der Schlüssel-Fingerabdruck ist mit dem Chat-Schlüssel der Gegenseite signiert und geprüft.": "Media encrypted with DTLS-SRTP; the key fingerprint is signed with the other side's chat key and verified.",
  "Meeting": "Meeting",
+ "Mehr": "More",
  "mehr Kontext = bessere Antworten, aber langsamer (1000–50000)": "more context = better answers, but slower (1000–50000)",
  "Mehr laden": "Load more",
  "Mehrfachauswahl": "Multi-select",
