@@ -80,6 +80,34 @@ def run():
     s, d = req("POST", f"/api/calls/{cid}/horn", B.k, {"device": B.dev["id"]})
     ok(f"/horn der auflegenden Seite: 404 ({s})", s == 404)
 
+    # --- 2: Chatname im Anrufobjekt ----------------------------------------------------------------------------------
+    s, d = req("POST", "/api/chats", A.k, {"kind": "group", "group": GROUP})
+    gid = d["chat"]["id"]
+    s, chd = req("GET", f"/api/chats/{gid}?device={A.dev['id']}", A.k)
+    gname = chd["chat"]["name"]
+    g1 = secrets.token_hex(16)
+    HD.fresh()
+    s, d = req("POST", "/api/calls", A.k, {"id": g1, "chat_id": gid, "media": "audio", "device": A.dev["id"], "caps": CAPS})
+    ok(f"Gruppenanruf gestartet ({s}, {(d.get('call') or {}).get('kind')})", s == 200 and d["call"]["kind"] == "group")
+    ok(f"POST /api/calls: from.chat = Chatname ({d['call']['from'].get('chat')!r}, {gname!r})", gname and d["call"]["from"].get("chat") == gname)
+    s, d = req("GET", f"/api/calls/{g1}?device={B.dev['id']}", B.k)
+    ok(f"GET /api/calls/<id> (Eingeladene): from.chat = Chatname ({d['call']['from'].get('chat')!r})", d["call"]["from"].get("chat") == gname)
+    s, act = req("GET", "/api/calls/active", Cc.k)
+    x = next((y for y in act.get("calls", []) if y["id"] == g1), {})
+    ok(f"/api/calls/active: from.chat = Chatname ({(x.get('from') or {}).get('chat')!r})", (x.get("from") or {}).get("chat") == gname)
+    req("POST", f"/api/calls/{g1}/end", A.k, {"reason": "hangup"})
+
+    s, d = req("POST", "/api/chats", A.k, {"kind": "free", "members": ["ca-bhb", "ca-bhc"]})
+    fid = d["chat"]["id"]
+    g2 = secrets.token_hex(16)
+    s, d = req("POST", "/api/calls", A.k, {"id": g2, "chat_id": fid, "media": "audio", "device": A.dev["id"], "caps": CAPS})
+    ok(f"freie Gruppe: from.chat null (Name verschluesselt) ({s}, {(d.get('call') or {}).get('from')})",
+       s == 200 and "chat" in d["call"]["from"] and d["call"]["from"]["chat"] is None)
+    req("POST", f"/api/calls/{g2}/end", A.k, {"reason": "hangup"})
+
+    cid, s, d = HD.hcall(A, ab)
+    ok(f"1:1 ueber Knoten: kein from.chat ({s}, {(d.get('call') or {}).get('from')})", s == 200 and "chat" not in d["call"]["from"])
+    req("POST", f"/api/calls/{cid}/end", A.k, {"reason": "hangup"})
     time.sleep(0.2)
 
 

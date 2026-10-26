@@ -155,6 +155,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **`POST /api/calls/<id>/horn` nach dem Auflegen: 404 statt 409.** Ist der Anruf beendet oder hat das eigene Gerät ihn
   verlassen, antwortet Saga mit 404 `{ended: true}` (Web und Apps hören dann auf). Vorher galt die 409 als „kein Knoten
   erreichbar“, und ein Gerät, das das Ende noch nicht kannte, versuchte es bis zu 2 Minuten weiter. Test `tests/anrufe_bh3.py`.
+- **Gruppenanrufe zeigen den Chatnamen statt „Gruppenanruf“.** Das Anrufobjekt (`POST /api/calls`, `GET /api/calls/<id>`,
+  `/api/calls/active`) trägt den Chatnamen jetzt wie `call.invite` in `from.chat` (freie Gruppen: `null`, der Name ist
+  verschlüsselt). Kam ein Gruppenanruf per Abfrage oder Push an, zeigten die Apps vorher „Gruppenanruf“/„Group call“.
 
 ### Behoben – iOS/Mac klingeln bei geschlossener App auch für Anrufe über Knoten und Gruppenanrufe (VoIP-Push)
 - Seit „Alle Anrufe über Knoten“ klingeln auch 1:1-Anrufe per Push-Art `call.group` (mit `dm: true`). Apple-VoIP

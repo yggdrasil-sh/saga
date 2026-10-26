@@ -548,6 +548,10 @@ def _dict(c, call, uid, nm=None, legs=None):
         d["horn_mesh"] = FED.HORN_MESH[call["id"]]      # 2.5 P10: warum ohne Knoten (anderer Server kann keinen nutzen)
     if group:
         d["from"] = dict(pd)
+        if not dmh:                                      # Bughunt 3: Chatname wie in call.invite (Apps zeigten sonst
+            ch = chat._load(c, call["chat_id"])          # "Gruppenanruf", wenn der Anruf per Abfrage/Push kam)
+            mem = chat.members(c, call["chat_id"]) if ch else []
+            d["from"]["chat"] = chat._name(c, uid, ch, mem, names(c, mem) if ch["kind"] == "dm" else {}) if ch else None
         d["host"] = me_caller                           # 2.5 P5: Gastgeber (darf stummschalten und entfernen)
         n = len(chat.members(c, call["chat_id"]))         # wie ring_group: grosse Gruppen klingeln nur still
         d["members"], d["silent"] = n, n > RING_SILENT
