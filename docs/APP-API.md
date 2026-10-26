@@ -3,6 +3,42 @@
 Ergänzungen der HTTP-API für die Apps (iOS/iPadOS/macOS inkl. Widgets, Android, Linux). Live-Ereignisse stehen in
 `APP-API-LIVE.md`, Chat in `APP-API-CHAT.md`, KI in `APP-API-KI.md`.
 
+## Seite gestalten (2.5)
+
+Alle Felder sind **optional**; fehlt eines, gilt das bisherige Verhalten. Ältere Server liefern sie nicht, ältere Apps
+ignorieren sie. `MIN_APP` bleibt.
+
+**Grundregel für alle Apps:** Beim Speichern einer Seite unbekannte Schlüssel in `block.data` und den Schlüssel
+`block.tunes` **unverändert zurückschreiben** (auch wenn die App sie nicht darstellt). Farben nur aus der Palette
+`gray, brown, orange, yellow, green, blue, purple, pink, red` (wie die Auswahl-Farben der Datenbanken), nie freie Werte.
+Zahlen beim Lesen trotzdem begrenzen (fremde/alte Server).
+
+| Feld | Werte (der Server bereinigt beim Speichern) |
+|---|---|
+| `columns.data.cols[i].w` | Zahl > 0, relatives Gewicht. Nur wenn **alle** Spalten eines haben: Summe 1, je Spalte mind. 0,15, auf 0,01 gerundet; sonst werden alle `w` entfernt (= gleich breit). Max. 4 Spalten. Darstellung ab Tablet-/Fensterbreite, Telefone untereinander. |
+| `image.data.width`, `embed.data.width` | ganze Zahl 10–100 (% der Inhaltsbreite). Bei `embed` nur mit Player (`kind: "youtube"`), Link-Karten nie. `image.data.stretched` gewinnt. Telefone: mindestens 50 %. |
+| `image.data.align`, `embed.data.align` | `"left"`, `"center"` (Standard), `"right"`; sonst entfernt. |
+| `block.tunes.hkstyle` | `{"c": "<palette>", "bg": true}` – `bg` fehlt = Textfarbe. Nur an `paragraph, header, list, quote, toggle, callout, checklist`; andere Typen und alle anderen `tunes` entfernt der Server (auch verschachtelt in Spalten und Toggles). |
+| `toggle.data.level` | 0 (fehlt) = normaler Toggle, 1–3 = Toggle-Überschrift H1–H3 (Titel in Überschriftengröße). |
+
+Beispiel:
+
+```json
+{"blocks": [
+  {"type": "paragraph", "data": {"text": "Wichtig"}, "tunes": {"hkstyle": {"c": "red"}}},
+  {"type": "columns", "data": {"cols": [{"w": 0.7, "blocks": []}, {"w": 0.3, "blocks": []}]}},
+  {"type": "image", "data": {"file": {"url": "/files/<id>"}, "caption": "", "width": 50, "align": "left"}},
+  {"type": "toggle", "data": {"title": "Kapitel", "level": 2, "open": true, "blocks": []}}
+]}
+```
+
+**Seitenfelder:** `GET /api/notes/{id}` liefert `font` (`"serif"`, `"mono"` oder `null` = Standard) und `small` (bool).
+`PATCH /api/notes/{id}` nimmt `font` (`"serif"`, `"mono"`, `"default"` oder `null` → Standard; andere Werte → `400`) und
+`small` (bool) – wie `wide`, ab Rolle *Bearbeiten*. Darstellung: Serif `ui-serif, Georgia, "Times New Roman", serif`
+(SwiftUI `.fontDesign(.serif)`, Android `FontFamily.Serif`), Mono `ui-monospace, "SF Mono", Menlo, Consolas, monospace`;
+klein = 0,875 × Grundgröße; gilt für Titel, Inhalt und Eigenschaften, Code-Blöcke bleiben Mono. Föderierte Seiten laufen
+über denselben Handler (Fähigkeit `db`, siehe `APP-API-FED.md`); ältere Server liefern die Felder nicht → Standard.
+
 ## Kachel-Symbole: `icon_url` (2.5)
 
 `GET /api/services` und `GET /api/bookmarks` liefern je Kachel zusätzlich **`icon_url`** – die fertige, relative

@@ -484,6 +484,14 @@ lassen sich als Markdown exportieren.
 fügt es in dieser oder einer anderen Seite (auch in einem anderen Tab) wieder ein – mit Bildunterschrift. Auf einer Seite
 eines anderen Kontos bekommt dessen Eigentümer eine eigene Kopie der Datei. Andere Programme bekommen das Bild als PNG,
 wo der Browser das erlaubt.
+**Gestalten:** Das Block-Menü am Griff ⋮⋮ bündelt alles für einen Block: **Umwandeln in** (auch in eine
+**Toggle-Überschrift 1–3**, die im Inhaltsverzeichnis wie eine Überschrift erscheint), **Farbe** (Text- oder
+Hintergrundfarbe aus derselben Palette wie die Auswahl-Farben, hell und dunkel lesbar), **Duplizieren**, **Link zum Block
+kopieren** und **Kommentieren**. Schneller geht die Farbe mit `/rot`, `/blau` … bzw. `/rot hintergrund`. Bilder und
+YouTube-Videos lassen sich an den Griffen links/rechts schmaler ziehen und links, mittig oder rechts ausrichten (Block-Menü);
+Doppelklick auf einen Griff stellt die volle Breite wieder her. Zwischen zwei Spalten erscheint beim Überfahren eine Linie –
+daran ziehst du die Spaltenbreite (in 5-%-Schritten, Doppelklick = gleich breit). Im Seitenmenü **⋯** wählst du je Seite
+die **Schrift** (Standard, Serif, Mono) und **Kleiner Text**. Alles das übernimmt auch eine veröffentlichte Seite.
 
 ![Seite](screenshots/seite.png)
 

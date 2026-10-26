@@ -468,7 +468,7 @@ noch nicht (ältere Saga-Version)“; nicht erreichbar → 502.
 |---|---|---|
 | `db` | `GET /api/notes/{id}` | Datenbanken kommen mit `schema` (statt des früheren Hinweises); Relationen: `schema.props[].target` und Werte in `props` sind negative IDs |
 | `db` | `GET /api/notes/{id}/rows[?limit&offset&view&filters&sorts&q&group&tz&today]` | wie bei eigenen Datenbanken (2.2, Phase 2c), rechnet der Server der Seite; `templates` immer leer |
-| `db` | `PATCH /api/notes/{id}` | zusätzlich zu `title body format rev overwrite`: `props schema icon cover cover_pos tags wide`. Relationen nur auf Seiten desselben Servers (andere fallen weg), Bilder nur dieser Seite (`/api/fed/files/{id}/{fid}`) |
+| `db` | `PATCH /api/notes/{id}` | zusätzlich zu `title body format rev overwrite`: `props schema icon cover cover_pos tags wide font small` (`font`/`small` ab 2.5). Relationen nur auf Seiten desselben Servers (andere fallen weg), Bilder nur dieser Seite (`/api/fed/files/{id}/{fid}`) |
 | `subpages` | `POST /api/notes {parent_id: <negativ>, title, icon?, tags?, kind?, props?}` | Unterseite bzw. Datenbank-Zeile (mit `props`) → `{id: <negativ>, updated}`; braucht `edit` |
 | `subpages` | `POST /api/notes/{id}/move {parent_id: <negativ>, index}` | nur innerhalb desselben Servers und des geteilten Bereichs mit **gleichen Freigaben** (sonst 403 mit Hinweis); `parent_id: null` nie |
 | `upload` | `POST /api/files` mit `X-Saga-Note: <negativ>` (bzw. `?note=`) | Multipart wie bisher → `file.url = /api/fed/files/{id}/{fid}`. Die Datei liegt beim Server der Seite; 507 = Grenze erreicht (Eigentümer bzw. `FED_UPLOAD_QUOTA_MB` je fremder Person). Bis zum Speichern sieht nur die hochladende Person die Datei |

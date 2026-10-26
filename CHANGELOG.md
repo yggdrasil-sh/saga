@@ -17,6 +17,25 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu (2.5)
+- **Seite gestalten (G1, G2, G3, G5, G9, G10).** Web: Spaltenbreite an der Linie zwischen zwei Spalten ziehen (5-%-Raster,
+  Doppelklick = gleich breit; unter 760 px weiter untereinander), Bilder und YouTube-Player an Griffen links/rechts skalieren
+  (10–100 %) und links/mittig/rechts ausrichten, Block-Farbe (Text oder Hintergrund) aus der Palette der Auswahl-Farben
+  (hell/dunkel über CSS-Variablen, Text mind. 4,5:1) – über das Block-Menü ⋮⋮ oder `/rot`, `/blau hintergrund` … in allen
+  fünf Sprachen. Das Block-Menü ⋮⋮ hat jetzt Umwandeln, Farbe, Duplizieren (ausgegraut, wo nicht kopierbar), Link zum Block,
+  Kommentieren, dann Nach oben/Löschen/Nach unten; bei Bild und Player zusätzlich die Ausrichtung; Lesen/Kommentieren sehen
+  nur Link und Kommentieren. Toggle-Überschriften 1–3 (Slash-Menü, Umwandeln in beide Richtungen ohne Textverlust, im
+  Inhaltsverzeichnis). Je Seite **Schrift** (Standard, Serif, Mono) und **Kleiner Text** im Seitenmenü (Titel, Inhalt,
+  Eigenschaften; Code bleibt Mono). Daten (alles optional, Vertrag in `docs/APP-API.md` „Seite gestalten“):
+  `columns.data.cols[].w`, `image|embed.data.width/align`, `block.tunes.hkstyle = {c, bg}`, `toggle.data.level`,
+  `note.font`/`note.small`. Der Server bereinigt alles beim Speichern (auch verschachtelt in Spalten und Toggles): Gewichte
+  auf Summe 1 mit mindestens 0,15, Breite 10–100, Ausrichtung nur left/center/right, Farbe nur aus der Palette und nur an
+  Text-Blöcken, `tunes` nur noch `hkstyle` (bisher wurden `tunes` ganz verworfen), Level 0–3. Migration 19 (`note.font`,
+  `note.small`); `PATCH /api/notes/{id}` nimmt `font` (`"serif"`, `"mono"`, `"default"`/null) und `small`, `GET` liefert
+  beides; Duplizieren, persönliches Backup und Föderation (Fähigkeit `db`) nehmen die Felder mit. Veröffentlichen ohne
+  Inline-Styles (CSP): Klassen `c-<farbe>`/`bg-<farbe>`, `iw-NN` + `al-*` (5er-Schritte), `pw-NN` für Spaltenbreiten,
+  Toggle-Überschrift als `<details><summary><hN>`, Schrift/klein am `body`. Markdown: Toggle-Überschrift als `#`–`###` mit
+  Inhalt darunter, Farbe entfällt. Seiten ohne die neuen Felder sehen exakt aus wie vorher (Ausgabe verglichen). Tests
+  `tests/gestalten.py`, `tests/gestalten.js`.
 - **Kacheln ohne Symbol bekommen automatisch eines.** Für Dienste und Lesezeichen ohne gesetztes Symbol rät Saga zuerst
   ein selfh.st-Symbol nach dem Domainnamen (`youtube.com` → `youtube`, `jellyfin.example.org` → `jellyfin`) und holt sonst
   das Favicon der Seite (`<link rel=icon|apple-touch-icon>` oder `/favicon.ico`, größtes Rasterbild, als PNG ≤ 256 px in
