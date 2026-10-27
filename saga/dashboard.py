@@ -13,7 +13,7 @@ import auth
 from db import connect as _db
 from fastapi import APIRouter
 from saga import avatars, chat, i18n, mfa, publish
-from saga.sharing import unread_count
+from saga.sharing import Access, unread_count
 from saga.core import (ADMIN_URL, ASSET_V, CACHE_TTL, CA_FILE, FAVICONS_ENV, ICON_CDN, direct_icons_on, icon_csp, icon_direct, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user,
                        remember_ui_lang, std_name, t, title, tmpl, user_info)
 
@@ -183,6 +183,42 @@ def account_ctx(info):
     }
 
 
+# --- Eigene Startseite (fix27 E2): Konto-Einstellung user_kv 'start_page' = Seiten-ID ---------------------------------
+def start_page_ok(c, uid, nid):
+    """Darf uid die Seite nid als Startseite haben? Eigene oder geteilte Seite dieses Servers (keine Vorlage, nicht im
+    Papierkorb); foederierte (negative) IDs gibt es in Etappe 1 nicht."""
+    if not isinstance(nid, int) or isinstance(nid, bool) or not 0 < nid < 2 ** 63:
+        return False
+    if not Access(c, uid).role(nid):
+        return False
+    return c.execute("SELECT 1 FROM note WHERE id=? AND deleted_at IS NULL AND is_template=0", (nid,)).fetchone() is not None
+
+
+def start_page(uid, c=None):
+    """Gesetzte Startseite (ID) - oder None, wenn keine gesetzt ist oder sie weg/ohne Zugriff ist."""
+    if c is None:
+        with _db() as c2:
+            return start_page(uid, c2)
+    r = c.execute("SELECT v FROM user_kv WHERE uid=? AND k='start_page'", (uid,)).fetchone()
+    try:
+        nid = int(r[0]) if r and r[0] else None
+    except ValueError:
+        return None
+    return nid if nid and start_page_ok(c, uid, nid) else None
+
+
+def set_start_page(uid, nid):
+    """nid None: zuruecksetzen. -> True | False (Seite unbekannt/kein Zugriff)."""
+    with _db() as c, c:
+        if nid is None:
+            c.execute("DELETE FROM user_kv WHERE uid=? AND k='start_page'", (uid,))
+            return True
+        if not start_page_ok(c, uid, nid):
+            return False
+        c.execute("INSERT OR REPLACE INTO user_kv (uid, k, v) VALUES (?, 'start_page', ?)", (uid, str(nid)))
+        return True
+
+
 @router.get("/notes", response_class=HTMLResponse)
 def notes_page(request: Request):
     """Eigene Seite fuer die Notizen (Seitenbaum + Editor im ganzen Fenster)."""
@@ -208,12 +244,26 @@ def notes_page(request: Request):
 
 @router.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)    # HEAD: Startseite fuer Besucher (Vorschauen, Monitoring)
 def index(request: Request):
+    return _dashboard(request, start=True)
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
+def dashboard_page(request: Request):
+    """Das Dashboard - auch mit eigener Startseite (fix27 E2: "/" oeffnet dann die Startseite)."""
+    return _dashboard(request, start=False)
+
+
+def _dashboard(request, start):
     uid = _session_user(request)
     if not uid:
+        if not start:
+            return RedirectResponse("/login?next=/dashboard", status_code=303)
         # Besucher ohne Anmeldung: vom Admin gewaehlte oeffentliche Startseite (sonst wie bisher zur Anmeldung)
         return publish.home_response(request) or RedirectResponse("/login", status_code=303)
     if (go := mfa.setup_redirect(request, uid)) is not None:
         return go
+    if start and (sp := start_page(uid)):
+        return RedirectResponse(f"/notes#{sp}", status_code=303)
     info = user_info(uid)
     remember_ui_lang(uid, request)
     mine = visible_tiles(uid, info)

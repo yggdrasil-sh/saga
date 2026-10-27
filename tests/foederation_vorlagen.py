@@ -129,8 +129,7 @@ def part(pa, pb):
     def count():
         return sql("a", "SELECT count(*) FROM note WHERE parent_id=? AND is_template=0", (db,))[0][0]
     n0 = count()
-    tries = {"ohne via": (rT1, {"parent_id": rD}),
-             "via Seite ohne Knopf": (rT1, {"parent_id": rD, "via": rO}),
+    tries = {"via Seite ohne Knopf": (rT1, {"parent_id": rD, "via": rO}),
              "andere Vorlage": (ref(pa, geheim), {"parent_id": rD, "via": rS}),
              "anderes Ziel": (rT1, {"parent_id": ref(pa, tdb), "via": rS}),
              "Ziel als ID von B": (rT1, {"parent_id": db, "via": rS}),
@@ -141,6 +140,12 @@ def part(pa, pb):
         ok(f"B: {name} -> nichts angelegt ({s})", s in (403, 404) and count() == n0)
     s, d = api("b", "fb-olga", "POST", f"/api/notes/{rT1}/duplicate", {"parent_id": rD, "via": rS})
     ok(f"B: Olga (nur Lesen) legt nichts an ({s})", s in (403, 404) and count() == n0)
+    # fix27 E1: ohne via geht es jetzt fuer Vorlagen DIESER Datenbank (Bert darf sie bearbeiten), nicht fuer die private
+    s, d = api("b", "fb-bert", "POST", f"/api/notes/{rT2}/duplicate", {"parent_id": rD})
+    ok(f"B: private Vorlage ohne via -> nichts angelegt ({s})", s in (403, 404) and count() == n0)
+    s, d = api("b", "fb-bert", "POST", f"/api/notes/{rT1}/duplicate", {"parent_id": rD})
+    ok(f"B: Vorlage der Datenbank ohne via (fix27 E1) -> angelegt ({s})", s == 200 and count() == n0 + 1)
+    n0 = count()
     s, d = api("b", "fb-bert", "POST", f"/api/notes/{rT1}/duplicate", {"parent_id": rD, "via": rS, "template": True})
     nid3 = d.get("id") if isinstance(d, dict) else None
     ok(f"B: 'template' wird ignoriert ({s})", s == 200 and nid3 and a_row((-nid3 - pa) // 1024)[5] == 0)

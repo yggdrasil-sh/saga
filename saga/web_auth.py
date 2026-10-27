@@ -12,7 +12,7 @@ from fastapi import APIRouter
 from saga import avatars, i18n, mfa
 from saga.core import (ADMIN_URL, ASSET_V, BASE_URL, HANDLE_RE, MEDIA_FRONT, SEC_HEADERS, _api_guard, _bad, _body, _session_user, _set_session, lang_switch_response,
                        set_user_lang, t, title, tmpl, user_info, user_lang)
-from saga.dashboard import source_label
+from saga.dashboard import set_start_page, source_label, start_page
 
 router = APIRouter()
 
@@ -394,7 +394,7 @@ def api_account(request: Request):
                          "local_groups": sorted(i["local_groups"]), "is_admin": i["is_admin"],
                          "admin_url": ADMIN_URL if i["is_admin"] else "", "pw_changed": i["pw_changed"],
                          "can_edit": i["source"] == "local", "lang": user_lang(uid), "lang_active": i18n.get_lang(),
-                         "avatar": avatars.my_url(uid),
+                         "avatar": avatars.my_url(uid), "start_page": start_page(uid),
                          "langs": [{"code": "", "name": t("Automatisch")}] + [{"code": k, "name": v} for k, v in i18n.NAMES.items()]})
 
 
@@ -404,9 +404,17 @@ async def api_account_update(request: Request):
     if not uid:
         return _bad("unauthorized", 401)
     i = user_info(uid)
+    b = await _body(request) or {}
+    if "start_page" in b:                     # fix27 E2: eigene Startseite (Seiten-ID oder null) - fuer jedes Konto
+        sp = b["start_page"]
+        if sp is not None and (not isinstance(sp, int) or isinstance(sp, bool)):
+            return _bad(t("ungültige Angabe"))
+        if not await run_in_threadpool(set_start_page, uid, sp):
+            return _bad("not found", 404)
+        if "name" not in b and "email" not in b:
+            return JSONResponse({"ok": True, "start_page": sp})
     if i["source"] != "local":
         return _bad(t("Name und E-Mail kommen von deinem Anmeldedienst und werden dort geändert."), 403)
-    b = await _body(request) or {}
     name, email = clean_line(b.get("name") if isinstance(b.get("name"), str) else "").strip()[:120], str(b.get("email") or "").strip()[:200]
     if "name" not in b:                       # D01: Felder, die fehlen, bleiben (Chat-Einrichtung schickt nur den Namen)
         name = "" if i["name"] == i["username"] else clean_line(i["name"] or "").strip()[:120]
@@ -420,7 +428,10 @@ async def api_account_update(request: Request):
         c.execute("UPDATE users SET display_name=?, email=? WHERE username=?", (name, email, uid))
     auth._ui_cache.pop(uid, None)
     request.session["name"] = name or uid
-    return JSONResponse({"ok": True, "name": name or uid})
+    out = {"ok": True, "name": name or uid}
+    if "start_page" in b:
+        out["start_page"] = b["start_page"]
+    return JSONResponse(out)
 
 
 @router.post("/api/account/password")

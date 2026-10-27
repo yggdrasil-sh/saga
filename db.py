@@ -746,6 +746,12 @@ CREATE INDEX IF NOT EXISTS note_updated ON note (uid, updated);      -- Suche: n
 CREATE TABLE IF NOT EXISTS note_stale (
     note_id BIGINT PRIMARY KEY REFERENCES note(id) ON DELETE CASCADE, uid TEXT NOT NULL, n BIGINT NOT NULL DEFAULT 1);
 CREATE INDEX IF NOT EXISTS note_stale_uid ON note_stale (uid);
+-- note_fresh (2.5, E4): Eintrag eben aus einer Vorlage angelegt - wer ihn anlegte (creator, auch '@name@host'), Schluessel
+-- fuer das Verwerfen und Fingerabdruck des Anfangsstands. POST /api/notes/{id}/discard loescht ihn endgueltig, solange er
+-- unveraendert ist (saga.databases); alte Eintraege raeumt das naechste Anlegen weg.
+CREATE TABLE IF NOT EXISTS note_fresh (
+    note_id BIGINT PRIMARY KEY REFERENCES note(id) ON DELETE CASCADE, uid TEXT NOT NULL, creator TEXT NOT NULL,
+    tok TEXT NOT NULL, fp TEXT NOT NULL, created DOUBLE PRECISION NOT NULL);
 CREATE OR REPLACE FUNCTION saga_note_stale() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF TG_OP = 'UPDATE' THEN

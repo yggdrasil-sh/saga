@@ -80,7 +80,10 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # Online-Status von Chat-Partnern (Abo beim Server der Person). Mit 2.3-Servern: nichts davon, nichts wird gesendet.
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
          "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn",
-         "widgets1"]
+         "widgets1", "rowtpl"]
+# rowtpl (2.5, fix27 E1/E4) = Eintrags-Vorlagen fuer Bearbeitende: GET .../rows liefert ab Rolle 'Bearbeiten' "templates",
+# POST /fed/v2/notes/{vorlage}/duplicate geht dann auch ohne via (Vorlage liegt in parent_id), die Antwort traegt
+# fresh/placeholder, und POST /fed/v2/notes/{id}/discard verwirft einen unveraenderten neuen Eintrag. Ohne rowtpl: wie bisher.
 # widgets1 (2.5, saga.page_widgets) = Widgets in Seiten: Werte (Fortschritt/Kennzahl/Zitat aus einer Datenbank) einer
 # foederiert geteilten Seite rechnet der Eigentuemer-Server mit dem Prinzipal der Person (GET /fed/v2/notes/{id}/widgets).
 # Ohne widgets1: das Heim antwortet {"widgets": {}, "unsupported": true}.
@@ -2430,7 +2433,7 @@ def _note_in(c, peer, d, uid):
     return d
 
 
-PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups", "tplbtn", "widgets1")
+PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups", "tplbtn", "widgets1", "rowtpl")
 
 
 def remote_info(peer):
@@ -2473,7 +2476,10 @@ def schema_in(pid, schema):
             if p.get("type") == "relation":
                 p["target"] = ref(pid, p["target"]) if _ok_rid(p.get("target")) else 0
             props.append(p)
-    return dict(schema, props=props)
+    out = dict(schema, props=props)
+    if "default_tpl" in out:              # fix27: Standardvorlage als ID dieser Instanz (vorher roh durchgereicht)
+        out["default_tpl"] = ref(pid, out["default_tpl"]) if _ok_rid(out.get("default_tpl")) else None
+    return out
 
 
 def schema_out(pid, schema):
@@ -2489,7 +2495,9 @@ def schema_out(pid, schema):
                 tg = 0
             p = dict(p, target=unref(tg)[1] if tg < 0 and unref(tg)[0] == pid else 0)
         props.append(p)
-    return dict(schema, props=props)
+    out = dict(schema, props=props)
+    out.pop("default_tpl", None)          # setzt nur der Eigentuemer (bleibt beim Speichern erhalten, saga.pages)
+    return out
 
 
 def _esc_text(s):

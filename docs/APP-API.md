@@ -67,8 +67,8 @@ nötig (Hinweis „Im Web bearbeiten“), **Regel 0 gilt**: Widget-Blöcke unver
 |---|---|---|
 | `clock` | `tz` (IANA, `""` = Zeitzone des Betrachters), `h24` (Standard true), `sec`, `analog` (bool) | Client |
 | `countdown` | `date` `"YYYY-MM-DD"` (sonst `""`), `time` `"HH:MM"` oder `""`, `dir` `until`/`since`, `unit` `days`/`auto` (auto: unter einem Tag Std./Min.) | Client |
-| `progress` | `src` `fixed`: `value` (Zahl, Standard 0), `max` (Zahl > 0, Standard 100). `src` `db`: `db` (ID), `view` (Ansicht-ID, `""` = erste), `mode` `checked` (Anteil angehakt der Eigenschaft `prop`, max = Zeilen) / `sum` (Summe von `prop` bis `goal` > 0) | Client bei fixed, Server bei db |
-| `metric` | `db`, `view`, `agg` `count/sum/avg/min/max/pct_checked`, `prop` (bei count `""`), `fmt` `num/pct/eur`, `goal` (optional, Zahl → `max`) | Server |
+| `progress` | `src` `fixed`: `value` (Zahl, Standard 0), `max` (Zahl > 0, Standard 100). `src` `db`: `db` (ID), `view` (Ansicht-ID, `""` = erste), `mode` `checked` (Anteil angehakt der Eigenschaft `prop`, max = Zeilen) / `sum` (Summe von `prop` bis `goal` > 0). **fix27:** `src` `tasks` (ohne weitere Felder) | Client bei fixed, Server bei db/tasks |
+| `metric` | `db`, `view`, `agg` `count/sum/avg/min/max/pct_checked`, `prop` (bei count `""`), `fmt` `num/pct/eur`, `goal` (optional, Zahl → `max`). **fix27:** `src` `tasks`: nur `agg` `open/due_today/overdue/done_week` (sonst `open`), `fmt` `num`, `goal` optional | Server |
 | `quote` | `src` `fixed`: `items` (≤ 20 Klartexte je ≤ 300 Zeichen). `src` `db`: `db`, `view`, `prop` (`""` = Titel). `pick` `daily` (Tag + Block-ID, deterministisch) / `open` (zufällig je Abruf) | Server |
 
 `db` ist immer eine Datenbank **dieses** Servers (positive ID); negative IDs speichert der Server als `null`.
@@ -95,9 +95,19 @@ W = {"kind": "metric", "value": 4, "max": 10, "text": null, "fmt": "num", "as_of
   `GET …/rows?view=<view>` (gleiche Filter-Semantik, Nicht-Eigentümer ohne archivierte Zeilen). Aggregation wie die
   Fußzeile der Datenbank-Tabelle im Web: Zahlen sind Zahlwerte und nicht leere Texte, die `Number()` versteht; Ergebnis auf
   2 Stellen; `pct_checked` ganze Prozent. Gemeinsame Testvektoren: `tests/widget_vectors.json`.
-- Zwischenspeicher 60 s je (Konto, Seite, Block, Einstellungen, Zeitzone, Tag); Rechte an Seite und Quelle prüft jeder
-  Abruf neu. Apps laden die Werte beim Öffnen der Seite und beim Zurückkehren in den Vordergrund, das Web zusätzlich alle
+- Zwischenspeicher 60 s je (Konto, Seite, Block, Einstellungen, Zeitzone, Tag) **und Stand der Quelle** (fix27 #3: neue,
+  geänderte, gelöschte, archivierte Zeilen und Änderungen an Schema/Ansichten rechnen beim nächsten Abruf sofort neu;
+  `src` `tasks` wird immer frisch gerechnet); Rechte an Seite und Quelle prüft jeder Abruf neu. Apps laden die Werte beim Öffnen der Seite und beim Zurückkehren in den Vordergrund, das Web zusätzlich alle
   60 s und nach dem Speichern.
+
+**Quelle Saga-Aufgaben (fix27 E3, `src: "tasks"`):** die Aufgaben (`/api/tasks`) der **betrachtenden** Person – auf einer
+geteilten Seite sieht also jede Person ihre eigenen. Kennzahl: `open` = offen, `due_today` = offen und heute fällig,
+`overdue` = offen und vor heute fällig, `done_week` = in dieser Woche erledigt (`done_at`). Fortschritt: `value` = diese
+Woche erledigt, `max` = diese Woche erledigt + offen mit Fälligkeit in dieser Woche (`max` kann 0 sein → „–“ bzw. 0 %).
+Woche = Montag bis Sonntag, „heute“ in `tz`. Personen anderer Server und veröffentlichte Seiten: `error` `no_access`.
+Ältere Server kennen `src: "tasks"` nicht: Kennzahl → `bad_cfg`, Fortschritt wird beim Speichern zu `fixed` – Clients
+schreiben den Block unverändert zurück (Regel 0) und bieten die Quelle nur an, wenn der Server sie kennt – Erkennen:
+`POST …/widgets/preview` mit `{"kind": "metric", "cfg": {"src": "tasks"}}` liefert dann einen Wert statt `bad_cfg`.
 
 **Darstellung (alle Clients):** Karte mit Titel (oder ohne Rahmen bei `plain`), Akzentfarbe aus der Palette, Größen s/m/l.
 Uhr tickt lokal (Sekunde bzw. Minute), Countdown minütlich nach Kalendertagen (heute = „heute“). Fehlerzustände
@@ -106,6 +116,61 @@ eingerichtet“, „Zu viele Einträge für ein Widget“. **Veröffentlichen:**
 = Tagesstand, Fortschritt als Balken mit Klasse `pb-NN` in 5-%-Schritten); Werte aus einer Datenbank nur, wenn sie
 demselben Konto gehört – sonst entfällt das Widget. **Markdown-Export:** eine Zeile `**<Titel oder Art>:** <Wert>`
 („(Stand <Datum>)“ bei Datenbank-Werten; ohne Zugriff `–`).
+
+## Eintrags-Vorlagen, Startseite, neue Einträge (2.5, Fix-Runde 27.10.)
+
+### E1 – Eintrags-Vorlagen für Bearbeitende
+
+- **`GET /api/notes/{db}/rows`**: `templates` = `[{"id", "title", "icon"}]` (Reihenfolge wie im Web) für Rolle `owner`
+  **und `edit`**; `view`/`comment` → `[]`. `schema.default_tpl` (ID einer dieser Vorlagen oder fehlt) kommt wie bisher
+  für alle mit. Gilt auch mit Abfrage-Parametern (z. B. `?limit=1`, um nur Schema + Vorlagen zu holen).
+- **Anlegen aus einer Vorlage:** `POST /api/notes/{vorlage}/duplicate` `{"parent_id": <db>, "title"?: "…"}` – derselbe
+  Aufruf wie für den Eigentümer, ohne `via`. Erlaubt ab *Bearbeiten* an `<db>`, und nur, wenn die Vorlage genau in
+  dieser Datenbank liegt. Sonst `403` (Rolle zu klein) bzw. `404` (andere Datenbank, fremde Vorlage, kein Ziel).
+  `template: true` wirkt nur für den Eigentümer. Der Eintrag gehört dem Eigentümer der Datenbank, `created_by` = wer anlegt.
+- **„+ Neu“** nimmt `default_tpl`, wenn es diese Vorlage in `templates` gibt – für Eigentümer und Bearbeitende gleich;
+  Menü „Neu ▾“ mit „Leerer Eintrag“ + Vorlagen. „Vorlagen verwalten“, Vorlagen öffnen/ändern/löschen/umbenennen und
+  `default_tpl` setzen bleiben beim Eigentümer: `GET/PATCH/DELETE /api/notes/{vorlage}` → `404` für alle anderen, ein
+  `PATCH` des Schemas durch Bearbeitende lässt `default_tpl` unverändert.
+- **Neuer Eintrag über eine Relations-Eigenschaft (#7):** erst `GET /api/notes/{ziel-db}/rows?limit=1`; gibt es
+  `schema.default_tpl` in `templates`, dann `POST /api/notes/{default_tpl}/duplicate {"parent_id": <ziel-db>, "title": <Name>}`,
+  sonst wie bisher `POST /api/notes {"parent_id", "title"}`. Danach die Relation setzen.
+- **Föderation** (Fähigkeit `rowtpl`, `APP-API-FED.md`): dieselben Felder/Aufrufe mit negativen IDs (`templates[].id`,
+  `default_tpl`). Fehlt `rowtpl` in `remote.caps` (älterer Server), ist `templates` leer – Clients verhalten sich wie bisher.
+
+### E2 – Eigene Startseite
+
+- `GET /api/account` → zusätzlich `"start_page": <Seiten-ID> | null`. `null` auch, wenn die gespeicherte Seite im
+  Papierkorb, eine Vorlage oder nicht mehr zugänglich ist (der Server prüft bei jedem Abruf).
+- `PATCH /api/account {"start_page": <id>}` setzt, `{"start_page": null}` setzt zurück → `{"ok": true, "start_page": …}`.
+  Erlaubt: eigene und mit mir geteilte Seiten **dieses** Servers (jede Rolle, auch Datenbanken). Föderierte (negative) IDs,
+  fremde Seiten ohne Zugriff → `404`; kein Integer → `400`. Geht für jedes Konto (auch LDAP/SSO); Name/E-Mail im selben
+  Aufruf gelten weiter nur für lokale Konten.
+- Web: `/` leitet bei gesetzter Startseite auf `/notes#<id>` um, das Dashboard liegt dann unter **`/dashboard`** (immer
+  erreichbar, Links „Dashboard“ zeigen dorthin). Seitenmenü „Als Startseite festlegen“ / „Startseite zurücksetzen“.
+- Apps: beim Kaltstart `start_page` öffnen, wenn gesetzt (sonst wie bisher); Seitenmenü-Eintrag zum Setzen/Zurücksetzen.
+  Ältere Server liefern das Feld nicht → wie `null`, Menüeintrag ausblenden.
+
+### E4 – Neue Einträge aus einer Vorlage
+
+- `POST /api/notes/{vorlage}/duplicate` in eine **Datenbank** (Vorlage ist eine Eintrags-Vorlage, nicht `template: true`):
+  Titel ist **leer**, außer `title` wird mitgeschickt (Schaltflächen mit Titel wie „Tagebuch {datum}“). Eigenschaften,
+  Symbol, Inhalt wie bisher aus der Vorlage. Antwort zusätzlich
+  `{"id", "updated", "fresh": "<Schlüssel, 24 Zeichen [A-Za-z0-9_-]>", "placeholder": "<Name der Vorlage>"}`.
+  Auch für Schaltflächen mit `via` und über die Föderation. Andere Duplikate (Seiten, `template: true`) unverändert,
+  ohne `fresh`.
+- Clients zeigen `placeholder` als Platzhalter im leeren Titel (z. B. „Neues Buch“), nicht als Text.
+- **Ohne Änderung geschlossen** (Peek/Seite verlassen, zurück, nächster Eintrag): `POST /api/notes/{id}/discard
+  {"fresh": "<Schlüssel>"}` → `200 {"deleted": true}` – der Eintrag ist **endgültig** weg (nicht im Papierkorb, Live wie
+  gelöscht). Der Server entscheidet:
+  - nur die Person, die angelegt hat (Konto bzw. Person eines anderen Servers), mit dem Schlüssel und noch mindestens
+    *Bearbeiten* – sonst `404`;
+  - nur binnen **15 Minuten** nach dem Anlegen – sonst `409 {"deleted": false, "reason": "expired"}`;
+  - nur unverändert: Titel, Symbol, Tags, Eigenschaften (leere Werte zählen wie fehlend), Inhalt (Block-IDs und
+    Editor-Zeitstempel zählen nicht), Titelbild; keine Kommentare, Unterseiten, Freigaben, Veröffentlichung – sonst
+    `409 {"deleted": false, "reason": "changed"}`. Auch Änderungen anderer Personen zählen.
+  - `409`/`404`: nichts tun (der Eintrag bleibt). Clients senden `discard` höchstens einmal je Eintrag und merken sich
+    `fresh` nur im Speicher der laufenden Sitzung. Ältere Server: kein `fresh` → nie `discard` senden.
 
 ## Vorlagengalerie (2.5)
 
@@ -200,7 +265,8 @@ bisher ignoriert.
 Falsche Werte (kein JSON, keine Liste, `limit=0`, unbekannte Zeitzone …) → `400`. Kann eine Ansicht nicht ausgewertet
 werden, weil die gespeicherten Daten nicht passen (dort, wo das Web mit einem Fehler abbricht – z. B. Relation
 „enthält“ bei Zeilen ohne Verknüpfung), kommt `400` mit Meldung statt einer abweichenden Liste. Rechte wie bisher:
-kein Zugriff → `404`; Nicht-Eigentümer sehen keine archivierten Zeilen und keine Vorlagen.
+kein Zugriff → `404`; Nicht-Eigentümer sehen keine archivierten Zeilen; Eintrags-Vorlagen (`templates`) bekommen
+Eigentümer und – seit fix27 E1 – Personen mit *Bearbeiten* (siehe „Eintrags-Vorlagen, Startseite, neue Einträge“).
 
 ### Antwort
 

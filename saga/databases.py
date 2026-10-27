@@ -2,6 +2,7 @@
 import hashlib
 import hmac
 import json
+import secrets
 import time
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -9,9 +10,9 @@ from starlette.concurrency import run_in_threadpool
 from db import connect as _db
 from fastapi import APIRouter
 from saga import nextcloud
-from saga.core import SECRET, _api_guard, _bad, _body, _json_load, origin_of
+from saga.core import SECRET, _api_guard, _bad, _body, _json_load, origin_of, t
 from saga.sharing import access
-from saga.notes import NOTE_TITLE_MAX, note_limit_error, _FILE_URL, _check_parent, _iter_blocks, announce_row, tree_changed
+from saga.notes import NOTE_TITLE_MAX, note_limit_error, _FILE_URL, _check_parent, _iter_blocks, _purge_ids, announce_row, tree_changed
 
 
 router = APIRouter()
@@ -63,18 +64,22 @@ async def api_note_duplicate(nid: int, request: Request):
 
 def note_duplicate(uid, nid, b, origin=None):
     """Kern von POST /api/notes/{nid}/duplicate - auch fuer Personen anderer Instanzen (fed_pages, Schaltflaeche mit
-    Vorlage auf einer foederiert geteilten Seite: uid ist dann der Prinzipal '@name@host')."""
+    Vorlage auf einer foederiert geteilten Seite: uid ist dann der Prinzipal '@name@host').
+    Eintrags-Vorlage -> Zeile ihrer Datenbank (fix27 E1): auch ab Rolle 'Bearbeiten' an der Datenbank (_row_tpl).
+    Aus einer Vorlage in eine Datenbank (fix27 E4): Titel leer (ausser b.title), Antwort mit fresh/placeholder."""
     owner = uid                              # Duplizieren: der Eigentuemer - oder per Schaltflaeche (via, siehe unten)
     now = time.time()
     with _db() as c, c:
         _, _, err = access(c, uid, nid, "owner")
         if err is not None:
             if b.get("via") is None:
-                return err
-            owner, err = _via_button(c, uid, nid, b)
+                owner, err2 = _row_tpl(c, uid, nid, b)
+                err = err if err2 is not None and err2.status_code == 404 else err2   # keine Eintrags-Vorlage: Antwort wie bisher
+            else:
+                owner, err = _via_button(c, uid, nid, b)
             if err is not None:
                 return err
-        r = c.execute("SELECT title, icon, tags, body, format, kind, schema, props, cover, cover_pos, wide, parent_id, font, small "
+        r = c.execute("SELECT title, icon, tags, body, format, kind, schema, props, cover, cover_pos, wide, parent_id, font, small, is_template "
                       "FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
         if not r:
             return _bad("not found", 404)
@@ -85,12 +90,14 @@ def note_duplicate(uid, nid, b, origin=None):
         lim = note_limit_error(c, owner, parent)
         if lim:
             return _bad(lim, 409)
-        title = str(b.get("title", r[0] or "")).strip()[:NOTE_TITLE_MAX]
+        tpl = 1 if b.get("template") is True and owner == uid else 0   # 2.5 "Duplizieren" einer Vorlage bleibt Vorlage (nur Eigentuemer, R03)
+        into_db = bool(parent) and c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND kind='database'", (parent, owner)).fetchone() is not None
+        entry = bool(r[14]) and not tpl and into_db      # E4: neuer Eintrag aus einer Eintrags-Vorlage
+        title = str(b.get("title", "" if entry else (r[0] or ""))).strip()[:NOTE_TITLE_MAX]
         props = r[7]
         if parent != r[11]:                     # andere Datenbank (z. B. Vorlagen-Datenbank) -> Eigenschaften nach Name/Typ zuordnen
             props = _map_props(c, owner, r[11], parent, r[7])
         # Alles kopieren, was die Seite ausmacht: auch Titelbild (+ Position), volle Breite, Schrift und kleiner Text
-        tpl = 1 if b.get("template") is True and owner == uid else 0   # 2.5 "Duplizieren" einer Vorlage bleibt Vorlage (nur Eigentuemer, R03)
         cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, cover, cover_pos, wide, "
                         "font, small, is_template, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (owner, title, r[3], r[4], r[1], parent, now, r[2], r[5] or "page", r[6], props, r[8], r[9], r[10], r[12], r[13] or 0,
@@ -105,7 +112,105 @@ def note_duplicate(uid, nid, b, origin=None):
             if parent:
                 announce_row(c, owner, cur.lastrowid, uid, now, origin)
         tree_changed(c, owner, [cur.lastrowid], "created", origin)
-        return JSONResponse({"id": cur.lastrowid, "updated": now})
+        out = {"id": cur.lastrowid, "updated": now}
+        if entry:
+            out.update(fresh=_fresh_mark(c, owner, uid, cur.lastrowid, now), placeholder=r[0] or "")
+        return JSONResponse(out)
+
+
+def _row_tpl(c, uid, nid, b):
+    """fix27 E1: Eintrags-Vorlage nid in ihre eigene Datenbank b["parent_id"] kopieren - ab Rolle 'Bearbeiten' an dieser
+    Datenbank (die Vorlage selbst bleibt fuer andere unsichtbar). -> (owner, None) | (None, Fehler)"""
+    target = _num(b.get("parent_id"))
+    if not target or target <= 0:
+        return None, _bad("not found", 404)
+    owner, _, err = access(c, uid, target, "edit")
+    if err is not None:
+        return None, err
+    if not c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND parent_id=? AND is_template=1 AND deleted_at IS NULL",
+                     (nid, owner, target)).fetchone():
+        return None, _bad("not found", 404)
+    return owner, None
+
+
+# --- fix27 E4: neue Eintraege aus einer Vorlage ohne Aenderung wieder verwerfen -----------------------------------------
+FRESH_TTL = 900.0           # so lange darf die anlegende Person einen unveraenderten Eintrag endgueltig loeschen
+
+
+def _norm_blocks(v):
+    """Inhalt ohne Block-IDs und Editor-Zeitstempel (die aendern sich beim Speichern ohne inhaltliche Aenderung)."""
+    if isinstance(v, list):
+        return [_norm_blocks(x) for x in v]
+    if isinstance(v, dict):
+        return {k: _norm_blocks(x) for k, x in v.items() if k not in ("id", "time", "version")}
+    return v
+
+
+def _fingerprint(c, owner, nid):
+    r = c.execute("SELECT title, icon, tags, body, format, props, cover, kind, parent_id FROM note WHERE id=? AND uid=? "
+                  "AND deleted_at IS NULL", (nid, owner)).fetchone()
+    if not r:
+        return None
+    body = r[3] or ""
+    if r[4] == "blocks":
+        body = _norm_blocks((_json_load(body, {}) or {}).get("blocks") or []) if body else []
+    props = {k: v for k, v in (_json_load(r[5], {}) or {}).items() if v not in (None, "", [], False)}
+    raw = json.dumps([(r[0] or "").strip(), r[1] or "", r[2] or "", body, r[4], props, r[6] or "", r[7], r[8]],
+                     sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _fresh_mark(c, owner, creator, nid, now):
+    c.execute("DELETE FROM note_fresh WHERE created < ?", (now - FRESH_TTL,))
+    tok = secrets.token_urlsafe(18)
+    c.execute("INSERT INTO note_fresh (note_id, uid, creator, tok, fp, created) VALUES (?,?,?,?,?,?)",
+              (nid, owner, creator, tok, _fingerprint(c, owner, nid), now))
+    return tok
+
+
+def note_discard(uid, nid, b, origin=None):
+    """Kern von POST /api/notes/{nid}/discard {"fresh": "<aus duplicate>"} (auch foederiert, uid = Prinzipal): den eben
+    aus einer Vorlage angelegten Eintrag endgueltig loeschen - nur die anlegende Person, nur binnen FRESH_TTL und nur,
+    solange er unveraendert ist (Titel, Symbol, Eigenschaften, Inhalt, Titelbild; keine Kommentare, Unterseiten,
+    Freigaben). Sonst 409 und der Eintrag bleibt."""
+    tok = b.get("fresh") if isinstance(b, dict) else None
+    if not isinstance(tok, str) or not 8 <= len(tok) <= 64:
+        return _bad(t("ungültige Angabe"))
+    now = time.time()
+    with _db() as c, c:
+        f = c.execute("SELECT uid, creator, tok, fp, created FROM note_fresh WHERE note_id=?", (nid,)).fetchone()
+        if not f or f[1] != uid or not hmac.compare_digest(f[2], tok):
+            return _bad("not found", 404)
+        owner = f[0]
+        if owner != uid and access(c, uid, nid, "edit")[2] is not None:     # Zugriff inzwischen entzogen
+            return _bad("not found", 404)
+
+        def keep(reason):
+            return JSONResponse({"error": t("Der Eintrag wurde geändert und bleibt erhalten."), "deleted": False, "reason": reason},
+                                status_code=409)
+        if now - f[4] > FRESH_TTL:
+            return keep("expired")
+        if _fingerprint(c, owner, nid) != f[3]:
+            return keep("changed")
+        busy = c.execute("SELECT (SELECT count(*) FROM note WHERE uid=? AND parent_id=?) + "
+                         "(SELECT count(*) FROM note_comment WHERE owner_uid=? AND note_id=?) + "
+                         "(SELECT count(*) FROM note_share WHERE owner_uid=? AND note_id=?) + "
+                         "(SELECT count(*) FROM note_publish WHERE uid=? AND note_id=?)",
+                         (owner, nid, owner, nid, owner, nid, owner, nid)).fetchone()[0]
+        if busy:
+            return keep("changed")
+        announce_row(c, owner, nid, uid, now, origin)      # vor dem Loeschen: die Datenbank laedt neu
+        _purge_ids(c, owner, [nid])
+    return JSONResponse({"deleted": True})
+
+
+@router.post("/api/notes/{nid}/discard")
+async def api_note_discard(nid: int, request: Request):
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    b = await _body(request) or {}
+    return await run_in_threadpool(note_discard, uid, nid, b, origin_of(request))
 
 
 # --- Schaltflaechen mit Vorlage auf geteilten Seiten (2.5) ---------------------------------------------------------

@@ -300,7 +300,7 @@ def db_rows(uid, nid, params):
     # fremd: ohne archivierte Zeilen und ohne Vorlagen. Wer die Datenbank sehen darf, sieht jede ihrer Zeilen, die nicht
     # archiviert/Vorlage ist (Vererbung wie sharing.Access.tree) - dafuer braucht es keinen Freigabe-Baum
     try:
-        d = _db_rows(owner, nid, shared=role != "owner", query=query, viewer=uid)
+        d = _db_rows(owner, nid, shared=role != "owner", query=query, viewer=uid, with_tpls=role in ("owner", "edit"))
     except dbquery.JsError:
         return _bad(t("Filter oder Sortierung lässt sich nicht auswerten."))
     if d:
@@ -308,9 +308,10 @@ def db_rows(uid, nid, params):
     return JSONResponse(d, headers={"Cache-Control": "no-store"}) if d else _bad("not found", 404)
 
 
-def _db_rows(owner, nid, shared=False, query=None, viewer=None):
+def _db_rows(owner, nid, shared=False, query=None, viewer=None, with_tpls=None):
     """Schema + aktive Zeilen einer Datenbank (None, wenn nicht vorhanden / nicht von owner).
-    shared: Antwort fuer Nicht-Eigentuemer - ohne archivierte Zeilen und ohne Vorlagen.
+    shared: Antwort fuer Nicht-Eigentuemer - ohne archivierte Zeilen. with_tpls: Eintrags-Vorlagen mitliefern (Standard: nur
+    der Eigentuemer; fix27 E1: auch ab Rolle 'Bearbeiten' - sie duerfen daraus anlegen, nicht die Vorlagen aendern).
     query (dbquery.parse_args, opt-in): Ansicht/Filter/Sortierung/Suche/Gruppen/Blaettern; viewer: wer fragt (Relationen).
     Vorschaubild: Titelbild, sonst erstes Bild im Inhalt - aus note_derived (saga.pageindex); nur fuer gerade geaenderte,
     noch nicht abgeglichene Zeilen (note_stale) wird der Inhalt geladen und wie bisher gelesen."""
@@ -326,7 +327,7 @@ def _db_rows(owner, nid, shared=False, query=None, viewer=None):
             rows = c.execute(sql + " ORDER BY sort NULLS FIRST, created", (owner, nid)).fetchall()
         else:
             rows, parsed, extra = _db_query(c, owner, nid, shared, sql, db[0], query, viewer)
-        tpls = [] if shared else c.execute(
+        tpls = [] if not (with_tpls if with_tpls is not None else not shared) else c.execute(
             "SELECT id, title, icon FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND is_template=1 "
             "ORDER BY sort NULLS FIRST, created", (owner, nid)).fetchall()      # Vorlagen der Datenbank: keine Zeilen (wie Notion)
         ids = [r[0] for r in rows if not r[6]]                 # Titelbild gesetzt: Inhalt egal

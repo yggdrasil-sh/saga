@@ -150,17 +150,25 @@ async def _owner_req(request, nid, rest):
         # tplbtn (2.5): Schaltflaeche "Neuer Eintrag" mit Vorlage auf einer hier liegenden, foederiert geteilten Seite -
         # nid = Vorlage, via = Seite mit der Schaltflaeche, parent_id = Ziel-Datenbank (alles IDs hier). Pruefung wie
         # lokal (databases._via_button: Signatur des Eigentuemers, Ziel bearbeiten); nie als Vorlage.
-        if _need(inp, "tplbtn"):
-            return _need(inp, "tplbtn")
+        # rowtpl (fix27 E1): ohne via = Eintrags-Vorlage in ihre Datenbank parent_id (ab 'Bearbeiten' dort, wie lokal)
+        if _need(inp, "rowtpl" if b.get("via") is None else "tplbtn"):
+            return _need(inp, "rowtpl" if b.get("via") is None else "tplbtn")
         out = {}
         for k in ("parent_id", "via"):
             v = b.get(k)
+            if k == "via" and v is None:
+                continue
             if not (isinstance(v, int) and not isinstance(v, bool) and 0 < v < 2 ** 63):
                 return F._signed(inp, 404, {"error": "not found"})
             out[k] = v
         if isinstance(b.get("title"), str):
             out["title"] = b["title"]
         return _signed_resp(inp, await run_in_threadpool(F._as, inp, databases.note_duplicate, nid, out))
+    if m == "POST" and rest == "discard":             # fix27 E4: unveraenderten neuen Eintrag verwerfen (nur wer ihn anlegte)
+        if _need(inp, "rowtpl"):
+            return _need(inp, "rowtpl")
+        tok = b.get("fresh") if isinstance(b.get("fresh"), str) else ""
+        return _signed_resp(inp, await run_in_threadpool(F._as, inp, databases.note_discard, nid, {"fresh": tok[:64]}))
     if m == "POST" and rest == "move":
         if _need(inp, "subpages"):
             return _need(inp, "subpages")
@@ -530,6 +538,14 @@ def _row_in(c, p, d, uid):
             "preview": F._rw_in(F._safe_pic(d.get("preview"), False), pid, r)}
 
 
+def _tpl_in(p, d):
+    """Eintrags-Vorlage aus GET .../rows der anderen Instanz (fix27 E1, ab 'Bearbeiten'): nur id/title/icon."""
+    if not isinstance(d, dict) or not F._ok_rid(d.get("id")):
+        return None
+    r = F.ref(p["id"], d["id"])
+    return {"id": r, "title": F._clean_text(d.get("title"), 500), "icon": F._rw_in(F._safe_pic(d.get("icon"), True), p["id"], r)}
+
+
 def _w_rows(uid, nid, query):
     p, rid = _peer_for(uid, nid, "db")
     status, _, d = _call(uid, p, "GET", f"/fed/v2/notes/{rid}/rows", query)
@@ -537,7 +553,8 @@ def _w_rows(uid, nid, query):
         return F._pass_err(p, status, d)
     with _db() as c:
         rows = [x for x in (_row_in(c, p, r, uid) for r in (d.get("rows") or [])[:5000]) if x]
-    out = {"schema": F.schema_in(p["id"], d.get("schema")), "templates": [], "rows": rows,
+        tpls = [x for x in (_tpl_in(p, x) for x in (d.get("templates") or [])[:200]) if x] if isinstance(d.get("templates"), list) else []
+    out = {"schema": F.schema_in(p["id"], d.get("schema")), "templates": tpls, "rows": rows,
            "role": d.get("role") if d.get("role") in sharing.ROLES else "view"}
     for k in ("total", "matched", "offset", "limit"):
         if isinstance(d.get(k), int) and not isinstance(d.get(k), bool):
@@ -679,9 +696,11 @@ def _w_duplicate(uid, nid, b):
     """Schaltflaeche mit Vorlage auf einer Seite einer anderen Instanz (POST /api/notes/{-vorlage}/duplicate): Vorlage,
     Ziel-Datenbank (parent_id) und Seite mit der Schaltflaeche (via) muessen auf DERSELBEN Instanz liegen - dort legt
     deren Server den Eintrag an und prueft die Schaltflaeche (Signatur des Eigentuemers)."""
-    p, rid = _peer_for(uid, nid, "tplbtn")
+    p, rid = _peer_for(uid, nid, "tplbtn" if b.get("via") is not None else "rowtpl")
     ids = {}
     for k in ("parent_id", "via"):
+        if k == "via" and b.get("via") is None:       # fix27 E1: Eintrags-Vorlage ohne Schaltflaeche
+            continue
         try:
             v = int(b.get(k))
         except (TypeError, ValueError, OverflowError):
@@ -694,7 +713,24 @@ def _w_duplicate(uid, nid, b):
     status, _, d = _call(uid, p, "POST", f"/fed/v2/notes/{rid}/duplicate", body=ids)
     if status != 200 or not isinstance(d, dict) or not F._ok_rid(d.get("id")):
         return F._pass_err(p, status, d if isinstance(d, dict) else {})
-    return F._json(200, {"id": F.ref(p["id"], d["id"]), "updated": F._num(d.get("updated"))})
+    out = {"id": F.ref(p["id"], d["id"]), "updated": F._num(d.get("updated"))}
+    if isinstance(d.get("fresh"), str) and re.fullmatch(r"[A-Za-z0-9_-]{8,64}", d["fresh"]):     # fix27 E4
+        out.update(fresh=d["fresh"], placeholder=F._clean_text(d.get("placeholder"), 500))
+    return F._json(200, out)
+
+
+def _w_discard(uid, nid, b):
+    """fix27 E4: neuen, unveraenderten Eintrag auf der anderen Instanz verwerfen (dort prueft deren Server)."""
+    p, rid = _peer_for(uid, nid, "rowtpl")
+    tok = b.get("fresh") if isinstance(b, dict) and isinstance(b.get("fresh"), str) else ""
+    status, _, d = _call(uid, p, "POST", f"/fed/v2/notes/{rid}/discard", body={"fresh": tok[:64]})
+    d = d if isinstance(d, dict) else {}
+    if status == 200:
+        return F._json(200, {"deleted": True})
+    if status == 409:
+        return F._json(409, {"error": F._clean_text(d.get("error"), 300) or t("Der Eintrag wurde geändert und bleibt erhalten."),
+                             "deleted": False, "reason": d.get("reason") if d.get("reason") in ("changed", "expired") else "changed"})
+    return F._pass_err(p, status, d)
 
 
 def upload(uid, nid, name, data, image):
@@ -913,6 +949,9 @@ async def home_other(nid: int, rest: str, request: Request):
     if m == "POST" and rest == "duplicate":
         b = await _body(request) or {}
         return await run_in_threadpool(F._run, _w_duplicate, uid, nid, b)
+    if m == "POST" and rest == "discard":
+        b = await _body(request) or {}
+        return await run_in_threadpool(F._run, _w_discard, uid, nid, b)
     if mn and m == "GET":
         return await run_in_threadpool(F._run, _w_nc, uid, nid, None, dict(request.query_params))
     return _bad(t("Für Seiten anderer Saga-Instanzen nicht verfügbar."), 404)

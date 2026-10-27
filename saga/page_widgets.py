@@ -12,7 +12,12 @@ Clients in docs/APP-API.md ("Widgets in Seiten"). Nicht zu verwechseln mit den H
   wie die Web-Ansicht), Aggregation wie die Fusszeile der Datenbank-Tabelle im Web (static/pages.js calcNum).
 - GET /api/notes/{nid}/widgets (ab 'Lesen'), POST /api/notes/{nid}/widgets/preview (ab 'Bearbeiten').
   Zwischenspeicher 60 s je (Seite, Block, Konto, Einstellungen); die Rechte (Seite und Quelle) prueft jeder Abruf neu.
-- Foederation: saga.fed_pages leitet /fed/v2/notes/{rid}/widgets weiter (Faehigkeit widgets1)."""
+- Foederation: saga.fed_pages leitet /fed/v2/notes/{rid}/widgets weiter (Faehigkeit widgets1).
+- fix27 E3: metric/progress mit cfg.src "tasks" = Saga-Aufgaben der BETRACHTENDEN Person (task-Tabelle): metric agg
+  open | due_today | overdue | done_week, progress = erledigt diese Woche / (erledigt + offen faellig diese Woche).
+  Woche = Montag bis Sonntag in der Zeitzone der Anfrage. Personen anderer Instanzen und Veroeffentlichen: no_access.
+- fix27 #3: der Zwischenspeicher haengt am Stand der Quelle (Zeilen/Schema der Datenbank, Aufgaben) - jede Aenderung
+  rechnet beim naechsten Abruf sofort neu."""
 import hashlib
 import json
 import math
@@ -21,7 +26,7 @@ import re
 import secrets
 import threading
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from html import unescape as html_unescape
 from zoneinfo import ZoneInfo
@@ -33,7 +38,7 @@ from db import clean_line, connect as _db
 from saga import dbquery
 from saga.core import TZ, _api_guard, _bad, _body, _json_load, t
 from saga.notes import PALETTE, _iter_blocks
-from saga.sharing import Access, access
+from saga.sharing import Access, access, is_remote
 
 router = APIRouter()
 
@@ -41,6 +46,7 @@ KINDS = ("clock", "countdown", "progress", "metric", "quote")
 SIZES = ("s", "m", "l")
 STYLES = ("card", "plain")
 AGGS = ("count", "sum", "avg", "min", "max", "pct_checked")
+TASK_AGGS = ("open", "due_today", "overdue", "done_week")     # fix27 E3: metric mit src "tasks"
 FMTS = ("num", "pct", "eur")
 ERRORS = ("no_access", "gone", "bad_cfg", "too_big")
 TITLE_MAX = 80
@@ -126,6 +132,8 @@ def _clean_cfg(kind, c):
                 "time": c["time"] if isinstance(c.get("time"), str) and _HM.fullmatch(c["time"]) else "",
                 "dir": "since" if c.get("dir") == "since" else "until", "unit": "auto" if c.get("unit") == "auto" else "days"}
     if kind == "progress":
+        if c.get("src") == "tasks":
+            return {"src": "tasks"}
         if c.get("src") == "db":
             out = {"src": "db", "db": _db_id(c.get("db")), "view": _id(c.get("view")),
                    "mode": "sum" if c.get("mode") == "sum" else "checked", "prop": _id(c.get("prop"))}
@@ -135,6 +143,11 @@ def _clean_cfg(kind, c):
         mx = c.get("max")
         return {"src": "fixed", "value": _n(c["value"]) if _num(c.get("value")) else 0, "max": _n(mx) if _num(mx) and mx > 0 else 100}
     if kind == "metric":
+        if c.get("src") == "tasks":
+            out = {"src": "tasks", "agg": c["agg"] if c.get("agg") in TASK_AGGS else "open", "fmt": "num"}
+            if _num(c.get("goal")):
+                out["goal"] = _n(c["goal"])
+            return out
         out = {"db": _db_id(c.get("db")), "view": _id(c.get("view")), "agg": c.get("agg") if c.get("agg") in AGGS else "count",
                "prop": _id(c.get("prop")), "fmt": c.get("fmt") if c.get("fmt") in FMTS else "num"}
         if out["agg"] == "count":
@@ -191,7 +204,7 @@ def server_kind(d):
     if not isinstance(d, dict):
         return False
     k, c = d.get("kind"), d.get("cfg") if isinstance(d.get("cfg"), dict) else {}
-    return k in ("metric", "quote") or (k == "progress" and c.get("src") == "db")
+    return k in ("metric", "quote") or (k == "progress" and c.get("src") in ("db", "tasks"))
 
 
 # =====================================================================================================
@@ -331,6 +344,30 @@ def _text_of(v):
     return re.sub(r"\s+", " ", clean_line(str(v))).strip()[:QUOTE_LEN * 4]
 
 
+def task_stats(c, uid, today, tz=None):
+    """Saga-Aufgaben von uid (fix27 E3): {open, due_today, overdue, done_week, open_week}. today: Datum in der Zeitzone
+    der Anfrage; Woche Montag bis Sonntag. done_week nach done_at (Zeitpunkt) in derselben Zeitzone - Wiederholungen
+    zaehlen je erledigtem Durchgang (die Folgeaufgabe ist eine neue, offene Aufgabe)."""
+    mon = today - timedelta(days=today.weekday())
+    sun = mon + timedelta(days=6)
+    out = {"open": 0, "due_today": 0, "overdue": 0, "done_week": 0, "open_week": 0}
+    for done, due, done_at in c.execute("SELECT done, due, done_at FROM task WHERE uid=?", (uid,)).fetchall():
+        if not done:
+            out["open"] += 1
+            if due and _day_ok(due):
+                if due == today.isoformat():
+                    out["due_today"] += 1
+                elif due < today.isoformat():
+                    out["overdue"] += 1
+                if mon.isoformat() <= due <= sun.isoformat():
+                    out["open_week"] += 1
+        elif done_at:
+            d = datetime.fromtimestamp(done_at, tz or TZ).date()
+            if mon <= d <= sun:
+                out["done_week"] += 1
+    return out
+
+
 def compute(c, uid, bid, d, tz=None, acc=None, public_owner=None, today=None):
     """Wert eines Widgets (W, siehe Modulkopf) mit den Rechten von uid. d: bereinigtes data."""
     kind = d.get("kind") if isinstance(d, dict) else None
@@ -340,12 +377,20 @@ def compute(c, uid, bid, d, tz=None, acc=None, public_owner=None, today=None):
     tz = tz or TZ
     today = today or datetime.now(tz).date()
     try:
-        if kind == "progress" and cfg.get("src") != "db":
+        if kind == "progress" and cfg.get("src") not in ("db", "tasks"):
             return _W(kind, cfg.get("value", 0), cfg.get("max", 100))
         if kind in ("clock", "countdown"):
             return _W(kind)
         if kind == "quote" and cfg.get("src") != "db":
             return _W(kind, text=_pick(cfg.get("items") or [], bid, today, cfg.get("pick")))
+        if cfg.get("src") == "tasks" and kind in ("metric", "progress"):
+            if public_owner is not None or uid is None or is_remote(uid):
+                raise _Fail("no_access")            # Aufgaben gehoeren der betrachtenden Person dieses Servers
+            st = task_stats(c, uid, today, tz)
+            if kind == "progress":
+                return _W(kind, st["done_week"], st["done_week"] + st["open_week"])
+            agg = cfg.get("agg") if cfg.get("agg") in TASK_AGGS else "open"
+            return _W(kind, st[agg], cfg.get("goal"), fmt="num")
         acc = acc or (Access(c, uid) if public_owner is None else None)
         owner, schema, shared = _source(c, uid, cfg.get("db"), acc, public_owner)
         rows = _rows(c, uid if public_owner is None else public_owner, owner, cfg["db"], schema, shared, cfg.get("view") or "", tz)
@@ -400,6 +445,15 @@ def _cached(key, fn):
     return w
 
 
+def _db_ver(c, owner, dbid):
+    """Stand einer Quell-Datenbank fuer den Zwischenspeicher: Zeilen (Anzahl, juengste Aenderung, archivierte) und die
+    Datenbank selbst (Schema/Ansichten). Papierkorb, Wiederherstellen, Archiv und jede Speicherung aendern ihn."""
+    r = c.execute("SELECT count(*), coalesce(max(updated), 0), count(archived) FROM note WHERE uid=? AND parent_id=? "
+                  "AND deleted_at IS NULL AND is_template=0", (owner, dbid)).fetchone()
+    d = c.execute("SELECT updated, schema FROM note WHERE id=? AND uid=?", (dbid, owner)).fetchone()
+    return (r[0], r[1], r[2], d[0] if d else None, hashlib.sha256((d[1] or "").encode()).hexdigest()[:16] if d else None)
+
+
 def _tz_param(params):
     v = params.get("tz") if params else None
     if not v:
@@ -443,13 +497,18 @@ def page_widgets(uid, nid, params):
                 if cfg.get("pick") == "open" and d.get("kind") == "quote":
                     out[bid] = compute(c, uid, bid, d, tz, acc, today=today)
                     continue
+                if cfg.get("src") == "tasks":                 # fix27 E3: Aufgaben - klein, immer frisch gerechnet
+                    out[bid] = compute(c, uid, bid, d, tz, acc, today=today)
+                    continue
+                ver = None
                 if cfg.get("src") == "db" or d.get("kind") == "metric":
                     try:                                      # Recht und Bestand der Quelle immer frisch (nicht aus dem Speicher)
-                        _source(c, uid, _db_id(cfg.get("db")), acc)
+                        src_owner, _, _ = _source(c, uid, _db_id(cfg.get("db")), acc)
                     except _Fail as f:
                         out[bid] = _W(d.get("kind"), error=f.code)
                         continue
-                key = (uid, nid, bid, json.dumps(d, sort_keys=True, ensure_ascii=False), tzn, today.isoformat())
+                    ver = _db_ver(c, src_owner, cfg["db"])     # fix27 #3: Aenderung an der Quelle -> neu rechnen
+                key = (uid, nid, bid, json.dumps(d, sort_keys=True, ensure_ascii=False), tzn, today.isoformat(), ver)
                 out[bid] = _cached(key, lambda d=d, bid=bid: compute(c, uid, bid, d, tz, acc, today=today))
     return JSONResponse({"widgets": out}, headers={"Cache-Control": "no-store"})
 

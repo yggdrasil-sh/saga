@@ -603,8 +603,10 @@ def _note_update(uid, nid, b, origin=None):
                 _schema_merge(old_s, new_schema, _schema_srev(b["schema"]), uid)
                 # Standardvorlage: Clients, die sie nicht kennen (aeltere Apps), schicken den Schluessel nicht mit -> behalten;
                 # nur eine Vorlage DIESER Datenbank zaehlt, null/0 hebt sie auf
-                if "default_tpl" not in b["schema"] and old_s.get("default_tpl"):
-                    new_schema["default_tpl"] = old_s["default_tpl"]
+                if ("default_tpl" not in b["schema"] or role != "owner") and old_s.get("default_tpl"):
+                    new_schema["default_tpl"] = old_s["default_tpl"]     # fix27 E1: Standard setzt nur der Eigentuemer
+                elif role != "owner":
+                    new_schema.pop("default_tpl", None)
                 if new_schema.get("default_tpl") and not c.execute(
                         "SELECT 1 FROM note WHERE id=? AND uid=? AND parent_id=? AND is_template=1 AND deleted_at IS NULL",
                         (new_schema["default_tpl"], owner, nid)).fetchone():

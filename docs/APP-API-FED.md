@@ -458,7 +458,7 @@ Endpunkte des **eigenen** Servers. Was mit dem Server der Seite geht, steht in j
 | Feld | Bedeutung |
 |---|---|
 | `remote.peer`, `remote.host`, `remote.name` | wie bisher |
-| `remote.caps` | NEU: Liste aus `db subpages upload versions export presence live chatgroups` (2.5: auch `tplbtn`, `widgets1`) – nur, was beide Server können und der Admin erlaubt. Fehlt eine Fähigkeit (Server 2.1/2.2), bleibt es bei Lesen, Kommentieren und Titel/Inhalt bearbeiten |
+| `remote.caps` | NEU: Liste aus `db subpages upload versions export presence live chatgroups` (2.5: auch `tplbtn`, `widgets1`, `rowtpl`) – nur, was beide Server können und der Admin erlaubt. Fehlt eine Fähigkeit (Server 2.1/2.2), bleibt es bei Lesen, Kommentieren und Titel/Inhalt bearbeiten |
 
 Die Rolle prüft immer der Server der Seite (`role` wie bei eigenen Freigaben). Fehler kommen wie gewohnt (403/404/409/
 423); kann der andere Server etwas noch nicht, antwortet der eigene Server mit **404** und dem Text „Der Server … kann das
@@ -477,6 +477,7 @@ noch nicht (ältere Saga-Version)“; nicht erreichbar → 502.
 | `export` | `GET /api/notes/{id}/export[?sub=1]` | Markdown bzw. ZIP wie lokal |
 | `presence` / `live` | `POST /api/presence {note_id: <negativ>, editing, leave?}` | wie lokal (alle ~20 s); meldet zugleich ein **Abo** beim Server der Seite an (`FED_WATCH_TTL`, Standard 90 s). Solange es läuft, kommen über `/api/events` die gewohnten Ereignisse `note.changed`, `presence`, `comments.changed` mit negativen IDs; Personen anderer Server mit `remote: true` und Herkunft im Namen. Ohne `presence` antwortet der eigene Server mit `{users:[ich], live:false}` |
 | `widgets1` | `GET /api/notes/{id}/widgets[?tz=]` | 2.5: Werte der Widgets einer fremden Seite (Format wie lokal, `APP-API.md` „Widgets in Seiten“). Der Server der Seite rechnet mit dem Prinzipal der Person (Name und Server) – Datenbanken, die nicht mit ihr geteilt sind, kommen als `no_access`. Das Heim reicht nur die bekannten Felder weiter. Ohne `widgets1` → `{"widgets": {}, "unsupported": true}` (kein Fehler). Zwischen den Servern: `GET /fed/v2/notes/{rid}/widgets` (signiert, wie `…/rows`) |
+| `rowtpl` | `GET …/rows`, `POST /api/notes/{-vorlage}/duplicate` ohne `via`, `POST /api/notes/{-id}/discard` | 2.5 (fix27 E1/E4): Eintrags-Vorlagen für Bearbeitende – `templates` mit negativen IDs, `schema.default_tpl` als negative ID (vorher roh durchgereicht), Anlegen aus einer Vorlage ihrer Datenbank ohne Schaltfläche, Antwort mit `fresh`/`placeholder`, Verwerfen eines unveränderten neuen Eintrags. Ohne `rowtpl`: `templates` leer, Anlegen ohne `via` und `discard` → `404` mit Hinweis „kann das noch nicht“. Zwischen den Servern: `POST /fed/v2/notes/{rid}/duplicate {parent_id, title?}` und `POST /fed/v2/notes/{rid}/discard {fresh}` (signiert); der Server der Seite prüft mit dem Prinzipal wie lokal |
 | – | `shared.changed` (Live) | Unterseiten in geteilten Bereichen eines anderen Servers neu/verschoben/gelöscht → „Mit mir geteilt“ neu laden |
 
 Eingebettete Datenbanken in fremden Seiten (Block `database`, `data.db`) tragen ebenfalls negative IDs. Nicht über
