@@ -43,7 +43,7 @@
       quote: { 'Align Left': T('Linksbündig'), 'Align Center': T('Zentriert') },
       table: { 'With headings': T('Mit Kopfzeile'), 'Without headings': T('Ohne Kopfzeile'), 'Add column to left': T('Spalte links einfügen'),
         'Add column to right': T('Spalte rechts einfügen'), 'Delete column': T('Spalte löschen'), 'Add row above': T('Zeile oberhalb einfügen'),
-        'Add row below': T('Zeile unterhalb einfügen'), 'Delete row': T('Zeile löschen') },
+        'Add row below': T('Zeile unterhalb einfügen'), 'Delete row': T('Zeile löschen'), Stretch: T('Volle Breite') },
       image: { Caption: T('Bildunterschrift'), 'Select an Image': T('Bild auswählen'), 'With border': T('Mit Rahmen'),
         'Stretch image': T('Volle Breite'), 'With background': T('Mit Hintergrund') },
       attaches: { 'Select file to upload': T('Datei auswählen'), 'File title': T('Titel') }
