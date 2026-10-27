@@ -3133,12 +3133,13 @@
   OPS.files = [['is_empty', T('ist leer')], ['not_empty', T('ist nicht leer')]];
   var PEOPLE = {};              // Kennung -> {name, avatar, me, remote, gone} (aus /rows bzw. Einzelzeile, gesammelt)
   function addPeople(pm) { if (pm && typeof pm === 'object') Object.keys(pm).forEach(function (k) { PEOPLE[k] = pm[k]; }); }
-  function personName(ref) { var e = PEOPLE[ref]; return e && typeof e.name === 'string' ? e.name : ''; }
+  function personEntry(ref) { return typeof ref === 'string' && Object.prototype.hasOwnProperty.call(PEOPLE, ref) ? PEOPLE[ref] : null; }   // nie Object.prototype ('toString')
+  function personName(ref) { var e = personEntry(ref); return e && typeof e.name === 'string' ? e.name : ''; }
   function meRef() { var k = Object.keys(PEOPLE).find(function (x) { return PEOPLE[x] && PEOPLE[x].me; }); return k || null; }
   function personChips(refs) {
     var s = el('span', 'pp-chips');
     (refs || []).forEach(function (r) {
-      var e = PEOPLE[r] || {}, c = el('span', 'pp-chip' + (e.gone ? ' pp-gone' : ''));
+      var e = personEntry(r) || {}, c = el('span', 'pp-chip' + (e.gone ? ' pp-gone' : ''));
       var a = el('span', 'pp-av'); a.setAttribute('aria-hidden', 'true'); a.textContent = ((e.name || '?').trim()[0] || '?').toUpperCase();
       c.appendChild(e.avatar ? HK.avatarImg(a, e.avatar, 18) : a);
       c.appendChild(el('span', 'pp-n', e.name || T('Unbekannte Person'))); c.title = e.name || '';

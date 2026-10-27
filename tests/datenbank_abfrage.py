@@ -70,7 +70,8 @@ def vectors():
             args["q"] = c["q"]
         exp = c["expected"]
         try:
-            page, matched, groups = dbquery.run(schema, d["rows"], args, labels=labels_of(d["labels"]), untitled="Unbenannt")
+            pk = {"people": d.get("people"), "me": d.get("me")}          # 2.5: Personen-Datenbanken (Namen, "ist mir zugewiesen")
+            page, matched, groups = dbquery.run(schema, d["rows"], args, labels=labels_of(d["labels"]), untitled="Unbenannt", **pk)
             got = {"ids": [r["id"] for r in page], "matched": matched, "groups": groups}
             if groups is not None:          # Web zeigt leere Gruppen nicht (Tabelle/Liste) bzw. nur leeres "Ohne" nicht (Board)
                 got["groups"] = [g for i, g in enumerate(groups) if g["count"] or (exp.get("board") and i > 0)]
@@ -79,7 +80,7 @@ def vectors():
                 n = random.Random(c["k"]).randint(1, 7)
                 parts = []
                 for off in range(0, len(got["ids"]) + n, n):
-                    pg, _, _ = dbquery.run(schema, d["rows"], dict(args, offset=off, limit=n), labels=labels_of(d["labels"]))
+                    pg, _, _ = dbquery.run(schema, d["rows"], dict(args, offset=off, limit=n), labels=labels_of(d["labels"]), **pk)
                     parts += [r["id"] for r in pg]
                 paged += parts == got["ids"]
                 if parts != got["ids"]:
@@ -102,9 +103,10 @@ def vectors():
         schema = dict(d["schema"], views=c["views"])
         args = {"view": c["view"], "tz": ZoneInfo(c["tz"]), "today": date.fromisoformat(c["today"]), "q": c["q"]}
         try:
-            a = [r["id"] for r in dbquery.run(schema, d["rows"], args, labels=labels_of(d["labels"]))[0]]
+            pk = {"people": d.get("people"), "me": d.get("me")}
+            a = [r["id"] for r in dbquery.run(schema, d["rows"], args, labels=labels_of(d["labels"]), **pk)[0]]
             dbquery.Query._sort_fast = lambda self, rows, keys: None
-            b = [r["id"] for r in dbquery.run(schema, d["rows"], args, labels=labels_of(d["labels"]))[0]]
+            b = [r["id"] for r in dbquery.run(schema, d["rows"], args, labels=labels_of(d["labels"]), **pk)[0]]
         except dbquery.JsError:
             continue
         finally:

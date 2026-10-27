@@ -25,22 +25,22 @@ function fn(name) {
   }
   throw new Error('Ende nicht gefunden: ' + name);
 }
-const NAMES = ['relOp', 'dayNum', 'dayIso', 'relDay', 'dtPart', 'dateParts', 'daySpan', 'relIncomplete', 'isStatus', 'statusGroup', 'relDate', 'propValue', 'isFx', 'numLike', 'groupable', 'weekdayIndex', 'valueGroups', 'groupCols', 'calcValue2', 'isoDay', 'propById', 'sortKey', 'sortedRows', 'eachGrouped',
+const NAMES = ['personEntry', 'personName', 'meRef', 'personGroups', 'relOp', 'dayNum', 'dayIso', 'relDay', 'dtPart', 'dateParts', 'daySpan', 'relIncomplete', 'isStatus', 'statusGroup', 'relDate', 'propValue', 'isFx', 'numLike', 'groupable', 'weekdayIndex', 'valueGroups', 'groupCols', 'calcValue2', 'isoDay', 'propById', 'sortKey', 'sortedRows', 'eachGrouped',
   'titleName', 'fprop', 'matchFilter', 'rowText', 'filterRows'];
 const BODY = NAMES.map(fn).join('\n');
 const RealDate = Date;
 
-function sandbox(schema, rows, labels, view, q, nowMs) {
+function sandbox(schema, rows, labels, view, q, nowMs, people) {
   function FakeDate(...a) { return a.length ? new RealDate(...a) : new RealDate(nowMs); }
   FakeDate.prototype = RealDate.prototype; FakeDate.now = () => nowMs;
-  const f = new Function('Date', 'DB', 'CUR', 'LABELS',
+  const f = new Function('Date', 'DB', 'CUR', 'LABELS', 'PEOPLE',
     "var AUTO = { created: 'created', edited: 'updated' };\n" +
     'function T(s) { return s; }\n' +
     'function curView() { return CUR; }\n' +
     'function byId(id) { var t = LABELS.get(id); return t === undefined ? null : { id: id, title: t }; }\n' +
     "function label(p) { return p && p.title ? p.title : T('Unbenannt'); }\n" +
-    BODY + '\nreturn { sortedRows: sortedRows, filterRows: filterRows, eachGrouped: eachGrouped, propById: propById, sortKey: sortKey, groupCols: groupCols };');
-  return f(FakeDate, { schema: schema, rows: rows, q: q }, view, labels);
+    BODY + '\nreturn { sortedRows: sortedRows, filterRows: filterRows, eachGrouped: eachGrouped, propById: propById, sortKey: sortKey, groupCols: groupCols, groupable: groupable };');
+  return f(FakeDate, { schema: schema, rows: rows, q: q }, view, labels, people || {});
 }
 
 // --- Zufallsdaten (fester Startwert: reproduzierbar) ---
@@ -171,6 +171,8 @@ function consistent(S, view) {
   return true;
 }
 
+// Kopf einer Gruppe wie /rows "groups": Personen zusaetzlich mit value (Liste der Kennungen)
+function head(c) { const h = { id: c.o ? c.o.id : null, count: c.rows.length }; if (c.o && c.o.person) h.value = c.o.person; return h; }
 function expected(S, view) {
   try {
     const rows = S.sortedRows(), matched = S.filterRows(S.rows).length;
@@ -178,10 +180,10 @@ function expected(S, view) {
     if (t === 'gallery' || t === 'calendar') return { ids: rows.map((r) => r.id), matched: matched, groups: null };
     if (t === 'board') {                       // wie renderBoard (Spalten-Ermittlung)
       let g = S.propById(view.group_by);
-      if (!g || g.type !== 'select') g = S.schema.props.find(function (p) { return p.type === 'select'; });
-      if (view.group_status && g.status === true) {           // 2.5: Spalten nach Status-Gruppe (wie renderBoard)
+      if (!g || !S.groupable(g)) g = S.schema.props.find(function (p) { return p.type === 'select'; });
+      if ((view.group_status && g.status === true) || g.type === 'person') {   // Status-Gruppen bzw. 2.5: Personen (wie renderBoard)           // 2.5: Spalten nach Status-Gruppe (wie renderBoard)
         const sc = S.groupCols(rows, g, true); if (!sc[0].rows.length) sc.shift();
-        return { ids: [].concat(...sc.map((c) => c.rows.map((r) => r.id))), groups: sc.map((c) => ({ id: c.o ? c.o.id : null, count: c.rows.length })), board: true, matched: matched };
+        return { ids: [].concat(...sc.map((c) => c.rows.map((r) => r.id))), groups: sc.map(head), board: true, matched: matched };
       }
       const known = {}; (g.options || []).forEach(function (o) { known[o.id] = 1; });
       const cols = [{ o: null, rows: rows.filter(function (r) { return !known[r.props[g.id]]; }) }].concat(
@@ -190,8 +192,9 @@ function expected(S, view) {
       return { ids: [].concat(...cols.map((c) => c.rows.map((r) => r.id))), groups: cols.map((c) => ({ id: c.o ? c.o.id : null, count: c.rows.length })), board: true, matched: matched };
     }
     const ids = [], heads = [];
-    S.eachGrouped(rows, function (o, n) { heads.push({ id: o ? o.id : null, count: n }); }, function (r) { ids.push(r.id); });
-    return { ids: ids, groups: heads.length || (view.group && S.propById(view.group) && S.propById(view.group).type === 'select') ? heads : null, matched: matched };
+    S.eachGrouped(rows, function (o, n) { heads.push(head({ o: o, rows: { length: n } })); }, function (r) { ids.push(r.id); });
+    const gp = view.group && S.propById(view.group);
+    return { ids: ids, groups: heads.length || (gp && (gp.type === 'select' || gp.type === 'person')) ? heads : null, matched: matched };
   } catch (e) {
     return { error: e.constructor.name + ': ' + e.message };
   }
@@ -219,6 +222,51 @@ for (let n = 0; n < NDB + +(process.env.DBQ_P5 || 30); n++) {        // 50 Daten
     const exp = expected(S, cur);
     if (!exp.error && !consistent(S, cur)) exp.engine = true;
     // "heute" im Browser = Kalendertag der Ortszeit
+    const d = new Date(now), today = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    cases.push({ k: k, db: n, tz: tz, today: today, views: [view], q: q, view: view.id, expected: exp });
+  }
+}
+// 2.5 (Paket 1 E2/E3): Personen und Dateien - eigener Block danach (DBQ_PE), bisherige Faelle bleiben gleich
+const PPL = { '~aaaaaaaaaaaaaaaa': { name: 'Anna Müller' }, '~bbbbbbbbbbbbbbbb': { name: 'bert' }, '~cccccccccccccccc': { name: 'Ärger Ω' },
+  '@dora@b.example': { name: 'Дора', remote: true }, '~eeeeeeeeeeeeeeee': { name: '', gone: true }, '~ffffffffffffffff': { name: 'Anna Müller' },
+  '~gggggggggggggggg': { name: 'สมชาย' } };
+const PREFS = Object.keys(PPL).concat(['~zzzzzzzzzzzzzzzz', 'toString']);
+const NPE = +(process.env.DBQ_PE || 12), N0 = dbs.length;
+for (let n = N0; n < N0 + NPE; n++) {
+  P5 = true;
+  const t0 = Date.parse(NOWS[n % NOWS.length]);
+  const schema = JSON.parse(JSON.stringify(makeSchema(n)));
+  schema.props.push({ id: 'p1', name: 'Zuständig', type: 'person', multi: true }, { id: 'p2', name: 'Prüfer', type: 'person', multi: false },
+    { id: 'f1', name: 'Anhänge', type: 'files', max: 10 });
+  const rows = JSON.parse(JSON.stringify(makeRows(schema, 18 + Math.floor(rnd() * 20), t0)));
+  rows.forEach(function (r) {
+    if (rnd() < 0.75) r.props.p1 = rnd() < 0.05 ? pick(['x', 5, {}]) : Array.from({ length: 1 + Math.floor(rnd() * 3) }, () => pick(PREFS)).filter((x, i, a) => a.indexOf(x) === i);
+    if (rnd() < 0.5) r.props.p2 = [pick(PREFS)];
+    if (rnd() < 0.4) r.props.f1 = pick([[{ url: '/files/' + 'ab'.repeat(12), name: 'Bericht.pdf' }], [{ url: '/files/' + 'cd'.repeat(12), name: 'Фото ไทย.png' }, { url: '/files/' + 'ef'.repeat(12), name: 'a' }], []]);
+  });
+  const me = pick(['~aaaaaaaaaaaaaaaa', '~bbbbbbbbbbbbbbbb', '@dora@b.example']);
+  const people = JSON.parse(JSON.stringify(PPL)); people[me].me = true;
+  const labels = [[901, 'Kunde Müller'], [903, 'Проект Альфа']];
+  dbs.push({ schema: schema, rows: rows, labels: labels, people: people, me: me });
+  for (let j = 0; j < 8; j++) {
+    const k = n * 8 + j, tz = TZS[k % TZS.length], now = Date.parse(NOWS[(n + j) % NOWS.length]);
+    process.env.TZ = tz;
+    const view = { id: 'v' + k, name: 'Ansicht ' + k, type: pick(['table', 'list', 'board', 'table', 'gallery']) };
+    const fp = pick(['p1', 'p1', 'p2', 'f1']);
+    const op = ['me', 'contains', 'not_contains', 'is_empty', 'not_empty', 'me', 'contains', 'me'][j];
+    view.filters = [{ pid: fp, op: op, value: op === 'contains' || op === 'not_contains' ? pick(PREFS.concat([''])) : undefined }];
+    if (rnd() < 0.3) view.filters.push({ pid: pick(['s1', 'd1']), op: pick(['status_group', 'this_week', 'is_empty']), value: pick(['open', 'done', '']) });
+    view.sorts = [{ pid: pick(['p1', 'p2', 'f1', 'title']), dir: pick(['asc', 'desc']) }];
+    if (view.type === 'board') view.group_by = pick(['p1', 'p2', 's1']);
+    else if (rnd() < 0.6) view.group = pick(['p1', 'p2', 's1']);
+    if (rnd() < 0.3) view.group_status = true;
+    const q = rnd() < 0.4 ? pick(['anna', 'ДОРА', 'bericht', 'สมชาย', 'ärger', 'müller', 'фото']) : '';
+    const sc = Object.assign({}, schema, { views: [view] });
+    const cur = JSON.parse(JSON.stringify(view));
+    const S = sandbox(sc, rows, new Map(labels), cur, q, now, people);
+    S.schema = sc; S.rows = rows;
+    const exp = expected(S, cur);
+    if (!exp.error && !consistent(S, cur)) exp.engine = true;
     const d = new Date(now), today = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     cases.push({ k: k, db: n, tz: tz, today: today, views: [view], q: q, view: view.id, expected: exp });
   }
