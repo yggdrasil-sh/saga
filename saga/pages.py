@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import clean_line, connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
-from saga import bus, nextcloud, treesync
+from saga import bus, nextcloud, page_widgets, treesync
 from saga.core import BASE_URL, account_lang, _api_guard, _bad, _body, _json_load, _session_user, origin_of, ref_of, t, user_error
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
@@ -154,7 +154,7 @@ def clean_blocks(raw, limit=NOTE_BLOCKS_MAX):
         if "tunes" in b:
             nb["tunes"] = b["tunes"]
         blocks.append(nb)
-    blocks = _clean_design(_flatten_nested_columns(blocks))
+    blocks = page_widgets.fix_ids(_clean_design(_flatten_nested_columns(blocks)))      # 2.5: Widgets brauchen eindeutige ids
     doc = {"time": d.get("time"), "version": d.get("version"), "blocks": blocks}
     return json.dumps(doc, ensure_ascii=False), blocks_text(blocks)
 
@@ -263,6 +263,8 @@ def _clean_design(blocks):
                     d.pop("width")
             if "align" in d and not (player and d["align"] in ALIGNS):
                 d.pop("align")
+        elif typ == "widget":                          # 2.5: Widgets in Seiten (saga.page_widgets)
+            b["data"] = page_widgets.clean_data(d)
         elif typ == "toggle":
             if "level" in d:
                 lv = int(min(3, max(0, round(d["level"])))) if _num_ok(d["level"]) else 0

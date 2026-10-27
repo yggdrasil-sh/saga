@@ -24,7 +24,7 @@ import auth
 import db
 from version import API_LEVEL, BUILD, MIN_APP, VERSION, channel
 
-from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, pages, publish, sharing, tasks, web_auth
+from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, page_widgets, pages, publish, sharing, tasks, web_auth
 from saga import ai, ai_chat, avatars, calls, chat, chat_files, federation, horn, horn_ops, i18n, live, mfa, notify, push, push_stream
 from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
 from saga import chat_status                     # 2.4: Gelesen-Bestaetigungen und Online-Status (haengt sich in chat, live, fed_chat ein)
@@ -263,6 +263,7 @@ app.include_router(databases.router)
 app.include_router(immich.router)
 app.include_router(calendars.router)
 app.include_router(app_api.router)
+app.include_router(page_widgets.router)       # 2.5: Widgets in Seiten - /api/notes/{nid}/widgets, .../widgets/preview
 app.include_router(publish.router)          # /@name/... (oeffentlich) und /api/notes/{nid}/publish, /api/account/public-name
 app.include_router(sharing.router)          # Teilen: /api/shared, /api/notes/{nid}/shares, /api/share/targets
 app.include_router(comments.router)         # Kommentare: /api/notes/{nid}/comments, /api/comments/{cid}...

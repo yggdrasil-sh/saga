@@ -72,7 +72,7 @@ def _strip_tags(s):
 
 # 2.4 (Testrunde W6): Bloecke, deren Daten nur technische Werte enthalten (Ansicht "month", Aktion "task", Art "youtube",
 # Ansichtsnamen einer eingebetteten Datenbank) - fuer Suche, Vorschau und Export nur das, was man auf der Seite sieht.
-SPECIAL_BLOCKS = ("embed", "buttons", "calendar", "tasks", "database", "immich", "verweis")
+SPECIAL_BLOCKS = ("embed", "buttons", "calendar", "tasks", "database", "immich", "verweis", "widget")
 # Seite gestalten (2.5): Farben nur aus dieser Palette (wie COLORS in static/pages.js), Block-Farbe (tunes.hkstyle) nur fuer
 # diese Typen. Gemeinsame Grundlage fuer saga.pages (Bereinigung) und saga.publish (Klassen c-<farbe>/bg-<farbe>).
 PALETTE = ("gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red")
@@ -89,6 +89,9 @@ def special_text(typ, d, lines=False, title=None):
         bs = d.get("buttons") if isinstance(d.get("buttons"), list) else []
         return " ".join(" ".join(x for x in (str(b.get("icon") or ""), _strip_tags(str(b.get("label") or ""))) if x)
                         for b in bs if isinstance(b, dict)).strip()
+    if typ == "widget":                     # 2.5 (saga.page_widgets): nur der Titel - Einstellungen sind technische Werte
+        ti = _strip_tags(str(d.get("title") or "")).strip() if isinstance(d.get("title"), str) else ""
+        return ("▣ " + (ti or t("Widget"))) if lines else ti
     if not lines:
         return ""
     if typ == "database" and title is not None and isinstance(d.get("db"), int):
