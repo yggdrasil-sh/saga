@@ -2298,3 +2298,10 @@ tr.rc > td.db-fz{background:color-mix(in srgb,var(--rc) 14%,var(--bg))}
 }
 /* bedingte Farbe auf Board-/Galerie-Karten: Farbflaeche oben (view.colors) */
 .board-card.rc,.dbg-card.rc{box-shadow:inset 0 4px 0 var(--rc)}
+/* 2.5 (G12/G13): einfache Tabelle - Kopfspalte und Farben */
+.hk-tbl-hcol .tc-row>.tc-cell:first-child{font-weight:600;background:var(--card-h)}
+.tbl-bg-gray{background:var(--bc-gray)!important}.tbl-bg-brown{background:var(--bc-brown)!important}.tbl-bg-orange{background:var(--bc-orange)!important}
+.tbl-bg-yellow{background:var(--bc-yellow)!important}.tbl-bg-green{background:var(--bc-green)!important}.tbl-bg-blue{background:var(--bc-blue)!important}
+.tbl-bg-purple{background:var(--bc-purple)!important}.tbl-bg-pink{background:var(--bc-pink)!important}.tbl-bg-red{background:var(--bc-red)!important}
+.tbl-sw{display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--border)}
+.tbl-bg-none.tbl-sw{background:transparent}

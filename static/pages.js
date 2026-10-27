@@ -674,7 +674,7 @@
           immich: { class: ImmichTool },
           nextcloud: { class: NextcloudTool },
           embed: { class: EmbedTool },
-          table: { class: window.Table, inlineToolbar: true, config: { rows: 2, cols: 3, withHeadings: true } },
+          table: { class: hkTable(window.Table), inlineToolbar: true, config: { rows: 2, cols: 3, withHeadings: true } },
           toggle: { class: ToggleTool, inlineToolbar: true },
           callout: { class: CalloutTool, inlineToolbar: true },
           hkdate: { class: DateInline },
@@ -2224,6 +2224,97 @@
     };
     Base.hkWrapped = HKImage;
     return HKImage;
+  }
+  // 2.5 (G12/G13): Einfache Tabelle - Hülle um das Editor.js-Plugin: erste Spalte als Kopf (headCol), Spaltenbreiten in %
+  // (colWidths), Farben je Zeile/Spalte/Zelle (colors r/c/x). Fremde Felder bleiben erhalten (Regel 0); der Server
+  // bereinigt (saga/pages.py _clean_table). Farben/Breiten setzt nur das Web, Apps zeigen sie an.
+  var TBL_KNOWN = { withHeadings: 1, stretched: 1, content: 1 };
+  function hkTable(Base) {
+    if (!Base || typeof Reflect === 'undefined') return Base;
+    if (Base.hkWrapped) return Base.hkWrapped;
+    function HKTable(o) {
+      var self = Reflect.construct(Base, [o], HKTable), d = (o && o.data) || {};
+      self.hkExtra = {}; Object.keys(d).forEach(function (k) { if (!TBL_KNOWN[k]) self.hkExtra[k] = JSON.parse(JSON.stringify(d[k])); });
+      self.hkRo = !!(o && o.readOnly); self.hkCell = null;
+      return self;
+    }
+    HKTable.prototype = Object.create(Base.prototype); HKTable.prototype.constructor = HKTable;
+    Object.setPrototypeOf(HKTable, Base);
+    HKTable.prototype.render = function () {
+      var w = Base.prototype.render.call(this), self = this; this.hkBox = w; w.classList.add('hk-tbl');
+      w.addEventListener('focusin', function (e) { var c = e.target.closest && e.target.closest('.tc-cell'); if (c) self.hkCell = tblPos(w, c); });
+      w.addEventListener('mousedown', function (e) { var c = e.target.closest && e.target.closest('.tc-cell'); if (c) self.hkCell = tblPos(w, c); });
+      if (window.MutationObserver) {
+        var q = 0; new MutationObserver(function () { if (!q) q = requestAnimationFrame(function () { q = 0; tblPaint(self); }); })
+          .observe(w, { childList: true, subtree: true });
+      }
+      setTimeout(function () { tblPaint(self); }, 0);
+      return w;
+    };
+    HKTable.prototype.renderSettings = function () {
+      var own = Base.prototype.renderSettings.call(this) || [], self = this;
+      own = Array.isArray(own) ? own : [own];
+      if (this.hkRo || readOnly()) return own;
+      var ic = function (d) { return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"/></svg>'; };
+      var x = this.hkExtra, cell = this.hkCell;
+      function changed() { tblPaint(self); sizeChanged(self); }
+      var items = [{ icon: ic('M4 5h16v14H4zM9 5v14'), title: T('Erste Spalte als Kopf'), isActive: !!x.headCol, closeOnActivate: true,
+        onActivate: function () { if (x.headCol) delete x.headCol; else x.headCol = true; changed(); } }];
+      if (cell) {
+        var palette = function (kind, key) {
+          var cur = ((x.colors || {})[kind] || {})[key];
+          return [['', T('Keine Farbe')]].concat(COLORS.map(function (c) { return [c, TBL_CNAME[c]]; })).map(function (c) {
+            return { icon: '<span class="tbl-sw tbl-bg-' + (c[0] || 'none') + '"></span>', title: c[1], isActive: (cur || '') === c[0], closeOnActivate: true,
+              onActivate: function () {
+                var cs = x.colors = x.colors || {}, m = cs[kind] = cs[kind] || {};
+                if (c[0]) m[key] = c[0]; else delete m[key];
+                if (!Object.keys(m).length) delete cs[kind];
+                if (!Object.keys(cs).length) delete x.colors;
+                changed();
+              } };
+          });
+        };
+        items.push({ icon: ic('M4 9h16M4 15h16'), title: T('Zeile einfärben'), children: { items: palette('r', String(cell[0])) } });
+        items.push({ icon: ic('M9 4v16M15 4v16'), title: T('Spalte einfärben'), children: { items: palette('c', String(cell[1])) } });
+        items.push({ icon: ic('M7 7h10v10H7z'), title: T('Zelle einfärben'), children: { items: palette('x', cell[0] + ',' + cell[1]) } });
+        [[5, T('Spalte breiter'), 'M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4'], [-5, T('Spalte schmaler'), 'M2 12h6M22 12h-6M6 8l4 4-4 4M18 8l-4 4 4 4']].forEach(function (b) {
+          items.push({ icon: ic(b[2]), title: b[1], closeOnActivate: false, onActivate: function () { tblWiden(self, cell[1], b[0]); changed(); } });
+        });
+      }
+      if (x.colWidths) items.push({ icon: ic('M4 6h16M4 12h16M4 18h16'), title: T('Spalten gleich breit'), closeOnActivate: true, onActivate: function () { delete x.colWidths; changed(); } });
+      return own.concat(items);
+    };
+    HKTable.prototype.save = function () {
+      var d = Base.prototype.save.call(this), out = Object.assign({}, this.hkExtra, d), n = Math.max.apply(null, [0].concat((d.content || []).map(function (r) { return r.length; })));
+      if (out.colWidths && out.colWidths.length !== n) delete out.colWidths;     // Spalten geaendert: Breiten neu (gleich)
+      return out;
+    };
+    Base.hkWrapped = HKTable;
+    return HKTable;
+  }
+  var TBL_CNAME = { gray: T('Grau'), brown: T('Braun'), orange: T('Orange'), yellow: T('Gelb'), green: T('Grün'), blue: T('Blau'), purple: T('Lila'), pink: T('Rosa'), red: T('Rot') };
+  function tblPos(w, cell) { var row = cell.parentNode, rows = [].slice.call(w.querySelectorAll('.tc-row')); return [rows.indexOf(row), [].indexOf.call(row.children, cell)]; }
+  function tblWiden(t, col, delta) {
+    var w = t.hkBox, n = w ? (w.querySelector('.tc-row') || { children: [] }).children.length : 0; if (n < 2) return;
+    var cw = (t.hkExtra.colWidths && t.hkExtra.colWidths.length === n) ? t.hkExtra.colWidths.slice() : Array.from({ length: n }, function () { return 100 / n; });
+    var nv = Math.max(5, Math.min(90, cw[col] + delta)), d = nv - cw[col], rest = 100 - cw[col];
+    if (!d || rest <= 0) return;
+    cw = cw.map(function (x, i) { return i === col ? nv : Math.max(5, x - d * x / rest); });
+    var tot = cw.reduce(function (a, b) { return a + b; }, 0);
+    t.hkExtra.colWidths = cw.map(function (x) { return Math.round(x * 1000 / tot) / 10; });
+  }
+  function tblPaint(t) {                           // Breiten/Kopfspalte/Farben auf das gerenderte Raster anwenden
+    var w = t.hkBox, x = t.hkExtra || {}; if (!w) return;
+    var rows = [].slice.call(w.querySelectorAll('.tc-row')), n = rows.length ? rows[0].children.length : 0;
+    var cw = x.colWidths && x.colWidths.length === n ? x.colWidths : null, cs = x.colors || {};
+    w.classList.toggle('hk-tbl-hcol', !!x.headCol);
+    rows.forEach(function (r, i) {
+      r.style.gridTemplateColumns = cw ? cw.map(function (p) { return 'minmax(10px,' + p + 'fr)'; }).join(' ') : '';
+      [].forEach.call(r.children, function (c, j) {
+        var col = (cs.x || {})[i + ',' + j] || (cs.r || {})[String(i)] || (cs.c || {})[String(j)];
+        COLORS.forEach(function (k) { c.classList.toggle('tbl-bg-' + k, col === k); });
+      });
+    });
   }
   // Ausrichtung im Block-Menue (Bild, Player)
   function alignItems(t) {

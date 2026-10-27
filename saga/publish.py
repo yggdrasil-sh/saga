@@ -548,10 +548,23 @@ def _block(ctx, typ, d, depth):
         rows = [r for r in (d.get("content") or []) if isinstance(r, list)][:500]
         if not rows:
             return ""
-        out, head = ['<div class="pub-tablewrap"><table class="pub-table">'], bool(d.get("withHeadings"))
+        head, hcol = bool(d.get("withHeadings")), d.get("headCol") is True
+        cw = d.get("colWidths") if isinstance(d.get("colWidths"), list) else None
+        cols = d.get("colors") if isinstance(d.get("colors"), dict) else {}
+        out = ['<div class="pub-tablewrap"><table class="pub-table' + (" pub-tfix" if cw else "") + '">']
+        if cw:                                        # Breiten als Klassen in 5-%-Schritten (CSP: keine Inline-Stile)
+            out.append("<colgroup>" + "".join(f'<col class="pw-{min(90, max(5, int(round(float(x) / 5) * 5)))}">'
+                                              for x in cw[:50] if isinstance(x, (int, float))) + "</colgroup>")
+
+        def tint(i, j):
+            c = (cols.get("x") or {}).get(f"{i},{j}") or (cols.get("r") or {}).get(str(i)) or (cols.get("c") or {}).get(str(j))
+            return f' class="pc-{c}"' if c in ("gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red") else ""
         for i, r in enumerate(rows):
-            cell = "th" if head and i == 0 else "td"
-            out.append("<tr>" + "".join(f"<{cell}>{inline(str(x), ctx.url_for)}</{cell}>" for x in r[:50]) + "</tr>")
+            cells = []
+            for j, x in enumerate(r[:50]):
+                cell = "th" if (head and i == 0) or (hcol and j == 0) else "td"
+                cells.append(f"<{cell}{tint(i, j)}>{inline(str(x), ctx.url_for)}</{cell}>")
+            out.append("<tr>" + "".join(cells) + "</tr>")
         out.append("</table></div>")
         return "".join(out)
     if typ == "columns":
@@ -725,6 +738,10 @@ def _rel_date(op, iso):
     return a <= x < b
 
 
+_P5_OPS = {"yesterday", "tomorrow", "last_week", "next_week", "last_month", "next_month", "this_year", "overdue",
+           "next_days", "past_days", "on_or_before", "on_or_after", "status_group"}
+
+
 def _match(p, f, row):
     """Filter einer Ansicht - gleiche Bedeutung wie matchFilter() in static/pages.js."""
     v = row["title"] if f["pid"] == "title" else _prop_value(p, row)
@@ -740,10 +757,16 @@ def _match(p, f, row):
         return bool(v)
     if op == "unchecked":
         return not v
-    if op in ("today", "this_week", "this_month"):
+    if op in ("today", "this_week", "this_month") and not (isinstance(v, str) and len(v) > 10 and p["type"] == "date"):
         return not empty and _rel_date(op, v)
+    if op in _P5_OPS or op in ("today", "this_week", "this_month"):                                 # 2.5 (Paket 5): neue relative Filter/Status-Gruppe wie saga.dbquery
+        from saga import dbquery
+        return dbquery.Query({"props": [p] if p.get("id") != "title" else []}, tz=TZ).match(row, f)
     if fv in ("", None):
         return True                                   # unvollstaendiger Filter zaehlt nicht
+    if p["type"] == "date" and op in ("eq", "before", "after") and isinstance(v, str) and len(v) > 10:
+        from saga import dbquery
+        return dbquery.Query({"props": [p]}, tz=TZ).match(row, f)
     try:
         if p["type"] == "relation":
             fv = int(fv)
@@ -804,7 +827,7 @@ def _fmt_prop(ctx, p, v):
         chips = [opts[x] for x in (v if isinstance(v, list) else [v]) if x in opts]
         return " ".join(f'<span class="opt opt-{escape(o.get("color", "gray"))}">{escape(o["name"])}</span>' for o in chips)
     if typ == "date":
-        return escape(_day(v))
+        return escape(i18n.date_value_str(v, TZ) if isinstance(v, str) and len(v) > 10 else _day(v))   # 2.5: Uhrzeit/Zeitraum
     if typ in ("created", "edited"):
         return escape(i18n.fmt_date(v, TZ))
     if typ == "checkbox":

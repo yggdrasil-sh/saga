@@ -245,6 +245,36 @@ def fmt_date(ts, tz=None, with_time=False):
     return s + d.strftime(" %H:%M") if with_time else s
 
 
+def date_value_str(v, tz=None):
+    """Wert einer Datums-Eigenschaft (2.5, datetime1) lesbar: Tag, Zeitpunkt (umgerechnet nach tz, Standard: Offset des
+    Werts) oder Zeitraum 'a – b'. Unlesbares unveraendert."""
+    from datetime import date as _date
+
+    def one(s):
+        if len(s) <= 10:
+            try:
+                return day_str(_date.fromisoformat(s)), None
+            except ValueError:
+                return s, None
+        try:
+            dt = datetime.fromisoformat(s)
+        except ValueError:
+            return s, None
+        if tz is not None and dt.tzinfo is not None:
+            dt = dt.astimezone(tz)
+        return day_str(dt) + dt.strftime(" %H:%M"), dt
+    if not isinstance(v, str):
+        return str(v)
+    ps = v.split("/")
+    a, da = one(ps[0])
+    if len(ps) != 2:
+        return a
+    b, db = one(ps[1])
+    if da is not None and db is not None and da.date() == db.date():
+        b = db.strftime("%H:%M")
+    return f"{a} – {b}"
+
+
 def day_str(d, lang=None):
     """date/datetime -> Datum im ueblichen Format der Sprache (Thai: gregorianisch, wie im Browser)."""
     lang = lang or _cur.get()

@@ -229,6 +229,54 @@ def _col_weights(cols):
     return r
 
 
+TABLE_COLORS = ("gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red")
+TABLE_COLS_MAX = 20
+
+
+def _clean_table(d):
+    """Einfache Tabelle (2.5): headCol bool, colWidths [%] (je 5-90, Summe 100, so viele wie Spalten, hoechstens 20),
+    colors {r: {zeile: farbe}, c: {spalte: farbe}, x: {"z,s": farbe}} nur mit Indizes innerhalb der Tabelle. Falsches
+    faellt weg; content/withHeadings/stretched und unbekannte Felder bleiben unangetastet."""
+    rows = [r for r in d.get("content") or [] if isinstance(r, list)] if isinstance(d.get("content"), list) else []
+    nr, nc = len(rows), max((len(r) for r in rows), default=0)
+    if "headCol" in d:
+        if d["headCol"] is True:
+            d["headCol"] = True
+        else:
+            d.pop("headCol")
+    if "colWidths" in d:
+        w = d["colWidths"]
+        if (isinstance(w, list) and 0 < len(w) == nc <= TABLE_COLS_MAX and all(_num_ok(x) and x > 0 for x in w)):
+            tot = sum(w)
+            w = [min(90.0, max(5.0, x * 100.0 / tot)) for x in w]
+            tot = sum(w)
+            w = [round(x * 100.0 / tot, 1) for x in w]
+            big = max(range(len(w)), key=lambda i: w[i])
+            w[big] = round(w[big] + 100.0 - sum(w), 1)
+            d["colWidths"] = w
+        else:
+            d.pop("colWidths")
+    if "colors" in d:
+        src, out = d["colors"] if isinstance(d["colors"], dict) else {}, {}
+        for k, lim in (("r", nr), ("c", nc)):
+            m = {str(int(i)): col for i, col in (src.get(k) or {}).items()
+                 if isinstance(src.get(k), dict) and str(i).isdigit() and int(i) < lim and col in TABLE_COLORS} if isinstance(src.get(k), dict) else {}
+            if m:
+                out[k] = dict(list(m.items())[:200])
+        if isinstance(src.get("x"), dict):
+            m = {}
+            for key, col in list(src["x"].items())[:1000]:
+                ps = str(key).split(",")
+                if len(ps) == 2 and all(p.isdigit() for p in ps) and int(ps[0]) < nr and int(ps[1]) < nc and col in TABLE_COLORS:
+                    m[f"{int(ps[0])},{int(ps[1])}"] = col
+            if m:
+                out["x"] = m
+        if out:
+            d["colors"] = out
+        else:
+            d.pop("colors")
+
+
 def _clean_design(blocks):
     """Gestaltungsfelder bereinigen (auch in Spalten und Toggles): tunes nur hkstyle, Spaltengewichte, Bild-/Player-Breite
     und -Ausrichtung, Toggle-Ueberschrift. Unbekannte Felder in data bleiben unangetastet."""
@@ -266,6 +314,8 @@ def _clean_design(blocks):
                 d.pop("align")
         elif typ == "widget":                          # 2.5: Widgets in Seiten (saga.page_widgets)
             b["data"] = page_widgets.clean_data(d)
+        elif typ == "table":                           # 2.5 (G12/G13): Kopfspalte, Spaltenbreiten, Farben
+            _clean_table(d)
         elif typ == "toggle":
             if "level" in d:
                 lv = int(min(3, max(0, round(d["level"])))) if _num_ok(d["level"]) else 0
