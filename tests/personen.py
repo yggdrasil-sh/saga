@@ -18,7 +18,6 @@ import base64
 import http.client
 import json
 import os
-import re
 import secrets
 import sys
 import threading
