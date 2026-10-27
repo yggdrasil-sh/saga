@@ -1,0 +1,96 @@
+{
+  "id": "meetings", "v": 1, "order": 80, "category": "team",
+  "icon": "🗓️", "title": "Meeting-Notizen",
+  "desc": "Agenda, Notizen, Entscheidungen und Aufgaben für jedes Meeting – mit Kalender und fester Vorlage.",
+  "needs": [],
+  "root": "home",
+  "items": [
+    {"ref": "home", "kind": "page", "parent": null, "title": "Meeting-Notizen", "icon": "🗓️", "cover": null, "wide": true,
+     "body": [
+       {"type": "columns", "data": {"cols": [
+         {"w": 0.62, "blocks": [
+           {"type": "buttons", "data": {"buttons": [
+             {"label": "Neues Meeting", "icon": "➕", "action": "db", "target": "$ref:meetings", "tpl": "$ref:tpl_meeting", "title": "Meeting {datum}", "open": ""}
+           ]}},
+           {"type": "callout", "data": {"emoji": "💡", "text": "Ein Klick legt die Notiz mit Agenda, Entscheidungen und Aufgaben an. Danach Datum und Art setzen."}}
+         ]},
+         {"w": 0.38, "blocks": [
+           {"type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "blue", "title": "Meetings diese Woche",
+                      "cfg": {"db": "$ref:meetings", "view": "woche", "agg": "count", "prop": "", "fmt": "num"}}},
+           {"type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "orange", "title": "Noch nicht nachbereitet",
+                      "cfg": {"db": "$ref:meetings", "view": "offen", "agg": "count", "prop": "", "fmt": "num"}}}
+         ]}
+       ]}},
+       {"type": "database", "data": {"db": "$ref:meetings", "view": "liste", "views": null}}
+     ]},
+
+    {"ref": "meetings", "kind": "database", "parent": "home", "title": "Meetings", "icon": "🗂️",
+     "schema": {
+       "title_name": "Meeting",
+       "props": [
+         {"id": "datum", "name": "Datum", "type": "date"},
+         {"id": "uhrzeit", "name": "Uhrzeit", "type": "text"},
+         {"id": "art", "name": "Art", "type": "select", "options": [
+           {"id": "team", "name": "Teamrunde", "color": "blue"},
+           {"id": "einzel", "name": "Einzelgespräch", "color": "purple"},
+           {"id": "projekt", "name": "Projekt", "color": "green"},
+           {"id": "extern", "name": "Extern", "color": "orange"},
+           {"id": "workshop", "name": "Workshop", "color": "pink"}]},
+         {"id": "teilnehmende", "name": "Teilnehmende", "type": "text"},
+         {"id": "nachbereitet", "name": "Nachbereitet", "type": "checkbox"}
+       ],
+       "views": [
+         {"id": "liste", "name": "Alle Meetings", "type": "table", "sorts": [{"pid": "datum", "dir": "desc"}]},
+         {"id": "kalender", "name": "Kalender", "type": "calendar", "date_by": "datum"},
+         {"id": "art", "name": "Nach Art", "type": "board", "group_by": "art", "sorts": [{"pid": "datum", "dir": "desc"}]},
+         {"id": "woche", "name": "Diese Woche", "type": "list", "filters": [{"pid": "datum", "op": "this_week", "value": ""}],
+          "sorts": [{"pid": "datum", "dir": "asc"}]},
+         {"id": "offen", "name": "Nachbereitung offen", "type": "list", "filters": [{"pid": "nachbereitet", "op": "unchecked", "value": ""},
+          {"pid": "datum", "op": "not_empty", "value": ""}], "sorts": [{"pid": "datum", "dir": "asc"}]}
+       ],
+       "default_tpl": "$ref:tpl_meeting"
+     },
+     "templates": [
+       {"ref": "tpl_meeting", "title": "Meeting", "icon": "🗓️", "props": {"art": "team"}, "default": true,
+        "body": [
+          {"type": "header", "data": {"text": "Agenda", "level": 2}},
+          {"type": "list", "data": {"style": "ordered", "meta": {}, "items": [
+            {"content": "", "meta": {}, "items": []}]}},
+          {"type": "header", "data": {"text": "Notizen", "level": 2}},
+          {"type": "paragraph", "data": {"text": ""}},
+          {"type": "header", "data": {"text": "Entscheidungen", "level": 2}},
+          {"type": "callout", "data": {"emoji": "✅", "text": "Was wurde beschlossen?"}},
+          {"type": "header", "data": {"text": "Aufgaben", "level": 2}},
+          {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+            {"content": "", "meta": {"checked": false}, "items": []}]}},
+          {"type": "buttons", "data": {"buttons": [
+            {"label": "Als Saga-Aufgabe anlegen", "icon": "☑️", "action": "task", "target": null, "tpl": null, "title": "", "open": ""}]}}
+        ]}
+     ],
+     "rows": [
+       {"title": "Teamrunde", "icon": "👥", "example": true,
+        "props": {"datum": "2026-10-26", "uhrzeit": "09:30", "art": "team", "teilnehmende": "ganzes Team", "nachbereitet": true},
+        "body": [
+          {"type": "header", "data": {"text": "Agenda", "level": 2}},
+          {"type": "list", "data": {"style": "ordered", "meta": {}, "items": [
+            {"content": "Rückblick letzte Woche", "meta": {}, "items": []},
+            {"content": "Planung Büroumzug", "meta": {}, "items": []},
+            {"content": "Verschiedenes", "meta": {}, "items": []}]}},
+          {"type": "header", "data": {"text": "Notizen", "level": 2}},
+          {"type": "paragraph", "data": {"text": "Die neue Website ist fast fertig, Texte fehlen noch. Der Umzug wird für Mitte Dezember geplant."}},
+          {"type": "header", "data": {"text": "Entscheidungen", "level": 2}},
+          {"type": "callout", "data": {"emoji": "✅", "text": "Umzugstermin: Woche ab 14. Dezember."}},
+          {"type": "header", "data": {"text": "Aufgaben", "level": 2}},
+          {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+            {"content": "Angebote für Umzugsfirma einholen", "meta": {"checked": false}, "items": []},
+            {"content": "Texte für die Website liefern", "meta": {"checked": true}, "items": []}]}}
+        ]},
+       {"title": "Einzelgespräch", "icon": "☕", "example": true,
+        "props": {"datum": "2026-10-28", "uhrzeit": "14:00", "art": "einzel", "teilnehmende": "Teamleitung, Mitarbeiterin"}},
+       {"title": "Workshop Jahresplanung", "icon": "🧩", "example": true,
+        "props": {"datum": "2026-11-05", "uhrzeit": "10:00–15:00", "art": "workshop", "teilnehmende": "Leitungsrunde"}},
+       {"title": "Abstimmung mit der Agentur", "icon": "🤝", "example": true,
+        "props": {"datum": "2026-10-21", "uhrzeit": "11:00", "art": "extern", "teilnehmende": "Agentur, Team Web"}}
+     ]}
+  ]
+}
