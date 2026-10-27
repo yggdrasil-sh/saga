@@ -2470,6 +2470,11 @@
       if (n) box.appendChild(n);
     });
   }
+  // Fix27 #5: Suche ohne Umlaut-/Akzent-Unterschied ("buch" findet "Bücher", "cafe" findet "Café", "buecher" auch)
+  function galFold(t) {
+    t = String(t || '').toLowerCase().replace(/ß/g, 'ss').replace(/([aou])e/g, '$1');
+    return t.normalize ? t.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : t;
+  }
   function openGallery(parentId) {
     var cat = HK.store('hk-gal-cat') || '', q = '', list = null, curFill = null;
     openModal(T('Vorlagengalerie'), function (body) {
@@ -2491,9 +2496,9 @@
         function fill() {
           tiles.textContent = '';
           if (!list) { tiles.appendChild(el('p', 'nt-empty', T('Lädt …'))); return; }
-          var ql = q.trim().toLowerCase();
+          var ql = galFold(q.trim());
           var shown = list.filter(function (x) {
-            return (!cat || x.category === cat) && (!ql || (x.title + ' ' + x.desc + ' ' + x.contents.map(function (c) { return c.title; }).join(' ')).toLowerCase().indexOf(ql) >= 0);
+            return (!cat || x.category === cat) && (!ql || galFold(x.title + ' ' + x.desc + ' ' + x.contents.map(function (c) { return c.title; }).join(' ')).indexOf(ql) >= 0);
           });
           if (!shown.length) { tiles.appendChild(el('p', 'nt-empty', list.length ? T('Keine passende Vorlage.') : T('Keine Vorlagen vorhanden.'))); return; }
           shown.forEach(function (x) {

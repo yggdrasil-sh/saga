@@ -214,6 +214,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Kommentar-Entwurf ging verloren**, wenn jemand anderes die Seite änderte (die Kommentarleiste wurde neu gezeichnet).
   Entwürfe (neuer Kommentar, Antwort, Bearbeiten) bleiben jetzt je Feld erhalten, samt Fokus und Cursor; weg erst nach
   Senden, Abbrechen oder Seitenwechsel.
+- **Vorlagengalerie am Handy:** Das Suchfeld wurde von den Kategorie-Knöpfen auf ~30 px gedrückt; schmal stehen Suche und
+  Kategorien jetzt untereinander. Die Suche unterscheidet keine Umlaute/Akzente mehr („buch“ und „buecher“ finden „Bücher“).
 
 ### Behoben – Bughunt 3 (Server)
 - **Namensauflösung mit Zeitlimit auch in den Vorab-Prüfungen.** KI, Immich, Kalender, Push, Nextcloud, Föderation

@@ -2140,6 +2140,7 @@ body.notes-page .page.p-small .page-title{font-size:calc(2.35rem * .875)}
 .gal{display:flex;flex-direction:column;gap:.8rem;min-width:0}
 .gal-bar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
 .gal-q{flex:1 1 14rem;min-width:0}
+@media (max-width:640px){.gal-bar{flex-direction:column;align-items:stretch}.gal-q{flex:none;width:100%}}
 .gal-cats{display:flex;flex-wrap:wrap;gap:.35rem}
 .gal-cats .chip{padding:.3rem .7rem;font-size:.85rem}
 .gal-cats .chip.on{border-color:var(--accent);color:var(--fg);background:var(--card-h)}

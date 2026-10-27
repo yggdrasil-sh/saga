@@ -112,6 +112,26 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     await p2.context().close();
   }
 
+  // --- #5: Galerie-Dialog am Handy (390 px): Suchfeld voll breit; Suche ohne Umlaut-/Akzent-Unterschied ---------------
+  {
+    const m = await page(CK, { viewport: { width: 390, height: 800 }, isMobile: true, hasTouch: true });
+    await m.open(AP.root);
+    await m.evaluate(() => document.getElementById('pg-new').click()); await sleep(300);
+    await m.evaluate(() => [...document.querySelectorAll('.menu-item')].find((x) => /Aus der Galerie/.test(x.textContent)).click());
+    await until(m, () => document.querySelectorAll('#pg-modal .gal-tile').length > 0);
+    const g = await m.evaluate(() => { const q = document.querySelector('#pg-modal .gal-q'), d = document.querySelector('#pg-modal .modal-body');
+      return { q: Math.round(q.getBoundingClientRect().width), d: Math.round(d.clientWidth), sx: document.documentElement.scrollWidth <= innerWidth }; });
+    await shot(m, '5-galerie-390');
+    ok(`#5: Suchfeld am Handy breit (${g.q} von ${g.d} px)`, g.q >= g.d * 0.8 && g.q >= 250 && g.sx, g);
+    const find = async (t) => { await m.fill('#pg-modal .gal-q', t); await sleep(200); return m.evaluate(() => [...document.querySelectorAll('#pg-modal .gal-tile')].map((x) => x.dataset.id)); };
+    let r = await find('buch'); ok('#5: "buch" findet die Leseliste (Bücher)', r.includes('leseliste'), r);
+    r = await find('BUECHER'); ok('#5: "BUECHER" findet die Leseliste', r.includes('leseliste'), r);
+    r = await find('bücher'); ok('#5: "bücher" findet die Leseliste', r.includes('leseliste'), r);
+    r = await find('zzzqqq'); ok('#5: Unsinn findet nichts', !r.length, r);
+    ok('#5: keine Seitenfehler am Handy', !m.errs.length, m.errs);
+    await m.context().close();
+  }
+
   console.log(p.errs.length ? 'Seitenfehler: ' + p.errs.join(' | ') : 'keine Seitenfehler');
   ok('keine Seitenfehler', !p.errs.length, p.errs);
   await br.close();
