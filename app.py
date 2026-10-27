@@ -139,6 +139,11 @@ class _Static(StaticFiles):
             r.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         else:
             r.headers.setdefault("Cache-Control", "no-cache")
+        if r.status_code == 200 and str(full_path).endswith("mermaid-frame.html"):
+            # 2.5 (P6-1): nur Saga selbst darf den Mermaid-Rahmen einbetten (frame-ancestors geht nicht per <meta>)
+            r.headers["Content-Security-Policy"] = ("default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:; "
+                                                    "font-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'; "
+                                                    "frame-ancestors 'self'")
         return r
 
 
