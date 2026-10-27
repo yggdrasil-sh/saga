@@ -34,7 +34,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from db import clean_line, connect as _db
-from saga import dbcalc, dbquery
+from saga import dbcalc, dbquery, people
 from saga.core import TZ, _api_guard, _bad, _body, _json_load, t
 from saga.notes import PALETTE, _iter_blocks
 from saga.sharing import Access, access, is_remote
@@ -274,8 +274,10 @@ def _rows(c, uid, owner, dbid, schema, shared, view, tz):
         args["view"] = view
     if dbcalc.has_calc(schema):                     # 2.5: Formeln/Rollups mit den Rechten des Betrachters
         dbcalc.fill(c, owner, schema, data, viewer=uid, tz=tz)
+    pm = people.out_values(c, schema, data, uid)    # 2.5: Personen wie im Web (Filter "mir zugewiesen"/"enthaelt")
     try:
-        page, _, _ = dbquery.run(schema, data, args, labels=_labels_fn(c, uid, owner), untitled=t("Unbenannt"))
+        page, _, _ = dbquery.run(schema, data, args, labels=_labels_fn(c, uid, owner), untitled=t("Unbenannt"), people=pm,
+                                 me=people.to_ref(c, uid))
     except dbquery.JsError:
         raise _Fail("bad_cfg")
     return page

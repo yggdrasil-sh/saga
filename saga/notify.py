@@ -4,7 +4,8 @@
   Angaben (Rolle, Unterhaltung, Anzahl) - Titel, Namen und Kommentar-Auszug ermittelt _render() erst beim Lesen, und nur,
   wenn der Empfaenger die Seite JETZT sehen darf (sharing.Access). Nach Entzug: "Kein Zugriff mehr" statt Titel.
 - Arten (KINDS): share.added, share.role, comment.new (neuer Kommentar auf eigener Seite), comment.reply (Antwort in
-  einer Unterhaltung, an der man beteiligt ist), publish.withdrawn (Admin hat eine Veroeffentlichung zurueckgezogen).
+  einer Unterhaltung, an der man beteiligt ist), publish.withdrawn (Admin hat eine Veroeffentlichung zurueckgezogen),
+  db.assigned (2.5: in einer Personen-Eigenschaft einer Datenbank-Zeile eingetragen, gebuendelt je Zeile).
   comment.mention ist vorgesehen (@-Erwaehnungen kommen spaeter).
 - Nie an sich selbst; je Art abschaltbar (user_kv 'notify_off'); mehrere Kommentare derselben Unterhaltung innerhalb von
   10 Minuten werden zu EINER (ungelesenen) Benachrichtigung gebuendelt (Zaehler n, zuletzt Schreibende vorn).
@@ -24,7 +25,8 @@ from saga.sharing import unread_count as pages_unread
 
 router = APIRouter()
 
-KINDS = ("share.added", "share.role", "comment.new", "comment.reply", "publish.withdrawn", "chat.message", "call.missed")    # abschaltbar, in dieser Reihenfolge
+KINDS = ("share.added", "share.role", "comment.new", "comment.reply", "publish.withdrawn", "chat.message", "call.missed",
+         "db.assigned")              # abschaltbar, in dieser Reihenfolge (2.5: db.assigned = in einer Datenbank-Zeile eingetragen)
 FUTURE = ("comment.mention",)
 RETENTION_DAYS = 90
 BUNDLE_SEC = 600                    # Kommentare derselben Unterhaltung innerhalb 10 Minuten -> eine Benachrichtigung
@@ -114,6 +116,19 @@ def _on_comment(c, note_id, owner, comment_id, thread_id, author, **_):
         create(c, owner, "comment.new", author, note_id, comment_id, bundle=thread_id)
 
 
+def _on_assigned(c, owner, note_id, people, actor=None, notify=True, **_):
+    """2.5 (Paket 1): Person(en) in einer Datenbank-Zeile eingetragen (saga.dbvals.assigned) -> db.assigned, gebuendelt je
+    Zeile (mehrere Eintragungen derselben Zeile innerhalb von 10 Minuten = eine Mitteilung). Nur mit Zugriff auf die Zeile;
+    abschaltbar je Konto (Art) und je Eigenschaft (notify: false)."""
+    if not notify:
+        return
+    for u in people:
+        if u == actor:
+            continue
+        if is_remote(u) or u == owner or Access(c, u).role(note_id):
+            create(c, u, "db.assigned", actor, note_id, bundle=f"row:{note_id}")
+
+
 def _on_withdrawn(c, note_id, owner, **_):
     """Admin hat eine Veroeffentlichung zurueckgezogen - der Eigentuemer erfaehrt es (ohne Namen des Admins)."""
     create(c, owner, "publish.withdrawn", None, note_id)
@@ -121,6 +136,7 @@ def _on_withdrawn(c, note_id, owner, **_):
 
 bus.on("share.set", _on_share)
 bus.on("comment.added", _on_comment)
+bus.on("row.assigned", _on_assigned)
 bus.on("publish.withdrawn", _on_withdrawn)
 
 
@@ -174,6 +190,8 @@ def _text(kind, actor, n, role, access):
         return t("{n} neue Nachrichten", n=n) if n > 1 else t("Neue Nachricht von {name}", name=who)
     if kind == "call.missed":
         return t("Verpasster Anruf von {name}", name=who)
+    if kind == "db.assigned":
+        return t("{name} hat dich eingetragen", name=who) if n <= 1 else t("{name} hat dich {n}-mal eingetragen", name=who, n=n)
     return kind
 
 

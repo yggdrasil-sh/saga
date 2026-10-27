@@ -965,7 +965,7 @@ def resolve_ref(c, x):
         return x.lower()
     now = time.time()
     if x not in _REV["m"] or now - _REV["t"] > 60:
-        n = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        n = tuple(c.execute("SELECT COUNT(*), MAX(id) FROM users").fetchone())     # MAX(id): Konto geloescht + neu angelegt
         if x not in _REV["m"] and (n != _REV["n"] or now - _REV["t"] > 60):
             _REV.update(t=now, n=n, m={local_ref(r[0]): r[0] for r in c.execute("SELECT username FROM users WHERE disabled=0")})
     u = _REV["m"].get(x, "")

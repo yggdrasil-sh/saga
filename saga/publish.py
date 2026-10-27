@@ -730,6 +730,11 @@ def _match(p, f, row):
     v = row["title"] if f["pid"] == "title" else _prop_value(p, row)
     if p["type"] in ("created", "edited") and v:
         v = _iso_ts(v)
+    if p["type"] == "person":                         # 2.5: wie im Web (Kennungen); "mir zugewiesen" gibt es oeffentlich nicht
+        if f["op"] == "me":
+            return False
+        from saga.people import to_ref
+        v = [to_ref(None, x) for x in v] if isinstance(v, list) else v
     empty = v is None or v == "" or v is False or (isinstance(v, list) and not v)
     op, fv = f["op"], f.get("value")
     if op == "is_empty":
@@ -785,6 +790,8 @@ def _fmt_prop(ctx, p, v):
     if v is None or v == "" or v == []:
         return ""
     typ = p["type"]
+    if typ in PRIVATE_TYPES:                      # nie oeffentlich (auch nicht ueber Filter/Sortierung sichtbar)
+        return ""
     if typ in ("formula", "rollup"):              # fertiger Wert: Zahl, Text, Haekchen, Datum oder Liste
         if isinstance(v, bool):
             return "✓" if v else ""
@@ -831,8 +838,11 @@ def _title_of(ctx, nid):
     return (r[0] if r else "") or t("Unbenannt")
 
 
+PRIVATE_TYPES = ("person", "files")       # 2.5 (Paket 1): Personen und Dateien erscheinen nie auf oeffentlichen Seiten
+
+
 def _visible_props(schema, view):
-    props = [p for p in schema.get("props", []) if isinstance(p, dict) and p.get("id")]
+    props = [p for p in schema.get("props", []) if isinstance(p, dict) and p.get("id") and p.get("type") not in PRIVATE_TYPES]
     hidden = set(view.get("hidden") or [])
     order = [x for x in (view.get("order") or [])]
     by_id = {p["id"]: p for p in props}

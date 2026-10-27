@@ -194,9 +194,18 @@ def _num_in(v):
 class _Source:
     """Was fill() von aussen braucht: Titel verknuepfter Seiten und Zeilen einer Ziel-Datenbank (je Anfrage gemerkt)."""
 
-    def __init__(self, labels=None, target=None):
-        self._labels_fn, self._target_fn = labels, target
-        self._labels, self._targets = {}, {}
+    def __init__(self, labels=None, target=None, people=None):
+        self._labels_fn, self._target_fn, self._people_fn = labels, target, people
+        self._labels, self._targets, self._people = {}, {}, {}
+
+    def people(self, canons):
+        """Personen -> Anzeigenamen (nie der Anmeldename); ohne Quelle (oeffentliche Seiten): keine."""
+        need = [x for x in canons if x not in self._people]
+        if need:
+            got = self._people_fn(need) if self._people_fn else {}
+            for x in need:
+                self._people[x] = got.get(x)
+        return [self._people[x] for x in canons if self._people.get(x)]
 
     def labels(self, ids):
         need = [i for i in ids if i not in self._labels]
@@ -243,6 +252,10 @@ def _in_value(p, r, src, calc_q):
         ids = [int(x) for x in (v if isinstance(v, list) else []) if isinstance(x, int) and not isinstance(x, bool)]
         lab = src.labels(ids)
         return [(lab[i] or src.untitled) for i in ids if i in lab]
+    if typ == "person":                                  # 2.5: Anzeigenamen (nie Anmeldenamen)
+        return src.people([x for x in (v if isinstance(v, list) else []) if isinstance(x, str)])
+    if typ == "files":
+        return [str(x.get("name") or "") for x in (v if isinstance(v, list) else []) if isinstance(x, dict) and x.get("name")]
     return None
 
 
@@ -405,6 +418,10 @@ class _Fill:
                 ids2 = [x for x in v if isinstance(x, int) and not isinstance(x, bool)]
                 lab = self.src.labels(ids2)
                 return [(lab[i] or self.src.untitled) for i in ids2 if i in lab]
+            if tp is not None and tp.get("type") == "person":          # 2.5: Anzeigenamen, nie Anmeldenamen
+                return self.src.people([x for x in (v if isinstance(v, list) else []) if isinstance(x, str)])
+            if tp is not None and tp.get("type") == "files":
+                return [str(x.get("name") or "") for x in (v if isinstance(v, list) else []) if isinstance(x, dict) and x.get("name")]
             if v is True:
                 return ["✓"]
             if isinstance(v, list):
@@ -417,16 +434,18 @@ class _Fill:
         return reduce(fn, vals, show)
 
 
-def fill_core(schema, rows, tz=None, now=None, labels=None, target=None, rollups=True, untitled=None, deadline=None, lang=None):
+def fill_core(schema, rows, tz=None, now=None, labels=None, target=None, rollups=True, untitled=None, deadline=None, lang=None,
+              people=None):
     """Formeln/Rollups in rows eintragen - ohne Datenbank: labels(ids) -> {id: titel} (nur sichtbare Seiten),
-    target(db_id) -> (schema, zeilen) der Ziel-Datenbank (nur sichtbare Zeilen) oder None."""
+    target(db_id) -> (schema, zeilen) der Ziel-Datenbank (nur sichtbare Zeilen) oder None. people(kennungen) ->
+    {kennung: anzeigename} (2.5; ohne: Personen zaehlen als leer - z. B. oeffentliche Seiten)."""
     if not has_calc(schema) or not rows:
         return rows
     if tz is None:                                      # ohne Angabe der Anfrage: Zeitzone des Servers (TZ)
         from saga.core import TZ
         tz = TZ
     now = now or datetime.now(timezone.utc)
-    src = _Source(labels, target)
+    src = _Source(labels, target, people)
     src.untitled = untitled or t("Unbenannt")
     _Fill(schema, src, tz, now, lang or get_lang(), rollups,
           deadline if deadline is not None else time.monotonic() + FILL_BUDGET).run(rows)
@@ -488,7 +507,15 @@ def fill(c, owner, schema, rows, viewer=None, tz=None, now=None, rollups=True):
     if not has_calc(schema) or not rows:
         return rows
     labels, target = db_source(c, owner, owner if viewer is None else viewer)
-    return fill_core(schema, rows, tz=tz, now=now, labels=labels, target=target, rollups=rollups)
+    return fill_core(schema, rows, tz=tz, now=now, labels=labels, target=target, rollups=rollups, people=people_source(c))
+
+
+def people_source(c):
+    """people(kennungen) -> {kennung: anzeigename} fuer fill_core (sharing.names: nie der Anmeldename)."""
+    def people(canons):
+        from saga.sharing import names
+        return dict(names(c, list(canons)))
+    return people
 
 
 # Gruppen nach Formel-/Rollup-Werten: eine Logik mit dbquery (Query.groups -> dbquery.value_groups)

@@ -19,7 +19,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from db import connect as _db
-from saga import dbcalc, dbquery, proptext
+from saga import dbcalc, dbquery, dbvals, proptext
 from saga.app_api import _db_query
 from saga.core import _api_guard, _bad, _json_load, t
 from saga.notes import _disposition
@@ -77,6 +77,13 @@ def build(uid, nid, params):
                 parsed[r[0]] = pv if isinstance(pv, dict) else {}
                 data.append({"id": r[0], "title": r[1] or "", "props": parsed[r[0]], "created": r[5], "updated": r[4]})
             dbcalc.fill(c, owner, schema, data, viewer=uid, tz=q.get("tz"))
+        if dbvals.has_any(schema):                 # 2.5: Personen -> Anzeigenamen, Dateien -> Namen (nie Anmeldenamen)
+            vals = []
+            for r in rows:
+                pv = parsed.get(r[0]) if r[0] in parsed else _json_load(r[3], {})
+                parsed[r[0]] = pv if isinstance(pv, dict) else {}
+                vals.append({"props": parsed[r[0]]})
+            dbvals.text_rows(c, schema, vals)
         props = [p for p in schema.get("props") or [] if isinstance(p, dict)]
         cols = [x for x in str(params.get("cols") or "").split(",") if x][:60] if not all_rows else []
         if cols:

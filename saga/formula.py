@@ -620,7 +620,8 @@ def rtype_of(ty):
 
 
 PROP_TYPE = {"text": S, "url": S, "select": S, "number": N, "calc": N, "checkbox": B, "date": D, "created": D,
-             "edited": D, "multi_select": L(S), "relation": L(S)}
+             "edited": D, "multi_select": L(S), "relation": L(S),
+             "person": L(S), "files": L(S)}          # 2.5: Personen -> Anzeigenamen, Dateien -> Dateinamen (saga.dbcalc)
 
 
 class Ctx:

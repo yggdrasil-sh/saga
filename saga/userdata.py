@@ -38,6 +38,8 @@ def delete_user_data(uid, drop_user=False):
         pushed = push.delete_account(c, uid)     # Mitteilungs-Abos und -Auftraege weg, als Absender anonymisiert
         avatar_n = avatars.delete_account(c, uid)  # Profilbild und zwischengespeicherte Gravatar-/SSO-Bilder
         ub_n = userbackup.delete_account(c, uid)  # persoenliches Backup: Ziel, Schluessel, Verlauf (Backups im Ziel bleiben)
+        from saga.people import drop_account     # 2.5: Personen-Werte anderer bleiben ("Geloeschte Person"), row_person nicht
+        drop_account(c, uid)
         counts = {t: c.execute(f"DELETE FROM {t} WHERE uid=?", (uid,)).rowcount for t in USER_TABLES}
         counts["note_share"] = shares
         counts["notification"] += notes_n

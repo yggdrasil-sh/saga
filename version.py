@@ -27,8 +27,10 @@ API_LEVEL = 1
 MIN_APP = "1.0.0"
 # Funktionen dieses Servers fuer die Apps (/api/version "features"): Editoren/Anzeigen nur zeigen, wenn gemeldet.
 # formula1 = Formel-Eigenschaften (Werte fertig in props, rtype im Schema, fx_err je Zeile, POST .../formula/check),
-# rollup1 = Rollup-Eigenschaften (wie Formeln), dbgroup1 = Gruppieren nach Formel/Rollup (groups mit value).
-FEATURES = ("formula1", "rollup1", "dbgroup1")
+# rollup1 = Rollup-Eigenschaften (wie Formeln), dbgroup1 = Gruppieren nach Formel/Rollup (groups mit value),
+# person1 = Personen-Eigenschaft (Werte als Handle/Prinzipal + people in /rows, GET .../people, Filter "me", db.assigned),
+# file1 = Datei-Eigenschaft (Werte [{url, name, size, mime, image}], Hochladen ueber POST /api/files?note=<zeile>).
+FEATURES = ("formula1", "rollup1", "dbgroup1", "person1", "file1")
 REPO = os.environ.get("SAGA_UPDATE_REPO", "yggdrasil-sh/saga")
 
 

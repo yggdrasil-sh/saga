@@ -18,6 +18,7 @@ import json
 import os
 import re
 import secrets
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -32,7 +33,7 @@ from starlette.convertors import Convertor, register_url_convertor
 
 import auth
 from db import clean_line, connect as _db
-from saga import avatars, bus, comments, fedsig, i18n, netguard, notify, pages, sharing
+from saga import avatars, bus, comments, fed_dbx, fedsig, i18n, netguard, notify, pages, people, sharing
 from saga.core import BASE_URL, E, RESTORE_TEST, SECRET, STATE_DIR, _api_guard, _bad, _body, _session_user, parse_json, t, title
 from saga.files import _thumb, _thumb_mime, _thumb_w
 from saga.notes import FILE_MAX, FILES_DIR, _disposition, _iter_blocks
@@ -80,7 +81,11 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # Online-Status von Chat-Partnern (Abo beim Server der Person). Mit 2.3-Servern: nichts davon, nichts wird gesendet.
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
          "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn",
-         "widgets1", "rowtpl", "csv", "formula1"]
+         "widgets1", "rowtpl", "csv", "formula1", "dbx1"]
+# dbx1 (2.5, Paket 1, saga.fed_dbx) = Personen- und Datei-Eigenschaften: der Eigentuemer liefert Personen als Prinzipal
+# ('@name@host', lokale Konten mit oeffentlichem Namen/Handle) samt people-Woerterbuch, Dateien als /files/<id> (das Heim
+# holt sie ueber /fed/v1/files mit note=<zeile>); GET /fed/v2/notes/{db}/people = Auswahl; Mitteilung db.assigned als
+# Ereignis. Ohne dbx1: Personen-/Datei-Spalten als Text-Spalte ohne Werte (fx_orig), "unsupported": ["person", "files"].
 # csv (2.5, Paket 2) = Datenbank als CSV exportieren (GET /fed/v2/notes/{id}/export.csv, saga.csv_export) mit den Rechten
 # der fremden Person. Ohne csv: Menuepunkt fehlt fuer Datenbanken dieses Servers.
 # formula1 (2.5, Paket 1, saga.dbcalc) = Formel- und Rollup-Eigenschaften: der Eigentuemer-Server rechnet die Werte mit
@@ -509,6 +514,9 @@ def _rekey(c, peer, old, new, handle):
     if known:
         for tb, col in _REKEY_COLS:
             c.execute(f"UPDATE {tb} SET {col}=? WHERE {col}=?", (new, old))
+    from saga.people import rename_principal       # 2.5: Personen-Werte in Datenbank-Zeilen (row_person)
+    rename_principal(c, old, new)
+    if known:
         c.execute("UPDATE note_comment_seen SET uid=? WHERE uid=? AND NOT EXISTS (SELECT 1 FROM note_comment_seen s2 WHERE s2.uid=? "
                   "AND s2.thread_id=note_comment_seen.thread_id)", (new, old, new))
         c.execute("DELETE FROM note_comment_seen WHERE uid=?", (old,))
@@ -1113,6 +1121,14 @@ def _ev(c, peer, ev):
     if typ == "share.removed":
         c.execute("DELETE FROM fed_inbound WHERE peer_id=? AND note_id=? AND target_type=? AND target=?", (peer["id"], rid, tt, target))
         bus.emit_after(c, "shared.changed", {"owner": None, "note_id": None, "target_type": tt, "target": target})
+        return "ok"
+    if typ == "db.assigned" and tt == "user":       # 2.5 (dbx1): Zeile muss von dort mit der Person geteilt sein
+        gs = sorted(sharing.groups_of(c, target))
+        sql = "SELECT 1 FROM fed_inbound WHERE peer_id=? AND ((target_type='user' AND target=?)" + \
+              (f" OR (target_type='group' AND target IN ({','.join('?' * len(gs))}))" if gs else "") + ") LIMIT 1"
+        if not feature(peer, "dbx1") or not c.execute(sql, (peer["id"], target, *gs)).fetchone():
+            return "ignored"
+        notify.create(c, target, typ, _actor_of(c, peer, ev.get("actor")), None, data={"fed": fed}, bundle=f"fed:{peer['id']}:{rid}")
         return "ok"
     if typ in ("comment.new", "comment.reply") and tt == "user":
         cm = ev.get("comment") if isinstance(ev.get("comment"), dict) else {}
@@ -1789,10 +1805,15 @@ def _handle_for(c, uid, p=None):
 
 def _on_notify(c, uid, kind, actor=None, note_id=None, comment_id=None, data=None, **_):
     """Benachrichtigung fuer eine fremde Person (saga.notify) -> signiertes Ereignis an ihre Instanz."""
-    if kind not in ("comment.new", "comment.reply") or not note_id or not enabled():
+    if kind not in ("comment.new", "comment.reply", "db.assigned") or not note_id or not enabled():
         return
     p, name = _target_peer(c, uid)
     if not p or not sharing.Access(c, uid).role(note_id):
+        return
+    if kind == "db.assigned":                # 2.5 (dbx1): in einer Datenbank-Zeile eingetragen - nur an Instanzen mit dbx1
+        if feature(p, "dbx1"):
+            _enqueue(c, p["id"], {"type": kind, "to": {"type": "user", "name": name}, "actor": _handle_for(c, actor, p),
+                                  "note": {"id": note_id, "title": _note_title(c, note_id)}})
         return
     cm = c.execute("SELECT thread_id, block_id FROM note_comment WHERE id=?", (comment_id,)).fetchone() if comment_id else None
     _enqueue(c, p["id"], {"type": kind, "to": {"type": "user", "name": name}, "actor": _handle_for(c, actor, p),
@@ -2427,7 +2448,12 @@ def _note_in(c, peer, d, uid):
     d.update(pinned=False, published=False, public_url=None, published_via=None, shared=True, locked=bool(d.get("locked")),
              remote=remote_info(peer))
     if isinstance(d.get("props"), dict):     # Relationen (Listen von Seiten-IDs) auf negative IDs
-        d["props"] = props_in(pid, d["props"])
+        d["props"] = fed_dbx.props_in(c, props_in(pid, d["props"]), pr)      # 2.5 (dbx1): Personen/Dateien
+        if isinstance(d.get("people"), dict) or any(isinstance(v, list) and v and isinstance(v[0], str) and v[0][:1] in "~@"
+                                                    for v in d["props"].values()):
+            d["people"] = fed_dbx.people_in(c, peer, uid, d.get("people"), [d["props"]])
+    else:
+        d.pop("people", None)
     if "fx_err" in d:                        # 2.5 (formula1): Fehler der Formeln dieser Zeile, nur {pid: code}
         d["fx_err"] = fx_err_in(d.get("fx_err"))
         if not d["fx_err"]:
@@ -2444,7 +2470,7 @@ def _note_in(c, peer, d, uid):
 
 
 PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups", "tplbtn", "widgets1", "rowtpl", "csv",
-             "formula1")
+             "formula1", "dbx1")
 
 
 def remote_info(peer):
@@ -2601,7 +2627,7 @@ def _w_note_patch(uid, nid, b):
         if k in b and b[k]:
             b[k] = _pic_out(b[k], pid)
     if "props" in b:
-        b["props"] = props_out(pid, b["props"])
+        b["props"] = fed_dbx.props_out(pid, props_out(pid, b["props"]))     # 2.5 (dbx1): Personen/Dateien zurueck
     if "schema" in b:
         b["schema"] = schema_out(pid, b["schema"])
     p, status, d = _proxy(uid, pid, "PATCH", f"/fed/v2/notes/{rid}" if v2 else f"/fed/v1/notes/{rid}", body=b)
@@ -2611,6 +2637,11 @@ def _w_note_patch(uid, nid, b):
     if isinstance(d.get("calc"), dict):          # 2.5 (formula1): Formel-/Rollup-Werte der Zeile nach dem Speichern
         out["calc"] = props_in(pid, {k: v for k, v in list(d["calc"].items())[:40] if isinstance(k, str) and len(k) <= 40})
         out["fx_err"] = fx_err_in(d.get("fx_err"))
+    if isinstance(d.get("values"), dict):        # 2.5 (dbx1): Personen/Dateien der Zeile nach dem Speichern
+        with _db() as c:
+            vals = fed_dbx.props_in(c, {k: v for k, v in list(d["values"].items())[:40] if isinstance(k, str) and len(k) <= 40}, nid)
+            out["values"] = vals
+            out["people"] = fed_dbx.people_in(c, p, uid, d.get("people"), [vals])
     return _json(200, out)
 
 
@@ -2947,6 +2978,16 @@ def fed_render(c, uid, fed):
     return True, {"id": r, "title": _clean_text(fed.get("title"), 300), "icon": "", "host": p["host"]}, f"/notes#{r}" + (f":{block}" if block else "")
 
 
+def _fed_local(c, principal):
+    """saga.people.FED_LOCAL: '@name@host' -> (gehoert zu dieser Instanz, lokaler Benutzername | None)."""
+    name, host = _handle(principal)
+    if not name or host != SELF_HOST:
+        return False, None
+    return True, _local_user_by_name(c, name)[0]
+
+
+people.FED_LOCAL = _fed_local
+fed_dbx.install(sys.modules[__name__])
 sharing.REMOTE_TARGET = remote_target
 sharing.REMOTE_CANON = remote_canon
 sharing.REMOTE_SEARCH = remote_search

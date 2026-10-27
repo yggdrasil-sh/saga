@@ -12,7 +12,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from db import connect as _db
 from fastapi import APIRouter
-from saga import dbcalc, nextcloud, page_widgets, proptext
+from saga import dbcalc, dbvals, nextcloud, page_widgets, proptext
 from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, origin_of, t
 from saga.sharing import Access, access, mask_links, names, person, viewer
 from saga.notes import FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _forced_throttled, _insert_version, _latest, announce_tree, checkpoint, blocks_text, share_targets, tree_changed
@@ -345,10 +345,23 @@ def _fx_props(rows, row):
             return None
         return _json_load(t_[7], {"props": []}), [{"id": x[0], "title": x[1] or "", "props": _json_load(x[8], {}), "created": x[9],
                                                    "updated": x[10]} for x in rows.values() if x[3] == dbid]
-    dbcalc.fill_core(schema, data, tz=TZ, labels=labels, target=target)
+    with _db() as c:                               # 2.5: Personen in Formeln als Anzeigenamen
+        dbcalc.fill_core(schema, data, tz=TZ, labels=labels, target=target, people=dbcalc.people_source(c))
     for d in data:
         memo[d["id"]] = d["props"]
     return memo.get(row[0], {})
+
+
+def _vals_props(rows, row, pv):
+    """2.5: Personen/Dateien einer Zeile als Text (Anzeigenamen bzw. Dateinamen) - nie Anmeldenamen."""
+    par = rows.get(row[3])
+    schema = _json_load(par[7], {"props": []}) if par else None
+    if not dbvals.has_any(schema):
+        return pv
+    d = {"props": dict(pv)}
+    with _db() as c:
+        dbvals.text_rows(c, schema, [d])
+    return d["props"]
 
 
 def md_page(rows, r, link, viewer=None):
@@ -373,12 +386,12 @@ def md_page(rows, r, link, viewer=None):
         tname = _json_load(r[7], {}).get("title_name") or t("Name")
         lines = [f"| {cells(tname)} | " + " | ".join(cells(p["name"]) for p in props) + " |", "|---|" + "---|" * len(props)]
         for x in sorted((x for x in rows.values() if x[3] == r[0]), key=lambda x: x[1] or ""):
-            pv = _json_load(x[8], {})
+            pv = _vals_props(rows, x, _json_load(x[8], {}))
             lines.append(f"| [{cells(x[1] or t('Unbenannt'))}]({link('/notes#' + str(x[0]))}) | "
                          + " | ".join(cells(fmt_val(p, val_of(p, x, pv))) for p in props) + " |")
         return head + "\n".join(lines) + "\n"
     if par and par[6] == "database":  # Zeile -> Eigenschaften als Liste unter dem Titel
-        pv = _json_load(r[8], {})
+        pv = _vals_props(rows, r, _json_load(r[8], {}))
         lst = [f"- **{p['name']}:** {fmt_val(p, val_of(p, r, pv))}"
                for p in _json_load(par[7], {"props": []}).get("props", []) if val_of(p, r, pv) not in (None, "", [])]
         if lst:

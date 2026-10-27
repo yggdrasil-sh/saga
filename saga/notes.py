@@ -419,7 +419,10 @@ def _check_file_refs(uid, blocks):
 # Eine Datenbank ist eine Seite mit kind='database' und einem Schema (Eigenschaften).
 # Ihre Zeilen sind normale Unterseiten mit props = {eigenschaft_id: wert}.
 PROP_TYPES = {"text", "number", "select", "multi_select", "date", "checkbox", "url", "created", "edited", "relation", "calc",
-              "formula", "rollup"}         # 2.5: formula/rollup rechnet der Server beim Lesen (saga.dbcalc), nie gespeichert
+              "formula", "rollup",         # 2.5: formula/rollup rechnet der Server beim Lesen (saga.dbcalc), nie gespeichert
+              "person", "files"}           # 2.5 (Paket 1): Personen (saga.people) und Dateien (saga.dbfiles)
+PERSON_MAX = 20                            # Personen je Zelle (= saga.people.VALUES_MAX)
+FILES_MAX = 20                             # Dateien je Zelle (Schema "max" 1..20, Standard 10)
 FX_TYPES = {"formula", "rollup"}
 CALC_PROP_OPS = {"div", "pct", "mul", "add", "sub"}     # "Berechnet": A / B, A in % von B, A * B, A + B, A - B (nie gespeichert)
 
@@ -484,12 +487,13 @@ VIEW_TYPES = {"table", "board", "list", "gallery", "calendar"}
 CALC_OPS = {"count", "filled", "empty", "pct_filled", "unique", "sum", "avg", "median", "min", "max", "range",
             "checked", "unchecked", "pct_checked", "earliest", "latest"}       # Fusszeile der Tabelle (je Spalte)
 FILTER_OPS = {"contains", "not_contains", "is", "is_not", "eq", "gt", "lt", "before", "after",
-              "is_empty", "not_empty", "checked", "unchecked", "today", "this_week", "this_month"}
+              "is_empty", "not_empty", "checked", "unchecked", "today", "this_week", "this_month",
+              "me"}                        # 2.5: Personen - "ist mir zugewiesen"
 
 
 def _groupable(p):
-    """Gruppieren nach Auswahl oder (2.5) nach Formel/Rollup mit Ergebnis Zahl/Text/Haekchen/Datum (nur lesend)."""
-    return p["type"] == "select" or (p["type"] in FX_TYPES and p.get("rtype") in ("number", "text", "checkbox", "date"))
+    """Gruppieren nach Auswahl oder (2.5) nach Formel/Rollup mit Ergebnis Zahl/Text/Haekchen/Datum bzw. Person (nur lesend)."""
+    return p["type"] in ("select", "person") or (p["type"] in FX_TYPES and p.get("rtype") in ("number", "text", "checkbox", "date"))
 
 
 def formula_check(new_schema, old_schema=None):
@@ -625,6 +629,12 @@ def _clean_schema(raw):
                 if isinstance(p.get(k), str) and (_PID.fullmatch(p[k]) or (k == "target" and p[k] == "title")):
                     prop[k] = p[k]
             prop["fn"] = p.get("fn") if p.get("fn") in ROLLUP_FNS else "count"
+        if typ == "person":                         # 2.5: mehrere Personen (Standard) und Mitteilung bei Zuweisung (Standard an)
+            prop["multi"] = p.get("multi") is not False
+            prop["notify"] = p.get("notify") is not False
+        if typ == "files":
+            mx = p.get("max")
+            prop["max"] = max(1, min(int(mx), FILES_MAX)) if isinstance(mx, int) and not isinstance(mx, bool) else 10
         if typ in ("number", "calc", "formula", "rollup"):
             if p.get("fmt") in NUM_FMT:
                 prop["fmt"] = p["fmt"]
@@ -820,8 +830,32 @@ def _rel_unlink(c, uid, nid, target, mpid, delete):
               (json.dumps(_schema_stamp(ts, _clean_schema(ts), uid), ensure_ascii=False), target, uid))
 
 
-def _clean_props(schema, raw, base=None, check=None):
-    """Zeilenwerte gegen das Schema pruefen; unbekannte Eigenschaften werden verworfen."""
+def _clean_files_val(v, mx):
+    """Wert einer Datei-Eigenschaft: [{url: '/files/<id>', name}] (ohne Doppelte, hoechstens mx) - Besitz prueft der Aufrufer."""
+    if not isinstance(v, list):
+        raise ValueError(t("Dateien müssen eine Liste sein"))
+    out, seen = [], set()
+    for x in v[:FILES_MAX * 2]:
+        url = x.get("url") if isinstance(x, dict) else x
+        m = _FILE_URL.fullmatch(str(url or ""))
+        if not m:
+            raise ValueError(t("unbekannte Datei"))
+        if m.group(1) in seen:
+            continue
+        seen.add(m.group(1))
+        name = x.get("name") if isinstance(x, dict) else None
+        name = re.sub(r"[\x00-\x1f/\\]", "_", str(name or "")).strip()[:120] if name is not None else ""
+        out.append({"url": f"/files/{m.group(1)}", "name": name})
+    if len(out) > mx:
+        raise ValueError(t("Höchstens {n} Dateien", n=mx))
+    return out
+
+
+def _clean_props(schema, raw, base=None, check=None, people=None, files=None, trusted=False):
+    """Zeilenwerte gegen das Schema pruefen; unbekannte Eigenschaften werden verworfen.
+    2.5: people(prop, wert, alter_wert) -> Liste kanonischer Kennungen (saga.people.clean_values), files(ids) -> Menge der
+    Datei-IDs, die dem Eigentuemer gehoeren. Ohne Pruefer bleiben Personen-/Dateiwerte unveraendert (nur trusted=True:
+    schon gespeicherte Werte, z. B. nach einer Schema-Aenderung, werden der Form nach uebernommen)."""
     if not isinstance(raw, dict):
         raise ValueError(t("ungültige Werte"))
     out = dict(base or {})
@@ -876,5 +910,29 @@ def _clean_props(schema, raw, base=None, check=None):
             v = str(v).strip()[:500]
             if urlparse(v).scheme not in ("http", "https", "mailto"):
                 raise ValueError(t("URL muss mit http(s):// oder mailto: beginnen"))
+        elif typ == "person":
+            if trusted:
+                v = [x for x in dict.fromkeys(v) if isinstance(x, str) and 0 < len(x) <= 300][:PERSON_MAX] if isinstance(v, list) else []
+            elif people is None:
+                continue
+            else:
+                v = people(p, v, (base or {}).get(pid))
+            if p.get("multi") is False:
+                v = v[:1]
+            if not v:
+                out.pop(pid, None)
+                continue
+        elif typ == "files":
+            if not trusted and files is None:
+                continue
+            v = _clean_files_val(v, FILES_MAX if trusted else p.get("max", 10))
+            if not trusted:
+                old = {x.get("url") for x in ((base or {}).get(pid) or []) if isinstance(x, dict)}
+                ids = {x["url"][7:] for x in v if x["url"] not in old}
+                if ids - files(ids):
+                    raise ValueError(t("unbekannte Datei"))
+            if not v:
+                out.pop(pid, None)
+                continue
         out[pid] = v
     return out
