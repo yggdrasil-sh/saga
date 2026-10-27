@@ -48,6 +48,12 @@ big_b = " ".join(f"w{i}" for i in range(2000))
 big_m, big_t = big_b.replace("w10 ", "W10 "), big_b.replace("w1990", "W1990")
 ok("Lange Texte (Wortebene) zusammengefuehrt", merge.merge_text(big_b, big_m, big_t) == big_b.replace("w10 ", "W10 ").replace("w1990", "W1990"))
 
+# Zyklus: beide verschieben jeweils den anderen Toggle in sich hinein -> nichts geht verloren (Review integ-b)
+_T = lambda i, ch: {"id": i, "type": "toggle", "data": {"text": i, "blocks": ch}}   # noqa: E731
+cyc, _ = merge.merge_doc({"blocks": [_T("a", [P1 := {"id": "p", "type": "paragraph", "data": {"text": "x"}}]), _T("b", [])]},
+                         {"blocks": [_T("b", [_T("a", [P1])])]}, {"blocks": [_T("a", [P1, _T("b", [])])]}, None, V["by"], V["now"])
+ok("Verschieben ueber Kreuz (a in b, b in a): alle Bloecke bleiben", sorted(ids(cyc)) == ["a", "b", "p"])
+
 # --- Eindeutige Block-IDs -------------------------------------------------------------------------------------------
 doc = {"blocks": [{"type": "paragraph", "data": {"text": "a"}}, {"id": "x", "type": "paragraph", "data": {"text": "b"}},
                   {"id": "x", "type": "paragraph", "data": {"text": "c"}}, {"id": "bad id!", "type": "paragraph", "data": {"text": "d"}},

@@ -496,6 +496,15 @@ def merge_doc(base, mine, theirs, bases=None, by=None, now=None):
                 key = f"{owner}/c{max(0, ncols[owner] - 1)}"
         where[bid] = key if valid(key) else ""
 
+    for bid in list(where):                        # Zyklus (mine: a in b, theirs: b in a): sonst haengt nichts an der Wurzel
+        seen, x = set(), bid
+        while where.get(x, "") and x not in seen:
+            seen.add(x)
+            x = where[x].rpartition("/")[0]
+            if x == bid:                           # bid liegt (mittelbar) in sich selbst: in die Wurzel
+                where[bid] = ""
+                break
+
     # 3. Reihenfolge je Liste
     members = {}
     for bid, key in where.items():
