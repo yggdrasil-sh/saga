@@ -84,6 +84,34 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     await p.locator('.wg-done').click();
   }
 
+  // --- #4: Kommentar-Entwurf bleibt, wenn jemand anderes die Seite aendert ---------------------------------------------
+  {
+    const C = await p.api('POST', '/api/notes', { title: 'Kommentar-Entwurf' });
+    await p.api('PATCH', '/api/notes/' + C.id, { format: 'blocks', body: JSON.stringify({ blocks: [{ type: 'paragraph', data: { text: 'Start' } }] }) });
+    await p.open(C.id);
+    await p.evaluate(() => window.HKComments.openAll()); await sleep(500);
+    await p.locator('.cm-foot .cm-ta').fill('Entwurf zwei');
+    // zweiter Tab desselben Kontos aendert die Seite
+    const p2 = await page(CK); await p2.open(C.id);
+    await p2.locator('.ce-paragraph').first().click(); await p2.keyboard.press('End'); await p2.keyboard.type(' geaendert');
+    let seen = false;
+    for (let i = 0; i < 30 && !seen; i++) { await sleep(300); seen = await p.evaluate(() => /geaendert/.test(document.querySelector('#pg-editor').textContent)); }
+    await sleep(2500);
+    ok('#4: fremde Aenderung ist angekommen', seen);
+    const v = await p.evaluate(() => [...document.querySelectorAll('.cm-ta')].map((t) => t.value));
+    ok('#4: Entwurf im Kommentarfeld erhalten', v.includes('Entwurf zwei'), v);
+    // Antwort-Entwurf ebenso
+    await p.locator('.cm-foot .cm-ta').fill('Erster Kommentar'); await p.locator('.cm-foot .cm-send').click(); await sleep(800);
+    ok('#4: nach dem Senden ist das Feld leer', (await p.locator('.cm-foot .cm-ta').inputValue()) === '');
+    await p.locator('.cm-reply, .cm-tbtn').filter({ hasText: 'Antworten' }).first().click();
+    await p.locator('.cm-list .cm-ta, #pg-cm .cm-thread .cm-ta').first().fill('Antwort-Entwurf');
+    await p2.keyboard.type(' nochmal');
+    await sleep(5000);
+    const v2 = await p.evaluate(() => [...document.querySelectorAll('.cm-ta')].map((t) => t.value));
+    ok('#4: Antwort-Entwurf erhalten', v2.includes('Antwort-Entwurf'), v2);
+    await p2.context().close();
+  }
+
   console.log(p.errs.length ? 'Seitenfehler: ' + p.errs.join(' | ') : 'keine Seitenfehler');
   ok('keine Seitenfehler', !p.errs.length, p.errs);
   await br.close();

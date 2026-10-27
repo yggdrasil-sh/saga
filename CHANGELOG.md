@@ -211,6 +211,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Widget-Einstellungen in schmalen Spalten** (z. B. 4er-Reihe in „Mein Tag“) waren ~45 px breit und unbenutzbar. Ist der
   Block schmaler als 420 px, öffnet das Panel als Seitenleiste neben dem Widget (am Handy unten), das Widget bleibt als
   Live-Vorschau sichtbar und markiert; Esc oder „Fertig“ schließt.
+- **Kommentar-Entwurf ging verloren**, wenn jemand anderes die Seite änderte (die Kommentarleiste wurde neu gezeichnet).
+  Entwürfe (neuer Kommentar, Antwort, Bearbeiten) bleiben jetzt je Feld erhalten, samt Fokus und Cursor; weg erst nach
+  Senden, Abbrechen oder Seitenwechsel.
 
 ### Behoben – Bughunt 3 (Server)
 - **Namensauflösung mit Zeitlimit auch in den Vorab-Prüfungen.** KI, Immich, Kalender, Push, Nextcloud, Föderation
