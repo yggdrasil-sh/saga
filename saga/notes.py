@@ -588,8 +588,8 @@ def _clean_schema(raw):
         raise ValueError(t("ungültiges Schema"))
     out, seen = [], set()
     for p in raw["props"][:30]:
-        if isinstance(p, dict) and isinstance(p.get("fx_orig"), dict) and p["fx_orig"].get("type") in FX_TYPES:
-            p = dict(p, **p["fx_orig"])              # aeltere Gegenstelle (ohne formula1) sah eine Text-Spalte: Original zurueck
+        if isinstance(p, dict) and isinstance(p.get("fx_orig"), dict) and p["fx_orig"].get("type") in FX_TYPES | {"person", "files"}:
+            p = dict(p, **p["fx_orig"])              # aeltere Gegenstelle (ohne formula1/dbx1) sah eine Text-Spalte: Original zurueck
         if not isinstance(p, dict):
             raise ValueError(t("ungültige Eigenschaft"))
         pid, typ = str(p.get("id", "")), str(p.get("type", ""))

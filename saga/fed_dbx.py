@@ -155,6 +155,11 @@ def dbx_out(inp, resp, nid=None):
                 d["schema"] = legacy_schema(d["schema"])
             if any(isinstance(g, dict) and isinstance(g.get("value"), list) for g in d.get("groups") or []):
                 d.pop("groups", None)                  # Gruppen nach Person kennt die Gegenstelle nicht
+        if ok:                                         # Gruppen nach Person: Kennungen wie die Werte
+            for g in d.get("groups") or []:
+                if isinstance(g, dict) and isinstance(g.get("value"), list):
+                    g["value"] = [x for x in (_out_ref(c, inp.peer, y, cache) for y in g["value"]) if x]
+                    g["id"] = ",".join(g["value"])
     return _resp(d, resp)
 
 

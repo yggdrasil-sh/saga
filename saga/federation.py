@@ -1128,6 +1128,8 @@ def _ev(c, peer, ev):
               (f" OR (target_type='group' AND target IN ({','.join('?' * len(gs))}))" if gs else "") + ") LIMIT 1"
         if not feature(peer, "dbx1") or not c.execute(sql, (peer["id"], target, *gs)).fetchone():
             return "ignored"
+        if _ok_rid(note.get("db")):                  # Zeile einer geteilten Datenbank: Zugriff ueber die Datenbank (fed_render)
+            fed["db"] = note["db"]
         notify.create(c, target, typ, _actor_of(c, peer, ev.get("actor")), None, data={"fed": fed}, bundle=f"fed:{peer['id']}:{rid}")
         return "ok"
     if typ in ("comment.new", "comment.reply") and tt == "user":
@@ -1812,8 +1814,9 @@ def _on_notify(c, uid, kind, actor=None, note_id=None, comment_id=None, data=Non
         return
     if kind == "db.assigned":                # 2.5 (dbx1): in einer Datenbank-Zeile eingetragen - nur an Instanzen mit dbx1
         if feature(p, "dbx1"):
+            par = c.execute("SELECT parent_id FROM note WHERE id=?", (note_id,)).fetchone()
             _enqueue(c, p["id"], {"type": kind, "to": {"type": "user", "name": name}, "actor": _handle_for(c, actor, p),
-                                  "note": {"id": note_id, "title": _note_title(c, note_id)}})
+                                  "note": {"id": note_id, "title": _note_title(c, note_id), "db": par[0] if par else None}})
         return
     cm = c.execute("SELECT thread_id, block_id FROM note_comment WHERE id=?", (comment_id,)).fetchone() if comment_id else None
     _enqueue(c, p["id"], {"type": kind, "to": {"type": "user", "name": name}, "actor": _handle_for(c, actor, p),
@@ -2970,7 +2973,8 @@ def fed_render(c, uid, fed):
           (f" OR (target_type='group' AND target IN ({','.join('?' * len(gs))}))" if gs else "") + ")"
     # Freigabe-Benachrichtigung: genau diese Seite muss noch geteilt sein (BUG-037). Kommentare koennen auch an
     # Unterseiten haengen (deren IDs kennen wir nicht) - dort reicht irgendeine Freigabe dieser Instanz.
-    exact = c.execute(sql + " AND note_id=? LIMIT 1", (pid, uid, *gs, rid)).fetchone()
+    exact = c.execute(sql + " AND note_id=? LIMIT 1", (pid, uid, *gs, rid)).fetchone() or \
+        (_ok_rid(fed.get("db")) and c.execute(sql + " AND note_id=? LIMIT 1", (pid, uid, *gs, fed["db"])).fetchone())   # 2.5: Zeile (db.assigned)
     if not exact and (not fed.get("comment") or not c.execute(sql + " LIMIT 1", (pid, uid, *gs)).fetchone()):
         return False, None, None
     r = ref(pid, rid)
