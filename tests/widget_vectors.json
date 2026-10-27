@@ -1,0 +1,689 @@
+{
+ "comment": "Gemeinsame Testvektoren fuer Widgets in Seiten: saga/page_widgets.aggregate (tests/seiten_widgets.py) und static/pages.js calcNum (tests/seiten_widgets.js) - beide wie die Fusszeile der Datenbank-Tabelle. want null = '–'.",
+ "schema": {
+  "props": [
+   {
+    "id": "n",
+    "name": "Zahl",
+    "type": "number"
+   },
+   {
+    "id": "ok",
+    "name": "Erledigt",
+    "type": "checkbox"
+   },
+   {
+    "id": "t",
+    "name": "Text",
+    "type": "text"
+   },
+   {
+    "id": "c",
+    "name": "Quote",
+    "type": "calc",
+    "a": "n",
+    "b": "m",
+    "op": "pct"
+   },
+   {
+    "id": "m",
+    "name": "Max",
+    "type": "number"
+   }
+  ]
+ },
+ "sets": {
+  "gemischt": [
+   {
+    "title": "A",
+    "props": {
+     "n": 3,
+     "ok": true,
+     "t": "12",
+     "m": 4
+    }
+   },
+   {
+    "title": "B",
+    "props": {
+     "n": "4.5",
+     "ok": false,
+     "t": " 7 ",
+     "m": 9
+    }
+   },
+   {
+    "title": "C",
+    "props": {
+     "n": "",
+     "t": "abc",
+     "m": 0
+    }
+   },
+   {
+    "title": "D",
+    "props": {
+     "n": null,
+     "ok": true,
+     "t": "1e3"
+    }
+   },
+   {
+    "title": "E",
+    "props": {
+     "n": -2.255,
+     "ok": "true",
+     "t": "0x10",
+     "m": 3
+    }
+   },
+   {
+    "title": "",
+    "props": {
+     "n": true,
+     "t": "  "
+    }
+   },
+   {
+    "title": "7",
+    "props": {
+     "n": 0.1,
+     "ok": true
+    }
+   },
+   {
+    "title": "G",
+    "props": {
+     "n": 0.2
+    }
+   }
+  ],
+  "leer": [],
+  "ohne_zahlen": [
+   {
+    "title": "x",
+    "props": {
+     "t": "a"
+    }
+   },
+   {
+    "title": "y",
+    "props": {}
+   }
+  ],
+  "rundung": [
+   {
+    "title": "a",
+    "props": {
+     "n": 1.005
+    }
+   },
+   {
+    "title": "b",
+    "props": {
+     "n": 2.675
+    }
+   },
+   {
+    "title": "c",
+    "props": {
+     "n": 1e-07
+    }
+   }
+  ]
+ },
+ "cases": [
+  {
+   "set": "gemischt",
+   "op": "count",
+   "prop": "",
+   "want": 8
+  },
+  {
+   "set": "gemischt",
+   "op": "sum",
+   "prop": "n",
+   "want": 5.55
+  },
+  {
+   "set": "gemischt",
+   "op": "sum",
+   "prop": "t",
+   "want": 1035
+  },
+  {
+   "set": "gemischt",
+   "op": "sum",
+   "prop": "c",
+   "want": 49.83
+  },
+  {
+   "set": "gemischt",
+   "op": "sum",
+   "prop": "",
+   "want": 7
+  },
+  {
+   "set": "gemischt",
+   "op": "sum",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "gemischt",
+   "op": "avg",
+   "prop": "n",
+   "want": 1.11
+  },
+  {
+   "set": "gemischt",
+   "op": "avg",
+   "prop": "t",
+   "want": 258.75
+  },
+  {
+   "set": "gemischt",
+   "op": "avg",
+   "prop": "c",
+   "want": 16.61
+  },
+  {
+   "set": "gemischt",
+   "op": "avg",
+   "prop": "",
+   "want": 7
+  },
+  {
+   "set": "gemischt",
+   "op": "avg",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "gemischt",
+   "op": "min",
+   "prop": "n",
+   "want": -2.25
+  },
+  {
+   "set": "gemischt",
+   "op": "min",
+   "prop": "t",
+   "want": 7
+  },
+  {
+   "set": "gemischt",
+   "op": "min",
+   "prop": "c",
+   "want": -75.17
+  },
+  {
+   "set": "gemischt",
+   "op": "min",
+   "prop": "",
+   "want": 7
+  },
+  {
+   "set": "gemischt",
+   "op": "min",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "gemischt",
+   "op": "max",
+   "prop": "n",
+   "want": 4.5
+  },
+  {
+   "set": "gemischt",
+   "op": "max",
+   "prop": "t",
+   "want": 1000
+  },
+  {
+   "set": "gemischt",
+   "op": "max",
+   "prop": "c",
+   "want": 75
+  },
+  {
+   "set": "gemischt",
+   "op": "max",
+   "prop": "",
+   "want": 7
+  },
+  {
+   "set": "gemischt",
+   "op": "max",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "gemischt",
+   "op": "pct_checked",
+   "prop": "ok",
+   "want": 38
+  },
+  {
+   "set": "gemischt",
+   "op": "checked",
+   "prop": "ok",
+   "want": 3
+  },
+  {
+   "set": "leer",
+   "op": "count",
+   "prop": "",
+   "want": 0
+  },
+  {
+   "set": "leer",
+   "op": "sum",
+   "prop": "n",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "sum",
+   "prop": "t",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "sum",
+   "prop": "c",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "sum",
+   "prop": "",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "sum",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "avg",
+   "prop": "n",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "avg",
+   "prop": "t",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "avg",
+   "prop": "c",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "avg",
+   "prop": "",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "avg",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "min",
+   "prop": "n",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "min",
+   "prop": "t",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "min",
+   "prop": "c",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "min",
+   "prop": "",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "min",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "max",
+   "prop": "n",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "max",
+   "prop": "t",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "max",
+   "prop": "c",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "max",
+   "prop": "",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "max",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "pct_checked",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "leer",
+   "op": "checked",
+   "prop": "ok",
+   "want": 0
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "count",
+   "prop": "",
+   "want": 2
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "sum",
+   "prop": "n",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "sum",
+   "prop": "t",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "sum",
+   "prop": "c",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "sum",
+   "prop": "",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "sum",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "avg",
+   "prop": "n",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "avg",
+   "prop": "t",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "avg",
+   "prop": "c",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "avg",
+   "prop": "",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "avg",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "min",
+   "prop": "n",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "min",
+   "prop": "t",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "min",
+   "prop": "c",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "min",
+   "prop": "",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "min",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "max",
+   "prop": "n",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "max",
+   "prop": "t",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "max",
+   "prop": "c",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "max",
+   "prop": "",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "max",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "pct_checked",
+   "prop": "ok",
+   "want": 0
+  },
+  {
+   "set": "ohne_zahlen",
+   "op": "checked",
+   "prop": "ok",
+   "want": 0
+  },
+  {
+   "set": "rundung",
+   "op": "count",
+   "prop": "",
+   "want": 3
+  },
+  {
+   "set": "rundung",
+   "op": "sum",
+   "prop": "n",
+   "want": 3.68
+  },
+  {
+   "set": "rundung",
+   "op": "sum",
+   "prop": "t",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "sum",
+   "prop": "c",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "sum",
+   "prop": "",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "sum",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "avg",
+   "prop": "n",
+   "want": 1.23
+  },
+  {
+   "set": "rundung",
+   "op": "avg",
+   "prop": "t",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "avg",
+   "prop": "c",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "avg",
+   "prop": "",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "avg",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "min",
+   "prop": "n",
+   "want": 0
+  },
+  {
+   "set": "rundung",
+   "op": "min",
+   "prop": "t",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "min",
+   "prop": "c",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "min",
+   "prop": "",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "min",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "max",
+   "prop": "n",
+   "want": 2.68
+  },
+  {
+   "set": "rundung",
+   "op": "max",
+   "prop": "t",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "max",
+   "prop": "c",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "max",
+   "prop": "",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "max",
+   "prop": "ok",
+   "want": null
+  },
+  {
+   "set": "rundung",
+   "op": "pct_checked",
+   "prop": "ok",
+   "want": 0
+  },
+  {
+   "set": "rundung",
+   "op": "checked",
+   "prop": "ok",
+   "want": 0
+  }
+ ]
+}

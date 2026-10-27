@@ -2552,7 +2552,7 @@
   // Zahl statt Text (null = "–"): count, checked, pct_checked (ganze %), sum/avg/min/max (auf 2 Stellen) - wie calcValue
   function calcNum(op, p, rows) {
     var cv = calcVals(p, rows), vals = cv.vals, nums = cv.nums, n = vals.length;
-    var r2 = function (x) { return Math.round(x * 100) / 100; };
+    var r2 = function (x) { x = Math.round(x * 100) / 100; return isFinite(x) ? x : null; };
     var s = function () { return nums.reduce(function (a, b) { return a + b; }, 0); };
     var chk = function () { return vals.filter(function (v) { return v === true; }).length; };
     switch (op) {
@@ -4438,6 +4438,7 @@
     this.card = el('div'); w.appendChild(this.card);
     this.card.addEventListener('click', function (e) { if (e.target.closest('a')) return; if (self.editable() && !self.panel) self.openPanel(); });
     WG.add(this); this.draw();
+    if (wgServer(this.data) && !S.loading && S.cur && !(this.block && S.wvals && this.block.id in S.wvals)) wgSoon();   // z. B. im eben aufgeklappten Toggle
     if (this.fresh && this.editable()) setTimeout(function () { if (w.isConnected) self.openPanel(); }, 0);
     return w;
   };
@@ -4672,6 +4673,7 @@
       if (err.status === 404 && !remoteId(id)) { S.wMissing = true; mine.forEach(function (x) { if (!x.panel) x.draw(); }); }
     });
   }
+  function wgSoon() { clearTimeout(S.wgT); S.wgT = setTimeout(loadWidgets, 300); }
   document.addEventListener('hk-page-open', function () { S.wvals = {}; S.wUnsupported = false; S.wMissing = false; });
   document.addEventListener('hk-page-ready', function () { loadWidgets(); });
   setInterval(function () { if (!document.hidden && S.cur) loadWidgets(); }, 60000);
@@ -6170,6 +6172,7 @@
          eds: function () { return (S.eds || []).filter(function (x) { return x.holder.isConnected; }); },
          open: function (id) { return openPage(id); }, byId: byId, goParent: goParent, copyLink: copyLink, showBlock: showBlock,
          readOnly: function () { return readOnly(); },
+         calcNum: calcNum,                                      // Widgets/Fusszeile (tests/seiten_widgets.js: gemeinsame Testvektoren)
          dup: function (ed, blk) { return dupBlock(ed, blk); }, styleAt: styleAt, styleBlock: styleBlock, colors: COLORS, colorNames: COLOR_NAMES,
          toggleOf: function (node) { var w = node && node.closest ? node.closest('.tgl') : null; return w ? TGL_OF.get(w) || null : null; },
          embed: EMBED, isMac: isMac, cleanClip: function (list, nested) { return cleanClip(list, nested ? nestedTools() : (S.tools || {})); }, openQS: function () { openQS(); }, pages: function () { return S.pages; }, label: label, ti: ti,

@@ -443,10 +443,12 @@ def page_widgets(uid, nid, params):
                 if cfg.get("pick") == "open" and d.get("kind") == "quote":
                     out[bid] = compute(c, uid, bid, d, tz, acc, today=today)
                     continue
-                src = _db_id(cfg.get("db"))
-                if src is not None and access(c, uid, src, "view", acc)[2] is not None:
-                    out[bid] = _W(d.get("kind"), error="no_access")      # Recht an der Quelle immer frisch (nicht aus dem Speicher)
-                    continue
+                if cfg.get("src") == "db" or d.get("kind") == "metric":
+                    try:                                      # Recht und Bestand der Quelle immer frisch (nicht aus dem Speicher)
+                        _source(c, uid, _db_id(cfg.get("db")), acc)
+                    except _Fail as f:
+                        out[bid] = _W(d.get("kind"), error=f.code)
+                        continue
                 key = (uid, nid, bid, json.dumps(d, sort_keys=True, ensure_ascii=False), tzn, today.isoformat())
                 out[bid] = _cached(key, lambda d=d, bid=bid: compute(c, uid, bid, d, tz, acc, today=today))
     return JSONResponse({"widgets": out}, headers={"Cache-Control": "no-store"})
