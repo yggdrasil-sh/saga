@@ -9,11 +9,11 @@
      "body": [
        {"type": "callout", "data": {"emoji": "💡", "text": "Neue Aufgaben legst du über die Schaltfläche an. Im Board ziehst du Karten einfach in die nächste Spalte."}},
        {"type": "columns", "data": {"cols": [
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "blue", "title": "Offene Aufgaben",
+         {"blocks": [{"id": "waufgab1", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "blue", "title": "Offene Aufgaben",
                       "cfg": {"db": "$ref:tasks", "view": "offen", "agg": "count", "prop": "", "fmt": "num"}}}]},
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "orange", "title": "Diese Woche fällig",
+         {"blocks": [{"id": "waufgab2", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "orange", "title": "Diese Woche fällig",
                       "cfg": {"db": "$ref:tasks", "view": "woche", "agg": "count", "prop": "", "fmt": "num"}}}]},
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "green", "title": "Erledigt",
+         {"blocks": [{"id": "waufgab3", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "green", "title": "Erledigt",
                       "cfg": {"db": "$ref:tasks", "view": "erledigt", "agg": "count", "prop": "", "fmt": "num"}}}]}
        ]}},
        {"type": "buttons", "data": {"buttons": [
@@ -69,8 +69,8 @@
           {"type": "header", "data": {"text": "Ziel", "level": 2}},
           {"type": "paragraph", "data": {"text": "Neue Startseite, klarere Navigation und schnellere Ladezeiten."}},
           {"type": "header", "data": {"text": "Aufgaben in diesem Projekt", "level": 2}},
-          {"type": "database", "data": {"db": "$ref:tasks", "view": "p", "hide_title": true, "views": [
-            {"id": "p", "name": "Aufgaben", "type": "table", "filters": [{"pid": "projekt", "op": "contains", "value": "$ref:p_web"}],
+          {"type": "database", "data": {"db": "$ref:tasks", "view": "alle", "hide_title": true, "views": [
+            {"id": "alle", "name": "Aufgaben", "type": "table", "filters": [{"pid": "projekt", "op": "contains", "value": "$ref:p_web"}],
              "sorts": [{"pid": "faellig", "dir": "asc"}], "hidden": ["projekt"]}]}}
         ]},
        {"ref": "p_umzug", "title": "Büroumzug", "icon": "📦", "example": true,

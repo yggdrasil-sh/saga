@@ -8,11 +8,11 @@
     {"ref": "home", "kind": "page", "parent": null, "title": "Content-Kalender", "icon": "📣", "cover": null, "wide": true,
      "body": [
        {"type": "columns", "data": {"cols": [
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "yellow", "title": "Ideen im Speicher",
+         {"blocks": [{"id": "wconten1", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "yellow", "title": "Ideen im Speicher",
                       "cfg": {"db": "$ref:posts", "view": "ideen", "agg": "count", "prop": "", "fmt": "num"}}}]},
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "blue", "title": "In Arbeit",
+         {"blocks": [{"id": "wconten2", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "blue", "title": "In Arbeit",
                       "cfg": {"db": "$ref:posts", "view": "arbeit", "agg": "count", "prop": "", "fmt": "num"}}}]},
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "green", "title": "Diesen Monat erscheinen",
+         {"blocks": [{"id": "wconten3", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "green", "title": "Diesen Monat erscheinen",
                       "cfg": {"db": "$ref:posts", "view": "monat", "agg": "count", "prop": "", "fmt": "num"}}}]}
        ]}},
        {"type": "buttons", "data": {"buttons": [

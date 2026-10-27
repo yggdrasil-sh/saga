@@ -19,7 +19,7 @@
        {"type": "columns", "data": {"cols": [
          {"blocks": [
            {"type": "header", "data": {"text": "Neu im Team?", "level": 3}},
-           {"type": "paragraph", "data": {"text": "Starte mit dem Onboarding: erste Woche, Zugänge und wen du was fragen kannst."}}
+           {"type": "paragraph", "data": {"text": "Starte mit dem <a href=\"/notes#$ref:onboarding\">Onboarding</a>: erste Woche, Zugänge und wen du was fragen kannst."}}
          ]},
          {"blocks": [
            {"type": "header", "data": {"text": "Etwas gesucht?", "level": 3}},
@@ -37,7 +37,7 @@
 
     {"ref": "onboarding", "kind": "page", "parent": "home", "title": "Onboarding", "icon": "🚀",
      "body": [
-       {"type": "callout", "data": {"emoji": "✅", "text": "Diese Liste gehört dir: Hake ab, was erledigt ist. Fragen? Siehe <b>Ansprechpartner</b>."}},
+       {"type": "callout", "data": {"emoji": "✅", "text": "Diese Liste gehört dir: Hake ab, was erledigt ist. Fragen? Siehe <a href=\"/notes#$ref:kontakte\">Ansprechpartner</a>."}},
        {"type": "header", "data": {"text": "Erster Tag", "level": 2}},
        {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
          {"content": "Laptop und Zugänge abholen", "meta": {"checked": false}, "items": []},
@@ -86,7 +86,7 @@
        {"type": "toggle", "data": {"title": "Wie buche ich einen Besprechungsraum?", "open": false, "blocks": [
          {"type": "paragraph", "data": {"text": "Über den gemeinsamen Kalender: Raum als Teilnehmer zum Termin hinzufügen."}}]}},
        {"type": "toggle", "data": {"title": "Wen frage ich bei Problemen mit dem Laptop?", "open": false, "blocks": [
-         {"type": "paragraph", "data": {"text": "Den IT-Support – Kontakt siehe Ansprechpartner."}}]}},
+         {"type": "paragraph", "data": {"text": "Den IT-Support – Kontakt siehe <a href=\"/notes#$ref:kontakte\">Ansprechpartner</a>."}}]}},
        {"type": "toggle", "data": {"title": "Darf ich von zu Hause arbeiten?", "open": false, "blocks": [
          {"type": "paragraph", "data": {"text": "Ja, nach Absprache mit dem Team. Feste Teamtage stehen im Kalender."}}]}}
      ]},

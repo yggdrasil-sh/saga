@@ -8,13 +8,13 @@
     {"ref": "home", "kind": "page", "parent": null, "title": "Mein Tag", "icon": "☀️", "cover": null, "wide": true,
      "body": [
        {"type": "columns", "data": {"cols": [
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "clock", "size": "m", "style": "card", "title": "Jetzt",
+         {"blocks": [{"id": "wmeinta1", "type": "widget", "data": {"v": 1, "kind": "clock", "size": "m", "style": "card", "title": "Jetzt",
                       "cfg": {"tz": "", "h24": true, "sec": false, "analog": false}}}]},
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "orange", "title": "Offene Wochenziele",
+         {"blocks": [{"id": "wmeinta2", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "orange", "title": "Offene Wochenziele",
                       "cfg": {"db": "$ref:ziele", "view": "offen", "agg": "count", "prop": "", "fmt": "num"}}}]},
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "progress", "size": "m", "style": "card", "accent": "green", "title": "Woche geschafft",
+         {"blocks": [{"id": "wmeinta3", "type": "widget", "data": {"v": 1, "kind": "progress", "size": "m", "style": "card", "accent": "green", "title": "Woche geschafft",
                       "cfg": {"src": "db", "db": "$ref:ziele", "view": "alle", "mode": "checked", "prop": "erledigt"}}}]},
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "quote", "size": "m", "style": "plain", "accent": "purple", "title": "Gedanke für heute",
+         {"blocks": [{"id": "wmeinta4", "type": "widget", "data": {"v": 1, "kind": "quote", "size": "m", "style": "plain", "accent": "purple", "title": "Gedanke für heute",
                       "cfg": {"src": "fixed", "pick": "daily", "items": [
                         "Kleine Schritte sind auch Schritte.",
                         "Erst das Wichtige, dann das Dringende.",

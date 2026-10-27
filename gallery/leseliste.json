@@ -8,11 +8,11 @@
     {"ref": "home", "kind": "page", "parent": null, "title": "Leseliste", "icon": "📚", "cover": null, "wide": true, "font": "serif",
      "body": [
        {"type": "columns", "data": {"cols": [
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "green", "title": "Gelesen 2026",
+         {"blocks": [{"id": "wleseli1", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "green", "title": "Gelesen 2026",
                       "cfg": {"db": "$ref:books", "view": "jahr", "agg": "count", "prop": "", "fmt": "num", "goal": 12}}}]},
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "blue", "title": "Lese ich gerade",
+         {"blocks": [{"id": "wleseli2", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "blue", "title": "Lese ich gerade",
                       "cfg": {"db": "$ref:books", "view": "gerade", "agg": "count", "prop": "", "fmt": "num"}}}]},
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "quote", "size": "m", "style": "card", "accent": "purple", "title": "Zitat des Tages",
+         {"blocks": [{"id": "wleseli3", "type": "widget", "data": {"v": 1, "kind": "quote", "size": "m", "style": "card", "accent": "purple", "title": "Zitat des Tages",
                       "cfg": {"src": "db", "db": "$ref:books", "view": "zitate", "prop": "zitat", "pick": "daily"}}}]}
        ]}},
        {"type": "buttons", "data": {"buttons": [

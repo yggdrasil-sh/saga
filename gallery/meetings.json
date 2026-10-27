@@ -15,9 +15,9 @@
            {"type": "callout", "data": {"emoji": "💡", "text": "Ein Klick legt die Notiz mit Agenda, Entscheidungen und Aufgaben an. Danach Datum und Art setzen."}}
          ]},
          {"w": 0.38, "blocks": [
-           {"type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "blue", "title": "Meetings diese Woche",
+           {"id": "wmeetin1", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "blue", "title": "Meetings diese Woche",
                       "cfg": {"db": "$ref:meetings", "view": "woche", "agg": "count", "prop": "", "fmt": "num"}}},
-           {"type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "orange", "title": "Noch nicht nachbereitet",
+           {"id": "wmeetin2", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "orange", "title": "Noch nicht nachbereitet",
                       "cfg": {"db": "$ref:meetings", "view": "offen", "agg": "count", "prop": "", "fmt": "num"}}}
          ]}
        ]}},

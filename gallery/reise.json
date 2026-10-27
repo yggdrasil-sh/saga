@@ -8,11 +8,11 @@
     {"ref": "home", "kind": "page", "parent": null, "title": "Reiseplaner", "icon": "🧳", "cover": null, "wide": true,
      "body": [
        {"type": "columns", "data": {"cols": [
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "countdown", "size": "m", "style": "card", "accent": "blue", "title": "Bis Lissabon",
+         {"blocks": [{"id": "wreise1", "type": "widget", "data": {"v": 1, "kind": "countdown", "size": "m", "style": "card", "accent": "blue", "title": "Bis Lissabon",
                       "cfg": {"date": "2026-12-04", "time": "", "dir": "until", "unit": "days"}}}]},
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "progress", "size": "m", "style": "card", "accent": "orange", "title": "Budget Lissabon (1.200 €)",
+         {"blocks": [{"id": "wreise2", "type": "widget", "data": {"v": 1, "kind": "progress", "size": "m", "style": "card", "accent": "orange", "title": "Budget Lissabon (1.200 €)",
                       "cfg": {"src": "db", "db": "$ref:ausgaben", "view": "lissabon", "mode": "sum", "prop": "betrag", "goal": 1200}}}]},
-         {"blocks": [{"type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "green", "title": "Ausgaben gesamt",
+         {"blocks": [{"id": "wreise3", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "green", "title": "Ausgaben gesamt",
                       "cfg": {"db": "$ref:ausgaben", "view": "alle", "agg": "sum", "prop": "betrag", "fmt": "eur"}}}]}
        ]}},
        {"type": "buttons", "data": {"buttons": [
@@ -83,8 +83,8 @@
             {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
               {"content": "Zug an die Küste, Strandspaziergang", "meta": {}, "items": []}]}}]}},
           {"type": "header", "data": {"text": "Ausgaben dieser Reise", "level": 2}},
-          {"type": "database", "data": {"db": "$ref:ausgaben", "view": "r", "hide_title": true, "views": [
-            {"id": "r", "name": "Ausgaben", "type": "table", "filters": [{"pid": "reise", "op": "contains", "value": "$ref:r_lissabon"}],
+          {"type": "database", "data": {"db": "$ref:ausgaben", "view": "alle", "hide_title": true, "views": [
+            {"id": "alle", "name": "Ausgaben", "type": "table", "filters": [{"pid": "reise", "op": "contains", "value": "$ref:r_lissabon"}],
              "hidden": ["reise"], "calcs": {"betrag": "sum"}}]}}
         ]},
        {"ref": "r_berge", "title": "Hüttenwochenende", "icon": "🏔️", "example": true,
