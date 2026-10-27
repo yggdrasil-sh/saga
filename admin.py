@@ -786,6 +786,7 @@ async def settings_post(request: Request):
                  ("default_groups", _groups_list(_s(f, "default_groups", 1000))),
                  ("allow_private_hosts", _on(f, "allow_private_hosts")), ("allowed_hosts", ", ".join(hosts)),
                  ("nc_files", _on(f, "nc_files")), ("favicons", _on(f, "favicons")),
+                 ("gallery_enabled", _on(f, "gallery_enabled")),
                  ("update_check", _on(f, "update_check")), ("default_lang", i18n.norm(f.get("default_lang")))):
         auth.save_setting(k, v)
     req = f.get("mfa_require") if f.get("mfa_require") in ("none", "admins", "all") else "none"

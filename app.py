@@ -34,6 +34,7 @@ from saga.dashboard import _status_loop
 from saga.files import files_gc, files_init, tmp_cleanup
 from saga.notes import FILE_MAX
 from saga import backups, graph, nextcloud, pageindex, siteicons, userbackup
+from saga import gallery                       # 2.5: Vorlagengalerie (/api/gallery...)
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -55,6 +56,7 @@ async def lifespan(_app):
     await asyncio.to_thread(db.init_schema)
     await asyncio.to_thread(auth.bootstrap_admin)
     files_init()
+    gallery.load()                                           # 2.5: Vorlagengalerie (gallery/ bzw. SAGA_GALLERY_DIR)
     task = asyncio.create_task(_status_loop())
     live.start()                                             # Live-Kanal (/api/events) und Anwesenheit
     push.start()                                             # Mitteilungen aufs Handy/Desktop (Warteschlange)
@@ -286,3 +288,4 @@ app.include_router(chat_x3.router)          # 2.5: PUT /api/chats/{cid}/messages
 assert fed_calls.router is fed_chat.router
 app.include_router(nextcloud.router)         # Nextcloud-Dateien in Seiten (2.3): /api/settings/nextcloud, /api/nextcloud/..., /api/notes/{nid}/nc
 app.include_router(userbackup.router)        # Persoenliche Backups (2.3): /api/account/backup...
+app.include_router(gallery.router)           # Vorlagengalerie (2.5): /api/gallery, /api/gallery/{id}, /api/gallery/{id}/use

@@ -55,5 +55,7 @@
  "Jemand": "Кто-то",
  "Kleine Seite": "Маленькая страница",
  "Eine einzelne Seite mit Kalender-Block.": "Одна страница с блоком календаря.",
- "Hallo Welt.": "Привет, мир."
+ "Hallo Welt.": "Привет, мир.",
+ "Abbruch": "Прерывание",
+ "Testvorlage: der Server bricht beim Anlegen ab (nur mit SAGA_GALLERY_TEST_FAIL=crash).": "Тестовый шаблон: сервер прерывает создание (только с SAGA_GALLERY_TEST_FAIL=crash)."
 }

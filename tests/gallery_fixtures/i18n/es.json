@@ -55,5 +55,7 @@
  "Jemand": "Alguien",
  "Kleine Seite": "Página pequeña",
  "Eine einzelne Seite mit Kalender-Block.": "Una sola página con bloque de calendario.",
- "Hallo Welt.": "Hola mundo."
+ "Hallo Welt.": "Hola mundo.",
+ "Abbruch": "Cancelación",
+ "Testvorlage: der Server bricht beim Anlegen ab (nur mit SAGA_GALLERY_TEST_FAIL=crash).": "Plantilla de prueba: el servidor cancela al crear (solo con SAGA_GALLERY_TEST_FAIL=crash)."
 }

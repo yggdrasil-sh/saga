@@ -43,6 +43,10 @@
     {{ check(_('Nextcloud-Dateien in Seiten erlauben'), 'nc_files', st.nc_files, _('Jede Person verknüpft ihre eigene Nextcloud (Einstellungen → Nextcloud) und fügt Dateien daraus in Seiten ein. Vorschau und Download laufen mit dem Konto der Person, die die Datei eingefügt hat – alle, die die Seite sehen, sehen auch die Datei. Aus: keine Verknüpfung, keine Vorschau, Dateien erscheinen nur als Karte.')) }}
   </section>
   <section class="adm-card">
+    <h3>{{ _("Seiten") }}</h3>
+    {{ check(_('Vorlagengalerie anbieten'), 'gallery_enabled', st.gallery_enabled, _('Mitgelieferte Vorlagen (Aufgaben, Leseliste, Wiki …) im Menü „Neue Seite“, auf dem leeren Start und in der Befehlspalette. Angelegt wird eine Kopie im Konto der Person. Aus: die Galerie fehlt in Web und Apps; schon angelegte Seiten bleiben.')) }}
+  </section>
+  <section class="adm-card">
     <h3>{{ _("Veröffentlichen") }}</h3>
     {{ check(_('Veröffentlichen erlauben'), 'publish_enabled', st.publish_enabled, _('Benutzer dürfen eigene Seiten öffentlich machen (ohne Anmeldung lesbar unter /@name/…). Aus = alle öffentlichen Adressen liefern sofort „Nicht gefunden“; die Einstellungen der Seiten bleiben gespeichert.')) }}
     <label class="adm-field"><span>{{ _("Startseite für Besucher") }}</span>

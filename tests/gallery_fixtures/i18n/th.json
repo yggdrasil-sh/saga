@@ -55,5 +55,7 @@
  "Jemand": "ใครบางคน",
  "Kleine Seite": "หน้าเล็ก",
  "Eine einzelne Seite mit Kalender-Block.": "หน้าเดียวพร้อมบล็อกปฏิทิน",
- "Hallo Welt.": "สวัสดีชาวโลก"
+ "Hallo Welt.": "สวัสดีชาวโลก",
+ "Abbruch": "ยกเลิก",
+ "Testvorlage: der Server bricht beim Anlegen ab (nur mit SAGA_GALLERY_TEST_FAIL=crash).": "เทมเพลตทดสอบ: เซิร์ฟเวอร์ยกเลิกระหว่างสร้าง (เฉพาะเมื่อมี SAGA_GALLERY_TEST_FAIL=crash)"
 }

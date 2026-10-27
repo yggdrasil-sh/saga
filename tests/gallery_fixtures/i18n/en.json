@@ -55,5 +55,7 @@
  "Jemand": "Someone",
  "Kleine Seite": "Small page",
  "Eine einzelne Seite mit Kalender-Block.": "A single page with a calendar block.",
- "Hallo Welt.": "Hello world."
+ "Hallo Welt.": "Hello world.",
+ "Abbruch": "Abort",
+ "Testvorlage: der Server bricht beim Anlegen ab (nur mit SAGA_GALLERY_TEST_FAIL=crash).": "Test template: the server aborts while creating (only with SAGA_GALLERY_TEST_FAIL=crash)."
 }

@@ -60,6 +60,7 @@ COPY VERSION app.py admin.py auth.py db.py hkcal.py run.py version.py ./
 COPY saga ./saga
 COPY templates ./templates
 COPY static ./static
+COPY gallery ./gallery
 # 2.5 (Gjallarhorn P6): oeffentlicher Release-Schluessel fuer das systemd-Deploy-Skript (saga/horn_ops.py release_pub)
 COPY gjallarhorn/release.pub ./gjallarhorn/release.pub
 COPY docker/entrypoint.sh /entrypoint.sh

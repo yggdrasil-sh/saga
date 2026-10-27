@@ -1,0 +1,10 @@
+{"id": "abbruch", "v": 1, "order": 99, "category": "team", "icon": "💥", "title": "Abbruch",
+ "desc": "Testvorlage: der Server bricht beim Anlegen ab (nur mit SAGA_GALLERY_TEST_FAIL=crash).", "needs": [], "root": "start",
+ "items": [
+  {"ref": "start", "kind": "page", "parent": null, "title": "Abbruch", "icon": "💥", "body": [{"type": "paragraph", "data": {"text": "Hallo Welt."}}]},
+  {"ref": "db", "kind": "database", "parent": "start", "title": "Projekte",
+   "schema": {"props": [{"id": "status", "name": "Status", "type": "select", "options": [{"id": "plan", "name": "Geplant", "color": "gray"}]}],
+              "views": [{"id": "tabelle", "name": "Tabelle", "type": "table"}]},
+   "rows": [{"title": "Website", "props": {"status": "plan"}}]},
+  {"ref": "crash", "kind": "page", "parent": "start", "title": "Notizen"}
+ ]}
