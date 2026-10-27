@@ -1,0 +1,13 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!-- 2.5 (P6-1): Mermaid laeuft nur hier - im abgeschotteten Rahmen (sandbox="allow-scripts", ohne allow-same-origin, also
+     ohne Zugriff auf Sitzung, Seite und Speicher). Das Ergebnis geht als SVG-Text per postMessage zurueck und wird dort nur
+     als <img> gezeigt (Skripte in Bildern laufen nie). Keine Verbindungen nach aussen (default-src 'none'). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<title>mermaid</title>
+</head><body>
+<div id="out"></div>
+<script src="vendor/mermaid/mermaid.min.js"></script>
+<script src="mermaid-frame.js"></script>
+</body></html>

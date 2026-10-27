@@ -30,7 +30,9 @@ MIN_APP = "1.0.0"
 # rollup1 = Rollup-Eigenschaften (wie Formeln), dbgroup1 = Gruppieren nach Formel/Rollup (groups mit value),
 # person1 = Personen-Eigenschaft (Werte als Handle/Prinzipal + people in /rows, GET .../people, Filter "me", db.assigned),
 # file1 = Datei-Eigenschaft (Werte [{url, name, size, mime, image}], Hochladen ueber POST /api/files?note=<zeile>).
-FEATURES = ("formula1", "rollup1", "dbgroup1", "person1", "file1",
+# move1 = POST /api/notes/{id}/blocks/move (Bloecke auf eine andere Seite), render1 = Vorschaubilder von Mathe/Mermaid
+# (data.render mit stale) - beide 2.5 P6, docs/APP-API.md.
+FEATURES = ("formula1", "rollup1", "dbgroup1", "person1", "file1", "move1", "render1",
             "relfilter1", "datetime1", "status1", "subtasks1", "tableopts1",      # 2.5 Paket 5 (docs/APP-API.md)
             "weather1", "habit1", "upcoming1", "chart1")                          # 2.5 Paket 4: Widgets Etappe 2, Diagramme
 REPO = os.environ.get("SAGA_UPDATE_REPO", "yggdrasil-sh/saga")

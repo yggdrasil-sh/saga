@@ -56,6 +56,8 @@
 
   // --- Editor.js nachladen ---------------------------------------------------
   var V = document.body.dataset.v || '';
+  // 2.5 (P6-1): Inline-Leiste mit Farbe und Formel (static/editor25.js)
+  var INLINE_TB = ['bold', 'italic', 'link', 'hkcolor', 'marker', 'inlineCode', 'hkmath', 'hkdate'];
   var VENDOR = ['editorjs.umd.js', 'header.umd.js', 'editorjs-list.umd.js', 'quote.umd.js',
                 'code.umd.js', 'delimiter.umd.js', 'inline-code.umd.js', 'marker.umd.js',
                 'table.umd.js', 'image.umd.js', 'attaches.umd.js', 'drag-drop.js'];
@@ -671,7 +673,7 @@
       S.editor = new window.EditorJS({
         holder: 'pg-editor', data: data, minHeight: 80, autofocus: false,
         placeholder: T("Schreib los – '/' für Blöcke und Verweise, Rechtsklick für Verweise im Text"),
-        inlineToolbar: ['bold', 'italic', 'link', 'marker', 'inlineCode', 'hkdate'],
+        inlineToolbar: INLINE_TB,
         tools: S.tools = {
           header: { class: window.Header, inlineToolbar: true, config: { levels: [1, 2, 3, 4], defaultLevel: 2, placeholder: T('Überschrift') } },
           list: { class: window.EditorjsList, inlineToolbar: true, config: { defaultStyle: 'unordered' } },
@@ -700,6 +702,10 @@
           toggle: { class: ToggleTool, inlineToolbar: true },
           callout: { class: CalloutTool, inlineToolbar: true },
           hkdate: { class: DateInline },
+          hkcolor: { class: window.HKColor },            // 2.5 (P6-1): Inline-Farben (static/editor25.js)
+          hkmath: { class: window.HKMathInline },        // 2.5 (P6-1): Inline-Mathe <code class="hk-math">
+          math: { class: window.HKMathTool },            // 2.5 (P6-1): Mathe-Block (KaTeX)
+          hkmove: { class: window.HKMoveTune },          // 2.5 (P6-4): Verschieben nach ...
           hkcomment: { class: CommentTune },
           hkstyle: { class: StyleTune }, hkdup: { class: DupTune }, hklink: { class: LinkTune },
           hkconflict: { class: ConflictTune }          // 2.5 (P3): Konfliktblock aus dem Zusammenfuehren
@@ -1622,9 +1628,12 @@
   // Editor.js selbst). Deshalb vorher: nur Block-Werkzeuge, die der Ziel-Editor kennt (Spalten in Spalten/Ausklappbar
   // werden aufgeloest wie beim Speichern), Inline-HTML nach derselben Positivliste wie der Server (saga/pages.py,
   // _Sanitizer), Adressen nur relativ/http(s)/mailto, verschachtelte Bloecke (Ausklappbar, Spalten) ebenso.
-  var CLIP_INLINE_ONLY = { inlineCode: 1, marker: 1, hkdate: 1, hkcomment: 1, hkstyle: 1, hkdup: 1, hklink: 1 };
-  var CLIP_TAGS = { b: 1, strong: 1, i: 1, em: 1, u: 1, s: 1, mark: 1, code: 1, a: 1, br: 1, time: 1 };
-  var CLIP_CLASSES = { mark: ['cdx-marker'], code: ['inline-code'], time: ['hk-date', 'hk-remind'] };
+  var CLIP_INLINE_ONLY = { inlineCode: 1, marker: 1, hkdate: 1, hkcomment: 1, hkstyle: 1, hkdup: 1, hklink: 1, hkcolor: 1, hkmath: 1, hkmove: 1 };
+  var CLIP_TAGS = { b: 1, strong: 1, i: 1, em: 1, u: 1, s: 1, mark: 1, code: 1, a: 1, br: 1, time: 1, span: 1 };
+  // 2.5 (P6-1): Inline-Farben (span.hk-c-*, mark.hk-bg-*) und Inline-Mathe wie der Server; span ohne Farbe faellt weg
+  var CLIP_PAL = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];      // wie COLORS (weiter unten)
+  var CLIP_CLASSES = { mark: ['cdx-marker'].concat(CLIP_PAL.map(function (c) { return 'hk-bg-' + c; })), code: ['inline-code', 'hk-math'],
+                       time: ['hk-date', 'hk-remind'], span: CLIP_PAL.map(function (c) { return 'hk-c-' + c; }) };
   var CLIP_DROP = /^(script|style|template|iframe|frame|frameset|object|embed|noscript|svg|math|textarea|select|button|form|title|head|link|meta)$/;
   var CLIP_URL_KEYS = { url: 1, href: 1, link: 1, source: 1, embed: 1, src: 1 };
   function clipEsc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
@@ -1650,7 +1659,8 @@
           if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(dt)) { walk(c, inA); return; }
           keep = ' datetime="' + dt + '"';
         }
-        var cls = (c.getAttribute('class') || '').split(/\s+/).filter(function (x) { return (CLIP_CLASSES[tg] || []).indexOf(x) >= 0; });
+        var cls = (c.getAttribute('class') || '').split(/\s+/).filter(function (x) { return (CLIP_CLASSES[tg] || []).indexOf(x) >= 0; }).slice(0, 1);
+        if (tg === 'span' && !cls.length) { walk(c, inA); return; }          // span nur mit Farbe (Erwaehnungen: P6-5)
         if (cls.length) keep += ' class="' + cls.join(' ') + '"';
         out.push('<' + tg + keep + '>'); walk(c, inA || tg === 'a'); out.push('</' + tg + '>');
       });
@@ -1660,7 +1670,7 @@
   function clipVal(v, key, depth) {
     if (depth > 40) return null;
     if (typeof v === 'string') {
-      if (key === 'code') return v;                                      // Code-Bloecke sind Klartext (wie der Server)
+      if (key === 'code' || key === 'tex') return v;                     // Code/Formel sind Klartext (wie der Server)
       if (CLIP_URL_KEYS[key]) { var u = v.trim(); return /^(\/(?!\/)|https?:\/\/|mailto:)/i.test(u) ? u : ''; }
       return clipInline(v);
     }
@@ -2121,7 +2131,7 @@
   // --- Seite gestalten (2.5): Block-Menue ⋮⋮ (G5) mit Farbe (G3), Duplizieren, Link zum Block -----------------------------
   // Reihenfolge im Menue: Einstellungen des Blocks (Editor.js), "Umwandeln in", Farbe, Duplizieren, Link, Kommentieren, dann
   // Nach oben / Loeschen / Nach unten. Lesen/Kommentieren (bzw. gesperrt): nur Link und Kommentieren.
-  var BLOCK_TUNES = ['hkstyle', 'hkdup', 'hklink', 'hkcomment', 'hkconflict'];
+  var BLOCK_TUNES = ['hkstyle', 'hkdup', 'hkmove', 'hklink', 'hkcomment', 'hkconflict'];
   var STYLE_TYPES = { paragraph: 1, header: 1, list: 1, quote: 1, toggle: 1, callout: 1, checklist: 1 };   // wie saga/notes.py
   var DUP_TYPES = { paragraph: 1, header: 1, list: 1, quote: 1, code: 1, toggle: 1, callout: 1, delimiter: 1, table: 1, image: 1 };
   var COLOR_NAMES = { gray: T('Grau'), brown: T('Braun'), orange: T('Orange'), yellow: T('Gelb'), green: T('Grün'), blue: T('Blau'),
@@ -7052,7 +7062,7 @@
     var tools = nestedTools();
     var ed = new window.EditorJS({
       holder: holder, data: { blocks: blocks || [] }, tools: tools, tunes: BLOCK_TUNES, i18n: I18N, minHeight: 24, placeholder: placeholder,
-      inlineToolbar: ['bold', 'italic', 'link', 'marker', 'inlineCode', 'hkdate'],
+      inlineToolbar: INLINE_TB,
       onChange: edChanged
     });
     holder.addEventListener('input', function () { if (!S.loading) tryShortcut(ed); });   // Markdown-Kuerzel im eigenen Editor
@@ -7089,6 +7099,7 @@
   // Breiten als grid-template-columns (fr) und Ziehgriffe zwischen den Spalten (2.5, G1)
   ColumnsTool.prototype.grid = function () {
     var self = this, w = this.w, n = this.editors.length;
+    w.classList.toggle('cols-many', n >= 5);        // 2.5 (P6-1): 5-6 Spalten - unter 1100 px in Dreierreihen (CSS)
     if (this.ws && this.ws.length !== n) this.ws = null;
     if (this.ws) w.style.setProperty('--cols-t', frs(this.ws)); else w.style.removeProperty('--cols-t');
     w.classList.toggle('cols-w', !!this.ws);
@@ -7146,11 +7157,11 @@
     if (this.block && this.block.dispatchChange) this.block.dispatchChange();
     if (!S.loading) { S.dirtyBody = true; schedule(); }
   };
-  // Sichtbare Leiste "Spalten: 2 3 4" oben rechts (das Block-Menue zeigt beim Ueberfahren die INNEREN Bloecke)
+  // Sichtbare Leiste "Spalten: 2 3 4 5 6" oben rechts (das Block-Menue zeigt beim Ueberfahren die INNEREN Bloecke)
   ColumnsTool.prototype.ctl = function () {
     var self = this, bar = el('div', 'cols-ctl'); bar.contentEditable = 'false';
     bar.appendChild(el('span', 'cols-ctl-t', T('Spalten')));
-    [2, 3, 4].forEach(function (n) {
+    [2, 3, 4, 5, 6].forEach(function (n) {                 // 2.5 (P6-1, P6-E7): bis 6 Spalten
       var b = el('button', 'cols-ctl-b' + (self.editors.length === n ? ' on' : ''), String(n)); b.type = 'button';
       b.setAttribute('aria-label', T('{n} Spalten', { n: n })); b.setAttribute('aria-pressed', self.editors.length === n ? 'true' : 'false');
       b.addEventListener('click', function () { self.setCount(n); });
@@ -8218,6 +8229,10 @@
          toggleOf: function (node) { var w = node && node.closest ? node.closest('.tgl') : null; return w ? TGL_OF.get(w) || null : null; },
          embed: EMBED, isMac: isMac, cleanClip: function (list, nested) { return cleanClip(list, nested ? nestedTools() : (S.tools || {})); }, openQS: function () { openQS(); }, pages: function () { return S.pages; }, label: label, ti: ti,
          recents: recents, decorate: function () { decorateLinks(); }, ancestors: ancestors,
+         // 2.5 (P6-1/P6-4, static/editor25.js): Mehrfachauswahl, Vorschaubilder, Verschieben
+         uph: UPH, remoteId: remoteId, shared: function () { return S.shared || []; },
+         dirty: function () { if (!S.loading) { S.dirtyBody = true; schedule(); } },
+         save: function () { return save(); }, apply: function () { return liveApply(null); },
          recheck: function () { return recheck(true); },        // static/comments.js: Rolle/Zugriff nach 403/404 neu pruefen
          // Live-Kanal (static/live.js): Seitenliste neu laden, fremde Aenderung der offenen Seite, ungelesen-Punkt im Baum
          reloadList: function () { return loadList(); }, remote: remoteChange,

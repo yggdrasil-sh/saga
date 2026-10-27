@@ -224,3 +224,8 @@ blockquote[class*="bg-"],ul[class*="bg-"],ol[class*="bg-"]{padding-top:.4rem;pad
 .pub-wx-day{display:flex;flex-direction:column;align-items:center;gap:.1rem}.pub-wx-src{margin-top:.4rem;font-size:.75em;color:var(--muted)}
 .pub-hb{border-collapse:collapse;font-size:.9em}.pub-hb th{text-align:left;padding-right:.6rem;font-weight:500}.pub-hb td{padding:0 .15rem;text-align:center}
 .pub-hb-on{color:var(--wa)}.pub-hb-off{color:var(--border)}
+/* 2.5 (P6-1): Mathe als MathML (vom Server), Mermaid als gespeichertes Vorschaubild */
+.pub-mathblock{margin:1rem 0;overflow-x:auto;text-align:center}
+.pub-mathblock math{font-size:1.15em}
+.pub-imath math{font-size:1.05em}
+.pub-diagram img{max-width:100%;height:auto;background:#fff;border-radius:8px}

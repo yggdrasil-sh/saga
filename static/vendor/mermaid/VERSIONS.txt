@@ -1,0 +1,4 @@
+mermaid@12.2.0 (MIT) - https://mermaid.js.org
+Datei aus dem npm-Paket: dist/mermaid.min.js (enthaelt u. a. d3, dagre-d3-es, cytoscape, DOMPurify, KaTeX, khroma - je MIT
+bzw. ISC/Apache-2.0/MPL-2.0 oder Apache-2.0 fuer DOMPurify; siehe Lizenzkommentare im Buendel). Unveraendert.
+Laeuft nur im abgeschotteten Rahmen static/mermaid-frame.html (sandbox="allow-scripts", ohne allow-same-origin).

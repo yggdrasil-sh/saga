@@ -35,6 +35,7 @@ from saga.files import files_gc, files_init, tmp_cleanup
 from saga.notes import FILE_MAX
 from saga import backups, graph, nextcloud, pageindex, siteicons, userbackup
 from saga import gallery                       # 2.5: Vorlagengalerie (/api/gallery...)
+from saga import page_blocks                   # 2.5 (P6-4): Bloecke auf eine andere Seite verschieben
 from saga import import_common, importer      # 2.5 (Paket 2): Importe (/api/import/...)
 from saga import people                        # 2.5 (Paket 1): Personen-Auswahl (/api/notes/{nid}/people)
 
@@ -265,6 +266,7 @@ app.include_router(fed_pages.router)         # Teilen vollstaendig (2.3): /fed/v
 app.include_router(pages.router)
 app.include_router(siteicons.router)          # automatische Kachel-Symbole: /api/services/favicon/{key}
 app.include_router(page_tools.router)
+app.include_router(page_blocks.router)         # 2.5 (P6-4): POST /api/notes/{nid}/blocks/move
 app.include_router(csv_export.router)         # 2.5 (Paket 2): GET /api/notes/{nid}/export.csv
 app.include_router(files.router)
 app.include_router(databases.router)

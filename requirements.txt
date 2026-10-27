@@ -17,3 +17,4 @@ cryptography>=42
 segno>=1.6
 webauthn==3.0.1           # Passkeys (WebAuthn/FIDO2) pruefen - py_webauthn, saga/mfa.py
 h2==4.2.0                 # HTTP/2 fuer Apple Push (APNs), ueber httpx
+latex2mathml==3.81.1     # TeX -> MathML beim Veroeffentlichen (MIT, reines Python), saga/mathml.py

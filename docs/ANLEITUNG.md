@@ -498,6 +498,16 @@ YouTube-Videos lassen sich an den Griffen links/rechts schmaler ziehen und links
 Doppelklick auf einen Griff stellt die volle Breite wieder her. Zwischen zwei Spalten erscheint beim Überfahren eine Linie –
 daran ziehst du die Spaltenbreite (in 5-%-Schritten, Doppelklick = gleich breit). Im Seitenmenü **⋯** wählst du je Seite
 die **Schrift** (Standard, Serif, Mono) und **Kleiner Text**. Alles das übernimmt auch eine veröffentlichte Seite.
+**Farbe im Text, Formeln, Diagramme:** Markierten Text färbst du über **A** in der Leiste über der Auswahl (Text- oder
+Hintergrundfarbe, „Standard“ entfernt sie; Strg/⌘+⇧+H wiederholt die zuletzt benutzte Farbe). **∑** macht aus markiertem
+Text eine Formel (TeX), ein Klick darauf zeigt sie gerendert und lässt sie bearbeiten. `/Formel` fügt einen Mathe-Block ein,
+ein Code-Block mit Sprache **Mermaid** zeichnet ein Diagramm (Ansicht Vorschau, Geteilt oder Code). Die Apps zeigen
+Formeln und Diagramme als Bild, das der Browser beim Bearbeiten erzeugt – wurde der Text in einer App geändert, steht dort
+„veraltet“, bis die Seite wieder im Browser geöffnet wird. Spalten gibt es bis 6 (bei schmalem Fenster in Dreierreihen).
+**Mehrere Blöcke:** Ziehe über mehrere Blöcke, nimm Umschalt+↑/↓ oder Umschalt+Klick auf ⋮⋮ – unten erscheint eine Leiste
+zum Löschen, Verschieben, Umwandeln, Färben, Duplizieren und Kopieren. **Verschieben nach …** (auch im Block-Menü) bringt
+Blöcke samt Inhalt, Kommentaren und Bildern auf eine andere Seite, die du bearbeiten darfst; der Hinweis danach bietet
+„Öffnen“ und „Rückgängig“. Seiten eines anderen Saga-Servers bekommen eine Kopie („Kopieren nach …“).
 **Widgets:** Mit `/Widget` (direkt auch `/Uhr`, `/Countdown`, `/Fortschritt`, `/Kennzahl`) fügst du kleine Karten ein –
 eine Uhr (auch für eine andere Zeitzone), einen Countdown bis zu einem Datum, einen Fortschrittsbalken, eine Kennzahl aus
 einer Datenbank (Anzahl, Summe, Durchschnitt, Min, Max, % angehakt – über eine ihrer Ansichten) oder ein Zitat (eigene Texte
