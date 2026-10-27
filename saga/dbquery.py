@@ -18,7 +18,10 @@ from zoneinfo import ZoneInfo
 
 LIMIT_MAX = 5000
 AUTO = {"created": "created", "edited": "updated"}
-NOVALUE = {"is_empty", "not_empty", "checked", "unchecked", "today", "this_week", "this_month"}
+NOVALUE = {"is_empty", "not_empty", "checked", "unchecked", "today", "this_week", "this_month",
+           "yesterday", "tomorrow", "last_week", "next_week", "last_month", "next_month", "this_year", "overdue"}
+REL_OPS = NOVALUE - {"is_empty", "not_empty", "checked", "unchecked"}         # relative Datumsfilter ohne Wert
+STATUS_GROUPS = ("todo", "doing", "done")
 
 
 class JsError(Exception):
@@ -272,6 +275,76 @@ def _rel_date_day(s):
     return day if abs(day) <= 100_000_000 else None          # TimeClip: +-8.64e15 ms
 
 
+# --- 2.5 (datetime1): Datum mit Uhrzeit (lokale Wandzeit mit Offset) und Zeitraum "start/end" ----------------------
+# Bildet static/pages.js dtParts/dayRange/dateKey GENAU nach. Nur "neue" Werte (mit Uhrzeit+Offset oder mit "/") werden
+# so gelesen - alles andere wie bisher (erste 10 Zeichen), damit alte Daten und Vektoren unveraendert bleiben.
+_DT_PART = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})(?:T([0-9]{2}):([0-9]{2})(Z|[+-][0-9]{2}:[0-9]{2}))?")
+
+
+def _dt_part(s, tz):
+    """'JJJJ-MM-TT' oder 'JJJJ-MM-TTTHH:MM+hh:mm' -> (tagesnummer lokal in tz, 'JJJJ-MM-TT[THH:MM]' lokal) oder None."""
+    m = _DT_PART.fullmatch(s)
+    if not m:
+        return None
+    y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if not (1 <= y <= 9999 and 1 <= mo <= 12 and 1 <= d <= 31) or (m.group(4) is not None and not 1900 <= y <= 9998):
+        return None
+    try:
+        date(y, mo, d)
+    except ValueError:
+        return None
+    if m.group(4) is None:
+        return _days_from_civil(y, mo, d), s
+    hh, mi, off = int(m.group(4)), int(m.group(5)), m.group(6)
+    oh, om = (0, 0) if off == "Z" else (int(off[1:3]), int(off[4:6]))
+    if hh > 23 or mi > 59 or oh > 18 or om > 59:
+        return None
+    sg = -1 if off[0] == "-" else 1
+    utc_min = (_days_from_civil(y, mo, d) * 1440 + hh * 60 + mi) - sg * (oh * 60 + om)
+    loc = datetime.fromtimestamp(utc_min * 60, tz)
+    return _days_from_civil(loc.year, loc.month, loc.day), f"{loc.year:04d}-{loc.month:02d}-{loc.day:02d}T{loc.hour:02d}:{loc.minute:02d}"
+
+
+def date_parts(v, tz):
+    """Neuer Datumswert -> (starttag, endtag, startschluessel, endschluessel) in tz; None = alter/kein neuer Wert."""
+    if not isinstance(v, str) or len(v) <= 10:
+        return None
+    ps = v.split("/")
+    if len(ps) > 2 or (len(ps) == 1 and "T" not in v):
+        return None
+    a = _dt_part(ps[0], tz)
+    b = _dt_part(ps[1], tz) if len(ps) == 2 else a
+    if a is None or b is None:
+        return None
+    return a[0], b[0], a[1], b[1]
+
+
+def _day_iso(n):
+    d = date.fromordinal(n + 719163)
+    return f"{d.year:04d}-{d.month:02d}-{d.day:02d}"
+
+
+def _month_start(y, m):
+    """Tagesnummer des 1. im Monat m (beliebig, auch <1 / >12) - wie Date.UTC(y, m - 1, 1)."""
+    y += (m - 1) // 12
+    m = (m - 1) % 12 + 1
+    return _days_from_civil(y, m, 1)
+
+
+def rel_incomplete(op, fv):
+    """Wert eines Filters next_days/past_days/on_or_before/on_or_after unvollstaendig (static/pages.js relIncomplete)?"""
+    s = fv if isinstance(fv, str) else ""
+    if op in ("next_days", "past_days"):
+        return not _NDAYS.fullmatch(s) or not 1 <= int(s) <= 366
+    if _TOKEN.fullmatch(s):
+        return False
+    return not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", s) or _rel_date_day(s) is None
+
+
+_TOKEN = re.compile(r"today(?:([+-])([0-9]{1,4}))?")
+_NDAYS = re.compile(r"[0-9]{1,3}")
+
+
 # --- Abfrage ueber den Zeilen einer Datenbank ------------------------------------------------------------------------
 class Query:
     """Filter/Suche/Sortierung/Gruppen einer Ansicht. rows: [{'id','title','props','created','updated', ...}];
@@ -363,19 +436,53 @@ class Query:
                                         or (is_fx(p) and js_seq(p.get("rtype"), "number")))
 
     # Filter (matchFilter)
-    def rel_date(self, op, iso):
-        a = self.today
-        if op == "this_month":
-            d = date.fromordinal(a + 719163)
-            a = _days_from_civil(d.year, d.month, 1)
-            b = _days_from_civil(d.year + (d.month == 12), d.month % 12 + 1, 1)
-        elif op == "this_week":
-            a -= date.fromordinal(a + 719163).weekday()          # (getDay() + 6) % 7: Montag = 0
+    def day_span(self, v):
+        """(starttag, endtag) eines Werts (static/pages.js daySpan) oder None (Invalid Date)."""
+        dp = date_parts(v, self.tz)
+        if dp is not None:
+            return dp[0], dp[1]
+        x = _rel_date_day(js_str(v) if js_truthy(v) else "")
+        return None if x is None else (x, x)
+
+    def rel_date(self, op, iso, fv=None):
+        """Relative Datumsfilter (static/pages.js relDate): Zeitraum [a, b) in Tagen; ein Zeitraum-Wert passt, wenn er das
+        Fenster beruehrt. overdue: Ende vor heute. next_days/past_days N (1-366, inkl. heute), on_or_before/on_or_after
+        mit Datum oder today, today+N, today-N. Unvollstaendiger Wert -> True (zaehlt nicht)."""
+        t0 = self.today
+        sp = self.day_span(iso)
+        if op in ("next_days", "past_days", "on_or_before", "on_or_after"):
+            s = fv if isinstance(fv, str) else ""
+            if op in ("next_days", "past_days"):
+                if not _NDAYS.fullmatch(s) or not 1 <= int(s) <= 366:
+                    return True
+                n = int(s)
+                a, b = (t0, t0 + n) if op == "next_days" else (t0 - n + 1, t0 + 1)
+                return sp is not None and sp[0] < b and sp[1] >= a
+            m = _TOKEN.fullmatch(s)
+            if m:
+                ref = t0 + (0 if m.group(1) is None else (1 if m.group(1) == "+" else -1) * int(m.group(2)))
+            elif re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", s):
+                ref = _rel_date_day(s)
+                if ref is None:
+                    return True
+            else:
+                return True
+            return sp is not None and (sp[0] <= ref if op == "on_or_before" else sp[1] >= ref)
+        if op == "overdue":
+            return sp is not None and sp[1] < t0
+        d = date.fromordinal(t0 + 719163)
+        if op in ("this_month", "last_month", "next_month"):
+            k = {"this_month": 0, "last_month": -1, "next_month": 1}[op]
+            a, b = _month_start(d.year, d.month + k), _month_start(d.year, d.month + k + 1)
+        elif op == "this_year":
+            a, b = _days_from_civil(d.year, 1, 1), _days_from_civil(d.year + 1, 1, 1)
+        elif op in ("this_week", "last_week", "next_week"):
+            a = t0 - d.weekday() + {"this_week": 0, "last_week": -7, "next_week": 7}[op]   # (getDay() + 6) % 7: Montag = 0
             b = a + 7
         else:
+            a = t0 + {"today": 0, "yesterday": -1, "tomorrow": 1}.get(op, 0)
             b = a + 1
-        x = _rel_date_day(js_str(iso) if js_truthy(iso) else "")
-        return x is not None and a <= x < b
+        return sp is not None and sp[0] < b and sp[1] >= a
 
     def _fc(self, f):
         """Feste Teile eines Filters (Spalte, Operator, Wert) - einmal je Filter statt je Zeile (Ergebnis wie matchFilter)."""
@@ -418,10 +525,27 @@ class Query:
             return js_truthy(v)
         if op == "unchecked":
             return not js_truthy(v)
-        if op == "today" or op == "this_week" or op == "this_month":
+        if op in REL_OPS:
             return not empty and self.rel_date(op, v)
         if novalue:
             return True
+        if op in ("next_days", "past_days", "on_or_before", "on_or_after"):
+            if rel_incomplete(op, fv):                         # unvollstaendiger Wert: zaehlt nicht (auch leere Zeilen)
+                return True
+            return not empty and self.rel_date(op, v, fv)
+        if op == "status_group":                               # 2.5: Gruppe der Option (ohne Angabe: todo); "open" = nicht erledigt
+            if not isinstance(fv, str) or fv not in STATUS_GROUPS + ("open",):
+                return True
+            if empty:
+                return False
+            grp = status_group(p, v)
+            return grp is not None and (grp != "done" if fv == "open" else grp == fv)
+        dspan = date_parts(v, self.tz) if js_seq(p.get("type"), "date") and op in ("eq", "before", "after") else None
+        if dspan is not None:                                  # Datum mit Uhrzeit/Zeitraum: nach Tag in tz (fv als Text)
+            if not isinstance(fv, str):
+                return False
+            a, b = _day_iso(dspan[0]), _day_iso(dspan[1])
+            return (a <= fv <= b) if op == "eq" else (a < fv) if op == "before" else (b > fv)
         if op == "contains" or op == "not_contains":
             if not isinstance(v, list) and isinstance(p, dict) and js_seq(p.get("type"), "relation"):
                 v = []                                         # Relation ohne Verknuepfung = leere Liste (wie static/pages.js)
@@ -540,6 +664,10 @@ class Query:
             return 1 if js_truthy(v) else 0
         if js_nullish(v):
             return None
+        if js_seq(t, "date"):                                  # Datum mit Uhrzeit/Zeitraum: Start, lokal in tz
+            dp = date_parts(v, self.tz)
+            if dp is not None:
+                return dp[2]
         return js_lower(v) if isinstance(v, str) else v
 
     def sort_keys(self):
@@ -631,7 +759,13 @@ class Query:
         return [r for r in rows if all(self.match(r, f) for f in fl) and (not self.q or self.q in self.row_text(r))]
 
     # Gruppen (eachGrouped / renderBoard): erst "Ohne <Spalte>", dann je Option in Schema-Reihenfolge
-    def groups(self, rows, g):
+    def groups(self, rows, g, by_status=False):
+        if by_status and is_status(g):                         # 2.5: nach Status-Gruppe (Spalten todo/doing/done)
+            gid = g.get("id", UNDEF)
+            out = [(None, [r for r in rows if status_group(g, self._get(r, gid)) is None])]
+            for grp in STATUS_GROUPS:
+                out.append((grp, [r for r in rows if status_group(g, self._get(r, gid)) == grp]))
+            return out
         if not js_seq(g.get("type"), "select"):                  # Formel/Rollup: Gruppen = vorkommende Werte (nur lesend)
             gid = g.get("id", UNDEF)
             return value_groups(rows, g, lambda r: self._get(r, gid))
@@ -643,6 +777,22 @@ class Query:
             oid = o.get("id", UNDEF)
             out.append((oid, [r for r in rows if js_seq(self._get(r, gid), oid)]))
         return out
+
+
+def is_status(p):
+    """Status-Eigenschaft (2.5, P5-E2): Auswahl mit status:true - Optionen tragen group todo/doing/done."""
+    return isinstance(p, dict) and js_seq(p.get("type"), "select") and p.get("status") is True
+
+
+def status_group(p, v):
+    """Gruppe der gewaehlten Option (ohne Angabe: todo); None = keine Status-Eigenschaft oder unbekannte Option."""
+    if not is_status(p):
+        return None
+    for o in p.get("options") if isinstance(p.get("options"), list) else []:
+        if isinstance(o, dict) and js_seq(o.get("id", UNDEF), v):
+            g = o.get("group")
+            return g if g in STATUS_GROUPS else "todo"
+    return None
 
 
 def is_fx(p):
@@ -845,8 +995,13 @@ def run(schema, rows, args, labels=None, untitled="Unbenannt"):
     matched = len(out)                                       # wie "n von total Eintraegen" im Web
     g = group_prop(q, view, args["group"] if "group" in args else UNDEF)
     groups = None
+    by_status = bool(view and view.get("group_status") is True and "group" not in args)
+    sub = (view or {}).get("sub") if g is None else None
+    if isinstance(sub, dict) and sub.get("mode") in ("nested", "parents_only"):
+        out = nest(q, rows, out, sub)
+        matched = len(out)
     if g is not None:
-        gs = q.groups(out, g)
+        gs = q.groups(out, g, by_status)
         if js_seq(g.get("type"), "select"):
             groups = [{"id": None if oid is UNDEF else oid, "count": len(rs)} for oid, rs in gs]
         else:                                                # Formel/Rollup: id = Wert als Text, value = Wert (nur lesend)
@@ -855,3 +1010,60 @@ def run(schema, rows, args, labels=None, untitled="Unbenannt"):
     off = args.get("offset", 0)
     out = out[off:off + args["limit"]] if "limit" in args else out[off:]
     return out, matched, groups
+
+
+SUB_DEPTH = 10
+
+
+def nest(q, all_rows, shown, sub):
+    """Unteraufgaben (2.5, view.sub): Kinder direkt hinter ihren Eltern, eingerueckt. Passt ein Kind zum Filter, bleibt die
+    Eltern-Kette sichtbar (wie Notion). Reihenfolge je Ebene = sortierte Reihenfolge. Setzt r["_depth"] und r["_sub"]
+    (Eltern-ID oder None) an den Zeilen. parents_only: nur Zeilen ohne (vorhandene) Eltern. Kreise/zu tief: als Wurzel."""
+    pid = _key(sub.get("parent"))
+    by_id = {r.get("id"): r for r in all_rows}
+
+    def parent_of(r):
+        v = q._props(r).get(pid)
+        if isinstance(v, list) and v and _isnum(v[0]) and not isinstance(v[0], bool) and v[0] in by_id and v[0] != r.get("id"):
+            return v[0]
+        return None
+    if sub.get("mode") == "parents_only":
+        res = [r for r in shown if parent_of(r) is None]
+        for r in res:
+            r["_depth"], r["_sub"] = 0, None
+        return res
+    keep, order = {}, {}
+    for i, r in enumerate(shown):
+        order[r.get("id")] = i
+        keep[r.get("id")] = r
+    for r in shown:                                           # Eltern-Kette der Treffer dazunehmen
+        cur, n = parent_of(r), 0
+        while cur is not None and n < SUB_DEPTH:
+            if cur not in keep:
+                keep[cur] = by_id[cur]
+            cur, n = parent_of(by_id[cur]), n + 1
+    base = len(shown)
+    rank = {rid: order.get(rid, base + k) for k, rid in enumerate(r.get("id") for r in all_rows)}
+    kids, roots = {}, []
+    for rid, r in keep.items():
+        par = parent_of(r)
+        # Kreis (Eltern-Kette kommt zurueck) oder Eltern nicht sichtbar -> Wurzel
+        seen, cur = {rid}, par
+        while cur is not None and cur not in seen and len(seen) <= SUB_DEPTH:
+            seen.add(cur)
+            cur = parent_of(by_id[cur]) if cur in keep else None
+        if par is None or par not in keep or cur is not None:
+            roots.append(rid)
+        else:
+            kids.setdefault(par, []).append(rid)
+    out = []
+
+    def walk(rid, depth, par):
+        r = keep[rid]
+        r["_depth"], r["_sub"] = depth, par
+        out.append(r)
+        for k in sorted(kids.get(rid, []), key=rank.__getitem__):
+            walk(k, depth + 1, rid)
+    for rid in sorted(roots, key=rank.__getitem__):
+        walk(rid, 0, None)
+    return out

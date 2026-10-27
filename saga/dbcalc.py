@@ -228,7 +228,7 @@ def _in_value(p, r, src, calc_q):
     if typ == "checkbox":
         return v is True
     if typ == "date":
-        return fx.day_of(v, tz) if isinstance(v, str) else None
+        return fx.prop_date(v, tz) if isinstance(v, str) else None
     if typ == "created":
         return fx.stamp_of(r.get("created"), tz)
     if typ == "edited":
@@ -544,3 +544,46 @@ def legacy_rows(schema, rows):
                         pv[pid] = s
         r.pop("fx_err", None)
     return rows
+
+
+# --- 2.5 (Paket 5): Abhaengigkeiten - "blockiert" ------------------------------------------------------------------
+def done_test(schema):
+    """-> f(props) -> bool | None: Ist eine Zeile erledigt? Status-Eigenschaft (Gruppe done), sonst das erste Haekchen.
+    None = die Datenbank hat keins von beidem (dann gilt nichts als erledigt)."""
+    props = _props_of(schema)
+    st = next((p for p in props if dbquery.is_status(p)), None)
+    if st is not None:
+        return lambda pv: dbquery.status_group(st, pv.get(st["id"])) == "done"
+    cb = next((p for p in props if p.get("type") == "checkbox"), None)
+    if cb is not None:
+        return lambda pv: pv.get(cb["id"]) is True
+    return lambda pv: False
+
+
+def mark_blocked(c, owner, dbid, schema, rows):
+    """rows[i]["blocked"] = True, wenn ein Eintrag der Relation mit Rolle blocked_by (Selbst-Relation) nicht erledigt ist.
+    Nur gelesen, nie gespeichert. Ohne solche Relation: nichts."""
+    bp = next((p for p in _props_of(schema) if p.get("type") == "relation" and p.get("role") == "blocked_by"), None)
+    if bp is None or not rows:
+        return
+    want = set()
+    for r in rows:
+        v = (r.get("props") or {}).get(bp["id"])
+        if isinstance(v, list):
+            want.update(x for x in v if isinstance(x, int) and not isinstance(x, bool))
+    if not want:
+        return
+    import json as _json
+    done = done_test(schema)
+    state = {}
+    for i, pr in c.execute("SELECT id, props FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND id = ANY(?)",
+                           (owner, dbid, list(want))).fetchall():
+        try:
+            pv = _json.loads(pr) if pr else {}
+        except ValueError:
+            pv = {}
+        state[i] = done(pv if isinstance(pv, dict) else {})
+    for r in rows:
+        v = (r.get("props") or {}).get(bp["id"])
+        if isinstance(v, list) and any(state.get(x) is False for x in v):
+            r["blocked"] = True

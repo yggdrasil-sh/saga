@@ -24,7 +24,7 @@ from saga import gallery_format as gf
 from saga.core import E, HERE, _api_guard, _bad, _body, origin_of, t
 from saga.databases import sign_buttons
 from saga.i18n import get_lang, norm
-from saga.notes import (_check_file_refs, _clean_props, _clean_schema, _db_schema, _rel_check, _rel_link, _rel_sync,
+from saga.notes import (self_filters, _check_file_refs, _clean_props, _clean_schema, _db_schema, _rel_check, _rel_link, _rel_sync,
                         _schema_stamp, note_limit_error, tree_changed)
 from saga.pages import FONTS, _Reply, _icon, _title_in, clean_blocks
 from saga.sharing import Access, access
@@ -292,7 +292,7 @@ def _body_json(c, owner, nid, blocks, ids, examples=True):
     # darum signiert der Server sie fuer den Eigentuemer, auch wenn eine Person mit "Bearbeiten" unter seiner Seite anlegt
     if '"buttons"' in body:
         body = sign_buttons(body, nid, owner, owner)
-    return body
+    return self_filters(body, "blocks", nid)            # 2.5: "$self" in Filtern eingebetteter Datenbanken = diese Seite
 
 
 def _fill(c, uid, owner, bundle, keep, examples, ids):

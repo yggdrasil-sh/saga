@@ -107,6 +107,8 @@ def prop_text(p, v, ctx=None):
         return ", ".join(names.get(x, "") for x in (v if isinstance(v, list) else [v]) if not csv or names.get(x))
     if typ == "checkbox":
         return "✓" if v else ""
+    if typ == "date" and isinstance(v, str) and not csv:     # 2.5: Uhrzeit/Zeitraum lesbar (CSV: ISO-Wert unveraendert)
+        return i18n.date_value_str(v, ctx.tz) if len(v) > 10 else v
     return _generic(v)
 
 

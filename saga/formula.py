@@ -55,10 +55,10 @@ class FxSyntax(ValueError):
 # =====================================================================================================
 class FDate:
     """Zeitpunkt (aware, in der Zeitzone der Anfrage) oder reiner Tag (time=False, dt = Mitternacht)."""
-    __slots__ = ("dt", "time")
+    __slots__ = ("dt", "time", "end")
 
-    def __init__(self, dt, time):
-        self.dt, self.time = dt, time
+    def __init__(self, dt, time, end=None):
+        self.dt, self.time, self.end = dt, time, end      # end: Ende eines Zeitraums (FDate) - nur aus Datums-Eigenschaften
 
     def iso(self):
         return self.dt.strftime("%Y-%m-%dT%H:%M") if self.time else self.dt.date().isoformat()
@@ -86,6 +86,26 @@ def day_of(s, tz):
     except ValueError:
         return None
     return FDate(_local(tz, d.year, d.month, d.day), False)
+
+
+def prop_date(s, tz):
+    """Wert einer Datums-Eigenschaft (2.5, datetime1): Tag, Zeitpunkt mit Offset (-> in tz umgerechnet) oder Zeitraum
+    'start/end' (-> FDate des Starts mit end). Unlesbar -> None (wie bisher bei kaputten Werten)."""
+    if not isinstance(s, str) or len(s) < 10:
+        return None
+    if len(s) == 10 or ("T" not in s and "/" not in s):
+        return day_of(s, tz)
+    ps = s.split("/")
+    if len(ps) > 2:
+        return None
+    try:
+        a = parse_date(ps[0], tz)
+        b = parse_date(ps[1], tz) if len(ps) == 2 else None
+    except FxError:
+        return day_of(s, tz)
+    if b is not None:
+        a.end = b
+    return a
 
 
 def stamp_of(ts, tz):
@@ -923,6 +943,14 @@ def _le(a, b):
     return None if r is None else not r
 
 
+def _start(d):
+    return None if d is None else (d if d.end is None else FDate(d.dt, d.time))
+
+
+def _end(d):
+    return None if d is None else (d.end if d.end is not None else d)
+
+
 def _dpart(f):
     def g(d):
         d = dt_(d)
@@ -987,7 +1015,7 @@ IMPL = {
     "timestamp": lambda d: None if dt_(d) is None else d.dt.timestamp() * 1000, "year": _dpart(lambda x: x.year),
     "month": _dpart(lambda x: x.month), "week": _dpart(lambda x: x.isocalendar()[1]),
     "day": _dpart(lambda x: x.isoweekday()), "weekday": _dpart(lambda x: x.isoweekday()), "hour": _dpart(lambda x: x.hour),
-    "minute": _dpart(lambda x: x.minute), "dateStart": dt_, "dateEnd": dt_,
+    "minute": _dpart(lambda x: x.minute), "dateStart": lambda d: _start(dt_(d)), "dateEnd": lambda d: _end(dt_(d)),
 }
 
 

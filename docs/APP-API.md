@@ -573,6 +573,177 @@ Testvektoren für die Anzeige-Tests der Apps: `tests/vectors/formula.json` (Ausd
 - Seiten anderer Instanzen (negative IDs): Werte rechnet der **Eigentümer-Server** mit den Rechten der Person; Antwort-
   format identisch (`fx_err`, `groups` mit `value`, `calc` im PATCH).
 
+## Datenbanken: Status, relative Filter, Datum mit Uhrzeit, Unteraufgaben, Tabellenoptionen (2.5, Paket 5)
+
+Alles **rückwärtskompatibel**: neue Felder im Schema/in den Ansichten, keine neuen Typen, keine Migration, `MIN_APP` bleibt
+`1.0.0`. Ob ein Server es kann: `GET /api/version` → `features` enthält
+
+| Fähigkeit | Bedeutung |
+|---|---|
+| `status1` | Auswahl mit `status: true` und `group` je Option; Ansicht `group_status`; Filter `status_group` |
+| `relfilter1` | neue relative Datumsfilter (s. u.) |
+| `datetime1` | Datum mit Uhrzeit (Offset) und Zeitraum `start/end`; Apps dürfen den **vollen** Wert schreiben |
+| `subtasks1` | Selbst-Relationen mit Rolle (Unteraufgaben/Abhängigkeiten), `view.sub`, `depth`/`sub_of`, `blocked` |
+| `tableopts1` | Tabellen-Block `headCol`/`colWidths`/`colors`; Datenbank-Tabelle `wrap_cols`/`freeze`; Kalender `range` |
+
+**Regel 0 gilt weiter:** Clients schreiben Schema und Blöcke **vollständig roh** zurück (unbekannte Schlüssel bleiben) –
+dann bleiben alle neuen Felder auch bei Apps erhalten, die sie nicht kennen. Einstellen (Status-Gruppen zuordnen,
+Unteraufgaben/Abhängigkeiten aktivieren, Fixieren, Farben/Breiten) geschieht im Web; Apps müssen es nur **anzeigen**
+(Mindestumfang unten).
+
+### Status (P5-E2: Auswahl mit Gruppen)
+
+```
+{"id": "status", "name": "Status", "type": "select", "status": true, "options": [
+  {"id": "todo", "name": "Offen", "color": "gray", "group": "todo"},
+  {"id": "doing", "name": "In Arbeit", "color": "blue", "group": "doing"},
+  {"id": "done", "name": "Erledigt", "color": "green", "group": "done"}]}
+```
+
+- Wert in `props` wie bei jeder Auswahl: die **Options-ID** (kein neuer Typ). Ohne `status1` ist es eine normale Auswahl.
+- `group` ∈ `todo | doing | done`; fehlt/ungültig → der Server speichert `todo`. Nur bei `status: true`.
+- Neue Datenbanken (Standard-Schema) haben `status: true` mit den drei Gruppen.
+- **Anzeige:** Gruppensymbol vor dem Namen: `todo` ○, `doing` ◐, `done` ● (Web: `○ Offen`). Auswahl-Liste beim
+  Bearbeiten nach Gruppen ordnen (Zu erledigen / In Arbeit / Erledigt), Werte bleiben Options-IDs.
+- **„Erledigt“** = Option in Gruppe `done` (für Aufgabenquellen, „blockiert“, Fortschritt).
+- **Ansicht** `"group_status": true` (Board mit `group_by` bzw. Tabelle/Liste mit `group` auf eine Status-Spalte):
+  Spalten/Gruppen nach Gruppe statt je Option. `groups` in `/rows`:
+  `[{"id": null, "count": n}, {"id": "todo", …}, {"id": "doing", …}, {"id": "done", …}]` (`id` = Gruppe, nicht Option).
+  Karte in eine Gruppen-Spalte ziehen → Wert = **erste Option** dieser Gruppe (Schema-Reihenfolge); liegt die Karte schon
+  in einer Option dieser Gruppe, nichts ändern.
+- **Filter** `{"pid": "<status>", "op": "status_group", "value": "todo|doing|done|open"}` – `open` = alles außer `done`.
+  Leere Zeilen passen nie; unbekannter Wert → Filter zählt nicht.
+
+### Relative Datumsfilter (relfilter1)
+
+Neue `op` für Datum, Erstellt/Bearbeitet und Formel/Rollup mit `rtype: "date"` (gelten auch für bedingte Farben
+`view.colors`):
+
+| `op` | `value` | Bedeutung (Tage im Kalender von `tz`, „heute“ = `today`) |
+|---|---|---|
+| `yesterday`, `tomorrow` | – | gestern / morgen |
+| `last_week`, `next_week` | – | Mo–So der Vor-/Folgewoche (`this_week` wie bisher Mo–So) |
+| `last_month`, `next_month`, `this_year` | – | Kalendermonat / -jahr |
+| `overdue` | – | Ende vor heute (Zeitraum: das **Ende** zählt) |
+| `next_days` | `"N"` (1–366) | heute bis heute+N−1 (**inkl. heute**) |
+| `past_days` | `"N"` (1–366) | heute−N+1 bis heute |
+| `on_or_before`, `on_or_after` | `"YYYY-MM-DD"`, `"today"`, `"today+N"`, `"today-N"` | Stichtag inklusive |
+
+- Ein **Zeitraum** passt, wenn er das Fenster **berührt** (Start ≤ Fensterende und Ende ≥ Fensteranfang);
+  `on_or_before` prüft den Start, `on_or_after` das Ende. Leere Werte passen nie.
+- Unvollständiger `value` (leer, keine Zahl, 0, > 366, ungültiges Datum) → der Filter **zählt nicht** (alle Zeilen,
+  auch leere), wie andere unvollständige Filter.
+- `tz` und `today` an `…/rows` wie bisher – **immer mitschicken**. Server (`saga/dbquery.py`) und Web
+  (`static/pages.js relDate`) sind identisch (Testvektoren `tests/dbquery_vectors.json`, 640 Fälle).
+- Alte Apps: unbekannter `op` → Filter wirkt nicht (zeigen mehr Zeilen). Neue Apps rechnen lokal nach derselben Regel
+  oder geben `view`/`filters` an den Server.
+
+### Datum mit Uhrzeit / Zeitraum (P5-E1, datetime1)
+
+Schema: `{"type": "date", "time": true, "range": true}` – beides nur **Vorgaben für die Eingabe** (Uhrzeit- bzw. Ende-Feld
+zeigen); jeder Datumswert darf jede Form haben. Wert bleibt **ein String**:
+
+| Form | Beispiel |
+|---|---|
+| Tag | `2026-10-27` |
+| Zeitpunkt (Wandzeit **mit Offset**, ohne Sekunden) | `2026-10-27T14:30+01:00` |
+| Zeitraum (`start/end`, Ende inklusive, Teile gemischt erlaubt) | `2026-10-27/2026-10-29`, `2026-10-27T09:00+01:00/2026-10-27T11:00+01:00` |
+
+- **Schreiben** (`PATCH`/`POST` `props`): Server prüft streng und speichert normalisiert – Sekunden fallen weg, `Z` →
+  `+00:00`, `+0100` → `+01:00`; Offset Pflicht bei Uhrzeit (sonst `400`), Uhrzeit nur für Jahre 1900–9998,
+  Ende vor Beginn → `400`, `a/a` → `a`. Neue Apps schreiben die Ortszeit des Geräts mit **ihrem** Offset.
+- **Alte Apps** schreiben nur `YYYY-MM-DD`: Ist der gespeicherte Wert ein Zeitpunkt/Zeitraum mit **demselben Starttag**,
+  behält der Server den gespeicherten Wert (Uhrzeit/Ende gehen nicht verloren). Anderer Tag → nur der neue Tag
+  (Uhrzeit weg). Neue Apps erkennen an `datetime1`, dass sie den vollen Wert schreiben dürfen.
+- **Lesen:** die ersten 10 Zeichen sind der Tag der eintragenden Person (alte Apps zeigen so den richtigen Tag bzw. den
+  Start). **Anzeige** in der Zeitzone des Betrachters umrechnen (`14:30+01:00` → in New York 08:30), Zeitraum als
+  „27.10.2026 14:30 – 16:00“ (gleicher Tag) bzw. „27.10.2026 – 29.10.2026“; Originalzeit bei anderer Zone im Tooltip.
+- **Filter/Sortierung (Server und Web):** Kalendertag in `tz` (`23:30+02:00` am 27. ist in Bangkok der 28.); `eq` =
+  Tag liegt im Zeitraum, `before` = Start vor dem Tag, `after` = Ende nach dem Tag; Sortierung nach Start (lokal
+  `YYYY-MM-DDTHH:MM`, ein reiner Tag zählt als Tagesbeginn – bei gleichem Text-Beginn stabil).
+- **Formeln:** Datums-Eigenschaft liefert Zeitpunkt bzw. Zeitraum; `hour`, `minute` in `tz`; `dateStart(d)`/`dateEnd(d)`
+  = Beginn/Ende eines Zeitraums (sonst der Wert selbst); `dateBetween(dateEnd(p), dateStart(p), "hours")` = Dauer.
+- **Kalender-Ansicht:** Uhrzeit vor dem Namen, Zeitraum auf jedem Tag (höchstens 62); Ziehen auf einen anderen Tag
+  verschiebt Uhrzeit **und** Ende mit.
+- CSV: ISO-String unverändert. Markdown/Veröffentlichen: lesbar (Zeitzone des Servers).
+
+### Unteraufgaben und Abhängigkeiten (subtasks1)
+
+Zwei gekoppelte Relationen **derselben Datenbank** (`target` = eigene ID), Kopplung stellt nur der Server her:
+
+```
+{"id": "par", "name": "Übergeordnet", "type": "relation", "target": 812, "pair": "r1a2b3c4", "role": "parent"}
+{"id": "r1a2b3c4", "name": "Unteraufgaben", "type": "relation", "target": 812, "pair": "par", "role": "children"}
+{"id": "blk", "name": "Blockiert durch", "type": "relation", "target": 812, "pair": "r5d6e7f8", "role": "blocked_by"}
+{"id": "r5d6e7f8", "name": "Blockiert", "type": "relation", "target": 812, "pair": "blk", "role": "blocking"}
+```
+
+- Aktivieren (Web): Spalte mit `two_way: true`, `role: "parent"` bzw. `"blocked_by"`, `target` = eigene DB → Server legt
+  die Gegenspalte im selben Schema an und spiegelt vorhandene Werte. Rollen gibt es nur bei Selbst-Relationen.
+- Werte wie jede Relation (Liste von IDs), Gegenseite zieht der Server nach. `parent` höchstens **ein** Wert (weitere
+  werden verworfen; ein neuer Elternteil löst den alten). `400` bei Selbstbezug, Kreis oder Tiefe > 10.
+- **Ansicht** `"sub": {"parent": "<pid mit role parent>", "mode": "nested|flat|parents_only"}` (Tabelle/Liste, nicht mit
+  Gruppierung). `nested` in `…/rows?view=…`: Kinder direkt hinter ihren Eltern (je Ebene in Ansichts-Reihenfolge),
+  passt ein Kind zum Filter, bleibt die Eltern-Kette sichtbar; jede Zeile hat dann `depth` (0 = oberste Ebene) und
+  `sub_of` (Eltern-ID oder `null`); Blättern läuft über diese Reihenfolge. `parents_only`: nur Zeilen ohne Elternteil.
+- **„blockiert“:** Zeilen in `…/rows` und `GET /api/notes/{zeile}` tragen `"blocked": true`, wenn ein Eintrag aus
+  `blocked_by` nicht erledigt ist (Status-Gruppe `done`; ohne Status-Spalte: erstes Häkchen). Nur gelesen, nie
+  gespeichert. Anzeige: „⛔“ mit Hinweis.
+- Apps Etappe 1: Relationen gehen schon; neu nur Einrückung in der **Liste** (`depth`) und „⛔ blockiert“; Tabelle flach
+  mit Spalte „Übergeordnet“. Aktivieren nur im Web. Ohne `subtasks1`: normale (einseitige) Relation.
+
+### „Diese Seite“ in Vorlagen (P5-E3)
+
+Filter in **Block-Ansichten** eingebetteter Datenbanken (`data.views[].filters`) dürfen
+`{"pid": "<relation>", "op": "contains", "value": "@self", "self": true}` sein. Beim Anlegen aus einer Eintrags-Vorlage,
+beim Duplizieren und beim Galerie-Import (`$self`) setzt der Server `value` auf die **ID der neuen Seite**; `self: true`
+bleibt. Apps tun nichts (sie sehen eine echte ID). Im Vorlagen-Body selbst bleibt `@self` (alte App filtert dort „leer“ –
+korrekt, die Vorlage hat keine Einträge).
+
+### Tabellenoptionen (tableopts1)
+
+**Einfacher Tabellen-Block** (`type: "table"`), zusätzliche `data`-Felder (Server bereinigt):
+
+```
+{"withHeadings": true, "content": [["A","B","C"], …], "headCol": true, "colWidths": [50, 30, 20],
+ "colors": {"r": {"1": "blue"}, "c": {"2": "green"}, "x": {"2,1": "red"}}}
+```
+
+- `headCol`: erste Spalte als Kopf (fett, Kopf-Hintergrund). `colWidths`: Prozent je Spalte (5–90, Summe 100, genau so
+  viele wie Spalten, höchstens 20) – passt die Anzahl nicht (Spalte hinzugefügt), gleich breit anzeigen.
+- `colors`: Hintergrund je Zeile `r`, Spalte `c`, Zelle `x` (`"zeile,spalte"`, 0-basiert, Zeile 0 = Kopfzeile), Farben
+  aus `gray brown orange yellow green blue purple pink red` (hell getönt, Text bleibt Vordergrundfarbe). Vorrang
+  **Zelle > Zeile > Spalte**.
+- **Apps: Anzeige Pflicht**; Zellen bearbeiten mit Regel 0 (alle Felder außer `content` unverändert zurückschreiben).
+  Markdown-Export ohne Farben/Breiten; Veröffentlichen mit Klassen (`pw-N`, `pc-<farbe>`).
+
+**Datenbank-Ansicht:**
+
+| Feld | Bedeutung |
+|---|---|
+| `wrap: true` | Zeilenumbruch in allen Zellen (sonst einzeilig, abgeschnitten) |
+| `wrap_cols: ["title", "<pid>", …]` | Umbruch nur in diesen Spalten |
+| `freeze: 1..3` | so viele Spalten ab links fixiert (1 = Name) – beim waagrechten Scrollen stehen sie |
+| `range: "week"` | nur Kalender: Wochenansicht Mo–So (ohne Feld = Monat); Web: Umschalter Woche/Monat + „Heute“ |
+| `colors` | bedingte Farbe (wie bisher) – färbt Tabellenzeilen, Listeneinträge, Kalendereinträge **und** Board-/Galerie-Karten (Fläche + Streifen oben) |
+
+Apps: `wrap`/`freeze` anzeigen (Telefon: erste Spalte fixiert ist ohnehin sinnvoll), `range: "week"`: Woche als Spalten
+(Tablet/Mac/Linux) bzw. Tagesliste (Telefon); Einstellen optional.
+
+### Mindestumfang Apps (Paket 5)
+
+Anzeigen: Status-Symbol + gruppierte Auswahl, Datum mit Uhrzeit/Zeitraum in Zeitzone des Betrachters, „⛔ blockiert“,
+Einrückung in der Liste (`depth`), Tabellen-Block mit Breiten/Kopfspalte/Farben, DB-Tabelle `wrap`/`freeze`,
+Kalender-Woche, Kartenfarben. Bearbeiten: Datum mit Uhrzeit/Zeitraum (nur mit `datetime1`), neue Filter im Filterdialog.
+Fallback ohne `features`: alles wie bisher.
+
+### Föderation
+
+Keine neue Fähigkeit nötig: Status/Rollen/Ansichtsfelder sind Schema-Felder (alte Gegenstellen zeigen eine normale
+Auswahl/Relation und schreiben das Schema roh zurück), Werte rechnet/prüft der Eigentümer-Server. Ältere Gegenstellen
+werten unbekannte Filter-Operatoren nicht aus (zeigen mehr Zeilen) – harmlos. „Diese Seite“ schreibt der Eigentümer
+beim Anlegen um (`rowtpl`).
+
 ## Lesezeichen aus der Teilen-Erweiterung (2.5)
 
 Nur mit App-Schlüssel `hk_…` (`Authorization: Bearer hk_…`), nie mit Sitzung. Neue Endpunkte, `MIN_APP` ändert sich nicht.

@@ -339,6 +339,7 @@ def _db_rows(owner, nid, shared=False, query=None, viewer=None, with_tpls=None):
         out = {"schema": _json_load(db[0], {"props": []}), "templates": [{"id": t[0], "title": t[1] or "", "icon": t[2] or ""} for t in tpls],
                "rows": [{"id": r[0], "title": r[1] or "", "icon": r[2] or "", "props": parsed[r[0]] if r[0] in parsed else _json_load(r[3], {}),
                          "updated": r[4], "created": r[5], "preview": r[6] or pv.get(r[0]) or ""} for r in rows]}
+        dbcalc.mark_blocked(c, owner, nid, out["schema"], out["rows"])      # 2.5: Abhaengigkeiten ("blockiert", nur gelesen)
         if dbcalc.has_calc(out["schema"]) and not (extra and "_fx" in extra):   # 2.5: Formeln/Rollups (Filter usw.: schon in _db_query)
             dbcalc.fill(c, owner, out["schema"], out["rows"], viewer=owner if viewer is None else viewer, tz=(query or {}).get("tz"))
         elif extra and extra.get("_fx"):
@@ -348,6 +349,13 @@ def _db_rows(owner, nid, shared=False, query=None, viewer=None, with_tpls=None):
                     r["fx_err"] = e
     if extra:
         extra.pop("_fx", None)
+        for r in out["rows"]:
+            sb = (extra.get("_sub") or {}).get(r["id"])
+            if sb:
+                r["depth"], r["sub_of"] = sb
+            elif "_sub" in extra:
+                r["depth"], r["sub_of"] = 0, None
+        extra.pop("_sub", None)
         out.update(extra)
     return out
 
@@ -390,6 +398,8 @@ def _db_query(c, owner, nid, shared, sql, schema_json, query, viewer):
         extra["_fx"] = {d["id"]: d["fx_err"] for d in data if d.get("fx_err")}
     page, matched, groups = dbquery.run(schema, data, query, labels=labels, untitled=t("Unbenannt"))
     extra.update(total=len(rows), matched=matched)
+    if any("_depth" in d for d in page):                 # 2.5: Unteraufgaben verschachtelt (view.sub) - Tiefe/Eltern je Zeile
+        extra["_sub"] = {d["id"]: (d["_depth"], d["_sub"]) for d in page if "_depth" in d}
     if groups is not None:
         extra["groups"] = groups
     return [d["_r"] for d in page], parsed, extra

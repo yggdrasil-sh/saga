@@ -566,9 +566,10 @@ def _default_schema(lang=None):
     tok = set_lang(lang) if lang else None
     try:
         return {"props": [
-            {"id": "status", "name": t("Status"), "type": "select", "options": [
-                {"id": "todo", "name": t("Offen"), "color": "gray"}, {"id": "doing", "name": t("In Arbeit"), "color": "blue"},
-                {"id": "done", "name": t("Erledigt"), "color": "green"}]},
+            {"id": "status", "name": t("Status"), "type": "select", "status": True, "options": [      # 2.5: Status-Gruppen (P5-E2)
+                {"id": "todo", "name": t("Offen"), "color": "gray", "group": "todo"},
+                {"id": "doing", "name": t("In Arbeit"), "color": "blue", "group": "doing"},
+                {"id": "done", "name": t("Erledigt"), "color": "green", "group": "done"}]},
             {"id": "datum", "name": t("Datum"), "type": "date"}],
             "views": [{"id": "tabelle", "name": t("Tabelle"), "type": "table"},
                       {"id": "board", "name": t("Board"), "type": "board", "group_by": "status"}]}
@@ -581,7 +582,13 @@ VIEW_TYPES = {"table", "board", "list", "gallery", "calendar"}
 CALC_OPS = {"count", "filled", "empty", "pct_filled", "unique", "sum", "avg", "median", "min", "max", "range",
             "checked", "unchecked", "pct_checked", "earliest", "latest"}       # Fusszeile der Tabelle (je Spalte)
 FILTER_OPS = {"contains", "not_contains", "is", "is_not", "eq", "gt", "lt", "before", "after",
-              "is_empty", "not_empty", "checked", "unchecked", "today", "this_week", "this_month"}
+              "is_empty", "not_empty", "checked", "unchecked", "today", "this_week", "this_month",
+              # 2.5 (Paket 5, relfilter1): weitere relative Datumsfilter und Status-Gruppe - Bedeutung in saga/dbquery.py
+              "yesterday", "tomorrow", "last_week", "next_week", "last_month", "next_month", "this_year", "overdue",
+              "next_days", "past_days", "on_or_before", "on_or_after", "status_group"}
+STATUS_GROUPS = ("todo", "doing", "done")
+REL_ROLES = {"parent": "children", "children": "parent", "blocked_by": "blocking", "blocking": "blocked_by"}   # 2.5: Selbst-Relationen
+SUB_MODES = ("nested", "flat", "parents_only")
 
 
 def _groupable(p):
@@ -650,13 +657,29 @@ def _clean_views(raw, props):
                 view["order"] = order
         if v.get("wrap") is True:
             view["wrap"] = True
+        if isinstance(v.get("wrap_cols"), list):              # 2.5: Zeilenumbruch nur in diesen Spalten
+            wc = list(dict.fromkeys(x for x in v["wrap_cols"] if x == "title" or x in pids))[:30]
+            if wc:
+                view["wrap_cols"] = wc
+        fz = v.get("freeze")                                 # 2.5: so viele Spalten ab links fixiert (inkl. Name)
+        if isinstance(fz, int) and not isinstance(fz, bool) and 1 <= fz <= 3:
+            view["freeze"] = fz
+        if v.get("range") == "week" and view["type"] == "calendar":      # 2.5: Kalender als Woche (Standard: Monat)
+            view["range"] = "week"
+        if v.get("group_status") is True:                    # 2.5: Board/Gruppen nach Status-Gruppe statt Option
+            view["group_status"] = True
+        sb = v.get("sub")                                    # 2.5: Unteraufgaben verschachtelt anzeigen
+        if isinstance(sb, dict) and sb.get("parent") in pids and pids[sb["parent"]].get("type") == "relation" \
+                and pids[sb["parent"]].get("role") == "parent":
+            view["sub"] = {"parent": sb["parent"], "mode": sb.get("mode") if sb.get("mode") in SUB_MODES else "nested"}
         if v.get("open") in ("center", "page", "left"):    # Eintraege oeffnen als (Standard: Seitenansicht rechts)
             view["open"] = v["open"]
         if v.get("ext") is True:                            # Kalender-Ansicht: externe Termine einblenden
             view["ext"] = True
         if v.get("card") in ("s", "l"):
             view["card"] = v["card"]
-        fl = [{"pid": f["pid"], "op": f["op"], "value": "" if f.get("value") is None else str(f["value"])[:200]}
+        fl = [dict({"pid": f["pid"], "op": f["op"], "value": "" if f.get("value") is None else str(f["value"])[:200]},
+                   **({"self": True} if f.get("self") is True else {}))           # 2.5: "diese Seite" (Vorlagen, P5-E3)
               for f in (v.get("filters") or [])[:100]
               if isinstance(f, dict) and (f.get("pid") == "title" or f.get("pid") in pids) and f.get("op") in FILTER_OPS][:10]   # erst pruefen, dann begrenzen
         if fl:
@@ -698,8 +721,13 @@ def _clean_schema(raw):
                     raise ValueError(t("ungültige Option"))
                 oseen.add(oid)
                 col = o.get("color") if o.get("color") in OPT_COLORS else "gray"
-                opts.append({"id": oid, "name": str(o.get("name", "")).strip()[:40] or t("Option"), "color": col})
+                opt = {"id": oid, "name": str(o.get("name", "")).strip()[:40] or t("Option"), "color": col}
+                if typ == "select" and p.get("status") is True:      # 2.5: Status-Gruppe (ohne gueltige Angabe: todo)
+                    opt["group"] = o["group"] if o.get("group") in STATUS_GROUPS else "todo"
+                opts.append(opt)
             prop["options"] = opts
+            if typ == "select" and p.get("status") is True:
+                prop["status"] = True
         if typ == "relation":                       # Ziel-Datenbank (Besitz prueft der Aufrufer)
             tg = p.get("target")
             if not (isinstance(tg, int) or (isinstance(tg, str) and tg.isdigit())):
@@ -707,6 +735,8 @@ def _clean_schema(raw):
             prop["target"] = int(tg)
             if isinstance(p.get("pair"), str) and _PID.fullmatch(p["pair"]):
                 prop["pair"] = p["pair"]                # Gegenspalte (zweiseitig) - stellt nur der Server her
+            if p.get("role") in REL_ROLES:              # 2.5: Unteraufgaben/Abhaengigkeiten (nur Selbst-Relation, s. u.)
+                prop["role"] = p["role"]
         if typ == "calc":                           # Rechnung: Zahlen-Spalten pruefen wir nach der Schleife
             prop["op"] = p.get("op") if p.get("op") in CALC_PROP_OPS else "div"
             for k in ("a", "b"):
@@ -722,6 +752,10 @@ def _clean_schema(raw):
                 if isinstance(p.get(k), str) and (_PID.fullmatch(p[k]) or (k == "target" and p[k] == "title")):
                     prop[k] = p[k]
             prop["fn"] = p.get("fn") if p.get("fn") in ROLLUP_FNS else "count"
+        if typ == "date":                           # 2.5 (datetime1): Eingabe mit Uhrzeit / als Zeitraum anbieten
+            for k in ("time", "range"):
+                if p.get(k) is True:
+                    prop[k] = True
         if typ in ("number", "calc", "formula", "rollup"):
             if p.get("fmt") in NUM_FMT:
                 prop["fmt"] = p["fmt"]
@@ -864,17 +898,105 @@ def _rel_mirror_set(c, uid, target_db, row_id, pid, other_id, add):
 def _rel_sync(c, uid, schema, row_id, old_props, new_props, may=None):
     """Zweiseitige Relationen: hinzugefuegte/entfernte Verknuepfungen auf der Gegenseite nachziehen.
     may(zeile) -> bool: nur diese Zielzeilen anfassen (Teilen: Bearbeiter nur in Zeilen, die er selbst bearbeiten darf -
-    in anderen bleibt die Gegenseite, wie sie ist)."""
+    in anderen bleibt die Gegenseite, wie sie ist). 2.5: Gegenseite mit Rolle 'parent' (Unteraufgaben) hat hoechstens
+    einen Wert - ein neuer Elterneintrag ersetzt den alten (der verliert das Kind)."""
     for p in schema.get("props", []):
         if p.get("type") != "relation" or not p.get("pair"):
             continue
         old, new = set(old_props.get(p["id"]) or []), set(new_props.get(p["id"]) or [])
         for tid in new - old:
             if may is None or may(tid):
+                if p.get("role") == "children":     # nur bei Selbst-Relationen gesetzt
+                    _rel_reparent(c, uid, p, tid, row_id)
                 _rel_mirror_set(c, uid, p["target"], tid, p["pair"], row_id, True)
         for tid in old - new:
             if may is None or may(tid):
                 _rel_mirror_set(c, uid, p["target"], tid, p["pair"], row_id, False)
+
+
+def _rel_reparent(c, uid, p, child, new_parent):
+    """Kind bekommt einen neuen Elterneintrag (Gegenseite 'parent' hat max. 1 Wert): alten Elterneintrag loesen."""
+    r = c.execute("SELECT props FROM note WHERE id=? AND uid=? AND parent_id=? AND deleted_at IS NULL", (child, uid, p["target"])).fetchone()
+    if not r:
+        return
+    cur = [x for x in (_json_load(r[0], {}).get(p["pair"]) or []) if isinstance(x, int) and not isinstance(x, bool)]
+    for old in cur:
+        if old != new_parent:
+            _rel_mirror_set(c, uid, p["target"], child, p["pair"], old, False)
+            _rel_mirror_set(c, uid, p["target"], old, p["id"], child, False)
+
+
+SUB_DEPTH_MAX = 10
+
+
+def _self_rel_check(c, uid, schema, row_id, props):
+    """2.5: Selbst-Relationen mit Rolle - kein Selbstbezug, Unteraufgaben ohne Kreis und hoechstens SUB_DEPTH_MAX tief.
+    row_id None = neue Zeile (kann noch keinen Kreis bilden). ValueError -> 400."""
+    rels = [p for p in schema.get("props", []) if p.get("type") == "relation" and p.get("role") in REL_ROLES]
+    if not rels or not props:
+        return
+    dbid = rels[0]["target"]
+    for p in rels:
+        if row_id is not None and row_id in (props.get(p["id"]) or []):
+            raise ValueError(t("Ein Eintrag kann nicht mit sich selbst verknüpft sein"))
+    par = next((p for p in rels if p["role"] == "parent"), None)
+    kids = next((p for p in rels if p["role"] == "children"), None)
+    if not par and not kids:
+        return
+    cache = {}
+
+    def parent_of(i):
+        if i not in cache:
+            r = c.execute("SELECT props FROM note WHERE id=? AND uid=? AND parent_id=? AND deleted_at IS NULL", (i, uid, dbid)).fetchone()
+            v = (_json_load(r[0], {}).get(par["id"] if par else kids["pair"]) or []) if r else []
+            cache[i] = v[0] if v and isinstance(v[0], int) else None
+        return cache[i]
+
+    def ancestors(i):
+        out, cur = [], i
+        while cur is not None and len(out) <= SUB_DEPTH_MAX + 1:
+            cur = parent_of(cur)
+            if cur is None or cur in out:
+                break
+            out.append(cur)
+        return out
+    new_par = (props.get(par["id"]) or [None])[0] if par else None
+    up = ([new_par] + ancestors(new_par)) if new_par is not None else []
+    if row_id is not None and row_id in up:
+        raise ValueError(t("Unteraufgaben dürfen keinen Kreis bilden"))
+    if len(up) >= SUB_DEPTH_MAX:
+        raise ValueError(t("Unteraufgaben höchstens {n} Ebenen tief", n=SUB_DEPTH_MAX))
+    if kids and row_id is not None:                  # neue Kinder duerfen keine Vorfahren dieser Zeile sein
+        anc = up if par else ancestors(row_id)
+        if set(props.get(kids["id"]) or []) & set(anc):
+            raise ValueError(t("Unteraufgaben dürfen keinen Kreis bilden"))
+
+
+def _self_rel_backfill(c, uid, dbid, a, b):
+    """Neu gekoppelte Selbst-Relation (Spalte a, Gegenspalte b in derselben Datenbank): Werte von a nach b spiegeln."""
+    s = _db_schema(c, uid, dbid) or {}
+    pa = next((p for p in s.get("props", []) if p.get("id") == a), {})
+    pb = next((p for p in s.get("props", []) if p.get("id") == b), {})
+    rows = c.execute("SELECT id, props FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL ORDER BY id", (uid, dbid)).fetchall()
+    taken = set()
+    for row_id, pr in rows:
+        d = _json_load(pr, {})
+        vals = [x for x in (d.get(a) or []) if isinstance(x, int) and not isinstance(x, bool) and x != row_id]
+        if pa.get("role") == "parent":
+            vals = vals[:1]
+            if vals != (d.get(a) or []):
+                if vals:
+                    d[a] = vals
+                else:
+                    d.pop(a, None)
+                c.execute("UPDATE note SET props=? WHERE id=? AND uid=?", (json.dumps(d, ensure_ascii=False), row_id, uid))
+        for tid in vals:
+            if pb.get("role") == "parent":           # Kind hat schon einen Elterneintrag: der erste gewinnt
+                if tid in taken:
+                    _rel_mirror_set(c, uid, dbid, row_id, a, tid, False)
+                    continue
+                taken.add(tid)
+            _rel_mirror_set(c, uid, dbid, tid, b, row_id, True)
 
 
 def _rel_link(c, uid, nid, title, rp, actor=None):
@@ -917,6 +1039,66 @@ def _rel_unlink(c, uid, nid, target, mpid, delete):
               (json.dumps(_schema_stamp(ts, _clean_schema(ts), uid), ensure_ascii=False), target, uid))
 
 
+_DATE_PART = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})(?:[T ]([0-9]{2}):([0-9]{2})(?::[0-9]{2}(?:\.[0-9]{1,9})?)?(Z|[+-][0-9]{2}:?[0-9]{2}))?")
+
+
+def _date_part(s):
+    """Ein Teil eines Datumswerts -> (normalisiert, Vergleichsschluessel) | ValueError.
+    'JJJJ-MM-TT' oder Zeitpunkt mit Offset (Pflicht) -> 'JJJJ-MM-TTTHH:MM+hh:mm' (Sekunden fallen weg, Z = +00:00)."""
+    m = _DATE_PART.fullmatch(s.strip())
+    if not m:
+        try:                                      # wie bisher (date.fromisoformat): auch '20261027'
+            dd = date.fromisoformat(s.strip())
+        except ValueError:
+            raise ValueError(t("ungültiges Datum"))
+        return dd.isoformat(), (dd.toordinal() * 1440, False)
+    y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    try:
+        dd = date(y, mo, d)
+    except ValueError:
+        raise ValueError(t("ungültiges Datum"))
+    if m.group(4) is None:
+        return dd.isoformat(), (dd.toordinal() * 1440, False)
+    hh, mi, off = int(m.group(4)), int(m.group(5)), m.group(6)
+    if not 1900 <= y <= 9998:                     # Uhrzeit: Zeitzonen-Regeln vor 1900 (Ortszeit) weichen je Client ab
+        raise ValueError(t("ungültiges Datum"))
+    if off == "Z":
+        off = "+00:00"
+    elif ":" not in off:
+        off = off[:3] + ":" + off[3:]
+    oh, om = int(off[1:3]), int(off[4:6])
+    if hh > 23 or mi > 59 or oh > 18 or om > 59 or (oh == 18 and om):
+        raise ValueError(t("ungültiges Datum"))
+    sg = -1 if off[0] == "-" else 1
+    if off == "-00:00":
+        off = "+00:00"
+    return f"{dd.isoformat()}T{hh:02d}:{mi:02d}{off}", (dd.toordinal() * 1440 + hh * 60 + mi - sg * (oh * 60 + om), True)
+
+
+def clean_date(v, old=None):
+    """Datumswert (2.5, P5-E1): Tag 'JJJJ-MM-TT', Zeitpunkt mit Offset 'JJJJ-MM-TTTHH:MM+01:00' oder Zeitraum 'start/end'
+    (Ende >= Start; Tag/Zeitpunkt gemischt erlaubt). Alte Apps schreiben nur den Tag zurueck: ist der gespeicherte Wert
+    (old) ein Zeitpunkt bzw. Zeitraum mit demselben Starttag, bleibt er erhalten (Uhrzeit/Ende gehen nicht verloren)."""
+    s = str(v).strip()
+    parts = s.split("/")
+    if len(parts) > 2 or len(s) > 60:
+        raise ValueError(t("ungültiges Datum"))
+    a, ka = _date_part(parts[0])
+    if len(parts) == 2:
+        b, kb = _date_part(parts[1])
+        # beide Zeitpunkte: nach Zeitpunkt (Offsets gelten); sonst nach Kalendertag (Tag ohne Zeitzone)
+        if (kb[0] < ka[0]) if (ka[1] and kb[1]) else (b[:10] < a[:10]):
+            raise ValueError(t("Ende liegt vor dem Beginn"))
+        return a if a == b else f"{a}/{b}"
+    if not ka[1] and isinstance(old, str) and len(old) > 10 and old[:10] == a:
+        try:
+            clean_date(old)
+            return old                                  # alte App: nur den Tag geschickt, Tag unveraendert -> Wert behalten
+        except ValueError:
+            pass
+    return a
+
+
 def _clean_props(schema, raw, base=None, check=None):
     """Zeilenwerte gegen das Schema pruefen; unbekannte Eigenschaften werden verworfen."""
     if not isinstance(raw, dict):
@@ -950,7 +1132,7 @@ def _clean_props(schema, raw, base=None, check=None):
                 raise ValueError(t("unbekannte Option"))
             v = list(dict.fromkeys(v))[:20]
         elif typ == "date":
-            v = date.fromisoformat(str(v)).isoformat()
+            v = clean_date(v, (base or {}).get(pid))
         elif typ == "checkbox":
             v = bool(v)
             if not v:
@@ -965,6 +1147,8 @@ def _clean_props(schema, raw, base=None, check=None):
             if check is not None:                   # fremde/erfundene IDs still verwerfen
                 ok = check(p.get("target"), ids)
                 ids = [x for x in ids if x in ok]
+            if p.get("role") == "parent":           # 2.5: Unteraufgabe hat hoechstens einen Elterneintrag
+                ids = ids[:1]
             if not ids:
                 out.pop(pid, None)
                 continue
@@ -975,3 +1159,28 @@ def _clean_props(schema, raw, base=None, check=None):
                 raise ValueError(t("URL muss mit http(s):// oder mailto: beginnen"))
         out[pid] = v
     return out
+
+
+SELF_TOKENS = ("@self", "$self")
+
+
+def self_filters(body, fmt, new_id):
+    """2.5 (P5-E3): Filter "diese Seite" in eingebetteten Datenbank-Bloecken (data.views[].filters, auch verschachtelt)
+    auf die Seite new_id setzen - beim Anlegen aus einer Eintrags-Vorlage, beim Duplizieren und beim Galerie-Import.
+    Merker self:true bleibt (die naechste Kopie wird wieder umgeschrieben). Ohne solche Filter: body unveraendert."""
+    if fmt != "blocks" or not isinstance(body, str) or not any(x in body for x in ('"self"',) + SELF_TOKENS):
+        return body
+    try:
+        doc = json.loads(body)
+    except ValueError:
+        return body
+    changed = False
+    for b in _iter_blocks(doc.get("blocks") if isinstance(doc, dict) else None):
+        if b.get("type") != "database" or not isinstance(b.get("data"), dict):
+            continue
+        for v in b["data"].get("views") or []:
+            for f in (v.get("filters") if isinstance(v, dict) and isinstance(v.get("filters"), list) else []):
+                if isinstance(f, dict) and (f.get("self") is True or f.get("value") in SELF_TOKENS):
+                    f["value"], f["self"] = str(new_id), True
+                    changed = True
+    return json.dumps(doc, ensure_ascii=False) if changed else body
