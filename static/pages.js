@@ -664,6 +664,7 @@
           database: { class: DatabaseTool },
           tasks: { class: TasksTool },
           calendar: { class: CalendarTool },
+          widget: { class: WidgetTool },                // 2.5: Widgets in Seiten (gilt auch in Spalten/Toggles)
           image: { class: hkImage(window.ImageTool), config: {                 // 2.5 (G2): Breite/Ausrichtung, fremde Felder bleiben
             endpoints: { byFile: '/api/files' }, field: 'image', additionalRequestHeaders: UPH,
             types: 'image/png,image/jpeg,image/gif,image/webp', captionPlaceholder: T('Bildunterschrift'), buttonContent: T('Bild auswählen …') } },
@@ -757,6 +758,7 @@
         if (S.cur && S.cur.id === id && d.updated) S.cur.updated = d.updated;
         if (S.cur && S.cur.id === id && S.cur.updated_by && !S.cur.updated_by.me) { S.cur.updated_by = { me: true }; applyMeta(); }
         var p = byId(id); if (p) { p.updated = d.updated; if ('title' in body) p.title = body.title.trim(); }
+        if (out && /"widget"/.test(body.body || '')) setTimeout(loadWidgets, 0);      // Widgets: Werte zum gespeicherten Stand
         if (!S.dirtyBody && !S.dirtyTitle) state(T('Gespeichert ✓ {time}', { time: HK.fUpd.format(new Date(d.updated * 1000)) }), 'ok');
         if (!remoteId(id)) { S.ckId = id; clearTimeout(S.ckTimer); S.ckTimer = setTimeout(function () { checkpoint('pause'); }, CK_PAUSE); }
         if ('title' in body) { if (S.cur && S.cur.id === id) S.cur.title = body.title.trim(); renderTree(); renderCrumbs(); setLocation(); }
@@ -2540,6 +2542,30 @@
   OPS.created = OPS.edited = [['after', T('nach')], ['before', T('vor')], ['eq', T('am')], ['today', T('ist heute')], ['this_week', T('ist diese Woche')], ['this_month', T('ist diesen Monat')]];
   function propValue(p, r) { return p.type === 'calc' ? calcValue2(p, r) : AUTO[p.type] ? r[AUTO[p.type]] : (r.props || {})[p.id]; }
   function numLike(p) { return !!p && (p.type === 'number' || p.type === 'calc'); }
+  // Werte einer Spalte fuer die Fusszeile (calcValue) und fuer Widgets (calcNum; der Server rechnet gleich:
+  // saga/page_widgets.aggregate, gemeinsame Testvektoren tests/widget_vectors.json)
+  function calcVals(p, rows) {
+    var vals = rows.map(function (r) { var v = p ? propValue(p, r) : r.title; if (p && AUTO[p.type] && v) v = isoDay(v); return v; });
+    var nums = vals.filter(function (v) { return typeof v === 'number' || (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))); }).map(Number);
+    return { vals: vals, nums: nums };
+  }
+  // Zahl statt Text (null = "–"): count, checked, pct_checked (ganze %), sum/avg/min/max (auf 2 Stellen) - wie calcValue
+  function calcNum(op, p, rows) {
+    var cv = calcVals(p, rows), vals = cv.vals, nums = cv.nums, n = vals.length;
+    var r2 = function (x) { return Math.round(x * 100) / 100; };
+    var s = function () { return nums.reduce(function (a, b) { return a + b; }, 0); };
+    var chk = function () { return vals.filter(function (v) { return v === true; }).length; };
+    switch (op) {
+      case 'count': return n;
+      case 'checked': return chk();
+      case 'pct_checked': return n ? Math.round(chk() / n * 100) : null;
+      case 'sum': return nums.length ? r2(s()) : null;
+      case 'avg': return nums.length ? r2(s() / nums.length) : null;
+      case 'min': return nums.length ? r2(Math.min.apply(null, nums)) : null;
+      case 'max': return nums.length ? r2(Math.max.apply(null, nums)) : null;
+    }
+    return null;
+  }
   // Filterwert einer Zahlenspalte: Eingabe in der Sprache der Oberflaeche, gespeichert als "1200.5" (BUG-013)
   function numStore(x) { var n = HK.parseNum(x); return String(x).trim() === '' || isNaN(n) ? String(x).trim() : String(n); }
   var CALC_P = [['div', 'A ÷ B', '÷'], ['pct', T('A in % von B'), '%'], ['mul', 'A × B', '×'], ['add', 'A + B', '+'], ['sub', 'A − B', '−']];
@@ -3328,10 +3354,9 @@
     }
     var fCalcDay = new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: 'numeric', month: 'short', year: 'numeric' });
     function calcValue(op, p, rows) {
-      var vals = rows.map(function (r) { var v = p ? propValue(p, r) : r.title; if (p && AUTO[p.type] && v) v = isoDay(v); return v; });
+      var cv = calcVals(p, rows), vals = cv.vals, nums = cv.nums;
       function isEmpty(v) { return v == null || v === '' || v === false || (Array.isArray(v) && !v.length); }
       var n = vals.length, filled = vals.filter(function (v) { return !isEmpty(v); });
-      var nums = vals.filter(function (v) { return typeof v === 'number' || (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))); }).map(Number);
       function fmt(x) { x = Math.round(x * 100) / 100; return numLike(p) ? numText(p, x) : fNum.format(x); }
       function pct(a) { return n ? Math.round(a / n * 100) + ' %' : '–'; }
       function sum() { return nums.reduce(function (a, b) { return a + b; }, 0); }
@@ -4356,6 +4381,300 @@
     if (this.data.hide_tabs) o.hide_tabs = true;
     return o;
   };
+
+  // --- Block "Widget" (2.5, Etappe 1): Uhr, Countdown, Fortschritt, Kennzahl, Zitat ---------------------------------
+  // Vertrag: docs/APP-API.md "Widgets in Seiten". Uhr und Countdown rechnet der Browser; Fortschritt aus einer Datenbank,
+  // Kennzahl und Zitat rechnet der Server mit den Rechten des Betrachters (GET /api/notes/{id}/widgets, alle 60 s,
+  // solange die Seite sichtbar ist). Einrichten: Klick auf das Widget (Bearbeiten/Eigentuemer) -> Panel mit Vorschau.
+  var WG_KINDS = ['clock', 'countdown', 'progress', 'metric', 'quote'];
+  var WG_NAMES = { clock: T('Uhr'), countdown: T('Countdown'), progress: T('Fortschritt'), metric: T('Kennzahl'), quote: T('Zitat') };
+  var WG_IC = { clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', countdown: '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9"/>',
+    progress: '<rect x="3" y="9" width="18" height="6" rx="3"/><path d="M6 12h7"/>', metric: '<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/>',
+    quote: '<path d="M7 7h4v4c0 3-2 5-4 5M14 7h4v4c0 3-2 5-4 5"/>' };
+  var WG_ERR = { no_access: T('Kein Zugriff auf die Datenquelle'), gone: T('Die Datenquelle gibt es nicht mehr'),
+    bad_cfg: T('Widget noch nicht fertig eingerichtet'), too_big: T('Zu viele Einträge für ein Widget') };
+  var WG = new Set();                                    // sichtbare Widget-Bloecke (Werte nachladen)
+  function wgIcon(k) { return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (WG_IC[k] || WG_IC.metric) + '</svg>'; }
+  function wgServer(d) { var c = (d && d.cfg) || {}; return !!d && (d.kind === 'metric' || d.kind === 'quote' || (d.kind === 'progress' && c.src === 'db')); }
+  function wgDefaults(kind) {
+    return { clock: { tz: '', h24: true, sec: false, analog: false }, countdown: { date: '', time: '', dir: 'until', unit: 'days' },
+      progress: { src: 'fixed', value: 0, max: 100 }, metric: { db: null, view: '', agg: 'count', prop: '', fmt: 'num' },
+      quote: { src: 'fixed', items: [], pick: 'daily' } }[kind] || {};
+  }
+  function wgFmt(v, fmt) {
+    if (v == null || typeof v !== 'number' || !isFinite(v)) return '–';
+    return fmt === 'pct' ? fNum.format(v) + ' %' : fmt === 'eur' ? fEur.format(v) : fNum.format(v);
+  }
+  // Countdown: Tage nach Kalendertagen (wie der Server beim Veroeffentlichen); "auto" unter einem Tag Std./Min.
+  function wgCountdown(cfg, now) {
+    if (!cfg.date || !/^\d{4}-\d{2}-\d{2}$/.test(cfg.date)) return null;
+    var q = cfg.date.split('-'), hm = /^\d{2}:\d{2}$/.test(cfg.time || '') ? cfg.time.split(':') : null;
+    var tgt = new Date(+q[0], +q[1] - 1, +q[2], hm ? +hm[0] : 0, hm ? +hm[1] : 0);
+    var since = cfg.dir === 'since', ms = since ? now - tgt : tgt - now;
+    var day0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()), dayT = new Date(+q[0], +q[1] - 1, +q[2]);
+    var days = Math.round((since ? day0 - dayT : dayT - day0) / 86400000);
+    if (cfg.unit === 'auto' && hm && ms > 0 && ms < 86400000) {
+      var h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000);
+      return since ? T('seit {h} Std. {m} Min.', { h: h, m: m }) : T('noch {h} Std. {m} Min.', { h: h, m: m });
+    }
+    if (days <= 0) return T('heute');
+    return since ? T('seit {n} {n:Tag|Tagen}', { n: days }) : T('noch {n} {n:Tag|Tage}', { n: days });
+  }
+  function WidgetTool(o) {
+    var d = o.data || {};
+    this.data = JSON.parse(JSON.stringify(d));           // Regel 0: unbekannte Felder bleiben erhalten
+    if (!this.data.kind) this.data.kind = 'metric';
+    if (WG_KINDS.indexOf(this.data.kind) >= 0) {
+      this.data.v = 1;
+      this.fresh = !d.cfg;                                 // eben eingefuegt: Einstellungen gleich oeffnen
+      this.data.cfg = Object.assign(wgDefaults(this.data.kind), this.data.cfg || {});
+    }
+    this.block = o.block; this.ro = !!o.readOnly; this.pv = null; this.schemas = {};
+  }
+  WidgetTool.isReadOnlySupported = true;
+  WidgetTool.toolbox = WG_KINDS.map(function (k) { return { title: T('Widget: {art}', { art: WG_NAMES[k] }), icon: wgIcon(k), data: { kind: k } }; });
+  WidgetTool.prototype.render = function () {
+    var self = this, w = el('div', 'wg-blk'); this.w = w; isolate(w);
+    this.card = el('div'); w.appendChild(this.card);
+    this.card.addEventListener('click', function (e) { if (e.target.closest('a')) return; if (self.editable() && !self.panel) self.openPanel(); });
+    WG.add(this); this.draw();
+    if (this.fresh && this.editable()) setTimeout(function () { if (w.isConnected) self.openPanel(); }, 0);
+    return w;
+  };
+  WidgetTool.prototype.editable = function () { return !this.ro && !readOnly() && WG_KINDS.indexOf(this.data.kind) >= 0; };
+  WidgetTool.prototype.destroy = function () { clearInterval(this.tick); WG.delete(this); };
+  WidgetTool.prototype.changed = function () {
+    if (S.loading) return;
+    if (this.block && this.block.dispatchChange) this.block.dispatchChange(); else { S.dirtyBody = true; schedule(); }
+  };
+  WidgetTool.prototype.value = function () {
+    if (this.pv) return this.pv;
+    var bid = this.block && this.block.id;
+    return (S.wvals && bid && S.wvals[bid]) || null;
+  };
+  WidgetTool.prototype.draw = function () {
+    var self = this, d = this.data, c = this.card, cfg = d.cfg || {};
+    clearInterval(this.tick); this.tick = null;
+    c.className = 'wg wg-' + (d.size === 's' || d.size === 'l' ? d.size : 'm') + ' wg-' + (d.style === 'plain' ? 'plain' : 'card')
+      + (COLORS.indexOf(d.accent) >= 0 ? ' wg-a-' + d.accent : '') + (this.editable() ? ' wg-ed' : '');
+    c.textContent = '';
+    c.dataset.kind = String(d.kind || '');
+    if (WG_KINDS.indexOf(d.kind) < 0) { c.appendChild(el('div', 'wg-note', T('Widget – neuere Version nötig'))); return; }
+    if (d.title) c.appendChild(el('div', 'wg-t', String(d.title)));
+    var body = el('div', 'wg-b'); c.appendChild(body);
+    if (d.kind === 'clock') {
+      var fmt = { hour: '2-digit', minute: '2-digit', hour12: cfg.h24 === false };
+      if (cfg.sec) fmt.second = '2-digit';
+      var fd = { weekday: 'long', day: 'numeric', month: 'long' };
+      if (cfg.tz) { fmt.timeZone = cfg.tz; fd.timeZone = cfg.tz; }
+      var ft, fdt;
+      try { ft = new Intl.DateTimeFormat(window.SAGA_LOCALE, fmt); fdt = new Intl.DateTimeFormat(window.SAGA_LOCALE, fd); }
+      catch (e) { ft = new Intl.DateTimeFormat(window.SAGA_LOCALE, { hour: '2-digit', minute: '2-digit' }); fdt = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'long', day: 'numeric', month: 'long' }); }
+      var v = el('div', 'wg-v wg-clock'), sub = el('div', 'wg-sub'), hands = null;
+      if (cfg.analog) {
+        var NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 100 100'); svg.setAttribute('class', 'wg-analog');
+        svg.setAttribute('aria-hidden', 'true');
+        var face = document.createElementNS(NS, 'circle'); face.setAttribute('cx', '50'); face.setAttribute('cy', '50'); face.setAttribute('r', '46'); face.setAttribute('class', 'wg-face'); svg.appendChild(face);
+        hands = ['h', 'm', 's'].filter(function (k) { return k !== 's' || cfg.sec; }).map(function (k) {
+          var l = document.createElementNS(NS, 'line'); l.setAttribute('x1', '50'); l.setAttribute('y1', '50'); l.setAttribute('x2', '50');
+          l.setAttribute('y2', k === 'h' ? '26' : k === 'm' ? '14' : '10'); l.setAttribute('class', 'wg-hand wg-hand-' + k); svg.appendChild(l); return [k, l];
+        });
+        body.appendChild(svg);
+      }
+      body.appendChild(v); body.appendChild(sub);
+      var paint = function () {
+        var now = new Date();
+        v.textContent = ft.format(now); sub.textContent = fdt.format(now);
+        if (hands) {
+          var parts = {}; (ft.formatToParts ? new Intl.DateTimeFormat('en-GB', { hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false, timeZone: cfg.tz || undefined }).formatToParts(now) : [])
+            .forEach(function (p) { parts[p.type] = +p.value; });
+          var H = (parts.hour || 0) % 12, M = parts.minute || 0, Sx = parts.second || 0;
+          hands.forEach(function (x) { var a = x[0] === 'h' ? (H + M / 60) * 30 : x[0] === 'm' ? (M + Sx / 60) * 6 : Sx * 6; x[1].setAttribute('transform', 'rotate(' + a.toFixed(1) + ' 50 50)'); });
+        }
+      };
+      paint(); this.tick = setInterval(function () { if (!self.w.isConnected) { self.destroy(); return; } if (!document.hidden) paint(); }, cfg.sec ? 1000 : 15000);
+      return;
+    }
+    if (d.kind === 'countdown') {
+      var cv = el('div', 'wg-v'), when = el('div', 'wg-sub'); body.appendChild(cv); body.appendChild(when);
+      var paintC = function () {
+        var txt = wgCountdown(cfg, new Date());
+        cv.textContent = txt == null ? '–' : txt;
+        if (cfg.date) { var q = cfg.date.split('-'); when.textContent = fCalcDay2.format(new Date(+q[0], +q[1] - 1, +q[2])) + (cfg.time ? ' · ' + cfg.time : ''); }
+        else when.textContent = T('Kein Datum gewählt');
+      };
+      paintC(); this.tick = setInterval(function () { if (!self.w.isConnected) { self.destroy(); return; } if (!document.hidden) paintC(); }, 60000);
+      return;
+    }
+    var w = d.kind === 'progress' && cfg.src !== 'db' ? { value: +cfg.value || 0, max: +cfg.max || 100 } : this.value();
+    if (wgServer(d) && remoteId(S.cur && S.cur.id) && S.wUnsupported) { body.appendChild(el('div', 'wg-note', T('Widget nur auf dem Ursprungsserver'))); return; }
+    if (wgServer(d) && S.wMissing) { body.appendChild(el('div', 'wg-note', T('Werte gibt es erst mit einer neueren Server-Version'))); return; }
+    if (w && w.error) { body.appendChild(el('div', 'wg-note wg-err', WG_ERR[w.error] || WG_ERR.bad_cfg)); return; }
+    if (d.kind === 'progress') {
+      var pv = w ? w.value : null, mx = w ? w.max : null, pct = typeof pv === 'number' && typeof mx === 'number' && mx > 0 ? Math.max(0, Math.min(100, pv / mx * 100)) : 0;
+      body.appendChild(el('div', 'wg-v', w ? Math.round(pct) + ' %' : '…'));
+      var bar = el('div', 'wg-bar'), fill = el('span', 'wg-fill'); fill.style.width = pct.toFixed(1) + '%'; bar.appendChild(fill); body.appendChild(bar);
+      bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100'); bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+      if (w) body.appendChild(el('div', 'wg-sub', wgFmt(pv) + ' / ' + wgFmt(mx)));
+      return;
+    }
+    if (d.kind === 'metric') {
+      body.appendChild(el('div', 'wg-v', w ? wgFmt(w.value, w.fmt) : '…'));
+      if (w && typeof w.max === 'number') {
+        var pm = w.max ? Math.max(0, Math.min(100, (w.value || 0) / w.max * 100)) : 0;
+        var b2 = el('div', 'wg-bar'), f2 = el('span', 'wg-fill'); f2.style.width = pm.toFixed(1) + '%'; b2.appendChild(f2); body.appendChild(b2);
+        body.appendChild(el('div', 'wg-sub', T('Ziel: {wert}', { wert: wgFmt(w.max, w.fmt) })));
+      }
+      return;
+    }
+    // Zitat: Auswahl immer durch den Server (Tag des Betrachters + Block-ID bzw. zufaellig), auch bei eigenen Texten
+    var txt = w ? w.text : null;
+    body.appendChild(el('blockquote', 'wg-q', txt || (w ? T('Noch keine Zitate') : '…')));
+  };
+  var fCalcDay2 = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  // Einrichten: Panel unter dem Widget, jede Aenderung zeichnet neu (Vorschau ueber den Server, wo er rechnet)
+  WidgetTool.prototype.openPanel = function () {
+    var self = this, d = this.data;
+    this.fresh = false;
+    var p = this.panel = el('div', 'wg-panel'); p.setAttribute('role', 'group'); p.setAttribute('aria-label', T('Widget einrichten'));
+    this.w.appendChild(p); this.fill();
+    var done = el('button', 'btn wg-done', T('Fertig')); done.type = 'button';
+    done.addEventListener('click', function () { self.closePanel(); });
+    this.doneBtn = done;
+    p.appendChild(done);
+    void d;
+  };
+  WidgetTool.prototype.closePanel = function () { if (this.panel) this.panel.remove(); this.panel = null; this.pv = null; this.draw(); loadWidgets(); };
+  WidgetTool.prototype.fill = function () {
+    var self = this, d = this.data, cfg = d.cfg, p = this.panel;
+    [].slice.call(p.querySelectorAll('.wg-row')).forEach(function (x) { x.remove(); });
+    var at = p.querySelector('.wg-done');
+    function row(label, input) { var r = el('label', 'wg-row'); r.appendChild(el('span', 'wg-l', label)); r.appendChild(input); p.insertBefore(r, at); return input; }
+    function set(k, v, top) { if (top) d[k] = v; else cfg[k] = v; self.changed(); self.update(); }
+    function sel(label, opts, cur, fn) {
+      var s = el('select', 'flt-val');
+      opts.forEach(function (o) { var x = el('option', null, o[1]); x.value = o[0]; if (String(cur == null ? '' : cur) === String(o[0])) x.selected = true; s.appendChild(x); });
+      s.addEventListener('change', function () { fn(s.value); });
+      return row(label, s);
+    }
+    function inp(label, type, cur, fn, attrs) {
+      var i = el('input', 'flt-val'); i.type = type; i.value = cur == null ? '' : String(cur);
+      Object.keys(attrs || {}).forEach(function (k) { i.setAttribute(k, attrs[k]); });
+      i.addEventListener(type === 'checkbox' ? 'change' : 'input', function () { fn(type === 'checkbox' ? i.checked : i.value); });
+      if (type === 'checkbox') i.checked = !!cur;
+      return row(label, i);
+    }
+    inp(T('Titel'), 'text', d.title || '', function (v) { if (v.trim()) d.title = v.slice(0, 80); else delete d.title; self.changed(); self.update(); }, { maxlength: '80' });
+    sel(T('Größe'), [['s', T('Klein')], ['m', T('Mittel')], ['l', T('Groß')]], d.size || 'm', function (v) { set('size', v, true); });
+    sel(T('Darstellung'), [['card', T('Karte')], ['plain', T('Ohne Rahmen')]], d.style || 'card', function (v) { set('style', v, true); });
+    sel(T('Farbe'), [['', T('Standard')]].concat(COLORS.map(function (c) { return [c, COLOR_NAMES[c]]; })), d.accent || '', function (v) { if (v) d.accent = v; else delete d.accent; self.changed(); self.update(); });
+    var k = d.kind;
+    if (k === 'clock') {
+      var zones = [];
+      try { zones = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : []; } catch (e) { zones = []; }
+      if (zones.length) sel(T('Zeitzone'), [['', T('Wie beim Betrachter')]].concat(zones.map(function (z) { return [z, z.replace(/_/g, ' ')]; })), cfg.tz, function (v) { set('tz', v); });
+      else inp(T('Zeitzone'), 'text', cfg.tz, function (v) { set('tz', v.trim()); }, { placeholder: 'Europe/Berlin' });
+      inp(T('24 Stunden'), 'checkbox', cfg.h24 !== false, function (v) { set('h24', v); });
+      inp(T('Sekunden'), 'checkbox', cfg.sec, function (v) { set('sec', v); });
+      inp(T('Analog'), 'checkbox', cfg.analog, function (v) { set('analog', v); });
+      return;
+    }
+    if (k === 'countdown') {
+      inp(T('Datum'), 'date', cfg.date, function (v) { set('date', v); });
+      inp(T('Uhrzeit (optional)'), 'time', cfg.time, function (v) { set('time', v); });
+      sel(T('Richtung'), [['until', T('Bis zum Datum')], ['since', T('Seit dem Datum')]], cfg.dir, function (v) { set('dir', v); });
+      sel(T('Einheit'), [['days', T('Tage')], ['auto', T('Automatisch (unter einem Tag Std./Min.)')]], cfg.unit, function (v) { set('unit', v); });
+      return;
+    }
+    if (k === 'progress' || k === 'quote') {
+      sel(T('Quelle'), [['fixed', k === 'quote' ? T('Eigene Texte') : T('Feste Zahlen')], ['db', T('Datenbank')]], cfg.src, function (v) {
+        d.cfg = Object.assign(v === 'db' ? { src: 'db', db: null, view: '', prop: '' } : wgDefaults(k), k === 'quote' ? { pick: cfg.pick || 'daily' } : {}, v === 'db' && k === 'progress' ? { mode: 'checked' } : {});
+        d.cfg.src = v; self.changed(); self.fill(); self.update();
+      });
+    }
+    if (k === 'progress' && cfg.src !== 'db') {
+      inp(T('Wert'), 'number', cfg.value, function (v) { set('value', v === '' ? 0 : +v); }, { step: 'any' });
+      inp(T('Maximum'), 'number', cfg.max, function (v) { set('max', +v > 0 ? +v : 100); }, { step: 'any', min: '0' });
+      return;
+    }
+    if (k === 'quote' && cfg.src !== 'db') {
+      var ta = el('textarea', 'flt-val wg-items'); ta.rows = 4; ta.value = (cfg.items || []).join('\n'); ta.placeholder = T('Ein Zitat je Zeile');
+      ta.addEventListener('input', function () { set('items', ta.value.split('\n').map(function (x) { return x.trim().slice(0, 300); }).filter(Boolean).slice(0, 20)); });
+      row(T('Zitate'), ta);
+      sel(T('Auswahl'), [['daily', T('Jeden Tag ein anderes')], ['open', T('Bei jedem Öffnen zufällig')]], cfg.pick, function (v) { set('pick', v); });
+      return;
+    }
+    // Quelle Datenbank (Fortschritt, Kennzahl, Zitat)
+    if (S.cur && remoteId(S.cur.id)) { p.insertBefore(el('div', 'wg-row wg-note', T('Datenquelle nur auf dem Ursprungsserver einstellbar')), at); return; }
+    var dbs = (S.pages || []).concat(S.shared || []).filter(function (x) { return x.kind === 'database' && !remoteId(x.id) && !x.archived; });
+    var dsel = sel(T('Datenbank'), [['', dbs.length ? T('– wählen –') : T('noch keine Datenbank')]].concat(dbs.map(function (x) { return [x.id, (ti(x.icon) || '🗃️') + ' ' + label(x)]; })),
+      cfg.db, function (v) { cfg.db = v ? +v : null; cfg.view = ''; cfg.prop = ''; self.changed(); self.fill(); self.update(); });
+    if (cfg.db && !dbs.some(function (x) { return x.id === cfg.db; })) {                   // gespeicherte Quelle, die ich nicht sehe: nie ihren Namen
+      var o0 = el('option', null, T('Datenbank ohne Zugriff')); o0.value = String(cfg.db); o0.selected = true; dsel.appendChild(o0);
+    }
+    if (!cfg.db) return;
+    var sc = this.schemas[cfg.db];
+    if (!sc) {
+      this.schemas[cfg.db] = 'load';
+      api('GET', '/api/notes/' + cfg.db + '/rows?limit=1').then(function (r) { self.schemas[cfg.db] = r.schema || { props: [] }; if (self.panel) self.fill(); })
+        .catch(function () { self.schemas[cfg.db] = { props: [], views: [] }; if (self.panel) self.fill(); });
+      return;
+    }
+    if (sc === 'load') return;
+    var props = Array.isArray(sc.props) ? sc.props : [], views = Array.isArray(sc.views) ? sc.views : [];
+    sel(T('Ansicht'), [['', T('Erste Ansicht')]].concat(views.map(function (v) { return [v.id, v.name || T('Ansicht')]; })), cfg.view, function (v) { set('view', v); });
+    var byType = function (types) { return props.filter(function (x) { return types.indexOf(x.type) >= 0; }).map(function (x) { return [x.id, x.name || x.id]; }); };
+    if (k === 'progress') {
+      sel(T('Fortschritt aus'), [['checked', T('Anteil angehakt')], ['sum', T('Summe einer Zahl bis zum Ziel')]], cfg.mode, function (v) { cfg.mode = v; cfg.prop = ''; self.changed(); self.fill(); self.update(); });
+      sel(T('Eigenschaft'), [['', T('– wählen –')]].concat(byType(cfg.mode === 'sum' ? ['number', 'calc'] : ['checkbox'])), cfg.prop, function (v) { set('prop', v); });
+      if (cfg.mode === 'sum') inp(T('Ziel'), 'number', cfg.goal, function (v) { if (+v > 0) cfg.goal = +v; else delete cfg.goal; self.changed(); self.update(); }, { step: 'any', min: '0' });
+      return;
+    }
+    if (k === 'metric') {
+      sel(T('Rechenart'), [['count', T('Anzahl')], ['sum', T('Summe')], ['avg', T('Durchschnitt')], ['min', T('Min')], ['max', T('Max')], ['pct_checked', T('% angehakt')]], cfg.agg, function (v) {
+        cfg.agg = v; cfg.prop = ''; self.changed(); self.fill(); self.update(); });
+      if (cfg.agg !== 'count') sel(T('Eigenschaft'), [['', T('– wählen –')]].concat(byType(cfg.agg === 'pct_checked' ? ['checkbox'] : ['number', 'calc'])), cfg.prop, function (v) { set('prop', v); });
+      if (cfg.agg !== 'pct_checked') sel(T('Format'), [['num', T('Zahl')], ['pct', T('Prozent')], ['eur', T('Euro')]], cfg.fmt, function (v) { set('fmt', v); });
+      inp(T('Ziel (optional)'), 'number', cfg.goal, function (v) { if (v !== '' && isFinite(+v)) cfg.goal = +v; else delete cfg.goal; self.changed(); self.update(); }, { step: 'any' });
+      return;
+    }
+    sel(T('Text aus'), [['', T('Name')]].concat(byType(['text', 'url', 'email', 'phone', 'number'])), cfg.prop, function (v) { set('prop', v); });
+    sel(T('Auswahl'), [['daily', T('Jeden Tag ein anderes')], ['open', T('Bei jedem Öffnen zufällig')]], cfg.pick, function (v) { set('pick', v); });
+  };
+  // Vorschau: Server-Werte fuer den ungespeicherten Stand (verzoegert, nur das letzte Ergebnis zaehlt)
+  WidgetTool.prototype.update = function () {
+    var self = this;
+    this.draw();
+    if (!wgServer(this.data) || !S.cur) return;
+    clearTimeout(this.pvT);
+    this.pvT = setTimeout(function () {
+      var seq = self.pvSeq = (self.pvSeq || 0) + 1, tz = '';
+      try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { tz = ''; }
+      api('POST', '/api/notes/' + S.cur.id + '/widgets/preview' + (tz ? '?tz=' + encodeURIComponent(tz) : ''), { block: { id: self.block && self.block.id, type: 'widget', data: self.data } })
+        .then(function (r) { if (seq === self.pvSeq && r && r.widget) { self.pv = r.widget; self.draw(); } })
+        .catch(function () { if (seq === self.pvSeq) { self.pv = { error: 'bad_cfg' }; self.draw(); } });
+    }, 350);
+  };
+  WidgetTool.prototype.save = function () { return JSON.parse(JSON.stringify(this.data)); };
+  // Werte der Seite laden (beim Oeffnen, nach dem Speichern, alle 60 s solange sichtbar)
+  function loadWidgets() {
+    var mine = [];
+    WG.forEach(function (x) { if (!x.w || !x.w.isConnected) WG.delete(x); else if (wgServer(x.data)) mine.push(x); });
+    if (!S.cur || !mine.length) return Promise.resolve();
+    var id = S.cur.id, tz = '';
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { tz = ''; }
+    return api('GET', '/api/notes/' + id + '/widgets' + (tz ? '?tz=' + encodeURIComponent(tz) : '')).then(function (r) {
+      if (!S.cur || S.cur.id !== id) return;
+      S.wvals = (r && r.widgets) || {}; S.wUnsupported = !!(r && r.unsupported); S.wMissing = false;
+      mine.forEach(function (x) { if (!x.panel) x.draw(); });
+    }).catch(function (err) {
+      if (!S.cur || S.cur.id !== id) return;
+      if (err.status === 404 && !remoteId(id)) { S.wMissing = true; mine.forEach(function (x) { if (!x.panel) x.draw(); }); }
+    });
+  }
+  document.addEventListener('hk-page-open', function () { S.wvals = {}; S.wUnsupported = false; S.wMissing = false; });
+  document.addEventListener('hk-page-ready', function () { loadWidgets(); });
+  setInterval(function () { if (!document.hidden && S.cur) loadWidgets(); }, 60000);
 
   // Block "Kalender": Termine der verbundenen externen Kalender - Monat oder Liste (naechste 14 Tage, wie in der App)
   function CalendarTool(o) {
