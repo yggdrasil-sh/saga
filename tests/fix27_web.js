@@ -211,6 +211,21 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     await b2.context().close();
   }
 
+  // --- #12: kein seitliches Scrollen bei 1440 px (auch beim Darueberfahren: Kommentar-Knopf am Blockrand) -----------------
+  {
+    const RZ = await p.api('POST', '/api/gallery/rezepte/use', { examples: true });
+    for (const [name, id] of [['Aufgaben & Projekte', AP.root], ['Mein Tag', MT.root], ['Rezepte', RZ.root]]) {
+      await p.open(id); await sleep(800);
+      const bl = p.locator('#pg-editor > .codex-editor > .codex-editor__redactor > .ce-block'), n = await bl.count();
+      let worst = 0;
+      for (let i = 0; i < n; i++) {
+        await bl.nth(i).hover({ position: { x: 10, y: 5 } }).catch(() => {});
+        worst = Math.max(worst, await p.evaluate(() => document.documentElement.scrollWidth - innerWidth));
+      }
+      ok(`#12: ${name} 1440 px ohne seitliches Scrollen (${n} Bloecke, Ueberhang ${worst} px)`, worst <= 0, worst);
+    }
+  }
+
   console.log(p.errs.length ? 'Seitenfehler: ' + p.errs.join(' | ') : 'keine Seitenfehler');
   ok('keine Seitenfehler', !p.errs.length, p.errs);
   await br.close();

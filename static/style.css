@@ -815,6 +815,8 @@ body.side-hidden .pages-side{display:none}
 /* spezifischer als 'body.notes-page .page-head' (760px), sonst wirkt 'Volle Breite' nicht */
 body.notes-page .page.wide .page-head,body.notes-page .page.wide .page-body,body.notes-page .page.wide .props,
 body.notes-page .page.wide .backlinks{max-width:none}
+/* Fix27 #12: volle Breite - Platz rechts fuer den Kommentar-Knopf (.cm-add, right:-2.7rem), sonst scrollt die Seite seitlich */
+@media (min-width:700px){body.notes-page .page.wide{padding-right:1.5rem}}
 
 /* Spalten (verschachtelte Editoren) */
 .page-body .cols{display:grid;grid-template-columns:repeat(var(--cols,2),minmax(0,1fr));gap:1.6rem;margin:.4em 0}

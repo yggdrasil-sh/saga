@@ -226,6 +226,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Prozent-Spalte meldet deren Format (`fmt` in der Widget-Antwort) und zeigt „1.430,50 € / 1.200,00 €“.
 - **Anlege-Schaltflächen bei Lesen/Kommentieren** („Neue Aufgabe“, „Buch hinzufügen“ …) waren klickbar und endeten in
   „Dafür fehlt dir die Berechtigung“. Sie sind jetzt ausgegraut; Hinweis beim Darüberfahren bzw. Antippen.
+- **Seitliches Scrollen bei 1440 px** auf Seiten mit voller Breite (alle Galerie-Vorlagen): Der Kommentar-Knopf am
+  Blockrand ragte 18 px über das Fenster. Volle Breite lässt rechts jetzt Platz dafür.
 
 ### Behoben – Bughunt 3 (Server)
 - **Namensauflösung mit Zeitlimit auch in den Vorab-Prüfungen.** KI, Immich, Kalender, Push, Nextcloud, Föderation
