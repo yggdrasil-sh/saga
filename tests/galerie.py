@@ -120,6 +120,18 @@ try:
     from saga import gallery_format as gf, notes, page_widgets
     ok("Typ-Listen wie saga.notes/page_widgets", gf.PROP_TYPES == notes.PROP_TYPES and gf.VIEW_TYPES == notes.VIEW_TYPES
        and gf.WIDGET_KINDS == page_widgets.KINDS and gf.OPT_COLORS == notes.OPT_COLORS and gf.PID.pattern == notes._PID.pattern)
+    mini = {"id": "mini", "v": 1, "order": 1, "category": "work", "icon": "🧪", "title": "Mini", "root": "home", "items": [
+        {"ref": "home", "kind": "page", "parent": None, "title": "Mini", "body": [
+            {"type": "database", "data": {"db": "$ref:tb", "view": "lokal", "views": [{"id": "lokal", "name": "Lokal", "type": "table"}]}}]},
+        {"ref": "tb", "kind": "database", "parent": "home", "title": "Tabelle",
+         "schema": {"props": [{"id": "wer", "name": "Wer", "type": "text"}, {"id": "url", "name": "Link", "type": "url"}],
+                    "views": [{"id": "alle", "name": "Alle", "type": "table"}]},
+         "rows": [{"title": "Zeile", "props": {"wer": "Team", "url": "https://example.org/Team"}}]}]}
+    ok(f"Pruefskript: Datenbank-Block mit eigener Ansicht (data.views) gueltig ({gf.validate(mini, 'mini')})", not gf.validate(mini, "mini"))
+    tr = gf.translate(mini, {"Team": "Crew", "Lokal": "Local", "Tabelle": "Table"})
+    ok("Uebersetzung: Text-Eigenschaften und eingebettete Ansichten (URL bleibt)",
+       tr["items"][1]["rows"][0]["props"] == {"wer": "Crew", "url": "https://example.org/Team"}
+       and tr["items"][0]["body"][0]["data"]["views"][0]["name"] == "Local" and "Team" in gf.texts(mini))
 
     # --- Anmeldung, Liste, Vorschau --------------------------------------------------------------------------
     ok("Ohne Anmeldung 401", call("GET", "/api/gallery", u=None)[0] == 401 and call("GET", "/api/gallery", hdr=False)[0] == 401

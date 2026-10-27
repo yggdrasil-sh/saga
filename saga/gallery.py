@@ -33,7 +33,8 @@ router = APIRouter()
 
 GALLERY_DIR = E.get("SAGA_GALLERY_DIR") or os.path.join(HERE, "gallery")
 RATE = max(1, int(E.get("GALLERY_RATE", "10")))      # "Verwenden" je Konto und Minute
-_TEST_FAIL = E.get("SAGA_GALLERY_TEST_FAIL", "")     # nur Tests: nach dem Anlegen dieses refs abbrechen (Alles-oder-nichts)
+# nur Tests: nach dem Anlegen dieses refs abbrechen (Alles-oder-nichts) - wirkt nur mit eigenem SAGA_GALLERY_DIR (Test-Bundles)
+_TEST_FAIL = E.get("SAGA_GALLERY_TEST_FAIL", "") if E.get("SAGA_GALLERY_DIR") else ""
 
 BUNDLES, TABLES = {}, {}
 _hits = {}

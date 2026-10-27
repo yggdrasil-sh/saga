@@ -69,6 +69,9 @@ def _walk_blocks(blocks, fn):
         nb = dict(b)
         if isinstance(b.get("data"), dict):
             nb["data"] = _walk_data(b["data"], None, fn)
+            if b.get("type") == "database" and isinstance(nb["data"].get("views"), list):   # eingebettete Ansichten
+                nb["data"]["views"] = [dict(v, name=fn(v["name"])) if isinstance(v, dict) and _is_text(v.get("name")) else v
+                                       for v in nb["data"]["views"]]
         out.append(nb)
     return out
 
@@ -92,18 +95,23 @@ def _walk_schema(s, fn):
     return s
 
 
-def _walk_entry(e, fn):
-    """Seite, Datenbank, Zeile oder Eintrags-Vorlage: Titel, Inhalt, Schema, Zeilen/Vorlagen."""
+def _walk_entry(e, fn, text_pids=()):
+    """Seite, Datenbank, Zeile oder Eintrags-Vorlage: Titel, Inhalt, Schema, Zeilen/Vorlagen (bei Zeilen/Vorlagen auch
+    die Werte von Text-Eigenschaften, text_pids = IDs der Text-Eigenschaften der Datenbank)."""
     e = dict(e)
     if _is_text(e.get("title")):
         e["title"] = fn(e["title"])
     if "body" in e:
         e["body"] = _walk_blocks(e["body"], fn)
+    if text_pids and isinstance(e.get("props"), dict):
+        e["props"] = {k: (fn(v) if k in text_pids and _is_text(v) else v) for k, v in e["props"].items()}
     if "schema" in e:
         e["schema"] = _walk_schema(e["schema"], fn)
+    sc = e.get("schema") if isinstance(e.get("schema"), dict) else {}
+    tp = {p["id"] for p in sc.get("props") or [] if isinstance(p, dict) and p.get("type") == "text" and isinstance(p.get("id"), str)}
     for k in ("rows", "templates"):
         if isinstance(e.get(k), list):
-            e[k] = [_walk_entry(x, fn) if isinstance(x, dict) else x for x in e[k]]
+            e[k] = [_walk_entry(x, fn, tp) if isinstance(x, dict) else x for x in e[k]]
     return e
 
 
@@ -531,7 +539,8 @@ def validate(bundle, name=None):
             t = b.get("type")
             if t == "database" and _ref_of(d.get("db")):
                 o = need(where, _ref_of(d["db"]), ("database",), ex)
-                if o and d.get("view") and d["view"] not in schemas.get(_ref_of(d["db"]), ({}, set()))[1]:
+                local = {v.get("id") for v in d.get("views") or [] if isinstance(v, dict)} if isinstance(d.get("views"), list) else set()
+                if o and d.get("view") and d["view"] not in schemas.get(_ref_of(d["db"]), ({}, set()))[1] | local:
                     cx.err(where, f"Ansicht {d['view']!r} gibt es in {_ref_of(d['db'])!r} nicht")
             elif t == "widget":
                 cfg = d.get("cfg") if isinstance(d.get("cfg"), dict) else {}

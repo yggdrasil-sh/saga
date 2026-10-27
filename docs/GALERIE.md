@@ -99,6 +99,8 @@ Unterseiten eines Beispiels müssen selbst Beispiele sein.
 
 Übersetzt werden Titel, `desc`, Eigenschafts-, Options- und Ansichtsnamen, `title_name` und in Blöcken alle Texte unter
 den Schlüsseln `text title caption content label items message` (Absätze, Überschriften, Listen, Tabellen, Hinweise,
-Toggles, Schaltflächen-Beschriftung und -Titel, Widget-Titel, Zitat-Texte). Gleicher deutscher Text = eine Übersetzung.
+Toggles, Schaltflächen-Beschriftung und -Titel, Widget-Titel, Zitat-Texte), die Namen eingebetteter Ansichten eines
+`database`-Blocks (`data.views[].name`) und die Werte von Text-Eigenschaften (`text`) in Zeilen und Eintrags-Vorlagen.
+Gleicher deutscher Text = eine Übersetzung.
 Angelegt wird in der Sprache der Person (`?lang=`, sonst die Sprache der Anfrage); fehlt eine Übersetzung, bleibt Deutsch.
 Platzhalter wie `{datum}` (Schaltflächen-Titel) und `$ref:` im Text müssen in der Übersetzung gleich bleiben.
