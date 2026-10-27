@@ -2770,8 +2770,10 @@
   function isoDay(ts) { var d = new Date(ts * 1000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   var fNum = new Intl.NumberFormat(window.SAGA_LOCALE, { maximumFractionDigits: 2 }), fEur = new Intl.NumberFormat(window.SAGA_LOCALE, { style: 'currency', currency: 'EUR' });
   var fInt = new Intl.NumberFormat(window.SAGA_LOCALE, { maximumFractionDigits: 0 });
-  // Fortschritt (Ring/Balken): ganze Prozent wie Notion
-  function numText(p, v) { return p.fmt === 'percent' ? ((p.show === 'ring' || p.show === 'bar') ? fInt : fNum).format(v) + ' %' : p.fmt === 'euro' ? fEur.format(v) : fNum.format(v); }
+  // Fix27 #10: Prozent immer ganzzahlig in der Schreibweise der Sprache ("41 %", en "41%"), Euro mit 2 Nachkommastellen
+  var fPct = new Intl.NumberFormat(window.SAGA_LOCALE, { style: 'percent', maximumFractionDigits: 0 });
+  function pctText(v) { return fPct.format((Number(v) || 0) / 100); }
+  function numText(p, v) { return p.fmt === 'percent' ? pctText(v) : p.fmt === 'euro' ? fEur.format(v) : fNum.format(v); }
   function ring(pct) {
     var NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'), C = 2 * Math.PI * 7.5;
     svg.setAttribute('viewBox', '0 0 20 20'); svg.setAttribute('class', 'nfmt-ring'); svg.setAttribute('aria-hidden', 'true');
@@ -3544,7 +3546,7 @@
       function isEmpty(v) { return v == null || v === '' || v === false || (Array.isArray(v) && !v.length); }
       var n = vals.length, filled = vals.filter(function (v) { return !isEmpty(v); });
       function fmt(x) { x = Math.round(x * 100) / 100; return numLike(p) ? numText(p, x) : fNum.format(x); }
-      function pct(a) { return n ? Math.round(a / n * 100) + ' %' : '–'; }
+      function pct(a) { return n ? pctText(a / n * 100) : '–'; }
       function sum() { return nums.reduce(function (a, b) { return a + b; }, 0); }
       var days = filled.filter(function (v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v); }).map(function (v) { return v.slice(0, 10); }).sort();
       function day(s) { var q = s.split('-'); return fCalcDay.format(new Date(+q[0], +q[1] - 1, +q[2])); }
@@ -4599,7 +4601,7 @@
   }
   function wgFmt(v, fmt) {
     if (v == null || typeof v !== 'number' || !isFinite(v)) return '–';
-    return fmt === 'pct' ? fNum.format(v) + ' %' : fmt === 'eur' ? fEur.format(v) : fNum.format(v);
+    return fmt === 'pct' ? pctText(v) : fmt === 'eur' ? fEur.format(v) : fNum.format(v);
   }
   // Countdown: Tage nach Kalendertagen (wie der Server beim Veroeffentlichen); "auto" unter einem Tag Std./Min.
   function wgCountdown(cfg, now) {
@@ -4714,11 +4716,12 @@
     if (wgServer(d) && S.wMissing) { body.appendChild(el('div', 'wg-note', T('Werte gibt es erst mit einer neueren Server-Version'))); return; }
     if (w && w.error) { body.appendChild(el('div', 'wg-note wg-err', WG_ERR[w.error] || WG_ERR.bad_cfg)); return; }
     if (d.kind === 'progress') {
-      var pv = w ? w.value : null, mx = w ? w.max : null, pct = typeof pv === 'number' && typeof mx === 'number' && mx > 0 ? Math.max(0, Math.min(100, pv / mx * 100)) : 0;
-      body.appendChild(el('div', 'wg-v', w ? Math.round(pct) + ' %' : '…'));
+      // Fix27 #10: Zahl wie gerechnet (auch ueber 100 %), Balken hoechstens voll
+      var pv = w ? w.value : null, mx = w ? w.max : null, raw = typeof pv === 'number' && typeof mx === 'number' && mx > 0 ? Math.max(0, pv / mx * 100) : 0, pct = Math.min(100, raw);
+      body.appendChild(el('div', 'wg-v', w ? pctText(raw) : '…'));
       var bar = el('div', 'wg-bar'), fill = el('span', 'wg-fill'); fill.style.width = pct.toFixed(1) + '%'; bar.appendChild(fill); body.appendChild(bar);
       bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100'); bar.setAttribute('aria-valuenow', String(Math.round(pct)));
-      if (w) body.appendChild(el('div', 'wg-sub', wgFmt(pv) + ' / ' + wgFmt(mx)));
+      if (w) body.appendChild(el('div', 'wg-sub', wgFmt(pv, w.fmt) + ' / ' + wgFmt(mx, w.fmt)));
       return;
     }
     if (d.kind === 'metric') {

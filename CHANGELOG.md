@@ -219,6 +219,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Eintrags-Vorlagen** (Vorlagen einer Datenbank, z. B. „Neue Aufgabe“ aus der Galerie) standen im Menü „+ Neue Seite“
   als „eigene“ Seitenvorlagen und als erster wählbarer Eintrag in der Relations-Auswahl. Beide zeigen sie nicht mehr;
   Eintrags-Vorlagen gibt es weiter über „+ Neu ▾“ der Datenbank.
+- **Zahlenformat einheitlich** (Web, veröffentlichte Seiten, Widgets, Markdown-Export der Widgets): Prozent immer
+  ganzzahlig, Euro immer mit 2 Nachkommastellen, jeweils in der Schreibweise der Sprache der Person („41 %“, en „41%“,
+  „1.430,50 €“, en „€1,430.50“; Server: `i18n.fmt_num`). Öffentlich stand vorher „41.04 %“. Fortschritt über 100 % zeigt
+  die echte Zahl (z. B. 119 %), der Balken ist voll. Ein Fortschritt-Widget „Summe bis zum Ziel“ über eine Euro- oder
+  Prozent-Spalte meldet deren Format (`fmt` in der Widget-Antwort) und zeigt „1.430,50 € / 1.200,00 €“.
 
 ### Behoben – Bughunt 3 (Server)
 - **Namensauflösung mit Zeitlimit auch in den Vorab-Prüfungen.** KI, Immich, Kalender, Push, Nextcloud, Föderation

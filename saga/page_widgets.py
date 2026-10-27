@@ -356,7 +356,8 @@ def compute(c, uid, bid, d, tz=None, acc=None, public_owner=None, today=None):
                 v = aggregate("sum", cfg.get("prop") or "", rows, schema) if cfg.get("prop") else None
                 if not cfg.get("prop"):
                     raise _Fail("bad_cfg")
-                return _W(kind, v if v is not None else 0, cfg["goal"])
+                pf = next((x.get("fmt") for x in (schema.get("props") or []) if isinstance(x, dict) and x.get("id") == cfg["prop"]), None)   # Fix27 #10
+                return _W(kind, v if v is not None else 0, cfg["goal"], fmt={"euro": "eur", "percent": "pct"}.get(pf))
             if not cfg.get("prop"):
                 raise _Fail("bad_cfg")
             return _W(kind, aggregate("checked", cfg["prop"], rows, schema), len(rows))
@@ -492,13 +493,9 @@ def kind_name(kind):
 
 
 def fmt_num(v, fmt=None):
-    if v is None:
-        return "–"
-    if isinstance(v, float):
-        v = round(v, 2)
-        v = int(v) if v.is_integer() else v
-    s = str(v)
-    return f"{s} %" if fmt == "pct" else f"{s} €" if fmt == "eur" else s
+    """Zahl in der Sprache der Anfrage (Fix27 #10: Prozent ganzzahlig, Euro mit 2 Nachkommastellen)."""
+    from saga import i18n
+    return i18n.fmt_num(v, fmt)
 
 
 def countdown_days(cfg, today):
@@ -532,7 +529,7 @@ def value_text(d, w, today, tz=None):
     if kind == "progress":
         v, mx = w.get("value"), w.get("max")
         pct = round(v / mx * 100) if _num(v) and _num(mx) and mx > 0 else 0
-        return f"{fmt_num(v)} / {fmt_num(mx)} ({pct} %)"
+        return f"{fmt_num(v, w.get('fmt'))} / {fmt_num(mx, w.get('fmt'))} ({fmt_num(pct, 'pct')})"
     if kind == "metric":
         s = fmt_num(w.get("value"), w.get("fmt"))
         return s + (f" / {fmt_num(w['max'], w.get('fmt'))}" if _num(w.get("max")) else "")

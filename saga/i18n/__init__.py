@@ -257,6 +257,32 @@ def day_str(d, lang=None):
     return d.strftime("%d/%m/%Y")
 
 
+# Zahlen wie Intl.NumberFormat im Browser (Fix27 #10): (Tausender, Dezimal, Tausender erst ab 5 Stellen, Prozent, Euro vorn)
+_NUM = {"de": (".", ",", False, "\u00a0%", False), "en": (",", ".", False, "%", True), "es": (".", ",", True, "\u00a0%", False),
+        "ru": ("\u00a0", ",", False, "\u00a0%", False), "th": (",", ".", False, "%", True)}
+
+
+def fmt_num(v, fmt=None, lang=None):
+    """Zahl in der Sprache der Person: Prozent ganzzahlig ("41 %"), Euro immer mit 2 Nachkommastellen ("1.430,50 €"),
+    sonst hoechstens 2 Nachkommastellen. fmt: pct|percent, eur|euro, sonst Zahl. None -> '–'."""
+    if v is None or isinstance(v, bool) or not isinstance(v, (int, float)) or v != v or v in (float("inf"), float("-inf")):
+        return "–"
+    grp, dec, min5, pct, eur_front = _NUM.get(lang or _cur.get(), _NUM["en"])
+    nd = 0 if fmt in ("pct", "percent") else 2
+    s = f"{abs(v):.{nd}f}"
+    whole, _, frac = s.partition(".")
+    if fmt not in ("eur", "euro"):
+        frac = frac.rstrip("0")
+    if len(whole) > 3 and not (min5 and len(whole) < 5):
+        whole = f"{int(whole):,}".replace(",", grp)
+    out = ("-" if v < 0 and (whole.strip("0") or frac.strip("0")) else "") + whole + (dec + frac if frac else "")
+    if fmt in ("pct", "percent"):
+        return out + pct
+    if fmt in ("eur", "euro"):
+        return ("€" + out) if eur_front else (out + "\u00a0€")
+    return out
+
+
 def install(env):
     """Jinja-Umgebung: _(), t(), lang(), locale() als Globale (Sprachumschalter: saga.core.install_lang_ui)."""
     env.globals.update(_=t, t=t, lang=get_lang, locale=locale, LANG_NAMES=NAMES, i18n_v=VERSION)

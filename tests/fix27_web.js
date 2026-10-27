@@ -153,6 +153,42 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     await p.keyboard.press('Escape');
   }
 
+  // --- #10: Zahlenformat (Prozent ganzzahlig, Euro mit 2 Nachkommastellen) und Fortschritt ueber 100 % ------------------
+  {
+    const D = (await p.api('POST', '/api/notes', { kind: 'database', title: 'Format-DB' })).id;
+    const sc = (await p.api('GET', '/api/notes/' + D)).schema;
+    sc.props.push({ id: 'eur', name: 'Betrag', type: 'number', fmt: 'euro' }, { id: 'pc', name: 'Anteil', type: 'number', fmt: 'percent' });
+    sc.views = [{ id: 'tab', name: 'Tabelle', type: 'table' }];
+    await p.api('PATCH', '/api/notes/' + D, { schema: sc });
+    await p.api('POST', '/api/notes', { parent_id: D, title: 'A', props: { eur: 1000.5, pc: 41.04 } });
+    await p.api('POST', '/api/notes', { parent_id: D, title: 'B', props: { eur: 430 } });
+    const W = await p.api('POST', '/api/notes', { title: 'Format-Seite' });
+    await p.api('PATCH', '/api/notes/' + W.id, { format: 'blocks', body: JSON.stringify({ blocks: [
+      { id: 'wpr', type: 'widget', data: { v: 1, kind: 'progress', title: 'Budget', cfg: { src: 'db', db: D, view: '', mode: 'sum', prop: 'eur', goal: 1200 } } },
+      { id: 'wme', type: 'widget', data: { v: 1, kind: 'metric', title: 'Summe', cfg: { db: D, view: '', agg: 'sum', prop: 'eur', fmt: 'eur' } } },
+      { id: 'wpc', type: 'widget', data: { v: 1, kind: 'metric', title: 'Quote', cfg: { db: D, view: '', agg: 'sum', prop: 'pc', fmt: 'pct' } } },
+      { id: 'dbb', type: 'database', data: { db: D, view: 'tab' } }] }) });
+    await p.open(W.id);
+    await until(p, () => document.querySelectorAll('.wg-v').length >= 3 && ![...document.querySelectorAll('.wg-v')].some((x) => x.textContent === '…'));
+    const nb = (t) => t.replace(/\u00a0|\u202f/g, ' ').trim();
+    const wv = (await p.evaluate(() => [...document.querySelectorAll('.wg')].map((x) => [x.querySelector('.wg-v') && x.querySelector('.wg-v').textContent, (x.querySelector('.wg-sub') || {}).textContent || '', x.querySelector('.wg-fill') ? x.querySelector('.wg-fill').style.width : '']))).map((x) => x.map(nb));
+    ok(`#10: Fortschritt ueber 100 % echt (${wv[0][0]}), Balken voll (${wv[0][2]})`, wv[0][0] === '119 %' && parseFloat(wv[0][2]) === 100, wv[0]);
+    ok(`#10: Fortschritt in Euro (${wv[0][1]})`, wv[0][1] === '1.430,50 € / 1.200,00 €', wv[0]);
+    ok(`#10: Kennzahl Euro mit 2 Nachkommastellen (${wv[1][0]})`, wv[1][0] === '1.430,50 €', wv[1]);
+    ok(`#10: Kennzahl Prozent ganzzahlig (${wv[2][0]})`, wv[2][0] === '41 %', wv[2]);
+    await until(p, () => !!document.querySelector('.embed-db .db-row'));
+    const cells = (await p.evaluate(() => [...document.querySelectorAll('.embed-db .nfmt-t')].map((x) => x.textContent))).map(nb);
+    ok(`#10: Tabelle Prozent ganzzahlig, Euro ,00 (${cells.join(' | ')})`, cells.includes('41 %') && cells.includes('1.000,50 €') && cells.includes('430,00 €') && !cells.some((c) => /41,04/.test(c)), cells);
+    // englisch: Schreibweise der Sprache
+    const e = await page(CK, { locale: 'en-US' });
+    await e.context().addCookies([{ name: 'saga_lang', value: 'en', domain: new URL(BASE).hostname, path: '/' }]);
+    await e.open(W.id);
+    await until(e, () => document.querySelectorAll('.wg-v').length >= 3 && ![...document.querySelectorAll('.wg-v')].some((x) => x.textContent === '…'));
+    const ev = (await e.evaluate(() => [...document.querySelectorAll('.wg-v, .wg-sub')].map((x) => x.textContent))).map(nb);
+    ok(`#10: englisch (${ev.join(' | ')})`, ev.includes('119%') && ev.includes('€1,430.50 / €1,200.00') && ev.includes('€1,430.50') && ev.includes('41%'), ev);
+    await e.context().close();
+  }
+
   console.log(p.errs.length ? 'Seitenfehler: ' + p.errs.join(' | ') : 'keine Seitenfehler');
   ok('keine Seitenfehler', !p.errs.length, p.errs);
   await br.close();
