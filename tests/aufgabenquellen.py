@@ -165,9 +165,9 @@ def run():
     old_inst = mkdb(A, "Alte Instanz", {"props": [{"id": "status", "name": "Status", "type": "select", "options": [
         {"id": "offen", "name": "Offen"}, {"id": "erledigt", "name": "Erledigt"}]}, {"id": "faellig", "name": "Fällig", "type": "date"}],
         "views": [{"id": "a", "name": "A", "type": "table"}]})
-    s, d = req("GET", f"/api/notes/{old_inst}/tasksource", A)
-    ok(f"alte Vorlagen-Instanz (Auswahl 'erledigt' + Datum): Hinweis + Vorschlag ({s})", d["hint"] is True
-       and d["suggest"] == {"done": "status", "done_values": ["erledigt"], "due": "faellig"}, d)
+    s, d2 = req("GET", f"/api/notes/{old_inst}/tasksource", A)
+    ok(f"alte Vorlagen-Instanz (Auswahl 'erledigt' + Datum): Hinweis + Vorschlag ({s})", d2["hint"] is True
+       and d2["suggest"] == {"done": "status", "done_values": ["erledigt"], "due": "faellig"}, d2)
     s, d = req("PUT", f"/api/notes/{db_cb}/tasksource", A, {"map": d["suggest"]})
     ok(f"Als Aufgabenquelle verwenden: Zuordnung + Abo 'all' ({s})", s == 200 and d["map"] == {"done": "ok", "due": "d"} and d["scope"] == "all", d)
 

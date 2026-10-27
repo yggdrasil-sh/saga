@@ -100,6 +100,8 @@ def main():
     auth.save_setting("push", {"enabled": True, "webpush": True, "ntfy": True, "unifiedpush": True})
     auth.create_user(A, "Digest-Pass-1234", "Anna Digest")
     auth.create_user(B, "Digest-Pass-1234", "Bert Digest")
+    from saga.core import set_user_lang
+    set_user_lang(A, "de"); set_user_lang(B, "de")          # Push-Text in Kontosprache (frische DB: sonst Server-Standard)
     time.sleep(5.6)
     try:
         run()
