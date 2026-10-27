@@ -2399,7 +2399,7 @@
       m.appendChild(HK.menuLabel(T('Vorlagen')));
       if (S.gal !== false && !EMBED) m.appendChild(HK.menuItem(T('Aus der Galerie …'), function () { openGallery(parentId); }, { icon: '🖼️', hint: T('fertige Vorlagen') }));
       BUILTIN.forEach(function (t) { m.appendChild(HK.menuItem(t.name, function () { fromBuiltin(t, parentId); }, { icon: t.icon })); });
-      S.pages.filter(function (p) { return p.template; }).forEach(function (p) {
+      S.pages.filter(function (p) { return p.template && (byId(p.parent_id) || {}).kind !== 'database'; }).forEach(function (p) {   // Fix27 #6: Eintrags-Vorlagen gehoeren zur Datenbank
         m.appendChild(HK.menuItem(label(p), function () { fromTemplate(p, parentId); }, { icon: ti(p.icon) || '📄', hint: T('eigene') }));
       });
       m.appendChild(el('div', 'menu-sep'));
@@ -2698,7 +2698,7 @@
   TYPES.calc = [T('Berechnet'), '∑'];
   OPS.relation = [['contains', T('enthält')], ['not_contains', T('enthält nicht')], ['is_empty', T('ist leer')], ['not_empty', T('ist nicht leer')]];
   TYPES.relation = [T('Relation'), '↗'];
-  function relRows(target) { return allPages().filter(function (p) { return p.parent_id === target; }); }
+  function relRows(target) { return allPages().filter(function (p) { return p.parent_id === target && !p.template; }); }   // Fix27 #6: ohne Eintrags-Vorlagen
   function relChips(ids, clickable) {           // verknuepfte Eintraege als Marken; Klick oeffnet den Eintrag
     var s = el('span', 'rel-chips');
     (ids || []).forEach(function (id) {

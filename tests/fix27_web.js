@@ -132,6 +132,27 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     await m.context().close();
   }
 
+  // --- #6: Eintrags-Vorlagen nicht im "+ Neue Seite"-Menue und nicht in der Relations-Auswahl ----------------------------
+  {
+    const all = await p.api('GET', '/api/notes'), byId = {}; all.forEach((x) => { byId[x.id] = x; });
+    const rowTpl = all.filter((x) => x.template && (byId[x.parent_id] || {}).kind === 'database').map((x) => x.title);
+    const pageTpl = await p.api('POST', '/api/notes', { title: 'Meine Seitenvorlage' });
+    await p.api('PATCH', '/api/notes/' + pageTpl.id, { template: true });
+    ok(`#6: Eintrags-Vorlagen vorhanden (${rowTpl.join(', ')})`, rowTpl.includes('Neue Aufgabe'));
+    await p.open(AP.root);
+    await p.click('#pg-new'); await sleep(300);
+    const mi = await p.evaluate(() => [...document.querySelectorAll('.menu .menu-item')].map((x) => x.textContent.trim()));
+    ok('#6: "+ Neue Seite" ohne Eintrags-Vorlagen', !mi.some((t) => rowTpl.some((r) => t.includes(r) && /eigene/.test(t))), mi);
+    ok('#6: eigene Seitenvorlage weiter im Menue', mi.some((t) => t.includes('Meine Seitenvorlage')), mi);
+    await p.keyboard.press('Escape');
+    const proj = all.find((x) => x.title === 'Website überarbeiten' && !x.template);
+    await p.open(proj.id);
+    await p.click('button.val-btn[aria-label="Aufgaben"]'); await sleep(300);
+    const opts = await p.evaluate(() => [...document.querySelectorAll('.menu .opt-item')].map((x) => x.textContent.replace('✓', '').trim()));
+    ok(`#6: Relations-Auswahl ohne Eintrags-Vorlage (${opts.length} Eintraege)`, opts.length > 3 && !opts.some((t) => t.endsWith('Neue Aufgabe')), opts);
+    await p.keyboard.press('Escape');
+  }
+
   console.log(p.errs.length ? 'Seitenfehler: ' + p.errs.join(' | ') : 'keine Seitenfehler');
   ok('keine Seitenfehler', !p.errs.length, p.errs);
   await br.close();

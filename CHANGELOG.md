@@ -216,6 +216,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Senden, Abbrechen oder Seitenwechsel.
 - **Vorlagengalerie am Handy:** Das Suchfeld wurde von den Kategorie-Knöpfen auf ~30 px gedrückt; schmal stehen Suche und
   Kategorien jetzt untereinander. Die Suche unterscheidet keine Umlaute/Akzente mehr („buch“ und „buecher“ finden „Bücher“).
+- **Eintrags-Vorlagen** (Vorlagen einer Datenbank, z. B. „Neue Aufgabe“ aus der Galerie) standen im Menü „+ Neue Seite“
+  als „eigene“ Seitenvorlagen und als erster wählbarer Eintrag in der Relations-Auswahl. Beide zeigen sie nicht mehr;
+  Eintrags-Vorlagen gibt es weiter über „+ Neu ▾“ der Datenbank.
 
 ### Behoben – Bughunt 3 (Server)
 - **Namensauflösung mit Zeitlimit auch in den Vorab-Prüfungen.** KI, Immich, Kalender, Push, Nextcloud, Föderation
