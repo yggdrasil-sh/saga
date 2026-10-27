@@ -3916,7 +3916,7 @@
             } }));
             return;
           }
-          if ((t === 'person' || t === 'files') && !remCap(byId(DB.id), 'dbx1')) return;      // Datenbank eines aelteren Servers
+          if ((t === 'person' || t === 'files') && remoteId(DB.id) && !remCap(byId(DB.id) || { id: DB.id }, 'dbx1')) return;   // aelterer Server
           m.appendChild(HK.menuItem(TYPES[t][0], function () {
             var p = { id: rid(), name: TYPES[t][0], type: t }; if (t === 'select' || t === 'multi_select') p.options = [];
             if (t === 'formula') { p.expr = ''; DB.schema.props.push(p); saveSchema().then(renderDb).then(function () { formulaEditor(p); }); return; }
