@@ -83,6 +83,27 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Eindeutige Block-IDs** für alle Blöcke (auch in Spalten/Toggles); alte Seiten bekommen beim Lesen stabile IDs.
 - Datenbank: Migration 22 (`note_base`, Basisstände 24 h / 30 je Seite). Ältere Apps ohne `merge`: unverändert `409`.
 
+### Neu (2.5, Editor-Rest P6-1 Web-Editor und P6-4 Verschieben)
+- **Inline-Farben.** Werkzeug „A“ in der Inline-Leiste: 9 Text- und 9 Hintergrundfarben aus der Block-Palette (hell/dunkel),
+  „Standard“ entfernt, zuletzt benutzte Farbe als Schnellwahl und mit Strg/⌘+⇧+H. Teile einer gefärbten Stelle lassen sich
+  umfärben; Einfügen aus der Zwischenablage behält die Farben.
+- **5 und 6 Spalten.** Spalten-Leiste „2 3 4 5 6“; bei 760–1100 px stehen 5–6 Spalten in Dreierreihen.
+- **Mehrfachauswahl-Leiste.** Ab zwei markierten Blöcken (Ziehen, Umschalt+Pfeile, Umschalt+Klick auf ⋮⋮): Löschen
+  (mit Rückgängig), Verschieben nach …, Umwandeln in … (Text, Überschrift, Listen, Zitat), Farbe, Duplizieren, Kopieren,
+  Link kopieren. Esc hebt die Auswahl auf.
+- **Mathe (KaTeX) und Diagramme (Mermaid).** Mathe-Block und Inline-Formel (∑ in der Inline-Leiste, Popover zum
+  Bearbeiten); Code-Block mit Sprache „Mermaid“ und Ansicht Vorschau/Geteilt/Code. Bibliotheken liegen lokal unter
+  `static/vendor` (KaTeX 0.19.0, Mermaid 12.2.0, beide MIT) und laden nur bei Bedarf. Mermaid läuft in einem abgeschotteten
+  Rahmen (`sandbox="allow-scripts"`, `securityLevel: strict`, ohne HTML-Beschriftungen); das Ergebnis erscheint nur als Bild.
+- **Vorschaubilder für die Apps.** Das Web lädt zu Mathe und Diagrammen ein PNG hoch (`data.render`); der Server markiert
+  es als veraltet (`stale`), wenn der Quelltext ohne neues Bild geändert wurde (Funktion `render1`).
+- **Veröffentlichen:** Formeln als MathML vom Server (`latex2mathml`, neue Abhängigkeit, MIT; Positivliste ohne Links,
+  `maction`, Farben), Diagramme aus dem gespeicherten Vorschaubild.
+- **Blöcke auf eine andere Seite verschieben** („Verschieben nach …“ im Block-Menü und in der Auswahl-Leiste, mit
+  Seitensuche, Hinweis mit Öffnen/Rückgängig): `POST /api/notes/{id}/blocks/move` in einer Transaktion – Kinder,
+  Kommentare und Dateien wandern mit (anderer Eigentümer: Kopie für den Eigentümer des Ziels, dessen Kontingent),
+  beide Seiten werden vorher als Version gesichert. Seiten anderer Saga-Server: nur „Kopieren nach …“ (Funktion `move1`).
+
 ### Neu (2.5, Editor-Rest P6-0 – Vertrag)
 - **Inline-Vertrag** für Inline-Farben (`span.hk-c-<farbe>`, `mark.hk-bg-<farbe>`, nur Palette), Personen-Erwähnungen
   (`span.hk-mention data-u=<Handle/Prinzipal>`) und Inline-Mathe (`code.hk-math`): Bereinigung, Veröffentlichen (Klassen

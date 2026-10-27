@@ -41,8 +41,8 @@ klein = 0,875 × Grundgröße; gilt für Titel, Inhalt und Eigenschaften, Code-B
 
 ## Inline-Vertrag und neue Blocktypen (2.5, P6-0)
 
-Grundlage für Inline-Farben, Personen-Erwähnungen, Mathe, Mermaid, synchronisierte Blöcke und 5–6 Spalten. Die
-Werkzeuge zum **Setzen** kommen später (Web P6-1, Apps P6-8) – Apps müssen die Formen aber schon jetzt **anzeigen oder
+Grundlage für Inline-Farben, Personen-Erwähnungen, Mathe, Mermaid, synchronisierte Blöcke und 5–6 Spalten. Das Web
+kann sie seit P6-1 setzen (Farben, Mathe, Mermaid, 5–6 Spalten); die Apps folgen (P6-8) – Apps müssen die Formen aber schon jetzt **anzeigen oder
 mindestens unverändert zurückschreiben**. Gemeinsame Testvektoren: `tests/vectors/editor_inline.json`
 (`sanitize`: Eingabe → gespeichertes HTML, `publish`, `markdown`).
 
@@ -59,7 +59,7 @@ Bisher: `b strong i em u s mark code a br time`. Neu dazu:
 | Inline-Mathe | `<code class="hk-math">TeX</code>` | enthält nur Text (keine weiteren Elemente); alte Apps zeigen Inline-Code |
 
 Keine `style`-Attribute, keine freien Farben. Darstellung: Klassen `hk-c-*`/`hk-bg-*` mit den Farben der Block-Farbe
-(hell/dunkel wie `tunes.hkstyle`). Veröffentlichen: `c-*`/`bg-*`, Erwähnung nur Text, Mathe als Code. Markdown-Export:
+(hell/dunkel wie `tunes.hkstyle`). Veröffentlichen: `c-*`/`bg-*`, Erwähnung nur Text, Inline-Mathe als MathML (sonst Code). Markdown-Export:
 Farben weg, `mark` → `==Text==`, Erwähnung → `@Name`, Inline-Mathe → `$TeX$`.
 
 ### Neue Blocktypen
@@ -72,6 +72,34 @@ Farben weg, `mark` → `==Text==`, Erwähnung → `@Name`, Inline-Mathe → `$Te
 | `render` (bei `math`/Mermaid) | `{"png"?, "svg"?: "/files/<id>", "h": "<16 hex>", "w"?, "hgt"?}` | Vorschaubild vom Web; `h` = SHA-256 des Quelltexts (16 Zeichen) – passt es nicht, ist das Bild veraltet. Dateien gehören dem Seiten-Eigentümer |
 
 Alte Apps: unbekannte Typen als Rückfall-Karte anzeigen und **unverändert** zurückschreiben (Grundregel oben).
+
+### Vorschaubilder für Mathe und Mermaid (2.5, P6-1, `render1`)
+
+Das Web zeichnet Mathe (KaTeX) und Mermaid-Diagramme selbst und lädt beim Speichern ein **PNG** als normale Datei der
+Seite hoch (`POST /api/files`, bei fremden Seiten mit `X-Saga-Note` – die Datei gehört dem Seiten-Eigentümer). Apps zeigen
+dieses Bild, statt selbst zu rendern (Entscheidung P6-E4 A). Ob ein Server das kann: `/api/version` → `features` enthält
+`render1`.
+
+```json
+{"id": "m1", "type": "math", "data": {"tex": "\\frac{a}{b}",
+  "render": {"png": "/files/<24 hex>", "h": "a576b0ce4208984a", "w": 31, "hgt": 57}}}
+{"id": "g1", "type": "code", "data": {"code": "graph TD; A-->B", "language": "mermaid", "view": "preview",
+  "render": {"png": "/files/<24 hex>", "h": "c18237e0a535bdb7", "w": 168, "hgt": 138, "stale": true}}}
+```
+
+| Feld | Bedeutung |
+|---|---|
+| `png` | Bild in doppelter Auflösung (höchstens 1 MB), weißer Hintergrund. Laden wie Bilder (`/files/<id>`, `?w=` geht). `svg` ist erlaubt, wird vom Web aber nicht gesetzt |
+| `h` | erste 16 Hex-Zeichen von SHA-256 (UTF-8) des Quelltexts (`tex` bzw. `code`) beim Erzeugen |
+| `w`, `hgt` | Größe in CSS-Pixeln (Bild = doppelt so groß) – für Platzhalter/Seitenverhältnis |
+| `stale` | **setzt nur der Server** beim Speichern, wenn `h` nicht zum aktuellen Quelltext passt; von Clients gesendetes `stale` zählt nicht |
+
+Apps: Bild zeigen, wenn `render.png` da ist; bei `stale: true` darunter „Vorschau veraltet – im Web öffnen“ (Bild trotzdem
+zeigen). Quelltext bleibt bearbeitbar; beim Speichern **`render` unverändert mitschicken** – der Server markiert es dann
+selbst als veraltet, das Web erzeugt beim nächsten Öffnen ein neues Bild. Ohne `render`: Quelltext/Code-Block zeigen.
+`view` (Mermaid): `preview` (Standard), `split`, `code` – nur Darstellung im Web; Apps behalten den Wert.
+Veröffentlichen: Mathe als MathML vom Server (`latex2mathml`, Positivliste ohne `href`/`maction`/Farben), Mermaid aus
+`render.png` (veraltet oder fehlt → Code-Block).
 
 ### Fähigkeiten und Schutz älterer Clients (`X-Saga-Caps`)
 
@@ -87,6 +115,38 @@ Textfelder eines Blocks (gleiche `id`, gleicher Typ), deren **reiner Text unver�
 wenn es neue Formen enthielt, die jetzt fehlen (Zwischenregel bis zum zeichengenauen Markenerhalt). Ein Spalten-Block mit
 genau 4 Spalten, der vorher 5–6 hatte, bekommt die fehlenden Spalten zurück (Breiten danach gleich). Föderation:
 dasselbe für Gegenstellen ohne die Fähigkeiten `inline2`/`cols6` (`APP-API-FED.md`).
+
+## Blöcke auf eine andere Seite verschieben (2.5, P6-4, `move1`)
+
+`POST /api/notes/{a}/blocks/move` – Server-Endpunkt in **einer** Transaktion (Clients lösen das nie selbst über zwei
+Speichervorgänge). Ob ein Server das kann: `/api/version` → `features` enthält `move1`.
+
+```json
+{"ids": ["b1", "b7"], "to": 456, "rev_a": 12, "rev_b": 30, "after": "z1"}
+```
+
+| Feld | Bedeutung |
+|---|---|
+| `ids` | Block-IDs auf Seite `a` (1–200, beliebige Tiefe). Kinder (Spalten-/Toggle-Inhalt) wandern mit; liegt eine ID in einem anderen gewählten Block, zählt der äußere. Reihenfolge im Ziel = Reihenfolge in `a` |
+| `to` | Zielseite (positive ID). Negative IDs (Seiten anderer Saga-Server) → `400 {"federated": true}`: dort nur **„Kopieren nach …“** (Client fügt die Blöcke per normalem Speichern ein, Dateien über `POST /api/files/copy`) |
+| `rev_a` | Pflicht: bekannte Revision von `a`. Veraltet → `409 {"error": "conflict", "rev_a", "rev_b"}` (kein Zusammenführen): erst speichern/neu laden, dann erneut |
+| `rev_b` | optional, wie `rev_a` für das Ziel |
+| `after` | Block-ID im Ziel, hinter der eingefügt wird (auch in Spalten/Toggles; Spalten-Blöcke werden dort aufgelöst). Fehlt: `at` |
+| `at` | `"end"` (Standard) oder `"start"` – oberste Ebene des Ziels |
+
+Antwort `200`: `{"ok": true, "rev_a", "rev_b", "ids": [IDs im Ziel], "renamed": {alt: neu}, "files_copied", "unsigned", "comments", "updated"}`.
+
+- **Rechte**: Rolle `edit` (oder Eigentümer) auf **beiden** Seiten, sonst 403 bzw. 404 (kein Zugriff). Gesperrte Seite → 423;
+  Datenbank als Ziel, Text-Notizen, `a == to` → 400; unbekannte ID oder `after` → 404.
+- **IDs** bleiben; nur bei Kollision im Ziel vergibt der Server neue (`renamed`).
+- **Kommentare** an den Blöcken (auch an inneren) wandern mit (Seite, Eigentümer, ggf. neue Block-ID).
+- **Dateien** (Bilder, Anhänge, `render`): gleicher Eigentümer → unverändert. Anderer Eigentümer → Kopie für den
+  Eigentümer des Ziels (zählt bei ihm; voll → `507 {"quota": true}`, nichts geändert). Das Original bleibt.
+- **Signaturen**: Schaltflächen mit Vorlage bleiben nur bei gleichem Eigentümer (und wenn er selbst verschiebt) signiert,
+  Nextcloud-Blöcke nur für eigene Dateien der verschiebenden Person; sonst Signatur weg (`unsigned`, Block im Ziel inaktiv).
+- **Versionen**: beide Seiten werden vorher als Version gesichert, danach `rev+1`; Live-Ereignisse wie beim Speichern.
+- **Rückgängig** = derselbe Aufruf in Gegenrichtung (`to` = alte Seite, `after` = alter Vorgänger bzw. `at: "start"`).
+- Apps: danach beide Seiten neu laden (bzw. die offene über das normale Live-Ereignis).
 
 ## Gleichzeitig bearbeiten: blockweises Zusammenführen (2.5, P3 Stufe 1)
 
