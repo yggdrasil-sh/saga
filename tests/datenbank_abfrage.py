@@ -354,7 +354,11 @@ def rest(db, tgt, u):
         s, d, _ = req(f"/api/notes/{db}/rows?{bad}", u)
         ok(f"falscher Parameter {bad[:20]} -> 400", s == 400)
     s, d, _ = req(f"/api/notes/{db}/rows" + qs(filters=[{"pid": "r1", "op": "contains", "value": "1"}]), u)
-    ok("Relation 'enthaelt' bei Zeilen ohne Relation: Web bricht ab (TypeError) -> Server 400 statt falscher Liste", s == 400)
+    ok("Relation 'enthaelt' bei Zeilen ohne Relation: kein Abbruch mehr (Zeilen ohne Verknuepfung zaehlen als leere Liste)",
+       s == 200 and isinstance(d.get("rows"), list), (s, d))
+    s2, d2, _ = req(f"/api/notes/{db}/rows" + qs(filters=[{"pid": "r1", "op": "not_contains", "value": "1"}]), u)
+    ok("Relation 'enthaelt nicht' bei Zeilen ohne Relation: Zeilen ohne Verknuepfung gehoeren dazu",
+       s2 == 200 and s == 200 and d2.get("matched", 0) + d.get("matched", 0) >= len(d2.get("rows", [])), (s2, d2))
 
 
 def cleanup():

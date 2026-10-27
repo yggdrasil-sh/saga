@@ -422,6 +422,8 @@ class Query:
         if novalue:
             return True
         if op == "contains" or op == "not_contains":
+            if not isinstance(v, list) and isinstance(p, dict) and js_seq(p.get("type"), "relation"):
+                v = []                                         # Relation ohne Verknuepfung = leere Liste (wie static/pages.js)
             if isinstance(v, list):
                 hit = any(js_seq(x, fv) for x in v)
             else:

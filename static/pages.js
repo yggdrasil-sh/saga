@@ -3765,6 +3765,7 @@
       if (f.op === 'today' || f.op === 'this_week' || f.op === 'this_month') return !empty && relDate(f.op, v);
       var fv = f.value; if (fv === '' || fv == null) return true;        // unvollstaendiger Filter zaehlt nicht
       if (p.type === 'relation') fv = +fv;                                // Relation: Eintrags-IDs sind Zahlen
+      if ((f.op === 'contains' || f.op === 'not_contains') && p.type === 'relation' && !Array.isArray(v)) v = [];   // ohne Verknuepfung = leere Liste (sonst fv.toLowerCase auf einer Zahl; wie saga/dbquery.py)
       switch (f.op) {
         case 'contains': return Array.isArray(v) ? v.indexOf(fv) >= 0 : String(v || '').toLowerCase().indexOf(fv.toLowerCase()) >= 0;
         case 'not_contains': return Array.isArray(v) ? (v || []).indexOf(fv) < 0 : String(v || '').toLowerCase().indexOf(fv.toLowerCase()) < 0;
