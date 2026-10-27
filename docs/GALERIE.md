@@ -61,7 +61,8 @@ Rückgabe 0 = in Ordnung, 1 = Fehler. Was das Skript akzeptiert, lädt auch der 
 
 - `schema` wie `PATCH /api/notes/{id}` `schema`: `props` (feste IDs `[a-z0-9_]{1,24}`, Typen `text number select
   multi_select date checkbox url created edited relation calc`, Optionen mit festen IDs und Farbe `gray brown orange yellow
-  green blue purple pink red`), `views` (feste IDs, Typen `table board list gallery calendar`, mindestens eine), optional
+  green blue purple pink red`), `views` (feste IDs, Typen `table board list gallery calendar chart`, mindestens eine; `chart`
+  mit `chart`-Spec wie `docs/APP-API.md` „Diagramme“), optional
   `title_name`, `default_tpl: "$ref:<vorlage>"`. `srev`, `_since` und `pair` setzt der Server.
 - Relation: `{"type": "relation", "target": "$ref:<datenbank>", "two_way": true}` – `two_way` legt in der Ziel-Datenbank
   die Gegenspalte an (Name = Titel dieser Datenbank).
@@ -90,6 +91,8 @@ Nicht erlaubt: `image attaches immich nextcloud` (brauchen eigene Dateien).
   "title": "Aufgabe {datum}", "open": "side"}` – der Server signiert sie beim Anlegen. `action: "page"` mit `target`.
 - Widgets: `cfg.db: "$ref:<datenbank>"`, `view`/`prop` sind die festen IDs aus dem Schema. Widget-Blöcke brauchen eine `id`.
   Kennzahl/Fortschritt mit `cfg.src: "tasks"` (Saga-Aufgaben der betrachtenden Person) brauchen kein `db`.
+  2.5 Paket 4: `habit` (`cfg.date`, `cfg.habits` = Häkchen-IDs) und `chart` (`cfg.x`/`y`/`series`) brauchen `cfg.db`;
+  `weather` ohne Koordinaten zeigt „noch nicht eingerichtet“; `upcoming` ohne `dbs` (persönliche Quellen).
 
 ### Beispieldaten
 

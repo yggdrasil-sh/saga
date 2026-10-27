@@ -649,9 +649,12 @@ def _widget(ctx, d):
     if ctx.n_db > DB_BLOCKS_MAX:
         return ""
     today = datetime.now(TZ).date()
-    w = page_widgets.compute(ctx.c, ctx.uid, getattr(ctx, "bid", ""), d, TZ, public_owner=ctx.uid, today=today)
+    w = page_widgets.compute(ctx.c, ctx.uid, getattr(ctx, "bid", ""), d, TZ, public_owner=ctx.uid, today=today,
+                             public_labels=_public_labels(ctx))
     if w.get("error"):
         return ""
+    if kind in page_widgets.KINDS2:              # 2.5 Paket 4: Wetter (letzter Stand), Gewohnheiten (ohne Klick), Diagramm (SVG)
+        return _widget2(ctx, d, w)
     txt = page_widgets.value_text(d, w, today, TZ)
     if txt is None:
         return ""
@@ -670,6 +673,68 @@ def _widget(ctx, d):
         v, mx = w.get("value"), w.get("max")
         pct = v / mx * 100 if isinstance(v, (int, float)) and isinstance(mx, (int, float)) and mx > 0 else 0
         out.append(f'<div class="pub-wg-bar"><span class="pb-{int(round(min(100, max(0, pct)) / 5) * 5)}"></span></div>')
+    out.append("</div>")
+    return "".join(out)
+
+
+def _public_labels(ctx):
+    """Titel verknuepfter Eintraege fuer Diagramme: nur oeffentlich erreichbare Seiten (wie _fill_public)."""
+    def labels(ids):
+        ok = [i for i in ids if ctx.url_for(i)]
+        if not ok:
+            return {}
+        return {i: tl or "" for i, tl in ctx.c.execute("SELECT id, title FROM note WHERE id = ANY(?) AND uid=?", (ok, ctx.uid)).fetchall()}
+    return labels
+
+
+_WMO_EMOJI = ((0, "☀️"), (1, "🌤️"), (2, "⛅"), (3, "☁️"), (45, "🌫️"), (48, "🌫️"), (51, "🌦️"), (61, "🌧️"), (66, "🌧️"), (71, "🌨️"),
+              (77, "🌨️"), (80, "🌦️"), (85, "🌨️"), (95, "⛈️"))
+
+
+def wmo_symbol(code):
+    """WMO-Wettercode -> Emoji (Tabelle wie docs/APP-API.md)."""
+    if not isinstance(code, int):
+        return "·"
+    sym = "·"
+    for c, e in _WMO_EMOJI:
+        if code >= c:
+            sym = e
+    return sym
+
+
+def _widget2(ctx, d, w):
+    from saga import chartsvg
+    data = w.get("data") or {}
+    kind = d.get("kind")
+    cls = ["pub-wg", "wg-" + (d.get("size") if d.get("size") in page_widgets.SIZES else "m"),
+           "wg-plain" if d.get("style") == "plain" else "wg-card", "pub-wg-" + kind]
+    if d.get("accent") in PALETTE:
+        cls.append("wa-" + d["accent"])
+    out = [f'<div class="{" ".join(cls)}">']
+    if d.get("title"):
+        out.append(f'<div class="pub-wg-t">{escape(str(d["title"]))}</div>')
+    if kind == "weather":
+        u = "°F" if data.get("units") == "imperial" else "°C"
+        now = data.get("now") or {}
+        out.append(f'<div class="pub-wx-now"><span class="pub-wx-ic" aria-hidden="true">{wmo_symbol(now.get("code"))}</span>'
+                   f'<span class="pub-wg-v">{escape(i18n.fmt_num(now.get("t")))} {u}</span>'
+                   f'<span class="pub-muted">{escape(data.get("place") or "")}</span></div><div class="pub-wx-days">')
+        for x in (data.get("days") or [])[1:]:
+            try:
+                dd = i18n.day_str(date.fromisoformat(x["d"]))
+            except (KeyError, ValueError):
+                continue
+            out.append(f'<div class="pub-wx-day"><span>{escape(dd[:5] if len(dd) > 5 else dd)}</span><span aria-hidden="true">{wmo_symbol(x.get("code"))}</span>'
+                       f'<span>{escape(i18n.fmt_num(x.get("min")))}–{escape(i18n.fmt_num(x.get("max")))} {u}</span></div>')
+        out.append(f'</div><div class="pub-wx-src">{escape(t("Wetterdaten: Open-Meteo.com"))}</div>')
+    elif kind == "habit":
+        out.append('<table class="pub-hb"><tbody>')
+        for h in data.get("habits") or []:
+            cells = "".join(f'<td class="{"pub-hb-on" if on else "pub-hb-off"}">{"●" if on else "○"}</td>' for on in h.get("done") or [])
+            out.append(f'<tr><th>{escape(h.get("name") or "")}</th>{cells}<td class="pub-muted">{escape(str(h.get("pct", 0)))} %</td></tr>')
+        out.append("</tbody></table>")
+    elif kind == "chart":
+        out.append(chartsvg.render(data, d.get("title") or ""))
     out.append("</div>")
     return "".join(out)
 
@@ -921,6 +986,8 @@ def _database(ctx, dbid, views=None, view_id=None, caption=False):
     except (ValueError, TypeError, AttributeError):
         vs = schema.get("views") or []
     view = next((v for v in vs if isinstance(v, dict) and v.get("id") == view_id), None) or (vs[0] if vs else {})
+    if view.get("type") == "chart" and isinstance(view.get("chart"), dict):     # 2.5 Paket 4: Diagramm als SVG
+        return _db_chart(ctx, dbid, r, schema, view, caption)
     cols = _visible_props(schema, view)
     rows = []
     for x in ctx.c.execute("SELECT id, title, props, created, updated FROM note WHERE uid=? AND parent_id=? "
@@ -956,6 +1023,32 @@ def _database(ctx, dbid, views=None, view_id=None, caption=False):
         cell = f'<a href="{escape(url, quote=True)}">{name}</a>' if url else name
         out.append(f"<tr><td>{cell}</td>" + "".join(f"<td>{_fmt_prop(ctx, p, _prop_value(p, x))}</td>" for p in cols) + "</tr>")
     out.append("</tbody></table></div></div>")
+    return "".join(out)
+
+
+def _db_chart(ctx, dbid, r, schema, view, caption):
+    """Datenbank-Ansicht "chart" auf einer veroeffentlichten Seite: gleiche Rechnung wie in der App (dbcalc.chart), Zeilen
+    wie der Eigentuemer sie sieht (ohne archivierte), Titel verknuepfter Seiten nur, wenn sie oeffentlich erreichbar sind."""
+    from saga import chartsvg
+    rows = []
+    for x in ctx.c.execute("SELECT id, title, props, created, updated FROM note WHERE uid=? AND parent_id=? "
+                           "AND deleted_at IS NULL AND archived IS NULL AND is_template=0 ORDER BY sort NULLS FIRST, created, id LIMIT ?",
+                           (ctx.uid, dbid, DB_ROWS_MAX)).fetchall():
+        rows.append({"id": x[0], "title": x[1] or "", "props": _json_load(x[2], {}), "created": x[3], "updated": x[4]})
+    if dbcalc.has_calc(schema):
+        _fill_public(ctx, schema, rows)
+    from saga import dbquery
+    try:
+        rows, _, _ = dbquery.run(schema, rows, {"view": view.get("id"), "tz": TZ}, labels=_public_labels(ctx), untitled=t("Unbenannt"))
+        res = dbcalc.chart(schema, rows, view["chart"], labels=_public_labels(ctx), tz=TZ, untitled=t("Unbenannt"))
+    except (dbquery.JsError, dbcalc.Fail):
+        return ""
+    out = ['<div class="pub-db pub-chart">']
+    if caption:
+        ic = escape(r[1]) if r[1] and not str(r[1]).startswith("/files/") else ""
+        out.append(f'<div class="pub-db-title">{ic + " " if ic else ""}{escape(r[0] or t("Unbenannt"))}</div>')
+    out.append(chartsvg.render(res, r[0] or ""))
+    out.append("</div>")
     return "".join(out)
 
 

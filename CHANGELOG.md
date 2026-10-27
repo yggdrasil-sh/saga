@@ -16,6 +16,30 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5, Paket 4: Widgets Etappe 2 und Diagramme)
+- **Wetter-Widget.** Heute groß, darunter die nächsten Tage (bis 7) mit Symbol, Höchst-/Tiefstwert und Regenwahrscheinlichkeit;
+  Ort über die Ortssuche des Servers oder Koordinaten (gespeichert auf ~1 km gerundet). Daten von Open-Meteo, abgerufen
+  **nur vom Saga-Server** (Browser/Apps nie), 30 min zwischengespeichert, bei Ausfall bis 6 h alter Stand; SSRF-Schutz wie
+  bei Kalendern (netguard, keine Weiterleitungen, 64 KB, eigene Instanz nur mit Freigabe). Admin-Bereich → Allgemein →
+  Seiten: „Wetter-Widget anbieten“ (Standard **aus**), eigene Open-Meteo-Adresse/API-Schlüssel, Hinweis zu Lizenz und
+  nicht-kommerzieller Nutzung.
+- **Gewohnheiten.** Widget mit Raster der letzten 7/14/30 Tage, Serie und Erfolgsquote je Gewohnheit, Ziel je Woche;
+  Tippen hakt ab (`POST /api/notes/{id}/widgets/{block}/habit`, braucht „Bearbeiten“ an der Datenbank; legt die Zeile des
+  Tages bei Bedarf an). Daten liegen in einer normalen Datenbank (Zeile je Tag, Häkchen je Gewohnheit) – neue
+  Galerie-Vorlage „Gewohnheiten“.
+- **Anstehendes.** Termine aus den eigenen Kalendern, fällige Saga-Aufgaben und Datums-Einträge gewählter Datenbanken der
+  nächsten 1–14 Tage, gruppiert nach Tag, Überfälliges oben. Zeigt immer die Daten der **betrachtenden** Person (auch auf
+  geteilten Seiten), wird nie zwischengespeichert, veröffentlicht oder über Servergrenzen weitergegeben.
+- **Diagramme.** Neue Datenbank-Ansicht „Diagramm“ und Widget „Diagramm“ mit einer gemeinsamen Rechnung
+  (`saga/dbcalc.py` `chart`): Balken (auch quer, gestapelt), Linie, Fläche (auch aufsummiert), Kreis, Ring, Zahl;
+  Gruppieren nach Auswahl, Status-Gruppe, Mehrfachauswahl, Relation, Häkchen, Zahl, Text, Formel/Rollup und Datum in
+  Eimern (Tag/Woche/Monat/Quartal/Jahr), zweite Gruppierung als Reihen, Top-N mit „Andere“, Ziellinie. Web zeichnet
+  eigenes SVG (Tastatur, Tooltips, Werte als Tabelle); Klick auf einen Balken zeigt die Einträge. Veröffentlichte Seiten
+  zeigen Diagramme als statisches SVG.
+- **Apps/Föderation:** `/api/version` `features` `weather1`, `habit1`, `upcoming1`, `chart1`; Föderations-Fähigkeit
+  `widgets2`. Antwortformate in `docs/APP-API.md` „Widgets Etappe 2 und Diagramme“, Vektoren `tests/chart_vectors.json`,
+  `tests/chart_ticks.json`. Keine Migration.
+
 ### Neu (2.5, Paket 5: Datenbank-Kleinigkeiten)
 - **Status-Eigenschaft.** Auswahl mit Gruppen „Zu erledigen / In Arbeit / Erledigt“ (`status: true`, `group` je Option;
   Spaltenkopf → „Als Status (Gruppen)“, „Gruppen zuordnen“), Symbol ○ ◐ ● vor dem Namen, Board/Gruppen nach

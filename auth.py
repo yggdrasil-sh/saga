@@ -111,11 +111,16 @@ DEFAULTS = {
     "horn": {"sign_sk": "", "sign_pk": ""},
     # Cloudflare-DNS fuer Gjallarhorn-Knoten (2.5 P7, saga/cloudflare.py): API-Token nur "Zone -> DNS -> Bearbeiten" fuer
     # EINE Zone (verschluesselt), zone_id/zone = gepruefte Zone, check = letztes Pruefergebnis (ohne Token)
-    "horn_cf": {"token": "", "zone_id": "", "zone": "", "check": {}}
+    "horn_cf": {"token": "", "zone_id": "", "zone": "", "check": {}},
+    # Wetter-Widget (2.5 Paket 4, saga/weather.py): Daten von Open-Meteo, abgerufen NUR vom Server. Standard aus. base_url/
+    # geo_url leer = oeffentliche Open-Meteo-Adressen (frei nur nicht-kommerziell, Quellenangabe), sonst eigene Instanz
+    # (interne Adressen nur ueber allowed_hosts/allow_private_hosts); api_key fuer kommerzielle Open-Meteo-Zugaenge (verschluesselt)
+    "weather": {"enabled": False, "base_url": "", "geo_url": "", "api_key": ""}
 }
 SECRET_FIELDS = {("oidc", "client_secret"), ("ldap", "bind_password"), ("apns", "p8"), ("ai", "api_key"), ("calls", "turn_secret"),
                  ("calls", "turn_password"), ("backup", "password"), ("backup", "webhook"), ("backup", "s3_key"),
-                 ("backup", "s3_secret"), ("horn", "sign_sk"), ("horn_cf", "token")}
+                 ("backup", "s3_secret"), ("horn", "sign_sk"), ("horn_cf", "token"),
+                 ("weather", "api_key")}
 LDAP_PRESETS = {
     "freeipa": {"user_filter": "(&(objectClass=person)(uid={username})(!(nsAccountLock=TRUE)))", "attr_username": "uid", "attr_name": "cn",
                 "attr_mail": "mail", "group_mode": "memberof", "group_filter": "(member={dn})", "group_name_attr": "cn"},

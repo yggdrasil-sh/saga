@@ -239,6 +239,167 @@ eingerichtet“, „Zu viele Einträge für ein Widget“. **Veröffentlichen:**
 demselben Konto gehört – sonst entfällt das Widget. **Markdown-Export:** eine Zeile `**<Titel oder Art>:** <Wert>`
 („(Stand <Datum>)“ bei Datenbank-Werten; ohne Zugriff `–`).
 
+## Widgets Etappe 2 und Diagramme (2.5, Paket 4)
+
+Vier neue Widget-Arten (`kind`): **`weather`**, **`habit`**, **`upcoming`**, **`chart`** – alle rechnet der Server, `W` trägt
+zusätzlich **`data`** (strukturiert je Art; bei `error` immer `null`). `value`/`max`/`text` bleiben als Kurzform (Markdown,
+alte Logik). Dazu die Datenbank-Ansicht **`type: "chart"`** mit derselben Rechnung. Fähigkeiten in `/api/version`
+`features`: `weather1`, `habit1`, `upcoming1`, `chart1` – Apps zeigen die Arten nur mit passendem Server; ältere Apps zeigen
+„Widget – neuere Version nötig“ bzw. die Diagramm-Ansicht als Tabelle (unbekannter Ansichtstyp). `MIN_APP` bleibt.
+**Einrichten nur im Web**, Apps zeigen an; Gewohnheiten zusätzlich **abhaken**. Regel 0 gilt weiter (Blöcke und
+`view.chart` unverändert zurückschreiben).
+
+```json
+W = {"kind": "chart", "value": 65.5, "max": null, "text": null, "fmt": "eur", "as_of": "2026-10-27T20:00:00Z", "error": null,
+     "data": { … je Art, siehe unten … }}
+```
+
+Neue Fehlercodes in `error`: `disabled` (Wetter vom Admin ausgeschaltet), `unavailable` (Wetterdienst nicht erreichbar und
+kein Stand im Speicher). Clients zeigen „Wetter ist auf diesem Server ausgeschaltet“ / „Wetterdaten gerade nicht erreichbar“.
+
+### Wetter (`kind: "weather"`, weather1)
+
+cfg: `{"place": "Hamburg", "lat": 53.55, "lon": 9.99, "units": "metric"|"imperial", "days": 0..7}` – Koordinaten speichert
+der Server auf **2 Nachkommastellen** gerundet (~1 km), `place` Klartext ≤ 80, `days` Standard 5 (heute + N Tage). Ohne
+Koordinaten: `bad_cfg`.
+
+```json
+"data": {"now": {"t": 12.3, "code": 3, "wind": 14},
+         "days": [{"d": "2026-10-27", "min": 6, "max": 13, "code": 61, "rain": 70}, …],
+         "units": "metric", "stale": false, "place": "Hamburg"}
+```
+
+- `days[0]` ist **heute** (Notion-Vorbild: groß „jetzt“, darunter die folgenden Tage als Zeile), insgesamt `days + 1` Einträge.
+  `t/min/max` in °C bzw. °F, `wind` in km/h bzw. mph, `rain` = Regenwahrscheinlichkeit in % (oder `null`). `value` = `now.t`.
+- `stale: true` = letzter Stand (bis 6 h alt), weil der Dienst gerade nicht antwortet. `as_of` = Zeit des Abrufs.
+- **Pflicht:** in jeder Darstellung der Hinweis „Wetterdaten: Open-Meteo.com“ (CC BY 4.0).
+- Datenquelle: Der **Server** ruft Open-Meteo ab (Browser/Apps nie), Zwischenspeicher 30 min je Ort.
+- Ortssuche (nur Web-Einrichten): **`GET /api/widgets/geocode?q=<2–80 Zeichen>`** → `{"results": [{"name", "admin",
+  "country", "lat", "lon"}], "error": null}` (≤ 8, gerundet); `409 {"error": "disabled"}` wenn aus, `429` ab 30 Suchen je
+  Minute und Konto, `502 {"error": "unavailable"}`.
+
+WMO-Wettercodes → Symbol (gemeinsame Tabelle; Apps: SF Symbols / Material / Adwaita, Web: Emoji). Gilt der größte
+Eintrag ≤ code:
+
+| ab code | Bedeutung | Web | SF Symbol | Material |
+|---|---|---|---|---|
+| 0 | klar | ☀️ | `sun.max` | `wb_sunny` |
+| 1 | überwiegend klar | 🌤️ | `sun.min` | `wb_sunny` |
+| 2 | teils bewölkt | ⛅ | `cloud.sun` | `partly_cloudy_day` |
+| 3 | bedeckt | ☁️ | `cloud` | `cloud` |
+| 45 | Nebel (45, 48) | 🌫️ | `cloud.fog` | `foggy` |
+| 51 | Nieselregen (51–57) | 🌦️ | `cloud.drizzle` | `grain` |
+| 61 | Regen (61–65) | 🌧️ | `cloud.rain` | `rainy` |
+| 66 | gefrierender Regen (66, 67) | 🌧️ | `cloud.sleet` | `weather_mix` |
+| 71 | Schnee (71–75) | 🌨️ | `cloud.snow` | `ac_unit` |
+| 77 | Schneegriesel | 🌨️ | `cloud.snow` | `ac_unit` |
+| 80 | Regenschauer (80–82) | 🌦️ | `cloud.heavyrain` | `rainy` |
+| 85 | Schneeschauer (85, 86) | 🌨️ | `cloud.snow` | `ac_unit` |
+| 95 | Gewitter (95–99) | ⛈️ | `cloud.bolt.rain` | `thunderstorm` |
+
+### Gewohnheiten (`kind: "habit"`, habit1)
+
+Datenquelle ist eine **Datenbank**: eine Zeile je Tag (Datums-Eigenschaft), je Gewohnheit ein Häkchen (Galerie-Vorlage
+„Gewohnheiten“). cfg: `{"db", "view", "date": "<date-pid>", "habits": ["<checkbox-pid>", …≤ 6], "range": 7|14|30, "goal": 1..7?}`.
+
+```json
+"data": {"days": ["2026-10-21", …, "2026-10-27"], "today": "2026-10-27", "can_check": true, "goal": 5,
+         "habits": [{"pid": "sport", "name": "Sport", "done": [false, true, …], "streak": 4, "pct": 71, "week": 3}]}
+```
+
+- `days` = Zeitraum bis **heute** (in `tz`), `done[i]` gehört zu `days[i]`. Mehrere Zeilen am selben Tag zählen als ODER;
+  Datum mit Uhrzeit/Zeitraum zählt am (lokalen) Starttag. `streak` = Tage in Folge bis heute – ist heute noch offen, zählt
+  die Serie bis gestern. `pct` = ganze Prozent der Tage im Zeitraum, `week` = erledigte Tage dieser Woche (Mo–So).
+  `value` = heute erledigte Gewohnheiten, `max` = Anzahl Gewohnheiten.
+- `can_check`: Betrachter hat **Bearbeiten** an der Quell-Datenbank (sonst Raster nur lesend).
+- **Abhaken:** **`POST /api/notes/{seite}/widgets/{block_id}/habit[?tz=]`** `{"pid": "<habit-pid>", "day": "JJJJ-MM-TT",
+  "on": true|false}` → `{"widget": W}` (neuer Stand). Erlaubt: Lesen an der Seite und Bearbeiten an der Datenbank (sonst
+  `403`); `pid` muss im Widget gewählt sein, `day` zwischen heute − (range − 1) und heute (sonst `400`). `on: true` setzt das
+  Häkchen in der ersten Zeile dieses Tages (in der Ansicht des Widgets) oder legt eine neue Zeile an (Titel = Datum, Datum
+  gesetzt, **ohne** Standard-Vorlage); `on: false` entfernt es in allen Zeilen des Tages. Normaler Speicherweg (Live,
+  Versionen). Seiten anderer Server (negative ID): gleicher Aufruf, mit Fähigkeit `widgets2`, sonst `409`.
+
+### Anstehendes (`kind: "upcoming"`, upcoming1)
+
+**Immer die Daten der betrachtenden Person** – auch auf geteilten Seiten (P4-E3): ihre CalDAV-Kalender, ihre offenen
+Saga-Aufgaben mit Fälligkeit, Zeilen gewählter Datenbanken mit **ihren** Rechten. Nie zwischengespeichert, nie
+veröffentlicht, über Servergrenzen immer `no_access`. cfg: `{"days": 1..14 (7), "cal": true, "tasks": true, "overdue": true,
+"dbs": [{"db", "view", "date": "<pid>"} …≤ 5], "limit": 5..30 (10)}`.
+
+```json
+"data": {"from": "2026-10-27", "days": 7, "more": 0, "errors": 0,
+         "items": [{"k": "event", "title": "Zahnarzt", "start": "2026-10-27T14:00:00+01:00", "end": "…", "allday": false,
+                    "color": "#4184e4", "cal": "Privat", "note": null, "task": null, "overdue": false},
+                   {"k": "task", "title": "Steuer", "start": "2026-10-29", "end": null, "allday": true, "color": null,
+                    "cal": null, "note": null, "task": 17, "overdue": false},
+                   {"k": "row", "title": "Abgabe", "start": "2026-10-30", "end": null, "allday": true, "color": null,
+                    "cal": null, "note": 4711, "task": null, "overdue": false}]}
+```
+
+- Zeitraum `[from, from + days)`; überfällig (`overdue: true`, Start vor heute): offene Aufgaben und nicht erledigte Zeilen
+  (Status-Gruppe „Erledigt“ bzw. erstes Häkchen) – mit `overdue: false` in cfg weggelassen. Sortiert nach Tag, ganztägig
+  zuerst, dann Uhrzeit. Clients gruppieren nach Tag („Überfällig“, „Heute“, „Morgen“, Datum).
+- `note` → Eintrag öffnen, `task` → Aufgabe; Termine nur anzeigen. `more` = weitere über `limit`, `errors` = nicht
+  erreichbare Quellen (Kalender, Datenbank ohne Zugriff). `value` = Anzahl aller Einträge.
+
+### Diagramme (`kind: "chart"` und Ansicht `type: "chart"`, chart1)
+
+**Eine Logik** (`saga.dbcalc.chart`): Widget und Ansicht liefern bei gleicher Spec dieselben Reihen; Aggregation wie
+Fußzeile/Kennzahl/Rollups. Filter/Sortierung der Ansicht (`view`) wirken davor. Spec (Widget-cfg mit `db`, `view`;
+Ansicht `view.chart`):
+
+| Feld | Werte |
+|---|---|
+| `type` | `bar`, `hbar`, `line`, `area`, `pie`, `donut`, `number` |
+| `x` | Eigenschaft zum Gruppieren (`title` erlaubt): Auswahl/Status (Optionsreihenfolge + Farben), Mehrfachauswahl/Relation (eine Zeile zählt in jeder Gruppe), Häkchen (Ja/Nein), Datum/Erstellt/Bearbeitet (Eimer), Zahl, Text/URL, Formel/Rollup nach `rtype` |
+| `bucket` | nur Datum: `day`, `week` (ab Montag), `month` (Standard), `quarter`, `year` – in `tz` |
+| `status` | `true`: Status-Eigenschaft nach Gruppen `todo/doing/done` statt Optionen |
+| `series` | zweite Gruppierung (nur `bar/hbar/line/area`), ≤ 10 Reihen (Rest „Andere“) |
+| `agg`, `y` | `count` (ohne `y`), `sum/avg/min/max` (Zahl/Formel/Rollup mit Zahl), `pct_checked` (Häkchen, `fmt` = `pct`) |
+| `sort` | `x` (natürlich), `y_desc`, `y_asc`, `manual` mit `order` (Schlüssel) |
+| `limit` | 3..50 Kategorien (Standard 20, Datum 50); mehr → Top-N + „Andere“ (Datum: die jüngsten) |
+| `cumulative`, `stack`, `empty: "show"`, `fmt` `num/pct/eur`, `goal` (Zahl, Ziellinie) | optional |
+
+Ergebnis (`W.data` bzw. `chart` der Ansicht):
+
+```json
+{"type": "bar", "x_kind": "cat"|"date", "bucket": "month",
+ "cats": [{"key": "todo", "label": "Zu erledigen", "color": "gray"}, {"key": "2026-01", "label": "2026-01", "color": null, "start": "2026-01-01"}],
+ "series": [{"key": "", "label": "", "color": null, "values": [10, 20.5]}],
+ "total": 65.5, "fmt": "eur", "other": 0, "truncated": false, "rows": 6, "goal": 100, "stack": true, "cumulative": true}
+```
+
+- `cats[i]` ↔ `series[j].values[i]` (Zahl oder `null`). `key`: Options-ID, Status-Gruppe, `"true"/"false"`, Zahl als
+  Text, Text, Relations-ID, Datums-Eimer (`2026-10-27`, `2026-W44`, `2026-10`, `2026-Q4`, `2026`) oder `null` (leer, nur mit
+  `empty: "show"`, Label „Leer“) bzw. `"__other__"` („Andere“, `other` = Anzahl zusammengefasster Gruppen). Bei Datum trägt
+  jede Kategorie `start` (erster Tag des Eimers, Clients formatieren selbst); Lücken zwischen erstem und letztem Eimer sind
+  gefüllt (Wert 0 bzw. `null`). `label` kommt in der Sprache der Anfrage. `color`: Palette (`gray … red`) oder `null`
+  (Client nimmt seine Reihenfolge: blue, orange, green, purple, pink, yellow, red, brown).
+- Nur **eine** Reihe (`series[0].key == ""`) ohne `series`-Spec; Kreis/Ring nutzen nur `series[0]`.
+- `number`: `cats`/`series` leer, nur `total` (bei `count` = Anzahl Zeilen). `value` = `total`, `max` = `goal`.
+- `truncated`: Kategorien oder Reihen gekürzt. Ungeeignete/unbekannte Eigenschaft: `error: "bad_cfg"`.
+
+**`GET /api/notes/{db}/chart?view=<vid>[&tz=<IANA>]`** (ab *Lesen*, wie `/rows`) → `{"chart": Ergebnis + "as_of",
+"view": vid, "error": null}`; Ansicht ohne `type: "chart"` → `{"chart": null, "error": "bad_cfg"}`. Optional `ids=1`
+(zusätzlich `ids[i]` = Zeilen-IDs je Kategorie, für „Klick auf Balken zeigt die Einträge“), `chart=<spec-json>` und
+`filters=<json>` (eingebettete Datenbank mit eigenen Block-Ansichten). Datenbank anderer Server: Fähigkeit `widgets2`,
+sonst `{"chart": null, "error": "unsupported"}`.
+
+Achsen (Clients, die selbst zeichnen): „schöne“ Werte 1/2/2,5/5 × 10^k, ca. 5 Schritte, Bereich inklusive 0 – Vektoren
+`tests/chart_ticks.json`; Rechen-Vektoren `tests/chart_vectors.json`. Zeichnen: Web eigenes SVG, iOS/macOS Swift Charts,
+Android Compose-`Canvas`, Linux Cairo (P4-E2). Werte zusätzlich als Tabelle (Barrierefreiheit).
+
+### Veröffentlichen, Export, Föderation
+
+- **Veröffentlichte Seiten:** Wetter nur mit dem letzten Stand aus dem Zwischenspeicher (Besucher lösen nie einen Abruf
+  aus; ohne Stand entfällt das Widget) und Quellenangabe; Gewohnheiten als Raster ohne Klick; Diagramm-Widget und
+  Diagramm-Ansicht als statisches SVG ohne JS und ohne Inline-Styles (Titel verknüpfter Seiten nur, wenn sie selbst
+  öffentlich sind); **Anstehendes entfällt immer** (persönliche Daten).
+- **Markdown-Export:** eine Zeile je Widget (Wetter: Ort, Temperatur, Tage; Gewohnheiten: Quote und Serie je Gewohnheit;
+  Diagramm: Kategorien mit Werten; Anstehendes: Anzahl).
+- **Föderation:** Fähigkeit `widgets2` (siehe `APP-API-FED.md`). Ohne sie fehlen die neuen Arten in der Antwort und das Heim
+  meldet `"unsupported2": true` – Clients zeigen „Widget nur auf dem Ursprungsserver“.
+
 ## Eintrags-Vorlagen, Startseite, neue Einträge (2.5, Fix-Runde 27.10.)
 
 ### E1 – Eintrags-Vorlagen für Bearbeitende

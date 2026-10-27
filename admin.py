@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import app as hk
 import auth
 from db import clean_line, connect as _db
-from saga import ai, avatars, backups, calls, chat, cloudflare, federation, horn, horn_ops, i18n, live, mfa, publish, push, push_stream, sharing, userbackup
+from saga import ai, avatars, backups, calls, chat, cloudflare, federation, horn, horn_ops, i18n, live, mfa, publish, push, push_stream, sharing, userbackup, weather
 from saga.core import HSTS, RESTORE_TEST, TZ, BodyLimit, LangMiddleware, SecHeaders, install_lang_ui, lang_switch_response
 from saga.i18n import t
 from version import REPO, VERSION, VERSION_LABEL, channel, newer
@@ -789,6 +789,14 @@ async def settings_post(request: Request):
                  ("gallery_enabled", _on(f, "gallery_enabled")),
                  ("update_check", _on(f, "update_check")), ("default_lang", i18n.norm(f.get("default_lang")))):
         auth.save_setting(k, v)
+    wx = {}                                                 # 2.5 Paket 4: Wetter-Widget (Open-Meteo)
+    for k in ("base_url", "geo_url"):
+        wx[k], err = weather.check_url(_s(f, "weather_" + k, 300))
+        if err:
+            _flash(request, t("Wetter: {err}", err=err), "err")
+            return _go("/settings")
+    auth.save_setting("weather", {"enabled": _on(f, "weather_enabled"), **wx, "api_key": _s(f, "weather_api_key", 200)})
+    weather.reset_cache()
     req = f.get("mfa_require") if f.get("mfa_require") in ("none", "admins", "all") else "none"
     acr = ", ".join(a for a in (x.strip() for x in _s(f, "mfa_oidc_acr", 300).split(",")) if re.fullmatch(r"[\w.:/#-]{1,100}", a))
     auth.save_setting("mfa", {"require": req, "oidc_mfa": _on(f, "mfa_oidc"), "oidc_acr": acr})

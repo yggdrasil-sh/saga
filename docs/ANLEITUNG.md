@@ -293,6 +293,7 @@ Unter **Allgemein** stellst du ein:
 | Gruppen-Kennung | Vorsilbe der Zugangsgruppen für Dienste, Standard `s_` (siehe Abschnitt 6) |
 | Interne Adressen | Ob Benutzer Kalender/Immich im Heimnetz verbinden dürfen (siehe Abschnitt 9) |
 | Standardsprache | Sprache für Anmeldeseite, Admin-Bereich und alle Konten mit „Automatisch“; Vorgabe: Automatisch (Browser) |
+| Wetter-Widget anbieten | Widget „Wetter“ in Seiten; Daten holt der Saga-Server bei [Open-Meteo](https://open-meteo.com) (CC BY 4.0, frei nur für **nicht-kommerzielle** Nutzung bis 10 000 Abrufe am Tag). Browser und Apps fragen nie direkt. Optional eigene Open-Meteo-Instanz (interne Adresse nur über „Freigegebene interne Hosts“) oder API-Schlüssel für kommerzielle Zugänge. Vorgabe: aus |
 
 ![Admin: Allgemein](screenshots/admin-allgemein.png)
 
@@ -505,6 +506,13 @@ oder aus einer Datenbank, jeden Tag ein anderes). Kennzahl und Fortschritt könn
 stehen mehrere nebeneinander. Werte aus einer Datenbank sieht jede Person nur, wenn sie die Datenbank selbst sehen darf –
 sonst steht dort „Kein Zugriff auf die Datenquelle“. Auf einer veröffentlichten Seite erscheinen solche Werte nur aus
 deinen eigenen Datenbanken.
+Seit 2.5 gibt es außerdem **Wetter** (heute und die nächsten Tage für einen Ort – der Admin muss es einschalten),
+**Gewohnheiten** (Raster der letzten Tage mit Serie und Erfolgsquote; Tippen hakt ab – die Häkchen landen als Zeile je Tag
+in einer Datenbank, am einfachsten über die Galerie-Vorlage „Gewohnheiten“), **Anstehendes** (deine Termine, fälligen
+Aufgaben und Datums-Einträge gewählter Datenbanken der nächsten Tage – jede Person sieht nur ihre eigenen, auf
+veröffentlichten Seiten fehlt es) und **Diagramm** (Balken, Linie, Fläche, Kreis, Ring oder Zahl aus einer Datenbank). Dasselbe
+Diagramm gibt es als Ansicht einer Datenbank: Ansicht → Layout „Diagramm“, dann „⚙ Diagramm einrichten“; ein Klick auf einen
+Balken zeigt die Einträge dahinter.
 
 ![Seite](screenshots/seite.png)
 
