@@ -4426,7 +4426,8 @@
     if (!this.data.kind) this.data.kind = 'metric';
     if (WG_KINDS.indexOf(this.data.kind) >= 0) {
       this.data.v = 1;
-      this.fresh = !d.cfg;                                 // eben eingefuegt: Einstellungen gleich oeffnen
+      if (!d.cfg && !S.loading) S.wgNew = Date.now();     // eben eingefuegt: Einstellungen gleich oeffnen (Editor.js baut den Block
+                                                           // dabei mehrmals - das Panel geht am Block auf, der bleibt)
       this.data.cfg = Object.assign(wgDefaults(this.data.kind), this.data.cfg || {});
     }
     this.block = o.block; this.ro = !!o.readOnly; this.pv = null; this.schemas = {};
@@ -4439,7 +4440,12 @@
     this.card.addEventListener('click', function (e) { if (e.target.closest('a')) return; if (self.editable() && !self.panel) self.openPanel(); });
     WG.add(this); this.draw();
     if (wgServer(this.data) && !S.loading && S.cur && !(this.block && S.wvals && this.block.id in S.wvals)) wgSoon();   // z. B. im eben aufgeklappten Toggle
-    if (this.fresh && this.editable()) setTimeout(function () { if (w.isConnected) self.openPanel(); }, 0);
+    if (S.wgNew && this.editable()) (function wait(n) {
+      setTimeout(function () {
+        if (self.panel || !S.wgNew || Date.now() - S.wgNew > 3000) return;
+        if (w.isConnected) { S.wgNew = 0; self.openPanel(); } else if (n > 0) wait(n - 1);
+      }, 80);
+    })(25);
     return w;
   };
   WidgetTool.prototype.editable = function () { return !this.ro && !readOnly() && WG_KINDS.indexOf(this.data.kind) >= 0; };
@@ -4536,7 +4542,6 @@
   // Einrichten: Panel unter dem Widget, jede Aenderung zeichnet neu (Vorschau ueber den Server, wo er rechnet)
   WidgetTool.prototype.openPanel = function () {
     var self = this, d = this.data;
-    this.fresh = false;
     var p = this.panel = el('div', 'wg-panel'); p.setAttribute('role', 'group'); p.setAttribute('aria-label', T('Widget einrichten'));
     this.w.appendChild(p); this.fill();
     var done = el('button', 'btn wg-done', T('Fertig')); done.type = 'button';
