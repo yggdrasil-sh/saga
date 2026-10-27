@@ -405,7 +405,10 @@ def _thread(uid, rid, work, tok):
             if rid in _cancel:
                 raise Cancelled()
             _set(rid, state="running", started=_now())
-            root = work(run)
+            try:
+                root = work(run)
+            except (zipfile.BadZipFile, EOFError, UnicodeError) as ex:     # kaputtes Archiv / Datei mitten im Lesen
+                raise ImportFail("bad_file") from ex
             _set(rid, state="done", finished=_now(), root=root, report=json.dumps(run.report.to_json(), ensure_ascii=False),
                  step=json.dumps({"phase": "done", "done": 1, "total": 1}))
     except BaseException as ex:  # noqa: BLE001 - jeder Fehler beendet den Lauf sauber

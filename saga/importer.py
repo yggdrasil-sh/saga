@@ -13,7 +13,9 @@ Nur eigene Uploads/Laeufe; Ziel nur eigene Seiten/Datenbanken. Upload-Ablage auf
 nach 30 Minuten ohne Lauf geloescht."""
 import json
 import os
+import re
 import time
+import zipfile
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -37,7 +39,6 @@ def _uid(request):
 def kind_of(paths):
     """Art eines Uploads aus den Dateinamen: csv | md | notion | None."""
     low = [p.lower() for p in paths]
-    import re
     if any(re.search(r" [0-9a-f]{32}\.(md|csv)$", p) for p in low):
         return "notion"
     if any(p.endswith(MD_EXT[:2]) for p in low):
@@ -94,7 +95,6 @@ async def api_upload(request: Request):
     u["size"] += n
     names = [f["name"] for f in u["files"]]
     if len(u["files"]) == 1 and name.lower().endswith(".zip"):
-        import zipfile
         try:
             with zipfile.ZipFile(path) as z:
                 names = [i.filename for i in z.infolist()[:ic.ENTRIES_MAX]]
@@ -165,6 +165,8 @@ def analyze(uid, tok, b):
         return JSONResponse(out, headers={"Cache-Control": "no-store"})
     except ic.ImportFail as ex:
         return _bad(ic.reason_text(ex.code, ex.p))
+    except (zipfile.BadZipFile, OSError, EOFError, ValueError, UnicodeError):
+        return _bad(ic.reason_text("bad_file"))
     finally:
         src.close()
 
