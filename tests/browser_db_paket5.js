@@ -143,6 +143,14 @@ function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDat
     for (let i = 0; i < 30 && !(v5 && v5.length > 10); i++) { v5 = ((await p.api('GET', '/api/notes/' + ids['In 5 Tagen'])).props || {}).d; await p.waitForTimeout(200); }
     ok('gespeichert mit Uhrzeit und Offset der Ortszeit', /^\d{4}-\d{2}-\d{2}T14:30\+0[12]:00$/.test(v5 || ''), v5);
     ok('Zelle zeigt Datum und Uhrzeit', await until(p, () => [...document.querySelectorAll('tr.db-row')].some((tr) => tr.querySelector('.db-title-in').value === 'In 5 Tagen' && /14:30/.test(tr.textContent))));
+    // Uhrzeit wieder abwaehlen (gleicher Tag): muss wirklich weg sein (Server behaelt sonst den alten Wert wie bei alten Apps)
+    await p.evaluate(() => { const tr = [...document.querySelectorAll('tr.db-row')].find((x) => x.querySelector('.db-title-in').value === 'In 5 Tagen'); tr.querySelector('.val-date .val-btn').click(); });
+    await until(p, () => !!document.querySelector('.menu:not([hidden]) .dt-box'));
+    await p.evaluate(() => { const cb = document.querySelector('.menu:not([hidden]) .dt-box').querySelectorAll('input[type=checkbox]')[0]; if (cb.checked) cb.click(); });
+    await p.click('.menu:not([hidden]) .dt-foot .btn-primary');
+    let v6 = v5;
+    for (let i = 0; i < 30 && v6 && v6.length > 10; i++) { v6 = ((await p.api('GET', '/api/notes/' + ids['In 5 Tagen'])).props || {}).d; await p.waitForTimeout(200); }
+    ok('Uhrzeit abgewaehlt -> nur noch der Tag', v6 === (v5 || '').slice(0, 10), [v5, v6]);
 
     // --- Unteraufgaben + blockiert
     s = (await p.api('GET', '/api/notes/' + D + '/rows?limit=1')).schema;

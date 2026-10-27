@@ -329,6 +329,7 @@ def _col_weights(cols):
 
 TABLE_COLORS = ("gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red")
 TABLE_COLS_MAX = 20
+_TIDX = re.compile(r"[0-9]{1,4}")          # Zeilen-/Spaltenindex der Farben (nur ASCII-Ziffern)
 
 
 def _clean_table(d):
@@ -358,14 +359,14 @@ def _clean_table(d):
         src, out = d["colors"] if isinstance(d["colors"], dict) else {}, {}
         for k, lim in (("r", nr), ("c", nc)):
             m = {str(int(i)): col for i, col in (src.get(k) or {}).items()
-                 if isinstance(src.get(k), dict) and str(i).isdigit() and int(i) < lim and col in TABLE_COLORS} if isinstance(src.get(k), dict) else {}
+                 if isinstance(src.get(k), dict) and _TIDX.fullmatch(str(i)) and int(i) < lim and col in TABLE_COLORS} if isinstance(src.get(k), dict) else {}
             if m:
                 out[k] = dict(list(m.items())[:200])
         if isinstance(src.get("x"), dict):
             m = {}
             for key, col in list(src["x"].items())[:1000]:
                 ps = str(key).split(",")
-                if len(ps) == 2 and all(p.isdigit() for p in ps) and int(ps[0]) < nr and int(ps[1]) < nc and col in TABLE_COLORS:
+                if len(ps) == 2 and all(_TIDX.fullmatch(p) for p in ps) and int(ps[0]) < nr and int(ps[1]) < nc and col in TABLE_COLORS:
                     m[f"{int(ps[0])},{int(ps[1])}"] = col
             if m:
                 out["x"] = m

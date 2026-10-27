@@ -3771,6 +3771,9 @@
         sv.addEventListener('click', function () {
           var x = val(A), y = withEnd ? val(B) : '';
           if (x && y && y !== x) x = x + '/' + y;
+          // Uhrzeit/Ende bewusst entfernt: reiner Tag wuerde der Server wie bei alten Apps durch den alten Wert ersetzen -
+          // "Tag/Tag" normalisiert er zu "Tag" (docs/APP-API.md)
+          else if (x && x.length === 10 && typeof v === 'string' && v.length > 10) x = x + '/' + x;
           HK.closeMenu(); setProp(row, prop.id, x || null).then(onDone);
         });
         clr.addEventListener('click', function () { HK.closeMenu(); setProp(row, prop.id, null).then(onDone); });

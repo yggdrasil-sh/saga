@@ -126,6 +126,9 @@ def run():
     big = {"type": "table", "data": {"content": [[str(i) for i in range(21)]], "colWidths": [5] * 21}}
     req("PATCH", f"/api/notes/{nid}", body={"body": json.dumps({"blocks": [big]}), "format": "blocks"})
     ok("mehr als 20 Spalten: keine Breiten", "colWidths" not in blocks_of(nid)[0]["data"])
+    uni = {"type": "table", "data": {"content": [["a", "b"]], "colors": {"r": {"²": "red", "0": "blue"}, "x": {"²,0": "red"}}}}
+    s, d = req("PATCH", f"/api/notes/{nid}", body={"body": json.dumps({"blocks": [uni]}), "format": "blocks"})
+    ok("Farben mit Unicode-Ziffer als Index: fallen weg, kein 400", s == 200 and blocks_of(nid)[0]["data"].get("colors") == {"r": {"0": "blue"}}, (s, d))
     req("PATCH", f"/api/notes/{nid}", body={"body": json.dumps(body), "format": "blocks"})
 
     # Markdown ohne Farben/Breiten

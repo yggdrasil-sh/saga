@@ -655,6 +655,7 @@ zeigen); jeder Datumswert darf jede Form haben. Wert bleibt **ein String**:
 - **Alte Apps** schreiben nur `YYYY-MM-DD`: Ist der gespeicherte Wert ein Zeitpunkt/Zeitraum mit **demselben Starttag**,
   behält der Server den gespeicherten Wert (Uhrzeit/Ende gehen nicht verloren). Anderer Tag → nur der neue Tag
   (Uhrzeit weg). Neue Apps erkennen an `datetime1`, dass sie den vollen Wert schreiben dürfen.
+  Uhrzeit/Ende **bewusst entfernen** (gleicher Tag): `YYYY-MM-DD/YYYY-MM-DD` schicken – der Server speichert den reinen Tag.
 - **Lesen:** die ersten 10 Zeichen sind der Tag der eintragenden Person (alte Apps zeigen so den richtigen Tag bzw. den
   Start). **Anzeige** in der Zeitzone des Betrachters umrechnen (`14:30+01:00` → in New York 08:30), Zeitraum als
   „27.10.2026 14:30 – 16:00“ (gleicher Tag) bzw. „27.10.2026 – 29.10.2026“; Originalzeit bei anderer Zone im Tooltip.
