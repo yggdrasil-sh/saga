@@ -30,7 +30,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Hintergrund-Lauf mit Fortschritt (Tabelle `import_run`, Migration 21; höchstens 2 gleichzeitig), Abbruch, Bericht
   „nicht übernommen“ im Dialog und als Seite. ZIP-Prüfung gegen Pfad-Traversal, Symlinks, ZIP-Bomben und zu große
   Archive; alles gestreamt (kleine Server). Neue Einstellungen `IMPORT_MAX_MB`, `IMPORT_UNPACKED_MAX_MB`,
-  `IMPORT_CSV_MAX_MB`, `IMPORT_CSV_ROWS_MAX`, `IMPORT_PARALLEL`. Notion-Import folgt.
+  `IMPORT_CSV_MAX_MB`, `IMPORT_CSV_ROWS_MAX`, `IMPORT_PARALLEL`. Notion-Import folgt. Markdown-Import übernimmt `$TeX$` als Inline-Mathe (`code.hk-math`, Inline-Vertrag); HTML im
+  Markdown bleibt Text, importierte Blöcke bekommen eindeutige Block-IDs.
 
 ### Neu (2.5, Paket 1 Etappe 1: Formeln und Rollups)
 - **Formel-Eigenschaft.** Notion-2.0-kompatible Formeln (`if`, `ifs`, Zahlen-, Text-, Datums- und Listenfunktionen,

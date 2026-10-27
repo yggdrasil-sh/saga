@@ -185,7 +185,7 @@ def run():
     ok("==markiert==, %%Kommentar%% entfernt", "cdx-marker" in j and "versteckt" not in j)
     ok("$Mathe$ -> code.hk-math (Inline-Vertrag), $5 und $10 bleibt Text", '<code class="hk-math">E=mc^2</code>' in j and "$5 und $10" in j, j[:800])
     ok("HTML mit hk-Klassen im Markdown nur als Text (keine Farbe/Erwaehnung durchgeschleust)",
-       'class="hk-c-red"' not in j and 'class="hk-mention"' not in j and "&lt;span" in j, j[:800])
+       '<span' not in j and "&lt;span class=" in j, j[:800])
     bids = [b.get("id") for b in all_blocks(bl)]
     ok(f"Block-IDs eindeutig und gueltig ({len(bids)})", all(isinstance(x, str) and x for x in bids) and len(set(bids)) == len(bids), bids)
     types = [b["type"] for b in all_blocks(bl)]
