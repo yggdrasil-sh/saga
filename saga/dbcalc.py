@@ -887,7 +887,10 @@ def chart(schema, rows, spec, labels=None, tz=None, today=None, untitled=None, w
             fill, n = [], 0
             while s <= end and n <= CHART_GAPS_MAX:
                 fill.append(s)
-                s = _bucket_next(s, ax.bucket)
+                try:
+                    s = _bucket_next(s, ax.bucket)
+                except (OverflowError, ValueError):          # Eimer nach 9999-12-31 gibt es nicht (sonst 500)
+                    break
                 n += 1
             if n <= CHART_GAPS_MAX:
                 for d in fill:

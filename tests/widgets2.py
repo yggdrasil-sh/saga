@@ -17,7 +17,7 @@ Nie echtes Netz: Open-Meteo und CalDAV sind lokale Fake-Server auf 127.0.0.1 (Po
 - Markdown-Export der neuen Arten.
 Wegwerf-Konten w2-a/w2-b/w2-c, raeumt auf. Umgebung wie tests/seiten_widgets.py."""
 import base64, hashlib, http.client, json, os, re, secrets, sys, threading, time, urllib.parse
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from itsdangerous import TimestampSigner
 import auth
@@ -34,6 +34,7 @@ WXP, CDP = (int(x) for x in os.environ.get("WX2_PORTS", "18291,18292").split(","
 res = []
 n500 = [0]
 TODAY = date.today()
+CH = HB = None                      # (db, seite) - gesetzt in den Teilen Diagramm/Gewohnheiten
 
 
 def ok(n, c, info=None):
@@ -234,6 +235,15 @@ def unit():
     tk = json.load(open(os.path.join(HERE, "chart_ticks.json")))
     bad = [(c, chartsvg.nice_ticks(c["lo"], c["hi"])) for c in tk["cases"] if chartsvg.nice_ticks(c["lo"], c["hi"]) != c["want"]]
     ok(f"Achsen-Vektoren ({len(tk['cases'])} Faelle)", not bad, bad[:2])
+    sd = {"props": [{"id": "d", "name": "D", "type": "date"}]}           # Review: letzter Eimer vor 10000 (kein 500)
+    rd = [{"id": 1, "title": "a", "props": {"d": "9999-12-30"}}, {"id": 2, "title": "b", "props": {"d": "9999-12-31"}}]
+    bad = []
+    for bk in dbcalc.CHART_BUCKETS:
+        try:
+            dbcalc.chart(sd, rd, {"type": "line", "x": "d", "bucket": bk})
+        except (OverflowError, ValueError) as ex:
+            bad.append((bk, str(ex)))
+    ok("Diagramm: Datum 9999-12-31 in allen Eimern ohne Fehler", not bad, bad)
     svg = chartsvg.render({"type": "bar", "cats": [{"key": "a", "label": "<A>", "color": "red"}], "series": [{"key": "", "label": "", "values": [3]}], "fmt": "num"})
     ok("SVG: escaped, ohne style-Attribute", "&lt;A&gt;" in svg and " style=" not in svg and "<svg" in svg)
     ok("check_url: http ohne Freigabe abgelehnt", weather.check_url("http://wetter.example.org/v1/forecast")[1] is not None)
