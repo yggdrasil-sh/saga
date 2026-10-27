@@ -101,7 +101,7 @@
         setTimeout(function () { if (MM.wait[id]) { delete MM.wait[id]; fail(new Error('timeout')); } }, 15000);
         f.contentWindow.postMessage({ hk: 'mmd', id: id, src: String(src || '') }, '*');
       });
-    }).then(fixSvg);
+    }).then(function (svg) { var x = fixSvg(svg); x.svg = svg; return x; });
   }
   // SVG-Text (aus dem Rahmen) -> {url: blob-URL, w, h}. Nur als <img> gezeigt (Skripte/Ereignisse in Bildern laufen nie);
   // nur das Wurzel-Element bekommt feste Masse (als Text - kein DOMParser, der wuerde die Stile des SVG gegen die CSP pruefen)

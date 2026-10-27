@@ -10,7 +10,10 @@
     window.mermaid.initialize({
       startOnLoad: false, securityLevel: 'strict', theme: t, htmlLabels: false, maxTextSize: MAX_SRC, maxEdges: 500,
       flowchart: { htmlLabels: false }, class: { htmlLabels: false }, state: { htmlLabels: false }, deterministicIds: true,
-      fontFamily: 'Helvetica, Arial, sans-serif'
+      fontFamily: 'Helvetica, Arial, sans-serif',
+      // Diagramm-Direktiven (%%{init: ...}%%) duerfen diese Schluessel nicht aendern (z. B. htmlLabels -> foreignObject)
+      secure: ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'maxEdges', 'htmlLabels', 'flowchart', 'class', 'state',
+               'theme', 'themeCSS', 'themeVariables', 'fontFamily', 'dompurifyConfig', 'deterministicIds', 'suppressErrorRendering']
     });
   }
   var n = 0;
@@ -22,7 +25,8 @@
       if (d.src.length > MAX_SRC) throw new Error('too large');
       setup(!!d.dark);
       n += 1;
-      return window.mermaid.render('hkm' + n, d.src);
+      // Direktiven (%%{ ... }%%) ganz entfernen - Einstellungen kommen nur von hier
+      return window.mermaid.render('hkm' + n, d.src.replace(/%%\{[\s\S]*?\}%%/g, ''));
     }).then(function (r) {
       var svg = r && typeof r.svg === 'string' ? r.svg : '';
       if (!svg || svg.length > MAX_SVG) throw new Error('empty');
