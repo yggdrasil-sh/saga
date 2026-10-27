@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 import auth
 import db
-from version import API_LEVEL, BUILD, MIN_APP, VERSION, channel
+from version import API_LEVEL, BUILD, FEATURES, MIN_APP, VERSION, channel
 
 from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, page_widgets, pages, publish, sharing, tasks, web_auth
 from saga import ai, ai_chat, avatars, calls, chat, chat_files, federation, horn, horn_ops, i18n, live, mfa, notify, push, push_stream
@@ -218,7 +218,7 @@ def api_version():
     version = SemVer ohne Build-Kennung (z. B. "2.2.0" oder "2.2.0-rc.7"), build = Kurz-SHA bei Testing-Builds,
     channel = stable | rc | testing."""
     return JSONResponse({"name": "Saga", "version": VERSION, "build": BUILD, "channel": channel(), "api": API_LEVEL,
-                         "min_app": MIN_APP, "schema": db.SCHEMA_VERSION},
+                         "min_app": MIN_APP, "schema": db.SCHEMA_VERSION, "features": list(FEATURES)},
                         headers={"Cache-Control": "no-store"})
 
 

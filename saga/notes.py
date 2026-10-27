@@ -246,6 +246,13 @@ def announce_row(c, owner, row_id, by, now, origin=None):
                   "AND d.kind='database'", (row_id, owner)).fetchone()
     if r:
         bus.fire("note.saved", c, note_id=r[0], owner=owner, by=by, updated=now, origin=origin, row=row_id)
+        # 2.5: Datenbanken, deren Rollups ueber eine Relation auf diese Datenbank zeigen, rechnen neu (ohne Zeilen-ID)
+        for did, sch in c.execute("SELECT id, schema FROM note WHERE uid=? AND kind='database' AND deleted_at IS NULL AND id<>? "
+                                  "AND schema LIKE '%\"rollup\"%'", (owner, r[0])).fetchall():
+            props = [p for p in (_json_load(sch, {}).get("props") or []) if isinstance(p, dict)]
+            rels = {p.get("id") for p in props if p.get("type") == "relation" and p.get("target") == r[0]}
+            if any(p.get("type") == "rollup" and p.get("rel") in rels for p in props):
+                bus.fire("note.saved", c, note_id=did, owner=owner, by=by, updated=now, origin=origin)
 
 
 def share_targets(c, owner, ids):

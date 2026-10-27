@@ -80,7 +80,11 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # Online-Status von Chat-Partnern (Abo beim Server der Person). Mit 2.3-Servern: nichts davon, nichts wird gesendet.
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
          "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn",
-         "widgets1", "rowtpl"]
+         "widgets1", "rowtpl", "formula1"]
+# formula1 (2.5, Paket 1, saga.dbcalc) = Formel- und Rollup-Eigenschaften: der Eigentuemer-Server rechnet die Werte mit
+# dem Prinzipal der Person und liefert sie fertig in props (dazu fx_err je Zeile, rtype im Schema, Gruppen mit value);
+# POST /fed/v2/notes/{db}/formula/check prueft eine Formel fuer den Editor. Ohne formula1 (aeltere Gegenstelle): Formel/
+# Rollup als nur-lesbare Text-Spalte (Original in fx_orig, kommt beim Speichern des Schemas unveraendert zurueck).
 # rowtpl (2.5, fix27 E1/E4) = Eintrags-Vorlagen fuer Bearbeitende: GET .../rows liefert ab Rolle 'Bearbeiten' "templates",
 # POST /fed/v2/notes/{vorlage}/duplicate geht dann auch ohne via (Vorlage liegt in parent_id), die Antwort traegt
 # fresh/placeholder, und POST /fed/v2/notes/{id}/discard verwirft einen unveraenderten neuen Eintrag. Ohne rowtpl: wie bisher.
@@ -2422,6 +2426,10 @@ def _note_in(c, peer, d, uid):
              remote=remote_info(peer))
     if isinstance(d.get("props"), dict):     # Relationen (Listen von Seiten-IDs) auf negative IDs
         d["props"] = props_in(pid, d["props"])
+    if "fx_err" in d:                        # 2.5 (formula1): Fehler der Formeln dieser Zeile, nur {pid: code}
+        d["fx_err"] = fx_err_in(d.get("fx_err"))
+        if not d["fx_err"]:
+            d.pop("fx_err")
     if d.get("kind") == "database" and feature(peer, "db"):      # 2.3: Datenbanken anderer Instanzen oeffnen/bearbeiten
         d["schema"] = schema_in(pid, d.get("schema"))
     elif d.get("kind") == "database":        # aeltere Gegenstelle (Protokoll 1): nur ein Hinweis
@@ -2433,7 +2441,8 @@ def _note_in(c, peer, d, uid):
     return d
 
 
-PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups", "tplbtn", "widgets1", "rowtpl")
+PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups", "tplbtn", "widgets1", "rowtpl",
+             "formula1")
 
 
 def remote_info(peer):
@@ -2451,6 +2460,16 @@ def props_in(pid, props):
             v = [ref(pid, x) for x in v if _ok_rid(x)]
         out[k] = v
     return out
+
+
+_FXCODE = re.compile(r"[a-z]{1,16}")
+
+
+def fx_err_in(v):
+    """fx_err einer Zeile der anderen Instanz: {eigenschaft: code} - nur kurze Kennungen."""
+    if not isinstance(v, dict):
+        return {}
+    return {k: c for k, c in list(v.items())[:40] if isinstance(k, str) and len(k) <= 40 and isinstance(c, str) and _FXCODE.fullmatch(c)}
 
 
 def props_out(pid, props):
@@ -2586,7 +2605,11 @@ def _w_note_patch(uid, nid, b):
     p, status, d = _proxy(uid, pid, "PATCH", f"/fed/v2/notes/{rid}" if v2 else f"/fed/v1/notes/{rid}", body=b)
     if status != 200 or not isinstance(d, dict):
         return _pass_err(p, status, d)
-    return _json(200, {k: d.get(k) for k in ("ok", "updated", "rev", "srev") if k in d or k != "srev"})
+    out = {k: d.get(k) for k in ("ok", "updated", "rev", "srev") if k in d or k != "srev"}
+    if isinstance(d.get("calc"), dict):          # 2.5 (formula1): Formel-/Rollup-Werte der Zeile nach dem Speichern
+        out["calc"] = props_in(pid, {k: v for k, v in list(d["calc"].items())[:40] if isinstance(k, str) and len(k) <= 40})
+        out["fx_err"] = fx_err_in(d.get("fx_err"))
+    return _json(200, out)
 
 
 def _w_comments(uid, nid, resolved):

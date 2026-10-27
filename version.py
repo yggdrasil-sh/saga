@@ -25,6 +25,10 @@ VERSION_LABEL = f"{VERSION} ({BUILD})" if BUILD else VERSION
 API_LEVEL = 1
 # Aeltere Apps bekommen den Hinweis "bitte aktualisieren" (alles darunter kann wichtige Funktionen nicht).
 MIN_APP = "1.0.0"
+# Funktionen dieses Servers fuer die Apps (/api/version "features"): Editoren/Anzeigen nur zeigen, wenn gemeldet.
+# formula1 = Formel-Eigenschaften (Werte fertig in props, rtype im Schema, fx_err je Zeile, POST .../formula/check),
+# rollup1 = Rollup-Eigenschaften (wie Formeln), dbgroup1 = Gruppieren nach Formel/Rollup (groups mit value).
+FEATURES = ("formula1", "rollup1", "dbgroup1")
 REPO = os.environ.get("SAGA_UPDATE_REPO", "yggdrasil-sh/saga")
 
 
