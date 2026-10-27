@@ -16,6 +16,25 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5, Paket 7 Teil A: Aufgaben zusammenführen)
+- **Datenbanken als Aufgabenquelle.** Offene Einträge gewählter Datenbanken erscheinen zusammen mit den Saga-Aufgaben in
+  einer Liste (Dashboard/Aufgabenleiste, Block „Aufgaben“, „Mein Tag“), fertig sortiert nach überfällig, heute, Datum und
+  Priorität, mit Badge der Datenbank; Abhaken setzt den Status (Gruppe „Erledigt“), das Häkchen bzw. die gewählte
+  Auswahl-Option – mit „Rückgängig“. DB-Menü „Als Aufgabenquelle verwenden …“: Zuordnung (erledigt, Datum, Priorität,
+  zuständige Person) wird aus den Typen vorgeschlagen.
+- **Abo je Person:** eigene Datenbanken mit allen offenen Einträgen, geteilte nur mit den mir zugewiesenen (je Quelle
+  umschaltbar), höchstens 20 Quellen mit je 500 offenen Einträgen. Rechte werden bei jedem Lesen neu geprüft; ein Abo ohne
+  Zugriff verschwindet. Datenbanken anderer Saga-Server folgen später.
+- **Neue Aufgabe mit Ziel** (Inbox oder eine Quelle, zuletzt gewähltes Ziel gemerkt); Schaltfläche „Saga-Aufgabe“ kann
+  eine Datenbank als Ziel haben. Die Vorlage „Aufgaben & Projekte“ richtet ihre Aufgaben-DB gleich als Quelle ein; alte
+  Instanzen bekommen einmalig einen Hinweis.
+- **Widget „Aufgaben“** zählt Quellen mit (abschaltbar), „diese Woche erledigt“ auch für Datenbank-Einträge.
+- **Tägliche Zusammenfassung** „heute fällig / überfällig“ (Mitteilung und Push, Kategorie „Aufgaben“), standardmäßig
+  aus, Uhrzeit und Zeitzone je Konto.
+- **Apps:** `features` `tasksrc1`, `taskdue1`; `GET /api/tasks?with_sources=1`, `PATCH /api/tasks/src/{zeile}`,
+  `POST /api/app/tasks/src/{zeile}/done`, `GET /api/app/today?sources=1` – Format und Offline-Hinweise in
+  `docs/APP-API.md` „Aufgabenquellen“. **Migration 25** (Tabellen `task_source`, `row_done`).
+
 ### Neu (2.5, Paket 4: Widgets Etappe 2 und Diagramme)
 - **Wetter-Widget.** Heute groß, darunter die nächsten Tage (bis 7) mit Symbol, Höchst-/Tiefstwert und Regenwahrscheinlichkeit;
   Ort über die Ortssuche des Servers oder Koordinaten (gespeichert auf ~1 km gerundet). Daten von Open-Meteo, abgerufen

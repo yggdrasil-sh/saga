@@ -975,6 +975,105 @@ Neue Art `db.assigned` (`GET /api/notifications`, Einstellung je Konto unter `/a
 Push-Kategorie `assign`): Text „{name} hat dich eingetragen“ (gebündelt je Zeile, `count`), `note` = die Zeile. Nicht an
 sich selbst, nicht bei `notify: false`, nur mit Zugriff; Personen anderer Instanzen über deren Server.
 
+## Aufgabenquellen: Datenbank-Zeilen in der Aufgabenliste (2.5, Paket 7 Teil A)
+
+Offene Zeilen von Datenbanken erscheinen zusammen mit den eigenen Saga-Aufgaben (Inbox) in **einer** Liste. Ob ein Server
+das kann: `GET /api/version` → `features` enthält `tasksrc1` (Liste, Abhaken, Anlegen) bzw. `taskdue1` (tägliche
+Zusammenfassung). Ohne die Fähigkeit: wie 2.4 (nur Inbox). Alles rückwärtskompatibel, `MIN_APP` bleibt; Apps ohne
+`with_sources=1` bekommen die bisherige Antwort unverändert.
+
+### Zuordnung (im Schema der Datenbank)
+
+```
+"tasks": {"done": "status", "done_values": ["erledigt"], "open_value": "offen",
+          "due": "faellig", "prio": "prio", "prio_map": {"hoch": 1}, "assignee": "zugewiesen"}
+```
+
+`done` ist Pflicht: Status (erledigt = Option der Gruppe `done`), Häkchen (`true`) oder Auswahl mit `done_values`.
+Alles andere optional; der Server verwirft Schlüssel mit falschem Typ. Eingerichtet wird im Web (DB-Menü „Als
+Aufgabenquelle verwenden …“, ab Rolle *Bearbeiten*) bzw. `PUT /api/notes/{db}/tasksource {map?, scope?, subscribe?}`.
+Regel 0 gilt: Schema roh zurückschreiben, dann bleibt `tasks` auch in Apps erhalten, die es nicht kennen.
+Die Vorlage „Aufgaben & Projekte“ setzt die Zuordnung und abonniert die Aufgaben-DB beim Anlegen.
+
+### Abo je Person
+
+Jede Person abonniert Quellen selbst (höchstens **20**, `409` darüber). Eigene Datenbank: Standard `scope: "all"` (alle
+offenen Zeilen); geteilte mit Personen-Eigenschaft: `"assigned"` (nur mir zugewiesene) – je Quelle umschaltbar. Ohne
+Personen-Eigenschaft gibt es nur `all`. Jedes Lesen prüft die Rechte neu (ab *Lesen*); ein Abo ohne Zugriff liefert nichts
+und wird entfernt. Datenbanken anderer Saga-Server (negative IDs) gehen noch nicht (`400`).
+
+- `GET /api/notes/{db}/tasksource` → `{db, map, suggest, scope, default_scope, can_map, hint, count, max}`
+- `PUT /api/notes/{db}/tasksource` `{map?: {…}|null, scope?: "all"|"assigned", subscribe?: bool}`
+- `DELETE /api/notes/{db}/tasksource` – Abo entfernen
+- `GET /api/tasks/sources` → `{sources: […], max: 20}` (auch Quellen ohne Zugriff/Zuordnung, zum Entfernen)
+
+### Lesen: `GET /api/tasks?with_sources=1&today=YYYY-MM-DD&tz=Europe/Berlin`
+
+Bisherige Felder `open`/`done` bleiben; dazu (`sources=1` ist gleichwertig):
+
+```
+"items": [
+  {"key": "t:12", "kind": "task", "id": 12, "text": "…", "due": "2026-10-28", "prio": 2, "repeat": null,
+   "done": false, "overdue": false},
+  {"key": "r:345", "kind": "row", "id": 345, "src": 77, "text": "<Zeilentitel>", "due": "2026-10-29", "time": "09:30",
+   "due_end": "2026-10-30", "prio": 1, "done": false, "overdue": false, "edit": true, "assignees": ["~ab12…"]}],
+"sources": [{"db": 77, "title": "Aufgaben", "icon": "☑️", "role": "owner", "scope": "all", "own": true, "count": 14,
+             "truncated": false, "map": {"done": "status", "done_type": "status", "done_value": "erledigt",
+             "open_value": "offen", "due": "faellig", "prio": "prio", "prio_values": {"1": "hoch", "2": "mittel",
+             "3": "niedrig"}, "assignee": "zugewiesen"}}],
+"people": {"~ab12…": {"name": "…", "avatar": null, "me": true, "remote": false}},
+"limits": {"sources": 20, "rows": 500}
+```
+
+- `items` ist **fertig sortiert** (überfällig, heute, mit Datum, ohne Datum; je Priorität 1 hoch … 3 niedrig) – Apps
+  übernehmen die Reihenfolge, keine eigene Mischlogik. `key` ist über beide Arten eindeutig.
+- `time`/`due_end` nur bei Datum mit Uhrzeit bzw. Zeitraum (in `tz`, sonst Serverzeitzone). `overdue` gilt fürs Ende.
+- Personen nur als Kennung (Handle `~…`, fremde `@name@host`), Namen über `people` – **nie Anmeldenamen**.
+- Höchstens 500 offene Zeilen je Quelle (`truncated: true`). Weitere Quell-Eigenschaften: `inactive` (DB gelöscht/
+  archiviert), `unmapped` (Zuordnung entfernt), `no_assignee` (`assigned` ohne Personen-Eigenschaft).
+- `edit: false` = nur Lesen: Häkchen ausgrauen.
+- Widget/„Heute“: `GET /api/app/today?sources=1` liefert zusätzlich `items` (höchstens 20), `more` (Rest), `sources`
+  (nur `db`, `title`, `icon`) und `people`.
+
+### Abhaken und ändern
+
+- `PATCH /api/tasks/src/{zeile}` `{done?: bool, due?: "YYYY-MM-DD"|null, prio?: 1|2|3, text?}` → `{ok, src, done?,
+  done_value?}`. Gleicher Weg wie das Props-PATCH der Seite (Rechte ab *Bearbeiten*, sonst `403`; ohne Zugriff `404`;
+  Live, Versionen, Mitteilungen). `done: false` setzt `open_value`. Keine Wiederholung für Zeilen.
+- App-Schlüssel (Widget): `POST /api/app/tasks/src/{zeile}/done` `{done: true|false}` – gleiche Rechte.
+- Inbox-Aufgaben weiter über `PATCH /api/tasks/{id}` (`kind: "task"`).
+
+### Neue Aufgabe mit Ziel
+
+`POST /api/tasks` `{text, src: <db>, due?, prio?}` legt eine **Zeile** in der Quelle an (Titel = Text, Standardvorlage der
+Datenbank, Status = `open_value`; bei Abo `assigned` bzw. fremder DB bin ich zugewiesen) → `{id, kind: "row", src}`.
+Ohne `src`: Inbox wie bisher. Zielauswahl: Inbox + `sources` mit `map`, ohne `inactive` und Rolle `owner`/`edit`.
+Schaltfläche `action: "task"` darf `target: <db>` tragen (Meeting-Vorlage); ältere Clients ignorieren es → Inbox.
+
+### Offline-Warteschlange (Apps)
+
+- Abhaken einer Zeile offline: entweder `PATCH /api/tasks/src/{zeile}` später nachholen, oder – wo eine Warteschlange für
+  Datenbank-Werte schon existiert (Android `DbStore`) – `PATCH /api/notes/{zeile}` `{"props": {map.done: map.done_value}}`
+  (bzw. `open_value`; Häkchen: `true`/`false`). Das Props-PATCH verschmilzt einzelne Eigenschaften, andere Werte bleiben.
+- Schlüssel der Warteschlange je Eintrag (`t:<id>`/`r:<id>`), letzte Aktion gewinnt (abhaken + wieder öffnen = nichts).
+- Beim Nachholen: `403`/`404` → Eintrag verwerfen und Liste neu laden (Recht entzogen, Zeile gelöscht); `400`
+  (Zuordnung geändert) → neu laden, `map` neu lesen, nicht wiederholen. Netzfehler/`5xx` → behalten.
+- Nach jedem erfolgreichen Nachholen `GET /api/tasks?with_sources=1` neu laden (die Reihenfolge rechnet der Server).
+
+### Widget „Aufgaben“ (`src: "tasks"`)
+
+Zählt Inbox **und** abonnierte Quellen (offen, heute fällig, überfällig, offen diese Woche, **diese Woche erledigt** – für
+Zeilen aus dem Zeitpunkt des Übergangs offen → erledigt, egal wo abgehakt). `cfg.include_sources: false` = nur Inbox;
+fehlt der Schlüssel, gilt *an* (auch für bestehende Widgets).
+
+### Tägliche Zusammenfassung (`task.due`, taskdue1)
+
+- `GET /api/tasks/digest` → `{on: false, time: "07:30", tz: ""}`; `PUT` mit denselben Feldern (auch einzeln). Standard
+  **aus**. `tz` leer = Zeitzone der Ruhezeiten bzw. des Servers.
+- Ab der Uhrzeit einmal je Tag, nur wenn etwas heute fällig oder überfällig ist: Mitteilung `task.due`
+  (`GET /api/notifications`: `text` „Heute fällig: 2 · überfällig: 1“, `url: "/"`) und Push in der Kategorie `tasks`
+  (nur „Aufgaben heute fällig oder überfällig“ – keine Titel, keine Namen).
+
 ## Lesezeichen aus der Teilen-Erweiterung (2.5)
 
 Nur mit App-Schlüssel `hk_…` (`Authorization: Bearer hk_…`), nie mit Sitzung. Neue Endpunkte, `MIN_APP` ändert sich nicht.
