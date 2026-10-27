@@ -2976,6 +2976,40 @@
   // 2.5 (Paket 1): Formel und Rollup - Werte rechnet der Server (saga/dbcalc.py), Typ des Ergebnisses in p.rtype
   TYPES.formula = [T('Formel'), 'ƒ']; TYPES.rollup = [T('Rollup'), '⤴'];
   OPS.list = OPS.relation;
+  // 2.5 (Paket 1): Personen (Werte = Kennungen: Handle '~…' bzw. '@name@host'; Namen aus DB.people) und Dateien
+  TYPES.person = [T('Person'), '👤']; TYPES.files = [T('Dateien'), '📎'];
+  OPS.person = [['me', T('ist mir zugewiesen')], ['contains', T('enthält')], ['not_contains', T('enthält nicht')], ['is_empty', T('ist leer')], ['not_empty', T('ist nicht leer')]];
+  OPS.files = [['is_empty', T('ist leer')], ['not_empty', T('ist nicht leer')]];
+  var PEOPLE = {};              // Kennung -> {name, avatar, me, remote, gone} (aus /rows bzw. Einzelzeile, gesammelt)
+  function addPeople(pm) { if (pm && typeof pm === 'object') Object.keys(pm).forEach(function (k) { PEOPLE[k] = pm[k]; }); }
+  function personName(ref) { var e = PEOPLE[ref]; return e && typeof e.name === 'string' ? e.name : ''; }
+  function meRef() { var k = Object.keys(PEOPLE).find(function (x) { return PEOPLE[x] && PEOPLE[x].me; }); return k || null; }
+  function personChips(refs) {
+    var s = el('span', 'pp-chips');
+    (refs || []).forEach(function (r) {
+      var e = PEOPLE[r] || {}, c = el('span', 'pp-chip' + (e.gone ? ' pp-gone' : ''));
+      var a = el('span', 'pp-av'); a.setAttribute('aria-hidden', 'true'); a.textContent = ((e.name || '?').trim()[0] || '?').toUpperCase();
+      c.appendChild(e.avatar ? HK.avatarImg(a, e.avatar, 18) : a);
+      c.appendChild(el('span', 'pp-n', e.name || T('Unbekannte Person'))); c.title = e.name || '';
+      s.appendChild(c);
+    });
+    return s;
+  }
+  function fileSize(n) { return typeof n !== 'number' ? '' : n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (Math.round(n / 104857.6) / 10) + ' MB'; }
+  function fileChips(list, clickable) {
+    var s = el('span', 'fl-chips');
+    (list || []).forEach(function (f) {
+      if (!f || typeof f.url !== 'string') return;
+      var a = el(clickable ? 'a' : 'span', 'fl-chip' + (f.image ? ' fl-img' : ''));
+      if (clickable) { a.href = f.url; a.target = '_blank'; a.rel = 'noopener'; a.addEventListener('click', function (e) { e.stopPropagation(); }); }
+      if (f.image) { var im = el('img'); im.loading = 'lazy'; im.alt = ''; im.src = thumb(f.url, 160); a.appendChild(im); }
+      else a.appendChild(el('span', 'fl-ic', '📄'));
+      a.appendChild(el('span', 'fl-n', f.name || T('Datei')));
+      a.title = (f.name || '') + (f.size ? ' (' + fileSize(f.size) + ')' : '');
+      s.appendChild(a);
+    });
+    return s;
+  }
   // Filter-Bedingungen einer Spalte: Formel/Rollup wie ihr Ergebnistyp
   function opsOf(p) { var t = p ? (isFx(p) ? ({ number: 'number', checkbox: 'checkbox', date: 'date', list: 'list' }[p.rtype] || 'text') : p.type) : 'text'; return OPS[t] || OPS.text; }
   var FX_ERR = { syntax: T('Formel fehlerhaft'), type: T('Typ passt nicht'), num: T('Rechenfehler (z. B. Division durch 0)'), len: T('Ergebnis zu lang'),
@@ -3014,7 +3048,7 @@
   function isFx(p) { return !!p && (p.type === 'formula' || p.type === 'rollup'); }
   function numLike(p) { return !!p && (p.type === 'number' || p.type === 'calc' || (isFx(p) && p.rtype === 'number')); }
   // Gruppieren (Board/Tabelle/Liste): Auswahl oder Formel/Rollup mit Ergebnis Zahl/Text/Haekchen/Datum (Gruppen nur lesend)
-  function groupable(p) { return !!p && (p.type === 'select' || (isFx(p) && ['number', 'text', 'checkbox', 'date'].indexOf(p.rtype) >= 0)); }
+  function groupable(p) { return !!p && (p.type === 'select' || p.type === 'person' || (isFx(p) && ['number', 'text', 'checkbox', 'date'].indexOf(p.rtype) >= 0)); }
   // Wochentagsnamen aller Sprachen -> 0 (Montag) .. 6 - wie saga/formula.py WEEKDAY_INDEX (Gruppen nach formatDate "dddd")
   function weekdayIndex() {
     if (weekdayIndex.m) return weekdayIndex.m;
@@ -3053,7 +3087,23 @@
     return [{ none: true, rows: empty }].concat(idx.map(function (i) { return { v: vals[i], rows: buckets[order[i]].rows }; }));
   }
   // Spalten/Gruppen nach g: [{o: Option | {id, fx, v} | null, rows}] - erst "Ohne <Spalte>", dann Optionen bzw. Werte
+  // Gruppen nach Personen (je Kombination) - GENAU wie saga/dbquery.py person_groups: Namen klein mit ", " (UTF-16), dann Kennung
+  function personGroups(rows, g) {
+    var empty = [], order = [], buckets = {}, own = Object.prototype.hasOwnProperty;
+    rows.forEach(function (r) {
+      var v = (r.props || {})[g.id], refs = Array.isArray(v) ? v.filter(function (x) { return typeof x === 'string'; }) : [];
+      if (!refs.length) { empty.push(r); return; }
+      var k = refs.join(',');
+      if (!own.call(buckets, k)) { buckets[k] = { n: refs.map(personName).join(', ').toLowerCase(), refs: refs, rows: [] }; order.push(k); }
+      buckets[k].rows.push(r);
+    });
+    order.sort(function (a, b) { var x = buckets[a].n, y = buckets[b].n; return x < y ? -1 : x > y ? 1 : (a < b ? -1 : a > b ? 1 : 0); });
+    return [{ none: true, rows: empty }].concat(order.map(function (k) { return { k: k, refs: buckets[k].refs, rows: buckets[k].rows }; }));
+  }
   function groupCols(rows, g) {
+    if (g.type === 'person') {
+      return personGroups(rows, g).map(function (c) { return { o: c.none ? null : { id: c.k, fx: true, person: c.refs, name: c.refs.map(personName).join(', '), color: 'gray' }, rows: c.rows }; });
+    }
     if (g.type !== 'select') {
       return valueGroups(rows, g).map(function (c) { return { o: c.none ? null : { id: String(c.v), fx: true, v: c.v, name: String(c.v), color: 'gray' }, rows: c.rows }; });
     }
@@ -3142,6 +3192,7 @@
   // Kopf einer Gruppe/Board-Spalte: Option als Marke, Formel-Wert als Text
   function groupChip(o, g) {
     if (!o.fx) return optChip(o);
+    if (o.person) return personChips(o.person);
     var t = g.rtype === 'checkbox' ? (o.v === true ? '☑ ' + g.name : '☐ ' + g.name) : fxText(g, o.v);
     return el('span', 'opt opt-gray fx-group', t);
   }
@@ -3357,6 +3408,10 @@
       return api('PATCH', '/api/notes/' + row.id, { props: patch }).then(function (d) {
         wgSoon();                              // fix27 #3: Kennzahlen der Seite nach eigener Aenderung neu
         if (value === null || value === '' || value === false || (Array.isArray(value) && !value.length)) delete row.props[pid]; else row.props[pid] = value;
+        if (d && d.values && typeof d.values === 'object') {          // 2.5: Personen/Dateien so, wie der Server sie gespeichert hat
+          addPeople(d.people);
+          Object.keys(d.values).forEach(function (k) { var x = d.values[k]; if (x == null || (Array.isArray(x) && !x.length)) delete row.props[k]; else row.props[k] = x; });
+        }
         applyCalc(row, d);
       }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
     }
@@ -3373,6 +3428,75 @@
       var tr = BOX.querySelector('tr[data-id="' + row.id + '"]'); if (!tr) return;
       var vis = visibleProps(), cells = tr.querySelectorAll('td.db-cell:not(.db-title):not(.db-cell-pad)');
       vis.forEach(function (p, i) { if (isFx(p) && cells[i]) refreshCell(cells[i], p, row); });
+    }
+    // 2.5: Personen auswaehlen - nur, wer Zugriff auf die Datenbank hat (GET /api/notes/{db}/people, Suche nach Name)
+    function personMenu(anchor, prop, row, onDone) {
+      HK.openMenu(anchor, function (m) {
+        var cur = (row.props[prop.id] || []).slice(), single = prop.multi === false, t0 = null;
+        var inp = el('input', 'menu-input'); inp.type = 'text'; inp.maxLength = 60; inp.placeholder = T('Person suchen …'); inp.setAttribute('aria-label', T('Person suchen …'));
+        m.appendChild(inp);
+        var list = el('div', 'menu-opts'); m.appendChild(list);
+        function toggle(ref) {
+          var a = single ? (cur[0] === ref ? [] : [ref]) : cur.slice(), i = a.indexOf(ref);
+          if (!single) { if (i >= 0) a.splice(i, 1); else a.push(ref); }
+          HK.closeMenu(); setProp(row, prop.id, a.length ? a : null).then(onDone);
+        }
+        function item(p) {
+          var b = el('button', 'menu-item opt-item'); b.type = 'button'; b.appendChild(personChips([p.ref]));
+          if (p.me) b.appendChild(el('span', 'mi-hint', T('ich')));
+          if (cur.indexOf(p.ref) >= 0) b.appendChild(el('span', 'opt-check', '✓'));
+          b.addEventListener('click', function () { toggle(p.ref); }); return b;
+        }
+        function draw(people) {
+          list.textContent = '';
+          cur.filter(function (r) { return !people.some(function (p) { return p.ref === r; }); }).forEach(function (r) {
+            list.appendChild(item({ ref: r }));                 // eingetragen, aber (nicht mehr) in der Auswahl: abwaehlbar
+          });
+          people.forEach(function (p) { PEOPLE[p.ref] = PEOPLE[p.ref] || { name: p.name, avatar: p.avatar, me: p.me, remote: p.remote }; list.appendChild(item(p)); });
+          if (!list.childNodes.length) list.appendChild(el('div', 'menu-hint', T('Keine Person mit Zugriff gefunden.')));
+        }
+        function load() {
+          api('GET', '/api/notes/' + DB.id + '/people?q=' + encodeURIComponent(inp.value.trim())).then(function (d) { draw(d.people || []); })
+            .catch(function (err) { list.textContent = ''; list.appendChild(el('div', 'menu-hint', err.message)); });
+        }
+        inp.addEventListener('input', function () { clearTimeout(t0); t0 = setTimeout(load, 200); });
+        inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); var f = list.querySelector('.menu-item'); if (f) f.click(); } });
+        load(); setTimeout(function () { inp.focus(); }, 0);
+      });
+    }
+    // 2.5: Dateien einer Zeile: Liste (oeffnen, entfernen) und Hochladen (gehoert dem Eigentuemer der Datenbank)
+    function filesMenu(anchor, prop, row, onDone) {
+      HK.openMenu(anchor, function (m) {
+        var cur = (row.props[prop.id] || []).slice(), max = prop.max || 10;
+        m.appendChild(HK.menuLabel(prop.name));
+        cur.forEach(function (f, i) {
+          var line = el('div', 'fl-line'); line.appendChild(fileChips([f], true));
+          if (f.size) line.appendChild(el('span', 'mi-hint', fileSize(f.size)));
+          var x = el('button', 'flt-x', '×'); x.type = 'button'; x.setAttribute('aria-label', T('Datei entfernen'));
+          x.addEventListener('click', function () { var a = cur.slice(); a.splice(i, 1); HK.closeMenu(); setProp(row, prop.id, a.length ? a : null).then(onDone); });
+          line.appendChild(x); m.appendChild(line);
+        });
+        if (cur.length < max) {
+          var fi = el('input'); fi.type = 'file'; fi.hidden = true; fi.multiple = true;
+          var up = el('button', 'menu-item', T('+ Datei hochladen …')); up.type = 'button';
+          up.addEventListener('click', function () { fi.click(); });
+          fi.addEventListener('change', function () {
+            var fs = Array.prototype.slice.call(fi.files || [], 0, max - cur.length); if (!fs.length) return;
+            up.disabled = true; up.textContent = T('Hochladen …');
+            var done = [];
+            fs.reduce(function (pr, f) {
+              return pr.then(function () {
+                var fd = new FormData(); fd.append('file', f, f.name);
+                return fetch('/api/files?note=' + encodeURIComponent(row.id), { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1' }, body: fd })
+                  .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok || !d.file) throw new Error(d.error || ('HTTP ' + r.status)); done.push({ url: d.file.url, name: d.file.name }); }); });
+              });
+            }, Promise.resolve()).then(function () {
+              HK.closeMenu(); return setProp(row, prop.id, cur.map(function (x) { return { url: x.url, name: x.name }; }).concat(done));
+            }).then(onDone).catch(function (err) { HK.toast(T('Nicht hochgeladen: {err}', { err: err.message })); HK.closeMenu(); if (done.length) setProp(row, prop.id, cur.concat(done)).then(onDone); });
+          });
+          m.appendChild(up); m.appendChild(fi);
+        } else m.appendChild(el('div', 'menu-hint', T('Höchstens {n} Dateien', { n: max })));
+      });
     }
     // Auswahl-Menue fuer select / multi_select, inkl. neue Option anlegen
     // Relation bearbeiten: Eintraege der Ziel-Datenbank suchen, (ab)waehlen oder neu anlegen
@@ -3471,6 +3595,13 @@
         cb.addEventListener('change', function () { setProp(row, prop.id, cb.checked).then(onDone); });
         wrap.appendChild(cb); return wrap;
       }
+      if (t === 'person' || t === 'files') {
+        var pb = el('button', 'val-btn'); pb.type = 'button'; pb.setAttribute('aria-label', prop.name);
+        if ((v || []).length) pb.appendChild(t === 'person' ? personChips(v) : fileChips(v, false)); else pb.appendChild(el('span', 'val-empty', T('Leer')));
+        if ((DB.unsupported || []).indexOf(t) >= 0) { pb.disabled = true; pb.title = T('Auf dem Server dieser Datenbank nicht verfügbar'); }
+        pb.addEventListener('click', function () { (t === 'person' ? personMenu : filesMenu)(pb, prop, row, onDone); });
+        wrap.appendChild(pb); return wrap;
+      }
       if (t === 'relation') {
         var rb = el('button', 'val-btn'); rb.type = 'button'; rb.setAttribute('aria-label', prop.name);
         if ((v || []).some(function (id) { return byId(id); })) rb.appendChild(relChips(v, false)); else rb.appendChild(el('span', 'val-empty', T('Leer')));
@@ -3535,7 +3666,8 @@
       if (!p) return (r.title || '').toLowerCase();
       var v = propValue(p, r);
       if (p.type === 'select') { var o = (p.options || []).findIndex(function (x) { return x.id === v; }); return o < 0 ? 1e9 : o; }
-      if (p.type === 'multi_select' || p.type === 'relation' || (isFx(p) && p.rtype === 'list')) return (v || []).length;
+      if (p.type === 'person') return Array.isArray(v) && v.length ? personName(v[0]).toLowerCase() : null;   // wie saga/dbquery.py
+      if (p.type === 'multi_select' || p.type === 'relation' || p.type === 'files' || (isFx(p) && p.rtype === 'list')) return (v || []).length;
       if (p.type === 'checkbox') return v ? 1 : 0;
       return v == null ? null : (typeof v === 'string' ? v.toLowerCase() : v);
     }
@@ -3612,6 +3744,15 @@
           m.appendChild(HK.menuItem(T('Formel bearbeiten …'), function () { formulaEditor(prop); }, { icon: 'ƒ', hint: prop.rtype ? fxTypeName(prop.rtype) : '' }));
         }
         if (prop.type === 'rollup') rollupMenu(m, prop);
+        if (prop.type === 'person') {              // 2.5: mehrere Personen, Mitteilung bei Zuweisung (je Eigenschaft)
+          m.appendChild(HK.menuItem(T('Mehrere Personen'), function () { prop.multi = prop.multi === false; saveSchema().then(renderDb); }, { icon: '👥', on: prop.multi !== false }));
+          m.appendChild(HK.menuItem(T('Eingetragene benachrichtigen'), function () { prop.notify = prop.notify === false; saveSchema().then(renderDb); }, { icon: '🔔', on: prop.notify !== false }));
+        }
+        if (prop.type === 'files') {
+          m.appendChild(HK.menuItem(T('Höchstens'), null, { icon: '#', hint: String(prop.max || 10), sub: function (sm) {
+            [1, 3, 5, 10, 20].forEach(function (n) { sm.appendChild(HK.menuItem(String(n), function () { prop.max = n; saveSchema().then(renderDb); }, { on: (prop.max || 10) === n })); });
+          } }));
+        }
         if (numLike(prop)) {
           var FMT = [['', T('Zahl'), '#'], ['percent', T('Prozent'), '%'], ['euro', T('Euro'), '€']], SHOW = [['', T('Nur Zahl'), '#'], ['bar', T('Balken (0–100)'), '▬'], ['ring', T('Ring (0–100)'), '◔']];
           var cf = FMT.find(function (f) { return f[0] === (prop.fmt || ''); }), cs = SHOW.find(function (f) { return f[0] === (prop.show || ''); });
@@ -3775,6 +3916,7 @@
             } }));
             return;
           }
+          if ((t === 'person' || t === 'files') && !remCap(byId(DB.id), 'dbx1')) return;      // Datenbank eines aelteren Servers
           m.appendChild(HK.menuItem(TYPES[t][0], function () {
             var p = { id: rid(), name: TYPES[t][0], type: t }; if (t === 'select' || t === 'multi_select') p.options = [];
             if (t === 'formula') { p.expr = ''; DB.schema.props.push(p); saveSchema().then(renderDb).then(function () { formulaEditor(p); }); return; }
@@ -4087,6 +4229,7 @@
     function loadDb() {   // tz: Formeln mit today()/now()/Datum rechnet der Server in der Zeitzone des Browsers
       return api('GET', '/api/notes/' + DB.id + '/rows' + TZQ).then(function (d) {
         DB.schema = d.schema; DB.rows = d.rows; DB.templates = d.templates || []; ensureViews(); DB.snap = JSON.stringify(DB.schema);
+        addPeople(d.people); DB.unsupported = d.unsupported || [];
         DB.role = d.role || 'owner';
         if (OPTS.getViews) {
           var had = (OPTS.getViews() || []).length; DB.localViews = initLocalViews();
@@ -4268,6 +4411,7 @@
       if (f.op === 'checked') return !!v;
       if (f.op === 'unchecked') return !v;
       if (f.op === 'today' || f.op === 'this_week' || f.op === 'this_month') return !empty && relDate(f.op, v);
+      if (f.op === 'me') { var me = meRef(); return Array.isArray(v) && me != null && v.indexOf(me) >= 0; }   // 2.5: Personen
       var fv = f.value; if (fv === '' || fv == null) return true;        // unvollstaendiger Filter zaehlt nicht
       if (p.type === 'relation') fv = +fv;                                // Relation: Eintrags-IDs sind Zahlen
       if ((f.op === 'contains' || f.op === 'not_contains') && p.type === 'relation' && !Array.isArray(v)) v = [];   // ohne Verknuepfung = leere Liste (sonst fv.toLowerCase auf einer Zahl; wie saga/dbquery.py)
@@ -4289,6 +4433,8 @@
       DB.schema.props.forEach(function (p) {
         var v = r.props[p.id]; if (v == null) return;
         if (p.type === 'relation') (v || []).forEach(function (id) { var x = byId(id); if (x) parts.push(label(x)); });
+        else if (p.type === 'person') (Array.isArray(v) ? v : []).forEach(function (r) { parts.push(personName(r)); });
+        else if (p.type === 'files') (Array.isArray(v) ? v : []).forEach(function (f) { if (f && typeof f.name === 'string') parts.push(f.name); });
         else if (p.type === 'select' || p.type === 'multi_select') (Array.isArray(v) ? v : [v]).forEach(function (id) { var o = (p.options || []).find(function (x) { return x.id === id; }); if (o) parts.push(o.name); });
         else parts.push(String(v));
       });
@@ -4316,10 +4462,13 @@
             if (NOVALUE[f.op]) op.classList.add('flt-wide');
             if (!NOVALUE[f.op]) {
               var val;
-              if (p.type === 'select' || p.type === 'multi_select' || p.type === 'relation') {
+              if (p.type === 'select' || p.type === 'multi_select' || p.type === 'relation' || p.type === 'person') {
                 val = el('select', 'flt-val'); var e0 = el('option', null, T('– wählen –')); e0.value = ''; val.appendChild(e0);
-                (p.type === 'relation' ? relRows(p.target).map(function (x) { return { id: x.id, name: label(x) }; }) : (p.options || []))
+                (p.type === 'relation' ? relRows(p.target).map(function (x) { return { id: x.id, name: label(x) }; })
+                  : p.type === 'person' ? Object.keys(PEOPLE).filter(function (k) { return !PEOPLE[k].gone; }).map(function (k) { return { id: k, name: PEOPLE[k].name }; })
+                  : (p.options || []))
                   .forEach(function (o) { var opt = el('option', null, o.name); opt.value = o.id; val.appendChild(opt); });
+                if (p.type === 'person' && f.value && !PEOPLE[f.value]) { var ox = el('option', null, T('Unbekannte Person')); ox.value = f.value; val.appendChild(ox); }
               } else {
                 val = el('input', 'flt-val'); val.type = (p.type === 'date' || AUTO[p.type] || (isFx(p) && p.rtype === 'date')) ? 'date' : 'text';
                 if (numLike(p)) val.inputMode = 'decimal';
@@ -4499,6 +4648,8 @@
         if (p.type === 'select' || p.type === 'multi_select') {
           (Array.isArray(v) ? v : [v]).forEach(function (id) { var o = (p.options || []).find(function (x) { return x.id === id; }); if (o) line.appendChild(optChip(o)); });
         } else if (p.type === 'relation') line.appendChild(relChips(v, false));
+        else if (p.type === 'person') line.appendChild(personChips(v));
+        else if (p.type === 'files') line.appendChild(fileChips(v, false));
         else if (p.type === 'checkbox') line.textContent = '☑ ' + p.name;
         else if (p.type === 'date') line.textContent = '▦ ' + fDate2.format(new Date(v + 'T00:00:00'));
         else if (numLike(p)) { line.appendChild(el('span', null, p.name + ': ')); line.appendChild(numNode(p, v)); }
@@ -4568,6 +4719,8 @@
       if (v == null || v === '' || v === false || (Array.isArray(v) && !v.length)) return null;
       var s = el('span', 'dv dv-' + p.type);
       if (p.type === 'relation') { var rc = relChips(v, true); return rc.childNodes.length ? rc : null; }
+      if (p.type === 'person') return Array.isArray(v) && v.length ? personChips(v) : null;
+      if (p.type === 'files') return Array.isArray(v) && v.length ? fileChips(v, true) : null;
       if (p.type === 'select' || p.type === 'multi_select') {
         (Array.isArray(v) ? v : [v]).forEach(function (id) { var o = (p.options || []).find(function (x) { return x.id === id; }); if (o) s.appendChild(optChip(o)); });
         return s.childNodes.length ? s : null;
@@ -4806,6 +4959,7 @@
     var box = $('pg-props'); box.textContent = ''; box.hidden = false;
     var inst = makeDbView(null); inst.DB.id = parent.id; inst.DB.schema = parent.schema || { props: [] };   // neue Optionen -> richtige Datenbank
     var row = { id: S.cur.id, props: S.cur.props || {}, created: S.cur.created, updated: S.cur.updated };
+    addPeople(S.cur.people);
     ((parent.schema || {}).props || []).forEach(function (p) {
       var line = el('div', 'prop-line');
       line.appendChild(el('span', 'prop-name', TYPES[p.type][1] + ' ' + p.name));

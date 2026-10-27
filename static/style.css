@@ -988,6 +988,22 @@ body.embed .np-main{padding:1rem 1.4rem 3rem}
 button.rel-chip{cursor:pointer;appearance:none}
 button.rel-chip:hover{background:var(--card-h);border-bottom-color:var(--accent)}
 .rel-ic{flex:none}
+/* 2.5: Personen und Dateien in Datenbanken */
+.pp-chips,.fl-chips{display:inline-flex;flex-wrap:wrap;gap:.25rem;align-items:center;min-width:0}
+.pp-chip{display:inline-flex;align-items:center;gap:.3rem;max-width:12rem;padding:.05rem .45rem .05rem .1rem;border-radius:999px;font-size:.8rem;
+  background:color-mix(in srgb,var(--muted) 14%,transparent);overflow:hidden;white-space:nowrap}
+.pp-chip .pp-n{overflow:hidden;text-overflow:ellipsis}
+.pp-av{flex:none;display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;font-size:.65rem;font-weight:600;
+  background:var(--accent);color:var(--bg);overflow:hidden}
+.pp-av img{width:100%;height:100%;object-fit:cover}
+.pp-gone{opacity:.55;font-style:italic}
+.fl-chip{display:inline-flex;align-items:center;gap:.3rem;max-width:14rem;padding:.05rem .45rem;border-radius:4px;font-size:.8rem;color:var(--fg);
+  text-decoration:none;border:1px solid color-mix(in srgb,var(--muted) 40%,transparent);overflow:hidden;white-space:nowrap}
+a.fl-chip:hover{border-color:var(--accent)}
+.fl-chip img{width:20px;height:20px;object-fit:cover;border-radius:3px;flex:none}
+.fl-n{overflow:hidden;text-overflow:ellipsis}
+.fl-line{display:flex;align-items:center;gap:.4rem;padding:.2rem .5rem}
+.fl-line .flt-x{margin-left:auto}
 .rel-ic.ic-img{width:1em;height:1em}
 .opt-item .mi-t{display:inline-flex;align-items:center;gap:.35rem}
 
