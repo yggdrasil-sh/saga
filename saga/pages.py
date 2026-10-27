@@ -1369,6 +1369,11 @@ def api_note_delete(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
+    return note_trash(uid, nid, origin_of(request))
+
+
+def note_trash(uid, nid, origin=None):
+    """In den Papierkorb (nur der Eigentuemer) - Weboberflaeche und /api/v1."""
     owner = uid                              # Loeschen: nur der Eigentuemer
     with _db() as c, c:
         _, _, err = access(c, uid, nid, "owner")
@@ -1382,8 +1387,8 @@ def api_note_delete(nid: int, request: Request):
             return _bad("not found", 404)
         now = time.time()
         c.executemany("UPDATE note SET deleted_at=? WHERE id=? AND uid=?", [(now, i, owner) for i in ids])
-        announce_tree(c, owner, nid, ids, uid, now, True, origin=origin_of(request))
-        tree_changed(c, owner, ids, "trashed", origin_of(request))
+        announce_tree(c, owner, nid, ids, uid, now, True, origin=origin)
+        tree_changed(c, owner, ids, "trashed", origin)
     return JSONResponse({"deleted": len(ids), "trash": True})
 
 

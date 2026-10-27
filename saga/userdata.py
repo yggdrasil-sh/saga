@@ -1,5 +1,6 @@
 """Daten eines Kontos zaehlen und loeschen (Admin-Bereich)."""
 import importlib
+import time
 import os
 from db import connect as _db
 from saga import avatars, bus, chat, nextcloud, notify, push, userbackup
@@ -17,7 +18,8 @@ USER_TABLES = ("task", "note", "note_version", "bookmark", "fav", "device_login"
                "immich_key", "cal_account", "app_code", "pair_code", "note_publish", "public_name", "notification",
                "chat_identity", "chat_device", "chat_link", "push_sub", "push_queue", "ai_history", "ai_usage", "chat_ai_reply",
                "mfa_passkey", "mfa_totp", "mfa_recovery", "mfa_challenge", "fed_handle", "chat_fed_cert", "chat_device_fed",
-               "fed_chat_block", "chat_invite", "nc_account", "chat_seen", "chat_hidden", "note_fresh", "import_run")
+               "fed_chat_block", "chat_invite", "nc_account", "chat_seen", "chat_hidden", "note_fresh", "import_run",
+               "api_token", "webhook")
 
 
 def delete_user_data(uid, drop_user=False):
@@ -89,5 +91,8 @@ def revoke_user_logins(uid, keep_device=None):
         else:
             a = c.execute("DELETE FROM device_login WHERE uid=?", (uid,)).rowcount
             b = c.execute("DELETE FROM app_token WHERE uid=?", (uid,)).rowcount
+        # 2.5 (Paket 1): API-Tokens (sga_) gelten ab sofort nicht mehr; Webhooks dieser Tokens ruhen
+        b += c.execute("UPDATE api_token SET revoked=? WHERE uid=? AND revoked IS NULL", (time.time(), uid)).rowcount
+        c.execute("UPDATE webhook SET active=0, last_error='token revoked' WHERE uid=? AND token_id IS NOT NULL AND active=1", (uid,))
     forget_device(uid)                   # Sitzungen der abgemeldeten Geraete enden sofort (BUG-002)
     return a + b
