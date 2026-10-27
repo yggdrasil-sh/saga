@@ -139,8 +139,8 @@ def part_share(A, B, pa, pb):
     s, d = api("a", "fa-anna", "PUT", f"/api/notes/{Q}/shares", {"type": "remote_group", "target": f"fbteam@{HB}", "role": "comment"})
     ok(f"A: Bereich Q zusaetzlich an Gruppe fbteam@B ({s})", s == 200)
     ok("B: Freigaben angekommen", wait(lambda: len(sql("b", "SELECT 1 FROM fed_inbound")) >= 3, 15))
-    ok("A: Gegenstelle meldet db/subpages/upload/versions/export/live/presence",
-       wait(lambda: {"db", "subpages", "upload", "versions", "export", "live", "presence"} <= set(json.loads(sql("a", "SELECT caps FROM fed_peer")[0][0])), 20))
+    ok("A: Gegenstelle meldet db/subpages/upload/versions/export/live/presence/csv",
+       wait(lambda: {"db", "subpages", "upload", "versions", "export", "live", "presence", "csv"} <= set(json.loads(sql("a", "SELECT caps FROM fed_peer")[0][0])), 20))
     s, d = api("b", "fb-bert", "GET", "/api/fed/shared")
     ids = {x["id"]: x for x in d.get("items", [])}
     rP, rC, rQ, rD, rD2 = (ref(pa, x) for x in (P, C, Q, D, D2))
@@ -313,6 +313,13 @@ def part_export(A, B, pa, pb, P, C, Q, D, D2, k1, rows):
        and any("Kapitel" in n for n in names) and any(n.startswith("Projekt/") or n == "Projekt.md" for n in names))
     s, h, data = get_raw("b", "fb-bert", f"/api/notes/{rD}/export")
     ok(f"B: Datenbank als Markdown-Tabelle ({s})", s == 200 and b"| " in data and b"Aufgabe" in data)
+    # 2.5 (Paket 2): Datenbank als CSV ueber die Foederation (Faehigkeit csv), mit den Rechten der Person
+    s, h, data = get_raw("b", "fb-bert", f"/api/notes/{rD}/export.csv?all=1&sep=%3B")
+    txt = data.decode("utf-8", "replace") if s == 200 else ""
+    ok(f"B: Datenbank als CSV ({s}, {h.get('content-type')})", s == 200 and h.get("content-type", "").startswith("text/csv")
+       and txt.startswith("\ufeff") and "Aufgabe" in txt and ";" in txt.splitlines()[0] and ".csv" in (h.get("content-disposition") or ""))
+    s, h, data = get_raw("b", "fb-bert", f"/api/notes/{rD}/export.csv?filters=kaputt")
+    ok(f"B: CSV mit falschem Parameter -> 400 durchgereicht ({s})", s == 400)
 
 
 def part_live(A, B, pa, pb, P, C, Q, D, D2, k1, rows):
