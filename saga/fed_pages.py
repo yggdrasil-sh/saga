@@ -691,12 +691,12 @@ def _w_widgets(uid, nid, tz):
     status, _, d = _call(uid, p, "GET", f"/fed/v2/notes/{rid}/widgets", q)
     if status != 200 or not isinstance(d, dict) or not isinstance(d.get("widgets"), dict):
         return F._pass_err(p, status, d)
-    out = {}
+    out, w2 = {}, _caps(p, "widgets2")
     for k, w in list(d["widgets"].items())[:page_widgets.WIDGETS_MAX]:
         x = _w_widget_in(w) if isinstance(k, str) and _WBID.fullmatch(k) else None
-        if x:
+        if x and (w2 or x.get("kind") not in page_widgets.KINDS2):
             out[k] = x
-    extra = {} if _caps(p, "widgets2") else {"unsupported2": True}     # 2.5 Paket 4: Etappe-2-Arten nur auf dem Ursprungsserver
+    extra = {} if w2 else {"unsupported2": True}     # 2.5 Paket 4: Etappe-2-Arten nur auf dem Ursprungsserver
     return JSONResponse({"widgets": out, **extra}, headers={"Cache-Control": "no-store"})
 
 
