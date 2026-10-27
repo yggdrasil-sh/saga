@@ -108,3 +108,23 @@ def prop_text(p, v, ctx=None):
     if typ == "checkbox":
         return "✓" if v else ""
     return _generic(v)
+
+
+def _fx_text(p, v, ctx):
+    """Formel/Rollup (2.5, Paket 1): fertiger Wert aus saga.dbcalc (Zahl, Text, Haekchen, Datum 'JJJJ-MM-TT', Liste von
+    Texten). Liste -> mit ", " verbunden; Zahl wie eine Zahl-Eigenschaft (fmt), Haekchen wie checkbox."""
+    csv = ctx.mode == "csv"
+    if isinstance(v, bool):
+        return ("true" if v else "false") if csv else ("✓" if v else "")
+    if isinstance(v, (int, float)):
+        if csv:
+            return num_text(v, ctx.decimal)
+        v = round(v, 2) if isinstance(v, float) else v
+        return f"{v} %" if p.get("fmt") == "percent" else f"{v} €" if p.get("fmt") == "euro" else str(v)
+    if isinstance(v, list):
+        return ", ".join(s for s in (_fx_text(p, x, ctx) if not isinstance(x, (list, dict)) else _generic(x) for x in v) if s)
+    return _generic(v)
+
+
+register("formula", _fx_text)
+register("rollup", _fx_text)

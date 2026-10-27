@@ -34,7 +34,7 @@ from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from db import connect as _db
-from saga import app_api, avatars, bus, csv_export, databases, files, live, nextcloud, notify, page_tools, page_widgets, pages, sharing
+from saga import app_api, avatars, bus, csv_export, databases, dbcalc, files, live, nextcloud, notify, page_tools, page_widgets, pages, sharing
 from saga import federation as F
 from saga.comments import counts as comment_counts
 from saga.core import E, _bad, _body, t
@@ -116,6 +116,36 @@ def _signed_resp(inp, resp):
     return F._signed(inp, getattr(resp, "status_code", 500), {"error": "unexpected"})
 
 
+def _fx_legacy(inp, resp, nid=None):
+    """Gegenstelle ohne formula1 (aeltere Saga): Formel/Rollup als nur-lesbare Text-Spalte (dbcalc.legacy_*), damit deren
+    Weboberflaeche den unbekannten Typ nicht sieht und die Werte als Text zeigt. Mit formula1: unveraendert."""
+    if _caps(inp.peer, "formula1") or not isinstance(resp, JSONResponse) or resp.status_code != 200:
+        return resp
+    try:
+        d = json.loads(resp.body)
+    except ValueError:
+        return resp
+    if not isinstance(d, dict):
+        return resp
+    sch = d.get("schema")
+    if isinstance(sch, dict) and dbcalc.has_calc(sch):
+        d["schema"] = dbcalc.legacy_schema(sch)
+        if isinstance(d.get("rows"), list):
+            dbcalc.legacy_rows(sch, d["rows"])
+        if any(isinstance(g, dict) and "value" in g for g in d.get("groups") or []):
+            d.pop("groups", None)                  # Gruppen nach Formel kennt die Gegenstelle nicht
+    if nid is not None and isinstance(d.get("props"), dict):          # Einzelzeile: Eltern-Schema bestimmt die Spalten
+        with _db() as c:
+            r = c.execute("SELECT d.schema FROM note n JOIN note d ON d.id=n.parent_id AND d.uid=n.uid WHERE n.id=? "
+                          "AND d.kind='database'", (nid,)).fetchone()
+        ps = json.loads(r[0]) if r and r[0] else None
+        if dbcalc.has_calc(ps):
+            dbcalc.legacy_rows(ps, [d])
+    d.pop("calc", None)
+    d.pop("fx_err", None)
+    return JSONResponse(d, status_code=200, headers={k: v for k, v in resp.headers.items() if k.lower() == "cache-control"})
+
+
 def _need(inp, cap):
     return None if _caps(inp.peer, cap) else F._signed(inp, 403, {"error": f"{cap} disabled"})
 
@@ -131,14 +161,14 @@ async def _owner_req(request, nid, rest):
     q = dict(request.query_params)
     mv = re.fullmatch(r"versions/([1-9][0-9]{0,17})(/restore)?", rest)
     if m == "GET" and rest == "":
-        return _need(inp, "db") or _signed_resp(inp, await run_in_threadpool(F._as, inp, pages.note_get, nid))
+        return _need(inp, "db") or _signed_resp(inp, _fx_legacy(inp, await run_in_threadpool(F._as, inp, pages.note_get, nid), nid))
     if m == "PATCH" and rest == "":
         if _need(inp, "db"):
             return _need(inp, "db")
         b = {k: v for k, v in b.items() if k in F.EDIT2_KEYS}
         if not b:
             return F._signed(inp, 400, {"error": t("nichts zu ändern")})
-        return _signed_resp(inp, await run_in_threadpool(F._as, inp, pages._note_update, nid, b))
+        return _signed_resp(inp, _fx_legacy(inp, await run_in_threadpool(F._as, inp, pages._note_update, nid, b)))
     if m == "POST" and rest == "children":
         if _need(inp, "subpages"):
             return _need(inp, "subpages")
@@ -177,7 +207,12 @@ async def _owner_req(request, nid, rest):
             return F._signed(inp, 403, {"error": t("Dafür fehlt dir die Berechtigung.")})
         return _signed_resp(inp, await run_in_threadpool(F._as, inp, pages.note_move, nid, {"parent_id": par, "index": b.get("index", 0)}))
     if m == "GET" and rest == "rows":
-        return _need(inp, "db") or _signed_resp(inp, await run_in_threadpool(F._as, inp, app_api.db_rows, nid, q))
+        return _need(inp, "db") or _signed_resp(inp, _fx_legacy(inp, await run_in_threadpool(F._as, inp, app_api.db_rows, nid, q)))
+    if m == "POST" and rest == "formula/check":      # 2.5 (formula1): Formel-Editor fuer eine hier liegende Datenbank
+        if _need(inp, "formula1"):
+            return _need(inp, "formula1")
+        b = {k: b[k] for k in ("expr", "pid", "names") if k in b}
+        return _signed_resp(inp, await run_in_threadpool(F._as, inp, databases.formula_check_api, nid, b))
     if m == "GET" and rest == "widgets":             # 2.5: Widgets mit den Rechten der fremden Person (saga.page_widgets)
         return _need(inp, "widgets1") or _signed_resp(inp, await run_in_threadpool(F._as, inp, page_widgets.page_widgets, nid, q))
     if m == "GET" and rest == "versions":
@@ -549,7 +584,23 @@ def _row_in(c, p, d, uid):
     return {"id": r, "title": F._clean_text(d.get("title"), 500), "icon": F._rw_in(F._safe_pic(d.get("icon"), True), pid, r),
             "props": F.props_in(pid, d.get("props") if isinstance(d.get("props"), dict) else {}),
             "updated": F._num(d.get("updated")), "created": F._num(d.get("created")),
-            "preview": F._rw_in(F._safe_pic(d.get("preview"), False), pid, r)}
+            "preview": F._rw_in(F._safe_pic(d.get("preview"), False), pid, r), **_fx_err(d)}
+
+
+def _fx_err(d):
+    e = F.fx_err_in(d.get("fx_err"))
+    return {"fx_err": e} if e else {}
+
+
+def _group_in(g):
+    """Gruppe aus GET .../rows: Auswahl {id, count} bzw. (formula1) Formel-Wert {id, value, count}."""
+    out = {"id": g.get("id") if isinstance(g.get("id"), str) else None, "count": g.get("count") if isinstance(g.get("count"), int) else 0}
+    v = g.get("value")
+    if "value" in g and (v is None or isinstance(v, (bool, str)) or (isinstance(v, (int, float)) and v == v and abs(v) < 1e300)):
+        out["value"] = v[:10000] if isinstance(v, str) else v
+        if isinstance(out["id"], str):
+            out["id"] = out["id"][:10000]
+    return out
 
 
 def _tpl_in(p, d):
@@ -574,8 +625,7 @@ def _w_rows(uid, nid, query):
         if isinstance(d.get(k), int) and not isinstance(d.get(k), bool):
             out[k] = d[k]
     if isinstance(d.get("groups"), list):
-        out["groups"] = [{"id": g.get("id") if isinstance(g.get("id"), str) else None, "count": g.get("count") if isinstance(g.get("count"), int) else 0}
-                         for g in d["groups"][:200] if isinstance(g, dict)]
+        out["groups"] = [_group_in(g) for g in d["groups"][:1000] if isinstance(g, dict)]
     return F._json(200, out)
 
 
@@ -593,6 +643,29 @@ def _w_widget_in(w):
             "fmt": w.get("fmt") if w.get("fmt") in page_widgets.FMTS else None,
             "as_of": w.get("as_of") if isinstance(w.get("as_of"), str) and re.fullmatch(r"[0-9T:\-Z+.]{10,32}", w["as_of"]) else None,
             "error": w.get("error") if w.get("error") in page_widgets.ERRORS else None}
+
+
+def _w_formula_check(uid, nid, b):
+    """Formel-Editor fuer eine Datenbank einer anderen Instanz: deren Server prueft und rechnet die Vorschau."""
+    p, rid = _peer_for(uid, nid, "formula1")
+    body = {k: b[k] for k in ("expr", "pid", "names") if k in b}
+    status, _, d = _call(uid, p, "POST", f"/fed/v2/notes/{rid}/formula/check", "", body)
+    if status != 200 or not isinstance(d, dict):
+        return F._pass_err(p, status, d)
+    err = d.get("error") if isinstance(d.get("error"), dict) else None
+    out = {"ok": d.get("ok") is True, "rtype": d.get("rtype") if d.get("rtype") in ("number", "text", "checkbox", "date", "list") else None,
+           "expr": d["expr"][:2000] if isinstance(d.get("expr"), str) else None,
+           "display": d["display"][:4000] if isinstance(d.get("display"), str) else None,
+           "error": {"pos": err.get("pos") if isinstance(err.get("pos"), int) else 0, "msg": F._clean_text(err.get("msg"), 300),
+                     "code": err.get("code") if isinstance(err.get("code"), str) else "syntax"} if err else None,
+           "preview": []}
+    for x in (d.get("preview") or [])[:5] if isinstance(d.get("preview"), list) else []:
+        if isinstance(x, dict) and F._ok_rid(x.get("id")):
+            v = x.get("value")
+            out["preview"].append({"id": F.ref(p["id"], x["id"]), "title": F._clean_text(x.get("title"), 500),
+                                   "value": v if v is None or isinstance(v, (bool, int, float, str, list)) else None,
+                                   "error": x.get("error") if isinstance(x.get("error"), str) else None})
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 
 def _w_widgets(uid, nid, tz):
@@ -974,6 +1047,9 @@ async def home_other(nid: int, rest: str, request: Request):
         return await run_in_threadpool(F._run, _w_rows, uid, nid, q)
     if m == "GET" and rest == "widgets":
         return await run_in_threadpool(F._run, _w_widgets, uid, nid, request.query_params.get("tz") or "")
+    if m == "POST" and rest == "formula/check":
+        b = await _body(request) or {}
+        return await run_in_threadpool(F._run, _w_formula_check, uid, nid, b)
     if m == "GET" and rest == "versions":
         return await run_in_threadpool(F._run, _w_versions, uid, nid)
     if mv and ((m == "GET" and not mv.group(2)) or (m == "POST" and mv.group(2))):

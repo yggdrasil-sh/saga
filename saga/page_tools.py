@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import threading
 import tempfile
 import time
 import zipfile
@@ -11,8 +12,8 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from db import connect as _db
 from fastapi import APIRouter
-from saga import nextcloud, page_widgets, proptext
-from saga.core import BASE_URL, _api_guard, _bad, _json_load, origin_of, t
+from saga import dbcalc, nextcloud, page_widgets, proptext
+from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, origin_of, t
 from saga.sharing import Access, access, mask_links, names, person, viewer
 from saga.notes import FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _forced_throttled, _insert_version, _latest, announce_tree, checkpoint, blocks_text, share_targets, tree_changed
 
@@ -315,11 +316,48 @@ def _safe_name(s):
     return s[:80]
 
 
+_FX_MEMO = threading.local()
+
+
+def _fx_props(rows, row):
+    """Formeln/Rollups einer Zeile beim Export: einmal je Datenbank fuer alle ihre Zeilen gerechnet (gemerkt in rows) -
+    nur mit Seiten aus rows (= was die exportierende Person sehen darf)."""
+    memo = getattr(_FX_MEMO, "m", None)
+    if memo is None or memo[0] is not rows:        # je Thread nur der laufende Export
+        memo = _FX_MEMO.m = (rows, {})
+    memo = memo[1]
+    if row[0] in memo:
+        return memo[row[0]]
+    par = rows.get(row[3])
+    schema = _json_load(par[7], {"props": []}) if par else None
+    if not dbcalc.has_calc(schema):
+        memo[row[0]] = {}
+        return memo[row[0]]
+    data = [{"id": x[0], "title": x[1] or "", "props": _json_load(x[8], {}), "created": x[9], "updated": x[10]}
+            for x in rows.values() if x[3] == par[0] and x[6] != "database"]
+
+    def labels(ids):
+        return {i: rows[i][1] or "" for i in ids if i in rows}
+
+    def target(dbid):
+        t_ = rows.get(dbid)
+        if not t_ or t_[6] != "database":
+            return None
+        return _json_load(t_[7], {"props": []}), [{"id": x[0], "title": x[1] or "", "props": _json_load(x[8], {}), "created": x[9],
+                                                   "updated": x[10]} for x in rows.values() if x[3] == dbid]
+    dbcalc.fill_core(schema, data, tz=TZ, labels=labels, target=target)
+    for d in data:
+        memo[d["id"]] = d["props"]
+    return memo.get(row[0], {})
+
+
 def md_page(rows, r, link, viewer=None):
     """Eine Seite als Markdown (Export, persoenliches Backup). rows: id -> [id, title, icon, parent_id, body, format, kind,
     schema, props, created, updated] (alle exportierten Seiten; Datenbank-Zeilen, Relationen und Eltern daraus).
     viewer: wer exportiert - Widgets mit Werten aus einer Datenbank rechnen mit seinen Rechten (sonst ohne Wert)."""
     def val_of(p, row, pv):
+        if p["type"] in ("formula", "rollup"):
+            return _fx_props(rows, row).get(p["id"])      # 2.5: Formeln/Rollups mit den Seiten des Exports (saga.dbcalc)
         return proptext.value_of(p, pv, row[9], row[10])
 
     ctx = proptext.Ctx("md", lambda x: rows[x][1] if x in rows else None)

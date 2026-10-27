@@ -357,3 +357,54 @@ def _first_image(body, fmt):
             if _FILE_URL.fullmatch(u):
                 return u
     return ""
+
+
+# --- Formel-Editor (2.5, Paket 1): Formel pruefen + Vorschau --------------------------------------------------------
+FX_PREVIEW_ROWS = 5
+
+
+@router.post("/api/notes/{nid}/formula/check")
+async def api_formula_check(nid: int, request: Request):
+    uid = _api_guard(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    b = await _body(request) or {}
+    return await run_in_threadpool(formula_check_api, uid, nid, b)
+
+
+def formula_check_api(uid, nid, b):
+    """{expr, pid?, names?} -> {ok, rtype, expr (mit IDs), display (mit Namen), error: {pos, msg, code} | null,
+    preview: [{id, title, value, error}]} - ab Rolle 'Bearbeiten'. names=true (Standard): prop("…") nennt Namen wie im
+    Editor; der Server uebersetzt in IDs. Vorschau: erste FX_PREVIEW_ROWS Zeilen mit den Rechten von uid.
+    Auch fuer die Foederation (uid = fremde Person)."""
+    from saga import dbcalc, formula as fx
+    expr = b.get("expr")
+    if not isinstance(expr, str):
+        return _bad(t("Formel fehlt"))
+    pid = b.get("pid") if isinstance(b.get("pid"), str) and len(b.get("pid")) <= 24 else "fx_new"
+    names = b.get("names") is not False
+    with _db() as c:
+        owner, role, err = access(c, uid, nid, "edit")
+        if err is not None:
+            return err
+        r = c.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database' AND deleted_at IS NULL", (nid, owner)).fetchone()
+        if not r:
+            return _bad("not found", 404)
+        schema = _json_load(r[0], {"props": []})
+        try:
+            cm, ids = fx.check(schema, pid, expr, names=names)
+        except fx.FxSyntax as ex:
+            return JSONResponse({"ok": False, "rtype": None, "expr": None, "display": None, "preview": [],
+                                 "error": {"pos": ex.pos, "msg": ex.msg, "code": ex.code}})
+        props = [p for p in schema.get("props", []) if isinstance(p, dict) and p.get("id") != pid]
+        me = {"id": pid, "name": "", "type": "formula", "expr": ids}
+        fx.annotate(props + [me], schema.get("title_name"))
+        sch = dict(schema, props=props + [me])
+        shared = role != "owner"
+        rows = [{"id": x[0], "title": x[1] or "", "props": _json_load(x[2], {}), "created": x[3], "updated": x[4]}
+                for x in c.execute("SELECT id, title, props, created, updated FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL "
+                                   "AND is_template=0" + (" AND archived IS NULL" if shared else "")
+                                   + " ORDER BY sort NULLS FIRST, created, id LIMIT ?", (owner, nid, FX_PREVIEW_ROWS)).fetchall()]
+        dbcalc.fill(c, owner, sch, rows, viewer=uid)
+    prev = [{"id": x["id"], "title": x["title"], "value": x["props"].get(pid), "error": (x.get("fx_err") or {}).get(pid)} for x in rows]
+    return JSONResponse({"ok": True, "rtype": cm.rtype, "expr": ids, "display": fx.to_names(schema, ids), "error": None, "preview": prev})

@@ -52,7 +52,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 import auth
 from db import connect as _db
-from saga import ai_web, avatars, bus, i18n, netguard
+from saga import ai_web, avatars, bus, dbcalc, i18n, netguard
 from saga.core import CA_FILE, E, TZ, _api_guard, _bad, _body, t
 from saga.netguard import Blocked, guarded_client, is_public
 from saga.notes import _calc_value, _iter_blocks, blocks_text
@@ -490,6 +490,13 @@ def prop_pairs(schema, props, titles=None):
                 v = _calc_value(p, props)
             except Exception:  # noqa: BLE001 - kaputte Rechen-Spalte: weglassen
                 v = None
+        if typ in ("formula", "rollup"):                   # fertiger Wert (saga.dbcalc), sonst nicht gerechnet: weglassen
+            if isinstance(v, bool):
+                v = "✓" if v else None
+            elif isinstance(v, list):
+                v = ", ".join(str(x) for x in v) or None
+            elif isinstance(v, (int, float)):
+                v = _num(v)
         if v in (None, "", []) or typ in ("created", "edited"):
             continue
         if typ in ("select", "multi_select"):
@@ -576,7 +583,7 @@ def page_databases(conn, acc, uid, nid, kind, fmt, body):
     return out
 
 
-def db_rows(conn, owner, dbid, limit=PAGE_DB_ROWS, text=0):
+def db_rows(conn, owner, dbid, limit=PAGE_DB_ROWS, text=0, viewer=None):
     """Eintraege einer Datenbank (ohne Vorlagen/Archiv) -> [{id, title, props, text}] (text: Anfang des Inhalts)."""
     out = []
     for x in conn.execute("SELECT id, title, props, body, format FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL "
@@ -590,6 +597,14 @@ def db_rows(conn, owner, dbid, limit=PAGE_DB_ROWS, text=0):
         if text:
             snip = _plain(" ".join(_block_texts(x[4] or "text", x[3])))[:text]
         out.append({"id": x[0], "title": _plain(x[1]), "props": props if isinstance(props, dict) else {}, "text": snip})
+    if out:                                            # 2.5: Formeln/Rollups mitgeben (Rechte: viewer, Standard Eigentuemer)
+        sr = conn.execute("SELECT schema FROM note WHERE id=? AND uid=?", (dbid, owner)).fetchone()
+        try:
+            schema = json.loads(sr[0]) if sr and sr[0] else {}
+        except ValueError:
+            schema = {}
+        if dbcalc.has_calc(schema):
+            dbcalc.fill(conn, owner, schema, out, viewer=viewer or owner)
     return out
 
 
@@ -2029,7 +2044,7 @@ async def api_ai_page(nid: int, request: Request):
                 for d in page_databases(conn, acc, uid, nid, r[3], r[2] or "text", body):
                     if left <= 0:
                         break
-                    data = [(x["title"], x["props"]) for x in db_rows(conn, d["owner"], d["id"], left)]
+                    data = [(x["title"], x["props"]) for x in db_rows(conn, d["owner"], d["id"], left, viewer=uid)]
                     left -= len(data)
                     rows += [f"Database \"{d['title']}\" (embedded on this page, {len(data)} entries):"] + \
                         (_row_list(data, d["schema"], {}) or ["- (no entries)"])
@@ -2167,7 +2182,7 @@ async def _assign(uid, nid, b):
                 return None, _bad(t("Dieser Eigenschaft kann der Assistent keine Werte zuordnen."))
             if prop["type"] in ("select", "multi_select") and not prop.get("options"):
                 return None, _bad(t("Die Eigenschaft hat noch keine Optionen."))
-            rows = db_rows(conn, d["owner"], dbid, 5000, 240)        # R08: auch spaete leere Eintraege (bis 5000)
+            rows = db_rows(conn, d["owner"], dbid, 5000, 240, viewer=uid)        # R08: auch spaete leere Eintraege (bis 5000)
             page_text = "" if r[3] == "database" else "\n".join(_block_texts(r[2] or "text", body))[:2000]
             return (_plain(r[0]) or t("Unbenannt"), d, prop, rows, page_text), None
     data, err = await asyncio.to_thread(load)

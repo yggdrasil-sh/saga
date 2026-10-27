@@ -2973,6 +2973,15 @@
   TYPES.calc = [T('Berechnet'), '∑'];
   OPS.relation = [['contains', T('enthält')], ['not_contains', T('enthält nicht')], ['is_empty', T('ist leer')], ['not_empty', T('ist nicht leer')]];
   TYPES.relation = [T('Relation'), '↗'];
+  // 2.5 (Paket 1): Formel und Rollup - Werte rechnet der Server (saga/dbcalc.py), Typ des Ergebnisses in p.rtype
+  TYPES.formula = [T('Formel'), 'ƒ']; TYPES.rollup = [T('Rollup'), '⤴'];
+  OPS.list = OPS.relation;
+  // Filter-Bedingungen einer Spalte: Formel/Rollup wie ihr Ergebnistyp
+  function opsOf(p) { var t = p ? (isFx(p) ? ({ number: 'number', checkbox: 'checkbox', date: 'date', list: 'list' }[p.rtype] || 'text') : p.type) : 'text'; return OPS[t] || OPS.text; }
+  var FX_ERR = { syntax: T('Formel fehlerhaft'), type: T('Typ passt nicht'), num: T('Rechenfehler (z. B. Division durch 0)'), len: T('Ergebnis zu lang'),
+    budget: T('Formel zu aufwendig'), time: T('Zeitlimit erreicht – Wert nicht berechnet'), arg: T('Ungültiges Argument'), ref: T('Verweis auf fehlende Eigenschaft'),
+    date: T('Ungültiges Datum'), cycle: T('Formeln verweisen im Kreis aufeinander') };
+  var ROLLUP_NAMES = null;     // in makeDbView aus CALC_NAMES + "Original anzeigen"
   function relRows(target) { return allPages().filter(function (p) { return p.parent_id === target && !p.template; }); }   // Fix27 #6: ohne Eintrags-Vorlagen
   function relChips(ids, clickable) {           // verknuepfte Eintraege als Marken; Klick oeffnet den Eintrag
     var s = el('span', 'rel-chips');
@@ -3002,7 +3011,57 @@
   var AUTO = { created: 'created', edited: 'updated' };
   OPS.created = OPS.edited = [['after', T('nach')], ['before', T('vor')], ['eq', T('am')], ['today', T('ist heute')], ['this_week', T('ist diese Woche')], ['this_month', T('ist diesen Monat')]];
   function propValue(p, r) { return p.type === 'calc' ? calcValue2(p, r) : AUTO[p.type] ? r[AUTO[p.type]] : (r.props || {})[p.id]; }
-  function numLike(p) { return !!p && (p.type === 'number' || p.type === 'calc'); }
+  function isFx(p) { return !!p && (p.type === 'formula' || p.type === 'rollup'); }
+  function numLike(p) { return !!p && (p.type === 'number' || p.type === 'calc' || (isFx(p) && p.rtype === 'number')); }
+  // Gruppieren (Board/Tabelle/Liste): Auswahl oder Formel/Rollup mit Ergebnis Zahl/Text/Haekchen/Datum (Gruppen nur lesend)
+  function groupable(p) { return !!p && (p.type === 'select' || (isFx(p) && ['number', 'text', 'checkbox', 'date'].indexOf(p.rtype) >= 0)); }
+  // Wochentagsnamen aller Sprachen -> 0 (Montag) .. 6 - wie saga/formula.py WEEKDAY_INDEX (Gruppen nach formatDate "dddd")
+  function weekdayIndex() {
+    if (weekdayIndex.m) return weekdayIndex.m;
+    var m = {}, own = Object.prototype.hasOwnProperty;
+    [['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'],
+     ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+     ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'],
+     ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'],
+     ['วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์', 'วันอาทิตย์', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.', 'อา.']
+    ].forEach(function (a) { a.forEach(function (n, i) { if (!own.call(m, n)) m[n] = i % 7; }); });
+    return (weekdayIndex.m = m);
+  }
+  // Gruppen nach vorkommenden Werten einer Formel/eines Rollups - GENAU wie saga/dbquery.py value_groups:
+  // [{none: true, rows: leere}, {v: wert, rows}, ...]; Haekchen nein/ja; Zahlen aufsteigend (keine Zahl zuletzt); Text nach
+  // Wochentag, wenn ALLE Werte Wochentagsnamen sind, sonst nach UTF-16-Codeeinheiten
+  function valueGroups(rows, g) {
+    var rt = g.rtype, empty = [], order = [], buckets = {}, own = Object.prototype.hasOwnProperty, W = weekdayIndex();
+    rows.forEach(function (r) {
+      var v = (r.props || {})[g.id];
+      if (rt === 'checkbox') v = v === true;
+      else if (v == null || v === '') { empty.push(r); return; }
+      var k = typeof v + ':' + String(v);
+      if (!own.call(buckets, k)) { buckets[k] = { v: v, rows: [] }; order.push(k); }
+      buckets[k].rows.push(r);
+    });
+    var vals = order.map(function (k) { return buckets[k].v; }), idx = order.map(function (k, i) { return i; }), key;
+    if (rt === 'number') key = function (v) { var x = Number(v); return isNaN(x) ? [1, 0] : [0, x]; };
+    else if (rt === 'checkbox') key = function (v) { return [0, v === true ? 1 : 0]; };
+    else if (vals.length && vals.every(function (v) { return typeof v === 'string' && own.call(W, v); })) key = function (v) { return [0, W[v]]; };
+    else key = function (v) { return [0, String(v)]; };
+    idx.sort(function (a, b) {
+      var x = key(vals[a]), y = key(vals[b]);
+      if (x[0] !== y[0]) return x[0] - y[0];
+      return x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : a - b;
+    });
+    return [{ none: true, rows: empty }].concat(idx.map(function (i) { return { v: vals[i], rows: buckets[order[i]].rows }; }));
+  }
+  // Spalten/Gruppen nach g: [{o: Option | {id, fx, v} | null, rows}] - erst "Ohne <Spalte>", dann Optionen bzw. Werte
+  function groupCols(rows, g) {
+    if (g.type !== 'select') {
+      return valueGroups(rows, g).map(function (c) { return { o: c.none ? null : { id: String(c.v), fx: true, v: c.v, name: String(c.v), color: 'gray' }, rows: c.rows }; });
+    }
+    var known = {}; (g.options || []).forEach(function (o) { known[o.id] = 1; });
+    return [{ o: null, rows: rows.filter(function (r) { return !known[r.props[g.id]]; }) }].concat((g.options || []).map(function (o) {
+      return { o: o, rows: rows.filter(function (r) { return r.props[g.id] === o.id; }) };
+    }));
+  }
   // Werte einer Spalte fuer die Fusszeile (calcValue) und fuer Widgets (calcNum; der Server rechnet gleich:
   // saga/page_widgets.aggregate, gemeinsame Testvektoren tests/widget_vectors.json)
   function calcVals(p, rows) {
@@ -3057,6 +3116,34 @@
       c.setAttribute('class', x[0]); c.setAttribute('stroke-dasharray', x[1]); c.setAttribute('transform', 'rotate(-90 10 10)'); svg.appendChild(c);
     });
     return svg;
+  }
+  // Wert einer Formel/eines Rollups (fertig vom Server) bzw. "#Fehler" mit Erklaerung
+  function fxText(p, v) {
+    if (v == null || v === '') return '';
+    if (Array.isArray(v)) return v.join(', ');
+    if (v === true) return '✓';
+    if (v === false) return '';
+    if (p.rtype === 'date' && typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) {
+      var d = new Date(v.length > 10 ? v : v + 'T00:00:00');
+      return isNaN(d) ? v : (v.length > 10 ? fStampFx.format(d) : fDate2.format(d));
+    }
+    if (typeof v === 'number') return numText(p, v);
+    return String(v);
+  }
+  var fStampFx = new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  function fxNode(p, r) {
+    var err = (r.fx_err || {})[p.id], v = (r.props || {})[p.id];
+    if (err) { var e = el('span', 'fx-err', T('#Fehler')); e.title = FX_ERR[err] || T('Formel fehlerhaft'); return e; }
+    if (v == null || v === '' || v === false || (Array.isArray(v) && !v.length)) return null;
+    if (typeof v === 'number' && p.rtype === 'number') return numNode(p, v);
+    if (v === true) return el('span', 'fx-val fx-check', '✓');
+    return el('span', 'fx-val', fxText(p, v));
+  }
+  // Kopf einer Gruppe/Board-Spalte: Option als Marke, Formel-Wert als Text
+  function groupChip(o, g) {
+    if (!o.fx) return optChip(o);
+    var t = g.rtype === 'checkbox' ? (o.v === true ? '☑ ' + g.name : '☐ ' + g.name) : fxText(g, o.v);
+    return el('span', 'opt opt-gray fx-group', t);
   }
   function numNode(p, v) {
     var s = el('span', 'nfmt'), pct = Math.max(0, Math.min(100, Number(v) || 0));
@@ -3267,12 +3354,26 @@
     function setProp(row, pid, value) {
       if (ro()) return Promise.resolve();
       var patch = {}; patch[pid] = value;
-      return api('PATCH', '/api/notes/' + row.id, { props: patch }).then(function () {
+      return api('PATCH', '/api/notes/' + row.id, { props: patch }).then(function (d) {
         wgSoon();                              // fix27 #3: Kennzahlen der Seite nach eigener Aenderung neu
         if (value === null || value === '' || value === false || (Array.isArray(value) && !value.length)) delete row.props[pid]; else row.props[pid] = value;
+        applyCalc(row, d);
       }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
     }
 
+    // 2.5: PATCH-Antwort traegt die neu gerechneten Formel-/Rollup-Werte der Zeile (calc, fx_err) - sofort anzeigen
+    function applyCalc(row, d) {
+      if (!d || !d.calc || typeof d.calc !== 'object') return;
+      Object.keys(d.calc).forEach(function (k) { var x = d.calc[k]; if (x == null) delete row.props[k]; else row.props[k] = x; });
+      row.fx_err = d.fx_err && Object.keys(d.fx_err).length ? d.fx_err : undefined;
+      if (DB.schema.props.some(isFx)) setTimeout(function () { refreshRow(row); }, 0);
+    }
+    function refreshRow(row) {                     // Zellen der Formeln/Rollups dieser Zeile neu zeichnen
+      if (!BOX) return;
+      var tr = BOX.querySelector('tr[data-id="' + row.id + '"]'); if (!tr) return;
+      var vis = visibleProps(), cells = tr.querySelectorAll('td.db-cell:not(.db-title):not(.db-cell-pad)');
+      vis.forEach(function (p, i) { if (isFx(p) && cells[i]) refreshCell(cells[i], p, row); });
+    }
     // Auswahl-Menue fuer select / multi_select, inkl. neue Option anlegen
     // Relation bearbeiten: Eintraege der Ziel-Datenbank suchen, (ab)waehlen oder neu anlegen
     function relMenu(anchor, prop, row, onDone) {
@@ -3364,6 +3465,7 @@
       if (ro()) { var dv = valueDisplay(prop, row); wrap.classList.add('val-ro'); wrap.appendChild(dv || el('span', 'val-empty', '–')); return wrap; }
       if (AUTO[t]) { wrap.appendChild(el('span', 'val-auto', stampText(v))); return wrap; }      // automatisch, nur lesbar
       if (t === 'calc') { wrap.appendChild(v == null ? el('span', 'val-empty', '–') : numNode(prop, v)); wrap.title = T('Berechnet – Einstellung im Spaltenkopf'); return wrap; }
+      if (isFx(prop)) { wrap.appendChild(fxNode(prop, row) || el('span', 'val-empty', '–')); if (!wrap.title) wrap.title = t === 'formula' ? T('Formel – bearbeiten im Spaltenkopf') : T('Rollup – Einstellung im Spaltenkopf'); return wrap; }
       if (t === 'checkbox') {
         var cb = el('input'); cb.type = 'checkbox'; cb.checked = !!v; cb.setAttribute('aria-label', prop.name);
         cb.addEventListener('change', function () { setProp(row, prop.id, cb.checked).then(onDone); });
@@ -3433,7 +3535,7 @@
       if (!p) return (r.title || '').toLowerCase();
       var v = propValue(p, r);
       if (p.type === 'select') { var o = (p.options || []).findIndex(function (x) { return x.id === v; }); return o < 0 ? 1e9 : o; }
-      if (p.type === 'multi_select' || p.type === 'relation') return (v || []).length;
+      if (p.type === 'multi_select' || p.type === 'relation' || (isFx(p) && p.rtype === 'list')) return (v || []).length;
       if (p.type === 'checkbox') return v ? 1 : 0;
       return v == null ? null : (typeof v === 'string' ? v.toLowerCase() : v);
     }
@@ -3463,11 +3565,8 @@
     // Gruppierung (Tabelle/Liste) nach einer Auswahl-Eigenschaft
     function eachGrouped(rows, onHead, onRow) {
       var g = curView().group && propById(curView().group);
-      if (!g || g.type !== 'select') { rows.forEach(onRow); return; }
-      var known = {}; (g.options || []).forEach(function (o) { known[o.id] = 1; });
-      [{ o: null, rows: rows.filter(function (r) { return !known[r.props[g.id]]; }) }].concat((g.options || []).map(function (o) {
-        return { o: o, rows: rows.filter(function (r) { return r.props[g.id] === o.id; }) };
-      })).forEach(function (c) { if (!c.rows.length) return; onHead(c.o, c.rows.length, g); c.rows.forEach(onRow); });
+      if (!groupable(g)) { rows.forEach(onRow); return; }
+      groupCols(rows, g).forEach(function (c) { if (!c.rows.length) return; onHead(c.o, c.rows.length, g); c.rows.forEach(onRow); });
     }
 
     function headMenu(th, prop) {
@@ -3509,6 +3608,10 @@
             } }));
           });
         }
+        if (prop.type === 'formula') {
+          m.appendChild(HK.menuItem(T('Formel bearbeiten …'), function () { formulaEditor(prop); }, { icon: 'ƒ', hint: prop.rtype ? fxTypeName(prop.rtype) : '' }));
+        }
+        if (prop.type === 'rollup') rollupMenu(m, prop);
         if (numLike(prop)) {
           var FMT = [['', T('Zahl'), '#'], ['percent', T('Prozent'), '%'], ['euro', T('Euro'), '€']], SHOW = [['', T('Nur Zahl'), '#'], ['bar', T('Balken (0–100)'), '▬'], ['ring', T('Ring (0–100)'), '◔']];
           var cf = FMT.find(function (f) { return f[0] === (prop.fmt || ''); }), cs = SHOW.find(function (f) { return f[0] === (prop.show || ''); });
@@ -3557,6 +3660,105 @@
         }, { icon: '🗑', danger: true }));
       });
     }
+    function fxTypeName(rt) { return { number: T('Zahl'), text: T('Text'), checkbox: T('Häkchen'), date: T('Datum'), list: T('Liste') }[rt] || ''; }
+    // Rollup: ueber welche Relation, welche Eigenschaft der Ziel-Datenbank, welche Rechnung
+    function rollupMenu(m, prop) {
+      var rels = DB.schema.props.filter(function (x) { return x.type === 'relation'; }), rel = rels.find(function (x) { return x.id === prop.rel; });
+      m.appendChild(HK.menuItem(T('Relation'), null, { icon: '↗', hint: rel ? rel.name : T('wählen'), sub: function (sm) {
+        if (!rels.length) sm.appendChild(el('div', 'menu-hint', T('Für ein Rollup braucht die Datenbank erst eine Relation.')));
+        rels.forEach(function (x) { sm.appendChild(HK.menuItem(x.name, function () { prop.rel = x.id; prop.target = 'title'; saveSchema().then(loadDb); }, { on: x === rel })); });
+      } }));
+      if (rel) {
+        m.appendChild(HK.menuItem(T('Eigenschaft'), null, { icon: '≡', hint: prop.target && prop.target !== 'title' ? '' : T('Name'), sub: function (sm) {
+          sm.appendChild(el('div', 'menu-hint', T('Lade …')));
+          rollupTargets(rel.target).then(function (ps) {
+            sm.textContent = '';
+            [{ id: 'title', name: T('Name'), type: 'text' }].concat(ps).forEach(function (x) {
+              if (x.type === 'rollup') return;              // Etappe 1: kein Rollup eines Rollups (keine Ketten ueber Datenbanken)
+              sm.appendChild(HK.menuItem(x.name, function () { prop.target = x.id; saveSchema().then(loadDb); }, { icon: (TYPES[x.type] || TYPES.text)[1], on: (prop.target || 'title') === x.id }));
+            });
+          });
+        } }));
+      }
+      var fns = ['show', 'count', 'filled', 'empty', 'pct_filled', 'unique', 'sum', 'avg', 'median', 'min', 'max', 'range', 'checked', 'unchecked', 'pct_checked', 'earliest', 'latest'];
+      var RN = Object.assign({ show: T('Original anzeigen') }, CALC_NAMES);
+      m.appendChild(HK.menuItem(T('Berechnen'), null, { icon: '∑', hint: RN[prop.fn || 'count'], sub: function (sm) {
+        fns.forEach(function (f) { sm.appendChild(HK.menuItem(RN[f], function () { prop.fn = f; saveSchema().then(loadDb); }, { on: (prop.fn || 'count') === f })); });
+      } }));
+    }
+    function rollupTargets(dbid) {                 // Eigenschaften der Ziel-Datenbank (nur Lesen noetig)
+      return api('GET', '/api/notes/' + dbid + '/rows?limit=1').then(function (r) { return ((r.schema || {}).props || []); }).catch(function () { return []; });
+    }
+    // Formel-Editor: Namen statt IDs, Pruefung + Vorschau vom Server (POST .../formula/check), Speichern ins Schema
+    function formulaEditor(prop) {
+      if (ro()) return;
+      if (locked()) { lockedHint(); return; }
+      var dbid = DB.id;
+      openModal(T('Formel: {name}', { name: prop.name }), function (body) {
+        body.classList.add('fx-ed');
+        var ta = el('textarea', 'fx-in'); ta.rows = 5; ta.spellcheck = false; ta.maxLength = 4000; ta.setAttribute('aria-label', T('Formel'));
+        ta.placeholder = 'if(prop("Menge") > 0, prop("Preis") * prop("Menge"), 0)';
+        var st = el('div', 'fx-status'), pv = el('div', 'fx-prev'), help = el('div', 'fx-help');
+        var props = el('div', 'fx-props');
+        props.appendChild(el('span', 'fx-lbl', T('Eigenschaften:')));
+        [{ name: titleName() }].concat(DB.schema.props.filter(function (x) { return x.id !== prop.id; })).forEach(function (x) {
+          var b = el('button', 'fx-chip', x.name); b.type = 'button';
+          b.addEventListener('click', function () { ins('prop("' + String(x.name).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '")'); });
+          props.appendChild(b);
+        });
+        help.appendChild(el('span', 'fx-lbl', T('Beispiele:')));
+        ['if(prop("…") > 0, "ja", "nein")', 'formatDate(prop("…"), "dddd")', 'dateBetween(prop("…"), today(), "days")', 'round(prop("…") * 1.19, 2)', 'prop("…").length()'].forEach(function (x) {
+          var b = el('button', 'fx-chip fx-ex', x); b.type = 'button'; b.addEventListener('click', function () { ins(x); }); help.appendChild(b);
+        });
+        function ins(x) { var a = ta.selectionStart || 0, e = ta.selectionEnd || 0; ta.value = ta.value.slice(0, a) + x + ta.value.slice(e); ta.focus(); ta.selectionStart = ta.selectionEnd = a + x.length; check(); }
+        var save = el('button', 'btn btn-primary fx-save', T('Speichern')); save.type = 'button';
+        var foot = el('div', 'fx-foot'); foot.appendChild(save);
+        body.appendChild(ta); body.appendChild(st); body.appendChild(props); body.appendChild(help); body.appendChild(el('div', 'fx-lbl', T('Vorschau (erste Einträge):'))); body.appendChild(pv); body.appendChild(foot);
+        var seq = 0, tmr = null;
+        function show(d) {
+          st.textContent = ''; st.className = 'fx-status' + (d.ok ? ' ok' : ' bad');
+          if (d.ok) st.textContent = '✓ ' + T('Ergebnis: {type}', { type: fxTypeName(d.rtype) || '–' });
+          else if (d.error) {
+            st.textContent = '⚠ ' + d.error.msg + ' (' + T('Zeichen {n}', { n: (d.error.pos || 0) + 1 }) + ')';
+            try { ta.setSelectionRange(d.error.pos, Math.min(ta.value.length, d.error.pos + 1)); } catch (e) { /* egal */ }
+          }
+          pv.textContent = '';
+          (d.preview || []).forEach(function (x) {
+            var line = el('div', 'fx-prow'); line.appendChild(el('span', 'fx-pt', x.title || T('Unbenannt')));
+            var fake = { rtype: d.rtype, fmt: prop.fmt, id: prop.id }, val = x.error ? el('span', 'fx-err', T('#Fehler')) : el('span', 'fx-pv', fxText(fake, x.value) || '–');
+            if (x.error) val.title = FX_ERR[x.error] || '';
+            line.appendChild(val); pv.appendChild(line);
+          });
+          if (d.ok && !(d.preview || []).length) pv.appendChild(el('div', 'menu-hint', T('Noch keine Einträge.')));
+        }
+        function check() {
+          clearTimeout(tmr);
+          tmr = setTimeout(function () {
+            var my = ++seq;
+            api('POST', '/api/notes/' + dbid + '/formula/check', { expr: ta.value, pid: prop.id, names: true }).then(function (d) {
+              if (my !== seq) return; show(d);
+            }).catch(function (err) { if (my === seq) { st.className = 'fx-status bad'; st.textContent = err.message; } });
+          }, 250);
+        }
+        ta.addEventListener('input', check);
+        ta.addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save.click(); } });
+        save.addEventListener('click', function () {
+          api('POST', '/api/notes/' + dbid + '/formula/check', { expr: ta.value, pid: prop.id, names: true }).then(function (d) {
+            show(d);
+            if (!d.ok) return;
+            prop.expr = d.expr; prop.rtype = d.rtype;
+            return saveSchema().then(function () { closeModal(); return loadDb(); });
+          }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
+        });
+        // gespeicherte Formel (IDs) mit Namen anzeigen: der Server uebersetzt (display)
+        if (prop.expr) {
+          api('POST', '/api/notes/' + dbid + '/formula/check', { expr: prop.expr, pid: prop.id, names: false }).then(function (d) {
+            ta.value = d.display != null ? d.display : prop.expr; show(d);
+          }).catch(function () { ta.value = prop.expr; });
+        } else check();
+        setTimeout(function () { ta.focus(); }, 0);
+      });
+    }
     function addColumn(btn) {
       HK.openMenu(btn, function (m) {
         m.appendChild(HK.menuLabel(T('Neue Spalte')));
@@ -3575,6 +3777,12 @@
           }
           m.appendChild(HK.menuItem(TYPES[t][0], function () {
             var p = { id: rid(), name: TYPES[t][0], type: t }; if (t === 'select' || t === 'multi_select') p.options = [];
+            if (t === 'formula') { p.expr = ''; DB.schema.props.push(p); saveSchema().then(renderDb).then(function () { formulaEditor(p); }); return; }
+            if (t === 'rollup') {
+              var rl = DB.schema.props.find(function (x) { return x.type === 'relation'; });
+              if (!rl) { HK.toast(T('Für ein Rollup braucht die Datenbank erst eine Relation.')); return; }
+              p.rel = rl.id; p.target = 'title'; p.fn = 'count';
+            }
             if (t === 'calc') {                      // Vorgabe wie Lesefortschritt: erste Zahl in % der zweiten, als Ring
               var ns = DB.schema.props.filter(function (x) { return x.type === 'number'; });
               p.name = T('Fortschritt'); p.op = 'pct'; p.fmt = 'percent'; p.show = 'ring';
@@ -3737,7 +3945,7 @@
       eachGrouped(sortedRows(), function (o, n, g) { items.push({ o: o, n: n, g: g }); }, function (r) { items.push({ r: r }); });
       function mkHead(it) {
         var gr = el('tr', 'db-grow'), gd = el('td'); gd.colSpan = vis.length + 2;
-        gd.appendChild(it.o ? optChip(it.o) : el('span', 'board-none', T('Ohne {name}', { name: it.g.name }))); gd.appendChild(el('span', 'board-n', String(it.n)));
+        gd.appendChild(it.o ? groupChip(it.o, it.g) : el('span', 'board-none', T('Ohne {name}', { name: it.g.name }))); gd.appendChild(el('span', 'board-n', String(it.n)));
         gr.appendChild(gd); return gr;
       }
       function mkRow(r, idx) {
@@ -3816,7 +4024,7 @@
       sum: T('Summe'), avg: T('Durchschnitt'), median: T('Median'), min: T('Min'), max: T('Max'), range: T('Spanne'),
       checked: T('Angehakt'), unchecked: T('Nicht angehakt'), pct_checked: T('% angehakt'), earliest: T('Frühestes'), latest: T('Spätestes') };
     function calcOps(p) {
-      var t = p ? (p.type === 'calc' ? 'number' : p.type) : 'text';
+      var t = p ? (p.type === 'calc' ? 'number' : isFx(p) ? ({ number: 'number', checkbox: 'checkbox', date: 'date' }[p.rtype] || 'text') : p.type) : 'text';
       if (t === 'checkbox') return ['count', 'checked', 'unchecked', 'pct_checked'];
       var o = ['count', 'filled', 'empty', 'pct_filled', 'unique'];
       if (t === 'number') o = o.concat(['sum', 'avg', 'median', 'min', 'max', 'range']);
@@ -3875,8 +4083,9 @@
     }
     function refreshCell(cell, p, r) { cell.textContent = ''; cell.appendChild(valueEditor(p, r, function () { refreshCell(cell, p, r); })); }
 
-    function loadDb() {
-      return api('GET', '/api/notes/' + DB.id + '/rows').then(function (d) {
+    var TZQ = (function () { try { var z = Intl.DateTimeFormat().resolvedOptions().timeZone; return z ? '?tz=' + encodeURIComponent(z) : ''; } catch (e) { return ''; } })();
+    function loadDb() {   // tz: Formeln mit today()/now()/Datum rechnet der Server in der Zeitzone des Browsers
+      return api('GET', '/api/notes/' + DB.id + '/rows' + TZQ).then(function (d) {
         DB.schema = d.schema; DB.rows = d.rows; DB.templates = d.templates || []; ensureViews(); DB.snap = JSON.stringify(DB.schema);
         DB.role = d.role || 'owner';
         if (OPTS.getViews) {
@@ -3950,7 +4159,7 @@
           liveText(name, function (val) { if (val.trim()) { v.name = val.trim(); saveSchemaSoon(); renderDb(); } });
           row(T('Name'), name);
           row(T('Layout'), sel([['table', '▦ ' + T('Tabelle')], ['board', '▥ ' + T('Board')], ['list', '☰ ' + T('Liste')], ['gallery', '▣ ' + T('Galerie')], ['calendar', '🗓 ' + T('Kalender')]], v.type, function (x) { v.type = x; commit(); }));
-          var sels = DB.schema.props.filter(function (p) { return p.type === 'select'; }).map(function (p) { return [p.id, p.name]; });
+          var sels = DB.schema.props.filter(groupable).map(function (p) { return [p.id, (isFx(p) ? 'ƒ ' : '') + p.name]; });
           if (v.type === 'board') row(T('Spalten nach'), sel(sels.length ? sels : [['', T('– keine Auswahl-Eigenschaft –')]], v.group_by, function (x) { if (x) v.group_by = x; commit(); }));
           if (v.type === 'table' || v.type === 'list') row(T('Gruppieren'), sel([['', T('nicht gruppieren')]].concat(sels), v.group, function (x) { if (x) v.group = x; else delete v.group; commit(); }));
           row(T('Öffnen als'), sel([['side', '◨ ' + T('Seitenansicht rechts')], ['left', '◧ ' + T('Seitenansicht links')], ['center', '▣ ' + T('Mittig')], ['page', '▭ ' + T('Ganze Seite')]], v.open || 'side',
@@ -3999,8 +4208,8 @@
                      ['purple', '🟪 ' + T('Lila')], ['pink', '🩷 ' + T('Rosa')], ['brown', '🟫 ' + T('Braun')], ['gray', '⬜ ' + T('Grau')]];
           var cr = v.colors || [];
           cr.forEach(function (f, i) {
-            var pp = fprop(f.pid) || fprop('title'), ops = OPS[pp.type] || OPS.text, l = el('div', 'vs-rule');
-            l.appendChild(sel(propOpts(true), f.pid, function (x) { f.pid = x; f.op = (OPS[(fprop(x) || {}).type] || OPS.text)[0][0]; f.value = ''; commit(); }));
+            var pp = fprop(f.pid) || fprop('title'), ops = opsOf(pp), l = el('div', 'vs-rule');
+            l.appendChild(sel(propOpts(true), f.pid, function (x) { f.pid = x; f.op = opsOf(fprop(x))[0][0]; f.value = ''; commit(); }));
             l.appendChild(sel(ops.map(function (o) { return [o[0], o[1]]; }), f.op, function (x) { f.op = x; commit(); }));
             if (!NOVALUE[f.op]) {
               if (pp.type === 'select' || pp.type === 'multi_select' || pp.type === 'relation') {
@@ -4101,7 +4310,7 @@
             var p = fprop(f.pid); if (!p) return;
             var line = el('div', 'flt'); line.appendChild(el('span', 'flt-name', p.name));
             var op = el('select', 'flt-op'); op.setAttribute('aria-label', T('Bedingung'));
-            (OPS[p.type] || OPS.text).forEach(function (o) { var opt = el('option', null, o[1]); opt.value = o[0]; op.appendChild(opt); });
+            opsOf(p).forEach(function (o) { var opt = el('option', null, o[1]); opt.value = o[0]; op.appendChild(opt); });
             op.value = f.op; op.addEventListener('change', function () { f.op = op.value; commit(); });
             line.appendChild(op);
             if (NOVALUE[f.op]) op.classList.add('flt-wide');
@@ -4112,7 +4321,7 @@
                 (p.type === 'relation' ? relRows(p.target).map(function (x) { return { id: x.id, name: label(x) }; }) : (p.options || []))
                   .forEach(function (o) { var opt = el('option', null, o.name); opt.value = o.id; val.appendChild(opt); });
               } else {
-                val = el('input', 'flt-val'); val.type = (p.type === 'date' || AUTO[p.type]) ? 'date' : 'text';
+                val = el('input', 'flt-val'); val.type = (p.type === 'date' || AUTO[p.type] || (isFx(p) && p.rtype === 'date')) ? 'date' : 'text';
                 if (numLike(p)) val.inputMode = 'decimal';
               }
               val.value = val.tagName !== 'SELECT' && numLike(p) ? HK.editNum(f.value) : f.value || ''; val.setAttribute('aria-label', T('Wert'));
@@ -4129,7 +4338,7 @@
           [fprop('title')].concat(DB.schema.props).forEach(function (p) { var o = el('option', null, p.name); o.value = p.id; add.appendChild(o); });
           add.addEventListener('change', function () {
             var p = fprop(add.value); if (!p) return;
-            v.filters = (v.filters || []).concat([{ pid: p.id, op: (OPS[p.type] || OPS.text)[0][0], value: '' }]); commit();
+            v.filters = (v.filters || []).concat([{ pid: p.id, op: opsOf(p)[0][0], value: '' }]); commit();
           });
           box.appendChild(add);
         }
@@ -4179,7 +4388,7 @@
         m.appendChild(HK.menuItem(T('Liste'), function () { v.type = 'list'; saveSchema().then(renderDb); }, { icon: '☰', on: v.type === 'list' }));
         m.appendChild(HK.menuItem(T('Galerie'), function () { v.type = 'gallery'; saveSchema().then(renderDb); }, { icon: '▣', on: v.type === 'gallery' }));
         m.appendChild(HK.menuItem(T('Kalender'), function () { v.type = 'calendar'; saveSchema().then(renderDb); }, { icon: '🗓', on: v.type === 'calendar' }));
-        var sels = DB.schema.props.filter(function (p) { return p.type === 'select'; });
+        var sels = DB.schema.props.filter(groupable);
         if (v.type === 'board' && sels.length) {
           m.appendChild(HK.menuLabel(T('Gruppieren nach')));
           sels.forEach(function (p) { m.appendChild(HK.menuItem(p.name, function () { v.group_by = p.id; saveSchema().then(renderDb); }, { on: v.group_by === p.id })); });
@@ -4283,7 +4492,9 @@
       c.appendChild(el('div', 'board-title', (ti(r.icon) ? ti(r.icon) + ' ' : '') + (r.title || T('Unbenannt'))));
       visibleProps().forEach(function (p) {
         if (p.id === g.id) return;
-        var v = r.props[p.id]; if (v == null || v === '' || v === false || (Array.isArray(v) && !v.length)) return;
+        var v = r.props[p.id];
+        if (isFx(p)) { var fn = fxNode(p, r); if (fn) { var fl = el('div', 'board-prop'); fl.appendChild(el('span', null, p.name + ': ')); fl.appendChild(fn); c.appendChild(fl); } return; }
+        if (v == null || v === '' || v === false || (Array.isArray(v) && !v.length)) return;
         var line = el('div', 'board-prop');
         if (p.type === 'select' || p.type === 'multi_select') {
           (Array.isArray(v) ? v : [v]).forEach(function (id) { var o = (p.options || []).find(function (x) { return x.id === id; }); if (o) line.appendChild(optChip(o)); });
@@ -4302,7 +4513,7 @@
     }
     function renderBoard() {
       var v = curView(), g = propById(v.group_by), wrap = el('div', 'board');
-      if (!g || g.type !== 'select') {
+      if (!groupable(g)) {
         g = DB.schema.props.find(function (p) { return p.type === 'select'; });
         if (g) { v.group_by = g.id; saveSchemaSoon(); }
       }
@@ -4315,14 +4526,12 @@
         });
         wrap.appendChild(mk); return wrap;
       }
-      var rows = sortedRows(), known = {};
-      (g.options || []).forEach(function (o) { known[o.id] = 1; });
-      var cols = [{ o: null, rows: rows.filter(function (r) { return !known[r.props[g.id]]; }) }].concat(
-        (g.options || []).map(function (o) { return { o: o, rows: rows.filter(function (r) { return r.props[g.id] === o.id; }) }; }));
+      var rows = sortedRows(), fxg = g.type !== 'select';    // nach Formel: Spalten = vorkommende Werte, nur lesend
+      var cols = groupCols(rows, g);
       if (!cols[0].rows.length) cols.shift();           // "Ohne Status" nur, wenn es solche Zeilen gibt
       cols.forEach(function (col) {
         var c = el('div', 'board-col'), h = el('div', 'board-head');
-        h.appendChild(col.o ? optChip(col.o) : el('span', 'board-none', T('Ohne {name}', { name: g.name }))); h.appendChild(el('span', 'board-n', String(col.rows.length)));
+        h.appendChild(col.o ? groupChip(col.o, g) : el('span', 'board-none', T('Ohne {name}', { name: g.name }))); h.appendChild(el('span', 'board-n', String(col.rows.length)));
         c.appendChild(h);
         // Bughunt P07: je Spalte zuerst BOARD_PAGE Karten, der Rest per "Mehr laden" (1500 Karten = ~50 000 Knoten).
         // Aufgeklappt bleibt aufgeklappt (auch nach renderDb); eine gerade gezogene oder neue Karte ist immer zu sehen.
@@ -4332,8 +4541,9 @@
         var list = el('div', 'board-cards'); chunked(col.rows.slice(0, lim), function (r) { return boardCard(r, g); }, list, null, 60); c.appendChild(list);
         if (lim < col.rows.length) c.appendChild(boardMore(col.rows, list, g, ck, lim));
         var add = el('button', 'board-add', T('+ Neu')); add.type = 'button';
-        add.addEventListener('click', function () { var pr = {}; if (col.o) pr[g.id] = col.o.id; newRow(pr); });
+        add.addEventListener('click', function () { var pr = {}; if (col.o && !fxg) pr[g.id] = col.o.id; newRow(pr); });
         c.appendChild(add);
+        if (fxg) { c.title = T('Nach Formel gruppiert – Karten lassen sich nicht zwischen Spalten ziehen.'); wrap.appendChild(c); return; }
         c.addEventListener('dragover', function (e) { if (dragId) { e.preventDefault(); c.classList.add('over'); } });
         c.addEventListener('dragleave', function (e) { if (!c.contains(e.relatedTarget)) c.classList.remove('over'); });
         c.addEventListener('drop', c.hkDrop = function (e) {
@@ -4353,6 +4563,7 @@
 
     // Kompakte Anzeige eines Werts (Liste, Galerie)
     function valueDisplay(p, r) {
+      if (isFx(p)) { var fn = fxNode(p, r); if (!fn) return null; var fs = el('span', 'dv dv-' + p.type); fs.appendChild(fn); return fs; }
       var v = propValue(p, r);
       if (v == null || v === '' || v === false || (Array.isArray(v) && !v.length)) return null;
       var s = el('span', 'dv dv-' + p.type);
@@ -4383,7 +4594,7 @@
       function mk(i) {
         var it = items[i], r = it.r;
         if (!r) {
-          var h = el('div', 'dbl-group'); h.appendChild(it.o ? optChip(it.o) : el('span', 'board-none', T('Ohne {name}', { name: it.g.name }))); h.appendChild(el('span', 'board-n', String(it.n)));
+          var h = el('div', 'dbl-group'); h.appendChild(it.o ? groupChip(it.o, it.g) : el('span', 'board-none', T('Ohne {name}', { name: it.g.name }))); h.appendChild(el('span', 'board-n', String(it.n)));
           return h;
         }
         var line = tint(el('div', 'dbl-row'), r); line.tabIndex = 0; line.setAttribute('role', 'button');

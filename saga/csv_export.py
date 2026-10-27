@@ -19,7 +19,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from db import connect as _db
-from saga import dbquery, proptext
+from saga import dbcalc, dbquery, proptext
 from saga.app_api import _db_query
 from saga.core import _api_guard, _bad, _json_load, t
 from saga.notes import _disposition
@@ -31,6 +31,7 @@ router = APIRouter()
 CSV_ROWS_MAX = 100_000
 _DANGER = ("=", "+", "-", "@", "\t", "\r")
 _PLAIN_TYPES = {"number", "calc", "date", "created", "edited", "checkbox"}     # Werte erzeugt der Server selbst
+_FX_TYPES = ("formula", "rollup")                  # Zahl/Haekchen ungeschuetzt, Text/Liste mit Schutz vor Formel-Injektion
 
 
 def _guard_cell(s):
@@ -64,11 +65,18 @@ def build(uid, nid, params):
         sql = ("SELECT id, title, icon, props, updated, created, cover, format FROM note WHERE uid=? AND parent_id=? "
                "AND deleted_at IS NULL AND is_template=0" + (" AND archived IS NULL" if shared else ""))
         try:
-            rows, parsed, _ = _db_query(c, owner, nid, shared, sql, db[0], q, uid)
+            rows, parsed, extra = _db_query(c, owner, nid, shared, sql, db[0], q, uid)
         except dbquery.JsError:
             return _bad(t("Filter oder Sortierung lässt sich nicht auswerten."))
         rows = rows[:CSV_ROWS_MAX]
         schema = _json_load(db[0], {"props": []})
+        if dbcalc.has_calc(schema) and not (extra and "_fx" in extra):    # 2.5: Formeln/Rollups (mit Filter usw.: schon gerechnet)
+            data = []
+            for r in rows:
+                pv = parsed.get(r[0]) if r[0] in parsed else _json_load(r[3], {})
+                parsed[r[0]] = pv if isinstance(pv, dict) else {}
+                data.append({"id": r[0], "title": r[1] or "", "props": parsed[r[0]], "created": r[5], "updated": r[4]})
+            dbcalc.fill(c, owner, schema, data, viewer=uid, tz=q.get("tz"))
         props = [p for p in schema.get("props") or [] if isinstance(p, dict)]
         cols = [x for x in str(params.get("cols") or "").split(",") if x][:60] if not all_rows else []
         if cols:
@@ -112,8 +120,10 @@ def build(uid, nid, params):
         pv = parsed.get(r[0]) or {}
         line = [g(r[1] or "")]
         for p in props:
-            s = proptext.prop_text(p, proptext.value_of(p, pv, r[5], r[4]), ctx).replace("\x00", "")
-            line.append(s if p.get("type") in _PLAIN_TYPES else g(s))
+            v = proptext.value_of(p, pv, r[5], r[4])
+            s = proptext.prop_text(p, v, ctx).replace("\x00", "")
+            plain = p.get("type") in _PLAIN_TYPES or (p.get("type") in _FX_TYPES and isinstance(v, (int, float)))
+            line.append(s if plain else g(s))
         w.writerow(line)
     return _safe_name(db[1] or t("Datenbank")) + ".csv", buf.getvalue().encode("utf-8")
 
