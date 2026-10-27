@@ -13,7 +13,8 @@ Anna (A) teilt die Datenbank "Aufgaben" (Person, Dateien) mit Bert auf B (Bearbe
 - Heim ohne dbx1 (aeltere Saga): Personen-/Datei-Spalten als Text ohne Werte, unsupported; Schema zurueck -> Typen bleiben;
   Werte von B werden verworfen.
 - person.renamed: Bert bekommt einen oeffentlichen Namen -> Wert bei A umgeschrieben.
-Ports: FEDP_PORTS="a,a-admin,b,b-admin" (Standard 8250,8251,8252,8253). Raeumt auf (Datenbanken geloescht)."""
+Ports: FEDP_PORTS="a,a-admin,b,b-admin" (Standard 8250,8251,8252,8253); Zustand: FEDP_STATE=<praefix> (Standard /tmp/fedp).
+Raeumt auf (Datenbanken geloescht)."""
 import json, os, sys, time
 from urllib.parse import quote
 
@@ -22,9 +23,10 @@ import foederation as T  # noqa: E402
 import foederation2 as F2  # noqa: E402
 
 pa_, aa_, pb_, ab_ = (int(x) for x in os.environ.get("FEDP_PORTS", "8250,8251,8252,8253").split(","))
-T.I["a"].update(port=pa_, admin=aa_, db="saga_fppa", url=f"http://127.0.0.1:{pa_}", host=f"127.0.0.1:{pa_}", state="/tmp/st-b-people/fedp-a",
+st_ = os.environ.get("FEDP_STATE", "/tmp/fedp")
+T.I["a"].update(port=pa_, admin=aa_, db="saga_fppa", url=f"http://127.0.0.1:{pa_}", host=f"127.0.0.1:{pa_}", state=st_ + "-a",
                 allow=f"localhost:{pb_}")
-T.I["b"].update(port=pb_, admin=ab_, db="saga_fppb", url=f"http://localhost:{pb_}", host=f"localhost:{pb_}", state="/tmp/st-b-people/fedp-b",
+T.I["b"].update(port=pb_, admin=ab_, db="saga_fppb", url=f"http://localhost:{pb_}", host=f"localhost:{pb_}", state=st_ + "-b",
                 allow=f"127.0.0.1:{pa_}")
 HA, HB = T.I["a"]["host"], T.I["b"]["host"]
 api, sql = T.api, T.sql
