@@ -139,7 +139,7 @@ def _events_in(raw, tok=None):
 
 def _hook_out(r, log=None):
     d = {"id": r[0], "name": r[1], "url": r[2], "events": _json_load(r[3], []), "active": bool(r[4]), "fail_streak": r[5],
-         "created": r[6], "last_ok": r[7], "last_error": r[8] or "", "token": bool(r[9]), "roots": _json_load(r[10], None) if r[10] else None}
+         "created": r[6], "last_ok": r[7], "last_error": r[8] or "", "token": bool(r[9]), "roots": apitok.roots_load(r[10])}
     if log is not None:
         d["deliveries"] = log
     return d
@@ -246,7 +246,7 @@ def _hooks_for(c, kind):
     """Aktive Hooks, die diese Art abonniert haben: [(id, uid, roots)]."""
     if not conf().get("webhooks"):
         return []
-    return [(r[0], r[1], _json_load(r[2], None) if r[2] else None) for r in c.execute(
+    return [(r[0], r[1], apitok.roots_load(r[2])) for r in c.execute(
         "SELECT id, uid, roots FROM webhook WHERE active=1 AND events LIKE ?", (f'%"{kind}"%',)).fetchall()]
 
 
@@ -451,7 +451,7 @@ def deliver(did):
         h = c.execute("SELECT id, uid, url, secret_enc, roots, token_id, active, fail_streak FROM webhook WHERE id=?", (d[8],)).fetchone()
     if not h:
         return
-    h = {"id": h[0], "uid": h[1], "url": h[2], "secret": auth._dec(h[3]), "roots": _json_load(h[4], None) if h[4] else None,
+    h = {"id": h[0], "uid": h[1], "url": h[2], "secret": auth._dec(h[3]), "roots": apitok.roots_load(h[4]),
          "token_id": h[5], "active": h[6], "fail_streak": h[7]}
     now = time.time()
     with _db() as c, c:

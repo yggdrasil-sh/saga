@@ -58,6 +58,12 @@ def allowed_for(info, cf=None):
     return not g or g in {x.lower() for x in info.get("groups") or ()}
 
 
+def roots_load(raw):
+    """Gespeicherte roots (JSON-Liste von Seiten-IDs) -> Liste oder None (= alles, was das Konto sehen darf)."""
+    v = _json_load(raw, [])
+    return [int(x) for x in v if isinstance(x, int) and not isinstance(x, bool)] or None
+
+
 def norm_scopes(raw):
     """Liste -> sortierte, gueltige Bereiche (write:x bringt read:x mit). ValueError bei Unbekanntem."""
     if not isinstance(raw, list) or not raw:
@@ -152,7 +158,7 @@ def lookup(raw):
         return None, "unauthorized"
     if not allowed_for(info):
         return None, "disabled"
-    return Tok(r[0], r[1], r[2], r[3], _json_load(r[4], []), _json_load(r[5], None) if r[5] else None, r[7]), None
+    return Tok(r[0], r[1], r[2], r[3], _json_load(r[4], []), roots_load(r[5]), r[7]), None
 
 
 def authed(request, write=False, scope=None):
@@ -242,7 +248,7 @@ def list_tokens(uid):
                          "ORDER BY id", (uid,)).fetchall()
         now = time.time()
         out = [{"id": r[0], "name": r[1], "prefix": r[2], "scopes": _json_load(r[3], []),
-                "roots": _titles(c, uid, _json_load(r[4], None)) if r[4] else None, "created": r[5], "expires": r[6],
+                "roots": _titles(c, uid, roots_load(r[4])) if r[4] else None, "created": r[5], "expires": r[6],
                 "last_used": r[7], "revoked": r[8], "expired": r[6] is not None and r[6] <= now} for r in rows]
     return out
 

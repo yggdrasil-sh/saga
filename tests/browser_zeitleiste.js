@@ -115,7 +115,7 @@ function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDat
 
     // Nur Lesen: kein Ziehen, keine Griffe
     if (USER2) {
-      const sh = await p.api('PUT', '/api/notes/' + D + '/shares', { target_type: 'user', target: USER2, role: 'view' });
+      const sh = await p.api('PUT', '/api/notes/' + D + '/shares', { type: 'user', target: USER2, role: 'view' });
       const q = await session(browser, USER2, PASS2);
       await view(q, D, 'tl'); await q.open(D);
       ok('Nur Lesen: Balken ohne Griffe, kein "+ Neu"', sh && await q.evaluate(() => document.querySelectorAll('.tl-bar').length >= 1 && !document.querySelector('.tl-h') && !document.querySelector('.tl-new') && !document.querySelector('.tl-bar.tl-edit')));
