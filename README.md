@@ -184,4 +184,7 @@ Screenshots for this page: `SAGA_SSH=… SAGA_SCRIPT=screens-remote.sh tools/tes
 
 [GNU AGPL-3.0](LICENSE) – you may use, modify and share Saga freely; if you run a modified version as a
 service for others, you must publish its source code as well. Bundled Editor.js components are under their own
-licenses (`static/vendor/editorjs/licenses`). Service icons from [selfh.st/icons](https://selfh.st/icons).
+licenses (`static/vendor/editorjs/licenses`). Math rendering uses [KaTeX](https://katex.org) (MIT,
+`static/vendor/katex/LICENSE`), diagrams use [Mermaid](https://mermaid.js.org) (MIT, `static/vendor/mermaid/LICENSE`,
+bundled DOMPurify under Apache-2.0/MPL-2.0), and published pages render math via
+[latex2mathml](https://pypi.org/project/latex2mathml/) (MIT). Service icons from [selfh.st/icons](https://selfh.st/icons).
