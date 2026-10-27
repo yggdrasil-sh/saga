@@ -218,6 +218,10 @@ def use(uid, gid, b, lang, origin=None):
         except (ValueError, TypeError, LookupError, OverflowError, AttributeError, KeyError) as ex:
             print(f"galerie: {gid} fuer {uid} abgebrochen: {type(ex).__name__}: {ex}", flush=True)
             raise _bad_reply(t("Die Vorlage konnte nicht angelegt werden: {err}", err=str(ex)[:200]))
+        from saga import tasksrc                     # 2.5 (Paket 7): Datenbanken mit Aufgaben-Zuordnung gleich abonnieren
+        for it in bundle["items"]:
+            if it["kind"] == "database" and it["ref"] in keep and isinstance(it.get("schema"), dict) and it["schema"].get("tasks"):
+                tasksrc.auto_subscribe(c, uid, owner, ids[it["ref"]], _db_schema(c, owner, ids[it["ref"]]))
         tree_changed(c, owner, order, "created", origin)
         if pid is not None and owner != uid:          # unter einer geteilten Seite: wer sie offen hat, sieht die neuen Seiten
             from saga.notes import announce_shared

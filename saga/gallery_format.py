@@ -354,6 +354,24 @@ def _check_schema(cx, where, s, dbref):
         cx.err(where, "default_tpl muss \"$ref:<vorlage>\" sein")
     if "srev" in s or "_since" in s:
         cx.err(where, "srev/_since setzt der Server")
+    if "tasks" in s:                                 # 2.5 (Paket 7): Aufgabenquelle - Eigenschafts-IDs, keine $ref
+        tm = s["tasks"]
+        if not isinstance(tm, dict) or "$ref:" in json.dumps(tm):
+            cx.err(where, "tasks muss ein Objekt ohne $ref sein")
+        else:                                        # gleiche Regeln wie saga.notes.clean_tasks_map (ohne Datenbank pruefbar)
+            want = {"done": ("select", "checkbox"), "due": ("date",), "prio": ("select",), "assignee": ("person",)}
+            for k, v in tm.items():
+                if k in want:
+                    if (pids.get(v) or {}).get("type") not in want[k]:
+                        cx.err(where, f"tasks.{k} {v!r}: Eigenschaft fehlt oder hat den falschen Typ")
+                elif k in ("done_values", "open_value", "prio_map"):
+                    src = pids.get(tm.get("prio" if k == "prio_map" else "done")) or {}
+                    opts = {o.get("id") for o in src.get("options") or [] if isinstance(o, dict)}
+                    vals = list(v) if isinstance(v, (list, dict)) else [v]
+                    if not vals or any(x not in opts for x in vals):
+                        cx.err(where, f"tasks.{k}: unbekannte Option")
+                else:
+                    cx.err(where, f"tasks.{k}: unbekannter Schluessel")
     return pids, vids
 
 

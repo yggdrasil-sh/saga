@@ -37,6 +37,7 @@ from saga import backups, graph, nextcloud, pageindex, siteicons, userbackup
 from saga import gallery                       # 2.5: Vorlagengalerie (/api/gallery...)
 from saga import import_common, importer      # 2.5 (Paket 2): Importe (/api/import/...)
 from saga import people                        # 2.5 (Paket 1): Personen-Auswahl (/api/notes/{nid}/people)
+from saga import tasksrc                       # 2.5 (Paket 7): Aufgabenquellen (/api/tasks/src/..., /api/notes/{db}/tasksource)
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -68,6 +69,7 @@ async def lifespan(_app):
     pageindex.start()                                        # Suchtext/Verweise/Vorschaubilder abgleichen (2.2)
     backups.start()                                          # verschluesselte Backups auf WebDAV/Nextcloud (2.3, Zeitplan)
     userbackup.start()                                       # persoenliche Backups je Konto (2.3, Zeitplan)
+    tasksrc.start()                                          # 2.5 (Paket 7): taegliche Zusammenfassung task.due
     await asyncio.to_thread(import_common.on_start)          # 2.5: abgebrochene Importe markieren, alte Uploads weg
 
     async def _gc_loop():
@@ -101,6 +103,7 @@ async def lifespan(_app):
     gc_task = asyncio.create_task(_gc_loop())
     yield
     backups.stop()
+    tasksrc.stop()
     userbackup.stop()
     pageindex.stop()
     calls.stop()
@@ -258,6 +261,7 @@ app.include_router(dashboard.router)
 app.include_router(links.router)
 app.include_router(graph.router)                 # 2.5: Graph der Seiten (wie Obsidian)
 app.include_router(tasks.router)
+app.include_router(tasksrc.router)             # 2.5 (Paket 7): /api/tasks/src/{row}, /api/tasks/sources, /api/tasks/digest, /api/notes/{db}/tasksource
 # Foederation zuerst: faengt nur NEGATIVE Seiten-/Kommentar-IDs (Seiten anderer Instanzen, Konverter "fedid") ab, dazu
 # /.well-known/saga, /fed/v1/... und /api/fed/... - alle positiven IDs laufen unveraendert zu pages/comments
 app.include_router(federation.router)
