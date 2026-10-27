@@ -182,7 +182,7 @@ def main():
         ok(f"Unsinn {bad} -> {s}", s == 400)
     s, d = req("POST", f"/api/notes/{p1}/blocks/move", A, {"ids": ["r1"], "to": -5, "rev_a": cur["rev"]})
     ok(f"foederiertes Ziel (negative ID) -> {s} federated", s == 400 and d.get("federated") is True)
-    s, d = req("POST", f"/api/notes/-5/blocks/move", A, {"ids": ["r1"], "to": p2, "rev_a": 1})
+    s, d = req("POST", "/api/notes/-5/blocks/move", A, {"ids": ["r1"], "to": p2, "rev_a": 1})
     ok(f"foederierte Quelle -> {s}", s in (400, 404))
     req("PATCH", f"/api/notes/{p2}", A, {"locked": True})
     s, d = req("POST", f"/api/notes/{p1}/blocks/move", A, {"ids": ["r1"], "to": p2, "rev_a": cur["rev"]})
@@ -228,6 +228,19 @@ def main():
     ok(f"Kommentar: Seite und Eigentuemer umgeschrieben ({r})", tuple(r) == (pa, "bm-a"))
     s, raw = req("GET", url, A)
     ok(f"A kann die Kopie laden ({s})", s == 200)
+
+    # --- fremde Datei-ID (Dritte) im Text: keine Kopie, keine Freigabe der Datei (Review integ-f) ---------------------
+    fc = upload(Ck)
+    page(Ck, "C privat", [{"id": "ci", "type": "image", "data": {"file": {"url": fc}, "caption": ""}}])
+    cur = get(Bk, pa)
+    req("PATCH", f"/api/notes/{pa}", Bk, {"body": json.dumps({"blocks": json.loads(cur["body"])["blocks"] + [P("ev", fc)]}),
+                                          "format": "blocks", "rev": cur["rev"]})
+    pb4 = page(Bk, "B Ziel fremd", [P("y1", "y")])
+    s, d = move(Bk, pa, {"ids": ["ev"], "to": pb4})
+    txt = json.loads(get(Bk, pb4)["body"])["blocks"][-1]["data"]["text"]
+    s2, _ = req("GET", txt, Bk)
+    ok(f"fremde Datei-ID im Text: nicht kopiert ({s}, {d.get('files_copied') if isinstance(d, dict) else d}, laden {s2})",
+       s == 200 and d.get("files_copied") == 0 and txt == fc and s2 == 404)
 
     # --- Kontingent des Ziels: 507, nichts geaendert ------------------------------------------------------------------
     pb3 = page(Bk, "B Kontingent", [{"id": "bq", "type": "image", "data": {"file": {"url": imgb}, "caption": ""}}])

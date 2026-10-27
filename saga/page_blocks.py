@@ -144,18 +144,35 @@ def _resign(blocks, a, b, owner_a, owner_b, uid):
 
 
 def _file_refs(blocks):
-    """Datei-IDs in den Bloecken (Bilder, Anhaenge, Vorschaubilder)."""
-    return sorted(set(_FILE_URL.findall(json.dumps(blocks, ensure_ascii=False))))
+    """Datei-IDs in den Bloecken (Bilder, Anhaenge, Vorschaubilder): nur Werte, die genau /files/<id> sind - dieselben,
+    die _copy_files umschreibt (Text mit /files/... darin wird weder kopiert noch umgeschrieben)."""
+    out = set()
+
+    def walk(v):
+        if isinstance(v, str):
+            m = _FILE_URL.fullmatch(v)
+            if m:
+                out.add(m.group(1))
+        elif isinstance(v, list):
+            for x in v:
+                walk(x)
+        elif isinstance(v, dict):
+            for x in v.values():
+                walk(x)
+    for blk in blocks:
+        walk(blk.get("data") if isinstance(blk, dict) else None)
+    return sorted(out)
 
 
-def _copy_files(c, blocks, owner_b, made):
-    """Dateien anderer Eigentuemer fuer owner_b kopieren (Kontingent von b) und die Verweise umschreiben -> Anzahl.
-    made: Liste der neu angelegten Dateien (zum Aufraeumen, falls die Transaktion scheitert)."""
+def _copy_files(c, blocks, owner_a, owner_b, made):
+    """Dateien des Eigentuemers von a fuer owner_b kopieren (Kontingent von b) und die Verweise umschreiben -> Anzahl.
+    Nur Dateien von owner_a: sonst koennte jemand eine fremde Datei-ID in eine Seite schreiben und per Verschieben eine
+    eigene Kopie erhalten (Sichtbarkeit umgangen). made: neu angelegte Dateien (Aufraeumen, falls die Transaktion scheitert)."""
     ids = _file_refs(blocks)
     if not ids:
         return 0
     rows = {r[0]: r for r in c.execute(f"SELECT id, uid, name, mime, size, is_image FROM file WHERE id IN ({','.join('?' * len(ids))})", ids)}
-    todo = [rows[i] for i in ids if i in rows and rows[i][1] != owner_b]
+    todo = [rows[i] for i in ids if i in rows and rows[i][1] == owner_a and rows[i][1] != owner_b]
     if not todo:
         return 0
     c.execute("SELECT pg_advisory_xact_lock(hashtext(?))", ("file:" + owner_b,))
@@ -289,7 +306,7 @@ def _move(c, uid, a, b, ids, after, at, rev_a, rev_b, origin, made):
     ren = _rename_ids(moved, {x.get("id") for x in _iter_blocks(doc_b["blocks"])})
     if not _place(doc_b, moved, after, at):
         raise _Stop(_bad(t("Zielblock nicht gefunden"), 404))
-    copied = _copy_files(c, moved, owner_b, made) if owner_a != owner_b else 0
+    copied = _copy_files(c, moved, owner_a, owner_b, made) if owner_a != owner_b else 0
     unsigned = _resign(moved, a, b, owner_a, owner_b, uid)
     body_a = json.dumps(doc_a, ensure_ascii=False)
     body_b = json.dumps(doc_b, ensure_ascii=False)
