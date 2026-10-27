@@ -1238,6 +1238,7 @@
 
   $('pg-new').addEventListener('click', function () { newPageMenu(this, null); });
   $('pg-empty-new').addEventListener('click', function () { newPageMenu(this, null); });
+  if ($('pg-empty-gal')) $('pg-empty-gal').addEventListener('click', function () { openGallery(null); });
   window.addEventListener('pagehide', function () { save(); checkpoint('leave'); });
   document.addEventListener('visibilitychange', function () { if (document.hidden) { save(); checkpoint('leave'); } });
   // Neu laden / andere Adresse kurz nach dem Tippen (BUG-012): schon bei beforeunload speichern - HK.api schickt es dann mit
@@ -2396,6 +2397,7 @@
       m.appendChild(HK.menuItem(T('Leere Seite'), function () { newPage(parentId); }, { icon: '📄' }));
       m.appendChild(HK.menuItem(T('Datenbank'), function () { newDatabase(parentId); }, { icon: '🗃️', hint: T('Tabelle, Board …') }));
       m.appendChild(HK.menuLabel(T('Vorlagen')));
+      if (S.gal !== false && !EMBED) m.appendChild(HK.menuItem(T('Aus der Galerie …'), function () { openGallery(parentId); }, { icon: '🖼️', hint: T('fertige Vorlagen') }));
       BUILTIN.forEach(function (t) { m.appendChild(HK.menuItem(t.name, function () { fromBuiltin(t, parentId); }, { icon: t.icon })); });
       S.pages.filter(function (p) { return p.template; }).forEach(function (p) {
         m.appendChild(HK.menuItem(label(p), function () { fromTemplate(p, parentId); }, { icon: ti(p.icon) || '📄', hint: T('eigene') }));
@@ -2405,6 +2407,185 @@
       m.appendChild(el('div', 'menu-hint', T('Eigene Vorlage: Seite öffnen → ⋯ → „Als Vorlage markieren“')));
     });
   }
+  // --- Vorlagengalerie (2.5, saga/gallery.py): mitgelieferte Vorlagen als Kopie anlegen ------------------------------
+  // S.gal: null = noch nicht gefragt, false = aus (Admin-Schalter oder aelterer Server: 404), sonst die Liste
+  var GAL_CATS = [['', T('Alle')], ['personal', T('Persönlich')], ['work', T('Arbeit')], ['team', T('Team')]];
+  var GAL_NEEDS = { calendar: T('Braucht einen verbundenen Kalender (CalDAV) – ohne ihn bleibt der Kalender-Block leer.'),
+                    immich: T('Braucht ein verbundenes Immich.'), nextcloud: T('Braucht eine verknüpfte Nextcloud.'),
+                    ai: T('Braucht den KI-Assistenten.') };
+  function galLoad() {
+    return api('GET', '/api/gallery').then(function (d) { S.gal = d.items || []; galShow(); return S.gal; },
+      function (err) { if (err.status === 404) { S.gal = false; galShow(); return false; } throw err; });
+  }
+  function galShow() {
+    var b = $('pg-empty-gal'); if (b) b.hidden = !S.gal || !S.gal.length || EMBED;
+  }
+  function galText(s) { return decodeHtml(String(s || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>/g, '')); }
+  function galPreview(blocks, box) {
+    (blocks || []).forEach(function (b) {
+      var d = b.data || {}, n;
+      switch (b.type) {
+        case 'header': n = el('h' + Math.min(5, Math.max(2, (+d.level || 2) + 1)), 'gal-pv-h', galText(d.text)); break;
+        case 'paragraph': n = el('p', null, galText(d.text)); if (!n.textContent) n = null; break;
+        case 'quote': n = el('blockquote', null, galText(d.text)); break;
+        case 'code': n = el('pre', null, String(d.code || '')); break;
+        case 'delimiter': n = el('hr'); break;
+        case 'callout': n = el('div', 'gal-pv-callout', (d.emoji || '💡') + ' ' + galText(d.text)); break;
+        case 'list': case 'checklist':
+          n = el(d.style === 'ordered' ? 'ol' : 'ul', d.style === 'checklist' || b.type === 'checklist' ? 'gal-pv-check' : null);
+          (function add(items, ul) {
+            (items || []).forEach(function (it) {
+              var li = el('li', null, galText(typeof it === 'string' ? it : it.content || it.text));
+              if (it && it.items && it.items.length) { var sub = el(ul.tagName.toLowerCase()); add(it.items, sub); li.appendChild(sub); }
+              ul.appendChild(li);
+            });
+          })(d.items, n);
+          break;
+        case 'table':
+          n = el('table', 'gal-pv-table');
+          (d.content || []).forEach(function (row, i) {
+            var tr = el('tr'); (row || []).forEach(function (c) { tr.appendChild(el(i === 0 && d.withHeadings ? 'th' : 'td', null, galText(c))); }); n.appendChild(tr);
+          });
+          break;
+        case 'toggle':
+          n = el('details', 'gal-pv-toggle'); n.appendChild(el('summary', null, galText(d.title))); galPreview(d.blocks, n); break;
+        case 'columns':
+          n = el('div', 'gal-pv-cols');
+          (d.cols || []).forEach(function (c) { var col = el('div', 'gal-pv-col'); col.style.flex = String(c.w || 1); galPreview(c.blocks, col); n.appendChild(col); });
+          break;
+        case 'database': n = el('div', 'gal-pv-card', '🗃️ ' + ((d.db && d.db.title) || T('Datenbank'))); break;
+        case 'tasks': n = el('div', 'gal-pv-card', '✓ ' + T('Aufgaben')); break;
+        case 'calendar': n = el('div', 'gal-pv-card', '📅 ' + T('Kalender')); break;
+        case 'embed': n = el('div', 'gal-pv-card', '🔗 ' + (d.title || d.source || T('Einbetten'))); break;
+        case 'widget':
+          n = el('div', 'gal-pv-card gal-pv-w', ({ clock: '🕒', countdown: '⏳', progress: '▰', metric: '#', quote: '❝' })[d.kind] || '▫');
+          n.appendChild(el('span', null, ' ' + (d.title || ({ clock: T('Uhr'), countdown: T('Countdown'), progress: T('Fortschritt'), metric: T('Kennzahl'), quote: T('Zitat') })[d.kind] || '')));
+          break;
+        case 'buttons':
+          n = el('div', 'gal-pv-btns');
+          (d.buttons || []).forEach(function (x) { n.appendChild(el('span', 'nbtn', (x.icon ? x.icon + ' ' : '') + galText(x.label))); });
+          break;
+        default: n = null;
+      }
+      if (n) box.appendChild(n);
+    });
+  }
+  function openGallery(parentId) {
+    var cat = HK.store('hk-gal-cat') || '', q = '', list = null, curFill = null;
+    openModal(T('Vorlagengalerie'), function (body) {
+      var dlg = $('pg-modal').firstElementChild; dlg.classList.add('hk-dialog-gal');
+      S.modalClose = function () { dlg.classList.remove('hk-dialog-gal'); };
+      var root = el('div', 'gal'); body.appendChild(root);
+      function grid() {
+        root.textContent = '';
+        var bar = el('div', 'gal-bar'), srch = el('input', 'hk-in gal-q');
+        srch.type = 'search'; srch.placeholder = T('Vorlagen durchsuchen …'); srch.setAttribute('aria-label', T('Vorlagen durchsuchen')); srch.value = q;
+        var cats = el('div', 'gal-cats'); cats.setAttribute('role', 'group'); cats.setAttribute('aria-label', T('Kategorie'));
+        GAL_CATS.forEach(function (c) {
+          var b = el('button', 'chip chip-btn' + (cat === c[0] ? ' on' : ''), c[1]); b.type = 'button'; b.setAttribute('aria-pressed', String(cat === c[0]));
+          b.addEventListener('click', function () { cat = c[0]; HK.store('hk-gal-cat', cat); grid(); });
+          cats.appendChild(b);
+        });
+        bar.appendChild(srch); bar.appendChild(cats); root.appendChild(bar);
+        var tiles = el('div', 'gal-grid'); tiles.setAttribute('role', 'list'); root.appendChild(tiles);
+        function fill() {
+          tiles.textContent = '';
+          if (!list) { tiles.appendChild(el('p', 'nt-empty', T('Lädt …'))); return; }
+          var ql = q.trim().toLowerCase();
+          var shown = list.filter(function (x) {
+            return (!cat || x.category === cat) && (!ql || (x.title + ' ' + x.desc + ' ' + x.contents.map(function (c) { return c.title; }).join(' ')).toLowerCase().indexOf(ql) >= 0);
+          });
+          if (!shown.length) { tiles.appendChild(el('p', 'nt-empty', list.length ? T('Keine passende Vorlage.') : T('Keine Vorlagen vorhanden.'))); return; }
+          shown.forEach(function (x) {
+            var li = el('div', 'gal-cell'); li.setAttribute('role', 'listitem');
+            var b = el('button', 'gal-tile'); b.type = 'button'; b.dataset.id = x.id;
+            b.appendChild(el('span', 'gal-ic', x.icon)); var tx = el('span', 'gal-tx');
+            tx.appendChild(el('span', 'gal-t', x.title)); tx.appendChild(el('span', 'gal-d', x.desc)); b.appendChild(tx);
+            b.addEventListener('click', function () { detail(x.id); });
+            li.appendChild(b); tiles.appendChild(li);
+          });
+        }
+        // Pfeiltasten zwischen den Kacheln (Raster: oben/unten springt um eine Zeile)
+        tiles.addEventListener('keydown', function (e) {
+          var all = [].slice.call(tiles.querySelectorAll('.gal-tile')), i = all.indexOf(document.activeElement);
+          if (i < 0 || ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].indexOf(e.key) < 0) return;
+          var cols = Math.max(1, Math.round(tiles.clientWidth / Math.max(1, all[0].parentNode.offsetWidth)));
+          var j = { ArrowLeft: i - 1, ArrowRight: i + 1, ArrowUp: i - cols, ArrowDown: i + cols, Home: 0, End: all.length - 1 }[e.key];
+          if (j >= 0 && j < all.length) { e.preventDefault(); all[j].focus(); }
+        });
+        srch.addEventListener('input', function () { q = srch.value; fill(); });
+        srch.addEventListener('keydown', function (e) {
+          if (e.key === 'ArrowDown' || e.key === 'Enter') { var f = tiles.querySelector('.gal-tile'); if (f) { e.preventDefault(); if (e.key === 'Enter') f.click(); else f.focus(); } }
+        });
+        curFill = fill; fill(); setTimeout(function () { srch.focus(); }, 0);
+      }
+      function detail(id) {
+        root.textContent = '';
+        var back = el('button', 'linkbtn gal-back', '← ' + T('Alle Vorlagen')); back.type = 'button';
+        back.addEventListener('click', function () { grid(); var t = root.querySelector('.gal-tile[data-id="' + id + '"]'); if (t) t.focus(); });
+        root.appendChild(back);
+        var box = el('div', 'gal-detail'); box.appendChild(el('p', 'nt-empty', T('Lädt …'))); root.appendChild(box);
+        back.focus();
+        api('GET', '/api/gallery/' + encodeURIComponent(id)).then(function (x) {
+          box.textContent = '';
+          var head = el('div', 'gal-head'); head.appendChild(el('span', 'gal-ic', x.icon));
+          var ht = el('div'); ht.appendChild(el('h3', 'gal-h', x.title)); ht.appendChild(el('p', 'gal-d', x.desc)); head.appendChild(ht); box.appendChild(head);
+          (x.needs || []).forEach(function (n) { if (GAL_NEEDS[n]) box.appendChild(el('p', 'menu-hint gal-need', 'ℹ️ ' + GAL_NEEDS[n])); });
+          var side = el('div', 'gal-side'), pv = el('div', 'gal-pv');
+          pv.setAttribute('aria-label', T('Vorschau')); pv.setAttribute('role', 'region');
+          pv.appendChild(el('div', 'gal-pv-title', (x.preview.icon ? x.preview.icon + ' ' : '') + x.preview.title));
+          galPreview(x.preview.blocks, pv);
+          side.appendChild(el('div', 'gal-lbl', T('Enthält:')));
+          var ul = el('ul', 'gal-contents');
+          x.contents.forEach(function (c) {
+            var li = el('li', null, (c.icon || (c.kind === 'database' ? '🗃️' : '📄')) + ' ' + c.title);
+            if (c.example) li.appendChild(el('span', 'gal-ex', ' · ' + T('Beispiel')));
+            ul.appendChild(li);
+          });
+          side.appendChild(ul);
+          (x.databases || []).forEach(function (dbi) {
+            var p = el('p', 'gal-dbi');
+            p.appendChild(el('b', null, (dbi.icon || '🗃️') + ' ' + dbi.title + ': '));
+            p.appendChild(document.createTextNode(dbi.props.map(function (pr) { return pr.name; }).join(', ') + ' · ' + T('Ansichten: {list}', { list: dbi.views.map(function (v) { return v.name; }).join(', ') })));
+            side.appendChild(p);
+          });
+          var wrap = el('div', 'gal-body'); wrap.appendChild(pv); wrap.appendChild(side); box.appendChild(wrap);
+          // Anlegen: mit Beispielen, unter ...
+          var act = el('div', 'gal-act');
+          var exl = el('label', 'gal-opt'), ex = el('input'); ex.type = 'checkbox'; ex.checked = true;
+          exl.appendChild(ex); exl.appendChild(document.createTextNode(' ' + T('Mit Beispielen'))); act.appendChild(exl);
+          var opts = [[null, T('Oberste Ebene')]];
+          var cand = [parentId, S.cur && canEdit() && S.cur.kind !== 'database' && !remoteId(S.cur.id) ? S.cur.id : null];
+          cand.forEach(function (pid) { var p = pid && anyById(pid); if (p && p.kind !== 'database' && !remoteId(pid) && !opts.some(function (o) { return o[0] === pid; })) opts.push([pid, (ti(p.icon) || '📄') + ' ' + label(p)]); });
+          var sel = null;
+          if (opts.length > 1) {
+            var ul2 = el('label', 'gal-opt'); ul2.appendChild(document.createTextNode(T('Anlegen unter') + ' '));
+            sel = el('select', 'flt-val'); opts.forEach(function (o, i) { var e = el('option', null, o[1]); e.value = String(i); sel.appendChild(e); });
+            sel.value = parentId && opts[1] && opts[1][0] === parentId ? '1' : '0';
+            ul2.appendChild(sel); act.appendChild(ul2);
+          }
+          var go = el('button', 'btn gal-use', T('Verwenden')); go.type = 'button';
+          go.addEventListener('click', function () {
+            go.disabled = true;
+            var pid = sel ? opts[+sel.value][0] : null;
+            save().then(function () { return api('POST', '/api/gallery/' + encodeURIComponent(id) + '/use', { parent_id: pid, examples: ex.checked }); })
+              .then(function (d) {
+                closeModal(); if (pid) { S.open[pid] = true; saveOpen(); }
+                return loadList().then(function () { return openPage(d.root); }).then(function () { HK.toast(T('Vorlage angelegt')); });
+              })
+              .catch(function (err) { go.disabled = false; HK.toast(T('Vorlage nicht angelegt: {err}', { err: err.message })); });
+          });
+          act.appendChild(go); box.appendChild(act);
+        }).catch(function (err) { box.textContent = ''; box.appendChild(el('p', 'nt-empty', T('Vorlage nicht geladen: {err}', { err: err.message }))); });
+      }
+      grid();
+      galLoad().then(function (l) {
+        list = l || [];
+        if (root.querySelector('.gal-grid')) curFill();
+      }).catch(function (err) { list = []; HK.toast(T('Vorlagen nicht geladen: {err}', { err: err.message })); if (root.querySelector('.gal-grid')) curFill(); });
+    });
+  }
+
   function setTemplate(on) {
     var id = S.cur.id;
     api('PATCH', '/api/notes/' + id, { template: on }).then(function () {
@@ -6105,6 +6286,8 @@
     if (c && own) add(c.archived ? T('Aus dem Archiv holen') : T('Seite archivieren'), '📦', function () { setArchived(c.id, !c.archived); }, { kw: 'archiv archive' });
     add(T('Archiv anzeigen'), '📦', showArchive, { kw: 'archiv archive' });
     add(T('Papierkorb'), '🗑', showTrash, { kw: 'trash geloescht' });
+    if (S.gal !== false && !EMBED) add(T('Vorlagengalerie'), '🖼', function () { openGallery(c && canEdit() && c.kind !== 'database' && !remoteId(c.id) ? c.id : null); },
+                                       { kw: 'gallery vorlagen templates galerie vorlage' });
     if (window.HKSettings) add(T('Einstellungen'), '⚙', function () { HKSettings.open(); }, { kw: 'settings kalender immich nextcloud schluessel' });
     add(T('Übersicht (Startseite)'), '⌂', function () { location.href = '/'; }, { kw: 'home dashboard start' });
     return a;
@@ -6202,6 +6385,7 @@
       // Editor.js schon jetzt laden (parallel zu Baum, Diensten und Seite) - geoeffnet wird fast immer eine Seite (P04)
       loadVendor().catch(function () { /* openPage meldet den Fehler */ });
       var svc = api('GET', '/api/services').then(function (s) { S.services = s; }).catch(function () {});
+      if (!EMBED && S.gal == null) galLoad().catch(function () {});       // 2.5: Galerie da? (aus/aelterer Server: Eintraege weg)
       return Promise.all([loadList(), svc]).then(function () {
         var fromHash = parseInt(location.hash.slice(1), 10), last = +HK.store('hk-pg-last');
         if (fromHash && !anyById(fromHash)) return openPage(fromHash);       // alte/fremde Adresse: Server fragen ("Kein Zugriff")
