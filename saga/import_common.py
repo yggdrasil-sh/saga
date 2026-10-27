@@ -205,6 +205,18 @@ def cleanup():
 # Pfade und ZIP-Pruefer
 # =====================================================================================================
 _CTRL = re.compile(r"[\x00-\x1f\x7f]")
+CD_MAX = ENTRIES_MAX * 400        # Zentralverzeichnis eines ZIP (~19 MB): ENTRIES_MAX Eintraege mit im Mittel ~350 Zeichen Pfad
+
+
+def zip_too_big_cd(path):
+    """True, wenn das Zentralverzeichnis groesser als CD_MAX ist - VOR zipfile.ZipFile pruefen: das legt je Eintrag ein
+    Objekt an (1 Mio. Mini-Eintraege in 53 MB = ~600 MB Speicher), bevor ENTRIES_MAX greifen kann."""
+    try:
+        with open(path, "rb") as f:
+            end = zipfile._EndRecData(f)
+    except OSError:
+        return False
+    return bool(end) and end[zipfile._ECD_SIZE] > CD_MAX
 
 
 def norm_path(name):
@@ -245,6 +257,8 @@ class Source:
         self.root = self._common_root()
 
     def _open_zip(self, path):
+        if zip_too_big_cd(path):
+            raise ImportFail("zip_entries")
         try:
             self.zip = zipfile.ZipFile(path)
         except (zipfile.BadZipFile, OSError):

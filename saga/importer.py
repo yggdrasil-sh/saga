@@ -95,6 +95,9 @@ async def api_upload(request: Request):
     u["size"] += n
     names = [f["name"] for f in u["files"]]
     if len(u["files"]) == 1 and name.lower().endswith(".zip"):
+        if ic.zip_too_big_cd(path):
+            ic.drop_upload(tok)
+            return _bad(ic.reason_text("zip_entries"))
         try:
             with zipfile.ZipFile(path) as z:
                 names = [i.filename for i in z.infolist()[:ic.ENTRIES_MAX]]

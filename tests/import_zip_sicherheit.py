@@ -197,6 +197,18 @@ def run():
             z.writestr(f"f{i}.txt", b"")
     s, a, _ = analyze(buf.getvalue(), name="viele.zip")
     ok("50 001 Eintraege: abgelehnt (400)", s == 400 and "Einträge" in str(a), (s, a))
+    # Riesiges Zentralverzeichnis (400 000 Mini-Eintraege, ~21 MB, Anzahl im Kopf auf 16 Bit gekuerzt): schon beim
+    # Upload abgelehnt, bevor zipfile je Eintrag ein Objekt anlegt (sonst Hunderte MB Speicher im Server)
+    cd = bytearray()
+    for i in range(400000):
+        nm = b"%07d" % i
+        cd += struct.pack("<4s4H4L5H2L", b"PK\x01\x02", 20, 20, 0, 0, 0, 0, 0, 0, len(nm), 0, 0, 0, 0, 0, 0) + nm
+    n16 = 400000 & 0xFFFF
+    huge = bytes(cd) + struct.pack("<4s4H2LH", b"PK\x05\x06", 0, 0, n16, n16, len(cd), 0, 0)
+    t0 = time.time()
+    s, d = upload("riesig.zip", huge)
+    ok("riesiges Zentralverzeichnis: beim Upload abgelehnt (400), schnell", s == 400 and "Einträge" in str(d) and time.time() - t0 < 5,
+       (s, d, round(time.time() - t0, 2)))
 
     # --- Summe entpackt / Upload-Grenze --------------------------------------------------------------------------------
     if UNPMB <= 256:
