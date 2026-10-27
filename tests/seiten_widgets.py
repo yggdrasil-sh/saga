@@ -66,6 +66,9 @@ def W(kind, cfg=None, bid=None, **kw):
     return b
 
 
+P = lambda t: {"type": "paragraph", "data": {"text": t}}  # noqa: E731
+
+
 def save(A, nid, blocks):
     s, d = req("PATCH", f"/api/notes/{nid}", A, {"body": json.dumps({"blocks": blocks}), "format": "blocks"})
     assert s == 200, (s, d)
@@ -195,6 +198,12 @@ def main():
     s, _ = req("GET", f"/api/notes/{nid}/widgets?tz=Mond/Basis", A)
     ok(f"ungueltige Zeitzone -> 400 ({s})", s == 400)
 
+    # geaenderte Einstellung wirkt sofort (Zwischenspeicher je Einstellung)
+    save(A, nid, [dict(b, data=dict(b["data"], cfg=dict(b["data"]["cfg"], view="offen"))) if b.get("id") == "cnt" else b for b in blocks])
+    s, d = req("GET", f"/api/notes/{nid}/widgets", A)
+    ok("geaenderte Ansicht wirkt sofort (kein alter Wert aus dem Speicher)", d["widgets"]["cnt"]["value"] == 2, d["widgets"].get("cnt"))
+    save(A, nid, blocks)
+
     # --- Vorschau -------------------------------------------------------------------------------------------------------
     pv = {"block": W("metric", {"db": dbid, "agg": "count"}, bid="neu")}
     s, d = req("POST", f"/api/notes/{nid}/widgets/preview", A, pv)
@@ -284,6 +293,8 @@ def main():
         W("clock", {}, bid="pk", title="Uhrzeit"),
         W("quote", {"src": "fixed", "items": ["Nur 3<4 dies"]}, bid="pq"),
         {"type": "widget", "id": "pz", "data": {"kind": "zukunft", "title": "Unbekannt"}},
+        {"type": "columns", "data": {"cols": [{"blocks": [W("progress", {"src": "fixed", "value": 9, "max": 10}, bid="pk1", title="InSpalte")]},
+                                              {"blocks": [P("rechts")]}]}},
     ])
     s, d = req("PUT", f"/api/notes/{pub}/publish", A, {"slug": "widgets"})
     s, html = req("GET", "/@sw-anna/widgets")
@@ -292,6 +303,7 @@ def main():
     ok("fremde DB (Cora) entfaellt ganz", "FremdeQuelle" not in html)
     ok("Fortschritt als Balken pb-35 (33 % -> 5er-Schritt)", 'class="pb-35"' in html and ">Balken<" in html)
     ok("Countdown Tagesstand, Uhr = Datum", re.search(r"noch \d+ Tage", html) and ">Uhrzeit<" in html)
+    ok("Widget in Spalte veroeffentlicht", ">InSpalte<" in html and 'class="pb-90"' in html)
     ok("Zitat escaped, unbekannte Art weg", "Nur 3&lt;4 dies" in html and "Unbekannt" not in html)
     body = html.split("<body", 1)[-1]
     ok("keine Inline-Styles im Inhalt", " style=" not in body)
