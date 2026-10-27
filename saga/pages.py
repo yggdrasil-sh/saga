@@ -940,9 +940,9 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
                                "WHERE n.id=? AND n.uid=? AND d.kind='database'", (nid, owner)).fetchone()
                 if not ps:
                     raise ValueError(t("Seite ist keine Datenbank-Zeile"))
-                merged = _clean_props(_json_load(ps[0], {"props": []}), b["props"], _json_load(ps[1], {}), check=_rel_check_for(c, owner, acc, role, _json_load(ps[1], {})))
-                _rel_sync(c, owner, _json_load(ps[0], {"props": []}), nid, _json_load(ps[1], {}), merged, _may_edit(acc, role))
-                sets.append("props=?"); args.append(json.dumps(merged, ensure_ascii=False))
+                new_props = _clean_props(_json_load(ps[0], {"props": []}), b["props"], _json_load(ps[1], {}), check=_rel_check_for(c, owner, acc, role, _json_load(ps[1], {})))
+                _rel_sync(c, owner, _json_load(ps[0], {"props": []}), nid, _json_load(ps[1], {}), new_props, _may_edit(acc, role))
+                sets.append("props=?"); args.append(json.dumps(new_props, ensure_ascii=False))
             if "title" in b:
                 sets.append("title=?"); args.append(_title_in(b["title"]))
             if "icon" in b:
