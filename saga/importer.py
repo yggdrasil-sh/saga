@@ -1,8 +1,10 @@
 """Importe (2.5, Paket 2): HTTP-Schnittstelle. Unterbau in saga/import_common.py, Formate in saga/import_csv.py (CSV ->
 Datenbank) und saga/import_md.py (Markdown/Obsidian). Ablauf fuer Web und Apps (docs/APP-API.md, "Import"):
 
-  POST /api/import/upload?name=<datei>[&token=<t>]   Rohdaten (Datenstrom) -> {token, files, kind}. Mehrere Dateien
-                                                      (Ordner ohne ZIP): weitere Teile mit demselben token.
+  POST /api/import/upload?name=<datei>[&token=<t>][&replace=1]   Rohdaten (Datenstrom) -> {token, files, kind}. Mehrere
+                                                      Dateien (Ordner ohne ZIP): weitere Teile mit demselben token.
+                                                      Hoechstens EIN wartender Upload je Konto: ein neuer (ohne token)
+                                                      -> 409, solange ein anderer wartet; replace=1 verwirft den alten.
   POST /api/import/{token}/analyze {kind?, path?, encoding?, sep?, header?}  -> Analyse (nichts wird angelegt)
   POST /api/import/{token}/run {kind, parent_id?, ...}  -> 202 {run_id} (Hintergrund; 409 wenn schon einer laeuft)
   GET  /api/import/runs[/{id}]                          -> Zustand, Fortschritt, Bericht
@@ -72,6 +74,11 @@ async def api_upload(request: Request):
             return _bad(t("Zu viele Dateien (höchstens {n}).", n=ic.PARTS_MAX), 413)
     else:
         ic.cleanup()
+        old = ic.waiting_uploads(uid)                # hoechstens ein wartender Upload je Konto (sonst Platte voll)
+        if old and q.get("replace") != "1":
+            return _bad(t("Es wartet schon ein Import-Upload – erst abschließen oder verwerfen."), 409)
+        for k in old:
+            ic.drop_upload(k)
         tok = ic.new_upload(uid)
         u = ic.get_upload(uid, tok)
     if u["busy"]:

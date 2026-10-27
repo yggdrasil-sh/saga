@@ -2472,7 +2472,7 @@
       if (i >= files.length) return Promise.resolve(tok);
       var f = files[i], name = f.webkitRelativePath || f.relPath || f.name; i++;
       status(T('Hochladen … {n} von {total}', { n: i, total: files.length }));
-      return fetch('/api/import/upload?name=' + encodeURIComponent(name) + (tok ? '&token=' + encodeURIComponent(tok) : ''),
+      return fetch('/api/import/upload?name=' + encodeURIComponent(name) + (tok ? '&token=' + encodeURIComponent(tok) : '&replace=1'),   // neuer Dialog: alten wartenden Upload verwerfen
         { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/octet-stream' }, body: f })
         .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }); })
         .then(function (d) { tok = d.token; return next(); });

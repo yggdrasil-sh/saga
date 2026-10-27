@@ -60,8 +60,8 @@ def req(m, p, body=None, u=A, raw=None):
         return r.status, d
 
 
-def upload(name, data, u=A, tok=None):
-    q = "name=" + urllib.parse.quote(name) + ("&token=" + tok if tok else "")
+def upload(name, data, u=A, tok=None, replace=True):
+    q = "name=" + urllib.parse.quote(name) + ("&token=" + tok if tok else ("&replace=1" if replace else ""))
     return req("POST", "/api/import/upload?" + q, raw=data, u=u)
 
 
@@ -136,6 +136,18 @@ def run():
     s, d = upload("x.csv", b"a,b\n1,2\n")
     tok = d["token"]
     ok("Upload: Token, Art csv", s == 200 and d["kind"] == "csv", d)
+    # hoechstens ein wartender Upload je Konto (wie das persoenliche Backup): zweiter ohne replace -> 409
+    s2, d2 = upload("y.csv", b"a\n1\n", replace=False)
+    ok("zweiter wartender Upload desselben Kontos: 409", s2 == 409, (s2, d2))
+    s2, d2 = upload("y.csv", b"a\n1\n", u=BU, replace=False)
+    ok("anderes Konto darf gleichzeitig hochladen", s2 == 200, (s2, d2))
+    if s2 == 200:
+        req("DELETE", f"/api/import/{d2['token']}", u=BU)
+    s2, d2 = upload("y.csv", b"a\n1\n", tok=tok)
+    ok("weiterer Teil mit demselben Token geht", s2 == 200 and d2.get("files") == 2, (s2, d2))
+    s2, d2 = upload("z.csv", b"a,b\n1,2\n")
+    ok("replace=1 verwirft den alten Upload", s2 == 200 and req("POST", f"/api/import/{tok}/analyze", {})[0] == 404, (s2, d2))
+    tok = d2["token"]
     s, _ = req("POST", f"/api/import/{tok}/analyze", {}, u=BU)
     ok("fremdes Token: 404 (Analyse)", s == 404)
     s, _ = req("POST", f"/api/import/{tok}/run", {"kind": "csv", "columns": []}, u=BU)
@@ -244,9 +256,10 @@ def run():
     # --- parallel: zweiter Lauf 409; Abbruch ---------------------------------------------------------------------------
     big = ("Name,Nr\n" + "".join(f"P{i},{i}\n" for i in range(ROWS_MAX))).encode()
     s, d1 = upload("p1.csv", big)
-    s, d2 = upload("p2.csv", b"a,b\n1,2\n")
     cols = [{"index": 0, "type": "text"}, {"index": 1, "type": "number"}]
     s1, r1 = req("POST", f"/api/import/{d1['token']}/run", {"kind": "csv", "columns": cols, "title_col": 0})
+    s, d2 = upload("p2.csv", b"a,b\n1,2\n", replace=False)          # laufender Upload zaehlt nicht als wartend
+    ok("Upload waehrend eines Laufs (ohne replace) geht", s == 200, (s, d2))
     s2, r2 = req("POST", f"/api/import/{d2['token']}/run", {"kind": "csv", "columns": cols, "title_col": 0})
     ok("zweiter Lauf parallel: 409", s1 == 202 and s2 == 409, (s1, s2, r2))
     s, _ = req("POST", f"/api/import/runs/{r1['run_id']}/cancel", u=BU)
