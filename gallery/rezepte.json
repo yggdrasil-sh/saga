@@ -1,0 +1,139 @@
+{
+  "id": "rezepte", "v": 1, "order": 50, "category": "personal",
+  "icon": "🍳", "title": "Rezepte & Einkauf",
+  "desc": "Rezeptsammlung mit Galerie, Wochenplan und Einkaufsliste zum Abhaken.",
+  "needs": [],
+  "root": "home",
+  "items": [
+    {"ref": "home", "kind": "page", "parent": null, "title": "Rezepte & Einkauf", "icon": "🍳", "cover": null, "wide": true,
+     "body": [
+       {"type": "buttons", "data": {"buttons": [
+         {"label": "Neues Rezept", "icon": "➕", "action": "db", "target": "$ref:rezepte", "tpl": "$ref:tpl_rezept", "title": "", "open": ""},
+         {"label": "Wochenplan", "icon": "🗓️", "action": "page", "target": "$ref:wochenplan", "open": ""},
+         {"label": "Einkaufsliste", "icon": "🛒", "action": "page", "target": "$ref:einkauf", "open": "side"}
+       ]}},
+       {"type": "database", "data": {"db": "$ref:rezepte", "view": "galerie", "views": null}}
+     ]},
+
+    {"ref": "rezepte", "kind": "database", "parent": "home", "title": "Rezepte", "icon": "📖",
+     "schema": {
+       "title_name": "Rezept",
+       "props": [
+         {"id": "kategorie", "name": "Kategorie", "type": "select", "options": [
+           {"id": "fruehstueck", "name": "Frühstück", "color": "yellow"},
+           {"id": "haupt", "name": "Hauptgericht", "color": "orange"},
+           {"id": "suppe", "name": "Suppe", "color": "brown"},
+           {"id": "salat", "name": "Salat", "color": "green"},
+           {"id": "dessert", "name": "Dessert", "color": "pink"},
+           {"id": "backen", "name": "Backen", "color": "purple"}]},
+         {"id": "dauer", "name": "Dauer (Min.)", "type": "number"},
+         {"id": "portionen", "name": "Portionen", "type": "number"},
+         {"id": "merkmale", "name": "Merkmale", "type": "multi_select", "options": [
+           {"id": "vegetarisch", "name": "vegetarisch", "color": "green"},
+           {"id": "vegan", "name": "vegan", "color": "green"},
+           {"id": "schnell", "name": "schnell", "color": "blue"},
+           {"id": "vorrat", "name": "gut vorzubereiten", "color": "gray"}]},
+         {"id": "zutaten", "name": "Hauptzutaten", "type": "text"},
+         {"id": "favorit", "name": "Favorit", "type": "checkbox"},
+         {"id": "quelle", "name": "Quelle", "type": "url"}
+       ],
+       "views": [
+         {"id": "galerie", "name": "Galerie", "type": "gallery", "card": "l", "hidden": ["zutaten", "quelle", "portionen", "favorit"]},
+         {"id": "kategorie", "name": "Nach Kategorie", "type": "board", "group_by": "kategorie", "hidden": ["zutaten", "quelle"]},
+         {"id": "schnell", "name": "Schnell (bis 30 Min.)", "type": "list", "filters": [{"pid": "dauer", "op": "lt", "value": "31"}],
+          "sorts": [{"pid": "dauer", "dir": "asc"}]},
+         {"id": "favoriten", "name": "Favoriten", "type": "gallery", "filters": [{"pid": "favorit", "op": "checked", "value": ""}]},
+         {"id": "alle", "name": "Alle", "type": "table", "sorts": [{"pid": "title", "dir": "asc"}]}
+       ],
+       "default_tpl": "$ref:tpl_rezept"
+     },
+     "templates": [
+       {"ref": "tpl_rezept", "title": "Rezept", "icon": "🍽️", "props": {"portionen": 2}, "default": true,
+        "body": [
+          {"type": "columns", "data": {"cols": [
+            {"w": 0.4, "blocks": [
+              {"type": "header", "data": {"text": "Zutaten", "level": 2}},
+              {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [{"content": "", "meta": {}, "items": []}]}}]},
+            {"w": 0.6, "blocks": [
+              {"type": "header", "data": {"text": "Zubereitung", "level": 2}},
+              {"type": "list", "data": {"style": "ordered", "meta": {}, "items": [{"content": "", "meta": {}, "items": []}]}}]}
+          ]}},
+          {"type": "callout", "data": {"emoji": "💡", "text": "Tipps und Varianten"}}
+        ]}
+     ],
+     "rows": [
+       {"title": "Ofengemüse mit Feta", "icon": "🥕", "example": true,
+        "props": {"kategorie": "haupt", "dauer": 40, "portionen": 2, "merkmale": ["vegetarisch", "vorrat"], "zutaten": "Kürbis, Paprika, Zwiebeln, Feta", "favorit": true},
+        "body": [
+          {"type": "columns", "data": {"cols": [
+            {"w": 0.4, "blocks": [
+              {"type": "header", "data": {"text": "Zutaten", "level": 2}},
+              {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+                {"content": "500 g Kürbis", "meta": {}, "items": []},
+                {"content": "2 Paprika", "meta": {}, "items": []},
+                {"content": "2 rote Zwiebeln", "meta": {}, "items": []},
+                {"content": "200 g Feta", "meta": {}, "items": []},
+                {"content": "Olivenöl, Salz, Pfeffer, Thymian", "meta": {}, "items": []}]}}]},
+            {"w": 0.6, "blocks": [
+              {"type": "header", "data": {"text": "Zubereitung", "level": 2}},
+              {"type": "list", "data": {"style": "ordered", "meta": {}, "items": [
+                {"content": "Ofen auf 200 °C vorheizen.", "meta": {}, "items": []},
+                {"content": "Gemüse in Stücke schneiden, mit Öl und Gewürzen mischen.", "meta": {}, "items": []},
+                {"content": "Auf dem Blech 25 Minuten backen.", "meta": {}, "items": []},
+                {"content": "Feta darüberbröseln und weitere 10 Minuten backen.", "meta": {}, "items": []}]}}]}
+          ]}},
+          {"type": "callout", "data": {"emoji": "💡", "text": "Dazu passt Fladenbrot oder Couscous."}}
+        ]},
+       {"title": "Overnight Oats", "icon": "🥣", "example": true,
+        "props": {"kategorie": "fruehstueck", "dauer": 5, "portionen": 1, "merkmale": ["vegetarisch", "schnell", "vorrat"], "zutaten": "Haferflocken, Joghurt, Beeren"}},
+       {"title": "Linsensuppe", "icon": "🍲", "example": true,
+        "props": {"kategorie": "suppe", "dauer": 35, "portionen": 4, "merkmale": ["vegan", "vorrat"], "zutaten": "Rote Linsen, Möhren, Kokosmilch", "favorit": true}},
+       {"title": "Tomatensalat mit Basilikum", "icon": "🍅", "example": true,
+        "props": {"kategorie": "salat", "dauer": 10, "portionen": 2, "merkmale": ["vegan", "schnell"], "zutaten": "Tomaten, Basilikum, Zwiebel"}},
+       {"title": "Schoko-Bananenbrot", "icon": "🍌", "example": true,
+        "props": {"kategorie": "backen", "dauer": 70, "portionen": 8, "merkmale": ["vegetarisch"], "zutaten": "Bananen, Mehl, Kakao, Eier",
+                  "quelle": "https://example.org/rezepte/bananenbrot"}}
+     ]},
+
+    {"ref": "wochenplan", "kind": "page", "parent": "home", "title": "Wochenplan", "icon": "🗓️", "wide": true,
+     "body": [
+       {"type": "paragraph", "data": {"text": "Trag ein, was es an welchem Tag gibt – mit „[[“ verlinkst du direkt das Rezept."}},
+       {"type": "columns", "data": {"cols": [
+         {"blocks": [{"type": "header", "data": {"text": "Montag", "level": 3}},
+                     {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [{"content": "Linsensuppe", "meta": {}, "items": []}]}}]},
+         {"blocks": [{"type": "header", "data": {"text": "Dienstag", "level": 3}},
+                     {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [{"content": "Ofengemüse mit Feta", "meta": {}, "items": []}]}}]},
+         {"blocks": [{"type": "header", "data": {"text": "Mittwoch", "level": 3}},
+                     {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [{"content": "Reste von Montag", "meta": {}, "items": []}]}}]},
+         {"blocks": [{"type": "header", "data": {"text": "Donnerstag", "level": 3}},
+                     {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [{"content": "", "meta": {}, "items": []}]}}]}
+       ]}},
+       {"type": "columns", "data": {"cols": [
+         {"blocks": [{"type": "header", "data": {"text": "Freitag", "level": 3}},
+                     {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [{"content": "Pizza-Abend", "meta": {}, "items": []}]}}]},
+         {"blocks": [{"type": "header", "data": {"text": "Samstag", "level": 3}},
+                     {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [{"content": "", "meta": {}, "items": []}]}}]},
+         {"blocks": [{"type": "header", "data": {"text": "Sonntag", "level": 3}},
+                     {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [{"content": "Schoko-Bananenbrot backen", "meta": {}, "items": []}]}}]},
+         {"blocks": [{"type": "callout", "data": {"emoji": "🛒", "text": "Fehlt etwas? Gleich auf die Einkaufsliste setzen."}}]}
+       ]}}
+     ]},
+
+    {"ref": "einkauf", "kind": "page", "parent": "home", "title": "Einkaufsliste", "icon": "🛒",
+     "body": [
+       {"type": "header", "data": {"text": "Obst & Gemüse", "level": 3}},
+       {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+         {"content": "Kürbis", "meta": {"checked": false}, "items": []},
+         {"content": "Tomaten", "meta": {"checked": false}, "items": []},
+         {"content": "Bananen", "meta": {"checked": true}, "items": []}]}},
+       {"type": "header", "data": {"text": "Kühlregal", "level": 3}},
+       {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+         {"content": "Feta", "meta": {"checked": false}, "items": []},
+         {"content": "Joghurt", "meta": {"checked": false}, "items": []}]}},
+       {"type": "header", "data": {"text": "Vorrat", "level": 3}},
+       {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+         {"content": "Rote Linsen", "meta": {"checked": false}, "items": []},
+         {"content": "Haferflocken", "meta": {"checked": false}, "items": []}]}}
+     ]}
+  ]
+}

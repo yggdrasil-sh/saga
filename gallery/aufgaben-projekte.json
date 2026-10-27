@@ -1,0 +1,140 @@
+{
+  "id": "aufgaben-projekte", "v": 1, "order": 20, "category": "work",
+  "icon": "✅", "title": "Aufgaben & Projekte",
+  "desc": "Projekte mit Aufgaben, Board nach Status, Kalender und Fortschritt.",
+  "needs": [],
+  "root": "home",
+  "items": [
+    {"ref": "home", "kind": "page", "parent": null, "title": "Aufgaben & Projekte", "icon": "✅", "cover": null, "wide": true,
+     "body": [
+       {"type": "callout", "data": {"emoji": "💡", "text": "Neue Aufgaben legst du über die Schaltfläche an. Im Board ziehst du Karten einfach in die nächste Spalte."}},
+       {"type": "columns", "data": {"cols": [
+         {"blocks": [{"id": "waufgab1", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "blue", "title": "Offene Aufgaben",
+                      "cfg": {"db": "$ref:tasks", "view": "offen", "agg": "count", "prop": "", "fmt": "num"}}}]},
+         {"blocks": [{"id": "waufgab2", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "orange", "title": "Diese Woche fällig",
+                      "cfg": {"db": "$ref:tasks", "view": "woche", "agg": "count", "prop": "", "fmt": "num"}}}]},
+         {"blocks": [{"id": "waufgab3", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "green", "title": "Erledigt",
+                      "cfg": {"db": "$ref:tasks", "view": "erledigt", "agg": "count", "prop": "", "fmt": "num"}}}]}
+       ]}},
+       {"type": "buttons", "data": {"buttons": [
+         {"label": "Neue Aufgabe", "icon": "➕", "action": "db", "target": "$ref:tasks", "tpl": "$ref:tpl_task", "title": "", "open": "center"},
+         {"label": "Neues Projekt", "icon": "📁", "action": "db", "target": "$ref:projects", "tpl": "$ref:tpl_project", "title": "", "open": ""}
+       ]}},
+       {"type": "header", "data": {"text": "Aufgaben", "level": 2}},
+       {"type": "database", "data": {"db": "$ref:tasks", "view": "board", "views": null, "hide_title": true}},
+       {"type": "header", "data": {"text": "Projekte", "level": 2}},
+       {"type": "database", "data": {"db": "$ref:projects", "view": "aktiv", "views": null, "hide_title": true}}
+     ]},
+
+    {"ref": "projects", "kind": "database", "parent": "home", "title": "Projekte", "icon": "📁",
+     "schema": {
+       "title_name": "Projekt",
+       "props": [
+         {"id": "status", "name": "Status", "type": "select", "options": [
+           {"id": "geplant", "name": "Geplant", "color": "gray"},
+           {"id": "aktiv", "name": "Aktiv", "color": "blue"},
+           {"id": "pause", "name": "Pausiert", "color": "yellow"},
+           {"id": "fertig", "name": "Abgeschlossen", "color": "green"}]},
+         {"id": "start", "name": "Start", "type": "date"},
+         {"id": "ende", "name": "Zieltermin", "type": "date"},
+         {"id": "fortschritt", "name": "Fortschritt", "type": "number", "fmt": "percent", "show": "bar"},
+         {"id": "verantwortlich", "name": "Verantwortlich", "type": "text"}
+       ],
+       "views": [
+         {"id": "aktiv", "name": "Laufend", "type": "table", "filters": [{"pid": "status", "op": "is_not", "value": "fertig"}],
+          "sorts": [{"pid": "ende", "dir": "asc"}]},
+         {"id": "board", "name": "Nach Status", "type": "board", "group_by": "status"},
+         {"id": "zeitplan", "name": "Zeitplan", "type": "calendar", "date_by": "ende"},
+         {"id": "alle", "name": "Alle", "type": "table"}
+       ],
+       "default_tpl": "$ref:tpl_project"
+     },
+     "templates": [
+       {"ref": "tpl_project", "title": "Neues Projekt", "icon": "📁", "props": {"status": "geplant", "fortschritt": 0}, "default": true,
+        "body": [
+          {"type": "header", "data": {"text": "Ziel", "level": 2}},
+          {"type": "paragraph", "data": {"text": "Was soll am Ende erreicht sein – in ein, zwei Sätzen?"}},
+          {"type": "header", "data": {"text": "Meilensteine", "level": 2}},
+          {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+            {"content": "Erster Meilenstein", "meta": {"checked": false}, "items": []},
+            {"content": "Zweiter Meilenstein", "meta": {"checked": false}, "items": []}]}},
+          {"type": "header", "data": {"text": "Notizen", "level": 2}},
+          {"type": "paragraph", "data": {"text": ""}}
+        ]}
+     ],
+     "rows": [
+       {"ref": "p_web", "title": "Website überarbeiten", "icon": "🌐", "example": true,
+        "props": {"status": "aktiv", "start": "2026-10-19", "ende": "2026-11-27", "fortschritt": 40, "verantwortlich": "Team Web"},
+        "body": [
+          {"type": "header", "data": {"text": "Ziel", "level": 2}},
+          {"type": "paragraph", "data": {"text": "Neue Startseite, klarere Navigation und schnellere Ladezeiten."}},
+          {"type": "header", "data": {"text": "Aufgaben in diesem Projekt", "level": 2}},
+          {"type": "database", "data": {"db": "$ref:tasks", "view": "alle", "hide_title": true, "views": [
+            {"id": "alle", "name": "Aufgaben", "type": "table", "filters": [{"pid": "projekt", "op": "contains", "value": "$ref:p_web"}],
+             "sorts": [{"pid": "faellig", "dir": "asc"}], "hidden": ["projekt"]}]}}
+        ]},
+       {"ref": "p_umzug", "title": "Büroumzug", "icon": "📦", "example": true,
+        "props": {"status": "geplant", "start": "2026-11-16", "ende": "2026-12-18", "fortschritt": 10, "verantwortlich": "Verwaltung"}},
+       {"ref": "p_feier", "title": "Jahresabschluss", "icon": "🎉", "example": true,
+        "props": {"status": "fertig", "start": "2026-09-01", "ende": "2026-10-15", "fortschritt": 100, "verantwortlich": "Alle"}}
+     ]},
+
+    {"ref": "tasks", "kind": "database", "parent": "home", "title": "Aufgaben", "icon": "☑️",
+     "schema": {
+       "title_name": "Aufgabe",
+       "props": [
+         {"id": "status", "name": "Status", "type": "select", "options": [
+           {"id": "offen", "name": "Offen", "color": "gray"},
+           {"id": "arbeit", "name": "In Arbeit", "color": "blue"},
+           {"id": "warten", "name": "Wartet", "color": "yellow"},
+           {"id": "erledigt", "name": "Erledigt", "color": "green"}]},
+         {"id": "prio", "name": "Priorität", "type": "select", "options": [
+           {"id": "hoch", "name": "Hoch", "color": "red"},
+           {"id": "mittel", "name": "Mittel", "color": "orange"},
+           {"id": "niedrig", "name": "Niedrig", "color": "gray"}]},
+         {"id": "faellig", "name": "Fällig", "type": "date"},
+         {"id": "projekt", "name": "Projekt", "type": "relation", "target": "$ref:projects", "two_way": true},
+         {"id": "bereich", "name": "Bereich", "type": "multi_select", "options": [
+           {"id": "planung", "name": "Planung", "color": "purple"},
+           {"id": "umsetzung", "name": "Umsetzung", "color": "blue"},
+           {"id": "abstimmung", "name": "Abstimmung", "color": "pink"}]}
+       ],
+       "views": [
+         {"id": "board", "name": "Board", "type": "board", "group_by": "status", "sorts": [{"pid": "faellig", "dir": "asc"}],
+          "colors": [{"pid": "prio", "op": "is", "value": "hoch", "color": "red"}], "hidden": ["bereich"]},
+         {"id": "woche", "name": "Diese Woche", "type": "list", "filters": [{"pid": "faellig", "op": "this_week", "value": ""},
+          {"pid": "status", "op": "is_not", "value": "erledigt"}], "sorts": [{"pid": "faellig", "dir": "asc"}]},
+         {"id": "kalender", "name": "Kalender", "type": "calendar", "date_by": "faellig"},
+         {"id": "offen", "name": "Offen", "type": "table", "filters": [{"pid": "status", "op": "is_not", "value": "erledigt"}],
+          "sorts": [{"pid": "prio", "dir": "asc"}, {"pid": "faellig", "dir": "asc"}], "group": "prio"},
+         {"id": "erledigt", "name": "Erledigt", "type": "table", "filters": [{"pid": "status", "op": "is", "value": "erledigt"}]},
+         {"id": "alle", "name": "Alle", "type": "table", "calcs": {"title": "count"}}
+       ],
+       "default_tpl": "$ref:tpl_task"
+     },
+     "templates": [
+       {"ref": "tpl_task", "title": "Neue Aufgabe", "icon": "☑️", "props": {"status": "offen", "prio": "mittel"}, "default": true,
+        "body": [
+          {"type": "paragraph", "data": {"text": "Worum geht es? Was ist das gewünschte Ergebnis?"}},
+          {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+            {"content": "Erster Schritt", "meta": {"checked": false}, "items": []}]}}
+        ]}
+     ],
+     "rows": [
+       {"title": "Entwurf der Startseite", "example": true,
+        "props": {"status": "arbeit", "prio": "hoch", "faellig": "2026-10-30", "projekt": ["$ref:p_web"], "bereich": ["umsetzung"]}},
+       {"title": "Texte für „Über uns“ sammeln", "example": true,
+        "props": {"status": "offen", "prio": "mittel", "faellig": "2026-11-04", "projekt": ["$ref:p_web"], "bereich": ["planung"]}},
+       {"title": "Bilder freigeben lassen", "example": true,
+        "props": {"status": "warten", "prio": "mittel", "faellig": "2026-11-06", "projekt": ["$ref:p_web"], "bereich": ["abstimmung"]}},
+       {"title": "Navigation testen", "example": true,
+        "props": {"status": "offen", "prio": "niedrig", "faellig": "2026-11-13", "projekt": ["$ref:p_web"], "bereich": ["umsetzung"]}},
+       {"title": "Angebote für Umzugsfirma einholen", "example": true,
+        "props": {"status": "offen", "prio": "hoch", "faellig": "2026-11-18", "projekt": ["$ref:p_umzug"], "bereich": ["planung"]}},
+       {"title": "Raumplan abstimmen", "example": true,
+        "props": {"status": "offen", "prio": "mittel", "faellig": "2026-11-25", "projekt": ["$ref:p_umzug"], "bereich": ["abstimmung"]}},
+       {"title": "Einladungen verschicken", "example": true,
+        "props": {"status": "erledigt", "prio": "mittel", "faellig": "2026-09-20", "projekt": ["$ref:p_feier"], "bereich": ["umsetzung"]}}
+     ]}
+  ]
+}

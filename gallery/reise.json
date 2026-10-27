@@ -1,0 +1,159 @@
+{
+  "id": "reise", "v": 1, "order": 60, "category": "personal",
+  "icon": "🧳", "title": "Reiseplaner",
+  "desc": "Reisen planen: Countdown, Tagesplan, Packliste und Ausgaben mit Budget im Blick.",
+  "needs": [],
+  "root": "home",
+  "items": [
+    {"ref": "home", "kind": "page", "parent": null, "title": "Reiseplaner", "icon": "🧳", "cover": null, "wide": true,
+     "body": [
+       {"type": "columns", "data": {"cols": [
+         {"blocks": [{"id": "wreise1", "type": "widget", "data": {"v": 1, "kind": "countdown", "size": "m", "style": "card", "accent": "blue", "title": "Bis zur nächsten Reise",
+                      "cfg": {"date": "2026-12-04", "time": "", "dir": "until", "unit": "days"}}}]},
+         {"blocks": [{"id": "wreise2", "type": "widget", "data": {"v": 1, "kind": "progress", "size": "m", "style": "card", "accent": "orange", "title": "Reisebudget 1.200 €",
+                      "cfg": {"src": "db", "db": "$ref:ausgaben", "view": "alle", "mode": "sum", "prop": "betrag", "goal": 1200}}}]},
+         {"blocks": [{"id": "wreise3", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "green", "title": "Ausgaben gesamt",
+                      "cfg": {"db": "$ref:ausgaben", "view": "alle", "agg": "sum", "prop": "betrag", "fmt": "eur"}}}]}
+       ]}},
+       {"type": "buttons", "data": {"buttons": [
+         {"label": "Neue Reise", "icon": "✈️", "action": "db", "target": "$ref:reisen", "tpl": "$ref:tpl_reise", "title": "", "open": ""},
+         {"label": "Ausgabe erfassen", "icon": "💶", "action": "db", "target": "$ref:ausgaben", "tpl": null, "title": "", "open": "center"},
+         {"label": "Packliste", "icon": "🎒", "action": "page", "target": "$ref:packliste", "open": "side"}
+       ]}},
+       {"type": "header", "data": {"text": "Meine Reisen", "level": 2}},
+       {"type": "database", "data": {"db": "$ref:reisen", "view": "galerie", "views": null, "hide_title": true}},
+       {"type": "header", "data": {"text": "Ausgaben", "level": 2}},
+       {"type": "database", "data": {"db": "$ref:ausgaben", "view": "alle", "views": null, "hide_title": true}}
+     ]},
+
+    {"ref": "reisen", "kind": "database", "parent": "home", "title": "Reisen", "icon": "🗺️",
+     "schema": {
+       "title_name": "Reise",
+       "props": [
+         {"id": "ort", "name": "Ort", "type": "text"},
+         {"id": "start", "name": "Hinreise", "type": "date"},
+         {"id": "ende", "name": "Rückreise", "type": "date"},
+         {"id": "status", "name": "Status", "type": "select", "options": [
+           {"id": "idee", "name": "Idee", "color": "gray"},
+           {"id": "planung", "name": "In Planung", "color": "yellow"},
+           {"id": "gebucht", "name": "Gebucht", "color": "blue"},
+           {"id": "vorbei", "name": "Erlebt", "color": "green"}]},
+         {"id": "budget", "name": "Budget", "type": "number", "fmt": "euro"},
+         {"id": "art", "name": "Art", "type": "multi_select", "options": [
+           {"id": "stadt", "name": "Städtereise", "color": "purple"},
+           {"id": "natur", "name": "Natur", "color": "green"},
+           {"id": "strand", "name": "Strand", "color": "blue"},
+           {"id": "familie", "name": "Familie", "color": "pink"}]}
+       ],
+       "views": [
+         {"id": "galerie", "name": "Übersicht", "type": "gallery", "sorts": [{"pid": "start", "dir": "asc"}]},
+         {"id": "kalender", "name": "Kalender", "type": "calendar", "date_by": "start"},
+         {"id": "tabelle", "name": "Tabelle", "type": "table", "sorts": [{"pid": "start", "dir": "desc"}], "calcs": {"budget": "sum"}}
+       ],
+       "default_tpl": "$ref:tpl_reise"
+     },
+     "templates": [
+       {"ref": "tpl_reise", "title": "Neue Reise", "icon": "✈️", "props": {"status": "idee"}, "default": true,
+        "body": [
+          {"type": "callout", "data": {"emoji": "🧭", "text": "Unterkunft, Anreise und wichtige Nummern hier notieren."}},
+          {"type": "header", "data": {"text": "Tagesplan", "level": 2}},
+          {"type": "toggle", "data": {"title": "Tag 1 – Anreise", "level": 3, "open": true, "blocks": [
+            {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [{"content": "", "meta": {}, "items": []}]}}]}},
+          {"type": "toggle", "data": {"title": "Tag 2", "level": 3, "open": false, "blocks": [
+            {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [{"content": "", "meta": {}, "items": []}]}}]}},
+          {"type": "header", "data": {"text": "Ideen vor Ort", "level": 2}},
+          {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [{"content": "", "meta": {"checked": false}, "items": []}]}}
+        ]}
+     ],
+     "rows": [
+       {"ref": "r_lissabon", "title": "Lissabon", "icon": "🚋", "example": true,
+        "props": {"ort": "Portugal", "start": "2026-12-04", "ende": "2026-12-08", "status": "gebucht", "budget": 1200, "art": ["stadt"]},
+        "body": [
+          {"type": "callout", "data": {"emoji": "🧭", "text": "Unterkunft: kleine Wohnung in der Altstadt, Check-in ab 15 Uhr."}},
+          {"type": "header", "data": {"text": "Tagesplan", "level": 2}},
+          {"type": "toggle", "data": {"title": "Tag 1 – Anreise", "level": 3, "open": true, "blocks": [
+            {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+              {"content": "Ankunft am Nachmittag, Schlüssel abholen", "meta": {}, "items": []},
+              {"content": "Abendessen in der Nachbarschaft", "meta": {}, "items": []}]}}]}},
+          {"type": "toggle", "data": {"title": "Tag 2 – Altstadt", "level": 3, "open": false, "blocks": [
+            {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+              {"content": "Mit der Straßenbahn durch die Altstadt", "meta": {}, "items": []},
+              {"content": "Aussichtspunkt zum Sonnenuntergang", "meta": {}, "items": []}]}}]}},
+          {"type": "toggle", "data": {"title": "Tag 3 – Ausflug ans Meer", "level": 3, "open": false, "blocks": [
+            {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+              {"content": "Zug an die Küste, Strandspaziergang", "meta": {}, "items": []}]}}]}},
+          {"type": "header", "data": {"text": "Ausgaben dieser Reise", "level": 2}},
+          {"type": "database", "data": {"db": "$ref:ausgaben", "view": "alle", "hide_title": true, "views": [
+            {"id": "alle", "name": "Ausgaben", "type": "table", "filters": [{"pid": "reise", "op": "contains", "value": "$ref:r_lissabon"}],
+             "hidden": ["reise"], "calcs": {"betrag": "sum"}}]}}
+        ]},
+       {"ref": "r_berge", "title": "Hüttenwochenende", "icon": "🏔️", "example": true,
+        "props": {"ort": "Alpen", "start": "2027-02-12", "ende": "2027-02-14", "status": "planung", "budget": 400, "art": ["natur", "familie"]}},
+       {"ref": "r_kueste", "title": "Sommer an der Küste", "icon": "🏖️", "example": true,
+        "props": {"ort": "Ostsee", "start": "2026-07-18", "ende": "2026-07-25", "status": "vorbei", "budget": 900, "art": ["strand", "familie"]}}
+     ]},
+
+    {"ref": "ausgaben", "kind": "database", "parent": "home", "title": "Ausgaben", "icon": "💶",
+     "schema": {
+       "title_name": "Wofür",
+       "props": [
+         {"id": "betrag", "name": "Betrag", "type": "number", "fmt": "euro"},
+         {"id": "kategorie", "name": "Kategorie", "type": "select", "options": [
+           {"id": "anreise", "name": "Anreise", "color": "blue"},
+           {"id": "unterkunft", "name": "Unterkunft", "color": "purple"},
+           {"id": "essen", "name": "Essen", "color": "orange"},
+           {"id": "erleben", "name": "Erlebnisse", "color": "green"},
+           {"id": "sonstiges", "name": "Sonstiges", "color": "gray"}]},
+         {"id": "datum", "name": "Datum", "type": "date"},
+         {"id": "reise", "name": "Reise", "type": "relation", "target": "$ref:reisen"},
+         {"id": "bezahlt", "name": "Bezahlt", "type": "checkbox"}
+       ],
+       "views": [
+         {"id": "alle", "name": "Alle Ausgaben", "type": "table", "sorts": [{"pid": "datum", "dir": "desc"}],
+          "calcs": {"betrag": "sum", "bezahlt": "pct_checked"}},
+         {"id": "kategorie", "name": "Nach Kategorie", "type": "board", "group_by": "kategorie"}
+       ]
+     },
+     "rows": [
+       {"title": "Flug hin und zurück", "example": true,
+        "props": {"betrag": 286, "kategorie": "anreise", "datum": "2026-10-02", "reise": ["$ref:r_lissabon"], "bezahlt": true}},
+       {"title": "Wohnung, 4 Nächte", "example": true,
+        "props": {"betrag": 420, "kategorie": "unterkunft", "datum": "2026-10-05", "reise": ["$ref:r_lissabon"], "bezahlt": true}},
+       {"title": "Museumskarte", "example": true,
+        "props": {"betrag": 36, "kategorie": "erleben", "datum": "2026-12-05", "reise": ["$ref:r_lissabon"]}},
+       {"title": "Ferienwohnung", "example": true,
+        "props": {"betrag": 640, "kategorie": "unterkunft", "datum": "2026-07-18", "reise": ["$ref:r_kueste"], "bezahlt": true}},
+       {"title": "Fischbrötchen und Eis", "example": true,
+        "props": {"betrag": 48.5, "kategorie": "essen", "datum": "2026-07-20", "reise": ["$ref:r_kueste"], "bezahlt": true}}
+     ]},
+
+    {"ref": "packliste", "kind": "page", "parent": "home", "title": "Packliste", "icon": "🎒",
+     "body": [
+       {"type": "paragraph", "data": {"text": "Vor jeder Reise alle Haken entfernen und neu abhaken."}},
+       {"type": "columns", "data": {"cols": [
+         {"blocks": [
+           {"type": "header", "data": {"text": "Dokumente", "level": 3}},
+           {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+             {"content": "Ausweis oder Reisepass", "meta": {"checked": false}, "items": []},
+             {"content": "Tickets und Buchungen", "meta": {"checked": false}, "items": []},
+             {"content": "Bank- und Krankenkassenkarte", "meta": {"checked": false}, "items": []}]}},
+           {"type": "header", "data": {"text": "Technik", "level": 3}},
+           {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+             {"content": "Handy und Ladekabel", "meta": {"checked": false}, "items": []},
+             {"content": "Powerbank", "meta": {"checked": false}, "items": []},
+             {"content": "Reiseadapter", "meta": {"checked": false}, "items": []}]}}]},
+         {"blocks": [
+           {"type": "header", "data": {"text": "Kleidung", "level": 3}},
+           {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+             {"content": "Wetterfeste Jacke", "meta": {"checked": false}, "items": []},
+             {"content": "Bequeme Schuhe", "meta": {"checked": false}, "items": []},
+             {"content": "Wäsche für jeden Tag", "meta": {"checked": false}, "items": []}]}},
+           {"type": "header", "data": {"text": "Bad & Gesundheit", "level": 3}},
+           {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+             {"content": "Zahnbürste und Zahnpasta", "meta": {"checked": false}, "items": []},
+             {"content": "Sonnencreme", "meta": {"checked": false}, "items": []},
+             {"content": "Reiseapotheke", "meta": {"checked": false}, "items": []}]}}]}
+       ]}}
+     ]}
+  ]
+}

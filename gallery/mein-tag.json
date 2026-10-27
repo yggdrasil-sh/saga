@@ -1,0 +1,116 @@
+{
+  "id": "mein-tag", "v": 1, "order": 10, "category": "personal",
+  "icon": "☀️", "title": "Mein Tag",
+  "desc": "Startseite für jeden Tag: Uhr, Wochenziele, Aufgaben, Termine, Tagebuch und Schnellnotizen.",
+  "needs": ["calendar"],
+  "root": "home",
+  "items": [
+    {"ref": "home", "kind": "page", "parent": null, "title": "Mein Tag", "icon": "☀️", "cover": null, "wide": true,
+     "body": [
+       {"type": "columns", "data": {"cols": [
+         {"blocks": [{"id": "wmeinta1", "type": "widget", "data": {"v": 1, "kind": "clock", "size": "m", "style": "card", "title": "Jetzt",
+                      "cfg": {"tz": "", "h24": true, "sec": false, "analog": false}}}]},
+         {"blocks": [{"id": "wmeinta2", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "orange", "title": "Offene Wochenziele",
+                      "cfg": {"db": "$ref:ziele", "view": "offen", "agg": "count", "prop": "", "fmt": "num"}}}]},
+         {"blocks": [{"id": "wmeinta3", "type": "widget", "data": {"v": 1, "kind": "progress", "size": "m", "style": "card", "accent": "green", "title": "Woche geschafft",
+                      "cfg": {"src": "db", "db": "$ref:ziele", "view": "alle", "mode": "checked", "prop": "erledigt"}}}]},
+         {"blocks": [{"id": "wmeinta4", "type": "widget", "data": {"v": 1, "kind": "quote", "size": "m", "style": "plain", "accent": "purple", "title": "Gedanke für heute",
+                      "cfg": {"src": "fixed", "pick": "daily", "items": [
+                        "Kleine Schritte sind auch Schritte.",
+                        "Erst das Wichtige, dann das Dringende.",
+                        "Pausen gehören zur Arbeit.",
+                        "Heute reicht es, eine Sache gut zu machen.",
+                        "Wer aufschreibt, muss sich nicht alles merken.",
+                        "Ein freier Nachmittag ist auch ein Plan."]}}}]}
+       ]}},
+       {"type": "columns", "data": {"cols": [
+         {"w": 0.55, "blocks": [
+           {"type": "tasks", "data": {}},
+           {"type": "buttons", "data": {"buttons": [
+             {"label": "Tagebuch für heute", "icon": "📔", "action": "db", "target": "$ref:tagebuch", "tpl": "$ref:tpl_tag", "title": "{datum}", "open": ""}
+           ]}}
+         ]},
+         {"w": 0.45, "blocks": [
+           {"type": "calendar", "data": {"view": "list", "days": 7}}
+         ]}
+       ]}},
+       {"type": "header", "data": {"text": "Diese Woche", "level": 2}},
+       {"type": "database", "data": {"db": "$ref:ziele", "view": "alle", "views": null, "hide_title": true}},
+       {"type": "header", "data": {"text": "Schnellnotizen", "level": 2}},
+       {"type": "callout", "data": {"emoji": "📝", "text": "Alles, was gerade durch den Kopf geht – später aufräumen."}},
+       {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+         {"content": "Geschenkidee für Samstag überlegen", "meta": {}, "items": []},
+         {"content": "Rückruf Werkstatt wegen Termin", "meta": {}, "items": []}]}},
+       {"type": "delimiter", "data": {}},
+       {"type": "buttons", "data": {"buttons": [
+         {"label": "Tagebuch", "icon": "📔", "action": "page", "target": "$ref:tagebuch", "open": ""},
+         {"label": "Wochenziele", "icon": "🎯", "action": "page", "target": "$ref:ziele", "open": ""}
+       ]}}
+     ]},
+
+    {"ref": "ziele", "kind": "database", "parent": "home", "title": "Wochenziele", "icon": "🎯",
+     "schema": {
+       "title_name": "Ziel",
+       "props": [
+         {"id": "erledigt", "name": "Erledigt", "type": "checkbox"},
+         {"id": "bereich", "name": "Bereich", "type": "select", "options": [
+           {"id": "arbeit", "name": "Arbeit", "color": "blue"},
+           {"id": "zuhause", "name": "Zuhause", "color": "green"},
+           {"id": "gesundheit", "name": "Gesundheit", "color": "pink"},
+           {"id": "freizeit", "name": "Freizeit", "color": "yellow"}]}
+       ],
+       "views": [
+         {"id": "alle", "name": "Diese Woche", "type": "table", "sorts": [{"pid": "erledigt", "dir": "asc"}],
+          "calcs": {"erledigt": "pct_checked"}},
+         {"id": "offen", "name": "Offen", "type": "list", "filters": [{"pid": "erledigt", "op": "unchecked", "value": ""}]},
+         {"id": "bereich", "name": "Nach Bereich", "type": "board", "group_by": "bereich"}
+       ]
+     },
+     "rows": [
+       {"title": "Präsentation fertigstellen", "example": true, "props": {"bereich": "arbeit", "erledigt": true}},
+       {"title": "Dreimal spazieren gehen", "example": true, "props": {"bereich": "gesundheit"}},
+       {"title": "Keller aufräumen", "example": true, "props": {"bereich": "zuhause"}},
+       {"title": "Ein Buch zu Ende lesen", "example": true, "props": {"bereich": "freizeit"}}
+     ]},
+
+    {"ref": "tagebuch", "kind": "database", "parent": "home", "title": "Tagebuch", "icon": "📔",
+     "schema": {
+       "title_name": "Tag",
+       "props": [
+         {"id": "stimmung", "name": "Stimmung", "type": "select", "options": [
+           {"id": "super", "name": "😄 super", "color": "green"},
+           {"id": "gut", "name": "🙂 gut", "color": "blue"},
+           {"id": "okay", "name": "😐 okay", "color": "gray"},
+           {"id": "mies", "name": "😕 mies", "color": "orange"}]},
+         {"id": "erstellt", "name": "Angelegt", "type": "created"}
+       ],
+       "views": [
+         {"id": "liste", "name": "Einträge", "type": "list", "sorts": [{"pid": "erstellt", "dir": "desc"}]},
+         {"id": "kalender", "name": "Kalender", "type": "calendar", "date_by": "erstellt"}
+       ],
+       "default_tpl": "$ref:tpl_tag"
+     },
+     "templates": [
+       {"ref": "tpl_tag", "title": "Tagebuch", "icon": "📔", "props": {}, "default": true,
+        "body": [
+          {"type": "header", "data": {"text": "Heute ist mir wichtig", "level": 3}},
+          {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [{"content": "", "meta": {"checked": false}, "items": []}]}},
+          {"type": "header", "data": {"text": "Dafür bin ich dankbar", "level": 3}},
+          {"type": "paragraph", "data": {"text": ""}},
+          {"type": "header", "data": {"text": "Rückblick am Abend", "level": 3}},
+          {"type": "paragraph", "data": {"text": ""}}
+        ]}
+     ],
+     "rows": [
+       {"title": "Ein ruhiger Montag", "icon": "📔", "example": true, "props": {"stimmung": "gut"},
+        "body": [
+          {"type": "header", "data": {"text": "Heute ist mir wichtig", "level": 3}},
+          {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+            {"content": "Präsentation fertigstellen", "meta": {"checked": true}, "items": []},
+            {"content": "Abends ohne Bildschirm", "meta": {"checked": false}, "items": []}]}},
+          {"type": "header", "data": {"text": "Dafür bin ich dankbar", "level": 3}},
+          {"type": "paragraph", "data": {"text": "Sonne auf dem Weg zur Arbeit und ein gutes Gespräch in der Mittagspause."}}
+        ]}
+     ]}
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "id": "content-kalender", "v": 1, "order": 70, "category": "work",
+  "icon": "📣", "title": "Content-Kalender",
+  "desc": "Beiträge für Blog, Newsletter und Social Media planen – von der Idee bis zur Veröffentlichung.",
+  "needs": [],
+  "root": "home",
+  "items": [
+    {"ref": "home", "kind": "page", "parent": null, "title": "Content-Kalender", "icon": "📣", "cover": null, "wide": true,
+     "body": [
+       {"type": "columns", "data": {"cols": [
+         {"blocks": [{"id": "wconten1", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "yellow", "title": "Ideen im Speicher",
+                      "cfg": {"db": "$ref:posts", "view": "ideen", "agg": "count", "prop": "", "fmt": "num"}}}]},
+         {"blocks": [{"id": "wconten2", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "blue", "title": "In Arbeit",
+                      "cfg": {"db": "$ref:posts", "view": "arbeit", "agg": "count", "prop": "", "fmt": "num"}}}]},
+         {"blocks": [{"id": "wconten3", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "green", "title": "Diesen Monat erscheinen",
+                      "cfg": {"db": "$ref:posts", "view": "monat", "agg": "count", "prop": "", "fmt": "num"}}}]}
+       ]}},
+       {"type": "buttons", "data": {"buttons": [
+         {"label": "Idee notieren", "icon": "💡", "action": "db", "target": "$ref:posts", "tpl": "$ref:tpl_idee", "title": "", "open": "center"},
+         {"label": "Neuer Beitrag", "icon": "✍️", "action": "db", "target": "$ref:posts", "tpl": "$ref:tpl_post", "title": "", "open": ""}
+       ]}},
+       {"type": "database", "data": {"db": "$ref:posts", "view": "kalender", "views": null}},
+       {"type": "toggle", "data": {"title": "So arbeitet ihr mit dem Kalender", "level": 3, "open": false, "blocks": [
+         {"type": "list", "data": {"style": "ordered", "meta": {}, "items": [
+           {"content": "Jede Idee kommt als Eintrag mit Status „Idee“ in die Sammlung.", "meta": {}, "items": []},
+           {"content": "Im Board zieht ihr sie weiter: Entwurf → Prüfung → Terminiert.", "meta": {}, "items": []},
+           {"content": "Mit Datum erscheint der Beitrag im Kalender; nach dem Posten auf „Veröffentlicht“ stellen und den Link eintragen.", "meta": {}, "items": []}]}}
+       ]}}
+     ]},
+
+    {"ref": "posts", "kind": "database", "parent": "home", "title": "Beiträge", "icon": "📝",
+     "schema": {
+       "title_name": "Beitrag",
+       "props": [
+         {"id": "status", "name": "Status", "type": "select", "options": [
+           {"id": "idee", "name": "Idee", "color": "gray"},
+           {"id": "entwurf", "name": "Entwurf", "color": "yellow"},
+           {"id": "pruefung", "name": "Prüfung", "color": "orange"},
+           {"id": "geplant", "name": "Terminiert", "color": "blue"},
+           {"id": "live", "name": "Veröffentlicht", "color": "green"}]},
+         {"id": "datum", "name": "Veröffentlichung", "type": "date"},
+         {"id": "kanal", "name": "Kanal", "type": "multi_select", "options": [
+           {"id": "blog", "name": "Blog", "color": "purple"},
+           {"id": "newsletter", "name": "Newsletter", "color": "blue"},
+           {"id": "social", "name": "Social Media", "color": "pink"},
+           {"id": "video", "name": "Video", "color": "red"},
+           {"id": "podcast", "name": "Podcast", "color": "brown"}]},
+         {"id": "thema", "name": "Thema", "type": "select", "options": [
+           {"id": "produkt", "name": "Produkt", "color": "blue"},
+           {"id": "tipps", "name": "Tipps & Anleitungen", "color": "green"},
+           {"id": "einblick", "name": "Blick hinter die Kulissen", "color": "orange"},
+           {"id": "aktion", "name": "Aktion", "color": "red"}]},
+         {"id": "autor", "name": "Verantwortlich", "type": "text"},
+         {"id": "link", "name": "Link", "type": "url"}
+       ],
+       "views": [
+         {"id": "kalender", "name": "Kalender", "type": "calendar", "date_by": "datum"},
+         {"id": "board", "name": "Board", "type": "board", "group_by": "status", "hidden": ["link", "autor"], "sorts": [{"pid": "datum", "dir": "asc"}]},
+         {"id": "ideen", "name": "Ideen", "type": "list", "filters": [{"pid": "status", "op": "is", "value": "idee"}],
+          "sorts": [{"pid": "title", "dir": "asc"}]},
+         {"id": "arbeit", "name": "In Arbeit", "type": "table", "filters": [{"pid": "status", "op": "is_not", "value": "idee"},
+          {"pid": "status", "op": "is_not", "value": "live"}], "sorts": [{"pid": "datum", "dir": "asc"}]},
+         {"id": "monat", "name": "Dieser Monat", "type": "table", "filters": [{"pid": "datum", "op": "this_month", "value": ""}],
+          "sorts": [{"pid": "datum", "dir": "asc"}]},
+         {"id": "alle", "name": "Alle", "type": "table", "sorts": [{"pid": "datum", "dir": "desc"}], "group": "status"}
+       ],
+       "default_tpl": "$ref:tpl_post"
+     },
+     "templates": [
+       {"ref": "tpl_post", "title": "Neuer Beitrag", "icon": "✍️", "props": {"status": "entwurf"}, "default": true,
+        "body": [
+          {"type": "callout", "data": {"emoji": "🎯", "text": "<b>Kernbotschaft:</b> Was soll hängen bleiben – in einem Satz?"}},
+          {"type": "header", "data": {"text": "Zielgruppe", "level": 3}},
+          {"type": "paragraph", "data": {"text": "Für wen ist der Beitrag, und welches Problem löst er?"}},
+          {"type": "header", "data": {"text": "Entwurf", "level": 2}},
+          {"type": "paragraph", "data": {"text": ""}},
+          {"type": "header", "data": {"text": "Vor dem Veröffentlichen", "level": 3}},
+          {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+            {"content": "Gegengelesen", "meta": {"checked": false}, "items": []},
+            {"content": "Bild oder Grafik ausgewählt", "meta": {"checked": false}, "items": []},
+            {"content": "Links geprüft", "meta": {"checked": false}, "items": []},
+            {"content": "Termin im Kalender eingetragen", "meta": {"checked": false}, "items": []}]}}
+        ]},
+       {"ref": "tpl_idee", "title": "Neue Idee", "icon": "💡", "props": {"status": "idee"},
+        "body": [
+          {"type": "paragraph", "data": {"text": "Worum geht es, und warum ist es gerade jetzt interessant?"}}
+        ]}
+     ],
+     "rows": [
+       {"title": "Fünf Tipps für den Winter", "icon": "❄️", "example": true,
+        "props": {"status": "geplant", "datum": "2026-10-29", "kanal": ["blog", "newsletter"], "thema": "tipps", "autor": "Redaktion"}},
+       {"title": "So entsteht unser neues Produkt", "icon": "🛠️", "example": true,
+        "props": {"status": "pruefung", "datum": "2026-11-17", "kanal": ["blog"], "thema": "einblick", "autor": "Produktteam"}},
+       {"title": "Kurzvideo: Erste Schritte", "icon": "🎬", "example": true,
+        "props": {"status": "entwurf", "datum": "2026-11-24", "kanal": ["video", "social"], "thema": "tipps", "autor": "Redaktion"}},
+       {"title": "Adventsaktion ankündigen", "icon": "🎁", "example": true,
+        "props": {"status": "idee", "kanal": ["social", "newsletter"], "thema": "aktion"}},
+       {"title": "Fragen aus der Community beantworten", "icon": "💬", "example": true,
+        "props": {"status": "idee", "kanal": ["podcast"], "thema": "tipps"}},
+       {"title": "Rückblick auf den Herbst", "icon": "🍂", "example": true,
+        "props": {"status": "live", "datum": "2026-10-20", "kanal": ["newsletter"], "thema": "einblick", "autor": "Redaktion",
+                  "link": "https://example.org/newsletter/herbst"}}
+     ]}
+  ]
+}

@@ -1,0 +1,104 @@
+{
+  "id": "leseliste", "v": 1, "order": 30, "category": "personal",
+  "icon": "📚", "title": "Leseliste",
+  "desc": "Bücher sammeln, bewerten und Notizen festhalten – mit Regal, Board und Jahresziel.",
+  "needs": [],
+  "root": "home",
+  "items": [
+    {"ref": "home", "kind": "page", "parent": null, "title": "Leseliste", "icon": "📚", "cover": null, "wide": true, "font": "serif",
+     "body": [
+       {"type": "columns", "data": {"cols": [
+         {"blocks": [{"id": "wleseli1", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "green", "title": "Gelesen 2026",
+                      "cfg": {"db": "$ref:books", "view": "jahr", "agg": "count", "prop": "", "fmt": "num", "goal": 12}}}]},
+         {"blocks": [{"id": "wleseli2", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "blue", "title": "Lese ich gerade",
+                      "cfg": {"db": "$ref:books", "view": "gerade", "agg": "count", "prop": "", "fmt": "num"}}}]},
+         {"blocks": [{"id": "wleseli3", "type": "widget", "data": {"v": 1, "kind": "quote", "size": "m", "style": "card", "accent": "purple", "title": "Zitat des Tages",
+                      "cfg": {"src": "db", "db": "$ref:books", "view": "zitate", "prop": "zitat", "pick": "daily"}}}]}
+       ]}},
+       {"type": "buttons", "data": {"buttons": [
+         {"label": "Buch hinzufügen", "icon": "📖", "action": "db", "target": "$ref:books", "tpl": "$ref:tpl_book", "title": "", "open": "center"}
+       ]}},
+       {"type": "database", "data": {"db": "$ref:books", "view": "regal", "views": null}},
+       {"type": "toggle", "data": {"title": "Tipps", "open": false, "blocks": [
+         {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+           {"content": "Das Jahresziel stellst du am Widget „Gelesen 2026“ ein.", "meta": {}, "items": []},
+           {"content": "Ein Lieblingszitat pro Buch landet automatisch im „Zitat des Tages“.", "meta": {}, "items": []},
+           {"content": "Ein Bild in den Buchnotizen erscheint als Cover im Regal.", "meta": {}, "items": []}]}}]}}
+     ]},
+
+    {"ref": "books", "kind": "database", "parent": "home", "title": "Bücher", "icon": "📖",
+     "schema": {
+       "title_name": "Titel",
+       "props": [
+         {"id": "autor", "name": "Autor·in", "type": "text"},
+         {"id": "status", "name": "Status", "type": "select", "options": [
+           {"id": "wunsch", "name": "Will ich lesen", "color": "gray"},
+           {"id": "gerade", "name": "Lese ich gerade", "color": "blue"},
+           {"id": "gelesen", "name": "Gelesen", "color": "green"},
+           {"id": "abgebrochen", "name": "Abgebrochen", "color": "red"}]},
+         {"id": "bewertung", "name": "Bewertung", "type": "select", "options": [
+           {"id": "s5", "name": "★★★★★", "color": "yellow"},
+           {"id": "s4", "name": "★★★★", "color": "yellow"},
+           {"id": "s3", "name": "★★★", "color": "orange"},
+           {"id": "s2", "name": "★★", "color": "brown"},
+           {"id": "s1", "name": "★", "color": "gray"}]},
+         {"id": "genre", "name": "Genre", "type": "multi_select", "options": [
+           {"id": "roman", "name": "Roman", "color": "purple"},
+           {"id": "krimi", "name": "Krimi", "color": "red"},
+           {"id": "sachbuch", "name": "Sachbuch", "color": "blue"},
+           {"id": "fantasy", "name": "Fantasy", "color": "green"},
+           {"id": "biografie", "name": "Biografie", "color": "brown"},
+           {"id": "lyrik", "name": "Lyrik", "color": "pink"}]},
+         {"id": "gelesen_am", "name": "Gelesen am", "type": "date"},
+         {"id": "seiten", "name": "Seiten", "type": "number"},
+         {"id": "seite", "name": "Bin auf Seite", "type": "number"},
+         {"id": "fortschritt", "name": "Fortschritt", "type": "calc", "op": "pct", "a": "seite", "b": "seiten", "fmt": "percent", "show": "ring"},
+         {"id": "zitat", "name": "Lieblingszitat", "type": "text"},
+         {"id": "link", "name": "Link", "type": "url"}
+       ],
+       "views": [
+         {"id": "regal", "name": "Regal", "type": "gallery", "card": "l", "sorts": [{"pid": "status", "dir": "asc"}], "hidden": ["zitat", "link", "seiten", "seite", "gelesen_am"]},
+         {"id": "board", "name": "Nach Status", "type": "board", "group_by": "status", "hidden": ["zitat", "link", "seite", "seiten"]},
+         {"id": "alle", "name": "Alle Bücher", "type": "table", "sorts": [{"pid": "gelesen_am", "dir": "desc"}],
+          "calcs": {"title": "count", "seiten": "sum"}},
+         {"id": "jahr", "name": "Gelesen 2026", "type": "list", "filters": [{"pid": "status", "op": "is", "value": "gelesen"},
+          {"pid": "gelesen_am", "op": "after", "value": "2025-12-31"}], "sorts": [{"pid": "gelesen_am", "dir": "desc"}]},
+         {"id": "gerade", "name": "Lese ich gerade", "type": "list", "filters": [{"pid": "status", "op": "is", "value": "gerade"}]},
+         {"id": "zitate", "name": "Zitate", "type": "table", "filters": [{"pid": "zitat", "op": "not_empty", "value": ""}]}
+       ],
+       "default_tpl": "$ref:tpl_book"
+     },
+     "templates": [
+       {"ref": "tpl_book", "title": "Buchnotizen", "icon": "📖", "props": {"status": "wunsch"}, "default": true,
+        "body": [
+          {"type": "callout", "data": {"emoji": "📌", "text": "In einem Satz: Worum geht es in diesem Buch?"}},
+          {"type": "header", "data": {"text": "Gedanken beim Lesen", "level": 2}},
+          {"type": "paragraph", "data": {"text": ""}},
+          {"type": "header", "data": {"text": "Lieblingsstellen", "level": 2}},
+          {"type": "quote", "data": {"text": "", "caption": "Seite …", "alignment": "left"}},
+          {"type": "header", "data": {"text": "Was ich mitnehme", "level": 2}},
+          {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [{"content": "", "meta": {}, "items": []}]}}
+        ]}
+     ],
+     "rows": [
+       {"title": "Der Leuchtturm am Ende der Karte", "icon": "📘", "example": true,
+        "props": {"autor": "Mara Lindholm", "status": "gelesen", "bewertung": "s5", "genre": ["roman"], "gelesen_am": "2026-03-14", "seiten": 384,
+                  "zitat": "Wer das Meer kennt, fürchtet nicht den Sturm, sondern die Stille davor.", "link": "https://example.org/buecher/leuchtturm"},
+        "body": [
+          {"type": "callout", "data": {"emoji": "📌", "text": "Eine Kartografin sucht einen Leuchtturm, den es auf keiner Karte gibt."}},
+          {"type": "header", "data": {"text": "Gedanken beim Lesen", "level": 2}},
+          {"type": "paragraph", "data": {"text": "Ruhig erzählt, mit einem Ende, das lange nachklingt."}}
+        ]},
+       {"title": "Kalter Kaffee in Kammerstadt", "icon": "📕", "example": true,
+        "props": {"autor": "Jonas Wendel", "status": "gelesen", "bewertung": "s3", "genre": ["krimi"], "gelesen_am": "2026-07-02", "seiten": 296,
+                  "zitat": "Jede Spur ist kalt, wenn man zu spät aufsteht."}},
+       {"title": "Gärtnern auf kleinem Raum", "icon": "📗", "example": true,
+        "props": {"autor": "Ilka Sommer", "status": "gerade", "genre": ["sachbuch"], "seiten": 212, "seite": 87}},
+       {"title": "Die sieben Tore von Aranth", "icon": "📙", "example": true,
+        "props": {"autor": "T. R. Veldin", "status": "wunsch", "genre": ["fantasy"], "seiten": 640}},
+       {"title": "Ein Jahr ohne Uhr", "icon": "📔", "example": true,
+        "props": {"autor": "Paul Ebner", "status": "wunsch", "genre": ["biografie", "sachbuch"], "seiten": 248,
+                  "zitat": "Die Zeit war nie knapp. Nur meine Aufmerksamkeit."}}
+     ]}
+  ]
+}
