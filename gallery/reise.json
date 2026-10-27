@@ -8,10 +8,10 @@
     {"ref": "home", "kind": "page", "parent": null, "title": "Reiseplaner", "icon": "🧳", "cover": null, "wide": true,
      "body": [
        {"type": "columns", "data": {"cols": [
-         {"blocks": [{"id": "wreise1", "type": "widget", "data": {"v": 1, "kind": "countdown", "size": "m", "style": "card", "accent": "blue", "title": "Bis Lissabon",
+         {"blocks": [{"id": "wreise1", "type": "widget", "data": {"v": 1, "kind": "countdown", "size": "m", "style": "card", "accent": "blue", "title": "Bis zur nächsten Reise",
                       "cfg": {"date": "2026-12-04", "time": "", "dir": "until", "unit": "days"}}}]},
-         {"blocks": [{"id": "wreise2", "type": "widget", "data": {"v": 1, "kind": "progress", "size": "m", "style": "card", "accent": "orange", "title": "Budget Lissabon (1.200 €)",
-                      "cfg": {"src": "db", "db": "$ref:ausgaben", "view": "lissabon", "mode": "sum", "prop": "betrag", "goal": 1200}}}]},
+         {"blocks": [{"id": "wreise2", "type": "widget", "data": {"v": 1, "kind": "progress", "size": "m", "style": "card", "accent": "orange", "title": "Reisebudget 1.200 €",
+                      "cfg": {"src": "db", "db": "$ref:ausgaben", "view": "alle", "mode": "sum", "prop": "betrag", "goal": 1200}}}]},
          {"blocks": [{"id": "wreise3", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "green", "title": "Ausgaben gesamt",
                       "cfg": {"db": "$ref:ausgaben", "view": "alle", "agg": "sum", "prop": "betrag", "fmt": "eur"}}}]}
        ]}},
@@ -111,9 +111,7 @@
        "views": [
          {"id": "alle", "name": "Alle Ausgaben", "type": "table", "sorts": [{"pid": "datum", "dir": "desc"}],
           "calcs": {"betrag": "sum", "bezahlt": "pct_checked"}},
-         {"id": "kategorie", "name": "Nach Kategorie", "type": "board", "group_by": "kategorie"},
-         {"id": "lissabon", "name": "Lissabon", "type": "table", "filters": [{"pid": "reise", "op": "contains", "value": "$ref:r_lissabon"}],
-          "calcs": {"betrag": "sum"}}
+         {"id": "kategorie", "name": "Nach Kategorie", "type": "board", "group_by": "kategorie"}
        ]
      },
      "rows": [
