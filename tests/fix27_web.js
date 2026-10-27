@@ -102,7 +102,7 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     ok('#4: Entwurf im Kommentarfeld erhalten', v.includes('Entwurf zwei'), v);
     // Antwort-Entwurf ebenso
     await p.locator('.cm-foot .cm-ta').fill('Erster Kommentar'); await p.locator('.cm-foot .cm-send').click(); await sleep(800);
-    ok('#4: nach dem Senden ist das Feld leer', (await p.locator('.cm-foot .cm-ta').inputValue()) === '');
+    ok('#4: nach dem Senden ist das Feld leer', await until(p, () => { const t = document.querySelector('.cm-foot .cm-ta'); return !!t && t.value === '' && document.querySelectorAll('.cm-thread').length > 0; }, null, 6000));
     await p.locator('.cm-reply, .cm-tbtn').filter({ hasText: 'Antworten' }).first().click();
     await p.locator('.cm-list .cm-ta, #pg-cm .cm-thread .cm-ta').first().fill('Antwort-Entwurf');
     await p2.keyboard.type(' nochmal');
@@ -206,9 +206,32 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
         ok(`#11: Klick zeigt Hinweis (${toast.trim()}) und legt nichts an`, /Bearbeiten/.test(toast) && (await p.api('GET', '/api/notes')).length === n0);
       }
     }
+    // #15: "+" an einer geteilten Seite fragt erst (statt sofort eine leere Unterseite beim Eigentuemer anzulegen)
+    const kids0 = (await p.api('GET', '/api/notes')).filter((x) => x.parent_id === AP.root).length;
+    await b2.open(AP.root);
+    const plus = b2.locator('.pg-row.on .pg-add');   // geoeffnete geteilte Seite
+    await plus.click({ force: true }); await sleep(400);
+    const mi = await b2.evaluate(() => [...document.querySelectorAll('.menu .menu-item, .menu .menu-hint')].map((x) => x.textContent.trim()));
+    ok('#15: "+" an geteilter Seite zeigt Menue mit Hinweis', mi.some((t) => /Leere Unterseite/.test(t)) && mi.some((t) => /gehört der Person/.test(t)), mi);
+    await b2.keyboard.press('Escape'); await sleep(500);
+    ok('#15: Abbrechen legt nichts an', (await p.api('GET', '/api/notes')).filter((x) => x.parent_id === AP.root).length === kids0);
     await p.api('DELETE', '/api/notes/' + AP.root + '/shares?type=user&target=hk-test-b');
     ok('#11: keine Seitenfehler (zweites Konto)', !b2.errs.length, b2.errs);
     await b2.context().close();
+  }
+
+  // --- #13: "Wochenziele" (zweite Schaltflaeche der unteren Reihe) sofort da - lokal nicht nachstellbar, hier als Waechter --
+  {
+    await p.goto(BASE + '/notes?t=' + Date.now()); await sleep(600);
+    await p.evaluate((id) => { location.hash = '#' + id; }, MT.root);
+    await until(p, () => [...document.querySelectorAll('.btnrow')].length >= 2, null, 5000);
+    await sleep(1000);
+    const vis = await p.evaluate(() => {
+      const row = [...document.querySelectorAll('.btnrow')].pop(); row.scrollIntoView({ block: 'center' });
+      return [...row.querySelectorAll('.nbtn')].map((b) => { const r = b.getBoundingClientRect(), e = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return b.textContent.trim() + ':' + (r.width > 40 && !!e && b.contains(e)); });
+    });
+    ok(`#13: untere Schaltflaechen nach 1 s sichtbar (${vis.join(', ')})`, vis.length === 2 && vis.every((x) => x.endsWith(':true')), vis);
   }
 
   // --- #12: kein seitliches Scrollen bei 1440 px (auch beim Darueberfahren: Kommentar-Knopf am Blockrand) -----------------

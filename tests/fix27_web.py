@@ -1,4 +1,4 @@
-"""Fix-Runde 27.10. (Galerie-Testrunde), Server-Teile der Web-Funde: #10 Zahlenformat (i18n.fmt_num: Prozent ganzzahlig,
+"""Fix-Runde 27.10. (Galerie-Testrunde), Server-Teile der Web-Funde: #15 Profilbild ohne Bild mit ?q=1 -> 204, #10 Zahlenformat (i18n.fmt_num: Prozent ganzzahlig,
 Euro mit 2 Nachkommastellen in der Sprache; Fortschritt-Widget meldet das Format der Spalte; veroeffentlichte Seite zeigt
 Tabelle und Widgets so). Konto hk-test-a (oeffentlicher Name fx27-a), raeumt seine Seiten auf.
 Umgebung wie die anderen Tests (HK_TEST_BASE, BASE_URL, SESSION_SECRET)."""
@@ -86,6 +86,12 @@ def main():
     ok("#10 oeffentlich de: Fortschritt ueber 100 % echt, in Euro", f"1.430,50{nb}€ / 1.200,00{nb}€ (119{nb}%)" in html)
     s, html = req("GET", url, lang="en")
     ok("#10 oeffentlich en: Schreibweise der Sprache", "41%" in html and "€1,000.50" in html and "€1,430.50 / €1,200.00 (119%)" in html)
+
+    # --- #15: Profilbild ohne Bild: Web (?q=1) bekommt 204 statt 404, Apps (ohne q) weiter 404 ---------------------------
+    s1, _ = req("GET", "/api/avatar/x.unbekannt?s=64", A)
+    s2, _ = req("GET", "/api/avatar/x.unbekannt?s=64&q=1", A)
+    s3, _ = req("GET", "/api/avatar/x.unbekannt?s=64&q=1")
+    ok(f"#15 Profilbild ohne Bild: ohne q {s1}, mit q {s2}, ohne Anmeldung {s3}", s1 == 404 and s2 == 204 and s3 == 401)
 
     req("DELETE", f"/api/notes/{P}/publish", A)
     for i in (P, D):

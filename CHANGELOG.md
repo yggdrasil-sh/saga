@@ -228,6 +228,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   „Dafür fehlt dir die Berechtigung“. Sie sind jetzt ausgegraut; Hinweis beim Darüberfahren bzw. Antippen.
 - **Seitliches Scrollen bei 1440 px** auf Seiten mit voller Breite (alle Galerie-Vorlagen): Der Kommentar-Knopf am
   Blockrand ragte 18 px über das Fenster. Volle Breite lässt rechts jetzt Platz dafür.
+- **Föderation/Teilen:** „+“ an einer geteilten Seite (auch eines anderen Servers) legte sofort eine leere Unterseite beim
+  Eigentümer an; jetzt kommt ein kleines Menü „Leere Unterseite“ mit Hinweis, wem sie gehört (anderer Server: Vorlagen und
+  Galerie gehen dort noch nicht). Profilbilder ohne Bild (z. B. Personen anderer Server) erzeugten je Anzeige zwei
+  404-Fehler in der Browser-Konsole: Das Web fragt mit `?q=1` und bekommt dann 204 statt 404 (Apps unverändert 404).
 
 ### Behoben – Bughunt 3 (Server)
 - **Namensauflösung mit Zeitlimit auch in den Vorab-Prüfungen.** KI, Immich, Kalender, Push, Nextcloud, Föderation

@@ -506,7 +506,7 @@
       if (own || (p.role === 'edit' && remCap(p, 'subpages'))) {      // fremde Instanz: nur, wenn ihr Server es kann (2.3)
         var plus = el('button', 'pg-add', '+'); plus.type = 'button'; plus.title = T('Unterseite hinzufügen');
         plus.setAttribute('aria-label', T('Unterseite zu {name} hinzufügen', { name: label(p) }));
-        plus.addEventListener('click', function (e) { e.stopPropagation(); if (own) newPageMenu(plus, p.id); else newPage(p.id); });
+        plus.addEventListener('click', function (e) { e.stopPropagation(); if (own) newPageMenu(plus, p.id); else sharedPlusMenu(plus, p); });
         row.appendChild(plus);
       }
       li.appendChild(row);
@@ -1006,6 +1006,16 @@
     var t = $('pg-title'); t.focus();
     if (extra && !readOnly()) { t.value += extra; S.dirtyTitle = true; schedule(); }
     try { t.setSelectionRange(t.value.length, t.value.length); } catch (e) { /* egal */ }
+  }
+  // Fix27 #15: "+" an einer geteilten Seite (auch eines anderen Servers) legt nicht mehr sofort eine leere Unterseite an,
+  // sondern fragt kurz - mit Hinweis, wem die Unterseite gehoert (Verklicken hinterliess leere Seiten beim Eigentuemer)
+  function sharedPlusMenu(anchor, p) {
+    var rem = remoteId(p.id), host = (p.remote || {}).host || '';
+    HK.openMenu(anchor, function (m) {
+      m.appendChild(HK.menuItem(T('Leere Unterseite'), function () { newPage(p.id); }, { icon: '📄' }));
+      m.appendChild(el('div', 'menu-hint', rem ? T('Die Unterseite entsteht bei der Person, die die Seite geteilt hat (auf {host}). Vorlagen und Galerie gehen dort noch nicht.', { host: host })
+        : T('Die Unterseite gehört der Person, die die Seite geteilt hat.')));
+    });
   }
   function newPage(parentId, typed) {
     var stop = titleBuffer(typed);
