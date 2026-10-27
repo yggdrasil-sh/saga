@@ -1,4 +1,5 @@
 """Seiten im Notion-Stil: anlegen, lesen, speichern, verschieben, suchen."""
+import hashlib
 import json
 import re
 import secrets
@@ -293,10 +294,19 @@ def _clean_render(r):
     return out
 
 
-def _clean_rendered(d):
+def src_hash(src):
+    """Kennung des Quelltexts fuer render.h: SHA-256 (UTF-8), die ersten 16 Hex-Zeichen."""
+    return hashlib.sha256(str(src or "").encode("utf-8")).hexdigest()[:16]
+
+
+def _clean_rendered(d, src):
+    """render bereinigen; 2.5 (P6-1): passt h nicht (mehr) zum Quelltext, setzt der Server stale: true - Apps zeigen das
+    Bild dann als veraltet (bis das Web es neu erzeugt). Vom Client gesendetes stale zaehlt nicht."""
     if "render" in d:
         r = _clean_render(d["render"])
         if r:
+            if r["h"] != src_hash(src):
+                r["stale"] = True
             d["render"] = r
         else:
             d.pop("render")
@@ -426,11 +436,11 @@ def _clean_design(blocks):
                 _clean_design(d["blocks"])
         elif typ == "math":                           # 2.5 (P6-0): Mathe-Block - TeX als Klartext
             d["tex"] = str(d.get("tex") or "")[:MATH_MAX]
-            _clean_rendered(d)
+            _clean_rendered(d, d["tex"])
         elif typ == "code":                           # Mermaid (language "mermaid"): Ansicht und Vorschaubild
             if "view" in d and d["view"] not in CODE_VIEWS:
                 d.pop("view")
-            _clean_rendered(d)
+            _clean_rendered(d, d.get("code") if isinstance(d.get("code"), str) else "")
         elif typ == "synced":                         # 2.5 (P6-0): synchronisierter Block - Original {sid, blocks}, Kopie {sid}
             d.pop("src", None)                        # setzt der Server beim Lesen ein (P6-6), nie gespeichert
             if not (isinstance(d.get("sid"), str) and _SID.fullmatch(d["sid"])):

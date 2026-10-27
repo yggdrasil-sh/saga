@@ -31,7 +31,7 @@ from starlette.concurrency import run_in_threadpool
 import psycopg
 import auth
 from db import connect as _db
-from saga import avatars, bus, dbcalc, i18n, nextcloud, page_widgets
+from saga import avatars, bus, dbcalc, i18n, mathml, nextcloud, page_widgets
 from saga.core import (ASSET_V, BASE_URL, E, PUBLIC_HOSTS, TZ, _api_guard, _bad, _body, _json_load, seen_lang, server_lang, t, title,
                        tmpl, user_lang)
 from saga.files import _thumb, _thumb_mime, _thumb_w
@@ -197,7 +197,7 @@ def _client(request):
 _INLINE = {"b": "strong", "strong": "strong", "i": "em", "em": "em", "u": "u", "s": "s", "mark": "mark", "code": "code",
            "a": "a", "time": "time", "br": "br", "span": "span"}
 # 2.5 (P6-0): Inline-Farben -> Klassen aus static/public.css (c-<farbe>, bg-<farbe>), nur Palette. Erwaehnungen: nur Text
-# (Personen sind oeffentlich nicht sichtbar). Inline-Mathe: als Code mit dem TeX-Text (MathML folgt mit P6-1).
+# (Personen sind oeffentlich nicht sichtbar). Inline-Mathe: MathML (saga.mathml, Positivliste), sonst Code mit dem TeX-Text.
 _PUB_SPAN = {"hk-c-" + p: "c-" + p for p in PALETTE}
 _PUB_MARK = {"hk-bg-" + p: "bg-" + p for p in PALETTE}
 _TIME_ATTR = re.compile(r"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?")
@@ -224,10 +224,13 @@ class _PubSanitizer(HTMLParser):
     def __init__(self, link):
         super().__init__(convert_charrefs=True)
         self.link, self.out, self.stack, self.skip = link, [], [], 0
+        self.math = None                             # Inline-Mathe: [Stapeltiefe, Text ...] bis zum Ende von code
 
     def handle_starttag(self, tag, attrs):
         if tag in ("script", "style"):
             self.skip += 1
+            return
+        if self.math is not None:                    # in Inline-Mathe: nur Text
             return
         out_tag = _INLINE.get(tag)
         if not out_tag:
@@ -246,8 +249,10 @@ class _PubSanitizer(HTMLParser):
         elif out_tag == "mark":
             c = next((_PUB_MARK[x] for x in cls if x in _PUB_MARK), None)
             keep = f' class="{c}"' if c else ""
-        elif out_tag == "code" and "hk-math" in cls:
-            keep = ' class="pub-math"'
+        elif out_tag == "code" and "hk-math" in cls:   # 2.5 (P6-1): Inline-Mathe -> MathML (beim Ende des Elements)
+            self.math = [len(self.stack)]
+            self.stack.append(("code", False))
+            return
         if out_tag == "a":
             href = (a.get("href") or "").strip()
             m = _NOTE_HREF.fullmatch(href)
@@ -267,6 +272,10 @@ class _PubSanitizer(HTMLParser):
             self.skip = max(0, self.skip - 1)
             return
         out_tag = _INLINE.get(tag)
+        if self.math is not None:
+            if out_tag != "code":
+                return
+            self._math_out()
         if not out_tag or out_tag == "br" or not any(x[0] == out_tag for x in self.stack):
             return
         while self.stack:
@@ -277,10 +286,22 @@ class _PubSanitizer(HTMLParser):
                 break
 
     def handle_data(self, data):
-        if not self.skip:
-            self.out.append(escape(data, quote=False))
+        if self.skip:
+            return
+        if self.math is not None:
+            self.math.append(data)
+            return
+        self.out.append(escape(data, quote=False))
+
+    def _math_out(self):
+        tex = "".join(self.math[1:])
+        self.math = None
+        ml = mathml.to_mathml(tex)
+        self.out.append(f'<span class="pub-imath">{ml}</span>' if ml else f'<code class="pub-math">{escape(tex, quote=False)}</code>')
 
     def result(self):
+        if self.math is not None:
+            self._math_out()
         while self.stack:
             x, emit = self.stack.pop()
             if emit:
@@ -531,12 +552,22 @@ def _block(ctx, typ, d, depth):
         cls = ' class="center"' if d.get("alignment") == "center" else ""
         return (f"<blockquote{cls}><p>{inline(d.get('text', ''), ctx.url_for)}</p>"
                 + (f"<footer>{cap}</footer>" if cap.strip() else "") + "</blockquote>")
+    if typ == "code" and d.get("language") == "mermaid":        # 2.5 (P6-1): Diagramm als gespeichertes Vorschaubild
+        r = d.get("render") if isinstance(d.get("render"), dict) else {}
+        src = ctx.img(r.get("png"), 2000) if r and not r.get("stale") else None
+        if src:
+            wh = (f' width="{int(r["w"])}" height="{int(r["hgt"])}"'
+                  if isinstance(r.get("w"), int) and isinstance(r.get("hgt"), int) else "")
+            return f'<figure class="pub-img pub-diagram"><img src="{src}"{wh} alt="{escape(t("Diagramm"))}" loading="lazy"></figure>'
     if typ == "code":
         lang = re.sub(r"[^a-z0-9+#-]", "", str(d.get("language") or "").lower())[:20]
         lab = f'<span class="pub-code-lang">{escape(lang)}</span>' if lang and lang != "plain" else ""
         return f'<div class="pub-code">{lab}<pre><code>{escape(str(d.get("code", "")), quote=False)}</code></pre></div>'
-    if typ == "math":                              # 2.5 (P6-0): TeX als Code (MathML folgt mit P6-1)
+    if typ == "math":                              # 2.5 (P6-1): MathML vom Server (Positivliste), sonst TeX als Code
         tex = str(d.get("tex") or "").strip()
+        ml = mathml.to_mathml(tex, block=True) if tex else None
+        if ml:
+            return f'<div class="pub-mathblock">{ml}</div>'
         return f'<div class="pub-code pub-math"><pre><code>{escape(tex, quote=False)}</code></pre></div>' if tex else ""
     if typ == "synced":                            # 2.5 (P6-0): Original mit Inhalt; Kopien setzt erst P6-6 ein
         return _blocks(ctx, d["blocks"], depth + 1) if isinstance(d.get("blocks"), list) else ""
@@ -1039,6 +1070,11 @@ def _page_images(row):
                 if b.get("type") == "image":
                     f = (b.get("data") or {}).get("file") if isinstance(b.get("data"), dict) else None
                     m = _FILE_URL.fullmatch(str((f or {}).get("url", "") if isinstance(f, dict) else ""))
+                    if m:
+                        ids.add(m.group(1))
+                elif b.get("type") == "code" and isinstance(b.get("data"), dict) and b["data"].get("language") == "mermaid":
+                    r = b["data"].get("render")             # 2.5 (P6-1): Vorschaubild eines Diagramms
+                    m = _FILE_URL.fullmatch(str(r.get("png") or "")) if isinstance(r, dict) and not r.get("stale") else None
                     if m:
                         ids.add(m.group(1))
         except ValueError:

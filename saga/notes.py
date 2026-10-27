@@ -505,6 +505,12 @@ def _check_file_refs(uid, blocks):
             if not m:
                 raise ValueError(t("Bild/Datei muss aus Saga hochgeladen sein"))
             ids.add(m.group(1))
+        r = (b.get("data") or {}).get("render") if b.get("type") in ("math", "code") and isinstance(b.get("data"), dict) else None
+        if isinstance(r, dict):                           # 2.5 (P6-1): Vorschaubild (Mathe/Mermaid) - wie Bilder: eigene Datei
+            for k in ("png", "svg"):
+                m = _FILE_URL.fullmatch(str(r.get(k) or ""))
+                if m:
+                    ids.add(m.group(1))
     if ids:
         with _db() as c:
             own = {r[0] for r in c.execute(f"SELECT id FROM file WHERE uid=? AND id IN ({','.join('?' * len(ids))})", (uid, *ids))}
