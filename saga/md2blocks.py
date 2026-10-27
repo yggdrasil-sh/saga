@@ -129,7 +129,7 @@ def inline(s, ctx):
         out.append(_emph(s[pos:m.start()]))
         pos = m.end()
         if m.group("code"):
-            out.append('<code class="inline-code">' + escape(m.group("codetxt").strip(), quote=False) + "</code>")
+            out.append('<code class="inline-code">' + _prot(escape(m.group("codetxt").strip(), quote=False)) + "</code>")
         elif m.group("wimg"):
             out.append(_link_html(ctx, m.group("wimgt").strip(), True, None, embed=True))
         elif m.group("wiki"):
@@ -150,8 +150,12 @@ def inline(s, ctx):
     return "".join(out).replace("\n", "<br>")
 
 
+def _prot(s):
+    return s.replace("$ref:", "&#36;ref:").replace("$file:", "&#36;file:") if "$" in s else s
+
+
 def _emph(s):
-    s = escape(s, quote=False)
+    s = _prot(escape(s, quote=False))
     s = re.sub(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1", r"<b>\2</b>", s)
     s = re.sub(r"(?<![\w*])\*(?=\S)(.+?)(?<=\S)\*(?![\w*])", r"<i>\1</i>", s)
     s = re.sub(r"(?<![\w_])_(?=\S)(.+?)(?<=\S)_(?![\w_])", r"<i>\1</i>", s)
@@ -163,7 +167,7 @@ def _emph(s):
 def _link_html(ctx, target, wiki, label, embed=False, inner=False):
     from urllib.parse import unquote
     text = label if label not in (None, "") else (target.rsplit("/", 1)[-1] if wiki else target)
-    lbl = inline(text, ctx) if inner else escape(text, quote=False)
+    lbl = inline(text, ctx) if inner else _prot(escape(text, quote=False))
     r = ctx.resolve(unquote(target) if not wiki else target, wiki)
     if r and r[0] == "page":
         if embed:

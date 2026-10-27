@@ -207,11 +207,12 @@ def run():
     v = vals(rows)
     ok("Typ erzwungen: falsche Werte bleiben leer", v["A"] == {"Zahl": 1, "Datum": "2026-01-01"} and v["B"] == {} and "Weg" not in
        {p["name"] for p in rows["schema"]["props"]}, v)
-    grp = {g["code"]: len(g["items"]) for g in st["report"]["groups"]}
-    ok("Bericht: 2 Werte passen nicht zum Typ", grp.get("bad_value") == 2, st["report"])
+    grp = sum(len(g["items"]) for g in st["report"]["groups"] if g["code"] == "bad_value")
+    ok("Bericht: 2 Werte passen nicht zum Typ (je Typ eine Gruppe)", grp == 2 and sum(g["code"] == "bad_value" for g in st["report"]["groups"]) == 2,
+       st["report"])
     page = st["report"].get("page")
     s, pg = req("GET", f"/api/notes/{page}") if page else (0, {})
-    ok("Seite Importbericht angelegt", s == 200 and pg["title"].startswith("Importbericht") and "Zeile 2" in pg["body"], pg.get("title"))
+    ok("Seite Importbericht angelegt", s == 200 and pg["title"].startswith("Importbericht") and "Zeile 2" in pg["body"], (s, pg))
 
     # --- 51 Auswahlwerte -> Text; 31 Spalten -> 400 ----------------------------------------------------------------
     lines = ["Name,Farbe"] + [f"N{i},F{i % 51}" for i in range(120)]

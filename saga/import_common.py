@@ -133,8 +133,9 @@ def report_out(raw):
     d = _json_load(raw, {}) if isinstance(raw, str) else (raw or {})
     groups = {}
     for it in d.get("items") or []:
-        g = groups.setdefault(it.get("code"), {"code": it.get("code"), "text": reason_text(it.get("code"), it.get("p")), "items": []})
-        g["items"].append({"path": it.get("path", ""), "text": reason_text(it.get("code"), it.get("p"))})
+        txt = reason_text(it.get("code"), it.get("p"))
+        g = groups.setdefault((it.get("code"), txt), {"code": it.get("code"), "text": txt, "items": []})
+        g["items"].append({"path": it.get("path", ""), "text": txt})
     return {"counts": d.get("counts") or {}, "groups": list(groups.values()), "more": d.get("more", 0), "page": d.get("page")}
 
 
@@ -353,7 +354,7 @@ def busy(uid):
         return c.execute("SELECT 1 FROM import_run WHERE uid=? AND state IN ('queued','running') LIMIT 1", (uid,)).fetchone() is not None
 
 
-def start_run(uid, kind, name, work, tok=None):
+def start_run(uid, kind, name, work, tok=None, lang=None):
     """Lauf anlegen und im Hintergrund starten. work(run) -> (root, report). -> run_id oder None (schon einer aktiv)."""
     with _db() as c, c:
         c.execute("SELECT pg_advisory_xact_lock(hashtext(?))", ("import:" + uid,))
@@ -368,7 +369,8 @@ def start_run(uid, kind, name, work, tok=None):
         with _lock:
             if tok in _uploads:
                 _uploads[tok]["busy"] = True
-    threading.Thread(target=_thread, args=(uid, rid, work, tok), name=f"import-{rid}", daemon=True).start()
+    lang = lang or i18n.get_lang()                    # Sprache der Anfrage (Bericht, Namen) - der Thread erbt sie nicht
+    threading.Thread(target=_thread, args=(uid, rid, work, tok, lang), name=f"import-{rid}", daemon=True).start()
     return rid
 
 
@@ -397,8 +399,8 @@ def _set(rid, **kw):
         c.execute(f"UPDATE import_run SET {cols} WHERE id=?", (*kw.values(), rid))
 
 
-def _thread(uid, rid, work, tok):
-    i18n.set_lang(account_lang(uid))
+def _thread(uid, rid, work, tok, lang=None):
+    i18n.set_lang(lang or account_lang(uid))
     run = Run(uid, rid)
     try:
         with _sem:                                    # hoechstens PARALLEL Laeufe gleichzeitig, Rest wartet ("queued")
@@ -498,7 +500,7 @@ def resolve(v, ids, fids=None):
     if isinstance(v, list):
         return [resolve(x, ids, fids) for x in v]
     if isinstance(v, dict):
-        return {k: resolve(x, ids, fids) for k, x in v.items()}
+        return {k: (x if k == "code" else resolve(x, ids, fids)) for k, x in v.items()}    # Code-Bloecke: Klartext
     return v
 
 
@@ -678,9 +680,16 @@ def apply_plan(run, plan, parent):
 
 
 def _tags_ok(tags):
+    """Tags einzeln pruefen (ein ungueltiger Tag kostet nicht alle)."""
     from saga.pages import _tags
+    out = []
+    for x in tags if isinstance(tags, list) else []:
+        try:
+            out += _tags([str(x)])
+        except ValueError:
+            pass
     try:
-        return _tags([str(x) for x in tags][:20]) if isinstance(tags, list) else []
+        return _tags(out[:20])
     except ValueError:
         return []
 
@@ -744,8 +753,9 @@ def _insert_rows(run, nid, schema, it, ids, done, total):
         batch.clear()
 
     from saga.pages import _title_in
+    rel = {p["id"] for p in schema["props"] if p["type"] == "relation"}
     for row in rows_fn():
-        raw = resolve(row.get("props") or {}, ids)
+        raw = {k: (resolve(v, ids) if k in rel else v) for k, v in (row.get("props") or {}).items()}   # nur Relationen haben refs
         clean = {}
         for k, v in raw.items():
             if k not in by_id:
