@@ -2199,3 +2199,36 @@ body.notes-page .page.p-small .page-title{font-size:calc(2.35rem * .875)}
   .gal-act .gal-use{flex:1}}
 /* 2.5 Paket 2: CSV-Export im Ansicht-Menue, Import-Dialog */
 .vs-csv{width:100%;text-align:left;margin-bottom:.1rem}
+.imp{display:flex;flex-direction:column;gap:.7rem;min-width:0}
+.imp-drop{border:2px dashed var(--field);border-radius:12px;padding:1.6rem 1rem;text-align:center;display:flex;flex-direction:column;align-items:center;gap:.4rem}
+.imp-drop.on{border-color:var(--accent);background:var(--card-h)}
+.imp-drop-ic{font-size:2rem;line-height:1;color:var(--muted)}
+.imp-drop-t{margin:0;font-weight:600}
+.imp-hint{margin:0;color:var(--muted);font-size:.86rem}
+.imp-hint.is-err,.imp-msg.is-err{color:var(--down)}
+.imp-btns,.imp-set,.imp-foot{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.imp-foot{justify-content:flex-end}
+.imp-foot .imp-hint{margin-right:auto}
+.imp-msg{margin:0;font-size:.88rem;color:var(--muted);min-height:1.2em}
+.imp-head{display:flex;flex-direction:column;gap:.5rem}
+.imp-sum{font-weight:600}
+.imp-title{width:100%;max-width:28rem}
+.imp-chk{display:flex;gap:.4rem;align-items:center;font-size:.9rem}
+.imp-warn{margin:0;color:var(--warn);font-size:.88rem}
+.imp-tbl-wrap{overflow:auto;max-height:46vh;border:1px solid var(--border);border-radius:8px}
+.imp-tbl{border-collapse:collapse;font-size:.85rem;min-width:100%}
+.imp-tbl th,.imp-tbl td{border-bottom:1px solid var(--border);padding:.3rem .5rem;text-align:left;vertical-align:top;max-width:16rem;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.imp-tbl th{position:sticky;top:0;background:var(--card);z-index:1}
+.imp-tbl th .hk-in{width:100%;margin-top:.25rem;font-size:.8rem;padding:.25rem .35rem}
+.imp-cname{font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.imp-tcol{display:flex;gap:.3rem;align-items:center;font-weight:400;font-size:.78rem;color:var(--muted);margin-top:.2rem}
+.imp-bar{height:.6rem;border-radius:999px;background:var(--card-h);overflow:hidden}
+.imp-fill{height:100%;width:0;background:var(--accent);transition:width .3s}
+@media (prefers-reduced-motion:reduce){.imp-fill{transition:none}}
+.imp-phase{margin:0}
+.imp-done{margin:0;font-size:1.05rem}
+.imp-done.err{color:var(--down)}
+.imp-grp summary{cursor:pointer}
+.imp-grp ul{margin:.3rem 0 .3rem 1rem;padding:0;font-size:.85rem;color:var(--muted);max-height:12rem;overflow:auto;overflow-wrap:anywhere}
+@media (max-width:640px){.imp-foot{justify-content:stretch}.imp-foot .btn{flex:1}}

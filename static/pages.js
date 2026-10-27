@@ -1181,6 +1181,7 @@
         sm.appendChild(HK.menuItem(T('Als Markdown (.md)'), function () { exportPage(false); }, { icon: '📄' }));
         if (n) sm.appendChild(HK.menuItem(T('Mit Unterseiten (.zip)'), function () { exportPage(true); }, { icon: '🗜', hint: nSub(n) }));
       } }));
+      if (c.kind !== 'database') m.appendChild(HK.menuItem(T('Importieren …'), function () { openImport({ parentId: c.id }); }, { icon: '⇪', hint: T('als Unterseiten') }));
       m.appendChild(el('div', 'menu-sep'));
       m.appendChild(HK.menuItem(c.archived ? T('Aus dem Archiv holen') : T('Archivieren'), function () { setArchived(c.id, !c.archived); },
         { icon: '📦', hint: !c.archived && n ? '+ ' + nSub(n) : '' }));
@@ -2450,6 +2451,7 @@
     HK.openMenu(anchor, function (m) {
       m.appendChild(HK.menuItem(T('Leere Seite'), function () { newPage(parentId); }, { icon: '📄' }));
       m.appendChild(HK.menuItem(T('Datenbank'), function () { newDatabase(parentId); }, { icon: '🗃️', hint: T('Tabelle, Board …') }));
+      if (!EMBED) m.appendChild(HK.menuItem(T('Importieren …'), function () { openImport({ parentId: parentId }); }, { icon: '⇪', hint: T('CSV, Markdown, Obsidian') }));
       m.appendChild(HK.menuLabel(T('Vorlagen')));
       if (S.gal !== false && !EMBED) m.appendChild(HK.menuItem(T('Aus der Galerie …'), function () { openGallery(parentId); }, { icon: '🖼️', hint: T('fertige Vorlagen') }));
       BUILTIN.forEach(function (t) { m.appendChild(HK.menuItem(t.name, function () { fromBuiltin(t, parentId); }, { icon: t.icon })); });
@@ -2461,6 +2463,222 @@
       m.appendChild(el('div', 'menu-hint', T('Eigene Vorlage: Seite öffnen → ⋯ → „Als Vorlage markieren“')));
     });
   }
+  // --- Import (2.5, Paket 2; saga/importer.py): CSV -> Datenbank, Markdown/Obsidian -> Seiten ---------------------------
+  // opts: {parentId} (neue Seiten/Datenbank darunter) oder {targetDb, schema} (Zeilen an eine bestehende Datenbank)
+  var IMP_TYPES = ['text', 'number', 'select', 'multi_select', 'date', 'checkbox', 'url'];
+  function impUpload(files, status) {
+    var tok = null, i = 0;
+    function next() {
+      if (i >= files.length) return Promise.resolve(tok);
+      var f = files[i], name = f.webkitRelativePath || f.relPath || f.name; i++;
+      status(T('Hochladen … {n} von {total}', { n: i, total: files.length }));
+      return fetch('/api/import/upload?name=' + encodeURIComponent(name) + (tok ? '&token=' + encodeURIComponent(tok) : ''),
+        { method: 'POST', credentials: 'same-origin', headers: { 'X-Saga': '1', 'Content-Type': 'application/octet-stream' }, body: f })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; }); })
+        .then(function (d) { tok = d.token; return next(); });
+    }
+    return next();
+  }
+  function openImport(opts) {
+    opts = opts || {};
+    var tok = null, an = null, cfg = {}, cols = [], titleCol = 0, pollT = null;
+    openModal(opts.targetDb ? T('Zeilen aus CSV hinzufügen') : T('Importieren'), function (body) {
+      var dlg = $('pg-modal').firstElementChild; dlg.classList.add('hk-dialog-gal', 'imp-dialog');
+      S.modalClose = function () {
+        dlg.classList.remove('hk-dialog-gal', 'imp-dialog'); clearTimeout(pollT);
+        if (tok && !S.impRun) api('DELETE', '/api/import/' + encodeURIComponent(tok)).catch(function () {});
+      };
+      var root = el('div', 'imp'); body.appendChild(root);
+      var msg = el('p', 'imp-msg'); msg.setAttribute('role', 'status');
+      function say(t, err) { msg.textContent = t || ''; msg.classList.toggle('is-err', !!err); }
+      function pick() {
+        root.textContent = ''; tok = null; an = null; S.impRun = null;
+        var zone = el('div', 'imp-drop'); zone.tabIndex = 0;
+        zone.appendChild(el('div', 'imp-drop-ic', '⇪'));
+        zone.appendChild(el('p', 'imp-drop-t', opts.targetDb ? T('CSV-Datei hierher ziehen oder auswählen') : T('Datei oder Ordner hierher ziehen oder auswählen')));
+        zone.appendChild(el('p', 'imp-hint', opts.targetDb ? T('CSV (Komma, Semikolon, Tab) – auch aus Excel.')
+          : T('CSV (wird eine Datenbank), Markdown-Dateien, ein Markdown-/Obsidian-Ordner oder ein ZIP davon.')));
+        var fi = el('input'); fi.type = 'file'; fi.className = 'imp-file'; fi.multiple = !opts.targetDb;
+        fi.accept = opts.targetDb ? '.csv,.tsv,.txt,text/csv' : '.csv,.tsv,.txt,.md,.markdown,.zip,text/csv,text/markdown,application/zip,image/*,application/pdf';
+        var row = el('div', 'imp-btns'), b1 = el('button', 'btn btn-primary', T('Datei wählen …')); b1.type = 'button';
+        b1.addEventListener('click', function () { fi.click(); }); row.appendChild(b1);
+        if (!opts.targetDb) {
+          var fd = el('input'); fd.type = 'file'; fd.className = 'imp-dir'; fd.webkitdirectory = true; fd.multiple = true; fd.hidden = true;
+          var b2 = el('button', 'btn', T('Ordner wählen …')); b2.type = 'button'; b2.addEventListener('click', function () { fd.click(); });
+          fd.addEventListener('change', function () { go([].slice.call(fd.files)); }); row.appendChild(b2); root.appendChild(fd);
+        }
+        fi.hidden = true; fi.addEventListener('change', function () { go([].slice.call(fi.files)); });
+        zone.appendChild(row); root.appendChild(fi); root.appendChild(zone); root.appendChild(msg); say('');
+        zone.addEventListener('dragover', function (e) { e.preventDefault(); zone.classList.add('on'); });
+        zone.addEventListener('dragleave', function () { zone.classList.remove('on'); });
+        zone.addEventListener('drop', function (e) { e.preventDefault(); zone.classList.remove('on'); go([].slice.call(e.dataTransfer.files || [])); });
+      }
+      function go(files) {
+        files = files.filter(function (f) { var n = (f.webkitRelativePath || f.name); return !/(^|\/)\./.test(n); });
+        if (!files.length) return;
+        if (files.length > 2000) { say(T('Zu viele Dateien (höchstens {n}).', { n: 2000 }), true); return; }
+        impUpload(files, say).then(function (t) { tok = t; return analyze(); }).catch(function (e) { say(e.message, true); });
+      }
+      function analyze() {
+        say(T('Wird geprüft …'));
+        return api('POST', '/api/import/' + encodeURIComponent(tok) + '/analyze', Object.assign({ kind: opts.targetDb ? 'csv' : undefined }, cfg)).then(function (d) {
+          an = d;
+          if (d.error) { say(d.error, true); return; }
+          if (d.kind === 'csv') {
+            titleCol = d.title_col;
+            cols = d.columns.map(function (c) {
+              var o = { index: c.index, name: c.name, type: c.guess, decimal: c.decimal, date_order: c.date_order };
+              if (opts.targetDb) o.target = guessTarget(c);
+              return o;
+            });
+            csvForm();
+          } else if (d.kind === 'md') mdForm();
+          else say(T('Dateityp nicht unterstützt'), true);
+        }).catch(function (e) { say(e.message, true); });
+      }
+      function guessTarget(c) {
+        if (c.index === an.title_col) return 'title';
+        var p = (opts.schema && opts.schema.props || []).find(function (x) { return x.name.toLowerCase() === c.name.toLowerCase() && IMP_TYPES.concat(['relation']).indexOf(x.type) >= 0; });
+        return p ? p.id : '';
+      }
+      function sel(cls, list, val, fn, label) {
+        var s = el('select', 'hk-in ' + cls); if (label) s.setAttribute('aria-label', label);
+        list.forEach(function (o) { var e = el('option', null, o[1]); e.value = o[0]; s.appendChild(e); });
+        s.value = val == null ? '' : String(val); s.addEventListener('change', function () { fn(s.value); }); return s;
+      }
+      function csvForm() {
+        root.textContent = '';
+        var head = el('div', 'imp-head');
+        head.appendChild(el('div', 'imp-sum', T('{n} Zeilen, {cols} Spalten', { n: an.rows, cols: an.columns.length })));
+        var set = el('div', 'imp-set');
+        set.appendChild(sel('imp-enc', [['utf-8', 'UTF-8'], ['utf-8-sig', 'UTF-8 (BOM)'], ['utf-16', 'UTF-16'], ['cp1252', 'Windows-1252'], ['latin-1', 'ISO-8859-1']],
+          an.encoding, function (v) { cfg.encoding = v; analyze(); }, T('Kodierung')));
+        set.appendChild(sel('imp-sep', [[',', T('Komma')], [';', T('Semikolon')], ['\t', T('Tabulator')], ['|', '|']], an.sep,
+          function (v) { cfg.sep = v; analyze(); }, T('Trennzeichen')));
+        var hl = el('label', 'imp-chk'), hc = el('input'); hc.type = 'checkbox'; hc.checked = an.header !== false;
+        hc.addEventListener('change', function () { cfg.header = hc.checked; analyze(); });
+        hl.appendChild(hc); hl.appendChild(document.createTextNode(' ' + T('Erste Zeile ist Kopfzeile'))); set.appendChild(hl);
+        head.appendChild(set);
+        var ti = null;
+        if (!opts.targetDb) {
+          ti = el('input', 'hk-in imp-title'); ti.type = 'text'; ti.maxLength = 200; ti.setAttribute('aria-label', T('Name der Datenbank'));
+          ti.placeholder = T('Name der Datenbank'); ti.value = (an.path || '').split('/').pop().replace(/\.(csv|tsv|txt)$/i, '');
+          head.appendChild(ti);
+        }
+        root.appendChild(head);
+        (an.warnings || []).forEach(function (w) { root.appendChild(el('p', 'imp-warn', '⚠ ' + w)); });
+        var wrap = el('div', 'imp-tbl-wrap'), tb = el('table', 'imp-tbl'), tr = el('tr'), tr2 = el('tr');
+        cols.forEach(function (c) {
+          var th = el('th'); th.appendChild(el('div', 'imp-cname', c.name));
+          if (opts.targetDb) {
+            var props = (opts.schema && opts.schema.props || []).filter(function (p) { return IMP_TYPES.concat(['relation']).indexOf(p.type) >= 0; });
+            th.appendChild(sel('imp-target', [['', T('nicht übernehmen')], ['title', T('Titel (Name)')]].concat(props.map(function (p) { return [p.id, p.name]; })),
+              c.target, function (v) { c.target = v; }, T('Ziel für Spalte {name}', { name: c.name })));
+          } else {
+            var rl = el('label', 'imp-tcol'), rb = el('input'); rb.type = 'radio'; rb.name = 'imp-tcol'; rb.checked = c.index === titleCol;
+            rb.addEventListener('change', function () { if (rb.checked) { titleCol = c.index; syncSel(); } });
+            rl.appendChild(rb); rl.appendChild(document.createTextNode(' ' + T('Titel'))); th.appendChild(rl);
+            c.selEl = sel('imp-type', [['skip', T('nicht übernehmen')]].concat(IMP_TYPES.map(function (k) { return [k, TYPES[k][1] + ' ' + TYPES[k][0]]; })),
+              c.type, function (v) { c.type = v; count(); }, T('Typ für Spalte {name}', { name: c.name }));
+            th.appendChild(c.selEl);
+          }
+          tr.appendChild(th);
+        });
+        function syncSel() { cols.forEach(function (c) { if (c.selEl) c.selEl.disabled = c.index === titleCol; }); count(); }
+        var thead = el('thead'); thead.appendChild(tr); tb.appendChild(thead);
+        var tbody = el('tbody');
+        (an.preview || []).forEach(function (r) {
+          var row = el('tr'); cols.forEach(function (c) { row.appendChild(el('td', null, r[c.index] || '')); }); tbody.appendChild(row);
+        });
+        tb.appendChild(tbody); wrap.appendChild(tb); root.appendChild(wrap);
+        if (tr2.childNodes.length) thead.appendChild(tr2);
+        var foot = el('div', 'imp-foot'), cnt = el('span', 'imp-hint');
+        function count() {
+          if (opts.targetDb) return;
+          var n = cols.filter(function (c) { return c.type !== 'skip' && c.index !== titleCol; }).length;
+          cnt.textContent = T('{n} von höchstens {max} Spalten', { n: n, max: an.limits.cols }); cnt.classList.toggle('is-err', n > an.limits.cols);
+          runB.disabled = n > an.limits.cols;
+        }
+        var back = el('button', 'btn', T('Andere Datei')); back.type = 'button'; back.addEventListener('click', pick);
+        var runB = el('button', 'btn btn-primary imp-run', T('Importieren')); runB.type = 'button';
+        runB.addEventListener('click', function () {
+          var b = { kind: 'csv', path: an.path, encoding: an.encoding, sep: an.sep, header: an.header !== false,
+                    columns: cols.map(function (c) { return opts.targetDb ? { index: c.index, target: c.target || undefined, type: c.target ? undefined : 'skip' }
+                                                                       : { index: c.index, type: c.index === titleCol ? 'title' : c.type, decimal: c.decimal, date_order: c.date_order }; }) };
+          if (opts.targetDb) b.target_db = opts.targetDb; else { b.title_col = titleCol; b.title = ti.value.trim(); if (opts.parentId) b.parent_id = opts.parentId; }
+          start(b);
+        });
+        foot.appendChild(cnt); foot.appendChild(back); foot.appendChild(runB); root.appendChild(foot); root.appendChild(msg);
+        say(T('Erkannt: {enc}, Trennzeichen „{sep}“. Typen prüfen und bei Bedarf ändern.', { enc: an.encoding, sep: an.sep === '\t' ? 'Tab' : an.sep }));
+        syncSel();
+      }
+      function mdForm() {
+        root.textContent = '';
+        var s = an.md || {};
+        root.appendChild(el('div', 'imp-sum', T('{pages} Seiten, {folders} Ordner, {files} Bilder/Dateien', { pages: s.pages || 0, folders: s.folders || 0, files: s.files || 0 })));
+        if (s.unresolved) root.appendChild(el('p', 'imp-warn', '⚠ ' + T('{n} Verweise lassen sich nicht auflösen (stehen im Bericht).', { n: s.unresolved })));
+        (an.warnings || []).forEach(function (w) { root.appendChild(el('p', 'imp-warn', '⚠ ' + w)); });
+        var ti = el('input', 'hk-in imp-title'); ti.type = 'text'; ti.maxLength = 200; ti.placeholder = T('Name der Sammelseite');
+        ti.setAttribute('aria-label', T('Name der Sammelseite')); ti.value = s.title || ''; root.appendChild(ti);
+        var o = { tags: true, props: true };
+        [['tags', T('Tags übernehmen (Frontmatter „tags“)')], ['props', T('Übrige Frontmatter-Felder als ausklappbaren Block „Eigenschaften“')]].forEach(function (x) {
+          var l = el('label', 'imp-chk'), cb = el('input'); cb.type = 'checkbox'; cb.checked = true;
+          cb.addEventListener('change', function () { o[x[0]] = cb.checked; });
+          l.appendChild(cb); l.appendChild(document.createTextNode(' ' + x[1])); root.appendChild(l);
+        });
+        var foot = el('div', 'imp-foot'), back = el('button', 'btn', T('Andere Datei')); back.type = 'button'; back.addEventListener('click', pick);
+        var runB = el('button', 'btn btn-primary imp-run', T('Importieren')); runB.type = 'button';
+        runB.addEventListener('click', function () { start({ kind: 'md', title: ti.value.trim(), tags: o.tags, props: o.props, parent_id: opts.parentId || undefined }); });
+        foot.appendChild(back); foot.appendChild(runB); root.appendChild(foot); root.appendChild(msg); say('');
+      }
+      function start(b) {
+        api('POST', '/api/import/' + encodeURIComponent(tok) + '/run', b).then(function (d) { S.impRun = d.run_id; progress(d.run_id); })
+          .catch(function (e) { say(e.message, true); });
+      }
+      var PHASE = { analyze: T('Prüfen'), pages: T('Seiten anlegen'), files: T('Dateien übernehmen'), rows: T('Einträge anlegen'), content: T('Inhalte schreiben'), done: T('Fertig') };
+      function progress(rid) {
+        root.textContent = '';
+        var bar = el('div', 'imp-bar'), fill = el('div', 'imp-fill'); bar.appendChild(fill);
+        bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100');
+        var lbl = el('p', 'imp-phase', T('Wartet …')), cancel = el('button', 'btn', T('Abbrechen')); cancel.type = 'button';
+        cancel.addEventListener('click', function () { cancel.disabled = true; api('POST', '/api/import/runs/' + rid + '/cancel').catch(function () {}); });
+        root.appendChild(lbl); root.appendChild(bar); root.appendChild(cancel); root.appendChild(msg); say('');
+        function poll() {
+          api('GET', '/api/import/runs/' + rid).then(function (r) {
+            var st = r.step || {}, pc = st.total ? Math.round(100 * st.done / st.total) : (r.state === 'done' ? 100 : 5);
+            fill.style.width = pc + '%'; bar.setAttribute('aria-valuenow', String(pc));
+            lbl.textContent = r.state === 'queued' ? T('Wartet auf einen freien Platz …') : (PHASE[st.phase] || T('Läuft …')) + (st.total ? ' · ' + st.done + ' / ' + st.total : '');
+            if (r.state === 'running' || r.state === 'queued') { pollT = setTimeout(poll, 1000); return; }
+            S.impRun = null; tok = null; done(r);
+          }).catch(function () { pollT = setTimeout(poll, 2000); });
+        }
+        poll();
+      }
+      function done(r) {
+        root.textContent = '';
+        var ok = r.state === 'done', c = (r.report || {}).counts || {};
+        root.appendChild(el('h4', 'imp-done ' + (ok ? 'ok' : 'err'), ok ? T('Import abgeschlossen') : r.state === 'cancelled' ? T('Abgebrochen – Angelegtes liegt im Papierkorb.') : (r.error || T('Import fehlgeschlagen.'))));
+        if (ok) root.appendChild(el('p', 'imp-sum', T('Angelegt: {pages} Seiten, {dbs} Datenbanken, {rows} Einträge, {files} Dateien. Nicht übernommen: {skipped}.',
+          { pages: c.pages || 0, dbs: c.databases || 0, rows: c.rows || 0, files: c.files || 0, skipped: c.skipped || 0 })));
+        ((r.report || {}).groups || []).forEach(function (g) {
+          var d = el('details', 'imp-grp'), s = el('summary', null, g.text + ' (' + g.items.length + ')'); d.appendChild(s);
+          var ul = el('ul'); g.items.slice(0, 200).forEach(function (x) { ul.appendChild(el('li', null, x.path || '–')); }); d.appendChild(ul); root.appendChild(d);
+        });
+        var foot = el('div', 'imp-foot');
+        if (r.report && r.report.page) { var rb = el('button', 'btn', T('Bericht öffnen')); rb.type = 'button'; rb.addEventListener('click', function () { closeModal(); loadList().then(function () { openPage(r.report.page); }); }); foot.appendChild(rb); }
+        var target = opts.targetDb || r.root;
+        if (ok && target) {
+          var ob = el('button', 'btn btn-primary imp-open', T('Öffnen')); ob.type = 'button';
+          ob.addEventListener('click', function () { closeModal(); loadList().then(function () { if (opts.reload) opts.reload(); openPage(target); }); });
+          foot.appendChild(ob);
+        } else { var cb = el('button', 'btn', T('Schließen')); cb.type = 'button'; cb.addEventListener('click', closeModal); foot.appendChild(cb); }
+        root.appendChild(foot);
+        loadList().catch(function () {}); if (ok && opts.reload) opts.reload();
+      }
+      pick();
+    });
+  }
+  HK.openImport = openImport;
   // --- Vorlagengalerie (2.5, saga/gallery.py): mitgelieferte Vorlagen als Kopie anlegen ------------------------------
   // S.gal: null = noch nicht gefragt, false = aus (Admin-Schalter oder aelterer Server: 404), sonst die Liste
   var GAL_CATS = [['', T('Alle')], ['personal', T('Persönlich')], ['work', T('Arbeit')], ['team', T('Team')]];
@@ -3716,6 +3934,11 @@
             tb.type = 'button'; tb.addEventListener('click', function () { HK.closeMenu(); templatesUI(); }); box.appendChild(tb);
           }
           csvSection(box, sec);
+          if (DB.role === 'owner' && !locked() && DB.id > 0) {
+            var ib = el('button', 'menu-item vs-csv vs-csv-in', '⇪ ' + T('Zeilen aus CSV hinzufügen …')); ib.type = 'button';
+            ib.addEventListener('click', function () { HK.closeMenu(); HK.openImport({ targetDb: DB.id, schema: DB.schema, reload: loadDb }); });
+            box.appendChild(ib);
+          }
           if (OPTS.embedded && OPTS.setHead && !viewsLocked()) sec(T('Ansicht'));
           if (viewsLocked()) {
             box.appendChild(el('div', 'menu-hint vs-locked', T('🔒 Diese Datenbank ist gesperrt: Spalten, Ansichten, Filter und Sortierung sind geschützt. Einträge kannst du weiter bearbeiten.')));
