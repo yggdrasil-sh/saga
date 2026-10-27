@@ -122,7 +122,7 @@ def main():
         W("clock", {"tz": "Mars/Olymp", "h24": False, "sec": 1}, bid="c1"),
         W("countdown", {"date": "2026-02-30", "time": "25:00", "dir": "since", "unit": "x"}, bid="d1"),
         W("quote", {"src": "fixed", "items": ["<i>Eins</i>", 5, "", "y" * 400] + ["z"] * 30, "pick": "seltsam"}, bid="q1"),
-        {"type": "widget", "id": "f1", "data": {"v": 2, "kind": "chart", "cfg": {"neu": [1, 2]}, "zukunft": True}},
+        {"type": "widget", "id": "f1", "data": {"v": 2, "kind": "sparkline", "cfg": {"neu": [1, 2]}, "zukunft": True}},
         {"type": "widget", "id": "m1", "data": {"kind": "metric", "cfg": {"db": -5, "agg": "avg", "goal": "10"}}},
         {"type": "columns", "data": {"cols": [{"blocks": [W("metric", {"db": dbid, "agg": "sum", "prop": "std", "fmt": "eur"}, bid="m1")]},
                                               {"blocks": [{"type": "toggle", "data": {"title": "T", "blocks": [W("progress", {"src": "db", "db": dbid, "mode": "checked", "prop": "erl"}, bid="p2")]}}]}]}},
@@ -139,7 +139,7 @@ def main():
     qi = q1["data"]["cfg"]["items"]
     ok("quote: Texte Klartext, leere weg, je 300, hoechstens 20, pick daily", qi[0] == "Eins" and len(qi) == 20 and len(qi[1]) == 300
        and q1["data"]["cfg"]["pick"] == "daily", qi[:3])
-    ok("unbekannte Art bleibt unveraendert (Vorwaertskompatibilitaet)", f1["data"] == {"v": 2, "kind": "chart", "cfg": {"neu": [1, 2]}, "zukunft": True}, f1)
+    ok("unbekannte Art bleibt unveraendert (Vorwaertskompatibilitaet)", f1["data"] == {"v": 2, "kind": "sparkline", "cfg": {"neu": [1, 2]}, "zukunft": True}, f1)
     inner_m = got[7]["data"]["cols"][0]["blocks"][0]
     inner_p = got[7]["data"]["cols"][1]["blocks"][0]["data"]["blocks"][0]
     ids = [b.get("id") for b in (m1, p1, c1, d1, q1, f1, mx, inner_m, inner_p)]
