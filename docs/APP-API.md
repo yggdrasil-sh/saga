@@ -775,7 +775,7 @@ Dateien je Zelle (Standard 10). Der Server setzt fehlende Felder auf die Standar
   Personen bleiben gültig, auch wenn ihr Zugriff endet. Höchstens 20 je Zelle; Doppelte fallen weg.
 - **Auswahl:** `GET /api/notes/{db}/people?q=` (ab Rolle *Lesen*, 60/min) → `{"people": [{"ref", "name", "avatar",
   "me", "remote"}], "more"}` – höchstens 20, nur Personen mit Zugriff, Suche nach Anzeigename. Dieselbe Liste nutzen
-  später @Erwähnungen und Aufgaben-Zuweisungen.
+  später `@`-Erwähnungen und Aufgaben-Zuweisungen.
 - **Filter:** `{"pid": "wer", "op": "me"}` = „ist mir zugewiesen“ (ohne Wert); `contains`/`not_contains` mit einer
   Kennung als `value`; `is_empty`/`not_empty`. **Sortierung** nach dem Namen der ersten Person (leer zuletzt).
   **Suche** (`q`) findet Anzeigenamen. **Gruppieren** (`view.group`/`group_by`, nur lesend): je Kombination von Personen,
@@ -798,6 +798,13 @@ Dateien je Zelle (Standard 10). Der Server setzt fehlende Felder auf die Standar
 
 `PATCH /api/notes/{zeile}` antwortet bei Datenbanken mit Personen/Dateien zusätzlich mit `"values": {"<pid>": […]}`
 (Personen- und Datei-Spalten so, wie der Server sie gespeichert hat – Kennungen bzw. Datei-Angaben) und `"people"`.
+
+### Vorlagen und Duplizieren
+
+`POST /api/notes/{vorlage}/duplicate {"parent_id": <db>}` übernimmt Datei-Werte als Referenz (gleicher Eigentümer). Liegt
+das Ziel bei einem **anderen Konto** (eigene Vorlage, Ziel mit Rolle *Bearbeiten*), gehört der neue Eintrag dem Eigentümer
+des Ziels: Dateien (Datei-Eigenschaft, Bild-/Datei-Blöcke, Symbol, Titelbild) werden für ihn kopiert (zählen bei ihm,
+`507` wenn sein Speicherplatz voll ist), Personen bleiben nur mit Zugriff auf das Ziel. Ohne *Bearbeiten* am Ziel: `403`/`404`.
 
 ### Mitteilung „eingetragen“
 

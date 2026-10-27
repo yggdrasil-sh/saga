@@ -64,7 +64,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   eingetragen“ (`db.assigned`, gebündelt je Zeile, je Konto und je Spalte abschaltbar, Push-Kategorie „Zuweisungen“).
   Nach außen nur Handles bzw. `@name@host` und Anzeigenamen – nie Anmeldenamen (auch in CSV/Markdown, KI-Kontext,
   Formeln, Widgets, persönlicher Sicherung); veröffentlichte Seiten zeigen keine Personen. Server: `saga/people.py`
-  (Grundlage für @Erwähnungen und Aufgaben-Zuweisungen), `GET /api/notes/{db}/people`, Tabelle `row_person` per Trigger
+  (Grundlage für `@`-Erwähnungen und Aufgaben-Zuweisungen), `GET /api/notes/{db}/people`, Tabelle `row_person` per Trigger
   (Migration 23), Kontolöschung hinterlässt „Gelöschte Person“, Umbenennen anderer Instanzen schreibt Werte um.
 - **Datei-Eigenschaft.** Spaltentyp „Dateien“ (höchstens 1–20 je Zelle): hochladen, öffnen, entfernen; Größe/Typ/
   Vorschau beim Lesen. Wichtig vorab: Dateien, die nur in Datenbank-Werten stehen, zählen jetzt beim Aufräumen (`files_gc`),
@@ -73,12 +73,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   der Datenbank, Mitteilung als Ereignis); ältere Gegenstellen sehen die Spalten als Text ohne Werte.
 - `GET /api/version` meldet `person1`, `file1`. Doku: `docs/APP-API.md` „Personen und Dateien in Datenbanken“,
   `docs/APP-API-FED.md` (`dbx1`).
+- Eigene Vorlage in einer Datenbank eines anderen Kontos verwenden (Ziel mit „Bearbeiten“): der Eintrag gehört dem
+  Eigentümer des Ziels, Dateien der Vorlage (Datei-Eigenschaft, Bilder, Titelbild) werden für ihn kopiert.
 
 ### Behoben
 - Import: höchstens ein wartender Upload je Konto (sonst `409`, `replace=1` verwirft den alten) – wie beim persönlichen
   Backup, damit sich die Platte nicht mit verwaisten Uploads füllen lässt.
 - Handles (`~…`) eines gelöschten und mit gleichem Namen neu angelegten Kontos wurden bis zu einer Minute noch dem alten
   Zwischenspeicher-Stand zugeordnet.
+- Web: Personen-Kennung `toString` (bzw. andere Namen aus dem JS-Prototyp) zeigte im Filter/Board einen falschen Namen.
 
 ### Neu (2.5, Paket 1 Etappe 1: Formeln und Rollups)
 - **Formel-Eigenschaft.** Notion-2.0-kompatible Formeln (`if`, `ifs`, Zahlen-, Text-, Datums- und Listenfunktionen,
