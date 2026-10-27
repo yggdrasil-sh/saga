@@ -5721,12 +5721,16 @@
     if (!PK.id) return Promise.resolve();
     var ctx = PK.ctx, f = $('peek-frame'), flush = Promise.resolve();
     try { var w = f.contentWindow; if (w && w.HKPages && w.HKPages.flush) flush = w.HKPages.flush(); } catch (x) { /* Rahmen noch nicht geladen */ }
+    var saved = true;
     return flush.then(function () {}, function (e) {            // Konflikt im Rahmen: offen lassen, damit nichts verloren geht
       if (e && e.message === 'conflict') { HK.toast(T('Speicher-Konflikt im Eintrag – bitte erst dort klären.')); throw e; }
+      saved = false;
     }).then(function () {      // ausstehendes Speichern im Rahmen abwarten
       var was = PK.id;
       PK.id = null; $('pg-peek').hidden = true;
-      return freshDrop(was).then(function (gone) {          // fix27 E4: unveraendert geschlossen -> weg
+      // fix27 E4: unveraendert geschlossen -> weg; nur nach erfolgreichem Speichern im Rahmen (sonst sieht der Server
+      // eine nicht gespeicherte Eingabe als "unveraendert" und loescht den Eintrag)
+      return (saved ? freshDrop(was) : Promise.resolve(false)).then(function (gone) {
         if (gone) loadList();
         if (ctx && ctx.refresh) ctx.refresh();
       });
@@ -6409,7 +6413,7 @@
     if (S.gal !== false && !EMBED) add(T('Vorlagengalerie'), '🖼', function () { openGallery(null); },   // Fix27 #16: wie "+ Neue Seite" (Oberste Ebene vorgewaehlt)
                                        { kw: 'gallery vorlagen templates galerie vorlage' });
     if (window.HKSettings) add(T('Einstellungen'), '⚙', function () { HKSettings.open(); }, { kw: 'settings kalender immich nextcloud schluessel' });
-    add(T('Übersicht (Startseite)'), '⌂', function () { location.href = '/'; }, { kw: 'home dashboard start' });
+    add(T('Übersicht (Startseite)'), '⌂', function () { location.href = '/dashboard'; }, { kw: 'home dashboard start' });   // fix27 E2: "/" oeffnet ggf. die eigene Startseite
     return a;
   }
 
