@@ -57,6 +57,7 @@ TYPES = ("webpush", "ntfy", "unifiedpush", "apns", "apns-voip", "stream")
 CATS = {"share": ("share.added", "share.role"), "comment": ("comment.new", "comment.reply", "comment.mention"),
         "assign": ("db.assigned",),                 # 2.5: in einer Datenbank-Zeile eingetragen
         "chat": ("chat.message",), "publish": ("publish.withdrawn",), "call": ("call", "call.missed", "call.group"),
+        "tasks": ("task.due",),                     # 2.5 (Paket 7): taegliche Zusammenfassung "heute faellig / ueberfaellig"
         "admin": ("backup.failed",)}                 # nur Admin-Konten (Backups, saga/backups.py)
 CALL_TTL = 60                        # klingelnder Anruf: Mitteilung nach einer Minute verwerfen (statt 4 h vorhalten)
 
@@ -461,6 +462,8 @@ def _anon(kind):
         return t("Ein Admin hat deine Veröffentlichung zurückgezogen")
     if kind == "db.assigned":
         return t("Du wurdest in einer Datenbank eingetragen")
+    if kind == "task.due":
+        return t("Aufgaben heute fällig oder überfällig")
     if kind == "call.missed":
         return t("Verpasster Anruf")
     if kind == "backup.failed":

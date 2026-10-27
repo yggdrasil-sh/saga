@@ -140,7 +140,7 @@ def _clean_cfg(kind, c):
                 "dir": "since" if c.get("dir") == "since" else "until", "unit": "auto" if c.get("unit") == "auto" else "days"}
     if kind == "progress":
         if c.get("src") == "tasks":
-            return {"src": "tasks"}
+            return {"src": "tasks", **({"include_sources": False} if c.get("include_sources") is False else {})}
         if c.get("src") == "db":
             out = {"src": "db", "db": _db_id(c.get("db")), "view": _id(c.get("view")),
                    "mode": "sum" if c.get("mode") == "sum" else "checked", "prop": _id(c.get("prop"))}
@@ -152,6 +152,8 @@ def _clean_cfg(kind, c):
     if kind == "metric":
         if c.get("src") == "tasks":
             out = {"src": "tasks", "agg": c["agg"] if c.get("agg") in TASK_AGGS else "open", "fmt": "num"}
+            if c.get("include_sources") is False:          # 2.5 (Paket 7): Standard = Inbox + Aufgabenquellen
+                out["include_sources"] = False
             if _num(c.get("goal")):
                 out["goal"] = _n(c["goal"])
             return out
@@ -347,10 +349,11 @@ def _text_of(v):
     return re.sub(r"\s+", " ", clean_line(str(v))).strip()[:QUOTE_LEN * 4]
 
 
-def task_stats(c, uid, today, tz=None):
+def task_stats(c, uid, today, tz=None, include_sources=False):
     """Saga-Aufgaben von uid (fix27 E3): {open, due_today, overdue, done_week, open_week}. today: Datum in der Zeitzone
     der Anfrage; Woche Montag bis Sonntag. done_week nach done_at (Zeitpunkt) in derselben Zeitzone - Wiederholungen
-    zaehlen je erledigtem Durchgang (die Folgeaufgabe ist eine neue, offene Aufgabe)."""
+    zaehlen je erledigtem Durchgang (die Folgeaufgabe ist eine neue, offene Aufgabe).
+    include_sources (2.5, Paket 7): zusaetzlich die abonnierten Aufgabenquellen (offene Zeilen, erledigt laut row_done)."""
     mon = today - timedelta(days=today.weekday())
     sun = mon + timedelta(days=6)
     out = {"open": 0, "due_today": 0, "overdue": 0, "done_week": 0, "open_week": 0}
@@ -368,6 +371,10 @@ def task_stats(c, uid, today, tz=None):
             d = datetime.fromtimestamp(done_at, tz or TZ).date()
             if mon <= d <= sun:
                 out["done_week"] += 1
+    if include_sources:
+        from saga import tasksrc
+        for k, v in tasksrc.stats(c, uid, today, tz or TZ).items():
+            out[k] += v
     return out
 
 
@@ -548,7 +555,7 @@ def compute(c, uid, bid, d, tz=None, acc=None, public_owner=None, today=None, pu
         if cfg.get("src") == "tasks" and kind in ("metric", "progress"):
             if public_owner is not None or uid is None or is_remote(uid):
                 raise _Fail("no_access")            # Aufgaben gehoeren der betrachtenden Person dieses Servers
-            st = task_stats(c, uid, today, tz)
+            st = task_stats(c, uid, today, tz, cfg.get("include_sources") is not False)
             if kind == "progress":
                 return _W(kind, st["done_week"], st["done_week"] + st["open_week"])
             agg = cfg.get("agg") if cfg.get("agg") in TASK_AGGS else "open"

@@ -174,8 +174,14 @@ def api_app_today(request: Request):
                          "ORDER BY (due IS NULL), due, prio, created LIMIT 20", (uid,)).fetchall()
     tasks = [{"id": r[0], "text": r[1], "due": r[2], "prio": r[3], "overdue": bool(r[2] and r[2] < today.isoformat())} for r in rows]
     slim = [{k: e[k] for k in ("summary", "start", "end", "allday", "location", "color", "calendar")} for e in events]
-    return JSONResponse({"date": today.isoformat(), "events": slim, "tasks": tasks, "errors": [x.get("error") for x in errors]},
-                        headers={"Cache-Control": "no-store"})
+    out = {"date": today.isoformat(), "events": slim, "tasks": tasks, "errors": [x.get("error") for x in errors]}
+    if request.query_params.get("sources") == "1" or request.query_params.get("with_sources") == "1":
+        from saga import tasksrc                 # 2.5 (Paket 7, tasksrc1): 20 Eintraege aus Inbox und Aufgabenquellen gemischt
+        with _db() as c, c:
+            items, sources, ppl = tasksrc.collect(c, uid, today, TZ)
+        out.update(items=items[:20], more=max(0, len(items) - 20), sources=[{k: x[k] for k in ("db", "title", "icon") if k in x}
+                                                                             for x in sources], people=ppl)
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 
 # --- Widgets: eng begrenzt (nur eigene Daten; lesen = Titel/Zeilen, schreiben = Aufgabe abhaken / Haekchen-Feld) ---
@@ -254,6 +260,18 @@ async def api_app_task_done(tid: int, request: Request):
         next_id, nd = _task_done(c, uid, tid, bool(b.get("done", True)), done, text, due, prio, rep, anchor, next_id, _client_today(b))
         c.execute("UPDATE task SET next_id=? WHERE id=? AND uid=?", (next_id, tid, uid))
     return JSONResponse({"ok": True, "next_due": nd})
+
+
+@router.post("/api/app/tasks/src/{row}/done")
+async def api_app_src_done(row: int, request: Request):
+    """Widget (2.5, Paket 7): Zeile einer Aufgabenquelle abhaken/wieder oeffnen - Rollenpruefung wie im Web ('edit')."""
+    uid = _app_uid(request)
+    if not uid:
+        return _bad("unauthorized", 401)
+    b = await _body(request) or {}
+    from starlette.concurrency import run_in_threadpool
+    from saga import tasksrc
+    return await run_in_threadpool(tasksrc.patch_row, uid, row, {"done": b.get("done", True) is not False})
 
 
 @router.post("/api/app/rows/{nid}/check")

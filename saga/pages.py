@@ -20,7 +20,7 @@ from saga.publish import published_via
 from saga.siteicons import ICON_RE, svc_icon_path
 from saga.comments import counts as comment_counts
 from saga.sharing import RANK, Access, access, is_remote, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
-from saga.notes import REL_ROLES, _self_rel_backfill, _self_rel_check, formula_check, BLOCK_ID_RE, CONTAINERS, MAX_JSON_DEPTH, _iter_blocks, base_of, ensure_ids, fix_block_ids, keep_base, NOTE_BODY_MAX, PALETTE, STYLE_TYPES, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
+from saga.notes import REL_ROLES, clean_tasks_map, _self_rel_backfill, _self_rel_check, formula_check, BLOCK_ID_RE, CONTAINERS, MAX_JSON_DEPTH, _iter_blocks, base_of, ensure_ids, fix_block_ids, keep_base, NOTE_BODY_MAX, PALETTE, STYLE_TYPES, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
 
 router = APIRouter()
 
@@ -1020,6 +1020,10 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
                         "SELECT 1 FROM note WHERE id=? AND uid=? AND parent_id=? AND is_template=1 AND deleted_at IS NULL",
                         (new_schema["default_tpl"], owner, nid)).fetchone():
                     new_schema.pop("default_tpl")
+                if "tasks" not in b["schema"] and old_s.get("tasks"):    # 2.5 (Paket 7): Clients ohne Aufgabenquellen behalten sie
+                    tm = clean_tasks_map(old_s["tasks"], new_schema["props"])
+                    if tm:
+                        new_schema["tasks"] = tm
                 if role != "owner" and bool(old_s.get("locked")) != bool(new_schema.get("locked")):
                     raise _Reply(_bad(t("Das darf nur der Eigentümer der Seite."), 403))     # Sperre der Datenbank: wie die Seiten-Sperre
                 if old_s.get("locked") and new_schema.get("locked"):     # gesperrt: nur Entsperren ist erlaubt

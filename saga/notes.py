@@ -810,7 +810,53 @@ def _clean_schema(raw):
     dt = raw.get("default_tpl")                      # 2.5: Standardvorlage fuer "+ Neu" (ID einer Vorlage dieser Datenbank)
     if isinstance(dt, int) and not isinstance(dt, bool) and 0 < dt < 2 ** 62:
         res["default_tpl"] = dt
+    tm = clean_tasks_map(raw.get("tasks"), out)       # 2.5 (Paket 7): Aufgabenquelle - Zuordnung der Eigenschaften
+    if tm:
+        res["tasks"] = tm
     return res
+
+
+def clean_tasks_map(raw, props):
+    """2.5 (Paket 7, saga/tasksrc.py): Zuordnung einer Datenbank als Aufgabenquelle pruefen -> dict oder None.
+    {"done": <status|select|checkbox>, "done_values": [opt] (nur Auswahl ohne Status), "open_value": opt, "due": <date>,
+     "prio": <select>, "prio_map": {opt: 1|2|3}, "assignee": <person>}. Jede genannte Eigenschaft muss existieren und den
+    passenden Typ haben, sonst faellt der Schluessel weg; ohne gueltiges done gibt es keine Zuordnung."""
+    if not isinstance(raw, dict):
+        return None
+    by = {p["id"]: p for p in props}
+
+    def typed(k, *types):
+        p = by.get(raw.get(k)) if isinstance(raw.get(k), str) else None
+        return p if p is not None and p["type"] in types else None
+    dp = typed("done", "select", "checkbox")
+    if dp is None:
+        return None
+    out = {"done": dp["id"]}
+    if dp["type"] == "select":
+        opts = [o["id"] for o in dp.get("options") or []]
+        if not dp.get("status"):                         # Auswahl ohne Status: welche Optionen gelten als erledigt
+            dv = [x for x in (raw.get("done_values") if isinstance(raw.get("done_values"), list) else []) if x in opts]
+            dv = list(dict.fromkeys(dv))[:20]
+            if not dv or len(dv) >= len(opts):
+                return None
+            out["done_values"] = dv
+        ov = raw.get("open_value")
+        if ov in opts and ov not in out.get("done_values", []) and not (
+                dp.get("status") and next((o.get("group") for o in dp["options"] if o["id"] == ov), None) == "done"):
+            out["open_value"] = ov
+    if typed("due", "date"):
+        out["due"] = raw["due"]
+    pp = typed("prio", "select")
+    if pp:
+        out["prio"] = pp["id"]
+        opts = {o["id"] for o in pp.get("options") or []}
+        pm = raw.get("prio_map") if isinstance(raw.get("prio_map"), dict) else {}
+        pm = {k: v for k, v in pm.items() if k in opts and v in (1, 2, 3) and not isinstance(v, bool)}
+        if pm:
+            out["prio_map"] = pm
+    if typed("assignee", "person"):
+        out["assignee"] = raw["assignee"]
+    return out
 
 
 # Schema-Revision (BUG-001): Clients schicken immer das ganze Schema. Wer einen alten Stand hat, wuerde Spalten/Optionen,

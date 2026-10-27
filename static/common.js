@@ -440,7 +440,59 @@
     return h ? T('Person auf {host} ({tag})', { host: h, tag: tag }) : T('Unbekannte Person ({tag})', { tag: tag });
   }
 
+
+  // --- Aufgabenquellen (2.5, Paket 7): gemeinsam fuer Dashboard (notes.js), Block "Aufgaben" und Mein Tag (pages.js) ---
+  // GET /api/tasks?with_sources=1 liefert items (Inbox + offene Zeilen abonnierter Datenbanken, fertig sortiert), sources
+  // und people. Quell-Zeilen hakt PATCH /api/tasks/src/{zeile} ab (Rechte wie das Bearbeiten der Zeile).
+  function tzName() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; } }
+  function todayIso() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  var TS = {
+    load: function () {
+      var tz = tzName();
+      return api('GET', '/api/tasks?with_sources=1&today=' + todayIso() + (tz ? '&tz=' + encodeURIComponent(tz) : ''));
+    },
+    // Abhaken/Wieder-Oeffnen eines Eintrags der zusammengefuehrten Liste (Inbox: wie bisher inkl. Wiederholung)
+    done: function (it, on) {
+      return it.kind === 'row' ? api('PATCH', '/api/tasks/src/' + it.id, { done: on, today: todayIso() })
+        : api('PATCH', '/api/tasks/' + it.id, { done: on, today: todayIso() });
+    },
+    patch: function (it, body) {
+      body.today = todayIso();
+      return api('PATCH', (it.kind === 'row' ? '/api/tasks/src/' : '/api/tasks/') + it.id, body);
+    },
+    // Badge "Symbol + Datenbank" einer Quell-Zeile; Klick oeffnet die Zeile
+    badge: function (it, d) {
+      var s = (d.sources || []).find(function (x) { return x.db === it.src; }) || {};
+      var b = el('a', 'tsrc-badge'); b.href = '/notes#' + it.id;
+      b.textContent = (s.icon && !/^\//.test(s.icon) ? s.icon + ' ' : '🗃️ ') + (s.title || T('Datenbank'));
+      b.title = T('Eintrag öffnen');
+      return b;
+    },
+    // Ziele fuer "+ Neue Aufgabe": Inbox und Quellen mit Bearbeiten-Recht
+    targets: function (d) {
+      return [{ id: '', label: '📥 ' + T('Aufgaben (Inbox)') }].concat((d.sources || []).filter(function (s) {
+        return s.map && !s.inactive && (s.role === 'owner' || s.role === 'edit');
+      }).map(function (s) { return { id: String(s.db), label: (s.icon && !/^\//.test(s.icon) ? s.icon : '🗃️') + ' ' + (s.title || T('Unbenannt')) }; }));
+    },
+    targetSelect: function (d, key) {
+      var opts = TS.targets(d), s = el('select', 'tsrc-target'); s.setAttribute('aria-label', T('Ziel der neuen Aufgabe'));
+      opts.forEach(function (o) { var x = el('option', null, o.label); x.value = o.id; s.appendChild(x); });
+      var last = store('hk-task-target-' + key) || '';
+      if (opts.some(function (o) { return o.id === last; })) s.value = last;
+      s.addEventListener('change', function () { store('hk-task-target-' + key, s.value); });
+      s.hidden = opts.length < 2;
+      return s;
+    },
+    add: function (text, target, extra) {
+      var b = Object.assign({ text: text, today: todayIso() }, extra || {});
+      if (target) b.src = +target;
+      return api('POST', '/api/tasks', b);
+    },
+    today: todayIso
+  };
+
   window.HK = { personName: personName, tab: TAB, avatarImg: avatarImg, parseNum: parseNum, editNum: editNum, scrollFade: scrollFade, $: $, el: el, t: window.T, lang: window.SAGA_LANG, locale: LOC, weekdaysShort: weekdaysShort, relTime: relTime, api: api, store: store, fUpd: fUpd, escapeHtml: escapeHtml, toast: toast,
                 openMenu: openMenu, closeMenu: closeMenu, lastMenuOwner: function () { return lastOwner; }, menuItem: menuItem, menuLabel: menuLabel,
-                menuOpen: function () { return !!menuOwner; }, closeSub: closeSub, ask: ask, urlNode: urlNode, fmtNodes: fmtNodes, fieldMsg: fieldMsg };
+                menuOpen: function () { return !!menuOwner; }, closeSub: closeSub, ask: ask, urlNode: urlNode, fmtNodes: fmtNodes, fieldMsg: fieldMsg,
+                tasks: TS };
 })();

@@ -39,7 +39,7 @@ UPSERT_KEYS = {"immich_key": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "
                "note_share": ("note_id", "target_type", "target"), "note_comment_seen": ("uid", "thread_id"),
                "chat_msg_key": ("msg_seq", "recipient"),
                "fed_person": ("principal",), "fed_inbound": ("peer_id", "note_id", "target_type", "target"),
-               "fed_name_retired": ("name",)}
+               "fed_name_retired": ("name",), "task_source": ("uid", "db_id"), "row_done": ("note_id",)}
 
 
 def pool():
@@ -787,6 +787,18 @@ CREATE TABLE IF NOT EXISTS row_person (
     owner TEXT NOT NULL, db_id BIGINT NOT NULL, PRIMARY KEY (note_id, pid, person));
 CREATE INDEX IF NOT EXISTS row_person_person ON row_person (person);
 CREATE INDEX IF NOT EXISTS row_person_db ON row_person (db_id);
+-- Aufgabenquellen (2.5, Paket 7, saga/tasksrc.py): Datenbanken, deren offene Zeilen in der persoenlichen Aufgabenliste
+-- einer Person erscheinen (Abo je Person; scope 'all' = alle offenen Zeilen, 'assigned' = nur mir zugewiesene). Die
+-- Rechte prueft jedes Lesen neu - ein Abo ohne Zugriff liefert nichts und wird entfernt.
+CREATE TABLE IF NOT EXISTS task_source (
+    uid TEXT NOT NULL, db_id BIGINT NOT NULL, scope TEXT NOT NULL DEFAULT 'all', added DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (uid, db_id));
+CREATE INDEX IF NOT EXISTS task_source_db ON task_source (db_id);
+-- Wann wurde eine Zeile einer Aufgabenquelle erledigt ("diese Woche erledigt"): abgeleitet beim Speichern (Uebergang
+-- offen -> erledigt, saga/tasksrc.py), beim Wieder-Oeffnen geloescht. Jederzeit verzichtbar (nur Zaehler).
+CREATE TABLE IF NOT EXISTS row_done (
+    note_id BIGINT PRIMARY KEY REFERENCES note(id) ON DELETE CASCADE, db_id BIGINT NOT NULL, done_at DOUBLE PRECISION NOT NULL);
+CREATE INDEX IF NOT EXISTS row_done_db ON row_done (db_id, done_at);
 CREATE OR REPLACE FUNCTION saga_jsonb(s TEXT) RETURNS jsonb LANGUAGE plpgsql IMMUTABLE AS $$
 BEGIN
     RETURN s::jsonb;
@@ -1150,6 +1162,12 @@ ALTER TABLE note_base ADD COLUMN IF NOT EXISTS sent_title TEXT;
     # Personen-Werte gab es vorher nicht - nichts nachzutragen. Beliebig oft ausfuehrbar.
     23: """
 SELECT 1 FROM row_person LIMIT 0;
+""",
+    # 2.5.0 (Paket 7, Aufgabenquellen, saga/tasksrc.py): Tabellen task_source und row_done stehen in SCHEMA oben; vorher
+    # gab es keine Quellen - nichts nachzutragen. Beliebig oft ausfuehrbar.
+    25: """
+SELECT 1 FROM task_source LIMIT 0;
+SELECT 1 FROM row_done LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

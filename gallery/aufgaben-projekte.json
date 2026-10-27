@@ -1,7 +1,7 @@
 {
   "id": "aufgaben-projekte", "v": 1, "order": 20, "category": "work",
   "icon": "✅", "title": "Aufgaben & Projekte",
-  "desc": "Projekte mit Aufgaben, Board nach Status, Kalender und Fortschritt.",
+  "desc": "Projekte mit Aufgaben, Board nach Status, Kalender und Fortschritt. Die Aufgaben erscheinen auch in deiner Aufgabenliste.",
   "needs": [],
   "root": "home",
   "items": [
@@ -38,7 +38,7 @@
          {"id": "start", "name": "Start", "type": "date"},
          {"id": "ende", "name": "Zieltermin", "type": "date"},
          {"id": "fortschritt", "name": "Fortschritt", "type": "number", "fmt": "percent", "show": "bar"},
-         {"id": "verantwortlich", "name": "Verantwortlich", "type": "text"}
+         {"id": "verantwortlich", "name": "Verantwortlich", "type": "person"}
        ],
        "views": [
          {"id": "aktiv", "name": "Laufend", "type": "table", "filters": [{"pid": "status", "op": "is_not", "value": "fertig"}],
@@ -64,7 +64,7 @@
      ],
      "rows": [
        {"ref": "p_web", "title": "Website überarbeiten", "icon": "🌐", "example": true,
-        "props": {"status": "aktiv", "start": "2026-10-19", "ende": "2026-11-27", "fortschritt": 40, "verantwortlich": "Team Web"},
+        "props": {"status": "aktiv", "start": "2026-10-19", "ende": "2026-11-27", "fortschritt": 40},
         "body": [
           {"type": "header", "data": {"text": "Ziel", "level": 2}},
           {"type": "paragraph", "data": {"text": "Neue Startseite, klarere Navigation und schnellere Ladezeiten."}},
@@ -74,25 +74,26 @@
              "sorts": [{"pid": "faellig", "dir": "asc"}], "hidden": ["projekt"]}]}}
         ]},
        {"ref": "p_umzug", "title": "Büroumzug", "icon": "📦", "example": true,
-        "props": {"status": "geplant", "start": "2026-11-16", "ende": "2026-12-18", "fortschritt": 10, "verantwortlich": "Verwaltung"}},
+        "props": {"status": "geplant", "start": "2026-11-16", "ende": "2026-12-18", "fortschritt": 10}},
        {"ref": "p_feier", "title": "Jahresabschluss", "icon": "🎉", "example": true,
-        "props": {"status": "fertig", "start": "2026-09-01", "ende": "2026-10-15", "fortschritt": 100, "verantwortlich": "Alle"}}
+        "props": {"status": "fertig", "start": "2026-09-01", "ende": "2026-10-15", "fortschritt": 100}}
      ]},
 
     {"ref": "tasks", "kind": "database", "parent": "home", "title": "Aufgaben", "icon": "☑️",
      "schema": {
        "title_name": "Aufgabe",
        "props": [
-         {"id": "status", "name": "Status", "type": "select", "options": [
-           {"id": "offen", "name": "Offen", "color": "gray"},
-           {"id": "arbeit", "name": "In Arbeit", "color": "blue"},
-           {"id": "warten", "name": "Wartet", "color": "yellow"},
-           {"id": "erledigt", "name": "Erledigt", "color": "green"}]},
+         {"id": "status", "name": "Status", "type": "select", "status": true, "options": [
+           {"id": "offen", "name": "Offen", "color": "gray", "group": "todo"},
+           {"id": "arbeit", "name": "In Arbeit", "color": "blue", "group": "doing"},
+           {"id": "warten", "name": "Wartet", "color": "yellow", "group": "doing"},
+           {"id": "erledigt", "name": "Erledigt", "color": "green", "group": "done"}]},
          {"id": "prio", "name": "Priorität", "type": "select", "options": [
            {"id": "hoch", "name": "Hoch", "color": "red"},
            {"id": "mittel", "name": "Mittel", "color": "orange"},
            {"id": "niedrig", "name": "Niedrig", "color": "gray"}]},
          {"id": "faellig", "name": "Fällig", "type": "date"},
+         {"id": "zugewiesen", "name": "Zugewiesen", "type": "person"},
          {"id": "projekt", "name": "Projekt", "type": "relation", "target": "$ref:projects", "two_way": true},
          {"id": "bereich", "name": "Bereich", "type": "multi_select", "options": [
            {"id": "planung", "name": "Planung", "color": "purple"},
@@ -110,7 +111,9 @@
          {"id": "erledigt", "name": "Erledigt", "type": "table", "filters": [{"pid": "status", "op": "is", "value": "erledigt"}]},
          {"id": "alle", "name": "Alle", "type": "table", "calcs": {"title": "count"}}
        ],
-       "default_tpl": "$ref:tpl_task"
+       "default_tpl": "$ref:tpl_task",
+       "tasks": {"done": "status", "open_value": "offen", "due": "faellig", "prio": "prio",
+                 "prio_map": {"hoch": 1, "mittel": 2, "niedrig": 3}, "assignee": "zugewiesen"}
      },
      "templates": [
        {"ref": "tpl_task", "title": "Neue Aufgabe", "icon": "☑️", "props": {"status": "offen", "prio": "mittel"}, "default": true,

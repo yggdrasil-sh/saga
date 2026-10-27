@@ -1,4 +1,4 @@
-"""Aufgaben."""
+"""Aufgaben (Inbox je Konto). 2.5 (Paket 7): GET ?with_sources=1 und POST {src} - Aufgabenquellen in saga.tasksrc."""
 import time
 from calendar import monthrange
 from datetime import date, datetime, timedelta
@@ -121,8 +121,12 @@ def api_tasks(request: Request):
                           "ORDER BY prio, due IS NULL, due, created", (uid,)).fetchall()
         done = c.execute(f"SELECT {TASK_COLS} FROM task WHERE uid=? AND done=1 "
                          "ORDER BY done_at DESC LIMIT 50", (uid,)).fetchall()
-    return JSONResponse({"open": [_task_row(r) for r in open_], "done": [_task_row(r) for r in done]},
-                        headers={"Cache-Control": "no-store"})
+    out = {"open": [_task_row(r) for r in open_], "done": [_task_row(r) for r in done]}
+    q = request.query_params
+    if q.get("with_sources") == "1" or q.get("sources") == "1":     # 2.5 (Paket 7, tasksrc1): zusammengefuehrte Liste
+        from saga import tasksrc
+        out.update(tasksrc.merged(uid, q))
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/api/tasks")
@@ -133,6 +137,11 @@ async def api_task_add(request: Request):
     b = await _body(request)
     if b is None:
         return _bad("bad request")
+    if b.get("src") is not None:                 # 2.5 (Paket 7): neue Zeile in einer Aufgabenquelle statt Inbox
+        from starlette.concurrency import run_in_threadpool
+        from saga import tasksrc
+        from saga.core import origin_of
+        return await run_in_threadpool(tasksrc.add_row, uid, b["src"], b, origin_of(request))
     text = _text_in(b.get("text"))
     if not text:
         return _bad(t("leere Aufgabe"))
