@@ -5,7 +5,8 @@ Werte aller Typen maschinenlesbar (Datum ISO, Zahl ohne Einheit, Haekchen true/f
 Namen, Berechnet, Erstellt/Bearbeitet), unbekannter Typ als Text (Erweiterungsstelle proptext); Formel-Injektion
 (an/aus; Zahlen bleiben); Ansicht mit Filter/Sortierung = Reihenfolge von /rows?view=, sichtbare Spalten in
 Ansichtsreihenfolge; Suche q; cols; alles (all=1); Rechte (fremd 404, Freigabe Lesen: ohne archivierte Zeilen,
-Relationen-Titel nur sichtbar); falsche Parameter -> 400; Zeilenumbrueche/Anfuehrungszeichen; Rundreise mit csv-Modul.
+Relationen-Titel nur sichtbar); Formeln/Rollups (2.5, Paket 1): berechnete Werte, Listen als
+Text, Filter auf Formel, Rechte; falsche Parameter -> 400; Zeilenumbrueche/Anfuehrungszeichen; Rundreise mit csv-Modul.
 Wegwerf-Konten ce-*, raeumt auf."""
 import base64
 import csv
@@ -221,6 +222,56 @@ def run():
     c = http.client.HTTPConnection(B_.hostname, B_.port, timeout=30)
     c.request("GET", f"/api/notes/{db}/export.csv", headers={"Host": HOST, "X-Saga": "1"})
     ok("ohne Anmeldung: 401", c.getresponse().status == 401)
+
+    # --- Formeln und Rollups (2.5, Paket 1): berechnete Werte, Listen als Text, Rechte ---------------------------
+    fxs = {"props": [
+        {"id": "menge", "name": "Menge", "type": "number"},
+        {"id": "preis", "name": "Preis", "type": "number"},
+        {"id": "kd", "name": "Kunde", "type": "relation", "target": tgt},
+        {"id": "ges", "name": "Gesamt", "type": "formula", "expr": "prop(\"menge\") * prop(\"preis\")"},
+        {"id": "gr", "name": "Groß", "type": "formula", "expr": "prop(\"ges\") > 10"},
+        {"id": "inj", "name": "Inj", "type": "formula", "expr": "\"=\" + format(prop(\"menge\"))"},
+        {"id": "lst", "name": "Liste", "type": "formula", "expr": "split(\"x,y\", \",\")"},
+        {"id": "kn", "name": "Kundennamen", "type": "rollup", "rel": "kd", "target": "title", "fn": "show"},
+        {"id": "kz", "name": "Kundenzahl", "type": "rollup", "rel": "kd", "target": "title", "fn": "count"}],
+        "views": [{"id": "gr", "name": "Groß", "type": "table", "filters": [{"pid": "gr", "op": "checked", "value": ""}]}]}
+    s, d, _ = req("POST", "/api/notes", body={"kind": "database", "title": "Rechnen"})
+    fdb = d["id"]
+    s, d, _ = req("PATCH", f"/api/notes/{fdb}", body={"schema": fxs})
+    ok("Formel-Schema gesetzt", s == 200, d)
+    req("POST", "/api/notes", body={"parent_id": fdb, "title": "Viel", "props": {"menge": 4, "preis": 2.5, "kd": [k1, k2]}})
+    req("POST", "/api/notes", body={"parent_id": fdb, "title": "Wenig", "props": {"menge": 1, "preis": 0.5}})
+    s, raw, _ = req("GET", f"/api/notes/{fdb}/export.csv?all=1")
+    _, tab = parse(raw)
+    by = {x[0]: dict(zip(tab[0], x)) for x in tab[1:]}
+    v = by.get("Viel", {})
+    ok("CSV: Formel-Spalten mit berechneten Werten (Zahl, Haekchen)", v.get("Gesamt") == "10" and v.get("Groß") == "false"
+       and by.get("Wenig", {}).get("Gesamt") == "0.5", by)
+    ok("CSV: Formel-Liste als Text", v.get("Liste") == "x, y", v)
+    ok("CSV: Rollup Original anzeigen (Liste) und Anzahl", v.get("Kundennamen") == "Kunde Alpha, Kunde Beta" and v.get("Kundenzahl") == "2", v)
+    ok("CSV: Formel-Text mit Schutz vor Formel-Injektion", v.get("Inj") == "'=4", v)
+    s, raw, _ = req("GET", f"/api/notes/{fdb}/export.csv?all=1&sep=%3B")
+    _, tab = parse(raw, ";")
+    by = {x[0]: dict(zip(tab[0], x)) for x in tab[1:]}
+    ok("CSV Excel: Formel-Zahl mit Dezimalkomma", by.get("Wenig", {}).get("Gesamt") == "0,5", by)
+    sch2 = dict(fxs, props=[dict(p) for p in fxs["props"]])
+    sch2["props"][3]["expr"] = "prop(\"menge\") * prop(\"preis\") * 10"
+    req("PATCH", f"/api/notes/{fdb}", body={"schema": sch2})
+    s, raw, _ = req("GET", f"/api/notes/{fdb}/export.csv?view=gr")
+    _, tab = parse(raw)
+    ok("CSV: Ansicht mit Filter auf Formel (gerechnet vor dem Filter)", s == 200 and [x[0] for x in tab[1:]] == ["Viel"]
+       and {x[0]: dict(zip(tab[0], x)) for x in tab[1:]}["Viel"].get("Gesamt") == "100", tab)
+    s, md, _ = req("GET", f"/api/notes/{fdb}/export")
+    md = md.decode() if isinstance(md, bytes) else str(md)
+    ok("Markdown-Export: Formel-/Rollup-Werte (proptext)", "Kunde Alpha, Kunde Beta" in md and "| 100 |" in md and "x, y" in md, md[:600])
+    with connect() as c, c:
+        c.execute("INSERT INTO note_share (note_id, owner_uid, target_type, target, role, created, created_by) VALUES (?,?,?,?,?,?,?)",
+                  (fdb, A, "user", CU, "view", time.time(), A))
+    s, raw, _ = req("GET", f"/api/notes/{fdb}/export.csv?all=1", u=CU)
+    _, tab = parse(raw)
+    v = {x[0]: dict(zip(tab[0], x)) for x in tab[1:]}.get("Viel", {})
+    ok("CSV fuer Freigabe ohne Ziel: Rollup ohne fremde Titel", s == 200 and "Alpha" not in raw.decode() and v.get("Kundennamen") == ""
+       and v.get("Kundenzahl") in ("", "0") and v.get("Gesamt") == "100", v)
 
     # --- leere Datenbank, Sprache ---------------------------------------------------------------------------------
     s, d, _ = req("POST", "/api/notes", body={"kind": "database", "title": "Leer"})
