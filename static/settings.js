@@ -681,11 +681,19 @@
 
   // --- Abschnitt "Lesezeichen": eigene Kacheln auf dem Dashboard (auch in den Apps) -----------------------------
   function bmIcon(b) {
-    var src = b.icon_url || (b.icon ? '/api/services/icon/' + encodeURIComponent(b.icon) : '');   // icon_url: auch automatisch (Favicon)
+    // icon_url: gesetztes Symbol bzw. automatisch ueber den Server; klappt das nicht, der Reihe nach icon_direct (Favicon
+    // direkt von der Seite, CSP img-src erlaubt die Origins der eigenen Lesezeichen), sonst der Anfangsbuchstabe
+    var rest = (b.icon_direct || []).slice();
+    var src = b.icon_url || (b.icon ? '/api/services/icon/' + encodeURIComponent(b.icon) : '') || rest.shift() || '';
     var ic = el('span', 'ic' + (src ? ' has-img' : ''));
     if (src) {
-      var img = el('img'); img.alt = ''; img.loading = 'lazy'; img.src = src;
-      img.addEventListener('error', function () { ic.classList.remove('has-img'); ic.textContent = (b.name || '?').charAt(0).toUpperCase(); });
+      var img = el('img'); img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
+      rest = rest.filter(function (u) { return u !== src; });
+      img.addEventListener('error', function () {
+        if (rest.length) { img.src = rest.shift(); return; }
+        ic.classList.remove('has-img'); ic.textContent = (b.name || '?').charAt(0).toUpperCase();
+      });
+      img.src = src;
       ic.appendChild(img);
     } else ic.textContent = (b.name || '?').charAt(0).toUpperCase();
     return ic;

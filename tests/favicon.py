@@ -14,6 +14,10 @@ Konto. Threadpool: langsame Seiten (127.0.0.2:18350-18397, antworten erst nach 7
 Abruf-Plaetze; weitere Anfragen bekommen nach kurzem Warten 503 (Cache-Control: no-store), der Server antwortet weiter;
 danach ist der Host einige Minuten als "weg" gemerkt (503 sofort, kein erneuter Abruf, kein .missing). CDN nicht
 erreichbar -> 503 und "weg" gemerkt. Aufraeumen alter .missing/.tmp/Favicons. DNS mit Zeitlimit (saga/netguard.py).
+2.5 (nur Lesezeichen): Dienste ohne Symbol bekommen kein automatisches Symbol (icon_url leer, Favicon-Adresse 404, kein
+icon_direct); Lesezeichen bekommen icon_direct (hoechstens 3 Adressen auf ihrem Host, http/https wie das Lesezeichen);
+Bot-Schutz/5xx wird nur 1 h gemerkt (404 ohne Favicon 1 Tag); die CSP von Dashboard, Seiten und Chats erweitert img-src um
+genau die Origins der eigenen Lesezeichen (Schalter aus: nichts). Der Rueckfall im Browser: tests/favicon_web.js.
 Wegwerf-Konten fav-*; raeumt auf und stellt die Einstellung wieder her."""
 import base64, http.client, io, json, os, re, struct, sys, threading, time, urllib.parse, zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -32,7 +36,7 @@ B_ = urllib.parse.urlparse(os.environ.get("HK_TEST_BASE", "http://127.0.0.1:8099
 HOST = urllib.parse.urlparse(os.environ["BASE_URL"]).netloc
 S = TimestampSigner(os.environ["SESSION_SECRET"])
 CDN = os.environ.get("ICON_CDN", "http://127.0.0.1:18310")
-P = {"a": 18311, "b": 18312, "int": 18313, "c": 18314, "e": 18315, "f": 18316}
+P = {"a": 18311, "b": 18312, "int": 18313, "c": 18314, "e": 18315, "f": 18316, "g": 18317, "h": 18318}
 SLOW = __import__("random").SystemRandom().sample(range(18350, 18398), 6)   # der Merker "weg" haelt 5 Minuten im
 #                                                    Server: je Lauf zufaellige Ports (18350-18397) fuer die langsamen Seiten
 SLOW_S = 7.0                                         # > FETCH_TIMEOUT (5 s): der Abruf laeuft ins Zeitlimit
@@ -92,6 +96,8 @@ SITES = {
     "e": {"/": ("text/html", b'<html><head><link rel="icon" href="/x.svg"></head></html>'), "/x.svg": ("image/svg+xml", SVG),
           "/favicon.ico": ("image/x-icon", SVG)},
     "f": {"/": ("text/html", b'<html><head><link rel="shortcut icon" href="/f.png"></head></html>'), "/f.png": ("image/png", png((5, 6, 7), 64))},
+    "g": {"*": 503},                                           # Bot-Schutz: jeder Abruf des Servers 503
+    "h": {"/": ("text/html", b"<html><head><title>H</title></head></html>")},   # kein Favicon (404)
 }
 
 
@@ -105,6 +111,8 @@ def handler(name):
         def do_GET(self):
             path = self.path.split("?")[0]
             HITS[(name, path)] = HITS.get((name, path), 0) + 1
+            if "*" in SITES[name]:
+                self.send_response(SITES[name]["*"]); self.send_header("Content-Length", "0"); self.end_headers(); return
             v = SITES[name].get(path)
             if v is None:
                 self.send_response(404); self.send_header("Content-Length", "0"); self.end_headers(); return
@@ -452,6 +460,9 @@ def server():
         bid = bm("fav-b", "http://127.0.0.2:%d/" % P["f"])
         t = tiles("fav-b")[f"bm{bid}"]
         ok("Schalter aus: icon_url bleibt (selfh.st-Raten geht weiter)", t["icon_url"].startswith("/api/services/favicon/"))
+        _st, h, _d = req("GET", "/", "fav-b")
+        ok(f"Schalter aus: kein icon_direct, CSP ohne Lesezeichen-Origins ({img_src(h)})",
+           t.get("icon_direct") == [] and img_src(h) == BASE_IMG)
         ok("Schalter aus: kein Abruf der Seite (404)", req("GET", t["icon_url"], "fav-b")[0] == 404 and hits("f") == n)
         st, _h, d = icon_of("fav-b", "https://github.com/")
         ok(f"Schalter aus: Raten von selfh.st weiter ({st})", st == 200 and d == fakecdn.ICONS["github"])
@@ -470,9 +481,114 @@ def server():
     ok(f"Ratenlimit gilt je Konto (anderes Konto: {st})", st == 404)
 
 
+BASE_IMG = {"'self'", "https://cdn.jsdelivr.net", "data:", "blob:"}
+
+
+def img_src(h):
+    csp = h.get("content-security-policy", "")
+    m = re.search(r"img-src ([^;]*)", csp)
+    return set(m.group(1).split()) if m else set()
+
+
+def lesezeichen_only():
+    print("--- 2.5: automatische Symbole nur fuer Lesezeichen, icon_direct, CSP, Bot-Schutz 1 h")
+    from saga.core import icon_origin
+    cases = {"https://user:pw@Example.org:443/x?y": "https://example.org", "http://example.org:8080/": "http://example.org:8080",
+             "https://bücher.example/": "https://xn--bcher-kva.example", "http://[::1]/": None, "javascript:alert(1)": None,
+             "https://a_b.example/": None, "ftp://example.org/": None, "https://example.org.:80/": "https://example.org:80"}
+    got = {u: icon_origin(u) for u in cases}
+    ok(f"icon_origin: Schema, Host (IDN), Port, ohne Zugangsdaten, keine IPv6/Unterstriche ({got})", got == cases)
+    import ki as K
+    adm = K.Admin("fav-adm")
+    slug = "favsvc" + os.urandom(3).hex()
+    st, _p = adm.go("/services", {"action": "save", "name": "Fav Dienst", "url": "https://www.youtube.com/", "slug": slug,
+                                  "category": "Fav-Test", "everyone": "on"})
+    st2, _p = adm.go("/services", {"action": "save", "name": "Fav Dienst Symbol", "url": "http://127.0.0.2:%d/" % P["f"],
+                                   "slug": slug + "i", "icon": "nextcloud", "category": "Fav-Test", "everyone": "on"})
+    try:
+        tl = tiles("fav-a")
+        svc = next((x for x in tl.values() if x["name"] == "Fav Dienst"), None)
+        svi = next((x for x in tl.values() if x["name"] == "Fav Dienst Symbol"), None)
+        ok(f"Dienst ohne Symbol: icon_url leer, kein icon_direct ({st} {svc})",
+           svc and svc["icon_url"] == "" and "icon_direct" not in svc and not svc["own"])
+        ok("Dienst ohne Symbol: kein automatisches Symbol (Favicon-Adresse 404)",
+           svc and req("GET", "/api/services/favicon/" + urllib.parse.quote(svc["key"], safe=""), "fav-a")[0] == 404)
+        ok(f"Dienst mit Symbol: nur das feste Symbol, kein icon_direct ({st2} {svi and svi['icon_url']})",
+           svi and svi["icon_url"] == "/api/services/icon/nextcloud" and "icon_direct" not in svi)
+        _s, h, html = req("GET", "/", "fav-a")
+        html = html.decode() if isinstance(html, bytes) else html
+        ok("Dashboard: Dienst ohne Symbol zeigt den Buchstaben (kein <img>, kein data-d)",
+           re.search(r'data-g="%s"[^>]*>\s*<a[^>]*>\s*<span class="ic">F</span>' % re.escape(svc["key"]), html) is not None)
+    finally:
+        with connect() as c:
+            sids = [r[0] for r in c.execute("SELECT id FROM service WHERE slug IN (?, ?)", (slug, slug + "i")).fetchall()]
+        for sid in sids:                                            # ueber den Admin: leert den Dienste-Cache
+            adm.go("/services", {"action": "delete", "id": str(sid)})
+    # Lesezeichen: icon_direct
+    ub = "fav-b"
+    urls = ["http://127.0.0.2:%d/pfad?q=1" % P["h"], "https://beispiel.invalid:443/x", "http://www.beispiel2.invalid:8080/a"]
+    ids = [bm(ub, u) for u in urls]
+    tl = tiles(ub)
+    want = {"http://127.0.0.2:%d" % P["h"], "https://beispiel.invalid", "http://www.beispiel2.invalid:8080"}
+    d0 = tl[f"bm{ids[0]}"].get("icon_direct")
+    ok(f"Lesezeichen: icon_direct = apple-touch-icon, favicon.ico auf dem Host ({d0})",
+       d0 == ["http://127.0.0.2:%d/apple-touch-icon.png" % P["h"], "http://127.0.0.2:%d/favicon.ico" % P["h"]])
+    allok = all(1 <= len(tl[f"bm{i}"]["icon_direct"]) <= 3 and all(
+        x.startswith(urllib.parse.urlparse(u).scheme + "://" + urllib.parse.urlparse(u).hostname)
+        for x in tl[f"bm{i}"]["icon_direct"]) for i, u in zip(ids, urls))
+    ok("icon_direct: hoechstens 3, gleiches Schema und gleicher Host wie das Lesezeichen", allok)
+    _st, _h, lst = req("GET", "/api/bookmarks", ub)
+    ok("/api/bookmarks liefert icon_direct", all(isinstance(b.get("icon_direct"), list) and b["icon_direct"] for b in lst))
+    # CSP: genau die Origins der eigenen Lesezeichen
+    with connect() as c:
+        mine = {o for (u,) in c.execute("SELECT url FROM bookmark WHERE uid=?", (ub,)).fetchall()
+                for o in [__import__("saga.core", fromlist=["x"]).icon_origin(u)] if o}
+    for path in ("/", "/notes", "/chats"):
+        _st, h, _d = req("GET", path, ub)
+        extra = img_src(h) - BASE_IMG
+        ok(f"CSP {path}: img-src + genau die eigenen Lesezeichen-Origins ({len(extra)})", want <= extra and extra == mine
+           and "https:" not in img_src(h) and "*" not in img_src(h))
+    _st, h, _d = req("GET", "/", "fav-a")
+    ok("CSP anderer Konten ohne diese Origins", not (img_src(h) & want))
+    _st, h, html = req("GET", "/", ub)
+    html = html.decode() if isinstance(html, bytes) else html
+    ok("Dashboard: <img> mit data-d (icon_direct) und referrerpolicy=no-referrer",
+       'data-d="http://127.0.0.2:%d/apple-touch-icon.png http://127.0.0.2:%d/favicon.ico"' % (P["h"], P["h"]) in html
+       and 'referrerpolicy="no-referrer"' in html)
+    # Bot-Schutz (503) nur 1 h merken, 404 ohne Favicon 1 Tag
+    def miss(port):
+        return os.path.join(SI.SITE_ICON_DIR, SI._host_key("http://127.0.0.2:%d/" % port) + ".missing")
+    def older(port, sec):
+        t = time.time() - sec; os.utime(miss(port), (t, t))
+    n = hits("g")
+    st, _h, _d = icon_of(ub, "http://127.0.0.2:%d/" % P["g"])
+    content = open(miss(P["g"])).read() if os.path.exists(miss(P["g"])) else None
+    ok(f"Bot-Schutz 503: 404, Fehl-Merker 'blocked' ({st}, {content!r}, {hits('g') - n} Abrufe)",
+       st == 404 and content == "blocked" and hits("g") > n)
+    tg = [x for x in tiles(ub).values() if x["url"] == "http://127.0.0.2:%d/" % P["g"]][0]
+    n = hits("g")
+    ok("Bot-Schutz: innerhalb 1 h kein neuer Abruf", req("GET", tg["icon_url"], ub)[0] == 404 and hits("g") == n)
+    older(P["g"], 3700)
+    req("GET", tg["icon_url"], ub)
+    ok(f"Bot-Schutz: nach 1 h erneut versucht ({hits('g') - n} Abrufe)", hits("g") > n)
+    th = tl[f"bm{ids[0]}"]
+    st, _h, _d = req("GET", th["icon_url"], ub)
+    content = open(miss(P["h"])).read() if os.path.exists(miss(P["h"])) else None
+    ok(f"Kein Favicon (404): Fehl-Merker gewoehnlich ({st}, {content!r})", st == 404 and content == "")
+    older(P["h"], 3700)
+    n = hits("h")
+    ok("Kein Favicon: nach 1 h weiter gemerkt (kein Abruf)", req("GET", th["icon_url"], ub)[0] == 404 and hits("h") == n)
+    older(P["h"], SI.MISS_TTL + 10)
+    req("GET", th["icon_url"], ub)
+    ok("Kein Favicon: nach einem Tag erneut versucht", hits("h") > n)
+    ok("Bausteine: 5xx/403/429 gelten als Bot-Schutz, 404 nicht",
+       SI._blocked_status(503) and SI._blocked_status(500) and SI._blocked_status(403) and SI._blocked_status(429)
+       and not SI._blocked_status(404) and not SI._blocked_status(410))
+
+
 def main():
     srv = [serve("a", "127.0.0.2"), serve("b", "127.0.0.3"), serve("int", "127.0.0.1"), serve("c", "127.0.0.2"),
-           serve("e", "127.0.0.2"), serve("f", "127.0.0.2")] + [serve_slow(p) for p in SLOW]
+           serve("e", "127.0.0.2"), serve("f", "127.0.0.2"), serve("g", "127.0.0.2"), serve("h", "127.0.0.2")] + [serve_slow(p) for p in SLOW]
     fakecdn.start(CDN)
     cleanup()
     for u in USERS:
@@ -481,6 +597,7 @@ def main():
         units()
         units_busy()
         server()
+        lesezeichen_only()
         busy()
     finally:
         cleanup()

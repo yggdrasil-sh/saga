@@ -149,7 +149,8 @@ Galerie-Endpunkte 404 `{"error": "not found"}` (nie 403).
 Bildadresse (PNG, Sitzung bzw. Cookie wie bisher):
 
 - gesetztes Symbol → `/api/services/icon/<icon>` (wie bisher selbst gebaut),
-- ohne Symbol → `/api/services/favicon/<key>?h=<hash>`: der Server rät zuerst selfh.st nach dem Domainnamen und holt
+- **Dienst** (`own=false`) ohne Symbol → leer (Anfangsbuchstabe); automatische Symbole gibt es nur für Lesezeichen,
+- **Lesezeichen** ohne Symbol → `/api/services/favicon/<key>?h=<hash>`: der Server rät zuerst selfh.st nach dem Domainnamen und holt
   sonst das Favicon der Seite (≤ 256 px). Nur wer die Kachel sieht; `404` = kein Bild (Anfangsbuchstabe zeigen),
   `429` = Ratenlimit je Konto, `503` (`Cache-Control: no-store`) = gerade belegt bzw. CDN/Seite nicht erreichbar
   (beides: Anfangsbuchstabe zeigen, später erneut). `h` ändert sich mit dem Host der Adresse (Cache-Schlüssel).
@@ -158,6 +159,21 @@ Bildadresse (PNG, Sitzung bzw. Cookie wie bisher):
 
 Apps nehmen `icon_url`, wenn vorhanden, sonst wie bisher `icon`. Das Feld `icon` bleibt unverändert der gespeicherte
 Name (beim Bearbeiten eines Lesezeichens zurückschicken, nie `icon_url`). Rückwärtskompatibel, `MIN_APP` bleibt.
+
+### `icon_direct`: Favicon direkt vom Gerät (2.5)
+
+Nur bei **Lesezeichen** (`own=true`) liefern `/api/services` und `/api/bookmarks` zusätzlich **`icon_direct`**: eine
+Liste von höchstens 3 absoluten Adressen auf dem Host des Lesezeichens, Schema wie die Lesezeichen-Adresse (`http`/`https`),
+ohne Zugangsdaten, in dieser Reihenfolge: `<origin>/apple-touch-icon.png`, `<origin>/favicon.ico` (später ggf. ein vom
+Server gefundener `<link rel=icon>` zuerst). Dienste haben das Feld nicht. Leere Liste: Admin-Schalter „Favicons laden“
+aus oder Adresse ohne gültigen Hostnamen (z. B. IPv6-Literal).
+
+Reihenfolge auf dem Gerät: `icon_url` (bzw. `icon`) über den Server; bei `404`/`429`/`503`/Netzfehler der Reihe nach
+`icon_direct`; sonst der Anfangsbuchstabe. Direkte Abrufe wie ein Browser-Tab, aber: Zeitlimit ≤ 5 s, höchstens 512 KB,
+nur Rasterbilder (PNG, ICO, JPEG, GIF, WebP – kein SVG, kein HTML), **ohne Cookies und Anmeldedaten** und ohne
+Referer, Ergebnis lokal zwischenspeichern (z. B. 7 Tage, Fehlversuch 1 h). Nichts zum Server hochladen.
+Server-seitig wird ein Fehlversuch durch `5xx`/`403`/`429` (Bot-Schutz) nur 1 h gemerkt, `404` ohne Favicon 1 Tag.
+Das Web erlaubt dafür in der CSP (`img-src`) genau die Origins der eigenen Lesezeichen. Rückwärtskompatibel, `MIN_APP` bleibt.
 
 ## Datenbank-Zeilen: Ansicht, Filter, Sortierung, Seiten (2.2)
 

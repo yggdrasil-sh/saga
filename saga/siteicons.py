@@ -2,10 +2,12 @@
 
 - Gesetztes Symbol (Name aus selfh.st/icons): einmal vom CDN holen, als PNG in STATE_DIR/svc-icons ablegen
   (GET /api/services/icon/<name>, Route in saga/pages.py).
-- Ohne Symbol (GET /api/services/favicon/<kachel-schluessel>, nur wer die Kachel sieht): zuerst selfh.st nach dem
-  Domainnamen raten (youtube.com -> "youtube", jellyfin.example.org -> "jellyfin"), sonst das Favicon der Seite
-  (<link rel=icon|apple-touch-icon> aus dem HTML-Kopf, dann /favicon.ico), mit Pillow in ein PNG <= 256 px umgerechnet
-  und je Host in STATE_DIR/site-icons abgelegt. Nicht Gefundenes wird einen Tag lang nicht erneut gesucht.
+- Lesezeichen ohne Symbol (GET /api/services/favicon/<kachel-schluessel>, nur das eigene Konto; Dienste bekommen seit
+  2.5 kein automatisches Symbol): zuerst selfh.st nach dem Domainnamen raten (youtube.com -> "youtube",
+  jellyfin.example.org -> "jellyfin"), sonst das Favicon der Seite (<link rel=icon|apple-touch-icon> aus dem HTML-Kopf,
+  dann /favicon.ico), mit Pillow in ein PNG <= 256 px umgerechnet und je Host in STATE_DIR/site-icons abgelegt. Nicht
+  Gefundenes wird einen Tag lang nicht erneut gesucht, nach 5xx/403/429 (Bot-Schutz) nur 1 h. Klappt es nicht, laden
+  Browser und Apps das Favicon direkt von der Seite (icon_direct, saga.core).
 
 SSRF: Abrufe der Seiten laufen ueber saga.netguard (DNS einmal aufloesen, jede Adresse pruefen, genau mit der
 gepruefften IP verbinden) - nur oeffentliche Adressen (keine privaten, Loopback, Link-Local, CGNAT, Multicast ...),
@@ -206,7 +208,8 @@ IMG_MAX = 512 << 10                               # Bild hoechstens 512 KB
 FETCH_TIMEOUT = 5.0                               # je Abruf (Verbindung 3 s)
 TOTAL_TIMEOUT = 12.0                              # alle Abrufe einer Seite zusammen
 MAX_CANDIDATES = 4                                # Bilder aus dem HTML-Kopf, dazu /favicon.ico
-MISS_TTL = 86400
+MISS_TTL = 86400                                  # kein Favicon (404 o. ae.): einen Tag nicht erneut suchen
+BLOCKED_TTL = 3600                                # 5xx/403/429 (Bot-Schutz, Ueberlast): nur 1 h (Inhalt "blocked")
 RATE_N = max(1, int(E.get("FAVICON_RATE", "30")))  # Seitenabrufe je Konto ...
 RATE_PER = 600.0                                  # ... in 10 Minuten
 PORTS = (None,)                                   # nur der Standardport des Schemas (80 bzw. 443)
@@ -377,13 +380,21 @@ def _client(ip_ok, ports):
                                    "Accept": "text/html,application/xhtml+xml,image/*;q=0.9,*/*;q=0.5"})
 
 
-def _get(cl, url, limit, deadline, cut=False):
+def _blocked_status(code):
+    """Antworten, hinter denen meist ein Bot-Schutz oder eine kurze Stoerung steckt (Browser bekommen das Bild)."""
+    return code >= 500 or code in (403, 429)
+
+
+def _get(cl, url, limit, deadline, cut=False, seen=None):
     """-> (bytes, content-type, endgueltige Adresse) oder None. Nur 200, nur unkomprimiert, hoechstens limit Bytes
-    (cut=True: laengere Antworten abschneiden - fuer den HTML-Kopf; sonst verwerfen)."""
+    (cut=True: laengere Antworten abschneiden - fuer den HTML-Kopf; sonst verwerfen). seen: Liste, in die der
+    Status-Code jeder Antwort kommt."""
     left = deadline - time.monotonic()
     if left <= 0:
         return None
     with cl.stream("GET", url, timeout=httpx.Timeout(min(FETCH_TIMEOUT, left), connect=min(3.0, left))) as r:
+        if seen is not None:
+            seen.append(r.status_code)
         if r.status_code != 200:
             return None
         if r.headers.get("content-encoding", "identity").strip().lower() not in ("", "identity"):
@@ -422,24 +433,26 @@ def fetch_favicon(url, ip_ok=_ip_ok, ports=PORTS):
 
 
 def _fetch(url, ip_ok=_ip_ok, ports=PORTS):
-    """-> (PNG-Bytes oder None, Netzfehler). Netzfehler beim Abruf der Seite selbst (_net_down): sofort aufhoeren,
-    /favicon.ico desselben Hosts kaeme genauso wenig an."""
+    """-> (PNG-Bytes oder None, Netzfehler, gesperrt). Netzfehler beim Abruf der Seite selbst (_net_down): sofort
+    aufhoeren, /favicon.ico desselben Hosts kaeme genauso wenig an. gesperrt: ohne Bild, und mindestens eine Antwort war
+    5xx/403/429 (Bot-Schutz) - das merkt sich site_icon_path nur BLOCKED_TTL lang."""
     if not url_ok(url, ports):
-        return None, False
+        return None, False, False
     pu = urlparse(url)
     root = f"{pu.scheme}://{pu.netloc}/"
     deadline = time.monotonic() + TOTAL_TIMEOUT
     try:
         cl = _client(ip_ok, ports)
     except RuntimeError:
-        return None, False
+        return None, False, False
+    seen = []
     try:
         cands, base = [], root
         try:
-            got = _get(cl, root, HTML_MAX, deadline, cut=True)
+            got = _get(cl, root, HTML_MAX, deadline, cut=True, seen=seen)
         except (httpx.HTTPError, OSError, ValueError) as ex:
             if _net_down(ex):
-                return None, True
+                return None, True, False
             got = None
         if got:
             data, ct, base = got
@@ -458,14 +471,14 @@ def _fetch(url, ip_ok=_ip_ok, ports=PORTS):
             if time.monotonic() > deadline:
                 break
             try:
-                got = _get(cl, u, IMG_MAX, deadline)
+                got = _get(cl, u, IMG_MAX, deadline, seen=seen)
             except (httpx.HTTPError, OSError, ValueError):
                 continue
             if got and "svg" not in got[1].lower() and not got[1].lower().startswith("text/html"):
                 png = to_png(got[0])
                 if png:
-                    return png, False
-        return None, False
+                    return png, False, False
+        return None, False, any(_blocked_status(c) for c in seen)
     finally:
         cl.close()
 
@@ -492,6 +505,23 @@ def rate_ok(uid):
             for k in [k for k, v in _rate.items() if not v or now - v[-1] > RATE_PER][:2500]:
                 _rate.pop(k, None)
         return True
+
+
+def _miss_fresh(miss):
+    """Fehl-Merker noch gueltig? Gewoehnlich MISS_TTL, nach Bot-Schutz/5xx (Inhalt "blocked") nur BLOCKED_TTL."""
+    try:
+        age = time.time() - os.path.getmtime(miss)
+    except OSError:
+        return False
+    if age >= MISS_TTL:
+        return False
+    if age < BLOCKED_TTL:
+        return True
+    try:
+        with open(miss) as f:
+            return f.read(16).strip() != "blocked"
+    except OSError:
+        return False
 
 
 def _host_key(url):
@@ -527,7 +557,7 @@ def site_icon_path(url, uid):
                     return p, code
         if os.path.isfile(png):
             return png, None
-        if os.path.isfile(miss) and time.time() - os.path.getmtime(miss) < MISS_TTL:
+        if _miss_fresh(miss):
             return None, 404
         cdn_busy = False
         if SVC_ICON_CDN:
@@ -553,10 +583,10 @@ def site_icon_path(url, uid):
             if not rate_ok(uid):
                 return None, 429
             try:
-                data, neterr = _fetch(url)
+                data, neterr, blocked = _fetch(url)
             except Exception as ex:  # noqa: BLE001 - nie einen 500er fuer ein Symbol
                 print(f"siteicons: {type(ex).__name__}", flush=True)
-                data, neterr = None, False
+                data, neterr, blocked = None, False, False
         if neterr:
             mark_down(k)                          # Host gerade nicht erreichbar: nur im Speicher, nicht einen Tag lang
             return None, BUSY
@@ -564,7 +594,8 @@ def site_icon_path(url, uid):
         if not data:
             if cdn_busy:                          # selfh.st kam nicht zu Wort: spaeter erneut raten
                 return None, BUSY
-            open(miss, "w").close()
+            with open(miss, "w") as f:            # Bot-Schutz/5xx: nur BLOCKED_TTL, sonst MISS_TTL (_miss_fresh)
+                f.write("blocked" if blocked else "")
             return None, 404
         with open(png + ".tmp", "wb") as f:
             f.write(data)
@@ -617,7 +648,7 @@ def cleanup(now=None):
 def _favicon(key, request):
     uid = _session_user(request)
     tile = visible_tiles(uid).get(key) if uid and len(key) <= 200 else None
-    if not tile or tile.get("icon"):
+    if not tile or tile.get("icon") or not tile.get("own"):     # nur Lesezeichen (2.5): Dienste nur mit festem Symbol
         return None, 404
     return site_icon_path(tile.get("url") or "", uid)
 

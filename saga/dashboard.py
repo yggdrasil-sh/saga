@@ -14,7 +14,7 @@ from db import connect as _db
 from fastapi import APIRouter
 from saga import avatars, chat, i18n, mfa, publish
 from saga.sharing import unread_count
-from saga.core import (ADMIN_URL, ASSET_V, CACHE_TTL, CA_FILE, FAVICONS_ENV, ICON_CDN, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user,
+from saga.core import (ADMIN_URL, ASSET_V, CACHE_TTL, CA_FILE, FAVICONS_ENV, ICON_CDN, direct_icons_on, icon_csp, icon_direct, SEARXNG_URL, SEC_HEADERS, STATUS_INTERVAL, TZ, _api_guard, _session_user,
                        remember_ui_lang, std_name, t, title, tmpl, user_info)
 
 router = APIRouter()
@@ -73,11 +73,14 @@ def favicons_on():
 
 
 def tile_icon_url(s):
-    """Fertige Bildadresse einer Kachel fuer Web und Apps: das gesetzte selfh.st-Symbol, sonst das automatische Symbol
-    (/api/services/favicon/<schluessel>: erst selfh.st nach dem Domainnamen raten, dann das Favicon der Seite).
+    """Fertige Bildadresse einer Kachel fuer Web und Apps: das gesetzte selfh.st-Symbol, sonst - nur bei Lesezeichen
+    (own) - das automatische Symbol (/api/services/favicon/<schluessel>: erst selfh.st nach dem Domainnamen raten, dann
+    das Favicon der Seite). Dienste ohne Symbol bekommen nichts (Anfangsbuchstabe, 2.5).
     h = Kurz-Hash des Hosts: aendert sich die Adresse, laden Browser und Apps das Bild neu. Leer = Anfangsbuchstabe."""
     if s.get("icon"):
         return "/api/services/icon/" + s["icon"]
+    if not s.get("own"):
+        return ""
     try:
         pu = urlparse(s.get("url") or "")
         host = (pu.hostname or "").lower()
@@ -95,8 +98,10 @@ def bookmarks(uid):
         rows = c.execute("SELECT id, name, url, icon, category FROM bookmark WHERE uid=? ORDER BY sort, id", (uid,)).fetchall()
     out = [{"key": f"bm{r[0]}", "id": r[0], "name": r[1], "url": r[2], "host": urlparse(r[2]).netloc, "icon": r[3] or "",
             "category": std_name(r[4] or "Lesezeichen"), "own": True, "check": False} for r in rows]
+    on = direct_icons_on()
     for b in out:
         b["icon_url"] = tile_icon_url(b)
+        b["icon_direct"] = icon_direct(b["url"], on)     # Rueckfall: Geraet laedt das Favicon direkt (saga.core)
     return out
 
 
@@ -195,7 +200,7 @@ def notes_page(request: Request):
     html = tmpl.get_template("notes.html").render(title=title(), name=request.session.get("name", uid), v=ASSET_V, embed=embed,
                                                   chat_enabled=chat.enabled(), chat_unread=n_chat, me_avatar=avatars.my_url(uid),
                                                   admin_url=ADMIN_URL if user_info(uid)["is_admin"] else "")
-    headers = dict(SEC_HEADERS)
+    headers = icon_csp(SEC_HEADERS, uid)             # Einstellungen -> Lesezeichen: Symbole direkt von der Seite
     if embed:
         headers["Content-Security-Policy"] = headers["Content-Security-Policy"].replace("frame-ancestors 'none'", "frame-ancestors 'self'")
     return HTMLResponse(html, headers=headers)
@@ -226,7 +231,7 @@ def index(request: Request):
         favorites=[mine[k] for k in fav_keys], categories=cats, acct=account_ctx(info),
         search_enabled=bool(SEARXNG_URL), v=ASSET_V, me_avatar=avatars.my_url(uid),
     )
-    return HTMLResponse(html, headers=SEC_HEADERS)
+    return HTMLResponse(html, headers=icon_csp(SEC_HEADERS, uid))      # img-src: Origins der eigenen Lesezeichen
 
 
 @router.get("/api/status")

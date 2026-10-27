@@ -48,7 +48,7 @@ SEARXNG_URL = E.get("SEARXNG_URL", "").rstrip("/")
 SEARCH_LANGUAGE = E.get("SEARCH_LANGUAGE", "de-DE")
 SEARCH_SAFESEARCH = E.get("SEARCH_SAFESEARCH", "0")
 # Kachel-Symbole (saga/siteicons.py): selfh.st-CDN (leer = keine Symbole aus dem Internet) und Favicons der Seiten
-# (FAVICONS=0 schaltet das Laden der Favicons ganz ab, unabhaengig von der Admin-Einstellung "Favicons laden")
+# (FAVICONS=0: der Server laedt nie Favicons, unabhaengig von "Favicons laden"; icon_direct folgt nur der Einstellung)
 ICON_CDN = (E.get("ICON_CDN", "https://cdn.jsdelivr.net/gh/selfhst/icons")).rstrip("/")
 FAVICONS_ENV = E.get("FAVICONS", "1").strip().lower() not in ("0", "false", "no", "off")
 try:                                   # Zeitzone fuer serverseitig formatierte Zeiten (z.B. Export)
@@ -595,6 +595,70 @@ SEC_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
 }
+
+
+# --- Favicons der Lesezeichen direkt vom Geraet (2.5) ----------------------------------------------------------------
+# Klappt das Symbol ueber den Server nicht (z. B. Bot-Schutz mit 503 fuer Server-Abrufe), laden Browser bzw. App das
+# Favicon direkt von der Seite des Lesezeichens (icon_direct). Nur Lesezeichen, nie Dienste. Abschaltbar mit der
+# Admin-Einstellung "Favicons laden" (FAVICONS=0 betrifft nur die Abrufe des Servers).
+_CSP_HOST = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)*")
+CSP_IMG_BUDGET = 3000          # Zeichen fuer zusaetzliche img-src-Origins (Antwort-Header klein halten, Proxys: 4-8 KB)
+
+
+def icon_origin(url):
+    """Origin (schema://host[:port]) einer Lesezeichen-Adresse fuer icon_direct und die CSP, sonst None.
+    Nur http/https, Hostnamen (IDN als Punycode) bzw. IPv4 - keine IPv6-Literale (in CSP-Quellen nicht erlaubt),
+    keine Zugangsdaten (fallen weg), Port nur wenn nicht der Standardport."""
+    from urllib.parse import urlparse
+    try:
+        pu = urlparse(url or "")
+        host, port = pu.hostname, pu.port
+    except ValueError:
+        return None
+    if pu.scheme not in ("http", "https") or not host or ":" in host or "%" in host:
+        return None
+    host = host.lower().rstrip(".")
+    if not host.isascii():
+        try:
+            host = host.encode("idna").decode("ascii")
+        except (UnicodeError, ValueError):
+            return None
+    if len(host) > 253 or not _CSP_HOST.fullmatch(host):
+        return None
+    default = 80 if pu.scheme == "http" else 443
+    return f"{pu.scheme}://{host}" + (f":{port}" if port and port != default else "")
+
+
+def direct_icons_on():
+    return bool(auth.settings().get("favicons", True))
+
+
+def icon_direct(url, on=None):
+    """Hoechstens 3 Adressen auf dem Host des Lesezeichens, die das Geraet der Reihe nach versucht (leer = keine).
+    on: Ergebnis von direct_icons_on() (bei vielen Lesezeichen einmal vorher abfragen)."""
+    o = icon_origin(url) if (direct_icons_on() if on is None else on) else None
+    return [o + "/apple-touch-icon.png", o + "/favicon.ico"] if o else []
+
+
+def icon_csp(headers, uid):
+    """Kopie der Kopfzeilen; img-src um genau die Origins der eigenen Lesezeichen erweitert (dynamisch je Antwort,
+    hoechstens CSP_IMG_BUDGET Zeichen - weitere Lesezeichen zeigen dann den Buchstaben)."""
+    headers = dict(headers)
+    if not uid or not direct_icons_on():
+        return headers
+    from db import connect
+    with connect() as c:
+        rows = c.execute("SELECT url FROM bookmark WHERE uid=? ORDER BY sort, id", (uid,)).fetchall()
+    add, n = [], 0
+    for (u,) in rows:
+        o = icon_origin(u)
+        if o and o not in add and n + len(o) + 1 <= CSP_IMG_BUDGET:
+            add.append(o)
+            n += len(o) + 1
+    if add:
+        csp = headers.get("Content-Security-Policy", "")
+        headers["Content-Security-Policy"] = csp.replace("img-src 'self'", "img-src 'self' " + " ".join(add), 1)
+    return headers
 
 
 # Bughunt Sicherheit V2/V3: Kopfzeilen fuer alle Antworten (App und Admin, saga.core.SecHeaders)
