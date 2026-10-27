@@ -4418,7 +4418,10 @@
       var btn = el('button', 'nbtn'); btn.type = 'button';
       if (b.icon) btn.appendChild(el('span', 'nbtn-ic', b.icon));
       btn.appendChild(el('span', null, b.label || T('Schaltfläche')));
-      btn.addEventListener('click', function () { runButton(b, function () { if (!roRole()) btnConfig(btn, self, i); }); });
+      // Fix27 #11: Lesen/Kommentieren - Anlege-Schaltflaechen ausgegraut mit Hinweis (statt erst nach dem Klick 403)
+      var off = ro_ && b.action === 'db';
+      if (off) { btn.classList.add('nbtn-off'); btn.setAttribute('aria-disabled', 'true'); btn.title = T('Zum Anlegen brauchst du das Recht „Bearbeiten“.'); }
+      btn.addEventListener('click', function () { if (off) { HK.toast(btn.title); return; } runButton(b, function () { if (!roRole()) btnConfig(btn, self, i); }); });
       if (ro_) { g.appendChild(btn); w.appendChild(g); return; }
       var cfg = el('button', 'nbtn-cfg', '⚙'); cfg.type = 'button'; cfg.title = T('Schaltfläche einrichten'); cfg.setAttribute('aria-label', T('Schaltfläche einrichten'));
       cfg.addEventListener('click', function () { btnConfig(cfg, self, i); });

@@ -3222,6 +3222,7 @@
  "Zuletzt zugestellt {when}": "Last delivered {when}",
  "Zuletzt zurückgesetzt {date} von {by}": "Last reset {date} by {by}",
  "zuletzt {when}": "last seen {when}",
+ "Zum Anlegen brauchst du das Recht „Bearbeiten“.": "You need the “Can edit” permission to create entries.",
  "Zum Annehmen erst Chats auf diesem Gerät einrichten bzw. entsperren.": "To answer, set up or unlock chats on this device first.",
  "Zum Block springen": "Go to block",
  "Zum Dashboard": "Open dashboard",

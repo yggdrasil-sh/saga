@@ -224,6 +224,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   „1.430,50 €“, en „€1,430.50“; Server: `i18n.fmt_num`). Öffentlich stand vorher „41.04 %“. Fortschritt über 100 % zeigt
   die echte Zahl (z. B. 119 %), der Balken ist voll. Ein Fortschritt-Widget „Summe bis zum Ziel“ über eine Euro- oder
   Prozent-Spalte meldet deren Format (`fmt` in der Widget-Antwort) und zeigt „1.430,50 € / 1.200,00 €“.
+- **Anlege-Schaltflächen bei Lesen/Kommentieren** („Neue Aufgabe“, „Buch hinzufügen“ …) waren klickbar und endeten in
+  „Dafür fehlt dir die Berechtigung“. Sie sind jetzt ausgegraut; Hinweis beim Darüberfahren bzw. Antippen.
 
 ### Behoben – Bughunt 3 (Server)
 - **Namensauflösung mit Zeitlimit auch in den Vorab-Prüfungen.** KI, Immich, Kalender, Push, Nextcloud, Föderation

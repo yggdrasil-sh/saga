@@ -189,6 +189,28 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     await e.context().close();
   }
 
+  // --- #11: Anlege-Schaltflaechen bei Lesen/Kommentieren ausgegraut mit Hinweis ------------------------------------------
+  {
+    const b2 = await page(CK2);
+    for (const role of ['view', 'comment', 'edit']) {
+      await p.api('PUT', '/api/notes/' + AP.root + '/shares', { type: 'user', target: 'hk-test-b', role });
+      await b2.open(AP.root); await until(b2, () => document.querySelectorAll('.nbtn').length > 0);
+      const st = await b2.evaluate(() => [...document.querySelectorAll('.nbtn')].map((x) => ({ t: x.textContent.trim(), off: x.classList.contains('nbtn-off'), a: x.getAttribute('aria-disabled'), ti: x.title })));
+      const na = st.find((x) => /Neue Aufgabe/.test(x.t));
+      if (role === 'edit') ok('#11: Bearbeiten -> "Neue Aufgabe" aktiv', na && !na.off && !na.a, st);
+      else ok(`#11: ${role} -> "Neue Aufgabe" ausgegraut mit Hinweis`, na && na.off && na.a === 'true' && /Bearbeiten/.test(na.ti), st);
+      if (role === 'view') {
+        const n0 = (await p.api('GET', '/api/notes')).length;
+        await b2.locator('.nbtn', { hasText: 'Neue Aufgabe' }).click({ force: true }); await sleep(800);
+        const toast = await b2.evaluate(() => (document.querySelector('.toast') || {}).textContent || '');
+        ok(`#11: Klick zeigt Hinweis (${toast.trim()}) und legt nichts an`, /Bearbeiten/.test(toast) && (await p.api('GET', '/api/notes')).length === n0);
+      }
+    }
+    await p.api('DELETE', '/api/notes/' + AP.root + '/shares?type=user&target=hk-test-b');
+    ok('#11: keine Seitenfehler (zweites Konto)', !b2.errs.length, b2.errs);
+    await b2.context().close();
+  }
+
   console.log(p.errs.length ? 'Seitenfehler: ' + p.errs.join(' | ') : 'keine Seitenfehler');
   ok('keine Seitenfehler', !p.errs.length, p.errs);
   await br.close();
