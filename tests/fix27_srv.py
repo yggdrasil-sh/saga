@@ -8,7 +8,8 @@ danach die Foederation mit zwei eigenen Instanzen (Geruest tests/foederation2.py
 - E4: leerer Titel aus Vorlage, placeholder, discard nur durch die anlegende Person, nur unveraendert, nur in der Frist.
 - #3: Widget-Werte nach Aenderungen an der Quelle sofort neu (DB und Aufgaben). #7: rows?limit=1 liefert Bearbeitenden
   default_tpl + templates der Ziel-DB (das Web legt damit ueber Relationen an).
-Wegwerf-Konten fx27-*; raeumt auf."""
+Foederationsteil braucht POSTGRES_HOST/PORT/USER wie die foederation*-Reihen (FIX27_FED=0 laesst ihn weg); die
+Galerie-Pruefungen (#8) laufen nur, wenn der Server die echte gallery/ anbietet. Wegwerf-Konten fx27-*; raeumt auf."""
 import base64, http.client, json, os, sys, time, urllib.parse
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
