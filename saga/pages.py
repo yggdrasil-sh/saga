@@ -2,7 +2,7 @@
 import json
 import re
 import time
-from html import escape as html_escape
+from html import escape as html_escape, unescape as html_unescape
 from html.parser import HTMLParser
 from itertools import islice
 from urllib.parse import urlparse
@@ -18,7 +18,7 @@ from saga.publish import published_via
 from saga.siteicons import ICON_RE, svc_icon_path
 from saga.comments import counts as comment_counts
 from saga.sharing import RANK, Access, access, is_remote, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
-from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, PALETTE, STYLE_TYPES, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
+from saga.notes import CONTAINERS, MAX_JSON_DEPTH, _iter_blocks, NOTE_BODY_MAX, PALETTE, STYLE_TYPES, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
 
 router = APIRouter()
 
@@ -28,9 +28,34 @@ router = APIRouter()
 # Seiten koennen Unterseiten haben (parent_id). Alles strikt pro Benutzer.
 NOTE_BLOCKS_MAX = 200_000          # Zeichen JSON pro Seite
 NOTE_ICON_MAX = 8
-_ALLOWED_TAGS = {"b", "strong", "i", "em", "u", "s", "mark", "code", "a", "br", "time"}
+_ALLOWED_TAGS = {"b", "strong", "i", "em", "u", "s", "mark", "code", "a", "br", "time", "span"}
 _ALLOWED_CLASSES = {"mark": {"cdx-marker"}, "code": {"inline-code"}, "time": {"hk-date", "hk-remind"}}
 _TIME_ATTR = re.compile(r"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?")      # @-Datum im Text: <time datetime="2026-10-10">
+# 2.5 (P6-0, Vertrag Editor-Rest): Inline-Farben nur aus der Palette - Text <span class="hk-c-<farbe>">, Hintergrund
+# <mark class="hk-bg-<farbe>"> (cdx-marker bleibt = Gelb, Standard); Erwaehnung <span class="hk-mention" data-u="<handle>">;
+# Inline-Mathe <code class="hk-math">TeX</code>. Je Element genau eine Klasse; span ohne erlaubte Klasse faellt weg.
+_SPAN_CLASSES = {"hk-c-" + p for p in PALETTE}
+_MARK_COLORS = {"hk-bg-" + p for p in PALETTE}
+_MENTION_U = re.compile(r"~[a-z2-7]{16}|@(?:[a-z0-9][a-z0-9_-]{1,31}|~[a-z2-7]{16})@[a-z0-9.:-]{1,260}")   # Handle bzw. Prinzipal
+# Neue Inline-Formen, die aeltere Apps beim Bearbeiten verlieren (Markenerhalt, inline2)
+NEW_MARKS = re.compile(r'<span |class="hk-bg-|class="hk-math"')
+
+
+def _one_class(tag, cls, a):
+    """Erlaubte Klasse(n) eines Elements -> genau eine (bzw. None = Element faellt weg / ohne Klasse)."""
+    if tag == "span":
+        if "hk-mention" in cls:
+            u = (a.get("data-u") or "").strip()
+            return ("hk-mention", u) if _MENTION_U.fullmatch(u) else None
+        c = next((x for x in cls if x in _SPAN_CLASSES), None)
+        return (c, None) if c else None
+    if tag == "mark":
+        c = next((x for x in cls if x in _MARK_COLORS), None) or ("cdx-marker" if "cdx-marker" in cls else "")
+        return (c, None)
+    if tag == "code":
+        return ("hk-math" if "hk-math" in cls else "inline-code" if "inline-code" in cls else "", None)
+    c = next((x for x in cls if x in _ALLOWED_CLASSES.get(tag, set())), "")
+    return (c, None)
 
 
 _NOTE_HREF = re.compile(r"/notes#[1-9][0-9]{0,17}")      # wie sharing._NOTE_LINK / publish._NOTE_HREF (BUG-090)
@@ -45,22 +70,28 @@ _HTML_TAGS = set("html head body title meta link script style noscript template 
 
 
 class _Sanitizer(HTMLParser):
-    """Positivliste fuer Inline-HTML in Bloecken. Alles andere wird zu Text."""
+    """Positivliste fuer Inline-HTML in Bloecken. Alles andere wird zu Text. stack: (tag, ausgegeben?) - weggefallene
+    span-Elemente bleiben als (tag, False) darauf, damit ihr Ende kein aeusseres Element schliesst. In Inline-Mathe
+    (code.hk-math) gibt es keine weiteren Elemente (nur der TeX-Text)."""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
-        self.out, self.stack = [], []
+        self.out, self.stack, self.math = [], [], 0
 
     def handle_starttag(self, tag, attrs):
         if tag not in _ALLOWED_TAGS:
             if tag not in _HTML_TAGS:           # "<bob@x.de>", "<3 Herz>": Klartext, kein HTML -> als Text behalten (BUG-039)
                 self.out.append(html_escape(self.get_starttag_text() or "", quote=False))
             return
+        if self.math:                            # in Inline-Mathe: nur Text
+            if tag != "br":
+                self.stack.append((tag, False))
+            return
         a = dict(attrs)
         keep = ""
         if tag == "a":
-            if "a" in self.stack:              # keine Verweise in Verweisen (wie der Browser): aeusseren erst schliessen -
-                self.handle_endtag("a")        # sonst verdeckte sharing.mask_links den Text des inneren Verweises nicht
+            if any(x[0] == "a" and x[1] for x in self.stack):   # keine Verweise in Verweisen (wie der Browser): aeusseren erst
+                self.handle_endtag("a")        # schliessen - sonst verdeckte sharing.mask_links den Text des inneren Verweises nicht
             href = (a.get("href") or "").strip()
             if _NOTE_HREF.fullmatch(href):          # interner Seitenverweis, exakt /notes#<zahl>
                 keep = f' href="{href}"'
@@ -73,20 +104,30 @@ class _Sanitizer(HTMLParser):
             if not _TIME_ATTR.fullmatch(dt):
                 return
             keep = f' datetime="{dt}"'
-        cls = [c for c in (a.get("class") or "").split() if c in _ALLOWED_CLASSES.get(tag, set())]
-        if cls:
-            keep += f' class="{" ".join(cls)}"'
         if tag == "br":
             self.out.append("<br>")
             return
+        one = _one_class(tag, (a.get("class") or "").split(), a)
+        if one is None:                          # span ohne erlaubte Klasse / Erwaehnung ohne gueltige Kennung: Tag weg, Text bleibt
+            self.stack.append((tag, False))
+            return
+        if one[0]:
+            keep += f' class="{one[0]}"'
+        if one[1]:
+            keep += f' data-u="{html_escape(one[1], quote=True)}"'
         self.out.append(f"<{tag}{keep}>")
-        self.stack.append(tag)
+        self.stack.append((tag, True))
+        if one[0] == "hk-math":
+            self.math = len(self.stack)
 
     def handle_endtag(self, tag):
-        if tag in self.stack:
+        if any(x[0] == tag for x in self.stack):
             while self.stack:
-                t = self.stack.pop()
-                self.out.append(f"</{t}>")
+                t, emit = self.stack.pop()
+                if emit:
+                    self.out.append(f"</{t}>")
+                if self.math > len(self.stack):
+                    self.math = 0
                 if t == tag:
                     break
 
@@ -95,7 +136,9 @@ class _Sanitizer(HTMLParser):
 
     def result(self):
         while self.stack:
-            self.out.append(f"</{self.stack.pop()}>")
+            t, emit = self.stack.pop()
+            if emit:
+                self.out.append(f"</{t}>")
         return "".join(self.out)
 
 
@@ -109,9 +152,12 @@ def sanitize_inline(s):
     return p.result()
 
 
+PLAIN_KEYS = ("code", "tex")              # Klartext-Felder: Code-Bloecke (Textarea), Mathe-Block (TeX, 2.5 P6-0)
+
+
 def _sanitize_value(v, key=None):
     if isinstance(v, str):
-        return v if key == "code" else sanitize_inline(v)     # Code-Bloecke sind Klartext (Textarea)
+        return v if key in PLAIN_KEYS else sanitize_inline(v)
     if isinstance(v, list):
         return [_sanitize_value(x, key) for x in v]
     if isinstance(v, dict):
@@ -175,7 +221,7 @@ def _flatten_nested_columns(blocks, nested=False):
                 for c in cols:
                     out.extend(c["blocks"])
                 continue
-        elif b.get("type") == "toggle" and isinstance(d.get("blocks"), list):
+        elif b.get("type") in CONTAINERS and isinstance(d.get("blocks"), list):
             d["blocks"] = _flatten_nested_columns(d["blocks"], True)
         out.append(b)
     return out
@@ -184,7 +230,7 @@ def _flatten_nested_columns(blocks, nested=False):
 # --- Seite gestalten (2.5, G1-G3, G10): nur Zahlen in festen Grenzen, Farben nur aus der Palette ----------------------
 # Der Vertrag fuer alle Clients steht in docs/APP-API.md ("Seite gestalten"). Fehlt ein Feld, gilt das alte Verhalten.
 ALIGNS = ("left", "center", "right")
-COL_MIN, COLS_MAX = 0.15, 4
+COL_MIN, COLS_MAX = 0.15, 6             # 2.5 (P6-0, P6-E7): bis 6 Spalten
 FONTS = ("serif", "mono")                 # Schrift je Seite (note.font); NULL = Standard
 
 
@@ -192,15 +238,64 @@ def _num_ok(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) < 1e9
 
 
+_CONFLICT_BY = re.compile(r"~[a-z2-7]{16}|@(?:[a-z0-9][a-z0-9_-]{1,31}|~[a-z2-7]{16})@[a-z0-9.:-]{1,260}|[a-z0-9][a-z0-9_.@-]{0,63}")
+
+
 def _clean_hkstyle(typ, tunes):
-    """tunes -> {"hkstyle": {"c": <palette>, "bg": true?}} oder None. Alle anderen Tunes fallen weg."""
-    st = tunes.get("hkstyle") if isinstance(tunes, dict) else None
-    if typ not in STYLE_TYPES or not isinstance(st, dict) or st.get("c") not in PALETTE:
+    """tunes -> {"hkstyle": {"c": <palette>, "bg": true?}, "hkconflict": {...}} oder None. Alle anderen Tunes fallen weg.
+    hkconflict (2.5, P3 Stufe 1): Konfliktblock aus dem Zusammenfuehren (saga.merge) - {by: Handle/Prinzipal, name, at}."""
+    if not isinstance(tunes, dict):
         return None
-    out = {"c": st["c"]}
-    if st.get("bg") is True:
-        out["bg"] = True
-    return {"hkstyle": out}
+    out = {}
+    st = tunes.get("hkstyle")
+    if typ in STYLE_TYPES and isinstance(st, dict) and st.get("c") in PALETTE:
+        out["hkstyle"] = {"c": st["c"]}
+        if st.get("bg") is True:
+            out["hkstyle"]["bg"] = True
+    cf = tunes.get("hkconflict")
+    if isinstance(cf, dict):
+        x = {}
+        if isinstance(cf.get("by"), str) and _CONFLICT_BY.fullmatch(cf["by"]):
+            x["by"] = cf["by"]
+        if isinstance(cf.get("name"), str):
+            x["name"] = re.sub(r"[<>&\x00-\x1f]", "", cf["name"])[:80]
+        if _num_ok(cf.get("at")):
+            x["at"] = round(float(cf["at"]), 3)
+        out["hkconflict"] = x
+    return out or None
+
+
+# 2.5 (P6-0): Mathe-Block {tex}, Mermaid = Code-Block mit language "mermaid" und view, Vorschaubild render (vom Web erzeugt)
+MATH_MAX = 4000
+CODE_VIEWS = ("code", "preview", "split")
+_SID = re.compile(r"[A-Za-z0-9]{16}")
+_HASH16 = re.compile(r"[0-9a-f]{16}")
+
+
+def _clean_render(r):
+    """data.render {png, svg, h, w, hgt} -> bereinigt oder None (Dateien: /files/<id>, Eigentum prueft _check_file_refs)."""
+    if not isinstance(r, dict):
+        return None
+    out = {}
+    for k in ("png", "svg"):
+        if isinstance(r.get(k), str) and _FILE_URL.fullmatch(r[k]):
+            out[k] = r[k]
+    if not out or not (isinstance(r.get("h"), str) and _HASH16.fullmatch(r["h"])):
+        return None
+    out["h"] = r["h"]
+    for k in ("w", "hgt"):
+        if _num_ok(r.get(k)) and 0 < r[k] <= 20000:
+            out[k] = int(r[k])
+    return out
+
+
+def _clean_rendered(d):
+    if "render" in d:
+        r = _clean_render(d["render"])
+        if r:
+            d["render"] = r
+        else:
+            d.pop("render")
 
 
 def _col_weights(cols):
@@ -274,7 +369,92 @@ def _clean_design(blocks):
                     d.pop("level")
             if isinstance(d.get("blocks"), list):
                 _clean_design(d["blocks"])
+        elif typ == "math":                           # 2.5 (P6-0): Mathe-Block - TeX als Klartext
+            d["tex"] = str(d.get("tex") or "")[:MATH_MAX]
+            _clean_rendered(d)
+        elif typ == "code":                           # Mermaid (language "mermaid"): Ansicht und Vorschaubild
+            if "view" in d and d["view"] not in CODE_VIEWS:
+                d.pop("view")
+            _clean_rendered(d)
+        elif typ == "synced":                         # 2.5 (P6-0): synchronisierter Block - Original {sid, blocks}, Kopie {sid}
+            d.pop("src", None)                        # setzt der Server beim Lesen ein (P6-6), nie gespeichert
+            if not (isinstance(d.get("sid"), str) and _SID.fullmatch(d["sid"])):
+                d.pop("sid", None)
+            if isinstance(d.get("blocks"), list):
+                _clean_design(d["blocks"])
+            elif "blocks" in d:
+                d.pop("blocks")
     return blocks
+
+
+# --- Aeltere Clients (2.5, P6-0): Markenerhalt und Spalten-Schutz ----------------------------------------------------
+# Aeltere iOS-/Linux-Apps (und Server ohne Faehigkeit inline2) verwerfen beim Bearbeiten span-Elemente und Klassen
+# (Inline-Farben, Erwaehnungen, Inline-Mathe), aeltere Stande schneiden Spalten 5-6 ab. Zwischenregel bis zum Markenerhalt
+# ueber saga.merge (P6-3): Textfelder eines Blocks (gleiche id und gleicher Typ), deren reiner Text sich nicht geaendert
+# hat, behalten ihr altes HTML vollstaendig, wenn es neue Formen enthielt, die jetzt fehlen. Ein Spalten-Block mit genau 4
+# Spalten, der vorher 5-6 hatte, bekommt die fehlenden Spalten aus dem alten Stand zurueck.
+CLIENT_CAPS = frozenset(("inline2", "cols6", "merge1"))         # was dieser Server-/Web-Stand versteht (X-Saga-Caps)
+
+
+def client_caps(request):
+    """Faehigkeiten des Clients laut Kopf X-Saga-Caps (kommagetrennt). Ohne Kopf: Web (Browser-Sitzung) alle, Apps
+    (Geraete-Sitzung, Schluessel) keine - aeltere Apps kennen den Kopf nicht."""
+    hdr = request.headers.get("x-saga-caps")
+    if hdr is not None:
+        return frozenset(x for x in re.split(r"[\s,]+", hdr) if x in CLIENT_CAPS)
+    if request.session.get("did") is None and not (request.headers.get("authorization") or "").startswith("Bearer "):
+        return CLIENT_CAPS
+    return frozenset()
+
+
+def _plain_inline(s):
+    return re.sub(r"\s+", " ", html_unescape(re.sub(r"<[^>]*>", "", s or ""))).strip()
+
+
+def _keep_fields(old, new):
+    """Textfelder (rekursiv, gleicher Pfad): alter HTML-Text mit neuen Formen, gleicher reiner Text, Formen fehlen -> alt."""
+    if isinstance(old, str) and isinstance(new, str):
+        if old != new and NEW_MARKS.search(old) and not NEW_MARKS.search(new) and _plain_inline(old) == _plain_inline(new):
+            return old
+        return new
+    if isinstance(old, dict) and isinstance(new, dict):
+        return {k: (_keep_fields(old[k], v) if k in old and k not in ("blocks", "cols") else v) for k, v in new.items()}
+    if isinstance(old, list) and isinstance(new, list) and len(old) == len(new):
+        return [_keep_fields(o, n) for o, n in zip(old, new)]
+    return new
+
+
+def legacy_keep(old_body, new_body, caps):
+    """Speichern eines Clients ohne inline2/cols6: Marken und Spalten aus dem alten Stand erhalten (s. o.). -> JSON."""
+    if not old_body or ("inline2" in caps and "cols6" in caps):
+        return new_body
+    try:
+        od, nd = json.loads(old_body), json.loads(new_body)
+    except ValueError:
+        return new_body
+    olds = {b.get("id"): b for b in _iter_blocks(od.get("blocks") or []) if isinstance(b.get("id"), str)}
+    changed = False
+    for b in _iter_blocks(nd.get("blocks") or []):
+        o = olds.get(b.get("id"))
+        if not o or o.get("type") != b.get("type") or not isinstance(o.get("data"), dict) or not isinstance(b.get("data"), dict):
+            continue
+        if "inline2" not in caps:
+            kept = _keep_fields(o["data"], b["data"])
+            if kept != b["data"]:
+                b["data"], changed = kept, True
+        if "cols6" not in caps and b.get("type") == "columns":
+            oc, nc = o["data"].get("cols"), b["data"].get("cols")
+            if isinstance(oc, list) and isinstance(nc, list) and len(nc) == 4 and 5 <= len(oc) <= COLS_MAX:
+                have = {x.get("id") for c in nc if isinstance(c, dict) for x in (c.get("blocks") or []) if isinstance(x, dict)}
+                for c in oc[4:]:                       # fehlende Spalten anhaengen - ohne Bloecke, die schon woanders stehen
+                    if isinstance(c, dict):
+                        c = dict(c, blocks=[x for x in (c.get("blocks") or []) if isinstance(x, dict) and x.get("id") not in have])
+                        nc.append(c)
+                for c in nc:
+                    if isinstance(c, dict):
+                        c.pop("w", None)               # Breiten passen nicht mehr: wieder gleich breit
+                changed = True
+    return json.dumps(nd, ensure_ascii=False) if changed else new_body
 
 
 TAG_MAX_LEN, TAG_MAX_COUNT = 30, 20
@@ -531,7 +711,7 @@ async def api_note_update(nid: int, request: Request):
         return _bad("bad request")
     origin = origin_of(request)
     try:                                     # Datenbank-Arbeit und Bereinigung im Threadpool (Event-Loop bleibt frei)
-        return await run_in_threadpool(_note_update, uid, nid, b, origin)
+        return await run_in_threadpool(_note_update, uid, nid, b, origin, client_caps(request))
     except _Reply as r:
         return r.resp
 
@@ -546,7 +726,8 @@ def _conflict(c, uid, nid, rev):
     return JSONResponse({"error": "conflict", "rev": rev, "by": names(c, [by]).get(by) if by else None}, status_code=409)
 
 
-def _note_update(uid, nid, b, origin=None):
+def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
+    """caps: Faehigkeiten des Clients bzw. der Gegenstelle (client_caps; Foederation: Faehigkeiten des Peers)."""
     sets, args = [], []
     with _db() as c, c:
         acc = Access(c, uid)
@@ -712,6 +893,8 @@ def _note_update(uid, nid, b, origin=None):
                             raise TooLarge(t("Seite zu groß"))
                     else:
                         body, _ = clean_blocks(raw)
+                    if old[2] == "blocks":                 # 2.5 (P6-0): aeltere Clients verlieren keine neuen Formen/Spalten
+                        body = legacy_keep(old[1], body, caps)
                     _check_file_refs(owner, json.loads(body)["blocks"])
                     if '"buttons"' in body or '"sig"' in body:   # Schaltflaechen mit Vorlage: Signatur setzt nur der Server
                         from saga.databases import sign_buttons

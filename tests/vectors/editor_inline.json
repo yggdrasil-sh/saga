@@ -1,0 +1,43 @@
+{
+  "_doc": "Saga 2.5 P6-0: Inline-Vertrag (docs/APP-API.md 'Inline-Vertrag'). sanitize: Eingabe -> gespeichertes HTML (saga/pages.py sanitize_inline). publish: gespeichertes HTML -> oeffentliche Ausgabe (saga/publish.py inline). markdown: gespeichertes HTML -> Markdown-Export (saga/page_tools.py _md_inline). Apps koennen die Vektoren fuer ihre Umwandlung Inline-HTML <-> Editor nutzen (hin und zurueck muss 'out' unveraendert bleiben).",
+  "sanitize": [
+    ["Textfarbe aus der Palette", "<span class=\"hk-c-red\">rot</span>", "<span class=\"hk-c-red\">rot</span>"],
+    ["Textfarbe ausserhalb der Palette faellt weg", "<span class=\"hk-c-lila\">x</span>", "x"],
+    ["span ohne Klasse faellt weg, Text bleibt", "<span>y</span> <b>z</b>", "y <b>z</b>"],
+    ["genau eine Farbklasse je Element", "<span class=\"hk-c-red hk-c-blue\">a</span>", "<span class=\"hk-c-red\">a</span>"],
+    ["style-Attribut faellt weg", "<span class=\"hk-c-red\" style=\"color:red\">a</span>", "<span class=\"hk-c-red\">a</span>"],
+    ["Hintergrund aus der Palette", "<mark class=\"hk-bg-blue\">b</mark>", "<mark class=\"hk-bg-blue\">b</mark>"],
+    ["Marker (Gelb, Standard) bleibt", "<mark class=\"cdx-marker\">m</mark>", "<mark class=\"cdx-marker\">m</mark>"],
+    ["fremde mark-Klasse -> mark ohne Klasse", "<mark class=\"evil\">c</mark>", "<mark>c</mark>"],
+    ["Hintergrund vor Marker", "<mark class=\"cdx-marker hk-bg-green\">c</mark>", "<mark class=\"hk-bg-green\">c</mark>"],
+    ["Text und Hintergrund verschachtelt", "<span class=\"hk-c-red\"><mark class=\"hk-bg-blue\">d</mark></span>", "<span class=\"hk-c-red\"><mark class=\"hk-bg-blue\">d</mark></span>"],
+    ["Erwaehnung mit Handle", "<span class=\"hk-mention\" data-u=\"~abcdefghijklmnop\">Anna</span>", "<span class=\"hk-mention\" data-u=\"~abcdefghijklmnop\">Anna</span>"],
+    ["Erwaehnung mit Prinzipal, Ereignis faellt weg", "<span class=\"hk-mention\" data-u=\"@bob@b.example\" onclick=\"x\">Bob</span>", "<span class=\"hk-mention\" data-u=\"@bob@b.example\">Bob</span>"],
+    ["Erwaehnung mit Anmeldename -> Text", "<span class=\"hk-mention\" data-u=\"anna\">Anna</span>", "Anna"],
+    ["Erwaehnung ohne data-u -> Text", "<span class=\"hk-mention\">Anna</span>", "Anna"],
+    ["Erwaehnung mit Unsinn -> Text", "<span class=\"hk-mention\" data-u=\"~abc&quot;><script>\">X</span>", "X"],
+    ["Inline-Mathe bleibt, Entities bleiben", "<code class=\"hk-math\">a&lt;b</code>", "<code class=\"hk-math\">a&lt;b</code>"],
+    ["Inline-Mathe enthaelt nur Text", "<code class=\"hk-math\">a <b>x</b> <span class=\"hk-c-red\">y</span></code> danach", "<code class=\"hk-math\">a x y</code> danach"],
+    ["Inline-Code unveraendert", "<code class=\"inline-code\">x()</code>", "<code class=\"inline-code\">x()</code>"],
+    ["weggefallenes span schliesst kein aeusseres Element", "<b><span>a</b>b</span>c", "<b>a</b>bc"],
+    ["Farbe ueber Fett", "<span class=\"hk-c-green\">a <b>b</b> c</span>", "<span class=\"hk-c-green\">a <b>b</b> c</span>"],
+    ["Verweis in Farbe", "<span class=\"hk-c-blue\"><a href=\"/notes#12\">Seite</a></span>", "<span class=\"hk-c-blue\"><a href=\"/notes#12\">Seite</a></span>"],
+    ["script in span", "<span class=\"hk-c-red\"><script>alert(1)</script>x</span>", "<span class=\"hk-c-red\">alert(1)x</span>"]
+  ],
+  "publish": [
+    ["Textfarbe -> c-<farbe>", "<span class=\"hk-c-red\">rot</span>", "<span class=\"c-red\">rot</span>"],
+    ["Hintergrund -> bg-<farbe>", "<mark class=\"hk-bg-blue\">b</mark>", "<mark class=\"bg-blue\">b</mark>"],
+    ["Marker ohne Klasse", "<mark class=\"cdx-marker\">m</mark>", "<mark>m</mark>"],
+    ["verschachtelt", "<span class=\"hk-c-red\"><mark class=\"hk-bg-blue\">d</mark></span>", "<span class=\"c-red\"><mark class=\"bg-blue\">d</mark></span>"],
+    ["Erwaehnung nur als Text", "<span class=\"hk-mention\" data-u=\"~abcdefghijklmnop\">Anna</span> da", "Anna da"],
+    ["Inline-Mathe als Code", "<code class=\"hk-math\">x^2</code>", "<code class=\"pub-math\">x^2</code>"],
+    ["fremde span-Klasse -> Text", "<span class=\"evil\">e</span>", "e"]
+  ],
+  "markdown": [
+    ["Farbe faellt weg", "<span class=\"hk-c-red\">rot</span>", "rot"],
+    ["Markierung -> ==Text==", "<mark class=\"hk-bg-blue\">b</mark>", "==b=="],
+    ["Erwaehnung -> @Name", "<span class=\"hk-mention\" data-u=\"~abcdefghijklmnop\">Anna</span>", "@Anna"],
+    ["Inline-Mathe -> $TeX$", "<code class=\"hk-math\">x^2</code>", "$x^2$"],
+    ["Inline-Code unveraendert", "<code class=\"inline-code\">f()</code>", "`f()`"]
+  ]
+}

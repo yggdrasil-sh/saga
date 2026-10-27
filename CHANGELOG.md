@@ -16,6 +16,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5, Editor-Rest P6-0 – Vertrag)
+- **Inline-Vertrag** für Inline-Farben (`span.hk-c-<farbe>`, `mark.hk-bg-<farbe>`, nur Palette), Personen-Erwähnungen
+  (`span.hk-mention data-u=<Handle/Prinzipal>`) und Inline-Mathe (`code.hk-math`): Bereinigung, Veröffentlichen (Klassen
+  `c-*`/`bg-*`, Erwähnung als Text) und Markdown-Export (`==…==`, `@Name`, `$…$`); gemeinsame Testvektoren
+  `tests/vectors/editor_inline.json`. Werkzeuge zum Setzen folgen.
+- **Neue Blocktypen als Vertrag:** `math {tex, render?}`, `synced` (Original `{sid, blocks}`, Kopie `{sid}`), Mermaid als
+  Code-Block mit `view`; Spalten bis 6 (`COLS_MAX`).
+- **Schutz älterer Apps** (`X-Saga-Caps: inline2,cols6`, Föderation: Fähigkeiten `inline2`/`cols6`): unveränderter Text
+  behält sein HTML mit neuen Formen, abgeschnittene Spalten 5–6 kommen zurück.
+
 ### Neu (2.5, Fix-Runde nach der Galerie-Testrunde)
 - **Eintrags-Vorlagen für Bearbeitende (E1).** Wer eine Datenbank bearbeiten darf, bekommt ihre Eintrags-Vorlagen
   (`GET …/rows` → `templates`) und legt daraus an (`POST /api/notes/{vorlage}/duplicate {parent_id}` ohne Schaltfläche);

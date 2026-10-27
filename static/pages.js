@@ -646,6 +646,7 @@
   function ensureEditor(data) {
     if (S.editor) return S.editor.isReady.then(function () { return S.editor.render(data); }).then(function () { return S.editor; });
     return loadVendor().then(function () {
+      openInlineSan();
       S.editor = new window.EditorJS({
         holder: 'pg-editor', data: data, minHeight: 80, autofocus: false,
         placeholder: T("Schreib los – '/' für Blöcke und Verweise, Rechtsklick für Verweise im Text"),
@@ -1662,7 +1663,7 @@
       var data = clipVal(d, null, 0), inner = nestedTools();
       if (name === 'toggle') data.blocks = cleanClip(d.blocks, inner, depth + 1).map(function (x) { return { type: x.tool, data: x.data }; });
       if (name === 'columns') {
-        data.cols = (Array.isArray(d.cols) ? d.cols : []).slice(0, 4).map(function (c) {
+        data.cols = (Array.isArray(d.cols) ? d.cols : []).slice(0, 6).map(function (c) {
           return { blocks: cleanClip(c && c.blocks, inner, depth + 1).map(function (x) { return { type: x.tool, data: x.data }; }) };
         });
       }
@@ -2270,7 +2271,15 @@
   function DateInline(o) { this.api = o.api; }
   DateInline.isInline = true;
   DateInline.title = T('Datum');
-  DateInline.sanitize = { time: { datetime: true, class: true } };
+  // 2.5 (P6-0): Inline-Formen anderer Clients beim Speichern erhalten (Editor.js entfernt sonst alles, was kein Inline-Werkzeug
+  // erlaubt): span (Textfarbe hk-c-*, Erwaehnung hk-mention mit data-u), mark/code mit beliebiger Klasse (hk-bg-*, hk-math).
+  // Das hkdate-Werkzeug steht in jeder Inline-Leiste - seine Regeln gelten so ueberall. Der Server prueft die Klassen genau.
+  DateInline.sanitize = { time: { datetime: true, class: true }, span: { class: true, 'data-u': true }, mark: { class: true }, code: { class: true } };
+  function openInlineSan() {                       // Marker/Inline-Code (vendor, erst nach loadVendor da): deren feste
+    [window.Marker, window.InlineCode].forEach(function (C) {          // Klasse wuerde hk-bg-*/hk-math beim Speichern entfernen
+      if (C && !C.hkSan) try { Object.defineProperty(C, 'sanitize', { configurable: true, get: function () { return { mark: { class: true }, code: { class: true } }; } }); C.hkSan = true; } catch (e) { /* alt */ }
+    });
+  }
   DateInline.prototype.render = function () {
     var b = el('button', 'ce-inline-tool hk-date-tool', '📅'); b.type = 'button'; b.title = T('Als Datum (z. B. „morgen“, „Freitag“, „12.10.“)'); return b;
   };
@@ -2285,7 +2294,8 @@
   DateInline.prototype.checkState = function () { return false; };
 
   // --- Eigene Werkzeuge: Toggle und Callout -------------------------------------
-  var INLINE_SAN = { b: true, i: true, u: true, s: true, br: true, a: { href: true }, code: { class: true }, mark: { class: true }, time: { datetime: true, class: true } };
+  var INLINE_SAN = { b: true, i: true, u: true, s: true, br: true, a: { href: true }, code: { class: true }, mark: { class: true }, time: { datetime: true, class: true },
+                    span: { class: true, 'data-u': true } };     // 2.5 (P6-0): Inline-Farben, Erwaehnungen
   function editable(cls, html, ph) {
     var d = el('div', cls); d.contentEditable = roRole() ? 'false' : 'true'; d.innerHTML = html || ''; d.dataset.placeholder = ph; return d;
   }
@@ -5423,7 +5433,7 @@
   var COLS = new WeakMap();                      // Spalten-Element -> Werkzeug (fuer Zusammenfuehren)
   function ColumnsTool(o) {
     var d = o.data || {};
-    this.cols = (d.cols && d.cols.length ? d.cols : [{ blocks: [] }, { blocks: [] }]).slice(0, 4);
+    this.cols = (d.cols && d.cols.length ? d.cols : [{ blocks: [] }, { blocks: [] }]).slice(0, 6);   // 2.5 (P6-0): bis 6 Spalten (wie der Server)
     this.editors = [];
     this.api = o.api; this.block = o.block;
     this.ws = colWeights(this.cols);                // 2.5 (G1): relative Breiten (null = alle gleich)
@@ -5578,7 +5588,7 @@
     var self = this, other = COLS.get(next.holder.querySelector('.cols'));
     if (!other) return;
     Promise.all([this.save(), other.save()]).then(function (r) {
-      var a = r[0].cols, b = r[1].cols, n = Math.min(4, Math.max(a.length, b.length)), cols = [];
+      var a = r[0].cols, b = r[1].cols, n = Math.min(6, Math.max(a.length, b.length)), cols = [];
       for (var k = 0; k < n; k++) cols.push({ blocks: ((a[k] || {}).blocks || []).concat((b[k] || {}).blocks || []) });
       self.api.blocks.delete(i + 1);
       self.rebuild(cols);

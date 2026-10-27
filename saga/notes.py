@@ -47,6 +47,9 @@ def note_limit_error(c, owner, parent):
 
 
 MAX_NEST, MAX_JSON_DEPTH = 8, 48
+# Bloecke mit eigener Blockliste in data.blocks (eine Ebene, keine Spalten darin). 2.5 (P6-0): synchronisierter Block
+# (Original: {sid, blocks}, Kopie: {sid}) wie ein Toggle.
+CONTAINERS = ("toggle", "synced")
 
 
 def _iter_blocks(blocks, depth=0):
@@ -62,7 +65,7 @@ def _iter_blocks(blocks, depth=0):
             for col in d.get("cols") if isinstance(d.get("cols"), list) else []:
                 if isinstance(col, dict):
                     yield from _iter_blocks(col.get("blocks"), depth + 1)
-        elif b.get("type") == "toggle":
+        elif b.get("type") in CONTAINERS:
             yield from _iter_blocks(d.get("blocks"), depth + 1)
 
 

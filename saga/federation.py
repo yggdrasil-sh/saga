@@ -80,7 +80,10 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # Online-Status von Chat-Partnern (Abo beim Server der Person). Mit 2.3-Servern: nichts davon, nichts wird gesendet.
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
          "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn",
-         "widgets1", "rowtpl"]
+         "widgets1", "rowtpl", "inline2", "cols6"]
+# inline2, cols6 (2.5, P6-0, docs/APP-API.md "Inline-Vertrag") = der Server kennt Inline-Farben (span.hk-c-*, mark.hk-bg-*),
+# Erwaehnungen (span.hk-mention data-u), Inline-Mathe (code.hk-math) bzw. bis 6 Spalten. Speichert ein Peer OHNE diese
+# Faehigkeit eine Seite hier, erhaelt der Eigentuemer-Server Marken und Spalten 5-6 aus dem alten Stand (pages.legacy_keep).
 # rowtpl (2.5, fix27 E1/E4) = Eintrags-Vorlagen fuer Bearbeitende: GET .../rows liefert ab Rolle 'Bearbeiten' "templates",
 # POST /fed/v2/notes/{vorlage}/duplicate geht dann auch ohne via (Vorlage liegt in parent_id), die Antwort traegt
 # fresh/placeholder, und POST /fed/v2/notes/{id}/discard verwirft einen unveraenderten neuen Eintrag. Ohne rowtpl: wie bisher.
@@ -1380,7 +1383,12 @@ async def fed_note_patch(nid: int, request: Request):
     b = {k: v for k, v in b.items() if k in EDIT_KEYS}           # ueber Instanzen: nur Titel und Inhalt
     if not b:
         return _signed(inp, 400, {"error": t("nichts zu ändern")})
-    return _relay(inp, await run_in_threadpool(_as, inp, pages._note_update, nid, b))
+    return _relay(inp, await run_in_threadpool(_as, inp, pages._note_update, nid, b, None, peer_caps(inp.peer)))
+
+
+def peer_caps(p):
+    """Client-Faehigkeiten (pages.CLIENT_CAPS) einer Gegenstelle fuer das Speichern beim Eigentuemer."""
+    return frozenset(caps_of(p) & pages.CLIENT_CAPS)
 
 
 @router.get("/fed/v1/notes/{nid}/comments")

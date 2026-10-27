@@ -15,10 +15,10 @@ Zahlen beim Lesen trotzdem begrenzen (fremde/alte Server).
 
 | Feld | Werte (der Server bereinigt beim Speichern) |
 |---|---|
-| `columns.data.cols[i].w` | Zahl > 0, relatives Gewicht. Nur wenn **alle** Spalten eines haben: Summe 1, je Spalte mind. 0,15, auf 0,01 gerundet; sonst werden alle `w` entfernt (= gleich breit). Max. 4 Spalten. Darstellung ab Tablet-/Fensterbreite, Telefone untereinander. |
+| `columns.data.cols[i].w` | Zahl > 0, relatives Gewicht. Nur wenn **alle** Spalten eines haben: Summe 1, je Spalte mind. 0,15, auf 0,01 gerundet; sonst werden alle `w` entfernt (= gleich breit). Max. 6 Spalten (2.5, P6-0; vorher 4). Darstellung ab Tablet-/Fensterbreite, Telefone untereinander. |
 | `image.data.width`, `embed.data.width` | ganze Zahl 10–100 (% der Inhaltsbreite). Bei `embed` nur mit Player (`kind: "youtube"`), Link-Karten nie. `image.data.stretched` gewinnt. Telefone: mindestens 50 %. |
 | `image.data.align`, `embed.data.align` | `"left"`, `"center"` (Standard), `"right"`; sonst entfernt. |
-| `block.tunes.hkstyle` | `{"c": "<palette>", "bg": true}` – `bg` fehlt = Textfarbe. Nur an `paragraph, header, list, quote, toggle, callout, checklist`; andere Typen und alle anderen `tunes` entfernt der Server (auch verschachtelt in Spalten und Toggles). |
+| `block.tunes.hkstyle` | `{"c": "<palette>", "bg": true}` – `bg` fehlt = Textfarbe. Nur an `paragraph, header, list, quote, toggle, callout, checklist`; andere Typen und alle anderen `tunes` außer `hkconflict` (siehe „Gleichzeitig bearbeiten“) entfernt der Server (auch verschachtelt in Spalten und Toggles). |
 | `toggle.data.level` | 0 (fehlt) = normaler Toggle, 1–3 = Toggle-Überschrift H1–H3 (Titel in Überschriftengröße). |
 
 Beispiel:
@@ -38,6 +38,55 @@ Beispiel:
 (SwiftUI `.fontDesign(.serif)`, Android `FontFamily.Serif`), Mono `ui-monospace, "SF Mono", Menlo, Consolas, monospace`;
 klein = 0,875 × Grundgröße; gilt für Titel, Inhalt und Eigenschaften, Code-Blöcke bleiben Mono. Föderierte Seiten laufen
 über denselben Handler (Fähigkeit `db`, siehe `APP-API-FED.md`); ältere Server liefern die Felder nicht → Standard.
+
+## Inline-Vertrag und neue Blocktypen (2.5, P6-0)
+
+Grundlage für Inline-Farben, Personen-Erwähnungen, Mathe, Mermaid, synchronisierte Blöcke und 5–6 Spalten. Die
+Werkzeuge zum **Setzen** kommen später (Web P6-1, Apps P6-8) – Apps müssen die Formen aber schon jetzt **anzeigen oder
+mindestens unverändert zurückschreiben**. Gemeinsame Testvektoren: `tests/vectors/editor_inline.json`
+(`sanitize`: Eingabe → gespeichertes HTML, `publish`, `markdown`).
+
+### Inline-HTML (Positivliste des Servers)
+
+Bisher: `b strong i em u s mark code a br time`. Neu dazu:
+
+| Form | HTML | Regel |
+|---|---|---|
+| Textfarbe | `<span class="hk-c-<farbe>">…</span>` | Palette `gray brown orange yellow green blue purple pink red`; genau eine Klasse; `span` ohne erlaubte Klasse fällt weg (Text bleibt) |
+| Hintergrund | `<mark class="hk-bg-<farbe>">…</mark>` | `mark.cdx-marker` bleibt = Gelb (Standard); fremde Klasse → `mark` ohne Klasse |
+| beides | `<span class="hk-c-red"><mark class="hk-bg-blue">…</mark></span>` | Reihenfolge fest: `span` außen |
+| Erwähnung | `<span class="hk-mention" data-u="~abcdefghijklmnop">Anna</span>` | `data-u` = Handle (`~` + 16 Zeichen, lokal) oder Prinzipal `@name@host` bzw. `@~handle@host`; sonst nur Text. Der Text ist nur Rückfall (Export, alte Apps) – angezeigt wird später der aktuelle Name (P6-5) |
+| Inline-Mathe | `<code class="hk-math">TeX</code>` | enthält nur Text (keine weiteren Elemente); alte Apps zeigen Inline-Code |
+
+Keine `style`-Attribute, keine freien Farben. Darstellung: Klassen `hk-c-*`/`hk-bg-*` mit den Farben der Block-Farbe
+(hell/dunkel wie `tunes.hkstyle`). Veröffentlichen: `c-*`/`bg-*`, Erwähnung nur Text, Mathe als Code. Markdown-Export:
+Farben weg, `mark` → `==Text==`, Erwähnung → `@Name`, Inline-Mathe → `$TeX$`.
+
+### Neue Blocktypen
+
+| Typ | `data` | Hinweise |
+|---|---|---|
+| `math` | `{"tex": "…", "render"?}` | TeX als Klartext (kein HTML), höchstens 4000 Zeichen. Export `$$…$$` |
+| `code` (Mermaid) | `{"code", "language": "mermaid", "view"?: "code"\|"preview"\|"split", "render"?}` | ohne Unterstützung: normaler Code-Block |
+| `synced` | Original `{"sid", "blocks": [...]}`, Kopie `{"sid"}` | `sid` = 16 Zeichen `[A-Za-z0-9]`, vergibt der Server (P6-6). Inhalt wie Toggle (eine Ebene, keine Spalten darin). `data.src` setzt nur der Server beim Lesen, gespeichert wird es nie |
+| `render` (bei `math`/Mermaid) | `{"png"?, "svg"?: "/files/<id>", "h": "<16 hex>", "w"?, "hgt"?}` | Vorschaubild vom Web; `h` = SHA-256 des Quelltexts (16 Zeichen) – passt es nicht, ist das Bild veraltet. Dateien gehören dem Seiten-Eigentümer |
+
+Alte Apps: unbekannte Typen als Rückfall-Karte anzeigen und **unverändert** zurückschreiben (Grundregel oben).
+
+### Fähigkeiten und Schutz älterer Clients (`X-Saga-Caps`)
+
+Apps melden beim Speichern (`PATCH /api/notes/{id}`), was sie verstehen: Kopf `X-Saga-Caps: inline2,cols6,merge1`
+(kommagetrennt; unbekannte Werte werden ignoriert).
+
+- `inline2` = die App erhält die Inline-Formen oben beim Bearbeiten (auch unverstandene: Tags samt Klasse behalten).
+- `cols6` = die App kann bis 6 Spalten bearbeiten.
+- `merge1` = siehe „Gleichzeitig bearbeiten“.
+
+Ohne Kopf gilt: Browser-Sitzung (Web) = alles; App-Sitzung/Geräte-Schlüssel = nichts davon. Dann schützt der Server:
+Textfelder eines Blocks (gleiche `id`, gleicher Typ), deren **reiner Text unverändert** ist, behalten ihr altes HTML,
+wenn es neue Formen enthielt, die jetzt fehlen (Zwischenregel bis zum zeichengenauen Markenerhalt). Ein Spalten-Block mit
+genau 4 Spalten, der vorher 5–6 hatte, bekommt die fehlenden Spalten zurück (Breiten danach gleich). Föderation:
+dasselbe für Gegenstellen ohne die Fähigkeiten `inline2`/`cols6` (`APP-API-FED.md`).
 
 ## Widgets in Seiten (2.5, Etappe 1)
 

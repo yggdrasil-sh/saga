@@ -195,7 +195,11 @@ def _client(request):
 # Inline-HTML: strenge Positivliste fuer die oeffentliche Ausgabe
 # =====================================================================================================
 _INLINE = {"b": "strong", "strong": "strong", "i": "em", "em": "em", "u": "u", "s": "s", "mark": "mark", "code": "code",
-           "a": "a", "time": "time", "br": "br"}
+           "a": "a", "time": "time", "br": "br", "span": "span"}
+# 2.5 (P6-0): Inline-Farben -> Klassen aus static/public.css (c-<farbe>, bg-<farbe>), nur Palette. Erwaehnungen: nur Text
+# (Personen sind oeffentlich nicht sichtbar). Inline-Mathe: als Code mit dem TeX-Text (MathML folgt mit P6-1).
+_PUB_SPAN = {"hk-c-" + p: "c-" + p for p in PALETTE}
+_PUB_MARK = {"hk-bg-" + p: "bg-" + p for p in PALETTE}
 _TIME_ATTR = re.compile(r"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?")
 _NOTE_HREF = re.compile(r"/notes#([1-9][0-9]{0,17})")
 EXT_REL = "noopener noreferrer nofollow"
@@ -232,6 +236,18 @@ class _PubSanitizer(HTMLParser):
             self.out.append("<br>")
             return
         a, keep = dict(attrs), ""
+        cls = (a.get("class") or "").split()
+        if out_tag == "span":
+            c = next((_PUB_SPAN[x] for x in cls if x in _PUB_SPAN), None)
+            if not c:                                # Erwaehnung, unbekannte Klasse: nur der Text bleibt
+                self.stack.append(("span", False))
+                return
+            keep = f' class="{c}"'
+        elif out_tag == "mark":
+            c = next((_PUB_MARK[x] for x in cls if x in _PUB_MARK), None)
+            keep = f' class="{c}"' if c else ""
+        elif out_tag == "code" and "hk-math" in cls:
+            keep = ' class="pub-math"'
         if out_tag == "a":
             href = (a.get("href") or "").strip()
             m = _NOTE_HREF.fullmatch(href)
@@ -519,6 +535,11 @@ def _block(ctx, typ, d, depth):
         lang = re.sub(r"[^a-z0-9+#-]", "", str(d.get("language") or "").lower())[:20]
         lab = f'<span class="pub-code-lang">{escape(lang)}</span>' if lang and lang != "plain" else ""
         return f'<div class="pub-code">{lab}<pre><code>{escape(str(d.get("code", "")), quote=False)}</code></pre></div>'
+    if typ == "math":                              # 2.5 (P6-0): TeX als Code (MathML folgt mit P6-1)
+        tex = str(d.get("tex") or "").strip()
+        return f'<div class="pub-code pub-math"><pre><code>{escape(tex, quote=False)}</code></pre></div>' if tex else ""
+    if typ == "synced":                            # 2.5 (P6-0): Original mit Inhalt; Kopien setzt erst P6-6 ein
+        return _blocks(ctx, d["blocks"], depth + 1) if isinstance(d.get("blocks"), list) else ""
     if typ == "delimiter":
         return "<hr>"
     if typ == "image":
@@ -555,7 +576,7 @@ def _block(ctx, typ, d, depth):
         out.append("</table></div>")
         return "".join(out)
     if typ == "columns":
-        cols = [c for c in (d.get("cols") or []) if isinstance(c, dict)][:6]
+        cols = [c for c in (d.get("cols") or []) if isinstance(c, dict)][:6]          # wie pages.COLS_MAX
         inner = [_blocks(ctx, c.get("blocks"), depth + 1) for c in cols]
         if not any(inner):
             return ""
