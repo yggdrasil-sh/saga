@@ -306,6 +306,46 @@ def _safe(s, n=80):
     return s[:n]
 
 
+def _people_out(schema_json, props_json):
+    """Personen-Werte (Typ person) einer Zeile fuers Backup: lokale Konten als Handle (saga.people.to_ref), fremde als
+    Prinzipal - Wiederherstellen auf diesem Server findet sie wieder, auf einem anderen fallen sie weg."""
+    from saga.people import person_pids, to_ref
+    pv = _json_load(props_json, {})
+    pids = person_pids(_json_load(schema_json, {}))
+    if not isinstance(pv, dict) or not pids:
+        return props_json
+    for pid in pids:
+        if isinstance(pv.get(pid), list):
+            pv[pid] = [to_ref(None, x) for x in pv[pid] if isinstance(x, str)]
+    return json.dumps(pv, ensure_ascii=False)
+
+
+def _people_in(c, uid, schema, raw):
+    """Wiederherstellen: Personen-Werte (Handles/Prinzipale) -> gespeicherte Kennungen; Unbekannte fallen weg."""
+    from saga.people import person_pids, to_canon
+    for pid in person_pids(schema):
+        v = raw.get(pid)
+        if isinstance(v, list):
+            raw[pid] = [u for u in (to_canon(c, x) for x in v if isinstance(x, str)) if u and (u.startswith("@") or
+                        c.execute("SELECT 1 FROM users WHERE username=? AND disabled=0", (u,)).fetchone())]
+    return raw
+
+
+def _files_in(schema, raw, fids, own):
+    """Wiederherstellen: Datei-Werte auf die neu eingespielten Dateien umschreiben; fremde/fehlende fallen weg."""
+    for p in (schema or {}).get("props") or []:
+        if p.get("type") != "files" or not isinstance(raw.get(p["id"]), list):
+            continue
+        out = []
+        for x in raw[p["id"]]:
+            m = _FILE_URL.fullmatch(str((x or {}).get("url") or "")) if isinstance(x, dict) else None
+            nf = fids.get(m.group(1)) if m else None
+            if nf and own(nf):
+                out.append({"url": f"/files/{nf}", "name": str(x.get("name") or "")[:120]})
+        raw[p["id"]] = out
+    return raw
+
+
 def collect(c, uid, cfg):
     """Alles, was ins Backup gehoert -> (daten, dateien {fid: zeile}, seiten {id: dict})."""
     cats, exclude = cfg["cats"], cfg.get("exclude") or []
@@ -331,11 +371,11 @@ def collect(c, uid, cfg):
                                  "body": r[5], "created": r[6], "edited": r[7], "resolved": bool(r[8])})
     files = {}
     if cats.get("files", True):
-        used = _refs(*(x for n in notes.values() for x in (n["body"], n["icon"], n["cover"])), *(v["body"] for v in versions))
+        used = _refs(*(x for n in notes.values() for x in (n["body"], n["icon"], n["cover"], n["props"])), *(v["body"] for v in versions))
         drop_ids, only_dropped = sorted(dropped), set()
         for k in range(0, len(drop_ids), 500):
             part = drop_ids[k:k + 500]
-            for r in c.execute(f"SELECT body, icon, cover FROM note WHERE uid=? AND id IN ({','.join('?' * len(part))})", (uid, *part)):
+            for r in c.execute(f"SELECT body, icon, cover, props FROM note WHERE uid=? AND id IN ({','.join('?' * len(part))})", (uid, *part)):
                 only_dropped |= _refs(*r)
         only_dropped -= used
         for r in c.execute("SELECT id, name, mime, size, is_image, created FROM file WHERE uid=? ORDER BY created", (uid,)):
@@ -366,6 +406,9 @@ def collect(c, uid, cfg):
             if n.get(k) and n[k] != uid:
                 n[k] = None                           # keine fremden Benutzernamen
         n["body"] = nextcloud.strip_authors(n.get("body"), n.get("format"), uid)    # auch nicht in Nextcloud-Bloecken
+        par = notes.get(n["parent_id"]) if n["parent_id"] else None
+        if par and par.get("kind") == "database" and n.get("props") and '"person"' in (par.get("schema") or ""):
+            n["props"] = _people_out(par.get("schema"), n["props"])           # 2.5: Personen als Handle, nie Anmeldenamen
         out_notes.append(n)
     data = {"format": FORMAT, "saga": VERSION, "created": time.time(), "account": account, "settings": settings,
             "options": {k: bool(cats.get(k, CAT_DEFAULT[k])) for k in CATS}, "excluded": len([x for x in exclude]),
@@ -994,10 +1037,11 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
                     rel = {p["id"] for p in schemas[par]["props"] if p["type"] == "relation"}
                     raw = {k: ([nmap[x] for x in v if isinstance(x, int) and x in nmap] if k in rel and isinstance(v, list) else v)
                            for k, v in raw.items()}
+                    raw = _files_in(schemas[par], _people_in(c, uid, schemas[par], raw), fids, own)   # 2.5: Personen/Dateien
                     clean = {}
                     for k, v in raw.items():
                         try:
-                            clean.update(_clean_props(schemas[par], {k: v}))
+                            clean.update(_clean_props(schemas[par], {k: v}, trusted=True))
                         except (ValueError, TypeError):
                             pass
                     pv = json.dumps(clean, ensure_ascii=False) if clean else None

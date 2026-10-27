@@ -722,13 +722,23 @@ def _fill_public(ctx, schema, rows):
         if not d:
             return None
         trows = []
+        tschema = _json_load(d[0], {"props": []})
         for x in ctx.c.execute("SELECT id, title, props, created, updated FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL "
                                "AND archived IS NULL AND is_template=0 LIMIT ?", (ctx.uid, dbid, DB_ROWS_MAX)).fetchall():
             ctx.seed(x[0], dbid)
             if ctx.url_for(x[0]):
-                trows.append({"id": x[0], "title": x[1] or "", "props": _json_load(x[2], {}), "created": x[3], "updated": x[4]})
-        return _json_load(d[0], {"props": []}), trows
+                trows.append({"id": x[0], "title": x[1] or "", "props": _private_off(tschema, _json_load(x[2], {})), "created": x[3],
+                              "updated": x[4]})
+        return tschema, trows
+    for r in rows:                              # 2.5: Personen/Dateien auch nicht ueber Formeln/Rollups (Namen) oeffentlich
+        r["props"] = _private_off(schema, r["props"])
     dbcalc.fill_core(schema, rows, tz=TZ, labels=labels, target=target)
+
+
+def _private_off(schema, pv):
+    """Werte von Personen-/Datei-Eigenschaften entfernen (oeffentliche Seiten)."""
+    priv = {p.get("id") for p in (schema or {}).get("props") or [] if isinstance(p, dict) and p.get("type") in PRIVATE_TYPES}
+    return {k: v for k, v in pv.items() if k not in priv} if priv and isinstance(pv, dict) else pv
 
 
 def _prop_value(p, row):
@@ -768,6 +778,11 @@ def _match(p, f, row):
     v = row["title"] if f["pid"] == "title" else _prop_value(p, row)
     if p["type"] in ("created", "edited") and v:
         v = _iso_ts(v)
+    if p["type"] == "person":                         # 2.5: wie im Web (Kennungen); "mir zugewiesen" gibt es oeffentlich nicht
+        if f["op"] == "me":
+            return False
+        from saga.people import to_ref
+        v = [to_ref(None, x) for x in v] if isinstance(v, list) else v
     empty = v is None or v == "" or v is False or (isinstance(v, list) and not v)
     op, fv = f["op"], f.get("value")
     if op == "is_empty":
@@ -829,6 +844,8 @@ def _fmt_prop(ctx, p, v):
     if v is None or v == "" or v == []:
         return ""
     typ = p["type"]
+    if typ in PRIVATE_TYPES:                      # nie oeffentlich (auch nicht ueber Filter/Sortierung sichtbar)
+        return ""
     if typ in ("formula", "rollup"):              # fertiger Wert: Zahl, Text, Haekchen, Datum oder Liste
         if isinstance(v, bool):
             return "✓" if v else ""
@@ -875,8 +892,11 @@ def _title_of(ctx, nid):
     return (r[0] if r else "") or t("Unbenannt")
 
 
+PRIVATE_TYPES = ("person", "files")       # 2.5 (Paket 1): Personen und Dateien erscheinen nie auf oeffentlichen Seiten
+
+
 def _visible_props(schema, view):
-    props = [p for p in schema.get("props", []) if isinstance(p, dict) and p.get("id")]
+    props = [p for p in schema.get("props", []) if isinstance(p, dict) and p.get("id") and p.get("type") not in PRIVATE_TYPES]
     hidden = set(view.get("hidden") or [])
     order = [x for x in (view.get("order") or [])]
     by_id = {p["id"]: p for p in props}

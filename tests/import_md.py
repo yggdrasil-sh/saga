@@ -61,7 +61,7 @@ def req(m, p, body=None, u=A, raw=None):
 
 
 def upload(name, data, tok=None, u=A):
-    return req("POST", "/api/import/upload?name=" + urllib.parse.quote(name) + ("&token=" + tok if tok else ""), raw=data, u=u)
+    return req("POST", "/api/import/upload?name=" + urllib.parse.quote(name) + ("&token=" + tok if tok else "&replace=1"), raw=data, u=u)
 
 
 def wait(rid):

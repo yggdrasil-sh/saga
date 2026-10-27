@@ -36,6 +36,7 @@ from saga.notes import FILE_MAX
 from saga import backups, graph, nextcloud, pageindex, siteicons, userbackup
 from saga import gallery                       # 2.5: Vorlagengalerie (/api/gallery...)
 from saga import import_common, importer      # 2.5 (Paket 2): Importe (/api/import/...)
+from saga import people                        # 2.5 (Paket 1): Personen-Auswahl (/api/notes/{nid}/people)
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -295,3 +296,4 @@ app.include_router(nextcloud.router)         # Nextcloud-Dateien in Seiten (2.3)
 app.include_router(userbackup.router)        # Persoenliche Backups (2.3): /api/account/backup...
 app.include_router(importer.router)          # Importe (2.5, Paket 2): /api/import/...
 app.include_router(gallery.router)           # Vorlagengalerie (2.5): /api/gallery, /api/gallery/{id}, /api/gallery/{id}/use
+app.include_router(people.router)            # Personen (2.5, Paket 1): GET /api/notes/{nid}/people (Auswahl erwaehnbar/zuweisbar)

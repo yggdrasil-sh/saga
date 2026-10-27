@@ -20,7 +20,8 @@
     'comment.reply': T('Antworten in Unterhaltungen, an denen ich beteiligt bin'),
     'publish.withdrawn': T('Ein Admin zieht eine Veröffentlichung von mir zurück'),
     'chat.message': T('Neue Chat-Nachrichten (ohne Inhalt; stummgeschaltete Chats nie)'),
-    'call.missed': T('Verpasste Anrufe')
+    'call.missed': T('Verpasste Anrufe'),
+    'db.assigned': T('Jemand trägt mich in einer Datenbank ein (Person)')
   };
   var narrow = window.matchMedia('(max-width: 760px)');
   var NS = 'http://www.w3.org/2000/svg';
@@ -89,6 +90,7 @@
     else if (it.kind === 'publish.withdrawn') s = T('Ein Admin hat deine Veröffentlichung zurückgezogen');
     else if (it.kind === 'chat.message') s = n > 1 ? T('{n} neue Nachrichten') : T('Neue Nachricht von {name}');
     else if (it.kind === 'call.missed') s = T('Verpasster Anruf von {name}');
+    else if (it.kind === 'db.assigned') s = n > 1 ? T('{name} hat dich {n}-mal eingetragen') : T('{name} hat dich eingetragen');
     else if (it.kind === 'backup.failed') return document.createTextNode(it.text || T('Backup fehlgeschlagen'));   // Text vom Server (Admins)
     else return document.createTextNode(it.text || it.kind);
     return HK.fmtNodes(s, { name: name, role: ROLE[it.role] || '', n: n });

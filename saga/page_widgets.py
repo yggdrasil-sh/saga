@@ -33,7 +33,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from db import clean_line, connect as _db
-from saga import dbcalc, dbquery
+from saga import dbcalc, dbquery, people
 from saga.core import TZ, _api_guard, _bad, _body, _json_load, t
 from saga.notes import PALETTE, _iter_blocks, ensure_ids, fix_block_ids
 from saga.sharing import Access, access, is_remote
@@ -250,8 +250,9 @@ def _source(c, uid, dbid, acc, public_owner=None):
     return owner, _json_load(r[1], {"props": []}), role != "owner"
 
 
-def _rows(c, uid, owner, dbid, schema, shared, view, tz):
-    """Zeilen der Quell-DB nach der Ansicht (dbquery.run, wie GET .../rows?view=...). Fremd: ohne archivierte Zeilen."""
+def _rows(c, uid, owner, dbid, schema, shared, view, tz, public=False):
+    """Zeilen der Quell-DB nach der Ansicht (dbquery.run, wie GET .../rows?view=...). Fremd: ohne archivierte Zeilen.
+    public: veroeffentlichte Seite - Personen-/Datei-Werte gar nicht (auch nicht ueber Formeln)."""
     where = "uid=? AND parent_id=? AND deleted_at IS NULL AND is_template=0" + (" AND archived IS NULL" if shared else "")
     n = c.execute(f"SELECT count(*) FROM note WHERE {where}", (owner, dbid)).fetchone()[0]
     if n > dbquery.LIMIT_MAX:
@@ -262,10 +263,16 @@ def _rows(c, uid, owner, dbid, schema, shared, view, tz):
     args = {"tz": tz}
     if view:
         args["view"] = view
+    if public:
+        from saga.publish import _private_off
+        for r in data:
+            r["props"] = _private_off(schema, r["props"])
     if dbcalc.has_calc(schema):                     # 2.5: Formeln/Rollups mit den Rechten des Betrachters
         dbcalc.fill(c, owner, schema, data, viewer=uid, tz=tz)
+    pm = people.out_values(c, schema, data, uid)    # 2.5: Personen wie im Web (Filter "mir zugewiesen"/"enthaelt")
     try:
-        page, _, _ = dbquery.run(schema, data, args, labels=_labels_fn(c, uid, owner), untitled=t("Unbenannt"))
+        page, _, _ = dbquery.run(schema, data, args, labels=_labels_fn(c, uid, owner), untitled=t("Unbenannt"), people=pm,
+                                 me=people.to_ref(c, uid))
     except dbquery.JsError:
         raise _Fail("bad_cfg")
     return page
@@ -338,7 +345,8 @@ def compute(c, uid, bid, d, tz=None, acc=None, public_owner=None, today=None):
             return _W(kind, st[agg], cfg.get("goal"), fmt="num")
         acc = acc or (Access(c, uid) if public_owner is None else None)
         owner, schema, shared = _source(c, uid, cfg.get("db"), acc, public_owner)
-        rows = _rows(c, uid if public_owner is None else public_owner, owner, cfg["db"], schema, shared, cfg.get("view") or "", tz)
+        rows = _rows(c, uid if public_owner is None else public_owner, owner, cfg["db"], schema, shared, cfg.get("view") or "", tz,
+                     public=public_owner is not None)
         if kind == "progress":
             if cfg.get("mode") == "sum":
                 if not _num(cfg.get("goal")):

@@ -9,7 +9,8 @@
   var LS = 'hk-push-on';
   var CAT = { share: T('Teilen: jemand teilt eine Seite mit mir oder ändert meine Rolle'), comment: T('Kommentare und Antworten'),
               chat: T('Chat-Nachrichten'), publish: T('Veröffentlichung: ein Admin zieht etwas zurück'),
-              call: T('Anrufe: es klingelt, verpasste Anrufe'), admin: T('Admin: Backup fehlgeschlagen') };
+              call: T('Anrufe: es klingelt, verpasste Anrufe'), admin: T('Admin: Backup fehlgeschlagen'),
+              assign: T('Zuweisungen: jemand trägt mich in einer Datenbank ein') };
   var TYPE = { webpush: T('Browser'), ntfy: 'ntfy', unifiedpush: 'UnifiedPush', apns: T('Apple-App') };
   var ICON = { webpush: '🖥', ntfy: '🔔', unifiedpush: '📱', apns: '📱' };
 

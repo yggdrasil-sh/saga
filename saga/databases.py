@@ -108,6 +108,10 @@ def note_duplicate(uid, nid, b, origin=None):
         new_body = self_filters(new_body, r[4], cur.lastrowid)      # 2.5: Filter "diese Seite" auf die neue Seite
         if new_body != r[3]:
             c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (new_body, cur.lastrowid, owner))
+        if into_db and props and '"person"' in (c.execute("SELECT schema FROM note WHERE id=?", (parent,)).fetchone()[0] or ""):
+            from saga import dbvals             # 2.5: Personen aus der Vorlage -> db.assigned (wie beim Anlegen)
+            dbvals.assigned(c, owner, _json_load(c.execute("SELECT schema FROM note WHERE id=?", (parent,)).fetchone()[0], {}),
+                            cur.lastrowid, {}, _json_load(props, {}), uid)
         if owner != uid:                        # per Schaltflaeche auf einer geteilten Seite: wer hat angelegt, Live-Hinweis
             c.execute("UPDATE note SET created_by=?, updated_by=? WHERE id=? AND uid=?", (uid, uid, cur.lastrowid, owner))
             if parent:

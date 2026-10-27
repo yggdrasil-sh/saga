@@ -457,7 +457,7 @@ Teilen-Ziel). Alle Endpunkte mit Sitzung oder Geräte-Schlüssel, nur eigene Upl
 
 | Endpunkt | Bedeutung |
 |---|---|
-| `POST /api/import/upload?name=<pfad>[&token=<t>]` | Rohdaten der Datei als Body (Datenstrom). Antwort `{token, kind, files, size}`; `kind` = `csv`, `md`, `notion` oder `null`. Weitere Dateien (Ordner ohne ZIP, `name` = relativer Pfad) mit demselben `token`. Grenzen: `IMPORT_MAX_MB` für alle Teile zusammen (`413`), höchstens 2000 Teile; Token gilt 30 Minuten. |
+| `POST /api/import/upload?name=<pfad>[&token=<t>][&replace=1]` | Rohdaten der Datei als Body (Datenstrom). Antwort `{token, kind, files, size}`; `kind` = `csv`, `md`, `notion` oder `null`. Weitere Dateien (Ordner ohne ZIP, `name` = relativer Pfad) mit demselben `token`. Grenzen: `IMPORT_MAX_MB` für alle Teile zusammen (`413`), höchstens 2000 Teile; Token gilt 30 Minuten. Höchstens **ein wartender Upload je Konto**: ein neuer Upload ohne `token` antwortet `409`, solange ein anderer wartet (noch nicht gestartet, nicht abgelaufen); mit `replace=1` wird der alte verworfen. |
 | `POST /api/import/{token}/analyze` | Body `{kind?, path?, encoding?, sep?, header?}`. CSV: `{encoding, sep, header, rows, columns: [{index, name, guess, values, distinct, options, decimal, date_order, fmt}], title_col, preview (20 Zeilen), warnings, limits}`. Markdown: `{md: {pages, folders, files, unresolved, title}, warnings}`. Immer `report` (geprüfte, verworfene Einträge). Nichts wird angelegt. |
 | `POST /api/import/{token}/run` | CSV neu: `{kind: "csv", columns: [{index, type: text\|number\|select\|multi_select\|date\|checkbox\|url\|skip, name?, decimal?, date_order?}], title_col, title?, parent_id?, encoding?, sep?, header?}`. CSV an bestehende Datenbank: `target_db` und `columns: [{index, target: "title"\|<eigenschafts-id>}]`. Markdown: `{kind: "md", title?, tags: bool, props: bool, parent_id?}`. → `202 {run_id}`; `409`, wenn schon ein Import des Kontos läuft; `400` bei mehr als 30 Spalten. |
 | `GET /api/import/runs`, `GET /api/import/runs/{id}` | `{id, kind, name, state: queued\|running\|done\|failed\|cancelled, step: {phase, done, total}, report: {counts, groups: [{code, text, items: [{path, text}]}], more, page}, root, error}`. Abfragen alle 1–2 s. `root` = angelegte Datenbank bzw. Sammelseite, `report.page` = Seite „Importbericht“. |
@@ -744,6 +744,66 @@ Keine neue Fähigkeit nötig: Status/Rollen/Ansichtsfelder sind Schema-Felder (a
 Auswahl/Relation und schreiben das Schema roh zurück), Werte rechnet/prüft der Eigentümer-Server. Ältere Gegenstellen
 werten unbekannte Filter-Operatoren nicht aus (zeigen mehr Zeilen) – harmlos. „Diese Seite“ schreibt der Eigentümer
 beim Anlegen um (`rowtpl`).
+
+## Personen und Dateien in Datenbanken (2.5, Paket 1 Etappen 2/3)
+
+Zwei neue Eigenschaftstypen. Ob ein Server sie kann: `GET /api/version` → `features` enthält `person1` bzw. `file1`;
+bei Seiten anderer Saga-Instanzen zusätzlich `remote.caps` mit `dbx1`. Ältere Server: Typen kommen nicht vor.
+`MIN_APP` bleibt `1.0.0` (ältere Apps zeigen unbekannte Typen leer und schreiben das Schema roh zurück – nichts geht verloren).
+
+### Schema
+
+```
+{"id": "wer", "name": "Zuständig", "type": "person", "multi": true, "notify": true}
+{"id": "anh", "name": "Anhänge", "type": "files", "max": 10}
+```
+
+`multi: false` = höchstens eine Person; `notify: false` = keine Mitteilung bei Zuweisung (Standard: an). `max` = 1…20
+Dateien je Zelle (Standard 10). Der Server setzt fehlende Felder auf die Standards.
+
+### Werte – Personen
+
+- In `row.props[pid]` steht eine **Liste von Kennungen**: lokale Konten als Handle `~` + 16 Zeichen (auch das eigene
+  Konto), Personen anderer Instanzen als Prinzipal `@name@host`. **Nie der Anmeldename.** Die Kennung hängt nicht von der
+  betrachtenden Person ab (gespeicherte Filter gelten für alle gleich).
+- Dazu oben in der Antwort `"people": {"<kennung>": {"name", "avatar", "me", "remote", "gone"?}}` – bei `GET …/rows`,
+  `GET /api/notes/{zeile}` und der `PATCH`-Antwort. `me: true` = die anfragende Person. `gone: true` = Konto gelöscht
+  bzw. unbekannt (Anzeige „Gelöschte Person“, ausgegraut). `avatar` wie überall (`/api/avatar/…`, `null` = Initialen).
+- **Setzen:** `PATCH /api/notes/{zeile}` `{"props": {"wer": ["~abc…", "@bert@b.example"]}}` (oder `null` = leeren).
+  Erlaubt sind Personen **mit Zugriff auf die Datenbank** (Eigentümer, Freigaben an Personen/Gruppen, auch geerbt, und
+  fremde Personen mit Freigabe) sowie man selbst; sonst `400` („Diese Person hat keinen Zugriff …“). Schon eingetragene
+  Personen bleiben gültig, auch wenn ihr Zugriff endet. Höchstens 20 je Zelle; Doppelte fallen weg.
+- **Auswahl:** `GET /api/notes/{db}/people?q=` (ab Rolle *Lesen*, 60/min) → `{"people": [{"ref", "name", "avatar",
+  "me", "remote"}], "more"}` – höchstens 20, nur Personen mit Zugriff, Suche nach Anzeigename. Dieselbe Liste nutzen
+  später @Erwähnungen und Aufgaben-Zuweisungen.
+- **Filter:** `{"pid": "wer", "op": "me"}` = „ist mir zugewiesen“ (ohne Wert); `contains`/`not_contains` mit einer
+  Kennung als `value`; `is_empty`/`not_empty`. **Sortierung** nach dem Namen der ersten Person (leer zuletzt).
+  **Suche** (`q`) findet Anzeigenamen. **Gruppieren** (`view.group`/`group_by`, nur lesend): je Kombination von Personen,
+  `groups: [{"id": null, "count"}, {"id": "<kennungen mit ,>", "value": ["<kennung>", …], "count"}]`, Reihenfolge
+  nach den Namen.
+- **Formeln** sehen Personen als Liste von Anzeigenamen. CSV/Markdown-Export: Anzeigenamen. Veröffentlichte Seiten
+  zeigen Personen (und Dateien) **nie** – auch nicht über Formeln/Rollups.
+
+### Werte – Dateien
+
+- `row.props[pid]` = `[{"url": "/files/<id>", "name", "size", "mime", "image"}]` (beim Lesen ergänzt; gespeichert werden
+  nur `url` und `name`). Fremde Seiten: `url` = `/api/fed/files/<zeile>/<id>`. Datei weg → fällt aus der Liste.
+- **Hinzufügen:** wie im Editor hochladen – `POST /api/files?note=<zeile>` (Multipart, Feld `file` bzw. `image`; die
+  Datei gehört dem Eigentümer der Datenbank und zählt bei ihm, ab Rolle *Bearbeiten*) → `file.url`; dann
+  `PATCH /api/notes/{zeile}` `{"props": {"anh": [{"url", "name"}, …]}}` mit der **ganzen** Liste. Nur Dateien des
+  Eigentümers der Datenbank (sonst `400`); mehr als `max` → `400`.
+- Öffnen: `GET <url>` (Bilder mit `?w=` verkleinert, sonst Download). Sichtbar für alle, die die Zeile sehen.
+
+### Nach Speichern
+
+`PATCH /api/notes/{zeile}` antwortet bei Datenbanken mit Personen/Dateien zusätzlich mit `"values": {"<pid>": […]}`
+(Personen- und Datei-Spalten so, wie der Server sie gespeichert hat – Kennungen bzw. Datei-Angaben) und `"people"`.
+
+### Mitteilung „eingetragen“
+
+Neue Art `db.assigned` (`GET /api/notifications`, Einstellung je Konto unter `/api/notifications/settings`, Standard an;
+Push-Kategorie `assign`): Text „{name} hat dich eingetragen“ (gebündelt je Zeile, `count`), `note` = die Zeile. Nicht an
+sich selbst, nicht bei `notify: false`, nur mit Zugriff; Personen anderer Instanzen über deren Server.
 
 ## Lesezeichen aus der Teilen-Erweiterung (2.5)
 

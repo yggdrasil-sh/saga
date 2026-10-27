@@ -36,6 +36,7 @@ from starlette.concurrency import run_in_threadpool
 from db import connect as _db
 from saga import app_api, avatars, bus, csv_export, databases, dbcalc, files, live, nextcloud, notify, page_tools, page_widgets, pages, sharing
 from saga import federation as F
+from saga import fed_dbx, people
 from saga.comments import counts as comment_counts
 from saga.core import E, _bad, _body, t
 from saga.files import FILE_MAX, _sniff_image
@@ -161,19 +162,24 @@ async def _owner_req(request, nid, rest):
     q = dict(request.query_params)
     mv = re.fullmatch(r"versions/([1-9][0-9]{0,17})(/restore)?", rest)
     if m == "GET" and rest == "":
-        return _need(inp, "db") or _signed_resp(inp, _fx_legacy(inp, await run_in_threadpool(F._as, inp, pages.note_get, nid), nid))
+        return _need(inp, "db") or _signed_resp(inp, fed_dbx.dbx_out(inp, _fx_legacy(inp, await run_in_threadpool(F._as, inp, pages.note_get, nid), nid), nid))
     if m == "PATCH" and rest == "":
         if _need(inp, "db"):
             return _need(inp, "db")
         b = {k: v for k, v in b.items() if k in F.EDIT2_KEYS}
         if not b:
             return F._signed(inp, 400, {"error": t("nichts zu ändern")})
-        return _signed_resp(inp, _fx_legacy(inp, await run_in_threadpool(F._as, inp, pages._note_update, nid, b, None,
-                                                                         F.peer_caps(inp.peer))))
+        b = fed_dbx.dbx_in(inp, b, row_id=nid)        # 2.5: ohne dbx1 keine Personen-/Datei-Werte
+        return _signed_resp(inp, fed_dbx.dbx_out(inp, _fx_legacy(inp, await run_in_threadpool(F._as, inp, pages._note_update, nid, b, None,
+                                                                                              F.peer_caps(inp.peer))), nid))
+    if m == "GET" and rest == "people":                # 2.5 (dbx1): Auswahl "wer ist zuweisbar" fuer eine hier liegende Seite
+        if _need(inp, "dbx1"):
+            return _need(inp, "dbx1")
+        return _signed_resp(inp, fed_dbx.dbx_out(inp, await run_in_threadpool(F._as, inp, people.people_api, nid, str(q.get("q") or "")[:60])))
     if m == "POST" and rest == "children":
         if _need(inp, "subpages"):
             return _need(inp, "subpages")
-        b = {k: v for k, v in b.items() if k in ("title", "icon", "tags", "kind", "props")}
+        b = fed_dbx.dbx_in(inp, {k: v for k, v in b.items() if k in ("title", "icon", "tags", "kind", "props")}, db_id=nid)
         if isinstance(b.get("icon"), str) and b["icon"].startswith("/") and not re.fullmatch(r"/files/[0-9a-f]{24}", b["icon"]):
             b.pop("icon")
         return _signed_resp(inp, await run_in_threadpool(F._as, inp, pages.note_create, dict(b, parent_id=nid)))
@@ -208,7 +214,7 @@ async def _owner_req(request, nid, rest):
             return F._signed(inp, 403, {"error": t("Dafür fehlt dir die Berechtigung.")})
         return _signed_resp(inp, await run_in_threadpool(F._as, inp, pages.note_move, nid, {"parent_id": par, "index": b.get("index", 0)}))
     if m == "GET" and rest == "rows":
-        return _need(inp, "db") or _signed_resp(inp, _fx_legacy(inp, await run_in_threadpool(F._as, inp, app_api.db_rows, nid, q)))
+        return _need(inp, "db") or _signed_resp(inp, fed_dbx.dbx_out(inp, _fx_legacy(inp, await run_in_threadpool(F._as, inp, app_api.db_rows, nid, q))))
     if m == "POST" and rest == "formula/check":      # 2.5 (formula1): Formel-Editor fuer eine hier liegende Datenbank
         if _need(inp, "formula1"):
             return _need(inp, "formula1")
@@ -583,7 +589,7 @@ def _row_in(c, p, d, uid):
         return None
     r = F.ref(pid, d["id"])
     return {"id": r, "title": F._clean_text(d.get("title"), 500), "icon": F._rw_in(F._safe_pic(d.get("icon"), True), pid, r),
-            "props": F.props_in(pid, d.get("props") if isinstance(d.get("props"), dict) else {}),
+            "props": fed_dbx.props_in(c, F.props_in(pid, d.get("props") if isinstance(d.get("props"), dict) else {}), r),
             "updated": F._num(d.get("updated")), "created": F._num(d.get("created")),
             "preview": F._rw_in(F._safe_pic(d.get("preview"), False), pid, r), **_fx_err(d)}
 
@@ -597,6 +603,9 @@ def _group_in(g):
     """Gruppe aus GET .../rows: Auswahl {id, count} bzw. (formula1) Formel-Wert {id, value, count}."""
     out = {"id": g.get("id") if isinstance(g.get("id"), str) else None, "count": g.get("count") if isinstance(g.get("count"), int) else 0}
     v = g.get("value")
+    if isinstance(v, list):                      # 2.5 (dbx1): Gruppe nach Person - Liste von Prinzipalen (umgeschrieben in _w_rows)
+        out["value"] = [x for x in v[:20] if isinstance(x, str) and len(x) <= 300]
+        return out
     if "value" in g and (v is None or isinstance(v, (bool, str)) or (isinstance(v, (int, float)) and v == v and abs(v) < 1e300)):
         out["value"] = v[:10000] if isinstance(v, str) else v
         if isinstance(out["id"], str):
@@ -620,14 +629,48 @@ def _w_rows(uid, nid, query):
     with _db() as c:
         rows = [x for x in (_row_in(c, p, r, uid) for r in (d.get("rows") or [])[:5000]) if x]
         tpls = [x for x in (_tpl_in(p, x) for x in (d.get("templates") or [])[:200]) if x] if isinstance(d.get("templates"), list) else []
+        pm = fed_dbx.people_in(c, p, uid, d.get("people"), [x["props"] for x in rows])     # 2.5 (dbx1)
     out = {"schema": F.schema_in(p["id"], d.get("schema")), "templates": tpls, "rows": rows,
            "role": d.get("role") if d.get("role") in sharing.ROLES else "view"}
+    if pm:
+        out["people"] = pm
+    if isinstance(d.get("unsupported"), list):
+        out["unsupported"] = [x for x in d["unsupported"] if x in fed_dbx.TYPES]
     for k in ("total", "matched", "offset", "limit"):
         if isinstance(d.get(k), int) and not isinstance(d.get(k), bool):
             out[k] = d[k]
     if isinstance(d.get("groups"), list):
         out["groups"] = [_group_in(g) for g in d["groups"][:1000] if isinstance(g, dict)]
+        if any(isinstance(g.get("value"), list) for g in d["groups"] if isinstance(g, dict)):      # 2.5: Gruppen nach Person
+            with _db() as c:
+                for g in out["groups"]:
+                    if isinstance(g.get("value"), list):
+                        g["value"] = [x for x in (fed_dbx._in_ref(c, y) for y in g["value"] if isinstance(y, str)) if x]
+                        g["id"] = ",".join(g["value"])
     return F._json(200, out)
+
+
+def _w_people(uid, nid, q):
+    """Auswahl "wer ist zuweisbar" fuer eine Seite einer anderen Instanz (Heim) - der Eigentuemer kennt die Freigaben."""
+    p, rid = _peer_for(uid, nid, "dbx1")
+    status, _, d = _call(uid, p, "GET", f"/fed/v2/notes/{rid}/people", "q=" + quote(q[:60], safe=""))
+    if status != 200 or not isinstance(d, dict) or not isinstance(d.get("people"), list):
+        return F._pass_err(p, status, d)
+    out = []
+    with _db() as c:
+        for e in d["people"][:people.CANDIDATES_MAX]:
+            r = fed_dbx._in_ref(c, e.get("ref")) if isinstance(e, dict) and isinstance(e.get("ref"), str) else None
+            if not r:
+                continue
+            if F.is_remote(r):
+                out.append({"ref": r, "name": sharing.remote_label(r, F.remote_name(e.get("name"))), "avatar": avatars.url_of(c, r),
+                            "me": r == uid, "remote": True})
+            else:
+                lm = people.label_map(c, [people.to_canon(c, r)], uid)
+                x = lm.get(r) or {}
+                out.append({"ref": r, "name": x.get("name") or "?", "avatar": x.get("avatar"), "me": people.to_canon(c, r) == uid,
+                            "remote": False})
+    return JSONResponse({"people": out, "more": d.get("more") is True}, headers={"Cache-Control": "no-store"})
 
 
 _WBID = re.compile(r"[A-Za-z0-9_-]{1,40}")
@@ -791,7 +834,7 @@ def create(uid, b, origin=None):
         return _bad(t("ungültige Angabe"))
     out = {k: b[k] for k in ("title", "tags", "kind") if k in b}
     if "props" in b:
-        out["props"] = F.props_out(p["id"], b["props"])
+        out["props"] = fed_dbx.props_out(p["id"], F.props_out(p["id"], b["props"]))
     if isinstance(b.get("icon"), str) and b["icon"]:
         out["icon"] = F._pic_out(b["icon"], p["id"])
     try:
@@ -1048,6 +1091,8 @@ async def home_other(nid: int, rest: str, request: Request):
         return await run_in_threadpool(F._run, _w_rows, uid, nid, q)
     if m == "GET" and rest == "widgets":
         return await run_in_threadpool(F._run, _w_widgets, uid, nid, request.query_params.get("tz") or "")
+    if m == "GET" and rest == "people":                # 2.5 (dbx1): Personen-Auswahl ueber den Eigentuemer
+        return await run_in_threadpool(F._run, _w_people, uid, nid, request.query_params.get("q") or "")
     if m == "POST" and rest == "formula/check":
         b = await _body(request) or {}
         return await run_in_threadpool(F._run, _w_formula_check, uid, nid, b)

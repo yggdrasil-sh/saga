@@ -777,6 +777,73 @@ DO $$ BEGIN
             FOR EACH ROW EXECUTE FUNCTION saga_note_stale();
     END IF;
 END $$;
+-- Personen in Datenbank-Zeilen (2.5, Paket 1, saga/people.py): abgeleitet aus note.props (Eigenschaften vom Typ "person"),
+-- per Trigger in derselben Transaktion gepflegt - egal, welcher Weg props schreibt (Web, Apps, Foederation, Import,
+-- Vorlagen, Sicherung). person = kanonische Kennung (lokaler Benutzername bzw. Prinzipal '@name@host'); verlaesst den
+-- Server nie roh. Aendert sich das Schema einer Datenbank (Spalte wird Person bzw. hoert auf, eine zu sein), werden
+-- ihre Zeilen neu abgeleitet. Alles jederzeit aus note.props neu ableitbar.
+CREATE TABLE IF NOT EXISTS row_person (
+    note_id BIGINT NOT NULL REFERENCES note(id) ON DELETE CASCADE, pid TEXT NOT NULL, person TEXT NOT NULL,
+    owner TEXT NOT NULL, db_id BIGINT NOT NULL, PRIMARY KEY (note_id, pid, person));
+CREATE INDEX IF NOT EXISTS row_person_person ON row_person (person);
+CREATE INDEX IF NOT EXISTS row_person_db ON row_person (db_id);
+CREATE OR REPLACE FUNCTION saga_jsonb(s TEXT) RETURNS jsonb LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+    RETURN s::jsonb;
+EXCEPTION WHEN others THEN
+    RETURN NULL;
+END $$;
+CREATE OR REPLACE FUNCTION saga_row_person_sync(rid BIGINT) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+    sch jsonb; pv jsonb; r RECORD;
+BEGIN
+    DELETE FROM row_person WHERE note_id = rid;
+    SELECT n.id, n.uid, n.parent_id, n.props, d.schema INTO r FROM note n JOIN note d ON d.id = n.parent_id AND d.uid = n.uid
+        AND d.kind = 'database' WHERE n.id = rid;
+    IF NOT FOUND OR r.props IS NULL OR position('"person"' in COALESCE(r.schema, '')) = 0 THEN
+        RETURN;
+    END IF;
+    sch := saga_jsonb(r.schema);
+    pv := saga_jsonb(r.props);
+    IF sch IS NULL OR pv IS NULL OR jsonb_typeof(sch->'props') <> 'array' OR jsonb_typeof(pv) <> 'object' THEN
+        RETURN;
+    END IF;
+    INSERT INTO row_person (note_id, pid, person, owner, db_id)
+        SELECT rid, p->>'id', v.x, r.uid, r.parent_id
+        FROM jsonb_array_elements(sch->'props') p
+             CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(pv->(p->>'id')) = 'array'
+                                                               THEN pv->(p->>'id') ELSE '[]'::jsonb END) v(x)
+        WHERE jsonb_typeof(p) = 'object' AND p->>'type' = 'person' AND v.x <> '' AND left(v.x, 1) <> '#'
+        ON CONFLICT DO NOTHING;
+END $$;
+CREATE OR REPLACE FUNCTION saga_row_person_t() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'UPDATE' AND NEW.kind = 'database' AND NEW.schema IS DISTINCT FROM OLD.schema
+       AND (position('"person"' in COALESCE(NEW.schema, '')) > 0 OR position('"person"' in COALESCE(OLD.schema, '')) > 0) THEN
+        PERFORM saga_row_person_sync(n.id) FROM note n WHERE n.uid = NEW.uid AND n.parent_id = NEW.id;
+    END IF;
+    IF TG_OP = 'UPDATE' AND NEW.props IS NOT DISTINCT FROM OLD.props AND NEW.parent_id IS NOT DISTINCT FROM OLD.parent_id
+       AND NEW.uid IS NOT DISTINCT FROM OLD.uid THEN
+        RETURN NULL;
+    END IF;
+    IF NEW.parent_id IS NULL OR NEW.props IS NULL THEN
+        IF TG_OP = 'UPDATE' THEN
+            DELETE FROM row_person WHERE note_id = NEW.id;
+        END IF;
+        RETURN NULL;
+    END IF;
+    IF (TG_OP = 'UPDATE' AND EXISTS (SELECT 1 FROM row_person WHERE note_id = NEW.id))
+       OR EXISTS (SELECT 1 FROM note d WHERE d.id = NEW.parent_id AND position('"person"' in COALESCE(d.schema, '')) > 0) THEN
+        PERFORM saga_row_person_sync(NEW.id);
+    END IF;
+    RETURN NULL;
+END $$;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'row_person_t' AND tgrelid = 'note'::regclass) THEN
+        CREATE TRIGGER row_person_t AFTER INSERT OR UPDATE OF props, parent_id, uid, schema ON note
+            FOR EACH ROW EXECUTE FUNCTION saga_row_person_t();
+    END IF;
+END $$;
 -- Verschluesselte Backups auf ein WebDAV-Ziel (2.3, saga/backups.py): Verlauf der Laeufe (Status im Admin-Bereich).
 -- step/error: JSON {code, p} - der Text entsteht erst beim Anzeigen (Sprache des Admins); detail: Groessen, Name im Ziel
 CREATE TABLE IF NOT EXISTS backup_run (
@@ -1078,6 +1145,11 @@ SELECT 1 FROM import_run LIMIT 0;
     22: """
 ALTER TABLE note_base ADD COLUMN IF NOT EXISTS sent TEXT;
 ALTER TABLE note_base ADD COLUMN IF NOT EXISTS sent_title TEXT;
+""",
+    # 2.5.0 (Paket 1, Personen-Eigenschaft, saga/people.py): Tabelle row_person und ihr Trigger stehen in SCHEMA oben;
+    # Personen-Werte gab es vorher nicht - nichts nachzutragen. Beliebig oft ausfuehrbar.
+    23: """
+SELECT 1 FROM row_person LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

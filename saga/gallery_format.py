@@ -15,6 +15,7 @@ from datetime import date
 ROLLUP_FNS = {"count", "filled", "empty", "pct_filled", "unique", "sum", "avg", "median", "min", "max", "range",
               "checked", "unchecked", "pct_checked", "earliest", "latest", "show"}
 PROP_TYPES = {"text", "number", "select", "multi_select", "date", "checkbox", "url", "created", "edited", "relation", "calc",
+              "person", "files",            # 2.5: Spalten ja, Werte in Vorlagen nicht (Personen/Dateien gibt es dort nicht)
               "formula", "rollup"}
 VIEW_TYPES = {"table", "board", "list", "gallery", "calendar"}
 WIDGET_KINDS = ("clock", "countdown", "progress", "metric", "quote")

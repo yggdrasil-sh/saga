@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import clean_line, connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
-from saga import bus, dbcalc, nextcloud, page_widgets, treesync
+from saga import bus, dbcalc, dbvals, nextcloud, page_widgets, treesync
 from saga.core import BASE_URL, account_lang, _api_guard, _bad, _body, _json_load, _session_user, local_ref, origin_of, ref_of, t, user_error
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
@@ -574,6 +574,22 @@ def _rel_check_for(c, owner, acc, role, old_props=None):
     return lambda target, ids: {i for i in base(target, ids) if i in keep or acc.role(i)}
 
 
+def _val_checks(c, owner, uid, nid):
+    """2.5 (Paket 1): Pruefer fuer Personen-/Datei-Werte einer Zeile (nid: Datenbank bzw. Zeile - Zugriff gilt geerbt).
+    -> dict fuer _clean_props(people=..., files=...)."""
+    from saga import people
+
+    def ppl(p, v, old):
+        return people.clean_values(c, owner, nid, uid, v, old)
+
+    def fls(ids):
+        if not ids:
+            return set()
+        ids = sorted(ids)
+        return {r[0] for r in c.execute(f"SELECT id FROM file WHERE uid=? AND id IN ({','.join('?' * len(ids))})", (owner, *ids))}
+    return {"people": ppl, "files": fls}
+
+
 @router.get("/api/notes")
 def api_notes(request: Request):
     """Seitenbaum (ohne Inhalte)."""
@@ -642,6 +658,7 @@ def note_get(uid, nid):
                 tmp = [{"id": r[0], "props": _json_load(r[12], {})}]
                 dbcalc.mark_blocked(c, owner, r[3], _json_load(par_s[0], {"props": []}), tmp)
                 blocked = bool(tmp[0].get("blocked"))
+        row_vals = _row_values(c, owner, uid, r, row_fx)
     d = _note_meta(r)
     d["published"] = bool(pub)                     # Seitenkopf: Hinweis "Oeffentlich" (Einzelheiten: /api/notes/{nid}/publish)
     d["public_url"] = f"{BASE_URL}/@{pub[1]}/{pub[0]}" if pub and pub[1] else None
@@ -653,6 +670,10 @@ def note_get(uid, nid):
         d["props"] = row_fx["props"]
         if row_fx.get("fx_err"):
             d["fx_err"] = row_fx["fx_err"]
+    if row_vals is not None:                       # 2.5: Personen (Handles + people) und Dateien (Groesse/MIME)
+        d["props"] = row_vals["props"]
+        if row_vals.get("people"):
+            d["people"] = row_vals["people"]
     if d["kind"] == "database":
         d["schema"] = _json_load(r[11], {"props": []})
     if blocked:
@@ -682,17 +703,39 @@ def _row_formulas(c, owner, uid, r):
     return row
 
 
+def _row_values(c, owner, uid, r, row_fx=None):
+    """Zeile mit Personen-/Datei-Eigenschaften: {props, people} fuer uid - sonst None."""
+    if r[3] is None:
+        return None
+    par = c.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database'", (r[3], owner)).fetchone()
+    schema = _json_load(par[0], {"props": []}) if par else None
+    if not dbvals.has_any(schema):
+        return None
+    row = {"props": dict(row_fx["props"]) if row_fx is not None else _json_load(r[12], {})}
+    extra = dbvals.out_rows(c, owner, schema, [row], uid)
+    return {"props": row["props"], "people": extra.get("people")}
+
+
 def row_calc(c, owner, uid, nid):
     """Werte der Formeln/Rollups einer Zeile nach dem Speichern (PATCH-Antwort 'calc': {pid: wert}, 'fx_err') oder None."""
     r = c.execute("SELECT n.id, n.title, n.props, n.created, n.updated, d.schema FROM note n JOIN note d ON d.id=n.parent_id AND d.uid=n.uid "
                   "WHERE n.id=? AND n.uid=? AND d.kind='database'", (nid, owner)).fetchone()
     schema = _json_load(r[5], {"props": []}) if r else None
-    if not dbcalc.has_calc(schema):
+    if not dbcalc.has_calc(schema) and not dbvals.has_any(schema):
         return None
     row = {"id": r[0], "title": r[1] or "", "props": _json_load(r[2], {}), "created": r[3], "updated": r[4]}
-    dbcalc.fill(c, owner, schema, [row], viewer=uid)
-    pids = [p["id"] for p in schema.get("props", []) if isinstance(p, dict) and p.get("type") in ("formula", "rollup")]
-    return {"calc": {k: row["props"].get(k) for k in pids}, "fx_err": row.get("fx_err") or {}}
+    out = {}
+    if dbcalc.has_calc(schema):
+        dbcalc.fill(c, owner, schema, [row], viewer=uid)
+        pids = [p["id"] for p in schema.get("props", []) if isinstance(p, dict) and p.get("type") in ("formula", "rollup")]
+        out.update(calc={k: row["props"].get(k) for k in pids}, fx_err=row.get("fx_err") or {})
+    if dbvals.has_any(schema):           # 2.5: Personen/Dateien der Zeile, wie gespeichert (Handles + people, Datei-Angaben)
+        extra = dbvals.out_rows(c, owner, schema, [row], uid)
+        vp = [p["id"] for p in schema.get("props", []) if isinstance(p, dict) and p.get("type") in ("person", "files")]
+        out["values"] = {k: row["props"].get(k) for k in vp}
+        if extra.get("people"):
+            out["people"] = extra["people"]
+    return out
 
 
 # 2.3 (saga.fed_pages): Unterseite in einer Seite einer anderen Saga-Instanz (parent_id negativ) - fn(uid, b, origin)
@@ -748,7 +791,8 @@ def note_create(uid, b, origin=None):
             ps = c.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database'", (parent, owner)).fetchone()
             if ps:
                 try:
-                    props = _clean_props(_json_load(ps[0], {"props": []}), b["props"], check=_rel_check_for(c, owner, acc, role))
+                    props = _clean_props(_json_load(ps[0], {"props": []}), b["props"], check=_rel_check_for(c, owner, acc, role),
+                                         **_val_checks(c, owner, uid, parent))
                     _self_rel_check(c, owner, _json_load(ps[0], {"props": []}), None, props)
                     props = json.dumps(props, ensure_ascii=False)
                 except (ValueError, TypeError) as ex:
@@ -759,6 +803,7 @@ def note_create(uid, b, origin=None):
                          json.dumps(tags, ensure_ascii=False), kind, schema, props, now, now, uid, uid))
         if props and ps:                                   # zweiseitige Relationen: Gegenseite nachziehen
             _rel_sync(c, owner, _json_load(ps[0], {"props": []}), cur.lastrowid, {}, json.loads(props), _may_edit(acc, role))
+            dbvals.assigned(c, owner, _json_load(ps[0], {"props": []}), cur.lastrowid, {}, json.loads(props), uid)   # 2.5: db.assigned
         if parent:
             announce_row(c, owner, cur.lastrowid, uid, now, origin)      # neue Zeile (BUG-049)
         tree_changed(c, owner, [cur.lastrowid], "created", origin)
@@ -1072,7 +1117,7 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
                         if pr and pr["type"] == "multi_select" and isinstance(v, list):
                             v = [x for x in v if x in {o["id"] for o in pr.get("options", [])}]
                         try:
-                            keep.update(_clean_props(new_schema, {k: v}, check=_rel_check(c, owner)))   # Relation: nur IDs aus dem (neuen) Ziel
+                            keep.update(_clean_props(new_schema, {k: v}, check=_rel_check(c, owner), trusted=True))   # Relation: nur IDs aus dem (neuen) Ziel
                         except (ValueError, TypeError):
                             pass
                     if keep != old_p:
@@ -1084,9 +1129,11 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
                                "WHERE n.id=? AND n.uid=? AND d.kind='database'", (nid, owner)).fetchone()
                 if not ps:
                     raise ValueError(t("Seite ist keine Datenbank-Zeile"))
-                new_props = _clean_props(_json_load(ps[0], {"props": []}), b["props"], _json_load(ps[1], {}), check=_rel_check_for(c, owner, acc, role, _json_load(ps[1], {})))
+                new_props = _clean_props(_json_load(ps[0], {"props": []}), b["props"], _json_load(ps[1], {}), check=_rel_check_for(c, owner, acc, role, _json_load(ps[1], {})),
+                                         **_val_checks(c, owner, uid, nid))
                 _self_rel_check(c, owner, _json_load(ps[0], {"props": []}), nid, new_props)     # 2.5: keine Kreise/Selbstbezug
                 _rel_sync(c, owner, _json_load(ps[0], {"props": []}), nid, _json_load(ps[1], {}), new_props, _may_edit(acc, role))
+                dbvals.assigned(c, owner, _json_load(ps[0], {"props": []}), nid, _json_load(ps[1], {}), new_props, uid)   # 2.5: db.assigned
                 sets.append("props=?"); args.append(json.dumps(new_props, ensure_ascii=False))
             if "title" in b:
                 sets.append("title=?"); args.append(_title_in(b["title"]))

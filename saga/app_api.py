@@ -9,7 +9,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga import dbcalc, dbquery
+from saga import dbcalc, dbquery, dbvals, people
 from saga.calendars import _cal_collect
 from saga.core import APP_CAPTURE_MAX, APP_TOKEN_MAX, TZ, _api_guard, _bad, _body, _json_load, _tok_db, _tok_hash, mark_authed, t, t_account, user_info
 from saga.databases import _first_image
@@ -347,6 +347,7 @@ def _db_rows(owner, nid, shared=False, query=None, viewer=None, with_tpls=None):
                 e = extra["_fx"].get(r["id"])
                 if e:
                     r["fx_err"] = e
+        out.update(dbvals.out_rows(c, owner, out["schema"], out["rows"], owner if viewer is None else viewer))   # 2.5: Personen/Dateien
     if extra:
         extra.pop("_fx", None)
         for r in out["rows"]:
@@ -396,7 +397,9 @@ def _db_query(c, owner, nid, shared, sql, schema_json, query, viewer):
     if calc:                                     # 2.5: Formeln/Rollups VOR Filter/Sortierung/Gruppen (Rechte des Betrachters)
         dbcalc.fill(c, owner, schema, data, viewer=owner if viewer is None else viewer, tz=query.get("tz"))
         extra["_fx"] = {d["id"]: d["fx_err"] for d in data if d.get("fx_err")}
-    page, matched, groups = dbquery.run(schema, data, query, labels=labels, untitled=t("Unbenannt"))
+    who = owner if viewer is None else viewer
+    pm = people.out_values(c, schema, data, who)  # 2.5: Personen als Kennungen (wie im Web) - Filter "me"/"enthaelt", Suche
+    page, matched, groups = dbquery.run(schema, data, query, labels=labels, untitled=t("Unbenannt"), people=pm, me=people.to_ref(c, who))
     extra.update(total=len(rows), matched=matched)
     if any("_depth" in d for d in page):                 # 2.5: Unteraufgaben verschachtelt (view.sub) - Tiefe/Eltern je Zeile
         extra["_sub"] = {d["id"]: (d["_depth"], d["_sub"]) for d in page if "_depth" in d}

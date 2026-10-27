@@ -64,7 +64,7 @@ def req(m, p, body=None, u=A, raw=None, headers=None):
 
 
 def upload(name, data, u=A):
-    return req("POST", "/api/import/upload?name=" + urllib.parse.quote(name), raw=data, u=u)
+    return req("POST", "/api/import/upload?name=" + urllib.parse.quote(name) + "&replace=1", raw=data, u=u)
 
 
 def analyze(data, name="boese.zip", body=None):
@@ -221,7 +221,7 @@ def run():
     else:
         print("SKIP Summe entpackt (IMPORT_UNPACKED_MAX_MB > 256)")
     if MAXMB <= 128:
-        s, d = req("POST", "/api/import/upload?name=riesig.zip", raw=b"x" * 1024, headers={"Content-Length": str(MAXMB * 1024 * 1024 + 5 * 1024 * 1024)})
+        s, d = req("POST", "/api/import/upload?name=riesig.zip&replace=1", raw=b"x" * 1024, headers={"Content-Length": str(MAXMB * 1024 * 1024 + 5 * 1024 * 1024)})
         ok("Upload ueber IMPORT_MAX_MB: 413", s == 413, (s, d))
     else:
         print("SKIP Upload-Grenze (IMPORT_MAX_MB > 128)")

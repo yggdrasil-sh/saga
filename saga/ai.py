@@ -499,6 +499,14 @@ def prop_pairs(schema, props, titles=None):
                 v = _num(v)
         if v in (None, "", []) or typ in ("created", "edited"):
             continue
+        if typ == "person":                                # 2.5: nur Anzeigenamen (people_names), nie Kennungen/Anmeldenamen
+            v = ", ".join(x for x in (_PEOPLE_NAMES(v) if _PEOPLE_NAMES and isinstance(v, list) else []) if x) or None
+            if not v:
+                continue
+        if typ == "files":
+            v = ", ".join(str(x.get("name")) for x in (v if isinstance(v, list) else []) if isinstance(x, dict) and x.get("name")) or None
+            if not v:
+                continue
         if typ in ("select", "multi_select"):
             opts = {o.get("id"): o.get("name") for o in p.get("options") or [] if isinstance(o, dict)}
             s = ", ".join(str(opts[x]) for x in (v if isinstance(v, list) else [v]) if isinstance(x, str) and opts.get(x))
@@ -521,6 +529,27 @@ def prop_pairs(schema, props, titles=None):
         if s:
             out.append((names.get(p.get("id")) or "?", s[:280]))
     return out
+
+
+_PN_CACHE = {}                      # Kennung -> (Zeit, Anzeigename) - viele Zeilen nennen dieselben Personen
+
+
+def _people_names(values):
+    """Personen-Kennungen -> Anzeigenamen (nie Anmeldenamen); 60 s zwischengespeichert."""
+    now = time.time()
+    vals = [x for x in values if isinstance(x, str)]
+    need = [x for x in vals if x not in _PN_CACHE or now - _PN_CACHE[x][0] > 60]
+    if need:
+        with _db() as c:
+            nm = names(c, need)
+        if len(_PN_CACHE) > 5000:
+            _PN_CACHE.clear()
+        for x in need:
+            _PN_CACHE[x] = (now, nm.get(x) or "")
+    return [_PN_CACHE[x][1] for x in vals]
+
+
+_PEOPLE_NAMES = _people_names
 
 
 def props_text(schema, props, titles=None):

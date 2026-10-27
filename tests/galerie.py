@@ -97,7 +97,7 @@ try:
     ok(f"Pruefskript: Test-Bundles gueltig (rc {r.returncode})", r.returncode == 0 and "GALERIE OK" in r.stdout)
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "gallery_check.py"), os.path.join(fx, "kaputt"), "--no-i18n"],
                        capture_output=True, text=True)
-    want = {"ref-unbekannt.json": "unbekannter ref 'nix'", "typ-unbekannt.json": "'person'", "zu-gross.json": "mehr als 30",
+    want = {"ref-unbekannt.json": "unbekannter ref 'nix'", "typ-unbekannt.json": "'zauberwert'", "zu-gross.json": "mehr als 30",
             "id-falsch.json": "Dateinamen", "beispiel-verweis.json": "Beispiel", "json-kaputt.json": "JSON",
             "wert-falsch.json": "unbekannte Option 'b'"}
     miss = [f for f, s in want.items() if f"FEHLER {f}" not in r.stdout or s not in r.stdout]

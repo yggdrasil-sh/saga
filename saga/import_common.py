@@ -156,6 +156,12 @@ def safe_part_name(name):
     return norm_path(name)
 
 
+def waiting_uploads(uid):
+    """Tokens der wartenden (noch nicht laufenden, nicht abgelaufenen) Uploads eines Kontos."""
+    with _lock:
+        return [k for k, v in _uploads.items() if v["uid"] == uid and not v["busy"] and v["until"] >= _now()]
+
+
 def new_upload(uid):
     tok = secrets.token_urlsafe(18)
     d = os.path.join(upload_dir(), tok)

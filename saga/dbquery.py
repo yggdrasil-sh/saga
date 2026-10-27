@@ -19,8 +19,9 @@ from zoneinfo import ZoneInfo
 LIMIT_MAX = 5000
 AUTO = {"created": "created", "edited": "updated"}
 NOVALUE = {"is_empty", "not_empty", "checked", "unchecked", "today", "this_week", "this_month",
-           "yesterday", "tomorrow", "last_week", "next_week", "last_month", "next_month", "this_year", "overdue"}
-REL_OPS = NOVALUE - {"is_empty", "not_empty", "checked", "unchecked"}         # relative Datumsfilter ohne Wert
+           "yesterday", "tomorrow", "last_week", "next_week", "last_month", "next_month", "this_year", "overdue",
+           "me"}                                                               # 2.5: Personen - "ist mir zugewiesen"
+REL_OPS = NOVALUE - {"is_empty", "not_empty", "checked", "unchecked", "me"}   # relative Datumsfilter ohne Wert
 STATUS_GROUPS = ("todo", "doing", "done")
 
 
@@ -350,7 +351,8 @@ class Query:
     """Filter/Suche/Sortierung/Gruppen einer Ansicht. rows: [{'id','title','props','created','updated', ...}];
     labels(ids) -> {id: titel} fuer Relationen (nur Seiten, die der Betrachter im Web 'kennt', siehe app_api)."""
 
-    def __init__(self, schema, filters=None, sorts=None, q="", group=None, tz=None, today=None, labels=None, untitled="Unbenannt"):
+    def __init__(self, schema, filters=None, sorts=None, q="", group=None, tz=None, today=None, labels=None, untitled="Unbenannt",
+                 people=None, me=None):
         self.schema = schema if isinstance(schema, dict) else {}
         props = self.schema.get("props")
         self.props = [p for p in props if isinstance(p, dict)] if isinstance(props, list) else []
@@ -364,6 +366,10 @@ class Query:
         self.today = _days_from_civil(today.year, today.month, today.day)
         self.labels_fn = labels
         self._labels = None
+        # 2.5 (Paket 1): Personen-Werte sind Kennungen (Handle/Prinzipal, saga.people.to_ref); people: {kennung: {name, ...}}
+        # wie die Antwort von /rows (Web: DB.people), me: Kennung des Betrachters (Filter "ist mir zugewiesen")
+        self.people = people if isinstance(people, dict) else {}
+        self.me = me
         self.untitled = untitled
         self._pmap = _first_match(self.props, "id")
         self._fcache = {}
@@ -525,6 +531,8 @@ class Query:
             return js_truthy(v)
         if op == "unchecked":
             return not js_truthy(v)
+        if op == "me":                                         # 2.5: Personen - ich bin eingetragen
+            return isinstance(v, list) and self.me is not None and any(js_seq(x, self.me) for x in v)
         if op in REL_OPS:
             return not empty and self.rel_date(op, v)
         if novalue:
@@ -609,6 +617,8 @@ class Query:
                 t = p.get("type")
                 if js_seq(t, "relation"):
                     kind, opts = "rel", []
+                elif js_seq(t, "person") or js_seq(t, "files"):     # 2.5: Namen der Personen bzw. Dateien
+                    kind, opts = t, []
                 elif js_seq(t, "select") or js_seq(t, "multi_select"):
                     kind = "sel"
                     opts = [x for x in p.get("options") if isinstance(x, dict)] if isinstance(p.get("options"), list) else []
@@ -635,6 +645,13 @@ class Query:
                         lab = self._label(int(i))
                         if lab is not UNDEF:
                             parts.append(lab)
+            elif kind == "person":
+                for i in (v if isinstance(v, list) else []):
+                    parts.append(self.person_name(i))
+            elif kind == "files":
+                for f in (v if isinstance(v, list) else []):
+                    if isinstance(f, dict) and isinstance(f.get("name"), str):
+                        parts.append(f["name"])
             elif kind == "sel":
                 for i in (v if isinstance(v, list) else [v]):
                     k = _tkey(i)                                       # options.find(o => o.id === i)
@@ -644,6 +661,11 @@ class Query:
             else:
                 parts.append(js_str(v))
         return js_lower(" ".join("" if js_nullish(x) else js_str(x) for x in parts))
+
+    def person_name(self, ref):
+        """Anzeigename einer Kennung (people), sonst '' - wie personName() im Web."""
+        e = self.people.get(ref) if isinstance(ref, str) else None
+        return e.get("name") if isinstance(e, dict) and isinstance(e.get("name"), str) else ""
 
     # Sortierung (sortKey / sortedRows)
     def sort_key(self, p, r):
@@ -658,7 +680,9 @@ class Query:
                 if isinstance(o, dict) and js_seq(o.get("id", UNDEF), v):
                     return i
             return 1e9
-        if js_seq(t, "multi_select") or js_seq(t, "relation") or (is_fx(p) and js_seq(p.get("rtype"), "list")):
+        if js_seq(t, "person"):                               # 2.5: nach dem Namen der ersten Person, leer zuletzt
+            return js_lower(self.person_name(v[0])) if isinstance(v, list) and v else None
+        if js_seq(t, "multi_select") or js_seq(t, "relation") or js_seq(t, "files") or (is_fx(p) and js_seq(p.get("rtype"), "list")):
             return js_len(v if js_truthy(v) else [])
         if js_seq(t, "checkbox"):
             return 1 if js_truthy(v) else 0
@@ -766,6 +790,9 @@ class Query:
             for grp in STATUS_GROUPS:
                 out.append((grp, [r for r in rows if status_group(g, self._get(r, gid)) == grp]))
             return out
+        if js_seq(g.get("type"), "person"):                   # 2.5: je Kombination von Personen (nur lesend)
+            gid = g.get("id", UNDEF)
+            return person_groups(rows, lambda r: self._get(r, gid), self.person_name)
         if not js_seq(g.get("type"), "select"):                  # Formel/Rollup: Gruppen = vorkommende Werte (nur lesend)
             gid = g.get("id", UNDEF)
             return value_groups(rows, g, lambda r: self._get(r, gid))
@@ -804,10 +831,31 @@ GROUPABLE = ("number", "text", "checkbox", "date")
 
 
 def groupable(p):
-    """Darf nach p gruppiert werden (static/pages.js groupable)? Auswahl; Formel/Rollup mit Ergebnis Zahl/Text/Haekchen/Datum."""
+    """Darf nach p gruppiert werden (static/pages.js groupable)? Auswahl; Formel/Rollup mit Ergebnis Zahl/Text/Haekchen/Datum;
+    2.5: Person (je Kombination, nur lesend)."""
     if not isinstance(p, dict):
         return False
-    return js_seq(p.get("type"), "select") or (is_fx(p) and isinstance(p.get("rtype"), str) and p["rtype"] in GROUPABLE)
+    return js_seq(p.get("type"), "select") or js_seq(p.get("type"), "person") \
+        or (is_fx(p) and isinstance(p.get("rtype"), str) and p["rtype"] in GROUPABLE)
+
+
+def person_groups(rows, get, name):
+    """Gruppen nach Personen (static/pages.js personGroups): [(UNDEF, ohne), (kennungen mit "," verbunden, zeilen), ...] -
+    Reihenfolge nach den Namen (klein, mit ", " verbunden; UTF-16), bei gleichem Namen nach der Kennung."""
+    empty, order, buckets = [], [], {}
+    for r in rows:
+        v = get(r)
+        refs = [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
+        if not refs:
+            empty.append(r)
+            continue
+        k = ",".join(refs)
+        if k not in buckets:
+            buckets[k] = (js_lower(", ".join(name(x) for x in refs)), [])
+            order.append(k)
+        buckets[k][1].append(r)
+    order.sort(key=lambda k: (_u16(buckets[k][0]), _u16(k)))
+    return [(UNDEF, empty)] + [(k, buckets[k][1]) for k in order]
 
 
 def _jstype(v):
@@ -946,8 +994,9 @@ def q_prefilter(schema, args):
     Relationen (Titel anderer Seiten), q mit Leerzeichen/Komma/Sigma, q nur aus Zahlzeichen und bei Filtern, die je Zeile
     einen Fehler ausloesen koennen (null, enthaelt mit Nicht-Text-Wert) - der Fehler darf nicht von der Suche abhaengen."""
     q = js_lower(js_trim(args.get("q", "") or ""))
-    if isinstance(schema, dict) and isinstance(schema.get("props"), list) and any(is_fx(p) for p in schema["props"]):
-        return None                                  # Formel-/Rollup-Werte stehen nicht im gespeicherten JSON
+    if isinstance(schema, dict) and isinstance(schema.get("props"), list) and any(
+            is_fx(p) or (isinstance(p, dict) and p.get("type") == "person") for p in schema["props"]):
+        return None                                  # Formel-/Rollup-Werte und Personen-Namen stehen nicht im gespeicherten JSON
     if not q or any(ch in q for ch in " ,σς") or q in _OBJ or set(q) <= _NUMCHARS:
         return None
     view = view_of(schema, args["view"]) if "view" in args else None
@@ -985,12 +1034,14 @@ def q_prefilter(schema, args):
     return cand
 
 
-def run(schema, rows, args, labels=None, untitled="Unbenannt"):
-    """Ansicht anwenden. -> (zeilen der Seite, treffer, gruppen | None). rows in Server-Reihenfolge (sort, created)."""
+def run(schema, rows, args, labels=None, untitled="Unbenannt", people=None, me=None):
+    """Ansicht anwenden. -> (zeilen der Seite, treffer, gruppen | None). rows in Server-Reihenfolge (sort, created).
+    people/me (2.5): Personen-Namen {kennung: {name}} und Kennung des Betrachters (Filter "me")."""
     view = view_of(schema, args["view"]) if "view" in args else None
     filters = args["filters"] if "filters" in args else (view.get("filters") if view and isinstance(view.get("filters"), list) else [])
     sorts = args["sorts"] if "sorts" in args else (view.get("sorts") if view and isinstance(view.get("sorts"), list) else [])
-    q = Query(schema, filters, sorts, args.get("q", ""), tz=args.get("tz"), today=args.get("today"), labels=labels, untitled=untitled)
+    q = Query(schema, filters, sorts, args.get("q", ""), tz=args.get("tz"), today=args.get("today"), labels=labels, untitled=untitled,
+              people=people, me=me)
     out = q.sorted_rows(rows)
     matched = len(out)                                       # wie "n von total Eintraegen" im Web
     g = group_prop(q, view, args["group"] if "group" in args else UNDEF)
@@ -1004,6 +1055,8 @@ def run(schema, rows, args, labels=None, untitled="Unbenannt"):
         gs = q.groups(out, g, by_status)
         if js_seq(g.get("type"), "select"):
             groups = [{"id": None if oid is UNDEF else oid, "count": len(rs)} for oid, rs in gs]
+        elif js_seq(g.get("type"), "person"):               # 2.5: id = Kennungen mit "," verbunden, value = Liste (nur lesend)
+            groups = [{"id": None, "count": len(rs)} if k is UNDEF else {"id": k, "value": k.split(","), "count": len(rs)} for k, rs in gs]
         else:                                                # Formel/Rollup: id = Wert als Text, value = Wert (nur lesend)
             groups = [{"id": None, "count": len(rs)} if v is UNDEF else {"id": js_str(v), "value": v, "count": len(rs)} for v, rs in gs]
         out = [r for _, rs in gs for r in rs]                # Reihenfolge wie angezeigt (gruppiert)
