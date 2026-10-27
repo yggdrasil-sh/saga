@@ -1546,6 +1546,11 @@ opacity:0;transition:opacity .15s;padding:2px 4px;line-height:1}
 
 /* Block-Menue auf dem Handy: Filter ueber den Text nach "/" (pages.js) */
 .ce-popover-item.pg-slash-hidden{display:none!important}
+/* Offenes Block-/Einstellungs-Menue ueber allen Bloecken: .ce-toolbar (will-change:opacity) und jeder innere Editor
+   (.codex-editor, z-index 1) sind eigene Stapelkontexte - ohne Anhebung lagen spaetere Spalten-Editoren, Kalender-
+   Umschalter, Kommentar-Knopf und Spaltengriff (z-index 1-2) ueber dem Menue */
+.page-body .codex-editor:has(.ce-popover--opened),.page-body .ce-toolbar:has(.ce-popover--opened){z-index:5}   /* unter der Kopfleiste (10) */
+.page-body .ce-popover--opened>.ce-popover__container{box-shadow:0 8px 28px -6px rgba(0,0,0,.45)}
 
 /* Veroeffentlichen: Dialog (Seitenmenue) und Hinweis im Seitenkopf */
 .pub-dlg{display:flex;flex-direction:column;gap:.6rem}

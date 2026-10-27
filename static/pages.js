@@ -292,6 +292,27 @@
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && slashPopOpen() && (slashP || slashSrc)) slashUndo();
   }, true);
+  // Menue (Bloecke "/" und Block-Einstellungen) ganz im Fenster: Editor.js richtet es an der Plus-/Ziehgriff-Leiste
+  // LINKS neben dem Inhalt aus - bei schmalem Rand (Fenster ~650-800 px, Spalten) lag es links ausserhalb ("…nts gefunden")
+  function fitPop(pop) {
+    var c = pop && pop.querySelector(':scope > .ce-popover__container');
+    if (!c) return;
+    c.style.marginLeft = '';
+    if (!pop.classList.contains('ce-popover--opened') || getComputedStyle(c).position === 'fixed') return;   // Handy: Bottom-Sheet
+    var op = c.offsetParent; if (!op) return;
+    // Lage ohne die Einblend-Animation (transform: scale) messen: Bezugsrahmen + offsetLeft
+    var left = op.getBoundingClientRect().left + op.clientLeft + c.offsetLeft, right = left + c.offsetWidth;
+    var vw = document.documentElement.clientWidth, pad = 8, dx = 0;
+    if (left < pad) dx = pad - left;
+    else if (right > vw - pad) dx = Math.max(pad - left, vw - pad - right);
+    if (dx) c.style.marginLeft = Math.round(dx) + 'px';
+  }
+  if (window.MutationObserver && $('pg-editor')) new MutationObserver(function (ms) {
+    ms.forEach(function (m) {
+      var t = m.target;
+      if (t.classList && t.classList.contains('ce-popover') && !t.classList.contains('ce-popover--nested') && !t.classList.contains('ce-popover--inline')) fitPop(t);
+    });
+  }).observe($('pg-editor'), { attributes: true, attributeFilter: ['class'], subtree: true });
 
   // Enter, das Editor.js NICHT selbst behandelt hat (kein aktueller Block nach dem Umwandeln per "/" oder Kuerzel, Menue-
   // Zustand haengt, Handy-Tastatur mit keyCode 229): der Browser fuegte ein <div> IN die Ueberschrift/den Absatz ein, der

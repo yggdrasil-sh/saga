@@ -108,6 +108,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   nur unverändert).
 
 ### Behoben (2.5, Fix-Runde)
+- Block-Menü „/“ im Web: lag bei schmalem Rand (Fenster um 650–800 px, Absatz neben bzw. über Spalten) links außerhalb
+  des Fensters („…nts gefunden“) und unter späteren Blöcken – innere Spalten-Editoren, Kalender-Umschalter,
+  Kommentar-Knopf und Spaltengriff schienen durch. Das Menü bleibt jetzt ganz im Fenster und liegt deckend über allen
+  Blöcken (Browser-Test `tests/browser_slash_menu.js`).
 - Kennzahlen/Fortschritt rechnen nach Änderungen an der Quell-Datenbank bzw. den Aufgaben sofort neu (vorher bis zu
   60 s alte Werte); das Web lädt die Werte nach eigenen Änderungen gleich nach (#3).
 - Neuer Eintrag über eine Relations-Eigenschaft („+ Neu in …“) nutzt die Standardvorlage der Ziel-Datenbank (#7).
