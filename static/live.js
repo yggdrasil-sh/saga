@@ -22,7 +22,7 @@
     'chat.message': T('Neue Chat-Nachrichten (ohne Inhalt; stummgeschaltete Chats nie)'),
     'call.missed': T('Verpasste Anrufe'),
     'db.assigned': T('Jemand trägt mich in einer Datenbank ein (Person)')
-  };
+  };   // task.due (Zusammenfassung) hat einen eigenen Abschnitt mit Uhrzeit (digestSection) und steht nicht in der Liste
   var narrow = window.matchMedia('(max-width: 760px)');
   var NS = 'http://www.w3.org/2000/svg';
   function svg(paths, cls) {
@@ -92,6 +92,7 @@
     else if (it.kind === 'call.missed') s = T('Verpasster Anruf von {name}');
     else if (it.kind === 'db.assigned') s = n > 1 ? T('{name} hat dich {n}-mal eingetragen') : T('{name} hat dich eingetragen');
     else if (it.kind === 'backup.failed') return document.createTextNode(it.text || T('Backup fehlgeschlagen'));   // Text vom Server (Admins)
+    else if (it.kind === 'task.due') return document.createTextNode(it.text || T('Aufgaben'));       // 2.5: Zusammenfassung (Zahlen vom Server)
     else return document.createTextNode(it.text || it.kind);
     return HK.fmtNodes(s, { name: name, role: ROLE[it.role] || '', n: n });
   }
@@ -532,6 +533,38 @@
         });
       });
     }).catch(function () { wrap.remove(); });
+    digestSection(wrap);
+  }
+
+  // 2.5 (Paket 7): taegliche Zusammenfassung "heute faellig / ueberfaellig" (Standard aus, Uhrzeit und Zeitzone je Konto)
+  function digestSection(wrap) {
+    var box = el('div', 'hk-digest'); wrap.appendChild(box);
+    box.appendChild(el('h4', null, T('Tägliche Zusammenfassung der Aufgaben')));
+    box.appendChild(el('p', 'hk-hint', T('Einmal am Tag: wie viele Aufgaben heute fällig oder überfällig sind – aus „Aufgaben“ und deinen Aufgabenquellen. Nur Zahlen, keine Texte.')));
+    var st = el('div', 'hk-status'); st.setAttribute('role', 'status');
+    api('GET', '/api/tasks/digest').then(function (cfg) {
+      var row = el('label', 'lv-set-row'), sw = el('input', 'hk-switch'); sw.type = 'checkbox'; sw.setAttribute('role', 'switch'); sw.checked = !!cfg.on; sw.id = 'hk-digest-on';
+      row.appendChild(el('span', 'lv-set-t', T('Zusammenfassung schicken'))); row.appendChild(sw); box.appendChild(row);
+      var tr = el('label', 'lv-set-row'), tm = el('input', 'hk-input hk-digest-time'); tm.type = 'time'; tm.value = cfg.time || '07:30'; tm.id = 'hk-digest-time';
+      tr.appendChild(el('span', 'lv-set-t', T('Uhrzeit'))); tr.appendChild(tm); box.appendChild(tr);
+      var zr = el('label', 'lv-set-row'), zs = el('select', 'hk-input'), here = '';
+      try { here = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { here = ''; }
+      var zo = [['', T('Zeitzone der Mitteilungen (Ruhezeiten) bzw. des Servers')]];
+      if (here) zo.push([here, here]);
+      if (cfg.tz && cfg.tz !== here) zo.push([cfg.tz, cfg.tz]);
+      zo.forEach(function (z) { var o = el('option', null, z[1]); o.value = z[0]; zs.appendChild(o); });
+      zs.value = cfg.tz || '';
+      zr.appendChild(el('span', 'lv-set-t', T('Zeitzone'))); zr.appendChild(zs); box.appendChild(zr);
+      box.appendChild(st);
+      function save(b) {
+        st.textContent = ''; st.className = 'hk-status';
+        return api('PUT', '/api/tasks/digest', b).then(function () { st.textContent = T('✓ Gespeichert'); st.className = 'hk-status ok'; })
+          .catch(function (err) { st.textContent = err.message; st.className = 'hk-status err'; });
+      }
+      sw.addEventListener('change', function () { save({ on: sw.checked }); });
+      tm.addEventListener('change', function () { if (/^\d\d:\d\d$/.test(tm.value)) save({ time: tm.value }); });
+      zs.addEventListener('change', function () { save({ tz: zs.value }); });
+    }).catch(function () { box.remove(); });
   }
 
   window.HKLive = { settingsSection: settingsSection, open: openPanel, state: function () { return { sse: !!(L.es && L.hello), poll: !!L.pollT, unread: N.unread }; } };

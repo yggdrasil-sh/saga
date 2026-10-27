@@ -2366,3 +2366,24 @@ button.up-it{cursor:pointer}button.up-it:hover{background:var(--hover,color-mix(
 .up-dot{flex:none;width:.55rem;height:.55rem;border-radius:50%;background:var(--wa)}.up-task .up-dot{background:none;width:0}
 .up-tm{flex:none;font-variant-numeric:tabular-nums;color:var(--muted);font-size:.8rem;min-width:2.6rem}.up-ti{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .up-cal{font-size:.72rem;color:var(--muted)}.up-over .up-ti{color:var(--tc-red)}
+/* 2.5 (Paket 7): Aufgabenquellen - Badge "Symbol + Datenbank", Ziel der neuen Aufgabe, Quellen verwalten */
+.tsrc-badge{display:inline-block;max-width:11rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;font-size:.74rem;line-height:1.5;padding:0 .45em;border-radius:999px;background:var(--card-h);color:var(--muted);text-decoration:none;flex:none}
+.tsrc-badge:hover{color:var(--fg);background:color-mix(in srgb,var(--accent) 16%,var(--card-h))}
+.rail-meta .tsrc-badge{margin-right:.35em}
+.task-info .tsrc-badge{margin-right:.4em}
+.tsrc-target{flex:none;max-width:9.5rem;font:inherit;font-size:.8rem;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:.15rem .3rem}
+.rail-add .tsrc-target{max-width:7rem}
+.etk-addbar{display:flex;align-items:center;gap:.4rem}
+.etk-addbar .etk-add{flex:1;min-width:0}
+.etk-open{cursor:pointer}
+.etk-open:hover{text-decoration:underline}
+.etk-src-btn{margin-left:auto;background:none;border:0;color:var(--muted);cursor:pointer;font-size:.9rem;padding:0 .2rem}
+.etk-src-btn:hover{color:var(--fg)}
+.tsrc-list{display:flex;flex-direction:column;gap:.4rem;margin-bottom:.6rem}
+.tsrc-row{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.tsrc-name{flex:1;min-width:8rem;color:var(--fg);text-decoration:none}
+.tsrc-n{font-size:.8rem;color:var(--muted)}
+.tsrc-warn{font-size:.8rem;color:var(--down)}
+.tsrc-vals{display:flex;flex-wrap:wrap;gap:.2rem .8rem;margin:.2rem 0 .5rem}
+.hk-digest{margin-top:1rem}
+.dlg-actions{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:flex-end;margin-top:.8rem}

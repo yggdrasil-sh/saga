@@ -17,7 +17,10 @@
 
   var panel = $('nt');
   if (!panel) return;
-  var state = { tasks: { open: [], done: [] }, showDone: false };
+  var state = { tasks: { open: [], done: [], items: [], sources: [] }, showDone: false };
+  var TS = HK.tasks;                                   // 2.5 (Paket 7): Inbox + Aufgabenquellen (common.js)
+  function srcOf(task) { return (state.tasks.sources || []).find(function (x) { return x.db === task.src; }) || {}; }
+  function isRow(task) { return task.kind === 'row'; }
 
   // --- Panel ---------------------------------------------------------------
   panel.addEventListener('toggle', function () { store('hk-nt-open', panel.open ? '1' : '0'); });
@@ -36,18 +39,18 @@
     };
   }
 
-  function patchTask(id, body) {
-    body.today = todayIso();
-    return api('PATCH', '/api/tasks/' + id, body).catch(function (err) { toast(T('Nicht gespeichert: {err}', { err: err.message })); });
+  function patchTask(task, body) {
+    return TS.patch(typeof task === 'object' ? task : { kind: 'task', id: task }, body)
+      .catch(function (err) { toast(T('Nicht gespeichert: {err}', { err: err.message })); });
   }
 
   // Abhaken mit "Rueckgaengig" (8 s, wie in den Apps); der Server nimmt dabei auch die naechste Wiederholung zurueck
   function complete(task) {
     var closing = !task.done;
-    patchTask(task.id, { done: closing }).then(function (d) {
+    patchTask(task, { done: closing }).then(function (d) {
       if (closing && d) {
         var msg = d.next_due ? T('Erledigt. Nächstes Mal: {date}', { date: dueLabel(d.next_due).text }) : T('Aufgabe erledigt');
-        toast(msg, T('Rückgängig'), function () { patchTask(task.id, { done: false }).then(loadTasks); }, 8000);
+        toast(msg, T('Rückgängig'), function () { patchTask(task, { done: false }).then(loadTasks); }, 8000);
       }
       return loadTasks();
     });
@@ -60,7 +63,7 @@
     function finish(save) {
       if (done) return; done = true;
       var v = inp.value.trim();
-      if (save && v && v !== task.text) patchTask(task.id, { text: v }).then(loadTasks);
+      if (save && v && v !== task.text) patchTask(task, { text: v }).then(loadTasks);
       else loadTasks();
     }
     inp.addEventListener('keydown', function (e) {
@@ -75,7 +78,7 @@
   // der Datumswaehler oeffnete am Fensterrand statt an der Aufgabe
   if (rowDue.parentNode !== document.body) document.body.appendChild(rowDue);
   rowDue.addEventListener('change', function () {
-    if (rowDueTask && rowDue.value) patchTask(rowDueTask.id, { due: rowDue.value }).then(loadTasks);
+    if (rowDueTask && rowDue.value) patchTask(rowDueTask, { due: rowDue.value }).then(loadTasks);
     rowDueTask = null;
   });
   function pickDate(task, anchor) {
@@ -87,21 +90,46 @@
   }
 
   function rowMenu(task, btn) {
+    if (isRow(task)) { srcMenu(task, btn); return; }
     openMenu(btn, function (m) {
       m.appendChild(menuLabel(T('Priorität')));
       var seg = el('div', 'menu-seg');
       [1, 2, 3].forEach(function (p) {
         var b = el('button', 'menu-seg-btn p' + p + (task.prio === p ? ' on' : ''), PRIO[p]); b.type = 'button';
-        b.addEventListener('click', function () { closeMenu(); if (task.prio !== p) patchTask(task.id, { prio: p }).then(loadTasks); });
+        b.addEventListener('click', function () { closeMenu(); if (task.prio !== p) patchTask(task, { prio: p }).then(loadTasks); });
         seg.appendChild(b);
       });
       m.appendChild(seg);
-      repeatMenu(task.repeat, function (k) { patchTask(task.id, { repeat: k }).then(loadTasks); })(m);
+      repeatMenu(task.repeat, function (k) { patchTask(task, { repeat: k }).then(loadTasks); })(m);
       m.appendChild(menuLabel(T('Fällig')));
       m.appendChild(menuItem(task.due ? T('Datum ändern …') : T('Datum wählen …'), function () { pickDate(task, btn); }));
-      if (task.due && !task.repeat) m.appendChild(menuItem(T('Datum entfernen'), function () { patchTask(task.id, { due: null }).then(loadTasks); }));
+      if (task.due && !task.repeat) m.appendChild(menuItem(T('Datum entfernen'), function () { patchTask(task, { due: null }).then(loadTasks); }));
       m.appendChild(el('div', 'menu-sep'));
       m.appendChild(menuItem(T('Aufgabe löschen'), function () { api('DELETE', '/api/tasks/' + task.id).then(loadTasks, loadTasks); }, { danger: true }));
+    });
+  }
+
+  // Quell-Zeile (Datenbank): Prioritaet/Datum nur, wenn die Quelle sie zuordnet; Loeschen und Wiederholen gibt es hier nicht
+  function srcMenu(task, btn) {
+    var src = srcOf(task), mp = src.map || {};
+    openMenu(btn, function (m) {
+      m.appendChild(menuItem(T('Eintrag öffnen'), function () { window.location.href = '/notes#' + task.id; }, { icon: '↗' }));
+      if (!task.edit) { m.appendChild(menuLabel(T('Nur lesen – du kannst diesen Eintrag nicht ändern.'))); return; }
+      if (mp.prio) {
+        m.appendChild(menuLabel(T('Priorität')));
+        var seg = el('div', 'menu-seg');
+        [1, 2, 3].forEach(function (p) {
+          var b = el('button', 'menu-seg-btn p' + p + (task.prio === p ? ' on' : ''), PRIO[p]); b.type = 'button';
+          b.addEventListener('click', function () { closeMenu(); if (task.prio !== p) patchTask(task, { prio: p }).then(loadTasks); });
+          seg.appendChild(b);
+        });
+        m.appendChild(seg);
+      }
+      if (mp.due) {
+        m.appendChild(menuLabel(T('Fällig')));
+        m.appendChild(menuItem(task.due ? T('Datum ändern …') : T('Datum wählen …'), function () { pickDate(task, btn); }));
+        if (task.due) m.appendChild(menuItem(T('Datum entfernen'), function () { patchTask(task, { due: null }).then(loadTasks); }));
+      }
     });
   }
 
@@ -113,15 +141,18 @@
     if (task.prio === 1 || task.prio === 3) cb.title = T('Priorität:') + ' ' + (task.prio === 1 ? T('Hoch') : T('Niedrig'));   // roter/gestrichelter Kreis erklaert
     cb.textContent = task.done ? '✓' : '';
     cb.addEventListener('click', function () { cb.disabled = true; complete(task); });
+    if (isRow(task) && !task.edit) { cb.disabled = true; cb.title = T('Nur lesen – du kannst diesen Eintrag nicht ändern.'); }
+    if (isRow(task)) li.classList.add('is-src');
     li.appendChild(cb);
 
     var d = task.due ? dueLabel(task.due) : null;
     if (compact) {
       var main = el('div', 'rail-main');
       main.appendChild(el('span', 'rail-text', task.text));
-      if (d || task.repeat) {
+      if (d || task.repeat || isRow(task)) {
         var m = el('span', 'rail-meta');
-        if (d) m.appendChild(el('span', 'task-due ' + d.cls, d.text));
+        if (isRow(task)) m.appendChild(TS.badge(task, state.tasks));
+        if (d) m.appendChild(el('span', 'task-due ' + d.cls, d.text + (task.time ? ' ' + task.time : '')));
         if (task.repeat) m.appendChild(el('span', 'rep', '↻'));
         main.appendChild(m);
       }
@@ -136,11 +167,12 @@
     }
 
     var span = el('span', 'task-text', task.text);
-    if (!task.done) { span.title = T('Klicken zum Bearbeiten'); span.addEventListener('click', function () { editText(task, span); }); }
+    if (!task.done && (!isRow(task) || task.edit)) { span.title = T('Klicken zum Bearbeiten'); span.addEventListener('click', function () { editText(task, span); }); }
     li.appendChild(span);
     var info = el('span', 'task-info');
+    if (isRow(task)) info.appendChild(TS.badge(task, state.tasks));
     if (task.repeat) info.appendChild(el('span', 'rep', '↻ ' + REP[task.repeat]));
-    if (d) info.appendChild(el('span', 'task-due' + (!task.done && d.cls ? ' ' + d.cls : ''), d.text));
+    if (d) info.appendChild(el('span', 'task-due' + (!task.done && d.cls ? ' ' + d.cls : ''), d.text + (task.time ? ' ' + task.time : '')));
     li.appendChild(info);
     var more = el('button', 'task-more', '⋯'); more.type = 'button';
     more.setAttribute('aria-label', T('Optionen für {text}', { text: task.text })); more.setAttribute('aria-haspopup', 'menu');
@@ -154,9 +186,10 @@
     return li;
   }
 
+  function openList() { return state.tasks.items || state.tasks.open; }
   function badge() {
-    var b = $('nt-badge'), n = state.tasks.open.length, t = todayIso();
-    var over = state.tasks.open.filter(function (x) { return x.due && x.due < t; }).length;
+    var b = $('nt-badge'), n = openList().length;
+    var over = openList().filter(function (x) { return x.overdue; }).length;
     b.hidden = !n;
     b.textContent = over ? T('{n} offen · {over} überfällig', { n: n, over: over }) : T('{n} offen', { n: n });
     b.classList.toggle('alert', over > 0);
@@ -167,21 +200,32 @@
 
   function renderTasks() {
     var ul = $('task-list'); ul.textContent = '';
-    state.tasks.open.forEach(function (t) { ul.appendChild(taskItem(t, false)); });
-    $('task-empty').hidden = state.tasks.open.length > 0;
+    openList().forEach(function (t) { ul.appendChild(taskItem(t, false)); });
+    $('task-empty').hidden = openList().length > 0;
     var dn = state.tasks.done.length, tog = $('task-toggle-done');
     tog.hidden = !dn; $('task-clear').hidden = !dn || !state.showDone;
     tog.textContent = state.showDone ? T('Erledigte ausblenden') : T('Erledigte anzeigen ({n})', { n: dn });
     var dl = $('task-done'); dl.textContent = ''; dl.hidden = !state.showDone || !dn;
     if (state.showDone) state.tasks.done.forEach(function (t) { dl.appendChild(taskItem(t, false)); });
     var rl = $('rail-list'); rl.textContent = '';
-    state.tasks.open.forEach(function (t) { rl.appendChild(taskItem(t, true)); });
-    $('rail-empty').hidden = state.tasks.open.length > 0;
+    openList().forEach(function (t) { rl.appendChild(taskItem(t, true)); });
+    $('rail-empty').hidden = openList().length > 0;
+    targets();
     badge();
   }
 
   function loadTasks() {
-    return api('GET', '/api/tasks').then(function (d) { state.tasks = d; renderTasks(); }).catch(function () {});
+    return TS.load().then(function (d) { state.tasks = d; renderTasks(); }).catch(function () {});
+  }
+  // Ziel der neuen Aufgabe (Inbox oder Aufgabenquelle mit Bearbeiten-Recht), je Eingabe gemerkt
+  var tgtPanel = null, tgtRail = null;
+  function targets() {
+    [['task-add', 'panel'], ['rail-add', 'rail']].forEach(function (x) {
+      var f = $(x[0]); if (!f) return;
+      var old = f.querySelector('.tsrc-target'), s = TS.targetSelect(state.tasks, x[1]);
+      if (old) { if (!s.hidden || !old.hidden) s.value = old.value || s.value; old.replaceWith(s); } else f.appendChild(s);
+      if (x[1] === 'panel') tgtPanel = s; else tgtRail = s;
+    });
   }
 
   // --- Eingabezeile im Panel: Prioritaet, Wiederholung, Datum ---------------
@@ -220,8 +264,10 @@
   $('task-due').addEventListener('change', function () { setDue(this.value); $('task-text').focus(); });
   $('task-due-clear').addEventListener('click', function () { setDue(''); $('task-text').focus(); });
 
-  function addTask(text, extra) {
-    return api('POST', '/api/tasks', Object.assign({ text: text, today: todayIso() }, extra || {}));
+  function addTask(text, extra, sel) {
+    var tg = sel && !sel.hidden ? sel.value : '';
+    if (tg && extra) { delete extra.repeat; }
+    return TS.add(text, tg, extra);
   }
   $('task-add').addEventListener('submit', function (e) {
     e.preventDefault();
@@ -229,7 +275,7 @@
     if (!v) return;
     // Nr. 160: "… morgen" im Text setzt kein Datum - einmal je Browser zeigen, wo die Faelligkeit hingehoert
     var dayWord = !$('task-due').value && /(^|\s)(heute|morgen|übermorgen|today|tomorrow|hoy|mañana|сегодня|завтра|послезавтра|วันนี้|พรุ่งนี้)\s*$/i.test(v);
-    addTask(v, { due: $('task-due').value || null, prio: add.prio, repeat: add.repeat })
+    addTask(v, { due: $('task-due').value || null, prio: add.prio, repeat: add.repeat }, tgtPanel)
       .then(function () {
         txt.value = ''; resetAdd(); txt.focus();
         var seen = false; try { seen = localStorage.getItem('saga-task-due-tip') === '1'; } catch (e) { /* privat */ }
@@ -253,7 +299,7 @@
     e.preventDefault();
     var inp = $('rail-text'), v = inp.value.trim();
     if (!v) return;
-    addTask(v).then(function () { inp.value = ''; return loadTasks(); })
+    addTask(v, null, tgtRail).then(function () { inp.value = ''; return loadTasks(); })
       .catch(function (err) { toast(T('Aufgabe nicht gespeichert: {err}', { err: err.message })); });
   });
   function setRail(on) {
@@ -287,5 +333,7 @@
     panel.open = true; $('task-text').focus();
   });
 
+  // Quellen aendern sich auch anderswo (Board, andere Personen): beim Zurueckkehren in den Tab neu laden
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) loadTasks(); });
   loadTasks();
 })();

@@ -4670,7 +4670,21 @@
           if (!had && OPTS.saveViews) OPTS.saveViews(DB.localViews);   // einmalig im Block ablegen -> ab jetzt unabhaengig
         }
         renderDb();
+        taskHint();
       }).catch(function (err) { HK.toast(T('Datenbank nicht geladen: {err}', { err: err.message })); });
+    }
+
+    // 2.5 (Paket 7): einmaliger Hinweis fuer Datenbanken, die nach Aufgaben aussehen (z. B. aeltere Instanzen der Vorlage
+    // "Aufgaben & Projekte": Status bzw. Auswahl mit "erledigt" und ein Datum), aber noch keine Aufgabenquelle sind
+    function taskHint() {
+      if (DB.id <= 0 || DB.schema.tasks || (DB.role !== 'owner' && DB.role !== 'edit') || HK.store('hk-tasksrc-hint-' + DB.id)) return;
+      var ps = DB.schema.props || [], word = /erledigt|fertig|done|complete|hecho|listo|готов|выполн|เสร็จ/i;
+      var done = ps.some(function (p) { return p.type === 'select' && (p.status || (p.options || []).some(function (o) { return word.test(o.name + ' ' + o.id); })); });
+      if (!done || !ps.some(function (p) { return p.type === 'date'; })) return;
+      HK.store('hk-tasksrc-hint-' + DB.id, '1');
+      var id = DB.id, sch = DB.schema;
+      HK.toast(T('„{name}“ sieht nach Aufgaben aus. Sollen offene Einträge in deiner Aufgabenliste erscheinen?', { name: label(byId(id) || {}) }),
+        T('Einrichten …'), function () { taskSourceDialog(id, sch, loadDb); }, 12000);
     }
 
     // Eigenschaften-Bereich oben auf einer Zeilen-Seite
@@ -4720,6 +4734,10 @@
             tb.type = 'button'; tb.addEventListener('click', function () { HK.closeMenu(); templatesUI(); }); box.appendChild(tb);
           }
           csvSection(box, sec);
+          if (DB.id > 0) {                                   // 2.5 (Paket 7): Aufgabenquelle (Abo je Person, Zuordnung ab Bearbeiten)
+            var tsb = el('button', 'menu-item vs-tasksrc', '✓ ' + (DB.schema.tasks ? T('Aufgabenquelle …') : T('Als Aufgabenquelle verwenden …')));
+            tsb.type = 'button'; tsb.addEventListener('click', function () { HK.closeMenu(); taskSourceDialog(DB.id, DB.schema, loadDb); }); box.appendChild(tsb);
+          }
           if (DB.role === 'owner' && !locked() && DB.id > 0) {
             var ib = el('button', 'menu-item vs-csv vs-csv-in', '⇪ ' + T('Zeilen aus CSV hinzufügen …')); ib.type = 'button';
             ib.addEventListener('click', function () { HK.closeMenu(); HK.openImport({ targetDb: DB.id, schema: DB.schema, reload: loadDb }); });
@@ -5789,7 +5807,10 @@
           var op2 = field(T('Öffnen als'), sel([['', T('Ganze Seite')], ['side', T('Seitenansicht rechts')], ['left', T('Seitenansicht links')], ['center', T('Mittig')]], b.open || ''));
           op2.addEventListener('change', function () { b.open = op2.value; tool.changed(); });
         } else if (b.action === 'task') {
-          box.appendChild(el('div', 'menu-hint', T('Legt eine Saga-Aufgabe an (erscheint im Dashboard und in der Aufgabenleiste).')));
+          var tdbs = S.pages.filter(function (p) { return p.kind === 'database'; });
+          var tt2 = field(T('Ziel'), sel([['', T('Aufgaben (Inbox)')]].concat(tdbs.map(function (p) { return [String(p.id), (ti(p.icon) || '🗃️') + ' ' + label(p)]; })), b.target));
+          tt2.addEventListener('change', function () { b.target = +tt2.value || null; tool.changed(); });
+          box.appendChild(el('div', 'menu-hint', T('Legt eine Saga-Aufgabe an (erscheint im Dashboard und in der Aufgabenleiste). Mit einer Datenbank als Ziel: ein neuer Eintrag dort – sie muss eine Aufgabenquelle sein.')));
         }
         var del = el('button', 'menu-item danger', T('Schaltfläche entfernen')); del.type = 'button';
         del.addEventListener('click', function () { HK.closeMenu(); tool.buttons.splice(i, 1); if (!tool.buttons.length) tool.buttons.push({ label: T('Neu'), icon: '➕', action: '' }); tool.changed(); });
@@ -5826,7 +5847,8 @@
         var ok = el('button', 'btn', T('Anlegen')); ok.type = 'button';
         function go() {
           var text = inp.value.trim(); if (!text) return;
-          api('POST', '/api/tasks', { text: text }).then(function () { closeModal(); HK.toast(T('Aufgabe angelegt ✓')); })
+          var body2 = { text: text }; if (b.target) body2.src = b.target;      // 2.5 (Paket 7): Ziel = Aufgabenquelle (aeltere Clients: Inbox)
+          api('POST', '/api/tasks', body2).then(function () { closeModal(); HK.toast(T('Aufgabe angelegt ✓')); if (b.target) refreshDbViews(b.target); })
             .catch(function (err) { HK.toast(T('Aufgabe nicht angelegt: {err}', { err: err.message })); });
         }
         ok.addEventListener('click', go); inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
@@ -6499,6 +6521,7 @@
     }
     if ((k === 'metric' || k === 'progress') && cfg.src === 'tasks') {
       if (k === 'metric') sel(T('Zählen'), [['open', T('Offene Aufgaben')], ['due_today', T('Heute fällig')], ['overdue', T('Überfällig')], ['done_week', T('Diese Woche erledigt')]], cfg.agg, function (v) { set('agg', v); });
+      inp(T('Mit Aufgabenquellen (Datenbanken)'), 'checkbox', cfg.include_sources !== false, function (v) { if (v) delete cfg.include_sources; else cfg.include_sources = false; self.changed(); self.update(); });
       p.insertBefore(el('div', 'wg-row wg-note', k === 'progress' ? T('Erledigt diese Woche von allen, die diese Woche fällig sind – jede Person sieht ihre eigenen Aufgaben.') : T('Jede Person sieht ihre eigenen Aufgaben.')), at);
       return;
     }
@@ -6922,44 +6945,167 @@
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l2 2 4-4M4 14l2 2 4-4M13 7h7M13 15h7"/></svg>' };
   TasksTool.prototype.render = function () { this.w = el('div', 'embed-tasks'); isolate(this.w); this.draw(); return this.w; };
   TasksTool.prototype.draw = function () {
-    var self = this, w = this.w;
+    var self = this, w = this.w, TS = HK.tasks;
     if (foreign()) { ownerOnly(w, '✓ ' + T('Aufgaben')); return; }
-    api('GET', '/api/tasks').then(function (d) {
+    // 2.5 (Paket 7): Inbox + offene Zeilen der Aufgabenquellen, fertig sortiert vom Server
+    TS.load().then(function (d) {
       w.textContent = '';
-      var open = d.open || [];
+      var open = d.items || d.open || [];
       var h = el('div', 'embed-head'); h.appendChild(el('span', 'embed-title-s', '✓ ' + T('Aufgaben'))); h.appendChild(el('span', 'db-count', T('{n} offen', { n: open.length })));
+      var mg = el('button', 'etk-src-btn', '⚙'); mg.type = 'button'; mg.title = T('Aufgabenquellen verwalten'); mg.setAttribute('aria-label', T('Aufgabenquellen verwalten'));
+      mg.addEventListener('click', function () { tasksSourcesUI(d, function () { self.draw(); }); });
+      h.appendChild(mg);
       w.appendChild(h);
       var ul = el('div', 'etk-list');
       open.forEach(function (t) {
-        var row = el('div', 'etk-row p' + (t.prio || 2));
+        var row = el('div', 'etk-row p' + (t.prio || 2) + (t.kind === 'row' ? ' is-src' : ''));
         var ck = el('button', 'etk-check'); ck.type = 'button'; ck.setAttribute('aria-label', T('Erledigt: {text}', { text: t.text }));
+        if (t.kind === 'row' && !t.edit) { ck.disabled = true; ck.title = T('Nur lesen – du kannst diesen Eintrag nicht ändern.'); }
         ck.addEventListener('click', function () {
           row.classList.add('done');
-          api('PATCH', '/api/tasks/' + t.id, { done: true }).then(function (r) {
+          TS.done(t, true).then(function (r) {
             var msg = r && r.next_due ? T('Erledigt. Nächstes Mal: {date}', { date: fTaskDue.format(new Date(r.next_due + 'T00:00:00')) }) : T('Aufgabe erledigt');
             HK.toast(msg, T('Rückgängig'), function () {      // wie Dashboard und Apps: 8 s zum Zuruecknehmen
-              api('PATCH', '/api/tasks/' + t.id, { done: false }).then(function () { self.draw(); wgSoon(); })
+              TS.done(t, false).then(function () { self.draw(); wgSoon(); })
                 .catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
             }, 8000);
             self.draw(); wgSoon();                              // fix27 #3: Kennzahlen aus den Aufgaben sofort neu
+            if (t.kind === 'row') refreshDbViews(t.src);
           }).catch(function (err) { row.classList.remove('done'); HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
         });
-        row.appendChild(ck); row.appendChild(el('span', 'etk-text', t.text));
+        row.appendChild(ck);
+        var tx = el('span', 'etk-text', t.text);
+        if (t.kind === 'row') {
+          tx.classList.add('etk-open'); tx.title = T('Eintrag öffnen');
+          tx.addEventListener('click', function () { openTaskRow(t, function () { self.draw(); wgSoon(); }); });
+        }
+        row.appendChild(tx);
+        if (t.kind === 'row') {
+          var bd = TS.badge(t, d);
+          bd.addEventListener('click', function (e) { e.preventDefault(); openTaskRow(t, function () { self.draw(); wgSoon(); }); });
+          row.appendChild(bd);
+        }
         if (t.repeat) row.appendChild(el('span', 'etk-meta', '↻'));
-        if (t.due) row.appendChild(el('span', 'etk-meta' + (t.due < new Date().toISOString().slice(0, 10) ? ' overdue' : ''), fTaskDue.format(new Date(t.due + 'T00:00:00'))));
+        if (t.due) row.appendChild(el('span', 'etk-meta' + (t.overdue ? ' overdue' : ''), fTaskDue.format(new Date(t.due + 'T00:00:00')) + (t.time ? ' ' + t.time : '')));
         ul.appendChild(row);
       });
       if (!open.length) ul.appendChild(el('div', 'nt-empty', T('Alles erledigt 🎉')));
       w.appendChild(ul);
+      var bar = el('div', 'etk-addbar');
       var add = el('input', 'etk-add'); add.type = 'text'; add.maxLength = 300; add.placeholder = T('+ Neue Aufgabe (Enter)'); add.setAttribute('aria-label', T('Neue Aufgabe'));
+      var tg = TS.targetSelect(d, 'block');
       add.addEventListener('keydown', function (e) {
         if (e.key !== 'Enter' || !add.value.trim()) return;
         var text = add.value.trim(); add.value = '';
-        api('POST', '/api/tasks', { text: text }).then(function () { self.draw(); wgSoon(); }).catch(function (err) { HK.toast(T('Aufgabe nicht angelegt: {err}', { err: err.message })); });
+        TS.add(text, tg.hidden ? '' : tg.value).then(function () { self.draw(); wgSoon(); if (tg.value) refreshDbViews(+tg.value); })
+          .catch(function (err) { HK.toast(T('Aufgabe nicht angelegt: {err}', { err: err.message })); });
       });
-      w.appendChild(add);
+      bar.appendChild(add); bar.appendChild(tg);
+      w.appendChild(bar);
     }).catch(function (err) { w.textContent = T('Aufgaben nicht geladen: {err}', { err: err.message }); });
   };
+  // Zeile einer Aufgabenquelle als Seitenansicht oeffnen (Peek), danach Liste neu
+  function openTaskRow(t, after) {
+    return openPeek(t.id, { mode: 'side', dbId: t.src, ids: [t.id], refresh: function () { refreshDbViews(t.src); if (after) after(); } });
+  }
+  // Aufgabenquellen verwalten: Umfang je Quelle (alle / mir zugewiesen), entfernen; neue ueber das Menue der Datenbank
+  function tasksSourcesUI(d, after) {
+    openModal(T('Aufgabenquellen'), function (body) {
+      var list = el('div', 'tsrc-list'); body.appendChild(list);
+      function draw(srcs) {
+        list.textContent = '';
+        if (!srcs.length) list.appendChild(el('p', 'menu-hint', T('Noch keine Aufgabenquellen. Öffne eine Datenbank und wähle im Menü „Ansicht“ → „Als Aufgabenquelle verwenden …“.')));
+        srcs.forEach(function (x) {
+          var r = el('div', 'tsrc-row');
+          var a = el('a', 'tsrc-name', (x.icon && !/^\//.test(x.icon) ? x.icon : '🗃️') + ' ' + (x.title || T('Unbenannt'))); a.href = '/notes#' + x.db;
+          r.appendChild(a);
+          if (!x.map) r.appendChild(el('span', 'tsrc-warn', x.unmapped ? T('keine Zuordnung mehr') : T('nicht erreichbar')));
+          else {
+            var sel = el('select', 'flt-val'); sel.setAttribute('aria-label', T('Welche Einträge'));
+            [['all', T('alle offenen Einträge')], ['assigned', T('nur mir zugewiesene')]].forEach(function (o) {
+              var e = el('option', null, o[1]); e.value = o[0]; if (o[0] === 'assigned' && !x.map.assignee) e.disabled = true; sel.appendChild(e);
+            });
+            sel.value = x.scope;
+            sel.addEventListener('change', function () {
+              api('PUT', '/api/notes/' + x.db + '/tasksource', { scope: sel.value }).then(reload).catch(function (err) { HK.toast(err.message); reload(); });
+            });
+            r.appendChild(sel);
+            r.appendChild(el('span', 'tsrc-n', T('{n} offen', { n: x.count })));
+          }
+          var del = el('button', 'flt-x', '×'); del.type = 'button'; del.setAttribute('aria-label', T('Aufgabenquelle entfernen'));
+          del.addEventListener('click', function () { api('DELETE', '/api/notes/' + x.db + '/tasksource').then(reload, reload); });
+          r.appendChild(del);
+          list.appendChild(r);
+        });
+      }
+      function reload() { return api('GET', '/api/tasks/sources').then(function (r) { draw(r.sources || []); if (after) after(); }); }
+      draw(d.sources || []);
+      body.appendChild(el('p', 'menu-hint', T('Eigene Datenbanken zeigen alle offenen Einträge, geteilte nur die dir zugewiesenen – je Quelle umschaltbar. Höchstens 20 Quellen.')));
+    });
+  }
+  // Datenbank als Aufgabenquelle einrichten (Menue "Ansicht"): Zuordnung (aus den Typen vorgeschlagen) und Umfang
+  function taskSourceDialog(dbId, schema, after) {
+    api('GET', '/api/notes/' + dbId + '/tasksource').then(function (info) {
+      openModal(T('Als Aufgabenquelle verwenden'), function (body) {
+        var mp = Object.assign({}, info.map || info.suggest || {}), props = (schema && schema.props) || [];
+        var box = el('div', 'flt-box tsrc-dlg'); body.appendChild(box);
+        function field(lbl, node) { var l = el('label', 'cfg-line'); l.appendChild(el('span', 'cfg-lbl', lbl)); l.appendChild(node); box.appendChild(l); return node; }
+        function pick(lbl, key, types, none) {
+          var s = el('select', 'flt-val'), list = props.filter(function (p) { return types.indexOf(p.type) >= 0; });
+          if (none) { var o0 = el('option', null, T('– keine –')); o0.value = ''; s.appendChild(o0); }
+          list.forEach(function (p) { var o = el('option', null, p.name + (p.status ? ' (' + T('Status') + ')' : '')); o.value = p.id; s.appendChild(o); });
+          s.value = mp[key] || ''; s.disabled = !info.can_map;
+          s.addEventListener('change', function () { if (s.value) mp[key] = s.value; else delete mp[key]; if (key === 'done') { delete mp.done_values; delete mp.open_value; } draw(); });
+          field(lbl, s);
+          return list.length;
+        }
+        function draw() {
+          box.textContent = '';
+          if (!pick(T('Erledigt, wenn'), 'done', ['select', 'checkbox'])) { box.appendChild(el('p', 'menu-hint', T('Dafür braucht die Datenbank eine Status-, Häkchen- oder Auswahl-Eigenschaft.'))); return; }
+          var dp = props.find(function (p) { return p.id === mp.done; });
+          if (!dp && props.length) { mp.done = (props.find(function (p) { return p.type === 'select' || p.type === 'checkbox'; }) || {}).id; dp = props.find(function (p) { return p.id === mp.done; }); }
+          if (dp && dp.type === 'select' && !dp.status) {
+            var vals = el('div', 'tsrc-vals'); box.appendChild(el('div', 'cfg-lbl', T('Diese Werte gelten als erledigt:')));
+            (dp.options || []).forEach(function (o) {
+              var l = el('label', 'vs-row vs-check'), cb = el('input'); cb.type = 'checkbox'; cb.checked = (mp.done_values || []).indexOf(o.id) >= 0; cb.disabled = !info.can_map;
+              cb.addEventListener('change', function () { var v = (mp.done_values || []).filter(function (x) { return x !== o.id; }); if (cb.checked) v.push(o.id); mp.done_values = v; });
+              l.appendChild(cb); l.appendChild(el('span', 'vs-lbl', o.name)); vals.appendChild(l);
+            });
+            box.appendChild(vals);
+          } else if (dp && dp.status) box.appendChild(el('p', 'menu-hint', T('Erledigt = Optionen der Gruppe „Erledigt“.')));
+          pick(T('Fällig'), 'due', ['date'], true);
+          pick(T('Priorität'), 'prio', ['select'], true);
+          pick(T('Zugewiesen (Person)'), 'assignee', ['person'], true);
+          if (!info.can_map) box.appendChild(el('p', 'menu-hint', T('Die Zuordnung ändern können nur Personen mit „Bearbeiten“.')));
+        }
+        draw();
+        var scope = el('select', 'flt-val');
+        [['all', T('alle offenen Einträge')], ['assigned', T('nur mir zugewiesene')]].forEach(function (o) { var e = el('option', null, o[1]); e.value = o[0]; scope.appendChild(e); });
+        scope.value = info.scope || info.default_scope || 'all';
+        var sl = el('label', 'cfg-line'); sl.appendChild(el('span', 'cfg-lbl', T('In meiner Aufgabenliste'))); sl.appendChild(scope); body.appendChild(sl);
+        body.appendChild(el('p', 'menu-hint', T('Abhaken in der Aufgabenliste setzt den Wert „erledigt“ in dieser Datenbank – für alle, die sie sehen.')));
+        var bar = el('div', 'dlg-actions');
+        if (info.map && info.can_map) {
+          var off = el('button', 'btn btn-danger', T('Keine Aufgabenquelle mehr')); off.type = 'button';
+          off.addEventListener('click', function () { api('PUT', '/api/notes/' + dbId + '/tasksource', { map: null }).then(function () { closeModal(); HK.toast(T('Aufgabenquelle entfernt')); if (after) after(); }).catch(function (err) { HK.toast(err.message); }); });
+          bar.appendChild(off);
+        }
+        if (info.scope) {
+          var un = el('button', 'btn', T('Nicht in meiner Liste')); un.type = 'button';
+          un.addEventListener('click', function () { api('DELETE', '/api/notes/' + dbId + '/tasksource').then(function () { closeModal(); if (after) after(); }); });
+          bar.appendChild(un);
+        }
+        var okb = el('button', 'btn btn-primary', T('Speichern')); okb.type = 'button';
+        okb.addEventListener('click', function () {
+          var b = { scope: scope.value };
+          if (info.can_map) b.map = mp;
+          api('PUT', '/api/notes/' + dbId + '/tasksource', b).then(function () { closeModal(); HK.toast(T('Erscheint jetzt in deiner Aufgabenliste ✓')); if (after) after(); })
+            .catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
+        });
+        bar.appendChild(okb); body.appendChild(bar);
+      });
+    }).catch(function (err) { HK.toast(err.message); });
+  }
   TasksTool.prototype.save = function () { return {}; };
 
   // --- Seitenleiste ein/aus (pro Browser) und volle Breite (pro Seite, Server) ------
