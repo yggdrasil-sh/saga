@@ -39,6 +39,74 @@ Beispiel:
 klein = 0,875 × Grundgröße; gilt für Titel, Inhalt und Eigenschaften, Code-Blöcke bleiben Mono. Föderierte Seiten laufen
 über denselben Handler (Fähigkeit `db`, siehe `APP-API-FED.md`); ältere Server liefern die Felder nicht → Standard.
 
+## Widgets in Seiten (2.5, Etappe 1)
+
+Neuer Blocktyp **`widget`** (nicht verwechseln mit den Home-Bildschirm-Widgets der Apps unter `/api/app/…`). Fünf Arten:
+Uhr, Countdown, Fortschritt, Kennzahl, Zitat. Ältere Server speichern den Block unverändert (unbekannter Typ), liefern aber
+keine Werte (`GET …/widgets` → 404). `MIN_APP` bleibt; Bearbeiten der Einstellungen in den Apps ist für Etappe 1 nicht
+nötig (Hinweis „Im Web bearbeiten“), **Regel 0 gilt**: Widget-Blöcke unverändert zurückschreiben.
+
+```json
+{"id": "a1b2c3", "type": "widget",
+ "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "blue", "title": "Offene Aufgaben",
+          "cfg": {"db": 123, "view": "offen", "agg": "count", "prop": "", "fmt": "num"}}}
+```
+
+| Feld | Werte (der Server bereinigt beim Speichern, auch in Spalten und Toggles) |
+|---|---|
+| `kind` | `clock`, `countdown`, `progress`, `metric`, `quote`. Andere Werte bleiben **unverändert** gespeichert (neuere Version) – Clients zeigen „Widget – neuere Version nötig“. |
+| `size` | `s`, `m` (Standard), `l` – Höhe/Schriftgröße. Sonst entfernt. |
+| `style` | `card` (Standard), `plain`. |
+| `accent` | Palette `gray … red` oder fehlt (= Akzentfarbe). |
+| `title` | Klartext (ohne HTML, ohne Steuerzeichen), höchstens 80 Zeichen, optional. Nur er landet in Suche/Klartext. |
+| `id` | Block-ID; der Server vergibt eine neue, wenn sie fehlt, ungültig (`[A-Za-z0-9_-]{1,40}`) oder auf der Seite doppelt ist. Die Werte kommen je `id`. |
+
+`cfg` je Art (Unbekanntes fällt weg, falsche Typen werden zum Standard):
+
+| kind | cfg | Rechnet |
+|---|---|---|
+| `clock` | `tz` (IANA, `""` = Zeitzone des Betrachters), `h24` (Standard true), `sec`, `analog` (bool) | Client |
+| `countdown` | `date` `"YYYY-MM-DD"` (sonst `""`), `time` `"HH:MM"` oder `""`, `dir` `until`/`since`, `unit` `days`/`auto` (auto: unter einem Tag Std./Min.) | Client |
+| `progress` | `src` `fixed`: `value` (Zahl, Standard 0), `max` (Zahl > 0, Standard 100). `src` `db`: `db` (ID), `view` (Ansicht-ID, `""` = erste), `mode` `checked` (Anteil angehakt der Eigenschaft `prop`, max = Zeilen) / `sum` (Summe von `prop` bis `goal` > 0) | Client bei fixed, Server bei db |
+| `metric` | `db`, `view`, `agg` `count/sum/avg/min/max/pct_checked`, `prop` (bei count `""`), `fmt` `num/pct/eur`, `goal` (optional, Zahl → `max`) | Server |
+| `quote` | `src` `fixed`: `items` (≤ 20 Klartexte je ≤ 300 Zeichen). `src` `db`: `db`, `view`, `prop` (`""` = Titel). `pick` `daily` (Tag + Block-ID, deterministisch) / `open` (zufällig je Abruf) | Server |
+
+`db` ist immer eine Datenbank **dieses** Servers (positive ID); negative IDs speichert der Server als `null`.
+
+**`GET /api/notes/{id}/widgets[?tz=<IANA>]`** (ab Rolle *Lesen*, wie die Seite) → `{"widgets": {"<block_id>": W, …}}` für
+alle Widgets der **gespeicherten** Seite, die der Server rechnet (Fortschritt aus einer Datenbank, Kennzahl, Zitat; auch in
+Spalten/Toggles; höchstens 50, weitere `too_big`). `tz` bestimmt „heute“ (Filter der Ansicht, Zitat des Tages), ungültig →
+`400`. Seiten anderer Server (negative ID): siehe `APP-API-FED.md` – ohne Fähigkeit `widgets1` kommt
+`{"widgets": {}, "unsupported": true}` (Clients zeigen „Widget nur auf dem Ursprungsserver“).
+
+**`POST /api/notes/{id}/widgets/preview[?tz=…]`** `{"block": {"id"?, "type": "widget", "data": {…}}}` (ab Rolle
+*Bearbeiten*) → `{"widget": W}` für einen noch nicht gespeicherten Block (Live-Vorschau beim Einrichten).
+
+```json
+W = {"kind": "metric", "value": 4, "max": 10, "text": null, "fmt": "num", "as_of": "2026-10-27T08:00:00Z", "error": null}
+```
+
+- `value`/`max`: Zahl oder `null` (`null` = „–“, z. B. Summe ohne Zahlen). Fortschritt: `value` von `max`; Kennzahl:
+  `max` = `goal`. `text`: Zitat. `fmt`: Kennzahl (`pct_checked` immer `pct`), sonst `null`.
+- `error`: `null` | `no_access` (Betrachter darf die Quell-Datenbank nicht sehen – dann **keine** Werte und kein Name,
+  auch nicht für nicht vorhandene IDs) | `gone` (Datenbank im Papierkorb) | `bad_cfg` (unvollständig, Eigenschaft
+  unbekannt) | `too_big` (mehr als 5000 Zeilen, wie `LIMIT_MAX` von `…/rows`).
+- Gerechnet wird **mit den Rechten des Betrachters** an der Quelle (nicht des Seiteneigentümers); Zeilen wie
+  `GET …/rows?view=<view>` (gleiche Filter-Semantik, Nicht-Eigentümer ohne archivierte Zeilen). Aggregation wie die
+  Fußzeile der Datenbank-Tabelle im Web: Zahlen sind Zahlwerte und nicht leere Texte, die `Number()` versteht; Ergebnis auf
+  2 Stellen; `pct_checked` ganze Prozent. Gemeinsame Testvektoren: `tests/widget_vectors.json`.
+- Zwischenspeicher 60 s je (Konto, Seite, Block, Einstellungen, Zeitzone, Tag); Rechte an Seite und Quelle prüft jeder
+  Abruf neu. Apps laden die Werte beim Öffnen der Seite und beim Zurückkehren in den Vordergrund, das Web zusätzlich alle
+  60 s und nach dem Speichern.
+
+**Darstellung (alle Clients):** Karte mit Titel (oder ohne Rahmen bei `plain`), Akzentfarbe aus der Palette, Größen s/m/l.
+Uhr tickt lokal (Sekunde bzw. Minute), Countdown minütlich nach Kalendertagen (heute = „heute“). Fehlerzustände
+freundlich: „Kein Zugriff auf die Datenquelle“, „Die Datenquelle gibt es nicht mehr“, „Widget noch nicht fertig
+eingerichtet“, „Zu viele Einträge für ein Widget“. **Veröffentlichen:** statisch ohne JS (Uhr = Datum des Abrufs, Countdown
+= Tagesstand, Fortschritt als Balken mit Klasse `pb-NN` in 5-%-Schritten); Werte aus einer Datenbank nur, wenn sie
+demselben Konto gehört – sonst entfällt das Widget. **Markdown-Export:** eine Zeile `**<Titel oder Art>:** <Wert>`
+(„(Stand <Datum>)“ bei Datenbank-Werten; ohne Zugriff `–`).
+
 ## Kachel-Symbole: `icon_url` (2.5)
 
 `GET /api/services` und `GET /api/bookmarks` liefern je Kachel zusätzlich **`icon_url`** – die fertige, relative

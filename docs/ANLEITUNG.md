@@ -492,6 +492,13 @@ YouTube-Videos lassen sich an den Griffen links/rechts schmaler ziehen und links
 Doppelklick auf einen Griff stellt die volle Breite wieder her. Zwischen zwei Spalten erscheint beim Überfahren eine Linie –
 daran ziehst du die Spaltenbreite (in 5-%-Schritten, Doppelklick = gleich breit). Im Seitenmenü **⋯** wählst du je Seite
 die **Schrift** (Standard, Serif, Mono) und **Kleiner Text**. Alles das übernimmt auch eine veröffentlichte Seite.
+**Widgets:** Mit `/Widget` (direkt auch `/Uhr`, `/Countdown`, `/Fortschritt`, `/Kennzahl`) fügst du kleine Karten ein –
+eine Uhr (auch für eine andere Zeitzone), einen Countdown bis zu einem Datum, einen Fortschrittsbalken, eine Kennzahl aus
+einer Datenbank (Anzahl, Summe, Durchschnitt, Min, Max, % angehakt – über eine ihrer Ansichten) oder ein Zitat (eigene Texte
+oder aus einer Datenbank, jeden Tag ein anderes). Ein Klick auf das Widget öffnet die Einstellungen mit Vorschau; in Spalten
+stehen mehrere nebeneinander. Werte aus einer Datenbank sieht jede Person nur, wenn sie die Datenbank selbst sehen darf –
+sonst steht dort „Kein Zugriff auf die Datenquelle“. Auf einer veröffentlichten Seite erscheinen solche Werte nur aus
+deinen eigenen Datenbanken.
 
 ![Seite](screenshots/seite.png)
 

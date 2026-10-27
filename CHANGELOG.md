@@ -36,6 +36,20 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Toggle-Überschrift als `<details><summary><hN>`, Schrift/klein am `body`. Markdown: Toggle-Überschrift als `#`–`###` mit
   Inhalt darunter, Farbe entfällt. Seiten ohne die neuen Felder sehen exakt aus wie vorher (Ausgabe verglichen). Tests
   `tests/gestalten.py`, `tests/gestalten.js`.
+- **Widgets in Seiten (Etappe 1).** Neuer Block `widget` mit Uhr (Zeitzone, 24 h, Sekunden, analog), Countdown (bis/seit
+  einem Datum, Tage oder unter einem Tag Std./Min.), Fortschritt (feste Zahlen oder aus einer Datenbank: Anteil angehakt bzw.
+  Summe bis zum Ziel), Kennzahl (Anzahl, Summe, Ø, Min, Max, % angehakt über eine Ansicht einer Datenbank, Format Zahl/%/€,
+  optional Ziel) und Zitat (eigene Texte oder aus einer Datenbank, täglich wechselnd oder zufällig). Web: Slash „Widget“ +
+  je Art, Einrichten per Klick mit Live-Vorschau, Karte mit Akzentfarbe und Größe s/m/l, auch in Spalten und Toggles; Uhr
+  und Countdown rechnet der Browser, Werte alle 60 s. Server `saga/page_widgets.py`: Bereinigung beim Speichern (bekannte
+  Arten streng, unbekannte unverändert, eindeutige Block-IDs), `GET /api/notes/{id}/widgets` und
+  `POST /api/notes/{id}/widgets/preview` – gerechnet mit den **Rechten des Betrachters** an der Quell-Datenbank (ohne
+  Zugriff `no_access`, keine Werte, kein Name), Zeilen über `saga.dbquery` wie die Web-Ansicht, Aggregation wie die
+  Fußzeile der Datenbank-Tabelle (gemeinsame Testvektoren `tests/widget_vectors.json`, Web-Funktion `calcNum`),
+  Zwischenspeicher 60 s. Föderation: Fähigkeit `widgets1`, `GET /fed/v2/notes/{id}/widgets`. Veröffentlichen statisch und
+  ohne Inline-Styles (Klassen `pub-wg`, `wa-<farbe>`, `pb-NN`), Werte nur aus eigenen Datenbanken; Markdown eine Zeile je
+  Widget; Suche nur der Titel. Vertrag in `docs/APP-API.md` „Widgets in Seiten“. Tests `tests/seiten_widgets.py`,
+  `tests/seiten_widgets.js`, `tests/foederation_widgets.py`.
 - **Kacheln ohne Symbol bekommen automatisch eines.** Für Dienste und Lesezeichen ohne gesetztes Symbol rät Saga zuerst
   ein selfh.st-Symbol nach dem Domainnamen (`youtube.com` → `youtube`, `jellyfin.example.org` → `jellyfin`) und holt sonst
   das Favicon der Seite (`<link rel=icon|apple-touch-icon>` oder `/favicon.ico`, größtes Rasterbild, als PNG ≤ 256 px in
