@@ -27,7 +27,8 @@ def nice_ticks(lo, hi, n=5):
     b = math.ceil(hi / step - 1e-9) * step
     out, x = [], a
     while x <= b + step / 2 and len(out) < 50:
-        out.append(round(x, 10))
+        v = round(x, 10)
+        out.append(int(v) if float(v).is_integer() else v)
         x += step
     return out
 

@@ -1,0 +1,1114 @@
+{
+ "about": "Gemeinsame Testvektoren Diagramme (saga.dbcalc.chart, docs/APP-API.md 'Diagramme'): Spec + Zeilen -> Ergebnis (Teilmenge). Labels sind die deutschen Texte (Status-Gruppen, Ja/Nein, Leer, Andere).",
+ "tz": "Europe/Berlin",
+ "today": "2026-03-10",
+ "schema": {
+  "props": [
+   {
+    "id": "status",
+    "name": "Status",
+    "type": "select",
+    "status": true,
+    "options": [
+     {
+      "id": "neu",
+      "name": "Neu",
+      "color": "gray",
+      "group": "todo"
+     },
+     {
+      "id": "lauf",
+      "name": "Läuft",
+      "color": "blue",
+      "group": "doing"
+     },
+     {
+      "id": "ok",
+      "name": "Fertig",
+      "color": "green",
+      "group": "done"
+     }
+    ]
+   },
+   {
+    "id": "prio",
+    "name": "Prio",
+    "type": "select",
+    "options": [
+     {
+      "id": "h",
+      "name": "Hoch",
+      "color": "red"
+     },
+     {
+      "id": "m",
+      "name": "Mittel",
+      "color": "yellow"
+     },
+     {
+      "id": "l",
+      "name": "Niedrig"
+     }
+    ]
+   },
+   {
+    "id": "tags",
+    "name": "Tags",
+    "type": "multi_select",
+    "options": [
+     {
+      "id": "x",
+      "name": "X",
+      "color": "purple"
+     },
+     {
+      "id": "y",
+      "name": "Y"
+     }
+    ]
+   },
+   {
+    "id": "n",
+    "name": "N",
+    "type": "number"
+   },
+   {
+    "id": "d",
+    "name": "D",
+    "type": "date"
+   },
+   {
+    "id": "cb",
+    "name": "CB",
+    "type": "checkbox"
+   },
+   {
+    "id": "t",
+    "name": "T",
+    "type": "text"
+   },
+   {
+    "id": "rel",
+    "name": "Rel",
+    "type": "relation",
+    "target": 99
+   },
+   {
+    "id": "fx",
+    "name": "Fx",
+    "type": "formula",
+    "expr": "1",
+    "rtype": "number"
+   },
+   {
+    "id": "cr",
+    "name": "Erstellt",
+    "type": "created"
+   }
+  ]
+ },
+ "rows": [
+  {
+   "id": 1,
+   "title": "A",
+   "props": {
+    "status": "neu",
+    "prio": "h",
+    "tags": [
+     "x"
+    ],
+    "n": 5,
+    "d": "2026-01-05",
+    "cb": true,
+    "t": "rot",
+    "rel": [
+     101
+    ],
+    "fx": 2
+   },
+   "created": 1767225600,
+   "updated": 0
+  },
+  {
+   "id": 2,
+   "title": "B",
+   "props": {
+    "status": "lauf",
+    "prio": "m",
+    "tags": [
+     "x",
+     "y"
+    ],
+    "n": "7.5",
+    "d": "2026-01-11T23:30+00:00",
+    "t": "blau",
+    "rel": [
+     101,
+     102
+    ],
+    "fx": 2
+   },
+   "created": 1767225600,
+   "updated": 0
+  },
+  {
+   "id": 3,
+   "title": "C",
+   "props": {
+    "status": "ok",
+    "prio": "h",
+    "tags": [],
+    "n": -2,
+    "d": "2026-03-01/2026-03-04",
+    "cb": true,
+    "t": "rot",
+    "fx": 3
+   },
+   "created": 1769904000,
+   "updated": 0
+  },
+  {
+   "id": 4,
+   "title": "D",
+   "props": {
+    "status": "ok",
+    "n": null,
+    "t": "grün",
+    "rel": [
+     103
+    ]
+   },
+   "created": 1769904000,
+   "updated": 0
+  },
+  {
+   "id": 5,
+   "title": "E",
+   "props": {
+    "prio": "l",
+    "tags": [
+     "y"
+    ],
+    "n": 10,
+    "d": "2025-12-31",
+    "t": "gelb",
+    "fx": 2
+   },
+   "created": 1772323200,
+   "updated": 0
+  },
+  {
+   "id": 6,
+   "title": "F",
+   "props": {
+    "status": "neu",
+    "prio": "m",
+    "n": 1,
+    "d": "2026-02-15",
+    "t": "lila",
+    "rel": [
+     102
+    ]
+   },
+   "created": 1772323200,
+   "updated": 0
+  }
+ ],
+ "labels": {
+  "101": "Projekt Eins",
+  "102": "Projekt Zwei"
+ },
+ "cases": [
+  {
+   "name": "count nach Auswahl (Optionsreihenfolge, leer weg)",
+   "spec": {
+    "type": "bar",
+    "x": "prio"
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "h",
+      "label": "Hoch",
+      "color": "red"
+     },
+     {
+      "key": "m",
+      "label": "Mittel",
+      "color": "yellow"
+     },
+     {
+      "key": "l",
+      "label": "Niedrig",
+      "color": null
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       2,
+       2,
+       1
+      ]
+     }
+    ],
+    "total": 6,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "cat"
+   }
+  },
+  {
+   "name": "count nach Auswahl, leer zeigen",
+   "spec": {
+    "type": "bar",
+    "x": "prio",
+    "empty": "show"
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "h",
+      "label": "Hoch",
+      "color": "red"
+     },
+     {
+      "key": "m",
+      "label": "Mittel",
+      "color": "yellow"
+     },
+     {
+      "key": "l",
+      "label": "Niedrig",
+      "color": null
+     },
+     {
+      "key": null,
+      "label": "Leer",
+      "color": null
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       2,
+       2,
+       1,
+       1
+      ]
+     }
+    ],
+    "total": 6,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "cat"
+   }
+  },
+  {
+   "name": "Status-Gruppen Summe",
+   "spec": {
+    "type": "bar",
+    "x": "status",
+    "status": true,
+    "agg": "sum",
+    "y": "n"
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "todo",
+      "label": "Zu erledigen",
+      "color": "gray"
+     },
+     {
+      "key": "doing",
+      "label": "In Arbeit",
+      "color": "blue"
+     },
+     {
+      "key": "done",
+      "label": "Erledigt",
+      "color": "green"
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       6,
+       7.5,
+       -2
+      ]
+     }
+    ],
+    "total": 21.5,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "cat"
+   }
+  },
+  {
+   "name": "Status ohne Gruppen = Optionen",
+   "spec": {
+    "type": "hbar",
+    "x": "status"
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "neu",
+      "label": "Neu",
+      "color": "gray"
+     },
+     {
+      "key": "lauf",
+      "label": "Läuft",
+      "color": "blue"
+     },
+     {
+      "key": "ok",
+      "label": "Fertig",
+      "color": "green"
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       2,
+       1,
+       2
+      ]
+     }
+    ],
+    "total": 6,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "cat"
+   }
+  },
+  {
+   "name": "Mehrfachauswahl zaehlt je Option",
+   "spec": {
+    "type": "pie",
+    "x": "tags"
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "x",
+      "label": "X",
+      "color": "purple"
+     },
+     {
+      "key": "y",
+      "label": "Y",
+      "color": null
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       2,
+       2
+      ]
+     }
+    ],
+    "total": 6,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "cat"
+   }
+  },
+  {
+   "name": "Haekchen ja/nein",
+   "spec": {
+    "type": "donut",
+    "x": "cb"
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "true",
+      "label": "Ja",
+      "color": null
+     },
+     {
+      "key": "false",
+      "label": "Nein",
+      "color": null
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       2,
+       4
+      ]
+     }
+    ],
+    "total": 6,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "cat"
+   }
+  },
+  {
+   "name": "Zahl als Kategorie",
+   "spec": {
+    "type": "bar",
+    "x": "n"
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "-2",
+      "label": "-2",
+      "color": null
+     },
+     {
+      "key": "1",
+      "label": "1",
+      "color": null
+     },
+     {
+      "key": "5",
+      "label": "5",
+      "color": null
+     },
+     {
+      "key": "7.5",
+      "label": "7.5",
+      "color": null
+     },
+     {
+      "key": "10",
+      "label": "10",
+      "color": null
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       1,
+       1,
+       1,
+       1,
+       1
+      ]
+     }
+    ],
+    "total": 6,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "cat"
+   }
+  },
+  {
+   "name": "Woche ab Montag in tz, Luecken gefuellt",
+   "spec": {
+    "type": "bar",
+    "x": "d",
+    "bucket": "week"
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "2026-W01",
+      "label": "2026-W01",
+      "color": null,
+      "start": "2025-12-29"
+     },
+     {
+      "key": "2026-W02",
+      "label": "2026-W02",
+      "color": null,
+      "start": "2026-01-05"
+     },
+     {
+      "key": "2026-W03",
+      "label": "2026-W03",
+      "color": null,
+      "start": "2026-01-12"
+     },
+     {
+      "key": "2026-W04",
+      "label": "2026-W04",
+      "color": null,
+      "start": "2026-01-19"
+     },
+     {
+      "key": "2026-W05",
+      "label": "2026-W05",
+      "color": null,
+      "start": "2026-01-26"
+     },
+     {
+      "key": "2026-W06",
+      "label": "2026-W06",
+      "color": null,
+      "start": "2026-02-02"
+     },
+     {
+      "key": "2026-W07",
+      "label": "2026-W07",
+      "color": null,
+      "start": "2026-02-09"
+     },
+     {
+      "key": "2026-W08",
+      "label": "2026-W08",
+      "color": null,
+      "start": "2026-02-16"
+     },
+     {
+      "key": "2026-W09",
+      "label": "2026-W09",
+      "color": null,
+      "start": "2026-02-23"
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       1,
+       1,
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       1
+      ]
+     }
+    ],
+    "total": 6,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "date",
+    "bucket": "week"
+   }
+  },
+  {
+   "name": "Monat kumulativ Summe",
+   "spec": {
+    "type": "line",
+    "x": "d",
+    "bucket": "month",
+    "agg": "sum",
+    "y": "n",
+    "cumulative": true
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "2025-12",
+      "label": "2025-12",
+      "color": null,
+      "start": "2025-12-01"
+     },
+     {
+      "key": "2026-01",
+      "label": "2026-01",
+      "color": null,
+      "start": "2026-01-01"
+     },
+     {
+      "key": "2026-02",
+      "label": "2026-02",
+      "color": null,
+      "start": "2026-02-01"
+     },
+     {
+      "key": "2026-03",
+      "label": "2026-03",
+      "color": null,
+      "start": "2026-03-01"
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       10,
+       22.5,
+       23.5,
+       21.5
+      ]
+     }
+    ],
+    "total": 21.5,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "date",
+    "bucket": "month",
+    "cumulative": true
+   }
+  },
+  {
+   "name": "Quartal und Jahr",
+   "spec": {
+    "type": "area",
+    "x": "d",
+    "bucket": "year"
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "2025",
+      "label": "2025",
+      "color": null,
+      "start": "2025-01-01"
+     },
+     {
+      "key": "2026",
+      "label": "2026",
+      "color": null,
+      "start": "2026-01-01"
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       1,
+       4
+      ]
+     }
+    ],
+    "total": 6,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "date",
+    "bucket": "year"
+   }
+  },
+  {
+   "name": "Erstellt nach Monat",
+   "spec": {
+    "type": "bar",
+    "x": "cr",
+    "bucket": "month"
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "2026-01",
+      "label": "2026-01",
+      "color": null,
+      "start": "2026-01-01"
+     },
+     {
+      "key": "2026-02",
+      "label": "2026-02",
+      "color": null,
+      "start": "2026-02-01"
+     },
+     {
+      "key": "2026-03",
+      "label": "2026-03",
+      "color": null,
+      "start": "2026-03-01"
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       2,
+       2,
+       2
+      ]
+     }
+    ],
+    "total": 6,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "date",
+    "bucket": "month"
+   }
+  },
+  {
+   "name": "Text Top-N mit Andere",
+   "spec": {
+    "type": "bar",
+    "x": "t",
+    "limit": 3,
+    "sort": "y_desc"
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "rot",
+      "label": "rot",
+      "color": null
+     },
+     {
+      "key": "blau",
+      "label": "blau",
+      "color": null
+     },
+     {
+      "key": "__other__",
+      "label": "Andere",
+      "color": null
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       2,
+       1,
+       3
+      ]
+     }
+    ],
+    "total": 6,
+    "other": 3,
+    "truncated": false,
+    "x_kind": "cat"
+   }
+  },
+  {
+   "name": "Relation mit Titeln (nur bekannte)",
+   "spec": {
+    "type": "bar",
+    "x": "rel"
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "101",
+      "label": "Projekt Eins",
+      "color": null
+     },
+     {
+      "key": "102",
+      "label": "Projekt Zwei",
+      "color": null
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       2,
+       2
+      ]
+     }
+    ],
+    "total": 6,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "cat"
+   }
+  },
+  {
+   "name": "Formel rtype number",
+   "spec": {
+    "type": "bar",
+    "x": "fx",
+    "agg": "sum",
+    "y": "n"
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "2",
+      "label": "2",
+      "color": null
+     },
+     {
+      "key": "3",
+      "label": "3",
+      "color": null
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       22.5,
+       -2
+      ]
+     }
+    ],
+    "total": 21.5,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "cat"
+   }
+  },
+  {
+   "name": "Reihen: Prio x Haekchen",
+   "spec": {
+    "type": "bar",
+    "x": "prio",
+    "series": "cb",
+    "stack": true
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "h",
+      "label": "Hoch",
+      "color": "red"
+     },
+     {
+      "key": "m",
+      "label": "Mittel",
+      "color": "yellow"
+     },
+     {
+      "key": "l",
+      "label": "Niedrig",
+      "color": null
+     }
+    ],
+    "series": [
+     {
+      "key": "true",
+      "label": "Ja",
+      "color": null,
+      "values": [
+       2,
+       0,
+       0
+      ]
+     },
+     {
+      "key": "false",
+      "label": "Nein",
+      "color": null,
+      "values": [
+       0,
+       2,
+       1
+      ]
+     }
+    ],
+    "total": 6,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "cat",
+    "stack": true
+   }
+  },
+  {
+   "name": "Sortierung y_asc",
+   "spec": {
+    "type": "bar",
+    "x": "prio",
+    "sort": "y_asc"
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "l",
+      "label": "Niedrig",
+      "color": null
+     },
+     {
+      "key": "h",
+      "label": "Hoch",
+      "color": "red"
+     },
+     {
+      "key": "m",
+      "label": "Mittel",
+      "color": "yellow"
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       1,
+       2,
+       2
+      ]
+     }
+    ],
+    "total": 6,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "cat"
+   }
+  },
+  {
+   "name": "Sortierung manuell",
+   "spec": {
+    "type": "bar",
+    "x": "prio",
+    "sort": "manual",
+    "order": [
+     "l",
+     "h"
+    ]
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "l",
+      "label": "Niedrig",
+      "color": null
+     },
+     {
+      "key": "h",
+      "label": "Hoch",
+      "color": "red"
+     },
+     {
+      "key": "m",
+      "label": "Mittel",
+      "color": "yellow"
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       1,
+       2,
+       2
+      ]
+     }
+    ],
+    "total": 6,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "cat"
+   }
+  },
+  {
+   "name": "Zahl (nur total) pct_checked",
+   "spec": {
+    "type": "number",
+    "agg": "pct_checked",
+    "y": "cb"
+   },
+   "want": {
+    "cats": [],
+    "series": [],
+    "total": 33,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "cat"
+   }
+  },
+  {
+   "name": "Durchschnitt je Gruppe",
+   "spec": {
+    "type": "bar",
+    "x": "prio",
+    "agg": "avg",
+    "y": "n"
+   },
+   "want": {
+    "cats": [
+     {
+      "key": "h",
+      "label": "Hoch",
+      "color": "red"
+     },
+     {
+      "key": "m",
+      "label": "Mittel",
+      "color": "yellow"
+     },
+     {
+      "key": "l",
+      "label": "Niedrig",
+      "color": null
+     }
+    ],
+    "series": [
+     {
+      "key": "",
+      "label": "",
+      "color": null,
+      "values": [
+       1.5,
+       4.25,
+       10
+      ]
+     }
+    ],
+    "total": 4.3,
+    "other": 0,
+    "truncated": false,
+    "x_kind": "cat"
+   }
+  },
+  {
+   "name": "unbekannte Eigenschaft",
+   "spec": {
+    "type": "bar",
+    "x": "gibtsnicht"
+   },
+   "want": {
+    "fail": "bad_cfg"
+   }
+  },
+  {
+   "name": "ohne y bei sum",
+   "spec": {
+    "type": "bar",
+    "x": "prio",
+    "agg": "sum"
+   },
+   "want": {
+    "fail": "bad_cfg"
+   }
+  },
+  {
+   "name": "ohne x",
+   "spec": {
+    "type": "bar"
+   },
+   "want": {
+    "fail": "bad_cfg"
+   }
+  }
+ ]
+}
