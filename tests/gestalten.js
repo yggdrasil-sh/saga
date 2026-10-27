@@ -149,6 +149,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     : b.type === 'toggle' ? { type: 'toggle', data: { title: b.data.title, open: b.data.open, blocks: b.data.blocks.map((x) => ({ type: x.type, data: x.data })) } } : b)));
   ok('Alte Seite: keine neuen Felder (w, width, align, level, tunes) nach dem Speichern', got === want && /Text!/.test(JSON.stringify(bl)), { got, want });
 
+  // --- G10: Toggle mit Inhalt verliert nichts (Umwandeln in Ueberschrift, Ruecktaste am Titelanfang) ------------
+  const tv = (await api('POST', '/api/notes', { title: 'Toggle voll' })).id;
+  const fullBlocks = [P('oben'), { type: 'toggle', data: { title: 'Voll', open: true, blocks: [P('Innen bleibt')] } }];
+  await api('PATCH', '/api/notes/' + tv, { body: JSON.stringify({ blocks: fullBlocks }), format: 'blocks' });
+  await p.goto(BASE + '/notes?t=' + Date.now() + '#' + tv); await p.waitForSelector('.tgl-title'); await sleep(1200);
+  await p.hover('.tgl-title'); await sleep(250);
+  await p.locator('.ce-toolbar__settings-btn:visible').first().click(); await sleep(300);
+  await p.locator('.ce-popover--opened .ce-popover-item:has(.ce-popover-item__title:text-is("Umwandeln in"))').first().click(); await sleep(300);
+  await p.locator('.ce-popover--opened .ce-popover-item:has(.ce-popover-item__title:text-is("Überschrift"))').last().click(); await sleep(400);
+  await p.keyboard.press('Escape');
+  if (await p.locator('.tgl-title').count()) { await p.click('.tgl-title'); await p.keyboard.press('Home'); await p.keyboard.press('Backspace'); }
+  await sleep(3500);
+  bl = await body(tv);
+  const tg = bl.find((b) => b.type === 'toggle');
+  ok('G10: Toggle mit Inhalt: Umwandeln/Ruecktaste behalten den Inhalt', bl.length === 2 && tg && /Innen bleibt/.test(JSON.stringify(tg.data.blocks)), bl);
+  await api('DELETE', '/api/notes/' + tv);
+
   // --- G5: Rolle Kommentieren - im Block-Menue nur Link und Kommentieren -------------------------------------------
   if (process.env.CK2) {
     const sh = (await api('POST', '/api/notes', { title: 'Geteilt' })).id;

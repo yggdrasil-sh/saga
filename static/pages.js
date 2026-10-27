@@ -2261,8 +2261,17 @@
     { title: T('Toggle-Überschrift 3'), icon: TGL_IC.replace('<path', '<text x="13" y="21" font-size="9" stroke="none" fill="currentColor">3</text><path'), data: { level: 3 } }];
   // Umwandeln (Block-Menue "Umwandeln in", Editor.js): Titel <-> Text anderer Bloecke (Ueberschrift <-> Toggle-Ueberschrift)
   var TGL_STASH = null;
+  window.addEventListener('unhandledrejection', function (e) { if (e.reason && e.reason.hkKeep) e.preventDefault(); });   // gewollter Abbruch (s. u.)
   ToggleTool.conversionConfig = {
-    export: function (d) { TGL_STASH = { blocks: d.blocks, open: d.open, at: Date.now() }; return d.title || ''; },
+    // Editor.js nutzt export auch beim Verschmelzen (Ruecktaste am Titelanfang) und beim Umwandeln in Text/Ueberschrift:
+    // beides wuerde den Inhalt verwerfen -> mit Inhalt verweigern (wie Cmd+/, static/keys.js); Ebene: Toggle-Ueberschrift 1-3
+    export: function (d) {
+      if (Array.isArray(d.blocks) && d.blocks.length) {
+        HK.toast(T('Der Toggle hat Inhalt – erst ausräumen, dann umwandeln'));
+        var er = new Error('toggle not empty'); er.hkKeep = true; throw er;
+      }
+      TGL_STASH = { blocks: d.blocks, open: d.open, at: Date.now() }; return d.title || '';
+    },
     import: function (html) {
       var st = TGL_STASH && Date.now() - TGL_STASH.at < 1500 ? TGL_STASH : null; TGL_STASH = null;     // Toggle -> Toggle: Inhalt behalten
       return { title: html, open: st ? st.open !== false : true, blocks: st && Array.isArray(st.blocks) ? st.blocks : [] };
