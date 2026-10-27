@@ -208,6 +208,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Board-Karte ziehen schrieb die Karten-ID ins Suchfeld** (eingebettete Datenbank): Editor.js fing das Ablegen schon
   vor dem Block ab und fügte die gezogenen Daten ins letzte Eingabefeld ein – die Ansicht filterte dann alles weg. Karten
   (Board, Kalender) tragen jetzt einen eigenen Datentyp, das Ablegen geht direkt an die Spalte bzw. den Tag.
+- **Widget-Einstellungen in schmalen Spalten** (z. B. 4er-Reihe in „Mein Tag“) waren ~45 px breit und unbenutzbar. Ist der
+  Block schmaler als 420 px, öffnet das Panel als Seitenleiste neben dem Widget (am Handy unten), das Widget bleibt als
+  Live-Vorschau sichtbar und markiert; Esc oder „Fertig“ schließt.
 
 ### Behoben – Bughunt 3 (Server)
 - **Namensauflösung mit Zeitlimit auch in den Vorab-Prüfungen.** KI, Immich, Kalender, Push, Nextcloud, Föderation

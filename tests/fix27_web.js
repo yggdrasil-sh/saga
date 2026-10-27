@@ -4,6 +4,7 @@
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.HK_TEST_BASE, CK = process.env.CK, CK2 = process.env.CK2;
 const res = []; function ok(n, c, i) { res.push(!!c); console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (c ? '' : ' -> ' + JSON.stringify(i))); }
+const shot = (p, n) => process.env.SHOTS ? p.screenshot({ path: process.env.SHOTS + '/' + n + '.png' }) : null;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP ohne 'unsafe-eval')
   for (const t0 = Date.now(); Date.now() - t0 < ms; await sleep(100)) if (await p.evaluate(fn, arg)) return true;
@@ -44,6 +45,43 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     const st = await p.evaluate(() => [...document.querySelectorAll('.db-search')].map((i) => ({ v: i.value, f: document.activeElement === i })));
     ok('#1: Suchfeld leer und nicht fokussiert', st.every((x) => !x.v && !x.f), st);
     ok('#1: keine Zahl im Editor eingefuegt', !(await p.evaluate(() => /^\d+$/.test((document.activeElement && document.activeElement.value) || ''))));
+  }
+
+  // --- #2: Widget-Einstellungen in einer 4er-Spaltenreihe (Mein Tag) als Seitenleiste ----------------------------------
+  const MT = await p.api('POST', '/api/gallery/mein-tag/use', { examples: true });
+  ok('Vorlage Mein Tag angelegt', MT.root > 0, MT);
+  {
+    await p.open(MT.root);
+    await until(p, () => document.querySelectorAll('.cols .wg-blk .wg').length >= 3);
+    const narrow = p.locator('.cols .wg-blk').filter({ has: p.locator('.wg[data-kind="quote"]') }).first();
+    const bw = (await narrow.boundingBox()).width;
+    await narrow.locator('.wg').click();
+    await until(p, () => !!document.querySelector('.wg-panel'));
+    const info = await p.evaluate(() => {
+      const pn = document.querySelector('.wg-panel'), r = pn.getBoundingClientRect();
+      const ins = [...pn.querySelectorAll('input[type=text], select, textarea')].map((x) => Math.round(x.getBoundingClientRect().width));
+      return { float: pn.classList.contains('wg-panel-float'), w: Math.round(r.width), minIn: Math.min.apply(null, ins), inBody: pn.parentNode === document.body,
+        mark: !!document.querySelector('.wg-blk.wg-editing'), vis: r.right <= innerWidth && r.left >= 0,
+        free: (() => { const w = document.querySelector('.wg-blk.wg-editing').getBoundingClientRect(); return w.right <= r.left || w.left >= r.right; })() };
+    });
+    ok(`#2: schmale Spalte (${Math.round(bw)} px) -> Panel als Seitenleiste`, info.float && info.inBody && info.mark && info.vis && info.free, info);
+    await shot(p, '2-panel');
+    ok(`#2: Eingabefelder breit genug (${info.minIn} px)`, info.minIn >= 150, info);
+    await p.locator('.wg-panel input[type=text]').first().fill('Mein Gedanke');
+    await sleep(400);
+    ok('#2: Live-Vorschau im Widget', (await narrow.locator('.wg-t').innerText()).includes('Mein Gedanke'));
+    await p.keyboard.press('Escape');
+    ok('#2: Esc schliesst die Seitenleiste', !(await p.evaluate(() => !!document.querySelector('.wg-panel') || !!document.querySelector('.wg-editing'))));
+    await sleep(3000);
+    const body = JSON.parse((await p.api('GET', '/api/notes/' + MT.root)).body).blocks;
+    ok('#2: Titel gespeichert', JSON.stringify(body).includes('Mein Gedanke'));
+    // breiter Block (eigene Seite, eine Spalte): Panel bleibt im Block
+    const W = await p.api('POST', '/api/notes', { title: 'Breites Widget' });
+    await p.api('PATCH', '/api/notes/' + W.id, { format: 'blocks', body: JSON.stringify({ blocks: [{ type: 'widget', data: { kind: 'clock', v: 1, cfg: {} } }] }) });
+    await p.open(W.id); await until(p, () => !!document.querySelector('.wg-blk .wg'));
+    await p.locator('.wg-blk .wg').click(); await until(p, () => !!document.querySelector('.wg-panel'));
+    ok('#2: breiter Block -> Panel im Block wie bisher', await p.evaluate(() => !!document.querySelector('.wg-blk .wg-panel:not(.wg-panel-float)')));
+    await p.locator('.wg-done').click();
   }
 
   console.log(p.errs.length ? 'Seitenfehler: ' + p.errs.join(' | ') : 'keine Seitenfehler');

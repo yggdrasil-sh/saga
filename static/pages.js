@@ -4640,7 +4640,7 @@
     return w;
   };
   WidgetTool.prototype.editable = function () { return !this.ro && !readOnly() && WG_KINDS.indexOf(this.data.kind) >= 0; };
-  WidgetTool.prototype.destroy = function () { clearInterval(this.tick); WG.delete(this); };
+  WidgetTool.prototype.destroy = function () { clearInterval(this.tick); WG.delete(this); if (this.panel && this.panel.classList.contains('wg-panel-float')) { clearInterval(this.floatT); this.panel.remove(); this.panel = null; } };
   WidgetTool.prototype.changed = function () {
     if (S.loading) return;
     if (this.block && this.block.dispatchChange) this.block.dispatchChange(); else { S.dirtyBody = true; schedule(); }
@@ -4734,14 +4734,37 @@
   WidgetTool.prototype.openPanel = function () {
     var self = this, d = this.data;
     var p = this.panel = el('div', 'wg-panel'); p.setAttribute('role', 'group'); p.setAttribute('aria-label', T('Widget einrichten'));
-    this.w.appendChild(p); this.fill();
+    // Fix27 #2: in schmalen Spalten (4er-Reihe, Handy-Spalte) ist im Block kein Platz - das Panel geht dann als
+    // Seitenleiste auf (Widget bleibt als Live-Vorschau sichtbar und markiert); Esc oder "Fertig" schliesst.
+    if (this.w.getBoundingClientRect().width < 420) {
+      p.classList.add('wg-panel-float'); p.setAttribute('role', 'dialog'); this.w.classList.add('wg-editing');
+      p.appendChild(el('div', 'wg-panel-h', T('Widget einrichten')));
+      p.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); self.closePanel(); } });
+      document.body.appendChild(p);
+      if (innerWidth > 640) {          // neben das Widget, damit die Live-Vorschau sichtbar bleibt
+        var r = this.w.getBoundingClientRect(), pw = p.offsetWidth;
+        if (r.right + 12 + pw <= innerWidth - 8) p.style.left = (r.right + 12) + 'px';
+        else if (r.left - 12 - pw >= 8) p.style.left = (r.left - 12 - pw) + 'px';
+        if (p.style.left) { p.style.right = 'auto'; p.style.top = Math.max(8, Math.min(r.top, innerHeight - p.offsetHeight - 8)) + 'px'; }
+      }
+      this.floatT = setInterval(function () { if (!self.w.isConnected) self.closePanel(); }, 500);
+    } else this.w.appendChild(p);
+    this.fill();
     var done = el('button', 'btn wg-done', T('Fertig')); done.type = 'button';
     done.addEventListener('click', function () { self.closePanel(); });
     this.doneBtn = done;
     p.appendChild(done);
+    if (p.classList.contains('wg-panel-float')) { var f0 = p.querySelector('input,select,textarea'); if (f0) f0.focus(); }
     void d;
   };
-  WidgetTool.prototype.closePanel = function () { if (this.panel) this.panel.remove(); this.panel = null; this.pv = null; this.draw(); loadWidgets(); };
+  WidgetTool.prototype.closePanel = function () {
+    var fl = this.panel && this.panel.classList.contains('wg-panel-float');
+    clearInterval(this.floatT); this.w.classList.remove('wg-editing');
+    if (this.panel) this.panel.remove(); this.panel = null; this.pv = null;
+    if (fl && !this.w.isConnected) return;
+    this.draw(); loadWidgets();
+    if (fl) try { this.card.focus(); } catch (e) { /* egal */ }
+  };
   WidgetTool.prototype.fill = function () {
     var self = this, d = this.data, cfg = d.cfg, p = this.panel;
     [].slice.call(p.querySelectorAll('.wg-row')).forEach(function (x) { x.remove(); });

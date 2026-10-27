@@ -2129,6 +2129,11 @@ body.notes-page .page.p-small .page-title{font-size:calc(2.35rem * .875)}
 .wg-items{min-height:5rem;resize:vertical}
 .wg-done{grid-column:1/-1;justify-self:end}
 @media (max-width:640px){.wg-panel{grid-template-columns:1fr}.wg-row{display:flex;flex-direction:column;gap:.2rem}}
+/* Fix27 #2: Panel als Seitenleiste, wenn der Block zu schmal ist */
+.wg-panel.wg-panel-float{position:fixed;z-index:60;top:4.5rem;right:1rem;width:min(380px,calc(100vw - 2rem));max-height:calc(100vh - 6rem);overflow:auto;margin:0;background:var(--card,var(--bg));border:1px solid var(--border);box-shadow:0 8px 28px rgba(0,0,0,.18)}
+.wg-panel-h{grid-column:1/-1;font-weight:600;font-size:.95rem}
+.wg-blk.wg-editing>.wg{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:640px){.wg-panel.wg-panel-float{top:auto;bottom:0;right:0;left:0;width:auto;max-height:70vh;border-radius:12px 12px 0 0}}
 /* Vorlagengalerie (2.5, static/pages.js openGallery) - nur Variablen, dadurch hell/dunkel; schmal: eine Spalte */
 .modal-box.hk-dialog-gal{width:min(920px,100%);max-height:min(760px,92vh)}
 .hk-dialog-gal .modal-body{flex:1;min-height:0}
