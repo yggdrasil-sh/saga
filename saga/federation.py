@@ -80,7 +80,11 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # Online-Status von Chat-Partnern (Abo beim Server der Person). Mit 2.3-Servern: nichts davon, nichts wird gesendet.
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
          "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn",
-         "widgets1", "rowtpl", "csv", "formula1", "inline2", "cols6"]
+         "widgets1", "rowtpl", "csv", "formula1", "inline2", "cols6", "widgets2"]
+# widgets2 (2.5, Paket 4) = Widgets Etappe 2 + Diagramme: Wetter, Gewohnheiten (inkl. Abhaken ueber
+# POST /fed/v2/notes/{seite}/widgets/{block}/habit), Diagramm-Widget und Diagramm-Ansicht (GET /fed/v2/notes/{db}/chart) rechnet
+# der Eigentuemer-Server mit dem Prinzipal der Person; W traegt "data". "Anstehendes" ist persoenlich (Kalender/Aufgaben des
+# Heim-Servers) und kommt ueber Servergrenzen immer als no_access. Ohne widgets2: diese Arten fehlen in der Antwort.
 # csv (2.5, Paket 2) = Datenbank als CSV exportieren (GET /fed/v2/notes/{id}/export.csv, saga.csv_export) mit den Rechten
 # der fremden Person. Ohne csv: Menuepunkt fehlt fuer Datenbanken dieses Servers.
 # formula1 (2.5, Paket 1, saga.dbcalc) = Formel- und Rollup-Eigenschaften: der Eigentuemer-Server rechnet die Werte mit
@@ -2452,7 +2456,7 @@ def _note_in(c, peer, d, uid):
 
 
 PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups", "tplbtn", "widgets1", "rowtpl", "csv",
-             "formula1")
+             "formula1", "widgets2")
 
 
 def remote_info(peer):

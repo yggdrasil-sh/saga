@@ -16,8 +16,8 @@ ROLLUP_FNS = {"count", "filled", "empty", "pct_filled", "unique", "sum", "avg", 
               "checked", "unchecked", "pct_checked", "earliest", "latest", "show"}
 PROP_TYPES = {"text", "number", "select", "multi_select", "date", "checkbox", "url", "created", "edited", "relation", "calc",
               "formula", "rollup"}
-VIEW_TYPES = {"table", "board", "list", "gallery", "calendar"}
-WIDGET_KINDS = ("clock", "countdown", "progress", "metric", "quote")
+VIEW_TYPES = {"table", "board", "list", "gallery", "calendar", "chart"}
+WIDGET_KINDS = ("clock", "countdown", "progress", "metric", "quote", "weather", "habit", "upcoming", "chart")
 OPT_COLORS = {"gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"}
 PID = re.compile(r"[a-z0-9_]{1,24}")
 
@@ -427,9 +427,12 @@ def _check_blocks(cx, where, blocks):
             cfg = d.get("cfg") if isinstance(d.get("cfg"), dict) else {}
             if "db" in cfg and not _ref_of(cfg["db"]):
                 cx.err(w, "Widget cfg.db muss \"$ref:<datenbank>\" sein")
-            if (d.get("kind") == "metric" and cfg.get("src") != "tasks") or (d.get("kind") in ("progress", "quote") and cfg.get("src") == "db"):
+            if (d.get("kind") == "metric" and cfg.get("src") != "tasks") or (d.get("kind") in ("progress", "quote") and cfg.get("src") == "db") \
+                    or d.get("kind") in ("habit", "chart"):
                 if not _ref_of(cfg.get("db")):
                     cx.err(w, "Widget braucht cfg.db \"$ref:<datenbank>\"")
+            if d.get("kind") == "upcoming" and cfg.get("dbs"):
+                cx.err(w, "Anstehendes: dbs in Vorlagen nicht vorgesehen (persoenliche Quellen)")
         elif b["type"] == "database":
             if not _ref_of(d.get("db")):
                 cx.err(w, "Datenbank-Block braucht db \"$ref:<datenbank>\"")
@@ -598,6 +601,12 @@ def validate(bundle, name=None):
                         cx.err(where, f"Widget-Ansicht {cfg['view']!r} gibt es in {r!r} nicht")
                     if o and cfg.get("prop") and cfg["prop"] not in pids:
                         cx.err(where, f"Widget-Eigenschaft {cfg['prop']!r} gibt es in {r!r} nicht")
+                    for k in ("date", "x", "y", "series"):          # 2.5 Paket 4: Gewohnheiten/Diagramm
+                        if o and cfg.get(k) and cfg[k] != "title" and cfg[k] not in pids:
+                            cx.err(where, f"Widget-Eigenschaft {cfg[k]!r} gibt es in {r!r} nicht")
+                    for h in cfg.get("habits") or [] if isinstance(cfg.get("habits"), list) else []:
+                        if o and h not in pids:
+                            cx.err(where, f"Gewohnheit {h!r} gibt es in {r!r} nicht")
             elif t == "buttons":
                 for bt in d.get("buttons") or []:
                     if not isinstance(bt, dict):

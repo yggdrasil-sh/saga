@@ -578,7 +578,7 @@ def _default_schema(lang=None):
             _cur.reset(tok)
 
 
-VIEW_TYPES = {"table", "board", "list", "gallery", "calendar"}
+VIEW_TYPES = {"table", "board", "list", "gallery", "calendar", "chart"}      # 2.5 Paket 4: chart (saga.dbcalc.chart)
 CALC_OPS = {"count", "filled", "empty", "pct_filled", "unique", "sum", "avg", "median", "min", "max", "range",
             "checked", "unchecked", "pct_checked", "earliest", "latest"}       # Fusszeile der Tabelle (je Spalte)
 FILTER_OPS = {"contains", "not_contains", "is", "is_not", "eq", "gt", "lt", "before", "after",
@@ -690,6 +690,15 @@ def _clean_views(raw, props):
               and f.get("color") in OPT_COLORS][:10]
         if cr:
             view["colors"] = cr
+        if view["type"] == "chart" or isinstance(v.get("chart"), dict):     # 2.5 Paket 4: Diagramm (bleibt auch beim Umschalten)
+            from saga.dbcalc import clean_chart_spec
+            ch = clean_chart_spec(v.get("chart"))
+            for k in ("x", "y", "series"):                   # nur existierende Eigenschaften
+                if ch.get(k) and ch[k] != "title" and ch[k] not in pids:
+                    ch[k] = "" if k != "series" else None
+                if k == "series" and not ch.get("series"):
+                    ch.pop("series", None)
+            view["chart"] = ch
         if isinstance(v.get("calcs"), dict):                 # Berechnung je Spalte (Fusszeile)
             cc = {k: op for k, op in list(v["calcs"].items())[:40] if (k == "title" or k in pids) and op in CALC_OPS}
             if cc:

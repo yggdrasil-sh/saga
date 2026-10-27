@@ -2315,3 +2315,8 @@ tr.rc > td.db-fz{background:color-mix(in srgb,var(--rc) 14%,var(--bg))}
 .tbl-bg-purple{background:var(--bc-purple)!important}.tbl-bg-pink{background:var(--bc-pink)!important}.tbl-bg-red{background:var(--bc-red)!important}
 .tbl-sw{display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--border)}
 .tbl-bg-none.tbl-sw{background:transparent}
+/* 2.5 Paket 4: Diagramme (saga/chartsvg.py, static/pages.js chartSvg) */
+.ch-c-gray{--ch:var(--tc-gray)}.ch-c-brown{--ch:var(--tc-brown)}.ch-c-orange{--ch:var(--tc-orange)}.ch-c-yellow{--ch:var(--tc-yellow)}.ch-c-green{--ch:var(--tc-green)}.ch-c-blue{--ch:var(--tc-blue)}.ch-c-purple{--ch:var(--tc-purple)}.ch-c-pink{--ch:var(--tc-pink)}.ch-c-red{--ch:var(--tc-red)}
+.ch-s0{--ch:var(--tc-blue)}.ch-s1{--ch:var(--tc-orange)}.ch-s2{--ch:var(--tc-green)}.ch-s3{--ch:var(--tc-purple)}.ch-s4{--ch:var(--tc-pink)}.ch-s5{--ch:var(--tc-yellow)}.ch-s6{--ch:var(--tc-red)}.ch-s7{--ch:var(--tc-brown)}
+.ch-f{fill:var(--ch,var(--tc-blue))}.ch-l{fill:none;stroke:var(--ch,var(--tc-blue));stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round}.ch-a{fill:var(--ch,var(--tc-blue));opacity:.22}
+.ch-g{stroke:var(--border);stroke-width:1}.ch-t{fill:var(--muted);font-size:11px}.ch-big{fill:var(--fg);font-size:22px;font-weight:650}.ch-goal{stroke:var(--fg);stroke-width:1.5;stroke-dasharray:5 4;opacity:.6}

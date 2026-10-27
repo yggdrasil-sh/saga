@@ -27,7 +27,7 @@ import os
 import re
 import threading
 import time
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
@@ -215,7 +215,16 @@ async def _owner_req(request, nid, rest):
         b = {k: b[k] for k in ("expr", "pid", "names") if k in b}
         return _signed_resp(inp, await run_in_threadpool(F._as, inp, databases.formula_check_api, nid, b))
     if m == "GET" and rest == "widgets":             # 2.5: Widgets mit den Rechten der fremden Person (saga.page_widgets)
-        return _need(inp, "widgets1") or _signed_resp(inp, await run_in_threadpool(F._as, inp, page_widgets.page_widgets, nid, q))
+        return _need(inp, "widgets1") or _signed_resp(inp, await run_in_threadpool(F._as, inp, page_widgets.page_widgets, nid, q,
+                                                                                   _caps(inp.peer, "widgets2")))
+    mh = re.fullmatch(r"widgets/([A-Za-z0-9_-]{1,40})/habit", rest)
+    if m == "POST" and mh:                           # 2.5 Paket 4 (widgets2): Gewohnheit abhaken (Rechte der fremden Person)
+        if _need(inp, "widgets2"):
+            return _need(inp, "widgets2")
+        body = {k: b.get(k) for k in ("pid", "day", "on")}
+        return _signed_resp(inp, await run_in_threadpool(F._as, inp, page_widgets.habit_check, nid, mh.group(1), body, q))
+    if m == "GET" and rest == "chart":               # 2.5 Paket 4 (widgets2): Diagramm-Ansicht einer Datenbank
+        return _need(inp, "widgets2") or _signed_resp(inp, await run_in_threadpool(F._as, inp, page_widgets.db_chart, nid, q))
     if m == "GET" and rest == "versions":
         return _need(inp, "versions") or _signed_resp(inp, await run_in_threadpool(F._as, inp, page_tools.versions_list, nid))
     if mv and m == "GET" and not mv.group(2):
@@ -643,7 +652,9 @@ def _w_widget_in(w):
             "text": F._clean_text(w.get("text"), 2000) if isinstance(w.get("text"), str) else None,
             "fmt": w.get("fmt") if w.get("fmt") in page_widgets.FMTS else None,
             "as_of": w.get("as_of") if isinstance(w.get("as_of"), str) and re.fullmatch(r"[0-9T:\-Z+.]{10,32}", w["as_of"]) else None,
-            "error": w.get("error") if w.get("error") in page_widgets.ERRORS else None}
+            "error": w.get("error") if w.get("error") in page_widgets.ERRORS else None,
+            **({"data": page_widgets.clean_remote_data(w["kind"], w.get("data")) if w.get("error") not in page_widgets.ERRORS else None}
+               if w.get("kind") in page_widgets.KINDS2 else {})}
 
 
 def _w_formula_check(uid, nid, b):
@@ -685,7 +696,45 @@ def _w_widgets(uid, nid, tz):
         x = _w_widget_in(w) if isinstance(k, str) and _WBID.fullmatch(k) else None
         if x:
             out[k] = x
-    return JSONResponse({"widgets": out}, headers={"Cache-Control": "no-store"})
+    extra = {} if _caps(p, "widgets2") else {"unsupported2": True}     # 2.5 Paket 4: Etappe-2-Arten nur auf dem Ursprungsserver
+    return JSONResponse({"widgets": out, **extra}, headers={"Cache-Control": "no-store"})
+
+
+def _w_habit(uid, nid, bid, b, tz):
+    """Gewohnheit auf einer Seite einer anderen Instanz abhaken (2.5 Paket 4, widgets2): der Eigentuemer prueft und schreibt."""
+    pid, rid = F.unref(nid)
+    with _db() as c:
+        p = F._home_peer(c, pid)
+    if not _caps(p, "widgets2"):
+        return _bad(t("Nur auf dem Ursprungsserver möglich."), 409)
+    q = "tz=" + quote(tz, safe="") if tz and page_widgets.tz_ok(tz) else ""
+    body = {"pid": b.get("pid") if isinstance(b.get("pid"), str) else "", "day": b.get("day") if isinstance(b.get("day"), str) else "",
+            "on": b.get("on") is True}
+    status, _, d = _call(uid, p, "POST", f"/fed/v2/notes/{rid}/widgets/{bid}/habit", q, body)
+    if status != 200 or not isinstance(d, dict) or not isinstance(d.get("widget"), dict):
+        return F._pass_err(p, status, d)
+    return JSONResponse({"widget": _w_widget_in(d["widget"])}, headers={"Cache-Control": "no-store"})
+
+
+def _w_chart(uid, nid, params):
+    """Diagramm-Ansicht einer Datenbank einer anderen Instanz (widgets2)."""
+    pid, rid = F.unref(nid)
+    with _db() as c:
+        p = F._home_peer(c, pid)
+    if not _caps(p, "widgets2"):
+        return JSONResponse({"chart": None, "error": "unsupported", "view": None}, headers={"Cache-Control": "no-store"})
+    qs = {}
+    if params.get("tz") and page_widgets.tz_ok(params["tz"]):
+        qs["tz"] = params["tz"]
+    if isinstance(params.get("view"), str) and re.fullmatch(r"[a-z0-9_]{1,24}", params["view"]):
+        qs["view"] = params["view"]
+    status, _, d = _call(uid, p, "GET", f"/fed/v2/notes/{rid}/chart", urlencode(qs))
+    if status != 200 or not isinstance(d, dict):
+        return F._pass_err(p, status, d)
+    return JSONResponse({"chart": page_widgets.clean_remote_data("chart", d.get("chart")) if d.get("chart") else None,
+                         "error": d.get("error") if d.get("error") in page_widgets.ERRORS else None,
+                         "view": d.get("view") if isinstance(d.get("view"), str) and re.fullmatch(r"[a-z0-9_]{1,24}", d["view"]) else None},
+                        headers={"Cache-Control": "no-store"})
 
 
 def _w_versions(uid, nid):
@@ -1048,6 +1097,12 @@ async def home_other(nid: int, rest: str, request: Request):
         return await run_in_threadpool(F._run, _w_rows, uid, nid, q)
     if m == "GET" and rest == "widgets":
         return await run_in_threadpool(F._run, _w_widgets, uid, nid, request.query_params.get("tz") or "")
+    mh = re.fullmatch(r"widgets/([A-Za-z0-9_-]{1,40})/habit", rest)
+    if m == "POST" and mh:
+        b = await _body(request) or {}
+        return await run_in_threadpool(F._run, _w_habit, uid, nid, mh.group(1), b, request.query_params.get("tz") or "")
+    if m == "GET" and rest == "chart":
+        return await run_in_threadpool(F._run, _w_chart, uid, nid, dict(request.query_params))
     if m == "POST" and rest == "formula/check":
         b = await _body(request) or {}
         return await run_in_threadpool(F._run, _w_formula_check, uid, nid, b)
