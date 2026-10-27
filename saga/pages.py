@@ -1104,7 +1104,8 @@ def api_services(request: Request):
     if not uid:
         return _bad("unauthorized", 401)
     out = [{"name": s["name"], "url": s["url"], "host": s["host"], "category": s["category"], "icon": s.get("icon") or "",
-            "own": bool(s.get("own")), "key": s["key"], "icon_url": s.get("icon_url") or ""} for s in visible_tiles(uid).values()]
+            "own": bool(s.get("own")), "key": s["key"], "icon_url": s.get("icon_url") or "",
+            **({"icon_direct": s.get("icon_direct") or []} if s.get("own") else {})} for s in visible_tiles(uid).values()]
     out.sort(key=lambda s: (s["category"].lower(), s["name"].lower()))
     return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
