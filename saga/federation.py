@@ -1442,19 +1442,19 @@ async def fed_comment_seen(cid: int, request: Request):
 
 def _file_for(principal, fid, nid, request):
     """Datei fid, wenn die fremde Person die Seite nid sehen darf und GENAU diese Seite die Datei benutzt
-    (Inhalt, Symbol, Titelbild) und sie dem Eigentuemer der Seite gehoert. -> (bytes, mime, name, is_image) oder None."""
+    (Inhalt, Symbol, Titelbild, 2.5: Datei-Eigenschaft in props) und sie dem Eigentuemer der Seite gehoert. -> (bytes, mime, name, is_image) oder None."""
     if not _FID.fullmatch(fid or "") or not (0 < nid < 2 ** 63):
         return None
     with _db() as c:
         acc = sharing.Access(c, principal)
         if not acc.role(nid):
             return None
-        n = c.execute("SELECT uid, body, icon, cover FROM note WHERE id=? AND deleted_at IS NULL", (nid,)).fetchone()
+        n = c.execute("SELECT uid, body, icon, cover, props FROM note WHERE id=? AND deleted_at IS NULL", (nid,)).fetchone()
         f = c.execute("SELECT name, mime, is_image, uid, fed_by, fed_note FROM file WHERE id=?", (fid,)).fetchone()
     ref_ = f"/files/{fid}"
     # 2.3: gerade von dieser Person fuer diese Seite hochgeladen (Vorschau im Editor, noch nicht gespeichert)
     fresh = bool(f) and f[4] == principal and f[5] == nid
-    if not n or not f or f[3] != n[0] or not (fresh or ref_ in (n[1] or "") or n[2] == ref_ or n[3] == ref_):
+    if not n or not f or f[3] != n[0] or not (fresh or ref_ in (n[1] or "") or n[2] == ref_ or n[3] == ref_ or ref_ in (n[4] or "")):
         return None
     path = os.path.join(FILES_DIR, fid)
     if not os.path.isfile(path) or os.path.getsize(path) > FILE_MAX + 1024:

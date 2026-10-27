@@ -71,13 +71,14 @@ def tmp_cleanup(max_age=3600):
 
 def files_gc(min_age=86400):
     """Dateien loeschen, die in keiner Seite und keiner Version ihres Besitzers mehr vorkommen
-    (erst nach min_age Sekunden - frisch hochgeladene Bilder sind evtl. noch nicht gespeichert)."""
+    (erst nach min_age Sekunden - frisch hochgeladene Bilder sind evtl. noch nicht gespeichert).
+    2.5 (Paket 1): auch Werte von Datenbank-Zeilen (props, Datei-Eigenschaft) zaehlen als Benutzung."""
     removed = 0
     with _db() as c, c:
         for fid, uid in c.execute("SELECT id, uid FROM file WHERE created < ?", (time.time() - min_age,)).fetchall():
             ref = f"/files/{fid}"
-            used = c.execute("SELECT 1 FROM note WHERE uid=? AND (instr(body, ?) > 0 OR icon=? OR cover=?) LIMIT 1",
-                             (uid, ref, ref, ref)).fetchone() or \
+            used = c.execute("SELECT 1 FROM note WHERE uid=? AND (instr(body, ?) > 0 OR icon=? OR cover=? OR instr(props, ?) > 0) LIMIT 1",
+                             (uid, ref, ref, ref, ref)).fetchone() or \
                 c.execute("SELECT 1 FROM note_version WHERE uid=? AND instr(body, ?) > 0 LIMIT 1", (uid, ref)).fetchone()
             if not used:
                 c.execute("DELETE FROM file WHERE id=?", (fid,))
@@ -135,8 +136,8 @@ def upload_owner(uid, note):
 
 
 def _file_visible(c, uid, owner, fid):
-    """Datei eines anderen Kontos: sichtbar, wenn eine Seite des Besitzers sie benutzt (Inhalt, Symbol, Titelbild)
-    und ich diese Seite sehen darf (Freigabe). Erst die sichtbaren Seiten (eine Abfrage ohne Inhalte), dann nur in DIESEN
+    """Datei eines anderen Kontos: sichtbar, wenn eine Seite des Besitzers sie benutzt (Inhalt, Symbol, Titelbild, 2.5: Wert
+    einer Datei-Eigenschaft in props) und ich diese Seite sehen darf (Freigabe). Erst die sichtbaren Seiten (eine Abfrage ohne Inhalte), dann nur in DIESEN
     nach der Datei suchen - nicht alle Inhalte des Besitzers je Bild durchsuchen (und kein LIMIT, das Treffer abschneidet)."""
     vis = list(Access(c, uid).tree(owner))
     if not vis:
@@ -145,7 +146,7 @@ def _file_visible(c, uid, owner, fid):
     for k in range(0, len(vis), 500):
         part = vis[k:k + 500]
         if c.execute(f"SELECT 1 FROM note WHERE uid=? AND deleted_at IS NULL AND id IN ({','.join('?' * len(part))}) "
-                     "AND (instr(body, ?) > 0 OR icon=? OR cover=?) LIMIT 1", (owner, *part, ref, ref, ref)).fetchone():
+                     "AND (instr(body, ?) > 0 OR icon=? OR cover=? OR instr(props, ?) > 0) LIMIT 1", (owner, *part, ref, ref, ref, ref)).fetchone():
             return True
     return False
 
