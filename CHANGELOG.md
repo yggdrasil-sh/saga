@@ -232,6 +232,10 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Eigentümer an; jetzt kommt ein kleines Menü „Leere Unterseite“ mit Hinweis, wem sie gehört (anderer Server: Vorlagen und
   Galerie gehen dort noch nicht). Profilbilder ohne Bild (z. B. Personen anderer Server) erzeugten je Anzeige zwei
   404-Fehler in der Browser-Konsole: Das Web fragt mit `?q=1` und bekommt dann 204 statt 404 (Apps unverändert 404).
+- **Vorlagengalerie unter nur lesbarer Seite:** Der Server antwortet mit einer verständlichen Meldung statt „Dafür fehlt dir
+  die Berechtigung“; der Dialog sagt bei geöffneter nur lesbarer oder fremder Seite, dass die Vorlage in den eigenen
+  Seiten entsteht. Befehlspalette und „+ Neue Seite“ wählen beide „Oberste Ebene“ vor (vorher legte die Palette die
+  Vorlage leicht unbeabsichtigt unter der gerade offenen Seite an).
 
 ### Behoben – Bughunt 3 (Server)
 - **Namensauflösung mit Zeitlimit auch in den Vorab-Prüfungen.** KI, Immich, Kalender, Push, Nextcloud, Föderation

@@ -2579,6 +2579,9 @@
             sel.value = parentId && opts[1] && opts[1][0] === parentId ? '1' : '0';
             ul2.appendChild(sel); act.appendChild(ul2);
           }
+          if (S.cur && S.cur.id && !opts.some(function (o) { return o[0] === S.cur.id; }) && S.cur.kind !== 'database')   // Fix27 #16
+            act.appendChild(el('p', 'gal-hint', remoteId(S.cur.id) ? T('Unter Seiten anderer Saga-Server geht das noch nicht – die Vorlage entsteht in deinen Seiten.')
+              : T('Unter dieser Seite darfst du nichts anlegen – die Vorlage entsteht in deinen Seiten.')));
           var go = el('button', 'btn gal-use', T('Verwenden')); go.type = 'button';
           go.addEventListener('click', function () {
             go.disabled = true;
@@ -6340,7 +6343,7 @@
     if (c && own) add(c.archived ? T('Aus dem Archiv holen') : T('Seite archivieren'), '📦', function () { setArchived(c.id, !c.archived); }, { kw: 'archiv archive' });
     add(T('Archiv anzeigen'), '📦', showArchive, { kw: 'archiv archive' });
     add(T('Papierkorb'), '🗑', showTrash, { kw: 'trash geloescht' });
-    if (S.gal !== false && !EMBED) add(T('Vorlagengalerie'), '🖼', function () { openGallery(c && canEdit() && c.kind !== 'database' && !remoteId(c.id) ? c.id : null); },
+    if (S.gal !== false && !EMBED) add(T('Vorlagengalerie'), '🖼', function () { openGallery(null); },   // Fix27 #16: wie "+ Neue Seite" (Oberste Ebene vorgewaehlt)
                                        { kw: 'gallery vorlagen templates galerie vorlage' });
     if (window.HKSettings) add(T('Einstellungen'), '⚙', function () { HKSettings.open(); }, { kw: 'settings kalender immich nextcloud schluessel' });
     add(T('Übersicht (Startseite)'), '⌂', function () { location.href = '/'; }, { kw: 'home dashboard start' });

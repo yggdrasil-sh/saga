@@ -234,6 +234,29 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     ok(`#13: untere Schaltflaechen nach 1 s sichtbar (${vis.join(', ')})`, vis.length === 2 && vis.every((x) => x.endsWith(':true')), vis);
   }
 
+  // --- #16: Befehlspalette und "+ Neue Seite" waehlen beide "Oberste Ebene" vor; Hinweis bei nur lesbarer Seite --------------
+  {
+    const pick = async (pg, how) => {
+      if (how === 'palette') { await pg.keyboard.press('Control+k'); await sleep(250); await pg.keyboard.type('>Vorlagengalerie'); await sleep(300); await pg.keyboard.press('Enter'); }
+      else { await pg.click('#pg-new'); await sleep(300); await pg.locator('.menu-item', { hasText: 'Aus der Galerie' }).click(); }
+      await until(pg, () => document.querySelectorAll('#pg-modal .gal-tile').length > 0);
+      await pg.click('#pg-modal .gal-tile[data-id="wiki"]'); await until(pg, () => !!document.querySelector('#pg-modal .gal-use'));
+      const r = await pg.evaluate(() => { const s = document.querySelector('#pg-modal .gal-act select'); return { opts: s ? [...s.options].map((o) => o.textContent) : [], cur: s ? s.options[s.selectedIndex].textContent : null, hint: (document.querySelector('#pg-modal .gal-hint') || {}).textContent || '' }; });
+      await pg.keyboard.press('Escape'); await sleep(200);
+      return r;
+    };
+    await p.open(AP.root);
+    const a1 = await pick(p, 'palette'), a2 = await pick(p, 'menu');
+    ok(`#16: Befehlspalette waehlt Oberste Ebene vor (${a1.cur}; ${a1.opts.join(' / ')})`, a1.cur === 'Oberste Ebene' && a1.opts.length === 2, a1);
+    ok('#16: "+ Neue Seite" ebenso', a2.cur === 'Oberste Ebene', a2);
+    await p.api('PUT', '/api/notes/' + AP.root + '/shares', { type: 'user', target: 'hk-test-b', role: 'view' });
+    const b3 = await page(CK2); await b3.open(AP.root);
+    const a3 = await pick(b3, 'palette');
+    ok(`#16: nur lesbare Seite offen -> Hinweis (${a3.hint})`, /darfst du nichts anlegen/.test(a3.hint) && !a3.opts.length, a3);
+    await p.api('DELETE', '/api/notes/' + AP.root + '/shares?type=user&target=hk-test-b');
+    await b3.context().close();
+  }
+
   // --- #12: kein seitliches Scrollen bei 1440 px (auch beim Darueberfahren: Kommentar-Knopf am Blockrand) -----------------
   {
     const RZ = await p.api('POST', '/api/gallery/rezepte/use', { examples: true });

@@ -201,8 +201,9 @@ def use(uid, gid, b, lang, origin=None):
         owner = uid
         if pid is not None:
             owner, _, err = access(c, uid, pid, "edit", acc)
-            if err is not None:
-                return err
+            if err is not None:                          # Fix27 #16: Lesen/Kommentieren -> verstaendliche Meldung (404 bleibt 404)
+                return _bad(t("Unter dieser Seite kannst du keine Vorlage anlegen – du darfst sie nur lesen oder kommentieren."), 403) \
+                    if getattr(err, "status_code", 0) == 403 else err
             pk = c.execute("SELECT kind FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (pid, owner)).fetchone()
             if not pk:
                 return _gone()

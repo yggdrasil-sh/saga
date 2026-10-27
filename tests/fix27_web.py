@@ -1,4 +1,4 @@
-"""Fix-Runde 27.10. (Galerie-Testrunde), Server-Teile der Web-Funde: #15 Profilbild ohne Bild mit ?q=1 -> 204, #10 Zahlenformat (i18n.fmt_num: Prozent ganzzahlig,
+"""Fix-Runde 27.10. (Galerie-Testrunde), Server-Teile der Web-Funde: #16 Galerie-Meldung bei nur Lesen, #15 Profilbild ohne Bild mit ?q=1 -> 204, #10 Zahlenformat (i18n.fmt_num: Prozent ganzzahlig,
 Euro mit 2 Nachkommastellen in der Sprache; Fortschritt-Widget meldet das Format der Spalte; veroeffentlichte Seite zeigt
 Tabelle und Widgets so). Konto hk-test-a (oeffentlicher Name fx27-a), raeumt seine Seiten auf.
 Umgebung wie die anderen Tests (HK_TEST_BASE, BASE_URL, SESSION_SECRET)."""
@@ -86,6 +86,17 @@ def main():
     ok("#10 oeffentlich de: Fortschritt ueber 100 % echt, in Euro", f"1.430,50{nb}€ / 1.200,00{nb}€ (119{nb}%)" in html)
     s, html = req("GET", url, lang="en")
     ok("#10 oeffentlich en: Schreibweise der Sprache", "41%" in html and "€1,000.50" in html and "€1,430.50 / €1,200.00 (119%)" in html)
+
+    # --- #16: Galerie unter nur lesbarer Seite: verstaendliche Meldung (403), nicht geteilte Seite bleibt 404 -------------
+    B2 = ck("hk-test-b")
+    req("PUT", f"/api/notes/{P}/shares", A, {"type": "user", "target": "hk-test-b", "role": "view"})
+    s, d = req("POST", "/api/gallery/wiki/use", B2, {"parent_id": P, "examples": False})
+    ok(f"#16 Galerie unter nur lesbarer Seite: 403 mit Erklaerung ({s}, {d})", s == 403 and "nur lesen" in str(d))
+    s, d = req("POST", "/api/gallery/wiki/use", B2, {"parent_id": P, "examples": False}, lang="en")
+    ok(f"#16 ... auf Englisch ({d})", s == 403 and "only view" in str(d))
+    req("DELETE", f"/api/notes/{P}/shares?type=user&target=hk-test-b", A)
+    s, d = req("POST", "/api/gallery/wiki/use", B2, {"parent_id": P, "examples": False})
+    ok(f"#16 nicht geteilt: weiter 404 ({s})", s == 404)
 
     # --- #15: Profilbild ohne Bild: Web (?q=1) bekommt 204 statt 404, Apps (ohne q) weiter 404 ---------------------------
     s1, _ = req("GET", "/api/avatar/x.unbekannt?s=64", A)
