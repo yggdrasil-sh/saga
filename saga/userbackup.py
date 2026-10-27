@@ -466,7 +466,7 @@ def build_zip(uid, cfg, path, limit, name):
                 if m and m.group(1) in fpaths:
                     return os.path.relpath(fpaths[m.group(1)], os.path.dirname(here) or ".").replace(" ", "%20")
                 return (BASE_URL + h) if h.startswith(("/notes#", "/files/")) else h
-            z.put(p, md_page(rows, rows[i], rel))
+            z.put(p, md_page(rows, rows[i], rel, uid))
         for fid, fp in fpaths.items():
             src = os.path.join(FILES_DIR, fid)
             if os.path.isfile(src):

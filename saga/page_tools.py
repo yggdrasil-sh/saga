@@ -11,7 +11,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from db import connect as _db
 from fastapi import APIRouter
-from saga import i18n, nextcloud
+from saga import i18n, nextcloud, page_widgets
 from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, origin_of, t
 from saga.sharing import Access, access, mask_links, names, person, viewer
 from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _forced_throttled, _insert_version, _latest, announce_tree, checkpoint, blocks_text, share_targets, tree_changed
@@ -225,8 +225,9 @@ def _md_inline(s, link):
     return html_unescape(s)
 
 
-def blocks_to_md(blocks, link=lambda h: h, title=lambda nid: None):
-    """title(nid): Titel einer verknuepften Seite/Datenbank (eingebettete Datenbank) oder None."""
+def blocks_to_md(blocks, link=lambda h: h, title=lambda nid: None, widget=None):
+    """title(nid): Titel einer verknuepften Seite/Datenbank (eingebettete Datenbank) oder None.
+    widget(block): Wert eines Widgets aus einer Datenbank (page_widgets.compute, Rechte des Exportierenden) oder None."""
     out = []
 
     def items(lst, style, depth):
@@ -271,11 +272,11 @@ def blocks_to_md(blocks, link=lambda h: h, title=lambda nid: None):
             out += [nextcloud.block_md(d), ""]
         elif typ == "columns":
             for col in d.get("cols") if isinstance(d.get("cols"), list) else []:
-                sub = blocks_to_md(col.get("blocks") or [], link, title).strip() if isinstance(col, dict) else ""
+                sub = blocks_to_md(col.get("blocks") or [], link, title, widget).strip() if isinstance(col, dict) else ""
                 if sub:
                     out += [sub, ""]
         elif typ == "toggle":
-            inner = (blocks_to_md(d["blocks"], link, title).strip() if isinstance(d.get("blocks"), list)
+            inner = (blocks_to_md(d["blocks"], link, title, widget).strip() if isinstance(d.get("blocks"), list)
                      else _md_inline(d.get("text", ""), link))
             lv = d.get("level")
             if isinstance(lv, int) and not isinstance(lv, bool) and 1 <= lv <= 3:     # 2.5 (G10): Toggle-Ueberschrift
@@ -292,6 +293,10 @@ def blocks_to_md(blocks, link=lambda h: h, title=lambda nid: None):
             db = d.get("db")
             name = title(db) if isinstance(db, int) else None
             out += [f"▦ [{name or t('Datenbank')}]({link('/notes#' + str(db))})" if isinstance(db, int) else "▦ " + t("Datenbank"), ""]
+        elif typ == "widget":                          # 2.5: eine Zeile "**Titel:** Wert" (saga.page_widgets)
+            line = page_widgets.md_text(b, widget(b) if widget and page_widgets.server_kind(d) else None)
+            if line:
+                out += [line, ""]
         elif typ == "calendar":
             out += ["*🗓 " + t("Kalender (in Saga)") + "*", ""]
         elif typ == "tasks":
@@ -310,9 +315,10 @@ def _safe_name(s):
     return s[:80]
 
 
-def md_page(rows, r, link):
+def md_page(rows, r, link, viewer=None):
     """Eine Seite als Markdown (Export, persoenliches Backup). rows: id -> [id, title, icon, parent_id, body, format, kind,
-    schema, props, created, updated] (alle exportierten Seiten; Datenbank-Zeilen, Relationen und Eltern daraus)."""
+    schema, props, created, updated] (alle exportierten Seiten; Datenbank-Zeilen, Relationen und Eltern daraus).
+    viewer: wer exportiert - Widgets mit Werten aus einer Datenbank rechnen mit seinen Rechten (sonst ohne Wert)."""
     def val_of(p, row, pv):
         if p["type"] == "calc":
             return _calc_value(p, pv)
@@ -355,7 +361,8 @@ def md_page(rows, r, link):
             head += "\n".join(lst) + "\n\n"
     if r[5] == "blocks":
         try:
-            return head + blocks_to_md(json.loads(r[4]).get("blocks", []), link, lambda x: (rows[x][1] or t("Unbenannt")) if x in rows else None)
+            return head + blocks_to_md(json.loads(r[4]).get("blocks", []), link, lambda x: (rows[x][1] or t("Unbenannt")) if x in rows else None,
+                                       (lambda b: page_widgets.value_for(viewer, b)) if viewer else None)
         except ValueError:
             return head
     return head + (r[4] or "") + "\n"
@@ -395,7 +402,7 @@ def note_export(uid, nid, sub=0):
                     # fremd: Verweise auf Seiten ohne Zugriff ohne ihren Titel
                     rows[i][4] = mask_links(body, rows[i][5], vis) if vis else body
 
-    md_of = lambda r, link: md_page(rows, r, link)      # noqa: E731
+    md_of = lambda r, link: md_page(rows, r, link, uid)      # noqa: E731
     ext_link = lambda h: (BASE_URL + h) if h.startswith(("/notes#", "/files/")) else h
     if not sub:
         load_bodies([nid])
