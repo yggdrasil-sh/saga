@@ -272,6 +272,43 @@ async function until(p, fn, arg, ms = 15000) {   // ohne waitForFunction (CSP oh
     }
   }
 
+  // --- #17: Schoenheit ---------------------------------------------------------------------------------------------------
+  {
+    const lum = (c) => { const m = c.match(/\d+(\.\d+)?/g).slice(0, 3).map((x) => +x / 255).map((x) => x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)); return 0.2126 * m[0] + 0.7152 * m[1] + 0.0722 * m[2]; };
+    // Kalender "heute" dunkel >= 4,5:1
+    const K = (await p.api('POST', '/api/notes', { kind: 'database', title: 'Kal-Kontrast' })).id;
+    const ks = (await p.api('GET', '/api/notes/' + K)).schema;
+    ks.props.push({ id: 'd', name: 'Datum', type: 'date' }); ks.views = [{ id: 'kal', name: 'Kalender', type: 'calendar', date_by: 'd' }];
+    await p.api('PATCH', '/api/notes/' + K, { schema: ks });
+    const dk = await page(CK, { colorScheme: 'dark' }); await dk.open(K);
+    await until(dk, () => !!document.querySelector('.cal-day.today .cal-num'));
+    const cc = await dk.evaluate(() => { const n = document.querySelector('.cal-day.today .cal-num'), cs = getComputedStyle(n); return [cs.color, cs.backgroundColor]; });
+    const ratio = (Math.max(lum(cc[0]), lum(cc[1])) + 0.05) / (Math.min(lum(cc[0]), lum(cc[1])) + 0.05);
+    ok(`#17: Kalender "heute" dunkel Kontrast ${ratio.toFixed(2)}:1`, ratio >= 4.5, cc);
+    // Kalender-Hinweis gestaltet (Text + Link statt Knopf mit Rahmen)
+    await dk.open(MT.root); await until(dk, () => !!document.querySelector('.ag-noacc'));
+    const hint = await dk.evaluate(() => { const b = document.querySelector('.ag-noacc .ag-connect'); const cs = b && getComputedStyle(b); return b ? { t: b.parentNode.textContent, bw: cs.borderTopWidth, bg: cs.backgroundColor } : null; });
+    ok('#17: Kalender-Hinweis als Text mit Link', hint && hint.bw === '0px' && /rgba\(0, 0, 0, 0\)|transparent/.test(hint.bg) && /Einstellungen verbinden/.test(hint.t), hint);
+    // Pfad bleibt lesbar bei langer Statusmeldung
+    await dk.evaluate(() => { const s = document.getElementById('pg-state'); s.textContent = 'Aktualisiert – geändert von ' + 'Sehr Langer Name '.repeat(6) + '(person@ein-anderer-server.example)'; });
+    const cw = await dk.evaluate(() => Math.round(document.getElementById('pg-crumbs').getBoundingClientRect().width));
+    ok(`#17: Pfad bei langer Meldung noch ${cw} px breit`, cw >= 140, cw);
+    await dk.context().close();
+    // Wortumbruch mit Trennstrich in Karten/Zellen
+    ok('#17: hyphens:auto in Galerie-Karten', await p.evaluate(() => { const d = document.createElement('div'); d.className = 'dbg-title'; document.body.appendChild(d); const h = getComputedStyle(d).hyphens; d.remove(); return h === 'auto'; }));
+    // Handy (Touch): Spalten-Leiste und "+ Block" erst nach Antippen der Spalte; Widgets ohne grosse Luecken
+    const m = await page(CK, { viewport: { width: 390, height: 800 }, isMobile: true, hasTouch: true });
+    await m.open(AP.root); await until(m, () => document.querySelectorAll('.cols .wg').length >= 3);
+    const vis0 = await m.evaluate(() => ({ ctl: getComputedStyle(document.querySelector('.cols-ctl')).opacity, add: [...document.querySelectorAll('.col-add')].filter((x) => x.offsetParent).length,
+      gaps: (() => { const w = [...document.querySelectorAll('.cols .wg')].map((x) => x.getBoundingClientRect()); const o = []; for (let i = 1; i < w.length; i++) o.push(Math.round(w[i].top - w[i - 1].bottom)); return o; })() }));
+    ok(`#17: Handy ohne Antippen keine Spalten-Leisten (${JSON.stringify(vis0)})`, vis0.ctl === '0' && vis0.add === 0, vis0);
+    ok(`#17: Handy Abstand zwischen gestapelten Widgets ${vis0.gaps.join('/')} px`, vis0.gaps.length && vis0.gaps.every((g) => g <= 36), vis0.gaps);
+    await m.locator('.cols .col').first().tap({ position: { x: 30, y: 10 } }).catch(() => {}); await sleep(300);
+    const vis1 = await m.evaluate(() => ({ ctl: getComputedStyle(document.querySelector('.cols-ctl')).opacity, add: [...document.querySelectorAll('.col-add')].filter((x) => x.offsetParent).length }));
+    ok(`#17: nach Antippen Leisten der Spalte sichtbar (${JSON.stringify(vis1)})`, +vis1.ctl > 0.5 && vis1.add === 1, vis1);
+    await m.context().close();
+  }
+
   console.log(p.errs.length ? 'Seitenfehler: ' + p.errs.join(' | ') : 'keine Seitenfehler');
   ok('keine Seitenfehler', !p.errs.length, p.errs);
   await br.close();

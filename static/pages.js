@@ -441,7 +441,7 @@
   function label(p) { return p && p.title ? p.title : T('Unbenannt'); }
   function nSub(n) { return n === 1 ? T('1 Unterseite') : T('{n} Unterseiten', { n: n }); }
 
-  function state(t, cls) { var s = $('pg-state'); s.textContent = t; s.className = 'note-state ' + (cls || ''); }
+  function state(t, cls) { var s = $('pg-state'); s.textContent = t; s.title = t; s.className = 'note-state ' + (cls || ''); }
 
   // --- Seitenbaum -----------------------------------------------------------
   function renderTree() {
@@ -5504,6 +5504,11 @@
     var col = el('div', 'col'), h = el('div', 'col-ed'), add = el('button', 'col-add', T('+ Block'));
     add.type = 'button'; add.title = T('Neuer Block am Ende dieser Spalte');
     col.appendChild(h); col.appendChild(add); this.w.appendChild(col);
+    col.addEventListener('pointerdown', function (e) {        // Fix27 #17: Touch - Leisten nur an der angetippten Spalte (CSS .col-tap)
+      if (e.pointerType === 'mouse') return;
+      [].forEach.call(document.querySelectorAll('.col-tap'), function (x) { if (x !== col && !x.contains(col)) x.classList.remove('col-tap'); });
+      col.classList.add('col-tap'); if (col.parentNode) col.parentNode.classList.add('col-tap');
+    });
     var ed = nestedEditor(h, c.blocks, T("Spalte – '/' für Blöcke"));
     add.addEventListener('click', function () {
       ed.isReady.then(function () {

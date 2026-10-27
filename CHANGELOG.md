@@ -236,6 +236,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   die Berechtigung“; der Dialog sagt bei geöffneter nur lesbarer oder fremder Seite, dass die Vorlage in den eigenen
   Seiten entsteht. Befehlspalette und „+ Neue Seite“ wählen beide „Oberste Ebene“ vor (vorher legte die Palette die
   Vorlage leicht unbeabsichtigt unter der gerade offenen Seite an).
+- **Schönheit (Web):** Kalender „heute“ im dunklen Modus mit 5,4:1 Kontrast (vorher 3,4:1); Kalender-Block ohne Kalender
+  zeigt einen Hinweis mit Link statt eines ungestalteten Knopfs; am Handy erscheinen „Spalten 2 3 4“ und „+ Block“ erst an
+  der angetippten Spalte, gestapelte Widgets stehen enger; lange Wörter in Karten, Tabellenzellen und öffentlichen Tabellen
+  werden mit Trennstrich umbrochen (`hyphens:auto`); lange Statusmeldungen („geändert von …“) werden gekürzt statt den
+  Pfad zusammenzudrücken; Team-Wiki: Hinweis „Strg+K öffnet die Schnellsuche“ (auf veröffentlichten Seiten sinnlos) durch
+  Verweise auf FAQ und Ansprechpartner ersetzt.
 
 ### Behoben – Bughunt 3 (Server)
 - **Namensauflösung mit Zeitlimit auch in den Vorab-Prüfungen.** KI, Immich, Kalender, Push, Nextcloud, Föderation

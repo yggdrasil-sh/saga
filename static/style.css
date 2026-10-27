@@ -183,6 +183,8 @@ border:1px dashed var(--border);border-radius:12px;font:inherit;cursor:pointer;t
   font:inherit;font-size:.88rem;padding:.45rem;cursor:pointer}
 .note-new:hover,.note-new:focus-visible{border-color:var(--accent);color:var(--fg)}
 .note-state{font-size:.78rem;color:var(--muted);white-space:nowrap}
+/* Fix27 #17: lange Meldungen ("geändert von <langer Name>") kuerzen statt den Pfad zusammenzudruecken */
+.page-bar .note-state{flex:0 1 auto;min-width:0;max-width:22rem;overflow:hidden;text-overflow:ellipsis}
 .note-state.ok{color:var(--ok)}
 .note-state.err{color:var(--down)}
 
@@ -222,7 +224,7 @@ border:1px dashed var(--border);border-radius:12px;font:inherit;cursor:pointer;t
 
 .page{min-width:0}
 .page-bar{display:flex;align-items:center;gap:.35rem;min-height:2rem;margin-bottom:1.4rem}
-.crumbs{flex:1;min-width:0;display:flex;align-items:center;gap:.2rem;font-size:.82rem;color:var(--muted);overflow:hidden;white-space:nowrap}
+.crumbs{flex:1;min-width:min(9rem,35%);display:flex;align-items:center;gap:.2rem;font-size:.82rem;color:var(--muted);overflow:hidden;white-space:nowrap}
 .crumb{appearance:none;background:none;border:0;color:var(--muted);font:inherit;padding:.15rem .3rem;border-radius:4px;cursor:pointer;
   overflow:hidden;text-overflow:ellipsis;max-width:16em}
 .crumb:hover{color:var(--fg);background:var(--card-h)}
@@ -824,12 +826,13 @@ body.notes-page .page.wide .backlinks{max-width:none}
 /* Editor.js setzt unten Innenabstand per Skript - in Spalten/Toggles unnoetig viel Leerraum */
 .page-body .col .codex-editor__redactor,.page-body .tgl-body .codex-editor__redactor{padding-bottom:6px !important}
 .page-body .tgl-body{line-height:normal}
-@media (max-width:760px){.page-body .cols{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:760px){.page-body .cols{grid-template-columns:minmax(0,1fr);gap:.6rem}}   /* Fix27 #17: untereinander kein 47-px-Loch zwischen Widgets */
 .page-body .cols{position:relative}
 .page-body .cols-ctl{position:absolute;top:-1.6rem;right:0;display:flex;align-items:center;gap:.15rem;padding:.1rem .25rem;border-radius:6px;
   background:var(--card);border:1px solid var(--border);font-size:.72rem;color:var(--muted);opacity:0;transition:opacity .12s;z-index:2}
 .page-body .cols:hover .cols-ctl,.page-body .cols-ctl:focus-within{opacity:1}
-@media (hover:none){.page-body .cols-ctl{opacity:.85}}
+/* Fix27 #17: Touch - Spalten-Leiste nur an der angetippten bzw. fokussierten Spaltenreihe */
+@media (hover:none){.page-body .cols-ctl{opacity:0;pointer-events:none}.page-body .cols:is(:focus-within,.col-tap)>.cols-ctl{opacity:.85;pointer-events:auto}}
 .page-body .cols-ctl-t{padding:0 .3rem 0 .15rem}
 .page-body .cols-ctl-b{appearance:none;background:none;border:0;color:var(--muted);font:inherit;font-size:.75rem;width:1.4rem;height:1.3rem;border-radius:4px;cursor:pointer}
 .page-body .cols-ctl-b:hover{background:var(--card-h);color:var(--fg)}
@@ -840,6 +843,8 @@ body.notes-page .page.wide .backlinks{max-width:none}
 .db-th{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .db-th-title{min-width:0}
 .db-cell{overflow:hidden}
+/* Fix27 #17: lange Woerter in schmalen Karten/Zellen mit Trennstrich statt hartem Umbruch (Sprache: lang des Dokuments) */
+.board-title,.dbg-title,.db-cell,.dbl-row,.gal-t,.wg-t{hyphens:auto;-webkit-hyphens:auto}
 .db-rs{position:absolute;top:0;right:-3px;width:7px;height:100%;cursor:col-resize;z-index:1}
 .db-rs:hover,.db-rs:active{background:color-mix(in srgb,var(--accent) 55%,transparent)}
 .db-grow td{padding:.65rem .5rem .35rem;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--card-h) 40%,transparent)}
@@ -939,7 +944,7 @@ body.embed .np-main{padding:1rem 1.4rem 3rem}
 .cal-day.over{background:color-mix(in srgb,var(--accent) 12%,transparent);box-shadow:inset 0 0 0 1px var(--accent)}
 .cal-top{display:flex;align-items:center;justify-content:space-between}
 .cal-num{font-size:.8rem;color:var(--muted);padding:.05rem .3rem;border-radius:999px;font-variant-numeric:tabular-nums}
-.cal-day.today .cal-num{background:var(--down);color:#fff;font-weight:600}
+.cal-day.today .cal-num{background:#cf222e;color:#fff;font-weight:600}   /* Fix27 #17: fest, weiss darauf 5,4:1 auch dunkel (--down dunkel nur 3,4:1) */
 .cal-add{appearance:none;background:none;border:0;color:var(--muted);width:1.3rem;height:1.3rem;border-radius:4px;cursor:pointer;opacity:0;font-size:.95rem;line-height:1}
 .cal-day:hover .cal-add,.cal-add:focus-visible{opacity:1}
 .cal-add:hover{background:var(--card-h);color:var(--fg)}
@@ -1070,7 +1075,7 @@ body.embed .pg-conflict,.pages.pg-full .pg-conflict{top:.5rem}
   font:inherit;font-size:.82rem;cursor:pointer;opacity:0;transition:opacity .12s}
 .page-body .col:hover .col-add,.page-body .col-add:focus-visible{opacity:1}
 .page-body .col-add:hover{background:var(--card-h);color:var(--fg)}
-@media (hover:none){.page-body .col-add{opacity:.7}}
+@media (hover:none){.page-body .col-add{display:none}.page-body .col:is(:focus-within,.col-tap)>.col-add{display:inline-block;opacity:.7}}
 
 /* Immich-Bilderauswahl */
 .imm-card{width:min(920px,96vw);max-height:88vh;display:flex;flex-direction:column}
@@ -1943,6 +1948,8 @@ body.pg-lock-on #pg-editor .embed-db :is(.db-new-top,.db-tab-add,.db-gear,.db-ne
 @media (max-width:600px){.nc-acts{width:100%}.nc-entries{columns:1}}
 .nc-card>.imm-bar,.nc-card>.nc-crumb,.nc-card>.imm-info,.nc-card>.nc-list,.nc-card>.nc-foot{margin-left:1rem;margin-right:1rem}
 .nc-card>.nc-foot{margin-bottom:1rem}
+.ag-noacc{margin:0}.ag-connect{background:none;border:0;padding:0;color:var(--accent);font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.ag-connect:hover{color:var(--fg)}
 .nc-crumb .linkish{background:none;border:0;padding:0 .1rem;color:var(--accent);font:inherit;cursor:pointer}
 
 /* 2.5 Vorlagen verwalten */

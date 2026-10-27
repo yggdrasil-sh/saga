@@ -98,6 +98,14 @@ def main():
     s, d = req("POST", "/api/gallery/wiki/use", B2, {"parent_id": P, "examples": False})
     ok(f"#16 nicht geteilt: weiter 404 ({s})", s == 404)
 
+    # --- #17: Team-Wiki ohne "Strg+K"-Hinweis (sinnlos auf veroeffentlichten Seiten), stattdessen Verweise FAQ/Ansprechpartner
+    for lang, needle in (("de", "Strg+K"), ("en", "Ctrl+K")):
+        s, d = req("POST", "/api/gallery/wiki/use", A, {"examples": False}, lang=lang)
+        body = req("GET", f"/api/notes/{d['root']}", A)[1].get("body") or ""
+        ok(f"#17 Team-Wiki ({lang}) ohne {needle}, mit FAQ-Verweis", s == 200 and needle not in body and "FAQ</a>" in body)
+        for i in reversed(d.get("created") or []):
+            req("DELETE", f"/api/notes/{i}", A)
+
     # --- #15: Profilbild ohne Bild: Web (?q=1) bekommt 204 statt 404, Apps (ohne q) weiter 404 ---------------------------
     s1, _ = req("GET", "/api/avatar/x.unbekannt?s=64", A)
     s2, _ = req("GET", "/api/avatar/x.unbekannt?s=64&q=1", A)

@@ -64,7 +64,7 @@
 .lv-pres .lv-av.editing{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
 .lv-pres .lv-av.editing+.lv-av{margin-left:-.1rem}
 .lv-av-more{background:var(--card-h);color:var(--fg)}
-.lv-pres-t{margin-left:.5rem;font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:16rem}
+.lv-pres-t{margin-left:.5rem;font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:12rem}
 @media (max-width:1180px){.lv-pres-t{display:none}}              /* wenig Platz: nur die Kreise (Name im Tooltip) */
 body.cm-open .lv-pres-t{display:none}
 
