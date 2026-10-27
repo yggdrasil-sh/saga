@@ -9,15 +9,21 @@ B), Bilder/Dateien hochladen (beim Eigentuemer, Vorschau nur fuer die hochladend
 fremder Person), Versionen (ansehen/wiederherstellen ab 'Bearbeiten'), Export (Markdown, ZIP), Anwesenheit + Live ueber ein
 kurzlebiges Abo (Ereignisse ohne Inhalt, Abo laeuft ab), Seitenbaum-Abgleich ('Mit mir geteilt' neu laden), Trennen.
 Kompatibilitaet: FED_B_APP=<Saga 2.1/2.2> -> Protokoll 1 laeuft weiter, neue Funktionen melden verstaendlich "noch nicht",
-keine Serverfehler. Raeumt auf (Datenbanken geloescht)."""
+keine Serverfehler. Raeumt auf (Datenbanken geloescht).
+Ports: FEDTEIL_PORTS="a,a-admin,b,b-admin" (Standard 8395,8394,8397,8396); Zustand: FEDTEIL_STATE=<praefix> (Standard
+/tmp/fedteil -> /tmp/fedteil-a, /tmp/fedteil-b); Datenbanken: FEDTEIL_DB=<praefix> (Standard saga_ft -> saga_fta, saga_ftb)."""
 import http.client, io, json, os, socket, sys, threading, time, urllib.parse, zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import foederation as T  # noqa: E402
 import foederation2 as F2  # noqa: E402
 
-T.I["a"].update(port=8395, admin=8394, db="saga_fta", url="http://127.0.0.1:8395", host="127.0.0.1:8395", state="/tmp/fedteil-a", allow="localhost:8397")
-T.I["b"].update(port=8397, admin=8396, db="saga_ftb", url="http://localhost:8397", host="localhost:8397", state="/tmp/fedteil-b", allow="127.0.0.1:8395")
+pa_, aa_, pb_, ab_ = (int(x) for x in os.environ.get("FEDTEIL_PORTS", "8395,8394,8397,8396").split(","))
+st_, db_ = os.environ.get("FEDTEIL_STATE", "/tmp/fedteil"), os.environ.get("FEDTEIL_DB", "saga_ft")
+T.I["a"].update(port=pa_, admin=aa_, db=db_ + "a", url=f"http://127.0.0.1:{pa_}", host=f"127.0.0.1:{pa_}", state=st_ + "-a",
+                allow=f"localhost:{pb_}")
+T.I["b"].update(port=pb_, admin=ab_, db=db_ + "b", url=f"http://localhost:{pb_}", host=f"localhost:{pb_}", state=st_ + "-b",
+                allow=f"127.0.0.1:{pa_}")
 HA, HB = T.I["a"]["host"], T.I["b"]["host"]
 ok, hreq, wait, jd, sql, api = T.ok, T.hreq, T.wait, T.jd, T.sql, T.api
 COMPAT = F2.COMPAT
