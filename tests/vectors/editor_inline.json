@@ -30,8 +30,11 @@
     ["Marker ohne Klasse", "<mark class=\"cdx-marker\">m</mark>", "<mark>m</mark>"],
     ["verschachtelt", "<span class=\"hk-c-red\"><mark class=\"hk-bg-blue\">d</mark></span>", "<span class=\"c-red\"><mark class=\"bg-blue\">d</mark></span>"],
     ["Erwaehnung nur als Text", "<span class=\"hk-mention\" data-u=\"~abcdefghijklmnop\">Anna</span> da", "Anna da"],
-    ["Inline-Mathe als Code", "<code class=\"hk-math\">x^2</code>", "<code class=\"pub-math\">x^2</code>"],
-    ["fremde span-Klasse -> Text", "<span class=\"evil\">e</span>", "e"]
+    ["fremde span-Klasse -> Text", "<span class=\"evil\">e</span>", "e"],
+    ["Inline-Mathe als MathML", "<code class=\"hk-math\">x^2</code>", "<span class=\"pub-imath\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\"><mrow><msup><mi>x</mi><mn>2</mn></msup></mrow></math></span>"],
+    ["Inline-Mathe: href faellt weg (Positivliste)", "<code class=\"hk-math\">\\href{javascript:alert(1)}{x}</code>", "<span class=\"pub-imath\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\"><mrow><mrow><mrow><mi>x</mi></mrow></mrow></mrow></math></span>"],
+    ["Inline-Mathe: Skript im Text wird nie Element", "<code class=\"hk-math\">\\text{<script>alert(1)</script>}</code>", "<span class=\"pub-imath\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\"><mrow><mtext></mtext></mrow></math></span>"],
+    ["Inline-Mathe nicht lesbar -> Code", "<code class=\"hk-math\">\\frac{</code>", "<code class=\"pub-math\">\\frac{</code>"]
   ],
   "markdown": [
     ["Farbe faellt weg", "<span class=\"hk-c-red\">rot</span>", "rot"],

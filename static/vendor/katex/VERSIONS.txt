@@ -1,0 +1,3 @@
+katex@0.19.0 (MIT) - https://katex.org
+Dateien aus dem npm-Paket: dist/katex.min.js, dist/katex.min.css, dist/fonts/*.woff2 (nur WOFF2).
+Saga-Anpassung katex.min.css: @font-face nur mit WOFF2 (Verweise auf .woff/.ttf entfernt - die Dateien liegen nicht bei).
