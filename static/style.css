@@ -2219,7 +2219,7 @@ body.notes-page .page.p-small .page-title{font-size:calc(2.35rem * .875)}
 .imp-tbl{border-collapse:collapse;font-size:.85rem;min-width:100%}
 .imp-tbl th,.imp-tbl td{border-bottom:1px solid var(--border);padding:.3rem .5rem;text-align:left;vertical-align:top;max-width:16rem;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.imp-tbl th{position:sticky;top:0;background:var(--card);z-index:1}
+.imp-tbl th{position:sticky;top:0;background:var(--card);z-index:1;min-width:8.5rem}
 .imp-tbl th .hk-in{width:100%;margin-top:.25rem;font-size:.8rem;padding:.25rem .35rem}
 .imp-cname{font-weight:600;overflow:hidden;text-overflow:ellipsis}
 .imp-tcol{display:flex;gap:.3rem;align-items:center;font-weight:400;font-size:.78rem;color:var(--muted);margin-top:.2rem}

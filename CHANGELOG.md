@@ -16,6 +16,22 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5, Paket 2: Import und CSV-Export)
+- **Datenbank als CSV exportieren.** ⚙ Ansicht → „Als CSV exportieren“: diese Ansicht (Filter, Sortierung, Suche,
+  sichtbare Spalten) oder alles; UTF-8 mit BOM, Schalter „Excel (Deutsch)“ (Semikolon, Dezimalkomma), Schutz vor
+  Formel-Injektion. `GET /api/notes/{id}/export.csv` rechnet über `saga/dbquery.py` wie `/rows`; Rechte wie `/rows`,
+  föderiert (Fähigkeit `csv`). Wertformatierung aus dem Markdown-Export nach `saga/proptext.py` herausgelöst
+  (Erweiterungsstelle für neue Eigenschaftstypen).
+- **Importieren.** „+ Neue Seite“ bzw. Seitenmenü → „Importieren …“: CSV → neue Datenbank (Kodierung, Trennzeichen,
+  Dezimalkomma und Datumsformate erkannt, Typ je Spalte wählbar, Vorschau), „Zeilen aus CSV hinzufügen …“ an eine
+  bestehende Datenbank (Spalten zuordnen, Relationen über Titel), Markdown-Dateien bzw. Obsidian-Ordner (Ordner werden
+  Seiten, Wikilinks/Links/Bilder/Dateien aufgelöst, Frontmatter → Titel, Tags und Block „Eigenschaften“, Callouts).
+  Server: `/api/import/...` (`saga/importer.py`, `import_common.py`, `import_csv.py`, `import_md.py`, `md2blocks.py`),
+  Hintergrund-Lauf mit Fortschritt (Tabelle `import_run`, Migration 21; höchstens 2 gleichzeitig), Abbruch, Bericht
+  „nicht übernommen“ im Dialog und als Seite. ZIP-Prüfung gegen Pfad-Traversal, Symlinks, ZIP-Bomben und zu große
+  Archive; alles gestreamt (kleine Server). Neue Einstellungen `IMPORT_MAX_MB`, `IMPORT_UNPACKED_MAX_MB`,
+  `IMPORT_CSV_MAX_MB`, `IMPORT_CSV_ROWS_MAX`, `IMPORT_PARALLEL`. Notion-Import folgt.
+
 ### Neu (2.5, Fix-Runde nach der Galerie-Testrunde)
 - **Eintrags-Vorlagen für Bearbeitende (E1).** Wer eine Datenbank bearbeiten darf, bekommt ihre Eintrags-Vorlagen
   (`GET …/rows` → `templates`) und legt daraus an (`POST /api/notes/{vorlage}/duplicate {parent_id}` ohne Schaltfläche);

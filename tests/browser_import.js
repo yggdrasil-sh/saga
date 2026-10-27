@@ -77,13 +77,13 @@ async function until(p, fn, arg, ms = 20000) {
     ok('Schema: Typ geaendert, Spalte weggelassen', names.join(',') === 'Menge:number,Preis:number,Geliefert:checkbox,Kategorie:text', names);
     const sch = d.rows.find((r) => r.title === 'Schrauben');
     ok('Werte (Dezimalkomma, Haekchen)', sch && Object.values(sch.props).includes(1.25) && Object.values(sch.props).includes(true), sch);
-    ok('Sammelseite unter der offenen Seite', (await api('GET', '/api/notes/' + dbId)).parent_id === home);
+    ok('"+ Neue Seite": Datenbank auf oberster Ebene', (await api('GET', '/api/notes/' + dbId)).parent_id == null);
 
     // --- Zeilen aus CSV hinzufuegen ------------------------------------------------------------------------------------
     await p.click('.db-gear');
     await p.waitForSelector('.vs-csv-in');
     await p.click('.vs-csv-in');
-    await p.waitForSelector('#pg-modal:not([hidden]) .imp-file');
+    await p.waitForSelector('#pg-modal:not([hidden]) .imp-drop');
     await p.setInputFiles('.imp-file', csv2);
     await p.waitForSelector('.imp-tbl select.imp-target');
     const tg = await p.$$eval('.imp-tbl select.imp-target', (xs) => xs.map((x) => x.value));
@@ -112,10 +112,11 @@ async function until(p, fn, arg, ms = 20000) {
       fs.writeFileSync(path.join(dir, 'Projekte', 'Alpha.md'), '- [ ] offen\n- [x] erledigt\n');
       await p.click('#pg-new');
       await p.click('.menu:not([hidden]) .menu-item:has-text("Importieren")');
-      await p.waitForSelector('#pg-modal:not([hidden]) .imp-dir');
+      await p.waitForSelector('#pg-modal:not([hidden]) .imp-drop');
       await p.setInputFiles('.imp-dir', dir);
       await p.waitForSelector('.imp-run');
-      ok('Markdown-Analyse: 2 Seiten', /2 Seiten/.test(await p.$eval('.imp-sum', (x) => x.textContent)));
+      const ms = await p.$eval('.imp-sum', (x) => x.textContent);
+      ok('Markdown-Analyse: 3 Seiten (2 Notizen + Ordner), 1 Ordner', /3 Seiten, 1 Ordner/.test(ms), ms);
       await p.click('.imp-run');
       ok('Markdown fertig', await until(p, () => !!document.querySelector('.imp-done.ok')));
       await p.click('.imp-open');
