@@ -80,7 +80,9 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # Online-Status von Chat-Partnern (Abo beim Server der Person). Mit 2.3-Servern: nichts davon, nichts wird gesendet.
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
          "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn",
-         "widgets1", "rowtpl"]
+         "widgets1", "rowtpl", "csv"]
+# csv (2.5, Paket 2) = Datenbank als CSV exportieren (GET /fed/v2/notes/{id}/export.csv, saga.csv_export) mit den Rechten
+# der fremden Person. Ohne csv: Menuepunkt fehlt fuer Datenbanken dieses Servers.
 # rowtpl (2.5, fix27 E1/E4) = Eintrags-Vorlagen fuer Bearbeitende: GET .../rows liefert ab Rolle 'Bearbeiten' "templates",
 # POST /fed/v2/notes/{vorlage}/duplicate geht dann auch ohne via (Vorlage liegt in parent_id), die Antwort traegt
 # fresh/placeholder, und POST /fed/v2/notes/{id}/discard verwirft einen unveraenderten neuen Eintrag. Ohne rowtpl: wie bisher.
@@ -2433,7 +2435,7 @@ def _note_in(c, peer, d, uid):
     return d
 
 
-PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups", "tplbtn", "widgets1", "rowtpl")
+PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups", "tplbtn", "widgets1", "rowtpl", "csv")
 
 
 def remote_info(peer):

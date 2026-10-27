@@ -306,6 +306,41 @@ GET /api/notes/812/rows?limit=500&offset=0                              nur blä
 Antwort (gekürzt): `{"schema": {…}, "templates": [], "rows": [{…}, …], "offset": 0, "limit": 8, "total": 2000,
 "matched": 37, "groups": [{"id": null, "count": 2}, {"id": "a1b2", "count": 20}, …], "role": "owner"}`
 
+## Datenbank als CSV exportieren (2.5, Paket 2)
+
+`GET /api/notes/{id}/export.csv` (Sitzung oder Geräte-Schlüssel `hkd_…`, ab Rolle *Lesen*; negative IDs = Datenbank
+eines anderen Saga-Servers, wenn er die Fähigkeit `csv` meldet – `remote.caps` enthält dann `"csv"`). Antwort
+`text/csv; charset=utf-8` mit `Content-Disposition` (Dateiname = Titel der Datenbank), sonst JSON-Fehler wie `/rows`.
+Rein additiv, `MIN_APP` ändert sich nicht.
+
+| Parameter | Bedeutung |
+|---|---|
+| `all=1` | Alle Einträge (Server-Reihenfolge) und alle Spalten in Schema-Reihenfolge. Sonst gilt die Ansicht: |
+| `view`, `filters`, `sorts`, `q`, `group`, `tz`, `today` | Wie bei `GET …/rows` (siehe oben): dieselbe Auswertung (`saga/dbquery.py`), Reihenfolge = `/rows`. Ohne `view`: erste Ansicht. |
+| `cols` | Kommaliste von Eigenschafts-IDs: Spalten und Reihenfolge (z. B. sichtbare Spalten einer Block-Ansicht). Ohne: `view.order`, ohne `view.hidden`. |
+| `sep=;` | „Excel (Deutsch)“: Semikolon und Dezimalkomma. Standard: Komma und Dezimalpunkt. |
+| `safe=0` | Schutz vor Formel-Injektion aus (Standard an: Text-Zellen, die mit `= + - @` Tab oder CR beginnen, bekommen `'` davor). |
+
+Format: UTF-8 mit BOM, CRLF, RFC 4180 (Felder mit Trennzeichen/Zeilenumbruch/Anführungszeichen in `"…"`). Erste Spalte
+= Titel (Kopf: `title_name` bzw. „Name“). Werte: Datum `YYYY-MM-DD`, Zahl ohne Einheit und ohne Exponent, Häkchen
+`true`/`false`, Auswahl/Mehrfachauswahl/Relation als Namen bzw. Titel mit `, ` verbunden (Relationen nur mit Titeln,
+die der Aufrufer sehen darf), „Berechnet“ als Ergebnis, Erstellt/Bearbeitet `YYYY-MM-DD HH:MM` in `tz`. Künftige Typen
+(Formel, Rollup, Person, Datei) erscheinen als Text. Apps: Download + Teilen-Blatt wie beim Markdown-Export.
+
+## Import (2.5, Paket 2)
+
+Importe laufen auf dem Server; Vorschau, Zuordnung und Fortschritt zeigt das Web (Apps: „Im Web öffnen“, später
+Teilen-Ziel). Alle Endpunkte mit Sitzung oder Geräte-Schlüssel, nur eigene Uploads/Läufe (fremd → `404`).
+
+| Endpunkt | Bedeutung |
+|---|---|
+| `POST /api/import/upload?name=<pfad>[&token=<t>]` | Rohdaten der Datei als Body (Datenstrom). Antwort `{token, kind, files, size}`; `kind` = `csv`, `md`, `notion` oder `null`. Weitere Dateien (Ordner ohne ZIP, `name` = relativer Pfad) mit demselben `token`. Grenzen: `IMPORT_MAX_MB` für alle Teile zusammen (`413`), höchstens 2000 Teile; Token gilt 30 Minuten. |
+| `POST /api/import/{token}/analyze` | Body `{kind?, path?, encoding?, sep?, header?}`. CSV: `{encoding, sep, header, rows, columns: [{index, name, guess, values, distinct, options, decimal, date_order, fmt}], title_col, preview (20 Zeilen), warnings, limits}`. Markdown: `{md: {pages, folders, files, unresolved, title}, warnings}`. Immer `report` (geprüfte, verworfene Einträge). Nichts wird angelegt. |
+| `POST /api/import/{token}/run` | CSV neu: `{kind: "csv", columns: [{index, type: text\|number\|select\|multi_select\|date\|checkbox\|url\|skip, name?, decimal?, date_order?}], title_col, title?, parent_id?, encoding?, sep?, header?}`. CSV an bestehende Datenbank: `target_db` und `columns: [{index, target: "title"\|<eigenschafts-id>}]`. Markdown: `{kind: "md", title?, tags: bool, props: bool, parent_id?}`. → `202 {run_id}`; `409`, wenn schon ein Import des Kontos läuft; `400` bei mehr als 30 Spalten. |
+| `GET /api/import/runs`, `GET /api/import/runs/{id}` | `{id, kind, name, state: queued\|running\|done\|failed\|cancelled, step: {phase, done, total}, report: {counts, groups: [{code, text, items: [{path, text}]}], more, page}, root, error}`. Abfragen alle 1–2 s. `root` = angelegte Datenbank bzw. Sammelseite, `report.page` = Seite „Importbericht“. |
+| `POST /api/import/runs/{id}/cancel` | Abbruch; bereits Angelegtes wandert in den Papierkorb. |
+| `DELETE /api/import/{token}` | Upload verwerfen. |
+
 ## Lesezeichen aus der Teilen-Erweiterung (2.5)
 
 Nur mit App-Schlüssel `hk_…` (`Authorization: Bearer hk_…`), nie mit Sitzung. Neue Endpunkte, `MIN_APP` ändert sich nicht.

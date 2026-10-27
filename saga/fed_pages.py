@@ -34,7 +34,7 @@ from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from db import connect as _db
-from saga import app_api, avatars, bus, databases, files, live, nextcloud, notify, page_tools, page_widgets, pages, sharing
+from saga import app_api, avatars, bus, csv_export, databases, files, live, nextcloud, notify, page_tools, page_widgets, pages, sharing
 from saga import federation as F
 from saga.comments import counts as comment_counts
 from saga.core import E, _bad, _body, t
@@ -190,6 +190,10 @@ async def _owner_req(request, nid, rest):
         if _need(inp, "export"):
             return _need(inp, "export")
         return await run_in_threadpool(_export_owner, inp, nid, 1 if q.get("sub") == "1" else 0)
+    if m == "GET" and rest == "export.csv":          # 2.5 (Paket 2): Datenbank als CSV mit den Rechten der Person
+        if _need(inp, "csv"):
+            return _need(inp, "csv")
+        return await run_in_threadpool(_csv_owner, inp, nid, q)
     if m == "POST" and rest == "files":
         if _need(inp, "upload"):
             return _need(inp, "upload")
@@ -277,6 +281,16 @@ def _export_owner(inp, nid, sub):
                 pass
     media = "application/zip" if path else "text/markdown; charset=utf-8"
     return F._signed(inp, 200, data, media, {"Content-Disposition": resp.headers.get("content-disposition", "attachment")})
+
+
+def _csv_owner(inp, nid, q):
+    res = F._as(inp, csv_export.build, nid, q)
+    if not isinstance(res, tuple):
+        return F._relay(inp, res) if isinstance(res, JSONResponse) else F._signed(inp, 500, {"error": "unexpected"})
+    name, data = res
+    if len(data) > EXPORT_MAX:
+        return F._signed(inp, 413, {"error": t("Export zu groß")})
+    return F._signed(inp, 200, data, "text/csv; charset=utf-8", {"Content-Disposition": _disposition(name)})
 
 
 def _upload_owner(inp, nid, name, img_field):
@@ -648,6 +662,29 @@ def _w_export(uid, nid, sub):
                                                                               "X-Content-Type-Options": "nosniff"})
 
 
+_CSV_KEYS = ("view", "all", "sep", "safe", "tz", "today", "q", "filters", "sorts", "group", "cols")
+
+
+def _w_csv(uid, nid, params):
+    p, rid = _peer_for(uid, nid, "csv")
+    query = "&".join(f"{k}={quote(str(params[k]), safe='')}" for k in _CSV_KEYS if k in params)
+    if len(query) > 8000:
+        return _bad("bad parameter: zu lang")
+    status, rh, data = _call(uid, p, "GET", f"/fed/v2/notes/{rid}/export.csv", query, limit=EXPORT_MAX, raw=True)
+    if status != 200:
+        try:
+            d = json.loads(data or b"{}")
+        except ValueError:
+            d = {}
+        return F._pass_err(p, status, d if isinstance(d, dict) else {})
+    m = re.search(r"filename\*=UTF-8''([^;\s]+)", rh.get("content-disposition") or "")
+    name = (F._clean_text(unquote(m.group(1)) if m else "", 120) or "export.csv").replace("/", "_").replace("\\", "_")
+    if not name.lower().endswith(".csv"):
+        name += ".csv"
+    return Response(data, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": _disposition(name), "Cache-Control": "no-store",
+                                                                        "X-Content-Type-Options": "nosniff"})
+
+
 def _w_move(uid, nid, b):
     p, rid = _peer_for(uid, nid, "subpages")
     par = b.get("parent_id")
@@ -943,6 +980,8 @@ async def home_other(nid: int, rest: str, request: Request):
         return await run_in_threadpool(F._run, _w_version, uid, nid, int(mv.group(1)), bool(mv.group(2)))
     if m == "GET" and rest == "export":
         return await run_in_threadpool(F._run, _w_export, uid, nid, request.query_params.get("sub") == "1")
+    if m == "GET" and rest == "export.csv":
+        return await run_in_threadpool(F._run, _w_csv, uid, nid, dict(request.query_params))
     if m == "POST" and rest == "move":
         b = await _body(request) or {}
         return await run_in_threadpool(F._run, _w_move, uid, nid, b)

@@ -537,6 +537,45 @@ Suche findet den Dateinamen. Ohne Freigabe im Admin-Bereich gehen nur öffentlic
 der Admin unter Allgemein → „Verbindungen der Benutzer“ frei, dort lässt sich die Funktion auch ganz abschalten.
 Vorschaubilder speichert Saga zwischen (`/data/nc-cache`, nicht im Backup, Obergrenze `NC_CACHE_MB`).
 
+#### Importieren und als CSV exportieren
+
+**Importieren** (**„+ Neue Seite“ → „Importieren …“**, bzw. im Seitenmenü **⋯** einer Seite – dann landet alles als
+Unterseiten darunter): Datei oder Ordner in das Feld ziehen oder auswählen.
+
+- **CSV → Datenbank:** Saga erkennt Kodierung (UTF-8 mit/ohne BOM, UTF-16, Windows-1252 aus Excel), Trennzeichen
+  (Komma, Semikolon, Tab, |), Dezimalkomma und Datumsformate (`27.10.2026`, `10/27/2026`, ISO, „October 27, 2026“) und
+  schlägt je Spalte einen Typ vor (Zahl, Datum, Häkchen, URL, Auswahl, Mehrfachauswahl, Text). In der Vorschau (erste
+  20 Zeilen) lassen sich Typ, Titelspalte, Kodierung, Trennzeichen und „Erste Zeile ist Kopfzeile“ ändern oder Spalten
+  weglassen. Grenzen: 50 MB je Datei, 5000 Zeilen je Import (Rest steht im Bericht), 30 Spalten (mehr: abwählen),
+  50 Optionen je Auswahl (mehr: Text), 2000 Zeichen je Zelle. Werte, die nicht zum Typ passen, bleiben leer und stehen
+  im Bericht.
+- **Zeilen an eine bestehende Datenbank:** in der Datenbank **⚙ Ansicht → „Zeilen aus CSV hinzufügen …“** (nur
+  Eigentümer). Je CSV-Spalte das Ziel wählen (Titel, eine Eigenschaft oder „nicht übernehmen“; gleichnamige Spalten
+  sind vorbelegt). Fehlende Auswahl-Optionen werden ergänzt, Relationen über den Titel der Ziel-Einträge zugeordnet.
+- **Markdown / Obsidian:** einzelne `.md`-Dateien, ein Ordner (Knopf „Ordner wählen …“) oder ein ZIP davon. Ordner
+  werden Seiten (Inhalt aus einer gleichnamigen Notiz bzw. `index.md`/`README.md`), `.obsidian/`, `.trash/` und
+  versteckte Dateien fallen weg. `[[Wikilinks]]` (auch mit Alias, Abschnitt oder Pfad) und relative Markdown-Links
+  zeigen danach auf die neuen Seiten; Bilder und Dateien aus dem Ordner landen im Konto (Speicherplatz wie bei
+  Uploads), Bilder aus dem Internet bleiben Links. Frontmatter: `title` wird der Seitentitel, `tags` werden Saga-Tags,
+  alle übrigen Felder ein ausklappbarer Block „Eigenschaften“ oben in der Seite (beides abschaltbar). Callouts
+  (`> [!note]`, faltbar → Toggle), `==markiert==`, Aufgaben, Tabellen und Code werden zu den passenden Blöcken.
+  Notion-Exporte kommen in einer späteren Version.
+
+Der Import läuft im Hintergrund mit Fortschritt und lässt sich abbrechen (bereits Angelegtes wandert dann in den
+Papierkorb). Am Ende zeigt der Dialog, was angelegt wurde und was **nicht übernommen** wurde (mit Grund); diese Liste
+steht zusätzlich in einer Seite „Importbericht“. Je Konto läuft ein Import zur Zeit, auf dem Server höchstens zwei
+gleichzeitig (`IMPORT_PARALLEL`). Hochgeladene Dateien liegen nur bis zum Ende des Imports (bzw. 30 Minuten) auf dem
+Server. ZIP-Dateien prüft Saga vorab (keine Pfade nach außen, keine Verknüpfungen, keine „ZIP-Bomben“, Größen).
+
+**Als CSV exportieren:** in einer Datenbank **⚙ Ansicht → „Als CSV exportieren“** – **„Diese Ansicht“** (Filter,
+Sortierung, Suche und sichtbare Spalten in ihrer Reihenfolge) oder **„Alle Einträge, alle Spalten“**. Die Datei ist
+UTF-8 mit BOM, Komma-getrennt mit Dezimalpunkt; mit dem Schalter **„Excel (Deutsch)“** Semikolon und Dezimalkomma. Werte
+sind maschinenlesbar (Datum `JJJJ-MM-TT`, Zahl ohne Einheit, Häkchen `true`/`false`, Auswahl und Relationen als Namen).
+Zellen, die mit `= + - @` beginnen, bekommen ein `'` davor, damit Tabellenprogramme sie nicht als Formel ausführen.
+Seiteninhalte sind nicht enthalten – dafür gibt es „Exportieren“ im Seitenmenü (Markdown). Bei geteilten Datenbanken
+exportiert jede Person, was sie sehen darf (ohne archivierte Einträge, Relationen nur mit sichtbaren Titeln); auch für
+Datenbanken anderer Saga-Server.
+
 #### Vorlagengalerie
 
 Fertige Vorlagen (z. B. Aufgaben & Projekte, Leseliste, Team-Wiki, Rezepte) öffnest du über **„+ Neue Seite“ → „Aus der
@@ -1901,7 +1940,8 @@ anderen Seiten, prüfen, ob der Live-Kanal durch den Proxy kommt (Abschnitt 3).
 
 **Hochladen oder Speichern scheitert mit „zu groß“ (413).**
 Dateien: `ATTACH_MAX_MB` (Standard 10). Alles andere, z. B. sehr lange Seiten: `REQUEST_MAX_MB` (Standard 2).
-Kommt die Meldung vom Reverse Proxy, dort die Grenze anheben (Abschnitt 3).
+Importe: `IMPORT_MAX_MB` (Standard 512). Kommt die Meldung vom Reverse Proxy, dort die Grenze anheben (Abschnitt 3) –
+für Importe am besten nur für den Pfad `/api/import/upload`.
 
 **Nach dem Passwortwechsel muss ich mich in den Apps neu anmelden.**
 Gewollt: Ein neues Passwort meldet alle anderen Browser-Sitzungen und Apps ab (z. B. falls ein Gerät verloren
@@ -1936,6 +1976,9 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `BACKUP_VERIFY_MB` | `512` | Verschlüsselte Backups (Abschnitt 11): Dateien bis zu dieser Größe nach dem Hochladen ganz erneut herunterladen und vergleichen (größere sonntags) |
 | `USER_BACKUP_MAX_MB` | `4096` | Persönliche Backups (Abschnitt 11): obere Grenze für die Größe je Backup und für Uploads beim Einspielen (die Grenze im Admin-Bereich kann nur kleiner sein) |
 | `USER_BACKUP_DATA_MB` / `USER_BACKUP_FILES_MAX` | `64` / `20000` | Persönliche Backups einspielen: Größe von `daten.json` und Anzahl Dateien je Backup |
+| `IMPORT_MAX_MB` / `IMPORT_UNPACKED_MAX_MB` | `512` / `2048` | Importe (Abschnitt 9 „Importieren“): Upload je Import (alle Dateien zusammen) und Summe entpackt bei ZIP-Dateien. Den Reverse Proxy für `/api/import/upload` entsprechend großzügig einstellen |
+| `IMPORT_CSV_MAX_MB` / `IMPORT_CSV_ROWS_MAX` | `50` / `5000` | CSV-Import: Größe je Datei und Zeilen je Import |
+| `IMPORT_PARALLEL` | `2` | Importe, die auf dem Server gleichzeitig laufen (weitere warten) |
 | `BACKUP_CHUNK_MB` / `BACKUP_CHUNK_MIN_MB` | `32` / `10` | Nextcloud: Teilgröße beim Hochladen in Stücken (Chunking v2) und ab welcher Dateigröße |
 | `SAGA_BACKUP_DIRS` | `/backup` | Verschlüsselte Backups, Ziel „Ordner im Container“: nur unterhalb dieser Wurzeln (Komma-Liste) |
 | `SAGA_BACKUP_URL` / `SAGA_BACKUP_USER` / `SAGA_BACKUP_PASSWORD` | – | Nur für `run.py backup-holen`/`restore --schluessel` auf einem frischen Server: WebDAV-Adresse des Backup-Ordners und Zugang |
