@@ -2,6 +2,7 @@
 import hashlib
 import hmac
 import json
+import os
 import secrets
 import time
 from fastapi import Request
@@ -11,6 +12,7 @@ from db import connect as _db
 from fastapi import APIRouter
 from saga import nextcloud
 from saga.core import SECRET, _api_guard, _bad, _body, _json_load, origin_of, t
+from saga.files import FILE_QUOTA, FILES_DIR, QuotaFull, copy_owned
 from saga.sharing import access
 from saga.notes import NOTE_TITLE_MAX, note_limit_error, self_filters, _FILE_URL, _check_parent, _iter_blocks, _purge_ids, announce_row, tree_changed
 
@@ -19,15 +21,16 @@ router = APIRouter()
 
 
 # --- Vorlagen ---------------------------------------------------------------------
-def _map_props(c, owner, src_parent, dst_parent, props_json):
+def _map_props(c, owner, src_parent, dst_parent, props_json, dst_owner=None):
     """Eigenschaften einer Vorlage in eine ANDERE Datenbank uebertragen: nach Name + Typ der Spalte,
-    Auswahl-Optionen nach Namen. Was es im Ziel nicht gibt, faellt weg (statt falscher IDs)."""
-    def schema(nid):
+    Auswahl-Optionen nach Namen. Was es im Ziel nicht gibt, faellt weg (statt falscher IDs).
+    dst_owner (2.5): Ziel-Datenbank gehoert einem anderen Konto."""
+    def schema(nid, uid):
         if not nid:
             return []
-        row = c.execute("SELECT schema, kind FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()
+        row = c.execute("SELECT schema, kind FROM note WHERE id=? AND uid=?", (nid, uid)).fetchone()
         return (_json_load(row[0], {}) or {}).get("props", []) if row and row[1] == "database" else []
-    src, dst = schema(src_parent), schema(dst_parent)
+    src, dst = schema(src_parent, owner), schema(dst_parent, dst_owner or owner)
     vals = _json_load(props_json, {}) or {}
     if not dst or not isinstance(vals, dict):
         return None
@@ -83,44 +86,130 @@ def note_duplicate(uid, nid, b, origin=None):
                       "FROM note WHERE id=? AND uid=? AND deleted_at IS NULL", (nid, owner)).fetchone()
         if not r:
             return _bad("not found", 404)
+        # 2.5: eigene Vorlage unter einer Seite/Datenbank eines ANDEREN Kontos (Freigabe 'Bearbeiten'): die Kopie gehoert dem
+        # Eigentuemer des Ziels, Dateien (Inhalt, Symbol, Titelbild, Datei-Eigenschaft) bekommt er als eigene Kopie
+        dst = owner
+        if owner == uid and b.get("via") is None and _num(b.get("parent_id")) and _num(b["parent_id"]) > 0:
+            po = c.execute("SELECT uid FROM note WHERE id=? AND deleted_at IS NULL", (_num(b["parent_id"]),)).fetchone()
+            if po and po[0] != owner:
+                dst, _, err = access(c, uid, _num(b["parent_id"]), "edit")
+                if err is not None:
+                    return err
         try:
-            parent = _check_parent(c, owner, None, b.get("parent_id"))
+            parent = _check_parent(c, dst, None, b.get("parent_id"))
         except LookupError:
             return _bad("not found", 404)
-        lim = note_limit_error(c, owner, parent)
+        lim = note_limit_error(c, dst, parent)
         if lim:
             return _bad(lim, 409)
-        tpl = 1 if b.get("template") is True and owner == uid else 0   # 2.5 "Duplizieren" einer Vorlage bleibt Vorlage (nur Eigentuemer, R03)
-        into_db = bool(parent) and c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND kind='database'", (parent, owner)).fetchone() is not None
+        tpl = 1 if b.get("template") is True and owner == uid and dst == owner else 0   # 2.5 "Duplizieren" einer Vorlage bleibt Vorlage (nur Eigentuemer, R03)
+        into_db = bool(parent) and c.execute("SELECT 1 FROM note WHERE id=? AND uid=? AND kind='database'", (parent, dst)).fetchone() is not None
         entry = bool(r[14]) and not tpl and into_db      # E4: neuer Eintrag aus einer Eintrags-Vorlage
         title = str(b.get("title", "" if entry else (r[0] or ""))).strip()[:NOTE_TITLE_MAX]
         props = r[7]
-        if parent != r[11]:                     # andere Datenbank (z. B. Vorlagen-Datenbank) -> Eigenschaften nach Name/Typ zuordnen
-            props = _map_props(c, owner, r[11], parent, r[7])
+        if parent != r[11] or dst != owner:     # andere Datenbank (z. B. Vorlagen-Datenbank) -> Eigenschaften nach Name/Typ zuordnen
+            props = _map_props(c, owner, r[11], parent, r[7], dst)
+        body, icon, cover = r[3], r[1], r[8]
+        if dst != owner:
+            try:
+                body, icon, cover, props = _foreign_copy(c, owner, dst, uid, parent, body, r[4], icon, cover, props)
+            except QuotaFull:
+                return JSONResponse({"error": t("Speicherplatz voll (max. {n} MB)", n=FILE_QUOTA // 1048576)}, status_code=507)
         # Alles kopieren, was die Seite ausmacht: auch Titelbild (+ Position), volle Breite, Schrift und kleiner Text
         cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, cover, cover_pos, wide, "
                         "font, small, is_template, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        (owner, title, r[3], r[4], r[1], parent, now, r[2], r[5] or "page", r[6], props, r[8], r[9], r[10], r[12], r[13] or 0,
+                        (dst, title, body, r[4], icon, parent, now, r[2], r[5] or "page", r[6], props, cover, r[9], r[10], r[12], r[13] or 0,
                          tpl, now, now))
         # Nextcloud-Bloecke: Signatur gilt je Seite; die Kopie stammt aus einer Seite des Eigentuemers (auch per via, R05)
-        new_body = nextcloud.adopt(r[3], r[4], owner, cur.lastrowid)
-        new_body = resign_copy(new_body, r[4], nid, cur.lastrowid, owner)
+        new_body = nextcloud.adopt(body, r[4], dst, cur.lastrowid)   # fremdes Ziel: Bloecke der Vorlage nur als Karte
+        if dst == owner:
+            new_body = resign_copy(new_body, r[4], nid, cur.lastrowid, owner)
+        else:                                   # fremdes Ziel: Vorlagen-Schaltflaechen verlieren Vorlage und Signatur
+            new_body = sign_buttons(new_body, cur.lastrowid, dst, uid) if r[4] == "blocks" else new_body
         new_body = self_filters(new_body, r[4], cur.lastrowid)      # 2.5: Filter "diese Seite" auf die neue Seite
         if new_body != r[3]:
-            c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (new_body, cur.lastrowid, owner))
+            c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (new_body, cur.lastrowid, dst))
         if into_db and props and '"person"' in (c.execute("SELECT schema FROM note WHERE id=?", (parent,)).fetchone()[0] or ""):
             from saga import dbvals             # 2.5: Personen aus der Vorlage -> db.assigned (wie beim Anlegen)
-            dbvals.assigned(c, owner, _json_load(c.execute("SELECT schema FROM note WHERE id=?", (parent,)).fetchone()[0], {}),
+            dbvals.assigned(c, dst, _json_load(c.execute("SELECT schema FROM note WHERE id=?", (parent,)).fetchone()[0], {}),
                             cur.lastrowid, {}, _json_load(props, {}), uid)
-        if owner != uid:                        # per Schaltflaeche auf einer geteilten Seite: wer hat angelegt, Live-Hinweis
-            c.execute("UPDATE note SET created_by=?, updated_by=? WHERE id=? AND uid=?", (uid, uid, cur.lastrowid, owner))
+        if dst != uid:                          # per Schaltflaeche bzw. in ein fremdes Ziel: wer hat angelegt, Live-Hinweis
+            c.execute("UPDATE note SET created_by=?, updated_by=? WHERE id=? AND uid=?", (uid, uid, cur.lastrowid, dst))
             if parent:
-                announce_row(c, owner, cur.lastrowid, uid, now, origin)
-        tree_changed(c, owner, [cur.lastrowid], "created", origin)
+                announce_row(c, dst, cur.lastrowid, uid, now, origin)
+        tree_changed(c, dst, [cur.lastrowid], "created", origin)
         out = {"id": cur.lastrowid, "updated": now}
         if entry:
-            out.update(fresh=_fresh_mark(c, owner, uid, cur.lastrowid, now), placeholder=r[0] or "")
+            out.update(fresh=_fresh_mark(c, dst, uid, cur.lastrowid, now), placeholder=r[0] or "")
         return JSONResponse(out)
+
+
+def _foreign_copy(c, src, dst, uid, parent, body, fmt, icon, cover, props):
+    """2.5: Vorlage von src in ein Ziel von dst: Dateien kopieren (files.copy_owned; fehlende fallen weg), Personen nur mit
+    Zugriff auf das Ziel. -> (body, icon, cover, props-json) | QuotaFull"""
+    from saga import dbvals, people
+    done = {}
+
+    def cp(fid):
+        if fid not in done:
+            try:
+                done[fid] = copy_owned(c, fid, src, dst)
+            except QuotaFull:                   # schon kopierte Dateien wieder entfernen (die Zeile entsteht nicht)
+                gone = [x for x in done.values() if x]
+                for x in gone:
+                    c.execute("DELETE FROM file WHERE id=? AND uid=?", (x, dst))
+                    try:
+                        os.remove(os.path.join(FILES_DIR, x))
+                    except OSError:
+                        pass
+                raise
+        return done[fid]
+
+    def url(u):
+        m = _FILE_URL.fullmatch(str(u or ""))
+        nf = cp(m.group(1)) if m else None
+        return f"/files/{nf}" if nf else None
+    if icon and str(icon).startswith("/files/"):
+        icon = url(icon) or ""
+    if cover and str(cover).startswith("/files/"):
+        cover = url(cover) or ""
+    if fmt == "blocks" and "/files/" in str(body or ""):
+        doc = _json_load(body, {})
+        blocks = doc.get("blocks") if isinstance(doc, dict) and isinstance(doc.get("blocks"), list) else []
+        keep = []
+        for blk in _iter_blocks(blocks):
+            f = (blk.get("data") or {}).get("file") if blk.get("type") in ("image", "attaches") else None
+            if isinstance(f, dict) and f.get("url"):
+                f["url"] = url(f["url"]) or ""
+                if not f["url"]:
+                    keep.append(blk)
+        drop = {id(x) for x in keep}            # Datei nicht mehr da: Block weglassen (sonst lehnt das Speichern ihn ab)
+
+        def strip(lst):
+            out = []
+            for x in lst:
+                if id(x) in drop:
+                    continue
+                if isinstance(x, dict):
+                    for k, v in list((x.get("data") or {}).items()):
+                        if isinstance(v, list) and v and all(isinstance(y, dict) for y in v):
+                            x["data"][k] = strip(v)
+                out.append(x)
+            return out
+        doc["blocks"] = strip(blocks)
+        body = json.dumps(doc, ensure_ascii=False)
+    pv = _json_load(props, {}) if props else {}
+    if pv and parent:
+        ds = c.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database'", (parent, dst)).fetchone()
+        types = {p.get("id"): p.get("type") for p in (_json_load(ds[0], {}) if ds else {}).get("props", []) if isinstance(p, dict)}
+        for k in list(pv):
+            if types.get(k) == "files":
+                pv[k] = dbvals.copy_files(c, src, dst, pv[k], cp)
+            elif types.get(k) == "person":
+                pv[k] = [x for x in pv[k] if isinstance(x, str) and people.allowed(c, dst, parent, x)] if isinstance(pv[k], list) else []
+            if pv[k] in (None, [], ""):
+                pv.pop(k)
+    return body, icon, cover, (json.dumps(pv, ensure_ascii=False) if pv else None)
 
 
 def _row_tpl(c, uid, nid, b):

@@ -588,7 +588,8 @@ FILTER_OPS = {"contains", "not_contains", "is", "is_not", "eq", "gt", "lt", "bef
               "is_empty", "not_empty", "checked", "unchecked", "today", "this_week", "this_month",
               # 2.5 (Paket 5, relfilter1): weitere relative Datumsfilter und Status-Gruppe - Bedeutung in saga/dbquery.py
               "yesterday", "tomorrow", "last_week", "next_week", "last_month", "next_month", "this_year", "overdue",
-              "next_days", "past_days", "on_or_before", "on_or_after", "status_group"}
+              "next_days", "past_days", "on_or_before", "on_or_after", "status_group",
+              "me"}                        # 2.5: Personen - "ist mir zugewiesen"
 STATUS_GROUPS = ("todo", "doing", "done")
 REL_ROLES = {"parent": "children", "children": "parent", "blocked_by": "blocking", "blocking": "blocked_by"}   # 2.5: Selbst-Relationen
 SUB_MODES = ("nested", "flat", "parents_only")

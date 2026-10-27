@@ -6,6 +6,8 @@
    400, Liste begrenzt, Groesse/MIME/Bild beim Lesen (/rows, Einzelzeile), Upload ueber POST /api/files?note=<zeile>
    (auch fuer Bearbeitende: Datei gehoert dem Eigentuemer), Lesende sehen die Datei, Fremde nicht.
 3. Lesepfade: CSV/Markdown (Dateiname), Duplizieren/Vorlage (gleiche Referenz), Quote, GC nach Entfernen.
+4. Vorlage in die Datenbank eines ANDEREN Kontos (Freigabe 'Bearbeiten'): Dateien (Datei-Eigenschaft, Bild im Inhalt,
+   Titelbild) werden fuer den Eigentuemer des Ziels kopiert, Personen nur mit Zugriff aufs Ziel, nichts Fremdes bleibt.
 Wegwerf-Konten fe-*, raeumt auf. Umgebung wie die anderen Tests (HK_TEST_BASE, BASE_URL, SESSION_SECRET, STATE_DIR)."""
 import base64
 import http.client
@@ -150,6 +152,67 @@ class _FakeReq:
 def run():
     gc_part()
     typ_part()
+    foreign_tpl_part()
+
+
+def foreign_tpl_part():
+    """Teil 4: Bert legt aus SEINER Vorlage (mit Dateien) einen Eintrag in Annas Datenbank an (dbvals.copy_files)."""
+    s, d = req("POST", "/api/notes", body={"kind": "database", "title": "Annas Projekte"})
+    adb = d["id"]
+    sch = {"props": [{"id": "anh", "name": "Anhänge", "type": "files", "max": 5}, {"id": "wer", "name": "Zuständig", "type": "person"}]}
+    req("PATCH", f"/api/notes/{adb}", body={"schema": sch})
+    req("PUT", f"/api/notes/{adb}/shares", body={"type": "user", "target": BU, "role": "edit"})
+    s, d = req("POST", "/api/notes", BU, {"kind": "database", "title": "Berts Vorlagen"})
+    bdb = d["id"]
+    req("PATCH", f"/api/notes/{bdb}", BU, {"schema": sch})
+    s, f1 = upload(BU, b"%PDF-1.4 bert vorlage\n", "vorlage.pdf")
+    s, f2 = upload(BU, PNG, "bild.png", field="image")
+    u1, u2 = f1["file"]["url"], f2["file"]["url"]
+    s, d = req("POST", "/api/notes", BU, {"parent_id": bdb, "title": "Mustereintrag"})
+    tpl = d["id"]
+    me_ref = req("GET", f"/api/notes/{bdb}/people", BU)[1]["people"][0]["ref"]
+    body = {"blocks": [{"id": "b1", "type": "image", "data": {"file": {"url": u2}, "caption": ""}},
+                       {"id": "b2", "type": "paragraph", "data": {"text": "Text"}}]}
+    s, d = req("PATCH", f"/api/notes/{tpl}", BU, {"template": True, "cover": u2, "body": json.dumps(body), "format": "blocks",
+                                                  "props": {"anh": [{"url": u1, "name": "vorlage.pdf"}, {"url": u2, "name": "bild.png"}],
+                                                            "wer": [me_ref]}})
+    ok(f"Berts Vorlage mit Dateien ({s})", s == 200, d)
+    s, d = req("POST", f"/api/notes/{tpl}/duplicate", BU, {"parent_id": adb})
+    ok(f"Bert legt aus seiner Vorlage einen Eintrag in Annas Datenbank an ({s})", s == 200 and d.get("id"), d)
+    if s != 200:
+        return
+    nid = d["id"]
+    with connect() as c:
+        r = c.execute("SELECT uid, props, cover, body, created_by, is_template FROM note WHERE id=?", (nid,)).fetchone()
+        pv = json.loads(r[1] or "{}")
+        urls = [x["url"] for x in pv.get("anh", [])]
+        owners = {fid_of(u): c.execute("SELECT uid FROM file WHERE id=?", (fid_of(u),)).fetchone() for u in urls + [r[2] or "/files/x"]}
+    ok("Eintrag gehoert Anna, angelegt von Bert, keine Vorlage", r[0] == A and r[4] == BU and not r[5], r)
+    ok("Datei-Eigenschaft: zwei neue Dateien, beide gehoeren Anna", len(urls) == 2 and u1 not in urls and u2 not in urls
+       and all(o and o[0] == A for o in owners.values()), (urls, owners))
+    ok("Dateinamen bleiben", [x["name"] for x in pv.get("anh", [])] == ["vorlage.pdf", "bild.png"], pv)
+    ok("Titelbild und Bild im Inhalt: Kopie fuer Anna (gleiche Datei wie in der Eigenschaft)",
+       r[2] == urls[1] and urls[1] in r[3] and u2 not in r[3] and u2 not in (r[2] or ""), (r[2], r[3][:300]))
+    ok("Person der Vorlage mit Zugriff aufs Ziel bleibt (Bert)", len(pv.get("wer") or []) == 1, pv)
+    s, d = req("GET", f"/api/notes/{nid}")
+    ok(f"Anna sieht den Eintrag mit Dateien ({s})", s == 200 and [x["name"] for x in d["props"].get("anh", [])] == ["vorlage.pdf", "bild.png"], d.get("props"))
+    s, _ = req("GET", urls[0])
+    ok(f"Anna kann die kopierte Datei oeffnen ({s})", s == 200)
+    # PATCH durch Anna laesst die Dateien gelten (sie gehoeren ihr)
+    s, d = req("PATCH", f"/api/notes/{nid}", body={"props": {"anh": [{"url": urls[0], "name": "vorlage.pdf"}]}})
+    ok(f"Anna speichert die kopierten Werte ({s})", s == 200, d)
+    gc_now()
+    ok("GC: Berts Originale (Vorlage) und Annas Kopie bleiben", exists(fid_of(u1)) and exists(fid_of(u2)) and exists(fid_of(urls[0])))
+    # Vorlage von Bert in eine Datenbank, in der Bert nur lesen darf -> verweigert, keine Kopie
+    req("PUT", f"/api/notes/{adb}/shares", body={"type": "user", "target": BU, "role": "view"})
+    with connect() as c:
+        n0 = c.execute("SELECT count(*) FROM file WHERE uid=?", (A,)).fetchone()[0]
+    s, d = req("POST", f"/api/notes/{tpl}/duplicate", BU, {"parent_id": adb})
+    with connect() as c:
+        n1 = c.execute("SELECT count(*) FROM file WHERE uid=?", (A,)).fetchone()[0]
+    ok(f"nur Lesen: verweigert, keine Dateien kopiert ({s})", s in (403, 404) and n0 == n1, (s, d, n0, n1))
+    s, d = req("POST", f"/api/notes/{tpl}/duplicate", CU, {"parent_id": adb})
+    ok(f"fremde Vorlage (Carl): 404 ({s})", s == 404)
 
 
 def typ_part():

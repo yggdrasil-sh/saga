@@ -237,6 +237,30 @@ def file_copy(uid, url, note, fed_quota=None):
     return JSONResponse({"url": f"/files/{nid}", "copied": True})
 
 
+class QuotaFull(Exception):
+    """Kopie passt nicht mehr in den Speicherplatz des Ziel-Eigentuemers."""
+
+
+def copy_owned(c, fid, src_owner, dst_owner):
+    """2.5: Datei fid von src_owner fuer dst_owner kopieren (Vorlage in die Datenbank eines anderen Kontos) -> neue ID,
+    None (Datei fehlt bzw. gehoert nicht src_owner) | QuotaFull. Gleicher Eigentuemer: die ID selbst."""
+    if src_owner == dst_owner:
+        return fid
+    r = c.execute("SELECT name, mime, size, is_image FROM file WHERE id=? AND uid=?", (fid, src_owner)).fetchone()
+    if not r or not os.path.isfile(os.path.join(FILES_DIR, fid)):
+        return None
+    c.execute("SELECT pg_advisory_xact_lock(hashtext(?))", ("file:" + dst_owner,))
+    used = c.execute("SELECT COALESCE(SUM(size),0) FROM file WHERE uid=?", (dst_owner,)).fetchone()[0]
+    if used + r[2] > FILE_QUOTA:
+        raise QuotaFull()
+    nid = os.urandom(12).hex()
+    with open(os.path.join(FILES_DIR, fid), "rb") as src, open(os.path.join(FILES_DIR, nid), "wb") as dst:
+        dst.write(src.read())
+    c.execute("INSERT INTO file (id, uid, name, mime, size, is_image, created) VALUES (?,?,?,?,?,?,?)",
+              (nid, dst_owner, r[0], r[1], r[2], r[3], time.time()))
+    return nid
+
+
 THUMB_W = (160, 320, 640, 1280, 2000)           # erlaubte Breiten fuer ?w=
 THUMB_DIR = os.path.join(FILES_DIR, "thumbs")
 _thumb_sem = threading.Semaphore(1)
