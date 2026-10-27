@@ -923,7 +923,7 @@ CREATE INDEX IF NOT EXISTS horn_log_ts ON horn_log (ts);
 CREATE TABLE IF NOT EXISTS horn_share (
     peer_id INTEGER PRIMARY KEY, allowed SMALLINT NOT NULL DEFAULT 1, legs INTEGER, mbit INTEGER,
     off SMALLINT NOT NULL DEFAULT 0, updated DOUBLE PRECISION);
--- Oeffentliche API (2.5, Paket 1 E5-E7, saga/apitok.py, saga/api_v1.py, saga/webhooks.py, saga/mcp.py, Migration 24).
+-- Oeffentliche API (2.5, Paket 1 E5-E7, saga/apitok.py, saga/api_v1.py, saga/webhooks.py, saga/mcp.py, Migration 25).
 -- api_token: Schluessel "sga_..." nur als SHA-256 (hash), Bereiche (scopes, JSON-Liste), optionale Seitenbaeume (roots, JSON-Liste
 -- von Seiten-IDs; NULL = alles, was das Konto sehen darf), Ablauf (expires, NULL = unbegrenzt - nur mit Admin-Freigabe),
 -- revoked = widerrufen (Zeile bleibt fuer die Anzeige "widerrufen" kurz stehen). Getrennt von app_token (hk_ ohne Bereiche).
@@ -1179,7 +1179,7 @@ SELECT 1 FROM row_person LIMIT 0;
 """,
     # 2.5.0 (Paket 1 E5-E7: API-Tokens, /api/v1, Webhooks, MCP): Tabellen api_token, webhook, webhook_delivery legt SCHEMA
     # oben an; es gibt keinen Bestand. Beliebig oft ausfuehrbar.
-    24: """
+    25: """
 SELECT 1 FROM api_token, webhook, webhook_delivery LIMIT 0;
 """,
 }
