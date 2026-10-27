@@ -9,7 +9,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse
 from db import connect as _db
 from fastapi import APIRouter
-from saga import dbquery
+from saga import dbcalc, dbquery
 from saga.calendars import _cal_collect
 from saga.core import APP_CAPTURE_MAX, APP_TOKEN_MAX, TZ, _api_guard, _bad, _body, _json_load, _tok_db, _tok_hash, mark_authed, t, t_account, user_info
 from saga.databases import _first_image
@@ -336,10 +336,18 @@ def _db_rows(owner, nid, shared=False, query=None, viewer=None, with_tpls=None):
         need = [i for i in ids if i in stale or i not in pv]
         for i, body, fmt in (c.execute("SELECT id, body, format FROM note WHERE id = ANY(?)", (need,)).fetchall() if need else ()):
             pv[i] = _first_image(body, fmt)                  # wie bisher am Inhalt
-    out = {"schema": _json_load(db[0], {"props": []}), "templates": [{"id": t[0], "title": t[1] or "", "icon": t[2] or ""} for t in tpls],
-           "rows": [{"id": r[0], "title": r[1] or "", "icon": r[2] or "", "props": parsed[r[0]] if r[0] in parsed else _json_load(r[3], {}),
-                     "updated": r[4], "created": r[5], "preview": r[6] or pv.get(r[0]) or ""} for r in rows]}
+        out = {"schema": _json_load(db[0], {"props": []}), "templates": [{"id": t[0], "title": t[1] or "", "icon": t[2] or ""} for t in tpls],
+               "rows": [{"id": r[0], "title": r[1] or "", "icon": r[2] or "", "props": parsed[r[0]] if r[0] in parsed else _json_load(r[3], {}),
+                         "updated": r[4], "created": r[5], "preview": r[6] or pv.get(r[0]) or ""} for r in rows]}
+        if dbcalc.has_calc(out["schema"]) and query is None:      # 2.5: Formeln/Rollups (mit Abfrage: schon in _db_query)
+            dbcalc.fill(c, owner, out["schema"], out["rows"], viewer=owner if viewer is None else viewer)
+        elif extra and extra.get("_fx"):
+            for r in out["rows"]:
+                e = extra["_fx"].get(r["id"])
+                if e:
+                    r["fx_err"] = e
     if extra:
+        extra.pop("_fx", None)
         out.update(extra)
     return out
 
@@ -353,13 +361,14 @@ def _db_query(c, owner, nid, shared, sql, schema_json, query, viewer):
     extra = {"offset": off}
     if lim is not None:
         extra["limit"] = lim
-    if not any(k in query for k in ("view", "filters", "sorts", "q", "group")):
+    schema = _json_load(schema_json, {"props": []})
+    calc = dbcalc.has_calc(schema)
+    if not calc and not any(k in query for k in ("view", "filters", "sorts", "q", "group")):
         total = c.execute("SELECT count(*) FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND is_template=0"
                           + (" AND archived IS NULL" if shared else ""), (owner, nid)).fetchone()[0]
         rows = c.execute(sql + order + " LIMIT ? OFFSET ?", (owner, nid, lim if lim is not None else 2 ** 62, off)).fetchall()
         return rows, {}, dict(extra, total=total, matched=total)
     rows = c.execute(sql + order, (owner, nid)).fetchall()
-    schema = _json_load(schema_json, {"props": []})
     # Suche: Zeilen, die q sicher nicht enthalten, gar nicht erst lesen (dbquery.q_prefilter; Ergebnis unveraendert)
     pf = dbquery.q_prefilter(schema, query) if query.get("q") else None
     src = [r for r in rows if pf(r[1], r[3])] if pf else rows
@@ -376,6 +385,9 @@ def _db_query(c, owner, nid, shared, sql, schema_json, query, viewer):
             ok = [i for i in ids if i in vis]
             got = c.execute("SELECT id, title FROM note WHERE id = ANY(?)", (ok,)).fetchall() if ok else []
         return {i: tl or "" for i, tl in got}
+    if calc:                                     # 2.5: Formeln/Rollups VOR Filter/Sortierung/Gruppen (Rechte des Betrachters)
+        dbcalc.fill(c, owner, schema, data, viewer=owner if viewer is None else viewer, tz=query.get("tz"))
+        extra["_fx"] = {d["id"]: d["fx_err"] for d in data if d.get("fx_err")}
     page, matched, groups = dbquery.run(schema, data, query, labels=labels, untitled=t("Unbenannt"))
     extra.update(total=len(rows), matched=matched)
     if groups is not None:

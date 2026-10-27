@@ -411,7 +411,9 @@ def _check_file_refs(uid, blocks):
 # --- Datenbanken (Notion-Stil) ------------------------------------------------------
 # Eine Datenbank ist eine Seite mit kind='database' und einem Schema (Eigenschaften).
 # Ihre Zeilen sind normale Unterseiten mit props = {eigenschaft_id: wert}.
-PROP_TYPES = {"text", "number", "select", "multi_select", "date", "checkbox", "url", "created", "edited", "relation", "calc"}
+PROP_TYPES = {"text", "number", "select", "multi_select", "date", "checkbox", "url", "created", "edited", "relation", "calc",
+              "formula", "rollup"}         # 2.5: formula/rollup rechnet der Server beim Lesen (saga.dbcalc), nie gespeichert
+FX_TYPES = {"formula", "rollup"}
 CALC_PROP_OPS = {"div", "pct", "mul", "add", "sub"}     # "Berechnet": A / B, A in % von B, A * B, A + B, A - B (nie gespeichert)
 
 
@@ -438,6 +440,17 @@ def _calc_value(p, pv):
         v = a * b if op == "mul" else a + b if op == "add" else a - b
     return round(v, 4)
 AUTO_TYPES = {"created", "edited"}          # Zeitstempel der Zeile, nie gespeicherte Werte
+FX_EXPR_MAX = 2000                          # = saga.formula.EXPR_MAX
+ROLLUP_FNS = {"count", "filled", "empty", "pct_filled", "unique", "sum", "avg", "median", "min", "max", "range",
+              "checked", "unchecked", "pct_checked", "earliest", "latest", "show"}
+
+
+class FormulaError(ValueError):
+    """Formel einer Eigenschaft fehlerhaft (beim Speichern des Schemas): Text mit Name und Position."""
+
+    def __init__(self, prop, err):
+        super().__init__(t("Formel „{name}“: {msg} (Zeichen {pos})", name=prop.get("name") or prop.get("id"), msg=err.msg, pos=err.pos + 1))
+        self.pid, self.pos, self.msg, self.code = prop.get("id"), err.pos, err.msg, err.code
 NUM_FMT, NUM_SHOW = {"percent", "euro"}, {"bar", "ring"}
 OPT_COLORS = {"gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"}
 _PID = re.compile(r"[a-z0-9_]{1,24}")
@@ -467,6 +480,28 @@ FILTER_OPS = {"contains", "not_contains", "is", "is_not", "eq", "gt", "lt", "bef
               "is_empty", "not_empty", "checked", "unchecked", "today", "this_week", "this_month"}
 
 
+def _groupable(p):
+    """Gruppieren nach Auswahl oder (2.5) nach Formel/Rollup mit Ergebnis Zahl/Text/Haekchen/Datum (nur lesend)."""
+    return p["type"] == "select" or (p["type"] in FX_TYPES and p.get("rtype") in ("number", "text", "checkbox", "date"))
+
+
+def formula_check(new_schema, old_schema=None):
+    """Neue oder geaenderte Formeln pruefen (Syntax, Typen, Kreise, Grenzen) -> FormulaError (400 mit Position).
+    Formeln, die erst durch andere Aenderungen ungueltig werden (Spalte geloescht, Typ geaendert - auch von aelteren
+    Apps), bleiben gespeichert und zeigen beim Lesen je Zelle einen Fehler (fx_err)."""
+    old = {p.get("id"): p.get("expr") for p in (old_schema or {}).get("props", []) if isinstance(p, dict) and p.get("type") == "formula"}
+    changed = [p for p in new_schema.get("props", []) if p["type"] == "formula" and old.get(p["id"]) != p.get("expr")]
+    if not changed:
+        return
+    from saga import formula as fx
+    from saga.i18n import get_lang
+    plan = fx._plan_cached(fx._key(new_schema["props"], new_schema.get("title_name")), get_lang())
+    for p in changed:
+        err = plan.errors.get(p["id"])
+        if err is not None:
+            raise FormulaError(p, err)
+
+
 def _clean_views(raw, props):
     """Ansichten (max. 10): Typ, Gruppierung (nur Auswahl), Sortierung, Filter - nur auf existierende
     Eigenschaften. Verweise auf geloeschte Spalten fallen dadurch automatisch weg."""
@@ -482,7 +517,7 @@ def _clean_views(raw, props):
         view = {"id": vid, "name": str(v.get("name", "")).strip()[:40] or t("Ansicht"),
                 "type": v.get("type") if v.get("type") in VIEW_TYPES else "table"}
         g = v.get("group_by")
-        if g in pids and pids[g]["type"] == "select":
+        if g in pids and _groupable(pids[g]):
             view["group_by"] = g
         # Sortierung: bis zu 3 Stufen ("sorts"); altes Einzelfeld "sort" wird uebernommen
         raw_sorts = v.get("sorts") if isinstance(v.get("sorts"), list) else ([v["sort"]] if isinstance(v.get("sort"), dict) else [])
@@ -494,7 +529,7 @@ def _clean_views(raw, props):
         if db_ in pids and pids[db_]["type"] in ("date", "created", "edited"):
             view["date_by"] = db_
         gr = v.get("group")                                  # Gruppierung fuer Tabelle/Liste
-        if gr in pids and pids[gr]["type"] == "select":
+        if gr in pids and _groupable(pids[gr]):
             view["group"] = gr
         if isinstance(v.get("hidden"), list):                # ausgeblendete Eigenschaften
             hid = [h for h in v["hidden"] if h in pids]
@@ -542,6 +577,10 @@ def _clean_schema(raw):
         raise ValueError(t("ungültiges Schema"))
     out, seen = [], set()
     for p in raw["props"][:30]:
+        if isinstance(p, dict) and isinstance(p.get("fx_orig"), dict) and p["fx_orig"].get("type") in FX_TYPES:
+            p = dict(p, **p["fx_orig"])              # aeltere Gegenstelle (ohne formula1) sah eine Text-Spalte: Original zurueck
+        if not isinstance(p, dict):
+            raise ValueError(t("ungültige Eigenschaft"))
         pid, typ = str(p.get("id", "")), str(p.get("type", ""))
         if not _PID.fullmatch(pid) or pid in seen or typ not in PROP_TYPES:
             raise ValueError(t("ungültige Eigenschaft"))
@@ -569,7 +608,17 @@ def _clean_schema(raw):
             for k in ("a", "b"):
                 if isinstance(p.get(k), str) and _PID.fullmatch(p[k]):
                     prop[k] = p[k]
-        if typ in ("number", "calc"):
+        if typ == "formula":                        # Ausdruck mit Eigenschafts-IDs (prop("id")) - geprueft nach der Schleife
+            ex = p.get("expr")
+            if not isinstance(ex, str) or len(ex) > FX_EXPR_MAX:
+                raise ValueError(t("Formel zu lang (höchstens {n} Zeichen)", n=FX_EXPR_MAX))
+            prop["expr"] = ex
+        if typ == "rollup":                         # Relation dieser Datenbank, Eigenschaft der Ziel-Datenbank, Rechnung
+            for k in ("rel", "target"):
+                if isinstance(p.get(k), str) and (_PID.fullmatch(p[k]) or (k == "target" and p[k] == "title")):
+                    prop[k] = p[k]
+            prop["fn"] = p.get("fn") if p.get("fn") in ROLLUP_FNS else "count"
+        if typ in ("number", "calc", "formula", "rollup"):
             if p.get("fmt") in NUM_FMT:
                 prop["fmt"] = p["fmt"]
             if p.get("show") in NUM_SHOW:
@@ -577,6 +626,12 @@ def _clean_schema(raw):
         if isinstance(p.get("width"), (int, float)):
             prop["width"] = max(60, min(int(p["width"]), 600))
         out.append(prop)
+    rels = {p["id"] for p in out if p["type"] == "relation"}
+    for p in out:                                    # Rollup nur ueber eine Relation dieser Datenbank
+        if p["type"] == "rollup" and p.get("rel") not in rels:
+            p.pop("rel", None)
+    from saga.formula import annotate
+    annotate(out, raw.get("title_name"))            # Ergebnistyp (rtype) setzt der Server
     nums = {p["id"] for p in out if p["type"] == "number"}
     for p in out:                                    # Rechnung nur aus vorhandenen Zahlen-Spalten
         if p["type"] == "calc":
@@ -769,7 +824,7 @@ def _clean_props(schema, raw, base=None, check=None):
         if not p:
             continue
         typ = p["type"]
-        if typ in AUTO_TYPES or typ == "calc":   # automatisch/berechnet - nie gespeichert, nicht faelschbar
+        if typ in AUTO_TYPES or typ == "calc" or typ in FX_TYPES:   # automatisch/berechnet - nie gespeichert, nicht faelschbar
             out.pop(pid, None)
             continue
         if v in (None, "", []):

@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import threading
 import tempfile
 import time
 import zipfile
@@ -11,7 +12,7 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from db import connect as _db
 from fastapi import APIRouter
-from saga import i18n, nextcloud, page_widgets
+from saga import dbcalc, i18n, nextcloud, page_widgets
 from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, origin_of, t
 from saga.sharing import Access, access, mask_links, names, person, viewer
 from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _forced_throttled, _insert_version, _latest, announce_tree, checkpoint, blocks_text, share_targets, tree_changed
@@ -315,6 +316,41 @@ def _safe_name(s):
     return s[:80]
 
 
+_FX_MEMO = threading.local()
+
+
+def _fx_props(rows, row):
+    """Formeln/Rollups einer Zeile beim Export: einmal je Datenbank fuer alle ihre Zeilen gerechnet (gemerkt in rows) -
+    nur mit Seiten aus rows (= was die exportierende Person sehen darf)."""
+    memo = getattr(_FX_MEMO, "m", None)
+    if memo is None or memo[0] is not rows:        # je Thread nur der laufende Export
+        memo = _FX_MEMO.m = (rows, {})
+    memo = memo[1]
+    if row[0] in memo:
+        return memo[row[0]]
+    par = rows.get(row[3])
+    schema = _json_load(par[7], {"props": []}) if par else None
+    if not dbcalc.has_calc(schema):
+        memo[row[0]] = {}
+        return memo[row[0]]
+    data = [{"id": x[0], "title": x[1] or "", "props": _json_load(x[8], {}), "created": x[9], "updated": x[10]}
+            for x in rows.values() if x[3] == par[0] and x[6] != "database"]
+
+    def labels(ids):
+        return {i: rows[i][1] or "" for i in ids if i in rows}
+
+    def target(dbid):
+        t_ = rows.get(dbid)
+        if not t_ or t_[6] != "database":
+            return None
+        return _json_load(t_[7], {"props": []}), [{"id": x[0], "title": x[1] or "", "props": _json_load(x[8], {}), "created": x[9],
+                                                   "updated": x[10]} for x in rows.values() if x[3] == dbid]
+    dbcalc.fill_core(schema, data, tz=TZ, labels=labels, target=target)
+    for d in data:
+        memo[d["id"]] = d["props"]
+    return memo.get(row[0], {})
+
+
 def md_page(rows, r, link, viewer=None):
     """Eine Seite als Markdown (Export, persoenliches Backup). rows: id -> [id, title, icon, parent_id, body, format, kind,
     schema, props, created, updated] (alle exportierten Seiten; Datenbank-Zeilen, Relationen und Eltern daraus).
@@ -322,6 +358,8 @@ def md_page(rows, r, link, viewer=None):
     def val_of(p, row, pv):
         if p["type"] == "calc":
             return _calc_value(p, pv)
+        if p["type"] in ("formula", "rollup"):
+            return _fx_props(rows, row).get(p["id"])
         return {"created": row[9], "edited": row[10]}.get(p["type"], pv.get(p["id"]))
 
     def fmt_val(p, v):
@@ -331,7 +369,11 @@ def md_page(rows, r, link, viewer=None):
             return i18n.fmt_date(v, TZ, with_time=True)          # Datumsformat der Sprache
         if p["type"] == "relation":
             return ", ".join((rows[x][1] or t("Unbenannt")) for x in v if x in rows)
-        if p["type"] in ("number", "calc"):
+        if p["type"] in ("formula", "rollup") and isinstance(v, list):
+            return ", ".join(str(x) for x in v)
+        if p["type"] in ("formula", "rollup") and isinstance(v, bool):
+            return "✓" if v else ""
+        if p["type"] in ("number", "calc") or (p["type"] in ("formula", "rollup") and isinstance(v, (int, float))):
             v = round(v, 2) if isinstance(v, float) else v
             return f"{v} %" if p.get("fmt") == "percent" else f"{v} €" if p.get("fmt") == "euro" else str(v)
         if p["type"] in ("select", "multi_select"):

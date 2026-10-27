@@ -11,14 +11,14 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import clean_line, connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
-from saga import bus, nextcloud, page_widgets, treesync
+from saga import bus, dbcalc, nextcloud, page_widgets, treesync
 from saga.core import BASE_URL, account_lang, _api_guard, _bad, _body, _json_load, _session_user, origin_of, ref_of, t, user_error
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
 from saga.siteicons import ICON_RE, svc_icon_path
 from saga.comments import counts as comment_counts
 from saga.sharing import RANK, Access, access, is_remote, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
-from saga.notes import MAX_JSON_DEPTH, NOTE_BODY_MAX, PALETTE, STYLE_TYPES, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
+from saga.notes import formula_check, MAX_JSON_DEPTH, NOTE_BODY_MAX, PALETTE, STYLE_TYPES, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
 
 router = APIRouter()
 
@@ -399,6 +399,7 @@ def note_get(uid, nid):
             parent_hidden = r[3] is not None and not acc.role(r[3])
         if not is_remote(uid):                     # 2.4 (N1): Autor fremder Nextcloud-Bloecke lokal als Handle
             body = nextcloud.mask_local(body, r[10], uid)
+        row_fx = _row_formulas(c, owner, uid, r)    # 2.5: Formeln/Rollups einer Datenbank-Zeile
     d = _note_meta(r)
     d["published"] = bool(pub)                     # Seitenkopf: Hinweis "Oeffentlich" (Einzelheiten: /api/notes/{nid}/publish)
     d["public_url"] = f"{BASE_URL}/@{pub[1]}/{pub[0]}" if pub and pub[1] else None
@@ -406,6 +407,10 @@ def note_get(uid, nid):
     d.update(body=body, format=r[10] or "text", props=_json_load(r[12], {}), cover=r[13] or "",
              cover_pos=50.0 if r[14] is None else r[14], created=r[15], wide=bool(r[16]), rev=r[17], archived=bool(r[18]), locked=bool(r[19]),
              font=r[22] if r[22] in FONTS else None, small=bool(r[23]))       # 2.5 (G9): Schrift und kleiner Text
+    if row_fx is not None:
+        d["props"] = row_fx["props"]
+        if row_fx.get("fx_err"):
+            d["fx_err"] = row_fx["fx_err"]
     if d["kind"] == "database":
         d["schema"] = _json_load(r[11], {"props": []})
     # Teilen (1.3) - nur Erweiterungen, bestehende Felder bleiben wie sie sind
@@ -418,6 +423,32 @@ def note_get(uid, nid):
         if parent_hidden:
             d["parent_id"] = None                  # Elternseite nicht freigegeben: nicht einmal ihre ID
     return JSONResponse(d, headers={"Cache-Control": "no-store"})
+
+
+def _row_formulas(c, owner, uid, r):
+    """Zeile einer Datenbank mit Formeln/Rollups: {props, fx_err} mit den Rechten von uid - sonst None."""
+    if r[3] is None:
+        return None
+    par = c.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database'", (r[3], owner)).fetchone()
+    schema = _json_load(par[0], {"props": []}) if par else None
+    if not dbcalc.has_calc(schema):
+        return None
+    row = {"id": r[0], "title": r[1] or "", "props": _json_load(r[12], {}), "created": r[15], "updated": r[4]}
+    dbcalc.fill(c, owner, schema, [row], viewer=uid)
+    return row
+
+
+def row_calc(c, owner, uid, nid):
+    """Werte der Formeln/Rollups einer Zeile nach dem Speichern (PATCH-Antwort 'calc': {pid: wert}, 'fx_err') oder None."""
+    r = c.execute("SELECT n.id, n.title, n.props, n.created, n.updated, d.schema FROM note n JOIN note d ON d.id=n.parent_id AND d.uid=n.uid "
+                  "WHERE n.id=? AND n.uid=? AND d.kind='database'", (nid, owner)).fetchone()
+    schema = _json_load(r[5], {"props": []}) if r else None
+    if not dbcalc.has_calc(schema):
+        return None
+    row = {"id": r[0], "title": r[1] or "", "props": _json_load(r[2], {}), "created": r[3], "updated": r[4]}
+    dbcalc.fill(c, owner, schema, [row], viewer=uid)
+    pids = [p["id"] for p in schema.get("props", []) if isinstance(p, dict) and p.get("type") in ("formula", "rollup")]
+    return {"calc": {k: row["props"].get(k) for k in pids}, "fx_err": row.get("fx_err") or {}}
 
 
 # 2.3 (saga.fed_pages): Unterseite in einer Seite einer anderen Saga-Instanz (parent_id negativ) - fn(uid, b, origin)
@@ -601,6 +632,7 @@ def _note_update(uid, nid, b, origin=None):
                 old_s = _json_load((c.execute("SELECT schema FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone() or [None])[0], {"props": []})
                 # BUG-001: Spalten/Optionen, die der Client (Stand srev) nicht kennen konnte, nicht loeschen
                 _schema_merge(old_s, new_schema, _schema_srev(b["schema"]), uid)
+                formula_check(new_schema, old_s)       # 2.5: neue/geaenderte Formeln -> 400 mit Position
                 # Standardvorlage: Clients, die sie nicht kennen (aeltere Apps), schicken den Schluessel nicht mit -> behalten;
                 # nur eine Vorlage DIESER Datenbank zaehlt, null/0 hebt sie auf
                 if ("default_tpl" not in b["schema"] or role != "owner") and old_s.get("default_tpl"):
@@ -769,7 +801,10 @@ def _note_update(uid, nid, b, origin=None):
         if ("parent_id" in b or any(k in b for k in ("icon", "cover", "tags", "pinned", "template", "locked"))
                 or ("title" in b and _title_in(b["title"]) != old[0])):
             tree_changed(c, owner, [nid], "moved" if "parent_id" in b else "updated", origin, before=moved_from)
+        rc = row_calc(c, owner, uid, nid) if ("props" in b or "title" in b) else None      # 2.5: Formeln/Rollups der Zeile
     out = {"ok": True, "updated": now, "rev": old[3] + (1 if content else 0)}
+    if rc is not None:
+        out.update(rc)
     if srev is not None:
         out["srev"] = srev                   # neuer Schema-Stand (Client kann ihn fuer die naechste Aenderung uebernehmen)
     return JSONResponse(out)

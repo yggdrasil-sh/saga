@@ -31,7 +31,7 @@ from starlette.concurrency import run_in_threadpool
 import psycopg
 import auth
 from db import connect as _db
-from saga import avatars, bus, i18n, nextcloud, page_widgets
+from saga import avatars, bus, dbcalc, i18n, nextcloud, page_widgets
 from saga.core import (ASSET_V, BASE_URL, E, PUBLIC_HOSTS, TZ, _api_guard, _bad, _body, _json_load, seen_lang, server_lang, t, title,
                        tmpl, user_lang)
 from saga.files import _thumb, _thumb_mime, _thumb_w
@@ -671,6 +671,32 @@ def _iso_ts(ts):
         return ""
 
 
+def _fill_public(ctx, schema, rows):
+    """Formeln/Rollups fuer die oeffentliche Seite: Titel verknuepfter Eintraege und Rollup-Ziele nur, soweit sie selbst
+    oeffentlich erreichbar sind (sonst verriete die Tabelle Inhalte nicht veroeffentlichter Seiten)."""
+    def labels(ids):
+        ok = [i for i in ids if ctx.url_for(i)]
+        if not ok:
+            return {}
+        return {i: tl or "" for i, tl in ctx.c.execute("SELECT id, title FROM note WHERE id = ANY(?) AND uid=?", (ok, ctx.uid)).fetchall()}
+
+    def target(dbid):
+        if not isinstance(dbid, int) or not ctx.url_for(dbid):
+            return None
+        d = ctx.c.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database' AND deleted_at IS NULL AND archived IS NULL",
+                          (dbid, ctx.uid)).fetchone()
+        if not d:
+            return None
+        trows = []
+        for x in ctx.c.execute("SELECT id, title, props, created, updated FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL "
+                               "AND archived IS NULL AND is_template=0 LIMIT ?", (ctx.uid, dbid, DB_ROWS_MAX)).fetchall():
+            ctx.seed(x[0], dbid)
+            if ctx.url_for(x[0]):
+                trows.append({"id": x[0], "title": x[1] or "", "props": _json_load(x[2], {}), "created": x[3], "updated": x[4]})
+        return _json_load(d[0], {"props": []}), trows
+    dbcalc.fill_core(schema, rows, tz=TZ, labels=labels, target=target)
+
+
 def _prop_value(p, row):
     if p["type"] == "calc":
         return _calc_value(p, row["props"])
@@ -729,7 +755,7 @@ def _match(p, f, row):
         if op == "is_not":
             return v != fv
         if op == "eq":
-            return (v is not None and float(v) == float(fv)) if p["type"] in ("number", "calc") else v == fv
+            return (v is not None and float(v) == float(fv)) if p["type"] in ("number", "calc") or p.get("rtype") == "number" else v == fv
         if op == "gt":
             return v is not None and float(v) > float(fv)
         if op == "lt":
@@ -759,6 +785,16 @@ def _fmt_prop(ctx, p, v):
     if v is None or v == "" or v == []:
         return ""
     typ = p["type"]
+    if typ in ("formula", "rollup"):              # fertiger Wert: Zahl, Text, Haekchen, Datum oder Liste
+        if isinstance(v, bool):
+            return "✓" if v else ""
+        if isinstance(v, list):
+            return escape(", ".join(str(x) for x in v))
+        if isinstance(v, (int, float)):
+            return escape(i18n.fmt_num(v, p.get("fmt")))
+        if p.get("rtype") == "date" and isinstance(v, str):
+            return escape(_day(v[:10]) + (" " + v[11:16] if len(v) > 10 else ""))
+        return escape(str(v))
     if typ in ("number", "calc"):
         if not isinstance(v, (int, float)) or isinstance(v, bool):
             return escape(str(v))
@@ -828,6 +864,8 @@ def _database(ctx, dbid, views=None, view_id=None, caption=False):
                            (ctx.uid, dbid, DB_ROWS_MAX)).fetchall():
         rows.append({"id": x[0], "title": x[1] or "", "props": _json_load(x[2], {}), "created": x[3], "updated": x[4]})
         ctx.seed(x[0], dbid)
+    if dbcalc.has_calc(schema):                 # 2.5: Formeln/Rollups - nur mit oeffentlich erreichbaren Seiten
+        _fill_public(ctx, schema, rows)
     by_id = {p["id"]: p for p in schema["props"] if isinstance(p, dict)}
     for f in view.get("filters") or []:
         p = {"type": "text"} if f.get("pid") == "title" else by_id.get(f.get("pid"))
@@ -907,7 +945,9 @@ def render_page(ctx, row):
         if par and par[0] == "database":
             schema = _json_load(par[1], {"props": [], "views": []})
             views = schema.get("views") or [{}]
-            rowd = {"title": row["title"], "props": _json_load(row["props"], {}), "created": row["created"], "updated": row["updated"]}
+            rowd = {"id": row["id"], "title": row["title"], "props": _json_load(row["props"], {}), "created": row["created"], "updated": row["updated"]}
+            if dbcalc.has_calc(schema):
+                _fill_public(ctx, schema, [rowd])
             for p in _visible_props(schema, views[0] if isinstance(views[0], dict) else {}):
                 val = _fmt_prop(ctx, p, _prop_value(p, rowd))
                 if val:

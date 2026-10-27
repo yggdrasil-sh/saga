@@ -20,7 +20,6 @@ Clients in docs/APP-API.md ("Widgets in Seiten"). Nicht zu verwechseln mit den H
   rechnet beim naechsten Abruf sofort neu."""
 import hashlib
 import json
-import math
 import random
 import re
 import secrets
@@ -35,7 +34,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from db import clean_line, connect as _db
-from saga import dbquery
+from saga import dbcalc, dbquery
 from saga.core import TZ, _api_guard, _bad, _body, _json_load, t
 from saga.notes import PALETTE, _iter_blocks
 from saga.sharing import Access, access, is_remote
@@ -45,7 +44,7 @@ router = APIRouter()
 KINDS = ("clock", "countdown", "progress", "metric", "quote")
 SIZES = ("s", "m", "l")
 STYLES = ("card", "plain")
-AGGS = ("count", "sum", "avg", "min", "max", "pct_checked")
+AGGS = dbcalc.AGGS
 TASK_AGGS = ("open", "due_today", "overdue", "done_week")     # fix27 E3: metric mit src "tasks"
 FMTS = ("num", "pct", "eur")
 ERRORS = ("no_access", "gone", "bad_cfg", "too_big")
@@ -208,60 +207,14 @@ def server_kind(d):
 
 
 # =====================================================================================================
-# Aggregation - wie die Fusszeile der Datenbank-Tabelle im Web (static/pages.js: calcNum)
+# Aggregation - im gemeinsamen Rechenkern (saga.dbcalc, wie die Fusszeile im Web: static/pages.js calcNum)
 # =====================================================================================================
-def _round2(x):
-    return dbquery.js_round(x * 100) / 100
-
-
 def aggregate(op, pid, rows, schema):
-    """op aus AGGS (+ 'checked'), pid: Eigenschaft-ID ('' / 'title' = Titel). rows: [{'title','props','created','updated'}].
-    -> Zahl oder None ('–' in der Fusszeile). Unbekannte Eigenschaft: _Fail('bad_cfg')."""
-    q = dbquery.Query(schema)
-    p = None
-    if pid and pid != "title":
-        p = q.prop_by_id(pid)
-        if p is dbquery.UNDEF or not isinstance(p, dict):
-            raise _Fail("bad_cfg")
-    vals = []
-    for r in rows:
-        v = q.prop_value(p, r) if p is not None else r.get("title")
-        if p is not None and isinstance(p.get("type"), str) and p["type"] in dbquery.AUTO and dbquery.js_truthy(v):
-            v = q.iso_day(v)
-        vals.append(v)
-    n = len(vals)
-    nums = []
-    for v in vals:
-        if isinstance(v, (int, float)) and not isinstance(v, bool):
-            nums.append(float(v))
-        elif isinstance(v, str) and dbquery.js_trim(v) != "":
-            x = dbquery.js_num(v)
-            if x == x:
-                nums.append(x)
-    if op == "count":
-        return n
-    if op == "checked":
-        return sum(1 for v in vals if v is True)
-    if op == "pct_checked":
-        return int(dbquery.js_round(sum(1 for v in vals if v is True) / n * 100)) if n else None
-    if not nums:
-        return None
-    s = 0.0
-    for x in nums:                                 # wie reduce in JavaScript: der Reihe nach
-        s += x
-    if op == "sum":
-        r = _round2(s)
-    elif op == "avg":
-        r = _round2(s / len(nums))
-    elif op == "min":
-        r = _round2(min(nums))
-    elif op == "max":
-        r = _round2(max(nums))
-    else:
-        raise _Fail("bad_cfg")
-    if math.isinf(r) or r != r:
-        return None
-    return _n(r)
+    """Siehe dbcalc.aggregate (Fehler als _Fail fuer die Widgets)."""
+    try:
+        return dbcalc.aggregate(op, pid, rows, schema)
+    except dbcalc.Fail as f:
+        raise _Fail(f.code)
 
 
 # =====================================================================================================
@@ -319,6 +272,8 @@ def _rows(c, uid, owner, dbid, schema, shared, view, tz):
     args = {"tz": tz}
     if view:
         args["view"] = view
+    if dbcalc.has_calc(schema):                     # 2.5: Formeln/Rollups mit den Rechten des Betrachters
+        dbcalc.fill(c, owner, schema, data, viewer=uid, tz=tz)
     try:
         page, _, _ = dbquery.run(schema, data, args, labels=_labels_fn(c, uid, owner), untitled=t("Unbenannt"))
     except dbquery.JsError:

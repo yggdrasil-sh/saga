@@ -359,7 +359,8 @@ class Query:
 
     @staticmethod
     def num_like(p):
-        return isinstance(p, dict) and (js_seq(p.get("type"), "number") or js_seq(p.get("type"), "calc"))
+        return isinstance(p, dict) and (js_seq(p.get("type"), "number") or js_seq(p.get("type"), "calc")
+                                        or (is_fx(p) and js_seq(p.get("rtype"), "number")))
 
     # Filter (matchFilter)
     def rel_date(self, op, iso):
@@ -533,7 +534,7 @@ class Query:
                 if isinstance(o, dict) and js_seq(o.get("id", UNDEF), v):
                     return i
             return 1e9
-        if js_seq(t, "multi_select") or js_seq(t, "relation"):
+        if js_seq(t, "multi_select") or js_seq(t, "relation") or (is_fx(p) and js_seq(p.get("rtype"), "list")):
             return js_len(v if js_truthy(v) else [])
         if js_seq(t, "checkbox"):
             return 1 if js_truthy(v) else 0
@@ -631,6 +632,9 @@ class Query:
 
     # Gruppen (eachGrouped / renderBoard): erst "Ohne <Spalte>", dann je Option in Schema-Reihenfolge
     def groups(self, rows, g):
+        if not js_seq(g.get("type"), "select"):                  # Formel/Rollup: Gruppen = vorkommende Werte (nur lesend)
+            gid = g.get("id", UNDEF)
+            return value_groups(rows, g, lambda r: self._get(r, gid))
         opts = [o for o in (g.get("options") if isinstance(g.get("options"), list) else []) if isinstance(o, dict)]
         known = {_key(o.get("id", UNDEF)) for o in opts} | _PROTO
         gid = g.get("id", UNDEF)
@@ -639,6 +643,69 @@ class Query:
             oid = o.get("id", UNDEF)
             out.append((oid, [r for r in rows if js_seq(self._get(r, gid), oid)]))
         return out
+
+
+def is_fx(p):
+    """Formel oder Rollup (Wert kommt fertig vom Server, Typ des Ergebnisses in rtype)."""
+    return isinstance(p, dict) and (js_seq(p.get("type"), "formula") or js_seq(p.get("type"), "rollup"))
+
+
+GROUPABLE = ("number", "text", "checkbox", "date")
+
+
+def groupable(p):
+    """Darf nach p gruppiert werden (static/pages.js groupable)? Auswahl; Formel/Rollup mit Ergebnis Zahl/Text/Haekchen/Datum."""
+    if not isinstance(p, dict):
+        return False
+    return js_seq(p.get("type"), "select") or (is_fx(p) and isinstance(p.get("rtype"), str) and p["rtype"] in GROUPABLE)
+
+
+def _jstype(v):
+    if isinstance(v, bool):
+        return "boolean"
+    if _isnum(v):
+        return "number"
+    if isinstance(v, str):
+        return "string"
+    return "undefined" if v is UNDEF else "object"
+
+
+def value_groups(rows, g, get):
+    """Gruppen nach vorkommenden Werten (static/pages.js valueGroups): [(UNDEF, leere), (wert, zeilen), ...].
+    Haekchen: nein/ja (keine leeren). Reihenfolge: Zahlen aufsteigend (keine Zahl zuletzt); Text nach Wochentag, wenn ALLE
+    Werte Wochentagsnamen sind (formatDate "dddd"/"ddd"), sonst nach UTF-16-Codeeinheiten; Datum als Text. Gleicher
+    Wert (typeof + String) = eine Gruppe, Wert der Gruppe = erstes Vorkommen."""
+    from saga.formula import WEEKDAY_INDEX
+    rt = g.get("rtype")
+    empty, order, buckets = [], [], {}
+    for r in rows:
+        v = get(r)
+        if js_seq(rt, "checkbox"):
+            v = v is True
+        elif js_nullish(v) or (isinstance(v, str) and v == ""):
+            empty.append(r)
+            continue
+        k = (_jstype(v), js_str(v))
+        if k not in buckets:
+            buckets[k] = (v, [])
+            order.append(k)
+        buckets[k][1].append(r)
+    vals = [buckets[k][0] for k in order]
+    if js_seq(rt, "number"):
+        def key(v):
+            x = js_num(v)
+            return (1, 0.0) if x != x else (0, x)
+    elif js_seq(rt, "checkbox"):
+        def key(v):
+            return (0, 1 if v is True else 0)
+    elif vals and all(isinstance(v, str) and v in WEEKDAY_INDEX for v in vals):
+        def key(v):
+            return (0, WEEKDAY_INDEX[v])
+    else:
+        def key(v):
+            return (0, _u16(js_str(v)))
+    idx = sorted(range(len(order)), key=lambda i: key(vals[i]))
+    return [(UNDEF, empty)] + [(vals[i], buckets[order[i]][1]) for i in idx]
 
 
 def view_of(schema, vid):
@@ -655,7 +722,7 @@ def group_prop(q, view, explicit=UNDEF):
     """Gruppier-Spalte: explizit (group=pid, '' = keine) oder aus der Ansicht - Board: group_by (sonst erste
     Auswahl-Spalte wie renderBoard), Tabelle/Liste: group (nur Auswahl-Spalten)."""
     def sel(p):
-        return p if isinstance(p, dict) and js_seq(p.get("type"), "select") else None
+        return p if groupable(p) else None
     if explicit is not UNDEF:
         return sel(q.prop_by_id(explicit)) if explicit else None
     if not view:
@@ -729,6 +796,8 @@ def q_prefilter(schema, args):
     Relationen (Titel anderer Seiten), q mit Leerzeichen/Komma/Sigma, q nur aus Zahlzeichen und bei Filtern, die je Zeile
     einen Fehler ausloesen koennen (null, enthaelt mit Nicht-Text-Wert) - der Fehler darf nicht von der Suche abhaengen."""
     q = js_lower(js_trim(args.get("q", "") or ""))
+    if isinstance(schema, dict) and isinstance(schema.get("props"), list) and any(is_fx(p) for p in schema["props"]):
+        return None                                  # Formel-/Rollup-Werte stehen nicht im gespeicherten JSON
     if not q or any(ch in q for ch in " ,σς") or q in _OBJ or set(q) <= _NUMCHARS:
         return None
     view = view_of(schema, args["view"]) if "view" in args else None
@@ -778,7 +847,10 @@ def run(schema, rows, args, labels=None, untitled="Unbenannt"):
     groups = None
     if g is not None:
         gs = q.groups(out, g)
-        groups = [{"id": None if oid is UNDEF else oid, "count": len(rs)} for oid, rs in gs]
+        if js_seq(g.get("type"), "select"):
+            groups = [{"id": None if oid is UNDEF else oid, "count": len(rs)} for oid, rs in gs]
+        else:                                                # Formel/Rollup: id = Wert als Text, value = Wert (nur lesend)
+            groups = [{"id": None, "count": len(rs)} if v is UNDEF else {"id": js_str(v), "value": v, "count": len(rs)} for v, rs in gs]
         out = [r for _, rs in gs for r in rs]                # Reihenfolge wie angezeigt (gruppiert)
     off = args.get("offset", 0)
     out = out[off:off + args["limit"]] if "limit" in args else out[off:]
