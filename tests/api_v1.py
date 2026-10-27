@@ -257,6 +257,73 @@ try:
     ok("Konto B hat einen Token", call("GET", "/api/v1/me", bearer=TB)[0] == 200)
     cn = db(); cn.execute("UPDATE api_token SET revoked=? WHERE uid=? AND revoked IS NULL", (time.time(), UB)); cn.commit()   # = revoke_user_logins
     ok("Nach 'ueberall abmelden' ungueltig", call("GET", "/api/v1/me", bearer=TB)[0] == 401)
+
+    # --- Admin-Bereich: Einstellungen (Anzeige + Speichern aller Felder der Seite), Konto-Seite, Widerruf ---------
+    AD = urllib.parse.urlparse(os.environ.get("HK_TEST_ADMIN", ""))
+    if AD.hostname:
+        import hashlib, html as _html, http.client, re as _re, secrets
+        sys.path.insert(0, os.getcwd())
+        import auth as _auth
+        SA = TimestampSigner(hashlib.sha256(("hk-admin|" + os.environ["SESSION_SECRET"]).encode()).hexdigest())
+        if not _auth.get_user("api-adm"):
+            _auth.create_user("api-adm", "Api-Admin-Pass-" + secrets.token_hex(6), "Api Admin", is_admin=True)
+        jar = {"csrf": "api-csrf-" + secrets.token_hex(6)}
+        jar["cookie"] = "hk_admin=" + SA.sign(base64.b64encode(json.dumps({"aid": "api-adm", "ep": time.time() + 5, "csrf": jar["csrf"]}).encode())).decode()
+
+        def admin(path, form=None):
+            c = http.client.HTTPConnection(AD.hostname, AD.port, timeout=60)
+            h = {"Cookie": jar["cookie"], "Accept-Language": "de"}
+            body = None
+            if form is not None:
+                body = urllib.parse.urlencode(list(form) + [("csrf", jar["csrf"])])
+                h["Content-Type"] = "application/x-www-form-urlencoded"
+            c.request("POST" if form is not None else "GET", path, body=body, headers=h)
+            r = c.getresponse(); data = r.read().decode("utf-8", "replace"); loc = r.getheader("location")
+            sc = r.getheader("set-cookie")
+            if sc:
+                jar["cookie"] = sc.split(";")[0]
+            c.close()
+            if r.status == 303 and loc:
+                return admin(loc.split("#")[0])
+            return r.status, data
+        st, page = admin("/settings")
+        ok("Admin: Einstellungen zeigen API-Abschnitt", st == 200 and 'name="api_enabled"' in page and 'name="api_mcp"' in page, st)
+        # alle Felder der Einstellungs-Form (die mit api_enabled) wie ein Browser zusammenstellen
+        fm = next(m.group(0) for m in _re.finditer(r'<form[^>]*method="post"[^>]*>.*?</form>', page, _re.S) if 'name="api_enabled"' in m.group(0))
+        fields = []
+        for m in _re.finditer(r'<input([^>]*)>', fm):
+            a = dict(_re.findall(r'(\w+)="([^"]*)"', m.group(1)))
+            if not a.get("name") or a["name"] == "csrf" or a.get("type") == "password":
+                continue
+            if a.get("type") == "checkbox":
+                if "checked" in m.group(1) or a["name"] == "api_unlimited":
+                    fields.append((a["name"], a.get("value", "1")))
+            else:
+                v = _html.unescape(a.get("value", ""))
+                fields.append((a["name"], "42" if a["name"] == "api_max_days" else v))
+        for m in _re.finditer(r'<select[^>]*name="([^"]+)"[^>]*>(.*?)</select>', fm, _re.S):
+            sel = _re.search(r'<option value="([^"]*)"[^>]*selected', m.group(2))
+            if sel:
+                fields.append((m.group(1), _html.unescape(sel.group(1))))
+        for m in _re.finditer(r'<textarea[^>]*name="([^"]+)"[^>]*>(.*?)</textarea>', fm, _re.S):
+            fields.append((m.group(1), _html.unescape(m.group(2))))
+        before = {k: v for k, v in json.loads(json.dumps(_auth.settings(fresh=True), default=str)).items() if k not in ("api",)}
+        st, _p = admin("/settings", fields)
+        after = {k: v for k, v in json.loads(json.dumps(_auth.settings(fresh=True), default=str)).items() if k not in ("api",)}
+        sa = _auth.settings(fresh=True)["api"]
+        ok("Admin: API-Einstellungen gespeichert (Laufzeit 42, unbegrenzt erlaubt), Rest unveraendert",
+           st == 200 and sa["max_days"] == 42 and sa["unlimited"] is True and sa["enabled"] is True and before == after,
+           (st, sa, [k for k in before if before[k] != after.get(k)]))
+        setting("api", None)
+        cn = db(); cn.execute("DELETE FROM api_token WHERE uid=?", (UA,)); cn.commit()
+        time.sleep(5.5)
+        T2 = mk(["read:pages"], "Admin-Widerruf")[1]["token"]
+        uidA = _auth.get_user(UA)["id"]
+        st, page = admin(f"/users/{uidA}")
+        ok("Admin: Konto-Seite zeigt API-Tokens", st == 200 and "api_revoke" in page and "API-Tokens" in page, st)
+        st, page = admin(f"/users/{uidA}", [("action", "api_revoke")])
+        ok("Admin: alle API-Tokens des Kontos widerrufen", st == 200 and call("GET", "/api/v1/me", bearer=T2)[0] == 401)
+        cn = db(); cn.execute("DELETE FROM users WHERE username='api-adm'"); cn.commit()
 finally:
     cn = db()
     for q in ("DELETE FROM note_share WHERE owner_uid LIKE ?", "DELETE FROM note_comment WHERE uid LIKE ?", "DELETE FROM note WHERE uid LIKE ?",
