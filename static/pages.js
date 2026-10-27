@@ -3969,7 +3969,7 @@
       });
       c.addEventListener('click', function () { openRowUI(r.id); });
       c.addEventListener('keydown', function (e) { if (e.key === 'Enter') openRowUI(r.id); });
-      c.addEventListener('dragstart', function (e) { dragId = r.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(r.id)); c.classList.add('dragging'); });
+      c.addEventListener('dragstart', function (e) { dragId = r.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData(ROW_DRAG, String(r.id)); c.classList.add('dragging'); });
       c.addEventListener('dragend', function () { dragId = null; c.classList.remove('dragging'); });
       return c;
     }
@@ -4009,7 +4009,7 @@
         c.appendChild(add);
         c.addEventListener('dragover', function (e) { if (dragId) { e.preventDefault(); c.classList.add('over'); } });
         c.addEventListener('dragleave', function (e) { if (!c.contains(e.relatedTarget)) c.classList.remove('over'); });
-        c.addEventListener('drop', function (e) {
+        c.addEventListener('drop', c.hkDrop = function (e) {
           e.preventDefault(); c.classList.remove('over');
           var r = DB.rows.find(function (x) { return x.id === dragId; }); dragId = null; if (!r) return;
           var nv = col.o ? col.o.id : null; if ((r.props[g.id] || null) === nv) return;
@@ -4179,7 +4179,7 @@
             b.addEventListener('click', function () { openRowUI(r.id); });
             if (editable) {
               b.draggable = true;
-              b.addEventListener('dragstart', function (e) { calDrag = r.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(r.id)); b.classList.add('dragging'); });
+              b.addEventListener('dragstart', function (e) { calDrag = r.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData(ROW_DRAG, String(r.id)); b.classList.add('dragging'); });
               b.addEventListener('dragend', function () { calDrag = null; b.classList.remove('dragging'); });
             }
             cell.appendChild(b);
@@ -4187,7 +4187,7 @@
           if (editable) {
             cell.addEventListener('dragover', function (e) { if (calDrag) { e.preventDefault(); cell.classList.add('over'); } });
             cell.addEventListener('dragleave', function (e) { if (!cell.contains(e.relatedTarget)) cell.classList.remove('over'); });
-            cell.addEventListener('drop', function (e) {
+            cell.addEventListener('drop', cell.hkDrop = function (e) {
               e.preventDefault(); cell.classList.remove('over');
               var r = DB.rows.find(function (x) { return x.id === calDrag; }); calDrag = null;
               if (r && r.props[dp.id] !== ds) setProp(r, dp.id, ds).then(renderDb);
@@ -4510,6 +4510,15 @@
   // --- Bloecke "Datenbank" (eingebettet) und "Aufgaben" ---------------------------
   // Tastendruecke/Ziehen/Einfuegen in diesen Bloecken gehoeren ihnen - nicht an Editor.js weiterreichen
   // (sonst: Enter in Tabellenzelle = neuer Absatz, Backspace loescht Block, Karte ziehen = Block ziehen)
+  // Fix27 #1: Editor.js nimmt "drop" am Holder schon in der Capture-Phase (vor isolate()) und fuegt die gezogenen Daten
+  // in das letzte Eingabefeld des Blocks ein (Board-Karte -> Karten-ID im Suchfeld). Karten tragen deshalb einen eigenen
+  // Typ statt text/plain; ein Drop dieses Typs geht hier vorab direkt an das Ziel (hkDrop) und nicht an Editor.js.
+  var ROW_DRAG = 'application/x-saga-row';
+  document.addEventListener('drop', function (e) {
+    var dt = e.dataTransfer; if (!dt || Array.prototype.indexOf.call(dt.types || [], ROW_DRAG) < 0) return;
+    e.stopPropagation(); e.preventDefault();
+    for (var n = e.target; n && n !== document; n = n.parentNode) if (typeof n.hkDrop === 'function') { n.hkDrop(e); return; }
+  }, true);
   function isolate(w) {
     ['keydown', 'keyup', 'keypress', 'input', 'paste', 'cut', 'copy', 'dragstart', 'dragover', 'dragenter', 'dragleave', 'drop', 'dragend']
       .forEach(function (ev) { w.addEventListener(ev, function (e) { e.stopPropagation(); }); });

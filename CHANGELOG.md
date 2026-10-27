@@ -204,6 +204,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Pseudonym-Handles in der Mitte gekürzt; Symbole statt Emoji (Schloss, stumm, Verkleinern); Namensleiste 70 % deckend.
   Der Hinweis vor dem Teilen sagt in Gruppen „sehen alle im Anruf“.
 
+### Behoben – Galerie-Testrunde (Web)
+- **Board-Karte ziehen schrieb die Karten-ID ins Suchfeld** (eingebettete Datenbank): Editor.js fing das Ablegen schon
+  vor dem Block ab und fügte die gezogenen Daten ins letzte Eingabefeld ein – die Ansicht filterte dann alles weg. Karten
+  (Board, Kalender) tragen jetzt einen eigenen Datentyp, das Ablegen geht direkt an die Spalte bzw. den Tag.
+
 ### Behoben – Bughunt 3 (Server)
 - **Namensauflösung mit Zeitlimit auch in den Vorab-Prüfungen.** KI, Immich, Kalender, Push, Nextcloud, Föderation
   (Chat, Knoten anwählen) und die Knoten-Verwaltung (DNS-Einträge, eingebauter Knoten) riefen `getaddrinfo` ohne
