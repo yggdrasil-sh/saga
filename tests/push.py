@@ -283,7 +283,7 @@ def run(A, Bk, vpub):
        s == 200 and st["server"]["webpush"] and st["server"]["vapid_public"] == vpub and st["server"]["ntfy"]
        and st["server"]["unifiedpush"] and not st["server"]["apns"] and st["devices"] == [])
     ok("Standard: alle Bereiche an, Namen an, keine Ruhezeit",
-       all(st["settings"]["cats"].values()) and set(st["categories"]) == {"share", "comment", "chat", "publish", "call"}
+       all(st["settings"]["cats"].values()) and set(st["categories"]) == {"share", "comment", "chat", "publish", "call", "assign"}
        and st["settings"]["names"] and not st["settings"]["quiet"]["on"])
 
     # --- Anmelden: Pruefungen ---------------------------------------------------------------------------
