@@ -13,8 +13,9 @@
   Formel/Rollup als nur-lesbare Text-Spalte, Original unter "fx_orig" (kommt beim Zurueckschreiben unveraendert
   zurueck und wird in notes._clean_schema wiederhergestellt)."""
 import math
+import re
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from saga import dbquery, formula as fx
 from saga.i18n import get_lang, t
@@ -587,3 +588,344 @@ def mark_blocked(c, owner, dbid, schema, rows):
         v = (r.get("props") or {}).get(bp["id"])
         if isinstance(v, list) and any(state.get(x) is False for x in v):
             r["blocked"] = True
+
+
+# =====================================================================================================
+# 2.5 (Paket 4): Diagramme - EINE Logik fuer die Datenbank-Ansicht "chart" und das Widget "chart"
+# =====================================================================================================
+# Vertrag fuer alle Clients: docs/APP-API.md "Diagramme". Gruppiert wird nach einer Eigenschaft (x, bei Datum in Eimern),
+# optional zusaetzlich nach einer zweiten (series); gerechnet wird je Gruppe NUR ueber aggregate() - dieselben Zahlen wie
+# Fusszeile, Kennzahl-Widget und Rollups. Die Clients zeichnen nur (Web: static/pages.js chartSvg, Apps nativ).
+CHART_TYPES = ("bar", "hbar", "line", "area", "pie", "donut", "number")
+CHART_BUCKETS = ("day", "week", "month", "quarter", "year")
+CHART_SORTS = ("x", "y_desc", "y_asc", "manual")
+CHART_FMTS = ("num", "pct", "eur")
+CHART_CATS_MAX, CHART_SERIES_MAX = 50, 10
+CHART_GAPS_MAX = 400                      # Datums-Eimer: Luecken nur auffuellen, wenn es danach hoechstens so viele sind
+OTHER_KEY = "__other__"
+STATUS_COLORS = {"todo": "gray", "doing": "blue", "done": "green"}
+_CHART_PID = re.compile(r"[a-z0-9_]{1,24}|title")
+
+
+def _spec_pid(v):
+    return v if isinstance(v, str) and _CHART_PID.fullmatch(v) else ""
+
+
+def clean_chart_spec(c):
+    """Diagramm-Einstellungen bereinigen (Ansicht view.chart und Widget cfg) -> neues dict (nur bekannte Felder)."""
+    c = c if isinstance(c, dict) else {}
+    typ = c.get("type") if c.get("type") in CHART_TYPES else "bar"
+    out = {"type": typ, "x": _spec_pid(c.get("x")), "agg": c.get("agg") if c.get("agg") in AGGS else "count",
+           "y": _spec_pid(c.get("y")), "sort": c.get("sort") if c.get("sort") in CHART_SORTS else "x",
+           "fmt": c.get("fmt") if c.get("fmt") in CHART_FMTS else "num"}
+    if out["agg"] == "count":
+        out["y"] = ""
+    if c.get("bucket") in CHART_BUCKETS:
+        out["bucket"] = c["bucket"]
+    if c.get("status") is True:
+        out["status"] = True
+    if typ in ("bar", "hbar", "line", "area") and _spec_pid(c.get("series")) and c.get("series") != "title":
+        out["series"] = c["series"]
+    lim = c.get("limit")
+    if isinstance(lim, int) and not isinstance(lim, bool):
+        out["limit"] = max(3, min(CHART_CATS_MAX, lim))
+    if typ in ("line", "area") and c.get("cumulative") is True:
+        out["cumulative"] = True
+    if typ in ("bar", "hbar", "area") and c.get("stack") is True and out.get("series"):
+        out["stack"] = True
+    if c.get("empty") == "show":
+        out["empty"] = "show"
+    g = c.get("goal")
+    if isinstance(g, (int, float)) and not isinstance(g, bool) and g == g and abs(g) < 1e12:
+        out["goal"] = _n(g)
+    if out["sort"] == "manual" and isinstance(c.get("order"), list):
+        order = [x[:64] for x in c["order"][:CHART_CATS_MAX] if isinstance(x, str) and x and "<" not in x]
+        if order:
+            out["order"] = order
+    if out["agg"] == "pct_checked":
+        out["fmt"] = "pct"
+    return out
+
+
+def _bucket(d, b):
+    """Datum -> (Anfang des Eimers als date, Schluessel)."""
+    if b == "week":
+        s = d - timedelta(days=d.weekday())                  # Woche ab Montag (wie dbquery.rel_date)
+        y, w, _ = s.isocalendar()
+        return s, f"{y}-W{w:02d}"
+    if b == "month":
+        s = d.replace(day=1)
+        return s, f"{s.year:04d}-{s.month:02d}"
+    if b == "quarter":
+        s = d.replace(month=(d.month - 1) // 3 * 3 + 1, day=1)
+        return s, f"{s.year:04d}-Q{(s.month - 1) // 3 + 1}"
+    if b == "year":
+        s = d.replace(month=1, day=1)
+        return s, f"{s.year:04d}"
+    return d, d.isoformat()
+
+
+def _bucket_next(s, b):
+    if b == "day":
+        return s + timedelta(days=1)
+    if b == "week":
+        return s + timedelta(days=7)
+    m = s.month + {"month": 1, "quarter": 3, "year": 12}[b]
+    return s.replace(year=s.year + (m - 1) // 12, month=(m - 1) % 12 + 1)
+
+
+class _Axis:
+    """Gruppierung nach einer Eigenschaft: keys(row) -> Liste von (schluessel, label, farbe, sortwert). Leer: [(None, ...)]."""
+
+    def __init__(self, schema, q, pid, spec, labels, untitled, tz):
+        self.q, self.tz, self.untitled, self.labels_fn = q, tz, untitled, labels
+        self.bucket = spec.get("bucket") or "month"
+        if pid == "title":
+            self.p = {"id": "title", "type": "text"}
+        else:
+            p = q.prop_by_id(pid)
+            if p is dbquery.UNDEF or not isinstance(p, dict):
+                raise Fail("bad_cfg")
+            self.p = p
+        t = self.p.get("type")
+        rt = self.p.get("rtype") if t in ("formula", "rollup") else None
+        self.status = spec.get("status") is True and dbquery.is_status(self.p)
+        if t in ("date", "created", "edited") or rt == "date":
+            self.kind = "date"
+        elif t in ("select", "multi_select"):
+            self.kind = "select"
+        elif t == "relation":
+            self.kind = "relation"
+        elif t == "checkbox" or rt == "checkbox":
+            self.kind = "checkbox"
+        elif t in ("number", "calc") or rt == "number":
+            self.kind = "number"
+        elif t in ("text", "url") or rt in ("text", "list"):
+            self.kind = "text"
+        else:
+            raise Fail("bad_cfg")
+        self.opts = {o.get("id"): (i, o) for i, o in enumerate(o for o in (self.p.get("options") or []) if isinstance(o, dict))}
+        self._lab = {}
+
+    def _day(self, v):
+        t = self.p.get("type")
+        if t in ("created", "edited"):
+            try:
+                return datetime.fromtimestamp(float(v), self.tz).date()
+            except (TypeError, ValueError, OverflowError, OSError):
+                return None
+        if not isinstance(v, str) or len(v) < 10:
+            return None
+        sp = self.q.day_span(v)
+        if sp is None:
+            return None
+        try:
+            return date.fromordinal(sp[0] + 719163)
+        except (ValueError, OverflowError):
+            return None
+
+    def prefetch(self, rows):
+        if self.kind != "relation" or not self.labels_fn:
+            return
+        ids = set()
+        for r in rows:
+            v = self.q.prop_value(self.p, r) if self.p["id"] != "title" else None
+            if isinstance(v, list):
+                ids.update(x for x in v if isinstance(x, int) and not isinstance(x, bool))
+        self._lab = self.labels_fn(sorted(ids)) if ids else {}
+
+    def keys(self, r):
+        p, k = self.p, self.kind
+        v = r.get("title") if p["id"] == "title" else self.q.prop_value(p, r)
+        if k == "date":
+            d = self._day(v)
+            if d is None:
+                return [(None,)]
+            s, key = _bucket(d, self.bucket)
+            return [(key, key, None, s.toordinal())]
+        if k == "select":
+            if self.status:
+                g = dbquery.status_group(p, v)
+                if g is None:
+                    return [(None,)]
+                return [(g, {"todo": t("Zu erledigen"), "doing": t("In Arbeit"), "done": t("Erledigt")}[g], STATUS_COLORS[g],
+                         dbquery.STATUS_GROUPS.index(g))]
+            vals = v if isinstance(v, list) else ([v] if isinstance(v, str) else [])
+            out = []
+            for x in dict.fromkeys(x for x in vals if isinstance(x, str)):
+                hit = self.opts.get(x)
+                if hit:
+                    out.append((x, str(hit[1].get("name") or ""), hit[1].get("color") if hit[1].get("color") in _OPT_COLORS else None, hit[0]))
+            return out or [(None,)]
+        if k == "relation":
+            ids = [x for x in (v if isinstance(v, list) else []) if isinstance(x, int) and not isinstance(x, bool)]
+            out = [(str(i), self._lab.get(i) or self.untitled, None, (self._lab.get(i) or self.untitled).lower()) for i in dict.fromkeys(ids)
+                   if i in self._lab]
+            return out or [(None,)]
+        if k == "checkbox":
+            on = v is True
+            return [("true" if on else "false", t("Ja") if on else t("Nein"), None, 0 if on else 1)]
+        if k == "number":
+            x = _num_in(v)
+            if x is None:
+                return [(None,)]
+            return [(dbquery.js_num_str(x), dbquery.js_num_str(x), None, x)]
+        # Text, URL, Liste (Formel/Rollup): jeder Eintrag einer Liste zaehlt einzeln
+        vals = v if isinstance(v, list) else [v]
+        out = []
+        for x in vals:
+            if x is None or x is dbquery.UNDEF or isinstance(x, (dict, list)):
+                continue
+            s = " ".join(dbquery.js_str(x).split())[:120]
+            if s:
+                out.append((s, s, None, s.lower()))
+        return list({o[0]: o for o in out}.values()) or [(None,)]
+
+
+_OPT_COLORS = ("gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red")
+
+
+def _group(axis, rows, empty_show):
+    """-> geordnetes dict schluessel -> {label, color, sort, rows}. Leere Werte unter None (nur mit empty_show)."""
+    out = {}
+    for r in rows:
+        for k in axis.keys(r):
+            key = k[0]
+            if key is None and not empty_show:
+                continue
+            g = out.get(key)
+            if g is None:
+                g = out[key] = {"label": t("Leer") if key is None else k[1], "color": None if key is None else k[2],
+                                "sort": (1, 0) if key is None else (0, k[3]), "rows": []}
+            g["rows"].append(r)
+    if axis.kind == "select" and empty_show:                 # leere Optionen/Status-Gruppen auch zeigen
+        if axis.status:
+            for i, g in enumerate(dbquery.STATUS_GROUPS):
+                out.setdefault(g, {"label": {"todo": t("Zu erledigen"), "doing": t("In Arbeit"), "done": t("Erledigt")}[g],
+                                   "color": STATUS_COLORS[g], "sort": (0, i), "rows": []})
+        else:
+            for oid, (i, o) in axis.opts.items():
+                if isinstance(oid, str):
+                    out.setdefault(oid, {"label": str(o.get("name") or ""), "color": o.get("color") if o.get("color") in _OPT_COLORS else None,
+                                         "sort": (0, i), "rows": []})
+    return out
+
+
+def _agg(spec, rows, schema):
+    return aggregate(spec["agg"], spec.get("y") or "", rows, schema)
+
+
+def chart(schema, rows, spec, labels=None, tz=None, today=None, untitled=None):
+    """Diagramm aus den (schon nach der Ansicht gefilterten) Zeilen -> Ergebnis (siehe docs/APP-API.md "Diagramme").
+    Fail('bad_cfg') bei unbekannter/ungeeigneter Eigenschaft."""
+    spec = clean_chart_spec(spec)
+    tz = tz or timezone.utc
+    untitled = untitled or t("Unbenannt")
+    q = dbquery.Query(schema, tz=tz, today=today)
+    typ = spec["type"]
+    if spec["agg"] != "count" and not spec.get("y"):
+        raise Fail("bad_cfg")
+    total = _agg(spec, rows, schema)
+    res = {"type": typ, "x_kind": "cat", "cats": [], "series": [], "total": total, "fmt": spec["fmt"], "other": 0,
+           "truncated": False, "rows": len(rows)}
+    if "goal" in spec:
+        res["goal"] = spec["goal"]
+    if typ == "number":
+        return res
+    if not spec.get("x"):
+        raise Fail("bad_cfg")
+    ax = _Axis(schema, q, spec["x"], spec, labels, untitled, tz)
+    ax.prefetch(rows)
+    empty_show = spec.get("empty") == "show"
+    groups = _group(ax, rows, empty_show)
+    limit = spec.get("limit") or (CHART_CATS_MAX if ax.kind == "date" else 20)
+    if ax.kind == "date":
+        res["x_kind"], res["bucket"] = "date", ax.bucket
+        dated = sorted((k for k in groups if k is not None), key=lambda k: groups[k]["sort"])
+        if dated and typ in ("line", "area", "bar", "hbar"):          # Zeitachse ohne Luecken (leere Eimer = 0 bzw. null)
+            s, end = date.fromordinal(groups[dated[0]]["sort"][1]), date.fromordinal(groups[dated[-1]]["sort"][1])
+            fill, n = [], 0
+            while s <= end and n <= CHART_GAPS_MAX:
+                fill.append(s)
+                s = _bucket_next(s, ax.bucket)
+                n += 1
+            if n <= CHART_GAPS_MAX:
+                for d in fill:
+                    _, key = _bucket(d, ax.bucket)
+                    groups.setdefault(key, {"label": key, "color": None, "sort": (0, d.toordinal()), "rows": []})
+    keys = list(groups)
+    for g in groups.values():
+        g["y"] = _agg(spec, g["rows"], schema)
+    yv = lambda k: groups[k]["y"] if isinstance(groups[k]["y"], (int, float)) else float("-inf")   # noqa: E731
+    natural = sorted(keys, key=lambda k: groups[k]["sort"])
+    if len(keys) > limit:
+        if ax.kind == "date":                                # Zeitachse: die juengsten Eimer behalten
+            keep = natural[-limit:]
+            res["truncated"] = True
+        else:                                                # Top-N nach Wert, Rest als "Andere"
+            top = sorted(keys, key=lambda k: (-yv(k), groups[k]["sort"]))[:limit - 1]
+            rest = [k for k in keys if k not in top]
+            other_rows, seen = [], set()
+            for k in rest:
+                for r in groups[k]["rows"]:
+                    if id(r) not in seen:
+                        seen.add(id(r))
+                        other_rows.append(r)
+            res["other"] = len(rest)
+            groups[OTHER_KEY] = {"label": t("Andere"), "color": None, "sort": (2, 0), "rows": other_rows,
+                                 "y": _agg(spec, other_rows, schema)}
+            keep = top + [OTHER_KEY]
+        keys = keep
+    sort = spec["sort"]
+    if sort == "y_desc":
+        keys = sorted(keys, key=lambda k: (k == OTHER_KEY, -yv(k), groups[k]["sort"]))
+    elif sort == "y_asc":
+        keys = sorted(keys, key=lambda k: (k == OTHER_KEY, yv(k), groups[k]["sort"]))
+    elif sort == "manual" and spec.get("order"):
+        pos = {k: i for i, k in enumerate(spec["order"])}
+        keys = sorted(keys, key=lambda k: (k == OTHER_KEY, pos.get(k, len(pos)), groups[k]["sort"]))
+    else:
+        keys = sorted(keys, key=lambda k: groups[k]["sort"])
+    res["cats"] = [{"key": k, "label": groups[k]["label"], "color": groups[k]["color"]} for k in keys]
+    if ax.kind == "date":                                    # Anfang des Eimers als Tag (Clients formatieren selbst)
+        for cat in res["cats"]:
+            g = groups[cat["key"]]
+            if cat["key"] is not None and cat["key"] != OTHER_KEY:
+                cat["start"] = date.fromordinal(g["sort"][1]).isoformat()
+    # Reihen
+    if spec.get("series") and typ in ("bar", "hbar", "line", "area"):
+        sx = _Axis(schema, q, spec["series"], dict(spec, status=spec.get("status"), bucket=spec.get("bucket")), labels, untitled, tz)
+        sx.prefetch(rows)
+        sg = _group(sx, rows, empty_show)
+        skeys = sorted(sg, key=lambda k: sg[k]["sort"])
+        if len(skeys) > CHART_SERIES_MAX:
+            tot = {k: len(sg[k]["rows"]) for k in skeys}
+            top = sorted(skeys, key=lambda k: (-tot[k], sg[k]["sort"]))[:CHART_SERIES_MAX - 1]
+            rest_rows, seen = [], set()
+            for k in skeys:
+                if k not in top:
+                    for r in sg[k]["rows"]:
+                        if id(r) not in seen:
+                            seen.add(id(r))
+                            rest_rows.append(r)
+            skeys = [k for k in skeys if k in top] + [OTHER_KEY]
+            sg[OTHER_KEY] = {"label": t("Andere"), "color": None, "sort": (2, 0), "rows": rest_rows}
+            res["truncated"] = True
+        for sk in skeys:
+            ids = {id(r) for r in sg[sk]["rows"]}
+            vals = [_agg(spec, [r for r in groups[k]["rows"] if id(r) in ids], schema) for k in keys]
+            res["series"].append({"key": sk, "label": sg[sk]["label"], "color": sg[sk]["color"], "values": vals})
+    else:
+        res["series"].append({"key": "", "label": "", "color": None, "values": [groups[k]["y"] for k in keys]})
+    if spec.get("cumulative") and typ in ("line", "area"):
+        for s in res["series"]:
+            acc, out = 0, []
+            for v in s["values"]:
+                acc = _n(_round2(acc + (v if isinstance(v, (int, float)) else 0)))
+                out.append(acc)
+            s["values"] = out
+    if spec.get("stack"):
+        res["stack"] = True
+    if spec.get("cumulative") and typ in ("line", "area"):
+        res["cumulative"] = True
+    return res
