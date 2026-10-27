@@ -422,7 +422,9 @@ def fill_core(schema, rows, tz=None, now=None, labels=None, target=None, rollups
     target(db_id) -> (schema, zeilen) der Ziel-Datenbank (nur sichtbare Zeilen) oder None."""
     if not has_calc(schema) or not rows:
         return rows
-    tz = tz or timezone.utc
+    if tz is None:                                      # ohne Angabe der Anfrage: Zeitzone des Servers (TZ)
+        from saga.core import TZ
+        tz = TZ
     now = now or datetime.now(timezone.utc)
     src = _Source(labels, target)
     src.untitled = untitled or t("Unbenannt")

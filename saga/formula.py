@@ -507,6 +507,8 @@ class _Parser:
                 return self.node("bool", pos, v == "true")
             if v == "not":
                 return self.node("not", pos, self.expr(8))
+            if v in UNSUPPORTED:
+                raise FxSyntax(t("„{f}“ kommt in einer späteren Version", f=v), pos)
             if self.peek()[1] == "(" and self.peek()[0] == "op":
                 self.next()
                 if v == "prop":

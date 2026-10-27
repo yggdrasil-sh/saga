@@ -3854,8 +3854,9 @@
     }
     function refreshCell(cell, p, r) { cell.textContent = ''; cell.appendChild(valueEditor(p, r, function () { refreshCell(cell, p, r); })); }
 
-    function loadDb() {
-      return api('GET', '/api/notes/' + DB.id + '/rows').then(function (d) {
+    var TZQ = (function () { try { var z = Intl.DateTimeFormat().resolvedOptions().timeZone; return z ? '?tz=' + encodeURIComponent(z) : ''; } catch (e) { return ''; } })();
+    function loadDb() {   // tz: Formeln mit today()/now()/Datum rechnet der Server in der Zeitzone des Browsers
+      return api('GET', '/api/notes/' + DB.id + '/rows' + TZQ).then(function (d) {
         DB.schema = d.schema; DB.rows = d.rows; DB.templates = d.templates || []; ensureViews(); DB.snap = JSON.stringify(DB.schema);
         DB.role = d.role || 'owner';
         if (OPTS.getViews) {

@@ -339,8 +339,8 @@ def _db_rows(owner, nid, shared=False, query=None, viewer=None, with_tpls=None):
         out = {"schema": _json_load(db[0], {"props": []}), "templates": [{"id": t[0], "title": t[1] or "", "icon": t[2] or ""} for t in tpls],
                "rows": [{"id": r[0], "title": r[1] or "", "icon": r[2] or "", "props": parsed[r[0]] if r[0] in parsed else _json_load(r[3], {}),
                          "updated": r[4], "created": r[5], "preview": r[6] or pv.get(r[0]) or ""} for r in rows]}
-        if dbcalc.has_calc(out["schema"]) and query is None:      # 2.5: Formeln/Rollups (mit Abfrage: schon in _db_query)
-            dbcalc.fill(c, owner, out["schema"], out["rows"], viewer=owner if viewer is None else viewer)
+        if dbcalc.has_calc(out["schema"]) and not (extra and "_fx" in extra):   # 2.5: Formeln/Rollups (Filter usw.: schon in _db_query)
+            dbcalc.fill(c, owner, out["schema"], out["rows"], viewer=owner if viewer is None else viewer, tz=(query or {}).get("tz"))
         elif extra and extra.get("_fx"):
             for r in out["rows"]:
                 e = extra["_fx"].get(r["id"])
@@ -363,7 +363,7 @@ def _db_query(c, owner, nid, shared, sql, schema_json, query, viewer):
         extra["limit"] = lim
     schema = _json_load(schema_json, {"props": []})
     calc = dbcalc.has_calc(schema)
-    if not calc and not any(k in query for k in ("view", "filters", "sorts", "q", "group")):
+    if not any(k in query for k in ("view", "filters", "sorts", "q", "group")):     # Formeln: nur die Seite rechnen (_db_rows)
         total = c.execute("SELECT count(*) FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL AND is_template=0"
                           + (" AND archived IS NULL" if shared else ""), (owner, nid)).fetchone()[0]
         rows = c.execute(sql + order + " LIMIT ? OFFSET ?", (owner, nid, lim if lim is not None else 2 ** 62, off)).fetchall()
