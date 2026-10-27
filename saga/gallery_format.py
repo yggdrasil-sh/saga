@@ -17,7 +17,7 @@ ROLLUP_FNS = {"count", "filled", "empty", "pct_filled", "unique", "sum", "avg", 
 PROP_TYPES = {"text", "number", "select", "multi_select", "date", "checkbox", "url", "created", "edited", "relation", "calc",
               "person", "files",            # 2.5: Spalten ja, Werte in Vorlagen nicht (Personen/Dateien gibt es dort nicht)
               "formula", "rollup"}
-VIEW_TYPES = {"table", "board", "list", "gallery", "calendar", "chart"}
+VIEW_TYPES = {"table", "board", "list", "gallery", "calendar", "chart", "timeline"}
 WIDGET_KINDS = ("clock", "countdown", "progress", "metric", "quote", "weather", "habit", "upcoming", "chart")
 OPT_COLORS = {"gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"}
 PID = re.compile(r"[a-z0-9_]{1,24}")
@@ -347,6 +347,8 @@ def _check_schema(cx, where, s, dbref):
                 cx.err(w, f"{k} {v[k]!r} ist keine Auswahl- oder Formel-Eigenschaft")
         if "date_by" in v and (pids.get(v["date_by"]) or {}).get("type") not in ("date", "created", "edited"):
             cx.err(w, f"date_by {v['date_by']!r} ist keine Datums-Eigenschaft")
+        if "end_by" in v and (pids.get(v["end_by"]) or {}).get("type") != "date":
+            cx.err(w, f"end_by {v['end_by']!r} ist keine Datums-Eigenschaft")
         for f in (v.get("filters") or []) + (v.get("sorts") or []) + (v.get("colors") or []):
             if isinstance(f, dict) and f.get("pid") != "title" and f.get("pid") not in pids:
                 cx.err(w, f"Filter/Sortierung auf unbekannte Eigenschaft {f.get('pid')!r}")

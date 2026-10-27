@@ -581,7 +581,8 @@ def _default_schema(lang=None):
             _cur.reset(tok)
 
 
-VIEW_TYPES = {"table", "board", "list", "gallery", "calendar", "chart"}      # 2.5 Paket 4: chart (saga.dbcalc.chart)
+VIEW_TYPES = {"table", "board", "list", "gallery", "calendar", "chart", "timeline"}      # 2.5 Paket 4: chart (saga.dbcalc.chart), Paket 1: timeline
+TIMELINE_SCALES = ("day", "week", "month", "quarter")          # 2.5 (Paket 1 E4): Zeitleiste
 CALC_OPS = {"count", "filled", "empty", "pct_filled", "unique", "sum", "avg", "median", "min", "max", "range",
             "checked", "unchecked", "pct_checked", "earliest", "latest"}       # Fusszeile der Tabelle (je Spalte)
 FILTER_OPS = {"contains", "not_contains", "is", "is_not", "eq", "gt", "lt", "before", "after",
@@ -668,6 +669,17 @@ def _clean_views(raw, props):
         fz = v.get("freeze")                                 # 2.5: so viele Spalten ab links fixiert (inkl. Name)
         if isinstance(fz, int) and not isinstance(fz, bool) and 1 <= fz <= 3:
             view["freeze"] = fz
+        if view["type"] == "timeline" or v.get("end_by") or v.get("scale"):      # 2.5 (Paket 1 E4): Zeitleiste/Gantt (P1-E8)
+            eb = v.get("end_by")                             # Ende aus einer zweiten Datums-Eigenschaft (leer: Zeitraum im Start-Datum)
+            if eb in pids and pids[eb]["type"] == "date" and eb != view.get("date_by"):
+                view["end_by"] = eb
+            if v.get("scale") in TIMELINE_SCALES:
+                view["scale"] = v["scale"]
+            dp = v.get("deps")                               # Abhaengigkeiten als Pfeile: Selbst-Relation "blockiert durch"
+            if dp in pids and pids[dp]["type"] == "relation" and pids[dp].get("role") == "blocked_by":
+                view["deps"] = dp
+            if v.get("arrows") is False:
+                view["arrows"] = False
         if v.get("range") == "week" and view["type"] == "calendar":      # 2.5: Kalender als Woche (Standard: Monat)
             view["range"] = "week"
         if v.get("group_status") is True:                    # 2.5: Board/Gruppen nach Status-Gruppe statt Option

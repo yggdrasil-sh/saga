@@ -3306,7 +3306,7 @@
     return null;
   }
   var TITLE_PROP = { id: 'title', name: T('Name'), type: 'text' };
-  var VIEW_ICON = { table: '▦', board: '▥', list: '☰', gallery: '▣', calendar: '🗓', chart: '📊' };
+  var VIEW_ICON = { table: '▦', board: '▥', list: '☰', gallery: '▣', calendar: '🗓', chart: '📊', timeline: '┅' };
   // Automatische Eigenschaften (nur lesbar) und Zahlen-Darstellung
   TYPES.created = [T('Erstellt am'), '⏱']; TYPES.edited = [T('Zuletzt bearbeitet'), '✎'];
   var AUTO = { created: 'created', edited: 'updated' };
@@ -3677,7 +3677,7 @@
         ['filters', 'colors', 'sorts'].forEach(function (k) { if (v[k]) { v[k] = v[k].filter(function (f) { return f && ok(f.pid); }); if (!v[k].length) delete v[k]; } });
         ['hidden', 'order'].forEach(function (k) { if (v[k]) { v[k] = v[k].filter(ok); if (!v[k].length) delete v[k]; } });
         if (v.widths) Object.keys(v.widths).forEach(function (k) { if (!ok(k)) delete v.widths[k]; });
-        ['group', 'group_by', 'date_by'].forEach(function (k) { if (v[k] && !ok(v[k])) delete v[k]; });
+        ['group', 'group_by', 'date_by', 'end_by', 'deps'].forEach(function (k) { if (v[k] && !ok(v[k])) delete v[k]; });
       });
       return vs;
     }
@@ -4438,6 +4438,7 @@
       if (vt === 'gallery') { box.appendChild(renderGallery()); return; }
       if (vt === 'calendar') { box.appendChild(renderCalendar()); return; }
       if (vt === 'chart') { box.appendChild(renderChart()); return; }
+      if (vt === 'timeline') { box.appendChild(renderTimeline()); return; }
       var scroll = el('div', 'db-scroll'), tb = el('table', 'db-table'), thead = el('thead'), hr = el('tr');
       var tv = curView(), vis = visibleProps(), widths = tv.widths || {}, cg = el('colgroup'), cols = {};
       tb.classList.toggle('db-wrap', !!tv.wrap);                 // 2.5: Zeilenumbruch (ganze Ansicht)
@@ -4735,16 +4736,26 @@
           var name = el('input', 'flt-val'); name.type = 'text'; name.maxLength = 40; name.value = v.name;
           liveText(name, function (val) { if (val.trim()) { v.name = val.trim(); saveSchemaSoon(); renderDb(); } });
           row(T('Name'), name);
-          row(T('Layout'), sel([['table', '▦ ' + T('Tabelle')], ['board', '▥ ' + T('Board')], ['list', '☰ ' + T('Liste')], ['gallery', '▣ ' + T('Galerie')], ['calendar', '🗓 ' + T('Kalender')], ['chart', '📊 ' + T('Diagramm')]], v.type, function (x) { v.type = x; commit(); }));
+          row(T('Layout'), sel([['table', '▦ ' + T('Tabelle')], ['board', '▥ ' + T('Board')], ['list', '☰ ' + T('Liste')], ['gallery', '▣ ' + T('Galerie')], ['calendar', '🗓 ' + T('Kalender')], ['chart', '📊 ' + T('Diagramm')], ['timeline', '┅ ' + T('Zeitleiste')]], v.type, function (x) { v.type = x; commit(); }));
           var sels = DB.schema.props.filter(groupable).map(function (p) { return [p.id, (isFx(p) ? 'ƒ ' : '') + p.name]; });
           if (v.type === 'board') row(T('Spalten nach'), sel(sels.length ? sels : [['', T('– keine Auswahl-Eigenschaft –')]], v.group_by, function (x) { if (x) v.group_by = x; commit(); }));
-          if (v.type === 'table' || v.type === 'list') row(T('Gruppieren'), sel([['', T('nicht gruppieren')]].concat(sels), v.group, function (x) { if (x) v.group = x; else delete v.group; commit(); }));
+          if (v.type === 'table' || v.type === 'list' || v.type === 'timeline') row(T('Gruppieren'), sel([['', T('nicht gruppieren')]].concat(sels), v.group, function (x) { if (x) v.group = x; else delete v.group; commit(); }));
           row(T('Öffnen als'), sel([['side', '◨ ' + T('Seitenansicht rechts')], ['left', '◧ ' + T('Seitenansicht links')], ['center', '▣ ' + T('Mittig')], ['page', '▭ ' + T('Ganze Seite')]], v.open || 'side',
             function (x) { if (x === 'side') delete v.open; else v.open = x; commit(); }));
           if (v.type === 'calendar') {
             var dps = DB.schema.props.filter(function (p) { return p.type === 'date' || AUTO[p.type]; }).map(function (p) { return [p.id, p.name]; });
             row(T('Datum aus'), sel(dps.length ? dps : [['', T('– keine Datumsspalte –')]], v.date_by, function (x) { if (x) v.date_by = x; commit(); }));
             row(T('Zeitraum'), sel([['', T('Monat')], ['week', T('Woche')]], v.range || '', function (x) { if (x) v.range = x; else delete v.range; commit(); }));
+          }
+          if (v.type === 'timeline') {                     // 2.5 (Paket 1 E4): Zeitleiste
+            var tds = DB.schema.props.filter(function (p) { return p.type === 'date' || AUTO[p.type]; }).map(function (p) { return [p.id, p.name]; });
+            row(T('Beginn aus'), sel(tds.length ? tds : [['', T('– keine Datumsspalte –')]], v.date_by, function (x) { if (x) v.date_by = x; if (v.end_by === x) delete v.end_by; commit(); }));
+            row(T('Ende aus'), sel([['', T('– Zeitraum im Beginn –')]].concat(DB.schema.props.filter(function (p) { return p.type === 'date' && p.id !== v.date_by; }).map(function (p) { return [p.id, p.name]; })),
+              v.end_by || '', function (x) { if (x) v.end_by = x; else delete v.end_by; commit(); }));
+            row(T('Skala'), sel([['day', T('Tag')], ['week', T('Woche')], ['month', T('Monat')], ['quarter', T('Quartal')]], v.scale || 'week', function (x) { v.scale = x; commit(); }));
+            var dps2 = DB.schema.props.filter(function (p) { return p.type === 'relation' && p.target === DB.id && p.role === 'blocked_by'; });
+            if (dps2.length) row(T('Abhängigkeiten'), sel([['', T('keine Pfeile')]].concat(dps2.map(function (p) { return [p.id, '→ ' + p.name]; })),
+              v.arrows === false ? '' : (v.deps || dps2[0].id), function (x) { if (x) { v.deps = x; delete v.arrows; } else { delete v.deps; v.arrows = false; } commit(); }));
           }
           var stp = (v.type === 'board' ? propById(v.group_by) : (v.type === 'table' || v.type === 'list') ? propById(v.group) : null);
           if (isStatus(stp)) {                             // 2.5: Spalten/Gruppen nach Status-Gruppe statt je Option
@@ -5032,6 +5043,7 @@
         m.appendChild(HK.menuItem(T('Galerie'), function () { v.type = 'gallery'; saveSchema().then(renderDb); }, { icon: '▣', on: v.type === 'gallery' }));
         m.appendChild(HK.menuItem(T('Kalender'), function () { v.type = 'calendar'; saveSchema().then(renderDb); }, { icon: '🗓', on: v.type === 'calendar' }));
         m.appendChild(HK.menuItem(T('Diagramm'), function () { v.type = 'chart'; saveSchema().then(renderDb); }, { icon: '📊', on: v.type === 'chart' }));
+        m.appendChild(HK.menuItem(T('Zeitleiste'), function () { v.type = 'timeline'; saveSchema().then(renderDb); }, { icon: '┅', on: v.type === 'timeline' }));
         var sels = DB.schema.props.filter(groupable);
         if (v.type === 'board' && sels.length) {
           m.appendChild(HK.menuLabel(T('Gruppieren nach')));
@@ -5048,11 +5060,12 @@
     function addView(anchor) {
       HK.openMenu(anchor, function (m) {
         m.appendChild(HK.menuLabel(T('Neue Ansicht')));
-        [['table', '▦', T('Tabelle')], ['board', '▥', T('Board')], ['list', '☰', T('Liste')], ['gallery', '▣', T('Galerie')], ['calendar', '🗓', T('Kalender')], ['chart', '📊', T('Diagramm')]].forEach(function (t) {
+        [['table', '▦', T('Tabelle')], ['board', '▥', T('Board')], ['list', '☰', T('Liste')], ['gallery', '▣', T('Galerie')], ['calendar', '🗓', T('Kalender')], ['chart', '📊', T('Diagramm')], ['timeline', '┅', T('Zeitleiste')]].forEach(function (t) {
           m.appendChild(HK.menuItem(t[2], function () {
             var v = { id: rid(), name: t[2], type: t[0] };
             var s = DB.schema.props.find(function (p) { return p.type === 'select'; }); if (t[0] === 'board' && s) v.group_by = s.id;
-          var dd = DB.schema.props.find(function (p) { return p.type === 'date'; }); if (t[0] === 'calendar' && dd) v.date_by = dd.id;
+          var dd = DB.schema.props.find(function (p) { return p.type === 'date'; }); if ((t[0] === 'calendar' || t[0] === 'timeline') && dd) v.date_by = dd.id;
+            if (t[0] === 'timeline') v.scale = 'week';
             views().push(v); setViewId(v.id); saveSchema().then(renderDb);
           }, { icon: t[1] }));      // ganzes Zeichen (charAt(0) halbierte das Emoji 🗓)
         });
@@ -5532,6 +5545,279 @@
         return d.time ? localStamp(ymd(nd), String(nd.getHours()).padStart(2, '0') + ':' + String(nd.getMinutes()).padStart(2, '0')) : ymd(nd);
       }
       return ps.map(mv).join('/');
+    }
+
+    // 2.5 (Paket 1 E4): Zeitleiste/Gantt - Balken von Beginn (date_by) bis Ende (end_by oder Zeitraum im Datum), Skalen
+    // Tag/Woche/Monat/Quartal, Gruppen wie Tabelle (view.group), Ziehen verschiebt bzw. verlaengert (normaler Zeilen-PATCH,
+    // nur mit Bearbeiten-Recht), Abhaengigkeiten ("blockiert durch") als Pfeile, Eintraege ohne Termin darunter.
+    var TL_SCALES = { day: { px: 40, n: 42, step: 14 }, week: { px: 16, n: 126, step: 28 }, month: { px: 5, n: 396, step: 3 }, quarter: { px: 2, n: 820, step: 12 } };
+    var tlSeq = 0;
+    function tlDate(n) { var s = dayIso(n); return new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)); }
+    function tlDay(d) { return dayNum(d.getFullYear(), d.getMonth() + 1, d.getDate()); }
+    function tlAlign(sc, n) {                     // Fensterbeginn passend zur Skala (Montag, Monatserster, Quartalserster)
+      var d = tlDate(n);
+      if (sc === 'week') return n - (d.getDay() + 6) % 7;
+      if (sc === 'month') return dayNum(d.getFullYear(), d.getMonth() + 1, 1);
+      if (sc === 'quarter') return dayNum(d.getFullYear(), d.getMonth() - d.getMonth() % 3 + 1, 1);
+      return n;
+    }
+    function tlShift(sc, n, dir) {                // eine Seite vor/zurueck
+      var S = TL_SCALES[sc];
+      if (sc === 'month' || sc === 'quarter') { var d = tlDate(n); return dayNum(d.getFullYear(), d.getMonth() + 1 + dir * S.step, 1); }
+      return n + dir * S.step;
+    }
+    function isoWeek(d) {
+      var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())), wd = t.getUTCDay() || 7;
+      t.setUTCDate(t.getUTCDate() + 4 - wd);
+      return Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7);
+    }
+    function shiftPart(s, n) {                    // ein Datumsteil um n Tage - Uhrzeit (Ortszeit) bleibt
+      var d = dtDate(s); if (!d) return s;
+      var nd = new Date(d.d.getFullYear(), d.d.getMonth(), d.d.getDate() + n, d.d.getHours(), d.d.getMinutes());
+      return d.time ? localStamp(ymd(nd), String(nd.getHours()).padStart(2, '0') + ':' + String(nd.getMinutes()).padStart(2, '0')) : ymd(nd);
+    }
+    function setProps(row, patch) {               // mehrere Eigenschaften einer Zeile in EINEM PATCH (Zeitleiste: Beginn + Ende)
+      if (ro()) return Promise.resolve();
+      return api('PATCH', '/api/notes/' + row.id, { props: patch }).then(function (d) {
+        wgSoon();
+        Object.keys(patch).forEach(function (k) { var x = patch[k]; if (x === null || x === '') delete row.props[k]; else row.props[k] = x; });
+        applyCalc(row, d);
+      }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
+    }
+    function renderTimeline() {
+      var v = curView(), wrap = el('div', 'tl'), sp = propById(v.date_by), ep = v.end_by ? propById(v.end_by) : null;
+      if (!sp || !(sp.type === 'date' || AUTO[sp.type])) {
+        sp = DB.schema.props.find(function (p) { return p.type === 'date'; });
+        if (sp && !ro() && !viewsLocked()) { v.date_by = sp.id; saveSchemaSoon(); }
+      }
+      if (!sp) {
+        wrap.appendChild(el('p', 'nt-empty', T('Für eine Zeitleiste braucht die Datenbank eine Datumsspalte.')));
+        if (!ro()) {
+          var mk = el('button', 'btn', T('Datumsspalte anlegen')); mk.type = 'button';
+          mk.addEventListener('click', function () { var p = { id: rid(), name: T('Datum'), type: 'date' }; DB.schema.props.push(p); v.date_by = p.id; saveSchema().then(renderDb); });
+          wrap.appendChild(mk);
+        }
+        return wrap;
+      }
+      if (ep && (ep.type !== 'date' || ep.id === sp.id)) ep = null;
+      var sc = TL_SCALES[v.scale] ? v.scale : 'week', S = TL_SCALES[sc], px = S.px, now = new Date(), today = tlDay(now);
+      var editable = !ro() && sp.type === 'date', LW = window.matchMedia && matchMedia('(max-width:560px)').matches ? 120 : 220;
+      if (DB.tlScale !== sc || DB.tlStart == null) { DB.tlScale = sc; DB.tlStart = tlAlign(sc, today - Math.round(S.n / 5)); }
+      var w0 = DB.tlStart, nd = S.n, w1 = w0 + nd - 1;
+      // Kopf: Navigation, Zeitraum, Heute, Skala
+      var head = el('div', 'cal-head tl-head');
+      [['‹', -1, T('Zurück')], ['›', 1, T('Weiter')]].forEach(function (x, i) {
+        var b = el('button', 'icon-btn cal-nav tl-nav', x[0]); b.type = 'button'; b.setAttribute('aria-label', x[2]); b.dataset.dir = String(x[1]);
+        b.addEventListener('click', function () { DB.tlStart = tlShift(sc, w0, x[1]); renderDb(); });
+        if (i === 0) head.appendChild(b);
+        else { head.appendChild(el('span', 'cal-title tl-title', fDate2.format(tlDate(w0)) + ' – ' + fDate2.format(tlDate(w1)))); head.appendChild(b); }
+      });
+      var tb = el('button', 'db-chip cal-today tl-today', T('Heute')); tb.type = 'button';
+      tb.addEventListener('click', function () { DB.tlStart = tlAlign(sc, today - Math.round(S.n / 5)); renderDb(); }); head.appendChild(tb);
+      var seg = el('span', 'cal-seg'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', T('Skala'));
+      [['day', T('Tag')], ['week', T('Woche')], ['month', T('Monat')], ['quarter', T('Quartal')]].forEach(function (x) {
+        var b = el('button', 'db-chip cal-range tl-scale' + (sc === x[0] ? ' on' : ''), x[1]); b.type = 'button'; b.dataset.scale = x[0];
+        b.setAttribute('aria-pressed', sc === x[0] ? 'true' : 'false');
+        b.addEventListener('click', function () {
+          if (sc === x[0]) return;
+          var mid = w0 + Math.round(nd / 2); v.scale = x[0]; DB.tlScale = x[0];
+          DB.tlStart = tlAlign(x[0], mid - Math.round(TL_SCALES[x[0]].n / 2));
+          if (viewsLocked() || ro()) renderDb(); else saveSchema().then(renderDb);
+        });
+        seg.appendChild(b);
+      });
+      head.appendChild(seg);
+      if (editable) {
+        var nb = el('button', 'db-chip tl-new', '+ ' + T('Neu')); nb.type = 'button';
+        nb.addEventListener('click', function () { var pr = {}; pr[sp.id] = ymd(now); newRow(pr); }); head.appendChild(nb);
+      }
+      head.appendChild(el('span', 'cal-src', ep ? T('von „{a}“ bis „{b}“', { a: sp.name, b: ep.name }) : T('nach „{name}“', { name: sp.name })));
+      wrap.appendChild(head);
+      // Zeilen mit Zeitraum (Tagesnummern, Ortszeit)
+      function span(r) {
+        var a = null, b = null, sv = propValue(sp, r);
+        if (sv) {
+          if (AUTO[sp.type]) { a = b = relDay(isoDay(sv)); }
+          else { var ds = daySpan(sv); if (ds) { a = ds[0]; b = ds[1]; } }
+        }
+        if (ep) {
+          var es = daySpan((r.props || {})[ep.id]);
+          if (es) { if (a == null) a = es[0]; b = Math.max(a, es[1]); }
+        }
+        return a == null ? null : [a, Math.max(a, b == null ? a : b)];
+      }
+      var rows = sortedRows(), dated = [], undated = [];
+      rows.forEach(function (r) { var s = span(r); if (s) { r._tl = s; dated.push(r); } else undated.push(r); });
+      var g = v.group && propById(v.group), sections = groupable(g) ? groupCols(dated, g, v.group_status).filter(function (c) { return c.rows.length; }) : [{ o: undefined, rows: dated }];
+      var AX = 36, GH = 28, RH = 30, W = nd * px;
+      var scroll = el('div', 'tl-scroll'), grid = el('div', 'tl-grid'); grid.style.width = (LW + W) + 'px'; grid.style.setProperty('--tl-lw', LW + 'px');
+      // Achse: Beschriftung je Einheit (Tag / Woche / Monat / Quartal)
+      var axis = el('div', 'tl-axis'), corner = el('div', 'tl-corner', ''), ticks = el('div', 'tl-ticks'), lines = [];
+      ticks.style.width = W + 'px'; axis.appendChild(corner); axis.appendChild(ticks);
+      var fMon = new Intl.DateTimeFormat(window.SAGA_LOCALE, { month: 'short' }), fMonY = new Intl.DateTimeFormat(window.SAGA_LOCALE, { month: 'short', year: 'numeric' });
+      var fWd = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'narrow' });
+      for (var n = w0; n <= w1; n++) {
+        var d = tlDate(n), lab = null, major = false;
+        if (sc === 'day') { lab = fWd.format(d) + ' ' + d.getDate(); major = d.getDate() === 1; if (major) lab = fMonY.format(d); }
+        else if (sc === 'week') { if (d.getDay() === 1) { lab = T('KW {n}', { n: isoWeek(d) }); major = d.getDate() <= 7; } }
+        else if (sc === 'month') { if (d.getDate() === 1) { lab = d.getMonth() === 0 ? fMonY.format(d) : fMon.format(d); major = d.getMonth() === 0; } }
+        else if (d.getDate() === 1 && d.getMonth() % 3 === 0) { lab = 'Q' + (d.getMonth() / 3 + 1) + ' ' + d.getFullYear(); major = d.getMonth() === 0; }
+        if (lab !== null) {
+          var tk = el('div', 'tl-tick' + (major ? ' major' : '') + (n === today && sc === 'day' ? ' today' : ''), lab);
+          tk.style.left = ((n - w0) * px) + 'px'; tk.style.width = (sc === 'day' ? px : 0) ? px + 'px' : ''; ticks.appendChild(tk); lines.push([n, major]);
+        }
+      }
+      grid.appendChild(axis);
+      var body = el('div', 'tl-body'); grid.appendChild(body);
+      var pos = {}, y = 0, blocked = [];
+      sections.forEach(function (c) {
+        if (c.o !== undefined) {
+          var gh = el('div', 'tl-group'); gh.appendChild(c.o ? groupChip(c.o, g) : el('span', 'board-none', T('Ohne {name}', { name: g.name })));
+          gh.appendChild(el('span', 'board-n', String(c.rows.length))); body.appendChild(gh); y += GH;
+        }
+        c.rows.forEach(function (r) {
+          var row = el('div', 'tl-row'); row.dataset.id = r.id;
+          var lbl = el('button', 'tl-label'); lbl.type = 'button'; lbl.title = r.title || T('Unbenannt');
+          if (r.icon) lbl.appendChild(icoNode(r.icon, '', 'cal-ic'));
+          lbl.appendChild(el('span', 'tl-lt', r.title || T('Unbenannt')));
+          lbl.addEventListener('click', function () { openRowUI(r.id); });
+          var lane = el('div', 'tl-lane'); lane.style.width = W + 'px';
+          var s = r._tl, a = Math.max(s[0], w0), b = Math.min(s[1], w1);
+          pos[r.id] = { x0: (s[0] - w0) * px, x1: (s[1] - w0 + 1) * px, y: y + RH / 2, vis: s[1] >= w0 && s[0] <= w1 };
+          if (s[1] >= w0 && s[0] <= w1) {
+            var bar = tint(el('div', 'tl-bar' + (s[0] < w0 ? ' cut-l' : '') + (s[1] > w1 ? ' cut-r' : '') + (r.blocked ? ' tl-blocked' : '')), r);
+            bar.style.left = ((a - w0) * px) + 'px'; bar.style.width = Math.max(px, (b - a + 1) * px) + 'px';
+            bar.tabIndex = 0; bar.setAttribute('role', 'button'); bar.dataset.id = r.id;
+            var sv = propValue(sp, r), ev = ep ? (r.props || {})[ep.id] : null;
+            bar.title = (r.title || T('Unbenannt')) + ' · ' + (AUTO[sp.type] ? fDate2.format(new Date(sv * 1000)) : dateText(sv)) + (ev ? ' → ' + dateText(ev) : '');
+            bar.setAttribute('aria-label', bar.title);
+            var bt = el('span', 'tl-bt', r.title || T('Unbenannt')); bar.appendChild(bt);
+            if (r.blocked) bar.insertBefore(blockedMark(r), bt);
+            if (editable) {
+              bar.classList.add('tl-edit');
+              if (s[0] >= w0) bar.appendChild(el('span', 'tl-h tl-h-l'));
+              if (s[1] <= w1) bar.appendChild(el('span', 'tl-h tl-h-r'));
+              tlDrag(bar, r, px);
+            } else bar.addEventListener('click', function () { openRowUI(r.id); });
+            bar.addEventListener('keydown', function (e) {
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openRowUI(r.id); return; }
+              if (editable && e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+                e.preventDefault(); var k = e.key === 'ArrowLeft' ? -1 : 1, unit = sc === 'day' ? 1 : 7;
+                tlApply(r, e.shiftKey ? 'end' : 'move', k * unit);
+              }
+            });
+            lane.appendChild(bar);
+          }
+          row.appendChild(lbl); row.appendChild(lane); body.appendChild(row); y += RH;
+        });
+      });
+      if (!dated.length) body.appendChild(el('p', 'nt-empty tl-empty', T('Keine Einträge mit „{name}“.', { name: sp.name })));
+      // Gitterlinien, Heute-Linie, Abhaengigkeiten (SVG ueber den Bahnen)
+      var over = el('div', 'tl-over'); over.style.width = W + 'px';
+      lines.forEach(function (x) { var ln = el('div', 'tl-line' + (x[1] ? ' major' : '')); ln.style.left = ((x[0] - w0) * px) + 'px'; over.appendChild(ln); });
+      if (today >= w0 && today <= w1) { var tl = el('div', 'tl-now'); tl.style.left = ((today - w0) * px + px / 2) + 'px'; tl.title = T('Heute'); over.appendChild(tl); }
+      body.appendChild(over);
+      var deps = v.deps ? propById(v.deps) : (v.arrows === false ? null : DB.schema.props.find(function (p) { return p.type === 'relation' && p.target === DB.id && p.role === 'blocked_by'; }));
+      if (deps) {
+        var NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'), mid = 'tlarr' + (++tlSeq), paths = 0;
+        svg.setAttribute('class', 'tl-deps'); svg.setAttribute('width', W); svg.setAttribute('height', Math.max(y, 1)); svg.setAttribute('aria-hidden', 'true');
+        var defs = document.createElementNS(NS, 'defs'), mkr = document.createElementNS(NS, 'marker'), tri = document.createElementNS(NS, 'path');
+        mkr.setAttribute('id', mid); mkr.setAttribute('viewBox', '0 0 8 8'); mkr.setAttribute('refX', '7'); mkr.setAttribute('refY', '4');
+        mkr.setAttribute('markerWidth', '7'); mkr.setAttribute('markerHeight', '7'); mkr.setAttribute('orient', 'auto');
+        tri.setAttribute('d', 'M0,0 L8,4 L0,8 z'); mkr.appendChild(tri); defs.appendChild(mkr); svg.appendChild(defs);
+        dated.forEach(function (r) {
+          ((r.props || {})[deps.id] || []).forEach(function (bid) {
+            var A = pos[bid], B = pos[r.id]; if (!A || !B || (!A.vis && !B.vis)) return;
+            var x1 = A.x1, y1 = A.y, x2 = B.x0, y2 = B.y, dx = Math.max(16, Math.abs(x2 - x1) / 2);
+            var pth = document.createElementNS(NS, 'path');
+            pth.setAttribute('d', 'M' + x1 + ',' + y1 + ' C' + (x1 + dx) + ',' + y1 + ' ' + (x2 - dx) + ',' + y2 + ' ' + (x2 - 1) + ',' + y2);
+            pth.setAttribute('marker-end', 'url(#' + mid + ')'); pth.setAttribute('class', 'tl-dep' + (x2 < x1 ? ' late' : ''));
+            pth.dataset.from = bid; pth.dataset.to = r.id; svg.appendChild(pth); paths++;
+          });
+        });
+        if (paths) over.appendChild(svg);
+      }
+      scroll.appendChild(grid); wrap.appendChild(scroll);
+      // Ziehen aus "ohne Termin" auf die Zeitleiste: Beginn = Tag unter dem Zeiger
+      if (editable) {
+        body.addEventListener('dragover', function (e) { if (DB.tlDragRow) { e.preventDefault(); body.classList.add('over'); } });
+        body.addEventListener('dragleave', function (e) { if (!body.contains(e.relatedTarget)) body.classList.remove('over'); });
+        body.addEventListener('drop', function (e) {
+          body.classList.remove('over'); var r = DB.rows.find(function (x) { return x.id === DB.tlDragRow; }); DB.tlDragRow = null; if (!r) return;
+          e.preventDefault();
+          var n = w0 + Math.floor((e.clientX - body.getBoundingClientRect().left - LW) / px), pr = {}; if (n < w0) n = w0;
+          pr[sp.id] = dayIso(n); setProps(r, pr).then(renderDb);
+        });
+      }
+      if (undated.length) {
+        var nd2 = el('details', 'tl-nodate'); nd2.open = undated.length <= 8;
+        nd2.appendChild(el('summary', null, (undated.length === 1 ? T('1 Eintrag') : T('{n} Einträge', { n: undated.length })) + ' ' + T('ohne Termin')));
+        var lst = el('div', 'tl-nodate-list');
+        undated.forEach(function (r) {
+          var b = tint(el('button', 'cal-item tl-ni'), r); b.type = 'button'; b.dataset.id = r.id;
+          if (r.icon) b.appendChild(icoNode(r.icon, '', 'cal-ic'));
+          b.appendChild(el('span', 'cal-it', r.title || T('Unbenannt')));
+          b.addEventListener('click', function () { openRowUI(r.id); });
+          if (editable) {
+            b.draggable = true; b.title = T('Auf die Zeitleiste ziehen, um einen Termin zu setzen');
+            b.addEventListener('dragstart', function (e) { DB.tlDragRow = r.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData(ROW_DRAG, String(r.id)); });
+            b.addEventListener('dragend', function () { DB.tlDragRow = null; });
+          }
+          lst.appendChild(b);
+        });
+        nd2.appendChild(lst); wrap.appendChild(nd2);
+      }
+      function tlApply(r, mode, n) {            // Verschieben (move), Beginn (start) oder Ende (end) um n Tage
+        if (!n) return;
+        var pr = {}, sv = (r.props || {})[sp.id], ps = typeof sv === 'string' ? sv.split('/') : null;
+        if (!ps) return;
+        if (ep) {
+          var ev = (r.props || {})[ep.id];
+          if (mode === 'move') { pr[sp.id] = ps.map(function (x) { return shiftPart(x, n); }).join('/'); if (ev) pr[ep.id] = String(ev).split('/').map(function (x) { return shiftPart(x, n); }).join('/'); }
+          else if (mode === 'start') {
+            var ns = shiftPart(ps[0], n), endD = r._tl[1];
+            if (relDay(ns.slice(0, 10)) > endD) ns = dayIso(endD);
+            pr[sp.id] = ps.length === 2 ? ns + '/' + ps[1] : ns;
+            if (ps.length === 2 && ns.slice(0, 10) > ps[1].slice(0, 10)) pr[sp.id] = ns;
+          } else {
+            var base = ev ? String(ev).split('/').pop() : ps[ps.length - 1], ne = shiftPart(base, n);
+            if (ne.slice(0, 10) < dayIso(r._tl[0])) ne = dayIso(r._tl[0]);
+            pr[ep.id] = ne;
+          }
+        } else {
+          var a = ps[0], b = ps.length === 2 ? ps[1] : ps[0];
+          if (mode === 'move') { a = shiftPart(a, n); b = ps.length === 2 ? shiftPart(b, n) : a; }
+          else if (mode === 'start') { a = shiftPart(a, n); if (a.slice(0, 10) > b.slice(0, 10)) a = b; }
+          else { b = shiftPart(b, n); if (b.slice(0, 10) < a.slice(0, 10)) b = a; }
+          pr[sp.id] = a === b ? a : a + '/' + b;
+        }
+        return setProps(r, pr).then(renderDb);
+      }
+      function tlDrag(bar, r, px) {             // Zeiger: Balken ziehen = verschieben, Griffe = Beginn/Ende
+        bar.addEventListener('pointerdown', function (e) {
+          if (e.button !== 0) return;
+          var mode = e.target.classList.contains('tl-h-l') ? 'start' : e.target.classList.contains('tl-h-r') ? 'end' : 'move';
+          var x0 = e.clientX, L = parseFloat(bar.style.left), Wd = parseFloat(bar.style.width), moved = false, n = 0;
+          try { bar.setPointerCapture(e.pointerId); } catch (ex) { /* aeltere Browser */ }
+          e.preventDefault();
+          function mv(ev) {
+            var dx = ev.clientX - x0; if (Math.abs(dx) > 3) moved = true;
+            n = Math.round(dx / px);
+            if (mode === 'move') bar.style.left = (L + n * px) + 'px';
+            else if (mode === 'start') { var k = Math.min(n, Wd / px - 1); bar.style.left = (L + k * px) + 'px'; bar.style.width = (Wd - k * px) + 'px'; }
+            else bar.style.width = Math.max(px, Wd + n * px) + 'px';
+            bar.classList.toggle('dragging', moved);
+          }
+          function up() {
+            bar.removeEventListener('pointermove', mv); bar.removeEventListener('pointerup', up); bar.removeEventListener('pointercancel', up);
+            bar.classList.remove('dragging');
+            if (!moved) { openRowUI(r.id); return; }
+            if (n) tlApply(r, mode, n); else renderDb();
+          }
+          bar.addEventListener('pointermove', mv); bar.addEventListener('pointerup', up); bar.addEventListener('pointercancel', up);
+        });
+      }
+      return wrap;
     }
 
     function headOn(k) { var h = OPTS.getHead && OPTS.getHead(); return !h || h[k] !== false; }
