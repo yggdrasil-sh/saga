@@ -440,6 +440,37 @@ def leak_part(db, proj, r1, p1, p2):
     ok(f"formula/check nur Lesen -> 403 ({s})", s == 403)
 
 
+def publish_part(db, proj, r1):
+    """Veroeffentlichte Aufgaben-Datenbank: Rollup nur ueber oeffentlich erreichbare Projekte (Projekte nicht veroeffentlicht)."""
+    from saga import publish
+    publish.set_name(A, "fx-anna-pub")
+    s, d = req("PUT", f"/api/notes/{db}/publish", A, {"slug": "aufgaben-fx"})
+    ok(f"Aufgaben veroeffentlicht ({s})", s == 200, d)
+    s, html = req("GET", "/@fx-anna-pub/aufgaben-fx")
+    ok(f"Oeffentlich: Formel-Werte in der Tabelle, Rollup ohne nicht veroeffentlichte Projekte ({s})",
+       s == 200 and "Montag" in html and "Alpha" not in html and "Beta" not in html, str(html)[:300])
+    s, d = req("PUT", f"/api/notes/{proj}/publish", A, {"slug": "projekte-fx", "children": True})
+    s, html = req("GET", "/@fx-anna-pub/aufgaben-fx")
+    ok(f"Projekte (mit Unterseiten) veroeffentlicht -> Rollup zeigt sie ({s})", s == 200 and "Alpha, Beta" in html, str(html)[:300])
+    req("DELETE", f"/api/notes/{proj}/publish", A)
+    req("DELETE", f"/api/notes/{db}/publish", A)
+
+
+def live_part(db, proj, p1):
+    """Zeile der Ziel-Datenbank geaendert -> note.changed auch fuer die Datenbank mit dem Rollup (ohne row)."""
+    from saga import bus
+    from saga.notes import announce_row
+    got = []
+    orig = bus.fire
+    bus.fire = lambda kind, c, **kw: got.append((kind, kw.get("note_id"), kw.get("row")))
+    try:
+        with connect() as c:
+            announce_row(c, A, p1, A, time.time())
+    finally:
+        bus.fire = orig
+    ok("Live: Aenderung in Projekten meldet auch Aufgaben (Rollup) neu", ("note.saved", proj, p1) in got and ("note.saved", db, None) in got, got)
+
+
 def legacy_part():
     sch = {"props": [{"id": "n", "name": "N", "type": "number"},
                      {"id": "f", "name": "F", "type": "formula", "expr": "prop(\"n\") * 2", "rtype": "number", "fmt": "euro"},
@@ -474,6 +505,8 @@ def cleanup():
         for u in (A, BU, CU):
             for t in ("note_share",):
                 c.execute(f"DELETE FROM {t} WHERE owner_uid=?", (u,))
+            for t in ("note_publish", "public_name"):
+                c.execute(f"DELETE FROM {t} WHERE uid=?", (u,))
             c.execute("DELETE FROM note WHERE uid=?", (u,))
             c.execute("DELETE FROM users WHERE username=?", (u,))
 
@@ -489,6 +522,8 @@ def main():
     try:
         version_part()
         db, proj, r1, p1, p2 = http_part()
+        live_part(db, proj, p1)
+        publish_part(db, proj, r1)
         leak_part(db, proj, r1, p1, p2)
     finally:
         cleanup()
