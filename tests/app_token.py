@@ -35,6 +35,7 @@ try:
     ok("Ungueltiges Datum abgelehnt", call("POST", "/api/app/capture", bearer=T, b={"kind": "task", "title": "x", "due": "morgen"})[0] == 400)
     c, d, _ = call("GET", "/api/app/today", bearer=T); ok(f"Heute: {len(d.get('tasks', []))} Aufgabe(n), {len(d.get('events', []))} Termine", c == 200 and any("Rückruf Müller" in t["text"] for t in d["tasks"]))
     ok("Schluessel an normalen Endpunkten -> 401", call("GET", "/api/notes", bearer=T)[0] == 401 and call("GET", "/api/settings/tokens", bearer=T)[0] == 401)
+    ok("Schluessel an der Vorlagengalerie -> 401", call("GET", "/api/gallery", bearer=T)[0] == 401 and call("POST", "/api/gallery/x/use", bearer=T, b={})[0] == 401)
     ok("Browser-Anmeldung an App-Endpunkten -> 401", call("GET", "/api/app/today", A)[0] == 401 and call("POST", "/api/app/capture", A, {"title": "x"})[0] == 401)
     ok("Falscher Schluessel -> 401", call("GET", "/api/app/today", bearer="hk_" + "x" * 43)[0] == 401)
     call("DELETE", f"/api/notes/{inbox['id']}", A)

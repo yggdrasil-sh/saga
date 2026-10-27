@@ -531,6 +531,19 @@ Suche findet den Dateinamen. Ohne Freigabe im Admin-Bereich gehen nur öffentlic
 der Admin unter Allgemein → „Verbindungen der Benutzer“ frei, dort lässt sich die Funktion auch ganz abschalten.
 Vorschaubilder speichert Saga zwischen (`/data/nc-cache`, nicht im Backup, Obergrenze `NC_CACHE_MB`).
 
+#### Vorlagengalerie
+
+Fertige Vorlagen (z. B. Aufgaben & Projekte, Leseliste, Team-Wiki, Rezepte) öffnest du über **„+ Neue Seite“ → „Aus der
+Galerie …“**, auf dem leeren Start mit **„Mit einer Vorlage starten“** oder in der Befehlspalette (Strg+K bzw. ⌘K,
+„Vorlagengalerie“). Kacheln lassen sich nach Persönlich · Arbeit · Team filtern und durchsuchen (Pfeiltasten und Enter
+gehen auch). Ein Klick zeigt eine Vorschau der Startseite und was alles angelegt wird. **„Mit Beispielen“** (Standard an)
+legt Beispielzeilen und -seiten mit an; über **„Anlegen unter“** landet die Vorlage unter der gerade offenen Seite.
+„Verwenden“ legt alles als **Kopie in deinem Konto** an – in deiner Sprache – und öffnet die Startseite. Danach sind es
+ganz normale Seiten und Datenbanken; nichts bleibt mit der Galerie verbunden. Unter einer geteilten Seite (mit
+„Bearbeiten“) gehört die Kopie wie jede Unterseite dem Eigentümer; unter Seiten anderer Saga-Server geht es noch nicht.
+Der Admin kann die Galerie unter Allgemein → Seiten → „Vorlagengalerie anbieten“ abschalten. Eigene Vorlagen schreiben:
+`docs/GALERIE.md` (Prüfskript `python3 tools/gallery_check.py`).
+
 ### Seiten veröffentlichen
 
 Jede Seite lässt sich **öffentlich** machen – lesbar ohne Anmeldung, schlicht dargestellt, hell oder dunkel nach

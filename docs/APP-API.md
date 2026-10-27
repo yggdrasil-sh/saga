@@ -107,6 +107,42 @@ eingerichtet“, „Zu viele Einträge für ein Widget“. **Veröffentlichen:**
 demselben Konto gehört – sonst entfällt das Widget. **Markdown-Export:** eine Zeile `**<Titel oder Art>:** <Wert>`
 („(Stand <Datum>)“ bei Datenbank-Werten; ohne Zugriff `–`).
 
+## Vorlagengalerie (2.5)
+
+Mitgelieferte Vorlagen (Seiten und Datenbanken) als Kopie im eigenen Konto anlegen. Format der Vorlagen und Prüfskript:
+`docs/GALERIE.md`. Alle Endpunkte brauchen eine Sitzung mit `X-Saga: 1` (App-Schlüssel `hk_` gehen nicht → 401).
+
+**Erkennen:** `GET /api/gallery` → 404 `{"error": "not found"}` heißt: kein Galerie-Server (älter) **oder** vom Admin
+abgeschaltet („Vorlagengalerie anbieten“). Dann den Eintrag „Aus Vorlage …“ ausblenden. Abgeschaltet antworten **alle**
+Galerie-Endpunkte 404 `{"error": "not found"}` (nie 403).
+
+`GET /api/gallery?lang=de|en|es|ru|th` (ohne `lang`: Sprache des Kontos bzw. der Anfrage)
+```json
+{"lang": "de", "items": [{"id": "aufgaben-projekte", "title": "Aufgaben & Projekte", "desc": "…", "icon": "✅",
+  "category": "work", "order": 20, "needs": [],
+  "contents": [{"kind": "page", "title": "Aufgaben & Projekte", "icon": "✅", "example": false},
+               {"kind": "database", "title": "Aufgaben", "icon": "☑️", "example": false}]}]}
+```
+- Sortiert nach `order`. `category`: `personal` · `work` · `team`. `needs`: optionale Fähigkeiten (`calendar`, `immich`,
+  `nextcloud`, `ai`) – nur ein Hinweis, angelegt wird trotzdem. Unbekannte Felder ignorieren.
+
+`GET /api/gallery/{id}?lang=` – Vorschau (404 bei unbekannter id): wie ein Listeneintrag und zusätzlich
+- `preview`: `{"title", "icon", "kind", "wide", "blocks": [Editor.js-Blöcke der Startseite]}` – übersetzt; Verweise auf
+  Seiten der Vorlage stehen als `{"preview_ref": "<ref>", "title": "<Titel>"}` statt einer ID, Links im Text zeigen auf
+  `/notes#0`. Nur zum Anzeigen, nie speichern.
+- `databases`: `[{"title", "icon", "props": [{"id", "name", "type"}], "views": [{"id", "name", "type"}], "rows": <ohne
+  Beispiele>, "examples": <Beispielzeilen>, "templates": ["<Titel>"]}]`
+
+`POST /api/gallery/{id}/use?lang=` `{"parent_id": null, "examples": true}` → `{"root": 123, "created": [123, 124, …]}`
+- `examples` (Standard `true`): Beispielseiten und -zeilen mit anlegen. `root` = Startseite zum Öffnen, `created` = alle
+  angelegten IDs (Seiten, Datenbanken, Eintrags-Vorlagen, Zeilen).
+- `parent_id`: `null` = oberste Ebene, sonst eine Seite mit mindestens „Bearbeiten“ (wie „Neue Unterseite“; unter einer
+  geteilten Seite gehört alles dem Eigentümer der Elternseite). Datenbank als Elternseite → 400. Negative ID (Seite eines
+  anderen Saga-Servers) → 400 (in Etappe 1 nicht möglich). Fremd/gelöscht → 404, nur Lesen/Kommentieren → 403.
+- Alles oder nichts: bei einem Fehler wird nichts angelegt (400/409 mit `error`). 409 = Seitengrenze des Kontos erreicht.
+- 429 bei mehr als 10 Aufrufen je Minute und Konto (`GALLERY_RATE`).
+- Angelegt wird in der Sprache `lang` (fehlende Übersetzung: Deutsch). Danach sind es normale Seiten ohne Verbindung zur Galerie.
+
 ## Kachel-Symbole: `icon_url` (2.5)
 
 `GET /api/services` und `GET /api/bookmarks` liefern je Kachel zusätzlich **`icon_url`** – die fertige, relative

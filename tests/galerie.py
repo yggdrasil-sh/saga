@@ -270,8 +270,8 @@ try:
     # --- Admin-Schalter ---------------------------------------------------------------------------------------------
     sql("INSERT INTO setting (k, v) VALUES ('gallery_enabled', 'false') ON CONFLICT (k) DO UPDATE SET v=EXCLUDED.v")
     time.sleep(5.5)
-    ok("Admin aus: 404 (Liste, Vorschau, Anlegen)", call("GET", "/api/gallery")[0] == 404 and call("GET", f"/api/gallery/{ids[0]}")[0] == 404
-       and use(ids[0], u="hk-test-a")[0] == 404)
+    off = [call("GET", "/api/gallery"), call("GET", f"/api/gallery/{ids[0]}"), use(ids[0], u="hk-test-a")]
+    ok(f"Admin aus: 404 {{\"error\": \"not found\"}} (Liste, Vorschau, Anlegen): {off}", all(x == (404, {"error": "not found"}) for x in off))
     sql("DELETE FROM setting WHERE k='gallery_enabled'")
     time.sleep(5.5)
     ok("Admin wieder an", call("GET", "/api/gallery")[0] == 200)

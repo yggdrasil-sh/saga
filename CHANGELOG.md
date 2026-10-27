@@ -22,6 +22,16 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Widgets und optionalen Beispielen als Kopie im eigenen Konto an. Prüfskript für Vorlagen-Autoren:
   `python3 tools/gallery_check.py [ordner]` (refs, Typen, Grenzen, fehlende Übersetzungen; `--todo <lang>` gibt ein
   Übersetzungsgerüst aus, `--no-i18n` wertet fehlende Übersetzungen nicht als Fehler; Rückgabe ≠ 0 bei Fehlern).
+  Server (`saga/gallery.py`): `GET /api/gallery?lang=`, `GET /api/gallery/{id}?lang=` (Vorschau), `POST
+  /api/gallery/{id}/use` `{parent_id, examples}` → `{root, created}` – Anlegen in **einer** Transaktion (Alles oder
+  nichts) mit denselben Prüfungen wie beim Bearbeiten (Schema, Werte, zweiseitige Relationen, Blöcke, Widgets);
+  Schaltflächen mit Vorlage signiert der Server; Rechte wie „Neue Unterseite“, nicht unter Seiten anderer Saga-Server,
+  10 je Minute und Konto (`GALLERY_RATE`), Ordner `SAGA_GALLERY_DIR` (Standard `gallery/`). Admin: Allgemein → Seiten →
+  „Vorlagengalerie anbieten“ (Standard an; aus = alle Galerie-Endpunkte 404, Apps blenden den Eintrag aus). Web: Dialog
+  mit Kacheln, Filter Alle · Persönlich · Arbeit · Team, Suche, Pfeiltasten, Vorschau mit „Enthält …“, „Mit Beispielen“,
+  „Anlegen unter“; Einstiege „+ Neue Seite“ → „Aus der Galerie …“, leerer Start, Befehlspalette. Vertrag für die Apps:
+  `docs/APP-API.md` („Vorlagengalerie“). Tests: `tests/galerie.py`, `tests/galerie.js` (Test-Bundles in
+  `tests/gallery_fixtures/`).
 - **Seite gestalten (G1, G2, G3, G5, G9, G10).** Web: Spaltenbreite an der Linie zwischen zwei Spalten ziehen (5-%-Raster,
   Doppelklick = gleich breit; unter 760 px weiter untereinander), Bilder und YouTube-Player an Griffen links/rechts skalieren
   (10–100 %) und links/mittig/rechts ausrichten, Block-Farbe (Text oder Hintergrund) aus der Palette der Auswahl-Farben

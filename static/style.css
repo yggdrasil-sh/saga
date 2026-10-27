@@ -2146,7 +2146,7 @@ body.notes-page .page.p-small .page-title{font-size:calc(2.35rem * .875)}
 .gal-ic{font-size:1.6rem;line-height:1;flex:none}
 .gal-tx{display:flex;flex-direction:column;gap:.2rem;min-width:0}
 .gal-t{font-weight:600}
-.gal-d{color:var(--muted);font-size:.86rem;line-height:1.4;margin:0}
+.gal-d{color:var(--muted);font-size:.86rem;line-height:1.4;margin:0;overflow-wrap:anywhere}
 .gal-back{align-self:flex-start}
 .gal-detail{display:flex;flex-direction:column;gap:.7rem;min-width:0}
 .gal-head{display:flex;gap:.8rem;align-items:flex-start}
@@ -2174,7 +2174,8 @@ body.notes-page .page.p-small .page-title{font-size:calc(2.35rem * .875)}
 .gal-ex{color:var(--muted);font-size:.85rem}
 .gal-dbi{margin:.25rem 0;font-size:.86rem;color:var(--muted)}
 .gal-dbi b{color:var(--fg);font-weight:600}
-.gal-act{display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:center;justify-content:flex-end;border-top:1px solid var(--border);padding-top:.7rem}
+.gal-act{display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:center;justify-content:flex-end;border-top:1px solid var(--border);padding:.7rem 0 .2rem;
+  position:sticky;bottom:-1rem;background:var(--card)}   /* Verwenden bleibt sichtbar, auch wenn die Vorschau lang ist */
 .gal-opt{display:flex;align-items:center;gap:.3rem}
 .gal-use{cursor:pointer;color:var(--fg);border-color:var(--accent)}
 @media (max-width:640px){.gal-body{grid-template-columns:1fr}.gal-pv{max-height:none}.gal-pv-cols{flex-direction:column}.gal-act{justify-content:stretch}
