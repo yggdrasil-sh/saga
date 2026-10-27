@@ -331,6 +331,16 @@ def _month_start(y, m):
     return _days_from_civil(y, m, 1)
 
 
+def rel_incomplete(op, fv):
+    """Wert eines Filters next_days/past_days/on_or_before/on_or_after unvollstaendig (static/pages.js relIncomplete)?"""
+    s = fv if isinstance(fv, str) else ""
+    if op in ("next_days", "past_days"):
+        return not _NDAYS.fullmatch(s) or not 1 <= int(s) <= 366
+    if _TOKEN.fullmatch(s):
+        return False
+    return not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", s) or _rel_date_day(s) is None
+
+
 _TOKEN = re.compile(r"today(?:([+-])([0-9]{1,4}))?")
 _NDAYS = re.compile(r"[0-9]{1,3}")
 
@@ -520,6 +530,8 @@ class Query:
         if novalue:
             return True
         if op in ("next_days", "past_days", "on_or_before", "on_or_after"):
+            if rel_incomplete(op, fv):                         # unvollstaendiger Wert: zaehlt nicht (auch leere Zeilen)
+                return True
             return not empty and self.rel_date(op, v, fv)
         if op == "status_group":                               # 2.5: Gruppe der Option (ohne Angabe: todo); "open" = nicht erledigt
             if not isinstance(fv, str) or fv not in STATUS_GROUPS + ("open",):

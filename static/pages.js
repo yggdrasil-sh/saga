@@ -3179,6 +3179,12 @@
     } else { a = t0 + (op === 'yesterday' ? -1 : op === 'tomorrow' ? 1 : 0); b = a + 1; }
     return !!sp && sp[0] < b && sp[1] >= a;
   }
+  function relIncomplete(op, fv) {                 // Wert von next_days/past_days/on_or_before/on_or_after unvollstaendig?
+    var s = typeof fv === 'string' ? fv : '';
+    if (op === 'next_days' || op === 'past_days') return !/^[0-9]{1,3}$/.test(s) || +s < 1 || +s > 366;
+    if (/^today(?:[+-][0-9]{1,4})?$/.test(s)) return false;
+    return !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(s) || relDay(s) == null;
+  }
   function isStatus(p) { return !!p && p.type === 'select' && p.status === true; }
   function statusGroup(p, v) {                     // Gruppe der Option (ohne Angabe: todo) | null
     if (!isStatus(p)) return null;
@@ -4654,7 +4660,10 @@
       if (relOp(f.op)) return !empty && relDate(f.op, v);
       var fv = f.value; if (fv === '' || fv == null) return true;        // unvollstaendiger Filter zaehlt nicht
       if (p.type === 'relation') fv = +fv;                                // Relation: Eintrags-IDs sind Zahlen
-      if (f.op === 'next_days' || f.op === 'past_days' || f.op === 'on_or_before' || f.op === 'on_or_after') return !empty && relDate(f.op, v, fv);
+      if (f.op === 'next_days' || f.op === 'past_days' || f.op === 'on_or_before' || f.op === 'on_or_after') {
+        if (relIncomplete(f.op, fv)) return true;                         // unvollstaendiger Wert: zaehlt nicht (auch leere Zeilen)
+        return !empty && relDate(f.op, v, fv);
+      }
       if (f.op === 'status_group') {                                      // 2.5: Status-Gruppe; "open" = nicht erledigt
         if (typeof fv !== 'string' || ['todo', 'doing', 'done', 'open'].indexOf(fv) < 0) return true;
         if (empty) return false;

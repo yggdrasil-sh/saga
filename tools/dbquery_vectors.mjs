@@ -25,7 +25,7 @@ function fn(name) {
   }
   throw new Error('Ende nicht gefunden: ' + name);
 }
-const NAMES = ['relOp', 'dayNum', 'dayIso', 'relDay', 'dtPart', 'dateParts', 'daySpan', 'isStatus', 'statusGroup', 'relDate', 'propValue', 'isFx', 'numLike', 'groupable', 'weekdayIndex', 'valueGroups', 'groupCols', 'calcValue2', 'isoDay', 'propById', 'sortKey', 'sortedRows', 'eachGrouped',
+const NAMES = ['relOp', 'dayNum', 'dayIso', 'relDay', 'dtPart', 'dateParts', 'daySpan', 'relIncomplete', 'isStatus', 'statusGroup', 'relDate', 'propValue', 'isFx', 'numLike', 'groupable', 'weekdayIndex', 'valueGroups', 'groupCols', 'calcValue2', 'isoDay', 'propById', 'sortKey', 'sortedRows', 'eachGrouped',
   'titleName', 'fprop', 'matchFilter', 'rowText', 'filterRows'];
 const BODY = NAMES.map(fn).join('\n');
 const RealDate = Date;
