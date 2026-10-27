@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from db import connect as _db
 from saga import bus
 from saga.core import _api_guard, _bad, _body, t
-from saga.notes import _iter_blocks
+from saga.notes import _iter_blocks, ensure_ids
 from saga.sharing import RANK, Access, access, names, person
 
 router = APIRouter()
@@ -32,12 +32,12 @@ def _clean(body):
     return re.sub(r"\n{4,}", "\n\n\n", s).strip()
 
 
-def block_ids(body, fmt):
-    """IDs aller Bloecke einer Seite (auch in Spalten/Ausklappbar)."""
+def block_ids(body, fmt, nid=None):
+    """IDs aller Bloecke einer Seite (auch in Spalten/Ausklappbar) - wie GET /api/notes/{id} sie liefert (ensure_ids)."""
     if fmt != "blocks":
         return set()
     try:
-        return {str(b.get("id")) for b in _iter_blocks(json.loads(body or "{}").get("blocks", [])) if b.get("id")}
+        return {str(b.get("id")) for b in _iter_blocks(json.loads(ensure_ids(body, fmt, nid) or "{}").get("blocks", [])) if b.get("id")}
     except (ValueError, AttributeError):
         return set()
 
@@ -101,7 +101,7 @@ def comments_list(uid, nid, resolved=0):
         else:
             seen = {}
         nm = names(c, [r[3] for r in roots] + [r[8] for r in roots] + [x[3] for v in reps.values() for x in v])
-    blocks = block_ids(n[0], n[1])
+    blocks = block_ids(n[0], n[1], nid)
     threads = []
     for r in roots:
         cm = [_cdict(r[:7], uid, nm)] + [_cdict(x, uid, nm) for x in reps.get(r[0], [])]

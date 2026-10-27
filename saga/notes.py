@@ -69,6 +69,94 @@ def _iter_blocks(blocks, depth=0):
             yield from _iter_blocks(d.get("blocks"), depth + 1)
 
 
+# --- Eindeutige Block-IDs (2.5, P3-E1) -----------------------------------------------------------------------------
+# Jeder Block (auch in Spalten, Toggles, synchronisierten Bloecken) hat eine eindeutige id - Grundlage fuer das
+# blockweise Zusammenfuehren (saga.merge), Kommentare (note_comment.block_id), Anker (#block), Widgets und Foederation.
+# Fehlt sie, ist sie ungueltig oder doppelt (die erste behaelt sie), bekommt der Block eine neue. Beim Speichern zufaellig;
+# beim Lesen eines alten Stands (seed = Seiten-ID) deterministisch aus der Position - so sehen alle Clients dieselben
+# IDs, Kommentare darauf bleiben haengen, und der naechste Speichervorgang uebernimmt sie.
+BLOCK_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,40}")
+_ID_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+
+def _new_block_id(seed=None, path=None):
+    if seed is None:
+        return "".join(secrets.choice(_ID_CHARS) for _ in range(10))
+    h = int.from_bytes(hashlib.sha256(f"saga-block/{seed}/{path}".encode()).digest()[:8], "big")
+    return "".join(_ID_CHARS[(h >> (6 * i)) % 62] for i in range(10))
+
+
+def fix_block_ids(blocks, seed=None):
+    """IDs aller Bloecke eindeutig machen (in place). -> True, wenn sich etwas geaendert hat."""
+    seen, changed = set(), False
+
+    def walk(lst, path, depth):
+        nonlocal changed
+        if depth > MAX_NEST or not isinstance(lst, list):
+            return
+        for i, b in enumerate(lst):
+            if not isinstance(b, dict):
+                continue
+            p = f"{path}.{i}"
+            bid = b.get("id")
+            if not isinstance(bid, str) or not BLOCK_ID_RE.fullmatch(bid) or bid in seen:
+                k, bid = 0, _new_block_id(seed, p)
+                while bid in seen:
+                    k += 1
+                    bid = _new_block_id(seed, f"{p}~{k}")
+                b["id"], changed = bid, True
+            seen.add(bid)
+            d = b.get("data") if isinstance(b.get("data"), dict) else {}
+            if b.get("type") == "columns" and isinstance(d.get("cols"), list):
+                for ci, col in enumerate(d["cols"]):
+                    if isinstance(col, dict):
+                        walk(col.get("blocks"), f"{p}c{ci}", depth + 1)
+            elif b.get("type") in CONTAINERS:
+                walk(d.get("blocks"), f"{p}b", depth + 1)
+
+    walk(blocks, "", 0)
+    return changed
+
+
+BASE_KEEP, BASE_MAX = 86400, 30           # Basisstaende fuer das Zusammenfuehren: 24 h, hoechstens 30 je Seite
+
+
+def keep_base(c, nid, rev, title, body, fmt, now, prev=None):
+    """Gespeicherte Revision als Basis fuer saga.merge ablegen (nur Block-Seiten). prev = (rev, title, body, format) des
+    bisherigen Stands: fehlt er (Seite seit dem Update nicht gespeichert), wird er mit abgelegt. Aeltere als 24 h bzw.
+    ueber 30 fallen weg (die juengste bleibt immer)."""
+    if prev is not None and prev[3] == "blocks":
+        c.execute("INSERT INTO note_base (note_id, rev, title, body, format, created) VALUES (?,?,?,?,?,?) "
+                  "ON CONFLICT (note_id, rev) DO NOTHING", (nid, prev[0], prev[1], prev[2], prev[3], now))
+    if fmt != "blocks":
+        c.execute("DELETE FROM note_base WHERE note_id=?", (nid,))
+        return
+    c.execute("INSERT INTO note_base (note_id, rev, title, body, format, created) VALUES (?,?,?,?,?,?) "
+              "ON CONFLICT (note_id, rev) DO UPDATE SET title=excluded.title, body=excluded.body, format=excluded.format, "
+              "created=excluded.created", (nid, rev, title, body, fmt, now))
+    c.execute("DELETE FROM note_base WHERE note_id=? AND rev<? AND (created<? OR rev NOT IN "
+              "(SELECT rev FROM note_base WHERE note_id=? ORDER BY rev DESC LIMIT ?))", (nid, rev, now - BASE_KEEP, nid, BASE_MAX))
+
+
+def base_of(c, nid, rev):
+    """Basisstand (title, body, format) einer Revision oder None."""
+    return c.execute("SELECT title, body, format FROM note_base WHERE note_id=? AND rev=?", (nid, rev)).fetchone()
+
+
+def ensure_ids(body, fmt, nid):
+    """Gespeicherter Inhalt -> Inhalt mit eindeutigen Block-IDs (deterministisch je Seite, s. o.); unveraendert, wenn sie
+    schon stimmen (der Normalfall - kostet nur das Parsen)."""
+    if fmt != "blocks" or not body:
+        return body
+    try:
+        d = json.loads(body)
+    except ValueError:
+        return body
+    if not isinstance(d, dict) or not isinstance(d.get("blocks"), list) or not fix_block_ids(d["blocks"], seed=nid):
+        return body
+    return json.dumps(d, ensure_ascii=False)
+
+
 def _strip_tags(s):
     return html_unescape(re.sub(r"<[^>]*>", " ", s))
 
@@ -216,6 +304,7 @@ def _purge_ids(c, uid, ids):
     gespeichert, wirken aber nicht: Seiten im Papierkorb sind fuer niemanden ausser dem Eigentuemer erreichbar)."""
     tree_changed(c, uid, ids, "deleted")                 # vor dem Loeschen (Empfaenger aus den Freigaben bestimmen)
     c.executemany("DELETE FROM note_version WHERE uid=? AND note_id=?", [(uid, i) for i in ids])
+    c.executemany("DELETE FROM note_base WHERE note_id=? AND note_id IN (SELECT id FROM note WHERE uid=?)", [(i, uid) for i in ids])
     c.executemany("DELETE FROM note_publish WHERE uid=? AND note_id=?", [(uid, i) for i in ids])
     c.executemany("DELETE FROM note_share WHERE owner_uid=? AND note_id=?", [(uid, i) for i in ids])
     c.executemany("DELETE FROM note_comment_seen WHERE thread_id IN (SELECT id FROM note_comment WHERE owner_uid=? AND note_id=?)",

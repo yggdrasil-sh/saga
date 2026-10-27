@@ -12,13 +12,13 @@ from db import clean_line, connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
 from saga import bus, nextcloud, page_widgets, treesync
-from saga.core import BASE_URL, account_lang, _api_guard, _bad, _body, _json_load, _session_user, origin_of, ref_of, t, user_error
+from saga.core import BASE_URL, account_lang, _api_guard, _bad, _body, _json_load, _session_user, local_ref, origin_of, ref_of, t, user_error
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
 from saga.siteicons import ICON_RE, svc_icon_path
 from saga.comments import counts as comment_counts
 from saga.sharing import RANK, Access, access, is_remote, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
-from saga.notes import CONTAINERS, MAX_JSON_DEPTH, _iter_blocks, NOTE_BODY_MAX, PALETTE, STYLE_TYPES, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
+from saga.notes import CONTAINERS, MAX_JSON_DEPTH, _iter_blocks, base_of, ensure_ids, fix_block_ids, keep_base, NOTE_BODY_MAX, PALETTE, STYLE_TYPES, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
 
 router = APIRouter()
 
@@ -200,7 +200,8 @@ def clean_blocks(raw, limit=NOTE_BLOCKS_MAX):
         if "tunes" in b:
             nb["tunes"] = b["tunes"]
         blocks.append(nb)
-    blocks = page_widgets.fix_ids(_clean_design(_flatten_nested_columns(blocks)))      # 2.5: Widgets brauchen eindeutige ids
+    blocks = _clean_design(_flatten_nested_columns(blocks))
+    fix_block_ids(blocks)                     # 2.5 (P3-E1): eindeutige ids fuer ALLE Bloecke (Merge, Kommentare, Widgets)
     doc = {"time": d.get("time"), "version": d.get("version"), "blocks": blocks}
     return json.dumps(doc, ensure_ascii=False), blocks_text(blocks)
 
@@ -571,9 +572,9 @@ def note_get(uid, nid):
         n_res = c.execute("SELECT COUNT(*) FROM note_comment WHERE note_id=? AND thread_id IS NULL AND resolved_at IS NOT NULL",
                           (nid,)).fetchone()[0]
         nm = names(c, [owner, r[20], r[21]])
-        body = r[9]
+        body = ensure_ids(r[9], r[10], nid)       # 2.5 (P3-E1): alte Staende ohne eindeutige Block-IDs (deterministisch)
         if not mine:                               # Verweise auf Seiten ohne Zugriff: Titel nie ausliefern
-            body = mask_links(r[9], r[10], viewer(acc))
+            body = mask_links(body, r[10], viewer(acc))
             if is_remote(uid):                     # Nextcloud-Bloecke: Autor fuer andere Instanzen nur als Platzhalter
                 body = nextcloud.mask_authors(body, r[10])
             parent_hidden = r[3] is not None and not acc.role(r[3])
@@ -726,9 +727,69 @@ def _conflict(c, uid, nid, rev):
     return JSONResponse({"error": "conflict", "rev": rev, "by": names(c, [by]).get(by) if by else None}, status_code=409)
 
 
+def _merge_req(c, uid, nid, b, old, want):
+    """2.5 (P3 Stufe 1, saga.merge): PATCH mit merge: 1 und veralteter bzw. mit bases gemeldeter Basis -> (neues b, info)
+    mit zusammengefuehrtem Inhalt/Titel, oder None (-> 409 wie bisher: Basis nicht mehr da, Text-Notiz, Unsinn).
+    "mine" laeuft vorher durch dieselbe Bereinigung wie beim Speichern; verdeckte Verweistexte (Nicht-Eigentuemer) werden
+    gegen die Basis wieder eingesetzt, damit nur echte Aenderungen zaehlen."""
+    from saga import merge
+    if old[2] != "blocks" or b.get("format", "blocks") != "blocks" or not 0 <= want <= old[3]:
+        return None
+    base = base_of(c, nid, want)
+    if base is None or base[2] != "blocks":
+        return None
+    out, info = dict(b), {"from": want}
+    acc = Access(c, uid)
+    owner = c.execute("SELECT uid FROM note WHERE id=?", (nid,)).fetchone()[0]
+    try:
+        theirs = json.loads(ensure_ids(old[1], "blocks", nid))
+        base_doc = json.loads(ensure_ids(base[1], "blocks", nid))
+        if "body" in b:
+            raw = str(b["body"])
+            mine_s, _ = clean_blocks(raw, NOTE_BLOCKS_MAX + 64 * raw.count("/notes#"))
+            if owner != uid:
+                mine_s = restore_links(base[1], mine_s, viewer(acc), title_of(c, owner))
+            mine = json.loads(mine_s)
+            bases = {}
+            if isinstance(b.get("bases"), dict):
+                cache = {}
+                for bid, r in list(b["bases"].items())[:500]:
+                    if not isinstance(bid, str) or isinstance(r, bool) or not isinstance(r, int) or not 0 <= r <= old[3]:
+                        continue
+                    if r not in cache:
+                        x = base_of(c, nid, r)
+                        cache[r] = {k.get("id"): k for k in _iter_blocks(json.loads(ensure_ids(x[1], "blocks", nid)).get("blocks") or [])} \
+                            if x and x[2] == "blocks" else {}
+                    if bid in cache[r]:
+                        bases[bid] = cache[r][bid]
+            by = {"by": uid if is_remote(uid) else local_ref(uid), "name": names(c, [uid]).get(uid) or ""}
+            doc, mi = merge.merge_doc(base_doc, mine, theirs, bases, by, time.time())
+            out["body"] = json.dumps(doc, ensure_ascii=False)
+            info.update(mi)
+        else:
+            info.update(conflicts=[], restored=[], lost=[])
+        if "title" in b:
+            out["title"], info["title_lost"] = merge.merge_title(base[0] or "", _title_in(b["title"]), old[0] or "")
+    except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
+        return None
+    out.pop("bases", None)
+    return out, info
+
+
+def _merged_view(uid, nid):
+    """Antwort auf ein zusammengefuehrtes Speichern: Inhalt, Titel und Revision so, wie GET /api/notes/{id} sie dieser
+    Person zeigt (Maskierung fuer Nicht-Eigentuemer, Nextcloud-Autoren, Block-IDs)."""
+    r = note_get(uid, nid)
+    try:
+        d = json.loads(r.body)
+    except (ValueError, AttributeError):
+        return {}
+    return {k: d[k] for k in ("body", "format", "title", "rev", "updated") if k in d} if r.status_code == 200 else {}
+
+
 def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
     """caps: Faehigkeiten des Clients bzw. der Gegenstelle (client_caps; Foederation: Faehigkeiten des Peers)."""
-    sets, args = [], []
+    sets, args, merged = [], [], None
     with _db() as c, c:
         acc = Access(c, uid)
         owner, role, err = access(c, uid, nid, "edit", acc)
@@ -752,10 +813,19 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
             except (TypeError, ValueError, OverflowError):
                 return _bad(t("ungültige Revision"))
             if want != old[3]:
-                return _conflict(c, uid, nid, old[3])
+                # 2.5 (P3 Stufe 1): Client kann zusammenfuehren (merge: 1) und die Basis liegt noch vor -> blockweise
+                # zusammenfuehren statt 409. Sonst wie bisher 409 (aeltere Apps, Basis zu alt, Text-Notiz).
+                mg = _merge_req(c, uid, nid, b, old, want) if b.get("merge") else None
+                if mg is None:
+                    return _conflict(c, uid, nid, old[3])
+                b, merged = mg
         # "Meine Version behalten" (overwrite, ohne rev): trotzdem nur gegen die eben gelesene und als Version gesicherte
         # Fassung schreiben - eine Aenderung, die genau dazwischen eintrifft, wuerde sonst ungesichert ueberschrieben
         # Speichern ohne rev (aeltere Apps, Zeilen umbenennen) ueber den Stand einer anderen Person: vorher sichern
+        if check_rev and merged is None and b.get("merge") and isinstance(b.get("bases"), dict) and b["bases"] and "body" in b:
+            mg = _merge_req(c, uid, nid, b, old, old[3])        # rev aktuell, aber einzelne Bloecke beruhen auf aelteren Staenden
+            if mg is not None:
+                b, merged = mg
         foreign = content and not check_rev and bool(old[5]) and old[5] != uid
         atomic = check_rev or (content and bool(b.get("overwrite"))) or foreign
         shrink, srev, moved_from = False, None, None
@@ -932,7 +1002,8 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
             # leer/viel kleiner: alten Stand immer sichern. "Meine Version behalten" nach einem Konflikt (overwrite) oder
             # Speichern ohne rev ueber fremden Stand: die ueberschriebene Fassung bleibt als Version erhalten - mit Autor
             # (erzwungene Sicherungen von Nicht-Eigentuemern gedrosselt, s. _snapshot)
-            _snapshot(c, owner, nid, old, now, force=shrink or bool(b.get("overwrite")) or foreign, author=old[5], by=uid)
+            _snapshot(c, owner, nid, old, now, force=shrink or bool(b.get("overwrite")) or foreign
+                      or bool(merged and (merged["conflicts"] or merged["lost"] or merged.get("title_lost"))), author=old[5], by=uid)
         if content:
             sets.append("rev=rev+1")
             sets.append("updated_by=?"); args.append(uid)            # fuer den Konflikt-Hinweis bei anderen
@@ -942,6 +1013,9 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
         if atomic and n == 0:
             cur = c.execute("SELECT rev FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()
             raise _Reply(_conflict(c, uid, nid, cur[0] if cur else None))
+        if content:                               # 2.5 (P3): Basisstand fuer spaeteres Zusammenfuehren
+            cur = c.execute("SELECT title, body, format FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()
+            keep_base(c, nid, old[3] + 1, cur[0], cur[1], cur[2], now, (old[3], old[0], old[1], old[2]))
         # Live-Kanal (1.4): wer die Seite gerade offen hat, laedt still neu bzw. bekommt einen Hinweis (nach dem Commit)
         bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=uid, updated=now, origin=origin)
         if "props" in b or "title" in b or "icon" in b:
@@ -953,6 +1027,12 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
                 or ("title" in b and _title_in(b["title"]) != old[0])):
             tree_changed(c, owner, [nid], "moved" if "parent_id" in b else "updated", origin, before=moved_from)
     out = {"ok": True, "updated": now, "rev": old[3] + (1 if content else 0)}
+    if merged is not None:                   # 2.5 (P3): zusammengefuehrt - der Client uebernimmt Inhalt und Titel
+        out["merged"] = {k: merged[k] for k in ("conflicts", "restored", "lost")}
+        out["merged"]["from"] = merged["from"]
+        if merged.get("title_lost"):
+            out["merged"]["title_lost"] = True
+        out.update(_merged_view(uid, nid))
     if srev is not None:
         out["srev"] = srev                   # neuer Schema-Stand (Client kann ihn fuer die naechste Aenderung uebernehmen)
     return JSONResponse(out)

@@ -367,6 +367,11 @@ CREATE TABLE IF NOT EXISTS note_version (
     id BIGSERIAL PRIMARY KEY, note_id BIGINT NOT NULL, uid TEXT NOT NULL,
     title TEXT, body TEXT, format TEXT, created DOUBLE PRECISION NOT NULL);
 CREATE INDEX IF NOT EXISTS note_version_note ON note_version (uid, note_id);
+-- 2.5 (P3 Stufe 1, saga.merge): Basisstaende fuer das Zusammenfuehren - jede gespeicherte Revision der letzten 24 h,
+-- hoechstens 30 je Seite (saga.pages._keep_base). Nur Ableitung: fehlt ein Stand, gilt beim Speichern der 409-Weg.
+CREATE TABLE IF NOT EXISTS note_base (
+    note_id BIGINT NOT NULL, rev INTEGER NOT NULL, title TEXT, body TEXT, format TEXT,
+    created DOUBLE PRECISION NOT NULL, PRIMARY KEY (note_id, rev));
 CREATE TABLE IF NOT EXISTS file (
     id TEXT PRIMARY KEY, uid TEXT NOT NULL, name TEXT NOT NULL, mime TEXT NOT NULL,
     size BIGINT NOT NULL, is_image INTEGER NOT NULL, created DOUBLE PRECISION NOT NULL);
@@ -1052,6 +1057,12 @@ SELECT 1 FROM chat_hidden LIMIT 0;
     19: """
 ALTER TABLE note ADD COLUMN IF NOT EXISTS font TEXT;
 ALTER TABLE note ADD COLUMN IF NOT EXISTS small INTEGER NOT NULL DEFAULT 0;
+""",
+    # 2.5.0 (P3 Stufe 1, saga.merge): Basisstaende fuer das blockweise Zusammenfuehren. Die Tabelle note_base legt SCHEMA
+    # oben an. Kein Kopieren des Bestands: beim Speichern legt Saga auch den bisherigen Stand als Basis ab, wenn er fehlt.
+    # Beliebig oft ausfuehrbar.
+    20: """
+SELECT 1 FROM note_base LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
