@@ -324,7 +324,7 @@ Datenquelle ist eine **Datenbank**: eine Zeile je Tag (Datums-Eigenschaft), je G
 **Immer die Daten der betrachtenden Person** – auch auf geteilten Seiten (P4-E3): ihre CalDAV-Kalender, ihre offenen
 Saga-Aufgaben mit Fälligkeit, Zeilen gewählter Datenbanken mit **ihren** Rechten. Nie zwischengespeichert, nie
 veröffentlicht, über Servergrenzen immer `no_access`. cfg: `{"days": 1..14 (7), "cal": true, "tasks": true, "overdue": true,
-"dbs": [{"db", "view", "date": "<pid>"} …≤ 5], "limit": 5..30 (10)}`.
+"dbs": [{"db", "view", "date": "<pid>", "mine": true?} …≤ 5], "limit": 5..30 (10)}`.
 
 ```json
 "data": {"from": "2026-10-27", "days": 7, "more": 0, "errors": 0,
@@ -341,6 +341,8 @@ veröffentlicht, über Servergrenzen immer `no_access`. cfg: `{"days": 1..14 (7)
   zuerst, dann Uhrzeit. Clients gruppieren nach Tag („Überfällig“, „Heute“, „Morgen“, Datum).
 - `note` → Eintrag öffnen, `task` → Aufgabe; Termine nur anzeigen. `more` = weitere über `limit`, `errors` = nicht
   erreichbare Quellen (Kalender, Datenbank ohne Zugriff). `value` = Anzahl aller Einträge.
+- `mine: true` (person1): aus dieser Datenbank nur Zeilen, in denen die betrachtende Person in einer Personen-Eigenschaft
+  steht. Datumswerte mit Uhrzeit zählen am Tag in `tz` der Anfrage; Zeiträume tragen `end`.
 
 ### Diagramme (`kind: "chart"` und Ansicht `type: "chart"`, chart1)
 
@@ -351,7 +353,7 @@ Ansicht `view.chart`):
 | Feld | Werte |
 |---|---|
 | `type` | `bar`, `hbar`, `line`, `area`, `pie`, `donut`, `number` |
-| `x` | Eigenschaft zum Gruppieren (`title` erlaubt): Auswahl/Status (Optionsreihenfolge + Farben), Mehrfachauswahl/Relation (eine Zeile zählt in jeder Gruppe), Häkchen (Ja/Nein), Datum/Erstellt/Bearbeitet (Eimer), Zahl, Text/URL, Formel/Rollup nach `rtype` |
+| `x` | Eigenschaft zum Gruppieren (`title` erlaubt): Auswahl/Status (Optionsreihenfolge + Farben), Mehrfachauswahl/Relation/Person (eine Zeile zählt in jeder Gruppe; Person: `key` = Kennung wie in `/rows`, `label` = Anzeigename, nie der Anmeldename; veröffentlicht nicht möglich), Häkchen (Ja/Nein), Datum/Erstellt/Bearbeitet (Eimer), Zahl, Text/URL, Formel/Rollup nach `rtype` |
 | `bucket` | nur Datum: `day`, `week` (ab Montag), `month` (Standard), `quarter`, `year` – in `tz` |
 | `status` | `true`: Status-Eigenschaft nach Gruppen `todo/doing/done` statt Optionen |
 | `series` | zweite Gruppierung (nur `bar/hbar/line/area`), ≤ 10 Reihen (Rest „Andere“) |
@@ -377,7 +379,7 @@ Ergebnis (`W.data` bzw. `chart` der Ansicht):
   (Client nimmt seine Reihenfolge: blue, orange, green, purple, pink, yellow, red, brown).
 - Nur **eine** Reihe (`series[0].key == ""`) ohne `series`-Spec; Kreis/Ring nutzen nur `series[0]`.
 - `number`: `cats`/`series` leer, nur `total` (bei `count` = Anzahl Zeilen). `value` = `total`, `max` = `goal`.
-- `truncated`: Kategorien oder Reihen gekürzt. Ungeeignete/unbekannte Eigenschaft: `error: "bad_cfg"`.
+- `truncated`: Kategorien oder Reihen gekürzt. Ungeeignete/unbekannte Eigenschaft (auch Datei-Spalten): `error: "bad_cfg"`.
 
 **`GET /api/notes/{db}/chart?view=<vid>[&tz=<IANA>]`** (ab *Lesen*, wie `/rows`) → `{"chart": Ergebnis + "as_of",
 "view": vid, "error": null}`; Ansicht ohne `type: "chart"` → `{"chart": null, "error": "bad_cfg"}`. Optional `ids=1`

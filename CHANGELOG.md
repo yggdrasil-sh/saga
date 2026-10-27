@@ -35,7 +35,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Gruppieren nach Auswahl, Status-Gruppe, Mehrfachauswahl, Relation, Häkchen, Zahl, Text, Formel/Rollup und Datum in
   Eimern (Tag/Woche/Monat/Quartal/Jahr), zweite Gruppierung als Reihen, Top-N mit „Andere“, Ziellinie. Web zeichnet
   eigenes SVG (Tastatur, Tooltips, Werte als Tabelle); Klick auf einen Balken zeigt die Einträge. Veröffentlichte Seiten
-  zeigen Diagramme als statisches SVG.
+  zeigen Diagramme als statisches SVG. Gruppieren auch nach **Person** (je Person mit Anzeigenamen; auf veröffentlichten
+  Seiten entfällt ein solches Diagramm); Datei-Spalten lassen sich nicht als Achse wählen. „Anstehendes“ kann je Datenbank
+  auf „Nur mir zugewiesene“ Einträge beschränkt werden; Datumswerte mit Uhrzeit zählen am Tag der eigenen Zeitzone.
 - **Apps/Föderation:** `/api/version` `features` `weather1`, `habit1`, `upcoming1`, `chart1`; Föderations-Fähigkeit
   `widgets2`. Antwortformate in `docs/APP-API.md` „Widgets Etappe 2 und Diagramme“, Vektoren `tests/chart_vectors.json`,
   `tests/chart_ticks.json`. Keine Migration.
