@@ -1165,7 +1165,7 @@ SELECT 1 FROM row_person LIMIT 0;
 """,
     # 2.5.0 (Paket 7, Aufgabenquellen, saga/tasksrc.py): Tabellen task_source und row_done stehen in SCHEMA oben; vorher
     # gab es keine Quellen - nichts nachzutragen. Beliebig oft ausfuehrbar.
-    25: """
+    24: """
 SELECT 1 FROM task_source LIMIT 0;
 SELECT 1 FROM row_done LIMIT 0;
 """,

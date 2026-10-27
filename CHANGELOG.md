@@ -33,7 +33,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   aus, Uhrzeit und Zeitzone je Konto.
 - **Apps:** `features` `tasksrc1`, `taskdue1`; `GET /api/tasks?with_sources=1`, `PATCH /api/tasks/src/{zeile}`,
   `POST /api/app/tasks/src/{zeile}/done`, `GET /api/app/today?sources=1` – Format und Offline-Hinweise in
-  `docs/APP-API.md` „Aufgabenquellen“. **Migration 25** (Tabellen `task_source`, `row_done`).
+  `docs/APP-API.md` „Aufgabenquellen“. **Migration 24** (Tabellen `task_source`, `row_done`).
 
 ### Neu (2.5, Paket 4: Widgets Etappe 2 und Diagramme)
 - **Wetter-Widget.** Heute groß, darunter die nächsten Tage (bis 7) mit Symbol, Höchst-/Tiefstwert und Regenwahrscheinlichkeit;
