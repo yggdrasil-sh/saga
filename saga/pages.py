@@ -793,6 +793,10 @@ def _note_update(uid, nid, b, origin=None):
                     if k not in new_ids and prev.get("type") == "relation" and prev.get("pair"):
                         rel_ok(prev["target"])
                         _rel_unlink(c, owner, nid, prev["target"], prev["pair"], False)
+                parents = {x["id"] for x in new_schema["props"] if x["type"] == "relation" and x.get("role") == "parent"}
+                for v_ in new_schema.get("views") or []:        # Unteraufgaben-Ansicht nur mit (noch) gekoppelter Eltern-Spalte
+                    if isinstance(v_.get("sub"), dict) and v_["sub"].get("parent") not in parents:
+                        v_.pop("sub")
                 # Gegenspalten (_rel_link/_rel_unlink) koennen dieses Schema nicht veraendert haben (nur Ziel-Datenbanken)
                 _schema_stamp(old_s, new_schema, uid)
                 srev = new_schema["srev"]
