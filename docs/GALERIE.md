@@ -89,11 +89,14 @@ Nicht erlaubt: `image attaches immich nextcloud` (brauchen eigene Dateien).
 - Schaltfläche „Neuer Eintrag“: `{"label", "icon", "action": "db", "target": "$ref:tasks", "tpl": "$ref:tpl_task",
   "title": "Aufgabe {datum}", "open": "side"}` – der Server signiert sie beim Anlegen. `action: "page"` mit `target`.
 - Widgets: `cfg.db: "$ref:<datenbank>"`, `view`/`prop` sind die festen IDs aus dem Schema. Widget-Blöcke brauchen eine `id`.
+  Kennzahl/Fortschritt mit `cfg.src: "tasks"` (Saga-Aufgaben der betrachtenden Person) brauchen kein `db`.
 
 ### Beispieldaten
 
 Seiten und Zeilen mit `"example": true` werden nur angelegt, wenn die Person „Mit Beispielen“ wählt (Standard an).
-Unterseiten eines Beispiels müssen selbst Beispiele sein.
+Unterseiten eines Beispiels müssen selbst Beispiele sein. Auch einzelne Blöcke (auch in Spalten/Toggles) können
+`"example": true` tragen (z. B. Beispiel-Stichpunkte) – ohne Beispiele fallen sie weg; das Feld selbst wird nie
+gespeichert.
 
 ### Übersetzungen
 

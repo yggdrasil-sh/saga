@@ -16,6 +16,27 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5, Fix-Runde nach der Galerie-Testrunde)
+- **Eintrags-Vorlagen für Bearbeitende (E1).** Wer eine Datenbank bearbeiten darf, bekommt ihre Eintrags-Vorlagen
+  (`GET …/rows` → `templates`) und legt daraus an (`POST /api/notes/{vorlage}/duplicate {parent_id}` ohne Schaltfläche);
+  „+ Neu“ nutzt die Standardvorlage auch für sie. Vorlagen ändern und den Standard setzen bleibt beim Eigentümer.
+  Über die Föderation ebenso (Fähigkeit `rowtpl`; `default_tpl` kommt jetzt als negative ID).
+- **Eigene Startseite (E2).** Konto-Einstellung `start_page` (`GET/PATCH /api/account`), Seitenmenü „Als Startseite
+  festlegen“ / „Startseite zurücksetzen“; `/` öffnet dann die Seite, das Dashboard liegt unter `/dashboard`.
+- **Widgets mit Saga-Aufgaben (E3).** Kennzahl und Fortschritt mit Quelle „Saga-Aufgaben“ (`src: "tasks"`: offen, heute
+  fällig, überfällig, diese Woche erledigt; Fortschritt der Woche) – jede Person sieht ihre eigenen. „Mein Tag“ zeigt
+  „Offene Aufgaben“ daraus und erklärt den Unterschied zur Vorlage „Aufgaben & Projekte“.
+- **Neue Einträge aus Vorlagen (E4).** Titel bleibt leer (Name der Vorlage als Platzhalter); wird so ein Eintrag ohne
+  Änderung geschlossen, ist er endgültig weg (`POST /api/notes/{id}/discard`, nur wer ihn anlegte, binnen 15 Minuten,
+  nur unverändert).
+
+### Behoben (2.5, Fix-Runde)
+- Kennzahlen/Fortschritt rechnen nach Änderungen an der Quell-Datenbank bzw. den Aufgaben sofort neu (vorher bis zu
+  60 s alte Werte); das Web lädt die Werte nach eigenen Änderungen gleich nach (#3).
+- Neuer Eintrag über eine Relations-Eigenschaft („+ Neu in …“) nutzt die Standardvorlage der Ziel-Datenbank (#7).
+- Galerie: Reiseplaner-Beispiel bleibt unter dem Budget (2.000 €); „Mein Tag“ ohne Beispiele ohne Beispiel-Notizen
+  (Blöcke mit `"example": true`, `docs/GALERIE.md`) (#8).
+
 ### Neu (2.5)
 - **Vorlagengalerie (Mechanik).** Mitgelieferte Vorlagen (`gallery/<id>.json`, Übersetzungen `gallery/i18n/<lang>.json`,
   Format in `docs/GALERIE.md`) legen Seiten und Datenbanken samt Schema, Ansichten, Eintrags-Vorlagen, Schaltflächen,

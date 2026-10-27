@@ -435,6 +435,9 @@ alle Daten bleiben. Nur lösen, wenn beim Anbieter sicher dieselbe Person diesen
 Kacheln für deine Dienste und Lesezeichen, nach Kategorien sortiert. **★** macht eine Kachel zum Favoriten.
 Rechts stehen deine offenen Aufgaben und die Termine von heute und morgen. Die Suche findet Dienste, Lesezeichen
 und – darunter – auch deine **Seiten** (Titel und Inhalt).
+**Eigene Startseite:** Im Seitenmenü **⋯** einer Seite „Als Startseite festlegen“ – dann öffnet Saga beim Aufruf diese
+Seite (z. B. „Mein Tag“), das Dashboard erreichst du weiter über **⌂ Dashboard** (`/dashboard`). „Startseite
+zurücksetzen“ im selben Menü stellt es zurück.
 
 | Taste | Wirkung |
 |---|---|
@@ -497,7 +500,8 @@ die **Schrift** (Standard, Serif, Mono) und **Kleiner Text**. Alles das übernim
 **Widgets:** Mit `/Widget` (direkt auch `/Uhr`, `/Countdown`, `/Fortschritt`, `/Kennzahl`) fügst du kleine Karten ein –
 eine Uhr (auch für eine andere Zeitzone), einen Countdown bis zu einem Datum, einen Fortschrittsbalken, eine Kennzahl aus
 einer Datenbank (Anzahl, Summe, Durchschnitt, Min, Max, % angehakt – über eine ihrer Ansichten) oder ein Zitat (eigene Texte
-oder aus einer Datenbank, jeden Tag ein anderes). Ein Klick auf das Widget öffnet die Einstellungen mit Vorschau; in Spalten
+oder aus einer Datenbank, jeden Tag ein anderes). Kennzahl und Fortschritt können auch deine **Saga-Aufgaben** zählen
+(offen, heute fällig, überfällig, diese Woche erledigt) – auf einer geteilten Seite sieht jede Person ihre eigenen. Ein Klick auf das Widget öffnet die Einstellungen mit Vorschau; in Spalten
 stehen mehrere nebeneinander. Werte aus einer Datenbank sieht jede Person nur, wenn sie die Datenbank selbst sehen darf –
 sonst steht dort „Kein Zugriff auf die Datenquelle“. Auf einer veröffentlichten Seite erscheinen solche Werte nur aus
 deinen eigenen Datenbanken.
@@ -651,7 +655,10 @@ Dialog kopierst du den Link zur Seite – er öffnet sie für alle, die Zugriff 
 
 - **Unterseiten kommen mit:** Eine Freigabe gilt auch für alle Unterseiten und die Einträge von Datenbanken darunter.
   Es zählt die höchste Rolle (Person oder Gruppe, diese Seite oder eine Seite darüber). Archivierte Seiten, Seiten im
-  Papierkorb und Vorlagen sieht nur der Eigentümer.
+  Papierkorb und Vorlagen sieht nur der Eigentümer. Ausnahme: Die **Eintrags-Vorlagen** einer Datenbank kann jede
+  Person mit „Bearbeiten“ über „+ Neu ▾“ verwenden (ändern und als Standard setzen weiter nur der Eigentümer).
+- **Neue Einträge aus einer Vorlage** starten ohne Titel (der Vorlagenname steht als Platzhalter da). Schließt du so einen
+  Eintrag gleich wieder, ohne etwas zu ändern, verschwindet er ganz – kein Rest im Papierkorb.
 - **Was nur der Eigentümer darf:** löschen, archivieren, frei verschieben, sperren, als Vorlage markieren, veröffentlichen,
   Freigaben verwalten. Personen mit „Bearbeiten“ dürfen (ab 2.3) Versionen ansehen und wiederherstellen (der bisherige
   Stand bleibt als Version erhalten; bei gesperrten Seiten nur der Eigentümer) und Seiten **innerhalb des geteilten

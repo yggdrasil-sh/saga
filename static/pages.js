@@ -955,13 +955,18 @@
     // Review Runde 2: schnelles Wechseln - nur das zuletzt angeforderte Oeffnen gilt (Antworten koennen sich ueberholen),
     // und der Editor zeichnet nacheinander (sonst konnte Inhalt einer Seite unter einer anderen landen)
     var seq = S.openSeq = (S.openSeq || 0) + 1; S.wantId = id;
-    return save().then(function () { return api('GET', '/api/notes/' + id); }).then(function (n) {
+    var prev = S.cur && S.cur.id !== id ? S.cur.id : null;
+    return save().then(function () {
+      if (prev && freshGet(prev)) freshDrop(prev).then(function (gone) { if (gone) loadList(); });   // fix27 E4
+      return api('GET', '/api/notes/' + id);
+    }).then(function (n) {
       if (seq !== S.openSeq) return null;
       S.cur = n; S.loading = true; uploadNote();
       var na = $('pg-noaccess'); if (na) na.hidden = true;
       document.dispatchEvent(new CustomEvent('hk-page-open', { detail: { id: n.id } }));
       $('page').hidden = false; $('pg-empty').hidden = true;
       $('pg-title').value = n.title || '';
+      var fr = freshGet(n.id); $('pg-title').placeholder = fr && fr.ph ? fr.ph : T('Unbenannt');      // fix27 E4: Vorlagenname
       showIcon(n.icon); showCover(); $('page').classList.toggle('wide', !!n.wide); applyFont(n);
       var data;
       try { data = n.format === 'blocks' ? JSON.parse(n.body || '{"blocks":[]}') : textToBlocks(n.body); }
@@ -1102,12 +1107,39 @@
       .then(function () { HK.toast(T('Verschoben.')); })
       .catch(function (err) { HK.toast(T('Nicht verschoben: {err}', { err: err.message })); });
   }
+  // fix27 E4: eben aus einer Vorlage angelegte Eintraege (Antwort von duplicate: fresh, placeholder). Wird so ein Eintrag
+  // ohne Aenderung geschlossen, ist er endgueltig weg - der Server prueft (nur wer anlegte, kurze Frist, unveraendert).
+  // sessionStorage: der Peek-Rahmen (gleiche Herkunft) sieht dieselben Eintraege.
+  function freshPut(d) {
+    if (d && d.fresh) { try { sessionStorage.setItem('hk-fresh-' + d.id, JSON.stringify({ t: d.fresh, ph: d.placeholder || '' })); } catch (e) { /* ohne Speicher: Eintrag bleibt */ } }
+    return d;
+  }
+  function freshGet(id) { try { return JSON.parse(sessionStorage.getItem('hk-fresh-' + id) || 'null'); } catch (e) { return null; } }
+  function freshDrop(id) {
+    var f = id && freshGet(id); if (!f) return Promise.resolve(false);
+    try { sessionStorage.removeItem('hk-fresh-' + id); } catch (e) { /* egal */ }
+    return api('POST', '/api/notes/' + id + '/discard', { fresh: f.t }).then(function () { return true; }, function () { return false; });
+  }
+  HK.freshDrop = freshDrop;
+  // fix27 E2: eigene Startseite (Konto-Einstellung start_page) - "/" oeffnet sie, das Dashboard bleibt unter /dashboard
+  if (!document.body.classList.contains('embed')) api('GET', '/api/account').then(function (a) { S.startPage = a.start_page || null; }).catch(function () {});
+  function startItem(m, c) {
+    if (remoteId(c.id) || c.template) return;
+    var on = S.startPage === c.id;
+    m.appendChild(HK.menuItem(on ? T('Startseite zurücksetzen') : T('Als Startseite festlegen'), function () {
+      api('PATCH', '/api/account', { start_page: on ? null : c.id }).then(function () {
+        S.startPage = on ? null : c.id;
+        HK.toast(on ? T('Startseite zurückgesetzt – Saga startet wieder mit dem Dashboard.') : T('Startseite festgelegt – Saga startet jetzt mit dieser Seite.'));
+      }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
+    }, { icon: '🏠', on: on }));
+  }
   $('pg-more').addEventListener('click', function () {
     var btn = this; if (!S.cur) return;
     HK.openMenu(btn, function (m) {
       var c = S.cur, n = descendants(c.id).length;
       if (foreign()) { foreignMenu(m, c); return; }        // fremde Seite: nur, was die Rolle erlaubt
       m.appendChild(HK.menuItem(c.pinned ? T('Von Favoriten lösen') : T('Zu Favoriten'), function () { setPinned(!c.pinned); }, { icon: c.pinned ? '☆' : '★' }));
+      startItem(m, c);
       m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { icon: '↔', on: !!c.wide }));
       designMenu(m, c);
       // Bughunt D17: auf Touch-Geraeten steht "Titelbild" nicht mehr dauerhaft ueber dem Titel, sondern hier
@@ -1164,6 +1196,7 @@
   function foreignMenu(m, c) {
     m.appendChild(HK.menuLabel(T('Geteilt von {name} · {role}', { name: (c.owner || {}).name || '', role: ROLE_YOU[role()] || '' })));
     var rem = remoteId(c.id);
+    startItem(m, c);
     if (canEdit()) {
       if (remCap(c, 'db')) m.appendChild(HK.menuItem(T('Volle Breite'), function () { setWide(!c.wide); }, { icon: '↔', on: !!c.wide }));
       if (remCap(c, 'db')) designMenu(m, c);
@@ -2986,6 +3019,7 @@
       if (ro()) return Promise.resolve();
       var patch = {}; patch[pid] = value;
       return api('PATCH', '/api/notes/' + row.id, { props: patch }).then(function () {
+        wgSoon();                              // fix27 #3: Kennzahlen der Seite nach eigener Aenderung neu
         if (value === null || value === '' || value === false || (Array.isArray(value) && !value.length)) delete row.props[pid]; else row.props[pid] = value;
       }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
     }
@@ -3013,7 +3047,13 @@
           if (q) {
             var nb = el('button', 'menu-item'); nb.type = 'button'; nb.appendChild(el('span', 'mi-t', T('+ Neu in „{db}“: {name}', { db: label(target || {}), name: inp.value.trim() })));
             nb.addEventListener('click', function () {
-              api('POST', '/api/notes', { parent_id: prop.target, title: inp.value.trim() })
+              var name = inp.value.trim();
+              // fix27 #7: Standardvorlage der Ziel-Datenbank nutzen (wie "+ Neu"), sonst leerer Eintrag
+              api('GET', '/api/notes/' + prop.target + '/rows?limit=1').catch(function () { return {}; }).then(function (r) {
+                var dt = r && r.schema && r.schema.default_tpl;
+                if (dt && (r.templates || []).some(function (t) { return t.id === dt; })) return api('POST', '/api/notes/' + dt + '/duplicate', { parent_id: prop.target, title: name });
+                return api('POST', '/api/notes', { parent_id: prop.target, title: name });
+              })
                 .then(function (d) {
                   var listed = addRowLocal(prop.target, d, inp.value.trim()) ? Promise.resolve() : loadList();   // wie newRow
                   return listed.then(function () { cur.push(d.id); HK.closeMenu(); return setProp(row, prop.id, cur); });
@@ -3336,7 +3376,7 @@
       if (bi) { typeAhead = null; bi.focus(); return Promise.resolve(); }
       return api('POST', '/api/notes', { parent_id: DB.id, title: '', props: props || undefined }).then(function (d) {
         DB.rows.push({ id: d.id, title: '', icon: '', props: props || {}, updated: d.updated, created: d.updated });
-        FRESH[d.id] = true;
+        FRESH[d.id] = true; wgSoon();
         renderDb();
         var inp = BOX.querySelector('tr[data-id="' + d.id + '"] .db-title-in');
         if (!inp && tableV) {                // lange Tabelle: neue Zeile ausserhalb des Ausschnitts -> einsetzen und hinscrollen
@@ -3359,6 +3399,7 @@
 
     function newFromTemplate(tid) {
       return api('POST', '/api/notes/' + tid + '/duplicate', { parent_id: DB.id }).then(function (d) {
+        freshPut(d);
         return loadDb().then(function () { return loadList(); }).then(function () { return openRowUI(d.id); });   // Kopie ist keine Vorlage mehr
       }).catch(function (err) { HK.toast(T('Eintrag nicht angelegt: {err}', { err: err.message })); });
     }
@@ -3452,7 +3493,7 @@
       }
       function mkRow(r, idx) {
         var tr = tint(el('tr', 'db-row'), r); tr.dataset.id = r.id;
-        var td = el('td', 'db-cell db-title'), ti = el('textarea', 'db-title-in'); ti.rows = 1; ti.maxLength = 200; ti.value = r.title; ti.placeholder = T('Unbenannt');   // Textfeld: lange Namen brechen um
+        var td = el('td', 'db-cell db-title'), ti = el('textarea', 'db-title-in'); ti.rows = 1; ti.maxLength = 200; ti.value = r.title; ti.placeholder = (!r.title && (freshGet(r.id) || {}).ph) || T('Unbenannt');   // Textfeld: lange Namen brechen um
         ti.readOnly = ro();
         ti.setAttribute('aria-label', T('Name'));
         var start = r.title;
@@ -4243,6 +4284,7 @@
   function refreshDbViews(dbId) {          // alle sichtbaren Ansichten dieser Datenbank (Seite + eingebettete) neu laden
     LIVE_DBS = LIVE_DBS.filter(function (v) { return v.DB && v.render && document.body.contains(v.boxEl || document.body); });
     LIVE_DBS.forEach(function (v) { if (v.DB.id === dbId) v.reload(); });
+    wgSoon();                                // fix27 #3: Widgets aus dieser Datenbank gleich mitrechnen
   }
   // Live (BUG-049, BUG-001): Zeile oder Schema der Datenbank anderswo geaendert -> Ansichten neu laden. Wird gerade
   // eine Zelle bearbeitet, erst danach (die eigene Eingabe geht nicht verloren)
@@ -4477,6 +4519,7 @@
       var req = b.tpl ? api('POST', '/api/notes/' + b.tpl + '/duplicate', dup)
                       : api('POST', '/api/notes', { parent_id: b.target, title: title });
       return save().then(function () { return req; }).then(function (d) {
+        freshPut(d);
         return loadList().then(function () {
           if (b.open) return openPeek(d.id, { mode: b.open, dbId: b.target, ids: [d.id], refresh: function () { refreshDbViews(b.target); } });
           return openPage(d.id).then(function () { if (!title) $('pg-title').focus(); });
@@ -4577,7 +4620,7 @@
     bad_cfg: T('Widget noch nicht fertig eingerichtet'), too_big: T('Zu viele Einträge für ein Widget') };
   var WG = new Set();                                    // sichtbare Widget-Bloecke (Werte nachladen)
   function wgIcon(k) { return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (WG_IC[k] || WG_IC.metric) + '</svg>'; }
-  function wgServer(d) { var c = (d && d.cfg) || {}; return !!d && (d.kind === 'metric' || d.kind === 'quote' || (d.kind === 'progress' && c.src === 'db')); }
+  function wgServer(d) { var c = (d && d.cfg) || {}; return !!d && (d.kind === 'metric' || d.kind === 'quote' || (d.kind === 'progress' && (c.src === 'db' || c.src === 'tasks'))); }
   function wgDefaults(kind) {
     return { clock: { tz: '', h24: true, sec: false, analog: false }, countdown: { date: '', time: '', dir: 'until', unit: 'days' },
       progress: { src: 'fixed', value: 0, max: 100 }, metric: { db: null, view: '', agg: 'count', prop: '', fmt: 'num' },
@@ -4695,7 +4738,7 @@
       paintC(); this.tick = setInterval(function () { if (!self.w.isConnected) { self.destroy(); return; } if (!document.hidden) paintC(); }, 60000);
       return;
     }
-    var w = d.kind === 'progress' && cfg.src !== 'db' ? { value: +cfg.value || 0, max: +cfg.max || 100 } : this.value();
+    var w = d.kind === 'progress' && cfg.src !== 'db' && cfg.src !== 'tasks' ? { value: +cfg.value || 0, max: +cfg.max || 100 } : this.value();
     if (wgServer(d) && remoteId(S.cur && S.cur.id) && S.wUnsupported) { body.appendChild(el('div', 'wg-note', T('Widget nur auf dem Ursprungsserver'))); return; }
     if (wgServer(d) && S.wMissing) { body.appendChild(el('div', 'wg-note', T('Werte gibt es erst mit einer neueren Server-Version'))); return; }
     if (w && w.error) { body.appendChild(el('div', 'wg-note wg-err', WG_ERR[w.error] || WG_ERR.bad_cfg)); return; }
@@ -4775,10 +4818,21 @@
       return;
     }
     if (k === 'progress' || k === 'quote') {
-      sel(T('Quelle'), [['fixed', k === 'quote' ? T('Eigene Texte') : T('Feste Zahlen')], ['db', T('Datenbank')]], cfg.src, function (v) {
-        d.cfg = Object.assign(v === 'db' ? { src: 'db', db: null, view: '', prop: '' } : wgDefaults(k), k === 'quote' ? { pick: cfg.pick || 'daily' } : {}, v === 'db' && k === 'progress' ? { mode: 'checked' } : {});
+      sel(T('Quelle'), [['fixed', k === 'quote' ? T('Eigene Texte') : T('Feste Zahlen')], ['db', T('Datenbank')]].concat(k === 'progress' ? [['tasks', T('Saga-Aufgaben')]] : []), cfg.src, function (v) {
+        d.cfg = v === 'tasks' ? {} : Object.assign(v === 'db' ? { src: 'db', db: null, view: '', prop: '' } : wgDefaults(k), k === 'quote' ? { pick: cfg.pick || 'daily' } : {}, v === 'db' && k === 'progress' ? { mode: 'checked' } : {});
         d.cfg.src = v; self.changed(); self.fill(); self.update();
       });
+    }
+    // fix27 E3: Saga-Aufgaben der betrachtenden Person (Server rechnet)
+    if (k === 'metric') {
+      sel(T('Quelle'), [['db', T('Datenbank')], ['tasks', T('Saga-Aufgaben')]], cfg.src === 'tasks' ? 'tasks' : 'db', function (v) {
+        d.cfg = v === 'tasks' ? { src: 'tasks', agg: 'open', fmt: 'num' } : wgDefaults('metric'); self.changed(); self.fill(); self.update();
+      });
+    }
+    if ((k === 'metric' || k === 'progress') && cfg.src === 'tasks') {
+      if (k === 'metric') sel(T('Zählen'), [['open', T('Offene Aufgaben')], ['due_today', T('Heute fällig')], ['overdue', T('Überfällig')], ['done_week', T('Diese Woche erledigt')]], cfg.agg, function (v) { set('agg', v); });
+      p.insertBefore(el('div', 'wg-row wg-note', k === 'progress' ? T('Erledigt diese Woche von allen, die diese Woche fällig sind – jede Person sieht ihre eigenen Aufgaben.') : T('Jede Person sieht ihre eigenen Aufgaben.')), at);
+      return;
     }
     if (k === 'progress' && cfg.src !== 'db') {
       inp(T('Wert'), 'number', cfg.value, function (v) { set('value', v === '' ? 0 : +v); }, { step: 'any' });
@@ -5188,10 +5242,10 @@
           api('PATCH', '/api/tasks/' + t.id, { done: true }).then(function (r) {
             var msg = r && r.next_due ? T('Erledigt. Nächstes Mal: {date}', { date: fTaskDue.format(new Date(r.next_due + 'T00:00:00')) }) : T('Aufgabe erledigt');
             HK.toast(msg, T('Rückgängig'), function () {      // wie Dashboard und Apps: 8 s zum Zuruecknehmen
-              api('PATCH', '/api/tasks/' + t.id, { done: false }).then(function () { self.draw(); })
+              api('PATCH', '/api/tasks/' + t.id, { done: false }).then(function () { self.draw(); wgSoon(); })
                 .catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
             }, 8000);
-            self.draw();
+            self.draw(); wgSoon();                              // fix27 #3: Kennzahlen aus den Aufgaben sofort neu
           }).catch(function (err) { row.classList.remove('done'); HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
         });
         row.appendChild(ck); row.appendChild(el('span', 'etk-text', t.text));
@@ -5205,7 +5259,7 @@
       add.addEventListener('keydown', function (e) {
         if (e.key !== 'Enter' || !add.value.trim()) return;
         var text = add.value.trim(); add.value = '';
-        api('POST', '/api/tasks', { text: text }).then(function () { self.draw(); }).catch(function (err) { HK.toast(T('Aufgabe nicht angelegt: {err}', { err: err.message })); });
+        api('POST', '/api/tasks', { text: text }).then(function () { self.draw(); wgSoon(); }).catch(function (err) { HK.toast(T('Aufgabe nicht angelegt: {err}', { err: err.message })); });
       });
       w.appendChild(add);
     }).catch(function (err) { w.textContent = T('Aufgaben nicht geladen: {err}', { err: err.message }); });
@@ -5609,8 +5663,12 @@
     return flush.then(function () {}, function (e) {            // Konflikt im Rahmen: offen lassen, damit nichts verloren geht
       if (e && e.message === 'conflict') { HK.toast(T('Speicher-Konflikt im Eintrag – bitte erst dort klären.')); throw e; }
     }).then(function () {      // ausstehendes Speichern im Rahmen abwarten
+      var was = PK.id;
       PK.id = null; $('pg-peek').hidden = true;
-      if (ctx && ctx.refresh) ctx.refresh();
+      return freshDrop(was).then(function (gone) {          // fix27 E4: unveraendert geschlossen -> weg
+        if (gone) loadList();
+        if (ctx && ctx.refresh) ctx.refresh();
+      });
     });
   }
   function peekStep(d) { var ids = PK.ctx.ids, i = ids.indexOf(PK.id) + d; if (i >= 0 && i < ids.length) openPeek(ids[i], PK.ctx); }

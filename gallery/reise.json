@@ -10,8 +10,8 @@
        {"type": "columns", "data": {"cols": [
          {"blocks": [{"id": "wreise1", "type": "widget", "data": {"v": 1, "kind": "countdown", "size": "m", "style": "card", "accent": "blue", "title": "Bis zur nächsten Reise",
                       "cfg": {"date": "2026-12-04", "time": "", "dir": "until", "unit": "days"}}}]},
-         {"blocks": [{"id": "wreise2", "type": "widget", "data": {"v": 1, "kind": "progress", "size": "m", "style": "card", "accent": "orange", "title": "Reisebudget 1.200 €",
-                      "cfg": {"src": "db", "db": "$ref:ausgaben", "view": "alle", "mode": "sum", "prop": "betrag", "goal": 1200}}}]},
+         {"blocks": [{"id": "wreise2", "type": "widget", "data": {"v": 1, "kind": "progress", "size": "m", "style": "card", "accent": "orange", "title": "Reisebudget 2.000 €",
+                      "cfg": {"src": "db", "db": "$ref:ausgaben", "view": "alle", "mode": "sum", "prop": "betrag", "goal": 2000}}}]},
          {"blocks": [{"id": "wreise3", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "m", "style": "card", "accent": "green", "title": "Ausgaben gesamt",
                       "cfg": {"db": "$ref:ausgaben", "view": "alle", "agg": "sum", "prop": "betrag", "fmt": "eur"}}}]}
        ]}},

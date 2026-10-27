@@ -197,6 +197,27 @@ def _iter_blocks(blocks, depth=0):
             yield from _iter_blocks(d.get("blocks"), depth + 1)
 
 
+def drop_examples(blocks, examples, depth=0):
+    """Bloecke mit "example": true (z. B. Beispiel-Stichpunkte) nur mit Beispielen behalten; das Feld selbst faellt immer
+    weg (auch in Spalten und Toggles). -> neue Liste."""
+    if depth > MAX_DEPTH or not isinstance(blocks, list):
+        return blocks
+    out = []
+    for b in blocks:
+        if isinstance(b, dict):
+            if b.get("example") is True and not examples:
+                continue
+            b = {k: v for k, v in b.items() if k != "example"}
+            d = b.get("data")
+            if isinstance(d, dict) and b.get("type") == "columns" and isinstance(d.get("cols"), list):
+                b["data"] = dict(d, cols=[dict(c, blocks=drop_examples(c.get("blocks"), examples, depth + 1)) if isinstance(c, dict) else c
+                                          for c in d["cols"]])
+            elif isinstance(d, dict) and b.get("type") == "toggle" and isinstance(d.get("blocks"), list):
+                b["data"] = dict(d, blocks=drop_examples(d["blocks"], examples, depth + 1))
+        out.append(b)
+    return out
+
+
 class _Ctx:
     def __init__(self, bundle):
         self.b = bundle
@@ -372,6 +393,8 @@ def _check_blocks(cx, where, blocks):
         if not isinstance(b.get("type"), str) or not isinstance(b.get("data"), dict):
             cx.err(w, "Block braucht type und data")
             continue
+        if "example" in b and not isinstance(b["example"], bool):
+            cx.err(w, "example muss true/false sein")
         if b["type"] not in BLOCK_TYPES:
             cx.err(w, f"Blocktyp {b['type']!r} nicht erlaubt (erlaubt: {', '.join(sorted(BLOCK_TYPES))})")
         d = b["data"]
@@ -381,7 +404,7 @@ def _check_blocks(cx, where, blocks):
             cfg = d.get("cfg") if isinstance(d.get("cfg"), dict) else {}
             if "db" in cfg and not _ref_of(cfg["db"]):
                 cx.err(w, "Widget cfg.db muss \"$ref:<datenbank>\" sein")
-            if d.get("kind") in ("metric",) or (d.get("kind") in ("progress", "quote") and cfg.get("src") == "db"):
+            if (d.get("kind") == "metric" and cfg.get("src") != "tasks") or (d.get("kind") in ("progress", "quote") and cfg.get("src") == "db"):
                 if not _ref_of(cfg.get("db")):
                     cx.err(w, "Widget braucht cfg.db \"$ref:<datenbank>\"")
         elif b["type"] == "database":

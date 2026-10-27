@@ -25,10 +25,13 @@
        ]}},
        {"type": "columns", "data": {"cols": [
          {"w": 0.55, "blocks": [
+           {"id": "wmeinta5", "type": "widget", "data": {"v": 1, "kind": "metric", "size": "s", "style": "card", "accent": "blue", "title": "Offene Aufgaben",
+                        "cfg": {"src": "tasks", "agg": "open", "fmt": "num"}}},
            {"type": "tasks", "data": {}},
            {"type": "buttons", "data": {"buttons": [
              {"label": "Tagebuch für heute", "icon": "📔", "action": "db", "target": "$ref:tagebuch", "tpl": "$ref:tpl_tag", "title": "{datum}", "open": ""}
-           ]}}
+           ]}},
+           {"type": "callout", "data": {"emoji": "💡", "text": "Das sind deine Saga-Aufgaben – dieselben wie im Dashboard und in den Apps. Nutzt du zusätzlich die Vorlage „Aufgaben & Projekte“, ergänze hier ein Kennzahl-Widget mit der Quelle „Datenbank“ und ihrer Datenbank „Aufgaben“."}}
          ]},
          {"w": 0.45, "blocks": [
            {"type": "calendar", "data": {"view": "list", "days": 7}}
@@ -38,7 +41,7 @@
        {"type": "database", "data": {"db": "$ref:ziele", "view": "alle", "views": null, "hide_title": true}},
        {"type": "header", "data": {"text": "Schnellnotizen", "level": 2}},
        {"type": "callout", "data": {"emoji": "📝", "text": "Alles, was gerade durch den Kopf geht – später aufräumen."}},
-       {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+       {"type": "list", "example": true, "data": {"style": "unordered", "meta": {}, "items": [
          {"content": "Geschenkidee für Samstag überlegen", "meta": {}, "items": []},
          {"content": "Rückruf Werkstatt wegen Termin", "meta": {}, "items": []}]}},
        {"type": "delimiter", "data": {}},

@@ -320,6 +320,31 @@ def e3_3(A, Bk, db):
     ok(f"#3: Ansicht (Filter) geaendert sofort ({vals()}, {want})", vals()[0] == want and want != n0)
 
 
+def gallery8(A):
+    """#8 (nur gegen die echte gallery/): Mein Tag ohne Beispiele ohne Beispiel-Notizen, mit Kennzahl aus den
+    Saga-Aufgaben; Reiseplaner mit Beispielen unter dem Budget."""
+    s, d = req("GET", "/api/gallery", A)
+    ids = {x.get("id") for x in (d.get("items") or [])} if s == 200 else set()
+    if not {"mein-tag", "reise"} <= ids:
+        print("(Galerie-Inhalte uebersprungen: Server ohne gallery/)")
+        return
+    for ex in (False, True):
+        s, d = req("POST", "/api/gallery/mein-tag/use?lang=de", A, {"examples": ex})
+        body = req("GET", f"/api/notes/{d.get('root')}", A)[1].get("body", "") if s == 200 else ""
+        ok(f"#8: Mein Tag {'mit' if ex else 'ohne'} Beispiele: Notizen {'da' if ex else 'weg'}, 'example' nie gespeichert ({s})",
+           s == 200 and ("Geschenkidee" in body) == ex and '"example"' not in body and "Schnellnotizen" in body)
+        ok("E3: Mein Tag mit Kennzahl 'Offene Aufgaben' aus den Saga-Aufgaben + Hinweis auf Aufgaben & Projekte",
+           '"src": "tasks"' in body.replace('":"', '": "') and ("Aufgaben & Projekte" in body or "Aufgaben &amp; Projekte" in body))
+        if ex:
+            w = req("GET", f"/api/notes/{d['root']}/widgets", A)[1].get("widgets", {})
+            ok(f"E3: Mein Tag rechnet die Aufgaben-Kennzahl ({w.get('wmeinta5')})", (w.get("wmeinta5") or {}).get("value") == 0)
+    s, d = req("POST", "/api/gallery/reise/use?lang=de", A, {"examples": True})
+    w = req("GET", f"/api/notes/{d.get('root')}/widgets", A)[1].get("widgets", {}) if s == 200 else {}
+    b = w.get("wreise2") or {}
+    ok(f"#8: Reiseplaner-Beispiel unter dem Budget ({b.get('value')} / {b.get('max')})",
+       isinstance(b.get("value"), (int, float)) and b.get("max") == 2000 and 0 < b["value"] < b["max"])
+
+
 def fed_unit():
     """Heim-Seite (saga.fed_pages): Vorlagen aus der Antwort einer anderen Instanz - aeltere ohne Feld, kaputte Eintraege."""
     from saga import fed_pages as FP, federation as F
@@ -347,6 +372,7 @@ def main():
         db = e1_e4(A, Bk, C, D)
         e2(A, Bk)
         e3_3(A, Bk, db)
+        gallery8(A)
         fed_unit()
     except Exception:
         import traceback

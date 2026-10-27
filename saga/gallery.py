@@ -283,8 +283,8 @@ def _insert_all(c, uid, owner, bundle, keep, examples, pid, now, ids, order):
     return ids
 
 
-def _body_json(c, owner, nid, blocks, ids):
-    raw = json.dumps({"blocks": gf.resolve(blocks or [], ids)}, ensure_ascii=False)
+def _body_json(c, owner, nid, blocks, ids, examples=True):
+    raw = json.dumps({"blocks": gf.resolve(gf.drop_examples(blocks or [], examples), ids)}, ensure_ascii=False)
     body, _ = clean_blocks(raw)
     _check_file_refs(owner, json.loads(body)["blocks"])
     # Schaltflaechen mit Vorlage: Vorlage und Ziel sind eben in diesem Vorgang angelegt worden (Bundle erlaubt nur refs) -
@@ -342,9 +342,9 @@ def _fill(c, uid, owner, bundle, keep, examples, ids):
                 _rel_sync(c, owner, sc, rid, cur, props)
                 c.execute("UPDATE note SET props=? WHERE id=? AND uid=?", (json.dumps(props, ensure_ascii=False), rid, owner))
             if e.get("body"):
-                c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (_body_json(c, owner, rid, e["body"], ids), rid, owner))
+                c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (_body_json(c, owner, rid, e["body"], ids, examples), rid, owner))
     # 4. Inhalte der Seiten und Datenbanken
     for it in bundle["items"]:
         if it["ref"] in keep and it.get("body"):
             nid = ids[it["ref"]]
-            c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (_body_json(c, owner, nid, it["body"], ids), nid, owner))
+            c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (_body_json(c, owner, nid, it["body"], ids, examples), nid, owner))
