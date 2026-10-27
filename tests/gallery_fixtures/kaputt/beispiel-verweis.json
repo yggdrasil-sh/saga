@@ -1,0 +1,44 @@
+{
+ "id": "beispiel-verweis",
+ "v": 1,
+ "order": 1,
+ "category": "work",
+ "icon": "x",
+ "title": "Kaputt",
+ "desc": "",
+ "needs": [],
+ "root": "home",
+ "items": [
+  {
+   "ref": "home",
+   "kind": "page",
+   "parent": null,
+   "title": "Start",
+   "body": [
+    {
+     "type": "database",
+     "data": {
+      "db": "$ref:ex"
+     }
+    }
+   ]
+  },
+  {
+   "ref": "ex",
+   "kind": "database",
+   "parent": "home",
+   "title": "E",
+   "example": true,
+   "schema": {
+    "props": [],
+    "views": [
+     {
+      "id": "t",
+      "name": "T",
+      "type": "table"
+     }
+    ]
+   }
+  }
+ ]
+}

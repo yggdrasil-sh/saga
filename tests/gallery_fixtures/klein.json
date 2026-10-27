@@ -1,0 +1,6 @@
+{"id": "klein", "v": 1, "order": 20, "category": "personal", "icon": "🌱", "title": "Kleine Seite",
+ "desc": "Eine einzelne Seite mit Kalender-Block.", "needs": ["calendar"], "root": "start",
+ "items": [
+  {"ref": "start", "kind": "page", "parent": null, "title": "Kleine Seite", "icon": "🌱",
+   "body": [{"type": "paragraph", "data": {"text": "Hallo Welt."}}, {"type": "calendar", "data": {"view": "list", "days": 7}}]}
+ ]}

@@ -1,0 +1,51 @@
+{
+ "id": "typ-unbekannt",
+ "v": 1,
+ "order": 1,
+ "category": "work",
+ "icon": "x",
+ "title": "Kaputt",
+ "desc": "",
+ "needs": [],
+ "root": "home",
+ "items": [
+  {
+   "ref": "home",
+   "kind": "page",
+   "parent": null,
+   "title": "Start",
+   "body": [
+    {
+     "type": "image",
+     "data": {
+      "file": {
+       "url": "/files/abc"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "ref": "db",
+   "kind": "database",
+   "parent": "home",
+   "title": "D",
+   "schema": {
+    "props": [
+     {
+      "id": "p",
+      "name": "Person",
+      "type": "person"
+     }
+    ],
+    "views": [
+     {
+      "id": "z",
+      "name": "Zeitleiste",
+      "type": "timeline"
+     }
+    ]
+   }
+  }
+ ]
+}

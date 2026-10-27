@@ -1,0 +1,72 @@
+{"id": "alles", "v": 1, "order": 10, "category": "work", "icon": "🧪", "title": "Alles drin",
+ "desc": "Testvorlage mit zwei Datenbanken, Relation, Vorlage, Schaltfläche und Widgets.",
+ "needs": [], "root": "home",
+ "items": [
+  {"ref": "home", "kind": "page", "parent": null, "title": "Alles drin", "icon": "🧪", "cover": null, "wide": true, "font": null, "small": false,
+   "body": [
+    {"type": "header", "data": {"text": "Überblick", "level": 2}, "tunes": {"hkstyle": {"c": "blue"}}},
+    {"type": "paragraph", "data": {"text": "Zu den <a href=\"/notes#$ref:projects\">Projekten</a> und <b>Notizen</b>."}},
+    {"type": "columns", "data": {"cols": [
+      {"w": 0.6, "blocks": [
+        {"id": "wuhr", "type": "widget", "data": {"v": 1, "kind": "clock", "size": "m", "title": "Uhrzeit", "cfg": {"tz": "Europe/Berlin", "h24": true}}},
+        {"id": "wmet", "type": "widget", "data": {"v": 1, "kind": "metric", "title": "Offene Aufgaben", "cfg": {"db": "$ref:tasks", "view": "offen", "agg": "count"}}}
+      ]},
+      {"w": 0.4, "blocks": [
+        {"id": "wpro", "type": "widget", "data": {"v": 1, "kind": "progress", "title": "Erledigt", "cfg": {"src": "db", "db": "$ref:tasks", "mode": "checked", "prop": "erledigt"}}},
+        {"id": "wzit", "type": "widget", "data": {"v": 1, "kind": "quote", "title": "Gedanke", "cfg": {"src": "fixed", "items": ["Klein anfangen.", "Weiter geht's."], "pick": "daily"}}}
+      ]}
+    ]}},
+    {"type": "buttons", "data": {"buttons": [
+      {"label": "Neue Aufgabe", "icon": "➕", "action": "db", "target": "$ref:tasks", "tpl": "$ref:tpl_task", "title": "Aufgabe {datum}", "open": "side"},
+      {"label": "Zu den Notizen", "icon": "📝", "action": "page", "target": "$ref:notes"}
+    ]}},
+    {"type": "database", "data": {"db": "$ref:tasks", "view": "board", "views": null}},
+    {"type": "callout", "data": {"emoji": "💡", "text": "Ein Hinweis zum Start."}, "tunes": {"hkstyle": {"c": "yellow", "bg": true}}},
+    {"type": "toggle", "data": {"title": "Mehr erfahren", "level": 2, "open": false, "blocks": [
+      {"type": "paragraph", "data": {"text": "Versteckter Text."}}
+    ]}},
+    {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+      {"content": "Vorlage ansehen", "meta": {"checked": false}, "items": []},
+      {"content": "Erste Aufgabe anlegen", "meta": {"checked": false}, "items": []}
+    ]}},
+    {"type": "table", "data": {"withHeadings": true, "content": [["Was", "Wann"], ["Planung", "Montag"]]}}
+   ]},
+  {"ref": "projects", "kind": "database", "parent": "home", "title": "Projekte", "icon": "📁",
+   "schema": {"props": [
+     {"id": "status", "name": "Status", "type": "select", "options": [
+       {"id": "plan", "name": "Geplant", "color": "gray"}, {"id": "aktiv", "name": "Aktiv", "color": "blue"}, {"id": "fertig", "name": "Fertig", "color": "green"}]},
+     {"id": "ende", "name": "Ende", "type": "date"}],
+    "views": [{"id": "tabelle", "name": "Tabelle", "type": "table"}, {"id": "board", "name": "Board", "type": "board", "group_by": "status"}]},
+   "rows": [
+     {"ref": "p1", "title": "Website", "icon": "🌐", "props": {"status": "aktiv", "ende": "2026-12-01"}, "example": true},
+     {"ref": "p2", "title": "Umzug", "props": {"status": "plan"}, "example": true}
+   ]},
+  {"ref": "tasks", "kind": "database", "parent": "home", "title": "Aufgaben", "icon": "✅",
+   "schema": {"title_name": "Aufgabe", "default_tpl": "$ref:tpl_task", "props": [
+     {"id": "status", "name": "Status", "type": "select", "options": [
+       {"id": "todo", "name": "Offen", "color": "gray"}, {"id": "doing", "name": "In Arbeit", "color": "blue"}, {"id": "done", "name": "Erledigt", "color": "green"}]},
+     {"id": "prio", "name": "Priorität", "type": "select", "options": [
+       {"id": "hoch", "name": "Hoch", "color": "red"}, {"id": "normal", "name": "Normal", "color": "gray"}]},
+     {"id": "faellig", "name": "Fällig", "type": "date"},
+     {"id": "erledigt", "name": "Erledigt", "type": "checkbox"},
+     {"id": "punkte", "name": "Punkte", "type": "number"},
+     {"id": "projekt", "name": "Projekt", "type": "relation", "target": "$ref:projects", "two_way": true}],
+    "views": [
+     {"id": "board", "name": "Board", "type": "board", "group_by": "status"},
+     {"id": "offen", "name": "Offen", "type": "table", "filters": [{"pid": "erledigt", "op": "unchecked", "value": ""}], "calcs": {"punkte": "sum"}},
+     {"id": "kalender", "name": "Kalender", "type": "calendar", "date_by": "faellig"}]},
+   "templates": [
+     {"ref": "tpl_task", "title": "Neue Aufgabe", "icon": "📌", "props": {"status": "todo", "prio": "normal"}, "default": true,
+      "body": [{"type": "header", "data": {"text": "Ziel", "level": 3}}, {"type": "paragraph", "data": {"text": "Worum geht es?"}}]}
+   ],
+   "rows": [
+     {"ref": "t1", "title": "Entwurf schreiben", "props": {"status": "doing", "prio": "hoch", "faellig": "2026-11-03", "punkte": 3, "projekt": ["$ref:p1"]}, "example": true},
+     {"ref": "t2", "title": "Kisten packen", "props": {"status": "todo", "punkte": 5, "projekt": ["$ref:p2"]}, "example": true,
+      "body": [{"type": "paragraph", "data": {"text": "Siehe <a href=\"/notes#$ref:p2\">Umzug</a>."}}]},
+     {"ref": "t3", "title": "Vorlage ausprobieren", "props": {"status": "done", "erledigt": true, "punkte": 1}}
+   ]},
+  {"ref": "notes", "kind": "page", "parent": "home", "title": "Notizen", "icon": "📝", "font": "serif",
+   "body": [{"type": "paragraph", "data": {"text": "Hier ist Platz für Notizen."}}]},
+  {"ref": "beispiel", "kind": "page", "parent": "home", "title": "Beispielseite", "icon": "📄", "example": true,
+   "body": [{"type": "quote", "data": {"text": "Ein Beispielzitat.", "caption": "Jemand"}}]}
+ ]}

@@ -1,0 +1,20 @@
+{
+ "id": "anders",
+ "v": 1,
+ "order": 1,
+ "category": "work",
+ "icon": "x",
+ "title": "Kaputt",
+ "desc": "",
+ "needs": [],
+ "root": "home",
+ "items": [
+  {
+   "ref": "home",
+   "kind": "page",
+   "parent": null,
+   "title": "Start",
+   "body": []
+  }
+ ]
+}

@@ -1,0 +1,64 @@
+{
+ "id": "wert-falsch",
+ "v": 1,
+ "order": 1,
+ "category": "work",
+ "icon": "x",
+ "title": "Kaputt",
+ "desc": "",
+ "needs": [],
+ "root": "home",
+ "items": [
+  {
+   "ref": "home",
+   "kind": "page",
+   "parent": null,
+   "title": "Start",
+   "body": []
+  },
+  {
+   "ref": "db",
+   "kind": "database",
+   "parent": "home",
+   "title": "D",
+   "schema": {
+    "props": [
+     {
+      "id": "s",
+      "name": "S",
+      "type": "select",
+      "options": [
+       {
+        "id": "a",
+        "name": "A",
+        "color": "gray"
+       }
+      ]
+     },
+     {
+      "id": "d",
+      "name": "D",
+      "type": "date"
+     }
+    ],
+    "views": [
+     {
+      "id": "t",
+      "name": "T",
+      "type": "table"
+     }
+    ]
+   },
+   "rows": [
+    {
+     "title": "r",
+     "props": {
+      "s": "b",
+      "d": "2026-02-30",
+      "x": 1
+     }
+    }
+   ]
+  }
+ ]
+}

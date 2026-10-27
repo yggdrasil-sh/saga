@@ -1,0 +1,39 @@
+{
+ "id": "ref-unbekannt",
+ "v": 1,
+ "order": 1,
+ "category": "work",
+ "icon": "x",
+ "title": "Kaputt",
+ "desc": "",
+ "needs": [],
+ "root": "home",
+ "items": [
+  {
+   "ref": "home",
+   "kind": "page",
+   "parent": null,
+   "title": "Start",
+   "body": [
+    {
+     "type": "buttons",
+     "data": {
+      "buttons": [
+       {
+        "label": "x",
+        "action": "page",
+        "target": "$ref:nix"
+       }
+      ]
+     }
+    },
+    {
+     "type": "paragraph",
+     "data": {
+      "text": "<a href=\"/notes#$ref:auch_nix\">x</a>"
+     }
+    }
+   ]
+  }
+ ]
+}

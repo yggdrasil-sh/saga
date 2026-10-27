@@ -1,0 +1,206 @@
+{
+ "id": "zu-gross",
+ "v": 1,
+ "order": 1,
+ "category": "work",
+ "icon": "x",
+ "title": "Kaputt",
+ "desc": "",
+ "needs": [],
+ "root": "home",
+ "items": [
+  {
+   "ref": "home",
+   "kind": "page",
+   "parent": null,
+   "title": "Start",
+   "body": []
+  },
+  {
+   "ref": "s0",
+   "kind": "page",
+   "parent": "home",
+   "title": "S0"
+  },
+  {
+   "ref": "s1",
+   "kind": "page",
+   "parent": "home",
+   "title": "S1"
+  },
+  {
+   "ref": "s2",
+   "kind": "page",
+   "parent": "home",
+   "title": "S2"
+  },
+  {
+   "ref": "s3",
+   "kind": "page",
+   "parent": "home",
+   "title": "S3"
+  },
+  {
+   "ref": "s4",
+   "kind": "page",
+   "parent": "home",
+   "title": "S4"
+  },
+  {
+   "ref": "s5",
+   "kind": "page",
+   "parent": "home",
+   "title": "S5"
+  },
+  {
+   "ref": "s6",
+   "kind": "page",
+   "parent": "home",
+   "title": "S6"
+  },
+  {
+   "ref": "s7",
+   "kind": "page",
+   "parent": "home",
+   "title": "S7"
+  },
+  {
+   "ref": "s8",
+   "kind": "page",
+   "parent": "home",
+   "title": "S8"
+  },
+  {
+   "ref": "s9",
+   "kind": "page",
+   "parent": "home",
+   "title": "S9"
+  },
+  {
+   "ref": "s10",
+   "kind": "page",
+   "parent": "home",
+   "title": "S10"
+  },
+  {
+   "ref": "s11",
+   "kind": "page",
+   "parent": "home",
+   "title": "S11"
+  },
+  {
+   "ref": "s12",
+   "kind": "page",
+   "parent": "home",
+   "title": "S12"
+  },
+  {
+   "ref": "s13",
+   "kind": "page",
+   "parent": "home",
+   "title": "S13"
+  },
+  {
+   "ref": "s14",
+   "kind": "page",
+   "parent": "home",
+   "title": "S14"
+  },
+  {
+   "ref": "s15",
+   "kind": "page",
+   "parent": "home",
+   "title": "S15"
+  },
+  {
+   "ref": "s16",
+   "kind": "page",
+   "parent": "home",
+   "title": "S16"
+  },
+  {
+   "ref": "s17",
+   "kind": "page",
+   "parent": "home",
+   "title": "S17"
+  },
+  {
+   "ref": "s18",
+   "kind": "page",
+   "parent": "home",
+   "title": "S18"
+  },
+  {
+   "ref": "s19",
+   "kind": "page",
+   "parent": "home",
+   "title": "S19"
+  },
+  {
+   "ref": "s20",
+   "kind": "page",
+   "parent": "home",
+   "title": "S20"
+  },
+  {
+   "ref": "s21",
+   "kind": "page",
+   "parent": "home",
+   "title": "S21"
+  },
+  {
+   "ref": "s22",
+   "kind": "page",
+   "parent": "home",
+   "title": "S22"
+  },
+  {
+   "ref": "s23",
+   "kind": "page",
+   "parent": "home",
+   "title": "S23"
+  },
+  {
+   "ref": "s24",
+   "kind": "page",
+   "parent": "home",
+   "title": "S24"
+  },
+  {
+   "ref": "s25",
+   "kind": "page",
+   "parent": "home",
+   "title": "S25"
+  },
+  {
+   "ref": "s26",
+   "kind": "page",
+   "parent": "home",
+   "title": "S26"
+  },
+  {
+   "ref": "s27",
+   "kind": "page",
+   "parent": "home",
+   "title": "S27"
+  },
+  {
+   "ref": "s28",
+   "kind": "page",
+   "parent": "home",
+   "title": "S28"
+  },
+  {
+   "ref": "s29",
+   "kind": "page",
+   "parent": "home",
+   "title": "S29"
+  },
+  {
+   "ref": "s30",
+   "kind": "page",
+   "parent": "home",
+   "title": "S30"
+  }
+ ]
+}

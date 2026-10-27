@@ -17,6 +17,11 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 ## [Unveröffentlicht]
 
 ### Neu (2.5)
+- **Vorlagengalerie (Mechanik).** Mitgelieferte Vorlagen (`gallery/<id>.json`, Übersetzungen `gallery/i18n/<lang>.json`,
+  Format in `docs/GALERIE.md`) legen Seiten und Datenbanken samt Schema, Ansichten, Eintrags-Vorlagen, Schaltflächen,
+  Widgets und optionalen Beispielen als Kopie im eigenen Konto an. Prüfskript für Vorlagen-Autoren:
+  `python3 tools/gallery_check.py [ordner]` (refs, Typen, Grenzen, fehlende Übersetzungen; `--todo <lang>` gibt ein
+  Übersetzungsgerüst aus, `--no-i18n` wertet fehlende Übersetzungen nicht als Fehler; Rückgabe ≠ 0 bei Fehlern).
 - **Seite gestalten (G1, G2, G3, G5, G9, G10).** Web: Spaltenbreite an der Linie zwischen zwei Spalten ziehen (5-%-Raster,
   Doppelklick = gleich breit; unter 760 px weiter untereinander), Bilder und YouTube-Player an Griffen links/rechts skalieren
   (10–100 %) und links/mittig/rechts ausrichten, Block-Farbe (Text oder Hintergrund) aus der Palette der Auswahl-Farben
