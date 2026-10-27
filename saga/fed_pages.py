@@ -728,10 +728,19 @@ def _w_chart(uid, nid, params):
         qs["tz"] = params["tz"]
     if isinstance(params.get("view"), str) and re.fullmatch(r"[a-z0-9_]{1,24}", params["view"]):
         qs["view"] = params["view"]
+    for k, n in (("chart", 4000), ("filters", 8000)):       # Spec/Filter aus dem Browser (Pruefung beim Eigentuemer)
+        if isinstance(params.get(k), str) and 0 < len(params[k]) <= n:
+            qs[k] = params[k]
+    if params.get("ids") == "1":
+        qs["ids"] = "1"
     status, _, d = _call(uid, p, "GET", f"/fed/v2/notes/{rid}/chart", urlencode(qs))
     if status != 200 or not isinstance(d, dict):
         return F._pass_err(p, status, d)
-    return JSONResponse({"chart": page_widgets.clean_remote_data("chart", d.get("chart")) if d.get("chart") else None,
+    ch = page_widgets.clean_remote_data("chart", d.get("chart")) if d.get("chart") else None
+    if ch is not None and isinstance(d["chart"].get("ids"), list):        # Zeilen je Kategorie -> negative IDs dieses Heims
+        ch["ids"] = [[F.ref(p["id"], i) for i in (x if isinstance(x, list) else [])[:5000] if F._ok_rid(i)]
+                     for x in d["chart"]["ids"][:len(ch["cats"])]]
+    return JSONResponse({"chart": ch,
                          "error": d.get("error") if d.get("error") in page_widgets.ERRORS else None,
                          "view": d.get("view") if isinstance(d.get("view"), str) and re.fullmatch(r"[a-z0-9_]{1,24}", d["view"]) else None},
                         headers={"Cache-Control": "no-store"})

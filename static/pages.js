@@ -5163,8 +5163,9 @@
       }
       out.appendChild(el('div', 'wg-note', '…'));
       var tz = ''; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { tz = ''; }
-      var q = '?ids=1' + (tz ? '&tz=' + encodeURIComponent(tz) : '') + '&view=' + encodeURIComponent(v.id || '');
-      if (DB.localViews) q += '&chart=' + encodeURIComponent(JSON.stringify(spec)) + '&filters=' + encodeURIComponent(JSON.stringify(v.filters || []));
+      // Spec und Filter immer aus dem Browser-Stand (gerade geaendert und noch nicht gespeichert, Block-Ansichten, Lesen)
+      var q = '?ids=1' + (tz ? '&tz=' + encodeURIComponent(tz) : '') + '&view=' + encodeURIComponent(v.id || '')
+        + '&chart=' + encodeURIComponent(JSON.stringify(spec)) + '&filters=' + encodeURIComponent(JSON.stringify(v.filters || []));
       var gen = renderGen;
       api('GET', '/api/notes/' + DB.id + '/chart' + q).then(function (r) {
         if (gen !== renderGen) return;
@@ -8033,6 +8034,7 @@
          open: function (id) { return openPage(id); }, byId: byId, goParent: goParent, copyLink: copyLink, showBlock: showBlock,
          readOnly: function () { return readOnly(); },
          calcNum: calcNum,                                      // Widgets/Fusszeile (tests/seiten_widgets.js: gemeinsame Testvektoren)
+         chartTicks: chartTicks,                                // 2.5 Paket 4: Achsen (tests/browser_widgets2.js, tests/chart_ticks.json)
          dup: function (ed, blk) { return dupBlock(ed, blk); }, styleAt: styleAt, styleBlock: styleBlock, colors: COLORS, colorNames: COLOR_NAMES,
          toggleOf: function (node) { var w = node && node.closest ? node.closest('.tgl') : null; return w ? TGL_OF.get(w) || null : null; },
          embed: EMBED, isMac: isMac, cleanClip: function (list, nested) { return cleanClip(list, nested ? nestedTools() : (S.tools || {})); }, openQS: function () { openQS(); }, pages: function () { return S.pages; }, label: label, ti: ti,
