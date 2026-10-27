@@ -3878,7 +3878,7 @@
     function blockedMark(r) { var b = el('span', 'db-blocked', '⛔'); b.title = T('Blockiert – eine Abhängigkeit ist noch nicht erledigt'); b.setAttribute('aria-label', b.title); return b; }
     function eachGrouped(rows, onHead, onRow) {
       var g = curView().group && propById(curView().group);
-      if (!groupable(g)) { var cv = curView(); (cv.sub && cv.sub.mode && (cv.type === 'table' || cv.type === 'list') ? nestRows(rows) : rows).forEach(onRow); return; }
+      if (!groupable(g)) { var cv = curView(); (cv.sub && (cv.sub.mode === 'nested' || cv.sub.mode === 'parents_only') && (cv.type === 'table' || cv.type === 'list') ? nestRows(rows) : rows).forEach(onRow); return; }
       groupCols(rows, g, curView().group_status).forEach(function (c) { if (!c.rows.length) return; onHead(c.o, c.rows.length, g); c.rows.forEach(onRow); });
     }
 

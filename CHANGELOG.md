@@ -16,6 +16,30 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5, Paket 5: Datenbank-Kleinigkeiten)
+- **Status-Eigenschaft.** Auswahl mit Gruppen „Zu erledigen / In Arbeit / Erledigt“ (`status: true`, `group` je Option;
+  Spaltenkopf → „Als Status (Gruppen)“, „Gruppen zuordnen“), Symbol ○ ◐ ● vor dem Namen, Board/Gruppen nach
+  Status-Gruppe, Filter „Status-Gruppe: offen / erledigt / …“. Neue Datenbanken haben den Status schon so.
+- **Relative Datumsfilter.** Gestern, morgen, letzte/nächste Woche, letzter/nächster Monat, dieses Jahr, überfällig,
+  in den nächsten/letzten N Tagen, am oder vor/nach (Datum oder heute ± N) – auch für bedingte Farben; Server
+  (`saga/dbquery.py`) und Web identisch, Testvektoren um 240 Fälle erweitert.
+- **Datum mit Uhrzeit und Zeitraum.** Wert mit Offset (`2026-10-27T14:30+01:00`) bzw. `start/end`; Anzeige in der
+  Zeitzone des Betrachters, Editor mit Uhrzeit/Ende, Sortierung/Filter nach Kalendertag in `tz`, Kalender mit Uhrzeit
+  und mehrtägigen Einträgen, Formeln `hour`/`minute`/`dateStart`/`dateEnd`. Ältere Apps, die nur den Tag zurückschreiben,
+  verlieren die Uhrzeit nicht (Server behält sie bei gleichem Tag).
+- **Unteraufgaben und Abhängigkeiten.** ⚙ Ansicht → „Unteraufgaben aktivieren“ / „Abhängigkeiten aktivieren“: zweiseitige
+  Relation innerhalb derselben Datenbank (Rollen parent/children bzw. blocked_by/blocking), keine Kreise, höchstens 10
+  Ebenen; Tabelle/Liste verschachtelt mit Aufklappen, „⛔ blockiert“ solange eine Abhängigkeit nicht erledigt ist.
+- **Kalender: Wochenansicht.** Umschalter Woche/Monat, „Heute“; auf dem Telefon Tage untereinander.
+- **Tabellenoptionen.** Datenbank-Tabelle: Zeilenumbruch und Spalten fixieren (bis zu 3); einfache Tabelle: erste Spalte
+  als Kopf, Spaltenbreiten, Farben für Zeile/Spalte/Zelle (Block-Menü), auch veröffentlicht. Bedingte Farben färben jetzt
+  auch Board- und Galerie-Karten.
+- **„Diese Seite“ in Vorlagen.** Filter einer eingebetteten Datenbank in einer Eintrags-Vorlage auf `@self` zeigt nach dem
+  Anlegen/Duplizieren auf den neuen Eintrag.
+- `features` in `/api/version`: `relfilter1`, `datetime1`, `status1`, `subtasks1`, `tableopts1`; Vertrag in
+  `docs/APP-API.md` („Datenbanken: Status, relative Filter, …“). Keine Migration, `MIN_APP` unverändert.
+- Tests: `tests/db_status_datum.py`, `tests/db_unteraufgaben.py`, `tests/tabellenoptionen.py`, `tests/browser_db_paket5.js`.
+
 ### Neu (2.5, Paket 2: Import und CSV-Export)
 - **Datenbank als CSV exportieren.** ⚙ Ansicht → „Als CSV exportieren“: diese Ansicht (Filter, Sortierung, Suche,
   sichtbare Spalten) oder alles; UTF-8 mit BOM, Schalter „Excel (Deutsch)“ (Semikolon, Dezimalkomma), Schutz vor
