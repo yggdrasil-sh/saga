@@ -48,7 +48,7 @@ SEARXNG_URL = E.get("SEARXNG_URL", "").rstrip("/")
 SEARCH_LANGUAGE = E.get("SEARCH_LANGUAGE", "de-DE")
 SEARCH_SAFESEARCH = E.get("SEARCH_SAFESEARCH", "0")
 # Kachel-Symbole (saga/siteicons.py): selfh.st-CDN (leer = keine Symbole aus dem Internet) und Favicons der Seiten
-# (FAVICONS=0 schaltet das Laden der Favicons ganz ab, unabhaengig von der Admin-Einstellung "Favicons laden")
+# (FAVICONS=0: der Server laedt nie Favicons, unabhaengig von "Favicons laden"; icon_direct folgt nur der Einstellung)
 ICON_CDN = (E.get("ICON_CDN", "https://cdn.jsdelivr.net/gh/selfhst/icons")).rstrip("/")
 FAVICONS_ENV = E.get("FAVICONS", "1").strip().lower() not in ("0", "false", "no", "off")
 try:                                   # Zeitzone fuer serverseitig formatierte Zeiten (z.B. Export)

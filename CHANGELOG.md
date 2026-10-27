@@ -50,7 +50,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   ohne Inline-Styles (Klassen `pub-wg`, `wa-<farbe>`, `pb-NN`), Werte nur aus eigenen Datenbanken; Markdown eine Zeile je
   Widget; Suche nur der Titel. Vertrag in `docs/APP-API.md` „Widgets in Seiten“. Tests `tests/seiten_widgets.py`,
   `tests/seiten_widgets.js`, `tests/foederation_widgets.py`.
-- **Kacheln ohne Symbol bekommen automatisch eines.** Für Dienste und Lesezeichen ohne gesetztes Symbol rät Saga zuerst
+- **Lesezeichen ohne Symbol bekommen automatisch eines.** Für Lesezeichen ohne gesetztes Symbol rät Saga zuerst
   ein selfh.st-Symbol nach dem Domainnamen (`youtube.com` → `youtube`, `jellyfin.example.org` → `jellyfin`) und holt sonst
   das Favicon der Seite (`<link rel=icon|apple-touch-icon>` oder `/favicon.ico`, größtes Rasterbild, als PNG ≤ 256 px in
   `/data/site-icons`, Fehl-Cache einen Tag). Schutz gegen SSRF über `saga/netguard.py`: nur öffentliche Adressen (auch
@@ -67,6 +67,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   gilt für alle Abrufe über netguard (KI-Websuche, Kalender, Immich, Backups …). Stündliches Aufräumen: `.missing`
   nach 7 Tagen, Zwischendateien nach 1 h, Favicons der Seiten nach 30 Tagen. Doku: beim Raten gehen Namensteile
   (auch interner Hosts) an das Symbol-CDN, `ICON_CDN=` schaltet das ab.
+  **Nur Lesezeichen, Rückfall auf dem Gerät:** Dienste (Admin-Kacheln) zeigen nur ihr festes Symbol oder den
+  Anfangsbuchstaben – kein Raten, kein Favicon (`/api/services/favicon/<key>` für Dienste `404`). Manche Shops antworten
+  Server-Abrufen mit `503` (Bot-Schutz), Browsern nicht: Lesezeichen bekommen zusätzlich `icon_direct` (höchstens 3
+  Adressen auf ihrem Host, `…/apple-touch-icon.png`, `…/favicon.ico`) in `/api/services` und `/api/bookmarks`; klappt
+  `icon_url` nicht, lädt das Gerät das Favicon direkt von der Seite (Web: Dashboard und Einstellungen → Lesezeichen,
+  `referrerpolicy=no-referrer`). Die CSP von Dashboard, Seiten und Chats erweitert `img-src` dafür um genau die Origins
+  der eigenen Lesezeichen (je Antwort, höchstens 3000 Zeichen), nicht pauschal `https:`. Fehlversuch des Servers durch
+  5xx/403/429 nur 1 h gemerkt (ohne Favicon weiter 1 Tag). „Favicons laden“ aus = auch kein `icon_direct`;
+  `FAVICONS=0` betrifft nur die Abrufe des Servers. Tests `tests/favicon.py` (erweitert), `tests/favicon_web.js`.
 - **Lesezeichen aus dem Teilen-Blatt (iOS/macOS).** Die Teilen-Erweiterung legt mit ihrem App-Schlüssel `hk_…`
   Lesezeichen unter „Dienste“ an: `POST /api/app/bookmarks` (dieselbe Prüfung wie `POST /api/bookmarks`) und
   `GET /api/app/bookmarks/categories` (nur die Namen der eigenen Kategorien, keine Adressen). Ändern, Löschen und Lesen
