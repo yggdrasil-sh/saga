@@ -31,9 +31,16 @@
   setTimeout(function () { tick(); setInterval(tick, 60000); }, (60 - new Date().getSeconds()) * 1000 + 50);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) tick(); });
 
-  // --- Icon-Fallback auf Initiale ------------------------------------------
+  // --- Icon-Fallback: Lesezeichen erst ueber den Server (icon_url), dann direkt von der Seite (data-d = icon_direct,
+  //     CSP img-src erlaubt genau diese Origins), zuletzt die Initiale -----------------------------------------------
   document.querySelectorAll('.ic img').forEach(function (img) {
-    img.addEventListener('error', function () { var p = img.parentNode; p.classList.remove('has-img'); p.textContent = img.dataset.l; });
+    var rest = (img.dataset.d || '').split(' ').filter(function (u) { return u && u !== img.getAttribute('src'); });
+    function fail() {
+      if (rest.length) { img.src = rest.shift(); return; }
+      var p = img.parentNode; p.classList.remove('has-img'); p.textContent = img.dataset.l;
+    }
+    img.addEventListener('error', fail);
+    if (img.complete && !img.naturalWidth && img.getAttribute('src')) fail();     // Fehler schon vor diesem Skript
   });
 
   // --- Websuche (SearXNG ueber /api/search) --------------------------------

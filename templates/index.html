@@ -20,7 +20,8 @@
 {% macro tile(s, cat) -%}
 <div class="tw{% if s.own %} own{% endif %}" data-g="{{ s.key }}" data-q="{{ (s.name ~ ' ' ~ s.host ~ ' ' ~ cat)|lower }}"{% if s.own %} data-bm="{{ s.id }}"{% endif %}>
   <a class="tile" href="{{ s.url }}" target="_blank" rel="noopener">
-    <span class="ic{% if s.icon_url %} has-img{% endif %}">{% if s.icon_url %}<img src="{{ s.icon_url }}" alt="" loading="lazy" data-l="{{ s.name[:1]|upper }}">{% else %}{{ s.name[:1]|upper }}{% endif %}</span>
+    {%- set src = s.icon_url or (s.icon_direct[0] if s.icon_direct else '') %}
+    <span class="ic{% if src %} has-img{% endif %}">{% if src %}<img src="{{ src }}" alt="" loading="lazy" referrerpolicy="no-referrer" data-l="{{ s.name[:1]|upper }}"{% if s.icon_direct %} data-d="{{ s.icon_direct|join(' ') }}"{% endif %}>{% else %}{{ s.name[:1]|upper }}{% endif %}</span>
     <span class="txt"><span class="nm">{{ s.name }}</span><span class="host">{{ s.host }}</span></span>
     {% if s.check %}<span class="dot unknown" title="{{ _("Status wird geprüft") }}"></span>{% endif %}
     <span class="num"></span>
