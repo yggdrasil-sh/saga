@@ -684,6 +684,27 @@ body.notes-page #pg-full{display:none}
 .board-col.over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
 .board-head{display:flex;align-items:center;gap:.5rem;padding:.15rem .2rem .3rem;font-size:.85rem}
 .board-none{color:var(--muted)}
+/* 2.5 (Paket 1): Formeln/Rollups - Werte vom Server, Fehler je Zelle, Editor */
+.fx-err{color:var(--down);font-weight:600;cursor:help}
+.fx-val{white-space:pre-wrap;overflow-wrap:anywhere}
+.fx-group{font-variant-numeric:tabular-nums}
+.fx-ed{display:flex;flex-direction:column;gap:.55rem}
+.fx-in{width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9rem;background:var(--bg);color:var(--fg);border:1px solid var(--field);border-radius:8px;padding:.55rem .65rem;resize:vertical;min-height:5.5rem}
+.fx-in:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.fx-status{font-size:.85rem;min-height:1.2em;color:var(--muted)}
+.fx-status.ok{color:var(--ok)}
+.fx-status.bad{color:var(--down)}
+.fx-props,.fx-help{display:flex;flex-wrap:wrap;gap:.3rem;align-items:center}
+.fx-lbl{color:var(--muted);font-size:.8rem;margin-right:.2rem}
+.fx-chip{background:var(--bg);border:1px solid var(--border);border-radius:999px;color:var(--fg);font:inherit;font-size:.78rem;padding:.12rem .55rem;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.fx-chip:hover,.fx-chip:focus-visible{border-color:var(--accent)}
+.fx-ex{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.fx-prev{border:1px solid var(--border);border-radius:8px;padding:.3rem .6rem;font-size:.85rem}
+.fx-prow{display:flex;justify-content:space-between;gap:1rem;padding:.2rem 0;border-bottom:1px dashed var(--border)}
+.fx-prow:last-child{border-bottom:0}
+.fx-pt{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.fx-pv{text-align:right;overflow-wrap:anywhere}
+.fx-foot{display:flex;justify-content:flex-end}
 .board-n{color:var(--muted);font-size:.78rem;font-variant-numeric:tabular-nums}
 .board-cards{display:flex;flex-direction:column;gap:.45rem;min-height:.5rem}
 .board-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.6rem .7rem;cursor:pointer;

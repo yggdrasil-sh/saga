@@ -12,7 +12,10 @@ import re
 from datetime import date
 
 # --- Spiegel der Server-Listen (saga.notes, saga.page_widgets) - Gleichheit prueft tests/galerie.py ---
-PROP_TYPES = {"text", "number", "select", "multi_select", "date", "checkbox", "url", "created", "edited", "relation", "calc"}
+ROLLUP_FNS = {"count", "filled", "empty", "pct_filled", "unique", "sum", "avg", "median", "min", "max", "range",
+              "checked", "unchecked", "pct_checked", "earliest", "latest", "show"}
+PROP_TYPES = {"text", "number", "select", "multi_select", "date", "checkbox", "url", "created", "edited", "relation", "calc",
+              "formula", "rollup"}
 VIEW_TYPES = {"table", "board", "list", "gallery", "calendar"}
 WIDGET_KINDS = ("clock", "countdown", "progress", "metric", "quote")
 OPT_COLORS = {"gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"}
@@ -298,6 +301,24 @@ def _check_schema(cx, where, s, dbref):
             for k in ("a", "b"):
                 if p.get(k) is not None and not isinstance(p.get(k), str):
                     cx.err(w, f"calc.{k} muss eine Eigenschafts-ID sein")
+    if any(isinstance(p, dict) and p.get("type") == "formula" for p in s["props"]):       # 2.5: Formeln pruefen (IDs)
+        from saga import formula as fx
+        props = [p for p in s["props"] if isinstance(p, dict) and isinstance(p.get("id"), str)]
+        plan = fx._plan_cached(fx._key(props, s.get("title_name")), "de")
+        for p in props:
+            if p.get("type") == "formula":
+                if not isinstance(p.get("expr"), str):
+                    cx.err(f"{where}.props[{p['id']}]", "formula braucht expr (Text, prop(\"<id>\"))")
+                elif p["id"] in plan.errors:
+                    e = plan.errors[p["id"]]
+                    cx.err(f"{where}.props[{p['id']}]", f"Formel: {e.msg} (Zeichen {e.pos + 1})")
+        fx.annotate(props, s.get("title_name"))
+    for p in s["props"]:
+        if isinstance(p, dict) and p.get("type") == "rollup":
+            if (pids.get(p.get("rel")) or {}).get("type") != "relation":
+                cx.err(f"{where}.props[{p.get('id')}]", f"rollup.rel {p.get('rel')!r} ist keine Relation dieser Datenbank")
+            if p.get("fn") is not None and p.get("fn") not in ROLLUP_FNS:
+                cx.err(f"{where}.props[{p.get('id')}]", f"unbekannte Rollup-Rechnung {p.get('fn')!r}")
     for p in s["props"]:                             # calc: nur aus Zahlen-Spalten
         if isinstance(p, dict) and p.get("type") == "calc":
             for k in ("a", "b"):
@@ -319,8 +340,10 @@ def _check_schema(cx, where, s, dbref):
             cx.err(w, f"unbekannter Ansichtstyp {v.get('type')!r}")
         _check_str(cx, w + ".name", v.get("name"), 40, empty_ok=False)
         for k in ("group_by", "group"):
-            if k in v and (pids.get(v[k]) or {}).get("type") != "select":
-                cx.err(w, f"{k} {v[k]!r} ist keine Auswahl-Eigenschaft")
+            gp = pids.get(v.get(k)) or {}
+            if k in v and gp.get("type") != "select" and not (gp.get("type") in ("formula", "rollup") and gp.get("rtype") in
+                                                              ("number", "text", "checkbox", "date")):
+                cx.err(w, f"{k} {v[k]!r} ist keine Auswahl- oder Formel-Eigenschaft")
         if "date_by" in v and (pids.get(v["date_by"]) or {}).get("type") not in ("date", "created", "edited"):
             cx.err(w, f"date_by {v['date_by']!r} ist keine Datums-Eigenschaft")
         for f in (v.get("filters") or []) + (v.get("sorts") or []) + (v.get("colors") or []):
@@ -356,7 +379,7 @@ def _check_props(cx, where, vals, pids):
             continue
         typ = p.get("type")
         opts = {o.get("id") for o in p.get("options") or [] if isinstance(o, dict)}
-        if typ in ("created", "edited", "calc"):
+        if typ in ("created", "edited", "calc", "formula", "rollup"):
             cx.err(where, f"{k}: Wert fuer {typ} wird nie gespeichert")
         elif typ == "select" and v not in opts:
             cx.err(where, f"{k}: unbekannte Option {v!r}")
