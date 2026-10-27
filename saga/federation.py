@@ -79,7 +79,11 @@ CAPS = ["share", "read", "edit", "comment", "files", "notify"]
 # 2.4 (saga.chat_status): receipts = Gelesen-Bestaetigungen in Chats (versiegelt, ueber das Heim des Chats), online =
 # Online-Status von Chat-Partnern (Abo beim Server der Person). Mit 2.3-Servern: nichts davon, nichts wird gesendet.
 CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "live", "presence", "db", "subpages", "upload", "versions",
-         "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn"]
+         "export", "chatgroups", "nc_files", "calls3", "chatfile2", "receipts", "online", "rename", "tplbtn",
+         "widgets1"]
+# widgets1 (2.5, saga.page_widgets) = Widgets in Seiten: Werte (Fortschritt/Kennzahl/Zitat aus einer Datenbank) einer
+# foederiert geteilten Seite rechnet der Eigentuemer-Server mit dem Prinzipal der Person (GET /fed/v2/notes/{id}/widgets).
+# Ohne widgets1: das Heim antwortet {"widgets": {}, "unsupported": true}.
 # tplbtn (2.5) = Schaltflaeche "Neuer Eintrag" mit Vorlage auf einer foederiert geteilten Seite: Ziel und Vorlage der
 # Schaltflaechen kommen als negative IDs (saga.federation._db_blocks), das Heim legt den Eintrag ueber
 # POST /fed/v2/notes/{vorlage}/duplicate (parent_id, via) beim Eigentuemer an (saga.fed_pages). Ohne tplbtn: Hinweis.
@@ -2426,7 +2430,7 @@ def _note_in(c, peer, d, uid):
     return d
 
 
-PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups", "tplbtn")
+PAGE_CAPS = ("db", "subpages", "upload", "versions", "export", "presence", "live", "chatgroups", "tplbtn", "widgets1")
 
 
 def remote_info(peer):

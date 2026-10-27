@@ -34,7 +34,7 @@ from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from db import connect as _db
-from saga import app_api, avatars, bus, databases, files, live, nextcloud, notify, page_tools, pages, sharing
+from saga import app_api, avatars, bus, databases, files, live, nextcloud, notify, page_tools, page_widgets, pages, sharing
 from saga import federation as F
 from saga.comments import counts as comment_counts
 from saga.core import E, _bad, _body, t
@@ -170,6 +170,8 @@ async def _owner_req(request, nid, rest):
         return _signed_resp(inp, await run_in_threadpool(F._as, inp, pages.note_move, nid, {"parent_id": par, "index": b.get("index", 0)}))
     if m == "GET" and rest == "rows":
         return _need(inp, "db") or _signed_resp(inp, await run_in_threadpool(F._as, inp, app_api.db_rows, nid, q))
+    if m == "GET" and rest == "widgets":             # 2.5: Widgets mit den Rechten der fremden Person (saga.page_widgets)
+        return _need(inp, "widgets1") or _signed_resp(inp, await run_in_threadpool(F._as, inp, page_widgets.page_widgets, nid, q))
     if m == "GET" and rest == "versions":
         return _need(inp, "versions") or _signed_resp(inp, await run_in_threadpool(F._as, inp, page_tools.versions_list, nid))
     if mv and m == "GET" and not mv.group(2):
@@ -546,6 +548,41 @@ def _w_rows(uid, nid, query):
     return F._json(200, out)
 
 
+_WBID = re.compile(r"[A-Za-z0-9_-]{1,40}")
+
+
+def _w_widget_in(w):
+    """Wert eines Widgets von der anderen Instanz: nur die bekannten Felder, Typen geprueft, Text gekuerzt."""
+    if not isinstance(w, dict):
+        return None
+    num = lambda v: v if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) < 1e15 else None  # noqa: E731
+    return {"kind": w.get("kind") if isinstance(w.get("kind"), str) and len(w["kind"]) <= 20 else None,
+            "value": num(w.get("value")), "max": num(w.get("max")),
+            "text": F._clean_text(w.get("text"), 2000) if isinstance(w.get("text"), str) else None,
+            "fmt": w.get("fmt") if w.get("fmt") in page_widgets.FMTS else None,
+            "as_of": w.get("as_of") if isinstance(w.get("as_of"), str) and re.fullmatch(r"[0-9T:\-Z+.]{10,32}", w["as_of"]) else None,
+            "error": w.get("error") if w.get("error") in page_widgets.ERRORS else None}
+
+
+def _w_widgets(uid, nid, tz):
+    """Widgets einer Seite einer anderen Instanz (Heim): der Eigentuemer rechnet mit den Rechten der Person."""
+    pid, rid = F.unref(nid)
+    with _db() as c:
+        p = F._home_peer(c, pid)
+    if not _caps(p, "widgets1"):
+        return JSONResponse({"widgets": {}, "unsupported": True}, headers={"Cache-Control": "no-store"})
+    q = "tz=" + quote(tz, safe="") if tz and page_widgets.tz_ok(tz) else ""
+    status, _, d = _call(uid, p, "GET", f"/fed/v2/notes/{rid}/widgets", q)
+    if status != 200 or not isinstance(d, dict) or not isinstance(d.get("widgets"), dict):
+        return F._pass_err(p, status, d)
+    out = {}
+    for k, w in list(d["widgets"].items())[:page_widgets.WIDGETS_MAX]:
+        x = _w_widget_in(w) if isinstance(k, str) and _WBID.fullmatch(k) else None
+        if x:
+            out[k] = x
+    return JSONResponse({"widgets": out}, headers={"Cache-Control": "no-store"})
+
+
 def _w_versions(uid, nid):
     p, rid = _peer_for(uid, nid, "versions")
     status, _, d = _call(uid, p, "GET", f"/fed/v2/notes/{rid}/versions")
@@ -862,6 +899,8 @@ async def home_other(nid: int, rest: str, request: Request):
         if len(q) > 8000:
             return _bad("bad parameter: zu lang")
         return await run_in_threadpool(F._run, _w_rows, uid, nid, q)
+    if m == "GET" and rest == "widgets":
+        return await run_in_threadpool(F._run, _w_widgets, uid, nid, request.query_params.get("tz") or "")
     if m == "GET" and rest == "versions":
         return await run_in_threadpool(F._run, _w_versions, uid, nid)
     if mv and ((m == "GET" and not mv.group(2)) or (m == "POST" and mv.group(2))):
