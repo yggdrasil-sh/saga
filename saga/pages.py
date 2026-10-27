@@ -1,6 +1,7 @@
 """Seiten im Notion-Stil: anlegen, lesen, speichern, verschieben, suchen."""
 import json
 import re
+import secrets
 import time
 from html import escape as html_escape
 from html.parser import HTMLParser
@@ -18,7 +19,7 @@ from saga.publish import published_via
 from saga.siteicons import ICON_RE, svc_icon_path
 from saga.comments import counts as comment_counts
 from saga.sharing import RANK, Access, access, is_remote, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
-from saga.notes import formula_check, MAX_JSON_DEPTH, NOTE_BODY_MAX, PALETTE, STYLE_TYPES, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
+from saga.notes import REL_ROLES, _self_rel_backfill, _self_rel_check, formula_check, MAX_JSON_DEPTH, NOTE_BODY_MAX, PALETTE, STYLE_TYPES, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
 
 router = APIRouter()
 
@@ -400,6 +401,13 @@ def note_get(uid, nid):
         if not is_remote(uid):                     # 2.4 (N1): Autor fremder Nextcloud-Bloecke lokal als Handle
             body = nextcloud.mask_local(body, r[10], uid)
         row_fx = _row_formulas(c, owner, uid, r)    # 2.5: Formeln/Rollups einer Datenbank-Zeile
+        blocked = False
+        if r[3] is not None:                       # 2.5: Zeile mit Abhaengigkeit - "blockiert" (nur gelesen)
+            par_s = c.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database'", (r[3], owner)).fetchone()
+            if par_s and '"blocked_by"' in (par_s[0] or ""):
+                tmp = [{"id": r[0], "props": _json_load(r[12], {})}]
+                dbcalc.mark_blocked(c, owner, r[3], _json_load(par_s[0], {"props": []}), tmp)
+                blocked = bool(tmp[0].get("blocked"))
     d = _note_meta(r)
     d["published"] = bool(pub)                     # Seitenkopf: Hinweis "Oeffentlich" (Einzelheiten: /api/notes/{nid}/publish)
     d["public_url"] = f"{BASE_URL}/@{pub[1]}/{pub[0]}" if pub and pub[1] else None
@@ -413,6 +421,8 @@ def note_get(uid, nid):
             d["fx_err"] = row_fx["fx_err"]
     if d["kind"] == "database":
         d["schema"] = _json_load(r[11], {"props": []})
+    if blocked:
+        d["blocked"] = True
     # Teilen (1.3) - nur Erweiterungen, bestehende Felder bleiben wie sie sind
     d.update(role=role, owner=person(c, owner, uid, nm), shared=shared, comment_counts=per, comments_open=n_open,
              comments_unread=n_unread, comments_resolved=n_res, updated_by=person(c, r[20], uid, nm) if r[20] else None,
@@ -504,8 +514,9 @@ def note_create(uid, b, origin=None):
             ps = c.execute("SELECT schema FROM note WHERE id=? AND uid=? AND kind='database'", (parent, owner)).fetchone()
             if ps:
                 try:
-                    props = json.dumps(_clean_props(_json_load(ps[0], {"props": []}), b["props"], check=_rel_check_for(c, owner, acc, role)),
-                                       ensure_ascii=False)
+                    props = _clean_props(_json_load(ps[0], {"props": []}), b["props"], check=_rel_check_for(c, owner, acc, role))
+                    _self_rel_check(c, owner, _json_load(ps[0], {"props": []}), None, props)
+                    props = json.dumps(props, ensure_ascii=False)
                 except (ValueError, TypeError) as ex:
                     return _bad(user_error(ex, t("ungültige Werte")))
         cur = c.execute("INSERT INTO note (uid, title, body, format, icon, parent_id, sort, tags, kind, schema, props, created, updated, updated_by, created_by) "
@@ -665,15 +676,53 @@ def _note_update(uid, nid, b, origin=None):
                 # Zweiseitige Relationen: Kopplung (pair) stellt NUR der Server her - vom Browser nur uebernehmen, was schon so bestand
                 raw_by = {str(p.get("id")): p for p in b["schema"].get("props", []) if isinstance(p, dict)}
                 my_title = c.execute("SELECT title FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()[0]
-                for rp in new_schema["props"]:
+                self_new = []                                # 2.5: neue Gegenspalten im selben Schema (Selbst-Relation)
+                for rp in list(new_schema["props"]):
                     if rp["type"] != "relation":
                         continue
                     prev = old_by.get(rp["id"]) or {}
                     if prev.get("pair") and prev.get("target") == rp["target"]:
                         rp["pair"] = prev["pair"]                # bestehende Kopplung bleibt, egal was der Browser schickt
+                        if prev.get("role") in REL_ROLES:
+                            rp["role"] = prev["role"]            # Rolle (Unteraufgaben/Abhaengigkeiten) ebenso
+                        else:
+                            rp.pop("role", None)
                     else:
                         rp.pop("pair", None)
-                    if prev.get("pair") and prev.get("target") != rp["target"]:      # Ziel gewechselt: alte Gegenspalte entfernen
+                    if rp["target"] == nid:                      # 2.5: Selbst-Relation - beide Spalten in DIESEM Schema
+                        want = raw_by.get(rp["id"], {}).get("two_way")
+                        if rp.get("pair"):
+                            if want is False:                    # zweiseitig aus: Gegenspalte (hier) samt Werten weg
+                                mate = rp.pop("pair")
+                                rp.pop("role", None)
+                                new_schema["props"] = [x for x in new_schema["props"] if x["id"] != mate]
+                            continue
+                        if rp["id"] in {x[1] for x in self_new}:
+                            continue
+                        if want is True and not prev.get("pair"):
+                            if len(new_schema["props"]) >= 30:
+                                raise ValueError(t("Die Datenbank hat schon 30 Eigenschaften"))
+                            role = rp.get("role") if rp.get("role") in REL_ROLES else None
+                            used = {x["id"] for x in new_schema["props"]} | set(old_by)
+                            mid = next(x for x in ("r" + secrets.token_hex(4) for _ in range(50)) if x not in used)
+                            mate = {"id": mid, "type": "relation", "target": nid, "pair": rp["id"],
+                                    "name": {"parent": t("Unteraufgaben"), "children": t("Übergeordnet"), "blocked_by": t("Blockiert"),
+                                             "blocking": t("Blockiert durch")}.get(role, rp["name"])}
+                            if role:
+                                mate["role"] = REL_ROLES[role]
+                            else:
+                                rp.pop("role", None)
+                            rp["pair"] = mid
+                            new_schema["props"].append(mate)
+                            self_new.append((rp["id"], mid))
+                        elif not rp.get("pair"):
+                            rp.pop("role", None)
+                        continue
+                    rp.pop("role", None)                         # Rollen nur fuer Selbst-Relationen
+                    was_self = prev.get("pair") and prev.get("target") == nid
+                    if was_self:                                 # war Selbst-Relation: Gegenspalte hier entfernen
+                        new_schema["props"] = [x for x in new_schema["props"] if x["id"] != prev["pair"]]
+                    if prev.get("pair") and prev.get("target") != rp["target"] and not was_self:      # Ziel gewechselt: alte Gegenspalte entfernen
                         rel_ok(prev["target"])
                         _rel_unlink(c, owner, nid, prev["target"], prev["pair"], True)
                     want = raw_by.get(rp["id"], {}).get("two_way")
@@ -684,7 +733,13 @@ def _note_update(uid, nid, b, origin=None):
                         rel_ok(rp["target"])
                         _rel_unlink(c, owner, nid, rp["target"], rp.pop("pair"), True)
                 new_ids = {p["id"] for p in new_schema["props"]}
+                for p_ in new_schema["props"]:                  # Selbst-Relation: Gegenspalte geloescht -> hier nur entkoppeln
+                    if p_["type"] == "relation" and p_["target"] == nid and p_.get("pair") and p_["pair"] not in new_ids:
+                        p_.pop("pair")
+                        p_.pop("role", None)
                 for k, prev in old_by.items():                                    # Spalte geloescht: Gegenseite bleibt, nur entkoppelt
+                    if prev.get("target") == nid:
+                        continue                                                  # Selbst-Relation: oben erledigt
                     if k not in new_ids and prev.get("type") == "relation" and prev.get("pair"):
                         rel_ok(prev["target"])
                         _rel_unlink(c, owner, nid, prev["target"], prev["pair"], False)
@@ -707,12 +762,15 @@ def _note_update(uid, nid, b, origin=None):
                             pass
                     if keep != old_p:
                         c.execute("UPDATE note SET props=? WHERE id=? AND uid=?", (json.dumps(keep, ensure_ascii=False), rid, owner))
+                for a_, b_ in self_new:                         # neue Selbst-Kopplung: bestehende Verknuepfungen spiegeln
+                    _self_rel_backfill(c, owner, nid, a_, b_)
             if "props" in b:
                 ps = c.execute("SELECT d.schema, n.props FROM note n JOIN note d ON d.id=n.parent_id AND d.uid=n.uid "
                                "WHERE n.id=? AND n.uid=? AND d.kind='database'", (nid, owner)).fetchone()
                 if not ps:
                     raise ValueError(t("Seite ist keine Datenbank-Zeile"))
                 merged = _clean_props(_json_load(ps[0], {"props": []}), b["props"], _json_load(ps[1], {}), check=_rel_check_for(c, owner, acc, role, _json_load(ps[1], {})))
+                _self_rel_check(c, owner, _json_load(ps[0], {"props": []}), nid, merged)     # 2.5: keine Kreise/Selbstbezug
                 _rel_sync(c, owner, _json_load(ps[0], {"props": []}), nid, _json_load(ps[1], {}), merged, _may_edit(acc, role))
                 sets.append("props=?"); args.append(json.dumps(merged, ensure_ascii=False))
             if "title" in b:

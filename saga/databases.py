@@ -12,7 +12,7 @@ from fastapi import APIRouter
 from saga import nextcloud
 from saga.core import SECRET, _api_guard, _bad, _body, _json_load, origin_of, t
 from saga.sharing import access
-from saga.notes import NOTE_TITLE_MAX, note_limit_error, _FILE_URL, _check_parent, _iter_blocks, _purge_ids, announce_row, tree_changed
+from saga.notes import NOTE_TITLE_MAX, note_limit_error, self_filters, _FILE_URL, _check_parent, _iter_blocks, _purge_ids, announce_row, tree_changed
 
 
 router = APIRouter()
@@ -105,6 +105,7 @@ def note_duplicate(uid, nid, b, origin=None):
         # Nextcloud-Bloecke: Signatur gilt je Seite; die Kopie stammt aus einer Seite des Eigentuemers (auch per via, R05)
         new_body = nextcloud.adopt(r[3], r[4], owner, cur.lastrowid)
         new_body = resign_copy(new_body, r[4], nid, cur.lastrowid, owner)
+        new_body = self_filters(new_body, r[4], cur.lastrowid)      # 2.5: Filter "diese Seite" auf die neue Seite
         if new_body != r[3]:
             c.execute("UPDATE note SET body=? WHERE id=? AND uid=?", (new_body, cur.lastrowid, owner))
         if owner != uid:                        # per Schaltflaeche auf einer geteilten Seite: wer hat angelegt, Live-Hinweis

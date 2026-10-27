@@ -25,7 +25,7 @@ function fn(name) {
   }
   throw new Error('Ende nicht gefunden: ' + name);
 }
-const NAMES = ['relDate', 'propValue', 'isFx', 'numLike', 'groupable', 'weekdayIndex', 'valueGroups', 'groupCols', 'calcValue2', 'isoDay', 'propById', 'sortKey', 'sortedRows', 'eachGrouped',
+const NAMES = ['relOp', 'dayNum', 'dayIso', 'relDay', 'dtPart', 'dateParts', 'daySpan', 'isStatus', 'statusGroup', 'relDate', 'propValue', 'isFx', 'numLike', 'groupable', 'weekdayIndex', 'valueGroups', 'groupCols', 'calcValue2', 'isoDay', 'propById', 'sortKey', 'sortedRows', 'eachGrouped',
   'titleName', 'fprop', 'matchFilter', 'rowText', 'filterRows'];
 const BODY = NAMES.map(fn).join('\n');
 const RealDate = Date;
@@ -39,7 +39,7 @@ function sandbox(schema, rows, labels, view, q, nowMs) {
     'function curView() { return CUR; }\n' +
     'function byId(id) { var t = LABELS.get(id); return t === undefined ? null : { id: id, title: t }; }\n' +
     "function label(p) { return p && p.title ? p.title : T('Unbenannt'); }\n" +
-    BODY + '\nreturn { sortedRows: sortedRows, filterRows: filterRows, eachGrouped: eachGrouped, propById: propById, sortKey: sortKey };');
+    BODY + '\nreturn { sortedRows: sortedRows, filterRows: filterRows, eachGrouped: eachGrouped, propById: propById, sortKey: sortKey, groupCols: groupCols };');
   return f(FakeDate, { schema: schema, rows: rows, q: q }, view, labels);
 }
 
@@ -52,12 +52,21 @@ const TEXT = ['', 'Alpha', 'alpha', 'Ärger', 'Straße', 'STRASSE', 'Приве�
 const NUM = [0, 1, -1, 2.5, 1e21, 0.1 + 0.2, '7', '', 'abc', true, [3], 100, 33.333, -0.5, '1.200,5', 1e-7];
 const DATE = ['2026-10-19', '2026-10-13', '2026-10-25', '2026-10-26', '2026-11-01', '2026-09-30', '2026-10-31', '0099-01-01', '2024-02-30',
   '2026-1-5', 'abc', '', 20261019, '2026-10-19T23:30', '2026-03-29', '2026-10-12', '2025-10-19'];
+// 2.5 (Paket 5): Datum mit Uhrzeit (Offset) und Zeitraum - nur in der zweiten Haelfte der Datenbanken (DBQ_P5),
+// damit die erste Haelfte die Werte von vorher behaelt
+const DATE5 = ['2026-10-19T23:30+02:00', '2026-10-25T01:30Z', '2026-10-18/2026-10-21', '2026-10-19T09:00+02:00/2026-10-19T11:00+02:00',
+  '2026-10-20/2026-10-18', '2026-10-19T25:00Z', '2026-10-31T23:30-05:00', '2026-03-29T02:30+01:00', '2026-10-19/abc', '2026-09-28/2026-11-02',
+  '2026-10-26T00:15+14:00', '2026-12-31T23:59-12:00/2027-01-01', '2026-10-12', '2026-11-03', '2025-12-31', '1899-12-31T10:00Z', '2026-10-19T10:00+02:00',
+  '2026-03-28T23:30+01:00', '2026-03-27/2026-03-30', '2025-12-31T23:30-05:00', '2025-12-29/2026-01-02', '2026-01-01', '2026-03-29', '2026-10-24T22:00Z',
+  '2026-10-20/2026-10-22', '2026-10-16/2026-10-18', '2026-10-26/2026-11-08', '2026-11-01T00:30+01:00', '2026-10-31', '2026-10-30T12:00+01:00/2026-11-02'];
 const TZS = ['Europe/Berlin', 'America/New_York', 'Asia/Bangkok', 'UTC'];
 const NOWS = ['2026-10-19T10:00:00Z', '2026-10-31T23:30:00Z', '2026-03-29T00:30:00Z', '2026-01-01T00:10:00Z', '2026-10-25T01:30:00Z'];
 
+let P5 = false;
 function makeSchema(k) {
   const opts = [{ id: 'o1', name: 'Offen', color: 'gray' }, { id: 'o2', name: 'In Arbeit', color: 'blue' }, { id: 'o3', name: 'Готово', color: 'green' },
     { id: 'o4', name: 'เสร็จ', color: 'red' }];
+  if (P5) { opts[0].group = 'todo'; opts[1].group = 'doing'; opts[2].group = 'done'; if (k % 2) opts[3].group = 'weird'; }
   if (k % 3 === 1) opts.push({ id: 'toString', name: 'Prototyp', color: 'pink' });
   if (k % 4 === 2) opts.push({ id: 'o1', name: 'Doppelt', color: 'gray' });
   const calcOp = pick(['div', 'pct', 'mul', 'add', 'sub', 'xyz', undefined]);
@@ -69,6 +78,7 @@ function makeSchema(k) {
     { id: 'c1', name: 'Erledigt', type: 'checkbox' }, { id: 'd1', name: 'Datum', type: 'date' }, { id: 'u1', name: 'Link', type: 'url' },
     { id: 'r1', name: 'Projekt', type: 'relation', target: 900 }, calc, { id: 'cr', name: 'Erstellt', type: 'created' },
     { id: 'ed', name: 'Bearbeitet', type: 'edited' }, { id: 's2', name: 'Prio', type: 'select', options: opts.slice(1) }];
+  if (P5) { props[3].status = true; if (k % 3 === 0) props[12].status = true; props[6].time = true; props[6].range = true; }
   return { props: props };
 }
 function makeValue(p) {
@@ -78,7 +88,7 @@ function makeValue(p) {
     case 'select': return pick(['o1', 'o2', 'o3', 'o4', 'zz', 'toString', ['o1'], 5, null, '']);
     case 'multi_select': return pick([[], ['o1'], ['o1', 'o2'], ['o9'], ['o3', 'o1'], 'o1', 3, {}, ['o2']]);
     case 'checkbox': return pick([true, false, true, 0, 1, 'x', '', []]);
-    case 'date': return pick(DATE);
+    case 'date': return P5 && rnd() < 0.8 ? pick(DATE5) : pick(DATE);
     case 'relation': return rnd() < 0.04 ? pick(['abc', 7]) : pick([[], [901], [901, 902], [903], [999], ['901'], [904, 905], [902.0]]);
   }
   return undefined;
@@ -88,7 +98,7 @@ function makeRows(schema, n, now) {
   for (let i = 0; i < n; i++) {
     const props = {};
     schema.props.forEach(function (p) {
-      if (p.type === 'calc' || p.type === 'created' || p.type === 'edited' || rnd() < 0.3) return;
+      if (p.type === 'calc' || p.type === 'created' || p.type === 'edited' || rnd() < (P5 && p.type === 'date' ? 0.08 : 0.3)) return;
       const v = makeValue(p); if (v !== undefined) props[p.id] = v;
     });
     const created = now / 1000 - Math.floor(rnd() * 40 * 86400) - (rnd() < 0.3 ? 0.5 : 0);
@@ -99,10 +109,14 @@ function makeRows(schema, n, now) {
 }
 const OPS = ['contains', 'not_contains', 'is_empty', 'not_empty', 'is', 'is_not', 'eq', 'gt', 'lt', 'before', 'after', 'today', 'this_week',
   'this_month', 'checked', 'unchecked', 'weird'];
+const OPS5 = ['yesterday', 'tomorrow', 'last_week', 'next_week', 'last_month', 'next_month', 'this_year', 'overdue', 'next_days', 'past_days',
+  'on_or_before', 'on_or_after', 'status_group', 'today', 'this_week', 'eq', 'before', 'after'];
 const PIDS = ['title', 't1', 'n1', 'n2', 's1', 'm1', 'c1', 'd1', 'u1', 'r1', 'k1', 'cr', 'ed', 's2', 'nope'];
 function fvalue(pid) {
   if (rnd() < 0.08) return pick(['', undefined, null]);
   if (pid === 'r1') return pick(['901', '902', '999', 'x']);
+  if (P5 && (pid === 's1' || pid === 's2') && rnd() < 0.5) return pick(['todo', 'doing', 'done', 'open', 'o1', 'zz']);
+  if (P5 && (pid === 'd1' || pid === 'cr' || pid === 'ed') && rnd() < 0.5) return pick(['today', 'today+3', 'today-2', 'today+400', '7', '30', '0', '366', '400', 'abc', '2026-10-21', '2026-02-30', ' 7']);
   if (pid === 's1' || pid === 's2' || pid === 'm1') return pick(['o1', 'o2', 'o3', 'zz', 'toString']);
   if (pid === 'n1' || pid === 'n2' || pid === 'k1') return pick(['0', '1', '2.5', '100', '-1', 'abc', '1e21', '33.333', '7']);
   if (pid === 'd1' || pid === 'cr' || pid === 'ed') return pick(['2026-10-19', '2026-10-01', '2026-10-30', '2025-01-01', '2026-10-19T12']);
@@ -110,13 +124,22 @@ function fvalue(pid) {
 }
 function makeView(k) {
   const v = { id: 'v' + k, name: 'Ansicht ' + k, type: pick(['table', 'table', 'list', 'board', 'gallery', 'calendar', undefined]) };
-  const nf = Math.floor(rnd() * 3.5);
-  if (nf) v.filters = Array.from({ length: nf }, function () { const pid = pick(PIDS); return { pid: pid, op: pick(OPS), value: fvalue(pid) }; });
+  const nf = Math.floor(rnd() * (P5 ? 1.6 : 3.5));
+  if (P5) {                                     // je Ansicht ein Filter mit einem neuen Operator der Reihe nach (sicher abgedeckt)
+    const op = OPS5[k % OPS5.length], pid = op === 'status_group' ? pick(['s1', 's1', 's2']) : pick(['d1', 'd1', 'd1', 'cr']);
+    v.filters = [{ pid: pid, op: op, value: fvalue(pid) }];
+  }
+  if (nf) v.filters = (v.filters || []).concat(Array.from({ length: nf }, function () {
+    const pid = P5 && rnd() < 0.6 ? pick(['d1', 'd1', 's1', 's2', 'cr', 'ed', 'title']) : pick(PIDS);
+    return { pid: pid, op: P5 && rnd() < 0.7 ? pick(OPS5) : pick(OPS), value: fvalue(pid) };
+  })).slice(0, P5 ? 2 : 3);
   const ns = Math.floor(rnd() * 4);
   if (ns) v.sorts = Array.from({ length: ns }, function () { return { pid: pick(PIDS), dir: pick(['asc', 'desc', 'asc', undefined]) }; });
   if (rnd() < 0.1 && v.sorts) { v.sort = v.sorts[0]; delete v.sorts; }                      // altes Einzelfeld
   if (rnd() < 0.4) v.group = pick(['s1', 's2', 'm1', 'nope']);
   if (v.type === 'board') v.group_by = pick(['s1', 's2', 't1', 'nope']);
+  if (P5 && rnd() < 0.5) v.group_status = true;
+  if (P5 && rnd() < 0.4) { if (!v.sorts) v.sorts = []; v.sorts.unshift({ pid: 'd1', dir: pick(['asc', 'desc']) }); v.sorts = v.sorts.slice(0, 3); }
   return v;
 }
 
@@ -156,6 +179,10 @@ function expected(S, view) {
     if (t === 'board') {                       // wie renderBoard (Spalten-Ermittlung)
       let g = S.propById(view.group_by);
       if (!g || g.type !== 'select') g = S.schema.props.find(function (p) { return p.type === 'select'; });
+      if (view.group_status && g.status === true) {           // 2.5: Spalten nach Status-Gruppe (wie renderBoard)
+        const sc = S.groupCols(rows, g, true); if (!sc[0].rows.length) sc.shift();
+        return { ids: [].concat(...sc.map((c) => c.rows.map((r) => r.id))), groups: sc.map((c) => ({ id: c.o ? c.o.id : null, count: c.rows.length })), board: true, matched: matched };
+      }
       const known = {}; (g.options || []).forEach(function (o) { known[o.id] = 1; });
       const cols = [{ o: null, rows: rows.filter(function (r) { return !known[r.props[g.id]]; }) }].concat(
         (g.options || []).map(function (o) { return { o: o, rows: rows.filter(function (r) { return r.props[g.id] === o.id; }) }; }));
@@ -171,7 +198,9 @@ function expected(S, view) {
 }
 
 const dbs = [], cases = [];
-for (let n = 0; n < +(process.env.DBQ_DBS || 50); n++) {               // 50 Datenbanken mit je 8 Ansichten (Zeitzone/"jetzt" wechseln)
+const NDB = +(process.env.DBQ_DBS || 50);
+for (let n = 0; n < NDB + +(process.env.DBQ_P5 || 30); n++) {        // 50 Datenbanken mit je 8 Ansichten (Zeitzone/"jetzt" wechseln), dazu 30 fuer Paket 5
+  P5 = n >= NDB;
   const t0 = Date.parse(NOWS[n % NOWS.length]);
   const schema = JSON.parse(JSON.stringify(makeSchema(n)));
   const rows = JSON.parse(JSON.stringify(makeRows(schema, 18 + Math.floor(rnd() * 20), t0)));
