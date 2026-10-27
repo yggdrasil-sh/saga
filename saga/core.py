@@ -619,9 +619,10 @@ def icon_origin(url):
         return None
     host = host.lower().rstrip(".")
     if not host.isascii():
-        try:
-            host = host.encode("idna").decode("ascii")
-        except (UnicodeError, ValueError):
+        try:                           # UTS46 wie Browser (faß.de -> xn--fa-hia.de, nicht fass.de wie IDNA 2003)
+            import idna
+            host = idna.encode(host, uts46=True, transitional=False).decode("ascii")
+        except (ImportError, UnicodeError, ValueError):
             return None
     if len(host) > 253 or not _CSP_HOST.fullmatch(host):
         return None

@@ -494,10 +494,11 @@ def lesezeichen_only():
     print("--- 2.5: automatische Symbole nur fuer Lesezeichen, icon_direct, CSP, Bot-Schutz 1 h")
     from saga.core import icon_origin
     cases = {"https://user:pw@Example.org:443/x?y": "https://example.org", "http://example.org:8080/": "http://example.org:8080",
-             "https://bücher.example/": "https://xn--bcher-kva.example", "http://[::1]/": None, "javascript:alert(1)": None,
+             "https://bücher.example/": "https://xn--bcher-kva.example", "https://faß.example/": "https://xn--fa-hia.example",
+             "http://[::1]/": None, "javascript:alert(1)": None,
              "https://a_b.example/": None, "ftp://example.org/": None, "https://example.org.:80/": "https://example.org:80"}
     got = {u: icon_origin(u) for u in cases}
-    ok(f"icon_origin: Schema, Host (IDN), Port, ohne Zugangsdaten, keine IPv6/Unterstriche ({got})", got == cases)
+    ok(f"icon_origin: Schema, Host (IDN nach UTS46 wie Browser), Port, ohne Zugangsdaten, keine IPv6/Unterstriche ({got})", got == cases)
     import ki as K
     adm = K.Admin("fav-adm")
     slug = "favsvc" + os.urandom(3).hex()
