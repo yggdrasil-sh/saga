@@ -37,6 +37,7 @@ from saga import backups, graph, nextcloud, pageindex, siteicons, userbackup
 from saga import gallery                       # 2.5: Vorlagengalerie (/api/gallery...)
 from saga import import_common, importer      # 2.5 (Paket 2): Importe (/api/import/...)
 from saga import people                        # 2.5 (Paket 1): Personen-Auswahl (/api/notes/{nid}/people)
+from saga import api_v1, apitok, mcp, webhooks  # 2.5 (Paket 1 E5-E7): API-Tokens, /api/v1, Webhooks, MCP-Server
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -68,6 +69,7 @@ async def lifespan(_app):
     pageindex.start()                                        # Suchtext/Verweise/Vorschaubilder abgleichen (2.2)
     backups.start()                                          # verschluesselte Backups auf WebDAV/Nextcloud (2.3, Zeitplan)
     userbackup.start()                                       # persoenliche Backups je Konto (2.3, Zeitplan)
+    webhooks.start()                                         # 2.5: Webhook-Zustellung (Ausgangskorb webhook_delivery)
     await asyncio.to_thread(import_common.on_start)          # 2.5: abgebrochene Importe markieren, alte Uploads weg
 
     async def _gc_loop():
@@ -100,6 +102,7 @@ async def lifespan(_app):
                 print(f"files-gc: {type(ex).__name__}: {ex}", flush=True)
     gc_task = asyncio.create_task(_gc_loop())
     yield
+    webhooks.stop()
     backups.stop()
     userbackup.stop()
     pageindex.stop()
@@ -182,6 +185,7 @@ app.add_middleware(SecHeaders)          # Bughunt Sicherheit V2/V3: HSTS, Permis
 # Uploads: ATTACH_MAX_MB + Formular-Rahmen (etwas mehr als die Pruefung in files.py, die mit Text antwortet).
 app.add_middleware(BodyLimit, default=REQUEST_MAX,
                    rules=[("POST", re.compile(r"/api/files"), max(REQUEST_MAX, FILE_MAX + 256 * 1024)),
+                          ("POST", re.compile(r"/api/v1/files"), max(REQUEST_MAX, FILE_MAX + 256 * 1024)),     # 2.5: API-Upload
                           ("POST", re.compile(r"/api/chats/[0-9]+/files"), max(REQUEST_MAX, FILE_MAX + 1024)),
                           ("PUT", re.compile(r"/api/chat/uploads/[A-Za-z0-9_-]+"), chat.UPLOAD_PART + 1024),     # 2.4 ohne saga-media
                           ("POST", re.compile(r"/fed/v2/notes/[0-9]+/files"), max(REQUEST_MAX, FILE_MAX + 64 * 1024)),
@@ -297,3 +301,7 @@ app.include_router(userbackup.router)        # Persoenliche Backups (2.3): /api/
 app.include_router(importer.router)          # Importe (2.5, Paket 2): /api/import/...
 app.include_router(gallery.router)           # Vorlagengalerie (2.5): /api/gallery, /api/gallery/{id}, /api/gallery/{id}/use
 app.include_router(people.router)            # Personen (2.5, Paket 1): GET /api/notes/{nid}/people (Auswahl erwaehnbar/zuweisbar)
+app.include_router(apitok.router)            # 2.5 (Paket 1 E5): /api/account/api-tokens (Sitzung, Bestaetigung)
+app.include_router(api_v1.router)            # 2.5 (Paket 1 E5): oeffentliche API /api/v1/... (nur Bearer-Token sga_)
+app.include_router(webhooks.router)          # 2.5 (Paket 1 E6): /api/v1/webhooks, /api/account/webhooks
+app.include_router(mcp.router)               # 2.5 (Paket 1 E7): MCP-Server POST /mcp (Streamable HTTP, Bearer-Token)
