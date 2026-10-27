@@ -815,9 +815,10 @@ def _agg(spec, rows, schema):
     return aggregate(spec["agg"], spec.get("y") or "", rows, schema)
 
 
-def chart(schema, rows, spec, labels=None, tz=None, today=None, untitled=None):
+def chart(schema, rows, spec, labels=None, tz=None, today=None, untitled=None, with_ids=False):
     """Diagramm aus den (schon nach der Ansicht gefilterten) Zeilen -> Ergebnis (siehe docs/APP-API.md "Diagramme").
-    Fail('bad_cfg') bei unbekannter/ungeeigneter Eigenschaft."""
+    Fail('bad_cfg') bei unbekannter/ungeeigneter Eigenschaft. with_ids: je Kategorie die Zeilen-IDs (Web: Klick auf einen
+    Balken zeigt diese Zeilen) als "ids" (Liste je cats-Eintrag)."""
     spec = clean_chart_spec(spec)
     tz = tz or timezone.utc
     untitled = untitled or t("Unbenannt")
@@ -887,6 +888,8 @@ def chart(schema, rows, spec, labels=None, tz=None, today=None, untitled=None):
     else:
         keys = sorted(keys, key=lambda k: groups[k]["sort"])
     res["cats"] = [{"key": k, "label": groups[k]["label"], "color": groups[k]["color"]} for k in keys]
+    if with_ids:
+        res["ids"] = [[r.get("id") for r in groups[k]["rows"]] for k in keys]
     if ax.kind == "date":                                    # Anfang des Eimers als Tag (Clients formatieren selbst)
         for cat in res["cats"]:
             g = groups[cat["key"]]

@@ -293,7 +293,7 @@ def _source(c, uid, dbid, acc, public_owner=None, roles=None):
     return owner, _json_load(r[1], {"props": []}), role != "owner"
 
 
-def _rows(c, uid, owner, dbid, schema, shared, view, tz):
+def _rows(c, uid, owner, dbid, schema, shared, view, tz, filters=None):
     """Zeilen der Quell-DB nach der Ansicht (dbquery.run, wie GET .../rows?view=...). Fremd: ohne archivierte Zeilen."""
     where = "uid=? AND parent_id=? AND deleted_at IS NULL AND is_template=0" + (" AND archived IS NULL" if shared else "")
     n = c.execute(f"SELECT count(*) FROM note WHERE {where}", (owner, dbid)).fetchone()[0]
@@ -305,6 +305,8 @@ def _rows(c, uid, owner, dbid, schema, shared, view, tz):
     args = {"tz": tz}
     if view:
         args["view"] = view
+    if filters is not None:                         # eingebettete Ansicht (eigene Filter im Block, Diagramm-Endpunkt)
+        args["filters"] = filters
     if dbcalc.has_calc(schema):                     # 2.5: Formeln/Rollups mit den Rechten des Betrachters
         dbcalc.fill(c, owner, schema, data, viewer=uid, tz=tz)
     try:
@@ -903,7 +905,9 @@ def habit_check(uid, nid, bid, b, params=None):
 
 
 def db_chart(uid, dbid, params):
-    """GET /api/notes/{db}/chart?view=<vid>[&tz=]: Diagramm einer Ansicht vom Typ "chart" (Recht: Lesen, wie /rows).
+    """GET /api/notes/{db}/chart?view=<vid>[&tz=][&ids=1][&chart=<spec-json>&filters=<json>]: Diagramm einer Ansicht vom Typ
+    "chart" (Recht: Lesen, wie /rows). chart/filters: Spec und Filter direkt (eingebettete Datenbank mit Block-Ansichten).
+    ids=1: zusaetzlich "ids" (Zeilen je Kategorie, fuer den Klick auf einen Balken im Web).
     -> {"chart": Ergebnis, "view": vid} oder {"chart": null, "error": code}."""
     try:
         tz, _ = _tz_param(params)
@@ -912,6 +916,18 @@ def db_chart(uid, dbid, params):
     vid = params.get("view") or ""
     if len(vid) > 64:
         return _bad("bad parameter: view")
+    spec = filters = None
+    try:                                             # eingebettete Datenbank mit eigenen Ansichten: Spec und Filter im Aufruf
+        if params.get("chart"):
+            spec = json.loads(params["chart"]) if len(params["chart"]) <= 4000 else None
+            if not isinstance(spec, dict):
+                raise ValueError
+        if params.get("filters"):
+            filters = json.loads(params["filters"]) if len(params["filters"]) <= 8000 else None
+            if not isinstance(filters, list) or len(filters) > 50:
+                raise ValueError
+    except ValueError:
+        return _bad("bad parameter: chart/filters")
     tz = tz or TZ
     today = datetime.now(tz).date()
     with _db() as c:
@@ -924,12 +940,16 @@ def db_chart(uid, dbid, params):
         except _Fail as f:
             return _bad("not found", 404) if f.code in ("gone", "bad_cfg") else _bad("not found", 404)
         view = dbquery.view_of(schema, vid)
+        if spec is not None:
+            view = {"id": vid or (view or {}).get("id"), "type": "chart", "chart": spec}
         if not view or view.get("type") != "chart" or not isinstance(view.get("chart"), dict):
             return JSONResponse({"chart": None, "error": "bad_cfg", "view": view.get("id") if view else None},
                                 headers={"Cache-Control": "no-store"})
         try:
-            rows = _rows(c, uid, owner, dbid, schema, shared, view["id"], tz)
-            res = dbcalc.chart(schema, rows, view["chart"], labels=_labels_fn(c, uid, owner), tz=tz, today=today, untitled=t("Unbenannt"))
+            rows = _rows(c, uid, owner, dbid, schema, shared, "" if spec is not None else view["id"], tz,
+                         filters if filters is not None else ([] if spec is not None else None))
+            res = dbcalc.chart(schema, rows, view["chart"], labels=_labels_fn(c, uid, owner), tz=tz, today=today, untitled=t("Unbenannt"),
+                               with_ids=params.get("ids") == "1")
             res["as_of"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             return JSONResponse({"chart": res, "view": view["id"], "error": None}, headers={"Cache-Control": "no-store"})
         except (_Fail, dbcalc.Fail) as f:

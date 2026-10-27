@@ -3250,7 +3250,7 @@
     return null;
   }
   var TITLE_PROP = { id: 'title', name: T('Name'), type: 'text' };
-  var VIEW_ICON = { table: '▦', board: '▥', list: '☰', gallery: '▣', calendar: '🗓' };
+  var VIEW_ICON = { table: '▦', board: '▥', list: '☰', gallery: '▣', calendar: '🗓', chart: '📊' };
   // Automatische Eigenschaften (nur lesbar) und Zahlen-Darstellung
   TYPES.created = [T('Erstellt am'), '⏱']; TYPES.edited = [T('Zuletzt bearbeitet'), '✎'];
   var AUTO = { created: 'created', edited: 'updated' };
@@ -4273,6 +4273,7 @@
       if (vt === 'list') { var L = renderList(); box.appendChild(L); if (L.vlist) L.vlist.update(); return; }
       if (vt === 'gallery') { box.appendChild(renderGallery()); return; }
       if (vt === 'calendar') { box.appendChild(renderCalendar()); return; }
+      if (vt === 'chart') { box.appendChild(renderChart()); return; }
       var scroll = el('div', 'db-scroll'), tb = el('table', 'db-table'), thead = el('thead'), hr = el('tr');
       var tv = curView(), vis = visibleProps(), widths = tv.widths || {}, cg = el('colgroup'), cols = {};
       tb.classList.toggle('db-wrap', !!tv.wrap);                 // 2.5: Zeilenumbruch (ganze Ansicht)
@@ -4569,7 +4570,7 @@
           var name = el('input', 'flt-val'); name.type = 'text'; name.maxLength = 40; name.value = v.name;
           liveText(name, function (val) { if (val.trim()) { v.name = val.trim(); saveSchemaSoon(); renderDb(); } });
           row(T('Name'), name);
-          row(T('Layout'), sel([['table', '▦ ' + T('Tabelle')], ['board', '▥ ' + T('Board')], ['list', '☰ ' + T('Liste')], ['gallery', '▣ ' + T('Galerie')], ['calendar', '🗓 ' + T('Kalender')]], v.type, function (x) { v.type = x; commit(); }));
+          row(T('Layout'), sel([['table', '▦ ' + T('Tabelle')], ['board', '▥ ' + T('Board')], ['list', '☰ ' + T('Liste')], ['gallery', '▣ ' + T('Galerie')], ['calendar', '🗓 ' + T('Kalender')], ['chart', '📊 ' + T('Diagramm')]], v.type, function (x) { v.type = x; commit(); }));
           var sels = DB.schema.props.filter(groupable).map(function (p) { return [p.id, (isFx(p) ? 'ƒ ' : '') + p.name]; });
           if (v.type === 'board') row(T('Spalten nach'), sel(sels.length ? sels : [['', T('– keine Auswahl-Eigenschaft –')]], v.group_by, function (x) { if (x) v.group_by = x; commit(); }));
           if (v.type === 'table' || v.type === 'list') row(T('Gruppieren'), sel([['', T('nicht gruppieren')]].concat(sels), v.group, function (x) { if (x) v.group = x; else delete v.group; commit(); }));
@@ -4859,6 +4860,7 @@
         m.appendChild(HK.menuItem(T('Liste'), function () { v.type = 'list'; saveSchema().then(renderDb); }, { icon: '☰', on: v.type === 'list' }));
         m.appendChild(HK.menuItem(T('Galerie'), function () { v.type = 'gallery'; saveSchema().then(renderDb); }, { icon: '▣', on: v.type === 'gallery' }));
         m.appendChild(HK.menuItem(T('Kalender'), function () { v.type = 'calendar'; saveSchema().then(renderDb); }, { icon: '🗓', on: v.type === 'calendar' }));
+        m.appendChild(HK.menuItem(T('Diagramm'), function () { v.type = 'chart'; saveSchema().then(renderDb); }, { icon: '📊', on: v.type === 'chart' }));
         var sels = DB.schema.props.filter(groupable);
         if (v.type === 'board' && sels.length) {
           m.appendChild(HK.menuLabel(T('Gruppieren nach')));
@@ -4875,7 +4877,7 @@
     function addView(anchor) {
       HK.openMenu(anchor, function (m) {
         m.appendChild(HK.menuLabel(T('Neue Ansicht')));
-        [['table', '▦', T('Tabelle')], ['board', '▥', T('Board')], ['list', '☰', T('Liste')], ['gallery', '▣', T('Galerie')], ['calendar', '🗓', T('Kalender')]].forEach(function (t) {
+        [['table', '▦', T('Tabelle')], ['board', '▥', T('Board')], ['list', '☰', T('Liste')], ['gallery', '▣', T('Galerie')], ['calendar', '🗓', T('Kalender')], ['chart', '📊', T('Diagramm')]].forEach(function (t) {
           m.appendChild(HK.menuItem(t[2], function () {
             var v = { id: rid(), name: t[2], type: t[0] };
             var s = DB.schema.props.find(function (p) { return p.type === 'select'; }); if (t[0] === 'board' && s) v.group_by = s.id;
@@ -5144,6 +5146,78 @@
     // Kopf einer eingebetteten Datenbank: Titel fuehrt zur vollen Datenbank-Seite
     // Kalender: Monatsraster, Eintraege am Tag ihres Datums, Ziehen aendert das Datum
     var fMonth = new Intl.DateTimeFormat(window.SAGA_LOCALE, { month: 'long', year: 'numeric' }), calDrag = null;
+    // 2.5 Paket 4: Ansicht "Diagramm" - der Server rechnet (GET /api/notes/{db}/chart, dieselbe Logik wie das Widget),
+    // Filter der Ansicht wirken davor. Klick auf Balken/Segment: diese Eintraege als Liste darunter.
+    function renderChart() {
+      var v = curView(), wrap = el('div', 'dbc'), bar = el('div', 'dbc-bar'), out = el('div', 'dbc-out'), rowsBox = el('div', 'dbc-rows');
+      if (!v.chart) v.chart = { type: 'bar', x: '', agg: 'count' };
+      var spec = v.chart;
+      if (!spec.x && spec.type !== 'number') {                // Vorschlag: erste Auswahl (sonst Datum, sonst Name)
+        var sp = DB.schema.props.find(function (p) { return p.type === 'select'; }) || DB.schema.props.find(chartIsDate);
+        spec.x = sp ? sp.id : 'title'; if (sp && sp.status) spec.status = true; saveSchemaSoon();
+      }
+      wrap.appendChild(bar); wrap.appendChild(out); wrap.appendChild(rowsBox);
+      if (!ro() && !viewsLocked()) {
+        var eb = el('button', 'btn btn-sm', '⚙ ' + T('Diagramm einrichten')); eb.type = 'button';
+        eb.addEventListener('click', function () { chartSettings(eb, spec); }); bar.appendChild(eb);
+      }
+      out.appendChild(el('div', 'wg-note', '…'));
+      var tz = ''; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { tz = ''; }
+      var q = '?ids=1' + (tz ? '&tz=' + encodeURIComponent(tz) : '') + '&view=' + encodeURIComponent(v.id || '');
+      if (DB.localViews) q += '&chart=' + encodeURIComponent(JSON.stringify(spec)) + '&filters=' + encodeURIComponent(JSON.stringify(v.filters || []));
+      var gen = renderGen;
+      api('GET', '/api/notes/' + DB.id + '/chart' + q).then(function (r) {
+        if (gen !== renderGen) return;
+        out.textContent = '';
+        if (!r || r.error || !r.chart) {
+          out.appendChild(el('div', 'wg-note', r && r.error === 'unsupported' ? T('Diagramm nur auf dem Ursprungsserver') : WG_ERR[(r && r.error) || 'bad_cfg'] || WG_ERR.bad_cfg)); return;
+        }
+        var res = r.chart;
+        out.appendChild(chartSvg(res, { title: v.name, onCat: res.ids ? function (i) {
+          rowsBox.textContent = '';
+          var ids = res.ids[i] || [], c = res.cats[i] || {}, head = el('div', 'dbc-rows-h');
+          head.appendChild(el('strong', null, chartCatLabel(res, c) + ' · ' + T('{n} {n:Eintrag|Einträge}', { n: ids.length })));
+          var x = el('button', 'btn-icon', '✕'); x.type = 'button'; x.setAttribute('aria-label', T('Schließen'));
+          x.addEventListener('click', function () { rowsBox.textContent = ''; }); head.appendChild(x); rowsBox.appendChild(head);
+          var byRow = {}; DB.rows.forEach(function (rr) { byRow[rr.id] = rr; });
+          var ul = el('ul', 'dbc-list');
+          ids.slice(0, 200).forEach(function (id) {
+            var rr = byRow[id]; if (!rr) return;
+            var li = el('li'), a = el('button', 'linkish', (rr.icon && !/^\//.test(rr.icon) ? rr.icon + ' ' : '') + (rr.title || T('Unbenannt'))); a.type = 'button';
+            a.addEventListener('click', function () { openRowUI(id); }); li.appendChild(a); ul.appendChild(li);
+          });
+          rowsBox.appendChild(ul);
+        } : null }));
+      }).catch(function (err) {
+        if (gen !== renderGen) return;
+        out.textContent = '';
+        out.appendChild(el('div', 'wg-note', err && err.status === 404 && !remoteId(DB.id) ? T('Diagramme gibt es erst mit einer neueren Server-Version') : T('Diagramm nicht geladen: {err}', { err: err.message })));
+      });
+      return wrap;
+    }
+    function chartSettings(anchor, spec) {
+      HK.openMenu(anchor, function (m) {
+        var box = el('div', 'flt-box vs');
+        function draw() {
+          box.textContent = '';
+          function sel(lbl, opts, val, fn) {
+            var l = el('label', 'vs-row'), s = el('select', 'flt-val'); l.appendChild(el('span', 'vs-lbl', lbl));
+            opts.forEach(function (o) { var e = el('option', null, o[1]); e.value = o[0]; s.appendChild(e); });
+            s.value = val == null ? '' : String(val); s.addEventListener('change', function () { fn(s.value); }); l.appendChild(s); box.appendChild(l);
+          }
+          function row(lbl, type, val, fn, attrs) {
+            var l = el('label', 'vs-row' + (type === 'checkbox' ? ' vs-check' : '')), i = el('input', type === 'checkbox' ? null : 'flt-val'); i.type = type;
+            Object.keys(attrs || {}).forEach(function (k) { i.setAttribute(k, attrs[k]); });
+            if (type === 'checkbox') { i.checked = !!val; l.appendChild(i); l.appendChild(el('span', 'vs-lbl', lbl)); }
+            else { i.value = val == null ? '' : String(val); l.appendChild(el('span', 'vs-lbl', lbl)); l.appendChild(i); }
+            i.addEventListener('change', function () { fn(type === 'checkbox' ? i.checked : i.value); }); box.appendChild(l);
+          }
+          chartSpecRows(row, sel, spec, DB.schema.props, titleName(), function (redraw) { saveSchemaSoon(); renderDb(); if (redraw) draw(); });
+        }
+        draw(); m.appendChild(box);
+      });
+    }
+
     function renderCalendar() {
       var v = curView(), wrap = el('div', 'cal'), dp = propById(v.date_by), week = v.range === 'week';
       if (!dp || !(dp.type === 'date' || AUTO[dp.type])) {
@@ -5653,24 +5727,217 @@
     return o;
   };
 
+  // --- Diagramme (2.5, Paket 4): eigenes SVG, keine Bibliothek (P4-E2). Der Server liefert fertige Reihen
+  // (saga/dbcalc.py chart, Vertrag docs/APP-API.md "Diagramme"); hier wird nur gezeichnet - dieselben Formen wie
+  // saga/chartsvg.py (veroeffentlichte Seiten). Achsenwerte wie chartsvg.nice_ticks (Vektoren tests/chart_ticks.json).
+  var CH_W = 640, CH_H = 300, CH_PL = 56, CH_PR = 16, CH_PT = 16, CH_PB = 56, CH_SN = 8;
+  function chartTicks(lo, hi, n) {
+    n = n || 5;
+    if (lo === hi) { hi = lo >= 0 ? lo + 1 : lo; lo = Math.min(0, lo); if (lo === hi) hi = lo + 1; }
+    var raw = (hi - lo) / Math.max(1, n), mag = Math.pow(10, Math.floor(Math.log10(raw))), step = 10 * mag;
+    [1, 2, 2.5, 5, 10].some(function (m) { if (m * mag >= raw - 1e-12) { step = m * mag; return true; } return false; });
+    var a = Math.floor(lo / step + 1e-9) * step, b = Math.ceil(hi / step - 1e-9) * step, out = [];
+    for (var x = a; x <= b + step / 2 && out.length < 50; x += step) out.push(Math.round(x * 1e10) / 1e10);
+    return out;
+  }
+  function chartFmt(v, fmt) { return v == null || typeof v !== 'number' || !isFinite(v) ? '–' : fmt === 'pct' ? pctText(v) : fmt === 'eur' ? fEur.format(v) : fNum.format(v); }
+  function chartCatLabel(res, c) {
+    if (res.x_kind === 'date' && c.start && c.key !== '__other__') {
+      var q = c.start.split('-'), d = new Date(+q[0], +q[1] - 1, +q[2]), b = res.bucket || 'month';
+      try {
+        if (b === 'year') return String(d.getFullYear());
+        if (b === 'quarter') return 'Q' + (Math.floor(d.getMonth() / 3) + 1) + ' ' + d.getFullYear();
+        if (b === 'month') return new Intl.DateTimeFormat(window.SAGA_LOCALE, { month: 'short', year: '2-digit' }).format(d);
+        return new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: 'numeric', month: 'short' }).format(d);
+      } catch (e) { return c.label || ''; }
+    }
+    return c.label || '';
+  }
+  // res: Ergebnis des Servers; opts: {title, onCat(i)} -> Element (div.chart mit SVG, Legende und Tabelle in <details>)
+  function chartSvg(res, opts) {
+    opts = opts || {};
+    var NS = 'http://www.w3.org/2000/svg', box = el('div', 'chart');
+    function n(tag, attrs, parent, txt) {
+      var e = document.createElementNS(NS, tag); Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+      if (txt != null) e.textContent = txt; (parent || svg).appendChild(e); return e;
+    }
+    function cls(color, i) { return color ? 'ch-c-' + color : 'ch-s' + (i % CH_SN); }
+    function tip(e, txt) { n('title', {}, e, txt); }
+    function clickable(e, i, txt) {
+      if (!opts.onCat) return;
+      e.setAttribute('tabindex', '0'); e.setAttribute('role', 'button'); e.setAttribute('aria-label', txt); e.classList.add('ch-hit');
+      e.addEventListener('click', function () { opts.onCat(i); });
+      e.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); opts.onCat(i); } });
+    }
+    if (!res || !res.type) return box;
+    var fmt = res.fmt, cats = res.cats || [], series = res.series || [];
+    if (res.type === 'number') {
+      box.appendChild(el('div', 'wg-v ch-num', chartFmt(res.total, fmt)));
+      if (typeof res.goal === 'number') box.appendChild(el('div', 'wg-sub', T('Ziel: {wert}', { wert: chartFmt(res.goal, fmt) })));
+      return box;
+    }
+    if (!cats.length || !series.length) { box.appendChild(el('div', 'wg-note', T('Keine Einträge.'))); return box; }
+    var svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 ' + CH_W + ' ' + CH_H); svg.setAttribute('class', 'ch-svg');
+    svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', opts.title || T('Diagramm')); box.appendChild(svg);
+    var labels = cats.map(function (c) { return chartCatLabel(res, c); });
+    if (res.type === 'pie' || res.type === 'donut') {
+      var vals = (series[0].values || []).map(function (v) { return typeof v === 'number' && v > 0 ? v : 0; });
+      var tot = vals.reduce(function (a, b) { return a + b; }, 0), cx = 150, cy = CH_H / 2, r = 120, ri = res.type === 'donut' ? 66 : 0, a0 = -Math.PI / 2;
+      cats.forEach(function (c, i) {
+        var v = vals[i]; if (!tot || !v) return;
+        var a1 = v >= tot ? a0 + 2 * Math.PI - 1e-4 : a0 + v / tot * 2 * Math.PI, big = a1 - a0 > Math.PI ? 1 : 0;
+        var P = function (rr, a) { return (cx + rr * Math.cos(a)).toFixed(1) + ',' + (cy + rr * Math.sin(a)).toFixed(1); };
+        var d = 'M' + P(r, a0) + ' A' + r + ',' + r + ' 0 ' + big + ' 1 ' + P(r, a1) + (ri ? ' L' + P(ri, a1) + ' A' + ri + ',' + ri + ' 0 ' + big + ' 0 ' + P(ri, a0) + 'Z' : ' L' + cx + ',' + cy + 'Z');
+        var pth = n('path', { d: d, 'class': 'ch-f ' + cls(c.color, i) });
+        var txt = labels[i] + ': ' + chartFmt(v, fmt) + ' (' + pctText(v / tot * 100) + ')';
+        tip(pth, txt); clickable(pth, i, txt);
+        a0 = a1;
+      });
+      if (ri) n('text', { 'class': 'ch-big', x: cx, y: cy + 8, 'text-anchor': 'middle' }, null, chartFmt(res.total, fmt));
+      cats.slice(0, 12).forEach(function (c, i) {
+        var y = 30 + i * 21;
+        n('rect', { 'class': 'ch-f ' + cls(c.color, i), x: 300, y: y - 10, width: 12, height: 12, rx: 2 });
+        n('text', { 'class': 'ch-t', x: 318, y: y }, null, labels[i].slice(0, 34) + ' · ' + chartFmt(vals[i], fmt));
+      });
+    } else {
+      var stack = !!res.stack, allv = [];
+      if (stack) cats.forEach(function (c, i) {
+        var pos = 0, neg = 0; series.forEach(function (s) { var v = s.values[i]; if (typeof v === 'number') { if (v >= 0) pos += v; else neg += v; } }); allv.push(pos, neg);
+      });
+      else series.forEach(function (s) { (s.values || []).forEach(function (v) { if (typeof v === 'number') allv.push(v); }); });
+      if (typeof res.goal === 'number') allv.push(res.goal);
+      var ticks = chartTicks(Math.min.apply(null, allv.concat([0])), Math.max.apply(null, allv.concat([0]))), lo = ticks[0], hi = ticks[ticks.length - 1];
+      var horiz = res.type === 'hbar', pw = CH_W - CH_PL - CH_PR, ph = CH_H - CH_PT - CH_PB;
+      var vpos = horiz ? function (v) { return CH_PL + (v - lo) / (hi - lo) * pw; } : function (v) { return CH_PT + ph - (v - lo) / (hi - lo) * ph; };
+      ticks.forEach(function (tk) {
+        var p = vpos(tk);
+        if (horiz) { n('line', { 'class': 'ch-g', x1: p, y1: CH_PT, x2: p, y2: CH_PT + ph }); n('text', { 'class': 'ch-t', x: p, y: CH_H - CH_PB + 16, 'text-anchor': 'middle' }, null, chartFmt(tk, fmt)); }
+        else { n('line', { 'class': 'ch-g', x1: CH_PL, y1: p, x2: CH_PL + pw, y2: p }); n('text', { 'class': 'ch-t', x: CH_PL - 6, y: p + 4, 'text-anchor': 'end' }, null, chartFmt(tk, fmt)); }
+      });
+      var N = cats.length, band = (horiz ? ph : pw) / N, every = Math.max(1, Math.ceil(N / (horiz ? 8 : 12)));
+      cats.forEach(function (c, i) {
+        if (i % every) return;
+        var m = (horiz ? CH_PT : CH_PL) + band * (i + 0.5), lab = labels[i].length > 14 ? labels[i].slice(0, 13) + '…' : labels[i];
+        if (horiz) n('text', { 'class': 'ch-t', x: CH_PL - 6, y: m + 4, 'text-anchor': 'end' }, null, lab);
+        else n('text', { 'class': 'ch-t', x: m, y: CH_H - CH_PB + 16, 'text-anchor': 'middle' }, null, lab);
+      });
+      if (res.type === 'bar' || res.type === 'hbar') {
+        var k = stack ? 1 : series.length, bw = band * 0.78 / k, base = vpos(0), accP = cats.map(function () { return 0; }), accN = accP.slice();
+        series.forEach(function (s, si) {
+          (s.values || []).forEach(function (v, i) {
+            if (typeof v !== 'number') return;
+            var p0, p1, off;
+            if (stack) { var a = v >= 0 ? accP[i] : accN[i], b = a + v; if (v >= 0) accP[i] = b; else accN[i] = b; p0 = vpos(a); p1 = vpos(b); off = band * 0.11; }
+            else { p0 = base; p1 = vpos(v); off = band * 0.11 + si * bw; }
+            var st = (horiz ? CH_PT : CH_PL) + band * i + off, col = series.length > 1 ? cls(s.color, si) : cls(cats[i].color, 0);
+            var rc = horiz ? n('rect', { 'class': 'ch-f ' + col, x: Math.min(p0, p1).toFixed(1), y: st.toFixed(1), width: Math.abs(p1 - p0).toFixed(1), height: bw.toFixed(1), rx: 2 })
+              : n('rect', { 'class': 'ch-f ' + col, x: st.toFixed(1), y: Math.min(p0, p1).toFixed(1), width: bw.toFixed(1), height: Math.abs(p1 - p0).toFixed(1), rx: 2 });
+            var txt = labels[i] + (s.label ? ' · ' + s.label : '') + ': ' + chartFmt(v, fmt);
+            tip(rc, txt); clickable(rc, i, txt);
+          });
+        });
+      } else {
+        series.forEach(function (s, si) {
+          var pts = []; (s.values || []).forEach(function (v, i) { if (typeof v === 'number') pts.push([CH_PL + band * (i + 0.5), vpos(v), i, v]); });
+          if (!pts.length) return;
+          var col = cls(s.color, si), d = pts.map(function (q, j) { return (j ? 'L' : 'M') + q[0].toFixed(1) + ',' + q[1].toFixed(1); }).join(' ');
+          if (res.type === 'area') { var b0 = vpos(Math.max(lo, 0)).toFixed(1); n('path', { 'class': 'ch-a ' + col, d: d + ' L' + pts[pts.length - 1][0].toFixed(1) + ',' + b0 + ' L' + pts[0][0].toFixed(1) + ',' + b0 + 'Z' }); }
+          n('path', { 'class': 'ch-l ' + col, d: d });
+          if (pts.length <= 40) pts.forEach(function (q) {
+            var cc = n('circle', { 'class': 'ch-f ' + col, cx: q[0].toFixed(1), cy: q[1].toFixed(1), r: 3.5 });
+            var txt = labels[q[2]] + (s.label ? ' · ' + s.label : '') + ': ' + chartFmt(q[3], fmt); tip(cc, txt); clickable(cc, q[2], txt);
+          });
+        });
+      }
+      if (typeof res.goal === 'number') {
+        var g = vpos(res.goal);
+        n('line', horiz ? { 'class': 'ch-goal', x1: g, y1: CH_PT, x2: g, y2: CH_PT + ph } : { 'class': 'ch-goal', x1: CH_PL, y1: g, x2: CH_PL + pw, y2: g });
+      }
+      if (series.length > 1) {
+        var lg = el('div', 'ch-legend');
+        series.forEach(function (s, si) { var it = el('span', 'ch-li'); it.appendChild(el('i', 'ch-sw ' + cls(s.color, si))); it.appendChild(document.createTextNode(s.label || '')); lg.appendChild(it); });
+        box.appendChild(lg);
+      }
+    }
+    if (res.other) box.appendChild(el('div', 'wg-sub', T('„Andere“ fasst {n} weitere zusammen.', { n: res.other })));
+    if (res.truncated) box.appendChild(el('div', 'wg-sub', T('Gekürzt – nur die ersten Werte werden gezeigt.')));
+    var det = el('details', 'ch-tab'), sm = el('summary', null, T('Werte als Tabelle')), tb = el('table', 'db-table'), hr = el('tr');
+    det.appendChild(sm); hr.appendChild(el('th', null, ''));
+    series.forEach(function (s) { hr.appendChild(el('th', null, series.length > 1 ? (s.label || '') : T('Wert'))); });
+    var th = el('thead'); th.appendChild(hr); tb.appendChild(th); var tbd = el('tbody'); tb.appendChild(tbd);
+    cats.forEach(function (c, i) { var tr = el('tr'); tr.appendChild(el('th', null, labels[i])); series.forEach(function (s) { tr.appendChild(el('td', null, chartFmt(s.values[i], fmt))); }); tbd.appendChild(tr); });
+    det.appendChild(tb); box.appendChild(det);
+    return box;
+  }
+  // Einstellungen eines Diagramms (Ansicht und Widget teilen sie): fill(rowFn, spec, props, commit)
+  var CH_TYPES = [['bar', T('Balken')], ['hbar', T('Balken quer')], ['line', T('Linie')], ['area', T('Fläche')], ['pie', T('Kreis')], ['donut', T('Ring')], ['number', T('Zahl')]];
+  var CH_AGGS = [['count', T('Anzahl')], ['sum', T('Summe')], ['avg', T('Durchschnitt')], ['min', T('Min')], ['max', T('Max')], ['pct_checked', T('% angehakt')]];
+  function chartAxisOk(p) {
+    if (!p) return false;
+    var t = p.type, rt = (t === 'formula' || t === 'rollup') ? p.rtype : null;
+    return ['select', 'multi_select', 'date', 'created', 'edited', 'checkbox', 'number', 'calc', 'text', 'url', 'relation'].indexOf(t) >= 0
+      || ['number', 'text', 'checkbox', 'date', 'list'].indexOf(rt) >= 0;
+  }
+  function chartIsDate(p) { return !!p && (p.type === 'date' || p.type === 'created' || p.type === 'edited' || ((p.type === 'formula' || p.type === 'rollup') && p.rtype === 'date')); }
+  function chartSpecRows(row, sel, spec, props, titleLabel, commit) {
+    function set(k, v) { if (v === '' || v == null || v === false) delete spec[k]; else spec[k] = v; commit(); }
+    var byId = function (id) { return props.find(function (p) { return p.id === id; }); };
+    sel(T('Darstellung'), CH_TYPES, spec.type || 'bar', function (v) { spec.type = v; if (v === 'pie' || v === 'donut' || v === 'number') { delete spec.series; delete spec.stack; } if (v !== 'line' && v !== 'area') delete spec.cumulative; commit(true); });
+    if (spec.type !== 'number') {
+      var axes = [['title', titleLabel]].concat(props.filter(chartAxisOk).map(function (p) { return [p.id, p.name || p.id]; }));
+      sel(T('Gruppieren nach'), [['', T('– wählen –')]].concat(axes), spec.x || '', function (v) { spec.x = v; delete spec.bucket; delete spec.status; commit(true); });
+      var xp = byId(spec.x);
+      if (chartIsDate(xp)) sel(T('Zeitraum je Wert'), [['day', T('Tag')], ['week', T('Woche')], ['month', T('Monat')], ['quarter', T('Quartal')], ['year', T('Jahr')]], spec.bucket || 'month', function (v) { set('bucket', v); });
+      if (xp && xp.type === 'select' && xp.status) row(T('Nach Status-Gruppe'), 'checkbox', !!spec.status, function (v) { set('status', v); });
+    }
+    sel(T('Rechenart'), CH_AGGS, spec.agg || 'count', function (v) { spec.agg = v; delete spec.y; if (v === 'pct_checked') spec.fmt = 'pct'; commit(true); });
+    if (spec.agg && spec.agg !== 'count') {
+      var ys = props.filter(function (p) { return spec.agg === 'pct_checked' ? p.type === 'checkbox' : (p.type === 'number' || p.type === 'calc' || ((p.type === 'formula' || p.type === 'rollup') && p.rtype === 'number')); });
+      sel(T('Eigenschaft'), [['', T('– wählen –')]].concat(ys.map(function (p) { return [p.id, p.name || p.id]; })), spec.y || '', function (v) { set('y', v); });
+    }
+    if (['bar', 'hbar', 'line', 'area'].indexOf(spec.type || 'bar') >= 0) {
+      var ss = props.filter(function (p) { return chartAxisOk(p) && p.id !== spec.x && !chartIsDate(p); }).map(function (p) { return [p.id, p.name || p.id]; });
+      sel(T('Reihen nach'), [['', T('keine')]].concat(ss), spec.series || '', function (v) { if (!v) delete spec.stack; set('series', v); });
+      if (spec.series && spec.type !== 'line') row(T('Gestapelt'), 'checkbox', !!spec.stack, function (v) { set('stack', v); });
+      if (spec.type === 'line' || spec.type === 'area') row(T('Aufsummiert'), 'checkbox', !!spec.cumulative, function (v) { set('cumulative', v); });
+    }
+    if (spec.type !== 'number') {
+      sel(T('Sortierung'), [['x', T('Natürlich')], ['y_desc', T('Größter Wert zuerst')], ['y_asc', T('Kleinster Wert zuerst')]], spec.sort || 'x', function (v) { set('sort', v === 'x' ? '' : v); });
+      row(T('Höchstens Gruppen'), 'number', spec.limit || '', function (v) { set('limit', +v >= 3 ? Math.min(50, Math.round(+v)) : ''); }, { min: '3', max: '50', placeholder: '20' });
+      row(T('Leere Werte zeigen'), 'checkbox', spec.empty === 'show', function (v) { set('empty', v ? 'show' : ''); });
+    }
+    if (spec.agg !== 'pct_checked') sel(T('Format'), [['num', T('Zahl')], ['pct', T('Prozent')], ['eur', T('Euro')]], spec.fmt || 'num', function (v) { set('fmt', v === 'num' ? '' : v); });
+    row(T('Ziellinie (optional)'), 'number', spec.goal == null ? '' : spec.goal, function (v) { set('goal', v !== '' && isFinite(+v) ? +v : ''); }, { step: 'any' });
+  }
+
   // --- Block "Widget" (2.5, Etappe 1): Uhr, Countdown, Fortschritt, Kennzahl, Zitat ---------------------------------
   // Vertrag: docs/APP-API.md "Widgets in Seiten". Uhr und Countdown rechnet der Browser; Fortschritt aus einer Datenbank,
   // Kennzahl und Zitat rechnet der Server mit den Rechten des Betrachters (GET /api/notes/{id}/widgets, alle 60 s,
   // solange die Seite sichtbar ist). Einrichten: Klick auf das Widget (Bearbeiten/Eigentuemer) -> Panel mit Vorschau.
-  var WG_KINDS = ['clock', 'countdown', 'progress', 'metric', 'quote'];
-  var WG_NAMES = { clock: T('Uhr'), countdown: T('Countdown'), progress: T('Fortschritt'), metric: T('Kennzahl'), quote: T('Zitat') };
+  // 2.5 Paket 4 (Etappe 2): Wetter, Gewohnheiten, Anstehendes, Diagramm (Server rechnet, W.data; docs/APP-API.md)
+  var WG_KINDS = ['clock', 'countdown', 'progress', 'metric', 'quote', 'weather', 'habit', 'upcoming', 'chart'];
+  var WG_KINDS2 = ['weather', 'habit', 'upcoming', 'chart'];
+  var WG_NAMES = { clock: T('Uhr'), countdown: T('Countdown'), progress: T('Fortschritt'), metric: T('Kennzahl'), quote: T('Zitat'),
+    weather: T('Wetter'), habit: T('Gewohnheiten'), upcoming: T('Anstehendes'), chart: T('Diagramm') };
   var WG_IC = { clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', countdown: '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9"/>',
     progress: '<rect x="3" y="9" width="18" height="6" rx="3"/><path d="M6 12h7"/>', metric: '<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/>',
-    quote: '<path d="M7 7h4v4c0 3-2 5-4 5M14 7h4v4c0 3-2 5-4 5"/>' };
+    quote: '<path d="M7 7h4v4c0 3-2 5-4 5M14 7h4v4c0 3-2 5-4 5"/>',
+    weather: '<circle cx="9" cy="9" r="3.5"/><path d="M9 2v1.5M2 9h1.5M4 4l1 1M14 4l-1 1M8 20h9a3.5 3.5 0 0 0 0-7 5 5 0 0 0-9.6 1.6A2.8 2.8 0 0 0 8 20z"/>',
+    habit: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8.5 14.5l2 2 4-4"/>',
+    upcoming: '<path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="17" r="3"/><path d="M18 15.5V17l1 .8"/>',
+    chart: '<path d="M4 20V10M10 20V4M16 20v-7M2 20h20"/>' };
   var WG_ERR = { no_access: T('Kein Zugriff auf die Datenquelle'), gone: T('Die Datenquelle gibt es nicht mehr'),
-    bad_cfg: T('Widget noch nicht fertig eingerichtet'), too_big: T('Zu viele Einträge für ein Widget') };
+    bad_cfg: T('Widget noch nicht fertig eingerichtet'), too_big: T('Zu viele Einträge für ein Widget'),
+    disabled: T('Wetter ist auf diesem Server ausgeschaltet'), unavailable: T('Wetterdaten gerade nicht erreichbar') };
   var WG = new Set();                                    // sichtbare Widget-Bloecke (Werte nachladen)
   function wgIcon(k) { return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (WG_IC[k] || WG_IC.metric) + '</svg>'; }
-  function wgServer(d) { var c = (d && d.cfg) || {}; return !!d && (d.kind === 'metric' || d.kind === 'quote' || (d.kind === 'progress' && (c.src === 'db' || c.src === 'tasks'))); }
+  function wgServer(d) { var c = (d && d.cfg) || {}; return !!d && (d.kind === 'metric' || d.kind === 'quote' || WG_KINDS2.indexOf(d.kind) >= 0 || (d.kind === 'progress' && (c.src === 'db' || c.src === 'tasks'))); }
   function wgDefaults(kind) {
     return { clock: { tz: '', h24: true, sec: false, analog: false }, countdown: { date: '', time: '', dir: 'until', unit: 'days' },
       progress: { src: 'fixed', value: 0, max: 100 }, metric: { db: null, view: '', agg: 'count', prop: '', fmt: 'num' },
-      quote: { src: 'fixed', items: [], pick: 'daily' } }[kind] || {};
+      quote: { src: 'fixed', items: [], pick: 'daily' }, weather: { place: '', lat: null, lon: null, units: 'metric', days: 5 },
+      habit: { db: null, view: '', date: '', habits: [], range: 7 }, upcoming: { days: 7, cal: true, tasks: true, overdue: true, dbs: [], limit: 10 },
+      chart: { db: null, view: '', type: 'bar', x: '', agg: 'count' } }[kind] || {};
   }
   function wgFmt(v, fmt) {
     if (v == null || typeof v !== 'number' || !isFinite(v)) return '–';
@@ -5787,7 +6054,9 @@
     var w = d.kind === 'progress' && cfg.src !== 'db' && cfg.src !== 'tasks' ? { value: +cfg.value || 0, max: +cfg.max || 100 } : this.value();
     if (wgServer(d) && remoteId(S.cur && S.cur.id) && S.wUnsupported) { body.appendChild(el('div', 'wg-note', T('Widget nur auf dem Ursprungsserver'))); return; }
     if (wgServer(d) && S.wMissing) { body.appendChild(el('div', 'wg-note', T('Werte gibt es erst mit einer neueren Server-Version'))); return; }
+    if (WG_KINDS2.indexOf(d.kind) >= 0 && remoteId(S.cur && S.cur.id) && S.wUnsupported2) { body.appendChild(el('div', 'wg-note', T('Widget nur auf dem Ursprungsserver'))); return; }
     if (w && w.error) { body.appendChild(el('div', 'wg-note wg-err', WG_ERR[w.error] || WG_ERR.bad_cfg)); return; }
+    if (WG_KINDS2.indexOf(d.kind) >= 0) { this.draw2(body, w); return; }
     if (d.kind === 'progress') {
       // Fix27 #10: Zahl wie gerechnet (auch ueber 100 %), Balken hoechstens voll
       var pv = w ? w.value : null, mx = w ? w.max : null, raw = typeof pv === 'number' && typeof mx === 'number' && mx > 0 ? Math.max(0, pv / mx * 100) : 0, pct = Math.min(100, raw);
@@ -5811,6 +6080,102 @@
     body.appendChild(el('blockquote', 'wg-q', txt || (w ? T('Noch keine Zitate') : '…')));
   };
   var fCalcDay2 = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  // 2.5 Paket 4: Anzeige der Etappe-2-Arten (Werte immer vom Server: W.data)
+  var WMO = [[0, '☀️', T('Klar')], [1, '🌤️', T('Überwiegend klar')], [2, '⛅', T('Teils bewölkt')], [3, '☁️', T('Bedeckt')], [45, '🌫️', T('Nebel')],
+    [51, '🌦️', T('Nieselregen')], [61, '🌧️', T('Regen')], [66, '🌧️', T('Gefrierender Regen')], [71, '🌨️', T('Schnee')], [77, '🌨️', T('Schneegriesel')],
+    [80, '🌦️', T('Regenschauer')], [85, '🌨️', T('Schneeschauer')], [95, '⛈️', T('Gewitter')]];
+  function wmo(code) { var r = ['·', '']; WMO.forEach(function (x) { if (typeof code === 'number' && code >= x[0]) r = [x[1], x[2]]; }); return r; }
+  var fWd = new Intl.DateTimeFormat(window.SAGA_LOCALE, { weekday: 'short' }), fDm = new Intl.DateTimeFormat(window.SAGA_LOCALE, { day: 'numeric', month: 'short' });
+  function dayOf(s) { var q = String(s).slice(0, 10).split('-'); return new Date(+q[0], +q[1] - 1, +q[2]); }
+  WidgetTool.prototype.draw2 = function (body, w) {
+    var self = this, d = this.data, data = w && w.data;
+    if (!w) { body.appendChild(el('div', 'wg-note', '…')); return; }
+    if (!data) { body.appendChild(el('div', 'wg-note', T('Noch keine Werte'))); return; }
+    if (d.kind === 'weather') {
+      var u = data.units === 'imperial' ? '°F' : '°C', now = data.now || {}, top = el('div', 'wx-now'), ic = wmo(now.code);
+      var sy = el('span', 'wx-ic', ic[0]); sy.setAttribute('role', 'img'); sy.setAttribute('aria-label', ic[1]); top.appendChild(sy);
+      top.appendChild(el('span', 'wg-v', (typeof now.t === 'number' ? fNum.format(Math.round(now.t)) : '–') + ' ' + u));
+      var meta = el('span', 'wg-sub', (data.place ? data.place + ' · ' : '') + ic[1] + (typeof now.wind === 'number' ? ' · ' + T('Wind {v} {u}', { v: fNum.format(Math.round(now.wind)), u: data.units === 'imperial' ? 'mph' : 'km/h' }) : ''));
+      top.appendChild(meta); body.appendChild(top);
+      var days = (data.days || []).slice(1);
+      if (days.length) {
+        var row = el('div', 'wx-days');
+        days.forEach(function (x) {
+          var c = el('div', 'wx-day'), wi = wmo(x.code), dd = dayOf(x.d);
+          c.appendChild(el('span', 'wx-wd', fWd.format(dd)));
+          var i2 = el('span', 'wx-ic2', wi[0]); i2.setAttribute('role', 'img'); i2.setAttribute('aria-label', wi[1]); c.appendChild(i2);
+          c.appendChild(el('span', 'wx-mm', (typeof x.max === 'number' ? Math.round(x.max) : '–') + '° / ' + (typeof x.min === 'number' ? Math.round(x.min) : '–') + '°'));
+          if (typeof x.rain === 'number' && x.rain > 0) c.appendChild(el('span', 'wx-rain', '💧' + x.rain + ' %'));
+          row.appendChild(c);
+        });
+        body.appendChild(row);
+      }
+      var src = el('div', 'wx-src', T('Wetterdaten: Open-Meteo.com') + (data.stale ? ' · ' + T('Stand von vorhin') : ''));
+      body.appendChild(src);
+      return;
+    }
+    if (d.kind === 'habit') {
+      var tb = el('div', 'hb-grid'), hd = el('div', 'hb-row hb-head');
+      tb.style.setProperty('--hbn', String((data.days || []).length || 7));
+      hd.appendChild(el('span', 'hb-name', ''));
+      (data.days || []).forEach(function (x) { var dd = dayOf(x); hd.appendChild(el('span', 'hb-d', data.days.length > 14 ? (dd.getDate() % 5 === 0 ? String(dd.getDate()) : '') : fWd.format(dd).slice(0, 2))); });
+      hd.appendChild(el('span', 'hb-st', '')); tb.appendChild(hd);
+      (data.habits || []).forEach(function (h) {
+        var r = el('div', 'hb-row'); r.appendChild(el('span', 'hb-name', h.name || ''));
+        (h.done || []).forEach(function (on, i) {
+          var day = data.days[i], b = el(data.can_check ? 'button' : 'span', 'hb-c' + (on ? ' hb-on' : '') + (day === data.today ? ' hb-today' : ''));
+          b.setAttribute('aria-label', (h.name || '') + ', ' + fDm.format(dayOf(day)) + ': ' + (on ? T('erledigt') : T('offen')));
+          if (data.can_check) {
+            b.type = 'button'; b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            b.addEventListener('click', function (e) { e.stopPropagation(); self.habit(h.pid, day, !on, b); });
+          }
+          r.appendChild(b);
+        });
+        var st = el('span', 'hb-st'); st.appendChild(el('b', null, h.pct + ' %')); st.appendChild(el('small', null, ' 🔥' + h.streak));
+        st.title = T('Erfolgsquote {pct} %, {n} {n:Tag|Tage} in Folge', { pct: h.pct, n: h.streak }) + (data.goal ? ' · ' + T('Ziel: {n} pro Woche, diese Woche {k}', { n: data.goal, k: h.week }) : '');
+        r.appendChild(st); tb.appendChild(r);
+      });
+      body.appendChild(tb);
+      if (!data.can_check) body.appendChild(el('div', 'wg-sub', T('Nur lesen – zum Abhaken braucht es „Bearbeiten“ an der Datenbank.')));
+      return;
+    }
+    if (d.kind === 'upcoming') {
+      var items = data.items || [];
+      if (!items.length) body.appendChild(el('div', 'wg-note', T('Nichts in den nächsten {n} {n:Tag|Tagen}', { n: data.days || 7 })));
+      var last = null, list = el('div', 'up-list'), t0 = dayOf(data.from || ymd(new Date()));
+      items.forEach(function (x) {
+        var dd = dayOf(x.start), key = x.overdue ? 'over' : ymd(dd);
+        if (key !== last) {
+          last = key; var diff = Math.round((dd - t0) / 86400000);
+          list.appendChild(el('div', 'up-day', x.overdue ? T('Überfällig') : diff === 0 ? T('Heute') : diff === 1 ? T('Morgen') : fWd.format(dd) + ', ' + fDm.format(dd)));
+        }
+        var it = el(x.note ? 'button' : 'div', 'up-it up-' + x.k + (x.overdue ? ' up-over' : ''));
+        if (x.note) it.type = 'button';
+        var dot = el('i', 'up-dot'); if (x.color) dot.style.background = x.color; it.appendChild(dot);
+        var tm = x.allday ? (x.k === 'event' ? T('ganztägig') : '') : String(x.start).slice(11, 16);
+        if (tm) it.appendChild(el('span', 'up-tm', tm));
+        it.appendChild(el('span', 'up-ti', (x.k === 'task' ? '☐ ' : '') + (x.title || T('Unbenannt'))));
+        if (x.cal) it.appendChild(el('span', 'up-cal', x.cal));
+        if (x.note) it.addEventListener('click', function (e) { e.stopPropagation(); location.hash = '#' + x.note; });
+        list.appendChild(it);
+      });
+      body.appendChild(list);
+      if (data.more) body.appendChild(el('div', 'wg-sub', T('und {n} weitere', { n: data.more })));
+      if (data.errors) body.appendChild(el('div', 'wg-sub wg-err', T('{n} {n:Quelle|Quellen} nicht erreichbar', { n: data.errors })));
+      return;
+    }
+    // Diagramm
+    body.appendChild(chartSvg(data, { title: d.title || T('Diagramm') }));
+  };
+  WidgetTool.prototype.habit = function (pid, day, on, btn) {
+    var self = this, id = S.cur && S.cur.id, tz = '';
+    if (!id || !this.block || !this.block.id) return;
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { tz = ''; }
+    btn.disabled = true; btn.classList.toggle('hb-on', on);
+    api('POST', '/api/notes/' + id + '/widgets/' + encodeURIComponent(this.block.id) + '/habit' + (tz ? '?tz=' + encodeURIComponent(tz) : ''), { pid: pid, day: day, on: on })
+      .then(function (r) { if (r && r.widget) { S.wvals = S.wvals || {}; S.wvals[self.block.id] = r.widget; self.draw(); } })
+      .catch(function (err) { btn.disabled = false; btn.classList.toggle('hb-on', !on); HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
+  };
   // Einrichten: Panel unter dem Widget, jede Aenderung zeichnet neu (Vorschau ueber den Server, wo er rechnet)
   WidgetTool.prototype.openPanel = function () {
     var self = this, d = this.data;
@@ -5887,6 +6252,59 @@
       sel(T('Einheit'), [['days', T('Tage')], ['auto', T('Automatisch (unter einem Tag Std./Min.)')]], cfg.unit, function (v) { set('unit', v); });
       return;
     }
+    if (k === 'weather') {                              // 2.5 Paket 4: Ort ueber die Ortssuche des Servers (nie Open-Meteo direkt)
+      var qi = el('input', 'flt-val'); qi.type = 'search'; qi.placeholder = T('Ort suchen …'); qi.value = cfg.place || ''; qi.maxLength = 80;
+      var hits = el('div', 'wx-hits'); hits.setAttribute('role', 'listbox');
+      var go = function () {
+        var q = qi.value.trim(); if (q.length < 2) return;
+        hits.textContent = '…';
+        api('GET', '/api/widgets/geocode?q=' + encodeURIComponent(q)).then(function (r) {
+          hits.textContent = '';
+          (r.results || []).forEach(function (x) {
+            var b = el('button', 'menu-item', x.name + (x.admin && x.admin !== x.name ? ', ' + x.admin : '') + (x.country ? ' (' + x.country + ')' : '')); b.type = 'button';
+            b.addEventListener('click', function () { cfg.place = x.name; cfg.lat = x.lat; cfg.lon = x.lon; qi.value = x.name; hits.textContent = ''; self.changed(); self.fill(); self.update(); });
+            hits.appendChild(b);
+          });
+          if (!(r.results || []).length) hits.textContent = T('Kein Ort gefunden');
+        }).catch(function (err) {
+          hits.textContent = err && err.status === 409 ? WG_ERR.disabled : err && err.status === 429 ? T('Zu viele Anfragen – bitte kurz warten.') : T('Ortssuche nicht erreichbar');
+        });
+      };
+      qi.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+      var sb = el('button', 'btn btn-sm', T('Suchen')); sb.type = 'button'; sb.addEventListener('click', go);
+      var wq = el('span', 'wx-q'); wq.appendChild(qi); wq.appendChild(sb);
+      row(T('Ort'), wq); p.insertBefore(hits, at);
+      inp(T('Breite'), 'number', cfg.lat, function (v) { cfg.lat = v === '' ? null : Math.max(-90, Math.min(90, +v)); self.changed(); self.update(); }, { step: '0.01', min: '-90', max: '90' });
+      inp(T('Länge'), 'number', cfg.lon, function (v) { cfg.lon = v === '' ? null : Math.max(-180, Math.min(180, +v)); self.changed(); self.update(); }, { step: '0.01', min: '-180', max: '180' });
+      sel(T('Einheiten'), [['metric', '°C, km/h'], ['imperial', '°F, mph']], cfg.units, function (v) { set('units', v); });
+      sel(T('Tage'), [0, 1, 2, 3, 4, 5, 6, 7].map(function (n) { return [n, n ? T('Heute + {n}', { n: n }) : T('Nur heute')]; }), cfg.days == null ? 5 : cfg.days, function (v) { set('days', +v); });
+      p.insertBefore(el('div', 'wg-row wg-note', T('Die Daten holt der Saga-Server bei Open-Meteo (Koordinaten auf etwa 1 km gerundet).')), at);
+      return;
+    }
+    if (k === 'upcoming') {
+      sel(T('Zeitraum'), [1, 3, 7, 14].map(function (n) { return [n, T('{n} {n:Tag|Tage}', { n: n })]; }), cfg.days || 7, function (v) { set('days', +v); });
+      inp(T('Termine aus meinen Kalendern'), 'checkbox', cfg.cal !== false, function (v) { set('cal', v); });
+      inp(T('Meine Saga-Aufgaben'), 'checkbox', cfg.tasks !== false, function (v) { set('tasks', v); });
+      inp(T('Überfälliges zeigen'), 'checkbox', cfg.overdue !== false, function (v) { set('overdue', v); });
+      sel(T('Höchstens'), [5, 10, 15, 20, 30].map(function (n) { return [n, String(n)]; }), cfg.limit || 10, function (v) { set('limit', +v); });
+      if (!(S.cur && remoteId(S.cur.id))) {
+        var udbs = (S.pages || []).concat(S.shared || []).filter(function (x) { return x.kind === 'database' && !remoteId(x.id) && !x.archived; });
+        (cfg.dbs || []).forEach(function (src, i) {
+          var sc0 = self.schemas[src.db];
+          if (!sc0) { self.schemas[src.db] = 'load'; api('GET', '/api/notes/' + src.db + '/rows?limit=1').then(function (r) { self.schemas[src.db] = r.schema || { props: [] }; if (self.panel) self.fill(); }).catch(function () { self.schemas[src.db] = { props: [] }; }); }
+          var dname = (udbs.find(function (x) { return x.id === src.db; }) || {}).title || T('Datenbank ohne Zugriff');
+          var dps = sc0 && sc0 !== 'load' ? (sc0.props || []).filter(function (x) { return x.type === 'date' || x.type === 'created' || x.type === 'edited'; }) : [];
+          sel('🗃️ ' + dname, [['', T('– Datum wählen –')]].concat(dps.map(function (x) { return [x.id, x.name]; })).concat([['-', '✕ ' + T('Entfernen')]]), src.date, function (v) {
+            if (v === '-') cfg.dbs.splice(i, 1); else src.date = v; self.changed(); self.fill(); self.update();
+          });
+        });
+        if ((cfg.dbs || []).length < 5) sel(T('Datenbank hinzufügen'), [['', T('– wählen –')]].concat(udbs.map(function (x) { return [x.id, (ti(x.icon) || '🗃️') + ' ' + label(x)]; })), '', function (v) {
+          if (!v) return; cfg.dbs = (cfg.dbs || []).concat([{ db: +v, view: '', date: '' }]); self.changed(); self.fill();
+        });
+      }
+      p.insertBefore(el('div', 'wg-row wg-note', T('Jede Person sieht ihre eigenen Termine und Aufgaben – auch auf geteilten Seiten. Datenbanken nur mit eigenen Rechten.')), at);
+      return;
+    }
     if (k === 'progress' || k === 'quote') {
       sel(T('Quelle'), [['fixed', k === 'quote' ? T('Eigene Texte') : T('Feste Zahlen')], ['db', T('Datenbank')]].concat(k === 'progress' ? [['tasks', T('Saga-Aufgaben')]] : []), cfg.src, function (v) {
         d.cfg = v === 'tasks' ? {} : Object.assign(v === 'db' ? { src: 'db', db: null, view: '', prop: '' } : wgDefaults(k), k === 'quote' ? { pick: cfg.pick || 'daily' } : {}, v === 'db' && k === 'progress' ? { mode: 'checked' } : {});
@@ -5920,7 +6338,10 @@
     if (S.cur && remoteId(S.cur.id)) { p.insertBefore(el('div', 'wg-row wg-note', T('Datenquelle nur auf dem Ursprungsserver einstellbar')), at); return; }
     var dbs = (S.pages || []).concat(S.shared || []).filter(function (x) { return x.kind === 'database' && !remoteId(x.id) && !x.archived; });
     var dsel = sel(T('Datenbank'), [['', dbs.length ? T('– wählen –') : T('noch keine Datenbank')]].concat(dbs.map(function (x) { return [x.id, (ti(x.icon) || '🗃️') + ' ' + label(x)]; })),
-      cfg.db, function (v) { cfg.db = v ? +v : null; cfg.view = ''; cfg.prop = ''; self.changed(); self.fill(); self.update(); });
+      cfg.db, function (v) {
+        cfg.db = v ? +v : null; cfg.view = ''; cfg.prop = '';
+        if (k === 'habit') { cfg.date = ''; cfg.habits = []; } if (k === 'chart') { cfg.x = ''; delete cfg.y; delete cfg.series; delete cfg.bucket; delete cfg.status; }
+        self.changed(); self.fill(); self.update(); });
     if (cfg.db && !dbs.some(function (x) { return x.id === cfg.db; })) {                   // gespeicherte Quelle, die ich nicht sehe: nie ihren Namen
       var o0 = el('option', null, T('Datenbank ohne Zugriff')); o0.value = String(cfg.db); o0.selected = true; dsel.appendChild(o0);
     }
@@ -5935,6 +6356,31 @@
     if (sc === 'load') return;
     var props = Array.isArray(sc.props) ? sc.props : [], views = Array.isArray(sc.views) ? sc.views : [];
     sel(T('Ansicht'), [['', T('Erste Ansicht')]].concat(views.map(function (v) { return [v.id, v.name || T('Ansicht')]; })), cfg.view, function (v) { set('view', v); });
+    if (k === 'habit') {
+      var dates = props.filter(function (x) { return x.type === 'date'; }), cbs = props.filter(function (x) { return x.type === 'checkbox'; });
+      sel(T('Datum aus'), [['', T('– wählen –')]].concat(dates.map(function (x) { return [x.id, x.name]; })), cfg.date, function (v) { set('date', v); });
+      var hl = el('div', 'wg-habits');
+      cbs.forEach(function (x) {
+        var l = el('label', 'vs-check'), c = el('input'); c.type = 'checkbox'; c.checked = (cfg.habits || []).indexOf(x.id) >= 0;
+        c.disabled = !c.checked && (cfg.habits || []).length >= 6;
+        c.addEventListener('change', function () {
+          var hs = (cfg.habits || []).filter(function (y) { return y !== x.id; }); if (c.checked) hs.push(x.id);
+          cfg.habits = hs.slice(0, 6); self.changed(); self.fill(); self.update();
+        });
+        l.appendChild(c); l.appendChild(el('span', null, x.name)); hl.appendChild(l);
+      });
+      if (!cbs.length) hl.appendChild(el('span', 'wg-note', T('Die Datenbank braucht Häkchen-Eigenschaften (eine je Gewohnheit).')));
+      row(T('Gewohnheiten'), hl);
+      sel(T('Zeitraum'), [[7, T('7 Tage')], [14, T('14 Tage')], [30, T('30 Tage')]], cfg.range || 7, function (v) { set('range', +v); });
+      sel(T('Ziel je Woche'), [['', T('kein Ziel')]].concat([1, 2, 3, 4, 5, 6, 7].map(function (n) { return [n, T('{n} {n:Tag|Tage}', { n: n })]; })), cfg.goal || '', function (v) { if (v) cfg.goal = +v; else delete cfg.goal; self.changed(); self.update(); });
+      return;
+    }
+    if (k === 'chart') {
+      var crow = function (lbl, type, val, fn, attrs) { return inp(lbl, type, val, fn, attrs); };
+      var csel = function (lbl, opts, val, fn) { return sel(lbl, opts, val, fn); };
+      chartSpecRows(crow, csel, cfg, props, sc.title_name || T('Name'), function (redraw) { self.changed(); if (redraw) self.fill(); self.update(); });
+      return;
+    }
     var byType = function (types) { return props.filter(function (x) { return types.indexOf(x.type) >= 0; }).map(function (x) { return [x.id, x.name || x.id]; }); };
     if (k === 'progress') {
       sel(T('Fortschritt aus'), [['checked', T('Anteil angehakt')], ['sum', T('Summe einer Zahl bis zum Ziel')]], cfg.mode, function (v) { cfg.mode = v; cfg.prop = ''; self.changed(); self.fill(); self.update(); });
@@ -5977,7 +6423,7 @@
     try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { tz = ''; }
     return api('GET', '/api/notes/' + id + '/widgets' + (tz ? '?tz=' + encodeURIComponent(tz) : '')).then(function (r) {
       if (!S.cur || S.cur.id !== id) return;
-      S.wvals = (r && r.widgets) || {}; S.wUnsupported = !!(r && r.unsupported); S.wMissing = false;
+      S.wvals = (r && r.widgets) || {}; S.wUnsupported = !!(r && r.unsupported); S.wUnsupported2 = !!(r && (r.unsupported || r.unsupported2)); S.wMissing = false;
       mine.forEach(function (x) { if (!x.panel) x.draw(); });
     }).catch(function (err) {
       if (!S.cur || S.cur.id !== id) return;
