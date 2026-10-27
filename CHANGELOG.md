@@ -16,6 +16,25 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5, Paket 1 Etappe 1: Formeln und Rollups)
+- **Formel-Eigenschaft.** Notion-2.0-kompatible Formeln (`if`, `ifs`, Zahlen-, Text-, Datums- und Listenfunktionen,
+  Funktions- und Methodenschreibweise, `prop("…")`). Der Server rechnet beim Lesen (eigener Parser, kein `eval`), Werte
+  kommen fertig mit `/rows`, Einzelzeile, Widgets, Export, Veröffentlichen und KI-Kontext. Fehler je Zelle als „#Fehler“
+  mit Erklärung. Feste Grenzen gegen Missbrauch (Länge, Bausteine, Tiefe, Ketten, Exponent, Text/Listen, Schritte, 2 s je
+  Anfrage). Web: Formel-Editor im Spaltenmenü mit Namen statt IDs, Prüfung und Vorschau
+  (`POST /api/notes/{db}/formula/check`).
+- **Rollup-Eigenschaft.** Rechnung über verknüpfte Einträge einer Relation (alle Fußzeilen-Rechnungen und „Original
+  anzeigen“) – nur über Einträge, die die anfragende Person sehen darf.
+- **Gruppieren nach Formel.** Board und Tabelle/Liste nach Formel-/Rollup-Werten (Zahl, Text, Häkchen, Datum); Gruppen
+  nur lesend, Wochentage (`formatDate(…, "dddd")`) in fester Reihenfolge Montag bis Sonntag.
+- **Gemeinsamer Rechenkern** `saga/dbcalc.py` (Aggregation der Widgets und Fußzeile, Rollups, Formeln) – Grundlage der
+  Diagramm-Ansicht (Paket 4).
+- **Föderation:** Fähigkeit `formula1` (Werte rechnet der Server der Datenbank, Editor über das Heim; ältere Instanzen
+  sehen nur-lesbare Text-Spalten). `/api/version` meldet `features` (`formula1`, `rollup1`, `dbgroup1`) für die Apps.
+- `PATCH` einer Datenbank-Zeile antwortet mit `calc`/`fx_err` (neue Werte sofort sichtbar); Datenbanken mit Rollups auf
+  die geänderte Datenbank laden live neu. Keine Migration.
+
+
 ### Neu (2.5, Fix-Runde nach der Galerie-Testrunde)
 - **Eintrags-Vorlagen für Bearbeitende (E1).** Wer eine Datenbank bearbeiten darf, bekommt ihre Eintrags-Vorlagen
   (`GET …/rows` → `templates`) und legt daraus an (`POST /api/notes/{vorlage}/duplicate {parent_id}` ohne Schaltfläche);

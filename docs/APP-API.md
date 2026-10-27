@@ -245,7 +245,8 @@ Das Web erlaubt dafür in der CSP (`img-src`) genau die Origins der eigenen Lese
 `GET /api/notes/{id}/rows` (Sitzung oder Geräte-Schlüssel `hkd_…`, ab Rolle *Lesen*) und
 `GET /api/app/rows/{id}` (App-Schlüssel `hk_…`, Widget) können die Ansicht einer Datenbank **auf dem Server** anwenden
 und nur einen Ausschnitt liefern. **Opt-in:** ohne einen der neuen Parameter ist die Antwort Byte für Byte wie bisher
-(alle Zeilen, keine neuen Felder). Rückwärtskompatibel, `MIN_APP` ändert sich nicht. Unbekannte Parameter werden wie
+(alle Zeilen, keine neuen Felder; Ausnahme seit 2.5: Datenbanken mit Formeln/Rollups tragen deren Werte in `props` und ggf.
+`fx_err`). Rückwärtskompatibel, `MIN_APP` ändert sich nicht. Unbekannte Parameter werden wie
 bisher ignoriert.
 
 ### Parameter (Query-String, alle optional)
@@ -256,7 +257,7 @@ bisher ignoriert.
 | `filters` | JSON-Liste wie `view.filters` (`[{"pid":"…","op":"…","value":"…"}]`, höchstens 50). Ersetzt die Filter der Ansicht – für eingebettete Ansichten (deren Ansichten im Block der Seite liegen, nicht in der Datenbank). `[]` = keine Filter. |
 | `sorts` | JSON-Liste wie `view.sorts` (`[{"pid":"…","dir":"asc"\|"desc"}]`). Ersetzt die Sortierung der Ansicht. |
 | `q` | Suchtext wie das Suchfeld der Datenbank (Name, Werte, Namen der Optionen, Titel verknüpfter Einträge), höchstens 500 Zeichen. |
-| `group` | ID einer Auswahl-Spalte: Zeilen gruppiert liefern (siehe `groups`). Leer (`group=`) = nicht gruppieren. Ohne den Parameter: Gruppierung der Ansicht (Tabelle/Liste: `group`, Board: `group_by`, sonst die erste Auswahl-Spalte wie im Web; Galerie/Kalender: keine). |
+| `group` | ID einer Auswahl-Spalte (seit 2.5 auch Formel/Rollup, siehe „Formeln und Rollups“): Zeilen gruppiert liefern (siehe `groups`). Leer (`group=`) = nicht gruppieren. Ohne den Parameter: Gruppierung der Ansicht (Tabelle/Liste: `group`, Board: `group_by`, sonst die erste Auswahl-Spalte wie im Web; Galerie/Kalender: keine). |
 | `limit` | Höchstens so viele Zeilen (1–5000; größere Werte werden auf 5000 begrenzt). Ohne `limit`: alle ab `offset`. |
 | `offset` | Ab dieser Position (0-basiert) in der fertig gefilterten, sortierten (und gruppierten) Liste. |
 | `tz` | Zeitzone des Geräts (IANA, z. B. `Europe/Berlin`) für „heute / diese Woche / diesen Monat“ und das Tagesdatum von „Erstellt“/„Zuletzt bearbeitet“. Standard: UTC. **Apps sollten sie immer mitschicken**, wenn Datumsfilter vorkommen können. |
@@ -305,6 +306,115 @@ GET /api/notes/812/rows?limit=500&offset=0                              nur blä
 
 Antwort (gekürzt): `{"schema": {…}, "templates": [], "rows": [{…}, …], "offset": 0, "limit": 8, "total": 2000,
 "matched": 37, "groups": [{"id": null, "count": 2}, {"id": "a1b2", "count": 20}, …], "role": "owner"}`
+
+## Formeln und Rollups in Datenbanken (2.5, Paket 1 Etappe 1)
+
+Zwei neue Eigenschaftstypen. **Der Server rechnet die Werte beim Lesen** – Apps zeigen sie nur an (kein eigener Parser,
+keine eigene Rollup-Logik). Ob ein Server das kann: `GET /api/version` → `features` enthält `formula1` (Formeln),
+`rollup1` (Rollups) und `dbgroup1` (Gruppieren nach Formel/Rollup). Ältere Server melden kein `features`-Feld. Bei
+Seiten anderer Saga-Instanzen zusätzlich `remote.caps` mit `formula1`. `MIN_APP` bleibt `1.0.0`.
+
+### Schema
+
+```
+{"id": "summe", "name": "Summe", "type": "formula", "expr": "if(prop(\"menge\") > 0, prop(\"preis\") * prop(\"menge\"), 0)",
+ "rtype": "number", "fmt": "euro", "show": "ring"}
+{"id": "pbud", "name": "Projektbudget", "type": "rollup", "rel": "<relation-pid>", "target": "<pid>|title",
+ "fn": "sum", "rtype": "number", "fmt": "euro"}
+```
+
+- `rtype` (Ergebnistyp) setzt **der Server**: `number` | `text` | `checkbox` | `date` | `list`. Clients schicken ihn
+  nicht (wird ignoriert). Fehlerhafte Formel (z. B. Spalte gelöscht): `rtype: "text"`, Werte kommen als Fehler (s. u.).
+- `expr` enthält **IDs** (`prop("menge")`), nie Namen. `fmt`/`show` wie bei Zahlen (nur für `rtype: "number"` sinnvoll).
+- Rollup `fn`: `count filled empty pct_filled unique sum avg median min max range checked unchecked pct_checked earliest
+  latest` (wie die Fußzeile; gerundet auf 2 Stellen, Prozente ganzzahlig) oder `show` („Original anzeigen“, Liste von
+  Texten). `earliest`/`latest` → `rtype: "date"`, `show` → `list`, sonst `number`.
+- Schema wird wie immer **vollständig roh** zurückgeschrieben (unbekannte Schlüssel bleiben) – Apps dürfen Formel-/
+  Rollup-Spalten weder entfernen noch ändern (Bearbeiten nur im Web: Hinweis „Formel im Web bearbeiten“).
+
+### Werte in `props` (alle Lesestellen)
+
+`GET …/rows` (auch `/api/app/rows/{id}`), `GET /api/notes/{zeile}` (Einzelzeile), Widgets, Export: Werte stehen fertig in
+`row.props[pid]` – wie gespeicherte Werte, aber **nie gespeichert** (beim `PATCH` mitgeschickt → stillschweigend
+verworfen):
+
+| `rtype` | Wert in `props` | Anzeige |
+|---|---|---|
+| `number` | Zahl (ganze Zahlen ohne `.0`) | wie Zahl-Spalte (`fmt`, `show`) |
+| `text` | Text (höchstens 10 000 Zeichen) | Klartext (kein HTML/Markdown; `style()`/`link()` liefern nur den Text) |
+| `checkbox` | `true` / `false` | Häkchen (nur lesen) |
+| `date` | `"YYYY-MM-DD"` (Tag) oder `"YYYY-MM-DDTHH:MM"` (Zeitpunkt, Ortszeit in `tz`) | Datum bzw. Datum + Uhrzeit |
+| `list` | Liste von Texten | Chips oder „a, b, c“ |
+
+Leerer Wert = Schlüssel fehlt. Laufzeitfehler je Zelle: Wert fehlt, die Zeile hat
+`"fx_err": {"<pid>": "<code>"}` (nur wenn es Fehler gibt). Codes: `syntax type num len budget time arg ref date cycle`
+(z. B. `num` = Division durch 0, `ref` = verwendete Spalte gelöscht, `time` = Zeitlimit der Anfrage, Wert nicht
+gerechnet). Anzeige „#Fehler“, Erklärung im Tooltip/Untertitel.
+
+**Zeitzone:** `today()`, `now()`, `formatDate` usw. rechnet der Server in `tz` (Query-Parameter von `…/rows`, wie bei
+Datumsfiltern; ohne `tz`: Zeitzone des Servers). **Apps schicken `tz` immer mit** – auch ohne Filter.
+
+**Rechte (Rollups):** Ein Rollup sieht nur verknüpfte Einträge, die die anfragende Person sehen darf (Ziel-Datenbank
+nicht geteilt → kein Wert, kein Titel). Gleiches gilt für Relationstitel in Formeln.
+
+### Nach Speichern sofort anzeigen
+
+`PATCH /api/notes/{zeile}` mit `props` oder `title` antwortet zusätzlich mit `"calc": {"<pid>": wert, …}` (alle
+Formeln/Rollups der Zeile, `null` = leer) und `"fx_err": {…}` (leer = keine Fehler) – nur, wenn die Datenbank
+Formeln/Rollups hat. Werte übernehmen, kein Neuladen nötig. Datenbanken, deren Rollups auf die geänderte Datenbank
+zeigen, bekommen `note.changed` (ohne `row`) – dann neu laden.
+
+### Filter, Sortierung, Gruppen
+
+Formel/Rollup verhalten sich wie ihr `rtype`: `number` wie Zahl (`eq gt lt`, Sortierung numerisch), `text` wie Text
+(`contains not_contains is_empty not_empty`), `checkbox` wie Häkchen, `date` wie Datum (`before after eq today
+this_week this_month`), `list` wie Relation (`contains` mit Text, Sortierung nach Anzahl). Auf dem Server identisch
+(`dbquery`), geprüft gegen das Web.
+
+**Gruppieren nach Formel/Rollup** (`dbgroup1`, Ergebnis `number`/`text`/`checkbox`/`date`): `view.group_by` (Board) bzw.
+`view.group` (Tabelle/Liste) darf eine solche Spalte sein. Gruppen = **vorkommende Werte**, nur lesend (Karten nicht
+zwischen Spalten ziehen, „+ Neu“ in einer Spalte setzt keinen Wert). `groups` in der Antwort:
+
+```
+"groups": [{"id": null, "count": 1},                                  zuerst die Leeren ("Ohne …")
+           {"id": "Montag", "value": "Montag", "count": 2},           dann je Wert: id = Wert als Text, value = Wert
+           {"id": "Mittwoch", "value": "Mittwoch", "count": 1}]
+```
+
+Reihenfolge: `number` aufsteigend; `checkbox` erst `false`, dann `true` (keine Leeren); `text` nach Zeichencode – **sind
+alle Werte Wochentagsnamen** (`formatDate(…, "dddd")`/`"ddd"`, de/en/es/ru/th), dann Montag … Sonntag; `date` als Text.
+Leere Gruppen gibt es hier nicht (nur „Ohne …“ mit `count` 0). Apps, die selbst gruppieren, nehmen genau diese Regel;
+einfacher: `group` bzw. `view` an den Server geben und `groups` übernehmen.
+
+### Formel prüfen (Editor, nur Web nötig)
+
+`POST /api/notes/{db}/formula/check` `{"expr": "...", "pid": "<spalte>", "names": true}` (ab *Bearbeiten*) →
+`{"ok", "rtype", "expr" (mit IDs), "display" (mit Namen), "error": {"pos", "msg", "code"} | null, "preview":
+[{"id", "title", "value", "error"}]}` (erste 5 Einträge, Rechte der Person). `names: true` = `prop("…")` nennt Namen.
+
+### Sprache (Notion-2.0-Teilmenge, Etappe 1)
+
+Operatoren `+ - * / % ^ == != < <= > >= and or not && || ! ? :`, Listen `[a, b]`, Funktions- und Methodenschreibweise
+(`length(x)` = `x.length()`). Logik `if ifs empty and or not`; Zahlen `abs round floor ceil min max sum mean median sqrt
+cbrt pow mod sign exp ln log10 log2 toNumber pi e`; Text `concat join length lower upper trim contains startsWith
+endsWith replace replaceAll substring slice split repeat padStart padEnd format style unstyle link` (keine Regex: ersetzt
+wörtlich); Datum `now today date parseDate formatDate dateAdd dateSubtract dateBetween timestamp fromTimestamp year month
+week day weekday hour minute` (`day` = Wochentag 1–7, `date(d)` = Tag im Monat); Listen `at first last includes sort
+reverse unique flat`. Werte: Auswahl → Name, Mehrfachauswahl/Relation → Liste von Namen/Titeln, Erstellt/Bearbeitet →
+Zeitpunkt. Später (Etappe 2): `map filter find some every let lets test match`, Eigenschaften verknüpfter Einträge.
+Grenzen: 2000 Zeichen, 400 Bausteine, 32 Ebenen, 8 Formeln hintereinander, `^` mit |Exponent| ≤ 1000, Text 10 000
+Zeichen, Listen 1000 Einträge, Schrittbudget je Zeile, 2 s je Anfrage.
+
+Testvektoren für die Anzeige-Tests der Apps: `tests/vectors/formula.json` (Ausdruck → Wert/rtype/Fehler).
+
+### Ältere Server und Föderation
+
+- Server ohne `formula1`: Typen kommen nicht vor; nichts zu tun.
+- Eine ältere **Gegen-Instanz** (Föderation ohne `formula1`) bekommt Formel/Rollup als nur-lesbare Text-Spalte
+  (`type: "text"`, Original in `fx_orig`, Wert als Text). Speichert sie das Schema zurück, stellt der Eigentümer die
+  Formel aus `fx_orig` wieder her. Apps müssen dafür nichts tun.
+- Seiten anderer Instanzen (negative IDs): Werte rechnet der **Eigentümer-Server** mit den Rechten der Person; Antwort-
+  format identisch (`fx_err`, `groups` mit `value`, `calc` im PATCH).
 
 ## Lesezeichen aus der Teilen-Erweiterung (2.5)
 
