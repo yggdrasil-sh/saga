@@ -417,7 +417,8 @@
     }
     P.at = Date.now(); P.atId = id;
     var ed = editingNow(); P.sent = ed;
-    api('POST', '/api/presence', { note_id: id, editing: ed }).then(function (d) {
+    var blk = ed && k.focusBlock ? k.focusBlock() : null; P.blk = blk;          // 2.5 (P3): fokussierter Block
+    api('POST', '/api/presence', { note_id: id, editing: ed, block: blk }).then(function (d) {
       if (P.id !== id || d.skipped) return;
       drawPresence(d.users || []);
       var c = k.cur();                     // ohne Live-Kanal erkennt die Seite fremde Aenderungen hierueber
@@ -432,8 +433,23 @@
         .catch(function () {});
     } catch (e) { /* Seite wird geschlossen */ }
   }
+  // 2.5 (P3): Bloecke, die andere gerade bearbeiten, farbig markieren (nur Hinweis, keine Sperre)
+  function markBlocks(users) {
+    [].forEach.call(document.querySelectorAll('#pg-editor .ce-block[data-hk-by]'), function (b) {
+      b.removeAttribute('data-hk-by'); b.className = b.className.replace(/\s*hk-by-[a-z]+/g, '');
+    });
+    users.forEach(function (u) {
+      if (u.me || !u.editing || !u.block) return;
+      var b = null;
+      try { b = document.querySelector('#pg-editor .ce-block[data-id="' + CSS.escape(u.block) + '"]'); } catch (e) { b = null; }
+      if (!b) return;
+      b.setAttribute('data-hk-by', T('{name} bearbeitet', { name: u.name || '?' }));
+      if (/^[a-z]+$/.test(u.color || '')) b.classList.add('hk-by-' + u.color);
+    });
+  }
   function drawPresence(users) {
     P.users = users;
+    markBlocks(users);
     var bar = document.querySelector('#page .page-bar'); if (!bar) return;
     var box = $('pg-presence');
     var others = users.filter(function (u) { return !u.me; });
@@ -475,7 +491,16 @@
       var pg = $('page'); if (!pg || !e.target || !pg.contains(e.target)) return;
       var was = P.sent; P.lastInput = Date.now();
       if (!was && editingNow() && !P.soon) { P.soon = setTimeout(function () { P.soon = null; ping(); }, 1500); }   // "bearbeitet gerade" bald zeigen
+      blockMoved();
     }, true);
+    // 2.5 (P3): anderer Block fokussiert -> bald melden (hoechstens etwa einmal je Sekunde, ping drosselt)
+    function blockMoved() {
+      var k = K(); if (!k || !k.focusBlock || !P.id || !P.sent) return;
+      var b = k.focusBlock();
+      if (b && b !== P.blk && !P.soonB) P.soonB = setTimeout(function () { P.soonB = null; ping(); }, 400);
+    }
+    document.addEventListener('focusin', blockMoved, true);
+    document.addEventListener('hk-page-ready', function () { if (P.users.length) markBlocks(P.users); });
     document.addEventListener('visibilitychange', function () {
       if (document.hidden) P.hiddenAt = Date.now(); else { ping(); restart(); if (L.down && !L.es && !L.stopped) connect(); }
     });

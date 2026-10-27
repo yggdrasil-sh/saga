@@ -168,7 +168,8 @@ async def _owner_req(request, nid, rest):
         b = {k: v for k, v in b.items() if k in F.EDIT2_KEYS}
         if not b:
             return F._signed(inp, 400, {"error": t("nichts zu ändern")})
-        return _signed_resp(inp, _fx_legacy(inp, await run_in_threadpool(F._as, inp, pages._note_update, nid, b)))
+        return _signed_resp(inp, _fx_legacy(inp, await run_in_threadpool(F._as, inp, pages._note_update, nid, b, None,
+                                                                         F.peer_caps(inp.peer))))
     if m == "POST" and rest == "children":
         if _need(inp, "subpages"):
             return _need(inp, "subpages")

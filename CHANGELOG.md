@@ -49,6 +49,24 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   sehen nur-lesbare Text-Spalten). `/api/version` meldet `features` (`formula1`, `rollup1`, `dbgroup1`) für die Apps.
 - `PATCH` einer Datenbank-Zeile antwortet mit `calc`/`fx_err` (neue Werte sofort sichtbar); Datenbanken mit Rollups auf
   die geänderte Datenbank laden live neu. Keine Migration.
+### Neu (2.5, Gleichzeitig bearbeiten – P3 Stufe 1, Server + Web)
+- **Blockweises Zusammenführen statt Konflikt-Dialog.** Speichern zwei Personen (oder zwei Tabs) dieselbe Seite, führt
+  der Server die Fassungen zusammen (`PATCH … merge: 1`, `saga/merge.py`): verschiedene Blöcke bleiben, Text im selben
+  Absatz wird zusammengeführt, bei Überschneidung steht die zweite Fassung als gelber **Konfliktblock** direkt darunter
+  (Übernehmen/Verwerfen), vorher wird eine Version gesichert. Fremde Änderungen erscheinen im Web blockweise, ohne
+  „Neu laden“; wer gerade wo schreibt, ist am Block markiert (Anwesenheit mit `block`).
+- **Eindeutige Block-IDs** für alle Blöcke (auch in Spalten/Toggles); alte Seiten bekommen beim Lesen stabile IDs.
+- Datenbank: Migration 22 (`note_base`, Basisstände 24 h / 30 je Seite). Ältere Apps ohne `merge`: unverändert `409`.
+
+### Neu (2.5, Editor-Rest P6-0 – Vertrag)
+- **Inline-Vertrag** für Inline-Farben (`span.hk-c-<farbe>`, `mark.hk-bg-<farbe>`, nur Palette), Personen-Erwähnungen
+  (`span.hk-mention data-u=<Handle/Prinzipal>`) und Inline-Mathe (`code.hk-math`): Bereinigung, Veröffentlichen (Klassen
+  `c-*`/`bg-*`, Erwähnung als Text) und Markdown-Export (`==…==`, `@Name`, `$…$`); gemeinsame Testvektoren
+  `tests/vectors/editor_inline.json`. Werkzeuge zum Setzen folgen.
+- **Neue Blocktypen als Vertrag:** `math {tex, render?}`, `synced` (Original `{sid, blocks}`, Kopie `{sid}`), Mermaid als
+  Code-Block mit `view`; Spalten bis 6 (`COLS_MAX`).
+- **Schutz älterer Apps** (`X-Saga-Caps: inline2,cols6`, Föderation: Fähigkeiten `inline2`/`cols6`): unveränderter Text
+  behält sein HTML mit neuen Formen, abgeschnittene Spalten 5–6 kommen zurück.
 
 ### Neu (2.5, Fix-Runde nach der Galerie-Testrunde)
 - **Eintrags-Vorlagen für Bearbeitende (E1).** Wer eine Datenbank bearbeiten darf, bekommt ihre Eintrags-Vorlagen

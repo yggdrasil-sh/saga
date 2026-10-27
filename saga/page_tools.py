@@ -220,6 +220,10 @@ def _md_inline(s, link):
     s = re.sub(r"</?(b|strong)>", "**", s)
     s = re.sub(r"</?(i|em)>", "*", s)
     s = re.sub(r"</?s>", "~~", s)
+    # 2.5 (P6-0): Inline-Mathe $TeX$, Markierung ==Text== (Obsidian; Hintergrundfarbe faellt weg), Erwaehnung @Name
+    s = re.sub(r'<code class="hk-math">(.*?)</code>', r"$\1$", s, flags=re.S)
+    s = re.sub(r'<mark[^>]*>(.*?)</mark>', r"==\1==", s, flags=re.S)
+    s = re.sub(r'<span class="hk-mention"[^>]*>@?(.*?)</span>', r"@\1", s, flags=re.S)
     s = re.sub(r'<code[^>]*>(.*?)</code>', r"`\1`", s, flags=re.S)
     s = re.sub(r'<a href="([^"]*)"[^>]*>(.*?)</a>', lambda m: f"[{m.group(2)}]({link(html_unescape(m.group(1)))})", s, flags=re.S)
     s = re.sub(r"<[^>]+>", "", s)
@@ -256,6 +260,14 @@ def blocks_to_md(blocks, link=lambda h: h, title=lambda nid: None, widget=None):
             out += ["```" + lang, d.get("code", ""), "```", ""]
         elif typ == "delimiter":
             out += ["---", ""]
+        elif typ == "math":                            # 2.5 (P6-0)
+            tex = str(d.get("tex") or "").strip()
+            if tex:
+                out += ["$$", tex, "$$", ""]
+        elif typ == "synced":                          # 2.5 (P6-0): Inhalt des Originals (Kopien: ohne Inhalt)
+            sub = blocks_to_md(d["blocks"], link, title, widget).strip() if isinstance(d.get("blocks"), list) else ""
+            if sub:
+                out += [sub, ""]
         elif typ == "table":
             rows = d.get("content") or []
             if rows:

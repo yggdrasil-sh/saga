@@ -38,6 +38,7 @@ def delete_user_data(uid, drop_user=False):
         pushed = push.delete_account(c, uid)     # Mitteilungs-Abos und -Auftraege weg, als Absender anonymisiert
         avatar_n = avatars.delete_account(c, uid)  # Profilbild und zwischengespeicherte Gravatar-/SSO-Bilder
         ub_n = userbackup.delete_account(c, uid)  # persoenliches Backup: Ziel, Schluessel, Verlauf (Backups im Ziel bleiben)
+        c.execute("DELETE FROM note_base WHERE note_id IN (SELECT id FROM note WHERE uid=?)", (uid,))   # 2.5 (P3): Basisstaende
         counts = {t: c.execute(f"DELETE FROM {t} WHERE uid=?", (uid,)).rowcount for t in USER_TABLES}
         counts["note_share"] = shares
         counts["notification"] += notes_n

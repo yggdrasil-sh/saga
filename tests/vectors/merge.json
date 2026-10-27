@@ -1,0 +1,3264 @@
+{
+ "_doc": "Saga 2.5 P3 Stufe 1: Testvektoren fuer saga/merge.py merge_doc(base, mine, theirs, bases, by, now) mit by={'by': '~aaaaaaaaaaaaaaaa', 'name': 'M'}, now=1. expect = Dokument (Bloecke), info = {conflicts, restored, lost} (Reihenfolge egal). titles: [basis, meins, deren, erwartet, lost].",
+ "by": {
+  "by": "~aaaaaaaaaaaaaaaa",
+  "name": "M"
+ },
+ "now": 1,
+ "docs": [
+  {
+   "name": "verschiedene Bloecke geaendert",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins!"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei?"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins!"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei?"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "gleiche Aenderung beidseitig",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins!"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins!"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins!"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "gleicher Block, Text nicht ueberlappend",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hallo Welt"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hallo schoene Welt"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hallo Welt, wie geht es?"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hallo schoene Welt, wie geht es?"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "gleicher Block, Text ueberlappend -> Konfliktblock direkt darunter",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hallo Welt"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "x"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hallo Erde"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "x"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hallo Mond"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "x"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hallo Mond"
+      }
+     },
+     {
+      "id": "a-k",
+      "type": "paragraph",
+      "data": {
+       "text": "Hallo Erde"
+      },
+      "tunes": {
+       "hkconflict": {
+        "by": "~aaaaaaaaaaaaaaaa",
+        "name": "M",
+        "at": 1.0,
+        "of": "a"
+       }
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "x"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [
+     "a-k"
+    ],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "einseitig geloescht, andere Seite unveraendert -> geloescht",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "geloescht (deren) vs. geaendert (meins) -> Aenderung gewinnt",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei!"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei!"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [
+     "b"
+    ],
+    "lost": []
+   }
+  },
+  {
+   "name": "geloescht (meins) vs. geaendert (deren) -> Aenderung gewinnt",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei?"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei?"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [
+     "b"
+    ],
+    "lost": []
+   }
+  },
+  {
+   "name": "beide fuegen am selben Anker ein -> deren zuerst",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "m1",
+      "type": "paragraph",
+      "data": {
+       "text": "neu meins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "t1",
+      "type": "paragraph",
+      "data": {
+       "text": "neu deren"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "t1",
+      "type": "paragraph",
+      "data": {
+       "text": "neu deren"
+      }
+     },
+     {
+      "id": "m1",
+      "type": "paragraph",
+      "data": {
+       "text": "neu meins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Einfuegen an verschiedenen Stellen",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "m1",
+      "type": "paragraph",
+      "data": {
+       "text": "Anfang"
+      }
+     },
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     },
+     {
+      "id": "t1",
+      "type": "paragraph",
+      "data": {
+       "text": "Ende"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "m1",
+      "type": "paragraph",
+      "data": {
+       "text": "Anfang"
+      }
+     },
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     },
+     {
+      "id": "t1",
+      "type": "paragraph",
+      "data": {
+       "text": "Ende"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Reihenfolge nur meins geaendert",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     },
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei!"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "Drei"
+      }
+     },
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "Zwei!"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Reihenfolge beidseitig: deren, eigene Verschiebung ohne Kollision",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "1"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "2"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "3"
+      }
+     },
+     {
+      "id": "d",
+      "type": "paragraph",
+      "data": {
+       "text": "4"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "1"
+      }
+     },
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "2"
+      }
+     },
+     {
+      "id": "d",
+      "type": "paragraph",
+      "data": {
+       "text": "4"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "3"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "2"
+      }
+     },
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "1"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "3"
+      }
+     },
+     {
+      "id": "d",
+      "type": "paragraph",
+      "data": {
+       "text": "4"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "b",
+      "type": "paragraph",
+      "data": {
+       "text": "2"
+      }
+     },
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "1"
+      }
+     },
+     {
+      "id": "d",
+      "type": "paragraph",
+      "data": {
+       "text": "4"
+      }
+     },
+     {
+      "id": "c",
+      "type": "paragraph",
+      "data": {
+       "text": "3"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "in Spalte verschoben (meins), Text geaendert (deren)",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins"
+      }
+     },
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": [
+          {
+           "id": "x",
+           "type": "paragraph",
+           "data": {
+            "text": "links"
+           }
+          }
+         ]
+        },
+        {
+         "blocks": [
+          {
+           "id": "y",
+           "type": "paragraph",
+           "data": {
+            "text": "rechts"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": [
+          {
+           "id": "x",
+           "type": "paragraph",
+           "data": {
+            "text": "links"
+           }
+          },
+          {
+           "id": "a",
+           "type": "paragraph",
+           "data": {
+            "text": "Eins"
+           }
+          }
+         ]
+        },
+        {
+         "blocks": [
+          {
+           "id": "y",
+           "type": "paragraph",
+           "data": {
+            "text": "rechts"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Eins!"
+      }
+     },
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": [
+          {
+           "id": "x",
+           "type": "paragraph",
+           "data": {
+            "text": "links"
+           }
+          }
+         ]
+        },
+        {
+         "blocks": [
+          {
+           "id": "y",
+           "type": "paragraph",
+           "data": {
+            "text": "rechts"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": [
+          {
+           "id": "x",
+           "type": "paragraph",
+           "data": {
+            "text": "links"
+           }
+          },
+          {
+           "id": "a",
+           "type": "paragraph",
+           "data": {
+            "text": "Eins!"
+           }
+          }
+         ]
+        },
+        {
+         "blocks": [
+          {
+           "id": "y",
+           "type": "paragraph",
+           "data": {
+            "text": "rechts"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "in verschiedene Container verschoben -> Position von meins",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "A"
+      }
+     },
+     {
+      "id": "t",
+      "type": "toggle",
+      "data": {
+       "title": "T",
+       "open": true,
+       "blocks": []
+      }
+     },
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": []
+        },
+        {
+         "blocks": []
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "t",
+      "type": "toggle",
+      "data": {
+       "title": "T",
+       "open": true,
+       "blocks": [
+        {
+         "id": "a",
+         "type": "paragraph",
+         "data": {
+          "text": "A"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": []
+        },
+        {
+         "blocks": []
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "t",
+      "type": "toggle",
+      "data": {
+       "title": "T",
+       "open": true,
+       "blocks": []
+      }
+     },
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": [
+          {
+           "id": "a",
+           "type": "paragraph",
+           "data": {
+            "text": "A"
+           }
+          }
+         ]
+        },
+        {
+         "blocks": []
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "t",
+      "type": "toggle",
+      "data": {
+       "title": "T",
+       "open": true,
+       "blocks": [
+        {
+         "id": "a",
+         "type": "paragraph",
+         "data": {
+          "text": "A"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": []
+        },
+        {
+         "blocks": []
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Toggle geloescht (deren), Inhalt geaendert (meins) -> Toggle bleibt",
+   "base": {
+    "blocks": [
+     {
+      "id": "t",
+      "type": "toggle",
+      "data": {
+       "title": "T",
+       "open": true,
+       "blocks": [
+        {
+         "id": "i",
+         "type": "paragraph",
+         "data": {
+          "text": "innen"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "id": "z",
+      "type": "paragraph",
+      "data": {
+       "text": "z"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "t",
+      "type": "toggle",
+      "data": {
+       "title": "T",
+       "open": true,
+       "blocks": [
+        {
+         "id": "i",
+         "type": "paragraph",
+         "data": {
+          "text": "innen!"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "id": "z",
+      "type": "paragraph",
+      "data": {
+       "text": "z"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "z",
+      "type": "paragraph",
+      "data": {
+       "text": "z"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "t",
+      "type": "toggle",
+      "data": {
+       "title": "T",
+       "open": true,
+       "blocks": [
+        {
+         "id": "i",
+         "type": "paragraph",
+         "data": {
+          "text": "innen!"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "id": "z",
+      "type": "paragraph",
+      "data": {
+       "text": "z"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [
+     "i",
+     "t"
+    ],
+    "lost": []
+   }
+  },
+  {
+   "name": "Spalte entfernt (deren) -> Bloecke wandern in die letzte Spalte",
+   "base": {
+    "blocks": [
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": [
+          {
+           "id": "x",
+           "type": "paragraph",
+           "data": {
+            "text": "1"
+           }
+          }
+         ]
+        },
+        {
+         "blocks": [
+          {
+           "id": "y",
+           "type": "paragraph",
+           "data": {
+            "text": "2"
+           }
+          }
+         ]
+        },
+        {
+         "blocks": [
+          {
+           "id": "z",
+           "type": "paragraph",
+           "data": {
+            "text": "3"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": [
+          {
+           "id": "x",
+           "type": "paragraph",
+           "data": {
+            "text": "1"
+           }
+          }
+         ]
+        },
+        {
+         "blocks": [
+          {
+           "id": "y",
+           "type": "paragraph",
+           "data": {
+            "text": "2"
+           }
+          }
+         ]
+        },
+        {
+         "blocks": [
+          {
+           "id": "z",
+           "type": "paragraph",
+           "data": {
+            "text": "3"
+           }
+          },
+          {
+           "id": "n",
+           "type": "paragraph",
+           "data": {
+            "text": "neu"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": [
+          {
+           "id": "x",
+           "type": "paragraph",
+           "data": {
+            "text": "1"
+           }
+          }
+         ]
+        },
+        {
+         "blocks": [
+          {
+           "id": "y",
+           "type": "paragraph",
+           "data": {
+            "text": "2"
+           }
+          },
+          {
+           "id": "z",
+           "type": "paragraph",
+           "data": {
+            "text": "3"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": [
+          {
+           "id": "x",
+           "type": "paragraph",
+           "data": {
+            "text": "1"
+           }
+          }
+         ]
+        },
+        {
+         "blocks": [
+          {
+           "id": "y",
+           "type": "paragraph",
+           "data": {
+            "text": "2"
+           }
+          },
+          {
+           "id": "z",
+           "type": "paragraph",
+           "data": {
+            "text": "3"
+           }
+          },
+          {
+           "id": "n",
+           "type": "paragraph",
+           "data": {
+            "text": "neu"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Spaltenbreite (meins) und Inhalt (deren)",
+   "base": {
+    "blocks": [
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": [
+          {
+           "id": "x",
+           "type": "paragraph",
+           "data": {
+            "text": "1"
+           }
+          }
+         ],
+         "w": 0.5
+        },
+        {
+         "blocks": [
+          {
+           "id": "y",
+           "type": "paragraph",
+           "data": {
+            "text": "2"
+           }
+          }
+         ],
+         "w": 0.5
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": [
+          {
+           "id": "x",
+           "type": "paragraph",
+           "data": {
+            "text": "1"
+           }
+          }
+         ],
+         "w": 0.7
+        },
+        {
+         "blocks": [
+          {
+           "id": "y",
+           "type": "paragraph",
+           "data": {
+            "text": "2"
+           }
+          }
+         ],
+         "w": 0.3
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": [
+          {
+           "id": "x",
+           "type": "paragraph",
+           "data": {
+            "text": "1!"
+           }
+          }
+         ],
+         "w": 0.5
+        },
+        {
+         "blocks": [
+          {
+           "id": "y",
+           "type": "paragraph",
+           "data": {
+            "text": "2"
+           }
+          }
+         ],
+         "w": 0.5
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "k",
+      "type": "columns",
+      "data": {
+       "cols": [
+        {
+         "blocks": [
+          {
+           "id": "x",
+           "type": "paragraph",
+           "data": {
+            "text": "1!"
+           }
+          }
+         ],
+         "w": 0.7
+        },
+        {
+         "blocks": [
+          {
+           "id": "y",
+           "type": "paragraph",
+           "data": {
+            "text": "2"
+           }
+          }
+         ],
+         "w": 0.3
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Formatierung (meins) und Text (deren) im selben Absatz",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "abc def"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "<b>abc</b> def"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "abc def ghi"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "<b>abc</b> def ghi"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Verweis ist eine Einheit",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Siehe <a href=\"/notes#5\">Seite</a> hier"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Siehe <a href=\"/notes#5\">Seite</a> hier und da"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Bitte siehe <a href=\"/notes#5\">Seite</a> hier"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Bitte siehe <a href=\"/notes#5\">Seite</a> hier und da"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Verweis beidseitig verschieden geaendert -> Konflikt",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "x <a href=\"/notes#5\">Seite</a> y"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "x <a href=\"/notes#6\">Seite</a> y"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "x <a href=\"/notes#5\">Andere</a> y"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "x <a href=\"/notes#5\">Andere</a> y"
+      }
+     },
+     {
+      "id": "a-k",
+      "type": "paragraph",
+      "data": {
+       "text": "x <a href=\"/notes#6\">Seite</a> y"
+      },
+      "tunes": {
+       "hkconflict": {
+        "by": "~aaaaaaaaaaaaaaaa",
+        "name": "M",
+        "at": 1.0,
+        "of": "a"
+       }
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [
+     "a-k"
+    ],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Inline-Farbe (P6-0) bleibt beim Zusammenfuehren",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "rot und blau"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "<span class=\"hk-c-red\">rot</span> und blau"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "rot und <mark class=\"hk-bg-blue\">blau</mark>"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "<span class=\"hk-c-red\">rot</span> und <mark class=\"hk-bg-blue\">blau</mark>"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Erwaehnung ist eine Einheit",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hi <span class=\"hk-mention\" data-u=\"~bbbbbbbbbbbbbbbb\">Bo</span>!"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hi <span class=\"hk-mention\" data-u=\"~bbbbbbbbbbbbbbbb\">Bo</span>!!"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hallo, Hi <span class=\"hk-mention\" data-u=\"~bbbbbbbbbbbbbbbb\">Bo</span>!"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hallo, Hi <span class=\"hk-mention\" data-u=\"~bbbbbbbbbbbbbbbb\">Bo</span>!!"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Inline-Mathe wird nie zeichenweise gemischt",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "f: <code class=\"hk-math\">x+y</code>"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "f: <code class=\"hk-math\">x+y+1</code>"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "f: <code class=\"hk-math\">2x+y</code>"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "f: <code class=\"hk-math\">2x+y</code>"
+      }
+     },
+     {
+      "id": "a-k",
+      "type": "paragraph",
+      "data": {
+       "text": "f: <code class=\"hk-math\">x+y+1</code>"
+      },
+      "tunes": {
+       "hkconflict": {
+        "by": "~aaaaaaaaaaaaaaaa",
+        "name": "M",
+        "at": 1.0,
+        "of": "a"
+       }
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [
+     "a-k"
+    ],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Emoji mit Hautfarbe und Thai bleiben ganz",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "👍🏽 กิน"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "👍🏽 กิน!"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Na 👍🏽 กิน"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Na 👍🏽 กิน!"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Zeilenumbruch",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "eins<br>zwei"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "eins<br>zwei<br>drei"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "null<br>eins<br>zwei"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "null<br>eins<br>zwei<br>drei"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Checkliste: abhaken (deren) und Text (meins)",
+   "base": {
+    "blocks": [
+     {
+      "id": "l",
+      "type": "list",
+      "data": {
+       "style": "checklist",
+       "meta": {},
+       "items": [
+        {
+         "content": "Brot",
+         "meta": {
+          "checked": false
+         },
+         "items": []
+        },
+        {
+         "content": "Milch",
+         "meta": {
+          "checked": false
+         },
+         "items": []
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "l",
+      "type": "list",
+      "data": {
+       "style": "checklist",
+       "meta": {},
+       "items": [
+        {
+         "content": "Brot",
+         "meta": {
+          "checked": false
+         },
+         "items": []
+        },
+        {
+         "content": "Hafermilch",
+         "meta": {
+          "checked": false
+         },
+         "items": []
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "l",
+      "type": "list",
+      "data": {
+       "style": "checklist",
+       "meta": {},
+       "items": [
+        {
+         "content": "Brot",
+         "meta": {
+          "checked": true
+         },
+         "items": []
+        },
+        {
+         "content": "Milch",
+         "meta": {
+          "checked": false
+         },
+         "items": []
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "l",
+      "type": "list",
+      "data": {
+       "style": "checklist",
+       "meta": {},
+       "items": [
+        {
+         "content": "Brot",
+         "meta": {
+          "checked": true
+         },
+         "items": []
+        },
+        {
+         "content": "Hafermilch",
+         "meta": {
+          "checked": false
+         },
+         "items": []
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Liste: beide haengen Punkte an",
+   "base": {
+    "blocks": [
+     {
+      "id": "l",
+      "type": "list",
+      "data": {
+       "style": "unordered",
+       "meta": {},
+       "items": [
+        {
+         "content": "a",
+         "meta": {},
+         "items": []
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "l",
+      "type": "list",
+      "data": {
+       "style": "unordered",
+       "meta": {},
+       "items": [
+        {
+         "content": "a",
+         "meta": {},
+         "items": []
+        },
+        {
+         "content": "m",
+         "meta": {},
+         "items": []
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "l",
+      "type": "list",
+      "data": {
+       "style": "unordered",
+       "meta": {},
+       "items": [
+        {
+         "content": "a",
+         "meta": {},
+         "items": []
+        },
+        {
+         "content": "t",
+         "meta": {},
+         "items": []
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "l",
+      "type": "list",
+      "data": {
+       "style": "unordered",
+       "meta": {},
+       "items": [
+        {
+         "content": "a",
+         "meta": {},
+         "items": []
+        },
+        {
+         "content": "t",
+         "meta": {},
+         "items": []
+        },
+        {
+         "content": "m",
+         "meta": {},
+         "items": []
+        }
+       ]
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Tabelle: verschiedene Zellen",
+   "base": {
+    "blocks": [
+     {
+      "id": "t",
+      "type": "table",
+      "data": {
+       "withHeadings": true,
+       "content": [
+        [
+         "A",
+         "B"
+        ],
+        [
+         "1",
+         "2"
+        ]
+       ]
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "t",
+      "type": "table",
+      "data": {
+       "withHeadings": true,
+       "content": [
+        [
+         "A",
+         "B"
+        ],
+        [
+         "1!",
+         "2"
+        ]
+       ]
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "t",
+      "type": "table",
+      "data": {
+       "withHeadings": true,
+       "content": [
+        [
+         "A",
+         "B?"
+        ],
+        [
+         "1",
+         "2"
+        ]
+       ]
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "t",
+      "type": "table",
+      "data": {
+       "withHeadings": true,
+       "content": [
+        [
+         "A",
+         "B?"
+        ],
+        [
+         "1!",
+         "2"
+        ]
+       ]
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Block-Farbe (meins) und Text (deren)",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Text"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Text"
+      },
+      "tunes": {
+       "hkstyle": {
+        "c": "red"
+       }
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Text!"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Text!"
+      },
+      "tunes": {
+       "hkstyle": {
+        "c": "red"
+       }
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Ueberschrift: Ebene (deren) und Text (meins)",
+   "base": {
+    "blocks": [
+     {
+      "id": "h",
+      "type": "header",
+      "data": {
+       "text": "Titel",
+       "level": 2
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "h",
+      "type": "header",
+      "data": {
+       "text": "Neuer Titel",
+       "level": 2
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "h",
+      "type": "header",
+      "data": {
+       "text": "Titel",
+       "level": 3
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "h",
+      "type": "header",
+      "data": {
+       "text": "Neuer Titel",
+       "level": 3
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Undurchsichtiger Block, gleiches Feld -> meins gewinnt, lost",
+   "base": {
+    "blocks": [
+     {
+      "id": "d",
+      "type": "database",
+      "data": {
+       "db": 5,
+       "view": "a"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "d",
+      "type": "database",
+      "data": {
+       "db": 5,
+       "view": "b"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "d",
+      "type": "database",
+      "data": {
+       "db": 5,
+       "view": "c"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "d",
+      "type": "database",
+      "data": {
+       "db": 5,
+       "view": "b"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": [
+     "d"
+    ]
+   }
+  },
+  {
+   "name": "Undurchsichtiger Block, verschiedene Felder",
+   "base": {
+    "blocks": [
+     {
+      "id": "w",
+      "type": "widget",
+      "data": {
+       "kind": "clock",
+       "title": "a",
+       "size": "m"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "w",
+      "type": "widget",
+      "data": {
+       "kind": "clock",
+       "title": "a",
+       "size": "l"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "w",
+      "type": "widget",
+      "data": {
+       "kind": "clock",
+       "title": "b",
+       "size": "m"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "w",
+      "type": "widget",
+      "data": {
+       "kind": "clock",
+       "title": "b",
+       "size": "l"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Code (Klartext) nicht ueberlappend",
+   "base": {
+    "blocks": [
+     {
+      "id": "c",
+      "type": "code",
+      "data": {
+       "code": "a = 1\nb = 2\nc = 3",
+       "language": "python"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "c",
+      "type": "code",
+      "data": {
+       "code": "a = 1\nb = 2\nc = 30",
+       "language": "python"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "c",
+      "type": "code",
+      "data": {
+       "code": "a = 10\nb = 2\nc = 3",
+       "language": "python"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "c",
+      "type": "code",
+      "data": {
+       "code": "a = 10\nb = 2\nc = 30",
+       "language": "python"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "Mathe-Block (tex) beidseitig -> Konfliktblock",
+   "base": {
+    "blocks": [
+     {
+      "id": "m",
+      "type": "math",
+      "data": {
+       "tex": "x"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "m",
+      "type": "math",
+      "data": {
+       "tex": "x^2"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "m",
+      "type": "math",
+      "data": {
+       "tex": "2x"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "m",
+      "type": "math",
+      "data": {
+       "tex": "2x"
+      }
+     },
+     {
+      "id": "m-k",
+      "type": "math",
+      "data": {
+       "tex": "x^2"
+      },
+      "tunes": {
+       "hkconflict": {
+        "by": "~aaaaaaaaaaaaaaaa",
+        "name": "M",
+        "at": 1.0,
+        "of": "m"
+       }
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [
+     "m-k"
+    ],
+    "restored": [],
+    "lost": []
+   }
+  },
+  {
+   "name": "bases: eigener Block beruht auf aelterer Basis",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hallo"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hallo Welt und mehr"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hallo Welt"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "Hallo Welt und mehr"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [],
+    "restored": [],
+    "lost": []
+   },
+   "bases": {
+    "a": {
+     "id": "a",
+     "type": "paragraph",
+     "data": {
+      "text": "Hallo Welt"
+     }
+    }
+   },
+   "note": "Client hatte 'Hallo Welt' schon gespeichert (Antwort noch unterwegs) und weitergeschrieben: Basis des Blocks = 'Hallo Welt' -> keine Verdopplung"
+  },
+  {
+   "name": "Konfliktblock-ID eindeutig",
+   "base": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "x"
+      }
+     },
+     {
+      "id": "a-k",
+      "type": "paragraph",
+      "data": {
+       "text": "alt"
+      }
+     }
+    ]
+   },
+   "mine": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "m"
+      }
+     },
+     {
+      "id": "a-k",
+      "type": "paragraph",
+      "data": {
+       "text": "alt"
+      }
+     }
+    ]
+   },
+   "theirs": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "t"
+      }
+     },
+     {
+      "id": "a-k",
+      "type": "paragraph",
+      "data": {
+       "text": "alt"
+      }
+     }
+    ]
+   },
+   "expect": {
+    "blocks": [
+     {
+      "id": "a",
+      "type": "paragraph",
+      "data": {
+       "text": "t"
+      }
+     },
+     {
+      "id": "a-k1",
+      "type": "paragraph",
+      "data": {
+       "text": "m"
+      },
+      "tunes": {
+       "hkconflict": {
+        "by": "~aaaaaaaaaaaaaaaa",
+        "name": "M",
+        "at": 1.0,
+        "of": "a"
+       }
+      }
+     },
+     {
+      "id": "a-k",
+      "type": "paragraph",
+      "data": {
+       "text": "alt"
+      }
+     }
+    ]
+   },
+   "info": {
+    "conflicts": [
+     "a-k1"
+    ],
+    "restored": [],
+    "lost": []
+   }
+  }
+ ],
+ "titles": [
+  [
+   "Einkauf",
+   "Einkauf Montag",
+   "Mein Einkauf",
+   "Mein Einkauf Montag",
+   false
+  ],
+  [
+   "Plan",
+   "Plan A",
+   "Plan B",
+   "Plan A",
+   true
+  ]
+ ]
+}

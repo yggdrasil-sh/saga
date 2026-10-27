@@ -22,7 +22,6 @@ import hashlib
 import json
 import random
 import re
-import secrets
 import threading
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -36,7 +35,7 @@ from fastapi.responses import JSONResponse
 from db import clean_line, connect as _db
 from saga import dbcalc, dbquery
 from saga.core import TZ, _api_guard, _bad, _body, _json_load, t
-from saga.notes import PALETTE, _iter_blocks
+from saga.notes import PALETTE, _iter_blocks, ensure_ids, fix_block_ids
 from saga.sharing import Access, access, is_remote
 
 router = APIRouter()
@@ -184,17 +183,8 @@ def clean_data(d):
 
 
 def fix_ids(blocks):
-    """Widget-Bloecke brauchen eine eindeutige id (Werte werden je Block-id geliefert) - auch in Spalten/Toggles.
-    Fehlt sie, ist sie ungueltig oder doppelt: neue id."""
-    seen = set()
-    for b in _iter_blocks(blocks):
-        if b.get("type") != "widget":
-            continue
-        bid = b.get("id")
-        if not isinstance(bid, str) or not _BID.fullmatch(bid) or bid in seen:
-            bid = secrets.token_urlsafe(8)[:10].replace("-", "x").replace("_", "y")
-            b["id"] = bid
-        seen.add(bid)
+    """Eindeutige ids (Werte werden je Block-id geliefert). Seit 2.5 (P3-E1) fuer alle Bloecke: notes.fix_block_ids."""
+    fix_block_ids(blocks)
     return blocks
 
 
@@ -435,7 +425,7 @@ def page_widgets(uid, nid, params):
             return _bad("not found", 404)
         out = {}
         if r[1] == "blocks" and '"widget"' in (r[0] or ""):
-            doc = _json_load(r[0], {})
+            doc = _json_load(ensure_ids(r[0], r[1], nid), {})      # dieselben ids wie GET /api/notes/{id}
             try:
                 blocks = [b for b in _iter_blocks(doc.get("blocks") or []) if b.get("type") == "widget" and server_kind(b.get("data"))]
             except ValueError:

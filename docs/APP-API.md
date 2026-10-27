@@ -15,10 +15,10 @@ Zahlen beim Lesen trotzdem begrenzen (fremde/alte Server).
 
 | Feld | Werte (der Server bereinigt beim Speichern) |
 |---|---|
-| `columns.data.cols[i].w` | Zahl > 0, relatives Gewicht. Nur wenn **alle** Spalten eines haben: Summe 1, je Spalte mind. 0,15, auf 0,01 gerundet; sonst werden alle `w` entfernt (= gleich breit). Max. 4 Spalten. Darstellung ab Tablet-/Fensterbreite, Telefone untereinander. |
+| `columns.data.cols[i].w` | Zahl > 0, relatives Gewicht. Nur wenn **alle** Spalten eines haben: Summe 1, je Spalte mind. 0,15, auf 0,01 gerundet; sonst werden alle `w` entfernt (= gleich breit). Max. 6 Spalten (2.5, P6-0; vorher 4). Darstellung ab Tablet-/Fensterbreite, Telefone untereinander. |
 | `image.data.width`, `embed.data.width` | ganze Zahl 10–100 (% der Inhaltsbreite). Bei `embed` nur mit Player (`kind: "youtube"`), Link-Karten nie. `image.data.stretched` gewinnt. Telefone: mindestens 50 %. |
 | `image.data.align`, `embed.data.align` | `"left"`, `"center"` (Standard), `"right"`; sonst entfernt. |
-| `block.tunes.hkstyle` | `{"c": "<palette>", "bg": true}` – `bg` fehlt = Textfarbe. Nur an `paragraph, header, list, quote, toggle, callout, checklist`; andere Typen und alle anderen `tunes` entfernt der Server (auch verschachtelt in Spalten und Toggles). |
+| `block.tunes.hkstyle` | `{"c": "<palette>", "bg": true}` – `bg` fehlt = Textfarbe. Nur an `paragraph, header, list, quote, toggle, callout, checklist`; andere Typen und alle anderen `tunes` außer `hkconflict` (siehe „Gleichzeitig bearbeiten“) entfernt der Server (auch verschachtelt in Spalten und Toggles). |
 | `toggle.data.level` | 0 (fehlt) = normaler Toggle, 1–3 = Toggle-Überschrift H1–H3 (Titel in Überschriftengröße). |
 
 Beispiel:
@@ -38,6 +38,128 @@ Beispiel:
 (SwiftUI `.fontDesign(.serif)`, Android `FontFamily.Serif`), Mono `ui-monospace, "SF Mono", Menlo, Consolas, monospace`;
 klein = 0,875 × Grundgröße; gilt für Titel, Inhalt und Eigenschaften, Code-Blöcke bleiben Mono. Föderierte Seiten laufen
 über denselben Handler (Fähigkeit `db`, siehe `APP-API-FED.md`); ältere Server liefern die Felder nicht → Standard.
+
+## Inline-Vertrag und neue Blocktypen (2.5, P6-0)
+
+Grundlage für Inline-Farben, Personen-Erwähnungen, Mathe, Mermaid, synchronisierte Blöcke und 5–6 Spalten. Die
+Werkzeuge zum **Setzen** kommen später (Web P6-1, Apps P6-8) – Apps müssen die Formen aber schon jetzt **anzeigen oder
+mindestens unverändert zurückschreiben**. Gemeinsame Testvektoren: `tests/vectors/editor_inline.json`
+(`sanitize`: Eingabe → gespeichertes HTML, `publish`, `markdown`).
+
+### Inline-HTML (Positivliste des Servers)
+
+Bisher: `b strong i em u s mark code a br time`. Neu dazu:
+
+| Form | HTML | Regel |
+|---|---|---|
+| Textfarbe | `<span class="hk-c-<farbe>">…</span>` | Palette `gray brown orange yellow green blue purple pink red`; genau eine Klasse; `span` ohne erlaubte Klasse fällt weg (Text bleibt) |
+| Hintergrund | `<mark class="hk-bg-<farbe>">…</mark>` | `mark.cdx-marker` bleibt = Gelb (Standard); fremde Klasse → `mark` ohne Klasse |
+| beides | `<span class="hk-c-red"><mark class="hk-bg-blue">…</mark></span>` | Reihenfolge fest: `span` außen |
+| Erwähnung | `<span class="hk-mention" data-u="~abcdefghijklmnop">Anna</span>` | `data-u` = Handle (`~` + 16 Zeichen, lokal) oder Prinzipal `@name@host` bzw. `@~handle@host`; sonst nur Text. Der Text ist nur Rückfall (Export, alte Apps) – angezeigt wird später der aktuelle Name (P6-5) |
+| Inline-Mathe | `<code class="hk-math">TeX</code>` | enthält nur Text (keine weiteren Elemente); alte Apps zeigen Inline-Code |
+
+Keine `style`-Attribute, keine freien Farben. Darstellung: Klassen `hk-c-*`/`hk-bg-*` mit den Farben der Block-Farbe
+(hell/dunkel wie `tunes.hkstyle`). Veröffentlichen: `c-*`/`bg-*`, Erwähnung nur Text, Mathe als Code. Markdown-Export:
+Farben weg, `mark` → `==Text==`, Erwähnung → `@Name`, Inline-Mathe → `$TeX$`.
+
+### Neue Blocktypen
+
+| Typ | `data` | Hinweise |
+|---|---|---|
+| `math` | `{"tex": "…", "render"?}` | TeX als Klartext (kein HTML), höchstens 4000 Zeichen. Export `$$…$$` |
+| `code` (Mermaid) | `{"code", "language": "mermaid", "view"?: "code"\|"preview"\|"split", "render"?}` | ohne Unterstützung: normaler Code-Block |
+| `synced` | Original `{"sid", "blocks": [...]}`, Kopie `{"sid"}` | `sid` = 16 Zeichen `[A-Za-z0-9]`, vergibt der Server (P6-6). Inhalt wie Toggle (eine Ebene, keine Spalten darin). `data.src` setzt nur der Server beim Lesen, gespeichert wird es nie |
+| `render` (bei `math`/Mermaid) | `{"png"?, "svg"?: "/files/<id>", "h": "<16 hex>", "w"?, "hgt"?}` | Vorschaubild vom Web; `h` = SHA-256 des Quelltexts (16 Zeichen) – passt es nicht, ist das Bild veraltet. Dateien gehören dem Seiten-Eigentümer |
+
+Alte Apps: unbekannte Typen als Rückfall-Karte anzeigen und **unverändert** zurückschreiben (Grundregel oben).
+
+### Fähigkeiten und Schutz älterer Clients (`X-Saga-Caps`)
+
+Apps melden beim Speichern (`PATCH /api/notes/{id}`), was sie verstehen: Kopf `X-Saga-Caps: inline2,cols6,merge1`
+(kommagetrennt; unbekannte Werte werden ignoriert).
+
+- `inline2` = die App erhält die Inline-Formen oben beim Bearbeiten (auch unverstandene: Tags samt Klasse behalten).
+- `cols6` = die App kann bis 6 Spalten bearbeiten.
+- `merge1` = die App sendet `merge: 1` (siehe „Gleichzeitig bearbeiten“; nur Hinweis, das Feld selbst entscheidet).
+
+Ohne Kopf gilt: Browser-Sitzung (Web) = alles; App-Sitzung/Geräte-Schlüssel = nichts davon. Dann schützt der Server:
+Textfelder eines Blocks (gleiche `id`, gleicher Typ), deren **reiner Text unverändert** ist, behalten ihr altes HTML,
+wenn es neue Formen enthielt, die jetzt fehlen (Zwischenregel bis zum zeichengenauen Markenerhalt). Ein Spalten-Block mit
+genau 4 Spalten, der vorher 5–6 hatte, bekommt die fehlenden Spalten zurück (Breiten danach gleich). Föderation:
+dasselbe für Gegenstellen ohne die Fähigkeiten `inline2`/`cols6` (`APP-API-FED.md`).
+
+## Gleichzeitig bearbeiten: blockweises Zusammenführen (2.5, P3 Stufe 1)
+
+Statt `409` führt der Server (bei föderierten Seiten später der Eigentümer-Server, Etappe E3) zwei Fassungen einer Seite
+**blockweise zusammen**. Die Merge-Logik gibt es nur im Server (`saga/merge.py`); Apps führen nur Buch. Testvektoren:
+`tests/vectors/merge.json` (Basis, meins, deren → erwartet). Alte Apps ohne `merge` bekommen weiterhin `409`.
+
+### Voraussetzung: eindeutige Block-IDs
+
+Jeder Block – auch in Spalten, Toggles und `synced` – hat eine eindeutige `id` (`[A-Za-z0-9_-]{1,40}`). Apps vergeben
+für neue Blöcke zufällige IDs (10 Zeichen) und behalten IDs beim Bearbeiten, Verschieben (auch in/aus Spalten und
+Toggles) und Umwandeln. Fehlt eine ID oder ist sie doppelt, vergibt der Server beim Speichern eine neue (die erste
+doppelte behält ihre). Alte Stände ohne eindeutige IDs liefert `GET /api/notes/{id}` mit **deterministisch**
+ergänzten IDs (gleich für alle Clients, Kommentare/Widgets/Anker daran bleiben gültig) – Apps übernehmen sie einfach.
+
+### Speichern (`PATCH /api/notes/{id}`)
+
+| Feld | Bedeutung |
+|---|---|
+| `rev` | wie bisher: Revision, auf der der Client beruht (ohne `rev` kein Zusammenführen) |
+| `merge: 1` | der Client kann eine zusammengeführte Antwort übernehmen. Ohne: bei veralteter `rev` `409` wie bisher |
+| `base: "sent"` | optional: die Basis ist **die zuletzt eingereichte Fassung** zu `rev` (nicht der zurückgegebene Stand) – siehe Rebase |
+| `bases: {blockId: rev}` | optional, höchstens 500: für einzelne Blöcke eine ältere Basis (eingereichte Fassung jener Revision) |
+
+Antwort `200` (zusammengeführt, d. h. `rev` war veraltet bzw. `base`/`bases` gesetzt):
+
+```json
+{"ok": true, "rev": 12, "updated": 1793117573.4, "body": "<Inhalt wie GET>", "format": "blocks", "title": "…",
+ "merged": {"from": 10, "conflicts": ["a1-k"], "restored": ["b2"], "lost": ["db7"], "title_lost": true}}
+```
+
+- `body`/`title`/`rev` = neuer Stand, so wie `GET` ihn dieser Person zeigt (verdeckte Verweise maskiert).
+- `conflicts`: neue Konfliktblöcke (siehe unten). `restored`: Blöcke, die man gelöscht hatte, die aber jemand anderes
+  inzwischen geändert hat (sie bleiben). `lost`: Blöcke, bei denen ein Nicht-Text-Feld beidseitig verschieden geändert
+  wurde – die eigene Fassung gilt, die andere liegt in den Versionen (dezenter Hinweis). `title_lost`: Titel ebenso.
+- Ohne `merged` in der Antwort wurde ganz normal gespeichert.
+- `409` mit `merge: 1` nur noch, wenn die Basis nicht mehr vorliegt (älter als 24 h bzw. 30 Revisionen) – dann der
+  bisherige Konfliktdialog. Ältere Server kennen `merge` nicht: `409` wie bisher, Dialog bleibt im Code.
+
+### Regeln (Kurzform; genau: Testvektoren)
+
+- Verschiedene Blöcke geändert/eingefügt/gelöscht → alles bleibt; neue Blöcke beider Seiten am selben Anker: die des
+  Servers zuerst. Gelöscht gegen geändert → die Änderung gewinnt (`restored`). Reihenfolge: einseitig übernommen,
+  beidseitig die des Servers plus eigene Verschiebungen ohne Kollision. Verschieben zwischen Listen: eigene Position.
+- Gleicher Block: je Feld (`level`, `tunes.hkstyle`, `checked` …). Textfelder (`text`, `title`, `caption`, Listenpunkte,
+  Tabellenzellen, `code`) zeichenweise inkl. Formatierung; Verweise, `<time>`, Erwähnungen und Inline-Mathe sind je eine
+  Einheit; der Mathe-Block (`tex`) wird nie gemischt.
+- **Überschneidung im Text → Konfliktblock**: die Fassung des Servers bleibt an der Stelle, die eingereichte steht als
+  **neuer Block direkt darunter** mit `tunes.hkconflict = {by, name, at, of}` (`by` Handle bzw. Prinzipal, `of` = ID des
+  Originals). Darstellung: gelber Rand + „Fassung von {name} – Übernehmen / Verwerfen“. Übernehmen = Original (`of`)
+  löschen und `hkconflict` entfernen; Verwerfen = Konfliktblock löschen; dann normal speichern. Vorher sichert der
+  Server eine Version. Alte Apps sehen einen normalen Absatz (unbekannte Tunes unverändert zurückschreiben).
+
+### Rebase im Client (ohne eigene Merge-Logik)
+
+1. Vor dem Senden den eingereichten Inhalt merken (`sent`).
+2. Antwort mit `merged`: Ist der Editor seit dem Senden unverändert, den Inhalt der Antwort blockweise übernehmen
+   (geänderte Blöcke ersetzen, Fokus im eigenen Block halten). Wurde weitergeschrieben: lokalen Stand behalten, `rev`
+   übernehmen und beim nächsten Speichern `merge: 1, base: "sent"` senden – der Server nimmt dann die eingereichte
+   Fassung als Basis und bringt die fremden Blöcke mit der nächsten Antwort.
+3. Antwort ohne `merged`: wie bisher (`rev` übernehmen).
+4. Feiner (optional): je lokal geänderten Block die `rev` merken, auf der die Änderung beruht, und als `bases` senden.
+5. Fremde Änderung ohne eigenes Speichern (`note.changed` mit höherer `rev`): `GET` und blockweise übernehmen, ungespeicherte
+   eigene Blöcke behalten (bzw. einfach sofort mit `merge: 1` speichern). Kein „Neu laden“-Hinweis mehr nötig.
+6. Kopf `X-Saga-Caps: …,merge1` melden (siehe Inline-Vertrag).
+
+### Anwesenheit je Block
+
+`POST /api/presence` nimmt zusätzlich `block` (ID des fokussierten Blocks oder `null`; nur zusammen mit `editing: true`
+wirksam). Senden bei Blockwechsel (höchstens etwa 1×/s; schnellere Meldungen ändern nur den Block), sonst wie bisher
+alle ~20 s; ohne `block` bleibt der zuletzt gemeldete. Antwort und Ereignis `presence` liefern je Person zusätzlich
+`block` und `color` (Palette, stabil je Person). Darstellung: farbiger Rand links am Block + „{name} bearbeitet“ –
+nur Hinweis, keine Sperre. Ältere Clients ignorieren die Felder. Föderiert: folgt mit E3 (`presence2`).
 
 ## Widgets in Seiten (2.5, Etappe 1)
 
