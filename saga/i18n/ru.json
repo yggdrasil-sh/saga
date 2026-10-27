@@ -3705,6 +3705,7 @@
  "{n} {n:Anhang|Anhänge} nicht weitergeleitet.": "Не переслано вложений: {n}.",
  "{n} {n:Chat|Chats} noch nicht umgestellt": "{n} {n:чат|чата|чатов} ещё не переведено",
  "{n} {n:Eintrag|Einträge}": "{n} {n:запись|записи|записей}",
+ "{n} {n:Eintrag|Einträge} in den nächsten {d} {d:Tag|Tagen}": "{n} {n:запись|записи|записей} в ближайшие {d} {d:день|дня|дней}",
  "{n} {n:mit dir geteilte Seite|mit dir geteilte Seiten} von anderen Saga-Servern ({hosts}) {n:ist|sind} danach nicht mehr für dich freigegeben, weil diese Server eine ältere Saga-Version haben. Die Eigentümer müssen neu teilen.": "{n} {n:страница|страницы|страниц} с других серверов Saga ({hosts}) после этого больше не будут вам доступны, потому что на этих серверах старая версия Saga. Владельцам придётся поделиться снова.",
  "{n} {n:Nachricht wird|Nachrichten werden} auf deinen Geräten ausgeblendet.": "{n} {n:сообщение будет скрыто|сообщения будут скрыты|сообщений будут скрыты} на ваших устройствах.",
  "{n} {n:Nachricht|Nachrichten} an „{chat}“ weiterleiten?": "Переслать {n} {n:сообщение|сообщения|сообщений} в «{chat}»?",

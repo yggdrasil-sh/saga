@@ -3705,6 +3705,7 @@
  "{n} {n:Anhang|Anhänge} nicht weitergeleitet.": "{n} {n:adjunto no reenviado|adjuntos no reenviados}.",
  "{n} {n:Chat|Chats} noch nicht umgestellt": "{n} {n:chat|chats} aún sin convertir",
  "{n} {n:Eintrag|Einträge}": "{n} {n:entrada|entradas}",
+ "{n} {n:Eintrag|Einträge} in den nächsten {d} {d:Tag|Tagen}": "{n} {n:entrada|entradas} en los próximos {d} {d:día|días}",
  "{n} {n:mit dir geteilte Seite|mit dir geteilte Seiten} von anderen Saga-Servern ({hosts}) {n:ist|sind} danach nicht mehr für dich freigegeben, weil diese Server eine ältere Saga-Version haben. Die Eigentümer müssen neu teilen.": "{n} {n:página compartida|páginas compartidas} contigo desde otros servidores Saga ({hosts}) {n:dejará|dejarán} de estar compartidas contigo, porque esos servidores usan una versión anterior de Saga. Los propietarios tendrán que volver a compartir.",
  "{n} {n:Nachricht wird|Nachrichten werden} auf deinen Geräten ausgeblendet.": "{n} {n:mensaje se ocultará|mensajes se ocultarán} en tus dispositivos.",
  "{n} {n:Nachricht|Nachrichten} an „{chat}“ weiterleiten?": "¿Reenviar {n} {n:mensaje|mensajes} a «{chat}»?",

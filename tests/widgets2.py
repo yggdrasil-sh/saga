@@ -16,7 +16,7 @@ Nie echtes Netz: Open-Meteo und CalDAV sind lokale Fake-Server auf 127.0.0.1 (Po
   (gleiche Reihen), Status-Gruppen, Datums-Eimer, kein Zugriff, Veroeffentlichen als SVG ohne Inline-Styles.
 - Markdown-Export der neuen Arten.
 Wegwerf-Konten w2-a/w2-b/w2-c, raeumt auf. Umgebung wie tests/seiten_widgets.py."""
-import base64, http.client, json, os, re, sys, threading, time, urllib.parse
+import base64, hashlib, http.client, json, os, re, secrets, sys, threading, time, urllib.parse
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from itsdangerous import TimestampSigner
@@ -262,8 +262,9 @@ def main():
     s, d = req("GET", "/api/version")
     ok("features weather1/habit1/upcoming1/chart1", all(f in d.get("features", []) for f in ("weather1", "habit1", "upcoming1", "chart1")), d)
     prev_hosts = auth.settings(fresh=True).get("allowed_hosts") or ""
-    prev_wx = auth.settings(fresh=True).get("weather")
     try:
+        part_admin()
+        time.sleep(5.3)
         part_weather(A, Bk)
         part_habit(A, Bk, C)
         part_upcoming(A, Bk)
@@ -271,7 +272,72 @@ def main():
         part_publish(A)
     finally:
         auth.save_setting("allowed_hosts", prev_hosts)
-        auth.save_setting("weather", prev_wx or {"enabled": False, "base_url": "", "geo_url": "", "api_key": ""})
+        with connect() as c, c:
+            c.execute("DELETE FROM setting WHERE k='weather'")
+        auth._settings_cache["v"] = None
+
+
+def part_admin():
+    """Admin-Bereich: Wetter-Schalter (Standard aus), Hinweis Open-Meteo/nicht-kommerziell, Speichern, ungueltige Adresse,
+    API-Schluessel verschluesselt und beim Leerlassen behalten."""
+    ad = urllib.parse.urlparse(os.environ.get("HK_TEST_ADMIN", "http://127.0.0.1:8098"))
+    sa = TimestampSigner(hashlib.sha256(("hk-admin|" + os.environ["SESSION_SECRET"]).encode()).hexdigest())
+    auth.create_user("w2-adm", "Widget2-Pass-123", "Admin W2", is_admin=True)
+    tok = "w2-csrf-" + secrets.token_hex(6)
+    cookie = [sa.sign(base64.b64encode(json.dumps({"aid": "w2-adm", "ep": time.time() + 5, "csrf": tok}).encode())).decode()]
+
+    def go(path, form=None):
+        c = http.client.HTTPConnection(ad.hostname, ad.port, timeout=40)
+        c.request("POST" if form is not None else "GET", path, body=urllib.parse.urlencode(dict(form, csrf=tok)) if form is not None else None,
+                  headers={"Cookie": "hk_admin=" + cookie[0], "Content-Type": "application/x-www-form-urlencoded", "Accept-Language": "de"})
+        r = c.getresponse(); data = r.read().decode("utf-8", "replace")
+        for k, v in r.getheaders():
+            if k.lower() == "set-cookie" and v.startswith("hk_admin="):
+                cookie[0] = v.split(";", 1)[0][len("hk_admin="):]
+        if r.status >= 500:
+            n500[0] += 1
+        return r.status, data
+    st, html = go("/settings")
+    ok(f"Admin: Wetter-Schalter aus, Hinweis nicht-kommerziell ({st})", st == 200 and 'name="weather_enabled"' in html
+       and not re.search(r'name="weather_enabled" value="1" checked', html) and "nicht-kommerzielle" in html and "Open-Meteo" in html)
+    keep = {}                                # Formular wie der Browser: Textfelder mit Wert, nur angehakte Kaestchen
+    for tag in re.findall(r"<input[^>]*>", html):
+        nm, val = re.search(r'name="([a-z_]+)"', tag), re.search(r'value="([^"]*)"', tag)
+        if not nm or nm.group(1) == "csrf":
+            continue
+        if 'type="checkbox"' in tag:
+            if " checked" in tag:
+                keep[nm.group(1)] = "1"
+        elif 'type="password"' not in tag:
+            keep[nm.group(1)] = val.group(1) if val else ""
+    with connect() as c:
+        before = dict(c.execute("SELECT k, v FROM setting").fetchall())
+    form = dict(keep, weather_enabled="1", weather_base_url="http://wetter.example.org/v1/forecast", weather_geo_url="", weather_api_key="")
+    go("/settings", form)
+    ok("Admin: http ohne Freigabe abgelehnt (nicht gespeichert)", (auth.settings(fresh=True).get("weather") or {}).get("enabled") is not True)
+    form.update(weather_base_url="", weather_api_key="geheimer-schluessel-123")
+    go("/settings", form)
+    w = auth.settings(fresh=True).get("weather") or {}
+    with connect() as c:
+        raw = c.execute("SELECT v FROM setting WHERE k='weather'").fetchone()[0]
+    ok("Admin: eingeschaltet, Schluessel verschluesselt gespeichert", w.get("enabled") is True and w.get("api_key") == "geheimer-schluessel-123"
+       and "geheimer-schluessel" not in raw)
+    st, html = go("/settings")
+    ok("Admin: Schluessel nicht im Formular, 'gespeichert'", "geheimer-schluessel" not in html and "gespeichert ✓" in html)
+    form.update(weather_api_key="")
+    go("/settings", form)
+    ok("Admin: leer lassen behaelt den Schluessel", (auth.settings(fresh=True).get("weather") or {}).get("api_key") == "geheimer-schluessel-123")
+    with connect() as c:
+        after = dict(c.execute("SELECT k, v FROM setting").fetchall())
+    changed = sorted(k for k in after if k not in ("weather", "mfa", "avatar") and before.get(k, after[k]) != after[k])
+    ok(f"Admin: Speichern aendert sonst keine Einstellung ({changed})", not changed)
+    with connect() as c, c:                  # Schluessel ganz entfernen (save_setting behielte ihn); vorherige Werte zurueck
+        c.execute("DELETE FROM setting WHERE k='weather'")
+        c.execute("DELETE FROM setting WHERE NOT (k = ANY(?))", (list(before),))
+        for k, v in before.items():
+            c.execute("UPDATE setting SET v=? WHERE k=?", (v, k))
+        c.execute("DELETE FROM users WHERE username='w2-adm'")
+    auth._settings_cache["v"] = None
 
 
 def part_weather(A, Bk):

@@ -772,6 +772,8 @@ def value_text(d, w, today, tz=None):
     if kind == "habit":
         return " · ".join(t("{name}: {pct} % ({n} {n:Tag|Tage} in Folge)", name=h.get("name") or "", pct=h.get("pct", 0), n=h.get("streak", 0))
                           for h in data.get("habits") or [])
+    if kind == "upcoming":
+        return t("{n} {n:Eintrag|Einträge} in den nächsten {d} {d:Tag|Tagen}", n=len(data.get("items") or []) + (data.get("more") or 0), d=data.get("days") or 7)
     if kind == "chart":
         if data.get("type") == "number" or not data.get("cats"):
             return fmt_num(data.get("total"), data.get("fmt"))

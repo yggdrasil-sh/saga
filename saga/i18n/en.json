@@ -3705,6 +3705,7 @@
  "{n} {n:Anhang|Anhänge} nicht weitergeleitet.": "{n} {n:attachment|attachments} not forwarded.",
  "{n} {n:Chat|Chats} noch nicht umgestellt": "{n} {n:chat|chats} not converted yet",
  "{n} {n:Eintrag|Einträge}": "{n} {n:entry|entries}",
+ "{n} {n:Eintrag|Einträge} in den nächsten {d} {d:Tag|Tagen}": "{n} {n:entry|entries} in the next {d} {d:day|days}",
  "{n} {n:mit dir geteilte Seite|mit dir geteilte Seiten} von anderen Saga-Servern ({hosts}) {n:ist|sind} danach nicht mehr für dich freigegeben, weil diese Server eine ältere Saga-Version haben. Die Eigentümer müssen neu teilen.": "{n} {n:page|pages} shared with you from other Saga servers ({hosts}) will no longer be shared with you afterwards, because these servers run an older Saga version. The owners have to share again.",
  "{n} {n:Nachricht wird|Nachrichten werden} auf deinen Geräten ausgeblendet.": "{n} {n:message|messages} will be hidden on your devices.",
  "{n} {n:Nachricht|Nachrichten} an „{chat}“ weiterleiten?": "Forward {n} {n:message|messages} to “{chat}”?",
