@@ -4,7 +4,7 @@
 Bloecke: Ueberschriften (# und Setext), Absaetze, Listen (verschachtelt, geordnet, Aufgaben), Zitate, Callouts
 (> [!note] Titel, faltbar mit -/+ -> Toggle), Codebloecke (``` und ~~~), Trennlinie, GFM-Tabellen, Bilder als eigene
 Zeile, <details><summary> -> Toggle, <aside> -> Callout, Frontmatter (wird vorher abgetrennt, siehe split_frontmatter).
-Inline: **fett**, *kursiv*/_kursiv_, ~~durch~~, `code`, ==markiert==, [Text](url), <url>, [[Wikilink|Alias]],
+Inline: **fett**, *kursiv*/_kursiv_, ~~durch~~, `code`, ==markiert==, $Mathe$, [Text](url), <url>, [[Wikilink|Alias]],
 %%Kommentar%% (entfernt). HTML im Text wird als Text behandelt (Klartext, escaped).
 
 Verweise loest der Aufrufer auf: resolve_link(ziel, ist_wikilink) -> ("page", "$ref:x") | ("file", "$file:k", name,
@@ -117,7 +117,9 @@ _INLINE = re.compile(
     r"|(?P<link>\[(?P<linkt>(?:[^\[\]]|\[[^\]]*\])*)\]\((?P<linku><[^>]*>|(?:[^()\s]|\([^()\s]*\))*)(?:\s+\"[^\"]*\")?\))"
     r"|(?P<auto><(?P<autou>(?:https?://|mailto:)[^>\s]+)>)"
     r"|(?P<bare>(?<![\w/\"'=])(?P<bareu>https?://[^\s<>()\[\]]*[^\s<>()\[\].,;:!?\"']))"
-    r"|(?P<esc>\\[\\`*_{}\[\]()#+\-.!|~=<>])"
+    r"|(?P<esc>\\[\\`*_{}\[\]()#+\-.!|~=<>$])"
+    # 2.5: Inline-Mathe wie Obsidian - $TeX$ ohne Leerzeichen innen am Rand, nicht vor einer Ziffer ($5 und $10 bleibt Text)
+    r"|(?P<math>(?<![\\$\w])\$(?P<mtxt>[^\s$][^$\n]{0,1998}?(?<=[^\s$\\]))\$(?![\w$]))"
 )
 
 
@@ -144,6 +146,8 @@ def inline(s, ctx):
         elif m.group("auto") or m.group("bare"):
             u = m.group("autou") or m.group("bareu")
             out.append(f'<a href="{escape(u, quote=True)}">{escape(u, quote=False)}</a>')
+        elif m.group("math"):                    # Inline-Vertrag (P6-0): code.hk-math mit dem TeX-Text
+            out.append('<code class="hk-math">' + _prot(escape(m.group("mtxt"), quote=False)) + "</code>")
         elif m.group("esc"):
             out.append(escape(m.group("esc")[1], quote=False))
     out.append(_emph(s[pos:]))

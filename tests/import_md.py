@@ -81,7 +81,8 @@ VAULT = {
     "Tresor/Start.md": ("---\ntitle: Startseite\ntags: [privat, projekt/alpha]\naliases: [Home]\nstatus: offen\nprio: 2\n---\n"
                         "# Startseite\n\nSiehe [[Alpha|das Projekt]], [[Alpha#Ziele]], [[Projekte/Beta]], [[Mehrdeutig]] und [[Gibt es nicht]].\n"
                         "Markdown-Link [Beta](Projekte/Beta.md) und [Notiz mit Leerzeichen](Notiz%20mit%20Leerzeichen.md).\n"
-                        "Böse: [klick](javascript:alert(1)) <script>alert(2)</script> ==markiert== %%versteckt%%\n\n"
+                        "Böse: [klick](javascript:alert(1)) <script>alert(2)</script> ==markiert== %%versteckt%%\n"
+                        "Formel $E=mc^2$ kostet $5 und $10. <span class=\"hk-c-red\">rot</span> <span class=\"hk-mention\" data-u=\"x\">@x</span>\n\n"
                         "![[bild.png|200]]\n\n![Diagramm](Anhänge/diagramm.png)\n\n![extern](https://example.org/x.png)\n\n"
                         "![[handbuch.pdf]]\n\n![[falsch.png]]\n\n![[Alpha]]\n\n"
                         "> [!note] Hinweis\n> Inhalt\n\n> [!danger] Gefahr\n> Vorsicht\n\n> [!tip]- Faltbar\n> Innen\n\n"
@@ -182,6 +183,11 @@ def run():
        and "Gibt es nicht" in j, (mids, j[:400]))
     ok("javascript:-Link nur Text, <script> als Text", "javascript" not in j and "&lt;script&gt;" in j, j)
     ok("==markiert==, %%Kommentar%% entfernt", "cdx-marker" in j and "versteckt" not in j)
+    ok("$Mathe$ -> code.hk-math (Inline-Vertrag), $5 und $10 bleibt Text", '<code class="hk-math">E=mc^2</code>' in j and "$5 und $10" in j, j[:800])
+    ok("HTML mit hk-Klassen im Markdown nur als Text (keine Farbe/Erwaehnung durchgeschleust)",
+       'class="hk-c-red"' not in j and 'class="hk-mention"' not in j and "&lt;span" in j, j[:800])
+    bids = [b.get("id") for b in all_blocks(bl)]
+    ok(f"Block-IDs eindeutig und gueltig ({len(bids)})", all(isinstance(x, str) and x for x in bids) and len(set(bids)) == len(bids), bids)
     types = [b["type"] for b in all_blocks(bl)]
     imgs = [b for b in bl if b["type"] == "image"]
     ok("Bilder -> image mit eigener Datei", len(imgs) == 2 and all(i["data"]["file"]["url"].startswith("/files/") for i in imgs), imgs)

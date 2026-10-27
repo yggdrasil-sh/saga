@@ -211,6 +211,23 @@ if os.environ.get("HK_TEST_BASE") and os.environ.get("SESSION_SECRET"):
         ok(f"Presence: block und color ({me})", s == 200 and me and me[0].get("block") == bids[0] and me[0].get("color") in
            ("gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"))
         call(ckA, "POST", "/api/presence", {"note_id": nid, "leave": True})
+        # Datenbank-Zeile mit Formel: zusammengefuehrtes Speichern mit props -> "merged" UND "calc"/"fx_err" (Paket 1)
+        s, d = call(ckA, "POST", "/api/notes", {"title": "Merge DB", "kind": "database"}); dbid = d["id"]
+        s, d = call(ckA, "PATCH", f"/api/notes/{dbid}", {"schema": {"props": [{"id": "n", "name": "N", "type": "number"},
+                                                                              {"id": "f", "name": "F", "type": "formula", "expr": "prop(\"n\") * 2"},
+                                                                              {"id": "g", "name": "G", "type": "formula", "expr": "1 / 0"}]}})
+        s, d = call(ckA, "POST", "/api/notes", {"title": "Zeile", "parent_id": dbid, "props": {"n": 2}}); rid = d["id"]
+        s, d = call(ckA, "PATCH", f"/api/notes/{rid}", {"body": doc(Pb("a", "eins"), Pb("b", "zwei")), "format": "blocks", "rev": 0})
+        q1 = d["rev"]
+        call(ckA, "PATCH", f"/api/notes/{rid}", {"body": doc(Pb("a", "eins"), Pb("b", "zwei!")), "format": "blocks", "rev": q1})
+        s, d = call(ckA, "PATCH", f"/api/notes/{rid}", {"body": doc(Pb("a", "eins."), Pb("b", "zwei")), "format": "blocks", "rev": q1,
+                                                        "merge": 1, "props": {"n": 5}})
+        got = [x["data"]["text"] for x in json.loads(d.get("body") or "{}").get("blocks") or []]
+        ok(f"DB-Zeile: merge + props -> merged und calc/fx_err nebeneinander ({s}, {d.get('merged')}, {d.get('calc')}, {d.get('fx_err')})",
+           s == 200 and got == ["eins.", "zwei!"] and d.get("merged", {}).get("from") == q1 and d.get("calc", {}).get("f") == 10
+           and isinstance(d.get("fx_err"), dict) and "g" in d["fx_err"])
+        s, d = call(ckA, "PATCH", f"/api/notes/{rid}", {"props": {"n": 7}})
+        ok(f"DB-Zeile: nur props -> calc ohne merged ({s}, {d.get('calc')})", s == 200 and d.get("calc", {}).get("f") == 14 and "merged" not in d)
     finally:
         with connect() as c, c:
             c.execute("DELETE FROM note_comment WHERE owner_uid='hk-test-a'")
