@@ -552,7 +552,7 @@ def md_text(b, w=None):
     head = "**" + (d.get("title") or kind_name(d.get("kind"))).replace("*", "\\*") + ":**"
     if v is None:
         return head + " –"
-    line = head + " " + v.replace("\n", " ")
+    line = head + " " + v.replace("\n", " ").replace("\u00a0", " ")
     if server_kind(d):
         line += " (" + t("Stand {date}", date=i18n.day_str(today)) + ")"
     return line
