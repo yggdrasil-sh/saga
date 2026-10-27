@@ -121,26 +121,31 @@ def fix_block_ids(blocks, seed=None):
 BASE_KEEP, BASE_MAX = 86400, 30           # Basisstaende fuer das Zusammenfuehren: 24 h, hoechstens 30 je Seite
 
 
-def keep_base(c, nid, rev, title, body, fmt, now, prev=None):
+def keep_base(c, nid, rev, title, body, fmt, now, prev=None, sent=None):
     """Gespeicherte Revision als Basis fuer saga.merge ablegen (nur Block-Seiten). prev = (rev, title, body, format) des
-    bisherigen Stands: fehlt er (Seite seit dem Update nicht gespeichert), wird er mit abgelegt. Aeltere als 24 h bzw.
-    ueber 30 fallen weg (die juengste bleibt immer)."""
+    bisherigen Stands: fehlt er (Seite seit dem Update nicht gespeichert), wird er mit abgelegt. sent = (titel, inhalt) der
+    eingereichten Fassung, wenn zusammengefuehrt wurde. Aeltere als 24 h bzw. ueber 30 fallen weg (die juengste bleibt)."""
     if prev is not None and prev[3] == "blocks":
         c.execute("INSERT INTO note_base (note_id, rev, title, body, format, created) VALUES (?,?,?,?,?,?) "
                   "ON CONFLICT (note_id, rev) DO NOTHING", (nid, prev[0], prev[1], prev[2], prev[3], now))
     if fmt != "blocks":
         c.execute("DELETE FROM note_base WHERE note_id=?", (nid,))
         return
-    c.execute("INSERT INTO note_base (note_id, rev, title, body, format, created) VALUES (?,?,?,?,?,?) "
+    c.execute("INSERT INTO note_base (note_id, rev, title, body, format, sent_title, sent, created) VALUES (?,?,?,?,?,?,?,?) "
               "ON CONFLICT (note_id, rev) DO UPDATE SET title=excluded.title, body=excluded.body, format=excluded.format, "
-              "created=excluded.created", (nid, rev, title, body, fmt, now))
+              "sent_title=excluded.sent_title, sent=excluded.sent, created=excluded.created",
+              (nid, rev, title, body, fmt, *(sent or (None, None)), now))
     c.execute("DELETE FROM note_base WHERE note_id=? AND rev<? AND (created<? OR rev NOT IN "
               "(SELECT rev FROM note_base WHERE note_id=? ORDER BY rev DESC LIMIT ?))", (nid, rev, now - BASE_KEEP, nid, BASE_MAX))
 
 
-def base_of(c, nid, rev):
-    """Basisstand (title, body, format) einer Revision oder None."""
-    return c.execute("SELECT title, body, format FROM note_base WHERE note_id=? AND rev=?", (nid, rev)).fetchone()
+def base_of(c, nid, rev, sent=False):
+    """Basisstand (title, body, format) einer Revision oder None. sent=True: die eingereichte Fassung, wenn diese Revision
+    zusammengefuehrt wurde (sonst ist sie gleich dem gespeicherten Stand)."""
+    r = c.execute("SELECT title, body, format, sent_title, sent FROM note_base WHERE note_id=? AND rev=?", (nid, rev)).fetchone()
+    if not r:
+        return None
+    return (r[3], r[4], r[2]) if sent and r[4] is not None else tuple(r[:3])
 
 
 def ensure_ids(body, fmt, nid):

@@ -680,7 +680,8 @@
           callout: { class: CalloutTool, inlineToolbar: true },
           hkdate: { class: DateInline },
           hkcomment: { class: CommentTune },
-          hkstyle: { class: StyleTune }, hkdup: { class: DupTune }, hklink: { class: LinkTune }
+          hkstyle: { class: StyleTune }, hkdup: { class: DupTune }, hklink: { class: LinkTune },
+          hkconflict: { class: ConflictTune }          // 2.5 (P3): Konfliktblock aus dem Zusammenfuehren
         },
         tunes: BLOCK_TUNES,                    // Block-Menue (⋮⋮, 2.5 G5): Farbe, Duplizieren, Link, Kommentieren
         i18n: I18N,
@@ -749,6 +750,12 @@
       if (out) { body.body = JSON.stringify(out); body.format = 'blocks'; }
       if (!Object.keys(body).length) return;
       if (S.cur && S.cur.id === id && !S.force && S.cur.rev != null) body.rev = S.cur.rev;   // Konflikterkennung
+      // 2.5 (P3 Stufe 1): der Server fuehrt fremde Zwischenaenderungen blockweise zusammen statt 409 (docs/APP-API.md
+      // "Gleichzeitig bearbeiten"); base "sent": eigene Basis ist die zuletzt eingereichte Fassung (weitergeschrieben,
+      // waehrend die vorige Antwort unterwegs war)
+      var sentStr = out ? JSON.stringify(out.blocks) : null, sentTitle = 'title' in body ? body.title : null;
+      if (body.rev != null && mergeable()) { body.merge = 1; if (S.baseSent && S.baseSent.id === id && S.baseSent.rev === body.rev) body.base = 'sent'; }
+      S.baseSent = null;
       S.force = false;
       if (S.overwrite) { body.overwrite = true; S.overwrite = false; }       // "Meine Version behalten": andere Fassung als Version sichern
       S.inflight = (S.inflight || 0) + 1;                                    // Live: waehrenddessen nicht still neu laden
@@ -756,13 +763,15 @@
       var req = api('PATCH', '/api/notes/' + id, body); req.then(done, done);
       return req.then(function (d) {
         if (S.cur && S.cur.id === id && d.rev != null) S.cur.rev = d.rev;
+        if (d.merged && S.cur && S.cur.id === id) mergedReply(id, d, sentStr, sentTitle);
         if (S.cur && S.cur.id === id && d.updated) S.cur.updated = d.updated;
         if (S.cur && S.cur.id === id && S.cur.updated_by && !S.cur.updated_by.me) { S.cur.updated_by = { me: true }; applyMeta(); }
         var p = byId(id); if (p) { p.updated = d.updated; if ('title' in body) p.title = body.title.trim(); }
         if (out && /"widget"/.test(body.body || '')) setTimeout(loadWidgets, 0);      // Widgets: Werte zum gespeicherten Stand
         if (!S.dirtyBody && !S.dirtyTitle) state(T('Gespeichert ✓ {time}', { time: HK.fUpd.format(new Date(d.updated * 1000)) }), 'ok');
         if (!remoteId(id)) { S.ckId = id; clearTimeout(S.ckTimer); S.ckTimer = setTimeout(function () { checkpoint('pause'); }, CK_PAUSE); }
-        if ('title' in body) { if (S.cur && S.cur.id === id) S.cur.title = body.title.trim(); renderTree(); renderCrumbs(); setLocation(); }
+        if ('title' in body) { if (S.cur && S.cur.id === id) S.cur.title = d.merged && typeof d.title === 'string' ? d.title : body.title.trim(); renderTree(); renderCrumbs(); setLocation(); }
+        if (S.remoteAfter && S.cur && S.cur.id === id && S.remoteAfter > (d.rev || 0)) setTimeout(function () { liveApply(null); }, 0);   // fremde Aenderung nach diesem Stand
       });
     }).catch(function (err) {
       S.dirtyBody = S.dirtyBody || !!body.body || (wantBody && !body.body); S.dirtyTitle = S.dirtyTitle || 'title' in body;
@@ -2079,7 +2088,7 @@
   // --- Seite gestalten (2.5): Block-Menue ⋮⋮ (G5) mit Farbe (G3), Duplizieren, Link zum Block -----------------------------
   // Reihenfolge im Menue: Einstellungen des Blocks (Editor.js), "Umwandeln in", Farbe, Duplizieren, Link, Kommentieren, dann
   // Nach oben / Loeschen / Nach unten. Lesen/Kommentieren (bzw. gesperrt): nur Link und Kommentieren.
-  var BLOCK_TUNES = ['hkstyle', 'hkdup', 'hklink', 'hkcomment'];
+  var BLOCK_TUNES = ['hkstyle', 'hkdup', 'hklink', 'hkcomment', 'hkconflict'];
   var STYLE_TYPES = { paragraph: 1, header: 1, list: 1, quote: 1, toggle: 1, callout: 1, checklist: 1 };   // wie saga/notes.py
   var DUP_TYPES = { paragraph: 1, header: 1, list: 1, quote: 1, code: 1, toggle: 1, callout: 1, delimiter: 1, table: 1, image: 1 };
   var COLOR_NAMES = { gray: T('Grau'), brown: T('Braun'), orange: T('Orange'), yellow: T('Gelb'), green: T('Grün'), blue: T('Blau'),
@@ -2167,6 +2176,41 @@
     if (tune) tune.set(st);
   }
 
+  // 2.5 (P3 Stufe 1): Konfliktblock - der Server hat zwei Fassungen desselben Absatzes nicht zusammenfuehren koennen; die
+  // andere Fassung steht an ihrer Stelle, diese (die eigene bzw. die einer anderen Person) direkt darunter. Uebernehmen =
+  // diese ersetzt das Original (tunes.hkconflict.of), Verwerfen = diese Fassung entfernen.
+  function ConflictTune(o) { this.api = o.api; this.block = o.block; this.data = o.data && typeof o.data === 'object' ? o.data : null; }
+  ConflictTune.isTune = true;
+  ConflictTune.prototype.render = function () { return []; };
+  ConflictTune.prototype.save = function () { return this.data || undefined; };
+  ConflictTune.prototype.wrap = function (content) {
+    var self = this; if (!this.data) return content;
+    content.classList.add('hk-conflict');
+    var bar = el('div', 'hk-cf-bar'); bar.contentEditable = 'false'; bar.dataset.mutationFree = 'true';
+    var who = this.data.name ? T('Fassung von {name}', { name: this.data.name }) : T('Andere Fassung');
+    bar.appendChild(el('span', 'hk-cf-t', '⚠ ' + who + ' – ' + T('gleichzeitig geändert')));
+    if (!readOnly()) {
+      var take = el('button', 'btn btn-sm hk-cf-take', T('Übernehmen')); take.type = 'button';
+      var drop = el('button', 'btn btn-sm hk-cf-drop', T('Verwerfen')); drop.type = 'button';
+      take.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); self.resolve(true); });
+      drop.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); self.resolve(false); });
+      bar.appendChild(take); bar.appendChild(drop);
+    }
+    content.insertBefore(bar, content.firstChild);
+    this.box = content; this.bar = bar;
+    return content;
+  };
+  ConflictTune.prototype.resolve = function (keep) {
+    var bapi = this.api.blocks, id = this.block && this.block.id, of = this.data && this.data.of;
+    if (!keep) { var i = bapi.getBlockIndex(id); if (i >= 0) bapi.delete(i); }
+    else {
+      var orig = of ? bapi.getById(of) : null;
+      if (orig) { var j = bapi.getBlockIndex(of); if (j >= 0) bapi.delete(j); }
+      this.data = null; if (this.bar) this.bar.remove(); if (this.box) this.box.classList.remove('hk-conflict');
+      if (this.block && this.block.dispatchChange) this.block.dispatchChange();
+    }
+    S.dirtyBody = true; schedule();
+  };
   function LinkTune(o) { this.block = o.block; }
   LinkTune.isTune = true;
   LinkTune.prototype.render = function () {
@@ -6441,8 +6485,96 @@
     if (S.conflict) return;                                         // Konflikt-Hinweis steht schon
     var a = document.activeElement, inEditor = a && $('pg-editor').contains(a) && a.isContentEditable;
     var typingElsewhere = a && $('page').contains(a) && !inEditor && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
-    if (busy() || typingElsewhere || PK.id || document.body.classList.contains('side-open') || !$('pg-modal').hidden) { remoteHint(ev.by); return; }
+    if (typingElsewhere || PK.id || document.body.classList.contains('side-open') || !$('pg-modal').hidden) { remoteHint(ev.by); return; }
+    if (mergeable() && !S.lost && !S.loading) {
+      // 2.5 (P3 Stufe 1): kein "Neu laden" mehr - ungespeichert: gleich speichern (der Server fuehrt zusammen, die
+      // Antwort bringt die fremden Bloecke mit); sonst nur die geaenderten Bloecke uebernehmen (Schreibmarke bleibt)
+      S.remoteAfter = Math.max(S.remoteAfter || 0, ev.rev || ((S.cur.rev || 0) + 1));
+      if (S.dirtyBody || S.dirtyTitle) { clearTimeout(S.timer); save(); return; }
+      if (S.inflight || S.checking) return;              // die laufende Antwort bzw. danach liveApply
+      liveApply(ev.by); return;
+    }
+    if (busy()) { remoteHint(ev.by); return; }
     silentReload(ev.by);
+  }
+  // Darf diese Seite zusammengefuehrt werden? (eigene oder lokal geteilte Block-Seite, bearbeitbar; fremde Server: E3)
+  function mergeable() { var c = S.cur; return !!c && c.format === 'blocks' && c.kind !== 'database' && !remoteId(c.id) && !readOnly(); }
+  // Antwort eines zusammengefuehrten Speicherns: unveraendert seit dem Senden -> zusammengefuehrten Stand zeigen; sonst die
+  // eigenen neuen Eingaben behalten und beim naechsten Speichern mit Basis "eingereichte Fassung" nachreichen
+  function mergedReply(id, d, sentStr, sentTitle) {
+    var m = d.merged || {};
+    if (m.conflicts && m.conflicts.length) HK.toast(T('Gleichzeitig geändert – beide Fassungen stehen untereinander.'));
+    else if (m.lost && m.lost.length) HK.toast(T('Gleichzeitig geändert – die andere Fassung liegt in den Versionen.'));
+    if (typeof d.title === 'string' && sentTitle !== null && !S.dirtyTitle && document.activeElement !== $('pg-title')) $('pg-title').value = d.title;
+    if (typeof d.body !== 'string' || !S.editor || sentStr === null) {
+      if (typeof d.body === 'string' && S.editor && !S.dirtyBody) applyBody(id, d.body);
+      return;
+    }
+    S.editor.save().then(function (now) {
+      if (!S.cur || S.cur.id !== id) return;
+      if (now && JSON.stringify(now.blocks) === sentStr && !S.dirtyBody) return applyBody(id, d.body);
+      S.baseSent = { id: id, rev: d.rev }; S.dirtyBody = true; schedule();       // weitergeschrieben: Rebase beim naechsten Speichern
+    });
+  }
+  function applyBody(id, body) {
+    var doc; try { doc = JSON.parse(body); } catch (e) { return Promise.resolve(); }
+    if (!doc || !Array.isArray(doc.blocks)) return Promise.resolve();
+    return applyDoc(id, doc);
+  }
+  // Fremden Stand einer Seite holen und blockweise uebernehmen (statt die ganze Seite neu zu laden)
+  function liveApply(by) {
+    var id = S.cur && S.cur.id; if (!id) return Promise.resolve();
+    S.remoteAfter = 0;
+    return api('GET', '/api/notes/' + id).then(function (n) {
+      if (!S.cur || S.cur.id !== id || n.format !== 'blocks' || S.loading) return;
+      if (S.dirtyBody || S.dirtyTitle || S.inflight) { S.remoteAfter = n.rev; if (S.dirtyBody || S.dirtyTitle) save(); return; }
+      S.cur.rev = n.rev; S.cur.updated = n.updated; S.cur.updated_by = n.updated_by;
+      if (n.title !== S.cur.title && document.activeElement !== $('pg-title')) { S.cur.title = n.title; $('pg-title').value = n.title || ''; var p = byId(id); if (p) p.title = n.title; renderTree(); renderCrumbs(); setLocation(); }
+      return applyBody(id, n.body).then(function () {
+        if (by && by.name) state(T('Aktualisiert – geändert von {name}', { name: by.name }), 'ok');
+      });
+    }).catch(function () { /* naechstes Ereignis bzw. Speichern holt es nach */ });
+  }
+  function blkSig(b) { return JSON.stringify([b.type, b.data, b.tunes || null]); }
+  // Dokument in den offenen Editor bringen: gleiche Bloecke in gleicher Reihenfolge -> nur geaenderte Bloecke ersetzen
+  // (Editor.js blocks.update); sonst neu zeichnen und die Schreibmarke im selben Block wiederherstellen
+  function applyDoc(id, doc) {
+    var ed = S.editor; if (!ed || !S.cur || S.cur.id !== id) return Promise.resolve();
+    S.applying = true;
+    return ed.save().then(function (cur) {
+      if (!S.cur || S.cur.id !== id) return;
+      var a = (cur.blocks || []).map(function (b) { return b.id + '|' + b.type; }), b = doc.blocks.map(function (x) { return x.id + '|' + x.type; });
+      var curBy = {}; (cur.blocks || []).forEach(function (x) { curBy[x.id] = blkSig(x); });
+      S.loading = true;
+      var p;
+      if (a.join('\n') === b.join('\n')) {
+        p = doc.blocks.reduce(function (pr, x) {
+          if (curBy[x.id] === blkSig(x)) return pr;
+          return pr.then(function () { return ed.blocks.update(x.id, x.data, x.tunes || {}); }).catch(function () { /* naechster Block */ });
+        }, Promise.resolve());
+      } else {
+        var sc = document.scrollingElement || document.documentElement, y = sc.scrollTop, caret = caretBlock();
+        p = ed.render(doc).then(function () {
+          sc.scrollTop = y;
+          if (caret) { var i = ed.blocks.getBlockIndex(caret.id); if (i >= 0) try { ed.caret.setToBlock(i, 'default', caret.off); sc.scrollTop = y; } catch (e) { /* weg */ } }
+        });
+      }
+      return p.then(function () {
+        return Promise.all((S.eds || []).filter(function (x) { return x.holder.isConnected; }).map(function (x) { return x.ed.isReady; }));
+      }).then(function () { return ed.save(); }).then(function (o) {
+        S.lastBlocks = JSON.stringify(o.blocks); decorateLinks();
+        document.dispatchEvent(new CustomEvent('hk-page-ready', { detail: { id: id } }));
+      });
+    }).catch(function () { /* Editor beschaeftigt: naechstes Speichern gleicht ab */ }).then(function () {
+      S.loading = false; S.applying = false;
+      if (S.typed) { S.typed = false; S.dirtyBody = true; schedule(); }
+    });
+  }
+  // Block (oberste Ebene) mit der Schreibmarke + Abstand darin
+  function caretBlock() {
+    var pos = caretPos(); if (!pos) return null;
+    var red = $('pg-editor').querySelector('.codex-editor__redactor'), blk = red && red.children[pos.idx];
+    return blk && blk.dataset.id ? { id: blk.dataset.id, off: pos.off } : null;
   }
   function remoteHint(by) {
     var bar = $('pg-remote');
@@ -6502,6 +6634,10 @@
          recheck: function () { return recheck(true); },        // static/comments.js: Rolle/Zugriff nach 403/404 neu pruefen
          // Live-Kanal (static/live.js): Seitenliste neu laden, fremde Aenderung der offenen Seite, ungelesen-Punkt im Baum
          reloadList: function () { return loadList(); }, remote: remoteChange,
+         focusBlock: function () {                              // 2.5 (P3): Block mit der Schreibmarke (fuer die Anwesenheit)
+           var a = document.activeElement, box = $('pg-editor'); if (!a || !box || !box.contains(a)) return null;
+           var blk = a.closest('.ce-block'); return blk && blk.dataset.id ? blk.dataset.id : null;
+         },
          // Live notes.tree (2.2): Baum anderswo geaendert -> nachladen. Das erste Ereignis nach einer Pause sofort (Bughunt
          // P13; der Server buendelt Folgeereignisse ohnehin je 2 s), nur Serien kurz sammeln. loadList legt gleichzeitige
          // Aufrufe zusammen.

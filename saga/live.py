@@ -21,7 +21,7 @@ Ereignisse (event: ..., data: JSON) - die Rechte werden beim VERSAND geprueft (s
                    moved|trashed|restored|archived|deleted|shared|mixed; full: zu viele IDs -> ganzen Baum laden. docs/APP-API-LIVE.md
                    Verschieben: alte UND neue Kette; Gruppenwechsel: {full} + shared.changed (entprellt); Nachholen: IDs
                    fremder Seiten erneut geprueft, sonst {full} ohne IDs. Ausschluss je Tab (?tab= / X-Saga-Tab) bzw. Geraet
-  presence         {note_id, users:[{username, name, editing}]}
+  presence         {note_id, users:[{username, name, editing, block, color}]}   block/color: 2.5 (P3), fokussierter Block
   reset            {}                                  Wiederaufnahme nicht moeglich (Neustart/zu alt): alles neu laden
   bye              {reason: limit|auth|account|shutdown}   Server beendet die Verbindung
   chat.message     {chat_id, seq, id, sender}          Chat (1.5), an die Mitglieder - nie Inhalt
@@ -41,6 +41,7 @@ Jedes Ereignis ausser hello/reset/bye hat eine id (<boot>-<nummer>); mit Last-Ev
 Ereignisse der letzten 10 Minuten nach. Heartbeat: Kommentarzeile alle ~25 s (haelt Proxys offen).
 Hoechstens 5 Verbindungen je Konto - die aelteste wird mit "bye" (limit) geschlossen."""
 import asyncio
+import hashlib
 import importlib
 import json
 import secrets
@@ -52,7 +53,7 @@ from db import connect as _db
 from saga import avatars, bus, i18n, notify
 from saga.comments import counts as comment_counts
 from saga.core import E, _api_guard, _bad, _body, _session_user, _tok_hash, account_lang, device_alive, origin_of, ref_of, user_info
-from saga.notes import note_chain, share_targets
+from saga.notes import BLOCK_ID_RE, PALETTE, note_chain, share_targets
 from saga.sharing import Access, names
 
 router = APIRouter()
@@ -253,6 +254,8 @@ async def _dispatch():
             pres = {k: {u: bool(e[1]) for u, e in v.items()} for k, v in _presence.items()}     # Kopie fuer den Thread
             if FED_FANOUT is not None and kind in ("note.changed", "presence", "comments.changed", "notes.tree"):
                 await asyncio.to_thread(FED_FANOUT, kind, payload, pres)
+            if kind == "presence":                            # 2.5 (P3): mit fokussiertem Block
+                pres = {k: {u: (bool(e[1]), e[2] if len(e) > 2 else None) for u, e in v.items()} for k, v in _presence.items()}
             out = await asyncio.to_thread(_resolve, kind, payload, aud, pres)
             for item in out:
                 uid, typ, data = item[:3]
@@ -449,12 +452,13 @@ def _resolve(kind, p, aud, pres):
             ok = [u for u in here if Access(c, u).role(nid)]
             out += [(u, "_unpresent", nid) for u in here if u not in ok]
             nm = names(c, ok)
-            users = [dict(_person(nm, u), editing=entries[u]) for u in ok]
+            users = [dict(_person(nm, u), editing=entries[u][0], block=entries[u][1], color=pcolor(u)) for u in ok]
             if FED_WATCHERS is not None:
                 users += FED_WATCHERS(c, nid, None)
             for u in ok:
                 if u in aud:
-                    out.append((u, "presence", {"note_id": nid, "users": [dict(x, username=ref_of(None, x["username"], u), me=x["username"] == u)
+                    out.append((u, "presence", {"note_id": nid, "users": [dict(x, username=ref_of(None, x["username"], u), me=x["username"] == u,
+                                                                               color=x.get("color") or pcolor(x["username"]))
                                                                           for x in users]}))
     return out
 
@@ -484,7 +488,7 @@ async def _housekeeping():
             now = time.time()
             for nid in list(_presence):
                 v = _presence[nid]
-                gone = [u for u, (ts, _) in v.items() if now - ts > PRESENCE_TTL]
+                gone = [u for u, e in v.items() if now - e[0] > PRESENCE_TTL]
                 for u in gone:
                     v.pop(u, None)
                 if not v:
@@ -680,6 +684,11 @@ async def api_events(request: Request):
 
 
 # --- Anwesenheit ----------------------------------------------------------------------------------------
+def pcolor(u):
+    """Stabile Farbe einer Person (Block-Markierung, 2.5 P3) aus der Palette - aus der Kennung abgeleitet, fuer alle gleich."""
+    return PALETTE[int.from_bytes(hashlib.sha256(str(u or "").encode()).digest()[:2], "big") % len(PALETTE)]
+
+
 def _here(c, uid, nid, entries):
     """Im Thread: darf uid die Seite sehen? -> (zustand der Seite, liste der Anwesenden mit Zugriff) oder None.
     entries: Kopie der Anwesenheit dieser Seite (aus der Event-Schleife)."""
@@ -691,7 +700,8 @@ def _here(c, uid, nid, entries):
         return None
     ok = [u for u in sorted(entries) if u == uid or Access(c, u).role(nid)]
     nm = names(c, ok + ([r[2]] if r[2] else []))
-    users = [dict(_person(nm, u, uid), editing=bool(entries[u][1])) for u in ok if u in entries]
+    users = [dict(_person(nm, u, uid), editing=bool(entries[u][1]), block=entries[u][2] if len(entries[u]) > 2 else None, color=pcolor(u))
+             for u in ok if u in entries]
     if FED_WATCHERS is not None:
         users += FED_WATCHERS(c, nid, uid)
     by = _person(nm, r[2], uid) if r[2] and r[2] != uid else None
@@ -728,7 +738,12 @@ async def api_presence(request: Request):
                 _put(q, ("presence", {"note_id": nid}))
         return JSONResponse({"ok": True})
     now = time.time()
+    blk = b.get("block") if isinstance(b.get("block"), str) and BLOCK_ID_RE.fullmatch(b["block"]) else None
     if now - _pres_hits.get((uid, nid), 0) < 1:              # mehrere Tabs/schnelle Folge: nichts tun, kein Fehler
+        e = (_presence.get(nid) or {}).get(uid)               # nur der fokussierte Block wechselt (2.5): ohne neue Pruefung
+        if "block" in b and e is not None and (e[2] if len(e) > 2 else None) != blk and q is not None:
+            _presence[nid][uid] = [e[0], e[1], blk]
+            _put(q, ("presence", {"note_id": nid}))
         return JSONResponse({"skipped": True}, headers={"Cache-Control": "no-store"})
     _pres_hits[(uid, nid)] = now
     entries = {u: list(e) for u, e in _presence.get(nid, {}).items()}
@@ -741,12 +756,14 @@ async def api_presence(request: Request):
     editing = b.get("editing") is True
     v = _presence.setdefault(nid, {})
     old = v.get(uid)
-    v[uid] = [now, editing]
+    if "block" not in b and old is not None and len(old) > 2:  # ohne Angabe bleibt der zuletzt gemeldete Block
+        blk = old[2] if editing else None
+    v[uid] = [now, editing, blk if editing else None]
     mine = [n for n, e in _presence.items() if uid in e]
     if len(mine) > PRESENCE_MAX:                             # zu viele Seiten gleichzeitig: aelteste vergessen
         oldest = min(mine, key=lambda n: _presence[n][uid][0])
         _presence[oldest].pop(uid, None)
-    if (old is None or bool(old[1]) != editing) and q is not None:
+    if (old is None or bool(old[1]) != editing or (old[2] if len(old) > 2 else None) != v[uid][2]) and q is not None:
         _put(q, ("presence", {"note_id": nid}))
     state, users = out
     if not any(u["username"] == uid for u in users):
@@ -755,7 +772,8 @@ async def api_presence(request: Request):
     for u in users:
         u["me"] = u["username"] == uid
         if u["me"]:
-            u["editing"] = editing
+            u["editing"], u["block"] = editing, v[uid][2]
+        u.setdefault("color", pcolor(u["username"]))
     return JSONResponse(dict(state, users=users, ttl=PRESENCE_TTL, live=_S["loop"] is not None), headers={"Cache-Control": "no-store"})
 
 

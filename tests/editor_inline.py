@@ -58,7 +58,7 @@ doc = {"blocks": [
     {"id": "s2", "type": "synced", "data": {"sid": "kurz", "blocks": "nein"}},
     {"id": "k6", "type": "columns", "data": {"cols": [{"w": 1, "blocks": [P(f"k6{i}", str(i))]} for i in range(6)]}},
     {"id": "k7", "type": "columns", "data": {"cols": [{"w": 1, "blocks": []} for _ in range(7)]}},
-    {"id": "hc", "type": "paragraph", "data": {"text": "Fassung"}, "tunes": {"hkconflict": {"by": "~abcdefghijklmnop", "name": "<b>Anna</b>", "at": 1.5, "x": 1}, "evil": {}}},
+    {"id": "hc", "type": "paragraph", "data": {"text": "Fassung"}, "tunes": {"hkconflict": {"by": "~abcdefghijklmnop", "name": "<b>Anna</b>", "at": 1.5, "of": "hc0", "x": 1}, "evil": {}}},
 ]}
 out = {b["id"]: b for b in json.loads(clean_blocks(json.dumps(doc))[0])["blocks"]}
 ok("math: TeX als Klartext (kein HTML-Escape), hoechstens 4000 Zeichen", out["m1"]["data"]["tex"].startswith("a<b & \\frac") and len(out["m1"]["data"]["tex"]) == 4000)
@@ -73,7 +73,7 @@ ok("synced: ungueltige sid und blocks fallen weg", "sid" not in out["s2"]["data"
 ok("6 Spalten mit Breiten", len(out["k6"]["data"]["cols"]) == 6 and all(c.get("w") for c in out["k6"]["data"]["cols"]))
 ok("7 Spalten: keine Breiten (ueber COLS_MAX)", not any("w" in c for c in out["k7"]["data"]["cols"]))
 ok(f"hkconflict bleibt bereinigt, fremde Tunes weg ({out['hc'].get('tunes')})",
-   out["hc"].get("tunes") == {"hkconflict": {"by": "~abcdefghijklmnop", "name": "bAnna/b", "at": 1.5}})
+   out["hc"].get("tunes") == {"hkconflict": {"by": "~abcdefghijklmnop", "name": "bAnna/b", "at": 1.5, "of": "hc0"}})
 
 # --- Zwischenregel Markenerhalt (ohne Server) ----------------------------------------------------------------------
 old = json.dumps({"blocks": [P("a", 'Hallo <span class="hk-c-red">rote</span> Welt'), P("b", '<code class="hk-math">x^2</code> und mehr'),

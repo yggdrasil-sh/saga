@@ -523,7 +523,7 @@ def merge_doc(base, mine, theirs, bases=None, by=None, now=None):
             out.append(n)
             if bid in extra:
                 cp = extra[bid]
-                cp.setdefault("tunes", {})["hkconflict"] = dict(stamp)
+                cp.setdefault("tunes", {})["hkconflict"] = dict(stamp, of=bid)
                 out.append(cp)
                 info["conflicts"].append(cp["id"])
         return out

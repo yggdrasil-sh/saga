@@ -18,7 +18,7 @@ from saga.publish import published_via
 from saga.siteicons import ICON_RE, svc_icon_path
 from saga.comments import counts as comment_counts
 from saga.sharing import RANK, Access, access, is_remote, mask_links, names, person, restore_links, shared_ids, title_of, unread_notes, viewer
-from saga.notes import CONTAINERS, MAX_JSON_DEPTH, _iter_blocks, base_of, ensure_ids, fix_block_ids, keep_base, NOTE_BODY_MAX, PALETTE, STYLE_TYPES, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
+from saga.notes import BLOCK_ID_RE, CONTAINERS, MAX_JSON_DEPTH, _iter_blocks, base_of, ensure_ids, fix_block_ids, keep_base, NOTE_BODY_MAX, PALETTE, STYLE_TYPES, note_chain, note_limit_error, NOTE_META_COLS, NOTE_TITLE_MAX, _FILE_URL, _check_file_refs, _check_parent, _clean_props, _clean_schema, _default_schema, _note_meta, _note_text, _purge_old, _rel_check, _rel_link, _rel_sync, _rel_unlink, _schema_merge, announce_row, announce_shared, announce_tree, _schema_srev, _schema_stamp, _snapshot, blocks_text, share_targets, tree_changed
 
 router = APIRouter()
 
@@ -262,6 +262,8 @@ def _clean_hkstyle(typ, tunes):
             x["name"] = re.sub(r"[<>&\x00-\x1f]", "", cf["name"])[:80]
         if _num_ok(cf.get("at")):
             x["at"] = round(float(cf["at"]), 3)
+        if isinstance(cf.get("of"), str) and BLOCK_ID_RE.fullmatch(cf["of"]):
+            x["of"] = cf["of"]                    # ID des Originals (Fassung "uebernehmen" ersetzt es)
         out["hkconflict"] = x
     return out or None
 
@@ -735,7 +737,7 @@ def _merge_req(c, uid, nid, b, old, want):
     from saga import merge
     if old[2] != "blocks" or b.get("format", "blocks") != "blocks" or not 0 <= want <= old[3]:
         return None
-    base = base_of(c, nid, want)
+    base = base_of(c, nid, want, sent=b.get("base") == "sent")
     if base is None or base[2] != "blocks":
         return None
     out, info = dict(b), {"from": want}
@@ -757,7 +759,7 @@ def _merge_req(c, uid, nid, b, old, want):
                     if not isinstance(bid, str) or isinstance(r, bool) or not isinstance(r, int) or not 0 <= r <= old[3]:
                         continue
                     if r not in cache:
-                        x = base_of(c, nid, r)
+                        x = base_of(c, nid, r, sent=True)
                         cache[r] = {k.get("id"): k for k in _iter_blocks(json.loads(ensure_ids(x[1], "blocks", nid)).get("blocks") or [])} \
                             if x and x[2] == "blocks" else {}
                     if bid in cache[r]:
@@ -766,13 +768,16 @@ def _merge_req(c, uid, nid, b, old, want):
             doc, mi = merge.merge_doc(base_doc, mine, theirs, bases, by, time.time())
             out["body"] = json.dumps(doc, ensure_ascii=False)
             info.update(mi)
+            info["sent"] = mine_s
         else:
             info.update(conflicts=[], restored=[], lost=[])
         if "title" in b:
-            out["title"], info["title_lost"] = merge.merge_title(base[0] or "", _title_in(b["title"]), old[0] or "")
+            info["sent_title"] = _title_in(b["title"])
+            out["title"], info["title_lost"] = merge.merge_title(base[0] or "", info["sent_title"], old[0] or "")
     except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
         return None
     out.pop("bases", None)
+    out.pop("base", None)
     return out, info
 
 
@@ -822,7 +827,8 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
         # "Meine Version behalten" (overwrite, ohne rev): trotzdem nur gegen die eben gelesene und als Version gesicherte
         # Fassung schreiben - eine Aenderung, die genau dazwischen eintrifft, wuerde sonst ungesichert ueberschrieben
         # Speichern ohne rev (aeltere Apps, Zeilen umbenennen) ueber den Stand einer anderen Person: vorher sichern
-        if check_rev and merged is None and b.get("merge") and isinstance(b.get("bases"), dict) and b["bases"] and "body" in b:
+        if check_rev and merged is None and b.get("merge") and "body" in b and ((isinstance(b.get("bases"), dict) and b["bases"])
+                                                                              or b.get("base") == "sent"):
             mg = _merge_req(c, uid, nid, b, old, old[3])        # rev aktuell, aber einzelne Bloecke beruhen auf aelteren Staenden
             if mg is not None:
                 b, merged = mg
@@ -1015,7 +1021,8 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
             raise _Reply(_conflict(c, uid, nid, cur[0] if cur else None))
         if content:                               # 2.5 (P3): Basisstand fuer spaeteres Zusammenfuehren
             cur = c.execute("SELECT title, body, format FROM note WHERE id=? AND uid=?", (nid, owner)).fetchone()
-            keep_base(c, nid, old[3] + 1, cur[0], cur[1], cur[2], now, (old[3], old[0], old[1], old[2]))
+            keep_base(c, nid, old[3] + 1, cur[0], cur[1], cur[2], now, (old[3], old[0], old[1], old[2]),
+                      (merged.get("sent_title", cur[0]), merged.get("sent", cur[1])) if merged else None)
         # Live-Kanal (1.4): wer die Seite gerade offen hat, laedt still neu bzw. bekommt einen Hinweis (nach dem Commit)
         bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=uid, updated=now, origin=origin)
         if "props" in b or "title" in b or "icon" in b:
