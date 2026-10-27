@@ -33,7 +33,7 @@ _pool_lock = threading.Lock()
 ID_TABLES = {"task", "note", "note_version", "device_login", "cal_account", "app_token", "users", "groups",
              "service", "bookmark", "note_share", "note_comment", "notification", "chat",
              "push_sub", "push_queue", "push_stream_msg", "ai_history", "fed_invite", "fed_log", "fed_outbox", "backup_run",
-             "user_backup_run"}
+             "user_backup_run", "import_run"}
 # INSERT OR REPLACE: Konfliktspalten je Tabelle
 UPSERT_KEYS = {"immich_key": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",),
                "note_share": ("note_id", "target_type", "target"), "note_comment_seen": ("uid", "thread_id"),
@@ -819,6 +819,14 @@ CREATE TABLE IF NOT EXISTS chat_hidden (
     msg_seq BIGINT NOT NULL REFERENCES chat_msg(seq) ON DELETE CASCADE, msg_id TEXT NOT NULL, at DOUBLE PRECISION NOT NULL,
     PRIMARY KEY (uid, msg_seq));
 CREATE INDEX IF NOT EXISTS chat_hidden_chat ON chat_hidden (chat_id, uid);
+-- Importe (2.5, Paket 2, saga/importer.py, Migration 21): je Lauf Art (csv/md/notion), Zustand (queued/running/done/
+-- failed/cancelled), Fortschritt (step: JSON {phase, done, total}), Bericht (JSON: Zaehler, "nicht uebernommen"),
+-- Zielseite (root) und Fehler. Je Konto die letzten 20 Laeufe; geht mit dem Konto.
+CREATE TABLE IF NOT EXISTS import_run (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', state TEXT NOT NULL,
+    created DOUBLE PRECISION NOT NULL, started DOUBLE PRECISION, finished DOUBLE PRECISION, step TEXT NOT NULL DEFAULT '{}',
+    report TEXT NOT NULL DEFAULT '{}', root BIGINT, error TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS import_run_uid ON import_run (uid, id);
 CREATE INDEX IF NOT EXISTS chat_hidden_seq ON chat_hidden (msg_seq);
 -- Gjallarhorn (2.5, saga/horn.py, Konzept v2 §2.10, Migration 16): Knotenregister (eingebauter Knoten + gekoppelte) und
 -- Kopplungs-Token (nur als SHA-256, einmalig, 30 min). pub = Ed25519-Knotenschluessel (Base64), load = letzte Lastmeldung,
@@ -1052,6 +1060,11 @@ SELECT 1 FROM chat_hidden LIMIT 0;
     19: """
 ALTER TABLE note ADD COLUMN IF NOT EXISTS font TEXT;
 ALTER TABLE note ADD COLUMN IF NOT EXISTS small INTEGER NOT NULL DEFAULT 0;
+""",
+    # 2.5.0 (Paket 2, Import): Laeufe von Importen (saga/importer.py). Die Tabelle import_run legt SCHEMA oben an;
+    # Laeufe, die beim Neustart noch liefen, gelten als abgebrochen. Beliebig oft ausfuehrbar.
+    21: """
+SELECT 1 FROM import_run LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

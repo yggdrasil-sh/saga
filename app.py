@@ -35,6 +35,7 @@ from saga.files import files_gc, files_init, tmp_cleanup
 from saga.notes import FILE_MAX
 from saga import backups, graph, nextcloud, pageindex, siteicons, userbackup
 from saga import gallery                       # 2.5: Vorlagengalerie (/api/gallery...)
+from saga import import_common, importer      # 2.5 (Paket 2): Importe (/api/import/...)
 
 # Re-Exporte fuer admin.py ("import app as hk"), run.py, Tests (app.files_gc, app.delete_user_data)
 # und tools/migrate_hlidskjalf.py (app._cal_fernet)
@@ -66,6 +67,7 @@ async def lifespan(_app):
     pageindex.start()                                        # Suchtext/Verweise/Vorschaubilder abgleichen (2.2)
     backups.start()                                          # verschluesselte Backups auf WebDAV/Nextcloud (2.3, Zeitplan)
     userbackup.start()                                       # persoenliche Backups je Konto (2.3, Zeitplan)
+    await asyncio.to_thread(import_common.on_start)          # 2.5: abgebrochene Importe markieren, alte Uploads weg
 
     async def _gc_loop():
         purged = 0.0
@@ -91,6 +93,7 @@ async def lifespan(_app):
                 if n:
                     print(f"files-gc: {n} verwaiste Datei(en) entfernt", flush=True)
                 await asyncio.to_thread(tmp_cleanup)          # liegengebliebene Zwischendateien (> 1 h)
+                await asyncio.to_thread(import_common.cleanup)  # abgelaufene Import-Uploads (> 30 min ohne Lauf)
                 await asyncio.to_thread(siteicons.cleanup)    # Kachel-Symbole: alte .missing/.tmp, Favicons nach 30 Tagen
             except Exception as ex:
                 print(f"files-gc: {type(ex).__name__}: {ex}", flush=True)
@@ -182,7 +185,8 @@ app.add_middleware(BodyLimit, default=REQUEST_MAX,
                           ("PUT", re.compile(r"/api/chat/uploads/[A-Za-z0-9_-]+"), chat.UPLOAD_PART + 1024),     # 2.4 ohne saga-media
                           ("POST", re.compile(r"/fed/v2/notes/[0-9]+/files"), max(REQUEST_MAX, FILE_MAX + 64 * 1024)),
                           ("PUT", re.compile(r"/api/account/avatar"), max(REQUEST_MAX, avatars.UPLOAD_MAX + 64 * 1024)),
-                          ("POST", re.compile(r"/api/account/backup/restore/upload"), userbackup.HARD_MAX_MB * 1024 * 1024 + 1024 * 1024)])
+                          ("POST", re.compile(r"/api/account/backup/restore/upload"), userbackup.HARD_MAX_MB * 1024 * 1024 + 1024 * 1024),
+                          ("POST", re.compile(r"/api/import/upload"), import_common.IMPORT_MAX + 1024 * 1024)])
 # 2.5: eigene Push-Verbindung der Apps (WebSocket /api/push/stream) - als letzte registriert = ganz aussen, ohne die
 # Middlewares und das Routing darunter (spart Speicher je ruhender Verbindung, saga.push_stream.Front)
 app.add_middleware(push_stream.Front)
@@ -289,4 +293,5 @@ app.include_router(chat_x3.router)          # 2.5: PUT /api/chats/{cid}/messages
 assert fed_calls.router is fed_chat.router
 app.include_router(nextcloud.router)         # Nextcloud-Dateien in Seiten (2.3): /api/settings/nextcloud, /api/nextcloud/..., /api/notes/{nid}/nc
 app.include_router(userbackup.router)        # Persoenliche Backups (2.3): /api/account/backup...
+app.include_router(importer.router)          # Importe (2.5, Paket 2): /api/import/...
 app.include_router(gallery.router)           # Vorlagengalerie (2.5): /api/gallery, /api/gallery/{id}, /api/gallery/{id}/use
