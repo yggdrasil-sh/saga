@@ -31,7 +31,7 @@ from starlette.concurrency import run_in_threadpool
 import psycopg
 import auth
 from db import connect as _db
-from saga import avatars, bus, i18n, nextcloud
+from saga import avatars, bus, i18n, nextcloud, page_widgets
 from saga.core import (ASSET_V, BASE_URL, E, PUBLIC_HOSTS, TZ, _api_guard, _bad, _body, _json_load, seen_lang, server_lang, t, title,
                        tmpl, user_lang)
 from saga.files import _thumb, _thumb_mime, _thumb_w
@@ -407,6 +407,7 @@ def _blocks(ctx, blocks, depth=0):
     for b in blocks:
         if isinstance(b, dict) and isinstance(b.get("data"), dict):
             try:
+                ctx.bid = b.get("id") if isinstance(b.get("id"), str) else ""      # Widgets: Zitat des Tages je Block
                 out.append(_styled(_block(ctx, b.get("type"), b["data"], depth), b))
             except (TypeError, ValueError, AttributeError, KeyError):
                 continue                            # kaputter Block: weglassen statt Fehlerseite
@@ -598,7 +599,45 @@ def _block(ctx, typ, d, depth):
             return ""
         return _database(ctx, dbid, d.get("views") if isinstance(d.get("views"), list) else None, d.get("view"),
                          caption=not d.get("hide_title"))
+    if typ == "widget":
+        return _widget(ctx, d)
     return ""          # unbekannt, privat oder interaktiv (Aufgaben, Kalender, Immich, Schaltflaechen, Dateien): weglassen
+
+
+def _widget(ctx, d):
+    """Widget (2.5, saga.page_widgets) statisch, ohne JS und ohne style-Attribute (CSP): Uhr = Datum des Abrufs, Countdown =
+    Tagesstand, Werte aus einer Datenbank nur, wenn sie demselben Konto gehoert (wie _database) - sonst entfaellt das Widget.
+    Fortschritt als Balken mit Klasse pb-NN (5-%-Schritte). Unbekannte Art: weglassen."""
+    kind = d.get("kind")
+    if kind not in page_widgets.KINDS:
+        return ""
+    ctx.n_db += page_widgets.server_kind(d)     # zaehlt wie ein Datenbank-Block (Aufwand je Aufruf begrenzt)
+    if ctx.n_db > DB_BLOCKS_MAX:
+        return ""
+    today = datetime.now(TZ).date()
+    w = page_widgets.compute(ctx.c, ctx.uid, getattr(ctx, "bid", ""), d, TZ, public_owner=ctx.uid, today=today)
+    if w.get("error"):
+        return ""
+    txt = page_widgets.value_text(d, w, today, TZ)
+    if txt is None:
+        return ""
+    cls = ["pub-wg", "wg-" + (d.get("size") if d.get("size") in page_widgets.SIZES else "m"),
+           "wg-plain" if d.get("style") == "plain" else "wg-card"]
+    if d.get("accent") in PALETTE:
+        cls.append("wa-" + d["accent"])
+    out = [f'<div class="{" ".join(cls)}">']
+    if d.get("title"):
+        out.append(f'<div class="pub-wg-t">{escape(str(d["title"]))}</div>')
+    if kind == "quote":
+        out.append(f'<blockquote class="pub-wg-q">{escape(txt)}</blockquote>')
+    else:
+        out.append(f'<div class="pub-wg-v">{escape(txt)}</div>')
+    if kind == "progress":
+        v, mx = w.get("value"), w.get("max")
+        pct = v / mx * 100 if isinstance(v, (int, float)) and isinstance(mx, (int, float)) and mx > 0 else 0
+        out.append(f'<div class="pub-wg-bar"><span class="pb-{int(round(min(100, max(0, pct)) / 5) * 5)}"></span></div>')
+    out.append("</div>")
+    return "".join(out)
 
 
 def _nc_block(ctx, d):
