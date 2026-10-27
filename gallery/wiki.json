@@ -1,0 +1,139 @@
+{
+  "id": "wiki", "v": 1, "order": 40, "category": "team",
+  "icon": "🏛️", "title": "Team-Wiki",
+  "desc": "Wissen an einem Ort: Onboarding, Abläufe, FAQ und Ansprechpartner – mit Schreibregeln.",
+  "needs": [],
+  "root": "home",
+  "items": [
+    {"ref": "home", "kind": "page", "parent": null, "title": "Team-Wiki", "icon": "🏛️", "cover": null, "wide": false,
+     "body": [
+       {"type": "callout", "data": {"emoji": "👋", "text": "<b>Willkommen!</b> Hier steht alles, was das Team wissen muss. Fehlt etwas oder ist veraltet? Einfach verbessern – jede Änderung wird als Version gespeichert."}},
+       {"type": "header", "data": {"text": "Inhalt", "level": 2}},
+       {"type": "buttons", "data": {"buttons": [
+         {"label": "Onboarding", "icon": "🚀", "action": "page", "target": "$ref:onboarding", "open": ""},
+         {"label": "Abläufe", "icon": "⚙️", "action": "page", "target": "$ref:ablaeufe", "open": ""},
+         {"label": "FAQ", "icon": "❓", "action": "page", "target": "$ref:faq", "open": ""},
+         {"label": "Ansprechpartner", "icon": "📇", "action": "page", "target": "$ref:kontakte", "open": ""},
+         {"label": "Wie man hier schreibt", "icon": "✍️", "action": "page", "target": "$ref:schreiben", "open": ""}
+       ]}},
+       {"type": "columns", "data": {"cols": [
+         {"blocks": [
+           {"type": "header", "data": {"text": "Neu im Team?", "level": 3}},
+           {"type": "paragraph", "data": {"text": "Starte mit dem Onboarding: erste Woche, Zugänge und wen du was fragen kannst."}}
+         ]},
+         {"blocks": [
+           {"type": "header", "data": {"text": "Etwas gesucht?", "level": 3}},
+           {"type": "paragraph", "data": {"text": "Strg+K öffnet die Schnellsuche – sie durchsucht auch alle Unterseiten des Wikis."}}
+         ]}
+       ]}},
+       {"type": "delimiter", "data": {}},
+       {"type": "toggle", "data": {"title": "Über dieses Wiki", "level": 2, "open": false, "blocks": [
+         {"type": "list", "data": {"style": "unordered", "meta": {}, "items": [
+           {"content": "Jede Seite hat eine verantwortliche Person, die sie aktuell hält.", "meta": {}, "items": []},
+           {"content": "Wichtiges steht oben, Details in ausklappbaren Abschnitten.", "meta": {}, "items": []},
+           {"content": "Neue Seiten legst du als Unterseite des passenden Bereichs an.", "meta": {}, "items": []}]}}
+       ]}}
+     ]},
+
+    {"ref": "onboarding", "kind": "page", "parent": "home", "title": "Onboarding", "icon": "🚀",
+     "body": [
+       {"type": "callout", "data": {"emoji": "✅", "text": "Diese Liste gehört dir: Hake ab, was erledigt ist. Fragen? Siehe <b>Ansprechpartner</b>."}},
+       {"type": "header", "data": {"text": "Erster Tag", "level": 2}},
+       {"type": "list", "data": {"style": "checklist", "meta": {}, "items": [
+         {"content": "Laptop und Zugänge abholen", "meta": {"checked": false}, "items": []},
+         {"content": "Passwort ändern und Zwei-Faktor-Anmeldung einrichten", "meta": {"checked": false}, "items": []},
+         {"content": "Team-Chat beitreten und kurz vorstellen", "meta": {"checked": false}, "items": []},
+         {"content": "Mittagessen mit deiner Patin oder deinem Paten", "meta": {"checked": false}, "items": []}]}},
+       {"type": "header", "data": {"text": "Erste Woche", "level": 2}},
+       {"type": "table", "data": {"withHeadings": true, "content": [
+         ["Tag", "Was", "Mit wem"],
+         ["Montag", "Begrüßung und Rundgang", "Team"],
+         ["Dienstag", "Einführung in unsere Werkzeuge", "IT-Support"],
+         ["Mittwoch", "Erste kleine Aufgabe", "Pat·in"],
+         ["Freitag", "Rückblick auf die Woche", "Teamleitung"]]}},
+       {"type": "toggle", "data": {"title": "Gut zu wissen", "level": 3, "open": false, "blocks": [
+         {"type": "paragraph", "data": {"text": "Kernzeit ist von 10 bis 15 Uhr. Wer später kommt oder früher geht, sagt kurz im Team-Chat Bescheid."}}
+       ]}}
+     ]},
+
+    {"ref": "ablaeufe", "kind": "page", "parent": "home", "title": "Abläufe", "icon": "⚙️",
+     "body": [
+       {"type": "paragraph", "data": {"text": "Wiederkehrende Abläufe Schritt für Schritt. Ein Ablauf pro Abschnitt – klappe auf, was du brauchst."}},
+       {"type": "toggle", "data": {"title": "Urlaub beantragen", "level": 2, "open": true, "blocks": [
+         {"type": "list", "data": {"style": "ordered", "meta": {}, "items": [
+           {"content": "Termin im Team-Kalender prüfen", "meta": {}, "items": []},
+           {"content": "Antrag an die Teamleitung schicken", "meta": {}, "items": []},
+           {"content": "Nach der Zusage im Kalender eintragen", "meta": {}, "items": []},
+           {"content": "Vertretung und Abwesenheitsnotiz einrichten", "meta": {}, "items": []}]}}
+       ]}},
+       {"type": "toggle", "data": {"title": "Krankmeldung", "level": 2, "open": false, "blocks": [
+         {"type": "list", "data": {"style": "ordered", "meta": {}, "items": [
+           {"content": "Vor Arbeitsbeginn der Teamleitung Bescheid geben", "meta": {}, "items": []},
+           {"content": "Termine absagen oder übergeben", "meta": {}, "items": []},
+           {"content": "Bescheinigung an die Personalabteilung senden", "meta": {}, "items": []}]}}
+       ]}},
+       {"type": "toggle", "data": {"title": "Neue Software anfragen", "level": 2, "open": false, "blocks": [
+         {"type": "callout", "data": {"emoji": "⚠️", "text": "Bitte keine Programme selbst installieren – der IT-Support prüft Lizenz und Datenschutz."}},
+         {"type": "paragraph", "data": {"text": "Schreib dem IT-Support, wofür du die Software brauchst und ab wann."}}
+       ]}}
+     ]},
+
+    {"ref": "faq", "kind": "page", "parent": "home", "title": "FAQ", "icon": "❓",
+     "body": [
+       {"type": "paragraph", "data": {"text": "Die häufigsten Fragen – und die Antworten darauf."}},
+       {"type": "toggle", "data": {"title": "Wo finde ich das WLAN-Passwort?", "open": false, "blocks": [
+         {"type": "paragraph", "data": {"text": "Am Empfang. Für Gäste gibt es ein eigenes Netz."}}]}},
+       {"type": "toggle", "data": {"title": "Wie buche ich einen Besprechungsraum?", "open": false, "blocks": [
+         {"type": "paragraph", "data": {"text": "Über den gemeinsamen Kalender: Raum als Teilnehmer zum Termin hinzufügen."}}]}},
+       {"type": "toggle", "data": {"title": "Wen frage ich bei Problemen mit dem Laptop?", "open": false, "blocks": [
+         {"type": "paragraph", "data": {"text": "Den IT-Support – Kontakt siehe Ansprechpartner."}}]}},
+       {"type": "toggle", "data": {"title": "Darf ich von zu Hause arbeiten?", "open": false, "blocks": [
+         {"type": "paragraph", "data": {"text": "Ja, nach Absprache mit dem Team. Feste Teamtage stehen im Kalender."}}]}}
+     ]},
+
+    {"ref": "kontakte", "kind": "database", "parent": "home", "title": "Ansprechpartner", "icon": "📇",
+     "schema": {
+       "title_name": "Wer",
+       "props": [
+         {"id": "bereich", "name": "Zuständig für", "type": "multi_select", "options": [
+           {"id": "it", "name": "Technik", "color": "blue"},
+           {"id": "personal", "name": "Personal", "color": "pink"},
+           {"id": "buero", "name": "Büro", "color": "green"},
+           {"id": "finanzen", "name": "Finanzen", "color": "yellow"}]},
+         {"id": "mail", "name": "E-Mail", "type": "url"},
+         {"id": "telefon", "name": "Telefon", "type": "text"},
+         {"id": "erreichbar", "name": "Erreichbar", "type": "text"}
+       ],
+       "views": [
+         {"id": "liste", "name": "Übersicht", "type": "table", "sorts": [{"pid": "title", "dir": "asc"}]},
+         {"id": "karten", "name": "Karten", "type": "gallery", "card": "s"}
+       ]
+     },
+     "rows": [
+       {"title": "IT-Support", "icon": "💻", "example": true,
+        "props": {"bereich": ["it"], "mail": "mailto:it@example.org", "telefon": "Durchwahl 100", "erreichbar": "Mo–Fr 8–17 Uhr"}},
+       {"title": "Personalabteilung", "icon": "🤝", "example": true,
+        "props": {"bereich": ["personal"], "mail": "mailto:personal@example.org", "telefon": "Durchwahl 200", "erreichbar": "Mo–Do 9–16 Uhr"}},
+       {"title": "Empfang", "icon": "🛎️", "example": true,
+        "props": {"bereich": ["buero"], "mail": "mailto:empfang@example.org", "telefon": "Durchwahl 0", "erreichbar": "Mo–Fr 8–18 Uhr"}},
+       {"title": "Buchhaltung", "icon": "🧾", "example": true,
+        "props": {"bereich": ["finanzen"], "mail": "mailto:buchhaltung@example.org", "telefon": "Durchwahl 300", "erreichbar": "Mo–Fr 9–15 Uhr"}}
+     ]},
+
+    {"ref": "schreiben", "kind": "page", "parent": "home", "title": "Wie man hier schreibt", "icon": "✍️",
+     "body": [
+       {"type": "callout", "data": {"emoji": "💡", "text": "Gute Wiki-Seiten sind kurz, aktuell und leicht zu überfliegen."}},
+       {"type": "header", "data": {"text": "Fünf Regeln", "level": 2}},
+       {"type": "list", "data": {"style": "ordered", "meta": {}, "items": [
+         {"content": "<b>Das Wichtigste zuerst</b> – die Antwort steht im ersten Absatz.", "meta": {}, "items": []},
+         {"content": "<b>Kurze Abschnitte</b> mit Überschriften, Details in ausklappbaren Blöcken.", "meta": {}, "items": []},
+         {"content": "<b>Schritte nummerieren</b>, Aufzählungen für alles ohne Reihenfolge.", "meta": {}, "items": []},
+         {"content": "<b>Verlinken statt kopieren</b>: Mit „[[“ verweist du auf eine andere Seite.", "meta": {}, "items": []},
+         {"content": "<b>Aktuell halten</b>: Veraltetes löschen – alte Fassungen bleiben in den Versionen.", "meta": {}, "items": []}]}},
+       {"type": "header", "data": {"text": "Bausteine", "level": 2}},
+       {"type": "paragraph", "data": {"text": "Tippe <code class=\"inline-code\">/</code> für Blöcke: Überschrift, Hinweis, Ausklappbar, Tabelle, Checkliste, Spalten und mehr."}},
+       {"type": "callout", "data": {"emoji": "⚠️", "text": "Hinweis-Blöcke sparsam einsetzen – nur für Dinge, die man nicht übersehen darf."}},
+       {"type": "quote", "data": {"text": "Schreib so, dass die neue Kollegin es am ersten Tag versteht.", "caption": "", "alignment": "left"}}
+     ]}
+  ]
+}
