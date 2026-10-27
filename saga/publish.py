@@ -688,13 +688,23 @@ def _fill_public(ctx, schema, rows):
         if not d:
             return None
         trows = []
+        tschema = _json_load(d[0], {"props": []})
         for x in ctx.c.execute("SELECT id, title, props, created, updated FROM note WHERE uid=? AND parent_id=? AND deleted_at IS NULL "
                                "AND archived IS NULL AND is_template=0 LIMIT ?", (ctx.uid, dbid, DB_ROWS_MAX)).fetchall():
             ctx.seed(x[0], dbid)
             if ctx.url_for(x[0]):
-                trows.append({"id": x[0], "title": x[1] or "", "props": _json_load(x[2], {}), "created": x[3], "updated": x[4]})
-        return _json_load(d[0], {"props": []}), trows
+                trows.append({"id": x[0], "title": x[1] or "", "props": _private_off(tschema, _json_load(x[2], {})), "created": x[3],
+                              "updated": x[4]})
+        return tschema, trows
+    for r in rows:                              # 2.5: Personen/Dateien auch nicht ueber Formeln/Rollups (Namen) oeffentlich
+        r["props"] = _private_off(schema, r["props"])
     dbcalc.fill_core(schema, rows, tz=TZ, labels=labels, target=target)
+
+
+def _private_off(schema, pv):
+    """Werte von Personen-/Datei-Eigenschaften entfernen (oeffentliche Seiten)."""
+    priv = {p.get("id") for p in (schema or {}).get("props") or [] if isinstance(p, dict) and p.get("type") in PRIVATE_TYPES}
+    return {k: v for k, v in pv.items() if k not in priv} if priv and isinstance(pv, dict) else pv
 
 
 def _prop_value(p, row):

@@ -149,6 +149,104 @@ class _FakeReq:
 
 def run():
     gc_part()
+    typ_part()
+
+
+def typ_part():
+    """Teil 2/3: Typ files - Schema, Pruefung, Hochladen, Lesen, Export, Duplizieren, Entfernen + GC."""
+    s, d = req("POST", "/api/notes", body={"kind": "database", "title": "Belege"})
+    db = d["id"]
+    s, d = req("PATCH", f"/api/notes/{db}", body={"schema": {"props": [
+        {"id": "anh", "name": "Anhänge", "type": "files", "max": 3},
+        {"id": "eins", "name": "Foto", "type": "files", "max": 99},
+        {"id": "n", "name": "Namen", "type": "formula", "expr": "prop(\"anh\").join(\" | \")"}]}})
+    ok(f"Schema mit Datei-Spalten ({s})", s == 200, d)
+    s, d = req("GET", f"/api/notes/{db}/rows?limit=1")
+    sp = {p["id"]: p for p in d["schema"]["props"]}
+    ok("max begrenzt (1..20, Standard 10)", sp["anh"]["max"] == 3 and sp["eins"]["max"] == 20, sp)
+    row = req("POST", "/api/notes", body={"parent_id": db, "title": "Rechnung"})[1]["id"]
+    s, up = upload(A, b"%PDF-1.4 rechnung\n", "rechnung.pdf", note=row)
+    ok(f"Upload fuer die Zeile ({s})", s == 200 and up.get("success") == 1, up)
+    s, im = upload(A, PNG, "bild.png", note=row, field="image")
+    ok(f"Bild-Upload ({s})", s == 200, im)
+    f1, f2 = up["file"]["url"], im["file"]["url"]
+    s, d = req("PATCH", f"/api/notes/{row}", body={"props": {"anh": [{"url": f1, "name": "rechnung.pdf"}, {"url": f2, "name": "bild.png"},
+                                                              {"url": f1, "name": "doppelt"}]}})
+    vals = (d.get("values") or {}).get("anh") or []
+    ok(f"Werte gespeichert, Doppelte entfernt, Groesse/MIME/Bild in der Antwort ({s})", s == 200 and [x["url"] for x in vals] == [f1, f2]
+       and vals[0]["size"] == 18 and vals[1]["image"] is True and vals[1]["mime"] == "image/png" and vals[0]["image"] is False, d)
+    with connect() as c:
+        st = json.loads(c.execute("SELECT props FROM note WHERE id=?", (row,)).fetchone()[0])
+    ok("gespeichert nur {url, name}", st.get("anh") == [{"url": f1, "name": "rechnung.pdf"}, {"url": f2, "name": "bild.png"}], st)
+    s, d = req("PATCH", f"/api/notes/{row}", body={"props": {"anh": [{"url": "/files/" + "0" * 24, "name": "x"}]}})
+    ok(f"erfundene Datei: 400 ({s})", s == 400, d)
+    s, up_c = upload(CU, b"carl\n", "carl.txt")
+    s, d = req("PATCH", f"/api/notes/{row}", body={"props": {"anh": [{"url": up_c["file"]["url"], "name": "carl.txt"}]}})
+    ok(f"fremde Datei (anderes Konto): 400 ({s})", s == 400, d)
+    s, d = req("PATCH", f"/api/notes/{row}", body={"props": {"anh": [{"url": "https://example.org/x.pdf", "name": "x"}]}})
+    ok(f"externe URL: 400 ({s})", s == 400, d)
+    many = [upload(A, b"x%d" % i, f"x{i}.txt")[1]["file"]["url"] for i in range(4)]
+    s, d = req("PATCH", f"/api/notes/{row}", body={"props": {"anh": [{"url": u, "name": "x"} for u in many]}})
+    ok(f"mehr als max: 400 ({s})", s == 400 and "3" in str(d), d)
+    s, d = req("GET", f"/api/notes/{db}/rows")
+    r0 = d["rows"][0]
+    ok("/rows: Datei-Werte mit Angaben, Formel mit Dateinamen", [x["name"] for x in r0["props"]["anh"]] == ["rechnung.pdf", "bild.png"]
+       and r0["props"]["anh"][0]["size"] == 18 and r0["props"].get("n") == "rechnung.pdf | bild.png", r0)
+    s, d = req("GET", f"/api/notes/{row}")
+    ok(f"Einzelzeile mit Datei-Angaben ({s})", s == 200 and d["props"]["anh"][1]["image"] is True, d.get("props"))
+    s, d = req("GET", f"/api/notes/{db}/rows" + "?q=rechnung.pdf")
+    ok("Suche findet Dateinamen", s == 200 and d.get("matched") == 1, d.get("matched"))
+    s, d = req("GET", f"/api/notes/{db}/rows" + "?" + urllib.parse.urlencode({"filters": json.dumps([{"pid": "anh", "op": "not_empty", "value": ""}])}))
+    ok("Filter 'nicht leer'", s == 200 and d.get("matched") == 1, d)
+    # Geteilt: Bert (Bearbeiten) laedt hoch - Datei gehoert Anna, Bert sieht sie; Carl nicht
+    req("PUT", f"/api/notes/{db}/shares", body={"type": "user", "target": BU, "role": "edit"})
+    s, ub = upload(BU, b"von bert\n", "bert.txt", note=row)
+    with connect() as c:
+        own = c.execute("SELECT uid FROM file WHERE id=?", (fid_of(ub["file"]["url"]),)).fetchone()[0]
+    ok(f"Bearbeitende Person laedt hoch: Datei gehoert der Eigentuemerin ({s})", s == 200 and own == A, (s, own))
+    s, d = req("PATCH", f"/api/notes/{row}", BU, {"props": {"anh": [{"url": f1, "name": "rechnung.pdf"}, {"url": ub["file"]["url"], "name": "bert.txt"}]}})
+    ok(f"Bert setzt Werte ({s})", s == 200, d)
+    s, _ = req("GET", f"/files/{fid_of(ub['file']['url'])}", BU)
+    ok(f"Bert sieht die Datei ({s})", s == 200)
+    s, _ = req("GET", f"/files/{fid_of(f1)}", CU)
+    ok(f"Carl ohne Freigabe nicht ({s})", s == 404)
+    # Export
+    s, raw = req("GET", f"/api/notes/{db}/export.csv")
+    ok(f"CSV: Dateinamen ({s})", s == 200 and "rechnung.pdf, bert.txt" in raw.decode("utf-8"), raw[:300])
+    s, raw = req("GET", f"/api/notes/{row}/export")
+    ok(f"Markdown: Dateinamen ({s})", s == 200 and "rechnung.pdf, bert.txt" in raw.decode("utf-8"), raw[:300])
+    # Veroeffentlichen: Dateien nicht oeffentlich
+    s, d = req("PUT", f"/api/notes/{db}/publish", body={"name": "fe" + os.urandom(4).hex()})
+    if s == 200 and d.get("url"):
+        c = http.client.HTTPConnection(B_.hostname, B_.port, timeout=30)
+        c.request("GET", urllib.parse.urlparse(d["url"]).path, headers={"Host": HOST})
+        html = c.getresponse().read().decode("utf-8", "replace")
+        i = html.find("pub-db")
+        ok("Veroeffentlicht: keine Datei-Spalte", "rechnung.pdf" not in html and "Anhänge" not in html and "Rechnung" in html,
+           html[i:i + 800] if i >= 0 else html[-800:])
+        req("DELETE", f"/api/notes/{db}/publish")
+    else:
+        ok("Veroeffentlichen moeglich", False, (s, d))
+    # Duplizieren (gleiche Datenbank): Referenz bleibt
+    s, d = req("POST", f"/api/notes/{row}/duplicate", body={"parent_id": db})
+    s, d2 = req("GET", f"/api/notes/{d['id']}")
+    ok(f"Duplizieren: gleiche Datei-Referenz ({s})", [x["url"] for x in d2["props"].get("anh", [])] == [f1, ub["file"]["url"]], d2.get("props"))
+    # Entfernen + GC: Datei aus props weg -> nach GC geloescht; ueber die Kopie noch benutzt -> bleibt
+    req("PATCH", f"/api/notes/{row}", body={"props": {"anh": [{"url": f2, "name": "bild.png"}]}})
+    req("PATCH", f"/api/notes/{d['id']}", body={"props": {"anh": None}})
+    gc_now()
+    ok("GC: entfernte Datei weg, noch benutzte bleibt", not exists(fid_of(f1)) and exists(fid_of(f2)) and not exists(fid_of(ub["file"]["url"])),
+       (exists(fid_of(f1)), exists(fid_of(f2))))
+    s, d = req("GET", f"/api/notes/{row}")
+    ok("fehlende Datei faellt beim Lesen weg (kein Fehler)", s == 200 and [x["url"] for x in d["props"]["anh"]] == [f2], d.get("props"))
+    # Schema: Typ wechseln entfernt die Werte (wie bei anderen Typen)
+    s, d = req("GET", f"/api/notes/{db}/rows?limit=1")
+    sch = d["schema"]
+    next(p for p in sch["props"] if p["id"] == "anh")["type"] = "text"
+    req("PATCH", f"/api/notes/{db}", body={"schema": sch})
+    with connect() as c:
+        st = json.loads(c.execute("SELECT props FROM note WHERE id=?", (row,)).fetchone()[0])
+    ok("Typ files -> text: Liste faellt weg", "anh" not in st or isinstance(st["anh"], str), st)
 
 
 def cleanup():
