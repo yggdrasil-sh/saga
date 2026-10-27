@@ -78,7 +78,13 @@ def user_usage(uid):
                 "calendars": q("SELECT COUNT(*) FROM cal_account WHERE uid=?"),
                 "immich": q("SELECT COUNT(*) FROM immich_key WHERE uid=?"),
                 "nextcloud": q("SELECT COUNT(*) FROM nc_account WHERE uid=?"),
-                "shares": share_counts(c, uid)[0], "shared_with": share_counts(c, uid)[1], **chat.counts(c, uid)}
+                "shares": share_counts(c, uid)[0], "shared_with": share_counts(c, uid)[1], **chat.counts(c, uid),
+                **_api_counts(c, uid)}
+
+
+def _api_counts(c, uid):
+    from saga import apitok                 # 2.5: aktive API-Tokens und Webhooks
+    return apitok.counts(c, uid)
 
 
 def revoke_user_logins(uid, keep_device=None):

@@ -67,7 +67,7 @@ function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDat
     ok('Woche: zwei Balken, Breite = Tage x 16 px (6 bzw. 5 Tage)', bars.length === 2 && bars.find((b) => b.t === 'Planung').w === 96 && bars.find((b) => b.t === 'Bau').w === 80, bars);
     ok('Achse mit Kalenderwochen, Heute-Linie', await p.evaluate(() => [...document.querySelectorAll('.tl-tick')].some((x) => /^KW \d+/.test(x.textContent)) && !!document.querySelector('.tl-now')));
     ok('Abhaengigkeit als Pfeil (Planung -> Bau)', await p.evaluate(([a, b]) => !!document.querySelector('.tl-dep[data-from="' + a + '"][data-to="' + b + '"]'), [ids.A, ids.B]));
-    ok('"ohne Termin" listet die Zeile ohne Datum', await p.evaluate(() => /1 Eintrag ohne Termin/.test((document.querySelector('.tl-nodate summary') || {}).textContent || '') && /Ohne Termin/.test(document.querySelector('.tl-nodate-list').textContent)));
+    ok('"ohne Termin" listet die Zeile ohne Datum', await p.evaluate(() => /1 Eintrag ohne Termin/.test((document.querySelector('.tl-nodate summary') || {}).textContent || '') && /Ohne Termin/.test(document.querySelector('.tl-nodate-list').textContent)), await p.evaluate(() => [(document.querySelector('.tl-nodate') || {}).outerHTML || 'kein .tl-nodate', [...document.querySelectorAll('.tl-bar,.tl-row,.tl-lab')].map((x) => x.textContent).join('|')]));
 
     // Ziehen: Balken "Bau" um 7 Tage (7 x 16 px) nach rechts -> Beginn UND Ende +7
     let bb = await p.locator('.tl-bar[data-id="' + ids.B + '"]').boundingBox();

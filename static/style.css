@@ -1100,6 +1100,11 @@ body.embed .pg-conflict,.pages.pg-full .pg-conflict{top:.5rem}
 .hk-tok-me{font-size:.75rem;padding:1px 8px;border-radius:999px;background:var(--bg);color:var(--accent);border:1px solid var(--border)}
 .hk-newtok{border:1px solid var(--accent);border-radius:9px;padding:.7rem;margin-top:.6rem;display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
 .hk-newtok p{margin:0;width:100%;font-size:.88rem}
+.hk-newtok .hk-actions{width:100%}
+.api-scopes,.api-events{border:1px solid var(--border);border-radius:9px;padding:.5rem .7rem;margin:.5rem 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(12rem,1fr));gap:.25rem .8rem}
+.api-scopes legend,.api-events legend{font-size:.8rem;color:var(--muted);padding:0 .3rem}
+.api-tok code,.api-hook code{overflow-wrap:anywhere}
+.api-snippet{font-size:.78rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.6rem;overflow:auto;max-width:100%}
 .hk-tokval{flex:1;min-width:16rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem}
 
 .page-body .cols-ctl-x{display:inline-flex;align-items:center;gap:.15rem}

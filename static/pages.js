@@ -5640,7 +5640,7 @@
           if (AUTO[sp.type]) { a = b = relDay(isoDay(sv)); }
           else { var ds = daySpan(sv); if (ds) { a = ds[0]; b = ds[1]; } }
         }
-        if (ep) {
+        if (ep && (r.props || {})[ep.id]) {     // leerer Wert: kein Datum (daySpan('') ergaebe einen Tag im Jahr 1899)
           var es = daySpan((r.props || {})[ep.id]);
           if (es) { if (a == null) a = es[0]; b = Math.max(a, es[1]); }
         }
