@@ -6031,7 +6031,8 @@
   function chartAxisOk(p) {
     if (!p) return false;
     var t = p.type, rt = (t === 'formula' || t === 'rollup') ? p.rtype : null;
-    return ['select', 'multi_select', 'date', 'created', 'edited', 'checkbox', 'number', 'calc', 'text', 'url', 'relation'].indexOf(t) >= 0
+    // person: je Person (Anzeigename vom Server); Datei-Spalten lassen sich nicht gruppieren (Server: bad_cfg)
+    return ['select', 'multi_select', 'date', 'created', 'edited', 'checkbox', 'number', 'calc', 'text', 'url', 'relation', 'person'].indexOf(t) >= 0
       || ['number', 'text', 'checkbox', 'date', 'list'].indexOf(rt) >= 0;
   }
   function chartIsDate(p) { return !!p && (p.type === 'date' || p.type === 'created' || p.type === 'edited' || ((p.type === 'formula' || p.type === 'rollup') && p.rtype === 'date')); }
@@ -6453,6 +6454,8 @@
           sel('🗃️ ' + dname, [['', T('– Datum wählen –')]].concat(dps.map(function (x) { return [x.id, x.name]; })).concat([['-', '✕ ' + T('Entfernen')]]), src.date, function (v) {
             if (v === '-') cfg.dbs.splice(i, 1); else src.date = v; self.changed(); self.fill(); self.update();
           });
+          if (sc0 && sc0 !== 'load' && (sc0.props || []).some(function (x) { return x.type === 'person'; }))
+            inp(T('Nur mir zugewiesene'), 'checkbox', !!src.mine, function (v) { if (v) src.mine = true; else delete src.mine; self.changed(); self.update(); });
         });
         if ((cfg.dbs || []).length < 5) sel(T('Datenbank hinzufügen'), [['', T('– wählen –')]].concat(udbs.map(function (x) { return [x.id, (ti(x.icon) || '🗃️') + ' ' + label(x)]; })), '', function (v) {
           if (!v) return; cfg.dbs = (cfg.dbs || []).concat([{ db: +v, view: '', date: '' }]); self.changed(); self.fill();

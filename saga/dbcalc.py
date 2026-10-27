@@ -704,8 +704,8 @@ def _bucket_next(s, b):
 class _Axis:
     """Gruppierung nach einer Eigenschaft: keys(row) -> Liste von (schluessel, label, farbe, sortwert). Leer: [(None, ...)]."""
 
-    def __init__(self, schema, q, pid, spec, labels, untitled, tz):
-        self.q, self.tz, self.untitled, self.labels_fn = q, tz, untitled, labels
+    def __init__(self, schema, q, pid, spec, labels, untitled, tz, people=None):
+        self.q, self.tz, self.untitled, self.labels_fn, self.people = q, tz, untitled, labels, people
         self.bucket = spec.get("bucket") or "month"
         if pid == "title":
             self.p = {"id": "title", "type": "text"}
@@ -723,6 +723,10 @@ class _Axis:
             self.kind = "select"
         elif t == "relation":
             self.kind = "relation"
+        elif t == "person":                                  # 2.5: je Person (Anzeigename aus people, nie Anmeldename)
+            if people is None:                               # veroeffentlichte Seite: Personen nie oeffentlich
+                raise Fail("no_access")
+            self.kind = "person"
         elif t == "checkbox" or rt == "checkbox":
             self.kind = "checkbox"
         elif t in ("number", "calc") or rt == "number":
@@ -789,6 +793,13 @@ class _Axis:
             out = [(str(i), self._lab.get(i) or self.untitled, None, (self._lab.get(i) or self.untitled).lower()) for i in dict.fromkeys(ids)
                    if i in self._lab]
             return out or [(None,)]
+        if k == "person":                                    # eine Zeile zaehlt bei jeder eingetragenen Person
+            out = []
+            for ref in dict.fromkeys(x for x in (v if isinstance(v, list) else []) if isinstance(x, str)):
+                e = self.people.get(ref) if isinstance(self.people.get(ref), dict) else {}
+                nm = e.get("name") if isinstance(e.get("name"), str) and e.get("name") else t("Gelöschte Person")
+                out.append((ref, nm, None, nm.lower()))
+            return out or [(None,)]
         if k == "checkbox":
             on = v is True
             return [("true" if on else "false", t("Ja") if on else t("Nein"), None, 0 if on else 1)]
@@ -842,9 +853,10 @@ def _agg(spec, rows, schema):
     return aggregate(spec["agg"], spec.get("y") or "", rows, schema)
 
 
-def chart(schema, rows, spec, labels=None, tz=None, today=None, untitled=None, with_ids=False):
+def chart(schema, rows, spec, labels=None, tz=None, today=None, untitled=None, with_ids=False, people=None):
     """Diagramm aus den (schon nach der Ansicht gefilterten) Zeilen -> Ergebnis (siehe docs/APP-API.md "Diagramme").
-    Fail('bad_cfg') bei unbekannter/ungeeigneter Eigenschaft. with_ids: je Kategorie die Zeilen-IDs (Web: Klick auf einen
+    Fail('bad_cfg') bei unbekannter/ungeeigneter Eigenschaft (auch Datei-Spalten als Achse). people: {kennung: {name}} der
+    Personen in rows (people.out_values); None = keine Personen-Achse moeglich (veroeffentlichte Seite -> Fail('no_access')). with_ids: je Kategorie die Zeilen-IDs (Web: Klick auf einen
     Balken zeigt diese Zeilen) als "ids" (Liste je cats-Eintrag)."""
     spec = clean_chart_spec(spec)
     tz = tz or timezone.utc
@@ -862,7 +874,7 @@ def chart(schema, rows, spec, labels=None, tz=None, today=None, untitled=None, w
         return res
     if not spec.get("x"):
         raise Fail("bad_cfg")
-    ax = _Axis(schema, q, spec["x"], spec, labels, untitled, tz)
+    ax = _Axis(schema, q, spec["x"], spec, labels, untitled, tz, people)
     ax.prefetch(rows)
     empty_show = spec.get("empty") == "show"
     groups = _group(ax, rows, empty_show)
@@ -924,7 +936,7 @@ def chart(schema, rows, spec, labels=None, tz=None, today=None, untitled=None, w
                 cat["start"] = date.fromordinal(g["sort"][1]).isoformat()
     # Reihen
     if spec.get("series") and typ in ("bar", "hbar", "line", "area"):
-        sx = _Axis(schema, q, spec["series"], dict(spec, status=spec.get("status"), bucket=spec.get("bucket")), labels, untitled, tz)
+        sx = _Axis(schema, q, spec["series"], dict(spec, status=spec.get("status"), bucket=spec.get("bucket")), labels, untitled, tz, people)
         sx.prefetch(rows)
         sg = _group(sx, rows, empty_show)
         skeys = sorted(sg, key=lambda k: sg[k]["sort"])

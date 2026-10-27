@@ -1037,6 +1037,9 @@ def _db_chart(ctx, dbid, r, schema, view, caption):
         rows.append({"id": x[0], "title": x[1] or "", "props": _json_load(x[2], {}), "created": x[3], "updated": x[4]})
     if dbcalc.has_calc(schema):
         _fill_public(ctx, schema, rows)
+    else:                                       # 2.5: Personen/Dateien nie oeffentlich (Personen-Achse -> Fail, kein Diagramm)
+        for x in rows:
+            x["props"] = _private_off(schema, x["props"])
     from saga import dbquery
     try:
         rows, _, _ = dbquery.run(schema, rows, {"view": view.get("id"), "tz": TZ}, labels=_public_labels(ctx), untitled=t("Unbenannt"))

@@ -182,7 +182,10 @@ def _clean_cfg(kind, c):
         dbs = []
         for x in (c.get("dbs") if isinstance(c.get("dbs"), list) else [])[:UP_DBS_MAX * 2]:
             if isinstance(x, dict) and _db_id(x.get("db")) and _id(x.get("date")):
-                dbs.append({"db": x["db"], "view": _id(x.get("view")), "date": _id(x["date"])})
+                src = {"db": x["db"], "view": _id(x.get("view")), "date": _id(x["date"])}
+                if x.get("mine") is True:                 # 2.5: nur Zeilen, in denen ich in einer Personen-Eigenschaft stehe
+                    src["mine"] = True
+                dbs.append(src)
         return {"days": d if isinstance(d, int) and not isinstance(d, bool) and 1 <= d <= UP_DAYS_MAX else 7,
                 "cal": c.get("cal") is not False, "tasks": c.get("tasks") is not False, "overdue": c.get("overdue") is not False,
                 "dbs": dbs[:UP_DBS_MAX], "limit": lim if isinstance(lim, int) and not isinstance(lim, bool) and 5 <= lim <= 30 else 10}
@@ -293,9 +296,10 @@ def _source(c, uid, dbid, acc, public_owner=None, roles=None):
     return owner, _json_load(r[1], {"props": []}), role != "owner"
 
 
-def _rows(c, uid, owner, dbid, schema, shared, view, tz, filters=None, public=False):
+def _rows(c, uid, owner, dbid, schema, shared, view, tz, filters=None, public=False, people_out=None):
     """Zeilen der Quell-DB nach der Ansicht (dbquery.run, wie GET .../rows?view=...). Fremd: ohne archivierte Zeilen.
-    public: veroeffentlichte Seite - Personen-/Datei-Werte gar nicht (auch nicht ueber Formeln)."""
+    public: veroeffentlichte Seite - Personen-/Datei-Werte gar nicht (auch nicht ueber Formeln). people_out (dict): bekommt
+    das Woerterbuch {kennung: {name, ...}} der Personen (Werte in props sind danach Kennungen, nie Anmeldenamen)."""
     where = "uid=? AND parent_id=? AND deleted_at IS NULL AND is_template=0" + (" AND archived IS NULL" if shared else "")
     n = c.execute(f"SELECT count(*) FROM note WHERE {where}", (owner, dbid)).fetchone()[0]
     if n > dbquery.LIMIT_MAX:
@@ -315,6 +319,8 @@ def _rows(c, uid, owner, dbid, schema, shared, view, tz, filters=None, public=Fa
     if dbcalc.has_calc(schema):                     # 2.5: Formeln/Rollups mit den Rechten des Betrachters
         dbcalc.fill(c, owner, schema, data, viewer=uid, tz=tz)
     pm = people.out_values(c, schema, data, uid)    # 2.5: Personen wie im Web (Filter "mir zugewiesen"/"enthaelt")
+    if people_out is not None:
+        people_out.update(pm)
     try:
         page, _, _ = dbquery.run(schema, data, args, labels=_labels_fn(c, uid, owner), untitled=t("Unbenannt"), people=pm,
                                  me=people.to_ref(c, uid))
@@ -485,11 +491,16 @@ def _upcoming(c, uid, cfg, today, tz, acc):
             continue
         q = dbquery.Query(schema, tz=tz, today=today)
         done = dbcalc.done_test(schema)
+        mine = people.person_pids(schema) if src.get("mine") else None
+        if mine is not None:
+            me_ref = people.to_ref(c, uid)
         for r in rows:
             day = row_day(q, dp, r)
             if day is None or day >= t1:
                 continue
             pv = r.get("props") if isinstance(r.get("props"), dict) else {}
+            if mine is not None and not any(isinstance(pv.get(pid), list) and me_ref in pv[pid] for pid in mine):
+                continue                                  # "mir zugewiesen": Werte sind nach _rows Kennungen (people.out_values)
             late = day < t0
             if late and (not cfg.get("overdue", True) or done(pv)):
                 continue
@@ -502,8 +513,11 @@ def _upcoming(c, uid, cfg, today, tz, acc):
             en = raw.split("/")[1] if isinstance(raw, str) and "/" in raw else None
             items.append({"k": "row", "title": str(r.get("title") or "")[:200] or t("Unbenannt"), "start": st if isinstance(st, str) else day,
                           "end": en, "allday": not (isinstance(st, str) and "T" in st), "color": None, "cal": None,
-                          "note": r.get("id"), "task": None, "overdue": late})
-    items.sort(key=lambda x: (x["start"][:10], 0 if x["allday"] else 1, x["start"], x["title"]))
+                          "note": r.get("id"), "task": None, "overdue": late, "_day": day})
+    # Tag in der Zeitzone der Anfrage (Werte mit Uhrzeit tragen einen Versatz - "2026-10-27T23:30+00:00" ist in Berlin der 28.)
+    items.sort(key=lambda x: (x.get("_day") or x["start"][:10], 0 if x["allday"] else 1, x["start"], x["title"]))
+    for x in items:
+        x.pop("_day", None)
     lim = cfg.get("limit") or 10
     data = {"items": items[:lim], "more": max(0, len(items) - lim), "errors": errors, "days": days, "from": t0}
     return _W("upcoming", len(items), data=data)
@@ -550,13 +564,15 @@ def compute(c, uid, bid, d, tz=None, acc=None, public_owner=None, today=None, pu
             data = habit_grid(schema, rows, cfg, today, tz)
             data["can_check"] = public_owner is None and roles.get(cfg["db"]) in ("owner", "edit")
             return _W(kind, sum(1 for h in data["habits"] if h["done"][-1]), len(data["habits"]), data=data)
+        pm = {}
         rows = _rows(c, uid if public_owner is None else public_owner, owner, cfg["db"], schema, shared, cfg.get("view") or "", tz,
-                     public=pub)
+                     public=pub, people_out=pm)
         if kind == "chart":
             viewer = uid if public_owner is None else public_owner
             try:
                 lab = public_labels if pub else _labels_fn(c, viewer, owner)
-                res = dbcalc.chart(schema, rows, cfg, labels=lab or (lambda ids: {}), tz=tz, today=today, untitled=t("Unbenannt"))
+                res = dbcalc.chart(schema, rows, cfg, labels=lab or (lambda ids: {}), tz=tz, today=today, untitled=t("Unbenannt"),
+                                   people=None if pub else pm)
             except dbcalc.Fail as f:
                 raise _Fail(f.code)
             return _W(kind, res["total"], cfg.get("goal"), fmt=res["fmt"], data=res)
@@ -956,10 +972,11 @@ def db_chart(uid, dbid, params):
             return JSONResponse({"chart": None, "error": "bad_cfg", "view": view.get("id") if view else None},
                                 headers={"Cache-Control": "no-store"})
         try:
+            pm = {}
             rows = _rows(c, uid, owner, dbid, schema, shared, "" if spec is not None else view["id"], tz,
-                         filters if filters is not None else ([] if spec is not None else None))
+                         filters if filters is not None else ([] if spec is not None else None), people_out=pm)
             res = dbcalc.chart(schema, rows, view["chart"], labels=_labels_fn(c, uid, owner), tz=tz, today=today, untitled=t("Unbenannt"),
-                               with_ids=params.get("ids") == "1")
+                               with_ids=params.get("ids") == "1", people=pm)
             res["as_of"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             return JSONResponse({"chart": res, "view": view["id"], "error": None}, headers={"Cache-Control": "no-store"})
         except (_Fail, dbcalc.Fail) as f:

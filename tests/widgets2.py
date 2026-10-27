@@ -269,6 +269,7 @@ def main():
         part_habit(A, Bk, C)
         part_upcoming(A, Bk)
         part_chart(A, Bk, C)
+        part_people(A, Bk)
         part_publish(A)
     finally:
         auth.save_setting("allowed_hosts", prev_hosts)
@@ -598,6 +599,74 @@ def part_chart(A, Bk, C):
     s, md = req("GET", f"/api/notes/{page}/export", A)
     ok("Markdown-Export Diagramm", isinstance(md, str) and "**Nach Status:** Zu erledigen:" in md, str(md)[:400])
     globals()["CH"] = (db, page)
+
+
+def part_people(A, Bk):
+    """Integration Paket 1/5: Diagramm nach Person (Anzeigename, nie Anmeldename), Datei-Spalte abgelehnt, Datum mit
+    Uhrzeit in der Zeitzone der Anfrage, Anstehendes "nur mir zugewiesene"."""
+    from saga.core import local_ref
+    ha, hb = local_ref("w2-a"), local_ref("w2-b")
+    db = req("POST", "/api/notes", A, {"title": "Team", "kind": "database"})[1]["id"]
+    st = {"id": "status", "name": "Status", "type": "select", "status": True, "options": [
+        {"id": "neu", "name": "Neu", "group": "todo"}, {"id": "fertig", "name": "Fertig", "group": "done"}]}
+    req("PATCH", f"/api/notes/{db}", A, {"schema": {"props": [{"id": "wer", "name": "Wer", "type": "person"}, {"id": "anh", "name": "Anhang", "type": "files"},
+                                                              {"id": "frist", "name": "Frist", "type": "date"}, st],
+                                                    "views": [{"id": "alle", "name": "Alle", "type": "table"},
+                                                              {"id": "pp", "name": "Je Person", "type": "chart", "chart": {"type": "bar", "x": "wer"}},
+                                                              {"id": "pf", "name": "Je Datei", "type": "chart", "chart": {"type": "bar", "x": "anh"}},
+                                                              {"id": "ps", "name": "Status je Person", "type": "chart",
+                                                               "chart": {"type": "bar", "x": "status", "status": True, "series": "wer"}},
+                                                              {"id": "pt", "name": "Tage", "type": "chart", "chart": {"type": "bar", "x": "frist", "bucket": "day"}}]}})
+    req("PUT", f"/api/notes/{db}/shares", A, {"type": "user", "target": "w2-b", "role": "edit"})
+    d = lambda n: (TODAY + timedelta(days=n)).isoformat()   # noqa: E731
+    for ti, wer, fr, stv in (("P1", [ha, hb], d(1) + "T10:00+00:00", "neu"), ("P2", [hb], d(2), "fertig"), ("P3", [], d(0), "neu"),
+                             ("P4", [ha], d(0) + "/" + d(3), "neu"), ("P5", [ha], d(4) + "T23:30+00:00", "neu")):
+        s, r = req("POST", "/api/notes", A, {"title": ti, "parent_id": db, "props": {"wer": wer, "frist": fr, "status": stv}})
+        ok(f"Zeile {ti} mit Personen ({s})", s == 200, r)
+    s, r = req("GET", f"/api/notes/{db}/chart?view=pp&ids=1", A)
+    c = r.get("chart") or {}
+    raw = json.dumps(r, ensure_ascii=False)
+    ok(f"Diagramm nach Person: Anzeigenamen, Kennungen als key ({s})", s == 200 and sorted((x["key"], x["label"]) for x in c.get("cats", []))
+       == sorted([(ha, "Anna Zwei"), (hb, "Bert Zwei")]) and dict(zip([x["label"] for x in c["cats"]], c["series"][0]["values"])) == {"Anna Zwei": 3, "Bert Zwei": 2}, r)
+    ok("Diagramm nach Person: kein Anmeldename in der Antwort", "w2-a" not in raw and "w2-b" not in raw, raw)
+    s, r = req("GET", f"/api/notes/{db}/chart?view=pp", Bk)
+    ok("Bert (geteilt) sieht dieselben Gruppen", s == 200 and sorted(x["label"] for x in r["chart"]["cats"]) == ["Anna Zwei", "Bert Zwei"]
+       and "w2-a" not in json.dumps(r), r)
+    ok("Datei-Spalte als Achse -> bad_cfg", req("GET", f"/api/notes/{db}/chart?view=pf", A)[1].get("error") == "bad_cfg")
+    s, r = req("GET", f"/api/notes/{db}/chart?view=ps", A)
+    c = r.get("chart") or {}
+    ok("Status-Gruppen mit Reihen je Person", [x["key"] for x in c.get("cats", [])] == ["todo", "done"]
+       and {x["label"]: x["values"] for x in c["series"]} == {"Anna Zwei": [3, 0], "Bert Zwei": [1, 1]}, c)
+    s, r = req("GET", f"/api/notes/{db}/chart?view=pt&tz=Pacific/Kiritimati", A)
+    keys = [x["key"] for x in (r.get("chart") or {}).get("cats", [])]
+    ok("Datum mit Uhrzeit: Tag in der Zeitzone der Anfrage (+14 h -> 23:30 UTC ist der Folgetag)", d(5) in keys and d(4) not in keys[-1:], keys)
+    page = req("POST", "/api/notes", A, {"title": "Meins"})[1]["id"]
+    save(A, page, [W("upcoming", {"days": 7, "cal": False, "tasks": False, "dbs": [{"db": db, "date": "frist", "mine": True}]}, bid="um"),
+                   W("upcoming", {"days": 7, "cal": False, "tasks": False, "dbs": [{"db": db, "date": "frist"}]}, bid="ua"),
+                   W("chart", {"db": db, "type": "pie", "x": "wer"}, bid="cw", title="JePerson")])
+    s, r = req("GET", f"/api/notes/{page}/widgets?tz=Europe/Berlin", A)
+    um = [x["title"] for x in r["widgets"]["um"]["data"]["items"]]
+    ua = [x["title"] for x in r["widgets"]["ua"]["data"]["items"]]
+    ok(f"Anstehendes nur mir zugewiesene (Anna): {um}", sorted(um) == ["P1", "P4", "P5"] and sorted(ua) == ["P1", "P2", "P3", "P4", "P5"], r["widgets"]["ua"])
+    it = {x["title"]: x for x in r["widgets"]["ua"]["data"]["items"]}
+    ok("Anstehendes: Zeitraum (Ende) und Uhrzeit", it["P4"]["end"] == d(3) and it["P4"]["allday"] is True and it["P1"]["allday"] is False, it)
+    ok("Diagramm-Widget nach Person", sorted(x["label"] for x in r["widgets"]["cw"]["data"]["cats"]) == ["Anna Zwei", "Bert Zwei"]
+       and "w2-a" not in json.dumps(r), r["widgets"]["cw"])
+    req("PUT", f"/api/notes/{page}/shares", A, {"type": "user", "target": "w2-b", "role": "view"})
+    s, r = req("GET", f"/api/notes/{page}/widgets?tz=Europe/Berlin", Bk)
+    um = [x["title"] for x in r["widgets"]["um"]["data"]["items"]]
+    ok(f"Anstehendes nur mir zugewiesene (Bert): {um}", sorted(um) == ["P1", "P2"], r["widgets"]["um"])
+    pub = req("POST", "/api/notes", A, {"title": "PersonenPub"})[1]["id"]
+    save(A, pub, [W("chart", {"db": db, "type": "bar", "x": "wer"}, bid="pp", title="PubPerson"),
+                  W("chart", {"db": db, "type": "bar", "x": "status", "status": True}, bid="ps", title="PubStatus"),
+                  {"type": "database", "data": {"db": db, "view": "pp"}}])
+    s, dd = req("PUT", f"/api/notes/{pub}/publish", A, {"slug": "w2-personen", "name": "w2-anna"})
+    url = urllib.parse.urlparse(str((dd or {}).get("url") or "")).path if s == 200 else ""
+    s, html = req("GET", url) if url else (s, "")
+    html = str(html)
+    ok(f"veroeffentlicht: Diagramm nach Status ja, nach Person ohne Namen ({s})", s == 200 and "PubStatus" in html and html.count('<svg class="pub-ch"') == 1
+       and "Anna Zwei" not in html and "Bert Zwei" not in html and ha not in html and hb not in html, html[:300])
+    req("DELETE", f"/api/notes/{pub}/publish", A)
 
 
 def part_publish(A):
