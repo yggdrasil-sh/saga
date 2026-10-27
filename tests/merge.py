@@ -134,5 +134,90 @@ for k in range(300):
             print("  Fall", k, type(ex).__name__, ex)
 ok(f"300 zufaellige Faelle: eindeutige IDs, clean_blocks-fest, nichts Neues verloren, ohne fremde Aenderung = meins ({bad} Fehler)", bad == 0)
 
+# --- Ueber die API (nur mit laufendem Server: HK_TEST_BASE) -----------------------------------------------------------
+if os.environ.get("HK_TEST_BASE") and os.environ.get("SESSION_SECRET"):
+    import base64, time, urllib.error, urllib.parse, urllib.request
+    from itsdangerous import TimestampSigner
+    HOST = urllib.parse.urlparse(os.environ["BASE_URL"]).netloc
+    SG = TimestampSigner(os.environ["SESSION_SECRET"])
+    ckA, = (SG.sign(base64.b64encode(json.dumps({"uid": u, "name": u, "pwc": time.time() + 5}).encode())).decode() for u in ("hk-test-a",))
+
+    def call(ck, m, p, b=None, hdr=None):
+        h = {"Host": HOST, "Content-Type": "application/json", "Cookie": "saga=" + ck, "X-Saga": "1", **(hdr or {})}
+        try:
+            with urllib.request.urlopen(urllib.request.Request(os.environ["HK_TEST_BASE"] + p, data=json.dumps(b).encode() if b is not None else None,
+                                                               method=m, headers=h), timeout=20) as r:
+                return r.status, json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read() or b"{}")
+    Pb = lambda i, t: {"id": i, "type": "paragraph", "data": {"text": t}}       # noqa: E731
+    doc = lambda *b: json.dumps({"blocks": list(b)})                          # noqa: E731
+    from db import connect
+    try:
+        s, d = call(ckA, "POST", "/api/notes", {"title": "Merge API"}); nid = d["id"]
+        s, d = call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("a", "Hallo Welt"), Pb("b", "zwei")), "format": "blocks", "rev": 0})
+        r1 = d["rev"]
+        call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("a", "Hallo Welt"), Pb("b", "zwei!")), "format": "blocks", "rev": r1})
+        s, d = call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("a", "Hallo schoene Welt"), Pb("b", "zwei")), "format": "blocks", "rev": r1})
+        ok(f"API: ohne merge weiter 409 (aeltere Apps) ({s})", s == 409 and d.get("error") == "conflict")
+        s, d = call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("a", "Hallo schoene Welt"), Pb("b", "zwei")), "format": "blocks", "rev": r1, "merge": 1,
+                                                        "title": "Merge API 2"})
+        got = json.loads(d.get("body") or "{}").get("blocks") or []
+        ok(f"API: merge -> 200, Inhalt + Titel + rev in der Antwort ({s}, {d.get('merged')})",
+           s == 200 and [x["data"]["text"] for x in got] == ["Hallo schoene Welt", "zwei!"] and d.get("title") == "Merge API 2"
+           and d.get("rev") == r1 + 2 and d["merged"]["from"] == r1)
+        r3 = d["rev"]
+        # bases: Client hatte "zwei!!" eingereicht (r3+1 ist Antwort), schreibt weiter "zwei!!!" mit Basis = eingereichte Fassung
+        s, d = call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("a", "Hallo schoene Welt"), Pb("b", "zwei!!")), "format": "blocks", "rev": r3})
+        r4 = d["rev"]
+        s, d = call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("a", "Hallo schoene Welt."), Pb("b", "zwei!!")), "format": "blocks", "rev": r4})
+        r5 = d["rev"]
+        s, d = call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("a", "Hallo schoene Welt"), Pb("b", "zwei!!!")), "format": "blocks", "rev": r4,
+                                                        "merge": 1, "bases": {"b": r4}})
+        got = json.loads(d.get("body") or "{}").get("blocks") or []
+        ok(f"API: bases je Block ({[x['data']['text'] for x in got]})", s == 200 and [x["data"]["text"] for x in got] == ["Hallo schoene Welt.", "zwei!!!"])
+        # base: sent - nach zusammengefuehrter Antwort weitergeschrieben
+        s, d = call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("a", "X"), Pb("b", "zwei!!!")), "format": "blocks", "rev": d["rev"]})
+        rX = d["rev"]
+        call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("a", "X"), Pb("b", "zwei!!!"), Pb("c", "von B")), "format": "blocks", "rev": rX})
+        s, d = call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("a", "X Y"), Pb("b", "zwei!!!")), "format": "blocks", "rev": rX, "merge": 1})
+        rM = d["rev"]
+        s, d = call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("a", "X Y Z"), Pb("b", "zwei!!!")), "format": "blocks", "rev": rM, "merge": 1, "base": "sent"})
+        got = json.loads(d.get("body") or "{}").get("blocks") or []
+        ok(f"API: base sent - weitergeschrieben ohne die fremden Bloecke zu loeschen ({[x['data']['text'] for x in got]})",
+           s == 200 and [x["data"]["text"] for x in got] == ["X Y Z", "zwei!!!", "von B"])
+        # Basis fehlt -> 409
+        with connect() as c, c:
+            c.execute("DELETE FROM note_base WHERE note_id=?", (nid,))
+        cur = call(ckA, "GET", f"/api/notes/{nid}")[1]["rev"]
+        call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("a", "neu")), "format": "blocks", "rev": cur})
+        s, d = call(ckA, "PATCH", f"/api/notes/{nid}", {"body": doc(Pb("a", "alt")), "format": "blocks", "rev": cur - 1, "merge": 1})
+        ok(f"API: Basis nicht mehr da -> 409 wie bisher ({s})", s == 409)
+        # Kommentare an reparierten IDs: alter Stand ohne IDs, GET liefert stabile IDs, Kommentar bleibt nach Speichern haengen
+        with connect() as c, c:
+            c.execute("UPDATE note SET body=? WHERE id=?", (json.dumps({"blocks": [{"type": "paragraph", "data": {"text": "ohne id"}},
+                                                                                   {"type": "paragraph", "data": {"text": "auch ohne"}}]}), nid))
+        n1 = call(ckA, "GET", f"/api/notes/{nid}")[1]; n2 = call(ckA, "GET", f"/api/notes/{nid}")[1]
+        bids = [x["id"] for x in json.loads(n1["body"])["blocks"]]
+        ok(f"Alter Stand ohne IDs: GET liefert stabile IDs ({bids})", all(bids) and len(set(bids)) == 2 and n1["body"] == n2["body"])
+        s, cm = call(ckA, "POST", f"/api/notes/{nid}/comments", {"block_id": bids[1], "body": "Hinweis"})
+        call(ckA, "PATCH", f"/api/notes/{nid}", {"body": n1["body"], "format": "blocks", "rev": n1["rev"]})
+        th = call(ckA, "GET", f"/api/notes/{nid}/comments")[1]
+        thr = th.get("threads") or th
+        ok(f"Kommentar an repariertem Block bleibt nach dem Speichern zugeordnet ({s})", s == 200 and thr and thr[0]["block_id"] == bids[1] and thr[0]["block_exists"])
+        # Presence mit Block
+        s, d = call(ckA, "POST", "/api/presence", {"note_id": nid, "editing": True, "block": bids[0]})
+        me = [u for u in d.get("users", []) if u.get("me")]
+        ok(f"Presence: block und color ({me})", s == 200 and me and me[0].get("block") == bids[0] and me[0].get("color") in
+           ("gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"))
+        call(ckA, "POST", "/api/presence", {"note_id": nid, "leave": True})
+    finally:
+        with connect() as c, c:
+            c.execute("DELETE FROM note_comment WHERE owner_uid='hk-test-a'")
+            c.execute("DELETE FROM note_base WHERE note_id IN (SELECT id FROM note WHERE uid='hk-test-a')")
+            c.execute("DELETE FROM note_version WHERE uid='hk-test-a'"); c.execute("DELETE FROM note WHERE uid='hk-test-a'")
+else:
+    print("(kein Server - API-Teil uebersprungen)")
+
 print(f"\nMERGE {sum(res)}/{len(res)}", "- ALLES GRUEN" if res and all(res) else "- FEHLER")
 sys.exit(0 if res and all(res) else 1)

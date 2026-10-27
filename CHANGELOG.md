@@ -16,6 +16,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5, Gleichzeitig bearbeiten – P3 Stufe 1, Server + Web)
+- **Blockweises Zusammenführen statt Konflikt-Dialog.** Speichern zwei Personen (oder zwei Tabs) dieselbe Seite, führt
+  der Server die Fassungen zusammen (`PATCH … merge: 1`, `saga/merge.py`): verschiedene Blöcke bleiben, Text im selben
+  Absatz wird zusammengeführt, bei Überschneidung steht die zweite Fassung als gelber **Konfliktblock** direkt darunter
+  (Übernehmen/Verwerfen), vorher wird eine Version gesichert. Fremde Änderungen erscheinen im Web blockweise, ohne
+  „Neu laden“; wer gerade wo schreibt, ist am Block markiert (Anwesenheit mit `block`).
+- **Eindeutige Block-IDs** für alle Blöcke (auch in Spalten/Toggles); alte Seiten bekommen beim Lesen stabile IDs.
+- Datenbank: Migration 22 (`note_base`, Basisstände 24 h / 30 je Seite). Ältere Apps ohne `merge`: unverändert `409`.
+
 ### Neu (2.5, Editor-Rest P6-0 – Vertrag)
 - **Inline-Vertrag** für Inline-Farben (`span.hk-c-<farbe>`, `mark.hk-bg-<farbe>`, nur Palette), Personen-Erwähnungen
   (`span.hk-mention data-u=<Handle/Prinzipal>`) und Inline-Mathe (`code.hk-math`): Bereinigung, Veröffentlichen (Klassen

@@ -22,6 +22,9 @@ data: {"ids":[812,815],"op":"updated","ops":["updated"],"full":false}
 
 Unbekannte `op`-Werte wie eine Änderung behandeln (neu laden). Weitere Felder können dazukommen.
 
+> 2.5 (P3): `presence.users[]` enthält zusätzlich `block` (fokussierter Block) und `color` – siehe `APP-API.md`
+> „Gleichzeitig bearbeiten“. Auf `note.changed` können Apps mit `merge1` blockweise übernehmen statt neu zu laden.
+
 ## Wer bekommt es
 
 - **Alle Live-Verbindungen des Eigentümers** – außer der Stelle, die die Änderung selbst ausgelöst hat (die kennt das

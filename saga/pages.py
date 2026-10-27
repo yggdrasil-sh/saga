@@ -802,7 +802,10 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
             return err
         if role != "owner" and any(k in b for k in OWNER_FIELDS):
             return _bad(t("Das darf nur der Eigentümer der Seite."), 403)
-        old = c.execute("SELECT title, body, format, rev, locked, updated_by FROM note WHERE id=? AND uid=? AND deleted_at IS NULL",
+        # 2.5 (P3): Titel/Inhalt - Zeile bis zum Ende der Transaktion sperren: gleichzeitige Speichervorgaenge derselben
+        # Seite laufen nacheinander, der zweite sieht den neuen Stand und fuehrt zusammen (statt 409 aus dem Wettlauf)
+        lock = " FOR UPDATE" if ("body" in b or "title" in b) else ""
+        old = c.execute("SELECT title, body, format, rev, locked, updated_by FROM note WHERE id=? AND uid=? AND deleted_at IS NULL" + lock,
                         (nid, owner)).fetchone()
         if not old:
             return _bad("not found", 404)
