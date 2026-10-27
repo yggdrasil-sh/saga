@@ -97,6 +97,7 @@ time{color:var(--accent)}
 .pub-table{border-collapse:collapse;min-width:100%;font-size:.95rem}
 .pub-table th,.pub-table td{border:1px solid var(--border);padding:.4rem .65rem;text-align:left;vertical-align:top}
 .pub-table th{font-weight:600}
+.pub-table td{hyphens:auto;-webkit-hyphens:auto}   /* Fix27 #17 */
 .pub-dbt td:first-child{font-weight:500}
 .pub-db{margin:1.2rem 0}
 .pub-db-title{font-weight:600;font-size:1.1rem;margin-bottom:.3rem}

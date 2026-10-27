@@ -8,7 +8,7 @@
   if (!window.HKPages || !$('pg-editor')) return;
   var K = window.HKPages.k;
   var RANK = { view: 1, comment: 2, edit: 3, owner: 4 };
-  var C = { id: null, threads: [], nres: 0, resolved: false, block: null, open: false, load: 0, expanded: {}, replyTo: null, editing: null };
+  var C = { id: null, threads: [], nres: 0, resolved: false, block: null, open: false, load: 0, expanded: {}, replyTo: null, editing: null, drafts: {} };
   var MAX = 2000;
 
   function cur() { return K.cur(); }
@@ -183,22 +183,31 @@
     if (!s) s = b.querySelector('img') ? T('Bild') : T('Block');
     return s.length > 70 ? s.slice(0, 69) + '…' : s;
   }
-  function editor(value, ph, okText, onOk, onCancel) {
-    var w = el('div', 'cm-editor'), ta = el('textarea', 'hk-in cm-ta'); ta.maxLength = MAX; ta.rows = 2; ta.placeholder = ph; ta.value = value || '';
+  // Fix27 #4: Entwuerfe je Feld (key) in C.drafts - ueberleben jedes Neuzeichnen der Leiste (z. B. wenn jemand anderes
+  // die Seite aendert); weg erst nach Senden, Abbrechen oder Seitenwechsel
+  function editor(value, ph, okText, onOk, onCancel, key) {
+    var w = el('div', 'cm-editor'), ta = el('textarea', 'hk-in cm-ta'); ta.maxLength = MAX; ta.rows = 2; ta.placeholder = ph;
+    ta.value = key && C.drafts[key] != null ? C.drafts[key] : (value || ''); if (key) ta.dataset.key = key;
+    var cancel = onCancel && function () { if (key) delete C.drafts[key]; onCancel(); };
     ta.setAttribute('aria-label', ph);
     var bar = el('div', 'cm-ebar'), cnt = el('span', 'cm-cnt');
     var ok = el('button', 'btn btn-primary cm-send', okText); ok.type = 'button';
     function upd() { var n = ta.value.length; cnt.textContent = n > MAX - 200 ? T('{n} von {max}', { n: n, max: MAX }) : ''; ok.disabled = !ta.value.trim(); grow(); }
     function grow() { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight + 2, 220) + 'px'; }
-    function go() { var v = ta.value.trim(); if (!v) return; ok.disabled = true; onOk(v).then(function () { ok.disabled = false; }, function () { ok.disabled = false; }); }
+    function go() {
+      var v = ta.value.trim(); if (!v) return; ok.disabled = true;
+      var keep = key ? C.drafts[key] : null; if (key) delete C.drafts[key];        // vor dem Neuzeichnen nach dem Senden
+      onOk(v).then(function () { ok.disabled = false; }, function () { ok.disabled = false; if (key && keep != null && C.drafts[key] == null) C.drafts[key] = keep; });
+    }
     ta.addEventListener('input', upd);
+    if (key) ta.addEventListener('input', function () { if (ta.value) C.drafts[key] = ta.value; else delete C.drafts[key]; });
     ta.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); go(); }
-      if (e.key === 'Escape' && onCancel) { e.preventDefault(); e.stopPropagation(); onCancel(); }
+      if (e.key === 'Escape' && cancel) { e.preventDefault(); e.stopPropagation(); cancel(); }
     });
     ok.addEventListener('click', go);
     bar.appendChild(cnt);
-    if (onCancel) { var cb = el('button', 'btn cm-cancel', T('Abbrechen')); cb.type = 'button'; cb.addEventListener('click', onCancel); bar.appendChild(cb); }
+    if (cancel) { var cb = el('button', 'btn cm-cancel', T('Abbrechen')); cb.type = 'button'; cb.addEventListener('click', cancel); bar.appendChild(cb); }
     bar.appendChild(ok);
     w.appendChild(ta); w.appendChild(bar); upd();
     w.focusLater = function () { if (C.quiet) return; setTimeout(function () { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 0); };
@@ -219,7 +228,7 @@
       var ed = editor(cm.body, T('Kommentar bearbeiten'), T('Speichern'), function (v) {
         return api('PATCH', '/api/comments/' + cm.id, { body: v }).then(function () { C.editing = null; return reload(); }).then(render)
           .catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); throw err; });
-      }, function () { C.editing = null; render(); });
+      }, function () { C.editing = null; render(); }, 'e:' + cm.id);
       c.appendChild(ed); ed.focusLater(); return c;
     }
     var mod = role() === 'owner', mine = cm.mine && can() && !cm.deleted;
@@ -286,7 +295,7 @@
         var ed = editor('', T('Antworten'), T('Antworten'), function (v) {
           return api('POST', '/api/notes/' + cur().id + '/comments', { thread_id: t.id, body: v }).then(function () { C.replyTo = null; return reload(); }).then(render)
             .catch(function (err) { HK.toast(T('Nicht gesendet: {err}', { err: err.message })); lost(err); throw err; });
-        }, function () { C.replyTo = null; render(); });
+        }, function () { C.replyTo = null; render(); }, 'r:' + t.id);
         w.appendChild(ed); ed.focusLater();
       } else {
         var rb = el('button', 'cm-tbtn', T('Antworten')); rb.type = 'button';
@@ -314,6 +323,14 @@
   }
   function render() {
     if (!C.open) return;
+    var fa = document.activeElement, fk = fa && fa.classList && fa.classList.contains('cm-ta') && fa.dataset.key ? { k: fa.dataset.key, a: fa.selectionStart, b: fa.selectionEnd } : null;
+    draw();
+    if (fk) [].some.call(panel.querySelectorAll('.cm-ta'), function (ta) {         // Fokus/Cursor zurueck ins selbe Feld
+      if (ta.dataset.key !== fk.k) return false;
+      ta.focus(); try { ta.setSelectionRange(fk.a, fk.b); } catch (e) { /* egal */ } return true;
+    });
+  }
+  function draw() {
     var c = cur(); if (!c) { hide(); return; }
     var all = C.threads.filter(function (t) { return C.resolved || !t.resolved_at; });
     var shown = C.block ? all.filter(function (t) { return t.block_id === C.block; }) : all;
@@ -338,7 +355,7 @@
       var ed = editor('', C.block ? T('Kommentar zu diesem Block') : T('Kommentar zur ganzen Seite'), T('Kommentieren'), function (v) {
         return api('POST', '/api/notes/' + c.id + '/comments', { block_id: bid, body: v }).then(reload).then(render)
           .catch(function (err) { HK.toast(T('Nicht gesendet: {err}', { err: err.message })); lost(err); throw err; });
-      });
+      }, null, 'n:' + bid);
       foot.appendChild(ed);
       if (C.block && !shown.length) ed.focusLater();
     }
@@ -396,7 +413,7 @@
 
   document.addEventListener('hk-page-open', function (e) {
     var id = e.detail && e.detail.id, same = id === C.id;
-    if (!same) { C.id = id; C.threads = []; C.nres = 0; C.loaded = false; C.expanded = {}; if (C.open) hide(); }
+    if (!same) { C.id = id; C.threads = []; C.nres = 0; C.loaded = false; C.expanded = {}; C.drafts = {}; if (C.open) hide(); }
     if (addBtn.parentNode) addBtn.remove();
     headBtn();
     var c = cur(), redraw = C.open && same;            // dieselbe Seite neu geoeffnet (z. B. Rolle geaendert): Leiste neu zeichnen

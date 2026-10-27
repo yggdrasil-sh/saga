@@ -417,7 +417,8 @@
     img.setAttribute('aria-hidden', 'true'); img.draggable = false;
     box.classList.add('hk-av-box');
     img.addEventListener('load', function () { box.classList.add('hk-av-on'); });
-    var src = url + (url.indexOf('?') < 0 ? '?' : '&') + 's=' + Math.min(256, Math.round((px || 32) * Math.min(2, window.devicePixelRatio || 1)));
+    // q=1: "kein Bild" kommt als 204 statt 404 (keine Fehler in der Konsole, Fix27 #15)
+    var src = url + (url.indexOf('?') < 0 ? '?' : '&') + 's=' + Math.min(256, Math.round((px || 32) * Math.min(2, window.devicePixelRatio || 1))) + '&q=1';
     var tries = 0;
     // Einmal nachfassen: beim Seitenwechsel oder kurz nach dem Start scheitert ein Bild manchmal nur voruebergehend
     // (viele gleichzeitige Anfragen, Sitzung wird gerade erneuert) - sonst blieben bis zum naechsten Neuzeichnen Initialen

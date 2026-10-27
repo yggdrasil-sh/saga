@@ -273,7 +273,7 @@ def main():
 
     # --- Markdown ------------------------------------------------------------------------------------------------------
     s, md = req("GET", f"/api/notes/{nid}/export", A)
-    ok(f"Markdown: **Titel:** Wert, Stand-Datum bei DB-Werten ({s})", s == 200 and "**Alle:** 4 (Stand " in md and "**Kennzahl:** 5.5 / 10" in md
+    ok(f"Markdown: **Titel:** Wert, Stand-Datum bei DB-Werten ({s})", s == 200 and "**Alle:** 4 (Stand " in md and "**Kennzahl:** 5,5 / 10" in md
        and "**Fortschritt:** 3 / 4 (75 %)" in md and f"**Zitat:** {want}" in md, md[:600])
     req("PUT", f"/api/notes/{nid}/shares", A, {"type": "user", "target": "sw-b", "role": "view"})
     s, mdb = req("GET", f"/api/notes/{nid}/export", Bk)

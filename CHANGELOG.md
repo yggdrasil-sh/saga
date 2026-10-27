@@ -225,6 +225,45 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   Pseudonym-Handles in der Mitte gekürzt; Symbole statt Emoji (Schloss, stumm, Verkleinern); Namensleiste 70 % deckend.
   Der Hinweis vor dem Teilen sagt in Gruppen „sehen alle im Anruf“.
 
+### Behoben – Galerie-Testrunde (Web)
+- **Board-Karte ziehen schrieb die Karten-ID ins Suchfeld** (eingebettete Datenbank): Editor.js fing das Ablegen schon
+  vor dem Block ab und fügte die gezogenen Daten ins letzte Eingabefeld ein – die Ansicht filterte dann alles weg. Karten
+  (Board, Kalender) tragen jetzt einen eigenen Datentyp, das Ablegen geht direkt an die Spalte bzw. den Tag.
+- **Widget-Einstellungen in schmalen Spalten** (z. B. 4er-Reihe in „Mein Tag“) waren ~45 px breit und unbenutzbar. Ist der
+  Block schmaler als 420 px, öffnet das Panel als Seitenleiste neben dem Widget (am Handy unten), das Widget bleibt als
+  Live-Vorschau sichtbar und markiert; Esc oder „Fertig“ schließt.
+- **Kommentar-Entwurf ging verloren**, wenn jemand anderes die Seite änderte (die Kommentarleiste wurde neu gezeichnet).
+  Entwürfe (neuer Kommentar, Antwort, Bearbeiten) bleiben jetzt je Feld erhalten, samt Fokus und Cursor; weg erst nach
+  Senden, Abbrechen oder Seitenwechsel.
+- **Vorlagengalerie am Handy:** Das Suchfeld wurde von den Kategorie-Knöpfen auf ~30 px gedrückt; schmal stehen Suche und
+  Kategorien jetzt untereinander. Die Suche unterscheidet keine Umlaute/Akzente mehr („buch“ und „buecher“ finden „Bücher“).
+- **Eintrags-Vorlagen** (Vorlagen einer Datenbank, z. B. „Neue Aufgabe“ aus der Galerie) standen im Menü „+ Neue Seite“
+  als „eigene“ Seitenvorlagen und als erster wählbarer Eintrag in der Relations-Auswahl. Beide zeigen sie nicht mehr;
+  Eintrags-Vorlagen gibt es weiter über „+ Neu ▾“ der Datenbank.
+- **Zahlenformat einheitlich** (Web, veröffentlichte Seiten, Widgets, Markdown-Export der Widgets): Prozent immer
+  ganzzahlig, Euro immer mit 2 Nachkommastellen, jeweils in der Schreibweise der Sprache der Person („41 %“, en „41%“,
+  „1.430,50 €“, en „€1,430.50“; Server: `i18n.fmt_num`). Öffentlich stand vorher „41.04 %“. Fortschritt über 100 % zeigt
+  die echte Zahl (z. B. 119 %), der Balken ist voll. Ein Fortschritt-Widget „Summe bis zum Ziel“ über eine Euro- oder
+  Prozent-Spalte meldet deren Format (`fmt` in der Widget-Antwort) und zeigt „1.430,50 € / 1.200,00 €“.
+- **Anlege-Schaltflächen bei Lesen/Kommentieren** („Neue Aufgabe“, „Buch hinzufügen“ …) waren klickbar und endeten in
+  „Dafür fehlt dir die Berechtigung“. Sie sind jetzt ausgegraut; Hinweis beim Darüberfahren bzw. Antippen.
+- **Seitliches Scrollen bei 1440 px** auf Seiten mit voller Breite (alle Galerie-Vorlagen): Der Kommentar-Knopf am
+  Blockrand ragte 18 px über das Fenster. Volle Breite lässt rechts jetzt Platz dafür.
+- **Föderation/Teilen:** „+“ an einer geteilten Seite (auch eines anderen Servers) legte sofort eine leere Unterseite beim
+  Eigentümer an; jetzt kommt ein kleines Menü „Leere Unterseite“ mit Hinweis, wem sie gehört (anderer Server: Vorlagen und
+  Galerie gehen dort noch nicht). Profilbilder ohne Bild (z. B. Personen anderer Server) erzeugten je Anzeige zwei
+  404-Fehler in der Browser-Konsole: Das Web fragt mit `?q=1` und bekommt dann 204 statt 404 (Apps unverändert 404).
+- **Vorlagengalerie unter nur lesbarer Seite:** Der Server antwortet mit einer verständlichen Meldung statt „Dafür fehlt dir
+  die Berechtigung“; der Dialog sagt bei geöffneter nur lesbarer oder fremder Seite, dass die Vorlage in den eigenen
+  Seiten entsteht. Befehlspalette und „+ Neue Seite“ wählen beide „Oberste Ebene“ vor (vorher legte die Palette die
+  Vorlage leicht unbeabsichtigt unter der gerade offenen Seite an).
+- **Schönheit (Web):** Kalender „heute“ im dunklen Modus mit 5,4:1 Kontrast (vorher 3,4:1); Kalender-Block ohne Kalender
+  zeigt einen Hinweis mit Link statt eines ungestalteten Knopfs; am Handy erscheinen „Spalten 2 3 4“ und „+ Block“ erst an
+  der angetippten Spalte, gestapelte Widgets stehen enger; lange Wörter in Karten, Tabellenzellen und öffentlichen Tabellen
+  werden mit Trennstrich umbrochen (`hyphens:auto`); lange Statusmeldungen („geändert von …“) werden gekürzt statt den
+  Pfad zusammenzudrücken; Team-Wiki: Hinweis „Strg+K öffnet die Schnellsuche“ (auf veröffentlichten Seiten sinnlos) durch
+  Verweise auf FAQ und Ansprechpartner ersetzt.
+
 ### Behoben – Bughunt 3 (Server)
 - **Namensauflösung mit Zeitlimit auch in den Vorab-Prüfungen.** KI, Immich, Kalender, Push, Nextcloud, Föderation
   (Chat, Knoten anwählen) und die Knoten-Verwaltung (DNS-Einträge, eingebauter Knoten) riefen `getaddrinfo` ohne

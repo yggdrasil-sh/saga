@@ -23,7 +23,7 @@
          ]},
          {"blocks": [
            {"type": "header", "data": {"text": "Etwas gesucht?", "level": 3}},
-           {"type": "paragraph", "data": {"text": "Strg+K öffnet die Schnellsuche – sie durchsucht auch alle Unterseiten des Wikis."}}
+           {"type": "paragraph", "data": {"text": "Häufige Fragen stehen in den <a href=\"/notes#$ref:faq\">FAQ</a>, wer wofür zuständig ist, unter <a href=\"/notes#$ref:kontakte\">Ansprechpartner</a>."}}
          ]}
        ]}},
        {"type": "delimiter", "data": {}},

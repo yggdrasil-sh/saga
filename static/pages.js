@@ -441,7 +441,7 @@
   function label(p) { return p && p.title ? p.title : T('Unbenannt'); }
   function nSub(n) { return n === 1 ? T('1 Unterseite') : T('{n} Unterseiten', { n: n }); }
 
-  function state(t, cls) { var s = $('pg-state'); s.textContent = t; s.className = 'note-state ' + (cls || ''); }
+  function state(t, cls) { var s = $('pg-state'); s.textContent = t; s.title = t; s.className = 'note-state ' + (cls || ''); }
 
   // --- Seitenbaum -----------------------------------------------------------
   function renderTree() {
@@ -506,7 +506,7 @@
       if (own || (p.role === 'edit' && remCap(p, 'subpages'))) {      // fremde Instanz: nur, wenn ihr Server es kann (2.3)
         var plus = el('button', 'pg-add', '+'); plus.type = 'button'; plus.title = T('Unterseite hinzufügen');
         plus.setAttribute('aria-label', T('Unterseite zu {name} hinzufügen', { name: label(p) }));
-        plus.addEventListener('click', function (e) { e.stopPropagation(); if (own) newPageMenu(plus, p.id); else newPage(p.id); });
+        plus.addEventListener('click', function (e) { e.stopPropagation(); if (own) newPageMenu(plus, p.id); else sharedPlusMenu(plus, p); });
         row.appendChild(plus);
       }
       li.appendChild(row);
@@ -1011,6 +1011,16 @@
     var t = $('pg-title'); t.focus();
     if (extra && !readOnly()) { t.value += extra; S.dirtyTitle = true; schedule(); }
     try { t.setSelectionRange(t.value.length, t.value.length); } catch (e) { /* egal */ }
+  }
+  // Fix27 #15: "+" an einer geteilten Seite (auch eines anderen Servers) legt nicht mehr sofort eine leere Unterseite an,
+  // sondern fragt kurz - mit Hinweis, wem die Unterseite gehoert (Verklicken hinterliess leere Seiten beim Eigentuemer)
+  function sharedPlusMenu(anchor, p) {
+    var rem = remoteId(p.id), host = (p.remote || {}).host || '';
+    HK.openMenu(anchor, function (m) {
+      m.appendChild(HK.menuItem(T('Leere Unterseite'), function () { newPage(p.id); }, { icon: '📄' }));
+      m.appendChild(el('div', 'menu-hint', rem ? T('Die Unterseite entsteht bei der Person, die die Seite geteilt hat (auf {host}). Vorlagen und Galerie gehen dort noch nicht.', { host: host })
+        : T('Die Unterseite gehört der Person, die die Seite geteilt hat.')));
+    });
   }
   function newPage(parentId, typed) {
     var stop = titleBuffer(typed);
@@ -2432,7 +2442,7 @@
       m.appendChild(HK.menuLabel(T('Vorlagen')));
       if (S.gal !== false && !EMBED) m.appendChild(HK.menuItem(T('Aus der Galerie …'), function () { openGallery(parentId); }, { icon: '🖼️', hint: T('fertige Vorlagen') }));
       BUILTIN.forEach(function (t) { m.appendChild(HK.menuItem(t.name, function () { fromBuiltin(t, parentId); }, { icon: t.icon })); });
-      S.pages.filter(function (p) { return p.template; }).forEach(function (p) {
+      S.pages.filter(function (p) { return p.template && (byId(p.parent_id) || {}).kind !== 'database'; }).forEach(function (p) {   // Fix27 #6: Eintrags-Vorlagen gehoeren zur Datenbank
         m.appendChild(HK.menuItem(label(p), function () { fromTemplate(p, parentId); }, { icon: ti(p.icon) || '📄', hint: T('eigene') }));
       });
       m.appendChild(el('div', 'menu-sep'));
@@ -2503,6 +2513,11 @@
       if (n) box.appendChild(n);
     });
   }
+  // Fix27 #5: Suche ohne Umlaut-/Akzent-Unterschied ("buch" findet "Bücher", "cafe" findet "Café", "buecher" auch)
+  function galFold(t) {
+    t = String(t || '').toLowerCase().replace(/ß/g, 'ss').replace(/([aou])e/g, '$1');
+    return t.normalize ? t.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : t;
+  }
   function openGallery(parentId) {
     var cat = HK.store('hk-gal-cat') || '', q = '', list = null, curFill = null;
     openModal(T('Vorlagengalerie'), function (body) {
@@ -2524,9 +2539,9 @@
         function fill() {
           tiles.textContent = '';
           if (!list) { tiles.appendChild(el('p', 'nt-empty', T('Lädt …'))); return; }
-          var ql = q.trim().toLowerCase();
+          var ql = galFold(q.trim());
           var shown = list.filter(function (x) {
-            return (!cat || x.category === cat) && (!ql || (x.title + ' ' + x.desc + ' ' + x.contents.map(function (c) { return c.title; }).join(' ')).toLowerCase().indexOf(ql) >= 0);
+            return (!cat || x.category === cat) && (!ql || galFold(x.title + ' ' + x.desc + ' ' + x.contents.map(function (c) { return c.title; }).join(' ')).indexOf(ql) >= 0);
           });
           if (!shown.length) { tiles.appendChild(el('p', 'nt-empty', list.length ? T('Keine passende Vorlage.') : T('Keine Vorlagen vorhanden.'))); return; }
           shown.forEach(function (x) {
@@ -2597,6 +2612,9 @@
             sel.value = parentId && opts[1] && opts[1][0] === parentId ? '1' : '0';
             ul2.appendChild(sel); act.appendChild(ul2);
           }
+          if (S.cur && S.cur.id && !opts.some(function (o) { return o[0] === S.cur.id; }) && S.cur.kind !== 'database')   // Fix27 #16
+            act.appendChild(el('p', 'gal-hint', remoteId(S.cur.id) ? T('Unter Seiten anderer Saga-Server geht das noch nicht – die Vorlage entsteht in deinen Seiten.')
+              : T('Unter dieser Seite darfst du nichts anlegen – die Vorlage entsteht in deinen Seiten.')));
           var go = el('button', 'btn gal-use', T('Verwenden')); go.type = 'button';
           go.addEventListener('click', function () {
             go.disabled = true;
@@ -2726,7 +2744,7 @@
   TYPES.calc = [T('Berechnet'), '∑'];
   OPS.relation = [['contains', T('enthält')], ['not_contains', T('enthält nicht')], ['is_empty', T('ist leer')], ['not_empty', T('ist nicht leer')]];
   TYPES.relation = [T('Relation'), '↗'];
-  function relRows(target) { return allPages().filter(function (p) { return p.parent_id === target; }); }
+  function relRows(target) { return allPages().filter(function (p) { return p.parent_id === target && !p.template; }); }   // Fix27 #6: ohne Eintrags-Vorlagen
   function relChips(ids, clickable) {           // verknuepfte Eintraege als Marken; Klick oeffnet den Eintrag
     var s = el('span', 'rel-chips');
     (ids || []).forEach(function (id) {
@@ -2798,8 +2816,10 @@
   function isoDay(ts) { var d = new Date(ts * 1000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   var fNum = new Intl.NumberFormat(window.SAGA_LOCALE, { maximumFractionDigits: 2 }), fEur = new Intl.NumberFormat(window.SAGA_LOCALE, { style: 'currency', currency: 'EUR' });
   var fInt = new Intl.NumberFormat(window.SAGA_LOCALE, { maximumFractionDigits: 0 });
-  // Fortschritt (Ring/Balken): ganze Prozent wie Notion
-  function numText(p, v) { return p.fmt === 'percent' ? ((p.show === 'ring' || p.show === 'bar') ? fInt : fNum).format(v) + ' %' : p.fmt === 'euro' ? fEur.format(v) : fNum.format(v); }
+  // Fix27 #10: Prozent immer ganzzahlig in der Schreibweise der Sprache ("41 %", en "41%"), Euro mit 2 Nachkommastellen
+  var fPct = new Intl.NumberFormat(window.SAGA_LOCALE, { style: 'percent', maximumFractionDigits: 0 });
+  function pctText(v) { return fPct.format((Number(v) || 0) / 100); }
+  function numText(p, v) { return p.fmt === 'percent' ? pctText(v) : p.fmt === 'euro' ? fEur.format(v) : fNum.format(v); }
   function ring(pct) {
     var NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'), C = 2 * Math.PI * 7.5;
     svg.setAttribute('viewBox', '0 0 20 20'); svg.setAttribute('class', 'nfmt-ring'); svg.setAttribute('aria-hidden', 'true');
@@ -3580,7 +3600,7 @@
       function isEmpty(v) { return v == null || v === '' || v === false || (Array.isArray(v) && !v.length); }
       var n = vals.length, filled = vals.filter(function (v) { return !isEmpty(v); });
       function fmt(x) { x = Math.round(x * 100) / 100; return numLike(p) ? numText(p, x) : fNum.format(x); }
-      function pct(a) { return n ? Math.round(a / n * 100) + ' %' : '–'; }
+      function pct(a) { return n ? pctText(a / n * 100) : '–'; }
       function sum() { return nums.reduce(function (a, b) { return a + b; }, 0); }
       var days = filled.filter(function (v) { return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v); }).map(function (v) { return v.slice(0, 10); }).sort();
       function day(s) { var q = s.split('-'); return fCalcDay.format(new Date(+q[0], +q[1] - 1, +q[2])); }
@@ -4010,7 +4030,7 @@
       });
       c.addEventListener('click', function () { openRowUI(r.id); });
       c.addEventListener('keydown', function (e) { if (e.key === 'Enter') openRowUI(r.id); });
-      c.addEventListener('dragstart', function (e) { dragId = r.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(r.id)); c.classList.add('dragging'); });
+      c.addEventListener('dragstart', function (e) { dragId = r.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData(ROW_DRAG, String(r.id)); c.classList.add('dragging'); });
       c.addEventListener('dragend', function () { dragId = null; c.classList.remove('dragging'); });
       return c;
     }
@@ -4050,7 +4070,7 @@
         c.appendChild(add);
         c.addEventListener('dragover', function (e) { if (dragId) { e.preventDefault(); c.classList.add('over'); } });
         c.addEventListener('dragleave', function (e) { if (!c.contains(e.relatedTarget)) c.classList.remove('over'); });
-        c.addEventListener('drop', function (e) {
+        c.addEventListener('drop', c.hkDrop = function (e) {
           e.preventDefault(); c.classList.remove('over');
           var r = DB.rows.find(function (x) { return x.id === dragId; }); dragId = null; if (!r) return;
           var nv = col.o ? col.o.id : null; if ((r.props[g.id] || null) === nv) return;
@@ -4220,7 +4240,7 @@
             b.addEventListener('click', function () { openRowUI(r.id); });
             if (editable) {
               b.draggable = true;
-              b.addEventListener('dragstart', function (e) { calDrag = r.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(r.id)); b.classList.add('dragging'); });
+              b.addEventListener('dragstart', function (e) { calDrag = r.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData(ROW_DRAG, String(r.id)); b.classList.add('dragging'); });
               b.addEventListener('dragend', function () { calDrag = null; b.classList.remove('dragging'); });
             }
             cell.appendChild(b);
@@ -4228,7 +4248,7 @@
           if (editable) {
             cell.addEventListener('dragover', function (e) { if (calDrag) { e.preventDefault(); cell.classList.add('over'); } });
             cell.addEventListener('dragleave', function (e) { if (!cell.contains(e.relatedTarget)) cell.classList.remove('over'); });
-            cell.addEventListener('drop', function (e) {
+            cell.addEventListener('drop', cell.hkDrop = function (e) {
               e.preventDefault(); cell.classList.remove('over');
               var r = DB.rows.find(function (x) { return x.id === calDrag; }); calDrag = null;
               if (r && r.props[dp.id] !== ds) setProp(r, dp.id, ds).then(renderDb);
@@ -4453,7 +4473,10 @@
       var btn = el('button', 'nbtn'); btn.type = 'button';
       if (b.icon) btn.appendChild(el('span', 'nbtn-ic', b.icon));
       btn.appendChild(el('span', null, b.label || T('Schaltfläche')));
-      btn.addEventListener('click', function () { runButton(b, function () { if (!roRole()) btnConfig(btn, self, i); }); });
+      // Fix27 #11: Lesen/Kommentieren - Anlege-Schaltflaechen ausgegraut mit Hinweis (statt erst nach dem Klick 403)
+      var off = ro_ && b.action === 'db';
+      if (off) { btn.classList.add('nbtn-off'); btn.setAttribute('aria-disabled', 'true'); btn.title = T('Zum Anlegen brauchst du das Recht „Bearbeiten“.'); }
+      btn.addEventListener('click', function () { if (off) { HK.toast(btn.title); return; } runButton(b, function () { if (!roRole()) btnConfig(btn, self, i); }); });
       if (ro_) { g.appendChild(btn); w.appendChild(g); return; }
       var cfg = el('button', 'nbtn-cfg', '⚙'); cfg.type = 'button'; cfg.title = T('Schaltfläche einrichten'); cfg.setAttribute('aria-label', T('Schaltfläche einrichten'));
       cfg.addEventListener('click', function () { btnConfig(cfg, self, i); });
@@ -4553,6 +4576,15 @@
   // --- Bloecke "Datenbank" (eingebettet) und "Aufgaben" ---------------------------
   // Tastendruecke/Ziehen/Einfuegen in diesen Bloecken gehoeren ihnen - nicht an Editor.js weiterreichen
   // (sonst: Enter in Tabellenzelle = neuer Absatz, Backspace loescht Block, Karte ziehen = Block ziehen)
+  // Fix27 #1: Editor.js nimmt "drop" am Holder schon in der Capture-Phase (vor isolate()) und fuegt die gezogenen Daten
+  // in das letzte Eingabefeld des Blocks ein (Board-Karte -> Karten-ID im Suchfeld). Karten tragen deshalb einen eigenen
+  // Typ statt text/plain; ein Drop dieses Typs geht hier vorab direkt an das Ziel (hkDrop) und nicht an Editor.js.
+  var ROW_DRAG = 'application/x-saga-row';
+  document.addEventListener('drop', function (e) {
+    var dt = e.dataTransfer; if (!dt || Array.prototype.indexOf.call(dt.types || [], ROW_DRAG) < 0) return;
+    e.stopPropagation(); e.preventDefault();
+    for (var n = e.target; n && n !== document; n = n.parentNode) if (typeof n.hkDrop === 'function') { n.hkDrop(e); return; }
+  }, true);
   function isolate(w) {
     ['keydown', 'keyup', 'keypress', 'input', 'paste', 'cut', 'copy', 'dragstart', 'dragover', 'dragenter', 'dragleave', 'drop', 'dragend']
       .forEach(function (ev) { w.addEventListener(ev, function (e) { e.stopPropagation(); }); });
@@ -4628,7 +4660,7 @@
   }
   function wgFmt(v, fmt) {
     if (v == null || typeof v !== 'number' || !isFinite(v)) return '–';
-    return fmt === 'pct' ? fNum.format(v) + ' %' : fmt === 'eur' ? fEur.format(v) : fNum.format(v);
+    return fmt === 'pct' ? pctText(v) : fmt === 'eur' ? fEur.format(v) : fNum.format(v);
   }
   // Countdown: Tage nach Kalendertagen (wie der Server beim Veroeffentlichen); "auto" unter einem Tag Std./Min.
   function wgCountdown(cfg, now) {
@@ -4674,7 +4706,7 @@
     return w;
   };
   WidgetTool.prototype.editable = function () { return !this.ro && !readOnly() && WG_KINDS.indexOf(this.data.kind) >= 0; };
-  WidgetTool.prototype.destroy = function () { clearInterval(this.tick); WG.delete(this); };
+  WidgetTool.prototype.destroy = function () { clearInterval(this.tick); WG.delete(this); if (this.panel && this.panel.classList.contains('wg-panel-float')) { clearInterval(this.floatT); this.panel.remove(); this.panel = null; } };
   WidgetTool.prototype.changed = function () {
     if (S.loading) return;
     if (this.block && this.block.dispatchChange) this.block.dispatchChange(); else { S.dirtyBody = true; schedule(); }
@@ -4743,11 +4775,12 @@
     if (wgServer(d) && S.wMissing) { body.appendChild(el('div', 'wg-note', T('Werte gibt es erst mit einer neueren Server-Version'))); return; }
     if (w && w.error) { body.appendChild(el('div', 'wg-note wg-err', WG_ERR[w.error] || WG_ERR.bad_cfg)); return; }
     if (d.kind === 'progress') {
-      var pv = w ? w.value : null, mx = w ? w.max : null, pct = typeof pv === 'number' && typeof mx === 'number' && mx > 0 ? Math.max(0, Math.min(100, pv / mx * 100)) : 0;
-      body.appendChild(el('div', 'wg-v', w ? Math.round(pct) + ' %' : '…'));
+      // Fix27 #10: Zahl wie gerechnet (auch ueber 100 %), Balken hoechstens voll
+      var pv = w ? w.value : null, mx = w ? w.max : null, raw = typeof pv === 'number' && typeof mx === 'number' && mx > 0 ? Math.max(0, pv / mx * 100) : 0, pct = Math.min(100, raw);
+      body.appendChild(el('div', 'wg-v', w ? pctText(raw) : '…'));
       var bar = el('div', 'wg-bar'), fill = el('span', 'wg-fill'); fill.style.width = pct.toFixed(1) + '%'; bar.appendChild(fill); body.appendChild(bar);
       bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', '100'); bar.setAttribute('aria-valuenow', String(Math.round(pct)));
-      if (w) body.appendChild(el('div', 'wg-sub', wgFmt(pv) + ' / ' + wgFmt(mx)));
+      if (w) body.appendChild(el('div', 'wg-sub', wgFmt(pv, w.fmt) + ' / ' + wgFmt(mx, w.fmt)));
       return;
     }
     if (d.kind === 'metric') {
@@ -4768,14 +4801,37 @@
   WidgetTool.prototype.openPanel = function () {
     var self = this, d = this.data;
     var p = this.panel = el('div', 'wg-panel'); p.setAttribute('role', 'group'); p.setAttribute('aria-label', T('Widget einrichten'));
-    this.w.appendChild(p); this.fill();
+    // Fix27 #2: in schmalen Spalten (4er-Reihe, Handy-Spalte) ist im Block kein Platz - das Panel geht dann als
+    // Seitenleiste auf (Widget bleibt als Live-Vorschau sichtbar und markiert); Esc oder "Fertig" schliesst.
+    if (this.w.getBoundingClientRect().width < 420) {
+      p.classList.add('wg-panel-float'); p.setAttribute('role', 'dialog'); this.w.classList.add('wg-editing');
+      p.appendChild(el('div', 'wg-panel-h', T('Widget einrichten')));
+      p.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); self.closePanel(); } });
+      document.body.appendChild(p);
+      if (innerWidth > 640) {          // neben das Widget, damit die Live-Vorschau sichtbar bleibt
+        var r = this.w.getBoundingClientRect(), pw = p.offsetWidth;
+        if (r.right + 12 + pw <= innerWidth - 8) p.style.left = (r.right + 12) + 'px';
+        else if (r.left - 12 - pw >= 8) p.style.left = (r.left - 12 - pw) + 'px';
+        if (p.style.left) { p.style.right = 'auto'; p.style.top = Math.max(8, Math.min(r.top, innerHeight - p.offsetHeight - 8)) + 'px'; }
+      }
+      this.floatT = setInterval(function () { if (!self.w.isConnected) self.closePanel(); }, 500);
+    } else this.w.appendChild(p);
+    this.fill();
     var done = el('button', 'btn wg-done', T('Fertig')); done.type = 'button';
     done.addEventListener('click', function () { self.closePanel(); });
     this.doneBtn = done;
     p.appendChild(done);
+    if (p.classList.contains('wg-panel-float')) { var f0 = p.querySelector('input,select,textarea'); if (f0) f0.focus(); }
     void d;
   };
-  WidgetTool.prototype.closePanel = function () { if (this.panel) this.panel.remove(); this.panel = null; this.pv = null; this.draw(); loadWidgets(); };
+  WidgetTool.prototype.closePanel = function () {
+    var fl = this.panel && this.panel.classList.contains('wg-panel-float');
+    clearInterval(this.floatT); this.w.classList.remove('wg-editing');
+    if (this.panel) this.panel.remove(); this.panel = null; this.pv = null;
+    if (fl && !this.w.isConnected) return;
+    this.draw(); loadWidgets();
+    if (fl) try { this.card.focus(); } catch (e) { /* egal */ }
+  };
   WidgetTool.prototype.fill = function () {
     var self = this, d = this.data, cfg = d.cfg, p = this.panel;
     [].slice.call(p.querySelectorAll('.wg-row')).forEach(function (x) { x.remove(); });
@@ -5502,6 +5558,11 @@
     var col = el('div', 'col'), h = el('div', 'col-ed'), add = el('button', 'col-add', T('+ Block'));
     add.type = 'button'; add.title = T('Neuer Block am Ende dieser Spalte');
     col.appendChild(h); col.appendChild(add); this.w.appendChild(col);
+    col.addEventListener('pointerdown', function (e) {        // Fix27 #17: Touch - Leisten nur an der angetippten Spalte (CSS .col-tap)
+      if (e.pointerType === 'mouse') return;
+      [].forEach.call(document.querySelectorAll('.col-tap'), function (x) { if (x !== col && !x.contains(col)) x.classList.remove('col-tap'); });
+      col.classList.add('col-tap'); if (col.parentNode) col.parentNode.classList.add('col-tap');
+    });
     var ed = nestedEditor(h, c.blocks, T("Spalte – '/' für Blöcke"));
     add.addEventListener('click', function () {
       ed.isReady.then(function () {
@@ -6345,7 +6406,7 @@
     if (c && own) add(c.archived ? T('Aus dem Archiv holen') : T('Seite archivieren'), '📦', function () { setArchived(c.id, !c.archived); }, { kw: 'archiv archive' });
     add(T('Archiv anzeigen'), '📦', showArchive, { kw: 'archiv archive' });
     add(T('Papierkorb'), '🗑', showTrash, { kw: 'trash geloescht' });
-    if (S.gal !== false && !EMBED) add(T('Vorlagengalerie'), '🖼', function () { openGallery(c && canEdit() && c.kind !== 'database' && !remoteId(c.id) ? c.id : null); },
+    if (S.gal !== false && !EMBED) add(T('Vorlagengalerie'), '🖼', function () { openGallery(null); },   // Fix27 #16: wie "+ Neue Seite" (Oberste Ebene vorgewaehlt)
                                        { kw: 'gallery vorlagen templates galerie vorlage' });
     if (window.HKSettings) add(T('Einstellungen'), '⚙', function () { HKSettings.open(); }, { kw: 'settings kalender immich nextcloud schluessel' });
     add(T('Übersicht (Startseite)'), '⌂', function () { location.href = '/'; }, { kw: 'home dashboard start' });

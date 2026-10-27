@@ -760,11 +760,9 @@ def _fmt_prop(ctx, p, v):
         return ""
     typ = p["type"]
     if typ in ("number", "calc"):
-        if isinstance(v, float):
-            v = round(v, 2)
-            v = int(v) if v == int(v) else v
-        s = f"{v} %" if p.get("fmt") == "percent" else f"{v} €" if p.get("fmt") == "euro" else str(v)
-        return escape(s)
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            return escape(str(v))
+        return escape(i18n.fmt_num(v, p.get("fmt")))        # Fix27 #10: Sprache des Besuchers, Prozent ganzzahlig, Euro ,00
     if typ in ("select", "multi_select"):
         opts = {o["id"]: o for o in p.get("options", [])}
         chips = [opts[x] for x in (v if isinstance(v, list) else [v]) if x in opts]

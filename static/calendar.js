@@ -169,8 +169,10 @@
       Promise.all([accounts(), load(t0, addDays(t0, days), fresh)]).then(function (r) {
         list.textContent = '';
         if (!r[0].length) {
-          var cn = el('button', 'linkish', T('Noch kein Kalender verbunden – in den Einstellungen verbinden')); cn.type = 'button';
-          cn.addEventListener('click', function () { window.HKSettings && HKSettings.open('calendar'); }); list.appendChild(cn); return;
+          // Fix27 #17: Hinweis + Link statt eines ungestalteten Knopfs
+          var nc = el('p', 'ag-none ag-noacc', T('Noch kein Kalender verbunden.') + ' ');
+          var cn = el('button', 'linkish ag-connect', T('In den Einstellungen verbinden')); cn.type = 'button';
+          cn.addEventListener('click', function () { window.HKSettings && HKSettings.open('calendar'); }); nc.appendChild(cn); list.appendChild(nc); return;
         }
         var evs = r[1].events.slice().sort(function (a, b) { return a.start < b.start ? -1 : a.start > b.start ? 1 : 0; });
         if (!evs.length) list.appendChild(el('div', 'ag-none', T('Keine Termine')));

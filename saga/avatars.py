@@ -573,6 +573,15 @@ def api_avatar(key: str, request: Request):
     # merkten sich die Apps "kein Bild" (Android bis zum Neustart, iOS 10 min) und erneuerten die abgelaufene Sitzung
     # nicht - Profilbilder fehlten nach dem Start oder einer Pause. 401 verraet nichts: es kommt fuer jeden nicht
     # freigegebenen, falschen oder unbekannten Schluessel gleich.
+    r = _api_avatar(key, request)
+    # Fix27 #15: ?q=1 (Web) - "kein Bild" als 204 statt 404, sonst meldet die Browser-Konsole jedes fehlende Bild
+    # (z. B. Personen anderer Server ohne Profilbild) als Fehler. Apps fragen ohne q und bekommen weiter 404.
+    if r.status_code == 404 and request.query_params.get("q") == "1":
+        return Response(status_code=204, headers={"Cache-Control": "no-store"})
+    return r
+
+
+def _api_avatar(key, request):
     subj = _parse(key)
     viewer = _viewer(request)
     if not subj:
