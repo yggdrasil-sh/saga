@@ -23,6 +23,7 @@ import httpx
 
 import auth
 from saga import netguard
+from saga.i18n import t
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 GEO_URL = "https://geocoding-api.open-meteo.com/v1/search"
@@ -66,19 +67,19 @@ def check_url(u):
     if not u:
         return "", None
     if len(u) > 300:
-        return None, "Adresse zu lang"
+        return None, t("Adresse zu lang")
     try:
         p = urlsplit(u)
         port = p.port
     except ValueError:
-        return None, "Adresse ungültig"
+        return None, t("Adresse ungültig")
     if p.scheme not in ("http", "https") or not p.hostname or p.username or p.password or p.query or p.fragment:
-        return None, "Adresse ungültig (z. B. https://wetter.example.org/v1/forecast)"
+        return None, t("Adresse ungültig (z. B. https://wetter.example.org/v1/forecast)")
     free = p.netloc.lower() in _admin_hosts() or (p.hostname or "").lower() in _admin_hosts()
     if p.scheme == "http" and not free:
-        return None, "Nur https-Adressen erlaubt (http nur für freigegebene interne Hosts)"
+        return None, t("Nur https-Adressen erlaubt (http nur für freigegebene interne Hosts)")
     if port not in (None, 443, 80) and not free:
-        return None, "Andere Ports nur für freigegebene interne Hosts"
+        return None, t("Andere Ports nur für freigegebene interne Hosts")
     return f"{p.scheme}://{p.netloc}{p.path}", None
 
 

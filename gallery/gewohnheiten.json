@@ -1,0 +1,195 @@
+{
+ "id": "gewohnheiten",
+ "v": 1,
+ "order": 15,
+ "category": "personal",
+ "icon": "✅",
+ "title": "Gewohnheiten",
+ "desc": "Tägliche Gewohnheiten abhaken – mit Raster der letzten zwei Wochen, Serie, Erfolgsquote und Wochendiagramm.",
+ "needs": [],
+ "root": "home",
+ "items": [
+  {
+   "ref": "home",
+   "kind": "page",
+   "parent": null,
+   "title": "Gewohnheiten",
+   "icon": "✅",
+   "cover": null,
+   "wide": true,
+   "body": [
+    {
+     "type": "callout",
+     "data": {
+      "emoji": "💡",
+      "text": "Tippe im Raster auf einen Tag, um eine Gewohnheit abzuhaken. Saga legt dafür in der Datenbank „Tageslog“ eine Zeile für den Tag an. Eigene Gewohnheiten: neue Häkchen-Eigenschaft in der Datenbank anlegen und im Widget auswählen."
+     }
+    },
+    {
+     "type": "columns",
+     "data": {
+      "cols": [
+       {
+        "w": 0.6,
+        "blocks": [
+         {
+          "id": "wgewoh1",
+          "type": "widget",
+          "data": {
+           "v": 1,
+           "kind": "habit",
+           "size": "m",
+           "style": "card",
+           "accent": "green",
+           "title": "Letzte 14 Tage",
+           "cfg": {
+            "db": "$ref:log",
+            "view": "alle",
+            "date": "datum",
+            "habits": [
+             "sport",
+             "lesen",
+             "wasser"
+            ],
+            "range": 14,
+            "goal": 5
+           }
+          }
+         }
+        ]
+       },
+       {
+        "w": 0.4,
+        "blocks": [
+         {
+          "id": "wgewoh2",
+          "type": "widget",
+          "data": {
+           "v": 1,
+           "kind": "chart",
+           "size": "m",
+           "style": "card",
+           "accent": "blue",
+           "title": "Sport je Woche",
+           "cfg": {
+            "db": "$ref:log",
+            "view": "alle",
+            "type": "bar",
+            "x": "datum",
+            "bucket": "week",
+            "agg": "pct_checked",
+            "y": "sport",
+            "sort": "x",
+            "limit": 8,
+            "fmt": "pct"
+           }
+          }
+         }
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "type": "header",
+     "data": {
+      "text": "Tageslog",
+      "level": 2
+     }
+    },
+    {
+     "type": "database",
+     "data": {
+      "db": "$ref:log",
+      "view": "alle",
+      "views": null,
+      "hide_title": true
+     }
+    }
+   ]
+  },
+  {
+   "ref": "log",
+   "kind": "database",
+   "parent": "home",
+   "title": "Tageslog",
+   "icon": "🗓️",
+   "schema": {
+    "title_name": "Tag",
+    "props": [
+     {
+      "id": "datum",
+      "name": "Datum",
+      "type": "date"
+     },
+     {
+      "id": "sport",
+      "name": "Sport",
+      "type": "checkbox"
+     },
+     {
+      "id": "lesen",
+      "name": "Lesen",
+      "type": "checkbox"
+     },
+     {
+      "id": "wasser",
+      "name": "2 Liter Wasser",
+      "type": "checkbox"
+     },
+     {
+      "id": "notiz",
+      "name": "Notiz",
+      "type": "text"
+     }
+    ],
+    "views": [
+     {
+      "id": "alle",
+      "name": "Alle Tage",
+      "type": "table",
+      "sorts": [
+       {
+        "pid": "datum",
+        "dir": "desc"
+       }
+      ]
+     },
+     {
+      "id": "woche",
+      "name": "Diese Woche",
+      "type": "table",
+      "filters": [
+       {
+        "pid": "datum",
+        "op": "this_week",
+        "value": ""
+       }
+      ],
+      "sorts": [
+       {
+        "pid": "datum",
+        "dir": "asc"
+       }
+      ]
+     },
+     {
+      "id": "quote",
+      "name": "Erfolgsquote",
+      "type": "chart",
+      "chart": {
+       "type": "line",
+       "x": "datum",
+       "bucket": "week",
+       "agg": "pct_checked",
+       "y": "lesen",
+       "fmt": "pct"
+      }
+     }
+    ]
+   },
+   "templates": [],
+   "rows": []
+  }
+ ]
+}
