@@ -4,9 +4,10 @@
   'use strict';
   var LANGS = [['', T('Text')], ['bash', 'Bash / Shell'], ['yaml', 'YAML'], ['python', 'Python'], ['javascript', 'JavaScript'],
     ['typescript', 'TypeScript'], ['json', 'JSON'], ['haskell', 'Haskell'], ['sql', 'SQL'], ['dockerfile', 'Dockerfile'],
-    ['ini', 'INI / TOML / conf'], ['nginx', 'Nginx'], ['xml', 'HTML / XML'], ['powershell', 'PowerShell'], ['go', 'Go'], ['rust', 'Rust'], ['css', 'CSS']];
+    ['ini', 'INI / TOML / conf'], ['nginx', 'Nginx'], ['xml', 'HTML / XML'], ['powershell', 'PowerShell'], ['go', 'Go'], ['rust', 'Rust'], ['css', 'CSS'],
+    ['mermaid', 'Mermaid (Diagramm)']];                    // 2.5 (P6-1): Vorschau ueber static/editor25.js (abgeschotteter Rahmen)
   var ALIAS = { sh: 'bash', shell: 'bash', zsh: 'bash', 'plain text': '', plain: '', text: '', yml: 'yaml', py: 'python', js: 'javascript',
-    ts: 'typescript', html: 'xml', toml: 'ini', conf: 'ini', docker: 'dockerfile', ps1: 'powershell', rs: 'rust', golang: 'go' };
+    ts: 'typescript', html: 'xml', toml: 'ini', conf: 'ini', docker: 'dockerfile', ps1: 'powershell', rs: 'rust', golang: 'go', mmd: 'mermaid' };
   function norm(l) { l = String(l || '').toLowerCase().trim(); if (l in ALIAS) return ALIAS[l]; return LANGS.some(function (x) { return x[0] === l; }) ? l : ''; }
 
   function words(s) { return new RegExp('\\b(?:' + s.split(' ').join('|') + ')\\b', 'y'); }
@@ -63,32 +64,44 @@
   }
 
   // --- Editor.js-Werkzeug ---------------------------------------------------------------------
+  var VIEWS = ['preview', 'split', 'code'];
   function HKCode(o) {
     var d = o.data || {};
     this.api = o.api; this.block = o.block; this.ro = !!o.readOnly; this.code = d.code || ''; this.lang = norm(d.language);
+    this.data = Object.assign({}, d);                  // 2.5: fremde/neue Felder (view, render, ...) bleiben erhalten
+    this.view = VIEWS.indexOf(d.view) >= 0 ? d.view : 'preview';
+    this.pngName = 'diagramm.png';
   }
   HKCode.toolbox = { title: T('Code'), icon: '<svg width="17" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg>' };
   HKCode.enableLineBreaks = true;
   HKCode.isReadOnlySupported = true;
   HKCode.conversionConfig = { export: 'code', import: 'code' };
   HKCode.pasteConfig = { tags: ['PRE'] };
-  HKCode.sanitize = { code: true, language: false };
+  HKCode.sanitize = { code: true, language: false, view: false };
   HKCode.prototype.render = function () {
     var self = this, el = HK.el, w = el('div', 'hk-code'), head = el('div', 'hk-code-head');
     var sel = el('select', 'hk-code-lang'); sel.setAttribute('aria-label', T('Programmiersprache')); sel.disabled = this.ro;
     LANGS.forEach(function (x) { var o = el('option', null, x[1]); o.value = x[0]; sel.appendChild(o); });
     sel.value = this.lang;
-    sel.addEventListener('change', function () { self.lang = sel.value; self.paint(); self.changed(); });
+    sel.addEventListener('change', function () { self.lang = sel.value; self.paint(); self.mmd(); self.changed(); });
     var cp = el('button', 'hk-code-copy', T('Kopieren')); cp.type = 'button';
     cp.addEventListener('click', function () {
       if (navigator.clipboard) navigator.clipboard.writeText(self.ta.value).then(function () { HK.toast(T('Code kopiert')); });
     });
-    head.appendChild(sel); head.appendChild(cp);
+    head.appendChild(sel);
+    // 2.5 (P6-1): Mermaid - Ansicht Vorschau / Geteilt / Code
+    var vw = el('span', 'hk-code-views'); vw.setAttribute('role', 'group'); vw.setAttribute('aria-label', T('Ansicht'));
+    [['preview', T('Vorschau')], ['split', T('Geteilt')], ['code', T('Code')]].forEach(function (x) {
+      var b = el('button', 'hk-code-vb', x[1]); b.type = 'button'; b.dataset.v = x[0];
+      b.addEventListener('click', function () { self.view = x[0]; self.mmd(); self.changed(); if (x[0] !== 'preview' && !self.ro) self.ta.focus(); });
+      vw.appendChild(b);
+    });
+    this.vw = vw; head.appendChild(vw); head.appendChild(cp);
     var area = el('div', 'hk-code-area'), pre = el('pre', 'hk-code-pre');
     this.out = el('code'); pre.appendChild(this.out); pre.setAttribute('aria-hidden', 'true');
     var ta = el('textarea', 'hk-code-ta'); ta.spellcheck = false; ta.value = this.code; ta.placeholder = T('Code'); ta.readOnly = this.ro;
     ta.setAttribute('autocapitalize', 'off'); ta.setAttribute('autocomplete', 'off'); ta.setAttribute('aria-label', T('Code'));
-    ta.addEventListener('input', function () { self.paint(); self.changed(); });
+    ta.addEventListener('input', function () { self.paint(); self.changed(); if (self.isMermaid()) self.mmd(); });
     ta.addEventListener('keydown', function (e) {
       if (e.key === 'Tab' && !e.metaKey && !e.ctrlKey) {               // Tab = 2 Leerzeichen (statt aus dem Block springen)
         e.preventDefault(); e.stopPropagation();
@@ -96,16 +109,42 @@
       }
     });
     this.ta = ta; area.appendChild(pre); area.appendChild(ta);
-    w.appendChild(head); w.appendChild(area); this.w = w; this.paint();
+    var box = el('div', 'hk-mmd'); box.setAttribute('aria-live', 'polite'); this.mmdBox = box;
+    box.addEventListener('dblclick', function () { if (!self.ro && self.view === 'preview') { self.view = 'split'; self.mmd(); self.changed(); self.ta.focus(); } });
+    this.st = el('div', 'hk-math-stale');
+    w.appendChild(head); w.appendChild(area); w.appendChild(box); w.appendChild(this.st); this.w = w; this.paint(); this.mmd(true);
     return w;
   };
+  HKCode.prototype.source = function () { return this.ta ? this.ta.value : this.code; };
+  HKCode.prototype.isMermaid = function () { return this.lang === 'mermaid'; };
+  // Mermaid-Darstellung umschalten/zeichnen (first: beim Oeffnen - fehlendes Vorschaubild fuer die Apps nachholen)
+  HKCode.prototype.mmd = function (first) {
+    var on = this.isMermaid() && !!window.HKEd25;
+    this.w.classList.toggle('hk-mermaid', on);
+    VIEWS.forEach(function (v) { this.w.classList.remove('hk-v-' + v); }, this);
+    if (!on) { this.mmdBox.textContent = ''; this.st.textContent = ''; return; }
+    this.w.classList.add('hk-v-' + this.view);
+    [].forEach.call(this.vw.children, function (b) { b.classList.toggle('on', b.dataset.v === this.view); b.setAttribute('aria-pressed', b.dataset.v === this.view ? 'true' : 'false'); }, this);
+    if (this.view !== 'code') window.HKEd25.mermaidPaint(this);
+    else if (!first && !this.ro) window.HKEd25.scheduleRender(this);
+    this.markRender();
+  };
+  HKCode.prototype.markRender = function () { if (window.HKEd25 && this.isMermaid()) window.HKEd25.renderStale(this, this.st); };
+  HKCode.prototype.makePng = function () { return window.HKEd25.mermaidPng(this); };
   HKCode.prototype.paint = function () {
     this.out.innerHTML = highlight(this.ta.value, this.lang) + '\n';      // Zeilenumbruch am Ende: Hoehe stimmt auch bei leerer letzter Zeile
     this.w.dataset.lang = this.lang;
   };
   HKCode.prototype.changed = function () { if (this.block && this.block.dispatchChange) this.block.dispatchChange(); };   // Textfeld-Aenderungen meldet Editor.js nicht selbst
   HKCode.prototype.onPaste = function (e) { var t = e.detail.data.textContent || ''; this.ta.value = t; this.paint(); this.changed(); };
-  HKCode.prototype.save = function () { var d = { code: this.ta.value }; if (this.lang) d.language = this.lang; return d; };
+  HKCode.prototype.save = function () {
+    var d = Object.assign({}, this.data, { code: this.ta.value });
+    if (this.lang) d.language = this.lang; else delete d.language;
+    if (this.isMermaid()) d.view = this.view; else delete d.view;
+    if (!this.isMermaid()) delete d.render;               // kein Diagramm mehr: Vorschaubild gehoert nicht mehr dazu
+    return d;
+  };
+  HKCode.prototype.destroy = function () { if (this.mUrl) URL.revokeObjectURL(this.mUrl); clearTimeout(this.mT); clearTimeout(this.rT); };
 
   window.HKCode = HKCode;
   window.HKCodeHL = { highlight: highlight, norm: norm, langs: LANGS };
