@@ -11,10 +11,10 @@ from fastapi import Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from db import connect as _db
 from fastapi import APIRouter
-from saga import i18n, nextcloud, page_widgets
-from saga.core import BASE_URL, TZ, _api_guard, _bad, _json_load, origin_of, t
+from saga import nextcloud, page_widgets, proptext
+from saga.core import BASE_URL, _api_guard, _bad, _json_load, origin_of, t
 from saga.sharing import Access, access, mask_links, names, person, viewer
-from saga.notes import AUTO_TYPES, FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _calc_value, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _forced_throttled, _insert_version, _latest, announce_tree, checkpoint, blocks_text, share_targets, tree_changed
+from saga.notes import FILES_DIR, NOTE_META_COLS, TRASH_DAYS, _FILE_URL, _disposition, _note_meta, _note_text, _purge_ids, _purge_old, _forced_throttled, _insert_version, _latest, announce_tree, checkpoint, blocks_text, share_targets, tree_changed
 
 router = APIRouter()
 
@@ -320,26 +320,12 @@ def md_page(rows, r, link, viewer=None):
     schema, props, created, updated] (alle exportierten Seiten; Datenbank-Zeilen, Relationen und Eltern daraus).
     viewer: wer exportiert - Widgets mit Werten aus einer Datenbank rechnen mit seinen Rechten (sonst ohne Wert)."""
     def val_of(p, row, pv):
-        if p["type"] == "calc":
-            return _calc_value(p, pv)
-        return {"created": row[9], "edited": row[10]}.get(p["type"], pv.get(p["id"]))
+        return proptext.value_of(p, pv, row[9], row[10])
+
+    ctx = proptext.Ctx("md", lambda x: rows[x][1] if x in rows else None)
 
     def fmt_val(p, v):
-        if v is None:
-            return ""
-        if p["type"] in AUTO_TYPES:
-            return i18n.fmt_date(v, TZ, with_time=True)          # Datumsformat der Sprache
-        if p["type"] == "relation":
-            return ", ".join((rows[x][1] or t("Unbenannt")) for x in v if x in rows)
-        if p["type"] in ("number", "calc"):
-            v = round(v, 2) if isinstance(v, float) else v
-            return f"{v} %" if p.get("fmt") == "percent" else f"{v} €" if p.get("fmt") == "euro" else str(v)
-        if p["type"] in ("select", "multi_select"):
-            names = {o["id"]: o["name"] for o in p.get("options", [])}
-            return ", ".join(names.get(x, "") for x in (v if isinstance(v, list) else [v]))
-        if p["type"] == "checkbox":
-            return "✓" if v else ""
-        return str(v)
+        return proptext.prop_text(p, v, ctx)
 
     head = f"# {(r[2] + ' ') if r[2] and not r[2].startswith('/files/') else ''}{r[1] or t('Unbenannt')}\n\n"
     par = rows.get(r[3])

@@ -24,7 +24,7 @@ import auth
 import db
 from version import API_LEVEL, BUILD, MIN_APP, VERSION, channel
 
-from saga import app_api, app_login, calendars, comments, dashboard, databases, files, immich, links, page_tools, page_widgets, pages, publish, sharing, tasks, web_auth
+from saga import app_api, app_login, calendars, comments, csv_export, dashboard, databases, files, immich, links, page_tools, page_widgets, pages, publish, sharing, tasks, web_auth
 from saga import ai, ai_chat, avatars, calls, chat, chat_files, federation, horn, horn_ops, i18n, live, mfa, notify, push, push_stream
 from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
 from saga import chat_status                     # 2.4: Gelesen-Bestaetigungen und Online-Status (haengt sich in chat, live, fed_chat ein)
@@ -260,6 +260,7 @@ app.include_router(fed_pages.router)         # Teilen vollstaendig (2.3): /fed/v
 app.include_router(pages.router)
 app.include_router(siteicons.router)          # automatische Kachel-Symbole: /api/services/favicon/{key}
 app.include_router(page_tools.router)
+app.include_router(csv_export.router)         # 2.5 (Paket 2): GET /api/notes/{nid}/export.csv
 app.include_router(files.router)
 app.include_router(databases.router)
 app.include_router(immich.router)

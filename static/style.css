@@ -2197,3 +2197,5 @@ body.notes-page .page.p-small .page-title{font-size:calc(2.35rem * .875)}
 .gal-use{cursor:pointer;color:var(--fg);border-color:var(--accent)}
 @media (max-width:640px){.gal-body{grid-template-columns:1fr}.gal-pv{max-height:none}.gal-pv-cols{flex-direction:column}.gal-act{justify-content:stretch}
   .gal-act .gal-use{flex:1}}
+/* 2.5 Paket 2: CSV-Export im Ansicht-Menue, Import-Dialog */
+.vs-csv{width:100%;text-align:left;margin-bottom:.1rem}

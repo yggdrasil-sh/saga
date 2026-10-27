@@ -1917,6 +1917,17 @@
   }
 
   // --- Export (Download ueber fetch, weil die API einen eigenen Header verlangt) ---
+  function downloadFile(url, fallback) {
+    return fetch(url, { credentials: 'same-origin', headers: { 'X-Saga': '1' } }).then(function (r) {
+      if (!r.ok) return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.error || ('HTTP ' + r.status)); });
+      var cd = r.headers.get('Content-Disposition') || '', m = cd.match(/filename\*=UTF-8''([^;]+)/);
+      var name = m ? decodeURIComponent(m[1]) : fallback;
+      return r.blob().then(function (b) {
+        var u = URL.createObjectURL(b), a = el('a'); a.href = u; a.download = name;
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 2000);
+      });
+    }).catch(function (err) { HK.toast(T('Export fehlgeschlagen: {err}', { err: err.message })); });
+  }
   function exportPage(withSub) {
     var id = S.cur.id;
     save().then(function () {
@@ -3704,6 +3715,7 @@
             var tb = el('button', 'menu-item vs-tpl', '📐 ' + T('Vorlagen verwalten …') + ((DB.templates || []).length ? ' (' + DB.templates.length + ')' : ''));
             tb.type = 'button'; tb.addEventListener('click', function () { HK.closeMenu(); templatesUI(); }); box.appendChild(tb);
           }
+          csvSection(box, sec);
           if (OPTS.embedded && OPTS.setHead && !viewsLocked()) sec(T('Ansicht'));
           if (viewsLocked()) {
             box.appendChild(el('div', 'menu-hint vs-locked', T('🔒 Diese Datenbank ist gesperrt: Spalten, Ansichten, Filter und Sortierung sind geschützt. Einträge kannst du weiter bearbeiten.')));
@@ -3900,6 +3912,37 @@
         }
         draw();
       });
+    }
+
+    // CSV-Export (2.5, Paket 2): diese Ansicht (Filter, Sortierung, Suche, sichtbare Spalten) oder alles; Excel (Deutsch)
+    function csvUrl(all) {
+      var v = curView(), q = [], excel = HK.store('hk-csv-excel') === '1', tz = '';
+      try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { tz = ''; }
+      if (all) q.push('all=1');
+      else {
+        if (DB.localViews) {                  // Block-Ansicht kennt der Server nicht: alles ausdruecklich mitschicken
+          q.push('filters=' + encodeURIComponent(JSON.stringify(v.filters || [])), 'sorts=' + encodeURIComponent(JSON.stringify(v.sorts || [])));
+          q.push('group=' + encodeURIComponent((v.type === 'board' ? v.group_by : v.group) || ''));
+        } else q.push('view=' + encodeURIComponent(v.id));
+        q.push('cols=' + encodeURIComponent(visibleProps().map(function (p) { return p.id; }).join(',')));
+        if ((DB.q || '').trim()) q.push('q=' + encodeURIComponent(DB.q.trim()));
+      }
+      if (excel) q.push('sep=' + encodeURIComponent(';'));
+      if (tz) q.push('tz=' + encodeURIComponent(tz));
+      return '/api/notes/' + DB.id + '/export.csv?' + q.join('&');
+    }
+    function csvSection(box, sec) {
+      if (DB.id < 0 && !remCap((S.shared || []).find(function (x) { return x.id === DB.id; }) || { id: DB.id }, 'csv')) return;   // anderer Server ohne csv
+      sec(T('Als CSV exportieren'));
+      [[false, T('Diese Ansicht (.csv)')], [true, T('Alle Einträge, alle Spalten (.csv)')]].forEach(function (x) {
+        var b = el('button', 'menu-item vs-csv', '⬇ ' + x[1]); b.type = 'button';
+        b.addEventListener('click', function () { HK.closeMenu(); downloadFile(csvUrl(x[0]), 'export.csv'); });
+        box.appendChild(b);
+      });
+      var l = el('label', 'vs-row vs-check vs-csv-excel'), cb = el('input'); cb.type = 'checkbox'; cb.checked = HK.store('hk-csv-excel') === '1';
+      cb.addEventListener('change', function () { HK.store('hk-csv-excel', cb.checked ? '1' : '0'); });
+      l.appendChild(cb); l.appendChild(el('span', 'vs-lbl', T('Excel (Deutsch): Semikolon und Dezimalkomma'))); box.appendChild(l);
+      box.appendChild(el('div', 'menu-hint', T('Ohne Seiteninhalte – dafür „Exportieren“ im Seitenmenü (Markdown).')));
     }
 
     function viewMenu(anchor, v) {
