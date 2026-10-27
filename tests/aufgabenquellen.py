@@ -179,7 +179,7 @@ def run():
     r_today = row(A, db1, "Heute hoch", {"st": "lauf", "fl": D(0), "pr": "h"})
     r_later = row(A, db1, "Später", {"st": "neu", "fl": D(5), "wer": [handle(A)]})
     r_none = row(A, db1, "Ohne Datum", {"st": "neu"})
-    r_done = row(A, db1, "Schon fertig", {"st": "fertig", "fl": D(-1)})
+    row(A, db1, "Schon fertig", {"st": "fertig", "fl": D(-1)})
     r_time = row(A, db1, "Mit Uhrzeit", {"st": "neu", "fl": D(1) + "T09:30+01:00"})
     s_open = row(A, db_sel, "Auswahl offen", {"s": "o"})
     row(A, db_sel, "Auswahl erledigt", {"s": "x"})
@@ -271,7 +271,7 @@ def run():
         ok(f"ungueltig {body} -> 400 ({s})", s == 400)
     s, _ = req("PATCH", f"/api/tasks/src/{tid}", A, {"done": True})
     ok(f"Inbox-ID ist keine Zeile -> 404 ({s})", s == 404)
-    s, _ = req("PATCH", f"/api/tasks/src/-5", A, {"done": True})
+    s, _ = req("PATCH", "/api/tasks/src/-5", A, {"done": True})
     ok(f"fremde Instanz (negativ) -> 400 ({s})", s == 400)
     # Board ziehen = Props-PATCH der Seite: row_done ebenso
     req("PATCH", f"/api/notes/{r_today}", A, {"props": {"st": "fertig"}})

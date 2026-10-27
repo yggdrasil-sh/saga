@@ -1416,6 +1416,7 @@
   // Nach dem Laden: Verweise als Marken darstellen, Seitentitel aktualisieren, tote Ziele markieren
   function decorateLinks(root) {
     [].forEach.call((root || $('pg-editor')).querySelectorAll('a[href]'), function (a) {
+      if (a.classList.contains('tsrc-badge')) return;      // 2.5 (Paket 7): Badge einer Aufgabenquelle zeigt die Datenbank, nicht die Zeile
       var m = (a.getAttribute('href') || '').match(NOTE_HREF);
       if (m) {
         var p = byId(+m[1]), na = !p && foreign();          // fremde Seite: Ziel nicht freigegeben -> Titel nicht zeigen

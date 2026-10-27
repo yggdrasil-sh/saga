@@ -24,7 +24,8 @@ from itsdangerous import TimestampSigner
 
 import auth
 from db import connect
-from saga import push, tasksrc  # noqa: F401 - push meldet sich am Bus an (Auftraege fuer task.due)
+from saga import push, tasksrc
+assert push.CATS     # push meldet sich am Bus an (Auftraege fuer task.due) meldet sich am Bus an (Auftraege fuer task.due)
 
 B_ = urllib.parse.urlparse(os.environ.get("HK_TEST_BASE", "http://127.0.0.1:8099"))
 HOST = urllib.parse.urlparse(os.environ["BASE_URL"]).netloc
