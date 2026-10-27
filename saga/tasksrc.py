@@ -145,11 +145,11 @@ def suggest(schema):
 
 def looks_like_tasks(schema):
     """Hinweis fuer bestehende Datenbanken (z. B. alte Instanzen der Vorlage "Aufgaben & Projekte"): keine Zuordnung, aber
-    Status/Auswahl mit "erledigt" bzw. Haekchen und ein Datum."""
+    eine einfache Auswahl mit "erledigt" (kein Status - das hat jede neue Datenbank) und ein Datum."""
     if task_map(schema):
         return False
     s = suggest(schema)
-    return bool(s and s.get("due"))
+    return bool(s and s.get("due") and s.get("done_values"))
 
 
 # --- Faelligkeit -----------------------------------------------------------------------------------------------------

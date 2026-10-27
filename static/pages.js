@@ -4678,9 +4678,10 @@
     // "Aufgaben & Projekte": Status bzw. Auswahl mit "erledigt" und ein Datum), aber noch keine Aufgabenquelle sind
     function taskHint() {
       if (DB.id <= 0 || DB.schema.tasks || (DB.role !== 'owner' && DB.role !== 'edit') || HK.store('hk-tasksrc-hint-' + DB.id)) return;
+      // nur einfache Auswahl (alte Vorlagen-Instanzen) mit "erledigt", ein Datum und schon Eintraege - nicht jede neue Datenbank
       var ps = DB.schema.props || [], word = /erledigt|fertig|done|complete|hecho|listo|готов|выполн|เสร็จ/i;
-      var done = ps.some(function (p) { return p.type === 'select' && (p.status || (p.options || []).some(function (o) { return word.test(o.name + ' ' + o.id); })); });
-      if (!done || !ps.some(function (p) { return p.type === 'date'; })) return;
+      var done = ps.some(function (p) { return p.type === 'select' && !p.status && (p.options || []).some(function (o) { return word.test(o.name + ' ' + o.id); }); });
+      if (!done || !ps.some(function (p) { return p.type === 'date'; }) || !(DB.rows || []).length) return;
       HK.store('hk-tasksrc-hint-' + DB.id, '1');
       var id = DB.id, sch = DB.schema;
       HK.toast(T('„{name}“ sieht nach Aufgaben aus. Sollen offene Einträge in deiner Aufgabenliste erscheinen?', { name: label(byId(id) || {}) }),

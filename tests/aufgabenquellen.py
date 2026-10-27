@@ -160,8 +160,14 @@ def run():
            "views": [{"id": "a", "name": "A", "type": "table"}]}
     db_cb = mkdb(A, "Häkchen", cbs)
     s, d = req("GET", f"/api/notes/{db_cb}/tasksource", A)
-    ok(f"ohne Zuordnung: Vorschlag aus Typen + Hinweis ({s})", s == 200 and d["map"] is None and d["suggest"] == {"done": "ok", "due": "d"}
-       and d["hint"] is True and d["can_map"] is True, d)
+    ok(f"ohne Zuordnung: Vorschlag aus Typen, kein Hinweis (nur alte Auswahl-Instanzen) ({s})", s == 200 and d["map"] is None
+       and d["suggest"] == {"done": "ok", "due": "d"} and d["hint"] is False and d["can_map"] is True, d)
+    old_inst = mkdb(A, "Alte Instanz", {"props": [{"id": "status", "name": "Status", "type": "select", "options": [
+        {"id": "offen", "name": "Offen"}, {"id": "erledigt", "name": "Erledigt"}]}, {"id": "faellig", "name": "Fällig", "type": "date"}],
+        "views": [{"id": "a", "name": "A", "type": "table"}]})
+    s, d = req("GET", f"/api/notes/{old_inst}/tasksource", A)
+    ok(f"alte Vorlagen-Instanz (Auswahl 'erledigt' + Datum): Hinweis + Vorschlag ({s})", d["hint"] is True
+       and d["suggest"] == {"done": "status", "done_values": ["erledigt"], "due": "faellig"}, d)
     s, d = req("PUT", f"/api/notes/{db_cb}/tasksource", A, {"map": d["suggest"]})
     ok(f"Als Aufgabenquelle verwenden: Zuordnung + Abo 'all' ({s})", s == 200 and d["map"] == {"done": "ok", "due": "d"} and d["scope"] == "all", d)
 
