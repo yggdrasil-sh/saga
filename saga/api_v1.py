@@ -164,6 +164,9 @@ def page_read(tok, nid, fmt="blocks"):
     blocks = []
     if d.get("format") == "blocks":
         blocks = _json_load(d.get("body"), {}).get("blocks") or []
+        if tok.roots and '"synced"' in (d.get("body") or ""):
+            with _db() as c:
+                _synced_roots(c, tok, blocks)
     elif d.get("body"):
         blocks = [{"type": "paragraph", "data": {"text": d["body"]}}]
     if fmt == "markdown":
@@ -171,6 +174,21 @@ def page_read(tok, nid, fmt="blocks"):
     else:
         out["blocks"] = blocks
     return 200, out
+
+
+def _synced_roots(c, tok, blocks):
+    """2.5 (P6-6): Token mit roots - Kopien synchronisierter Bloecke, deren Original ausserhalb der freigegebenen Baeume
+    liegt, nur als Platzhalter (wie ohne Zugriff: kein Inhalt, keine Seiten-ID)."""
+    from saga.notes import _iter_blocks
+    acc = Access(c, tok.uid)
+    for b in _iter_blocks(blocks):
+        d = b.get("data") if b.get("type") == "synced" else None
+        src = d.get("src") if isinstance(d, dict) and isinstance(d.get("src"), dict) else None
+        if src is None or src.get("original") or src.get("note") is None:
+            continue
+        own = acc.owner(src["note"])
+        if not own or not in_roots(c, tok, own, src["note"]):
+            b["data"] = {"sid": d.get("sid"), "src": {"noaccess": True}}
 
 
 def page_create(tok, b):

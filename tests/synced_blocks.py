@@ -49,7 +49,7 @@ def ok(n, c, detail=None):
 
 
 def ck(u):
-    return S.sign(base64.b64encode(json.dumps({"uid": u, "name": u, "pwc": time.time() + 5}).encode())).decode()
+    return S.sign(base64.b64encode(json.dumps({"uid": u, "name": u, "pwc": time.time() + 5, "sec_at": int(time.time())}).encode())).decode()
 
 
 def req(m, p, u=A, body=None, hdr=None, raw=False):
@@ -248,7 +248,50 @@ def run():
     ok("Gesperrt: Durchschreiben -> locked", (d2.get("synced") or {}).get(sid) == "locked", d2)
     req("PATCH", f"/api/notes/{na}", A, {"locked": False})
 
-    # --- 7. Webhook page.updated fuer A --------------------------------------------------------------------------------
+    # --- 7. API v1 (roots), MCP, Webhook page.updated fuer A -----------------------------------------------------------
+    word = "Anfang von Bert"
+    keep_api = auth.settings(fresh=True).get("api")
+    keep_hosts = auth.settings(fresh=True).get("allowed_hosts")
+    auth.save_setting("api", {"enabled": True, "webhooks": True, "mcp": True, "webhook_http": True, "rate": 1000, "rate_write": 1000})
+    auth.save_setting("allowed_hosts", "127.0.0.1:9")                     # Ziel des Webhooks (zugestellt wird nicht - nur vorgemerkt)
+    time.sleep(5.6)
+    s, d = req("POST", "/api/account/api-tokens", A, {"name": "sy-all", "scopes": ["read:pages"]})
+    tok_all = d.get("token") if isinstance(d, dict) else None
+    s, d = req("POST", "/api/account/api-tokens", A, {"name": "sy-root", "scopes": ["read:pages", "mcp"], "roots": [nb]})
+    tok_root = d.get("token") if isinstance(d, dict) else None
+    ok(f"API-Tokens (alles / nur Baum B) ({s})", bool(tok_all and tok_root), d)
+    bearer = lambda tk: {"Authorization": "Bearer " + tk}                 # noqa: E731
+    s, d = req("GET", f"/api/v1/pages/{nb}", None, hdr=bearer(tok_all))
+    k = synced_of(d.get("blocks") or []) if isinstance(d, dict) else None
+    ok(f"API v1: Kopie mit Inhalt und src ({s})", s == 200 and k and word in json.dumps(k) and k["data"]["src"].get("note") == na, k)
+    s, d = req("GET", f"/api/v1/pages/{nb}", None, hdr=bearer(tok_root))
+    k = synced_of(d.get("blocks") or []) if isinstance(d, dict) else None
+    raw = json.dumps(d, ensure_ascii=False)
+    ok(f"API v1 mit roots (Original ausserhalb): nur noaccess ({s})", s == 200 and k and k["data"] == {"sid": sid, "src": {"noaccess": True}}
+       and word not in raw and SECRET_TITLE not in raw, k)
+    s, d = req("GET", f"/api/v1/pages/{nb}?format=markdown", None, hdr=bearer(tok_root))
+    ok(f"API v1 Markdown mit roots: ohne Inhalt des Originals ({s})", s == 200 and word not in json.dumps(d, ensure_ascii=False), d)
+    s, d = req("POST", "/mcp", None, {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "get_page", "arguments": {"id": nb}}},
+               hdr=dict(bearer(tok_root), **{"MCP-Protocol-Version": "2025-06-18", "Accept": "application/json, text/event-stream"}))
+    txt = json.dumps(d, ensure_ascii=False)
+    ok(f"MCP get_page mit roots: ohne Inhalt des Originals ({s})", s == 200 and "Kopie folgt" in txt and word not in txt, txt[:300])
+    s, d = req("POST", "/api/account/webhooks", A, {"url": "http://127.0.0.1:9/sy", "events": ["page.updated"]})
+    hid = (d.get("webhook") or d).get("id") if isinstance(d, dict) else None
+    ok(f"Webhook page.updated angelegt ({s})", s == 200 and hid, d)
+    time.sleep(0.5)
+    with connect() as c, c:
+        c.execute("DELETE FROM webhook_delivery WHERE hook_id=?", (hid,))
+    d = get(nbb, B)
+    bl = blocks(d)
+    synced_of(bl)["data"]["blocks"][0]["data"]["text"] = word + " (Webhook)"
+    s, d2 = save(nbb, bl, B, rev=d["rev"], hdr=SYNC)
+    with connect() as c:
+        kinds = c.execute("SELECT kind, note_id FROM webhook_delivery WHERE hook_id=?", (hid,)).fetchall()
+    ok(f"Durchschreiben aus der Kopie: page.updated fuer das Original ({s})", ("page.updated", na) in [tuple(x) for x in kinds], kinds)
+    req("DELETE", f"/api/account/webhooks/{hid}", A)
+    auth.save_setting("api", keep_api or {})
+    auth.save_setting("allowed_hosts", keep_hosts or "")
+
 
     # --- 5. Veroeffentlichen -------------------------------------------------------------------------------------------
     req("PUT", "/api/account/public-name", A, {"name": "sy" + secrets.token_hex(3)})
