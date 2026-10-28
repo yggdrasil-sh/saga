@@ -21,6 +21,9 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   der Server Farben, Hintergründe, Erwähnungen und Inline-Mathe aus dem gespeicherten Stand auf alle unveränderten
   Zeichen – auch wenn daneben Text geändert wurde (bisher nur bei völlig unverändertem Text). Geänderte Zeichen verlieren
   die Farbe, eine geänderte Erwähnung bzw. Formel bleibt als Text.
+- **Web holt bei fremden Änderungen nur noch das Delta** (`GET /api/notes/{id}?since=<rev>`): unveränderte Blöcke
+  kommen aus dem offenen Editor, nur geänderte vom Server. Ohne `delta` (ältere Server, Basis nicht mehr da) wie bisher
+  der ganze Inhalt.
 
 ### Neu (2.5, P6-5/P6-6: Erwähnungen und synchronisierte Blöcke)
 - **@-Erwähnungen von Personen.** Im @-Menü des Editors stehen jetzt zuerst **Personen** mit Zugriff auf die Seite;

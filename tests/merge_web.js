@@ -4,6 +4,7 @@
 //  3. gleicher Absatz mit Ueberschneidung -> Konfliktblock (gelb) direkt darunter, "Uebernehmen" ersetzt das Original
 //  4. Weiterschreiben, waehrend das Speichern langsam ist (Antwort verzoegert) -> nichts geht verloren, nichts doppelt
 //  5. Block-Markierung: A sieht den Block, in dem B schreibt
+//  6. fremde Aenderung ohne eigenes Speichern: A holt nur das Delta (GET ?since=<rev>); Rueckfall ohne delta = voller body
 // Lokal: HK_TEST_BASE=http://127.0.0.1:8099 CK=<Cookie hk-test-a> CK2=<Cookie hk-test-b> node tests/merge_web.js
 const PW = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.HK_TEST_BASE, CK = process.env.CK, CK2 = process.env.CK2;
@@ -105,6 +106,32 @@ async function until(fn, ms = 8000) { const t = Date.now(); let v; while (Date.n
   ok(`4: nichts verloren, nichts doppelt (${bl.map((b) => b.data.text).join(' | ')})`,
      bl[1].data.text === 'Zweiter Absatz von B eins zwei' && bl[2].data.text === 'Ja, Hallo Welt! Wie gehts? (B)' && bl.length === 3, bl);
   ok('4: A zeigt den Stand des Servers', await until(async () => (await textOf(A, 'c3')) === 'Ja, Hallo Welt! Wie gehts? (B)'), await textOf(A, 'c3'));
+
+  // --- 6. Delta (?since) bei fremden Aenderungen -------------------------------------------------------------------
+  await sleep(1500);
+  const gets = []; const onReq = (r) => { if (r.method() === 'GET' && r.url().includes('/api/notes/' + id)) gets.push(r.url()); };
+  A.on('request', onReq);
+  const used0 = await A.evaluate(() => window.HKPages.k.deltaUsed());
+  let cur6 = await api(B, 'GET', '/api/notes/' + id);
+  let b6 = JSON.parse(cur6.body); b6.blocks[0].data.text = 'Delta von B';
+  await api(B, 'PATCH', '/api/notes/' + id, { body: JSON.stringify(b6), format: 'blocks', rev: cur6.rev, merge: 1 });
+  const first = () => A.evaluate(() => { const e = document.querySelector('#pg-editor .codex-editor__redactor > .ce-block .ce-paragraph'); return e ? e.textContent : null; });
+  ok('6: A zeigt die fremde Aenderung', await until(async () => (await first()) === 'Delta von B'), await first());
+  ok('6: A holt mit ?since=<rev> (Delta)', gets.some((u) => /\?since=\d+/.test(u)), gets);
+  ok('6: Delta uebernommen (unveraenderte Bloecke aus dem Editor)', (await A.evaluate(() => window.HKPages.k.deltaUsed())) > used0);
+  ok('6: andere Bloecke unveraendert', (await textOf(A, 'c3')) === 'Ja, Hallo Welt! Wie gehts? (B)' && (await A.$$('#pg-editor .codex-editor__redactor > .ce-block')).length === 3);
+  // Rueckfall: Server ohne delta (aelterer Stand) -> voller body
+  await A.route(/\/api\/notes\/-?\d+\?since=/, async (route) => {
+    const r = await route.fetch({ url: route.request().url().replace(/\?since=\d+/, '') });
+    await route.fulfill({ response: r });
+  });
+  gets.length = 0;
+  cur6 = await api(B, 'GET', '/api/notes/' + id);
+  b6 = JSON.parse(cur6.body); b6.blocks[1].data.text = 'Voll von B';
+  await api(B, 'PATCH', '/api/notes/' + id, { body: JSON.stringify(b6), format: 'blocks', rev: cur6.rev, merge: 1 });
+  ok('6: ohne delta -> voller body uebernommen', await until(async () => (await textOf(A, 'b2')) === 'Voll von B'), [await textOf(A, 'b2'), gets]);
+  await A.unroute(/\/api\/notes\/-?\d+\?since=/);
+  A.off('request', onReq);
 
   ok(`Keine Fehler/CSP-Verstoesse (${A.errs.concat(B.errs).join(' / ')})`, !A.errs.length && !B.errs.length);
   await api(A, 'DELETE', '/api/notes/' + id);

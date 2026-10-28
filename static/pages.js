@@ -8615,16 +8615,48 @@
   function liveApply(by) {
     var id = S.cur && S.cur.id; if (!id) return Promise.resolve();
     S.remoteAfter = 0;
-    return api('GET', '/api/notes/' + id).then(function (n) {
+    // 2.5 (docs/APP-API.md "Rebase" 5): nur die seit der eigenen rev geaenderten Bloecke holen (?since) - unveraenderte
+    // kommen als {id} und werden aus dem Editor ergaenzt; fehlt delta (Basis weg, aeltere Server): voller body
+    var since = S.cur.rev;
+    return api('GET', '/api/notes/' + id + (since != null ? '?since=' + encodeURIComponent(since) : '')).then(function (n) {
       if (!S.cur || S.cur.id !== id || n.format !== 'blocks' || S.loading) return;
       if (S.dirtyBody || S.dirtyTitle || S.inflight) { S.remoteAfter = n.rev; if (S.dirtyBody || S.dirtyTitle) save(); return; }
-      S.cur.rev = n.rev; S.cur.updated = n.updated; S.cur.updated_by = n.updated_by;
-      if (window.HKMention) HKMention.setPeople(n.people);
-      if (n.title !== S.cur.title && document.activeElement !== $('pg-title')) { S.cur.title = n.title; $('pg-title').value = n.title || ''; var p = byId(id); if (p) p.title = n.title; renderTree(); renderCrumbs(); setLocation(); }
-      return applyBody(id, n.body).then(function () {
-        if (by && by.name) state(T('Aktualisiert – geändert von {name}', { name: by.name }), 'ok');
-      });
+      if (n.delta && typeof n.body !== 'string') {
+        return deltaBody(id, n.delta, since).then(function (body) {
+          if (body === null) return api('GET', '/api/notes/' + id).then(function (f) { return liveTake(id, f, by); });
+          n.body = body; return liveTake(id, n, by);
+        });
+      }
+      return liveTake(id, n, by);
     }).catch(function () { /* naechstes Ereignis bzw. Speichern holt es nach */ });
+  }
+  // delta {from, blocks} + eigener Stand (Editor, unveraendert seit from) -> body; null = nicht vollstaendig (voll laden)
+  function deltaBody(id, delta, since) {
+    if (!S.editor || delta.from !== since || !Array.isArray(delta.blocks)) return Promise.resolve(null);
+    return S.editor.save().then(function (cur) {
+      if (!S.cur || S.cur.id !== id || S.dirtyBody || S.cur.rev !== since) return null;
+      var mine = {}; (cur.blocks || []).forEach(function (b) { if (b.id) mine[b.id] = b; });
+      var out = [];
+      for (var i = 0; i < delta.blocks.length; i++) {
+        var b = delta.blocks[i];
+        if (!b || !b.id) return null;
+        if (b.type) out.push(b);
+        else if (mine[b.id]) out.push(mine[b.id]);
+        else return null;
+      }
+      S.deltaUsed = (S.deltaUsed || 0) + 1;            // fuer Tests (tests/merge_web.js)
+      return JSON.stringify({ blocks: out });
+    }, function () { return null; });
+  }
+  function liveTake(id, n, by) {
+    if (!S.cur || S.cur.id !== id || n.format !== 'blocks' || S.loading || typeof n.body !== 'string') return;
+    if (S.dirtyBody || S.dirtyTitle || S.inflight) { S.remoteAfter = n.rev; if (S.dirtyBody || S.dirtyTitle) save(); return; }
+    S.cur.rev = n.rev; S.cur.updated = n.updated; S.cur.updated_by = n.updated_by;
+    if (window.HKMention) HKMention.setPeople(n.people);
+    if (n.title !== S.cur.title && document.activeElement !== $('pg-title')) { S.cur.title = n.title; $('pg-title').value = n.title || ''; var p = byId(id); if (p) p.title = n.title; renderTree(); renderCrumbs(); setLocation(); }
+    return applyBody(id, n.body).then(function () {
+      if (by && by.name) state(T('Aktualisiert – geändert von {name}', { name: by.name }), 'ok');
+    });
   }
   function blkSig(b) { return JSON.stringify([b.type, b.data, b.tunes || null]); }
   // Dokument in den offenen Editor bringen: gleiche Bloecke in gleicher Reihenfolge -> nur geaenderte Bloecke ersetzen
@@ -8716,7 +8748,7 @@
     k: { cur: function () { return S.cur; }, editor: function () { return S.editor; },
          eds: function () { return (S.eds || []).filter(function (x) { return x.holder.isConnected; }); },
          open: function (id) { return openPage(id); }, byId: byId, goParent: goParent, copyLink: copyLink, showBlock: showBlock,
-         readOnly: function () { return readOnly(); },
+         readOnly: function () { return readOnly(); }, deltaUsed: function () { return S.deltaUsed || 0; },
          calcNum: calcNum,                                      // Widgets/Fusszeile (tests/seiten_widgets.js: gemeinsame Testvektoren)
          chartTicks: chartTicks,                                // 2.5 Paket 4: Achsen (tests/browser_widgets2.js, tests/chart_ticks.json)
          dup: function (ed, blk) { return dupBlock(ed, blk); }, styleAt: styleAt, styleBlock: styleBlock, colors: COLORS, colorNames: COLOR_NAMES,
