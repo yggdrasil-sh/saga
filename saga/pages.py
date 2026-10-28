@@ -486,18 +486,16 @@ def _item_key(x):
 
 def _keep_fields(old, new):
     """Textfelder (rekursiv, gleicher Pfad): alter HTML-Text mit neuen Formen -> Marken auf unveraenderte Zeichen (P6-3).
-    Listen ungleicher Laenge (Listenpunkte, Tabellenzeilen): unveraenderte Eintraege per Folgen-Diff zuordnen."""
+    Listen (Listenpunkte, Tabellenzeilen): Eintraege per Folgen-Diff zuordnen (gleiche bzw. an Ort und Stelle geaenderte)."""
     if isinstance(old, str) and isinstance(new, str):
         if old != new and NEW_MARKS.search(old):
             return merge.keep_marks(old, new)
         return new
     if isinstance(old, dict) and isinstance(new, dict):
         return {k: (_keep_fields(old[k], v) if k in old and k not in ("blocks", "cols") else v) for k, v in new.items()}
-    if isinstance(old, list) and isinstance(new, list):
-        if len(old) == len(new):
-            return [_keep_fields(o, n) for o, n in zip(old, new)]
-        out = list(new)
-        for i, j in merge.pairs([_item_key(x) for x in old], [_item_key(x) for x in new]):
+    if isinstance(old, list) and isinstance(new, list):     # auch bei gleicher Laenge: umsortierte Eintraege nicht
+        out = list(new)                                      # nach Stelle zuordnen (Marken wanderten in fremde Punkte)
+        for i, j in merge.pairs([_item_key(x) for x in old], [_item_key(x) for x in new], fill=True):
             out[j] = _keep_fields(old[i], new[j])
         return out
     return new

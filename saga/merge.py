@@ -615,12 +615,16 @@ def _atom_text(u):
     return unescape(re.sub(r"<[^>]*>", "", u[1:]))
 
 
-def pairs(a, b):
-    """Gleiche Stellen zweier Folgen (difflib wie beim Merge, _hunks) -> [(i, j)] mit a[i] == b[j]."""
+def pairs(a, b, fill=False):
+    """Gleiche Stellen zweier Folgen (difflib wie beim Merge, _hunks) -> [(i, j)] mit a[i] == b[j]. fill: auch ersetzte
+    Abschnitte gleicher Laenge Stelle fuer Stelle (Eintrag an Ort und Stelle bearbeitet - nicht umsortiert/eingefuegt)."""
     out, i, j = [], 0, 0
     for s, e, rep in _hunks(a, b):
         out.extend((i + k, j + k) for k in range(s - i))
-        j += (s - i) + len(rep)
+        j += s - i
+        if fill and e - s == len(rep):
+            out.extend((s + k, j + k) for k in range(e - s))
+        j += len(rep)
         i = e
     out.extend((i + k, j + k) for k in range(len(a) - i))
     return out
@@ -649,7 +653,7 @@ def keep_marks(old, new):
     if not old or old == new:
         return new
     to, tn = tokens(old), tokens(new)
-    if len(to) + len(tn) > 8 * WORD_LEVEL:         # sehr lang: nur die Zwischenregel (gleicher Text -> altes HTML)
+    if len(to) + len(tn) > 2 * WORD_LEVEL:         # sehr lang (Zeichen-Diff quadratisch): nur gleicher Text -> altes HTML
         return old if [u for u, _ in to] == [u for u, _ in tn] else new
     keys, owner, size = [], [], {}
     for i, (u, _) in enumerate(to):
@@ -659,12 +663,22 @@ def keep_marks(old, new):
             keys.extend(gs); owner.extend([i] * len(gs))
         else:
             keys.append(u); owner.append(i)
-    match = {j: owner[k] for k, j in pairs(keys, [u for u, _ in tn])}
+    ps = pairs(keys, [u for u, _ in tn])
+    runs, r = [], []                               # zusammenhaengende Treffer; einzelne Zufallstreffer (< 3 Zeichen) in
+    for k, j in ps:                                # neu geschriebenem Text bekommen keine Marke
+        if r and (k != r[-1][0] + 1 or j != r[-1][1] + 1):
+            runs.append(r); r = []
+        r.append((k, j))
+    runs.append(r)
+    match = {j: owner[k] for r in runs if len(r) >= 3 or len(r) == len(keys) for k, j in r}
     hits = {}
     for j in sorted(match):
         if match[j] in size:
             hits.setdefault(match[j], []).append(j)
-    whole = {js[0]: oi for oi, js in hits.items() if len(js) == size[oi] and js[-1] - js[0] == len(js) - 1}
+    def alone(j):                                  # kein neu getipptes Wortzeichen direkt daneben ("Anna" -> "Annabell")
+        return not (0 <= j < len(tn)) or j in match or tn[j][0].startswith(A) or not tn[j][0][:1].isalnum()
+    whole = {js[0]: oi for oi, js in hits.items() if len(js) == size[oi] and js[-1] - js[0] == len(js) - 1
+             and alone(js[0] - 1) and alone(js[-1] + 1)}
     out, j = [], 0
     while j < len(tn):
         u, mk = tn[j]

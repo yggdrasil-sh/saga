@@ -61,6 +61,12 @@ ok("Mathe geaendert -> Text", keep_marks(f"a {MATH} b", "a x^3 b") == "a x^3 b")
 ok("eigene Formatierung des Clients bleibt", keep_marks(f"<b>fett {RED}rot</span></b>", "<b>fett rot</b> neu") == f"<b>fett {RED}rot</span></b> neu")
 ok("neue Fett-Marke des Clients bleibt", keep_marks(f"a {RED}rot</span>", "a <b>rot</b>") == f"a <b>{RED}rot</span></b>")
 ok("geloeschtes Wort: Marke weg", keep_marks(f"a {RED}rot</span> b", "a b") == "a b")
+ok("neu geschriebener Text: keine verstreuten Farbreste", keep_marks(f"{RED}Hallo Welt</span>", "Tschuess zusammen") == "Tschuess zusammen")
+ok("Erwaehnung nicht in ein laengeres Wort", keep_marks(f"{MEN} x", "Annabell x") == "Annabell x")
+_L = lambda its: json.dumps({"blocks": [{"id": "l", "type": "list", "data": {"style": "unordered", "items": [{"content": c, "items": []} for c in its]}}]})
+ok("Liste umsortiert (gleiche Laenge): Farbe bleibt am eigenen Punkt",
+   [x["content"] for x in json.loads(legacy_keep(_L([f"{RED}rot</span>", "rosa"]), _L(["rosa", "rot"]), frozenset()))["blocks"][0]["data"]["items"]]
+   == ["rosa", f"{RED}rot</span>"])
 _h = keep_marks(f"Hallo {RED}rote</span> Welt", "Hallo rxte Welt")
 ok("Ergebnis ist sanitizer-fest", json.loads(clean_blocks(json.dumps({"blocks": [P("a", _h)]}))[0])["blocks"][0]["data"]["text"] == _h)
 
