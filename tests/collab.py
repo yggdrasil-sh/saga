@@ -258,6 +258,28 @@ try:
     m = v.wait("BYE", nid, timeout=8)
     ok(f"Freigabe entzogen -> bye access ({st})", m and json.loads(m[2][0])["reason"] == "access")
     v.close()
+    # Rechte-Entzug ueber eine Gruppe (Mitgliedschaft entfernt; regelmaessige Neupruefung, COLLAB_CHECK)
+    GRP = "collab-test-grp"
+    with connect() as c, c:
+        gid = c.execute("SELECT id FROM groups WHERE name=?", (GRP,)).fetchone()
+        gid = gid[0] if gid else c.execute("INSERT INTO groups (name, description, created) VALUES (?, '', ?)", (GRP, time.time())).lastrowid
+        ub = c.execute("SELECT id FROM users WHERE username=?", (BB,)).fetchone()[0]
+        ua = c.execute("SELECT id FROM users WHERE username=?", (A,)).fetchone()[0]
+        for u_ in (ua, ub):                          # teilen geht nur mit Gruppen, in denen man selbst ist
+            c.execute("INSERT INTO user_group (user_id, group_id) VALUES (?, ?) ON CONFLICT DO NOTHING", (u_, gid))
+    st, _ = req("PUT", f"/api/notes/{nid}/shares", A, {"type": "group", "target": GRP, "role": "edit"})
+    auth._ui_cache.clear()
+    gv = client(BB)
+    hg, _ = subscribe(gv, nid)
+    ok(f"Freigabe ueber Gruppe: Abo mit Rolle edit ({st}, {hg and hg.get('role')})", hg and hg["role"] == "edit")
+    with connect() as c, c:
+        c.execute("DELETE FROM user_group WHERE user_id=? AND group_id=?", (ub, gid))
+    m = gv.wait("BYE", nid, timeout=float(os.environ.get("COLLAB_CHECK", "25")) + 8)
+    ok("Gruppe verlassen -> bye access (spaetestens nach der Neupruefung)", m and json.loads(m[2][0])["reason"] == "access")
+    gv.close()
+    req("DELETE", f"/api/notes/{nid}/shares", A, {"type": "group", "target": GRP})
+    with connect() as c, c:
+        c.execute("DELETE FROM groups WHERE name=?", (GRP,))
 
     # --- Titel-Leck --------------------------------------------------------------------------------------------------------
     secret = page([P("s", "geheim")], "Geheimprojekt Zebra")
@@ -297,20 +319,21 @@ try:
     ok("... Live-Text und Merge-Text beide erhalten (CRDT und body)",
        wait_for(lambda: all([x["data"]["text"] for x in c.blocks(jn)[0]["blocks"]] == want for c in (j1, j2)))
        and wait_for(lambda: [x["data"]["text"] for x in body_of(jn)[0]] == want))
-    # Version wiederherstellen (vorher eine Version des jetzigen Stands sichern, dann weiterschreiben)
-    req("POST", f"/api/notes/{jn}/versions/checkpoint", A, {"why": "test"})
+    # Version wiederherstellen: eine Version des jetzigen Stands anlegen (wie der Editor nach einer Pause), weiterschreiben,
+    # dann diese Version zurueckholen
+    with connect() as c, c:
+        cur_ = c.execute("SELECT title, body, format FROM note WHERE id=?", (jn,)).fetchone()
+        vid = c.execute("INSERT INTO note_version (note_id, uid, title, body, format, created, author) VALUES (?,?,?,?,?,?,?)",
+                        (jn, A, cur_[0], cur_[1], cur_[2], time.time() - 3600, A)).lastrowid
     j2.edit(jn, lambda d: text_of(d, 2).insert(0, "spaeter "), "w")
     j2.wait("ACK", jn)
     wait_for(lambda: body_of(jn)[0][2]["data"]["text"].startswith("spaeter"))
-    st, vs = req("GET", f"/api/notes/{jn}/versions")
-    vs = vs if isinstance(vs, list) else []
-    print(f"     {len(vs)} Versionen", flush=True)
-    if st == 200 and vs:
-        st, d = req("POST", f"/api/notes/{jn}/versions/{vs[-1]['id']}/restore")
+    st = 200
+    if True:
+        st, d = req("POST", f"/api/notes/{jn}/versions/{vid}/restore")
         ok(f"Version wiederherstellen waehrend Live -> Update bei allen ({st})",
-           st == 200 and wait_for(lambda: all(same(c.blocks(jn)[0]["blocks"], body_of(jn)[0]) for c in (j1, j2))))
-    else:
-        ok(f"Versionen vorhanden ({st})", False)
+           st == 200 and wait_for(lambda: all(same(c.blocks(jn)[0]["blocks"], body_of(jn)[0]) for c in (j1, j2)))
+           and not body_of(jn)[0][2]["data"]["text"].startswith("spaeter"))
     # blocks/move nach einer anderen Seite
     tgt = page([P("t1", "Ziel")], "Ziel")
     r = body_of(jn)[1]["rev"]

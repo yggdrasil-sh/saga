@@ -2078,6 +2078,7 @@ offene Tabs mit demselben Konto schalten die ältesten auf Abfrage um.
 | `CACHE_TTL` | `60` | Sekunden, die Konto- und Dienstdaten zwischengespeichert werden |
 | `LIVE_PING` | `25` | Sekunden bis zur Heartbeat-Zeile im Live-Kanal (hält Proxys offen) |
 | `LIVE_MAX_PER_USER` / `LIVE_MAX_TOTAL` | `5` / `2000` | Live-Verbindungen je Konto (die älteste wird geschlossen) / insgesamt |
+| `COLLAB_MAX_TOTAL` / `COLLAB_MAT_DELAY` / `COLLAB_CHECK` | `2000` / `2` / `25` | Gleichzeitig bearbeiten live (2.5, Admin-Schalter): WebSocket-Verbindungen insgesamt / Sekunden bis zum Speichern als Seite / Sekunden bis zur erneuten Rechteprüfung |
 | `LIVE_MAX_AGE` | `3600` | Nach so vielen Sekunden baut der Browser die Live-Verbindung neu auf (Sitzung wird dabei frisch geprüft) |
 | `FED_ALLOW_HTTP` | – | `1` = Föderation auch über http (nur für Tests; sonst nur https) |
 | `FED_RATE` / `FED_TIMEOUT` | `600` / `10` | Anfragen je Minute und verbundener Instanz / Sekunden bis zur Zeitüberschreitung |

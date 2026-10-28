@@ -30,7 +30,7 @@ import struct
 import threading
 import time
 
-from pycrdt import Doc, get_state, get_update
+from pycrdt import Doc, get_update
 
 import auth
 from db import connect as _db
@@ -49,7 +49,7 @@ SUBS_MAX = 20                           # Seiten je Verbindung
 COMPACT_N = 200
 COMPACT_IDLE = float(E.get("COLLAB_COMPACT_IDLE", "30"))
 MAT_DELAY = float(E.get("COLLAB_MAT_DELAY", "2"))
-CHECK_EVERY = 25                        # Sitzung/Rechte erneut pruefen
+CHECK_EVERY = max(1.0, float(E.get("COLLAB_CHECK", "25")))     # Sitzung/Rechte erneut pruefen (s)
 AW_MAX = 2048                           # Awareness je Abo
 AW_EVERY = 0.05                         # hoechstens 20 Awareness-Meldungen je s und Abo
 UPD_RATE = 60                           # Updates je s und Abo (danach kurz gebremst)
@@ -1022,8 +1022,20 @@ bus.on("share.set", _on_share)
 bus.on("share.removed", _on_share)
 
 
-def groups_changed():
-    _in_loop(recheck)
+def _live_hook(kind, payload):
+    """saga.live (Event-Schleife): Gruppen eines Kontos, Konto geloescht, Freigaben -> Abos der Konten neu pruefen."""
+    if not _rooms:
+        return
+    uids = set(payload.get("uids") or ()) | ({payload["uid"]} if payload.get("uid") else set())
+    asyncio.get_running_loop().create_task(recheck(uids or None))
+
+
+def _install():
+    from saga import live
+    live.COLLAB_HOOK = _live_hook
+
+
+_install()
 
 
 # =====================================================================================================================

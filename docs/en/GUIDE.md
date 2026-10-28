@@ -1863,6 +1863,7 @@ with the same account also switch the oldest ones to polling.
 | `CACHE_TTL` | `60` | Seconds that account and service data is cached |
 | `LIVE_PING` | `25` | Seconds until the heartbeat line in the live channel (keeps proxies open) |
 | `LIVE_MAX_PER_USER` / `LIVE_MAX_TOTAL` | `5` / `2000` | Live connections per account (the oldest is closed) / in total |
+| `COLLAB_MAX_TOTAL` / `COLLAB_MAT_DELAY` / `COLLAB_CHECK` | `2000` / `2` / `25` | Live simultaneous editing (2.5, admin switch): WebSocket connections in total / seconds until stored as a page / seconds until permissions are checked again |
 | `LIVE_MAX_AGE` | `3600` | After this many seconds the browser reopens the live connection (the session is checked again) |
 | `FED_ALLOW_HTTP` | – | `1` = allow federation over http (tests only; otherwise https only) |
 | `FED_RATE` / `FED_TIMEOUT` | `600` / `10` | Requests per minute and connected instance / seconds until timeout |
