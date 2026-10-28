@@ -52,6 +52,19 @@
     {{ field(_('Open-Meteo-API-Schlüssel'), 'weather_api_key', '', max=200, secret=true, hint=(_('gespeichert ✓ – leer lassen = behalten') if st.weather.api_key else _('optional – nur für kommerzielle Zugänge'))) }}
   </section>
   <section class="adm-card">
+    <h3>{{ _("API, Webhooks und MCP") }}</h3>
+    {{ check(_('API-Tokens erlauben'), 'api_enabled', st.api.enabled, _('Personen legen unter Einstellungen → API eigene Tokens mit Bereichen an (/api/v1). Ein Token kann nie mehr als das Konto. Aus: alle Tokens gelten sofort nicht mehr (sie bleiben gespeichert).')) }}
+    {{ field(_('Nur für Gruppe'), 'api_group', st.api.group, max=120, hint=_('Leer = alle Konten')) }}
+    {{ field(_('Höchstens Tokens je Konto'), 'api_max_tokens', st.api.max_tokens, type='number', max=4) }}
+    {{ field(_('Höchste Laufzeit (Tage)'), 'api_max_days', st.api.max_days, type='number', max=5, hint=_('0 = bis 10 Jahre')) }}
+    {{ check(_('Tokens ohne Ablauf erlauben'), 'api_unlimited', st.api.unlimited) }}
+    {{ field(_('Anfragen je Token und Minute'), 'api_rate', st.api.rate, type='number', max=5, hint=_('Je Konto (alle Tokens zusammen) das Dreifache')) }}
+    {{ field(_('Schreibzugriffe je Token und Minute'), 'api_rate_write', st.api.rate_write, type='number', max=5) }}
+    {{ check(_('Webhooks anbieten'), 'api_webhooks', st.api.webhooks, _('Saga meldet Änderungen per HTTP-POST an Adressen der Personen. Interne Ziele nur über „Freigegebene interne Hosts“; Weiterleitungen werden nie verfolgt.')) }}
+    {{ check(_('Webhook-Ziele ohne TLS (http://) erlauben'), 'api_webhook_http', st.api.webhook_http) }}
+    {{ check(_('MCP-Server anbieten (/mcp)'), 'api_mcp', st.api.mcp, _('KI-Werkzeuge (z. B. Claude) lesen und schreiben mit einem API-Token. Inhalte geteilter Seiten können Anweisungen an das KI-Modell enthalten – Personen sollten Tokens auf Seitenbäume beschränken.')) }}
+  </section>
+  <section class="adm-card">
     <h3>{{ _("Veröffentlichen") }}</h3>
     {{ check(_('Veröffentlichen erlauben'), 'publish_enabled', st.publish_enabled, _('Benutzer dürfen eigene Seiten öffentlich machen (ohne Anmeldung lesbar unter /@name/…). Aus = alle öffentlichen Adressen liefern sofort „Nicht gefunden“; die Einstellungen der Seiten bleiben gespeichert.')) }}
     <label class="adm-field"><span>{{ _("Startseite für Besucher") }}</span>

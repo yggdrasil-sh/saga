@@ -534,6 +534,11 @@ async def user_post(uid_: int, request: Request):
         if self_:
             return _go("/login")
         _flash(request, t("Überall abgemeldet ({n} App-Anmeldungen/Schlüssel widerrufen).", n=n))
+    elif act == "api_revoke":                         # 2.5 (Paket 1): alle API-Tokens des Kontos widerrufen
+        from saga import apitok
+        n = apitok.revoke(u["username"])
+        print(f"{who} API-Tokens widerrufen ({n})", flush=True)
+        _flash(request, t("{n} API-Tokens widerrufen.", n=n))
     elif act == "unlock":
         auth.unlock(u["username"])
         print(f"{who} Anmelde-Sperre aufgehoben", flush=True)
@@ -796,6 +801,16 @@ async def settings_post(request: Request):
             _flash(request, t("Wetter: {err}", err=err), "err")
             return _go("/settings")
     auth.save_setting("weather", {"enabled": _on(f, "weather_enabled"), **wx, "api_key": _s(f, "weather_api_key", 200)})
+    def _n(k, lo, hi, dflt):
+        try:
+            return max(lo, min(hi, int(f.get(k) or dflt)))
+        except (TypeError, ValueError):
+            return dflt
+    auth.save_setting("api", {"enabled": _on(f, "api_enabled"), "group": _s(f, "api_group", 120).strip(),     # 2.5: oeffentliche API
+                              "max_tokens": _n("api_max_tokens", 1, 100, 10), "max_days": _n("api_max_days", 0, 3650, 365),
+                              "unlimited": _on(f, "api_unlimited"), "rate": _n("api_rate", 1, 10000, 120),
+                              "rate_write": _n("api_rate_write", 1, 10000, 30), "webhooks": _on(f, "api_webhooks"),
+                              "mcp": _on(f, "api_mcp"), "webhook_http": _on(f, "api_webhook_http")})
     weather.reset_cache()
     req = f.get("mfa_require") if f.get("mfa_require") in ("none", "admins", "all") else "none"
     acr = ", ".join(a for a in (x.strip() for x in _s(f, "mfa_oidc_acr", 300).split(",")) if re.fullmatch(r"[\w.:/#-]{1,100}", a))

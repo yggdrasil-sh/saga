@@ -115,7 +115,13 @@ DEFAULTS = {
     # Wetter-Widget (2.5 Paket 4, saga/weather.py): Daten von Open-Meteo, abgerufen NUR vom Server. Standard aus. base_url/
     # geo_url leer = oeffentliche Open-Meteo-Adressen (frei nur nicht-kommerziell, Quellenangabe), sonst eigene Instanz
     # (interne Adressen nur ueber allowed_hosts/allow_private_hosts); api_key fuer kommerzielle Open-Meteo-Zugaenge (verschluesselt)
-    "weather": {"enabled": False, "base_url": "", "geo_url": "", "api_key": ""}
+    "weather": {"enabled": False, "base_url": "", "geo_url": "", "api_key": ""},
+    # Oeffentliche API (2.5 Paket 1, saga/apitok.py): enabled = API-Tokens erlaubt, group = nur Mitglieder dieser Gruppe (leer =
+    # alle), max_tokens je Konto, max_days = hoechste Laufzeit (0 = beliebig bis 10 Jahre), unlimited = Tokens ohne Ablauf
+    # erlaubt, rate/rate_write = Anfragen bzw. Schreibzugriffe je Token und Minute (je Konto das Dreifache), webhooks/mcp =
+    # Webhooks bzw. MCP-Server (/mcp) anbieten, webhook_http = Webhook-Ziele auch ohne TLS (http://)
+    "api": {"enabled": True, "group": "", "max_tokens": 10, "max_days": 365, "unlimited": False, "rate": 120, "rate_write": 30,
+            "webhooks": True, "mcp": True, "webhook_http": False}
 }
 SECRET_FIELDS = {("oidc", "client_secret"), ("ldap", "bind_password"), ("apns", "p8"), ("ai", "api_key"), ("calls", "turn_secret"),
                  ("calls", "turn_password"), ("backup", "password"), ("backup", "webhook"), ("backup", "s3_key"),

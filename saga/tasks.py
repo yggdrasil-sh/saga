@@ -6,6 +6,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from db import clean_line, connect as _db
 from fastapi import APIRouter
+from saga import bus
 from saga.core import TZ, _api_guard, _bad, _body, t
 
 router = APIRouter()
@@ -142,6 +143,11 @@ async def api_task_add(request: Request):
         from saga import tasksrc
         from saga.core import origin_of
         return await run_in_threadpool(tasksrc.add_row, uid, b["src"], b, origin_of(request))
+    return task_add(uid, b)
+
+
+def task_add(uid, b):
+    """Neue Aufgabe (Weboberflaeche und /api/v1) -> JSONResponse {id}."""
     text = _text_in(b.get("text"))
     if not text:
         return _bad(t("leere Aufgabe"))
@@ -158,6 +164,7 @@ async def api_task_add(request: Request):
             return _bad(t("maximal {n} Aufgaben", n=TASK_MAX_COUNT), 409)
         cur = c.execute("INSERT INTO task (uid, text, due, prio, repeat, rep_anchor, created) VALUES (?,?,?,?,?,?,?)",
                         (uid, text, due, prio, rep, due if rep else None, time.time()))
+        bus.fire("task.created", c, uid=uid, task_id=cur.lastrowid)      # 2.5: Webhooks (saga.webhooks)
         return JSONResponse({"id": cur.lastrowid})
 
 
@@ -188,6 +195,11 @@ async def api_task_update(tid: int, request: Request):
     b = await _body(request)
     if b is None:
         return _bad("bad request")
+    return task_update(uid, tid, b)
+
+
+def task_update(uid, tid, b):
+    """Aufgabe aendern/abhaken (Weboberflaeche und /api/v1) -> JSONResponse."""
     with _db() as c, c:
         row = c.execute("SELECT text, done, due, prio, repeat, rep_anchor, next_id FROM task WHERE id=? AND uid=?",
                         (tid, uid)).fetchone()
@@ -223,6 +235,8 @@ async def api_task_update(tid: int, request: Request):
             next_id, nd = _task_done(c, uid, tid, b["done"], done, text, due, prio, rep, anchor, next_id, _client_today(b))
             if nd:
                 out["next_due"] = nd
+            if b["done"] and not done:
+                bus.fire("task.completed", c, uid=uid, task_id=tid)      # 2.5: Webhooks (saga.webhooks)
 
         c.execute("UPDATE task SET text=?, due=?, prio=?, repeat=?, rep_anchor=?, next_id=? WHERE id=? AND uid=?",
                   (text, due, prio, rep, anchor, next_id, tid, uid))

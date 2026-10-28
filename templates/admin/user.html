@@ -48,6 +48,7 @@
     <dt>{{ _("Lesezeichen") }}</dt><dd>{{ usage.bookmarks }}</dd><dt>{{ _("Dateien") }}</dt><dd>{{ usage.files_mb }} MB</dd>
     <dt>{{ _("Kalender") }}</dt><dd>{{ usage.calendars }}</dd><dt>Immich</dt><dd>{{ _('verbunden') if usage.immich else '–' }}</dd>
     <dt>{{ _("Apps") }}</dt><dd>{{ _("{n} angemeldet", n=usage.devices) }} · {{ _("{n} Schlüssel", n=usage.tokens) }}</dd>
+    <dt>{{ _("API") }}</dt><dd>{{ _("{n} API-Tokens", n=usage.api_tokens) }} · {{ _("{n} Webhooks", n=usage.webhooks) }}</dd>
     <dt>{{ _("Freigaben") }}</dt><dd>{{ _("{n} erteilt", n=usage.shares) }} · {{ _("{n} erhalten", n=usage.shared_with) }}</dd>
     <dt>{{ _("Chats") }}</dt><dd>{{ usage.chats }} · {{ _("{n} Geräte", n=usage.chat_devices) }} <small class="hk-hint">{{ _("(Inhalte sind Ende-zu-Ende-verschlüsselt und für Admins nicht lesbar)") }}</small></dd>
     {% if usage.v3 %}<dt>{{ _("Chat-Stufe 3") }}</dt><dd>{% if not usage.v3.v1 %}{{ _("alle Chats umgestellt") }}{% else %}{{ _("{n} {n:Chat|Chats} noch nicht umgestellt", n=usage.v3.v1) }}
@@ -105,6 +106,13 @@
     <p class="hk-hint">{{ _("Beendet alle Browser-Sitzungen und widerruft App-Anmeldungen und App-Schlüssel – z. B. bei verlorenem Gerät.") }}</p>
     <div class="adm-actions"><button class="btn" type="submit">{{ _("Überall abmelden") }}</button></div>
   </form>
+  {% if usage.api_tokens %}
+  <form method="post" class="adm-form" data-confirm="{{ _("Alle API-Tokens von {name} widerrufen?", name=u.username) }}">
+    {{ csrf_field() }}<input type="hidden" name="action" value="api_revoke">
+    <p class="hk-hint">{{ _("Widerruft nur die API-Tokens (Skripte, Automationen, KI-Werkzeuge); Webhooks dieser Tokens werden abgeschaltet.") }}</p>
+    <div class="adm-actions"><button class="btn" type="submit">{{ _("API-Tokens widerrufen") }}</button></div>
+  </form>
+  {% endif %}
   {% if not is_self %}
   <h3>{{ _("Konto löschen") }}</h3>
   <form method="post" class="adm-form" data-confirm="{{ _("Konto {name} mit ALLEN Seiten, Aufgaben, Dateien und Verbindungen endgültig löschen?", name=u.username) }}">

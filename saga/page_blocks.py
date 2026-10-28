@@ -330,5 +330,6 @@ def _move(c, uid, a, b, ids, after, at, rev_a, rev_b, origin, made):
             n_comments += 1
     for nid, owner, r in ((a, owner_a, ra), (b, owner_b, rb)):
         bus.fire("note.saved", c, note_id=nid, owner=owner, rev=r[3] + 1, by=uid, updated=now, origin=origin)
+        bus.fire("page.content", c, owner=owner, note_id=nid, by=uid)      # 2.5: Webhooks page/row.updated auf beiden Seiten
     return JSONResponse({"ok": True, "rev_a": ra[3] + 1, "rev_b": rb[3] + 1, "ids": [ren.get(x, x) for x in ids if x in set(old_ids)],
                          "renamed": ren, "files_copied": copied, "unsigned": unsigned, "comments": n_comments, "updated": now})

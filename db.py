@@ -33,7 +33,7 @@ _pool_lock = threading.Lock()
 ID_TABLES = {"task", "note", "note_version", "device_login", "cal_account", "app_token", "users", "groups",
              "service", "bookmark", "note_share", "note_comment", "notification", "chat",
              "push_sub", "push_queue", "push_stream_msg", "ai_history", "fed_invite", "fed_log", "fed_outbox", "backup_run",
-             "user_backup_run", "import_run"}
+             "user_backup_run", "import_run", "api_token", "webhook", "webhook_delivery"}
 # INSERT OR REPLACE: Konfliktspalten je Tabelle
 UPSERT_KEYS = {"immich_key": ("uid",), "user_kv": ("uid", "k"), "fav": ("uid", "grp"), "setting": ("k",),
                "note_share": ("note_id", "target_type", "target"), "note_comment_seen": ("uid", "thread_id"),
@@ -935,6 +935,32 @@ CREATE INDEX IF NOT EXISTS horn_log_ts ON horn_log (ts);
 CREATE TABLE IF NOT EXISTS horn_share (
     peer_id INTEGER PRIMARY KEY, allowed SMALLINT NOT NULL DEFAULT 1, legs INTEGER, mbit INTEGER,
     off SMALLINT NOT NULL DEFAULT 0, updated DOUBLE PRECISION);
+-- Oeffentliche API (2.5, Paket 1 E5-E7, saga/apitok.py, saga/api_v1.py, saga/webhooks.py, saga/mcp.py, Migration 25).
+-- api_token: Schluessel "sga_..." nur als SHA-256 (hash), Bereiche (scopes, JSON-Liste), optionale Seitenbaeume (roots, JSON-Liste
+-- von Seiten-IDs; NULL = alles, was das Konto sehen darf), Ablauf (expires, NULL = unbegrenzt - nur mit Admin-Freigabe),
+-- revoked = widerrufen (Zeile bleibt fuer die Anzeige "widerrufen" kurz stehen). Getrennt von app_token (hk_ ohne Bereiche).
+CREATE TABLE IF NOT EXISTS api_token (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, name TEXT NOT NULL, hash TEXT NOT NULL UNIQUE, prefix TEXT NOT NULL,
+    scopes TEXT NOT NULL DEFAULT '[]', roots TEXT, created DOUBLE PRECISION NOT NULL, expires DOUBLE PRECISION,
+    last_used DOUBLE PRECISION, revoked DOUBLE PRECISION);
+CREATE INDEX IF NOT EXISTS api_token_uid ON api_token (uid);
+-- webhook: Ziel-URL, Geheimnis verschluesselt (secret_enc, auth._enc), Ereignisse (events, JSON-Liste), roots wie oben,
+-- token_id = angelegt ueber diesen API-Token (Widerruf des Tokens schaltet ab), fail_streak = Fehlschlaege in Folge.
+-- webhook_delivery: Ausgangskorb + Protokoll (die letzten 50 je Hook). Gleiche (Hook, Seite, Art) innerhalb der Wartezeit
+-- werden zusammengefasst (Autosave). actor = wer (intern, nie ausgeliefert - die Nutzlast bekommt nur Handle/Anzeigename).
+CREATE TABLE IF NOT EXISTS webhook (
+    id BIGSERIAL PRIMARY KEY, uid TEXT NOT NULL, url TEXT NOT NULL, secret_enc TEXT NOT NULL, events TEXT NOT NULL DEFAULT '[]',
+    roots TEXT, token_id BIGINT, active SMALLINT NOT NULL DEFAULT 1, fail_streak INTEGER NOT NULL DEFAULT 0,
+    created DOUBLE PRECISION NOT NULL, last_ok DOUBLE PRECISION, last_error TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS webhook_uid ON webhook (uid);
+CREATE TABLE IF NOT EXISTS webhook_delivery (
+    id BIGSERIAL PRIMARY KEY, hook_id BIGINT NOT NULL REFERENCES webhook(id) ON DELETE CASCADE, event_id TEXT NOT NULL UNIQUE,
+    kind TEXT NOT NULL, note_id BIGINT, db_id BIGINT, actor TEXT, changed TEXT NOT NULL DEFAULT '[]',
+    created DOUBLE PRECISION NOT NULL, next_try DOUBLE PRECISION, attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until DOUBLE PRECISION, status TEXT NOT NULL DEFAULT 'pending', last_code INTEGER, last_error TEXT NOT NULL DEFAULT '',
+    done DOUBLE PRECISION);
+CREATE INDEX IF NOT EXISTS webhook_delivery_due ON webhook_delivery (next_try) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS webhook_delivery_hook ON webhook_delivery (hook_id, id);
 -- Bestand (erster Start, Backup von vor 2.2 zurueckgespielt): alles ohne abgeleitete Daten zum Abgleich vormerken
 INSERT INTO note_stale (note_id, uid) SELECT n.id, n.uid FROM note n
  WHERE NOT EXISTS (SELECT 1 FROM note_derived d WHERE d.note_id = n.id) ON CONFLICT (note_id) DO NOTHING;
@@ -1168,6 +1194,11 @@ SELECT 1 FROM row_person LIMIT 0;
     24: """
 SELECT 1 FROM task_source LIMIT 0;
 SELECT 1 FROM row_done LIMIT 0;
+""",
+    # 2.5.0 (Paket 1 E5-E7: API-Tokens, /api/v1, Webhooks, MCP): Tabellen api_token, webhook, webhook_delivery legt SCHEMA
+    # oben an; es gibt keinen Bestand. Beliebig oft ausfuehrbar.
+    25: """
+SELECT 1 FROM api_token, webhook, webhook_delivery LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])

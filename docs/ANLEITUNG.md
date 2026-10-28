@@ -1365,6 +1365,35 @@ Ausgangs-Proxy (`HTTPS_PROXY`/`HTTP_PROXY`) wird für Kalender und Immich **nich
 
 ![Einstellungen](screenshots/einstellungen.png)
 
+### API, Webhooks und KI-Werkzeuge (MCP)
+
+Unter **Einstellungen → API** legst du **API-Tokens** für Skripte, Automationen und KI-Werkzeuge an: Name, Bereiche
+(z. B. nur „Seiten lesen“), Laufzeit und optional **nur bestimmte Seitenbäume** (Seiten-IDs; die ID steht in der Adresse
+hinter `#`). Vorher fragt Saga noch einmal nach dem Passwort. Der Token erscheint **nur einmal** – gleich sicher ablegen.
+Ein Token kann nie mehr als dein Konto; „Widerrufen“ sperrt ihn sofort.
+
+- **REST-API** unter `/api/v1/…` – z. B. eine Seite als Markdown lesen:
+  `curl -H "Authorization: Bearer sga_…" "https://saga.example.org/api/v1/pages/12?format=markdown"`
+- **Webhooks:** Saga meldet Änderungen (neue Seiten, geänderte Datenbank-Einträge, Kommentare, Aufgaben …) per HTTP-POST
+  an eine Adresse, signiert mit HMAC-SHA256. Die Meldung enthält keine Inhalte, nur IDs, Titel und wer es war.
+- **MCP-Server** für KI-Werkzeuge wie Claude: Adresse `https://saga.example.org/mcp`, Token mit Bereich „MCP-Server“.
+  Beispiel für Claude Code:
+  `claude mcp add --transport http saga https://saga.example.org/mcp --header "Authorization: Bearer sga_…"`
+  oder in einer Konfigurationsdatei:
+
+  ```json
+  {"mcpServers": {"saga": {"type": "http", "url": "https://saga.example.org/mcp",
+                           "headers": {"Authorization": "Bearer sga_…"}}}}
+  ```
+
+  Seiten, die andere geschrieben haben, können Anweisungen an die KI enthalten (Prompt-Injection). Gib KI-Tokens deshalb
+  nur die nötigen Seitenbäume und möglichst nur Lese-Bereiche.
+
+Alle Endpunkte, Ereignisse und Beispiele: [docs/API.md](API.md). Der Admin schaltet API, Webhooks und MCP unter
+**Allgemein → API, Webhooks und MCP** an oder ab (auch nur für eine Gruppe), legt Höchstzahl, Laufzeit und
+Ratenbegrenzung fest und kann alle Tokens eines Kontos widerrufen. Webhook-Ziele im Heimnetz gehen nur über
+„Freigegebene interne Hosts“.
+
 ### Passkeys und Zwei-Faktor-Anmeldung
 
 Unter **Einstellungen → Konto → Anmeldung & Sicherheit** schützt du ein lokales oder LDAP-Konto zusätzlich zum

@@ -942,7 +942,7 @@ def _merged_view(uid, nid):
 
 def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
     """caps: Faehigkeiten des Clients bzw. der Gegenstelle (client_caps; Foederation: Faehigkeiten des Peers)."""
-    sets, args, merged = [], [], None
+    sets, args, merged, row_changed = [], [], None, None
     with _db() as c, c:
         acc = Access(c, uid)
         owner, role, err = access(c, uid, nid, "edit", acc)
@@ -1149,6 +1149,8 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
                 _rel_sync(c, owner, _json_load(ps[0], {"props": []}), nid, _json_load(ps[1], {}), new_props, _may_edit(acc, role))
                 dbvals.assigned(c, owner, _json_load(ps[0], {"props": []}), nid, _json_load(ps[1], {}), new_props, uid)   # 2.5: db.assigned
                 sets.append("props=?"); args.append(json.dumps(new_props, ensure_ascii=False))
+                old_p = _json_load(ps[1], {})
+                row_changed = sorted(k for k in set(old_p) | set(new_props) if old_p.get(k) != new_props.get(k))
             if "title" in b:
                 sets.append("title=?"); args.append(_title_in(b["title"]))
             if "icon" in b:
@@ -1236,6 +1238,11 @@ def _note_update(uid, nid, b, origin=None, caps=CLIENT_CAPS):
         bus.fire("note.saved", c, note_id=nid, owner=owner, rev=old[3] + (1 if content else 0), by=uid, updated=now, origin=origin)
         if "props" in b or "title" in b or "icon" in b:
             announce_row(c, owner, nid, uid, now, origin)     # Datenbank-Zeile: auch an Betrachter der Tabelle (BUG-049)
+        if "body" in b:                     # 2.5: Webhooks page.updated / row.updated (Inhalt; Autosave fasst saga.webhooks zusammen)
+            bus.fire("page.content", c, owner=owner, note_id=nid, by=uid)
+        if row_changed or ("title" in b and _title_in(b["title"]) != old[0]):      # 2.5: Webhooks row.updated (geaenderte Eigenschaften)
+            bus.fire("row.changed", c, owner=owner, note_id=nid, by=uid,
+                     changed=(row_changed or []) + (["title"] if "title" in b and _title_in(b["title"]) != old[0] else []))
         # Seitenbaum (notes.tree): nur Felder, die /api/notes zeigt (bzw. Titelbild) - Titel nur, wenn er sich aendert
         if moved_from is not None:          # andere Elternseite: geerbte Freigaben aendern sich (alte UND neue Kette)
             announce_shared(c, owner, nid, [nid], moved_from)
@@ -1383,6 +1390,11 @@ def api_note_delete(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
+    return note_trash(uid, nid, origin_of(request))
+
+
+def note_trash(uid, nid, origin=None):
+    """In den Papierkorb (nur der Eigentuemer) - Weboberflaeche und /api/v1."""
     owner = uid                              # Loeschen: nur der Eigentuemer
     with _db() as c, c:
         _, _, err = access(c, uid, nid, "owner")
@@ -1396,8 +1408,8 @@ def api_note_delete(nid: int, request: Request):
             return _bad("not found", 404)
         now = time.time()
         c.executemany("UPDATE note SET deleted_at=? WHERE id=? AND uid=?", [(now, i, owner) for i in ids])
-        announce_tree(c, owner, nid, ids, uid, now, True, origin=origin_of(request))
-        tree_changed(c, owner, ids, "trashed", origin_of(request))
+        announce_tree(c, owner, nid, ids, uid, now, True, origin=origin)
+        tree_changed(c, owner, ids, "trashed", origin)
     return JSONResponse({"deleted": len(ids), "trash": True})
 
 
