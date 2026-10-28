@@ -150,7 +150,7 @@ Antwort `200`: `{"ok": true, "rev_a", "rev_b", "ids": [IDs im Ziel], "renamed": 
 
 ## Gleichzeitig bearbeiten: blockweises Zusammenführen (2.5, P3 Stufe 1)
 
-Statt `409` führt der Server (bei föderierten Seiten später der Eigentümer-Server, Etappe E3) zwei Fassungen einer Seite
+Statt `409` führt der Server (bei föderierten Seiten der Eigentümer-Server, Fähigkeit `merge1`, `APP-API-FED.md` Abschnitt 8) zwei Fassungen einer Seite
 **blockweise zusammen**. Die Merge-Logik gibt es nur im Server (`saga/merge.py`); Apps führen nur Buch. Testvektoren:
 `tests/vectors/merge.json` (Basis, meins, deren → erwartet). Alte Apps ohne `merge` bekommen weiterhin `409`.
 
@@ -211,7 +211,15 @@ Antwort `200` (zusammengeführt, d. h. `rev` war veraltet bzw. `base`/`bases` ge
 4. Feiner (optional): je lokal geänderten Block die `rev` merken, auf der die Änderung beruht, und als `bases` senden.
 5. Fremde Änderung ohne eigenes Speichern (`note.changed` mit höherer `rev`): `GET` und blockweise übernehmen, ungespeicherte
    eigene Blöcke behalten (bzw. einfach sofort mit `merge: 1` speichern). Kein „Neu laden“-Hinweis mehr nötig.
+   Sparsamer: `GET /api/notes/{id}?since=<bekannte rev>` → statt `body` ein `delta {from, blocks}`: `blocks` ist die
+   aktuelle Reihenfolge der obersten Ebene, unveränderte Blöcke nur als `{"id"}` (eigenen Stand von `from` nehmen),
+   geänderte/neue vollständig. Liegt die Basis nicht mehr vor (bzw. Text-Seite, ältere Server): ganz normal mit `body`.
+   Alle anderen Felder wie ohne `since`.
 6. Kopf `X-Saga-Caps: …,merge1` melden (siehe Inline-Vertrag).
+7. Seiten anderer Server (negative IDs): derselbe Weg, wenn `remote.caps` `merge1` enthält – sonst ohne `merge` speichern
+   und bei `409` den Konfliktdialog zeigen (`APP-API-FED.md` Abschnitt 8). Konfliktblöcke fremder Personen tragen in
+   `hkconflict.by` deren Prinzipal (`@name@host`) bzw. einen Handle, `name` ist der Anzeigename.
+8. Nach „Version wiederherstellen“ (neue `rev`) führt der Server wie nach jedem Speichern zusammen.
 
 ### Anwesenheit je Block
 
@@ -219,7 +227,8 @@ Antwort `200` (zusammengeführt, d. h. `rev` war veraltet bzw. `base`/`bases` ge
 wirksam). Senden bei Blockwechsel (höchstens etwa 1×/s; schnellere Meldungen ändern nur den Block), sonst wie bisher
 alle ~20 s; ohne `block` bleibt der zuletzt gemeldete. Antwort und Ereignis `presence` liefern je Person zusätzlich
 `block` und `color` (Palette, stabil je Person). Darstellung: farbiger Rand links am Block + „{name} bearbeitet“ –
-nur Hinweis, keine Sperre. Ältere Clients ignorieren die Felder. Föderiert: folgt mit E3 (`presence2`).
+nur Hinweis, keine Sperre. Ältere Clients ignorieren die Felder. Föderiert gleich (negative `note_id`), wenn der
+Server der Seite `presence2` kann (`remote.caps`); dann höchstens 1 Blockwechsel/s, schnellere → `{"skipped": true}`.
 
 ## Widgets in Seiten (2.5, Etappe 1)
 

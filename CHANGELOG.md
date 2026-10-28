@@ -180,6 +180,15 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
   „Neu laden“; wer gerade wo schreibt, ist am Block markiert (Anwesenheit mit `block`).
 - **Eindeutige Block-IDs** für alle Blöcke (auch in Spalten/Toggles); alte Seiten bekommen beim Lesen stabile IDs.
 - Datenbank: Migration 22 (`note_base`, Basisstände 24 h / 30 je Seite). Ältere Apps ohne `merge`: unverändert `409`.
+### Neu (2.5, Gleichzeitig bearbeiten – P3-E3 Föderation)
+- **Zusammenführen auch auf Seiten anderer Saga-Server.** Fähigkeit `merge1`: wer eine geteilte Seite eines anderen
+  Servers bearbeitet, wird beim Eigentümer-Server zusammengeführt (Konfliktblock, Rebase, `base`/`bases` wie lokal); der
+  Konfliktblock nennt nur öffentlichen Namen bzw. Handle, nie den Anmeldenamen. Ältere Gegenstellen: Konfliktdialog wie bisher.
+- **Block-Markierung über Servergrenzen** (Fähigkeit `presence2`): wer wo schreibt, ist auch auf föderierten Seiten am Block
+  markiert (Farbe aus der Kennung, nur für Personen mit Zugriff, Blockwechsel höchstens 1×/s).
+- `GET /api/notes/{id}?since=<rev>` liefert nur die geänderten Blöcke (`delta`), auch für Seiten anderer Server.
+- Behoben: Nach „Version wiederherstellen“ kam beim nächsten Speichern eines anderen Tabs/Geräts `409` statt Zusammenführen
+  (kein Basisstand für die neue Revision). Keine Migration.
 
 ### Neu (2.5, Editor-Rest P6-1 Web-Editor und P6-4 Verschieben)
 - **Inline-Farben.** Werkzeug „A“ in der Inline-Leiste: 9 Text- und 9 Hintergrundfarben aus der Block-Palette (hell/dunkel),
