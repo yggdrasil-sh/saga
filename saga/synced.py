@@ -162,8 +162,8 @@ def prepare(c, owner, nid, uid, old_body, body, caps, acc=None):
         if sid not in old_sids and r_nid != nid and not acc.role(r_nid) and uid != r_owner:
             drop.add(id(b))                              # neue Kopie ohne Lesezugriff auf das Original
             continue
-        if has and "sync1" in caps and r_nid != nid and r_gone is None and isinstance(srev, int) and not isinstance(srev, bool):
-            plan["through"].append((sid, d["blocks"], srev))     # ohne srev (Stand des Originals) kein Durchschreiben
+        if has and "sync1" in caps and r_nid != nid and r_gone is None:
+            plan["through"].append((sid, d["blocks"], srev if isinstance(srev, int) and not isinstance(srev, bool) else None))
         d.pop("blocks", None)
         for k in [k for k in d if k != "sid"]:
             d.pop(k)
@@ -241,6 +241,8 @@ def write_through(c, uid, sid, blocks, srev, now, origin=None, skip=None):
         return "gone"
     if row[4]:
         return "locked"
+    if srev is None:
+        return "stale"                                   # ohne Stand des Originals (src.rev beim Lesen) kein Durchschreiben
     doc = json.loads(ensure_ids(row[1], "blocks", a) or '{"blocks": []}')
     orig = _find(doc, sid)
     if orig is None:
