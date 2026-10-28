@@ -558,7 +558,7 @@ def _block(ctx, typ, d, depth):
         if src:
             wh = (f' width="{int(r["w"])}" height="{int(r["hgt"])}"'
                   if isinstance(r.get("w"), int) and isinstance(r.get("hgt"), int) else "")
-            return f'<figure class="pub-img pub-diagram"><img src="{src}"{wh} alt="{escape(t("Diagramm"))}" loading="lazy"></figure>'
+            return f'<figure class="pub-img pub-diagram"><img src="{src}"{wh} alt="{escape(t("Diagramm##Mermaid"))}" loading="lazy"></figure>'
     if typ == "code":
         lang = re.sub(r"[^a-z0-9+#-]", "", str(d.get("language") or "").lower())[:20]
         lab = f'<span class="pub-code-lang">{escape(lang)}</span>' if lang and lang != "plain" else ""

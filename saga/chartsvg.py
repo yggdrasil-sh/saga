@@ -69,7 +69,7 @@ def render(res, title=""):
     series = res.get("series") or []
     if not cats or not series:
         return f'<p class="pub-muted">{escape(i18n.t("Keine Einträge."))}</p>'
-    aria = escape(title or i18n.t("Diagramm"))
+    aria = escape(title or i18n.t("Diagramm##Chart"))
     out = [f'<svg class="pub-ch" viewBox="0 0 {W} {H}" role="img" aria-label="{aria}" xmlns="http://www.w3.org/2000/svg">']
     if typ in ("pie", "donut"):
         vals = [max(0.0, float(v)) if isinstance(v, (int, float)) else 0.0 for v in series[0].get("values") or []]

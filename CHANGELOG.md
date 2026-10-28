@@ -24,6 +24,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Web holt bei fremden Änderungen nur noch das Delta** (`GET /api/notes/{id}?since=<rev>`): unveränderte Blöcke
   kommen aus dem offenen Editor, nur geänderte vom Server. Ohne `delta` (ältere Server, Basis nicht mehr da) wie bisher
   der ganze Inhalt.
+- **„Diagramm“ getrennt übersetzt:** Diagramm-Ansicht/-Widget (Chart, z. B. en „Chart“) und Mermaid-Diagramm
+  (en „Diagram“) haben eigene Übersetzungen in allen Sprachen.
 
 ### Neu (2.5, P6-5/P6-6: Erwähnungen und synchronisierte Blöcke)
 - **@-Erwähnungen von Personen.** Im @-Menü des Editors stehen jetzt zuerst **Personen** mit Zugriff auf die Seite;

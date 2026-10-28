@@ -4821,7 +4821,7 @@
           var name = el('input', 'flt-val'); name.type = 'text'; name.maxLength = 40; name.value = v.name;
           liveText(name, function (val) { if (val.trim()) { v.name = val.trim(); saveSchemaSoon(); renderDb(); } });
           row(T('Name'), name);
-          row(T('Layout'), sel([['table', '▦ ' + T('Tabelle')], ['board', '▥ ' + T('Board')], ['list', '☰ ' + T('Liste')], ['gallery', '▣ ' + T('Galerie')], ['calendar', '🗓 ' + T('Kalender')], ['chart', '📊 ' + T('Diagramm')], ['timeline', '┅ ' + T('Zeitleiste')]], v.type, function (x) { v.type = x; commit(); }));
+          row(T('Layout'), sel([['table', '▦ ' + T('Tabelle')], ['board', '▥ ' + T('Board')], ['list', '☰ ' + T('Liste')], ['gallery', '▣ ' + T('Galerie')], ['calendar', '🗓 ' + T('Kalender')], ['chart', '📊 ' + T('Diagramm##Chart')], ['timeline', '┅ ' + T('Zeitleiste')]], v.type, function (x) { v.type = x; commit(); }));
           var sels = DB.schema.props.filter(groupable).map(function (p) { return [p.id, (isFx(p) ? 'ƒ ' : '') + p.name]; });
           if (v.type === 'board') row(T('Spalten nach'), sel(sels.length ? sels : [['', T('– keine Auswahl-Eigenschaft –')]], v.group_by, function (x) { if (x) v.group_by = x; commit(); }));
           if (v.type === 'table' || v.type === 'list' || v.type === 'timeline') row(T('Gruppieren'), sel([['', T('nicht gruppieren')]].concat(sels), v.group, function (x) { if (x) v.group = x; else delete v.group; commit(); }));
@@ -5127,7 +5127,7 @@
         m.appendChild(HK.menuItem(T('Liste'), function () { v.type = 'list'; saveSchema().then(renderDb); }, { icon: '☰', on: v.type === 'list' }));
         m.appendChild(HK.menuItem(T('Galerie'), function () { v.type = 'gallery'; saveSchema().then(renderDb); }, { icon: '▣', on: v.type === 'gallery' }));
         m.appendChild(HK.menuItem(T('Kalender'), function () { v.type = 'calendar'; saveSchema().then(renderDb); }, { icon: '🗓', on: v.type === 'calendar' }));
-        m.appendChild(HK.menuItem(T('Diagramm'), function () { v.type = 'chart'; saveSchema().then(renderDb); }, { icon: '📊', on: v.type === 'chart' }));
+        m.appendChild(HK.menuItem(T('Diagramm##Chart'), function () { v.type = 'chart'; saveSchema().then(renderDb); }, { icon: '📊', on: v.type === 'chart' }));
         m.appendChild(HK.menuItem(T('Zeitleiste'), function () { v.type = 'timeline'; saveSchema().then(renderDb); }, { icon: '┅', on: v.type === 'timeline' }));
         var sels = DB.schema.props.filter(groupable);
         if (v.type === 'board' && sels.length) {
@@ -5145,7 +5145,7 @@
     function addView(anchor) {
       HK.openMenu(anchor, function (m) {
         m.appendChild(HK.menuLabel(T('Neue Ansicht')));
-        [['table', '▦', T('Tabelle')], ['board', '▥', T('Board')], ['list', '☰', T('Liste')], ['gallery', '▣', T('Galerie')], ['calendar', '🗓', T('Kalender')], ['chart', '📊', T('Diagramm')], ['timeline', '┅', T('Zeitleiste')]].forEach(function (t) {
+        [['table', '▦', T('Tabelle')], ['board', '▥', T('Board')], ['list', '☰', T('Liste')], ['gallery', '▣', T('Galerie')], ['calendar', '🗓', T('Kalender')], ['chart', '📊', T('Diagramm##Chart')], ['timeline', '┅', T('Zeitleiste')]].forEach(function (t) {
           m.appendChild(HK.menuItem(t[2], function () {
             var v = { id: rid(), name: t[2], type: t[0] };
             var s = DB.schema.props.find(function (p) { return p.type === 'select'; }); if (t[0] === 'board' && s) v.group_by = s.id;
@@ -6330,7 +6330,7 @@
     }
     if (!cats.length || !series.length) { box.appendChild(el('div', 'wg-note', T('Keine Einträge.'))); return box; }
     var svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 ' + CH_W + ' ' + CH_H); svg.setAttribute('class', 'ch-svg');
-    svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', opts.title || T('Diagramm')); box.appendChild(svg);
+    svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', opts.title || T('Diagramm##Chart')); box.appendChild(svg);
     var labels = cats.map(function (c) { return chartCatLabel(res, c); });
     if (res.type === 'pie' || res.type === 'donut') {
       var vals = (series[0].values || []).map(function (v) { return typeof v === 'number' && v > 0 ? v : 0; });
@@ -6471,7 +6471,7 @@
   var WG_KINDS = ['clock', 'countdown', 'progress', 'metric', 'quote', 'weather', 'habit', 'upcoming', 'chart'];
   var WG_KINDS2 = ['weather', 'habit', 'upcoming', 'chart'];
   var WG_NAMES = { clock: T('Uhr'), countdown: T('Countdown'), progress: T('Fortschritt'), metric: T('Kennzahl'), quote: T('Zitat'),
-    weather: T('Wetter'), habit: T('Gewohnheiten'), upcoming: T('Anstehendes'), chart: T('Diagramm') };
+    weather: T('Wetter'), habit: T('Gewohnheiten'), upcoming: T('Anstehendes'), chart: T('Diagramm##Chart') };
   var WG_IC = { clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', countdown: '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9"/>',
     progress: '<rect x="3" y="9" width="18" height="6" rx="3"/><path d="M6 12h7"/>', metric: '<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/>',
     quote: '<path d="M7 7h4v4c0 3-2 5-4 5M14 7h4v4c0 3-2 5-4 5"/>',
@@ -6718,7 +6718,7 @@
       return;
     }
     // Diagramm
-    body.appendChild(chartSvg(data, { title: d.title || T('Diagramm') }));
+    body.appendChild(chartSvg(data, { title: d.title || T('Diagramm##Chart') }));
   };
   WidgetTool.prototype.habit = function (pid, day, on, btn) {
     var self = this, id = S.cur && S.cur.id, tz = '';

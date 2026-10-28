@@ -420,7 +420,7 @@
         if (tool.mUrl) URL.revokeObjectURL(tool.mUrl);
         tool.mUrl = x.url; tool.mSize = x;
         box.textContent = '';
-        var img = el('img', 'hk-mmd-img'); img.alt = T('Diagramm'); img.src = x.url; img.width = x.w; img.height = x.h; img.decoding = 'async';
+        var img = el('img', 'hk-mmd-img'); img.alt = T('Diagramm##Mermaid'); img.src = x.url; img.width = x.w; img.height = x.h; img.decoding = 'async';
         box.appendChild(img);
       }).catch(function (err) {
         if (my !== tool.mSeq) return;
