@@ -20,7 +20,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Datenbanken als Aufgabenquelle.** Offene Einträge gewählter Datenbanken erscheinen zusammen mit den Saga-Aufgaben in
   einer Liste (Dashboard/Aufgabenleiste, Block „Aufgaben“, „Mein Tag“), fertig sortiert nach überfällig, heute, Datum und
   Priorität, mit Badge der Datenbank; Abhaken setzt den Status (Gruppe „Erledigt“), das Häkchen bzw. die gewählte
-  Auswahl-Option – mit „Rückgängig“. DB-Menü „Als Aufgabenquelle verwenden …“: Zuordnung (erledigt, Datum, Priorität,
+  Auswahl-Option – mit „Rückgängig“ (stellt den vorherigen Wert wieder her, etwa „Läuft“). DB-Menü „Als Aufgabenquelle verwenden …“: Zuordnung (erledigt, Datum, Priorität,
   zuständige Person) wird aus den Typen vorgeschlagen.
 - **Abo je Person:** eigene Datenbanken mit allen offenen Einträgen, geteilte nur mit den mir zugewiesenen (je Quelle
   umschaltbar), höchstens 20 Quellen mit je 500 offenen Einträgen. Rechte werden bei jedem Lesen neu geprüft; ein Abo ohne
@@ -32,7 +32,7 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Tägliche Zusammenfassung** „heute fällig / überfällig“ (Mitteilung und Push, Kategorie „Aufgaben“), standardmäßig
   aus, Uhrzeit und Zeitzone je Konto.
 - **Apps:** `features` `tasksrc1`, `taskdue1`; `GET /api/tasks?with_sources=1`, `PATCH /api/tasks/src/{zeile}`,
-  `POST /api/app/tasks/src/{zeile}/done`, `GET /api/app/today?sources=1` – Format und Offline-Hinweise in
+  `POST /api/app/tasks/src/{zeile}/done` (Antwort `prev`, Rückgängig mit `value`), `GET /api/app/today?sources=1` – Format und Offline-Hinweise in
   `docs/APP-API.md` „Aufgabenquellen“. **Migration 24** (Tabellen `task_source`, `row_done`).
 
 ### Neu (2.5, Paket 4: Widgets Etappe 2 und Diagramme)

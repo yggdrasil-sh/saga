@@ -6978,7 +6978,7 @@
           TS.done(t, true).then(function (r) {
             var msg = r && r.next_due ? T('Erledigt. Nächstes Mal: {date}', { date: fTaskDue.format(new Date(r.next_due + 'T00:00:00')) }) : T('Aufgabe erledigt');
             HK.toast(msg, T('Rückgängig'), function () {      // wie Dashboard und Apps: 8 s zum Zuruecknehmen
-              TS.done(t, false).then(function () { self.draw(); wgSoon(); })
+              TS.done(t, false, r ? r.prev : undefined).then(function () { self.draw(); wgSoon(); if (t.kind === 'row') refreshDbViews(t.src); })
                 .catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });
             }, 8000);
             self.draw(); wgSoon();                              // fix27 #3: Kennzahlen aus den Aufgaben sofort neu

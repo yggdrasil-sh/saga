@@ -65,6 +65,15 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
   const st = await until(async () => { const r = await row(r1); return r.props && r.props.st === 'ok' ? r : null; });
   ok('Abhaken im Block: Status der Zeile = "Fertig"', !!st, st && st.props);
   ok('Toast mit "Rückgängig"', await until(() => p.locator('.toast:not([hidden])', { hasText: 'Rückgängig' }).count()));
+  // Rueckgaengig stellt den vorherigen Wert wieder her ("Laeuft" bleibt "Laeuft", nicht open_value "Neu")
+  const r2 = (await api('POST', '/api/notes', { title: 'BQ Läuft schon', parent_id: db, props: { st: 'lauf' } })).id;
+  await p.goto(BASE + '/notes?t=' + Date.now() + '#' + pg);
+  await until(() => p.locator('.etk-row.is-src', { hasText: 'BQ Läuft schon' }).count());
+  await p.locator('.etk-row.is-src', { hasText: 'BQ Läuft schon' }).locator('.etk-check').click();
+  ok('Block: "Läuft" abgehakt -> Fertig', !!(await until(async () => { const r = await row(r2); return r.props && r.props.st === 'ok'; })));
+  await p.locator('.toast:not([hidden]) .toast-action', { hasText: 'Rückgängig' }).click();
+  const back = await until(async () => { const r = await row(r2); return r.props && r.props.st === 'lauf' ? r : null; });
+  ok('Block: Rückgängig -> wieder "Läuft"', !!back, (await row(r2)).props);
   await p.locator('.nbtn', { hasText: 'BQ in Projekt' }).click();
   await p.waitForSelector('#pg-modal:not([hidden]) .task-quick input');
   await p.fill('.task-quick input', 'BQ per Knopf'); await p.press('.task-quick input', 'Enter');
@@ -77,6 +86,12 @@ async function until(fn, ms) { const t0 = Date.now(); for (;;) { const v = await
   await p.goto(BASE + '/?t=' + Date.now());
   const dl = await until(async () => { const n = await p.locator('#task-list').count(); if (!n) return null; const t = await p.locator('#task-list').textContent(); return /BQ per Knopf/.test(t) ? t : null; }, 8000);
   ok('Dashboard: Zeilen der Quelle in der Aufgabenliste', !!dl && /BQ Inbox/.test(dl) && !/BQ Angebot/.test(dl), dl);
+  // Aufgabenleiste (breit) bzw. Dashboard-Liste: das sichtbare Haekchen
+  await p.locator('#rail-list li, #task-list li', { hasText: 'BQ Läuft schon' }).locator('.task-check').locator('visible=true').first().click();
+  ok('Aufgabenleiste: "Läuft" abgehakt -> Fertig', !!(await until(async () => { const r = await row(r2); return r.props && r.props.st === 'ok'; })));
+  await p.locator('.toast:not([hidden]) .toast-action', { hasText: 'Rückgängig' }).click();
+  ok('Aufgabenleiste: Rückgängig -> wieder "Läuft"', !!(await until(async () => { const r = await row(r2); return r.props && r.props.st === 'lauf'; })),
+    (await row(r2)).props);
 
   // --- Hinweis bei alter Vorlagen-Instanz -----------------------------------------------------------------------------
   const old = (await api('POST', '/api/notes', { title: 'BQ Alte Aufgaben', kind: 'database' })).id;

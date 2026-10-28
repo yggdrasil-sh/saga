@@ -243,7 +243,8 @@ def run():
 
     # --- 4. Abhaken -------------------------------------------------------------------------------------------------
     s, d = req("PATCH", f"/api/tasks/src/{r_b}", B, {"done": True, "today": TODAY.isoformat()})
-    ok(f"Bert hakt ab ueber Status-Gruppe -> 'fertig' ({s})", s == 200 and d == {"ok": True, "src": db1, "done": True, "done_value": "fertig"}, d)
+    ok(f"Bert hakt ab ueber Status-Gruppe -> 'fertig', prev mit ({s})",
+       s == 200 and d == {"ok": True, "src": db1, "done": True, "done_value": "fertig", "prev": "neu"}, d)
     pv = req("GET", f"/api/notes/{r_b}", A)[1]["props"]
     ok("Zeile hat Status 'fertig', Personen bleiben (Merge-PATCH)", pv.get("st") == "fertig" and pv.get("wer") == [handle(B), handle(C)], pv)
     with connect() as c:
@@ -254,7 +255,20 @@ def run():
     with connect() as c:
         rd = c.execute("SELECT 1 FROM row_done WHERE note_id=?", (r_b,)).fetchone()
     ok(f"Wieder oeffnen -> open_value 'neu', row_done weg ({s})", s == 200 and pv.get("st") == "neu" and rd is None, pv)
+    # Rueckgaengig: vorheriger Wert ("Laeuft") statt open_value; ungueltiger/erledigter value -> open_value
+    req("PATCH", f"/api/notes/{r_b}", A, {"props": {"st": "lauf"}})
+    s, d = req("PATCH", f"/api/tasks/src/{r_b}", A, {"done": True})
+    ok(f"Laeuft abhaken -> prev 'lauf' ({s})", s == 200 and d.get("prev") == "lauf" and d.get("done_value") == "fertig", d)
+    s, d = req("PATCH", f"/api/tasks/src/{r_b}", A, {"done": False, "value": d.get("prev")})
+    ok(f"Rueckgaengig mit value -> wieder 'Laeuft' ({s})", s == 200 and req("GET", f"/api/notes/{r_b}", A)[1]["props"].get("st") == "lauf"
+       and d.get("prev") == "fertig", d)
+    for bad in ("gibtsnicht", "fertig", 5, ["lauf"]):
+        req("PATCH", f"/api/tasks/src/{r_b}", A, {"done": True})
+        s, d = req("PATCH", f"/api/tasks/src/{r_b}", A, {"done": False, "value": bad})
+        ok(f"Rueckgaengig mit ungueltigem value {bad!r} -> open_value 'neu' ({s})",
+           s == 200 and req("GET", f"/api/notes/{r_b}", A)[1]["props"].get("st") == "neu", d)
     s, d = req("PATCH", f"/api/tasks/src/{c_open}", A, {"done": True})
+    ok(f"Haekchen: prev = vorher leer ({d.get('prev')!r})", s == 200 and "prev" in d and d["prev"] in (None, False), d)
     pv = req("GET", f"/api/notes/{c_open}", A)[1]["props"]
     ok(f"Haekchen abhaken ({s})", s == 200 and pv.get("ok") is True and d["done_value"] is True, pv)
     req("PATCH", f"/api/tasks/src/{c_open}", A, {"done": False})
@@ -304,6 +318,14 @@ def run():
     s, d = req("POST", f"/api/app/tasks/src/{r_later}/done", bearer=tok, body={"done": True})
     ok(f"App-Schluessel hakt Quell-Zeile ab ({s})", s == 200 and req("GET", f"/api/notes/{r_later}", A)[1]["props"].get("st") == "fertig", d)
     req("POST", f"/api/app/tasks/src/{r_later}/done", bearer=tok, body={"done": False})
+    req("PATCH", f"/api/notes/{r_later}", A, {"props": {"st": "lauf"}})
+    s, d = req("POST", f"/api/app/tasks/src/{r_later}/done", bearer=tok, body={"done": True})
+    ok(f"App-Weg: Antwort mit prev 'lauf' ({s})", s == 200 and d.get("prev") == "lauf", d)
+    s, d = req("POST", f"/api/app/tasks/src/{r_later}/done", bearer=tok, body={"done": False, "value": d.get("prev")})
+    ok(f"App-Weg: Rueckgaengig mit value -> 'Laeuft' ({s})", s == 200 and req("GET", f"/api/notes/{r_later}", A)[1]["props"].get("st") == "lauf", d)
+    s, d = req("POST", f"/api/app/tasks/src/{r_later}/done", bearer=tok, body={"done": True})
+    s, d = req("POST", f"/api/app/tasks/src/{r_later}/done", bearer=tok, body={"done": False, "value": "fertig"})
+    ok(f"App-Weg: erledigter value -> open_value ({s})", s == 200 and req("GET", f"/api/notes/{r_later}", A)[1]["props"].get("st") == "neu", d)
 
     # --- 5. Neue Aufgabe in einer Quelle -----------------------------------------------------------------------------
     tpl = req("POST", "/api/notes", A, {"parent_id": db1, "title": "Vorlage", "props": {"st": "lauf"}})[1]["id"]

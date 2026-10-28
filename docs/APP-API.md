@@ -1097,10 +1097,16 @@ Bisherige Felder `open`/`done` bleiben; dazu (`sources=1` ist gleichwertig):
 
 ### Abhaken und ändern
 
-- `PATCH /api/tasks/src/{zeile}` `{done?: bool, due?: "YYYY-MM-DD"|null, prio?: 1|2|3, text?}` → `{ok, src, done?,
-  done_value?}`. Gleicher Weg wie das Props-PATCH der Seite (Rechte ab *Bearbeiten*, sonst `403`; ohne Zugriff `404`;
+- `PATCH /api/tasks/src/{zeile}` `{done?: bool, value?, due?: "YYYY-MM-DD"|null, prio?: 1|2|3, text?}` → `{ok, src, done?,
+  done_value?, prev?}`. Gleicher Weg wie das Props-PATCH der Seite (Rechte ab *Bearbeiten*, sonst `403`; ohne Zugriff `404`;
   Live, Versionen, Mitteilungen). `done: false` setzt `open_value`. Keine Wiederholung für Zeilen.
-- App-Schlüssel (Widget): `POST /api/app/tasks/src/{zeile}/done` `{done: true|false}` – gleiche Rechte.
+- **Rückgängig:** Die Antwort auf `done` enthält `prev` = Wert der Erledigt-Eigenschaft *vor* der Änderung (Option-ID,
+  `true`/`null` beim Häkchen). Rückgängig schickt ihn mit: `{"done": false, "value": <prev>}` – so steht eine Zeile „Läuft“
+  danach wieder auf „Läuft“ statt auf `open_value`. Der Server nimmt `value` nur, wenn es eine offene Option der Eigenschaft
+  ist (bzw. `null`/`false` beim Häkchen), sonst `open_value`. Ohne `value` wie bisher. Seit `tasksrc1` (ältere Server
+  ignorieren `value`, kein `MIN_APP`).
+- App-Schlüssel (Widget): `POST /api/app/tasks/src/{zeile}/done` `{done: true|false, value?}` → gleiche Antwort mit `prev` –
+  gleiche Rechte.
 - Inbox-Aufgaben weiter über `PATCH /api/tasks/{id}` (`kind: "task"`).
 
 ### Neue Aufgabe mit Ziel
@@ -1116,6 +1122,9 @@ Schaltfläche `action: "task"` darf `target: <db>` tragen (Meeting-Vorlage); äl
   Datenbank-Werte schon existiert (Android `DbStore`) – `PATCH /api/notes/{zeile}` `{"props": {map.done: map.done_value}}`
   (bzw. `open_value`; Häkchen: `true`/`false`). Das Props-PATCH verschmilzt einzelne Eigenschaften, andere Werte bleiben.
 - Schlüssel der Warteschlange je Eintrag (`t:<id>`/`r:<id>`), letzte Aktion gewinnt (abhaken + wieder öffnen = nichts).
+- Rückgängig in der Warteschlange: den Wert *vor* dem Abhaken merken (aus `prev` der Antwort bzw., offline, aus den
+  zuletzt geladenen Werten der Zeile) und beim Wieder-Öffnen als `value` mitschicken (bzw. im Props-PATCH genau diesen
+  Wert statt `open_value`) – nie pauschal `open_value`, sonst landet „Läuft“ auf „Neu“.
 - Beim Nachholen: `403`/`404` → Eintrag verwerfen und Liste neu laden (Recht entzogen, Zeile gelöscht); `400`
   (Zuordnung geändert) → neu laden, `map` neu lesen, nicht wiederholen. Netzfehler/`5xx` → behalten.
 - Nach jedem erfolgreichen Nachholen `GET /api/tasks?with_sources=1` neu laden (die Reihenfolge rechnet der Server).

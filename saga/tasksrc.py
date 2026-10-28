@@ -90,6 +90,14 @@ class Mapping:
             for oid, n in self.prio_of.items():
                 self.prio_val.setdefault(n, oid)
 
+    def open_ok(self, v):
+        """Darf v beim Wieder-Oeffnen gesetzt werden? Offene Option (bzw. leer) der Eigenschaft - nie ein Erledigt-Wert."""
+        if self.kind == "checkbox":
+            return v in (None, False)
+        if v is None:
+            return True
+        return isinstance(v, str) and v not in self.done_ids and any(o.get("id") == v for o in self.dp.get("options") or [])
+
     def is_done(self, pv):
         v = (pv or {}).get(self.dp["id"])
         if self.kind == "checkbox":
@@ -434,7 +442,7 @@ def _due_in(v):
 
 
 def patch_row(uid, row, b, origin=None):
-    """PATCH /api/tasks/src/{row} {done?, due?, prio?, text?} - Huelle ueber das Props-PATCH (gleiche Rechte: 'edit')."""
+    """PATCH /api/tasks/src/{row} {done?, value?, due?, prio?, text?} - Huelle ueber das Props-PATCH (gleiche Rechte: 'edit')."""
     from saga import pages
     if row < 0:
         return _bad(t("Datenbanken anderer Saga-Server lassen sich (noch) nicht als Aufgabenquelle verwenden."))
@@ -445,7 +453,7 @@ def patch_row(uid, row, b, origin=None):
     owner, db_id, schema, m, role = x
     if RANK.get(role, 0) < RANK["edit"]:
         return _bad(t("Dafür fehlt dir die Berechtigung."), 403)
-    props, up = {}, {}
+    props, up, prev = {}, {}, None
     try:
         if "done" in b:
             if not isinstance(b["done"], bool):
@@ -453,6 +461,11 @@ def patch_row(uid, row, b, origin=None):
             v = m.done_value if b["done"] else m.open_value
             if b["done"] and v is None:
                 raise ValueError
+            if not b["done"] and "value" in b and m.open_ok(b["value"]):
+                v = b["value"]                    # Rueckgaengig: vorheriger Wert (z. B. "Laeuft"), sonst open_value
+            with _db() as c:
+                r = c.execute("SELECT props FROM note WHERE id=? AND uid=?", (row, owner)).fetchone()
+            prev = (_json_load(r[0], {}) if r else {}).get(m.dp["id"])
             props[m.dp["id"]] = v
         if "due" in b:
             if m.due is None:
@@ -487,6 +500,7 @@ def patch_row(uid, row, b, origin=None):
     if "done" in b:
         out["done"] = b["done"]
         out["done_value"] = props[m.dp["id"]]
+        out["prev"] = prev                        # Wert vor der Aenderung - fuer Rueckgaengig {"done": false, "value": prev}
     return JSONResponse(out)
 
 

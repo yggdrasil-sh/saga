@@ -50,7 +50,9 @@
     patchTask(task, { done: closing }).then(function (d) {
       if (closing && d) {
         var msg = d.next_due ? T('Erledigt. Nächstes Mal: {date}', { date: dueLabel(d.next_due).text }) : T('Aufgabe erledigt');
-        toast(msg, T('Rückgängig'), function () { patchTask(task, { done: false }).then(loadTasks); }, 8000);
+        var back = { done: false };
+        if (isRow(task) && d.prev !== undefined) back.value = d.prev;     // Zeile: vorherigen Wert wiederherstellen (z. B. "Läuft")
+        toast(msg, T('Rückgängig'), function () { patchTask(task, back).then(loadTasks); }, 8000);
       }
       return loadTasks();
     });

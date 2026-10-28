@@ -271,7 +271,10 @@ async def api_app_src_done(row: int, request: Request):
     b = await _body(request) or {}
     from starlette.concurrency import run_in_threadpool
     from saga import tasksrc
-    return await run_in_threadpool(tasksrc.patch_row, uid, row, {"done": b.get("done", True) is not False})
+    body = {"done": b.get("done", True) is not False}
+    if not body["done"] and "value" in b:
+        body["value"] = b["value"]                # Rueckgaengig: vorheriger Wert (Antwort 'prev'), wird geprueft
+    return await run_in_threadpool(tasksrc.patch_row, uid, row, body)
 
 
 @router.post("/api/app/rows/{nid}/check")

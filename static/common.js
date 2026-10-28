@@ -452,9 +452,12 @@
       return api('GET', '/api/tasks?with_sources=1&today=' + todayIso() + (tz ? '&tz=' + encodeURIComponent(tz) : ''));
     },
     // Abhaken/Wieder-Oeffnen eines Eintrags der zusammengefuehrten Liste (Inbox: wie bisher inkl. Wiederholung)
-    done: function (it, on) {
-      return it.kind === 'row' ? api('PATCH', '/api/tasks/src/' + it.id, { done: on, today: todayIso() })
-        : api('PATCH', '/api/tasks/' + it.id, { done: on, today: todayIso() });
+    // prev (nur Zeilen): Wert vor dem Abhaken aus der Antwort ('prev') - Rueckgaengig stellt ihn wieder her (z. B. "Laeuft")
+    done: function (it, on, prev) {
+      if (it.kind !== 'row') return api('PATCH', '/api/tasks/' + it.id, { done: on, today: todayIso() });
+      var b = { done: on, today: todayIso() };
+      if (!on && prev !== undefined) b.value = prev;
+      return api('PATCH', '/api/tasks/src/' + it.id, b);
     },
     patch: function (it, body) {
       body.today = todayIso();
