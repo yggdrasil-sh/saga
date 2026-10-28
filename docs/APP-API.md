@@ -55,7 +55,7 @@ Bisher: `b strong i em u s mark code a br time`. Neu dazu:
 | Textfarbe | `<span class="hk-c-<farbe>">…</span>` | Palette `gray brown orange yellow green blue purple pink red`; genau eine Klasse; `span` ohne erlaubte Klasse fällt weg (Text bleibt) |
 | Hintergrund | `<mark class="hk-bg-<farbe>">…</mark>` | `mark.cdx-marker` bleibt = Gelb (Standard); fremde Klasse → `mark` ohne Klasse |
 | beides | `<span class="hk-c-red"><mark class="hk-bg-blue">…</mark></span>` | Reihenfolge fest: `span` außen |
-| Erwähnung | `<span class="hk-mention" data-u="~abcdefghijklmnop">Anna</span>` | `data-u` = Handle (`~` + 16 Zeichen, lokal) oder Prinzipal `@name@host` bzw. `@~handle@host`; sonst nur Text. Der Text ist nur Rückfall (Export, alte Apps) – angezeigt wird später der aktuelle Name (P6-5) |
+| Erwähnung | `<span class="hk-mention" data-u="~abcdefghijklmnop">Anna</span>` | `data-u` = Handle (`~` + 16 Zeichen, lokal) oder Prinzipal `@name@host` bzw. `@~handle@host`; sonst nur Text. Der Text ist nur Rückfall (Export, alte Apps) – angezeigt wird der aktuelle Name aus `people` (siehe „Erwähnungen“) |
 | Inline-Mathe | `<code class="hk-math">TeX</code>` | enthält nur Text (keine weiteren Elemente); alte Apps zeigen Inline-Code |
 
 Keine `style`-Attribute, keine freien Farben. Darstellung: Klassen `hk-c-*`/`hk-bg-*` mit den Farben der Block-Farbe
@@ -109,12 +109,82 @@ Apps melden beim Speichern (`PATCH /api/notes/{id}`), was sie verstehen: Kopf `X
 - `inline2` = die App erhält die Inline-Formen oben beim Bearbeiten (auch unverstandene: Tags samt Klasse behalten).
 - `cols6` = die App kann bis 6 Spalten bearbeiten.
 - `merge1` = die App sendet `merge: 1` (siehe „Gleichzeitig bearbeiten“; nur Hinweis, das Feld selbst entscheidet).
+- `sync1` = die App schickt den Inhalt synchronisierter Kopien bearbeitet zurück (siehe „Synchronisierte Blöcke“). Ohne
+  `sync1` ignoriert der Server `data.blocks` von Kopien.
 
 Ohne Kopf gilt: Browser-Sitzung (Web) = alles; App-Sitzung/Geräte-Schlüssel = nichts davon. Dann schützt der Server:
 Textfelder eines Blocks (gleiche `id`, gleicher Typ), deren **reiner Text unverändert** ist, behalten ihr altes HTML,
 wenn es neue Formen enthielt, die jetzt fehlen (Zwischenregel bis zum zeichengenauen Markenerhalt). Ein Spalten-Block mit
 genau 4 Spalten, der vorher 5–6 hatte, bekommt die fehlenden Spalten zurück (Breiten danach gleich). Föderation:
 dasselbe für Gegenstellen ohne die Fähigkeiten `inline2`/`cols6` (`APP-API-FED.md`).
+
+## Erwähnungen (2.5, P6-5, `mention1`)
+
+Personen werden im Inhalt als `span.hk-mention` mit **Kennung** gespeichert (Inline-Vertrag oben), in Kommentaren
+(Klartext) als Token `<@REF>`. `REF` ist nie ein Anmeldename: eigenes Konto/lokale Konten = Handle `~…`, Personen anderer
+Server = Prinzipal `@name@host`. Ob ein Server das kann: `/api/version` → `features` enthält `mention1`.
+
+**Anzeige.** `GET /api/notes/{id}` und `GET /api/notes/{id}/comments` liefern ein Wörterbuch `people` für alle
+Kennungen im Inhalt bzw. in den Kommentaren (dasselbe Format wie bei Personen-Eigenschaften):
+
+```json
+"people": {"~abcdefghijklmnop": {"name": "Anna Berg", "avatar": "/api/avatar/…", "me": false, "remote": false},
+           "@bert@saga.example": {"name": "Bert (bert@saga.example)", "remote": true, "gone": false},
+           "~zyxwvutsrqponmlk": {"name": "Gelöschte Person", "me": false, "gone": true}}
+```
+
+Apps zeigen den **aktuellen Namen** aus `people` als Chip (`@Name`, eigenes Konto `me: true` hervorgehoben, `gone`
+durchgestrichen), nicht den gespeicherten Text. Unbekannte Kennung (fehlt in `people`): gespeicherten Text zeigen.
+Beim Bearbeiten den `span` **unverändert** lassen (Kennung und Text), bei `inline2` ohnehin.
+
+**Setzen.** Auswahl: `GET /api/notes/{id}/people?q=` (Personen mit Zugriff, wie bei Personen-Eigenschaften) – Eintrag
+`ref` wird `data-u`, `name` der Text. Personen ohne Zugriff (Teilen-Suche `GET /api/share/targets`, Feld `username`
+= Handle) nur über „Seite teilen und erwähnen“: erst `PUT /api/notes/{id}/shares {type: "user", target: <handle>, role:
+"view"|"comment"}`, dann einfügen. Erwähnungen von Personen ohne Zugriff speichert der Server nur als Text.
+Kommentare: `"body": "Schau mal <@~abcdefghijklmnop>"`.
+
+**Mitteilungen.** `page.mention` (in einer Seite erwähnt; einmal je Seite und Person, erst nach ~20 s, wenn die
+Erwähnung dann noch da ist; `block` = Block-ID zum Hinspringen) und `comment.mention` (in einem Kommentar erwähnt,
+ersetzt `comment.new`/`comment.reply` für diese Person). Beide abschaltbar wie die anderen Arten. Nicht bei: sich
+selbst, Duplikat, Vorlage, Import, Version wiederherstellen, Verschieben.
+
+**Andere Lesepfade.** Veröffentlichen: nur der Name als Text. Markdown-Export/`/api/v1` Markdown/MCP: `@Name`.
+`/api/v1` Blöcke: Kennung + `people`. Webhooks enthalten keinen Inhalt.
+
+## Synchronisierte Blöcke (2.5, P6-6, `synced1`)
+
+Ein Block, dessen Inhalt an einer Stelle lebt (Original, Seite A) und auf anderen Seiten als Kopie erscheint. Ob ein
+Server das kann: `/api/version` → `features` enthält `synced1`.
+
+| | gespeichert | gelesen (`GET /api/notes/{id}`) |
+|---|---|---|
+| Original | `{"sid", "blocks": [...]}` | dazu `"src": {"original": true, "refs": N}` (N = Seiten mit Kopien) |
+| Kopie mit Zugriff auf A | `{"sid"}` | `{"sid", "blocks": [...], "src": {"note": A, "block": "<id>", "role": "owner"\|"edit"\|"comment"\|"view", "rev": R, "refs": N}}` |
+| Original gelöscht | `{"sid"}` | letzter Inhalt, `src.gone: true`, `role: "view"` |
+| Kein Zugriff auf A | `{"sid"}` | `{"sid", "src": {"noaccess": true}}` – kein Inhalt, kein Titel, keine Seiten-ID |
+| Unbekannte `sid` | `{"sid"}` | `{"sid", "src": {"missing": true}}` |
+
+**Anzeige (alle Apps).** Farbiger Rahmen, Kopfzeile „Synchronisiert“ bzw. „Original“ + „auf N weiteren Seiten“,
+Knopf „Original öffnen“ (`src.note`, Block `src.block`). `noaccess`: „🔒 Synchronisierter Block – kein Zugriff“.
+`gone`: letzter Stand nur lesend, „Original gelöscht“.
+
+**Bearbeiten in der Kopie (mit `X-Saga-Caps: …,sync1`).** Die App schickt die Kopie mit bearbeitetem `data.blocks` und
+unverändertem `data.src` (mindestens `src.rev`) zurück. Der Server schreibt den Inhalt per Zusammenführen (Stufe 1) ins
+Original, wenn die Person dort `edit` hat und A nicht gesperrt ist; gespeichert wird in der Seite selbst nur `{sid}`.
+Antwort des `PATCH`: `"synced": {"<sid>": "ok"|"merged"|"denied"|"locked"|"gone"|"stale"}` und `"synced_rev":
+{"<sid>": R}` (neuer Stand von A → als `src.rev` übernehmen). `stale`/`denied`/`locked`: nichts übernommen – Seite neu
+laden. Rolle `view`/`comment`, gesperrt oder `gone`: Inhalt nur lesend zeigen. Ohne `sync1` (ältere Apps): Block als
+Rückfall-Karte, `data.blocks` wird ignoriert.
+
+**Anlegen** (Web; Apps später): neues Original = Block mit `blocks` und ohne bzw. mit selbst erzeugter `sid`
+(16 Zeichen `[A-Za-z0-9]`); Kopie = Block nur mit `sid` (braucht mindestens `view` auf A, sonst fällt er weg).
+Synchronisierte Blöcke in synchronisierten Blöcken löst der Server auf. Verschieben des Originals (`blocks/move`) führt
+die Kopien nach.
+
+**Andere Lesepfade.** Suche/Rückverweise: Inhalt zählt nur für A. Veröffentlichen von B: Inhalt nur, wenn A demselben
+Konto gehört oder selbst veröffentlicht ist. Export/Markdown: Inhalt nach den Rechten der exportierenden Person.
+`/api/v1`/MCP: wie GET; Tokens mit `roots` sehen Kopien eines Originals außerhalb der Bäume als `noaccess`. Webhook
+`page.updated` kommt für A, wenn über eine Kopie geschrieben wurde.
 
 ## Blöcke auf eine andere Seite verschieben (2.5, P6-4, `move1`)
 

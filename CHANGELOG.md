@@ -16,6 +16,23 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Neu (2.5, P6-5/P6-6: Erwähnungen und synchronisierte Blöcke)
+- **@-Erwähnungen von Personen.** Im @-Menü des Editors stehen jetzt zuerst **Personen** mit Zugriff auf die Seite;
+  ab zwei Zeichen auch Personen ohne Zugriff – Auswahl fragt „Seite teilen (Lesen/Kommentieren) und erwähnen?“.
+  Gespeichert wird eine Kennung (nie der Anmeldename), angezeigt immer der aktuelle Name; das eigene Konto ist
+  hervorgehoben. Auch in Kommentaren (`@Name`). Neue Mitteilungen „erwähnt“ (Seite bzw. Kommentar), einmal je Seite und
+  Person, erst wenn die Erwähnung nach ~20 s noch da ist; beide in den Einstellungen abschaltbar. Veröffentlichen und
+  Markdown zeigen nur den Namen. Über Servergrenzen mit der Fähigkeit `ment1`.
+- **Synchronisierte Blöcke.** Block-Menü „Als synchronisierten Block kopieren“ macht einen Block zum Original und legt
+  eine Kopie in die Zwischenablage; auf einer anderen Seite eingefügt erscheint derselbe Inhalt mit farbigem Rahmen,
+  „Original öffnen“ und der Anzahl weiterer Seiten. Bearbeiten in der Kopie schreibt ins Original (Zusammenführen bei
+  gleichzeitigen Änderungen); ohne Bearbeitungsrecht auf das Original nur lesend, ohne Zugriff ein Platzhalter ohne
+  Titel und Inhalt. Original gelöscht: letzter Stand mit „Als normale Blöcke übernehmen“. Verschieben des Originals,
+  Suche (nur einmal), Veröffentlichen, Export, `/api/v1`, MCP und Webhooks berücksichtigen die Rechte. Über
+  Servergrenzen mit der Fähigkeit `sync1`.
+- Datenbank-Migration 26 (`note_mention`, `synced_block`, `synced_ref`); `/api/version` → `features` `mention1`,
+  `synced1`; Apps: `docs/APP-API.md` „Erwähnungen“ und „Synchronisierte Blöcke“ (`X-Saga-Caps: sync1`).
+
 ### Neu (2.5, Paket 7 Teil A: Aufgaben zusammenführen)
 - **Datenbanken als Aufgabenquelle.** Offene Einträge gewählter Datenbanken erscheinen zusammen mit den Saga-Aufgaben in
   einer Liste (Dashboard/Aufgabenleiste, Block „Aufgaben“, „Mein Tag“), fertig sortiert nach überfällig, heute, Datum und
