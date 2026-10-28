@@ -310,6 +310,8 @@ def _purge_ids(c, uid, ids):
     tree_changed(c, uid, ids, "deleted")                 # vor dem Loeschen (Empfaenger aus den Freigaben bestimmen)
     c.executemany("DELETE FROM note_version WHERE uid=? AND note_id=?", [(uid, i) for i in ids])
     c.executemany("DELETE FROM note_base WHERE note_id=? AND note_id IN (SELECT id FROM note WHERE uid=?)", [(i, uid) for i in ids])
+    c.executemany("DELETE FROM note_crdt_log WHERE note_id=? AND note_id IN (SELECT id FROM note WHERE uid=?)", [(i, uid) for i in ids])
+    c.executemany("DELETE FROM note_crdt WHERE note_id=? AND note_id IN (SELECT id FROM note WHERE uid=?)", [(i, uid) for i in ids])   # 2.5 P3 Stufe 2
     c.executemany("DELETE FROM note_publish WHERE uid=? AND note_id=?", [(uid, i) for i in ids])
     c.executemany("DELETE FROM note_share WHERE owner_uid=? AND note_id=?", [(uid, i) for i in ids])
     c.executemany("DELETE FROM note_comment_seen WHERE thread_id IN (SELECT id FROM note_comment WHERE owner_uid=? AND note_id=?)",

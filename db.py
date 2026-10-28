@@ -376,10 +376,13 @@ CREATE TABLE IF NOT EXISTS note_base (
 -- 2.5 (P3 Stufe 2, saga/collab.py): CRDT-Zustand je Seite (Yjs-Binaerformat), nur solange live bearbeitet wird.
 -- model/schema_ver: Dokumentmodell (saga/collab_model.py) - passt es nicht mehr, wird der Zustand verworfen und neu aus
 -- note.body aufgebaut (neue gen: Clients verwerfen ihren Stand). rev/base: note.rev und Inhalt beim letzten Abgleich
--- (materialisiert bzw. uebernommen). log: angenommene Updates seit der letzten Verdichtung (vor dem Verteilen geschrieben).
+-- (materialisiert bzw. uebernommen), updated > mat: Aenderungen noch nicht in note.body (nach Neustart nachholen).
+-- owners: Yjs-client_id -> Konto (niemand schreibt unter der Kennung eines anderen). log: angenommene Updates seit der
+-- letzten Verdichtung (vor dem Verteilen geschrieben).
 CREATE TABLE IF NOT EXISTS note_crdt (
     note_id BIGINT PRIMARY KEY, model TEXT NOT NULL, schema_ver INTEGER NOT NULL, gen TEXT NOT NULL, state BYTEA NOT NULL,
-    sv BYTEA NOT NULL, rev INTEGER NOT NULL, base TEXT, updated DOUBLE PRECISION NOT NULL, used DOUBLE PRECISION NOT NULL);
+    sv BYTEA NOT NULL, rev INTEGER NOT NULL, base TEXT, base_title TEXT, updated DOUBLE PRECISION NOT NULL,
+    mat DOUBLE PRECISION NOT NULL DEFAULT 0, used DOUBLE PRECISION NOT NULL, owners TEXT NOT NULL DEFAULT '{}');
 CREATE TABLE IF NOT EXISTS note_crdt_log (
     note_id BIGINT NOT NULL, seq BIGINT NOT NULL, upd BYTEA NOT NULL, uid TEXT, at DOUBLE PRECISION NOT NULL,
     PRIMARY KEY (note_id, seq));

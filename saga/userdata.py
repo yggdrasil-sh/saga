@@ -41,6 +41,8 @@ def delete_user_data(uid, drop_user=False):
         avatar_n = avatars.delete_account(c, uid)  # Profilbild und zwischengespeicherte Gravatar-/SSO-Bilder
         ub_n = userbackup.delete_account(c, uid)  # persoenliches Backup: Ziel, Schluessel, Verlauf (Backups im Ziel bleiben)
         c.execute("DELETE FROM note_base WHERE note_id IN (SELECT id FROM note WHERE uid=?)", (uid,))   # 2.5 (P3): Basisstaende
+        c.execute("DELETE FROM note_crdt_log WHERE note_id IN (SELECT id FROM note WHERE uid=?)", (uid,))   # 2.5 (P3 Stufe 2)
+        c.execute("DELETE FROM note_crdt WHERE note_id IN (SELECT id FROM note WHERE uid=?)", (uid,))
         from saga.people import drop_account     # 2.5: Personen-Werte anderer bleiben ("Geloeschte Person"), row_person nicht
         drop_account(c, uid)
         from saga import mentions                 # 2.5 (P6-5): Erwaehnungen der Person (Index) weg, Text im Inhalt bleibt

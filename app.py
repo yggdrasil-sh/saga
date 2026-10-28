@@ -22,10 +22,11 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 import auth
 import db
-from version import API_LEVEL, BUILD, FEATURES, MIN_APP, VERSION, channel
+from version import API_LEVEL, BUILD, FEATURES, LIVE_FEATURE, MIN_APP, VERSION, channel
 
 from saga import app_api, app_login, calendars, comments, csv_export, dashboard, databases, files, immich, links, page_tools, page_widgets, pages, publish, sharing, tasks, web_auth
 from saga import ai, ai_chat, avatars, calls, chat, chat_files, federation, horn, horn_ops, i18n, live, mfa, notify, push, push_stream
+from saga import collab                     # 2.5 (P3 Stufe 2): WebSocket /api/collab, Admin-Schalter notes.live
 from saga import fed_calls, fed_chat, fed_dir, fed_keys, fed_pages      # Foederation 2.3: Adressbuch, Schluessel, Chats, Anrufe, Seiten
 from saga import chat_status                     # 2.4: Gelesen-Bestaetigungen und Online-Status (haengt sich in chat, live, fed_chat ein)
 from saga import chat_x3                         # 2.5: Reaktionen, Bearbeiten, Sprachnachrichten (haengt sich in chat, fed_chat ein)
@@ -65,6 +66,7 @@ async def lifespan(_app):
     gallery.load()                                           # 2.5: Vorlagengalerie (gallery/ bzw. SAGA_GALLERY_DIR)
     task = asyncio.create_task(_status_loop())
     live.start()                                             # Live-Kanal (/api/events) und Anwesenheit
+    collab.start()                                           # 2.5 (P3 Stufe 2): gleichzeitig bearbeiten (CRDT-Hub)
     push.start()                                             # Mitteilungen aufs Handy/Desktop (Warteschlange)
     push_stream.start()                                      # 2.5: eigene Push-Verbindung der Apps (/api/push/stream)
     federation.start()                                       # Foederation: Ausgangskorb (Ereignisse an andere Instanzen)
@@ -107,6 +109,7 @@ async def lifespan(_app):
                 print(f"files-gc: {type(ex).__name__}: {ex}", flush=True)
     gc_task = asyncio.create_task(_gc_loop())
     yield
+    await collab.shutdown()                                  # offene Live-Seiten materialisieren und verdichten
     mentions.stop()
     webhooks.stop()
     backups.stop()
@@ -123,6 +126,8 @@ async def lifespan(_app):
 
 
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+# 2.5 (P3 Stufe 2): WebSocket /api/collab - innerhalb der SessionMiddleware (Cookie-Anmeldung), ohne FastAPI-Routing
+app.add_middleware(collab.Front)
 app.add_middleware(LangMiddleware, session_key="uid")      # vor SessionMiddleware registriert = laeuft danach (kennt die Sitzung)
 app.add_middleware(
     SessionMiddleware,
@@ -239,7 +244,8 @@ def api_version():
     version = SemVer ohne Build-Kennung (z. B. "2.2.0" oder "2.2.0-rc.7"), build = Kurz-SHA bei Testing-Builds,
     channel = stable | rc | testing."""
     return JSONResponse({"name": "Saga", "version": VERSION, "build": BUILD, "channel": channel(), "api": API_LEVEL,
-                         "min_app": MIN_APP, "schema": db.SCHEMA_VERSION, "features": list(FEATURES)},
+                         "min_app": MIN_APP, "schema": db.SCHEMA_VERSION,
+                         "features": list(FEATURES) + ([LIVE_FEATURE] if collab.enabled() else [])},
                         headers={"Cache-Control": "no-store"})
 
 

@@ -806,6 +806,10 @@ async def settings_post(request: Request):
             return max(lo, min(hi, int(f.get(k) or dflt)))
         except (TypeError, ValueError):
             return dflt
+    live_was = bool((auth.settings().get("notes") or {}).get("live"))
+    auth.save_setting("notes", {**(auth.settings().get("notes") or {}), "live": _on(f, "notes_live")})   # 2.5 (P3 Stufe 2)
+    if live_was != _on(f, "notes_live"):
+        print(f"admin: {me['username']} Gleichzeitig bearbeiten live {'an' if _on(f, 'notes_live') else 'aus'}", flush=True)
     auth.save_setting("api", {"enabled": _on(f, "api_enabled"), "group": _s(f, "api_group", 120).strip(),     # 2.5: oeffentliche API
                               "max_tokens": _n("api_max_tokens", 1, 100, 10), "max_days": _n("api_max_days", 0, 3650, 365),
                               "unlimited": _on(f, "api_unlimited"), "rate": _n("api_rate", 1, 10000, 120),
