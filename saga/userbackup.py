@@ -69,7 +69,8 @@ DATA_MAX = max(1, int(E.get("USER_BACKUP_DATA_MB", "64"))) * 1024 * 1024
 IMPORT_FILES_MAX = max(1, int(E.get("USER_BACKUP_FILES_MAX", "20000")))
 KEY_TTL = 900
 MB = backups.MB
-KV_KEYS = ("lang", "notify_off", "push", "ai_history", "fed_directory", "chat_receipts", "chat_online")    # eigene Einstellungen (keine Sicherheitsdaten; 2.4: Gelesen/Online)
+KV_KEYS = ("lang", "notify_off", "push", "ai_history", "fed_directory", "chat_receipts", "chat_online",
+           "task_due")       # eigene Einstellungen (keine Sicherheitsdaten; 2.4: Gelesen/Online; 2.5: taegliche Zusammenfassung)
 CATS = ("pages", "templates", "archive", "trash", "versions", "files", "comments", "comments_others", "tasks", "bookmarks", "settings")
 CAT_DEFAULT = {k: k != "comments_others" for k in CATS}
 SCHEDULES = ("off", "weekly", "daily")
@@ -385,6 +386,11 @@ def collect(c, uid, cfg):
     tasks = [dict(zip(("id", "text", "done", "due", "created", "done_at", "prio", "repeat", "rep_anchor"), r)) for r in
              c.execute("SELECT id, text, done, due, created, done_at, prio, repeat, rep_anchor FROM task WHERE uid=? ORDER BY id", (uid,))] \
         if cats.get("tasks", True) else []
+    # 2.5: Aufgabenquellen (Abos) - eigene Datenbanken werden beim Einspielen umgeschrieben, fremde nur mit Zugriff uebernommen
+    task_sources = [{"db": r[0], "scope": r[1], "own": bool(r[2])} for r in
+                    c.execute("SELECT s.db_id, s.scope, n.id FROM task_source s LEFT JOIN note n ON n.id=s.db_id AND n.uid=s.uid "
+                              "WHERE s.uid=? ORDER BY s.added, s.db_id", (uid,)).fetchall()] \
+        if cats.get("tasks", True) else []
     bookmarks = [dict(zip(("name", "url", "icon", "category", "sort", "created"), r)) for r in
                  c.execute("SELECT name, url, icon, category, sort, created FROM bookmark WHERE uid=? ORDER BY sort, id", (uid,))] \
         if cats.get("bookmarks", True) else []
@@ -413,7 +419,7 @@ def collect(c, uid, cfg):
     data = {"format": FORMAT, "saga": VERSION, "created": time.time(), "account": account, "settings": settings,
             "options": {k: bool(cats.get(k, CAT_DEFAULT[k])) for k in CATS}, "excluded": len([x for x in exclude]),
             "notes": out_notes, "versions": versions, "comments": comments, "files": list(files.values()),
-            "tasks": tasks, "bookmarks": bookmarks}
+            "tasks": tasks, "task_sources": task_sources, "bookmarks": bookmarks}
     return data, files, notes
 
 
@@ -1096,6 +1102,9 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
                                now, None, int(x.get("prio") or 2) if str(x.get("prio") or "2").isdigit() else 2,
                                str(x["repeat"])[:40] if x.get("repeat") else None, str(x["rep_anchor"])[:20] if x.get("rep_anchor") else None))
                     tasks += 1
+        srcs = 0
+        if opts.get("tasks"):
+            srcs = _import_task_sources(c, uid, data, nmap, set(made))
         if opts.get("bookmarks"):
             for x in data.get("bookmarks") or []:
                 u = str((x or {}).get("url") or "") if isinstance(x, dict) else ""
@@ -1106,8 +1115,49 @@ def _import_db(uid, data, notes, by_id, fmap, opts, _icon, _tags, _title_in):
                     bms += 1
         if folder or made:
             tree_changed(c, uid, ([folder] if folder else []) + made, "created")
-    return {"pages": len(made), "files": len(fmap), "versions": versions, "tasks": tasks, "bookmarks": bms, "skipped": skipped,
-            "folder": folder}
+    return {"pages": len(made), "files": len(fmap), "versions": versions, "tasks": tasks, "task_sources": srcs, "bookmarks": bms,
+            "skipped": skipped, "folder": folder}
+
+
+def _import_task_sources(c, uid, data, nmap, made):
+    """Aufgabenquellen (2.5) und taegliche Zusammenfassung einspielen. Eigene Datenbanken aus dem Backup -> neue IDs; uebrige
+    IDs nur, wenn das Konto Zugriff hat und die Datenbank eine Zuordnung hat (tasksrc.subscribe prueft) - sonst verworfen.
+    Bestehende Abos und eine schon gesetzte Zusammenfassung bleiben unveraendert."""
+    from saga import tasksrc
+    n = 0
+    for x in data.get("task_sources") or []:
+        if not isinstance(x, dict) or isinstance(x.get("db"), bool) or not isinstance(x.get("db"), int):
+            continue
+        old = x["db"]
+        if old in nmap:
+            db_id = nmap[old]
+            if db_id not in made:
+                continue                              # Datenbank wurde nicht angelegt
+        elif x.get("own") or old <= 0:
+            continue                              # eigene Datenbank nicht im Backup (ausgeschlossen/Papierkorb) bzw. fremde Instanz
+        else:
+            db_id = old                           # geteilte Datenbank eines anderen Kontos: Zugriff prueft subscribe
+        if c.execute("SELECT 1 FROM task_source WHERE uid=? AND db_id=?", (uid, db_id)).fetchone():
+            continue
+        scope = x.get("scope") if x.get("scope") in tasksrc.SCOPES else None
+        got, err = tasksrc.subscribe(c, uid, db_id, scope)
+        if err is not None and scope is not None:
+            got, err = tasksrc.subscribe(c, uid, db_id, None)    # z. B. 'assigned' ohne Personen-Eigenschaft
+        if err is None:
+            n += 1
+    raw = (data.get("settings") or {}).get("task_due") if isinstance(data.get("settings"), dict) else None
+    cfg = _json_load(raw, {}) if isinstance(raw, str) else None
+    if isinstance(cfg, dict) and not c.execute("SELECT 1 FROM user_kv WHERE uid=? AND k='task_due'", (uid,)).fetchone():
+        from saga.push import TIME_RE
+        out = dict(tasksrc.DIGEST_DEF)
+        if isinstance(cfg.get("on"), bool):
+            out["on"] = cfg["on"]
+        if isinstance(cfg.get("time"), str) and TIME_RE.fullmatch(cfg["time"]):
+            out["time"] = cfg["time"]
+        if isinstance(cfg.get("tz"), str) and cfg["tz"] in tasksrc._zones():
+            out["tz"] = cfg["tz"]
+        c.execute("INSERT OR IGNORE INTO user_kv (uid, k, v) VALUES (?, 'task_due', ?)", (uid, json.dumps(out)))
+    return n
 
 
 # =====================================================================================================

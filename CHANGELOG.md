@@ -31,6 +31,8 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 - **Widget „Aufgaben“** zählt Quellen mit (abschaltbar), „diese Woche erledigt“ auch für Datenbank-Einträge.
 - **Tägliche Zusammenfassung** „heute fällig / überfällig“ (Mitteilung und Push, Kategorie „Aufgaben“), standardmäßig
   aus, Uhrzeit und Zeitzone je Konto.
+- **Persönliches Backup** sichert die Aufgabenquellen (Kategorie „Aufgaben“) und die tägliche Zusammenfassung mit; beim
+  Einspielen zeigen Abos eigener Datenbanken auf die neuen Seiten, Abos ohne Zugriff werden verworfen.
 - **Apps:** `features` `tasksrc1`, `taskdue1`; `GET /api/tasks?with_sources=1`, `PATCH /api/tasks/src/{zeile}`,
   `POST /api/app/tasks/src/{zeile}/done` (Antwort `prev`, Rückgängig mit `value`), `GET /api/app/today?sources=1` – Format und Offline-Hinweise in
   `docs/APP-API.md` „Aufgabenquellen“. **Migration 24** (Tabellen `task_source`, `row_done`).

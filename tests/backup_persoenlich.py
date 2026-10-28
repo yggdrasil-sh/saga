@@ -37,6 +37,7 @@ HOST = urllib.parse.urlparse(os.environ["BASE_URL"]).netloc
 STATE = os.environ["STATE_DIR"]
 FILES = os.path.join(STATE, "files")
 A, BB, NEW = "hk-test-a", "hk-test-b", "hk-test-ub" + secrets.token_hex(3)
+KEEP_DUE = []                                       # task_due von A vor dem Test (wird danach wiederhergestellt)
 NCP, DVP = 18321, 18322
 NC, DV = fakedav.start(NCP, True), fakedav.start(DVP, False)
 NCB, DVB = f"http://127.0.0.1:{NCP}", f"http://127.0.0.1:{DVP}"
@@ -208,6 +209,17 @@ try:
       (p1, A, BB, "FREMDER-KOMMENTAR", time.time(), c_own))
     q("INSERT INTO note_comment (note_id, owner_uid, uid, body, created) VALUES (?,?,?,?,?)", (pb, BB, A, "A-AUF-FREMDER-SEITE", time.time()))
     q("INSERT INTO task (uid, text, created) VALUES (?,?,?)", (A, "Aufgabe " + MARK, time.time()))
+    # 2.5: Aufgabenquellen (eigene DB, geteilte fremde DB) und taegliche Zusammenfassung
+    tsch = json.dumps({"props": [{"id": "st", "name": "Status", "type": "select", "status": True, "options": [
+        {"id": "neu", "name": "Neu", "group": "todo"}, {"id": "ok", "name": "Fertig", "group": "done"}]}], "tasks": {"done": "st"}})
+    tdb = note(A, "Aufgaben-DB " + MARK, kind="database", schema=tsch)
+    bdb = note(BB, "B-Aufgaben " + MARK, kind="database", schema=tsch)
+    q("INSERT INTO note_share (note_id, owner_uid, target_type, target, role, created) VALUES (?,?,?,?,?,?)", (bdb, BB, "user", A, "edit", time.time()))
+    q("INSERT INTO task_source (uid, db_id, scope, added) VALUES (?,?,?,?)", (A, tdb, "all", time.time()))
+    q("INSERT INTO task_source (uid, db_id, scope, added) VALUES (?,?,?,?)", (A, bdb, "all", time.time() + 1))
+    KEEP_DUE.extend(q("SELECT v FROM user_kv WHERE uid=? AND k='task_due'", (A,)) or [])
+    q("INSERT INTO user_kv (uid, k, v) VALUES (?,?,?) ON CONFLICT (uid, k) DO UPDATE SET v=excluded.v",
+      (A, "task_due", json.dumps({"on": True, "time": "06:15", "tz": ""})))
     q("INSERT INTO bookmark (uid, name, url, created) VALUES (?,?,?,?)", (A, "Lesezeichen", "https://example.org/" + MARK, time.time()))
 
     # --- Status, SSRF ---
@@ -297,6 +309,9 @@ try:
     ok("Kein fremder Benutzername im Backup (Versions-Autor weggelassen)", BB.encode() not in blob)
     ok("Versionen, Aufgaben, Lesezeichen, Profil enthalten", len(data["versions"]) == 1 and data["tasks"] and data["bookmarks"]
        and data["account"]["username"] == A)
+    ok(f"Aufgabenquellen + taegliche Zusammenfassung im Backup ({data.get('task_sources')})",
+       data.get("task_sources") == [{"db": tdb, "scope": "all", "own": True}, {"db": bdb, "scope": "all", "own": False}]
+       and json.loads(data["settings"].get("task_due") or "{}").get("time") == "06:15")
     md = [n for n in names if n.startswith("seiten/") and n.endswith(".md")]
     pmd = f"seiten/Projekt {MARK}.md" if f"seiten/Projekt {MARK}.md" in md else ""
     txt = z.read(pmd).decode() if pmd else ""
@@ -366,6 +381,12 @@ try:
     ok("Vorlage bleibt Vorlage, Papierkorb im Papierkorb", got["Vorlage " + MARK][7] == 1 and got["Geloescht " + MARK][8])
     ok("Versionen und Aufgaben uebernommen", q("SELECT COUNT(*) FROM note_version WHERE uid=? AND note_id=?", (NEW, n1[0]))[0][0] == 1
        and q("SELECT COUNT(*) FROM task WHERE uid=?", (NEW,))[0][0] == 1)
+    ntdb = got["Aufgaben-DB " + MARK][0]
+    srcs = q("SELECT db_id, scope FROM task_source WHERE uid=?", (NEW,))
+    ok(f"Aufgabenquellen eingespielt: eigene DB mit neuer ID, fremde ohne Zugriff verworfen ({srcs}, {r.get('task_sources')})",
+       srcs == [(ntdb, "all")] and ntdb != tdb and r.get("task_sources") == 1)
+    td = q("SELECT v FROM user_kv WHERE uid=? AND k='task_due'", (NEW,))
+    ok("Taegliche Zusammenfassung eingespielt", td and json.loads(td[0][0]) == {"on": True, "time": "06:15", "tz": ""}, td)
     ok("A's Daten unveraendert (nichts verschoben)", q("SELECT uid FROM note WHERE id=?", (p1,))[0][0] == A
        and q("SELECT COUNT(*) FROM file WHERE uid=?", (A,))[0][0] >= 2)
     st, r = call("GET", f"/api/notes/{n1[0]}", uid=NEW)
@@ -376,7 +397,7 @@ try:
     with open(z.filename, "rb") as f:
         st, up = call("POST", "/api/account/backup/restore/upload", raw=f.read(), uid=NEW)
     st, r = call("POST", "/api/account/backup/restore", {"token": up["token"], "folder": False}, uid=NEW)
-    ok(f"Entschluesseltes .zip ohne Schluessel, ohne Ordner ({st})", st == 200 and r["pages"] == len(data["notes"]) - 1 and not r["folder"])
+    ok(f"Entschluesseltes .zip ohne Schluessel, ohne Ordner ({st})", st == 200 and r["pages"] == len([n for n in data["notes"] if not n.get("deleted_at")]) and not r["folder"], (r, len(data["notes"])))
     bad = io.BytesIO()
     with zipfile.ZipFile(bad, "w") as zz:
         zz.writestr("manifest.json", json.dumps({"format": "saga-userbackup/1", "files": {"daten.json": {"size": 1, "sha256": "0" * 64}}}))
@@ -566,6 +587,10 @@ finally:
     q("DELETE FROM note WHERE uid IN (?,?) AND (title LIKE ? OR title IN ('Kunden','Kunde Eins','Auftraege','Auftrag 1','Uebersicht'))",
       (A, BB, f"%{MARK}%"))
     q("DELETE FROM task WHERE text LIKE ?", (f"%{MARK}%",))
+    q("DELETE FROM task_source WHERE uid=? AND db_id NOT IN (SELECT id FROM note)", (A,))
+    q("DELETE FROM user_kv WHERE uid=? AND k='task_due'", (A,))
+    if KEEP_DUE:
+        q("INSERT INTO user_kv (uid, k, v) VALUES (?,?,?)", (A, "task_due", KEEP_DUE[0][0]))
     q("DELETE FROM bookmark WHERE url LIKE ?", (f"%{MARK}%",))
     q("DELETE FROM notification WHERE kind='userbackup.failed'")
     for fid in [r[0] for r in (q("SELECT id FROM file WHERE uid IN (?,?) AND name IN ('bild.png','nur-privat.bin','fremd.png','gross.bin')", (A, BB)) or [])]:
