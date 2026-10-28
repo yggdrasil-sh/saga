@@ -281,10 +281,12 @@ def parse(text, ctx=None, depth=0):
                                                                   "language": re.sub(r"[^a-z0-9+-]", "", lang.lower())[:20]}})
             continue
         if ln.strip().startswith("$$"):
-            flush()
-            blk, i = _math(lines, i, ctx)
-            out.append(blk)
-            continue
+            blk, j = _math(lines, i, ctx)
+            if blk is not None:                 # ohne schliessendes $$: Zeile bleibt Text (sonst ginge der Rest verloren)
+                flush()
+                out.append(blk)
+                i = j
+                continue
         m = _ATX.match(ln)
         if m:
             flush()
@@ -564,6 +566,8 @@ def _math(lines, i, ctx):
             break
         buf.append(ln)
         i += 1
+    else:
+        return None, i
     return {"id": ctx.bid(), "type": "math", "data": {"tex": "\n".join(buf).strip()[:4000]}}, i
 
 

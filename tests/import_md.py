@@ -184,6 +184,10 @@ def run():
     ok("javascript:-Link nur Text, <script> als Text", "javascript" not in j and "&lt;script&gt;" in j, j)
     ok("==markiert==, %%Kommentar%% entfernt", "cdx-marker" in j and "versteckt" not in j)
     ok("$Mathe$ -> code.hk-math (Inline-Vertrag), $5 und $10 bleibt Text", '<code class="hk-math">E=mc^2</code>' in j and "$5 und $10" in j, j[:800])
+    from saga import md2blocks
+    mb = md2blocks.parse("Intro\n$$ kostet das\nAbsatz eins\n\nAbsatz zwei", md2blocks.Ctx())
+    ok("$$ ohne schliessendes $$: kein Mathe-Block, Rest bleibt Text",
+       all(b["type"] != "math" for b in mb) and "Absatz zwei" in json.dumps(mb), mb)
     ok("HTML mit hk-Klassen im Markdown nur als Text (keine Farbe/Erwaehnung durchgeschleust)",
        '<span' not in j and "&lt;span class=" in j, j[:800])
     bids = [b.get("id") for b in all_blocks(bl)]
