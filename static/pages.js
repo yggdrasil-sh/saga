@@ -2674,7 +2674,7 @@
         zone.appendChild(el('div', 'imp-drop-ic', '⇪'));
         zone.appendChild(el('p', 'imp-drop-t', opts.targetDb ? T('CSV-Datei hierher ziehen oder auswählen') : T('Datei oder Ordner hierher ziehen oder auswählen')));
         zone.appendChild(el('p', 'imp-hint', opts.targetDb ? T('CSV (Komma, Semikolon, Tab) – auch aus Excel.')
-          : T('CSV (wird eine Datenbank), Markdown-Dateien, ein Markdown-/Obsidian-Ordner oder ein ZIP davon.')));
+          : T('CSV (wird eine Datenbank), Markdown-Dateien, ein Markdown-/Obsidian-Ordner, ein ZIP davon oder ein Notion-Export (ZIP, „Markdown & CSV“).')));
         var fi = el('input'); fi.type = 'file'; fi.className = 'imp-file'; fi.multiple = !opts.targetDb;
         fi.accept = opts.targetDb ? '.csv,.tsv,.txt,text/csv' : '.csv,.tsv,.txt,.md,.markdown,.zip,text/csv,text/markdown,application/zip,image/*,application/pdf';
         var row = el('div', 'imp-btns'), b1 = el('button', 'btn btn-primary', T('Datei wählen …')); b1.type = 'button';
@@ -2710,6 +2710,7 @@
             });
             csvForm();
           } else if (d.kind === 'md') mdForm();
+          else if (d.kind === 'notion') notionForm();
           else say(T('Dateityp nicht unterstützt'), true);
         }).catch(function (e) { say(e.message, true); });
       }
@@ -2806,6 +2807,38 @@
         var foot = el('div', 'imp-foot'), back = el('button', 'btn', T('Andere Datei')); back.type = 'button'; back.addEventListener('click', pick);
         var runB = el('button', 'btn btn-primary imp-run', T('Importieren')); runB.type = 'button';
         runB.addEventListener('click', function () { start({ kind: 'md', title: ti.value.trim(), tags: o.tags, props: o.props, parent_id: opts.parentId || undefined }); });
+        foot.appendChild(back); foot.appendChild(runB); root.appendChild(foot); root.appendChild(msg); say('');
+      }
+      // Notion-Export: Zusammenfassung, je Datenbank die geratenen Spaltentypen (aenderbar), Name der Sammelseite
+      var NOTION_TYPES = { text: T('Text'), number: T('Zahl'), select: T('Auswahl'), multi_select: T('Mehrfachauswahl'), status: T('Status'),
+        date: T('Datum'), checkbox: T('Häkchen'), url: T('URL'), email: T('E-Mail'), phone: T('Telefon (Text)'), relation: T('Relation'),
+        person: T('Person (als Text)'), files: T('Dateien'), fx: T('Formel/Rollup (Ergebnis als Text)'), skip: T('nicht übernehmen') };
+      function notionForm() {
+        root.textContent = '';
+        var s = an.notion || {}, types = {};
+        root.appendChild(el('div', 'imp-sum', T('Notion: {pages} Seiten, {dbs} Datenbanken ({rows} Einträge), {files} Dateien',
+          { pages: s.pages || 0, dbs: s.databases || 0, rows: s.rows || 0, files: s.files || 0 })));
+        (an.warnings || []).forEach(function (w) { root.appendChild(el('p', 'imp-warn', '⚠ ' + w)); });
+        var ti = el('input', 'hk-in imp-title'); ti.type = 'text'; ti.maxLength = 200; ti.placeholder = T('Name der Sammelseite (leer: „Notion-Import“ mit Datum)');
+        ti.setAttribute('aria-label', T('Name der Sammelseite')); root.appendChild(ti);
+        (s.dbs || []).forEach(function (db) {
+          var d = el('details', 'imp-grp imp-ndb'), sm = el('summary', null, '▦ ' + db.title + ' · ' + T('{n} Einträge', { n: db.rows }));
+          d.appendChild(sm);
+          var tb = el('table', 'imp-tbl imp-ntbl'), body = el('tbody');
+          db.columns.forEach(function (c) {
+            var tr = el('tr'), th = el('td', 'imp-cname', c.name), td = el('td');
+            var opts = Object.keys(NOTION_TYPES).filter(function (k) { return k !== 'relation' || c.guess === 'relation'; });
+            td.appendChild(sel('imp-ntype', opts.map(function (k) { return [k, NOTION_TYPES[k]]; }), c.guess, function (v) {
+              (types[db.path] = types[db.path] || {})[c.index] = v;
+            }, T('Typ für Spalte {name}', { name: c.name })));
+            tr.appendChild(th); tr.appendChild(td); body.appendChild(tr);
+          });
+          tb.appendChild(body); d.appendChild(tb); root.appendChild(d);
+        });
+        root.appendChild(el('p', 'imp-hint', T('Formeln und Rollups exportiert Notion nur als Ergebnis – die Spalten lassen sich danach im Spaltenmenü „In Formel umwandeln“.')));
+        var foot = el('div', 'imp-foot'), back = el('button', 'btn', T('Andere Datei')); back.type = 'button'; back.addEventListener('click', pick);
+        var runB = el('button', 'btn btn-primary imp-run', T('Importieren')); runB.type = 'button';
+        runB.addEventListener('click', function () { start({ kind: 'notion', title: ti.value.trim(), types: types, parent_id: opts.parentId || undefined }); });
         foot.appendChild(back); foot.appendChild(runB); root.appendChild(foot); root.appendChild(msg); say('');
       }
       function start(b) {
@@ -4146,6 +4179,9 @@
         if (prop.type === 'formula') {
           m.appendChild(HK.menuItem(T('Formel bearbeiten …'), function () { formulaEditor(prop); }, { icon: 'ƒ', hint: prop.rtype ? fxTypeName(prop.rtype) : '' }));
         }
+        if (prop.type === 'text' && prop.fx_hint) {   // 2.5 (Import, P2-E5): Notion-Formel/Rollup kam nur als Ergebnis (Text)
+          m.appendChild(HK.menuItem(T('In Formel umwandeln …'), function () { formulaEditor(prop); }, { icon: 'ƒ', hint: T('aus Import') }));
+        }
         if (prop.type === 'rollup') rollupMenu(m, prop);
         if (prop.type === 'person') {              // 2.5: mehrere Personen, Mitteilung bei Zuweisung (je Eigenschaft)
           m.appendChild(HK.menuItem(T('Mehrere Personen'), function () { prop.multi = prop.multi === false; saveSchema().then(renderDb); }, { icon: '👥', on: prop.multi !== false }));
@@ -4312,6 +4348,10 @@
           api('POST', '/api/notes/' + dbid + '/formula/check', { expr: ta.value, pid: prop.id, names: true }).then(function (d) {
             show(d);
             if (!d.ok) return;
+            if (prop.type !== 'formula') {            // "In Formel umwandeln" (Import): bisherige Textwerte werden ersetzt
+              if (!confirm(T('„{name}“ in eine Formel umwandeln? Die übernommenen Textwerte werden durch das Ergebnis der Formel ersetzt.', { name: prop.name }))) return;
+              prop.type = 'formula'; delete prop.fx_hint;
+            }
             prop.expr = d.expr; prop.rtype = d.rtype;
             return saveSchema().then(function () { closeModal(); return loadDb(); });
           }).catch(function (err) { HK.toast(T('Nicht gespeichert: {err}', { err: err.message })); });

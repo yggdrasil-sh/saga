@@ -44,7 +44,7 @@ _ANY_ID = re.compile(r"([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 _REL_TOKEN = re.compile(r"\s*([^,]*?)\s*\(((?:[^()]|\([^()]*\))*?(?:\.md|notion\.so/[^()\s]*|notion\.site/[^()\s]*))\)\s*(?:,|$)", re.I)
 _EMAIL = re.compile(r"[^@\s,;<>]+@[^@\s,;<>]+\.[A-Za-z]{2,}")
 _PHONE = re.compile(r"\+?[\d ()/.-]{6,20}")
-_TIME = re.compile(r"(?:,?\s+|T)(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?\s*([AaPp]\.?[Mm]\.?)?\s*$")
+_TIME = re.compile(r"(?:^|,?\s+|T)(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?\s*([AaPp]\.?[Mm]\.?)?\s*$")
 _TZ_TAIL = re.compile(r"\s*\(?(?:GMT|UTC)\s*([+-])(\d{1,2})(?::?(\d{2}))?\)?\s*$|\s*\([A-Za-z/_ ]{2,40}\)\s*$|\s*(Z)$")
 _CURRENCY = re.compile(r"^([+-]?)(?:US\$|\$|£|¥|₹|CHF\s?)\s?([\d.,' ]+)$|^([+-]?[\d.,' ]+)\s?(?:\$|£|¥|USD|CHF)$")
 STATUS_NAMES = {"status", "estado", "статус", "สถานะ", "stand", "zustand"}
@@ -52,6 +52,7 @@ FX_NAMES = re.compile(r"formel|formula|fórmula|формул|สูตร|rollup
 PERSON_NAMES = re.compile(r"^(person|people|personen|assign(ee|ed)?( to)?|owner|besitzer|verantwortlich|zuständig|zugewiesen|"
                           r"created by|last edited by|erstellt von|zuletzt bearbeitet von|responsable|asignad[oa]|"
                           r"ответственн|исполнител|ผู้รับผิดชอบ)$", re.I)
+TAG_NAMES = re.compile(r"^(tags?|labels?|schlagw|stichw|kategorien|etiquetas|теги|метки|แท็ก)", re.I)
 PHONE_NAMES = re.compile(r"phone|telefon|teléfono|телефон|โทรศัพท์|mobil|handy", re.I)
 DONE_WORDS = re.compile(r"done|complete|erledigt|fertig|abgeschlossen|geschlossen|closed|finished|archiv|cancel|abgebrochen|"
                         r"hecho|terminad|completad|готов|выполн|заверш|เสร็จ", re.I)
@@ -476,14 +477,22 @@ class NCol:
             return "relation", max(self.rel_dbs.items(), key=lambda x: x[1])[0]
         if self.file_ok >= need and self.file_local:
             return "files", None
+        if self.phone >= need and PHONE_NAMES.search(name):
+            return "phone", None
         g = self.col.guess()
         if g != "checkbox" and self.dates >= need and self.nums < need:
             g = "date"
+        short = not self.col.many and self.col.distinct and all(len(x) <= 40 for x in self.col.distinct)
+        if g == "text" and short and _norm(name) in STATUS_NAMES:
+            return "status", None
+        if g in ("text", "select") and self.col.split and not self.col.parts_many and TAG_NAMES.search(name) \
+                and all(len(x) <= 40 for x in self.col.parts):
+            g = "multi_select"
+        if g == "text" and short and TAG_NAMES.search(name):
+            g = "select"
         if g in ("text", "select", "multi_select"):
             if self.email >= need:
                 return "email", None
-            if self.phone >= need and PHONE_NAMES.search(name):
-                return "phone", None
             if not self.tokens_many and self.tokens and _norm(name) not in STATUS_NAMES:
                 # Relation als reine Titel (aeltere/andere Exporte): ALLE Einzelwerte sind Titel derselben Datenbank
                 best, hits = None, 0
