@@ -373,6 +373,15 @@ CREATE INDEX IF NOT EXISTS note_version_note ON note_version (uid, note_id);
 CREATE TABLE IF NOT EXISTS note_base (
     note_id BIGINT NOT NULL, rev INTEGER NOT NULL, title TEXT, body TEXT, format TEXT, sent TEXT, sent_title TEXT,
     created DOUBLE PRECISION NOT NULL, PRIMARY KEY (note_id, rev));
+-- 2.5 (P3 Stufe 2, saga/collab.py): CRDT-Zustand je Seite (Yjs-Binaerformat), nur solange live bearbeitet wird.
+-- model/schema_ver: Dokumentmodell (saga/collab_model.py) - passt es nicht mehr, wird der Zustand verworfen und neu aus
+-- note.body aufgebaut. log: angenommene Updates seit der letzten Verdichtung (vor dem Verteilen geschrieben).
+CREATE TABLE IF NOT EXISTS note_crdt (
+    note_id BIGINT PRIMARY KEY, model TEXT NOT NULL, schema_ver INTEGER NOT NULL, state BYTEA NOT NULL, sv BYTEA NOT NULL,
+    rev INTEGER NOT NULL, updated DOUBLE PRECISION NOT NULL, used DOUBLE PRECISION NOT NULL);
+CREATE TABLE IF NOT EXISTS note_crdt_log (
+    note_id BIGINT NOT NULL, seq BIGINT NOT NULL, upd BYTEA NOT NULL, uid TEXT, at DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (note_id, seq));
 CREATE TABLE IF NOT EXISTS file (
     id TEXT PRIMARY KEY, uid TEXT NOT NULL, name TEXT NOT NULL, mime TEXT NOT NULL,
     size BIGINT NOT NULL, is_image INTEGER NOT NULL, created DOUBLE PRECISION NOT NULL);
@@ -1228,6 +1237,11 @@ SELECT 1 FROM api_token, webhook, webhook_delivery LIMIT 0;
     # erledigt saga/mentions.py beim naechsten Speichern (Personen, die schon im alten Stand standen, still). Beliebig oft.
     26: """
 SELECT 1 FROM note_mention, synced_block, synced_ref LIMIT 0;
+""",
+    # 2.5.0 (P3 Stufe 2, saga/collab.py): CRDT-Zustand note_crdt und Update-Log note_crdt_log legt SCHEMA oben an. Kein
+    # Bestand: der Zustand entsteht beim ersten Live-Oeffnen deterministisch aus note.body. Beliebig oft ausfuehrbar.
+    27: """
+SELECT 1 FROM note_crdt, note_crdt_log LIMIT 0;
 """,
 }
 SCHEMA_VERSION = max([1, *MIGRATIONS])
