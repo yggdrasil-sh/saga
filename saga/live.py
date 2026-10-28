@@ -80,8 +80,8 @@ _buf = {}                # uid -> deque[(seq, zeit, nachricht, seite|None)]
 _lost = {}               # uid -> hoechste Nummer, die fuer dieses Konto NICHT mehr nachgeholt werden kann
 _presence = {}           # note_id -> {uid: [zeit, bearbeitet]}
 # 2.3 (saga.fed_pages): Seiten anderer Saga-Instanzen und Personen anderer Instanzen auf Seiten hier
-FED_PRESENCE = None      # fn(uid, negative_id, editing, leave, name) -> Antwort fuer POST /api/presence
-FED_WATCHERS = None      # fn(c, nid, me) -> [{username, name, editing, avatar, remote}] - fremde Personen auf der Seite (Abo)
+FED_PRESENCE = None      # fn(uid, negative_id, editing, leave, name, block) -> Antwort fuer POST /api/presence (block: ... = keine Angabe)
+FED_WATCHERS = None      # fn(c, nid, me) -> [{username, name, editing, avatar, remote, block, color}] - fremde Personen auf der Seite (Abo)
 FED_FANOUT = None        # fn(kind, payload, anwesenheit) - im Thread nach jedem Seiten-Ereignis: an die Abos anderer Instanzen weitergeben
 # 2.4 (saga.chat_status): Online-Status. Online = mindestens eine Live-Verbindung; offline erst OFF_GRACE Sekunden nach der
 # letzten (Neuaufbau nach MAX_AGE, kurze Funkloecher flackern nicht). ONLINE(payload) im Thread -> [(uid, ereignis, daten)]
@@ -251,11 +251,10 @@ async def _dispatch():
                 continue
             if not aud and not (FED_FANOUT is not None and kind in ("note.changed", "presence", "comments.changed", "notes.tree")):
                 continue
-            pres = {k: {u: bool(e[1]) for u, e in v.items()} for k, v in _presence.items()}     # Kopie fuer den Thread
+            # Kopie fuer den Thread: {seite: {konto: (bearbeitet, fokussierter Block)}} (Block: 2.5 P3, auch fuer presence2)
+            pres = {k: {u: (bool(e[1]), e[2] if len(e) > 2 else None) for u, e in v.items()} for k, v in _presence.items()}
             if FED_FANOUT is not None and kind in ("note.changed", "presence", "comments.changed", "notes.tree"):
                 await asyncio.to_thread(FED_FANOUT, kind, payload, pres)
-            if kind == "presence":                            # 2.5 (P3): mit fokussiertem Block
-                pres = {k: {u: (bool(e[1]), e[2] if len(e) > 2 else None) for u, e in v.items()} for k, v in _presence.items()}
             out = await asyncio.to_thread(_resolve, kind, payload, aud, pres)
             for item in out:
                 uid, typ, data = item[:3]
@@ -722,7 +721,9 @@ async def api_presence(request: Request):
     if FED_PRESENCE is not None and isinstance(raw_id, int) and not isinstance(raw_id, bool) and -2 ** 62 < raw_id < 0:
         # 2.3: Seite einer anderen Saga-Instanz - Abo beim Eigentuemer-Server (saga.fed_pages), ohne Inhalt
         name = request.session.get("name") or uid
-        return await asyncio.to_thread(FED_PRESENCE, uid, raw_id, b.get("editing") is True, bool(b.get("leave")), name)
+        blk = b.get("block") if isinstance(b.get("block"), str) and BLOCK_ID_RE.fullmatch(b["block"]) else None   # presence2
+        return await asyncio.to_thread(FED_PRESENCE, uid, raw_id, b.get("editing") is True, bool(b.get("leave")), name,
+                                       blk if "block" in b else ...)
     if isinstance(raw_id, bool) or not (isinstance(raw_id, int) or (isinstance(raw_id, str) and raw_id.isdigit())):
         return _bad("bad request")
     nid = int(raw_id)

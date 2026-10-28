@@ -629,11 +629,49 @@ def api_note_get(nid: int, request: Request):
     uid = _api_guard(request)
     if not uid:
         return _bad("unauthorized", 401)
-    return note_get(uid, nid)
+    return note_get(uid, nid, since_arg(request.query_params.get("since")))
 
 
-def note_get(uid, nid):
-    """Fuer die Weboberflaeche und die Foederation (uid = fremde Person '@name@host')."""
+def since_arg(v):
+    """?since=<rev> -> int oder None (ungueltig: ganz normal antworten)."""
+    return int(v) if isinstance(v, str) and v.isdigit() and len(v) < 16 else None
+
+
+def _view_body(c, uid, acc, nid, raw, fmt, mine):
+    """Inhalt so, wie uid ihn sieht: eindeutige Block-IDs, verdeckte Verweise maskiert, Nextcloud-Autoren."""
+    body = ensure_ids(raw, fmt, nid)          # 2.5 (P3-E1): alte Staende ohne eindeutige Block-IDs (deterministisch)
+    if not mine:                               # Verweise auf Seiten ohne Zugriff: Titel nie ausliefern
+        body = mask_links(body, fmt, viewer(acc))
+        if is_remote(uid):                     # Nextcloud-Bloecke: Autor fuer andere Instanzen nur als Platzhalter
+            body = nextcloud.mask_authors(body, fmt)
+    if not is_remote(uid):                     # 2.4 (N1): Autor fremder Nextcloud-Bloecke lokal als Handle
+        body = nextcloud.mask_local(body, fmt, uid)
+    return body
+
+
+def since_delta(c, uid, acc, nid, since, cur_body, fmt, mine):
+    """2.5 (P3, GET ?since=<rev>): nur die seit since geaenderten Bloecke. -> {"from", "blocks"} oder None (Basis nicht
+    mehr da, Text-Seite, Unsinn -> ganzer Inhalt wie bisher). blocks = aktuelle Reihenfolge der obersten Ebene: ein
+    unveraenderter Block nur als {"id"} (der Client nimmt seinen Stand von since), geaenderte/neue vollstaendig."""
+    if fmt != "blocks" or since is None:
+        return None
+    base = base_of(c, nid, since)
+    if base is None or base[2] != "blocks":
+        return None
+    try:
+        old = {b.get("id"): b for b in json.loads(_view_body(c, uid, acc, nid, base[1], "blocks", mine)).get("blocks") or []
+               if isinstance(b, dict)}
+        cur = json.loads(cur_body).get("blocks") or []
+    except (ValueError, TypeError, AttributeError):
+        return None
+    canon = lambda b: json.dumps(b, sort_keys=True, ensure_ascii=False)     # noqa: E731
+    return {"from": since, "blocks": [{"id": b.get("id")} if b.get("id") in old and canon(old[b["id"]]) == canon(b) else b
+                                      for b in cur if isinstance(b, dict)]}
+
+
+def note_get(uid, nid, since=None):
+    """Fuer die Weboberflaeche und die Foederation (uid = fremde Person '@name@host'). since (2.5): Revision, deren Stand
+    der Client hat -> body faellt weg, statt dessen delta (since_delta), wenn die Basis noch vorliegt."""
     with _db() as c:
         acc = Access(c, uid)
         owner, role, err = access(c, uid, nid, "view", acc)
@@ -652,14 +690,10 @@ def note_get(uid, nid):
         n_res = c.execute("SELECT COUNT(*) FROM note_comment WHERE note_id=? AND thread_id IS NULL AND resolved_at IS NOT NULL",
                           (nid,)).fetchone()[0]
         nm = names(c, [owner, r[20], r[21]])
-        body = ensure_ids(r[9], r[10], nid)       # 2.5 (P3-E1): alte Staende ohne eindeutige Block-IDs (deterministisch)
-        if not mine:                               # Verweise auf Seiten ohne Zugriff: Titel nie ausliefern
-            body = mask_links(body, r[10], viewer(acc))
-            if is_remote(uid):                     # Nextcloud-Bloecke: Autor fuer andere Instanzen nur als Platzhalter
-                body = nextcloud.mask_authors(body, r[10])
+        body = _view_body(c, uid, acc, nid, r[9], r[10], mine)
+        if not mine:
             parent_hidden = r[3] is not None and not acc.role(r[3])
-        if not is_remote(uid):                     # 2.4 (N1): Autor fremder Nextcloud-Bloecke lokal als Handle
-            body = nextcloud.mask_local(body, r[10], uid)
+        delta = since_delta(c, uid, acc, nid, since, body, r[10], mine) if since is not None and since <= r[17] else None
         row_fx = _row_formulas(c, owner, uid, r)    # 2.5: Formeln/Rollups einer Datenbank-Zeile
         blocked = False
         if r[3] is not None:                       # 2.5: Zeile mit Abhaengigkeit - "blockiert" (nur gelesen)
@@ -697,6 +731,9 @@ def note_get(uid, nid):
         d["body"] = body
         if parent_hidden:
             d["parent_id"] = None                  # Elternseite nicht freigegeben: nicht einmal ihre ID
+    if delta is not None:                          # 2.5 (?since): nur geaenderte Bloecke
+        d.pop("body", None)
+        d["delta"] = delta
     return JSONResponse(d, headers={"Cache-Control": "no-store"})
 
 
