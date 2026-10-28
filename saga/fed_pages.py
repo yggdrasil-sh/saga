@@ -40,7 +40,7 @@ from saga import fed_dbx, people
 from saga.comments import counts as comment_counts
 from saga.core import E, _bad, _body, t
 from saga.files import FILE_MAX, _sniff_image
-from saga.notes import _disposition, note_chain
+from saga.notes import BLOCK_ID_RE, PALETTE, _disposition, note_chain
 
 router = APIRouter()
 
@@ -49,6 +49,8 @@ UPLOAD_QUOTA = max(1, int(E.get("FED_UPLOAD_QUOTA_MB", "200"))) * 1024 * 1024   
 EXPORT_MAX = 64 * 1024 * 1024
 TREE_GAP = 2.0                       # Baum-Meldungen je Instanz hoechstens alle 2 s (gesammelt)
 LIVE_MAX = 50                        # Eintraege je POST /fed/v2/live
+PRES_RATE = 120                      # Anwesenheitsmeldungen je fremder Person und Seite pro Minute (presence2: Blockwechsel)
+PRES_GAP = 1.0                       # Heim: Blockwechsel hoechstens 1x/s an den Eigentuemer (spaetere werden zusammengefasst)
 _NAME = re.compile(r"[^\x00-\x1f/\\]{1,120}")
 
 
@@ -82,21 +84,37 @@ def _ext_user(c, u, cache):
     return F._ext_persons(c, {"name": "", "username": u, "me": False}, cache)
 
 
+def _pres_entry(e):
+    """Eintrag der lokalen Anwesenheit (live._presence-Kopie): (bearbeitet, Block) bzw. aeltere Form bool."""
+    return (bool(e[0]), e[1]) if isinstance(e, (tuple, list)) else (bool(e), None)
+
+
 def _present(c, nid, pres, skip=None):
-    """Anwesende einer Seite fuer eine andere Instanz: lokale Konten (mit Zugriff) + Abos fremder Personen."""
+    """Anwesende einer Seite fuer eine andere Instanz: lokale Konten (mit Zugriff) + Abos fremder Personen. Je Person
+    zusaetzlich block (fokussierter Block, nur beim Bearbeiten) und color (aus dem Hash der Kennung hier, live.pcolor) -
+    beides nimmt _for_peer fuer Gegenstellen ohne presence2 wieder heraus."""
     cache, out = {}, []
     entries = (pres or {}).get(nid) or {}
     acc_ok = [u for u in sorted(entries) if sharing.Access(c, u).role(nid)]
     for u in acc_ok:
         e = _ext_user(c, u, cache)
+        ed, blk = _pres_entry(entries[u])
         # D01: an andere Server nie der (uebersetzte) Ersatz oder die lokale Kennung - Anzeigename, sonst wie _ext_user
-        e.update(name=F.display_of(c, u) or e.get("name") or "?", editing=bool(entries[u]))
+        e.update(name=F.display_of(c, u) or e.get("name") or "?", editing=ed, block=blk if ed else None, color=live.pcolor(u))
         out.append(e)
     for pr, w in _watchers(nid).items():
         if pr == skip or not _role_as(c, pr, w["groups"], nid):       # Freigabe inzwischen entzogen: nicht mehr anzeigen
             continue
-        out.append({"name": w["name"], "username": pr, "editing": bool(w["editing"])})
+        out.append({"name": w["name"], "username": pr, "editing": bool(w["editing"]), "block": w.get("block") if w["editing"] else None,
+                    "color": live.pcolor(pr)})
     return out
+
+
+def _for_peer(p, users):
+    """Anwesende fuer eine Gegenstelle: ohne presence2 die Felder block/color weglassen (wie bisher)."""
+    if _caps(p, "presence2"):
+        return users
+    return [{k: v for k, v in u.items() if k not in ("block", "color")} for u in users]
 
 
 def watchers_for_local(c, nid, me):
@@ -106,7 +124,8 @@ def watchers_for_local(c, nid, me):
         if not _role_as(c, pr, w["groups"], nid):
             continue
         out.append({"name": sharing.remote_label(pr, w["name"]), "username": pr, "editing": bool(w["editing"]), "remote": True,
-                    "avatar": avatars.url_of(c, pr), "me": False})
+                    "avatar": avatars.url_of(c, pr), "me": False, "block": w.get("block") if w["editing"] else None,
+                    "color": live.pcolor(pr)})
     return out
 
 
@@ -162,11 +181,13 @@ async def _owner_req(request, nid, rest):
     q = dict(request.query_params)
     mv = re.fullmatch(r"versions/([1-9][0-9]{0,17})(/restore)?", rest)
     if m == "GET" and rest == "":
-        return _need(inp, "db") or _signed_resp(inp, fed_dbx.dbx_out(inp, _fx_legacy(inp, await run_in_threadpool(F._as, inp, pages.note_get, nid), nid), nid))
+        return _need(inp, "db") or _signed_resp(inp, fed_dbx.dbx_out(inp, _fx_legacy(inp, await run_in_threadpool(F._as, inp, pages.note_get, nid,
+                                                                                                    F.fed_since(inp, request)), nid), nid))
     if m == "PATCH" and rest == "":
         if _need(inp, "db"):
             return _need(inp, "db")
-        b = {k: v for k, v in b.items() if k in F.EDIT2_KEYS}
+        b = {k: v for k, v in b.items() if k in F.edit_keys(inp.peer)}
+        b = dict({k: v for k, v in b.items() if k not in F.MERGE_KEYS}, **F.merge_fields(b))    # 2.5 (merge1)
         if not b:
             return F._signed(inp, 400, {"error": t("nichts zu ändern")})
         b = fed_dbx.dbx_in(inp, b, row_id=nid)        # 2.5: ohne dbx1 keine Personen-/Datei-Werte
@@ -261,7 +282,10 @@ async def _owner_req(request, nid, rest):
     if m == "POST" and rest == "presence":
         if _need(inp, "presence"):
             return _need(inp, "presence")
-        return await run_in_threadpool(_presence_owner, inp, nid, b.get("editing") is True, b.get("leave") is True)
+        blk = ...                                    # 2.5 (presence2): fokussierter Block; ohne Angabe bleibt der alte
+        if _caps(inp.peer, "presence2") and "block" in b:
+            blk = b["block"] if isinstance(b.get("block"), str) and BLOCK_ID_RE.fullmatch(b["block"]) else None
+        return await run_in_threadpool(_presence_owner, inp, nid, b.get("editing") is True, b.get("leave") is True, blk)
     return F._signed(inp, 404, {"error": "not found"})
 
 
@@ -373,9 +397,12 @@ def _copy_owner(principal, url, nid):
     return files.file_copy(principal, url, nid, fed_quota=UPLOAD_QUOTA)
 
 
-def _presence_owner(inp, nid, editing, leave):
-    """Abo einer fremden Person fuer eine Seite hier (Live + Anwesenheit, WATCH_TTL). -> Stand der Seite + Anwesende."""
+def _presence_owner(inp, nid, editing, leave, block=...):
+    """Abo einer fremden Person fuer eine Seite hier (Live + Anwesenheit, WATCH_TTL). -> Stand der Seite + Anwesende.
+    block (presence2): fokussierter Block oder None; ... = keine Angabe (der zuletzt gemeldete bleibt)."""
     pr, now = inp.principal, time.time()
+    if not leave and not F._rate.allow(f"pres:{inp.peer['id']}:{pr}:{nid}", PRES_RATE):
+        return F._signed(inp, 429, {"error": "too many"})     # Drossel je Person und Seite (Blockwechsel)
     with _db() as c:
         role = _role_as(c, pr, inp.groups, nid)
         r = c.execute("SELECT rev, updated, updated_by FROM note WHERE id=? AND deleted_at IS NULL", (nid,)).fetchone() if role else None
@@ -387,9 +414,11 @@ def _presence_owner(inp, nid, editing, leave):
         if leave or not r:
             changed = cur.pop(pr, None) is not None
         else:
+            blk = (old or {}).get("block") if block is ... else block
             cur[pr] = {"peer": inp.peer["id"], "exp": now + WATCH_TTL, "editing": editing, "groups": frozenset(inp.groups),
-                       "name": F._clean_text((dn[0] if dn else "") or pr[1:].split("@")[0], F.DISPLAY_MAX)}
-            changed = old is None or old["exp"] <= now or bool(old["editing"]) != editing
+                       "name": F._clean_text((dn[0] if dn else "") or pr[1:].split("@")[0], F.DISPLAY_MAX),
+                       "block": blk if editing else None}
+            changed = old is None or old["exp"] <= now or bool(old["editing"]) != editing or old.get("block") != cur[pr]["block"]
         if not cur:
             _W.pop(nid, None)
     if changed:
@@ -399,15 +428,18 @@ def _presence_owner(inp, nid, editing, leave):
     if not r:
         return F._signed(inp, 404, {"error": "not found"})
     try:
-        pres = {nid: {u: bool(e[1]) for u, e in list((live._presence.get(nid) or {}).items())}}
+        pres = {nid: {u: (bool(e[1]), e[2] if len(e) > 2 else None) for u, e in list((live._presence.get(nid) or {}).items())}}
     except RuntimeError:                     # gleichzeitig veraendert (Event-Schleife): ohne lokale Anwesende
         pres = {}
     with _db() as c:
         users = _present(c, nid, pres, skip=pr)
         cache = {}
         by = _ext_user(c, r[2], cache) if r[2] and r[2] != pr else None
-    users.append({"name": "", "username": pr, "editing": editing})
-    return F._signed(inp, 200, {"rev": r[0], "updated": r[1], "by": by, "users": users, "ttl": live.PRESENCE_TTL, "watch": WATCH_TTL})
+    with _WL:
+        mine = dict((_W.get(nid) or {}).get(pr) or {})
+    users.append({"name": "", "username": pr, "editing": editing, "block": mine.get("block"), "color": live.pcolor(pr)})
+    return F._signed(inp, 200, {"rev": r[0], "updated": r[1], "by": by, "users": _for_peer(inp.peer, users), "ttl": live.PRESENCE_TTL,
+                                "watch": WATCH_TTL})
 
 
 # --- Weitergabe an die Abos (live.FED_FANOUT, im Thread) ---------------------------------------------------------------
@@ -460,10 +492,12 @@ def fanout(kind, p, pres):
                     continue
                 by_peer.setdefault(w["peer"], []).append(dict(it, to=pr[1:].split("@")[0]))
         elif kind == "presence":
-            users = _present(c, nid, pres)
+            users, peers = _present(c, nid, pres), {}
             for pr, w in ws.items():
                 if _role_as(c, pr, w["groups"], nid):
-                    by_peer.setdefault(w["peer"], []).append({"type": "presence", "note": nid, "to": pr[1:].split("@")[0], "users": users})
+                    if w["peer"] not in peers:
+                        peers[w["peer"]] = _for_peer(F.peer_by(c, "id", w["peer"]), users)
+                    by_peer.setdefault(w["peer"], []).append({"type": "presence", "note": nid, "to": pr[1:].split("@")[0], "users": peers[w["peer"]]})
         elif kind == "comments.changed":
             if p.get("only") and not sharing.is_remote(p["only"]):
                 return
@@ -1007,21 +1041,56 @@ def copy(uid, url, note):
     return F._json(200, {"url": json.loads(resp.body)["file"]["url"], "copied": True})
 
 
-def presence(uid, nid, editing, leave, name):
-    """live.FED_PRESENCE: Anwesenheit/Abo auf einer Seite einer anderen Instanz."""
+_HP = {}           # (uid, negative id) -> {"at": letzte Meldung an den Eigentuemer, "pend": (editing, block) | None}
+
+
+def _pres_later(uid, nid, name):
+    with _HL:
+        e = _HP.get((uid, nid))
+        pend = e and e.pop("pend", None)
+    if pend:
+        try:
+            presence(uid, nid, pend[0], False, name, pend[1])
+        except Exception as ex:  # noqa: BLE001 - verwerfbar wie jede Anwesenheitsmeldung
+            print(f"fed_pages: presence {type(ex).__name__}", flush=True)
+
+
+def presence(uid, nid, editing, leave, name, block=...):
+    """live.FED_PRESENCE: Anwesenheit/Abo auf einer Seite einer anderen Instanz. block (presence2): fokussierter Block,
+    ... = keine Angabe. Blockwechsel gehen hoechstens 1x/s an den Eigentuemer (PRES_GAP; dazwischen: der juengste Stand
+    wird nachgereicht, Antwort {"skipped": true} wie lokal)."""
     pid, rid = F.unref(nid)
     me = {"username": uid, "name": name, "editing": editing, "me": True, "avatar": avatars.my_url(uid)}
+    now = time.time()
     with _HL:
+        if not leave:
+            hp = _HP.setdefault((uid, nid), {"at": 0})
+            if now - hp["at"] < PRES_GAP:
+                first = "pend" not in hp
+                hp["pend"] = (editing, block)
+                if first:
+                    threading.Timer(PRES_GAP - (now - hp["at"]) + 0.05, _pres_later, (uid, nid, name)).start()
+                return JSONResponse({"skipped": True}, headers={"Cache-Control": "no-store"})
+            hp["at"] = now
+            hp.pop("pend", None)
+            if len(_HP) > 20000:
+                for k in [k for k, v in _HP.items() if now - v["at"] > 3600]:
+                    _HP.pop(k, None)
+        else:
+            _HP.pop((uid, nid), None)
         cur = _H.setdefault((pid, rid), {})
         if leave:
             cur.pop(uid, None)
         else:
-            cur[uid] = time.time() + WATCH_TTL
+            cur[uid] = now + WATCH_TTL
         if not cur:
             _H.pop((pid, rid), None)
     try:
         p, _ = _peer_for(uid, nid, "presence")
-        status, _, d = _call(uid, p, "POST", f"/fed/v2/notes/{rid}/presence", body={"editing": editing, "leave": leave})
+        body = {"editing": editing, "leave": leave}
+        if block is not ... and _caps(p, "presence2"):
+            body["block"] = block
+        status, _, d = _call(uid, p, "POST", f"/fed/v2/notes/{rid}/presence", body=body)
     except F._Fail as f:
         if f.resp.status_code == 404 and not leave:          # Gegenstelle ohne Anwesenheit: nur ich, ohne Live
             return JSONResponse({"users": [me], "ttl": live.PRESENCE_TTL, "live": False}, headers={"Cache-Control": "no-store"})
@@ -1038,6 +1107,9 @@ def presence(uid, nid, editing, leave, name):
     for u in users:
         if u.get("me"):
             u.update(editing=editing, name=name if u.get("username") == uid else u.get("name"))
+            if block is not ...:
+                u["block"] = block if editing else None
+        u.setdefault("color", live.pcolor(u.get("username")))
     return JSONResponse({"rev": d.get("rev") if isinstance(d.get("rev"), int) else None, "updated": F._num(d.get("updated")), "by": by,
                          "users": users, "ttl": live.PRESENCE_TTL, "live": live._S["loop"] is not None}, headers={"Cache-Control": "no-store"})
 
@@ -1050,6 +1122,9 @@ def _users_in(c, p, lst, uid):
         u = F._in_person(c, {"name": x.get("name"), "username": x.get("username"), "me": False}, p, uid, cache)
         u["editing"] = x.get("editing") is True
         u["me"] = u.get("username") == uid
+        # presence2: Block nur als ID, Farbe nur aus der Palette (sonst wie lokal aus der Kennung)
+        u["block"] = x["block"] if u["editing"] and isinstance(x.get("block"), str) and BLOCK_ID_RE.fullmatch(x["block"]) else None
+        u["color"] = x["color"] if x.get("color") in PALETTE else live.pcolor(u.get("username") or x.get("name"))
         out.append(u)
     return out
 

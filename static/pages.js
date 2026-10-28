@@ -8568,8 +8568,9 @@
     if (busy()) { remoteHint(ev.by); return; }
     silentReload(ev.by);
   }
-  // Darf diese Seite zusammengefuehrt werden? (eigene oder lokal geteilte Block-Seite, bearbeitbar; fremde Server: E3)
-  function mergeable() { var c = S.cur; return !!c && c.format === 'blocks' && c.kind !== 'database' && !remoteId(c.id) && !readOnly(); }
+  // Darf diese Seite zusammengefuehrt werden? (Block-Seite, bearbeitbar; Seite eines anderen Servers nur, wenn er merge1
+  // kann - sonst bleibt es dort beim 409-Weg mit Konfliktleiste)
+  function mergeable() { var c = S.cur; return !!c && c.format === 'blocks' && c.kind !== 'database' && (!remoteId(c.id) || remCap(c, 'merge1')) && !readOnly(); }
   // Antwort eines zusammengefuehrten Speicherns: unveraendert seit dem Senden -> zusammengefuehrten Stand zeigen; sonst die
   // eigenen neuen Eingaben behalten und beim naechsten Speichern mit Basis "eingereichte Fassung" nachreichen
   function mergedReply(id, d, sentStr, sentTitle) {
