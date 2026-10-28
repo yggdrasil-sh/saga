@@ -1,7 +1,7 @@
 """Saga 2.5 P6-0 (Vertrag Editor-Rest): Inline-Formen (Farben aus der Palette, Erwaehnung, Inline-Mathe), Blocktypen
 math/synced, Mermaid-Felder, Spalten bis 6, Konfliktmarke hkconflict - Sanitizer, Veroeffentlichen und Markdown gegen die
 gemeinsamen Vektoren tests/vectors/editor_inline.json; dazu ueber die API: Speichern, Markenerhalt fuer aeltere Apps
-(ohne X-Saga-Caps inline2: Text unveraendert -> HTML bleibt), Spalten-Schutz (cols6), Markdown-Export.
+(ohne X-Saga-Caps inline2: Marken auf unveraenderten Zeichen bleiben, P6-3), Spalten-Schutz (cols6), Markdown-Export.
 Umgebung wie die anderen Tests (HK_TEST_BASE, BASE_URL, SESSION_SECRET, DATABASE_URL)."""
 import base64, json, os, sys, time, urllib.error, urllib.parse, urllib.request
 from itsdangerous import TimestampSigner
@@ -127,7 +127,7 @@ ok("Veroeffentlichen Mermaid veraltet -> Code-Block", pb.startswith('<div class=
 pb = publish._block(_Ctx(), "code", {"code": "<img src=x onerror=alert(1)>", "language": "mermaid"}, 0)
 ok("Veroeffentlichen Mermaid ohne Bild -> escaped Code", "&lt;img" in pb and "<img" not in pb)
 
-# --- Zwischenregel Markenerhalt (ohne Server) ----------------------------------------------------------------------
+# --- Markenerhalt (ohne Server, P6-3; ausfuehrlich in tests/markenerhalt.py) ----------------------------------------------------------------------
 old = json.dumps({"blocks": [P("a", 'Hallo <span class="hk-c-red">rote</span> Welt'), P("b", '<code class="hk-math">x^2</code> und mehr'),
                              {"id": "l", "type": "list", "data": {"style": "unordered", "items": [{"content": '<mark class="hk-bg-blue">eins</mark>', "items": []}]}},
                              {"id": "k", "type": "columns", "data": {"cols": [{"blocks": [P(f"c{i}", str(i))]} for i in range(6)]}}]})
@@ -136,7 +136,7 @@ new = json.dumps({"blocks": [P("a", "Hallo rote Welt"), P("b", "<code>x^2</code>
                              {"id": "k", "type": "columns", "data": {"cols": [{"blocks": [P(f"c{i}", str(i))]} for i in range(3)] + [{"blocks": [P("c3", "3"), P("c4", "4")]}]}}]})
 kept = {b["id"]: b for b in json.loads(legacy_keep(old, new, frozenset()))["blocks"]}
 ok("Alte App, Text unveraendert: Farbe bleibt", kept["a"]["data"]["text"] == 'Hallo <span class="hk-c-red">rote</span> Welt')
-ok("Alte App, Text geaendert: neue Fassung gilt", kept["b"]["data"]["text"] == "<code>x^2</code> und weniger")
+ok("Alte App, Text geaendert: Mathe bleibt, Rest neu", kept["b"]["data"]["text"] == '<code class="hk-math">x^2</code> und weniger')
 ok("Alte App: Listenpunkt behaelt Hintergrund", kept["l"]["data"]["items"][0]["content"] == '<mark class="hk-bg-blue">eins</mark>')
 ok("Alte App: Spalten 5-6 wieder angehaengt (ohne Doppelte)",
    [[x["id"] for x in c["blocks"]] for c in kept["k"]["data"]["cols"]] == [["c0"], ["c1"], ["c2"], ["c3", "c4"], [], ["c5"]])
@@ -165,7 +165,7 @@ try:
     s, d = call("PATCH", f"/api/notes/{nid}", {"body": json.dumps(old_app), "format": "blocks"}, {"X-Saga-Caps": "keine"})
     got = {b["id"]: b for b in json.loads(call("GET", f"/api/notes/{nid}")[1]["body"])["blocks"]}
     ok("Alte App: unveraenderter Absatz behaelt die Farbe", s == 200 and got["a"]["data"]["text"] == 'Hallo <span class="hk-c-red">rote</span> Welt')
-    ok("Alte App: geaenderter Absatz hat die neue Fassung", got["b"]["data"]["text"] == "Anna schau!")
+    ok("Alte App: geaenderter Absatz behaelt die Erwaehnung", got["b"]["data"]["text"] == f'<span class="hk-mention" data-u="{ME}">Anna</span> schau!')
     ok("Alte App: Spalten 5-6 bleiben", len(got["k"]["data"]["cols"]) == 6 and got["k"]["data"]["cols"][5]["blocks"][0]["id"] == "c5")
     # neuer Client entfernt die Farbe bewusst
     s, d = call("PATCH", f"/api/notes/{nid}", {"body": json.dumps({"blocks": [P("a", "Hallo rote Welt")]}), "format": "blocks"}, {"X-Saga-Caps": "inline2,cols6"})

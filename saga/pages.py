@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from db import clean_line, connect as _db
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
-from saga import bus, dbcalc, dbvals, mentions, nextcloud, page_widgets, synced, treesync
+from saga import bus, dbcalc, dbvals, mentions, merge, nextcloud, page_widgets, synced, treesync
 from saga.core import BASE_URL, account_lang, _api_guard, _bad, _body, _json_load, _session_user, local_ref, origin_of, ref_of, t, user_error
 from saga.dashboard import visible_tiles
 from saga.publish import published_via
@@ -457,10 +457,10 @@ def _clean_design(blocks):
 
 # --- Aeltere Clients (2.5, P6-0): Markenerhalt und Spalten-Schutz ----------------------------------------------------
 # Aeltere iOS-/Linux-Apps (und Server ohne Faehigkeit inline2) verwerfen beim Bearbeiten span-Elemente und Klassen
-# (Inline-Farben, Erwaehnungen, Inline-Mathe), aeltere Stande schneiden Spalten 5-6 ab. Zwischenregel bis zum Markenerhalt
-# ueber saga.merge (P6-3): Textfelder eines Blocks (gleiche id und gleicher Typ), deren reiner Text sich nicht geaendert
-# hat, behalten ihr altes HTML vollstaendig, wenn es neue Formen enthielt, die jetzt fehlen. Ein Spalten-Block mit genau 4
-# Spalten, der vorher 5-6 hatte, bekommt die fehlenden Spalten aus dem alten Stand zurueck.
+# (Inline-Farben, Erwaehnungen, Inline-Mathe), aeltere Stande schneiden Spalten 5-6 ab. Markenerhalt (P6-3): je Block
+# (gleiche id und gleicher Typ) traegt saga.merge.keep_marks Farben, Erwaehnungen und Inline-Mathe aus dem alten Stand auf
+# die unveraenderten Zeichen der neuen Fassung (Zeichenfolgen-Diff wie beim Merge); geaenderte Zeichen verlieren die Marke.
+# Ein Spalten-Block mit genau 4 Spalten, der vorher 5-6 hatte, bekommt die fehlenden Spalten aus dem alten Stand zurueck.
 CLIENT_CAPS = frozenset(("inline2", "cols6", "merge1", "sync1"))   # was dieser Server-/Web-Stand versteht (X-Saga-Caps);
 # sync1 (2.5, P6-6) = der Client schickt den Inhalt synchronisierter Kopien bearbeitet zurueck (Durchschreiben ins Original)
 
@@ -480,21 +480,31 @@ def _plain_inline(s):
     return re.sub(r"\s+", " ", html_unescape(re.sub(r"<[^>]*>", "", s or ""))).strip()
 
 
+def _item_key(x):
+    return _plain_inline(json.dumps(x, ensure_ascii=False, sort_keys=True))
+
+
 def _keep_fields(old, new):
-    """Textfelder (rekursiv, gleicher Pfad): alter HTML-Text mit neuen Formen, gleicher reiner Text, Formen fehlen -> alt."""
+    """Textfelder (rekursiv, gleicher Pfad): alter HTML-Text mit neuen Formen -> Marken auf unveraenderte Zeichen (P6-3).
+    Listen ungleicher Laenge (Listenpunkte, Tabellenzeilen): unveraenderte Eintraege per Folgen-Diff zuordnen."""
     if isinstance(old, str) and isinstance(new, str):
-        if old != new and NEW_MARKS.search(old) and not NEW_MARKS.search(new) and _plain_inline(old) == _plain_inline(new):
-            return old
+        if old != new and NEW_MARKS.search(old):
+            return merge.keep_marks(old, new)
         return new
     if isinstance(old, dict) and isinstance(new, dict):
         return {k: (_keep_fields(old[k], v) if k in old and k not in ("blocks", "cols") else v) for k, v in new.items()}
-    if isinstance(old, list) and isinstance(new, list) and len(old) == len(new):
-        return [_keep_fields(o, n) for o, n in zip(old, new)]
+    if isinstance(old, list) and isinstance(new, list):
+        if len(old) == len(new):
+            return [_keep_fields(o, n) for o, n in zip(old, new)]
+        out = list(new)
+        for i, j in merge.pairs([_item_key(x) for x in old], [_item_key(x) for x in new]):
+            out[j] = _keep_fields(old[i], new[j])
+        return out
     return new
 
 
 def legacy_keep(old_body, new_body, caps):
-    """Speichern eines Clients ohne inline2/cols6: Marken und Spalten aus dem alten Stand erhalten (s. o.). -> JSON."""
+    """Speichern eines Clients ohne inline2/cols6: Marken (zeichengenau) und Spalten aus dem alten Stand erhalten (s. o.). -> JSON."""
     if not old_body or ("inline2" in caps and "cols6" in caps):
         return new_body
     try:

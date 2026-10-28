@@ -592,3 +592,91 @@ def _merge_block(b, m, t, info):
             return t, cp
         info["lost"].append(bid)
         return m, None
+
+
+# =====================================================================================================
+# Markenerhalt fuer aeltere Clients (2.5, P6-3) - ohne inline2 gehen Farben, Erwaehnungen und Inline-Mathe verloren
+# =====================================================================================================
+_DEGRADED_MARK = ("<mark>", '<mark class="cdx-marker">')     # so kommt mark.hk-bg-* von aelteren Clients zurueck
+_DEGRADED_CODE = ("<code>", '<code class="inline-code">')    # so kommt code.hk-math zurueck (oder als reiner Text)
+
+
+def _new_mark(s):
+    return s.startswith('<span class="hk-c-') or s.startswith('<mark class="hk-bg-')
+
+
+def _new_atom(u):
+    head = u[1:u.find(">") + 1] if u.startswith(A) else ""
+    return (head.startswith("<span") and 'class="hk-mention"' in head) or (head.startswith("<code") and 'class="hk-math"' in head)
+
+
+def _atom_text(u):
+    from html import unescape
+    return unescape(re.sub(r"<[^>]*>", "", u[1:]))
+
+
+def pairs(a, b):
+    """Gleiche Stellen zweier Folgen (difflib wie beim Merge, _hunks) -> [(i, j)] mit a[i] == b[j]."""
+    out, i, j = [], 0, 0
+    for s, e, rep in _hunks(a, b):
+        out.extend((i + k, j + k) for k in range(s - i))
+        j += (s - i) + len(rep)
+        i = e
+    out.extend((i + k, j + k) for k in range(len(a) - i))
+    return out
+
+
+def _restore(nm, om):
+    """Marken eines unveraenderten Zeichens: die des Clients plus Farb-Marken aus dem alten Stand (ein zurueckgestuftes
+    mark wird ersetzt, nicht verdoppelt)."""
+    out = list(nm)
+    for s in om:
+        if not _new_mark(s) or s in out:
+            continue
+        if s.startswith("<mark"):
+            k = next((i for i, x in enumerate(out) if x in _DEGRADED_MARK), None)
+            if k is not None:
+                out[k] = s
+                continue
+        out.append(s)
+    return tuple(out)
+
+
+def keep_marks(old, new):
+    """Inline-HTML: Farben (span.hk-c-*, mark.hk-bg-*), Erwaehnungen (span.hk-mention) und Inline-Mathe (code.hk-math) aus
+    old auf die unveraenderten Zeichen von new uebertragen (Zeichenfolgen-Diff). Geaenderte Zeichen verlieren die Marke;
+    Erwaehnung/Mathe nur, wenn ihr ganzer Text unveraendert und zusammenhaengend erhalten ist (sonst bleibt Text). -> HTML."""
+    if not old or old == new:
+        return new
+    to, tn = tokens(old), tokens(new)
+    if len(to) + len(tn) > 8 * WORD_LEVEL:         # sehr lang: nur die Zwischenregel (gleicher Text -> altes HTML)
+        return old if [u for u, _ in to] == [u for u, _ in tn] else new
+    keys, owner, size = [], [], {}
+    for i, (u, _) in enumerate(to):
+        if _new_atom(u):
+            gs = _graphemes(_atom_text(u))
+            size[i] = len(gs)
+            keys.extend(gs); owner.extend([i] * len(gs))
+        else:
+            keys.append(u); owner.append(i)
+    match = {j: owner[k] for k, j in pairs(keys, [u for u, _ in tn])}
+    hits = {}
+    for j in sorted(match):
+        if match[j] in size:
+            hits.setdefault(match[j], []).append(j)
+    whole = {js[0]: oi for oi, js in hits.items() if len(js) == size[oi] and js[-1] - js[0] == len(js) - 1}
+    out, j = [], 0
+    while j < len(tn):
+        u, mk = tn[j]
+        if j in whole:
+            oi = whole[j]
+            ou, om = to[oi]
+            if "hk-math" in ou.split(">", 1)[0]:
+                mk = tuple(x for x in mk if x not in _DEGRADED_CODE)
+            out.append((ou, _restore(mk, om)))
+            j += size[oi]
+            continue
+        oi = match.get(j)
+        out.append((u, _restore(mk, to[oi][1]) if oi is not None and oi not in size else mk))
+        j += 1
+    return render(out)

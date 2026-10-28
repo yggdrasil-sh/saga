@@ -111,7 +111,8 @@ CAPS2 = ["v2", "express", "handles", "directory", "keys", "chat2", "calls2", "li
 # Rollup als nur-lesbare Text-Spalte (Original in fx_orig, kommt beim Speichern des Schemas unveraendert zurueck).
 # inline2, cols6 (2.5, P6-0, docs/APP-API.md "Inline-Vertrag") = der Server kennt Inline-Farben (span.hk-c-*, mark.hk-bg-*),
 # Erwaehnungen (span.hk-mention data-u), Inline-Mathe (code.hk-math) bzw. bis 6 Spalten. Speichert ein Peer OHNE diese
-# Faehigkeit eine Seite hier, erhaelt der Eigentuemer-Server Marken und Spalten 5-6 aus dem alten Stand (pages.legacy_keep).
+# Faehigkeit eine Seite hier, erhaelt der Eigentuemer-Server Marken je Zeichen (P6-3) und Spalten 5-6 aus dem alten Stand
+# (pages.legacy_keep).
 # rowtpl (2.5, fix27 E1/E4) = Eintrags-Vorlagen fuer Bearbeitende: GET .../rows liefert ab Rolle 'Bearbeiten' "templates",
 # POST /fed/v2/notes/{vorlage}/duplicate geht dann auch ohne via (Vorlage liegt in parent_id), die Antwort traegt
 # fresh/placeholder, und POST /fed/v2/notes/{id}/discard verwirft einen unveraenderten neuen Eintrag. Ohne rowtpl: wie bisher.

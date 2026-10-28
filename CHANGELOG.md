@@ -16,6 +16,12 @@ Alle nennenswerten Änderungen an Saga. Versionen folgen [Semantic Versioning](h
 
 ## [Unveröffentlicht]
 
+### Geändert (2.5, Server/Web-Reste)
+- **Markenerhalt für ältere Apps zeichengenau (P6-3).** Speichert eine App bzw. ein Server ohne `inline2`, überträgt
+  der Server Farben, Hintergründe, Erwähnungen und Inline-Mathe aus dem gespeicherten Stand auf alle unveränderten
+  Zeichen – auch wenn daneben Text geändert wurde (bisher nur bei völlig unverändertem Text). Geänderte Zeichen verlieren
+  die Farbe, eine geänderte Erwähnung bzw. Formel bleibt als Text.
+
 ### Neu (2.5, P6-5/P6-6: Erwähnungen und synchronisierte Blöcke)
 - **@-Erwähnungen von Personen.** Im @-Menü des Editors stehen jetzt zuerst **Personen** mit Zugriff auf die Seite;
   ab zwei Zeichen auch Personen ohne Zugriff – Auswahl fragt „Seite teilen (Lesen/Kommentieren) und erwähnen?“.

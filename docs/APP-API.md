@@ -113,10 +113,18 @@ Apps melden beim Speichern (`PATCH /api/notes/{id}`), was sie verstehen: Kopf `X
   `sync1` ignoriert der Server `data.blocks` von Kopien.
 
 Ohne Kopf gilt: Browser-Sitzung (Web) = alles; App-Sitzung/Geräte-Schlüssel = nichts davon. Dann schützt der Server:
-Textfelder eines Blocks (gleiche `id`, gleicher Typ), deren **reiner Text unverändert** ist, behalten ihr altes HTML,
-wenn es neue Formen enthielt, die jetzt fehlen (Zwischenregel bis zum zeichengenauen Markenerhalt). Ein Spalten-Block mit
-genau 4 Spalten, der vorher 5–6 hatte, bekommt die fehlenden Spalten zurück (Breiten danach gleich). Föderation:
-dasselbe für Gegenstellen ohne die Fähigkeiten `inline2`/`cols6` (`APP-API-FED.md`).
+
+- **Markenerhalt** (ohne `inline2`, 2.5 P6-3): je Block (gleiche `id`, gleicher Typ) überträgt der Server Farbe
+  (`span.hk-c-*`, `mark.hk-bg-*`), Erwähnung (`span.hk-mention`) und Inline-Mathe (`code.hk-math`) aus dem gespeicherten
+  Stand auf die **unveränderten Zeichen** der neuen Fassung (Zeichenfolgen-Diff wie beim Zusammenführen). Geänderte oder
+  neue Zeichen haben keine Farbe. Erwähnung und Inline-Mathe sind unteilbar: nur wenn ihr ganzer Text unverändert und
+  zusammenhängend vorkommt, kommen sie zurück, sonst bleibt der Text. Ein zurückgestuftes `<mark>` (ohne Klasse bzw.
+  `cdx-marker`) bzw. `<code>` an derselben Stelle wird ersetzt, eigene Formatierung des Clients (fett, kursiv, Verweise)
+  bleibt. Listenpunkte und Tabellenzeilen werden bei geänderter Anzahl über ihren Inhalt zugeordnet.
+- **Spalten-Schutz** (ohne `cols6`): Ein Spalten-Block mit genau 4 Spalten, der vorher 5–6 hatte, bekommt die fehlenden
+  Spalten zurück (Breiten danach gleich).
+
+Föderation: dasselbe für Gegenstellen ohne die Fähigkeiten `inline2`/`cols6` (`APP-API-FED.md`).
 
 ## Erwähnungen (2.5, P6-5, `mention1`)
 
